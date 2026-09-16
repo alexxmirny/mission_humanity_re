@@ -1027,7 +1027,22 @@ def follow_up(
     if os.path.exists(dest) and os.listdir(dest):
         say("REFUSED: %s exists and is not empty" % dest)
         return None
-    r = _git(os.path.dirname(dest) or ".", "clone", "-q", "--branch", branch, url, dest)
+    # `-c core.autocrlf=false` BEFORE the checkout: on a box whose global config says autocrlf=true
+    # (every GitHub Windows runner), a fresh clone's worktree already differs from its index by
+    # line endings, and `git rm -r .` below refuses with "local modifications". Setting the option
+    # after the clone is too late -- the files are already checked out CRLF. Found by the public
+    # CI's first run of this arm (2026-09-16); the tool's own machine never had the setting.
+    r = _git(
+        os.path.dirname(dest) or ".",
+        "clone",
+        "-q",
+        "-c",
+        "core.autocrlf=false",
+        "--branch",
+        branch,
+        url,
+        dest,
+    )
     if r.returncode:
         say("git clone failed: %s" % (r.stderr or r.stdout).strip())
         return None
@@ -1296,8 +1311,10 @@ def selftest(say=print):
                 _write(os.path.join(dest, which), "z\n")
             return [rel for rel, _t in files]
 
-        def quiet(*_a):
-            pass
+        said = []
+
+        def quiet(*a):
+            said.append(" ".join(str(x) for x in a))
 
         c1 = os.path.join(tmp, "c1")
         info = follow_up(
@@ -1311,6 +1328,9 @@ def selftest(say=print):
             public_check=False,
         )
         tracked = set(_git(c1, "ls-files").stdout.split())
+        if not (info and not info.get("unchanged")):
+            for ln in said[-6:]:
+                say("      | %s" % ln)
         arm(
             "follow-up: a commit lands on top of the seed", bool(info) and not info.get("unchanged")
         )
