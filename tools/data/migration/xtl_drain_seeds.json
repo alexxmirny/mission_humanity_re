@@ -1,0 +1,64 @@
+{
+ "_generated_by": "X-TL-DRAIN step 4, 2026-09-12 -- derived from gen_libmh_inbound's own caller table, not from a graph walk",
+ "_domain_hint": "sim",
+ "_what": "The THREE LIVE original callers X-TL-DRAIN translates. They are the surviving half of a 26-function batch whose other 22 members were measured provably dead and dispositioned on tools/data/reconciliation_pruned_roots.json instead (Scenario B, user ruling 2026-09-12). Each of the three is the only remaining thing keeping an already-owned body in the inbound surface's X-TL exclusion class -- an original->libmh crossing the fork would have had to export as an API entry purely because the CALLER had not been translated.",
+ "_why_members_and_not_roots": [
+  "Exactly SIM1-H's shape and for exactly SIM1-H's reason. All three sit ABOVE the sim closure's",
+  "root -- llm_strat_bldg_init_all is boot stage 7, llm_strat_bldg_instant_construct_find_slot hangs",
+  "off llm_strat_input_update's build-placement click-confirm, llm_unit_order_disembark_soldiers off",
+  "the unit-state handler table -- so a forward walk from the root cannot reach them. Seeding them as",
+  "ROOTS would drag session entry, the input dispatcher and the boot stage list into a domain that has",
+  "closed twelve batches. Injected as members and nothing else: no walk, no descent, no widening.",
+  "",
+  "AND NOTHING NEW COMES WITH THEM. Measured before seeding: their whole callee set is already ours or",
+  "already frontier -- llm_strat_bldg_init_defaults (sim, SIM1-H wave 1), llm_strat_order_dispatch /",
+  "_scratch_reset / _scratch_set_field (orders, RI-ORDERS) and utils_assert_stack_capacity (frontier).",
+  "So the batch TERMINATES at three functions and 781 bytes."
+ ],
+ "_the_fourth_live_row_is_not_here": [
+  "llm_strat_order_queue_apply_and_dequeue is the batch's fourth live member and it is NOT in this",
+  "file, because it needs no translation: RI-ORDERS reimplemented it in libmh/orders/order_queue.cpp",
+  "before the migration-manifest era, and it carries both a shadow site and an MH_EXPORT_REPLACE",
+  "promotion seam. What it lacked was a LEDGER ROW -- which is why gen_libmh_inbound counted it as a",
+  "live ORIGINAL caller and three owned bodies stayed in X-TL on its account. Its row is seeded into",
+  "`orders_issue` instead (select.seeds, kind `names`), the domain sim.json's own",
+  "select.owned_elsewhere already names as its owner."
+ ],
+ "_measurement": {
+  "rows": 3,
+  "total_bytes": 781,
+  "xtl_rows_released": 7,
+  "further_unowned_callees": 0,
+  "shadow_sites_added": 3,
+  "offline_oracles_added": 3
+ },
+ "seeds": [
+  {
+   "name": "llm_strat_bldg_init_all",
+   "addr": "0x0045a017",
+   "size_bytes": 81,
+   "why": "boot stage 7's defaults sweep -- walks cfg Building[1..99] and calls llm_strat_bldg_init_defaults for every defined type. SOLE original caller of that body, so it alone held llm_strat_bldg_init_defaults in X-TL.",
+   "callers_up": [
+    "llm_boot_stage_tick"
+   ]
+  },
+  {
+   "name": "llm_strat_bldg_instant_construct_find_slot",
+   "addr": "0x0046d229",
+   "size_bytes": 595,
+   "why": "the build-placement click-confirm slot finder. Held THREE X-TL rows on its own -- llm_strat_order_scratch_reset, llm_strat_order_scratch_set_field and (with disembark_soldiers) llm_strat_order_dispatch. Its five-parameter signature was analyzed and committed FIRST at EN v404, before translation, per the item's own acceptance clause.",
+   "callers_up": [
+    "llm_strat_input_update"
+   ]
+  },
+  {
+   "name": "llm_unit_order_disembark_soldiers",
+   "addr": "0x0046e76c",
+   "size_bytes": 105,
+   "why": "the unit-side 'let the soldiers out' order wrapper; the second caller of llm_strat_order_dispatch. Its dead _enqueue sibling (llm_unit_order_disembark_soldiers_enqueue, 0x0046e7d6) is on reconciliation_pruned_roots.json instead -- the pair is the clearest example in this batch of a live wrapper beside a dead twin.",
+   "callers_up": [
+    "llm_strat_input_update"
+   ]
+  }
+ ]
+}

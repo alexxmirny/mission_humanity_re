@@ -1,0 +1,38 @@
+# D19 MP GATE (client) -- the passive half. Joins the host, signals its lobby, enters the match and
+# rides it long enough for the host's post-keypress sim assertion to be meaningful: in lockstep the
+# host cannot advance past a step this peer has not reached, so the client must outlive the host's
+# `simstep 600`.
+#
+# Same walk as mp_client_start.txt, minus its captures.
+#
+# THIS PEER IS WHY THE `simstep` PREDICATE EXISTS (fork F5J). A lockstep client's sim steps do NOT
+# arrive on its own presents -- they arrive in bursts as the host's horizon is delivered -- so the
+# step count at any clock threshold is set by the wire, and no capture-timing pin has purchase on it.
+# Measured at F4H: with pin_wallclock on both peers the HOST capture came within one pixel and this
+# one gave two distinct frames 3.5% apart (the ship and its ellipse one step out). `simstep` fences
+# the sim AT the step instead, which is the only thing that reaches this case.
+
+settled value:110
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+present Internet server
+settled Internet server
+clickl Internet server
+present Server address
+settled Connect
+clickl Connect
+sessions 1
+settled Join game
+clickl Join game
+
+present Network players
+signal lobby
+settled Cancel
+absent Network players
+gamemode 2
+simstep 600
+capture g1_client_ingame
+log CLIENT rode the match past the host's big-map keypress
+end

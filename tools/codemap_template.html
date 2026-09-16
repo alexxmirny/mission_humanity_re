@@ -1,0 +1,930 @@
+<title>mh.exe Coverage Map</title>
+<style>
+  :root{
+    --sans: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    --mono: ui-monospace, "Cascadia Mono", "JetBrains Mono", "SF Mono", Menlo, Consolas, monospace;
+    /* dark (default) */
+    --bg:#0d0e13; --surface:#15171e; --surface-2:#1b1e27; --line:#282d3a;
+    --ink:#e8e9ee; --ink-2:#a4a9b7; --ink-3:#6a7182;
+    --signal:#f2a93c; --signal-soft:#c98a2f; --signal-track:#2a2416;
+    --unknown:#49505f; --unknown-line:#5b6072; --good:#58b57e;
+    --tip-bg:#0a0b0f;
+    --shadow: 0 1px 0 rgba(255,255,255,.03), 0 10px 30px -12px rgba(0,0,0,.6);
+  }
+  @media (prefers-color-scheme: light){
+    :root{
+      --bg:#e9ecf1; --surface:#ffffff; --surface-2:#f3f5f9; --line:#dde1ea;
+      --ink:#171a22; --ink-2:#525a6b; --ink-3:#878fa0;
+      --signal:#c6801f; --signal-soft:#a8630c; --signal-track:#efe1c6;
+      --unknown:#9aa1b2; --unknown-line:#aab0be; --good:#2f8f58;
+      --tip-bg:#171a22;
+      --shadow: 0 1px 0 rgba(255,255,255,.7), 0 12px 30px -14px rgba(30,40,70,.28);
+    }
+  }
+  :root[data-theme="dark"]{
+    --bg:#0d0e13; --surface:#15171e; --surface-2:#1b1e27; --line:#282d3a;
+    --ink:#e8e9ee; --ink-2:#a4a9b7; --ink-3:#6a7182;
+    --signal:#f2a93c; --signal-soft:#c98a2f; --signal-track:#2a2416;
+    --unknown:#49505f; --unknown-line:#5b6072; --tip-bg:#0a0b0f; --good:#58b57e;
+    --shadow: 0 1px 0 rgba(255,255,255,.03), 0 10px 30px -12px rgba(0,0,0,.6);
+  }
+  :root[data-theme="light"]{
+    --bg:#e9ecf1; --surface:#ffffff; --surface-2:#f3f5f9; --line:#dde1ea;
+    --ink:#171a22; --ink-2:#525a6b; --ink-3:#878fa0;
+    --signal:#c6801f; --signal-soft:#a8630c; --signal-track:#efe1c6;
+    --unknown:#9aa1b2; --unknown-line:#aab0be; --tip-bg:#171a22; --good:#2f8f58;
+    --shadow: 0 1px 0 rgba(255,255,255,.7), 0 12px 30px -14px rgba(30,40,70,.28);
+  }
+
+  *{box-sizing:border-box}
+  body{margin:0; background:var(--bg)}
+  .wrap{
+    font-family:var(--sans); background:var(--bg); color:var(--ink);
+    min-height:100vh; padding:clamp(20px,5vw,64px) clamp(16px,5vw,48px) 64px;
+    -webkit-font-smoothing:antialiased;
+  }
+  .col{max-width:1080px; margin:0 auto}
+
+  .eyebrow{
+    font-family:var(--mono); font-size:.72rem; letter-spacing:.24em; text-transform:uppercase;
+    color:var(--signal-soft); display:flex; align-items:center; gap:.7em; margin:0 0 18px;
+  }
+  .eyebrow::before{content:""; width:26px; height:1px; background:var(--signal-soft); opacity:.7}
+  h1{
+    font-family:var(--sans); font-weight:660; letter-spacing:-.02em; text-wrap:balance;
+    font-size:clamp(1.7rem,4.2vw,2.6rem); line-height:1.05; margin:0 0 14px;
+  }
+  .lede{
+    color:var(--ink-2); font-size:1.02rem; line-height:1.6; max-width:64ch; margin:0;
+  }
+  .lede b{color:var(--ink); font-weight:600}
+
+  /* ---- hero stat band ---- */
+  .hero{
+    margin:38px 0 8px; background:var(--surface); border:1px solid var(--line);
+    border-radius:16px; box-shadow:var(--shadow); overflow:hidden;
+  }
+  .hero-top{display:grid; grid-template-columns:1.15fr 1fr; gap:0}
+  @media (max-width:720px){ .hero-top{grid-template-columns:1fr} }
+  .hero-main{padding:clamp(20px,3vw,34px); border-right:1px solid var(--line)}
+  @media (max-width:720px){ .hero-main{border-right:0; border-bottom:1px solid var(--line)} }
+  .bignum{
+    font-family:var(--mono); font-weight:600; font-variant-numeric:tabular-nums;
+    font-size:clamp(3.2rem,9vw,5.4rem); line-height:.9; letter-spacing:-.03em; color:var(--signal);
+    display:flex; align-items:baseline; gap:.12em;
+  }
+  .bignum small{font-size:.32em; color:var(--ink-3); font-weight:500; letter-spacing:0}
+  .bignum-cap{font-family:var(--mono); font-size:.8rem; color:var(--ink-2); margin-top:12px; letter-spacing:.02em}
+  .meter{margin-top:18px; height:12px; border-radius:6px; background:var(--signal-track); overflow:hidden; position:relative; border:1px solid var(--line)}
+  .meter > i{display:block; height:100%; background:linear-gradient(90deg,var(--signal-soft),var(--signal)); border-radius:6px 2px 2px 6px}
+  .meter-scale{display:flex; justify-content:space-between; font-family:var(--mono); font-size:.66rem; color:var(--ink-3); margin-top:6px}
+
+  .hero-grid{display:grid; grid-template-columns:1fr 1fr; }
+  .kpi{padding:clamp(16px,2.4vw,26px); border-bottom:1px solid var(--line)}
+  .kpi:nth-child(odd){border-right:1px solid var(--line)}
+  .kpi .k{font-family:var(--mono); font-size:1.7rem; font-weight:600; font-variant-numeric:tabular-nums; letter-spacing:-.01em}
+  .kpi .k .u{font-size:.62em; color:var(--ink-3); font-weight:500; margin-left:.15em}
+  .kpi .lab{font-family:var(--mono); font-size:.68rem; text-transform:uppercase; letter-spacing:.13em; color:var(--ink-3); margin-top:6px}
+  .kpi:nth-last-child(-n+2){border-bottom:0}
+
+  .caveat{
+    padding:16px clamp(20px,3vw,34px); font-size:.86rem; color:var(--ink-2); line-height:1.55;
+    background:var(--surface-2); border-top:1px solid var(--line);
+  }
+  .caveat b{color:var(--ink)}
+  .chip{display:inline-block; font-family:var(--mono); font-size:.74rem; padding:.05em .5em; border-radius:5px;
+    background:var(--signal-track); color:var(--signal-soft); border:1px solid var(--line)}
+
+  /* ---- milestones ---- */
+  .ms-list{display:flex; flex-direction:column; gap:12px; margin-top:6px}
+  .ms{background:var(--surface); border:1px solid var(--line); border-radius:12px; padding:16px 18px; box-shadow:var(--shadow)}
+  .ms-head{display:flex; align-items:baseline; gap:10px; flex-wrap:wrap; margin-bottom:11px}
+  .ms-id{font-family:var(--mono); font-weight:600; font-size:.86rem; color:var(--signal); letter-spacing:.04em}
+  .ms-label{font-weight:600; font-size:.98rem}
+  .ms-pill{font-family:var(--mono); font-size:.62rem; text-transform:uppercase; letter-spacing:.1em;
+    padding:.2em .55em; border-radius:5px; border:1px solid var(--line)}
+  .ms-pill.met{color:var(--good); background:color-mix(in srgb,var(--good) 14%, transparent); border-color:color-mix(in srgb,var(--good) 35%, transparent)}
+  .ms-pill.active{color:var(--signal-soft); background:var(--signal-track); border-color:color-mix(in srgb,var(--signal) 35%, transparent)}
+  .ms-pill.next{color:var(--ink-2); background:var(--surface-2)}
+  .ms-pill.parallel{color:var(--ink-2); background:var(--surface-2)}
+  .ms-pct{margin-left:auto; font-family:var(--mono); font-variant-numeric:tabular-nums; font-size:1.15rem; font-weight:600}
+  .ms-pct i{font-style:normal; color:var(--ink-3); font-size:.72em; margin-left:.35em}
+  .ms-track{position:relative; height:14px; border-radius:7px; background:var(--surface-2); border:1px solid var(--line); overflow:visible}
+  .ms-fill{position:absolute; inset:1px auto 1px 1px; height:calc(100% - 2px); border-radius:6px 3px 3px 6px;
+    background:linear-gradient(90deg,var(--signal-soft),var(--signal))}
+  .ms-fill.met{background:linear-gradient(90deg,color-mix(in srgb,var(--good) 70%,#000),var(--good))}
+  .ms-target{position:absolute; top:-4px; bottom:-4px; width:2px; background:var(--ink-2); border-radius:2px; transform:translateX(-1px)}
+  .ms-target::after{content:attr(data-t); position:absolute; top:-16px; left:50%; transform:translateX(-50%);
+    font-family:var(--mono); font-size:.6rem; color:var(--ink-3); white-space:nowrap}
+  .ms-note{margin-top:9px; font-size:.82rem; color:var(--ink-2); line-height:1.5}
+  .ms-note b{color:var(--ink); font-weight:600}
+  .ms-tag{font-family:var(--mono); font-size:.6rem; font-weight:600; letter-spacing:.03em; color:var(--signal-soft);
+    background:var(--signal-track); border:1px solid var(--line); border-radius:4px; padding:0 .35em; margin-left:.5em; vertical-align:.08em}
+
+  /* ---- section framing ---- */
+  section.block{margin-top:52px}
+  h2.sec{
+    font-family:var(--mono); font-size:.78rem; letter-spacing:.2em; text-transform:uppercase;
+    color:var(--ink-3); margin:0 0 4px; display:flex; align-items:center; gap:.6em;
+  }
+  h2.sec .n{color:var(--signal-soft)}
+  .sec-sub{color:var(--ink-2); font-size:.95rem; margin:0 0 22px; max-width:66ch; line-height:1.55}
+
+  /* ---- subsystem bars ---- */
+  .bars{display:flex; flex-direction:column; gap:2px}
+  .grouplab{font-family:var(--mono); font-size:.68rem; letter-spacing:.14em; text-transform:uppercase; color:var(--ink-3);
+    margin:22px 0 8px; padding-top:14px; border-top:1px dashed var(--line)}
+  .row{
+    display:grid; grid-template-columns:172px 1fr 128px; align-items:center; gap:16px;
+    padding:9px 10px; border-radius:9px;
+  }
+  .row:hover{background:var(--surface)}
+  .row .name{font-size:.9rem; font-weight:550; line-height:1.15}
+  .row .name .fns{font-family:var(--mono); font-size:.68rem; color:var(--ink-3); display:block; margin-top:2px; font-weight:400}
+  .track{height:22px; border-radius:5px; background:var(--surface-2); position:relative; overflow:hidden; border:1px solid var(--line)}
+  .fill{position:absolute; inset:0 auto 0 0; display:flex; height:100%; border-radius:5px; overflow:hidden}
+  .seg-res{height:100%; background:var(--signal)}
+  .seg-own{height:100%; background:var(--own)}
+  .seg-plan{height:100%; background:var(--own-soft)}
+  /* heatmap mode switch */
+  .heat-mode{display:flex; align-items:center; gap:8px; margin-bottom:12px; flex-wrap:wrap}
+  .heat-mode .lab{font-family:var(--mono); font-size:.66rem; color:var(--ink-3); letter-spacing:.06em; text-transform:uppercase}
+  .modechip{font-family:var(--mono); font-size:.7rem; padding:4px 10px; border-radius:999px;
+    border:1px solid var(--line); background:var(--surface-2); color:var(--ink-2); cursor:pointer}
+  .modechip[aria-pressed="true"]{background:var(--ink); color:var(--surface); border-color:var(--ink)}
+  .heat-foot .sw-own{display:inline-block; vertical-align:-2px; background:var(--k4)}
+  .heat-foot .sw-plan{display:inline-block; vertical-align:-2px; background:var(--k0); border-style:dashed; border-color:var(--own-soft)}
+  .heat-foot .k1{background:var(--k1)} .heat-foot .k2{background:var(--k2)}
+  .heat-foot .k3{background:var(--k3)} .heat-foot .k4{background:var(--k4)}
+  .seg-unk{height:100%;
+    background:
+      repeating-linear-gradient(135deg, color-mix(in srgb,var(--unknown) 62%, transparent) 0 1.6px, transparent 1.6px 5px),
+      var(--unknown);
+    opacity:.9;
+  }
+  .row .val{font-family:var(--mono); text-align:right; font-variant-numeric:tabular-nums}
+  .row .val .pct{font-size:1.05rem; font-weight:600; color:var(--ink)}
+  .row .val .by{font-size:.68rem; color:var(--ink-3); display:block; margin-top:1px}
+  .row.lib .name, .row.lib .val .pct{color:var(--ink-2)}
+  @media (max-width:640px){
+    .row{grid-template-columns:1fr; gap:6px; padding:12px 10px}
+    .row .val{text-align:left; display:flex; gap:10px; align-items:baseline}
+    .row .val .by{display:inline}
+  }
+
+  /* ---- coverage-by-object-size curve ---- */
+  .size-card{background:var(--surface); border:1px solid var(--line); border-radius:14px; box-shadow:var(--shadow); padding:clamp(18px,2.6vw,30px)}
+  .szchart{display:grid; grid-auto-flow:column; grid-auto-columns:1fr; gap:clamp(5px,1.4vw,16px); align-items:end}
+  .szcol{display:flex; flex-direction:column; align-items:center; min-width:0}
+  .szval{font-family:var(--mono); font-size:.82rem; font-weight:600; font-variant-numeric:tabular-nums; color:var(--ink); margin-bottom:7px}
+  .szbar{width:100%; max-width:60px; height:clamp(120px,22vw,168px); background:var(--surface-2); border:1px solid var(--line);
+    border-radius:6px; display:flex; align-items:flex-end; overflow:hidden}
+  .szfill{width:100%; background:linear-gradient(180deg,var(--signal),var(--signal-soft)); min-height:2px}
+  .szcol.lo .szfill{background:linear-gradient(180deg,#d2544e,#b0433e)}   /* the underserved middle, flagged */
+  .szlab{font-family:var(--mono); font-size:.66rem; color:var(--ink-2); margin-top:10px; text-align:center; line-height:1.35}
+  .szlab .n{display:block; color:var(--ink-3); font-size:.92em; margin-top:2px}
+  .size-note{margin:20px 0 0; font-size:.86rem; color:var(--ink-2); line-height:1.6}
+  .size-note b{color:var(--ink)}
+  .size-note .lo{color:#d2544e; font-weight:600}
+
+  /* ---- legend ---- */
+  .legend{display:flex; flex-wrap:wrap; gap:18px; margin:0 0 18px; font-size:.8rem; color:var(--ink-2)}
+  .legend span{display:inline-flex; align-items:center; gap:8px; font-family:var(--mono); letter-spacing:.02em}
+  .sw{width:15px; height:13px; border-radius:3px; border:1px solid var(--line); flex:none}
+  .sw.res{background:var(--signal)}
+  .sw.unk{background:
+      repeating-linear-gradient(135deg, color-mix(in srgb,var(--unknown) 62%, transparent) 0 1.6px, transparent 1.6px 5px),
+      var(--unknown)}
+  .sw.gap{background:var(--surface-2)}
+
+  /* ---- address-space heatmap (GitHub-contribution-style) ---- */
+  :root{
+    --h0: var(--surface-2);
+    --h1: color-mix(in srgb, var(--signal) 24%, var(--surface-2));
+    --h2: color-mix(in srgb, var(--signal) 48%, var(--surface-2));
+    --h3: color-mix(in srgb, var(--signal) 72%, var(--surface-2));
+    --h4: var(--signal);
+    --h-unk: color-mix(in srgb, var(--unknown) 60%, var(--surface-2));
+    /* ours (reimplemented) -- keyed off --good so it flips with the theme like everything else */
+    --own: var(--good);
+    --own-soft: color-mix(in srgb, var(--good) 45%, var(--surface-2));
+    --k0: var(--surface-2);
+    --k1: color-mix(in srgb, var(--good) 26%, var(--surface-2));
+    --k2: color-mix(in srgb, var(--good) 52%, var(--surface-2));
+    --k3: color-mix(in srgb, var(--good) 76%, var(--surface-2));
+    --k4: var(--good);
+  }
+  .heat-card{background:var(--surface); border:1px solid var(--line); border-radius:14px; box-shadow:var(--shadow); padding:clamp(16px,2.4vw,26px)}
+  .heat-ends{display:flex; justify-content:space-between; font-family:var(--mono); font-size:.66rem; color:var(--ink-3); font-variant-numeric:tabular-nums; margin-bottom:9px}
+  .heat-wrap{position:relative; width:100%}
+  .heat{display:grid; grid-template-columns:repeat(auto-fill, minmax(13px, 1fr)); gap:3px}
+  .cell{aspect-ratio:1; border-radius:2.5px; background:var(--h0); outline:1px solid transparent; outline-offset:-1px}
+  .cell.c1{background:var(--h1)} .cell.c2{background:var(--h2)} .cell.c3{background:var(--h3)} .cell.c4{background:var(--h4)}
+  .cell.unk{background:var(--h-unk)}
+  /* REIMPLEMENTATION ramp -- a different HUE on purpose. Amber answers "do we understand this",
+     green answers "is this ours"; two ramps of one hue would read as one scale with more steps. */
+  .cell.k1{background:var(--k1)} .cell.k2{background:var(--k2)} .cell.k3{background:var(--k3)} .cell.k4{background:var(--k4)}
+  .cell.kp{background:var(--k0); outline-color:var(--own-soft); outline-style:dashed}
+  .cell:hover{outline-color:var(--ink)}
+  /* focus/highlight lens: dim everything except the selected subsystem */
+  .heat.focus .cell{opacity:.12; transition:opacity .12s}
+  .heat.focus .cell.match{opacity:1; outline-color:var(--ink)}
+  @media (prefers-reduced-motion:reduce){ .heat.focus .cell{transition:none} }
+  .heat-lens{display:flex; flex-wrap:wrap; align-items:center; gap:8px 10px; margin-top:16px; padding-top:16px; border-top:1px dashed var(--line)}
+  .lens-lab{font-family:var(--mono); font-size:.64rem; letter-spacing:.14em; text-transform:uppercase; color:var(--ink-3)}
+  .lens-chips{display:flex; flex-wrap:wrap; gap:6px}
+  .lens-chip{font-family:var(--mono); font-size:.72rem; padding:.28em .62em; border-radius:6px; border:1px solid var(--line);
+    background:var(--surface-2); color:var(--ink-2); cursor:pointer; user-select:none; line-height:1;
+    transition:background .1s,color .1s,border-color .1s}
+  .lens-chip:hover{color:var(--ink); border-color:var(--ink-3)}
+  .lens-chip.active{background:var(--signal); color:#14151d; border-color:var(--signal); font-weight:600}
+  .lens-chip .c{color:var(--ink-3); margin-left:.45em; font-size:.92em}
+  .lens-chip.active .c{color:#14151d}
+  .lens-chip.tag{border-color:color-mix(in srgb,var(--signal) 40%, var(--line))}
+  .lens-chip:focus-visible{outline:2px solid var(--signal); outline-offset:2px}
+  .heat-foot{display:flex; align-items:center; gap:9px; margin-top:18px; font-family:var(--mono); font-size:.72rem; color:var(--ink-3); flex-wrap:wrap}
+  .heat-foot .scale{display:flex; gap:3px}
+  .heat-foot i{width:13px; height:13px; border-radius:2.5px; display:block; border:1px solid var(--line); flex:none}
+  .heat-foot .s0{background:var(--h0)} .heat-foot .s1{background:var(--h1)} .heat-foot .s2{background:var(--h2)}
+  .heat-foot .s3{background:var(--h3)} .heat-foot .s4{background:var(--h4)}
+  .heat-foot .sw-unk{display:inline-block; vertical-align:-2px; background:var(--h-unk)}
+  .heat-foot .sw-gap{display:inline-block; vertical-align:-2px; background:var(--h0)}
+  .tip{
+    position:absolute; pointer-events:none; z-index:5; background:var(--tip-bg); color:#fff;
+    border:1px solid rgba(255,255,255,.12); border-radius:8px; padding:9px 11px; font-family:var(--mono);
+    font-size:.72rem; line-height:1.5; box-shadow:0 8px 24px -8px rgba(0,0,0,.55); min-width:150px; transform:translate(-50%,-115%);
+    transition:opacity .08s;
+  }
+  :root[data-theme="light"] .tip, .tip{ }
+  .tip .a{color:var(--signal); font-size:.8rem}
+  .tip .r{color:#8fd6a3}
+  .tip b{color:#fff}
+  .tip .mut{color:#9aa1b2}
+  .tip .tg{color:var(--signal); margin-top:1px}
+
+  /* ---- confidence of the named mass ---- */
+  .qwrap{background:var(--surface); border:1px solid var(--line); border-radius:14px; box-shadow:var(--shadow);
+    padding:clamp(16px,2.4vw,26px)}
+  .qbar{display:flex; height:34px; border-radius:7px; overflow:hidden; border:1px solid var(--line)}
+  .qbar > i{display:block; height:100%}
+  .q-high{background:var(--good)}
+  .q-med{background:var(--signal)}
+  .q-low{background:#d2544e}
+  .qlegend{display:flex; flex-wrap:wrap; gap:22px; margin-top:15px; font-family:var(--mono); font-size:.78rem; color:var(--ink-2)}
+  .qlegend b{font-weight:600; color:var(--ink)}
+  .qsw{width:12px; height:12px; border-radius:3px; display:inline-block; vertical-align:-1px; margin-right:7px; border:1px solid var(--line)}
+
+  /* ---- open-work stat cards ---- */
+  .owgrid{display:grid; grid-template-columns:repeat(4,1fr); gap:12px; margin-top:8px}
+  @media (max-width:640px){ .owgrid{grid-template-columns:repeat(2,1fr)} }
+  .owcard{background:var(--surface); border:1px solid var(--line); border-radius:12px; padding:16px; box-shadow:var(--shadow)}
+  .owcard .n{font-family:var(--mono); font-size:1.9rem; font-weight:600; font-variant-numeric:tabular-nums; line-height:1}
+  .owcard .t{font-family:var(--mono); font-size:.72rem; color:var(--signal-soft); margin-top:9px; letter-spacing:.02em}
+  .owcard .d{font-size:.76rem; color:var(--ink-2); margin-top:6px; line-height:1.45}
+  .owcard.good .n{color:var(--good)}
+  .owcard.good .t{color:var(--good)}
+
+  /* ---- patch / modding surface ---- */
+  .patch-head{display:flex; align-items:center; gap:16px; flex-wrap:wrap; margin-bottom:22px}
+  .patch-big{font-family:var(--mono); font-size:1.7rem; font-weight:600; font-variant-numeric:tabular-nums; color:var(--ink)}
+  .patch-big small{font-size:.5em; color:var(--ink-3); font-weight:500; margin-left:.4em; letter-spacing:.02em}
+  .cross-chip{font-family:var(--mono); font-size:.8rem; padding:.35em .75em; border-radius:8px; font-weight:600;
+    background:color-mix(in srgb,#d2544e 15%, transparent); color:#d2544e; border:1px solid color-mix(in srgb,#d2544e 42%, transparent)}
+  .patch-cols{display:grid; grid-template-columns:1fr 1fr; gap:34px}
+  @media (max-width:640px){ .patch-cols{grid-template-columns:1fr; gap:26px} }
+  .mini-h{font-family:var(--mono); font-size:.68rem; letter-spacing:.14em; text-transform:uppercase; color:var(--ink-3); margin:0 0 13px}
+  .mini{display:flex; flex-direction:column; gap:9px}
+  .mrow{display:grid; grid-template-columns:104px 1fr 40px; align-items:center; gap:12px}
+  .mname{font-family:var(--mono); font-size:.8rem}
+  .mtrack{height:16px; border-radius:4px; background:var(--surface-2); border:1px solid var(--line); overflow:hidden; position:relative}
+  .mfill{position:absolute; inset:0 auto 0 0; background:var(--signal); border-radius:4px}
+  .mfill.sub{background:var(--signal-soft)}
+  .mval{font-family:var(--mono); font-size:.8rem; text-align:right; font-variant-numeric:tabular-nums; color:var(--ink-2)}
+
+  footer.meta{margin-top:48px; padding-top:20px; border-top:1px solid var(--line); color:var(--ink-3); font-size:.82rem; line-height:1.65; max-width:76ch}
+  footer.meta b{color:var(--ink-2)}
+  footer.meta code{font-family:var(--mono); color:var(--signal-soft); font-size:.9em}
+
+  @media (prefers-reduced-motion:reduce){ *{transition:none!important} }
+</style>
+
+<main class="wrap">
+  <div class="col">
+    <p class="eyebrow">Reverse-engineering coverage · mh.exe · Ghidra snapshot 2026-07-08</p>
+    <h1>How much of the machine code is understood — and where the dark regions are</h1>
+    <p class="lede">A byte-level map of the game executable's <b>2,829 functions</b>. Every function
+      is either <b>researched</b> (named &amp; documented in Ghidra) or still <b>unknown</b> (a raw
+      <span style="font-family:var(--mono)">FUN_&hellip;</span> stub). Sizes are actual instruction
+      bytes, so this weighs code by how much of it there is — not just function count.</p>
+
+    <div class="hero">
+      <div class="hero-top">
+        <div class="hero-main">
+          <div class="bignum" id="heroPct">—<small>%</small></div>
+          <div class="bignum-cap">of all function code is researched</div>
+          <div class="meter"><i id="heroMeter" style="width:0"></i></div>
+          <div class="meter-scale"><span>0</span><span id="heroMeterMid"></span><span>895 KiB</span></div>
+        </div>
+        <div class="hero-grid" id="kpis"></div>
+      </div>
+      <div class="caveat" id="caveat"></div>
+    </div>
+
+    <section class="block">
+      <h2 class="sec"><span class="n">00</span> Milestones — coverage vs target</h2>
+      <p class="sec-sub">Each comprehension milestone (from the roadmap) rolls up the researched
+        share of its subsystems' bytes. The bar is current coverage; the notch is the target.
+        <b style="color:var(--ink)">Engine-shared code</b> (graphics, sound, runtime) sits outside these
+        comprehension targets.</p>
+      <div class="ms-list" id="milestones"></div>
+    </section>
+
+    <section class="block">
+      <h2 class="sec"><span class="n">01</span> Subsystems — by code size &amp; coverage</h2>
+      <p class="sec-sub">Bar length is the subsystem's total instruction bytes (unknown functions
+        attributed to a subsystem by address adjacency — Watcom lays out code by translation unit).
+        The solid part is researched; the hatched part is still unknown.</p>
+      <div class="legend">
+        <span><i class="sw res"></i> researched (named)</span>
+        <span><i class="sw unk"></i> unknown (FUN_ stub)</span>
+      </div>
+      <div class="bars" id="bars"></div>
+    </section>
+
+    <section class="block">
+      <h2 class="sec"><span class="n">02</span> The data — how much is named &amp; typed</h2>
+      <p class="sec-sub">The same question for the game's <b>data</b>: of the labelled objects in the
+        reversible data segments (<span style="font-family:var(--mono)">DGROUP</span> +
+        <span style="font-family:var(--mono)">.bss</span> — resources, relocations and the import table
+        excluded), how many carry a real name vs a raw <span style="font-family:var(--mono)">DAT_&hellip;</span>
+        stub. Two honest lenses: <b>by object count</b> (parallels functions-named) and <b>by typed bytes</b>
+        (dominated by the big recovered structs &amp; pools).</p>
+      <div class="hero" style="margin-top:0">
+        <div class="hero-top">
+          <div class="hero-main">
+            <div class="bignum" id="dataPct">—<small>%</small></div>
+            <div class="bignum-cap">of data objects carry a real name</div>
+            <div class="meter"><i id="dataMeter" style="width:0"></i></div>
+            <div class="meter-scale"><span>0</span><span></span><span id="dataTot"></span></div>
+          </div>
+          <div class="hero-grid" id="dataKpis"></div>
+        </div>
+        <div class="caveat" id="dataCaveat"></div>
+      </div>
+      <div class="grouplab">Named data — by subsystem</div>
+      <div class="legend">
+        <span><i class="sw res"></i> named data objects</span>
+        <span style="color:var(--ink-3)">bar length = share of named-data bytes · object count at right</span>
+      </div>
+      <div class="bars" id="dataBars"></div>
+
+      <div class="grouplab">Coverage by object size — where the naming work is</div>
+      <div class="size-card">
+        <div class="szchart" id="sizeCurve"></div>
+        <p class="size-note" id="sizeNote"></p>
+      </div>
+    </section>
+
+    <section class="block">
+      <h2 class="sec"><span class="n">03</span> Confidence &amp; open work on named code</h2>
+      <p class="sec-sub">Naming isn't all-or-nothing. Of the <b id="qNamed">&mdash;</b> named functions, a
+        function-tag layer records how solid each name is and what work it still needs. High-confidence
+        names carry no tag; <span class="chip">conf:med</span> + <span class="chip">conf:low</span> are the
+        standing review queue.</p>
+      <div class="qwrap">
+        <div class="qbar" id="qbar"></div>
+        <div class="qlegend" id="qlegend"></div>
+      </div>
+      <div class="grouplab">Open work — named but not finished</div>
+      <div class="owgrid" id="openwork"></div>
+    </section>
+
+    <section class="block">
+      <h2 class="sec"><span class="n">04</span> The limit-patch surface — the mod footprint</h2>
+      <p class="sec-sub">The functions that touch a <b>relocated static array</b> in the limit-raise
+        build. <span class="chip">base</span> / <span class="chip">row</span> are the bulk ref sites;
+        shift / bound / walk / size are the structural edits that make a cap actually rise.
+        <span class="chip">crosspool</span> functions touch more than one relocated pool — audit these
+        first when a combined build regresses.</p>
+      <div class="patch-head">
+        <div class="patch-big" id="patchBig">&mdash;</div>
+        <span class="cross-chip" id="crossChip">&mdash;</span>
+      </div>
+      <div class="patch-cols">
+        <div>
+          <p class="mini-h">By patch role (site count)</p>
+          <div class="mini" id="patchClasses"></div>
+        </div>
+        <div>
+          <p class="mini-h">By subsystem (sub: tag)</p>
+          <div class="mini" id="patchSubs"></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="block">
+      <h2 class="sec"><span class="n">05</span> The code — a coverage heatmap</h2>
+      <p class="sec-sub">Every cell is an equal slice of the executable's <b>machine code</b>
+        (~1.25&nbsp;KB of instructions) — data / padding gaps are skipped, so the grid's size is
+        proportional to how much code exists. Cells run in address order,
+        <span style="font-family:var(--mono)">0x410000</span> top-left to
+        <span style="font-family:var(--mono)">0x66f000</span> bottom-right. Colour is how
+        <b>researched</b> that slice is; slate cells are code that's still unknown. Switch the colouring to
+        <b>ours</b> to see the same grid by how much of each slice has been <b>reimplemented in C++</b>
+        (section 06) &mdash; same cells, same order, so the two are a direct visual diff of
+        <em>understood</em> against <em>rewritten</em>. A cell that bridges a
+        layout gap covers a wider address range (flagged on hover). Hover a cell for its address, every
+        subsystem it holds and its <span class="chip">sub:</span> tags; click a chip below to
+        <b>highlight</b> where a region or tagged pool lives.</p>
+      <div class="heat-card">
+        <div class="heat-mode">
+          <span class="lab">Colour by</span>
+          <button class="modechip" id="modeRes" aria-pressed="true">researched</button>
+          <button class="modechip" id="modeOwn" aria-pressed="false">ours (reimplemented)</button>
+        </div>
+        <div class="heat-ends"><span id="heatLo">0x410000</span><span id="heatHi">0x66f000</span></div>
+        <div class="heat-wrap">
+          <div class="heat" id="heat"></div>
+          <div class="tip" id="tip" hidden></div>
+        </div>
+        <div class="heat-foot" id="footRes">
+          <span><i class="sw-unk"></i> unknown (0%)</span>
+          <span style="margin-left:16px">Less</span>
+          <div class="scale"><i class="s1"></i><i class="s2"></i><i class="s3"></i><i class="s4"></i></div>
+          <span>More researched</span>
+        </div>
+        <div class="heat-foot" id="footOwn" hidden>
+          <span><i class="sw-plan"></i> planned, not proven</span>
+          <span style="margin-left:16px">Less</span>
+          <div class="scale"><i class="k1"></i><i class="k2"></i><i class="k3"></i><i class="k4"></i></div>
+          <span>More of it is ours</span>
+        </div>
+        <div class="heat-lens">
+          <span class="lens-lab">Highlight region</span>
+          <div class="lens-chips" id="lensRegions"></div>
+        </div>
+        <div class="heat-lens" style="border-top:0; margin-top:2px; padding-top:0">
+          <span class="lens-lab">Tag lens</span>
+          <div class="lens-chips" id="lensTags"></div>
+          <span style="font-family:var(--mono); font-size:.66rem; color:var(--ink-3)">click to isolate &middot; click again to clear</span>
+        </div>
+      </div>
+    </section>
+
+    <section class="block">
+      <h2 class="sec"><span class="n">06</span> Reimplementation &mdash; how much of the game is ours</h2>
+      <p class="sec-sub">Every section above answers <b>&ldquo;how much of this binary do we understand&rdquo;</b>.
+        This one answers a different question: <b>how much of it has been rewritten in C++</b> and lives in
+        <span style="font-family:var(--mono)">src/mh_dll</span>. <b>Ours</b> means a reimplementation exists
+        <em>and</em> was proven equivalent &mdash; a migration-ledger row at <span class="chip">verified</span>,
+        or a pre-ledger subsystem whose body is installed over the original. <b>Planned</b> means a ledger has
+        claimed the function and scheduled it into a batch, but it is not proven yet. Functions settled as
+        <span class="chip">dead</span> &mdash; deliberately never to be migrated &mdash; are in neither bucket.</p>
+      <div class="hero">
+        <div class="hero-main">
+          <div class="hero-lab">of researched code is ours</div>
+          <div class="bignum" id="ownPct">&mdash;<small>%</small></div>
+          <div class="meter"><i id="ownMeter" style="width:0; background:var(--own)"></i></div>
+          <div class="meter-scale"><span>0</span><span id="ownMeterMid"></span><span id="ownMeterHi"></span></div>
+        </div>
+        <div class="hero-grid" id="ownKpis"></div>
+      </div>
+      <div class="caveat" id="ownCaveat"></div>
+    </section>
+
+    <section class="block">
+      <h2 class="sec"><span class="n">07</span> Reimplementation by subsystem</h2>
+      <p class="sec-sub">The same bars as section 01, measured on the same attributed bytes, but filled by
+        <b>ownership</b> instead of coverage: solid is ours, pale is planned, the rest is still the original
+        binary&rsquo;s. Rows with nothing in either bucket are folded away &mdash; for most of them that is the
+        <em>intended</em> end state, not a gap: the target architecture keeps render, UI and platform in the
+        original executable and migrates the deterministic spine.</p>
+      <div class="bars" id="ownBars"></div>
+      <p class="size-note" id="ownBarsNote"></p>
+    </section>
+
+    <footer class="meta" id="meta"></footer>
+  </div>
+</main>
+
+<script>
+const DATA = __DATA_JSON__;
+const LIBGROUP = new Set(["Library/unattributed","Runtime/utility","Other named"]);
+const fmtInt = n => n.toLocaleString("en-US");
+const kib = n => (n/1024);
+const fmtKiB = n => (n/1024).toLocaleString("en-US",{maximumFractionDigits:0}) + " KiB";
+const css = v => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+
+/* ---------- hero + KPIs ---------- */
+(function(){
+  const T = DATA.totals;
+  const pct = T.res_bytes / T.code_bytes * 100;
+  const unk = T.code_bytes - T.res_bytes;
+  // game-only coverage (exclude runtime/library group)
+  let gr=0, gt=0;
+  DATA.subs.forEach(s=>{ if(!LIBGROUP.has(s[0])){ gr+=s[1]; gt+=s[1]+s[2]; }});
+  const gamePct = gr/gt*100;
+
+  const hp = document.getElementById("heroPct");
+  hp.innerHTML = pct.toFixed(1).replace(/\.0$/,"") + '<small>%</small>';
+  document.getElementById("heroMeter").style.width = pct.toFixed(1)+"%";
+  document.getElementById("heroMeterMid").textContent = "";
+
+  const kpis = [
+    [fmtKiB(T.code_bytes), "total function code", ""],
+    [fmtKiB(unk), "still unknown", ""],
+    [fmtInt(T.res_func)+"<span class='u'>/"+fmtInt(T.nfunc)+"</span>", "functions named", ""],
+    [gamePct.toFixed(0)+"<span class='u'>%</span>", "of game code (excl. runtime)", ""],
+  ];
+  document.getElementById("kpis").innerHTML = kpis.map(k=>
+    `<div class="kpi"><div class="k">${k[0]}</div><div class="lab">${k[1]}</div></div>`).join("");
+
+  document.getElementById("caveat").innerHTML =
+    `Researched functions are larger on average — they're <b>${pct.toFixed(0)}% of the bytes</b> but only `+
+    `${(T.res_func/T.nfunc*100).toFixed(0)}% of the function count: game logic runs long, CRT stubs run short. `+
+    `The unknown mass includes <span class="chip">Watcom&nbsp;CRT&nbsp;/&nbsp;runtime</span> that will never get game names — `+
+    `counting only game subsystems, coverage is about <b>${gamePct.toFixed(0)}%</b>.`;
+})();
+
+/* ---------- milestones ---------- */
+const MS_OF = {}; // subsystem name -> milestone id
+(function(){
+  const ms = DATA.milestones || [];
+  ms.forEach(m => m.scope.forEach(s => { MS_OF[s] = m.id; }));
+  const word = {met:"met", active:"active", next:"queued", parallel:"parallel"};
+  document.getElementById("milestones").innerHTML = ms.map(m=>{
+    const pct = m.total ? m.res/m.total*100 : 0;
+    const reached = pct >= m.target || m.phase === "met";
+    const toName = Math.round((m.target/100*m.total - m.res)/1024);
+    const remain = reached ? " · <b>met</b>" : (toName>0 ? ` · <b>${toName} KiB</b> to target` : "");
+    return `<div class="ms">
+      <div class="ms-head">
+        <span class="ms-id">${m.id}</span>
+        <span class="ms-label">${m.label}</span>
+        <span class="ms-pill ${reached?'met':m.phase}">${reached?'met':(word[m.phase]||m.phase)}</span>
+        <span class="ms-pct">${pct.toFixed(0)}%<i>&rarr; ${m.target}%</i></span>
+      </div>
+      <div class="ms-track">
+        <div class="ms-fill ${reached?'met':''}" style="width:${Math.min(100,pct).toFixed(1)}%"></div>
+        <div class="ms-target" style="left:${m.target}%" data-t="target ${m.target}%"></div>
+      </div>
+      <div class="ms-note">${m.note} — ${fmtKiB(m.total)} scope${remain}</div>
+    </div>`;
+  }).join("");
+})();
+
+/* ---------- subsystem bars ---------- */
+(function(){
+  const rows = DATA.subs.map(s=>({name:s[0], res:s[1], unk:s[2], rc:s[3], uc:s[4], total:s[1]+s[2]}));
+  const maxTotal = Math.max(...rows.map(r=>r.total));
+  const game = rows.filter(r=>!LIBGROUP.has(r.name));
+  const lib  = rows.filter(r=>LIBGROUP.has(r.name));
+  const host = document.getElementById("bars");
+
+  function rowHTML(r){
+    const pct = r.total? r.res/r.total*100 : 0;
+    const wTotal = r.total/maxTotal*100;
+    const wRes = r.total? r.res/r.total*100 : 0;
+    const isLib = LIBGROUP.has(r.name);
+    return `<div class="row${isLib?' lib':''}">
+      <div class="name">${r.name}${MS_OF[r.name]?`<span class="ms-tag">${MS_OF[r.name]}</span>`:""}<span class="fns">${fmtInt(r.rc)}/${fmtInt(r.rc+r.uc)} fns</span></div>
+      <div class="track"><div class="fill" style="width:${wTotal.toFixed(2)}%">
+        <div class="seg-res" style="width:${wRes.toFixed(2)}%"></div>
+        <div class="seg-unk" style="width:${(100-wRes).toFixed(2)}%"></div></div></div>
+      <div class="val"><span class="pct">${pct.toFixed(0)}%</span>
+        <span class="by">${fmtKiB(r.res)} / ${fmtKiB(r.total)}</span></div>
+    </div>`;
+  }
+  let html = game.map(rowHTML).join("");
+  html += `<div class="grouplab">Runtime &amp; library — not game code</div>`;
+  html += lib.map(rowHTML).join("");
+  host.innerHTML = html;
+})();
+
+/* ---------- reimplementation: how much of the game is OURS ---------- */
+(function(){
+  const T = DATA.totals, R = DATA.reimpl;
+  if(T.reimpl_done_bytes === undefined) return;          // older payload: section stays empty
+  const done = T.reimpl_done_bytes, plan = T.reimpl_planned_bytes;
+  // Denominator is RESEARCHED code, not all code. Measuring against the whole executable would
+  // fold in the statically-linked CRT and every subsystem the target architecture deliberately
+  // LEAVES in the binary, which makes the number smaller for reasons that are not progress.
+  const pctRes  = T.res_bytes  ? done/T.res_bytes*100  : 0;
+  const pctCode = T.code_bytes ? done/T.code_bytes*100 : 0;
+  document.getElementById("ownPct").innerHTML = pctRes.toFixed(1).replace(/\.0$/,"") + "<small>%</small>";
+  document.getElementById("ownMeter").style.width = pctRes.toFixed(1)+"%";
+  document.getElementById("ownMeterMid").textContent = fmtKiB(T.res_bytes/2);
+  document.getElementById("ownMeterHi").textContent = fmtKiB(T.res_bytes)+" researched";
+
+  const doms = R ? Object.keys(R.per_domain).sort() : [];
+  const kpis = [
+    [fmtInt(T.reimpl_done_func), "functions reimplemented &amp; proven"],
+    [fmtInt(T.reimpl_planned_func), "planned &mdash; claimed by a batch"],
+    [fmtKiB(done), "of machine code is ours"],
+    [pctCode.toFixed(1)+"<span class='u'>%</span>", "of ALL code, CRT included"],
+  ];
+  document.getElementById("ownKpis").innerHTML = kpis.map(k=>
+    `<div class="kpi"><div class="k">${k[0]}</div><div class="lab">${k[1]}</div></div>`).join("");
+
+  const domLine = doms.map(d=>{
+    const x = R.per_domain[d];
+    return `<b>${d}</b> ${fmtInt(x.done)} ours` + (x.planned ? ` / ${fmtInt(x.planned)} planned` : "");
+  }).join(" &middot; ");
+  const promoted = R ? R.ledger_promoted : 0;
+  document.getElementById("ownCaveat").innerHTML =
+    `By domain: ${domLine}. <b>&ldquo;Ours&rdquo; is not &ldquo;what runs&rdquo;</b> &mdash; most reimplementations are gated `+
+    `OFF in a shipping game (<span style="font-family:var(--mono)">SHIP_PROMOTE_*</span>) and are exercised by an `+
+    `oracle instead; the migration ledgers record only <b>${fmtInt(promoted)}</b> rows as promoted, and that figure `+
+    `covers the ai/sim domains alone &mdash; the pre-ledger netcode and order-queue work ships promoted without a `+
+    `flag to count. Planned bytes are scheduled work with an owning tracker item, not an aspiration; functions `+
+    `settled as never-to-be-migrated are excluded from both numbers rather than counted as remaining work.`;
+})();
+
+/* ---------- reimplementation, per subsystem ---------- */
+(function(){
+  const rows = DATA.subs
+    .map(s=>({name:s[0], total:s[1]+s[2], own:s[5]||0, plan:s[6]||0, ownc:s[7]||0, planc:s[8]||0}))
+    .filter(r=>r.own || r.plan);
+  const host = document.getElementById("ownBars");
+  if(!host) return;
+  if(!rows.length){ host.innerHTML = ""; return; }
+  rows.sort((a,b)=>(b.own+b.plan)-(a.own+a.plan));
+  const maxTotal = Math.max(...DATA.subs.map(s=>s[1]+s[2]));
+  host.innerHTML = rows.map(r=>{
+    const pct = r.total ? r.own/r.total*100 : 0;
+    const wTotal = r.total/maxTotal*100;
+    const wOwn  = r.total ? r.own/r.total*100 : 0;
+    const wPlan = r.total ? r.plan/r.total*100 : 0;
+    const isLib = LIBGROUP.has(r.name);
+    return `<div class="row${isLib?' lib':''}">
+      <div class="name">${r.name}<span class="fns">${fmtInt(r.ownc)} ours${r.planc?` &middot; ${fmtInt(r.planc)} planned`:""}</span></div>
+      <div class="track"><div class="fill" style="width:${wTotal.toFixed(2)}%">
+        <div class="seg-own" style="width:${wOwn.toFixed(2)}%"></div>
+        <div class="seg-plan" style="width:${wPlan.toFixed(2)}%"></div>
+        <div class="seg-unk" style="width:${Math.max(0,100-wOwn-wPlan).toFixed(2)}%"></div></div></div>
+      <div class="val"><span class="pct">${pct.toFixed(0)}%</span>
+        <span class="by">${fmtKiB(r.own)} / ${fmtKiB(r.total)}</span></div>
+    </div>`;
+  }).join("");
+  const hidden = DATA.subs.length - rows.length;
+  document.getElementById("ownBarsNote").innerHTML =
+    `${fmtInt(rows.length)} of ${fmtInt(DATA.subs.length)} subsystems have reimplementation work; `+
+    `${fmtInt(hidden)} have none and are not shown. The percentage is ours as a share of that `+
+    `subsystem&rsquo;s <b>whole</b> attributed byte mass &mdash; researched and unknown together &mdash; so it is a `+
+    `share of the real subsystem, not of the part we happen to have named.`;
+})();
+
+/* ---------- data coverage (named vs auto defined-data objects) ---------- */
+(function(){
+  const D = DATA.data; if(!D) return;
+  const totItems = D.named_items + D.auto_items;
+  document.getElementById("dataPct").innerHTML = D.sym_pct.toFixed(1).replace(/\.0$/,"") + '<small>%</small>';
+  document.getElementById("dataMeter").style.width = D.sym_pct.toFixed(1)+"%";
+  document.getElementById("dataTot").textContent = fmtInt(totItems)+" objs";
+  const kpis = [
+    [fmtInt(D.named_items), "named data objects"],
+    [fmtInt(D.auto_items), "still DAT_ stubs"],
+    [fmtKiB(D.named_bytes), "named &amp; typed bytes"],
+    [D.byte_pct.toFixed(0)+"<span class='u'>%</span>", "of typed bytes are named"],
+  ];
+  document.getElementById("dataKpis").innerHTML = kpis.map(k=>
+    `<div class="kpi"><div class="k">${k[0]}</div><div class="lab">${k[1]}</div></div>`).join("");
+  document.getElementById("dataCaveat").innerHTML =
+    `Big recovered structures dominate the byte view: the named mass is <b>${D.byte_pct.toFixed(0)}% of typed bytes</b> `+
+    `but only <b>${D.sym_pct.toFixed(0)}% of objects</b> — a handful of large arrays &amp; pools (unit/building rosters, `+
+    `sprite &amp; text tables, the tactical FX pool, path buffers) carry most named bytes, while the long tail of small `+
+    `scalars &amp; strings is where the naming work remains. Scope is <b>${D.scope}</b>; resources, relocations and the `+
+    `import table are excluded.`;
+  const rows = D.subs.map(s=>({name:s[0], c:s[1], b:s[2]}));
+  const maxB = Math.max(1, ...rows.map(r=>r.b));
+  document.getElementById("dataBars").innerHTML = rows.map(r=>{
+    const w = r.b/maxB*100;
+    const isLib = LIBGROUP.has(r.name);
+    return `<div class="row${isLib?' lib':''}">
+      <div class="name">${r.name}<span class="fns">${fmtInt(r.c)} objects</span></div>
+      <div class="track"><div class="fill" style="width:${w.toFixed(2)}%"><div class="seg-res" style="width:100%"></div></div></div>
+      <div class="val"><span class="pct">${fmtInt(r.c)}</span><span class="by">${fmtKiB(r.b)}</span></div>
+    </div>`;
+  }).join("");
+})();
+
+/* ---------- coverage-by-object-size curve ---------- */
+(function(){
+  const C = DATA.data && DATA.data.size_curve; if(!C || !C.length) return;
+  const pct = b => b.total ? b.named/b.total*100 : 0;
+  // flag the single underserved band (lowest coverage, excluding the noisy 1-byte tail)
+  const worst = Math.min(...C.slice(1).map(pct));
+  document.getElementById("sizeCurve").innerHTML = C.map(b=>{
+    const p = pct(b), lo = (p === worst);
+    return `<div class="szcol${lo?' lo':''}">
+      <div class="szval">${p.toFixed(0)}%</div>
+      <div class="szbar" title="${fmtInt(b.named)}/${fmtInt(b.total)} named"><div class="szfill" style="height:${Math.max(1,p).toFixed(1)}%"></div></div>
+      <div class="szlab">${b.label}<span class="n">${fmtInt(b.total)} objs</span></div>
+    </div>`;
+  }).join("");
+  const grp = names => { let n=0,t=0; C.forEach(b=>{ if(names.includes(b.label)){ n+=b.named; t+=b.total; }}); return t? n/t*100 : 0; };
+  const big   = grp([">1 KB","257 B-1 KB"]);
+  const mid   = grp(["17-64 B","65-256 B"]);
+  const small = grp(["1 B","2-4 B","5-16 B"]);
+  document.getElementById("sizeNote").innerHTML =
+    `Coverage is far from uniform across object sizes — which is exactly what both the count (32%) and byte (98%) `+
+    `headlines hide. The <b>large recovered structures</b> (&gt;256&nbsp;B — pools, unit/building rosters, sprite &amp; `+
+    `text tables) are essentially complete (<b>${big.toFixed(0)}% named</b>) and are the entire source of the flattering `+
+    `byte figure. The <span class="lo">mid-size records</span> (17–256&nbsp;B) are the thin middle at `+
+    `<span class="lo">${mid.toFixed(0)}%</span> — untyped multi-field structs still on the `+
+    `<span class="chip">todo:struct</span> backlog, the highest-leverage data-naming target. The small-scalar tail `+
+    `(1–16&nbsp;B, ${small.toFixed(0)}% named) is the individual-global naming frontier.`;
+})();
+
+/* ---------- confidence of the named mass + open work ---------- */
+function miniRow(name, val, w, sub){
+  return `<div class="mrow"><div class="mname">${name}</div>`+
+    `<div class="mtrack"><div class="mfill${sub?' sub':''}" style="width:${w.toFixed(1)}%"></div></div>`+
+    `<div class="mval">${fmtInt(val)}</div></div>`;
+}
+(function(){
+  const tg = DATA.tags; if(!tg) return;
+  const q = tg.quality;
+  const nm = document.getElementById("qNamed"); if(nm) nm.textContent = fmtInt(tg.named);
+
+  const total = q.high[0]+q.med[0]+q.low[0];
+  const seg = (c,cls)=>{ const w = total? c[0]/total*100:0; return w>0?`<i class="${cls}" style="width:${w.toFixed(3)}%"></i>`:""; };
+  document.getElementById("qbar").innerHTML = seg(q.high,"q-high")+seg(q.med,"q-med")+seg(q.low,"q-low");
+  const L = [["q-high","high confidence (untagged)",q.high],["q-med","conf:med",q.med],["q-low","conf:low",q.low]];
+  document.getElementById("qlegend").innerHTML = L.map(x=>
+    `<span><i class="qsw ${x[0]}"></i><b>${fmtInt(x[2][0])}</b> ${x[1]} <span style="color:var(--ink-3)">· ${fmtKiB(x[2][1])}</span></span>`).join("");
+
+  const owMeta = {
+    "todo:proto":  ["signatures left uncommitted", false],
+    "todo:globals":["reference an unnamed DAT_ global", false],
+    "todo:struct": ["read a raw untyped record", false],
+    "rev:verified":["hand / in-game confirmed", true],
+  };
+  document.getElementById("openwork").innerHTML = tg.openwork.map(o=>{
+    const m = owMeta[o[0]]||["",false];
+    return `<div class="owcard${m[1]?' good':''}"><div class="n">${fmtInt(o[1])}</div>`+
+      `<div class="t">${o[0]}</div><div class="d">${m[0]}</div></div>`;
+  }).join("");
+})();
+
+/* ---------- limit-patch surface ---------- */
+(function(){
+  const p = DATA.tags && DATA.tags.patch; if(!p) return;
+  document.getElementById("patchBig").innerHTML =
+    `${fmtInt(p.total_fns)}<small>functions · ${fmtKiB(p.total_bytes)}</small>`;
+  document.getElementById("crossChip").textContent = `${fmtInt(p.crosspool[0])} crosspool — audit first`;
+  const maxC = Math.max(1, ...p.classes.map(c=>c[1]));
+  document.getElementById("patchClasses").innerHTML =
+    p.classes.map(c=>miniRow(c[0], c[1], c[1]/maxC*100, false)).join("");
+  const maxS = Math.max(1, ...p.by_sub.map(s=>s[1]));
+  document.getElementById("patchSubs").innerHTML =
+    p.by_sub.map(s=>miniRow("sub:"+s[0], s[1], s[1]/maxS*100, true)).join("");
+})();
+
+/* ---------- code-space coverage heatmap + subsystem lens ---------- */
+(function(){
+  const CM = DATA.codemap; if(!CM || !CM.cells.length) return;
+  const cells = CM.cells;                       // [code, res, lo, hi, subs[[idx,bytes]], stags[]]
+  const SUBN = DATA.subs.map(s=>s[0]);
+  const LIB = new Set(["Library/unattributed","Runtime/utility","Other named"]);
+  const host = document.getElementById("heat");
+  const tip = document.getElementById("tip");
+  const wrap = document.querySelector(".heat-wrap");
+  const hexAddr = v => "0x"+Math.round(v).toString(16).padStart(6,"0");
+
+  document.getElementById("heatLo").textContent = hexAddr(cells[0][2]);
+  document.getElementById("heatHi").textContent = hexAddr(cells[cells.length-1][3]);
+
+  // one cell per equal slice of CODE. TWO colourings over the same grid: researched (amber) and
+  // ours/reimplemented (green). Same cells, same order -- so switching mode is a direct visual diff
+  // of "understood" against "rewritten", which is the comparison the two are interesting for.
+  const els = [], subCount = {}, tagCount = {};
+  const frag = document.createDocumentFragment();
+  const RAMP = { res: ["unk","c1","c2","c3","c4"], own: ["k0","k1","k2","k3","k4"] };
+  const bucket = f => f <= 0 ? 0 : f <= 0.20 ? 1 : f <= 0.45 ? 2 : f <= 0.75 ? 3 : 4;
+  cells.forEach((c,i)=>{
+    const el = document.createElement("div");
+    el.className = "cell";
+    const dom = c[4].length ? c[4][0][0] : -1;
+    el.dataset.i = i;
+    el.dataset.sub = dom;
+    el.dataset.stags = c[5].join(",");
+    if(dom >= 0) subCount[dom] = (subCount[dom]||0) + 1;
+    c[5].forEach(t => tagCount[t] = (tagCount[t]||0) + 1);
+    els.push(el); frag.appendChild(el);
+  });
+  host.appendChild(frag);
+
+  let mode = "res";
+  function paint(){
+    els.forEach((el,i)=>{
+      const c = cells[i];
+      el.classList.remove("unk","c1","c2","c3","c4","k1","k2","k3","k4","kp");
+      if(mode === "res"){
+        el.classList.add(RAMP.res[bucket(c[0] ? c[1]/c[0] : 0)]);
+      } else {
+        const own = c[0] ? (c[6]||0)/c[0] : 0, plan = c[0] ? (c[7]||0)/c[0] : 0;
+        const b = bucket(own);
+        // A cell with planned-but-unproven work and nothing proven yet gets its own mark rather
+        // than being folded into "nothing here": the difference between not-started and
+        // not-going-to-happen is the whole point of the planned bucket.
+        if(b === 0) el.classList.add(plan > 0 ? "kp" : "unk");
+        else        el.classList.add(RAMP.own[b]);
+      }
+    });
+  }
+  paint();
+
+  const btnRes = document.getElementById("modeRes"), btnOwn = document.getElementById("modeOwn");
+  const footRes = document.getElementById("footRes"), footOwn = document.getElementById("footOwn");
+  function setMode(m){
+    mode = m;
+    if(btnRes) btnRes.setAttribute("aria-pressed", String(m === "res"));
+    if(btnOwn) btnOwn.setAttribute("aria-pressed", String(m === "own"));
+    if(footRes) footRes.hidden = (m !== "res");
+    if(footOwn) footOwn.hidden = (m === "res");
+    paint();
+  }
+  if(btnRes) btnRes.addEventListener("click", ()=>setMode("res"));
+  if(btnOwn) btnOwn.addEventListener("click", ()=>setMode("own"));
+
+  /* hover popup — lists every subsystem in the cell + its sub: tags */
+  host.addEventListener("mousemove", e=>{
+    const cell = e.target.closest(".cell");
+    if(!cell){ tip.hidden = true; return; }
+    const c = cells[+cell.dataset.i];
+    const rp = c[0] ? c[1]/c[0]*100 : 0, subs = c[4], stags = c[5];
+    let subLine;
+    if(subs.length <= 1) subLine = `~<b>${subs.length ? SUBN[subs[0][0]] : "—"}</b>`;
+    else subLine = subs.map((s,k)=>{ const p = (s[1]/c[0]*100).toFixed(0)+"% "+SUBN[s[0]];
+      return k===0 ? `<b>${p}</b>` : p; }).join(" · ");
+    const bridges = (c[3]-c[2]) > c[0]*1.6;      // address span >> code = straddles a gap
+    const op = c[0] ? (c[6]||0)/c[0]*100 : 0, pp = c[0] ? (c[7]||0)/c[0]*100 : 0;
+    const ownLine = (op || pp)
+      ? `<div>${op.toFixed(0)}% ours${pp ? ` · ${pp.toFixed(0)}% planned` : ""}</div>`
+      : ``;
+    tip.innerHTML = `<div class="a">${hexAddr(c[2])}–${hexAddr(c[3])}</div>`+
+      `<div>${subLine}</div>`+
+      `<div><span class="r">${rp.toFixed(0)}% researched</span> · ${fmtKiB(c[0])} code</div>`+
+      ownLine+
+      (stags.length ? `<div class="tg">sub: ${stags.join(", ")}</div>` : ``)+
+      (bridges ? `<div class="mut">bridges a data gap</div>` : ``);
+    tip.hidden = false;
+    const wr = wrap.getBoundingClientRect();
+    tip.style.left = Math.max(70, Math.min(wr.width-70, e.clientX - wr.left))+"px";
+    tip.style.top  = (cell.offsetTop - 4)+"px";
+  });
+  host.addEventListener("mouseleave", ()=>{ tip.hidden = true; });
+
+  /* highlight lens — click a region or sub: tag to isolate its cells */
+  let active = null;                             // {type:'sub'|'tag', key}
+  function apply(){
+    if(!active){ host.classList.remove("focus"); els.forEach(el=>el.classList.remove("match")); return; }
+    host.classList.add("focus");
+    els.forEach(el=>{
+      const m = active.type === "sub"
+        ? (+el.dataset.sub === active.key)
+        : (el.dataset.stags ? el.dataset.stags.split(",").indexOf(active.key) >= 0 : false);
+      el.classList.toggle("match", m);
+    });
+  }
+  function mkChip(dst, label, count, type, key, cls){
+    const b = document.createElement("button");
+    b.className = "lens-chip" + (cls ? " "+cls : "");
+    b.innerHTML = `${label}<span class="c">${fmtInt(count)}</span>`;
+    b.addEventListener("click", ()=>{
+      const same = active && active.type === type && active.key === key;
+      document.querySelectorAll(".lens-chip.active").forEach(x=>x.classList.remove("active"));
+      active = same ? null : {type, key};
+      if(!same) b.classList.add("active");
+      apply();
+    });
+    dst.appendChild(b);
+  }
+  const rHost = document.getElementById("lensRegions");
+  DATA.subs.forEach((s,idx)=>{ if(LIB.has(s[0]) || !subCount[idx]) return;
+    mkChip(rHost, s[0], subCount[idx], "sub", idx, null); });
+  const tHost = document.getElementById("lensTags");
+  Object.keys(tagCount).sort().forEach(t => mkChip(tHost, "sub:"+t, tagCount[t], "tag", t, "tag"));
+})();
+
+/* ---------- methodology ---------- */
+document.getElementById("meta").innerHTML =
+  `<b>Method.</b> Byte sizes are each function's instruction-body length read live from Ghidra `+
+  `(<code>getBody().getNumAddresses()</code>) across ${fmtInt(DATA.totals.nfunc)} defined functions, `+
+  `address range <code>0x410012–0x66f09c</code>. A function counts as <b>researched</b> if it carries a real name `+
+  `(not a default <code>FUN_xxxxxxxx</code> stub). Subsystem is inferred from the name prefix `+
+  `(<code>llm_strat_ai_</code>, <code>llm_gfx_</code>, <code>llm_ui_</code>, …); unknown functions are `+
+  `attributed to the nearest named neighbour within 4 KB (Watcom emits code translation-unit by translation-unit, `+
+  `so adjacency tracks subsystem) — beyond that they fall to <b>Library / unattributed</b>. Attribution is a `+
+  `heuristic, so per-subsystem unknown splits are estimates; the researched totals are exact. Skyline height = `+
+  `code density per ~3.4 KB address slice. <b>Confidence, open-work and patch-surface figures</b> come from `+
+  `Ghidra <b>function tags</b> (<code>getTags()</code>, see docs/tagging.md): confidence buckets cover the `+
+  `named mass (no <code>conf:*</code> tag = high); patch-role counts are per-site, so a function on both `+
+  `<code>base</code> and <code>row</code> is counted in each. <b>Data coverage</b> walks every defined-data `+
+  `object (<code>getDefinedData</code>) in the <code>DGROUP</code> + <code>.bss</code> segments; an object is `+
+  `<b>named</b> if its primary symbol is <code>USER_DEFINED</code> and not a Ghidra auto stem `+
+  `(<code>DAT_</code>/<code>PTR_</code>/<code>DOUBLE_</code>/…). Object-count coverage is the headline `+
+  `(the data analogue of functions-named); byte coverage weighs each object by its size, so a few large recovered `+
+  `arrays swing it high. The <code>.rsrc</code>/<code>.reloc</code>/<code>.idata</code> segments are excluded.`;
+</script>

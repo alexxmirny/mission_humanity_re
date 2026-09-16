@@ -1,0 +1,117 @@
+{
+ "_generated_by": "SIM1-H wave 2, 2026-09-10 -- derived from gen_va_census's unowned-site list, not from a graph walk",
+ "_domain_hint": "sim1h",
+ "_what": "The NAV-REGION PIPELINE'S OTHER HALF. Wave 1 translated llm_map_build_regions, the pipeline's entry point, and translating it is what made the hole visible: `merge_small_regions`, `region_pick_smaller` and `region_split` are verified sim rows, while the five functions build_regions actually calls to do the work are in NO migration ledger at all. They surfaced as `mh::call::` sites with NO OWNING ITEM under gen_va_census's ratchet -- which is the instrument working, not failing: a VA site with no owner is exactly the finding it exists to produce.",
+ "_why_translate_rather_than_route": [
+  "The conductor's 2026-09-10 resolution, under the user's standing ruling that fixpoint-surfaced",
+  "sim game logic gets TRANSLATED rather than ratchet-washed. These are pathfinding -- flood fill,",
+  "obstacle proximity, multi-resolution seeding, the merge threshold and the route step deltas. They",
+  "are the deterministic spine by any reading of docs/reimpl-plan.md Sect. 5, so routing them",
+  "through the host API would have put pathfinding behind an inbound call, and raising the VA",
+  "ratchet would have recorded a permanent debt for work that is 2692 bytes.",
+  "",
+  "THE RATCHET IS NOT TOUCHED. The VA surface falls back out on its own as each of these stops",
+  "being an outward call: wave 1's five MH_LIBMH_BIND declared_needs dissolve into direct sibling",
+  "calls once the callee is ours."
+ ],
+ "_the_sixth_row": [
+  "llm_map_try_seed_region_at was NOT in the conductor's list of five. It is included because the",
+  "STOP check ran before translation and found it: llm_map_seed_regions_multires calls it, it is in",
+  "no ledger, and leaving it out does not reduce the VA surface -- it MOVES the site from",
+  "seed_regions_multires to a new one and the ratchet stays red, which would defeat the whole",
+  "resolution. Its own closure adds nothing further (llm_map_region_flood_fill, already in this",
+  "wave, and map_block_8_GetNextBlock, already ours), so the widening terminates here at one",
+  "function and 218 bytes. Reported to the conductor rather than absorbed silently."
+ ],
+ "_measurement": {
+  "rows": 7,
+  "total_bytes": 2902,
+  "va_sites_closed": 6,
+  "further_unowned_callees": 0,
+  "red_flag_scan": "run at export time, per row -- see the batch context"
+ },
+ "seeds": [
+  {
+   "name": "llm_map_region_flood_fill",
+   "addr": "0x00422450",
+   "size_bytes": 1177,
+   "why": "the pipeline's workhorse -- floods a region outward from a seed cell and returns the cell count. Called by llm_map_assign_remaining_tiles_to_regions (wave 1) and llm_map_try_seed_region_at.",
+   "callers_up": [
+    "llm_map_assign_remaining_tiles_to_regions",
+    "llm_map_try_seed_region_at"
+   ]
+  },
+  {
+   "name": "llm_map_compute_obstacle_proximity_flags",
+   "addr": "0x0042207b",
+   "size_bytes": 596,
+   "why": "the proximity stencil llm_map_build_regions runs before seeding.",
+   "callers_up": [
+    "llm_map_build_regions"
+   ]
+  },
+  {
+   "name": "llm_map_seed_regions_multires",
+   "addr": "0x00422c54",
+   "size_bytes": 437,
+   "why": "the multi-resolution seeding pass; the ONLY caller of llm_map_assign_remaining_tiles_to_regions, which is a wave-1 row -- so this edge becomes an intra-batch direct call.",
+   "callers_up": [
+    "llm_map_build_regions"
+   ]
+  },
+  {
+   "name": "llm_map_try_seed_region_at",
+   "addr": "0x004228e9",
+   "size_bytes": 218,
+   "why": "SIXTH ROW, see _the_sixth_row: seed_regions_multires' per-cell helper. Not in the conductor's five; found by the pre-translation STOP check.",
+   "callers_up": [
+    "llm_map_seed_regions_multires"
+   ]
+  },
+  {
+   "name": "llm_map_init_region_route_step_deltas",
+   "addr": "0x00423299",
+   "size_bytes": 156,
+   "why": "fills the region-route step-delta table build_regions initialises once per rebuild.",
+   "callers_up": [
+    "llm_map_build_regions"
+   ]
+  },
+  {
+   "name": "llm_map_compute_region_merge_threshold",
+   "addr": "0x0042308b",
+   "size_bytes": 108,
+   "why": "derives the cell-count threshold llm_map_merge_small_regions (an already-verified row) then applies.",
+   "callers_up": [
+    "llm_map_build_regions"
+   ]
+  },
+  {
+   "name": "llm_gfx_bldg_frame_center_offset",
+   "addr": "0x00450b40",
+   "size_bytes": 210,
+   "why": "SEVENTH ROW, see _the_seventh_row: a pure sprite-header geometry helper whose only caller is wave 1's llm_strat_bldg_init_defaults and whose twin llm_strat_bldg_sprite_anchor_offset is already a verified T1 sim row.",
+   "callers_up": [
+    "llm_strat_bldg_init_defaults"
+   ]
+  }
+ ],
+ "_the_seventh_row": [
+  "llm_gfx_bldg_frame_center_offset @0x00450b40 (210 B) was the conductor's item 3: adjudicate on",
+  "evidence -- translate it if it is a small pure geometry helper, propose a host-callback class if it",
+  "is genuinely render-side. The evidence says TRANSLATE, and it is not close:",
+  "  * PURE. It writes nothing but its two out-pointers (the caller's own stack). No global store, no",
+  "    call except the inert Watcom stack probe.",
+  "  * ITS INPUTS ARE ALL ALREADY BOUND in sim_view -- cfg_buildings, anim_frames, sprite_pix_offsets,",
+  "    gfx_bank_pixels. It needs no new binding of any kind.",
+  "  * ONE CALLER IN THE WHOLE IMAGE, and it is llm_strat_bldg_init_defaults -- a WAVE-1 ROW OF THIS",
+  "    BATCH. So the edge dissolves entirely: after this lands, nothing outside the batch reaches it.",
+  "  * ITS TWIN IS ALREADY OURS. llm_strat_bldg_sprite_anchor_offset (sim/sim_bldg_sprite_anchor.cpp,",
+  "    verified T1) does the identical thing -- same Anim[anim[0] + 1].sprite_id chain, same",
+  "    gfx_bank_pixels + sprite_pix_offsets header read, same halving. `llm_gfx_` is a name prefix,",
+  "    and the tree already decided this computation is sim-side by owning its sibling. Reading the",
+  "    prefix as ownership is the trap SIM-HOSTREACH recorded (a prefix is not ownership).",
+  "The name stays llm_gfx_* -- renaming it is a Ghidra write this session may not make, and the",
+  "prefix is only misleading, not wrong: it does read sprite headers."
+ ]
+}

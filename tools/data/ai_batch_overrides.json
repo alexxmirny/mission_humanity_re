@@ -1,0 +1,353 @@
+{
+  "_comment": [
+    "HAND batch assignments for AI functions no mechanical rule in gen_migration.py can classify.",
+    "",
+    "propose_batch() deliberately emits 'unassigned' rather than guessing, and its batch_why says",
+    "'assign by hand before scheduling'. Until 2026-08-05 there was nowhere to record that hand",
+    "decision, so it was re-derived away on every regeneration -- which is why the AI ROOT itself sat",
+    "unscheduled for weeks while the ledger kept asking someone to schedule it.",
+    "",
+    "Every entry MUST carry a `why`. The generator refuses the file otherwise. Keep the `why` about",
+    "the SCHEDULING decision (which batch, and what makes this function different); per-function RE",
+    "notes belong in the plate comment and docs/ai-closure.md.",
+    "",
+    "TRIAGED TO ZERO 2026-08-06 (tracker item AI-BATCH-TRIAGE). The 25 that were still 'unassigned'",
+    "are assigned below. They were never blocked on anything -- they were invisible: AI1's done_when",
+    "reads 'every function IN THOSE BATCHES', so a function with no batch was in no item's acceptance",
+    "test and AI1 could have closed with 25 reachable AI functions untranslated. Assigning them by",
+    "sub-domain puts each one inside an existing gate rather than inventing a new one.",
+    "",
+    "TWO FINDINGS ABOUT THE MECHANICAL RULES, recorded here rather than acted on -- BATCH_RULES is",
+    "deliberately left alone, for the reason AI1A already gives (a rule widened to catch one function",
+    "re-labels a finished batch):",
+    "  1. The E rule keys on 'not reachable from players_tick', but the manifest's BFS is UNCUT (its",
+    "     own _method_note) and walks through non-AI code, so a genuine event hook called ONLY from",
+    "     outside the AI is 'reachable' and never gets E. That is exactly how llm_strat_ai_notify_",
+    "     bldg_constructed -- three non-AI callers, no AI caller -- landed nowhere.",
+    "  2. The substring rules produce false POSITIVES as well as gaps, and those look authoritative:",
+    "     llm_strat_ai_notify_object_removed is batch C on 'move' matching inside 'reMOVEd'. It is not",
+    "     re-labelled here (it is verified, and its batch is not what makes it correct) but a reader",
+    "     comparing it against notify_bldg_constructed below deserves to know the C was an accident."
+  ],
+
+  "_section_A": "A -- the pure island: target scan, engagement, candidate scratch.",
+
+  "0x004b4b1c": {
+    "batch": "A",
+    "why": [
+      "llm_strat_ai_grid_match_stencil. Both callers (bldg_scan_grid_candidates, scan_build_site_",
+      "candidates) are batch A, and its sibling llm_strat_ai_grid_stencil_all_near_unthreatened is A",
+      "-- which matched only on the substring 'threat' inside 'unthreatened'. This one matches nothing.",
+      "",
+      "AI1A's progress refuses to repair that by adding 'grid' to the batch-A key list, because the",
+      "same key would sweep in the influence-FLOOD family (grid_fill_below_threshold, grid_flood_step,",
+      "grid_stamp_seeds -- batch B below), i.e. re-open a finished batch to tidy a label. An override",
+      "is the mechanism that note did not yet have.",
+      "",
+      "ALREADY `verified`: the pair was scheduled and rig-verified together. This records where the",
+      "work happened; AI1A's done_when ('every batch-A function verified') stays satisfied by it."
+    ]
+  },
+
+  "0x004d3437": {
+    "batch": "A",
+    "why": [
+      "llm_strat_ai_unit_squad_firepower_value. Sole caller is llm_strat_ai_army_milestone_advance_",
+      "or_attack (batch A). It values a squad's firepower for the advance/attack decision -- engagement",
+      "scoring, not economy scoring, so B would be the wrong gate for it.",
+      "",
+      "THIS ONE RE-OPENS AI1A (36/36 -> 36/37 verified). That is the intended effect and not a",
+      "regression: A's rig runs verified everything that was IN batch A, and this leaf never was. The",
+      "36 verified functions and their evidence are untouched."
+    ]
+  },
+
+  "_section_B": "B -- economy, build queue, influence map (player_data readers only).",
+
+  "0x004d74de": {
+    "batch": "B",
+    "why": [
+      "llm_strat_ai_update_opponent_relations. Called by player_tick; its own callees are batch B",
+      "(calc_mine_yield_estimate, score_build_categories) plus player_score_tier and unit_weapon_power",
+      "below. Writes player_data and nothing else, which is B's defining property."
+    ]
+  },
+
+  "0x004e5ae0": {
+    "batch": "B",
+    "why": [
+      "llm_strat_ai_plan_construction. The construction planner: every callee but one is already batch",
+      "B (bldg_type_already_queued, plan_mine_construction, plan_turret_upgrade, react_resource_",
+      "shortage, rebalance_building_workers, queue_rotate_newest_to_front, maintain_unit_housing).",
+      "Unassigned only because 'construction' contains none of B's keys."
+    ]
+  },
+
+  "0x004e853f": {
+    "batch": "B",
+    "why": [
+      "llm_strat_ai_recompute_shortage_state. Computes the resource-shortage state its already-batch-B",
+      "consumer react_resource_shortage acts on; shares player_score_tier with update_opponent_relations."
+    ]
+  },
+
+  "0x004b49da": {
+    "batch": "B",
+    "why": [
+      "llm_strat_ai_grid_fill_below_threshold. Sole caller is llm_strat_ai_recompute_map_influence",
+      "(batch B); B's stated domain is 'economy, build queue, INFLUENCE MAP'. Note this is the",
+      "influence grid, NOT batch A's threat grid (grid_stamp_threat_ring / grid_clear_threat_bit)."
+    ]
+  },
+
+  "0x004b4a10": {
+    "batch": "B",
+    "why": [
+      "llm_strat_ai_grid_flood_step. Same family and same sole caller as grid_fill_below_threshold --",
+      "the influence flood. Writes _G_LLM_STRAT_AI_GRID_WRAP_MASK, shared with the other two."
+    ]
+  },
+
+  "0x004b4ac2": {
+    "batch": "B",
+    "why": [
+      "llm_strat_ai_grid_stamp_seeds. The influence flood's seeding step. Callers are notify_map_",
+      "changed / _2 (batch B below) and notify_object_removed (C by substring accident, see _comment).",
+      "Goes with the family it belongs to, not with either caller's label."
+    ]
+  },
+
+  "0x004e3926": {
+    "batch": "B",
+    "why": [
+      "llm_strat_ai_calc_power_supply_ratio. Sole caller is plan_construction. POWER here is the",
+      "GENERATED RESOURCE (plants produce it, buildings consume it), not ENERGY the HP-like stat --",
+      "CLAUDE.md's domain note -- so this is an economy input and B is right."
+    ]
+  },
+
+  "0x004e5686": {
+    "batch": "B",
+    "why": [
+      "llm_strat_ai_player_score_tier. Both callers are batch B (recompute_shortage_state,",
+      "update_opponent_relations). A scoring leaf with no callees."
+    ]
+  },
+
+  "0x004d729d": {
+    "batch": "B",
+    "why": [
+      "llm_strat_ai_unit_weapon_power. Sole caller is update_opponent_relations. It is a SCORING leaf",
+      "-- weapon strength as an input to strategic assessment -- not combat execution, so it follows",
+      "its caller into B rather than into A."
+    ]
+  },
+
+  "0x004d82ca": {
+    "batch": "B",
+    "why": [
+      "llm_strat_ai_notify_map_changed. Re-stamps the influence grid through grid_stamp_seeds when the",
+      "map changes; called from bldg_queue_process_entry (B), plan_turret_upgrade (B), scan_",
+      "construction_sites (A) and notify_bldg_constructed (E below). Influence map = B."
+    ]
+  },
+
+  "0x004d83c7": {
+    "batch": "B",
+    "why": [
+      "llm_strat_ai_notify_map_changed_2. The near-identical sibling of the above (243 B vs 253 B, same",
+      "callee, two of the same callers). Scheduling them apart would be strictly worse: whichever is",
+      "translated second is a diff against the first."
+    ]
+  },
+
+  "0x004d8a9d": {
+    "batch": "B",
+    "why": [
+      "llm_strat_ai_bldg_has_heli_unit. Sole caller is maintain_unit_housing (batch B) -- a housing/",
+      "capacity predicate over a building's occupants."
+    ]
+  },
+
+  "0x004d370a": {
+    "batch": "B",
+    "why": [
+      "llm_strat_ai_bldg_count_by_category. Sole caller is score_build_categories (batch B); counts",
+      "owned buildings per category for the build-priority score."
+    ]
+  },
+
+  "_section_C": "C -- group lifecycle + task machine + move execution.",
+
+  "0x004e7138": {
+    "batch": "C",
+    "why": [
+      "llm_strat_ai_pick_owned_tile_or_home. Picks a destination tile for group movement; three of its",
+      "four callers are batch C (group_expansion_form_or_repurpose, group_reposition_members,",
+      "group_task_recall_home), the fourth is A's army_milestone_advance_or_attack."
+    ]
+  },
+
+  "0x004d5eaf": {
+    "batch": "C",
+    "why": [
+      "llm_strat_ai_random_point_near. Movement math (cos/sin + the AI PRNG channel) behind the group",
+      "scatter workers; four of its five callers are batch C.",
+      "",
+      "C's verified sites already REACH it -- layer 4 wired it as an ai_calls member bound to the",
+      "ORIGINAL after decompiling it. So this schedules the BODY; nothing in C is waiting on it."
+    ]
+  },
+
+  "0x004d41ff": {
+    "batch": "C",
+    "why": [
+      "llm_strat_ai_unit_is_order_pending. A 39-byte predicate; seven of its eight AI callers are batch",
+      "C group code (report_unit_states, reposition_members, the three scatter workers, nudge_",
+      "stragglers, tick_all_groups). The eighth is active_unit_tick, which goes to E below."
+    ]
+  },
+
+  "_section_E": "E -- event hooks + boot/session-init (caller-side entry).",
+
+  "0x004db905": {
+    "batch": "D",
+    "why": [
+      "MOVED E -> D 2026-08-07 (user's call). THIS IS NOT ONLY THE AI'S DRIVER. It is the per-player",
+      "MOVE/TACTIC/STRATEGY scheduler, and the AI is one branch of it: it iterates EVERY claimed",
+      "player slot, advances ai_clock/_s/_t/_m for all of them unconditionally, and writes",
+      "width_m/height_m for everyone -- only the phase CALL is gated. The MOVE phase dispatches",
+      "llm_strat_ai_active_unit_tick when ai_enabled and llm_strat_unit_passive_engage_tick",
+      "OTHERWISE, so this function drives HUMAN players' passive engagement, and",
+      "llm_strat_unit_passive_engage_tick writes units[]. D is the roster-write burn-down and a",
+      "roster write is what this performs -- through a callee, which is exactly the class rule D",
+      "could not see before the roster_write_via column existed.",
+      "",
+      "IT DOES NOT FOLLOW THAT AI2 CAN BURN IT DOWN. Routing this through orders would mean routing",
+      "the sim's own per-player scheduler through orders. The honest disposition is the subsystem",
+      "split (tracker AI-SPLIT), deferred behind SIM1. D membership RECORDS the coupling; it does not",
+      "schedule the fix, and AI2's narrowed scope explicitly excludes it.",
+      "",
+      "CONSEQUENCE FOR AI1-P: player_data.ai_clock* is written for HUMAN players, so despite the name",
+      "it is NOT AI island data and must not travel with the island move.",
+      "",
+      "The original batch-E rationale, still accurate about arming, follows.",
+      "",
+      "THE AI ROOT (ai_migration.json `root`). Batch E is 'event hooks + boot/session-init,",
+      "caller-side entry', and the per-round phase driver is exactly that: it is entered from",
+      "llm_strat_sim_step once per sim step and hooks nothing below it that E does not already own.",
+      "",
+      "TRANSLATE EARLY, VERIFY OFFLINE, NEVER ARM. Decided 2026-08-05.",
+      "",
+      "  Never arm: the three phase loops DELEGATE into effectively the whole AI closure, so a shadow",
+      "  site here would have to declare the entire subtree's write set as extra_regions, and 'nested",
+      "  sites do not compose' means arming it excludes every other AI site from the same rig run.",
+      "  It is close to the worst shadow candidate in the cluster.",
+      "",
+      "  Verify offline instead: strip the outward calls and the body is pure scheduling over",
+      "  player_data[].ai_clock{,_s,_t,_m} and three float periods (_G_LLM_STRAT_AI_STRATEGY_PERIOD",
+      "  10.0 / _TACTIC_PERIOD 5.0 / _MOVE_PERIOD 1.0, the AI.SCR keywords fStrategyPeriod /",
+      "  fTacticPeriod / fMovePeriod). That is the mh::orders::detail pattern from the reimpl-loop",
+      "  skill -- take the state as a PARAMETER and cover it in `net_selftest aitest` over heap",
+      "  buffers. Both interesting branches are trivially reachable offline and effectively",
+      "  indistinguishable in the rig: a phase firing MULTIPLE times in one call when its period was",
+      "  overshot by more than one interval, and ai_enabled routing the move phase to",
+      "  llm_strat_ai_active_unit_tick vs llm_strat_unit_passive_engage_tick. That is a real T1, with",
+      "  no game and no rig.",
+      "",
+      "  It stays the AI1-P promotion seam either way (Law 4: hook the closure's ROOTS only)."
+    ]
+  },
+
+  "0x004daec2": {
+    "batch": "E",
+    "why": [
+      "llm_strat_ai_notify_bldg_constructed. ALL THREE callers are outside the AI -- llm_bldg_construct",
+      "_finalize, llm_strat_bldg_state_construction, llm_strat_order_queue_dispatch. A build-completion",
+      "event hook that fires synchronously mid-sim, which is E's definition word for word.",
+      "",
+      "It escaped the mechanical E rule because that rule asks 'not reachable from players_tick' and",
+      "the manifest's BFS is UNCUT: it walks non-AI code and reaches this through the sim. Finding 1",
+      "in _comment above."
+    ]
+  },
+
+  "0x004ddb31": {
+    "batch": "E",
+    "why": [
+      "llm_strat_ai_scr_parse. Callers are llm_strat_spawn_ai_base and llm_strat_spawn_invasion_force;",
+      "it reads AI.SCR out of the resource bank. Boot/session-init -- the other half of E's charter."
+    ]
+  },
+
+  "0x004e8b9d": {
+    "batch": "E",
+    "why": [
+      "llm_strat_ai_player_tick. Sole caller is THE AI ROOT, and it is the per-player strategy/tactic",
+      "phase driver -- the same class of function as the root itself (0x004db905), which is why it goes",
+      "to the same batch.",
+      "",
+      "TRANSLATE EARLY, VERIFY OFFLINE, NEVER ARM, for the root's stated reason: it delegates into most",
+      "of the closure, so a shadow site here would have to declare the whole subtree's write set, and",
+      "'nested sites do not compose' means arming it excludes every other AI site from that rig run."
+    ]
+  },
+
+  "0x004ee30b": {
+    "batch": "E",
+    "why": [
+      "llm_strat_ai_active_unit_tick. Sole caller is THE AI ROOT: it is the MOVE-phase driver the",
+      "root's own override names ('ai_enabled routing the move phase to llm_strat_ai_active_unit_tick",
+      "vs llm_strat_unit_passive_engage_tick').",
+      "",
+      "THE NEVER-ARM CLAUSE THAT USED TO SIT HERE WAS WRONG, and it was wrong in the way this project",
+      "keeps being wrong: it said 'same never-arm argument as player_tick', which was copied from the",
+      "AI ROOT's stated reason rather than measured. tools/derive_write_closure.py, run 2026-08-07",
+      "before translating it: 48 reachable functions, ZERO escape candidates, an 11-region closure",
+      "(the four island regions + player_data directly; units, buildings, the three order regions and",
+      "_G_LLM_STRAT_RNG_STATE through its callees). player_tick's own numbers are 778 and 127 -- the",
+      "two are not the same shape at all, and only ONE of them delegates into most of the cluster.",
+      "It is SHADOW-ARMED as of AI1E slice 2 (tools/uiscripts/ini/shadow_ai_e1.ini), and its arm binds",
+      "live_calls() rather than shadow_calls(): a site that declares its whole closure must let every",
+      "outward call run FOR REAL, commit_attack_order included -- stubbing one whose writes the site",
+      "restores would guarantee the divergence it looks like it prevents.",
+      "",
+      "The largest body in the cluster (1532 B) and review_required. It writes four batch-A island",
+      "regions (SCAN_TARGETS / ATTACK_CANDIDATES and their counts), so A's fixtures are the ones to",
+      "reuse when covering it offline -- the batch label is about WHERE IT IS ENTERED, not about which",
+      "data it touches."
+    ]
+  },
+
+  "0x004e8773": {
+    "batch": "E",
+    "why": [
+      "llm_strat_ai_invasion_spawn_reinforcements. Its second caller, llm_strat_spawn_invasion_force,",
+      "is outside the AI -- a caller-side entry -- and it is the same outside caller scr_parse has, so",
+      "E keeps the whole invasion-spawn closure in one slice.",
+      "",
+      "READ THE AI-READY ACK BEFORE TRANSLATING: it indexes with an UNINITIALISED min-tracker when no",
+      "element beats the seed. That is behaviour to reproduce, not a bug to fix."
+    ]
+  },
+
+  "0x004d352c": {
+    "batch": "E",
+    "why": [
+      "llm_strat_ai_score_reinforcement_unit. Sole caller is invasion_spawn_reinforcements; a pure",
+      "scoring leaf that travels with its parent."
+    ]
+  },
+
+  "0x0046d8e6": {
+    "batch": "E",
+    "why": [
+      "llm_strat_ai_create_reinforcement_unit. Sole caller is invasion_spawn_reinforcements.",
+      "",
+      "FLAG FOR AI2: it reaches the sim roster through the engine's own creators (llm_strat_unit_create,",
+      "llm_unit_create_soldier) instead of writing units[] itself, which is exactly why rule D -- direct",
+      "roster writes -- does not catch it. When the R2 burn-down asks how the AI adds units, this is a",
+      "path batch D does not list."
+    ]
+  }
+}

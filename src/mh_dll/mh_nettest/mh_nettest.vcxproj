@@ -1,0 +1,3422 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <!-- net_selftest: the MP-transport loopback self-test (2-node PING/PONG + 3-node broadcast relay).
+       Promoted into mh.sln in refactor Phase 5 (tasks/mh-lib-refactor.md) so the source list lives in
+       ONE place; build_selftest.bat is now a thin msbuild wrapper preserving the %TEMP%\mh_nettest
+       run contract. Compiles the REAL transport + seam sources directly (no mh.dll link: the test
+       must run without the game and without DllMain/ini gating). -->
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Debug|Win32">
+      <Configuration>Debug</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|Win32">
+      <Configuration>Release</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+  </ItemGroup>
+  <PropertyGroup Label="Globals">
+    <VCProjectVersion>17.0</VCProjectVersion>
+    <Keyword>Win32Proj</Keyword>
+    <ProjectGuid>{7c4a1f2e-9d3b-4e5a-b8c6-0f1d2e3a4b5c}</ProjectGuid>
+    <RootNamespace>mhnettest</RootNamespace>
+    <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
+    <ProjectName>mh_nettest</ProjectName>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <UseDebugLibraries>true</UseDebugLibraries>
+    <PlatformToolset>v143</PlatformToolset>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <UseDebugLibraries>false</UseDebugLibraries>
+    <PlatformToolset>v143</PlatformToolset>
+    <WholeProgramOptimization>true</WholeProgramOptimization>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <ImportGroup Label="ExtensionSettings">
+  </ImportGroup>
+  <ImportGroup Label="Shared">
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <PropertyGroup Label="UserMacros" />
+  <!-- The ASan and plain builds get SEPARATE intermediate + output directories.
+       They used to share both, and because /fsanitize=address changes the compiler flags, each mode
+       INVALIDATED the other's objects: every `run_selftests.py` run paid two FULL rebuilds of 669
+       TUs (measured 2026-08-23: 309 s + 294 s before /MP, 75 s + 71 s after) even when nothing had
+       changed since the last gate. With the directories split, an unchanged rebuild is ~1 s and a
+       session that touched a handful of files pays only for those.
+       It also removes the trap build_selftest.bat's header warns about: both modes used to stage
+       through the shared ..\Release\net_selftest.exe, so the exe sitting there could be either one.
+       Each mode now stages from its own directory and they cannot be confused.
+       `EnableASAN` is the property build_selftest.bat already passes for its ASan flag, so this
+       needs no new switch and cannot disagree with which mode is actually being compiled. -->
+  <PropertyGroup>
+    <MhAsanSuffix Condition="'$(EnableASAN)'=='true'">_asan</MhAsanSuffix>
+    <OutDir>..\$(Configuration)$(MhAsanSuffix)\</OutDir>
+    <IntDir>$(Platform)\$(Configuration)$(MhAsanSuffix)\</IntDir>
+    <TargetName>net_selftest</TargetName>
+  </PropertyGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <ClCompile>
+      <MultiProcessorCompilation>true</MultiProcessorCompilation>
+      <WarningLevel>Level3</WarningLevel>
+      <SDLCheck>true</SDLCheck>
+      <PreprocessorDefinitions>WIN32;_DEBUG;_CONSOLE;_CRT_SECURE_NO_WARNINGS;MH_SPINE_IN_IMAGE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <ConformanceMode>true</ConformanceMode>
+      <AdditionalIncludeDirectories>..\mh_common\include;..\libmh;..\mh\include;..\mh;..\mh_common;..\..\mh_net_proto\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <LanguageStandard>stdcpp20</LanguageStandard>
+    </ClCompile>
+    <Link>
+      <SubSystem>Console</SubSystem>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+    </Link>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <Link>
+      <!-- FULL LTCG, NOT INCREMENTAL. Was conditioned on ASan (2026-08-25): the ASan build printed
+           "Incremental LTCG not compatible with Address Sanitizer, build without incremental LTCG"
+           on every run, one line above an internal compiler error, and that note went unread through
+           three wrong workarounds because the build output was being filtered for /error/. See
+           docs/dead-ends.md G57.
+           UNCONDITIONAL SINCE 2026-09-06 (SB-BIND T4). The PLAIN Release build hit the same crash:
+           C1001 at the same compiler file p2/main.cpp:258, an access violation inside c2.dll during
+           "Generating code", reproducing on three consecutive runs, after one TU was added to this
+           project. This time the compiler printed no note, so the log was read in full first (G57's
+           actual lesson) and there was nothing to read. Dropping incremental LTCG here fixes it.
+           WHAT THIS DOES NOT CLAIM: G57 established that this failure is threshold-sensitive LTCG
+           backend state rather than a property of any one construct, so "the new TU caused it" and
+           "non-incremental LTCG cures it" are both statements about where the line happens to fall
+           today. mh.vcxproj builds the same sources without complaint. -->
+      <LinkTimeCodeGeneration>UseLinkTimeCodeGeneration</LinkTimeCodeGeneration>
+    </Link>
+    <ClCompile>
+      <MultiProcessorCompilation>true</MultiProcessorCompilation>
+      <WarningLevel>Level3</WarningLevel>
+      <FunctionLevelLinking>true</FunctionLevelLinking>
+      <IntrinsicFunctions>true</IntrinsicFunctions>
+      <SDLCheck>true</SDLCheck>
+      <PreprocessorDefinitions>WIN32;NDEBUG;_CONSOLE;_CRT_SECURE_NO_WARNINGS;MH_SPINE_IN_IMAGE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <ConformanceMode>true</ConformanceMode>
+      <AdditionalIncludeDirectories>..\mh_common\include;..\libmh;..\mh\include;..\mh;..\mh_common;..\..\mh_net_proto\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <LanguageStandard>stdcpp20</LanguageStandard>
+    </ClCompile>
+    <Link>
+      <SubSystem>Console</SubSystem>
+      <EnableCOMDATFolding>true</EnableCOMDATFolding>
+      <OptimizeReferences>true</OptimizeReferences>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+    </Link>
+  </ItemDefinitionGroup>
+  <ItemGroup>
+    <ClCompile Include="net_selftest.cpp" />
+    <ClCompile Include="mh_calls_selftest.gen.cpp" />
+    <ClCompile Include="mh_export_selftest.gen.cpp" />
+    <ClCompile Include="orders_selftest.cpp" />
+    <ClCompile Include="issue_selftest.cpp" />
+    <ClCompile Include="resync_selftest.cpp" />
+    <ClCompile Include="net_session_selftest.cpp" />
+    <ClCompile Include="lib_trans_selftest.cpp" />
+    <ClCompile Include="watchdog_selftest.cpp" />
+    <ClCompile Include="crt_sprintf_selftest.cpp" />
+    <ClCompile Include="crt_vendor_selftest.cpp" />
+    <ClCompile Include="desync_selftest.cpp" />
+    <ClCompile Include="net_queue_selftest.cpp" />
+    <ClCompile Include="..\mh\addr\mh_calls.gen.cpp" />
+    <ClCompile Include="..\mh\addr\mh_hostapi_bind.gen.cpp" />
+    <ClCompile Include="..\mh\seams\hostapi_io_bind.cpp" />
+    <ClCompile Include="..\mh\hook\export.cpp" />
+    <ClCompile Include="..\mh\hook\hookpoint.cpp" />
+    <ClCompile Include="..\libmh\orders\order_queue.cpp" />
+    <ClCompile Include="..\libmh\orders\issue\issue_state.cpp" />
+    <ClCompile Include="..\libmh\orders\issue\issue_promote.cpp" />
+    <ClCompile Include="..\libmh\orders\issue\issue_bldg_orders.cpp" />
+    <ClCompile Include="..\libmh\orders\issue\issue_order_core.cpp" />
+    <ClCompile Include="..\libmh\orders\issue\issue_bldg_orders_b.cpp" />
+    <ClCompile Include="..\libmh\orders\issue\issue_bldg_depart.cpp" />
+    <ClCompile Include="..\libmh\orders\issue\issue_bldg_footprint.cpp" />
+    <ClCompile Include="..\libmh\orders\issue\issue_unit_move.cpp" />
+    <ClCompile Include="..\libmh\orders\issue\issue_unit_attack.cpp" />
+    <ClCompile Include="..\libmh\orders\issue\issue_unit_storage.cpp" />
+    <ClCompile Include="..\libmh\orders\issue\issue_group_formation_move.cpp" />
+    <ClCompile Include="..\libmh\orders\issue\issue_ai_move_primitives.cpp" />
+    <ClCompile Include="..\libmh\orders\issue\issue_group_orders.cpp" />
+    <ClCompile Include="..\libmh\orders\issue\issue_turret_orders.cpp" />
+    <ClCompile Include="..\libmh\orders\issue\issue_order_debug.cpp" />
+    <ClCompile Include="..\libmh\orders\issue\issue_order_admin.cpp" />
+    <ClCompile Include="..\libmh\orders\issue\issue_order_player.cpp" />
+    <ClCompile Include="..\libmh\lockstep\lockstep_state.cpp" />
+    <ClCompile Include="..\libmh\lockstep\turn_engine.cpp" />
+    <ClCompile Include="..\libmh\lockstep\rx_dispatch.cpp" />
+    <ClCompile Include="..\libmh\lockstep\tx_emit.cpp" />
+    <ClCompile Include="..\libmh\lockstep\tx_emit_chat.cpp" />
+    <ClCompile Include="..\libmh\lockstep\tx_emit_ctrl.cpp" />
+    <ClCompile Include="..\libmh\lockstep\tx_emit_order.cpp" />
+    <ClCompile Include="..\libmh\lockstep\resync.cpp" />
+    <ClCompile Include="..\libmh\lockstep\net_session.cpp" />
+    <ClCompile Include="..\libmh\lockstep\overlay_hoist.cpp" />
+    <ClCompile Include="..\libmh\lockstep\timekeeper.cpp" />
+    <ClCompile Include="..\mh\desync\desync_watch.cpp" />
+    <ClCompile Include="..\libmh\save\save_block.cpp" />
+    <ClCompile Include="..\libmh\save\save_driver.cpp" />
+    <ClCompile Include="..\libmh\save\save_ext.cpp" />
+    <ClCompile Include="..\libmh\save\save_format.cpp" />
+    <ClCompile Include="..\libmh\save\save_state.cpp" />
+    <ClCompile Include="..\libmh\save\save_live.cpp" />
+    <ClCompile Include="..\mh_common\lzw.cpp" />
+    <ClCompile Include="save_selftest.cpp" />
+    <ClCompile Include="lockstep_selftest.cpp" />
+    <ClCompile Include="..\mh_net\net_key.cpp" />
+    <ClCompile Include="..\mh_net\net_transport.cpp" />
+    <ClCompile Include="..\mh_common\run_context.cpp" />
+    <ClCompile Include="..\mh\en_guard.cpp" />
+    <ClCompile Include="..\mh\hook\detour.cpp" />
+    <ClCompile Include="..\mh\hook\patch.cpp" />
+    <ClCompile Include="..\mh\hook\promoted.cpp" />
+    <ClCompile Include="..\mh\hook\tombstone.cpp" />
+    <ClCompile Include="interlock_selftest.cpp" />
+    <ClCompile Include="..\mh\patch\inmem_patch.cpp" />
+    <ClCompile Include="..\mh\patch\inmem_install.cpp" />
+    <ClCompile Include="inmem_patch_selftest.cpp" />
+    <ClCompile Include="hostapi_c_compile.c" />
+    <ClCompile Include="fp_x87_selftest.cpp" />
+    <ClCompile Include="hostapi_selftest.cpp" />
+    <ClCompile Include="hostin_selftest.cpp" />
+    <ClCompile Include="mh_hostapi_selftest.gen.cpp" />
+    <ClCompile Include="..\libmh\state\host_api.cpp" />
+    <ClCompile Include="..\libmh\state\hook_api.cpp" />
+    <ClCompile Include="..\mh\seams\libmh_hook_host.cpp" />
+    <ClCompile Include="..\libmh\state\boot_snapshot.cpp" />
+    <ClCompile Include="..\libmh\state\nav_trailer.cpp" />
+    <ClCompile Include="nav_trailer_selftest.cpp" />
+    <ClCompile Include="..\libmh\state\world_snapshot.cpp" />
+    <ClCompile Include="..\libmh\state\spine.cpp" />
+    <ClCompile Include="..\libmh\state\host_bind.cpp" />
+    <ClCompile Include="..\libmh\state\spine_exports.cpp" />
+    <ClCompile Include="..\libmh\state\host_events.cpp" />
+    <ClCompile Include="..\libmh\state\host_in.cpp" />
+    <ClCompile Include="..\libmh\state\rebind_arming.cpp" />
+    <ClCompile Include="..\libmh\state\rebind_shims.cpp" />
+    <ClCompile Include="..\libmh\state\rebind_traps.gen.cpp" />
+    <ClCompile Include="..\libmh\state\rebind_verify.gen.cpp" />
+    <ClCompile Include="tombstone_selftest.cpp" />
+    <ClCompile Include="state_selftest.cpp" />
+    <ClCompile Include="ai_selftest.cpp" />
+    <ClCompile Include="boot_snapshot_selftest.cpp" />
+    <ClCompile Include="world_snapshot_selftest.cpp" />
+    <ClCompile Include="ai_notify_unit_lifecycle_selftest.cpp" />
+    <ClCompile Include="ai_players_tick_selftest.cpp" />
+    <ClCompile Include="ai_group_remove_selftest.cpp" />
+    <ClCompile Include="ai_attack_commit_selftest.cpp" />
+    <ClCompile Include="ai_group_member_list_selftest.cpp" />
+    <ClCompile Include="ai_queue_remove_selftest.cpp" />
+    <ClCompile Include="ai_group_building_scan_selftest.cpp" />
+    <ClCompile Include="ai_group_no_member_near_centroid_selftest.cpp" />
+    <ClCompile Include="ai_group_task_workers_selftest.cpp" />
+    <ClCompile Include="..\libmh\ai\ai_state.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\ai\ai_promote.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\ai\ai_engage.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\ai\ai_build.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\ai\ai_target.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\ai\ai_turret_threat.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\ai\ai_engage_scan.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\ai\ai_grid.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\ai\ai_grid_stencil.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\ai\ai_spiral_scan.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\ai\ai_scan_targets.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\ai\ai_scan_visible.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\ai\ai_holding_pen.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\ai\ai_attack_candidates.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\ai\ai_abandon_target.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\ai\ai_bldg_repair.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\ai\ai_army_milestone.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\ai\ai_target_query.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\ai\ai_engage_candidates.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\ai\ai_scan_target_add.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\ai\ai_construction_sites.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\ai\ai_target_ref_predicates.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\ai\ai_worker_priority.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\ai\ai_site_sort.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\ai\ai_site_scan.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\ai\ai_resource_sites.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\ai\ai_queue_release.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\ai\ai_attacker_intel.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\ai\ai_mine_plan.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\ai\ai_mine_rebalance.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\ai\ai_mine_yield.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\ai\ai_turret_plan.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\ai\ai_worker_rebalance.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\ai\ai_queue_type_query.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\ai\ai_queue_rotate.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\ai\ai_notify_removed.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\ai\ai_group_tick.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\ai\ai_group_form.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\ai\ai_group_hold.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\ai\ai_group_task_machine.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\ai\ai_invasion.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\ai\ai_group_home_guard.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\ai\ai_group_expansion.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\ai\ai_group_redistribute.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\ai\ai_unit_move_bump.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\ai\ai_group_task_predicates.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\ai\ai_group_task_attack.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\ai\ai_group_relocation.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\ai\ai_queue_remove.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\ai\ai_group_task_recruit.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\ai\ai_group_task_lifecycle.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\ai\ai_group_task_movement.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\ai\ai_group_task_formation.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\ai\ai_group_task_queue_ops.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\ai\ai_group_muster_pick.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\ai\ai_group_task_workers.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\ai\ai_group_split_off.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\ai\ai_group_building_scan.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\ai\ai_group_classify_target.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\ai\ai_group_membership.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\ai\ai_group_member_list.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile> <!-- RI-AI batch D / AI1D, 2026-08-28 -->
+    <ClCompile Include="..\libmh\ai\ai_group_remove.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile> <!-- RI-AI batch D / AI1D, 2026-08-28 -->
+    <ClCompile Include="..\libmh\ai\ai_attack_commit.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile> <!-- RI-AI batch D / AI1D, 2026-08-28 -->
+    <ClCompile Include="..\libmh\ai\ai_players_tick.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile> <!-- RI-AI batch D / AI1D, 2026-08-28 -->
+    <ClCompile Include="..\libmh\ai\ai_notify_unit_lifecycle.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile> <!-- RI-AI batch D / AI1D, 2026-08-28 -->
+    <ClCompile Include="..\libmh\ai\ai_group_centroid.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\ai\ai_nearest_flagged.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\ai\ai_site_dispatch.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\ai\ai_launch_storage.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\ai\ai_site_worth.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\ai\ai_map_influence.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\ai\ai_queue_reconcile.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\ai\ai_bldg_weapon_range.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\ai\ai_train_flush.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\ai\ai_spend_rate.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\ai\ai_train_plan.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\ai\ai_build_sources.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\ai\ai_bldg_queue.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\ai\ai_queue_enqueue.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\ai\ai_bldg_queue_dispatch.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\ai\ai_build_score.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\ai\ai_shortage_react.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\ai\ai_shortage_gate.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\ai\ai_unit_housing.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\ai\ai_opponent_relations.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\ai\ai_shortage_state.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\ai\ai_construction_plan.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\ai\ai_notify_map_changed.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\ai\ai_group_move_helpers.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <!-- /arch:IA32 /fp:precise, matching mh/mh.vcxproj per file. See the comment there: the offline
+         oracle has to be built the way the DLL is or it verifies a different function. -->
+    <ClCompile Include="..\libmh\tact\tact_state.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\tact\tact_pilot.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\tact\tact_mission_parse.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\tact\tact_cfg_keyword.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\tact\tact_mission_disposition.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\tact\tact_character_parse.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\tact\tact_map_bounds.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\tact\tact_squad_status.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\tact\tact_mission_end_finalize.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\tact\tact_tile_occupancy.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\tact\tact_squad_assault_resolve.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\tact\tact_map_reset.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\tact\tact_dir24_approach.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\tact\tact_group_issue_order.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\tact\tact_unit_cmd_advance_with_defstat.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\tact\tact_unit_cmd_advance.cpp" />
+    <ClCompile Include="..\libmh\tact\tact_unit_cmd_stance.cpp" />
+    <ClCompile Include="..\libmh\tact\tact_facing_to_delta.cpp" />
+    <ClCompile Include="..\libmh\tact\tact_calc_dir24.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\tact\tact_unit_move_tick.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\tact\tact_unit_owner_tick.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\tact\tact_unit_rotate_tick.cpp" />
+    <ClCompile Include="..\libmh\tact\tact_unit_cmd_queue_advance.cpp" />
+    <ClCompile Include="..\libmh\tact\tact_unit_cmd_queue_resubmit_run.cpp" />
+    <ClCompile Include="..\libmh\tact\tact_unit_cmd_teleport_jump_tick.cpp" />
+    <ClCompile Include="..\libmh\tact\tact_move_path_build.cpp" />
+    <ClCompile Include="..\libmh\tact\tact_move_path_preview_walk.cpp" />
+    <ClCompile Include="..\libmh\tact\tact_unit_rotate_step.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\tact\tact_unit_move_advance.cpp" />
+    <ClCompile Include="..\libmh\tact\tact_unit_enqueue_command.cpp" />
+    <ClCompile Include="..\libmh\tact\tact_teleport_cmdqueue_jump.cpp" />
+    <ClCompile Include="..\libmh\tact\tact_unit_teleport.cpp" />
+    <ClCompile Include="..\libmh\tact\tact_move_step_attempt.cpp" />
+    <ClCompile Include="..\libmh\tact\tact_unit_weapon_in_range.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\tact\tact_unit_despawn.cpp" />
+    <ClCompile Include="..\libmh\tact\tact_mission_end_return_to_strategic.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\tact\tact_mission_start.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\tact\tact_mission_load.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\tact\tact_unit_update_anim.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\tact\tact_unit_weapons_tick.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\tact\tact_fx_update_projectile.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\tact\tact_unit_spawn.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\tact\tact_unit_death_tick.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\tact\tact_unit_kneel_tick.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\tact\tact_unit_mine_arm_tick.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\tact\tact_unit_stand_tick.cpp" />
+    <ClCompile Include="..\libmh\tact\tact_unit_set_anim_state.cpp" />
+    <ClCompile Include="..\libmh\tact\tact_unit_get_muzzle_offset.cpp" />
+    <ClCompile Include="..\libmh\tact\tact_unit_destroy.cpp" />
+    <ClCompile Include="..\libmh\tact\tact_weapon_calc_scatter.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\tact\tact_fx_spawn.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\tact\tact_fx_splash_damage.cpp" />
+    <ClCompile Include="..\libmh\tact\tact_unit_fire_weapon.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\tact\tact_door.cpp" />
+    <ClCompile Include="..\libmh\tact\tact_teleport_zone.cpp" />
+    <ClCompile Include="..\libmh\tact\tact_fov.cpp" />
+    <ClCompile Include="..\libmh\tact\tact_unit_vision.cpp" />
+    <ClCompile Include="..\libmh\tact\tact_ambient_sound.cpp" />
+    <ClCompile Include="..\libmh\tact\tact_ui_sel_panel_init.cpp" />
+    <ClCompile Include="..\libmh\tact\tact_update_units_and_fx.cpp" />
+    <ClCompile Include="..\libmh\tact\tact_cam_follow_selection_tick.cpp" />
+    <ClCompile Include="..\libmh\tact\tact_select_next_unit.cpp" />
+    <ClCompile Include="..\libmh\tact\tact_sidebar_dispatch.cpp" />
+    <ClCompile Include="..\libmh\tact\tact_scroll_target_proximity_tick.cpp" />
+    <ClCompile Include="..\libmh\tact\tact_view_shift.cpp" />
+    <ClCompile Include="..\libmh\tact\tact_frame.cpp" />
+    <ClCompile Include="..\libmh\tact\tact_ui_sel_panel_multi_mode_tick.cpp" />
+    <ClCompile Include="..\libmh\tact\tact_ui_sel_panel_single_mode_tick.cpp" />
+    <ClCompile Include="..\libmh\tact\tact_camera_center_on_tile.cpp" />
+    <ClCompile Include="..\libmh\tact\tact_selection_clear_unless_ctrl.cpp" />
+    <ClCompile Include="..\libmh\tact\tact_active_unit_count_hud_draw.cpp" />
+    <ClCompile Include="..\libmh\tact\tact_squad_roster_refresh.cpp" />
+    <ClCompile Include="..\libmh\tact\tact_selection_panel_refresh.cpp" />
+    <ClCompile Include="..\libmh\tact\tact_ui_order_buttons_minimap_tick.cpp" />
+    <ClCompile Include="..\libmh\sim\sim_state.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_group_scratch_centroid.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_unit_weapons.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_bldg_alive.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_unit_status_bits.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_resource_spend.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_order_enqueue.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_order_dispatch.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_order_dispatch_bldg.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_order_dispatch_admin.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_debug_roll_random.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_bldg_finish_order.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_bldg_placement_preview.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_bldg_placement_enclosure.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_bldg_roster_queries.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_bldg_defense_cost.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_bldg_load_resource_tail_noop.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_bldg_footprint_set_passable.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_bldg_footprint_is_clear.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_bldg_grant_type_resources.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_bldg_update_charge_pips.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_unit_bldg_energy_refill_full.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_bldg_construct_finalize.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_bldg_link_to_network.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_bldg_state_destroyed.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_bldg_state_reset_idle.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_bldg_state_deploy.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_bldg_state_to_unit.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_bldg_state_turret.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_bldg_state_charge.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_bldg_state_hangar.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_bldg_state_upgrade_research.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_bldg_state_dismantle.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_bldg_state_rubble_decay.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_bldg_state_prod.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_bldg_state_mine_scan.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_bldg_state_mine.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_bldg_state_power.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_bldg_liftoff_anim.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_bldg_construction_complete.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_bldg_refund_resources_scaled_by_energy.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_hangar_energy.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_bldg_free_record.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_bldg_turret_combat.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_bldg_placement_corner.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_prod_cargo.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_bldg_footprint_clear_passable.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_bldg_anim_trigger.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_bldg_completion_dispatch.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_bldg_done_handlers.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_bldg_anim_tick.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_bldg_anim_state_online.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_bldg_anim_state_port.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_bldg_economy.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_bldg_sprite_anchor.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_bldg_register_online.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_bldg_online_secondary.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_unit_goal_in_weapon_range.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_unit_fire_at_target.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_unit_chase_check.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_unit_walk_step_allowed.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_unit_calc_range_approach_point.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_unit_try_pay_action_cost.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_reason_to_housing_bldg.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_mine_scan_deposit_slot.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_dmp_enqueue_scripted_order.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_load_base_layout_dmp.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_bldg_unmap_footprint.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_bldg_get_coords.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_bldg_mothership_alive.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_bldg_mother_reelect_primary.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_bldg_worker_assign.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_bldg_add_workers.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_bldg_power_network_recompute.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_bldg_propagate_network_connectivity.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_bldg_population_layoff_workers.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_bldg_clear_flag_bit0_notify.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_bldg_find_mothership_position.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_refresh_building.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_bldg_remove_workers.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_bldg_set_connected_flag.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_bldg_staffed_flag.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_bldg_notify_state_change.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_bldg_uses_workers.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_bldg_notify_ui.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_bldg_footprint_random_offset.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_bldg_transfer_notify_noop.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_bldg_reset_construction_anim.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_bldg_tick_pip_anim.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_bldg_turret_reload_tick.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_bldg_pay_costs.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_bldg_power_recompute.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_bldg_refresh_all_buildings.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_bldg_scrap_stored_units.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_unit_state_predicates.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_unit_type_predicates.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_unit_passive_engage.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_register_state_handlers.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <!-- SIM1-BLDGCB (2026-08-23): our registrar for the two per-building-TYPE callback tables. -->
+    <ClCompile Include="..\libmh\sim\sim_register_bldg_type_callbacks.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_unit_tick.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_building_tick.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_bldg_tick_animation_state.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_unit_idle_state.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_unit_ctrl_group.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_unit_update_rotation.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_unit_update_anim.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_unit_soldier_chain.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_unit_soldier_anim.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_unit_housing_count.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_unit_refund.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_unit_spawn_on_tile.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_unit_update_soldiers.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_unit_target_tracking.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_unit_create_soldier.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_unit_recruit.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_unit_predict_coords.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_unit_ctrlgroup_member.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_unit_set_state.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_facing24_from_points.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_unit_path_free_slot.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_unit_purge_unregistered.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_unit_remove_from_map.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_unit_on_destroyed.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_unit_init_record.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_unit_teardown.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_unit_unlink_tile.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_unit_force_disembark.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_unit_mount_pos.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_unit_soldier_screen_pos.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_unit_facing24_delta.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_unit_is_boarding.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_unit_population_remove.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_unit_fine_pos.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_unit_ctrlgroup_leave.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_unit_set_state_of.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_unit_put_on_map.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_unit_notify.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_map_unit_add.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_unit_create.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_dock_slot_is_busy.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_unit_storage_transit.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_bldg_side_has_aircraft_producer.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_bldg_find_idle_producer.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_check_storage_overflow.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_storage_cancel_pending_docked.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_prod_shuttle_complete.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_ai_bldg_queue_construction.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_bldg_instant_construct.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_bldg_init_all.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_bldg_instant_construct_find_slot.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_unit_order_disembark_soldiers.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_unit_transport_unload.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_prod_shuttle_slot_bind_default.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_prod_shuttle_load_resource.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_prod_shuttle_fuel_apply.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_bldg_shuttle_slot_is_free.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_game_notify_system_available.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_prod_shuttle_depart.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_prod_shuttle_load_passengers.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_storage_purge_dead_docked.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_unit_load_into_shuttle_cargo.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_prod_unload_cargo_unit.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_prod_bldg_depart_finalize.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_unit_apply_production_completion.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_unit_spawn_docked.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_unit_add_docked.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_storage_release_door_held_by_unit.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_storage_launch_parked_to_orbit.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_prod_planet_distance_factor.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_prod_shuttle_fuel_check.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_prod_shuttle_slot_release.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_prod_shuttle_unload_resource.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_prod_shuttle_unload_passengers.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_prod_shuttle_bay_unload_all.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_bldg_flush_cargo_hold.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_storage_find_home_for_unit.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_storage_remove_docked_unit.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_storage_dock_unit_at_building.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_prod_unbind_planet.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_prod_deliver_arrivals.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_storage_accepts_unit_type.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_prod_bind_planet.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_storage_get_approach_tile.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_storage_type_accepts_unit.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_unit_get_sight.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_bldg_has_aa_weapon.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_prod_spawn_arrived_unit.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_combat_kill_credit.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_weapon_projectile_spawn.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_unit_fire_weapon.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_weapon_damage_calc.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_fx_debris_burst.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_projectile_tick.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_fx_anim_chain_find_tail.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_unit_select_weapon.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_combat_credit_planet_conquest_kills.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_map_fow_reveal_full.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_bldg_apply_damage.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_unit_apply_damage.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_unit_weapon_reload_tick.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_unit_bldg_apply_lethal_damage.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_unit_bldg_apply_scaled_damage.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_fx_anim_seq_cancel.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_fx_anim_tick.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_unit_in_weapon_range.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_unit_fire_at_target2_if_aimed.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_unit_update_damage_smoke.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_unit_state_die_explode.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_unit_state_budget_noop.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_unit_state_stop_to_default.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_unit_state_patrol_swap.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_unit_state_group_step.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_unit_state_group_marshal.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_unit_state_move_walker.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_unit_state_hover_engage.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_unit_state_flight.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_unit_state_corpse_fow_decay.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_unit_state_attack_building.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_unit_state_attack_unit.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_unit_state_remove_silent.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_unit_state_idle_scatter.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_group_move_order_commit.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_unit_group_step_plane.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_unit_group_step_ground.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_unit_set_state_order_of.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_unit_teardown_mapped.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_unit_free_slot.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_unit_change_proto_and_energy.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_squad_pick_free_formation_anchor.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_unit_hover_tile_crowded.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_group_move_register_member.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_unit_get_ready_home_building.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_unit_set_state_order.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_group_scratch_add_unit.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_group_plan_formation_positions.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_unit_type_group_index.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_unit_queue_advance.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_order_issue_0xf_adjacent.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_fog_of_war.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_game_get_starting_unit.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_step.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\rng_trace.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_rng_next.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\libtrans\sim_lt_available_remove.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\libtrans\sim_lt_ambient.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\libtrans\sim_lt_anim_time.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\libtrans\sim_lt_available_projects_clear.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\libtrans\sim_lt_bldg_query.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\libtrans\sim_lt_bldg_cell_grid.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\libtrans\sim_lt_frame.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_xtl_promote.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_hostreach_promote.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\libtrans\sim_lt_promote.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\libtrans\sim_lt_cfg_planet.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\libtrans\sim_lt_deploy_squad.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\libtrans\sim_lt_diplomacy.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\libtrans\sim_lt_invasion_alert.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\libtrans\sim_lt_map_region_pool.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\libtrans\sim_lt_map_setup_dimensions.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\libtrans\sim_lt_math.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\libtrans\sim_lt_menu_teardown.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\libtrans\sim_lt_placement_offsets.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\libtrans\sim_lt_prod_transfer.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\libtrans\sim_lt_progress_finalize.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\libtrans\sim_lt_progress_planet_sweep.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\libtrans\sim_lt_progress_unlock_fixpoint.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\libtrans\sim_lt_scan_masked_table.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\libtrans\sim_lt_str.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\lockstep\lt_chat_ally_mask.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\lockstep\lt_peer_timing_reset.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\lockstep\lt_player_by_side_id.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\lockstep\lt_reload_snapshot_resync.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\lockstep\lt_time_query.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\libtrans\sim_lt_rng_draws.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\libtrans\sim_lt_rng_seed.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\libtrans\sim_lt_rng_raw_step.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_geom_toroidal.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_resource_decay.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_game_speed_adjust.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_diplomacy_set_relation.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_game_player_set_side.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_population_change.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_map_fog_of_war_recompute.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_target_class.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_cfg_anim_frame_at_progress.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_game_speed_recompute.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_diplomacy_ai_relation_swap.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_game_add_planet_to_available.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_game_add_to_available_buildings.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_game_add_project_to_available.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_cfg_apply_project_resources.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_game_try_start_project.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_game_handle_progress.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_planet_distance.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_dist_out_of_range.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_resource_add_spend.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_map_zoom_scale_x_get.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_game_sp_outcome_announce.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_invasion.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_game_handle_upgrade.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_revoke_invention.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_game_set_event.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\resid\sim_prod_transfer_destination.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\resid\sim_bldg_network_critical.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\resid\sim_spawn_ai_base.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\resid\sim_squad_status_gather.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\resid\sim_invasion_due_check.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\resid\sim_rng_seed_channel.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\resid\sim_time_resync.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\resid\sim_tutorial_step_driver.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\resid\sim_start_tutorial.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\resid\sim_clock_resync.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\resid\sim_advisor_tick.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\resid\sim_land_players_on_planet.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\resid\sim_new_game_init.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\resid\sim_bldg_try_begin_placement.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\resid\sim_invasion_alert_reset.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\resid\sim_landing_spots_reroll.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\resid\sim_scenario_planet_clone.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\resid\sim_map_fill_defaults.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\resid\sim_pathfinder_init.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\resid\sim_planet_map_session_init.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\resid\sim_planet_session_begin.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\resid\sim_planet_transition_finalize.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\resid\sim_session_begin_multi.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\resid\sim_session_state_reset.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\resid\resid_promote.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\resid\sim_session_clear_presence_flag.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\resid\sim_player_init.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\resid\sim_table_resets.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\resid\sim_unit_path_release.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\resid\sim_unit_path_store.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\hostreach\sim_h_diplomacy_restore_relations.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\hostreach\sim_h_group_issue_orders.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\hostreach\sim_h_map_build_regions.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\hostreach\sim_h_shuttle_slot_spawn_arrival.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\hostreach\sim_h_switch_to_planet.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\hostreach\sim_h_bldg_init_defaults.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\hostreach\sim_h_bldg_frame_center_offset.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\hostreach\sim_h_map_region_flood_fill.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\hostreach\sim_h_map_region_prep.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\hostreach\sim_h_map_region_seed.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\hostreach\sim_batch_h_promote.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_player_presence_lost.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_spawn_invasion_force.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_map_wrap_delta_row.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_dir_headings.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_player_teardown_hook_stub.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_game_insert_item_in_player_array.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_map_region_helpers.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_map_region_split.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_map_apply_area.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_map_create_building.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_landing_spot.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_locate_active_port.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_invasion_alert_arm.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_map_region_recompute_adjacency.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_target_release_ref.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_game_update_resource_stats.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_game_update_progress.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_tile_pixel_wrap_delta.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_landing_queries.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_population_add.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_region_adjacency_edge.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_tile_delta_wrapped.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_tile_neighbor_reverse_dir.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_pathfind_grid_geometry.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_unit_path_step_blocked.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_path_step_check_and_request_detour.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_unit_path_detour.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_unit_state_move_path.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_unit_state_plot_turn_path.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_path_make_single_step.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_pathfind_route_leg_group_and_sort.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_pathfind_route_leg_reconcile.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_group_move_order_pathfind.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_path_solver.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_path_slot_dist.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_pathtrace_greedy.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_map_region_tile_find.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_pathfind_route.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_unit_path_queue_count.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_pathfind_geom_misc.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_pathtrace_dir_table.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_path_alloc_slot.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_path_group_steps.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_map_region_routing.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_map_region_route_marking.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_map_wrap_delta_xy.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_pathfind_dir_code_and_adjacency.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_path_attach_slot.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_group_path_step_append.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_unit_state_squad_merge.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_unit_state_exit.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_unit_state_enter.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_unit_state_taxi_dock.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_unit_state_deploy.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_unit_state_takeoff.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_unit_state_misc2.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_storage_can.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_storage_exit_placement.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_storage_exit_query.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_storage_dock.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_storage_scrap.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_storage_path.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="sim_unit_state_enter_arrival_check_selftest.cpp" />
+    <ClCompile Include="sim_storage_can_land_selftest.cpp" />
+    <ClCompile Include="sim_storage_exit_tile_is_clear_selftest.cpp" />
+    <ClCompile Include="sim_storage_scrap_home_docked_units_selftest.cpp" />
+    <ClCompile Include="sim_storage_accept_landing_selftest.cpp" />
+    <ClCompile Include="sim_storage_scrap_docked_units_of_type_selftest.cpp" />
+    <ClCompile Include="sim_storage_can_enter_selftest.cpp" />
+    <ClCompile Include="sim_unit_state_exit_cancel_selftest.cpp" />
+    <ClCompile Include="sim_unit_state_enter_wait_selftest.cpp" />
+    <ClCompile Include="sim_unit_state_enter_walk_in_selftest.cpp" />
+    <ClCompile Include="sim_unit_state_enter_storage_begin_selftest.cpp" />
+    <ClCompile Include="sim_unit_takeoff_finalize_selftest.cpp" />
+    <ClCompile Include="sim_unit_state_landing_request_selftest.cpp" />
+    <ClCompile Include="sim_unit_state_production_ready_selftest.cpp" />
+    <ClCompile Include="sim_unit_state_deploy_approach_selftest.cpp" />
+    <ClCompile Include="sim_player_init_selftest.cpp" />
+    <ClCompile Include="sim_table_resets_selftest.cpp" />
+    <ClCompile Include="sim_invasion_alert_reset_selftest.cpp" />
+    <ClCompile Include="sim_bldg_try_begin_placement_selftest.cpp" />
+    <ClCompile Include="sim_landing_spots_reroll_selftest.cpp" />
+    <ClCompile Include="sim_rng_seed_channel_selftest.cpp" />
+    <ClCompile Include="sim_time_resync_selftest.cpp" />
+    <ClCompile Include="sim_invasion_due_check_selftest.cpp" />
+    <ClCompile Include="sim_tutorial_step_driver_selftest.cpp" />
+    <ClCompile Include="sim_start_tutorial_selftest.cpp" />
+    <ClCompile Include="sim_try_enter_tactical_mission_selftest.cpp" />
+    <ClCompile Include="sim_prod_transfer_destination_selftest.cpp" />
+    <ClCompile Include="sim_squad_status_gather_selftest.cpp" />
+    <ClCompile Include="sim_bldg_network_critical_selftest.cpp" />
+    <ClCompile Include="sim_sort_sites_by_dist_selftest.cpp" />
+    <ClCompile Include="sim_spawn_ai_base_selftest.cpp" />
+    <ClCompile Include="sim_pathfinder_init_selftest.cpp" />
+    <ClCompile Include="sim_map_fill_defaults_selftest.cpp" />
+    <ClCompile Include="sim_scenario_planet_clone_selftest.cpp" />
+    <ClCompile Include="sim_unit_path_release_selftest.cpp" />
+    <ClCompile Include="sim_unit_path_store_selftest.cpp" />
+    <ClCompile Include="sim_unit_state_takeoff_taxi_selftest.cpp" />
+    <ClCompile Include="sim_unit_state_dock_taxi_in_selftest.cpp" />
+    <ClCompile Include="sim_unit_state_exit_storage_begin_selftest.cpp" />
+    <ClCompile Include="sim_storage_board_unit_selftest.cpp" />
+    <ClCompile Include="sim_unit_state_deploy_to_building_selftest.cpp" />
+    <ClCompile Include="sim_unit_state_squad_merge_selftest.cpp" />
+    <ClCompile Include="sim_unit_state_takeoff_landing_selftest.cpp" />
+    <ClCompile Include="sim_storage_place_exit_ground_selftest.cpp" />
+    <ClCompile Include="sim_map_region_route_marking_selftest.cpp" />
+    <ClCompile Include="sim_map_wrap_delta_xy_selftest.cpp" />
+    <ClCompile Include="sim_pathfind_dir_code_and_adjacency_selftest.cpp" />
+    <ClCompile Include="sim_selftest.cpp" />
+    <ClCompile Include="tact_mission_parse_selftest.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="tact_cfg_keyword_selftest.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="tact_mission_disposition_selftest.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="tact_character_parse_selftest.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="tact_squad_status_selftest.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="tact_unit_cmd_advance_with_defstat_selftest.cpp" />
+    <ClCompile Include="tact_facing_to_delta_selftest.cpp" />
+    <ClCompile Include="tact_unit_cmd_stance_selftest.cpp" />
+    <ClCompile Include="tact_calc_dir24_selftest.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="tact_move_path_preview_walk_selftest.cpp" />
+    <ClCompile Include="tact_unit_cmd_teleport_jump_tick_selftest.cpp" />
+    <ClCompile Include="tact_teleport_cmdqueue_jump_selftest.cpp" />
+    <ClCompile Include="tact_unit_teleport_selftest.cpp" />
+    <ClCompile Include="tact_squad_assault_resolve_selftest.cpp" />
+    <ClCompile Include="tact_map_reset_selftest.cpp" />
+    <ClCompile Include="tact_unit_despawn_selftest.cpp" />
+    <ClCompile Include="tact_mission_end_return_to_strategic_selftest.cpp" />
+    <ClCompile Include="tact_mission_start_selftest.cpp" />
+    <ClCompile Include="tact_unit_update_anim_selftest.cpp" />
+    <ClCompile Include="tact_unit_weapons_tick_selftest.cpp" />
+    <ClCompile Include="tact_fx_update_projectile_selftest.cpp" />
+    <ClCompile Include="tact_unit_spawn_selftest.cpp" />
+    <ClCompile Include="tact_unit_death_tick_selftest.cpp" />
+    <ClCompile Include="tact_unit_kneel_tick_selftest.cpp" />
+    <ClCompile Include="tact_mission_load_selftest.cpp" />
+    <ClCompile Include="tact_unit_get_muzzle_offset_selftest.cpp" />
+    <ClCompile Include="tact_fx_splash_damage_selftest.cpp" />
+    <ClCompile Include="tact_weapon_calc_scatter_selftest.cpp" />
+    <ClCompile Include="tact_unit_stand_tick_selftest.cpp" />
+    <ClCompile Include="tact_unit_fire_weapon_selftest.cpp" />
+    <ClCompile Include="tact_fx_spawn_selftest.cpp" />
+    <ClCompile Include="tact_unit_destroy_selftest.cpp" />
+    <ClCompile Include="tact_cmd_queue_wrap_selftest.cpp" />
+    <ClCompile Include="tact_owner_enqueue_fix_selftest.cpp" />
+    <ClCompile Include="tact_fov_raycast_selftest.cpp" />
+    <ClCompile Include="tact_unit_vision_selftest.cpp" />
+    <ClCompile Include="tact_door_selftest.cpp" />
+    <ClCompile Include="tact_ambient_sound_selftest.cpp" />
+    <ClCompile Include="tact_cam_follow_selection_tick_selftest.cpp" />
+    <ClCompile Include="tact_scroll_target_proximity_tick_selftest.cpp" />
+    <ClCompile Include="tact_view_shift_selftest.cpp" />
+    <ClCompile Include="tact_select_next_unit_selftest.cpp" />
+    <ClCompile Include="tact_sidebar_dispatch_selftest.cpp" />
+    <ClCompile Include="tact_ui_sel_panel_init_selftest.cpp" />
+    <ClCompile Include="tact_update_units_and_fx_selftest.cpp" />
+    <ClCompile Include="tact_selection_clear_unless_ctrl_selftest.cpp" />
+    <ClCompile Include="tact_camera_center_on_tile_selftest.cpp" />
+    <ClCompile Include="tact_selection_panel_refresh_selftest.cpp" />
+    <ClCompile Include="tact_active_unit_count_hud_draw_selftest.cpp" />
+    <ClCompile Include="tact_squad_roster_refresh_selftest.cpp" />
+    <ClCompile Include="tact_ui_sel_panel_single_mode_tick_selftest.cpp" />
+    <ClCompile Include="tact_ui_order_buttons_minimap_tick_selftest.cpp" />
+    <ClCompile Include="tact_ui_sel_panel_multi_mode_tick_selftest.cpp" />
+    <ClCompile Include="tact_selftest.cpp" />
+    <!-- SIM1C: the dispatcher's cases, one test TU per translation unit. They carry the SAME
+         per-file FP settings as the code under test: several cases turn on exact double comparison
+         and on NaN reaching a comparison unchanged, and /fp:fast is entitled to assume no NaNs; a
+         test that asserts NaN behaviour must not itself be compiled under that assumption. -->
+    <ClCompile Include="sim_dispatch_selftest.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="sim_dispatch_bldg_selftest.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="sim_dispatch_bldg2_selftest.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="sim_dispatch_admin_selftest.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="sim_prod_shuttle_slot_release_selftest.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="sim_storage_cancel_pending_docked_selftest.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="sim_storage_release_door_held_by_unit_selftest.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="sim_unit_select_weapon_selftest.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="sim_prod_shuttle_slot_bind_default_selftest.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="sim_prod_shuttle_load_resource_selftest.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="sim_storage_launch_parked_to_orbit_selftest.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="sim_bldg_shuttle_slot_is_free_selftest.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="sim_prod_bind_planet_selftest.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="sim_prod_planet_distance_factor_selftest.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="sim_unit_type_group_index_selftest.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="sim_prod_shuttle_fuel_apply_selftest.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="sim_unit_bldg_apply_scaled_damage_selftest.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="sim_unit_bldg_apply_lethal_damage_selftest.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="sim_map_fow_reveal_full_selftest.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="sim_bldg_load_resource_tail_noop_selftest.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="sim_fx_anim_chain_find_tail_selftest.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="sim_fx_anim_seq_cancel_selftest.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="sim_order_issue_0xf_adjacent_selftest.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="sim_storage_get_approach_tile_selftest.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="sim_debug_roll_random_selftest.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="sim_bldg_finish_order_selftest.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="sim_unit_predicates_selftest.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="sim_unit_passive_engage_selftest.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="sim_unit_ctrl_group_selftest.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="sim_unit_target_tracking_selftest.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="sim_unit_recruit_selftest.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="sim_unit_update_anim_selftest.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <!-- SIM1A fifth slice -->
+    <ClCompile Include="sim_unit_set_state_selftest.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="sim_unit_path_free_slot_selftest.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="sim_unit_housing_count_selftest.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="sim_facing24_from_points_selftest.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="sim_unit_facing24_delta_selftest.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="sim_unit_fine_pos_selftest.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="sim_unit_soldier_screen_pos_selftest.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="sim_bldg_placement_corner_selftest.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="sim_bldg_placement_corner_by_type_selftest.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="sim_bldg_turret_combat_selftest.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="sim_prod_cargo_selftest.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="sim_bldg_done_handlers_selftest.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="sim_bldg_anim_tick_selftest.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="sim_bldg_anim_state_helipad_selftest.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="sim_bldg_anim_state_online_a_selftest.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="sim_bldg_anim_state_port_selftest.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="sim_bldg_completion_dispatch_selftest.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="sim_bldg_start_special_anim_selftest.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="sim_bldg_connectivity_flood_selftest.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="sim_bldg_get_coords_selftest.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="sim_bldg_find_mothership_position_selftest.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="sim_bldg_footprint_set_passable_selftest.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="sim_bldg_energy_refill_full_selftest.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="sim_bldg_scrap_stored_units_selftest.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="sim_bldg_power_network_selftest.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="sim_bldg_construct_finalize_selftest.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="sim_bldg_unmap_footprint_selftest.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="sim_bldg_state_destroyed_selftest.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="sim_bldg_state_default_reset_selftest.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="sim_bldg_state_idle_activate_selftest.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="sim_bldg_state_deploy_anim_wait_selftest.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="sim_bldg_state_land_activate_selftest.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="sim_bldg_state_deploy_start_selftest.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="sim_bldg_state_to_unit_selftest.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="sim_bldg_state_turret_scan_selftest.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="sim_bldg_state_turret_attack_selftest.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="sim_bldg_state_construction_selftest.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="sim_bldg_state_charge_gate_selftest.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="sim_bldg_state_charge_step_selftest.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="sim_bldg_state_hangar_recharge_check_selftest.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="sim_bldg_state_hangar_recharge_units_selftest.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="sim_bldg_state_upgrading_selftest.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="sim_bldg_state_researching_selftest.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="sim_bldg_state_dismantling_selftest.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="sim_bldg_state_dismantle_finish_selftest.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="sim_bldg_state_prod_pick_next_selftest.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="sim_bldg_state_prod_working_selftest.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="sim_prod_shuttle_unload_selftest.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="sim_prod_completion_selftest.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="sim_weapon_damage_selftest.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="sim_bldg_instant_construct_selftest.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="sim_bldg_init_all_selftest.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="sim_bldg_instant_construct_find_slot_selftest.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="sim_unit_order_disembark_soldiers_selftest.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="sim_bldg_queue_construction_thunk_selftest.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="sim_prod_shuttle_depart_selftest.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="sim_prod_bldg_depart_finalize_selftest.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="sim_prod_shuttle_load_passengers_selftest.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="sim_prod_unload_cargo_unit_selftest.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="sim_unit_load_into_shuttle_cargo_selftest.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="sim_unit_transport_unload_selftest.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="sim_unit_apply_production_completion_selftest.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="sim_storage_purge_dead_docked_selftest.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="sim_game_notify_system_available_selftest.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="sim_unit_predict_coords_selftest.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="sim_unit_ctrlgroup_member_selftest.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="sim_unit_purge_unregistered_selftest.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="sim_unit_soldier_chain_selftest.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="sim_unit_soldier_anim_selftest.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="sim_unit_status_bit_selftest.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="sim_unit_refund_selftest.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="sim_unit_creation_selftest.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="sim_fog_sight_circle_selftest.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="sim_weapon_scatter_offset_selftest.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="sim_unit_chase_check_selftest.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="sim_unit_try_pay_action_cost_selftest.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="sim_unit_calc_range_approach_point_selftest.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="sim_unit_fire_weapon_selftest.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="sim_projectile_tick_selftest.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="sim_bldg_apply_damage_selftest.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="sim_unit_apply_damage_selftest.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="sim_unit_state_die_explode_selftest.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="sim_unit_state_budget_noop_selftest.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="sim_unit_state_group_step_selftest.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="sim_unit_state_stop_to_default_selftest.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="sim_unit_state_attack_building_selftest.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="sim_unit_state_attack_unit_selftest.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="sim_unit_teardown_mapped_selftest.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="sim_unit_state_remove_silent_selftest.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="sim_unit_state_idle_scatter_selftest.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="sim_group_move_order_commit_selftest.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="sim_unit_group_step_plane_selftest.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="sim_unit_set_state_order_of_selftest.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="sim_unit_free_slot_selftest.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="sim_unit_change_proto_and_energy_selftest.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="sim_squad_pick_free_formation_anchor_selftest.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="sim_unit_group_step_ground_selftest.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="sim_group_scratch_helpers_selftest.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="sim_group_plan_formation_positions_selftest.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="sim_pathfind_grid_geometry_selftest.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="sim_unit_path_step_blocked_selftest.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="sim_pathfind_geom_misc_selftest.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="sim_path_step_check_and_request_detour_selftest.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="sim_path_solver_selftest.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="sim_path_slot_dist_selftest.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="sim_map_region_tile_find_selftest.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="sim_unit_path_queue_count_selftest.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="sim_unit_state_plot_turn_path_selftest.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="sim_unit_state_move_path_selftest.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="sim_unit_state_patrol_swap_selftest.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="sim_unit_state_hover_engage_selftest.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="sim_unit_state_flight_selftest.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="sim_unit_state_corpse_fow_decay_selftest.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="sim_unit_state_move_walker_selftest.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="sim_unit_state_group_marshal_selftest.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="sim_combat_conquest_credit_selftest.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="sim_unit_estimate_weapon_damage_selftest.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="sim_population_add_selftest.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="sim_landing_queries_selftest.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="sim_revoke_invention_selftest.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="sim_game_insert_item_in_player_array_selftest.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="sim_game_set_event_selftest.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="sim_clock_resync_selftest.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="sim_session_clear_presence_flag_selftest.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="sim_advisor_tick_selftest.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="sim_planet_transition_finalize_selftest.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="sim_planet_map_session_init_selftest.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="sim_new_game_init_selftest.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="sim_land_players_on_planet_selftest.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="sim_pathtrace_greedy_selftest.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="sim_planet_session_begin_selftest.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="sim_session_begin_multi_selftest.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="sim_session_state_reset_selftest.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="sim_h_switch_to_planet_selftest.cpp" />
+    <ClCompile Include="sim_h_group_issue_orders_selftest.cpp" />
+    <ClCompile Include="sim_h_shuttle_and_diplomacy_selftest.cpp" />
+    <ClCompile Include="sim_player_presence_lost_selftest.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="sim_spawn_invasion_force_selftest.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="sim_geom_toroidal_selftest.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="sim_tile_delta_wrapped_selftest.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="sim_tile_pixel_wrap_delta_selftest.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="sim_dir_sector_to_selftest.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="sim_tile_neighbor_reverse_dir_selftest.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="sim_planet_distance_selftest.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="sim_locate_active_port_selftest.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="sim_region_adjacency_edge_selftest.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="sim_map_region_recompute_adjacency_selftest.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="sim_map_region_helpers_selftest.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="sim_map_region_split_selftest.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="sim_game_add_to_available_buildings_selftest.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="sim_game_add_project_to_available_selftest.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="sim_game_try_start_project_selftest.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="sim_cfg_apply_project_resources_selftest.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="sim_game_update_progress_selftest.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="sim_invasion_chance_roll_selftest.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="sim_handle_invasion_selftest.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="sim_invasion_alert_arm_selftest.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="sim_spawn_enemy_landing_selftest.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="sim_game_sp_outcome_announce_selftest.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="sim_game_speed_adjust_selftest.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="sim_game_player_set_side_selftest.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="sim_map_apply_area_selftest.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="sim_map_create_building_selftest.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="sim_register_state_handlers_selftest.cpp" />
+    <!-- SIM1-BLDGCB (2026-08-23): the (building type -> callback) pairing oracle. -->
+    <ClCompile Include="sim_register_bldg_type_callbacks_selftest.cpp" />
+    <ClCompile Include="sim_step_selftest.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="sim_bldg_state_power_primary_check_selftest.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="sim_bldg_state_mine_check_deposits_selftest.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="sim_bldg_state_mine_extracting_selftest.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="sim_bldg_start_liftoff_anim_shuttle_selftest.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="sim_bldg_start_liftoff_anim_mother_selftest.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="sim_bldg_construction_complete_selftest.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="sim_bldg_refund_resources_scaled_by_energy_selftest.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="sim_hangar_any_unit_needs_energy_selftest.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="sim_hangar_recharge_pulse_selftest.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <!-- SIM1-G4 eighth slice (debt drain) -->
+    <ClCompile Include="sim_dmp_enqueue_scripted_order_selftest.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="sim_reason_to_housing_bldg_selftest.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="sim_bldg_register_online_selftest.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="sim_bldg_online_secondary_selftest.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="sim_load_base_layout_dmp_selftest.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="sim_bldg_sprite_anchor_selftest.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\ai\ai_group_member_count.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\ai\ai_spiral_table_init.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\ai\ai_build_plan_push.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\ai\ai_scan_target_sort_cmp.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\ai\ai_notify_bldg_constructed.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\ai\ai_hq_attack_scenario.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\ai\ai_scr_parse.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\ai\ai_player_tick.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\ai\ai_active_unit_tick.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\ai\ai_reinforcements.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\ai\ai_hq_attack_commit.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\mh\hook\watcall.cpp" />
+    <ClCompile Include="..\mh\seams\host_event_sink.cpp" />
+    <ClCompile Include="..\mh\seams\save_triggers.cpp" />
+    <ClCompile Include="..\mh\seams\net_seams.cpp" />
+    <ClCompile Include="..\mh\seams\reimpl_probe.cpp" />
+    <ClCompile Include="..\mh\ui\ui_runtime.cpp" />
+    <ClCompile Include="..\mh\ui\lobby_slide.cpp" />
+    <ClCompile Include="..\mh\ui\lobby_notice.cpp" />
+    <ClCompile Include="..\mh\ui\lobby_widgets.cpp" />
+    <ClCompile Include="..\mh\ui\lobby_announce.cpp" />
+    <ClCompile Include="..\mh\seams\standalone.cpp" />
+    <ClCompile Include="..\mh\seams\net_diag.cpp" />
+    <ClCompile Include="..\mh\seams\net_discovery.cpp" />
+    <ClCompile Include="..\mh\seams\net_lockstep.cpp" />
+    <ClCompile Include="..\mh\seams\mp_menu.cpp" />
+    <ClCompile Include="..\mh\seams\gfx_capture.cpp" />
+    <ClCompile Include="module_bind_compiled_in.cpp" />
+    <ClCompile Include="..\mh\seams\gfx_overlay.cpp" />
+    <ClCompile Include="..\mh\seams\ui_drive.cpp" />
+    <ClCompile Include="..\mh_harness\harness.cpp" />
+    <!-- F4E: MH_Core_Arm_Early and the run paths left harness.cpp for mh.dll's side of the file
+         cut. net_selftest links the whole seam set into ONE offline image, so it takes both halves
+         directly and NOT seams/harness_bind.cpp: taking the shims as well would be a duplicate
+         definition of every MH_Harness_* row, i.e. a LINK error rather than a silent second answer.
+         Same arrangement as module_bind_compiled_in.cpp one satellite over. -->
+    <ClCompile Include="..\mh\seams\core_arm.cpp" />
+    <ClCompile Include="..\mh\seams\ui_keyrepeat.cpp" />
+    <ClCompile Include="..\mh\seams\ui_pause.cpp" />
+    <ClCompile Include="..\mh\seams\launch.cpp" />
+    <ClCompile Include="..\mh\seams\video.cpp" />
+    <ClCompile Include="..\..\mh_net_proto\src\session_info.cpp" />
+    <ClCompile Include="..\..\mh_net_proto\src\net_wire.cpp" />
+    <ClCompile Include="..\..\mh_net_proto\src\net_crypto.cpp" />
+  </ItemGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+  <ImportGroup Label="ExtensionTargets">
+  </ImportGroup>
+</Project>

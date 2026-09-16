@@ -1,0 +1,44 @@
+# Proves the [uitest] `key` action: reach a screen that is UNREACHABLE by mouse.
+#
+# The ESC/in-game menu and the enter-gameplay options screen are both opened from scancode branches in
+# llm_strat_input_update, so a mouse-only driver could never get to them. `key 0x01` (ESC, PC set-1)
+# injects a down+up pair into the game's own key ring, exactly as the mouse actions do for the mouse
+# ring -- the game then runs its real handler.
+
+settled value:110
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+settled Create
+clickl Create
+present Game name
+settled Ok
+clickl Ok
+present Available maps
+settled Ok
+clickl Ok
+present Network players
+settled Start
+click 70 132
+present Computer
+enabled Start
+clickl Start
+
+# in-game, then ESC -> in-game menu -> Options (the resolution control lives here)
+absent Network players
+gamemode 2
+# 1500 was too early: the fog-of-war reveal is still GROWING there, so the captured frame differs by
+# whatever the reveal reached -- 1.206% on the VM, 2.018% locally against a 2% tol, i.e. the same test
+# passing or failing on frame-settle luck. The diff is the reveal annulus, the same shape that broke
+# match_launch's m3_launched. Wait for the reveal to saturate instead. (H4, 2026-07-28)
+gameclock 6000
+key 0x01
+present &Options
+capture p1_escmenu
+clickv 111
+dump
+capture p2_options
+
+log options screen reached -- the Screen size control renders from the extended list
+end

@@ -1,0 +1,6 @@
+{
+  "_comment": "ACCEPTED VERIFICATION DEBT -- ledger rows whose recorded evidence cannot be located. Consumed by tools/lint_evidence_tiers.py, which is HARD in both directions: a violating row that is NOT here fails the gate, and an entry here whose row no longer violates fails as STALE. So this file can only shrink without someone deciding, in a diff, to grow it. Every entry needs a `why` saying what is missing and what would close it. Draining an entry means fixing the ROW -- writing the oracle and citing it, or recording the evidence that exists -- and DELETING the line, never editing the `why` to be vaguer.",
+  "_opened": "2026-08-23, checking SIM1's acceptance clauses. See docs/dead-ends.md, 'a verification-debt mechanism that keys on the wrong field'.",
+  "ai": {},
+  "sim": {}
+}

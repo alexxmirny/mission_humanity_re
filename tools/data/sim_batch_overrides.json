@@ -1,0 +1,59 @@
+{
+  "_comment": [
+    "HAND batch assignments for sim-migration functions no mechanical rule in gen_migration.py can",
+    "classify. Sibling of tools/data/ai_batch_overrides.json; same contract.",
+    "",
+    "propose_batch() deliberately emits 'unassigned' rather than guessing. A function with no batch",
+    "is in no item's acceptance test -- SIM1A..SIM1F's done_when each reads 'every function in THIS",
+    "batch' -- so an unassigned row can sit untranslated while every item reports done. That is the",
+    "failure AI-BATCH-TRIAGE had to clean up after the fact; here the 11 were triaged on day one.",
+    "",
+    "Every entry MUST carry a `why`. The generator refuses the file otherwise. Keep the `why` about",
+    "the SCHEDULING decision (which batch, and what makes this function different); per-function RE",
+    "notes belong in the plate comment and docs/sim-closure.md.",
+    "",
+    "OPENED 2026-08-07 (SIM-PREP). Of the 11 originally unassigned rows, 9 were unassigned only",
+    "because they were still FUN_ -- an unnamed function matches no substring rule by construction.",
+    "Naming them (SIM-PREP's clause 3) routed 7 mechanically and moved 2 out of the migration set",
+    "entirely: llm_math_scale_pct (was FUN_0044b3b3) and llm_math_manhattan_dist (was FUN_00489164)",
+    "are pure arithmetic leaves, and their new names match the `llm_math_` FRONTIER prefix, so Law 4",
+    "now holds them original instead. That is the intended interaction, not an accident: naming a leaf",
+    "for what it is should move it to the frontier. Only the 2 below needed a hand decision."
+  ],
+
+  "0x0049fc6f": {
+    "batch": "C",
+    "why": [
+      "llm_debug_roll_random. It is order-code table case 3 (order_code 0xe7) of",
+      "llm_strat_order_queue_dispatch, so it belongs with the order-dispatch handlers in batch C --",
+      "the same place every other case of that table landed. No rule matched because the body is a",
+      "debug hook (llm_rand_below(100) formatted into G_TEXT_TMP) and its name says 'debug', not",
+      "'order': the C rule keys on order_/_order/dispatch/ctrlgrp, and none of those appear. Batch is",
+      "decided by WHICH DISPATCH TABLE OWNS IT, not by what the body does."
+    ]
+  },
+
+  "0x004b4d01": {
+    "batch": "F",
+    "why": [
+      "llm_strat_rng_next -- the strategic PRNG core. Scheduled into F (the caller-side-treatment",
+      "batch) rather than reimplemented on its own merits, because it is a candidate for LEAVING THE",
+      "SET, and F is where a function whose treatment is caller-side belongs.",
+      "",
+      "The finding, recorded here rather than acted on: its ONLY two callers are llm_rand_below and",
+      "llm_rand_below_fx, and BOTH match the profile's `llm_rand` frontier prefix, so both stay",
+      "original under Law 4. Nothing that gets migrated will ever call this function from C++ -- it is",
+      "reached only from original code. The profile's own frontier_why already covers it in as many",
+      "words ('llm_rand* IS the sim PRNG and is deliberately here: the PRNG state is shared with every",
+      "un-migrated consumer, so reimplementing it buys nothing and risks the determinism gate'); the",
+      "wall was simply placed on the WRAPPER names and this is the core, whose name does not start",
+      "with llm_rand. It is in the set because the closure walk descends THROUGH a frontier node",
+      "rather than stopping at it.",
+      "",
+      "Not moved to frontier_prefixes in this session because that is a membership change (309 -> 308)",
+      "and belongs with a deliberate re-derivation, not with a prep pass. See docs/sim-closure.md",
+      "and the SIM-CUT item -- widening the wall is the profile-consistent fix and is preferred over",
+      "keeping this override."
+    ]
+  }
+}

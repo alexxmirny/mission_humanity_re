@@ -1,0 +1,54 @@
+; mh_net.def -- mh_net.dll's EXPORT LIST (fork F4B).
+;
+; A .def rather than __declspec(dllexport) on each function, for three reasons that are all about
+; the split rather than about style:
+;
+;   1. The list is the CONTRACT, and a contract wants to be one readable file. mh.dll resolves every
+;      name below with GetProcAddress (never an import library -- see 3), so this file and
+;      mh_common/include/mh_net_module.h's MH_NET_MODULE_SYMBOLS table are the two halves of one
+;      statement. tools/check_module_bind.py --net-surface asserts they agree, in both directions,
+;      so a symbol added to one and forgotten in the other is a red rather than a null call.
+;   2. It exports the transport WITHOUT touching net_transport.cpp's declarations. That file is also
+;      compiled directly into net_selftest.exe, where dllexport would be wrong; keeping the export
+;      decision in the link rather than in the source is what lets one TU serve both.
+;   3. No import library is produced for anyone to link by accident. A single `mh_net.lib` on some
+;      future link line would put mh_net.dll in that module's IMPORT TABLE, and a missing file would
+;      then fail PROCESS LOAD before one instruction of ours ran -- measured at F4A (0xC0000135,
+;      zero log directories). Absent-tolerance is the whole point of the item; making it impossible
+;      to link against is cheap insurance.
+;
+; ORDER MATCHES MH_NET_MODULE_SYMBOLS in mh_net_module.h (the 23 bound symbols), then the two
+; module-level entries that are not part of the transport API. Names are undecorated: everything
+; here is `extern "C"` __cdecl, so the linker matches these against the leading-underscore forms.
+;
+; NOT HERE, AND THAT IS THE POINT: MH_Net_Init and MH_Net_Shutdown. Both had zero call sites in the
+; whole tree (measured at F4B), and fork F4B deleted them -- see the note where they used to live in
+; net_transport.cpp. MH_Key_Random is not here either: it is the transport's own CSPRNG entry and
+; has no caller outside this module.
+LIBRARY mh_net
+EXPORTS
+    MH_Net_InitEx
+    MH_Net_Send
+    MH_Net_Recv
+    MH_Net_PeerCount
+    MH_Net_LocalPlayerId
+    MH_Net_IdAssigned
+    MH_Net_ActivePeerIds
+    MH_Net_TakeDeadPeer
+    MH_Net_IsStarted
+    MH_Net_GetStats
+    MH_Net_SetSessionInfoHandler
+    MH_Net_SendSessionInfo
+    MH_Net_SetJoinHandler
+    MH_Net_SendJoin
+    MH_Net_SetStartHandler
+    MH_Net_SendStart
+    MH_Net_SetLeaveHandler
+    MH_Net_SendLeave
+    MH_Net_SetAnnounceHandler
+    MH_Net_SendAnnounce
+    MH_Net_SetHashHandler
+    MH_Net_SendHash
+    MH_Key_Load
+    MH_NetModule_Init
+    MH_NetModule_Probe

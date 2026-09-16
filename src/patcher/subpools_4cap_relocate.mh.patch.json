@@ -1,0 +1,1126 @@
+{
+ "class": "reference",
+ "_class_why": "RU-targeted: its sha256 pins the frozen Russian exe, so mhpatch refuses it against the EN image (measured 2026-09-13) and it can never be an in-memory subject. Kept as the on-disk patch for the RU build.",
+ "target": "mh.exe (retail)",
+ "sha256": "9c4451cf8934a9f446a4f639a3aaa002168030ba512df83a6495bb61861d6a30",
+ "sections": [
+  {
+   "name": ".mhpool",
+   "vaddr": "0x10f0000",
+   "vsize": "55936"
+  }
+ ],
+ "_purpose": "RELOCATE 4 sub-pools, same size -- no-op control",
+ "patches": [
+  {
+   "va": "0x00447f7e",
+   "expect": "e0 0f cc 00",
+   "bytes": "00 00 0f 01",
+   "_note": "MOV EAX,0xcc0fe0 @0x447f7d  0xcc0fe0->0x10f0000"
+  },
+  {
+   "va": "0x0044846a",
+   "expect": "e0 0f cc 00",
+   "bytes": "00 00 0f 01",
+   "_note": "MOV EAX,0xcc0fe0 @0x448469  0xcc0fe0->0x10f0000"
+  },
+  {
+   "va": "0x004561b7",
+   "expect": "e0 0f cc 00",
+   "bytes": "00 00 0f 01",
+   "_note": "MOV EAX,0xcc0fe0 @0x4561b6  0xcc0fe0->0x10f0000"
+  },
+  {
+   "va": "0x0045635d",
+   "expect": "e0 0f cc 00",
+   "bytes": "00 00 0f 01",
+   "_note": "MOV word ptr [EAX + 0xcc0fe0],0x0 @0x45635a  0xcc0fe0->0x10f0000"
+  },
+  {
+   "va": "0x004629b8",
+   "expect": "e0 0f cc 00",
+   "bytes": "00 00 0f 01",
+   "_note": "INC word ptr [EAX + 0xcc0fe0] @0x4629b5  0xcc0fe0->0x10f0000"
+  },
+  {
+   "va": "0x004629d2",
+   "expect": "e0 0f cc 00",
+   "bytes": "00 00 0f 01",
+   "_note": "MOV word ptr [EDX + 0xcc0fe0],AX @0x4629cf  0xcc0fe0->0x10f0000"
+  },
+  {
+   "va": "0x004629f6",
+   "expect": "fc 0f cc 00",
+   "bytes": "1c 00 0f 01",
+   "_note": "MOV dword ptr [EAX + 0xcc0ffc],EDX @0x4629f4  0xcc0ffc->0x10f001c"
+  },
+  {
+   "va": "0x00462a0c",
+   "expect": "ea 0f cc 00",
+   "bytes": "0a 00 0f 01",
+   "_note": "MOV dword ptr [EAX + 0xcc0fea],0x1 @0x462a0a  0xcc0fea->0x10f000a"
+  },
+  {
+   "va": "0x00462a26",
+   "expect": "e2 0f cc 00",
+   "bytes": "02 00 0f 01",
+   "_note": "MOV dword ptr [EAX + 0xcc0fe2],0x1 @0x462a24  0xcc0fe2->0x10f0002"
+  },
+  {
+   "va": "0x00462a40",
+   "expect": "e6 0f cc 00",
+   "bytes": "06 00 0f 01",
+   "_note": "MOV dword ptr [EAX + 0xcc0fe6],0x1 @0x462a3e  0xcc0fe6->0x10f0006"
+  },
+  {
+   "va": "0x00462a5a",
+   "expect": "ee 0f cc 00",
+   "bytes": "0e 00 0f 01",
+   "_note": "MOV dword ptr [EAX + 0xcc0fee],0x1e @0x462a58  0xcc0fee->0x10f000e"
+  },
+  {
+   "va": "0x00462a74",
+   "expect": "f2 0f cc 00",
+   "bytes": "12 00 0f 01",
+   "_note": "MOV dword ptr [EAX + 0xcc0ff2],0x1e @0x462a72  0xcc0ff2->0x10f0012"
+  },
+  {
+   "va": "0x00462a9b",
+   "expect": "04 10 cc 00",
+   "bytes": "24 00 0f 01",
+   "_note": "MOV byte ptr [EAX + 0xcc1004],DL @0x462a99  0xcc1004->0x10f0024"
+  },
+  {
+   "va": "0x00462aa1",
+   "expect": "04 10 cc 00",
+   "bytes": "24 00 0f 01",
+   "_note": "MOV AL,byte ptr [EAX + 0xcc1004] @0x462a9f  0xcc1004->0x10f0024"
+  },
+  {
+   "va": "0x00462abb",
+   "expect": "05 10 cc 00",
+   "bytes": "25 00 0f 01",
+   "_note": "MOV byte ptr [EAX + 0xcc1005],0x1 @0x462ab9  0xcc1005->0x10f0025"
+  },
+  {
+   "va": "0x00462ad2",
+   "expect": "06 10 cc 00",
+   "bytes": "26 00 0f 01",
+   "_note": "MOV byte ptr [EAX + 0xcc1006],0x1 @0x462ad0  0xcc1006->0x10f0026"
+  },
+  {
+   "va": "0x00462b09",
+   "expect": "00 10 cc 00",
+   "bytes": "20 00 0f 01",
+   "_note": "MOV dword ptr [EDX + 0xcc1000],EAX @0x462b07  0xcc1000->0x10f0020"
+  },
+  {
+   "va": "0x00462b21",
+   "expect": "00 10 cc 00",
+   "bytes": "20 00 0f 01",
+   "_note": "MOV dword ptr [EAX + 0xcc1000],0x0 @0x462b1f  0xcc1000->0x10f0020"
+  },
+  {
+   "va": "0x00462fd5",
+   "expect": "e0 0f cc 00",
+   "bytes": "00 00 0f 01",
+   "_note": "CMP word ptr [EAX + 0xcc0fe0],0x0 @0x462fd2  0xcc0fe0->0x10f0000"
+  },
+  {
+   "va": "0x0046782e",
+   "expect": "00 10 cc 00",
+   "bytes": "20 00 0f 01",
+   "_note": "MOV EDX,dword ptr [EAX + 0xcc1000] @0x46782c  0xcc1000->0x10f0020"
+  },
+  {
+   "va": "0x00467872",
+   "expect": "f6 0f cc 00",
+   "bytes": "16 00 0f 01",
+   "_note": "MOV word ptr [EDX + 0xcc0ff6],AX @0x46786f  0xcc0ff6->0x10f0016"
+  },
+  {
+   "va": "0x004678a5",
+   "expect": "f8 0f cc 00",
+   "bytes": "18 00 0f 01",
+   "_note": "MOV dword ptr [EAX + 0xcc0ff8],EDX @0x4678a3  0xcc0ff8->0x10f0018"
+  },
+  {
+   "va": "0x0046d384",
+   "expect": "e0 0f cc 00",
+   "bytes": "00 00 0f 01",
+   "_note": "CMP word ptr [EAX + 0xcc0fe0],0x0 @0x46d381  0xcc0fe0->0x10f0000"
+  },
+  {
+   "va": "0x0046d670",
+   "expect": "e0 0f cc 00",
+   "bytes": "00 00 0f 01",
+   "_note": "CMP word ptr [EAX + 0xcc0fe0],0x0 @0x46d66d  0xcc0fe0->0x10f0000"
+  },
+  {
+   "va": "0x00471b4c",
+   "expect": "ea 0f cc 00",
+   "bytes": "0a 00 0f 01",
+   "_note": "CMP dword ptr [EAX + 0xcc0fea],0x1 @0x471b4a  0xcc0fea->0x10f000a"
+  },
+  {
+   "va": "0x00471b68",
+   "expect": "e2 0f cc 00",
+   "bytes": "02 00 0f 01",
+   "_note": "INC dword ptr [EAX + 0xcc0fe2] @0x471b66  0xcc0fe2->0x10f0002"
+  },
+  {
+   "va": "0x00471b81",
+   "expect": "e2 0f cc 00",
+   "bytes": "02 00 0f 01",
+   "_note": "CMP dword ptr [EAX + 0xcc0fe2],0x19 @0x471b7f  0xcc0fe2->0x10f0002"
+  },
+  {
+   "va": "0x00471b9d",
+   "expect": "e2 0f cc 00",
+   "bytes": "02 00 0f 01",
+   "_note": "MOV dword ptr [EAX + 0xcc0fe2],0x1 @0x471b9b  0xcc0fe2->0x10f0002"
+  },
+  {
+   "va": "0x00471bbc",
+   "expect": "e2 0f cc 00",
+   "bytes": "02 00 0f 01",
+   "_note": "DEC dword ptr [EAX + 0xcc0fe2] @0x471bba  0xcc0fe2->0x10f0002"
+  },
+  {
+   "va": "0x00471bd5",
+   "expect": "e2 0f cc 00",
+   "bytes": "02 00 0f 01",
+   "_note": "CMP dword ptr [EAX + 0xcc0fe2],0x0 @0x471bd3  0xcc0fe2->0x10f0002"
+  },
+  {
+   "va": "0x00471bf1",
+   "expect": "e2 0f cc 00",
+   "bytes": "02 00 0f 01",
+   "_note": "MOV dword ptr [EAX + 0xcc0fe2],0x18 @0x471bef  0xcc0fe2->0x10f0002"
+  },
+  {
+   "va": "0x00471c0e",
+   "expect": "f2 0f cc 00",
+   "bytes": "12 00 0f 01",
+   "_note": "DEC dword ptr [EDX + 0xcc0ff2] @0x471c0c  0xcc0ff2->0x10f0012"
+  },
+  {
+   "va": "0x00471c2c",
+   "expect": "f2 0f cc 00",
+   "bytes": "12 00 0f 01",
+   "_note": "MOV EAX,dword ptr [EDX + 0xcc0ff2] @0x471c2a  0xcc0ff2->0x10f0012"
+  },
+  {
+   "va": "0x00471c32",
+   "expect": "f2 0f cc 00",
+   "bytes": "12 00 0f 01",
+   "_note": "MOV EDX,dword ptr [EDX + 0xcc0ff2] @0x471c30  0xcc0ff2->0x10f0012"
+  },
+  {
+   "va": "0x00471c7f",
+   "expect": "f6 0f cc 00",
+   "bytes": "16 00 0f 01",
+   "_note": "MOV word ptr [EDX + 0xcc0ff6],AX @0x471c7c  0xcc0ff6->0x10f0016"
+  },
+  {
+   "va": "0x00471c9b",
+   "expect": "f8 0f cc 00",
+   "bytes": "18 00 0f 01",
+   "_note": "MOV dword ptr [EDX + 0xcc0ff8],EAX @0x471c99  0xcc0ff8->0x10f0018"
+  },
+  {
+   "va": "0x00471cde",
+   "expect": "f2 0f cc 00",
+   "bytes": "12 00 0f 01",
+   "_note": "CMP dword ptr [EAX + 0xcc0ff2],0x0 @0x471cdc  0xcc0ff2->0x10f0012"
+  },
+  {
+   "va": "0x00471cfe",
+   "expect": "ea 0f cc 00",
+   "bytes": "0a 00 0f 01",
+   "_note": "IMUL EDX,dword ptr [EAX + 0xcc0fea],-0x1 @0x471cfc  0xcc0fea->0x10f000a"
+  },
+  {
+   "va": "0x00471d18",
+   "expect": "ea 0f cc 00",
+   "bytes": "0a 00 0f 01",
+   "_note": "MOV dword ptr [EAX + 0xcc0fea],EDX @0x471d16  0xcc0fea->0x10f000a"
+  },
+  {
+   "va": "0x00471d36",
+   "expect": "ee 0f cc 00",
+   "bytes": "0e 00 0f 01",
+   "_note": "MOV EAX,dword ptr [EDX + 0xcc0fee] @0x471d34  0xcc0fee->0x10f000e"
+  },
+  {
+   "va": "0x00471d3c",
+   "expect": "ee 0f cc 00",
+   "bytes": "0e 00 0f 01",
+   "_note": "MOV EDX,dword ptr [EDX + 0xcc0fee] @0x471d3a  0xcc0fee->0x10f000e"
+  },
+  {
+   "va": "0x00471d5d",
+   "expect": "ee 0f cc 00",
+   "bytes": "0e 00 0f 01",
+   "_note": "MOV dword ptr [EAX + 0xcc0fee],EDX @0x471d5b  0xcc0fee->0x10f000e"
+  },
+  {
+   "va": "0x00471d76",
+   "expect": "ee 0f cc 00",
+   "bytes": "0e 00 0f 01",
+   "_note": "MOV EAX,dword ptr [EAX + 0xcc0fee] @0x471d74  0xcc0fee->0x10f000e"
+  },
+  {
+   "va": "0x00471d7c",
+   "expect": "f2 0f cc 00",
+   "bytes": "12 00 0f 01",
+   "_note": "MOV dword ptr [EDX + 0xcc0ff2],EAX @0x471d7a  0xcc0ff2->0x10f0012"
+  },
+  {
+   "va": "0x00471e1b",
+   "expect": "e2 0f cc 00",
+   "bytes": "02 00 0f 01",
+   "_note": "ADD EAX,dword ptr [EDX + 0xcc0fe2] @0x471e19  0xcc0fe2->0x10f0002"
+  },
+  {
+   "va": "0x00471edf",
+   "expect": "e2 0f cc 00",
+   "bytes": "02 00 0f 01",
+   "_note": "MOV EAX,dword ptr [EAX + 0xcc0fe2] @0x471edd  0xcc0fe2->0x10f0002"
+  },
+  {
+   "va": "0x00471f20",
+   "expect": "f6 0f cc 00",
+   "bytes": "16 00 0f 01",
+   "_note": "MOV AX,word ptr [EAX + 0xcc0ff6] @0x471f1d  0xcc0ff6->0x10f0016"
+  },
+  {
+   "va": "0x00471f50",
+   "expect": "f6 0f cc 00",
+   "bytes": "16 00 0f 01",
+   "_note": "MOV AX,word ptr [EAX + 0xcc0ff6] @0x471f4d  0xcc0ff6->0x10f0016"
+  },
+  {
+   "va": "0x00471f7f",
+   "expect": "f8 0f cc 00",
+   "bytes": "18 00 0f 01",
+   "_note": "MOV EAX,dword ptr [EAX + 0xcc0ff8] @0x471f7d  0xcc0ff8->0x10f0018"
+  },
+  {
+   "va": "0x0047200f",
+   "expect": "f2 0f cc 00",
+   "bytes": "12 00 0f 01",
+   "_note": "MOV dword ptr [EAX + 0xcc0ff2],0x1 @0x47200d  0xcc0ff2->0x10f0012"
+  },
+  {
+   "va": "0x00472097",
+   "expect": "00 10 cc 00",
+   "bytes": "20 00 0f 01",
+   "_note": "MOV EDX,dword ptr [EDX + 0xcc1000] @0x472095  0xcc1000->0x10f0020"
+  },
+  {
+   "va": "0x004720e9",
+   "expect": "f2 0f cc 00",
+   "bytes": "12 00 0f 01",
+   "_note": "MOV dword ptr [EAX + 0xcc0ff2],0x1 @0x4720e7  0xcc0ff2->0x10f0012"
+  },
+  {
+   "va": "0x00472196",
+   "expect": "f2 0f cc 00",
+   "bytes": "12 00 0f 01",
+   "_note": "MOV dword ptr [EAX + 0xcc0ff2],0x1 @0x472194  0xcc0ff2->0x10f0012"
+  },
+  {
+   "va": "0x0047230c",
+   "expect": "ea 0f cc 00",
+   "bytes": "0a 00 0f 01",
+   "_note": "MOV dword ptr [EDX + 0xcc0fea],EAX @0x47230a  0xcc0fea->0x10f000a"
+  },
+  {
+   "va": "0x00472333",
+   "expect": "e2 0f cc 00",
+   "bytes": "02 00 0f 01",
+   "_note": "MOV dword ptr [EDX + 0xcc0fe2],EAX @0x472331  0xcc0fe2->0x10f0002"
+  },
+  {
+   "va": "0x004723c1",
+   "expect": "06 10 cc 00",
+   "bytes": "26 00 0f 01",
+   "_note": "CMP byte ptr [EAX + 0xcc1006],0x0 @0x4723bf  0xcc1006->0x10f0026"
+  },
+  {
+   "va": "0x0047b482",
+   "expect": "e0 0f cc 00",
+   "bytes": "00 00 0f 01",
+   "_note": "MOV word ptr [EAX + 0xcc0fe0],0x0 @0x47b47f  0xcc0fe0->0x10f0000"
+  },
+  {
+   "va": "0x0047b495",
+   "expect": "e0 0f cc 00",
+   "bytes": "00 00 0f 01",
+   "_note": "DEC word ptr [EAX + 0xcc0fe0] @0x47b492  0xcc0fe0->0x10f0000"
+  },
+  {
+   "va": "0x0047b942",
+   "expect": "e2 0f cc 00",
+   "bytes": "02 00 0f 01",
+   "_note": "MOV EAX,dword ptr [EAX + 0xcc0fe2] @0x47b940  0xcc0fe2->0x10f0002"
+  },
+  {
+   "va": "0x0047b974",
+   "expect": "00 10 cc 00",
+   "bytes": "20 00 0f 01",
+   "_note": "MOV EAX,dword ptr [EAX + 0xcc1000] @0x47b972  0xcc1000->0x10f0020"
+  },
+  {
+   "va": "0x0047bda2",
+   "expect": "04 10 cc 00",
+   "bytes": "24 00 0f 01",
+   "_note": "MOVZX EAX,byte ptr [EAX + 0xcc1004] @0x47bd9f  0xcc1004->0x10f0024"
+  },
+  {
+   "va": "0x0047bdeb",
+   "expect": "0f 10 cc 00",
+   "bytes": "2f 00 0f 01",
+   "_note": "DEC dword ptr [EAX + 0xcc100f] @0x47bde9  0xcc100f->0x10f002f"
+  },
+  {
+   "va": "0x0047be01",
+   "expect": "0f 10 cc 00",
+   "bytes": "2f 00 0f 01",
+   "_note": "CMP dword ptr [EAX + 0xcc100f],0x0 @0x47bdff  0xcc100f->0x10f002f"
+  },
+  {
+   "va": "0x0047be27",
+   "expect": "07 10 cc 00",
+   "bytes": "27 00 0f 01",
+   "_note": "FSTP double ptr [EAX + 0xcc1007] @0x47be25  0xcc1007->0x10f0027"
+  },
+  {
+   "va": "0x0047be42",
+   "expect": "13 10 cc 00",
+   "bytes": "33 00 0f 01",
+   "_note": "CMP dword ptr [EAX + 0xcc1013],-0x1 @0x47be40  0xcc1013->0x10f0033"
+  },
+  {
+   "va": "0x0047be5b",
+   "expect": "13 10 cc 00",
+   "bytes": "33 00 0f 01",
+   "_note": "DEC dword ptr [EAX + 0xcc1013] @0x47be59  0xcc1013->0x10f0033"
+  },
+  {
+   "va": "0x0047be71",
+   "expect": "13 10 cc 00",
+   "bytes": "33 00 0f 01",
+   "_note": "CMP dword ptr [EAX + 0xcc1013],0x0 @0x47be6f  0xcc1013->0x10f0033"
+  },
+  {
+   "va": "0x0047be97",
+   "expect": "07 10 cc 00",
+   "bytes": "27 00 0f 01",
+   "_note": "FSTP double ptr [EAX + 0xcc1007] @0x47be95  0xcc1007->0x10f0027"
+  },
+  {
+   "va": "0x0047beaf",
+   "expect": "05 10 cc 00",
+   "bytes": "25 00 0f 01",
+   "_note": "MOV byte ptr [EAX + 0xcc1005],0x0 @0x47bead  0xcc1005->0x10f0025"
+  },
+  {
+   "va": "0x0047bee8",
+   "expect": "06 10 cc 00",
+   "bytes": "26 00 0f 01",
+   "_note": "MOV byte ptr [EAX + 0xcc1006],0x0 @0x47bee6  0xcc1006->0x10f0026"
+  },
+  {
+   "va": "0x0047c211",
+   "expect": "f8 0f cc 00",
+   "bytes": "18 00 0f 01",
+   "_note": "PUSH dword ptr [EAX + 0xcc0ff8] @0x47c20f  0xcc0ff8->0x10f0018"
+  },
+  {
+   "va": "0x0047c241",
+   "expect": "f6 0f cc 00",
+   "bytes": "16 00 0f 01",
+   "_note": "MOVZX EAX,word ptr [EAX + 0xcc0ff6] @0x47c23e  0xcc0ff6->0x10f0016"
+  },
+  {
+   "va": "0x0047c2cc",
+   "expect": "f8 0f cc 00",
+   "bytes": "18 00 0f 01",
+   "_note": "PUSH dword ptr [EAX + 0xcc0ff8] @0x47c2ca  0xcc0ff8->0x10f0018"
+  },
+  {
+   "va": "0x0047c2fc",
+   "expect": "f6 0f cc 00",
+   "bytes": "16 00 0f 01",
+   "_note": "MOVZX EAX,word ptr [EAX + 0xcc0ff6] @0x47c2f9  0xcc0ff6->0x10f0016"
+  },
+  {
+   "va": "0x0047c414",
+   "expect": "04 10 cc 00",
+   "bytes": "24 00 0f 01",
+   "_note": "MOVZX EAX,byte ptr [EAX + 0xcc1004] @0x47c411  0xcc1004->0x10f0024"
+  },
+  {
+   "va": "0x0047c42d",
+   "expect": "06 10 cc 00",
+   "bytes": "26 00 0f 01",
+   "_note": "CMP byte ptr [EAX + 0xcc1006],0x0 @0x47c42b  0xcc1006->0x10f0026"
+  },
+  {
+   "va": "0x0047c44a",
+   "expect": "07 10 cc 00",
+   "bytes": "27 00 0f 01",
+   "_note": "FLD double ptr [EAX + 0xcc1007] @0x47c448  0xcc1007->0x10f0027"
+  },
+  {
+   "va": "0x0047c453",
+   "expect": "07 10 cc 00",
+   "bytes": "27 00 0f 01",
+   "_note": "FSTP double ptr [EAX + 0xcc1007] @0x47c451  0xcc1007->0x10f0027"
+  },
+  {
+   "va": "0x0047c46b",
+   "expect": "07 10 cc 00",
+   "bytes": "27 00 0f 01",
+   "_note": "FCOMP double ptr [EAX + 0xcc1007] @0x47c469  0xcc1007->0x10f0027"
+  },
+  {
+   "va": "0x0047c486",
+   "expect": "0f 10 cc 00",
+   "bytes": "2f 00 0f 01",
+   "_note": "CMP dword ptr [EAX + 0xcc100f],0x0 @0x47c484  0xcc100f->0x10f002f"
+  },
+  {
+   "va": "0x0047c4ac",
+   "expect": "0f 10 cc 00",
+   "bytes": "2f 00 0f 01",
+   "_note": "MOV dword ptr [EAX + 0xcc100f],EDX @0x47c4aa  0xcc100f->0x10f002f"
+  },
+  {
+   "va": "0x0047c4c2",
+   "expect": "07 10 cc 00",
+   "bytes": "27 00 0f 01",
+   "_note": "MOV dword ptr [EAX + 0xcc1007],0x0 @0x47c4c0  0xcc1007->0x10f0027"
+  },
+  {
+   "va": "0x0047c4cc",
+   "expect": "0b 10 cc 00",
+   "bytes": "2b 00 0f 01",
+   "_note": "MOV dword ptr [EAX + 0xcc100b],0x0 @0x47c4ca  0xcc100b->0x10f002b"
+  },
+  {
+   "va": "0x0047c4e6",
+   "expect": "06 10 cc 00",
+   "bytes": "26 00 0f 01",
+   "_note": "MOV byte ptr [EAX + 0xcc1006],0x1 @0x47c4e4  0xcc1006->0x10f0026"
+  },
+  {
+   "va": "0x004eb308",
+   "expect": "f8 0f cc 00",
+   "bytes": "18 00 0f 01",
+   "_note": "CMP dword ptr [EAX + 0xcc0ff8],0x0 @0x4eb306  0xcc0ff8->0x10f0018"
+  },
+  {
+   "va": "0x004eb316",
+   "expect": "f6 0f cc 00",
+   "bytes": "16 00 0f 01",
+   "_note": "MOV DX,word ptr [EAX + 0xcc0ff6] @0x4eb313  0xcc0ff6->0x10f0016"
+  },
+  {
+   "va": "0x004eb32d",
+   "expect": "f6 0f cc 00",
+   "bytes": "16 00 0f 01",
+   "_note": "MOV AX,word ptr [EAX + 0xcc0ff6] @0x4eb32a  0xcc0ff6->0x10f0016"
+  },
+  {
+   "va": "0x004eb356",
+   "expect": "f8 0f cc 00",
+   "bytes": "18 00 0f 01",
+   "_note": "MOV AX,word ptr [EDI + EAX*0x1 + 0xcc0ff8] @0x4eb352  0xcc0ff8->0x10f0018"
+  },
+  {
+   "va": "0x00447f54",
+   "expect": "80 34 d0 00",
+   "bytes": "00 37 0f 01",
+   "_note": "MOV EAX,0xd03480 @0x447f53  0xd03480->0x10f3700"
+  },
+  {
+   "va": "0x00448440",
+   "expect": "80 34 d0 00",
+   "bytes": "00 37 0f 01",
+   "_note": "MOV EAX,0xd03480 @0x44843f  0xd03480->0x10f3700"
+  },
+  {
+   "va": "0x00456195",
+   "expect": "80 34 d0 00",
+   "bytes": "00 37 0f 01",
+   "_note": "MOV EAX,0xd03480 @0x456194  0xd03480->0x10f3700"
+  },
+  {
+   "va": "0x004563b7",
+   "expect": "80 34 d0 00",
+   "bytes": "00 37 0f 01",
+   "_note": "MOV dword ptr [EAX + 0xd03480],0x0 @0x4563b5  0xd03480->0x10f3700"
+  },
+  {
+   "va": "0x00462b80",
+   "expect": "80 34 d0 00",
+   "bytes": "00 37 0f 01",
+   "_note": "INC dword ptr [EAX + 0xd03480] @0x462b7e  0xd03480->0x10f3700"
+  },
+  {
+   "va": "0x00462b99",
+   "expect": "80 34 d0 00",
+   "bytes": "00 37 0f 01",
+   "_note": "MOV dword ptr [EDX + 0xd03480],EAX @0x462b97  0xd03480->0x10f3700"
+  },
+  {
+   "va": "0x00463011",
+   "expect": "80 34 d0 00",
+   "bytes": "00 37 0f 01",
+   "_note": "CMP dword ptr [EAX + 0xd03480],0x0 @0x46300f  0xd03480->0x10f3700"
+  },
+  {
+   "va": "0x0046d3c3",
+   "expect": "80 34 d0 00",
+   "bytes": "00 37 0f 01",
+   "_note": "CMP dword ptr [EAX + 0xd03480],0x0 @0x46d3c1  0xd03480->0x10f3700"
+  },
+  {
+   "va": "0x0046d6af",
+   "expect": "80 34 d0 00",
+   "bytes": "00 37 0f 01",
+   "_note": "CMP dword ptr [EAX + 0xd03480],0x0 @0x46d6ad  0xd03480->0x10f3700"
+  },
+  {
+   "va": "0x00474454",
+   "expect": "8d 34 d0 00",
+   "bytes": "0d 37 0f 01",
+   "_note": "MOV EAX,dword ptr [EAX + 0xd0348d] @0x474452  0xd0348d->0x10f370d"
+  },
+  {
+   "va": "0x0047a5c9",
+   "expect": "84 34 d0 00",
+   "bytes": "04 37 0f 01",
+   "_note": "MOV AL,byte ptr [EAX + 0xd03484] @0x47a5c7  0xd03484->0x10f3704"
+  },
+  {
+   "va": "0x0047a5f2",
+   "expect": "85 34 d0 00",
+   "bytes": "05 37 0f 01",
+   "_note": "MOV EAX,dword ptr [EAX + 0xd03485] @0x47a5f0  0xd03485->0x10f3705"
+  },
+  {
+   "va": "0x0047a611",
+   "expect": "89 34 d0 00",
+   "bytes": "09 37 0f 01",
+   "_note": "MOV EAX,dword ptr [EAX + 0xd03489] @0x47a60f  0xd03489->0x10f3709"
+  },
+  {
+   "va": "0x0047a630",
+   "expect": "8d 34 d0 00",
+   "bytes": "0d 37 0f 01",
+   "_note": "MOV EAX,dword ptr [EAX + 0xd0348d] @0x47a62e  0xd0348d->0x10f370d"
+  },
+  {
+   "va": "0x0047a97f",
+   "expect": "84 34 d0 00",
+   "bytes": "04 37 0f 01",
+   "_note": "MOV byte ptr [EAX + 0xd03484],DL @0x47a97d  0xd03484->0x10f3704"
+  },
+  {
+   "va": "0x0047a985",
+   "expect": "84 34 d0 00",
+   "bytes": "04 37 0f 01",
+   "_note": "MOV AL,byte ptr [EAX + 0xd03484] @0x47a983  0xd03484->0x10f3704"
+  },
+  {
+   "va": "0x0047a9b0",
+   "expect": "8d 34 d0 00",
+   "bytes": "0d 37 0f 01",
+   "_note": "MOV dword ptr [EAX + 0xd0348d],0x0 @0x47a9ae  0xd0348d->0x10f370d"
+  },
+  {
+   "va": "0x0047ad94",
+   "expect": "85 34 d0 00",
+   "bytes": "05 37 0f 01",
+   "_note": "MOV dword ptr [EAX + 0xd03485],EDX @0x47ad92  0xd03485->0x10f3705"
+  },
+  {
+   "va": "0x0047adc6",
+   "expect": "89 34 d0 00",
+   "bytes": "09 37 0f 01",
+   "_note": "MOV dword ptr [EAX + 0xd03489],EDX @0x47adc4  0xd03489->0x10f3709"
+  },
+  {
+   "va": "0x0047ae5c",
+   "expect": "8d 34 d0 00",
+   "bytes": "0d 37 0f 01",
+   "_note": "MOV dword ptr [EDX + 0xd0348d],EAX @0x47ae5a  0xd0348d->0x10f370d"
+  },
+  {
+   "va": "0x0047ae87",
+   "expect": "8d 34 d0 00",
+   "bytes": "0d 37 0f 01",
+   "_note": "MOV dword ptr [EAX + 0xd0348d],0x0 @0x47ae85  0xd0348d->0x10f370d"
+  },
+  {
+   "va": "0x0047b452",
+   "expect": "80 34 d0 00",
+   "bytes": "00 37 0f 01",
+   "_note": "MOV dword ptr [EAX + 0xd03480],0x0 @0x47b450  0xd03480->0x10f3700"
+  },
+  {
+   "va": "0x0047b466",
+   "expect": "80 34 d0 00",
+   "bytes": "00 37 0f 01",
+   "_note": "DEC dword ptr [EAX + 0xd03480] @0x47b464  0xd03480->0x10f3700"
+  },
+  {
+   "va": "0x00447f93",
+   "expect": "80 2d d0 00",
+   "bytes": "00 6f 0f 01",
+   "_note": "MOV EAX,0xd02d80 @0x447f92  0xd02d80->0x10f6f00"
+  },
+  {
+   "va": "0x0044847f",
+   "expect": "80 2d d0 00",
+   "bytes": "00 6f 0f 01",
+   "_note": "MOV EAX,0xd02d80 @0x44847e  0xd02d80->0x10f6f00"
+  },
+  {
+   "va": "0x0044a44d",
+   "expect": "84 2d d0 00",
+   "bytes": "04 6f 0f 01",
+   "_note": "MOV EAX,dword ptr [EAX + 0xd02d84] @0x44a44b  0xd02d84->0x10f6f04"
+  },
+  {
+   "va": "0x004561c8",
+   "expect": "80 2d d0 00",
+   "bytes": "00 6f 0f 01",
+   "_note": "MOV EAX,0xd02d80 @0x4561c7  0xd02d80->0x10f6f00"
+  },
+  {
+   "va": "0x0045638a",
+   "expect": "80 2d d0 00",
+   "bytes": "00 6f 0f 01",
+   "_note": "MOV dword ptr [EAX + 0xd02d80],0x0 @0x456388  0xd02d80->0x10f6f00"
+  },
+  {
+   "va": "0x00462b37",
+   "expect": "80 2d d0 00",
+   "bytes": "00 6f 0f 01",
+   "_note": "INC dword ptr [EAX + 0xd02d80] @0x462b35  0xd02d80->0x10f6f00"
+  },
+  {
+   "va": "0x00462b52",
+   "expect": "80 2d d0 00",
+   "bytes": "00 6f 0f 01",
+   "_note": "MOV dword ptr [EDX + 0xd02d80],EAX @0x462b50  0xd02d80->0x10f6f00"
+  },
+  {
+   "va": "0x00462b6a",
+   "expect": "84 2d d0 00",
+   "bytes": "04 6f 0f 01",
+   "_note": "MOV dword ptr [EAX + 0xd02d84],0x0 @0x462b68  0xd02d84->0x10f6f04"
+  },
+  {
+   "va": "0x00463092",
+   "expect": "80 2d d0 00",
+   "bytes": "00 6f 0f 01",
+   "_note": "CMP dword ptr [EAX + 0xd02d80],0x0 @0x463090  0xd02d80->0x10f6f00"
+  },
+  {
+   "va": "0x0046899d",
+   "expect": "84 2d d0 00",
+   "bytes": "04 6f 0f 01",
+   "_note": "MOV EAX,dword ptr [EAX + 0xd02d84] @0x46899b  0xd02d84->0x10f6f04"
+  },
+  {
+   "va": "0x00468a28",
+   "expect": "84 2d d0 00",
+   "bytes": "04 6f 0f 01",
+   "_note": "MOV dword ptr [EDX + 0xd02d84],EAX @0x468a26  0xd02d84->0x10f6f04"
+  },
+  {
+   "va": "0x0046d443",
+   "expect": "80 2d d0 00",
+   "bytes": "00 6f 0f 01",
+   "_note": "CMP dword ptr [EAX + 0xd02d80],0x0 @0x46d441  0xd02d80->0x10f6f00"
+  },
+  {
+   "va": "0x0046d72f",
+   "expect": "80 2d d0 00",
+   "bytes": "00 6f 0f 01",
+   "_note": "CMP dword ptr [EAX + 0xd02d80],0x0 @0x46d72d  0xd02d80->0x10f6f00"
+  },
+  {
+   "va": "0x00470e00",
+   "expect": "84 2d d0 00",
+   "bytes": "04 6f 0f 01",
+   "_note": "MOV EDX,dword ptr [EAX + 0xd02d84] @0x470dfe  0xd02d84->0x10f6f04"
+  },
+  {
+   "va": "0x00472f8e",
+   "expect": "84 2d d0 00",
+   "bytes": "04 6f 0f 01",
+   "_note": "IMUL EAX,dword ptr [EAX + 0xd02d84],0xd0 @0x472f8c  0xd02d84->0x10f6f04"
+  },
+  {
+   "va": "0x00473071",
+   "expect": "84 2d d0 00",
+   "bytes": "04 6f 0f 01",
+   "_note": "IMUL EAX,dword ptr [EAX + 0xd02d84],0xd0 @0x47306f  0xd02d84->0x10f6f04"
+  },
+  {
+   "va": "0x00473106",
+   "expect": "84 2d d0 00",
+   "bytes": "04 6f 0f 01",
+   "_note": "IMUL EAX,dword ptr [EAX + 0xd02d84],0xd0 @0x473104  0xd02d84->0x10f6f04"
+  },
+  {
+   "va": "0x00473144",
+   "expect": "84 2d d0 00",
+   "bytes": "04 6f 0f 01",
+   "_note": "IMUL EAX,dword ptr [EAX + 0xd02d84],0xd0 @0x473142  0xd02d84->0x10f6f04"
+  },
+  {
+   "va": "0x0047a838",
+   "expect": "84 2d d0 00",
+   "bytes": "04 6f 0f 01",
+   "_note": "IMUL EAX,dword ptr [EAX + 0xd02d84],0xd0 @0x47a836  0xd02d84->0x10f6f04"
+  },
+  {
+   "va": "0x0047b639",
+   "expect": "80 2d d0 00",
+   "bytes": "00 6f 0f 01",
+   "_note": "DEC dword ptr [EAX + 0xd02d80] @0x47b637  0xd02d80->0x10f6f00"
+  },
+  {
+   "va": "0x0047b651",
+   "expect": "80 2d d0 00",
+   "bytes": "00 6f 0f 01",
+   "_note": "MOV dword ptr [EAX + 0xd02d80],0x0 @0x47b64f  0xd02d80->0x10f6f00"
+  },
+  {
+   "va": "0x00447f3f",
+   "expect": "48 26 dd 00",
+   "bytes": "40 75 0f 01",
+   "_note": "MOV EAX,0xdd2648 @0x447f3e  0xdd2648->0x10f7540"
+  },
+  {
+   "va": "0x0044842b",
+   "expect": "48 26 dd 00",
+   "bytes": "40 75 0f 01",
+   "_note": "MOV EAX,0xdd2648 @0x44842a  0xdd2648->0x10f7540"
+  },
+  {
+   "va": "0x00449f0a",
+   "expect": "4d 26 dd 00",
+   "bytes": "45 75 0f 01",
+   "_note": "MOV EAX,dword ptr [EAX + 0xdd264d] @0x449f08  0xdd264d->0x10f7545"
+  },
+  {
+   "va": "0x00456184",
+   "expect": "48 26 dd 00",
+   "bytes": "40 75 0f 01",
+   "_note": "MOV EAX,0xdd2648 @0x456183  0xdd2648->0x10f7540"
+  },
+  {
+   "va": "0x004562ff",
+   "expect": "48 26 dd 00",
+   "bytes": "40 75 0f 01",
+   "_note": "MOV dword ptr [EAX + 0xdd2648],0x0 @0x4562fd  0xdd2648->0x10f7540"
+  },
+  {
+   "va": "0x004627cc",
+   "expect": "48 26 dd 00",
+   "bytes": "40 75 0f 01",
+   "_note": "INC dword ptr [EAX + 0xdd2648] @0x4627ca  0xdd2648->0x10f7540"
+  },
+  {
+   "va": "0x004627e8",
+   "expect": "48 26 dd 00",
+   "bytes": "40 75 0f 01",
+   "_note": "MOV dword ptr [EDX + 0xdd2648],EAX @0x4627e6  0xdd2648->0x10f7540"
+  },
+  {
+   "va": "0x0046281d",
+   "expect": "4d 26 dd 00",
+   "bytes": "45 75 0f 01",
+   "_note": "MOV dword ptr [EAX + 0xdd264d],0x0 @0x46281b  0xdd264d->0x10f7545"
+  },
+  {
+   "va": "0x0046283c",
+   "expect": "4c 26 dd 00",
+   "bytes": "44 75 0f 01",
+   "_note": "MOV byte ptr [EAX + 0xdd264c],0x0 @0x46283a  0xdd264c->0x10f7544"
+  },
+  {
+   "va": "0x00462f98",
+   "expect": "48 26 dd 00",
+   "bytes": "40 75 0f 01",
+   "_note": "CMP dword ptr [EAX + 0xdd2648],0x0 @0x462f96  0xdd2648->0x10f7540"
+  },
+  {
+   "va": "0x004685ea",
+   "expect": "4d 26 dd 00",
+   "bytes": "45 75 0f 01",
+   "_note": "ADD EAX,dword ptr [EDX + 0xdd264d] @0x4685e8  0xdd264d->0x10f7545"
+  },
+  {
+   "va": "0x00468620",
+   "expect": "4d 26 dd 00",
+   "bytes": "45 75 0f 01",
+   "_note": "SUB EDX,dword ptr [EAX + 0xdd264d] @0x46861e  0xdd264d->0x10f7545"
+  },
+  {
+   "va": "0x00468671",
+   "expect": "4d 26 dd 00",
+   "bytes": "45 75 0f 01",
+   "_note": "ADD dword ptr [EAX + 0xdd264d],EDX @0x46866f  0xdd264d->0x10f7545"
+  },
+  {
+   "va": "0x004686b6",
+   "expect": "4d 26 dd 00",
+   "bytes": "45 75 0f 01",
+   "_note": "ADD dword ptr [EAX + 0xdd264d],EDX @0x4686b4  0xdd264d->0x10f7545"
+  },
+  {
+   "va": "0x004687e0",
+   "expect": "4d 26 dd 00",
+   "bytes": "45 75 0f 01",
+   "_note": "CMP dword ptr [EAX + 0xdd264d],0x0 @0x4687de  0xdd264d->0x10f7545"
+  },
+  {
+   "va": "0x0046881e",
+   "expect": "4d 26 dd 00",
+   "bytes": "45 75 0f 01",
+   "_note": "DEC dword ptr [EAX + 0xdd264d] @0x46881c  0xdd264d->0x10f7545"
+  },
+  {
+   "va": "0x0046884a",
+   "expect": "4d 26 dd 00",
+   "bytes": "45 75 0f 01",
+   "_note": "DEC dword ptr [EAX + 0xdd264d] @0x468848  0xdd264d->0x10f7545"
+  },
+  {
+   "va": "0x00468896",
+   "expect": "4c 26 dd 00",
+   "bytes": "44 75 0f 01",
+   "_note": "MOVZX EDX,byte ptr [EAX + 0xdd264c] @0x468893  0xdd264c->0x10f7544"
+  },
+  {
+   "va": "0x004688ed",
+   "expect": "4c 26 dd 00",
+   "bytes": "44 75 0f 01",
+   "_note": "MOVZX EDX,byte ptr [EAX + 0xdd264c] @0x4688ea  0xdd264c->0x10f7544"
+  },
+  {
+   "va": "0x0046892a",
+   "expect": "4c 26 dd 00",
+   "bytes": "44 75 0f 01",
+   "_note": "MOVZX EDX,byte ptr [EAX + 0xdd264c] @0x468927  0xdd264c->0x10f7544"
+  },
+  {
+   "va": "0x0046d344",
+   "expect": "48 26 dd 00",
+   "bytes": "40 75 0f 01",
+   "_note": "CMP dword ptr [EAX + 0xdd2648],0x0 @0x46d342  0xdd2648->0x10f7540"
+  },
+  {
+   "va": "0x0046d630",
+   "expect": "48 26 dd 00",
+   "bytes": "40 75 0f 01",
+   "_note": "CMP dword ptr [EAX + 0xdd2648],0x0 @0x46d62e  0xdd2648->0x10f7540"
+  },
+  {
+   "va": "0x00470d0f",
+   "expect": "4c 26 dd 00",
+   "bytes": "44 75 0f 01",
+   "_note": "MOVZX EAX,byte ptr [EAX + 0xdd264c] @0x470d0c  0xdd264c->0x10f7544"
+  },
+  {
+   "va": "0x00470d3f",
+   "expect": "4c 26 dd 00",
+   "bytes": "44 75 0f 01",
+   "_note": "MOVZX EDX,byte ptr [EAX + 0xdd264c] @0x470d3c  0xdd264c->0x10f7544"
+  },
+  {
+   "va": "0x00470d86",
+   "expect": "4d 26 dd 00",
+   "bytes": "45 75 0f 01",
+   "_note": "INC dword ptr [EAX + 0xdd264d] @0x470d84  0xdd264d->0x10f7545"
+  },
+  {
+   "va": "0x00470dba",
+   "expect": "4d 26 dd 00",
+   "bytes": "45 75 0f 01",
+   "_note": "INC dword ptr [EAX + 0xdd264d] @0x470db8  0xdd264d->0x10f7545"
+  },
+  {
+   "va": "0x00472842",
+   "expect": "4d 26 dd 00",
+   "bytes": "45 75 0f 01",
+   "_note": "CMP dword ptr [EAX + 0xdd264d],0x0 @0x472840  0xdd264d->0x10f7545"
+  },
+  {
+   "va": "0x00472937",
+   "expect": "4d 26 dd 00",
+   "bytes": "45 75 0f 01",
+   "_note": "CMP dword ptr [EAX + 0xdd264d],0x0 @0x472935  0xdd264d->0x10f7545"
+  },
+  {
+   "va": "0x00472e61",
+   "expect": "4d 26 dd 00",
+   "bytes": "45 75 0f 01",
+   "_note": "CMP dword ptr [EAX + 0xdd264d],0x0 @0x472e5f  0xdd264d->0x10f7545"
+  },
+  {
+   "va": "0x00473a8c",
+   "expect": "4c 26 dd 00",
+   "bytes": "44 75 0f 01",
+   "_note": "MOVZX EDX,byte ptr [EDX + 0xdd264c] @0x473a89  0xdd264c->0x10f7544"
+  },
+  {
+   "va": "0x00473af7",
+   "expect": "4d 26 dd 00",
+   "bytes": "45 75 0f 01",
+   "_note": "CMP dword ptr [EAX + 0xdd264d],0x0 @0x473af5  0xdd264d->0x10f7545"
+  },
+  {
+   "va": "0x00473c05",
+   "expect": "4d 26 dd 00",
+   "bytes": "45 75 0f 01",
+   "_note": "DEC dword ptr [EAX + 0xdd264d] @0x473c03  0xdd264d->0x10f7545"
+  },
+  {
+   "va": "0x00473c2c",
+   "expect": "4d 26 dd 00",
+   "bytes": "45 75 0f 01",
+   "_note": "DEC dword ptr [EAX + 0xdd264d] @0x473c2a  0xdd264d->0x10f7545"
+  },
+  {
+   "va": "0x00473c56",
+   "expect": "4c 26 dd 00",
+   "bytes": "44 75 0f 01",
+   "_note": "MOV byte ptr [EDX + 0xdd264c],AL @0x473c54  0xdd264c->0x10f7544"
+  },
+  {
+   "va": "0x00473ce4",
+   "expect": "4c 26 dd 00",
+   "bytes": "44 75 0f 01",
+   "_note": "MOVZX EAX,byte ptr [EAX + 0xdd264c] @0x473ce1  0xdd264c->0x10f7544"
+  },
+  {
+   "va": "0x00473d47",
+   "expect": "4c 26 dd 00",
+   "bytes": "44 75 0f 01",
+   "_note": "MOVZX EAX,byte ptr [EAX + 0xdd264c] @0x473d44  0xdd264c->0x10f7544"
+  },
+  {
+   "va": "0x00473d9f",
+   "expect": "4d 26 dd 00",
+   "bytes": "45 75 0f 01",
+   "_note": "CMP dword ptr [EAX + 0xdd264d],0x0 @0x473d9d  0xdd264d->0x10f7545"
+  },
+  {
+   "va": "0x00473ddb",
+   "expect": "4c 26 dd 00",
+   "bytes": "44 75 0f 01",
+   "_note": "MOVZX EAX,byte ptr [EAX + 0xdd264c] @0x473dd8  0xdd264c->0x10f7544"
+  },
+  {
+   "va": "0x00473ec3",
+   "expect": "4c 26 dd 00",
+   "bytes": "44 75 0f 01",
+   "_note": "MOVZX EAX,byte ptr [EAX + 0xdd264c] @0x473ec0  0xdd264c->0x10f7544"
+  },
+  {
+   "va": "0x00473fb2",
+   "expect": "4c 26 dd 00",
+   "bytes": "44 75 0f 01",
+   "_note": "MOVZX EAX,byte ptr [EAX + 0xdd264c] @0x473faf  0xdd264c->0x10f7544"
+  },
+  {
+   "va": "0x0047a2b0",
+   "expect": "4c 26 dd 00",
+   "bytes": "44 75 0f 01",
+   "_note": "MOVZX EAX,byte ptr [EAX + 0xdd264c] @0x47a2ad  0xdd264c->0x10f7544"
+  },
+  {
+   "va": "0x0047a2fd",
+   "expect": "4c 26 dd 00",
+   "bytes": "44 75 0f 01",
+   "_note": "MOVZX AX,byte ptr [EAX + 0xdd264c] @0x47a2f9  0xdd264c->0x10f7544"
+  },
+  {
+   "va": "0x0047a349",
+   "expect": "4c 26 dd 00",
+   "bytes": "44 75 0f 01",
+   "_note": "MOVZX EDX,byte ptr [EAX + 0xdd264c] @0x47a346  0xdd264c->0x10f7544"
+  },
+  {
+   "va": "0x0047a38a",
+   "expect": "4c 26 dd 00",
+   "bytes": "44 75 0f 01",
+   "_note": "MOVZX EDX,byte ptr [EAX + 0xdd264c] @0x47a387  0xdd264c->0x10f7544"
+  },
+  {
+   "va": "0x0047a3cd",
+   "expect": "4c 26 dd 00",
+   "bytes": "44 75 0f 01",
+   "_note": "MOVZX EDX,byte ptr [EAX + 0xdd264c] @0x47a3ca  0xdd264c->0x10f7544"
+  },
+  {
+   "va": "0x0047a414",
+   "expect": "4c 26 dd 00",
+   "bytes": "44 75 0f 01",
+   "_note": "MOVZX EAX,byte ptr [EAX + 0xdd264c] @0x47a411  0xdd264c->0x10f7544"
+  },
+  {
+   "va": "0x0047a45d",
+   "expect": "4c 26 dd 00",
+   "bytes": "44 75 0f 01",
+   "_note": "MOVZX EDX,byte ptr [EAX + 0xdd264c] @0x47a45a  0xdd264c->0x10f7544"
+  },
+  {
+   "va": "0x0047a49e",
+   "expect": "4c 26 dd 00",
+   "bytes": "44 75 0f 01",
+   "_note": "MOVZX EDX,byte ptr [EAX + 0xdd264c] @0x47a49b  0xdd264c->0x10f7544"
+  },
+  {
+   "va": "0x0047a4e1",
+   "expect": "4c 26 dd 00",
+   "bytes": "44 75 0f 01",
+   "_note": "MOVZX EDX,byte ptr [EAX + 0xdd264c] @0x47a4de  0xdd264c->0x10f7544"
+  },
+  {
+   "va": "0x0047b423",
+   "expect": "48 26 dd 00",
+   "bytes": "40 75 0f 01",
+   "_note": "MOV dword ptr [EAX + 0xdd2648],0x0 @0x47b421  0xdd2648->0x10f7540"
+  },
+  {
+   "va": "0x0047b437",
+   "expect": "48 26 dd 00",
+   "bytes": "40 75 0f 01",
+   "_note": "DEC dword ptr [EAX + 0xdd2648] @0x47b435  0xdd2648->0x10f7540"
+  },
+  {
+   "va": "0x004e3639",
+   "expect": "4c 26 dd 00",
+   "bytes": "44 75 0f 01",
+   "_note": "CMP byte ptr [EDX + EAX*0x1 + 0xdd264c],0x0 @0x4e3636  0xdd264c->0x10f7544"
+  },
+  {
+   "va": "0x004e3699",
+   "expect": "4d 26 dd 00",
+   "bytes": "45 75 0f 01",
+   "_note": "CMP dword ptr [EDX + EAX*0x4 + 0xdd264d],0x0 @0x4e3696  0xdd264d->0x10f7545"
+  }
+ ]
+}

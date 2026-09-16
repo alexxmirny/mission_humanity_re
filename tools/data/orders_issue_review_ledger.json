@@ -1,0 +1,65 @@
+{
+ "_comment": [
+  "Review dispositions for the ORDER-ISSUE domain (RI-ORDERS). Same shape and same purpose as",
+  "ai_review_ledger.json / sim_review_ledger.json / tact_review_ledger.json: a row the manifest",
+  "marks `review_required` may not be promoted until an adversarial review has actually run on",
+  "it and its outcome is recorded HERE -- migration_session.py --end refuses to close otherwise.",
+  "",
+  "CREATED 2026-08-28 by the O4A-C sweep, the first session in this domain to promote a",
+  "review_required row. All eight entries below come from two reimpl-verify batch runs; both",
+  "returned EQUIVALENT with zero confirmed divergences.",
+  "",
+  "A CLEAN REVIEW IS NOT A TIER. It says no reader found a divergence. Every row here is also",
+  "compared against the generated golden, which is the evidence that does not share an author",
+  "with the translation -- and six rows in this domain are graded T2 precisely because that",
+  "golden cannot reach some of their arms (docs/dead-ends.md G74)."
+ ],
+ "llm_strat_unit_order_attack_target": {
+  "disposition": "reviewed",
+  "session": "2026-08-28-2050",
+  "by": ".claude/workflows/reimpl-verify.js (batch mode, 3 lens-group reviewers, run wf_3deaf3cc-1b8) -- batch 1 of 2, the 9 unit_attack + unit_move bodies in ONE prompt so cross-function protocol bugs stayed visible",
+  "note": "851 B, 4 golden sites, above the domain p90 (315). Reviewers were briefed that its _alt twin differs and to look for a body that copied its sibling rather than transcribing its own listing. Verdict: EQUIVALENT -- zero confirmed divergences, blocked/incomplete both empty, reviewers_ran 3/3. READ AS WHAT IT IS: evidence that no reader found a divergence, not proof there is none, and not a tier on its own. The independent check for these rows is the generated golden in `net_selftest issuetest` (2444 checks / 0 failures), whose expectations come from the original disassembly rather than from a second reading of our C++. Full record: tmp/verify/batch1_attack_move.md and tmp/verify/batch2_depart_storage_group_player.md."
+ },
+ "llm_strat_unit_order_attack_target_alt": {
+  "disposition": "reviewed",
+  "session": "2026-08-28-2050",
+  "by": ".claude/workflows/reimpl-verify.js (batch mode, 3 lens-group reviewers, run wf_3deaf3cc-1b8) -- batch 1 of 2, the 9 unit_attack + unit_move bodies in ONE prompt so cross-function protocol bugs stayed visible",
+  "note": "851 B, 4 golden sites. Reviewed against ITS OWN listing, not by analogy with its twin. Verdict: EQUIVALENT -- zero confirmed divergences, blocked/incomplete both empty, reviewers_ran 3/3. READ AS WHAT IT IS: evidence that no reader found a divergence, not proof there is none, and not a tier on its own. The independent check for these rows is the generated golden in `net_selftest issuetest` (2444 checks / 0 failures), whose expectations come from the original disassembly rather than from a second reading of our C++. Full record: tmp/verify/batch1_attack_move.md and tmp/verify/batch2_depart_storage_group_player.md."
+ },
+ "llm_strat_unit_order_attack_building_reposition": {
+  "disposition": "reviewed",
+  "session": "2026-08-28-2050",
+  "by": ".claude/workflows/reimpl-verify.js (batch mode, 3 lens-group reviewers, run wf_3deaf3cc-1b8) -- batch 1 of 2, the 9 unit_attack + unit_move bodies in ONE prompt so cross-function protocol bugs stayed visible",
+  "note": "640 B, 3 golden sites. Reviewers were pointed specifically at the PRNG draw count and the bound passed to the sibling bldg_footprint_random_point, since a wrong bound shifts the sequence for every later consumer. Verdict: EQUIVALENT -- zero confirmed divergences, blocked/incomplete both empty, reviewers_ran 3/3. READ AS WHAT IT IS: evidence that no reader found a divergence, not proof there is none, and not a tier on its own. The independent check for these rows is the generated golden in `net_selftest issuetest` (2444 checks / 0 failures), whose expectations come from the original disassembly rather than from a second reading of our C++. Full record: tmp/verify/batch1_attack_move.md and tmp/verify/batch2_depart_storage_group_player.md."
+ },
+ "llm_strat_bldg_order_depart_dispatch_by_type": {
+  "disposition": "reviewed",
+  "session": "2026-08-28-2050",
+  "by": ".claude/workflows/reimpl-verify.js (batch mode, 3 lens-group reviewers, run wf_4f685b44-75d) -- batch 2 of 2, the 8 bldg_depart + unit_storage + group_orders + order_player bodies in ONE prompt",
+  "note": "348 B type switch, above p90, and it emits NO order of its own -- so a wrong arm produces a perfectly valid order meaning something else, which no state comparison at the wrapper boundary would catch. Every arm and the default were checked. Verdict: EQUIVALENT -- zero confirmed divergences, blocked/incomplete both empty, reviewers_ran 3/3. READ AS WHAT IT IS: evidence that no reader found a divergence, not proof there is none, and not a tier on its own. The independent check for these rows is the generated golden in `net_selftest issuetest` (2444 checks / 0 failures), whose expectations come from the original disassembly rather than from a second reading of our C++. Full record: tmp/verify/batch1_attack_move.md and tmp/verify/batch2_depart_storage_group_player.md."
+ },
+ "llm_strat_unit_order_exit_storage": {
+  "disposition": "reviewed",
+  "session": "2026-08-28-2050",
+  "by": ".claude/workflows/reimpl-verify.js (batch mode, 3 lens-group reviewers, run wf_4f685b44-75d) -- batch 2 of 2, the 8 bldg_depart + unit_storage + group_orders + order_player bodies in ONE prompt",
+  "note": "607 B, writes ORDER_SEQ_ID_BY_PLAYER (an SB5 gating writer). Reviewers were primed on this project's signature symptom for that field, `ours = original + 1`. Clean. Verdict: EQUIVALENT -- zero confirmed divergences, blocked/incomplete both empty, reviewers_ran 3/3. READ AS WHAT IT IS: evidence that no reader found a divergence, not proof there is none, and not a tier on its own. The independent check for these rows is the generated golden in `net_selftest issuetest` (2444 checks / 0 failures), whose expectations come from the original disassembly rather than from a second reading of our C++. Full record: tmp/verify/batch1_attack_move.md and tmp/verify/batch2_depart_storage_group_player.md."
+ },
+ "llm_strat_unit_order_auto_launch_from_storage": {
+  "disposition": "reviewed",
+  "session": "2026-08-28-2050",
+  "by": ".claude/workflows/reimpl-verify.js (batch mode, 3 lens-group reviewers, run wf_4f685b44-75d) -- batch 2 of 2, the 8 bldg_depart + unit_storage + group_orders + order_player bodies in ONE prompt",
+  "note": "417 B. Reviewers checked that the raw 0x1f / 0x22 state literals were used rather than the names the .c draft invented for them. Verdict: EQUIVALENT -- zero confirmed divergences, blocked/incomplete both empty, reviewers_ran 3/3. READ AS WHAT IT IS: evidence that no reader found a divergence, not proof there is none, and not a tier on its own. The independent check for these rows is the generated golden in `net_selftest issuetest` (2444 checks / 0 failures), whose expectations come from the original disassembly rather than from a second reading of our C++. Full record: tmp/verify/batch1_attack_move.md and tmp/verify/batch2_depart_storage_group_player.md."
+ },
+ "llm_strat_group_issue_move_order_deferred": {
+  "disposition": "reviewed",
+  "session": "2026-08-28-2050",
+  "by": ".claude/workflows/reimpl-verify.js (batch mode, 3 lens-group reviewers, run wf_4f685b44-75d) -- batch 2 of 2, the 8 bldg_depart + unit_storage + group_orders + order_player bodies in ONE prompt",
+  "note": "Writes ORDER_SEQ_ID_BY_PLAYER; same seq-id priming as exit_storage. Clean. Verdict: EQUIVALENT -- zero confirmed divergences, blocked/incomplete both empty, reviewers_ran 3/3. READ AS WHAT IT IS: evidence that no reader found a divergence, not proof there is none, and not a tier on its own. The independent check for these rows is the generated golden in `net_selftest issuetest` (2444 checks / 0 failures), whose expectations come from the original disassembly rather than from a second reading of our C++. Full record: tmp/verify/batch1_attack_move.md and tmp/verify/batch2_depart_storage_group_player.md."
+ },
+ "llm_strat_group_issue_move_order_confirmed": {
+  "disposition": "reviewed",
+  "session": "2026-08-28-2050",
+  "by": ".claude/workflows/reimpl-verify.js (batch mode, 3 lens-group reviewers, run wf_4f685b44-75d) -- batch 2 of 2, the 8 bldg_depart + unit_storage + group_orders + order_player bodies in ONE prompt",
+  "note": "519 B twin of the _deferred row, reviewed against its own listing. Writes ORDER_SEQ_ID_BY_PLAYER. Clean. Verdict: EQUIVALENT -- zero confirmed divergences, blocked/incomplete both empty, reviewers_ran 3/3. READ AS WHAT IT IS: evidence that no reader found a divergence, not proof there is none, and not a tier on its own. The independent check for these rows is the generated golden in `net_selftest issuetest` (2444 checks / 0 failures), whose expectations come from the original disassembly rather than from a second reading of our C++. Full record: tmp/verify/batch1_attack_move.md and tmp/verify/batch2_depart_storage_group_player.md."
+ }
+}

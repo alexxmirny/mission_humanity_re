@@ -1,0 +1,1974 @@
+{
+  "_generated_by": "tools/gen_tact_closure.py",
+  "_do_not_hand_edit": "Regenerate: python tools/gen_tact_closure.py",
+  "_definition": "exclusively tactical = in the forward closure of the three tactical roots AND not reachable from the rest of the program once traversal into those roots is blocked",
+  "_inputs": [
+    "tools/data/call_graph_no_crt.json",
+    "tools/data/en_functions.json",
+    "tools/data/dll_call_protos.json"
+  ],
+  "roots": [
+    {
+      "addr": "0x00004290ea",
+      "name": "llm_tact_mission_start",
+      "why": "setup: loads the mission, resets the shared planes"
+    },
+    {
+      "addr": "0x0000429b1a",
+      "name": "llm_tact_frame",
+      "why": "the per-frame pump, llm_frame_dispatch case 6 on GAME_MODE==6"
+    },
+    {
+      "addr": "0x000044d3a8",
+      "name": "llm_tact_mission_end_return_to_strategic",
+      "why": "teardown: reloads the planet and applies the squad result"
+    }
+  ],
+  "totals": {
+    "forward_closure": 978,
+    "forward_closure_bytes": 354639,
+    "exclusive": 155,
+    "exclusive_bytes": 85016,
+    "exclusive_prefixed": 132,
+    "exclusive_unprefixed": 23,
+    "exclusive_unprefixed_bytes": 8832,
+    "prefixed_all": 143,
+    "prefixed_all_bytes": 81447,
+    "prefixed_not_exclusive": 11,
+    "still_unnamed": 0,
+    "blocked_prototypes": 1,
+    "cc_unknown": 1
+  },
+  "members": [
+    {
+      "addr": "0x0043cd20",
+      "name": "gfx_TransformBankData",
+      "size": 425,
+      "prefixed": false,
+      "proto_status": "ok",
+      "cc": "__watcall",
+      "callers": [
+        "llm_tact_gfx_load_banks_alt"
+      ]
+    },
+    {
+      "addr": "0x00429371",
+      "name": "llm_gfx_apply_resolution_change",
+      "size": 370,
+      "prefixed": false,
+      "proto_status": "ok",
+      "cc": "__watcall",
+      "callers": [
+        "llm_tact_mission_end_return_to_strategic"
+      ]
+    },
+    {
+      "addr": "0x0043bc1a",
+      "name": "llm_gfx_blit_finish",
+      "size": 7,
+      "prefixed": false,
+      "proto_status": "ok",
+      "cc": "__watcall",
+      "callers": [
+        "llm_gfx_blit_sprite_rle",
+        "llm_gfx_skip_sprite_row"
+      ]
+    },
+    {
+      "addr": "0x0043b241",
+      "name": "llm_gfx_blit_sprite_rle",
+      "size": 2414,
+      "prefixed": false,
+      "proto_status": "ok",
+      "cc": "__mh_watcall_ecx_ebx_volatile",
+      "callers": [
+        "llm_gfx_draw_cursor_ingame",
+        "llm_gfx_draw_sprite_rle"
+      ]
+    },
+    {
+      "addr": "0x0043bc21",
+      "name": "llm_gfx_blit_sprite_rle_v2",
+      "size": 909,
+      "prefixed": false,
+      "proto_status": "ok",
+      "cc": "__mh_watcall_ecx_ebx_volatile",
+      "callers": [
+        "llm_gfx_draw_sprite_v2"
+      ]
+    },
+    {
+      "addr": "0x0043b1ce",
+      "name": "llm_gfx_draw_cursor_ingame",
+      "size": 115,
+      "prefixed": false,
+      "proto_status": "ok",
+      "cc": "__watcall",
+      "callers": [
+        "llm_tact_frame_cursor_and_reset"
+      ]
+    },
+    {
+      "addr": "0x0043aa88",
+      "name": "llm_gfx_draw_dashed_rect_outline",
+      "size": 374,
+      "prefixed": false,
+      "proto_status": "ok",
+      "cc": "__mh_watcall_ecx_ebx_volatile",
+      "callers": [
+        "llm_tact_drag_box_clamp"
+      ]
+    },
+    {
+      "addr": "0x004296fd",
+      "name": "llm_gfx_draw_sprite_rle",
+      "size": 121,
+      "prefixed": false,
+      "proto_status": "ok",
+      "cc": "__watcall",
+      "callers": [
+        "llm_tact_fx_draw_entity",
+        "llm_tact_render_view",
+        "llm_tact_unit_render"
+      ]
+    },
+    {
+      "addr": "0x00429698",
+      "name": "llm_gfx_draw_sprite_v2",
+      "size": 101,
+      "prefixed": false,
+      "proto_status": "ok",
+      "cc": "__watcall",
+      "callers": [
+        "llm_tact_render_view"
+      ]
+    },
+    {
+      "addr": "0x004a310f",
+      "name": "llm_gfx_font_blit_glyph_solid",
+      "size": 322,
+      "prefixed": false,
+      "proto_status": "ok",
+      "cc": "__mh_watcall_ecx_ebx_volatile",
+      "callers": [
+        "llm_gfx_font_draw_glyph_solid"
+      ]
+    },
+    {
+      "addr": "0x004a2df5",
+      "name": "llm_gfx_font_draw_glyph_solid",
+      "size": 118,
+      "prefixed": false,
+      "proto_status": "ok",
+      "cc": "__watcall",
+      "callers": [
+        "llm_tact_render_view"
+      ]
+    },
+    {
+      "addr": "0x0043bfae",
+      "name": "llm_gfx_hittest_check_blit",
+      "size": 33,
+      "prefixed": false,
+      "proto_status": "ok",
+      "cc": "__watcall",
+      "callers": [
+        "llm_gfx_blit_finish",
+        "llm_gfx_blit_sprite_rle_v2"
+      ]
+    },
+    {
+      "addr": "0x00465093",
+      "name": "llm_gfx_load_all_sprite_banks",
+      "size": 41,
+      "prefixed": false,
+      "proto_status": "ok",
+      "cc": "__watcall",
+      "callers": [
+        "llm_tact_mission_end_return_to_strategic"
+      ]
+    },
+    {
+      "addr": "0x00465502",
+      "name": "llm_gfx_load_sprite_bank_files",
+      "size": 682,
+      "prefixed": false,
+      "proto_status": "ok",
+      "cc": "__watcall",
+      "callers": [
+        "llm_gfx_load_all_sprite_banks"
+      ]
+    },
+    {
+      "addr": "0x004d71c7",
+      "name": "llm_gfx_save_screenshot_rle",
+      "size": 897,
+      "prefixed": false,
+      "proto_status": "ok",
+      "cc": "__mh_watcall_ecx_ebx_volatile",
+      "callers": [
+        "llm_tact_save_screenshot"
+      ]
+    },
+    {
+      "addr": "0x0043bbaf",
+      "name": "llm_gfx_skip_sprite_row",
+      "size": 107,
+      "prefixed": false,
+      "proto_status": "unassigned_return",
+      "cc": "__mh_watcall_ecx_volatile",
+      "callers": [
+        "llm_gfx_blit_sprite_rle"
+      ]
+    },
+    {
+      "addr": "0x004a2d16",
+      "name": "llm_gfx_sprite_clone_frame_pixels",
+      "size": 223,
+      "prefixed": false,
+      "proto_status": "ok",
+      "cc": "__watcall",
+      "callers": [
+        "llm_tact_render_view"
+      ]
+    },
+    {
+      "addr": "0x0042ef19",
+      "name": "llm_snd_stop_all_channels",
+      "size": 98,
+      "prefixed": false,
+      "proto_status": "ok",
+      "cc": "__watcall",
+      "callers": [
+        "llm_tact_mission_start"
+      ]
+    },
+    {
+      "addr": "0x0044d81d",
+      "name": "llm_strat_squad_assault_resolve",
+      "size": 572,
+      "prefixed": false,
+      "proto_status": "ok",
+      "cc": "__watcall",
+      "callers": [
+        "llm_tact_mission_end_return_to_strategic"
+      ]
+    },
+    {
+      "addr": "0x00434dc2",
+      "name": "llm_tact_active_unit_count_hud_draw",
+      "size": 358,
+      "prefixed": true,
+      "proto_status": "ok",
+      "cc": "__watcall",
+      "callers": [
+        "llm_tact_selection_panel_refresh",
+        "llm_tact_unit_despawn",
+        "llm_tact_unit_destroy"
+      ]
+    },
+    {
+      "addr": "0x0042ef7b",
+      "name": "llm_tact_ambient_sound_tick",
+      "size": 229,
+      "prefixed": true,
+      "proto_status": "ok",
+      "cc": "__watcall",
+      "callers": [
+        "llm_tact_frame"
+      ]
+    },
+    {
+      "addr": "0x0042ed56",
+      "name": "llm_tact_blink_overlay_clear",
+      "size": 98,
+      "prefixed": true,
+      "proto_status": "ok",
+      "cc": "__watcall",
+      "callers": [
+        "llm_tact_frame"
+      ]
+    },
+    {
+      "addr": "0x00433d57",
+      "name": "llm_tact_calc_approach_dir24_to_tile_stamp",
+      "size": 163,
+      "prefixed": true,
+      "proto_status": "ok",
+      "cc": "__mh_watcall_ebx_volatile",
+      "callers": [
+        "llm_tact_unit_owner_tick"
+      ]
+    },
+    {
+      "addr": "0x0042e0e2",
+      "name": "llm_tact_calc_dir24",
+      "size": 231,
+      "prefixed": true,
+      "proto_status": "ok",
+      "cc": "__mh_watcall_ebx_volatile",
+      "callers": [
+        "llm_tact_calc_approach_dir24_to_tile_stamp",
+        "llm_tact_frame",
+        "llm_tact_fx_spawn",
+        "llm_tact_unit_fire_weapon",
+        "llm_tact_unit_owner_tick"
+      ]
+    },
+    {
+      "addr": "0x0042e957",
+      "name": "llm_tact_cam_follow_selection_tick",
+      "size": 307,
+      "prefixed": true,
+      "proto_status": "ok",
+      "cc": "__watcall",
+      "callers": [
+        "llm_tact_frame"
+      ]
+    },
+    {
+      "addr": "0x0042e889",
+      "name": "llm_tact_camera_center_on_tile",
+      "size": 206,
+      "prefixed": true,
+      "proto_status": "ok",
+      "cc": "__watcall",
+      "callers": [
+        "llm_tact_frame",
+        "llm_tact_unit_teleport"
+      ]
+    },
+    {
+      "addr": "0x00439103",
+      "name": "llm_tact_cfg_keyword_token_match",
+      "size": 228,
+      "prefixed": true,
+      "proto_status": "ok",
+      "cc": "__watcall",
+      "callers": [
+        "llm_tact_mission_load"
+      ]
+    },
+    {
+      "addr": "0x0043a5b9",
+      "name": "llm_tact_cfg_match_keyword_at_offset",
+      "size": 144,
+      "prefixed": true,
+      "proto_status": "ok",
+      "cc": "__watcall",
+      "callers": [
+        "llm_tact_mission_parse_command_token"
+      ]
+    },
+    {
+      "addr": "0x0043a649",
+      "name": "llm_tact_character_parse_frame_table",
+      "size": 388,
+      "prefixed": true,
+      "proto_status": "ok",
+      "cc": "__watcall",
+      "callers": [
+        "llm_tact_mission_load"
+      ]
+    },
+    {
+      "addr": "0x00432266",
+      "name": "llm_tact_door_anim_start",
+      "size": 91,
+      "prefixed": true,
+      "proto_status": "ok",
+      "cc": "__watcall",
+      "callers": [
+        "llm_tact_unit_move_tick"
+      ]
+    },
+    {
+      "addr": "0x00439cf5",
+      "name": "llm_tact_door_apply_to_map",
+      "size": 691,
+      "prefixed": true,
+      "proto_status": "ok",
+      "cc": "__watcall",
+      "callers": [
+        "llm_tact_mission_load"
+      ]
+    },
+    {
+      "addr": "0x004398eb",
+      "name": "llm_tact_door_parse_definition",
+      "size": 756,
+      "prefixed": true,
+      "proto_status": "ok",
+      "cc": "__watcall",
+      "callers": [
+        "llm_tact_mission_load"
+      ]
+    },
+    {
+      "addr": "0x00432a05",
+      "name": "llm_tact_door_path_clear",
+      "size": 412,
+      "prefixed": true,
+      "proto_status": "ok",
+      "cc": "__watcall",
+      "callers": [
+        "llm_tact_door_tick"
+      ]
+    },
+    {
+      "addr": "0x004322c1",
+      "name": "llm_tact_door_tick",
+      "size": 511,
+      "prefixed": true,
+      "proto_status": "ok",
+      "cc": "__watcall",
+      "callers": [
+        "llm_tact_frame"
+      ]
+    },
+    {
+      "addr": "0x004324c0",
+      "name": "llm_tact_door_update_tile_state",
+      "size": 1349,
+      "prefixed": true,
+      "proto_status": "ok",
+      "cc": "__watcall",
+      "callers": [
+        "llm_tact_door_tick"
+      ]
+    },
+    {
+      "addr": "0x004299d3",
+      "name": "llm_tact_drag_box_clamp",
+      "size": 327,
+      "prefixed": true,
+      "proto_status": "ok",
+      "cc": "__watcall",
+      "callers": [
+        "llm_tact_frame"
+      ]
+    },
+    {
+      "addr": "0x004311bf",
+      "name": "llm_tact_facing_to_delta",
+      "size": 106,
+      "prefixed": true,
+      "proto_status": "ok",
+      "cc": "__mh_watcall_ebx_volatile",
+      "callers": [
+        "llm_tact_fx_splash_damage",
+        "llm_tact_fx_update_projectile",
+        "llm_tact_unit_move_tick",
+        "llm_tact_unit_teleport"
+      ]
+    },
+    {
+      "addr": "0x0042e220",
+      "name": "llm_tact_fov_probe_far_cell_and_door_state",
+      "size": 357,
+      "prefixed": true,
+      "proto_status": "ok",
+      "cc": "__mh_watcall_ebx_volatile",
+      "callers": [
+        "llm_tact_unit_owner_tick"
+      ]
+    },
+    {
+      "addr": "0x00436f30",
+      "name": "llm_tact_fov_raycast_stencil",
+      "size": 520,
+      "prefixed": true,
+      "proto_status": "ok",
+      "cc": "__watcall",
+      "callers": [
+        "llm_tact_fov_probe_far_cell_and_door_state",
+        "llm_tact_vision_cone_setup"
+      ]
+    },
+    {
+      "addr": "0x00437138",
+      "name": "llm_tact_fov_update_nearest_target",
+      "size": 71,
+      "prefixed": true,
+      "proto_status": "ok",
+      "cc": "__watcall",
+      "callers": [
+        "llm_tact_fov_raycast_stencil"
+      ]
+    },
+    {
+      "addr": "0x00429b1a",
+      "name": "llm_tact_frame",
+      "size": 4709,
+      "prefixed": true,
+      "proto_status": "ok",
+      "cc": "__watcall",
+      "callers": [
+        "llm_frame_dispatch"
+      ]
+    },
+    {
+      "addr": "0x00429634",
+      "name": "llm_tact_frame_cursor_and_reset",
+      "size": 100,
+      "prefixed": true,
+      "proto_status": "ok",
+      "cc": "__watcall",
+      "callers": [
+        "llm_gfx_apply_resolution_change",
+        "llm_tact_frame",
+        "llm_tact_mission_start"
+      ]
+    },
+    {
+      "addr": "0x0042de81",
+      "name": "llm_tact_fx_build_tile_draw_lists",
+      "size": 609,
+      "prefixed": true,
+      "proto_status": "ok",
+      "cc": "__watcall",
+      "callers": [
+        "llm_tact_render_view"
+      ]
+    },
+    {
+      "addr": "0x0042d127",
+      "name": "llm_tact_fx_draw_entity",
+      "size": 272,
+      "prefixed": true,
+      "proto_status": "ok",
+      "cc": "__watcall",
+      "callers": [
+        "llm_tact_render_view"
+      ]
+    },
+    {
+      "addr": "0x0042f060",
+      "name": "llm_tact_fx_play_sound",
+      "size": 457,
+      "prefixed": true,
+      "proto_status": "ok",
+      "cc": "__mh_watcall_ebx_volatile",
+      "callers": [
+        "llm_tact_fx_spawn"
+      ]
+    },
+    {
+      "addr": "0x0042bdce",
+      "name": "llm_tact_fx_spawn",
+      "size": 1190,
+      "prefixed": true,
+      "proto_status": "ok",
+      "cc": "__mh_watcall_ecx_ebx_volatile",
+      "callers": [
+        "llm_tact_fx_update_projectile",
+        "llm_tact_unit_fire_weapon",
+        "llm_tact_unit_teleport"
+      ]
+    },
+    {
+      "addr": "0x004314aa",
+      "name": "llm_tact_fx_splash_damage",
+      "size": 426,
+      "prefixed": true,
+      "proto_status": "ok",
+      "cc": "__mh_watcall_ebx_volatile",
+      "callers": [
+        "llm_tact_fx_update_projectile"
+      ]
+    },
+    {
+      "addr": "0x00431654",
+      "name": "llm_tact_fx_update_projectile",
+      "size": 1849,
+      "prefixed": true,
+      "proto_status": "ok",
+      "cc": "__watcall",
+      "callers": [
+        "llm_tact_update_units_and_fx"
+      ]
+    },
+    {
+      "addr": "0x00428d9e",
+      "name": "llm_tact_gfx_load_banks_alt",
+      "size": 844,
+      "prefixed": true,
+      "proto_status": "ok",
+      "cc": "__watcall",
+      "callers": [
+        "llm_tact_mission_start"
+      ]
+    },
+    {
+      "addr": "0x004294e3",
+      "name": "llm_tact_gfx_view_tile_rows_init",
+      "size": 337,
+      "prefixed": true,
+      "proto_status": "ok",
+      "cc": "__watcall",
+      "callers": [
+        "llm_tact_mission_end_return_to_strategic"
+      ]
+    },
+    {
+      "addr": "0x0042b09f",
+      "name": "llm_tact_group_issue_order",
+      "size": 766,
+      "prefixed": true,
+      "proto_status": "ok",
+      "cc": "__mh_watcall_ecx_ebx_volatile",
+      "callers": [
+        "llm_tact_frame",
+        "llm_tact_ui_order_buttons_minimap_tick"
+      ]
+    },
+    {
+      "addr": "0x0043a06f",
+      "name": "llm_tact_map_compute_bounds",
+      "size": 362,
+      "prefixed": true,
+      "proto_status": "ok",
+      "cc": "__watcall",
+      "callers": [
+        "llm_tact_mission_load"
+      ]
+    },
+    {
+      "addr": "0x0042e713",
+      "name": "llm_tact_map_reset",
+      "size": 374,
+      "prefixed": true,
+      "proto_status": "ok",
+      "cc": "__watcall",
+      "callers": [
+        "llm_tact_mission_start"
+      ]
+    },
+    {
+      "addr": "0x0043c303",
+      "name": "llm_tact_mark_view_tiles_dirty",
+      "size": 32,
+      "prefixed": true,
+      "proto_status": "ok",
+      "cc": "__watcall",
+      "callers": [
+        "llm_tact_view_shift_col_dec",
+        "llm_tact_view_shift_col_inc",
+        "llm_tact_view_shift_row_dec",
+        "llm_tact_view_shift_row_inc"
+      ]
+    },
+    {
+      "addr": "0x0044da59",
+      "name": "llm_tact_mission_end_finalize_stub",
+      "size": 75,
+      "prefixed": true,
+      "proto_status": "ok",
+      "cc": "__watcall",
+      "callers": [
+        "llm_tact_mission_end_return_to_strategic"
+      ]
+    },
+    {
+      "addr": "0x0044d3a8",
+      "name": "llm_tact_mission_end_return_to_strategic",
+      "size": 192,
+      "prefixed": true,
+      "proto_status": "ok",
+      "cc": "__watcall",
+      "callers": [
+        "llm_tact_frame"
+      ]
+    },
+    {
+      "addr": "0x0043717f",
+      "name": "llm_tact_mission_load",
+      "size": 7562,
+      "prefixed": true,
+      "proto_status": "ok",
+      "cc": "__watcall",
+      "callers": [
+        "llm_tact_map_reset"
+      ]
+    },
+    {
+      "addr": "0x0043a1d9",
+      "name": "llm_tact_mission_parse_command_token",
+      "size": 992,
+      "prefixed": true,
+      "proto_status": "ok",
+      "cc": "__mh_watcall_ecx_ebx_volatile",
+      "callers": [
+        "llm_tact_mission_load"
+      ]
+    },
+    {
+      "addr": "0x00439382",
+      "name": "llm_tact_mission_parse_coord_pair",
+      "size": 420,
+      "prefixed": true,
+      "proto_status": "ok",
+      "cc": "__watcall",
+      "callers": [
+        "llm_tact_mission_load"
+      ]
+    },
+    {
+      "addr": "0x00439526",
+      "name": "llm_tact_mission_parse_disposition_spawn",
+      "size": 547,
+      "prefixed": true,
+      "proto_status": "ok",
+      "cc": "__watcall",
+      "callers": [
+        "llm_tact_mission_load"
+      ]
+    },
+    {
+      "addr": "0x004391e7",
+      "name": "llm_tact_mission_parse_float",
+      "size": 411,
+      "prefixed": true,
+      "proto_status": "ok",
+      "cc": "__watcall",
+      "callers": [
+        "llm_tact_mission_load"
+      ]
+    },
+    {
+      "addr": "0x00439bdf",
+      "name": "llm_tact_mission_parse_int_token",
+      "size": 278,
+      "prefixed": true,
+      "proto_status": "ok",
+      "cc": "__mh_watcall_ebx_volatile",
+      "callers": [
+        "llm_tact_door_parse_definition"
+      ]
+    },
+    {
+      "addr": "0x00439749",
+      "name": "llm_tact_mission_parse_keyword_int",
+      "size": 418,
+      "prefixed": true,
+      "proto_status": "ok",
+      "cc": "__watcall",
+      "callers": [
+        "llm_tact_mission_load"
+      ]
+    },
+    {
+      "addr": "0x00439fa8",
+      "name": "llm_tact_mission_parse_quoted_string",
+      "size": 199,
+      "prefixed": true,
+      "proto_status": "ok",
+      "cc": "__watcall",
+      "callers": [
+        "llm_tact_mission_load"
+      ]
+    },
+    {
+      "addr": "0x004290ea",
+      "name": "llm_tact_mission_start",
+      "size": 647,
+      "prefixed": true,
+      "proto_status": "ok",
+      "cc": "__watcall",
+      "callers": [
+        "llm_strat_try_enter_tactical_mission"
+      ]
+    },
+    {
+      "addr": "0x0041c2ac",
+      "name": "llm_tact_move_path_build",
+      "size": 1339,
+      "prefixed": true,
+      "proto_status": "ok",
+      "cc": "__mh_watcall_ecx_ebx_volatile",
+      "callers": [
+        "llm_tact_move_step_attempt"
+      ]
+    },
+    {
+      "addr": "0x0042ea8a",
+      "name": "llm_tact_move_path_preview_clear",
+      "size": 111,
+      "prefixed": true,
+      "proto_status": "ok",
+      "cc": "__watcall",
+      "callers": [
+        "llm_tact_ui_order_buttons_minimap_tick"
+      ]
+    },
+    {
+      "addr": "0x0042eaf9",
+      "name": "llm_tact_move_path_preview_walk",
+      "size": 605,
+      "prefixed": true,
+      "proto_status": "ok",
+      "cc": "__mh_watcall_ecx_ebx_volatile",
+      "callers": [
+        "llm_tact_group_issue_order"
+      ]
+    },
+    {
+      "addr": "0x00494b29",
+      "name": "llm_tact_move_step_attempt",
+      "size": 849,
+      "prefixed": true,
+      "proto_status": "ok",
+      "cc": "__watcall",
+      "callers": [
+        "llm_tact_group_issue_order",
+        "llm_tact_unit_move_tick"
+      ]
+    },
+    {
+      "addr": "0x0042d0cf",
+      "name": "llm_tact_quantize_facing_dir",
+      "size": 88,
+      "prefixed": true,
+      "proto_status": "ok",
+      "cc": "__watcall",
+      "callers": [
+        "llm_tact_unit_update_anim"
+      ]
+    },
+    {
+      "addr": "0x0042d237",
+      "name": "llm_tact_render_view",
+      "size": 2983,
+      "prefixed": true,
+      "proto_status": "ok",
+      "cc": "unknown",
+      "callers": [
+        "llm_tact_frame"
+      ]
+    },
+    {
+      "addr": "0x00499ef6",
+      "name": "llm_tact_save_screenshot",
+      "size": 83,
+      "prefixed": true,
+      "proto_status": "ok",
+      "cc": "__watcall",
+      "callers": [
+        "llm_tact_frame"
+      ]
+    },
+    {
+      "addr": "0x0043c323",
+      "name": "llm_tact_scroll_fade_step",
+      "size": 118,
+      "prefixed": true,
+      "proto_status": "ok",
+      "cc": "__watcall",
+      "callers": [
+        "llm_tact_frame"
+      ]
+    },
+    {
+      "addr": "0x00439005",
+      "name": "llm_tact_scroll_target_proximity_tick",
+      "size": 254,
+      "prefixed": true,
+      "proto_status": "ok",
+      "cc": "__watcall",
+      "callers": [
+        "llm_tact_frame"
+      ]
+    },
+    {
+      "addr": "0x0042edb8",
+      "name": "llm_tact_select_next_unit",
+      "size": 353,
+      "prefixed": true,
+      "proto_status": "ok",
+      "cc": "__watcall",
+      "callers": [
+        "llm_tact_frame"
+      ]
+    },
+    {
+      "addr": "0x0042af6d",
+      "name": "llm_tact_selection_clear_unless_ctrl",
+      "size": 133,
+      "prefixed": true,
+      "proto_status": "ok",
+      "cc": "__watcall",
+      "callers": [
+        "llm_tact_frame",
+        "llm_tact_ui_sel_panel_multi_mode_tick"
+      ]
+    },
+    {
+      "addr": "0x00434af7",
+      "name": "llm_tact_selection_panel_refresh",
+      "size": 113,
+      "prefixed": true,
+      "proto_status": "ok",
+      "cc": "__watcall",
+      "callers": [
+        "llm_tact_frame",
+        "llm_tact_mission_start",
+        "llm_tact_select_next_unit",
+        "llm_tact_sidebar_dispatch",
+        "llm_tact_ui_sel_panel_init",
+        "llm_tact_ui_sel_panel_multi_mode_tick",
+        "llm_tact_ui_sel_panel_single_mode_tick",
+        "llm_tact_unit_despawn",
+        "llm_tact_unit_destroy"
+      ]
+    },
+    {
+      "addr": "0x00435972",
+      "name": "llm_tact_sidebar_dispatch",
+      "size": 888,
+      "prefixed": true,
+      "proto_status": "ok",
+      "cc": "__watcall",
+      "callers": [
+        "llm_tact_frame"
+      ]
+    },
+    {
+      "addr": "0x004356bd",
+      "name": "llm_tact_squad_roster_refresh",
+      "size": 588,
+      "prefixed": true,
+      "proto_status": "ok",
+      "cc": "__watcall",
+      "callers": [
+        "llm_tact_selection_panel_refresh",
+        "llm_tact_ui_sel_panel_multi_mode_tick"
+      ]
+    },
+    {
+      "addr": "0x00438f09",
+      "name": "llm_tact_squad_sync_hp",
+      "size": 252,
+      "prefixed": true,
+      "proto_status": "ok",
+      "cc": "__watcall",
+      "callers": [
+        "llm_tact_frame"
+      ]
+    },
+    {
+      "addr": "0x004334da",
+      "name": "llm_tact_teleport_cmdqueue_jump",
+      "size": 148,
+      "prefixed": true,
+      "proto_status": "ok",
+      "cc": "__watcall",
+      "callers": [
+        "llm_tact_unit_cmd_teleport_jump_tick"
+      ]
+    },
+    {
+      "addr": "0x00432ba1",
+      "name": "llm_tact_teleport_zone_scan_tick",
+      "size": 591,
+      "prefixed": true,
+      "proto_status": "ok",
+      "cc": "__watcall",
+      "callers": [
+        "llm_tact_frame"
+      ]
+    },
+    {
+      "addr": "0x0043c39c",
+      "name": "llm_tact_tile_clear_margin_patch",
+      "size": 64,
+      "prefixed": true,
+      "proto_status": "ok",
+      "cc": "__mh_watcall_ecx_ebx_volatile",
+      "callers": [
+        "llm_tact_tile_overlay_refresh"
+      ]
+    },
+    {
+      "addr": "0x0043bfcf",
+      "name": "llm_tact_tile_fog_compute_edges",
+      "size": 274,
+      "prefixed": true,
+      "proto_status": "ok",
+      "cc": "__watcall",
+      "callers": [
+        "llm_tact_tile_fog_set_origin"
+      ]
+    },
+    {
+      "addr": "0x0042e6d8",
+      "name": "llm_tact_tile_fog_set_origin",
+      "size": 59,
+      "prefixed": true,
+      "proto_status": "ok",
+      "cc": "__watcall",
+      "callers": [
+        "llm_tact_render_view"
+      ]
+    },
+    {
+      "addr": "0x0043c3dc",
+      "name": "llm_tact_tile_overlay_refresh",
+      "size": 278,
+      "prefixed": true,
+      "proto_status": "ok",
+      "cc": "__watcall",
+      "callers": [
+        "llm_tact_frame"
+      ]
+    },
+    {
+      "addr": "0x00433dfc",
+      "name": "llm_tact_tile_rebuild_occupancy_layer",
+      "size": 152,
+      "prefixed": true,
+      "proto_status": "ok",
+      "cc": "__mh_watcall_ecx_ebx_volatile",
+      "callers": [
+        "llm_tact_tile_rebuild_occupancy_layer_for_map"
+      ]
+    },
+    {
+      "addr": "0x0043356e",
+      "name": "llm_tact_tile_rebuild_occupancy_layer_for_map",
+      "size": 50,
+      "prefixed": true,
+      "proto_status": "ok",
+      "cc": "__watcall",
+      "callers": [
+        "llm_tact_unit_owner_tick"
+      ]
+    },
+    {
+      "addr": "0x0043ac65",
+      "name": "llm_tact_tlo_tile_blit",
+      "size": 1385,
+      "prefixed": true,
+      "proto_status": "ok",
+      "cc": "__watcall",
+      "callers": [
+        "llm_tact_render_view"
+      ]
+    },
+    {
+      "addr": "0x004341cd",
+      "name": "llm_tact_ui_char_panel_ammo_draw",
+      "size": 341,
+      "prefixed": true,
+      "proto_status": "ok",
+      "cc": "__watcall",
+      "callers": [
+        "llm_tact_ui_char_panel_row_draw",
+        "llm_tact_ui_sidebar_redraw_unit_slot"
+      ]
+    },
+    {
+      "addr": "0x00434322",
+      "name": "llm_tact_ui_char_panel_row_draw",
+      "size": 875,
+      "prefixed": true,
+      "proto_status": "ok",
+      "cc": "__watcall",
+      "callers": [
+        "llm_tact_sidebar_dispatch",
+        "llm_tact_ui_char_panel_row_refresh",
+        "llm_tact_ui_sidebar_roster_refresh"
+      ]
+    },
+    {
+      "addr": "0x00434f28",
+      "name": "llm_tact_ui_char_panel_row_refresh",
+      "size": 112,
+      "prefixed": true,
+      "proto_status": "ok",
+      "cc": "__watcall",
+      "callers": [
+        "llm_tact_unit_fire_weapon"
+      ]
+    },
+    {
+      "addr": "0x004354d3",
+      "name": "llm_tact_ui_draw_player_row_list",
+      "size": 490,
+      "prefixed": true,
+      "proto_status": "ok",
+      "cc": "__watcall",
+      "callers": [
+        "llm_tact_sidebar_dispatch",
+        "llm_tact_ui_sel_panel_init",
+        "llm_tact_ui_sel_panel_multi_mode_tick",
+        "llm_tact_ui_sel_panel_single_mode_tick",
+        "llm_tact_unit_despawn",
+        "llm_tact_unit_destroy"
+      ]
+    },
+    {
+      "addr": "0x0043c4f2",
+      "name": "llm_tact_ui_minimap_draw_viewport_outline",
+      "size": 103,
+      "prefixed": true,
+      "proto_status": "ok",
+      "cc": "__mh_watcall_ecx_ebx_volatile",
+      "callers": [
+        "llm_tact_tile_overlay_refresh"
+      ]
+    },
+    {
+      "addr": "0x00435909",
+      "name": "llm_tact_ui_mouse_in_rect",
+      "size": 105,
+      "prefixed": true,
+      "proto_status": "ok",
+      "cc": "__watcall",
+      "callers": [
+        "llm_tact_ui_order_buttons_minimap_tick",
+        "llm_tact_ui_sel_panel_multi_mode_tick",
+        "llm_tact_ui_sel_panel_single_mode_tick"
+      ]
+    },
+    {
+      "addr": "0x00435cea",
+      "name": "llm_tact_ui_order_buttons_minimap_tick",
+      "size": 1227,
+      "prefixed": true,
+      "proto_status": "ok",
+      "cc": "__watcall",
+      "callers": [
+        "llm_tact_sidebar_dispatch"
+      ]
+    },
+    {
+      "addr": "0x00435078",
+      "name": "llm_tact_ui_sel_panel_draw",
+      "size": 1115,
+      "prefixed": true,
+      "proto_status": "ok",
+      "cc": "__watcall",
+      "callers": [
+        "llm_tact_selection_panel_refresh",
+        "llm_tact_sidebar_dispatch",
+        "llm_tact_ui_sel_panel_init"
+      ]
+    },
+    {
+      "addr": "0x00434051",
+      "name": "llm_tact_ui_sel_panel_free_gfx",
+      "size": 81,
+      "prefixed": true,
+      "proto_status": "ok",
+      "cc": "__watcall",
+      "callers": [
+        "llm_gfx_apply_resolution_change"
+      ]
+    },
+    {
+      "addr": "0x00433e94",
+      "name": "llm_tact_ui_sel_panel_init",
+      "size": 445,
+      "prefixed": true,
+      "proto_status": "ok",
+      "cc": "__watcall",
+      "callers": [
+        "llm_tact_mission_start"
+      ]
+    },
+    {
+      "addr": "0x004361b5",
+      "name": "llm_tact_ui_sel_panel_multi_mode_tick",
+      "size": 2060,
+      "prefixed": true,
+      "proto_status": "ok",
+      "cc": "__watcall",
+      "callers": [
+        "llm_tact_sidebar_dispatch"
+      ]
+    },
+    {
+      "addr": "0x004369c1",
+      "name": "llm_tact_ui_sel_panel_single_mode_tick",
+      "size": 1388,
+      "prefixed": true,
+      "proto_status": "ok",
+      "cc": "__watcall",
+      "callers": [
+        "llm_tact_sidebar_dispatch"
+      ]
+    },
+    {
+      "addr": "0x00434ceb",
+      "name": "llm_tact_ui_sidebar_draw_rows",
+      "size": 215,
+      "prefixed": true,
+      "proto_status": "ok",
+      "cc": "__watcall",
+      "callers": [
+        "llm_tact_selection_panel_refresh"
+      ]
+    },
+    {
+      "addr": "0x00435008",
+      "name": "llm_tact_ui_sidebar_redraw_unit_slot",
+      "size": 112,
+      "prefixed": true,
+      "proto_status": "ok",
+      "cc": "__watcall",
+      "callers": [
+        "llm_tact_unit_fire_weapon"
+      ]
+    },
+    {
+      "addr": "0x00434b68",
+      "name": "llm_tact_ui_sidebar_roster_refresh",
+      "size": 387,
+      "prefixed": true,
+      "proto_status": "ok",
+      "cc": "__watcall",
+      "callers": [
+        "llm_tact_selection_panel_refresh"
+      ]
+    },
+    {
+      "addr": "0x0043468d",
+      "name": "llm_tact_ui_sidebar_row_draw_left",
+      "size": 562,
+      "prefixed": true,
+      "proto_status": "ok",
+      "cc": "__mh_watcall_ebx_volatile",
+      "callers": [
+        "llm_tact_ui_sel_panel_single_mode_tick",
+        "llm_tact_ui_sidebar_draw_rows"
+      ]
+    },
+    {
+      "addr": "0x004348bf",
+      "name": "llm_tact_ui_sidebar_row_draw_right",
+      "size": 568,
+      "prefixed": true,
+      "proto_status": "ok",
+      "cc": "__mh_watcall_ebx_volatile",
+      "callers": [
+        "llm_tact_ui_sel_panel_single_mode_tick",
+        "llm_tact_ui_sidebar_draw_rows"
+      ]
+    },
+    {
+      "addr": "0x0042c48b",
+      "name": "llm_tact_unit_apply_move_offset",
+      "size": 188,
+      "prefixed": true,
+      "proto_status": "ok",
+      "cc": "__mh_watcall_ebx_volatile",
+      "callers": [
+        "llm_tact_unit_render"
+      ]
+    },
+    {
+      "addr": "0x00431229",
+      "name": "llm_tact_unit_cmd_advance",
+      "size": 422,
+      "prefixed": true,
+      "proto_status": "ok",
+      "cc": "__watcall",
+      "callers": [
+        "llm_tact_unit_cmd_advance_with_defstat",
+        "llm_tact_unit_cmd_queue_advance",
+        "llm_tact_unit_cmd_queue_resubmit_run",
+        "llm_tact_unit_cmd_stance_off",
+        "llm_tact_unit_cmd_stance_on",
+        "llm_tact_unit_cmd_teleport_jump_tick",
+        "llm_tact_unit_kneel_tick",
+        "llm_tact_unit_mine_arm_tick",
+        "llm_tact_unit_move_tick",
+        "llm_tact_unit_stand_tick",
+        "llm_tact_unit_teleport",
+        "llm_tact_unit_weapons_tick"
+      ]
+    },
+    {
+      "addr": "0x0042f8e4",
+      "name": "llm_tact_unit_cmd_advance_with_defstat",
+      "size": 81,
+      "prefixed": true,
+      "proto_status": "ok",
+      "cc": "__watcall",
+      "callers": [
+        "llm_tact_unit_weapons_tick"
+      ]
+    },
+    {
+      "addr": "0x004313cf",
+      "name": "llm_tact_unit_cmd_queue_advance",
+      "size": 219,
+      "prefixed": true,
+      "proto_status": "ok",
+      "cc": "__watcall",
+      "callers": [
+        "llm_tact_unit_weapons_tick"
+      ]
+    },
+    {
+      "addr": "0x0043069e",
+      "name": "llm_tact_unit_cmd_queue_resubmit_run",
+      "size": 295,
+      "prefixed": true,
+      "proto_status": "ok",
+      "cc": "__watcall",
+      "callers": [
+        "llm_tact_unit_weapons_tick"
+      ]
+    },
+    {
+      "addr": "0x0043060f",
+      "name": "llm_tact_unit_cmd_stance_off",
+      "size": 143,
+      "prefixed": true,
+      "proto_status": "ok",
+      "cc": "__watcall",
+      "callers": [
+        "llm_tact_unit_enqueue_command",
+        "llm_tact_unit_weapons_tick"
+      ]
+    },
+    {
+      "addr": "0x00430580",
+      "name": "llm_tact_unit_cmd_stance_on",
+      "size": 143,
+      "prefixed": true,
+      "proto_status": "ok",
+      "cc": "__watcall",
+      "callers": [
+        "llm_tact_unit_enqueue_command",
+        "llm_tact_unit_weapons_tick"
+      ]
+    },
+    {
+      "addr": "0x00433464",
+      "name": "llm_tact_unit_cmd_teleport_jump_tick",
+      "size": 118,
+      "prefixed": true,
+      "proto_status": "ok",
+      "cc": "__watcall",
+      "callers": [
+        "llm_tact_unit_weapons_tick"
+      ]
+    },
+    {
+      "addr": "0x0042fb0b",
+      "name": "llm_tact_unit_death_tick",
+      "size": 144,
+      "prefixed": true,
+      "proto_status": "ok",
+      "cc": "__watcall",
+      "callers": [
+        "llm_tact_unit_weapons_tick"
+      ]
+    },
+    {
+      "addr": "0x00432048",
+      "name": "llm_tact_unit_despawn",
+      "size": 189,
+      "prefixed": true,
+      "proto_status": "ok",
+      "cc": "__watcall",
+      "callers": [
+        "llm_tact_teleport_zone_scan_tick"
+      ]
+    },
+    {
+      "addr": "0x00431d8d",
+      "name": "llm_tact_unit_destroy",
+      "size": 699,
+      "prefixed": true,
+      "proto_status": "ok",
+      "cc": "__watcall",
+      "callers": [
+        "llm_tact_unit_death_tick",
+        "llm_tact_unit_teleport"
+      ]
+    },
+    {
+      "addr": "0x004340a2",
+      "name": "llm_tact_unit_draw_hp_bar_slot",
+      "size": 299,
+      "prefixed": true,
+      "proto_status": "ok",
+      "cc": "__watcall",
+      "callers": [
+        "llm_tact_ui_char_panel_row_draw",
+        "llm_tact_unit_refresh_ui_slot"
+      ]
+    },
+    {
+      "addr": "0x0042b39d",
+      "name": "llm_tact_unit_enqueue_command",
+      "size": 1451,
+      "prefixed": true,
+      "proto_status": "ok",
+      "cc": "__watcall",
+      "callers": [
+        "llm_tact_frame",
+        "llm_tact_fx_update_projectile",
+        "llm_tact_group_issue_order",
+        "llm_tact_mission_load",
+        "llm_tact_ui_sel_panel_multi_mode_tick",
+        "llm_tact_unit_cmd_queue_resubmit_run",
+        "llm_tact_unit_owner_tick"
+      ]
+    },
+    {
+      "addr": "0x00430855",
+      "name": "llm_tact_unit_fire_weapon",
+      "size": 1058,
+      "prefixed": true,
+      "proto_status": "ok",
+      "cc": "__mh_watcall_ebx_volatile",
+      "callers": [
+        "llm_tact_unit_weapons_tick"
+      ]
+    },
+    {
+      "addr": "0x00432105",
+      "name": "llm_tact_unit_get_muzzle_offset",
+      "size": 353,
+      "prefixed": true,
+      "proto_status": "ok",
+      "cc": "__watcall",
+      "callers": [
+        "llm_tact_unit_fire_weapon"
+      ]
+    },
+    {
+      "addr": "0x00430363",
+      "name": "llm_tact_unit_kneel_tick",
+      "size": 282,
+      "prefixed": true,
+      "proto_status": "ok",
+      "cc": "__watcall",
+      "callers": [
+        "llm_tact_unit_weapons_tick"
+      ]
+    },
+    {
+      "addr": "0x0042f935",
+      "name": "llm_tact_unit_mine_arm_tick",
+      "size": 374,
+      "prefixed": true,
+      "proto_status": "ok",
+      "cc": "__watcall",
+      "callers": [
+        "llm_tact_unit_weapons_tick"
+      ]
+    },
+    {
+      "addr": "0x00430f5a",
+      "name": "llm_tact_unit_move_advance",
+      "size": 522,
+      "prefixed": true,
+      "proto_status": "ok",
+      "cc": "__watcall",
+      "callers": [
+        "llm_tact_unit_move_tick"
+      ]
+    },
+    {
+      "addr": "0x0042fb9b",
+      "name": "llm_tact_unit_move_tick",
+      "size": 1992,
+      "prefixed": true,
+      "proto_status": "ok",
+      "cc": "__watcall",
+      "callers": [
+        "llm_tact_unit_weapons_tick"
+      ]
+    },
+    {
+      "addr": "0x004335a0",
+      "name": "llm_tact_unit_owner_tick",
+      "size": 1624,
+      "prefixed": true,
+      "proto_status": "ok",
+      "cc": "__watcall",
+      "callers": [
+        "llm_tact_frame"
+      ]
+    },
+    {
+      "addr": "0x0042ddde",
+      "name": "llm_tact_unit_pose_tag_select",
+      "size": 161,
+      "prefixed": true,
+      "proto_status": "ok",
+      "cc": "__watcall",
+      "callers": [
+        "llm_tact_render_view"
+      ]
+    },
+    {
+      "addr": "0x00434f98",
+      "name": "llm_tact_unit_refresh_ui_slot",
+      "size": 112,
+      "prefixed": true,
+      "proto_status": "ok",
+      "cc": "__watcall",
+      "callers": [
+        "llm_tact_fx_splash_damage",
+        "llm_tact_fx_update_projectile"
+      ]
+    },
+    {
+      "addr": "0x0042c274",
+      "name": "llm_tact_unit_render",
+      "size": 535,
+      "prefixed": true,
+      "proto_status": "ok",
+      "cc": "__mh_watcall_ecx_ebx_volatile",
+      "callers": [
+        "llm_tact_render_view"
+      ]
+    },
+    {
+      "addr": "0x00430df1",
+      "name": "llm_tact_unit_rotate_step",
+      "size": 274,
+      "prefixed": true,
+      "proto_status": "ok",
+      "cc": "__watcall",
+      "callers": [
+        "llm_tact_unit_fire_weapon",
+        "llm_tact_unit_move_tick",
+        "llm_tact_unit_rotate_tick"
+      ]
+    },
+    {
+      "addr": "0x004307c5",
+      "name": "llm_tact_unit_rotate_tick",
+      "size": 144,
+      "prefixed": true,
+      "proto_status": "ok",
+      "cc": "__watcall",
+      "callers": [
+        "llm_tact_unit_weapons_tick"
+      ]
+    },
+    {
+      "addr": "0x00430f03",
+      "name": "llm_tact_unit_set_anim_state",
+      "size": 87,
+      "prefixed": true,
+      "proto_status": "ok",
+      "cc": "__watcall",
+      "callers": [
+        "llm_tact_fx_splash_damage",
+        "llm_tact_fx_update_projectile",
+        "llm_tact_unit_kneel_tick",
+        "llm_tact_unit_mine_arm_tick",
+        "llm_tact_unit_move_advance",
+        "llm_tact_unit_stand_tick",
+        "llm_tact_unit_weapons_tick"
+      ]
+    },
+    {
+      "addr": "0x0042b948",
+      "name": "llm_tact_unit_spawn",
+      "size": 1158,
+      "prefixed": true,
+      "proto_status": "ok",
+      "cc": "__mh_watcall_ebx_volatile",
+      "callers": [
+        "llm_tact_mission_load"
+      ]
+    },
+    {
+      "addr": "0x0043047d",
+      "name": "llm_tact_unit_stand_tick",
+      "size": 259,
+      "prefixed": true,
+      "proto_status": "ok",
+      "cc": "__watcall",
+      "callers": [
+        "llm_tact_unit_move_tick",
+        "llm_tact_unit_weapons_tick"
+      ]
+    },
+    {
+      "addr": "0x00432df0",
+      "name": "llm_tact_unit_teleport",
+      "size": 1652,
+      "prefixed": true,
+      "proto_status": "ok",
+      "cc": "__watcall",
+      "callers": [
+        "llm_tact_teleport_cmdqueue_jump",
+        "llm_tact_teleport_zone_scan_tick"
+      ]
+    },
+    {
+      "addr": "0x0042c547",
+      "name": "llm_tact_unit_update_anim",
+      "size": 2947,
+      "prefixed": true,
+      "proto_status": "ok",
+      "cc": "__watcall",
+      "callers": [
+        "llm_tact_unit_render"
+      ]
+    },
+    {
+      "addr": "0x0042e385",
+      "name": "llm_tact_unit_vision_add",
+      "size": 442,
+      "prefixed": true,
+      "proto_status": "ok",
+      "cc": "__watcall",
+      "callers": [
+        "llm_tact_unit_move_advance",
+        "llm_tact_unit_rotate_step",
+        "llm_tact_unit_spawn",
+        "llm_tact_unit_teleport"
+      ]
+    },
+    {
+      "addr": "0x0042e53f",
+      "name": "llm_tact_unit_vision_remove",
+      "size": 409,
+      "prefixed": true,
+      "proto_status": "ok",
+      "cc": "__watcall",
+      "callers": [
+        "llm_tact_unit_despawn",
+        "llm_tact_unit_destroy",
+        "llm_tact_unit_move_advance",
+        "llm_tact_unit_rotate_step",
+        "llm_tact_unit_teleport"
+      ]
+    },
+    {
+      "addr": "0x00433c0d",
+      "name": "llm_tact_unit_weapon_in_range",
+      "size": 330,
+      "prefixed": true,
+      "proto_status": "ok",
+      "cc": "__mh_watcall_ebx_volatile",
+      "callers": [
+        "llm_tact_unit_owner_tick"
+      ]
+    },
+    {
+      "addr": "0x0042f338",
+      "name": "llm_tact_unit_weapons_tick",
+      "size": 1437,
+      "prefixed": true,
+      "proto_status": "ok",
+      "cc": "__watcall",
+      "callers": [
+        "llm_tact_update_units_and_fx"
+      ]
+    },
+    {
+      "addr": "0x0042ad7f",
+      "name": "llm_tact_units_reset_hp_for_active",
+      "size": 94,
+      "prefixed": true,
+      "proto_status": "ok",
+      "cc": "__watcall",
+      "callers": [
+        "llm_tact_frame"
+      ]
+    },
+    {
+      "addr": "0x0042aff2",
+      "name": "llm_tact_update_units_and_fx",
+      "size": 173,
+      "prefixed": true,
+      "proto_status": "ok",
+      "cc": "__watcall",
+      "callers": [
+        "llm_tact_frame"
+      ]
+    },
+    {
+      "addr": "0x00429776",
+      "name": "llm_tact_view_metrics_init",
+      "size": 605,
+      "prefixed": true,
+      "proto_status": "ok",
+      "cc": "__watcall",
+      "callers": [
+        "llm_tact_mission_start"
+      ]
+    },
+    {
+      "addr": "0x0043c155",
+      "name": "llm_tact_view_shift_col_dec",
+      "size": 136,
+      "prefixed": true,
+      "proto_status": "ok",
+      "cc": "__watcall",
+      "callers": [
+        "llm_tact_frame",
+        "llm_tact_render_view"
+      ]
+    },
+    {
+      "addr": "0x0043c0e1",
+      "name": "llm_tact_view_shift_col_inc",
+      "size": 116,
+      "prefixed": true,
+      "proto_status": "ok",
+      "cc": "__watcall",
+      "callers": [
+        "llm_tact_frame",
+        "llm_tact_render_view"
+      ]
+    },
+    {
+      "addr": "0x0043c266",
+      "name": "llm_tact_view_shift_row_dec",
+      "size": 157,
+      "prefixed": true,
+      "proto_status": "ok",
+      "cc": "__watcall",
+      "callers": [
+        "llm_tact_frame",
+        "llm_tact_render_view"
+      ]
+    },
+    {
+      "addr": "0x0043c1dd",
+      "name": "llm_tact_view_shift_row_inc",
+      "size": 137,
+      "prefixed": true,
+      "proto_status": "ok",
+      "cc": "__watcall",
+      "callers": [
+        "llm_tact_frame",
+        "llm_tact_render_view"
+      ]
+    },
+    {
+      "addr": "0x0043ac28",
+      "name": "llm_tact_vis_map_clear_right_margin",
+      "size": 61,
+      "prefixed": true,
+      "proto_status": "ok",
+      "cc": "__mh_watcall_ecx_ebx_volatile",
+      "callers": [
+        "llm_tact_active_unit_count_hud_draw"
+      ]
+    },
+    {
+      "addr": "0x0042e1c9",
+      "name": "llm_tact_vision_cone_setup",
+      "size": 87,
+      "prefixed": true,
+      "proto_status": "ok",
+      "cc": "__watcall",
+      "callers": [
+        "llm_tact_unit_vision_add",
+        "llm_tact_unit_vision_remove"
+      ]
+    },
+    {
+      "addr": "0x00430c77",
+      "name": "llm_tact_weapon_calc_scatter",
+      "size": 378,
+      "prefixed": true,
+      "proto_status": "ok",
+      "cc": "__mh_watcall_ebx_volatile",
+      "callers": [
+        "llm_tact_unit_fire_weapon"
+      ]
+    },
+    {
+      "addr": "0x0042f229",
+      "name": "llm_tact_zone_sound_play",
+      "size": 142,
+      "prefixed": true,
+      "proto_status": "ok",
+      "cc": "__watcall",
+      "callers": [
+        "llm_tact_frame"
+      ]
+    },
+    {
+      "addr": "0x0043a7cd",
+      "name": "llm_tlo_shade_table_build_tact",
+      "size": 697,
+      "prefixed": false,
+      "proto_status": "ok",
+      "cc": "__watcall",
+      "callers": [
+        "llm_tact_mission_load"
+      ]
+    },
+    {
+      "addr": "0x004cac85",
+      "name": "llm_ui_info_media_draw_p1",
+      "size": 64,
+      "prefixed": false,
+      "proto_status": "ok",
+      "cc": "__watcall",
+      "callers": [
+        "llm_tact_mission_start"
+      ]
+    },
+    {
+      "addr": "0x004cacc5",
+      "name": "llm_ui_info_media_draw_p2",
+      "size": 64,
+      "prefixed": false,
+      "proto_status": "ok",
+      "cc": "__watcall",
+      "callers": [
+        "llm_gfx_apply_resolution_change"
+      ]
+    },
+    {
+      "addr": "0x0041be9d",
+      "name": "llm_ui_text_draw_rgb16",
+      "size": 78,
+      "prefixed": false,
+      "proto_status": "ok",
+      "cc": "__mh_watcall_ecx_ebx_volatile",
+      "callers": [
+        "llm_tact_active_unit_count_hud_draw",
+        "llm_tact_ui_char_panel_ammo_draw",
+        "llm_tact_ui_char_panel_row_draw",
+        "llm_tact_ui_draw_player_row_list",
+        "llm_tact_ui_sel_panel_init",
+        "llm_tact_ui_sidebar_row_draw_left",
+        "llm_tact_ui_sidebar_row_draw_right"
+      ]
+    }
+  ],
+  "prefixed_not_exclusive": [
+    {
+      "addr": "0x0044e28a",
+      "name": "llm_tact_gfx_init_view_surfaces",
+      "size": 407,
+      "prefixed": true,
+      "proto_status": "ok",
+      "cc": "__watcall",
+      "callers": [
+        "llm_game_init_subsystems"
+      ],
+      "why_not_exclusive": "unreachable from the tactical roots"
+    },
+    {
+      "addr": "0x00428802",
+      "name": "llm_tact_gfx_init_view_tile_ptrs",
+      "size": 329,
+      "prefixed": true,
+      "proto_status": "ok",
+      "cc": "__watcall",
+      "callers": [
+        "llm_gfx_set_window_resolution"
+      ],
+      "why_not_exclusive": "also reachable from non-tactical code"
+    },
+    {
+      "addr": "0x00494eb8",
+      "name": "llm_tact_move_commit_pending_path",
+      "size": 84,
+      "prefixed": true,
+      "proto_status": "ok",
+      "cc": "__watcall",
+      "callers": [],
+      "why_not_exclusive": "unreachable from the tactical roots"
+    },
+    {
+      "addr": "0x00427c6c",
+      "name": "llm_tact_move_find_approach_tile",
+      "size": 1429,
+      "prefixed": true,
+      "proto_status": "ok",
+      "cc": "__watcall",
+      "callers": [],
+      "why_not_exclusive": "unreachable from the tactical roots"
+    },
+    {
+      "addr": "0x00488876",
+      "name": "llm_tact_move_find_reachable_dest",
+      "size": 126,
+      "prefixed": true,
+      "proto_status": "ok",
+      "cc": "__watcall",
+      "callers": [],
+      "why_not_exclusive": "unreachable from the tactical roots"
+    },
+    {
+      "addr": "0x00425098",
+      "name": "llm_tact_move_flood_reachable_tile",
+      "size": 411,
+      "prefixed": true,
+      "proto_status": "ok",
+      "cc": "__mh_watcall_ecx_ebx_volatile",
+      "callers": [
+        "llm_tact_move_find_approach_tile",
+        "llm_tact_move_find_reachable_dest"
+      ],
+      "why_not_exclusive": "unreachable from the tactical roots"
+    },
+    {
+      "addr": "0x00493c28",
+      "name": "llm_tact_tile_calc_fog_edge_shape",
+      "size": 906,
+      "prefixed": true,
+      "proto_status": "ok",
+      "cc": "__watcall",
+      "callers": [],
+      "why_not_exclusive": "unreachable from the tactical roots"
+    },
+    {
+      "addr": "0x00431166",
+      "name": "llm_tact_unit_get_facing_octant",
+      "size": 89,
+      "prefixed": true,
+      "proto_status": "ok",
+      "cc": "__watcall",
+      "callers": [],
+      "why_not_exclusive": "unreachable from the tactical roots"
+    },
+    {
+      "addr": "0x004d46f0",
+      "name": "llm_tact_unit_is_tile_heli_transport",
+      "size": 112,
+      "prefixed": true,
+      "proto_status": "ok",
+      "cc": "__watcall",
+      "callers": [],
+      "why_not_exclusive": "unreachable from the tactical roots"
+    },
+    {
+      "addr": "0x00451d6a",
+      "name": "llm_tact_view_draw_tile_border_edges",
+      "size": 1328,
+      "prefixed": true,
+      "proto_status": "ok",
+      "cc": "__watcall",
+      "callers": [],
+      "why_not_exclusive": "unreachable from the tactical roots"
+    },
+    {
+      "addr": "0x0043abfe",
+      "name": "llm_tact_vis_map_fill_default",
+      "size": 42,
+      "prefixed": true,
+      "proto_status": "ok",
+      "cc": "__watcall",
+      "callers": [
+        "llm_tact_cam_follow_selection_tick",
+        "llm_tact_camera_center_on_tile",
+        "llm_tact_frame",
+        "llm_tact_ui_order_buttons_minimap_tick",
+        "llm_tact_ui_sel_panel_multi_mode_tick",
+        "llm_wnd_on_activate"
+      ],
+      "why_not_exclusive": "also reachable from non-tactical code"
+    }
+  ]
+}

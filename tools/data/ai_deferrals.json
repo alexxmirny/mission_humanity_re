@@ -1,0 +1,26 @@
+{
+ "_comment": [
+  "SLICE DEFERRALS for the strategic-AI migration domain. Read by tools/migration_loop.py's slice",
+  "livelock gate and by tools/migration_session.py --end (slice_reasoned_names): a proposed",
+  "function with a non-empty `reason` here is accepted as a decision-on-the-record and will not",
+  "trip the gate while it stays not_started.",
+  "",
+  "USE THIS SPARINGLY, and NEVER for these non-reasons:",
+  "  * 'too large' / 'needs its own session' -- NOT a valid deferral. A large function is",
+  "    translated by the DOMAIN-AGNOSTIC fan-out (.claude/workflows/translate.js / the `translate`",
+  "    skill): one fresh-context writer per unit, so size is a reason to DELEGATE, never to defer.",
+  "  * 'have not reached it yet' -- that is the queue, not a decision. The gate already gives a",
+  "    queued function SLICE_MISS_LIMIT sessions of grace.",
+  "",
+  "A deferral is only for a function whose translation is genuinely BLOCKED right now on something",
+  "outside this session's reach -- an unresolved calling convention that needs Ghidra work, or",
+  "another tracker item that must land first. When the block clears, delete the entry.",
+  "",
+  "The STRONG dispositions are permanent and live elsewhere: a function that will never be migrated",
+  "is a WALL (the domain's select.cut_names_from list) or DEAD (todo:dead); those clear the gate",
+  "without an entry here.",
+  "",
+  "Schema: deferrals[<function name>] = { reason (required, non-empty), session, recorded }."
+ ],
+ "deferrals": {}
+}

@@ -1,0 +1,564 @@
+{
+ "_comment": [
+  "boot_snapshot_dispositions.json -- the HAND-AUTHORED half of LIB-BOOT's accounting.",
+  "",
+  "tools/gen_boot_snapshot.py DERIVES the population (the write closure of boot stage 5's root,",
+  "InitSafe) and derives one verdict: a region with a live reader outside the cfg cluster is",
+  "carried, because its content outlives the parse. Everything the derivation cannot decide lives",
+  "here, with a class and a `why`, and the generator refuses a missing one, an empty one, a class",
+  "with no definition, and one naming a region the closure no longer writes.",
+  "",
+  "THREE THINGS THIS FILE CAN SAY, and the middle one is the dangerous one:",
+  "",
+  "  verdict: exclude   the region's content does not outlive the parse (or is owned elsewhere).",
+  "  may_override_direct  a class allowed to overrule a DERIVED carry-direct -- i.e. to drop a",
+  "                     region that demonstrably has live readers. Five classes have it, and every",
+  "                     one of them hands the region to ANOTHER owner (LIB-WORLD, the renderer,",
+  "                     the codec) rather than declaring it dead. This flag exists because",
+  "                     'exclude a region the sim reads' is precisely how a snapshot passes its",
+  "                     own hash and produces a wrong world -- and it fired for real while this",
+  "                     file was being written, on SYSTEM, which is now carried instead.",
+  "  carry_added        a region the derivation CANNOT produce, carried on named outside evidence.",
+  "",
+  "WHY SO MANY 4-BYTE EXCLUSIONS. cfg_Init resets sixteen `static::data::*` class descriptors and",
+  "allocates the matching `dynamic::data::*` arrays on the HEAP; the 4-byte regions at 0x00e5b8xx",
+  "are those descriptors' pointer heads. A pointer to a parse-time heap allocation is meaningless",
+  "in a different process, which is why they are excluded rather than carried -- and it is also why",
+  "their only reader is FreeGlobalData, reached from llm_fatal_cleanup to free() them.",
+  "",
+  "FUN_004aa1ce, which shows up as the lone non-cluster reader of two pre-parse tables, has ZERO",
+  "references in the Ghidra DB in EITHER direction (checked 2026-09-10). It is not being called",
+  "'dead' on that basis -- a LAB_ alias exists at the same address -- but it reads the same",
+  "parse-time form the cluster does, so it cannot be a consumer of anything the snapshot would need",
+  "to carry."
+ ],
+ "exclusion_classes": {
+  "pre-static-table": {
+   "why": "the parse-time `cfg::static/dynamic::data::*` form of an object class. ConstructObjects drains it into the `cfg::final::data::*` array the snapshot DOES carry, and nothing outside the cfg cluster reads it afterwards.",
+   "may_override_direct": false
+  },
+  "heap-pointer-head": {
+   "why": "a 4-byte class-descriptor pointer to a parse-time HEAP allocation made by cfg_Init. Its only reader is FreeGlobalData (from llm_fatal_cleanup, a shutdown free), and a heap address cannot be imported into a different process at all.",
+   "may_override_direct": true
+  },
+  "parse-cursor": {
+   "why": "the parser's own position/accounting machinery -- the buffer pointers, the line cursor and counts, the entry-type latch, the running totals. Dead the instant the parse ends.",
+   "may_override_direct": false
+  },
+  "cfg-scale-knob": {
+   "why": "a global difficulty modifier (*_MUL / *_ADD) parsed from INIT.CFG and applied by the constructors whose OUTPUT the snapshot carries. The scaled values are already in the carried tables; the knob itself has no reader outside the cluster.",
+   "may_override_direct": false
+  },
+  "codec-scratch": {
+   "why": "per-call scratch of the LZW decompressor that reads INIT.CFG out of the .rsr. Written and consumed inside one decompress call; the boot cfg load already runs hundreds of them.",
+   "may_override_direct": true
+  },
+  "movs-source": {
+   "why": "an .rdata string literal that is the SOURCE of a `rep movs`, not a destination. derive_write_closure counts `movs` as a write kind, so a literal being copied FROM registers as a write of it. Read-only image data -- there is nothing to snapshot.",
+   "may_override_direct": false
+  },
+  "presentation-only": {
+   "why": "cfg output whose every reader is a renderer. Same boundary LIFT-TABLE S2 drew for the per-planet graphics bytes: data reached only by presentation code is not part of the sim-facing prototype state, and libmh has no consumer for it.",
+   "may_override_direct": true
+  },
+  "map-io-transient": {
+   "why": "session values owned by LIB-WORLD. Written by cfg_ReadMapFile / the map loader on EVERY map load, so what stands at boot stage 9 is the last-constructed planet's value, not a prototype. LIB-WORLD's step-0 blob carries the session's own.",
+   "may_override_direct": true
+  },
+  "sim-runtime-state": {
+   "why": "live simulation state that the cfg closure only brushes; its real writers are llm_strat_sim_step and the session/map init path. Snapshotting a mid-boot sample of it would import a transient, and LIB-WORLD's step-0 blob is where it belongs.",
+   "may_override_direct": true
+  }
+ },
+ "carry_added": {
+  "Stones": {
+   "addr": "0x00d02a60",
+   "size": 800,
+   "why": "cfg::final::data::Stones -- a post-cfg prototype table the DERIVATION CANNOT SEE. The state matrix has no region entry for 0x00d02a60 at all, so no cell attributes cfg_ConstructStones' write and the closure is structurally blind to it (the SIZE-0/unhosted class derive_write_closure.py warns about). Found only by diffing this schema against retail's own dead snapshot pair, which LZW-writes `&Stones, 800` at 0x00448a75. Size is that literal; the only two references Ghidra records for the label are those two dead functions."
+  },
+  "_G_LLM_TUTORIAL_STEPS": {
+   "addr": "0x0065732e",
+   "size": 24768,
+   "why": "The tutorial step table -- a cfg-CLASS parse (info\\TUTORIAL.TXT out of the .rsr, into a table that is read-only afterwards) that runs at TUTORIAL START rather than at boot, so the stage-5 closure cannot contain it. It is carried because it is the second of LIB-BOOT's two va_census sites (sim/resid/sim_start_tutorial.cpp:24 -> llm_tutorial_load_script): with the table imported, the standalone call site has nothing left to do. The capture calls the parser once at stage 9 and restores everything it writes -- see `restore`."
+  },
+  "_G_LLM_TUTORIAL_STEP_COUNT": {
+   "addr": "0x0065732a",
+   "size": 4,
+   "why": "The count for the table above. A snapshot that carries a table and not its count is a footgun: llm_tutorial_step_driver bounds every step lookup on it."
+  },
+  "_G_LLM_TUTORIAL_FORCED_BLDG_SELECTION": {
+   "addr": "0x00657326",
+   "size": 4,
+   "why": "The third region the tutorial parse leaves behind for llm_tutorial_step_driver to read -- the forced build-selection latch. Carried with the table it belongs to."
+  },
+  "_G_LLM_TLO_REGISTRY": {
+   "addr": "0x0065673e",
+   "size": 72,
+   "why": "llm_tlo_registry_entry[8] -- the tileset name->index table cfg_GetTloIndex walks, and the FIRST of LIB-BOOT's two va_census sites (sim/libtrans/sim_lt_cfg_planet.cpp:19). MEASURED zero writers, so it is baked image data rather than parser output and the stage-5 closure cannot contain it; the va_census `cfg-snapshot` class is a routing label, not a claim about the writer. Carried as a DERIVED block -- 8 x {name[64], index}, the char* names materialised inline -- so the standalone lookup has no image pointer to dangle on."
+  }
+ },
+ "regions": {
+  "G_TEXT_BLOCK": {
+   "verdict": "carry",
+   "class": "pointed-into",
+   "why": "300,000 bytes of UTF-16 text, the single largest thing the cfg load produces, and it has ZERO readers by address -- every consumer dereferences a pointer out of G_TEXT_PTRS, which the snapshot already carries. The reader rule therefore buries it, which is the ref-manager-blindness class in docs/dead-ends.md. It is load-bearing for the determinism hash, not merely for UI: llm_game_start_tutorial resolves player 1's name through v.text_ptrs[0x2ac] and `players[].name` is hashed. THE DECLARATION IS CHECKED AT CAPTURE -- the capture scans every carried block for dwords landing inside this region and reports the count, so if it ever stops being pointed into, this stops being green."
+  },
+  "ANIM": {
+   "verdict": "exclude",
+   "class": "pre-static-table",
+   "why": "cfg::static::data::Anim, 292 B -- drained into the carried final `Anim` table by cfg_ConstructAnims."
+  },
+  "BANK": {
+   "verdict": "exclude",
+   "class": "pre-static-table",
+   "why": "cfg::static::data::Bank, 140 B -- the BANK class descriptor. Bank base indices are resolved into absolute sprite ids during ConstructObjects; nothing outside the cluster reads the parse form."
+  },
+  "DEFINE@00e5b9f0": {
+   "verdict": "exclude",
+   "class": "pre-static-table",
+   "why": "cfg::static::data::Define, 140 B -- the 989 DEFINE constants' class descriptor. Every DEFINE is already folded into the numeric fields of the carried tables."
+  },
+  "PLANET": {
+   "verdict": "exclude",
+   "class": "pre-static-table",
+   "why": "cfg::static::data::Planet, 944 B -- drained into the carried `Planets` array by cfg_final_planet_Construct."
+  },
+  "PROJECT@00e5bba8": {
+   "verdict": "exclude",
+   "class": "pre-static-table",
+   "why": "cfg::static::data::Project, 1316 B -- drained into the carried `Projects` array."
+  },
+  "SPRITE": {
+   "verdict": "exclude",
+   "class": "pre-static-table",
+   "why": "cfg::static::data::Sprite, 144 B -- name->(bank.index + frame) resolution happens during ConstructObjects; the ids it produces are in the carried tables."
+  },
+  "STONE": {
+   "verdict": "exclude",
+   "class": "pre-static-table",
+   "why": "cfg::static::data::Stone, 392 B -- drained into the carried `Stones` table (which the derivation cannot see; see carry_added)."
+  },
+  "TEXT": {
+   "verdict": "exclude",
+   "class": "pre-static-table",
+   "why": "cfg::static::data::Text, 376 B -- the TEXT class descriptor. cfg_SaveText has already compiled every string into the carried G_TEXT_BLOCK/G_TEXT_PTRS pair."
+  },
+  "TREE": {
+   "verdict": "exclude",
+   "class": "pre-static-table",
+   "why": "cfg::static::data::Tree, 496 B at 0x00e5a298 -- the PARSE form. Not to be confused with the carried final table `Tree` at 0x00e14048 (rid TREE), which is a different address and a different thing."
+  },
+  "UPGRADE": {
+   "verdict": "exclude",
+   "class": "pre-static-table",
+   "why": "cfg::static::data::Upgrade, 2480 B -- drained into the carried `Upgrades` array."
+  },
+  "WEAPON": {
+   "verdict": "exclude",
+   "class": "pre-static-table",
+   "why": "cfg::static::data::Weapon, 1760 B -- drained into the carried `Weapon` array by cfg_final_ConstructWeapons."
+  },
+  "DATA": {
+   "verdict": "exclude",
+   "class": "codec-scratch",
+   "why": "28 B of LZW dictionary/state at 0x0067f6b7, written and consumed inside one LZW_Decompress call."
+  },
+  "ANIM@00e5c0d0": {
+   "verdict": "exclude",
+   "class": "heap-pointer-head",
+   "why": "the ANIM class descriptor's dynamic-array pointer."
+  },
+  "BANK@00e5b8c4": {
+   "verdict": "exclude",
+   "class": "heap-pointer-head",
+   "why": "the BANK class descriptor's dynamic-array pointer."
+  },
+  "BUILDING": {
+   "verdict": "exclude",
+   "class": "heap-pointer-head",
+   "why": "the BUILDING class descriptor's dynamic-array pointer at 0x00e5ba7c -- NOT the carried final table `Building` at 0x00d9ec80."
+  },
+  "DEFINE": {
+   "verdict": "exclude",
+   "class": "heap-pointer-head",
+   "why": "the DEFINE class descriptor's dynamic-array pointer."
+  },
+  "ICON": {
+   "verdict": "exclude",
+   "class": "heap-pointer-head",
+   "why": "the ICON class descriptor's dynamic-array pointer."
+  },
+  "PLANETS": {
+   "verdict": "exclude",
+   "class": "heap-pointer-head",
+   "why": "the PLANET class descriptor's dynamic-array pointer at 0x00e5b820 -- NOT the carried final table `Planets` at 0x00be6da0."
+  },
+  "PROGRESS": {
+   "verdict": "exclude",
+   "class": "heap-pointer-head",
+   "why": "the PROGRESS class descriptor's dynamic-array pointer at 0x00e5b81c -- NOT the carried final table `Progress` at 0x00e162e4."
+  },
+  "PROJECT": {
+   "verdict": "exclude",
+   "class": "heap-pointer-head",
+   "why": "the PROJECT class descriptor's dynamic-array pointer."
+  },
+  "SPRITE@00e5ba80": {
+   "verdict": "exclude",
+   "class": "heap-pointer-head",
+   "why": "the SPRITE class descriptor's dynamic-array pointer."
+  },
+  "STONE@00e5b82c": {
+   "verdict": "exclude",
+   "class": "heap-pointer-head",
+   "why": "the STONE class descriptor's dynamic-array pointer."
+  },
+  "SYSTEM@00e5b824": {
+   "verdict": "exclude",
+   "class": "heap-pointer-head",
+   "why": "the SYSTEM class descriptor's dynamic-array pointer."
+  },
+  "TEXT@00e5b828": {
+   "verdict": "exclude",
+   "class": "heap-pointer-head",
+   "why": "the TEXT class descriptor's dynamic-array pointer. Its non-cluster referrer is FUN_004aa1ce, which has zero references in the Ghidra DB in either direction; the pointer is to a parse-time heap allocation either way."
+  },
+  "TREE@00e5b818": {
+   "verdict": "exclude",
+   "class": "heap-pointer-head",
+   "why": "the TREE class descriptor's dynamic-array pointer."
+  },
+  "UNIT": {
+   "verdict": "exclude",
+   "class": "heap-pointer-head",
+   "why": "the UNIT class descriptor's dynamic-array pointer at 0x00e5c0d4 -- NOT the carried final table `Unit` at 0x00e4a098."
+  },
+  "UPGRADE@00e5b834": {
+   "verdict": "exclude",
+   "class": "heap-pointer-head",
+   "why": "the UPGRADE class descriptor's dynamic-array pointer."
+  },
+  "WEAPON@00e5b8c8": {
+   "verdict": "exclude",
+   "class": "heap-pointer-head",
+   "why": "the WEAPON class descriptor's dynamic-array pointer."
+  },
+  "_G_LLM_CFG_WEAPON_TABLE_DYNAMIC_PTR": {
+   "verdict": "exclude",
+   "class": "heap-pointer-head",
+   "why": "the weapon dynamic-array pointer under its own _G_LLM_ name."
+  },
+  "_G_LLM_CFG_WEAPON_TABLE_STATIC_PTR": {
+   "verdict": "exclude",
+   "class": "heap-pointer-head",
+   "why": "the weapon static-array pointer under its own _G_LLM_ name."
+  },
+  "CFG_END": {
+   "verdict": "exclude",
+   "class": "parse-cursor",
+   "why": "end of the concatenated INIT.CFG + INITLANG.CFG buffer."
+  },
+  "CFG_PTR": {
+   "verdict": "exclude",
+   "class": "parse-cursor",
+   "why": "the concatenated config buffer itself (a heap allocation held by pointer)."
+  },
+  "CUR_CFG_PTR": {
+   "verdict": "exclude",
+   "class": "parse-cursor",
+   "why": "the parser's read cursor into that buffer."
+  },
+  "CUR_LINE": {
+   "verdict": "exclude",
+   "class": "parse-cursor",
+   "why": "the current line's first WCHAR."
+  },
+  "CUR_LINE_PTR": {
+   "verdict": "exclude",
+   "class": "parse-cursor",
+   "why": "pointer to the current line."
+  },
+  "LINE_COUNT": {
+   "verdict": "exclude",
+   "class": "parse-cursor",
+   "why": "lines consumed so far, for the error messages."
+  },
+  "LINE_END": {
+   "verdict": "exclude",
+   "class": "parse-cursor",
+   "why": "end of the current line."
+  },
+  "MULTILINE_COMMENT": {
+   "verdict": "exclude",
+   "class": "parse-cursor",
+   "why": "the /* */ nesting latch."
+  },
+  "G_CONFIG_ENTRY_TYPE": {
+   "verdict": "exclude",
+   "class": "parse-cursor",
+   "why": "which object class the current entry belongs to -- the HandleConfigEntry dispatch latch."
+  },
+  "G_TEXT_TOTAL": {
+   "verdict": "exclude",
+   "class": "parse-cursor",
+   "why": "cfg_SaveText's running byte total into G_TEXT_BLOCK. Written and read only by cfg_SaveText itself; the finished pointer table is what consumers use."
+  },
+  "TOTAL_FRAME_COUNT": {
+   "verdict": "exclude",
+   "class": "parse-cursor",
+   "why": "cfg_anim_Construct's running frame-pool total, checked against the 2501 cap during the parse. No reader afterwards."
+  },
+  "DAT_00519d28": {
+   "verdict": "exclude",
+   "class": "parse-cursor",
+   "why": "2-byte unnamed parse latch inside the config lexer; no reader outside the cluster."
+  },
+  "DAT_005d0c50": {
+   "verdict": "exclude",
+   "class": "parse-cursor",
+   "why": "4-byte unnamed parse latch adjacent to TOTAL_FRAME_COUNT; no reader outside the cluster."
+  },
+  "LZW_UNCOMPRESSED_SIZE": {
+   "verdict": "exclude",
+   "class": "codec-scratch",
+   "why": "the decompressed length of the block LZW is currently expanding. Its one non-cluster reader is LZW_Compress, the other half of the same codec."
+  },
+  "_G_LLM_CFG_BUILDING_BUILDER_ADD": {
+   "verdict": "exclude",
+   "class": "cfg-scale-knob",
+   "why": "BUILDING builder-count additive modifier."
+  },
+  "_G_LLM_CFG_BUILDING_BUILDER_MUL": {
+   "verdict": "exclude",
+   "class": "cfg-scale-knob",
+   "why": "BUILDING builder-count multiplier."
+  },
+  "_G_LLM_CFG_BUILDING_BUILD_TIME_ADD": {
+   "verdict": "exclude",
+   "class": "cfg-scale-knob",
+   "why": "BUILDING build-time additive modifier."
+  },
+  "_G_LLM_CFG_BUILDING_BUILD_TIME_MUL": {
+   "verdict": "exclude",
+   "class": "cfg-scale-knob",
+   "why": "BUILDING build-time multiplier."
+  },
+  "_G_LLM_CFG_BUILDING_ENERGY_ADD": {
+   "verdict": "exclude",
+   "class": "cfg-scale-knob",
+   "why": "BUILDING energy (the HP-like stat, not POWER) additive modifier."
+  },
+  "_G_LLM_CFG_BUILDING_ENERGY_MUL": {
+   "verdict": "exclude",
+   "class": "cfg-scale-knob",
+   "why": "BUILDING energy multiplier."
+  },
+  "_G_LLM_CFG_BUILDING_HUMAN_ADD": {
+   "verdict": "exclude",
+   "class": "cfg-scale-knob",
+   "why": "BUILDING crew-requirement additive modifier."
+  },
+  "_G_LLM_CFG_BUILDING_HUMAN_MUL": {
+   "verdict": "exclude",
+   "class": "cfg-scale-knob",
+   "why": "BUILDING crew-requirement multiplier."
+  },
+  "_G_LLM_CFG_BUILDING_POWER_ADD": {
+   "verdict": "exclude",
+   "class": "cfg-scale-knob",
+   "why": "BUILDING power (the generated resource) additive modifier."
+  },
+  "_G_LLM_CFG_BUILDING_POWER_MUL": {
+   "verdict": "exclude",
+   "class": "cfg-scale-knob",
+   "why": "BUILDING power multiplier."
+  },
+  "_G_LLM_CFG_BUILDING_SIGHT_ADD": {
+   "verdict": "exclude",
+   "class": "cfg-scale-knob",
+   "why": "BUILDING sight-radius additive modifier."
+  },
+  "_G_LLM_CFG_BUILDING_SIGHT_MUL": {
+   "verdict": "exclude",
+   "class": "cfg-scale-knob",
+   "why": "BUILDING sight-radius multiplier."
+  },
+  "_G_LLM_CFG_UNIT_BUILD_TIME_ADD": {
+   "verdict": "exclude",
+   "class": "cfg-scale-knob",
+   "why": "UNIT build-time additive modifier."
+  },
+  "_G_LLM_CFG_UNIT_BUILD_TIME_MUL": {
+   "verdict": "exclude",
+   "class": "cfg-scale-knob",
+   "why": "UNIT build-time multiplier."
+  },
+  "_G_LLM_CFG_UNIT_ENERGY_ADD": {
+   "verdict": "exclude",
+   "class": "cfg-scale-knob",
+   "why": "UNIT energy additive modifier."
+  },
+  "_G_LLM_CFG_UNIT_ENERGY_MUL": {
+   "verdict": "exclude",
+   "class": "cfg-scale-knob",
+   "why": "UNIT energy multiplier."
+  },
+  "_G_LLM_CFG_UNIT_RESOURCE_ADD": {
+   "verdict": "exclude",
+   "class": "cfg-scale-knob",
+   "why": "UNIT resource-cost additive modifier."
+  },
+  "_G_LLM_CFG_UNIT_RESOURCE_MUL": {
+   "verdict": "exclude",
+   "class": "cfg-scale-knob",
+   "why": "UNIT resource-cost multiplier."
+  },
+  "_G_LLM_CFG_UNIT_SIGHT_ADD": {
+   "verdict": "exclude",
+   "class": "cfg-scale-knob",
+   "why": "UNIT sight-radius additive modifier."
+  },
+  "_G_LLM_CFG_UNIT_SIGHT_MUL": {
+   "verdict": "exclude",
+   "class": "cfg-scale-knob",
+   "why": "UNIT sight-radius multiplier."
+  },
+  "_G_LLM_CFG_UNIT_SPEED_ADD": {
+   "verdict": "exclude",
+   "class": "cfg-scale-knob",
+   "why": "UNIT speed additive modifier."
+  },
+  "_G_LLM_CFG_UNIT_SPEED_MUL": {
+   "verdict": "exclude",
+   "class": "cfg-scale-knob",
+   "why": "UNIT speed multiplier."
+  },
+  "_G_LLM_CFG_WEAPON_POWER_ADD": {
+   "verdict": "exclude",
+   "class": "cfg-scale-knob",
+   "why": "WEAPON damage additive modifier."
+  },
+  "_G_LLM_CFG_WEAPON_POWER_MUL": {
+   "verdict": "exclude",
+   "class": "cfg-scale-knob",
+   "why": "WEAPON damage multiplier."
+  },
+  "_G_LLM_CFG_BLDG_FRAME_SPRITE_PREFIX": {
+   "verdict": "exclude",
+   "class": "movs-source",
+   "why": "the building frame-sprite name prefix literal, copied FROM during name resolution."
+  },
+  "s_SOLDIERTYPE_UNKNOWN_00501d58": {
+   "verdict": "exclude",
+   "class": "movs-source",
+   "why": "the default soldier-type name literal cfg_ObjectInit copies into a parse record."
+  },
+  "s_SPRITE_ZWYKLY_00501d4a": {
+   "verdict": "exclude",
+   "class": "movs-source",
+   "why": "the default sprite-type name literal (\"SPRITE_ZWYKLY\") cfg_ObjectInit copies into a parse record."
+  },
+  "A_OGIEN": {
+   "verdict": "exclude",
+   "class": "movs-source",
+   "why": "the 4-entry fire-anim frame table's NAME literal region as the matrix sees it here; the table itself is bound separately by the sim view and is not cfg-cluster output at stage 9."
+  },
+  "A_DYM_POJAZD": {
+   "verdict": "exclude",
+   "class": "movs-source",
+   "why": "as A_OGIEN -- the vehicle smoke-anim frame table's literal, a movs source in this closure."
+  },
+  "d73": {
+   "verdict": "exclude",
+   "class": "presentation-only",
+   "why": "written by cfg_CompileText; its ONE reader in the whole image is llm_strat_draw_mine_resource_overlay, a renderer. Same boundary LIFT-TABLE S2 drew for the planet gfx bytes."
+  },
+  "d74": {
+   "verdict": "exclude",
+   "class": "presentation-only",
+   "why": "written by cfg_CompileText alongside d73; no reader at all in the image."
+  },
+  "d75": {
+   "verdict": "exclude",
+   "class": "presentation-only",
+   "why": "written by cfg_CompileText alongside d73; no reader at all in the image."
+  },
+  "d76": {
+   "verdict": "exclude",
+   "class": "presentation-only",
+   "why": "written by cfg_CompileText alongside d73; no reader at all in the image."
+  },
+  "width": {
+   "verdict": "exclude",
+   "class": "map-io-transient",
+   "why": "session values owned by LIB-WORLD. cfg_ReadMapFile sets it once per planet while constructing the Planets array, so at stage 9 it holds the LAST planet's map width, not a prototype; map_ReadMap rewrites it at every session's map load."
+  },
+  "height": {
+   "verdict": "exclude",
+   "class": "map-io-transient",
+   "why": "session values owned by LIB-WORLD -- see `width`."
+  },
+  "version": {
+   "verdict": "exclude",
+   "class": "map-io-transient",
+   "why": "the .MP header version of the last map cfg_ReadMapFile touched; rewritten by map_ReadMap at every load."
+  },
+  "file_ptr@00e58cc4": {
+   "verdict": "exclude",
+   "class": "map-io-transient",
+   "why": "the map loader's open FILE*; a live handle, not state, and meaningless outside the process that opened it."
+  },
+  "_G_LLM_MAP_LOAD_FILE_HANDLE": {
+   "verdict": "exclude",
+   "class": "map-io-transient",
+   "why": "the map loader's raw file handle -- as file_ptr, a live OS handle."
+  },
+  "general": {
+   "verdict": "exclude",
+   "class": "sim-runtime-state",
+   "why": "llm_strat_map_geom, 40 bytes -- the torus-wrap masks and pathfinder scratch. Its real writers are llm_strat_sim_step, llm_map_setup_dimensions and llm_strat_pathfinder_init; the cfg closure only reaches it through cfg_ReadMapFile. libmh RE-DERIVES the masks in sim_lt_map_setup_dimensions (libmh-sim-abi.md's explicit do-not-carry), so importing a mid-boot sample would be worse than not carrying it."
+  },
+  "_G_LLM_STRAT_MINIMAP_ZOOM_MODE": {
+   "verdict": "exclude",
+   "class": "presentation-only",
+   "why": "the minimap zoom level; written by llm_strat_minimap_cam_goto / _frame and read by the minimap renderer and the HUD click handler. UI view state, not prototype data."
+  },
+  "SYSTEM": {
+   "verdict": "carry",
+   "class": "conservative",
+   "why": "cfg::static::data::System, 4488 B -- the parse-time form, which cfg_ConstructSystems drains into the carried final `System` table, so on the mechanism alone it belongs with its pre-static-table siblings. It is CARRIED anyway because the derivation says carry-direct and the only thing that would license excluding it is calling its lone non-cluster reader FUN_004aa1ce dead. That function has zero references in the Ghidra DB in either direction, but a LAB_ alias sits at the same address, and docs/dead-ends.md's whole point is that this is the negative claim people get wrong. 4.4 KB of over-carry is the safe error direction; a wrongly-dropped region is not, and it would be invisible to every hash that then agreed with itself."
+  }
+ },
+ "restore": {
+  "_G_LLM_TUTORIAL_STEPS": {
+   "restore": true,
+   "why": "the parse's main output. The capture reads it and then puts back exactly what stood before, so the live game reaches the menu with the table it would have had (empty until the player starts the tutorial)."
+  },
+  "_G_LLM_TUTORIAL_STEP_COUNT": {
+   "restore": true,
+   "why": "as above -- and the one the step driver bounds on, so a non-zero count left standing at the main menu would be the visible half of the perturbation."
+  },
+  "_G_LLM_TUTORIAL_FORCED_BLDG_SELECTION": {
+   "restore": true,
+   "why": "the forced build-selection latch the parse zeroes and then fills."
+  },
+  "_G_LLM_TUTORIAL_UISTATE_BACKUP": {
+   "restore": true,
+   "why": "the 48-byte UI-palette backup the parse stamps from _G_LLM_GFX_UI_COLORS_RGB. It has a REAL reader -- llm_menu_tutorial_uistate_restore uses it to undo the tutorial's palette override -- so leaving a boot-time sample here would corrupt a later restore."
+  },
+  "_G_LLM_GFX_UI_COLORS_RGB": {
+   "restore": true,
+   "why": "the live UI palette, which the script's `Colors` keyword overwrites. Restored because it is presentation state the whole menu is already using at stage 9."
+  },
+  "DATA": {
+   "restore": false,
+   "class": "codec-scratch",
+   "why": "LZW dictionary state, written and consumed inside one decompress call. The boot cfg load has already run hundreds of decompresses through it; there is no value here for anything to observe."
+  },
+  "LZW_UNCOMPRESSED_SIZE": {
+   "restore": false,
+   "class": "codec-scratch",
+   "why": "the current block's decompressed length -- as DATA, per-call scratch with no cross-call reader."
+  }
+ }
+}

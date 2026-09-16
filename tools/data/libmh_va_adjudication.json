@@ -1,0 +1,1372 @@
+{
+  "_generated_by": "hand-written; each entry is a recorded judgement, not a tool output",
+  "_contract": "scan_libmh_vas --check excuses an occurrence ONLY when (va, object, signature) matches an entry here exactly. Any other hit is RED. An entry that matches nothing is also RED -- an unused licence is one the next coincidence would silently claim. The zero this item asserts is therefore `zero attributable hits` PLUS this table, printed at every check.",
+  "entries": [
+    {
+      "va": "0x00498dc0",
+      "object": "libmh/Release/order_queue.obj",
+      "signature": "88 33 c0 8d 49 00 8b 4f",
+      "names": [
+        "llm_strat_game_check_players_mothership_alive"
+      ],
+      "why": "BYTE COINCIDENCE, not a dependency. The window's last three bytes are 8d 49 00 -- MSVC's 3-byte alignment nop `lea ecx,[ecx+0]` -- and the first is the tail of the instruction before it (33 c0 `xor eax,eax`, or the disp8 of 89 7d c0). No source construct in any of these five objects names llm_strat_game_check_players_mothership_alive: its only in-tree use is MH_LIBMH_BIND in sim_bldg_state_destroyed.cpp, which is a different object and carries no VA standalone. Verified by disassembling each occurrence, 2026-09-11. One of order_queue.obj's TWO occurrences (signature `0e 33 c0 8d 49 00 8b 4a`) disappeared on 2026-09-11 when the order-queue COUNT LEDGER instrument shifted that object's alignment padding, and its licence was dropped with it -- which is what a padding coincidence does under an unrelated edit and what a real dependency does not, so the removal is further evidence for this class, not a change of judgement.",
+      "class": "alignment-nop-coincidence",
+      "adjudicated": "2026-09-11"
+    },
+    {
+      "va": "0x00498dc0",
+      "object": "libmh/Release/sim_bldg_pay_costs.obj",
+      "signature": "ff 33 c0 8d 49 00 83 f8",
+      "names": [
+        "llm_strat_game_check_players_mothership_alive"
+      ],
+      "why": "BYTE COINCIDENCE, not a dependency. The window's last three bytes are 8d 49 00 -- MSVC's 3-byte alignment nop `lea ecx,[ecx+0]` -- and the first is the tail of the instruction before it (33 c0 `xor eax,eax`, or the disp8 of 89 7d c0). No source construct in any of these five objects names llm_strat_game_check_players_mothership_alive: its only in-tree use is MH_LIBMH_BIND in sim_bldg_state_destroyed.cpp, which is a different object and carries no VA standalone. Verified by disassembling each occurrence, 2026-09-11. One of order_queue.obj's TWO occurrences (signature `0e 33 c0 8d 49 00 8b 4a`) disappeared on 2026-09-11 when the order-queue COUNT LEDGER instrument shifted that object's alignment padding, and its licence was dropped with it -- which is what a padding coincidence does under an unrelated edit and what a real dependency does not, so the removal is further evidence for this class, not a change of judgement.",
+      "class": "alignment-nop-coincidence",
+      "adjudicated": "2026-09-11"
+    },
+    {
+      "va": "0x00498dc0",
+      "object": "libmh/Release/sim_order_dispatch.obj",
+      "signature": "13 33 c0 8d 49 00 38 88",
+      "names": [
+        "llm_strat_game_check_players_mothership_alive"
+      ],
+      "why": "BYTE COINCIDENCE, not a dependency. The window's last three bytes are 8d 49 00 -- MSVC's 3-byte alignment nop `lea ecx,[ecx+0]` -- and the first is the tail of the instruction before it (33 c0 `xor eax,eax`, or the disp8 of 89 7d c0). No source construct in any of these five objects names llm_strat_game_check_players_mothership_alive: its only in-tree use is MH_LIBMH_BIND in sim_bldg_state_destroyed.cpp, which is a different object and carries no VA standalone. Verified by disassembling each occurrence, 2026-09-11. One of order_queue.obj's TWO occurrences (signature `0e 33 c0 8d 49 00 8b 4a`) disappeared on 2026-09-11 when the order-queue COUNT LEDGER instrument shifted that object's alignment padding, and its licence was dropped with it -- which is what a padding coincidence does under an unrelated edit and what a real dependency does not, so the removal is further evidence for this class, not a change of judgement.",
+      "class": "alignment-nop-coincidence",
+      "adjudicated": "2026-09-11"
+    },
+    {
+      "va": "0x00498dc0",
+      "object": "libmh/Release/tact_fx_splash_damage.obj",
+      "signature": "89 7d c0 8d 49 00 8b df",
+      "names": [
+        "llm_strat_game_check_players_mothership_alive"
+      ],
+      "why": "BYTE COINCIDENCE, not a dependency. The window's last three bytes are 8d 49 00 -- MSVC's 3-byte alignment nop `lea ecx,[ecx+0]` -- and the first is the tail of the instruction before it (33 c0 `xor eax,eax`, or the disp8 of 89 7d c0). No source construct in any of these five objects names llm_strat_game_check_players_mothership_alive: its only in-tree use is MH_LIBMH_BIND in sim_bldg_state_destroyed.cpp, which is a different object and carries no VA standalone. Verified by disassembling each occurrence, 2026-09-11. One of order_queue.obj's TWO occurrences (signature `0e 33 c0 8d 49 00 8b 4a`) disappeared on 2026-09-11 when the order-queue COUNT LEDGER instrument shifted that object's alignment padding, and its licence was dropped with it -- which is what a padding coincidence does under an unrelated edit and what a real dependency does not, so the removal is further evidence for this class, not a change of judgement.",
+      "class": "alignment-nop-coincidence",
+      "adjudicated": "2026-09-11"
+    },
+    {
+      "va": "0x00498dc0",
+      "object": "libmh/Release/tact_unit_enqueue_command.obj",
+      "signature": "02 33 c0 8d 49 00 6b d1",
+      "names": [
+        "llm_strat_game_check_players_mothership_alive"
+      ],
+      "why": "BYTE COINCIDENCE, not a dependency. The window's last three bytes are 8d 49 00 -- MSVC's 3-byte alignment nop `lea ecx,[ecx+0]` -- and the first is the tail of the instruction before it (33 c0 `xor eax,eax`, or the disp8 of 89 7d c0). No source construct in any of these five objects names llm_strat_game_check_players_mothership_alive: its only in-tree use is MH_LIBMH_BIND in sim_bldg_state_destroyed.cpp, which is a different object and carries no VA standalone. Verified by disassembling each occurrence, 2026-09-11. One of order_queue.obj's TWO occurrences (signature `0e 33 c0 8d 49 00 8b 4a`) disappeared on 2026-09-11 when the order-queue COUNT LEDGER instrument shifted that object's alignment padding, and its licence was dropped with it -- which is what a padding coincidence does under an unrelated edit and what a real dependency does not, so the removal is further evidence for this class, not a change of judgement.",
+      "class": "alignment-nop-coincidence",
+      "adjudicated": "2026-09-11"
+    },
+    {
+      "va": "0x00466790",
+      "object": "libmh/Release/rx_dispatch.obj",
+      "signature": "08 68 90 67 46 00 e8 00",
+      "names": [
+        "llm_strat_order_pending_enqueue"
+      ],
+      "why": "LIB-CONSTSIG, adjudicated 2026-09-04. llm_strat_order_pending_enqueue's calls-struct slot is `int32_t (*)(const game_order *)` while mh::orders::pending_enqueue takes `order *` non-const -- and the non-const is the CORRECT signature: the body masks four ushort fields of *rec to their low byte IN PLACE before copying, exactly as the original does at 0x004667b4-0x004667c6. The const on the slot is the wrong half, inherited from the generated prototype, and fixing it changes a HOSTED calls-struct member type. gen_libmh_rebind.py prints this same finding as the row's [semantics] reason; MH_PROMOTED's type check rediscovered it independently.",
+      "class": "libmh-constsig-residue",
+      "adjudicated": "2026-09-11"
+    },
+    {
+      "va": "0x00466790",
+      "object": "libmh/Release/tx_emit_ctrl.obj",
+      "signature": "08 68 90 67 46 00 e8 00",
+      "names": [
+        "llm_strat_order_pending_enqueue"
+      ],
+      "why": "LIB-CONSTSIG, adjudicated 2026-09-04. llm_strat_order_pending_enqueue's calls-struct slot is `int32_t (*)(const game_order *)` while mh::orders::pending_enqueue takes `order *` non-const -- and the non-const is the CORRECT signature: the body masks four ushort fields of *rec to their low byte IN PLACE before copying, exactly as the original does at 0x004667b4-0x004667c6. The const on the slot is the wrong half, inherited from the generated prototype, and fixing it changes a HOSTED calls-struct member type. gen_libmh_rebind.py prints this same finding as the row's [semantics] reason; MH_PROMOTED's type check rediscovered it independently.",
+      "class": "libmh-constsig-residue",
+      "adjudicated": "2026-09-11"
+    },
+    {
+      "va": "0x00466790",
+      "object": "libmh/Release/tx_emit_ctrl.obj",
+      "signature": "50 68 90 67 46 00 dd 5d",
+      "names": [
+        "llm_strat_order_pending_enqueue"
+      ],
+      "why": "LIB-CONSTSIG, adjudicated 2026-09-04. llm_strat_order_pending_enqueue's calls-struct slot is `int32_t (*)(const game_order *)` while mh::orders::pending_enqueue takes `order *` non-const -- and the non-const is the CORRECT signature: the body masks four ushort fields of *rec to their low byte IN PLACE before copying, exactly as the original does at 0x004667b4-0x004667c6. The const on the slot is the wrong half, inherited from the generated prototype, and fixing it changes a HOSTED calls-struct member type. gen_libmh_rebind.py prints this same finding as the row's [semantics] reason; MH_PROMOTED's type check rediscovered it independently.",
+      "class": "libmh-constsig-residue",
+      "adjudicated": "2026-09-11"
+    },
+    {
+      "va": "0x0050aa37",
+      "object": "libmh/Release/save_driver.obj",
+      "signature": "00 00 37 aa 50 00 40 06",
+      "names": [
+        "AvailableBuildings"
+      ],
+      "why": "SAVE-DRIVER KEY MATERIAL -- a printed KEEP, not a removal (lib-ref-plan sec 3.8: LIB-VA0's zero holds 'or every survivor is on the PRINTED keep list; an unprinted keep is the failure mode'). These are save_table.gen.h's address columns: step::addr (a block's identity and, hosted, its resolution input) and step::write_at/read_at (the keys delegate_for() matches a caller-supplied step_delegate::at against). VERIFIED PURE MATCH KEYS STANDALONE, 2026-09-11: every standalone consumer either compares them only (block_owner_index, sliced_block, find_delegate) or routes them through at()/slice_at(), which refuse with nullptr standalone -- and all six call sites null-check before dereferencing (save_driver.cpp 171/204/670/691/749/763). Nothing standalone dereferences one. Re-keying them onto ordinals is filed as its own item; it would upgrade this keep to a literal zero.",
+      "class": "save-driver key material",
+      "adjudicated": "2026-09-11"
+    },
+    {
+      "va": "0x0050b077",
+      "object": "libmh/Release/save_driver.obj",
+      "signature": "00 00 77 b0 50 00 80 0c",
+      "names": [
+        "AvailableProjects"
+      ],
+      "why": "SAVE-DRIVER KEY MATERIAL -- a printed KEEP, not a removal (lib-ref-plan sec 3.8: LIB-VA0's zero holds 'or every survivor is on the PRINTED keep list; an unprinted keep is the failure mode'). These are save_table.gen.h's address columns: step::addr (a block's identity and, hosted, its resolution input) and step::write_at/read_at (the keys delegate_for() matches a caller-supplied step_delegate::at against). VERIFIED PURE MATCH KEYS STANDALONE, 2026-09-11: every standalone consumer either compares them only (block_owner_index, sliced_block, find_delegate) or routes them through at()/slice_at(), which refuse with nullptr standalone -- and all six call sites null-check before dereferencing (save_driver.cpp 171/204/670/691/749/763). Nothing standalone dereferences one. Re-keying them onto ordinals is filed as its own item; it would upgrade this keep to a literal zero.",
+      "class": "save-driver key material",
+      "adjudicated": "2026-09-11"
+    },
+    {
+      "va": "0x005ce484",
+      "object": "libmh/Release/save_driver.obj",
+      "signature": "00 68 84 e4 5c 00 ff 76",
+      "names": [
+        "MESSAGE_QUEUE"
+      ],
+      "why": "SAVE-DRIVER KEY MATERIAL -- a printed KEEP, not a removal (lib-ref-plan sec 3.8: LIB-VA0's zero holds 'or every survivor is on the PRINTED keep list; an unprinted keep is the failure mode'). These are save_table.gen.h's address columns: step::addr (a block's identity and, hosted, its resolution input) and step::write_at/read_at (the keys delegate_for() matches a caller-supplied step_delegate::at against). VERIFIED PURE MATCH KEYS STANDALONE, 2026-09-11: every standalone consumer either compares them only (block_owner_index, sliced_block, find_delegate) or routes them through at()/slice_at(), which refuse with nullptr standalone -- and all six call sites null-check before dereferencing (save_driver.cpp 171/204/670/691/749/763). Nothing standalone dereferences one. Re-keying them onto ordinals is filed as its own item; it would upgrade this keep to a literal zero.",
+      "class": "save-driver key material",
+      "adjudicated": "2026-09-11"
+    },
+    {
+      "va": "0x005ce484",
+      "object": "libmh/Release/save_driver.obj",
+      "signature": "00 00 84 e4 5c 00 20 1c",
+      "names": [
+        "MESSAGE_QUEUE"
+      ],
+      "why": "SAVE-DRIVER KEY MATERIAL -- a printed KEEP, not a removal (lib-ref-plan sec 3.8: LIB-VA0's zero holds 'or every survivor is on the PRINTED keep list; an unprinted keep is the failure mode'). These are save_table.gen.h's address columns: step::addr (a block's identity and, hosted, its resolution input) and step::write_at/read_at (the keys delegate_for() matches a caller-supplied step_delegate::at against). VERIFIED PURE MATCH KEYS STANDALONE, 2026-09-11: every standalone consumer either compares them only (block_owner_index, sliced_block, find_delegate) or routes them through at()/slice_at(), which refuse with nullptr standalone -- and all six call sites null-check before dereferencing (save_driver.cpp 171/204/670/691/749/763). Nothing standalone dereferences one. Re-keying them onto ordinals is filed as its own item; it would upgrade this keep to a literal zero.",
+      "class": "save-driver key material",
+      "adjudicated": "2026-09-11"
+    },
+    {
+      "va": "0x005d0194",
+      "object": "libmh/Release/save_driver.obj",
+      "signature": "00 00 94 01 5d 00 04 00",
+      "names": [
+        "_G_LLM_STRAT_ORDER_QUEUE_COUNT"
+      ],
+      "why": "SAVE-DRIVER KEY MATERIAL -- a printed KEEP, not a removal (lib-ref-plan sec 3.8: LIB-VA0's zero holds 'or every survivor is on the PRINTED keep list; an unprinted keep is the failure mode'). These are save_table.gen.h's address columns: step::addr (a block's identity and, hosted, its resolution input) and step::write_at/read_at (the keys delegate_for() matches a caller-supplied step_delegate::at against). VERIFIED PURE MATCH KEYS STANDALONE, 2026-09-11: every standalone consumer either compares them only (block_owner_index, sliced_block, find_delegate) or routes them through at()/slice_at(), which refuse with nullptr standalone -- and all six call sites null-check before dereferencing (save_driver.cpp 171/204/670/691/749/763). Nothing standalone dereferences one. Re-keying them onto ordinals is filed as its own item; it would upgrade this keep to a literal zero.",
+      "class": "save-driver key material",
+      "adjudicated": "2026-09-11"
+    },
+    {
+      "va": "0x005d0198",
+      "object": "libmh/Release/save_driver.obj",
+      "signature": "00 00 98 01 5d 00 08 00",
+      "names": [
+        "_G_LLM_STRAT_GAME_CLOCK"
+      ],
+      "why": "SAVE-DRIVER KEY MATERIAL -- a printed KEEP, not a removal (lib-ref-plan sec 3.8: LIB-VA0's zero holds 'or every survivor is on the PRINTED keep list; an unprinted keep is the failure mode'). These are save_table.gen.h's address columns: step::addr (a block's identity and, hosted, its resolution input) and step::write_at/read_at (the keys delegate_for() matches a caller-supplied step_delegate::at against). VERIFIED PURE MATCH KEYS STANDALONE, 2026-09-11: every standalone consumer either compares them only (block_owner_index, sliced_block, find_delegate) or routes them through at()/slice_at(), which refuse with nullptr standalone -- and all six call sites null-check before dereferencing (save_driver.cpp 171/204/670/691/749/763). Nothing standalone dereferences one. Re-keying them onto ordinals is filed as its own item; it would upgrade this keep to a literal zero.",
+      "class": "save-driver key material",
+      "adjudicated": "2026-09-11"
+    },
+    {
+      "va": "0x006616a8",
+      "object": "libmh/Release/save_driver.obj",
+      "signature": "00 00 a8 16 66 00 04 00",
+      "names": [
+        "_G_LLM_STRAT_AI_ACTIVE_PLAYER_COUNT"
+      ],
+      "why": "SAVE-DRIVER KEY MATERIAL -- a printed KEEP, not a removal (lib-ref-plan sec 3.8: LIB-VA0's zero holds 'or every survivor is on the PRINTED keep list; an unprinted keep is the failure mode'). These are save_table.gen.h's address columns: step::addr (a block's identity and, hosted, its resolution input) and step::write_at/read_at (the keys delegate_for() matches a caller-supplied step_delegate::at against). VERIFIED PURE MATCH KEYS STANDALONE, 2026-09-11: every standalone consumer either compares them only (block_owner_index, sliced_block, find_delegate) or routes them through at()/slice_at(), which refuse with nullptr standalone -- and all six call sites null-check before dereferencing (save_driver.cpp 171/204/670/691/749/763). Nothing standalone dereferences one. Re-keying them onto ordinals is filed as its own item; it would upgrade this keep to a literal zero.",
+      "class": "save-driver key material",
+      "adjudicated": "2026-09-11"
+    },
+    {
+      "va": "0x00708acc",
+      "object": "libmh/Release/save_driver.obj",
+      "signature": "00 00 cc 8a 70 00 04 00",
+      "names": [
+        "_G_LLM_MAP_REGION_MERGE_THRESHOLD"
+      ],
+      "why": "SAVE-DRIVER KEY MATERIAL -- a printed KEEP, not a removal (lib-ref-plan sec 3.8: LIB-VA0's zero holds 'or every survivor is on the PRINTED keep list; an unprinted keep is the failure mode'). These are save_table.gen.h's address columns: step::addr (a block's identity and, hosted, its resolution input) and step::write_at/read_at (the keys delegate_for() matches a caller-supplied step_delegate::at against). VERIFIED PURE MATCH KEYS STANDALONE, 2026-09-11: every standalone consumer either compares them only (block_owner_index, sliced_block, find_delegate) or routes them through at()/slice_at(), which refuse with nullptr standalone -- and all six call sites null-check before dereferencing (save_driver.cpp 171/204/670/691/749/763). Nothing standalone dereferences one. Re-keying them onto ordinals is filed as its own item; it would upgrade this keep to a literal zero.",
+      "class": "save-driver key material",
+      "adjudicated": "2026-09-11"
+    },
+    {
+      "va": "0x00708b1c",
+      "object": "libmh/Release/save_driver.obj",
+      "signature": "00 00 1c 8b 70 00 04 00",
+      "names": [
+        "_G_LLM_MAP_REGION_COORD_WRAP_MASK"
+      ],
+      "why": "SAVE-DRIVER KEY MATERIAL -- a printed KEEP, not a removal (lib-ref-plan sec 3.8: LIB-VA0's zero holds 'or every survivor is on the PRINTED keep list; an unprinted keep is the failure mode'). These are save_table.gen.h's address columns: step::addr (a block's identity and, hosted, its resolution input) and step::write_at/read_at (the keys delegate_for() matches a caller-supplied step_delegate::at against). VERIFIED PURE MATCH KEYS STANDALONE, 2026-09-11: every standalone consumer either compares them only (block_owner_index, sliced_block, find_delegate) or routes them through at()/slice_at(), which refuse with nullptr standalone -- and all six call sites null-check before dereferencing (save_driver.cpp 171/204/670/691/749/763). Nothing standalone dereferences one. Re-keying them onto ordinals is filed as its own item; it would upgrade this keep to a literal zero.",
+      "class": "save-driver key material",
+      "adjudicated": "2026-09-11"
+    },
+    {
+      "va": "0x00794fa0",
+      "object": "libmh/Release/save_driver.obj",
+      "signature": "00 00 a0 4f 79 00 00 00",
+      "names": [
+        "fog_of_war"
+      ],
+      "why": "SAVE-DRIVER KEY MATERIAL -- a printed KEEP, not a removal (lib-ref-plan sec 3.8: LIB-VA0's zero holds 'or every survivor is on the PRINTED keep list; an unprinted keep is the failure mode'). These are save_table.gen.h's address columns: step::addr (a block's identity and, hosted, its resolution input) and step::write_at/read_at (the keys delegate_for() matches a caller-supplied step_delegate::at against). VERIFIED PURE MATCH KEYS STANDALONE, 2026-09-11: every standalone consumer either compares them only (block_owner_index, sliced_block, find_delegate) or routes them through at()/slice_at(), which refuse with nullptr standalone -- and all six call sites null-check before dereferencing (save_driver.cpp 171/204/670/691/749/763). Nothing standalone dereferences one. Re-keying them onto ordinals is filed as its own item; it would upgrade this keep to a literal zero.",
+      "class": "save-driver key material",
+      "adjudicated": "2026-09-11"
+    },
+    {
+      "va": "0x00825008",
+      "object": "libmh/Release/save_driver.obj",
+      "signature": "00 00 08 50 82 00 04 00",
+      "names": [
+        "is_human"
+      ],
+      "why": "SAVE-DRIVER KEY MATERIAL -- a printed KEEP, not a removal (lib-ref-plan sec 3.8: LIB-VA0's zero holds 'or every survivor is on the PRINTED keep list; an unprinted keep is the failure mode'). These are save_table.gen.h's address columns: step::addr (a block's identity and, hosted, its resolution input) and step::write_at/read_at (the keys delegate_for() matches a caller-supplied step_delegate::at against). VERIFIED PURE MATCH KEYS STANDALONE, 2026-09-11: every standalone consumer either compares them only (block_owner_index, sliced_block, find_delegate) or routes them through at()/slice_at(), which refuse with nullptr standalone -- and all six call sites null-check before dereferencing (save_driver.cpp 171/204/670/691/749/763). Nothing standalone dereferences one. Re-keying them onto ordinals is filed as its own item; it would upgrade this keep to a literal zero.",
+      "class": "save-driver key material",
+      "adjudicated": "2026-09-11"
+    },
+    {
+      "va": "0x00825064",
+      "object": "libmh/Release/save_driver.obj",
+      "signature": "00 00 64 50 82 00 04 00",
+      "names": [
+        "height"
+      ],
+      "why": "SAVE-DRIVER KEY MATERIAL -- a printed KEEP, not a removal (lib-ref-plan sec 3.8: LIB-VA0's zero holds 'or every survivor is on the PRINTED keep list; an unprinted keep is the failure mode'). These are save_table.gen.h's address columns: step::addr (a block's identity and, hosted, its resolution input) and step::write_at/read_at (the keys delegate_for() matches a caller-supplied step_delegate::at against). VERIFIED PURE MATCH KEYS STANDALONE, 2026-09-11: every standalone consumer either compares them only (block_owner_index, sliced_block, find_delegate) or routes them through at()/slice_at(), which refuse with nullptr standalone -- and all six call sites null-check before dereferencing (save_driver.cpp 171/204/670/691/749/763). Nothing standalone dereferences one. Re-keying them onto ordinals is filed as its own item; it would upgrade this keep to a literal zero.",
+      "class": "save-driver key material",
+      "adjudicated": "2026-09-11"
+    },
+    {
+      "va": "0x00825084",
+      "object": "libmh/Release/save_driver.obj",
+      "signature": "00 00 84 50 82 00 04 00",
+      "names": [
+        "width"
+      ],
+      "why": "SAVE-DRIVER KEY MATERIAL -- a printed KEEP, not a removal (lib-ref-plan sec 3.8: LIB-VA0's zero holds 'or every survivor is on the PRINTED keep list; an unprinted keep is the failure mode'). These are save_table.gen.h's address columns: step::addr (a block's identity and, hosted, its resolution input) and step::write_at/read_at (the keys delegate_for() matches a caller-supplied step_delegate::at against). VERIFIED PURE MATCH KEYS STANDALONE, 2026-09-11: every standalone consumer either compares them only (block_owner_index, sliced_block, find_delegate) or routes them through at()/slice_at(), which refuse with nullptr standalone -- and all six call sites null-check before dereferencing (save_driver.cpp 171/204/670/691/749/763). Nothing standalone dereferences one. Re-keying them onto ordinals is filed as its own item; it would upgrade this keep to a literal zero.",
+      "class": "save-driver key material",
+      "adjudicated": "2026-09-11"
+    },
+    {
+      "va": "0x00ae2b00",
+      "object": "libmh/Release/save_driver.obj",
+      "signature": "00 00 00 2b ae 00 08 00",
+      "names": [
+        "_G_LLM_ANIM_PLACE_DENIED"
+      ],
+      "why": "SAVE-DRIVER KEY MATERIAL -- a printed KEEP, not a removal (lib-ref-plan sec 3.8: LIB-VA0's zero holds 'or every survivor is on the PRINTED keep list; an unprinted keep is the failure mode'). These are save_table.gen.h's address columns: step::addr (a block's identity and, hosted, its resolution input) and step::write_at/read_at (the keys delegate_for() matches a caller-supplied step_delegate::at against). VERIFIED PURE MATCH KEYS STANDALONE, 2026-09-11: every standalone consumer either compares them only (block_owner_index, sliced_block, find_delegate) or routes them through at()/slice_at(), which refuse with nullptr standalone -- and all six call sites null-check before dereferencing (save_driver.cpp 171/204/670/691/749/763). Nothing standalone dereferences one. Re-keying them onto ordinals is filed as its own item; it would upgrade this keep to a literal zero.",
+      "class": "save-driver key material",
+      "adjudicated": "2026-09-11"
+    },
+    {
+      "va": "0x00ae4c70",
+      "object": "libmh/Release/save_driver.obj",
+      "signature": "00 00 70 4c ae 00 10 00",
+      "names": [
+        "Anim"
+      ],
+      "why": "SAVE-DRIVER KEY MATERIAL -- a printed KEEP, not a removal (lib-ref-plan sec 3.8: LIB-VA0's zero holds 'or every survivor is on the PRINTED keep list; an unprinted keep is the failure mode'). These are save_table.gen.h's address columns: step::addr (a block's identity and, hosted, its resolution input) and step::write_at/read_at (the keys delegate_for() matches a caller-supplied step_delegate::at against). VERIFIED PURE MATCH KEYS STANDALONE, 2026-09-11: every standalone consumer either compares them only (block_owner_index, sliced_block, find_delegate) or routes them through at()/slice_at(), which refuse with nullptr standalone -- and all six call sites null-check before dereferencing (save_driver.cpp 171/204/670/691/749/763). Nothing standalone dereferences one. Re-keying them onto ordinals is filed as its own item; it would upgrade this keep to a literal zero.",
+      "class": "save-driver key material",
+      "adjudicated": "2026-09-11"
+    },
+    {
+      "va": "0x00aee8c0",
+      "object": "libmh/Release/save_driver.obj",
+      "signature": "00 00 c0 e8 ae 00 00 53",
+      "names": [
+        "_G_LLM_STRAT_PATH_BUFFERS"
+      ],
+      "why": "SAVE-DRIVER KEY MATERIAL -- a printed KEEP, not a removal (lib-ref-plan sec 3.8: LIB-VA0's zero holds 'or every survivor is on the PRINTED keep list; an unprinted keep is the failure mode'). These are save_table.gen.h's address columns: step::addr (a block's identity and, hosted, its resolution input) and step::write_at/read_at (the keys delegate_for() matches a caller-supplied step_delegate::at against). VERIFIED PURE MATCH KEYS STANDALONE, 2026-09-11: every standalone consumer either compares them only (block_owner_index, sliced_block, find_delegate) or routes them through at()/slice_at(), which refuse with nullptr standalone -- and all six call sites null-check before dereferencing (save_driver.cpp 171/204/670/691/749/763). Nothing standalone dereferences one. Re-keying them onto ordinals is filed as its own item; it would upgrade this keep to a literal zero.",
+      "class": "save-driver key material",
+      "adjudicated": "2026-09-11"
+    },
+    {
+      "va": "0x00b63bc0",
+      "object": "libmh/Release/save_driver.obj",
+      "signature": "00 00 c0 3b b6 00 20 00",
+      "names": [
+        "_G_LLM_STRAT_PATH_FREE_SLOT_COUNT"
+      ],
+      "why": "SAVE-DRIVER KEY MATERIAL -- a printed KEEP, not a removal (lib-ref-plan sec 3.8: LIB-VA0's zero holds 'or every survivor is on the PRINTED keep list; an unprinted keep is the failure mode'). These are save_table.gen.h's address columns: step::addr (a block's identity and, hosted, its resolution input) and step::write_at/read_at (the keys delegate_for() matches a caller-supplied step_delegate::at against). VERIFIED PURE MATCH KEYS STANDALONE, 2026-09-11: every standalone consumer either compares them only (block_owner_index, sliced_block, find_delegate) or routes them through at()/slice_at(), which refuse with nullptr standalone -- and all six call sites null-check before dereferencing (save_driver.cpp 171/204/670/691/749/763). Nothing standalone dereferences one. Re-keying them onto ordinals is filed as its own item; it would upgrade this keep to a literal zero.",
+      "class": "save-driver key material",
+      "adjudicated": "2026-09-11"
+    },
+    {
+      "va": "0x00b63be0",
+      "object": "libmh/Release/save_driver.obj",
+      "signature": "00 00 e0 3b b6 00 c8 0f",
+      "names": [
+        "_G_LLM_STRAT_CTRL_GROUPS"
+      ],
+      "why": "SAVE-DRIVER KEY MATERIAL -- a printed KEEP, not a removal (lib-ref-plan sec 3.8: LIB-VA0's zero holds 'or every survivor is on the PRINTED keep list; an unprinted keep is the failure mode'). These are save_table.gen.h's address columns: step::addr (a block's identity and, hosted, its resolution input) and step::write_at/read_at (the keys delegate_for() matches a caller-supplied step_delegate::at against). VERIFIED PURE MATCH KEYS STANDALONE, 2026-09-11: every standalone consumer either compares them only (block_owner_index, sliced_block, find_delegate) or routes them through at()/slice_at(), which refuse with nullptr standalone -- and all six call sites null-check before dereferencing (save_driver.cpp 171/204/670/691/749/763). Nothing standalone dereferences one. Re-keying them onto ordinals is filed as its own item; it would upgrade this keep to a literal zero.",
+      "class": "save-driver key material",
+      "adjudicated": "2026-09-11"
+    },
+    {
+      "va": "0x00b64ba8",
+      "object": "libmh/Release/save_driver.obj",
+      "signature": "00 00 a8 4b b6 00 08 00",
+      "names": [
+        "_G_LLM_STRAT_ADVISOR_NEXT_TIME"
+      ],
+      "why": "SAVE-DRIVER KEY MATERIAL -- a printed KEEP, not a removal (lib-ref-plan sec 3.8: LIB-VA0's zero holds 'or every survivor is on the PRINTED keep list; an unprinted keep is the failure mode'). These are save_table.gen.h's address columns: step::addr (a block's identity and, hosted, its resolution input) and step::write_at/read_at (the keys delegate_for() matches a caller-supplied step_delegate::at against). VERIFIED PURE MATCH KEYS STANDALONE, 2026-09-11: every standalone consumer either compares them only (block_owner_index, sliced_block, find_delegate) or routes them through at()/slice_at(), which refuse with nullptr standalone -- and all six call sites null-check before dereferencing (save_driver.cpp 171/204/670/691/749/763). Nothing standalone dereferences one. Re-keying them onto ordinals is filed as its own item; it would upgrade this keep to a literal zero.",
+      "class": "save-driver key material",
+      "adjudicated": "2026-09-11"
+    },
+    {
+      "va": "0x00b64bb0",
+      "object": "libmh/Release/save_driver.obj",
+      "signature": "00 00 b0 4b b6 00 00 00",
+      "names": [
+        "passable"
+      ],
+      "why": "SAVE-DRIVER KEY MATERIAL -- a printed KEEP, not a removal (lib-ref-plan sec 3.8: LIB-VA0's zero holds 'or every survivor is on the PRINTED keep list; an unprinted keep is the failure mode'). These are save_table.gen.h's address columns: step::addr (a block's identity and, hosted, its resolution input) and step::write_at/read_at (the keys delegate_for() matches a caller-supplied step_delegate::at against). VERIFIED PURE MATCH KEYS STANDALONE, 2026-09-11: every standalone consumer either compares them only (block_owner_index, sliced_block, find_delegate) or routes them through at()/slice_at(), which refuse with nullptr standalone -- and all six call sites null-check before dereferencing (save_driver.cpp 171/204/670/691/749/763). Nothing standalone dereferences one. Re-keying them onto ordinals is filed as its own item; it would upgrade this keep to a literal zero.",
+      "class": "save-driver key material",
+      "adjudicated": "2026-09-11"
+    },
+    {
+      "va": "0x00bb4ed0",
+      "object": "libmh/Release/save_driver.obj",
+      "signature": "d0 4e bb 00 b0 4f",
+      "names": [
+        "_G_LLM_STRAT_ORDER_QUEUE"
+      ],
+      "why": "SAVE-DRIVER KEY MATERIAL -- a printed KEEP, not a removal (lib-ref-plan sec 3.8: LIB-VA0's zero holds 'or every survivor is on the PRINTED keep list; an unprinted keep is the failure mode'). These are save_table.gen.h's address columns: step::addr (a block's identity and, hosted, its resolution input) and step::write_at/read_at (the keys delegate_for() matches a caller-supplied step_delegate::at against). VERIFIED PURE MATCH KEYS STANDALONE, 2026-09-11: every standalone consumer either compares them only (block_owner_index, sliced_block, find_delegate) or routes them through at()/slice_at(), which refuse with nullptr standalone -- and all six call sites null-check before dereferencing (save_driver.cpp 171/204/670/691/749/763). Nothing standalone dereferences one. Re-keying them onto ordinals is filed as its own item; it would upgrade this keep to a literal zero.",
+      "class": "save-driver key material",
+      "adjudicated": "2026-09-11"
+    },
+    {
+      "va": "0x00bb4ed0",
+      "object": "libmh/Release/save_driver.obj",
+      "signature": "00 00 d0 4e bb 00 b0 4f",
+      "names": [
+        "_G_LLM_STRAT_ORDER_QUEUE"
+      ],
+      "why": "SAVE-DRIVER KEY MATERIAL -- a printed KEEP, not a removal (lib-ref-plan sec 3.8: LIB-VA0's zero holds 'or every survivor is on the PRINTED keep list; an unprinted keep is the failure mode'). These are save_table.gen.h's address columns: step::addr (a block's identity and, hosted, its resolution input) and step::write_at/read_at (the keys delegate_for() matches a caller-supplied step_delegate::at against). VERIFIED PURE MATCH KEYS STANDALONE, 2026-09-11: every standalone consumer either compares them only (block_owner_index, sliced_block, find_delegate) or routes them through at()/slice_at(), which refuse with nullptr standalone -- and all six call sites null-check before dereferencing (save_driver.cpp 171/204/670/691/749/763). Nothing standalone dereferences one. Re-keying them onto ordinals is filed as its own item; it would upgrade this keep to a literal zero.",
+      "class": "save-driver key material",
+      "adjudicated": "2026-09-11"
+    },
+    {
+      "va": "0x00bcf8d0",
+      "object": "libmh/Release/save_driver.obj",
+      "signature": "00 00 d0 f8 bc 00 a0 28",
+      "names": [
+        "Upgrades"
+      ],
+      "why": "SAVE-DRIVER KEY MATERIAL -- a printed KEEP, not a removal (lib-ref-plan sec 3.8: LIB-VA0's zero holds 'or every survivor is on the PRINTED keep list; an unprinted keep is the failure mode'). These are save_table.gen.h's address columns: step::addr (a block's identity and, hosted, its resolution input) and step::write_at/read_at (the keys delegate_for() matches a caller-supplied step_delegate::at against). VERIFIED PURE MATCH KEYS STANDALONE, 2026-09-11: every standalone consumer either compares them only (block_owner_index, sliced_block, find_delegate) or routes them through at()/slice_at(), which refuse with nullptr standalone -- and all six call sites null-check before dereferencing (save_driver.cpp 171/204/670/691/749/763). Nothing standalone dereferences one. Re-keying them onto ordinals is filed as its own item; it would upgrade this keep to a literal zero.",
+      "class": "save-driver key material",
+      "adjudicated": "2026-09-11"
+    },
+    {
+      "va": "0x00bcf8d0",
+      "object": "libmh/Release/save_driver.obj",
+      "signature": "00 00 d0 f8 bc 00 38 28",
+      "names": [
+        "Upgrades"
+      ],
+      "why": "SAVE-DRIVER KEY MATERIAL -- a printed KEEP, not a removal (lib-ref-plan sec 3.8: LIB-VA0's zero holds 'or every survivor is on the PRINTED keep list; an unprinted keep is the failure mode'). These are save_table.gen.h's address columns: step::addr (a block's identity and, hosted, its resolution input) and step::write_at/read_at (the keys delegate_for() matches a caller-supplied step_delegate::at against). VERIFIED PURE MATCH KEYS STANDALONE, 2026-09-11: every standalone consumer either compares them only (block_owner_index, sliced_block, find_delegate) or routes them through at()/slice_at(), which refuse with nullptr standalone -- and all six call sites null-check before dereferencing (save_driver.cpp 171/204/670/691/749/763). Nothing standalone dereferences one. Re-keying them onto ordinals is filed as its own item; it would upgrade this keep to a literal zero.",
+      "class": "save-driver key material",
+      "adjudicated": "2026-09-11"
+    },
+    {
+      "va": "0x00bcf8d0",
+      "object": "libmh/Release/save_driver.obj",
+      "signature": "d0 f8 bc 00 a0 28",
+      "names": [
+        "Upgrades"
+      ],
+      "why": "SAVE-DRIVER KEY MATERIAL -- a printed KEEP, not a removal (lib-ref-plan sec 3.8: LIB-VA0's zero holds 'or every survivor is on the PRINTED keep list; an unprinted keep is the failure mode'). These are save_table.gen.h's address columns: step::addr (a block's identity and, hosted, its resolution input) and step::write_at/read_at (the keys delegate_for() matches a caller-supplied step_delegate::at against). VERIFIED PURE MATCH KEYS STANDALONE, 2026-09-11: every standalone consumer either compares them only (block_owner_index, sliced_block, find_delegate) or routes them through at()/slice_at(), which refuse with nullptr standalone -- and all six call sites null-check before dereferencing (save_driver.cpp 171/204/670/691/749/763). Nothing standalone dereferences one. Re-keying them onto ordinals is filed as its own item; it would upgrade this keep to a literal zero.",
+      "class": "save-driver key material",
+      "adjudicated": "2026-09-11"
+    },
+    {
+      "va": "0x00bd215c",
+      "object": "libmh/Release/save_driver.obj",
+      "signature": "00 00 5c 21 bd 00 14 00",
+      "names": [
+        "_G_LLM_PROD_SHUTTLE_SLOTS"
+      ],
+      "why": "SAVE-DRIVER KEY MATERIAL -- a printed KEEP, not a removal (lib-ref-plan sec 3.8: LIB-VA0's zero holds 'or every survivor is on the PRINTED keep list; an unprinted keep is the failure mode'). These are save_table.gen.h's address columns: step::addr (a block's identity and, hosted, its resolution input) and step::write_at/read_at (the keys delegate_for() matches a caller-supplied step_delegate::at against). VERIFIED PURE MATCH KEYS STANDALONE, 2026-09-11: every standalone consumer either compares them only (block_owner_index, sliced_block, find_delegate) or routes them through at()/slice_at(), which refuse with nullptr standalone -- and all six call sites null-check before dereferencing (save_driver.cpp 171/204/670/691/749/763). Nothing standalone dereferences one. Re-keying them onto ordinals is filed as its own item; it would upgrade this keep to a literal zero.",
+      "class": "save-driver key material",
+      "adjudicated": "2026-09-11"
+    },
+    {
+      "va": "0x00be1a30",
+      "object": "libmh/Release/save_driver.obj",
+      "signature": "00 00 30 1a be 00 30 02",
+      "names": [
+        "System"
+      ],
+      "why": "SAVE-DRIVER KEY MATERIAL -- a printed KEEP, not a removal (lib-ref-plan sec 3.8: LIB-VA0's zero holds 'or every survivor is on the PRINTED keep list; an unprinted keep is the failure mode'). These are save_table.gen.h's address columns: step::addr (a block's identity and, hosted, its resolution input) and step::write_at/read_at (the keys delegate_for() matches a caller-supplied step_delegate::at against). VERIFIED PURE MATCH KEYS STANDALONE, 2026-09-11: every standalone consumer either compares them only (block_owner_index, sliced_block, find_delegate) or routes them through at()/slice_at(), which refuse with nullptr standalone -- and all six call sites null-check before dereferencing (save_driver.cpp 171/204/670/691/749/763). Nothing standalone dereferences one. Re-keying them onto ordinals is filed as its own item; it would upgrade this keep to a literal zero.",
+      "class": "save-driver key material",
+      "adjudicated": "2026-09-11"
+    },
+    {
+      "va": "0x00be1c60",
+      "object": "libmh/Release/save_driver.obj",
+      "signature": "00 00 60 1c be 00 40 51",
+      "names": [
+        "Projects"
+      ],
+      "why": "SAVE-DRIVER KEY MATERIAL -- a printed KEEP, not a removal (lib-ref-plan sec 3.8: LIB-VA0's zero holds 'or every survivor is on the PRINTED keep list; an unprinted keep is the failure mode'). These are save_table.gen.h's address columns: step::addr (a block's identity and, hosted, its resolution input) and step::write_at/read_at (the keys delegate_for() matches a caller-supplied step_delegate::at against). VERIFIED PURE MATCH KEYS STANDALONE, 2026-09-11: every standalone consumer either compares them only (block_owner_index, sliced_block, find_delegate) or routes them through at()/slice_at(), which refuse with nullptr standalone -- and all six call sites null-check before dereferencing (save_driver.cpp 171/204/670/691/749/763). Nothing standalone dereferences one. Re-keying them onto ordinals is filed as its own item; it would upgrade this keep to a literal zero.",
+      "class": "save-driver key material",
+      "adjudicated": "2026-09-11"
+    },
+    {
+      "va": "0x00be6da0",
+      "object": "libmh/Release/save_driver.obj",
+      "signature": "00 00 a0 6d be 00 e0 84",
+      "names": [
+        "Planets"
+      ],
+      "why": "SAVE-DRIVER KEY MATERIAL -- a printed KEEP, not a removal (lib-ref-plan sec 3.8: LIB-VA0's zero holds 'or every survivor is on the PRINTED keep list; an unprinted keep is the failure mode'). These are save_table.gen.h's address columns: step::addr (a block's identity and, hosted, its resolution input) and step::write_at/read_at (the keys delegate_for() matches a caller-supplied step_delegate::at against). VERIFIED PURE MATCH KEYS STANDALONE, 2026-09-11: every standalone consumer either compares them only (block_owner_index, sliced_block, find_delegate) or routes them through at()/slice_at(), which refuse with nullptr standalone -- and all six call sites null-check before dereferencing (save_driver.cpp 171/204/670/691/749/763). Nothing standalone dereferences one. Re-keying them onto ordinals is filed as its own item; it would upgrade this keep to a literal zero.",
+      "class": "save-driver key material",
+      "adjudicated": "2026-09-11"
+    },
+    {
+      "va": "0x00bf4d00",
+      "object": "libmh/Release/save_driver.obj",
+      "signature": "00 00 00 4d bf 00 c0 02",
+      "names": [
+        "_G_LLM_STRAT_STORAGE_STATS"
+      ],
+      "why": "SAVE-DRIVER KEY MATERIAL -- a printed KEEP, not a removal (lib-ref-plan sec 3.8: LIB-VA0's zero holds 'or every survivor is on the PRINTED keep list; an unprinted keep is the failure mode'). These are save_table.gen.h's address columns: step::addr (a block's identity and, hosted, its resolution input) and step::write_at/read_at (the keys delegate_for() matches a caller-supplied step_delegate::at against). VERIFIED PURE MATCH KEYS STANDALONE, 2026-09-11: every standalone consumer either compares them only (block_owner_index, sliced_block, find_delegate) or routes them through at()/slice_at(), which refuse with nullptr standalone -- and all six call sites null-check before dereferencing (save_driver.cpp 171/204/670/691/749/763). Nothing standalone dereferences one. Re-keying them onto ordinals is filed as its own item; it would upgrade this keep to a literal zero.",
+      "class": "save-driver key material",
+      "adjudicated": "2026-09-11"
+    },
+    {
+      "va": "0x00bf4fc0",
+      "object": "libmh/Release/save_driver.obj",
+      "signature": "00 00 c0 4f bf 00 c0 00",
+      "names": [
+        "_G_LLM_STRAT_POWER_STATS"
+      ],
+      "why": "SAVE-DRIVER KEY MATERIAL -- a printed KEEP, not a removal (lib-ref-plan sec 3.8: LIB-VA0's zero holds 'or every survivor is on the PRINTED keep list; an unprinted keep is the failure mode'). These are save_table.gen.h's address columns: step::addr (a block's identity and, hosted, its resolution input) and step::write_at/read_at (the keys delegate_for() matches a caller-supplied step_delegate::at against). VERIFIED PURE MATCH KEYS STANDALONE, 2026-09-11: every standalone consumer either compares them only (block_owner_index, sliced_block, find_delegate) or routes them through at()/slice_at(), which refuse with nullptr standalone -- and all six call sites null-check before dereferencing (save_driver.cpp 171/204/670/691/749/763). Nothing standalone dereferences one. Re-keying them onto ordinals is filed as its own item; it would upgrade this keep to a literal zero.",
+      "class": "save-driver key material",
+      "adjudicated": "2026-09-11"
+    },
+    {
+      "va": "0x00bf50e0",
+      "object": "libmh/Release/save_driver.obj",
+      "signature": "00 00 e0 50 bf 00 50 34",
+      "names": [
+        "_G_LLM_STRAT_FX_ANIMS"
+      ],
+      "why": "SAVE-DRIVER KEY MATERIAL -- a printed KEEP, not a removal (lib-ref-plan sec 3.8: LIB-VA0's zero holds 'or every survivor is on the PRINTED keep list; an unprinted keep is the failure mode'). These are save_table.gen.h's address columns: step::addr (a block's identity and, hosted, its resolution input) and step::write_at/read_at (the keys delegate_for() matches a caller-supplied step_delegate::at against). VERIFIED PURE MATCH KEYS STANDALONE, 2026-09-11: every standalone consumer either compares them only (block_owner_index, sliced_block, find_delegate) or routes them through at()/slice_at(), which refuse with nullptr standalone -- and all six call sites null-check before dereferencing (save_driver.cpp 171/204/670/691/749/763). Nothing standalone dereferences one. Re-keying them onto ordinals is filed as its own item; it would upgrade this keep to a literal zero.",
+      "class": "save-driver key material",
+      "adjudicated": "2026-09-11"
+    },
+    {
+      "va": "0x00c38530",
+      "object": "libmh/Release/save_driver.obj",
+      "signature": "00 00 30 85 c3 00 00 02",
+      "names": [
+        "_G_LLM_STRAT_UNIT_HOUSING_STATS"
+      ],
+      "why": "SAVE-DRIVER KEY MATERIAL -- a printed KEEP, not a removal (lib-ref-plan sec 3.8: LIB-VA0's zero holds 'or every survivor is on the PRINTED keep list; an unprinted keep is the failure mode'). These are save_table.gen.h's address columns: step::addr (a block's identity and, hosted, its resolution input) and step::write_at/read_at (the keys delegate_for() matches a caller-supplied step_delegate::at against). VERIFIED PURE MATCH KEYS STANDALONE, 2026-09-11: every standalone consumer either compares them only (block_owner_index, sliced_block, find_delegate) or routes them through at()/slice_at(), which refuse with nullptr standalone -- and all six call sites null-check before dereferencing (save_driver.cpp 171/204/670/691/749/763). Nothing standalone dereferences one. Re-keying them onto ordinals is filed as its own item; it would upgrade this keep to a literal zero.",
+      "class": "save-driver key material",
+      "adjudicated": "2026-09-11"
+    },
+    {
+      "va": "0x00c38750",
+      "object": "libmh/Release/save_driver.obj",
+      "signature": "75 bf 50 87 c3 00 8b 46",
+      "names": [
+        "progress"
+      ],
+      "why": "SAVE-DRIVER KEY MATERIAL -- a printed KEEP, not a removal (lib-ref-plan sec 3.8: LIB-VA0's zero holds 'or every survivor is on the PRINTED keep list; an unprinted keep is the failure mode'). These are save_table.gen.h's address columns: step::addr (a block's identity and, hosted, its resolution input) and step::write_at/read_at (the keys delegate_for() matches a caller-supplied step_delegate::at against). VERIFIED PURE MATCH KEYS STANDALONE, 2026-09-11: every standalone consumer either compares them only (block_owner_index, sliced_block, find_delegate) or routes them through at()/slice_at(), which refuse with nullptr standalone -- and all six call sites null-check before dereferencing (save_driver.cpp 171/204/670/691/749/763). Nothing standalone dereferences one. Re-keying them onto ordinals is filed as its own item; it would upgrade this keep to a literal zero.",
+      "class": "save-driver key material",
+      "adjudicated": "2026-09-11"
+    },
+    {
+      "va": "0x00c38750",
+      "object": "libmh/Release/save_driver.obj",
+      "signature": "00 bf 50 87 c3 00 8b 46",
+      "names": [
+        "progress"
+      ],
+      "why": "SAVE-DRIVER KEY MATERIAL -- a printed KEEP, not a removal (lib-ref-plan sec 3.8: LIB-VA0's zero holds 'or every survivor is on the PRINTED keep list; an unprinted keep is the failure mode'). These are save_table.gen.h's address columns: step::addr (a block's identity and, hosted, its resolution input) and step::write_at/read_at (the keys delegate_for() matches a caller-supplied step_delegate::at against). VERIFIED PURE MATCH KEYS STANDALONE, 2026-09-11: every standalone consumer either compares them only (block_owner_index, sliced_block, find_delegate) or routes them through at()/slice_at(), which refuse with nullptr standalone -- and all six call sites null-check before dereferencing (save_driver.cpp 171/204/670/691/749/763). Nothing standalone dereferences one. Re-keying them onto ordinals is filed as its own item; it would upgrade this keep to a literal zero.",
+      "class": "save-driver key material",
+      "adjudicated": "2026-09-11"
+    },
+    {
+      "va": "0x00c38750",
+      "object": "libmh/Release/save_driver.obj",
+      "signature": "00 00 50 87 c3 00 20 1c",
+      "names": [
+        "progress"
+      ],
+      "why": "SAVE-DRIVER KEY MATERIAL -- a printed KEEP, not a removal (lib-ref-plan sec 3.8: LIB-VA0's zero holds 'or every survivor is on the PRINTED keep list; an unprinted keep is the failure mode'). These are save_table.gen.h's address columns: step::addr (a block's identity and, hosted, its resolution input) and step::write_at/read_at (the keys delegate_for() matches a caller-supplied step_delegate::at against). VERIFIED PURE MATCH KEYS STANDALONE, 2026-09-11: every standalone consumer either compares them only (block_owner_index, sliced_block, find_delegate) or routes them through at()/slice_at(), which refuse with nullptr standalone -- and all six call sites null-check before dereferencing (save_driver.cpp 171/204/670/691/749/763). Nothing standalone dereferences one. Re-keying them onto ordinals is filed as its own item; it would upgrade this keep to a literal zero.",
+      "class": "save-driver key material",
+      "adjudicated": "2026-09-11"
+    },
+    {
+      "va": "0x00c3a370",
+      "object": "libmh/Release/save_driver.obj",
+      "signature": "81 ff 70 a3 c3 00 72 c0",
+      "names": [
+        "_G_LLM_STRAT_POP_STATS"
+      ],
+      "why": "SAVE-DRIVER KEY MATERIAL -- a printed KEEP, not a removal (lib-ref-plan sec 3.8: LIB-VA0's zero holds 'or every survivor is on the PRINTED keep list; an unprinted keep is the failure mode'). These are save_table.gen.h's address columns: step::addr (a block's identity and, hosted, its resolution input) and step::write_at/read_at (the keys delegate_for() matches a caller-supplied step_delegate::at against). VERIFIED PURE MATCH KEYS STANDALONE, 2026-09-11: every standalone consumer either compares them only (block_owner_index, sliced_block, find_delegate) or routes them through at()/slice_at(), which refuse with nullptr standalone -- and all six call sites null-check before dereferencing (save_driver.cpp 171/204/670/691/749/763). Nothing standalone dereferences one. Re-keying them onto ordinals is filed as its own item; it would upgrade this keep to a literal zero.",
+      "class": "save-driver key material",
+      "adjudicated": "2026-09-11"
+    },
+    {
+      "va": "0x00c3a370",
+      "object": "libmh/Release/save_driver.obj",
+      "signature": "81 ff 70 a3 c3 00 72 b7",
+      "names": [
+        "_G_LLM_STRAT_POP_STATS"
+      ],
+      "why": "SAVE-DRIVER KEY MATERIAL -- a printed KEEP, not a removal (lib-ref-plan sec 3.8: LIB-VA0's zero holds 'or every survivor is on the PRINTED keep list; an unprinted keep is the failure mode'). These are save_table.gen.h's address columns: step::addr (a block's identity and, hosted, its resolution input) and step::write_at/read_at (the keys delegate_for() matches a caller-supplied step_delegate::at against). VERIFIED PURE MATCH KEYS STANDALONE, 2026-09-11: every standalone consumer either compares them only (block_owner_index, sliced_block, find_delegate) or routes them through at()/slice_at(), which refuse with nullptr standalone -- and all six call sites null-check before dereferencing (save_driver.cpp 171/204/670/691/749/763). Nothing standalone dereferences one. Re-keying them onto ordinals is filed as its own item; it would upgrade this keep to a literal zero.",
+      "class": "save-driver key material",
+      "adjudicated": "2026-09-11"
+    },
+    {
+      "va": "0x00c3a370",
+      "object": "libmh/Release/save_driver.obj",
+      "signature": "00 00 70 a3 c3 00 a0 01",
+      "names": [
+        "_G_LLM_STRAT_POP_STATS"
+      ],
+      "why": "SAVE-DRIVER KEY MATERIAL -- a printed KEEP, not a removal (lib-ref-plan sec 3.8: LIB-VA0's zero holds 'or every survivor is on the PRINTED keep list; an unprinted keep is the failure mode'). These are save_table.gen.h's address columns: step::addr (a block's identity and, hosted, its resolution input) and step::write_at/read_at (the keys delegate_for() matches a caller-supplied step_delegate::at against). VERIFIED PURE MATCH KEYS STANDALONE, 2026-09-11: every standalone consumer either compares them only (block_owner_index, sliced_block, find_delegate) or routes them through at()/slice_at(), which refuse with nullptr standalone -- and all six call sites null-check before dereferencing (save_driver.cpp 171/204/670/691/749/763). Nothing standalone dereferences one. Re-keying them onto ordinals is filed as its own item; it would upgrade this keep to a literal zero.",
+      "class": "save-driver key material",
+      "adjudicated": "2026-09-11"
+    },
+    {
+      "va": "0x00c3a520",
+      "object": "libmh/Release/save_driver.obj",
+      "signature": "00 00 20 a5 c3 00 80 2d",
+      "names": [
+        "Weapon"
+      ],
+      "why": "SAVE-DRIVER KEY MATERIAL -- a printed KEEP, not a removal (lib-ref-plan sec 3.8: LIB-VA0's zero holds 'or every survivor is on the PRINTED keep list; an unprinted keep is the failure mode'). These are save_table.gen.h's address columns: step::addr (a block's identity and, hosted, its resolution input) and step::write_at/read_at (the keys delegate_for() matches a caller-supplied step_delegate::at against). VERIFIED PURE MATCH KEYS STANDALONE, 2026-09-11: every standalone consumer either compares them only (block_owner_index, sliced_block, find_delegate) or routes them through at()/slice_at(), which refuse with nullptr standalone -- and all six call sites null-check before dereferencing (save_driver.cpp 171/204/670/691/749/763). Nothing standalone dereferences one. Re-keying them onto ordinals is filed as its own item; it would upgrade this keep to a literal zero.",
+      "class": "save-driver key material",
+      "adjudicated": "2026-09-11"
+    },
+    {
+      "va": "0x00c3d2a0",
+      "object": "libmh/Release/save_driver.obj",
+      "signature": "00 00 a0 d2 c3 00 20 55",
+      "names": [
+        "buildings"
+      ],
+      "why": "SAVE-DRIVER KEY MATERIAL -- a printed KEEP, not a removal (lib-ref-plan sec 3.8: LIB-VA0's zero holds 'or every survivor is on the PRINTED keep list; an unprinted keep is the failure mode'). These are save_table.gen.h's address columns: step::addr (a block's identity and, hosted, its resolution input) and step::write_at/read_at (the keys delegate_for() matches a caller-supplied step_delegate::at against). VERIFIED PURE MATCH KEYS STANDALONE, 2026-09-11: every standalone consumer either compares them only (block_owner_index, sliced_block, find_delegate) or routes them through at()/slice_at(), which refuse with nullptr standalone -- and all six call sites null-check before dereferencing (save_driver.cpp 171/204/670/691/749/763). Nothing standalone dereferences one. Re-keying them onto ordinals is filed as its own item; it would upgrade this keep to a literal zero.",
+      "class": "save-driver key material",
+      "adjudicated": "2026-09-11"
+    },
+    {
+      "va": "0x00c727c0",
+      "object": "libmh/Release/save_driver.obj",
+      "signature": "00 00 c0 27 c7 00 a0 be",
+      "names": [
+        "unit_storage"
+      ],
+      "why": "SAVE-DRIVER KEY MATERIAL -- a printed KEEP, not a removal (lib-ref-plan sec 3.8: LIB-VA0's zero holds 'or every survivor is on the PRINTED keep list; an unprinted keep is the failure mode'). These are save_table.gen.h's address columns: step::addr (a block's identity and, hosted, its resolution input) and step::write_at/read_at (the keys delegate_for() matches a caller-supplied step_delegate::at against). VERIFIED PURE MATCH KEYS STANDALONE, 2026-09-11: every standalone consumer either compares them only (block_owner_index, sliced_block, find_delegate) or routes them through at()/slice_at(), which refuse with nullptr standalone -- and all six call sites null-check before dereferencing (save_driver.cpp 171/204/670/691/749/763). Nothing standalone dereferences one. Re-keying them onto ordinals is filed as its own item; it would upgrade this keep to a literal zero.",
+      "class": "save-driver key material",
+      "adjudicated": "2026-09-11"
+    },
+    {
+      "va": "0x00c86660",
+      "object": "libmh/Release/save_driver.obj",
+      "signature": "00 00 60 66 c8 00 80 a9",
+      "names": [
+        "_G_LLM_MAP_OBJECTS"
+      ],
+      "why": "SAVE-DRIVER KEY MATERIAL -- a printed KEEP, not a removal (lib-ref-plan sec 3.8: LIB-VA0's zero holds 'or every survivor is on the PRINTED keep list; an unprinted keep is the failure mode'). These are save_table.gen.h's address columns: step::addr (a block's identity and, hosted, its resolution input) and step::write_at/read_at (the keys delegate_for() matches a caller-supplied step_delegate::at against). VERIFIED PURE MATCH KEYS STANDALONE, 2026-09-11: every standalone consumer either compares them only (block_owner_index, sliced_block, find_delegate) or routes them through at()/slice_at(), which refuse with nullptr standalone -- and all six call sites null-check before dereferencing (save_driver.cpp 171/204/670/691/749/763). Nothing standalone dereferences one. Re-keying them onto ordinals is filed as its own item; it would upgrade this keep to a literal zero.",
+      "class": "save-driver key material",
+      "adjudicated": "2026-09-11"
+    },
+    {
+      "va": "0x00cc0fe0",
+      "object": "libmh/Release/save_driver.obj",
+      "signature": "00 00 e0 0f cc 00 00 37",
+      "names": [
+        "turrets"
+      ],
+      "why": "SAVE-DRIVER KEY MATERIAL -- a printed KEEP, not a removal (lib-ref-plan sec 3.8: LIB-VA0's zero holds 'or every survivor is on the PRINTED keep list; an unprinted keep is the failure mode'). These are save_table.gen.h's address columns: step::addr (a block's identity and, hosted, its resolution input) and step::write_at/read_at (the keys delegate_for() matches a caller-supplied step_delegate::at against). VERIFIED PURE MATCH KEYS STANDALONE, 2026-09-11: every standalone consumer either compares them only (block_owner_index, sliced_block, find_delegate) or routes them through at()/slice_at(), which refuse with nullptr standalone -- and all six call sites null-check before dereferencing (save_driver.cpp 171/204/670/691/749/763). Nothing standalone dereferences one. Re-keying them onto ordinals is filed as its own item; it would upgrade this keep to a literal zero.",
+      "class": "save-driver key material",
+      "adjudicated": "2026-09-11"
+    },
+    {
+      "va": "0x00cc46e0",
+      "object": "libmh/Release/save_driver.obj",
+      "signature": "00 00 e0 46 cc 00 80 a9",
+      "names": [
+        "_G_LLM_MAP_OBJECT_TABLE"
+      ],
+      "why": "SAVE-DRIVER KEY MATERIAL -- a printed KEEP, not a removal (lib-ref-plan sec 3.8: LIB-VA0's zero holds 'or every survivor is on the PRINTED keep list; an unprinted keep is the failure mode'). These are save_table.gen.h's address columns: step::addr (a block's identity and, hosted, its resolution input) and step::write_at/read_at (the keys delegate_for() matches a caller-supplied step_delegate::at against). VERIFIED PURE MATCH KEYS STANDALONE, 2026-09-11: every standalone consumer either compares them only (block_owner_index, sliced_block, find_delegate) or routes them through at()/slice_at(), which refuse with nullptr standalone -- and all six call sites null-check before dereferencing (save_driver.cpp 171/204/670/691/749/763). Nothing standalone dereferences one. Re-keying them onto ordinals is filed as its own item; it would upgrade this keep to a literal zero.",
+      "class": "save-driver key material",
+      "adjudicated": "2026-09-11"
+    },
+    {
+      "va": "0x00cff060",
+      "object": "libmh/Release/save_driver.obj",
+      "signature": "00 00 60 f0 cf 00 00 3a",
+      "names": [
+        "_G_LLM_STRAT_PLAYERS"
+      ],
+      "why": "SAVE-DRIVER KEY MATERIAL -- a printed KEEP, not a removal (lib-ref-plan sec 3.8: LIB-VA0's zero holds 'or every survivor is on the PRINTED keep list; an unprinted keep is the failure mode'). These are save_table.gen.h's address columns: step::addr (a block's identity and, hosted, its resolution input) and step::write_at/read_at (the keys delegate_for() matches a caller-supplied step_delegate::at against). VERIFIED PURE MATCH KEYS STANDALONE, 2026-09-11: every standalone consumer either compares them only (block_owner_index, sliced_block, find_delegate) or routes them through at()/slice_at(), which refuse with nullptr standalone -- and all six call sites null-check before dereferencing (save_driver.cpp 171/204/670/691/749/763). Nothing standalone dereferences one. Re-keying them onto ordinals is filed as its own item; it would upgrade this keep to a literal zero.",
+      "class": "save-driver key material",
+      "adjudicated": "2026-09-11"
+    },
+    {
+      "va": "0x00d02d80",
+      "object": "libmh/Release/save_driver.obj",
+      "signature": "00 00 80 2d d0 00 40 06",
+      "names": [
+        "labs"
+      ],
+      "why": "SAVE-DRIVER KEY MATERIAL -- a printed KEEP, not a removal (lib-ref-plan sec 3.8: LIB-VA0's zero holds 'or every survivor is on the PRINTED keep list; an unprinted keep is the failure mode'). These are save_table.gen.h's address columns: step::addr (a block's identity and, hosted, its resolution input) and step::write_at/read_at (the keys delegate_for() matches a caller-supplied step_delegate::at against). VERIFIED PURE MATCH KEYS STANDALONE, 2026-09-11: every standalone consumer either compares them only (block_owner_index, sliced_block, find_delegate) or routes them through at()/slice_at(), which refuse with nullptr standalone -- and all six call sites null-check before dereferencing (save_driver.cpp 171/204/670/691/749/763). Nothing standalone dereferences one. Re-keying them onto ordinals is filed as its own item; it would upgrade this keep to a literal zero.",
+      "class": "save-driver key material",
+      "adjudicated": "2026-09-11"
+    },
+    {
+      "va": "0x00d03480",
+      "object": "libmh/Release/save_driver.obj",
+      "signature": "00 00 80 34 d0 00 00 38",
+      "names": [
+        "mines"
+      ],
+      "why": "SAVE-DRIVER KEY MATERIAL -- a printed KEEP, not a removal (lib-ref-plan sec 3.8: LIB-VA0's zero holds 'or every survivor is on the PRINTED keep list; an unprinted keep is the failure mode'). These are save_table.gen.h's address columns: step::addr (a block's identity and, hosted, its resolution input) and step::write_at/read_at (the keys delegate_for() matches a caller-supplied step_delegate::at against). VERIFIED PURE MATCH KEYS STANDALONE, 2026-09-11: every standalone consumer either compares them only (block_owner_index, sliced_block, find_delegate) or routes them through at()/slice_at(), which refuse with nullptr standalone -- and all six call sites null-check before dereferencing (save_driver.cpp 171/204/670/691/749/763). Nothing standalone dereferences one. Re-keying them onto ordinals is filed as its own item; it would upgrade this keep to a literal zero.",
+      "class": "save-driver key material",
+      "adjudicated": "2026-09-11"
+    },
+    {
+      "va": "0x00d06c80",
+      "object": "libmh/Release/save_driver.obj",
+      "signature": "00 00 80 6c d0 00 00 00",
+      "names": [
+        "_G_LLM_MAP_HALFRES_GRID"
+      ],
+      "why": "SAVE-DRIVER KEY MATERIAL -- a printed KEEP, not a removal (lib-ref-plan sec 3.8: LIB-VA0's zero holds 'or every survivor is on the PRINTED keep list; an unprinted keep is the failure mode'). These are save_table.gen.h's address columns: step::addr (a block's identity and, hosted, its resolution input) and step::write_at/read_at (the keys delegate_for() matches a caller-supplied step_delegate::at against). VERIFIED PURE MATCH KEYS STANDALONE, 2026-09-11: every standalone consumer either compares them only (block_owner_index, sliced_block, find_delegate) or routes them through at()/slice_at(), which refuse with nullptr standalone -- and all six call sites null-check before dereferencing (save_driver.cpp 171/204/670/691/749/763). Nothing standalone dereferences one. Re-keying them onto ordinals is filed as its own item; it would upgrade this keep to a literal zero.",
+      "class": "save-driver key material",
+      "adjudicated": "2026-09-11"
+    },
+    {
+      "va": "0x00dd2648",
+      "object": "libmh/Release/save_driver.obj",
+      "signature": "00 00 48 26 dd 00 40 65",
+      "names": [
+        "productions"
+      ],
+      "why": "SAVE-DRIVER KEY MATERIAL -- a printed KEEP, not a removal (lib-ref-plan sec 3.8: LIB-VA0's zero holds 'or every survivor is on the PRINTED keep list; an unprinted keep is the failure mode'). These are save_table.gen.h's address columns: step::addr (a block's identity and, hosted, its resolution input) and step::write_at/read_at (the keys delegate_for() matches a caller-supplied step_delegate::at against). VERIFIED PURE MATCH KEYS STANDALONE, 2026-09-11: every standalone consumer either compares them only (block_owner_index, sliced_block, find_delegate) or routes them through at()/slice_at(), which refuse with nullptr standalone -- and all six call sites null-check before dereferencing (save_driver.cpp 171/204/670/691/749/763). Nothing standalone dereferences one. Re-keying them onto ordinals is filed as its own item; it would upgrade this keep to a literal zero.",
+      "class": "save-driver key material",
+      "adjudicated": "2026-09-11"
+    },
+    {
+      "va": "0x00dd8b88",
+      "object": "libmh/Release/save_driver.obj",
+      "signature": "00 00 88 8b dd 00 c0 00",
+      "names": [
+        "_G_LLM_STRAT_LANDING_SPOTS"
+      ],
+      "why": "SAVE-DRIVER KEY MATERIAL -- a printed KEEP, not a removal (lib-ref-plan sec 3.8: LIB-VA0's zero holds 'or every survivor is on the PRINTED keep list; an unprinted keep is the failure mode'). These are save_table.gen.h's address columns: step::addr (a block's identity and, hosted, its resolution input) and step::write_at/read_at (the keys delegate_for() matches a caller-supplied step_delegate::at against). VERIFIED PURE MATCH KEYS STANDALONE, 2026-09-11: every standalone consumer either compares them only (block_owner_index, sliced_block, find_delegate) or routes them through at()/slice_at(), which refuse with nullptr standalone -- and all six call sites null-check before dereferencing (save_driver.cpp 171/204/670/691/749/763). Nothing standalone dereferences one. Re-keying them onto ordinals is filed as its own item; it would upgrade this keep to a literal zero.",
+      "class": "save-driver key material",
+      "adjudicated": "2026-09-11"
+    },
+    {
+      "va": "0x00dd8c48",
+      "object": "libmh/Release/save_driver.obj",
+      "signature": "00 00 48 8c dd 00 20 d8",
+      "names": [
+        "units"
+      ],
+      "why": "SAVE-DRIVER KEY MATERIAL -- a printed KEEP, not a removal (lib-ref-plan sec 3.8: LIB-VA0's zero holds 'or every survivor is on the PRINTED keep list; an unprinted keep is the failure mode'). These are save_table.gen.h's address columns: step::addr (a block's identity and, hosted, its resolution input) and step::write_at/read_at (the keys delegate_for() matches a caller-supplied step_delegate::at against). VERIFIED PURE MATCH KEYS STANDALONE, 2026-09-11: every standalone consumer either compares them only (block_owner_index, sliced_block, find_delegate) or routes them through at()/slice_at(), which refuse with nullptr standalone -- and all six call sites null-check before dereferencing (save_driver.cpp 171/204/670/691/749/763). Nothing standalone dereferences one. Re-keying them onto ordinals is filed as its own item; it would upgrade this keep to a literal zero.",
+      "class": "save-driver key material",
+      "adjudicated": "2026-09-11"
+    },
+    {
+      "va": "0x00e0e468",
+      "object": "libmh/Release/save_driver.obj",
+      "signature": "00 00 68 e4 e0 00 40 01",
+      "names": [
+        "player_resources"
+      ],
+      "why": "SAVE-DRIVER KEY MATERIAL -- a printed KEEP, not a removal (lib-ref-plan sec 3.8: LIB-VA0's zero holds 'or every survivor is on the PRINTED keep list; an unprinted keep is the failure mode'). These are save_table.gen.h's address columns: step::addr (a block's identity and, hosted, its resolution input) and step::write_at/read_at (the keys delegate_for() matches a caller-supplied step_delegate::at against). VERIFIED PURE MATCH KEYS STANDALONE, 2026-09-11: every standalone consumer either compares them only (block_owner_index, sliced_block, find_delegate) or routes them through at()/slice_at(), which refuse with nullptr standalone -- and all six call sites null-check before dereferencing (save_driver.cpp 171/204/670/691/749/763). Nothing standalone dereferences one. Re-keying them onto ordinals is filed as its own item; it would upgrade this keep to a literal zero.",
+      "class": "save-driver key material",
+      "adjudicated": "2026-09-11"
+    },
+    {
+      "va": "0x00e0e5a8",
+      "object": "libmh/Release/save_driver.obj",
+      "signature": "00 00 a8 e5 e0 00 a0 5a",
+      "names": [
+        "_G_LLM_STRAT_SOLDIERS"
+      ],
+      "why": "SAVE-DRIVER KEY MATERIAL -- a printed KEEP, not a removal (lib-ref-plan sec 3.8: LIB-VA0's zero holds 'or every survivor is on the PRINTED keep list; an unprinted keep is the failure mode'). These are save_table.gen.h's address columns: step::addr (a block's identity and, hosted, its resolution input) and step::write_at/read_at (the keys delegate_for() matches a caller-supplied step_delegate::at against). VERIFIED PURE MATCH KEYS STANDALONE, 2026-09-11: every standalone consumer either compares them only (block_owner_index, sliced_block, find_delegate) or routes them through at()/slice_at(), which refuse with nullptr standalone -- and all six call sites null-check before dereferencing (save_driver.cpp 171/204/670/691/749/763). Nothing standalone dereferences one. Re-keying them onto ordinals is filed as its own item; it would upgrade this keep to a literal zero.",
+      "class": "save-driver key material",
+      "adjudicated": "2026-09-11"
+    },
+    {
+      "va": "0x00e1629e",
+      "object": "libmh/Release/save_driver.obj",
+      "signature": "00 00 9e 62 e1 00 02 00",
+      "names": [
+        "_G_LLM_CLICK_SELECT_TARGET_FLAGS"
+      ],
+      "why": "SAVE-DRIVER KEY MATERIAL -- a printed KEEP, not a removal (lib-ref-plan sec 3.8: LIB-VA0's zero holds 'or every survivor is on the PRINTED keep list; an unprinted keep is the failure mode'). These are save_table.gen.h's address columns: step::addr (a block's identity and, hosted, its resolution input) and step::write_at/read_at (the keys delegate_for() matches a caller-supplied step_delegate::at against). VERIFIED PURE MATCH KEYS STANDALONE, 2026-09-11: every standalone consumer either compares them only (block_owner_index, sliced_block, find_delegate) or routes them through at()/slice_at(), which refuse with nullptr standalone -- and all six call sites null-check before dereferencing (save_driver.cpp 171/204/670/691/749/763). Nothing standalone dereferences one. Re-keying them onto ordinals is filed as its own item; it would upgrade this keep to a literal zero.",
+      "class": "save-driver key material",
+      "adjudicated": "2026-09-11"
+    },
+    {
+      "va": "0x00e1db98",
+      "object": "libmh/Release/save_driver.obj",
+      "signature": "00 00 98 db e1 00 fc c4",
+      "names": [
+        "_G_LLM_STRAT_PROJECTILE_POOL"
+      ],
+      "why": "SAVE-DRIVER KEY MATERIAL -- a printed KEEP, not a removal (lib-ref-plan sec 3.8: LIB-VA0's zero holds 'or every survivor is on the PRINTED keep list; an unprinted keep is the failure mode'). These are save_table.gen.h's address columns: step::addr (a block's identity and, hosted, its resolution input) and step::write_at/read_at (the keys delegate_for() matches a caller-supplied step_delegate::at against). VERIFIED PURE MATCH KEYS STANDALONE, 2026-09-11: every standalone consumer either compares them only (block_owner_index, sliced_block, find_delegate) or routes them through at()/slice_at(), which refuse with nullptr standalone -- and all six call sites null-check before dereferencing (save_driver.cpp 171/204/670/691/749/763). Nothing standalone dereferences one. Re-keying them onto ordinals is filed as its own item; it would upgrade this keep to a literal zero.",
+      "class": "save-driver key material",
+      "adjudicated": "2026-09-11"
+    },
+    {
+      "va": "0x00e4a098",
+      "object": "libmh/Release/save_driver.obj",
+      "signature": "98 a0 e4 00 9c e0",
+      "names": [
+        "Unit"
+      ],
+      "why": "SAVE-DRIVER KEY MATERIAL -- a printed KEEP, not a removal (lib-ref-plan sec 3.8: LIB-VA0's zero holds 'or every survivor is on the PRINTED keep list; an unprinted keep is the failure mode'). These are save_table.gen.h's address columns: step::addr (a block's identity and, hosted, its resolution input) and step::write_at/read_at (the keys delegate_for() matches a caller-supplied step_delegate::at against). VERIFIED PURE MATCH KEYS STANDALONE, 2026-09-11: every standalone consumer either compares them only (block_owner_index, sliced_block, find_delegate) or routes them through at()/slice_at(), which refuse with nullptr standalone -- and all six call sites null-check before dereferencing (save_driver.cpp 171/204/670/691/749/763). Nothing standalone dereferences one. Re-keying them onto ordinals is filed as its own item; it would upgrade this keep to a literal zero.",
+      "class": "save-driver key material",
+      "adjudicated": "2026-09-11"
+    },
+    {
+      "va": "0x00e58134",
+      "object": "libmh/Release/save_driver.obj",
+      "signature": "00 00 34 81 e5 00 04 00",
+      "names": [
+        "_G_LLM_MAP_CAM_ROW"
+      ],
+      "why": "SAVE-DRIVER KEY MATERIAL -- a printed KEEP, not a removal (lib-ref-plan sec 3.8: LIB-VA0's zero holds 'or every survivor is on the PRINTED keep list; an unprinted keep is the failure mode'). These are save_table.gen.h's address columns: step::addr (a block's identity and, hosted, its resolution input) and step::write_at/read_at (the keys delegate_for() matches a caller-supplied step_delegate::at against). VERIFIED PURE MATCH KEYS STANDALONE, 2026-09-11: every standalone consumer either compares them only (block_owner_index, sliced_block, find_delegate) or routes them through at()/slice_at(), which refuse with nullptr standalone -- and all six call sites null-check before dereferencing (save_driver.cpp 171/204/670/691/749/763). Nothing standalone dereferences one. Re-keying them onto ordinals is filed as its own item; it would upgrade this keep to a literal zero.",
+      "class": "save-driver key material",
+      "adjudicated": "2026-09-11"
+    },
+    {
+      "va": "0x00e58138",
+      "object": "libmh/Release/save_driver.obj",
+      "signature": "00 00 38 81 e5 00 04 00",
+      "names": [
+        "_G_LLM_MAP_CAM_COL"
+      ],
+      "why": "SAVE-DRIVER KEY MATERIAL -- a printed KEEP, not a removal (lib-ref-plan sec 3.8: LIB-VA0's zero holds 'or every survivor is on the PRINTED keep list; an unprinted keep is the failure mode'). These are save_table.gen.h's address columns: step::addr (a block's identity and, hosted, its resolution input) and step::write_at/read_at (the keys delegate_for() matches a caller-supplied step_delegate::at against). VERIFIED PURE MATCH KEYS STANDALONE, 2026-09-11: every standalone consumer either compares them only (block_owner_index, sliced_block, find_delegate) or routes them through at()/slice_at(), which refuse with nullptr standalone -- and all six call sites null-check before dereferencing (save_driver.cpp 171/204/670/691/749/763). Nothing standalone dereferences one. Re-keying them onto ordinals is filed as its own item; it would upgrade this keep to a literal zero.",
+      "class": "save-driver key material",
+      "adjudicated": "2026-09-11"
+    },
+    {
+      "va": "0x00e5813c",
+      "object": "libmh/Release/save_driver.obj",
+      "signature": "00 00 3c 81 e5 00 06 00",
+      "names": [
+        "_G_LLM_STRAT_UI_SELECTED_BLDG_INDEX"
+      ],
+      "why": "SAVE-DRIVER KEY MATERIAL -- a printed KEEP, not a removal (lib-ref-plan sec 3.8: LIB-VA0's zero holds 'or every survivor is on the PRINTED keep list; an unprinted keep is the failure mode'). These are save_table.gen.h's address columns: step::addr (a block's identity and, hosted, its resolution input) and step::write_at/read_at (the keys delegate_for() matches a caller-supplied step_delegate::at against). VERIFIED PURE MATCH KEYS STANDALONE, 2026-09-11: every standalone consumer either compares them only (block_owner_index, sliced_block, find_delegate) or routes them through at()/slice_at(), which refuse with nullptr standalone -- and all six call sites null-check before dereferencing (save_driver.cpp 171/204/670/691/749/763). Nothing standalone dereferences one. Re-keying them onto ordinals is filed as its own item; it would upgrade this keep to a literal zero.",
+      "class": "save-driver key material",
+      "adjudicated": "2026-09-11"
+    },
+    {
+      "va": "0x00e58344",
+      "object": "libmh/Release/save_driver.obj",
+      "signature": "00 00 44 83 e5 00 57 06",
+      "names": [
+        "_G_LLM_GAME_SESSION_MODE"
+      ],
+      "why": "SAVE-DRIVER KEY MATERIAL -- a printed KEEP, not a removal (lib-ref-plan sec 3.8: LIB-VA0's zero holds 'or every survivor is on the PRINTED keep list; an unprinted keep is the failure mode'). These are save_table.gen.h's address columns: step::addr (a block's identity and, hosted, its resolution input) and step::write_at/read_at (the keys delegate_for() matches a caller-supplied step_delegate::at against). VERIFIED PURE MATCH KEYS STANDALONE, 2026-09-11: every standalone consumer either compares them only (block_owner_index, sliced_block, find_delegate) or routes them through at()/slice_at(), which refuse with nullptr standalone -- and all six call sites null-check before dereferencing (save_driver.cpp 171/204/670/691/749/763). Nothing standalone dereferences one. Re-keying them onto ordinals is filed as its own item; it would upgrade this keep to a literal zero.",
+      "class": "save-driver key material",
+      "adjudicated": "2026-09-11"
+    },
+    {
+      "va": "0x00e58344",
+      "object": "libmh/Release/save_driver.obj",
+      "signature": "00 00 44 83 e5 00 04 00",
+      "names": [
+        "_G_LLM_GAME_SESSION_MODE"
+      ],
+      "why": "SAVE-DRIVER KEY MATERIAL -- a printed KEEP, not a removal (lib-ref-plan sec 3.8: LIB-VA0's zero holds 'or every survivor is on the PRINTED keep list; an unprinted keep is the failure mode'). These are save_table.gen.h's address columns: step::addr (a block's identity and, hosted, its resolution input) and step::write_at/read_at (the keys delegate_for() matches a caller-supplied step_delegate::at against). VERIFIED PURE MATCH KEYS STANDALONE, 2026-09-11: every standalone consumer either compares them only (block_owner_index, sliced_block, find_delegate) or routes them through at()/slice_at(), which refuse with nullptr standalone -- and all six call sites null-check before dereferencing (save_driver.cpp 171/204/670/691/749/763). Nothing standalone dereferences one. Re-keying them onto ordinals is filed as its own item; it would upgrade this keep to a literal zero.",
+      "class": "save-driver key material",
+      "adjudicated": "2026-09-11"
+    },
+    {
+      "va": "0x00e58348",
+      "object": "libmh/Release/save_driver.obj",
+      "signature": "00 00 48 83 e5 00 04 00",
+      "names": [
+        "_G_LLM_DEBUG_TAP_FLAG"
+      ],
+      "why": "SAVE-DRIVER KEY MATERIAL -- a printed KEEP, not a removal (lib-ref-plan sec 3.8: LIB-VA0's zero holds 'or every survivor is on the PRINTED keep list; an unprinted keep is the failure mode'). These are save_table.gen.h's address columns: step::addr (a block's identity and, hosted, its resolution input) and step::write_at/read_at (the keys delegate_for() matches a caller-supplied step_delegate::at against). VERIFIED PURE MATCH KEYS STANDALONE, 2026-09-11: every standalone consumer either compares them only (block_owner_index, sliced_block, find_delegate) or routes them through at()/slice_at(), which refuse with nullptr standalone -- and all six call sites null-check before dereferencing (save_driver.cpp 171/204/670/691/749/763). Nothing standalone dereferences one. Re-keying them onto ordinals is filed as its own item; it would upgrade this keep to a literal zero.",
+      "class": "save-driver key material",
+      "adjudicated": "2026-09-11"
+    },
+    {
+      "va": "0x00e5834c",
+      "object": "libmh/Release/save_driver.obj",
+      "signature": "00 00 4c 83 e5 00 04 00",
+      "names": [
+        "_G_LLM_GAME_TUTORIAL_STEP"
+      ],
+      "why": "SAVE-DRIVER KEY MATERIAL -- a printed KEEP, not a removal (lib-ref-plan sec 3.8: LIB-VA0's zero holds 'or every survivor is on the PRINTED keep list; an unprinted keep is the failure mode'). These are save_table.gen.h's address columns: step::addr (a block's identity and, hosted, its resolution input) and step::write_at/read_at (the keys delegate_for() matches a caller-supplied step_delegate::at against). VERIFIED PURE MATCH KEYS STANDALONE, 2026-09-11: every standalone consumer either compares them only (block_owner_index, sliced_block, find_delegate) or routes them through at()/slice_at(), which refuse with nullptr standalone -- and all six call sites null-check before dereferencing (save_driver.cpp 171/204/670/691/749/763). Nothing standalone dereferences one. Re-keying them onto ordinals is filed as its own item; it would upgrade this keep to a literal zero.",
+      "class": "save-driver key material",
+      "adjudicated": "2026-09-11"
+    },
+    {
+      "va": "0x00e58350",
+      "object": "libmh/Release/save_driver.obj",
+      "signature": "00 00 50 83 e5 00 04 00",
+      "names": [
+        "_G_LLM_STRAT_AI_FOREIGN_BLDG_CHANGE_FLAG"
+      ],
+      "why": "SAVE-DRIVER KEY MATERIAL -- a printed KEEP, not a removal (lib-ref-plan sec 3.8: LIB-VA0's zero holds 'or every survivor is on the PRINTED keep list; an unprinted keep is the failure mode'). These are save_table.gen.h's address columns: step::addr (a block's identity and, hosted, its resolution input) and step::write_at/read_at (the keys delegate_for() matches a caller-supplied step_delegate::at against). VERIFIED PURE MATCH KEYS STANDALONE, 2026-09-11: every standalone consumer either compares them only (block_owner_index, sliced_block, find_delegate) or routes them through at()/slice_at(), which refuse with nullptr standalone -- and all six call sites null-check before dereferencing (save_driver.cpp 171/204/670/691/749/763). Nothing standalone dereferences one. Re-keying them onto ordinals is filed as its own item; it would upgrade this keep to a literal zero.",
+      "class": "save-driver key material",
+      "adjudicated": "2026-09-11"
+    },
+    {
+      "va": "0x00e58354",
+      "object": "libmh/Release/save_driver.obj",
+      "signature": "00 00 54 83 e5 00 02 00",
+      "names": [
+        "PlayerSide"
+      ],
+      "why": "SAVE-DRIVER KEY MATERIAL -- a printed KEEP, not a removal (lib-ref-plan sec 3.8: LIB-VA0's zero holds 'or every survivor is on the PRINTED keep list; an unprinted keep is the failure mode'). These are save_table.gen.h's address columns: step::addr (a block's identity and, hosted, its resolution input) and step::write_at/read_at (the keys delegate_for() matches a caller-supplied step_delegate::at against). VERIFIED PURE MATCH KEYS STANDALONE, 2026-09-11: every standalone consumer either compares them only (block_owner_index, sliced_block, find_delegate) or routes them through at()/slice_at(), which refuse with nullptr standalone -- and all six call sites null-check before dereferencing (save_driver.cpp 171/204/670/691/749/763). Nothing standalone dereferences one. Re-keying them onto ordinals is filed as its own item; it would upgrade this keep to a literal zero.",
+      "class": "save-driver key material",
+      "adjudicated": "2026-09-11"
+    },
+    {
+      "va": "0x00e58356",
+      "object": "libmh/Release/save_driver.obj",
+      "signature": "00 00 56 83 e5 00 08 00",
+      "names": [
+        "_G_LLM_STRAT_DEBUG_RESOURCE_YIELD_CUT"
+      ],
+      "why": "SAVE-DRIVER KEY MATERIAL -- a printed KEEP, not a removal (lib-ref-plan sec 3.8: LIB-VA0's zero holds 'or every survivor is on the PRINTED keep list; an unprinted keep is the failure mode'). These are save_table.gen.h's address columns: step::addr (a block's identity and, hosted, its resolution input) and step::write_at/read_at (the keys delegate_for() matches a caller-supplied step_delegate::at against). VERIFIED PURE MATCH KEYS STANDALONE, 2026-09-11: every standalone consumer either compares them only (block_owner_index, sliced_block, find_delegate) or routes them through at()/slice_at(), which refuse with nullptr standalone -- and all six call sites null-check before dereferencing (save_driver.cpp 171/204/670/691/749/763). Nothing standalone dereferences one. Re-keying them onto ordinals is filed as its own item; it would upgrade this keep to a literal zero.",
+      "class": "save-driver key material",
+      "adjudicated": "2026-09-11"
+    },
+    {
+      "va": "0x00e5835e",
+      "object": "libmh/Release/save_driver.obj",
+      "signature": "00 00 5e 83 e5 00 02 00",
+      "names": [
+        "_G_LLM_STRAT_LOCAL_PLAYER_SLOT"
+      ],
+      "why": "SAVE-DRIVER KEY MATERIAL -- a printed KEEP, not a removal (lib-ref-plan sec 3.8: LIB-VA0's zero holds 'or every survivor is on the PRINTED keep list; an unprinted keep is the failure mode'). These are save_table.gen.h's address columns: step::addr (a block's identity and, hosted, its resolution input) and step::write_at/read_at (the keys delegate_for() matches a caller-supplied step_delegate::at against). VERIFIED PURE MATCH KEYS STANDALONE, 2026-09-11: every standalone consumer either compares them only (block_owner_index, sliced_block, find_delegate) or routes them through at()/slice_at(), which refuse with nullptr standalone -- and all six call sites null-check before dereferencing (save_driver.cpp 171/204/670/691/749/763). Nothing standalone dereferences one. Re-keying them onto ordinals is filed as its own item; it would upgrade this keep to a literal zero.",
+      "class": "save-driver key material",
+      "adjudicated": "2026-09-11"
+    },
+    {
+      "va": "0x00e58360",
+      "object": "libmh/Release/save_driver.obj",
+      "signature": "00 00 60 83 e5 00 01 00",
+      "names": [
+        "_G_LLM_STRAT_PROD_COMPLETE_THROTTLE"
+      ],
+      "why": "SAVE-DRIVER KEY MATERIAL -- a printed KEEP, not a removal (lib-ref-plan sec 3.8: LIB-VA0's zero holds 'or every survivor is on the PRINTED keep list; an unprinted keep is the failure mode'). These are save_table.gen.h's address columns: step::addr (a block's identity and, hosted, its resolution input) and step::write_at/read_at (the keys delegate_for() matches a caller-supplied step_delegate::at against). VERIFIED PURE MATCH KEYS STANDALONE, 2026-09-11: every standalone consumer either compares them only (block_owner_index, sliced_block, find_delegate) or routes them through at()/slice_at(), which refuse with nullptr standalone -- and all six call sites null-check before dereferencing (save_driver.cpp 171/204/670/691/749/763). Nothing standalone dereferences one. Re-keying them onto ordinals is filed as its own item; it would upgrade this keep to a literal zero.",
+      "class": "save-driver key material",
+      "adjudicated": "2026-09-11"
+    },
+    {
+      "va": "0x00e58361",
+      "object": "libmh/Release/save_driver.obj",
+      "signature": "00 00 61 83 e5 00 04 00",
+      "names": [
+        "_G_LLM_STRAT_PLAYER_RACE"
+      ],
+      "why": "SAVE-DRIVER KEY MATERIAL -- a printed KEEP, not a removal (lib-ref-plan sec 3.8: LIB-VA0's zero holds 'or every survivor is on the PRINTED keep list; an unprinted keep is the failure mode'). These are save_table.gen.h's address columns: step::addr (a block's identity and, hosted, its resolution input) and step::write_at/read_at (the keys delegate_for() matches a caller-supplied step_delegate::at against). VERIFIED PURE MATCH KEYS STANDALONE, 2026-09-11: every standalone consumer either compares them only (block_owner_index, sliced_block, find_delegate) or routes them through at()/slice_at(), which refuse with nullptr standalone -- and all six call sites null-check before dereferencing (save_driver.cpp 171/204/670/691/749/763). Nothing standalone dereferences one. Re-keying them onto ordinals is filed as its own item; it would upgrade this keep to a literal zero.",
+      "class": "save-driver key material",
+      "adjudicated": "2026-09-11"
+    },
+    {
+      "va": "0x00e58365",
+      "object": "libmh/Release/save_driver.obj",
+      "signature": "00 00 65 83 e5 00 01 00",
+      "names": [
+        "_G_LLM_STRAT_UI_BLDG_TAB_SELECT_BLOCKED"
+      ],
+      "why": "SAVE-DRIVER KEY MATERIAL -- a printed KEEP, not a removal (lib-ref-plan sec 3.8: LIB-VA0's zero holds 'or every survivor is on the PRINTED keep list; an unprinted keep is the failure mode'). These are save_table.gen.h's address columns: step::addr (a block's identity and, hosted, its resolution input) and step::write_at/read_at (the keys delegate_for() matches a caller-supplied step_delegate::at against). VERIFIED PURE MATCH KEYS STANDALONE, 2026-09-11: every standalone consumer either compares them only (block_owner_index, sliced_block, find_delegate) or routes them through at()/slice_at(), which refuse with nullptr standalone -- and all six call sites null-check before dereferencing (save_driver.cpp 171/204/670/691/749/763). Nothing standalone dereferences one. Re-keying them onto ordinals is filed as its own item; it would upgrade this keep to a literal zero.",
+      "class": "save-driver key material",
+      "adjudicated": "2026-09-11"
+    },
+    {
+      "va": "0x00e58366",
+      "object": "libmh/Release/save_driver.obj",
+      "signature": "50 68 66 83 e5 00 56 e8",
+      "names": [
+        "G_PLANET_INDEX"
+      ],
+      "why": "SAVE-DRIVER KEY MATERIAL -- a printed KEEP, not a removal (lib-ref-plan sec 3.8: LIB-VA0's zero holds 'or every survivor is on the PRINTED keep list; an unprinted keep is the failure mode'). These are save_table.gen.h's address columns: step::addr (a block's identity and, hosted, its resolution input) and step::write_at/read_at (the keys delegate_for() matches a caller-supplied step_delegate::at against). VERIFIED PURE MATCH KEYS STANDALONE, 2026-09-11: every standalone consumer either compares them only (block_owner_index, sliced_block, find_delegate) or routes them through at()/slice_at(), which refuse with nullptr standalone -- and all six call sites null-check before dereferencing (save_driver.cpp 171/204/670/691/749/763). Nothing standalone dereferences one. Re-keying them onto ordinals is filed as its own item; it would upgrade this keep to a literal zero.",
+      "class": "save-driver key material",
+      "adjudicated": "2026-09-11"
+    },
+    {
+      "va": "0x00e58366",
+      "object": "libmh/Release/save_driver.obj",
+      "signature": "00 00 66 83 e5 00 04 00",
+      "names": [
+        "G_PLANET_INDEX"
+      ],
+      "why": "SAVE-DRIVER KEY MATERIAL -- a printed KEEP, not a removal (lib-ref-plan sec 3.8: LIB-VA0's zero holds 'or every survivor is on the PRINTED keep list; an unprinted keep is the failure mode'). These are save_table.gen.h's address columns: step::addr (a block's identity and, hosted, its resolution input) and step::write_at/read_at (the keys delegate_for() matches a caller-supplied step_delegate::at against). VERIFIED PURE MATCH KEYS STANDALONE, 2026-09-11: every standalone consumer either compares them only (block_owner_index, sliced_block, find_delegate) or routes them through at()/slice_at(), which refuse with nullptr standalone -- and all six call sites null-check before dereferencing (save_driver.cpp 171/204/670/691/749/763). Nothing standalone dereferences one. Re-keying them onto ordinals is filed as its own item; it would upgrade this keep to a literal zero.",
+      "class": "save-driver key material",
+      "adjudicated": "2026-09-11"
+    },
+    {
+      "va": "0x00e5836a",
+      "object": "libmh/Release/save_driver.obj",
+      "signature": "00 00 6a 83 e5 00 01 00",
+      "names": [
+        "_G_LLM_STRAT_PLANET_TRANSITION_STATE"
+      ],
+      "why": "SAVE-DRIVER KEY MATERIAL -- a printed KEEP, not a removal (lib-ref-plan sec 3.8: LIB-VA0's zero holds 'or every survivor is on the PRINTED keep list; an unprinted keep is the failure mode'). These are save_table.gen.h's address columns: step::addr (a block's identity and, hosted, its resolution input) and step::write_at/read_at (the keys delegate_for() matches a caller-supplied step_delegate::at against). VERIFIED PURE MATCH KEYS STANDALONE, 2026-09-11: every standalone consumer either compares them only (block_owner_index, sliced_block, find_delegate) or routes them through at()/slice_at(), which refuse with nullptr standalone -- and all six call sites null-check before dereferencing (save_driver.cpp 171/204/670/691/749/763). Nothing standalone dereferences one. Re-keying them onto ordinals is filed as its own item; it would upgrade this keep to a literal zero.",
+      "class": "save-driver key material",
+      "adjudicated": "2026-09-11"
+    },
+    {
+      "va": "0x00e5836b",
+      "object": "libmh/Release/save_driver.obj",
+      "signature": "04 bd 6b 83 e5 00 6a 04",
+      "names": [
+        "G_PLANET_STATUS"
+      ],
+      "why": "SAVE-DRIVER KEY MATERIAL -- a printed KEEP, not a removal (lib-ref-plan sec 3.8: LIB-VA0's zero holds 'or every survivor is on the PRINTED keep list; an unprinted keep is the failure mode'). These are save_table.gen.h's address columns: step::addr (a block's identity and, hosted, its resolution input) and step::write_at/read_at (the keys delegate_for() matches a caller-supplied step_delegate::at against). VERIFIED PURE MATCH KEYS STANDALONE, 2026-09-11: every standalone consumer either compares them only (block_owner_index, sliced_block, find_delegate) or routes them through at()/slice_at(), which refuse with nullptr standalone -- and all six call sites null-check before dereferencing (save_driver.cpp 171/204/670/691/749/763). Nothing standalone dereferences one. Re-keying them onto ordinals is filed as its own item; it would upgrade this keep to a literal zero.",
+      "class": "save-driver key material",
+      "adjudicated": "2026-09-11"
+    },
+    {
+      "va": "0x00e5836b",
+      "object": "libmh/Release/save_driver.obj",
+      "signature": "00 00 6b 83 e5 00 80 00",
+      "names": [
+        "G_PLANET_STATUS"
+      ],
+      "why": "SAVE-DRIVER KEY MATERIAL -- a printed KEEP, not a removal (lib-ref-plan sec 3.8: LIB-VA0's zero holds 'or every survivor is on the PRINTED keep list; an unprinted keep is the failure mode'). These are save_table.gen.h's address columns: step::addr (a block's identity and, hosted, its resolution input) and step::write_at/read_at (the keys delegate_for() matches a caller-supplied step_delegate::at against). VERIFIED PURE MATCH KEYS STANDALONE, 2026-09-11: every standalone consumer either compares them only (block_owner_index, sliced_block, find_delegate) or routes them through at()/slice_at(), which refuse with nullptr standalone -- and all six call sites null-check before dereferencing (save_driver.cpp 171/204/670/691/749/763). Nothing standalone dereferences one. Re-keying them onto ordinals is filed as its own item; it would upgrade this keep to a literal zero.",
+      "class": "save-driver key material",
+      "adjudicated": "2026-09-11"
+    },
+    {
+      "va": "0x00e583eb",
+      "object": "libmh/Release/save_driver.obj",
+      "signature": "00 00 eb 83 e5 00 01 00",
+      "names": [
+        "_G_LLM_STRAT_FLOATING_MSG_SUPPRESS_FLAG"
+      ],
+      "why": "SAVE-DRIVER KEY MATERIAL -- a printed KEEP, not a removal (lib-ref-plan sec 3.8: LIB-VA0's zero holds 'or every survivor is on the PRINTED keep list; an unprinted keep is the failure mode'). These are save_table.gen.h's address columns: step::addr (a block's identity and, hosted, its resolution input) and step::write_at/read_at (the keys delegate_for() matches a caller-supplied step_delegate::at against). VERIFIED PURE MATCH KEYS STANDALONE, 2026-09-11: every standalone consumer either compares them only (block_owner_index, sliced_block, find_delegate) or routes them through at()/slice_at(), which refuse with nullptr standalone -- and all six call sites null-check before dereferencing (save_driver.cpp 171/204/670/691/749/763). Nothing standalone dereferences one. Re-keying them onto ordinals is filed as its own item; it would upgrade this keep to a literal zero.",
+      "class": "save-driver key material",
+      "adjudicated": "2026-09-11"
+    },
+    {
+      "va": "0x00e583ef",
+      "object": "libmh/Release/save_driver.obj",
+      "signature": "00 00 ef 83 e5 00 00 01",
+      "names": [
+        "planet_time"
+      ],
+      "why": "SAVE-DRIVER KEY MATERIAL -- a printed KEEP, not a removal (lib-ref-plan sec 3.8: LIB-VA0's zero holds 'or every survivor is on the PRINTED keep list; an unprinted keep is the failure mode'). These are save_table.gen.h's address columns: step::addr (a block's identity and, hosted, its resolution input) and step::write_at/read_at (the keys delegate_for() matches a caller-supplied step_delegate::at against). VERIFIED PURE MATCH KEYS STANDALONE, 2026-09-11: every standalone consumer either compares them only (block_owner_index, sliced_block, find_delegate) or routes them through at()/slice_at(), which refuse with nullptr standalone -- and all six call sites null-check before dereferencing (save_driver.cpp 171/204/670/691/749/763). Nothing standalone dereferences one. Re-keying them onto ordinals is filed as its own item; it would upgrade this keep to a literal zero.",
+      "class": "save-driver key material",
+      "adjudicated": "2026-09-11"
+    },
+    {
+      "va": "0x00e584ef",
+      "object": "libmh/Release/save_driver.obj",
+      "signature": "00 00 ef 84 e5 00 01 00",
+      "names": [
+        "_G_LLM_STRAT_LOCKSTEP_STEP_MULT"
+      ],
+      "why": "SAVE-DRIVER KEY MATERIAL -- a printed KEEP, not a removal (lib-ref-plan sec 3.8: LIB-VA0's zero holds 'or every survivor is on the PRINTED keep list; an unprinted keep is the failure mode'). These are save_table.gen.h's address columns: step::addr (a block's identity and, hosted, its resolution input) and step::write_at/read_at (the keys delegate_for() matches a caller-supplied step_delegate::at against). VERIFIED PURE MATCH KEYS STANDALONE, 2026-09-11: every standalone consumer either compares them only (block_owner_index, sliced_block, find_delegate) or routes them through at()/slice_at(), which refuse with nullptr standalone -- and all six call sites null-check before dereferencing (save_driver.cpp 171/204/670/691/749/763). Nothing standalone dereferences one. Re-keying them onto ordinals is filed as its own item; it would upgrade this keep to a literal zero.",
+      "class": "save-driver key material",
+      "adjudicated": "2026-09-11"
+    },
+    {
+      "va": "0x00e584f0",
+      "object": "libmh/Release/save_driver.obj",
+      "signature": "00 00 f0 84 e5 00 04 00",
+      "names": [
+        "_G_LLM_STRAT_OUTER_PLANET_LAND_STATE"
+      ],
+      "why": "SAVE-DRIVER KEY MATERIAL -- a printed KEEP, not a removal (lib-ref-plan sec 3.8: LIB-VA0's zero holds 'or every survivor is on the PRINTED keep list; an unprinted keep is the failure mode'). These are save_table.gen.h's address columns: step::addr (a block's identity and, hosted, its resolution input) and step::write_at/read_at (the keys delegate_for() matches a caller-supplied step_delegate::at against). VERIFIED PURE MATCH KEYS STANDALONE, 2026-09-11: every standalone consumer either compares them only (block_owner_index, sliced_block, find_delegate) or routes them through at()/slice_at(), which refuse with nullptr standalone -- and all six call sites null-check before dereferencing (save_driver.cpp 171/204/670/691/749/763). Nothing standalone dereferences one. Re-keying them onto ordinals is filed as its own item; it would upgrade this keep to a literal zero.",
+      "class": "save-driver key material",
+      "adjudicated": "2026-09-11"
+    },
+    {
+      "va": "0x00e584f4",
+      "object": "libmh/Release/save_driver.obj",
+      "signature": "00 00 f4 84 e5 00 00 01",
+      "names": [
+        "_G_LLM_STRAT_PLANET_MOTHER_LOST_TIME"
+      ],
+      "why": "SAVE-DRIVER KEY MATERIAL -- a printed KEEP, not a removal (lib-ref-plan sec 3.8: LIB-VA0's zero holds 'or every survivor is on the PRINTED keep list; an unprinted keep is the failure mode'). These are save_table.gen.h's address columns: step::addr (a block's identity and, hosted, its resolution input) and step::write_at/read_at (the keys delegate_for() matches a caller-supplied step_delegate::at against). VERIFIED PURE MATCH KEYS STANDALONE, 2026-09-11: every standalone consumer either compares them only (block_owner_index, sliced_block, find_delegate) or routes them through at()/slice_at(), which refuse with nullptr standalone -- and all six call sites null-check before dereferencing (save_driver.cpp 171/204/670/691/749/763). Nothing standalone dereferences one. Re-keying them onto ordinals is filed as its own item; it would upgrade this keep to a literal zero.",
+      "class": "save-driver key material",
+      "adjudicated": "2026-09-11"
+    },
+    {
+      "va": "0x00e585f4",
+      "object": "libmh/Release/save_driver.obj",
+      "signature": "00 00 f4 85 e5 00 04 00",
+      "names": [
+        "_G_LLM_CHEAT_PENALTY_SCORE"
+      ],
+      "why": "SAVE-DRIVER KEY MATERIAL -- a printed KEEP, not a removal (lib-ref-plan sec 3.8: LIB-VA0's zero holds 'or every survivor is on the PRINTED keep list; an unprinted keep is the failure mode'). These are save_table.gen.h's address columns: step::addr (a block's identity and, hosted, its resolution input) and step::write_at/read_at (the keys delegate_for() matches a caller-supplied step_delegate::at against). VERIFIED PURE MATCH KEYS STANDALONE, 2026-09-11: every standalone consumer either compares them only (block_owner_index, sliced_block, find_delegate) or routes them through at()/slice_at(), which refuse with nullptr standalone -- and all six call sites null-check before dereferencing (save_driver.cpp 171/204/670/691/749/763). Nothing standalone dereferences one. Re-keying them onto ordinals is filed as its own item; it would upgrade this keep to a literal zero.",
+      "class": "save-driver key material",
+      "adjudicated": "2026-09-11"
+    },
+    {
+      "va": "0x00e585f8",
+      "object": "libmh/Release/save_driver.obj",
+      "signature": "00 00 f8 85 e5 00 00 01",
+      "names": [
+        "_G_LLM_STRAT_INVASION_TIME"
+      ],
+      "why": "SAVE-DRIVER KEY MATERIAL -- a printed KEEP, not a removal (lib-ref-plan sec 3.8: LIB-VA0's zero holds 'or every survivor is on the PRINTED keep list; an unprinted keep is the failure mode'). These are save_table.gen.h's address columns: step::addr (a block's identity and, hosted, its resolution input) and step::write_at/read_at (the keys delegate_for() matches a caller-supplied step_delegate::at against). VERIFIED PURE MATCH KEYS STANDALONE, 2026-09-11: every standalone consumer either compares them only (block_owner_index, sliced_block, find_delegate) or routes them through at()/slice_at(), which refuse with nullptr standalone -- and all six call sites null-check before dereferencing (save_driver.cpp 171/204/670/691/749/763). Nothing standalone dereferences one. Re-keying them onto ordinals is filed as its own item; it would upgrade this keep to a literal zero.",
+      "class": "save-driver key material",
+      "adjudicated": "2026-09-11"
+    },
+    {
+      "va": "0x00e586f8",
+      "object": "libmh/Release/save_driver.obj",
+      "signature": "00 00 f8 86 e5 00 04 00",
+      "names": [
+        "_G_LLM_STRAT_OUTER_PLANET_LANDED_FLAG"
+      ],
+      "why": "SAVE-DRIVER KEY MATERIAL -- a printed KEEP, not a removal (lib-ref-plan sec 3.8: LIB-VA0's zero holds 'or every survivor is on the PRINTED keep list; an unprinted keep is the failure mode'). These are save_table.gen.h's address columns: step::addr (a block's identity and, hosted, its resolution input) and step::write_at/read_at (the keys delegate_for() matches a caller-supplied step_delegate::at against). VERIFIED PURE MATCH KEYS STANDALONE, 2026-09-11: every standalone consumer either compares them only (block_owner_index, sliced_block, find_delegate) or routes them through at()/slice_at(), which refuse with nullptr standalone -- and all six call sites null-check before dereferencing (save_driver.cpp 171/204/670/691/749/763). Nothing standalone dereferences one. Re-keying them onto ordinals is filed as its own item; it would upgrade this keep to a literal zero.",
+      "class": "save-driver key material",
+      "adjudicated": "2026-09-11"
+    },
+    {
+      "va": "0x00e586fc",
+      "object": "libmh/Release/save_driver.obj",
+      "signature": "00 00 fc 86 e5 00 80 00",
+      "names": [
+        "_G_LLM_STRAT_PLANET_INT_TABLE"
+      ],
+      "why": "SAVE-DRIVER KEY MATERIAL -- a printed KEEP, not a removal (lib-ref-plan sec 3.8: LIB-VA0's zero holds 'or every survivor is on the PRINTED keep list; an unprinted keep is the failure mode'). These are save_table.gen.h's address columns: step::addr (a block's identity and, hosted, its resolution input) and step::write_at/read_at (the keys delegate_for() matches a caller-supplied step_delegate::at against). VERIFIED PURE MATCH KEYS STANDALONE, 2026-09-11: every standalone consumer either compares them only (block_owner_index, sliced_block, find_delegate) or routes them through at()/slice_at(), which refuse with nullptr standalone -- and all six call sites null-check before dereferencing (save_driver.cpp 171/204/670/691/749/763). Nothing standalone dereferences one. Re-keying them onto ordinals is filed as its own item; it would upgrade this keep to a literal zero.",
+      "class": "save-driver key material",
+      "adjudicated": "2026-09-11"
+    },
+    {
+      "va": "0x00e5877c",
+      "object": "libmh/Release/save_driver.obj",
+      "signature": "00 00 7c 87 e5 00 01 00",
+      "names": [
+        "_G_LLM_STRAT_BLDG_COMPLETION_SLOT_COUNT"
+      ],
+      "why": "SAVE-DRIVER KEY MATERIAL -- a printed KEEP, not a removal (lib-ref-plan sec 3.8: LIB-VA0's zero holds 'or every survivor is on the PRINTED keep list; an unprinted keep is the failure mode'). These are save_table.gen.h's address columns: step::addr (a block's identity and, hosted, its resolution input) and step::write_at/read_at (the keys delegate_for() matches a caller-supplied step_delegate::at against). VERIFIED PURE MATCH KEYS STANDALONE, 2026-09-11: every standalone consumer either compares them only (block_owner_index, sliced_block, find_delegate) or routes them through at()/slice_at(), which refuse with nullptr standalone -- and all six call sites null-check before dereferencing (save_driver.cpp 171/204/670/691/749/763). Nothing standalone dereferences one. Re-keying them onto ordinals is filed as its own item; it would upgrade this keep to a literal zero.",
+      "class": "save-driver key material",
+      "adjudicated": "2026-09-11"
+    },
+    {
+      "va": "0x00e5877d",
+      "object": "libmh/Release/save_driver.obj",
+      "signature": "00 00 7d 87 e5 00 04 00",
+      "names": [
+        "_G_LLM_STRAT_BLDG_COMPLETION_ACCUM"
+      ],
+      "why": "SAVE-DRIVER KEY MATERIAL -- a printed KEEP, not a removal (lib-ref-plan sec 3.8: LIB-VA0's zero holds 'or every survivor is on the PRINTED keep list; an unprinted keep is the failure mode'). These are save_table.gen.h's address columns: step::addr (a block's identity and, hosted, its resolution input) and step::write_at/read_at (the keys delegate_for() matches a caller-supplied step_delegate::at against). VERIFIED PURE MATCH KEYS STANDALONE, 2026-09-11: every standalone consumer either compares them only (block_owner_index, sliced_block, find_delegate) or routes them through at()/slice_at(), which refuse with nullptr standalone -- and all six call sites null-check before dereferencing (save_driver.cpp 171/204/670/691/749/763). Nothing standalone dereferences one. Re-keying them onto ordinals is filed as its own item; it would upgrade this keep to a literal zero.",
+      "class": "save-driver key material",
+      "adjudicated": "2026-09-11"
+    },
+    {
+      "va": "0x00e58781",
+      "object": "libmh/Release/save_driver.obj",
+      "signature": "04 68 81 87 e5 00 ff 76",
+      "names": [
+        "CurrentSystem"
+      ],
+      "why": "SAVE-DRIVER KEY MATERIAL -- a printed KEEP, not a removal (lib-ref-plan sec 3.8: LIB-VA0's zero holds 'or every survivor is on the PRINTED keep list; an unprinted keep is the failure mode'). These are save_table.gen.h's address columns: step::addr (a block's identity and, hosted, its resolution input) and step::write_at/read_at (the keys delegate_for() matches a caller-supplied step_delegate::at against). VERIFIED PURE MATCH KEYS STANDALONE, 2026-09-11: every standalone consumer either compares them only (block_owner_index, sliced_block, find_delegate) or routes them through at()/slice_at(), which refuse with nullptr standalone -- and all six call sites null-check before dereferencing (save_driver.cpp 171/204/670/691/749/763). Nothing standalone dereferences one. Re-keying them onto ordinals is filed as its own item; it would upgrade this keep to a literal zero.",
+      "class": "save-driver key material",
+      "adjudicated": "2026-09-11"
+    },
+    {
+      "va": "0x00e58781",
+      "object": "libmh/Release/save_driver.obj",
+      "signature": "00 00 81 87 e5 00 04 00",
+      "names": [
+        "CurrentSystem"
+      ],
+      "why": "SAVE-DRIVER KEY MATERIAL -- a printed KEEP, not a removal (lib-ref-plan sec 3.8: LIB-VA0's zero holds 'or every survivor is on the PRINTED keep list; an unprinted keep is the failure mode'). These are save_table.gen.h's address columns: step::addr (a block's identity and, hosted, its resolution input) and step::write_at/read_at (the keys delegate_for() matches a caller-supplied step_delegate::at against). VERIFIED PURE MATCH KEYS STANDALONE, 2026-09-11: every standalone consumer either compares them only (block_owner_index, sliced_block, find_delegate) or routes them through at()/slice_at(), which refuse with nullptr standalone -- and all six call sites null-check before dereferencing (save_driver.cpp 171/204/670/691/749/763). Nothing standalone dereferences one. Re-keying them onto ordinals is filed as its own item; it would upgrade this keep to a literal zero.",
+      "class": "save-driver key material",
+      "adjudicated": "2026-09-11"
+    },
+    {
+      "va": "0x00e58789",
+      "object": "libmh/Release/save_driver.obj",
+      "signature": "00 00 89 87 e5 00 04 00",
+      "names": [
+        "_G_LLM_NET_LOCKSTEP_SYNC_RETRY_COUNTDOWN"
+      ],
+      "why": "SAVE-DRIVER KEY MATERIAL -- a printed KEEP, not a removal (lib-ref-plan sec 3.8: LIB-VA0's zero holds 'or every survivor is on the PRINTED keep list; an unprinted keep is the failure mode'). These are save_table.gen.h's address columns: step::addr (a block's identity and, hosted, its resolution input) and step::write_at/read_at (the keys delegate_for() matches a caller-supplied step_delegate::at against). VERIFIED PURE MATCH KEYS STANDALONE, 2026-09-11: every standalone consumer either compares them only (block_owner_index, sliced_block, find_delegate) or routes them through at()/slice_at(), which refuse with nullptr standalone -- and all six call sites null-check before dereferencing (save_driver.cpp 171/204/670/691/749/763). Nothing standalone dereferences one. Re-keying them onto ordinals is filed as its own item; it would upgrade this keep to a literal zero.",
+      "class": "save-driver key material",
+      "adjudicated": "2026-09-11"
+    },
+    {
+      "va": "0x00e5878d",
+      "object": "libmh/Release/save_driver.obj",
+      "signature": "00 00 8d 87 e5 00 04 00",
+      "names": [
+        "_G_LLM_NET_LOCKSTEP_STALL_NAG_COUNT"
+      ],
+      "why": "SAVE-DRIVER KEY MATERIAL -- a printed KEEP, not a removal (lib-ref-plan sec 3.8: LIB-VA0's zero holds 'or every survivor is on the PRINTED keep list; an unprinted keep is the failure mode'). These are save_table.gen.h's address columns: step::addr (a block's identity and, hosted, its resolution input) and step::write_at/read_at (the keys delegate_for() matches a caller-supplied step_delegate::at against). VERIFIED PURE MATCH KEYS STANDALONE, 2026-09-11: every standalone consumer either compares them only (block_owner_index, sliced_block, find_delegate) or routes them through at()/slice_at(), which refuse with nullptr standalone -- and all six call sites null-check before dereferencing (save_driver.cpp 171/204/670/691/749/763). Nothing standalone dereferences one. Re-keying them onto ordinals is filed as its own item; it would upgrade this keep to a literal zero.",
+      "class": "save-driver key material",
+      "adjudicated": "2026-09-11"
+    },
+    {
+      "va": "0x00e58791",
+      "object": "libmh/Release/save_driver.obj",
+      "signature": "00 00 91 87 e5 00 04 00",
+      "names": [
+        "_G_LLM_NET_LOCKSTEP_RESYNC_TRIGGER_COUNT"
+      ],
+      "why": "SAVE-DRIVER KEY MATERIAL -- a printed KEEP, not a removal (lib-ref-plan sec 3.8: LIB-VA0's zero holds 'or every survivor is on the PRINTED keep list; an unprinted keep is the failure mode'). These are save_table.gen.h's address columns: step::addr (a block's identity and, hosted, its resolution input) and step::write_at/read_at (the keys delegate_for() matches a caller-supplied step_delegate::at against). VERIFIED PURE MATCH KEYS STANDALONE, 2026-09-11: every standalone consumer either compares them only (block_owner_index, sliced_block, find_delegate) or routes them through at()/slice_at(), which refuse with nullptr standalone -- and all six call sites null-check before dereferencing (save_driver.cpp 171/204/670/691/749/763). Nothing standalone dereferences one. Re-keying them onto ordinals is filed as its own item; it would upgrade this keep to a literal zero.",
+      "class": "save-driver key material",
+      "adjudicated": "2026-09-11"
+    },
+    {
+      "va": "0x00e58795",
+      "object": "libmh/Release/save_driver.obj",
+      "signature": "00 00 95 87 e5 00 04 00",
+      "names": [
+        "_G_LLM_STRAT_LOCKSTEP_STALL_COUNT"
+      ],
+      "why": "SAVE-DRIVER KEY MATERIAL -- a printed KEEP, not a removal (lib-ref-plan sec 3.8: LIB-VA0's zero holds 'or every survivor is on the PRINTED keep list; an unprinted keep is the failure mode'). These are save_table.gen.h's address columns: step::addr (a block's identity and, hosted, its resolution input) and step::write_at/read_at (the keys delegate_for() matches a caller-supplied step_delegate::at against). VERIFIED PURE MATCH KEYS STANDALONE, 2026-09-11: every standalone consumer either compares them only (block_owner_index, sliced_block, find_delegate) or routes them through at()/slice_at(), which refuse with nullptr standalone -- and all six call sites null-check before dereferencing (save_driver.cpp 171/204/670/691/749/763). Nothing standalone dereferences one. Re-keying them onto ordinals is filed as its own item; it would upgrade this keep to a literal zero.",
+      "class": "save-driver key material",
+      "adjudicated": "2026-09-11"
+    },
+    {
+      "va": "0x00e58799",
+      "object": "libmh/Release/save_driver.obj",
+      "signature": "00 00 99 87 e5 00 08 00",
+      "names": [
+        "_G_LLM_NET_LOCKSTEP_SYNC_WAIT_ELAPSED",
+        "sync_wait_accum"
+      ],
+      "why": "SAVE-DRIVER KEY MATERIAL -- a printed KEEP, not a removal (lib-ref-plan sec 3.8: LIB-VA0's zero holds 'or every survivor is on the PRINTED keep list; an unprinted keep is the failure mode'). These are save_table.gen.h's address columns: step::addr (a block's identity and, hosted, its resolution input) and step::write_at/read_at (the keys delegate_for() matches a caller-supplied step_delegate::at against). VERIFIED PURE MATCH KEYS STANDALONE, 2026-09-11: every standalone consumer either compares them only (block_owner_index, sliced_block, find_delegate) or routes them through at()/slice_at(), which refuse with nullptr standalone -- and all six call sites null-check before dereferencing (save_driver.cpp 171/204/670/691/749/763). Nothing standalone dereferences one. Re-keying them onto ordinals is filed as its own item; it would upgrade this keep to a literal zero.",
+      "class": "save-driver key material",
+      "adjudicated": "2026-09-11"
+    },
+    {
+      "va": "0x00e587a1",
+      "object": "libmh/Release/save_driver.obj",
+      "signature": "00 00 a1 87 e5 00 08 00",
+      "names": [
+        "_G_LLM_NET_LOCKSTEP_PEER_TIMEOUT_ELAPSED",
+        "peer_grace_timer"
+      ],
+      "why": "SAVE-DRIVER KEY MATERIAL -- a printed KEEP, not a removal (lib-ref-plan sec 3.8: LIB-VA0's zero holds 'or every survivor is on the PRINTED keep list; an unprinted keep is the failure mode'). These are save_table.gen.h's address columns: step::addr (a block's identity and, hosted, its resolution input) and step::write_at/read_at (the keys delegate_for() matches a caller-supplied step_delegate::at against). VERIFIED PURE MATCH KEYS STANDALONE, 2026-09-11: every standalone consumer either compares them only (block_owner_index, sliced_block, find_delegate) or routes them through at()/slice_at(), which refuse with nullptr standalone -- and all six call sites null-check before dereferencing (save_driver.cpp 171/204/670/691/749/763). Nothing standalone dereferences one. Re-keying them onto ordinals is filed as its own item; it would upgrade this keep to a literal zero.",
+      "class": "save-driver key material",
+      "adjudicated": "2026-09-11"
+    },
+    {
+      "va": "0x00e587a9",
+      "object": "libmh/Release/save_driver.obj",
+      "signature": "00 00 a9 87 e5 00 04 00",
+      "names": [
+        "_G_LLM_NET_SYNC_WAIT_ACTIVE"
+      ],
+      "why": "SAVE-DRIVER KEY MATERIAL -- a printed KEEP, not a removal (lib-ref-plan sec 3.8: LIB-VA0's zero holds 'or every survivor is on the PRINTED keep list; an unprinted keep is the failure mode'). These are save_table.gen.h's address columns: step::addr (a block's identity and, hosted, its resolution input) and step::write_at/read_at (the keys delegate_for() matches a caller-supplied step_delegate::at against). VERIFIED PURE MATCH KEYS STANDALONE, 2026-09-11: every standalone consumer either compares them only (block_owner_index, sliced_block, find_delegate) or routes them through at()/slice_at(), which refuse with nullptr standalone -- and all six call sites null-check before dereferencing (save_driver.cpp 171/204/670/691/749/763). Nothing standalone dereferences one. Re-keying them onto ordinals is filed as its own item; it would upgrade this keep to a literal zero.",
+      "class": "save-driver key material",
+      "adjudicated": "2026-09-11"
+    },
+    {
+      "va": "0x00e587ad",
+      "object": "libmh/Release/save_driver.obj",
+      "signature": "00 00 ad 87 e5 00 04 00",
+      "names": [
+        "_G_LLM_NET_RESYNC_IN_PROGRESS"
+      ],
+      "why": "SAVE-DRIVER KEY MATERIAL -- a printed KEEP, not a removal (lib-ref-plan sec 3.8: LIB-VA0's zero holds 'or every survivor is on the PRINTED keep list; an unprinted keep is the failure mode'). These are save_table.gen.h's address columns: step::addr (a block's identity and, hosted, its resolution input) and step::write_at/read_at (the keys delegate_for() matches a caller-supplied step_delegate::at against). VERIFIED PURE MATCH KEYS STANDALONE, 2026-09-11: every standalone consumer either compares them only (block_owner_index, sliced_block, find_delegate) or routes them through at()/slice_at(), which refuse with nullptr standalone -- and all six call sites null-check before dereferencing (save_driver.cpp 171/204/670/691/749/763). Nothing standalone dereferences one. Re-keying them onto ordinals is filed as its own item; it would upgrade this keep to a literal zero.",
+      "class": "save-driver key material",
+      "adjudicated": "2026-09-11"
+    },
+    {
+      "va": "0x00e587b1",
+      "object": "libmh/Release/save_driver.obj",
+      "signature": "00 00 b1 87 e5 00 08 00",
+      "names": [
+        "CURRENT_GAME_TIME"
+      ],
+      "why": "SAVE-DRIVER KEY MATERIAL -- a printed KEEP, not a removal (lib-ref-plan sec 3.8: LIB-VA0's zero holds 'or every survivor is on the PRINTED keep list; an unprinted keep is the failure mode'). These are save_table.gen.h's address columns: step::addr (a block's identity and, hosted, its resolution input) and step::write_at/read_at (the keys delegate_for() matches a caller-supplied step_delegate::at against). VERIFIED PURE MATCH KEYS STANDALONE, 2026-09-11: every standalone consumer either compares them only (block_owner_index, sliced_block, find_delegate) or routes them through at()/slice_at(), which refuse with nullptr standalone -- and all six call sites null-check before dereferencing (save_driver.cpp 171/204/670/691/749/763). Nothing standalone dereferences one. Re-keying them onto ordinals is filed as its own item; it would upgrade this keep to a literal zero.",
+      "class": "save-driver key material",
+      "adjudicated": "2026-09-11"
+    },
+    {
+      "va": "0x00e587b9",
+      "object": "libmh/Release/save_driver.obj",
+      "signature": "00 00 b9 87 e5 00 08 00",
+      "names": [
+        "LAST_GAME_TIME"
+      ],
+      "why": "SAVE-DRIVER KEY MATERIAL -- a printed KEEP, not a removal (lib-ref-plan sec 3.8: LIB-VA0's zero holds 'or every survivor is on the PRINTED keep list; an unprinted keep is the failure mode'). These are save_table.gen.h's address columns: step::addr (a block's identity and, hosted, its resolution input) and step::write_at/read_at (the keys delegate_for() matches a caller-supplied step_delegate::at against). VERIFIED PURE MATCH KEYS STANDALONE, 2026-09-11: every standalone consumer either compares them only (block_owner_index, sliced_block, find_delegate) or routes them through at()/slice_at(), which refuse with nullptr standalone -- and all six call sites null-check before dereferencing (save_driver.cpp 171/204/670/691/749/763). Nothing standalone dereferences one. Re-keying them onto ordinals is filed as its own item; it would upgrade this keep to a literal zero.",
+      "class": "save-driver key material",
+      "adjudicated": "2026-09-11"
+    },
+    {
+      "va": "0x00e587c1",
+      "object": "libmh/Release/save_driver.obj",
+      "signature": "00 00 c1 87 e5 00 08 00",
+      "names": [
+        "TOTAL_GAME_TIME"
+      ],
+      "why": "SAVE-DRIVER KEY MATERIAL -- a printed KEEP, not a removal (lib-ref-plan sec 3.8: LIB-VA0's zero holds 'or every survivor is on the PRINTED keep list; an unprinted keep is the failure mode'). These are save_table.gen.h's address columns: step::addr (a block's identity and, hosted, its resolution input) and step::write_at/read_at (the keys delegate_for() matches a caller-supplied step_delegate::at against). VERIFIED PURE MATCH KEYS STANDALONE, 2026-09-11: every standalone consumer either compares them only (block_owner_index, sliced_block, find_delegate) or routes them through at()/slice_at(), which refuse with nullptr standalone -- and all six call sites null-check before dereferencing (save_driver.cpp 171/204/670/691/749/763). Nothing standalone dereferences one. Re-keying them onto ordinals is filed as its own item; it would upgrade this keep to a literal zero.",
+      "class": "save-driver key material",
+      "adjudicated": "2026-09-11"
+    },
+    {
+      "va": "0x00e587c9",
+      "object": "libmh/Release/save_driver.obj",
+      "signature": "00 00 c9 87 e5 00 08 00",
+      "names": [
+        "_G_LLM_STRAT_SIM_STEP_INTERVAL"
+      ],
+      "why": "SAVE-DRIVER KEY MATERIAL -- a printed KEEP, not a removal (lib-ref-plan sec 3.8: LIB-VA0's zero holds 'or every survivor is on the PRINTED keep list; an unprinted keep is the failure mode'). These are save_table.gen.h's address columns: step::addr (a block's identity and, hosted, its resolution input) and step::write_at/read_at (the keys delegate_for() matches a caller-supplied step_delegate::at against). VERIFIED PURE MATCH KEYS STANDALONE, 2026-09-11: every standalone consumer either compares them only (block_owner_index, sliced_block, find_delegate) or routes them through at()/slice_at(), which refuse with nullptr standalone -- and all six call sites null-check before dereferencing (save_driver.cpp 171/204/670/691/749/763). Nothing standalone dereferences one. Re-keying them onto ordinals is filed as its own item; it would upgrade this keep to a literal zero.",
+      "class": "save-driver key material",
+      "adjudicated": "2026-09-11"
+    },
+    {
+      "va": "0x00e587d1",
+      "object": "libmh/Release/save_driver.obj",
+      "signature": "00 00 d1 87 e5 00 08 00",
+      "names": [
+        "GAME_TIME_DELTA"
+      ],
+      "why": "SAVE-DRIVER KEY MATERIAL -- a printed KEEP, not a removal (lib-ref-plan sec 3.8: LIB-VA0's zero holds 'or every survivor is on the PRINTED keep list; an unprinted keep is the failure mode'). These are save_table.gen.h's address columns: step::addr (a block's identity and, hosted, its resolution input) and step::write_at/read_at (the keys delegate_for() matches a caller-supplied step_delegate::at against). VERIFIED PURE MATCH KEYS STANDALONE, 2026-09-11: every standalone consumer either compares them only (block_owner_index, sliced_block, find_delegate) or routes them through at()/slice_at(), which refuse with nullptr standalone -- and all six call sites null-check before dereferencing (save_driver.cpp 171/204/670/691/749/763). Nothing standalone dereferences one. Re-keying them onto ordinals is filed as its own item; it would upgrade this keep to a literal zero.",
+      "class": "save-driver key material",
+      "adjudicated": "2026-09-11"
+    },
+    {
+      "va": "0x00e587d9",
+      "object": "libmh/Release/save_driver.obj",
+      "signature": "00 00 d9 87 e5 00 08 00",
+      "names": [
+        "game_speed"
+      ],
+      "why": "SAVE-DRIVER KEY MATERIAL -- a printed KEEP, not a removal (lib-ref-plan sec 3.8: LIB-VA0's zero holds 'or every survivor is on the PRINTED keep list; an unprinted keep is the failure mode'). These are save_table.gen.h's address columns: step::addr (a block's identity and, hosted, its resolution input) and step::write_at/read_at (the keys delegate_for() matches a caller-supplied step_delegate::at against). VERIFIED PURE MATCH KEYS STANDALONE, 2026-09-11: every standalone consumer either compares them only (block_owner_index, sliced_block, find_delegate) or routes them through at()/slice_at(), which refuse with nullptr standalone -- and all six call sites null-check before dereferencing (save_driver.cpp 171/204/670/691/749/763). Nothing standalone dereferences one. Re-keying them onto ordinals is filed as its own item; it would upgrade this keep to a literal zero.",
+      "class": "save-driver key material",
+      "adjudicated": "2026-09-11"
+    },
+    {
+      "va": "0x00e587e1",
+      "object": "libmh/Release/save_driver.obj",
+      "signature": "00 00 e1 87 e5 00 04 00",
+      "names": [
+        "_G_LLM_STRAT_CAM_PAN_TARGET_COL"
+      ],
+      "why": "SAVE-DRIVER KEY MATERIAL -- a printed KEEP, not a removal (lib-ref-plan sec 3.8: LIB-VA0's zero holds 'or every survivor is on the PRINTED keep list; an unprinted keep is the failure mode'). These are save_table.gen.h's address columns: step::addr (a block's identity and, hosted, its resolution input) and step::write_at/read_at (the keys delegate_for() matches a caller-supplied step_delegate::at against). VERIFIED PURE MATCH KEYS STANDALONE, 2026-09-11: every standalone consumer either compares them only (block_owner_index, sliced_block, find_delegate) or routes them through at()/slice_at(), which refuse with nullptr standalone -- and all six call sites null-check before dereferencing (save_driver.cpp 171/204/670/691/749/763). Nothing standalone dereferences one. Re-keying them onto ordinals is filed as its own item; it would upgrade this keep to a literal zero.",
+      "class": "save-driver key material",
+      "adjudicated": "2026-09-11"
+    },
+    {
+      "va": "0x00e587e5",
+      "object": "libmh/Release/save_driver.obj",
+      "signature": "00 00 e5 87 e5 00 04 00",
+      "names": [
+        "_G_LLM_STRAT_CAM_PAN_TARGET_ROW"
+      ],
+      "why": "SAVE-DRIVER KEY MATERIAL -- a printed KEEP, not a removal (lib-ref-plan sec 3.8: LIB-VA0's zero holds 'or every survivor is on the PRINTED keep list; an unprinted keep is the failure mode'). These are save_table.gen.h's address columns: step::addr (a block's identity and, hosted, its resolution input) and step::write_at/read_at (the keys delegate_for() matches a caller-supplied step_delegate::at against). VERIFIED PURE MATCH KEYS STANDALONE, 2026-09-11: every standalone consumer either compares them only (block_owner_index, sliced_block, find_delegate) or routes them through at()/slice_at(), which refuse with nullptr standalone -- and all six call sites null-check before dereferencing (save_driver.cpp 171/204/670/691/749/763). Nothing standalone dereferences one. Re-keying them onto ordinals is filed as its own item; it would upgrade this keep to a literal zero.",
+      "class": "save-driver key material",
+      "adjudicated": "2026-09-11"
+    },
+    {
+      "va": "0x00e587e9",
+      "object": "libmh/Release/save_driver.obj",
+      "signature": "00 00 e9 87 e5 00 a0 01",
+      "names": [
+        "Players"
+      ],
+      "why": "SAVE-DRIVER KEY MATERIAL -- a printed KEEP, not a removal (lib-ref-plan sec 3.8: LIB-VA0's zero holds 'or every survivor is on the PRINTED keep list; an unprinted keep is the failure mode'). These are save_table.gen.h's address columns: step::addr (a block's identity and, hosted, its resolution input) and step::write_at/read_at (the keys delegate_for() matches a caller-supplied step_delegate::at against). VERIFIED PURE MATCH KEYS STANDALONE, 2026-09-11: every standalone consumer either compares them only (block_owner_index, sliced_block, find_delegate) or routes them through at()/slice_at(), which refuse with nullptr standalone -- and all six call sites null-check before dereferencing (save_driver.cpp 171/204/670/691/749/763). Nothing standalone dereferences one. Re-keying them onto ordinals is filed as its own item; it would upgrade this keep to a literal zero.",
+      "class": "save-driver key material",
+      "adjudicated": "2026-09-11"
+    },
+    {
+      "va": "0x00e58989",
+      "object": "libmh/Release/save_driver.obj",
+      "signature": "00 00 89 89 e5 00 01 00",
+      "names": [
+        "_G_LLM_STRAT_INJECTED_MAP_PLANET_SLOT"
+      ],
+      "why": "SAVE-DRIVER KEY MATERIAL -- a printed KEEP, not a removal (lib-ref-plan sec 3.8: LIB-VA0's zero holds 'or every survivor is on the PRINTED keep list; an unprinted keep is the failure mode'). These are save_table.gen.h's address columns: step::addr (a block's identity and, hosted, its resolution input) and step::write_at/read_at (the keys delegate_for() matches a caller-supplied step_delegate::at against). VERIFIED PURE MATCH KEYS STANDALONE, 2026-09-11: every standalone consumer either compares them only (block_owner_index, sliced_block, find_delegate) or routes them through at()/slice_at(), which refuse with nullptr standalone -- and all six call sites null-check before dereferencing (save_driver.cpp 171/204/670/691/749/763). Nothing standalone dereferences one. Re-keying them onto ordinals is filed as its own item; it would upgrade this keep to a literal zero.",
+      "class": "save-driver key material",
+      "adjudicated": "2026-09-11"
+    },
+    {
+      "va": "0x00e5898a",
+      "object": "libmh/Release/save_driver.obj",
+      "signature": "00 00 8a 89 e5 00 01 00",
+      "names": [
+        "_G_LLM_STRAT_RNG_SEED_BYTE"
+      ],
+      "why": "SAVE-DRIVER KEY MATERIAL -- a printed KEEP, not a removal (lib-ref-plan sec 3.8: LIB-VA0's zero holds 'or every survivor is on the PRINTED keep list; an unprinted keep is the failure mode'). These are save_table.gen.h's address columns: step::addr (a block's identity and, hosted, its resolution input) and step::write_at/read_at (the keys delegate_for() matches a caller-supplied step_delegate::at against). VERIFIED PURE MATCH KEYS STANDALONE, 2026-09-11: every standalone consumer either compares them only (block_owner_index, sliced_block, find_delegate) or routes them through at()/slice_at(), which refuse with nullptr standalone -- and all six call sites null-check before dereferencing (save_driver.cpp 171/204/670/691/749/763). Nothing standalone dereferences one. Re-keying them onto ordinals is filed as its own item; it would upgrade this keep to a literal zero.",
+      "class": "save-driver key material",
+      "adjudicated": "2026-09-11"
+    },
+    {
+      "va": "0x00e5898b",
+      "object": "libmh/Release/save_driver.obj",
+      "signature": "00 00 8b 89 e5 00 01 00",
+      "names": [
+        "_G_LLM_CHAT_TARGET_MASK"
+      ],
+      "why": "SAVE-DRIVER KEY MATERIAL -- a printed KEEP, not a removal (lib-ref-plan sec 3.8: LIB-VA0's zero holds 'or every survivor is on the PRINTED keep list; an unprinted keep is the failure mode'). These are save_table.gen.h's address columns: step::addr (a block's identity and, hosted, its resolution input) and step::write_at/read_at (the keys delegate_for() matches a caller-supplied step_delegate::at against). VERIFIED PURE MATCH KEYS STANDALONE, 2026-09-11: every standalone consumer either compares them only (block_owner_index, sliced_block, find_delegate) or routes them through at()/slice_at(), which refuse with nullptr standalone -- and all six call sites null-check before dereferencing (save_driver.cpp 171/204/670/691/749/763). Nothing standalone dereferences one. Re-keying them onto ordinals is filed as its own item; it would upgrade this keep to a literal zero.",
+      "class": "save-driver key material",
+      "adjudicated": "2026-09-11"
+    },
+    {
+      "va": "0x00e5898c",
+      "object": "libmh/Release/save_driver.obj",
+      "signature": "00 00 8c 89 e5 00 01 00",
+      "names": [
+        "_G_LLM_GAME_HUMAN_PLAYER_MASK"
+      ],
+      "why": "SAVE-DRIVER KEY MATERIAL -- a printed KEEP, not a removal (lib-ref-plan sec 3.8: LIB-VA0's zero holds 'or every survivor is on the PRINTED keep list; an unprinted keep is the failure mode'). These are save_table.gen.h's address columns: step::addr (a block's identity and, hosted, its resolution input) and step::write_at/read_at (the keys delegate_for() matches a caller-supplied step_delegate::at against). VERIFIED PURE MATCH KEYS STANDALONE, 2026-09-11: every standalone consumer either compares them only (block_owner_index, sliced_block, find_delegate) or routes them through at()/slice_at(), which refuse with nullptr standalone -- and all six call sites null-check before dereferencing (save_driver.cpp 171/204/670/691/749/763). Nothing standalone dereferences one. Re-keying them onto ordinals is filed as its own item; it would upgrade this keep to a literal zero.",
+      "class": "save-driver key material",
+      "adjudicated": "2026-09-11"
+    },
+    {
+      "va": "0x00e5898d",
+      "object": "libmh/Release/save_driver.obj",
+      "signature": "00 00 8d 89 e5 00 01 00",
+      "names": [
+        "_G_LLM_PLAYER_CONTROL_MASK"
+      ],
+      "why": "SAVE-DRIVER KEY MATERIAL -- a printed KEEP, not a removal (lib-ref-plan sec 3.8: LIB-VA0's zero holds 'or every survivor is on the PRINTED keep list; an unprinted keep is the failure mode'). These are save_table.gen.h's address columns: step::addr (a block's identity and, hosted, its resolution input) and step::write_at/read_at (the keys delegate_for() matches a caller-supplied step_delegate::at against). VERIFIED PURE MATCH KEYS STANDALONE, 2026-09-11: every standalone consumer either compares them only (block_owner_index, sliced_block, find_delegate) or routes them through at()/slice_at(), which refuse with nullptr standalone -- and all six call sites null-check before dereferencing (save_driver.cpp 171/204/670/691/749/763). Nothing standalone dereferences one. Re-keying them onto ordinals is filed as its own item; it would upgrade this keep to a literal zero.",
+      "class": "save-driver key material",
+      "adjudicated": "2026-09-11"
+    },
+    {
+      "va": "0x00e5898e",
+      "object": "libmh/Release/save_driver.obj",
+      "signature": "00 00 8e 89 e5 00 01 00",
+      "names": [
+        "_G_LLM_CHAT_TARGET_MODE"
+      ],
+      "why": "SAVE-DRIVER KEY MATERIAL -- a printed KEEP, not a removal (lib-ref-plan sec 3.8: LIB-VA0's zero holds 'or every survivor is on the PRINTED keep list; an unprinted keep is the failure mode'). These are save_table.gen.h's address columns: step::addr (a block's identity and, hosted, its resolution input) and step::write_at/read_at (the keys delegate_for() matches a caller-supplied step_delegate::at against). VERIFIED PURE MATCH KEYS STANDALONE, 2026-09-11: every standalone consumer either compares them only (block_owner_index, sliced_block, find_delegate) or routes them through at()/slice_at(), which refuse with nullptr standalone -- and all six call sites null-check before dereferencing (save_driver.cpp 171/204/670/691/749/763). Nothing standalone dereferences one. Re-keying them onto ordinals is filed as its own item; it would upgrade this keep to a literal zero.",
+      "class": "save-driver key material",
+      "adjudicated": "2026-09-11"
+    },
+    {
+      "va": "0x00e5898f",
+      "object": "libmh/Release/save_driver.obj",
+      "signature": "00 00 8f 89 e5 00 04 00",
+      "names": [
+        "_G_LLM_STRAT_SHOW_UNIT_FLAGS"
+      ],
+      "why": "SAVE-DRIVER KEY MATERIAL -- a printed KEEP, not a removal (lib-ref-plan sec 3.8: LIB-VA0's zero holds 'or every survivor is on the PRINTED keep list; an unprinted keep is the failure mode'). These are save_table.gen.h's address columns: step::addr (a block's identity and, hosted, its resolution input) and step::write_at/read_at (the keys delegate_for() matches a caller-supplied step_delegate::at against). VERIFIED PURE MATCH KEYS STANDALONE, 2026-09-11: every standalone consumer either compares them only (block_owner_index, sliced_block, find_delegate) or routes them through at()/slice_at(), which refuse with nullptr standalone -- and all six call sites null-check before dereferencing (save_driver.cpp 171/204/670/691/749/763). Nothing standalone dereferences one. Re-keying them onto ordinals is filed as its own item; it would upgrade this keep to a literal zero.",
+      "class": "save-driver key material",
+      "adjudicated": "2026-09-11"
+    },
+    {
+      "va": "0x00e58993",
+      "object": "libmh/Release/save_driver.obj",
+      "signature": "00 00 93 89 e5 00 04 00",
+      "names": [
+        "_G_LLM_STRAT_MP_ALLY_VICTORY_RULE_FLAG"
+      ],
+      "why": "SAVE-DRIVER KEY MATERIAL -- a printed KEEP, not a removal (lib-ref-plan sec 3.8: LIB-VA0's zero holds 'or every survivor is on the PRINTED keep list; an unprinted keep is the failure mode'). These are save_table.gen.h's address columns: step::addr (a block's identity and, hosted, its resolution input) and step::write_at/read_at (the keys delegate_for() matches a caller-supplied step_delegate::at against). VERIFIED PURE MATCH KEYS STANDALONE, 2026-09-11: every standalone consumer either compares them only (block_owner_index, sliced_block, find_delegate) or routes them through at()/slice_at(), which refuse with nullptr standalone -- and all six call sites null-check before dereferencing (save_driver.cpp 171/204/670/691/749/763). Nothing standalone dereferences one. Re-keying them onto ordinals is filed as its own item; it would upgrade this keep to a literal zero.",
+      "class": "save-driver key material",
+      "adjudicated": "2026-09-11"
+    },
+    {
+      "va": "0x00e58997",
+      "object": "libmh/Release/save_driver.obj",
+      "signature": "00 00 97 89 e5 00 04 00",
+      "names": [
+        "_G_LLM_STRAT_SYSTEM_LOST_MSG_SHOWN_FLAG"
+      ],
+      "why": "SAVE-DRIVER KEY MATERIAL -- a printed KEEP, not a removal (lib-ref-plan sec 3.8: LIB-VA0's zero holds 'or every survivor is on the PRINTED keep list; an unprinted keep is the failure mode'). These are save_table.gen.h's address columns: step::addr (a block's identity and, hosted, its resolution input) and step::write_at/read_at (the keys delegate_for() matches a caller-supplied step_delegate::at against). VERIFIED PURE MATCH KEYS STANDALONE, 2026-09-11: every standalone consumer either compares them only (block_owner_index, sliced_block, find_delegate) or routes them through at()/slice_at(), which refuse with nullptr standalone -- and all six call sites null-check before dereferencing (save_driver.cpp 171/204/670/691/749/763). Nothing standalone dereferences one. Re-keying them onto ordinals is filed as its own item; it would upgrade this keep to a literal zero.",
+      "class": "save-driver key material",
+      "adjudicated": "2026-09-11"
+    },
+    {
+      "va": "0x00e5899b",
+      "object": "libmh/Release/save_driver.obj",
+      "signature": "00 00 9b 89 e5 00 11 00",
+      "names": [
+        "_G_LLM_MOUSE_BUTTONS_PREV"
+      ],
+      "why": "SAVE-DRIVER KEY MATERIAL -- a printed KEEP, not a removal (lib-ref-plan sec 3.8: LIB-VA0's zero holds 'or every survivor is on the PRINTED keep list; an unprinted keep is the failure mode'). These are save_table.gen.h's address columns: step::addr (a block's identity and, hosted, its resolution input) and step::write_at/read_at (the keys delegate_for() matches a caller-supplied step_delegate::at against). VERIFIED PURE MATCH KEYS STANDALONE, 2026-09-11: every standalone consumer either compares them only (block_owner_index, sliced_block, find_delegate) or routes them through at()/slice_at(), which refuse with nullptr standalone -- and all six call sites null-check before dereferencing (save_driver.cpp 171/204/670/691/749/763). Nothing standalone dereferences one. Re-keying them onto ordinals is filed as its own item; it would upgrade this keep to a literal zero.",
+      "class": "save-driver key material",
+      "adjudicated": "2026-09-11"
+    }
+  ]
+}

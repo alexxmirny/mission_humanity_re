@@ -1,0 +1,20 @@
+.echo ======== read the lobby slide anim target (resting frame.x) ========
+!tt 0
+bc *
+$$ stop at center ONLY for the lobby container 0x653f3f
+bp0 0x004b6ac4 "j (@eax == 0x653f3f) '' 'gc'"
+g
+.echo ---- frame widget (0x651293) flags +8/+9/+0xa ----
+db 0x0065129b L3
+.echo ---- frame widget current x (+0x1c = 0x6512af) ----
+dd 0x006512af L1
+.echo ---- anim struct DAT_006572de [0..8] (idx2=target_x@6572e6, idx4=start_x@6572ee, idx6=dur, idx7=dir, idx8=&framewidget) ----
+dd 0x006572de L9
+.echo ---- source dims: DAT_006512fb(target=-fb/2) / DAT_006512b7(start=-0x140-b7) / DAT_006512b3 ----
+dd 0x006512fb L1
+dd 0x006512b7 L1
+dd 0x006512b3 L1
+.echo ---- WindowWidth (0x00e587e4? unknown) -- skip; container geom now ----
+dd 0x00653f57 L4
+.echo ======== DONE ========
+qq

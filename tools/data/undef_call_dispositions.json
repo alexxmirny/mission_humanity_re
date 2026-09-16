@@ -1,0 +1,57 @@
+{
+  "_generated_by": "X-UNDEFCALL, 2026-09-10 (evidence read via ReVA against /eng/mh.exe)",
+  "_program": "/eng/mh.exe",
+  "_what": "Undefined-code CALL/JMP sites (tools/data/undef_call_sites.json) that are IN SCOPE for report_promotion_reconciliation.py section 7 and are resolved by an argued reason rather than by defining a function. Everything else in scope is either auto-dispositioned by a mechanical class the section re-derives, or GONE because the source became a defined function body and the edge entered the call graph honestly.",
+  "_scope": "Section 7 gates exactly the sites section 5 can be wrong about: a target in the OWNED set (a ledger row at verified/dead, or a name carrying MH_EXPORT_REPLACE) or a target named in reconciliation_pruned_roots.json. That is not a convenience filter -- section 5's closure seeds from EVERY non-owned node, so a hidden edge between two roots cannot change its answer, and only root->OWNED edges and hidden callers of a WITHDRAWN seed can.",
+  "_discipline": "docs/dead-ends.md G167. A row here is a claim that a hidden call edge does not change section 5's answer, and each carries a `refutes_if` condition that check_undef re-derives from the current scan and the current call graph. A row whose condition stops holding FAILS BY NAME rather than quietly keeping a site out of the count -- the same refusal shape as reconciliation_pruned_roots.json's --check-roots.",
+  "_auto_classes": {
+    "not-a-site": "the E8/E9 byte is an operand of another decoded instruction, or lies inside a defined Data object. Not a branch at all.",
+    "crt-target": "the target function carries `sub:crt`. dump_call_graph.py drops every sub:crt node and edge, so this edge is absent from call_graph_no_crt.json BY CONSTRUCTION and is not a finding about the reconciliation.",
+    "self-span": "the site lies in an uncovered hole INSIDE the target function's own entry..max span, branching into that same function. Watcom lays out disjoint bodies (docs/dead-ends.md G100); this is the function's own code and adds no caller.",
+    "owner-edge-present": "the site lies in a hole inside some OTHER function F's span, and the call graph already carries F -> target. Attributing the hidden branch to F adds no edge the graph lacks."
+  },
+  "dispositions": [
+    {
+      "site": "0x004d5240",
+      "kind": "jmp",
+      "target": "llm_strat_ai_bldg_has_heli_unit",
+      "region": ["0x004d516c", "0x004d5245"],
+      "reason": "MID-BODY LANDING, not a call edge. The rel32 resolves to 0x004d8b83, which is inside llm_strat_ai_bldg_has_heli_unit's body and is not its entry point. dump_call_graph.py keeps mid-body landings OUT of `links` on purpose and records them in `tail_jumps` instead -- for DEFINED sources too -- because control reaches that code without passing the entry, so it is a closure fact and not a caller fact. Section 5 walks `links`. Defining a function over this region would therefore add a `tail_jumps` row and NOT a section 5 edge, so the hidden branch cannot be under-counting section 5 for this row.",
+      "region_note": "217 bytes of never-disassembled code between llm_strat_ai_engage_candidate_add (ends 0x004d516b) and llm_strat_ai_engage_rank_candidates_by_range (entry 0x004d5245). Byte 0 is the Watcom prologue `68 18 00 00 00 / e8 f9 a2 ff ff` (PUSH 0x18; CALL utils_assert_stack_capacity), so it is a real routine, not padding. Ghidra's reference manager shows nothing pointing into it -- recorded as context, NOT as a death claim (docs/dead-ends.md A). Analysing and defining the three AI regions in this file is real RE work on un-migrated AI code and is deliberately left outside X-UNDEFCALL; it is filed in tasks/tooling.md.",
+      "refutes_if": "the scan reports this site with at_entry true, or the call graph gains an entry-targeted edge to it that the section did not expect"
+    },
+    {
+      "site": "0x004eda55",
+      "kind": "jmp",
+      "target": "llm_strat_ai_target_list_refresh_mothers",
+      "region": ["0x004ed890", "0x004eda5a"],
+      "reason": "MID-BODY LANDING, not a call edge -- same shape and same argument as 0x004d5240: the target is inside llm_strat_ai_target_list_refresh_mothers, not its entry, so it is a `tail_jumps` fact rather than a `links` edge and section 5 cannot be under-counting this row through it.",
+      "region_note": "458 bytes of never-disassembled code between llm_strat_ai_scan_targets_by_capability_mask_for_engage (ends 0x004ed88f) and llm_strat_ai_scan_for_engage_candidates (entry 0x004eda5a); same Watcom prologue fingerprint.",
+      "refutes_if": "the scan reports this site with at_entry true, or the call graph gains an entry-targeted edge to it that the section did not expect"
+    },
+    {
+      "site": "0x004ee428",
+      "kind": "jmp",
+      "target": "llm_strat_ai_target_list_refresh_mothers",
+      "region": ["0x004ee365", "0x004ee4c2"],
+      "reason": "MID-BODY LANDING, not a call edge -- as above.",
+      "region_note": "349 bytes of never-disassembled code between llm_strat_ai_active_unit_tick (ends 0x004ee364) and llm_strat_unit_is_idle_or_patrolling (entry 0x004ee4c2); same Watcom prologue fingerprint.",
+      "refutes_if": "the scan reports this site with at_entry true, or the call graph gains an entry-targeted edge to it that the section did not expect"
+    },
+    {
+      "site": "0x004ee4bd",
+      "kind": "jmp",
+      "target": "llm_strat_ai_target_list_refresh_mothers",
+      "region": ["0x004ee365", "0x004ee4c2"],
+      "reason": "MID-BODY LANDING, not a call edge -- the second such landing in the 0x004ee365 region.",
+      "region_note": "see 0x004ee428.",
+      "refutes_if": "the scan reports this site with at_entry true, or the call graph gains an entry-targeted edge to it that the section did not expect"
+    }
+  ],
+  "_resolved_by_definition": {
+    "_what": "The two cases docs/dead-ends.md G167 named are NOT in the table above: they were resolved the strong way, by making their source a real function body so the edge entered the call graph. Recorded here because a case that leaves a report by being fixed looks identical to a case that was never measured.",
+    "llm_strat_prod_shuttle_slot_spawn_arrival": "the CALL at 0x004c5ba4 lived in FUN_004c5b7c, a function with a correct entry and a ONE-BYTE body (the `PUSH EBP`), so getCalledFunctions() saw no call. Body repaired to 80 bytes by tools/oneoff/2026-09-10-fixup-truncated-bodies.py; the edge 004c5b7c -> 004906c1 is now in call_graph_no_crt.json.",
+    "llm_ui_outcome_dlg_open": "the CALL at LAB_004c6c05 lived past the recorded end of FUN_004c6bc5, another one-byte body. Repaired to 89 bytes; the edge 004c6bc5 -> 004c68dc is now in the graph.",
+    "_class": "39 functions carried that same truncated body (entry bytes 55 89 e5 68, body == 1). All 39 were repaired in one pass -- function count unchanged at 3107, zero body overlaps -- adding 72 call-graph edges and removing none."
+  }
+}

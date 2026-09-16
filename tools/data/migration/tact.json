@@ -1,0 +1,307 @@
+{
+  "_comment": [
+    "The TACTICAL migration domain (RI-TACT / TACT-DOMAIN), created 2026-08-24.",
+    "",
+    "WHY THE SELECTOR IS `seeded` AND NOT `closure`, which is the one real difference from `sim`.",
+    "Tactical membership is EXCLUSIVITY: a function is in the domain when every path to it passes",
+    "through one of the three tactical roots -- i.e. it is in their forward closure AND it is not",
+    "reachable from the rest of the program once traversal into those roots is blocked. That second",
+    "half is a property of the WHOLE call graph, and neither of the other two modes can express it:",
+    "",
+    "  * `name_prefix` is wrong in BOTH directions here, measured rather than feared. 23 exclusively",
+    "    tactical functions carry no `llm_tact_` prefix (llm_gfx_blit_sprite_rle, gfx_TransformBankData,",
+    "    llm_strat_squad_assault_resolve, llm_tlo_shade_table_build_tact, ...), and 11 prefixed ones",
+    "    are NOT exclusive (llm_tact_gfx_init_view_surfaces is called from llm_game_init_subsystems).",
+    "    The prefix count everything quoted for years -- 138 functions / 80,807 B -- is neither the",
+    "    domain nor a bound on it.",
+    "  * `closure` from a root would bill shared code to tactical. The RAW forward closure of the three",
+    "    roots is 978 functions / 354,639 B, because a mission loads resources, decompresses, sprintf's",
+    "    and saves the planet straight out through the shared spine. Getting from 978 to 155 by walls",
+    "    would need a wall list longer than the domain, and every wall would be a NAME predicate over a",
+    "    graph question.",
+    "",
+    "So membership is READ from tools/data/tact_closure.json, which gen_tact_closure.py measures and",
+    "`--check`s inside lint_repo. That tool owns the exclusivity computation and reports its own",
+    "intermediate counts; re-deriving any of it here would give the project two answers to one",
+    "question. `walk: none` follows from the same fact: the seeds are already a closure, and a forward",
+    "walk would re-add exactly the 823 shared functions the exclusivity test just removed.",
+    "",
+    "THE FRONTIER IS THEREFORE IMPLICIT, and worth stating because `frontier_prefixes` is empty here",
+    "while sim's has 24 entries. The shared helpers tactical calls -- the CRT, LZW, rsr_/GetResourse*,",
+    "cfg_, w_sprintf, llm_rand, map_SavePlanetToDisk/map_LoadPlanetFromDisk -- are all NON-EXCLUSIVE by",
+    "construction, so gen_tact_closure has already excluded every one of them. The frontier is the",
+    "978-minus-155 remainder, called through mh_calls.gen.h and never migrated (Law 4).",
+    "",
+    "THE CUT LIST, AND WHY IT IS PER-FUNCTION RATHER THAN PER-PREFIX (done_when clause 3).",
+    "The M6 exit keeps render/UI/sound/platform in the original binary. Applying that to this closure",
+    "produced the question the item names: the tactical-exclusive gfx stack. It IS walled, and being",
+    "tactical-exclusive is not a reason to keep it -- exclusivity settles who would otherwise own",
+    "these functions (nobody), not whether M6 migrates them. `llm_gfx_blit_sprite_rle` and its 16",
+    "companions are reached only from llm_tact_render_view / llm_tact_unit_render / the cursor draw,",
+    "which is why the exclusivity test bills them here at all; they are still a sprite blitter, and the",
+    "revised M6 exit says a sprite blitter stays original. Walling them costs nothing the oracle can",
+    "see: not one of the 17 writes any byte inside the 14 hashed tactical slices, the two shared",
+    "planes, or the squad blackboard -- their entire measured write set is blit/cursor/glyph scratch",
+    "(_G_LLM_BLIT_*, _G_LLM_CUR_*, _G_LLM_HITTEST_HIT and four unnamed font DATs).",
+    "",
+    "But the wall could NOT be a prefix list, and the measurement says so twice:",
+    "  * `llm_tact_ui_*` is not uniformly presentation-adjacent, and the nearest miss is instructive:",
+    "    `llm_tact_active_unit_count_hud_draw` is the SOLE writer of _G_LLM_TACT_ACTIVE_UNIT_COUNT --",
+    "    the mission's termination condition, one of two triggers of",
+    "    llm_tact_mission_end_return_to_strategic. A `*_draw`/`hud` wall deletes the excursion's exit",
+    "    trigger and nothing downstream ever says so.",
+    "  * The two automatic instruments are both BLIND to the writes that matter most here. The",
+    "    instruction sweep (tmp/state_matrix.json) and the region census (region_accessors.json) see",
+    "    writes to a NAMED global address. They do not see a write through a pointer parameter, and",
+    "    they do not see `&base + i*stride` -- which is exactly how llm_tact_squad_sync_hp writes the",
+    "    squad blackboard every frame, the one channel that survives the excursion. docs/dead-ends.md",
+    "    section A records that trap for this very array. So 59 members measured 'writes nothing' and",
+    "    26 of them turned out to be walls, 33 members.",
+    "",
+    "Hence `cut_names_from`: every wall is one function, carrying a class, a why and the evidence that",
+    "settled it, and the default for an unlisted member is MEMBER. The direction is deliberate -- a",
+    "wrongly-kept member costs translation work and is visible in the ledger; a wrongly-placed wall",
+    "removes a subtree silently.",
+    "",
+    "TACT-DOMAIN stands the domain up -- profile, ledger, offline oracle, arming answer -- and TACT1",
+    "draws the boundaries using the layering this profile makes computable. A rule set written here",
+    "would be a batch proposal wearing a mechanism's clothes.",
+    "",
+    "BATCHES: five families (A mission+lifecycle, B commands+movement, C combat+fx+lifecycle,",
+    "D vision+doors, E the pump and the wall residue), written by TACT1's decomposition 2026-08-24.",
+    "See batches._rules_why for why they are families rather than layer bands."
+  ],
+  "domain": "tact",
+  "title": "Tactical mission mode",
+  "tracker_domain": "reimpl",
+  "tracker_group": "RI-TACT",
+  "umbrella_item": "TACT1",
+  "select": {
+    "mode": "seeded",
+    "walk": "none",
+    "walk_why": "The seeds ARE a closure -- gen_tact_closure.py already walked forward from the three roots and then subtracted everything reachable from elsewhere. A forward walk from them would re-add the 823 shared functions that subtraction just removed, every one of which is Law-4 frontier called through mh_calls.gen.h.",
+    "seeds": [
+      {
+        "kind": "closure_members",
+        "source": "tools/data/tact_closure.json",
+        "field": "members",
+        "why": "The exclusively-tactical set: in the forward closure of llm_tact_mission_start / llm_tact_frame / llm_tact_mission_end_return_to_strategic, and unreachable from the rest of the program once those three are blocked. Measured by gen_tact_closure.py (155 functions / 85,016 B), --check'd by lint_repo, and deliberately not re-derived here.",
+        "exclude_ours": false,
+        "exclude_ours_why": "FALSE, and this is the one seed flag that MUST be false for a domain that records state (2026-08-26). `exclude_ours` defaults TRUE and subtracts everything tools/_reimpl.py calls `done` -- which is a migration-ledger row at `verified` OR any function carrying an MH_EXPORT_REPLACE / MH_SHADOW_REPLACE in src/mh_dll. For a READINESS domain that is exactly right: nothing there is translated, so an already-reimplemented function is not a candidate. For THIS domain it is a self-deleting membership rule -- the moment a row is verified, or given a shadow arm, or promoted, the next regeneration drops it from the manifest and its state, tier and notes go with it. MEASURED TWICE: llm_tact_quantize_facing_dir vanished silently when TACT-RIG gave it a shadow arm (155 closure - 56 walls = 99, and the manifest carried 98), and the ten TACT1A parsers vanished when TACT-AB gave them promotion arms (98 -> 88, every one of them a row at `verified`, nine of them at T1). The more evidence a row accumulates, the more certainly it is deleted. tact's closure is EXCLUSIVITY-derived -- unreachable from the rest of the program once the three roots are blocked -- so by construction it contains nothing another domain owns, which is the only thing this flag was ever meant to subtract."
+      }
+    ],
+    "cut_names_from": "tools/data/tact_walls.json",
+    "cut_names_why": "Presentation walls, authored one function at a time with evidence -- see the _comment for why a prefix list is provably wrong on this closure in both directions.",
+    "cut_prefixes": [],
+    "cut_why": "EMPTY ON PURPOSE. Every wall this domain has is in cut_names_from. The families a prefix rule would reach (llm_gfx_, llm_ui_, llm_snd_, llm_tact_ui_, llm_tact_view_) each contain at least one member the rule would take wrongly, and this closure is small enough -- 155 -- that naming them is cheaper than defending a predicate.",
+    "frontier_prefixes": [],
+    "frontier_why": "EMPTY BY CONSTRUCTION, not by omission. A shared helper is by definition reachable from outside the tactical roots, so the exclusivity test removed every one of them before the seeds were read. The frontier is the 823-function remainder of the raw 978-function closure -- CRT, LZW, rsr_/cfg_, w_sprintf, llm_rand, map_SavePlanetToDisk/map_LoadPlanetFromDisk -- called through mh_calls.gen.h and never migrated.",
+    "excludes": [],
+    "excludes_why": "No other domain's manifest intersects this one, and that is a consequence of the selector rather than luck: anything the sim or AI closure reaches is reachable from outside the tactical roots and is therefore not exclusive. The one function that looks like a counter-example -- llm_strat_squad_assault_resolve, which writes units/buildings/_G_LLM_STRAT_PLAYERS -- is called ONLY from llm_tact_mission_end_return_to_strategic, so it is genuinely tactical's despite the llm_strat_ name. It is the excursion's write-back.",
+    "effect_names": [
+      "GetResourseFilePtr",
+      "gfx_LoadSprite",
+      "llm_fatal_cleanup",
+      "llm_gfx_apply_window_resolution",
+      "llm_gfx_convert_pixels_565_to_555",
+      "llm_gfx_draw_text_rgb",
+      "llm_gfx_font_select",
+      "llm_gfx_pack_rgb16",
+      "llm_gfx_sprite_pix_offsets_init",
+      "llm_gfx_view_metrics_init",
+      "llm_input_key_dequeue",
+      "llm_input_key_queue_empty",
+      "llm_input_mouse_buttons_get",
+      "llm_input_mouse_delta_pump",
+      "llm_math_atan",
+      "llm_rand",
+      "llm_snd_ambient_reseed_planet_event_times",
+      "llm_snd_play_matching_sample",
+      "llm_str_ansi_to_wide_scratch",
+      "llm_strat_time_resync_and_tick",
+      "llm_strat_unit_remove_from_map",
+      "llm_strat_unit_teardown",
+      "llm_tact_vis_map_fill_default",
+      "llm_tlo_palette_convert_565_to_555",
+      "llm_ui_set_draw_surface",
+      "llm_view_set_size_mode",
+      "map_LoadPlanetFromDisk",
+      "rsr_GetFileRealSize",
+      "time_GetCurrentTime",
+      "utils_str_cmp",
+      "w_sprintf"
+    ],
+    "effect_names_why": "THE THIRD HALF OF THE EFFECT PREDICATE (TACT-CUT2, 2026-08-27). Effect membership is a name prefix or a named wall, and a wall is a closure member by construction -- so both halves could only ever match code INSIDE the closure, and every call OUT of it into shared, non-exclusive territory fell through in silence while the report read 31 of 31 classified, zero unclassified, zero stale (docs/dead-ends.md G59). These 31 names are the measured outward surface OUTSIDE the closure: the resource loader, the input queue, the UI blit convergence point, the strategic roster teardown, the PRNG, the CRT string/format helpers. Measured and body-classified in tools/data/tact_shared_callees.json (13 effectful, 6 pure, 12 state; 31/31 verified, 31/31 adversarially reviewed, zero overturned); the dispositions themselves live in tools/data/tact_effect_classes.json like every other target's. Naming them here is what makes gen_migration.py count them as TARGETS and what makes the GATING SOUNDNESS walk stop at them instead of descending straight through."
+  },
+  "paths": {
+    "manifest": "tools/data/tact_migration.json",
+    "ready_report": "tmp/tact_ready",
+    "ready_acks": "tools/data/tact_ready_ack.json",
+    "export_dir": "tmp/decomp_tact",
+    "closure_doc": "docs/tact-closure.md",
+    "selftest_dir": "src/mh_dll/mh_nettest",
+    "effect_classes": "tools/data/tact_effect_classes.json",
+    "loop_prompt": "tools/data/tact_loop_prompt.md",
+    "_loop_prompt_why": "ADDED 2026-08-24, and the earlier decision to omit it was WRONG in a way worth recording. The profile declared none on the argument that 'there is nothing for an unattended driver to drive' -- no state interface, no mh::tact module, no translated function. That missed migration_loop's SECOND session shape: PREP, the Ghidra-writing kind scored on the readiness predicate falling, which is exactly TACT-READY. With 100 HARD blockers over 99 functions the driver routes MODE_PREP on every pass, so this domain had a full autonomous campaign available and no prompt to run it -- and the symptom was a path lookup dying, not a message about a decision. The prompt is DERIVED from sim_loop_prompt.md (keep the three in step where the text is domain-neutral). SUPERSEDED 2026-08-26: this clause said 'what it must NOT do is translate: TACT0 owns the interface and is open, so migration_loop refuses MODE_BATCH ...'. TACT0 closed at efbb3e36, the driver now routes MODE_BATCH (session 1: batch, item TACT1A), and the prompt's stale translate.js hard-stop that mirrored this text was removed. The domain TRANSLATES; the prompt enables the translate.js fan-out.",
+    "module_dir": "src/mh_dll/mh/tact",
+    "state_header": "src/mh_dll/libmh/tact/tact_state.h",
+    "state_impl": "src/mh_dll/libmh/tact/tact_state.cpp",
+    "lint_request": "tmp/tact_translation_lint.json",
+    "_translation_paths_why": "ADDED 2026-08-25 by TACT1A, the domain's first BATCH session, which is where the omission surfaced: `lint_translation.py --domain tact` refused with \"declares no path 'state_header'\", and `.claude/workflows/translate.js` would have silently fallen back to the AI domain's `mh::ai` / ai_state.h defaults -- briefing every tactical writer to define its shadow installer in the wrong namespace and to read the wrong const view. The profile was written by TACT-DOMAIN, before TACT0 built the module these four name, so there was nothing to point at yet; the failure mode is the one translate.js's own header records for `conductor_owned`, where a hardcoded default fails OPEN on exactly the files the guard exists to protect."
+  },
+  "conductor_owned": [
+    "tact_state.h",
+    "tact_state.cpp",
+    "/addr/",
+    "\\addr\\",
+    ".vcxproj",
+    ".sln",
+    "dll_addr_manifest.json",
+    "dll_shadow_manifest.json",
+    "dll_struct_layouts.json",
+    "tact_migration.json",
+    "state_regions.json",
+    "tact_selftest.cpp",
+    "tact_effect_classes.json",
+    "mode_planes.h"
+  ],
+  "_conductor_owned_why": "The files a translation WRITER may never touch, passed to translate.js -- which otherwise falls back to the AI domain's list (see paths._translation_paths_why). Two entries are this domain's own and are the reason a copy of sim's list would not have done: tact_effect_classes.json, because a disposition there is a judgement about an irreversible side effect (TACT-CUT / TACT-CUT2) rather than a translation detail; and state/mode_planes.h, the ONE binding both mode stores reach, which is TACT0's whole subject and belongs to neither mode's writers.",
+  "oracle": {
+    "selftest": "tacttest",
+    "determinism_gate": "python tools/test_ui.py --tact-determinism --tact-synth --tact-selftest",
+    "_determinism_gate_why": "READ BY migration_loop.py (Domain.determinism_gate); it used to hard-code the strategic `test_ui.py --determinism` into every domain's session prompt. That command is not merely suboptimal here, it measures NOTHING: mode 6 dispatches to llm_tact_frame and never calls llm_strat_sim_step, so the strategic cadence hook never fires and the run emits zero hash lines for the whole excursion. --tact-selftest is part of the command rather than an option because a hash over bytes nothing writes is identical across two runs too -- only the RED arm distinguishes 'deterministic' from 'measuring nothing', which is the same anti-vacuity rule the rest of this domain runs on. --tact-synth because a no-input tactical run exercises only the mission script and the FOV-engage AI, so the player-command paths (group orders, kneel/stand, mines, stance, facing) are never entered at all.",
+    "determinism_gate_why": "The tactical determinism run FORCE-ENTERS a mission (--tactical <save> --skip-intro), so unlike the strategic one it covers NO menu or lobby path -- do not read it as standing in for the UI suite's liveness coverage. If the change also touches the deferred-effect seam (tools/data/tact_effect_classes.json, effects/*, or the generated gates), add `python tools/test_ui.py --tact-effects-probe 120 --tact-frames 300`: both determinism arms are the ORIGINAL game, so no shadow window ever opens and every gate stays transparent, which means a seam that suppressed everything -- or nothing -- passes the determinism run unchanged.",
+    "_selftest_why": "net_selftest.exe tacttest (src/mh_dll/mh_nettest/tact_selftest.cpp), built at TACT-DOMAIN. IT BEGAN AS AN INSTRUMENT CHECK ONLY, and that half is still the load-bearing half: it proves all 15 tactical hash slices (14 plus the tact_units_sim alias, appended 2026-08-25) are actually read and read only their own bytes, that the manifest lengths equal the record strides the disassembly recovered, and that the tile_objects fog mask excludes the per-frame bytes and only those. Since 2026-08-25 it also pins the journal field scanner (T11), the 128x128 tactical tile_objects window in both directions (T12) and the hash's split-invariance (T13) -- see docs/tactical-probe.md 9p-9t. That is the half the trajectory oracle cannot test, because it depends on it -- a wrong slice length makes both arms of --tact-determinism identically wrong and prints green. TACT0 added the first original-vs-ours cases beside these when it translated its pilot slice; TACT1's batches grow that half.",
+    "_trajectory_oracle": "tools/test_ui.py --tact-determinism [--tact-synth] -- the INTEGRATION oracle (TACT-PREP/TACT-SYNTH). It localises a divergence to a frame and a region, not to a function; needs the rig and the game files. docs/tactical-probe.md sections 2, 6 and 7.",
+    "rig": {
+      "modes": [
+        "tact"
+      ],
+      "default": "tact",
+      "_why": "THE SECOND VEHICLE, and the reason this field exists at all (TACT-RIG). `soak` and `sp` are BOTH strategic: neither ever sets _G_LLM_GAME_MODE to 6, so a tactical site armed under either reads ZERO CALLS -- which reimpl-loop's anti-vacuity rule correctly reports as NOT COVERED, but only after a rig run has been spent. Naming the vehicle in the profile makes that a configuration error instead of a wasted run. `tact` launches mh.focus.exe --tactical <save> --skip-intro through test_ui.py --tact-arm."
+    },
+    "ab": {
+      "driver": "tact",
+      "_driver_why": "THE SECOND A/B VEHICLE, and the reason this field exists at all (TACT-AB, 2026-08-25). migration_ab.py drove `test_ui.py --soak --soak-golden` and nothing else -- correct while every promote module was strategic. A tactical module A/B'd under a soak is installed, never entered, and reports a MATCHED golden over a body that never ran: the exact vacuous green the tool's own liveness check exists to catch, discovered only after the runs have been spent. Naming the vehicle in the profile makes it a configuration error instead. `tact` runs FOUR ARMS IN ONE LANE -- stock_a, stock_b, a poked red arm, and the promoted arm -- comparing the per-frame `T` hash lines in memory. NO GOLDEN FILE, deliberately: a recorded golden is the one artifact that outlives its build, so it needs a hash fingerprint, a staleness rule and a re-record path, and every one of those is a way for a run to go red for a reason that is not the code. A tactical arm is ~3 s, so buying the control directly costs less than maintaining an artifact.",
+      "frames": 4000,
+      "save": "11",
+      "wall_s": 240,
+      "_scenario_why": "4000 frames from save 11 (raised from 400 on 2026-08-28), the same entry --tact-determinism uses, so a divergence here and a divergence there are about the same run. It reaches the DISPOSITION section: measured 2026-08-25, disposition_spawn served 40 calls and command_token 72. The tool does not assume it -- every module reports its own served-call count and a zero is NOT_LIVE, never a pass. WHY 4000 AND NOT 400: an arm is seconds, so depth is nearly free, and the domain root (llm_tact_frame, TACT1E) is a per-FRAME pump whose evidence is exactly the number of frames it was compared over -- at 400 it served 399 calls, at 4000 it serves 3999. Raising it was only safe once the control was genuinely reproducible: before 2026-08-28 the arms ran on the OPERATOR'S INTERACTIVE DESKTOP (migration_ab called test_ui's helpers directly, so test_ui.main()'s DESKTOP='mh_rig' assignment never ran), and llm_tact_frame's mouse handlers turned the real cursor into tact_units writes -- stock-vs-stock diverged at frames 4-10 naming ['tact_units']. A longer run only buys more evidence when the control holds over it.",
+      "_red_arm_why": "MANDATORY for this vehicle, not --prove-red opt-in. On the soak vehicle a go-red proof costs a whole extra run per module, which is why it is a flag there; here it is one 3-second arm, shared by every module that names the same poke_region. A check that is free should not be optional -- without it 'the trajectory matched' is indistinguishable from 'the trajectory oracle measured nothing'."
+    }
+  },
+  "roster_regions": [
+    "_G_LLM_TACT_UNITS",
+    "tile_objects",
+    "passable",
+    "_G_LLM_STRAT_PATH_BUFFERS"
+  ],
+  "preserve_bugs": {
+    "llm_tact_mission_end_return_to_strategic": "SILENT I/O FAILURE ON THE PLANET ROUND-TRIP -- PRESERVE, DO NOT GUARD (decision recorded 2026-08-27, closing finding 2026-08-24-1830-1; the shipped translation already does this). The exit calls map_LoadPlanetFromDisk(planet_index, 1) at 0x0044d40e-0x0044d42a and gates ONLY the four finalizers on its return (0x0044d41d TEST EAX,EAX / 0x0044d41f JNZ). _G_LLM_GAME_MODE is already 2 (written at 0x0044d3e4, BEFORE the reload) and the planet is already latched VISITED (0x0044d404), and both llm_tact_frame call sites (0x00429c87, 0x00429df3) are a CALL followed immediately by a JMP to the epilogue, so the function's own return is discarded too. A failed or partial reload therefore resumes strategic mode on a planet still holding tactical's 128x128 wipe, and SwitchToPlanet (0x0044cf53) will later LOAD it rather than regenerate. The mirror defect is on the ENTRY side, in llm_strat_try_enter_tactical_mission (not a member of any migration domain): 0x0044d38f CALL map_SavePlanetToDisk then 0x0044d394 MOV byte [0x005202d0],6 with no TEST/Jcc between them, discarding the return on the only backup of the planet about to be wiped. Reproduce the shape LITERALLY -- rc == 0 skips the finalizers and leaves the local success flag 0 -- per Law 2; do NOT add a guard, and do not read the round-trip as unconditional. Whether the HOSTED build should guard it the way the DLL's --tactical verb does is a product question outside this migration. tact_mission_end_return_to_strategic.h step 4 implements this; docs/tactical-probe.md Sect. 5 carries the correction block; plates on both functions record it (EN v349)."
+  },
+  "batches": {
+    "order": [
+      "A",
+      "B",
+      "C",
+      "D",
+      "E"
+    ],
+    "item": {
+      "A": "TACT1A",
+      "B": "TACT1B",
+      "C": "TACT1C",
+      "D": "TACT1D",
+      "E": "TACT1E"
+    },
+    "_rules_why": "FAMILIES, NOT LAYER BANDS. Layers cut ACROSS these batches -- A spans 0-4 and D spans 1-10 -- so the arming grouping is read from `--antichain`, never from the batch letter. A batch is a session's worth of RELATED work; the antichain says what may share a rig run. Order is first-match-wins and the specific families are listed first, because `unit` appears in almost every name in this domain and a `unit_` rule placed early would swallow four of the five batches.",
+    "rules": [
+      {
+        "batch": "D",
+        "match": [
+          "fov_",
+          "vision_",
+          "door_",
+          "teleport_zone"
+        ],
+        "why": "Vision/FOV, the door state machine and the teleport-zone scanner. FIRST because `door_parse_definition` and `fov_probe_far_cell_and_door_state` would otherwise be taken by A's `parse_` and D's own family cohesion matters more than the parse/tick split. Holds layers 1-10, i.e. the whole tail of the schedule."
+      },
+      {
+        "batch": "C",
+        "match": [
+          "weapon",
+          "muzzle",
+          "tact_fx_",
+          "splash",
+          "mine_arm",
+          "death_tick",
+          "unit_spawn",
+          "unit_despawn",
+          "unit_destroy",
+          "kneel",
+          "stand_tick",
+          "set_anim_state",
+          "update_anim",
+          "reset_hp"
+        ],
+        "why": "Combat, projectiles and unit lifecycle/animation. `tact_fx_` rather than `fx_` deliberately: `fx_` is a substring of `llm_gfx_blit_finish` and took it wrongly on the first draft -- the same shape of accident the domain's per-function wall list exists to avoid."
+      },
+      {
+        "batch": "B",
+        "match": [
+          "cmd_",
+          "enqueue_command",
+          "group_issue_order",
+          "move_",
+          "teleport",
+          "rotate_",
+          "facing_",
+          "dir24",
+          "owner_tick"
+        ],
+        "why": "The per-unit command queue, the move/path solver, rotation and the facing helpers. `owner_tick` is here rather than in E because it is the per-unit AI that DRIVES the queue, not part of the frame pump. This is the batch TACT-SYNTH was built for -- its two entry points, llm_tact_unit_enqueue_command and llm_tact_group_issue_order, are both members."
+      },
+      {
+        "batch": "A",
+        "match": [
+          "mission_",
+          "parse_",
+          "cfg_",
+          "character_",
+          "map_reset",
+          "map_compute_bounds",
+          "occupancy_layer",
+          "squad_assault",
+          "squad_sync_hp"
+        ],
+        "why": "Mission load and parse, map/occupancy setup, and the excursion boundary (entry, exit, squad write-back). Listed AFTER D/C/B so the door and character parsers go to their own families first. The first batch to ship: its parsers are pure text->value functions the OFFLINE oracle can drive from the six shipped POZ*.DAT files, which is the coverage a no-input trajectory run cannot give."
+      },
+      {
+        "batch": "E",
+        "match": [
+          ""
+        ],
+        "why": "RESIDUE, and deliberately last in every sense -- last rule, last batch, deps on all four others. Two populations: the frame pump (llm_tact_frame, llm_tact_update_units_and_fx) which is translated last because everything else hangs off it, and the 14 medium-confidence WALL candidates TACT-DOMAIN kept as members under its fail-safe rule. Most of the latter are expected to LEAVE the domain, which is a result rather than a failure. Two must not: llm_tact_active_unit_count_hud_draw is the sole writer of the mission's termination condition and llm_tact_ui_order_buttons_minimap_tick issues four real group orders, and both are named like HUD painters."
+      }
+    ]
+  },
+  "items": {
+    "interface": "TACT0",
+    "_interface_why": "The tracker item that OWNS building the state interface this domain's batches translate into -- `<D>0` in the reimpl-decompose skill's vocabulary, and the item it calls the highest-leverage one. Declared here rather than derived from the domain name because orders_issue's is `O4-0` and a future domain may reuse another domain's interface outright. tools/lint_migration_items.py checks it exists, is not an orphan, and is REACHABLE THROUGH DEPS from every batch. The tactical state interface + the tacttest FIXTURE. Filed 2026-08-24 because this domain had NO <D>0 at all -- see docs/tact-closure.md Sect. 6b. Its distinguishing problem is the three SIM-OWNED planes tactical writes, which under docs/state-boundary.md D2 have one declared owner each."
+  },
+  "non_autonomous": [
+    "TACT-CUT2",
+    "TACT1",
+    "TACT1-P"
+  ],
+  "_non_autonomous_why": "Items the loop must refuse to open. TACT-CUT2 is a disposition file where every entry is a judgement about an irreversible side effect -- a wrong 'pure' silently double-fires a sound -- and it additionally needs a per-target C4 call about SEVEN entries another mechanism already owns (the harness pins llm_rand and time_GetCurrentTime, seams/video.cpp and save/save_live.cpp hold three more, two are sim promotions). TACT1 is an umbrella that holds no work of its own. TACT1-P decides what runs for real. TRIMMED 2026-08-25: TACT-WRITERS, TACT-CUT and TACT0 all closed, and a done item cannot be proposed, so listing them only made the session prompt enumerate refusals for work that no longer exists. The rule for this list is that it names OPEN items whose answer a session must not guess -- keeping closed ones in it is how the list stops being read. The BATCH items TACT1A-E are deliberately ABSENT: the driver checks non_autonomous BEFORE it chooses a session shape, so listing them would stop the loop dead rather than let it route a batch. What used to keep a batch from starting early was the interface guard in migration_loop (items.interface not done -> no MODE_BATCH); TACT0 is done, so that guard now passes and TACT1A is routable.",
+  "membership": {
+    "closure": "tools/data/tact_closure.json",
+    "closure_field": "members",
+    "walls": "tools/data/tact_walls.json",
+    "walls_field": "walls",
+    "decomposition": 99,
+    "decomposition_commit": "62275575",
+    "_why": "The reconciliation inputs for report_migration_counts.py, which TACT1's acceptance needs PRINTED: the closure is the whole population, every member is either a manifest row or a wall entry, and `decomposition` is the manifest membership at the commit named -- so a set that SHRANK is named rather than read as progress. A member that leaves the manifest without gaining a wall entry is the silent-shrink failure and exits 1."
+  }
+}

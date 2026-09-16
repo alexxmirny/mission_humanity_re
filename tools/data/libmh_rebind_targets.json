@@ -1,0 +1,214 @@
+{
+ "_note": "R3 of docs/libmh-rebind.md -- the capped residue table, for rows with NO seam to derive from. A row the R2 derivation COULD produce is REFUSED by gen_libmh_rebind.py, so this table cannot quietly become the rule. `trap: true` marks a row with no signature-compatible entry point at all (distinct from R6's deferred set).",
+ "targets": {
+  "llm_map_region_add_adjacency_edge": {
+   "target": "mh::sim::rebind_arm::region_add_adjacency_edge",
+   "reason": "no seam to derive from -- this row's seam was its differential-oracle site, deleted with that oracle (F2D), so R2 has no adapter name to work from. Target is the `rebind_arm::` ABI shim, NOT the public live wrapper: the committed callable shape and the wrapper's shape differ (parameters typed mh_llm_map_region* vs the wrapper's void*), and the binder's static_assert compares types exactly. The shim is signature adaptation only -- it forwards straight to the public wrapper and was never part of the oracle it used to live next to."
+  },
+  "llm_map_region_find_nearest_valid_tile": {
+   "target": "mh::sim::find_nearest_valid_tile",
+   "reason": "no seam to derive from -- this row has no shadow site (nothing to arm: it makes no tracked-state write) and no promotion seam, so R2 has no adapter name to work from. Target is the public live wrapper, matched on the committed callable shape."
+  },
+  "llm_map_region_route_mark_shared_nodes": {
+   "target": "mh::sim::region_route_mark_shared_nodes",
+   "reason": "no seam to derive from -- this row has no shadow site (nothing to arm: it makes no tracked-state write) and no promotion seam, so R2 has no adapter name to work from. Target is the public live wrapper, matched on the committed callable shape."
+  },
+  "llm_map_region_route_prepass": {
+   "target": "mh::sim::region_route_prepass",
+   "reason": "no seam to derive from -- this row has no shadow site (nothing to arm: it makes no tracked-state write) and no promotion seam, so R2 has no adapter name to work from. Target is the public live wrapper, matched on the committed callable shape."
+  },
+  "llm_map_region_walk_to_valid_tile": {
+   "target": "mh::sim::walk_to_valid_tile",
+   "reason": "no seam to derive from -- this row has no shadow site (nothing to arm: it makes no tracked-state write) and no promotion seam, so R2 has no adapter name to work from. Target is the public live wrapper, matched on the committed callable shape."
+  },
+  "llm_map_wrap_delta_x": {
+   "target": "mh::sim::wrap_delta_x",
+   "reason": "no seam to derive from -- this row has no shadow site (nothing to arm: it makes no tracked-state write) and no promotion seam, so R2 has no adapter name to work from. Target is the public live wrapper, matched on the committed callable shape."
+  },
+  "llm_map_wrap_delta_y": {
+   "target": "mh::sim::wrap_delta_y",
+   "reason": "no seam to derive from -- this row has no shadow site (nothing to arm: it makes no tracked-state write) and no promotion seam, so R2 has no adapter name to work from. Target is the public live wrapper, matched on the committed callable shape."
+  },
+  "llm_strat_bldg_is_alive": {
+   "target": "mh::sim::bldg_is_alive",
+   "reason": "no seam to derive from -- this row has no shadow site (nothing to arm: it makes no tracked-state write) and no promotion seam, so R2 has no adapter name to work from. Target is the public live wrapper, matched on the committed callable shape."
+  },
+  "llm_strat_bldg_record_resource_expenditure_stats": {
+   "target": "mh::rebind::shim::bldg_record_resource_expenditure_stats",
+   "header": "state/rebind_shims.h",
+   "reason": "the seamless row's public wrapper is signature-COMPATIBLE but not IDENTICAL to the committed callee shape, and with no seam there is no arm to bridge it -- so a hand-reviewed cast shim does (state/rebind_shims.h names every difference)."
+  },
+  "llm_strat_decay_excess_resources": {
+   "target": "mh::sim::rebind_arm::decay_excess_resources",
+   "reason": "no seam to derive from -- this row's seam was its differential-oracle site, deleted with that oracle (F2D), so R2 has no adapter name to work from. Target is the `rebind_arm::` ABI shim, NOT the public live wrapper: the committed callable shape and the wrapper's shape differ (returns uint8_t vs the wrapper's bool), and the binder's static_assert compares types exactly. The shim is signature adaptation only -- it forwards straight to the public wrapper and was never part of the oracle it used to live next to."
+  },
+  "llm_strat_dir_step_factor": {
+   "target": "mh::sim::dir_step_factor",
+   "reason": "no seam to derive from -- this row has no shadow site (nothing to arm: it makes no tracked-state write) and no promotion seam, so R2 has no adapter name to work from. Target is the public live wrapper, matched on the committed callable shape."
+  },
+  "llm_strat_dir_step_toroidal_dist": {
+   "target": "mh::sim::dir_step_toroidal_dist",
+   "reason": "no seam to derive from -- this row has no shadow site (nothing to arm: it makes no tracked-state write) and no promotion seam, so R2 has no adapter name to work from. Target is the public live wrapper, matched on the committed callable shape."
+  },
+  "llm_strat_econ_track_unit_resource_spend": {
+   "target": "mh::sim::econ_track_unit_resource_spend",
+   "reason": "no seam to derive from -- this row has no shadow site (nothing to arm: it makes no tracked-state write) and no promotion seam, so R2 has no adapter name to work from. Target is the public live wrapper, matched on the committed callable shape."
+  },
+  "llm_strat_facing24_from_points": {
+   "target": "mh::sim::facing24_from_points",
+   "reason": "no seam to derive from -- this row has no shadow site (nothing to arm: it makes no tracked-state write) and no promotion seam, so R2 has no adapter name to work from. Target is the public live wrapper, matched on the committed callable shape."
+  },
+  "llm_strat_heading_candidate_find_slot": {
+   "target": "mh::sim::heading_candidate_find_slot",
+   "reason": "no seam to derive from -- this row has no shadow site (nothing to arm: it makes no tracked-state write) and no promotion seam, so R2 has no adapter name to work from. Target is the public live wrapper, matched on the committed callable shape."
+  },
+  "llm_strat_order_integrity_check": {
+   "target": "mh::orders::integrity_check",
+   "header": "orders/order_queue.h",
+   "reason": "no seam to derive from; the public wrapper matches the calls-struct member exactly, INCLUDING the `const order *` the member's type carries -- it needed no shim once the shape comparison stopped stripping const."
+  },
+  "llm_strat_order_pending_enqueue": {
+   "keep_original": true,
+   "reason": "our body MASKS FIELDS IN PLACE through the record pointer (`in.unit_index &= 0xff` and three siblings, order_queue.cpp) before copying it into the pending array. The thunked call direction hides that -- the marshalling thunk hands the callee a private copy, which is why mh_calls.gen.h spells that direction `const` -- but a REBIND removes the thunk and calls the body directly, so binding this row to the const member would mask the CALLER's record. Evidenced at LIB-CONSTSIG 2026-09-04: the disassembly dig found the ORIGINAL read-only at the by-value level (true, and not the question), and the compiler found our translation writing through the pointer the moment the wrapper was made const. This is a real aliasing constraint, NOT the generator disagreement the item was opened for.",
+   "blocker": "semantics"
+  },
+  "llm_strat_path_alloc_slot": {
+   "target": "mh::sim::path_alloc_slot",
+   "reason": "no seam to derive from -- this row has no shadow site (nothing to arm: it makes no tracked-state write) and no promotion seam, so R2 has no adapter name to work from. Target is the public live wrapper, matched on the committed callable shape."
+  },
+  "llm_strat_path_find_free_slot": {
+   "target": "mh::sim::path_find_free_slot",
+   "reason": "no seam to derive from -- this row has no shadow site (nothing to arm: it makes no tracked-state write) and no promotion seam, so R2 has no adapter name to work from. Target is the public live wrapper, matched on the committed callable shape."
+  },
+  "llm_strat_pathfind_dir_code_from_delta": {
+   "target": "mh::sim::pathfind_dir_code_from_delta",
+   "reason": "no seam to derive from -- this row has no shadow site (nothing to arm: it makes no tracked-state write) and no promotion seam, so R2 has no adapter name to work from. Target is the public live wrapper, matched on the committed callable shape."
+  },
+  "llm_strat_pathfind_find_closer_visible_tile": {
+   "target": "mh::sim::find_closer_visible_tile",
+   "reason": "no seam to derive from -- this row has no shadow site (nothing to arm: it makes no tracked-state write) and no promotion seam, so R2 has no adapter name to work from. Target is the public live wrapper, matched on the committed callable shape."
+  },
+  "llm_strat_pathfind_mark_group_member_regions": {
+   "target": "mh::sim::pathfind_mark_group_member_regions",
+   "reason": "no seam to derive from -- this row has no shadow site (nothing to arm: it makes no tracked-state write) and no promotion seam, so R2 has no adapter name to work from. Target is the public live wrapper, matched on the committed callable shape."
+  },
+  "llm_strat_pathfind_target_hook_stub": {
+   "target": "mh::sim::pathfind_target_hook_stub",
+   "reason": "no seam to derive from -- this row has no shadow site (nothing to arm: it makes no tracked-state write) and no promotion seam, so R2 has no adapter name to work from. Target is the public live wrapper, matched on the committed callable shape."
+  },
+  "llm_strat_pathtrace_dirs_get": {
+   "target": "mh::sim::pathtrace_dirs_get",
+   "reason": "no seam to derive from -- this row has no shadow site (nothing to arm: it makes no tracked-state write) and no promotion seam, so R2 has no adapter name to work from. Target is the public live wrapper, matched on the committed callable shape. (pointer-returning callee)"
+  },
+  "llm_strat_player_presence_lost": {
+   "target": "mh::sim::player_presence_lost",
+   "reason": "no seam to derive from -- this row has no shadow site (nothing to arm: it makes no tracked-state write) and no promotion seam, so R2 has no adapter name to work from. Target is the public live wrapper, matched on the committed callable shape."
+  },
+  "llm_strat_sight_add_circle": {
+   "target": "mh::sim::rebind_arm::sight_add_circle",
+   "reason": "no seam to derive from -- this row's seam was its differential-oracle site, deleted with that oracle (F2D), so R2 has no adapter name to work from. Target is the `rebind_arm::` ABI shim, NOT the public live wrapper: the committed callable shape and the wrapper's shape differ (returns uint32_t vs the wrapper's void -- see sim_fog_of_war.h finding (F): the original's return is dead register-reuse noise, 9 the always-observed value, confirmed against both real callers), and the binder's static_assert compares types exactly. The shim is signature adaptation only -- it forwards straight to the public wrapper and was never part of the oracle it used to live next to."
+  },
+  "llm_strat_sight_remove_circle": {
+   "target": "mh::sim::rebind_arm::sight_remove_circle",
+   "reason": "no seam to derive from -- this row's seam was its differential-oracle site, deleted with that oracle (F2D), so R2 has no adapter name to work from. Target is the `rebind_arm::` ABI shim, NOT the public live wrapper: the committed callable shape and the wrapper's shape differ (returns int32_t vs the wrapper's void and takes `player` signed -- same finding (F)), and the binder's static_assert compares types exactly. The shim is signature adaptation only -- it forwards straight to the public wrapper and was never part of the oracle it used to live next to."
+  },
+  "llm_strat_slot_dist_to_ref": {
+   "target": "mh::sim::slot_dist_to_ref",
+   "reason": "no seam to derive from -- this row has no shadow site (nothing to arm: it makes no tracked-state write) and no promotion seam, so R2 has no adapter name to work from. Target is the public live wrapper, matched on the committed callable shape."
+  },
+  "llm_strat_spawn_invasion_force": {
+   "target": "mh::rebind::shim::spawn_invasion_force",
+   "header": "state/rebind_shims.h",
+   "reason": "the seamless row's public wrapper is signature-COMPATIBLE but not IDENTICAL to the committed callee shape, and with no seam there is no arm to bridge it -- so a hand-reviewed cast shim does (state/rebind_shims.h names every difference)."
+  },
+  "llm_strat_squad_pick_free_formation_anchor": {
+   "target": "mh::sim::squad_pick_free_formation_anchor",
+   "reason": "no seam to derive from -- this row has no shadow site (nothing to arm: it makes no tracked-state write) and no promotion seam, so R2 has no adapter name to work from. Target is the public live wrapper, matched on the committed callable shape."
+  },
+  "llm_strat_storage_can_land": {
+   "target": "mh::sim::storage_can_land",
+   "reason": "no seam to derive from -- this row has no shadow site (nothing to arm: it makes no tracked-state write) and no promotion seam, so R2 has no adapter name to work from. Target is the public live wrapper, matched on the committed callable shape."
+  },
+  "llm_strat_storage_exit_tile_is_clear": {
+   "target": "mh::sim::storage_exit_tile_is_clear",
+   "reason": "no seam to derive from -- this row has no shadow site (nothing to arm: it makes no tracked-state write) and no promotion seam, so R2 has no adapter name to work from. Target is the public live wrapper, matched on the committed callable shape."
+  },
+  "llm_strat_tile_neighbor_in_dir": {
+   "target": "mh::sim::tile_neighbor_in_dir",
+   "reason": "no seam to derive from -- this row has no shadow site (nothing to arm: it makes no tracked-state write) and no promotion seam, so R2 has no adapter name to work from. Target is the public live wrapper, matched on the committed callable shape."
+  },
+  "llm_strat_tiles_adjacent": {
+   "target": "mh::sim::tiles_adjacent",
+   "reason": "no seam to derive from -- this row has no shadow site (nothing to arm: it makes no tracked-state write) and no promotion seam, so R2 has no adapter name to work from. Target is the public live wrapper, matched on the committed callable shape."
+  },
+  "llm_strat_turret_acquire_target": {
+   "target": "mh::sim::turret_acquire_target",
+   "reason": "no seam to derive from -- this row has no shadow site (nothing to arm: it makes no tracked-state write) and no promotion seam, so R2 has no adapter name to work from. Target is the public live wrapper, matched on the committed callable shape."
+  },
+  "llm_strat_unit_calc_range_approach_point": {
+   "target": "mh::rebind::shim::unit_calc_range_approach_point",
+   "header": "state/rebind_shims.h",
+   "reason": "the seamless row's public wrapper is signature-COMPATIBLE but not IDENTICAL to the committed callee shape, and with no seam there is no arm to bridge it -- so a hand-reviewed cast shim does (state/rebind_shims.h names every difference)."
+  },
+  "llm_strat_unit_path_queue_count": {
+   "target": "mh::sim::unit_path_queue_count",
+   "reason": "no seam to derive from -- this row has no shadow site (nothing to arm: it makes no tracked-state write) and no promotion seam, so R2 has no adapter name to work from. Target is the public live wrapper, matched on the committed callable shape."
+  },
+  "llm_strat_unit_path_step_blocked": {
+   "target": "mh::sim::unit_path_step_blocked",
+   "reason": "no seam to derive from -- this row has no shadow site (nothing to arm: it makes no tracked-state write) and no promotion seam, so R2 has no adapter name to work from. Target is the public live wrapper, matched on the committed callable shape."
+  },
+  "llm_strat_unit_predict_coords_after_delay": {
+   "target": "mh::sim::unit_predict_coords_after_delay",
+   "reason": "no seam to derive from -- this row has no shadow site (nothing to arm: it makes no tracked-state write) and no promotion seam, so R2 has no adapter name to work from. Target is the public live wrapper, matched on the committed callable shape."
+  },
+  "llm_tact_calc_dir24": {
+   "target": "mh::tact::calc_dir24",
+   "reason": "no seam to derive from -- a header-inline/public-wrapper body with no shadow site and no promotion seam, so R2 has no adapter name to work from. Added 2026-09-04 when TACT1-P C2 took tact out of R6's deferred set: the liveness census had independently flagged these same seven as unbridgeable, and the generator refused them by name rather than binding something it could not derive. Target is the public live wrapper, matched on the committed callable shape."
+  },
+  "llm_tact_facing_to_delta": {
+   "target": "mh::tact::facing_to_delta",
+   "reason": "no seam to derive from -- a header-inline/public-wrapper body with no shadow site and no promotion seam, so R2 has no adapter name to work from. Was KEPT ORIGINAL at TACT1-P C2 for an out-pointer shape disagreement on top of that; TACT1-P C6 (2026-09-04) removed the disagreement at its source. Ghidra's committed prototype had said `int *out_dx, int *out_dy` all along -- dump_call_protos.classify() was degrading every non-struct, non-char pointee to `void *`, so the blunt shape was the generator's, not the ABI's. With the pointee carried through, this row's committed type and our body agree and it binds like its six siblings above."
+  },
+  "llm_tact_mission_end_finalize_stub": {
+   "target": "mh::tact::mission_end_finalize_stub",
+   "reason": "no seam to derive from -- a header-inline/public-wrapper body with no shadow site and no promotion seam, so R2 has no adapter name to work from. Added 2026-09-04 when TACT1-P C2 took tact out of R6's deferred set: the liveness census had independently flagged these same seven as unbridgeable, and the generator refused them by name rather than binding something it could not derive. Target is the public live wrapper, matched on the committed callable shape."
+  },
+  "llm_tact_move_path_preview_clear": {
+   "target": "mh::tact::move_path_preview_clear",
+   "reason": "no seam to derive from -- a header-inline/public-wrapper body with no shadow site and no promotion seam, so R2 has no adapter name to work from. Added 2026-09-04 when TACT1-P C2 took tact out of R6's deferred set: the liveness census had independently flagged these same seven as unbridgeable, and the generator refused them by name rather than binding something it could not derive. Target is the public live wrapper, matched on the committed callable shape."
+  },
+  "llm_tact_move_step_attempt": {
+   "target": "mh::tact::rebind_arm::move_step_attempt",
+   "reason": "no seam to derive from -- this row's seam was its differential-oracle site, deleted with that oracle (F2D), so R2 has no adapter name to work from. Target is the `rebind_arm::` ABI shim, NOT the public live wrapper: the committed callable shape and the wrapper's shape differ (takes four unsigned coordinates vs the wrapper's signed), and the binder's static_assert compares types exactly. The shim is signature adaptation only -- it forwards straight to the public wrapper and was never part of the oracle it used to live next to."
+  },
+  "llm_tact_ui_mouse_in_rect": {
+   "target": "mh::tact::ui_mouse_in_rect",
+   "reason": "no seam to derive from -- a header-inline/public-wrapper body with no shadow site and no promotion seam, so R2 has no adapter name to work from. Added 2026-09-04 when TACT1-P C2 took tact out of R6's deferred set: the liveness census had independently flagged these same seven as unbridgeable, and the generator refused them by name rather than binding something it could not derive. Target is the public live wrapper, matched on the committed callable shape."
+  },
+  "llm_tact_unit_get_muzzle_offset": {
+   "target": "mh::tact::unit_get_muzzle_offset",
+   "reason": "no seam to derive from -- a header-inline/public-wrapper body with no shadow site and no promotion seam, so R2 has no adapter name to work from. Was KEPT ORIGINAL at TACT1-P C2 for an out-pointer shape disagreement on top of that; TACT1-P C6 (2026-09-04) removed the disagreement at its source -- the committed prototype already read `int *out_x, int *out_y` and classify() was blunting it to `void *`."
+  },
+  "llm_tact_unit_move_advance": {
+   "target": "mh::tact::rebind_arm::unit_move_advance",
+   "reason": "no seam to derive from -- this row's seam was its differential-oracle site, deleted with that oracle (F2D), so R2 has no adapter name to work from. Target is the `rebind_arm::` ABI shim, NOT the public live wrapper: the committed callable shape and the wrapper's shape differ (takes the original's FIVE arguments vs the wrapper's three -- the two dead middle ones occupy EDX/EBX and the dispatcher marshals them, so a three-argument target would consume the caller's registers wrongly), and the binder's static_assert compares types exactly. The shim is signature adaptation only -- it forwards straight to the public wrapper and was never part of the oracle it used to live next to."
+  },
+  "llm_tact_vision_cone_setup": {
+   "target": "mh::tact::rebind_arm::vision_cone_setup",
+   "reason": "no seam to derive from -- this row's seam was its differential-oracle site, deleted with that oracle (F2D), so R2 has no adapter name to work from. Target is the `rebind_arm::` ABI shim, NOT the public live wrapper: the committed callable shape and the wrapper's shape differ (takes angle_width unsigned vs the wrapper's signed), and the binder's static_assert compares types exactly. The shim is signature adaptation only -- it forwards straight to the public wrapper and was never part of the oracle it used to live next to."
+  },
+  "llm_tact_weapon_calc_scatter": {
+   "target": "mh::tact::weapon_calc_scatter",
+   "reason": "no seam to derive from -- a header-inline/public-wrapper body with no shadow site and no promotion seam, so R2 has no adapter name to work from. Was KEPT ORIGINAL at TACT1-P C2 for an out-pointer WIDTH disagreement on top of that; TACT1-P C6 (2026-09-04) removed the disagreement at its source -- the committed prototype already read `int *out_dx, int *out_dy` and classify() was blunting it to `void *`, so the '4 bytes through each pointer' claim the C2 reason wanted verified is the one Ghidra's own committed type makes."
+  },
+  "llm_unit_status_bit_clear": {
+   "target": "mh::sim::unit_status_bit_clear",
+   "reason": "no seam to derive from -- this row has no shadow site (nothing to arm: it makes no tracked-state write) and no promotion seam, so R2 has no adapter name to work from. Target is the public live wrapper, matched on the committed callable shape."
+  },
+  "llm_unit_status_bit_set": {
+   "target": "mh::sim::unit_status_bit_set",
+   "reason": "no seam to derive from -- this row has no shadow site (nothing to arm: it makes no tracked-state write) and no promotion seam, so R2 has no adapter name to work from. Target is the public live wrapper, matched on the committed callable shape."
+  }
+ }
+}

@@ -1,0 +1,121 @@
+{
+ "_comment": [
+  "net_session -- the two ORIGINAL netcode writers SB-NET and SB-BOOT could not except.",
+  "",
+  "WHY A DOMAIN AT ALL FOR TWO FUNCTIONS. The ledger is not bookkeeping here, it is the thing",
+  "NET-SESSION's acceptance is written against: `reached by MIGRATION-LEDGER rows (state verified)",
+  "for both functions rather than by exceptions -- an exception entry for either is a failure of",
+  "this item, not a pass`. gen_writer_attribution.py reads EVERY tools/data/*_migration.json for its",
+  "derived half, so a row here is what makes the NET-SESSION scope disposable without an entry in",
+  "writer_dispositions.json. The alternative -- adding the two rows to somebody else's ledger --",
+  "would have put netcode bodies in the sim's or the AI's roster and made both domains' counts lie.",
+  "",
+  "WHY THERE IS NO lockstep DOMAIN TO JOIN. The net/lockstep migration (RI-WIRE, RI-CUTOVER / C8)",
+  "predates the per-function ledger machinery and is tracked as tracker/reimpl.yaml items with",
+  "prose acceptance, not as generated rows. This profile does not retro-fit that work; its",
+  "membership query is deliberately NARROW -- gen_writer_attribution.owning_item() == NET-SESSION --",
+  "so it holds exactly the writers this item was opened for and empties itself if they are ever",
+  "re-attributed.",
+  "",
+  "WHAT IT SHARES WITH THE REST OF THE CLOSURE: the namespace (mh::lockstep), the promotion key",
+  "([promote] lockstep -- these two joined that table, 31 seams -> 33), and turn_engine's install",
+  "accounting. What it does NOT share is the oracle: `netsessiontest` is its own suite because the",
+  "bodies are a boot-time store list and a frame function, neither of which the turn engine's",
+  "horizon/barrier fixture has any binding for.",
+  "",
+  "ARMING IS UNAVAILABLE FOR BOTH, and that is measured rather than assumed:",
+  "  session_globals_reset runs ONCE per process (llm_game_init_subsystems, WM_CREATE), so there is",
+  "    no second call for a shadow arm to compare, and everything that boots afterwards consumes",
+  "    what it wrote.",
+  "  wait_screen_frame SENDS a CTL_RESYNC_END packet and DRAINS the socket. Shadow mode restores",
+  "    state between arms; it can un-write a global and cannot un-send a datagram or un-consume a",
+  "    stream, so an armed run would double the resume broadcast while reading clean.",
+  "The evidence is therefore the offline oracle plus the offline ADDRESS-TABLE check",
+  "(tools/check_net_session_addrs.py, fork F1B). It replaced a live read-back probe that ran in",
+  "BOTH configurations -- stock proving the address table, promoted proving our body -- and it is",
+  "strictly stronger: it proves all 22 rows non-vacuously where the live pair rested on 8, and it",
+  "runs in lint instead of needing two rig boots. The probe was deleted at fork F2F."
+ ],
+ "domain": "net_session",
+ "title": "The lockstep session bootstrap and the leader resync frame",
+ "tracker_domain": "reimpl",
+ "tracker_group": "RI-LOCKSTEP",
+ "umbrella_item": "NET-SESSION",
+ "records_state": true,
+ "select": {
+  "mode": "seeded",
+  "walk": "none",
+  "walk_why": "The seeds ARE the answer, as in sim_resid and readers. Both bodies are complete functions named by DIRECT write attribution; a forward walk would add only Law-4 frontier leaves (mp_leave_reset_game_mode, time_resync_and_tick) and members of the lockstep closure this project already owns.",
+  "seeds": [
+   {
+    "kind": "names",
+    "names": [
+     "llm_wait_screen_frame",
+     "llm_net_session_globals_reset"
+    ],
+    "why": "MEMBERSHIP FROZEN 2026-09-01: the domain is COMPLETE (both rows verified AND promoted -- the SIM-RESID-P wave's census refresh re-attributed the last NET-SESSION-routed writers to `ours`, so the original writer_attribution seed now legitimately resolves to nothing and would refuse). The original derivation is preserved in this note: every original writer of a region LIBMH WRITES that routed to item NET-SESSION via gen_writer_attribution.owning_item(); it produced exactly these two functions and the attribution ledger's history carries the routing."
+   }
+  ]
+ },
+ "paths": {
+  "manifest": "tools/data/net_session_migration.json",
+  "ready_report": "tmp/net_session_ready",
+  "export_dir": "tmp/decomp_net_session",
+  "state_header": "src/mh_dll/libmh/lockstep/net_session.h",
+  "module_dir": "src/mh_dll/mh/lockstep",
+  "selftest_dir": "src/mh_dll/mh_nettest",
+  "_state_header_why": "This domain's state interface is the module header itself: both bodies take their state and calls as parameters (session_init_state / wait_screen_state), which is what lets the oracle run them over plain locals with no game."
+ },
+ "items": {
+  "interface": "NET-SESSION",
+  "_interface_why": "The item owns its own interface -- there is no separate one to reuse, and the two structs live in the module header the bodies are declared in."
+ },
+ "oracle": {
+  "selftest": "netsessiontest",
+  "_why": "F1B (2026-09-12): the ADDRESS-TABLE half of this domain's evidence is no longer the live read-back. tools/check_net_session_addrs.py disassembles llm_net_session_globals_reset in the retail exe and requires its 28 absolute stores to fold into exactly the 22 region bases and constants net_session.h declares, under a sha256 stamp of the exe and the body -- offline, on every lint_repo run, with an extraction-totality arm that REFUSES rather than reporting a partial table. The probe (seams/net_session_probe.cpp) and tools/check_netprobe.py keep only the arm that needs a running process were DELETED at fork F2F (2026-09-12).",
+  "_selftest_why": "Its own suite, not lockstest's: these bodies are a boot-time store list and a frame function, and the turn engine's fixture binds neither the session globals nor the wait-screen state. The one place they DO meet -- the leader-vs-peer end-state comparison -- lives in lockstep_selftest.cpp, because the peer arm is the RX dispatcher and that file owns the crafted-packet harness.",
+  "rig": {
+   "modes": [
+    "sp"
+   ],
+   "default": "sp",
+   "_why": "Neither member is armable (see the header), so the rig's role here was never a shadow run: it was the LIVE READ-BACK, and any run that booted the game at all produced the `[netprobe]` line -- which is why the cheapest single-peer launch is the mode. The probe was deleted at fork F2F and its evidence is now offline (check_net_session_addrs), so this domain needs no rig run at all; the mode is kept for the boot smoke it still gives."
+  }
+ },
+ "batches": {
+  "order": [
+   "A"
+  ],
+  "item": {
+   "A": "NET-SESSION"
+  },
+  "rules": [
+   {
+    "batch": "A",
+    "match": [
+     "llm_net_session_globals_reset",
+     "llm_wait_screen_frame"
+    ],
+    "why": "One batch, named exhaustively rather than by prefix: the two members share no prefix (one is llm_net_, the other llm_wait_) and a prefix rule broad enough to catch both would catch most of the netcode. Naming them makes a THIRD member -- a writer newly routed to this item -- fall to the default batch and be visible instead of silently absorbed."
+   }
+  ]
+ },
+ "conductor_owned": [
+  "net_session.h",
+  "/addr/",
+  "\\addr\\",
+  ".vcxproj",
+  ".sln",
+  "dll_addr_manifest.json",
+  "dll_shadow_manifest.json",
+  "net_session_migration.json",
+  "writer_dispositions.json",
+  "turn_engine.cpp",
+  "rx_dispatch.cpp"
+ ],
+ "_conductor_owned_why": "The module header carries the shared structs AND the constant table the read-back probe compares against, so a writer editing it could move the body and the check together. turn_engine.cpp holds the promotion table and rx_dispatch.cpp the peer end of the shared transition -- both are edits ABOUT the closure rather than inside one body.",
+ "non_autonomous": [
+  "NET-SESSION"
+ ],
+ "_non_autonomous_why": "The item's own acceptance requires a design decision (splice vs translate for the resync half) and a live read-back run read by a human in two configurations. Neither is something the unattended loop should settle."
+}

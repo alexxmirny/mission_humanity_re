@@ -1,0 +1,1228 @@
+{
+ "_generated_by": "tools/gen_hostapi_callers.py -- do not hand-edit; regenerate instead",
+ "entry_count": 40,
+ "rows": [
+  {
+   "name": "transport_send",
+   "category": "net",
+   "notify": false,
+   "n_direct": 16,
+   "n_transitive": 72,
+   "direct_by_domain": {
+    "pre:lockstep": [
+     "llm_net_chat_send_all",
+     "llm_net_chat_send_team",
+     "llm_net_lockstep_broadcast_player_leave",
+     "llm_net_lockstep_broadcast_resync_state",
+     "llm_net_lockstep_send_horizon_ack",
+     "llm_net_lockstep_send_horizon_desync",
+     "llm_net_lockstep_send_presence_lost",
+     "llm_net_lockstep_send_slot_reset",
+     "llm_net_player_remove",
+     "llm_net_player_remove_timeout",
+     "llm_net_send_buf_flush",
+     "llm_net_send_lockstep_extend",
+     "llm_net_send_lockstep_keepalive",
+     "llm_net_send_lockstep_kick",
+     "llm_net_send_lockstep_resync_resume",
+     "llm_net_send_lockstep_step_size"
+    ]
+   },
+   "transitive_by_domain": {
+    "lib_trans": 2,
+    "net_session": 1,
+    "pre:lockstep": 24,
+    "pre:orders": 1,
+    "pre:save": 1,
+    "sim": 34,
+    "sim_resid": 6,
+    "tact": 3
+   },
+   "site_modules": {
+    "lockstep": [
+     "lockstep/tx_emit.cpp",
+     "lockstep/tx_emit_chat.cpp",
+     "lockstep/tx_emit_ctrl.cpp"
+    ]
+   }
+  },
+  {
+   "name": "llm_fatal_cleanup",
+   "category": "fatal",
+   "notify": false,
+   "n_direct": 10,
+   "n_transitive": 13,
+   "direct_by_domain": {
+    "tact": [
+     "llm_tact_character_parse_frame_table",
+     "llm_tact_door_parse_definition",
+     "llm_tact_mission_load",
+     "llm_tact_mission_parse_command_token",
+     "llm_tact_mission_parse_coord_pair",
+     "llm_tact_mission_parse_disposition_spawn",
+     "llm_tact_mission_parse_float",
+     "llm_tact_mission_parse_int_token",
+     "llm_tact_mission_parse_quoted_string",
+     "llm_tact_unit_spawn"
+    ]
+   },
+   "transitive_by_domain": {
+    "sim_resid": 1,
+    "tact": 12
+   },
+   "site_modules": {
+    "tact": [
+     "tact/tact_cfg_keyword.cpp",
+     "tact/tact_character_parse.cpp",
+     "tact/tact_door.cpp",
+     "tact/tact_mission_disposition.cpp",
+     "tact/tact_mission_load.cpp",
+     "tact/tact_mission_parse.cpp",
+     "tact/tact_unit_spawn.cpp"
+    ]
+   }
+  },
+  {
+   "name": "ansi_to_wide_scratch",
+   "category": "string",
+   "notify": false,
+   "n_direct": 5,
+   "n_transitive": 79,
+   "direct_by_domain": {
+    "pre:lockstep": [
+     "llm_net_lockstep_dispatch",
+     "llm_strat_time_tick"
+    ],
+    "sim": [
+     "llm_diplomacy_set_relation",
+     "llm_strat_player_presence_lost"
+    ],
+    "tact": [
+     "llm_tact_active_unit_count_hud_draw"
+    ]
+   },
+   "transitive_by_domain": {
+    "ai": 1,
+    "lib_trans": 4,
+    "net_session": 1,
+    "pre:lockstep": 8,
+    "pre:save": 1,
+    "sim": 36,
+    "sim_resid": 8,
+    "tact": 20
+   },
+   "site_modules": {
+    "lockstep": [
+     "lockstep/rx_dispatch.cpp",
+     "lockstep/timekeeper.cpp"
+    ],
+    "sim": [
+     "sim/sim_diplomacy_set_relation.cpp",
+     "sim/sim_player_presence_lost.cpp"
+    ]
+   }
+  },
+  {
+   "name": "ticks_ms",
+   "category": "time",
+   "notify": false,
+   "n_direct": 5,
+   "n_transitive": 19,
+   "direct_by_domain": {
+    "net_session": [
+     "llm_wait_screen_frame"
+    ],
+    "pre:lockstep": [
+     "llm_net_lockstep_force_resync",
+     "llm_net_lockstep_sync_busywait"
+    ],
+    "sim": [
+     "SwitchToPlanet"
+    ],
+    "sim_resid": [
+     "llm_strat_time_resync_and_tick"
+    ]
+   },
+   "transitive_by_domain": {
+    "lib_trans": 2,
+    "net_session": 1,
+    "pre:lockstep": 7,
+    "pre:save": 1,
+    "sim": 1,
+    "sim_resid": 5,
+    "tact": 2
+   },
+   "site_modules": {
+    "lockstep": [
+     "lockstep/net_session.cpp",
+     "lockstep/resync.cpp"
+    ],
+    "sim": [
+     "sim/hostreach/sim_h_switch_to_planet.cpp",
+     "sim/resid/sim_time_resync.cpp"
+    ]
+   }
+  },
+  {
+   "name": "GetResourseFilePtr",
+   "category": "io",
+   "notify": false,
+   "n_direct": 4,
+   "n_transitive": 37,
+   "direct_by_domain": {
+    "ai": [
+     "llm_strat_ai_scr_parse"
+    ],
+    "sim": [
+     "llm_strat_load_base_layout_dmp"
+    ],
+    "tact": [
+     "llm_tact_mission_load",
+     "llm_tact_ui_sel_panel_init"
+    ]
+   },
+   "transitive_by_domain": {
+    "ai": 1,
+    "lib_trans": 2,
+    "pre:lockstep": 2,
+    "sim": 19,
+    "sim_resid": 9,
+    "tact": 4
+   },
+   "site_modules": {
+    "tact": [
+     "tact/tact_mission_load.cpp"
+    ]
+   }
+  },
+  {
+   "name": "asset_read",
+   "category": "io",
+   "notify": false,
+   "n_direct": 4,
+   "n_transitive": 37,
+   "direct_by_domain": {
+    "ai": [
+     "llm_strat_ai_scr_parse"
+    ],
+    "sim": [
+     "llm_strat_load_base_layout_dmp"
+    ],
+    "tact": [
+     "llm_tact_mission_load",
+     "llm_tact_ui_sel_panel_init"
+    ]
+   },
+   "transitive_by_domain": {
+    "ai": 1,
+    "lib_trans": 2,
+    "pre:lockstep": 2,
+    "sim": 19,
+    "sim_resid": 9,
+    "tact": 4
+   },
+   "site_modules": {
+    "ai": [
+     "ai/ai_state.cpp"
+    ],
+    "sim": [
+     "sim/sim_load_base_layout_dmp.cpp"
+    ]
+   }
+  },
+  {
+   "name": "vfs_close",
+   "category": "io",
+   "notify": false,
+   "n_direct": 4,
+   "n_transitive": 8,
+   "direct_by_domain": {
+    "pre:save": [
+     "game_SaveGame",
+     "llm_game_load",
+     "map_LoadPlanetFromDisk",
+     "map_SavePlanetToDisk"
+    ]
+   },
+   "transitive_by_domain": {
+    "pre:save": 4,
+    "sim": 1,
+    "sim_resid": 1,
+    "tact": 2
+   },
+   "site_modules": {
+    "save": [
+     "save/save_live.cpp"
+    ]
+   }
+  },
+  {
+   "name": "vfs_open",
+   "category": "io",
+   "notify": false,
+   "n_direct": 4,
+   "n_transitive": 8,
+   "direct_by_domain": {
+    "pre:save": [
+     "game_SaveGame",
+     "llm_game_load",
+     "map_LoadPlanetFromDisk",
+     "map_SavePlanetToDisk"
+    ]
+   },
+   "transitive_by_domain": {
+    "pre:save": 4,
+    "sim": 1,
+    "sim_resid": 1,
+    "tact": 2
+   },
+   "site_modules": {
+    "save": [
+     "save/save_live.cpp"
+    ]
+   }
+  },
+  {
+   "name": "map_ReadMap_pre",
+   "category": "map-io",
+   "notify": false,
+   "n_direct": 3,
+   "n_transitive": 4,
+   "direct_by_domain": {
+    "sim": [
+     "SwitchToPlanet"
+    ],
+    "sim_resid": [
+     "llm_strat_planet_session_begin",
+     "llm_strat_session_begin_multi"
+    ]
+   },
+   "transitive_by_domain": {
+    "sim": 1,
+    "sim_resid": 3
+   },
+   "site_modules": {
+    "sim": [
+     "sim/hostreach/sim_h_switch_to_planet.cpp",
+     "sim/resid/sim_planet_session_begin.cpp",
+     "sim/resid/sim_session_begin_multi.cpp"
+    ]
+   }
+  },
+  {
+   "name": "llm_gfx_convert_pixels_565_to_555",
+   "category": "render-notify",
+   "notify": true,
+   "n_direct": 2,
+   "n_transitive": 5,
+   "direct_by_domain": {
+    "tact": [
+     "llm_tact_mission_load",
+     "llm_tact_ui_sel_panel_init"
+    ]
+   },
+   "transitive_by_domain": {
+    "sim_resid": 1,
+    "tact": 4
+   },
+   "site_modules": {
+    "tact": [
+     "tact/tact_mission_load.cpp"
+    ]
+   }
+  },
+  {
+   "name": "ansi_to_wide",
+   "category": "string",
+   "notify": false,
+   "n_direct": 2,
+   "n_transitive": 4,
+   "direct_by_domain": {
+    "pre:save": [
+     "llm_game_load"
+    ],
+    "sim_resid": [
+     "llm_strat_scenario_planet_clone"
+    ]
+   },
+   "transitive_by_domain": {
+    "pre:save": 1,
+    "sim_resid": 3
+   },
+   "site_modules": {
+    "save": [
+     "save/save_live.cpp"
+    ],
+    "sim": [
+     "sim/resid/sim_scenario_planet_clone.cpp"
+    ]
+   }
+  },
+  {
+   "name": "cfg_ReadMapFile",
+   "category": "map-io",
+   "notify": false,
+   "n_direct": 2,
+   "n_transitive": 4,
+   "direct_by_domain": {
+    "lib_trans": [
+     "cfg_final_planet_Construct"
+    ],
+    "sim_resid": [
+     "llm_game_start_tutorial"
+    ]
+   },
+   "transitive_by_domain": {
+    "lib_trans": 1,
+    "sim_resid": 3
+   },
+   "site_modules": {
+    "sim": [
+     "sim/libtrans/sim_lt_cfg_planet.cpp",
+     "sim/resid/sim_start_tutorial.cpp"
+    ]
+   }
+  },
+  {
+   "name": "apply_frame_input",
+   "category": "input",
+   "notify": false,
+   "n_direct": 2,
+   "n_transitive": 3,
+   "direct_by_domain": {
+    "lib_trans": [
+     "llm_strat_frame"
+    ],
+    "sim_resid": [
+     "llm_tutorial_step_driver"
+    ]
+   },
+   "transitive_by_domain": {
+    "lib_trans": 1,
+    "sim_resid": 2
+   },
+   "site_modules": {
+    "sim": [
+     "sim/libtrans/sim_lt_frame.cpp",
+     "sim/resid/sim_tutorial_step_driver.cpp"
+    ]
+   }
+  },
+  {
+   "name": "llm_view_set_size_mode",
+   "category": "display",
+   "notify": false,
+   "n_direct": 2,
+   "n_transitive": 3,
+   "direct_by_domain": {
+    "sim_resid": [
+     "llm_game_start_tutorial"
+    ],
+    "tact": [
+     "llm_tact_mission_end_return_to_strategic"
+    ]
+   },
+   "transitive_by_domain": {
+    "sim_resid": 1,
+    "tact": 2
+   },
+   "site_modules": {
+    "tact": [
+     "tact/tact_mission_end_return_to_strategic.cpp"
+    ]
+   }
+  },
+  {
+   "name": "vfs_read",
+   "category": "io",
+   "notify": false,
+   "n_direct": 2,
+   "n_transitive": 2,
+   "direct_by_domain": {
+    "pre:save": [
+     "game_SaveGame",
+     "llm_game_load"
+    ]
+   },
+   "transitive_by_domain": {
+    "pre:save": 2
+   },
+   "site_modules": {
+    "save": [
+     "save/save_live.cpp"
+    ]
+   }
+  },
+  {
+   "name": "vfs_write",
+   "category": "io",
+   "notify": false,
+   "n_direct": 2,
+   "n_transitive": 2,
+   "direct_by_domain": {
+    "pre:save": [
+     "game_SaveGame",
+     "llm_game_load"
+    ]
+   },
+   "transitive_by_domain": {
+    "pre:save": 2
+   },
+   "site_modules": {
+    "save": [
+     "save/save_live.cpp"
+    ]
+   }
+  },
+  {
+   "name": "asset_size",
+   "category": "io",
+   "notify": false,
+   "n_direct": 1,
+   "n_transitive": 31,
+   "direct_by_domain": {
+    "ai": [
+     "llm_strat_ai_scr_parse"
+    ]
+   },
+   "transitive_by_domain": {
+    "ai": 1,
+    "lib_trans": 2,
+    "pre:lockstep": 2,
+    "sim": 18,
+    "sim_resid": 8
+   },
+   "site_modules": {
+    "ai": [
+     "ai/ai_state.cpp"
+    ]
+   }
+  },
+  {
+   "name": "transport_recv",
+   "category": "net",
+   "notify": false,
+   "n_direct": 1,
+   "n_transitive": 7,
+   "direct_by_domain": {
+    "pre:lockstep": [
+     "llm_net_lockstep_dispatch"
+    ]
+   },
+   "transitive_by_domain": {
+    "lib_trans": 2,
+    "net_session": 1,
+    "pre:lockstep": 2,
+    "sim_resid": 2
+   },
+   "site_modules": {
+    "lockstep": [
+     "lockstep/rx_dispatch.cpp"
+    ]
+   }
+  },
+  {
+   "name": "map_load_regions",
+   "category": "map-io",
+   "notify": false,
+   "n_direct": 1,
+   "n_transitive": 5,
+   "direct_by_domain": {
+    "pre:save": [
+     "map_LoadPlanetFromDisk"
+    ]
+   },
+   "transitive_by_domain": {
+    "pre:save": 2,
+    "sim": 1,
+    "tact": 2
+   },
+   "site_modules": {
+    "save": [
+     "save/save_live.cpp"
+    ]
+   }
+  },
+  {
+   "name": "planet_tlo_load",
+   "category": "map-io",
+   "notify": false,
+   "n_direct": 1,
+   "n_transitive": 5,
+   "direct_by_domain": {
+    "pre:save": [
+     "map_LoadPlanetFromDisk"
+    ]
+   },
+   "transitive_by_domain": {
+    "pre:save": 2,
+    "sim": 1,
+    "tact": 2
+   },
+   "site_modules": {
+    "save": [
+     "save/save_live.cpp"
+    ]
+   }
+  },
+  {
+   "name": "llm_tlo_palette_convert_565_to_555",
+   "category": "render-notify",
+   "notify": true,
+   "n_direct": 1,
+   "n_transitive": 4,
+   "direct_by_domain": {
+    "tact": [
+     "llm_tact_mission_load"
+    ]
+   },
+   "transitive_by_domain": {
+    "sim_resid": 1,
+    "tact": 3
+   },
+   "site_modules": {
+    "tact": [
+     "tact/tact_mission_load.cpp"
+    ]
+   }
+  },
+  {
+   "name": "llm_tlo_shade_table_build_tact",
+   "category": "render-notify",
+   "notify": true,
+   "n_direct": 1,
+   "n_transitive": 4,
+   "direct_by_domain": {
+    "tact": [
+     "llm_tact_mission_load"
+    ]
+   },
+   "transitive_by_domain": {
+    "sim_resid": 1,
+    "tact": 3
+   },
+   "site_modules": {
+    "tact": [
+     "tact/tact_mission_load.cpp"
+    ]
+   }
+  },
+  {
+   "name": "map_save_regions",
+   "category": "map-io",
+   "notify": false,
+   "n_direct": 1,
+   "n_transitive": 4,
+   "direct_by_domain": {
+    "pre:save": [
+     "map_SavePlanetToDisk"
+    ]
+   },
+   "transitive_by_domain": {
+    "pre:save": 2,
+    "sim": 1,
+    "sim_resid": 1
+   },
+   "site_modules": {
+    "save": [
+     "save/save_live.cpp"
+    ]
+   }
+  },
+  {
+   "name": "rsr_GetFileRealSize",
+   "category": "io",
+   "notify": false,
+   "n_direct": 1,
+   "n_transitive": 4,
+   "direct_by_domain": {
+    "tact": [
+     "llm_tact_mission_load"
+    ]
+   },
+   "transitive_by_domain": {
+    "sim_resid": 1,
+    "tact": 3
+   },
+   "site_modules": {
+    "tact": [
+     "tact/tact_mission_load.cpp"
+    ]
+   }
+  },
+  {
+   "name": "save_player_data",
+   "category": "map-io",
+   "notify": false,
+   "n_direct": 1,
+   "n_transitive": 4,
+   "direct_by_domain": {
+    "pre:save": [
+     "map_SavePlanetToDisk"
+    ]
+   },
+   "transitive_by_domain": {
+    "pre:save": 2,
+    "sim": 1,
+    "sim_resid": 1
+   },
+   "site_modules": {
+    "save": [
+     "save/save_live.cpp"
+    ]
+   }
+  },
+  {
+   "name": "llm_gfx_apply_resolution_change",
+   "category": "display",
+   "notify": false,
+   "n_direct": 1,
+   "n_transitive": 2,
+   "direct_by_domain": {
+    "tact": [
+     "llm_tact_mission_end_return_to_strategic"
+    ]
+   },
+   "transitive_by_domain": {
+    "tact": 2
+   },
+   "site_modules": {
+    "tact": [
+     "tact/tact_mission_end_return_to_strategic.cpp"
+    ]
+   }
+  },
+  {
+   "name": "llm_gfx_apply_window_resolution",
+   "category": "display",
+   "notify": false,
+   "n_direct": 1,
+   "n_transitive": 2,
+   "direct_by_domain": {
+    "tact": [
+     "llm_tact_mission_start"
+    ]
+   },
+   "transitive_by_domain": {
+    "sim_resid": 1,
+    "tact": 1
+   },
+   "site_modules": {
+    "tact": [
+     "tact/tact_mission_start.cpp"
+    ]
+   }
+  },
+  {
+   "name": "llm_snd_play_matching_sample",
+   "category": "sound",
+   "notify": true,
+   "n_direct": 1,
+   "n_transitive": 2,
+   "direct_by_domain": {
+    "tact": [
+     "llm_tact_ambient_sound_tick"
+    ]
+   },
+   "transitive_by_domain": {
+    "tact": 2
+   },
+   "site_modules": {
+    "tact": [
+     "tact/tact_ambient_sound.cpp"
+    ]
+   }
+  },
+  {
+   "name": "llm_input_key_dequeue",
+   "category": "input",
+   "notify": false,
+   "n_direct": 1,
+   "n_transitive": 1,
+   "direct_by_domain": {
+    "tact": [
+     "llm_tact_frame"
+    ]
+   },
+   "transitive_by_domain": {
+    "tact": 1
+   },
+   "site_modules": {
+    "tact": [
+     "tact/tact_frame.cpp"
+    ]
+   }
+  },
+  {
+   "name": "llm_input_key_queue_empty",
+   "category": "input",
+   "notify": false,
+   "n_direct": 1,
+   "n_transitive": 1,
+   "direct_by_domain": {
+    "tact": [
+     "llm_tact_frame"
+    ]
+   },
+   "transitive_by_domain": {
+    "tact": 1
+   },
+   "site_modules": {
+    "tact": [
+     "tact/tact_frame.cpp"
+    ]
+   }
+  },
+  {
+   "name": "llm_input_mouse_buttons_get",
+   "category": "input",
+   "notify": false,
+   "n_direct": 1,
+   "n_transitive": 1,
+   "direct_by_domain": {
+    "tact": [
+     "llm_tact_frame"
+    ]
+   },
+   "transitive_by_domain": {
+    "tact": 1
+   },
+   "site_modules": {
+    "tact": [
+     "tact/tact_frame.cpp"
+    ]
+   }
+  },
+  {
+   "name": "llm_input_mouse_delta_pump",
+   "category": "input",
+   "notify": false,
+   "n_direct": 1,
+   "n_transitive": 1,
+   "direct_by_domain": {
+    "tact": [
+     "llm_tact_frame"
+    ]
+   },
+   "transitive_by_domain": {
+    "tact": 1
+   },
+   "site_modules": {
+    "tact": [
+     "tact/tact_frame.cpp"
+    ]
+   }
+  },
+  {
+   "name": "llm_tact_render_view",
+   "category": "display",
+   "notify": false,
+   "n_direct": 1,
+   "n_transitive": 1,
+   "direct_by_domain": {
+    "tact": [
+     "llm_tact_frame"
+    ]
+   },
+   "transitive_by_domain": {
+    "tact": 1
+   },
+   "site_modules": {
+    "tact": [
+     "tact/tact_frame.cpp"
+    ]
+   }
+  },
+  {
+   "name": "media_diag_block",
+   "category": "platform",
+   "notify": false,
+   "n_direct": 1,
+   "n_transitive": 1,
+   "direct_by_domain": {
+    "pre:save": [
+     "game_SaveGame"
+    ]
+   },
+   "transitive_by_domain": {
+    "pre:save": 1
+   },
+   "site_modules": {
+    "save": [
+     "save/save_live.cpp"
+    ]
+   }
+  },
+  {
+   "name": "wide_to_local",
+   "category": "string",
+   "notify": false,
+   "n_direct": 1,
+   "n_transitive": 1,
+   "direct_by_domain": {
+    "sim_resid": [
+     "llm_game_start_tutorial"
+    ]
+   },
+   "transitive_by_domain": {
+    "sim_resid": 1
+   },
+   "site_modules": {
+    "sim": [
+     "sim/resid/sim_start_tutorial.cpp"
+    ]
+   }
+  },
+  {
+   "name": "wide_to_local_bytes",
+   "category": "string",
+   "notify": false,
+   "n_direct": 1,
+   "n_transitive": 1,
+   "direct_by_domain": {
+    "sim_resid": [
+     "llm_strat_planet_session_begin"
+    ]
+   },
+   "transitive_by_domain": {
+    "sim_resid": 1
+   },
+   "site_modules": {
+    "sim": [
+     "sim/resid/sim_planet_session_begin.cpp"
+    ]
+   }
+  },
+  {
+   "name": "fatal",
+   "category": "fatal",
+   "notify": false,
+   "n_direct": 0,
+   "n_transitive": 0,
+   "direct_by_domain": {},
+   "transitive_by_domain": {},
+   "site_modules": {
+    "sim": [
+     "sim/resid/sim_pathfinder_init.cpp",
+     "sim/sim_register_state_handlers.cpp"
+    ]
+   }
+  },
+  {
+   "name": "utils_abort",
+   "category": "fatal",
+   "notify": false,
+   "n_direct": 0,
+   "n_transitive": 0,
+   "direct_by_domain": {},
+   "transitive_by_domain": {},
+   "site_modules": {
+    "tact": [
+     "tact/tact_cfg_keyword.cpp",
+     "tact/tact_character_parse.cpp",
+     "tact/tact_door.cpp",
+     "tact/tact_mission_disposition.cpp",
+     "tact/tact_mission_load.cpp",
+     "tact/tact_mission_parse.cpp",
+     "tact/tact_mission_start.cpp",
+     "tact/tact_unit_spawn.cpp"
+    ]
+   }
+  },
+  {
+   "name": "vfs_seek",
+   "category": "io",
+   "notify": false,
+   "n_direct": 0,
+   "n_transitive": 0,
+   "direct_by_domain": {},
+   "transitive_by_domain": {},
+   "site_modules": {
+    "save": [
+     "save/save_live.cpp"
+    ]
+   }
+  },
+  {
+   "name": "vfs_tell",
+   "category": "io",
+   "notify": false,
+   "n_direct": 0,
+   "n_transitive": 0,
+   "direct_by_domain": {},
+   "transitive_by_domain": {},
+   "site_modules": {
+    "save": [
+     "save/save_live.cpp"
+    ]
+   }
+  }
+ ],
+ "by_domain": {
+  "ai": {
+   "n_direct": 3,
+   "n_transitive": 4,
+   "direct": [
+    "GetResourseFilePtr",
+    "asset_read",
+    "asset_size"
+   ],
+   "transitive": [
+    "GetResourseFilePtr",
+    "ansi_to_wide_scratch",
+    "asset_read",
+    "asset_size"
+   ]
+  },
+  "lib_trans": {
+   "n_direct": 2,
+   "n_transitive": 9,
+   "direct": [
+    "apply_frame_input",
+    "cfg_ReadMapFile"
+   ],
+   "transitive": [
+    "GetResourseFilePtr",
+    "ansi_to_wide_scratch",
+    "apply_frame_input",
+    "asset_read",
+    "asset_size",
+    "cfg_ReadMapFile",
+    "ticks_ms",
+    "transport_recv",
+    "transport_send"
+   ]
+  },
+  "net_session": {
+   "n_direct": 1,
+   "n_transitive": 4,
+   "direct": [
+    "ticks_ms"
+   ],
+   "transitive": [
+    "ansi_to_wide_scratch",
+    "ticks_ms",
+    "transport_recv",
+    "transport_send"
+   ]
+  },
+  "pre:lockstep": {
+   "n_direct": 4,
+   "n_transitive": 7,
+   "direct": [
+    "ansi_to_wide_scratch",
+    "ticks_ms",
+    "transport_recv",
+    "transport_send"
+   ],
+   "transitive": [
+    "GetResourseFilePtr",
+    "ansi_to_wide_scratch",
+    "asset_read",
+    "asset_size",
+    "ticks_ms",
+    "transport_recv",
+    "transport_send"
+   ]
+  },
+  "pre:orders": {
+   "n_direct": 0,
+   "n_transitive": 1,
+   "direct": [],
+   "transitive": [
+    "transport_send"
+   ]
+  },
+  "pre:save": {
+   "n_direct": 10,
+   "n_transitive": 13,
+   "direct": [
+    "ansi_to_wide",
+    "map_load_regions",
+    "map_save_regions",
+    "media_diag_block",
+    "planet_tlo_load",
+    "save_player_data",
+    "vfs_close",
+    "vfs_open",
+    "vfs_read",
+    "vfs_write"
+   ],
+   "transitive": [
+    "ansi_to_wide",
+    "ansi_to_wide_scratch",
+    "map_load_regions",
+    "map_save_regions",
+    "media_diag_block",
+    "planet_tlo_load",
+    "save_player_data",
+    "ticks_ms",
+    "transport_send",
+    "vfs_close",
+    "vfs_open",
+    "vfs_read",
+    "vfs_write"
+   ]
+  },
+  "sim": {
+   "n_direct": 5,
+   "n_transitive": 13,
+   "direct": [
+    "GetResourseFilePtr",
+    "ansi_to_wide_scratch",
+    "asset_read",
+    "map_ReadMap_pre",
+    "ticks_ms"
+   ],
+   "transitive": [
+    "GetResourseFilePtr",
+    "ansi_to_wide_scratch",
+    "asset_read",
+    "asset_size",
+    "map_ReadMap_pre",
+    "map_load_regions",
+    "map_save_regions",
+    "planet_tlo_load",
+    "save_player_data",
+    "ticks_ms",
+    "transport_send",
+    "vfs_close",
+    "vfs_open"
+   ]
+  },
+  "sim_resid": {
+   "n_direct": 8,
+   "n_transitive": 24,
+   "direct": [
+    "ansi_to_wide",
+    "apply_frame_input",
+    "cfg_ReadMapFile",
+    "llm_view_set_size_mode",
+    "map_ReadMap_pre",
+    "ticks_ms",
+    "wide_to_local",
+    "wide_to_local_bytes"
+   ],
+   "transitive": [
+    "GetResourseFilePtr",
+    "ansi_to_wide",
+    "ansi_to_wide_scratch",
+    "apply_frame_input",
+    "asset_read",
+    "asset_size",
+    "cfg_ReadMapFile",
+    "llm_fatal_cleanup",
+    "llm_gfx_apply_window_resolution",
+    "llm_gfx_convert_pixels_565_to_555",
+    "llm_tlo_palette_convert_565_to_555",
+    "llm_tlo_shade_table_build_tact",
+    "llm_view_set_size_mode",
+    "map_ReadMap_pre",
+    "map_save_regions",
+    "rsr_GetFileRealSize",
+    "save_player_data",
+    "ticks_ms",
+    "transport_recv",
+    "transport_send",
+    "vfs_close",
+    "vfs_open",
+    "wide_to_local",
+    "wide_to_local_bytes"
+   ]
+  },
+  "tact": {
+   "n_direct": 17,
+   "n_transitive": 23,
+   "direct": [
+    "GetResourseFilePtr",
+    "ansi_to_wide_scratch",
+    "asset_read",
+    "llm_fatal_cleanup",
+    "llm_gfx_apply_resolution_change",
+    "llm_gfx_apply_window_resolution",
+    "llm_gfx_convert_pixels_565_to_555",
+    "llm_input_key_dequeue",
+    "llm_input_key_queue_empty",
+    "llm_input_mouse_buttons_get",
+    "llm_input_mouse_delta_pump",
+    "llm_snd_play_matching_sample",
+    "llm_tact_render_view",
+    "llm_tlo_palette_convert_565_to_555",
+    "llm_tlo_shade_table_build_tact",
+    "llm_view_set_size_mode",
+    "rsr_GetFileRealSize"
+   ],
+   "transitive": [
+    "GetResourseFilePtr",
+    "ansi_to_wide_scratch",
+    "asset_read",
+    "llm_fatal_cleanup",
+    "llm_gfx_apply_resolution_change",
+    "llm_gfx_apply_window_resolution",
+    "llm_gfx_convert_pixels_565_to_555",
+    "llm_input_key_dequeue",
+    "llm_input_key_queue_empty",
+    "llm_input_mouse_buttons_get",
+    "llm_input_mouse_delta_pump",
+    "llm_snd_play_matching_sample",
+    "llm_tact_render_view",
+    "llm_tlo_palette_convert_565_to_555",
+    "llm_tlo_shade_table_build_tact",
+    "llm_view_set_size_mode",
+    "map_load_regions",
+    "planet_tlo_load",
+    "rsr_GetFileRealSize",
+    "ticks_ms",
+    "transport_send",
+    "vfs_close",
+    "vfs_open"
+   ]
+  }
+ },
+ "by_class": {
+  "display": {
+   "n_callbacks": 4,
+   "n_distinct_direct_callers": 4
+  },
+  "fatal": {
+   "n_callbacks": 3,
+   "n_distinct_direct_callers": 10
+  },
+  "input": {
+   "n_callbacks": 5,
+   "n_distinct_direct_callers": 3
+  },
+  "io": {
+   "n_callbacks": 10,
+   "n_distinct_direct_callers": 8
+  },
+  "map-io": {
+   "n_callbacks": 6,
+   "n_distinct_direct_callers": 7
+  },
+  "net": {
+   "n_callbacks": 2,
+   "n_distinct_direct_callers": 17
+  },
+  "platform": {
+   "n_callbacks": 1,
+   "n_distinct_direct_callers": 1
+  },
+  "render-notify": {
+   "n_callbacks": 3,
+   "n_distinct_direct_callers": 2
+  },
+  "sound": {
+   "n_callbacks": 1,
+   "n_distinct_direct_callers": 1
+  },
+  "string": {
+   "n_callbacks": 4,
+   "n_distinct_direct_callers": 9
+  },
+  "time": {
+   "n_callbacks": 1,
+   "n_distinct_direct_callers": 5
+  }
+ }
+}

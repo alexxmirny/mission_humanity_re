@@ -1,0 +1,147 @@
+{
+  "_comment": "Adversarial-review dispositions for the AI domain, read by tools/migration_loop.py's review_gate(). A function the manifest flags review_required (writes a roster region OR size>p90 OR is root) may not be promoted to `verified` without an entry here. Shape: \"<function name>\": {\"disposition\": \"reviewed\"|\"exempt\", \"session\": \"<YYYY-MM-DD-HHMM>\", \"by\": \"<reimpl-verify workflow / agent>\", \"note\": \"<evidence, or why no shadow/review applies>\"}. A `reviewed` entry MUST name the `session` that ran the review: the driver cross-checks that that session's captured agents (session_reports/loop/<session>/agents.json) actually include an adversarial-review spawn -- a bare `reviewed` with no spawn is rejected. An `exempt` entry needs no agent (it is an explicit human-auditable decision). Keys beginning with _ are comments. Rows verified before the gate landed (2026-08-26) carry explicit grandfather exempt entries (backfilled same day). Two layers now read this file: migration_loop.py gates the TRANSITION to verified per session and cross-checks agent backing; migration_session.py --end fails while ANY review_required+verified row lacks a disposition, so a skip is caught in-session.",
+  "llm_strat_ai_group_reposition_members": {
+    "disposition": "exempt",
+    "session": "",
+    "by": "grandfather backfill (conductor session, 2026-08-26)",
+    "note": "grandfathered -- verified before the review ledger landed 2026-08-26; evidence in the session reports/commits up to that date"
+  },
+  "llm_strat_ai_notify_bldg_constructed": {
+    "disposition": "exempt",
+    "session": "",
+    "by": "grandfather backfill (conductor session, 2026-08-26)",
+    "note": "grandfathered -- verified before the review ledger landed 2026-08-26; evidence in the session reports/commits up to that date"
+  },
+  "llm_strat_ai_notify_object_removed": {
+    "disposition": "exempt",
+    "session": "",
+    "by": "grandfather backfill (conductor session, 2026-08-26)",
+    "note": "grandfathered -- verified before the review ledger landed 2026-08-26; evidence in the session reports/commits up to that date"
+  },
+  "llm_strat_ai_init_build_candidate_priorities": {
+    "disposition": "exempt",
+    "session": "",
+    "by": "grandfather backfill (conductor session, 2026-08-26)",
+    "note": "grandfathered -- verified before the review ledger landed 2026-08-26; evidence in the session reports/commits up to that date"
+  },
+  "llm_strat_ai_mine_portfolio_rebalance": {
+    "disposition": "exempt",
+    "session": "",
+    "by": "grandfather backfill (conductor session, 2026-08-26)",
+    "note": "grandfathered -- verified before the review ledger landed 2026-08-26; evidence in the session reports/commits up to that date"
+  },
+  "llm_strat_ai_rebalance_building_workers": {
+    "disposition": "exempt",
+    "session": "",
+    "by": "grandfather backfill (conductor session, 2026-08-26)",
+    "note": "grandfathered -- verified before the review ledger landed 2026-08-26; evidence in the session reports/commits up to that date"
+  },
+  "llm_strat_ai_scan_construction_sites": {
+    "disposition": "exempt",
+    "session": "",
+    "by": "grandfather backfill (conductor session, 2026-08-26)",
+    "note": "grandfathered -- verified before the review ledger landed 2026-08-26; evidence in the session reports/commits up to that date"
+  },
+  "llm_strat_ai_plan_turret_upgrade": {
+    "disposition": "exempt",
+    "session": "",
+    "by": "grandfather backfill (conductor session, 2026-08-26)",
+    "note": "grandfathered -- verified before the review ledger landed 2026-08-26; evidence in the session reports/commits up to that date"
+  },
+  "llm_strat_ai_scan_bldg_repair_upgrade": {
+    "disposition": "exempt",
+    "session": "",
+    "by": "grandfather backfill (conductor session, 2026-08-26)",
+    "note": "grandfathered -- verified before the review ledger landed 2026-08-26; evidence in the session reports/commits up to that date"
+  },
+  "llm_strat_ai_bldg_queue_process_entry": {
+    "disposition": "exempt",
+    "session": "",
+    "by": "grandfather backfill (conductor session, 2026-08-26)",
+    "note": "grandfathered -- verified before the review ledger landed 2026-08-26; evidence in the session reports/commits up to that date"
+  },
+  "llm_strat_ai_player_tick": {
+    "disposition": "exempt",
+    "session": "",
+    "by": "grandfather backfill (conductor session, 2026-08-26)",
+    "note": "grandfathered -- verified before the review ledger landed 2026-08-26; evidence in the session reports/commits up to that date"
+  },
+  "llm_strat_ai_group_task_drain_reserve_attack": {
+    "disposition": "exempt",
+    "session": "",
+    "by": "grandfather backfill (conductor session, 2026-08-26)",
+    "note": "grandfathered -- verified before the review ledger landed 2026-08-26; evidence in the session reports/commits up to that date"
+  },
+  "llm_strat_ai_group_task_attack_nearest_defended": {
+    "disposition": "exempt",
+    "session": "",
+    "by": "grandfather backfill (conductor session, 2026-08-26)",
+    "note": "grandfathered -- verified before the review ledger landed 2026-08-26; evidence in the session reports/commits up to that date"
+  },
+  "llm_strat_ai_group_task_recruit_from_storage": {
+    "disposition": "exempt",
+    "session": "",
+    "by": "grandfather backfill (conductor session, 2026-08-26)",
+    "note": "grandfathered -- verified before the review ledger landed 2026-08-26; evidence in the session reports/commits up to that date"
+  },
+  "llm_strat_ai_group_classify_target_object": {
+    "disposition": "exempt",
+    "session": "",
+    "by": "grandfather backfill (conductor session, 2026-08-26)",
+    "note": "grandfathered -- verified before the review ledger landed 2026-08-26; evidence in the session reports/commits up to that date"
+  },
+  "llm_strat_ai_unit_should_abandon_target": {
+    "disposition": "exempt",
+    "session": "",
+    "by": "grandfather backfill (conductor session, 2026-08-26)",
+    "note": "grandfathered -- verified before the review ledger landed 2026-08-26; evidence in the session reports/commits up to that date"
+  },
+  "llm_strat_ai_active_unit_tick": {
+    "disposition": "exempt",
+    "session": "",
+    "by": "grandfather backfill (conductor session, 2026-08-26)",
+    "note": "grandfathered -- verified before the review ledger landed 2026-08-26; evidence in the session reports/commits up to that date"
+  },
+  "llm_strat_ai_group_member_link": {
+    "disposition": "reviewed",
+    "session": "2026-08-29-0052",
+    "by": "wf reimpl-verify wf_0eaf1adc-687 (batch: link + unlink + group_remove, 3 reviewers)",
+    "note": "Adversarial review of the group/roster family against tmp/decomp_ai/*.asm returned verdict `equivalent`, 3 of 3 reviewers clean, zero confirmed divergences. The batch was deliberately the three functions that share ONE doubly-linked member chain, so a protocol mismatch between the insert and the remove would be visible to a single reader; none was found. Conductor independently re-derived the append shape from the listing (tail at group+0xc tested @0x004d4a71, head at +0xa, member_count INC @0x004d4ae8 in the shared tail) and it matches the draft."
+  },
+  "llm_strat_ai_group_member_unlink": {
+    "disposition": "reviewed",
+    "session": "2026-08-29-0052",
+    "by": "wf reimpl-verify wf_0eaf1adc-687 (batch: link + unlink + group_remove, 3 reviewers)",
+    "note": "Same batch and verdict as its sibling llm_strat_ai_group_member_link: `equivalent`, 3 of 3 reviewers clean. The pairing was the point -- the reviewers held the insert and the remove together and were asked specifically about head handling, the chain sentinel and whether member_count is maintained by one and not the other."
+  },
+  "llm_strat_ai_group_remove": {
+    "disposition": "reviewed",
+    "session": "2026-08-29-0052",
+    "by": "wf reimpl-verify wf_0eaf1adc-687 (batch: link + unlink + group_remove, 3 reviewers)",
+    "note": "Same batch, verdict `equivalent`, 3 of 3 reviewers clean. Reviewed with the two chain primitives it walks, and briefed that its write closure reaches the order queue at depth 3 through llm_strat_unit_order_exit_storage_enqueue, so the enqueue arguments are externally observable."
+  },
+  "llm_strat_ai_commit_attack_order": {
+    "disposition": "reviewed",
+    "session": "2026-08-29-0052",
+    "by": "wf reimpl-verify wf_80fdeb0d-c10 (batch: the commit pair, 3 reviewers)",
+    "note": "Verdict `equivalent`, 3 of 3 reviewers clean, zero confirmed divergences. The pair was batched on purpose: the two bodies are near-identical and the brief asked reviewers to establish exactly what differs (the unit-branch enqueue callee) and to check the draft had not made them the same or swapped the difference."
+  },
+  "llm_strat_ai_commit_attack_order_alt": {
+    "disposition": "reviewed",
+    "session": "2026-08-29-0052",
+    "by": "wf reimpl-verify wf_80fdeb0d-c10 (batch: the commit pair, 3 reviewers)",
+    "note": "Same batch and verdict as llm_strat_ai_commit_attack_order: `equivalent`, 3 of 3 reviewers clean."
+  },
+  "llm_strat_ai_players_tick": {
+    "disposition": "reviewed",
+    "session": "2026-08-29-0052",
+    "by": "wf reimpl-verify wf_2ef3fcc2-a46 (batch: players_tick + notify_unit_lifecycle, 3 reviewers + adjudicator)",
+    "note": "Verdict `equivalent`. ONE note-severity item was raised and adjudicated as NOT a divergence: the five loop bounds are an unsigned CMP/JC in the original (0x004db985, 0x004db9b7, 0x004dba25, 0x004dba93, 0x004dbb08) against a signed `p < *v.active_player_count` in the draft -- identical for every value the field can hold ([0, MAX_PLAYERS]), and reaching a difference needs active_player_count already negative. Recorded rather than dropped. The header's own NaN/unordered-comparison choice (`!(s >= clock)` matching JNC) was reviewed and not disputed; the oracle cannot exercise it, and that limit is stated in the session report."
+  },
+  "llm_strat_ai_notify_unit_lifecycle": {
+    "disposition": "reviewed",
+    "session": "2026-08-29-0052",
+    "by": "wf reimpl-verify wf_2ef3fcc2-a46 (batch: players_tick + notify_unit_lifecycle, 3 reviewers + adjudicator)",
+    "note": "Verdict `equivalent`. ONE note-severity item, adjudicated as NOT a divergence: the draft casts uint32_t unit_id to int32_t before each roster-index computation while the original IMULs the raw 32-bit register (0x004dbb85, 0x004dbb8b) -- bit-identical on this target under two's-complement narrowing/widening, and unit_id is bounded to UNITS_PER_PLAYER anyway. Reviewers were asked specifically whether `notify_report` (added for testability) changed any control flow or any write; they found it did not."
+  }
+}

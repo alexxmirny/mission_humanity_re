@@ -1,0 +1,986 @@
+{
+ "_comment": "LIB-ABI adjudication ledger (docs/endgame-plan.md D-E3): every OUTWARD callee of the migrated modules that has no C++ body carries a class here. The 689 already-translated callees are NOT rows -- their disposition (rebind) is derived by gen_libmh_calls.py from the migration ledgers. Populated 2026-09-01 by an 8-batch read-only fan-out + central reconciliation (tools/oneoff/2026-09-01-build-libmh-ledger.py); hand-maintained from here on. gen_libmh_calls.py --check refuses an unadjudicated callee. Classes: translate | host-callback:{render-notify,sound,platform,map-io} | event-channel:{event,screen,invalidate} (LIFT-EVQ/NOTIFY/SCREEN: lifted off the fine table onto the designed notify surface, libmh_host_events.h) | deleted (SIMABI-HOOKS 2026-09-10: the entry left the host table and libmh makes NO call in its place -- a TERMINAL class, kept as the record of the decision; gen_libmh_calls exempts it from the orphan gate and fails if a migrated module ever calls the name again) | cfg-snapshot | crt | dead | mixed (needs splitting at LIB-ABI) | unsure (needs a decision). VENDORED CALLEES ARE NOT ROWS, for the same reason translated ones are not: the row records an adjudication for a callee with no C++ body, and once a body exists the disposition is a fact about the code rather than a decision in a table. The sprintf family (12 shapes over utils_sprintf@0x4cfb9c and w_sprintf@0x4d0320, 39 sites) left this ledger on 2026-09-08 when crt/crt_sprintf.h supplied the bodies and crt/crt_select.h routed the sites through MH_CRT(); its reasoning lives in that header's banner and its oracle is `net_selftest crttest`. A NEW site spelled mh::call::w_sprintf__* would come back as unadjudicated, which is the ratchet working, not a regression. The two `host-callback:chat` rows -- llm_ui_chat_recalc_target_mode @0x0049d631 and llm_ui_chat_target_add @0x0049d5c1 -- left the same way on 2026-09-10 (SIMABI-CHAT), for the same stated reason: libmh now has BODIES for them (libmh/lockstep/lt_chat_ally_mask.cpp), so the disposition is a fact about the code and the reasoning lives in that header's banner. NOT the `deleted` class, which would be a false claim here: libmh does make a call in their place -- its own -- and the ORIGINALS stay live for the untranslated UI callers (llm_ui_chat_target_remove, llm_ui_diplomacy_apply_and_resume), which is the dual-writer story the row would have had no way to say.",
+ "callees": {
+  "GetResourseFilePtr": {
+   "class": "host-callback:io",
+   "confidence": "high",
+   "reason": "Copy a named record from the game's packed resource files (gfx, glyphs, mission bytes, AI scripts, base layouts) into the CALLER's buffer: at most `dst_cap` bytes, returning the asset's FULL length so a caller can detect truncation, or -1 if there is no such asset. `dst` may be null when `dst_cap` is 0 -- the size query, which loads nothing. A COPY, not a pointer, and that is the point: the entry used to hand back the host's own allocation and two sim sites FREED it through the vendored CRT (a cross-heap free that breaks any host not allocating from the game's heap). mh.dll's binder does ptr -> copy -> the game's own free internally, so retail behaviour is unchanged and no libmh site owns a host pointer.",
+   "abi": {
+    "name": "asset_read",
+    "ret": "int32_t",
+    "params": [
+     [
+      "const char *",
+      "name"
+     ],
+     [
+      "void *",
+      "dst"
+     ],
+     [
+      "uint32_t",
+      "dst_cap"
+     ]
+    ],
+    "bind": "mh::hostapi::io::asset_read"
+   },
+   "tact_frozen": {
+    "abi": null,
+    "reason": "Return a pointer to a named record inside the game's packed resource files (gfx, glyphs, mission bytes): a generic loader, not map-specific. tact/ reads the returned bytes and, at one site, the two 16-bit header words in front of them; it never frees the pointer, so the allocation must stay valid for the rest of the session. THE FROZEN SHAPE: the sim side reshaped this entry to asset_read (a copy) at SIMABI-VFS; tact's copy keeps the pointer-returning form, which is exactly what duplication is for."
+   }
+  },
+  "atoi": {
+   "class": "crt",
+   "confidence": "high",
+   "reason": "Watcom CRT atoi (FID-identified)"
+  },
+  "cfg_ReadMapFile": {
+   "class": "host-callback:map-io",
+   "confidence": "high",
+   "reason": "PRE-FORK ONLY (DEFER-BLOB). Parse a .MP map file into the caller's map_header. AND IT IS NOT PURE IO, which is the thing to carry across: it writes real sim geometry -- width/height, and through llm_map_setup_dimensions the torus masks and pathfinder_params->width_mask. A host that returns only the header fields it thinks matter breaks pathfinding. The group is called map-io because that is how these entries reach the disk; six of the seven are PARSES wearing an io hat. Kept as-is pre-fork by the 2026-09-03 decision, superseded fork-side by the LIB-WORLD blob. NOTE the buffer contract: it writes PAST mh_cfg_struct_map_header's 0x17c for maps carrying the mission tail (measured high-water 0x189), which is why libmh hands it 0x248 bytes of backing. WHAT LIB-WORLD'S BLOB MUST CARRY TO RETIRE THIS ENTRY -- the parse OUTPUT libmh consumes, not the .MP bytes (re-verified at SIMABI-MAPIO 2026-09-10 against the body @0x004a3b9d and both libmh sites): (1) the globals `width` and `height` (RID_WIDTH / RID_HEIGHT, 4 B each, MF_VIEW|MF_MEASURED|MF_SAVE); (2) `current_map_data.tlo_name` (+0x11c, 12 B, RID_CURRENT_MAP_DATA) -- the tileset NAME, which is what the parse produces. THE RESOLVED TLO INDEX IS NOT THIS ENTRY'S OUTPUT, corrected here: it is one hop downstream, libmh's own body calling cfg_GetTloIndex on that string (sim/libtrans/sim_lt_cfg_planet.cpp:113), and since LIFT-TABLE S3 the index crosses host-side inside LIBMH_EVK_INV_PLANET_GFX_SETUP rather than landing in a region at all. Both libmh sites read the header back for tlo_name and nothing else (sim_lt_cfg_planet.cpp:113; sim/resid/sim_start_tutorial.cpp:148, which strcpy's it into the HASHED Planets[0x1f].tlo_file), and both DISCARD the return -- the `< 0` failure test exists only in the untranslated lobby callers (llm_lobby_map_transfer_finalize, llm_cfg_map_verify_version). THE TORUS MASKS ARE NOT BLOB FIELDS EITHER: general.{width_mask,height_mask,big_width,big_height,bw_mask,bh_mask} and pathfinder_params->width_mask are DERIVED from width/height by llm_map_setup_dimensions @0x004989c2, a body libmh already owns translated and shadow-armed (sim/libtrans/sim_lt_map_setup_dimensions.cpp) and already re-invokes on the load path (save/save_live.cpp:466). It could not be otherwise for the pathfinder byte: its storage is a malloc'd 0x20-byte block reached through general.pathfinder_params (+0xc), heap and NOT a bound region, so a step-0 region dump cannot capture it and the importer must re-derive. Written but NOT consumed by libmh, hence not blob fields: header player_count/checksum/file_size/footer (the lobby transfer check and version verifier read those) and the global `version`. THE NAME IS DELIBERATELY THE ORIGINAL ONE (SIMABI-NAMES, 2026-09-10), and it is the pre-fork stamp: every other surviving entry was renamed to an abstract name that promises a permanent host contract, which is exactly the promise a DEFER-BLOB row does not make -- this entry is scheduled to LEAVE the surface when LIB-WORLD's blob carries the outputs listed above. An abstract name here would read as an obligation a standalone host must implement forever; the original callee's name says instead 'this is the pre-fork binary's own parse, still here because the blob is not'."
+  },
+  "file_seek": {
+   "class": "host-callback:io",
+   "confidence": "high",
+   "reason": "Set a handle's position: `whence` 0 = from the start, 1 = from the current position, 2 = from the end. Returns 0 on success. NOT AN ORIGINAL-GRAPH EDGE: libmh's own container writer authored these calls (libmh/save/save_live.cpp) to learn an already-written per-planet file's length, which the original does with the same primitive. SIMABI-VFS tried to retire this pair by threading the written byte count instead, and the retirement is UNSOUND -- see vfs_tell. (The routing census reports 0 direct callers for this entry and for vfs_tell; that is the census's blind spot for libmh-authored calls, not a dead entry -- both are verified live in src/mh_dll.)",
+   "abi": {
+    "name": "vfs_seek",
+    "ret": "int32_t",
+    "params": [
+     [
+      "int32_t",
+      "handle"
+     ],
+     [
+      "int32_t",
+      "offset"
+     ],
+     [
+      "int32_t",
+      "whence"
+     ]
+    ],
+    "bind": "mh::hostapi::io::vfs_seek"
+   }
+  },
+  "file_tell": {
+   "class": "host-callback:io",
+   "confidence": "high",
+   "reason": "Report a handle's position, and must agree with what vfs_seek accepts. Same provenance as vfs_seek. THE PAIR IS PERMANENT, not a leftover: the .sav embeds EVERY visited planet's save%02d.dat size-prefixed, and those files are written by three separate original roots (game_SaveGame 0x0044719a, SwitchToPlanet 0x0044cece, try_enter_tactical_mission 0x0044d38f), two of them untranslated and at arbitrary earlier instants -- so at most one member's length is ever knowable from the writing path. The container learns the other lengths from the files.",
+   "abi": {
+    "name": "vfs_tell",
+    "ret": "int32_t",
+    "params": [
+     [
+      "int32_t",
+      "handle"
+     ]
+    ],
+    "bind": "mh::hostapi::io::vfs_tell"
+   }
+  },
+  "floor": {
+   "class": "crt",
+   "confidence": "high",
+   "reason": "Watcom CRT floor (FID)"
+  },
+  "game_ui_PrintTextMessage": {
+   "class": "event-channel:event",
+   "confidence": "high",
+   "reason": "LIFT-NOTIFY text surface (2026-09-03, slice 4): converted to LIBMH_EVTK_TEXT_MAIN over libmh_set_text_sink/libmh_poll_texts -- composition stays at the sites (non-hashed scratch), the emit carries the composed UTF-16 string (sync sink gets the caller's pointer, queue mode copies), the hosted sink routes onto the original thunk. Original reason: forward to AddTextToPrintQueue."
+  },
+  "getAsciiVer": {
+   "class": "host-callback:string",
+   "confidence": "high",
+   "reason": "Convert a wide (UTF-16) string to the local ANSI code page and return the converted bytes. STRICT CONTRACT (SIMABI-STRING 2026-09-10): reproduce the bytes Win32's WideCharToMultiByte(CP_ACP, ...) produces on the machine's own ANSI code page -- an equivalent encoding is NOT a substitute, and an ASCII truncation is exact for this build's own text and silently wrong for a non-ASCII text table. THE 'misfit -> init data' LINE IS REFUTED (measured 2026-09-09): this is that call, the structural twin of utils_wide_to_short_str, live from nine sites -- error dialogs, building construct, the lobby map picker -- not a boot-time table. AND IT FEEDS HASHED SIM STATE, which this row denied until 2026-09-10 and is the correction it now carries: llm_strat_planet_session_begin passes the returned pointer to llm_strat_player_profile_init as name_str (sim/resid/sim_planet_session_begin.cpp), whose body -- decompiled at 0x00454985, the byte-pair copy loop at the top -- copies it into _G_LLM_STRAT_PLAYERS[player].name (0x00cff060, stride 0x740), inside the 14848-byte `strat_players` slice HIDX_STRAT_PLAYERS, hashed RAW with no mask. So wide_to_local is NOT 'the one entry in this table whose result feeds hashed state': THERE ARE TWO, and a host whose codec returns different bytes here diverges on the very next state hash exactly as it would there. MEASURED, not argued: simtest's sim_planet_session_begin T12 flips one byte of this entry's returned buffer at that sim site and the `strat_players` slice hash moves, and reverting it restores the hash exactly. THE CP_ACP MULTIPLAYER HAZARD IS A NAMED DEFERRED DECISION OWNED BY LIB-FORK (first bites at LIB-REF, whose headless host must either implement the locale codec or declare the divergence): two peers on two Windows locales hash different bytes, which is retail's own behaviour, and vendoring a fixed codec into libmh would fix it while breaking R5's hosted premise -- so it is a declared, user-approved divergence taken at its own slice on the llm_strat_rng_seed_wallclock_seconds precedent, NEVER a silent vendor. RULED 2026-09-12 (F0-CPACP, user): KEEP CP_ACP -- retail-faithful, the same-locale MP requirement documented; the post-fork direction is full UTF-8/multilanguage text (docs/fork-plan.md, post-F5), which retires this question rather than re-answering it.",
+   "abi": {
+    "name": "wide_to_local_bytes",
+    "ret": "uint32_t",
+    "params": [
+     [
+      "void *",
+      "str"
+     ]
+    ]
+   }
+  },
+  "gfx_LoadSprite": {
+   "class": "event-channel:invalidate",
+   "confidence": "high",
+   "reason": "LIFT-TACT slice B (2026-09-09): converted to LIBMH_EVK_INV_TACT_CURSOR_SPRITE {a=sprite id}. An asset ID, not a bitmap. Its one libmh site is llm_tact_frame's cursor pick, and the id is chosen from LAST frame's hovered_unit_id -- render_view updates that at step 15, after -- which is the original's own ordering and is preserved by the synchronous-at-emit dispatch."
+  },
+  "llm_build_media_diag_report": {
+   "class": "host-callback:platform",
+   "confidence": "high",
+   "reason": "Produce the 0x400-byte media/CD diagnostic block libmh appends as the last block of a .sav. WHAT A HOST SUPPLIES: 0x400 bytes. THE CONTENTS ARE INERT, measured rather than assumed: the function has exactly two call sites image-wide (the main-menu load, which discards the return, and game_SaveGame), and llm_game_load stops at its last wanted member and never reads another byte -- traced to its utils_close_file, and independently recorded in docs/save-format.md. So a fixed placeholder satisfies the format and nobody needs to issue an mciSendCommandA CD/TOC query. IT STAYS REQUIRED RATHER THAN BECOMING A LIBMH-INTERNAL PLACEHOLDER, which is where the plan's 'reclasses toward internal/stub' line ran out: libmh generating the placeholder itself would make the HOSTED save differ from the original's byte-for-byte, and this entry is exactly the seam that lets mh.dll keep producing the real bytes while a standalone host produces any 0x400 it likes.",
+   "abi": {
+    "name": "media_diag_block",
+    "ret": "void *",
+    "params": []
+   }
+  },
+  "llm_cam_jump_queue_clear": {
+   "class": "event-channel:event",
+   "confidence": "high",
+   "reason": "LIFT-NOTIFY slice 2 (2026-09-03): converted to LIBMH_EVK_CAM_JUMP_QUEUE_CLEAR. Void, scalar payload; hosted sink routes onto the thunk synchronously at emit; mh::state::evt adapter keeps the member signature identical."
+  },
+  "llm_debug_log_msg_stub": {
+   "class": "deleted",
+   "confidence": "high",
+   "reason": "DELETED FROM THE SURFACE at SIMABI-HOOKS (2026-09-10). The game's debug-log sink, gutted in retail (0x004ee8df, stack probe + return, re-verified in the DB) -- the message pointer is never read, so the string was never emitted in retail either. Its one libmh site was ai_reinforcements' no-candidate path. Nothing may call it again."
+  },
+  "llm_fatal_cleanup": {
+   "class": "host-callback:fatal",
+   "confidence": "high",
+   "reason": "Release the game's own resources on the fatal path, ahead of utils_abort. Also called from two TACTICAL bodies that are not parsers (tact_door, tact_unit_spawn), which is why it survives the mission-load cluster's disposition. It must be safe to call with the world inconsistent -- that is the only state it is ever called in."
+  },
+  "llm_game_save_player_data": {
+   "class": "host-callback:map-io",
+   "confidence": "high",
+   "reason": "Write the per-player profile block. Byte-compatible output is a permanent guarantee of the frozen side, so this is a format obligation rather than a convenience.",
+   "abi": {
+    "name": "save_player_data",
+    "ret": "void",
+    "params": [
+     [
+      "void *",
+      "save_file"
+     ]
+    ]
+   }
+  },
+  "llm_gfx_apply_resolution_change": {
+   "class": "host-callback:display",
+   "confidence": "high",
+   "reason": "REQUIRED under R3b (class flipped to match at LIFT-TABLE S1, 2026-09-09 -- the row said KEPT REQUIRED in prose while shipping notify:1, i.e. telling a headless host it could bind a no-op).  KEPT REQUIRED under R3b (LIFT-TACT slice B2, 2026-09-09), same reversal and same reason as its sibling llm_gfx_apply_window_resolution. Closure 107 functions, sixteen regions read by translated libmh. The same-call readback is measured rather than assumed: it writes MAP_REGION_LIST_HEAD, and llm_tact_mission_end_return_to_strategic calls map_LoadPlanetFromDisk on the very next line, which reaches llm_map_region_pool_reset / merge_small_regions / recompute_adjacency (checked against the committed call graph)."
+  },
+  "llm_gfx_apply_window_resolution": {
+   "class": "host-callback:display",
+   "confidence": "high",
+   "reason": "REQUIRED under R3b (class flipped to match at LIFT-TABLE S1, 2026-09-09 -- the row said KEPT REQUIRED in prose while shipping notify:1, i.e. telling a headless host it could bind a no-op).  KEPT REQUIRED under R3b (LIFT-TACT slice B2, 2026-09-09) -- the conversion was WRITTEN and then REVERTED on the gate's measurement, which is the epistemics clause doing its job. Its closure is 81 functions and it re-derives fifteen regions translated libmh reads, including GFX_DRAW_SURFACE and FRAMEBUFFER -- and llm_tact_mission_start, the one emitter, reads BOTH later in the SAME CALL: the 480-row intro blit at tact_mission_start.cpp:150-151 uses gfx_draw_surface as its source and gfx_framebuffer as its destination. A frame-edge drain would run that blit between the old surface pointers. This is not a notification, it is the host reconfiguring the display and libmh depending on the result, which is exactly the case R3b makes required-class."
+  },
+  "llm_gfx_convert_pixels_565_to_555": {
+   "class": "host-callback:render-notify",
+   "confidence": "med",
+   "reason": "sprite pixel format conversion"
+  },
+  "llm_gfx_draw_cursor_menu": {
+   "class": "event-channel:screen",
+   "confidence": "high",
+   "reason": "LIFT-RESID slice 2 (2026-09-09): LIBMH_EVK_SCR_CURSOR_MENU_DRAW. Void, signature-identical. Sole libmh caller was llm_tutorial_step_driver, so the entry LEAVES the surface."
+  },
+  "llm_gfx_draw_text_rgb": {
+   "class": "event-channel:event",
+   "confidence": "high",
+   "reason": "LIFT-TACT slice B (2026-09-09): converted to the TEXT surface as LIBMH_EVTK_TEXT_TACT_EXIT_CONFIRM. Its one libmh site draws the tactical exit-confirm prompt at a literal (0x96, 0xf0) in literal white, so only the composed string crosses and the geometry stays in the sink -- the same division the three existing text kinds make. libmh keeps the sprintf composition: that is its own string work, on non-hashed scratch."
+  },
+  "llm_gfx_font_desc_for_flags": {
+   "class": "event-channel:screen",
+   "confidence": "high",
+   "reason": "Absorbed into LIBMH_EVK_SCR_TUT_HINT_LAYOUT. Every libmh site discarded the descriptor pointer it returned (dead stack stores at 0x004bad0f/0x004bad41), and its only remaining consumer was the tutorial hint widget's layout, which is host-side now. This supersedes the asset-metrics REQUIRED reading in docs/libmh-abi.md, which was derived from the entry's purity rather than from its caller set."
+  },
+  "llm_gfx_font_select": {
+   "class": "event-channel:invalidate",
+   "confidence": "high",
+   "reason": "LIFT-TACT slice A closes (2026-09-09): absorbed into LIBMH_EVK_INV_TACT_SEL_PANEL_INIT. Its ONE libmh site was ui_sel_panel_init's draw head, which selects font 0 and then font 1 -- both calls, in that order, even though only font 1 is live for the two labels that follow. That ordering is preserved in the sink rather than tidied."
+  },
+  "llm_gfx_load_all_sprite_banks": {
+   "class": "event-channel:invalidate",
+   "confidence": "high",
+   "reason": "LIFT-TACT slice B2 (2026-09-09): converted to LIBMH_EVK_INV_ALL_SPRITE_BANKS -- the strategic banks coming back on the way out. Same buffer family as llm_tact_gfx_load_banks_alt and the same absence of a translated reader."
+  },
+  "llm_gfx_load_planet_extra_sprite_banks": {
+   "class": "event-channel:invalidate",
+   "confidence": "high",
+   "reason": "CONVERTED at SIMABI-NOTIFY (2026-09-10) to LIBMH_EVK_INV_PLANET_EXTRA_SPRITE_BANKS, no payload. The row's own previous text is what licensed it: PURELY PRESENTATION since LIFT-TABLE S2/S3 (nothing it touches is hashed; the host owns the bank[] table it walks), sitting in the map-io group only because it reaches the disk the same way -- and its notify:false was that group's class string, not a measurement of this entry (the S1 trap, uncaught for this row). Section 0a's direction settles the rest: a gfx leaf leaves. Its one libmh site (save_live.cpp:462, 0x00448649) is void, unconditional, and the last statement of run_ours_load_planet before `return 1`, so nothing is consumed (R3) and nothing is read back by the emitter (R3b). Its subtree is a SUBSET of LIBMH_EVK_INV_ALL_SPRITE_BANKS's -- the original llm_gfx_load_all_sprite_banks calls it -- so the sprite-table readers carry that scope's already-measured later-frame disposition."
+  },
+  "llm_gfx_present_flip": {
+   "class": "event-channel:screen",
+   "confidence": "high",
+   "reason": "LIBMH_EVK_SCR_PRESENT_FLIP. Void, signature-identical. Both libmh callers (the tutorial pair) are converted, so the entry leaves the surface."
+  },
+  "llm_gfx_sprite_pix_offsets_init": {
+   "class": "event-channel:invalidate",
+   "confidence": "high",
+   "reason": "LIFT-TACT slice B2 (2026-09-09): converted to LIBMH_EVK_INV_SPRITE_PIX_OFFSETS. One libmh site, at the tail of mission_start; the sprite_pix_offsets entries tact_door reads are a structurally different index range and are not a TACT_HASH_REGIONS member either way."
+  },
+  "llm_gfx_sprite_width": {
+   "class": "event-channel:screen",
+   "confidence": "high",
+   "reason": "Absorbed into LIBMH_EVK_SCR_TUT_HINT_LAYOUT. An asset metric whose only libmh consumer was the tutorial hint widget's geometry; widget and arithmetic moved host-side together because the widget is MF_VIEW-only, unhashed and host_free, and libmh never reads the geometry back."
+  },
+  "llm_gfx_ui_sprite_get_header_field2": {
+   "class": "event-channel:screen",
+   "confidence": "high",
+   "reason": "Absorbed into LIBMH_EVK_SCR_TUT_HINT_LAYOUT, same reasoning as llm_gfx_sprite_width above."
+  },
+  "llm_gfx_view_metrics_init": {
+   "class": "event-channel:invalidate",
+   "confidence": "high",
+   "reason": "LIFT-TACT slice B2 (2026-09-09): converted to LIBMH_EVK_INV_GFX_VIEW_METRICS. This one had a REAL R3b readback at the time slice B2 was measured -- it writes _G_LLM_GFX_PANEL_ROW_SKIP, which llm_tact_ui_sel_panel_init read three times in the same mission_start call chain -- and it dissolved rather than being argued away: slice A moved that draw head host-side, and _G_LLM_GFX_PANEL_ROW_SKIP now has ZERO translated readers (all five remaining references are in mh.dll's own sink). Re-measured after slice A landed, not assumed."
+  },
+  "llm_input_key_dequeue": {
+   "class": "host-callback:input",
+   "confidence": "high",
+   "reason": "Pop the next key event from the host's input queue, or report empty. REQUIRED per R10, and NOT convertible to a polled-state query: the game consumes AT MOST ONE hotkey per frame, and a 'what is held right now' interface would change that semantics silently. WHAT A HOST SUPPLIES: a FIFO of key events, drained one per call, in the order the player produced them."
+  },
+  "llm_input_key_queue_empty": {
+   "class": "host-callback:input",
+   "confidence": "high",
+   "reason": "Report whether the key queue has anything in it, without consuming. The tactical frame asks this before dequeuing; a host that answers wrongly either drops the player's input or feeds a stale/garbage event into an order. It measures as tact-only in the translated tree, which is a translation-frontier artefact -- the original has SIX non-tact callers (llm_strat_input_update, llm_ui_menu_transition_settle, llm_ui_modal_key_pump, ...)."
+  },
+  "llm_input_mouse_buttons_get": {
+   "class": "host-callback:input",
+   "confidence": "high",
+   "reason": "The current mouse button mask. Pushed-model exception by necessity: buttons are level state, not events, and the game samples them per frame. WHAT A HOST SUPPLIES: the mask as of the frame libmh is stepping, stable for the duration of that frame -- a mask that changes mid-frame produces selections that begin and end in different worlds."
+  },
+  "llm_input_mouse_delta_pump": {
+   "class": "host-callback:input",
+   "confidence": "high",
+   "reason": "Accumulated mouse movement since the last call, and it is a PUMP: the act of asking clears the accumulator. A host that returns absolute position here makes the cursor accelerate away."
+  },
+  "llm_lobby_map_recv_step_stub": {
+   "class": "deleted",
+   "confidence": "high",
+   "reason": "DELETED FROM THE SURFACE at SIMABI-HOOKS (2026-09-10). Empty at 0x0049bfa5 (stack probe + return, re-verified in the DB); one site, in llm_strat_session_begin_multi, void and unconditional. The same-name loop in docs/mp-bootstrap.md is untranslated lobby code, not this path. Nothing may call it again."
+  },
+  "llm_map_cam_mark_viewport_dirty": {
+   "class": "event-channel:invalidate",
+   "confidence": "high",
+   "reason": "LIFT-NOTIFY slice 2 (2026-09-03): converted to LIBMH_EVK_INV_VIEWPORT (invalidate). Void, scalar payload; hosted sink routes onto the thunk synchronously at emit; mh::state::evt adapter keeps the member signature identical."
+  },
+  "llm_map_cam_set_col": {
+   "class": "event-channel:event",
+   "confidence": "high",
+   "reason": "LIFT-NOTIFY slice 2 (2026-09-03): converted to LIBMH_EVK_CAM_SET_COL {a=col}. Void, scalar payload; hosted sink routes onto the thunk synchronously at emit; mh::state::evt adapter keeps the member signature identical."
+  },
+  "llm_map_cam_set_row": {
+   "class": "event-channel:event",
+   "confidence": "high",
+   "reason": "LIFT-NOTIFY slice 2 (2026-09-03): converted to LIBMH_EVK_CAM_SET_ROW {a=row}. Void, scalar payload; hosted sink routes onto the thunk synchronously at emit; mh::state::evt adapter keeps the member signature identical."
+  },
+  "llm_map_load_regions": {
+   "class": "host-callback:map-io",
+   "confidence": "high",
+   "reason": "Load the precomputed map-region decomposition for the current planet. It sits on the LZW block codec libmh already owns byte-verified as mh::save::read_block/write_block, so a host CAN implement it without the original -- but it must produce the same decomposition, because pathfinding indexes into it.",
+   "abi": {
+    "name": "map_load_regions",
+    "ret": "void",
+    "params": [
+     [
+      "int32_t",
+      "file_handle"
+     ]
+    ]
+   }
+  },
+  "llm_map_save_regions": {
+   "class": "host-callback:map-io",
+   "confidence": "high",
+   "reason": "Write the map-region decomposition back, over the same LZW block codec as map_load_regions. The bytes must be readable by that entry and by the original game.",
+   "abi": {
+    "name": "map_save_regions",
+    "ret": "void",
+    "params": [
+     [
+      "int32_t",
+      "file_handle"
+     ]
+    ]
+   }
+  },
+  "llm_map_set_zoom_scale": {
+   "class": "event-channel:event",
+   "confidence": "high",
+   "reason": "LIFT-NOTIFY slice 2 (2026-09-03): converted to LIBMH_EVK_VIEW_ZOOM_SCALE {a,b/c,d = double bit patterns}. Void, scalar payload; hosted sink routes onto the thunk synchronously at emit; mh::state::evt adapter keeps the member signature identical."
+  },
+  "llm_math_atan": {
+   "class": "crt",
+   "confidence": "high",
+   "reason": "CRT IF_ATAN dispatcher"
+  },
+  "llm_menu_build_placement_pending_clear": {
+   "class": "event-channel:event",
+   "confidence": "high",
+   "reason": "LIFT-NOTIFY slice 2 (2026-09-03): converted to LIBMH_EVK_MENU_PLACEMENT_CLEAR. Void, scalar payload; hosted sink routes onto the thunk synchronously at emit; mh::state::evt adapter keeps the member signature identical."
+  },
+  "llm_menu_tutorial_uistate_restore": {
+   "class": "event-channel:screen",
+   "confidence": "high",
+   "reason": "LIFT-RESID slice 2 (2026-09-09): LIBMH_EVK_SCR_TUT_UISTATE_RESTORE. Void, signature-identical binder swap. Two sites, both in llm_tutorial_step_driver (the idle gate and the done arm). Sole libmh caller was that body, so the entry LEAVES the surface."
+  },
+  "llm_net_lockstep_extend_ui_enter": {
+   "class": "event-channel:screen",
+   "confidence": "high",
+   "reason": "LIFT-SCREEN (2026-09-03): SPLIT and converted. The entry was three statements -- GAME_MODE_SAVED = GAME_MODE @0x004c85c8, llm_net_lockstep_wait_player_overlay_show @0x004c85e8, GAME_MODE = 8 @0x004c85ed -- i.e. the same shape as the four LIB-ABI stage E split, which missed it only because it hangs off sim_order_dispatch's calls struct. The two mode stores are libmh's at the call site (own.game_mode() for the =8, an ovl_mode_saved_set call slot for the saved-mode store, which resync_complete_local reads back); the overlay is LIBMH_EVK_SCR_WAIT_PLAYER_SHOW, the kind slice 1 already opened. No arming latch at this site, unlike the timekeeper's sibling: the overlay's internal mode-3 write is unobservable because nothing runs between it and the =8. llm_net_lockstep_wait_player_overlay_show joined sim_effect_classes.json as effectful (fake_return 1) so the shadow gate moves with the call."
+  },
+  "llm_net_lockstep_hook_stub": {
+   "class": "deleted",
+   "confidence": "high",
+   "reason": "DELETED FROM THE SURFACE at SIMABI-HOOKS (2026-09-10). Empty at 0x0049bc88 (stack probe + return, re-verified in the DB); its one site was the timekeeper's self-match branch, where it was the branch's ONLY statement -- the branch itself is kept (it is what keeps a self-match out of the leader/removal path), the call is gone. Nothing may call it again."
+  },
+  "llm_net_lockstep_overlay_dismiss": {
+   "class": "event-channel:screen",
+   "confidence": "high",
+   "reason": "LIFT-SCREEN slice 1 (2026-09-03): converted to LIBMH_EVK_SCR_OVERLAY_DISMISS on the SCREEN channel. Int-returning member kept by an _i32 adapter returning 0; the only capture (presence_lost's `ret`) feeds that function's own ignored return. Hosted sink routes onto the thunk synchronously at emit (R5-exact); stage E had already hoisted this entry's load-bearing state writes into libmh at the call site, so what crosses is the visual remainder."
+  },
+  "llm_net_lockstep_sync_overlay_show": {
+   "class": "event-channel:screen",
+   "confidence": "high",
+   "reason": "LIFT-SCREEN (2026-09-03), the R9 conversion: converted to LIBMH_EVK_SCR_SYNC_OVERLAY_SHOW. The entry fused a screen ARM with a POLL of _G_LLM_NET_LOCKSTEP_OVERLAY_RESULT (0x0065679a) and returned the answer; the record carries the arm and the answer arrives PUSHED via libmh_submit_screen_answer (LIBMH_SCR_ANS_LOCKSTEP_KICK) -- hosted, the site reads the game's global through overlay_hoist_ops::overlay_result; standalone, libmh's own slot. Ordering law at the site: read, clear, then emit, and NO emit on the answered arm (an answer exists only while the LOCKSTEP_SYNC list is installed, so the original's arm guard cannot hold there) -- that arm reproduces the original's tail overlay_dismiss at its own instant instead. Hosted sink routes the record onto the thunk synchronously at emit (R5-exact); its poll half then reads the -1 libmh just wrote and does nothing."
+  },
+  "llm_net_lockstep_wait_player_overlay_show": {
+   "class": "event-channel:screen",
+   "confidence": "high",
+   "reason": "LIFT-SCREEN slice 1 (2026-09-03): converted to LIBMH_EVK_SCR_WAIT_PLAYER_SHOW {a=player_idx} on the SCREEN channel. Return discarded at the site; the U20 icon-counter wrapper keeps its place in front of the emit. Hosted sink routes onto the thunk synchronously at emit (R5-exact); stage E had already hoisted this entry's load-bearing state writes into libmh at the call site, so what crosses is the visual remainder."
+  },
+  "llm_net_mp_leave_reset_game_mode": {
+   "class": "event-channel:screen",
+   "confidence": "high",
+   "reason": "LIFT-SCREEN slice 1 (2026-09-03): converted to LIBMH_EVK_SCR_MP_LEAVE_RESET on the SCREEN channel. Void; the saved-mode restore is the stage-E hoist at both sites. Hosted sink routes onto the thunk synchronously at emit (R5-exact); stage E had already hoisted this entry's load-bearing state writes into libmh at the call site, so what crosses is the visual remainder."
+  },
+  "llm_net_transport_recv": {
+   "class": "host-callback:net",
+   "confidence": "high",
+   "reason": "Receive one queued inbound lockstep packet, if any: the inbound half of transport_send. WHAT A HOST SUPPLIES: a NON-BLOCKING poll that hands libmh the next packet from any peer with the sender's identity, and reports 'nothing yet' without waiting -- libmh calls it from the turn engine every step and a blocking implementation stalls the sim. Per-peer ordering must be preserved; the lockstep protocol assumes it.",
+   "abi": {
+    "name": "transport_recv",
+    "ret": "int32_t",
+    "params": [
+     [
+      "int32_t *",
+      "sender_id_out"
+     ],
+     [
+      "void *",
+      "buf"
+     ],
+     [
+      "int32_t *",
+      "len"
+     ]
+    ]
+   }
+  },
+  "llm_net_transport_send": {
+   "class": "host-callback:net",
+   "confidence": "high",
+   "reason": "REQUIRED, `net` group. THE ONE OF THE SEVEN `dead`-class stubs THAT IS A LIVE SEAM, and the class was wrong for it rather than merely imprecise: retail's body @0x0049ba8d is gutted, but mh.dll REPLACES it (MH_EXPORT_REPLACE_llm_net_transport_send; seams/net_seams.cpp binds ADDR_GAME_SEND to MH_Seam_GameSend), so the call libmh makes in the hosted configuration reaches the restored TCP transport, not a stub. `dead` said the opposite. What a host must supply: send `len` bytes of `buf` to every other peer in the session, reliably and in order -- it is the outbound half of transport_recv, which is already a required entry beside it. A host that no-ops it has a lockstep that never advances. Reclassed at LIFT-TABLE S6 (2026-09-09); its three sites in lockstep/tx_emit{,_chat,_ctrl}.cpp were the last raw VA calls in the emitters.",
+   "abi": {
+    "name": "transport_send",
+    "ret": "void",
+    "params": [
+     [
+      "void *",
+      "buf"
+     ],
+     [
+      "int32_t",
+      "len"
+     ]
+    ]
+   }
+  },
+  "llm_planet_tlo_load": {
+   "class": "host-callback:map-io",
+   "confidence": "high",
+   "reason": "Load a planet's .TLO tileset -- another parse over the same block codec. libmh consumes its output through the tile tables.",
+   "abi": {
+    "name": "planet_tlo_load",
+    "ret": "int32_t",
+    "params": [
+     [
+      "uint32_t",
+      "planet_index"
+     ]
+    ]
+   }
+  },
+  "llm_progress_notify_unit_available": {
+   "class": "event-channel:event",
+   "confidence": "high",
+   "reason": "LIFT-NOTIFY slice 2 (2026-09-03): converted to LIBMH_EVK_PROGRESS_UNIT_AVAILABLE {a=player, b=unit_proto}. Void, scalar payload; hosted sink routes onto the thunk synchronously at emit; mh::state::evt adapter keeps the member signature identical."
+  },
+  "llm_rand": {
+   "class": "crt",
+   "confidence": "high",
+   "reason": "Watcom CRT rand() LCG; cosmetic tactical stream ONLY -- never merge with sim RNG"
+  },
+  "llm_res_bank_get_file_size": {
+   "class": "host-callback:io",
+   "confidence": "high",
+   "reason": "The byte length of a named asset in the packed resource banks, or <= 0 if there is none. libmh sizes an allocation from it, so an over-report is a buffer overrun and an under-report is a truncated asset. The original's second parameter was a register-convention artifact (the filename pointer passed twice) and is gone.",
+   "abi": {
+    "name": "asset_size",
+    "ret": "int32_t",
+    "params": [
+     [
+      "const char *",
+      "name"
+     ]
+    ],
+    "bind": "mh::hostapi::io::asset_size"
+   }
+  },
+  "llm_snd_ambient_planet_clone": {
+   "class": "event-channel:event",
+   "confidence": "high",
+   "reason": "LIFT-NOTIFY slice 1 (2026-09-03): converted to LIBMH_EVK_SND_AMBIENT_CLONE ({a=planet_id}; scenario_planet_clone binder). Hosted sink routes onto the thunk synchronously at emit (R5-exact); mh::state::evt adapter keeps the member signature identical."
+  },
+  "llm_snd_ambient_tick": {
+   "class": "event-channel:event",
+   "confidence": "high",
+   "reason": "LIFT-NOTIFY slice 1 (2026-09-03): converted to LIBMH_EVK_SND_AMBIENT_TICK (per-frame ambient pacer; turn_engine binder). Hosted sink routes onto the thunk synchronously at emit (R5-exact); mh::state::evt adapter keeps the member signature identical."
+  },
+  "llm_snd_play": {
+   "class": "event-channel:event",
+   "confidence": "high",
+   "reason": "LIFT-NOTIFY slice 1 (2026-09-03): converted to LIBMH_EVK_SND_PLAY ({a=sound_id, b=volume}; 21 binder sites across ai/orders/lockstep-adjacent sim TUs). Hosted sink routes onto the thunk synchronously at emit (R5-exact); mh::state::evt adapter keeps the member signature identical."
+  },
+  "llm_snd_play_matching_sample": {
+   "class": "host-callback:sound",
+   "confidence": "high",
+   "reason": "DEFERRED at LIFT-NOTIFY slice 1 (2026-09-03, per the epistemics sanity check): the entry carries a snd_cfg_entry POINTER payload, which the 4x-int32 event record cannot represent and R4 forbids shipping raw; converting needs an id-based redesign (the cfg entry's index is derivable from the table base). Stays a table entry until then. Original reason: sample lookup + voice play."
+  },
+  "llm_snd_stop_all_channels": {
+   "class": "event-channel:event",
+   "confidence": "high",
+   "reason": "LIFT-NOTIFY slice 1 (2026-09-03): converted to LIBMH_EVK_SND_STOP_ALL (mission_start binder). Hosted sink routes onto the thunk synchronously at emit (R5-exact); mh::state::evt adapter keeps the member signature identical."
+  },
+  "llm_sqrt": {
+   "class": "crt",
+   "confidence": "high",
+   "reason": "x87 SQRT wrapper with math87_err fallback"
+  },
+  "llm_str_ansi_to_wide": {
+   "class": "host-callback:string",
+   "confidence": "high",
+   "reason": "Convert an ANSI (local code page) string to UTF-16 into the CALLER's buffer, and return that buffer. LOOSENED CONTRACT (SIMABI-STRING 2026-09-10): any correct local-codepage -> UTF-16 conversion satisfies both libmh sites, because NEITHER feeds a hashed region -- checked by ADDRESS OVERLAP against every HASH_REGIONS and TACT_HASH_REGIONS extent, not by citing a manifest flag. The sites: sim/resid/sim_scenario_planet_clone.cpp widens the (possibly truncated) map name into _G_LLM_STRAT_SCENARIO_PLANET_NAME_W (MF_VIEW, 32 B) and publishes the RETURNED pointer into G_TEXT_PTRS[0xa8]; save/save_live.cpp's pre-v5 legacy-save upgrade widens 30 ANSI records into MESSAGE_QUEUE (MF_VIEW|MF_SAVE, 7200 B), a read-side path unreachable from any file this build wrote. NOT ALLOCATING -- the correction this row carries: dst is caller-supplied at both sites, so the old 'allocating ... the allocation must outlive the call' wording described how long the CALLER's buffer must stay valid, not a heap contract, and a host that allocated here would leak on every call.",
+   "abi": {
+    "name": "ansi_to_wide",
+    "ret": "void *",
+    "params": [
+     [
+      "void *",
+      "dst"
+     ],
+     [
+      "char *",
+      "src"
+     ]
+    ]
+   }
+  },
+  "llm_str_ansi_to_wide_scratch": {
+   "class": "host-callback:string",
+   "confidence": "high",
+   "reason": "As ansi_to_wide, but the destination is the host's OWN SHARED SCRATCH buffer, whose contents survive only until the next call -- the one part of this entry a host may not change, because libmh relies on that lifetime lasting as long as the draw or the comparison it feeds. LOOSENED CONTRACT (SIMABI-STRING 2026-09-10): any correct local-codepage -> UTF-16 conversion will do; no site is hashed. FOUR libmh sites, not two -- the register's sec 2c row named only the sim pair, corrected here 2026-09-10 from tools/data/hostapi_callers.json: sim/sim_diplomacy_set_relation.cpp (both players' names into the diplomacy header line), sim/sim_player_presence_lost.cpp (a cheat-table entry and a player name), lockstep/rx_dispatch.cpp (the chat speaker's name and the message body) and lockstep/timekeeper.cpp (the player-left alert). Every one widens a name or a chat body, formats it through w_sprintf into G_TEXT_TMP (MF_VIEW|MF_MEASURED, 512 B, overlapping no slice in either hash table by address) and hands it to a floating-text / on_event PRESENTATION path. rx_dispatch's site is also the one that documents the lifetime: it copies the widened speaker name into a frame buffer first, because the very next widen reuses this scratch. Candidate for a later push-the-bytes-into-the-event-payload reshape -- flagged, not a verdict.",
+   "abi": {
+    "name": "ansi_to_wide_scratch",
+    "ret": "void *",
+    "params": [
+     [
+      "char *",
+      "src"
+     ]
+    ]
+   }
+  },
+  "llm_strat_input_update": {
+   "class": "host-callback:input",
+   "confidence": "high",
+   "reason": "THE STRATEGIC INPUT PUMP, and R10's own subject: the host owns the pump and pushes; libmh never polls. Class SETTLED here (2026-09-09) -- it had been `mixed`, which the routing census reads as 'needs a settled class before it can be routed further', and it was the last such row. WHAT A HOST SUPPLIES: one frame of strategic input, INCLUDING the orders that input produces -- this is a presentation+input mega-function that dispatches orders itself, so unlike every other required entry its effects DO reach hashed sim state. That is R3's escape hatch rather than a breach of R8: it is dispatched synchronously by contract, never queued, and it is the declared pre-fork WALL (SIM-RESID-W, unshadowable class, not translated). A LIB-REF replay host implements it by applying the frame's RECORDED orders and reading no device at all, which is why the ENTRY is the right shape even though the mega-function is not.",
+   "abi": {
+    "name": "apply_frame_input",
+    "ret": "void",
+    "params": []
+   }
+  },
+  "llm_strat_offscreen_fx_scale": {
+   "class": "event-channel:event",
+   "confidence": "high",
+   "reason": "LIFT-NOTIFY slice 3 (2026-09-03): DELETED from the table -- its R3-violating return fed the x87 debris-intensity chain at its one sim site. Converted to LIBMH_EVK_FX_DEBRIS_BURST {a=tile_col, b=tile_row, c=energy_max}; the hosted sink re-runs the whole original chain (fx_scale -> x87 intensity -> spawn_debris_burst, all camera-dependent screen-shake presentation) synchronously at emit. Original reason: view-distance falloff feeding cosmetic particle counts."
+  },
+  "llm_strat_offscreen_snd_volume": {
+   "class": "event-channel:event",
+   "confidence": "high",
+   "reason": "LIFT-NOTIFY slice 3 (2026-09-03): DELETED from the table -- the slice-1 deferral executed. All 11 offscreen_snd_volume+snd_play pairs across 8 sim TUs converted to LIBMH_EVK_SND_PLAY_AT {a=sound_id, b=tile_col, c=tile_row}; the hosted sink re-runs each exact pair synchronously at emit. Original reason: volume from client-local camera state."
+  },
+  "llm_strat_player_apply_all_colors": {
+   "class": "event-channel:invalidate",
+   "confidence": "high",
+   "reason": "CONVERTED at SIMABI-NOTIFY (2026-09-10) to LIBMH_EVK_INV_PLAYER_COLOR_LUT, no payload -- the record is the instant and the host re-derives the colours from state it can already read (R4). MEASURED at execution rather than taken from the name: the body @0x00454c04 is a 0..7 loop over llm_strat_player_set_color(i, _G_LLM_STRAT_PLAYERS[i].color_index), and that callee's ONLY write is _G_LLM_STRAT_PLAYER_COLOR_LUT[player_idx] @0x00ae1948 -- 16 bytes, in NEITHER hash table (checked against every HASH_REGIONS and TACT_HASH_REGIONS extent in mh_regions.gen.h) and read by no translated body, the same measurement LIBMH_EVK_PLAYER_SET_COLOR's R3b disposition already carries for that global. The R3c half is the live one, since the loop READS hashed strat_players[].color_index: nothing between the emit (save_live.cpp:814, the container load's apply phase) and the end of that call writes a colour index -- libmh's only writer of the field is llm_strat_player_profile_init (sim_player_init.cpp:74), a session-begin path the apply phase does not reach -- so a frame-edge drain reads the same eight indices the emit would have."
+  },
+  "llm_strat_player_set_color": {
+   "class": "event-channel:event",
+   "confidence": "high",
+   "reason": "LIFT-NOTIFY slice 2 (2026-09-03): converted to LIBMH_EVK_PLAYER_SET_COLOR {a=player_idx, b=color_index}. Void, scalar payload; hosted sink routes onto the thunk synchronously at emit; mh::state::evt adapter keeps the member signature identical."
+  },
+  "llm_strat_race_alert_text_emit": {
+   "class": "event-channel:event",
+   "confidence": "high",
+   "reason": "LIFT-NOTIFY slice 2 (2026-09-03): converted to LIBMH_EVK_TEXT_RACE_ALERT. Void, scalar payload; hosted sink routes onto the thunk synchronously at emit; mh::state::evt adapter keeps the member signature identical."
+  },
+  "llm_strat_session_begin_empty_stub": {
+   "class": "deleted",
+   "confidence": "high",
+   "reason": "DELETED FROM THE SURFACE at SIMABI-HOOKS (2026-09-10). Empty at 0x00454966 (stack probe + return, one call edge in the whole binary, re-verified in the DB); one site, inside llm_strat_planet_session_begin. Its INTENT was never established -- emptiness is the fact, and a host cannot be asked to implement an unknown intent. Nothing may call it again."
+  },
+  "llm_tact_blink_overlay_clear": {
+   "class": "event-channel:invalidate",
+   "confidence": "high",
+   "reason": "LIFT-TACT slice B (2026-09-09): converted to LIBMH_EVK_INV_TACT_DRAWN_MAP_CLEAR for its standalone site, and absorbed into LIBMH_EVK_SCR_TACT_BLAST_TRANSITION for its looped one. Both sites are in llm_tact_frame."
+  },
+  "llm_tact_drag_box_clamp": {
+   "class": "event-channel:invalidate",
+   "confidence": "high",
+   "reason": "LIFT-TACT slice B (2026-09-09): converted to LIBMH_EVK_INV_TACT_DRAG_BOX {a=anchor_x, b=anchor_y, c=cursor_x, d=cursor_y}. The one record on the notify surface carrying raw coordinates, and deliberately -- the rectangle IS the state and there is no coarser identity to substitute; R4 admits positions. Measured: its only accumulator underneath is a marching-ants dash-phase byte, so a host animates the outline from the four numbers alone."
+  },
+  "llm_tact_frame_cursor_and_reset": {
+   "class": "event-channel:screen",
+   "confidence": "high",
+   "reason": "LIFT-TACT slice B (2026-09-09): converted to LIBMH_EVK_SCR_TACT_FRAME_PRESENT for its standalone sites, and absorbed into LIBMH_EVK_SCR_TACT_BLAST_TRANSITION for its looped one. The tactical sibling of SCR_PRESENT_FLIP. NOT an R3b hazard despite its subtree writing G_WIN_W and the framebuffer: it is TERMINAL on every path that reaches it -- llm_tact_frame's last statement, and inside the wipe loop the branch returns with no further libmh reader -- so the readers the closure finds (view_shift, sidebar_dispatch) run EARLIER in the same frame, never after."
+  },
+  "llm_tact_fx_play_sound": {
+   "class": "event-channel:event",
+   "confidence": "high",
+   "reason": "LIFT-NOTIFY slice 1 (2026-09-03): converted to LIBMH_EVK_SND_FX_PLAY ({a=fx_type, b=volume_pct, c=pan}; tact_fx_spawn binder). Hosted sink routes onto the thunk synchronously at emit (R5-exact); mh::state::evt adapter keeps the member signature identical."
+  },
+  "llm_tact_gfx_load_banks_alt": {
+   "class": "event-channel:invalidate",
+   "confidence": "high",
+   "reason": "LIFT-TACT slice B2 (2026-09-09): converted to LIBMH_EVK_INV_TACT_SPRITE_BANKS. It writes sprite-bank PIXEL buffers, and the only reader of those is gfx_LoadSprite, which is itself a notify scope now rather than a translated body -- so there is no translated readback to have."
+  },
+  "llm_tact_gfx_view_tile_rows_init": {
+   "class": "event-channel:invalidate",
+   "confidence": "high",
+   "reason": "LIFT-TACT slice B2 (2026-09-09): converted to LIBMH_EVK_INV_TACT_VIEW_TILE_ROWS. It writes the same global family as llm_tact_view_metrics_init, but from mission_end, where the staleness window is never observed: nothing in mission_end's remaining body reads it, and the next tactical frame only exists after a mission_start that re-derives the whole family through INV_TACT_VIEW_METRICS."
+  },
+  "llm_tact_mark_view_tiles_dirty": {
+   "class": "event-channel:invalidate",
+   "confidence": "high",
+   "reason": "LIFT-EVQ pilot conversion (2026-09-03): the fine render-notify entry became invalidate record LIBMH_EVK_INV_TACT_VIEW_TILES (libmh_host_events.h). Emit sites: the four tact_view_shift bodies' shared calls-struct member. mh.dll's sink routes the record onto the thunk synchronously at emit (R5-exact); a poll host drains at frame edge."
+  },
+  "llm_tact_render_view": {
+   "class": "host-callback:display",
+   "confidence": "high",
+   "reason": "REQUIRED under R3b -- the founding instance of the rule (docs/libmh-abi.md sec 4). It returns nothing, but its camera-viewport tile scan is the ONLY path to llm_tact_unit_update_anim, which writes anim_frame_time/frame_index/anim_cycle_time/frame_interval/sprite_id into tact_units = TACT_HASH_REGIONS[0], and it writes hovered_unit_id, which tact_frame reads at NINE later sites in the same frame to issue orders. A host that defers this to a frame edge would order against last frame's hover state. Class corrected at LIFT-TABLE S1 (2026-09-09): the row still carried the pre-discovery `view-only state per xref sweep` reason AND a notify flag that told a headless host it could bind a no-op."
+  },
+  "llm_tact_save_screenshot": {
+   "class": "event-channel:event",
+   "confidence": "high",
+   "reason": "LIFT-TACT slice B (2026-09-09): converted to LIBMH_EVK_SCREENSHOT_SAVE. A player pressed the screenshot key; whether that writes a PCX beside the exe, opens a share sheet or does nothing is the host's to decide, which is exactly why it is notify rather than a required io service."
+  },
+  "llm_tact_scroll_fade_step": {
+   "class": "event-channel:screen",
+   "confidence": "high",
+   "reason": "LIFT-TACT slice B (2026-09-09): ABSORBED into LIBMH_EVK_SCR_TACT_BLAST_TRANSITION. Its only libmh site was llm_tact_frame's fixed sixteen-iteration mine-blast wipe, and nothing of libmh's happens between iterations -- so the loop collapsed to one scope and this entry left with it rather than needing a kind of its own. That also disposes of what would otherwise have been a BLIND scope: the readback tool cannot see its pointer-mediated framebuffer writes, but the scope that replaced it resolves the whole loop's subtree."
+  },
+  "llm_tact_tile_overlay_refresh": {
+   "class": "event-channel:invalidate",
+   "confidence": "high",
+   "reason": "LIFT-TACT slice B (2026-09-09): converted to LIBMH_EVK_INV_TACT_MINIMAP_OVERLAY, a nullary dirty mark. Its one libmh site is llm_tact_frame step 25."
+  },
+  "llm_tact_ui_char_panel_ammo_draw": {
+   "class": "event-channel:invalidate",
+   "confidence": "high",
+   "reason": "LIFT-TACT slice A (2026-09-09): absorbed into LIBMH_EVK_INV_TACT_CHAR_PANEL_ROW_DRAW. Its ONLY libmh caller was our translation of llm_tact_ui_char_panel_row_draw, and that body went host-side WHOLE -- measured pure presentation (its entire write set is tile_vis_map dirty bytes, not a TACT_HASH_REGIONS member, with no translated reader), so there was nothing to hoist above the cut and nothing left to keep. mh.dll's sink calls the original row-draw, which calls this internally."
+  },
+  "llm_tact_ui_char_panel_row_refresh": {
+   "class": "event-channel:invalidate",
+   "confidence": "high",
+   "reason": "LIFT-TACT slice 1 (2026-09-03): its ONE libmh caller (tact_unit_fire_weapon) now emits LIBMH_EVK_INV_TACT_CHAR_PANEL_ROW, so the fine entry leaves the libmh-facing table; mh.dll's sink routes the record onto this thunk"
+  },
+  "llm_tact_ui_draw_player_row_list": {
+   "class": "event-channel:invalidate",
+   "confidence": "high",
+   "reason": "LIFT-NOTIFY slice 2 (2026-09-03): converted to LIBMH_EVK_INV_TACT_PLAYER_ROWS {a=selected_row} (invalidate). Void, scalar payload; hosted sink routes onto the thunk synchronously at emit; mh::state::evt adapter keeps the member signature identical."
+  },
+  "llm_tact_ui_sel_panel_draw": {
+   "class": "event-channel:invalidate",
+   "confidence": "high",
+   "reason": "LIFT-TACT slice A closes (2026-09-09): it already HAD a scope -- LIBMH_EVK_INV_TACT_SEL_PANEL (kind 13), from llm_tact_selection_panel_refresh's own conversion -- and the fine entry survived only because two sites still bound it directly. Both are gone: llm_tact_sidebar_dispatch now emits kind 13, and ui_sel_panel_init's tail does too."
+  },
+  "llm_tact_ui_sidebar_draw_rows": {
+   "class": "event-channel:invalidate",
+   "confidence": "high",
+   "reason": "LIFT-NOTIFY slice 2 (2026-09-03): converted to LIBMH_EVK_INV_TACT_SIDEBAR_ROWS (invalidate). Void, scalar payload; hosted sink routes onto the thunk synchronously at emit; mh::state::evt adapter keeps the member signature identical."
+  },
+  "llm_tact_ui_sidebar_redraw_unit_slot": {
+   "class": "event-channel:invalidate",
+   "confidence": "high",
+   "reason": "LIFT-NOTIFY slice 2 (2026-09-03): converted to LIBMH_EVK_INV_TACT_SIDEBAR_SLOT {a=unit_id} (invalidate). Void, scalar payload; hosted sink routes onto the thunk synchronously at emit; mh::state::evt adapter keeps the member signature identical."
+  },
+  "llm_tact_ui_sidebar_roster_refresh": {
+   "class": "event-channel:invalidate",
+   "confidence": "high",
+   "reason": "LIFT-NOTIFY slice 2 (2026-09-03): converted to LIBMH_EVK_INV_TACT_SIDEBAR_ROSTER (invalidate). Void, scalar payload; hosted sink routes onto the thunk synchronously at emit; mh::state::evt adapter keeps the member signature identical."
+  },
+  "llm_tact_ui_sidebar_row_draw_left": {
+   "class": "event-channel:invalidate",
+   "confidence": "high",
+   "reason": "LIFT-TACT slice A (2026-09-09): converted to LIBMH_EVK_INV_TACT_SIDEBAR_ROW_HOVER {a=0 unassigned side, b=unit_id, c=row}, SHARED with its twin llm_tact_ui_sidebar_row_draw_right -- which was OURS, and left libmh whole in the same slice. The pair was split by translation order, not by design: one gesture, one scope, with a side. highlight_flag does not cross because both call sites in llm_tact_ui_sel_panel_single_mode_tick pass the literal 1; the sink passes it."
+  },
+  "llm_tact_unit_draw_hp_bar_slot": {
+   "class": "event-channel:invalidate",
+   "confidence": "high",
+   "reason": "LIFT-TACT slice A (2026-09-09): absorbed into LIBMH_EVK_INV_TACT_CHAR_PANEL_ROW_DRAW, same reasoning as llm_tact_ui_char_panel_ammo_draw -- its one libmh caller was the row-draw body that left."
+  },
+  "llm_tact_unit_refresh_ui_slot": {
+   "class": "event-channel:invalidate",
+   "confidence": "high",
+   "reason": "LIFT-NOTIFY slice 2 (2026-09-03): converted to LIBMH_EVK_INV_TACT_UNIT_SLOT {a=building_id} (invalidate). Void, scalar payload; hosted sink routes onto the thunk synchronously at emit; mh::state::evt adapter keeps the member signature identical."
+  },
+  "llm_tact_view_metrics_init": {
+   "class": "event-channel:invalidate",
+   "confidence": "high",
+   "reason": "LIFT-TACT slice B2 (2026-09-09): converted to LIBMH_EVK_INV_TACT_VIEW_METRICS. The riskiest of the nine and the one whose disposition is a measurement rather than an argument: it RE-ALLOCATES the tile_vis_map buffers, so a deferred dispatch would leave a DANGLING pointer, not merely a stale value. Its only translated readers are tact_view_shift's four sites, reached solely from llm_tact_frame; llm_tact_mission_start is reached solely from llm_strat_try_enter_tactical_mission (measured against the committed call graph). They are structurally in different frames, so a frame-edge drain lands before the first tactical frame reads anything -- and nothing mission_start itself runs after the emit (map_reset, ui_sel_panel_init, selection_panel_refresh) touches view metrics at all."
+  },
+  "llm_tact_vis_map_clear_right_margin": {
+   "class": "event-channel:invalidate",
+   "confidence": "high",
+   "reason": "LIFT-NOTIFY slice 2 (2026-09-03): converted to LIBMH_EVK_INV_TACT_VIS_MARGIN (invalidate). Void, scalar payload; hosted sink routes onto the thunk synchronously at emit; mh::state::evt adapter keeps the member signature identical."
+  },
+  "llm_tact_vis_map_fill_default": {
+   "class": "event-channel:invalidate",
+   "confidence": "high",
+   "reason": "LIFT-NOTIFY slice 2 (2026-09-03): converted to LIBMH_EVK_INV_TACT_VIS_MAP (invalidate). Void, scalar payload; hosted sink routes onto the thunk synchronously at emit; mh::state::evt adapter keeps the member signature identical."
+  },
+  "llm_tact_zone_sound_play": {
+   "class": "event-channel:event",
+   "confidence": "high",
+   "reason": "LIFT-NOTIFY slice 1 (2026-09-03): converted to LIBMH_EVK_SND_ZONE_PLAY ({a=sound_id}; tact_frame binder). Hosted sink routes onto the thunk synchronously at emit (R5-exact); mh::state::evt adapter keeps the member signature identical."
+  },
+  "llm_teardown_hook_stub": {
+   "class": "deleted",
+   "confidence": "high",
+   "reason": "DELETED FROM THE SURFACE at SIMABI-HOOKS (2026-09-10): libmh no longer calls it at all. Retail's body @0x0049bc44 is a Watcom stack probe and a return -- re-verified in the DB that day -- and the DLL does not replace it, so calling it and not calling it are the same machine state (R5 is trivial here). The six libmh sites it had (lockstep resync/rx_dispatch x3/tx_emit, orders order_queue, sim session_begin_multi) were void, unconditional and read nothing back; each removal left a comment at the address it stood at. The row survives as the record of that decision -- there is no host contract to write, and nothing may call it again."
+  },
+  "llm_teardown_hook_stub_b": {
+   "class": "deleted",
+   "confidence": "high",
+   "reason": "DELETED FROM THE SURFACE at SIMABI-HOOKS (2026-09-10), with its sibling. Same shape at 0x0049bc66 (stack probe + return, unreplaced by the DLL, re-verified in the DB); its three rx_dispatch sites were void with no readback. Nothing may call it again."
+  },
+  "llm_time_get_ticks_ms": {
+   "class": "host-callback:time",
+   "confidence": "high",
+   "reason": "A free-running millisecond counter. PACING ONLY, and R8 makes that a contract rather than a description: nothing a host returns here may reach hashed sim state, so libmh spends it on timeouts and watchdogs and never on a decision the state hash sees. WHAT A HOST SUPPLIES: a MONOTONIC value. It need not be wall-clock and need not start at zero, but it must not go backwards -- the link watchdog charges a peer for elapsed time, and a backwards step credits it forever.",
+   "abi": {
+    "name": "ticks_ms",
+    "ret": "uint32_t",
+    "params": []
+   }
+  },
+  "llm_tlo_palette_convert_565_to_555": {
+   "class": "host-callback:render-notify",
+   "confidence": "high",
+   "reason": "palette format conversion"
+  },
+  "llm_tlo_shade_table_build_tact": {
+   "class": "host-callback:render-notify",
+   "confidence": "high",
+   "reason": "lighting LUT precompute"
+  },
+  "llm_tutorial_load_script": {
+   "class": "cfg-snapshot",
+   "confidence": "high",
+   "reason": "SETTLED 2026-09-01 (user): files->blob doctrine -- the tutorial-steps region is registry-bound (SIM-RESID batch F), so LIB-WORLD's step-0 blob carries it; the TUTORIAL.TXT parser is reimplemented end-to-end post-fork with cfg/map"
+  },
+  "llm_ui_bldg_panel_open": {
+   "class": "event-channel:screen",
+   "confidence": "high",
+   "reason": "LIFT-SCREEN slice 1 (2026-09-03): converted to LIBMH_EVK_SCR_BLDG_PANEL_OPEN on the SCREEN channel. Void. Two sites: map_FillDefaults carries the stage-E hoist of the load-bearing clears; save_live's is deliberately hoist-free because both regions it touches are fully overwritten by the decode that follows. Hosted sink routes onto the thunk synchronously at emit (R5-exact); stage E had already hoisted this entry's load-bearing state writes into libmh at the call site, so what crosses is the visual remainder."
+  },
+  "llm_ui_info_media_draw_p1": {
+   "class": "event-channel:screen",
+   "confidence": "high",
+   "reason": "LIFT-TACT slice B2 (2026-09-09): converted to LIBMH_EVK_SCR_TACT_MISSION_MEDIA. The mission's intro media page; one libmh site (llm_tact_mission_start step 2), void, and nothing libmh reads back from it."
+  },
+  "llm_ui_menu_bg_redraw_cb": {
+   "class": "event-channel:screen",
+   "confidence": "high",
+   "reason": "LIFT-RESID slice 2 (2026-09-09): LIBMH_EVK_SCR_MENU_BG_REDRAW. The original returns an int its one libmh site discards, so the adapter answers a constant 0 (the LIFT-NOTIFY text-adapter shape). Sole libmh caller was llm_tutorial_step_driver, so the entry LEAVES the surface."
+  },
+  "llm_ui_message_queue_clear_all": {
+   "class": "event-channel:event",
+   "confidence": "high",
+   "reason": "LIFT-NOTIFY slice 2 (2026-09-03): converted to LIBMH_EVK_MSG_QUEUE_CLEAR. Void, scalar payload; hosted sink routes onto the thunk synchronously at emit; mh::state::evt adapter keeps the member signature identical."
+  },
+  "llm_ui_outcome_dialog": {
+   "class": "event-channel:screen",
+   "confidence": "high",
+   "reason": "LIFT-SCREEN slice 1 (2026-09-03): converted to LIBMH_EVK_SCR_OUTCOME_DIALOG {a=outcome code} on the SCREEN channel. The int return is a Watcom uncommitted-return artefact with NO consumer anywhere (3 of 4 callers discard; llm_strat_player_presence_lost tail-forwards it and all 21 of ITS callers ignore the value) -- measured at slice 0, R9 in docs/libmh-abi.md; the mh::state::evt adapter keeps the member signature and returns a constant 0. Hosted sink routes onto the thunk synchronously at emit (R5-exact); stage E had already hoisted this entry's load-bearing state writes into libmh at the call site, so what crosses is the visual remainder."
+  },
+  "llm_ui_planet_select_screen_open": {
+   "class": "event-channel:screen",
+   "confidence": "high",
+   "reason": "LIFT-SCREEN slice 1 (2026-09-03): converted to LIBMH_EVK_SCR_PLANET_SELECT_OPEN {a=open_arg} on the SCREEN channel. Int-returning member kept by an _i32 adapter returning 0; both game_set_event sites discard. Hosted sink routes onto the thunk synchronously at emit (R5-exact); stage E had already hoisted this entry's load-bearing state writes into libmh at the call site, so what crosses is the visual remainder."
+  },
+  "llm_ui_print_floating_msg_cyan": {
+   "class": "event-channel:event",
+   "confidence": "high",
+   "reason": "LIFT-NOTIFY text surface (2026-09-03, slice 4): LIBMH_EVTK_TEXT_FLOAT_CYAN -- the chat line (wire text, the site that made a string surface necessary). Original reason: print + UI color global."
+  },
+  "llm_ui_print_floating_msg_red": {
+   "class": "event-channel:event",
+   "confidence": "high",
+   "reason": "LIFT-NOTIFY text surface (2026-09-03, slice 4): LIBMH_EVTK_TEXT_FLOAT_RED -- peer-drop/session diagnostics + presence-lost lines; the one captured return (presence_lost's ret) feeds only that function's own ignored return, stubbed constant 0 by the adapter. Original reason: print + floating-msg color (draw-only consumer)."
+  },
+  "llm_ui_print_game_speed": {
+   "class": "event-channel:event",
+   "confidence": "high",
+   "reason": "LIFT-NOTIFY slice 2 (2026-09-03): converted to LIBMH_EVK_TEXT_GAME_SPEED. Void, scalar payload; hosted sink routes onto the thunk synchronously at emit; mh::state::evt adapter keeps the member signature identical."
+  },
+  "llm_ui_print_queue_text_id": {
+   "class": "event-channel:event",
+   "confidence": "high",
+   "reason": "LIFT-NOTIFY slice 2 (2026-09-03): converted to LIBMH_EVK_TEXT_QUEUE_ID {a=text_id}. Void, scalar payload; hosted sink routes onto the thunk synchronously at emit; mh::state::evt adapter keeps the member signature identical."
+  },
+  "llm_ui_screen_fade_transition_tick": {
+   "class": "event-channel:screen",
+   "confidence": "high",
+   "reason": "LIBMH_EVK_SCR_FADE_TRANSITION_RUN. The original was POLLED by libmh in a `while (tick() == 0)` spin, which is the pattern the ABI forbids: a host answering 0 forever would hang the library. libmh arms the transition and asks for it once; the host owns the frame loop and therefore owns the waiting. Sole caller was llm_game_start_tutorial."
+  },
+  "llm_ui_set_draw_surface": {
+   "class": "event-channel:invalidate",
+   "confidence": "high",
+   "reason": "LIFT-TACT slice A closes (2026-09-09): absorbed into the tact panel/sidebar scopes. This was the cluster's load-bearing entry -- nine direct translated callers, which is why the payoff was all-or-nothing and it survived six of the seven conversions. Its last three libmh sites were ui_char_panel_row_draw and ui_sidebar_row_draw_right (both moved host-side WHOLE) and ui_sel_panel_init's draw head (LIBMH_EVK_INV_TACT_SEL_PANEL_INIT). mh.dll's sink still calls it -- the mechanical table survives as the internal routing layer; what left is the libmh-FACING surface."
+  },
+  "llm_ui_text_draw_rgb16": {
+   "class": "event-channel:invalidate",
+   "confidence": "high",
+   "reason": "LIFT-TACT slice A closes (2026-09-09): absorbed into the tact panel/sidebar scopes, same three last sites as llm_ui_set_draw_surface. Its alpha-blend read-modify-write against the UI surface is what made every caller in this cluster fail the shadow twice-test; host-side that is simply not libmh's problem any more."
+  },
+  "llm_ui_widget_list_center": {
+   "class": "event-channel:screen",
+   "confidence": "high",
+   "reason": "LIBMH_EVK_SCR_WGTL_CENTER, carrying a LIBMH_SCR_WGTL_* id rather than the widget-list address (R4). Every libmh site passes a provably constant list -- each names the list assigned on the line before -- so the reshape is exact."
+  },
+  "llm_ui_widget_list_draw": {
+   "class": "event-channel:screen",
+   "confidence": "high",
+   "reason": "LIBMH_EVK_SCR_WGTL_DRAW with a LIBMH_SCR_WGTL_* id (R4). Both libmh sites pass literals."
+  },
+  "llm_view_set_size_mode": {
+   "class": "event-channel:screen",
+   "confidence": "high",
+   "reason": "LIBMH_EVK_SCR_SET_DISPLAY_MODE, a=size_mode. SIMABI-DISPLAY (2026-09-10) CORRECTS the LIFT-TABLE S1 reason this row carried: the cell sim_start_tutorial.cpp assigned the return into is _G_LLM_VIEW_SIZE_MODE = RID_VIEW_SIZE_MODE, MF_VIEW-only and in NEITHER hash table (address-overlap checked against every HASH_REGIONS and TACT_HASH_REGIONS extent), so 'the hashed view_size_mode() cell' was wrong and R3 did not apply. The value is an OS-granted resolution readback libmh cannot compute anyway. Gated live before the move: --ui-abc tutorial_solo, 18,317 compared steps, green both with a fixed-return-0 notify and with libmh storing a value the entry cannot return here (2) -- the second arm is the non-vacuity witness, since the real return at this site is provably 0. The hosted sink performs the original caller's store, so the untranslated original readers and tact's own read are unaffected. TACT KEEPS ITS ENTRY (frozen table, its site discards the return): overlap 3 -> 2.",
+   "tact_frozen": {
+    "class": "host-callback:display",
+    "reason": "REQUIRED under R3 -- its return IS consumed: sim_start_tutorial.cpp:44 assigns it into the hashed view_size_mode() cell. A no-op returning 0 changes hashed sim state. Class corrected at LIFT-TABLE S1 (2026-09-09); the old `resolution/zoom bookkeeping` reason described the effect and missed the consumer."
+   }
+  },
+  "map_ReadMap_pre": {
+   "class": "host-callback:map-io",
+   "confidence": "high",
+   "reason": "PRE-FORK ONLY (DEFER-BLOB). Load a planet's map for the session about to begin. A parse, not a byte service -- see cfg_ReadMapFile -- and it has a runtime writer into the hashed Planets record (tlo_file at +0x20e), so it is not read-only from the sim's point of view either. Both libmh sites pass a planet index and read NOTHING back (sim/resid/sim_planet_session_begin.cpp:97, sim/resid/sim_session_begin_multi.cpp:139): every output lands in globals. WHAT LIB-WORLD'S BLOB MUST CARRY TO RETIRE THIS ENTRY, re-verified at SIMABI-MAPIO 2026-09-10 down the callee chain @0x004552d6 -- AND THE EARLIER FIELD LIST WAS AN UNDERCOUNT: this entry does not merely resolve a tileset name, it INSTALLS THE WHOLE PLANET, in three steps. (1) map_FillDefaults @0x0045603e bulk-zeroes ~25 per-planet regions -- units, buildings, tile_objects, soldiers, projectile pool, order queue, resources, passable, fog_of_war, productions/mines/turrets/labs/unit_storage, path buffers -- and carries the storage_stats/death_anim_table PRESERVE-BUG recorded on its plate, so the blob must reproduce the state that bug actually leaves, not a plausible one. (2) map_ReadMap @0x004a3251 sets the `width`/`height` globals and calls llm_map_setup_dimensions (masks DERIVED, not carried -- see cfg_ReadMapFile), then strcpy's the .MP header's tileset name into Planets[index].tlo_file (+0x20e, HIDX_PLANETS, HASHED). (3) THE SIX PLANES, which are the actual payload: main terrain -> tile_objects (RID_TILE_OBJECTS = HIDX_TILE_OBJECTS 21, hashed, both halves of the 8-byte record); passable -> passable (RID_PASSABLE) -- CORRECTED 2026-09-11 (LIB-WORLD, measured): the llm_map_build_regions nav decomposition it also installs is a HEAP-POINTER GRAPH (MAP_REGION_GRID alone 178,851 differing bytes across two otherwise lockstep-hash-identical captures, plus MAP_REGION_BY_INDEX and the pool heads) and physically CANNOT be carried by a bound-region blob -- the importing host must REBUILD it from the carried passable plane, exactly like the torus masks; it is the same decomposition map_load_regions decodes on the save path; the half-res plane -> _G_LLM_MAP_HALFRES_GRID (RID_MAP_HALFRES_GRID); the f2 object list -> _G_LLM_MAP_OBJECTS (RID_MAP_OBJECTS) with chain heads stamped back into tile_objects; the resource-yield plane -> resources (RID_RESOURCES), scaled by Planets[idx].source_mul; the landing spots -> _G_LLM_STRAT_LANDING_SPOTS (RID_STRAT_LANDING_SPOTS). Every one of those is a BOUND REGION, which is precisely why D-E5's fixture shape (dump every bound region at step 0) can retire this entry when it cannot retire the save-container entries. TWO TAILS DO NOT RETIRE WITH IT: planet_tlo_load (llm_planet_tlo_load), called here, is its own entry and survives on its save-path caller (save/save_live.cpp:463, the one R3-consumed return in the group); llm_gfx_load_planet_extra_sprite_banks, also called here, already left the table at SIMABI-NOTIFY as INV_PLANET_EXTRA_SPRITE_BANKS -- the ORIGINAL still calls the original, which is a fact about the pre-fork binary, not a double-fire in libmh. THE NAME IS DELIBERATELY THE ORIGINAL ONE (SIMABI-NAMES, 2026-09-10), and it is the pre-fork stamp: every other surviving entry was renamed to an abstract name that promises a permanent host contract, which is exactly the promise a DEFER-BLOB row does not make -- this entry is scheduled to LEAVE the surface when LIB-WORLD's blob carries the outputs listed above. An abstract name here would read as an obligation a standalone host must implement forever; the original callee's name says instead 'this is the pre-fork binary's own parse, still here because the blob is not'."
+  },
+  "qsort": {
+   "class": "crt",
+   "confidence": "high",
+   "reason": "Watcom CRT quicksort; comparators are GAME code (VAs) -- vendoring requires translated comparators"
+  },
+  "rsr_GetFileRealSize": {
+   "class": "host-callback:io",
+   "confidence": "high",
+   "reason": "The uncompressed byte length of a packed resource record, asked BEFORE GetResourseFilePtr so libmh can size its buffer. It must agree with the number of bytes that pointer then yields."
+  },
+  "strtok": {
+   "class": "crt",
+   "confidence": "high",
+   "reason": "Watcom CRT strtok"
+  },
+  "struct_array_malloc_impl": {
+   "class": "crt",
+   "confidence": "med",
+   "reason": "calloc-equivalent allocation primitive"
+  },
+  "utils_abort": {
+   "class": "host-callback:fatal",
+   "confidence": "high",
+   "reason": "Terminate the process. IT MUST NOT RETURN: libmh calls it on unrecoverable asset and state errors and the code after the call assumes it is unreachable. Nine translation units reach it. (The routing census reports 0 direct callers, which is a blind spot rather than a fact -- utils_abort is not a node in the trimmed call graph at all; its site_modules field, a source scan, has it right.) A host that wants to survive the condition must unwind on its own side; returning here resumes a body that has already decided it cannot continue. THE NAME (SIMABI-NAMES, 2026-09-10): the sim table calls this entry `fatal`; the original callee is `utils_abort`, and the FROZEN tact table keeps that spelling for its own copy. So the two tables no longer share a member name -- the printed overlap goes 1 -> 0 -- while both still bind the same original body in the hosted configuration. That is duplication working as designed (the same shape as GetResourseFilePtr/asset_read at SIMABI-VFS), not a lost share.",
+   "abi": {
+    "name": "fatal",
+    "ret": "void",
+    "params": [
+     [
+      "int32_t",
+      "status"
+     ]
+    ]
+   },
+   "tact_frozen": {
+    "abi": null,
+    "reason": "Terminate the process. IT MUST NOT RETURN: libmh calls it on unrecoverable asset and state errors and the code after the call assumes it is unreachable. Nine translation units reach it. (The routing census reports 0 direct callers, which is a blind spot rather than a fact -- utils_abort is not a node in the trimmed call graph at all; its site_modules field, a source scan, has it right.) A host that wants to survive the condition must unwind on its own side; returning here resumes a body that has already decided it cannot continue."
+   }
+  },
+  "utils_close_file": {
+   "class": "host-callback:io",
+   "confidence": "high",
+   "reason": "Close a handle from vfs_open, flushing any buffered writes. libmh does not read a result, so this returns nothing -- the original's was already discarded at every site.",
+   "abi": {
+    "name": "vfs_close",
+    "ret": "void",
+    "params": [
+     [
+      "int32_t",
+      "handle"
+     ]
+    ],
+    "bind": "mh::hostapi::io::vfs_close"
+   }
+  },
+  "utils_concat": {
+   "class": "crt",
+   "confidence": "high",
+   "reason": "wcscat"
+  },
+  "utils_fill_data": {
+   "class": "crt",
+   "confidence": "high",
+   "reason": "memset-family byte-fill primitive"
+  },
+  "utils_free": {
+   "class": "crt",
+   "confidence": "med",
+   "reason": "heap deallocator (free-list rover)"
+  },
+  "utils_malloc": {
+   "class": "crt",
+   "confidence": "high",
+   "reason": "heap allocator primitive"
+  },
+  "utils_malloc_struct_array": {
+   "class": "crt",
+   "confidence": "high",
+   "reason": "wrapper over struct_array_malloc_impl"
+  },
+  "utils_open_file": {
+   "class": "host-callback:io",
+   "confidence": "high",
+   "reason": "Open `path` and return a handle libmh passes back to vfs_read/write/seek/tell/close; 0 means failure. `mode` is 0 = read-binary or 1 = write-binary-truncate -- the only two the game asks for, so it is an enum rather than a mode string (mh.dll's binder synthesises retail's \"rb\"/\"wb\"). Paths cross VERBATIM -- the 2026-09-03 decision kept direct file paths for this pass rather than abstracting to a virtual filesystem -- so a host may map or sandbox them, but it must accept the game's own spelling.",
+   "abi": {
+    "name": "vfs_open",
+    "ret": "int32_t",
+    "params": [
+     [
+      "const char *",
+      "path"
+     ],
+     [
+      "int32_t",
+      "mode"
+     ]
+    ],
+    "bind": "mh::hostapi::io::vfs_open"
+   }
+  },
+  "utils_read_from_file": {
+   "class": "host-callback:io",
+   "confidence": "high",
+   "reason": "Read up to `n` bytes at the handle's current position into `dst` and advance it; return the byte count, or a negative value on error. A short read must be REPORTED, not padded: the save reader treats the byte count as the truth about what the file contained.",
+   "abi": {
+    "name": "vfs_read",
+    "ret": "int32_t",
+    "params": [
+     [
+      "int32_t",
+      "handle"
+     ],
+     [
+      "void *",
+      "dst"
+     ],
+     [
+      "uint32_t",
+      "n"
+     ]
+    ],
+    "bind": "mh::hostapi::io::vfs_read"
+   }
+  },
+  "utils_str_cmp": {
+   "class": "crt",
+   "confidence": "high",
+   "reason": "strcmp reimplementation"
+  },
+  "utils_str_cmp_ci": {
+   "class": "crt",
+   "confidence": "high",
+   "reason": "strcmpi"
+  },
+  "utils_w_str_copy": {
+   "class": "crt",
+   "confidence": "high",
+   "reason": "hand-rolled wcscpy"
+  },
+  "utils_wide_to_short_str": {
+   "class": "host-callback:string",
+   "confidence": "high",
+   "reason": "Convert a wide (UTF-16) string to the local ANSI code page into the CALLER's buffer, and return that buffer. STRICT CONTRACT (SIMABI-STRING 2026-09-10): it is utils_w_strlen + utils_WideStringToAscii @0x004cf2dc, i.e. WideCharToMultiByte(CP_ACP, 0, src, n, dst, n, <default char @0x00661524>, ...) -- reproduce THOSE bytes, not something equivalent. ITS RESULT FEEDS HASHED SIM STATE: its libmh site (sim/resid/sim_start_tutorial.cpp) writes player_desc[1].name, inside the 416-byte `players` slice HIDX_PLAYERS. A host that no-ops it leaves that name unwritten and diverges on the very next state hash, and one that substitutes a plausible truncation diverges the moment the text table is not ASCII. THE 'ONE ENTRY IN THIS TABLE' CLAIM THIS ROW USED TO MAKE IS CORRECTED (2026-09-10): wide_to_local_bytes feeds a hashed region too (HIDX_STRAT_PLAYERS, via llm_strat_player_profile_init's name copy) -- there are two strict codecs, not one. This row recorded the entry twice as an internalize case on the strength of its name; both readings were wrong about the mechanism, which is why the trap is spelled out rather than summarised. MEASURED, not argued: simtest's sim_start_tutorial T10 flips one byte of this entry's returned buffer at that sim site and the `players` slice hash moves, and reverting it restores the hash exactly. THE CP_ACP MULTIPLAYER HAZARD IS A NAMED DEFERRED DECISION OWNED BY LIB-FORK, on the llm_strat_rng_seed_wallclock_seconds precedent -- see wide_to_local_bytes's row for the full statement; never vendor a fixed codec silently. RULED 2026-09-12 (F0-CPACP, user): KEEP CP_ACP -- retail-faithful, the same-locale MP requirement documented; the post-fork direction is full UTF-8/multilanguage text (docs/fork-plan.md, post-F5), which retires this question rather than re-answering it.",
+   "abi": {
+    "name": "wide_to_local",
+    "ret": "char *",
+    "params": [
+     [
+      "void *",
+      "src"
+     ],
+     [
+      "char *",
+      "dst"
+     ]
+    ]
+   }
+  },
+  "utils_write_to_file": {
+   "class": "host-callback:io",
+   "confidence": "high",
+   "reason": "Write `n` bytes at the handle's current position and advance it; return the byte count written, or a NEGATIVE value if the write did not fully happen -- a partial write is a failure, not a number the save writer knows how to use. Save byte-identity is a permanent guarantee of the frozen side, so this must not transform anything on the way through.",
+   "abi": {
+    "name": "vfs_write",
+    "ret": "int32_t",
+    "params": [
+     [
+      "int32_t",
+      "handle"
+     ],
+     [
+      "const void *",
+      "src"
+     ],
+     [
+      "uint32_t",
+      "n"
+     ]
+    ],
+    "bind": "mh::hostapi::io::vfs_write"
+   }
+  },
+  "llm_map_set_minimap_zoom_for_size": {
+   "class": "event-channel:event",
+   "confidence": "high",
+   "reason": "LIFT-NOTIFY slice 2 (2026-09-03): converted to LIBMH_EVK_VIEW_MINIMAP_ZOOM. Void, scalar payload; hosted sink routes onto the thunk synchronously at emit; mh::state::evt adapter keeps the member signature identical."
+  },
+  "llm_strat_race_alert_sound_emit": {
+   "class": "event-channel:event",
+   "confidence": "high",
+   "reason": "LIFT-NOTIFY slice 1 (2026-09-03): converted to LIBMH_EVK_SND_RACE_ALERT (lt_reload_snapshot_resync binder). Hosted sink routes onto the thunk synchronously at emit (R5-exact); mh::state::evt adapter keeps the member signature identical."
+  },
+  "llm_ui_dlg_build_from_table": {
+   "class": "event-channel:screen",
+   "confidence": "high",
+   "reason": "LIFT-SCREEN slice 1 (2026-09-03): converted to LIBMH_EVK_SCR_DLG_FROM_TABLE {a=LIBMH_SCR_DLGT_* id} on the SCREEN channel. The one entry in this slice whose SHAPE changed: the original argument is a raw table address (0x00656d6a), which cannot cross an abstract boundary (R4), so the record carries an id and the host owns the id -> table map. Retires the declared need for an addr constant. Hosted sink routes onto the thunk synchronously at emit (R5-exact); stage E had already hoisted this entry's load-bearing state writes into libmh at the call site, so what crosses is the visual remainder."
+  },
+  "llm_strat_render_present": {
+   "class": "event-channel:screen",
+   "confidence": "high",
+   "reason": "CONVERTED at SIMABI-NOTIFY (2026-09-10) to LIBMH_EVK_SCR_STRAT_FRAME_PRESENT -- the strategic sibling of SCR_TACT_FRAME_PRESENT and converted for that precedent's reason. Its one libmh site is the LAST STATEMENT of detail::frame (sim/libtrans/sim_lt_frame.cpp:67, 0x0043ed41): void, unconditional on the path that reaches it, no return and no out-param, and nothing of libmh's runs after it in that frame -- so there is no same-frame readback to defer (R3b) and no shared state the emitter mutates after the record (R3c). llm_strat_input_update, at the HEAD of the same body, deliberately did NOT convert with it: the input pump stays required under R10."
+  },
+  "llm_strat_render_view": {
+   "class": "event-channel:screen",
+   "confidence": "high",
+   "reason": "CONVERTED at SIMABI-NOTIFY (2026-09-10) to LIBMH_EVK_SCR_STRAT_FRAME_REDRAW. Same shape as llm_strat_render_present and a SEPARATE kind rather than a shared one, because the redraw path deliberately does not present: its one libmh site is the last statement of detail::frame_redraw_behind_dialog (sim_lt_frame.cpp:78, 0x0043edd1). NOT to be confused with llm_tact_render_view, which stays REQUIRED under R3b -- that one's subtree writes hover/anim state llm_tact_frame reads at nine sites later in the same frame; this one is terminal and its subtree is render-read only (docs/state-boundary.md D5)."
+  }
+ }
+}

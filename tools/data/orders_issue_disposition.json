@@ -1,0 +1,60 @@
+{
+  "_comment": [
+    "O4-ISSUE's ATTRIBUTION DATA -- the hand-authored half of tools/gen_order_issue_inventory.py.",
+    "",
+    "The inventory itself is DERIVED: every one of the order-issue surface's entries gets its owner",
+    "from its own ledger row (translated by this domain, or stays-original with settle evidence), so",
+    "nothing about the 113 is written here. What IS written here is the part no ledger can answer --",
+    "the accessors of the order CONTAINER's regions that are not members of this surface at all. Those",
+    "belong to other subsystems, so somebody has to say WHICH item owns each, and that claim is a",
+    "judgement rather than a measurement.",
+    "",
+    "THE NEGATIVE ARM DEPENDS ON THIS FILE BEING SHORT. Every external accessor of an order region",
+    "must appear below with an `owner` item and a `why`; an accessor that appears in the census and not",
+    "here FAILS the check. So the way a new external writer gets accepted is that somebody writes down",
+    "who owns it -- which is exactly the property O4-ISSUE's done_when asks for, and the reason this is",
+    "a data file with a gate rather than a paragraph in a doc."
+  ],
+  "region_prefix": "STRAT_ORDER",
+  "_region_prefix_why": [
+    "The order container's regions, selected by prefix rather than by a hand list so a region added to",
+    "the registry later cannot be silently outside the audit. Measured 2026-08-28: twelve regions --",
+    "QUEUE / STAGING / PENDING and their three counters, SCRATCH_ARGS, SEQ_ID_BY_PLAYER and the four",
+    "ACK_VOICE_* members. O4-ISSUE's done_when says `all four order regions`, written when only four",
+    "were known to be held; the prefix covers those four and eight more, which is strictly stronger."
+  ],
+  "external_accessors": {
+    "map_FillDefaults": {
+      "owner": "SIM-RESID",
+      "access": "write",
+      "regions": [
+        "STRAT_ORDER_QUEUE_COUNT",
+        "STRAT_ORDER_STAGING_COUNT",
+        "STRAT_ORDER_PENDING_COUNT"
+      ],
+      "why": [
+        "The map/session defaults filler, which zeroes the three order counters at map load. It is an",
+        "INIT-ONLY write, not an ownership claim -- it never reads them back and never runs during a",
+        "tick -- so this is a SCHEDULED hold with a named owner, not an unattributed accessor.",
+        "",
+        "THE OWNER CHANGED 2026-08-28 (user's call) AND THIS ENTRY SAID MAP-LOAD UNTIL 2026-08-30.",
+        "It is `map_*` by NAME and a per-new-game SIM reset by BEHAVIOUR: 19 regions -- the three order",
+        "counters, ctrl groups, storage/power/pop stats, turrets, labs, mines, productions, soldiers --",
+        "called from llm_strat_mode_init and map_ReadMap_pre. MAP-LOAD closed 2026-08-28 with the verdict",
+        "ALL 25 EXCEPTED, none owned, and excluded this function from its scope through",
+        "writer_dispositions.json's `owned_elsewhere` rather than adjudicating it. SIM-RESID adopted it,",
+        "and its own done_when names this hold in as many words: the three counters must measure zero",
+        "external writers, which is O4-ISSUE's remaining hold. 1,156 B at 0x45603e; 35 entries in",
+        "docs/patching-surface.md must be re-derived against our body when it is translated.",
+        "",
+        "Still explicitly out of scope for THIS domain since decomposition (docs/orders-issue-closure.md",
+        "Sect. 10) -- the owner moved, the scope boundary did not.",
+        "",
+        "NOTE THE COUNT. O4-ISSUE's done_when says `map_FillDefaults's two counter writes`; the census",
+        "measures THREE (queue, staging and pending). The clause was written from the plan and the",
+        "measurement disagreed with it, which is the same way its sibling clause named the wrong fourth",
+        "SEQ_ID writer -- see O4B's progress. Three is the measured number."
+      ]
+    }
+  }
+}

@@ -1,0 +1,8123 @@
+{
+ "_generated_by": "tools/gen_order_matrix.py",
+ "_do_not_hand_edit": "Edit the generator; inputs are order_matrix_raw.json + call_graph_no_crt.json.",
+ "_limits": [
+  "order-level, not branch-level: a reachable verdict does not mean the branch fires",
+  "unit lane (kind 0x20/0x80) is block-resolved -- no jump table exists to resolve it",
+  "shared helpers (fan-in > 4 order routes) are cut from every closure"
+ ],
+ "program": "/eng/mh.exe",
+ "counts": {
+  "wrappers": 132,
+  "issue_sites": 160,
+  "unresolved_sites": 0,
+  "routes": 49,
+  "gated_functions": 174,
+  "shared_helpers_cut": 61
+ },
+ "fallthrough_merges": {
+  "bldg": {
+   "17": [
+    16
+   ]
+  }
+ },
+ "unresolved_sites": [],
+ "shared_helpers": [
+  "NOTHING2",
+  "game_AddPlanetToAvailable",
+  "game_AddProjectToAvailable",
+  "game_AddProjectToAvailableWithCheck",
+  "game_AddToAvailableBuildings",
+  "game_AddToAvailableBuildingsWithCheck",
+  "game_HandleProgress",
+  "game_HandleUpgrade",
+  "game_SetEvent",
+  "game_SpendResource",
+  "game_UpdateProgress",
+  "game_UpdateResourceStats",
+  "game_ui_AddTextToPrintQueue",
+  "game_ui_PrintTextMessage",
+  "llm_bldg_finish_current_order",
+  "llm_bldg_storage_accepts_unit_type",
+  "llm_cfg_apply_project_resources",
+  "llm_game_notify_system_available",
+  "llm_prod_shuttle_slot_bind_default",
+  "llm_progress_finalize_acquire",
+  "llm_progress_notify_unit_available",
+  "llm_progress_propagate_unlocks",
+  "llm_resource_add",
+  "llm_snd_channel_get_play_state",
+  "llm_snd_play",
+  "llm_snd_play_matching_sample",
+  "llm_strat_ai_group_member_link",
+  "llm_strat_ai_notify_unit_lifecycle",
+  "llm_strat_bldg_add_workers",
+  "llm_strat_bldg_assign_workers",
+  "llm_strat_bldg_clear_staffed_flag",
+  "llm_strat_bldg_grant_type_resources",
+  "llm_strat_bldg_notify_state_change",
+  "llm_strat_bldg_notify_ui",
+  "llm_strat_bldg_remove_workers",
+  "llm_strat_bldg_set_staffed_flag",
+  "llm_strat_bldg_unassign_workers",
+  "llm_strat_bldg_uses_workers",
+  "llm_strat_count_landing_spots",
+  "llm_strat_population_add",
+  "llm_strat_prod_shuttle_slot_release",
+  "llm_strat_refresh_building",
+  "llm_strat_storage_dock_unit_at_building",
+  "llm_strat_storage_find_home_for_unit",
+  "llm_strat_storage_type_accepts_unit",
+  "llm_strat_unit_add_docked",
+  "llm_strat_unit_housing_count_remove",
+  "llm_ui_planet_select_screen_open",
+  "llm_unit_apply_production_completion",
+  "llm_unit_force_disembark",
+  "llm_util_empty_return_stub",
+  "map_fow_UpdateFoWPlus",
+  "map_unit_Add",
+  "map_unit_IsAiGround",
+  "map_unit_IsAiHeli",
+  "map_unit_IsAiPlane",
+  "map_unit_IsAiSoldier",
+  "utils_concat",
+  "utils_w_str_cmp",
+  "utils_w_str_copy",
+  "w_sprintf"
+ ],
+ "wrappers": [
+  {
+   "name": "llm_strat_unit_order_dispatch_default",
+   "addr": "0x00469de6",
+   "routes": [
+    {
+     "lane": "unit",
+     "resolution": "block",
+     "reason": "inline order_code if-chain",
+     "kind": 128,
+     "kind_inferred": false,
+     "site": "0x00469e64",
+     "issue_lane": "replicated",
+     "param0": null,
+     "order_code": null
+    }
+   ],
+   "callers": [],
+   "issue_domains_direct": [],
+   "issue_domains_rooted": [
+    "sim"
+   ]
+  },
+  {
+   "name": "llm_strat_unit_issue_default_order",
+   "addr": "0x00469e72",
+   "routes": [
+    {
+     "lane": "unit",
+     "resolution": "block",
+     "reason": "inline order_code if-chain",
+     "kind": 128,
+     "kind_inferred": false,
+     "site": "0x00469ef0",
+     "issue_lane": "immediate",
+     "param0": null,
+     "order_code": null
+    }
+   ],
+   "callers": [
+    "llm_strat_ai_active_unit_tick",
+    "llm_strat_ai_group_issue_default_order_all",
+    "llm_strat_ai_group_task_disband",
+    "llm_strat_ai_group_task_muster_from_pool",
+    "llm_strat_ai_group_tick_arrivals",
+    "llm_strat_ai_unit_select_attack_target",
+    "llm_strat_unit_passive_engage_tick"
+   ],
+   "issue_domains_direct": [
+    "ai",
+    "sim"
+   ],
+   "issue_domains_rooted": [
+    "ai"
+   ]
+  },
+  {
+   "name": "llm_strat_unit_reset_order_and_target",
+   "addr": "0x00469efe",
+   "routes": [
+    {
+     "lane": "unit",
+     "resolution": "block",
+     "reason": "inline order_code if-chain",
+     "kind": 128,
+     "kind_inferred": false,
+     "site": "0x00469f7c",
+     "issue_lane": "immediate",
+     "param0": null,
+     "order_code": null
+    }
+   ],
+   "callers": [],
+   "issue_domains_direct": [],
+   "issue_domains_rooted": [
+    "sim"
+   ]
+  },
+  {
+   "name": "llm_strat_unit_order_move",
+   "addr": "0x00469fe6",
+   "routes": [
+    {
+     "lane": "unit",
+     "resolution": "block",
+     "reason": "inline order_code if-chain",
+     "kind": 128,
+     "kind_inferred": false,
+     "site": "0x0046a092",
+     "issue_lane": "replicated",
+     "param0": null,
+     "order_code": null
+    },
+    {
+     "lane": "admin",
+     "resolution": "case",
+     "case": 22,
+     "reason": "scan[0]",
+     "kind": 0,
+     "kind_inferred": true,
+     "site": "0x0046a0b7",
+     "issue_lane": "replicated",
+     "param0": 251,
+     "order_code": 251
+    }
+   ],
+   "callers": [
+    "llm_strat_ai_unit_commit_attack_on_enemy_hq",
+    "llm_strat_group_issue_move_order",
+    "llm_strat_group_issue_move_order_confirmed",
+    "llm_strat_group_issue_move_order_deferred",
+    "llm_strat_unit_order_exit_storage"
+   ],
+   "issue_domains_direct": [
+    "ai",
+    "sim"
+   ],
+   "issue_domains_rooted": [
+    "ai",
+    "ui"
+   ]
+  },
+  {
+   "name": "llm_strat_unit_order_move_enqueue",
+   "addr": "0x0046a0d5",
+   "routes": [
+    {
+     "lane": "unit",
+     "resolution": "block",
+     "reason": "inline order_code if-chain",
+     "kind": 128,
+     "kind_inferred": false,
+     "site": "0x0046a181",
+     "issue_lane": "immediate",
+     "param0": null,
+     "order_code": null
+    }
+   ],
+   "callers": [
+    "llm_strat_ai_group_move_formation_rotating",
+    "llm_strat_ai_group_scatter_to_passable_tile",
+    "llm_strat_ai_unit_flag_and_move",
+    "llm_strat_unit_order_exit_storage_enqueue"
+   ],
+   "issue_domains_direct": [
+    "ai",
+    "sim"
+   ],
+   "issue_domains_rooted": [
+    "ai"
+   ]
+  },
+  {
+   "name": "llm_strat_order_issue_0xf_adjacent",
+   "addr": "0x0046a221",
+   "routes": [
+    {
+     "lane": "unit",
+     "resolution": "block",
+     "reason": "inline order_code if-chain",
+     "kind": 128,
+     "kind_inferred": false,
+     "site": "0x0046a2e4",
+     "issue_lane": "replicated",
+     "param0": 15,
+     "order_code": 54
+    },
+    {
+     "lane": "admin",
+     "resolution": "case",
+     "case": 22,
+     "reason": "scan[0]",
+     "kind": 0,
+     "kind_inferred": true,
+     "site": "0x0046a309",
+     "issue_lane": "replicated",
+     "param0": 251,
+     "order_code": 251
+    }
+   ],
+   "callers": [],
+   "issue_domains_direct": [],
+   "issue_domains_rooted": [
+    "sim"
+   ]
+  },
+  {
+   "name": "llm_strat_order_issue_0xf_adjacent_enqueue",
+   "addr": "0x0046a325",
+   "routes": [
+    {
+     "lane": "unit",
+     "resolution": "block",
+     "reason": "inline order_code if-chain",
+     "kind": 128,
+     "kind_inferred": false,
+     "site": "0x0046a3e8",
+     "issue_lane": "immediate",
+     "param0": 15,
+     "order_code": 54
+    }
+   ],
+   "callers": [
+    "llm_strat_order_issue_0xf_adjacent_by_offset"
+   ],
+   "issue_domains_direct": [
+    "sim"
+   ],
+   "issue_domains_rooted": [
+    "sim"
+   ]
+  },
+  {
+   "name": "llm_strat_unit_order_move_default",
+   "addr": "0x0046a402",
+   "routes": [
+    {
+     "lane": "unit",
+     "resolution": "block",
+     "reason": "inline order_code if-chain",
+     "kind": 128,
+     "kind_inferred": false,
+     "site": "0x0046a488",
+     "issue_lane": "replicated",
+     "param0": 16,
+     "order_code": null
+    },
+    {
+     "lane": "admin",
+     "resolution": "case",
+     "case": 22,
+     "reason": "scan[0]",
+     "kind": 0,
+     "kind_inferred": true,
+     "site": "0x0046a4ad",
+     "issue_lane": "replicated",
+     "param0": 251,
+     "order_code": 251
+    }
+   ],
+   "callers": [
+    "llm_strat_group_issue_move_order_deferred"
+   ],
+   "issue_domains_direct": [
+    "sim"
+   ],
+   "issue_domains_rooted": [
+    "ui"
+   ]
+  },
+  {
+   "name": "llm_strat_unit_order_move_default_enqueue",
+   "addr": "0x0046a4cb",
+   "routes": [
+    {
+     "lane": "unit",
+     "resolution": "block",
+     "reason": "inline order_code if-chain",
+     "kind": 128,
+     "kind_inferred": false,
+     "site": "0x0046a551",
+     "issue_lane": "immediate",
+     "param0": 16,
+     "order_code": null
+    }
+   ],
+   "callers": [],
+   "issue_domains_direct": [],
+   "issue_domains_rooted": [
+    "sim"
+   ]
+  },
+  {
+   "name": "llm_strat_unit_order_move_auto",
+   "addr": "0x0046a56d",
+   "routes": [
+    {
+     "lane": "unit",
+     "resolution": "block",
+     "reason": "inline order_code if-chain",
+     "kind": 128,
+     "kind_inferred": false,
+     "site": "0x0046a60c",
+     "issue_lane": "immediate",
+     "param0": null,
+     "order_code": null
+    }
+   ],
+   "callers": [
+    "llm_strat_unit_order_exit_storage_auto",
+    "llm_strat_unit_state_attack_unit",
+    "llm_strat_unit_state_group_marshal",
+    "llm_strat_unit_state_move_walker"
+   ],
+   "issue_domains_direct": [
+    "sim"
+   ],
+   "issue_domains_rooted": [
+    "ui"
+   ]
+  },
+  {
+   "name": "llm_strat_unit_order_scatter_from_spawn",
+   "addr": "0x0046a626",
+   "routes": [
+    {
+     "lane": "unit",
+     "resolution": "block",
+     "reason": "inline order_code if-chain",
+     "kind": 128,
+     "kind_inferred": false,
+     "site": "0x0046a69f",
+     "issue_lane": "immediate",
+     "param0": 16,
+     "order_code": null
+    }
+   ],
+   "callers": [
+    "llm_strat_deploy_starting_squad"
+   ],
+   "issue_domains_direct": [
+    "sim"
+   ],
+   "issue_domains_rooted": [
+    "debug"
+   ]
+  },
+  {
+   "name": "llm_strat_unit_order_exit_storage",
+   "addr": "0x0046a6b9",
+   "routes": [
+    {
+     "lane": "unit",
+     "resolution": "block",
+     "reason": "inline order_code if-chain",
+     "kind": 128,
+     "kind_inferred": false,
+     "site": "0x0046a805",
+     "issue_lane": "replicated",
+     "param0": 36,
+     "order_code": 56
+    },
+    {
+     "lane": "unit",
+     "resolution": "block",
+     "reason": "inline order_code if-chain",
+     "kind": 128,
+     "kind_inferred": false,
+     "site": "0x0046a898",
+     "issue_lane": "replicated",
+     "param0": 41,
+     "order_code": 11
+    },
+    {
+     "lane": "admin",
+     "resolution": "case",
+     "case": 22,
+     "reason": "scan[0]",
+     "kind": 0,
+     "kind_inferred": true,
+     "site": "0x0046a8bd",
+     "issue_lane": "replicated",
+     "param0": 251,
+     "order_code": 251
+    }
+   ],
+   "callers": [
+    "llm_strat_group_issue_enter_building_order",
+    "llm_strat_ui_unload_group_from_storage"
+   ],
+   "issue_domains_direct": [
+    "sim",
+    "ui"
+   ],
+   "issue_domains_rooted": [
+    "ui"
+   ]
+  },
+  {
+   "name": "llm_strat_unit_order_exit_storage_enqueue",
+   "addr": "0x0046a918",
+   "routes": [
+    {
+     "lane": "unit",
+     "resolution": "block",
+     "reason": "inline order_code if-chain",
+     "kind": 128,
+     "kind_inferred": false,
+     "site": "0x0046aa64",
+     "issue_lane": "immediate",
+     "param0": 36,
+     "order_code": 56
+    },
+    {
+     "lane": "unit",
+     "resolution": "block",
+     "reason": "inline order_code if-chain",
+     "kind": 128,
+     "kind_inferred": false,
+     "site": "0x0046aaaf",
+     "issue_lane": "immediate",
+     "param0": 41,
+     "order_code": 11
+    }
+   ],
+   "callers": [
+    "llm_strat_ai_route_unit_to_home_storage",
+    "llm_strat_ai_unit_group_assign_by_type"
+   ],
+   "issue_domains_direct": [
+    "ai"
+   ],
+   "issue_domains_rooted": [
+    "ai"
+   ]
+  },
+  {
+   "name": "llm_strat_unit_order_exit_storage_auto",
+   "addr": "0x0046ab08",
+   "routes": [
+    {
+     "lane": "unit",
+     "resolution": "block",
+     "reason": "inline order_code if-chain",
+     "kind": 128,
+     "kind_inferred": false,
+     "site": "0x0046ac54",
+     "issue_lane": "immediate",
+     "param0": 36,
+     "order_code": 56
+    },
+    {
+     "lane": "unit",
+     "resolution": "block",
+     "reason": "inline order_code if-chain",
+     "kind": 128,
+     "kind_inferred": false,
+     "site": "0x0046ac9f",
+     "issue_lane": "immediate",
+     "param0": 41,
+     "order_code": 11
+    }
+   ],
+   "callers": [
+    "llm_strat_prod_spawn_arrived_unit"
+   ],
+   "issue_domains_direct": [
+    "sim"
+   ],
+   "issue_domains_rooted": [
+    "ui"
+   ]
+  },
+  {
+   "name": "llm_strat_unit_order_move_confirmed_with_bump",
+   "addr": "0x0046accf",
+   "routes": [
+    {
+     "lane": "unit",
+     "resolution": "block",
+     "reason": "inline order_code if-chain",
+     "kind": 128,
+     "kind_inferred": false,
+     "site": "0x0046ad48",
+     "issue_lane": "replicated",
+     "param0": 24,
+     "order_code": null
+    },
+    {
+     "lane": "admin",
+     "resolution": "case",
+     "case": 22,
+     "reason": "scan[0]",
+     "kind": 0,
+     "kind_inferred": true,
+     "site": "0x0046ad6d",
+     "issue_lane": "replicated",
+     "param0": 251,
+     "order_code": 251
+    }
+   ],
+   "callers": [
+    "llm_strat_group_issue_move_order_confirmed"
+   ],
+   "issue_domains_direct": [
+    "sim"
+   ],
+   "issue_domains_rooted": [
+    "ui"
+   ]
+  },
+  {
+   "name": "llm_strat_ai_unit_order_move_with_bump",
+   "addr": "0x0046ae0a",
+   "routes": [
+    {
+     "lane": "unit",
+     "resolution": "block",
+     "reason": "inline order_code if-chain",
+     "kind": 128,
+     "kind_inferred": false,
+     "site": "0x0046ae83",
+     "issue_lane": "immediate",
+     "param0": 24,
+     "order_code": null
+    }
+   ],
+   "callers": [
+    "llm_strat_ai_player_tick"
+   ],
+   "issue_domains_direct": [
+    "ai"
+   ],
+   "issue_domains_rooted": [
+    "ai"
+   ]
+  },
+  {
+   "name": "llm_strat_unit_order_attack_target",
+   "addr": "0x0046af1e",
+   "routes": [
+    {
+     "lane": "unit",
+     "resolution": "block",
+     "reason": "inline order_code if-chain",
+     "kind": 128,
+     "kind_inferred": false,
+     "site": "0x0046b149",
+     "issue_lane": "replicated",
+     "param0": 26,
+     "order_code": null
+    },
+    {
+     "lane": "admin",
+     "resolution": "case",
+     "case": 22,
+     "reason": "scan[0]",
+     "kind": 0,
+     "kind_inferred": true,
+     "site": "0x0046b16e",
+     "issue_lane": "replicated",
+     "param0": 251,
+     "order_code": 251
+    },
+    {
+     "lane": "unit",
+     "resolution": "block",
+     "reason": "inline order_code if-chain",
+     "kind": 128,
+     "kind_inferred": false,
+     "site": "0x0046b246",
+     "issue_lane": "replicated",
+     "param0": 26,
+     "order_code": 46
+    },
+    {
+     "lane": "unit",
+     "resolution": "block",
+     "reason": "inline order_code if-chain",
+     "kind": 128,
+     "kind_inferred": false,
+     "site": "0x0046b263",
+     "issue_lane": "replicated",
+     "param0": 1,
+     "order_code": 26
+    }
+   ],
+   "callers": [
+    "llm_strat_group_issue_attack_order"
+   ],
+   "issue_domains_direct": [
+    "sim"
+   ],
+   "issue_domains_rooted": [
+    "ui"
+   ]
+  },
+  {
+   "name": "llm_strat_unit_order_attack_target_enqueue",
+   "addr": "0x0046b271",
+   "routes": [
+    {
+     "lane": "unit",
+     "resolution": "block",
+     "reason": "inline order_code if-chain",
+     "kind": 128,
+     "kind_inferred": false,
+     "site": "0x0046b498",
+     "issue_lane": "immediate",
+     "param0": 26,
+     "order_code": null
+    },
+    {
+     "lane": "unit",
+     "resolution": "block",
+     "reason": "inline order_code if-chain",
+     "kind": 128,
+     "kind_inferred": false,
+     "site": "0x0046b56e",
+     "issue_lane": "immediate",
+     "param0": 26,
+     "order_code": 46
+    },
+    {
+     "lane": "unit",
+     "resolution": "block",
+     "reason": "inline order_code if-chain",
+     "kind": 128,
+     "kind_inferred": false,
+     "site": "0x0046b58b",
+     "issue_lane": "immediate",
+     "param0": 1,
+     "order_code": 26
+    }
+   ],
+   "callers": [
+    "llm_strat_ai_commit_attack_order"
+   ],
+   "issue_domains_direct": [
+    "ai"
+   ],
+   "issue_domains_rooted": [
+    "ai"
+   ]
+  },
+  {
+   "name": "llm_strat_unit_order_attack_target_alt",
+   "addr": "0x0046b599",
+   "routes": [
+    {
+     "lane": "unit",
+     "resolution": "block",
+     "reason": "inline order_code if-chain",
+     "kind": 128,
+     "kind_inferred": false,
+     "site": "0x0046b7c4",
+     "issue_lane": "replicated",
+     "param0": 27,
+     "order_code": null
+    },
+    {
+     "lane": "admin",
+     "resolution": "case",
+     "case": 22,
+     "reason": "scan[0]",
+     "kind": 0,
+     "kind_inferred": true,
+     "site": "0x0046b7e9",
+     "issue_lane": "replicated",
+     "param0": 251,
+     "order_code": 251
+    },
+    {
+     "lane": "unit",
+     "resolution": "block",
+     "reason": "inline order_code if-chain",
+     "kind": 128,
+     "kind_inferred": false,
+     "site": "0x0046b8c1",
+     "issue_lane": "replicated",
+     "param0": 26,
+     "order_code": 46
+    },
+    {
+     "lane": "unit",
+     "resolution": "block",
+     "reason": "inline order_code if-chain",
+     "kind": 128,
+     "kind_inferred": false,
+     "site": "0x0046b8de",
+     "issue_lane": "replicated",
+     "param0": 1,
+     "order_code": 27
+    }
+   ],
+   "callers": [
+    "llm_strat_group_issue_attack_order"
+   ],
+   "issue_domains_direct": [
+    "sim"
+   ],
+   "issue_domains_rooted": [
+    "ui"
+   ]
+  },
+  {
+   "name": "llm_strat_unit_order_attack_target_alt_enqueue",
+   "addr": "0x0046b8ec",
+   "routes": [
+    {
+     "lane": "unit",
+     "resolution": "block",
+     "reason": "inline order_code if-chain",
+     "kind": 128,
+     "kind_inferred": false,
+     "site": "0x0046bb13",
+     "issue_lane": "immediate",
+     "param0": 27,
+     "order_code": null
+    },
+    {
+     "lane": "unit",
+     "resolution": "block",
+     "reason": "inline order_code if-chain",
+     "kind": 128,
+     "kind_inferred": false,
+     "site": "0x0046bbe9",
+     "issue_lane": "immediate",
+     "param0": 26,
+     "order_code": 46
+    },
+    {
+     "lane": "unit",
+     "resolution": "block",
+     "reason": "inline order_code if-chain",
+     "kind": 128,
+     "kind_inferred": false,
+     "site": "0x0046bc06",
+     "issue_lane": "immediate",
+     "param0": 1,
+     "order_code": 27
+    }
+   ],
+   "callers": [
+    "llm_strat_ai_commit_attack_order_alt"
+   ],
+   "issue_domains_direct": [
+    "ai"
+   ],
+   "issue_domains_rooted": [
+    "ai"
+   ]
+  },
+  {
+   "name": "llm_strat_unit_order_attack_unit",
+   "addr": "0x0046bc14",
+   "routes": [
+    {
+     "lane": "unit",
+     "resolution": "block",
+     "reason": "inline order_code if-chain",
+     "kind": 128,
+     "kind_inferred": false,
+     "site": "0x0046bcef",
+     "issue_lane": "replicated",
+     "param0": 30,
+     "order_code": 30
+    }
+   ],
+   "callers": [
+    "llm_strat_group_issue_attack_order"
+   ],
+   "issue_domains_direct": [
+    "sim"
+   ],
+   "issue_domains_rooted": [
+    "ui"
+   ]
+  },
+  {
+   "name": "llm_strat_unit_order_attack_unit_enqueue",
+   "addr": "0x0046bcfd",
+   "routes": [
+    {
+     "lane": "unit",
+     "resolution": "block",
+     "reason": "inline order_code if-chain",
+     "kind": 128,
+     "kind_inferred": false,
+     "site": "0x0046bdd8",
+     "issue_lane": "immediate",
+     "param0": 30,
+     "order_code": 30
+    }
+   ],
+   "callers": [
+    "llm_strat_ai_engage_filter_and_commit_target",
+    "llm_strat_unit_order_attack_dispatch"
+   ],
+   "issue_domains_direct": [
+    "ai",
+    "sim"
+   ],
+   "issue_domains_rooted": [
+    "ai"
+   ]
+  },
+  {
+   "name": "llm_strat_unit_order_attack_target_preset_weapon_enqueue",
+   "addr": "0x0046bde6",
+   "routes": [
+    {
+     "lane": "unit",
+     "resolution": "block",
+     "reason": "inline order_code if-chain",
+     "kind": 128,
+     "kind_inferred": false,
+     "site": "0x0046bf65",
+     "issue_lane": "immediate",
+     "param0": 26,
+     "order_code": null
+    },
+    {
+     "lane": "unit",
+     "resolution": "block",
+     "reason": "inline order_code if-chain",
+     "kind": 128,
+     "kind_inferred": false,
+     "site": "0x0046bf90",
+     "issue_lane": "immediate",
+     "param0": 1,
+     "order_code": 26
+    }
+   ],
+   "callers": [],
+   "issue_domains_direct": [],
+   "issue_domains_rooted": [
+    "sim"
+   ]
+  },
+  {
+   "name": "llm_strat_unit_order_attack_building_reposition",
+   "addr": "0x0046bf9c",
+   "routes": [
+    {
+     "lane": "unit",
+     "resolution": "block",
+     "reason": "inline order_code if-chain",
+     "kind": 128,
+     "kind_inferred": false,
+     "site": "0x0046c149",
+     "issue_lane": "replicated",
+     "param0": 28,
+     "order_code": null
+    },
+    {
+     "lane": "admin",
+     "resolution": "case",
+     "case": 22,
+     "reason": "scan[0]",
+     "kind": 0,
+     "kind_inferred": true,
+     "site": "0x0046c16e",
+     "issue_lane": "replicated",
+     "param0": 251,
+     "order_code": 251
+    },
+    {
+     "lane": "unit",
+     "resolution": "block",
+     "reason": "inline order_code if-chain",
+     "kind": 128,
+     "kind_inferred": false,
+     "site": "0x0046c20e",
+     "issue_lane": "replicated",
+     "param0": 1,
+     "order_code": 28
+    }
+   ],
+   "callers": [
+    "llm_strat_ai_unit_commit_attack_on_enemy_hq",
+    "llm_strat_group_issue_attack_order"
+   ],
+   "issue_domains_direct": [
+    "ai",
+    "sim"
+   ],
+   "issue_domains_rooted": [
+    "ai",
+    "ui"
+   ]
+  },
+  {
+   "name": "llm_strat_unit_order_attack_building_reposition_alt_enqueue",
+   "addr": "0x0046c21c",
+   "routes": [
+    {
+     "lane": "unit",
+     "resolution": "block",
+     "reason": "inline order_code if-chain",
+     "kind": 128,
+     "kind_inferred": false,
+     "site": "0x0046c3c5",
+     "issue_lane": "immediate",
+     "param0": 28,
+     "order_code": null
+    },
+    {
+     "lane": "unit",
+     "resolution": "block",
+     "reason": "inline order_code if-chain",
+     "kind": 128,
+     "kind_inferred": false,
+     "site": "0x0046c463",
+     "issue_lane": "immediate",
+     "param0": 1,
+     "order_code": 28
+    }
+   ],
+   "callers": [
+    "llm_strat_ai_commit_attack_order",
+    "llm_strat_ai_commit_attack_order_alt"
+   ],
+   "issue_domains_direct": [
+    "ai"
+   ],
+   "issue_domains_rooted": [
+    "ai"
+   ]
+  },
+  {
+   "name": "llm_strat_unit_order_attack_building_reposition_enqueue",
+   "addr": "0x0046c471",
+   "routes": [
+    {
+     "lane": "unit",
+     "resolution": "block",
+     "reason": "inline order_code if-chain",
+     "kind": 128,
+     "kind_inferred": false,
+     "site": "0x0046c61a",
+     "issue_lane": "immediate",
+     "param0": 28,
+     "order_code": null
+    },
+    {
+     "lane": "unit",
+     "resolution": "block",
+     "reason": "inline order_code if-chain",
+     "kind": 128,
+     "kind_inferred": false,
+     "site": "0x0046c6b8",
+     "issue_lane": "immediate",
+     "param0": 1,
+     "order_code": 28
+    }
+   ],
+   "callers": [],
+   "issue_domains_direct": [],
+   "issue_domains_rooted": [
+    "sim"
+   ]
+  },
+  {
+   "name": "llm_strat_unit_order_attack_building",
+   "addr": "0x0046c6c6",
+   "routes": [
+    {
+     "lane": "unit",
+     "resolution": "block",
+     "reason": "inline order_code if-chain",
+     "kind": 128,
+     "kind_inferred": false,
+     "site": "0x0046c792",
+     "issue_lane": "replicated",
+     "param0": 29,
+     "order_code": 29
+    }
+   ],
+   "callers": [],
+   "issue_domains_direct": [],
+   "issue_domains_rooted": [
+    "sim"
+   ]
+  },
+  {
+   "name": "llm_strat_unit_order_attack_building_enqueue",
+   "addr": "0x0046c7a0",
+   "routes": [
+    {
+     "lane": "unit",
+     "resolution": "block",
+     "reason": "inline order_code if-chain",
+     "kind": 128,
+     "kind_inferred": false,
+     "site": "0x0046c86c",
+     "issue_lane": "immediate",
+     "param0": 29,
+     "order_code": 29
+    }
+   ],
+   "callers": [
+    "llm_strat_ai_engage_filter_and_commit_target",
+    "llm_strat_unit_order_attack_dispatch"
+   ],
+   "issue_domains_direct": [
+    "ai",
+    "sim"
+   ],
+   "issue_domains_rooted": [
+    "ai"
+   ]
+  },
+  {
+   "name": "llm_strat_unit_order_move_relative",
+   "addr": "0x0046c87a",
+   "routes": [
+    {
+     "lane": "unit",
+     "resolution": "block",
+     "reason": "inline order_code if-chain",
+     "kind": 128,
+     "kind_inferred": false,
+     "site": "0x0046c940",
+     "issue_lane": "replicated",
+     "param0": 51,
+     "order_code": 10
+    },
+    {
+     "lane": "admin",
+     "resolution": "case",
+     "case": 22,
+     "reason": "scan[0]",
+     "kind": 0,
+     "kind_inferred": true,
+     "site": "0x0046c965",
+     "issue_lane": "replicated",
+     "param0": 251,
+     "order_code": 251
+    },
+    {
+     "lane": "unit",
+     "resolution": "block",
+     "reason": "inline order_code if-chain",
+     "kind": 128,
+     "kind_inferred": false,
+     "site": "0x0046c991",
+     "issue_lane": "replicated",
+     "param0": 1,
+     "order_code": 51
+    }
+   ],
+   "callers": [
+    "llm_strat_group_issue_move_order"
+   ],
+   "issue_domains_direct": [
+    "sim"
+   ],
+   "issue_domains_rooted": [
+    "ui"
+   ]
+  },
+  {
+   "name": "llm_strat_unit_order_move_relative_enqueue",
+   "addr": "0x0046c99d",
+   "routes": [
+    {
+     "lane": "unit",
+     "resolution": "block",
+     "reason": "inline order_code if-chain",
+     "kind": 128,
+     "kind_inferred": false,
+     "site": "0x0046ca63",
+     "issue_lane": "immediate",
+     "param0": 51,
+     "order_code": 10
+    },
+    {
+     "lane": "unit",
+     "resolution": "block",
+     "reason": "inline order_code if-chain",
+     "kind": 128,
+     "kind_inferred": false,
+     "site": "0x0046ca8d",
+     "issue_lane": "immediate",
+     "param0": 1,
+     "order_code": 51
+    }
+   ],
+   "callers": [],
+   "issue_domains_direct": [],
+   "issue_domains_rooted": [
+    "sim"
+   ]
+  },
+  {
+   "name": "llm_strat_unit_order_auto_launch_from_storage",
+   "addr": "0x0046cd8b",
+   "routes": [
+    {
+     "lane": "unit",
+     "resolution": "block",
+     "reason": "inline order_code if-chain",
+     "kind": 128,
+     "kind_inferred": false,
+     "site": "0x0046cee1",
+     "issue_lane": "replicated",
+     "param0": null,
+     "order_code": 32
+    },
+    {
+     "lane": "unit",
+     "resolution": "block",
+     "reason": "inline order_code if-chain",
+     "kind": 128,
+     "kind_inferred": false,
+     "site": "0x0046cf20",
+     "issue_lane": "replicated",
+     "param0": 31,
+     "order_code": 35
+    }
+   ],
+   "callers": [
+    "llm_strat_ui_storage_bldg_panel"
+   ],
+   "issue_domains_direct": [
+    "ui"
+   ],
+   "issue_domains_rooted": [
+    "ui"
+   ]
+  },
+  {
+   "name": "llm_strat_unit_order_auto_launch_from_storage_enqueue",
+   "addr": "0x0046cf2c",
+   "routes": [
+    {
+     "lane": "unit",
+     "resolution": "block",
+     "reason": "inline order_code if-chain",
+     "kind": 128,
+     "kind_inferred": false,
+     "site": "0x0046d082",
+     "issue_lane": "immediate",
+     "param0": null,
+     "order_code": 32
+    },
+    {
+     "lane": "unit",
+     "resolution": "block",
+     "reason": "inline order_code if-chain",
+     "kind": 128,
+     "kind_inferred": false,
+     "site": "0x0046d0c1",
+     "issue_lane": "immediate",
+     "param0": 31,
+     "order_code": 35
+    }
+   ],
+   "callers": [
+    "llm_strat_ai_unit_launch_from_storage_enqueue"
+   ],
+   "issue_domains_direct": [
+    "ai"
+   ],
+   "issue_domains_rooted": [
+    "ai"
+   ]
+  },
+  {
+   "name": "llm_strat_bldg_instant_construct_find_slot",
+   "addr": "0x0046d229",
+   "routes": [
+    {
+     "lane": "bldg",
+     "resolution": "case",
+     "case": 25,
+     "reason": "scan[0]",
+     "kind": 64,
+     "kind_inferred": false,
+     "site": "0x0046d4f2",
+     "issue_lane": "replicated",
+     "param0": 234,
+     "order_code": 234
+    }
+   ],
+   "callers": [
+    "llm_strat_input_update"
+   ],
+   "issue_domains_direct": [
+    "sim"
+   ],
+   "issue_domains_rooted": [
+    "ui"
+   ]
+  },
+  {
+   "name": "llm_strat_bldg_instant_construct_find_slot_enqueue",
+   "addr": "0x0046d514",
+   "routes": [
+    {
+     "lane": "bldg",
+     "resolution": "case",
+     "case": 25,
+     "reason": "scan[0]",
+     "kind": 64,
+     "kind_inferred": false,
+     "site": "0x0046d7de",
+     "issue_lane": "immediate",
+     "param0": 234,
+     "order_code": 234
+    }
+   ],
+   "callers": [
+    "llm_strat_ai_bldg_queue_process_entry"
+   ],
+   "issue_domains_direct": [
+    "ai"
+   ],
+   "issue_domains_rooted": [
+    "ai"
+   ]
+  },
+  {
+   "name": "llm_strat_order_create_unit_debug",
+   "addr": "0x0046d800",
+   "routes": [
+    {
+     "lane": "admin",
+     "resolution": "case",
+     "case": 6,
+     "reason": "scan[16]",
+     "kind": 0,
+     "kind_inferred": true,
+     "site": "0x0046d85d",
+     "issue_lane": "replicated",
+     "param0": 235,
+     "order_code": 235
+    }
+   ],
+   "callers": [
+    "llm_debug_console_dispatch"
+   ],
+   "issue_domains_direct": [
+    "debug"
+   ],
+   "issue_domains_rooted": [
+    "debug"
+   ]
+  },
+  {
+   "name": "llm_strat_dmp_enqueue_scripted_order",
+   "addr": "0x0046d873",
+   "routes": [
+    {
+     "lane": "admin",
+     "resolution": "case",
+     "case": 6,
+     "reason": "scan[16]",
+     "kind": 0,
+     "kind_inferred": true,
+     "site": "0x0046d8d0",
+     "issue_lane": "immediate",
+     "param0": 235,
+     "order_code": 235
+    }
+   ],
+   "callers": [
+    "llm_strat_load_base_layout_dmp"
+   ],
+   "issue_domains_direct": [
+    "sim"
+   ],
+   "issue_domains_rooted": [
+    "sim"
+   ]
+  },
+  {
+   "name": "llm_strat_order_recruit_unit",
+   "addr": "0x0046d952",
+   "routes": [
+    {
+     "lane": "admin",
+     "resolution": "case",
+     "case": 14,
+     "reason": "scan[8]",
+     "kind": 0,
+     "kind_inferred": true,
+     "site": "0x0046d991",
+     "issue_lane": "replicated",
+     "param0": 243,
+     "order_code": 243
+    }
+   ],
+   "callers": [],
+   "issue_domains_direct": [],
+   "issue_domains_rooted": [
+    "sim"
+   ]
+  },
+  {
+   "name": "llm_strat_order_recruit_unit_enqueue",
+   "addr": "0x0046d9a9",
+   "routes": [
+    {
+     "lane": "admin",
+     "resolution": "case",
+     "case": 14,
+     "reason": "scan[8]",
+     "kind": 0,
+     "kind_inferred": true,
+     "site": "0x0046d9e8",
+     "issue_lane": "immediate",
+     "param0": 243,
+     "order_code": 243
+    }
+   ],
+   "callers": [
+    "llm_strat_ai_bldg_queue_handle_recruit_state"
+   ],
+   "issue_domains_direct": [
+    "ai"
+   ],
+   "issue_domains_rooted": [
+    "ai"
+   ]
+  },
+  {
+   "name": "llm_strat_order_queue_construction_debug",
+   "addr": "0x0046da00",
+   "routes": [
+    {
+     "lane": "admin",
+     "resolution": "case",
+     "case": 13,
+     "reason": "scan[9]",
+     "kind": 0,
+     "kind_inferred": true,
+     "site": "0x0046da5a",
+     "issue_lane": "replicated",
+     "param0": 242,
+     "order_code": 242
+    }
+   ],
+   "callers": [
+    "llm_debug_console_dispatch"
+   ],
+   "issue_domains_direct": [
+    "debug"
+   ],
+   "issue_domains_rooted": [
+    "debug"
+   ]
+  },
+  {
+   "name": "llm_strat_order_queue_construction_enqueue",
+   "addr": "0x0046da70",
+   "routes": [
+    {
+     "lane": "admin",
+     "resolution": "case",
+     "case": 13,
+     "reason": "scan[9]",
+     "kind": 0,
+     "kind_inferred": true,
+     "site": "0x0046daca",
+     "issue_lane": "immediate",
+     "param0": 242,
+     "order_code": 242
+    }
+   ],
+   "callers": [
+    "llm_strat_ai_bldg_queue_process_entry"
+   ],
+   "issue_domains_direct": [
+    "ai"
+   ],
+   "issue_domains_rooted": [
+    "ai"
+   ]
+  },
+  {
+   "name": "llm_strat_bldg_order_production_add",
+   "addr": "0x0046dae0",
+   "routes": [
+    {
+     "lane": "bldg",
+     "resolution": "case",
+     "case": 3,
+     "reason": "scan[22]",
+     "kind": 64,
+     "kind_inferred": false,
+     "site": "0x0046db4b",
+     "issue_lane": "replicated",
+     "param0": 109,
+     "order_code": 109
+    }
+   ],
+   "callers": [
+    "llm_ui_bldg_units_panel_row_count_update",
+    "llm_ui_bldg_units_panel_tick"
+   ],
+   "issue_domains_direct": [
+    "ui"
+   ],
+   "issue_domains_rooted": [
+    "ui"
+   ]
+  },
+  {
+   "name": "llm_strat_bldg_order_production_add_enqueue",
+   "addr": "0x0046db58",
+   "routes": [
+    {
+     "lane": "bldg",
+     "resolution": "case",
+     "case": 3,
+     "reason": "scan[22]",
+     "kind": 64,
+     "kind_inferred": false,
+     "site": "0x0046dbc3",
+     "issue_lane": "immediate",
+     "param0": 109,
+     "order_code": 109
+    }
+   ],
+   "callers": [
+    "llm_strat_ai_bldg_queue_handle_recruit_state"
+   ],
+   "issue_domains_direct": [
+    "ai"
+   ],
+   "issue_domains_rooted": [
+    "ai"
+   ]
+  },
+  {
+   "name": "llm_strat_bldg_order_production_add_count",
+   "addr": "0x0046dbd0",
+   "routes": [
+    {
+     "lane": "bldg",
+     "resolution": "case",
+     "case": 3,
+     "reason": "scan[22]",
+     "kind": 64,
+     "kind_inferred": false,
+     "site": "0x0046dc3b",
+     "issue_lane": "replicated",
+     "param0": 109,
+     "order_code": 109
+    }
+   ],
+   "callers": [],
+   "issue_domains_direct": [],
+   "issue_domains_rooted": [
+    "sim"
+   ]
+  },
+  {
+   "name": "llm_strat_bldg_order_production_add_count_enqueue",
+   "addr": "0x0046dc47",
+   "routes": [
+    {
+     "lane": "bldg",
+     "resolution": "case",
+     "case": 3,
+     "reason": "scan[22]",
+     "kind": 64,
+     "kind_inferred": false,
+     "site": "0x0046dcb2",
+     "issue_lane": "immediate",
+     "param0": 109,
+     "order_code": 109
+    }
+   ],
+   "callers": [],
+   "issue_domains_direct": [],
+   "issue_domains_rooted": [
+    "sim"
+   ]
+  },
+  {
+   "name": "llm_strat_bldg_order_production_remove",
+   "addr": "0x0046dcbe",
+   "routes": [
+    {
+     "lane": "bldg",
+     "resolution": "case",
+     "case": 4,
+     "reason": "scan[21]",
+     "kind": 64,
+     "kind_inferred": false,
+     "site": "0x0046dd1a",
+     "issue_lane": "replicated",
+     "param0": 111,
+     "order_code": 111
+    }
+   ],
+   "callers": [
+    "llm_ui_bldg_units_panel_row_count_update",
+    "llm_ui_bldg_units_panel_tick"
+   ],
+   "issue_domains_direct": [
+    "ui"
+   ],
+   "issue_domains_rooted": [
+    "ui"
+   ]
+  },
+  {
+   "name": "llm_strat_bldg_order_production_remove_enqueue",
+   "addr": "0x0046dd27",
+   "routes": [
+    {
+     "lane": "bldg",
+     "resolution": "case",
+     "case": 4,
+     "reason": "scan[21]",
+     "kind": 64,
+     "kind_inferred": false,
+     "site": "0x0046dd83",
+     "issue_lane": "immediate",
+     "param0": 111,
+     "order_code": 111
+    }
+   ],
+   "callers": [],
+   "issue_domains_direct": [],
+   "issue_domains_rooted": [
+    "sim"
+   ]
+  },
+  {
+   "name": "llm_strat_turret_order_target_unit",
+   "addr": "0x0046dd90",
+   "routes": [
+    {
+     "lane": "bldg",
+     "resolution": "case",
+     "case": 7,
+     "reason": "scan[18]",
+     "kind": 64,
+     "kind_inferred": false,
+     "site": "0x0046dde4",
+     "issue_lane": "replicated",
+     "param0": 123,
+     "order_code": 123
+    }
+   ],
+   "callers": [
+    "llm_strat_input_update"
+   ],
+   "issue_domains_direct": [
+    "sim"
+   ],
+   "issue_domains_rooted": [
+    "ui"
+   ]
+  },
+  {
+   "name": "llm_strat_turret_order_target_unit_enqueue",
+   "addr": "0x0046ddf0",
+   "routes": [
+    {
+     "lane": "bldg",
+     "resolution": "case",
+     "case": 7,
+     "reason": "scan[18]",
+     "kind": 64,
+     "kind_inferred": false,
+     "site": "0x0046de44",
+     "issue_lane": "immediate",
+     "param0": 123,
+     "order_code": 123
+    }
+   ],
+   "callers": [],
+   "issue_domains_direct": [],
+   "issue_domains_rooted": [
+    "sim"
+   ]
+  },
+  {
+   "name": "llm_strat_turret_order_target_building",
+   "addr": "0x0046de50",
+   "routes": [
+    {
+     "lane": "bldg",
+     "resolution": "case",
+     "case": 7,
+     "reason": "scan[18]",
+     "kind": 64,
+     "kind_inferred": false,
+     "site": "0x0046dea4",
+     "issue_lane": "replicated",
+     "param0": 123,
+     "order_code": 123
+    }
+   ],
+   "callers": [
+    "llm_strat_input_update"
+   ],
+   "issue_domains_direct": [
+    "sim"
+   ],
+   "issue_domains_rooted": [
+    "ui"
+   ]
+  },
+  {
+   "name": "llm_strat_turret_order_target_building_enqueue",
+   "addr": "0x0046deb0",
+   "routes": [
+    {
+     "lane": "bldg",
+     "resolution": "case",
+     "case": 7,
+     "reason": "scan[18]",
+     "kind": 64,
+     "kind_inferred": false,
+     "site": "0x0046df04",
+     "issue_lane": "immediate",
+     "param0": 123,
+     "order_code": 123
+    }
+   ],
+   "callers": [],
+   "issue_domains_direct": [],
+   "issue_domains_rooted": [
+    "sim"
+   ]
+  },
+  {
+   "name": "llm_strat_bldg_order_assign_workers",
+   "addr": "0x0046dfb6",
+   "routes": [
+    {
+     "lane": "bldg",
+     "resolution": "case",
+     "case": 8,
+     "reason": "scan[17]",
+     "kind": 64,
+     "kind_inferred": false,
+     "site": "0x0046dff8",
+     "issue_lane": "replicated",
+     "param0": 126,
+     "order_code": 126
+    }
+   ],
+   "callers": [
+    "llm_strat_bldg_order_set_worker_count",
+    "llm_strat_input_update",
+    "llm_ui_bldg_worker_adjust_apply"
+   ],
+   "issue_domains_direct": [
+    "sim",
+    "ui"
+   ],
+   "issue_domains_rooted": [
+    "ui"
+   ]
+  },
+  {
+   "name": "llm_strat_bldg_order_assign_workers_enqueue",
+   "addr": "0x0046e005",
+   "routes": [
+    {
+     "lane": "bldg",
+     "resolution": "case",
+     "case": 8,
+     "reason": "scan[17]",
+     "kind": 64,
+     "kind_inferred": false,
+     "site": "0x0046e047",
+     "issue_lane": "immediate",
+     "param0": 126,
+     "order_code": 126
+    }
+   ],
+   "callers": [
+    "llm_strat_ai_rebalance_building_workers",
+    "llm_strat_bldg_order_set_worker_count_enqueue"
+   ],
+   "issue_domains_direct": [
+    "ai",
+    "sim"
+   ],
+   "issue_domains_rooted": [
+    "ai"
+   ]
+  },
+  {
+   "name": "llm_strat_bldg_order_unassign_workers",
+   "addr": "0x0046e054",
+   "routes": [
+    {
+     "lane": "bldg",
+     "resolution": "case",
+     "case": 9,
+     "reason": "scan[16]",
+     "kind": 64,
+     "kind_inferred": false,
+     "site": "0x0046e096",
+     "issue_lane": "replicated",
+     "param0": 127,
+     "order_code": 127
+    }
+   ],
+   "callers": [
+    "llm_strat_bldg_order_set_worker_count",
+    "llm_strat_input_update",
+    "llm_ui_bldg_worker_adjust_apply"
+   ],
+   "issue_domains_direct": [
+    "sim",
+    "ui"
+   ],
+   "issue_domains_rooted": [
+    "ui"
+   ]
+  },
+  {
+   "name": "llm_strat_bldg_order_unassign_workers_enqueue",
+   "addr": "0x0046e0a3",
+   "routes": [
+    {
+     "lane": "bldg",
+     "resolution": "case",
+     "case": 9,
+     "reason": "scan[16]",
+     "kind": 64,
+     "kind_inferred": false,
+     "site": "0x0046e0e5",
+     "issue_lane": "immediate",
+     "param0": 127,
+     "order_code": 127
+    }
+   ],
+   "callers": [
+    "llm_strat_ai_rebalance_building_workers",
+    "llm_strat_bldg_order_set_worker_count_enqueue"
+   ],
+   "issue_domains_direct": [
+    "ai",
+    "sim"
+   ],
+   "issue_domains_rooted": [
+    "ai"
+   ]
+  },
+  {
+   "name": "llm_strat_bldg_order_activate",
+   "addr": "0x0046e0f2",
+   "routes": [
+    {
+     "lane": "bldg",
+     "resolution": "case",
+     "case": 10,
+     "reason": "scan[15]",
+     "kind": 64,
+     "kind_inferred": false,
+     "site": "0x0046e125",
+     "issue_lane": "replicated",
+     "param0": 128,
+     "order_code": 128
+    }
+   ],
+   "callers": [
+    "llm_strat_bldg_order_toggle_active"
+   ],
+   "issue_domains_direct": [
+    "sim"
+   ],
+   "issue_domains_rooted": [
+    "ui"
+   ]
+  },
+  {
+   "name": "llm_strat_bldg_order_activate_enqueue",
+   "addr": "0x0046e133",
+   "routes": [
+    {
+     "lane": "bldg",
+     "resolution": "case",
+     "case": 10,
+     "reason": "scan[15]",
+     "kind": 64,
+     "kind_inferred": false,
+     "site": "0x0046e166",
+     "issue_lane": "immediate",
+     "param0": 128,
+     "order_code": 128
+    }
+   ],
+   "callers": [
+    "llm_strat_ai_rebalance_building_workers",
+    "llm_strat_bldg_order_toggle_active_enqueue"
+   ],
+   "issue_domains_direct": [
+    "ai",
+    "sim"
+   ],
+   "issue_domains_rooted": [
+    "ai"
+   ]
+  },
+  {
+   "name": "llm_strat_bldg_order_deactivate",
+   "addr": "0x0046e174",
+   "routes": [
+    {
+     "lane": "bldg",
+     "resolution": "case",
+     "case": 11,
+     "reason": "scan[14]",
+     "kind": 64,
+     "kind_inferred": false,
+     "site": "0x0046e1a7",
+     "issue_lane": "replicated",
+     "param0": 129,
+     "order_code": 129
+    }
+   ],
+   "callers": [
+    "llm_strat_bldg_order_toggle_active"
+   ],
+   "issue_domains_direct": [
+    "sim"
+   ],
+   "issue_domains_rooted": [
+    "ui"
+   ]
+  },
+  {
+   "name": "llm_strat_bldg_order_deactivate_enqueue",
+   "addr": "0x0046e1b5",
+   "routes": [
+    {
+     "lane": "bldg",
+     "resolution": "case",
+     "case": 11,
+     "reason": "scan[14]",
+     "kind": 64,
+     "kind_inferred": false,
+     "site": "0x0046e1e8",
+     "issue_lane": "immediate",
+     "param0": 129,
+     "order_code": 129
+    }
+   ],
+   "callers": [
+    "llm_strat_bldg_order_toggle_active_enqueue"
+   ],
+   "issue_domains_direct": [
+    "sim"
+   ],
+   "issue_domains_rooted": [
+    "sim"
+   ]
+  },
+  {
+   "name": "llm_strat_bldg_order_upgrade",
+   "addr": "0x0046e2ae",
+   "routes": [
+    {
+     "lane": "bldg",
+     "resolution": "case",
+     "case": 12,
+     "reason": "scan[13]",
+     "kind": 64,
+     "kind_inferred": false,
+     "site": "0x0046e2e1",
+     "issue_lane": "replicated",
+     "param0": 130,
+     "order_code": 130
+    }
+   ],
+   "callers": [
+    "llm_ui_bldg_owned_tab_process_events",
+    "llm_ui_bldg_selected_panel_tick"
+   ],
+   "issue_domains_direct": [
+    "ui"
+   ],
+   "issue_domains_rooted": [
+    "ui"
+   ]
+  },
+  {
+   "name": "llm_strat_bldg_order_upgrade_enqueue",
+   "addr": "0x0046e2ef",
+   "routes": [
+    {
+     "lane": "bldg",
+     "resolution": "case",
+     "case": 12,
+     "reason": "scan[13]",
+     "kind": 64,
+     "kind_inferred": false,
+     "site": "0x0046e322",
+     "issue_lane": "immediate",
+     "param0": 130,
+     "order_code": 130
+    }
+   ],
+   "callers": [
+    "llm_strat_ai_bldg_queue_handle_upgrade_or_cancel"
+   ],
+   "issue_domains_direct": [
+    "ai"
+   ],
+   "issue_domains_rooted": [
+    "ai"
+   ]
+  },
+  {
+   "name": "llm_strat_bldg_order_repair_cycle_start",
+   "addr": "0x0046e330",
+   "routes": [
+    {
+     "lane": "bldg",
+     "resolution": "case",
+     "case": 1,
+     "reason": "scan[24]",
+     "kind": 64,
+     "kind_inferred": false,
+     "site": "0x0046e3fb",
+     "issue_lane": "replicated",
+     "param0": 106,
+     "order_code": 106
+    }
+   ],
+   "callers": [
+    "llm_ui_bldg_owned_tab_process_events",
+    "llm_ui_bldg_selected_panel_tick"
+   ],
+   "issue_domains_direct": [
+    "ui"
+   ],
+   "issue_domains_rooted": [
+    "ui"
+   ]
+  },
+  {
+   "name": "llm_strat_bldg_order_repair_cycle_start_enqueue",
+   "addr": "0x0046e409",
+   "routes": [
+    {
+     "lane": "bldg",
+     "resolution": "case",
+     "case": 1,
+     "reason": "scan[24]",
+     "kind": 64,
+     "kind_inferred": false,
+     "site": "0x0046e4d4",
+     "issue_lane": "immediate",
+     "param0": 106,
+     "order_code": 106
+    }
+   ],
+   "callers": [
+    "llm_strat_ai_bldg_queue_handle_upgrade_or_cancel"
+   ],
+   "issue_domains_direct": [
+    "ai"
+   ],
+   "issue_domains_rooted": [
+    "ai"
+   ]
+  },
+  {
+   "name": "llm_strat_bldg_order_hangar_recharge",
+   "addr": "0x0046e4e2",
+   "routes": [
+    {
+     "lane": "bldg",
+     "resolution": "case",
+     "case": 6,
+     "reason": "scan[19]",
+     "kind": 64,
+     "kind_inferred": false,
+     "site": "0x0046e515",
+     "issue_lane": "replicated",
+     "param0": 121,
+     "order_code": 121
+    }
+   ],
+   "callers": [
+    "llm_strat_ui_storage_bldg_panel"
+   ],
+   "issue_domains_direct": [
+    "ui"
+   ],
+   "issue_domains_rooted": [
+    "ui"
+   ]
+  },
+  {
+   "name": "llm_strat_bldg_order_hangar_recharge_enqueue",
+   "addr": "0x0046e523",
+   "routes": [
+    {
+     "lane": "bldg",
+     "resolution": "case",
+     "case": 6,
+     "reason": "scan[19]",
+     "kind": 64,
+     "kind_inferred": false,
+     "site": "0x0046e556",
+     "issue_lane": "immediate",
+     "param0": 121,
+     "order_code": 121
+    }
+   ],
+   "callers": [],
+   "issue_domains_direct": [],
+   "issue_domains_rooted": [
+    "sim"
+   ]
+  },
+  {
+   "name": "llm_strat_bldg_order_cancel_reset",
+   "addr": "0x0046e564",
+   "routes": [
+    {
+     "lane": "bldg",
+     "resolution": "case",
+     "case": 13,
+     "reason": "scan[12]",
+     "kind": 64,
+     "kind_inferred": false,
+     "site": "0x0046e597",
+     "issue_lane": "replicated",
+     "param0": 131,
+     "order_code": 131
+    }
+   ],
+   "callers": [],
+   "issue_domains_direct": [],
+   "issue_domains_rooted": [
+    "sim"
+   ]
+  },
+  {
+   "name": "llm_strat_bldg_order_cancel_reset_enqueue",
+   "addr": "0x0046e5a5",
+   "routes": [
+    {
+     "lane": "bldg",
+     "resolution": "case",
+     "case": 13,
+     "reason": "scan[12]",
+     "kind": 64,
+     "kind_inferred": false,
+     "site": "0x0046e5d8",
+     "issue_lane": "immediate",
+     "param0": 131,
+     "order_code": 131
+    }
+   ],
+   "callers": [],
+   "issue_domains_direct": [],
+   "issue_domains_rooted": [
+    "sim"
+   ]
+  },
+  {
+   "name": "llm_strat_bldg_order_restart_construction",
+   "addr": "0x0046e5e6",
+   "routes": [
+    {
+     "lane": "bldg",
+     "resolution": "case",
+     "case": 2,
+     "reason": "scan[23]",
+     "kind": 64,
+     "kind_inferred": false,
+     "site": "0x0046e619",
+     "issue_lane": "replicated",
+     "param0": 107,
+     "order_code": 107
+    }
+   ],
+   "callers": [
+    "llm_ui_building_restart_construction_cb"
+   ],
+   "issue_domains_direct": [
+    "ui"
+   ],
+   "issue_domains_rooted": [
+    "ui"
+   ]
+  },
+  {
+   "name": "llm_strat_bldg_order_restart_construction_enqueue",
+   "addr": "0x0046e627",
+   "routes": [
+    {
+     "lane": "bldg",
+     "resolution": "case",
+     "case": 2,
+     "reason": "scan[23]",
+     "kind": 64,
+     "kind_inferred": false,
+     "site": "0x0046e65a",
+     "issue_lane": "immediate",
+     "param0": 107,
+     "order_code": 107
+    }
+   ],
+   "callers": [
+    "llm_strat_ai_mine_portfolio_rebalance",
+    "llm_strat_ai_plan_turret_upgrade"
+   ],
+   "issue_domains_direct": [
+    "ai"
+   ],
+   "issue_domains_rooted": [
+    "ai"
+   ]
+  },
+  {
+   "name": "llm_strat_bldg_order_mine_rescan",
+   "addr": "0x0046e668",
+   "routes": [
+    {
+     "lane": "bldg",
+     "resolution": "case",
+     "case": 5,
+     "reason": "scan[20]",
+     "kind": 64,
+     "kind_inferred": false,
+     "site": "0x0046e69b",
+     "issue_lane": "replicated",
+     "param0": 116,
+     "order_code": 116
+    }
+   ],
+   "callers": [],
+   "issue_domains_direct": [],
+   "issue_domains_rooted": [
+    "sim"
+   ]
+  },
+  {
+   "name": "llm_strat_bldg_order_mine_rescan_enqueue",
+   "addr": "0x0046e6a9",
+   "routes": [
+    {
+     "lane": "bldg",
+     "resolution": "case",
+     "case": 5,
+     "reason": "scan[20]",
+     "kind": 64,
+     "kind_inferred": false,
+     "site": "0x0046e6dc",
+     "issue_lane": "immediate",
+     "param0": 116,
+     "order_code": 116
+    }
+   ],
+   "callers": [],
+   "issue_domains_direct": [],
+   "issue_domains_rooted": [
+    "sim"
+   ]
+  },
+  {
+   "name": "llm_strat_bldg_order_purge_dead_docked",
+   "addr": "0x0046e6ea",
+   "routes": [
+    {
+     "lane": "bldg",
+     "resolution": "case",
+     "case": 24,
+     "reason": "scan[1]",
+     "kind": 64,
+     "kind_inferred": false,
+     "site": "0x0046e71d",
+     "issue_lane": "replicated",
+     "param0": 230,
+     "order_code": 230
+    }
+   ],
+   "callers": [
+    "llm_strat_ui_storage_bldg_panel"
+   ],
+   "issue_domains_direct": [
+    "ui"
+   ],
+   "issue_domains_rooted": [
+    "ui"
+   ]
+  },
+  {
+   "name": "llm_strat_bldg_order_purge_dead_docked_enqueue",
+   "addr": "0x0046e72b",
+   "routes": [
+    {
+     "lane": "bldg",
+     "resolution": "case",
+     "case": 24,
+     "reason": "scan[1]",
+     "kind": 64,
+     "kind_inferred": false,
+     "site": "0x0046e75e",
+     "issue_lane": "immediate",
+     "param0": 230,
+     "order_code": 230
+    }
+   ],
+   "callers": [],
+   "issue_domains_direct": [],
+   "issue_domains_rooted": [
+    "sim"
+   ]
+  },
+  {
+   "name": "llm_unit_order_disembark_soldiers",
+   "addr": "0x0046e76c",
+   "routes": [
+    {
+     "lane": "unit",
+     "resolution": "block",
+     "reason": "inline order_code if-chain",
+     "kind": 128,
+     "kind_inferred": false,
+     "site": "0x0046e7c8",
+     "issue_lane": "replicated",
+     "param0": 50,
+     "order_code": 50
+    }
+   ],
+   "callers": [
+    "llm_strat_input_update"
+   ],
+   "issue_domains_direct": [
+    "sim"
+   ],
+   "issue_domains_rooted": [
+    "ui"
+   ]
+  },
+  {
+   "name": "llm_unit_order_disembark_soldiers_enqueue",
+   "addr": "0x0046e7d6",
+   "routes": [
+    {
+     "lane": "unit",
+     "resolution": "block",
+     "reason": "inline order_code if-chain",
+     "kind": 128,
+     "kind_inferred": false,
+     "site": "0x0046e832",
+     "issue_lane": "immediate",
+     "param0": 50,
+     "order_code": 50
+    }
+   ],
+   "callers": [],
+   "issue_domains_direct": [],
+   "issue_domains_rooted": [
+    "sim"
+   ]
+  },
+  {
+   "name": "llm_strat_bldg_order_shuttle_depart",
+   "addr": "0x0046e840",
+   "routes": [
+    {
+     "lane": "bldg",
+     "resolution": "case",
+     "case": 15,
+     "reason": "scan[10]",
+     "kind": 64,
+     "kind_inferred": false,
+     "site": "0x0046e882",
+     "issue_lane": "replicated",
+     "param0": 210,
+     "order_code": 210
+    }
+   ],
+   "callers": [
+    "llm_strat_bldg_order_depart_dispatch_by_type"
+   ],
+   "issue_domains_direct": [
+    "sim"
+   ],
+   "issue_domains_rooted": [
+    "ui"
+   ]
+  },
+  {
+   "name": "llm_strat_bldg_order_shuttle_depart_enqueue",
+   "addr": "0x0046e88f",
+   "routes": [
+    {
+     "lane": "bldg",
+     "resolution": "case",
+     "case": 15,
+     "reason": "scan[10]",
+     "kind": 64,
+     "kind_inferred": false,
+     "site": "0x0046e8d1",
+     "issue_lane": "immediate",
+     "param0": 210,
+     "order_code": 210
+    }
+   ],
+   "callers": [
+    "llm_strat_bldg_order_depart_dispatch_by_type_enqueue"
+   ],
+   "issue_domains_direct": [
+    "sim"
+   ],
+   "issue_domains_rooted": [
+    "sim"
+   ]
+  },
+  {
+   "name": "llm_strat_order_issue_0xd5",
+   "addr": "0x0046e8de",
+   "routes": [
+    {
+     "lane": "bldg",
+     "resolution": "case",
+     "case": 0,
+     "reason": "no scan entry -> default",
+     "kind": 64,
+     "kind_inferred": false,
+     "site": "0x0046e92f",
+     "issue_lane": "replicated",
+     "param0": 213,
+     "order_code": 213
+    }
+   ],
+   "callers": [],
+   "issue_domains_direct": [],
+   "issue_domains_rooted": [
+    "sim"
+   ]
+  },
+  {
+   "name": "llm_strat_order_issue_0xd5_enqueue",
+   "addr": "0x0046e93b",
+   "routes": [
+    {
+     "lane": "bldg",
+     "resolution": "case",
+     "case": 0,
+     "reason": "no scan entry -> default",
+     "kind": 64,
+     "kind_inferred": false,
+     "site": "0x0046e98c",
+     "issue_lane": "immediate",
+     "param0": 213,
+     "order_code": 213
+    }
+   ],
+   "callers": [],
+   "issue_domains_direct": [],
+   "issue_domains_rooted": [
+    "sim"
+   ]
+  },
+  {
+   "name": "llm_strat_bldg_order_cargo_bind_slot",
+   "addr": "0x0046e998",
+   "routes": [
+    {
+     "lane": "bldg",
+     "resolution": "case",
+     "case": 18,
+     "reason": "scan[7]",
+     "kind": 64,
+     "kind_inferred": false,
+     "site": "0x0046e9cb",
+     "issue_lane": "replicated",
+     "param0": 214,
+     "order_code": 214
+    }
+   ],
+   "callers": [],
+   "issue_domains_direct": [],
+   "issue_domains_rooted": [
+    "sim"
+   ]
+  },
+  {
+   "name": "llm_strat_bldg_order_cargo_bind_slot_enqueue",
+   "addr": "0x0046e9d9",
+   "routes": [
+    {
+     "lane": "bldg",
+     "resolution": "case",
+     "case": 18,
+     "reason": "scan[7]",
+     "kind": 64,
+     "kind_inferred": false,
+     "site": "0x0046ea0c",
+     "issue_lane": "immediate",
+     "param0": 214,
+     "order_code": 214
+    }
+   ],
+   "callers": [],
+   "issue_domains_direct": [],
+   "issue_domains_rooted": [
+    "sim"
+   ]
+  },
+  {
+   "name": "llm_strat_bldg_order_flush_cargo_hold",
+   "addr": "0x0046ea1a",
+   "routes": [
+    {
+     "lane": "bldg",
+     "resolution": "case",
+     "case": 23,
+     "reason": "scan[2]",
+     "kind": 64,
+     "kind_inferred": false,
+     "site": "0x0046ea4d",
+     "issue_lane": "replicated",
+     "param0": 223,
+     "order_code": 223
+    }
+   ],
+   "callers": [
+    "llm_ui_bldg_panel_tick",
+    "llm_ui_bldg_shuttle_dock_panel_tick"
+   ],
+   "issue_domains_direct": [
+    "ui"
+   ],
+   "issue_domains_rooted": [
+    "ui"
+   ]
+  },
+  {
+   "name": "llm_strat_bldg_order_flush_cargo_hold_enqueue",
+   "addr": "0x0046ea5b",
+   "routes": [
+    {
+     "lane": "bldg",
+     "resolution": "case",
+     "case": 23,
+     "reason": "scan[2]",
+     "kind": 64,
+     "kind_inferred": false,
+     "site": "0x0046ea8e",
+     "issue_lane": "immediate",
+     "param0": 223,
+     "order_code": 223
+    }
+   ],
+   "callers": [],
+   "issue_domains_direct": [],
+   "issue_domains_rooted": [
+    "sim"
+   ]
+  },
+  {
+   "name": "llm_strat_bldg_order_load_passengers",
+   "addr": "0x0046ea9c",
+   "routes": [
+    {
+     "lane": "bldg",
+     "resolution": "case",
+     "case": 19,
+     "reason": "scan[6]",
+     "kind": 64,
+     "kind_inferred": false,
+     "site": "0x0046eade",
+     "issue_lane": "replicated",
+     "param0": 219,
+     "order_code": 219
+    }
+   ],
+   "callers": [
+    "llm_ui_bldg_panel_tick",
+    "llm_ui_bldg_shuttle_dock_panel_tick",
+    "llm_ui_bldg_stat_adjust_row_click",
+    "llm_ui_hud_bldg_load_button_handler"
+   ],
+   "issue_domains_direct": [
+    "ui"
+   ],
+   "issue_domains_rooted": [
+    "ui"
+   ]
+  },
+  {
+   "name": "llm_strat_bldg_order_load_passengers_enqueue",
+   "addr": "0x0046eaeb",
+   "routes": [
+    {
+     "lane": "bldg",
+     "resolution": "case",
+     "case": 19,
+     "reason": "scan[6]",
+     "kind": 64,
+     "kind_inferred": false,
+     "site": "0x0046eb2d",
+     "issue_lane": "immediate",
+     "param0": 219,
+     "order_code": 219
+    }
+   ],
+   "callers": [],
+   "issue_domains_direct": [],
+   "issue_domains_rooted": [
+    "sim"
+   ]
+  },
+  {
+   "name": "llm_strat_bldg_order_unload_passengers",
+   "addr": "0x0046eb3a",
+   "routes": [
+    {
+     "lane": "bldg",
+     "resolution": "case",
+     "case": 20,
+     "reason": "scan[5]",
+     "kind": 64,
+     "kind_inferred": false,
+     "site": "0x0046eb7c",
+     "issue_lane": "replicated",
+     "param0": 220,
+     "order_code": 220
+    }
+   ],
+   "callers": [
+    "llm_ui_bldg_stat_adjust_row_click",
+    "llm_ui_hud_bldg_unload_button_handler"
+   ],
+   "issue_domains_direct": [
+    "ui"
+   ],
+   "issue_domains_rooted": [
+    "ui"
+   ]
+  },
+  {
+   "name": "llm_strat_bldg_order_unload_passengers_enqueue",
+   "addr": "0x0046eb89",
+   "routes": [
+    {
+     "lane": "bldg",
+     "resolution": "case",
+     "case": 20,
+     "reason": "scan[5]",
+     "kind": 64,
+     "kind_inferred": false,
+     "site": "0x0046ebcb",
+     "issue_lane": "immediate",
+     "param0": 220,
+     "order_code": 220
+    }
+   ],
+   "callers": [],
+   "issue_domains_direct": [],
+   "issue_domains_rooted": [
+    "sim"
+   ]
+  },
+  {
+   "name": "llm_strat_bldg_order_load_resource",
+   "addr": "0x0046ebd8",
+   "routes": [
+    {
+     "lane": "bldg",
+     "resolution": "case",
+     "case": 21,
+     "reason": "scan[4]",
+     "kind": 64,
+     "kind_inferred": false,
+     "site": "0x0046ec29",
+     "issue_lane": "replicated",
+     "param0": 221,
+     "order_code": 221
+    }
+   ],
+   "callers": [
+    "llm_ui_bldg_panel_tick",
+    "llm_ui_bldg_shuttle_dock_panel_tick",
+    "llm_ui_bldg_stat_adjust_row_click",
+    "llm_ui_hud_bldg_load_button_handler"
+   ],
+   "issue_domains_direct": [
+    "ui"
+   ],
+   "issue_domains_rooted": [
+    "ui"
+   ]
+  },
+  {
+   "name": "llm_strat_bldg_order_load_resource_enqueue",
+   "addr": "0x0046ec35",
+   "routes": [
+    {
+     "lane": "bldg",
+     "resolution": "case",
+     "case": 21,
+     "reason": "scan[4]",
+     "kind": 64,
+     "kind_inferred": false,
+     "site": "0x0046ec86",
+     "issue_lane": "immediate",
+     "param0": 221,
+     "order_code": 221
+    }
+   ],
+   "callers": [],
+   "issue_domains_direct": [],
+   "issue_domains_rooted": [
+    "sim"
+   ]
+  },
+  {
+   "name": "llm_strat_bldg_order_unload_resource",
+   "addr": "0x0046ec92",
+   "routes": [
+    {
+     "lane": "bldg",
+     "resolution": "case",
+     "case": 22,
+     "reason": "scan[3]",
+     "kind": 64,
+     "kind_inferred": false,
+     "site": "0x0046ece3",
+     "issue_lane": "replicated",
+     "param0": 222,
+     "order_code": 222
+    }
+   ],
+   "callers": [
+    "llm_ui_bldg_stat_adjust_row_click",
+    "llm_ui_hud_bldg_unload_button_handler"
+   ],
+   "issue_domains_direct": [
+    "ui"
+   ],
+   "issue_domains_rooted": [
+    "ui"
+   ]
+  },
+  {
+   "name": "llm_strat_bldg_order_unload_resource_enqueue",
+   "addr": "0x0046ecef",
+   "routes": [
+    {
+     "lane": "bldg",
+     "resolution": "case",
+     "case": 22,
+     "reason": "scan[3]",
+     "kind": 64,
+     "kind_inferred": false,
+     "site": "0x0046ed40",
+     "issue_lane": "immediate",
+     "param0": 222,
+     "order_code": 222
+    }
+   ],
+   "callers": [],
+   "issue_domains_direct": [],
+   "issue_domains_rooted": [
+    "sim"
+   ]
+  },
+  {
+   "name": "llm_strat_bldg_order_port_depart",
+   "addr": "0x0046ed4c",
+   "routes": [
+    {
+     "lane": "bldg",
+     "resolution": "case",
+     "case": 16,
+     "reason": "scan[9]",
+     "kind": 64,
+     "kind_inferred": false,
+     "site": "0x0046ed8e",
+     "issue_lane": "replicated",
+     "param0": 211,
+     "order_code": 211
+    }
+   ],
+   "callers": [
+    "llm_strat_bldg_order_depart_dispatch_by_type"
+   ],
+   "issue_domains_direct": [
+    "sim"
+   ],
+   "issue_domains_rooted": [
+    "ui"
+   ]
+  },
+  {
+   "name": "llm_strat_bldg_order_port_depart_enqueue",
+   "addr": "0x0046ed9b",
+   "routes": [
+    {
+     "lane": "bldg",
+     "resolution": "case",
+     "case": 16,
+     "reason": "scan[9]",
+     "kind": 64,
+     "kind_inferred": false,
+     "site": "0x0046eddd",
+     "issue_lane": "immediate",
+     "param0": 211,
+     "order_code": 211
+    }
+   ],
+   "callers": [
+    "llm_strat_bldg_order_depart_dispatch_by_type_enqueue"
+   ],
+   "issue_domains_direct": [
+    "sim"
+   ],
+   "issue_domains_rooted": [
+    "sim"
+   ]
+  },
+  {
+   "name": "llm_strat_bldg_order_mother_depart",
+   "addr": "0x0046edea",
+   "routes": [
+    {
+     "lane": "bldg",
+     "resolution": "case",
+     "case": 17,
+     "reason": "scan[8]",
+     "kind": 64,
+     "kind_inferred": false,
+     "site": "0x0046ee2c",
+     "issue_lane": "replicated",
+     "param0": 212,
+     "order_code": 212
+    }
+   ],
+   "callers": [
+    "llm_strat_bldg_order_depart_dispatch_by_type"
+   ],
+   "issue_domains_direct": [
+    "sim"
+   ],
+   "issue_domains_rooted": [
+    "ui"
+   ]
+  },
+  {
+   "name": "llm_strat_bldg_order_mother_depart_enqueue",
+   "addr": "0x0046ee39",
+   "routes": [
+    {
+     "lane": "bldg",
+     "resolution": "case",
+     "case": 17,
+     "reason": "scan[8]",
+     "kind": 64,
+     "kind_inferred": false,
+     "site": "0x0046ee7b",
+     "issue_lane": "immediate",
+     "param0": 212,
+     "order_code": 212
+    }
+   ],
+   "callers": [
+    "llm_strat_bldg_order_depart_dispatch_by_type_enqueue"
+   ],
+   "issue_domains_direct": [
+    "sim"
+   ],
+   "issue_domains_rooted": [
+    "sim"
+   ]
+  },
+  {
+   "name": "llm_strat_bldg_order_start_research_project",
+   "addr": "0x0046f140",
+   "routes": [
+    {
+     "lane": "bldg",
+     "resolution": "case",
+     "case": 14,
+     "reason": "scan[11]",
+     "kind": 64,
+     "kind_inferred": false,
+     "site": "0x0046f182",
+     "issue_lane": "replicated",
+     "param0": 137,
+     "order_code": 137
+    }
+   ],
+   "callers": [
+    "llm_ui_bldg_project_panel_tick"
+   ],
+   "issue_domains_direct": [
+    "ui"
+   ],
+   "issue_domains_rooted": [
+    "ui"
+   ]
+  },
+  {
+   "name": "llm_strat_bldg_order_start_research_project_enqueue",
+   "addr": "0x0046f18f",
+   "routes": [
+    {
+     "lane": "bldg",
+     "resolution": "case",
+     "case": 14,
+     "reason": "scan[11]",
+     "kind": 64,
+     "kind_inferred": false,
+     "site": "0x0046f1d1",
+     "issue_lane": "immediate",
+     "param0": 137,
+     "order_code": 137
+    }
+   ],
+   "callers": [],
+   "issue_domains_direct": [],
+   "issue_domains_rooted": [
+    "sim"
+   ]
+  },
+  {
+   "name": "llm_strat_order_ctrlgrp_select_member",
+   "addr": "0x0046f1de",
+   "routes": [
+    {
+     "lane": "admin",
+     "resolution": "case",
+     "case": 1,
+     "reason": "scan[21]",
+     "kind": 0,
+     "kind_inferred": true,
+     "site": "0x0046f21e",
+     "issue_lane": "replicated",
+     "param0": 52,
+     "order_code": 52
+    }
+   ],
+   "callers": [
+    "llm_strat_unit_ctrlgroup_add_member",
+    "llm_ui_hud_unassigned_unit_row_click_handler",
+    "llm_unit_ctrl_group_activate",
+    "llm_unit_ctrl_group_flash_observer"
+   ],
+   "issue_domains_direct": [
+    "sim",
+    "ui"
+   ],
+   "issue_domains_rooted": [
+    "ui"
+   ]
+  },
+  {
+   "name": "llm_strat_order_ctrlgrp_select_member_raw",
+   "addr": "0x0046f22b",
+   "routes": [
+    {
+     "lane": "admin",
+     "resolution": "case",
+     "case": 1,
+     "reason": "scan[21]",
+     "kind": 0,
+     "kind_inferred": true,
+     "site": "0x0046f26b",
+     "issue_lane": "immediate",
+     "param0": 52,
+     "order_code": 52
+    }
+   ],
+   "callers": [],
+   "issue_domains_direct": [],
+   "issue_domains_rooted": [
+    "sim"
+   ]
+  },
+  {
+   "name": "llm_strat_order_ctrlgrp_flash_member",
+   "addr": "0x0046f278",
+   "routes": [
+    {
+     "lane": "admin",
+     "resolution": "case",
+     "case": 2,
+     "reason": "scan[20]",
+     "kind": 0,
+     "kind_inferred": true,
+     "site": "0x0046f2b8",
+     "issue_lane": "replicated",
+     "param0": 53,
+     "order_code": 53
+    }
+   ],
+   "callers": [
+    "llm_strat_selection_drag_finish",
+    "llm_strat_unit_ctrlgroup_leave",
+    "llm_strat_unit_ctrlgroup_remove_member",
+    "llm_ui_hud_unassigned_unit_row_click_handler",
+    "llm_unit_ctrl_group_flash_observer"
+   ],
+   "issue_domains_direct": [
+    "sim",
+    "ui"
+   ],
+   "issue_domains_rooted": [
+    "ui"
+   ]
+  },
+  {
+   "name": "llm_strat_order_ctrlgrp_flash_member_raw",
+   "addr": "0x0046f2c5",
+   "routes": [
+    {
+     "lane": "admin",
+     "resolution": "case",
+     "case": 2,
+     "reason": "scan[20]",
+     "kind": 0,
+     "kind_inferred": true,
+     "site": "0x0046f305",
+     "issue_lane": "immediate",
+     "param0": 53,
+     "order_code": 53
+    }
+   ],
+   "callers": [],
+   "issue_domains_direct": [],
+   "issue_domains_rooted": [
+    "sim"
+   ]
+  },
+  {
+   "name": "llm_strat_order_debug_roll_random",
+   "addr": "0x0046f312",
+   "routes": [
+    {
+     "lane": "admin",
+     "resolution": "case",
+     "case": 3,
+     "reason": "scan[19]",
+     "kind": 0,
+     "kind_inferred": true,
+     "site": "0x0046f33d",
+     "issue_lane": "replicated",
+     "param0": 231,
+     "order_code": 231
+    }
+   ],
+   "callers": [],
+   "issue_domains_direct": [],
+   "issue_domains_rooted": [
+    "sim"
+   ]
+  },
+  {
+   "name": "llm_strat_order_debug_roll_random_enqueue",
+   "addr": "0x0046f34c",
+   "routes": [
+    {
+     "lane": "admin",
+     "resolution": "case",
+     "case": 3,
+     "reason": "scan[19]",
+     "kind": 0,
+     "kind_inferred": false,
+     "site": "0x0046f372",
+     "issue_lane": "immediate",
+     "param0": 231,
+     "order_code": 231
+    }
+   ],
+   "callers": [],
+   "issue_domains_direct": [],
+   "issue_domains_rooted": [
+    "sim"
+   ]
+  },
+  {
+   "name": "llm_strat_order_game_speed_increase",
+   "addr": "0x0046f381",
+   "routes": [
+    {
+     "lane": "admin",
+     "resolution": "case",
+     "case": 4,
+     "reason": "scan[18]",
+     "kind": 0,
+     "kind_inferred": true,
+     "site": "0x0046f3ac",
+     "issue_lane": "replicated",
+     "param0": 232,
+     "order_code": 232
+    }
+   ],
+   "callers": [],
+   "issue_domains_direct": [],
+   "issue_domains_rooted": [
+    "sim"
+   ]
+  },
+  {
+   "name": "llm_strat_order_game_speed_increase_enqueue",
+   "addr": "0x0046f3bb",
+   "routes": [
+    {
+     "lane": "admin",
+     "resolution": "case",
+     "case": 4,
+     "reason": "scan[18]",
+     "kind": 0,
+     "kind_inferred": true,
+     "site": "0x0046f3e6",
+     "issue_lane": "immediate",
+     "param0": 232,
+     "order_code": 232
+    }
+   ],
+   "callers": [],
+   "issue_domains_direct": [],
+   "issue_domains_rooted": [
+    "sim"
+   ]
+  },
+  {
+   "name": "llm_strat_order_game_speed_decrease",
+   "addr": "0x0046f3f5",
+   "routes": [
+    {
+     "lane": "admin",
+     "resolution": "case",
+     "case": 5,
+     "reason": "scan[17]",
+     "kind": 0,
+     "kind_inferred": true,
+     "site": "0x0046f420",
+     "issue_lane": "replicated",
+     "param0": 233,
+     "order_code": 233
+    }
+   ],
+   "callers": [],
+   "issue_domains_direct": [],
+   "issue_domains_rooted": [
+    "sim"
+   ]
+  },
+  {
+   "name": "llm_strat_order_game_speed_decrease_enqueue",
+   "addr": "0x0046f42f",
+   "routes": [
+    {
+     "lane": "admin",
+     "resolution": "case",
+     "case": 5,
+     "reason": "scan[17]",
+     "kind": 0,
+     "kind_inferred": true,
+     "site": "0x0046f45a",
+     "issue_lane": "immediate",
+     "param0": 233,
+     "order_code": 233
+    }
+   ],
+   "callers": [],
+   "issue_domains_direct": [],
+   "issue_domains_rooted": [
+    "sim"
+   ]
+  },
+  {
+   "name": "llm_strat_order_grant_resource",
+   "addr": "0x0046f537",
+   "routes": [
+    {
+     "lane": "admin",
+     "resolution": "case",
+     "case": 8,
+     "reason": "scan[14]",
+     "kind": 0,
+     "kind_inferred": true,
+     "site": "0x0046f585",
+     "issue_lane": "replicated",
+     "param0": 237,
+     "order_code": 237
+    }
+   ],
+   "callers": [
+    "llm_debug_console_dispatch"
+   ],
+   "issue_domains_direct": [
+    "debug"
+   ],
+   "issue_domains_rooted": [
+    "debug"
+   ]
+  },
+  {
+   "name": "llm_strat_order_grant_resource_raw",
+   "addr": "0x0046f592",
+   "routes": [
+    {
+     "lane": "admin",
+     "resolution": "case",
+     "case": 8,
+     "reason": "scan[14]",
+     "kind": 0,
+     "kind_inferred": true,
+     "site": "0x0046f5e0",
+     "issue_lane": "immediate",
+     "param0": 237,
+     "order_code": 237
+    }
+   ],
+   "callers": [
+    "llm_strat_ai_bldg_queue_process",
+    "llm_strat_ai_queue_bldg_upgrade"
+   ],
+   "issue_domains_direct": [
+    "ai"
+   ],
+   "issue_domains_rooted": [
+    "ai"
+   ]
+  },
+  {
+   "name": "llm_strat_order_population_delta_debug",
+   "addr": "0x0046f5ed",
+   "routes": [
+    {
+     "lane": "admin",
+     "resolution": "case",
+     "case": 7,
+     "reason": "scan[15]",
+     "kind": 0,
+     "kind_inferred": true,
+     "site": "0x0046f62c",
+     "issue_lane": "replicated",
+     "param0": 236,
+     "order_code": 236
+    }
+   ],
+   "callers": [
+    "llm_debug_console_dispatch"
+   ],
+   "issue_domains_direct": [
+    "debug"
+   ],
+   "issue_domains_rooted": [
+    "debug"
+   ]
+  },
+  {
+   "name": "llm_strat_order_population_delta_enqueue",
+   "addr": "0x0046f63a",
+   "routes": [
+    {
+     "lane": "admin",
+     "resolution": "case",
+     "case": 7,
+     "reason": "scan[15]",
+     "kind": 0,
+     "kind_inferred": true,
+     "site": "0x0046f679",
+     "issue_lane": "immediate",
+     "param0": 236,
+     "order_code": 236
+    }
+   ],
+   "callers": [
+    "llm_strat_ai_bldg_queue_process_entry",
+    "llm_strat_ai_notify_bldg_constructed"
+   ],
+   "issue_domains_direct": [
+    "ai"
+   ],
+   "issue_domains_rooted": [
+    "ai"
+   ]
+  },
+  {
+   "name": "llm_strat_order_collect_available_projects",
+   "addr": "0x0046f687",
+   "routes": [
+    {
+     "lane": "admin",
+     "resolution": "case",
+     "case": 9,
+     "reason": "scan[13]",
+     "kind": 0,
+     "kind_inferred": true,
+     "site": "0x0046f6b2",
+     "issue_lane": "replicated",
+     "param0": 238,
+     "order_code": 238
+    }
+   ],
+   "callers": [
+    "llm_debug_console_dispatch"
+   ],
+   "issue_domains_direct": [
+    "debug"
+   ],
+   "issue_domains_rooted": [
+    "debug"
+   ]
+  },
+  {
+   "name": "llm_strat_order_collect_available_projects_enqueue",
+   "addr": "0x0046f6c1",
+   "routes": [
+    {
+     "lane": "admin",
+     "resolution": "case",
+     "case": 9,
+     "reason": "scan[13]",
+     "kind": 0,
+     "kind_inferred": true,
+     "site": "0x0046f6ec",
+     "issue_lane": "immediate",
+     "param0": 238,
+     "order_code": 238
+    }
+   ],
+   "callers": [
+    "llm_strat_order_collect_available_projects_thunk"
+   ],
+   "issue_domains_direct": [
+    "sim"
+   ],
+   "issue_domains_rooted": [
+    "ai"
+   ]
+  },
+  {
+   "name": "llm_strat_order_recheck_projects",
+   "addr": "0x0046f6fb",
+   "routes": [
+    {
+     "lane": "admin",
+     "resolution": "case",
+     "case": 11,
+     "reason": "scan[11]",
+     "kind": 0,
+     "kind_inferred": true,
+     "site": "0x0046f726",
+     "issue_lane": "replicated",
+     "param0": 240,
+     "order_code": 240
+    }
+   ],
+   "callers": [
+    "llm_debug_console_dispatch"
+   ],
+   "issue_domains_direct": [
+    "debug"
+   ],
+   "issue_domains_rooted": [
+    "debug"
+   ]
+  },
+  {
+   "name": "llm_strat_order_recheck_projects_enqueue",
+   "addr": "0x0046f735",
+   "routes": [
+    {
+     "lane": "admin",
+     "resolution": "case",
+     "case": 11,
+     "reason": "scan[11]",
+     "kind": 0,
+     "kind_inferred": true,
+     "site": "0x0046f760",
+     "issue_lane": "immediate",
+     "param0": 240,
+     "order_code": 240
+    }
+   ],
+   "callers": [],
+   "issue_domains_direct": [],
+   "issue_domains_rooted": [
+    "sim"
+   ]
+  },
+  {
+   "name": "llm_strat_order_recheck_buildings",
+   "addr": "0x0046f76f",
+   "routes": [
+    {
+     "lane": "admin",
+     "resolution": "case",
+     "case": 10,
+     "reason": "scan[12]",
+     "kind": 0,
+     "kind_inferred": true,
+     "site": "0x0046f79a",
+     "issue_lane": "replicated",
+     "param0": 239,
+     "order_code": 239
+    }
+   ],
+   "callers": [
+    "llm_debug_console_dispatch"
+   ],
+   "issue_domains_direct": [
+    "debug"
+   ],
+   "issue_domains_rooted": [
+    "debug"
+   ]
+  },
+  {
+   "name": "llm_strat_order_recheck_buildings_enqueue",
+   "addr": "0x0046f7a9",
+   "routes": [
+    {
+     "lane": "admin",
+     "resolution": "case",
+     "case": 10,
+     "reason": "scan[12]",
+     "kind": 0,
+     "kind_inferred": true,
+     "site": "0x0046f7d4",
+     "issue_lane": "immediate",
+     "param0": 239,
+     "order_code": 239
+    }
+   ],
+   "callers": [],
+   "issue_domains_direct": [],
+   "issue_domains_rooted": [
+    "sim"
+   ]
+  },
+  {
+   "name": "llm_strat_order_recheck_planet_system_all_players",
+   "addr": "0x0046f7e3",
+   "routes": [
+    {
+     "lane": "admin",
+     "resolution": "case",
+     "case": 12,
+     "reason": "scan[10]",
+     "kind": 0,
+     "kind_inferred": true,
+     "site": "0x0046f80e",
+     "issue_lane": "replicated",
+     "param0": 241,
+     "order_code": 241
+    }
+   ],
+   "callers": [
+    "llm_debug_console_dispatch"
+   ],
+   "issue_domains_direct": [
+    "debug"
+   ],
+   "issue_domains_rooted": [
+    "debug"
+   ]
+  },
+  {
+   "name": "llm_strat_order_recheck_planet_system_all_players_enqueue",
+   "addr": "0x0046f81d",
+   "routes": [
+    {
+     "lane": "admin",
+     "resolution": "case",
+     "case": 12,
+     "reason": "scan[10]",
+     "kind": 0,
+     "kind_inferred": false,
+     "site": "0x0046f843",
+     "issue_lane": "immediate",
+     "param0": 241,
+     "order_code": 241
+    }
+   ],
+   "callers": [],
+   "issue_domains_direct": [],
+   "issue_domains_rooted": [
+    "sim"
+   ]
+  },
+  {
+   "name": "llm_strat_order_credit_conquest_kills",
+   "addr": "0x0046f852",
+   "routes": [
+    {
+     "lane": "admin",
+     "resolution": "case",
+     "case": 21,
+     "reason": "scan[1]",
+     "kind": 0,
+     "kind_inferred": true,
+     "site": "0x0046f87d",
+     "issue_lane": "replicated",
+     "param0": 250,
+     "order_code": 250
+    }
+   ],
+   "callers": [
+    "llm_debug_console_dispatch"
+   ],
+   "issue_domains_direct": [
+    "debug"
+   ],
+   "issue_domains_rooted": [
+    "debug"
+   ]
+  },
+  {
+   "name": "llm_strat_order_credit_conquest_kills_enqueue",
+   "addr": "0x0046f88c",
+   "routes": [
+    {
+     "lane": "admin",
+     "resolution": "case",
+     "case": 21,
+     "reason": "scan[1]",
+     "kind": 0,
+     "kind_inferred": true,
+     "site": "0x0046f8b7",
+     "issue_lane": "immediate",
+     "param0": 250,
+     "order_code": 250
+    }
+   ],
+   "callers": [],
+   "issue_domains_direct": [],
+   "issue_domains_rooted": [
+    "sim"
+   ]
+  },
+  {
+   "name": "llm_strat_order_set_player_relation",
+   "addr": "0x0046f8c6",
+   "routes": [
+    {
+     "lane": "admin",
+     "resolution": "case",
+     "case": 15,
+     "reason": "scan[7]",
+     "kind": 0,
+     "kind_inferred": true,
+     "site": "0x0046f915",
+     "issue_lane": "replicated",
+     "param0": 244,
+     "order_code": 244
+    }
+   ],
+   "callers": [
+    "llm_ui_diplomacy_apply_and_resume"
+   ],
+   "issue_domains_direct": [
+    "ui"
+   ],
+   "issue_domains_rooted": [
+    "ui"
+   ]
+  },
+  {
+   "name": "llm_strat_order_set_player_relation_raw",
+   "addr": "0x0046f922",
+   "routes": [
+    {
+     "lane": "admin",
+     "resolution": "case",
+     "case": 15,
+     "reason": "scan[7]",
+     "kind": 0,
+     "kind_inferred": true,
+     "site": "0x0046f971",
+     "issue_lane": "immediate",
+     "param0": 244,
+     "order_code": 244
+    }
+   ],
+   "callers": [],
+   "issue_domains_direct": [],
+   "issue_domains_rooted": [
+    "sim"
+   ]
+  },
+  {
+   "name": "llm_strat_order_set_player_control_mode",
+   "addr": "0x0046f97e",
+   "routes": [
+    {
+     "lane": "admin",
+     "resolution": "case",
+     "case": 16,
+     "reason": "scan[6]",
+     "kind": 0,
+     "kind_inferred": true,
+     "site": "0x0046fa31",
+     "issue_lane": "replicated",
+     "param0": 245,
+     "order_code": 245
+    }
+   ],
+   "callers": [
+    "llm_ui_diplomacy_apply_and_resume"
+   ],
+   "issue_domains_direct": [
+    "ui"
+   ],
+   "issue_domains_rooted": [
+    "ui"
+   ]
+  },
+  {
+   "name": "llm_strat_order_set_player_control_mode_enqueue",
+   "addr": "0x0046fa3e",
+   "routes": [
+    {
+     "lane": "admin",
+     "resolution": "case",
+     "case": 16,
+     "reason": "scan[6]",
+     "kind": 0,
+     "kind_inferred": true,
+     "site": "0x0046fa8d",
+     "issue_lane": "immediate",
+     "param0": 245,
+     "order_code": 245
+    }
+   ],
+   "callers": [],
+   "issue_domains_direct": [],
+   "issue_domains_rooted": [
+    "sim"
+   ]
+  },
+  {
+   "name": "llm_strat_order_debug_energy_refill_full",
+   "addr": "0x0046fa9a",
+   "routes": [
+    {
+     "lane": "admin",
+     "resolution": "case",
+     "case": 17,
+     "reason": "scan[5]",
+     "kind": 0,
+     "kind_inferred": true,
+     "site": "0x0046faed",
+     "issue_lane": "replicated",
+     "param0": 246,
+     "order_code": 246
+    }
+   ],
+   "callers": [
+    "llm_debug_console_dispatch"
+   ],
+   "issue_domains_direct": [
+    "debug"
+   ],
+   "issue_domains_rooted": [
+    "debug"
+   ]
+  },
+  {
+   "name": "llm_strat_order_debug_energy_refill_full_enqueue",
+   "addr": "0x0046fafb",
+   "routes": [
+    {
+     "lane": "admin",
+     "resolution": "case",
+     "case": 17,
+     "reason": "scan[5]",
+     "kind": 0,
+     "kind_inferred": true,
+     "site": "0x0046fb4e",
+     "issue_lane": "immediate",
+     "param0": 246,
+     "order_code": 246
+    }
+   ],
+   "callers": [],
+   "issue_domains_direct": [],
+   "issue_domains_rooted": [
+    "sim"
+   ]
+  },
+  {
+   "name": "llm_strat_order_debug_damage_scaled",
+   "addr": "0x0046fb5c",
+   "routes": [
+    {
+     "lane": "admin",
+     "resolution": "case",
+     "case": 18,
+     "reason": "scan[4]",
+     "kind": 0,
+     "kind_inferred": true,
+     "site": "0x0046fbaf",
+     "issue_lane": "replicated",
+     "param0": 247,
+     "order_code": 247
+    }
+   ],
+   "callers": [
+    "llm_debug_console_dispatch"
+   ],
+   "issue_domains_direct": [
+    "debug"
+   ],
+   "issue_domains_rooted": [
+    "debug"
+   ]
+  },
+  {
+   "name": "llm_strat_order_debug_charge_add_scaled_enqueue",
+   "addr": "0x0046fbbd",
+   "routes": [
+    {
+     "lane": "admin",
+     "resolution": "case",
+     "case": 18,
+     "reason": "scan[4]",
+     "kind": 0,
+     "kind_inferred": true,
+     "site": "0x0046fc10",
+     "issue_lane": "immediate",
+     "param0": 247,
+     "order_code": 247
+    }
+   ],
+   "callers": [],
+   "issue_domains_direct": [],
+   "issue_domains_rooted": [
+    "sim"
+   ]
+  },
+  {
+   "name": "llm_strat_order_debug_kill_group",
+   "addr": "0x0046fc1e",
+   "routes": [
+    {
+     "lane": "admin",
+     "resolution": "case",
+     "case": 19,
+     "reason": "scan[3]",
+     "kind": 0,
+     "kind_inferred": true,
+     "site": "0x0046fc71",
+     "issue_lane": "replicated",
+     "param0": 247,
+     "order_code": 248
+    }
+   ],
+   "callers": [
+    "llm_debug_console_dispatch"
+   ],
+   "issue_domains_direct": [
+    "debug"
+   ],
+   "issue_domains_rooted": [
+    "debug"
+   ]
+  },
+  {
+   "name": "llm_strat_order_debug_charge_add_full_group_enqueue",
+   "addr": "0x0046fc7f",
+   "routes": [
+    {
+     "lane": "admin",
+     "resolution": "case",
+     "case": 19,
+     "reason": "scan[3]",
+     "kind": 0,
+     "kind_inferred": true,
+     "site": "0x0046fcd2",
+     "issue_lane": "immediate",
+     "param0": 247,
+     "order_code": 248
+    }
+   ],
+   "callers": [],
+   "issue_domains_direct": [],
+   "issue_domains_rooted": [
+    "sim"
+   ]
+  },
+  {
+   "name": "llm_strat_order_fow_reveal_full",
+   "addr": "0x0046fce0",
+   "routes": [
+    {
+     "lane": "admin",
+     "resolution": "case",
+     "case": 20,
+     "reason": "scan[2]",
+     "kind": 0,
+     "kind_inferred": true,
+     "site": "0x0046fd24",
+     "issue_lane": "replicated",
+     "param0": 249,
+     "order_code": 249
+    }
+   ],
+   "callers": [
+    "llm_debug_console_dispatch"
+   ],
+   "issue_domains_direct": [
+    "debug"
+   ],
+   "issue_domains_rooted": [
+    "debug"
+   ]
+  },
+  {
+   "name": "llm_strat_order_fow_reveal_full_enqueue",
+   "addr": "0x0046fd33",
+   "routes": [
+    {
+     "lane": "admin",
+     "resolution": "case",
+     "case": 20,
+     "reason": "scan[2]",
+     "kind": 0,
+     "kind_inferred": true,
+     "site": "0x0046fd77",
+     "issue_lane": "immediate",
+     "param0": 249,
+     "order_code": 249
+    }
+   ],
+   "callers": [],
+   "issue_domains_direct": [],
+   "issue_domains_rooted": [
+    "sim"
+   ]
+  }
+ ],
+ "routes": [
+  {
+   "lane": "admin",
+   "case": 1,
+   "handler_resolution": "case",
+   "direct_handlers": [
+    "llm_unit_status_bit_set"
+   ],
+   "gated_functions": [
+    "llm_unit_status_bit_set"
+   ],
+   "issuers": [
+    "llm_strat_order_ctrlgrp_select_member",
+    "llm_strat_order_ctrlgrp_select_member_raw"
+   ],
+   "issue_domains": [
+    "sim",
+    "ui"
+   ],
+   "coverage_class": "ui-scripted"
+  },
+  {
+   "lane": "admin",
+   "case": 2,
+   "handler_resolution": "case",
+   "direct_handlers": [
+    "llm_unit_status_bit_clear"
+   ],
+   "gated_functions": [
+    "llm_unit_status_bit_clear"
+   ],
+   "issuers": [
+    "llm_strat_order_ctrlgrp_flash_member",
+    "llm_strat_order_ctrlgrp_flash_member_raw"
+   ],
+   "issue_domains": [
+    "sim",
+    "ui"
+   ],
+   "coverage_class": "ui-scripted"
+  },
+  {
+   "lane": "admin",
+   "case": 3,
+   "handler_resolution": "case",
+   "direct_handlers": [
+    "llm_debug_roll_random"
+   ],
+   "gated_functions": [
+    "llm_debug_roll_random",
+    "llm_rand_below",
+    "llm_strat_rng_next"
+   ],
+   "issuers": [
+    "llm_strat_order_debug_roll_random",
+    "llm_strat_order_debug_roll_random_enqueue"
+   ],
+   "issue_domains": [
+    "sim"
+   ],
+   "coverage_class": "simtest-only"
+  },
+  {
+   "lane": "admin",
+   "case": 4,
+   "handler_resolution": "case",
+   "direct_handlers": [
+    "llm_game_speed_increase"
+   ],
+   "gated_functions": [
+    "llm_game_speed_increase",
+    "llm_game_speed_recompute",
+    "llm_ui_print_game_speed"
+   ],
+   "issuers": [
+    "llm_strat_order_game_speed_increase",
+    "llm_strat_order_game_speed_increase_enqueue"
+   ],
+   "issue_domains": [
+    "sim"
+   ],
+   "coverage_class": "simtest-only"
+  },
+  {
+   "lane": "admin",
+   "case": 5,
+   "handler_resolution": "case",
+   "direct_handlers": [
+    "llm_game_speed_decrease"
+   ],
+   "gated_functions": [
+    "llm_game_speed_decrease",
+    "llm_game_speed_recompute",
+    "llm_ui_print_game_speed"
+   ],
+   "issuers": [
+    "llm_strat_order_game_speed_decrease",
+    "llm_strat_order_game_speed_decrease_enqueue"
+   ],
+   "issue_domains": [
+    "sim"
+   ],
+   "coverage_class": "simtest-only"
+  },
+  {
+   "lane": "admin",
+   "case": 6,
+   "handler_resolution": "case",
+   "direct_handlers": [
+    "llm_strat_unit_create",
+    "llm_unit_create_soldier"
+   ],
+   "gated_functions": [
+    "llm_strat_squad_placement_offset_lookup",
+    "llm_strat_unit_create",
+    "llm_strat_unit_housing_count_add",
+    "llm_strat_unit_init_record",
+    "llm_unit_create_soldier",
+    "map_fow_ConvertSightToArea",
+    "map_fow_UpdateFoWPlus_impl",
+    "map_unit_PutOnMap"
+   ],
+   "issuers": [
+    "llm_strat_dmp_enqueue_scripted_order",
+    "llm_strat_order_create_unit_debug"
+   ],
+   "issue_domains": [
+    "debug",
+    "sim"
+   ],
+   "coverage_class": "debug-cheat"
+  },
+  {
+   "lane": "admin",
+   "case": 7,
+   "handler_resolution": "case",
+   "direct_handlers": [
+    "llm_strat_population_add",
+    "llm_strat_population_remove"
+   ],
+   "gated_functions": [
+    "llm_snd_release_channel_voice",
+    "llm_strat_population_layoff_workers",
+    "llm_strat_population_remove",
+    "llm_ui_planet_select_screen_build"
+   ],
+   "issuers": [
+    "llm_strat_order_population_delta_debug",
+    "llm_strat_order_population_delta_enqueue"
+   ],
+   "issue_domains": [
+    "ai",
+    "debug"
+   ],
+   "coverage_class": "ai-soak"
+  },
+  {
+   "lane": "admin",
+   "case": 8,
+   "handler_resolution": "case",
+   "direct_handlers": [
+    "game_SpendResource",
+    "llm_resource_add"
+   ],
+   "gated_functions": [],
+   "issuers": [
+    "llm_strat_order_grant_resource",
+    "llm_strat_order_grant_resource_raw"
+   ],
+   "issue_domains": [
+    "ai",
+    "debug"
+   ],
+   "coverage_class": "ai-soak"
+  },
+  {
+   "lane": "admin",
+   "case": 9,
+   "handler_resolution": "case",
+   "direct_handlers": [
+    "llm_progress_collect_available_projects"
+   ],
+   "gated_functions": [
+    "game_RemoveFromAvailableBuildings",
+    "game_RemoveFromAvailableProjects",
+    "llm_progress_collect_available_projects"
+   ],
+   "issuers": [
+    "llm_strat_order_collect_available_projects",
+    "llm_strat_order_collect_available_projects_enqueue"
+   ],
+   "issue_domains": [
+    "ai",
+    "debug"
+   ],
+   "coverage_class": "ai-soak"
+  },
+  {
+   "lane": "admin",
+   "case": 10,
+   "handler_resolution": "case",
+   "direct_handlers": [
+    "llm_progress_recheck_buildings"
+   ],
+   "gated_functions": [
+    "llm_progress_recheck_buildings"
+   ],
+   "issuers": [
+    "llm_strat_order_recheck_buildings",
+    "llm_strat_order_recheck_buildings_enqueue"
+   ],
+   "issue_domains": [
+    "debug",
+    "sim"
+   ],
+   "coverage_class": "debug-cheat"
+  },
+  {
+   "lane": "admin",
+   "case": 11,
+   "handler_resolution": "case",
+   "direct_handlers": [
+    "llm_progress_recheck_projects"
+   ],
+   "gated_functions": [
+    "llm_progress_recheck_projects"
+   ],
+   "issuers": [
+    "llm_strat_order_recheck_projects",
+    "llm_strat_order_recheck_projects_enqueue"
+   ],
+   "issue_domains": [
+    "debug",
+    "sim"
+   ],
+   "coverage_class": "debug-cheat"
+  },
+  {
+   "lane": "admin",
+   "case": 12,
+   "handler_resolution": "case",
+   "direct_handlers": [
+    "llm_progress_recheck_planet_system_all_players"
+   ],
+   "gated_functions": [
+    "llm_progress_recheck_planet_system_all_players"
+   ],
+   "issuers": [
+    "llm_strat_order_recheck_planet_system_all_players",
+    "llm_strat_order_recheck_planet_system_all_players_enqueue"
+   ],
+   "issue_domains": [
+    "debug",
+    "sim"
+   ],
+   "coverage_class": "debug-cheat"
+  },
+  {
+   "lane": "admin",
+   "case": 13,
+   "handler_resolution": "case",
+   "direct_handlers": [
+    "llm_bldg_queue_construction"
+   ],
+   "gated_functions": [
+    "llm_bldg_construct_finalize",
+    "llm_bldg_footprint_is_clear",
+    "llm_bldg_queue_construction",
+    "llm_bldg_set_connected_flag",
+    "llm_strat_ai_notify_bldg_constructed",
+    "llm_strat_ai_notify_map_changed",
+    "llm_strat_ai_notify_map_changed_2",
+    "llm_strat_bldg_link_to_network_if_adjacent",
+    "llm_strat_bldg_propagate_network_connectivity",
+    "llm_strat_order_population_delta_enqueue",
+    "llm_strat_sight_add_circle",
+    "map_ApplyAreaToMap",
+    "map_CreateBuilding"
+   ],
+   "issuers": [
+    "llm_strat_order_queue_construction_debug",
+    "llm_strat_order_queue_construction_enqueue"
+   ],
+   "issue_domains": [
+    "ai",
+    "debug"
+   ],
+   "coverage_class": "ai-soak"
+  },
+  {
+   "lane": "admin",
+   "case": 14,
+   "handler_resolution": "case",
+   "direct_handlers": [
+    "llm_unit_recruit"
+   ],
+   "gated_functions": [
+    "llm_strat_squad_placement_offset_lookup",
+    "llm_strat_unit_housing_count_add",
+    "llm_strat_unit_init_record",
+    "llm_strat_unit_spawn_docked",
+    "llm_unit_recruit"
+   ],
+   "issuers": [
+    "llm_strat_order_recruit_unit",
+    "llm_strat_order_recruit_unit_enqueue"
+   ],
+   "issue_domains": [
+    "ai",
+    "sim"
+   ],
+   "coverage_class": "ai-soak"
+  },
+  {
+   "lane": "admin",
+   "case": 15,
+   "handler_resolution": "case",
+   "direct_handlers": [
+    "llm_diplomacy_set_relation"
+   ],
+   "gated_functions": [
+    "MultiByteToWideChar",
+    "llm_diplomacy_ai_relation_swap",
+    "llm_diplomacy_set_relation",
+    "llm_net_chat_ally_mask_rebuild",
+    "llm_str_ansi_to_wide",
+    "llm_str_ansi_to_wide_scratch"
+   ],
+   "issuers": [
+    "llm_strat_order_set_player_relation",
+    "llm_strat_order_set_player_relation_raw"
+   ],
+   "issue_domains": [
+    "sim",
+    "ui"
+   ],
+   "coverage_class": "ui-scripted"
+  },
+  {
+   "lane": "admin",
+   "case": 16,
+   "handler_resolution": "case",
+   "direct_handlers": [
+    "llm_game_player_set_ai",
+    "llm_game_player_set_human"
+   ],
+   "gated_functions": [
+    "llm_game_player_set_ai",
+    "llm_game_player_set_human",
+    "llm_map_fog_of_war_recompute"
+   ],
+   "issuers": [
+    "llm_strat_order_set_player_control_mode",
+    "llm_strat_order_set_player_control_mode_enqueue"
+   ],
+   "issue_domains": [
+    "sim",
+    "ui"
+   ],
+   "coverage_class": "ui-scripted"
+  },
+  {
+   "lane": "admin",
+   "case": 17,
+   "handler_resolution": "case",
+   "direct_handlers": [
+    "llm_unit_bldg_energy_refill_full"
+   ],
+   "gated_functions": [
+    "llm_rand_below",
+    "llm_strat_bldg_update_charge_pips",
+    "llm_strat_rng_next",
+    "llm_strat_unit_notify_ui",
+    "llm_strat_unit_update_damage_smoke",
+    "llm_unit_bldg_energy_refill_full"
+   ],
+   "issuers": [
+    "llm_strat_order_debug_energy_refill_full",
+    "llm_strat_order_debug_energy_refill_full_enqueue"
+   ],
+   "issue_domains": [
+    "debug",
+    "sim"
+   ],
+   "coverage_class": "debug-cheat"
+  },
+  {
+   "lane": "admin",
+   "case": 18,
+   "handler_resolution": "case",
+   "direct_handlers": [
+    "llm_unit_bldg_apply_scaled_damage"
+   ],
+   "gated_functions": [
+    "llm_unit_bldg_apply_scaled_damage"
+   ],
+   "issuers": [
+    "llm_strat_order_debug_charge_add_scaled_enqueue",
+    "llm_strat_order_debug_damage_scaled"
+   ],
+   "issue_domains": [
+    "debug",
+    "sim"
+   ],
+   "coverage_class": "debug-cheat"
+  },
+  {
+   "lane": "admin",
+   "case": 19,
+   "handler_resolution": "case",
+   "direct_handlers": [
+    "llm_unit_bldg_apply_lethal_damage"
+   ],
+   "gated_functions": [
+    "llm_unit_bldg_apply_lethal_damage"
+   ],
+   "issuers": [
+    "llm_strat_order_debug_charge_add_full_group_enqueue",
+    "llm_strat_order_debug_kill_group"
+   ],
+   "issue_domains": [
+    "debug",
+    "sim"
+   ],
+   "coverage_class": "debug-cheat"
+  },
+  {
+   "lane": "admin",
+   "case": 20,
+   "handler_resolution": "case",
+   "direct_handlers": [
+    "llm_map_fow_reveal_full"
+   ],
+   "gated_functions": [
+    "llm_map_fow_reveal_full",
+    "map_fow_ConvertSightToArea",
+    "map_fow_UpdateFoWPlus_impl"
+   ],
+   "issuers": [
+    "llm_strat_order_fow_reveal_full",
+    "llm_strat_order_fow_reveal_full_enqueue"
+   ],
+   "issue_domains": [
+    "debug",
+    "sim"
+   ],
+   "coverage_class": "debug-cheat"
+  },
+  {
+   "lane": "admin",
+   "case": 21,
+   "handler_resolution": "case",
+   "direct_handlers": [
+    "llm_combat_credit_planet_conquest_kills"
+   ],
+   "gated_functions": [
+    "llm_combat_credit_planet_conquest_kills",
+    "llm_math_scale_pct",
+    "llm_strat_ai_bldg_register_visible_building",
+    "llm_strat_ai_target_list_add",
+    "llm_strat_bldg_get_coords",
+    "llm_strat_bldg_kill_credit",
+    "llm_strat_toroidal_dist_sq",
+    "llm_strat_unit_get_coords",
+    "llm_strat_unit_is_aircraft",
+    "llm_strat_unit_kill_credit",
+    "llm_strat_unit_notify_ui",
+    "llm_ui_print_queue_text_id"
+   ],
+   "issuers": [
+    "llm_strat_order_credit_conquest_kills",
+    "llm_strat_order_credit_conquest_kills_enqueue"
+   ],
+   "issue_domains": [
+    "debug",
+    "sim"
+   ],
+   "coverage_class": "debug-cheat"
+  },
+  {
+   "lane": "admin",
+   "case": 22,
+   "handler_resolution": "case",
+   "direct_handlers": [
+    "llm_strat_unit_notify_status"
+   ],
+   "gated_functions": [
+    "llm_strat_unit_notify_status"
+   ],
+   "issuers": [
+    "llm_strat_order_issue_0xf_adjacent",
+    "llm_strat_unit_order_attack_building_reposition",
+    "llm_strat_unit_order_attack_target",
+    "llm_strat_unit_order_attack_target_alt",
+    "llm_strat_unit_order_exit_storage",
+    "llm_strat_unit_order_move",
+    "llm_strat_unit_order_move_confirmed_with_bump",
+    "llm_strat_unit_order_move_default",
+    "llm_strat_unit_order_move_relative"
+   ],
+   "issue_domains": [
+    "ai",
+    "sim",
+    "ui"
+   ],
+   "coverage_class": "ai-soak"
+  },
+  {
+   "lane": "bldg",
+   "case": 0,
+   "handler_resolution": "case",
+   "direct_handlers": [
+    "game_SpendResource",
+    "llm_bldg_finish_current_order",
+    "llm_bldg_queue_construction",
+    "llm_combat_credit_planet_conquest_kills",
+    "llm_debug_roll_random",
+    "llm_diplomacy_set_relation",
+    "llm_game_player_set_ai",
+    "llm_game_player_set_human",
+    "llm_game_speed_decrease",
+    "llm_game_speed_increase",
+    "llm_map_fow_reveal_full",
+    "llm_net_lockstep_extend_ui_enter",
+    "llm_net_send_lockstep_extend",
+    "llm_progress_collect_available_projects",
+    "llm_progress_recheck_buildings",
+    "llm_progress_recheck_planet_system_all_players",
+    "llm_progress_recheck_projects",
+    "llm_resource_add",
+    "llm_strat_population_add",
+    "llm_strat_population_remove",
+    "llm_strat_unit_create",
+    "llm_strat_unit_notify_status",
+    "llm_unit_bldg_apply_lethal_damage",
+    "llm_unit_bldg_apply_scaled_damage",
+    "llm_unit_bldg_energy_refill_full",
+    "llm_unit_create_soldier",
+    "llm_unit_recruit",
+    "llm_unit_status_bit_clear",
+    "llm_unit_status_bit_set"
+   ],
+   "gated_functions": [
+    "CompareFileTime",
+    "MultiByteToWideChar",
+    "game_RemoveFromAvailableBuildings",
+    "game_RemoveFromAvailableProjects",
+    "llm_bldg_construct_finalize",
+    "llm_bldg_footprint_is_clear",
+    "llm_bldg_queue_construction",
+    "llm_bldg_set_connected_flag",
+    "llm_chat_history_push",
+    "llm_chat_history_reset_cursor",
+    "llm_combat_credit_planet_conquest_kills",
+    "llm_debug_roll_random",
+    "llm_diplomacy_ai_relation_swap",
+    "llm_diplomacy_set_relation",
+    "llm_game_player_set_ai",
+    "llm_game_player_set_human",
+    "llm_game_speed_decrease",
+    "llm_game_speed_increase",
+    "llm_game_speed_recompute",
+    "llm_gfx_font_desc_for_flags",
+    "llm_gfx_pack_rgb16",
+    "llm_input_key_dequeue",
+    "llm_input_key_queue_empty",
+    "llm_map_fog_of_war_recompute",
+    "llm_map_fow_reveal_full",
+    "llm_math_scale_pct",
+    "llm_net_chat_ally_mask_rebuild",
+    "llm_net_chat_input_process",
+    "llm_net_chat_send_all",
+    "llm_net_lockstep_extend_ui_enter",
+    "llm_net_lockstep_is_local_leader_peer",
+    "llm_net_lockstep_wait_player_overlay_show",
+    "llm_net_send_lockstep_extend",
+    "llm_net_transport_send",
+    "llm_progress_collect_available_projects",
+    "llm_progress_recheck_buildings",
+    "llm_progress_recheck_planet_system_all_players",
+    "llm_progress_recheck_projects",
+    "llm_rand_below",
+    "llm_snd_release_channel_voice",
+    "llm_str_ansi_to_wide",
+    "llm_str_ansi_to_wide_scratch",
+    "llm_strat_ai_bldg_register_visible_building",
+    "llm_strat_ai_notify_bldg_constructed",
+    "llm_strat_ai_notify_map_changed",
+    "llm_strat_ai_notify_map_changed_2",
+    "llm_strat_ai_target_list_add",
+    "llm_strat_bldg_get_coords",
+    "llm_strat_bldg_kill_credit",
+    "llm_strat_bldg_link_to_network_if_adjacent",
+    "llm_strat_bldg_propagate_network_connectivity",
+    "llm_strat_bldg_update_charge_pips",
+    "llm_strat_order_population_delta_enqueue",
+    "llm_strat_player_by_side_id",
+    "llm_strat_population_layoff_workers",
+    "llm_strat_population_remove",
+    "llm_strat_rng_next",
+    "llm_strat_sight_add_circle",
+    "llm_strat_squad_placement_offset_lookup",
+    "llm_strat_toroidal_dist_sq",
+    "llm_strat_unit_create",
+    "llm_strat_unit_get_coords",
+    "llm_strat_unit_housing_count_add",
+    "llm_strat_unit_init_record",
+    "llm_strat_unit_is_aircraft",
+    "llm_strat_unit_kill_credit",
+    "llm_strat_unit_notify_status",
+    "llm_strat_unit_notify_ui",
+    "llm_strat_unit_spawn_docked",
+    "llm_strat_unit_update_damage_smoke",
+    "llm_ui_list_widget_append_entry",
+    "llm_ui_list_widget_clear",
+    "llm_ui_planet_select_screen_build",
+    "llm_ui_print_floating_msg_cyan",
+    "llm_ui_print_game_speed",
+    "llm_ui_print_queue_text_id",
+    "llm_unit_bldg_apply_lethal_damage",
+    "llm_unit_bldg_apply_scaled_damage",
+    "llm_unit_bldg_energy_refill_full",
+    "llm_unit_create_soldier",
+    "llm_unit_recruit",
+    "llm_unit_status_bit_clear",
+    "llm_unit_status_bit_set",
+    "map_ApplyAreaToMap",
+    "map_CreateBuilding",
+    "map_fow_ConvertSightToArea",
+    "map_fow_UpdateFoWPlus_impl",
+    "map_unit_PutOnMap",
+    "utils_str_cmp"
+   ],
+   "issuers": [
+    "llm_strat_order_issue_0xd5",
+    "llm_strat_order_issue_0xd5_enqueue"
+   ],
+   "issue_domains": [
+    "sim"
+   ],
+   "coverage_class": "simtest-only"
+  },
+  {
+   "lane": "bldg",
+   "case": 1,
+   "handler_resolution": "case",
+   "direct_handlers": [
+    "game_ui_PrintTextMessage",
+    "llm_bldg_finish_current_order",
+    "llm_strat_bldg_assign_workers",
+    "llm_strat_bldg_clear_staffed_flag",
+    "llm_strat_bldg_pay_cycle_inputs",
+    "llm_strat_bldg_set_staffed_flag",
+    "llm_strat_bldg_unassign_workers",
+    "llm_strat_refresh_building",
+    "w_sprintf"
+   ],
+   "gated_functions": [
+    "llm_strat_bldg_pay_cycle_inputs"
+   ],
+   "issuers": [
+    "llm_strat_bldg_order_repair_cycle_start",
+    "llm_strat_bldg_order_repair_cycle_start_enqueue"
+   ],
+   "issue_domains": [
+    "ai",
+    "ui"
+   ],
+   "coverage_class": "ai-soak"
+  },
+  {
+   "lane": "bldg",
+   "case": 2,
+   "handler_resolution": "case",
+   "direct_handlers": [
+    "llm_bldg_finish_current_order",
+    "llm_bldg_reset_construction_anim",
+    "llm_bldg_scrap_stored_units",
+    "llm_bldg_set_connected_flag",
+    "llm_strat_bldg_assign_workers",
+    "llm_strat_bldg_clear_staffed_flag",
+    "llm_strat_bldg_set_staffed_flag",
+    "llm_strat_bldg_unassign_workers",
+    "llm_strat_refresh_building"
+   ],
+   "gated_functions": [
+    "cfg_GetAnimTime",
+    "llm_bldg_reset_construction_anim",
+    "llm_bldg_scrap_stored_units",
+    "llm_bldg_set_connected_flag",
+    "llm_cfg_anim_frame_at_progress",
+    "llm_net_lockstep_overlay_dismiss",
+    "llm_net_lockstep_send_presence_lost",
+    "llm_player_teardown_hook_stub",
+    "llm_str_ansi_to_wide_scratch",
+    "llm_strat_ai_grid_stamp_seeds",
+    "llm_strat_ai_group_member_unlink",
+    "llm_strat_ai_group_remove",
+    "llm_strat_ai_notify_object_removed",
+    "llm_strat_ai_queue_reconcile_bldg_change",
+    "llm_strat_ai_target_list_remove",
+    "llm_strat_order_ctrlgrp_flash_member",
+    "llm_strat_player_presence_lost",
+    "llm_strat_target_release_ref",
+    "llm_strat_unit_ctrlgroup_leave",
+    "llm_strat_unit_estimate_weapon_damage",
+    "llm_strat_unit_get_ai_group_index",
+    "llm_strat_unit_refund_build_cost_by_health",
+    "llm_strat_unit_set_state_of",
+    "llm_strat_unit_teardown",
+    "llm_ui_outcome_dialog",
+    "llm_ui_print_floating_msg_red",
+    "llm_ui_print_queue_text_id"
+   ],
+   "issuers": [
+    "llm_strat_bldg_order_restart_construction",
+    "llm_strat_bldg_order_restart_construction_enqueue"
+   ],
+   "issue_domains": [
+    "ai",
+    "ui"
+   ],
+   "coverage_class": "ai-soak"
+  },
+  {
+   "lane": "bldg",
+   "case": 3,
+   "handler_resolution": "case",
+   "direct_handlers": [
+    "llm_bldg_finish_current_order",
+    "llm_strat_refresh_building"
+   ],
+   "gated_functions": [],
+   "issuers": [
+    "llm_strat_bldg_order_production_add",
+    "llm_strat_bldg_order_production_add_count",
+    "llm_strat_bldg_order_production_add_count_enqueue",
+    "llm_strat_bldg_order_production_add_enqueue"
+   ],
+   "issue_domains": [
+    "ai",
+    "sim",
+    "ui"
+   ],
+   "coverage_class": "ai-soak"
+  },
+  {
+   "lane": "bldg",
+   "case": 4,
+   "handler_resolution": "case",
+   "direct_handlers": [
+    "llm_strat_ai_notify_unit_lifecycle",
+    "llm_unit_apply_production_completion"
+   ],
+   "gated_functions": [],
+   "issuers": [
+    "llm_strat_bldg_order_production_remove",
+    "llm_strat_bldg_order_production_remove_enqueue"
+   ],
+   "issue_domains": [
+    "sim",
+    "ui"
+   ],
+   "coverage_class": "ui-scripted"
+  },
+  {
+   "lane": "bldg",
+   "case": 5,
+   "handler_resolution": "case",
+   "direct_handlers": [
+    "llm_bldg_finish_current_order"
+   ],
+   "gated_functions": [],
+   "issuers": [
+    "llm_strat_bldg_order_mine_rescan",
+    "llm_strat_bldg_order_mine_rescan_enqueue"
+   ],
+   "issue_domains": [
+    "sim"
+   ],
+   "coverage_class": "simtest-only"
+  },
+  {
+   "lane": "bldg",
+   "case": 6,
+   "handler_resolution": "case",
+   "direct_handlers": [
+    "llm_strat_refresh_building"
+   ],
+   "gated_functions": [],
+   "issuers": [
+    "llm_strat_bldg_order_hangar_recharge",
+    "llm_strat_bldg_order_hangar_recharge_enqueue"
+   ],
+   "issue_domains": [
+    "sim",
+    "ui"
+   ],
+   "coverage_class": "ui-scripted"
+  },
+  {
+   "lane": "bldg",
+   "case": 7,
+   "handler_resolution": "case",
+   "direct_handlers": [
+    "llm_strat_bldg_get_coords",
+    "llm_strat_bldg_notify_ui",
+    "llm_strat_dist_out_of_range",
+    "llm_strat_unit_get_coords"
+   ],
+   "gated_functions": [
+    "llm_snd_release_channel_voice",
+    "llm_strat_bldg_get_coords",
+    "llm_strat_dist_out_of_range",
+    "llm_strat_tile_delta_wrapped",
+    "llm_strat_tile_dist_wrapped",
+    "llm_strat_unit_get_coords",
+    "llm_ui_planet_select_screen_build"
+   ],
+   "issuers": [
+    "llm_strat_turret_order_target_building",
+    "llm_strat_turret_order_target_building_enqueue",
+    "llm_strat_turret_order_target_unit",
+    "llm_strat_turret_order_target_unit_enqueue"
+   ],
+   "issue_domains": [
+    "sim",
+    "ui"
+   ],
+   "coverage_class": "ui-scripted"
+  },
+  {
+   "lane": "bldg",
+   "case": 8,
+   "handler_resolution": "case",
+   "direct_handlers": [
+    "llm_strat_bldg_assign_workers"
+   ],
+   "gated_functions": [],
+   "issuers": [
+    "llm_strat_bldg_order_assign_workers",
+    "llm_strat_bldg_order_assign_workers_enqueue"
+   ],
+   "issue_domains": [
+    "ai",
+    "ui"
+   ],
+   "coverage_class": "ai-soak"
+  },
+  {
+   "lane": "bldg",
+   "case": 9,
+   "handler_resolution": "case",
+   "direct_handlers": [
+    "llm_strat_bldg_unassign_workers"
+   ],
+   "gated_functions": [],
+   "issuers": [
+    "llm_strat_bldg_order_unassign_workers",
+    "llm_strat_bldg_order_unassign_workers_enqueue"
+   ],
+   "issue_domains": [
+    "ai",
+    "ui"
+   ],
+   "coverage_class": "ai-soak"
+  },
+  {
+   "lane": "bldg",
+   "case": 10,
+   "handler_resolution": "case",
+   "direct_handlers": [
+    "llm_strat_bldg_set_staffed_flag"
+   ],
+   "gated_functions": [],
+   "issuers": [
+    "llm_strat_bldg_order_activate",
+    "llm_strat_bldg_order_activate_enqueue"
+   ],
+   "issue_domains": [
+    "ai",
+    "ui"
+   ],
+   "coverage_class": "ai-soak"
+  },
+  {
+   "lane": "bldg",
+   "case": 11,
+   "handler_resolution": "case",
+   "direct_handlers": [
+    "llm_strat_bldg_clear_staffed_flag"
+   ],
+   "gated_functions": [],
+   "issuers": [
+    "llm_strat_bldg_order_deactivate",
+    "llm_strat_bldg_order_deactivate_enqueue"
+   ],
+   "issue_domains": [
+    "sim",
+    "ui"
+   ],
+   "coverage_class": "ui-scripted"
+  },
+  {
+   "lane": "bldg",
+   "case": 12,
+   "handler_resolution": "case",
+   "direct_handlers": [
+    "game_ui_PrintTextMessage",
+    "llm_bldg_finish_current_order",
+    "llm_bldg_pay_build_cost",
+    "llm_strat_ai_queue_release_order",
+    "llm_strat_bldg_assign_workers",
+    "llm_strat_bldg_clear_staffed_flag",
+    "llm_strat_bldg_set_staffed_flag",
+    "llm_strat_bldg_unassign_workers",
+    "llm_strat_refresh_building",
+    "w_sprintf"
+   ],
+   "gated_functions": [
+    "llm_bldg_pay_build_cost",
+    "llm_strat_ai_queue_release_order"
+   ],
+   "issuers": [
+    "llm_strat_bldg_order_upgrade",
+    "llm_strat_bldg_order_upgrade_enqueue"
+   ],
+   "issue_domains": [
+    "ai",
+    "ui"
+   ],
+   "coverage_class": "ai-soak"
+  },
+  {
+   "lane": "bldg",
+   "case": 13,
+   "handler_resolution": "case",
+   "direct_handlers": [
+    "llm_bldg_finish_current_order"
+   ],
+   "gated_functions": [],
+   "issuers": [
+    "llm_strat_bldg_order_cancel_reset",
+    "llm_strat_bldg_order_cancel_reset_enqueue"
+   ],
+   "issue_domains": [
+    "sim"
+   ],
+   "coverage_class": "simtest-only"
+  },
+  {
+   "lane": "bldg",
+   "case": 14,
+   "handler_resolution": "case",
+   "direct_handlers": [
+    "game_TryStartProject",
+    "game_ui_PrintTextMessage",
+    "llm_bldg_finish_current_order",
+    "w_sprintf"
+   ],
+   "gated_functions": [
+    "game_TryStartProject"
+   ],
+   "issuers": [
+    "llm_strat_bldg_order_start_research_project",
+    "llm_strat_bldg_order_start_research_project_enqueue"
+   ],
+   "issue_domains": [
+    "sim",
+    "ui"
+   ],
+   "coverage_class": "ui-scripted"
+  },
+  {
+   "lane": "bldg",
+   "case": 15,
+   "handler_resolution": "case",
+   "direct_handlers": [
+    "game_ui_PrintTextMessage",
+    "llm_bldg_transfer_notify_noop",
+    "llm_prod_shuttle_depart",
+    "llm_prod_shuttle_fuel_apply",
+    "llm_prod_shuttle_fuel_check",
+    "llm_prod_shuttle_slot_bind_default",
+    "llm_strat_prod_bind_planet",
+    "w_sprintf"
+   ],
+   "gated_functions": [
+    "llm_bldg_transfer_notify_noop",
+    "llm_player_teardown_hook_stub",
+    "llm_prod_bldg_depart_finalize",
+    "llm_prod_planet_distance_factor",
+    "llm_prod_shuttle_depart",
+    "llm_prod_shuttle_fuel_apply",
+    "llm_prod_shuttle_fuel_check",
+    "llm_strat_ai_notify_object_removed",
+    "llm_strat_planet_distance",
+    "llm_strat_player_presence_lost",
+    "llm_strat_prod_bind_planet",
+    "llm_strat_prod_deliver_arrivals",
+    "llm_strat_prod_unbind_planet",
+    "llm_strat_storage_launch_parked_to_orbit",
+    "llm_strat_storage_remove_docked_unit",
+    "llm_strat_target_release_ref",
+    "llm_strat_tile_delta_wrapped",
+    "llm_strat_unit_ctrlgroup_leave",
+    "llm_strat_unit_load_into_shuttle_cargo",
+    "llm_strat_unit_set_state_of",
+    "llm_strat_unit_teardown",
+    "llm_unit_state_is_boarding"
+   ],
+   "issuers": [
+    "llm_strat_bldg_order_shuttle_depart",
+    "llm_strat_bldg_order_shuttle_depart_enqueue"
+   ],
+   "issue_domains": [
+    "sim",
+    "ui"
+   ],
+   "coverage_class": "ui-scripted"
+  },
+  {
+   "lane": "bldg",
+   "case": 16,
+   "handler_resolution": "case",
+   "direct_handlers": [
+    "game_ui_PrintTextMessage",
+    "llm_prod_bldg_depart_finalize",
+    "llm_prod_shuttle_fuel_apply",
+    "llm_prod_shuttle_fuel_check",
+    "llm_prod_shuttle_slot_bind_default",
+    "llm_strat_prod_bind_planet",
+    "w_sprintf"
+   ],
+   "gated_functions": [
+    "llm_prod_bldg_depart_finalize",
+    "llm_prod_planet_distance_factor",
+    "llm_prod_shuttle_fuel_apply",
+    "llm_prod_shuttle_fuel_check",
+    "llm_strat_bldg_find_mothership_position",
+    "llm_strat_locate_active_port",
+    "llm_strat_planet_distance",
+    "llm_strat_prod_bind_planet",
+    "llm_strat_prod_deliver_arrivals",
+    "llm_strat_prod_spawn_arrived_unit",
+    "llm_strat_prod_unbind_planet",
+    "llm_strat_storage_launch_parked_to_orbit",
+    "llm_strat_tile_delta_wrapped"
+   ],
+   "issuers": [
+    "llm_strat_bldg_order_port_depart",
+    "llm_strat_bldg_order_port_depart_enqueue"
+   ],
+   "issue_domains": [
+    "sim",
+    "ui"
+   ],
+   "coverage_class": "ui-scripted"
+  },
+  {
+   "lane": "bldg",
+   "case": 17,
+   "handler_resolution": "case",
+   "direct_handlers": [
+    "game_ui_PrintTextMessage",
+    "llm_prod_bldg_depart_finalize",
+    "llm_prod_shuttle_fuel_apply",
+    "llm_prod_shuttle_fuel_check",
+    "llm_prod_shuttle_slot_bind_default",
+    "llm_strat_prod_bind_planet",
+    "w_sprintf"
+   ],
+   "gated_functions": [
+    "llm_prod_bldg_depart_finalize",
+    "llm_prod_planet_distance_factor",
+    "llm_prod_shuttle_fuel_apply",
+    "llm_prod_shuttle_fuel_check",
+    "llm_strat_bldg_find_mothership_position",
+    "llm_strat_locate_active_port",
+    "llm_strat_planet_distance",
+    "llm_strat_prod_bind_planet",
+    "llm_strat_prod_deliver_arrivals",
+    "llm_strat_prod_spawn_arrived_unit",
+    "llm_strat_prod_unbind_planet",
+    "llm_strat_storage_launch_parked_to_orbit",
+    "llm_strat_tile_delta_wrapped"
+   ],
+   "issuers": [
+    "llm_strat_bldg_order_mother_depart",
+    "llm_strat_bldg_order_mother_depart_enqueue"
+   ],
+   "issue_domains": [
+    "sim",
+    "ui"
+   ],
+   "coverage_class": "ui-scripted"
+  },
+  {
+   "lane": "bldg",
+   "case": 18,
+   "handler_resolution": "case",
+   "direct_handlers": [
+    "llm_bldg_transfer_notify_noop",
+    "llm_prod_shuttle_slot_bind_default"
+   ],
+   "gated_functions": [
+    "llm_bldg_transfer_notify_noop"
+   ],
+   "issuers": [
+    "llm_strat_bldg_order_cargo_bind_slot",
+    "llm_strat_bldg_order_cargo_bind_slot_enqueue"
+   ],
+   "issue_domains": [
+    "sim"
+   ],
+   "coverage_class": "simtest-only"
+  },
+  {
+   "lane": "bldg",
+   "case": 19,
+   "handler_resolution": "case",
+   "direct_handlers": [
+    "llm_prod_shuttle_load_passengers",
+    "llm_prod_shuttle_slot_bind_default"
+   ],
+   "gated_functions": [
+    "llm_prod_shuttle_load_passengers",
+    "llm_strat_population_layoff_workers",
+    "llm_strat_population_remove"
+   ],
+   "issuers": [
+    "llm_strat_bldg_order_load_passengers",
+    "llm_strat_bldg_order_load_passengers_enqueue"
+   ],
+   "issue_domains": [
+    "sim",
+    "ui"
+   ],
+   "coverage_class": "ui-scripted"
+  },
+  {
+   "lane": "bldg",
+   "case": 20,
+   "handler_resolution": "case",
+   "direct_handlers": [
+    "llm_prod_shuttle_unload_passengers"
+   ],
+   "gated_functions": [
+    "llm_prod_shuttle_bay_unload_all",
+    "llm_prod_shuttle_unload_passengers",
+    "llm_prod_shuttle_unload_resource",
+    "llm_strat_bldg_flush_cargo_hold",
+    "llm_strat_bldg_shuttle_slot_is_free",
+    "llm_strat_prod_unload_cargo_unit"
+   ],
+   "issuers": [
+    "llm_strat_bldg_order_unload_passengers",
+    "llm_strat_bldg_order_unload_passengers_enqueue"
+   ],
+   "issue_domains": [
+    "sim",
+    "ui"
+   ],
+   "coverage_class": "ui-scripted"
+  },
+  {
+   "lane": "bldg",
+   "case": 21,
+   "handler_resolution": "case",
+   "direct_handlers": [
+    "llm_bldg_load_resource_tail_noop",
+    "llm_prod_shuttle_load_resource",
+    "llm_prod_shuttle_slot_bind_default"
+   ],
+   "gated_functions": [
+    "llm_bldg_load_resource_tail_noop",
+    "llm_prod_shuttle_load_resource"
+   ],
+   "issuers": [
+    "llm_strat_bldg_order_load_resource",
+    "llm_strat_bldg_order_load_resource_enqueue"
+   ],
+   "issue_domains": [
+    "sim",
+    "ui"
+   ],
+   "coverage_class": "ui-scripted"
+  },
+  {
+   "lane": "bldg",
+   "case": 22,
+   "handler_resolution": "case",
+   "direct_handlers": [
+    "llm_prod_shuttle_unload_resource"
+   ],
+   "gated_functions": [
+    "llm_prod_shuttle_bay_unload_all",
+    "llm_prod_shuttle_unload_passengers",
+    "llm_prod_shuttle_unload_resource",
+    "llm_strat_bldg_flush_cargo_hold",
+    "llm_strat_bldg_shuttle_slot_is_free",
+    "llm_strat_prod_unload_cargo_unit"
+   ],
+   "issuers": [
+    "llm_strat_bldg_order_unload_resource",
+    "llm_strat_bldg_order_unload_resource_enqueue"
+   ],
+   "issue_domains": [
+    "sim",
+    "ui"
+   ],
+   "coverage_class": "ui-scripted"
+  },
+  {
+   "lane": "bldg",
+   "case": 23,
+   "handler_resolution": "case",
+   "direct_handlers": [
+    "llm_bldg_transfer_notify_noop",
+    "llm_strat_bldg_flush_cargo_hold"
+   ],
+   "gated_functions": [
+    "llm_bldg_transfer_notify_noop",
+    "llm_prod_shuttle_bay_unload_all",
+    "llm_prod_shuttle_unload_passengers",
+    "llm_prod_shuttle_unload_resource",
+    "llm_snd_release_channel_voice",
+    "llm_strat_bldg_flush_cargo_hold",
+    "llm_strat_bldg_shuttle_slot_is_free",
+    "llm_strat_prod_unload_cargo_unit",
+    "llm_strat_unit_ctrlgroup_add_member",
+    "llm_strat_unit_spawn_docked",
+    "llm_ui_planet_select_screen_build"
+   ],
+   "issuers": [
+    "llm_strat_bldg_order_flush_cargo_hold",
+    "llm_strat_bldg_order_flush_cargo_hold_enqueue"
+   ],
+   "issue_domains": [
+    "sim",
+    "ui"
+   ],
+   "coverage_class": "ui-scripted"
+  },
+  {
+   "lane": "bldg",
+   "case": 24,
+   "handler_resolution": "case",
+   "direct_handlers": [
+    "llm_storage_cancel_pending_docked",
+    "llm_strat_storage_purge_dead_docked"
+   ],
+   "gated_functions": [
+    "llm_storage_cancel_pending_docked",
+    "llm_strat_storage_purge_dead_docked",
+    "llm_strat_storage_remove_docked_unit"
+   ],
+   "issuers": [
+    "llm_strat_bldg_order_purge_dead_docked",
+    "llm_strat_bldg_order_purge_dead_docked_enqueue"
+   ],
+   "issue_domains": [
+    "sim",
+    "ui"
+   ],
+   "coverage_class": "ui-scripted"
+  },
+  {
+   "lane": "bldg",
+   "case": 25,
+   "handler_resolution": "case",
+   "direct_handlers": [
+    "llm_bldg_construct_finalize",
+    "llm_bldg_footprint_is_clear",
+    "llm_bldg_pay_build_cost",
+    "llm_snd_play",
+    "llm_strat_ai_notify_bldg_constructed"
+   ],
+   "gated_functions": [
+    "FUN_0066efc9",
+    "llm_bldg_construct_finalize",
+    "llm_bldg_footprint_is_clear",
+    "llm_bldg_pay_build_cost",
+    "llm_bldg_set_connected_flag",
+    "llm_map_merge_small_regions",
+    "llm_map_region_free",
+    "llm_map_region_split",
+    "llm_snd_channel_configure_voice_and_play",
+    "llm_strat_ai_grid_stamp_seeds",
+    "llm_strat_ai_notify_bldg_constructed",
+    "llm_strat_ai_notify_map_changed",
+    "llm_strat_ai_notify_map_changed_2",
+    "llm_strat_bldg_link_to_network_if_adjacent",
+    "llm_strat_bldg_propagate_network_connectivity",
+    "llm_strat_order_enqueue",
+    "llm_strat_order_population_delta_enqueue",
+    "llm_strat_order_scratch_reset",
+    "llm_strat_order_scratch_set_field",
+    "llm_strat_sight_add_circle",
+    "map_ApplyAreaToMap",
+    "map_CreateBuilding"
+   ],
+   "issuers": [
+    "llm_strat_bldg_instant_construct_find_slot",
+    "llm_strat_bldg_instant_construct_find_slot_enqueue"
+   ],
+   "issue_domains": [
+    "ai",
+    "ui"
+   ],
+   "coverage_class": "ai-soak"
+  },
+  {
+   "lane": "unit",
+   "case": null,
+   "handler_resolution": "block",
+   "direct_handlers": [
+    "llm_strat_target_release_ref",
+    "llm_strat_unit_notify_status",
+    "llm_strat_unit_set_state_of",
+    "llm_unit_force_disembark",
+    "llm_unit_set_order_param",
+    "llm_unit_state_is_boarding",
+    "llm_unit_transport_unload_docked",
+    "llm_unit_transport_unload_field",
+    "utils_assert_stack_capacity"
+   ],
+   "gated_functions": [
+    "llm_math_atan",
+    "llm_math_manhattan_dist",
+    "llm_math_scale_pct",
+    "llm_strat_ctrl_group_contains_unit",
+    "llm_strat_dir_from_to",
+    "llm_strat_facing24_from_points",
+    "llm_strat_facing_step_apply",
+    "llm_strat_map_wrapped_delta",
+    "llm_strat_order_ctrlgrp_flash_member",
+    "llm_strat_order_ctrlgrp_select_member",
+    "llm_strat_squad_placement_offset_lookup",
+    "llm_strat_target_release_ref",
+    "llm_strat_unit_ctrl_group_assign",
+    "llm_strat_unit_ctrlgroup_add_member",
+    "llm_strat_unit_ctrlgroup_remove_member",
+    "llm_strat_unit_estimate_weapon_damage",
+    "llm_strat_unit_init_record",
+    "llm_strat_unit_notify_status",
+    "llm_strat_unit_set_state_of",
+    "llm_strat_unit_soldier_unlink",
+    "llm_strat_unit_soldiers_start_walk_anim",
+    "llm_strat_unit_spawn_docked",
+    "llm_strat_unit_spawn_on_tile",
+    "llm_strat_unit_squad_pick_lead_soldier_in_direction",
+    "llm_unit_set_order_param",
+    "llm_unit_state_is_boarding",
+    "llm_unit_transport_unload_docked",
+    "llm_unit_transport_unload_field",
+    "map_fow_UpdateFoWPlus_impl"
+   ],
+   "issuers": [
+    "llm_strat_ai_unit_order_move_with_bump",
+    "llm_strat_order_issue_0xf_adjacent",
+    "llm_strat_order_issue_0xf_adjacent_enqueue",
+    "llm_strat_unit_issue_default_order",
+    "llm_strat_unit_order_attack_building",
+    "llm_strat_unit_order_attack_building_enqueue",
+    "llm_strat_unit_order_attack_building_reposition",
+    "llm_strat_unit_order_attack_building_reposition_alt_enqueue",
+    "llm_strat_unit_order_attack_building_reposition_enqueue",
+    "llm_strat_unit_order_attack_target",
+    "llm_strat_unit_order_attack_target_alt",
+    "llm_strat_unit_order_attack_target_alt_enqueue",
+    "llm_strat_unit_order_attack_target_enqueue",
+    "llm_strat_unit_order_attack_target_preset_weapon_enqueue",
+    "llm_strat_unit_order_attack_unit",
+    "llm_strat_unit_order_attack_unit_enqueue",
+    "llm_strat_unit_order_auto_launch_from_storage",
+    "llm_strat_unit_order_auto_launch_from_storage_enqueue",
+    "llm_strat_unit_order_dispatch_default",
+    "llm_strat_unit_order_exit_storage",
+    "llm_strat_unit_order_exit_storage_auto",
+    "llm_strat_unit_order_exit_storage_enqueue",
+    "llm_strat_unit_order_move",
+    "llm_strat_unit_order_move_auto",
+    "llm_strat_unit_order_move_confirmed_with_bump",
+    "llm_strat_unit_order_move_default",
+    "llm_strat_unit_order_move_default_enqueue",
+    "llm_strat_unit_order_move_enqueue",
+    "llm_strat_unit_order_move_relative",
+    "llm_strat_unit_order_move_relative_enqueue",
+    "llm_strat_unit_order_scatter_from_spawn",
+    "llm_strat_unit_reset_order_and_target",
+    "llm_unit_order_disembark_soldiers",
+    "llm_unit_order_disembark_soldiers_enqueue"
+   ],
+   "issue_domains": [
+    "ai",
+    "debug",
+    "sim",
+    "ui"
+   ],
+   "coverage_class": "ai-soak"
+  }
+ ],
+ "functions": [
+  {
+   "function": "CompareFileTime",
+   "routes": [
+    {
+     "lane": "bldg",
+     "case": 0,
+     "coverage_class": "simtest-only"
+    }
+   ],
+   "coverage_class": "simtest-only",
+   "handler_resolution": "case"
+  },
+  {
+   "function": "FUN_0066efc9",
+   "routes": [
+    {
+     "lane": "bldg",
+     "case": 25,
+     "coverage_class": "ai-soak"
+    }
+   ],
+   "coverage_class": "ai-soak",
+   "handler_resolution": "case"
+  },
+  {
+   "function": "MultiByteToWideChar",
+   "routes": [
+    {
+     "lane": "admin",
+     "case": 15,
+     "coverage_class": "ui-scripted"
+    },
+    {
+     "lane": "bldg",
+     "case": 0,
+     "coverage_class": "simtest-only"
+    }
+   ],
+   "coverage_class": "ui-scripted",
+   "handler_resolution": "case"
+  },
+  {
+   "function": "cfg_GetAnimTime",
+   "routes": [
+    {
+     "lane": "bldg",
+     "case": 2,
+     "coverage_class": "ai-soak"
+    }
+   ],
+   "coverage_class": "ai-soak",
+   "handler_resolution": "case"
+  },
+  {
+   "function": "game_RemoveFromAvailableBuildings",
+   "routes": [
+    {
+     "lane": "admin",
+     "case": 9,
+     "coverage_class": "ai-soak"
+    },
+    {
+     "lane": "bldg",
+     "case": 0,
+     "coverage_class": "simtest-only"
+    }
+   ],
+   "coverage_class": "ai-soak",
+   "handler_resolution": "case"
+  },
+  {
+   "function": "game_RemoveFromAvailableProjects",
+   "routes": [
+    {
+     "lane": "admin",
+     "case": 9,
+     "coverage_class": "ai-soak"
+    },
+    {
+     "lane": "bldg",
+     "case": 0,
+     "coverage_class": "simtest-only"
+    }
+   ],
+   "coverage_class": "ai-soak",
+   "handler_resolution": "case"
+  },
+  {
+   "function": "game_TryStartProject",
+   "routes": [
+    {
+     "lane": "bldg",
+     "case": 14,
+     "coverage_class": "ui-scripted"
+    }
+   ],
+   "coverage_class": "ui-scripted",
+   "handler_resolution": "case"
+  },
+  {
+   "function": "llm_bldg_construct_finalize",
+   "routes": [
+    {
+     "lane": "admin",
+     "case": 13,
+     "coverage_class": "ai-soak"
+    },
+    {
+     "lane": "bldg",
+     "case": 0,
+     "coverage_class": "simtest-only"
+    },
+    {
+     "lane": "bldg",
+     "case": 25,
+     "coverage_class": "ai-soak"
+    }
+   ],
+   "coverage_class": "ai-soak",
+   "handler_resolution": "case"
+  },
+  {
+   "function": "llm_bldg_footprint_is_clear",
+   "routes": [
+    {
+     "lane": "admin",
+     "case": 13,
+     "coverage_class": "ai-soak"
+    },
+    {
+     "lane": "bldg",
+     "case": 0,
+     "coverage_class": "simtest-only"
+    },
+    {
+     "lane": "bldg",
+     "case": 25,
+     "coverage_class": "ai-soak"
+    }
+   ],
+   "coverage_class": "ai-soak",
+   "handler_resolution": "case"
+  },
+  {
+   "function": "llm_bldg_load_resource_tail_noop",
+   "routes": [
+    {
+     "lane": "bldg",
+     "case": 21,
+     "coverage_class": "ui-scripted"
+    }
+   ],
+   "coverage_class": "ui-scripted",
+   "handler_resolution": "case"
+  },
+  {
+   "function": "llm_bldg_pay_build_cost",
+   "routes": [
+    {
+     "lane": "bldg",
+     "case": 12,
+     "coverage_class": "ai-soak"
+    },
+    {
+     "lane": "bldg",
+     "case": 25,
+     "coverage_class": "ai-soak"
+    }
+   ],
+   "coverage_class": "ai-soak",
+   "handler_resolution": "case"
+  },
+  {
+   "function": "llm_bldg_queue_construction",
+   "routes": [
+    {
+     "lane": "admin",
+     "case": 13,
+     "coverage_class": "ai-soak"
+    },
+    {
+     "lane": "bldg",
+     "case": 0,
+     "coverage_class": "simtest-only"
+    }
+   ],
+   "coverage_class": "ai-soak",
+   "handler_resolution": "case"
+  },
+  {
+   "function": "llm_bldg_reset_construction_anim",
+   "routes": [
+    {
+     "lane": "bldg",
+     "case": 2,
+     "coverage_class": "ai-soak"
+    }
+   ],
+   "coverage_class": "ai-soak",
+   "handler_resolution": "case"
+  },
+  {
+   "function": "llm_bldg_scrap_stored_units",
+   "routes": [
+    {
+     "lane": "bldg",
+     "case": 2,
+     "coverage_class": "ai-soak"
+    }
+   ],
+   "coverage_class": "ai-soak",
+   "handler_resolution": "case"
+  },
+  {
+   "function": "llm_bldg_set_connected_flag",
+   "routes": [
+    {
+     "lane": "admin",
+     "case": 13,
+     "coverage_class": "ai-soak"
+    },
+    {
+     "lane": "bldg",
+     "case": 0,
+     "coverage_class": "simtest-only"
+    },
+    {
+     "lane": "bldg",
+     "case": 2,
+     "coverage_class": "ai-soak"
+    },
+    {
+     "lane": "bldg",
+     "case": 25,
+     "coverage_class": "ai-soak"
+    }
+   ],
+   "coverage_class": "ai-soak",
+   "handler_resolution": "case"
+  },
+  {
+   "function": "llm_bldg_transfer_notify_noop",
+   "routes": [
+    {
+     "lane": "bldg",
+     "case": 15,
+     "coverage_class": "ui-scripted"
+    },
+    {
+     "lane": "bldg",
+     "case": 18,
+     "coverage_class": "simtest-only"
+    },
+    {
+     "lane": "bldg",
+     "case": 23,
+     "coverage_class": "ui-scripted"
+    }
+   ],
+   "coverage_class": "ui-scripted",
+   "handler_resolution": "case"
+  },
+  {
+   "function": "llm_cfg_anim_frame_at_progress",
+   "routes": [
+    {
+     "lane": "bldg",
+     "case": 2,
+     "coverage_class": "ai-soak"
+    }
+   ],
+   "coverage_class": "ai-soak",
+   "handler_resolution": "case"
+  },
+  {
+   "function": "llm_chat_history_push",
+   "routes": [
+    {
+     "lane": "bldg",
+     "case": 0,
+     "coverage_class": "simtest-only"
+    }
+   ],
+   "coverage_class": "simtest-only",
+   "handler_resolution": "case"
+  },
+  {
+   "function": "llm_chat_history_reset_cursor",
+   "routes": [
+    {
+     "lane": "bldg",
+     "case": 0,
+     "coverage_class": "simtest-only"
+    }
+   ],
+   "coverage_class": "simtest-only",
+   "handler_resolution": "case"
+  },
+  {
+   "function": "llm_combat_credit_planet_conquest_kills",
+   "routes": [
+    {
+     "lane": "admin",
+     "case": 21,
+     "coverage_class": "debug-cheat"
+    },
+    {
+     "lane": "bldg",
+     "case": 0,
+     "coverage_class": "simtest-only"
+    }
+   ],
+   "coverage_class": "debug-cheat",
+   "handler_resolution": "case"
+  },
+  {
+   "function": "llm_debug_roll_random",
+   "routes": [
+    {
+     "lane": "admin",
+     "case": 3,
+     "coverage_class": "simtest-only"
+    },
+    {
+     "lane": "bldg",
+     "case": 0,
+     "coverage_class": "simtest-only"
+    }
+   ],
+   "coverage_class": "simtest-only",
+   "handler_resolution": "case"
+  },
+  {
+   "function": "llm_diplomacy_ai_relation_swap",
+   "routes": [
+    {
+     "lane": "admin",
+     "case": 15,
+     "coverage_class": "ui-scripted"
+    },
+    {
+     "lane": "bldg",
+     "case": 0,
+     "coverage_class": "simtest-only"
+    }
+   ],
+   "coverage_class": "ui-scripted",
+   "handler_resolution": "case"
+  },
+  {
+   "function": "llm_diplomacy_set_relation",
+   "routes": [
+    {
+     "lane": "admin",
+     "case": 15,
+     "coverage_class": "ui-scripted"
+    },
+    {
+     "lane": "bldg",
+     "case": 0,
+     "coverage_class": "simtest-only"
+    }
+   ],
+   "coverage_class": "ui-scripted",
+   "handler_resolution": "case"
+  },
+  {
+   "function": "llm_game_player_set_ai",
+   "routes": [
+    {
+     "lane": "admin",
+     "case": 16,
+     "coverage_class": "ui-scripted"
+    },
+    {
+     "lane": "bldg",
+     "case": 0,
+     "coverage_class": "simtest-only"
+    }
+   ],
+   "coverage_class": "ui-scripted",
+   "handler_resolution": "case"
+  },
+  {
+   "function": "llm_game_player_set_human",
+   "routes": [
+    {
+     "lane": "admin",
+     "case": 16,
+     "coverage_class": "ui-scripted"
+    },
+    {
+     "lane": "bldg",
+     "case": 0,
+     "coverage_class": "simtest-only"
+    }
+   ],
+   "coverage_class": "ui-scripted",
+   "handler_resolution": "case"
+  },
+  {
+   "function": "llm_game_speed_decrease",
+   "routes": [
+    {
+     "lane": "admin",
+     "case": 5,
+     "coverage_class": "simtest-only"
+    },
+    {
+     "lane": "bldg",
+     "case": 0,
+     "coverage_class": "simtest-only"
+    }
+   ],
+   "coverage_class": "simtest-only",
+   "handler_resolution": "case"
+  },
+  {
+   "function": "llm_game_speed_increase",
+   "routes": [
+    {
+     "lane": "admin",
+     "case": 4,
+     "coverage_class": "simtest-only"
+    },
+    {
+     "lane": "bldg",
+     "case": 0,
+     "coverage_class": "simtest-only"
+    }
+   ],
+   "coverage_class": "simtest-only",
+   "handler_resolution": "case"
+  },
+  {
+   "function": "llm_game_speed_recompute",
+   "routes": [
+    {
+     "lane": "admin",
+     "case": 4,
+     "coverage_class": "simtest-only"
+    },
+    {
+     "lane": "admin",
+     "case": 5,
+     "coverage_class": "simtest-only"
+    },
+    {
+     "lane": "bldg",
+     "case": 0,
+     "coverage_class": "simtest-only"
+    }
+   ],
+   "coverage_class": "simtest-only",
+   "handler_resolution": "case"
+  },
+  {
+   "function": "llm_gfx_font_desc_for_flags",
+   "routes": [
+    {
+     "lane": "bldg",
+     "case": 0,
+     "coverage_class": "simtest-only"
+    }
+   ],
+   "coverage_class": "simtest-only",
+   "handler_resolution": "case"
+  },
+  {
+   "function": "llm_gfx_pack_rgb16",
+   "routes": [
+    {
+     "lane": "bldg",
+     "case": 0,
+     "coverage_class": "simtest-only"
+    }
+   ],
+   "coverage_class": "simtest-only",
+   "handler_resolution": "case"
+  },
+  {
+   "function": "llm_input_key_dequeue",
+   "routes": [
+    {
+     "lane": "bldg",
+     "case": 0,
+     "coverage_class": "simtest-only"
+    }
+   ],
+   "coverage_class": "simtest-only",
+   "handler_resolution": "case"
+  },
+  {
+   "function": "llm_input_key_queue_empty",
+   "routes": [
+    {
+     "lane": "bldg",
+     "case": 0,
+     "coverage_class": "simtest-only"
+    }
+   ],
+   "coverage_class": "simtest-only",
+   "handler_resolution": "case"
+  },
+  {
+   "function": "llm_map_fog_of_war_recompute",
+   "routes": [
+    {
+     "lane": "admin",
+     "case": 16,
+     "coverage_class": "ui-scripted"
+    },
+    {
+     "lane": "bldg",
+     "case": 0,
+     "coverage_class": "simtest-only"
+    }
+   ],
+   "coverage_class": "ui-scripted",
+   "handler_resolution": "case"
+  },
+  {
+   "function": "llm_map_fow_reveal_full",
+   "routes": [
+    {
+     "lane": "admin",
+     "case": 20,
+     "coverage_class": "debug-cheat"
+    },
+    {
+     "lane": "bldg",
+     "case": 0,
+     "coverage_class": "simtest-only"
+    }
+   ],
+   "coverage_class": "debug-cheat",
+   "handler_resolution": "case"
+  },
+  {
+   "function": "llm_map_merge_small_regions",
+   "routes": [
+    {
+     "lane": "bldg",
+     "case": 25,
+     "coverage_class": "ai-soak"
+    }
+   ],
+   "coverage_class": "ai-soak",
+   "handler_resolution": "case"
+  },
+  {
+   "function": "llm_map_region_free",
+   "routes": [
+    {
+     "lane": "bldg",
+     "case": 25,
+     "coverage_class": "ai-soak"
+    }
+   ],
+   "coverage_class": "ai-soak",
+   "handler_resolution": "case"
+  },
+  {
+   "function": "llm_map_region_split",
+   "routes": [
+    {
+     "lane": "bldg",
+     "case": 25,
+     "coverage_class": "ai-soak"
+    }
+   ],
+   "coverage_class": "ai-soak",
+   "handler_resolution": "case"
+  },
+  {
+   "function": "llm_math_atan",
+   "routes": [
+    {
+     "lane": "unit",
+     "case": null,
+     "coverage_class": "ai-soak"
+    }
+   ],
+   "coverage_class": "ai-soak",
+   "handler_resolution": "block"
+  },
+  {
+   "function": "llm_math_manhattan_dist",
+   "routes": [
+    {
+     "lane": "unit",
+     "case": null,
+     "coverage_class": "ai-soak"
+    }
+   ],
+   "coverage_class": "ai-soak",
+   "handler_resolution": "block"
+  },
+  {
+   "function": "llm_math_scale_pct",
+   "routes": [
+    {
+     "lane": "admin",
+     "case": 21,
+     "coverage_class": "debug-cheat"
+    },
+    {
+     "lane": "bldg",
+     "case": 0,
+     "coverage_class": "simtest-only"
+    },
+    {
+     "lane": "unit",
+     "case": null,
+     "coverage_class": "ai-soak"
+    }
+   ],
+   "coverage_class": "ai-soak",
+   "handler_resolution": "case"
+  },
+  {
+   "function": "llm_net_chat_ally_mask_rebuild",
+   "routes": [
+    {
+     "lane": "admin",
+     "case": 15,
+     "coverage_class": "ui-scripted"
+    },
+    {
+     "lane": "bldg",
+     "case": 0,
+     "coverage_class": "simtest-only"
+    }
+   ],
+   "coverage_class": "ui-scripted",
+   "handler_resolution": "case"
+  },
+  {
+   "function": "llm_net_chat_input_process",
+   "routes": [
+    {
+     "lane": "bldg",
+     "case": 0,
+     "coverage_class": "simtest-only"
+    }
+   ],
+   "coverage_class": "simtest-only",
+   "handler_resolution": "case"
+  },
+  {
+   "function": "llm_net_chat_send_all",
+   "routes": [
+    {
+     "lane": "bldg",
+     "case": 0,
+     "coverage_class": "simtest-only"
+    }
+   ],
+   "coverage_class": "simtest-only",
+   "handler_resolution": "case"
+  },
+  {
+   "function": "llm_net_lockstep_extend_ui_enter",
+   "routes": [
+    {
+     "lane": "bldg",
+     "case": 0,
+     "coverage_class": "simtest-only"
+    }
+   ],
+   "coverage_class": "simtest-only",
+   "handler_resolution": "case"
+  },
+  {
+   "function": "llm_net_lockstep_is_local_leader_peer",
+   "routes": [
+    {
+     "lane": "bldg",
+     "case": 0,
+     "coverage_class": "simtest-only"
+    }
+   ],
+   "coverage_class": "simtest-only",
+   "handler_resolution": "case"
+  },
+  {
+   "function": "llm_net_lockstep_overlay_dismiss",
+   "routes": [
+    {
+     "lane": "bldg",
+     "case": 2,
+     "coverage_class": "ai-soak"
+    }
+   ],
+   "coverage_class": "ai-soak",
+   "handler_resolution": "case"
+  },
+  {
+   "function": "llm_net_lockstep_send_presence_lost",
+   "routes": [
+    {
+     "lane": "bldg",
+     "case": 2,
+     "coverage_class": "ai-soak"
+    }
+   ],
+   "coverage_class": "ai-soak",
+   "handler_resolution": "case"
+  },
+  {
+   "function": "llm_net_lockstep_wait_player_overlay_show",
+   "routes": [
+    {
+     "lane": "bldg",
+     "case": 0,
+     "coverage_class": "simtest-only"
+    }
+   ],
+   "coverage_class": "simtest-only",
+   "handler_resolution": "case"
+  },
+  {
+   "function": "llm_net_send_lockstep_extend",
+   "routes": [
+    {
+     "lane": "bldg",
+     "case": 0,
+     "coverage_class": "simtest-only"
+    }
+   ],
+   "coverage_class": "simtest-only",
+   "handler_resolution": "case"
+  },
+  {
+   "function": "llm_net_transport_send",
+   "routes": [
+    {
+     "lane": "bldg",
+     "case": 0,
+     "coverage_class": "simtest-only"
+    }
+   ],
+   "coverage_class": "simtest-only",
+   "handler_resolution": "case"
+  },
+  {
+   "function": "llm_player_teardown_hook_stub",
+   "routes": [
+    {
+     "lane": "bldg",
+     "case": 2,
+     "coverage_class": "ai-soak"
+    },
+    {
+     "lane": "bldg",
+     "case": 15,
+     "coverage_class": "ui-scripted"
+    }
+   ],
+   "coverage_class": "ai-soak",
+   "handler_resolution": "case"
+  },
+  {
+   "function": "llm_prod_bldg_depart_finalize",
+   "routes": [
+    {
+     "lane": "bldg",
+     "case": 15,
+     "coverage_class": "ui-scripted"
+    },
+    {
+     "lane": "bldg",
+     "case": 16,
+     "coverage_class": "ui-scripted"
+    },
+    {
+     "lane": "bldg",
+     "case": 17,
+     "coverage_class": "ui-scripted"
+    }
+   ],
+   "coverage_class": "ui-scripted",
+   "handler_resolution": "case"
+  },
+  {
+   "function": "llm_prod_planet_distance_factor",
+   "routes": [
+    {
+     "lane": "bldg",
+     "case": 15,
+     "coverage_class": "ui-scripted"
+    },
+    {
+     "lane": "bldg",
+     "case": 16,
+     "coverage_class": "ui-scripted"
+    },
+    {
+     "lane": "bldg",
+     "case": 17,
+     "coverage_class": "ui-scripted"
+    }
+   ],
+   "coverage_class": "ui-scripted",
+   "handler_resolution": "case"
+  },
+  {
+   "function": "llm_prod_shuttle_bay_unload_all",
+   "routes": [
+    {
+     "lane": "bldg",
+     "case": 20,
+     "coverage_class": "ui-scripted"
+    },
+    {
+     "lane": "bldg",
+     "case": 22,
+     "coverage_class": "ui-scripted"
+    },
+    {
+     "lane": "bldg",
+     "case": 23,
+     "coverage_class": "ui-scripted"
+    }
+   ],
+   "coverage_class": "ui-scripted",
+   "handler_resolution": "case"
+  },
+  {
+   "function": "llm_prod_shuttle_depart",
+   "routes": [
+    {
+     "lane": "bldg",
+     "case": 15,
+     "coverage_class": "ui-scripted"
+    }
+   ],
+   "coverage_class": "ui-scripted",
+   "handler_resolution": "case"
+  },
+  {
+   "function": "llm_prod_shuttle_fuel_apply",
+   "routes": [
+    {
+     "lane": "bldg",
+     "case": 15,
+     "coverage_class": "ui-scripted"
+    },
+    {
+     "lane": "bldg",
+     "case": 16,
+     "coverage_class": "ui-scripted"
+    },
+    {
+     "lane": "bldg",
+     "case": 17,
+     "coverage_class": "ui-scripted"
+    }
+   ],
+   "coverage_class": "ui-scripted",
+   "handler_resolution": "case"
+  },
+  {
+   "function": "llm_prod_shuttle_fuel_check",
+   "routes": [
+    {
+     "lane": "bldg",
+     "case": 15,
+     "coverage_class": "ui-scripted"
+    },
+    {
+     "lane": "bldg",
+     "case": 16,
+     "coverage_class": "ui-scripted"
+    },
+    {
+     "lane": "bldg",
+     "case": 17,
+     "coverage_class": "ui-scripted"
+    }
+   ],
+   "coverage_class": "ui-scripted",
+   "handler_resolution": "case"
+  },
+  {
+   "function": "llm_prod_shuttle_load_passengers",
+   "routes": [
+    {
+     "lane": "bldg",
+     "case": 19,
+     "coverage_class": "ui-scripted"
+    }
+   ],
+   "coverage_class": "ui-scripted",
+   "handler_resolution": "case"
+  },
+  {
+   "function": "llm_prod_shuttle_load_resource",
+   "routes": [
+    {
+     "lane": "bldg",
+     "case": 21,
+     "coverage_class": "ui-scripted"
+    }
+   ],
+   "coverage_class": "ui-scripted",
+   "handler_resolution": "case"
+  },
+  {
+   "function": "llm_prod_shuttle_unload_passengers",
+   "routes": [
+    {
+     "lane": "bldg",
+     "case": 20,
+     "coverage_class": "ui-scripted"
+    },
+    {
+     "lane": "bldg",
+     "case": 22,
+     "coverage_class": "ui-scripted"
+    },
+    {
+     "lane": "bldg",
+     "case": 23,
+     "coverage_class": "ui-scripted"
+    }
+   ],
+   "coverage_class": "ui-scripted",
+   "handler_resolution": "case"
+  },
+  {
+   "function": "llm_prod_shuttle_unload_resource",
+   "routes": [
+    {
+     "lane": "bldg",
+     "case": 20,
+     "coverage_class": "ui-scripted"
+    },
+    {
+     "lane": "bldg",
+     "case": 22,
+     "coverage_class": "ui-scripted"
+    },
+    {
+     "lane": "bldg",
+     "case": 23,
+     "coverage_class": "ui-scripted"
+    }
+   ],
+   "coverage_class": "ui-scripted",
+   "handler_resolution": "case"
+  },
+  {
+   "function": "llm_progress_collect_available_projects",
+   "routes": [
+    {
+     "lane": "admin",
+     "case": 9,
+     "coverage_class": "ai-soak"
+    },
+    {
+     "lane": "bldg",
+     "case": 0,
+     "coverage_class": "simtest-only"
+    }
+   ],
+   "coverage_class": "ai-soak",
+   "handler_resolution": "case"
+  },
+  {
+   "function": "llm_progress_recheck_buildings",
+   "routes": [
+    {
+     "lane": "admin",
+     "case": 10,
+     "coverage_class": "debug-cheat"
+    },
+    {
+     "lane": "bldg",
+     "case": 0,
+     "coverage_class": "simtest-only"
+    }
+   ],
+   "coverage_class": "debug-cheat",
+   "handler_resolution": "case"
+  },
+  {
+   "function": "llm_progress_recheck_planet_system_all_players",
+   "routes": [
+    {
+     "lane": "admin",
+     "case": 12,
+     "coverage_class": "debug-cheat"
+    },
+    {
+     "lane": "bldg",
+     "case": 0,
+     "coverage_class": "simtest-only"
+    }
+   ],
+   "coverage_class": "debug-cheat",
+   "handler_resolution": "case"
+  },
+  {
+   "function": "llm_progress_recheck_projects",
+   "routes": [
+    {
+     "lane": "admin",
+     "case": 11,
+     "coverage_class": "debug-cheat"
+    },
+    {
+     "lane": "bldg",
+     "case": 0,
+     "coverage_class": "simtest-only"
+    }
+   ],
+   "coverage_class": "debug-cheat",
+   "handler_resolution": "case"
+  },
+  {
+   "function": "llm_rand_below",
+   "routes": [
+    {
+     "lane": "admin",
+     "case": 3,
+     "coverage_class": "simtest-only"
+    },
+    {
+     "lane": "admin",
+     "case": 17,
+     "coverage_class": "debug-cheat"
+    },
+    {
+     "lane": "bldg",
+     "case": 0,
+     "coverage_class": "simtest-only"
+    }
+   ],
+   "coverage_class": "debug-cheat",
+   "handler_resolution": "case"
+  },
+  {
+   "function": "llm_snd_channel_configure_voice_and_play",
+   "routes": [
+    {
+     "lane": "bldg",
+     "case": 25,
+     "coverage_class": "ai-soak"
+    }
+   ],
+   "coverage_class": "ai-soak",
+   "handler_resolution": "case"
+  },
+  {
+   "function": "llm_snd_release_channel_voice",
+   "routes": [
+    {
+     "lane": "admin",
+     "case": 7,
+     "coverage_class": "ai-soak"
+    },
+    {
+     "lane": "bldg",
+     "case": 0,
+     "coverage_class": "simtest-only"
+    },
+    {
+     "lane": "bldg",
+     "case": 7,
+     "coverage_class": "ui-scripted"
+    },
+    {
+     "lane": "bldg",
+     "case": 23,
+     "coverage_class": "ui-scripted"
+    }
+   ],
+   "coverage_class": "ai-soak",
+   "handler_resolution": "case"
+  },
+  {
+   "function": "llm_storage_cancel_pending_docked",
+   "routes": [
+    {
+     "lane": "bldg",
+     "case": 24,
+     "coverage_class": "ui-scripted"
+    }
+   ],
+   "coverage_class": "ui-scripted",
+   "handler_resolution": "case"
+  },
+  {
+   "function": "llm_str_ansi_to_wide",
+   "routes": [
+    {
+     "lane": "admin",
+     "case": 15,
+     "coverage_class": "ui-scripted"
+    },
+    {
+     "lane": "bldg",
+     "case": 0,
+     "coverage_class": "simtest-only"
+    }
+   ],
+   "coverage_class": "ui-scripted",
+   "handler_resolution": "case"
+  },
+  {
+   "function": "llm_str_ansi_to_wide_scratch",
+   "routes": [
+    {
+     "lane": "admin",
+     "case": 15,
+     "coverage_class": "ui-scripted"
+    },
+    {
+     "lane": "bldg",
+     "case": 0,
+     "coverage_class": "simtest-only"
+    },
+    {
+     "lane": "bldg",
+     "case": 2,
+     "coverage_class": "ai-soak"
+    }
+   ],
+   "coverage_class": "ai-soak",
+   "handler_resolution": "case"
+  },
+  {
+   "function": "llm_strat_ai_bldg_register_visible_building",
+   "routes": [
+    {
+     "lane": "admin",
+     "case": 21,
+     "coverage_class": "debug-cheat"
+    },
+    {
+     "lane": "bldg",
+     "case": 0,
+     "coverage_class": "simtest-only"
+    }
+   ],
+   "coverage_class": "debug-cheat",
+   "handler_resolution": "case"
+  },
+  {
+   "function": "llm_strat_ai_grid_stamp_seeds",
+   "routes": [
+    {
+     "lane": "bldg",
+     "case": 2,
+     "coverage_class": "ai-soak"
+    },
+    {
+     "lane": "bldg",
+     "case": 25,
+     "coverage_class": "ai-soak"
+    }
+   ],
+   "coverage_class": "ai-soak",
+   "handler_resolution": "case"
+  },
+  {
+   "function": "llm_strat_ai_group_member_unlink",
+   "routes": [
+    {
+     "lane": "bldg",
+     "case": 2,
+     "coverage_class": "ai-soak"
+    }
+   ],
+   "coverage_class": "ai-soak",
+   "handler_resolution": "case"
+  },
+  {
+   "function": "llm_strat_ai_group_remove",
+   "routes": [
+    {
+     "lane": "bldg",
+     "case": 2,
+     "coverage_class": "ai-soak"
+    }
+   ],
+   "coverage_class": "ai-soak",
+   "handler_resolution": "case"
+  },
+  {
+   "function": "llm_strat_ai_notify_bldg_constructed",
+   "routes": [
+    {
+     "lane": "admin",
+     "case": 13,
+     "coverage_class": "ai-soak"
+    },
+    {
+     "lane": "bldg",
+     "case": 0,
+     "coverage_class": "simtest-only"
+    },
+    {
+     "lane": "bldg",
+     "case": 25,
+     "coverage_class": "ai-soak"
+    }
+   ],
+   "coverage_class": "ai-soak",
+   "handler_resolution": "case"
+  },
+  {
+   "function": "llm_strat_ai_notify_map_changed",
+   "routes": [
+    {
+     "lane": "admin",
+     "case": 13,
+     "coverage_class": "ai-soak"
+    },
+    {
+     "lane": "bldg",
+     "case": 0,
+     "coverage_class": "simtest-only"
+    },
+    {
+     "lane": "bldg",
+     "case": 25,
+     "coverage_class": "ai-soak"
+    }
+   ],
+   "coverage_class": "ai-soak",
+   "handler_resolution": "case"
+  },
+  {
+   "function": "llm_strat_ai_notify_map_changed_2",
+   "routes": [
+    {
+     "lane": "admin",
+     "case": 13,
+     "coverage_class": "ai-soak"
+    },
+    {
+     "lane": "bldg",
+     "case": 0,
+     "coverage_class": "simtest-only"
+    },
+    {
+     "lane": "bldg",
+     "case": 25,
+     "coverage_class": "ai-soak"
+    }
+   ],
+   "coverage_class": "ai-soak",
+   "handler_resolution": "case"
+  },
+  {
+   "function": "llm_strat_ai_notify_object_removed",
+   "routes": [
+    {
+     "lane": "bldg",
+     "case": 2,
+     "coverage_class": "ai-soak"
+    },
+    {
+     "lane": "bldg",
+     "case": 15,
+     "coverage_class": "ui-scripted"
+    }
+   ],
+   "coverage_class": "ai-soak",
+   "handler_resolution": "case"
+  },
+  {
+   "function": "llm_strat_ai_queue_reconcile_bldg_change",
+   "routes": [
+    {
+     "lane": "bldg",
+     "case": 2,
+     "coverage_class": "ai-soak"
+    }
+   ],
+   "coverage_class": "ai-soak",
+   "handler_resolution": "case"
+  },
+  {
+   "function": "llm_strat_ai_queue_release_order",
+   "routes": [
+    {
+     "lane": "bldg",
+     "case": 12,
+     "coverage_class": "ai-soak"
+    }
+   ],
+   "coverage_class": "ai-soak",
+   "handler_resolution": "case"
+  },
+  {
+   "function": "llm_strat_ai_target_list_add",
+   "routes": [
+    {
+     "lane": "admin",
+     "case": 21,
+     "coverage_class": "debug-cheat"
+    },
+    {
+     "lane": "bldg",
+     "case": 0,
+     "coverage_class": "simtest-only"
+    }
+   ],
+   "coverage_class": "debug-cheat",
+   "handler_resolution": "case"
+  },
+  {
+   "function": "llm_strat_ai_target_list_remove",
+   "routes": [
+    {
+     "lane": "bldg",
+     "case": 2,
+     "coverage_class": "ai-soak"
+    }
+   ],
+   "coverage_class": "ai-soak",
+   "handler_resolution": "case"
+  },
+  {
+   "function": "llm_strat_bldg_find_mothership_position",
+   "routes": [
+    {
+     "lane": "bldg",
+     "case": 16,
+     "coverage_class": "ui-scripted"
+    },
+    {
+     "lane": "bldg",
+     "case": 17,
+     "coverage_class": "ui-scripted"
+    }
+   ],
+   "coverage_class": "ui-scripted",
+   "handler_resolution": "case"
+  },
+  {
+   "function": "llm_strat_bldg_flush_cargo_hold",
+   "routes": [
+    {
+     "lane": "bldg",
+     "case": 20,
+     "coverage_class": "ui-scripted"
+    },
+    {
+     "lane": "bldg",
+     "case": 22,
+     "coverage_class": "ui-scripted"
+    },
+    {
+     "lane": "bldg",
+     "case": 23,
+     "coverage_class": "ui-scripted"
+    }
+   ],
+   "coverage_class": "ui-scripted",
+   "handler_resolution": "case"
+  },
+  {
+   "function": "llm_strat_bldg_get_coords",
+   "routes": [
+    {
+     "lane": "admin",
+     "case": 21,
+     "coverage_class": "debug-cheat"
+    },
+    {
+     "lane": "bldg",
+     "case": 0,
+     "coverage_class": "simtest-only"
+    },
+    {
+     "lane": "bldg",
+     "case": 7,
+     "coverage_class": "ui-scripted"
+    }
+   ],
+   "coverage_class": "ui-scripted",
+   "handler_resolution": "case"
+  },
+  {
+   "function": "llm_strat_bldg_kill_credit",
+   "routes": [
+    {
+     "lane": "admin",
+     "case": 21,
+     "coverage_class": "debug-cheat"
+    },
+    {
+     "lane": "bldg",
+     "case": 0,
+     "coverage_class": "simtest-only"
+    }
+   ],
+   "coverage_class": "debug-cheat",
+   "handler_resolution": "case"
+  },
+  {
+   "function": "llm_strat_bldg_link_to_network_if_adjacent",
+   "routes": [
+    {
+     "lane": "admin",
+     "case": 13,
+     "coverage_class": "ai-soak"
+    },
+    {
+     "lane": "bldg",
+     "case": 0,
+     "coverage_class": "simtest-only"
+    },
+    {
+     "lane": "bldg",
+     "case": 25,
+     "coverage_class": "ai-soak"
+    }
+   ],
+   "coverage_class": "ai-soak",
+   "handler_resolution": "case"
+  },
+  {
+   "function": "llm_strat_bldg_pay_cycle_inputs",
+   "routes": [
+    {
+     "lane": "bldg",
+     "case": 1,
+     "coverage_class": "ai-soak"
+    }
+   ],
+   "coverage_class": "ai-soak",
+   "handler_resolution": "case"
+  },
+  {
+   "function": "llm_strat_bldg_propagate_network_connectivity",
+   "routes": [
+    {
+     "lane": "admin",
+     "case": 13,
+     "coverage_class": "ai-soak"
+    },
+    {
+     "lane": "bldg",
+     "case": 0,
+     "coverage_class": "simtest-only"
+    },
+    {
+     "lane": "bldg",
+     "case": 25,
+     "coverage_class": "ai-soak"
+    }
+   ],
+   "coverage_class": "ai-soak",
+   "handler_resolution": "case"
+  },
+  {
+   "function": "llm_strat_bldg_shuttle_slot_is_free",
+   "routes": [
+    {
+     "lane": "bldg",
+     "case": 20,
+     "coverage_class": "ui-scripted"
+    },
+    {
+     "lane": "bldg",
+     "case": 22,
+     "coverage_class": "ui-scripted"
+    },
+    {
+     "lane": "bldg",
+     "case": 23,
+     "coverage_class": "ui-scripted"
+    }
+   ],
+   "coverage_class": "ui-scripted",
+   "handler_resolution": "case"
+  },
+  {
+   "function": "llm_strat_bldg_update_charge_pips",
+   "routes": [
+    {
+     "lane": "admin",
+     "case": 17,
+     "coverage_class": "debug-cheat"
+    },
+    {
+     "lane": "bldg",
+     "case": 0,
+     "coverage_class": "simtest-only"
+    }
+   ],
+   "coverage_class": "debug-cheat",
+   "handler_resolution": "case"
+  },
+  {
+   "function": "llm_strat_ctrl_group_contains_unit",
+   "routes": [
+    {
+     "lane": "unit",
+     "case": null,
+     "coverage_class": "ai-soak"
+    }
+   ],
+   "coverage_class": "ai-soak",
+   "handler_resolution": "block"
+  },
+  {
+   "function": "llm_strat_dir_from_to",
+   "routes": [
+    {
+     "lane": "unit",
+     "case": null,
+     "coverage_class": "ai-soak"
+    }
+   ],
+   "coverage_class": "ai-soak",
+   "handler_resolution": "block"
+  },
+  {
+   "function": "llm_strat_dist_out_of_range",
+   "routes": [
+    {
+     "lane": "bldg",
+     "case": 7,
+     "coverage_class": "ui-scripted"
+    }
+   ],
+   "coverage_class": "ui-scripted",
+   "handler_resolution": "case"
+  },
+  {
+   "function": "llm_strat_facing24_from_points",
+   "routes": [
+    {
+     "lane": "unit",
+     "case": null,
+     "coverage_class": "ai-soak"
+    }
+   ],
+   "coverage_class": "ai-soak",
+   "handler_resolution": "block"
+  },
+  {
+   "function": "llm_strat_facing_step_apply",
+   "routes": [
+    {
+     "lane": "unit",
+     "case": null,
+     "coverage_class": "ai-soak"
+    }
+   ],
+   "coverage_class": "ai-soak",
+   "handler_resolution": "block"
+  },
+  {
+   "function": "llm_strat_locate_active_port",
+   "routes": [
+    {
+     "lane": "bldg",
+     "case": 16,
+     "coverage_class": "ui-scripted"
+    },
+    {
+     "lane": "bldg",
+     "case": 17,
+     "coverage_class": "ui-scripted"
+    }
+   ],
+   "coverage_class": "ui-scripted",
+   "handler_resolution": "case"
+  },
+  {
+   "function": "llm_strat_map_wrapped_delta",
+   "routes": [
+    {
+     "lane": "unit",
+     "case": null,
+     "coverage_class": "ai-soak"
+    }
+   ],
+   "coverage_class": "ai-soak",
+   "handler_resolution": "block"
+  },
+  {
+   "function": "llm_strat_order_ctrlgrp_flash_member",
+   "routes": [
+    {
+     "lane": "bldg",
+     "case": 2,
+     "coverage_class": "ai-soak"
+    },
+    {
+     "lane": "unit",
+     "case": null,
+     "coverage_class": "ai-soak"
+    }
+   ],
+   "coverage_class": "ai-soak",
+   "handler_resolution": "case"
+  },
+  {
+   "function": "llm_strat_order_ctrlgrp_select_member",
+   "routes": [
+    {
+     "lane": "unit",
+     "case": null,
+     "coverage_class": "ai-soak"
+    }
+   ],
+   "coverage_class": "ai-soak",
+   "handler_resolution": "block"
+  },
+  {
+   "function": "llm_strat_order_enqueue",
+   "routes": [
+    {
+     "lane": "bldg",
+     "case": 25,
+     "coverage_class": "ai-soak"
+    }
+   ],
+   "coverage_class": "ai-soak",
+   "handler_resolution": "case"
+  },
+  {
+   "function": "llm_strat_order_population_delta_enqueue",
+   "routes": [
+    {
+     "lane": "admin",
+     "case": 13,
+     "coverage_class": "ai-soak"
+    },
+    {
+     "lane": "bldg",
+     "case": 0,
+     "coverage_class": "simtest-only"
+    },
+    {
+     "lane": "bldg",
+     "case": 25,
+     "coverage_class": "ai-soak"
+    }
+   ],
+   "coverage_class": "ai-soak",
+   "handler_resolution": "case"
+  },
+  {
+   "function": "llm_strat_order_scratch_reset",
+   "routes": [
+    {
+     "lane": "bldg",
+     "case": 25,
+     "coverage_class": "ai-soak"
+    }
+   ],
+   "coverage_class": "ai-soak",
+   "handler_resolution": "case"
+  },
+  {
+   "function": "llm_strat_order_scratch_set_field",
+   "routes": [
+    {
+     "lane": "bldg",
+     "case": 25,
+     "coverage_class": "ai-soak"
+    }
+   ],
+   "coverage_class": "ai-soak",
+   "handler_resolution": "case"
+  },
+  {
+   "function": "llm_strat_planet_distance",
+   "routes": [
+    {
+     "lane": "bldg",
+     "case": 15,
+     "coverage_class": "ui-scripted"
+    },
+    {
+     "lane": "bldg",
+     "case": 16,
+     "coverage_class": "ui-scripted"
+    },
+    {
+     "lane": "bldg",
+     "case": 17,
+     "coverage_class": "ui-scripted"
+    }
+   ],
+   "coverage_class": "ui-scripted",
+   "handler_resolution": "case"
+  },
+  {
+   "function": "llm_strat_player_by_side_id",
+   "routes": [
+    {
+     "lane": "bldg",
+     "case": 0,
+     "coverage_class": "simtest-only"
+    }
+   ],
+   "coverage_class": "simtest-only",
+   "handler_resolution": "case"
+  },
+  {
+   "function": "llm_strat_player_presence_lost",
+   "routes": [
+    {
+     "lane": "bldg",
+     "case": 2,
+     "coverage_class": "ai-soak"
+    },
+    {
+     "lane": "bldg",
+     "case": 15,
+     "coverage_class": "ui-scripted"
+    }
+   ],
+   "coverage_class": "ai-soak",
+   "handler_resolution": "case"
+  },
+  {
+   "function": "llm_strat_population_layoff_workers",
+   "routes": [
+    {
+     "lane": "admin",
+     "case": 7,
+     "coverage_class": "ai-soak"
+    },
+    {
+     "lane": "bldg",
+     "case": 0,
+     "coverage_class": "simtest-only"
+    },
+    {
+     "lane": "bldg",
+     "case": 19,
+     "coverage_class": "ui-scripted"
+    }
+   ],
+   "coverage_class": "ai-soak",
+   "handler_resolution": "case"
+  },
+  {
+   "function": "llm_strat_population_remove",
+   "routes": [
+    {
+     "lane": "admin",
+     "case": 7,
+     "coverage_class": "ai-soak"
+    },
+    {
+     "lane": "bldg",
+     "case": 0,
+     "coverage_class": "simtest-only"
+    },
+    {
+     "lane": "bldg",
+     "case": 19,
+     "coverage_class": "ui-scripted"
+    }
+   ],
+   "coverage_class": "ai-soak",
+   "handler_resolution": "case"
+  },
+  {
+   "function": "llm_strat_prod_bind_planet",
+   "routes": [
+    {
+     "lane": "bldg",
+     "case": 15,
+     "coverage_class": "ui-scripted"
+    },
+    {
+     "lane": "bldg",
+     "case": 16,
+     "coverage_class": "ui-scripted"
+    },
+    {
+     "lane": "bldg",
+     "case": 17,
+     "coverage_class": "ui-scripted"
+    }
+   ],
+   "coverage_class": "ui-scripted",
+   "handler_resolution": "case"
+  },
+  {
+   "function": "llm_strat_prod_deliver_arrivals",
+   "routes": [
+    {
+     "lane": "bldg",
+     "case": 15,
+     "coverage_class": "ui-scripted"
+    },
+    {
+     "lane": "bldg",
+     "case": 16,
+     "coverage_class": "ui-scripted"
+    },
+    {
+     "lane": "bldg",
+     "case": 17,
+     "coverage_class": "ui-scripted"
+    }
+   ],
+   "coverage_class": "ui-scripted",
+   "handler_resolution": "case"
+  },
+  {
+   "function": "llm_strat_prod_spawn_arrived_unit",
+   "routes": [
+    {
+     "lane": "bldg",
+     "case": 16,
+     "coverage_class": "ui-scripted"
+    },
+    {
+     "lane": "bldg",
+     "case": 17,
+     "coverage_class": "ui-scripted"
+    }
+   ],
+   "coverage_class": "ui-scripted",
+   "handler_resolution": "case"
+  },
+  {
+   "function": "llm_strat_prod_unbind_planet",
+   "routes": [
+    {
+     "lane": "bldg",
+     "case": 15,
+     "coverage_class": "ui-scripted"
+    },
+    {
+     "lane": "bldg",
+     "case": 16,
+     "coverage_class": "ui-scripted"
+    },
+    {
+     "lane": "bldg",
+     "case": 17,
+     "coverage_class": "ui-scripted"
+    }
+   ],
+   "coverage_class": "ui-scripted",
+   "handler_resolution": "case"
+  },
+  {
+   "function": "llm_strat_prod_unload_cargo_unit",
+   "routes": [
+    {
+     "lane": "bldg",
+     "case": 20,
+     "coverage_class": "ui-scripted"
+    },
+    {
+     "lane": "bldg",
+     "case": 22,
+     "coverage_class": "ui-scripted"
+    },
+    {
+     "lane": "bldg",
+     "case": 23,
+     "coverage_class": "ui-scripted"
+    }
+   ],
+   "coverage_class": "ui-scripted",
+   "handler_resolution": "case"
+  },
+  {
+   "function": "llm_strat_rng_next",
+   "routes": [
+    {
+     "lane": "admin",
+     "case": 3,
+     "coverage_class": "simtest-only"
+    },
+    {
+     "lane": "admin",
+     "case": 17,
+     "coverage_class": "debug-cheat"
+    },
+    {
+     "lane": "bldg",
+     "case": 0,
+     "coverage_class": "simtest-only"
+    }
+   ],
+   "coverage_class": "debug-cheat",
+   "handler_resolution": "case"
+  },
+  {
+   "function": "llm_strat_sight_add_circle",
+   "routes": [
+    {
+     "lane": "admin",
+     "case": 13,
+     "coverage_class": "ai-soak"
+    },
+    {
+     "lane": "bldg",
+     "case": 0,
+     "coverage_class": "simtest-only"
+    },
+    {
+     "lane": "bldg",
+     "case": 25,
+     "coverage_class": "ai-soak"
+    }
+   ],
+   "coverage_class": "ai-soak",
+   "handler_resolution": "case"
+  },
+  {
+   "function": "llm_strat_squad_placement_offset_lookup",
+   "routes": [
+    {
+     "lane": "admin",
+     "case": 6,
+     "coverage_class": "debug-cheat"
+    },
+    {
+     "lane": "admin",
+     "case": 14,
+     "coverage_class": "ai-soak"
+    },
+    {
+     "lane": "bldg",
+     "case": 0,
+     "coverage_class": "simtest-only"
+    },
+    {
+     "lane": "unit",
+     "case": null,
+     "coverage_class": "ai-soak"
+    }
+   ],
+   "coverage_class": "ai-soak",
+   "handler_resolution": "case"
+  },
+  {
+   "function": "llm_strat_storage_launch_parked_to_orbit",
+   "routes": [
+    {
+     "lane": "bldg",
+     "case": 15,
+     "coverage_class": "ui-scripted"
+    },
+    {
+     "lane": "bldg",
+     "case": 16,
+     "coverage_class": "ui-scripted"
+    },
+    {
+     "lane": "bldg",
+     "case": 17,
+     "coverage_class": "ui-scripted"
+    }
+   ],
+   "coverage_class": "ui-scripted",
+   "handler_resolution": "case"
+  },
+  {
+   "function": "llm_strat_storage_purge_dead_docked",
+   "routes": [
+    {
+     "lane": "bldg",
+     "case": 24,
+     "coverage_class": "ui-scripted"
+    }
+   ],
+   "coverage_class": "ui-scripted",
+   "handler_resolution": "case"
+  },
+  {
+   "function": "llm_strat_storage_remove_docked_unit",
+   "routes": [
+    {
+     "lane": "bldg",
+     "case": 15,
+     "coverage_class": "ui-scripted"
+    },
+    {
+     "lane": "bldg",
+     "case": 24,
+     "coverage_class": "ui-scripted"
+    }
+   ],
+   "coverage_class": "ui-scripted",
+   "handler_resolution": "case"
+  },
+  {
+   "function": "llm_strat_target_release_ref",
+   "routes": [
+    {
+     "lane": "bldg",
+     "case": 2,
+     "coverage_class": "ai-soak"
+    },
+    {
+     "lane": "bldg",
+     "case": 15,
+     "coverage_class": "ui-scripted"
+    },
+    {
+     "lane": "unit",
+     "case": null,
+     "coverage_class": "ai-soak"
+    }
+   ],
+   "coverage_class": "ai-soak",
+   "handler_resolution": "case"
+  },
+  {
+   "function": "llm_strat_tile_delta_wrapped",
+   "routes": [
+    {
+     "lane": "bldg",
+     "case": 7,
+     "coverage_class": "ui-scripted"
+    },
+    {
+     "lane": "bldg",
+     "case": 15,
+     "coverage_class": "ui-scripted"
+    },
+    {
+     "lane": "bldg",
+     "case": 16,
+     "coverage_class": "ui-scripted"
+    },
+    {
+     "lane": "bldg",
+     "case": 17,
+     "coverage_class": "ui-scripted"
+    }
+   ],
+   "coverage_class": "ui-scripted",
+   "handler_resolution": "case"
+  },
+  {
+   "function": "llm_strat_tile_dist_wrapped",
+   "routes": [
+    {
+     "lane": "bldg",
+     "case": 7,
+     "coverage_class": "ui-scripted"
+    }
+   ],
+   "coverage_class": "ui-scripted",
+   "handler_resolution": "case"
+  },
+  {
+   "function": "llm_strat_toroidal_dist_sq",
+   "routes": [
+    {
+     "lane": "admin",
+     "case": 21,
+     "coverage_class": "debug-cheat"
+    },
+    {
+     "lane": "bldg",
+     "case": 0,
+     "coverage_class": "simtest-only"
+    }
+   ],
+   "coverage_class": "debug-cheat",
+   "handler_resolution": "case"
+  },
+  {
+   "function": "llm_strat_unit_create",
+   "routes": [
+    {
+     "lane": "admin",
+     "case": 6,
+     "coverage_class": "debug-cheat"
+    },
+    {
+     "lane": "bldg",
+     "case": 0,
+     "coverage_class": "simtest-only"
+    }
+   ],
+   "coverage_class": "debug-cheat",
+   "handler_resolution": "case"
+  },
+  {
+   "function": "llm_strat_unit_ctrl_group_assign",
+   "routes": [
+    {
+     "lane": "unit",
+     "case": null,
+     "coverage_class": "ai-soak"
+    }
+   ],
+   "coverage_class": "ai-soak",
+   "handler_resolution": "block"
+  },
+  {
+   "function": "llm_strat_unit_ctrlgroup_add_member",
+   "routes": [
+    {
+     "lane": "bldg",
+     "case": 23,
+     "coverage_class": "ui-scripted"
+    },
+    {
+     "lane": "unit",
+     "case": null,
+     "coverage_class": "ai-soak"
+    }
+   ],
+   "coverage_class": "ai-soak",
+   "handler_resolution": "case"
+  },
+  {
+   "function": "llm_strat_unit_ctrlgroup_leave",
+   "routes": [
+    {
+     "lane": "bldg",
+     "case": 2,
+     "coverage_class": "ai-soak"
+    },
+    {
+     "lane": "bldg",
+     "case": 15,
+     "coverage_class": "ui-scripted"
+    }
+   ],
+   "coverage_class": "ai-soak",
+   "handler_resolution": "case"
+  },
+  {
+   "function": "llm_strat_unit_ctrlgroup_remove_member",
+   "routes": [
+    {
+     "lane": "unit",
+     "case": null,
+     "coverage_class": "ai-soak"
+    }
+   ],
+   "coverage_class": "ai-soak",
+   "handler_resolution": "block"
+  },
+  {
+   "function": "llm_strat_unit_estimate_weapon_damage",
+   "routes": [
+    {
+     "lane": "bldg",
+     "case": 2,
+     "coverage_class": "ai-soak"
+    },
+    {
+     "lane": "unit",
+     "case": null,
+     "coverage_class": "ai-soak"
+    }
+   ],
+   "coverage_class": "ai-soak",
+   "handler_resolution": "case"
+  },
+  {
+   "function": "llm_strat_unit_get_ai_group_index",
+   "routes": [
+    {
+     "lane": "bldg",
+     "case": 2,
+     "coverage_class": "ai-soak"
+    }
+   ],
+   "coverage_class": "ai-soak",
+   "handler_resolution": "case"
+  },
+  {
+   "function": "llm_strat_unit_get_coords",
+   "routes": [
+    {
+     "lane": "admin",
+     "case": 21,
+     "coverage_class": "debug-cheat"
+    },
+    {
+     "lane": "bldg",
+     "case": 0,
+     "coverage_class": "simtest-only"
+    },
+    {
+     "lane": "bldg",
+     "case": 7,
+     "coverage_class": "ui-scripted"
+    }
+   ],
+   "coverage_class": "ui-scripted",
+   "handler_resolution": "case"
+  },
+  {
+   "function": "llm_strat_unit_housing_count_add",
+   "routes": [
+    {
+     "lane": "admin",
+     "case": 6,
+     "coverage_class": "debug-cheat"
+    },
+    {
+     "lane": "admin",
+     "case": 14,
+     "coverage_class": "ai-soak"
+    },
+    {
+     "lane": "bldg",
+     "case": 0,
+     "coverage_class": "simtest-only"
+    }
+   ],
+   "coverage_class": "ai-soak",
+   "handler_resolution": "case"
+  },
+  {
+   "function": "llm_strat_unit_init_record",
+   "routes": [
+    {
+     "lane": "admin",
+     "case": 6,
+     "coverage_class": "debug-cheat"
+    },
+    {
+     "lane": "admin",
+     "case": 14,
+     "coverage_class": "ai-soak"
+    },
+    {
+     "lane": "bldg",
+     "case": 0,
+     "coverage_class": "simtest-only"
+    },
+    {
+     "lane": "unit",
+     "case": null,
+     "coverage_class": "ai-soak"
+    }
+   ],
+   "coverage_class": "ai-soak",
+   "handler_resolution": "case"
+  },
+  {
+   "function": "llm_strat_unit_is_aircraft",
+   "routes": [
+    {
+     "lane": "admin",
+     "case": 21,
+     "coverage_class": "debug-cheat"
+    },
+    {
+     "lane": "bldg",
+     "case": 0,
+     "coverage_class": "simtest-only"
+    }
+   ],
+   "coverage_class": "debug-cheat",
+   "handler_resolution": "case"
+  },
+  {
+   "function": "llm_strat_unit_kill_credit",
+   "routes": [
+    {
+     "lane": "admin",
+     "case": 21,
+     "coverage_class": "debug-cheat"
+    },
+    {
+     "lane": "bldg",
+     "case": 0,
+     "coverage_class": "simtest-only"
+    }
+   ],
+   "coverage_class": "debug-cheat",
+   "handler_resolution": "case"
+  },
+  {
+   "function": "llm_strat_unit_load_into_shuttle_cargo",
+   "routes": [
+    {
+     "lane": "bldg",
+     "case": 15,
+     "coverage_class": "ui-scripted"
+    }
+   ],
+   "coverage_class": "ui-scripted",
+   "handler_resolution": "case"
+  },
+  {
+   "function": "llm_strat_unit_notify_status",
+   "routes": [
+    {
+     "lane": "admin",
+     "case": 22,
+     "coverage_class": "ai-soak"
+    },
+    {
+     "lane": "bldg",
+     "case": 0,
+     "coverage_class": "simtest-only"
+    },
+    {
+     "lane": "unit",
+     "case": null,
+     "coverage_class": "ai-soak"
+    }
+   ],
+   "coverage_class": "ai-soak",
+   "handler_resolution": "case"
+  },
+  {
+   "function": "llm_strat_unit_notify_ui",
+   "routes": [
+    {
+     "lane": "admin",
+     "case": 17,
+     "coverage_class": "debug-cheat"
+    },
+    {
+     "lane": "admin",
+     "case": 21,
+     "coverage_class": "debug-cheat"
+    },
+    {
+     "lane": "bldg",
+     "case": 0,
+     "coverage_class": "simtest-only"
+    }
+   ],
+   "coverage_class": "debug-cheat",
+   "handler_resolution": "case"
+  },
+  {
+   "function": "llm_strat_unit_refund_build_cost_by_health",
+   "routes": [
+    {
+     "lane": "bldg",
+     "case": 2,
+     "coverage_class": "ai-soak"
+    }
+   ],
+   "coverage_class": "ai-soak",
+   "handler_resolution": "case"
+  },
+  {
+   "function": "llm_strat_unit_set_state_of",
+   "routes": [
+    {
+     "lane": "bldg",
+     "case": 2,
+     "coverage_class": "ai-soak"
+    },
+    {
+     "lane": "bldg",
+     "case": 15,
+     "coverage_class": "ui-scripted"
+    },
+    {
+     "lane": "unit",
+     "case": null,
+     "coverage_class": "ai-soak"
+    }
+   ],
+   "coverage_class": "ai-soak",
+   "handler_resolution": "case"
+  },
+  {
+   "function": "llm_strat_unit_soldier_unlink",
+   "routes": [
+    {
+     "lane": "unit",
+     "case": null,
+     "coverage_class": "ai-soak"
+    }
+   ],
+   "coverage_class": "ai-soak",
+   "handler_resolution": "block"
+  },
+  {
+   "function": "llm_strat_unit_soldiers_start_walk_anim",
+   "routes": [
+    {
+     "lane": "unit",
+     "case": null,
+     "coverage_class": "ai-soak"
+    }
+   ],
+   "coverage_class": "ai-soak",
+   "handler_resolution": "block"
+  },
+  {
+   "function": "llm_strat_unit_spawn_docked",
+   "routes": [
+    {
+     "lane": "admin",
+     "case": 14,
+     "coverage_class": "ai-soak"
+    },
+    {
+     "lane": "bldg",
+     "case": 0,
+     "coverage_class": "simtest-only"
+    },
+    {
+     "lane": "bldg",
+     "case": 23,
+     "coverage_class": "ui-scripted"
+    },
+    {
+     "lane": "unit",
+     "case": null,
+     "coverage_class": "ai-soak"
+    }
+   ],
+   "coverage_class": "ai-soak",
+   "handler_resolution": "case"
+  },
+  {
+   "function": "llm_strat_unit_spawn_on_tile",
+   "routes": [
+    {
+     "lane": "unit",
+     "case": null,
+     "coverage_class": "ai-soak"
+    }
+   ],
+   "coverage_class": "ai-soak",
+   "handler_resolution": "block"
+  },
+  {
+   "function": "llm_strat_unit_squad_pick_lead_soldier_in_direction",
+   "routes": [
+    {
+     "lane": "unit",
+     "case": null,
+     "coverage_class": "ai-soak"
+    }
+   ],
+   "coverage_class": "ai-soak",
+   "handler_resolution": "block"
+  },
+  {
+   "function": "llm_strat_unit_teardown",
+   "routes": [
+    {
+     "lane": "bldg",
+     "case": 2,
+     "coverage_class": "ai-soak"
+    },
+    {
+     "lane": "bldg",
+     "case": 15,
+     "coverage_class": "ui-scripted"
+    }
+   ],
+   "coverage_class": "ai-soak",
+   "handler_resolution": "case"
+  },
+  {
+   "function": "llm_strat_unit_update_damage_smoke",
+   "routes": [
+    {
+     "lane": "admin",
+     "case": 17,
+     "coverage_class": "debug-cheat"
+    },
+    {
+     "lane": "bldg",
+     "case": 0,
+     "coverage_class": "simtest-only"
+    }
+   ],
+   "coverage_class": "debug-cheat",
+   "handler_resolution": "case"
+  },
+  {
+   "function": "llm_ui_list_widget_append_entry",
+   "routes": [
+    {
+     "lane": "bldg",
+     "case": 0,
+     "coverage_class": "simtest-only"
+    }
+   ],
+   "coverage_class": "simtest-only",
+   "handler_resolution": "case"
+  },
+  {
+   "function": "llm_ui_list_widget_clear",
+   "routes": [
+    {
+     "lane": "bldg",
+     "case": 0,
+     "coverage_class": "simtest-only"
+    }
+   ],
+   "coverage_class": "simtest-only",
+   "handler_resolution": "case"
+  },
+  {
+   "function": "llm_ui_outcome_dialog",
+   "routes": [
+    {
+     "lane": "bldg",
+     "case": 2,
+     "coverage_class": "ai-soak"
+    }
+   ],
+   "coverage_class": "ai-soak",
+   "handler_resolution": "case"
+  },
+  {
+   "function": "llm_ui_planet_select_screen_build",
+   "routes": [
+    {
+     "lane": "admin",
+     "case": 7,
+     "coverage_class": "ai-soak"
+    },
+    {
+     "lane": "bldg",
+     "case": 0,
+     "coverage_class": "simtest-only"
+    },
+    {
+     "lane": "bldg",
+     "case": 7,
+     "coverage_class": "ui-scripted"
+    },
+    {
+     "lane": "bldg",
+     "case": 23,
+     "coverage_class": "ui-scripted"
+    }
+   ],
+   "coverage_class": "ai-soak",
+   "handler_resolution": "case"
+  },
+  {
+   "function": "llm_ui_print_floating_msg_cyan",
+   "routes": [
+    {
+     "lane": "bldg",
+     "case": 0,
+     "coverage_class": "simtest-only"
+    }
+   ],
+   "coverage_class": "simtest-only",
+   "handler_resolution": "case"
+  },
+  {
+   "function": "llm_ui_print_floating_msg_red",
+   "routes": [
+    {
+     "lane": "bldg",
+     "case": 2,
+     "coverage_class": "ai-soak"
+    }
+   ],
+   "coverage_class": "ai-soak",
+   "handler_resolution": "case"
+  },
+  {
+   "function": "llm_ui_print_game_speed",
+   "routes": [
+    {
+     "lane": "admin",
+     "case": 4,
+     "coverage_class": "simtest-only"
+    },
+    {
+     "lane": "admin",
+     "case": 5,
+     "coverage_class": "simtest-only"
+    },
+    {
+     "lane": "bldg",
+     "case": 0,
+     "coverage_class": "simtest-only"
+    }
+   ],
+   "coverage_class": "simtest-only",
+   "handler_resolution": "case"
+  },
+  {
+   "function": "llm_ui_print_queue_text_id",
+   "routes": [
+    {
+     "lane": "admin",
+     "case": 21,
+     "coverage_class": "debug-cheat"
+    },
+    {
+     "lane": "bldg",
+     "case": 0,
+     "coverage_class": "simtest-only"
+    },
+    {
+     "lane": "bldg",
+     "case": 2,
+     "coverage_class": "ai-soak"
+    }
+   ],
+   "coverage_class": "ai-soak",
+   "handler_resolution": "case"
+  },
+  {
+   "function": "llm_unit_bldg_apply_lethal_damage",
+   "routes": [
+    {
+     "lane": "admin",
+     "case": 19,
+     "coverage_class": "debug-cheat"
+    },
+    {
+     "lane": "bldg",
+     "case": 0,
+     "coverage_class": "simtest-only"
+    }
+   ],
+   "coverage_class": "debug-cheat",
+   "handler_resolution": "case"
+  },
+  {
+   "function": "llm_unit_bldg_apply_scaled_damage",
+   "routes": [
+    {
+     "lane": "admin",
+     "case": 18,
+     "coverage_class": "debug-cheat"
+    },
+    {
+     "lane": "bldg",
+     "case": 0,
+     "coverage_class": "simtest-only"
+    }
+   ],
+   "coverage_class": "debug-cheat",
+   "handler_resolution": "case"
+  },
+  {
+   "function": "llm_unit_bldg_energy_refill_full",
+   "routes": [
+    {
+     "lane": "admin",
+     "case": 17,
+     "coverage_class": "debug-cheat"
+    },
+    {
+     "lane": "bldg",
+     "case": 0,
+     "coverage_class": "simtest-only"
+    }
+   ],
+   "coverage_class": "debug-cheat",
+   "handler_resolution": "case"
+  },
+  {
+   "function": "llm_unit_create_soldier",
+   "routes": [
+    {
+     "lane": "admin",
+     "case": 6,
+     "coverage_class": "debug-cheat"
+    },
+    {
+     "lane": "bldg",
+     "case": 0,
+     "coverage_class": "simtest-only"
+    }
+   ],
+   "coverage_class": "debug-cheat",
+   "handler_resolution": "case"
+  },
+  {
+   "function": "llm_unit_recruit",
+   "routes": [
+    {
+     "lane": "admin",
+     "case": 14,
+     "coverage_class": "ai-soak"
+    },
+    {
+     "lane": "bldg",
+     "case": 0,
+     "coverage_class": "simtest-only"
+    }
+   ],
+   "coverage_class": "ai-soak",
+   "handler_resolution": "case"
+  },
+  {
+   "function": "llm_unit_set_order_param",
+   "routes": [
+    {
+     "lane": "unit",
+     "case": null,
+     "coverage_class": "ai-soak"
+    }
+   ],
+   "coverage_class": "ai-soak",
+   "handler_resolution": "block"
+  },
+  {
+   "function": "llm_unit_state_is_boarding",
+   "routes": [
+    {
+     "lane": "bldg",
+     "case": 15,
+     "coverage_class": "ui-scripted"
+    },
+    {
+     "lane": "unit",
+     "case": null,
+     "coverage_class": "ai-soak"
+    }
+   ],
+   "coverage_class": "ai-soak",
+   "handler_resolution": "case"
+  },
+  {
+   "function": "llm_unit_status_bit_clear",
+   "routes": [
+    {
+     "lane": "admin",
+     "case": 2,
+     "coverage_class": "ui-scripted"
+    },
+    {
+     "lane": "bldg",
+     "case": 0,
+     "coverage_class": "simtest-only"
+    }
+   ],
+   "coverage_class": "ui-scripted",
+   "handler_resolution": "case"
+  },
+  {
+   "function": "llm_unit_status_bit_set",
+   "routes": [
+    {
+     "lane": "admin",
+     "case": 1,
+     "coverage_class": "ui-scripted"
+    },
+    {
+     "lane": "bldg",
+     "case": 0,
+     "coverage_class": "simtest-only"
+    }
+   ],
+   "coverage_class": "ui-scripted",
+   "handler_resolution": "case"
+  },
+  {
+   "function": "llm_unit_transport_unload_docked",
+   "routes": [
+    {
+     "lane": "unit",
+     "case": null,
+     "coverage_class": "ai-soak"
+    }
+   ],
+   "coverage_class": "ai-soak",
+   "handler_resolution": "block"
+  },
+  {
+   "function": "llm_unit_transport_unload_field",
+   "routes": [
+    {
+     "lane": "unit",
+     "case": null,
+     "coverage_class": "ai-soak"
+    }
+   ],
+   "coverage_class": "ai-soak",
+   "handler_resolution": "block"
+  },
+  {
+   "function": "map_ApplyAreaToMap",
+   "routes": [
+    {
+     "lane": "admin",
+     "case": 13,
+     "coverage_class": "ai-soak"
+    },
+    {
+     "lane": "bldg",
+     "case": 0,
+     "coverage_class": "simtest-only"
+    },
+    {
+     "lane": "bldg",
+     "case": 25,
+     "coverage_class": "ai-soak"
+    }
+   ],
+   "coverage_class": "ai-soak",
+   "handler_resolution": "case"
+  },
+  {
+   "function": "map_CreateBuilding",
+   "routes": [
+    {
+     "lane": "admin",
+     "case": 13,
+     "coverage_class": "ai-soak"
+    },
+    {
+     "lane": "bldg",
+     "case": 0,
+     "coverage_class": "simtest-only"
+    },
+    {
+     "lane": "bldg",
+     "case": 25,
+     "coverage_class": "ai-soak"
+    }
+   ],
+   "coverage_class": "ai-soak",
+   "handler_resolution": "case"
+  },
+  {
+   "function": "map_fow_ConvertSightToArea",
+   "routes": [
+    {
+     "lane": "admin",
+     "case": 6,
+     "coverage_class": "debug-cheat"
+    },
+    {
+     "lane": "admin",
+     "case": 20,
+     "coverage_class": "debug-cheat"
+    },
+    {
+     "lane": "bldg",
+     "case": 0,
+     "coverage_class": "simtest-only"
+    }
+   ],
+   "coverage_class": "debug-cheat",
+   "handler_resolution": "case"
+  },
+  {
+   "function": "map_fow_UpdateFoWPlus_impl",
+   "routes": [
+    {
+     "lane": "admin",
+     "case": 6,
+     "coverage_class": "debug-cheat"
+    },
+    {
+     "lane": "admin",
+     "case": 20,
+     "coverage_class": "debug-cheat"
+    },
+    {
+     "lane": "bldg",
+     "case": 0,
+     "coverage_class": "simtest-only"
+    },
+    {
+     "lane": "unit",
+     "case": null,
+     "coverage_class": "ai-soak"
+    }
+   ],
+   "coverage_class": "ai-soak",
+   "handler_resolution": "case"
+  },
+  {
+   "function": "map_unit_PutOnMap",
+   "routes": [
+    {
+     "lane": "admin",
+     "case": 6,
+     "coverage_class": "debug-cheat"
+    },
+    {
+     "lane": "bldg",
+     "case": 0,
+     "coverage_class": "simtest-only"
+    }
+   ],
+   "coverage_class": "debug-cheat",
+   "handler_resolution": "case"
+  },
+  {
+   "function": "utils_str_cmp",
+   "routes": [
+    {
+     "lane": "bldg",
+     "case": 0,
+     "coverage_class": "simtest-only"
+    }
+   ],
+   "coverage_class": "simtest-only",
+   "handler_resolution": "case"
+  }
+ ]
+}

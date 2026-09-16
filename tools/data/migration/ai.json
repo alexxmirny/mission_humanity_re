@@ -1,0 +1,189 @@
+{
+  "_comment": [
+    "The strategic-AI migration domain (RI-AI). This profile is a LIFT, not a redesign: every",
+    "value here was a hardcoded constant in gen_migration.py / migration_ready.py / migration_session.py /",
+    "migration_loop.py before 2026-08-07, and the acceptance test for the lift was that regenerating the",
+    "manifest through the profile reproduces tools/data/ai_migration.json byte-for-byte.",
+    "Do not 'tidy' a value here without regenerating and diffing the manifest."
+  ],
+  "domain": "ai",
+  "title": "Strategic AI",
+  "tracker_domain": "reimpl",
+  "tracker_group": "RI-AI",
+  "umbrella_item": "AI1",
+  "root": {
+    "addr": "004db905",
+    "name": "llm_strat_ai_players_tick",
+    "why": "VERIFIED (docs/ai-closure.md): llm_strat_sim_step has 14 direct callees and exactly one is AI, so this is the sole entry into the AI from the sim tick."
+  },
+  "select": {
+    "mode": "name_prefix",
+    "prefix": "llm_strat_ai_",
+    "why": "The cluster was already named consistently, so the prefix IS the membership test. Note this is right for deciding what to REWRITE and wrong for deciding what a translation TOUCHES -- the callee frontier is derived from the call graph instead (migration_ready.py's R2).",
+    "owned_elsewhere": [
+      {
+        "name": "llm_strat_ai_group_move_formation_rotating",
+        "owner": "orders_issue",
+        "why": "RE-HOMED 2026-08-28 (O4B). It carries the llm_strat_ai_ prefix and nothing else about it is AI: its whole body stamps units[p][id].order_notify_status = 1 and .order_status_flags |= 0x40, calls llm_strat_unit_order_move_enqueue once per harvested member, and bumps _G_LLM_STRAT_ORDER_SEQ_ID_BY_PLAYER (skipping 0 on wrap). Those two fields MEASURE as sim-written / AI-read order-pipeline state, not AI state -- llm_strat_unit_notify_status writes both at six sites (sim_unit_notify.cpp), sim_target_release_ref and sim_storage_scrap write order_status_flags, and the only AI touches are READS (ai_group_task_predicates.cpp's readiness switch, ai_group_move_helpers.cpp's 0x80 test). So the write is an order-issue write, and homing it here would have needed a mutable `units` in ai_store -- the R2 hole ai_state.h names in as many words. The orders_issue domain already owns exactly this shape."
+      },
+      {
+        "name": "llm_strat_ai_unit_flag_and_move",
+        "owner": "orders_issue",
+        "why": "RE-HOMED 2026-08-28, on the same measurement that settled llm_strat_ai_group_move_formation_rotating in O4B and with the same verdict: behaviour owns the function, the llm_strat_ai_ prefix does not. Both bodies write EXACTLY the two order-pipeline fields that one writes, at the same offsets with the same constants -- units[p][id].order_notify_status = 1 (unit +0xe8) and .order_status_flags |= 0x40 (unit +0xe3) -- and then call llm_strat_unit_order_move_enqueue. Those two fields measure as sim-written / AI-READ order-pipeline state (llm_strat_unit_notify_status writes both at six sites in sim_unit_notify.cpp; the AI only reads them), so the write is an order-issue write. llm_strat_ai_unit_flag_and_move is 73 bytes and is NOTHING BUT that stamp plus the enqueue -- ten AI group tasks call it as their move primitive. llm_strat_ai_group_scatter_to_passable_tile is the same stamp behind a passable-tile pick. Homing either in `ai` would have needed a mutable `units` in ai_store for a body that only stamps order bits -- the R2 hole ai_state.h names in as many words, and exactly what O4B's re-home avoided. The eight roster writers that remain in batch D are a different case and DO stay in `ai`: they write ai_group_next/_prev/_index and player_data.ai_groups[], which is the AI's own linked list living inside the sim's frozen record layout."
+      },
+      {
+        "name": "llm_strat_ai_group_scatter_to_passable_tile",
+        "owner": "orders_issue",
+        "why": "RE-HOMED 2026-08-28, on the same measurement that settled llm_strat_ai_group_move_formation_rotating in O4B and with the same verdict: behaviour owns the function, the llm_strat_ai_ prefix does not. Both bodies write EXACTLY the two order-pipeline fields that one writes, at the same offsets with the same constants -- units[p][id].order_notify_status = 1 (unit +0xe8) and .order_status_flags |= 0x40 (unit +0xe3) -- and then call llm_strat_unit_order_move_enqueue. Those two fields measure as sim-written / AI-READ order-pipeline state (llm_strat_unit_notify_status writes both at six sites in sim_unit_notify.cpp; the AI only reads them), so the write is an order-issue write. llm_strat_ai_unit_flag_and_move is 73 bytes and is NOTHING BUT that stamp plus the enqueue -- ten AI group tasks call it as their move primitive. llm_strat_ai_group_scatter_to_passable_tile is the same stamp behind a passable-tile pick. Homing either in `ai` would have needed a mutable `units` in ai_store for a body that only stamps order bits -- the R2 hole ai_state.h names in as many words, and exactly what O4B's re-home avoided. The eight roster writers that remain in batch D are a different case and DO stay in `ai`: they write ai_group_next/_prev/_index and player_data.ai_groups[], which is the AI's own linked list living inside the sim's frozen record layout."
+      }
+    ]
+  },
+  "paths": {
+    "manifest": "tools/data/ai_migration.json",
+    "batch_overrides": "tools/data/ai_batch_overrides.json",
+    "ready_acks": "tools/data/ai_ready_ack.json",
+    "gate_sites": "tools/data/ai_gate_sites.json",
+    "loop_prompt": "tools/data/ai_loop_prompt.md",
+    "ready_report": "tmp/ai_ready",
+    "export_dir": "tmp/decomp_ai",
+    "lint_request": "tmp/ai_translation_lint.json",
+    "state_header": "src/mh_dll/libmh/ai/ai_state.h",
+    "state_impl": "src/mh_dll/libmh/ai/ai_state.cpp",
+    "module_dir": "src/mh_dll/mh/ai",
+    "selftest_dir": "src/mh_dll/mh_nettest",
+    "closure_doc": "docs/ai-closure.md",
+    "reclassified": "tools/data/migration/ai_reclassified.json"
+  },
+  "batches": {
+    "order": [
+      "A",
+      "B",
+      "C",
+      "D",
+      "E"
+    ],
+    "item": {
+      "A": "AI1A",
+      "B": "AI1B",
+      "C": "AI1C",
+      "D": "AI1D",
+      "E": "AI1E"
+    },
+    "strip_prefix": true,
+    "roster_batch": {
+      "batch": "D",
+      "why": "writes the sim roster(s) %s -- the AI's own state living inside the sim's frozen record layout, translated under AI1D",
+      "_why_it_is_a_translation_batch_now": "CHANGED 2026-08-28 (user's call). Batch D used to be `refactor_batch` -- not a translation batch at all, but AI2's R2 burn-down, which planned to convert these writers into ORDER EMITTERS. That is why AI2 could not coexist with AI1-P's bit-identity clause, and why AI1's done_when quantified over A/B/C/E only and left ten functions permanently `not_started`. D1 (docs/state-boundary.md) froze the state LAYOUT after AI2 was written, and that changes the answer: under a frozen layout these are ordinary functions that write bytes at fixed offsets, and translating them bit-identically is an ordinary migration -- the same move SIM-RESID made for the scripted event drivers. AI2 survives as the LATER refactor, and gets easier: it rewrites bodies we own instead of original code. MEASURED before the move: the ten split 4/6, and two of the four were not AI at all (see select.owned_elsewhere)."
+    },
+    "unreachable_batch": {
+      "batch": "E",
+      "why": "not reachable from players_tick -- fires on another clock, needs a caller-side hook"
+    },
+    "rules": [
+      {
+        "batch": "C",
+        "match": [
+          "group",
+          "task",
+          "move",
+          "path",
+          "formation",
+          "member",
+          "route",
+          "waypoint"
+        ]
+      },
+      {
+        "batch": "A",
+        "match": [
+          "target",
+          "scan",
+          "engage",
+          "candidate",
+          "threat",
+          "attack",
+          "combat",
+          "enemy"
+        ]
+      },
+      {
+        "batch": "B",
+        "match": [
+          "build",
+          "econ",
+          "queue",
+          "influence",
+          "resourc",
+          "worker",
+          "produc",
+          "train",
+          "priorit",
+          "housing",
+          "repair",
+          "upgrade",
+          "research",
+          "mine",
+          "storage"
+        ]
+      }
+    ]
+  },
+  "roster_regions": [
+    "units",
+    "buildings",
+    "_G_LLM_STRAT_PLAYERS"
+  ],
+  "region_hints": [
+    "_AI_",
+    "AI_"
+  ],
+  "region_hints_why": "R6's zero-size-region filter. The pre-profile code was `\"_AI_\" in name OR name.startswith(\"AI\")`; both arms match zero regions today, and both are covered by these two substrings. A BARE \"AI\" would be wrong -- it matches MAIN.",
+  "dead_tag": "todo:dead",
+  "oracle": {
+    "selftest": "aitest",
+    "rig": {
+      "modes": [
+        "sp",
+        "soak"
+      ],
+      "default": "sp",
+      "_why": "The AI cluster's sites hang off llm_strat_ai_players_tick, which a single-AI loadgame run reaches at a controlled step -- so `sp` is the cheaper vehicle and the default. `soak` (the all-AI self-playing match) reaches the same sites and is kept for the cross-check, not because a second one is needed."
+    }
+  },
+  "gate": {
+    "field": "ai_enabled"
+  },
+  "creation_primitives": [
+    "llm_strat_unit_create",
+    "llm_unit_create_soldier",
+    "llm_strat_unit_spawn_on_tile",
+    "llm_unit_recruit",
+    "map_unit_Add",
+    "map_CreateBuilding",
+    "llm_strat_prod_spawn_arrived_unit"
+  ],
+  "non_autonomous": [
+    "AI-PREP",
+    "AI2",
+    "AI1-P"
+  ],
+  "conductor_owned": [
+    "ai_state.h",
+    "ai_state.cpp",
+    "/addr/",
+    "\\addr\\",
+    ".vcxproj",
+    ".sln",
+    "dll_addr_manifest.json",
+    "dll_shadow_manifest.json",
+    "dll_struct_layouts.json",
+    "ai_migration.json",
+    "state_regions.json",
+    "ai_selftest.cpp"
+  ],
+  "refactor_why": "RETIRED as a batch mapping 2026-08-28: batch D is now a TRANSLATION batch (AI1D) and AI2 is the later order-emitter refactor layered on the translated bodies. Kept as a note because the reason batch D existed at all -- these functions write the sim rosters -- is still true and is still what makes them the interesting batch.",
+  "items": {
+    "interface": "AI0",
+    "_interface_why": "The tracker item that OWNS building the state interface this domain's batches translate into -- `<D>0` in the reimpl-decompose skill's vocabulary, and the item it calls the highest-leverage one. Declared here rather than derived from the domain name because orders_issue's is `O4-0` and a future domain may reuse another domain's interface outright. tools/lint_migration_items.py checks it exists, is not an orphan, and is REACHABLE THROUGH DEPS from every batch. The const AI state view + `net_selftest.exe aitest`. Batch A deps on it directly; B/C/E chain through A."
+  }
+}

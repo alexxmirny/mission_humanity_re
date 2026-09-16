@@ -1,0 +1,40 @@
+# D17: an attempt to make a RESYNC actually fire on the rig, and a RECORDED NEGATIVE RESULT.
+#
+# WHY: D17's acceptance clause wants mp_order_diff evidence that both peers release the
+# CTL_RESYNC_BEGIN synthetic order (kind 0xf0) on the SAME step. That order only exists when
+# llm_net_lockstep_force_resync runs, and on the rig it never does.
+#
+# WHAT WAS MEASURED (2026-08-27), each a 2-peer --determinism run with --record:
+#   * healthy LAN, default knobs            -> kind 0xf0 NEVER SCHEDULED
+#   * 200 ms RTT via --shim-delay 100       -> kind 0xf0 NEVER SCHEDULED
+#   * ...plus resync_trigger_gate=0, which  -> kind 0xf0 NEVER SCHEDULED
+#     is the pre-fix condition D14 was
+#     originally observed under
+#   * ...plus THIS timeline (6x 6-second    -> kind 0xf0 NEVER SCHEDULED, and the run DESYNCED
+#     stalls, each under the ~10 s             (the stalls themselves part the order streams --
+#     rx_timeout_ms so the link survives)       a different effect, not this one)
+#
+# WHY IT CANNOT FIRE HERE, from the counter rather than from argument. `[net] fix_audit=400` prints
+# `trig=<RESYNC_TRIGGER_COUNT> countdn=<SYNC_RETRY_COUNTDOWN>`, and across every run above it read
+# `trig=0 countdn=59-60`. countdn sits at its 0x3c reload, so the at-horizon WAIT path never runs;
+# RESYNC_TRIGGER_COUNT only increments on the type-3 ACKs that path emits, so it stays 0, and
+# force_resync's threshold (ACTIVE_PLAYERS*100 < trig) is never approached. Inducing latency does not
+# help because the harness drives steps as fast as it can rather than on the game clock, so the sim
+# does not outrun the network the way interactive play does. D14's own evidence came from real
+# internet-path sessions, which is the condition this rig does not reproduce.
+#
+# KEPT rather than deleted: the next person to want a resync on the rig should start from what has
+# already been ruled out, and the fix_audit line is the cheap way to check whether a new idea is
+# moving the counter at all before spending a run on it.
+20000 stall on
+26000 stall off
+30000 stall on
+36000 stall off
+40000 stall on
+46000 stall off
+50000 stall on
+56000 stall off
+60000 stall on
+66000 stall off
+70000 stall on
+76000 stall off

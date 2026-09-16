@@ -1,0 +1,14 @@
+{
+  "class": "reimplemented",
+  "_class_why": "RU sibling of run_without_focus_EN. RU-targeted: its sha256 pins the frozen Russian exe, so mhpatch refuses it against the EN image (measured 2026-09-13) and it can never be an in-memory subject. Kept as the on-disk patch for the RU build.",
+  "_comment": "Phase 5a (tasks/mp-instrumentation.md): keep the sim running when the window loses focus, so two peers can run on one machine and background/unfocused runs keep simulating. llm_wnd_on_activate (0x0049ff65, WM_ACTIVATE handler) on WA_INACTIVE (activate_state==0) clears _G_LLM_GAME_RUNNING, calls llm_game_clock_pause() and shows the cursor -- the block at 0x0049ffe1. This patch replaces that block's leading `CMP dword[_G_LLM_GAME_RUNNING],0` (0x0049ffe1) with a `JMP 0x004a0008` straight to the function's shared epilogue (LEA ESP,[EBP-8]; POP EDI/ESI/EBP; RET), so focus loss becomes a no-op: GAME_RUNNING is never cleared and the clock never pauses. The WA_ACTIVE branch is untouched, but since GAME_RUNNING stays 1 its `GAME_RUNNING==0` guard is false on refocus, so refocus is also a no-op -- the game just keeps running across focus changes. Cursor toggling is skipped both ways (in-game cursor stays hidden; the OS shows the real cursor over other windows normally). No whole-file sha256 pin (chainable after net_load / other manifests); the per-patch 'expect' bytes are the guard. RE'd 2026-07-11. Run: python mhpatch.py apply <in>.exe run_without_focus.mh.patch.json <out>.exe",
+  "target": "mh.exe (clean Russian retail, md5 a9bf89a6...)",
+  "patches": [
+    {
+      "va": "0x0049ffe1",
+      "expect": "83 3d e8 5f 5d 00 00",
+      "bytes": "e9 22 00 00 00 90 90",
+      "_note": "llm_wnd_on_activate WA_INACTIVE block: JMP 0x004a0008 (epilogue) instead of CMP GAME_RUNNING -> skips the pause/clear-running/show-cursor on focus loss. rel32 0x22 = 0x004a0008-(0x0049ffe1+5); 2x NOP pad fills the 7-byte original."
+    }
+  ]
+}

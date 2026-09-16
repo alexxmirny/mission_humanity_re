@@ -1,0 +1,42 @@
+{
+ "_hand_authored": "Hand-authored. `migration_ready.py --domain readers` reads it; nothing writes it.",
+ "_note": [
+  "Acknowledged readiness blockers for the READERS domain (RD-READY). Same bar as ai_ready_ack.json",
+  "and sim_ready_ack.json: an entry must name the MECHANISM and cite the EVIDENCE. 'I could not fix",
+  "it' is not a reason, and an entry that only defers the work must name the item that owns it.",
+  "",
+  "This domain's acceptance says in as many words that a green standing on acks is not a green",
+  "standing on fixes -- RD-READY reports the ack count beside the verdict. Use this file sparingly",
+  "and expect to be read on it.",
+  "",
+  "Stale acks are reported on every run, so this file cannot quietly become a graveyard: once the",
+  "underlying defect is fixed the ack stops firing and the report says so."
+ ],
+ "_not_for": "R7 conf:low is NOT ackable -- an unsettled name is settled by reading, not by recording that it is unsettled. Nor is a stale todo: tag: clear the tag.",
+ "acks": [
+  {
+   "addr": "0x00449ffe",
+   "name": "llm_strat_bldg_get_progress_percent",
+   "check": "R3 decompile usable",
+   "recorded": "2026-08-24",
+   "reason": "Not a wrong prototype anywhere -- a CALLING-CONVENTION MODEL this project does not have. `utils_math_trunc` (0x004d0596) preserves EAX, but Ghidra's x86 Watcom cspec marks EAX killed-by-call in every available prototype model, so any register the compiler kept live across that call decompiles as `extraout_EAX`. The six tokens here are all one pattern: `MOV EAX,[EBP-0x1c]` (the out-pointer) BEFORE the call, `FISTP dword ptr [EAX]` after it, same EAX both sides -- e.g. 0x0044a14a / 0x0044a14d / 0x0044a152 and 0x0044a19e / 0x0044a1a1 / 0x0044a1a6, plus the same shape at 0x0044a1f5, 0x0044a253, 0x0044a2c0 and 0x0044a326. The fix that WOULD clear it is a new preserves-EAX prototype model in the compiler spec, which is a project-level decision the toolchain README deliberately closed ('No surviving convention declares EAX <unaffected>, which retires that question rather than answering it' -- tools/ghidra/README.md section 4). Retyping `utils_math_trunc` to 'returns a pointer' to make the token go away would be actively WRONG and would corrupt the other ~356 of its 374 call sites. See ghidra_findings 2026-08-24-0228-16 for the open question and its options.",
+   "evidence": "utils_math_trunc's whole body is 29 bytes and touches EAX exactly once, as a READ: PUSH EAX @0x004d0596, FSTCW [ESP], PUSH [ESP], MOV byte [ESP+1],0x1f, FLDCW [ESP], FRNDINT @0x004d05a7, FLDCW [ESP+4], WAIT, LEA ESP,[ESP+8] @0x004d05ae, RET @0x004d05b2. It discards the pushed dwords with the LEA rather than popping them, so EAX is not restored -- it is never written in the first place. An in-DB comment dated 2026-08-23 on the same function reaches the same conclusion independently; I re-derived it from the raw instruction listing before finding it."
+  },
+  {
+   "addr": "0x004a4ff4",
+   "name": "llm_strat_render_view_metrics_refresh",
+   "check": "R3 decompile usable",
+   "recorded": "2026-08-24",
+   "reason": "Same missing model as 0x00449ffe, and now down to ONE token from seven. Six of the seven came from `llm_strat_render_ground_tile` (0x004a5167) being pinned to `__mh_watcall_ecx_ebx_volatile` -- a model asserting it destroys EBX and ECX -- when the function is PUSHAD at entry and POPAD immediately before every one of its six RETs, i.e. it preserves all eight GPRs. That was a mis-CLASSIFICATION, not a missing model, and it is fixed: the function is now `__watcall` and the extraout_EBX/extraout_ECX tokens are gone from both of its callers. The surviving `extraout_EAX` comes from `llm_gfx_tile_fog_edge_lookup` (0x004a6a68), which brackets EAX/EBX/EDX/EDI with PUSH at entry (0x004a6a68-0x004a6a6b) and a mirrored POP EDI/EDX/EBX/EAX before its single RET (0x004a6bad-0x004a6bb1). `__watcall` already covers the EBX half; the EAX half needs the preserves-EAX model that does not exist. Same open question, same finding.",
+   "evidence": "llm_strat_render_ground_tile: PUSHAD x1 at 0x004a5167, POPAD x6 at 0x004a51b6 / 0x004a53d4 / 0x004a569e / 0x004a56df / 0x004a5732 / 0x004a5776, each immediately preceding the RET at 0x004a51b7 / 0x004a53d5 / 0x004a569f / 0x004a56e0 / 0x004a5733 / 0x004a5777 -- verified by walking every instruction of the body. It takes no parameters, so the convention change moves no storage. llm_gfx_tile_fog_edge_lookup: PUSH EAX/EBX/EDX/EDI at 0x004a6a68-0x004a6a6b, POP EDI/EDX/EBX/EAX at 0x004a6bad-0x004a6bb0, RET 0x004a6bb1. The caller reuses its pre-call EAX (the wrapped tile index) at MOV EAX,[EDI+EAX*8] @0x004a50a5, immediately after the CALL at 0x004a50a0."
+  },
+  {
+   "addr": "0x00436f30",
+   "name": "llm_tact_fov_raycast_stencil",
+   "check": "R3 decompile usable",
+   "recorded": "2026-08-24",
+   "reason": "The SAME missing preserves-EAX prototype model as 0x00449ffe and 0x004a4ff4, but this instance is stronger than either: here the register that would have to be declared `<unaffected>` is the callee's OWN PARAMETER. `llm_tact_fov_update_nearest_target` (0x00437138) is `void __watcall f(int cell_index)` with cell_index in EAX, and it never writes EAX -- it only READS it, as the scale-index of `[EBP + EAX*0x8 + ...]`. The caller keeps that same tile index live in EAX across all four calls, so Ghidra (whose every available model marks EAX killed-by-call) materialises a fresh `extraout_EAX` at each one. tools/ghidra/README.md section 4 closed the general question ('No surviving convention declares EAX <unaffected>') AND measured the specific hazard that makes this row unfixable by the obvious route: declaring a register `<unaffected>` PREVENTS Ghidra binding that function's own parameter in that register -- that is exactly what `unaff_EBX` 31 -> 17 was. A new `__mh_watcall_eax_preserved` model would therefore have to be paired with per-function CUSTOM STORAGE on every function it is applied to, which is a cspec change plus a storage campaign, i.e. a project-level decision and not a readers-domain fix. Not ackable-away by retyping anything: the callee returns void and genuinely returns nothing, so there is no return type to widen (contrast 0x00445b62/0x004458e1 this same session, which WERE a fixable width bug and were fixed).",
+   "evidence": "llm_tact_fov_update_nearest_target's whole body is 71 bytes and every EAX appearance is a read: CMP byte ptr [EBP + EAX*0x8 + 0x4],0x80 @0x00437138; PUSH EBX @0x0043713f; MOV EBX,[0x00559410] @0x00437140; CMP EBX,[0x00559878] @0x00437146; MOV [0x00559878],EBX @0x0043714e; MOV [0x008260ce],AX @0x00437154 (a read of AX, storing it out); POP EBX @0x0043715a; the mirrored second block 0x0043715b-0x0043717d; RET @0x0043717e. There is no write to EAX/AX/AL anywhere in it, and no PUSH EAX/POP EAX -- it preserves EAX by never touching it. The caller proves the value is live across the call: at 0x0043708b it CALLs, and at 0x004370af it immediately does `TEST byte ptr [EBP + EAX*0x8 + 0x1],0x20` on the pre-call EAX; the same pattern at the other three sites, 0x004370aa, 0x004370d7 and 0x004370f6 (guarded by `CMP byte ptr [EBP + EAX*0x8 + 0x4],0x0` at 0x00437084 and 0x004370a3, which is the same EAX again). Four call sites, four extraout_EAX* tokens in the decompile, one mechanism."
+  }
+ ]
+}

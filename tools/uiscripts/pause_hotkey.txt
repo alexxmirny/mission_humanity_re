@@ -1,0 +1,71 @@
+# D19 -- the hotkey that enters the orphaned big-map screen (game mode 5).
+#
+# mh.exe ships a complete mode-5 screen that NOTHING in the retail binary can reach: no store of 5
+# into _G_LLM_GAME_MODE exists anywhere in the EN or RU build (the game-mode notes "Mode 5"). The seam
+# src/mh_dll/mh/seams/ui_pause.cpp supplies the missing entry; the exit was already there
+# (llm_pause_input_wait latches any key-down / mouse press -> mode 2 + time resync).
+#
+# What this test actually asserts is the GAMEMODE PREDICATE, twice -- 2 -> 5 -> 2. The capture is a
+# secondary guard: mode 5 renders through llm_strat_render_present, so a black or garbage frame would
+# mean the screen composes differently from the strategic view it reuses, which is worth catching.
+#
+# THE FRAME IS NOT "STABLE BY CONSTRUCTION", which this header claimed until 2026-09-10. Mode 5 does
+# freeze the sim once it is up, but neither capture is gated on a fixed sim STEP -- `gameclock 1500`
+# fires on the first present past the threshold, and how many 0.1 s steps that present carried
+# depends on the frame rate. Under run_gate.py's concurrency both captures went red (2.654% /
+# 2.913%) on a build that passed standalone at 0.000%, the moving pixels being the Pioneer's
+# rotating sprite. The registry entry now pins the wall clock ([harness] pin_wallclock=1) so the
+# game clock is a function of the frame count, and the captures are byte-exact at any load; read
+# that entry for the mechanism and the measurements.
+#
+# Single-peer, through the real menu (an AI in slot 1, host clicks Start alone) -- same walk as
+# res_hud.txt / esc_menu.txt, so the hotkey is exercised on a genuinely launched match.
+
+settled value:110
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+settled Create
+clickl Create
+present Game name
+settled Ok
+clickl Ok
+present Available maps
+settled Ok
+clickl Ok
+
+# host lobby: seat an AI opponent in slot 1, then launch alone.
+present Network players
+settled Start
+click 70 132
+present Computer
+enabled Start
+clickl Start
+
+# in-game. Let the sim advance a little first, so entering the frozen view is a real transition out
+# of a running game rather than a race with the launch.
+absent Network players
+gamemode 2
+gameclock 1500
+
+# The BEFORE frame: the live strategic view. It was SUPPOSED to isolate what mode 5 adds --
+# llm_strat_draw_floating_messages draws G_TEXT_PTRS[0x94] as a HUD panel title when GAME_MODE == 5
+# -- but that banner is in NEITHER frame: before the clock pin b0 and b1 were the same file
+# byte-for-byte (md5 668dc59f...), so the pair asserted nothing about mode 5's composition. Pinned,
+# they differ only by the sim steps that elapsed between the two captures. Why the banner never
+# renders here is an open item.
+capture b0_strat
+
+# Scancode 0x19 = P (PC set-1, the table llm_strat_input_update compares against). The seam
+# consumes it out of the key ring, so the stock hotkey ladder never sees it.
+key 0x19
+gamemode 5
+capture b1_paused
+log D19: entered game mode 5 (big map) from the strategic view
+
+# Any key comes back -- this half is the GAME's own code, unmodified.
+key 0x19
+gamemode 2
+log D19: returned to the live strategic view (mode 2)
+end

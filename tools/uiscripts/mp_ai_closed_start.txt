@@ -1,0 +1,89 @@
+# F3E-COV: the AI-lobby START walk -- the exerciser for the host-Start lobby fixups that the post-F2
+# measurement flagged as having none (fork F3E-COV, net_seams.cpp "Host-Start hang fix" plus the
+# lobby state the "N2: host-protect guard" was written for).
+#
+# SOLO on purpose. Start un-greys at occ 2 and an AI counts toward occ, so a host plus one computer
+# player can launch alone -- the pattern res_hud.txt / sp_det.txt already prove. No client peer, no
+# rendezvous, so this costs one lane.
+#
+# WHAT IT EXERCISES, and where the assertion for each one is:
+#
+#   The AI->CLOSED slot cycle, and the host surviving it.  THE ASSERTION IS `occ 1` immediately after
+#   the close click: the roster falls 2 -> 1 (the host alone), and a close that took the HOST's slot
+#   with it -- N2's 2026-07-22 failure, where the AI's uninitialised player_id 0 aliased the host's
+#   and remove_player_slot(0) compacted slot 0 -- leaves occ 0 and TIMES OUT here.
+#   `capture a1_host_kept_slot0` is the rendered half: the host's own name row is still on screen.
+#   (In that frame the CLOSED row still shows the departed AI's "Computer" name -- the name column is
+#   repainted a frame later. It is stable, not a race: five runs, 0.000%.)
+#
+#   READ THIS BEFORE CREDITING THE N2 GUARD FOR THAT. Measured 2026-09-13 with
+#   `[trace] funcs=0x4bf59f,0x4bf513,0x4bf65d`: this walk fires llm_lobby_slot_cycle_state_cb and
+#   llm_lobby_peer_table_add_ai and NEVER CALLS llm_lobby_peer_slot_remove at all, so the guard's
+#   player-0 refusal branch is not what keeps the host here -- mp_normalize_ai_slot_ids() (N2's own
+#   other half) and the peer_clear fix already took the trigger away. This scenario pins the
+#   OBSERVABLE (the host survives an AI-slot close); the guard's pass-through branch is covered by
+#   leave_frees_slot, and its refusal branch is recorded as unreachable.
+#
+#   peer_clear (the 2026-07-11 host-Start hang fix).  Each AI add INCREMENTS the peer-table count
+#   DAT_0065f692 and nothing ever decrements it, so FUN_004bf11d's `while (0 < count)
+#   llm_lobby_peer_slot_remove(...)` on Start spins forever (100% CPU, main thread wedged -- it looks
+#   like a hang, not a crash). THE ASSERTION IS THAT THE WALK COMPLETES: this script seats TWO AI
+#   slots' worth of increments (slot 2 OPEN->AI->CLOSED leaves its increment behind -- the close
+#   removes the slot, not the count) and then clicks Start, so an unfixed build never reaches
+#   `absent Network players` and the run ends as a TIMEOUT/STALL rather than a pixel diff.
+#
+# SLOT GEOMETRY is mp_host_ai_closed.txt's, measured there: the per-slot STATE spinner column is
+# x=70, rows y = 115(host) 132 149. The spinner's own text is DRAWN, not a matchable label, so every
+# click is gated on a STATE predicate afterwards (`present Computer` for the FIRST OPEN->AI edge,
+# `occ N` for every roster edge) -- each click rebuilds the widget list and a click fired mid-rebuild
+# misses.
+#
+# NO IN-GAME CAPTURE, deliberately. The verdict for peer_clear is the completion, and an in-game
+# frame gated on a game clock carries the Pioneer-sprite phase that made tutorial_enter/pause_hotkey
+# flap until they were wall-clock-pinned. Both captures here are lobby screens (mode 0, 640x480), so
+# this scenario needs no [video] pin either.
+
+settled value:110
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+settled Create
+clickl Create
+present Game name
+settled Ok
+clickl Ok
+present Available maps
+settled Ok
+clickl Ok
+
+present Network players
+settled Start
+
+# --- slot 2: OPEN -> AI -> CLOSED. The second click is the N2 trigger. ---
+click 70 149
+present Computer
+occ 2
+click 70 149
+# N2: the host is still seated. occ 2 -> 1 means the AI slot went away and slot 0 did not.
+occ 1
+capture a1_host_kept_slot0
+
+# --- slot 1: OPEN -> AI, so the roster is host + AI = occ 2 and Start un-greys ---
+# GATE ON `occ`, NOT ON `present Computer` (sp_soak.txt's lesson, and measured here): a CLOSED slot
+# keeps the departed AI's name in its name column for at least the frame a1 captures, so "Computer"
+# is already on screen when this click is fired and the label predicate would pass on the stale row
+# instead of waiting for the rebuild. `occ` is the roster, so it can only rise when the seat is real.
+click 70 132
+occ 2
+capture a2_lobby_ai_plus_closed
+
+enabled Start
+clickl Start
+
+# peer_clear: an unfixed build never gets past the clear loop, so everything below is the assertion.
+absent Network players
+gamemode 2
+gameclock 1000
+log F3E-COV: host launched from an AI+CLOSED lobby -- N2 kept slot0, the Start clear-loop terminated
+end

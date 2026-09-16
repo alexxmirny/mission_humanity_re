@@ -1,0 +1,67 @@
+{
+ "_generated_by": "HAND-MAINTAINED, deliberately. SIM1-P clause 6b.",
+ "_what": "Every rebind row the harness's derived yield may disarm, with the disposition that makes the yield acceptable. A yield is only acceptable if OUR BODY STILL RUNS, or if the instrument is a genuine substitution for that row. A row yielded with neither is an instrument costing us a promotion, which clause 6b forbids -- tools/test_ui.py fails the run.",
+ "_why_a_list_and_not_a_rule": "The question 'does our body still run when this row is disarmed?' cannot be derived from the yield itself: it depends on whether the claiming instrument's fall-through was pointed at our thunk, which is a per-instrument decision someone had to make. So each row carries a human disposition and the gate refuses anything unlisted. Same shape as tools/data/tact_effect_classes.json.",
+ "_history": "llm_tact_unit_enqueue_command is why this file exists. It had NO entry seam -- its only live route was the rebind row -- and the TJ order-enqueue recorder claims that entry exclusively, so clause 6's derived yield disarmed it and the recorder ran the ORIGINAL body. Arming the journal recorder silently un-promoted the body it was recording: tact_unit_enqueue_command.cpp fell 80 -> 46 covered lines in poz1-combat and in all four journal scenarios, from 93a4b8da until the gate was next run (tracker TACT-COV-YIELD, docs/dead-ends.md G126 for the sibling trap).",
+ "_dispositions": {
+  "rebound": "The claiming instrument's fall-through was pointed at our entry thunk (an MH_Harness_Rebind* call), so all callers funnel through the instrumented VA AND our body runs. `liveness` is the log line that proves it; the gate requires it.",
+  "body_called": "The instrument was converted to a hook our body calls itself, so nothing needs disarming. A row here should not appear in a yield at all -- if it does, the conversion regressed.",
+  "substituted": "The instrument IS the deterministic replacement for this row's behaviour rather than an observer of it, so running ours would defeat the purpose. Rare by construction; `reason` must say why."
+ },
+ "rows": {
+  "llm_strat_sim_step": {
+   "disposition": "rebound",
+   "claimant": "the determinism harness sim_step detour (it carries the per-step trajectory hash)",
+   "rebind_via": "MH_Harness_RebindSimStep",
+   "liveness": "[promote] sim_step body served",
+   "note": "The detour must keep the entry -- if the promotion won the race the instrument would be the thing refused, and a determinism run would be silently VOIDED rather than failed.",
+   "exercised_when": "(?m)^R ",
+   "exercised_note": "an `R <step> <hashes>` line means the strategic per-step hash ran, i.e. sim_step's entry was driven"
+  },
+  "llm_strat_frame": {
+   "disposition": "body_called",
+   "claimant": "none at HEAD",
+   "note": "LT1F (2026-09-02) moved this instrument to MH_Harness_OnSimTick, a hook our frame spine chain-calls, so no claim exists at this entry and the derived yield correctly omits the row. The old hand-kept kHarnessOwned[] still listed it for three days after that -- the derivation is what noticed. Listed here so a REAPPEARING yield on this row is read as the conversion regressing."
+  },
+  "llm_tact_frame": {
+   "disposition": "rebound",
+   "claimant": "the tactical cadence detour (it carries the per-frame T hash)",
+   "note": "F5H (2026-09-14): `rebind_via` DELETED with MH_Harness_RebindTactFrame, whose only callers F2E took when it demoted tact permanently. MEASURED WHILE DELETING, and it is the more useful half: llm_tact_frame is NOT a rebindable row at all -- mh_rebind.gen.h has no ROW_llm_tact_frame -- so the derived yield can never name it and this row has never been consulted by the clause-6b check. Kept rather than dropped because the row is the record of which instrument owns that entry, which is still true.",
+   "liveness": "[promote] tact_frame body served",
+   "exercised_when": "(?m)^TR ",
+   "exercised_note": "`TR` is the tactical per-frame hash; absent in a purely strategic run"
+  },
+  "llm_strat_order_queue_dispatch": {
+   "disposition": "rebound",
+   "claimant": "the order-record detour, when [test] order_mode=1",
+   "rebind_via": "MH_Harness_RebindOrderDispatch",
+   "liveness": "ai_work order_queue_dispatch calls=",
+   "note": "D18. Before that rebind existed the two facilities were silently exclusive and the refusal blamed the image: 'entry bytes ... != expected (wrong build, or already hooked)'.",
+   "exercised_when": "order_mode=1"
+  },
+  "llm_tact_unit_enqueue_command": {
+   "disposition": "rebound",
+   "claimant": "the TJ order-enqueue recorder, when [harness] tact_journal_rec or _probe is set",
+   "liveness": "[promote] tact_unit_enqueue_command body served",
+   "note": "The row STAYS yielded on purpose: a recorder must see every call, so funnelling all callers through the VA is right. What was wrong was where the VA fell through to. F5H (2026-09-14): `rebind_via` DELETED with MH_Harness_RebindTactEnqueue (F2E took its only callers). THIS ROW IS LIVE -- ROW_llm_tact_unit_enqueue_command exists and arm_from_config arms it -- so the yield still fires when the recorder is armed, and the `liveness` below now has NO EMITTER in src/ (the tact promotion that printed it went at F2E). No gate run records, so `exercised_when` never matches in the gate; a hand RECORDING run would now fail clause 6b by name, which is the truthful outcome and not a regression to paper over: a tactical promotion returning is what puts a setter and a liveness line back.",
+   "exercised_when": "TJ RECORD ARMED",
+   "exercised_note": "the recorder armed, so the journal path is live and the entry is driven"
+  },
+  "time_GetCurrentTime": {
+   "disposition": "substituted",
+   "claimant": "the harness wall-clock pin (pin_wallclock=1)",
+   "reason": "The pin IS the deterministic replacement for this row -- it exists precisely so the clock does NOT read what our body would read. Running ours here would defeat the instrument rather than be observed by it, so no liveness is expected and ours promotes only in unharnessed runs. Currently the only member of this disposition."
+  },
+  "llm_strat_sim_tick": {
+   "disposition": "rebound",
+   "claimant": "the determinism harness sim_tick detour (the fixed-timestep pin + the pinned wall clock)",
+   "rebind_via": "MH_Harness_RebindSimTick",
+   "liveness": "[promote] sim_tick: call #",
+   "note": "Same shape as llm_strat_sim_step: the detour must keep the entry or the harness would be the thing refused and the run silently VOIDED rather than failed, so the promotion asks for the rebind instead of competing for the bytes (C6). `[promote] lockstep` requests this seam BY REBIND by default since LIB-TRANS-P, so EVERY harnessed run yields this row -- which is why its absence from this list was a standing red on every `--soak` run from LIB-TRANS-P until 2026-09-11, on a run whose fall-through was pointed at our body the whole time. Adjudicated 2026-09-11 (LIB-REF-LIVE phase 0) from the run's own log: `[promote] sim_tick REBOUND: the determinism harness detour now falls through to OURS (on_sim_tick still runs first -- the fixed-timestep pin and the per-step hash are unaffected)`, followed by the liveness counter at call #1 and #100. Installed AND running, not merely rebound.",
+   "exercised_when": "(?m)^R ",
+   "exercised_note": "an `R <step> <hashes>` line means the strategic per-step hash ran, and llm_strat_sim_step is called from inside llm_strat_sim_tick -- so a run with region lines drove this entry. Same signal as the llm_strat_sim_step row, and for the same reason: a TACTICAL run never enters the strategic pump, and without this condition the check would fail every one of them for nothing.",
+   "liveness_note": "The counter widens (1/100/1000/10000/100000), so the match is the PREFIX -- `call #N` with a literal N would never match anything. It fires only from inside our promoted body, so a hit proves the rebind carried callers to us rather than merely that the entry was claimed."
+  }
+ },
+ "_exercised_when": "A regex matched against mh_harness.log saying THIS RUN actually drove that entry. Required because a yielded row that nobody calls has no liveness and loses no promotion: llm_strat_sim_step is yielded in tactical runs, where mode 6 never calls it, and demanding its liveness there would fail every tactical run for nothing. Absent field = always required."
+}

@@ -1,0 +1,1460 @@
+{
+ "_generated_by": "tools/gen_libmh_calls.py -- do not hand-edit; regenerate instead",
+ "_measures": "mh::call:: tokens in src/mh_dll/mh/** (comments stripped; addr/+attic/ excluded)",
+ "summary": {
+  "distinct_callees": 116,
+  "config_measures": {
+   "hosted": {
+    "sites": 1563,
+    "distinct": 746
+   },
+   "hosted_gates_off": {
+    "sites": 1563,
+    "distinct": 746
+   },
+   "hosted_ship": {
+    "sites": 123,
+    "distinct": 42
+   },
+   "ship_rebind_arms": 1,
+   "standalone": {
+    "sites": 3,
+    "distinct": 2
+   },
+   "config_dependent": {
+    "sites": 1440,
+    "distinct": 714
+   },
+   "vendored_crt": {
+    "sites": 93,
+    "distinct": 25
+   },
+   "promoted_direct": {
+    "sites": 27,
+    "distinct": 15
+   }
+  },
+  "by_status": {
+   "dead": 2,
+   "original": 97,
+   "translated": 17
+  },
+  "modules": {
+   "lockstep": {
+    "sites": 2,
+    "distinct": 1,
+    "outward_sites": 0,
+    "outward_distinct": 0
+   },
+   "seams": {
+    "sites": 145,
+    "distinct": 115,
+    "outward_sites": 123,
+    "outward_distinct": 99
+   },
+   "sim": {
+    "sites": 1,
+    "distinct": 1,
+    "outward_sites": 1,
+    "outward_distinct": 1
+   }
+  },
+  "dispatch_tables": {
+   "strat_state_handlers": {
+    "registrar": "llm_strat_register_state_handlers",
+    "owned": true
+   },
+   "bldg_type_callbacks": {
+    "registrar": "llm_strat_register_bldg_type_callbacks",
+    "owned": true
+   }
+  },
+  "adjudication": {
+   "pool": 1,
+   "unadjudicated": [],
+   "orphaned": [],
+   "misrouted_host_callbacks": [],
+   "resurrected_deleted": [],
+   "hostapi_entries": 37,
+   "by_class": {
+    "cfg-snapshot": 1
+   }
+  }
+ },
+ "callees": [
+  {
+   "name": "GetResourseFilePtr",
+   "status": "original",
+   "domain": null,
+   "tier": null,
+   "promoted": false,
+   "sites": 2,
+   "modules": {
+    "seams": 2
+   },
+   "adjudication": "host-callback:io"
+  },
+  {
+   "name": "cfg_final_planet_FillBankData",
+   "status": "original",
+   "domain": null,
+   "tier": null,
+   "promoted": false,
+   "sites": 2,
+   "modules": {
+    "seams": 2
+   },
+   "adjudication": null
+  },
+  {
+   "name": "file_seek",
+   "status": "original",
+   "domain": null,
+   "tier": null,
+   "promoted": false,
+   "sites": 1,
+   "modules": {
+    "seams": 1
+   },
+   "adjudication": "host-callback:io"
+  },
+  {
+   "name": "file_tell",
+   "status": "original",
+   "domain": null,
+   "tier": null,
+   "promoted": false,
+   "sites": 1,
+   "modules": {
+    "seams": 1
+   },
+   "adjudication": "host-callback:io"
+  },
+  {
+   "name": "game_SaveGame",
+   "status": "translated",
+   "domain": "(pre-ledger)",
+   "tier": null,
+   "promoted": false,
+   "sites": 1,
+   "modules": {
+    "seams": 1
+   }
+  },
+  {
+   "name": "game_ui_PrintTextMessage",
+   "status": "original",
+   "domain": null,
+   "tier": null,
+   "promoted": false,
+   "sites": 1,
+   "modules": {
+    "seams": 1
+   },
+   "adjudication": "event-channel:event"
+  },
+  {
+   "name": "gfx_LoadSprite",
+   "status": "original",
+   "domain": null,
+   "tier": null,
+   "promoted": false,
+   "sites": 1,
+   "modules": {
+    "seams": 1
+   },
+   "adjudication": "event-channel:invalidate"
+  },
+  {
+   "name": "llm_cam_jump_queue_clear",
+   "status": "original",
+   "domain": null,
+   "tier": null,
+   "promoted": false,
+   "sites": 1,
+   "modules": {
+    "seams": 1
+   },
+   "adjudication": "event-channel:event"
+  },
+  {
+   "name": "llm_game_load",
+   "status": "translated",
+   "domain": "(pre-ledger)",
+   "tier": null,
+   "promoted": false,
+   "sites": 1,
+   "modules": {
+    "seams": 1
+   }
+  },
+  {
+   "name": "llm_gfx_convert_pixels_565_to_555",
+   "status": "original",
+   "domain": null,
+   "tier": null,
+   "promoted": false,
+   "sites": 1,
+   "modules": {
+    "seams": 1
+   },
+   "adjudication": "host-callback:render-notify"
+  },
+  {
+   "name": "llm_gfx_draw_cursor_menu",
+   "status": "original",
+   "domain": null,
+   "tier": null,
+   "promoted": false,
+   "sites": 1,
+   "modules": {
+    "seams": 1
+   },
+   "adjudication": "event-channel:screen"
+  },
+  {
+   "name": "llm_gfx_draw_text_rgb",
+   "status": "original",
+   "domain": null,
+   "tier": null,
+   "promoted": false,
+   "sites": 1,
+   "modules": {
+    "seams": 1
+   },
+   "adjudication": "event-channel:event"
+  },
+  {
+   "name": "llm_gfx_font_desc_for_flags",
+   "status": "original",
+   "domain": null,
+   "tier": null,
+   "promoted": false,
+   "sites": 1,
+   "modules": {
+    "seams": 1
+   },
+   "adjudication": "event-channel:screen"
+  },
+  {
+   "name": "llm_gfx_font_select",
+   "status": "original",
+   "domain": null,
+   "tier": null,
+   "promoted": false,
+   "sites": 2,
+   "modules": {
+    "seams": 2
+   },
+   "adjudication": "event-channel:invalidate"
+  },
+  {
+   "name": "llm_gfx_load_all_sprite_banks",
+   "status": "original",
+   "domain": null,
+   "tier": null,
+   "promoted": false,
+   "sites": 1,
+   "modules": {
+    "seams": 1
+   },
+   "adjudication": "event-channel:invalidate"
+  },
+  {
+   "name": "llm_gfx_load_planet_extra_sprite_banks",
+   "status": "original",
+   "domain": null,
+   "tier": null,
+   "promoted": false,
+   "sites": 1,
+   "modules": {
+    "seams": 1
+   },
+   "adjudication": "event-channel:invalidate"
+  },
+  {
+   "name": "llm_gfx_pack_rgb16",
+   "status": "original",
+   "domain": null,
+   "tier": null,
+   "promoted": false,
+   "sites": 5,
+   "modules": {
+    "seams": 5
+   },
+   "adjudication": null
+  },
+  {
+   "name": "llm_gfx_present_flip",
+   "status": "original",
+   "domain": null,
+   "tier": null,
+   "promoted": false,
+   "sites": 1,
+   "modules": {
+    "seams": 1
+   },
+   "adjudication": "event-channel:screen"
+  },
+  {
+   "name": "llm_gfx_sprite_pix_offsets_init",
+   "status": "original",
+   "domain": null,
+   "tier": null,
+   "promoted": false,
+   "sites": 1,
+   "modules": {
+    "seams": 1
+   },
+   "adjudication": "event-channel:invalidate"
+  },
+  {
+   "name": "llm_gfx_sprite_width",
+   "status": "original",
+   "domain": null,
+   "tier": null,
+   "promoted": false,
+   "sites": 1,
+   "modules": {
+    "seams": 1
+   },
+   "adjudication": "event-channel:screen"
+  },
+  {
+   "name": "llm_gfx_ui_sprite_get_header_field2",
+   "status": "original",
+   "domain": null,
+   "tier": null,
+   "promoted": false,
+   "sites": 1,
+   "modules": {
+    "seams": 1
+   },
+   "adjudication": "event-channel:screen"
+  },
+  {
+   "name": "llm_gfx_view_metrics_init",
+   "status": "original",
+   "domain": null,
+   "tier": null,
+   "promoted": false,
+   "sites": 1,
+   "modules": {
+    "seams": 1
+   },
+   "adjudication": "event-channel:invalidate"
+  },
+  {
+   "name": "llm_map_cam_mark_viewport_dirty",
+   "status": "original",
+   "domain": null,
+   "tier": null,
+   "promoted": false,
+   "sites": 1,
+   "modules": {
+    "seams": 1
+   },
+   "adjudication": "event-channel:invalidate"
+  },
+  {
+   "name": "llm_map_cam_set_col",
+   "status": "original",
+   "domain": null,
+   "tier": null,
+   "promoted": false,
+   "sites": 1,
+   "modules": {
+    "seams": 1
+   },
+   "adjudication": "event-channel:event"
+  },
+  {
+   "name": "llm_map_cam_set_row",
+   "status": "original",
+   "domain": null,
+   "tier": null,
+   "promoted": false,
+   "sites": 1,
+   "modules": {
+    "seams": 1
+   },
+   "adjudication": "event-channel:event"
+  },
+  {
+   "name": "llm_map_set_minimap_zoom_for_size",
+   "status": "original",
+   "domain": null,
+   "tier": null,
+   "promoted": false,
+   "sites": 1,
+   "modules": {
+    "seams": 1
+   },
+   "adjudication": "event-channel:event"
+  },
+  {
+   "name": "llm_map_set_zoom_scale",
+   "status": "original",
+   "domain": null,
+   "tier": null,
+   "promoted": false,
+   "sites": 1,
+   "modules": {
+    "seams": 1
+   },
+   "adjudication": "event-channel:event"
+  },
+  {
+   "name": "llm_menu_build_placement_pending_clear",
+   "status": "original",
+   "domain": null,
+   "tier": null,
+   "promoted": false,
+   "sites": 1,
+   "modules": {
+    "seams": 1
+   },
+   "adjudication": "event-channel:event"
+  },
+  {
+   "name": "llm_menu_tutorial_uistate_restore",
+   "status": "original",
+   "domain": null,
+   "tier": null,
+   "promoted": false,
+   "sites": 1,
+   "modules": {
+    "seams": 1
+   },
+   "adjudication": "event-channel:screen"
+  },
+  {
+   "name": "llm_net_lockstep_overlay_dismiss",
+   "status": "original",
+   "domain": null,
+   "tier": null,
+   "promoted": false,
+   "sites": 1,
+   "modules": {
+    "seams": 1
+   },
+   "adjudication": "event-channel:screen"
+  },
+  {
+   "name": "llm_net_lockstep_sync_overlay_show",
+   "status": "original",
+   "domain": null,
+   "tier": null,
+   "promoted": false,
+   "sites": 1,
+   "modules": {
+    "seams": 1
+   },
+   "adjudication": "event-channel:screen"
+  },
+  {
+   "name": "llm_net_lockstep_wait_player_overlay_show",
+   "status": "original",
+   "domain": null,
+   "tier": null,
+   "promoted": false,
+   "sites": 1,
+   "modules": {
+    "seams": 1
+   },
+   "adjudication": "event-channel:screen"
+  },
+  {
+   "name": "llm_net_mp_leave_reset_game_mode",
+   "status": "original",
+   "domain": null,
+   "tier": null,
+   "promoted": false,
+   "sites": 1,
+   "modules": {
+    "seams": 1
+   },
+   "adjudication": "event-channel:screen"
+  },
+  {
+   "name": "llm_progress_notify_unit_available",
+   "status": "original",
+   "domain": null,
+   "tier": null,
+   "promoted": false,
+   "sites": 1,
+   "modules": {
+    "seams": 1
+   },
+   "adjudication": "event-channel:event"
+  },
+  {
+   "name": "llm_res_bank_get_file_size",
+   "status": "original",
+   "domain": null,
+   "tier": null,
+   "promoted": false,
+   "sites": 1,
+   "modules": {
+    "seams": 1
+   },
+   "adjudication": "host-callback:io"
+  },
+  {
+   "name": "llm_snd_ambient_planet_clone",
+   "status": "original",
+   "domain": null,
+   "tier": null,
+   "promoted": false,
+   "sites": 1,
+   "modules": {
+    "seams": 1
+   },
+   "adjudication": "event-channel:event"
+  },
+  {
+   "name": "llm_snd_ambient_tick",
+   "status": "original",
+   "domain": null,
+   "tier": null,
+   "promoted": false,
+   "sites": 1,
+   "modules": {
+    "seams": 1
+   },
+   "adjudication": "event-channel:event"
+  },
+  {
+   "name": "llm_snd_play",
+   "status": "original",
+   "domain": null,
+   "tier": null,
+   "promoted": false,
+   "sites": 2,
+   "modules": {
+    "seams": 2
+   },
+   "adjudication": "event-channel:event"
+  },
+  {
+   "name": "llm_snd_stop_all_channels",
+   "status": "original",
+   "domain": null,
+   "tier": null,
+   "promoted": false,
+   "sites": 1,
+   "modules": {
+    "seams": 1
+   },
+   "adjudication": "event-channel:event"
+  },
+  {
+   "name": "llm_str_ansi_to_wide_scratch",
+   "status": "original",
+   "domain": null,
+   "tier": null,
+   "promoted": false,
+   "sites": 2,
+   "modules": {
+    "seams": 2
+   },
+   "adjudication": "host-callback:string"
+  },
+  {
+   "name": "llm_strat_ai_count_unit_build_sources",
+   "status": "translated",
+   "domain": "ai",
+   "tier": "T3",
+   "promoted": true,
+   "sites": 1,
+   "modules": {
+    "seams": 1
+   }
+  },
+  {
+   "name": "llm_strat_group_issue_move_order",
+   "status": "original",
+   "domain": null,
+   "tier": null,
+   "promoted": false,
+   "sites": 2,
+   "modules": {
+    "seams": 2
+   },
+   "adjudication": null
+  },
+  {
+   "name": "llm_strat_offscreen_fx_scale",
+   "status": "original",
+   "domain": null,
+   "tier": null,
+   "promoted": false,
+   "sites": 1,
+   "modules": {
+    "seams": 1
+   },
+   "adjudication": "event-channel:event"
+  },
+  {
+   "name": "llm_strat_offscreen_snd_volume",
+   "status": "original",
+   "domain": null,
+   "tier": null,
+   "promoted": false,
+   "sites": 1,
+   "modules": {
+    "seams": 1
+   },
+   "adjudication": "event-channel:event"
+  },
+  {
+   "name": "llm_strat_order_create_unit_debug",
+   "status": "translated",
+   "domain": "orders_issue",
+   "tier": "T1",
+   "promoted": true,
+   "sites": 1,
+   "modules": {
+    "seams": 1
+   }
+  },
+  {
+   "name": "llm_strat_order_debug_kill_group",
+   "status": "translated",
+   "domain": "orders_issue",
+   "tier": "T1",
+   "promoted": true,
+   "sites": 2,
+   "modules": {
+    "seams": 2
+   }
+  },
+  {
+   "name": "llm_strat_order_pending_enqueue",
+   "status": "translated",
+   "domain": "(pre-ledger)",
+   "tier": null,
+   "promoted": false,
+   "sites": 2,
+   "modules": {
+    "lockstep": 2
+   }
+  },
+  {
+   "name": "llm_strat_order_queue_construction_debug",
+   "status": "translated",
+   "domain": "orders_issue",
+   "tier": "T1",
+   "promoted": true,
+   "sites": 1,
+   "modules": {
+    "seams": 1
+   }
+  },
+  {
+   "name": "llm_strat_player_apply_all_colors",
+   "status": "original",
+   "domain": null,
+   "tier": null,
+   "promoted": false,
+   "sites": 1,
+   "modules": {
+    "seams": 1
+   },
+   "adjudication": "event-channel:invalidate"
+  },
+  {
+   "name": "llm_strat_player_set_color",
+   "status": "original",
+   "domain": null,
+   "tier": null,
+   "promoted": false,
+   "sites": 1,
+   "modules": {
+    "seams": 1
+   },
+   "adjudication": "event-channel:event"
+  },
+  {
+   "name": "llm_strat_race_alert_sound_emit",
+   "status": "original",
+   "domain": null,
+   "tier": null,
+   "promoted": false,
+   "sites": 1,
+   "modules": {
+    "seams": 1
+   },
+   "adjudication": "event-channel:event"
+  },
+  {
+   "name": "llm_strat_race_alert_text_emit",
+   "status": "original",
+   "domain": null,
+   "tier": null,
+   "promoted": false,
+   "sites": 1,
+   "modules": {
+    "seams": 1
+   },
+   "adjudication": "event-channel:event"
+  },
+  {
+   "name": "llm_strat_render_present",
+   "status": "original",
+   "domain": null,
+   "tier": null,
+   "promoted": false,
+   "sites": 1,
+   "modules": {
+    "seams": 1
+   },
+   "adjudication": "event-channel:screen"
+  },
+  {
+   "name": "llm_strat_render_view",
+   "status": "original",
+   "domain": null,
+   "tier": null,
+   "promoted": false,
+   "sites": 1,
+   "modules": {
+    "seams": 1
+   },
+   "adjudication": "event-channel:screen"
+  },
+  {
+   "name": "llm_strat_spawn_debris_burst",
+   "status": "translated",
+   "domain": "sim",
+   "tier": "T2",
+   "promoted": false,
+   "sites": 1,
+   "modules": {
+    "seams": 1
+   }
+  },
+  {
+   "name": "llm_strat_unit_ctrl_group_assign",
+   "status": "translated",
+   "domain": "sim",
+   "tier": "T3",
+   "promoted": true,
+   "sites": 3,
+   "modules": {
+    "seams": 3
+   }
+  },
+  {
+   "name": "llm_strat_unit_order_attack_building_reposition",
+   "status": "translated",
+   "domain": "orders_issue",
+   "tier": "T2",
+   "promoted": true,
+   "sites": 1,
+   "modules": {
+    "seams": 1
+   }
+  },
+  {
+   "name": "llm_strat_unit_order_attack_target",
+   "status": "translated",
+   "domain": "orders_issue",
+   "tier": "T2",
+   "promoted": true,
+   "sites": 1,
+   "modules": {
+    "seams": 1
+   }
+  },
+  {
+   "name": "llm_strat_unit_order_move",
+   "status": "translated",
+   "domain": "orders_issue",
+   "tier": "T2",
+   "promoted": true,
+   "sites": 2,
+   "modules": {
+    "seams": 2
+   }
+  },
+  {
+   "name": "llm_strat_unit_order_move_confirmed_with_bump",
+   "status": "translated",
+   "domain": "orders_issue",
+   "tier": "T2",
+   "promoted": true,
+   "sites": 2,
+   "modules": {
+    "seams": 2
+   }
+  },
+  {
+   "name": "llm_strat_unit_select_weapon",
+   "status": "translated",
+   "domain": "sim",
+   "tier": "T1",
+   "promoted": false,
+   "sites": 1,
+   "modules": {
+    "seams": 1
+   }
+  },
+  {
+   "name": "llm_tact_blink_overlay_clear",
+   "status": "original",
+   "domain": null,
+   "tier": null,
+   "promoted": false,
+   "sites": 2,
+   "modules": {
+    "seams": 2
+   },
+   "adjudication": "event-channel:invalidate"
+  },
+  {
+   "name": "llm_tact_drag_box_clamp",
+   "status": "original",
+   "domain": null,
+   "tier": null,
+   "promoted": false,
+   "sites": 1,
+   "modules": {
+    "seams": 1
+   },
+   "adjudication": "event-channel:invalidate"
+  },
+  {
+   "name": "llm_tact_frame_cursor_and_reset",
+   "status": "original",
+   "domain": null,
+   "tier": null,
+   "promoted": false,
+   "sites": 2,
+   "modules": {
+    "seams": 2
+   },
+   "adjudication": "event-channel:screen"
+  },
+  {
+   "name": "llm_tact_fx_play_sound",
+   "status": "original",
+   "domain": null,
+   "tier": null,
+   "promoted": false,
+   "sites": 1,
+   "modules": {
+    "seams": 1
+   },
+   "adjudication": "event-channel:event"
+  },
+  {
+   "name": "llm_tact_gfx_load_banks_alt",
+   "status": "original",
+   "domain": null,
+   "tier": null,
+   "promoted": false,
+   "sites": 1,
+   "modules": {
+    "seams": 1
+   },
+   "adjudication": "event-channel:invalidate"
+  },
+  {
+   "name": "llm_tact_gfx_view_tile_rows_init",
+   "status": "original",
+   "domain": null,
+   "tier": null,
+   "promoted": false,
+   "sites": 1,
+   "modules": {
+    "seams": 1
+   },
+   "adjudication": "event-channel:invalidate"
+  },
+  {
+   "name": "llm_tact_mark_view_tiles_dirty",
+   "status": "original",
+   "domain": null,
+   "tier": null,
+   "promoted": false,
+   "sites": 1,
+   "modules": {
+    "seams": 1
+   },
+   "adjudication": "event-channel:invalidate"
+  },
+  {
+   "name": "llm_tact_save_screenshot",
+   "status": "original",
+   "domain": null,
+   "tier": null,
+   "promoted": false,
+   "sites": 1,
+   "modules": {
+    "seams": 1
+   },
+   "adjudication": "event-channel:event"
+  },
+  {
+   "name": "llm_tact_scroll_fade_step",
+   "status": "original",
+   "domain": null,
+   "tier": null,
+   "promoted": false,
+   "sites": 1,
+   "modules": {
+    "seams": 1
+   },
+   "adjudication": "event-channel:screen"
+  },
+  {
+   "name": "llm_tact_tile_overlay_refresh",
+   "status": "original",
+   "domain": null,
+   "tier": null,
+   "promoted": false,
+   "sites": 1,
+   "modules": {
+    "seams": 1
+   },
+   "adjudication": "event-channel:invalidate"
+  },
+  {
+   "name": "llm_tact_ui_char_panel_row_draw",
+   "status": "dead",
+   "domain": "tact",
+   "tier": null,
+   "promoted": false,
+   "sites": 1,
+   "modules": {
+    "seams": 1
+   }
+  },
+  {
+   "name": "llm_tact_ui_char_panel_row_refresh",
+   "status": "original",
+   "domain": null,
+   "tier": null,
+   "promoted": false,
+   "sites": 1,
+   "modules": {
+    "seams": 1
+   },
+   "adjudication": "event-channel:invalidate"
+  },
+  {
+   "name": "llm_tact_ui_draw_player_row_list",
+   "status": "original",
+   "domain": null,
+   "tier": null,
+   "promoted": false,
+   "sites": 1,
+   "modules": {
+    "seams": 1
+   },
+   "adjudication": "event-channel:invalidate"
+  },
+  {
+   "name": "llm_tact_ui_sel_panel_draw",
+   "status": "original",
+   "domain": null,
+   "tier": null,
+   "promoted": false,
+   "sites": 1,
+   "modules": {
+    "seams": 1
+   },
+   "adjudication": "event-channel:invalidate"
+  },
+  {
+   "name": "llm_tact_ui_sidebar_draw_rows",
+   "status": "original",
+   "domain": null,
+   "tier": null,
+   "promoted": false,
+   "sites": 1,
+   "modules": {
+    "seams": 1
+   },
+   "adjudication": "event-channel:invalidate"
+  },
+  {
+   "name": "llm_tact_ui_sidebar_redraw_unit_slot",
+   "status": "original",
+   "domain": null,
+   "tier": null,
+   "promoted": false,
+   "sites": 1,
+   "modules": {
+    "seams": 1
+   },
+   "adjudication": "event-channel:invalidate"
+  },
+  {
+   "name": "llm_tact_ui_sidebar_roster_refresh",
+   "status": "original",
+   "domain": null,
+   "tier": null,
+   "promoted": false,
+   "sites": 1,
+   "modules": {
+    "seams": 1
+   },
+   "adjudication": "event-channel:invalidate"
+  },
+  {
+   "name": "llm_tact_ui_sidebar_row_draw_left",
+   "status": "original",
+   "domain": null,
+   "tier": null,
+   "promoted": false,
+   "sites": 1,
+   "modules": {
+    "seams": 1
+   },
+   "adjudication": "event-channel:invalidate"
+  },
+  {
+   "name": "llm_tact_ui_sidebar_row_draw_right",
+   "status": "dead",
+   "domain": "tact",
+   "tier": null,
+   "promoted": false,
+   "sites": 1,
+   "modules": {
+    "seams": 1
+   }
+  },
+  {
+   "name": "llm_tact_unit_refresh_ui_slot",
+   "status": "original",
+   "domain": null,
+   "tier": null,
+   "promoted": false,
+   "sites": 1,
+   "modules": {
+    "seams": 1
+   },
+   "adjudication": "event-channel:invalidate"
+  },
+  {
+   "name": "llm_tact_view_metrics_init",
+   "status": "original",
+   "domain": null,
+   "tier": null,
+   "promoted": false,
+   "sites": 1,
+   "modules": {
+    "seams": 1
+   },
+   "adjudication": "event-channel:invalidate"
+  },
+  {
+   "name": "llm_tact_vis_map_clear_right_margin",
+   "status": "original",
+   "domain": null,
+   "tier": null,
+   "promoted": false,
+   "sites": 1,
+   "modules": {
+    "seams": 1
+   },
+   "adjudication": "event-channel:invalidate"
+  },
+  {
+   "name": "llm_tact_vis_map_fill_default",
+   "status": "original",
+   "domain": null,
+   "tier": null,
+   "promoted": false,
+   "sites": 1,
+   "modules": {
+    "seams": 1
+   },
+   "adjudication": "event-channel:invalidate"
+  },
+  {
+   "name": "llm_tact_zone_sound_play",
+   "status": "original",
+   "domain": null,
+   "tier": null,
+   "promoted": false,
+   "sites": 1,
+   "modules": {
+    "seams": 1
+   },
+   "adjudication": "event-channel:event"
+  },
+  {
+   "name": "llm_tutorial_load_script",
+   "status": "original",
+   "domain": null,
+   "tier": null,
+   "promoted": false,
+   "sites": 2,
+   "modules": {
+    "seams": 1,
+    "sim": 1
+   },
+   "adjudication": "cfg-snapshot"
+  },
+  {
+   "name": "llm_ui_bldg_panel_open",
+   "status": "original",
+   "domain": null,
+   "tier": null,
+   "promoted": false,
+   "sites": 1,
+   "modules": {
+    "seams": 1
+   },
+   "adjudication": "event-channel:screen"
+  },
+  {
+   "name": "llm_ui_dlg_build_from_table",
+   "status": "original",
+   "domain": null,
+   "tier": null,
+   "promoted": false,
+   "sites": 1,
+   "modules": {
+    "seams": 1
+   },
+   "adjudication": "event-channel:screen"
+  },
+  {
+   "name": "llm_ui_info_media_draw_p1",
+   "status": "original",
+   "domain": null,
+   "tier": null,
+   "promoted": false,
+   "sites": 1,
+   "modules": {
+    "seams": 1
+   },
+   "adjudication": "event-channel:screen"
+  },
+  {
+   "name": "llm_ui_menu_bg_redraw_cb",
+   "status": "original",
+   "domain": null,
+   "tier": null,
+   "promoted": false,
+   "sites": 1,
+   "modules": {
+    "seams": 1
+   },
+   "adjudication": "event-channel:screen"
+  },
+  {
+   "name": "llm_ui_message_queue_clear_all",
+   "status": "original",
+   "domain": null,
+   "tier": null,
+   "promoted": false,
+   "sites": 1,
+   "modules": {
+    "seams": 1
+   },
+   "adjudication": "event-channel:event"
+  },
+  {
+   "name": "llm_ui_outcome_dialog",
+   "status": "original",
+   "domain": null,
+   "tier": null,
+   "promoted": false,
+   "sites": 1,
+   "modules": {
+    "seams": 1
+   },
+   "adjudication": "event-channel:screen"
+  },
+  {
+   "name": "llm_ui_planet_select_screen_open",
+   "status": "original",
+   "domain": null,
+   "tier": null,
+   "promoted": false,
+   "sites": 1,
+   "modules": {
+    "seams": 1
+   },
+   "adjudication": "event-channel:screen"
+  },
+  {
+   "name": "llm_ui_print_floating_msg_cyan",
+   "status": "original",
+   "domain": null,
+   "tier": null,
+   "promoted": false,
+   "sites": 1,
+   "modules": {
+    "seams": 1
+   },
+   "adjudication": "event-channel:event"
+  },
+  {
+   "name": "llm_ui_print_floating_msg_red",
+   "status": "original",
+   "domain": null,
+   "tier": null,
+   "promoted": false,
+   "sites": 1,
+   "modules": {
+    "seams": 1
+   },
+   "adjudication": "event-channel:event"
+  },
+  {
+   "name": "llm_ui_print_game_speed",
+   "status": "original",
+   "domain": null,
+   "tier": null,
+   "promoted": false,
+   "sites": 1,
+   "modules": {
+    "seams": 1
+   },
+   "adjudication": "event-channel:event"
+  },
+  {
+   "name": "llm_ui_print_queue_text_id",
+   "status": "original",
+   "domain": null,
+   "tier": null,
+   "promoted": false,
+   "sites": 1,
+   "modules": {
+    "seams": 1
+   },
+   "adjudication": "event-channel:event"
+  },
+  {
+   "name": "llm_ui_screen_fade_transition_tick",
+   "status": "original",
+   "domain": null,
+   "tier": null,
+   "promoted": false,
+   "sites": 1,
+   "modules": {
+    "seams": 1
+   },
+   "adjudication": "event-channel:screen"
+  },
+  {
+   "name": "llm_ui_set_draw_surface",
+   "status": "original",
+   "domain": null,
+   "tier": null,
+   "promoted": false,
+   "sites": 6,
+   "modules": {
+    "seams": 6
+   },
+   "adjudication": "event-channel:invalidate"
+  },
+  {
+   "name": "llm_ui_text_draw_rgb16",
+   "status": "original",
+   "domain": null,
+   "tier": null,
+   "promoted": false,
+   "sites": 4,
+   "modules": {
+    "seams": 4
+   },
+   "adjudication": "event-channel:invalidate"
+  },
+  {
+   "name": "llm_ui_widget_list_center",
+   "status": "original",
+   "domain": null,
+   "tier": null,
+   "promoted": false,
+   "sites": 1,
+   "modules": {
+    "seams": 1
+   },
+   "adjudication": "event-channel:screen"
+  },
+  {
+   "name": "llm_ui_widget_list_draw",
+   "status": "original",
+   "domain": null,
+   "tier": null,
+   "promoted": false,
+   "sites": 1,
+   "modules": {
+    "seams": 1
+   },
+   "adjudication": "event-channel:screen"
+  },
+  {
+   "name": "llm_unit_ctrl_group_activate",
+   "status": "original",
+   "domain": null,
+   "tier": null,
+   "promoted": false,
+   "sites": 3,
+   "modules": {
+    "seams": 3
+   },
+   "adjudication": null
+  },
+  {
+   "name": "llm_view_set_size_mode",
+   "status": "original",
+   "domain": null,
+   "tier": null,
+   "promoted": false,
+   "sites": 1,
+   "modules": {
+    "seams": 1
+   },
+   "adjudication": "event-channel:screen"
+  },
+  {
+   "name": "map_LoadPlanetFromDisk",
+   "status": "translated",
+   "domain": "(pre-ledger)",
+   "tier": null,
+   "promoted": false,
+   "sites": 1,
+   "modules": {
+    "seams": 1
+   }
+  },
+  {
+   "name": "map_SavePlanetToDisk",
+   "status": "translated",
+   "domain": "(pre-ledger)",
+   "tier": null,
+   "promoted": false,
+   "sites": 2,
+   "modules": {
+    "seams": 2
+   }
+  },
+  {
+   "name": "rsr_GetFileRealSize",
+   "status": "original",
+   "domain": null,
+   "tier": null,
+   "promoted": false,
+   "sites": 1,
+   "modules": {
+    "seams": 1
+   },
+   "adjudication": "host-callback:io"
+  },
+  {
+   "name": "utils_close_file",
+   "status": "original",
+   "domain": null,
+   "tier": null,
+   "promoted": false,
+   "sites": 1,
+   "modules": {
+    "seams": 1
+   },
+   "adjudication": "host-callback:io"
+  },
+  {
+   "name": "utils_free",
+   "status": "original",
+   "domain": null,
+   "tier": null,
+   "promoted": false,
+   "sites": 1,
+   "modules": {
+    "seams": 1
+   },
+   "adjudication": "crt"
+  },
+  {
+   "name": "utils_open_file",
+   "status": "original",
+   "domain": null,
+   "tier": null,
+   "promoted": false,
+   "sites": 1,
+   "modules": {
+    "seams": 1
+   },
+   "adjudication": "host-callback:io"
+  },
+  {
+   "name": "utils_read_from_file",
+   "status": "original",
+   "domain": null,
+   "tier": null,
+   "promoted": false,
+   "sites": 1,
+   "modules": {
+    "seams": 1
+   },
+   "adjudication": "host-callback:io"
+  },
+  {
+   "name": "utils_sprintf__vi",
+   "status": "original",
+   "domain": null,
+   "tier": null,
+   "promoted": false,
+   "sites": 2,
+   "modules": {
+    "seams": 2
+   },
+   "adjudication": null
+  },
+  {
+   "name": "utils_sprintf__vs",
+   "status": "original",
+   "domain": null,
+   "tier": null,
+   "promoted": false,
+   "sites": 1,
+   "modules": {
+    "seams": 1
+   },
+   "adjudication": null
+  },
+  {
+   "name": "utils_w_strlen",
+   "status": "translated",
+   "domain": "(pre-ledger)",
+   "tier": null,
+   "promoted": false,
+   "sites": 1,
+   "modules": {
+    "seams": 1
+   }
+  },
+  {
+   "name": "utils_write_to_file",
+   "status": "original",
+   "domain": null,
+   "tier": null,
+   "promoted": false,
+   "sites": 1,
+   "modules": {
+    "seams": 1
+   },
+   "adjudication": "host-callback:io"
+  },
+  {
+   "name": "w_sprintf__v",
+   "status": "original",
+   "domain": null,
+   "tier": null,
+   "promoted": false,
+   "sites": 2,
+   "modules": {
+    "seams": 2
+   },
+   "adjudication": null
+  }
+ ]
+}

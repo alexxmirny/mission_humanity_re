@@ -1,0 +1,24 @@
+{
+ "class": "reimplemented",
+ "_class_why": "seams/standalone.cpp trampolines llm_cd_locate_and_open_audio (ADDR_CD_LOCATE, entry_claim exclusive) -- the same body this manifest splices at +0x2f. Was the F1E spike's compiled-in manifest; dropped from the compile list at F4C-GATE per Q7.",
+ "_comment": "Run WITHOUT the game CD. The disc requirement is a presence check, not a data dependency: rsr::TryReadRsrFile reads mh.rsr/mh_ex.rsr CWD-first and only falls back to the CD, so a local install already has everything. llm_cd_locate_and_open_audio scans for a DRIVE_CDROM labelled 'MH' and, on a hit, sets G_CD_DATA_PATH (0x00603f78) = '<cdroot><SrcPath>\\'; llm_cd_ensure_present then loops the blocking \"Insert 'Mission: Humanity' CD\" dialog until that buffer is non-empty, and a cancel calls llm_game_shutdown_cleanup. This patch leaves the scan INTACT -- a real disc still sets the real CD path and opens CD audio exactly as before -- and only diverts the scan-exhausted exit into an appended cave that fills G_CD_DATA_PATH with the EXE'S OWN DIRECTORY (GetModuleFileNameA, truncated after the last '\\'; \".\\\" if that fails) before rejoining the original 'return 0' epilogue. Module-derived, not CWD-derived, so a launcher with the wrong working directory cannot resurrect the dialog. NOT the same as cd_audio_nonfatal (which only defuses a FAILED MCI open while a disc IS present). The cave is an APPENDED section, so this manifest is baked for ONE chain position -- regenerate it for another with tools/gen_no_cd_manifest.py --input/--out. GENERATED FILE -- do not hand-edit.",
+ "target": "mh.exe (English retail, md5 b3b389e8...) -- /eng/mh.exe",
+ "sections": [
+  {
+   "name": ".mhnocd",
+   "vaddr": "0x10f0000",
+   "vsize": "0x1000",
+   "data": "60 68 04 01 00 00 68 78 3f 60 00 6a 00 ff 15 0c 04 07 01 85 c0 74 19 89 c1 ba 78 3f 60 00 80 7c 0a ff 5c 74 05 49 75 f6 eb 06 c6 04 0a 00 eb 09 66 c7 02 2e 5c c6 42 02 00 61 e9 09 38 3d ff",
+   "_note": "no-disc fallback: G_CD_DATA_PATH <- exe directory, then rejoin 0x4c3848"
+  }
+ ],
+ "patches": [
+  {
+   "va": "0x4c374a",
+   "expect": "e9 f9 00 00 00",
+   "bytes": "e9 b1 c8 c2 00",
+   "_note": "llm_cd_locate_and_open_audio: the drive scan ran off the end (no CD-ROM labelled 'MH') -- divert to the cave instead of returning with G_CD_DATA_PATH empty (which is what makes llm_cd_ensure_present show the insert-CD dialog)"
+  }
+ ],
+ "sha256": "1cd5810c5c0b845f0b7c8359a494243d9bec51397c8becfe149841be09c2562d"
+}

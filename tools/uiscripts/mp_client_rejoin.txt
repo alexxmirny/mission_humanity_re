@@ -1,0 +1,90 @@
+# U13 full cycle (CLIENT): join game1, observe the host leave, then RE-DISCOVER + RE-JOIN the host's
+# re-created game2 -> a fresh lobby with both names. Pair with mp_host_recreate.txt. Both lobby captures are
+# gated on `occ 2` (BOTH slots seated on the CLIENT's OWN view) -- this is the deterministic gate: it fires
+# only once the client's own slot is really seated and rebuilt, where `settled Cancel` goes stable frames
+# before the re-join slot snapshot arrives (the flaky capture this replaces).
+settled value:110
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+present Internet server
+settled Internet server
+clickl Internet server
+present Server address
+settled Connect
+clickl Connect
+sessions 1
+settled Join game
+clickl Join game
+present Network players
+occ 2
+# `occ 2` is a NETWORK predicate: it can be satisfied in the window between the lobby screen being
+# pushed and its first DRAW. That window used to be invisible because the retail slide loop drew the
+# list every iteration -- and that loop never exited on the client (U3b). With it parked, the capture
+# landed on a bare background (2026-07-28 gate: 38.4% diff). Add a UI predicate so the capture waits
+# for the panel to be resolvable AND stationary -- which U3b is what makes possible.
+settled Cancel
+capture c1_lobby
+# Tell the HOST it may now leave. Without this the two scripts race and the CLIENT loses: the host's
+# `occ 2` fired at 15.9 s and it clicked Cancel immediately, while this peer was still inside `settled
+# Cancel` (2.4 s) -- so c1_lobby was captured AFTER the host had gone, on a frame already transitioning
+# back to the discovery browser (stale "Games available" title, cleared map-info panel) = the 5.306%
+# diff. Not a render bug: the lobby content was correct, the capture was simply too late. (H1)
+signal c1shot
+# host leaves -> the client lands on the "Games available" discovery browser (U13: old session withdrawn,
+# no ghost). The host's re-created game2 (fresh tag) arrives here; wait for it to list, then Join.
+#
+# U26 (2026-07-27): `sessions 1` ALONE is racy and this is the bug that cost a gate run. On arriving at
+# the browser the OLD session is still listed, so `sessions 1` matched at `waited 0` -- on the row the
+# host had just left. `settled Join game` then passed on that doomed row, and by the click the browser
+# had refreshed it away: "click_label('Join game') FAILED: no clickable widget matched". A count
+# predicate cannot tell "the session I want" from "the session I am about to lose"; only the EDGE can.
+# So wait for the withdrawal FIRST, then for game2 to arrive. `sessions <1` is the same strictly-less-
+# than form R-live-start uses for `occ <2`.
+absent Network players
+sessions <1
+# U29/U22 (a0): THE FRAME THE PLAYER IS ACTUALLY LEFT WITH after the host closes the lobby. This must
+# show the BROWSER -- no lobby frame, no slot rows. `absent Network players` above has already passed,
+# and that is precisely the point: it queries the ACTIVE WIDGET LIST, which stopped being the lobby the
+# moment the 0x0e pushed the browser. What is DRAWN is a separate question, and on the pre-fix build
+# the answer was a complete, healthy-looking lobby -- our own U3b/U3FIX snaps pin lobby_frame_x /
+# lobby_right_panel_x to their on-screen target and nothing ever un-pins them. The thing on screen and
+# the thing receiving input had come apart, which is why a predicate could not see this and only a
+# rendered frame can.
+# NOT gated on `settled`: U22's second symptom is that `settled` reports STABLE mid-animation on THIS
+# screen (both `settled Join game` and `settled Refresh list` passed on visibly-travelling frames).
+# `sessions <1` is a state predicate -- the old session withdrawn -- and the host holds off recreating
+# until `c2shot` below, so the browser is empty and stationary here.
+# U23: the HOST-LEFT wording, the counterpart to link_death's. Same widget, same repaint; the cause
+# comes from MH_MP_ConsumeExitCause, which is set to HOST_LEFT by default inside MH_MP_ClientOnHostLeft
+# and only overridden at R-live-ui's synthesis site -- so this route gets the default and that one does
+# not. Placed BEFORE the capture so the frame below is gated on the notice being in the widget tree.
+present The host left the game.
+capture c1b_after_host_left
+# U29 (b): THE LATENT ENTRY. The client is on the browser and the lobby it left is gone -- but the
+# entry driver's conditions were all satisfied by lobby STATE (occupied slots, a received map, a
+# latched Start), none of which noticed the lobby had closed. On 2026-08-28 the host recreated its
+# lobby and pressed Start ten seconds after the client had rejoined; a Start arriving a few seconds
+# earlier would have force-entered this client into a game built from the DEAD lobby's slots, from
+# the browser. That is the same shape as the 2026-07-26 crash in mp_lobby_entry_tick's own header.
+# `injectstart` latches exactly what a bare retail FLAG_START latches, so the hazard is reproducible
+# instead of being a race we happened to miss by seconds.
+injectstart
+signal c2shot
+# THE NO-OP IS ASSERTED BY WHAT FOLLOWS, not by waiting. Everything below only exists ON THE BROWSER
+# and takes real time to arrive (the host must re-create game2 and advertise it), so if the injected
+# Start had entered a game, `sessions 1` and the click after it would find no browser and this script
+# would TIME OUT. No frame count, no clock -- the assertion is that the walk can still be completed.
+# Two independent guards make it a no-op: the torn-down slot array (the driver never reaches its
+# entry conditions) and the screen gate (it refuses even if they are met). Remove them one at a time
+# with [net] u29_teardown=0 / u29_screen_gate=0 to see this go red.
+sessions 1
+settled Join game
+clickl Join game
+present Network players
+occ 2
+settled Cancel
+capture c2_rejoined
+log CLIENT re-joined the re-created game2 (own slot seated)
+end

@@ -1,0 +1,3122 @@
+{
+ "tables": {
+  "FUN_0041c152": [
+   {
+    "at": "0x0041c181",
+    "dir": "write",
+    "addr": "0x0050b077",
+    "addr_sym": "AvailableProjects",
+    "addr_expr": null,
+    "size": 3200,
+    "size_expr": null,
+    "file_h_expr": [
+     "SUB ESP,0xc",
+     "MOV dword ptr [EBP + -0x20],EAX",
+     "MOV dword ptr [EBP + -0x1c],0x0",
+     "MOV EBX,dword ptr [EBP + -0x20]"
+    ],
+    "kind": "const"
+   }
+  ],
+  "FUN_0041c1e6": [
+   {
+    "at": "0x0041c215",
+    "dir": "write",
+    "addr": "0x0050aa37",
+    "addr_sym": "AvailableBuildings",
+    "addr_expr": null,
+    "size": 1600,
+    "size_expr": null,
+    "file_h_expr": [
+     "SUB ESP,0xc",
+     "MOV dword ptr [EBP + -0x20],EAX",
+     "MOV dword ptr [EBP + -0x1c],0x0",
+     "MOV EBX,dword ptr [EBP + -0x20]"
+    ],
+    "kind": "const"
+   },
+   {
+    "at": "0x0041c22a",
+    "dir": "write",
+    "addr": "0x0050be03",
+    "addr_sym": "_G_LLM_STRAT_UI_BASE_MARKER_COORDS",
+    "addr_expr": null,
+    "size": 64,
+    "size_expr": null,
+    "file_h_expr": [
+     "MOV EAX,0x50aa37",
+     "CALL 0x00448661",
+     "ADD dword ptr [EBP + -0x1c],EAX",
+     "MOV EBX,dword ptr [EBP + -0x20]"
+    ],
+    "kind": "const"
+   }
+  ],
+  "FUN_004ddaa5": [
+   {
+    "at": "0x004ddac0",
+    "dir": "read",
+    "addr": "0x006616a8",
+    "addr_sym": "_G_LLM_STRAT_AI_ACTIVE_PLAYER_COUNT",
+    "addr_expr": null,
+    "size": 4,
+    "size_expr": null,
+    "file_h_expr": [
+     "PUSH ECX",
+     "PUSH EDX",
+     "MOV ECX,EAX",
+     "MOV EBX,EAX"
+    ],
+    "kind": "const"
+   },
+   {
+    "at": "0x004ddad1",
+    "dir": "read",
+    "addr": "0x00e6ded0",
+    "addr_sym": null,
+    "addr_expr": null,
+    "size": 1329120,
+    "size_expr": null,
+    "file_h_expr": [
+     "MOV EDX,0x4",
+     "MOV EAX,0x6616a8",
+     "CALL 0x004486e6",
+     "MOV EBX,ECX"
+    ],
+    "kind": "const"
+   }
+  ],
+  "LoadPlanetFromDisk": [
+   {
+    "at": "0x004481fb",
+    "dir": "raw",
+    "raw_call": "open_file",
+    "kind": "raw",
+    "eax": {
+     "expr": [
+      "JNZ 0x004481d7",
+      "POP EDI",
+      "MOV EDX,0x500cda",
+      "LEA EAX,[EBP + 0xffffff64]"
+     ],
+     "sym": null
+    },
+    "edx": {
+     "imm": 5246170,
+     "sym": "ReadBinary"
+    },
+    "ebx": {},
+    "hist": [
+     "CMP AL,0x0",
+     "JNZ 0x004481d7",
+     "POP EDI",
+     "MOV EDX,0x500cda",
+     "LEA EAX,[EBP + 0xffffff64]",
+     "CALL 0x004cf6c4"
+    ]
+   },
+   {
+    "at": "0x00448222",
+    "dir": "read",
+    "addr": "0x00bb4ed0",
+    "addr_sym": null,
+    "addr_expr": null,
+    "size": 20400,
+    "size_expr": null,
+    "file_h_expr": [
+     "JNZ 0x00448215",
+     "MOV dword ptr [EBP + -0x14],0x0",
+     "JMP 0x00448655",
+     "MOV EBX,dword ptr [EBP + -0x28]"
+    ],
+    "kind": "const"
+   },
+   {
+    "at": "0x00448237",
+    "dir": "read",
+    "addr": "0x005d0194",
+    "addr_sym": "_G_LLM_STRAT_ORDER_QUEUE_COUNT",
+    "addr_expr": null,
+    "size": 4,
+    "size_expr": null,
+    "file_h_expr": [
+     "MOV EAX,0xbb4ed0",
+     "CALL 0x004486e6",
+     "ADD dword ptr [EBP + -0x20],EAX",
+     "MOV EBX,dword ptr [EBP + -0x28]"
+    ],
+    "kind": "const"
+   },
+   {
+    "at": "0x0044824c",
+    "dir": "read",
+    "addr": "0x00b63be0",
+    "addr_sym": "_G_LLM_STRAT_CTRL_GROUPS",
+    "addr_expr": null,
+    "size": 4040,
+    "size_expr": null,
+    "file_h_expr": [
+     "MOV EAX,0x5d0194",
+     "CALL 0x004486e6",
+     "ADD dword ptr [EBP + -0x20],EAX",
+     "MOV EBX,dword ptr [EBP + -0x28]"
+    ],
+    "kind": "const"
+   },
+   {
+    "at": "0x00448261",
+    "dir": "read",
+    "addr": "0x00e5813c",
+    "addr_sym": "_G_LLM_STRAT_UI_SELECTED_BLDG_INDEX",
+    "addr_expr": null,
+    "size": 6,
+    "size_expr": null,
+    "file_h_expr": [
+     "MOV EAX,0xb63be0",
+     "CALL 0x004486e6",
+     "ADD dword ptr [EBP + -0x20],EAX",
+     "MOV EBX,dword ptr [EBP + -0x28]"
+    ],
+    "kind": "const"
+   },
+   {
+    "at": "0x00448276",
+    "dir": "read",
+    "addr": "0x00e1629c",
+    "addr_sym": "_G_LLM_CLICK_SELECT_TARGET_ID",
+    "addr_expr": null,
+    "size": 4,
+    "size_expr": null,
+    "file_h_expr": [
+     "MOV EAX,0xe5813c",
+     "CALL 0x004486e6",
+     "ADD dword ptr [EBP + -0x20],EAX",
+     "MOV EBX,dword ptr [EBP + -0x28]"
+    ],
+    "kind": "const"
+   },
+   {
+    "at": "0x0044828b",
+    "dir": "read",
+    "addr": "0x00e5899b",
+    "addr_sym": "_G_LLM_MOUSE_BUTTONS_PREV",
+    "addr_expr": null,
+    "size": 17,
+    "size_expr": null,
+    "file_h_expr": [
+     "MOV EAX,0xe1629c",
+     "CALL 0x004486e6",
+     "ADD dword ptr [EBP + -0x20],EAX",
+     "MOV EBX,dword ptr [EBP + -0x28]"
+    ],
+    "kind": "const"
+   },
+   {
+    "at": "0x004482a0",
+    "dir": "read",
+    "addr": "0x00bf50e0",
+    "addr_sym": null,
+    "addr_expr": null,
+    "size": 210000,
+    "size_expr": null,
+    "file_h_expr": [
+     "MOV EAX,0xe5899b",
+     "CALL 0x004486e6",
+     "ADD dword ptr [EBP + -0x20],EAX",
+     "MOV EBX,dword ptr [EBP + -0x28]"
+    ],
+    "kind": "const"
+   },
+   {
+    "at": "0x004482b5",
+    "dir": "read",
+    "addr": "0x00e1db98",
+    "addr_sym": "_G_LLM_STRAT_PROJECTILE_POOL",
+    "addr_expr": null,
+    "size": 181500,
+    "size_expr": null,
+    "file_h_expr": [
+     "MOV EAX,0xbf50e0",
+     "CALL 0x004486e6",
+     "ADD dword ptr [EBP + -0x20],EAX",
+     "MOV EBX,dword ptr [EBP + -0x28]"
+    ],
+    "kind": "const"
+   },
+   {
+    "at": "0x004482ca",
+    "dir": "read",
+    "addr": "0x005d0198",
+    "addr_sym": "_G_LLM_STRAT_GAME_CLOCK",
+    "addr_expr": null,
+    "size": 8,
+    "size_expr": null,
+    "file_h_expr": [
+     "MOV EAX,0xe1db98",
+     "CALL 0x004486e6",
+     "ADD dword ptr [EBP + -0x20],EAX",
+     "MOV EBX,dword ptr [EBP + -0x28]"
+    ],
+    "kind": "const"
+   },
+   {
+    "at": "0x004482df",
+    "dir": "read",
+    "addr": "0x00e58138",
+    "addr_sym": "_G_LLM_MAP_CAM_COL",
+    "addr_expr": null,
+    "size": 4,
+    "size_expr": null,
+    "file_h_expr": [
+     "MOV EAX,0x5d0198",
+     "CALL 0x004486e6",
+     "ADD dword ptr [EBP + -0x20],EAX",
+     "MOV EBX,dword ptr [EBP + -0x28]"
+    ],
+    "kind": "const"
+   },
+   {
+    "at": "0x004482f4",
+    "dir": "read",
+    "addr": "0x00e58134",
+    "addr_sym": "_G_LLM_MAP_CAM_ROW",
+    "addr_expr": null,
+    "size": 4,
+    "size_expr": null,
+    "file_h_expr": [
+     "MOV EAX,0xe58138",
+     "CALL 0x004486e6",
+     "ADD dword ptr [EBP + -0x20],EAX",
+     "MOV EBX,dword ptr [EBP + -0x28]"
+    ],
+    "kind": "const"
+   },
+   {
+    "at": "0x00448309",
+    "dir": "read",
+    "addr": "0x00825084",
+    "addr_sym": "width",
+    "addr_expr": null,
+    "size": 4,
+    "size_expr": null,
+    "file_h_expr": [
+     "MOV EAX,0xe58134",
+     "CALL 0x004486e6",
+     "ADD dword ptr [EBP + -0x20],EAX",
+     "MOV EBX,dword ptr [EBP + -0x28]"
+    ],
+    "kind": "const"
+   },
+   {
+    "at": "0x0044831e",
+    "dir": "read",
+    "addr": "0x00825064",
+    "addr_sym": "height",
+    "addr_expr": null,
+    "size": 4,
+    "size_expr": null,
+    "file_h_expr": [
+     "MOV EAX,0x825084",
+     "CALL 0x004486e6",
+     "ADD dword ptr [EBP + -0x20],EAX",
+     "MOV EBX,dword ptr [EBP + -0x28]"
+    ],
+    "kind": "const"
+   },
+   {
+    "at": "0x00448333",
+    "dir": "read",
+    "addr": "0x00e15408",
+    "addr_sym": "file_size",
+    "addr_expr": null,
+    "size": 4,
+    "size_expr": null,
+    "file_h_expr": [
+     "MOV EAX,0x825064",
+     "CALL 0x004486e6",
+     "ADD dword ptr [EBP + -0x20],EAX",
+     "MOV EBX,dword ptr [EBP + -0x28]"
+    ],
+    "kind": "const"
+   },
+   {
+    "at": "0x00448348",
+    "dir": "read",
+    "addr": "0x005586ee",
+    "addr_sym": "_G_LLM_STRAT_MINIMAP_ZOOM_MODE",
+    "addr_expr": null,
+    "size": 4,
+    "size_expr": null,
+    "file_h_expr": [
+     "MOV EAX,0xe15408",
+     "CALL 0x004486e6",
+     "ADD dword ptr [EBP + -0x20],EAX",
+     "MOV EBX,dword ptr [EBP + -0x28]"
+    ],
+    "kind": "const"
+   },
+   {
+    "at": "0x0044835d",
+    "dir": "read",
+    "addr": "0x00d1ec80",
+    "addr_sym": "tile_objects",
+    "addr_expr": null,
+    "size": 524288,
+    "size_expr": null,
+    "file_h_expr": [
+     "MOV EAX,0x5586ee",
+     "CALL 0x004486e6",
+     "ADD dword ptr [EBP + -0x20],EAX",
+     "MOV EBX,dword ptr [EBP + -0x28]"
+    ],
+    "kind": "const"
+   },
+   {
+    "at": "0x00448372",
+    "dir": "read",
+    "addr": "0x00c86660",
+    "addr_sym": null,
+    "addr_expr": null,
+    "size": 240000,
+    "size_expr": null,
+    "file_h_expr": [
+     "MOV EAX,0xd1ec80",
+     "CALL 0x004486e6",
+     "ADD dword ptr [EBP + -0x20],EAX",
+     "MOV EBX,dword ptr [EBP + -0x28]"
+    ],
+    "kind": "const"
+   },
+   {
+    "at": "0x00448387",
+    "dir": "read",
+    "addr": "0x00cc46e0",
+    "addr_sym": null,
+    "addr_expr": null,
+    "size": 240000,
+    "size_expr": null,
+    "file_h_expr": [
+     "MOV EAX,0xc86660",
+     "CALL 0x004486e6",
+     "ADD dword ptr [EBP + -0x20],EAX",
+     "MOV EBX,dword ptr [EBP + -0x28]"
+    ],
+    "kind": "const"
+   },
+   {
+    "at": "0x0044839c",
+    "dir": "read",
+    "addr": "0x00d06c80",
+    "addr_sym": null,
+    "addr_expr": null,
+    "size": 65536,
+    "size_expr": null,
+    "file_h_expr": [
+     "MOV EAX,0xcc46e0",
+     "CALL 0x004486e6",
+     "ADD dword ptr [EBP + -0x20],EAX",
+     "MOV EBX,dword ptr [EBP + -0x28]"
+    ],
+    "kind": "const"
+   },
+   {
+    "at": "0x004483b1",
+    "dir": "read",
+    "addr": "0x00c28530",
+    "addr_sym": null,
+    "addr_expr": null,
+    "size": 65536,
+    "size_expr": null,
+    "file_h_expr": [
+     "MOV EAX,0xd06c80",
+     "CALL 0x004486e6",
+     "ADD dword ptr [EBP + -0x20],EAX",
+     "MOV EBX,dword ptr [EBP + -0x28]"
+    ],
+    "kind": "const"
+   },
+   {
+    "at": "0x004483c6",
+    "dir": "read",
+    "addr": "0x00dd8b88",
+    "addr_sym": null,
+    "addr_expr": null,
+    "size": 192,
+    "size_expr": null,
+    "file_h_expr": [
+     "MOV EAX,0xc28530",
+     "CALL 0x004486e6",
+     "ADD dword ptr [EBP + -0x20],EAX",
+     "MOV EBX,dword ptr [EBP + -0x28]"
+    ],
+    "kind": "const"
+   },
+   {
+    "at": "0x004483db",
+    "dir": "read",
+    "addr": "0x00dd8c48",
+    "addr_sym": null,
+    "addr_expr": null,
+    "size": 186400,
+    "size_expr": null,
+    "file_h_expr": [
+     "MOV EAX,0xdd8b88",
+     "CALL 0x004486e6",
+     "ADD dword ptr [EBP + -0x20],EAX",
+     "MOV EBX,dword ptr [EBP + -0x28]"
+    ],
+    "kind": "const"
+   },
+   {
+    "at": "0x004483f0",
+    "dir": "read",
+    "addr": "0x00c3d2a0",
+    "addr_sym": null,
+    "addr_expr": null,
+    "size": 218400,
+    "size_expr": null,
+    "file_h_expr": [
+     "MOV EAX,0xdd8c48",
+     "CALL 0x004486e6",
+     "ADD dword ptr [EBP + -0x20],EAX",
+     "MOV EBX,dword ptr [EBP + -0x28]"
+    ],
+    "kind": "const"
+   },
+   {
+    "at": "0x00448405",
+    "dir": "read",
+    "addr": "0x00e0e5a8",
+    "addr_sym": null,
+    "addr_expr": null,
+    "size": 23200,
+    "size_expr": null,
+    "file_h_expr": [
+     "MOV EAX,0xc3d2a0",
+     "CALL 0x004486e6",
+     "ADD dword ptr [EBP + -0x20],EAX",
+     "MOV EBX,dword ptr [EBP + -0x28]"
+    ],
+    "kind": "const"
+   },
+   {
+    "at": "0x0044841a",
+    "dir": "read",
+    "addr": "0x00e0e468",
+    "addr_sym": null,
+    "addr_expr": null,
+    "size": 320,
+    "size_expr": null,
+    "file_h_expr": [
+     "MOV EAX,0xe0e5a8",
+     "CALL 0x004486e6",
+     "ADD dword ptr [EBP + -0x20],EAX",
+     "MOV EBX,dword ptr [EBP + -0x28]"
+    ],
+    "kind": "const"
+   },
+   {
+    "at": "0x0044842f",
+    "dir": "read",
+    "addr": "0x00dd2648",
+    "addr_sym": null,
+    "addr_expr": null,
+    "size": 25920,
+    "size_expr": null,
+    "file_h_expr": [
+     "MOV EAX,0xe0e468",
+     "CALL 0x004486e6",
+     "ADD dword ptr [EBP + -0x20],EAX",
+     "MOV EBX,dword ptr [EBP + -0x28]"
+    ],
+    "kind": "const"
+   },
+   {
+    "at": "0x00448444",
+    "dir": "read",
+    "addr": "0x00d03480",
+    "addr_sym": null,
+    "addr_expr": null,
+    "size": 14336,
+    "size_expr": null,
+    "file_h_expr": [
+     "MOV EAX,0xdd2648",
+     "CALL 0x004486e6",
+     "ADD dword ptr [EBP + -0x20],EAX",
+     "MOV EBX,dword ptr [EBP + -0x28]"
+    ],
+    "kind": "const"
+   },
+   {
+    "at": "0x00448459",
+    "dir": "read",
+    "addr": "0x00c727c0",
+    "addr_sym": null,
+    "addr_expr": null,
+    "size": 48800,
+    "size_expr": null,
+    "file_h_expr": [
+     "MOV EAX,0xd03480",
+     "CALL 0x004486e6",
+     "ADD dword ptr [EBP + -0x20],EAX",
+     "MOV EBX,dword ptr [EBP + -0x28]"
+    ],
+    "kind": "const"
+   },
+   {
+    "at": "0x0044846e",
+    "dir": "read",
+    "addr": "0x00cc0fe0",
+    "addr_sym": null,
+    "addr_expr": null,
+    "size": 14080,
+    "size_expr": null,
+    "file_h_expr": [
+     "MOV EAX,0xc727c0",
+     "CALL 0x004486e6",
+     "ADD dword ptr [EBP + -0x20],EAX",
+     "MOV EBX,dword ptr [EBP + -0x28]"
+    ],
+    "kind": "const"
+   },
+   {
+    "at": "0x00448483",
+    "dir": "read",
+    "addr": "0x00d02d80",
+    "addr_sym": null,
+    "addr_expr": null,
+    "size": 1600,
+    "size_expr": null,
+    "file_h_expr": [
+     "MOV EAX,0xcc0fe0",
+     "CALL 0x004486e6",
+     "ADD dword ptr [EBP + -0x20],EAX",
+     "MOV EBX,dword ptr [EBP + -0x28]"
+    ],
+    "kind": "const"
+   },
+   {
+    "at": "0x00448498",
+    "dir": "read",
+    "addr": "0x00bf4fc0",
+    "addr_sym": null,
+    "addr_expr": null,
+    "size": 192,
+    "size_expr": null,
+    "file_h_expr": [
+     "MOV EAX,0xd02d80",
+     "CALL 0x004486e6",
+     "ADD dword ptr [EBP + -0x20],EAX",
+     "MOV EBX,dword ptr [EBP + -0x28]"
+    ],
+    "kind": "const"
+   },
+   {
+    "at": "0x004484ad",
+    "dir": "read",
+    "addr": "0x00c3a370",
+    "addr_sym": null,
+    "addr_expr": null,
+    "size": 416,
+    "size_expr": null,
+    "file_h_expr": [
+     "MOV EAX,0xbf4fc0",
+     "CALL 0x004486e6",
+     "ADD dword ptr [EBP + -0x20],EAX",
+     "MOV EBX,dword ptr [EBP + -0x28]"
+    ],
+    "kind": "const"
+   },
+   {
+    "at": "0x004484c2",
+    "dir": "read",
+    "addr": "0x00bf4d00",
+    "addr_sym": null,
+    "addr_expr": null,
+    "size": 704,
+    "size_expr": null,
+    "file_h_expr": [
+     "MOV EAX,0xc3a370",
+     "CALL 0x004486e6",
+     "ADD dword ptr [EBP + -0x20],EAX",
+     "MOV EBX,dword ptr [EBP + -0x28]"
+    ],
+    "kind": "const"
+   },
+   {
+    "at": "0x004484d7",
+    "dir": "read",
+    "addr": "0x00c38530",
+    "addr_sym": null,
+    "addr_expr": null,
+    "size": 512,
+    "size_expr": null,
+    "file_h_expr": [
+     "MOV EAX,0xbf4d00",
+     "CALL 0x004486e6",
+     "ADD dword ptr [EBP + -0x20],EAX",
+     "MOV EBX,dword ptr [EBP + -0x28]"
+    ],
+    "kind": "const"
+   },
+   {
+    "at": "0x004484ec",
+    "dir": "read",
+    "addr": "0x00aee8c0",
+    "addr_sym": null,
+    "addr_expr": null,
+    "size": 480000,
+    "size_expr": null,
+    "file_h_expr": [
+     "MOV EAX,0xc38530",
+     "CALL 0x004486e6",
+     "ADD dword ptr [EBP + -0x20],EAX",
+     "MOV EBX,dword ptr [EBP + -0x28]"
+    ],
+    "kind": "const"
+   },
+   {
+    "at": "0x00448501",
+    "dir": "read",
+    "addr": "0x00b74bb0",
+    "addr_sym": "_G_LLM_STRAT_PATH_SLOT_FLAGS",
+    "addr_expr": null,
+    "size": 800,
+    "size_expr": null,
+    "file_h_expr": [
+     "MOV EAX,0xaee8c0",
+     "CALL 0x004486e6",
+     "ADD dword ptr [EBP + -0x20],EAX",
+     "MOV EBX,dword ptr [EBP + -0x28]"
+    ],
+    "kind": "const"
+   },
+   {
+    "at": "0x00448516",
+    "dir": "read",
+    "addr": "0x00b63bc0",
+    "addr_sym": null,
+    "addr_expr": null,
+    "size": 32,
+    "size_expr": null,
+    "file_h_expr": [
+     "MOV EAX,0xb74bb0",
+     "CALL 0x004486e6",
+     "ADD dword ptr [EBP + -0x20],EAX",
+     "MOV EBX,dword ptr [EBP + -0x28]"
+    ],
+    "kind": "const"
+   },
+   {
+    "at": "0x0044852b",
+    "dir": "read",
+    "addr": "0x00b64bb0",
+    "addr_sym": null,
+    "addr_expr": null,
+    "size": 65536,
+    "size_expr": null,
+    "file_h_expr": [
+     "MOV EAX,0xb63bc0",
+     "CALL 0x004486e6",
+     "ADD dword ptr [EBP + -0x20],EAX",
+     "MOV EBX,dword ptr [EBP + -0x28]"
+    ],
+    "kind": "const"
+   },
+   {
+    "at": "0x0044855f",
+    "dir": "read",
+    "addr": "0x00794fa0",
+    "addr_sym": "fog_of_war",
+    "addr_expr": null,
+    "size": 589824,
+    "size_expr": null,
+    "file_h_expr": [
+     "CALL 0x004234b8",
+     "MOV EAX,dword ptr [EBP + -0x28]",
+     "CALL 0x00424a68",
+     "MOV EBX,dword ptr [EBP + -0x28]"
+    ],
+    "kind": "const"
+   },
+   {
+    "at": "0x00448574",
+    "dir": "read",
+    "addr": "0x00825008",
+    "addr_sym": "is_human",
+    "addr_expr": null,
+    "size": 4,
+    "size_expr": null,
+    "file_h_expr": [
+     "MOV EAX,0x794fa0",
+     "CALL 0x004486e6",
+     "ADD dword ptr [EBP + -0x20],EAX",
+     "MOV EBX,dword ptr [EBP + -0x28]"
+    ],
+    "kind": "const"
+   },
+   {
+    "at": "0x00448589",
+    "dir": "read",
+    "addr": "0x00825000",
+    "addr_sym": "_G_LLM_STRAT_SAVE_MISC_DWORD",
+    "addr_expr": null,
+    "size": 4,
+    "size_expr": null,
+    "file_h_expr": [
+     "MOV EAX,0x825008",
+     "CALL 0x004486e6",
+     "ADD dword ptr [EBP + -0x20],EAX",
+     "MOV EBX,dword ptr [EBP + -0x28]"
+    ],
+    "kind": "const"
+   },
+   {
+    "at": "0x004485c3",
+    "dir": "read",
+    "addr": null,
+    "addr_sym": null,
+    "addr_expr": [
+     "LEA EDX,[EDX + EDX*0x2]",
+     "IMUL EAX,dword ptr [EBP + -0x18],0x384",
+     "MOV ECX,0xc38750",
+     "ADD EAX,ECX"
+    ],
+    "size": null,
+    "size_expr": [
+     "JMP 0x00448598",
+     "MOV EBX,dword ptr [EBP + -0x28]",
+     "MOVZX EDX,word ptr [0x00e16305]",
+     "LEA EDX,[EDX + EDX*0x2]"
+    ],
+    "file_h_expr": [
+     "MOV EAX,dword ptr [EBP + -0x18]",
+     "INC dword ptr [EBP + -0x18]",
+     "JMP 0x00448598",
+     "MOV EBX,dword ptr [EBP + -0x28]"
+    ],
+    "kind": "expr"
+   },
+   {
+    "at": "0x004485e8",
+    "dir": "raw",
+    "raw_call": "close_file",
+    "kind": "raw",
+    "eax": {
+     "expr": [
+      "MOV EAX,dword ptr [EBP + -0x28]",
+      "CALL 0x0041c245",
+      "ADD dword ptr [EBP + -0x20],EAX",
+      "MOV EAX,dword ptr [EBP + -0x28]"
+     ],
+     "sym": null
+    },
+    "edx": {},
+    "ebx": {},
+    "hist": [
+     "CALL 0x004ddaa5",
+     "MOV EAX,dword ptr [EBP + -0x28]",
+     "CALL 0x0041c245",
+     "ADD dword ptr [EBP + -0x20],EAX",
+     "MOV EAX,dword ptr [EBP + -0x28]",
+     "CALL 0x004cf7d1"
+    ]
+   }
+  ],
+  "SavePlanetToDisk": [
+   {
+    "at": "0x00447d0f",
+    "dir": "raw",
+    "raw_call": "open_file",
+    "kind": "raw",
+    "eax": {
+     "expr": [
+      "MOV dword ptr [0x00e15384],0x0",
+      "MOV dword ptr [0x00e1537c],0x0",
+      "MOV EDX,0x500cca",
+      "LEA EAX,[EBP + 0xfffffdd8]"
+     ],
+     "sym": null
+    },
+    "edx": {
+     "imm": 5246154,
+     "sym": "DAT_00500cca"
+    },
+    "ebx": {},
+    "hist": [
+     "MOV dword ptr [0x00e15380],0x0",
+     "MOV dword ptr [0x00e15384],0x0",
+     "MOV dword ptr [0x00e1537c],0x0",
+     "MOV EDX,0x500cca",
+     "LEA EAX,[EBP + 0xfffffdd8]",
+     "CALL 0x004cf6c4"
+    ]
+   },
+   {
+    "at": "0x00447d36",
+    "dir": "write",
+    "addr": "0x00bb4ed0",
+    "addr_sym": null,
+    "addr_expr": null,
+    "size": 20400,
+    "size_expr": null,
+    "file_h_expr": [
+     "JNZ 0x00447d29",
+     "MOV dword ptr [EBP + -0x14],0x0",
+     "JMP 0x004480fb",
+     "MOV EBX,dword ptr [EBP + -0x18]"
+    ],
+    "kind": "const"
+   },
+   {
+    "at": "0x00447d4b",
+    "dir": "write",
+    "addr": "0x005d0194",
+    "addr_sym": "_G_LLM_STRAT_ORDER_QUEUE_COUNT",
+    "addr_expr": null,
+    "size": 4,
+    "size_expr": null,
+    "file_h_expr": [
+     "MOV EAX,0xbb4ed0",
+     "CALL 0x00448661",
+     "ADD dword ptr [EBP + -0x24],EAX",
+     "MOV EBX,dword ptr [EBP + -0x18]"
+    ],
+    "kind": "const"
+   },
+   {
+    "at": "0x00447d60",
+    "dir": "write",
+    "addr": "0x00b63be0",
+    "addr_sym": "_G_LLM_STRAT_CTRL_GROUPS",
+    "addr_expr": null,
+    "size": 4040,
+    "size_expr": null,
+    "file_h_expr": [
+     "MOV EAX,0x5d0194",
+     "CALL 0x00448661",
+     "ADD dword ptr [EBP + -0x24],EAX",
+     "MOV EBX,dword ptr [EBP + -0x18]"
+    ],
+    "kind": "const"
+   },
+   {
+    "at": "0x00447d75",
+    "dir": "write",
+    "addr": "0x00e5813c",
+    "addr_sym": "_G_LLM_STRAT_UI_SELECTED_BLDG_INDEX",
+    "addr_expr": null,
+    "size": 6,
+    "size_expr": null,
+    "file_h_expr": [
+     "MOV EAX,0xb63be0",
+     "CALL 0x00448661",
+     "ADD dword ptr [EBP + -0x24],EAX",
+     "MOV EBX,dword ptr [EBP + -0x18]"
+    ],
+    "kind": "const"
+   },
+   {
+    "at": "0x00447d8a",
+    "dir": "write",
+    "addr": "0x00e1629c",
+    "addr_sym": "_G_LLM_CLICK_SELECT_TARGET_ID",
+    "addr_expr": null,
+    "size": 4,
+    "size_expr": null,
+    "file_h_expr": [
+     "MOV EAX,0xe5813c",
+     "CALL 0x00448661",
+     "ADD dword ptr [EBP + -0x24],EAX",
+     "MOV EBX,dword ptr [EBP + -0x18]"
+    ],
+    "kind": "const"
+   },
+   {
+    "at": "0x00447d9f",
+    "dir": "write",
+    "addr": "0x00e5899b",
+    "addr_sym": "_G_LLM_MOUSE_BUTTONS_PREV",
+    "addr_expr": null,
+    "size": 17,
+    "size_expr": null,
+    "file_h_expr": [
+     "MOV EAX,0xe1629c",
+     "CALL 0x00448661",
+     "ADD dword ptr [EBP + -0x24],EAX",
+     "MOV EBX,dword ptr [EBP + -0x18]"
+    ],
+    "kind": "const"
+   },
+   {
+    "at": "0x00447db4",
+    "dir": "write",
+    "addr": "0x00bf50e0",
+    "addr_sym": null,
+    "addr_expr": null,
+    "size": 210000,
+    "size_expr": null,
+    "file_h_expr": [
+     "MOV EAX,0xe5899b",
+     "CALL 0x00448661",
+     "ADD dword ptr [EBP + -0x24],EAX",
+     "MOV EBX,dword ptr [EBP + -0x18]"
+    ],
+    "kind": "const"
+   },
+   {
+    "at": "0x00447dc9",
+    "dir": "write",
+    "addr": "0x00e1db98",
+    "addr_sym": "_G_LLM_STRAT_PROJECTILE_POOL",
+    "addr_expr": null,
+    "size": 181500,
+    "size_expr": null,
+    "file_h_expr": [
+     "MOV EAX,0xbf50e0",
+     "CALL 0x00448661",
+     "ADD dword ptr [EBP + -0x24],EAX",
+     "MOV EBX,dword ptr [EBP + -0x18]"
+    ],
+    "kind": "const"
+   },
+   {
+    "at": "0x00447dde",
+    "dir": "write",
+    "addr": "0x005d0198",
+    "addr_sym": "_G_LLM_STRAT_GAME_CLOCK",
+    "addr_expr": null,
+    "size": 8,
+    "size_expr": null,
+    "file_h_expr": [
+     "MOV EAX,0xe1db98",
+     "CALL 0x00448661",
+     "ADD dword ptr [EBP + -0x24],EAX",
+     "MOV EBX,dword ptr [EBP + -0x18]"
+    ],
+    "kind": "const"
+   },
+   {
+    "at": "0x00447df3",
+    "dir": "write",
+    "addr": "0x00e58138",
+    "addr_sym": "_G_LLM_MAP_CAM_COL",
+    "addr_expr": null,
+    "size": 4,
+    "size_expr": null,
+    "file_h_expr": [
+     "MOV EAX,0x5d0198",
+     "CALL 0x00448661",
+     "ADD dword ptr [EBP + -0x24],EAX",
+     "MOV EBX,dword ptr [EBP + -0x18]"
+    ],
+    "kind": "const"
+   },
+   {
+    "at": "0x00447e08",
+    "dir": "write",
+    "addr": "0x00e58134",
+    "addr_sym": "_G_LLM_MAP_CAM_ROW",
+    "addr_expr": null,
+    "size": 4,
+    "size_expr": null,
+    "file_h_expr": [
+     "MOV EAX,0xe58138",
+     "CALL 0x00448661",
+     "ADD dword ptr [EBP + -0x24],EAX",
+     "MOV EBX,dword ptr [EBP + -0x18]"
+    ],
+    "kind": "const"
+   },
+   {
+    "at": "0x00447e1d",
+    "dir": "write",
+    "addr": "0x00825084",
+    "addr_sym": "width",
+    "addr_expr": null,
+    "size": 4,
+    "size_expr": null,
+    "file_h_expr": [
+     "MOV EAX,0xe58134",
+     "CALL 0x00448661",
+     "ADD dword ptr [EBP + -0x24],EAX",
+     "MOV EBX,dword ptr [EBP + -0x18]"
+    ],
+    "kind": "const"
+   },
+   {
+    "at": "0x00447e32",
+    "dir": "write",
+    "addr": "0x00825064",
+    "addr_sym": "height",
+    "addr_expr": null,
+    "size": 4,
+    "size_expr": null,
+    "file_h_expr": [
+     "MOV EAX,0x825084",
+     "CALL 0x00448661",
+     "ADD dword ptr [EBP + -0x24],EAX",
+     "MOV EBX,dword ptr [EBP + -0x18]"
+    ],
+    "kind": "const"
+   },
+   {
+    "at": "0x00447e47",
+    "dir": "write",
+    "addr": "0x00e15408",
+    "addr_sym": "file_size",
+    "addr_expr": null,
+    "size": 4,
+    "size_expr": null,
+    "file_h_expr": [
+     "MOV EAX,0x825064",
+     "CALL 0x00448661",
+     "ADD dword ptr [EBP + -0x24],EAX",
+     "MOV EBX,dword ptr [EBP + -0x18]"
+    ],
+    "kind": "const"
+   },
+   {
+    "at": "0x00447e5c",
+    "dir": "write",
+    "addr": "0x005586ee",
+    "addr_sym": "_G_LLM_STRAT_MINIMAP_ZOOM_MODE",
+    "addr_expr": null,
+    "size": 4,
+    "size_expr": null,
+    "file_h_expr": [
+     "MOV EAX,0xe15408",
+     "CALL 0x00448661",
+     "ADD dword ptr [EBP + -0x24],EAX",
+     "MOV EBX,dword ptr [EBP + -0x18]"
+    ],
+    "kind": "const"
+   },
+   {
+    "at": "0x00447e71",
+    "dir": "write",
+    "addr": "0x00d1ec80",
+    "addr_sym": "tile_objects",
+    "addr_expr": null,
+    "size": 524288,
+    "size_expr": null,
+    "file_h_expr": [
+     "MOV EAX,0x5586ee",
+     "CALL 0x00448661",
+     "ADD dword ptr [EBP + -0x24],EAX",
+     "MOV EBX,dword ptr [EBP + -0x18]"
+    ],
+    "kind": "const"
+   },
+   {
+    "at": "0x00447e86",
+    "dir": "write",
+    "addr": "0x00c86660",
+    "addr_sym": null,
+    "addr_expr": null,
+    "size": 240000,
+    "size_expr": null,
+    "file_h_expr": [
+     "MOV EAX,0xd1ec80",
+     "CALL 0x00448661",
+     "ADD dword ptr [EBP + -0x24],EAX",
+     "MOV EBX,dword ptr [EBP + -0x18]"
+    ],
+    "kind": "const"
+   },
+   {
+    "at": "0x00447e9b",
+    "dir": "write",
+    "addr": "0x00cc46e0",
+    "addr_sym": null,
+    "addr_expr": null,
+    "size": 240000,
+    "size_expr": null,
+    "file_h_expr": [
+     "MOV EAX,0xc86660",
+     "CALL 0x00448661",
+     "ADD dword ptr [EBP + -0x24],EAX",
+     "MOV EBX,dword ptr [EBP + -0x18]"
+    ],
+    "kind": "const"
+   },
+   {
+    "at": "0x00447eb0",
+    "dir": "write",
+    "addr": "0x00d06c80",
+    "addr_sym": null,
+    "addr_expr": null,
+    "size": 65536,
+    "size_expr": null,
+    "file_h_expr": [
+     "MOV EAX,0xcc46e0",
+     "CALL 0x00448661",
+     "ADD dword ptr [EBP + -0x24],EAX",
+     "MOV EBX,dword ptr [EBP + -0x18]"
+    ],
+    "kind": "const"
+   },
+   {
+    "at": "0x00447ec5",
+    "dir": "write",
+    "addr": "0x00c28530",
+    "addr_sym": null,
+    "addr_expr": null,
+    "size": 65536,
+    "size_expr": null,
+    "file_h_expr": [
+     "MOV EAX,0xd06c80",
+     "CALL 0x00448661",
+     "ADD dword ptr [EBP + -0x24],EAX",
+     "MOV EBX,dword ptr [EBP + -0x18]"
+    ],
+    "kind": "const"
+   },
+   {
+    "at": "0x00447eda",
+    "dir": "write",
+    "addr": "0x00dd8b88",
+    "addr_sym": null,
+    "addr_expr": null,
+    "size": 192,
+    "size_expr": null,
+    "file_h_expr": [
+     "MOV EAX,0xc28530",
+     "CALL 0x00448661",
+     "ADD dword ptr [EBP + -0x24],EAX",
+     "MOV EBX,dword ptr [EBP + -0x18]"
+    ],
+    "kind": "const"
+   },
+   {
+    "at": "0x00447eef",
+    "dir": "write",
+    "addr": "0x00dd8c48",
+    "addr_sym": null,
+    "addr_expr": null,
+    "size": 186400,
+    "size_expr": null,
+    "file_h_expr": [
+     "MOV EAX,0xdd8b88",
+     "CALL 0x00448661",
+     "ADD dword ptr [EBP + -0x24],EAX",
+     "MOV EBX,dword ptr [EBP + -0x18]"
+    ],
+    "kind": "const"
+   },
+   {
+    "at": "0x00447f04",
+    "dir": "write",
+    "addr": "0x00c3d2a0",
+    "addr_sym": null,
+    "addr_expr": null,
+    "size": 218400,
+    "size_expr": null,
+    "file_h_expr": [
+     "MOV EAX,0xdd8c48",
+     "CALL 0x00448661",
+     "ADD dword ptr [EBP + -0x24],EAX",
+     "MOV EBX,dword ptr [EBP + -0x18]"
+    ],
+    "kind": "const"
+   },
+   {
+    "at": "0x00447f19",
+    "dir": "write",
+    "addr": "0x00e0e5a8",
+    "addr_sym": null,
+    "addr_expr": null,
+    "size": 23200,
+    "size_expr": null,
+    "file_h_expr": [
+     "MOV EAX,0xc3d2a0",
+     "CALL 0x00448661",
+     "ADD dword ptr [EBP + -0x24],EAX",
+     "MOV EBX,dword ptr [EBP + -0x18]"
+    ],
+    "kind": "const"
+   },
+   {
+    "at": "0x00447f2e",
+    "dir": "write",
+    "addr": "0x00e0e468",
+    "addr_sym": null,
+    "addr_expr": null,
+    "size": 320,
+    "size_expr": null,
+    "file_h_expr": [
+     "MOV EAX,0xe0e5a8",
+     "CALL 0x00448661",
+     "ADD dword ptr [EBP + -0x24],EAX",
+     "MOV EBX,dword ptr [EBP + -0x18]"
+    ],
+    "kind": "const"
+   },
+   {
+    "at": "0x00447f43",
+    "dir": "write",
+    "addr": "0x00dd2648",
+    "addr_sym": null,
+    "addr_expr": null,
+    "size": 25920,
+    "size_expr": null,
+    "file_h_expr": [
+     "MOV EAX,0xe0e468",
+     "CALL 0x00448661",
+     "ADD dword ptr [EBP + -0x24],EAX",
+     "MOV EBX,dword ptr [EBP + -0x18]"
+    ],
+    "kind": "const"
+   },
+   {
+    "at": "0x00447f58",
+    "dir": "write",
+    "addr": "0x00d03480",
+    "addr_sym": null,
+    "addr_expr": null,
+    "size": 14336,
+    "size_expr": null,
+    "file_h_expr": [
+     "MOV EAX,0xdd2648",
+     "CALL 0x00448661",
+     "ADD dword ptr [EBP + -0x24],EAX",
+     "MOV EBX,dword ptr [EBP + -0x18]"
+    ],
+    "kind": "const"
+   },
+   {
+    "at": "0x00447f6d",
+    "dir": "write",
+    "addr": "0x00c727c0",
+    "addr_sym": null,
+    "addr_expr": null,
+    "size": 48800,
+    "size_expr": null,
+    "file_h_expr": [
+     "MOV EAX,0xd03480",
+     "CALL 0x00448661",
+     "ADD dword ptr [EBP + -0x24],EAX",
+     "MOV EBX,dword ptr [EBP + -0x18]"
+    ],
+    "kind": "const"
+   },
+   {
+    "at": "0x00447f82",
+    "dir": "write",
+    "addr": "0x00cc0fe0",
+    "addr_sym": null,
+    "addr_expr": null,
+    "size": 14080,
+    "size_expr": null,
+    "file_h_expr": [
+     "MOV EAX,0xc727c0",
+     "CALL 0x00448661",
+     "ADD dword ptr [EBP + -0x24],EAX",
+     "MOV EBX,dword ptr [EBP + -0x18]"
+    ],
+    "kind": "const"
+   },
+   {
+    "at": "0x00447f97",
+    "dir": "write",
+    "addr": "0x00d02d80",
+    "addr_sym": null,
+    "addr_expr": null,
+    "size": 1600,
+    "size_expr": null,
+    "file_h_expr": [
+     "MOV EAX,0xcc0fe0",
+     "CALL 0x00448661",
+     "ADD dword ptr [EBP + -0x24],EAX",
+     "MOV EBX,dword ptr [EBP + -0x18]"
+    ],
+    "kind": "const"
+   },
+   {
+    "at": "0x00447fac",
+    "dir": "write",
+    "addr": "0x00bf4fc0",
+    "addr_sym": null,
+    "addr_expr": null,
+    "size": 192,
+    "size_expr": null,
+    "file_h_expr": [
+     "MOV EAX,0xd02d80",
+     "CALL 0x00448661",
+     "ADD dword ptr [EBP + -0x24],EAX",
+     "MOV EBX,dword ptr [EBP + -0x18]"
+    ],
+    "kind": "const"
+   },
+   {
+    "at": "0x00447fc1",
+    "dir": "write",
+    "addr": "0x00c3a370",
+    "addr_sym": null,
+    "addr_expr": null,
+    "size": 416,
+    "size_expr": null,
+    "file_h_expr": [
+     "MOV EAX,0xbf4fc0",
+     "CALL 0x00448661",
+     "ADD dword ptr [EBP + -0x24],EAX",
+     "MOV EBX,dword ptr [EBP + -0x18]"
+    ],
+    "kind": "const"
+   },
+   {
+    "at": "0x00447fd6",
+    "dir": "write",
+    "addr": "0x00bf4d00",
+    "addr_sym": null,
+    "addr_expr": null,
+    "size": 704,
+    "size_expr": null,
+    "file_h_expr": [
+     "MOV EAX,0xc3a370",
+     "CALL 0x00448661",
+     "ADD dword ptr [EBP + -0x24],EAX",
+     "MOV EBX,dword ptr [EBP + -0x18]"
+    ],
+    "kind": "const"
+   },
+   {
+    "at": "0x00447feb",
+    "dir": "write",
+    "addr": "0x00c38530",
+    "addr_sym": null,
+    "addr_expr": null,
+    "size": 512,
+    "size_expr": null,
+    "file_h_expr": [
+     "MOV EAX,0xbf4d00",
+     "CALL 0x00448661",
+     "ADD dword ptr [EBP + -0x24],EAX",
+     "MOV EBX,dword ptr [EBP + -0x18]"
+    ],
+    "kind": "const"
+   },
+   {
+    "at": "0x00448000",
+    "dir": "write",
+    "addr": "0x00aee8c0",
+    "addr_sym": null,
+    "addr_expr": null,
+    "size": 480000,
+    "size_expr": null,
+    "file_h_expr": [
+     "MOV EAX,0xc38530",
+     "CALL 0x00448661",
+     "ADD dword ptr [EBP + -0x24],EAX",
+     "MOV EBX,dword ptr [EBP + -0x18]"
+    ],
+    "kind": "const"
+   },
+   {
+    "at": "0x00448015",
+    "dir": "write",
+    "addr": "0x00b74bb0",
+    "addr_sym": "_G_LLM_STRAT_PATH_SLOT_FLAGS",
+    "addr_expr": null,
+    "size": 800,
+    "size_expr": null,
+    "file_h_expr": [
+     "MOV EAX,0xaee8c0",
+     "CALL 0x00448661",
+     "ADD dword ptr [EBP + -0x24],EAX",
+     "MOV EBX,dword ptr [EBP + -0x18]"
+    ],
+    "kind": "const"
+   },
+   {
+    "at": "0x0044802a",
+    "dir": "write",
+    "addr": "0x00b63bc0",
+    "addr_sym": null,
+    "addr_expr": null,
+    "size": 32,
+    "size_expr": null,
+    "file_h_expr": [
+     "MOV EAX,0xb74bb0",
+     "CALL 0x00448661",
+     "ADD dword ptr [EBP + -0x24],EAX",
+     "MOV EBX,dword ptr [EBP + -0x18]"
+    ],
+    "kind": "const"
+   },
+   {
+    "at": "0x0044803f",
+    "dir": "write",
+    "addr": "0x00b64bb0",
+    "addr_sym": null,
+    "addr_expr": null,
+    "size": 65536,
+    "size_expr": null,
+    "file_h_expr": [
+     "MOV EAX,0xb63bc0",
+     "CALL 0x00448661",
+     "ADD dword ptr [EBP + -0x24],EAX",
+     "MOV EBX,dword ptr [EBP + -0x18]"
+    ],
+    "kind": "const"
+   },
+   {
+    "at": "0x0044805c",
+    "dir": "write",
+    "addr": "0x00794fa0",
+    "addr_sym": "fog_of_war",
+    "addr_expr": null,
+    "size": 589824,
+    "size_expr": null,
+    "file_h_expr": [
+     "ADD dword ptr [EBP + -0x24],EAX",
+     "MOV EAX,dword ptr [EBP + -0x18]",
+     "CALL 0x00424773",
+     "MOV EBX,dword ptr [EBP + -0x18]"
+    ],
+    "kind": "const"
+   },
+   {
+    "at": "0x00448071",
+    "dir": "write",
+    "addr": "0x00825008",
+    "addr_sym": "is_human",
+    "addr_expr": null,
+    "size": 4,
+    "size_expr": null,
+    "file_h_expr": [
+     "MOV EAX,0x794fa0",
+     "CALL 0x00448661",
+     "ADD dword ptr [EBP + -0x24],EAX",
+     "MOV EBX,dword ptr [EBP + -0x18]"
+    ],
+    "kind": "const"
+   },
+   {
+    "at": "0x00448086",
+    "dir": "write",
+    "addr": "0x00825000",
+    "addr_sym": "_G_LLM_STRAT_SAVE_MISC_DWORD",
+    "addr_expr": null,
+    "size": 4,
+    "size_expr": null,
+    "file_h_expr": [
+     "MOV EAX,0x825008",
+     "CALL 0x00448661",
+     "ADD dword ptr [EBP + -0x24],EAX",
+     "MOV EBX,dword ptr [EBP + -0x18]"
+    ],
+    "kind": "const"
+   },
+   {
+    "at": "0x004480c0",
+    "dir": "write",
+    "addr": null,
+    "addr_sym": null,
+    "addr_expr": [
+     "LEA EDX,[EDX + EDX*0x2]",
+     "IMUL EAX,dword ptr [EBP + -0x20],0x384",
+     "MOV ECX,0xc38750",
+     "ADD EAX,ECX"
+    ],
+    "size": null,
+    "size_expr": [
+     "JMP 0x00448095",
+     "MOV EBX,dword ptr [EBP + -0x18]",
+     "MOVZX EDX,word ptr [0x00e16305]",
+     "LEA EDX,[EDX + EDX*0x2]"
+    ],
+    "file_h_expr": [
+     "MOV EAX,dword ptr [EBP + -0x20]",
+     "INC dword ptr [EBP + -0x20]",
+     "JMP 0x00448095",
+     "MOV EBX,dword ptr [EBP + -0x18]"
+    ],
+    "kind": "expr"
+   },
+   {
+    "at": "0x004480e0",
+    "dir": "raw",
+    "raw_call": "close_file",
+    "kind": "raw",
+    "eax": {
+     "expr": [
+      "MOV EAX,dword ptr [EBP + -0x18]",
+      "CALL 0x0041c1e6",
+      "ADD dword ptr [EBP + -0x24],EAX",
+      "MOV EAX,dword ptr [EBP + -0x18]"
+     ],
+     "sym": null
+    },
+    "edx": {},
+    "ebx": {},
+    "hist": [
+     "CALL 0x004dda66",
+     "MOV EAX,dword ptr [EBP + -0x18]",
+     "CALL 0x0041c1e6",
+     "ADD dword ptr [EBP + -0x24],EAX",
+     "MOV EAX,dword ptr [EBP + -0x18]",
+     "CALL 0x004cf7d1"
+    ]
+   }
+  ],
+  "game__SaveGame": [
+   {
+    "at": "0x00447227",
+    "dir": "raw",
+    "raw_call": "open_file",
+    "kind": "raw",
+    "eax": {
+     "expr": [
+      "JNZ 0x00447203",
+      "POP EDI",
+      "MOV EDX,0x500cca",
+      "LEA EAX,[EBP + 0xfffffe98]"
+     ],
+     "sym": null
+    },
+    "edx": {
+     "imm": 5246154,
+     "sym": "DAT_00500cca"
+    },
+    "ebx": {},
+    "hist": [
+     "CMP AL,0x0",
+     "JNZ 0x00447203",
+     "POP EDI",
+     "MOV EDX,0x500cca",
+     "LEA EAX,[EBP + 0xfffffe98]",
+     "CALL 0x004cf6c4"
+    ]
+   },
+   {
+    "at": "0x0044725c",
+    "dir": "raw",
+    "raw_call": "write_to_file",
+    "kind": "raw",
+    "eax": {
+     "expr": [
+      "MOV EDX,0x28",
+      "IMUL ESI,dword ptr [0x005d09e4],0x28",
+      "MOV EAX,0x5d08f4",
+      "ADD EAX,ESI"
+     ],
+     "sym": "s_'Mission:_Humanity'_ver_1.00_005d09bc"
+    },
+    "edx": {
+     "imm": 40,
+     "sym": null
+    },
+    "ebx": {
+     "imm": 1,
+     "sym": null
+    },
+    "hist": [
+     "MOV EBX,0x1",
+     "MOV EDX,0x28",
+     "IMUL ESI,dword ptr [0x005d09e4],0x28",
+     "MOV EAX,0x5d08f4",
+     "ADD EAX,ESI",
+     "CALL 0x004cff57"
+    ]
+   },
+   {
+    "at": "0x0044726e",
+    "dir": "write",
+    "addr": "0x00e4a098",
+    "addr_sym": "Unit",
+    "addr_expr": null,
+    "size": 57500,
+    "size_expr": null,
+    "file_h_expr": [
+     "MOV EAX,0x5d08f4",
+     "ADD EAX,ESI",
+     "CALL 0x004cff57",
+     "MOV EBX,dword ptr [EBP + -0x34]"
+    ],
+    "kind": "const"
+   },
+   {
+    "at": "0x00447283",
+    "dir": "write",
+    "addr": "0x00d9ec80",
+    "addr_sym": "Building",
+    "addr_expr": null,
+    "size": 211400,
+    "size_expr": null,
+    "file_h_expr": [
+     "MOV EAX,0xe4a098",
+     "CALL 0x00448661",
+     "ADD dword ptr [EBP + -0x24],EAX",
+     "MOV EBX,dword ptr [EBP + -0x34]"
+    ],
+    "kind": "const"
+   },
+   {
+    "at": "0x00447298",
+    "dir": "write",
+    "addr": "0x00c3a520",
+    "addr_sym": "Weapon",
+    "addr_expr": null,
+    "size": 11648,
+    "size_expr": null,
+    "file_h_expr": [
+     "MOV EAX,0xd9ec80",
+     "CALL 0x00448661",
+     "ADD dword ptr [EBP + -0x24],EAX",
+     "MOV EBX,dword ptr [EBP + -0x34]"
+    ],
+    "kind": "const"
+   },
+   {
+    "at": "0x004472ad",
+    "dir": "write",
+    "addr": "0x00be1a30",
+    "addr_sym": "System",
+    "addr_expr": null,
+    "size": 560,
+    "size_expr": null,
+    "file_h_expr": [
+     "MOV EAX,0xc3a520",
+     "CALL 0x00448661",
+     "ADD dword ptr [EBP + -0x24],EAX",
+     "MOV EBX,dword ptr [EBP + -0x34]"
+    ],
+    "kind": "const"
+   },
+   {
+    "at": "0x004472c2",
+    "dir": "write",
+    "addr": "0x00be6da0",
+    "addr_sym": "Planets",
+    "addr_expr": null,
+    "size": 34016,
+    "size_expr": null,
+    "file_h_expr": [
+     "MOV EAX,0xbe1a30",
+     "CALL 0x00448661",
+     "ADD dword ptr [EBP + -0x24],EAX",
+     "MOV EBX,dword ptr [EBP + -0x34]"
+    ],
+    "kind": "const"
+   },
+   {
+    "at": "0x004472d7",
+    "dir": "write",
+    "addr": "0x00be1c60",
+    "addr_sym": "Projects",
+    "addr_expr": null,
+    "size": 20800,
+    "size_expr": null,
+    "file_h_expr": [
+     "MOV EAX,0xbe6da0",
+     "CALL 0x00448661",
+     "ADD dword ptr [EBP + -0x24],EAX",
+     "MOV EBX,dword ptr [EBP + -0x34]"
+    ],
+    "kind": "const"
+   },
+   {
+    "at": "0x004472ec",
+    "dir": "write",
+    "addr": "0x00bcf8d0",
+    "addr_sym": "Upgrades",
+    "addr_expr": null,
+    "size": 10400,
+    "size_expr": null,
+    "file_h_expr": [
+     "MOV EAX,0xbe1c60",
+     "CALL 0x00448661",
+     "ADD dword ptr [EBP + -0x24],EAX",
+     "MOV EBX,dword ptr [EBP + -0x34]"
+    ],
+    "kind": "const"
+   },
+   {
+    "at": "0x00447301",
+    "dir": "write",
+    "addr": "0x00cff060",
+    "addr_sym": "_G_LLM_STRAT_PLAYERS",
+    "addr_expr": null,
+    "size": 14848,
+    "size_expr": null,
+    "file_h_expr": [
+     "MOV EAX,0xbcf8d0",
+     "CALL 0x00448661",
+     "ADD dword ptr [EBP + -0x24],EAX",
+     "MOV EBX,dword ptr [EBP + -0x34]"
+    ],
+    "kind": "const"
+   },
+   {
+    "at": "0x00447316",
+    "dir": "write",
+    "addr": "0x00c38730",
+    "addr_sym": "DAT_00c38730",
+    "addr_expr": null,
+    "size": 16,
+    "size_expr": null,
+    "file_h_expr": [
+     "MOV EAX,0xcff060",
+     "CALL 0x00448661",
+     "ADD dword ptr [EBP + -0x24],EAX",
+     "MOV EBX,dword ptr [EBP + -0x34]"
+    ],
+    "kind": "const"
+   },
+   {
+    "at": "0x0044732b",
+    "dir": "write",
+    "addr": "0x00bd2170",
+    "addr_sym": "_G_LLM_PROD_SHUTTLE_SLOTS[0].src_building_index",
+    "addr_expr": null,
+    "size": 63680,
+    "size_expr": null,
+    "file_h_expr": [
+     "MOV EAX,0xc38730",
+     "CALL 0x00448661",
+     "ADD dword ptr [EBP + -0x24],EAX",
+     "MOV EBX,dword ptr [EBP + -0x34]"
+    ],
+    "kind": "const"
+   },
+   {
+    "at": "0x00447340",
+    "dir": "write",
+    "addr": "0x00c38750",
+    "addr_sym": "progress",
+    "addr_expr": null,
+    "size": 7200,
+    "size_expr": null,
+    "file_h_expr": [
+     "MOV EAX,0xbd2170",
+     "CALL 0x00448661",
+     "ADD dword ptr [EBP + -0x24],EAX",
+     "MOV EBX,dword ptr [EBP + -0x34]"
+    ],
+    "kind": "const"
+   },
+   {
+    "at": "0x00447355",
+    "dir": "write",
+    "addr": "0x00e58344",
+    "addr_sym": "_G_LLM_GAME_SESSION_MODE",
+    "addr_expr": null,
+    "size": 1623,
+    "size_expr": null,
+    "file_h_expr": [
+     "MOV EAX,0xc38750",
+     "CALL 0x00448661",
+     "ADD dword ptr [EBP + -0x24],EAX",
+     "MOV EBX,dword ptr [EBP + -0x34]"
+    ],
+    "kind": "const"
+   },
+   {
+    "at": "0x0044736a",
+    "dir": "write",
+    "addr": "0x005ce484",
+    "addr_sym": "MESSAGE_QUEUE",
+    "addr_expr": null,
+    "size": 7200,
+    "size_expr": null,
+    "file_h_expr": [
+     "MOV EAX,0xe58344",
+     "CALL 0x00448661",
+     "ADD dword ptr [EBP + -0x24],EAX",
+     "MOV EBX,dword ptr [EBP + -0x34]"
+    ],
+    "kind": "const"
+   },
+   {
+    "at": "0x0044737f",
+    "dir": "write",
+    "addr": "0x00ae4b90",
+    "addr_sym": "MESSAGE_TIME",
+    "addr_expr": null,
+    "size": 240,
+    "size_expr": null,
+    "file_h_expr": [
+     "MOV EAX,0x5ce484",
+     "CALL 0x00448661",
+     "ADD dword ptr [EBP + -0x24],EAX",
+     "MOV EBX,dword ptr [EBP + -0x34]"
+    ],
+    "kind": "const"
+   },
+   {
+    "at": "0x00447394",
+    "dir": "write",
+    "addr": "0x00e162a0",
+    "addr_sym": "_G_LLM_STRAT_FLOATING_MSG_COLOR",
+    "addr_expr": null,
+    "size": 60,
+    "size_expr": null,
+    "file_h_expr": [
+     "MOV EAX,0xae4b90",
+     "CALL 0x00448661",
+     "ADD dword ptr [EBP + -0x24],EAX",
+     "MOV EBX,dword ptr [EBP + -0x34]"
+    ],
+    "kind": "const"
+   },
+   {
+    "at": "0x004473a9",
+    "dir": "write",
+    "addr": "0x00ae2b00",
+    "addr_sym": "_G_LLM_ANIM_PLACE_DENIED",
+    "addr_expr": null,
+    "size": 8,
+    "size_expr": null,
+    "file_h_expr": [
+     "MOV EAX,0xe162a0",
+     "CALL 0x00448661",
+     "ADD dword ptr [EBP + -0x24],EAX",
+     "MOV EBX,dword ptr [EBP + -0x34]"
+    ],
+    "kind": "const"
+   },
+   {
+    "at": "0x004473be",
+    "dir": "write",
+    "addr": "0x00bca820",
+    "addr_sym": "_G_LLM_STRAT_INVASION_ALERT_TIME",
+    "addr_expr": null,
+    "size": 256,
+    "size_expr": null,
+    "file_h_expr": [
+     "MOV EAX,0xae2b00",
+     "CALL 0x00448661",
+     "ADD dword ptr [EBP + -0x24],EAX",
+     "MOV EBX,dword ptr [EBP + -0x34]"
+    ],
+    "kind": "const"
+   },
+   {
+    "at": "0x004473d3",
+    "dir": "write",
+    "addr": "0x00b64ba8",
+    "addr_sym": "_G_LLM_STRAT_ADVISOR_NEXT_TIME",
+    "addr_expr": null,
+    "size": 8,
+    "size_expr": null,
+    "file_h_expr": [
+     "MOV EAX,0xbca820",
+     "CALL 0x00448661",
+     "ADD dword ptr [EBP + -0x24],EAX",
+     "MOV EBX,dword ptr [EBP + -0x34]"
+    ],
+    "kind": "const"
+   },
+   {
+    "at": "0x004473ef",
+    "dir": "raw",
+    "raw_call": "close_file",
+    "kind": "raw",
+    "eax": {
+     "expr": [
+      "ADD dword ptr [EBP + -0x24],EAX",
+      "CMP dword ptr [EBP + -0x24],0x0",
+      "JZ 0x00447400",
+      "MOV EAX,dword ptr [EBP + -0x34]"
+     ],
+     "sym": null
+    },
+    "edx": {},
+    "ebx": {},
+    "hist": [
+     "CALL 0x0041c152",
+     "ADD dword ptr [EBP + -0x24],EAX",
+     "CMP dword ptr [EBP + -0x24],0x0",
+     "JZ 0x00447400",
+     "MOV EAX,dword ptr [EBP + -0x34]",
+     "CALL 0x004cf7d1"
+    ]
+   },
+   {
+    "at": "0x004474ed",
+    "dir": "raw",
+    "raw_call": "open_file",
+    "kind": "raw",
+    "eax": {
+     "expr": [
+      "JNZ 0x004474c9",
+      "POP EDI",
+      "MOV EDX,0x500cda",
+      "LEA EAX,[EBP + 0xfffffe98]"
+     ],
+     "sym": null
+    },
+    "edx": {
+     "imm": 5246170,
+     "sym": "ReadBinary"
+    },
+    "ebx": {},
+    "hist": [
+     "CMP AL,0x0",
+     "JNZ 0x004474c9",
+     "POP EDI",
+     "MOV EDX,0x500cda",
+     "LEA EAX,[EBP + 0xfffffe98]",
+     "CALL 0x004cf6c4"
+    ]
+   },
+   {
+    "at": "0x0044753d",
+    "dir": "raw",
+    "raw_call": "write_to_file",
+    "kind": "raw",
+    "eax": {
+     "expr": [
+      "MOV ECX,dword ptr [EBP + -0x34]",
+      "MOV EBX,0x1",
+      "MOV EDX,0x4",
+      "LEA EAX,[EBP + -0x1c]"
+     ],
+     "sym": null
+    },
+    "edx": {
+     "imm": 4,
+     "sym": null
+    },
+    "ebx": {
+     "imm": 1,
+     "sym": null
+    },
+    "hist": [
+     "CALL 0x004cfc13",
+     "MOV ECX,dword ptr [EBP + -0x34]",
+     "MOV EBX,0x1",
+     "MOV EDX,0x4",
+     "LEA EAX,[EBP + -0x1c]",
+     "CALL 0x004cff57"
+    ]
+   },
+   {
+    "at": "0x00447581",
+    "dir": "raw",
+    "raw_call": "read_from_file",
+    "kind": "raw",
+    "eax": {
+     "imm": 10809640,
+     "sym": "G_LZW_TEMP_DATA"
+    },
+    "edx": {
+     "expr": [
+      "MOV dword ptr [EBP + -0x2c],EAX",
+      "MOV ECX,dword ptr [EBP + -0x20]",
+      "MOV EBX,0x1",
+      "MOV EDX,dword ptr [EBP + -0x2c]"
+     ],
+     "sym": null
+    },
+    "ebx": {
+     "imm": 1,
+     "sym": null
+    },
+    "hist": [
+     "MOV dword ptr [EBP + -0x2c],EAX",
+     "MOV ECX,dword ptr [EBP + -0x20]",
+     "MOV EBX,0x1",
+     "MOV EDX,dword ptr [EBP + -0x2c]",
+     "MOV EAX,0xa4f128",
+     "CALL 0x004cfd58"
+    ]
+   },
+   {
+    "at": "0x00447596",
+    "dir": "raw",
+    "raw_call": "write_to_file",
+    "kind": "raw",
+    "eax": {
+     "imm": 10809640,
+     "sym": "G_LZW_TEMP_DATA"
+    },
+    "edx": {
+     "expr": [
+      "CALL 0x004cfd58",
+      "MOV ECX,dword ptr [EBP + -0x34]",
+      "MOV EBX,0x1",
+      "MOV EDX,dword ptr [EBP + -0x2c]"
+     ],
+     "sym": null
+    },
+    "ebx": {
+     "imm": 1,
+     "sym": null
+    },
+    "hist": [
+     "CALL 0x004cfd58",
+     "MOV ECX,dword ptr [EBP + -0x34]",
+     "MOV EBX,0x1",
+     "MOV EDX,dword ptr [EBP + -0x2c]",
+     "MOV EAX,0xa4f128",
+     "CALL 0x004cff57"
+    ]
+   },
+   {
+    "at": "0x004475a6",
+    "dir": "raw",
+    "raw_call": "close_file",
+    "kind": "raw",
+    "eax": {
+     "expr": [
+      "MOV EAX,dword ptr [EBP + -0x2c]",
+      "SUB dword ptr [EBP + -0x1c],EAX",
+      "JMP 0x00447553",
+      "MOV EAX,dword ptr [EBP + -0x20]"
+     ],
+     "sym": null
+    },
+    "edx": {},
+    "ebx": {},
+    "hist": [
+     "CALL 0x004cff57",
+     "MOV EAX,dword ptr [EBP + -0x2c]",
+     "SUB dword ptr [EBP + -0x1c],EAX",
+     "JMP 0x00447553",
+     "MOV EAX,dword ptr [EBP + -0x20]",
+     "CALL 0x004cf7d1"
+    ]
+   },
+   {
+    "at": "0x004475bd",
+    "dir": "write",
+    "addr": null,
+    "addr_sym": null,
+    "addr_expr": null,
+    "size": null,
+    "size_expr": null,
+    "file_h_expr": null,
+    "kind": "expr"
+   },
+   {
+    "at": "0x004475c5",
+    "dir": "raw",
+    "raw_call": "close_file",
+    "kind": "raw",
+    "eax": {
+     "expr": [
+      "MOV EDX,0x400",
+      "CALL 0x004ce728",
+      "CALL 0x00448661",
+      "MOV EAX,dword ptr [EBP + -0x34]"
+     ],
+     "sym": null
+    },
+    "edx": {},
+    "ebx": {},
+    "hist": [
+     "MOV EBX,dword ptr [EBP + -0x34]",
+     "MOV EDX,0x400",
+     "CALL 0x004ce728",
+     "CALL 0x00448661",
+     "MOV EAX,dword ptr [EBP + -0x34]",
+     "CALL 0x004cf7d1"
+    ]
+   }
+  ],
+  "llm_game_load": [
+   {
+    "at": "0x00447688",
+    "dir": "raw",
+    "raw_call": "open_file",
+    "kind": "raw",
+    "eax": {
+     "expr": [
+      "JNZ 0x00447664",
+      "POP EDI",
+      "MOV EDX,0x500cda",
+      "LEA EAX,[EBP + 0xfffffe94]"
+     ],
+     "sym": null
+    },
+    "edx": {
+     "imm": 5246170,
+     "sym": "ReadBinary"
+    },
+    "ebx": {},
+    "hist": [
+     "CMP AL,0x0",
+     "JNZ 0x00447664",
+     "POP EDI",
+     "MOV EDX,0x500cda",
+     "LEA EAX,[EBP + 0xfffffe94]",
+     "CALL 0x004cf6c4"
+    ]
+   },
+   {
+    "at": "0x004476b4",
+    "dir": "raw",
+    "raw_call": "read_from_file",
+    "kind": "raw",
+    "eax": {
+     "imm": 10809640,
+     "sym": "G_LZW_TEMP_DATA"
+    },
+    "edx": {
+     "imm": 40,
+     "sym": null
+    },
+    "ebx": {
+     "imm": 1,
+     "sym": null
+    },
+    "hist": [
+     "JMP 0x00447ba6",
+     "MOV ECX,dword ptr [EBP + -0x28]",
+     "MOV EBX,0x1",
+     "MOV EDX,0x28",
+     "MOV EAX,0xa4f128",
+     "CALL 0x004cfd58"
+    ]
+   },
+   {
+    "at": "0x004476ec",
+    "dir": "raw",
+    "raw_call": "close_file",
+    "kind": "raw",
+    "eax": {
+     "expr": [
+      "SBB EAX,-0x1",
+      "TEST EAX,EAX",
+      "JZ 0x004476fd",
+      "MOV EAX,dword ptr [EBP + -0x28]"
+     ],
+     "sym": null
+    },
+    "edx": {},
+    "ebx": {},
+    "hist": [
+     "SBB EAX,EAX",
+     "SBB EAX,-0x1",
+     "TEST EAX,EAX",
+     "JZ 0x004476fd",
+     "MOV EAX,dword ptr [EBP + -0x28]",
+     "CALL 0x004cf7d1"
+    ]
+   },
+   {
+    "at": "0x00447767",
+    "dir": "raw",
+    "raw_call": "close_file",
+    "kind": "raw",
+    "eax": {
+     "expr": [
+      "JMP 0x0044771e",
+      "CMP dword ptr [EBP + -0x1c],-0x1",
+      "JNZ 0x00447778",
+      "MOV EAX,dword ptr [EBP + -0x28]"
+     ],
+     "sym": null
+    },
+    "edx": {},
+    "ebx": {},
+    "hist": [
+     "MOV dword ptr [EBP + -0x1c],EAX",
+     "JMP 0x0044771e",
+     "CMP dword ptr [EBP + -0x1c],-0x1",
+     "JNZ 0x00447778",
+     "MOV EAX,dword ptr [EBP + -0x28]",
+     "CALL 0x004cf7d1"
+    ]
+   },
+   {
+    "at": "0x00447785",
+    "dir": "read",
+    "addr": "0x00e4a098",
+    "addr_sym": "Unit",
+    "addr_expr": null,
+    "size": 57500,
+    "size_expr": null,
+    "file_h_expr": [
+     "CALL 0x004cf7d1",
+     "MOV dword ptr [EBP + -0x18],0x0",
+     "JMP 0x00447ba6",
+     "MOV EBX,dword ptr [EBP + -0x28]"
+    ],
+    "kind": "const"
+   },
+   {
+    "at": "0x0044779a",
+    "dir": "read",
+    "addr": "0x00d9ec80",
+    "addr_sym": "Building",
+    "addr_expr": null,
+    "size": 211400,
+    "size_expr": null,
+    "file_h_expr": [
+     "MOV EAX,0xe4a098",
+     "CALL 0x004486e6",
+     "ADD dword ptr [EBP + -0x30],EAX",
+     "MOV EBX,dword ptr [EBP + -0x28]"
+    ],
+    "kind": "const"
+   },
+   {
+    "at": "0x004477af",
+    "dir": "read",
+    "addr": "0x00c3a520",
+    "addr_sym": "Weapon",
+    "addr_expr": null,
+    "size": 11648,
+    "size_expr": null,
+    "file_h_expr": [
+     "MOV EAX,0xd9ec80",
+     "CALL 0x004486e6",
+     "ADD dword ptr [EBP + -0x30],EAX",
+     "MOV EBX,dword ptr [EBP + -0x28]"
+    ],
+    "kind": "const"
+   },
+   {
+    "at": "0x004477cb",
+    "dir": "read",
+    "addr": null,
+    "addr_sym": null,
+    "addr_expr": [
+     "JGE 0x004477d3",
+     "MOV EBX,dword ptr [EBP + -0x28]",
+     "MOV EDX,0x78b4",
+     "LEA EAX,[EBP + 0xffff85dc]"
+    ],
+    "size": 30900,
+    "size_expr": null,
+    "file_h_expr": [
+     "ADD dword ptr [EBP + -0x30],EAX",
+     "CMP dword ptr [EBP + -0x1c],0x2",
+     "JGE 0x004477d3",
+     "MOV EBX,dword ptr [EBP + -0x28]"
+    ],
+    "kind": "expr"
+   },
+   {
+    "at": "0x004477e0",
+    "dir": "read",
+    "addr": "0x00be1a30",
+    "addr_sym": "System",
+    "addr_expr": null,
+    "size": 560,
+    "size_expr": null,
+    "file_h_expr": [
+     "LEA EAX,[EBP + 0xffff85dc]",
+     "CALL 0x004486e6",
+     "ADD dword ptr [EBP + -0x30],EAX",
+     "MOV EBX,dword ptr [EBP + -0x28]"
+    ],
+    "kind": "const"
+   },
+   {
+    "at": "0x004477f5",
+    "dir": "read",
+    "addr": "0x00be6da0",
+    "addr_sym": "Planets",
+    "addr_expr": null,
+    "size": 34016,
+    "size_expr": null,
+    "file_h_expr": [
+     "MOV EAX,0xbe1a30",
+     "CALL 0x004486e6",
+     "ADD dword ptr [EBP + -0x30],EAX",
+     "MOV EBX,dword ptr [EBP + -0x28]"
+    ],
+    "kind": "const"
+   },
+   {
+    "at": "0x0044780a",
+    "dir": "read",
+    "addr": "0x00be1c60",
+    "addr_sym": "Projects",
+    "addr_expr": null,
+    "size": 20800,
+    "size_expr": null,
+    "file_h_expr": [
+     "MOV EAX,0xbe6da0",
+     "CALL 0x004486e6",
+     "ADD dword ptr [EBP + -0x30],EAX",
+     "MOV EBX,dword ptr [EBP + -0x28]"
+    ],
+    "kind": "const"
+   },
+   {
+    "at": "0x0044781f",
+    "dir": "read",
+    "addr": "0x00bcf8d0",
+    "addr_sym": "Upgrades",
+    "addr_expr": null,
+    "size": 10400,
+    "size_expr": null,
+    "file_h_expr": [
+     "MOV EAX,0xbe1c60",
+     "CALL 0x004486e6",
+     "ADD dword ptr [EBP + -0x30],EAX",
+     "MOV EBX,dword ptr [EBP + -0x28]"
+    ],
+    "kind": "const"
+   },
+   {
+    "at": "0x00447834",
+    "dir": "read",
+    "addr": "0x00cff060",
+    "addr_sym": "_G_LLM_STRAT_PLAYERS",
+    "addr_expr": null,
+    "size": 14848,
+    "size_expr": null,
+    "file_h_expr": [
+     "MOV EAX,0xbcf8d0",
+     "CALL 0x004486e6",
+     "ADD dword ptr [EBP + -0x30],EAX",
+     "MOV EBX,dword ptr [EBP + -0x28]"
+    ],
+    "kind": "const"
+   },
+   {
+    "at": "0x00447849",
+    "dir": "read",
+    "addr": "0x00c38730",
+    "addr_sym": "DAT_00c38730",
+    "addr_expr": null,
+    "size": 16,
+    "size_expr": null,
+    "file_h_expr": [
+     "MOV EAX,0xcff060",
+     "CALL 0x004486e6",
+     "ADD dword ptr [EBP + -0x30],EAX",
+     "MOV EBX,dword ptr [EBP + -0x28]"
+    ],
+    "kind": "const"
+   },
+   {
+    "at": "0x0044785e",
+    "dir": "read",
+    "addr": "0x00bd2170",
+    "addr_sym": "_G_LLM_PROD_SHUTTLE_SLOTS[0].src_building_index",
+    "addr_expr": null,
+    "size": 63680,
+    "size_expr": null,
+    "file_h_expr": [
+     "MOV EAX,0xc38730",
+     "CALL 0x004486e6",
+     "ADD dword ptr [EBP + -0x30],EAX",
+     "MOV EBX,dword ptr [EBP + -0x28]"
+    ],
+    "kind": "const"
+   },
+   {
+    "at": "0x00447873",
+    "dir": "read",
+    "addr": "0x00c38750",
+    "addr_sym": "progress",
+    "addr_expr": null,
+    "size": 7200,
+    "size_expr": null,
+    "file_h_expr": [
+     "MOV EAX,0xbd2170",
+     "CALL 0x004486e6",
+     "ADD dword ptr [EBP + -0x30],EAX",
+     "MOV EBX,dword ptr [EBP + -0x28]"
+    ],
+    "kind": "const"
+   },
+   {
+    "at": "0x00447888",
+    "dir": "read",
+    "addr": "0x00e58344",
+    "addr_sym": "_G_LLM_GAME_SESSION_MODE",
+    "addr_expr": null,
+    "size": 1623,
+    "size_expr": null,
+    "file_h_expr": [
+     "MOV EAX,0xc38750",
+     "CALL 0x004486e6",
+     "ADD dword ptr [EBP + -0x30],EAX",
+     "MOV EBX,dword ptr [EBP + -0x28]"
+    ],
+    "kind": "const"
+   },
+   {
+    "at": "0x004478a4",
+    "dir": "read",
+    "addr": null,
+    "addr_sym": null,
+    "addr_expr": [
+     "JGE 0x004478f8",
+     "MOV EBX,dword ptr [EBP + -0x28]",
+     "MOV EDX,0xe10",
+     "LEA EAX,[EBP + 0xffff77c8]"
+    ],
+    "size": 3600,
+    "size_expr": null,
+    "file_h_expr": [
+     "ADD dword ptr [EBP + -0x30],EAX",
+     "CMP dword ptr [EBP + -0x1c],0x4",
+     "JGE 0x004478f8",
+     "MOV EBX,dword ptr [EBP + -0x28]"
+    ],
+    "kind": "expr"
+   },
+   {
+    "at": "0x00447905",
+    "dir": "read",
+    "addr": "0x005ce484",
+    "addr_sym": "MESSAGE_QUEUE",
+    "addr_expr": null,
+    "size": 7200,
+    "size_expr": null,
+    "file_h_expr": [
+     "CALL 0x004cf379",
+     "JMP 0x004478c1",
+     "JMP 0x0044790d",
+     "MOV EBX,dword ptr [EBP + -0x28]"
+    ],
+    "kind": "const"
+   },
+   {
+    "at": "0x0044791a",
+    "dir": "read",
+    "addr": "0x00ae4b90",
+    "addr_sym": "MESSAGE_TIME",
+    "addr_expr": null,
+    "size": 240,
+    "size_expr": null,
+    "file_h_expr": [
+     "MOV EAX,0x5ce484",
+     "CALL 0x004486e6",
+     "ADD dword ptr [EBP + -0x30],EAX",
+     "MOV EBX,dword ptr [EBP + -0x28]"
+    ],
+    "kind": "const"
+   },
+   {
+    "at": "0x0044792f",
+    "dir": "read",
+    "addr": "0x00e162a0",
+    "addr_sym": "_G_LLM_STRAT_FLOATING_MSG_COLOR",
+    "addr_expr": null,
+    "size": 60,
+    "size_expr": null,
+    "file_h_expr": [
+     "MOV EAX,0xae4b90",
+     "CALL 0x004486e6",
+     "ADD dword ptr [EBP + -0x30],EAX",
+     "MOV EBX,dword ptr [EBP + -0x28]"
+    ],
+    "kind": "const"
+   },
+   {
+    "at": "0x00447944",
+    "dir": "read",
+    "addr": "0x00ae2b00",
+    "addr_sym": "_G_LLM_ANIM_PLACE_DENIED",
+    "addr_expr": null,
+    "size": 8,
+    "size_expr": null,
+    "file_h_expr": [
+     "MOV EAX,0xe162a0",
+     "CALL 0x004486e6",
+     "ADD dword ptr [EBP + -0x30],EAX",
+     "MOV EBX,dword ptr [EBP + -0x28]"
+    ],
+    "kind": "const"
+   },
+   {
+    "at": "0x0044795f",
+    "dir": "read",
+    "addr": "0x00bca820",
+    "addr_sym": "_G_LLM_STRAT_INVASION_ALERT_TIME",
+    "addr_expr": null,
+    "size": 256,
+    "size_expr": null,
+    "file_h_expr": [
+     "ADD dword ptr [EBP + -0x30],EAX",
+     "CMP dword ptr [EBP + -0x1c],0x5",
+     "JL 0x0044797e",
+     "MOV EBX,dword ptr [EBP + -0x28]"
+    ],
+    "kind": "const"
+   },
+   {
+    "at": "0x00447974",
+    "dir": "read",
+    "addr": "0x00b64ba8",
+    "addr_sym": "_G_LLM_STRAT_ADVISOR_NEXT_TIME",
+    "addr_expr": null,
+    "size": 8,
+    "size_expr": null,
+    "file_h_expr": [
+     "MOV EAX,0xbca820",
+     "CALL 0x004486e6",
+     "ADD dword ptr [EBP + -0x30],EAX",
+     "MOV EBX,dword ptr [EBP + -0x28]"
+    ],
+    "kind": "const"
+   },
+   {
+    "at": "0x00447997",
+    "dir": "raw",
+    "raw_call": "close_file",
+    "kind": "raw",
+    "eax": {
+     "expr": [
+      "ADD dword ptr [EBP + -0x30],EAX",
+      "CMP dword ptr [EBP + -0x30],0x0",
+      "JZ 0x004479a8",
+      "MOV EAX,dword ptr [EBP + -0x28]"
+     ],
+     "sym": null
+    },
+    "edx": {},
+    "ebx": {},
+    "hist": [
+     "CALL 0x0041c19c",
+     "ADD dword ptr [EBP + -0x30],EAX",
+     "CMP dword ptr [EBP + -0x30],0x0",
+     "JZ 0x004479a8",
+     "MOV EAX,dword ptr [EBP + -0x28]",
+     "CALL 0x004cf7d1"
+    ]
+   },
+   {
+    "at": "0x00447a95",
+    "dir": "raw",
+    "raw_call": "open_file",
+    "kind": "raw",
+    "eax": {
+     "expr": [
+      "JNZ 0x00447a71",
+      "POP EDI",
+      "MOV EDX,0x500cca",
+      "LEA EAX,[EBP + 0xfffffe94]"
+     ],
+     "sym": null
+    },
+    "edx": {
+     "imm": 5246154,
+     "sym": "DAT_00500cca"
+    },
+    "ebx": {},
+    "hist": [
+     "CMP AL,0x0",
+     "JNZ 0x00447a71",
+     "POP EDI",
+     "MOV EDX,0x500cca",
+     "LEA EAX,[EBP + 0xfffffe94]",
+     "CALL 0x004cf6c4"
+    ]
+   },
+   {
+    "at": "0x00447abf",
+    "dir": "raw",
+    "raw_call": "read_from_file",
+    "kind": "raw",
+    "eax": {
+     "expr": [
+      "MOV ECX,dword ptr [EBP + -0x28]",
+      "MOV EBX,0x1",
+      "MOV EDX,0x4",
+      "LEA EAX,[EBP + -0x24]"
+     ],
+     "sym": null
+    },
+    "edx": {
+     "imm": 4,
+     "sym": null
+    },
+    "ebx": {
+     "imm": 1,
+     "sym": null
+    },
+    "hist": [
+     "JMP 0x00447ba6",
+     "MOV ECX,dword ptr [EBP + -0x28]",
+     "MOV EBX,0x1",
+     "MOV EDX,0x4",
+     "LEA EAX,[EBP + -0x24]",
+     "CALL 0x004cfd58"
+    ]
+   },
+   {
+    "at": "0x00447af2",
+    "dir": "raw",
+    "raw_call": "read_from_file",
+    "kind": "raw",
+    "eax": {
+     "imm": 10809640,
+     "sym": "G_LZW_TEMP_DATA"
+    },
+    "edx": {
+     "expr": [
+      "MOV dword ptr [EBP + -0x20],EAX",
+      "MOV ECX,dword ptr [EBP + -0x28]",
+      "MOV EBX,0x1",
+      "MOV EDX,dword ptr [EBP + -0x20]"
+     ],
+     "sym": null
+    },
+    "ebx": {
+     "imm": 1,
+     "sym": null
+    },
+    "hist": [
+     "MOV dword ptr [EBP + -0x20],EAX",
+     "MOV ECX,dword ptr [EBP + -0x28]",
+     "MOV EBX,0x1",
+     "MOV EDX,dword ptr [EBP + -0x20]",
+     "MOV EAX,0xa4f128",
+     "CALL 0x004cfd58"
+    ]
+   },
+   {
+    "at": "0x00447b07",
+    "dir": "raw",
+    "raw_call": "write_to_file",
+    "kind": "raw",
+    "eax": {
+     "imm": 10809640,
+     "sym": "G_LZW_TEMP_DATA"
+    },
+    "edx": {
+     "expr": [
+      "CALL 0x004cfd58",
+      "MOV ECX,dword ptr [EBP + -0x38]",
+      "MOV EBX,0x1",
+      "MOV EDX,dword ptr [EBP + -0x20]"
+     ],
+     "sym": null
+    },
+    "ebx": {
+     "imm": 1,
+     "sym": null
+    },
+    "hist": [
+     "CALL 0x004cfd58",
+     "MOV ECX,dword ptr [EBP + -0x38]",
+     "MOV EBX,0x1",
+     "MOV EDX,dword ptr [EBP + -0x20]",
+     "MOV EAX,0xa4f128",
+     "CALL 0x004cff57"
+    ]
+   },
+   {
+    "at": "0x00447b17",
+    "dir": "raw",
+    "raw_call": "close_file",
+    "kind": "raw",
+    "eax": {
+     "expr": [
+      "MOV EAX,dword ptr [EBP + -0x20]",
+      "SUB dword ptr [EBP + -0x24],EAX",
+      "JMP 0x00447ac4",
+      "MOV EAX,dword ptr [EBP + -0x38]"
+     ],
+     "sym": null
+    },
+    "edx": {},
+    "ebx": {},
+    "hist": [
+     "CALL 0x004cff57",
+     "MOV EAX,dword ptr [EBP + -0x20]",
+     "SUB dword ptr [EBP + -0x24],EAX",
+     "JMP 0x00447ac4",
+     "MOV EAX,dword ptr [EBP + -0x38]",
+     "CALL 0x004cf7d1"
+    ]
+   },
+   {
+    "at": "0x00447b24",
+    "dir": "raw",
+    "raw_call": "close_file",
+    "kind": "raw",
+    "eax": {
+     "expr": [
+      "MOV EAX,dword ptr [EBP + -0x38]",
+      "CALL 0x004cf7d1",
+      "JMP 0x004479ba",
+      "MOV EAX,dword ptr [EBP + -0x28]"
+     ],
+     "sym": null
+    },
+    "edx": {},
+    "ebx": {},
+    "hist": [
+     "JMP 0x00447ac4",
+     "MOV EAX,dword ptr [EBP + -0x38]",
+     "CALL 0x004cf7d1",
+     "JMP 0x004479ba",
+     "MOV EAX,dword ptr [EBP + -0x28]",
+     "CALL 0x004cf7d1"
+    ]
+   }
+  ],
+  "llm_game_load_available_projects": [
+   {
+    "at": "0x0041c1cb",
+    "dir": "read",
+    "addr": "0x0050b077",
+    "addr_sym": "AvailableProjects",
+    "addr_expr": null,
+    "size": 3200,
+    "size_expr": null,
+    "file_h_expr": [
+     "SUB ESP,0xc",
+     "MOV dword ptr [EBP + -0x20],EAX",
+     "MOV dword ptr [EBP + -0x1c],0x0",
+     "MOV EBX,dword ptr [EBP + -0x20]"
+    ],
+    "kind": "const"
+   }
+  ],
+  "llm_game_save_player_data": [
+   {
+    "at": "0x004dda81",
+    "dir": "write",
+    "addr": "0x006616a8",
+    "addr_sym": "_G_LLM_STRAT_AI_ACTIVE_PLAYER_COUNT",
+    "addr_expr": null,
+    "size": 4,
+    "size_expr": null,
+    "file_h_expr": [
+     "PUSH ECX",
+     "PUSH EDX",
+     "MOV ECX,EAX",
+     "MOV EBX,EAX"
+    ],
+    "kind": "const"
+   },
+   {
+    "at": "0x004dda92",
+    "dir": "write",
+    "addr": "0x00e6ded0",
+    "addr_sym": null,
+    "addr_expr": null,
+    "size": 1329120,
+    "size_expr": null,
+    "file_h_expr": [
+     "MOV EDX,0x4",
+     "MOV EAX,0x6616a8",
+     "CALL 0x00448661",
+     "MOV EBX,ECX"
+    ],
+    "kind": "const"
+   }
+  ],
+  "llm_map_load_regions": [
+   {
+    "at": "0x00424ad5",
+    "dir": "read",
+    "addr": "0x0051de84",
+    "addr_sym": "counter",
+    "addr_expr": null,
+    "size": 4,
+    "size_expr": null,
+    "file_h_expr": [
+     "CALL 0x00423299",
+     "MOV dword ptr [0x0051de7c],0x0",
+     "MOV dword ptr [0x0051de80],0x0",
+     "MOV EBX,dword ptr [EBP + -0x38]"
+    ],
+    "kind": "const"
+   },
+   {
+    "at": "0x00424ae7",
+    "dir": "read",
+    "addr": "0x00708acc",
+    "addr_sym": "_G_LLM_MAP_REGION_MERGE_THRESHOLD",
+    "addr_expr": null,
+    "size": 4,
+    "size_expr": null,
+    "file_h_expr": [
+     "MOV EDX,0x4",
+     "MOV EAX,0x51de84",
+     "CALL 0x004486e6",
+     "MOV EBX,dword ptr [EBP + -0x38]"
+    ],
+    "kind": "const"
+   },
+   {
+    "at": "0x00424af9",
+    "dir": "read",
+    "addr": "0x00708b1c",
+    "addr_sym": "count",
+    "addr_expr": null,
+    "size": 4,
+    "size_expr": null,
+    "file_h_expr": [
+     "MOV EDX,0x4",
+     "MOV EAX,0x708acc",
+     "CALL 0x004486e6",
+     "MOV EBX,dword ptr [EBP + -0x38]"
+    ],
+    "kind": "const"
+   },
+   {
+    "at": "0x00424b0b",
+    "dir": "read",
+    "addr": "0x00708b18",
+    "addr_sym": "G_LAST_MAP_INDEX",
+    "addr_expr": null,
+    "size": 4,
+    "size_expr": null,
+    "file_h_expr": [
+     "MOV EDX,0x4",
+     "MOV EAX,0x708b1c",
+     "CALL 0x004486e6",
+     "MOV EBX,dword ptr [EBP + -0x38]"
+    ],
+    "kind": "const"
+   },
+   {
+    "at": "0x00424b50",
+    "dir": "read",
+    "addr": null,
+    "addr_sym": null,
+    "addr_expr": [
+     "MOV EBX,dword ptr [EBP + -0x38]",
+     "MOV EDX,0x40c",
+     "IMUL EAX,dword ptr [EBP + -0x34],0x40c",
+     "ADD EAX,dword ptr [EBP + -0x24]"
+    ],
+    "size": 1036,
+    "size_expr": null,
+    "file_h_expr": [
+     "MOV EAX,dword ptr [EBP + -0x34]",
+     "INC dword ptr [EBP + -0x34]",
+     "JMP 0x00424b29",
+     "MOV EBX,dword ptr [EBP + -0x38]"
+    ],
+    "kind": "expr"
+   },
+   {
+    "at": "0x00424d35",
+    "dir": "read",
+    "addr": null,
+    "addr_sym": null,
+    "addr_expr": [
+     "MOV dword ptr [EBP + -0x1c],EAX",
+     "MOV EBX,dword ptr [EBP + -0x38]",
+     "MOV EDX,0x40000",
+     "MOV EAX,dword ptr [EBP + -0x1c]"
+    ],
+    "size": 262144,
+    "size_expr": null,
+    "file_h_expr": [
+     "MOV EAX,0x40000",
+     "CALL 0x004d0155",
+     "MOV dword ptr [EBP + -0x1c],EAX",
+     "MOV EBX,dword ptr [EBP + -0x38]"
+    ],
+    "kind": "expr"
+   },
+   {
+    "at": "0x00424df8",
+    "dir": "read",
+    "addr": null,
+    "addr_sym": null,
+    "addr_expr": [
+     "MOV dword ptr [EBP + -0x18],EAX",
+     "MOV EBX,dword ptr [EBP + -0x38]",
+     "MOV EDX,0x10000",
+     "MOV EAX,dword ptr [EBP + -0x18]"
+    ],
+    "size": 65536,
+    "size_expr": null,
+    "file_h_expr": [
+     "MOV EAX,0x10000",
+     "CALL 0x004d0155",
+     "MOV dword ptr [EBP + -0x18],EAX",
+     "MOV EBX,dword ptr [EBP + -0x38]"
+    ],
+    "kind": "expr"
+   }
+  ],
+  "llm_map_save_regions": [
+   {
+    "at": "0x0042479b",
+    "dir": "write",
+    "addr": "0x0051de84",
+    "addr_sym": "counter",
+    "addr_expr": null,
+    "size": 4,
+    "size_expr": null,
+    "file_h_expr": [
+     "PUSH EDI",
+     "SUB ESP,0x428",
+     "MOV dword ptr [EBP + -0x30],EAX",
+     "MOV EBX,dword ptr [EBP + -0x30]"
+    ],
+    "kind": "const"
+   },
+   {
+    "at": "0x004247ad",
+    "dir": "write",
+    "addr": "0x00708acc",
+    "addr_sym": "_G_LLM_MAP_REGION_MERGE_THRESHOLD",
+    "addr_expr": null,
+    "size": 4,
+    "size_expr": null,
+    "file_h_expr": [
+     "MOV EDX,0x4",
+     "MOV EAX,0x51de84",
+     "CALL 0x00448661",
+     "MOV EBX,dword ptr [EBP + -0x30]"
+    ],
+    "kind": "const"
+   },
+   {
+    "at": "0x004247bf",
+    "dir": "write",
+    "addr": "0x00708b1c",
+    "addr_sym": "count",
+    "addr_expr": null,
+    "size": 4,
+    "size_expr": null,
+    "file_h_expr": [
+     "MOV EDX,0x4",
+     "MOV EAX,0x708acc",
+     "CALL 0x00448661",
+     "MOV EBX,dword ptr [EBP + -0x30]"
+    ],
+    "kind": "const"
+   },
+   {
+    "at": "0x004247d1",
+    "dir": "write",
+    "addr": "0x00708b18",
+    "addr_sym": "G_LAST_MAP_INDEX",
+    "addr_expr": null,
+    "size": 4,
+    "size_expr": null,
+    "file_h_expr": [
+     "MOV EDX,0x4",
+     "MOV EAX,0x708b1c",
+     "CALL 0x00448661",
+     "MOV EBX,dword ptr [EBP + -0x30]"
+    ],
+    "kind": "const"
+   },
+   {
+    "at": "0x00424917",
+    "dir": "write",
+    "addr": null,
+    "addr_sym": null,
+    "addr_expr": [
+     "JMP 0x004248b9",
+     "MOV EBX,dword ptr [EBP + -0x30]",
+     "MOV EDX,0x40c",
+     "LEA EAX,[EBP + 0xfffffbc4]"
+    ],
+    "size": 1036,
+    "size_expr": null,
+    "file_h_expr": [
+     "MOV EAX,dword ptr [EAX + 0x20c]",
+     "MOV dword ptr [EDX + EBP*0x1 + 0xfffffdd0],EAX",
+     "JMP 0x004248b9",
+     "MOV EBX,dword ptr [EBP + -0x30]"
+    ],
+    "kind": "expr"
+   },
+   {
+    "at": "0x004249ce",
+    "dir": "write",
+    "addr": null,
+    "addr_sym": null,
+    "addr_expr": [
+     "JMP 0x00424945",
+     "MOV EBX,dword ptr [EBP + -0x30]",
+     "MOV EDX,0x40000",
+     "MOV EAX,dword ptr [EBP + -0x24]"
+    ],
+    "size": 262144,
+    "size_expr": null,
+    "file_h_expr": [
+     "MOV dword ptr [EAX],0x0",
+     "JMP 0x00424961",
+     "JMP 0x00424945",
+     "MOV EBX,dword ptr [EBP + -0x30]"
+    ],
+    "kind": "expr"
+   },
+   {
+    "at": "0x00424a51",
+    "dir": "write",
+    "addr": null,
+    "addr_sym": null,
+    "addr_expr": [
+     "JMP 0x004249fc",
+     "MOV EBX,dword ptr [EBP + -0x30]",
+     "MOV EDX,0x10000",
+     "MOV EAX,dword ptr [EBP + -0x20]"
+    ],
+    "size": 65536,
+    "size_expr": null,
+    "file_h_expr": [
+     "MOV byte ptr [EAX],DL",
+     "JMP 0x00424a18",
+     "JMP 0x004249fc",
+     "MOV EBX,dword ptr [EBP + -0x30]"
+    ],
+    "kind": "expr"
+   }
+  ],
+  "llm_ui_bldg_panel_load_state": [
+   {
+    "at": "0x0041c279",
+    "dir": "read",
+    "addr": "0x0050aa37",
+    "addr_sym": "AvailableBuildings",
+    "addr_expr": null,
+    "size": 1600,
+    "size_expr": null,
+    "file_h_expr": [
+     "MOV dword ptr [EBP + -0x20],EAX",
+     "MOV dword ptr [EBP + -0x1c],0x0",
+     "CALL 0x0041c061",
+     "MOV EBX,dword ptr [EBP + -0x20]"
+    ],
+    "kind": "const"
+   },
+   {
+    "at": "0x0041c28e",
+    "dir": "read",
+    "addr": "0x0050be03",
+    "addr_sym": "_G_LLM_STRAT_UI_BASE_MARKER_COORDS",
+    "addr_expr": null,
+    "size": 64,
+    "size_expr": null,
+    "file_h_expr": [
+     "MOV EAX,0x50aa37",
+     "CALL 0x004486e6",
+     "ADD dword ptr [EBP + -0x1c],EAX",
+     "MOV EBX,dword ptr [EBP + -0x20]"
+    ],
+    "kind": "const"
+   }
+  ]
+ },
+ "pair_checks": {
+  "SavePlanetToDisk -> LoadPlanetFromDisk": [],
+  "game__SaveGame -> llm_game_load": [
+   "COUNT MISMATCH: 19 written vs 20 read",
+   "slot 3: write(0x00be1a30,560) != read(None,30900)",
+   "slot 4: write(0x00be6da0,34016) != read(0x00be1a30,560)",
+   "slot 5: write(0x00be1c60,20800) != read(0x00be6da0,34016)",
+   "slot 6: write(0x00bcf8d0,10400) != read(0x00be1c60,20800)",
+   "slot 7: write(0x00cff060,14848) != read(0x00bcf8d0,10400)",
+   "slot 8: write(0x00c38730,16) != read(0x00cff060,14848)",
+   "slot 9: write(0x00bd2170,63680) != read(0x00c38730,16)",
+   "slot 10: write(0x00c38750,7200) != read(0x00bd2170,63680)",
+   "slot 11: write(0x00e58344,1623) != read(0x00c38750,7200)",
+   "slot 12: write(0x005ce484,7200) != read(0x00e58344,1623)",
+   "slot 13: write(0x00ae4b90,240) != read(None,3600)",
+   "slot 14: write(0x00e162a0,60) != read(0x005ce484,7200)",
+   "slot 15: write(0x00ae2b00,8) != read(0x00ae4b90,240)",
+   "slot 16: write(0x00bca820,256) != read(0x00e162a0,60)",
+   "slot 17: write(0x00b64ba8,8) != read(0x00ae2b00,8)",
+   "slot 18: write(None,None) != read(0x00bca820,256)"
+  ],
+  "llm_map_save_regions -> llm_map_load_regions": [],
+  "llm_game_save_player_data -> FUN_004ddaa5": [],
+  "FUN_0041c1e6 -> llm_ui_bldg_panel_load_state": [],
+  "FUN_0041c152 -> llm_game_load_available_projects": []
+ }
+}

@@ -1,0 +1,110 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" ToolsVersion="15.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Debug|Win32">
+      <Configuration>Debug</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|Win32">
+      <Configuration>Release</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="net_transport.cpp" />
+    <ClCompile Include="net_key.cpp" />
+    <ClCompile Include="mh_net_dllmain.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="mh_net.def" />
+  </ItemGroup>
+  <PropertyGroup Label="Globals">
+    <VCProjectVersion>15.0</VCProjectVersion>
+    <ProjectGuid>{4F8B2A16-7C39-4D5E-B2A0-6E9147C3F58D}</ProjectGuid>
+    <Keyword>Win32Proj</Keyword>
+    <RootNamespace>mh_net</RootNamespace>
+    <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
+    <ProjectName>mh_net</ProjectName>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">
+    <ConfigurationType>DynamicLibrary</ConfigurationType>
+    <UseDebugLibraries>true</UseDebugLibraries>
+    <PlatformToolset>v143</PlatformToolset>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" Label="Configuration">
+    <ConfigurationType>DynamicLibrary</ConfigurationType>
+    <UseDebugLibraries>false</UseDebugLibraries>
+    <PlatformToolset>v143</PlatformToolset>
+    <!-- WholeProgramOptimization OFF, matching the F4A spike and the msvfw32 shim rather than mh.dll.
+         The transport is socket-bound, so /GL buys nothing measurable here, and it costs two things
+         this module specifically needs: readable objects (check_net_lockstep_refs's OBJ mode cannot
+         read an ANONYMOUS OBJECT) and a straightforward import table for the subset gate. -->
+    <WholeProgramOptimization>false</WholeProgramOptimization>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <LinkIncremental>true</LinkIncremental>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <LinkIncremental>false</LinkIncremental>
+  </PropertyGroup>
+  <ItemDefinitionGroup>
+    <ClCompile>
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <MultiProcessorCompilation>true</MultiProcessorCompilation>
+      <WarningLevel>Level3</WarningLevel>
+      <ConformanceMode>true</ConformanceMode>
+      <LanguageStandard>stdcpp20</LanguageStandard>
+      <PreprocessorDefinitions>WIN32;_WINDOWS;_USRDLL;_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <!-- `include/...` resolves against mh_common the same way it does in mh.dll and the selftest,
+           so net_transport.cpp's include lines are unchanged by the move. The CONTRACT headers stay
+           in mh_common/include on purpose: both sides of the boundary compile against them, and a
+           shared contract in the implementation's own directory is a header one side reaches into. -->
+      <AdditionalIncludeDirectories>$(ProjectDir)..\mh_common;$(ProjectDir)..\mh_common\include;$(SolutionDir)..\mh_net_proto\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ClCompile>
+    <Link>
+      <SubSystem>Windows</SubSystem>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <ModuleDefinitionFile>mh_net.def</ModuleDefinitionFile>
+      <!-- mh_net_proto.lib carries the wire framing + the handshake crypto this transport shares
+           byte-for-byte with the headless relay. It is a STATIC library, so only the objects this
+           module actually uses come across (net_crypto + net_wire); session_info.cpp stays on the
+           mh.dll side where net_discovery.cpp uses it. Nothing of OURS is linked beyond it: there is
+           no mh.lib here and there must not be, because an import of mh.dll would make this module
+           unloadable without it and the reverse edge is deliberately empty. -->
+      <AdditionalDependencies>$(OutDir)mh_net_proto.lib;kernel32.lib;user32.lib;ws2_32.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <IgnoreAllDefaultLibraries>false</IgnoreAllDefaultLibraries>
+    </Link>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <ClCompile>
+      <Optimization>Disabled</Optimization>
+      <!-- NO RuntimeLibrary OVERRIDE HERE, deliberately, and it MIRRORS mh.vcxproj: mh.dll pins the
+           static CRT in Release only and takes the toolset default in Debug. Pinning MultiThreadedDebug
+           here instead produced an unresolved __except_handler4_common, because mh_net_proto.lib is
+           built /MT in BOTH configurations and a /MTd link against it mixes two C runtimes. The
+           subset rule stays true either way, since mh.dll's Debug build carries the same dynamic
+           CRT imports; and the binary the rule is actually ABOUT is the Release one, which is what
+           ships, what a lane deploys, and what check_module_bind.py subset reads. -->
+    </ClCompile>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <ClCompile>
+      <Optimization>MaxSpeed</Optimization>
+      <FunctionLevelLinking>true</FunctionLevelLinking>
+      <IntrinsicFunctions>true</IntrinsicFunctions>
+      <!-- STATIC CRT, matching mh.dll, the msvfw32 shim and the F4A spike before it. Two reasons,
+           and the second is the subset rule: a satellite of a 2001 game must not add a
+           redistributable dependency of its own, and a module loaded from inside another module's
+           DllMain must not drag a second DLL in behind it. A dynamic CRT would put
+           VCRUNTIME140/MSVCP140 in this module's import table, which mh.dll does not import, and
+           the loader would then be initialising a fresh DLL under a lock we hold.
+           (An XML comment may not contain a double hyphen, which is why this one has none.) -->
+      <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
+    </ClCompile>
+  </ItemDefinitionGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+</Project>

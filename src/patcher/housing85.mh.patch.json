@@ -1,0 +1,15 @@
+{
+ "class": "reference",
+ "_class_why": "RU-targeted: its sha256 pins the frozen Russian exe, so mhpatch refuses it against the EN image (measured 2026-09-13) and it can never be an in-memory subject. Kept as the on-disk patch for the RU build.",
+ "target": "mh.exe (retail)",
+ "sha256": "9c4451cf8934a9f446a4f639a3aaa002168030ba512df83a6495bb61861d6a30",
+ "_purpose": "unit_housing_capacity hardcode 50->85 (per-building housing) -- storage repack reverted",
+ "patches": [
+  {
+   "va": "0x00457e94",
+   "expect": "32",
+   "bytes": "55",
+   "_note": "unit_housing_capacity hardcode 50->85 (Construct)"
+  }
+ ]
+}

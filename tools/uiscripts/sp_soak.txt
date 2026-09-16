@@ -1,0 +1,73 @@
+# THE ALL-AI SOAK scenario: an 8-way AI match reached through the real menu, then handed to the
+# harness (which decides when the run ends, exactly as sp_det.txt does -- no captures, no in-game
+# wait here).
+#
+# WHAT MAKES IT ALL-AI. This script seats a computer player in slots 1..7. Slot 0 is the HOST and the
+# lobby has no spinner for it -- its row (70,115) is the host's own name cell. The host slot is
+# converted by the DLL instead: `[harness] all_ai=1` flips its status_flags HUMAN->AI at
+# llm_game_land_players_on_planet entry, so the game's own landing loop routes it through
+# llm_strat_spawn_ai_base like any other computer player. Running this script WITHOUT all_ai=1 gives
+# 1 human + 7 AI, which is a different and much less interesting world -- the `; ALLAI VERIFY` lines
+# in mh_harness.log are what tells the two apart afterwards.
+#
+# SLOT ROW POSITIONS ARE MEASURED, NOT EXTRAPOLATED. mp_host_ai_closed.txt's header documents only
+# slot1=(70,132) and slot2=(70,149); the rest came from a throwaway script that entered this lobby and
+# ran `dump` (2026-08-05). The state-spinner column is x=70 and the rows are
+# y = 115(host) 132 149 166 183 200 217 234 -- a uniform 17 px stride, confirmed all the way to slot 7
+# rather than assumed from the two known ones. Re-measure the same way if the lobby layout changes:
+# `present Network players` / `settled Start` / `dump`, then read mh_uidrive.log.
+#
+# GATE ON `occ`, NOT ON `present Computer`. Each state click rebuilds the widget list, so the clicks
+# need a state predicate between them -- but "Computer" is already on screen from the second seat
+# onward, so that predicate stops being a barrier after the first one and every later click races the
+# rebuild. `occ N` is monotonic and says the ROSTER actually grew, which is the thing being waited on.
+#
+# THE MAP MUST HAVE ENOUGH LANDING SPOTS. llm_strat_claim_landing_spot walks up to 16 declared spots
+# and llm_game_land_players_on_planet IGNORES ITS RETURN VALUE -- with fewer spots than players the
+# extra players land on top of a claimed one instead of failing, so a too-small map degrades quietly.
+# The lobby default here is `Iron 256x256, players: 8`, which is why this script does not pick a map.
+
+settled value:110
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+settled Create
+clickl Create
+present Game name
+settled Ok
+clickl Ok
+present Available maps
+settled Ok
+clickl Ok
+
+present Network players
+settled Start
+
+# seat a computer player in every remaining slot, confirming the roster after each
+click 70 132
+occ 2
+click 70 149
+occ 3
+click 70 166
+occ 4
+click 70 183
+occ 5
+click 70 200
+occ 6
+click 70 217
+occ 7
+click 70 234
+occ 8
+
+enabled Start
+settled Start
+clickl Start
+
+# in-game. Same hand-off as sp_det.txt: wait for GAME_MODE 2 and for the sim to be stepping, then let
+# the harness's step budget (and gameover_step) decide when the run is over.
+absent Network players
+gamemode 2
+gameclock 1000
+log all-AI soak: in-game at GAME_MODE 2 with 8 seats, handing the run to the harness
+end

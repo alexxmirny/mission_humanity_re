@@ -1,0 +1,39 @@
+# P3 overlay-mapping TRACE (host/leader): host+launch a 2-player match with defang FULLY OFF
+# (ui_test.py --defang 0), then wait for the strategic lockstep to flip GAME_MODE->3 (the de-sync/
+# SYNCHRONIZING overlay -- fires spuriously within ~2s at net cadence when un-defanged), DUMP the active
+# widget list (proves which widgets 0065069f icon / 006505d3 countdown / 00650617+0065065b kick-buttons
+# are drawn + their hidden flags on the LEADER), and CAPTURE the frame for a read-vs-BANK_47/0087 compare.
+# Pair with mp_client_start.txt. Runner:
+#   python tools/ui_test.py --host <ip>:mp_host_desync.txt --client <ip>:mp_client_start.txt --defang 0
+
+# reach the host lobby (create the pre-pinned game on the pre-selected map)
+settled value:110
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+settled Create
+clickl Create
+present Game name
+settled Ok
+clickl Ok
+present Available maps
+settled Ok
+clickl Ok
+
+# host lobby: block until the client has joined + Start un-greys, then launch
+present Network players
+peers 1
+enabled Start
+settled Start
+clickl Start
+
+# in-game: the lobby screen goes away when the match launches on both peers
+absent Network players
+capture m3_launched
+log HOST in-game (defang off); waiting for the spurious GAME_MODE=3 overlay
+gamemode 3
+dump
+capture desync_overlay
+log HOST captured GAME_MODE=3 overlay + dumped widget list
+end

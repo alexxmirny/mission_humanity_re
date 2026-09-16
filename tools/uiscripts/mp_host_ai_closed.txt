@@ -1,0 +1,40 @@
+# S7 mixed-scenario HOST setup: 1 human + 1 AI + 1 CLOSED slot, so a browsing client reads "2/7"
+# (occ = host + AI = 2; cap = map(8) - 1 closed = 7). Proves occ counts AI AND cap excludes closed slots.
+#
+# The per-slot STATE spinner (leftmost column, action_cb = llm_lobby_slot_cycle_state_cb) cycles
+# OPEN->AI->CLOSED->OPEN. Screen positions from the lobby dump (x=70): slot1=(70,132), slot2=(70,149).
+# Each state click triggers a widget REBUILD; a click fired mid-rebuild misses -- so gate between clicks on
+# a STATE PREDICATE: an AI slot's NAME column becomes the real label "Computer" (the state spinner text
+# itself is drawn, not a matchable label). `present Computer` waits the rebuild out (speed-independent).
+
+settled value:110
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+settled Create
+clickl Create
+present Game name
+settled Ok
+clickl Ok
+present Available maps
+settled Ok
+clickl Ok
+present Network players
+settled Start
+capture lobby_open
+
+# --- CLOSE slot 2 (two state clicks: OPEN->AI->CLOSED), settling on the AI name between them ---
+click 70 149
+present Computer
+capture lobby_s2_ai
+click 70 149
+dump
+capture lobby_s2_closed
+
+# --- ADD AI in slot 1 (one click: OPEN->AI) ---
+click 70 132
+present Computer
+capture lobby_final
+log host set to 1 human + 1 AI (slot1) + 1 closed (slot2)
+end

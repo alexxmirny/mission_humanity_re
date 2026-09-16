@@ -1,0 +1,4 @@
+[13:00:00.000] ; build=EN (EN-only DLL; probe ok)
+[13:00:00.000] ; ==== MP transport seams armed (lobby send/recv + in-game lockstep send/recv hooked) ====
+[13:00:00.000] ; present hook armed: frametime_log=1 eager_advertise=1 temporal=1
+[13:00:00.001] ; session_begin_multi logger armed

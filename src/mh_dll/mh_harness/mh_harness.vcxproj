@@ -1,0 +1,135 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" ToolsVersion="15.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Debug|Win32">
+      <Configuration>Debug</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|Win32">
+      <Configuration>Release</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+  </ItemGroup>
+  <ItemGroup>
+    <!-- THE INSTRUMENT LIVES HERE ON DISK since fork F5O (2026-09-16), which reversed the earlier
+         ruling that left it in mh.dll's seams directory. F5O's rule is one dir per owning target, and
+         this is the only project that owns the file (mh_nettest links it into the offline image as
+         a second consumer, the way it consumes the roster). The two objections the old comment
+         raised were both paid off in the same change rather than argued away: the 40-odd include
+         lines still resolve because the include path gained $(SolutionDir)libmh and already had
+         $(SolutionDir)mh, so not one #include line moved; and tools\check_fork_d5_hooks.py, which
+         names harness-owned files BY PATH precisely so its scope cannot silently empty, was
+         repointed at mh_harness\harness.cpp in the same commit and still refuses to run if the
+         named file is missing. -->
+    <ClCompile Include="harness.cpp" />
+    <!-- Q5's per-image marshalling thunks. harness.cpp calls INTO the original binary through
+         mh::call::, so this image needs its own copy of the generated shapes exactly as mh.vcxproj,
+         mh_nettest.vcxproj, libmh_dll.vcxproj and libref_host.vcxproj each do. Both images link the
+         copy they use; it is not a contract row on either side. -->
+    <ClCompile Include="..\mh\addr\mh_calls.gen.cpp" />
+    <ClCompile Include="mh_harness_dllmain.cpp" />
+    <ClCompile Include="harness_contract.gen.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="mh_harness.def" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="harness_contract.gen.h" />
+  </ItemGroup>
+  <PropertyGroup Label="Globals">
+    <VCProjectVersion>15.0</VCProjectVersion>
+    <ProjectGuid>{9D1C4E77-0B62-4A3F-9E51-2C7A83D6F014}</ProjectGuid>
+    <Keyword>Win32Proj</Keyword>
+    <RootNamespace>mh_harness</RootNamespace>
+    <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
+    <ProjectName>mh_harness</ProjectName>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">
+    <ConfigurationType>DynamicLibrary</ConfigurationType>
+    <UseDebugLibraries>true</UseDebugLibraries>
+    <PlatformToolset>v143</PlatformToolset>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" Label="Configuration">
+    <ConfigurationType>DynamicLibrary</ConfigurationType>
+    <UseDebugLibraries>false</UseDebugLibraries>
+    <PlatformToolset>v143</PlatformToolset>
+    <!-- WholeProgramOptimization ON, matching mh.vcxproj rather than mh_net.vcxproj, and the choice
+         is about CODEGEN NEUTRALITY rather than speed: this file compiled under mh.dll's Release
+         flags until today, and the whole acceptance for this item is that its behaviour did not
+         move. The naked thunk plus /alternatename shape is proven under /GL + /LTCG (fork F4D).
+         Nothing reads this project's Release objects; the two derivations that read objects read
+         Debug ones, for the reason gen_libmh_contract.py states (a /GL object is anonymous). -->
+    <WholeProgramOptimization>true</WholeProgramOptimization>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <LinkIncremental>true</LinkIncremental>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <LinkIncremental>false</LinkIncremental>
+  </PropertyGroup>
+  <ItemDefinitionGroup>
+    <ClCompile>
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <MultiProcessorCompilation>true</MultiProcessorCompilation>
+      <WarningLevel>Level3</WarningLevel>
+      <ConformanceMode>true</ConformanceMode>
+      <LanguageStandard>stdcpp20</LanguageStandard>
+      <!-- NO MH_SPINE_IN_IMAGE HERE, and its absence is load-bearing (G179). This project compiles
+           NO roster code, so mh::state::live(), owner_table() and owner_count() must NOT be magic
+           statics in this image: it declares them and reaches libmh's across the boundary, like
+           mh.vcxproj does. Adding the define would give the instrument its own region registry, the
+           rebases would land in libmh's and the reads would come from ours, and NOTHING would go
+           red: not the arm log, not the UI suite, not a two-peer determinism run.
+           (An XML comment may not contain a double hyphen, which is why this one has none.) -->
+      <PreprocessorDefinitions>WIN32;_WINDOWS;_USRDLL;_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <!-- The instrument's include lines are written against mh\, unchanged by the move. -->
+      <AdditionalIncludeDirectories>$(ProjectDir);$(SolutionDir)libmh;$(SolutionDir)mh;$(SolutionDir)mh\include;$(SolutionDir)mh_common;$(SolutionDir)mh_common\include;$(SolutionDir)..\mh_net_proto\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ClCompile>
+    <Link>
+      <SubSystem>Windows</SubSystem>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <ModuleDefinitionFile>mh_harness.def</ModuleDefinitionFile>
+      <!-- The sampling profiler (harness.cpp prof_start) reports RVAs, and a linker map is what
+           turns them into names; a PDB needs WinDbg/DIA, which this machine does not have. -->
+      <GenerateMapFile>true</GenerateMapFile>
+      <!-- NOTHING OF OURS IS LINKED HERE, and there must not be: no mh.lib, no libmh.lib, no
+           mh_common.lib. An import of either DLL would make this module unloadable without it, and
+           worse, would put THAT module in this one's import table so a missing file failed PROCESS
+           load. Both edges are GetModuleHandle + GetProcAddress instead (harness_contract.gen.cpp).
+           mh_common is not linked either: the one symbol harness.cpp wanted from it, MH_RunDir, is a
+           host contract row, because run_context.cpp stays mh.dll-side and exactly one place in the
+           process composes this run's paths (ruling Q1). -->
+      <AdditionalDependencies>kernel32.lib;user32.lib;%(AdditionalDependencies)</AdditionalDependencies>
+    </Link>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <ClCompile>
+      <Optimization>Disabled</Optimization>
+      <SDLCheck>true</SDLCheck>
+      <PreprocessorDefinitions>_DEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <IntrinsicFunctions>false</IntrinsicFunctions>
+      <FavorSizeOrSpeed>Neither</FavorSizeOrSpeed>
+      <WholeProgramOptimization>false</WholeProgramOptimization>
+      <!-- NO RuntimeLibrary OVERRIDE, mirroring mh.vcxproj and mh_net.vcxproj: the static CRT is
+           pinned in Release only, and Release is the binary the subset rule is about and what a lane
+           deploys. -->
+    </ClCompile>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <ClCompile>
+      <Optimization>MaxSpeed</Optimization>
+      <SDLCheck>true</SDLCheck>
+      <IntrinsicFunctions>true</IntrinsicFunctions>
+      <!-- STATIC CRT, and it is what keeps the subset rule true for this satellite: a dynamic one
+           would put VCRUNTIME140 and MSVCP140 in this module's import table, neither of which
+           mh.dll imports, and the loader would initialise two fresh DLLs under a lock we hold.
+           check_module_bind.py subset reads both PEs and SUBSET_PAIRS carries this module's row. -->
+      <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
+    </ClCompile>
+  </ItemDefinitionGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+</Project>

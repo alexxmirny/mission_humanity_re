@@ -1,0 +1,11 @@
+{
+  "class": "retired-addimport",
+  "_class_why": "0 patch sites; its entire content is an `imports` edit adding an mh.dll descriptor to the target FILE. The fork loads the DLL through the msvfw32 proxy instead.",
+  "_comment": "IMPORT-ONLY patch for the determinism replay harness (docs/mp-replay-harness.md, tasks/mp-restoration.md Step 0). Adds the mh.dll import to a stock mh.exe with NO code patches, so DllMain runs and MH_Harness_Init arms the harness when mh_net.ini beside the exe carries `[harness] enable=1` (fork F2G merged the old mh_harness.ini into it; a leftover copy of that file is REFUSED). Deliberately vanilla: no pool relocation, so the sim runs exactly as retail and the per-step state hash reads projectile_pool at its stock .bss VA (0x00e1db98). Run: python mhpatch.py apply mh.exe harness_load.mh.patch.json mh.harness.exe   (then drop mh.dll + mh_net.ini beside mh.harness.exe).",
+  "target": "mh.exe (clean Russian retail, md5 a9bf89a6...)",
+  "sha256": "9c4451cf8934a9f446a4f639a3aaa002168030ba512df83a6495bb61861d6a30",
+  "imports": {
+    "mh.dll": ["MH_HostedPoolBase"]
+  },
+  "patches": []
+}

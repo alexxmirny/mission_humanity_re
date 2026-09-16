@@ -1,0 +1,256 @@
+{
+ "_comment": [
+  "sim_resid -- the residual sim WRITERS, the sim-side functions the sim closure never reached.",
+  "",
+  "WHY THIS IS A SEPARATE DOMAIN AND NOT AN EXTENSION OF `sim`. sim's membership is",
+  "`select.mode: closure`, a forward call-graph walk from llm_strat_sim_step. This population is",
+  "DEFINITIONALLY what that walk never reaches: session-entry and boot-path writers, called once",
+  "per run rather than per tick. There is no call edge to follow, so no widening of sim's closure",
+  "picks them up -- the membership is an ACCESS property, not a reachability one.",
+  "",
+  "WHAT IT SHARES WITH `sim`, DELIBERATELY. The state interface (libmh/sim/sim_state.h), the",
+  "namespace (mh::sim) and the offline oracle (net_selftest simtest) are sim's, reused rather than",
+  "forked. These functions write the same rosters through the same W1/W2/W3 rules; a second store",
+  "over the same regions would be a region with two independent bindings, which is the thing",
+  "libmh/orders/order_queue.h:141 names as the way a region gets moved out from under one of them.",
+  "`items.interface` therefore names SIM0 -- the lint accepts another domain's interface item, and",
+  "reuse then has to be STATED rather than assumed.",
+  "",
+  "WHAT IT DOES NOT SHARE: the ledger, the batches and the closure doc, because the acceptance is",
+  "different. sim's rows are verified by shadow-arming under llm_strat_sim_step; almost nothing",
+  "here can be armed at all (see `_arming_note`).",
+  "",
+  "THE CALL-OUT SURFACE WAS MEASURED BEFORE THIS PROFILE EXISTED (2026-08-31,",
+  "`tools/gen_seam_surface.py --item SIM-RESID`) because the question that opened the domain was",
+  "whether owning these bodies would strand us behind a wall of call-outs. It does not: 253 edges",
+  "into 183 callees, 121 of the 127 untranslated ones already callable. What it DID surface is 39",
+  "wall callees with no effect class, which is SIM-CUT's extension and this domain's real cost."
+ ],
+ "domain": "sim_resid",
+ "title": "Residual sim writers",
+ "tracker_domain": "reimpl",
+ "tracker_group": "RI-SIM",
+ "umbrella_item": "SIM-RESID",
+ "records_state": true,
+ "select": {
+  "mode": "seeded",
+  "walk": "none",
+  "walk_why": "The seeds ARE the answer, the same reason readers gives. These are complete bodies named by DIRECT write attribution -- the state matrix attributes a write by address containment, so a function that writes only through a callee is not named here; its callee is, in its own right. A forward walk would therefore add nothing that is a writer and everything that is a Law-4 frontier leaf. orders_issue is the one domain that walks forward, and it earns it: its seeds are thin wrappers whose bodies essentially ARE the call.",
+  "seeds": [
+   {
+    "kind": "writer_attribution",
+    "item": "SIM-RESID",
+    "why": "Every original writer of a region LIBMH WRITES that routes to SIM-RESID, minus the ones already carrying a named exception. Resolved by calling gen_writer_attribution.owning_item() rather than restating it: that function's docstring says it is 'ONE place, so no consumer can disagree', and a second copy here would be a second place -- the failure being a ledger and a gate that quietly disagree about who owns a function. Keyed on the census's `ours_writers`, re-keyed 2026-08-24 so re-attribution cannot narrow the scope. The set SHRINKS as walls are excepted, which is the intended dynamic: batch W's job is to empty itself."
+   }
+  ],
+  "effect_prefixes": [
+   "llm_gfx_",
+   "llm_ui_",
+   "llm_snd_",
+   "llm_input_",
+   "llm_menu_",
+   "llm_cam_",
+   "llm_cd_",
+   "llm_chat_",
+   "llm_net_",
+   "llm_view_",
+   "llm_dlg_",
+   "llm_map_view_",
+   "llm_progress_",
+   "game_ui_"
+  ],
+  "effect_prefixes_why": "The permanent presentation/input/net walls (docs/reimpl-plan.md Sect. 5). Declared as `effect_prefixes` rather than `cut_prefixes` because this domain has no closure to cut -- membership is an access query, so there is nothing to stop a walk descending through. What these families ARE for here is the shadow-safety inventory: an outward call into one of them fires TWICE per armed call while the state comparison still reads clean. Identical to the list gen_seam_surface.py uses for its S3 axis, deliberately, so the two measurements of the same surface cannot disagree about what counts as a wall."
+ },
+ "paths": {
+  "manifest": "tools/data/sim_resid_migration.json",
+  "batch_overrides": "tools/data/sim_resid_batch_overrides.json",
+  "ready_acks": "tools/data/sim_resid_ready_ack.json",
+  "ready_report": "tmp/sim_resid_ready",
+  "export_dir": "tmp/decomp_sim_resid",
+  "lint_request": "tmp/sim_resid_translation_lint.json",
+  "state_header": "src/mh_dll/libmh/sim/sim_state.h",
+  "state_impl": "src/mh_dll/libmh/sim/sim_state.cpp",
+  "module_dir": "src/mh_dll/libmh/sim/resid",
+  "_module_dir_why": "A subdirectory of mh/sim rather than a sibling: same namespace, same state interface, same oracle, but its own .cpp tree so the ledger diff and the lint request do not interleave with sim's 307 rows. lint_repo's sim raw-address check globs libmh/sim/ and therefore covers this tree unchanged.",
+  "selftest_dir": "src/mh_dll/mh_nettest",
+  "closure_doc": "docs/sim-resid-closure.md",
+  "effect_classes": "tools/data/sim_effect_classes.json",
+  "_effect_classes_why": "SIM'S file, not a new one. gen_dll_effects.py installs a gate over an ADDRESS, so two domains that both reach llm_snd_play cannot each own its class -- the generator REFUSES a name two domains classify differently. Sharing the file makes that impossible by construction instead of catching it later.",
+  "_loop_prompt_why": "WRITTEN 2026-08-31, the moment the condition this field had been setting was met.\nTHE HISTORY, because the field's job was to make the refusal a schedule rather than a veto: `run` drives sessions UNATTENDED, so a domain gets a prompt only once the work it would be handed is work a loop should be doing. Until 2026-08-31 that was not true here -- the dry run reached a PREP block whose three items were globals that could only be settled by a human (one with no consumer in named code at all, one whose accessors sat in code Ghidra never made into a function, and a pair of auto-named widgets). Naming those by guess is exactly what the loop must not do unattended.\nTHE CONDITION WAS: SIM-RESID-READY green, SIM-RESID-IF's bindings landed, and batches A-F the only open work. All three hold. READY is CLOSED with `migration_ready --domain sim_resid --check` exiting 0 over 38 live functions and their 92-callee frontier with ZERO acks; IF is CLOSED with 36 globals registered and 68 regions bound, the fold returning zero unbound; and `run --dry-run` now proposes `session 1: batch, item SIM-RESID-A`, a real translation batch.\nWHAT THE PROMPT HAD TO SAY THAT SIM'S DOES NOT, since that is the reason it is a separate file rather than a copy: the evidence ceiling here is T2, not T3 (37 of 39 members run ONCE per run at session entry, and `--start` marks essentially every row proof:OFFLINE on write-closure grounds besides); the rig default is `sp` because a soak exercises a session-entry function exactly as many times as a short launch does; a `loadgame_at` scenario SKIPS session entry and therefore exercises 37 of the members zero times, which logs identically to a clean run; the state interface is closed and conductor-owned, so needing to touch it is a BLOCKED rather than an edit; and the review ledger carries more weight than sim's, because with T3 unavailable adversarial review is half the evidence behind every `verified`.",
+  "loop_prompt": "tools/data/sim_resid_loop_prompt.md"
+ },
+ "items": {
+  "interface": "SIM0",
+  "_interface_why": "REUSED, not forked. These functions write the same rosters through the same store, so the interface item that owns W1/W2/W3 and simtest owns this domain's interface too. Every batch below reaches SIM0 through deps. The work this domain adds to that interface is the 18 unbound regions its members write, which is SIM-RESID-IF's job."
+ },
+ "oracle": {
+  "selftest": "simtest",
+  "_selftest_why": "sim's offline suite. These bodies write the same regions through the same store, so a separate suite would need a second fixture binding the same rosters -- and two fixtures over one region set is the same hazard as two stores.",
+  "rig": {
+   "modes": [
+    "sp",
+    "soak"
+   ],
+   "default": "sp",
+   "_why": "`sp` FIRST, unlike sim, and the reason is this domain's defining property: almost every member runs at SESSION ENTRY, once per run. A 3000-step soak exercises them exactly as many times as a short single-player launch does -- once -- so the long run buys nothing and costs the rig. `soak` is retained for the two per-tick members."
+  }
+ },
+ "_arming_note": [
+  "ARMING IS MOSTLY UNAVAILABLE, and this is the domain's governing constraint rather than a",
+  "detail. Only llm_strat_advisor_tick and llm_strat_clock_resync_units_and_buildings are",
+  "per-tick; the rest are called ONCE per run at session entry, so a shadow site on one of them",
+  "compares a single call and the evidence ceiling is T2 (offline oracle + adversarial review),",
+  "not T3 (armed differential).",
+  "",
+  "The consequence for scheduling, measured 2026-08-31: the two armable members have a CLEAN",
+  "seam -- 4 call-outs, all `status: ok`, one wall callee already classified AND verified, zero",
+  "re-entry -- so they can be armed without SIM-CUT being extended first. They are batch A for",
+  "that reason: they are the only rows in the domain that can produce T3 evidence, and nothing",
+  "blocks them."
+ ],
+ "batches": {
+  "order": [
+   "W",
+   "A",
+   "B",
+   "C",
+   "D",
+   "E",
+   "F"
+  ],
+  "item": {
+   "W": "SIM-RESID-W",
+   "A": "SIM-RESID-A",
+   "B": "SIM-RESID-B",
+   "C": "SIM-RESID-C",
+   "D": "SIM-RESID-D",
+   "E": "SIM-RESID-E",
+   "F": "SIM-RESID-F"
+  },
+  "rules": [
+   {
+    "batch": "W",
+    "match": [
+     "llm_strat_render_",
+     "llm_strat_selection_",
+     "llm_strat_input_update",
+     "llm_strat_ui_",
+     "llm_unit_ctrl_group_",
+     "llm_progress_finalize_acquire"
+    ],
+    "why": "THE WALLS -- presentation and input by role, sim by classification. Listed FIRST because these prefixes overlap every other rule's vocabulary (a `llm_strat_ui_unit_panel_tick` is not a unit-lifecycle function). This batch TRANSLATES NOTHING: its work is to give each member a named except-entry in writer_dispositions.json, at which point the seed query stops returning it and the batch empties itself. A batch that goes to zero rows is this one's definition of done, which is why it is a batch and not a filter -- a filter would make the walls invisible instead of adjudicated. CLOSED 2026-08-31: all 11 excepted in four classes, the ledger went 50 -> 39 rows and this batch no longer appears in the generated batch list. The rule STAYS so a writer that matches the wall predicate later is routed here and adjudicated rather than silently entering a translation batch."
+   },
+   {
+    "batch": "A",
+    "match": [
+     "advisor_tick",
+     "clock_resync"
+    ],
+    "why": "THE ARMABLE PAIR, and the only rows in the domain that can reach T3. Both are per-tick, and their seam was measured clean (4 call-outs, all ok, no re-entry, the one wall callee already classified and verified), so nothing gates them -- not SIM-CUT, not the effect backlog. First translation batch on purpose: it is the domain's only chance to calibrate the offline oracle against a real armed differential before 37 rows have to be trusted on T2 alone."
+   },
+   {
+    "batch": "B",
+    "match": [
+     "session_",
+     "planet_session",
+     "planet_map",
+     "planet_transition",
+     "land_players",
+     "new_game_init",
+     "system_presence"
+    ],
+    "why": "SESSION AND PLANET ENTRY -- the spine of the domain and the reason it exists. These are the once-per-run writers the sim closure could never reach because no edge runs from llm_strat_sim_step back up to them. Heavily interlinked (llm_strat_planet_session_begin alone calls five other seeds), so they translate together or their intra-set edges have to be routed through mh::call:: -- which G21 says never to do for a seam-internal edge."
+   },
+   {
+    "batch": "C",
+    "match": [
+     "_init_",
+     "_init",
+     "defaults",
+     "tables_reset",
+     "reset_system",
+     "FillDefaults"
+    ],
+    "why": "INITIALISERS AND TABLE RESETS, including the adopted map_FillDefaults. Grouped because they share a shape -- write a table once, read nothing back -- which makes them the domain's best offline-oracle candidates: a fixture can assert the whole post-state of a reset without a running game. map_FillDefaults carries 35 docs/patching-surface.md entries that must be re-derived against our body, so it is the batch's heaviest row by far."
+   },
+   {
+    "batch": "D",
+    "match": [
+     "_path",
+     "path_",
+     "assign_shared",
+     "release_path",
+     "pathfinder"
+    ],
+    "why": "THE UNIT PATH STORE -- encode, store, assign, release. A closed family over the path buffers, and the one group here that looks like ordinary sim work rather than session plumbing."
+   },
+   {
+    "batch": "E",
+    "match": [
+     "bldg_",
+     "spawn_ai_base",
+     "landing_spots",
+     "sort_sites",
+     "formation_trim",
+     "prod_set_transfer"
+    ],
+    "why": "BUILDINGS, PLACEMENT AND SITE SELECTION. llm_strat_bldg_set_footprint_passable is here and is the row to read first: PASSABLE is Map-owned, so it is the domain's one cross-subsystem write and the one most likely to end up excepted rather than translated."
+   },
+   {
+    "batch": "F",
+    "match": [
+     "tutorial",
+     "invasion_due",
+     "alive_count",
+     "time_resync",
+     "rng_seed",
+     "enter_tactical"
+    ],
+    "why": "EVENT DRIVERS AND THE ODD ONES OUT. The tutorial pair is here because AI-CREATE was deferred -- designing a deterministic event REPRESENTATION is what D1 froze -- so they are ordinary migrations rather than a new pipeline. llm_tutorial_step_driver writes buildings and units DURING play, which is what killed the boot-snapshot idea, and llm_strat_time_resync_and_tick is the domain's one NESTED re-entry (it reaches itself through llm_strat_time_tick), so its site must stay unarmed or carry a reentry-acknowledged disposition."
+   }
+  ]
+ },
+ "conductor_owned": [
+  "sim_state.h",
+  "sim_state.cpp",
+  "/addr/",
+  "\\addr\\",
+  ".vcxproj",
+  ".sln",
+  "dll_addr_manifest.json",
+  "dll_shadow_manifest.json",
+  "dll_struct_layouts.json",
+  "sim_resid_migration.json",
+  "sim_migration.json",
+  "state_regions.json",
+  "seam_dispositions.json",
+  "writer_dispositions.json",
+  "sim_effect_classes.json",
+  "sim_selftest.cpp"
+ ],
+ "_conductor_owned_why": "sim's list plus the four files that carry THIS domain's adjudications. A translation writer that could edit writer_dispositions.json or seam_dispositions.json could except its own function or its own call-out, which turns both gates into self-certification. sim_state.h is on the list for sim's reason and doubly for this one: the 18 region bindings are the shared interface, and a writer adding its own binding is how two bodies end up disagreeing about a region's type.",
+ "roster_regions": [
+  "units",
+  "buildings",
+  "tile_objects",
+  "player_data",
+  "unit_storage",
+  "_G_LLM_STRAT_PLAYERS"
+ ],
+ "non_autonomous": [
+  "SIM-RESID",
+  "SIM-RESID-W",
+  "SIM-RESID-IF",
+  "SIM-RESID-PREP",
+  "SIM-RESID-READY",
+  "SIM-RESID-P"
+ ],
+ "_non_autonomous_why": "SIM-RESID is the umbrella and holds no work of its own. SIM-RESID-W is pure adjudication -- every row is a judgement about whether an unowned write is safe, and a wrong `except` is silent by construction, which is precisely what the loop must not decide unattended. SIM-RESID-IF edits the SHARED sim state interface, which is conductor-only by this profile's own conductor_owned list. ADDED 2026-08-31 with the loop prompt: SIM-RESID-PREP is human-driven Ghidra GUI work; SIM-RESID-READY is a STANDING PREDICATE, not a one-shot -- it can reopen when the frontier moves, and its blockers have historically been globals that needed a human to decide whether they could be named at all (this domain has three recorded refusals to invent a meaning, and two globals that kept provenance names because of it); and SIM-RESID-P decides what runs for real, on an asymmetric determinism run whose acceptance a human has to read. The three closed items are listed even though a done item is never proposed -- the list is the STATEMENT of what is human-only, and it has to stay true if one of them reopens.",
+ "lint": {
+  "sibling_detail_prefix": [
+   "llm_strat_",
+   "llm_game_"
+  ],
+  "sibling_detail_prefix_why": "This domain's translate set spans TWO Ghidra prefixes and its intra-batch edges cross between them -- llm_strat_planet_session_begin calls llm_game_land_players_on_planet, and llm_strat_session_begin_multi calls both. Batch B's rule is that an intra-set edge is a direct C++ detail:: call and never mh::call:: (G21), so without both prefixes the lint reported three correctly-translated sibling calls as MISSING callees. A list is accepted since 2026-08-31."
+ }
+}

@@ -1,0 +1,3553 @@
+{
+ "_generated_by": "tools/dump_interior_refs.py (Ghidra-side) -- do not hand-edit",
+ "_program": "/eng/mh.exe",
+ "_measures": "functions with disjoint bodies or interior inbound outside flow refs",
+ "hazards": {
+  "0x0041111e": {
+   "name": "llm_ui_bldg_progress_status_text_select",
+   "body_ranges": [
+    [
+     "0x0041111e",
+     "0x0041122c"
+    ],
+    [
+     "0x00411232",
+     "0x0041143e"
+    ]
+   ],
+   "interior_inbound": []
+  },
+  "0x0041181a": {
+   "name": "llm_ui_hud_minimap_click_handler",
+   "body_ranges": [
+    [
+     "0x0041181a",
+     "0x004118fa"
+    ],
+    [
+     "0x00411912",
+     "0x00411a42"
+    ]
+   ],
+   "interior_inbound": []
+  },
+  "0x00413a52": {
+   "name": "game_SetEvent",
+   "body_ranges": [
+    [
+     "0x00413a52",
+     "0x00413aee"
+    ],
+    [
+     "0x00413b56",
+     "0x00414105"
+    ]
+   ],
+   "interior_inbound": []
+  },
+  "0x00414a4e": {
+   "name": "llm_ui_chat_input_process_scancodes",
+   "body_ranges": [
+    [
+     "0x00414a4e",
+     "0x00414a88"
+    ],
+    [
+     "0x00414bea",
+     "0x00415474"
+    ]
+   ],
+   "interior_inbound": []
+  },
+  "0x0041695e": {
+   "name": "llm_ui_bldg_selected_panel_tick",
+   "body_ranges": [
+    [
+     "0x0041695e",
+     "0x00416b28"
+    ],
+    [
+     "0x00416bba",
+     "0x00416ec5"
+    ]
+   ],
+   "interior_inbound": []
+  },
+  "0x00419221": {
+   "name": "llm_ui_group_tab_on_click",
+   "body_ranges": [
+    [
+     "0x00419221",
+     "0x00419411"
+    ],
+    [
+     "0x00419414",
+     "0x0041944b"
+    ]
+   ],
+   "interior_inbound": []
+  },
+  "0x0041afcf": {
+   "name": "llm_ui_icon_group_dispatch",
+   "body_ranges": [
+    [
+     "0x0041afcf",
+     "0x0041b01e"
+    ],
+    [
+     "0x0041b031",
+     "0x0041b1cb"
+    ]
+   ],
+   "interior_inbound": []
+  },
+  "0x004262b4": {
+   "name": "llm_boot_stage_tick",
+   "body_ranges": [
+    [
+     "0x004262b4",
+     "0x004262cd"
+    ],
+    [
+     "0x004262f4",
+     "0x00426382"
+    ]
+   ],
+   "interior_inbound": []
+  },
+  "0x0042c547": {
+   "name": "llm_tact_unit_update_anim",
+   "body_ranges": [
+    [
+     "0x0042c547",
+     "0x0042c686"
+    ],
+    [
+     "0x0042c68c",
+     "0x0042d0ce"
+    ]
+   ],
+   "interior_inbound": []
+  },
+  "0x0042ddde": {
+   "name": "llm_tact_unit_pose_tag_select",
+   "body_ranges": [
+    [
+     "0x0042ddde",
+     "0x0042de22"
+    ],
+    [
+     "0x0042de25",
+     "0x0042de80"
+    ]
+   ],
+   "interior_inbound": []
+  },
+  "0x0042f338": {
+   "name": "llm_tact_unit_weapons_tick",
+   "body_ranges": [
+    [
+     "0x0042f338",
+     "0x0042f65d"
+    ],
+    [
+     "0x0042f663",
+     "0x0042f68b"
+    ],
+    [
+     "0x0042f691",
+     "0x0042f6a7"
+    ],
+    [
+     "0x0042f6ad",
+     "0x0042f8e3"
+    ]
+   ],
+   "interior_inbound": []
+  },
+  "0x0042f935": {
+   "name": "llm_tact_unit_mine_arm_tick",
+   "body_ranges": [
+    [
+     "0x0042f935",
+     "0x0042f9cf"
+    ],
+    [
+     "0x0042fa30",
+     "0x0042fb0a"
+    ]
+   ],
+   "interior_inbound": []
+  },
+  "0x00430f5a": {
+   "name": "llm_tact_unit_move_advance",
+   "body_ranges": [
+    [
+     "0x00430f5a",
+     "0x00431139"
+    ],
+    [
+     "0x0043113c",
+     "0x00431165"
+    ]
+   ],
+   "interior_inbound": []
+  },
+  "0x004335a0": {
+   "name": "llm_tact_unit_owner_tick",
+   "body_ranges": [
+    [
+     "0x004335a0",
+     "0x00433680"
+    ],
+    [
+     "0x00433696",
+     "0x00433c0c"
+    ]
+   ],
+   "interior_inbound": []
+  },
+  "0x0043ff0c": {
+   "name": "game_HandleProgress",
+   "body_ranges": [
+    [
+     "0x0043ff0c",
+     "0x0043ff2a"
+    ],
+    [
+     "0x0043ff46",
+     "0x00440048"
+    ]
+   ],
+   "interior_inbound": []
+  },
+  "0x004402b0": {
+   "name": "game_UpdateProgress",
+   "body_ranges": [
+    [
+     "0x004402b0",
+     "0x004402ce"
+    ],
+    [
+     "0x004402ea",
+     "0x0044048b"
+    ]
+   ],
+   "interior_inbound": []
+  },
+  "0x004404cc": {
+   "name": "llm_progress_finalize_acquire",
+   "body_ranges": [
+    [
+     "0x004404cc",
+     "0x004404ea"
+    ],
+    [
+     "0x00440506",
+     "0x00440629"
+    ]
+   ],
+   "interior_inbound": []
+  },
+  "0x00441b88": {
+   "name": "llm_strat_input_update",
+   "body_ranges": [
+    [
+     "0x00441b88",
+     "0x00441f57"
+    ],
+    [
+     "0x00441f5d",
+     "0x0044202f"
+    ],
+    [
+     "0x00442035",
+     "0x00443c43"
+    ],
+    [
+     "0x00443c76",
+     "0x004445e4"
+    ]
+   ],
+   "interior_inbound": []
+  },
+  "0x00449ffe": {
+   "name": "llm_strat_bldg_get_progress_percent",
+   "body_ranges": [
+    [
+     "0x00449ffe",
+     "0x0044a0f4"
+    ],
+    [
+     "0x0044a0fa",
+     "0x0044a361"
+    ]
+   ],
+   "interior_inbound": []
+  },
+  "0x0044b67f": {
+   "name": "llm_debug_console_dispatch",
+   "body_ranges": [
+    [
+     "0x0044b67f",
+     "0x0044b73c"
+    ],
+    [
+     "0x0044b7ee",
+     "0x0044c359"
+    ]
+   ],
+   "interior_inbound": []
+  },
+  "0x00453482": {
+   "name": "llm_strat_tile_is_storage_door_exit",
+   "body_ranges": [
+    [
+     "0x00453482",
+     "0x004534b8"
+    ],
+    [
+     "0x004534d6",
+     "0x004536e5"
+    ]
+   ],
+   "interior_inbound": []
+  },
+  "0x00454c51": {
+   "name": "llm_strat_player_set_color",
+   "body_ranges": [
+    [
+     "0x00454c51",
+     "0x00454c6f"
+    ],
+    [
+     "0x00454c91",
+     "0x00454d8c"
+    ]
+   ],
+   "interior_inbound": []
+  },
+  "0x004564c2": {
+   "name": "cfg_final_unit_Construct",
+   "body_ranges": [
+    [
+     "0x004564c2",
+     "0x00456826"
+    ],
+    [
+     "0x0045682e",
+     "0x00456c3f"
+    ],
+    [
+     "0x00456c69",
+     "0x00456e73"
+    ]
+   ],
+   "interior_inbound": []
+  },
+  "0x0045a068": {
+   "name": "llm_strat_bldg_init_defaults",
+   "body_ranges": [
+    [
+     "0x0045a068",
+     "0x0045a087"
+    ],
+    [
+     "0x0045a121",
+     "0x0045b69b"
+    ]
+   ],
+   "interior_inbound": []
+  },
+  "0x0045b69c": {
+   "name": "cfg_final_planet_Construct",
+   "body_ranges": [
+    [
+     "0x0045b69c",
+     "0x0045b6d2"
+    ],
+    [
+     "0x0045b6f5",
+     "0x0045ba24"
+    ]
+   ],
+   "interior_inbound": []
+  },
+  "0x0045fac0": {
+   "name": "llm_strat_unit_facing_offset_init",
+   "body_ranges": [
+    [
+     "0x0045fac0",
+     "0x0045fc2a"
+    ],
+    [
+     "0x0045fcad",
+     "0x0045fefa"
+    ]
+   ],
+   "interior_inbound": []
+  },
+  "0x00460a93": {
+   "name": "llm_strat_walker_frame_blend_index",
+   "body_ranges": [
+    [
+     "0x00460a93",
+     "0x00460b90"
+    ],
+    [
+     "0x00460b93",
+     "0x00460be2"
+    ]
+   ],
+   "interior_inbound": []
+  },
+  "0x004622cb": {
+   "name": "map_CreateBuilding",
+   "body_ranges": [
+    [
+     "0x004622cb",
+     "0x004626dd"
+    ],
+    [
+     "0x00462779",
+     "0x00462d88"
+    ]
+   ],
+   "interior_inbound": []
+  },
+  "0x00462e66": {
+   "name": "llm_bldg_construct_finalize",
+   "body_ranges": [
+    [
+     "0x00462e66",
+     "0x00462eab"
+    ],
+    [
+     "0x00462f45",
+     "0x0046318c"
+    ]
+   ],
+   "interior_inbound": []
+  },
+  "0x00463328": {
+   "name": "llm_strat_storage_find_home_for_unit",
+   "body_ranges": [
+    [
+     "0x00463328",
+     "0x00463397"
+    ],
+    [
+     "0x004633a2",
+     "0x00463567"
+    ],
+    [
+     "0x0046356c",
+     "0x004636bb"
+    ]
+   ],
+   "interior_inbound": []
+  },
+  "0x00463ec8": {
+   "name": "llm_unit_recruit",
+   "body_ranges": [
+    [
+     "0x00463ec8",
+     "0x00463f3c"
+    ],
+    [
+     "0x00463f47",
+     "0x00464118"
+    ]
+   ],
+   "interior_inbound": []
+  },
+  "0x00466892": {
+   "name": "llm_strat_order_queue_dispatch",
+   "body_ranges": [
+    [
+     "0x00466892",
+     "0x004672ab"
+    ],
+    [
+     "0x00467330",
+     "0x0046961e"
+    ],
+    [
+     "0x00469691",
+     "0x00469995"
+    ]
+   ],
+   "interior_inbound": []
+  },
+  "0x0046d229": {
+   "name": "llm_strat_bldg_instant_construct_find_slot",
+   "body_ranges": [
+    [
+     "0x0046d229",
+     "0x0046d24e"
+    ],
+    [
+     "0x0046d2e7",
+     "0x0046d513"
+    ]
+   ],
+   "interior_inbound": []
+  },
+  "0x0046d514": {
+   "name": "llm_strat_bldg_instant_construct_find_slot_enqueue",
+   "body_ranges": [
+    [
+     "0x0046d514",
+     "0x0046d539"
+    ],
+    [
+     "0x0046d5d3",
+     "0x0046d7ff"
+    ]
+   ],
+   "interior_inbound": []
+  },
+  "0x0046e76c": {
+   "name": "llm_unit_order_disembark_soldiers",
+   "body_ranges": [
+    [
+     "0x0046e76c",
+     "0x0046e7a1"
+    ],
+    [
+     "0x0046e7a3",
+     "0x0046e7d5"
+    ]
+   ],
+   "interior_inbound": []
+  },
+  "0x0046ebd8": {
+   "name": "llm_strat_bldg_order_load_resource",
+   "body_ranges": [
+    [
+     "0x0046ebd8",
+     "0x0046ec26"
+    ],
+    [
+     "0x0046ec28",
+     "0x0046ec34"
+    ]
+   ],
+   "interior_inbound": []
+  },
+  "0x0046ec92": {
+   "name": "llm_strat_bldg_order_unload_resource",
+   "body_ranges": [
+    [
+     "0x0046ec92",
+     "0x0046ecd2"
+    ],
+    [
+     "0x0046ecd4",
+     "0x0046ecee"
+    ]
+   ],
+   "interior_inbound": []
+  },
+  "0x0046f97e": {
+   "name": "llm_strat_order_set_player_control_mode",
+   "body_ranges": [
+    [
+     "0x0046f97e",
+     "0x0046f9ad"
+    ],
+    [
+     "0x0046f9af",
+     "0x0046fa1c"
+    ],
+    [
+     "0x0046fa1e",
+     "0x0046fa3d"
+    ]
+   ],
+   "interior_inbound": []
+  },
+  "0x0046fd86": {
+   "name": "llm_strat_building_tick",
+   "body_ranges": [
+    [
+     "0x0046fd86",
+     "0x0046fd87"
+    ],
+    [
+     "0x0046fd89",
+     "0x0046fde8"
+    ],
+    [
+     "0x0046fdea",
+     "0x0046fe49"
+    ],
+    [
+     "0x0046fe4b",
+     "0x0046ff2b"
+    ]
+   ],
+   "interior_inbound": []
+  },
+  "0x0047401c": {
+   "name": "llm_strat_reason_to_housing_bldg",
+   "body_ranges": [
+    [
+     "0x0047401c",
+     "0x0047403a"
+    ],
+    [
+     "0x0047404e",
+     "0x00474138"
+    ]
+   ],
+   "interior_inbound": []
+  },
+  "0x004747d6": {
+   "name": "llm_strat_bldg_register_online",
+   "body_ranges": [
+    [
+     "0x004747d6",
+     "0x0047486e"
+    ],
+    [
+     "0x00474874",
+     "0x004749ec"
+    ]
+   ],
+   "interior_inbound": []
+  },
+  "0x00476627": {
+   "name": "llm_strat_bldg_anim_state_barracks_garage_a",
+   "body_ranges": [
+    [
+     "0x00476627",
+     "0x004766fa"
+    ],
+    [
+     "0x00476712",
+     "0x004769a8"
+    ]
+   ],
+   "interior_inbound": []
+  },
+  "0x004769a9": {
+   "name": "llm_strat_bldg_anim_state_vehicles_h",
+   "body_ranges": [
+    [
+     "0x004769a9",
+     "0x00476a91"
+    ],
+    [
+     "0x00476aa6",
+     "0x00476e9c"
+    ]
+   ],
+   "interior_inbound": []
+  },
+  "0x00476e9d": {
+   "name": "llm_strat_bldg_anim_state_soldiers_h",
+   "body_ranges": [
+    [
+     "0x00476e9d",
+     "0x00476f85"
+    ],
+    [
+     "0x00476f9a",
+     "0x00477230"
+    ]
+   ],
+   "interior_inbound": []
+  },
+  "0x004773f4": {
+   "name": "llm_strat_bldg_anim_state_helipad",
+   "body_ranges": [
+    [
+     "0x004773f4",
+     "0x004774bf"
+    ],
+    [
+     "0x004774d6",
+     "0x00477880"
+    ]
+   ],
+   "interior_inbound": []
+  },
+  "0x00477881": {
+   "name": "llm_strat_bldg_anim_state_airfield_a",
+   "body_ranges": [
+    [
+     "0x00477881",
+     "0x0047796b"
+    ],
+    [
+     "0x00477982",
+     "0x00477bec"
+    ]
+   ],
+   "interior_inbound": []
+  },
+  "0x004786f5": {
+   "name": "llm_strat_bldg_anim_state_port",
+   "body_ranges": [
+    [
+     "0x004786f5",
+     "0x00478933"
+    ],
+    [
+     "0x00478946",
+     "0x00478bfd"
+    ]
+   ],
+   "interior_inbound": []
+  },
+  "0x004795dd": {
+   "name": "llm_strat_bldg_completion_dispatch",
+   "body_ranges": [
+    [
+     "0x004795dd",
+     "0x00479736"
+    ],
+    [
+     "0x004797d2",
+     "0x0047ab1f"
+    ]
+   ],
+   "interior_inbound": []
+  },
+  "0x0047b36b": {
+   "name": "llm_strat_bldg_unmap_footprint",
+   "body_ranges": [
+    [
+     "0x0047b36b",
+     "0x0047b4ab"
+    ],
+    [
+     "0x0047b546",
+     "0x0047ba6b"
+    ]
+   ],
+   "interior_inbound": []
+  },
+  "0x0047bf8e": {
+   "name": "llm_strat_turret_fire",
+   "body_ranges": [
+    [
+     "0x0047bf8e",
+     "0x0047c0f9"
+    ],
+    [
+     "0x0047c11a",
+     "0x0047c60a"
+    ]
+   ],
+   "interior_inbound": []
+  },
+  "0x0047d741": {
+   "name": "llm_strat_unit_update_rotation",
+   "body_ranges": [
+    [
+     "0x0047d741",
+     "0x0047d8c1"
+    ],
+    [
+     "0x0047d8c7",
+     "0x0047d8e1"
+    ],
+    [
+     "0x0047d8e7",
+     "0x0047dd55"
+    ]
+   ],
+   "interior_inbound": []
+  },
+  "0x0047de7d": {
+   "name": "llm_strat_unit_weapon_reload_tick",
+   "body_ranges": [
+    [
+     "0x0047de7d",
+     "0x0047de99"
+    ],
+    [
+     "0x0047deba",
+     "0x0047e064"
+    ]
+   ],
+   "interior_inbound": []
+  },
+  "0x004803bf": {
+   "name": "llm_strat_unit_state_enter_walk_in",
+   "body_ranges": [
+    [
+     "0x004803bf",
+     "0x00480700"
+    ],
+    [
+     "0x00480703",
+     "0x004807d8"
+    ]
+   ],
+   "interior_inbound": []
+  },
+  "0x0048592d": {
+   "name": "llm_strat_unit_state_remove_silent",
+   "body_ranges": [
+    [
+     "0x0048592d",
+     "0x00485b9a"
+    ],
+    [
+     "0x00485b9c",
+     "0x00485baa"
+    ]
+   ],
+   "interior_inbound": []
+  },
+  "0x00485bab": {
+   "name": "llm_strat_unit_state_step_adjacent",
+   "body_ranges": [
+    [
+     "0x00485bab",
+     "0x00485d32"
+    ],
+    [
+     "0x00485d34",
+     "0x00485d42"
+    ]
+   ],
+   "interior_inbound": []
+  },
+  "0x00485d43": {
+   "name": "llm_strat_unit_state_plot_turn_path",
+   "body_ranges": [
+    [
+     "0x00485d43",
+     "0x00485eaa"
+    ],
+    [
+     "0x00485eac",
+     "0x00485eba"
+    ]
+   ],
+   "interior_inbound": []
+  },
+  "0x00485ebb": {
+   "name": "llm_strat_unit_state_idle_scatter",
+   "body_ranges": [
+    [
+     "0x00485ebb",
+     "0x004860f5"
+    ],
+    [
+     "0x004860f7",
+     "0x00486105"
+    ]
+   ],
+   "interior_inbound": []
+  },
+  "0x00487b25": {
+   "name": "llm_strat_unit_free_slot",
+   "body_ranges": [
+    [
+     "0x00487b25",
+     "0x00487b84"
+    ],
+    [
+     "0x00487b86",
+     "0x00487ba4"
+    ]
+   ],
+   "interior_inbound": []
+  },
+  "0x00487ba5": {
+   "name": "llm_strat_unit_teardown",
+   "body_ranges": [
+    [
+     "0x00487ba5",
+     "0x00487ccf"
+    ],
+    [
+     "0x00487cd7",
+     "0x0048802d"
+    ]
+   ],
+   "interior_inbound": []
+  },
+  "0x00489f54": {
+   "name": "llm_strat_storage_place_exit_ground",
+   "body_ranges": [
+    [
+     "0x00489f54",
+     "0x0048a152"
+    ],
+    [
+     "0x0048a155",
+     "0x0048a547"
+    ]
+   ],
+   "interior_inbound": []
+  },
+  "0x0048bb6c": {
+   "name": "llm_strat_unit_fire_weapon",
+   "body_ranges": [
+    [
+     "0x0048bb6c",
+     "0x0048bddf"
+    ],
+    [
+     "0x0048be02",
+     "0x0048c6b1"
+    ]
+   ],
+   "interior_inbound": []
+  },
+  "0x00492843": {
+   "name": "llm_strat_prod_try_start_unit",
+   "body_ranges": [
+    [
+     "0x00492843",
+     "0x004928e9"
+    ],
+    [
+     "0x004928f4",
+     "0x00492b5f"
+    ]
+   ],
+   "interior_inbound": []
+  },
+  "0x00492b60": {
+   "name": "llm_strat_unit_type_group_index",
+   "body_ranges": [
+    [
+     "0x00492b60",
+     "0x00492ba4"
+    ],
+    [
+     "0x00492ba9",
+     "0x00492bf0"
+    ]
+   ],
+   "interior_inbound": []
+  },
+  "0x0049779b": {
+   "name": "llm_strat_unit_housing_count_add",
+   "body_ranges": [
+    [
+     "0x0049779b",
+     "0x004977e1"
+    ],
+    [
+     "0x004977e6",
+     "0x00497841"
+    ]
+   ],
+   "interior_inbound": []
+  },
+  "0x00497842": {
+   "name": "llm_strat_unit_housing_count_remove",
+   "body_ranges": [
+    [
+     "0x00497842",
+     "0x00497888"
+    ],
+    [
+     "0x0049788d",
+     "0x004978e8"
+    ]
+   ],
+   "interior_inbound": []
+  },
+  "0x00497ac4": {
+   "name": "llm_bldg_storage_accepts_unit_type",
+   "body_ranges": [
+    [
+     "0x00497ac4",
+     "0x00497b0e"
+    ],
+    [
+     "0x00497b19",
+     "0x00497b90"
+    ]
+   ],
+   "interior_inbound": []
+  },
+  "0x00497b91": {
+   "name": "llm_strat_storage_type_accepts_unit",
+   "body_ranges": [
+    [
+     "0x00497b91",
+     "0x00497c69"
+    ],
+    [
+     "0x00497c6f",
+     "0x00497cfa"
+    ]
+   ],
+   "interior_inbound": []
+  },
+  "0x00498089": {
+   "name": "llm_strat_player_presence_lost",
+   "body_ranges": [
+    [
+     "0x00498089",
+     "0x00498771"
+    ],
+    [
+     "0x00498774",
+     "0x004987ad"
+    ]
+   ],
+   "interior_inbound": []
+  },
+  "0x0049ad06": {
+   "name": "llm_strat_minimap_init",
+   "body_ranges": [
+    [
+     "0x0049ad06",
+     "0x0049b250"
+    ],
+    [
+     "0x0049b267",
+     "0x0049b351"
+    ]
+   ],
+   "interior_inbound": []
+  },
+  "0x0049b5b0": {
+   "name": "llm_strat_advisor_tick",
+   "body_ranges": [
+    [
+     "0x0049b5b0",
+     "0x0049b60f"
+    ],
+    [
+     "0x0049b615",
+     "0x0049b8f4"
+    ]
+   ],
+   "interior_inbound": []
+  },
+  "0x0049c2cd": {
+   "name": "llm_net_lockstep_dispatch",
+   "body_ranges": [
+    [
+     "0x0049c2cd",
+     "0x0049c350"
+    ],
+    [
+     "0x0049c365",
+     "0x0049c592"
+    ],
+    [
+     "0x0049c5d1",
+     "0x0049d33a"
+    ]
+   ],
+   "interior_inbound": []
+  },
+  "0x0049fab3": {
+   "name": "llm_snd_debug_cfg_browser_dispatch",
+   "body_ranges": [
+    [
+     "0x0049fab3",
+     "0x0049facf"
+    ],
+    [
+     "0x0049fae8",
+     "0x0049fc49"
+    ]
+   ],
+   "interior_inbound": []
+  },
+  "0x004a035e": {
+   "name": "llm_frame_dispatch",
+   "body_ranges": [
+    [
+     "0x004a035e",
+     "0x004a03c5"
+    ],
+    [
+     "0x004a03eb",
+     "0x004a0451"
+    ]
+   ],
+   "interior_inbound": []
+  },
+  "0x004a0452": {
+   "name": "llm_wnd_on_activate",
+   "body_ranges": [
+    [
+     "0x004a0452",
+     "0x004a048b"
+    ],
+    [
+     "0x004a0490",
+     "0x004a04fb"
+    ]
+   ],
+   "interior_inbound": []
+  },
+  "0x004a0b38": {
+   "name": "WinMain",
+   "body_ranges": [
+    [
+     "0x004a0b38",
+     "0x004a0ce9"
+    ],
+    [
+     "0x004a0cf2",
+     "0x004a0cfe"
+    ]
+   ],
+   "interior_inbound": []
+  },
+  "0x004a17b3": {
+   "name": "llm_strat_minimap_render",
+   "body_ranges": [
+    [
+     "0x004a17b3",
+     "0x004a1893"
+    ],
+    [
+     "0x004a18b9",
+     "0x004a2301"
+    ]
+   ],
+   "interior_inbound": []
+  },
+  "0x004a6817": {
+   "name": "map_fow_UpdateFoWPlus_impl",
+   "body_ranges": [
+    [
+     "0x004a6817",
+     "0x004a68c1"
+    ],
+    [
+     "0x004a68d1",
+     "0x004a6944"
+    ]
+   ],
+   "interior_inbound": []
+  },
+  "0x004a96dc": {
+   "name": "cfg_CountObjects",
+   "body_ranges": [
+    [
+     "0x004a96dc",
+     "0x004a9775"
+    ],
+    [
+     "0x004a977b",
+     "0x004a98c5"
+    ]
+   ],
+   "interior_inbound": []
+  },
+  "0x004a98c6": {
+   "name": "cfg_ReadObjects",
+   "body_ranges": [
+    [
+     "0x004a98c6",
+     "0x004a9944"
+    ],
+    [
+     "0x004a997a",
+     "0x004a9b27"
+    ]
+   ],
+   "interior_inbound": []
+  },
+  "0x004aa261": {
+   "name": "cfg_ObjectInit",
+   "body_ranges": [
+    [
+     "0x004aa261",
+     "0x004aa27d"
+    ],
+    [
+     "0x004aa2be",
+     "0x004aac18"
+    ]
+   ],
+   "interior_inbound": []
+  },
+  "0x004aac19": {
+   "name": "cfg_CopyStaticToDynamic",
+   "body_ranges": [
+    [
+     "0x004aac19",
+     "0x004aac35"
+    ],
+    [
+     "0x004aac7a",
+     "0x004acfb6"
+    ]
+   ],
+   "interior_inbound": []
+  },
+  "0x004b7c3b": {
+   "name": "llm_ui_menu_state_tick",
+   "body_ranges": [
+    [
+     "0x004b7c3b",
+     "0x004b7cbd"
+    ],
+    [
+     "0x004b7cc3",
+     "0x004b7e97"
+    ]
+   ],
+   "interior_inbound": []
+  },
+  "0x004ba8af": {
+   "name": "llm_tutorial_step_driver",
+   "body_ranges": [
+    [
+     "0x004ba8af",
+     "0x004ba9b2"
+    ],
+    [
+     "0x004ba9e4",
+     "0x004baf10"
+    ]
+   ],
+   "interior_inbound": []
+  },
+  "0x004bc4af": {
+   "name": "llm_ui_screen_fade_transition_tick",
+   "body_ranges": [
+    [
+     "0x004bc4af",
+     "0x004bc4c8"
+    ],
+    [
+     "0x004bc4dc",
+     "0x004bc6a9"
+    ]
+   ],
+   "interior_inbound": []
+  },
+  "0x004bea15": {
+   "name": "llm_lobby_build_players_from_slots",
+   "body_ranges": [
+    [
+     "0x004bea15",
+     "0x004bea61"
+    ]
+   ],
+   "interior_inbound": [
+    {
+     "dest": "0x004bea52",
+     "from": "0x004bea68",
+     "from_fn": "llm_lobby_build_players_step",
+     "type": "UNCONDITIONAL_JUMP"
+    }
+   ]
+  },
+  "0x004bea62": {
+   "name": "llm_lobby_build_players_step",
+   "body_ranges": [
+    [
+     "0x004bea62",
+     "0x004beab7"
+    ]
+   ],
+   "interior_inbound": [
+    {
+     "dest": "0x004bea6a",
+     "from": "0x004bea5b",
+     "from_fn": "llm_lobby_build_players_from_slots",
+     "type": "CONDITIONAL_JUMP"
+    }
+   ]
+  },
+  "0x004beab8": {
+   "name": "llm_lobby_build_players_tail_copy",
+   "body_ranges": [
+    [
+     "0x004beab8",
+     "0x004beb2d"
+    ]
+   ],
+   "interior_inbound": [
+    {
+     "dest": "0x004beae3",
+     "from": "0x004bea99",
+     "from_fn": "llm_lobby_build_players_step",
+     "type": "CONDITIONAL_JUMP"
+    }
+   ]
+  },
+  "0x004bfd35": {
+   "name": "llm_lobby_host_net_dispatch",
+   "body_ranges": [
+    [
+     "0x004bfd35",
+     "0x004c045a"
+    ],
+    [
+     "0x004c0494",
+     "0x004c06a1"
+    ]
+   ],
+   "interior_inbound": []
+  },
+  "0x004c4c09": {
+   "name": "llm_strat_ui_shipment_list_item_draw",
+   "body_ranges": [
+    [
+     "0x004c4c09",
+     "0x004c4c48"
+    ],
+    [
+     "0x004c4c60",
+     "0x004c4f28"
+    ]
+   ],
+   "interior_inbound": []
+  },
+  "0x004c5995": {
+   "name": "llm_ui_planet_sel_route_icon_place",
+   "body_ranges": [
+    [
+     "0x004c5995",
+     "0x004c5a2a"
+    ],
+    [
+     "0x004c5a2d",
+     "0x004c5a77"
+    ]
+   ],
+   "interior_inbound": []
+  },
+  "0x004c6c4f": {
+   "name": "llm_ui_outcome_dialog",
+   "body_ranges": [
+    [
+     "0x004c6c4f",
+     "0x004c6d69"
+    ],
+    [
+     "0x004c6d84",
+     "0x004c6ea9"
+    ],
+    [
+     "0x004c6ed0",
+     "0x004c6fee"
+    ]
+   ],
+   "interior_inbound": []
+  },
+  "0x004c97e4": {
+   "name": "llm_ui_bldg_info_panel_populate_stat_line",
+   "body_ranges": [
+    [
+     "0x004c97e4",
+     "0x004c985d"
+    ],
+    [
+     "0x004c9863",
+     "0x004c9871"
+    ],
+    [
+     "0x004c9877",
+     "0x004c98e2"
+    ],
+    [
+     "0x004c98e8",
+     "0x004c9b8f"
+    ]
+   ],
+   "interior_inbound": []
+  },
+  "0x004cbe7a": {
+   "name": "llm_snd_mixer_check_error",
+   "body_ranges": [
+    [
+     "0x004cbe7a",
+     "0x004cbf07"
+    ],
+    [
+     "0x004cbf0a",
+     "0x004cbf8e"
+    ]
+   ],
+   "interior_inbound": []
+  },
+  "0x004cc609": {
+   "name": "llm_cd_audio_query_mode_and_position",
+   "body_ranges": [
+    [
+     "0x004cc609",
+     "0x004cc622"
+    ],
+    [
+     "0x004cc641",
+     "0x004cc729"
+    ]
+   ],
+   "interior_inbound": []
+  },
+  "0x004cc9f9": {
+   "name": "llm_ui_acm_result_dispatch",
+   "body_ranges": [
+    [
+     "0x004cc9f9",
+     "0x004cca15"
+    ],
+    [
+     "0x004ccab3",
+     "0x004ccadf"
+    ],
+    [
+     "0x004ccbee",
+     "0x004ccc02"
+    ]
+   ],
+   "interior_inbound": [
+    {
+     "dest": "0x004ccbf5",
+     "from": "0x004ccbe3",
+     "from_fn": null,
+     "type": "UNCONDITIONAL_JUMP"
+    },
+    {
+     "dest": "0x004ccbf5",
+     "from": "0x004ccbda",
+     "from_fn": null,
+     "type": "UNCONDITIONAL_JUMP"
+    }
+   ]
+  },
+  "0x004ccc03": {
+   "name": "llm_ui_avi_icm_result_to_string",
+   "body_ranges": [
+    [
+     "0x004ccc03",
+     "0x004ccc6a"
+    ],
+    [
+     "0x004ccc70",
+     "0x004ccc93"
+    ],
+    [
+     "0x004ccc99",
+     "0x004ccccc"
+    ],
+    [
+     "0x004cccd2",
+     "0x004ccddc"
+    ]
+   ],
+   "interior_inbound": []
+  },
+  "0x004ccddd": {
+   "name": "llm_ui_avi_check_result",
+   "body_ranges": [
+    [
+     "0x004ccddd",
+     "0x004cce9c"
+    ],
+    [
+     "0x004ccea2",
+     "0x004ccee4"
+    ],
+    [
+     "0x004cceea",
+     "0x004ccf08"
+    ],
+    [
+     "0x004ccf0e",
+     "0x004ccff5"
+    ]
+   ],
+   "interior_inbound": []
+  },
+  "0x004d1008": {
+   "name": "llm_input_di_keyboard_destroy",
+   "body_ranges": [
+    [
+     "0x004d0a20",
+     "0x004d0a47"
+    ],
+    [
+     "0x004d1008",
+     "0x004d1015"
+    ]
+   ],
+   "interior_inbound": []
+  },
+  "0x004d10d0": {
+   "name": "llm_input_dimouse_shutdown",
+   "body_ranges": [
+    [
+     "0x004d0c9c",
+     "0x004d0cc3"
+    ],
+    [
+     "0x004d10d0",
+     "0x004d10dd"
+    ]
+   ],
+   "interior_inbound": []
+  },
+  "0x004d3437": {
+   "name": "llm_strat_ai_unit_squad_firepower_value",
+   "body_ranges": [
+    [
+     "0x004d3437",
+     "0x004d352b"
+    ]
+   ],
+   "interior_inbound": [
+    {
+     "dest": "0x004d3524",
+     "from": "0x004d3603",
+     "from_fn": "llm_strat_ai_score_reinforcement_unit",
+     "type": "UNCONDITIONAL_JUMP"
+    }
+   ]
+  },
+  "0x004d37f2": {
+   "name": "llm_strat_bldg_count_by_type",
+   "body_ranges": [
+    [
+     "0x004d37f2",
+     "0x004d388d"
+    ]
+   ],
+   "interior_inbound": [
+    {
+     "dest": "0x004d3883",
+     "from": "0x004d3912",
+     "from_fn": "llm_strat_bldg_count_by_id",
+     "type": "UNCONDITIONAL_JUMP"
+    },
+    {
+     "dest": "0x004d3885",
+     "from": "0x004d37ed",
+     "from_fn": "llm_strat_ai_bldg_count_by_category",
+     "type": "UNCONDITIONAL_JUMP"
+    },
+    {
+     "dest": "0x004d3888",
+     "from": "0x004d4d0a",
+     "from_fn": "llm_strat_ai_group_task_dequeue",
+     "type": "CONDITIONAL_JUMP"
+    },
+    {
+     "dest": "0x004d3888",
+     "from": "0x004d4d23",
+     "from_fn": "llm_strat_ai_group_task_dequeue",
+     "type": "UNCONDITIONAL_JUMP"
+    },
+    {
+     "dest": "0x004d3888",
+     "from": "0x004d4d80",
+     "from_fn": "llm_strat_ai_group_task_dequeue",
+     "type": "UNCONDITIONAL_JUMP"
+    }
+   ]
+  },
+  "0x004d4d85": {
+   "name": "llm_strat_ai_group_create",
+   "body_ranges": [
+    [
+     "0x004d4d85",
+     "0x004d4e6a"
+    ]
+   ],
+   "interior_inbound": [
+    {
+     "dest": "0x004d4e61",
+     "from": "0x004d86c3",
+     "from_fn": "llm_strat_ai_turret_threat_rescan",
+     "type": "UNCONDITIONAL_JUMP"
+    }
+   ]
+  },
+  "0x004d55ef": {
+   "name": "llm_strat_ai_commit_attack_order",
+   "body_ranges": [
+    [
+     "0x004d55ef",
+     "0x004d5707"
+    ]
+   ],
+   "interior_inbound": [
+    {
+     "dest": "0x004d56e0",
+     "from": "0x004d57b7",
+     "from_fn": "llm_strat_ai_commit_attack_order_alt",
+     "type": "UNCONDITIONAL_JUMP"
+    },
+    {
+     "dest": "0x004d56e0",
+     "from": "0x004d57fc",
+     "from_fn": "llm_strat_ai_commit_attack_order_alt",
+     "type": "UNCONDITIONAL_JUMP"
+    },
+    {
+     "dest": "0x004d5701",
+     "from": "0x004d83c2",
+     "from_fn": "llm_strat_ai_notify_map_changed",
+     "type": "UNCONDITIONAL_JUMP"
+    },
+    {
+     "dest": "0x004d5701",
+     "from": "0x004d5c6b",
+     "from_fn": "llm_strat_ai_group_compute_centroid",
+     "type": "UNCONDITIONAL_JUMP"
+    },
+    {
+     "dest": "0x004d5701",
+     "from": "0x004d5df7",
+     "from_fn": "llm_strat_ai_group_compute_centroid",
+     "type": "UNCONDITIONAL_JUMP"
+    },
+    {
+     "dest": "0x004d5701",
+     "from": "0x004d3432",
+     "from_fn": "llm_strat_unit_estimate_weapon_damage",
+     "type": "UNCONDITIONAL_JUMP"
+    },
+    {
+     "dest": "0x004d5701",
+     "from": "0x004d84b5",
+     "from_fn": "llm_strat_ai_notify_map_changed_2",
+     "type": "UNCONDITIONAL_JUMP"
+    },
+    {
+     "dest": "0x004d5701",
+     "from": "0x004d58cb",
+     "from_fn": "llm_strat_ai_unit_group_assign_by_type",
+     "type": "CONDITIONAL_JUMP"
+    },
+    {
+     "dest": "0x004d5701",
+     "from": "0x004d58e2",
+     "from_fn": "llm_strat_ai_unit_group_assign_by_type",
+     "type": "UNCONDITIONAL_JUMP"
+    }
+   ]
+  },
+  "0x004d5f4c": {
+   "name": "llm_strat_ai_group_scatter_random_worker",
+   "body_ranges": [
+    [
+     "0x004d5f4c",
+     "0x004d5fe6"
+    ],
+    [
+     "0x004d70c9",
+     "0x004d70d0"
+    ]
+   ],
+   "interior_inbound": [
+    {
+     "dest": "0x004d70c9",
+     "from": "0x004d7bc7",
+     "from_fn": "llm_gfx_render_ai_vision_debug_map",
+     "type": "CONDITIONAL_JUMP"
+    },
+    {
+     "dest": "0x004d70c9",
+     "from": "0x004d7da4",
+     "from_fn": "llm_gfx_render_ai_vision_debug_map",
+     "type": "UNCONDITIONAL_JUMP"
+    },
+    {
+     "dest": "0x004d70c9",
+     "from": "0x004d403c",
+     "from_fn": "llm_strat_bldg_max_defense_radius_sq",
+     "type": "UNCONDITIONAL_JUMP"
+    },
+    {
+     "dest": "0x004d70c9",
+     "from": "0x004d7f09",
+     "from_fn": "llm_strat_ai_group_scatter_to_passable_tile",
+     "type": "UNCONDITIONAL_JUMP"
+    }
+   ]
+  },
+  "0x004d71c7": {
+   "name": "llm_gfx_save_screenshot_rle",
+   "body_ranges": [
+    [
+     "0x004d6f14",
+     "0x004d70c8"
+    ],
+    [
+     "0x004d70d1",
+     "0x004d729c"
+    ]
+   ],
+   "interior_inbound": []
+  },
+  "0x004d746c": {
+   "name": "llm_strat_bldg_has_aa_weapon",
+   "body_ranges": [
+    [
+     "0x004d746c",
+     "0x004d74dd"
+    ]
+   ],
+   "interior_inbound": [
+    {
+     "dest": "0x004d74cf",
+     "from": "0x004d7455",
+     "from_fn": "llm_strat_ai_target_ref_has_ground_weapon",
+     "type": "UNCONDITIONAL_JUMP"
+    },
+    {
+     "dest": "0x004d74d6",
+     "from": "0x004d7442",
+     "from_fn": "llm_strat_ai_target_ref_has_ground_weapon",
+     "type": "CONDITIONAL_JUMP"
+    },
+    {
+     "dest": "0x004d74d8",
+     "from": "0x004d850c",
+     "from_fn": "llm_strat_ai_building_defense_weapon_range",
+     "type": "CONDITIONAL_JUMP"
+    },
+    {
+     "dest": "0x004d74d8",
+     "from": "0x004d8521",
+     "from_fn": "llm_strat_ai_building_defense_weapon_range",
+     "type": "UNCONDITIONAL_JUMP"
+    },
+    {
+     "dest": "0x004d74d8",
+     "from": "0x004d42a3",
+     "from_fn": "llm_strat_unit_attack_target_is_dead",
+     "type": "UNCONDITIONAL_JUMP"
+    },
+    {
+     "dest": "0x004d74d8",
+     "from": "0x004d42aa",
+     "from_fn": "llm_strat_unit_attack_target_is_dead",
+     "type": "UNCONDITIONAL_JUMP"
+    },
+    {
+     "dest": "0x004d74d8",
+     "from": "0x004d4312",
+     "from_fn": "llm_strat_unit_attack_target_is_dead",
+     "type": "UNCONDITIONAL_JUMP"
+    },
+    {
+     "dest": "0x004d74d8",
+     "from": "0x004d4319",
+     "from_fn": "llm_strat_unit_attack_target_is_dead",
+     "type": "UNCONDITIONAL_JUMP"
+    },
+    {
+     "dest": "0x004d74d8",
+     "from": "0x004d50e8",
+     "from_fn": "llm_strat_ai_engage_candidate_add",
+     "type": "UNCONDITIONAL_JUMP"
+    },
+    {
+     "dest": "0x004d74d8",
+     "from": "0x004d5124",
+     "from_fn": "llm_strat_ai_engage_candidate_add",
+     "type": "CONDITIONAL_JUMP"
+    },
+    {
+     "dest": "0x004d74d8",
+     "from": "0x004d5167",
+     "from_fn": "llm_strat_ai_engage_candidate_add",
+     "type": "UNCONDITIONAL_JUMP"
+    },
+    {
+     "dest": "0x004d74d8",
+     "from": "0x004d513f",
+     "from_fn": "llm_strat_ai_engage_candidate_add",
+     "type": "CONDITIONAL_JUMP"
+    }
+   ]
+  },
+  "0x004d7e22": {
+   "name": "llm_strat_ai_unit_flag_and_move",
+   "body_ranges": [
+    [
+     "0x004d7e22",
+     "0x004d7e6a"
+    ]
+   ],
+   "interior_inbound": [
+    {
+     "dest": "0x004d7e65",
+     "from": "0x004d82c5",
+     "from_fn": "llm_strat_ai_target_dist_sq",
+     "type": "UNCONDITIONAL_JUMP"
+    }
+   ]
+  },
+  "0x004d8a9d": {
+   "name": "llm_strat_ai_bldg_has_heli_unit",
+   "body_ranges": [
+    [
+     "0x004d8a9d",
+     "0x004d8b88"
+    ]
+   ],
+   "interior_inbound": [
+    {
+     "dest": "0x004d8b80",
+     "from": "0x004d8c78",
+     "from_fn": "llm_strat_bldg_side_has_aircraft_producer",
+     "type": "UNCONDITIONAL_JUMP"
+    },
+    {
+     "dest": "0x004d8b82",
+     "from": "0x004d8c60",
+     "from_fn": "llm_strat_bldg_side_has_aircraft_producer",
+     "type": "UNCONDITIONAL_JUMP"
+    },
+    {
+     "dest": "0x004d8b82",
+     "from": "0x004d55ea",
+     "from_fn": "llm_strat_ai_engage_partition_turret_candidates",
+     "type": "UNCONDITIONAL_JUMP"
+    }
+   ]
+  },
+  "0x004dac44": {
+   "name": "llm_strat_target_release_ref",
+   "body_ranges": [
+    [
+     "0x004dac44",
+     "0x004dae02"
+    ]
+   ],
+   "interior_inbound": [
+    {
+     "dest": "0x004dadfb",
+     "from": "0x004db762",
+     "from_fn": "llm_strat_ai_notify_object_removed",
+     "type": "CONDITIONAL_JUMP"
+    },
+    {
+     "dest": "0x004dadfb",
+     "from": "0x004db76f",
+     "from_fn": "llm_strat_ai_notify_object_removed",
+     "type": "CONDITIONAL_JUMP"
+    },
+    {
+     "dest": "0x004dadfb",
+     "from": "0x004db7ae",
+     "from_fn": "llm_strat_ai_notify_object_removed",
+     "type": "CONDITIONAL_JUMP"
+    },
+    {
+     "dest": "0x004dadfb",
+     "from": "0x004db846",
+     "from_fn": "llm_strat_ai_notify_object_removed",
+     "type": "CONDITIONAL_JUMP"
+    },
+    {
+     "dest": "0x004dadfb",
+     "from": "0x004db8a1",
+     "from_fn": "llm_strat_ai_notify_object_removed",
+     "type": "UNCONDITIONAL_JUMP"
+    },
+    {
+     "dest": "0x004dadfb",
+     "from": "0x004db86f",
+     "from_fn": "llm_strat_ai_notify_object_removed",
+     "type": "UNCONDITIONAL_JUMP"
+    },
+    {
+     "dest": "0x004dadfb",
+     "from": "0x004db87d",
+     "from_fn": "llm_strat_ai_notify_object_removed",
+     "type": "UNCONDITIONAL_JUMP"
+    },
+    {
+     "dest": "0x004dadfb",
+     "from": "0x004db8b4",
+     "from_fn": "llm_strat_ai_notify_object_removed",
+     "type": "CONDITIONAL_JUMP"
+    },
+    {
+     "dest": "0x004dadfb",
+     "from": "0x004db8bf",
+     "from_fn": "llm_strat_ai_notify_object_removed",
+     "type": "CONDITIONAL_JUMP"
+    },
+    {
+     "dest": "0x004dadfb",
+     "from": "0x004db8e8",
+     "from_fn": "llm_strat_ai_notify_object_removed",
+     "type": "CONDITIONAL_JUMP"
+    },
+    {
+     "dest": "0x004dadfb",
+     "from": "0x004db8f1",
+     "from_fn": "llm_strat_ai_notify_object_removed",
+     "type": "CONDITIONAL_JUMP"
+    },
+    {
+     "dest": "0x004dadfb",
+     "from": "0x004db900",
+     "from_fn": "llm_strat_ai_notify_object_removed",
+     "type": "UNCONDITIONAL_JUMP"
+    }
+   ]
+  },
+  "0x004ddb31": {
+   "name": "llm_strat_ai_scr_parse",
+   "body_ranges": [
+    [
+     "0x004ddb31",
+     "0x004ddc67"
+    ]
+   ],
+   "interior_inbound": [
+    {
+     "dest": "0x004ddc5e",
+     "from": "0x004dc14c",
+     "from_fn": "llm_strat_sort_sites_by_dist",
+     "type": "CONDITIONAL_JUMP"
+    },
+    {
+     "dest": "0x004ddc5e",
+     "from": "0x004dc1b5",
+     "from_fn": "llm_strat_sort_sites_by_dist",
+     "type": "CONDITIONAL_JUMP"
+    }
+   ]
+  },
+  "0x004ddc70": {
+   "name": "llm_lzss_decompress_block",
+   "body_ranges": [
+    [
+     "0x004ddc70",
+     "0x004ddcd6"
+    ],
+    [
+     "0x004ddce6",
+     "0x004ddcef"
+    ]
+   ],
+   "interior_inbound": []
+  },
+  "0x004de18e": {
+   "name": "FUN_004de18e",
+   "body_ranges": [
+    [
+     "0x004de18e",
+     "0x004de1d0"
+    ]
+   ],
+   "interior_inbound": [
+    {
+     "dest": "0x004de190",
+     "from": "0x004de1d3",
+     "from_fn": "FUN_004de1d1",
+     "type": "UNCONDITIONAL_JUMP"
+    },
+    {
+     "dest": "0x004de190",
+     "from": "0x004de1d7",
+     "from_fn": "CRT_004de1d5",
+     "type": "UNCONDITIONAL_JUMP"
+    }
+   ]
+  },
+  "0x004de84e": {
+   "name": "CRT_004de84e",
+   "body_ranges": [
+    [
+     "0x004de84e",
+     "0x004de8a5"
+    ]
+   ],
+   "interior_inbound": [
+    {
+     "dest": "0x004de89d",
+     "from": "0x004de98e",
+     "from_fn": "qsort",
+     "type": "CONDITIONAL_JUMP"
+    }
+   ]
+  },
+  "0x004df43c": {
+   "name": "CRT_004df43c",
+   "body_ranges": [
+    [
+     "0x004df43c",
+     "0x004df45f"
+    ]
+   ],
+   "interior_inbound": [
+    {
+     "dest": "0x004df45b",
+     "from": "0x004df47a",
+     "from_fn": "CRT_004df460",
+     "type": "CONDITIONAL_JUMP"
+    },
+    {
+     "dest": "0x004df45b",
+     "from": "0x004df47e",
+     "from_fn": "CRT_004df460",
+     "type": "CONDITIONAL_JUMP"
+    }
+   ]
+  },
+  "0x004e1898": {
+   "name": "CRT_004e1898",
+   "body_ranges": [
+    [
+     "0x004e1898",
+     "0x004e192c"
+    ]
+   ],
+   "interior_inbound": [
+    {
+     "dest": "0x004e1927",
+     "from": "0x004e1a4b",
+     "from_fn": "CRT_004e192d",
+     "type": "UNCONDITIONAL_JUMP"
+    },
+    {
+     "dest": "0x004e1927",
+     "from": "0x004e1efd",
+     "from_fn": "llm_crt_scanf_read_float",
+     "type": "UNCONDITIONAL_JUMP"
+    }
+   ]
+  },
+  "0x004e215f": {
+   "name": "llm_strat_econ_track_unit_resource_spend",
+   "body_ranges": [
+    [
+     "0x004e215f",
+     "0x004e21e3"
+    ]
+   ],
+   "interior_inbound": [
+    {
+     "dest": "0x004e21de",
+     "from": "0x004e23a9",
+     "from_fn": "llm_strat_ai_count_unit_build_sources",
+     "type": "UNCONDITIONAL_JUMP"
+    },
+    {
+     "dest": "0x004e21de",
+     "from": "0x004e254b",
+     "from_fn": "llm_strat_bldg_find_idle_producer_for_unit",
+     "type": "UNCONDITIONAL_JUMP"
+    },
+    {
+     "dest": "0x004e21de",
+     "from": "0x004e253a",
+     "from_fn": "llm_strat_bldg_find_idle_producer_for_unit",
+     "type": "UNCONDITIONAL_JUMP"
+    },
+    {
+     "dest": "0x004e21de",
+     "from": "0x004e68d8",
+     "from_fn": "llm_strat_bldg_record_resource_expenditure_stats",
+     "type": "UNCONDITIONAL_JUMP"
+    },
+    {
+     "dest": "0x004e21de",
+     "from": "0x004e6886",
+     "from_fn": "llm_strat_bldg_record_resource_expenditure_stats",
+     "type": "CONDITIONAL_JUMP"
+    }
+   ]
+  },
+  "0x004e2c8e": {
+   "name": "llm_strat_ai_queue_flush_unit_train_entries",
+   "body_ranges": [
+    [
+     "0x004e2bef",
+     "0x004e2c97"
+    ]
+   ],
+   "interior_inbound": [
+    {
+     "dest": "0x004e2c67",
+     "from": "0x004e2caa",
+     "from_fn": "llm_strat_ai_queue_flush_unit_train_entries_2",
+     "type": "UNCONDITIONAL_JUMP"
+    }
+   ]
+  },
+  "0x004e2cac": {
+   "name": "llm_strat_ai_queue_rotate_newest_to_front",
+   "body_ranges": [
+    [
+     "0x004e2cac",
+     "0x004e2d51"
+    ]
+   ],
+   "interior_inbound": [
+    {
+     "dest": "0x004e2d4b",
+     "from": "0x004e3a72",
+     "from_fn": "llm_strat_ai_calc_power_supply_ratio",
+     "type": "UNCONDITIONAL_JUMP"
+    },
+    {
+     "dest": "0x004e2d4b",
+     "from": "0x004e7ce7",
+     "from_fn": "llm_strat_ai_resource_spend_rate_update",
+     "type": "UNCONDITIONAL_JUMP"
+    },
+    {
+     "dest": "0x004e2d4c",
+     "from": "0x004e727b",
+     "from_fn": "llm_strat_ai_group_form_standby_from_pool3",
+     "type": "CONDITIONAL_JUMP"
+    },
+    {
+     "dest": "0x004e2d4c",
+     "from": "0x004e724e",
+     "from_fn": "llm_strat_ai_group_form_standby_from_pool3",
+     "type": "CONDITIONAL_JUMP"
+    },
+    {
+     "dest": "0x004e2d4c",
+     "from": "0x004e72ea",
+     "from_fn": "llm_strat_ai_group_form_standby_from_pool3",
+     "type": "UNCONDITIONAL_JUMP"
+    },
+    {
+     "dest": "0x004e2d4c",
+     "from": "0x004e7345",
+     "from_fn": "llm_strat_ai_group_form_surplus_from_pool4",
+     "type": "CONDITIONAL_JUMP"
+    },
+    {
+     "dest": "0x004e2d4c",
+     "from": "0x004e7313",
+     "from_fn": "llm_strat_ai_group_form_surplus_from_pool4",
+     "type": "CONDITIONAL_JUMP"
+    },
+    {
+     "dest": "0x004e2d4c",
+     "from": "0x004e7b25",
+     "from_fn": "llm_strat_ai_group_form_patrol",
+     "type": "CONDITIONAL_JUMP"
+    },
+    {
+     "dest": "0x004e2d4c",
+     "from": "0x004e7b41",
+     "from_fn": "llm_strat_ai_group_form_patrol",
+     "type": "CONDITIONAL_JUMP"
+    },
+    {
+     "dest": "0x004e2d4c",
+     "from": "0x004e7b53",
+     "from_fn": "llm_strat_ai_group_form_patrol",
+     "type": "CONDITIONAL_JUMP"
+    },
+    {
+     "dest": "0x004e2d4c",
+     "from": "0x004e62a8",
+     "from_fn": "llm_strat_ai_sort_site_candidates_by_dist",
+     "type": "UNCONDITIONAL_JUMP"
+    }
+   ]
+  },
+  "0x004e4a95": {
+   "name": "llm_strat_ai_expand_adjacent_mine_relay",
+   "body_ranges": [
+    [
+     "0x004e4a95",
+     "0x004e4e35"
+    ],
+    [
+     "0x004e4e42",
+     "0x004e4e53"
+    ]
+   ],
+   "interior_inbound": []
+  },
+  "0x004e722a": {
+   "name": "llm_strat_ai_group_form_standby_from_pool3",
+   "body_ranges": [
+    [
+     "0x004e722a",
+     "0x004e72ee"
+    ]
+   ],
+   "interior_inbound": [
+    {
+     "dest": "0x004e72e1",
+     "from": "0x004e73ae",
+     "from_fn": "llm_strat_ai_group_form_surplus_from_pool4",
+     "type": "UNCONDITIONAL_JUMP"
+    },
+    {
+     "dest": "0x004e72e1",
+     "from": "0x004e7bb0",
+     "from_fn": "llm_strat_ai_group_form_patrol",
+     "type": "UNCONDITIONAL_JUMP"
+    }
+   ]
+  },
+  "0x004e769e": {
+   "name": "llm_strat_ai_group_expansion_form_or_repurpose",
+   "body_ranges": [
+    [
+     "0x004e769e",
+     "0x004e7937"
+    ]
+   ],
+   "interior_inbound": [
+    {
+     "dest": "0x004e7925",
+     "from": "0x004e8b98",
+     "from_fn": "llm_strat_ai_invasion_launch_attack_group",
+     "type": "UNCONDITIONAL_JUMP"
+    },
+    {
+     "dest": "0x004e7929",
+     "from": "0x004e7acd",
+     "from_fn": "llm_strat_ai_group_form_perimeter_patrol",
+     "type": "UNCONDITIONAL_JUMP"
+    },
+    {
+     "dest": "0x004e792e",
+     "from": "0x004e87ac",
+     "from_fn": "llm_strat_ai_invasion_spawn_reinforcements",
+     "type": "UNCONDITIONAL_JUMP"
+    },
+    {
+     "dest": "0x004e792e",
+     "from": "0x004e8a1a",
+     "from_fn": "llm_strat_ai_invasion_spawn_reinforcements",
+     "type": "UNCONDITIONAL_JUMP"
+    },
+    {
+     "dest": "0x004e792e",
+     "from": "0x004e8bc1",
+     "from_fn": "llm_strat_ai_player_tick",
+     "type": "CONDITIONAL_JUMP"
+    },
+    {
+     "dest": "0x004e792e",
+     "from": "0x004e8bf6",
+     "from_fn": "llm_strat_ai_player_tick",
+     "type": "UNCONDITIONAL_JUMP"
+    },
+    {
+     "dest": "0x004e792e",
+     "from": "0x004e8ebc",
+     "from_fn": "llm_strat_ai_player_tick",
+     "type": "UNCONDITIONAL_JUMP"
+    },
+    {
+     "dest": "0x004e792e",
+     "from": "0x004e8ecb",
+     "from_fn": "llm_strat_ai_player_tick",
+     "type": "UNCONDITIONAL_JUMP"
+    },
+    {
+     "dest": "0x004e792e",
+     "from": "0x004e5bc4",
+     "from_fn": "llm_strat_ai_plan_construction",
+     "type": "CONDITIONAL_JUMP"
+    },
+    {
+     "dest": "0x004e792e",
+     "from": "0x004e5be3",
+     "from_fn": "llm_strat_ai_plan_construction",
+     "type": "CONDITIONAL_JUMP"
+    },
+    {
+     "dest": "0x004e792e",
+     "from": "0x004e5bfd",
+     "from_fn": "llm_strat_ai_plan_construction",
+     "type": "UNCONDITIONAL_JUMP"
+    },
+    {
+     "dest": "0x004e792e",
+     "from": "0x004e5d5b",
+     "from_fn": "llm_strat_ai_plan_construction",
+     "type": "CONDITIONAL_JUMP"
+    },
+    {
+     "dest": "0x004e792e",
+     "from": "0x004e5d8c",
+     "from_fn": "llm_strat_ai_plan_construction",
+     "type": "UNCONDITIONAL_JUMP"
+    },
+    {
+     "dest": "0x004e792e",
+     "from": "0x004e5d9d",
+     "from_fn": "llm_strat_ai_plan_construction",
+     "type": "UNCONDITIONAL_JUMP"
+    },
+    {
+     "dest": "0x004e792e",
+     "from": "0x004e407b",
+     "from_fn": "llm_strat_ai_rebalance_building_workers",
+     "type": "UNCONDITIONAL_JUMP"
+    },
+    {
+     "dest": "0x004e792e",
+     "from": "0x004e40a9",
+     "from_fn": "llm_strat_ai_rebalance_building_workers",
+     "type": "UNCONDITIONAL_JUMP"
+    },
+    {
+     "dest": "0x004e792e",
+     "from": "0x004e4f50",
+     "from_fn": "llm_strat_ai_plan_turret_upgrade",
+     "type": "CONDITIONAL_JUMP"
+    },
+    {
+     "dest": "0x004e792e",
+     "from": "0x004e5183",
+     "from_fn": "llm_strat_ai_plan_turret_upgrade",
+     "type": "CONDITIONAL_JUMP"
+    },
+    {
+     "dest": "0x004e792e",
+     "from": "0x004e52bf",
+     "from_fn": "llm_strat_ai_plan_turret_upgrade",
+     "type": "UNCONDITIONAL_JUMP"
+    },
+    {
+     "dest": "0x004e792e",
+     "from": "0x004e52aa",
+     "from_fn": "llm_strat_ai_plan_turret_upgrade",
+     "type": "UNCONDITIONAL_JUMP"
+    },
+    {
+     "dest": "0x004e792e",
+     "from": "0x004e5342",
+     "from_fn": "llm_strat_ai_plan_mine_construction",
+     "type": "CONDITIONAL_JUMP"
+    },
+    {
+     "dest": "0x004e792e",
+     "from": "0x004e53b1",
+     "from_fn": "llm_strat_ai_plan_mine_construction",
+     "type": "CONDITIONAL_JUMP"
+    },
+    {
+     "dest": "0x004e792e",
+     "from": "0x004e53c2",
+     "from_fn": "llm_strat_ai_plan_mine_construction",
+     "type": "CONDITIONAL_JUMP"
+    },
+    {
+     "dest": "0x004e792e",
+     "from": "0x004e5486",
+     "from_fn": "llm_strat_ai_plan_mine_construction",
+     "type": "CONDITIONAL_JUMP"
+    },
+    {
+     "dest": "0x004e792e",
+     "from": "0x004e54aa",
+     "from_fn": "llm_strat_ai_plan_mine_construction",
+     "type": "CONDITIONAL_JUMP"
+    },
+    {
+     "dest": "0x004e792e",
+     "from": "0x004e54c7",
+     "from_fn": "llm_strat_ai_plan_mine_construction",
+     "type": "UNCONDITIONAL_JUMP"
+    },
+    {
+     "dest": "0x004e792e",
+     "from": "0x004e5a77",
+     "from_fn": "llm_strat_ai_maintain_unit_housing",
+     "type": "CONDITIONAL_JUMP"
+    },
+    {
+     "dest": "0x004e792e",
+     "from": "0x004e5a9a",
+     "from_fn": "llm_strat_ai_maintain_unit_housing",
+     "type": "CONDITIONAL_JUMP"
+    },
+    {
+     "dest": "0x004e792e",
+     "from": "0x004e5aa7",
+     "from_fn": "llm_strat_ai_maintain_unit_housing",
+     "type": "CONDITIONAL_JUMP"
+    },
+    {
+     "dest": "0x004e792e",
+     "from": "0x004e5ab3",
+     "from_fn": "llm_strat_ai_maintain_unit_housing",
+     "type": "CONDITIONAL_JUMP"
+    },
+    {
+     "dest": "0x004e792e",
+     "from": "0x004e5ac8",
+     "from_fn": "llm_strat_ai_maintain_unit_housing",
+     "type": "CONDITIONAL_JUMP"
+    },
+    {
+     "dest": "0x004e792e",
+     "from": "0x004e6d43",
+     "from_fn": "llm_strat_ai_plan_unit_training",
+     "type": "CONDITIONAL_JUMP"
+    },
+    {
+     "dest": "0x004e792e",
+     "from": "0x004e6eec",
+     "from_fn": "llm_strat_ai_plan_unit_training",
+     "type": "CONDITIONAL_JUMP"
+    },
+    {
+     "dest": "0x004e792e",
+     "from": "0x004e6f27",
+     "from_fn": "llm_strat_ai_plan_unit_training",
+     "type": "CONDITIONAL_JUMP"
+    },
+    {
+     "dest": "0x004e792e",
+     "from": "0x004e7133",
+     "from_fn": "llm_strat_ai_group_home_guard_replenish",
+     "type": "UNCONDITIONAL_JUMP"
+    },
+    {
+     "dest": "0x004e792e",
+     "from": "0x004e73e9",
+     "from_fn": "llm_strat_ai_army_milestone_advance_or_attack",
+     "type": "CONDITIONAL_JUMP"
+    },
+    {
+     "dest": "0x004e792e",
+     "from": "0x004e745c",
+     "from_fn": "llm_strat_ai_army_milestone_advance_or_attack",
+     "type": "CONDITIONAL_JUMP"
+    },
+    {
+     "dest": "0x004e792e",
+     "from": "0x004e7408",
+     "from_fn": "llm_strat_ai_army_milestone_advance_or_attack",
+     "type": "CONDITIONAL_JUMP"
+    },
+    {
+     "dest": "0x004e792e",
+     "from": "0x004e7416",
+     "from_fn": "llm_strat_ai_army_milestone_advance_or_attack",
+     "type": "CONDITIONAL_JUMP"
+    },
+    {
+     "dest": "0x004e792e",
+     "from": "0x004e7512",
+     "from_fn": "llm_strat_ai_army_milestone_advance_or_attack",
+     "type": "UNCONDITIONAL_JUMP"
+    },
+    {
+     "dest": "0x004e792e",
+     "from": "0x004e7598",
+     "from_fn": "llm_strat_ai_army_milestone_advance_or_attack",
+     "type": "UNCONDITIONAL_JUMP"
+    },
+    {
+     "dest": "0x004e792e",
+     "from": "0x004e75b7",
+     "from_fn": "llm_strat_ai_army_milestone_advance_or_attack",
+     "type": "CONDITIONAL_JUMP"
+    },
+    {
+     "dest": "0x004e792e",
+     "from": "0x004e7699",
+     "from_fn": "llm_strat_ai_army_milestone_advance_or_attack",
+     "type": "UNCONDITIONAL_JUMP"
+    },
+    {
+     "dest": "0x004e792e",
+     "from": "0x004e8526",
+     "from_fn": "llm_strat_ai_bldg_queue_process",
+     "type": "UNCONDITIONAL_JUMP"
+    },
+    {
+     "dest": "0x004e792e",
+     "from": "0x004e8483",
+     "from_fn": "llm_strat_ai_bldg_queue_process",
+     "type": "CONDITIONAL_JUMP"
+    },
+    {
+     "dest": "0x004e792e",
+     "from": "0x004e868d",
+     "from_fn": "llm_strat_ai_recompute_shortage_state",
+     "type": "CONDITIONAL_JUMP"
+    },
+    {
+     "dest": "0x004e792e",
+     "from": "0x004e8754",
+     "from_fn": "llm_strat_ai_recompute_shortage_state",
+     "type": "CONDITIONAL_JUMP"
+    },
+    {
+     "dest": "0x004e792e",
+     "from": "0x004e8765",
+     "from_fn": "llm_strat_ai_recompute_shortage_state",
+     "type": "CONDITIONAL_JUMP"
+    },
+    {
+     "dest": "0x004e792e",
+     "from": "0x004e8a51",
+     "from_fn": "llm_strat_ai_invasion_launch_attack_group",
+     "type": "CONDITIONAL_JUMP"
+    },
+    {
+     "dest": "0x004e792e",
+     "from": "0x004e8a5f",
+     "from_fn": "llm_strat_ai_invasion_launch_attack_group",
+     "type": "CONDITIONAL_JUMP"
+    },
+    {
+     "dest": "0x004e792e",
+     "from": "0x004e8a79",
+     "from_fn": "llm_strat_ai_invasion_launch_attack_group",
+     "type": "CONDITIONAL_JUMP"
+    },
+    {
+     "dest": "0x004e792e",
+     "from": "0x004e8a87",
+     "from_fn": "llm_strat_ai_invasion_launch_attack_group",
+     "type": "CONDITIONAL_JUMP"
+    },
+    {
+     "dest": "0x004e792e",
+     "from": "0x004e8b18",
+     "from_fn": "llm_strat_ai_invasion_launch_attack_group",
+     "type": "CONDITIONAL_JUMP"
+    },
+    {
+     "dest": "0x004e792e",
+     "from": "0x004e876b",
+     "from_fn": "llm_strat_ai_recompute_shortage_state",
+     "type": "COMPUTED_JUMP"
+    },
+    {
+     "dest": "0x004e792e",
+     "from": "0x004e4add",
+     "from_fn": "llm_strat_ai_expand_adjacent_mine_relay",
+     "type": "CONDITIONAL_JUMP"
+    },
+    {
+     "dest": "0x004e792e",
+     "from": "0x004e4b04",
+     "from_fn": "llm_strat_ai_expand_adjacent_mine_relay",
+     "type": "CONDITIONAL_JUMP"
+    },
+    {
+     "dest": "0x004e792e",
+     "from": "0x004e4b2f",
+     "from_fn": "llm_strat_ai_expand_adjacent_mine_relay",
+     "type": "CONDITIONAL_JUMP"
+    },
+    {
+     "dest": "0x004e792e",
+     "from": "0x004e4cc6",
+     "from_fn": "llm_strat_ai_expand_adjacent_mine_relay",
+     "type": "CONDITIONAL_JUMP"
+    },
+    {
+     "dest": "0x004e792e",
+     "from": "0x004e4cde",
+     "from_fn": "llm_strat_ai_expand_adjacent_mine_relay",
+     "type": "CONDITIONAL_JUMP"
+    },
+    {
+     "dest": "0x004e792e",
+     "from": "0x004e4cec",
+     "from_fn": "llm_strat_ai_expand_adjacent_mine_relay",
+     "type": "CONDITIONAL_JUMP"
+    },
+    {
+     "dest": "0x004e792e",
+     "from": "0x004e4e4f",
+     "from_fn": "llm_strat_ai_expand_adjacent_mine_relay",
+     "type": "UNCONDITIONAL_JUMP"
+    },
+    {
+     "dest": "0x004e792e",
+     "from": "0x004e4e3d",
+     "from_fn": "llm_strat_bldg_queue_construction_thunk",
+     "type": "UNCONDITIONAL_JUMP"
+    },
+    {
+     "dest": "0x004e792e",
+     "from": "0x004e7991",
+     "from_fn": "llm_strat_ai_group_form_perimeter_patrol",
+     "type": "CONDITIONAL_JUMP"
+    },
+    {
+     "dest": "0x004e792e",
+     "from": "0x004e79a0",
+     "from_fn": "llm_strat_ai_group_form_perimeter_patrol",
+     "type": "CONDITIONAL_JUMP"
+    },
+    {
+     "dest": "0x004e792e",
+     "from": "0x004e79af",
+     "from_fn": "llm_strat_ai_group_form_perimeter_patrol",
+     "type": "CONDITIONAL_JUMP"
+    },
+    {
+     "dest": "0x004e7932",
+     "from": "0x004e611a",
+     "from_fn": "llm_strat_ai_scan_bldg_repair_upgrade",
+     "type": "UNCONDITIONAL_JUMP"
+    }
+   ]
+  },
+  "0x004e98a7": {
+   "name": "llm_strat_ai_group_find_nearest_building_of_types",
+   "body_ranges": [
+    [
+     "0x004e98a7",
+     "0x004e99bd"
+    ]
+   ],
+   "interior_inbound": [
+    {
+     "dest": "0x004e99b5",
+     "from": "0x004e9a6e",
+     "from_fn": "llm_strat_ai_group_collect_buildings_of_types",
+     "type": "UNCONDITIONAL_JUMP"
+    }
+   ]
+  },
+  "0x004e9c98": {
+   "name": "llm_strat_ai_group_task_drain_reserve_attack",
+   "body_ranges": [
+    [
+     "0x004e9c98",
+     "0x004ea071"
+    ]
+   ],
+   "interior_inbound": [
+    {
+     "dest": "0x004ea062",
+     "from": "0x004ead1d",
+     "from_fn": "llm_strat_ai_group_task_patrol_shuttle",
+     "type": "UNCONDITIONAL_JUMP"
+    },
+    {
+     "dest": "0x004ea064",
+     "from": "0x004ea464",
+     "from_fn": "llm_strat_ai_group_task_attack_nearest_defended",
+     "type": "UNCONDITIONAL_JUMP"
+    },
+    {
+     "dest": "0x004ea064",
+     "from": "0x004e9c93",
+     "from_fn": "llm_strat_ai_group_task_attack_random_target",
+     "type": "UNCONDITIONAL_JUMP"
+    },
+    {
+     "dest": "0x004ea064",
+     "from": "0x004eaea0",
+     "from_fn": "llm_strat_ai_group_task_loiter_wander",
+     "type": "UNCONDITIONAL_JUMP"
+    },
+    {
+     "dest": "0x004ea069",
+     "from": "0x004ea43a",
+     "from_fn": "llm_strat_ai_group_task_attack_nearest_defended",
+     "type": "UNCONDITIONAL_JUMP"
+    },
+    {
+     "dest": "0x004ea069",
+     "from": "0x004e9c69",
+     "from_fn": "llm_strat_ai_group_task_attack_random_target",
+     "type": "UNCONDITIONAL_JUMP"
+    },
+    {
+     "dest": "0x004ea069",
+     "from": "0x004eabce",
+     "from_fn": "llm_strat_ai_group_task_recall_home",
+     "type": "UNCONDITIONAL_JUMP"
+    },
+    {
+     "dest": "0x004ea069",
+     "from": "0x004eaf62",
+     "from_fn": "llm_strat_ai_group_task_nudge_stragglers",
+     "type": "UNCONDITIONAL_JUMP"
+    },
+    {
+     "dest": "0x004ea069",
+     "from": "0x004eb029",
+     "from_fn": "llm_strat_ai_group_task_advance_to_anchor",
+     "type": "UNCONDITIONAL_JUMP"
+    },
+    {
+     "dest": "0x004ea069",
+     "from": "0x004e959f",
+     "from_fn": "llm_strat_ai_group_check_arrival_status",
+     "type": "UNCONDITIONAL_JUMP"
+    },
+    {
+     "dest": "0x004ea069",
+     "from": "0x004eaa72",
+     "from_fn": "llm_strat_ai_group_task_recruit_from_storage",
+     "type": "CONDITIONAL_JUMP"
+    },
+    {
+     "dest": "0x004ea069",
+     "from": "0x004ea4b5",
+     "from_fn": "llm_strat_ai_group_task_muster_from_pool",
+     "type": "CONDITIONAL_JUMP"
+    },
+    {
+     "dest": "0x004ea069",
+     "from": "0x004ea580",
+     "from_fn": "llm_strat_ai_group_task_muster_from_pool",
+     "type": "UNCONDITIONAL_JUMP"
+    },
+    {
+     "dest": "0x004ea069",
+     "from": "0x004ea5d4",
+     "from_fn": "llm_strat_ai_group_task_muster_from_pool",
+     "type": "UNCONDITIONAL_JUMP"
+    },
+    {
+     "dest": "0x004ea069",
+     "from": "0x004ea66b",
+     "from_fn": "llm_strat_ai_group_task_recruit_from_pool3",
+     "type": "UNCONDITIONAL_JUMP"
+    },
+    {
+     "dest": "0x004ea069",
+     "from": "0x004ea697",
+     "from_fn": "llm_strat_ai_group_task_recruit_from_pool3",
+     "type": "UNCONDITIONAL_JUMP"
+    }
+   ]
+  },
+  "0x004ea5d9": {
+   "name": "llm_strat_ai_group_task_recruit_from_pool3",
+   "body_ranges": [
+    [
+     "0x004ea5d9",
+     "0x004ea69b"
+    ]
+   ],
+   "interior_inbound": [
+    {
+     "dest": "0x004ea65d",
+     "from": "0x004ea724",
+     "from_fn": "llm_strat_ai_group_task_recruit_from_pool4",
+     "type": "UNCONDITIONAL_JUMP"
+    },
+    {
+     "dest": "0x004ea670",
+     "from": "0x004ea6ea",
+     "from_fn": "llm_strat_ai_group_task_recruit_from_pool4",
+     "type": "CONDITIONAL_JUMP"
+    },
+    {
+     "dest": "0x004ea670",
+     "from": "0x004ea6f4",
+     "from_fn": "llm_strat_ai_group_task_recruit_from_pool4",
+     "type": "CONDITIONAL_JUMP"
+    }
+   ]
+  },
+  "0x004eb9ab": {
+   "name": "llm_strat_ai_build_target_list",
+   "body_ranges": [
+    [
+     "0x004eb9ab",
+     "0x004ebe83"
+    ]
+   ],
+   "interior_inbound": [
+    {
+     "dest": "0x004ebe7a",
+     "from": "0x004ed12b",
+     "from_fn": "llm_strat_ai_active_unit_tick",
+     "type": "UNCONDITIONAL_JUMP"
+    },
+    {
+     "dest": "0x004ebe7a",
+     "from": "0x004ec737",
+     "from_fn": "llm_strat_ai_target_list_scan_visible_enemies",
+     "type": "UNCONDITIONAL_JUMP"
+    }
+   ]
+  },
+  "0x004ebf09": {
+   "name": "llm_strat_ai_group_scan_building_targets",
+   "body_ranges": [
+    [
+     "0x004ebf09",
+     "0x004ec1ed"
+    ]
+   ],
+   "interior_inbound": [
+    {
+     "dest": "0x004ec1ec",
+     "from": "0x004ed22c",
+     "from_fn": "llm_strat_ai_scan_targets_by_owner_and_id_for_engage",
+     "type": "UNCONDITIONAL_JUMP"
+    }
+   ]
+  },
+  "0x004ec35f": {
+   "name": "llm_strat_ai_holding_pen_scan_targets",
+   "body_ranges": [
+    [
+     "0x004ec35f",
+     "0x004ec51c"
+    ]
+   ],
+   "interior_inbound": [
+    {
+     "dest": "0x004ec516",
+     "from": "0x004ec588",
+     "from_fn": "llm_strat_ai_target_list_invalidate_by_id",
+     "type": "UNCONDITIONAL_JUMP"
+    },
+    {
+     "dest": "0x004ec516",
+     "from": "0x004ed490",
+     "from_fn": "llm_strat_ai_scan_enemy_turrets_in_weapon_range",
+     "type": "UNCONDITIONAL_JUMP"
+    }
+   ]
+  },
+  "0x004ec58a": {
+   "name": "llm_strat_ai_target_list_refresh_mothers",
+   "body_ranges": [
+    [
+     "0x004ec58a",
+     "0x004ec5e9"
+    ]
+   ],
+   "interior_inbound": [
+    {
+     "dest": "0x004ec5e4",
+     "from": "0x004ee74c",
+     "from_fn": "llm_strat_unit_passive_engage_tick",
+     "type": "UNCONDITIONAL_JUMP"
+    }
+   ]
+  },
+  "0x004ec84d": {
+   "name": "llm_strat_ai_unit_should_abandon_target",
+   "body_ranges": [
+    [
+     "0x004ec84d",
+     "0x004ecb8d"
+    ]
+   ],
+   "interior_inbound": [
+    {
+     "dest": "0x004ec86f",
+     "from": "0x004ee030",
+     "from_fn": "llm_strat_ai_engage_filter_and_commit_target",
+     "type": "UNCONDITIONAL_JUMP"
+    },
+    {
+     "dest": "0x004ec86f",
+     "from": "0x004ee057",
+     "from_fn": "llm_strat_ai_engage_filter_and_commit_target",
+     "type": "UNCONDITIONAL_JUMP"
+    },
+    {
+     "dest": "0x004ec874",
+     "from": "0x004ec518",
+     "from_fn": "llm_strat_ai_holding_pen_scan_targets",
+     "type": "UNCONDITIONAL_JUMP"
+    },
+    {
+     "dest": "0x004ec874",
+     "from": "0x004eb6bc",
+     "from_fn": "llm_strat_ai_group_classify_target_object",
+     "type": "CONDITIONAL_JUMP"
+    },
+    {
+     "dest": "0x004ec874",
+     "from": "0x004eb998",
+     "from_fn": "llm_strat_ai_group_classify_target_object",
+     "type": "CONDITIONAL_JUMP"
+    },
+    {
+     "dest": "0x004ec874",
+     "from": "0x004eb9a6",
+     "from_fn": "llm_strat_ai_group_classify_target_object",
+     "type": "UNCONDITIONAL_JUMP"
+    },
+    {
+     "dest": "0x004ec874",
+     "from": "0x004ed1a9",
+     "from_fn": "llm_strat_ai_scan_targets_for_engage",
+     "type": "UNCONDITIONAL_JUMP"
+    },
+    {
+     "dest": "0x004ec874",
+     "from": "0x004ed88b",
+     "from_fn": "llm_strat_ai_scan_targets_by_capability_mask_for_engage",
+     "type": "UNCONDITIONAL_JUMP"
+    },
+    {
+     "dest": "0x004ec874",
+     "from": "0x004ee08a",
+     "from_fn": "llm_strat_ai_unit_select_attack_target",
+     "type": "CONDITIONAL_JUMP"
+    },
+    {
+     "dest": "0x004ec874",
+     "from": "0x004ee0aa",
+     "from_fn": "llm_strat_ai_unit_select_attack_target",
+     "type": "CONDITIONAL_JUMP"
+    },
+    {
+     "dest": "0x004ec874",
+     "from": "0x004ee0c7",
+     "from_fn": "llm_strat_ai_unit_select_attack_target",
+     "type": "CONDITIONAL_JUMP"
+    },
+    {
+     "dest": "0x004ec874",
+     "from": "0x004ee108",
+     "from_fn": "llm_strat_ai_unit_select_attack_target",
+     "type": "CONDITIONAL_JUMP"
+    },
+    {
+     "dest": "0x004ec874",
+     "from": "0x004ee172",
+     "from_fn": "llm_strat_ai_unit_select_attack_target",
+     "type": "CONDITIONAL_JUMP"
+    },
+    {
+     "dest": "0x004ec874",
+     "from": "0x004ee2bf",
+     "from_fn": "llm_strat_ai_unit_select_attack_target",
+     "type": "CONDITIONAL_JUMP"
+    },
+    {
+     "dest": "0x004ec874",
+     "from": "0x004ee306",
+     "from_fn": "llm_strat_ai_unit_select_attack_target",
+     "type": "UNCONDITIONAL_JUMP"
+    },
+    {
+     "dest": "0x004ecb87",
+     "from": "0x004edf42",
+     "from_fn": "llm_strat_ai_engage_filter_and_commit_target",
+     "type": "CONDITIONAL_JUMP"
+    },
+    {
+     "dest": "0x004ecb87",
+     "from": "0x004edffc",
+     "from_fn": "llm_strat_ai_engage_filter_and_commit_target",
+     "type": "CONDITIONAL_JUMP"
+    }
+   ]
+  },
+  "0x004ed130": {
+   "name": "llm_strat_ai_scan_targets_for_engage",
+   "body_ranges": [
+    [
+     "0x004ed130",
+     "0x004ed1ad"
+    ]
+   ],
+   "interior_inbound": [
+    {
+     "dest": "0x004ed1a7",
+     "from": "0x004ed2a8",
+     "from_fn": "llm_strat_ai_scan_targets_by_type_for_engage",
+     "type": "UNCONDITIONAL_JUMP"
+    }
+   ]
+  },
+  "0x004ee30b": {
+   "name": "llm_strat_ai_active_unit_tick",
+   "body_ranges": [
+    [
+     "0x004ecb8e",
+     "0x004ed12f"
+    ],
+    [
+     "0x004ee30b",
+     "0x004ee364"
+    ]
+   ],
+   "interior_inbound": []
+  },
+  "0x004eec6c": {
+   "name": "llm_strat_ai_tick_all_groups",
+   "body_ranges": [
+    [
+     "0x004eec6c",
+     "0x004eeebc"
+    ],
+    [
+     "0x004eeedf",
+     "0x004eef17"
+    ]
+   ],
+   "interior_inbound": []
+  },
+  "0x004ef8e0": {
+   "name": "CRT_004ef8e0",
+   "body_ranges": [
+    [
+     "0x004ef7ea",
+     "0x004ef928"
+    ],
+    [
+     "0x004efb7a",
+     "0x004efc47"
+    ]
+   ],
+   "interior_inbound": []
+  },
+  "0x004f02d3": {
+   "name": "_nexpand",
+   "body_ranges": [
+    [
+     "0x004f02d3",
+     "0x004f030c"
+    ],
+    [
+     "0x004f049c",
+     "0x004f04aa"
+    ]
+   ],
+   "interior_inbound": []
+  },
+  "0x004f07c5": {
+   "name": "CRT_004f07c5",
+   "body_ranges": [
+    [
+     "0x004f07c5",
+     "0x004f083f"
+    ]
+   ],
+   "interior_inbound": [
+    {
+     "dest": "0x004f0838",
+     "from": "0x004f08fe",
+     "from_fn": "CRT_004f0840",
+     "type": "CONDITIONAL_JUMP"
+    },
+    {
+     "dest": "0x004f0838",
+     "from": "0x004f0906",
+     "from_fn": "CRT_004f0840",
+     "type": "CONDITIONAL_JUMP"
+    },
+    {
+     "dest": "0x004f0838",
+     "from": "0x004f0919",
+     "from_fn": "CRT_004f0840",
+     "type": "UNCONDITIONAL_JUMP"
+    },
+    {
+     "dest": "0x004f0838",
+     "from": "0x004f0924",
+     "from_fn": "CRT_004f0840",
+     "type": "UNCONDITIONAL_JUMP"
+    }
+   ]
+  },
+  "0x004f1136": {
+   "name": "__EnterWVIDEO",
+   "body_ranges": [
+    [
+     "0x004f1136",
+     "0x004f1147"
+    ],
+    [
+     "0x004f1159",
+     "0x004f115b"
+    ]
+   ],
+   "interior_inbound": []
+  },
+  "0x004f115c": {
+   "name": "FUN_004f115c",
+   "body_ranges": [
+    [
+     "0x004f115c",
+     "0x004f117f"
+    ]
+   ],
+   "interior_inbound": [
+    {
+     "dest": "0x004f117b",
+     "from": "0x004f119a",
+     "from_fn": null,
+     "type": "CONDITIONAL_JUMP"
+    },
+    {
+     "dest": "0x004f117b",
+     "from": "0x004f11a6",
+     "from_fn": "FUN_004f1180",
+     "type": "CONDITIONAL_JUMP"
+    },
+    {
+     "dest": "0x004f117b",
+     "from": "0x004f11ab",
+     "from_fn": "FUN_004f1180",
+     "type": "CONDITIONAL_JUMP"
+    }
+   ]
+  },
+  "0x004f1180": {
+   "name": "FUN_004f1180",
+   "body_ranges": [
+    [
+     "0x004f1180",
+     "0x004f118b"
+    ],
+    [
+     "0x004f11a3",
+     "0x004f11b4"
+    ]
+   ],
+   "interior_inbound": [
+    {
+     "dest": "0x004f1185",
+     "from": "0x004f11a1",
+     "from_fn": null,
+     "type": "UNCONDITIONAL_JUMP"
+    }
+   ]
+  },
+  "0x004f125c": {
+   "name": "raise",
+   "body_ranges": [
+    [
+     "0x004f125c",
+     "0x004f1294"
+    ],
+    [
+     "0x004f1363",
+     "0x004f13c0"
+    ]
+   ],
+   "interior_inbound": []
+  },
+  "0x004f2116": {
+   "name": "_nheapshrink",
+   "body_ranges": [
+    [
+     "0x004f2116",
+     "0x004f2129"
+    ],
+    [
+     "0x004f21b2",
+     "0x004f21da"
+    ]
+   ],
+   "interior_inbound": []
+  },
+  "0x004f2650": {
+   "name": "__fpatan_chk",
+   "body_ranges": [
+    [
+     "0x004f2650",
+     "0x004f27af"
+    ],
+    [
+     "0x004f2840",
+     "0x004f284f"
+    ]
+   ],
+   "interior_inbound": []
+  },
+  "0x004f2850": {
+   "name": "sys_open_device_and_file_handles_once",
+   "body_ranges": [
+    [
+     "0x004f2850",
+     "0x004f28d6"
+    ]
+   ],
+   "interior_inbound": [
+    {
+     "dest": "0x004f28d6",
+     "from": "0x004f28df",
+     "from_fn": "CRT_004f28d8",
+     "type": "CONDITIONAL_JUMP"
+    }
+   ]
+  },
+  "0x004f32b0": {
+   "name": "__RemoveThreadData",
+   "body_ranges": [
+    [
+     "0x004f32b0",
+     "0x004f32f9"
+    ]
+   ],
+   "interior_inbound": [
+    {
+     "dest": "0x004f32f6",
+     "from": "0x004f3305",
+     "from_fn": "__FreeThreadDataList",
+     "type": "CONDITIONAL_JUMP"
+    }
+   ]
+  },
+  "0x004f3511": {
+   "name": "CRT_004f3511",
+   "body_ranges": [
+    [
+     "0x004f3511",
+     "0x004f35b3"
+    ]
+   ],
+   "interior_inbound": [
+    {
+     "dest": "0x004f35b2",
+     "from": "0x004f35fd",
+     "from_fn": "CRT_004f35b4",
+     "type": "CONDITIONAL_JUMP"
+    },
+    {
+     "dest": "0x004f35b2",
+     "from": "0x004f360e",
+     "from_fn": "CRT_004f35b4",
+     "type": "CONDITIONAL_JUMP"
+    }
+   ]
+  },
+  "0x004f48e0": {
+   "name": "LZW_Compress",
+   "body_ranges": [
+    [
+     "0x004f48e0",
+     "0x004f49cb"
+    ]
+   ],
+   "interior_inbound": [
+    {
+     "dest": "0x004f4936",
+     "from": "0x004f4ad4",
+     "from_fn": "llm_lzw_encode_core",
+     "type": "UNCONDITIONAL_JUMP"
+    }
+   ]
+  },
+  "0x004f4b7e": {
+   "name": "LZW_Decompress",
+   "body_ranges": [
+    [
+     "0x004f4b7e",
+     "0x004f4c1e"
+    ]
+   ],
+   "interior_inbound": [
+    {
+     "dest": "0x004f4be8",
+     "from": "0x004f4c81",
+     "from_fn": "LZW_decompressImpl",
+     "type": "UNCONDITIONAL_JUMP"
+    }
+   ]
+  },
+  "0x0055b665": {
+   "name": "llm_pf_expand_step",
+   "body_ranges": [
+    [
+     "0x0055b665",
+     "0x0055b754"
+    ],
+    [
+     "0x0055b781",
+     "0x0055b78e"
+    ],
+    [
+     "0x0055b792",
+     "0x0055b7a7"
+    ],
+    [
+     "0x0055b7ce",
+     "0x0055bd1c"
+    ]
+   ],
+   "interior_inbound": []
+  },
+  "0x0055bd1d": {
+   "name": "llm_pf_expand_wavefront",
+   "body_ranges": [
+    [
+     "0x0055bd1d",
+     "0x0055bd6a"
+    ],
+    [
+     "0x0055bd6e",
+     "0x0055bd7d"
+    ]
+   ],
+   "interior_inbound": []
+  },
+  "0x0055bd7f": {
+   "name": "llm_pf_select_resolution",
+   "body_ranges": [
+    [
+     "0x0055bd7f",
+     "0x0055bde8"
+    ],
+    [
+     "0x0055bdec",
+     "0x0055be0a"
+    ],
+    [
+     "0x0055be0e",
+     "0x0055be2c"
+    ],
+    [
+     "0x0055be30",
+     "0x0055be4e"
+    ],
+    [
+     "0x0055be52",
+     "0x0055be53"
+    ]
+   ],
+   "interior_inbound": []
+  },
+  "0x0055e233": {
+   "name": "llm_pf_seed_goals",
+   "body_ranges": [
+    [
+     "0x0055e233",
+     "0x0055e3b1"
+    ],
+    [
+     "0x0055e470",
+     "0x0055e471"
+    ]
+   ],
+   "interior_inbound": []
+  },
+  "0x00580223": {
+   "name": "llm_strat_pathfind_flood_expand_ring",
+   "body_ranges": [
+    [
+     "0x00580223",
+     "0x005802e0"
+    ],
+    [
+     "0x0058030d",
+     "0x0058031a"
+    ],
+    [
+     "0x0058031e",
+     "0x00580333"
+    ],
+    [
+     "0x0058035a",
+     "0x005808a8"
+    ]
+   ],
+   "interior_inbound": []
+  },
+  "0x005808a9": {
+   "name": "llm_strat_pathfind_flood_search_loop",
+   "body_ranges": [
+    [
+     "0x005808a9",
+     "0x005808f6"
+    ],
+    [
+     "0x005808fa",
+     "0x00580909"
+    ]
+   ],
+   "interior_inbound": []
+  },
+  "0x0058090b": {
+   "name": "llm_strat_pathfind_route_extract",
+   "body_ranges": [
+    [
+     "0x0058090b",
+     "0x00580929"
+    ],
+    [
+     "0x0058092d",
+     "0x005809ac"
+    ],
+    [
+     "0x005809b0",
+     "0x005809c8"
+    ],
+    [
+     "0x005809ce",
+     "0x00580aab"
+    ]
+   ],
+   "interior_inbound": [
+    {
+     "dest": "0x00580a7f",
+     "from": "0x00580abf",
+     "from_fn": "llm_strat_pathfind_route_backtrace_recurse",
+     "type": "CONDITIONAL_JUMP"
+    }
+   ]
+  },
+  "0x00580aae": {
+   "name": "llm_strat_pathfind_route_backtrace_recurse",
+   "body_ranges": [
+    [
+     "0x00580aae",
+     "0x00580b3e"
+    ],
+    [
+     "0x00580b42",
+     "0x00580b45"
+    ],
+    [
+     "0x00580b49",
+     "0x00580b5b"
+    ],
+    [
+     "0x00580b5f",
+     "0x00580b62"
+    ],
+    [
+     "0x00580b66",
+     "0x00580cab"
+    ],
+    [
+     "0x00580cb3",
+     "0x00580cb4"
+    ],
+    [
+     "0x00580ccc",
+     "0x00580cdd"
+    ]
+   ],
+   "interior_inbound": []
+  },
+  "0x00580d89": {
+   "name": "FUN_00580d89",
+   "body_ranges": [
+    [
+     "0x00580d89",
+     "0x00580e19"
+    ]
+   ],
+   "interior_inbound": [
+    {
+     "dest": "0x00580e19",
+     "from": "0x00580d84",
+     "from_fn": "FUN_00580d71",
+     "type": "UNCONDITIONAL_JUMP"
+    }
+   ]
+  },
+  "0x00580e29": {
+   "name": "llm_strat_pathfind_flood_select_grid_level",
+   "body_ranges": [
+    [
+     "0x00580e29",
+     "0x00580e92"
+    ],
+    [
+     "0x00580e96",
+     "0x00580eb4"
+    ],
+    [
+     "0x00580eb8",
+     "0x00580ed6"
+    ],
+    [
+     "0x00580eda",
+     "0x00580ef8"
+    ],
+    [
+     "0x00580efc",
+     "0x00580efd"
+    ]
+   ],
+   "interior_inbound": []
+  },
+  "0x005834bf": {
+   "name": "llm_strat_pathfind_flood_seed_from_route",
+   "body_ranges": [
+    [
+     "0x005834bf",
+     "0x00583655"
+    ],
+    [
+     "0x00583714",
+     "0x00583715"
+    ]
+   ],
+   "interior_inbound": []
+  },
+  "0x00583820": {
+   "name": "llm_strat_pathfind_backfill_flood_step",
+   "body_ranges": [
+    [
+     "0x00583820",
+     "0x00583882"
+    ],
+    [
+     "0x00583886",
+     "0x005838b6"
+    ],
+    [
+     "0x005838ba",
+     "0x005838ea"
+    ],
+    [
+     "0x005838ee",
+     "0x0058391e"
+    ],
+    [
+     "0x00583922",
+     "0x00583940"
+    ]
+   ],
+   "interior_inbound": []
+  },
+  "0x0058411b": {
+   "name": "llm_strat_pathfind_backfill_resolve_target",
+   "body_ranges": [
+    [
+     "0x0058411b",
+     "0x00584176"
+    ],
+    [
+     "0x0058419f",
+     "0x005841f2"
+    ]
+   ],
+   "interior_inbound": []
+  },
+  "0x0066a9ac": {
+   "name": "llm_strat_trace_greedy_path",
+   "body_ranges": [
+    [
+     "0x0066a9ac",
+     "0x0066b358"
+    ],
+    [
+     "0x0066b35c",
+     "0x0066b375"
+    ]
+   ],
+   "interior_inbound": []
+  },
+  "0x0066b4a1": {
+   "name": "llm_strat_pathtrace_normalize_repeat_dir_table",
+   "body_ranges": [
+    [
+     "0x0066b4a1",
+     "0x0066b515"
+    ],
+    [
+     "0x0066b519",
+     "0x0066b51f"
+    ]
+   ],
+   "interior_inbound": []
+  }
+ }
+}

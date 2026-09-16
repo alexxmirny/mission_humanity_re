@@ -1,0 +1,379 @@
+{
+  "_comment": [
+    "PER-FUNCTION PRESENTATION WALLS for the tactical migration domain (TACT-DOMAIN, 2026-08-24).",
+    "Consumed by tools/gen_migration.py via tools/data/migration/tact.json `select.cut_names_from`.",
+    "",
+    "A listed function is REACHED by the domain and never migrated: the revised M6 exit keeps render,",
+    "UI, sound and platform in the original binary. An UNLISTED member is a MEMBER, and that default",
+    "is the safe direction -- a wrongly-kept member costs translation work and shows up in the ledger,",
+    "a wrongly-placed wall removes a subtree silently.",
+    "",
+    "WHY THIS IS A NAME LIST AND NOT A PREFIX LIST. Both directions were measured on this closure and",
+    "both fail. llm_tact_active_unit_count_hud_draw is the SOLE writer of the mission's termination",
+    "condition, and llm_tact_ui_order_buttons_minimap_tick calls llm_tact_group_issue_order four times",
+    "-- so a `hud`/`ui_` wall would delete the excursion's exit trigger and its minimap order buttons.",
+    "In the other direction llm_gfx_blit_sprite_rle, gfx_TransformBankData and llm_tlo_shade_table_build",
+    "_tact carry no tactical prefix at all and are walls.",
+    "",
+    "TWO PROVENANCES, and the difference is deliberately visible in `settled_by`:",
+    "  body-read                 -- a reviewer read the decompile AND the disassembly and traced a",
+    "                               consumer. Only `high` confidence verdicts became walls; every",
+    "                               `medium`, `low` or UNCERTAIN verdict was KEPT AS A MEMBER, which is",
+    "                               how the one direct contradiction in the fan-out resolved itself:",
+    "                               llm_tact_vision_cone_setup (WALL, medium) and",
+    "                               llm_tact_fov_probe_far_cell_and_door_state (MEMBER, high) write the",
+    "                               same five _G_LLM_TACT_FOV_* globals, so the pair stays in.",
+    "  write-set enumeration     -- WEAKER. The whole measured global write set is renderer scratch and",
+    "                               the function is a blitter, a glyph drawer or the view-metrics",
+    "                               allocator. NOT a body read, so it does not see a write through a",
+    "                               pointer parameter -- which for these is the framebuffer, and is the",
+    "                               reason the weaker evidence is accepted here and nowhere else.",
+    "",
+    "TACT1 owns re-examining any of these. Deleting an entry widens the domain, which is always safe;",
+    "adding one narrows it and needs a body read."
+  ],
+  "walls": {
+    "gfx_TransformBankData": {
+      "class": "presentation",
+      "why": "Body only walks RLE run headers in bank_data and repacks each 16-bit pixel word (uVar2&0x1f)+((uVar2&0xffc0)>>1) back into bank_data -- a 5-5-5->5-6-5 style RGB565 recolor of a decoded sprite-bank image, guarded by `if (G_COLOR_FORMAT != RGB565) return`. docs/gfx-sprites.md corroborates it as an inline pixel-format conversion applied to loaded graphics banks.",
+      "evidence": "body read (tmp/decomp_tact/gfx_TransformBankData.{c,asm}) by the TACT-DOMAIN wall fan-out, chunk 1; writes: bank_data[..] (in-place pixel bytes of a loaded sprite-bank blob, via pointer param); return: void",
+      "settled_by": "body-read"
+    },
+    "llm_gfx_apply_resolution_change": {
+      "class": "presentation",
+      "why": "Renderer/HUD. Its ENTIRE measured global write set is resolution change: sprite-bank base, the two glyph-table pointers and the view tile height -- nothing inside the 14 hashed tactical slices, the two shared planes or the squad blackboard.",
+      "evidence": "write-set enumeration over tmp/state_matrix.json: {_G_LLM_BANK_SPRITE_BASE, _G_LLM_GFX_POLALFA1_GLYPH_PTR, _G_LLM_GFX_POLALFA2_GLYPH_PTR, _G_LLM_GFX_VIEW_TILE_HEIGHT_PX}",
+      "settled_by": "write-set enumeration (NOT a body read -- see the closure doc's caveat)"
+    },
+    "llm_gfx_blit_sprite_rle": {
+      "class": "presentation",
+      "why": "Renderer/HUD. Its ENTIRE measured global write set is the RLE sprite blitter's own cursor scratch (_G_LLM_BLIT_CUR_X/_Y/_ROW_X + 3 unnamed) -- nothing inside the 14 hashed tactical slices, the two shared planes or the squad blackboard.",
+      "evidence": "write-set enumeration over tmp/state_matrix.json: {DAT_0055991d, DAT_00559921, DAT_00559925, _G_LLM_BLIT_CUR_X, _G_LLM_BLIT_CUR_Y, _G_LLM_BLIT_ROW_X}",
+      "settled_by": "write-set enumeration (NOT a body read -- see the closure doc's caveat)"
+    },
+    "llm_gfx_blit_sprite_rle_v2": {
+      "class": "presentation",
+      "why": "Renderer/HUD. Its ENTIRE measured global write set is the v2 blitter's cursor scratch -- nothing inside the 14 hashed tactical slices, the two shared planes or the squad blackboard.",
+      "evidence": "write-set enumeration over tmp/state_matrix.json: {DAT_0055993d, DAT_0055993e, DAT_00559942, _G_LLM_CUR_DST_Y}",
+      "settled_by": "write-set enumeration (NOT a body read -- see the closure doc's caveat)"
+    },
+    "llm_gfx_draw_cursor_ingame": {
+      "class": "presentation",
+      "why": "Renderer/HUD. Its ENTIRE measured global write set is the mouse cursor draw: current sprite header/palette/dest/tile-layer scratch -- nothing inside the 14 hashed tactical slices, the two shared planes or the squad blackboard.",
+      "evidence": "write-set enumeration over tmp/state_matrix.json: {G_WIN_W, _G_LLM_CUR_DST_X, _G_LLM_CUR_DST_Y, _G_LLM_CUR_SPRITE_HDR, _G_LLM_CUR_SPRITE_PALETTE, _G_LLM_CUR_TILE_LAYER}",
+      "settled_by": "write-set enumeration (NOT a body read -- see the closure doc's caveat)"
+    },
+    "llm_gfx_draw_dashed_rect_outline": {
+      "class": "presentation",
+      "why": "Renderer/HUD. Its ENTIRE measured global write set is four unnamed dashed-rect pen bytes -- nothing inside the 14 hashed tactical slices, the two shared planes or the squad blackboard.",
+      "evidence": "write-set enumeration over tmp/state_matrix.json: {DAT_00559929, DAT_0055992a, DAT_0055992b, DAT_0055992c}",
+      "settled_by": "write-set enumeration (NOT a body read -- see the closure doc's caveat)"
+    },
+    "llm_gfx_draw_sprite_rle": {
+      "class": "presentation",
+      "why": "Renderer/HUD. Its ENTIRE measured global write set is the per-draw sprite header/palette/dest scratch the blitter consumes -- nothing inside the 14 hashed tactical slices, the two shared planes or the squad blackboard.",
+      "evidence": "write-set enumeration over tmp/state_matrix.json: {_G_LLM_CUR_DST_X, _G_LLM_CUR_DST_Y, _G_LLM_CUR_SPRITE_HDR, _G_LLM_CUR_SPRITE_PALETTE, _G_LLM_CUR_TILE_LAYER}",
+      "settled_by": "write-set enumeration (NOT a body read -- see the closure doc's caveat)"
+    },
+    "llm_gfx_draw_sprite_v2": {
+      "class": "presentation",
+      "why": "Renderer/HUD. Its ENTIRE measured global write set is the per-draw sprite header/dest scratch the v2 blitter consumes -- nothing inside the 14 hashed tactical slices, the two shared planes or the squad blackboard.",
+      "evidence": "write-set enumeration over tmp/state_matrix.json: {_G_LLM_CUR_DST_X, _G_LLM_CUR_DST_Y, _G_LLM_CUR_SPRITE_HDR, _G_LLM_CUR_TILE_LAYER}",
+      "settled_by": "write-set enumeration (NOT a body read -- see the closure doc's caveat)"
+    },
+    "llm_gfx_font_blit_glyph_solid": {
+      "class": "presentation",
+      "why": "Renderer/HUD. Its ENTIRE measured global write set is five unnamed glyph-blit scratch words -- nothing inside the 14 hashed tactical slices, the two shared planes or the squad blackboard.",
+      "evidence": "write-set enumeration over tmp/state_matrix.json: {DAT_005d8700, DAT_005d8704, DAT_005d870c, DAT_005d8714, DAT_005d8718}",
+      "settled_by": "write-set enumeration (NOT a body read -- see the closure doc's caveat)"
+    },
+    "llm_gfx_font_draw_glyph_solid": {
+      "class": "presentation",
+      "why": "Renderer/HUD. Its ENTIRE measured global write set is four unnamed glyph-draw scratch words -- nothing inside the 14 hashed tactical slices, the two shared planes or the squad blackboard.",
+      "evidence": "write-set enumeration over tmp/state_matrix.json: {DAT_005d617c, DAT_005d6180, DAT_005d6188, DAT_005d618c}",
+      "settled_by": "write-set enumeration (NOT a body read -- see the closure doc's caveat)"
+    },
+    "llm_gfx_hittest_check_blit": {
+      "class": "presentation",
+      "why": "Renderer/HUD. Its ENTIRE measured global write set is _G_LLM_HITTEST_HIT, the cursor-over-sprite pick bit -- nothing inside the 14 hashed tactical slices, the two shared planes or the squad blackboard.",
+      "evidence": "write-set enumeration over tmp/state_matrix.json: {_G_LLM_HITTEST_HIT}",
+      "settled_by": "write-set enumeration (NOT a body read -- see the closure doc's caveat)"
+    },
+    "llm_gfx_load_all_sprite_banks": {
+      "class": "presentation",
+      "why": "Pure 2-call sequencing wrapper: calls llm_gfx_load_sprite_bank_files() then llm_gfx_load_planet_extra_sprite_banks() and returns. Both load BANK_NN.BNK sprite (image) data. Sole caller llm_tact_mission_end_return_to_strategic re-loads sprite assets on exit from the tactical excursion -- graphics-asset loading, not simulation state.",
+      "evidence": "body read (tmp/decomp_tact/llm_gfx_load_all_sprite_banks.{c,asm}) by the TACT-DOMAIN wall fan-out, chunk 3; writes: none; return: void",
+      "settled_by": "body-read"
+    },
+    "llm_gfx_load_sprite_bank_files": {
+      "class": "presentation",
+      "why": "Renderer/HUD. Its ENTIRE measured global write set is _G_LLM_SPRITE_PIX_OFFSETS, the loaded bank's pixel-offset table -- nothing inside the 14 hashed tactical slices, the two shared planes or the squad blackboard.",
+      "evidence": "write-set enumeration over tmp/state_matrix.json: {_G_LLM_SPRITE_PIX_OFFSETS}",
+      "settled_by": "write-set enumeration (NOT a body read -- see the closure doc's caveat)"
+    },
+    "llm_gfx_save_screenshot_rle": {
+      "class": "presentation",
+      "why": "Sole caller is llm_tact_save_screenshot (a debug/user screenshot hotkey). Body only reads the framebuffer and G_COLOR_FORMAT, packs RGB565/555 into planar R/G/B RLE streams in a call-local scratch buffer, and writes them to filepath; no unit/tile/blackboard/config state is touched. Matches the brief's 'frame-local drawing scratch buffer' exemption plus a platform (file) side effect, both wall categories.",
+      "evidence": "body read (tmp/decomp_tact/llm_gfx_save_screenshot_rle.{c,asm}) by the TACT-DOMAIN wall fan-out, chunk 4; writes: a fixed RLE encode scratch buffer (e.g. [reg+0xffcc08/0xffbc08/0xffac08]) that is flushed per scanline to the output file via utils_write_to_file; the screenshot file on disk (filepath); return: void",
+      "settled_by": "body-read"
+    },
+    "llm_gfx_skip_sprite_row": {
+      "class": "presentation",
+      "why": "Renderer/HUD. Its ENTIRE measured global write set is _G_LLM_BLIT_CUR_Y, the blitter's row cursor -- nothing inside the 14 hashed tactical slices, the two shared planes or the squad blackboard.",
+      "evidence": "write-set enumeration over tmp/state_matrix.json: {_G_LLM_BLIT_CUR_Y}",
+      "settled_by": "write-set enumeration (NOT a body read -- see the closure doc's caveat)"
+    },
+    "llm_gfx_sprite_clone_frame_pixels": {
+      "class": "presentation",
+      "why": "Both source and destination of the two memcpy calls resolve to offsets into _G_LLM_GFX_BANK_PIXELS (sprite pixel data). tact_closure.json shows the only caller is llm_tact_render_view. This is a sprite-frame pixel duplication used during rendering, not simulation state.",
+      "evidence": "body read (tmp/decomp_tact/llm_gfx_sprite_clone_frame_pixels.{c,asm}) by the TACT-DOMAIN wall fan-out, chunk 5; writes: _G_LLM_GFX_BANK_PIXELS (sprite pixel-bank blob bytes for sprite_index_b, via memcpy); return: an encoded byte-size / pointer-valued int; sole caller is llm_tact_render_view (rendering path)",
+      "settled_by": "body-read"
+    },
+    "llm_snd_stop_all_channels": {
+      "class": "presentation",
+      "why": "Loop over _G_LLM_SND_CHANNEL_COUNT calls llm_snd_release_channel_voice(i) then zeroes two per-channel sound-driver fields at DAT_00558c7c/80 (stride 8). Plate: 'Hard reset of the whole channel pool'. Sole caller llm_tact_mission_start (audio teardown). Pure sound-subsystem state, no simulation data touched.",
+      "evidence": "body read (tmp/decomp_tact/llm_snd_stop_all_channels.{c,asm}) by the TACT-DOMAIN wall fan-out, chunk 6; writes: DAT_00558c7c[i] = 0 (per-channel sound state); DAT_00558c80[i] = 0 (per-channel sound state); return: void",
+      "settled_by": "body-read"
+    },
+    "llm_tact_blink_overlay_clear": {
+      "class": "presentation",
+      "why": "Body is a flat 20x20 fill of _G_LLM_TILE_DRAWN_MAP with 1. Plate/docs (game-modes.md L873-876) identify this as part of the exit-confirm dialog's blink animation, called inside the scroll-transition-catchup flush loop alongside llm_tact_scroll_fade_step and llm_tact_frame_cursor_and_reset -- i.e. it is a peer of the confirmed-wall frame-tail function, resetting the same screen-space draw-tracking array.",
+      "evidence": "body read (tmp/decomp_tact/llm_tact_blink_overlay_clear.{c,asm}) by the TACT-DOMAIN wall fan-out, chunk 9; writes: _G_LLM_TILE_DRAWN_MAP[row*0x14+col] = 1 for a 20x20 region (blink-overlay reset); return: void",
+      "settled_by": "body-read"
+    },
+    "llm_tact_drag_box_clamp": {
+      "class": "presentation",
+      "why": "Renderer/HUD. Its ENTIRE measured global write set is the four _G_LLM_GFX_DASHED_RECT_* screen-space selection-box edges -- nothing inside the 14 hashed tactical slices, the two shared planes or the squad blackboard.",
+      "evidence": "write-set enumeration over tmp/state_matrix.json: {_G_LLM_GFX_DASHED_RECT_BOTTOM, _G_LLM_GFX_DASHED_RECT_LEFT, _G_LLM_GFX_DASHED_RECT_RIGHT, _G_LLM_GFX_DASHED_RECT_TOP}",
+      "settled_by": "write-set enumeration (NOT a body read -- see the closure doc's caveat)"
+    },
+    "llm_tact_frame_cursor_and_reset": {
+      "class": "presentation",
+      "why": "Body: llm_gfx_draw_cursor_ingame() -> llm_gfx_present_flip() -> a loop zeroing the per-view-tile working arrays for the next frame. This is literally the render frame-tail: draw cursor, flip the backbuffer, reset per-frame draw-tracking state. Both arrays are the same screen-space redraw caches established as render-only for the sibling function above.",
+      "evidence": "body read (tmp/decomp_tact/llm_tact_frame_cursor_and_reset.{c,asm}) by the TACT-DOMAIN wall fan-out, chunk 9; writes: _G_LLM_TILE_VIS_MAP[i] &= 0xfe (clears low bit for next frame, over VIEW_TILES_W*H); _G_LLM_TILE_DRAWN_MAP[i] = 0 (clears draw-tracking for next frame, over VIEW_TILES_W*H); return: void",
+      "settled_by": "body-read"
+    },
+    "llm_tact_fx_build_tile_draw_lists": {
+      "class": "presentation",
+      "why": "Zeroes 10000 shorts of _G_LLM_TACT_FX_TILE_DRAW_LISTS at entry, then for each active FX-pool entry computes its on-screen tile (screen-space, offset by _G_LLM_MAP_CAM_COL/_G_LLM_MAP_CAM_ROW and clipped to G_WIN_W/WindowHeight) and slots the FX index into that screen tile's draw-order bucket.",
+      "evidence": "body read (tmp/decomp_tact/llm_tact_fx_build_tile_draw_lists.{c,asm}) by the TACT-DOMAIN wall fan-out, chunk 2; writes: _G_LLM_TACT_FX_TILE_DRAW_LISTS (fully rezeroed then rebuilt every call from camera position + FX pool); return: void",
+      "settled_by": "body-read"
+    },
+    "llm_tact_fx_draw_entity": {
+      "class": "presentation",
+      "why": "Reads _G_LLM_TACT_FX_POOL position/sprite fields and the shared tile_objects plane's flags bit only to gate drawing, then calls llm_gfx_draw_sprite_rle to blit a sprite. No writes to any global, unit record, or shared plane. Sole caller llm_tact_render_view's effect-layer pass.",
+      "evidence": "body read (tmp/decomp_tact/llm_tact_fx_draw_entity.{c,asm}) by the TACT-DOMAIN wall fan-out, chunk 3; writes: none; return: void",
+      "settled_by": "body-read"
+    },
+    "llm_tact_fx_play_sound": {
+      "class": "presentation",
+      "why": "Sole caller is llm_tact_fx_spawn. Body gates on _G_LLM_SND_ENABLED/_G_LLM_SND_MASTER_VOLUME, computes a scaled volume, and calls llm_snd_play_matching_sample with a channel index (2-5) chosen by comparing per-channel timestamp globals, updating one of those timestamps afterward. All writes are sound-channel throttle bookkeeping, not gameplay state.",
+      "evidence": "body read (tmp/decomp_tact/llm_tact_fx_play_sound.{c,asm}) by the TACT-DOMAIN wall fan-out, chunk 4; writes: _DAT_00558c8c / _DAT_00558c84 / _DAT_00558c9c / _DAT_00558ca4 (sound-channel throttle timestamps, via time_GetCurrentTime()); return: void",
+      "settled_by": "body-read"
+    },
+    "llm_tact_gfx_load_banks_alt": {
+      "class": "presentation",
+      "why": "Renderer/HUD. Its ENTIRE measured global write set is _G_LLM_SPRITE_PIX_OFFSETS, via the tactical bank loader -- nothing inside the 14 hashed tactical slices, the two shared planes or the squad blackboard.",
+      "evidence": "write-set enumeration over tmp/state_matrix.json: {_G_LLM_SPRITE_PIX_OFFSETS}",
+      "settled_by": "write-set enumeration (NOT a body read -- see the closure doc's caveat)"
+    },
+    "llm_tact_gfx_view_tile_rows_init": {
+      "class": "presentation",
+      "why": "Body (lines 21-41 of the .c) only builds framebuffer/surface row-pointer tables sized to _G_LLM_VIEW_TILES_W*_H (max 1024, matches _G_LLM_TILE_VIS_MAP's declared byte[300]/0x400 capacity per docs/game-modes.md L386-389) and stamps a redraw-all + viewport-dirty flag. _G_LLM_TILE_VIS_MAP is confirmed a screen-space redraw-skip cache consumed only by the sprite blitter (docs/gfx-sprites.md L44-46: 'skips tiles whose _G_LLM_TILE_VIS_MAP_PTR byte is 0 ... on vis==2 does fog/shroud edge feathering') and by a debug AI-vision *visualizer* (llm_gfx_render_ai_vision_debug_map, ghidra_findings.json - a draw-only reader). It is a wholly different address/size class from the real simulation fog plane _G_LLM_TACT_TILE_FOG/_TILE_VIS_REFCOUNT (0x00d1eb88, world-map-sized, maintained by llm_tact_unit_vision_add/remove + the FOV raycaster per docs/map-render.md L20-45) which this function never touches.",
+      "evidence": "body read (tmp/decomp_tact/llm_tact_gfx_view_tile_rows_init.{c,asm}) by the TACT-DOMAIN wall fan-out, chunk 9; writes: _G_LLM_TACT_VIEW_TILE_FB_ROW_PTRS[row*W+col] = framebuffer row pointer (16bpp row arithmetic); _G_LLM_TILE_VIS_MAP[row*W+col] = 1 (marks all view-tiles visible-for-draw); _G_LLM_TACT_VIEW_TILE_SURFACE_ROW_PTRS[...] = secondary-surface row pointer; game_SetEvent(HUD_REDRAW_ALL); llm_map_cam_mark_viewport_dirty() (viewport-dirty flag); return: void",
+      "settled_by": "body-read"
+    },
+    "llm_tact_mark_view_tiles_dirty": {
+      "class": "presentation",
+      "why": "memset loop stamps the tile-drawn map used purely to force/track redraw after a camera scroll; docs/gfx-sprites.md explicitly documents _G_LLM_TILE_DRAWN_MAP_PTR as internal render-pipeline bookkeeping, not read out by any separate consumer. Callers are the 4 view_shift_* scroll helpers.",
+      "evidence": "body read (tmp/decomp_tact/llm_tact_mark_view_tiles_dirty.{c,asm}) by the TACT-DOMAIN wall fan-out, chunk 5; writes: _G_LLM_TILE_DRAWN_MAP_PTR (20x15 visible-tile dirty/redraw-tracking bytes, set to 1); return: void",
+      "settled_by": "body-read"
+    },
+    "llm_tact_render_view": {
+      "class": "presentation",
+      "why": "Renderer/HUD. Its ENTIRE measured global write set is the tile-draw cursor (col/row/terrain id/fog hi+lo/dim flag), _G_LLM_TILE_DRAWN_MAP and the hovered-unit id -- nothing inside the 14 hashed tactical slices, the two shared planes or the squad blackboard.",
+      "evidence": "write-set enumeration over tmp/state_matrix.json: {_G_LLM_GFX_DIM_FLAG, _G_LLM_GFX_TILE_DRAW_COL, _G_LLM_GFX_TILE_DRAW_FOG_HI, _G_LLM_GFX_TILE_DRAW_FOG_LO, _G_LLM_GFX_TILE_DRAW_ROW, _G_LLM_GFX_TILE_DRAW_TERRAIN_ID, _G_LLM_MAP_CAM_COL, _G_LLM_MAP_CAM_ROW, _G_LLM_TACT_HOVERED_UNIT_ID, _G_LLM_TILE_DRAWN_MAP, _G_LLM_TILE_VIS_MAP}",
+      "settled_by": "write-set enumeration (NOT a body read -- see the closure doc's caveat)"
+    },
+    "llm_tact_save_screenshot": {
+      "class": "presentation",
+      "why": "Renderer/HUD. Its ENTIRE measured global write set is _G_LLM_TACT_SCREENSHOT_COUNTER -- nothing inside the 14 hashed tactical slices, the two shared planes or the squad blackboard.",
+      "evidence": "write-set enumeration over tmp/state_matrix.json: {_G_LLM_TACT_SCREENSHOT_COUNTER}",
+      "settled_by": "write-set enumeration (NOT a body read -- see the closure doc's caveat)"
+    },
+    "llm_tact_scroll_fade_step": {
+      "class": "presentation",
+      "why": "Loops WindowWidth*WindowHeight times darkening each RGB565 pixel of _G_LLM_FRAMEBUFFER by a saturating per-channel step; called once per iteration of llm_tact_frame's scroll-transition-catchup loop to build a screen fade. Purely a framebuffer effect.",
+      "evidence": "body read (tmp/decomp_tact/llm_tact_scroll_fade_step.{c,asm}) by the TACT-DOMAIN wall fan-out, chunk 3; writes: _G_LLM_FRAMEBUFFER (pixel data, in place, via computed pointer walk); return: unused (CONCAT44 of its own unused params, a Watcom fake-return artifact)",
+      "settled_by": "body-read"
+    },
+    "llm_tact_tile_clear_margin_patch": {
+      "class": "presentation",
+      "why": "Writes fixed default sentinels into the two heap-allocated per-view-tile buffers at the view's right-margin column, 6 rows. docs/gfx-sprites.md explicitly documents _G_LLM_TILE_DRAWN_MAP_PTR as 'internal render-pipeline bookkeeping, not read out by any separate consumer', and docs/game-modes.md line 887 calls _G_LLM_TILE_VIS_MAP_PTR a 'cache' shifted alongside the framebuffer during soft-scroll.",
+      "evidence": "body read (tmp/decomp_tact/llm_tact_tile_clear_margin_patch.{c,asm}) by the TACT-DOMAIN wall fan-out, chunk 6; writes: _G_LLM_TILE_DRAWN_MAP_PTR[+row*stride] = 0x1f sentinel (6 rows x 5 bytes); _G_LLM_TILE_VIS_MAP_PTR[+row*stride] = 2/0x02020202 sentinel (6 rows x 5 bytes); return: void",
+      "settled_by": "body-read"
+    },
+    "llm_tact_tile_fog_compute_edges": {
+      "class": "presentation",
+      "why": "Renderer/HUD. Its ENTIRE measured global write set is _G_LLM_GFX_TILE_DRAW_FOG_HI/_LO, the renderer's per-tile fog blend inputs -- nothing inside the 14 hashed tactical slices, the two shared planes or the squad blackboard.",
+      "evidence": "write-set enumeration over tmp/state_matrix.json: {_G_LLM_GFX_TILE_DRAW_FOG_HI, _G_LLM_GFX_TILE_DRAW_FOG_LO}",
+      "settled_by": "write-set enumeration (NOT a body read -- see the closure doc's caveat)"
+    },
+    "llm_tact_tile_fog_set_origin": {
+      "class": "presentation",
+      "why": "Renderer/HUD. Its ENTIRE measured global write set is _G_LLM_GFX_FOG_LOOKUP_COL/_ROW, the fog glyph lookup origin -- nothing inside the 14 hashed tactical slices, the two shared planes or the squad blackboard.",
+      "evidence": "write-set enumeration over tmp/state_matrix.json: {_G_LLM_GFX_FOG_LOOKUP_COL, _G_LLM_GFX_FOG_LOOKUP_ROW}",
+      "settled_by": "write-set enumeration (NOT a body read -- see the closure doc's caveat)"
+    },
+    "llm_tact_tile_overlay_refresh": {
+      "class": "presentation",
+      "why": "Every write target in the body is either the draw-surface-derived pointer global itself or a pixel store through it (lines 38-79); the inputs it reads (tile_objects_ptr .flags.f fog/edge bits, unit owner byte) are read-only here. Its only other consumer is llm_tact_ui_minimap_draw_viewport_outline (also draw-surface pixel writes through the same pointer) -- confirmed via grep, no non-render reader exists in the tact closure.",
+      "evidence": "body read (tmp/decomp_tact/llm_tact_tile_overlay_refresh.{c,asm}) by the TACT-DOMAIN wall fan-out, chunk 9; writes: _G_LLM_TACT_UI_MINIMAP_OVERLAY_PTR = pointer into _G_LLM_GFX_DRAW_SURFACE (the current draw/backbuffer surface); 16-bit pixel writes through that pointer (RGB565-like literals 0x200/0xc0/0xc618/0xfbef/0x7bff) into the minimap region of the draw surface, derived from map::g::tile_objects_ptr fog/edge flag bits and unit-ownership color; return: the plate notes the (partially-traced) return value is used by the caller (llm_tact_frame) to pick a cursor icon id -- a UI/presentation choice, not a simulation decision",
+      "settled_by": "body-read"
+    },
+    "llm_tact_tlo_tile_blit": {
+      "class": "presentation",
+      "why": "Renderer/HUD. Its ENTIRE measured global write set is _G_LLM_TACT_TILE_BLIT_DST_ROW_PTR, the destination row pointer -- nothing inside the 14 hashed tactical slices, the two shared planes or the squad blackboard.",
+      "evidence": "write-set enumeration over tmp/state_matrix.json: {_G_LLM_TACT_TILE_BLIT_DST_ROW_PTR}",
+      "settled_by": "write-set enumeration (NOT a body read -- see the closure doc's caveat)"
+    },
+    "llm_tact_ui_char_panel_ammo_draw": {
+      "class": "presentation",
+      "why": "Reads _G_LLM_TACT_UNITS[..].gun{1,2}_{magazines,bullets}/active_gun READ-ONLY, sprintf's an ammo string, draws it via llm_ui_text_draw_rgb16, then marks 2 tile-dirty flags. CORRECTED 2026-08-24: 0x00713d1b/1e/1f are NOT an array of their own. They are folded-bias aliases of _G_LLM_TILE_VIS_MAP (byte[300] at 0x00713d20) -- the compiler folds the column bias into the disp32, so the byte written is _G_LLM_TILE_VIS_MAP[row*VIEW_TILES_W - N]. 0x00713d1b was renamed _G_LLM_TILE_VIS_MAP_M5 (it had been hand-named _G_LLM_TACT_TILE_DIRTY_FLAG_B on 2026-07-04, which modelled the run as a dirty-flag array in its own right). The WALL VERDICT is unaffected: it is still the redraw-invalidation plane and still not gameplay state.",
+      "evidence": "body read (tmp/decomp_tact/llm_tact_ui_char_panel_ammo_draw.{c,asm}) by the TACT-DOMAIN wall fan-out, chunk 1; writes: (&_G_LLM_TILE_VIS_MAP_M2)[...] = 2; (&_G_LLM_TILE_VIS_MAP_M1)[...] = 2  (both folded-bias aliases of _G_LLM_TILE_VIS_MAP, the render-invalidation plane -- corrected 2026-08-24); return: void",
+      "settled_by": "body-read"
+    },
+    "llm_tact_ui_char_panel_row_refresh": {
+      "class": "presentation",
+      "why": "Given a unit id, scans the sidebar's visible-slot table (_G_LLM_TACT_SIDEBAR_SLOT_UNIT_IDS) to find that unit's on-screen row, then calls llm_tact_ui_char_panel_row_draw to redraw just that row. Only reads UI state; no writes.",
+      "evidence": "body read (tmp/decomp_tact/llm_tact_ui_char_panel_row_refresh.{c,asm}) by the TACT-DOMAIN wall fan-out, chunk 3; writes: none; return: void",
+      "settled_by": "body-read"
+    },
+    "llm_tact_ui_draw_player_row_list": {
+      "class": "presentation",
+      "why": "Draws an 8-row player list (highlight for selected_row, separate highlight for the hovered row read from DAT_005590e8) purely via text/surface draw calls, then marks the corresponding view-tile row dirty for redraw. All writes are to the render dirty-flag plane, which is a redraw hint, not one of the three shared sim planes (tile_objects/passable/path_buffers) and not the squad blackboard.",
+      "evidence": "body read (tmp/decomp_tact/llm_tact_ui_draw_player_row_list.{c,asm}) by the TACT-DOMAIN wall fan-out, chunk 4; writes: pixels via llm_ui_set_draw_surface/llm_ui_text_draw_rgb16; (&_G_LLM_TILE_VIS_MAP_M5)[...] and the adjacent 0x00713d1c..1f bytes, all folded-bias aliases of _G_LLM_TILE_VIS_MAP at 0x00713d20 -- NOT an array based at 0x00713d1b (corrected 2026-08-24); return: void",
+      "settled_by": "body-read"
+    },
+    "llm_tact_ui_minimap_draw_viewport_outline": {
+      "class": "presentation",
+      "why": "All writes are 0xffff/0xffffffff pixel-value stores through puVar4, an offset into _G_LLM_TACT_UI_MINIMAP_OVERLAY_PTR sized/positioned from G_WIN_W and the camera col/row. Sole caller is llm_tact_tile_overlay_refresh (a refresh/render routine).",
+      "evidence": "body read (tmp/decomp_tact/llm_tact_ui_minimap_draw_viewport_outline.{c,asm}) by the TACT-DOMAIN wall fan-out, chunk 5; writes: _G_LLM_TACT_UI_MINIMAP_OVERLAY_PTR (minimap overlay pixel buffer -- rectangle outline pixels); return: void",
+      "settled_by": "body-read"
+    },
+    "llm_tact_ui_sel_panel_draw": {
+      "class": "presentation",
+      "why": "Reads _G_LLM_TACT_UI_SEL_PANEL_MULTI_MODE and _G_LLM_TACT_SEL_PANEL_ICON_SLOT_STATE[] READ-ONLY to pick which icon sprite to blit via llm_ui_set_draw_surface, then marks 5 contiguous tile-dirty-flag bytes at the end (lines 89-93), explicitly including the confirmed _G_LLM_TILE_VIS_MAP_M5 symbol (renamed 2026-08-24 from _G_LLM_TACT_TILE_DIRTY_FLAG_B: it is a folded-bias alias of _G_LLM_TILE_VIS_MAP, not an array base).",
+      "evidence": "body read (tmp/decomp_tact/llm_tact_ui_sel_panel_draw.{c,asm}) by the TACT-DOMAIN wall fan-out, chunk 1; writes: (&DAT_00713d1c..1f)[...] = 2, (&_G_LLM_TILE_VIS_MAP_M5)[...] = 2  (5 bytes of _G_LLM_TILE_VIS_MAP reached through folded-bias aliases M5..M1; renamed 2026-08-24); return: void",
+      "settled_by": "body-read"
+    },
+    "llm_tact_ui_sel_panel_free_gfx": {
+      "class": "presentation",
+      "why": "Loops DAT_00559100 times calling utils_free() on each pointer in DAT_00558f04 -- frees the tactical selection-panel background/gfx resources loaded by llm_tact_ui_sel_panel_init, called from llm_gfx_apply_resolution_change before reloading panel bitmaps at the new resolution.",
+      "evidence": "body read (tmp/decomp_tact/llm_tact_ui_sel_panel_free_gfx.{c,asm}) by the TACT-DOMAIN wall fan-out, chunk 2; writes: none; return: void",
+      "settled_by": "body-read"
+    },
+    "llm_tact_ui_sidebar_draw_rows": {
+      "class": "presentation",
+      "why": "Two loops over the sidebar row count dispatching each populated left/right list entry to llm_tact_ui_sidebar_row_draw_left/right. Only reads scroll/page/backing-array globals to pick what to draw; writes nothing. Sole caller llm_tact_selection_panel_refresh.",
+      "evidence": "body read (tmp/decomp_tact/llm_tact_ui_sidebar_draw_rows.{c,asm}) by the TACT-DOMAIN wall fan-out, chunk 3; writes: none; return: void",
+      "settled_by": "body-read"
+    },
+    "llm_tact_ui_sidebar_redraw_unit_slot": {
+      "class": "presentation",
+      "why": "Sole caller is llm_tact_unit_fire_weapon (per tact_closure.json), invoked to refresh the UI after firing. Body only searches the read-only sidebar slot-id array for unit_id and, if found, calls llm_tact_ui_char_panel_ammo_draw(unit_id, slot) -- a draw call. No writes, no pointer writes, no returned value.",
+      "evidence": "body read (tmp/decomp_tact/llm_tact_ui_sidebar_redraw_unit_slot.{c,asm}) by the TACT-DOMAIN wall fan-out, chunk 4; writes: none; return: void",
+      "settled_by": "body-read"
+    },
+    "llm_tact_ui_sidebar_roster_refresh": {
+      "class": "presentation",
+      "why": "This function READS _G_LLM_TACT_UNITS[i].status&1 (the selection bit) to decide which units go into the sidebar slot list -- it reflects existing selection into a display list, it does not set selection. Every consumer of the three globals it writes was checked and is a draw dispatcher, not a state writer: _G_LLM_TACT_SIDEBAR_SLOT_UNIT_IDS is read only by llm_tact_ui_char_panel_row_refresh/llm_tact_unit_refresh_ui_slot/llm_tact_ui_sidebar_redraw_unit_slot (all three: 'find slot for unit_id, call a *_draw function, return'), and the terminal sink llm_tact_ui_char_panel_row_draw (0x00434322) does nothing but llm_ui_set_draw_surface/llm_ui_text_draw_rgb16/HP-bar draw + a tile-occlusion redraw-mark. No unit-record field, no cmd_queue, no shared plane (tile_objects/passable/path_buffers), and no order call is reached from any of these.",
+      "evidence": "body read (tmp/decomp_tact/llm_tact_ui_sidebar_roster_refresh.{c,asm}) by the TACT-DOMAIN wall fan-out, chunk 8; writes: _G_LLM_TACT_SIDEBAR_SLOT_UNIT_IDS[0..0x3f] (COMPUTED-ADDRESS array write, '&_G_LLM_TACT_SIDEBAR_SLOT_UNIT_IDS + i*4' -- invisible to the region-write sweep, exactly trap #2 in the brief); _G_LLM_TACT_SEL_PANEL_ICON_SLOT_STATE[0..3] (scroll-arrow up/down highlight bits); _G_LLM_TACT_SIDEBAR_SLOT_SCROLL (clamped scroll offset); return: void",
+      "settled_by": "body-read"
+    },
+    "llm_tact_ui_sidebar_row_draw_left": {
+      "class": "presentation",
+      "why": "Body is entirely draw-surface setup + sprintf-and-text-draw calls (roster row text/background), reading (not writing) unit id/type from _G_LLM_TACT_UNITS; the only non-render writes are 3 dirty-flag stamps mirroring the pattern documented for _G_LLM_TILE_DRAWN_MAP_PTR.",
+      "evidence": "body read (tmp/decomp_tact/llm_tact_ui_sidebar_row_draw_left.{c,asm}) by the TACT-DOMAIN wall fan-out, chunk 5; writes: draw-surface text/background via llm_ui_set_draw_surface / llm_ui_text_draw_rgb16; 3 tile-dirty flag bytes: _G_LLM_TILE_VIS_MAP_M5[...], _G_LLM_TILE_VIS_MAP_M4[...], _G_LLM_TILE_VIS_MAP_M3[...] (one redraw-tracking plane reached through folded-bias aliases; renamed 2026-08-24); return: void",
+      "settled_by": "body-read"
+    },
+    "llm_tact_unit_apply_move_offset": {
+      "class": "presentation",
+      "why": "tools/data/tact_closure.json shows its ONLY caller is llm_tact_unit_render (line ~1260-1266). Reading that caller confirms out_x/out_y are `&local_20`/`&local_1c`, used only as `llm_gfx_draw_sprite_rle(sprite_id, local_20 - origin_x, local_1c - origin_y, ...)` -- a per-frame render-position interpolation (using the unit's animation `progress` field), never written back to _G_LLM_TACT_UNITS or any global.",
+      "evidence": "body read (tmp/decomp_tact/llm_tact_unit_apply_move_offset.{c,asm}) by the TACT-DOMAIN wall fan-out, chunk 1; writes: *out_x, *out_y -- but traced to the caller's LOCAL stack variables (local_20/local_1c in llm_tact_unit_render), not any persistent/global store; return: void; out_x/out_y feed only sprite-draw coordinates",
+      "settled_by": "body-read"
+    },
+    "llm_tact_unit_draw_hp_bar_slot": {
+      "class": "presentation",
+      "why": "Reads _G_LLM_TACT_UNITS[unit_idx].hp and the unit-type energy(max) value only to compute a fill proportion, then writes 0x1e columns of fixed color words directly into the draw surface and marks two dirty rows. No unit/tile-object/blackboard writes -- only pixels and a redraw hint.",
+      "evidence": "body read (tmp/decomp_tact/llm_tact_unit_draw_hp_bar_slot.{c,asm}) by the TACT-DOMAIN wall fan-out, chunk 4; writes: _G_LLM_GFX_DRAW_SURFACE[...] (framebuffer pixels for the HP-bar column); (&_G_LLM_TILE_VIS_MAP_M5)[...] (render dirty flags for two view-tile rows, in _G_LLM_TILE_VIS_MAP via a folded-bias alias; renamed 2026-08-24); return: void",
+      "settled_by": "body-read"
+    },
+    "llm_tact_unit_pose_tag_select": {
+      "class": "presentation",
+      "why": "search-decompilation for UNIT_POSE_TAG across the whole program returns writes only inside this function and reads only at llm_tact_render_view:186 via llm_str_ansi_to_wide_scratch -- a frame-local rendering scratch buffer with no other consumer anywhere in the binary.",
+      "evidence": "body read (tmp/decomp_tact/llm_tact_unit_pose_tag_select.{c,asm}) by the TACT-DOMAIN wall fan-out, chunk 7; writes: _G_LLM_TACT_UNIT_POSE_TAG[0..7] (8-char sprite/animation resource-name tag, e.g. \"NORMAL0\", \"KNEEL\", \"DEATH\"); return: void; sole caller llm_tact_render_view (line 183: llm_tact_unit_pose_tag_select((uint)_G_LLM_TACT_UNITS[local_30].anim_state)) immediately feeds the buffer to llm_str_ansi_to_wide_scratch (line 186) to build a sprite resource name for drawing the unit's current pose.",
+      "settled_by": "body-read"
+    },
+    "llm_tact_unit_refresh_ui_slot": {
+      "class": "presentation",
+      "why": "Scans _G_LLM_TACT_SIDEBAR_SLOT_UNIT_IDS for a slot matching building_id and, if found (and not in multi-select mode), calls llm_tact_unit_draw_hp_bar_slot to redraw that slot's HP bar. No state is written anywhere in the function.",
+      "evidence": "body read (tmp/decomp_tact/llm_tact_unit_refresh_ui_slot.{c,asm}) by the TACT-DOMAIN wall fan-out, chunk 6; writes: none; return: void",
+      "settled_by": "body-read"
+    },
+    "llm_tact_unit_render": {
+      "class": "presentation",
+      "why": "Plate + closure confirm sole caller is llm_tact_render_view. Body reads _G_LLM_TACT_UNITS[..] fields (type/owner/status/sprite_id/anim_state) read-only plus tile_objects[..].flags read-only (fog-of-war visibility check), and issues llm_gfx_draw_sprite_rle calls. No writes to any global or struct field in this function's own body.",
+      "evidence": "body read (tmp/decomp_tact/llm_tact_unit_render.{c,asm}) by the TACT-DOMAIN wall fan-out, chunk 1; writes: none; return: void",
+      "settled_by": "body-read"
+    },
+    "llm_tact_view_metrics_init": {
+      "class": "presentation",
+      "why": "Renderer/HUD. Its ENTIRE measured global write set is the seven view-buffer heap pointers (row ptrs, vis map, drawn map, LOS cache, fog stencils) and the char shift LUT -- nothing inside the 14 hashed tactical slices, the two shared planes or the squad blackboard.",
+      "evidence": "write-set enumeration over tmp/state_matrix.json: {DAT_00824fd8, _G_LLM_FOG_STENCILS_PTR, _G_LLM_GFX_POLALFA1_GLYPH_PTR, _G_LLM_GFX_POLALFA2_GLYPH_PTR, _G_LLM_TACT_CHAR_SHIFT_LUT, _G_LLM_TACT_LOS_CACHE_PTR, _G_LLM_TACT_VIEW_TILE_FB_ROW_PTRS_PTR, _G_LLM_TACT_VIEW_TILE_SURFACE_ROW_PTRS_PTR, _G_LLM_TILE_DRAWN_MAP_PTR, _G_LLM_TILE_VIS_MAP, _G_LLM_TILE_VIS_MAP_PTR}",
+      "settled_by": "write-set enumeration (NOT a body read -- see the closure doc's caveat)"
+    },
+    "llm_tact_vis_map_clear_right_margin": {
+      "class": "presentation",
+      "why": "Fills the off-view right-margin columns of _G_LLM_TILE_VIS_MAP_PTR with sentinel 2 when the buffer (sized to WindowWidth) is wider than the active view (G_WIN_W). Confirmed via sibling functions llm_tact_view_shift_col_dec/inc etc. that _G_LLM_TILE_VIS_MAP_PTR is explicitly documented as 'the visibility-map cache' for the framebuffer soft-scroll renderer -- a screen-space rendering scratch buffer, distinct from the gameplay fog-of-war state (_G_LLM_TACT_TILE_FOG / _G_LLM_TACT_TILE_VIS_REFCOUNT). Sole caller llm_tact_active_unit_count_hud_draw.",
+      "evidence": "body read (tmp/decomp_tact/llm_tact_vis_map_clear_right_margin.{c,asm}) by the TACT-DOMAIN wall fan-out, chunk 3; writes: _G_LLM_TILE_VIS_MAP_PTR right-margin bytes = 2 (sentinel); return: void",
+      "settled_by": "body-read"
+    },
+    "llm_tact_zone_sound_play": {
+      "class": "presentation",
+      "why": "Body only computes a volume and calls llm_snd_play_matching_sample against _G_LLM_SND_CFG_TABLE (read-only) -- pure audio playback, no memory writes at all. Sole caller is llm_tact_frame's scroll-transition-catchup branch.",
+      "evidence": "body read (tmp/decomp_tact/llm_tact_zone_sound_play.{c,asm}) by the TACT-DOMAIN wall fan-out, chunk 5; writes: none; return: void",
+      "settled_by": "body-read"
+    },
+    "llm_tlo_shade_table_build_tact": {
+      "class": "presentation",
+      "why": "Renderer/HUD. Its ENTIRE measured global write set is _G_LLM_TACT_FOG_GLYPH_BLEND_TABLE, the fog glyph blend table -- nothing inside the 14 hashed tactical slices, the two shared planes or the squad blackboard.",
+      "evidence": "write-set enumeration over tmp/state_matrix.json: {_G_LLM_TACT_FOG_GLYPH_BLEND_TABLE}",
+      "settled_by": "write-set enumeration (NOT a body read -- see the closure doc's caveat)"
+    },
+    "llm_ui_info_media_draw_p1": {
+      "class": "presentation",
+      "why": "Renderer/HUD. Its ENTIRE measured global write set is _G_LLM_UI_INFO_MEDIA_CTX -- nothing inside the 14 hashed tactical slices, the two shared planes or the squad blackboard.",
+      "evidence": "write-set enumeration over tmp/state_matrix.json: {_G_LLM_UI_INFO_MEDIA_CTX}",
+      "settled_by": "write-set enumeration (NOT a body read -- see the closure doc's caveat)"
+    },
+    "llm_ui_info_media_draw_p2": {
+      "class": "presentation",
+      "why": "Renderer/HUD. Its ENTIRE measured global write set is _G_LLM_UI_INFO_MEDIA_CTX -- nothing inside the 14 hashed tactical slices, the two shared planes or the squad blackboard.",
+      "evidence": "write-set enumeration over tmp/state_matrix.json: {_G_LLM_UI_INFO_MEDIA_CTX}",
+      "settled_by": "write-set enumeration (NOT a body read -- see the closure doc's caveat)"
+    },
+    "llm_ui_text_draw_rgb16": {
+      "class": "presentation",
+      "why": "Renderer/HUD. Its ENTIRE measured global write set is _G_LLM_UI_SURFACE_PTR/_PITCH, the text draw surface binding -- nothing inside the 14 hashed tactical slices, the two shared planes or the squad blackboard.",
+      "evidence": "write-set enumeration over tmp/state_matrix.json: {_G_LLM_UI_SURFACE_PITCH, _G_LLM_UI_SURFACE_PTR}",
+      "settled_by": "write-set enumeration (NOT a body read -- see the closure doc's caveat)"
+    },
+    "llm_gfx_blit_finish": {
+      "class": "presentation",
+      "why": "Renderer/HUD. The RLE sprite blitter's finish/hittest tail helper: its entire 7-byte body is CALL llm_gfx_hittest_check_blit; POPAD; RET. hittest_check_blit is a leaf compare-and-flag over the already-shadowed _G_LLM_HITTEST_* globals (class ), and blit_finish writes nothing itself -- its manifest write set is empty. It is a wall for the same reason its sole meaningful sibling llm_gfx_blit_sprite_rle (its caller, already walled) is: it is part of the pixel-blit path, not tactical gameplay state.",
+      "evidence": "manifest write set empty (writes_shared=[], writes_island=[]); body 0x0043bc1a: CALL llm_gfx_hittest_check_blit (0x0043bfae) then POPAD then RET, 7 bytes. The lone POPAD has no matching PUSHAD in this body -- it unwinds the frame of its caller llm_gfx_blit_sprite_rle (which PUSHADs at entry and uses this as a shared multi-exit tail), so this is NOT a normal-ABI void() and must never be transcribed as one. callers_total=2, both in the walled gfx blit path.",
+      "settled_by": "body-read (decompile + disassembly of the 7-byte body; the POPAD-without-PUSHAD calling convention is the decisive fact) -- confidence high"
+    }
+  }
+}

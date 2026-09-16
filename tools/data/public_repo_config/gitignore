@@ -1,0 +1,52 @@
+# DERIVED -- do not hand-edit. `python tools/build_public_seed.py --check` fails if this file and
+# the derivation disagree.
+#
+# This repository is a cut of a larger private research tree, and its .gitignore is derived from
+# that tree's rather than copied: every rule that can match a path THIS tree produces is kept, with
+# a one-line reason; the rules whose only subject is a private layer (the Ghidra project database,
+# the research telemetry) are dropped along with the narration explaining them. A rule the
+# derivation has no disposition for stops the build, so the question cannot be skipped.
+
+# scratch, staging and stray files
+workdir/
+game_data/
+tmp*.ps
+tmp/
+bash.exe*
+
+# retail game binaries -- never committed (mhpatch takes the exe as an argument)
+src/patcher/mh.exe
+src/patcher/mh_.exe
+*.patched.exe
+*.harness.exe
+
+# mod trees: cfgkit / mapkit output. aliases.yaml is the one versioned file in cfg/
+mod_src/overlay/
+mod_src/cfg/*
+!mod_src/cfg/aliases.yaml
+mod_src/map/
+
+# build outputs
+src/**/Debug/
+src/**/Release/
+src/**/Release_asan/
+src/**/build/
+src/**/x64/
+src/**/.vs/
+src/**/*.obj
+src/**/*.pdb
+src/**/*.ilk
+src/**/*.idb
+src/**/*.user
+src/**/__pycache__/
+__pycache__/
+*.pyc
+
+# editor and IDE state
+.obsidian/
+.vs/
+.vscode/
+
+# machine-local configuration and per-run artifacts
+tools/machine.local.json
+LastCoverageResults.log

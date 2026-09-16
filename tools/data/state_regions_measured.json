@@ -1,0 +1,9780 @@
+{
+ "_note": "FROZEN REGION CLAIMS (F2D, 2026-09-12). gen_state_registry.py merges five independent answers to 'where does this state region live and how big is it'; claims_shadow() is one of them. It read tools/data/dll_shadow_regions.json -- the differential oracle's per-site region sets -- which was deleted with the oracle at F2D.\n\nWHAT WAS CONSUMED: exactly three fields per entry (name, addr, size). The owning-function key the entries were grouped under was DISCARDED by the reader, which never asked 'is this region shadowed' -- claims_shadow was a symbol/size source indistinguishable in role from claims_view/save/patch/hash. So only the claims are frozen here, not the grouping.\n\nWHY THIS IS A FLAT SEQUENCE AND NOT A DEDUPLICATED SET, which is the trap a first attempt fell into: merge() is INCREMENTAL and ORDER-SENSITIVE. It re-derives its address index after every claim that opens a new region, so whether a later claim lands as its own region or is absorbed as an interior reference into an existing host depends on what came before it. Deduplicating the 1955 claims to their 317 distinct (name, addr, size) triples and sorting them changed 196 regions. This file therefore preserves the reader's exact emission ORDER and multiplicity; the committed state_regions.json is byte-identical across the change, which is what --check proves.\n\nWHY IT COULD NOT BE DROPPED: 3 of these regions are claimed by NO other manifest (TILE_VIS_MAP_M4/M5/M6 at 0x713d1a-0x713d1c). Dropping the claim deletes them, which renumbers every later RID_* and silently invalidates the committed tables in mh_world_snapshot.gen.h and host_stock_bases.gen.h that index by that numbering.\n\nThis is the F0 frozen-inputs precedent, per the F2 ruling that a dropped census's DATA survives as a static input while its GATE goes. The measurement is finished: these are addresses and sizes in a binary that does not change. Regenerate only if the binary does.",
+ "claims": [
+  {
+   "name": "_G_LLM_STRAT_ORDER_PENDING_COUNT",
+   "addr": "0x005d01a8",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_PENDING",
+   "addr": "0x00bb9e80",
+   "size": 68000
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_QUEUE_COUNT",
+   "addr": "0x005d0194",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_QUEUE",
+   "addr": "0x00bb4ed0",
+   "size": 20400
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_SCRATCH_ARGS",
+   "addr": "0x00e16268",
+   "size": 52
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_SCRATCH_ARGS",
+   "addr": "0x00e16268",
+   "size": 52
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_STAGING_COUNT",
+   "addr": "0x005d01a4",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_STAGING",
+   "addr": "0x00bca920",
+   "size": 20400
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_STAGING_COUNT",
+   "addr": "0x005d01a4",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_PENDING_COUNT",
+   "addr": "0x005d01a8",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_LOCKSTEP_HORIZON",
+   "addr": "0x005d5594",
+   "size": 8
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_PENDING",
+   "addr": "0x00bb9e80",
+   "size": 68000
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_STAGING",
+   "addr": "0x00bca920",
+   "size": 20400
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_QUEUE_COUNT",
+   "addr": "0x005d0194",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_PENDING_COUNT",
+   "addr": "0x005d01a8",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_QUEUE",
+   "addr": "0x00bb4ed0",
+   "size": 20400
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_PENDING",
+   "addr": "0x00bb9e80",
+   "size": 68000
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_QUEUE_COUNT",
+   "addr": "0x005d0194",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_STAGING_COUNT",
+   "addr": "0x005d01a4",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_QUEUE",
+   "addr": "0x00bb4ed0",
+   "size": 20400
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_STAGING",
+   "addr": "0x00bca920",
+   "size": 20400
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_QUEUE_COUNT",
+   "addr": "0x005d0194",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_QUEUE",
+   "addr": "0x00bb4ed0",
+   "size": 20400
+  },
+  {
+   "name": "buildings",
+   "addr": "0x00c3d2a0",
+   "size": 218400
+  },
+  {
+   "name": "units",
+   "addr": "0x00dd8c48",
+   "size": 186400
+  },
+  {
+   "name": "_G_LLM_STRAT_LOCKSTEP_COMMITTED_HORIZON",
+   "addr": "0x005d558c",
+   "size": 8
+  },
+  {
+   "name": "_G_LLM_NET_LOCKSTEP_PEER_TIMING",
+   "addr": "0x00e58c40",
+   "size": 96
+  },
+  {
+   "name": "_G_LLM_NET_PEER_HORIZON",
+   "addr": "0x005d54cc",
+   "size": 64
+  },
+  {
+   "name": "_G_LLM_NET_PEER_HORIZON_PENDING",
+   "addr": "0x005d550c",
+   "size": 64
+  },
+  {
+   "name": "_G_LLM_STRAT_LOCKSTEP_COMMITTED_HORIZON",
+   "addr": "0x005d558c",
+   "size": 8
+  },
+  {
+   "name": "_G_LLM_NET_LOCKSTEP_PEER_STATE",
+   "addr": "0x00e58bd8",
+   "size": 64
+  },
+  {
+   "name": "_G_LLM_STRAT_LOCKSTEP_COMMITTED_HORIZON",
+   "addr": "0x005d558c",
+   "size": 8
+  },
+  {
+   "name": "_G_LLM_STRAT_LOCKSTEP_HORIZON",
+   "addr": "0x005d5594",
+   "size": 8
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_QUEUE_COUNT",
+   "addr": "0x005d0194",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_GAME_CLOCK",
+   "addr": "0x005d0198",
+   "size": 8
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_PENDING_COUNT",
+   "addr": "0x005d01a8",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_SEQ_ID_BY_PLAYER",
+   "addr": "0x005d01e8",
+   "size": 8
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_QUEUE",
+   "addr": "0x00bb4ed0",
+   "size": 20400
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_PENDING",
+   "addr": "0x00bb9e80",
+   "size": 68000
+  },
+  {
+   "name": "_G_LLM_STRAT_FLOATING_MSG_QUEUE_ACTIVE",
+   "addr": "0x00e16264",
+   "size": 4
+  },
+  {
+   "name": "GAME_TIME_DELTA",
+   "addr": "0x00e587d1",
+   "size": 8
+  },
+  {
+   "name": "_G_LLM_STRAT_GAME_CLOCK",
+   "addr": "0x005d0198",
+   "size": 8
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_SEQ_ID_BY_PLAYER",
+   "addr": "0x005d01e8",
+   "size": 8
+  },
+  {
+   "name": "GAME_TIME_DELTA",
+   "addr": "0x00e587d1",
+   "size": 8
+  },
+  {
+   "name": "_G_LLM_NET_ACTIVE_PLAYER_COUNT",
+   "addr": "0x005d54c4",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_NET_SEND_BUF",
+   "addr": "0x005d55cc",
+   "size": 1016
+  },
+  {
+   "name": "_G_LLM_NET_SEND_BUF_CURSOR",
+   "addr": "0x005d59c4",
+   "size": 4
+  },
+  {
+   "name": "player_data",
+   "addr": "0x00e6dec0",
+   "size": 1329120
+  },
+  {
+   "name": "_G_LLM_STRAT_AI_ENGAGE_CANDIDATE_SCRATCH",
+   "addr": "0x00fb4db0",
+   "size": 3072
+  },
+  {
+   "name": "_G_LLM_STRAT_AI_ENGAGE_CANDIDATE_SCRATCH_COUNT",
+   "addr": "0x00fe5b50",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_AI_ENGAGE_CANDIDATE_SCRATCH",
+   "addr": "0x00fb4db0",
+   "size": 3072
+  },
+  {
+   "name": "_G_LLM_STRAT_AI_ENGAGE_CANDIDATE_SCRATCH_COUNT",
+   "addr": "0x00fe5b50",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_AI_ENGAGE_CANDIDATE_SCRATCH",
+   "addr": "0x00fb4db0",
+   "size": 3072
+  },
+  {
+   "name": "_G_LLM_STRAT_AI_ENGAGE_CANDIDATE_SCRATCH_COUNT",
+   "addr": "0x00fe5b50",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_AI_ENGAGE_CANDIDATE_SCRATCH",
+   "addr": "0x00fb4db0",
+   "size": 3072
+  },
+  {
+   "name": "_G_LLM_STRAT_AI_ENGAGE_CANDIDATE_SCRATCH_COUNT",
+   "addr": "0x00fe5b50",
+   "size": 4
+  },
+  {
+   "name": "player_data",
+   "addr": "0x00e6dec0",
+   "size": 1329120
+  },
+  {
+   "name": "player_data",
+   "addr": "0x00e6dec0",
+   "size": 1329120
+  },
+  {
+   "name": "_G_LLM_STRAT_AI_ENGAGE_CANDIDATE_SCRATCH",
+   "addr": "0x00fb4db0",
+   "size": 3072
+  },
+  {
+   "name": "_G_LLM_STRAT_AI_ENGAGE_CANDIDATE_SCRATCH",
+   "addr": "0x00fb4db0",
+   "size": 3072
+  },
+  {
+   "name": "_G_LLM_STRAT_AI_ENGAGE_CANDIDATE_SCRATCH_COUNT",
+   "addr": "0x00fe5b50",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_AI_ENGAGE_CANDIDATE_SCRATCH",
+   "addr": "0x00fb4db0",
+   "size": 3072
+  },
+  {
+   "name": "_G_LLM_STRAT_AI_ENGAGE_CANDIDATE_SCRATCH_COUNT",
+   "addr": "0x00fe5b50",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_AI_GRID_WRAP_MASK",
+   "addr": "0x00603ec8",
+   "size": 4
+  },
+  {
+   "name": "player_data",
+   "addr": "0x00e6dec0",
+   "size": 1329120
+  },
+  {
+   "name": "player_data",
+   "addr": "0x00e6dec0",
+   "size": 1329120
+  },
+  {
+   "name": "player_data",
+   "addr": "0x00e6dec0",
+   "size": 1329120
+  },
+  {
+   "name": "_G_LLM_STRAT_AI_GRID_WRAP_MASK",
+   "addr": "0x00603ec8",
+   "size": 4
+  },
+  {
+   "name": "player_data",
+   "addr": "0x00e6dec0",
+   "size": 1329120
+  },
+  {
+   "name": "_G_LLM_STRAT_AI_ATTACK_CANDIDATES",
+   "addr": "0x01022314",
+   "size": 2048
+  },
+  {
+   "name": "_G_LLM_STRAT_AI_ATTACK_CANDIDATE_COUNT",
+   "addr": "0x01022b1c",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_AI_SCAN_TARGETS",
+   "addr": "0x01017314",
+   "size": 45056
+  },
+  {
+   "name": "_G_LLM_STRAT_AI_SCAN_TARGET_COUNT",
+   "addr": "0x01022b20",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_AI_SCAN_TARGETS",
+   "addr": "0x01017314",
+   "size": 45056
+  },
+  {
+   "name": "_G_LLM_STRAT_AI_SCAN_TARGET_COUNT",
+   "addr": "0x01022b20",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_AI_SCAN_TARGETS",
+   "addr": "0x01017314",
+   "size": 45056
+  },
+  {
+   "name": "_G_LLM_STRAT_AI_SCAN_TARGET_COUNT",
+   "addr": "0x01022b20",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_AI_SCAN_TARGETS",
+   "addr": "0x01017314",
+   "size": 45056
+  },
+  {
+   "name": "_G_LLM_STRAT_AI_SCAN_TARGET_COUNT",
+   "addr": "0x01022b20",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_AI_SCAN_TARGETS",
+   "addr": "0x01017314",
+   "size": 45056
+  },
+  {
+   "name": "player_data",
+   "addr": "0x00e6dec0",
+   "size": 1329120
+  },
+  {
+   "name": "units",
+   "addr": "0x00dd8c48",
+   "size": 186400
+  },
+  {
+   "name": "player_data",
+   "addr": "0x00e6dec0",
+   "size": 1329120
+  },
+  {
+   "name": "_G_LLM_STRAT_AI_ENGAGE_CANDIDATE_SCRATCH",
+   "addr": "0x00fb4db0",
+   "size": 3072
+  },
+  {
+   "name": "_G_LLM_STRAT_AI_ENGAGE_CANDIDATE_SCRATCH_COUNT",
+   "addr": "0x00fe5b50",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_AI_SCAN_TARGETS",
+   "addr": "0x01017314",
+   "size": 45056
+  },
+  {
+   "name": "_G_LLM_STRAT_AI_SCAN_TARGET_COUNT",
+   "addr": "0x01022b20",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_AI_GRID_WRAP_MASK",
+   "addr": "0x00603ec8",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_RNG_STATE",
+   "addr": "0x00603ecc",
+   "size": 16
+  },
+  {
+   "name": "player_data",
+   "addr": "0x00e6dec0",
+   "size": 1329120
+  },
+  {
+   "name": "_G_LLM_STRAT_AI_EXPAND_SITE_COUNT",
+   "addr": "0x0101370c",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_AI_EXPAND_SITE_Y",
+   "addr": "0x01013710",
+   "size": 1024
+  },
+  {
+   "name": "_G_LLM_STRAT_AI_EXPAND_SITE_X",
+   "addr": "0x01013b10",
+   "size": 1024
+  },
+  {
+   "name": "_G_LLM_STRAT_AI_SITE_CANDIDATES",
+   "addr": "0x00fb59b0",
+   "size": 65536
+  },
+  {
+   "name": "_G_LLM_STRAT_AI_SITE_CANDIDATE_COUNT",
+   "addr": "0x00fe5b54",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_AI_GRID_WRAP_MASK",
+   "addr": "0x00603ec8",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_AI_SITE_CANDIDATES",
+   "addr": "0x00fb59b0",
+   "size": 65536
+  },
+  {
+   "name": "_G_LLM_STRAT_AI_SITE_CANDIDATE_COUNT",
+   "addr": "0x00fe5b54",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_AI_GRID_WRAP_MASK",
+   "addr": "0x00603ec8",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_AI_SITE_CANDIDATES",
+   "addr": "0x00fb59b0",
+   "size": 65536
+  },
+  {
+   "name": "_G_LLM_STRAT_AI_SITE_CANDIDATE_COUNT",
+   "addr": "0x00fe5b54",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_AI_GRID_WRAP_MASK",
+   "addr": "0x00603ec8",
+   "size": 4
+  },
+  {
+   "name": "player_data",
+   "addr": "0x00e6dec0",
+   "size": 1329120
+  },
+  {
+   "name": "_G_LLM_STRAT_AI_SITE_CANDIDATES",
+   "addr": "0x00fb59b0",
+   "size": 65536
+  },
+  {
+   "name": "_G_LLM_STRAT_AI_SITE_CANDIDATE_COUNT",
+   "addr": "0x00fe5b54",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_BLDG_ENCLOSURE_SCRATCH",
+   "addr": "0x00fe9404",
+   "size": 65536
+  },
+  {
+   "name": "_G_LLM_STRAT_AI_GRID_WRAP_MASK",
+   "addr": "0x00603ec8",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_AI_GRID_WRAP_MASK",
+   "addr": "0x00603ec8",
+   "size": 4
+  },
+  {
+   "name": "player_data",
+   "addr": "0x00e6dec0",
+   "size": 1329120
+  },
+  {
+   "name": "player_data",
+   "addr": "0x00e6dec0",
+   "size": 1329120
+  },
+  {
+   "name": "_G_LLM_STRAT_AI_GRID_WRAP_MASK",
+   "addr": "0x00603ec8",
+   "size": 4
+  },
+  {
+   "name": "player_data",
+   "addr": "0x00e6dec0",
+   "size": 1329120
+  },
+  {
+   "name": "player_data",
+   "addr": "0x00e6dec0",
+   "size": 1329120
+  },
+  {
+   "name": "player_data",
+   "addr": "0x00e6dec0",
+   "size": 1329120
+  },
+  {
+   "name": "player_data",
+   "addr": "0x00e6dec0",
+   "size": 1329120
+  },
+  {
+   "name": "player_data",
+   "addr": "0x00e6dec0",
+   "size": 1329120
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_QUEUE_COUNT",
+   "addr": "0x005d0194",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_AI_GRID_WRAP_MASK",
+   "addr": "0x00603ec8",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_QUEUE",
+   "addr": "0x00bb4ed0",
+   "size": 20400
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_SCRATCH_ARGS",
+   "addr": "0x00e16268",
+   "size": 52
+  },
+  {
+   "name": "player_data",
+   "addr": "0x00e6dec0",
+   "size": 1329120
+  },
+  {
+   "name": "_G_LLM_STRAT_AI_SITE_CANDIDATES",
+   "addr": "0x00fb59b0",
+   "size": 65536
+  },
+  {
+   "name": "_G_LLM_STRAT_AI_SITE_CANDIDATE_COUNT",
+   "addr": "0x00fe5b54",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_BLDG_ENCLOSURE_SCRATCH",
+   "addr": "0x00fe9404",
+   "size": 65536
+  },
+  {
+   "name": "player_data",
+   "addr": "0x00e6dec0",
+   "size": 1329120
+  },
+  {
+   "name": "player_data",
+   "addr": "0x00e6dec0",
+   "size": 1329120
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_QUEUE_COUNT",
+   "addr": "0x005d0194",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_QUEUE",
+   "addr": "0x00bb4ed0",
+   "size": 20400
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_SCRATCH_ARGS",
+   "addr": "0x00e16268",
+   "size": 52
+  },
+  {
+   "name": "player_data",
+   "addr": "0x00e6dec0",
+   "size": 1329120
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_QUEUE_COUNT",
+   "addr": "0x005d0194",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_QUEUE",
+   "addr": "0x00bb4ed0",
+   "size": 20400
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_SCRATCH_ARGS",
+   "addr": "0x00e16268",
+   "size": 52
+  },
+  {
+   "name": "player_data",
+   "addr": "0x00e6dec0",
+   "size": 1329120
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_QUEUE_COUNT",
+   "addr": "0x005d0194",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_AI_GRID_WRAP_MASK",
+   "addr": "0x00603ec8",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_QUEUE",
+   "addr": "0x00bb4ed0",
+   "size": 20400
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_SCRATCH_ARGS",
+   "addr": "0x00e16268",
+   "size": 52
+  },
+  {
+   "name": "player_data",
+   "addr": "0x00e6dec0",
+   "size": 1329120
+  },
+  {
+   "name": "_G_LLM_STRAT_AI_SITE_CANDIDATES",
+   "addr": "0x00fb59b0",
+   "size": 65536
+  },
+  {
+   "name": "_G_LLM_STRAT_AI_SITE_CANDIDATE_COUNT",
+   "addr": "0x00fe5b54",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_BLDG_ENCLOSURE_SCRATCH",
+   "addr": "0x00fe9404",
+   "size": 65536
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_QUEUE_COUNT",
+   "addr": "0x005d0194",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_QUEUE",
+   "addr": "0x00bb4ed0",
+   "size": 20400
+  },
+  {
+   "name": "player_data",
+   "addr": "0x00e6dec0",
+   "size": 1329120
+  },
+  {
+   "name": "player_data",
+   "addr": "0x00e6dec0",
+   "size": 1329120
+  },
+  {
+   "name": "player_data",
+   "addr": "0x00e6dec0",
+   "size": 1329120
+  },
+  {
+   "name": "player_data",
+   "addr": "0x00e6dec0",
+   "size": 1329120
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_QUEUE_COUNT",
+   "addr": "0x005d0194",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_QUEUE",
+   "addr": "0x00bb4ed0",
+   "size": 20400
+  },
+  {
+   "name": "player_data",
+   "addr": "0x00e6dec0",
+   "size": 1329120
+  },
+  {
+   "name": "_G_LLM_STRAT_AI_MINE_REBALANCE_MIN_COUNT",
+   "addr": "0x01013040",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_QUEUE_COUNT",
+   "addr": "0x005d0194",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_AI_GRID_WRAP_MASK",
+   "addr": "0x00603ec8",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_QUEUE",
+   "addr": "0x00bb4ed0",
+   "size": 20400
+  },
+  {
+   "name": "player_data",
+   "addr": "0x00e6dec0",
+   "size": 1329120
+  },
+  {
+   "name": "_G_LLM_STRAT_AI_BLDG_CONNECTIVITY_TRIAL",
+   "addr": "0x01013044",
+   "size": 100
+  },
+  {
+   "name": "_G_LLM_STRAT_AI_BLDG_CONNECTIVITY_BASE",
+   "addr": "0x010130a8",
+   "size": 100
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_QUEUE_COUNT",
+   "addr": "0x005d0194",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_QUEUE",
+   "addr": "0x00bb4ed0",
+   "size": 20400
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_SCRATCH_ARGS",
+   "addr": "0x00e16268",
+   "size": 52
+  },
+  {
+   "name": "player_data",
+   "addr": "0x00e6dec0",
+   "size": 1329120
+  },
+  {
+   "name": "player_data",
+   "addr": "0x00e6dec0",
+   "size": 1329120
+  },
+  {
+   "name": "_G_LLM_STRAT_AI_SITE_CANDIDATES",
+   "addr": "0x00fb59b0",
+   "size": 65536
+  },
+  {
+   "name": "_G_LLM_STRAT_AI_SITE_CANDIDATE_COUNT",
+   "addr": "0x00fe5b54",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_QUEUE_COUNT",
+   "addr": "0x005d0194",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_QUEUE",
+   "addr": "0x00bb4ed0",
+   "size": 20400
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_SCRATCH_ARGS",
+   "addr": "0x00e16268",
+   "size": 52
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_QUEUE_COUNT",
+   "addr": "0x005d0194",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_QUEUE",
+   "addr": "0x00bb4ed0",
+   "size": 20400
+  },
+  {
+   "name": "player_data",
+   "addr": "0x00e6dec0",
+   "size": 1329120
+  },
+  {
+   "name": "_G_LLM_STRAT_AI_MINE_ROSTER_INDEX",
+   "addr": "0x0101310c",
+   "size": 128
+  },
+  {
+   "name": "_G_LLM_STRAT_AI_MINE_QUALITY_HIST",
+   "addr": "0x0101318c",
+   "size": 384
+  },
+  {
+   "name": "_G_LLM_STRAT_AI_MINE_YIELD_ESTIMATE",
+   "addr": "0x0101330c",
+   "size": 1024
+  },
+  {
+   "name": "_G_LLM_STRAT_AI_MINE_QUALITY_HIST",
+   "addr": "0x0101318c",
+   "size": 384
+  },
+  {
+   "name": "_G_LLM_STRAT_AI_MINE_YIELD_ESTIMATE",
+   "addr": "0x0101330c",
+   "size": 1024
+  },
+  {
+   "name": "player_data",
+   "addr": "0x00e6dec0",
+   "size": 1329120
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_QUEUE_COUNT",
+   "addr": "0x005d0194",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_SEQ_ID_BY_PLAYER",
+   "addr": "0x005d01e8",
+   "size": 8
+  },
+  {
+   "name": "_G_LLM_STRAT_AI_GRID_WRAP_MASK",
+   "addr": "0x00603ec8",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_QUEUE",
+   "addr": "0x00bb4ed0",
+   "size": 20400
+  },
+  {
+   "name": "units",
+   "addr": "0x00dd8c48",
+   "size": 186400
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_SCRATCH_ARGS",
+   "addr": "0x00e16268",
+   "size": 52
+  },
+  {
+   "name": "player_data",
+   "addr": "0x00e6dec0",
+   "size": 1329120
+  },
+  {
+   "name": "player_data",
+   "addr": "0x00e6dec0",
+   "size": 1329120
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_QUEUE_COUNT",
+   "addr": "0x005d0194",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_SEQ_ID_BY_PLAYER",
+   "addr": "0x005d01e8",
+   "size": 8
+  },
+  {
+   "name": "_G_LLM_STRAT_RNG_STATE",
+   "addr": "0x00603ecc",
+   "size": 16
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_QUEUE",
+   "addr": "0x00bb4ed0",
+   "size": 20400
+  },
+  {
+   "name": "units",
+   "addr": "0x00dd8c48",
+   "size": 186400
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_SCRATCH_ARGS",
+   "addr": "0x00e16268",
+   "size": 52
+  },
+  {
+   "name": "player_data",
+   "addr": "0x00e6dec0",
+   "size": 1329120
+  },
+  {
+   "name": "player_data",
+   "addr": "0x00e6dec0",
+   "size": 1329120
+  },
+  {
+   "name": "player_data",
+   "addr": "0x00e6dec0",
+   "size": 1329120
+  },
+  {
+   "name": "player_data",
+   "addr": "0x00e6dec0",
+   "size": 1329120
+  },
+  {
+   "name": "player_data",
+   "addr": "0x00e6dec0",
+   "size": 1329120
+  },
+  {
+   "name": "_G_LLM_STRAT_AI_SCAN_TARGETS",
+   "addr": "0x01017314",
+   "size": 45056
+  },
+  {
+   "name": "_G_LLM_STRAT_AI_SCAN_TARGET_COUNT",
+   "addr": "0x01022b20",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_QUEUE_COUNT",
+   "addr": "0x005d0194",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_SEQ_ID_BY_PLAYER",
+   "addr": "0x005d01e8",
+   "size": 8
+  },
+  {
+   "name": "_G_LLM_STRAT_RNG_STATE",
+   "addr": "0x00603ecc",
+   "size": 16
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_QUEUE",
+   "addr": "0x00bb4ed0",
+   "size": 20400
+  },
+  {
+   "name": "units",
+   "addr": "0x00dd8c48",
+   "size": 186400
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_SCRATCH_ARGS",
+   "addr": "0x00e16268",
+   "size": 52
+  },
+  {
+   "name": "player_data",
+   "addr": "0x00e6dec0",
+   "size": 1329120
+  },
+  {
+   "name": "player_data",
+   "addr": "0x00e6dec0",
+   "size": 1329120
+  },
+  {
+   "name": "units",
+   "addr": "0x00dd8c48",
+   "size": 186400
+  },
+  {
+   "name": "player_data",
+   "addr": "0x00e6dec0",
+   "size": 1329120
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_QUEUE_COUNT",
+   "addr": "0x005d0194",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_SEQ_ID_BY_PLAYER",
+   "addr": "0x005d01e8",
+   "size": 8
+  },
+  {
+   "name": "_G_LLM_STRAT_RNG_STATE",
+   "addr": "0x00603ecc",
+   "size": 16
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_QUEUE",
+   "addr": "0x00bb4ed0",
+   "size": 20400
+  },
+  {
+   "name": "units",
+   "addr": "0x00dd8c48",
+   "size": 186400
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_SCRATCH_ARGS",
+   "addr": "0x00e16268",
+   "size": 52
+  },
+  {
+   "name": "player_data",
+   "addr": "0x00e6dec0",
+   "size": 1329120
+  },
+  {
+   "name": "_G_LLM_STRAT_BLDG_ENCLOSURE_SCRATCH",
+   "addr": "0x00fe9404",
+   "size": 65536
+  },
+  {
+   "name": "_G_LLM_STRAT_AI_SPREAD_TILE_COUNT",
+   "addr": "0x00ffac04",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_RNG_STATE",
+   "addr": "0x00603ecc",
+   "size": 16
+  },
+  {
+   "name": "player_data",
+   "addr": "0x00e6dec0",
+   "size": 1329120
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_QUEUE_COUNT",
+   "addr": "0x005d0194",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_QUEUE",
+   "addr": "0x00bb4ed0",
+   "size": 20400
+  },
+  {
+   "name": "units",
+   "addr": "0x00dd8c48",
+   "size": 186400
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_SCRATCH_ARGS",
+   "addr": "0x00e16268",
+   "size": 52
+  },
+  {
+   "name": "player_data",
+   "addr": "0x00e6dec0",
+   "size": 1329120
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_QUEUE_COUNT",
+   "addr": "0x005d0194",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_QUEUE",
+   "addr": "0x00bb4ed0",
+   "size": 20400
+  },
+  {
+   "name": "units",
+   "addr": "0x00dd8c48",
+   "size": 186400
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_SCRATCH_ARGS",
+   "addr": "0x00e16268",
+   "size": 52
+  },
+  {
+   "name": "player_data",
+   "addr": "0x00e6dec0",
+   "size": 1329120
+  },
+  {
+   "name": "player_data",
+   "addr": "0x00e6dec0",
+   "size": 1329120
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_QUEUE_COUNT",
+   "addr": "0x005d0194",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_QUEUE",
+   "addr": "0x00bb4ed0",
+   "size": 20400
+  },
+  {
+   "name": "units",
+   "addr": "0x00dd8c48",
+   "size": 186400
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_SCRATCH_ARGS",
+   "addr": "0x00e16268",
+   "size": 52
+  },
+  {
+   "name": "player_data",
+   "addr": "0x00e6dec0",
+   "size": 1329120
+  },
+  {
+   "name": "_G_LLM_STRAT_RNG_STATE",
+   "addr": "0x00603ecc",
+   "size": 16
+  },
+  {
+   "name": "player_data",
+   "addr": "0x00e6dec0",
+   "size": 1329120
+  },
+  {
+   "name": "_G_LLM_STRAT_AI_BUILDING_CANDIDATE_SCRATCH_LIST",
+   "addr": "0x01013f10",
+   "size": 1024
+  },
+  {
+   "name": "_G_LLM_STRAT_AI_BUILDING_CANDIDATE_SCRATCH_COUNT",
+   "addr": "0x01014310",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_QUEUE_COUNT",
+   "addr": "0x005d0194",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_SEQ_ID_BY_PLAYER",
+   "addr": "0x005d01e8",
+   "size": 8
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_QUEUE",
+   "addr": "0x00bb4ed0",
+   "size": 20400
+  },
+  {
+   "name": "units",
+   "addr": "0x00dd8c48",
+   "size": 186400
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_SCRATCH_ARGS",
+   "addr": "0x00e16268",
+   "size": 52
+  },
+  {
+   "name": "player_data",
+   "addr": "0x00e6dec0",
+   "size": 1329120
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_QUEUE_COUNT",
+   "addr": "0x005d0194",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_RNG_STATE",
+   "addr": "0x00603ecc",
+   "size": 16
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_QUEUE",
+   "addr": "0x00bb4ed0",
+   "size": 20400
+  },
+  {
+   "name": "units",
+   "addr": "0x00dd8c48",
+   "size": 186400
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_SCRATCH_ARGS",
+   "addr": "0x00e16268",
+   "size": 52
+  },
+  {
+   "name": "_G_LLM_STRAT_AI_GROUP_UNIT_SCRATCH_LIST",
+   "addr": "0x00e69ed0",
+   "size": 400
+  },
+  {
+   "name": "player_data",
+   "addr": "0x00e6dec0",
+   "size": 1329120
+  },
+  {
+   "name": "_G_LLM_STRAT_AI_GROUP_UNIT_SCRATCH_COUNT",
+   "addr": "0x00fe5b48",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_AI_SPREAD_TILES",
+   "addr": "0x00ff9404",
+   "size": 6144
+  },
+  {
+   "name": "_G_LLM_STRAT_AI_SPREAD_TILE_COUNT",
+   "addr": "0x00ffac04",
+   "size": 4
+  },
+  {
+   "name": "player_data",
+   "addr": "0x00e6dec0",
+   "size": 1329120
+  },
+  {
+   "name": "player_data",
+   "addr": "0x00e6dec0",
+   "size": 1329120
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_QUEUE_COUNT",
+   "addr": "0x005d0194",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_QUEUE",
+   "addr": "0x00bb4ed0",
+   "size": 20400
+  },
+  {
+   "name": "units",
+   "addr": "0x00dd8c48",
+   "size": 186400
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_SCRATCH_ARGS",
+   "addr": "0x00e16268",
+   "size": 52
+  },
+  {
+   "name": "player_data",
+   "addr": "0x00e6dec0",
+   "size": 1329120
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_QUEUE_COUNT",
+   "addr": "0x005d0194",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_QUEUE",
+   "addr": "0x00bb4ed0",
+   "size": 20400
+  },
+  {
+   "name": "units",
+   "addr": "0x00dd8c48",
+   "size": 186400
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_SCRATCH_ARGS",
+   "addr": "0x00e16268",
+   "size": 52
+  },
+  {
+   "name": "player_data",
+   "addr": "0x00e6dec0",
+   "size": 1329120
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_QUEUE_COUNT",
+   "addr": "0x005d0194",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_QUEUE",
+   "addr": "0x00bb4ed0",
+   "size": 20400
+  },
+  {
+   "name": "units",
+   "addr": "0x00dd8c48",
+   "size": 186400
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_SCRATCH_ARGS",
+   "addr": "0x00e16268",
+   "size": 52
+  },
+  {
+   "name": "player_data",
+   "addr": "0x00e6dec0",
+   "size": 1329120
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_QUEUE_COUNT",
+   "addr": "0x005d0194",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_SEQ_ID_BY_PLAYER",
+   "addr": "0x005d01e8",
+   "size": 8
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_QUEUE",
+   "addr": "0x00bb4ed0",
+   "size": 20400
+  },
+  {
+   "name": "units",
+   "addr": "0x00dd8c48",
+   "size": 186400
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_SCRATCH_ARGS",
+   "addr": "0x00e16268",
+   "size": 52
+  },
+  {
+   "name": "player_data",
+   "addr": "0x00e6dec0",
+   "size": 1329120
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_QUEUE_COUNT",
+   "addr": "0x005d0194",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_QUEUE",
+   "addr": "0x00bb4ed0",
+   "size": 20400
+  },
+  {
+   "name": "units",
+   "addr": "0x00dd8c48",
+   "size": 186400
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_SCRATCH_ARGS",
+   "addr": "0x00e16268",
+   "size": 52
+  },
+  {
+   "name": "player_data",
+   "addr": "0x00e6dec0",
+   "size": 1329120
+  },
+  {
+   "name": "_G_LLM_STRAT_RNG_STATE",
+   "addr": "0x00603ecc",
+   "size": 16
+  },
+  {
+   "name": "player_data",
+   "addr": "0x00e6dec0",
+   "size": 1329120
+  },
+  {
+   "name": "player_data",
+   "addr": "0x00e6dec0",
+   "size": 1329120
+  },
+  {
+   "name": "_G_LLM_STRAT_RNG_STATE",
+   "addr": "0x00603ecc",
+   "size": 16
+  },
+  {
+   "name": "player_data",
+   "addr": "0x00e6dec0",
+   "size": 1329120
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_QUEUE_COUNT",
+   "addr": "0x005d0194",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_QUEUE",
+   "addr": "0x00bb4ed0",
+   "size": 20400
+  },
+  {
+   "name": "units",
+   "addr": "0x00dd8c48",
+   "size": 186400
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_SCRATCH_ARGS",
+   "addr": "0x00e16268",
+   "size": 52
+  },
+  {
+   "name": "player_data",
+   "addr": "0x00e6dec0",
+   "size": 1329120
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_QUEUE_COUNT",
+   "addr": "0x005d0194",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_RNG_STATE",
+   "addr": "0x00603ecc",
+   "size": 16
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_QUEUE",
+   "addr": "0x00bb4ed0",
+   "size": 20400
+  },
+  {
+   "name": "units",
+   "addr": "0x00dd8c48",
+   "size": 186400
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_SCRATCH_ARGS",
+   "addr": "0x00e16268",
+   "size": 52
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_QUEUE_COUNT",
+   "addr": "0x005d0194",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_QUEUE",
+   "addr": "0x00bb4ed0",
+   "size": 20400
+  },
+  {
+   "name": "units",
+   "addr": "0x00dd8c48",
+   "size": 186400
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_SCRATCH_ARGS",
+   "addr": "0x00e16268",
+   "size": 52
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_QUEUE_COUNT",
+   "addr": "0x005d0194",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_SEQ_ID_BY_PLAYER",
+   "addr": "0x005d01e8",
+   "size": 8
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_QUEUE",
+   "addr": "0x00bb4ed0",
+   "size": 20400
+  },
+  {
+   "name": "units",
+   "addr": "0x00dd8c48",
+   "size": 186400
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_SCRATCH_ARGS",
+   "addr": "0x00e16268",
+   "size": 52
+  },
+  {
+   "name": "_G_LLM_STRAT_AI_GROUP_UNIT_SCRATCH_LIST",
+   "addr": "0x00e69ed0",
+   "size": 400
+  },
+  {
+   "name": "_G_LLM_STRAT_AI_GROUP_UNIT_SCRATCH_COUNT",
+   "addr": "0x00fe5b48",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_QUEUE_COUNT",
+   "addr": "0x005d0194",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_QUEUE",
+   "addr": "0x00bb4ed0",
+   "size": 20400
+  },
+  {
+   "name": "units",
+   "addr": "0x00dd8c48",
+   "size": 186400
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_SCRATCH_ARGS",
+   "addr": "0x00e16268",
+   "size": 52
+  },
+  {
+   "name": "_G_LLM_STRAT_AI_GROUP_UNIT_SCRATCH_LIST",
+   "addr": "0x00e69ed0",
+   "size": 400
+  },
+  {
+   "name": "_G_LLM_STRAT_AI_GROUP_UNIT_SCRATCH_COUNT",
+   "addr": "0x00fe5b48",
+   "size": 4
+  },
+  {
+   "name": "units",
+   "addr": "0x00dd8c48",
+   "size": 186400
+  },
+  {
+   "name": "player_data",
+   "addr": "0x00e6dec0",
+   "size": 1329120
+  },
+  {
+   "name": "player_data",
+   "addr": "0x00e6dec0",
+   "size": 1329120
+  },
+  {
+   "name": "player_data",
+   "addr": "0x00e6dec0",
+   "size": 1329120
+  },
+  {
+   "name": "player_data",
+   "addr": "0x00e6dec0",
+   "size": 1329120
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_QUEUE_COUNT",
+   "addr": "0x005d0194",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_SEQ_ID_BY_PLAYER",
+   "addr": "0x005d01e8",
+   "size": 8
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_QUEUE",
+   "addr": "0x00bb4ed0",
+   "size": 20400
+  },
+  {
+   "name": "units",
+   "addr": "0x00dd8c48",
+   "size": 186400
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_SCRATCH_ARGS",
+   "addr": "0x00e16268",
+   "size": 52
+  },
+  {
+   "name": "player_data",
+   "addr": "0x00e6dec0",
+   "size": 1329120
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_QUEUE_COUNT",
+   "addr": "0x005d0194",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_QUEUE",
+   "addr": "0x00bb4ed0",
+   "size": 20400
+  },
+  {
+   "name": "units",
+   "addr": "0x00dd8c48",
+   "size": 186400
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_SCRATCH_ARGS",
+   "addr": "0x00e16268",
+   "size": 52
+  },
+  {
+   "name": "player_data",
+   "addr": "0x00e6dec0",
+   "size": 1329120
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_QUEUE_COUNT",
+   "addr": "0x005d0194",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_RNG_STATE",
+   "addr": "0x00603ecc",
+   "size": 16
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_QUEUE",
+   "addr": "0x00bb4ed0",
+   "size": 20400
+  },
+  {
+   "name": "units",
+   "addr": "0x00dd8c48",
+   "size": 186400
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_SCRATCH_ARGS",
+   "addr": "0x00e16268",
+   "size": 52
+  },
+  {
+   "name": "player_data",
+   "addr": "0x00e6dec0",
+   "size": 1329120
+  },
+  {
+   "name": "_G_LLM_STRAT_AI_BUILDING_CANDIDATE_SCRATCH_LIST",
+   "addr": "0x01013f10",
+   "size": 1024
+  },
+  {
+   "name": "_G_LLM_STRAT_AI_BUILDING_CANDIDATE_SCRATCH_COUNT",
+   "addr": "0x01014310",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_AI_SCAN_TARGETS",
+   "addr": "0x01017314",
+   "size": 45056
+  },
+  {
+   "name": "units",
+   "addr": "0x00dd8c48",
+   "size": 186400
+  },
+  {
+   "name": "player_data",
+   "addr": "0x00e6dec0",
+   "size": 1329120
+  },
+  {
+   "name": "player_data",
+   "addr": "0x00e6dec0",
+   "size": 1329120
+  },
+  {
+   "name": "player_data",
+   "addr": "0x00e6dec0",
+   "size": 1329120
+  },
+  {
+   "name": "player_data",
+   "addr": "0x00e6dec0",
+   "size": 1329120
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_QUEUE_COUNT",
+   "addr": "0x005d0194",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_AI_GRID_WRAP_MASK",
+   "addr": "0x00603ec8",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_RNG_STATE",
+   "addr": "0x00603ecc",
+   "size": 16
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_QUEUE",
+   "addr": "0x00bb4ed0",
+   "size": 20400
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_SCRATCH_ARGS",
+   "addr": "0x00e16268",
+   "size": 52
+  },
+  {
+   "name": "player_data",
+   "addr": "0x00e6dec0",
+   "size": 1329120
+  },
+  {
+   "name": "_G_LLM_STRAT_AI_BLDG_CONNECTIVITY_TRIAL",
+   "addr": "0x01013044",
+   "size": 100
+  },
+  {
+   "name": "_G_LLM_STRAT_AI_BLDG_CONNECTIVITY_BASE",
+   "addr": "0x010130a8",
+   "size": 100
+  },
+  {
+   "name": "_G_LLM_STRAT_AI_GRID_WRAP_MASK",
+   "addr": "0x00603ec8",
+   "size": 4
+  },
+  {
+   "name": "player_data",
+   "addr": "0x00e6dec0",
+   "size": 1329120
+  },
+  {
+   "name": "_G_LLM_STRAT_AI_GRID_WRAP_MASK",
+   "addr": "0x00603ec8",
+   "size": 4
+  },
+  {
+   "name": "player_data",
+   "addr": "0x00e6dec0",
+   "size": 1329120
+  },
+  {
+   "name": "_G_LLM_STRAT_AI_GRID_WRAP_MASK",
+   "addr": "0x00603ec8",
+   "size": 4
+  },
+  {
+   "name": "player_data",
+   "addr": "0x00e6dec0",
+   "size": 1329120
+  },
+  {
+   "name": "_G_LLM_STRAT_RNG_STATE",
+   "addr": "0x00603ecc",
+   "size": 16
+  },
+  {
+   "name": "_G_LLM_STRAT_RNG_STATE",
+   "addr": "0x00603ecc",
+   "size": 16
+  },
+  {
+   "name": "units",
+   "addr": "0x00dd8c48",
+   "size": 186400
+  },
+  {
+   "name": "player_data",
+   "addr": "0x00e6dec0",
+   "size": 1329120
+  },
+  {
+   "name": "_G_LLM_STRAT_AI_TILE_SPIRAL_RING_CELL_COUNTS",
+   "addr": "0x00fb32b0",
+   "size": 512
+  },
+  {
+   "name": "_G_LLM_STRAT_AI_TILE_SPIRAL_OFFSETS",
+   "addr": "0x00fc59b0",
+   "size": 131072
+  },
+  {
+   "name": "_G_LLM_STRAT_AI_TILE_SPIRAL_CELL_COUNT",
+   "addr": "0x00fe5b58",
+   "size": 4
+  },
+  {
+   "name": "player_data",
+   "addr": "0x00e6dec0",
+   "size": 1329120
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_QUEUE_COUNT",
+   "addr": "0x005d0194",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_AI_GRID_WRAP_MASK",
+   "addr": "0x00603ec8",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_QUEUE",
+   "addr": "0x00bb4ed0",
+   "size": 20400
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_SCRATCH_ARGS",
+   "addr": "0x00e16268",
+   "size": 52
+  },
+  {
+   "name": "player_data",
+   "addr": "0x00e6dec0",
+   "size": 1329120
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_QUEUE_COUNT",
+   "addr": "0x005d0194",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_SEQ_ID_BY_PLAYER",
+   "addr": "0x005d01e8",
+   "size": 8
+  },
+  {
+   "name": "_G_LLM_STRAT_RNG_STATE",
+   "addr": "0x00603ecc",
+   "size": 16
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_QUEUE",
+   "addr": "0x00bb4ed0",
+   "size": 20400
+  },
+  {
+   "name": "buildings",
+   "addr": "0x00c3d2a0",
+   "size": 218400
+  },
+  {
+   "name": "units",
+   "addr": "0x00dd8c48",
+   "size": 186400
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_SCRATCH_ARGS",
+   "addr": "0x00e16268",
+   "size": 52
+  },
+  {
+   "name": "player_data",
+   "addr": "0x00e6dec0",
+   "size": 1329120
+  },
+  {
+   "name": "_G_LLM_STRAT_AI_SCAN_TARGETS",
+   "addr": "0x01017314",
+   "size": 45056
+  },
+  {
+   "name": "_G_LLM_STRAT_AI_ATTACK_CANDIDATES",
+   "addr": "0x01022314",
+   "size": 2048
+  },
+  {
+   "name": "_G_LLM_STRAT_AI_ATTACK_CANDIDATE_COUNT",
+   "addr": "0x01022b1c",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_AI_SCAN_TARGET_COUNT",
+   "addr": "0x01022b20",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_QUEUE_COUNT",
+   "addr": "0x005d0194",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_QUEUE",
+   "addr": "0x00bb4ed0",
+   "size": 20400
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_SCRATCH_ARGS",
+   "addr": "0x00e16268",
+   "size": 52
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_QUEUE_COUNT",
+   "addr": "0x005d0194",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_QUEUE",
+   "addr": "0x00bb4ed0",
+   "size": 20400
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_SCRATCH_ARGS",
+   "addr": "0x00e16268",
+   "size": 52
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_QUEUE_COUNT",
+   "addr": "0x005d0194",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_QUEUE",
+   "addr": "0x00bb4ed0",
+   "size": 20400
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_SCRATCH_ARGS",
+   "addr": "0x00e16268",
+   "size": 52
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_QUEUE_COUNT",
+   "addr": "0x005d0194",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_QUEUE",
+   "addr": "0x00bb4ed0",
+   "size": 20400
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_SCRATCH_ARGS",
+   "addr": "0x00e16268",
+   "size": 52
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_QUEUE_COUNT",
+   "addr": "0x005d0194",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_QUEUE",
+   "addr": "0x00bb4ed0",
+   "size": 20400
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_SCRATCH_ARGS",
+   "addr": "0x00e16268",
+   "size": 52
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_QUEUE_COUNT",
+   "addr": "0x005d0194",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_SEQ_ID_BY_PLAYER",
+   "addr": "0x005d01e8",
+   "size": 8
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_QUEUE",
+   "addr": "0x00bb4ed0",
+   "size": 20400
+  },
+  {
+   "name": "buildings",
+   "addr": "0x00c3d2a0",
+   "size": 218400
+  },
+  {
+   "name": "unit_storage",
+   "addr": "0x00c727c0",
+   "size": 48800
+  },
+  {
+   "name": "units",
+   "addr": "0x00dd8c48",
+   "size": 186400
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_SCRATCH_ARGS",
+   "addr": "0x00e16268",
+   "size": 52
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_QUEUE_COUNT",
+   "addr": "0x005d0194",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_QUEUE",
+   "addr": "0x00bb4ed0",
+   "size": 20400
+  },
+  {
+   "name": "units",
+   "addr": "0x00dd8c48",
+   "size": 186400
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_SCRATCH_ARGS",
+   "addr": "0x00e16268",
+   "size": 52
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_QUEUE_COUNT",
+   "addr": "0x005d0194",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_QUEUE",
+   "addr": "0x00bb4ed0",
+   "size": 20400
+  },
+  {
+   "name": "units",
+   "addr": "0x00dd8c48",
+   "size": 186400
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_SCRATCH_ARGS",
+   "addr": "0x00e16268",
+   "size": 52
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_QUEUE_COUNT",
+   "addr": "0x005d0194",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_QUEUE",
+   "addr": "0x00bb4ed0",
+   "size": 20400
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_SCRATCH_ARGS",
+   "addr": "0x00e16268",
+   "size": 52
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_QUEUE_COUNT",
+   "addr": "0x005d0194",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_RNG_STATE",
+   "addr": "0x00603ecc",
+   "size": 16
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_QUEUE",
+   "addr": "0x00bb4ed0",
+   "size": 20400
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_SCRATCH_ARGS",
+   "addr": "0x00e16268",
+   "size": 52
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_QUEUE_COUNT",
+   "addr": "0x005d0194",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_RNG_STATE",
+   "addr": "0x00603ecc",
+   "size": 16
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_QUEUE",
+   "addr": "0x00bb4ed0",
+   "size": 20400
+  },
+  {
+   "name": "units",
+   "addr": "0x00dd8c48",
+   "size": 186400
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_SCRATCH_ARGS",
+   "addr": "0x00e16268",
+   "size": 52
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_QUEUE_COUNT",
+   "addr": "0x005d0194",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_QUEUE",
+   "addr": "0x00bb4ed0",
+   "size": 20400
+  },
+  {
+   "name": "buildings",
+   "addr": "0x00c3d2a0",
+   "size": 218400
+  },
+  {
+   "name": "unit_storage",
+   "addr": "0x00c727c0",
+   "size": 48800
+  },
+  {
+   "name": "general",
+   "addr": "0x00e15390",
+   "size": 40
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_SCRATCH_ARGS",
+   "addr": "0x00e16268",
+   "size": 52
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_QUEUE_COUNT",
+   "addr": "0x005d0194",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_QUEUE",
+   "addr": "0x00bb4ed0",
+   "size": 20400
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_QUEUE_COUNT",
+   "addr": "0x005d0194",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_QUEUE",
+   "addr": "0x00bb4ed0",
+   "size": 20400
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_QUEUE_COUNT",
+   "addr": "0x005d0194",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_QUEUE",
+   "addr": "0x00bb4ed0",
+   "size": 20400
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_QUEUE_COUNT",
+   "addr": "0x005d0194",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_QUEUE",
+   "addr": "0x00bb4ed0",
+   "size": 20400
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_QUEUE_COUNT",
+   "addr": "0x005d0194",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_QUEUE",
+   "addr": "0x00bb4ed0",
+   "size": 20400
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_SCRATCH_ARGS",
+   "addr": "0x00e16268",
+   "size": 52
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_QUEUE_COUNT",
+   "addr": "0x005d0194",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_QUEUE",
+   "addr": "0x00bb4ed0",
+   "size": 20400
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_SCRATCH_ARGS",
+   "addr": "0x00e16268",
+   "size": 52
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_QUEUE_COUNT",
+   "addr": "0x005d0194",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_QUEUE",
+   "addr": "0x00bb4ed0",
+   "size": 20400
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_QUEUE_COUNT",
+   "addr": "0x005d0194",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_STAGING_COUNT",
+   "addr": "0x005d01a4",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_PENDING_COUNT",
+   "addr": "0x005d01a8",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_LOCKSTEP_HORIZON",
+   "addr": "0x005d5594",
+   "size": 8
+  },
+  {
+   "name": "_G_LLM_NET_LOCKSTEP_STATUS_FLAGS",
+   "addr": "0x005d55b4",
+   "size": 1
+  },
+  {
+   "name": "_G_LLM_STRAT_RNG_STATE",
+   "addr": "0x00603ecc",
+   "size": 16
+  },
+  {
+   "name": "passable",
+   "addr": "0x00b64bb0",
+   "size": 65536
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_QUEUE",
+   "addr": "0x00bb4ed0",
+   "size": 20400
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_PENDING",
+   "addr": "0x00bb9e80",
+   "size": 68000
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_STAGING",
+   "addr": "0x00bca920",
+   "size": 20400
+  },
+  {
+   "name": "_G_LLM_PROD_SHUTTLE_SLOTS",
+   "addr": "0x00bd215c",
+   "size": 63680
+  },
+  {
+   "name": "_G_LLM_STRAT_POP_STATS",
+   "addr": "0x00c3a370",
+   "size": 416
+  },
+  {
+   "name": "buildings",
+   "addr": "0x00c3d2a0",
+   "size": 218400
+  },
+  {
+   "name": "unit_storage",
+   "addr": "0x00c727c0",
+   "size": 48800
+  },
+  {
+   "name": "turrets",
+   "addr": "0x00cc0fe0",
+   "size": 14080
+  },
+  {
+   "name": "_G_LLM_STRAT_PLAYERS",
+   "addr": "0x00cff060",
+   "size": 14848
+  },
+  {
+   "name": "labs",
+   "addr": "0x00d02d80",
+   "size": 1600
+  },
+  {
+   "name": "mines",
+   "addr": "0x00d03480",
+   "size": 14336
+  },
+  {
+   "name": "tile_objects",
+   "addr": "0x00d1ec80",
+   "size": 524288
+  },
+  {
+   "name": "productions",
+   "addr": "0x00dd2648",
+   "size": 25920
+  },
+  {
+   "name": "units",
+   "addr": "0x00dd8c48",
+   "size": 186400
+  },
+  {
+   "name": "player_resources",
+   "addr": "0x00e0e468",
+   "size": 320
+  },
+  {
+   "name": "_G_LLM_STRAT_SOLDIERS",
+   "addr": "0x00e0e5a8",
+   "size": 23200
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_SCRATCH_ARGS",
+   "addr": "0x00e16268",
+   "size": 52
+  },
+  {
+   "name": "Players",
+   "addr": "0x00e587e9",
+   "size": 416
+  },
+  {
+   "name": "player_data",
+   "addr": "0x00e6dec0",
+   "size": 1329120
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_QUEUE_COUNT",
+   "addr": "0x005d0194",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_QUEUE",
+   "addr": "0x00bb4ed0",
+   "size": 20400
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_SCRATCH_ARGS",
+   "addr": "0x00e16268",
+   "size": 52
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_QUEUE_COUNT",
+   "addr": "0x005d0194",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_QUEUE",
+   "addr": "0x00bb4ed0",
+   "size": 20400
+  },
+  {
+   "name": "units",
+   "addr": "0x00dd8c48",
+   "size": 186400
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_SCRATCH_ARGS",
+   "addr": "0x00e16268",
+   "size": 52
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_QUEUE_COUNT",
+   "addr": "0x005d0194",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_QUEUE",
+   "addr": "0x00bb4ed0",
+   "size": 20400
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_QUEUE_COUNT",
+   "addr": "0x005d0194",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_QUEUE",
+   "addr": "0x00bb4ed0",
+   "size": 20400
+  },
+  {
+   "name": "units",
+   "addr": "0x00dd8c48",
+   "size": 186400
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_SCRATCH_ARGS",
+   "addr": "0x00e16268",
+   "size": 52
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_QUEUE_COUNT",
+   "addr": "0x005d0194",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_QUEUE",
+   "addr": "0x00bb4ed0",
+   "size": 20400
+  },
+  {
+   "name": "units",
+   "addr": "0x00dd8c48",
+   "size": 186400
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_SCRATCH_ARGS",
+   "addr": "0x00e16268",
+   "size": 52
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_QUEUE_COUNT",
+   "addr": "0x005d0194",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_STAGING_COUNT",
+   "addr": "0x005d01a4",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_QUEUE",
+   "addr": "0x00bb4ed0",
+   "size": 20400
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_STAGING",
+   "addr": "0x00bca920",
+   "size": 20400
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_SCRATCH_ARGS",
+   "addr": "0x00e16268",
+   "size": 52
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_QUEUE_COUNT",
+   "addr": "0x005d0194",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_STAGING_COUNT",
+   "addr": "0x005d01a4",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_QUEUE",
+   "addr": "0x00bb4ed0",
+   "size": 20400
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_STAGING",
+   "addr": "0x00bca920",
+   "size": 20400
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_SCRATCH_ARGS",
+   "addr": "0x00e16268",
+   "size": 52
+  },
+  {
+   "name": "units",
+   "addr": "0x00dd8c48",
+   "size": 186400
+  },
+  {
+   "name": "_G_LLM_STRAT_RNG_STATE",
+   "addr": "0x00603ecc",
+   "size": 16
+  },
+  {
+   "name": "_G_LLM_STRAT_POP_STATS",
+   "addr": "0x00c3a370",
+   "size": 416
+  },
+  {
+   "name": "buildings",
+   "addr": "0x00c3d2a0",
+   "size": 218400
+  },
+  {
+   "name": "productions",
+   "addr": "0x00dd2648",
+   "size": 25920
+  },
+  {
+   "name": "units",
+   "addr": "0x00dd8c48",
+   "size": 186400
+  },
+  {
+   "name": "general",
+   "addr": "0x00e15390",
+   "size": 40
+  },
+  {
+   "name": "player_data",
+   "addr": "0x00e6dec0",
+   "size": 1329120
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_QUEUE_COUNT",
+   "addr": "0x005d0194",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_RNG_STATE",
+   "addr": "0x00603ecc",
+   "size": 16
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_QUEUE",
+   "addr": "0x00bb4ed0",
+   "size": 20400
+  },
+  {
+   "name": "buildings",
+   "addr": "0x00c3d2a0",
+   "size": 218400
+  },
+  {
+   "name": "units",
+   "addr": "0x00dd8c48",
+   "size": 186400
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_SCRATCH_ARGS",
+   "addr": "0x00e16268",
+   "size": 52
+  },
+  {
+   "name": "player_data",
+   "addr": "0x00e6dec0",
+   "size": 1329120
+  },
+  {
+   "name": "_G_LLM_STRAT_AI_ENGAGE_CANDIDATE_SCRATCH",
+   "addr": "0x00fb4db0",
+   "size": 3072
+  },
+  {
+   "name": "_G_LLM_STRAT_AI_ENGAGE_CANDIDATE_SCRATCH_COUNT",
+   "addr": "0x00fe5b50",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_RNG_STATE",
+   "addr": "0x00603ecc",
+   "size": 16
+  },
+  {
+   "name": "_G_LLM_STRAT_TICK_BUDGET",
+   "addr": "0x00ae3738",
+   "size": 8
+  },
+  {
+   "name": "passable",
+   "addr": "0x00b64bb0",
+   "size": 65536
+  },
+  {
+   "name": "buildings",
+   "addr": "0x00c3d2a0",
+   "size": 218400
+  },
+  {
+   "name": "_G_LLM_STRAT_PLAYERS",
+   "addr": "0x00cff060",
+   "size": 14848
+  },
+  {
+   "name": "units",
+   "addr": "0x00dd8c48",
+   "size": 186400
+  },
+  {
+   "name": "_G_LLM_STRAT_SOLDIERS",
+   "addr": "0x00e0e5a8",
+   "size": 23200
+  },
+  {
+   "name": "general",
+   "addr": "0x00e15390",
+   "size": 40
+  },
+  {
+   "name": "_G_LLM_STRAT_STATE_LOOP_GUARD",
+   "addr": "0x00e15a38",
+   "size": 4
+  },
+  {
+   "name": "player_data",
+   "addr": "0x00e6dec0",
+   "size": 1329120
+  },
+  {
+   "name": "_G_LLM_STRAT_TICK_BUDGET",
+   "addr": "0x00ae3738",
+   "size": 8
+  },
+  {
+   "name": "_G_LLM_STRAT_STATE_LOOP_GUARD",
+   "addr": "0x00e15a38",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_CTRL_GROUPS",
+   "addr": "0x00b63be0",
+   "size": 4040
+  },
+  {
+   "name": "units",
+   "addr": "0x00dd8c48",
+   "size": 186400
+  },
+  {
+   "name": "buildings",
+   "addr": "0x00c3d2a0",
+   "size": 218400
+  },
+  {
+   "name": "units",
+   "addr": "0x00dd8c48",
+   "size": 186400
+  },
+  {
+   "name": "_G_LLM_STRAT_SOLDIERS",
+   "addr": "0x00e0e5a8",
+   "size": 23200
+  },
+  {
+   "name": "units",
+   "addr": "0x00dd8c48",
+   "size": 186400
+  },
+  {
+   "name": "_G_LLM_STRAT_RNG_STATE",
+   "addr": "0x00603ecc",
+   "size": 16
+  },
+  {
+   "name": "_G_LLM_STRAT_SOLDIERS",
+   "addr": "0x00e0e5a8",
+   "size": 23200
+  },
+  {
+   "name": "buildings",
+   "addr": "0x00c3d2a0",
+   "size": 218400
+  },
+  {
+   "name": "units",
+   "addr": "0x00dd8c48",
+   "size": 186400
+  },
+  {
+   "name": "units",
+   "addr": "0x00dd8c48",
+   "size": 186400
+  },
+  {
+   "name": "buildings",
+   "addr": "0x00c3d2a0",
+   "size": 218400
+  },
+  {
+   "name": "units",
+   "addr": "0x00dd8c48",
+   "size": 186400
+  },
+  {
+   "name": "G_TMP_PLAYER",
+   "addr": "0x00824ff0",
+   "size": 4
+  },
+  {
+   "name": "passable",
+   "addr": "0x00b64bb0",
+   "size": 65536
+  },
+  {
+   "name": "_G_LLM_STRAT_UNIT_HOUSING_STATS",
+   "addr": "0x00c38530",
+   "size": 512
+  },
+  {
+   "name": "_G_LLM_STRAT_POP_STATS",
+   "addr": "0x00c3a370",
+   "size": 416
+  },
+  {
+   "name": "_G_LLM_STRAT_PLAYERS",
+   "addr": "0x00cff060",
+   "size": 14848
+  },
+  {
+   "name": "tile_objects",
+   "addr": "0x00d1ec80",
+   "size": 524288
+  },
+  {
+   "name": "units",
+   "addr": "0x00dd8c48",
+   "size": 186400
+  },
+  {
+   "name": "_G_LLM_STRAT_SOLDIERS",
+   "addr": "0x00e0e5a8",
+   "size": 23200
+  },
+  {
+   "name": "G_TMP_SIGHT",
+   "addr": "0x00e15400",
+   "size": 4
+  },
+  {
+   "name": "player_data",
+   "addr": "0x00e6dec0",
+   "size": 1329120
+  },
+  {
+   "name": "_G_LLM_STRAT_UNIT_HOUSING_STATS",
+   "addr": "0x00c38530",
+   "size": 512
+  },
+  {
+   "name": "unit_storage",
+   "addr": "0x00c727c0",
+   "size": 48800
+  },
+  {
+   "name": "_G_LLM_STRAT_PLAYERS",
+   "addr": "0x00cff060",
+   "size": 14848
+  },
+  {
+   "name": "units",
+   "addr": "0x00dd8c48",
+   "size": 186400
+  },
+  {
+   "name": "_G_LLM_STRAT_SOLDIERS",
+   "addr": "0x00e0e5a8",
+   "size": 23200
+  },
+  {
+   "name": "player_data",
+   "addr": "0x00e6dec0",
+   "size": 1329120
+  },
+  {
+   "name": "_G_LLM_STRAT_SOLDIERS",
+   "addr": "0x00e0e5a8",
+   "size": 23200
+  },
+  {
+   "name": "_G_LLM_STRAT_SOLDIERS",
+   "addr": "0x00e0e5a8",
+   "size": 23200
+  },
+  {
+   "name": "_G_LLM_STRAT_SOLDIERS",
+   "addr": "0x00e0e5a8",
+   "size": 23200
+  },
+  {
+   "name": "_G_LLM_STRAT_UNIT_HOUSING_STATS",
+   "addr": "0x00c38530",
+   "size": 512
+  },
+  {
+   "name": "units",
+   "addr": "0x00dd8c48",
+   "size": 186400
+  },
+  {
+   "name": "_G_LLM_STRAT_SOLDIERS",
+   "addr": "0x00e0e5a8",
+   "size": 23200
+  },
+  {
+   "name": "player_resources",
+   "addr": "0x00e0e468",
+   "size": 320
+  },
+  {
+   "name": "player_data",
+   "addr": "0x00e6dec0",
+   "size": 1329120
+  },
+  {
+   "name": "G_TMP_PLAYER",
+   "addr": "0x00824ff0",
+   "size": 4
+  },
+  {
+   "name": "passable",
+   "addr": "0x00b64bb0",
+   "size": 65536
+  },
+  {
+   "name": "_G_LLM_STRAT_UNIT_HOUSING_STATS",
+   "addr": "0x00c38530",
+   "size": 512
+  },
+  {
+   "name": "_G_LLM_STRAT_PLAYERS",
+   "addr": "0x00cff060",
+   "size": 14848
+  },
+  {
+   "name": "tile_objects",
+   "addr": "0x00d1ec80",
+   "size": 524288
+  },
+  {
+   "name": "units",
+   "addr": "0x00dd8c48",
+   "size": 186400
+  },
+  {
+   "name": "_G_LLM_STRAT_SOLDIERS",
+   "addr": "0x00e0e5a8",
+   "size": 23200
+  },
+  {
+   "name": "G_TMP_SIGHT",
+   "addr": "0x00e15400",
+   "size": 4
+  },
+  {
+   "name": "player_data",
+   "addr": "0x00e6dec0",
+   "size": 1329120
+  },
+  {
+   "name": "_G_LLM_STRAT_CTRL_GROUPS",
+   "addr": "0x00b63be0",
+   "size": 4040
+  },
+  {
+   "name": "units",
+   "addr": "0x00dd8c48",
+   "size": 186400
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_SCRATCH_ARGS",
+   "addr": "0x00e16268",
+   "size": 52
+  },
+  {
+   "name": "_G_LLM_STRAT_CTRL_GROUPS",
+   "addr": "0x00b63be0",
+   "size": 4040
+  },
+  {
+   "name": "units",
+   "addr": "0x00dd8c48",
+   "size": 186400
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_SCRATCH_ARGS",
+   "addr": "0x00e16268",
+   "size": 52
+  },
+  {
+   "name": "units",
+   "addr": "0x00dd8c48",
+   "size": 186400
+  },
+  {
+   "name": "_G_LLM_STRAT_PATH_FREE_SLOT_COUNT",
+   "addr": "0x00b63bc0",
+   "size": 32
+  },
+  {
+   "name": "_G_LLM_STRAT_PATH_SLOT_FLAGS",
+   "addr": "0x00b74bb0",
+   "size": 800
+  },
+  {
+   "name": "units",
+   "addr": "0x00dd8c48",
+   "size": 186400
+  },
+  {
+   "name": "_G_LLM_STRAT_UNIT_HOUSING_STATS",
+   "addr": "0x00c38530",
+   "size": 512
+  },
+  {
+   "name": "units",
+   "addr": "0x00dd8c48",
+   "size": 186400
+  },
+  {
+   "name": "G_OTHER_PLAYERS_MASK",
+   "addr": "0x005d882f",
+   "size": 1
+  },
+  {
+   "name": "fog_of_war",
+   "addr": "0x00794fa0",
+   "size": 589824
+  },
+  {
+   "name": "G_TMP_PLAYER",
+   "addr": "0x00824ff0",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_CTRL_GROUPS",
+   "addr": "0x00b63be0",
+   "size": 4040
+  },
+  {
+   "name": "passable",
+   "addr": "0x00b64bb0",
+   "size": 65536
+  },
+  {
+   "name": "_G_LLM_STRAT_POP_STATS",
+   "addr": "0x00c3a370",
+   "size": 416
+  },
+  {
+   "name": "tile_objects",
+   "addr": "0x00d1ec80",
+   "size": 524288
+  },
+  {
+   "name": "units",
+   "addr": "0x00dd8c48",
+   "size": 186400
+  },
+  {
+   "name": "_G_LLM_STRAT_SOLDIERS",
+   "addr": "0x00e0e5a8",
+   "size": 23200
+  },
+  {
+   "name": "G_TMP_SIGHT",
+   "addr": "0x00e15400",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_CLICK_SELECT_TARGET_ID",
+   "addr": "0x00e1629c",
+   "size": 2
+  },
+  {
+   "name": "G_OTHER_PLAYERS_MASK",
+   "addr": "0x005d882f",
+   "size": 1
+  },
+  {
+   "name": "fog_of_war",
+   "addr": "0x00794fa0",
+   "size": 589824
+  },
+  {
+   "name": "G_TMP_PLAYER",
+   "addr": "0x00824ff0",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_CTRL_GROUPS",
+   "addr": "0x00b63be0",
+   "size": 4040
+  },
+  {
+   "name": "_G_LLM_PROD_SHUTTLE_SLOTS",
+   "addr": "0x00bd215c",
+   "size": 63680
+  },
+  {
+   "name": "_G_LLM_STRAT_POP_STATS",
+   "addr": "0x00c3a370",
+   "size": 416
+  },
+  {
+   "name": "_G_LLM_STRAT_PLAYERS",
+   "addr": "0x00cff060",
+   "size": 14848
+  },
+  {
+   "name": "tile_objects",
+   "addr": "0x00d1ec80",
+   "size": 524288
+  },
+  {
+   "name": "units",
+   "addr": "0x00dd8c48",
+   "size": 186400
+  },
+  {
+   "name": "G_TMP_SIGHT",
+   "addr": "0x00e15400",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_CLICK_SELECT_TARGET_ID",
+   "addr": "0x00e1629c",
+   "size": 2
+  },
+  {
+   "name": "_G_LLM_STRAT_PLAYERS",
+   "addr": "0x00cff060",
+   "size": 14848
+  },
+  {
+   "name": "units",
+   "addr": "0x00dd8c48",
+   "size": 186400
+  },
+  {
+   "name": "_G_LLM_STRAT_SOLDIERS",
+   "addr": "0x00e0e5a8",
+   "size": 23200
+  },
+  {
+   "name": "_G_LLM_STRAT_CTRL_GROUPS",
+   "addr": "0x00b63be0",
+   "size": 4040
+  },
+  {
+   "name": "_G_LLM_STRAT_UNIT_HOUSING_STATS",
+   "addr": "0x00c38530",
+   "size": 512
+  },
+  {
+   "name": "buildings",
+   "addr": "0x00c3d2a0",
+   "size": 218400
+  },
+  {
+   "name": "_G_LLM_STRAT_PLAYERS",
+   "addr": "0x00cff060",
+   "size": 14848
+  },
+  {
+   "name": "units",
+   "addr": "0x00dd8c48",
+   "size": 186400
+  },
+  {
+   "name": "_G_LLM_STRAT_SOLDIERS",
+   "addr": "0x00e0e5a8",
+   "size": 23200
+  },
+  {
+   "name": "_G_LLM_CLICK_SELECT_TARGET_ID",
+   "addr": "0x00e1629c",
+   "size": 2
+  },
+  {
+   "name": "player_data",
+   "addr": "0x00e6dec0",
+   "size": 1329120
+  },
+  {
+   "name": "tile_objects",
+   "addr": "0x00d1ec80",
+   "size": 524288
+  },
+  {
+   "name": "units",
+   "addr": "0x00dd8c48",
+   "size": 186400
+  },
+  {
+   "name": "units",
+   "addr": "0x00dd8c48",
+   "size": 186400
+  },
+  {
+   "name": "_G_LLM_STRAT_POP_STATS",
+   "addr": "0x00c3a370",
+   "size": 416
+  },
+  {
+   "name": "buildings",
+   "addr": "0x00c3d2a0",
+   "size": 218400
+  },
+  {
+   "name": "general",
+   "addr": "0x00e15390",
+   "size": 40
+  },
+  {
+   "name": "tile_objects",
+   "addr": "0x00d1ec80",
+   "size": 524288
+  },
+  {
+   "name": "units",
+   "addr": "0x00dd8c48",
+   "size": 186400
+  },
+  {
+   "name": "units",
+   "addr": "0x00dd8c48",
+   "size": 186400
+  },
+  {
+   "name": "units",
+   "addr": "0x00dd8c48",
+   "size": 186400
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_QUEUE_COUNT",
+   "addr": "0x005d0194",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_STAGING_COUNT",
+   "addr": "0x005d01a4",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_CTRL_GROUPS",
+   "addr": "0x00b63be0",
+   "size": 4040
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_QUEUE",
+   "addr": "0x00bb4ed0",
+   "size": 20400
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_STAGING",
+   "addr": "0x00bca920",
+   "size": 20400
+  },
+  {
+   "name": "units",
+   "addr": "0x00dd8c48",
+   "size": 186400
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_SCRATCH_ARGS",
+   "addr": "0x00e16268",
+   "size": 52
+  },
+  {
+   "name": "general",
+   "addr": "0x00e15390",
+   "size": 40
+  },
+  {
+   "name": "_G_LLM_STRAT_PLAYERS",
+   "addr": "0x00cff060",
+   "size": 14848
+  },
+  {
+   "name": "units",
+   "addr": "0x00dd8c48",
+   "size": 186400
+  },
+  {
+   "name": "G_TMP_PLAYER",
+   "addr": "0x00824ff0",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_POP_STATS",
+   "addr": "0x00c3a370",
+   "size": 416
+  },
+  {
+   "name": "_G_LLM_STRAT_PLAYERS",
+   "addr": "0x00cff060",
+   "size": 14848
+  },
+  {
+   "name": "tile_objects",
+   "addr": "0x00d1ec80",
+   "size": 524288
+  },
+  {
+   "name": "units",
+   "addr": "0x00dd8c48",
+   "size": 186400
+  },
+  {
+   "name": "G_TMP_SIGHT",
+   "addr": "0x00e15400",
+   "size": 4
+  },
+  {
+   "name": "player_data",
+   "addr": "0x00e6dec0",
+   "size": 1329120
+  },
+  {
+   "name": "_G_LLM_STRAT_FX_ANIMS",
+   "addr": "0x00bf50e0",
+   "size": 210000
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_QUEUE_COUNT",
+   "addr": "0x005d0194",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_QUEUE",
+   "addr": "0x00bb4ed0",
+   "size": 20400
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_SCRATCH_ARGS",
+   "addr": "0x00e16268",
+   "size": 52
+  },
+  {
+   "name": "_G_LLM_STRAT_BLDG_ENCLOSURE_SCRATCH",
+   "addr": "0x00fe9404",
+   "size": 65536
+  },
+  {
+   "name": "_G_LLM_STRAT_RNG_STATE",
+   "addr": "0x00603ecc",
+   "size": 16
+  },
+  {
+   "name": "buildings",
+   "addr": "0x00c3d2a0",
+   "size": 218400
+  },
+  {
+   "name": "buildings",
+   "addr": "0x00c3d2a0",
+   "size": 218400
+  },
+  {
+   "name": "turrets",
+   "addr": "0x00cc0fe0",
+   "size": 14080
+  },
+  {
+   "name": "player_resources",
+   "addr": "0x00e0e468",
+   "size": 320
+  },
+  {
+   "name": "player_data",
+   "addr": "0x00e6dec0",
+   "size": 1329120
+  },
+  {
+   "name": "player_resources",
+   "addr": "0x00e0e468",
+   "size": 320
+  },
+  {
+   "name": "player_data",
+   "addr": "0x00e6dec0",
+   "size": 1329120
+  },
+  {
+   "name": "_G_LLM_STRAT_POWER_STATS",
+   "addr": "0x00bf4fc0",
+   "size": 192
+  },
+  {
+   "name": "buildings",
+   "addr": "0x00c3d2a0",
+   "size": 218400
+  },
+  {
+   "name": "buildings",
+   "addr": "0x00c3d2a0",
+   "size": 218400
+  },
+  {
+   "name": "_G_LLM_STRAT_CTRL_GROUPS",
+   "addr": "0x00b63be0",
+   "size": 4040
+  },
+  {
+   "name": "_G_LLM_STRAT_UNIT_HOUSING_STATS",
+   "addr": "0x00c38530",
+   "size": 512
+  },
+  {
+   "name": "buildings",
+   "addr": "0x00c3d2a0",
+   "size": 218400
+  },
+  {
+   "name": "_G_LLM_STRAT_PLAYERS",
+   "addr": "0x00cff060",
+   "size": 14848
+  },
+  {
+   "name": "units",
+   "addr": "0x00dd8c48",
+   "size": 186400
+  },
+  {
+   "name": "player_resources",
+   "addr": "0x00e0e468",
+   "size": 320
+  },
+  {
+   "name": "_G_LLM_STRAT_SOLDIERS",
+   "addr": "0x00e0e5a8",
+   "size": 23200
+  },
+  {
+   "name": "_G_LLM_CLICK_SELECT_TARGET_ID",
+   "addr": "0x00e1629c",
+   "size": 2
+  },
+  {
+   "name": "player_data",
+   "addr": "0x00e6dec0",
+   "size": 1329120
+  },
+  {
+   "name": "passable",
+   "addr": "0x00b64bb0",
+   "size": 65536
+  },
+  {
+   "name": "player_resources",
+   "addr": "0x00e0e468",
+   "size": 320
+  },
+  {
+   "name": "player_data",
+   "addr": "0x00e6dec0",
+   "size": 1329120
+  },
+  {
+   "name": "_G_LLM_STRAT_RNG_STATE",
+   "addr": "0x00603ecc",
+   "size": 16
+  },
+  {
+   "name": "buildings",
+   "addr": "0x00c3d2a0",
+   "size": 218400
+  },
+  {
+   "name": "_G_LLM_STRAT_RNG_STATE",
+   "addr": "0x00603ecc",
+   "size": 16
+  },
+  {
+   "name": "buildings",
+   "addr": "0x00c3d2a0",
+   "size": 218400
+  },
+  {
+   "name": "units",
+   "addr": "0x00dd8c48",
+   "size": 186400
+  },
+  {
+   "name": "general",
+   "addr": "0x00e15390",
+   "size": 40
+  },
+  {
+   "name": "buildings",
+   "addr": "0x00c3d2a0",
+   "size": 218400
+  },
+  {
+   "name": "general",
+   "addr": "0x00e15390",
+   "size": 40
+  },
+  {
+   "name": "passable",
+   "addr": "0x00b64bb0",
+   "size": 65536
+  },
+  {
+   "name": "buildings",
+   "addr": "0x00c3d2a0",
+   "size": 218400
+  },
+  {
+   "name": "unit_storage",
+   "addr": "0x00c727c0",
+   "size": 48800
+  },
+  {
+   "name": "turrets",
+   "addr": "0x00cc0fe0",
+   "size": 14080
+  },
+  {
+   "name": "_G_LLM_STRAT_PLAYERS",
+   "addr": "0x00cff060",
+   "size": 14848
+  },
+  {
+   "name": "labs",
+   "addr": "0x00d02d80",
+   "size": 1600
+  },
+  {
+   "name": "mines",
+   "addr": "0x00d03480",
+   "size": 14336
+  },
+  {
+   "name": "tile_objects",
+   "addr": "0x00d1ec80",
+   "size": 524288
+  },
+  {
+   "name": "productions",
+   "addr": "0x00dd2648",
+   "size": 25920
+  },
+  {
+   "name": "general",
+   "addr": "0x00e15390",
+   "size": 40
+  },
+  {
+   "name": "player_data",
+   "addr": "0x00e6dec0",
+   "size": 1329120
+  },
+  {
+   "name": "_G_LLM_STRAT_TICK_BUDGET",
+   "addr": "0x00ae3738",
+   "size": 8
+  },
+  {
+   "name": "_G_LLM_STRAT_PLAYERS",
+   "addr": "0x00cff060",
+   "size": 14848
+  },
+  {
+   "name": "_G_LLM_STRAT_PLANET_MOTHER_LOST_TIME",
+   "addr": "0x00e584f4",
+   "size": 256
+  },
+  {
+   "name": "_G_LLM_STRAT_CAM_PAN_TARGET_COL",
+   "addr": "0x00e587e1",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_CAM_PAN_TARGET_ROW",
+   "addr": "0x00e587e5",
+   "size": 4
+  },
+  {
+   "name": "passable",
+   "addr": "0x00b64bb0",
+   "size": 65536
+  },
+  {
+   "name": "unit_storage",
+   "addr": "0x00c727c0",
+   "size": 48800
+  },
+  {
+   "name": "turrets",
+   "addr": "0x00cc0fe0",
+   "size": 14080
+  },
+  {
+   "name": "_G_LLM_STRAT_PLAYERS",
+   "addr": "0x00cff060",
+   "size": 14848
+  },
+  {
+   "name": "labs",
+   "addr": "0x00d02d80",
+   "size": 1600
+  },
+  {
+   "name": "mines",
+   "addr": "0x00d03480",
+   "size": 14336
+  },
+  {
+   "name": "tile_objects",
+   "addr": "0x00d1ec80",
+   "size": 524288
+  },
+  {
+   "name": "productions",
+   "addr": "0x00dd2648",
+   "size": 25920
+  },
+  {
+   "name": "units",
+   "addr": "0x00dd8c48",
+   "size": 186400
+  },
+  {
+   "name": "_G_LLM_CLICK_SELECT_TARGET_ID",
+   "addr": "0x00e1629c",
+   "size": 2
+  },
+  {
+   "name": "_G_LLM_STRAT_UI_SELECTED_BLDG_INDEX",
+   "addr": "0x00e5813c",
+   "size": 2
+  },
+  {
+   "name": "buildings",
+   "addr": "0x00c3d2a0",
+   "size": 218400
+  },
+  {
+   "name": "_G_LLM_STRAT_PLAYERS",
+   "addr": "0x00cff060",
+   "size": 14848
+  },
+  {
+   "name": "_G_LLM_STRAT_POP_STATS",
+   "addr": "0x00c3a370",
+   "size": 416
+  },
+  {
+   "name": "buildings",
+   "addr": "0x00c3d2a0",
+   "size": 218400
+  },
+  {
+   "name": "general",
+   "addr": "0x00e15390",
+   "size": 40
+  },
+  {
+   "name": "_G_LLM_STRAT_POP_STATS",
+   "addr": "0x00c3a370",
+   "size": 416
+  },
+  {
+   "name": "buildings",
+   "addr": "0x00c3d2a0",
+   "size": 218400
+  },
+  {
+   "name": "general",
+   "addr": "0x00e15390",
+   "size": 40
+  },
+  {
+   "name": "buildings",
+   "addr": "0x00c3d2a0",
+   "size": 218400
+  },
+  {
+   "name": "general",
+   "addr": "0x00e15390",
+   "size": 40
+  },
+  {
+   "name": "buildings",
+   "addr": "0x00c3d2a0",
+   "size": 218400
+  },
+  {
+   "name": "_G_LLM_STRAT_PLAYERS",
+   "addr": "0x00cff060",
+   "size": 14848
+  },
+  {
+   "name": "general",
+   "addr": "0x00e15390",
+   "size": 40
+  },
+  {
+   "name": "buildings",
+   "addr": "0x00c3d2a0",
+   "size": 218400
+  },
+  {
+   "name": "general",
+   "addr": "0x00e15390",
+   "size": 40
+  },
+  {
+   "name": "_G_LLM_STRAT_POP_STATS",
+   "addr": "0x00c3a370",
+   "size": 416
+  },
+  {
+   "name": "buildings",
+   "addr": "0x00c3d2a0",
+   "size": 218400
+  },
+  {
+   "name": "general",
+   "addr": "0x00e15390",
+   "size": 40
+  },
+  {
+   "name": "buildings",
+   "addr": "0x00c3d2a0",
+   "size": 218400
+  },
+  {
+   "name": "general",
+   "addr": "0x00e15390",
+   "size": 40
+  },
+  {
+   "name": "buildings",
+   "addr": "0x00c3d2a0",
+   "size": 218400
+  },
+  {
+   "name": "buildings",
+   "addr": "0x00c3d2a0",
+   "size": 218400
+  },
+  {
+   "name": "general",
+   "addr": "0x00e15390",
+   "size": 40
+  },
+  {
+   "name": "buildings",
+   "addr": "0x00c3d2a0",
+   "size": 218400
+  },
+  {
+   "name": "general",
+   "addr": "0x00e15390",
+   "size": 40
+  },
+  {
+   "name": "buildings",
+   "addr": "0x00c3d2a0",
+   "size": 218400
+  },
+  {
+   "name": "general",
+   "addr": "0x00e15390",
+   "size": 40
+  },
+  {
+   "name": "buildings",
+   "addr": "0x00c3d2a0",
+   "size": 218400
+  },
+  {
+   "name": "general",
+   "addr": "0x00e15390",
+   "size": 40
+  },
+  {
+   "name": "general",
+   "addr": "0x00e15390",
+   "size": 40
+  },
+  {
+   "name": "general",
+   "addr": "0x00e15390",
+   "size": 40
+  },
+  {
+   "name": "player_resources",
+   "addr": "0x00e0e468",
+   "size": 320
+  },
+  {
+   "name": "player_data",
+   "addr": "0x00e6dec0",
+   "size": 1329120
+  },
+  {
+   "name": "units",
+   "addr": "0x00dd8c48",
+   "size": 186400
+  },
+  {
+   "name": "player_data",
+   "addr": "0x00e6dec0",
+   "size": 1329120
+  },
+  {
+   "name": "player_data",
+   "addr": "0x00e6dec0",
+   "size": 1329120
+  },
+  {
+   "name": "buildings",
+   "addr": "0x00c3d2a0",
+   "size": 218400
+  },
+  {
+   "name": "_G_LLM_PROD_SHUTTLE_SLOTS",
+   "addr": "0x00bd215c",
+   "size": 63680
+  },
+  {
+   "name": "_G_LLM_STRAT_PROD_COMPLETE_THROTTLE",
+   "addr": "0x00e58360",
+   "size": 1
+  },
+  {
+   "name": "_G_LLM_STRAT_CAM_PAN_TARGET_COL",
+   "addr": "0x00e587e1",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_CAM_PAN_TARGET_ROW",
+   "addr": "0x00e587e5",
+   "size": 4
+  },
+  {
+   "name": "units",
+   "addr": "0x00dd8c48",
+   "size": 186400
+  },
+  {
+   "name": "_G_LLM_STRAT_SOLDIERS",
+   "addr": "0x00e0e5a8",
+   "size": 23200
+  },
+  {
+   "name": "units",
+   "addr": "0x00dd8c48",
+   "size": 186400
+  },
+  {
+   "name": "_G_LLM_STRAT_SOLDIERS",
+   "addr": "0x00e0e5a8",
+   "size": 23200
+  },
+  {
+   "name": "_G_LLM_PROD_SHUTTLE_SLOTS",
+   "addr": "0x00bd215c",
+   "size": 63680
+  },
+  {
+   "name": "buildings",
+   "addr": "0x00c3d2a0",
+   "size": 218400
+  },
+  {
+   "name": "_G_LLM_PROD_SHUTTLE_SLOTS",
+   "addr": "0x00bd215c",
+   "size": 63680
+  },
+  {
+   "name": "_G_LLM_PROD_SHUTTLE_SLOTS",
+   "addr": "0x00bd215c",
+   "size": 63680
+  },
+  {
+   "name": "units",
+   "addr": "0x00dd8c48",
+   "size": 186400
+  },
+  {
+   "name": "units",
+   "addr": "0x00dd8c48",
+   "size": 186400
+  },
+  {
+   "name": "_G_LLM_PROD_SHUTTLE_SLOTS",
+   "addr": "0x00bd215c",
+   "size": 63680
+  },
+  {
+   "name": "_G_LLM_PROD_SHUTTLE_SLOTS",
+   "addr": "0x00bd215c",
+   "size": 63680
+  },
+  {
+   "name": "units",
+   "addr": "0x00dd8c48",
+   "size": 186400
+  },
+  {
+   "name": "_G_LLM_PROD_SHUTTLE_SLOTS",
+   "addr": "0x00bd215c",
+   "size": 63680
+  },
+  {
+   "name": "units",
+   "addr": "0x00dd8c48",
+   "size": 186400
+  },
+  {
+   "name": "_G_LLM_PROD_SHUTTLE_SLOTS",
+   "addr": "0x00bd215c",
+   "size": 63680
+  },
+  {
+   "name": "buildings",
+   "addr": "0x00c3d2a0",
+   "size": 218400
+  },
+  {
+   "name": "units",
+   "addr": "0x00dd8c48",
+   "size": 186400
+  },
+  {
+   "name": "unit_storage",
+   "addr": "0x00c727c0",
+   "size": 48800
+  },
+  {
+   "name": "units",
+   "addr": "0x00dd8c48",
+   "size": 186400
+  },
+  {
+   "name": "_G_LLM_PROD_SHUTTLE_SLOTS",
+   "addr": "0x00bd215c",
+   "size": 63680
+  },
+  {
+   "name": "_G_LLM_PROD_SHUTTLE_SLOTS",
+   "addr": "0x00bd215c",
+   "size": 63680
+  },
+  {
+   "name": "_G_LLM_STRAT_UNIT_HOUSING_STATS",
+   "addr": "0x00c38530",
+   "size": 512
+  },
+  {
+   "name": "unit_storage",
+   "addr": "0x00c727c0",
+   "size": 48800
+  },
+  {
+   "name": "unit_storage",
+   "addr": "0x00c727c0",
+   "size": 48800
+  },
+  {
+   "name": "units",
+   "addr": "0x00dd8c48",
+   "size": 186400
+  },
+  {
+   "name": "_G_LLM_PROD_SHUTTLE_SLOTS",
+   "addr": "0x00bd215c",
+   "size": 63680
+  },
+  {
+   "name": "_G_LLM_STRAT_PLAYERS",
+   "addr": "0x00cff060",
+   "size": 14848
+  },
+  {
+   "name": "_G_LLM_STRAT_CTRL_GROUPS",
+   "addr": "0x00b63be0",
+   "size": 4040
+  },
+  {
+   "name": "_G_LLM_PROD_SHUTTLE_SLOTS",
+   "addr": "0x00bd215c",
+   "size": 63680
+  },
+  {
+   "name": "_G_LLM_STRAT_PLAYERS",
+   "addr": "0x00cff060",
+   "size": 14848
+  },
+  {
+   "name": "_G_LLM_PROD_SHUTTLE_SLOTS",
+   "addr": "0x00bd215c",
+   "size": 63680
+  },
+  {
+   "name": "_G_LLM_STRAT_PLAYERS",
+   "addr": "0x00cff060",
+   "size": 14848
+  },
+  {
+   "name": "units",
+   "addr": "0x00dd8c48",
+   "size": 186400
+  },
+  {
+   "name": "_G_LLM_STRAT_PROJECTILE_POOL",
+   "addr": "0x00e1db98",
+   "size": 181500
+  },
+  {
+   "name": "G_TMP_PLAYER",
+   "addr": "0x00824ff0",
+   "size": 4
+  },
+  {
+   "name": "G_TMP_SIGHT",
+   "addr": "0x00e15400",
+   "size": 4
+  },
+  {
+   "name": "buildings",
+   "addr": "0x00c3d2a0",
+   "size": 218400
+  },
+  {
+   "name": "units",
+   "addr": "0x00dd8c48",
+   "size": 186400
+  },
+  {
+   "name": "units",
+   "addr": "0x00dd8c48",
+   "size": 186400
+  },
+  {
+   "name": "buildings",
+   "addr": "0x00c3d2a0",
+   "size": 218400
+  },
+  {
+   "name": "units",
+   "addr": "0x00dd8c48",
+   "size": 186400
+  },
+  {
+   "name": "buildings",
+   "addr": "0x00c3d2a0",
+   "size": 218400
+  },
+  {
+   "name": "units",
+   "addr": "0x00dd8c48",
+   "size": 186400
+  },
+  {
+   "name": "_G_LLM_PROD_SHUTTLE_SLOTS",
+   "addr": "0x00bd215c",
+   "size": 63680
+  },
+  {
+   "name": "_G_LLM_PROD_SHUTTLE_SLOTS",
+   "addr": "0x00bd215c",
+   "size": 63680
+  },
+  {
+   "name": "_G_LLM_PROD_SHUTTLE_SLOTS",
+   "addr": "0x00bd215c",
+   "size": 63680
+  },
+  {
+   "name": "buildings",
+   "addr": "0x00c3d2a0",
+   "size": 218400
+  },
+  {
+   "name": "_G_LLM_STRAT_FX_ANIMS",
+   "addr": "0x00bf50e0",
+   "size": 210000
+  },
+  {
+   "name": "_G_LLM_STRAT_FX_ANIMS",
+   "addr": "0x00bf50e0",
+   "size": 210000
+  },
+  {
+   "name": "units",
+   "addr": "0x00dd8c48",
+   "size": 186400
+  },
+  {
+   "name": "_G_LLM_STRAT_PLAYERS",
+   "addr": "0x00cff060",
+   "size": 14848
+  },
+  {
+   "name": "buildings",
+   "addr": "0x00c3d2a0",
+   "size": 218400
+  },
+  {
+   "name": "_G_LLM_STRAT_PLAYERS",
+   "addr": "0x00cff060",
+   "size": 14848
+  },
+  {
+   "name": "units",
+   "addr": "0x00dd8c48",
+   "size": 186400
+  },
+  {
+   "name": "_G_LLM_STRAT_CAM_PAN_TARGET_COL",
+   "addr": "0x00e587e1",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_CAM_PAN_TARGET_ROW",
+   "addr": "0x00e587e5",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_PLAYERS",
+   "addr": "0x00cff060",
+   "size": 14848
+  },
+  {
+   "name": "units",
+   "addr": "0x00dd8c48",
+   "size": 186400
+  },
+  {
+   "name": "_G_LLM_STRAT_CAM_PAN_TARGET_COL",
+   "addr": "0x00e587e1",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_CAM_PAN_TARGET_ROW",
+   "addr": "0x00e587e5",
+   "size": 4
+  },
+  {
+   "name": "units",
+   "addr": "0x00dd8c48",
+   "size": 186400
+  },
+  {
+   "name": "_G_LLM_STRAT_RNG_STATE",
+   "addr": "0x00603ecc",
+   "size": 16
+  },
+  {
+   "name": "_G_LLM_STRAT_PROJECTILE_POOL",
+   "addr": "0x00e1db98",
+   "size": 181500
+  },
+  {
+   "name": "_G_LLM_STRAT_FX_ANIMS",
+   "addr": "0x00bf50e0",
+   "size": 210000
+  },
+  {
+   "name": "_G_LLM_CAM_JUMP_QUEUE_COUNT",
+   "addr": "0x005d09e8",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_RNG_STATE",
+   "addr": "0x00603ecc",
+   "size": 16
+  },
+  {
+   "name": "_G_LLM_CAM_JUMP_QUEUE",
+   "addr": "0x00a49868",
+   "size": 480
+  },
+  {
+   "name": "_G_LLM_MAP_CAM_ROW",
+   "addr": "0x00e58134",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_MAP_CAM_COL",
+   "addr": "0x00e58138",
+   "size": 4
+  },
+  {
+   "name": "G_TMP_PLAYER",
+   "addr": "0x00824ff0",
+   "size": 4
+  },
+  {
+   "name": "G_TMP_x",
+   "addr": "0x00e153b8",
+   "size": 4
+  },
+  {
+   "name": "G_TMP_y",
+   "addr": "0x00e153bc",
+   "size": 4
+  },
+  {
+   "name": "G_TMP_SIGHT",
+   "addr": "0x00e15400",
+   "size": 4
+  },
+  {
+   "name": "fog_of_war",
+   "addr": "0x00794fa0",
+   "size": 589824
+  },
+  {
+   "name": "tile_objects",
+   "addr": "0x00d1ec80",
+   "size": 524288
+  },
+  {
+   "name": "G_TMP_PLAYER",
+   "addr": "0x00824ff0",
+   "size": 4
+  },
+  {
+   "name": "G_TMP_x",
+   "addr": "0x00e153b8",
+   "size": 4
+  },
+  {
+   "name": "G_TMP_y",
+   "addr": "0x00e153bc",
+   "size": 4
+  },
+  {
+   "name": "G_TMP_SIGHT",
+   "addr": "0x00e15400",
+   "size": 4
+  },
+  {
+   "name": "G_OTHER_PLAYERS_MASK",
+   "addr": "0x005d882f",
+   "size": 1
+  },
+  {
+   "name": "fog_of_war",
+   "addr": "0x00794fa0",
+   "size": 589824
+  },
+  {
+   "name": "tile_objects",
+   "addr": "0x00d1ec80",
+   "size": 524288
+  },
+  {
+   "name": "_G_LLM_STRAT_RNG_STATE",
+   "addr": "0x00603ecc",
+   "size": 16
+  },
+  {
+   "name": "player_resources",
+   "addr": "0x00e0e468",
+   "size": 320
+  },
+  {
+   "name": "_G_LLM_GAME_SPEED_PLAYER_FACTOR",
+   "addr": "0x005d554c",
+   "size": 64
+  },
+  {
+   "name": "G_TEXT_TMP",
+   "addr": "0x00e15178",
+   "size": 512
+  },
+  {
+   "name": "game_speed",
+   "addr": "0x00e587d9",
+   "size": 8
+  },
+  {
+   "name": "_G_LLM_GAME_SPEED_PLAYER_FACTOR",
+   "addr": "0x005d554c",
+   "size": 64
+  },
+  {
+   "name": "G_TEXT_TMP",
+   "addr": "0x00e15178",
+   "size": 512
+  },
+  {
+   "name": "game_speed",
+   "addr": "0x00e587d9",
+   "size": 8
+  },
+  {
+   "name": "Players",
+   "addr": "0x00e587e9",
+   "size": 416
+  },
+  {
+   "name": "_G_LLM_CHAT_TARGET_MASK",
+   "addr": "0x00e5898b",
+   "size": 1
+  },
+  {
+   "name": "player_data",
+   "addr": "0x00e6dec0",
+   "size": 1329120
+  },
+  {
+   "name": "is_human",
+   "addr": "0x00825008",
+   "size": 4
+  },
+  {
+   "name": "tile_objects",
+   "addr": "0x00d1ec80",
+   "size": 524288
+  },
+  {
+   "name": "_G_LLM_GAME_HUMAN_PLAYER_MASK",
+   "addr": "0x00e5898c",
+   "size": 1
+  },
+  {
+   "name": "is_human",
+   "addr": "0x00825008",
+   "size": 4
+  },
+  {
+   "name": "tile_objects",
+   "addr": "0x00d1ec80",
+   "size": 524288
+  },
+  {
+   "name": "_G_LLM_GAME_HUMAN_PLAYER_MASK",
+   "addr": "0x00e5898c",
+   "size": 1
+  },
+  {
+   "name": "_G_LLM_STRAT_POP_STATS",
+   "addr": "0x00c3a370",
+   "size": 416
+  },
+  {
+   "name": "tile_objects",
+   "addr": "0x00d1ec80",
+   "size": 524288
+  },
+  {
+   "name": "game_speed",
+   "addr": "0x00e587d9",
+   "size": 8
+  },
+  {
+   "name": "player_data",
+   "addr": "0x00e6dec0",
+   "size": 1329120
+  },
+  {
+   "name": "planet_time",
+   "addr": "0x00e583ef",
+   "size": 256
+  },
+  {
+   "name": "_G_LLM_CHAT_INPUT_LEN",
+   "addr": "0x0050a7d8",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_CHAT_INPUT_ACTIVE",
+   "addr": "0x0050a7dc",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_CHAT_INPUT_CURSOR",
+   "addr": "0x0050a7e0",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_CHAT_INPUT_LINE",
+   "addr": "0x0050a84c",
+   "size": 81
+  },
+  {
+   "name": "_G_LLM_STRAT_UI_EVENT_QUEUE_POS",
+   "addr": "0x0050fbaf",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_UI_EVENT_QUEUE_BUF",
+   "addr": "0x0050fbb3",
+   "size": 1024
+  },
+  {
+   "name": "_G_LLM_STRAT_UI_PANEL_MODE",
+   "addr": "0x0050ffbf",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_UI_PANEL_PAGE",
+   "addr": "0x0050ffc3",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_UI_UNIT_TAB_TOGGLE",
+   "addr": "0x0050ffc7",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_UI_MAINPANEL_TAB_INDEX",
+   "addr": "0x0050ffcb",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_UI_BLDG_PANEL_REFRESH_PENDING",
+   "addr": "0x0050ffd3",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_UI_PANEL_SWITCH_PENDING",
+   "addr": "0x0050ffd7",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_UI_UNIT_PANEL_REFRESH_PENDING",
+   "addr": "0x0050ffdb",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_UI_MAINPANEL_REFRESH_PENDING",
+   "addr": "0x0050ffdf",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_UI_VIEW_RESIZE_PENDING",
+   "addr": "0x0050ffe3",
+   "size": 4
+  },
+  {
+   "name": "player_resources",
+   "addr": "0x00e0e468",
+   "size": 320
+  },
+  {
+   "name": "player_resources",
+   "addr": "0x00e0e468",
+   "size": 320
+  },
+  {
+   "name": "progress",
+   "addr": "0x00c38750",
+   "size": 7200
+  },
+  {
+   "name": "Weapon",
+   "addr": "0x00c3a520",
+   "size": 11648
+  },
+  {
+   "name": "Unit",
+   "addr": "0x00e4a098",
+   "size": 57500
+  },
+  {
+   "name": "G_PLANET_STATUS",
+   "addr": "0x00e5836b",
+   "size": 128
+  },
+  {
+   "name": "planet_time",
+   "addr": "0x00e583ef",
+   "size": 256
+  },
+  {
+   "name": "height",
+   "addr": "0x00825064",
+   "size": 4
+  },
+  {
+   "name": "width",
+   "addr": "0x00825084",
+   "size": 4
+  },
+  {
+   "name": "player_resources",
+   "addr": "0x00e0e468",
+   "size": 320
+  },
+  {
+   "name": "player_resources",
+   "addr": "0x00e0e468",
+   "size": 320
+  },
+  {
+   "name": "G_PLANET_STATUS",
+   "addr": "0x00e5836b",
+   "size": 128
+  },
+  {
+   "name": "_G_LLM_STRAT_INVASION_TIME",
+   "addr": "0x00e585f8",
+   "size": 256
+  },
+  {
+   "name": "G_PLANET_STATUS",
+   "addr": "0x00e5836b",
+   "size": 128
+  },
+  {
+   "name": "_G_LLM_STRAT_INVASION_TIME",
+   "addr": "0x00e585f8",
+   "size": 256
+  },
+  {
+   "name": "Weapon",
+   "addr": "0x00c3a520",
+   "size": 11648
+  },
+  {
+   "name": "Unit",
+   "addr": "0x00e4a098",
+   "size": 57500
+  },
+  {
+   "name": "progress",
+   "addr": "0x00c38750",
+   "size": 7200
+  },
+  {
+   "name": "_G_LLM_CHAT_INPUT_LEN",
+   "addr": "0x0050a7d8",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_CHAT_INPUT_ACTIVE",
+   "addr": "0x0050a7dc",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_CHAT_INPUT_CURSOR",
+   "addr": "0x0050a7e0",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_CHAT_INPUT_LINE",
+   "addr": "0x0050a84c",
+   "size": 81
+  },
+  {
+   "name": "_G_LLM_STRAT_UI_EVENT_QUEUE_POS",
+   "addr": "0x0050fbaf",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_UI_EVENT_QUEUE_BUF",
+   "addr": "0x0050fbb3",
+   "size": 1024
+  },
+  {
+   "name": "_G_LLM_STRAT_UI_PANEL_MODE",
+   "addr": "0x0050ffbf",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_UI_PANEL_PAGE",
+   "addr": "0x0050ffc3",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_UI_UNIT_TAB_TOGGLE",
+   "addr": "0x0050ffc7",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_UI_MAINPANEL_TAB_INDEX",
+   "addr": "0x0050ffcb",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_UI_BLDG_PANEL_REFRESH_PENDING",
+   "addr": "0x0050ffd3",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_UI_PANEL_SWITCH_PENDING",
+   "addr": "0x0050ffd7",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_UI_UNIT_PANEL_REFRESH_PENDING",
+   "addr": "0x0050ffdb",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_UI_MAINPANEL_REFRESH_PENDING",
+   "addr": "0x0050ffdf",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_UI_VIEW_RESIZE_PENDING",
+   "addr": "0x0050ffe3",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_MAP_REGION_GRID",
+   "addr": "0x00688ac4",
+   "size": 524288
+  },
+  {
+   "name": "_G_LLM_MAP_REGION_GRID",
+   "addr": "0x00688ac4",
+   "size": 524288
+  },
+  {
+   "name": "_G_LLM_MAP_BFS_QUEUE_REGIONSPLIT",
+   "addr": "0x0070b320",
+   "size": 8192
+  },
+  {
+   "name": "_G_LLM_MAP_REGION_GRID",
+   "addr": "0x00688ac4",
+   "size": 524288
+  },
+  {
+   "name": "_G_LLM_MAP_REGION_GRID",
+   "addr": "0x00688ac4",
+   "size": 524288
+  },
+  {
+   "name": "passable",
+   "addr": "0x00b64bb0",
+   "size": 65536
+  },
+  {
+   "name": "buildings",
+   "addr": "0x00c3d2a0",
+   "size": 218400
+  },
+  {
+   "name": "unit_storage",
+   "addr": "0x00c727c0",
+   "size": 48800
+  },
+  {
+   "name": "turrets",
+   "addr": "0x00cc0fe0",
+   "size": 14080
+  },
+  {
+   "name": "_G_LLM_STRAT_PLAYERS",
+   "addr": "0x00cff060",
+   "size": 14848
+  },
+  {
+   "name": "labs",
+   "addr": "0x00d02d80",
+   "size": 1600
+  },
+  {
+   "name": "mines",
+   "addr": "0x00d03480",
+   "size": 14336
+  },
+  {
+   "name": "tile_objects",
+   "addr": "0x00d1ec80",
+   "size": 524288
+  },
+  {
+   "name": "productions",
+   "addr": "0x00dd2648",
+   "size": 25920
+  },
+  {
+   "name": "_G_LLM_STRAT_FOREIGN_BLDG_EVENT_PENDING",
+   "addr": "0x00e4a094",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_RNG_STATE",
+   "addr": "0x00603ecc",
+   "size": 16
+  },
+  {
+   "name": "_G_LLM_STRAT_LANDING_SPOTS",
+   "addr": "0x00dd8b88",
+   "size": 192
+  },
+  {
+   "name": "_G_LLM_STRAT_RNG_STATE",
+   "addr": "0x00603ecc",
+   "size": 16
+  },
+  {
+   "name": "_G_LLM_STRAT_PLAYERS",
+   "addr": "0x00cff060",
+   "size": 14848
+  },
+  {
+   "name": "_G_LLM_STRAT_LANDING_SPOTS",
+   "addr": "0x00dd8b88",
+   "size": 192
+  },
+  {
+   "name": "_G_LLM_STRAT_INVASION_ALERT_TIME",
+   "addr": "0x00bca820",
+   "size": 256
+  },
+  {
+   "name": "buildings",
+   "addr": "0x00c3d2a0",
+   "size": 218400
+  },
+  {
+   "name": "units",
+   "addr": "0x00dd8c48",
+   "size": 186400
+  },
+  {
+   "name": "player_data",
+   "addr": "0x00e6dec0",
+   "size": 1329120
+  },
+  {
+   "name": "progress",
+   "addr": "0x00c38750",
+   "size": 7200
+  },
+  {
+   "name": "G_PLANET_STATUS",
+   "addr": "0x00e5836b",
+   "size": 128
+  },
+  {
+   "name": "_G_LLM_STRAT_PLAYERS",
+   "addr": "0x00cff060",
+   "size": 14848
+  },
+  {
+   "name": "_G_LLM_STRAT_POP_STATS",
+   "addr": "0x00c3a370",
+   "size": 416
+  },
+  {
+   "name": "_G_LLM_STRAT_TICK_BUDGET",
+   "addr": "0x00ae3738",
+   "size": 8
+  },
+  {
+   "name": "_G_LLM_STRAT_PATH_BUFFERS",
+   "addr": "0x00aee8c0",
+   "size": 480000
+  },
+  {
+   "name": "passable",
+   "addr": "0x00b64bb0",
+   "size": 65536
+  },
+  {
+   "name": "tile_objects",
+   "addr": "0x00d1ec80",
+   "size": 524288
+  },
+  {
+   "name": "_G_LLM_STRAT_SOLDIERS",
+   "addr": "0x00e0e5a8",
+   "size": 23200
+  },
+  {
+   "name": "_G_LLM_STRAT_GROUP_MOVE_SCRATCH",
+   "addr": "0x00ae2e48",
+   "size": 2000
+  },
+  {
+   "name": "_G_LLM_STRAT_TICK_BUDGET",
+   "addr": "0x00ae3738",
+   "size": 8
+  },
+  {
+   "name": "passable",
+   "addr": "0x00b64bb0",
+   "size": 65536
+  },
+  {
+   "name": "units",
+   "addr": "0x00dd8c48",
+   "size": 186400
+  },
+  {
+   "name": "_G_LLM_STRAT_TICK_BUDGET",
+   "addr": "0x00ae3738",
+   "size": 8
+  },
+  {
+   "name": "_G_LLM_STRAT_TICK_BUDGET",
+   "addr": "0x00ae3738",
+   "size": 8
+  },
+  {
+   "name": "_G_LLM_STRAT_TICK_BUDGET",
+   "addr": "0x00ae3738",
+   "size": 8
+  },
+  {
+   "name": "_G_LLM_STRAT_TICK_BUDGET",
+   "addr": "0x00ae3738",
+   "size": 8
+  },
+  {
+   "name": "_G_LLM_STRAT_TICK_BUDGET",
+   "addr": "0x00ae3738",
+   "size": 8
+  },
+  {
+   "name": "_G_LLM_STRAT_TICK_BUDGET",
+   "addr": "0x00ae3738",
+   "size": 8
+  },
+  {
+   "name": "_G_LLM_STRAT_TICK_BUDGET",
+   "addr": "0x00ae3738",
+   "size": 8
+  },
+  {
+   "name": "_G_LLM_STRAT_TICK_BUDGET",
+   "addr": "0x00ae3738",
+   "size": 8
+  },
+  {
+   "name": "_G_LLM_STRAT_TICK_BUDGET",
+   "addr": "0x00ae3738",
+   "size": 8
+  },
+  {
+   "name": "_G_LLM_STRAT_TICK_BUDGET",
+   "addr": "0x00ae3738",
+   "size": 8
+  },
+  {
+   "name": "_G_LLM_STRAT_PLAYERS",
+   "addr": "0x00cff060",
+   "size": 14848
+  },
+  {
+   "name": "units",
+   "addr": "0x00dd8c48",
+   "size": 186400
+  },
+  {
+   "name": "_G_LLM_STRAT_TICK_BUDGET",
+   "addr": "0x00ae3738",
+   "size": 8
+  },
+  {
+   "name": "_G_LLM_STRAT_GROUP_MEMBER_COUNT",
+   "addr": "0x0051de38",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_GROUP_ROUTE_STEPS",
+   "addr": "0x006800ac",
+   "size": 512
+  },
+  {
+   "name": "_G_LLM_STRAT_GROUP_MEMBERS",
+   "addr": "0x006804ac",
+   "size": 1536
+  },
+  {
+   "name": "_G_LLM_STRAT_PATH_WRAP_MASK",
+   "addr": "0x00680aac",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_GROUP_ORDER_OWNER",
+   "addr": "0x00680ab0",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_GROUP_ORDER_GOAL_Y",
+   "addr": "0x00680ab4",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_GROUP_ORDER_GOAL_X",
+   "addr": "0x00680ab8",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_GROUP_ANCHOR_Y",
+   "addr": "0x00680abc",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_GROUP_ANCHOR_X",
+   "addr": "0x00680ac0",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_GROUP_MOVE_SCRATCH",
+   "addr": "0x00ae2e48",
+   "size": 2000
+  },
+  {
+   "name": "_G_LLM_STRAT_PATHFINDER_AIR_MODE_FLAG",
+   "addr": "0x0066a9a4",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_PATHFINDER_AIR_MODE_FLAG",
+   "addr": "0x0066a9a4",
+   "size": 4
+  },
+  {
+   "name": "units",
+   "addr": "0x00dd8c48",
+   "size": 186400
+  },
+  {
+   "name": "units",
+   "addr": "0x00dd8c48",
+   "size": 186400
+  },
+  {
+   "name": "passable",
+   "addr": "0x00b64bb0",
+   "size": 65536
+  },
+  {
+   "name": "_G_LLM_STRAT_UNIT_HOUSING_STATS",
+   "addr": "0x00c38530",
+   "size": 512
+  },
+  {
+   "name": "_G_LLM_STRAT_PLAYERS",
+   "addr": "0x00cff060",
+   "size": 14848
+  },
+  {
+   "name": "tile_objects",
+   "addr": "0x00d1ec80",
+   "size": 524288
+  },
+  {
+   "name": "units",
+   "addr": "0x00dd8c48",
+   "size": 186400
+  },
+  {
+   "name": "_G_LLM_CLICK_SELECT_TARGET_ID",
+   "addr": "0x00e1629c",
+   "size": 2
+  },
+  {
+   "name": "units",
+   "addr": "0x00dd8c48",
+   "size": 186400
+  },
+  {
+   "name": "units",
+   "addr": "0x00dd8c48",
+   "size": 186400
+  },
+  {
+   "name": "_G_LLM_STRAT_GROUP_MOVE_SCRATCH",
+   "addr": "0x00ae2e48",
+   "size": 2000
+  },
+  {
+   "name": "passable",
+   "addr": "0x00b64bb0",
+   "size": 65536
+  },
+  {
+   "name": "units",
+   "addr": "0x00dd8c48",
+   "size": 186400
+  },
+  {
+   "name": "_G_LLM_STRAT_GROUP_MOVE_SCRATCH",
+   "addr": "0x00ae2e48",
+   "size": 2000
+  },
+  {
+   "name": "units",
+   "addr": "0x00dd8c48",
+   "size": 186400
+  },
+  {
+   "name": "_G_LLM_STRAT_GROUP_MEMBER_TILE",
+   "addr": "0x006802ac",
+   "size": 512
+  },
+  {
+   "name": "_G_LLM_STRAT_PATH_BUFFERS",
+   "addr": "0x00aee8c0",
+   "size": 480000
+  },
+  {
+   "name": "_G_LLM_UNITQ_CUR_TILE",
+   "addr": "0x01000c08",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_UNITQ_CLOSED_COUNT",
+   "addr": "0x01000c10",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_UNITQ_ITER",
+   "addr": "0x01000c14",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_UNITQ_FRONTIER_COUNT",
+   "addr": "0x01000c18",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_UNITQ_CLOSED",
+   "addr": "0x01000c1c",
+   "size": 8192
+  },
+  {
+   "name": "_G_LLM_UNITQ_FRONTIER",
+   "addr": "0x01002c1c",
+   "size": 1024
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_QUEUE_COUNT",
+   "addr": "0x005d0194",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_QUEUE",
+   "addr": "0x00bb4ed0",
+   "size": 20400
+  },
+  {
+   "name": "units",
+   "addr": "0x00dd8c48",
+   "size": 186400
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_SCRATCH_ARGS",
+   "addr": "0x00e16268",
+   "size": 52
+  },
+  {
+   "name": "_G_LLM_STRAT_PATH_WRAP_MASK",
+   "addr": "0x00680aac",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_PATH_BUFFERS",
+   "addr": "0x00aee8c0",
+   "size": 480000
+  },
+  {
+   "name": "units",
+   "addr": "0x00dd8c48",
+   "size": 186400
+  },
+  {
+   "name": "_G_LLM_STRAT_PATH_WRAP_MASK",
+   "addr": "0x00680aac",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_PATH_BUFFERS",
+   "addr": "0x00aee8c0",
+   "size": 480000
+  },
+  {
+   "name": "units",
+   "addr": "0x00dd8c48",
+   "size": 186400
+  },
+  {
+   "name": "_G_LLM_STRAT_UNIT_CHASE_RESULT",
+   "addr": "0x005d0c70",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_TICK_BUDGET",
+   "addr": "0x00ae3738",
+   "size": 8
+  },
+  {
+   "name": "_G_LLM_STRAT_RNG_STATE",
+   "addr": "0x00603ecc",
+   "size": 16
+  },
+  {
+   "name": "_G_LLM_STRAT_PATH_BUFFERS",
+   "addr": "0x00aee8c0",
+   "size": 480000
+  },
+  {
+   "name": "_G_LLM_STRAT_PATH_FREE_SLOT_COUNT",
+   "addr": "0x00b63bc0",
+   "size": 32
+  },
+  {
+   "name": "_G_LLM_STRAT_PATH_SLOT_FLAGS",
+   "addr": "0x00b74bb0",
+   "size": 800
+  },
+  {
+   "name": "units",
+   "addr": "0x00dd8c48",
+   "size": 186400
+  },
+  {
+   "name": "_G_LLM_STRAT_PATH_BUFFERS",
+   "addr": "0x00aee8c0",
+   "size": 480000
+  },
+  {
+   "name": "_G_LLM_STRAT_PATH_FREE_SLOT_COUNT",
+   "addr": "0x00b63bc0",
+   "size": 32
+  },
+  {
+   "name": "_G_LLM_STRAT_PATH_SLOT_FLAGS",
+   "addr": "0x00b74bb0",
+   "size": 800
+  },
+  {
+   "name": "units",
+   "addr": "0x00dd8c48",
+   "size": 186400
+  },
+  {
+   "name": "_G_LLM_STRAT_PATH_WRAP_MASK",
+   "addr": "0x00680aac",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_GROUP_MOVE_SCRATCH",
+   "addr": "0x00ae2e48",
+   "size": 2000
+  },
+  {
+   "name": "_G_LLM_STRAT_GROUP_MOVE_DIST_REF_X",
+   "addr": "0x00e654b4",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_GROUP_MOVE_DIST_REF_Y",
+   "addr": "0x00e654b8",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_GROUP_MOVE_DIST_HALF_HEIGHT",
+   "addr": "0x00e654bc",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_GROUP_MOVE_DIST_HALF_WIDTH",
+   "addr": "0x00e654c0",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_PATH_WRAP_MASK",
+   "addr": "0x00680aac",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_GROUP_MOVE_SCRATCH",
+   "addr": "0x00ae2e48",
+   "size": 2000
+  },
+  {
+   "name": "_G_LLM_STRAT_GROUP_CENTROID_X",
+   "addr": "0x0051de30",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_GROUP_CENTROID_Y",
+   "addr": "0x0051de34",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_GROUP_PATH_BUILD_IDX",
+   "addr": "0x0051de3c",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_GROUP_ROUTE_STEPS",
+   "addr": "0x006800ac",
+   "size": 512
+  },
+  {
+   "name": "_G_LLM_STRAT_GROUP_MEMBER_TILE",
+   "addr": "0x006802ac",
+   "size": 512
+  },
+  {
+   "name": "_G_LLM_STRAT_GROUP_ORDER_GOAL_Y",
+   "addr": "0x00680ab4",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_GROUP_ORDER_GOAL_X",
+   "addr": "0x00680ab8",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_MAP_REGION_FLOOD_TILE_QUEUE",
+   "addr": "0x00680ac4",
+   "size": 16384
+  },
+  {
+   "name": "_G_LLM_MAP_REGION_GRID",
+   "addr": "0x00688ac4",
+   "size": 524288
+  },
+  {
+   "name": "_G_LLM_MAP_REGION_ROUTE_CAND_SCRATCH",
+   "addr": "0x00708ad0",
+   "size": 32
+  },
+  {
+   "name": "_G_LLM_MAP_REGION_ROUTE_BFS_QUEUE",
+   "addr": "0x0070ab20",
+   "size": 2048
+  },
+  {
+   "name": "_G_LLM_STRAT_GROUP_MOVE_SCRATCH",
+   "addr": "0x00ae2e48",
+   "size": 2000
+  },
+  {
+   "name": "Anim",
+   "addr": "0x00ae4c70",
+   "size": 40016
+  },
+  {
+   "name": "_G_LLM_STRAT_PATH_BUFFERS",
+   "addr": "0x00aee8c0",
+   "size": 480000
+  },
+  {
+   "name": "_G_LLM_STRAT_PATH_FREE_SLOT_COUNT",
+   "addr": "0x00b63bc0",
+   "size": 32
+  },
+  {
+   "name": "_G_LLM_STRAT_PATH_SLOT_FLAGS",
+   "addr": "0x00b74bb0",
+   "size": 800
+  },
+  {
+   "name": "units",
+   "addr": "0x00dd8c48",
+   "size": 186400
+  },
+  {
+   "name": "_G_LLM_STRAT_PATH_BUFFERS",
+   "addr": "0x00aee8c0",
+   "size": 480000
+  },
+  {
+   "name": "_G_LLM_STRAT_PATH_FREE_SLOT_COUNT",
+   "addr": "0x00b63bc0",
+   "size": 32
+  },
+  {
+   "name": "_G_LLM_STRAT_PATH_SLOT_FLAGS",
+   "addr": "0x00b74bb0",
+   "size": 800
+  },
+  {
+   "name": "units",
+   "addr": "0x00dd8c48",
+   "size": 186400
+  },
+  {
+   "name": "_G_LLM_STRAT_GROUP_MOVE_SCRATCH",
+   "addr": "0x00ae2e48",
+   "size": 2000
+  },
+  {
+   "name": "_G_LLM_STRAT_PATHTRACE_COORD_MASK",
+   "addr": "0x0066a334",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_PATHTRACE_COL_MASK",
+   "addr": "0x0066a338",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_PATHTRACE_ROW_MASK",
+   "addr": "0x0066a33c",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_PATHTRACE_MAP_W",
+   "addr": "0x0066a340",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_PATHTRACE_MAP_H",
+   "addr": "0x0066a344",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_PATHTRACE_HALF_W",
+   "addr": "0x0066a348",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_PATHTRACE_HALF_H",
+   "addr": "0x0066a34c",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_PATHTRACE_HALF_W_M1",
+   "addr": "0x0066a350",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_PATHTRACE_HALF_H_M1",
+   "addr": "0x0066a354",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_PATHTRACE_NEG_HALF_W",
+   "addr": "0x0066a358",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_PATHTRACE_NEG_HALF_H",
+   "addr": "0x0066a35c",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_PATHTRACE_START_COL",
+   "addr": "0x0066a360",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_PATHTRACE_START_ROW",
+   "addr": "0x0066a364",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_PATHTRACE_WALK_DIR",
+   "addr": "0x0066a368",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_PATHTRACE_GOAL_COL",
+   "addr": "0x0066a36c",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_PATHTRACE_GOAL_ROW",
+   "addr": "0x0066a370",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_PATHTRACE_GOAL_PACKED",
+   "addr": "0x0066a374",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_PATHTRACE_APPROACH_DIR",
+   "addr": "0x0066a378",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_PATHTRACE_LEN",
+   "addr": "0x0066a37c",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_PATHTRACE_DIRS",
+   "addr": "0x0066a380",
+   "size": 512
+  },
+  {
+   "name": "_G_LLM_STRAT_PATHTRACE_POS",
+   "addr": "0x0066a580",
+   "size": 1024
+  },
+  {
+   "name": "_G_LLM_STRAT_PATHTRACE_BEST_DIR",
+   "addr": "0x0066a980",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_PATHTRACE_BEST_DIST",
+   "addr": "0x0066a984",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_PATHTRACE_FORBID_CELLS",
+   "addr": "0x0066a988",
+   "size": 28
+  },
+  {
+   "name": "_G_LLM_STRAT_PATHFINDER_AIR_MODE_FLAG",
+   "addr": "0x0066a9a4",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_PATHTRACE_LEN",
+   "addr": "0x0066a37c",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_PATHTRACE_DIRS",
+   "addr": "0x0066a380",
+   "size": 512
+  },
+  {
+   "name": "_G_LLM_STRAT_PATHTRACE_POS",
+   "addr": "0x0066a580",
+   "size": 1024
+  },
+  {
+   "name": "_G_LLM_STRAT_GROUP_PATH_BUILD_IDX",
+   "addr": "0x0051de3c",
+   "size": 4
+  },
+  {
+   "name": "Anim",
+   "addr": "0x00ae4c70",
+   "size": 40016
+  },
+  {
+   "name": "_G_LLM_STRAT_PATH_BUFFERS",
+   "addr": "0x00aee8c0",
+   "size": 480000
+  },
+  {
+   "name": "_G_LLM_MAP_REGION_FLOOD_TILE_QUEUE",
+   "addr": "0x00680ac4",
+   "size": 16384
+  },
+  {
+   "name": "_G_LLM_MAP_REGION_GRID",
+   "addr": "0x00688ac4",
+   "size": 524288
+  },
+  {
+   "name": "_G_LLM_MAP_REGION_ROUTE_CAND_SCRATCH",
+   "addr": "0x00708ad0",
+   "size": 32
+  },
+  {
+   "name": "_G_LLM_MAP_REGION_ROUTE_BFS_QUEUE",
+   "addr": "0x0070ab20",
+   "size": 2048
+  },
+  {
+   "name": "_G_LLM_STRAT_PATHTRACE_DIRS",
+   "addr": "0x0066a380",
+   "size": 512
+  },
+  {
+   "name": "_G_LLM_STRAT_PATHTRACE_POS",
+   "addr": "0x0066a580",
+   "size": 1024
+  },
+  {
+   "name": "_G_LLM_STRAT_PATH_BUFFERS",
+   "addr": "0x00aee8c0",
+   "size": 480000
+  },
+  {
+   "name": "_G_LLM_STRAT_PATH_BUFFERS",
+   "addr": "0x00aee8c0",
+   "size": 480000
+  },
+  {
+   "name": "_G_LLM_STRAT_GROUP_PATH_BUILD_IDX",
+   "addr": "0x0051de3c",
+   "size": 4
+  },
+  {
+   "name": "Anim",
+   "addr": "0x00ae4c70",
+   "size": 40016
+  },
+  {
+   "name": "_G_LLM_STRAT_PATH_BUFFERS",
+   "addr": "0x00aee8c0",
+   "size": 480000
+  },
+  {
+   "name": "_G_LLM_MAP_REGION_ROUTE_CAND_SCRATCH",
+   "addr": "0x00708ad0",
+   "size": 32
+  },
+  {
+   "name": "_G_LLM_MAP_REGION_ROUTE_BFS_QUEUE",
+   "addr": "0x0070ab20",
+   "size": 2048
+  },
+  {
+   "name": "_G_LLM_MAP_REGION_FLOOD_TILE_QUEUE",
+   "addr": "0x00680ac4",
+   "size": 16384
+  },
+  {
+   "name": "_G_LLM_MAP_REGION_GRID",
+   "addr": "0x00688ac4",
+   "size": 524288
+  },
+  {
+   "name": "_G_LLM_STRAT_PATH_FREE_SLOT_COUNT",
+   "addr": "0x00b63bc0",
+   "size": 32
+  },
+  {
+   "name": "_G_LLM_STRAT_PATH_SLOT_FLAGS",
+   "addr": "0x00b74bb0",
+   "size": 800
+  },
+  {
+   "name": "units",
+   "addr": "0x00dd8c48",
+   "size": 186400
+  },
+  {
+   "name": "_G_LLM_STRAT_GROUP_PATH_BUILD_IDX",
+   "addr": "0x0051de3c",
+   "size": 4
+  },
+  {
+   "name": "Anim",
+   "addr": "0x00ae4c70",
+   "size": 40016
+  },
+  {
+   "name": "_G_LLM_STRAT_PATH_BUFFERS",
+   "addr": "0x00aee8c0",
+   "size": 480000
+  },
+  {
+   "name": "_G_LLM_STRAT_TICK_BUDGET",
+   "addr": "0x00ae3738",
+   "size": 8
+  },
+  {
+   "name": "_G_LLM_STRAT_SQUAD_FORMATION_ANCHOR_SCRATCH",
+   "addr": "0x00ae4640",
+   "size": 40
+  },
+  {
+   "name": "units",
+   "addr": "0x00dd8c48",
+   "size": 186400
+  },
+  {
+   "name": "_G_LLM_STRAT_SOLDIERS",
+   "addr": "0x00e0e5a8",
+   "size": 23200
+  },
+  {
+   "name": "unit_storage",
+   "addr": "0x00c727c0",
+   "size": 48800
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_QUEUE_COUNT",
+   "addr": "0x005d0194",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_TICK_BUDGET",
+   "addr": "0x00ae3738",
+   "size": 8
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_QUEUE",
+   "addr": "0x00bb4ed0",
+   "size": 20400
+  },
+  {
+   "name": "buildings",
+   "addr": "0x00c3d2a0",
+   "size": 218400
+  },
+  {
+   "name": "unit_storage",
+   "addr": "0x00c727c0",
+   "size": 48800
+  },
+  {
+   "name": "units",
+   "addr": "0x00dd8c48",
+   "size": 186400
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_SCRATCH_ARGS",
+   "addr": "0x00e16268",
+   "size": 52
+  },
+  {
+   "name": "_G_LLM_UNITQ_CUR_TILE",
+   "addr": "0x01000c08",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_UNITQ_CLOSED_COUNT",
+   "addr": "0x01000c10",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_UNITQ_ITER",
+   "addr": "0x01000c14",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_UNITQ_FRONTIER_COUNT",
+   "addr": "0x01000c18",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_UNITQ_CLOSED",
+   "addr": "0x01000c1c",
+   "size": 8192
+  },
+  {
+   "name": "_G_LLM_UNITQ_FRONTIER",
+   "addr": "0x01002c1c",
+   "size": 1024
+  },
+  {
+   "name": "unit_storage",
+   "addr": "0x00c727c0",
+   "size": 48800
+  },
+  {
+   "name": "G_TMP_PLAYER",
+   "addr": "0x00824ff0",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_TICK_BUDGET",
+   "addr": "0x00ae3738",
+   "size": 8
+  },
+  {
+   "name": "unit_storage",
+   "addr": "0x00c727c0",
+   "size": 48800
+  },
+  {
+   "name": "tile_objects",
+   "addr": "0x00d1ec80",
+   "size": 524288
+  },
+  {
+   "name": "units",
+   "addr": "0x00dd8c48",
+   "size": 186400
+  },
+  {
+   "name": "G_TMP_x",
+   "addr": "0x00e153b8",
+   "size": 4
+  },
+  {
+   "name": "G_TMP_y",
+   "addr": "0x00e153bc",
+   "size": 4
+  },
+  {
+   "name": "G_TMP_SIGHT",
+   "addr": "0x00e15400",
+   "size": 4
+  },
+  {
+   "name": "player_data",
+   "addr": "0x00e6dec0",
+   "size": 1329120
+  },
+  {
+   "name": "unit_storage",
+   "addr": "0x00c727c0",
+   "size": 48800
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_QUEUE_COUNT",
+   "addr": "0x005d0194",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_TICK_BUDGET",
+   "addr": "0x00ae3738",
+   "size": 8
+  },
+  {
+   "name": "MESSAGE_TIME",
+   "addr": "0x00ae4b90",
+   "size": 8
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_QUEUE",
+   "addr": "0x00bb4ed0",
+   "size": 20400
+  },
+  {
+   "name": "_G_LLM_PROD_SHUTTLE_SLOTS",
+   "addr": "0x00bd215c",
+   "size": 63680
+  },
+  {
+   "name": "buildings",
+   "addr": "0x00c3d2a0",
+   "size": 218400
+  },
+  {
+   "name": "unit_storage",
+   "addr": "0x00c727c0",
+   "size": 48800
+  },
+  {
+   "name": "units",
+   "addr": "0x00dd8c48",
+   "size": 186400
+  },
+  {
+   "name": "_G_LLM_STRAT_FLOATING_MSG_QUEUE_ACTIVE",
+   "addr": "0x00e16264",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_SCRATCH_ARGS",
+   "addr": "0x00e16268",
+   "size": 52
+  },
+  {
+   "name": "_G_LLM_STRAT_FLOATING_MSG_COLOR",
+   "addr": "0x00e162a0",
+   "size": 2
+  },
+  {
+   "name": "_G_LLM_UNITQ_CUR_TILE",
+   "addr": "0x01000c08",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_UNITQ_CLOSED_COUNT",
+   "addr": "0x01000c10",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_UNITQ_ITER",
+   "addr": "0x01000c14",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_UNITQ_FRONTIER_COUNT",
+   "addr": "0x01000c18",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_UNITQ_CLOSED",
+   "addr": "0x01000c1c",
+   "size": 8192
+  },
+  {
+   "name": "_G_LLM_UNITQ_FRONTIER",
+   "addr": "0x01002c1c",
+   "size": 1024
+  },
+  {
+   "name": "_G_LLM_STRAT_TICK_BUDGET",
+   "addr": "0x00ae3738",
+   "size": 8
+  },
+  {
+   "name": "_G_LLM_STRAT_PATH_FREE_SLOT_COUNT",
+   "addr": "0x00b63bc0",
+   "size": 32
+  },
+  {
+   "name": "_G_LLM_STRAT_PATH_SLOT_FLAGS",
+   "addr": "0x00b74bb0",
+   "size": 800
+  },
+  {
+   "name": "buildings",
+   "addr": "0x00c3d2a0",
+   "size": 218400
+  },
+  {
+   "name": "unit_storage",
+   "addr": "0x00c727c0",
+   "size": 48800
+  },
+  {
+   "name": "units",
+   "addr": "0x00dd8c48",
+   "size": 186400
+  },
+  {
+   "name": "_G_LLM_STRAT_SOLDIERS",
+   "addr": "0x00e0e5a8",
+   "size": 23200
+  },
+  {
+   "name": "_G_LLM_STRAT_TICK_BUDGET",
+   "addr": "0x00ae3738",
+   "size": 8
+  },
+  {
+   "name": "_G_LLM_STRAT_TICK_BUDGET",
+   "addr": "0x00ae3738",
+   "size": 8
+  },
+  {
+   "name": "buildings",
+   "addr": "0x00c3d2a0",
+   "size": 218400
+  },
+  {
+   "name": "unit_storage",
+   "addr": "0x00c727c0",
+   "size": 48800
+  },
+  {
+   "name": "units",
+   "addr": "0x00dd8c48",
+   "size": 186400
+  },
+  {
+   "name": "unit_storage",
+   "addr": "0x00c727c0",
+   "size": 48800
+  },
+  {
+   "name": "_G_LLM_CLICK_SELECT_TARGET_ID",
+   "addr": "0x00e1629c",
+   "size": 2
+  },
+  {
+   "name": "_G_LLM_STRAT_TICK_BUDGET",
+   "addr": "0x00ae3738",
+   "size": 8
+  },
+  {
+   "name": "_G_LLM_PROD_SHUTTLE_SLOTS",
+   "addr": "0x00bd215c",
+   "size": 63680
+  },
+  {
+   "name": "_G_LLM_STRAT_POP_STATS",
+   "addr": "0x00c3a370",
+   "size": 416
+  },
+  {
+   "name": "buildings",
+   "addr": "0x00c3d2a0",
+   "size": 218400
+  },
+  {
+   "name": "_G_LLM_STRAT_PLAYERS",
+   "addr": "0x00cff060",
+   "size": 14848
+  },
+  {
+   "name": "_G_LLM_STRAT_TICK_BUDGET",
+   "addr": "0x00ae3738",
+   "size": 8
+  },
+  {
+   "name": "_G_LLM_STRAT_POP_STATS",
+   "addr": "0x00c3a370",
+   "size": 416
+  },
+  {
+   "name": "unit_storage",
+   "addr": "0x00c727c0",
+   "size": 48800
+  },
+  {
+   "name": "_G_LLM_STRAT_TICK_BUDGET",
+   "addr": "0x00ae3738",
+   "size": 8
+  },
+  {
+   "name": "_G_LLM_STRAT_TICK_BUDGET",
+   "addr": "0x00ae3738",
+   "size": 8
+  },
+  {
+   "name": "_G_LLM_STRAT_PATH_BUFFERS",
+   "addr": "0x00aee8c0",
+   "size": 480000
+  },
+  {
+   "name": "_G_LLM_STRAT_PATH_FREE_SLOT_COUNT",
+   "addr": "0x00b63bc0",
+   "size": 32
+  },
+  {
+   "name": "_G_LLM_STRAT_PATH_SLOT_FLAGS",
+   "addr": "0x00b74bb0",
+   "size": 800
+  },
+  {
+   "name": "units",
+   "addr": "0x00dd8c48",
+   "size": 186400
+  },
+  {
+   "name": "_G_LLM_PROD_SHUTTLE_SLOTS",
+   "addr": "0x00bd215c",
+   "size": 63680
+  },
+  {
+   "name": "_G_LLM_STRAT_POP_STATS",
+   "addr": "0x00c3a370",
+   "size": 416
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_QUEUE_COUNT",
+   "addr": "0x005d0194",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_QUEUE",
+   "addr": "0x00bb4ed0",
+   "size": 20400
+  },
+  {
+   "name": "buildings",
+   "addr": "0x00c3d2a0",
+   "size": 218400
+  },
+  {
+   "name": "unit_storage",
+   "addr": "0x00c727c0",
+   "size": 48800
+  },
+  {
+   "name": "units",
+   "addr": "0x00dd8c48",
+   "size": 186400
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_SCRATCH_ARGS",
+   "addr": "0x00e16268",
+   "size": 52
+  },
+  {
+   "name": "_G_LLM_UNITQ_CUR_TILE",
+   "addr": "0x01000c08",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_UNITQ_CLOSED_COUNT",
+   "addr": "0x01000c10",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_UNITQ_ITER",
+   "addr": "0x01000c14",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_UNITQ_FRONTIER_COUNT",
+   "addr": "0x01000c18",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_UNITQ_CLOSED",
+   "addr": "0x01000c1c",
+   "size": 8192
+  },
+  {
+   "name": "_G_LLM_UNITQ_FRONTIER",
+   "addr": "0x01002c1c",
+   "size": 1024
+  },
+  {
+   "name": "MESSAGE_TIME",
+   "addr": "0x00ae4b90",
+   "size": 8
+  },
+  {
+   "name": "_G_LLM_PROD_SHUTTLE_SLOTS",
+   "addr": "0x00bd215c",
+   "size": 63680
+  },
+  {
+   "name": "buildings",
+   "addr": "0x00c3d2a0",
+   "size": 218400
+  },
+  {
+   "name": "_G_LLM_STRAT_FLOATING_MSG_QUEUE_ACTIVE",
+   "addr": "0x00e16264",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_FLOATING_MSG_COLOR",
+   "addr": "0x00e162a0",
+   "size": 2
+  },
+  {
+   "name": "passable",
+   "addr": "0x00b64bb0",
+   "size": 65536
+  },
+  {
+   "name": "_G_LLM_STRAT_POP_STATS",
+   "addr": "0x00c3a370",
+   "size": 416
+  },
+  {
+   "name": "units",
+   "addr": "0x00dd8c48",
+   "size": 186400
+  },
+  {
+   "name": "_G_LLM_STRAT_SOLDIERS",
+   "addr": "0x00e0e5a8",
+   "size": 23200
+  },
+  {
+   "name": "_G_LLM_STRAT_PATH_BUFFERS",
+   "addr": "0x00aee8c0",
+   "size": 480000
+  },
+  {
+   "name": "_G_LLM_STRAT_PATH_FREE_SLOT_COUNT",
+   "addr": "0x00b63bc0",
+   "size": 32
+  },
+  {
+   "name": "_G_LLM_STRAT_PATH_SLOT_FLAGS",
+   "addr": "0x00b74bb0",
+   "size": 800
+  },
+  {
+   "name": "_G_LLM_STRAT_POP_STATS",
+   "addr": "0x00c3a370",
+   "size": 416
+  },
+  {
+   "name": "units",
+   "addr": "0x00dd8c48",
+   "size": 186400
+  },
+  {
+   "name": "unit_storage",
+   "addr": "0x00c727c0",
+   "size": 48800
+  },
+  {
+   "name": "passable",
+   "addr": "0x00b64bb0",
+   "size": 65536
+  },
+  {
+   "name": "_G_LLM_STRAT_POP_STATS",
+   "addr": "0x00c3a370",
+   "size": 416
+  },
+  {
+   "name": "tile_objects",
+   "addr": "0x00d1ec80",
+   "size": 524288
+  },
+  {
+   "name": "units",
+   "addr": "0x00dd8c48",
+   "size": 186400
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_QUEUE_COUNT",
+   "addr": "0x005d0194",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_QUEUE",
+   "addr": "0x00bb4ed0",
+   "size": 20400
+  },
+  {
+   "name": "buildings",
+   "addr": "0x00c3d2a0",
+   "size": 218400
+  },
+  {
+   "name": "unit_storage",
+   "addr": "0x00c727c0",
+   "size": 48800
+  },
+  {
+   "name": "units",
+   "addr": "0x00dd8c48",
+   "size": 186400
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_QUEUE_COUNT",
+   "addr": "0x005d0194",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_QUEUE",
+   "addr": "0x00bb4ed0",
+   "size": 20400
+  },
+  {
+   "name": "buildings",
+   "addr": "0x00c3d2a0",
+   "size": 218400
+  },
+  {
+   "name": "unit_storage",
+   "addr": "0x00c727c0",
+   "size": 48800
+  },
+  {
+   "name": "units",
+   "addr": "0x00dd8c48",
+   "size": 186400
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_SCRATCH_ARGS",
+   "addr": "0x00e16268",
+   "size": 52
+  },
+  {
+   "name": "_G_LLM_UNITQ_CUR_TILE",
+   "addr": "0x01000c08",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_UNITQ_CLOSED_COUNT",
+   "addr": "0x01000c10",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_UNITQ_ITER",
+   "addr": "0x01000c14",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_UNITQ_FRONTIER_COUNT",
+   "addr": "0x01000c18",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_UNITQ_CLOSED",
+   "addr": "0x01000c1c",
+   "size": 8192
+  },
+  {
+   "name": "_G_LLM_UNITQ_FRONTIER",
+   "addr": "0x01002c1c",
+   "size": 1024
+  },
+  {
+   "name": "_G_LLM_STRAT_PATH_BUFFERS",
+   "addr": "0x00aee8c0",
+   "size": 480000
+  },
+  {
+   "name": "_G_LLM_STRAT_PATH_FREE_SLOT_COUNT",
+   "addr": "0x00b63bc0",
+   "size": 32
+  },
+  {
+   "name": "_G_LLM_STRAT_PATH_SLOT_FLAGS",
+   "addr": "0x00b74bb0",
+   "size": 800
+  },
+  {
+   "name": "units",
+   "addr": "0x00dd8c48",
+   "size": 186400
+  },
+  {
+   "name": "_G_LLM_STRAT_PATH_BUFFERS",
+   "addr": "0x00aee8c0",
+   "size": 480000
+  },
+  {
+   "name": "_G_LLM_STRAT_PATH_FREE_SLOT_COUNT",
+   "addr": "0x00b63bc0",
+   "size": 32
+  },
+  {
+   "name": "_G_LLM_STRAT_PATH_SLOT_FLAGS",
+   "addr": "0x00b74bb0",
+   "size": 800
+  },
+  {
+   "name": "units",
+   "addr": "0x00dd8c48",
+   "size": 186400
+  },
+  {
+   "name": "_G_LLM_STRAT_TICK_BUDGET",
+   "addr": "0x00ae3738",
+   "size": 8
+  },
+  {
+   "name": "_G_LLM_STRAT_TICK_BUDGET",
+   "addr": "0x00ae3738",
+   "size": 8
+  },
+  {
+   "name": "_G_LLM_STRAT_TICK_BUDGET",
+   "addr": "0x00ae3738",
+   "size": 8
+  },
+  {
+   "name": "_G_LLM_STRAT_TICK_BUDGET",
+   "addr": "0x00ae3738",
+   "size": 8
+  },
+  {
+   "name": "_G_LLM_PROD_SHUTTLE_SLOTS",
+   "addr": "0x00bd215c",
+   "size": 63680
+  },
+  {
+   "name": "buildings",
+   "addr": "0x00c3d2a0",
+   "size": 218400
+  },
+  {
+   "name": "_G_LLM_STRAT_PLAYERS",
+   "addr": "0x00cff060",
+   "size": 14848
+  },
+  {
+   "name": "units",
+   "addr": "0x00dd8c48",
+   "size": 186400
+  },
+  {
+   "name": "_G_LLM_STRAT_TICK_BUDGET",
+   "addr": "0x00ae3738",
+   "size": 8
+  },
+  {
+   "name": "turrets",
+   "addr": "0x00cc0fe0",
+   "size": 14080
+  },
+  {
+   "name": "_G_LLM_STRAT_TICK_BUDGET",
+   "addr": "0x00ae3738",
+   "size": 8
+  },
+  {
+   "name": "turrets",
+   "addr": "0x00cc0fe0",
+   "size": 14080
+  },
+  {
+   "name": "_G_LLM_STRAT_TICK_BUDGET",
+   "addr": "0x00ae3738",
+   "size": 8
+  },
+  {
+   "name": "_G_LLM_STRAT_CAM_PAN_TARGET_COL",
+   "addr": "0x00e587e1",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_CAM_PAN_TARGET_ROW",
+   "addr": "0x00e587e5",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_TICK_BUDGET",
+   "addr": "0x00ae3738",
+   "size": 8
+  },
+  {
+   "name": "_G_LLM_STRAT_TICK_BUDGET",
+   "addr": "0x00ae3738",
+   "size": 8
+  },
+  {
+   "name": "_G_LLM_STRAT_TICK_BUDGET",
+   "addr": "0x00ae3738",
+   "size": 8
+  },
+  {
+   "name": "_G_LLM_STRAT_CAM_PAN_TARGET_COL",
+   "addr": "0x00e587e1",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_CAM_PAN_TARGET_ROW",
+   "addr": "0x00e587e5",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_TICK_BUDGET",
+   "addr": "0x00ae3738",
+   "size": 8
+  },
+  {
+   "name": "_G_LLM_STRAT_CAM_PAN_TARGET_COL",
+   "addr": "0x00e587e1",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_CAM_PAN_TARGET_ROW",
+   "addr": "0x00e587e5",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_TICK_BUDGET",
+   "addr": "0x00ae3738",
+   "size": 8
+  },
+  {
+   "name": "_G_LLM_STRAT_TICK_BUDGET",
+   "addr": "0x00ae3738",
+   "size": 8
+  },
+  {
+   "name": "buildings",
+   "addr": "0x00c3d2a0",
+   "size": 218400
+  },
+  {
+   "name": "_G_LLM_STRAT_PLAYERS",
+   "addr": "0x00cff060",
+   "size": 14848
+  },
+  {
+   "name": "G_OTHER_PLAYERS_MASK",
+   "addr": "0x005d882f",
+   "size": 1
+  },
+  {
+   "name": "G_TMP_PLAYER",
+   "addr": "0x00824ff0",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_TICK_BUDGET",
+   "addr": "0x00ae3738",
+   "size": 8
+  },
+  {
+   "name": "buildings",
+   "addr": "0x00c3d2a0",
+   "size": 218400
+  },
+  {
+   "name": "G_TMP_x",
+   "addr": "0x00e153b8",
+   "size": 4
+  },
+  {
+   "name": "G_TMP_y",
+   "addr": "0x00e153bc",
+   "size": 4
+  },
+  {
+   "name": "G_TMP_SIGHT",
+   "addr": "0x00e15400",
+   "size": 4
+  },
+  {
+   "name": "productions",
+   "addr": "0x00dd2648",
+   "size": 25920
+  },
+  {
+   "name": "_G_LLM_STRAT_TICK_BUDGET",
+   "addr": "0x00ae3738",
+   "size": 8
+  },
+  {
+   "name": "_G_LLM_STRAT_CAM_PAN_TARGET_COL",
+   "addr": "0x00e587e1",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_CAM_PAN_TARGET_ROW",
+   "addr": "0x00e587e5",
+   "size": 4
+  },
+  {
+   "name": "MESSAGE_TIME",
+   "addr": "0x00ae4b90",
+   "size": 8
+  },
+  {
+   "name": "buildings",
+   "addr": "0x00c3d2a0",
+   "size": 218400
+  },
+  {
+   "name": "_G_LLM_STRAT_FLOATING_MSG_QUEUE_ACTIVE",
+   "addr": "0x00e16264",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_FLOATING_MSG_COLOR",
+   "addr": "0x00e162a0",
+   "size": 2
+  },
+  {
+   "name": "_G_LLM_STRAT_TICK_BUDGET",
+   "addr": "0x00ae3738",
+   "size": 8
+  },
+  {
+   "name": "buildings",
+   "addr": "0x00c3d2a0",
+   "size": 218400
+  },
+  {
+   "name": "mines",
+   "addr": "0x00d03480",
+   "size": 14336
+  },
+  {
+   "name": "_G_LLM_STRAT_CAM_PAN_TARGET_COL",
+   "addr": "0x00e587e1",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_CAM_PAN_TARGET_ROW",
+   "addr": "0x00e587e5",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_TICK_BUDGET",
+   "addr": "0x00ae3738",
+   "size": 8
+  },
+  {
+   "name": "buildings",
+   "addr": "0x00c3d2a0",
+   "size": 218400
+  },
+  {
+   "name": "_G_LLM_STRAT_TICK_BUDGET",
+   "addr": "0x00ae3738",
+   "size": 8
+  },
+  {
+   "name": "buildings",
+   "addr": "0x00c3d2a0",
+   "size": 218400
+  },
+  {
+   "name": "_G_LLM_STRAT_TICK_BUDGET",
+   "addr": "0x00ae3738",
+   "size": 8
+  },
+  {
+   "name": "_G_LLM_STRAT_POWER_STATS",
+   "addr": "0x00bf4fc0",
+   "size": 192
+  },
+  {
+   "name": "buildings",
+   "addr": "0x00c3d2a0",
+   "size": 218400
+  },
+  {
+   "name": "buildings",
+   "addr": "0x00c3d2a0",
+   "size": 218400
+  },
+  {
+   "name": "buildings",
+   "addr": "0x00c3d2a0",
+   "size": 218400
+  },
+  {
+   "name": "buildings",
+   "addr": "0x00c3d2a0",
+   "size": 218400
+  },
+  {
+   "name": "buildings",
+   "addr": "0x00c3d2a0",
+   "size": 218400
+  },
+  {
+   "name": "player_resources",
+   "addr": "0x00e0e468",
+   "size": 320
+  },
+  {
+   "name": "player_data",
+   "addr": "0x00e6dec0",
+   "size": 1329120
+  },
+  {
+   "name": "buildings",
+   "addr": "0x00c3d2a0",
+   "size": 218400
+  },
+  {
+   "name": "unit_storage",
+   "addr": "0x00c727c0",
+   "size": 48800
+  },
+  {
+   "name": "units",
+   "addr": "0x00dd8c48",
+   "size": 186400
+  },
+  {
+   "name": "player_resources",
+   "addr": "0x00e0e468",
+   "size": 320
+  },
+  {
+   "name": "player_data",
+   "addr": "0x00e6dec0",
+   "size": 1329120
+  },
+  {
+   "name": "buildings",
+   "addr": "0x00c3d2a0",
+   "size": 218400
+  },
+  {
+   "name": "turrets",
+   "addr": "0x00cc0fe0",
+   "size": 14080
+  },
+  {
+   "name": "units",
+   "addr": "0x00dd8c48",
+   "size": 186400
+  },
+  {
+   "name": "passable",
+   "addr": "0x00b64bb0",
+   "size": 65536
+  },
+  {
+   "name": "buildings",
+   "addr": "0x00c3d2a0",
+   "size": 218400
+  },
+  {
+   "name": "buildings",
+   "addr": "0x00c3d2a0",
+   "size": 218400
+  },
+  {
+   "name": "_G_LLM_STRAT_UI_BASE_MARKER_COORDS",
+   "addr": "0x0050be03",
+   "size": 64
+  },
+  {
+   "name": "resources",
+   "addr": "0x00c28530",
+   "size": 65536
+  },
+  {
+   "name": "buildings",
+   "addr": "0x00c3d2a0",
+   "size": 218400
+  },
+  {
+   "name": "_G_LLM_STRAT_PLAYERS",
+   "addr": "0x00cff060",
+   "size": 14848
+  },
+  {
+   "name": "_G_LLM_STRAT_FOREIGN_BLDG_EVENT_PENDING",
+   "addr": "0x00e4a094",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_AI_FOREIGN_BLDG_CHANGE_FLAG",
+   "addr": "0x00e58350",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_PLANET_MOTHER_LOST_TIME",
+   "addr": "0x00e584f4",
+   "size": 256
+  },
+  {
+   "name": "_G_LLM_STRAT_BLDG_COMPLETION_ACCUM",
+   "addr": "0x00e5877d",
+   "size": 4
+  },
+  {
+   "name": "mines",
+   "addr": "0x00d03480",
+   "size": 14336
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_QUEUE_COUNT",
+   "addr": "0x005d0194",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_QUEUE",
+   "addr": "0x00bb4ed0",
+   "size": 20400
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_SCRATCH_ARGS",
+   "addr": "0x00e16268",
+   "size": 52
+  },
+  {
+   "name": "player_data",
+   "addr": "0x00e6dec0",
+   "size": 1329120
+  },
+  {
+   "name": "buildings",
+   "addr": "0x00c3d2a0",
+   "size": 218400
+  },
+  {
+   "name": "buildings",
+   "addr": "0x00c3d2a0",
+   "size": 218400
+  },
+  {
+   "name": "buildings",
+   "addr": "0x00c3d2a0",
+   "size": 218400
+  },
+  {
+   "name": "buildings",
+   "addr": "0x00c3d2a0",
+   "size": 218400
+  },
+  {
+   "name": "buildings",
+   "addr": "0x00c3d2a0",
+   "size": 218400
+  },
+  {
+   "name": "buildings",
+   "addr": "0x00c3d2a0",
+   "size": 218400
+  },
+  {
+   "name": "buildings",
+   "addr": "0x00c3d2a0",
+   "size": 218400
+  },
+  {
+   "name": "buildings",
+   "addr": "0x00c3d2a0",
+   "size": 218400
+  },
+  {
+   "name": "buildings",
+   "addr": "0x00c3d2a0",
+   "size": 218400
+  },
+  {
+   "name": "buildings",
+   "addr": "0x00c3d2a0",
+   "size": 218400
+  },
+  {
+   "name": "buildings",
+   "addr": "0x00c3d2a0",
+   "size": 218400
+  },
+  {
+   "name": "buildings",
+   "addr": "0x00c3d2a0",
+   "size": 218400
+  },
+  {
+   "name": "buildings",
+   "addr": "0x00c3d2a0",
+   "size": 218400
+  },
+  {
+   "name": "player_resources",
+   "addr": "0x00e0e468",
+   "size": 320
+  },
+  {
+   "name": "player_data",
+   "addr": "0x00e6dec0",
+   "size": 1329120
+  },
+  {
+   "name": "_G_LLM_STRAT_STORAGE_STATS",
+   "addr": "0x00bf4d00",
+   "size": 704
+  },
+  {
+   "name": "_G_LLM_STRAT_POWER_STATS",
+   "addr": "0x00bf4fc0",
+   "size": 192
+  },
+  {
+   "name": "_G_LLM_STRAT_POP_STATS",
+   "addr": "0x00c3a370",
+   "size": 416
+  },
+  {
+   "name": "_G_LLM_STRAT_POWER_STATS",
+   "addr": "0x00bf4fc0",
+   "size": 192
+  },
+  {
+   "name": "_G_LLM_STRAT_POWER_STATS",
+   "addr": "0x00bf4fc0",
+   "size": 192
+  },
+  {
+   "name": "_G_LLM_STRAT_POP_STATS",
+   "addr": "0x00c3a370",
+   "size": 416
+  },
+  {
+   "name": "_G_LLM_STRAT_POWER_STATS",
+   "addr": "0x00bf4fc0",
+   "size": 192
+  },
+  {
+   "name": "_G_LLM_STRAT_UNIT_HOUSING_STATS",
+   "addr": "0x00c38530",
+   "size": 512
+  },
+  {
+   "name": "_G_LLM_STRAT_POWER_STATS",
+   "addr": "0x00bf4fc0",
+   "size": 192
+  },
+  {
+   "name": "_G_LLM_STRAT_UNIT_HOUSING_STATS",
+   "addr": "0x00c38530",
+   "size": 512
+  },
+  {
+   "name": "_G_LLM_STRAT_POWER_STATS",
+   "addr": "0x00bf4fc0",
+   "size": 192
+  },
+  {
+   "name": "_G_LLM_STRAT_UNIT_HOUSING_STATS",
+   "addr": "0x00c38530",
+   "size": 512
+  },
+  {
+   "name": "_G_LLM_STRAT_POWER_STATS",
+   "addr": "0x00bf4fc0",
+   "size": 192
+  },
+  {
+   "name": "_G_LLM_STRAT_UNIT_HOUSING_STATS",
+   "addr": "0x00c38530",
+   "size": 512
+  },
+  {
+   "name": "_G_LLM_STRAT_STORAGE_STATS",
+   "addr": "0x00bf4d00",
+   "size": 704
+  },
+  {
+   "name": "_G_LLM_STRAT_POWER_STATS",
+   "addr": "0x00bf4fc0",
+   "size": 192
+  },
+  {
+   "name": "_G_LLM_STRAT_POWER_STATS",
+   "addr": "0x00bf4fc0",
+   "size": 192
+  },
+  {
+   "name": "_G_LLM_STRAT_POWER_STATS",
+   "addr": "0x00bf4fc0",
+   "size": 192
+  },
+  {
+   "name": "_G_LLM_STRAT_POWER_STATS",
+   "addr": "0x00bf4fc0",
+   "size": 192
+  },
+  {
+   "name": "_G_LLM_STRAT_STORAGE_STATS",
+   "addr": "0x00bf4d00",
+   "size": 704
+  },
+  {
+   "name": "_G_LLM_STRAT_POWER_STATS",
+   "addr": "0x00bf4fc0",
+   "size": 192
+  },
+  {
+   "name": "_G_LLM_STRAT_POWER_STATS",
+   "addr": "0x00bf4fc0",
+   "size": 192
+  },
+  {
+   "name": "_G_LLM_STRAT_STORAGE_STATS",
+   "addr": "0x00bf4d00",
+   "size": 704
+  },
+  {
+   "name": "buildings",
+   "addr": "0x00c3d2a0",
+   "size": 218400
+  },
+  {
+   "name": "buildings",
+   "addr": "0x00c3d2a0",
+   "size": 218400
+  },
+  {
+   "name": "buildings",
+   "addr": "0x00c3d2a0",
+   "size": 218400
+  },
+  {
+   "name": "buildings",
+   "addr": "0x00c3d2a0",
+   "size": 218400
+  },
+  {
+   "name": "buildings",
+   "addr": "0x00c3d2a0",
+   "size": 218400
+  },
+  {
+   "name": "buildings",
+   "addr": "0x00c3d2a0",
+   "size": 218400
+  },
+  {
+   "name": "buildings",
+   "addr": "0x00c3d2a0",
+   "size": 218400
+  },
+  {
+   "name": "buildings",
+   "addr": "0x00c3d2a0",
+   "size": 218400
+  },
+  {
+   "name": "buildings",
+   "addr": "0x00c3d2a0",
+   "size": 218400
+  },
+  {
+   "name": "buildings",
+   "addr": "0x00c3d2a0",
+   "size": 218400
+  },
+  {
+   "name": "buildings",
+   "addr": "0x00c3d2a0",
+   "size": 218400
+  },
+  {
+   "name": "buildings",
+   "addr": "0x00c3d2a0",
+   "size": 218400
+  },
+  {
+   "name": "_G_LLM_STRAT_STORAGE_STATS",
+   "addr": "0x00bf4d00",
+   "size": 704
+  },
+  {
+   "name": "_G_LLM_STRAT_POWER_STATS",
+   "addr": "0x00bf4fc0",
+   "size": 192
+  },
+  {
+   "name": "_G_LLM_STRAT_POP_STATS",
+   "addr": "0x00c3a370",
+   "size": 416
+  },
+  {
+   "name": "_G_LLM_STRAT_POWER_STATS",
+   "addr": "0x00bf4fc0",
+   "size": 192
+  },
+  {
+   "name": "_G_LLM_STRAT_UNIT_HOUSING_STATS",
+   "addr": "0x00c38530",
+   "size": 512
+  },
+  {
+   "name": "_G_LLM_STRAT_UNIT_HOUSING_STATS",
+   "addr": "0x00c38530",
+   "size": 512
+  },
+  {
+   "name": "_G_LLM_STRAT_UNIT_HOUSING_STATS",
+   "addr": "0x00c38530",
+   "size": 512
+  },
+  {
+   "name": "_G_LLM_STRAT_UNIT_HOUSING_STATS",
+   "addr": "0x00c38530",
+   "size": 512
+  },
+  {
+   "name": "_G_LLM_TACT_MAP_WIDTH_CACHE",
+   "addr": "0x00874948",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_MAP_HEIGHT_CACHE",
+   "addr": "0x0087494c",
+   "size": 4
+  },
+  {
+   "name": "passable",
+   "addr": "0x00b64bb0",
+   "size": 65536
+  },
+  {
+   "name": "_G_LLM_SQUAD_STATUS",
+   "addr": "0x00e15e60",
+   "size": 1024
+  },
+  {
+   "name": "tile_objects",
+   "addr": "0x00d1ec80",
+   "size": 524288
+  },
+  {
+   "name": "_G_LLM_TACT_OCCUPANCY_REBUILD_MAP_ID",
+   "addr": "0x00558e6c",
+   "size": 4
+  },
+  {
+   "name": "tile_objects",
+   "addr": "0x00d1ec80",
+   "size": 524288
+  },
+  {
+   "name": "_G_LLM_TACT_MOVE_PATH_TRACE_TILE",
+   "addr": "0x00519e05",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_MOVE_PATH_TRACE_BASE",
+   "addr": "0x00519e09",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_MOVE_PATH_TRACE_DIAG_CAND",
+   "addr": "0x00519e0d",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_MOVE_PATH_GOAL_PACKED",
+   "addr": "0x00519e11",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_MOVE_PATH_START_PACKED",
+   "addr": "0x00519e15",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_MOVE_PATH_QUEUE_B",
+   "addr": "0x00519e19",
+   "size": 8192
+  },
+  {
+   "name": "_G_LLM_TACT_MOVE_PATH_QUEUE_A",
+   "addr": "0x0051be19",
+   "size": 8192
+  },
+  {
+   "name": "_G_LLM_TACT_MOVE_PATH_QUEUE_CUR",
+   "addr": "0x0051de19",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_MOVE_PATH_COORD_MASK",
+   "addr": "0x0051de1d",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_MOVE_PATH_TILE_COST",
+   "addr": "0x0051de21",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_MOVE_PATH_TRACE_BEST_DIR",
+   "addr": "0x0051de25",
+   "size": 1
+  },
+  {
+   "name": "_G_LLM_TACT_MOVE_PATH_RLE_COUNT",
+   "addr": "0x0051de26",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_MOVE_PATH_TRACE_BEST_TILE",
+   "addr": "0x0051de2a",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_MOVE_FLOOD_START_COL",
+   "addr": "0x00558706",
+   "size": 1
+  },
+  {
+   "name": "_G_LLM_TACT_MOVE_FLOOD_START_ROW",
+   "addr": "0x00558707",
+   "size": 1
+  },
+  {
+   "name": "_G_LLM_TACT_MOVE_FLOOD_GOAL_COL",
+   "addr": "0x00558708",
+   "size": 1
+  },
+  {
+   "name": "_G_LLM_TACT_MOVE_FLOOD_GOAL_ROW",
+   "addr": "0x00558709",
+   "size": 1
+  },
+  {
+   "name": "_G_LLM_TACT_MOVE_FLOOD_RESULT_COL",
+   "addr": "0x0055870a",
+   "size": 1
+  },
+  {
+   "name": "_G_LLM_TACT_MOVE_FLOOD_RESULT_ROW",
+   "addr": "0x0055870b",
+   "size": 1
+  },
+  {
+   "name": "_G_LLM_TACT_MOVE_PATH_SLOT_ID",
+   "addr": "0x00558710",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_MOVE_PATH_TRACE_COST_SUM",
+   "addr": "0x00558714",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_UNITS",
+   "addr": "0x008260d0",
+   "size": 196596
+  },
+  {
+   "name": "_G_LLM_STRAT_PATH_BUFFERS",
+   "addr": "0x00aee8c0",
+   "size": 480000
+  },
+  {
+   "name": "passable",
+   "addr": "0x00b64bb0",
+   "size": 65536
+  },
+  {
+   "name": "_G_LLM_STRAT_PATH_SLOT_FLAGS",
+   "addr": "0x00b74bb0",
+   "size": 800
+  },
+  {
+   "name": "_G_LLM_TACT_MOVE_COST_MAP",
+   "addr": "0x00b74ed0",
+   "size": 262144
+  },
+  {
+   "name": "tile_objects",
+   "addr": "0x00d1ec80",
+   "size": 524288
+  },
+  {
+   "name": "_G_LLM_TACT_UNITS",
+   "addr": "0x008260d0",
+   "size": 196596
+  },
+  {
+   "name": "_G_LLM_STRAT_PATH_SLOT_FLAGS",
+   "addr": "0x00b74bb0",
+   "size": 800
+  },
+  {
+   "name": "_G_LLM_TACT_MOVE_PATH_TRACE_TILE",
+   "addr": "0x00519e05",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_MOVE_PATH_TRACE_BASE",
+   "addr": "0x00519e09",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_MOVE_PATH_TRACE_DIAG_CAND",
+   "addr": "0x00519e0d",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_MOVE_PATH_GOAL_PACKED",
+   "addr": "0x00519e11",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_MOVE_PATH_START_PACKED",
+   "addr": "0x00519e15",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_MOVE_PATH_QUEUE_B",
+   "addr": "0x00519e19",
+   "size": 8192
+  },
+  {
+   "name": "_G_LLM_TACT_MOVE_PATH_QUEUE_A",
+   "addr": "0x0051be19",
+   "size": 8192
+  },
+  {
+   "name": "_G_LLM_TACT_MOVE_PATH_QUEUE_CUR",
+   "addr": "0x0051de19",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_MOVE_PATH_COORD_MASK",
+   "addr": "0x0051de1d",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_MOVE_PATH_TILE_COST",
+   "addr": "0x0051de21",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_MOVE_PATH_TRACE_BEST_DIR",
+   "addr": "0x0051de25",
+   "size": 1
+  },
+  {
+   "name": "_G_LLM_TACT_MOVE_PATH_RLE_COUNT",
+   "addr": "0x0051de26",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_MOVE_PATH_TRACE_BEST_TILE",
+   "addr": "0x0051de2a",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_MOVE_FLOOD_START_COL",
+   "addr": "0x00558706",
+   "size": 1
+  },
+  {
+   "name": "_G_LLM_TACT_MOVE_FLOOD_START_ROW",
+   "addr": "0x00558707",
+   "size": 1
+  },
+  {
+   "name": "_G_LLM_TACT_MOVE_FLOOD_GOAL_COL",
+   "addr": "0x00558708",
+   "size": 1
+  },
+  {
+   "name": "_G_LLM_TACT_MOVE_FLOOD_GOAL_ROW",
+   "addr": "0x00558709",
+   "size": 1
+  },
+  {
+   "name": "_G_LLM_TACT_MOVE_FLOOD_RESULT_COL",
+   "addr": "0x0055870a",
+   "size": 1
+  },
+  {
+   "name": "_G_LLM_TACT_MOVE_FLOOD_RESULT_ROW",
+   "addr": "0x0055870b",
+   "size": 1
+  },
+  {
+   "name": "_G_LLM_TACT_MOVE_PATH_SLOT_ID",
+   "addr": "0x00558710",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_MOVE_PATH_TRACE_COST_SUM",
+   "addr": "0x00558714",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_MOVE_PATH_CACHE_VALID",
+   "addr": "0x00558bbc",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_FOV_ANGLE_STEP",
+   "addr": "0x00559400",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_FOV_RAY_COUNT",
+   "addr": "0x00559404",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_FOV_DIR_TABLE_PTR",
+   "addr": "0x00559408",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_FOV_RAY_INDEX",
+   "addr": "0x0055940c",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_FOV_STEP_BUDGET",
+   "addr": "0x00559414",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_FOV_ANGLE_INDEX",
+   "addr": "0x00559418",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_FOV_RAY_DELTA",
+   "addr": "0x0055941c",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_FOV_RAY_DELTA_NEG",
+   "addr": "0x00559420",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_FOV_NEAREST_HIBIT_DIST",
+   "addr": "0x00559878",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_FOV_NEAREST_LOW_DIST",
+   "addr": "0x0055987c",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_FOV_STENCIL",
+   "addr": "0x0082509c",
+   "size": 4096
+  },
+  {
+   "name": "_G_LLM_TACT_FOV_DIST",
+   "addr": "0x0082609c",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_FOV_ROW",
+   "addr": "0x008260a0",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_FOV_ANGLE_BASE",
+   "addr": "0x008260ac",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_FOV_COL",
+   "addr": "0x008260b0",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_FOV_ANGLE_WIDTH",
+   "addr": "0x008260c8",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_FOV_NEAREST_LOW_CELL",
+   "addr": "0x008260cc",
+   "size": 2
+  },
+  {
+   "name": "_G_LLM_TACT_FOV_NEAREST_HIBIT_CELL",
+   "addr": "0x008260ce",
+   "size": 2
+  },
+  {
+   "name": "_G_LLM_TACT_UNITS",
+   "addr": "0x008260d0",
+   "size": 196596
+  },
+  {
+   "name": "_G_LLM_TACT_DOOR_TABLE",
+   "addr": "0x008742c4",
+   "size": 1664
+  },
+  {
+   "name": "_G_LLM_STRAT_PATH_BUFFERS",
+   "addr": "0x00aee8c0",
+   "size": 480000
+  },
+  {
+   "name": "passable",
+   "addr": "0x00b64bb0",
+   "size": 65536
+  },
+  {
+   "name": "_G_LLM_STRAT_PATH_SLOT_FLAGS",
+   "addr": "0x00b74bb0",
+   "size": 800
+  },
+  {
+   "name": "_G_LLM_TACT_MOVE_COST_MAP",
+   "addr": "0x00b74ed0",
+   "size": 262144
+  },
+  {
+   "name": "tile_objects",
+   "addr": "0x00d1ec80",
+   "size": 524288
+  },
+  {
+   "name": "_G_LLM_TACT_OCCUPANCY_REBUILD_MAP_ID",
+   "addr": "0x00558e6c",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_FOV_ANGLE_STEP",
+   "addr": "0x00559400",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_FOV_RAY_COUNT",
+   "addr": "0x00559404",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_FOV_DIR_TABLE_PTR",
+   "addr": "0x00559408",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_FOV_RAY_INDEX",
+   "addr": "0x0055940c",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_FOV_STEP_BUDGET",
+   "addr": "0x00559414",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_FOV_ANGLE_INDEX",
+   "addr": "0x00559418",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_FOV_RAY_DELTA",
+   "addr": "0x0055941c",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_FOV_RAY_DELTA_NEG",
+   "addr": "0x00559420",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_FOV_NEAREST_HIBIT_DIST",
+   "addr": "0x00559878",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_FOV_NEAREST_LOW_DIST",
+   "addr": "0x0055987c",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_FOV_STENCIL",
+   "addr": "0x0082509c",
+   "size": 4096
+  },
+  {
+   "name": "_G_LLM_TACT_FOV_DIST",
+   "addr": "0x0082609c",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_FOV_ROW",
+   "addr": "0x008260a0",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_FOV_ANGLE_BASE",
+   "addr": "0x008260ac",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_FOV_COL",
+   "addr": "0x008260b0",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_FOV_ANGLE_WIDTH",
+   "addr": "0x008260c8",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_FOV_NEAREST_LOW_CELL",
+   "addr": "0x008260cc",
+   "size": 2
+  },
+  {
+   "name": "_G_LLM_TACT_FOV_NEAREST_HIBIT_CELL",
+   "addr": "0x008260ce",
+   "size": 2
+  },
+  {
+   "name": "_G_LLM_TACT_UNITS",
+   "addr": "0x008260d0",
+   "size": 196596
+  },
+  {
+   "name": "_G_LLM_STRAT_PATH_SLOT_FLAGS",
+   "addr": "0x00b74bb0",
+   "size": 800
+  },
+  {
+   "name": "tile_objects",
+   "addr": "0x00d1ec80",
+   "size": 524288
+  },
+  {
+   "name": "_G_LLM_TACT_FOV_ANGLE_STEP",
+   "addr": "0x00559400",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_FOV_RAY_COUNT",
+   "addr": "0x00559404",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_FOV_DIR_TABLE_PTR",
+   "addr": "0x00559408",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_FOV_RAY_INDEX",
+   "addr": "0x0055940c",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_FOV_STEP_BUDGET",
+   "addr": "0x00559414",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_FOV_ANGLE_INDEX",
+   "addr": "0x00559418",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_FOV_RAY_DELTA",
+   "addr": "0x0055941c",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_FOV_RAY_DELTA_NEG",
+   "addr": "0x00559420",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_FOV_NEAREST_HIBIT_DIST",
+   "addr": "0x00559878",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_FOV_NEAREST_LOW_DIST",
+   "addr": "0x0055987c",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_FOV_STENCIL",
+   "addr": "0x0082509c",
+   "size": 4096
+  },
+  {
+   "name": "_G_LLM_TACT_FOV_DIST",
+   "addr": "0x0082609c",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_FOV_ROW",
+   "addr": "0x008260a0",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_FOV_ANGLE_BASE",
+   "addr": "0x008260ac",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_FOV_COL",
+   "addr": "0x008260b0",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_FOV_ANGLE_WIDTH",
+   "addr": "0x008260c8",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_FOV_NEAREST_LOW_CELL",
+   "addr": "0x008260cc",
+   "size": 2
+  },
+  {
+   "name": "_G_LLM_TACT_FOV_NEAREST_HIBIT_CELL",
+   "addr": "0x008260ce",
+   "size": 2
+  },
+  {
+   "name": "_G_LLM_TACT_UNITS",
+   "addr": "0x008260d0",
+   "size": 196596
+  },
+  {
+   "name": "_G_LLM_TACT_FOV_ANGLE_STEP",
+   "addr": "0x00559400",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_FOV_RAY_COUNT",
+   "addr": "0x00559404",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_FOV_DIR_TABLE_PTR",
+   "addr": "0x00559408",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_FOV_RAY_INDEX",
+   "addr": "0x0055940c",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_FOV_STEP_BUDGET",
+   "addr": "0x00559414",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_FOV_ANGLE_INDEX",
+   "addr": "0x00559418",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_FOV_RAY_DELTA",
+   "addr": "0x0055941c",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_FOV_RAY_DELTA_NEG",
+   "addr": "0x00559420",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_FOV_NEAREST_HIBIT_DIST",
+   "addr": "0x00559878",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_FOV_NEAREST_LOW_DIST",
+   "addr": "0x0055987c",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_FOV_STENCIL",
+   "addr": "0x0082509c",
+   "size": 4096
+  },
+  {
+   "name": "_G_LLM_TACT_FOV_DIST",
+   "addr": "0x0082609c",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_FOV_ROW",
+   "addr": "0x008260a0",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_FOV_ANGLE_BASE",
+   "addr": "0x008260ac",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_FOV_COL",
+   "addr": "0x008260b0",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_FOV_ANGLE_WIDTH",
+   "addr": "0x008260c8",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_FOV_NEAREST_LOW_CELL",
+   "addr": "0x008260cc",
+   "size": 2
+  },
+  {
+   "name": "_G_LLM_TACT_FOV_NEAREST_HIBIT_CELL",
+   "addr": "0x008260ce",
+   "size": 2
+  },
+  {
+   "name": "_G_LLM_TACT_UNITS",
+   "addr": "0x008260d0",
+   "size": 196596
+  },
+  {
+   "name": "_G_LLM_TACT_FOV_ANGLE_STEP",
+   "addr": "0x00559400",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_FOV_RAY_COUNT",
+   "addr": "0x00559404",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_FOV_DIR_TABLE_PTR",
+   "addr": "0x00559408",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_FOV_RAY_INDEX",
+   "addr": "0x0055940c",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_FOV_STEP_BUDGET",
+   "addr": "0x00559414",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_FOV_ANGLE_INDEX",
+   "addr": "0x00559418",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_FOV_RAY_DELTA",
+   "addr": "0x0055941c",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_FOV_RAY_DELTA_NEG",
+   "addr": "0x00559420",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_FOV_NEAREST_HIBIT_DIST",
+   "addr": "0x00559878",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_FOV_NEAREST_LOW_DIST",
+   "addr": "0x0055987c",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_FOV_STENCIL",
+   "addr": "0x0082509c",
+   "size": 4096
+  },
+  {
+   "name": "_G_LLM_TACT_FOV_DIST",
+   "addr": "0x0082609c",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_FOV_ROW",
+   "addr": "0x008260a0",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_FOV_ANGLE_BASE",
+   "addr": "0x008260ac",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_FOV_COL",
+   "addr": "0x008260b0",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_FOV_ANGLE_WIDTH",
+   "addr": "0x008260c8",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_FOV_NEAREST_LOW_CELL",
+   "addr": "0x008260cc",
+   "size": 2
+  },
+  {
+   "name": "_G_LLM_TACT_FOV_NEAREST_HIBIT_CELL",
+   "addr": "0x008260ce",
+   "size": 2
+  },
+  {
+   "name": "_G_LLM_TACT_UNITS",
+   "addr": "0x008260d0",
+   "size": 196596
+  },
+  {
+   "name": "_G_LLM_STRAT_PATH_BUFFERS",
+   "addr": "0x00aee8c0",
+   "size": 480000
+  },
+  {
+   "name": "passable",
+   "addr": "0x00b64bb0",
+   "size": 65536
+  },
+  {
+   "name": "tile_objects",
+   "addr": "0x00d1ec80",
+   "size": 524288
+  },
+  {
+   "name": "_G_LLM_TACT_UNITS",
+   "addr": "0x008260d0",
+   "size": 196596
+  },
+  {
+   "name": "_G_LLM_STRAT_PATH_SLOT_FLAGS",
+   "addr": "0x00b74bb0",
+   "size": 800
+  },
+  {
+   "name": "_G_LLM_TACT_UNITS",
+   "addr": "0x008260d0",
+   "size": 196596
+  },
+  {
+   "name": "_G_LLM_STRAT_PATH_SLOT_FLAGS",
+   "addr": "0x00b74bb0",
+   "size": 800
+  },
+  {
+   "name": "_G_LLM_STRAT_PATH_SLOT_FLAGS",
+   "addr": "0x00b74bb0",
+   "size": 800
+  },
+  {
+   "name": "_G_LLM_TACT_UNITS",
+   "addr": "0x008260d0",
+   "size": 196596
+  },
+  {
+   "name": "_G_LLM_STRAT_PATH_SLOT_FLAGS",
+   "addr": "0x00b74bb0",
+   "size": 800
+  },
+  {
+   "name": "_G_LLM_TACT_UNITS",
+   "addr": "0x008260d0",
+   "size": 196596
+  },
+  {
+   "name": "_G_LLM_STRAT_PATH_SLOT_FLAGS",
+   "addr": "0x00b74bb0",
+   "size": 800
+  },
+  {
+   "name": "_G_LLM_TACT_UNITS",
+   "addr": "0x008260d0",
+   "size": 196596
+  },
+  {
+   "name": "_G_LLM_STRAT_PATH_SLOT_FLAGS",
+   "addr": "0x00b74bb0",
+   "size": 800
+  },
+  {
+   "name": "tile_objects",
+   "addr": "0x00d1ec80",
+   "size": 524288
+  },
+  {
+   "name": "_G_LLM_TACT_UNITS",
+   "addr": "0x008260d0",
+   "size": 196596
+  },
+  {
+   "name": "_G_LLM_TACT_TELEPORT_TABLE",
+   "addr": "0x00874950",
+   "size": 3300
+  },
+  {
+   "name": "passable",
+   "addr": "0x00b64bb0",
+   "size": 65536
+  },
+  {
+   "name": "tile_objects",
+   "addr": "0x00d1ec80",
+   "size": 524288
+  },
+  {
+   "name": "_G_LLM_TACT_TELEPORT_TABLE",
+   "addr": "0x00874950",
+   "size": 3300
+  },
+  {
+   "name": "_G_LLM_TACT_TELEPORT_TABLE",
+   "addr": "0x00874950",
+   "size": 3300
+  },
+  {
+   "name": "_G_LLM_TACT_FOV_ANGLE_STEP",
+   "addr": "0x00559400",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_FOV_RAY_COUNT",
+   "addr": "0x00559404",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_FOV_DIR_TABLE_PTR",
+   "addr": "0x00559408",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_FOV_RAY_INDEX",
+   "addr": "0x0055940c",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_FOV_STEP_BUDGET",
+   "addr": "0x00559414",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_FOV_ANGLE_INDEX",
+   "addr": "0x00559418",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_FOV_RAY_DELTA",
+   "addr": "0x0055941c",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_FOV_RAY_DELTA_NEG",
+   "addr": "0x00559420",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_FOV_NEAREST_HIBIT_DIST",
+   "addr": "0x00559878",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_FOV_NEAREST_LOW_DIST",
+   "addr": "0x0055987c",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_FOV_STENCIL",
+   "addr": "0x0082509c",
+   "size": 4096
+  },
+  {
+   "name": "_G_LLM_TACT_FOV_DIST",
+   "addr": "0x0082609c",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_FOV_ROW",
+   "addr": "0x008260a0",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_FOV_ANGLE_BASE",
+   "addr": "0x008260ac",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_FOV_COL",
+   "addr": "0x008260b0",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_FOV_ANGLE_WIDTH",
+   "addr": "0x008260c8",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_FOV_NEAREST_LOW_CELL",
+   "addr": "0x008260cc",
+   "size": 2
+  },
+  {
+   "name": "_G_LLM_TACT_FOV_NEAREST_HIBIT_CELL",
+   "addr": "0x008260ce",
+   "size": 2
+  },
+  {
+   "name": "_G_LLM_TACT_FOV_ANGLE_STEP",
+   "addr": "0x00559400",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_FOV_RAY_COUNT",
+   "addr": "0x00559404",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_FOV_DIR_TABLE_PTR",
+   "addr": "0x00559408",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_FOV_RAY_INDEX",
+   "addr": "0x0055940c",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_FOV_STEP_BUDGET",
+   "addr": "0x00559414",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_FOV_ANGLE_INDEX",
+   "addr": "0x00559418",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_FOV_RAY_DELTA",
+   "addr": "0x0055941c",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_FOV_RAY_DELTA_NEG",
+   "addr": "0x00559420",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_FOV_NEAREST_HIBIT_DIST",
+   "addr": "0x00559878",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_FOV_NEAREST_LOW_DIST",
+   "addr": "0x0055987c",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_FOV_STENCIL",
+   "addr": "0x0082509c",
+   "size": 4096
+  },
+  {
+   "name": "_G_LLM_TACT_FOV_ANGLE_WIDTH",
+   "addr": "0x008260c8",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_FOV_NEAREST_LOW_CELL",
+   "addr": "0x008260cc",
+   "size": 2
+  },
+  {
+   "name": "_G_LLM_TACT_FOV_NEAREST_HIBIT_CELL",
+   "addr": "0x008260ce",
+   "size": 2
+  },
+  {
+   "name": "_G_LLM_TACT_FOV_ANGLE_STEP",
+   "addr": "0x00559400",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_FOV_RAY_COUNT",
+   "addr": "0x00559404",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_FOV_DIR_TABLE_PTR",
+   "addr": "0x00559408",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_FOV_RAY_INDEX",
+   "addr": "0x0055940c",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_FOV_STEP_BUDGET",
+   "addr": "0x00559414",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_FOV_ANGLE_INDEX",
+   "addr": "0x00559418",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_FOV_RAY_DELTA",
+   "addr": "0x0055941c",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_FOV_RAY_DELTA_NEG",
+   "addr": "0x00559420",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_FOV_NEAREST_HIBIT_DIST",
+   "addr": "0x00559878",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_FOV_NEAREST_LOW_DIST",
+   "addr": "0x0055987c",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_FOV_STENCIL",
+   "addr": "0x0082509c",
+   "size": 4096
+  },
+  {
+   "name": "_G_LLM_TACT_FOV_DIST",
+   "addr": "0x0082609c",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_FOV_ROW",
+   "addr": "0x008260a0",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_FOV_ANGLE_BASE",
+   "addr": "0x008260ac",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_FOV_COL",
+   "addr": "0x008260b0",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_FOV_ANGLE_WIDTH",
+   "addr": "0x008260c8",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_FOV_NEAREST_LOW_CELL",
+   "addr": "0x008260cc",
+   "size": 2
+  },
+  {
+   "name": "_G_LLM_TACT_FOV_NEAREST_HIBIT_CELL",
+   "addr": "0x008260ce",
+   "size": 2
+  },
+  {
+   "name": "_G_LLM_TACT_FOV_ANGLE_STEP",
+   "addr": "0x00559400",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_FOV_RAY_COUNT",
+   "addr": "0x00559404",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_FOV_DIR_TABLE_PTR",
+   "addr": "0x00559408",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_FOV_RAY_INDEX",
+   "addr": "0x0055940c",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_FOV_STEP_BUDGET",
+   "addr": "0x00559414",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_FOV_ANGLE_INDEX",
+   "addr": "0x00559418",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_FOV_RAY_DELTA",
+   "addr": "0x0055941c",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_FOV_RAY_DELTA_NEG",
+   "addr": "0x00559420",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_FOV_NEAREST_HIBIT_DIST",
+   "addr": "0x00559878",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_FOV_NEAREST_LOW_DIST",
+   "addr": "0x0055987c",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TILE_VIS_MAP",
+   "addr": "0x00713d20",
+   "size": 300
+  },
+  {
+   "name": "_G_LLM_TACT_FOV_STENCIL",
+   "addr": "0x0082509c",
+   "size": 4096
+  },
+  {
+   "name": "_G_LLM_TACT_FOV_DIST",
+   "addr": "0x0082609c",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_FOV_ROW",
+   "addr": "0x008260a0",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_FOV_ANGLE_BASE",
+   "addr": "0x008260ac",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_FOV_COL",
+   "addr": "0x008260b0",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_FOV_ANGLE_WIDTH",
+   "addr": "0x008260c8",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_FOV_NEAREST_LOW_CELL",
+   "addr": "0x008260cc",
+   "size": 2
+  },
+  {
+   "name": "_G_LLM_TACT_FOV_NEAREST_HIBIT_CELL",
+   "addr": "0x008260ce",
+   "size": 2
+  },
+  {
+   "name": "tile_objects",
+   "addr": "0x00d1ec80",
+   "size": 524288
+  },
+  {
+   "name": "_G_LLM_TACT_FOV_ANGLE_STEP",
+   "addr": "0x00559400",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_FOV_RAY_COUNT",
+   "addr": "0x00559404",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_FOV_DIR_TABLE_PTR",
+   "addr": "0x00559408",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_FOV_RAY_INDEX",
+   "addr": "0x0055940c",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_FOV_STEP_BUDGET",
+   "addr": "0x00559414",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_FOV_ANGLE_INDEX",
+   "addr": "0x00559418",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_FOV_RAY_DELTA",
+   "addr": "0x0055941c",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_FOV_RAY_DELTA_NEG",
+   "addr": "0x00559420",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_FOV_NEAREST_HIBIT_DIST",
+   "addr": "0x00559878",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_FOV_NEAREST_LOW_DIST",
+   "addr": "0x0055987c",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TILE_VIS_MAP",
+   "addr": "0x00713d20",
+   "size": 300
+  },
+  {
+   "name": "_G_LLM_TACT_FOV_STENCIL",
+   "addr": "0x0082509c",
+   "size": 4096
+  },
+  {
+   "name": "_G_LLM_TACT_FOV_DIST",
+   "addr": "0x0082609c",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_FOV_ROW",
+   "addr": "0x008260a0",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_FOV_ANGLE_BASE",
+   "addr": "0x008260ac",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_FOV_COL",
+   "addr": "0x008260b0",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_FOV_ANGLE_WIDTH",
+   "addr": "0x008260c8",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_FOV_NEAREST_LOW_CELL",
+   "addr": "0x008260cc",
+   "size": 2
+  },
+  {
+   "name": "_G_LLM_TACT_FOV_NEAREST_HIBIT_CELL",
+   "addr": "0x008260ce",
+   "size": 2
+  },
+  {
+   "name": "tile_objects",
+   "addr": "0x00d1ec80",
+   "size": 524288
+  },
+  {
+   "name": "_G_LLM_TILE_VIS_MAP",
+   "addr": "0x00713d20",
+   "size": 300
+  },
+  {
+   "name": "_G_LLM_TACT_DOOR_TABLE",
+   "addr": "0x008742c4",
+   "size": 1664
+  },
+  {
+   "name": "tile_objects",
+   "addr": "0x00d1ec80",
+   "size": 524288
+  },
+  {
+   "name": "_G_LLM_TACT_DOOR_TABLE",
+   "addr": "0x008742c4",
+   "size": 1664
+  },
+  {
+   "name": "_G_LLM_TILE_VIS_MAP",
+   "addr": "0x00713d20",
+   "size": 300
+  },
+  {
+   "name": "tile_objects",
+   "addr": "0x00d1ec80",
+   "size": 524288
+  },
+  {
+   "name": "tile_objects",
+   "addr": "0x00d1ec80",
+   "size": 524288
+  },
+  {
+   "name": "_G_LLM_TACT_DOOR_TABLE",
+   "addr": "0x008742c4",
+   "size": 1664
+  },
+  {
+   "name": "_G_LLM_TACT_MOVE_PATH_TRACE_TILE",
+   "addr": "0x00519e05",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_MOVE_PATH_TRACE_BASE",
+   "addr": "0x00519e09",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_MOVE_PATH_TRACE_DIAG_CAND",
+   "addr": "0x00519e0d",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_MOVE_PATH_GOAL_PACKED",
+   "addr": "0x00519e11",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_MOVE_PATH_START_PACKED",
+   "addr": "0x00519e15",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_MOVE_PATH_QUEUE_B",
+   "addr": "0x00519e19",
+   "size": 8192
+  },
+  {
+   "name": "_G_LLM_TACT_MOVE_PATH_QUEUE_A",
+   "addr": "0x0051be19",
+   "size": 8192
+  },
+  {
+   "name": "_G_LLM_TACT_MOVE_PATH_QUEUE_CUR",
+   "addr": "0x0051de19",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_MOVE_PATH_COORD_MASK",
+   "addr": "0x0051de1d",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_MOVE_PATH_TILE_COST",
+   "addr": "0x0051de21",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_MOVE_PATH_TRACE_BEST_DIR",
+   "addr": "0x0051de25",
+   "size": 1
+  },
+  {
+   "name": "_G_LLM_TACT_MOVE_PATH_RLE_COUNT",
+   "addr": "0x0051de26",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_MOVE_PATH_TRACE_BEST_TILE",
+   "addr": "0x0051de2a",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_MOVE_FLOOD_START_COL",
+   "addr": "0x00558706",
+   "size": 1
+  },
+  {
+   "name": "_G_LLM_TACT_MOVE_FLOOD_START_ROW",
+   "addr": "0x00558707",
+   "size": 1
+  },
+  {
+   "name": "_G_LLM_TACT_MOVE_FLOOD_GOAL_COL",
+   "addr": "0x00558708",
+   "size": 1
+  },
+  {
+   "name": "_G_LLM_TACT_MOVE_FLOOD_GOAL_ROW",
+   "addr": "0x00558709",
+   "size": 1
+  },
+  {
+   "name": "_G_LLM_TACT_MOVE_FLOOD_RESULT_COL",
+   "addr": "0x0055870a",
+   "size": 1
+  },
+  {
+   "name": "_G_LLM_TACT_MOVE_FLOOD_RESULT_ROW",
+   "addr": "0x0055870b",
+   "size": 1
+  },
+  {
+   "name": "_G_LLM_TACT_MOVE_PATH_SLOT_ID",
+   "addr": "0x00558710",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_MOVE_PATH_TRACE_COST_SUM",
+   "addr": "0x00558714",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_PATH_BUFFERS",
+   "addr": "0x00aee8c0",
+   "size": 480000
+  },
+  {
+   "name": "passable",
+   "addr": "0x00b64bb0",
+   "size": 65536
+  },
+  {
+   "name": "_G_LLM_TACT_MOVE_COST_MAP",
+   "addr": "0x00b74ed0",
+   "size": 262144
+  },
+  {
+   "name": "_G_LLM_TACT_MOVE_PATH_TRACE_TILE",
+   "addr": "0x00519e05",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_MOVE_PATH_TRACE_BASE",
+   "addr": "0x00519e09",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_MOVE_PATH_TRACE_DIAG_CAND",
+   "addr": "0x00519e0d",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_MOVE_PATH_GOAL_PACKED",
+   "addr": "0x00519e11",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_MOVE_PATH_START_PACKED",
+   "addr": "0x00519e15",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_MOVE_PATH_QUEUE_B",
+   "addr": "0x00519e19",
+   "size": 8192
+  },
+  {
+   "name": "_G_LLM_TACT_MOVE_PATH_QUEUE_A",
+   "addr": "0x0051be19",
+   "size": 8192
+  },
+  {
+   "name": "_G_LLM_TACT_MOVE_PATH_QUEUE_CUR",
+   "addr": "0x0051de19",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_MOVE_PATH_COORD_MASK",
+   "addr": "0x0051de1d",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_MOVE_PATH_TILE_COST",
+   "addr": "0x0051de21",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_MOVE_PATH_TRACE_BEST_DIR",
+   "addr": "0x0051de25",
+   "size": 1
+  },
+  {
+   "name": "_G_LLM_TACT_MOVE_PATH_RLE_COUNT",
+   "addr": "0x0051de26",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_MOVE_PATH_TRACE_BEST_TILE",
+   "addr": "0x0051de2a",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_MOVE_FLOOD_RESULT_COL",
+   "addr": "0x0055870a",
+   "size": 1
+  },
+  {
+   "name": "_G_LLM_TACT_MOVE_FLOOD_RESULT_ROW",
+   "addr": "0x0055870b",
+   "size": 1
+  },
+  {
+   "name": "_G_LLM_TACT_MOVE_PATH_SLOT_ID",
+   "addr": "0x00558710",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_MOVE_PATH_TRACE_COST_SUM",
+   "addr": "0x00558714",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_PATH_BUFFERS",
+   "addr": "0x00aee8c0",
+   "size": 480000
+  },
+  {
+   "name": "_G_LLM_TACT_MOVE_COST_MAP",
+   "addr": "0x00b74ed0",
+   "size": 262144
+  },
+  {
+   "name": "buildings",
+   "addr": "0x00c3d2a0",
+   "size": 218400
+  },
+  {
+   "name": "_G_LLM_STRAT_PLAYERS",
+   "addr": "0x00cff060",
+   "size": 14848
+  },
+  {
+   "name": "units",
+   "addr": "0x00dd8c48",
+   "size": 186400
+  },
+  {
+   "name": "passable",
+   "addr": "0x00b64bb0",
+   "size": 65536
+  },
+  {
+   "name": "_G_LLM_STRAT_PATH_SLOT_FLAGS",
+   "addr": "0x00b74bb0",
+   "size": 800
+  },
+  {
+   "name": "tile_objects",
+   "addr": "0x00d1ec80",
+   "size": 524288
+  },
+  {
+   "name": "_G_LLM_TACT_UNIT_ACTIVE_COUNT",
+   "addr": "0x00558bc0",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_UNITS",
+   "addr": "0x008260d0",
+   "size": 196596
+  },
+  {
+   "name": "passable",
+   "addr": "0x00b64bb0",
+   "size": 65536
+  },
+  {
+   "name": "tile_objects",
+   "addr": "0x00d1ec80",
+   "size": 524288
+  },
+  {
+   "name": "_G_LLM_TACT_MINE_BLAST_TIME_END",
+   "addr": "0x00558ba8",
+   "size": 8
+  },
+  {
+   "name": "_G_LLM_TACT_BLAST_MARKER_COL",
+   "addr": "0x005598a4",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_BLAST_MARKER_ROW",
+   "addr": "0x005598a8",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_UNITS",
+   "addr": "0x008260d0",
+   "size": 196596
+  },
+  {
+   "name": "_G_LLM_STRAT_PATH_SLOT_FLAGS",
+   "addr": "0x00b74bb0",
+   "size": 800
+  },
+  {
+   "name": "_G_LLM_GAME_MODE",
+   "addr": "0x005202d0",
+   "size": 1
+  },
+  {
+   "name": "G_PLANET_STATUS",
+   "addr": "0x00e5836b",
+   "size": 128
+  },
+  {
+   "name": "_G_LLM_TACT_UNITS",
+   "addr": "0x008260d0",
+   "size": 196596
+  },
+  {
+   "name": "_G_LLM_STRAT_PATH_SLOT_FLAGS",
+   "addr": "0x00b74bb0",
+   "size": 800
+  },
+  {
+   "name": "_G_LLM_TACT_UNITS",
+   "addr": "0x008260d0",
+   "size": 196596
+  },
+  {
+   "name": "_G_LLM_TACT_UNITS",
+   "addr": "0x008260d0",
+   "size": 196596
+  },
+  {
+   "name": "_G_LLM_TACT_MOVE_CUR_COL",
+   "addr": "0x0085b4d8",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_MOVE_CUR_ROW",
+   "addr": "0x0085b4dc",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_UNITS",
+   "addr": "0x008260d0",
+   "size": 196596
+  },
+  {
+   "name": "_G_LLM_TACT_UNIT_ACTIVE_COUNT",
+   "addr": "0x00558bc0",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_UNITS",
+   "addr": "0x008260d0",
+   "size": 196596
+  },
+  {
+   "name": "passable",
+   "addr": "0x00b64bb0",
+   "size": 65536
+  },
+  {
+   "name": "tile_objects",
+   "addr": "0x00d1ec80",
+   "size": 524288
+  },
+  {
+   "name": "WindowWidth",
+   "addr": "0x005202c8",
+   "size": 4
+  },
+  {
+   "name": "WindowHeight",
+   "addr": "0x005202cc",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_BANK_SPRITE_BASE",
+   "addr": "0x005202d9",
+   "size": 188
+  },
+  {
+   "name": "_G_LLM_GFX_VIEW_TILE_HEIGHT_PX",
+   "addr": "0x005204e2",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_SCROLL_CMD",
+   "addr": "0x00558ba0",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_MINE_BLAST_TIME_END",
+   "addr": "0x00558ba8",
+   "size": 8
+  },
+  {
+   "name": "_G_LLM_TACT_CAM_COL_F",
+   "addr": "0x00558c30",
+   "size": 8
+  },
+  {
+   "name": "_G_LLM_TACT_CAM_ROW_F",
+   "addr": "0x00558c38",
+   "size": 8
+  },
+  {
+   "name": "_G_LLM_TACT_BLAST_MARKER_COL",
+   "addr": "0x005598a4",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_BLAST_MARKER_ROW",
+   "addr": "0x005598a8",
+   "size": 4
+  },
+  {
+   "name": "height",
+   "addr": "0x00825064",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_VIEW_TILES_H",
+   "addr": "0x00825068",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_MAP_TILE_HEIGHT_SPRITES",
+   "addr": "0x00825078",
+   "size": 4
+  },
+  {
+   "name": "width",
+   "addr": "0x00825084",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_VIEW_TILES_W",
+   "addr": "0x00825090",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_SAVED_WINDOW_WIDTH",
+   "addr": "0x008260a4",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_CLICK_ACTION_TAKEN",
+   "addr": "0x008260a8",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_MAP_CAM_ROW",
+   "addr": "0x00e58134",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_MAP_CAM_COL",
+   "addr": "0x00e58138",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_FX_LIVE_COUNT",
+   "addr": "0x00558bc4",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_UNITS",
+   "addr": "0x008260d0",
+   "size": 196596
+  },
+  {
+   "name": "_G_LLM_TACT_FX_POOL",
+   "addr": "0x0085b4e0",
+   "size": 83968
+  },
+  {
+   "name": "passable",
+   "addr": "0x00b64bb0",
+   "size": 65536
+  },
+  {
+   "name": "file_ptr",
+   "addr": "0x00520469",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_SEE_ENEMY_FLAG",
+   "addr": "0x00558c44",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_CHAR_PANEL_GFX",
+   "addr": "0x00559004",
+   "size": 64
+  },
+  {
+   "name": "_G_LLM_TACT_SQUAD_SIZE",
+   "addr": "0x00559888",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_ENEMY_COUNT",
+   "addr": "0x0055988c",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_MINE_BLAST_FIRST_FRAME",
+   "addr": "0x00559890",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_MINE_BLAST_FRAME_COUNT",
+   "addr": "0x00559894",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_MINE_BLAST_DURATION",
+   "addr": "0x00559898",
+   "size": 8
+  },
+  {
+   "name": "_G_LLM_TACT_MINE_BLAST_SOUND_ID",
+   "addr": "0x005598a0",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_QUIT_TILE_COL",
+   "addr": "0x005598b0",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_QUIT_TILE_ROW",
+   "addr": "0x005598b4",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_TARGET_TILE_COL",
+   "addr": "0x005598b8",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_TARGET_TILE_ROW",
+   "addr": "0x005598bc",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_UNITS",
+   "addr": "0x008260d0",
+   "size": 196596
+  },
+  {
+   "name": "_G_LLM_TACT_FX_POOL",
+   "addr": "0x0085b4e0",
+   "size": 83968
+  },
+  {
+   "name": "_G_LLM_TACT_FX_TYPE_TABLE",
+   "addr": "0x00872984",
+   "size": 4736
+  },
+  {
+   "name": "_G_LLM_TACT_CHARACTER_TYPES",
+   "addr": "0x00873c04",
+   "size": 1728
+  },
+  {
+   "name": "_G_LLM_TACT_DOOR_TABLE",
+   "addr": "0x008742c4",
+   "size": 1664
+  },
+  {
+   "name": "_G_LLM_TACT_TELEPORT_TABLE",
+   "addr": "0x00874950",
+   "size": 3300
+  },
+  {
+   "name": "passable",
+   "addr": "0x00b64bb0",
+   "size": 65536
+  },
+  {
+   "name": "tile_objects",
+   "addr": "0x00d1ec80",
+   "size": 524288
+  },
+  {
+   "name": "_G_LLM_MAP_CAM_ROW",
+   "addr": "0x00e58134",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_MAP_CAM_COL",
+   "addr": "0x00e58138",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_UNITS",
+   "addr": "0x008260d0",
+   "size": 196596
+  },
+  {
+   "name": "_G_LLM_STRAT_PATH_SLOT_FLAGS",
+   "addr": "0x00b74bb0",
+   "size": 800
+  },
+  {
+   "name": "_G_LLM_TACT_UNITS",
+   "addr": "0x008260d0",
+   "size": 196596
+  },
+  {
+   "name": "_G_LLM_TACT_UNITS",
+   "addr": "0x008260d0",
+   "size": 196596
+  },
+  {
+   "name": "_G_LLM_TACT_UNIT_ACTIVE_COUNT",
+   "addr": "0x00558bc0",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_UNITS",
+   "addr": "0x008260d0",
+   "size": 196596
+  },
+  {
+   "name": "passable",
+   "addr": "0x00b64bb0",
+   "size": 65536
+  },
+  {
+   "name": "tile_objects",
+   "addr": "0x00d1ec80",
+   "size": 524288
+  },
+  {
+   "name": "_G_LLM_TACT_FX_LIVE_COUNT",
+   "addr": "0x00558bc4",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_FX_POOL",
+   "addr": "0x0085b4e0",
+   "size": 83968
+  },
+  {
+   "name": "_G_LLM_TACT_UNITS",
+   "addr": "0x008260d0",
+   "size": 196596
+  },
+  {
+   "name": "passable",
+   "addr": "0x00b64bb0",
+   "size": 65536
+  },
+  {
+   "name": "_G_LLM_SND_CHANNEL_NEXT_RETRIGGER_TIME",
+   "addr": "0x00558c7c",
+   "size": 48
+  },
+  {
+   "name": "_G_LLM_TACT_CAM_FOLLOW_SELECTION",
+   "addr": "0x00558c24",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_MAP_CAM_ROW",
+   "addr": "0x00e58134",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_MAP_CAM_COL",
+   "addr": "0x00e58138",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_SQUAD_BB_TARGET_ENERGY_PCT",
+   "addr": "0x00e15e54",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_MOVE_PATH_CACHE_VALID",
+   "addr": "0x00558bbc",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_UNITS",
+   "addr": "0x008260d0",
+   "size": 196596
+  },
+  {
+   "name": "_G_LLM_TACT_SIDEBAR_HIGHLIGHTED_UNIT_ID",
+   "addr": "0x00558c1c",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_SEL_PANEL_ICON_SLOT_STATE",
+   "addr": "0x00559084",
+   "size": 16
+  },
+  {
+   "name": "_G_LLM_TACT_SIDEBAR_SCROLLBTN_STATE",
+   "addr": "0x0055909c",
+   "size": 32
+  },
+  {
+   "name": "_G_LLM_TACT_SIDEBAR_MOUSE_X",
+   "addr": "0x005590f4",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_SIDEBAR_MOUSE_Y",
+   "addr": "0x005590f8",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_SIDEBAR_UI_HIT_CODE",
+   "addr": "0x005590fc",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TILE_VIS_MAP_M6",
+   "addr": "0x00713d1a",
+   "size": 1
+  },
+  {
+   "name": "_G_LLM_TILE_VIS_MAP_M5",
+   "addr": "0x00713d1b",
+   "size": 1
+  },
+  {
+   "name": "_G_LLM_TILE_VIS_MAP_M4",
+   "addr": "0x00713d1c",
+   "size": 1
+  },
+  {
+   "name": "_G_LLM_TACT_UNITS",
+   "addr": "0x008260d0",
+   "size": 196596
+  },
+  {
+   "name": "_G_LLM_TACT_UI_SEL_PANEL_MULTI_MODE",
+   "addr": "0x00558f00",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_SEL_PANEL_ICON_GFX",
+   "addr": "0x00558f04",
+   "size": 164
+  },
+  {
+   "name": "_G_LLM_TILE_VIS_MAP_M6",
+   "addr": "0x00713d1a",
+   "size": 1
+  },
+  {
+   "name": "_G_LLM_TACT_SCROLL_CMD",
+   "addr": "0x00558ba0",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_MINE_BLAST_TIME_END",
+   "addr": "0x00558ba8",
+   "size": 8
+  },
+  {
+   "name": "_G_LLM_TACT_HOVERED_UNIT_ID",
+   "addr": "0x00558bc8",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_CLICK_SCAN_SCRATCH",
+   "addr": "0x00558bd8",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_DRAG_ANCHOR_X",
+   "addr": "0x00558c48",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_DRAG_ANCHOR_Y",
+   "addr": "0x00558c4c",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_DRAG_SELECT_ACTIVE",
+   "addr": "0x00558c50",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_CAM_SCROLL_UP_HELD",
+   "addr": "0x00558c68",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_CAM_SCROLL_DOWN_HELD",
+   "addr": "0x00558c6c",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_CAM_SCROLL_LEFT_HELD",
+   "addr": "0x00558c70",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_CAM_SCROLL_RIGHT_HELD",
+   "addr": "0x00558c74",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_EXIT_CONFIRM_OPEN",
+   "addr": "0x00558c78",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TILE_DRAWN_MAP",
+   "addr": "0x00713920",
+   "size": 300
+  },
+  {
+   "name": "_G_LLM_TILE_VIS_MAP",
+   "addr": "0x00713d20",
+   "size": 300
+  },
+  {
+   "name": "_G_LLM_MOUSE_BUTTONS_CUR",
+   "addr": "0x0082504c",
+   "size": 1
+  },
+  {
+   "name": "_G_LLM_TACT_CLICK_ACTION_TAKEN",
+   "addr": "0x008260a8",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_UNITS",
+   "addr": "0x008260d0",
+   "size": 196596
+  },
+  {
+   "name": "_G_LLM_TACT_CHARACTER_TYPES",
+   "addr": "0x00873c04",
+   "size": 1728
+  },
+  {
+   "name": "tile_objects",
+   "addr": "0x00d1ec80",
+   "size": 524288
+  },
+  {
+   "name": "_G_LLM_MAP_CAM_ROW",
+   "addr": "0x00e58134",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_MAP_CAM_COL",
+   "addr": "0x00e58138",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_SIDEBAR_HIGHLIGHTED_UNIT_ID",
+   "addr": "0x00558c1c",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_UI_SEL_PANEL_MULTI_MODE",
+   "addr": "0x00558f00",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_SEL_PANEL_ICON_SLOT_STATE",
+   "addr": "0x00559084",
+   "size": 16
+  },
+  {
+   "name": "_G_LLM_TACT_SIDEBAR_SLOT_SCROLL",
+   "addr": "0x00559094",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_SIDEBAR_ACTIVE_GROUP_ID",
+   "addr": "0x005590e8",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_SIDEBAR_UI_HIT_CODE",
+   "addr": "0x005590fc",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TILE_VIS_MAP_M6",
+   "addr": "0x00713d1a",
+   "size": 1
+  },
+  {
+   "name": "_G_LLM_TACT_UNITS",
+   "addr": "0x008260d0",
+   "size": 196596
+  },
+  {
+   "name": "_G_LLM_MAP_CAM_ROW",
+   "addr": "0x00e58134",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_MAP_CAM_COL",
+   "addr": "0x00e58138",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_UI_SEL_PANEL_MULTI_MODE",
+   "addr": "0x00558f00",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_SIDEBAR_SCROLLBTN_STATE",
+   "addr": "0x0055909c",
+   "size": 32
+  },
+  {
+   "name": "_G_LLM_TACT_SIDEBAR_UNASSIGNED_SCROLL_ROW",
+   "addr": "0x005590bc",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_SIDEBAR_GROUP_SCROLL_ROW",
+   "addr": "0x005590c0",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_SIDEBAR_ACTIVE_GROUP_ID",
+   "addr": "0x005590e8",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_SIDEBAR_UI_HIT_CODE",
+   "addr": "0x005590fc",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_MAP_CAM_ROW",
+   "addr": "0x00e58134",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_MAP_CAM_COL",
+   "addr": "0x00e58138",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_UNITS",
+   "addr": "0x008260d0",
+   "size": 196596
+  },
+  {
+   "name": "_G_LLM_TILE_VIS_MAP_M3",
+   "addr": "0x00713d1d",
+   "size": 1
+  },
+  {
+   "name": "_G_LLM_TILE_VIS_MAP_M2",
+   "addr": "0x00713d1e",
+   "size": 1
+  },
+  {
+   "name": "_G_LLM_TILE_VIS_MAP_M1",
+   "addr": "0x00713d1f",
+   "size": 1
+  },
+  {
+   "name": "_G_LLM_TACT_ACTIVE_UNIT_COUNT",
+   "addr": "0x005590ec",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_ACTIVE_UNIT_COUNT_CACHED",
+   "addr": "0x005590f0",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_SIDEBAR_SCROLLBTN_STATE",
+   "addr": "0x0055909c",
+   "size": 32
+  },
+  {
+   "name": "_G_LLM_TACT_SIDEBAR_UNASSIGNED_SCROLL_ROW",
+   "addr": "0x005590bc",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_SIDEBAR_GROUP_SCROLL_ROW",
+   "addr": "0x005590c0",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_ACTIVE_UNIT_COUNT",
+   "addr": "0x005590ec",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TACT_UNASSIGNED_UNIT_ROSTER",
+   "addr": "0x0086fd84",
+   "size": 256
+  },
+  {
+   "name": "_G_LLM_TACT_GROUP_UNIT_ROSTER",
+   "addr": "0x0086fe84",
+   "size": 2048
+  },
+  {
+   "name": "_G_LLM_TACT_SIDEBAR_UI_HIT_CODE",
+   "addr": "0x005590fc",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_TILE_VIS_MAP_M6",
+   "addr": "0x00713d1a",
+   "size": 1
+  },
+  {
+   "name": "_G_LLM_TILE_VIS_MAP_M5",
+   "addr": "0x00713d1b",
+   "size": 1
+  },
+  {
+   "name": "_G_LLM_TILE_VIS_MAP_M4",
+   "addr": "0x00713d1c",
+   "size": 1
+  },
+  {
+   "name": "_G_LLM_MAP_CAM_ROW",
+   "addr": "0x00e58134",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_MAP_CAM_COL",
+   "addr": "0x00e58138",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_QUEUE_COUNT",
+   "addr": "0x005d0194",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_QUEUE",
+   "addr": "0x00bb4ed0",
+   "size": 20400
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_QUEUE_COUNT",
+   "addr": "0x005d0194",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_QUEUE",
+   "addr": "0x00bb4ed0",
+   "size": 20400
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_SCRATCH_ARGS",
+   "addr": "0x00e16268",
+   "size": 52
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_QUEUE_COUNT",
+   "addr": "0x005d0194",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_QUEUE",
+   "addr": "0x00bb4ed0",
+   "size": 20400
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_SCRATCH_ARGS",
+   "addr": "0x00e16268",
+   "size": 52
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_QUEUE_COUNT",
+   "addr": "0x005d0194",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_QUEUE",
+   "addr": "0x00bb4ed0",
+   "size": 20400
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_SCRATCH_ARGS",
+   "addr": "0x00e16268",
+   "size": 52
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_QUEUE_COUNT",
+   "addr": "0x005d0194",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_STAGING_COUNT",
+   "addr": "0x005d01a4",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_QUEUE",
+   "addr": "0x00bb4ed0",
+   "size": 20400
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_STAGING",
+   "addr": "0x00bca920",
+   "size": 20400
+  },
+  {
+   "name": "units",
+   "addr": "0x00dd8c48",
+   "size": 186400
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_SCRATCH_ARGS",
+   "addr": "0x00e16268",
+   "size": 52
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_QUEUE_COUNT",
+   "addr": "0x005d0194",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_STAGING_COUNT",
+   "addr": "0x005d01a4",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_QUEUE",
+   "addr": "0x00bb4ed0",
+   "size": 20400
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_STAGING",
+   "addr": "0x00bca920",
+   "size": 20400
+  },
+  {
+   "name": "units",
+   "addr": "0x00dd8c48",
+   "size": 186400
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_SCRATCH_ARGS",
+   "addr": "0x00e16268",
+   "size": 52
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_QUEUE_COUNT",
+   "addr": "0x005d0194",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_STAGING_COUNT",
+   "addr": "0x005d01a4",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_QUEUE",
+   "addr": "0x00bb4ed0",
+   "size": 20400
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_STAGING",
+   "addr": "0x00bca920",
+   "size": 20400
+  },
+  {
+   "name": "units",
+   "addr": "0x00dd8c48",
+   "size": 186400
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_SCRATCH_ARGS",
+   "addr": "0x00e16268",
+   "size": 52
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_QUEUE_COUNT",
+   "addr": "0x005d0194",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_STAGING_COUNT",
+   "addr": "0x005d01a4",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_SND_VOICE_FORMAT_SCRATCH",
+   "addr": "0x00669928",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_QUEUE",
+   "addr": "0x00bb4ed0",
+   "size": 20400
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_STAGING",
+   "addr": "0x00bca920",
+   "size": 20400
+  },
+  {
+   "name": "_G_LLM_STRAT_FX_ANIMS",
+   "addr": "0x00bf50e0",
+   "size": 210000
+  },
+  {
+   "name": "units",
+   "addr": "0x00dd8c48",
+   "size": 186400
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_SCRATCH_ARGS",
+   "addr": "0x00e16268",
+   "size": 52
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_QUEUE_COUNT",
+   "addr": "0x005d0194",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_STAGING_COUNT",
+   "addr": "0x005d01a4",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_QUEUE",
+   "addr": "0x00bb4ed0",
+   "size": 20400
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_STAGING",
+   "addr": "0x00bca920",
+   "size": 20400
+  },
+  {
+   "name": "units",
+   "addr": "0x00dd8c48",
+   "size": 186400
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_SCRATCH_ARGS",
+   "addr": "0x00e16268",
+   "size": 52
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_QUEUE_COUNT",
+   "addr": "0x005d0194",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_STAGING_COUNT",
+   "addr": "0x005d01a4",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_QUEUE",
+   "addr": "0x00bb4ed0",
+   "size": 20400
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_STAGING",
+   "addr": "0x00bca920",
+   "size": 20400
+  },
+  {
+   "name": "units",
+   "addr": "0x00dd8c48",
+   "size": 186400
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_SCRATCH_ARGS",
+   "addr": "0x00e16268",
+   "size": 52
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_QUEUE_COUNT",
+   "addr": "0x005d0194",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_STAGING_COUNT",
+   "addr": "0x005d01a4",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_QUEUE",
+   "addr": "0x00bb4ed0",
+   "size": 20400
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_STAGING",
+   "addr": "0x00bca920",
+   "size": 20400
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_SCRATCH_ARGS",
+   "addr": "0x00e16268",
+   "size": 52
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_QUEUE_COUNT",
+   "addr": "0x005d0194",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_STAGING_COUNT",
+   "addr": "0x005d01a4",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_RNG_STATE",
+   "addr": "0x00603ecc",
+   "size": 16
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_QUEUE",
+   "addr": "0x00bb4ed0",
+   "size": 20400
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_STAGING",
+   "addr": "0x00bca920",
+   "size": 20400
+  },
+  {
+   "name": "units",
+   "addr": "0x00dd8c48",
+   "size": 186400
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_SCRATCH_ARGS",
+   "addr": "0x00e16268",
+   "size": 52
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_QUEUE_COUNT",
+   "addr": "0x005d0194",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_STAGING_COUNT",
+   "addr": "0x005d01a4",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_QUEUE",
+   "addr": "0x00bb4ed0",
+   "size": 20400
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_STAGING",
+   "addr": "0x00bca920",
+   "size": 20400
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_SCRATCH_ARGS",
+   "addr": "0x00e16268",
+   "size": 52
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_QUEUE_COUNT",
+   "addr": "0x005d0194",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_STAGING_COUNT",
+   "addr": "0x005d01a4",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_QUEUE",
+   "addr": "0x00bb4ed0",
+   "size": 20400
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_STAGING",
+   "addr": "0x00bca920",
+   "size": 20400
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_SCRATCH_ARGS",
+   "addr": "0x00e16268",
+   "size": 52
+  },
+  {
+   "name": "_G_LLM_STRAT_RNG_STATE",
+   "addr": "0x00603ecc",
+   "size": 16
+  },
+  {
+   "name": "_G_LLM_STRAT_RNG_STATE",
+   "addr": "0x00603ecc",
+   "size": 16
+  },
+  {
+   "name": "_G_LLM_STRAT_RNG_STATE",
+   "addr": "0x00603ecc",
+   "size": 16
+  },
+  {
+   "name": "_G_LLM_STRAT_RNG_STATE",
+   "addr": "0x00603ecc",
+   "size": 16
+  },
+  {
+   "name": "_G_LLM_STRAT_RNG_STATE",
+   "addr": "0x00603ecc",
+   "size": 16
+  },
+  {
+   "name": "_G_LLM_STRAT_RNG_STATE",
+   "addr": "0x00603ecc",
+   "size": 16
+  },
+  {
+   "name": "progress",
+   "addr": "0x00c38750",
+   "size": 7200
+  },
+  {
+   "name": "progress",
+   "addr": "0x00c38750",
+   "size": 7200
+  },
+  {
+   "name": "progress",
+   "addr": "0x00c38750",
+   "size": 7200
+  },
+  {
+   "name": "progress",
+   "addr": "0x00c38750",
+   "size": 7200
+  },
+  {
+   "name": "progress",
+   "addr": "0x00c38750",
+   "size": 7200
+  },
+  {
+   "name": "general",
+   "addr": "0x00e15390",
+   "size": 40
+  },
+  {
+   "name": "_G_LLM_STRAT_AI_GRID_WRAP_MASK",
+   "addr": "0x00603ec8",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_STRAT_GAME_CLOCK",
+   "addr": "0x005d0198",
+   "size": 8
+  },
+  {
+   "name": "_G_LLM_STRAT_SIM_ACTIVE",
+   "addr": "0x005d01d4",
+   "size": 4
+  },
+  {
+   "name": "_G_LLM_SND_ENABLED",
+   "addr": "0x00ae2ab0",
+   "size": 4
+  },
+  {
+   "name": "buildings",
+   "addr": "0x00c3d2a0",
+   "size": 218400
+  },
+  {
+   "name": "units",
+   "addr": "0x00dd8c48",
+   "size": 186400
+  },
+  {
+   "name": "_G_LLM_CHAT_TARGET_MASK",
+   "addr": "0x00e5898b",
+   "size": 1
+  },
+  {
+   "name": "_G_LLM_NET_LOCKSTEP_PEER_TIMING",
+   "addr": "0x00e58c40",
+   "size": 96
+  },
+  {
+   "name": "Players",
+   "addr": "0x00e587e9",
+   "size": 416
+  },
+  {
+   "name": "_G_LLM_CHAT_TARGET_MASK",
+   "addr": "0x00e5898b",
+   "size": 1
+  },
+  {
+   "name": "Players",
+   "addr": "0x00e587e9",
+   "size": 416
+  },
+  {
+   "name": "_G_LLM_CHAT_TARGET_MASK",
+   "addr": "0x00e5898b",
+   "size": 1
+  },
+  {
+   "name": "_G_LLM_STRAT_INVASION_ALERT_TIME",
+   "addr": "0x00bca820",
+   "size": 256
+  },
+  {
+   "name": "_G_LLM_STRAT_INVASION_ALERT_TIME",
+   "addr": "0x00bca820",
+   "size": 256
+  },
+  {
+   "name": "_G_LLM_STRAT_BLDG_CELL_GRID",
+   "addr": "0x00fb34b0",
+   "size": 6400
+  },
+  {
+   "name": "_G_LLM_STRAT_BLDG_CELL_GRID_ROW_SHIFT",
+   "addr": "0x00fe59b0",
+   "size": 400
+  },
+  {
+   "name": "Building",
+   "addr": "0x00d9ec80",
+   "size": 211400
+  },
+  {
+   "name": "_G_LLM_STRAT_ORDER_SCRATCH_ARGS",
+   "addr": "0x00e16268",
+   "size": 52
+  }
+ ]
+}

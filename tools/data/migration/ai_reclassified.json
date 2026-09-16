@@ -1,0 +1,21 @@
+{
+  "_comment": [
+    "Rows that LEFT tools/data/ai_migration.json because the RE said they were never AI -- not",
+    "because the work was abandoned. Membership in that ledger is by NAME PREFIX, so a rename",
+    "silently deletes a row and everything recorded against it; without this archive the manifest",
+    "would just quietly shrink and a later reader could not tell a reclassification from a lost row.",
+    "Add an entry whenever a function is renamed OUT of the prefix, and say where its evidence now",
+    "lives. Split out of gen_migration.py 2026-08-07 when the generator became domain-parameterised."
+  ],
+  "domain": "ai",
+  "reclassified_out": [
+    {
+      "date": "2026-08-07",
+      "what": "The group-move / group-pathfinding family (10 functions): llm_strat_ai_group_move_order_commit @0x0041c86c, _pathfind @0x0041ca37, llm_strat_ai_group_plan_formation_positions @0x0041dbfe, llm_strat_ai_pathfind_build_steps @0x0041e836, _find_closer_visible_tile @0x0041fff5, _target_hook_stub @0x004219dd, llm_strat_ai_group_scratch_add_unit_and_normalize_heading @0x0048d283, _compute_centroid @0x0048d36f, llm_strat_ai_group_formation_trim_far_members @0x0048d636, llm_strat_ai_group_move_request_build @0x00494f0c. Renamed to llm_strat_group_* / llm_strat_pathfind_*.",
+      "why": "ZERO AI callers over the whole call graph. The subtree hangs off two generic unit-state handlers -- llm_strat_unit_state_group_marshal (state 0x0a GROUP_MARSHAL) and llm_strat_unit_group_step_ground (0x0b) -- installed in the state table every player's units are ticked through, and nothing on the path tests whether the owner is AI-controlled. The AI reaches this the way the player does, by setting a unit's order. They were in this ledger on the strength of the name prefix alone; consistently, every one of them carried reachable_from_root false and callers_in_ai 0.",
+      "completed_by": "A SECOND PASS THE SAME DAY ADDED TWO MORE, and how they were missed is the lesson: llm_strat_ai_pathfind_trace_route @0x0041ef3e (sole caller llm_strat_group_move_order_pathfind) and llm_strat_ai_pathfind_dir_code_from_delta @0x0041e790 (sole caller llm_strat_pathfind_build_steps) -> llm_strat_pathfind_trace_route / _dir_code_from_delta. The first pass enumerated the family by READING a decompile and stopped at the callees it happened to see; trace_route is called below the point the read stopped and dir_code_from_delta is one level deeper. Enumerate a family by walking the call graph transitively, then assert the closure is clean -- the transitive closure of the two group-move state handlers is 130 functions and now contains ZERO llm_strat_ai_ names. trace_route's own plate had already said its ai_ qualifier was 'by cluster association ... not in-file proof'; the cluster was the mislabelled one.",
+      "not_reclassified_and_why": "The same sweep (reachable_from_root false AND callers_in_ai 0) surfaces 7 rows with real callers. Five STAY, because a non-AI caller is what batch E IS -- a lifecycle hook fired from the sim. The discriminator is whose state the function owns, not who calls it: spiral_table_init writes three _G_LLM_STRAT_AI_TILE_SPIRAL_* island globals, start_hq_attack_scenario writes _G_LLM_STRAT_AI_ATTACK_HQ_UNIT_ID, build_plan_push writes the AI's own player_data plan, clear_system_presence_flag maintains an AI player's elimination bit, and group_member_count_adjust -- flagged as suspicious on the first pass and CLEARED here -- opens with `if (player_data[p].ai_enabled == 0) return;` and maintains AI group bookkeeping, so it is AI code with four sim callers, which is exactly the batch-E shape. The group-move family owns no AI state at all.",
+      "carried_progress": "8 of the 10 were state=not_started and lost nothing. Two carried real records, both preserved outside this file: group_scratch_compute_centroid was state=verified / T1 (translated, shadow-armed in shadow_ai_e0.ini, 600 calls with zero divergence in the 2026-08-07 20000-step soak) -- its translation and evidence live in src/mh_dll and the AI1E progress block; group_formation_trim_far_members and group_move_request_build were state=dead with AI-PREP settle evidence, which survives in their Ghidra plates."
+    }
+  ]
+}

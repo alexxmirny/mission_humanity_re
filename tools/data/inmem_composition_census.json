@@ -1,0 +1,729 @@
+{
+  "_generated_by": "tools/check_inmem_composition.py",
+  "_what": "The fork F4C-COMP composition census: how much of the src/patcher static-patch surface lands inside a function some other mh.dll mechanism claims. Re-derived from committed inputs only; `--check` requires byte-identity. Containment is STRICT (entry <= va <= end), the predicate mh::hook::promoted_owner_of evaluates at runtime.",
+  "entry_window_bytes": 8,
+  "sites_total": 46294,
+  "orphan_sites": 468,
+  "promotable_bodies": 401,
+  "verified_bodies": 953,
+  "detour_target_addrs": 56,
+  "detour_target_bodies": 56,
+  "unresolved_install_sites": 15,
+  "sites_in_promotable_body": 10127,
+  "sites_in_detour_target": 4438,
+  "sites_in_either": 11034,
+  "sites_in_verified_not_promotable": 26412,
+  "sites_in_entry_window_of_claimed_body": 93,
+  "top_claimed_bodies": [
+    {
+      "fn": "llm_strat_order_queue_dispatch",
+      "sites": 3281
+    },
+    {
+      "fn": "llm_bldg_finish_current_order",
+      "sites": 418
+    },
+    {
+      "fn": "llm_strat_ui_storage_bldg_panel",
+      "sites": 381
+    },
+    {
+      "fn": "llm_strat_input_update",
+      "sites": 362
+    },
+    {
+      "fn": "llm_strat_sim_step",
+      "sites": 250
+    },
+    {
+      "fn": "map_FillDefaults",
+      "sites": 245
+    },
+    {
+      "fn": "llm_strat_order_queue_apply_and_dequeue",
+      "sites": 210
+    },
+    {
+      "fn": "llm_strat_ai_scan_construction_sites",
+      "sites": 189
+    },
+    {
+      "fn": "llm_strat_ai_group_classify_target_object",
+      "sites": 184
+    },
+    {
+      "fn": "llm_strat_ai_rebalance_building_workers",
+      "sites": 181
+    },
+    {
+      "fn": "llm_strat_ai_mine_portfolio_rebalance",
+      "sites": 173
+    },
+    {
+      "fn": "llm_strat_bldg_gather_nearby_squad_status",
+      "sites": 171
+    },
+    {
+      "fn": "llm_strat_bldg_instant_construct_find_slot",
+      "sites": 128
+    },
+    {
+      "fn": "llm_strat_unit_get_coords",
+      "sites": 120
+    },
+    {
+      "fn": "llm_strat_unit_order_exit_storage",
+      "sites": 118
+    },
+    {
+      "fn": "map_LoadPlanetFromDisk",
+      "sites": 117
+    },
+    {
+      "fn": "map_SavePlanetToDisk",
+      "sites": 117
+    },
+    {
+      "fn": "llm_strat_ai_group_task_attack_nearest_defended",
+      "sites": 113
+    },
+    {
+      "fn": "llm_strat_ai_group_reposition_members",
+      "sites": 106
+    },
+    {
+      "fn": "llm_strat_bldg_shuttle_slot_is_free",
+      "sites": 102
+    }
+  ],
+  "entry_window_collisions": [
+    {
+      "manifest": "allpools_roster_caphike",
+      "va": "0x0048fa98",
+      "len": 4,
+      "fn": "llm_strat_bldg_shuttle_slot_is_free"
+    },
+    {
+      "manifest": "allpools_roster_caphike",
+      "va": "0x004989c9",
+      "len": 4,
+      "fn": "llm_map_setup_dimensions"
+    },
+    {
+      "manifest": "allpools_roster_caphike",
+      "va": "0x004d3a2c",
+      "len": 4,
+      "fn": "llm_strat_ai_bldg_type_queue_has_pending"
+    },
+    {
+      "manifest": "allpools_roster_caphike",
+      "va": "0x004d4f1b",
+      "len": 4,
+      "fn": "llm_strat_ai_group_remove"
+    },
+    {
+      "manifest": "allpools_roster_caphike",
+      "va": "0x004d552c",
+      "len": 4,
+      "fn": "llm_strat_ai_engage_partition_turret_candidates"
+    },
+    {
+      "manifest": "allpools_roster_caphike",
+      "va": "0x004e30ed",
+      "len": 4,
+      "fn": "llm_strat_ai_calc_mine_yield_estimate"
+    },
+    {
+      "manifest": "allpools_roster_caphike",
+      "va": "0x004e9441",
+      "len": 4,
+      "fn": "llm_strat_ai_group_check_arrival_status"
+    },
+    {
+      "manifest": "allpools_roster_caphike",
+      "va": "0x004eb245",
+      "len": 4,
+      "fn": "llm_strat_ai_group_enter_hold"
+    },
+    {
+      "manifest": "allpools_roster_caphike",
+      "va": "0x004eb491",
+      "len": 4,
+      "fn": "llm_strat_ai_group_classify_target_object"
+    },
+    {
+      "manifest": "allpools_roster_relocate",
+      "va": "0x004989c9",
+      "len": 4,
+      "fn": "llm_map_setup_dimensions"
+    },
+    {
+      "manifest": "allpools_roster_relocate",
+      "va": "0x004d3a2c",
+      "len": 4,
+      "fn": "llm_strat_ai_bldg_type_queue_has_pending"
+    },
+    {
+      "manifest": "allpools_roster_relocate",
+      "va": "0x004d4f1b",
+      "len": 4,
+      "fn": "llm_strat_ai_group_remove"
+    },
+    {
+      "manifest": "allpools_roster_relocate",
+      "va": "0x004d552c",
+      "len": 4,
+      "fn": "llm_strat_ai_engage_partition_turret_candidates"
+    },
+    {
+      "manifest": "allpools_roster_relocate",
+      "va": "0x004e30ed",
+      "len": 4,
+      "fn": "llm_strat_ai_calc_mine_yield_estimate"
+    },
+    {
+      "manifest": "allpools_roster_relocate",
+      "va": "0x004e9441",
+      "len": 4,
+      "fn": "llm_strat_ai_group_check_arrival_status"
+    },
+    {
+      "manifest": "allpools_roster_relocate",
+      "va": "0x004eb245",
+      "len": 4,
+      "fn": "llm_strat_ai_group_enter_hold"
+    },
+    {
+      "manifest": "allpools_roster_relocate",
+      "va": "0x004eb491",
+      "len": 4,
+      "fn": "llm_strat_ai_group_classify_target_object"
+    },
+    {
+      "manifest": "buildings_caphike",
+      "va": "0x004989c9",
+      "len": 4,
+      "fn": "llm_map_setup_dimensions"
+    },
+    {
+      "manifest": "buildings_caphike",
+      "va": "0x004d3a2c",
+      "len": 4,
+      "fn": "llm_strat_ai_bldg_type_queue_has_pending"
+    },
+    {
+      "manifest": "buildings_caphike",
+      "va": "0x004d4f1b",
+      "len": 4,
+      "fn": "llm_strat_ai_group_remove"
+    },
+    {
+      "manifest": "buildings_caphike",
+      "va": "0x004e30ed",
+      "len": 4,
+      "fn": "llm_strat_ai_calc_mine_yield_estimate"
+    },
+    {
+      "manifest": "buildings_caphike",
+      "va": "0x004e9441",
+      "len": 4,
+      "fn": "llm_strat_ai_group_check_arrival_status"
+    },
+    {
+      "manifest": "buildings_caphike",
+      "va": "0x004eb245",
+      "len": 4,
+      "fn": "llm_strat_ai_group_enter_hold"
+    },
+    {
+      "manifest": "buildings_caphike",
+      "va": "0x004eb491",
+      "len": 4,
+      "fn": "llm_strat_ai_group_classify_target_object"
+    },
+    {
+      "manifest": "buildings_relocate",
+      "va": "0x004989c9",
+      "len": 4,
+      "fn": "llm_map_setup_dimensions"
+    },
+    {
+      "manifest": "buildings_relocate",
+      "va": "0x004d3a2c",
+      "len": 4,
+      "fn": "llm_strat_ai_bldg_type_queue_has_pending"
+    },
+    {
+      "manifest": "buildings_relocate",
+      "va": "0x004d4f1b",
+      "len": 4,
+      "fn": "llm_strat_ai_group_remove"
+    },
+    {
+      "manifest": "buildings_relocate",
+      "va": "0x004e30ed",
+      "len": 4,
+      "fn": "llm_strat_ai_calc_mine_yield_estimate"
+    },
+    {
+      "manifest": "buildings_relocate",
+      "va": "0x004e9441",
+      "len": 4,
+      "fn": "llm_strat_ai_group_check_arrival_status"
+    },
+    {
+      "manifest": "buildings_relocate",
+      "va": "0x004eb245",
+      "len": 4,
+      "fn": "llm_strat_ai_group_enter_hold"
+    },
+    {
+      "manifest": "buildings_relocate",
+      "va": "0x004eb491",
+      "len": 4,
+      "fn": "llm_strat_ai_group_classify_target_object"
+    },
+    {
+      "manifest": "grand_all_caphike",
+      "va": "0x0048fa98",
+      "len": 4,
+      "fn": "llm_strat_bldg_shuttle_slot_is_free"
+    },
+    {
+      "manifest": "grand_all_caphike",
+      "va": "0x004989c9",
+      "len": 4,
+      "fn": "llm_map_setup_dimensions"
+    },
+    {
+      "manifest": "grand_all_caphike",
+      "va": "0x0049b51d",
+      "len": 4,
+      "fn": "llm_strat_invasion_alert_poll"
+    },
+    {
+      "manifest": "grand_all_caphike",
+      "va": "0x004d370d",
+      "len": 4,
+      "fn": "llm_strat_ai_bldg_count_by_category"
+    },
+    {
+      "manifest": "grand_all_caphike",
+      "va": "0x004d3a2c",
+      "len": 4,
+      "fn": "llm_strat_ai_bldg_type_queue_has_pending"
+    },
+    {
+      "manifest": "grand_all_caphike",
+      "va": "0x004d4203",
+      "len": 4,
+      "fn": "llm_strat_ai_unit_is_order_pending"
+    },
+    {
+      "manifest": "grand_all_caphike",
+      "va": "0x004d4f1b",
+      "len": 4,
+      "fn": "llm_strat_ai_group_remove"
+    },
+    {
+      "manifest": "grand_all_caphike",
+      "va": "0x004d552c",
+      "len": 4,
+      "fn": "llm_strat_ai_engage_partition_turret_candidates"
+    },
+    {
+      "manifest": "grand_all_caphike",
+      "va": "0x004d5860",
+      "len": 4,
+      "fn": "llm_strat_ai_unit_group_assign_by_type"
+    },
+    {
+      "manifest": "grand_all_caphike",
+      "va": "0x004d7db0",
+      "len": 4,
+      "fn": "llm_strat_ai_group_move_formation_rotating"
+    },
+    {
+      "manifest": "grand_all_caphike",
+      "va": "0x004da949",
+      "len": 4,
+      "fn": "utils_abort"
+    },
+    {
+      "manifest": "grand_all_caphike",
+      "va": "0x004da991",
+      "len": 4,
+      "fn": "llm_rand"
+    },
+    {
+      "manifest": "grand_all_caphike",
+      "va": "0x004e30ed",
+      "len": 4,
+      "fn": "llm_strat_ai_calc_mine_yield_estimate"
+    },
+    {
+      "manifest": "grand_all_caphike",
+      "va": "0x004e9441",
+      "len": 4,
+      "fn": "llm_strat_ai_group_check_arrival_status"
+    },
+    {
+      "manifest": "grand_all_caphike",
+      "va": "0x004eb245",
+      "len": 4,
+      "fn": "llm_strat_ai_group_enter_hold"
+    },
+    {
+      "manifest": "grand_all_caphike",
+      "va": "0x004eb491",
+      "len": 4,
+      "fn": "llm_strat_ai_group_classify_target_object"
+    },
+    {
+      "manifest": "grand_all_caphike",
+      "va": "0x004ec799",
+      "len": 4,
+      "fn": "llm_strat_ai_scan_target_sort_cmp"
+    },
+    {
+      "manifest": "grand_all_caphike_storagecap",
+      "va": "0x0048fa98",
+      "len": 4,
+      "fn": "llm_strat_bldg_shuttle_slot_is_free"
+    },
+    {
+      "manifest": "grand_all_caphike_storagecap",
+      "va": "0x004989c9",
+      "len": 4,
+      "fn": "llm_map_setup_dimensions"
+    },
+    {
+      "manifest": "grand_all_caphike_storagecap",
+      "va": "0x0049b51d",
+      "len": 4,
+      "fn": "llm_strat_invasion_alert_poll"
+    },
+    {
+      "manifest": "grand_all_caphike_storagecap",
+      "va": "0x004d370d",
+      "len": 4,
+      "fn": "llm_strat_ai_bldg_count_by_category"
+    },
+    {
+      "manifest": "grand_all_caphike_storagecap",
+      "va": "0x004d3a2c",
+      "len": 4,
+      "fn": "llm_strat_ai_bldg_type_queue_has_pending"
+    },
+    {
+      "manifest": "grand_all_caphike_storagecap",
+      "va": "0x004d4203",
+      "len": 4,
+      "fn": "llm_strat_ai_unit_is_order_pending"
+    },
+    {
+      "manifest": "grand_all_caphike_storagecap",
+      "va": "0x004d4f1b",
+      "len": 4,
+      "fn": "llm_strat_ai_group_remove"
+    },
+    {
+      "manifest": "grand_all_caphike_storagecap",
+      "va": "0x004d552c",
+      "len": 4,
+      "fn": "llm_strat_ai_engage_partition_turret_candidates"
+    },
+    {
+      "manifest": "grand_all_caphike_storagecap",
+      "va": "0x004d5860",
+      "len": 4,
+      "fn": "llm_strat_ai_unit_group_assign_by_type"
+    },
+    {
+      "manifest": "grand_all_caphike_storagecap",
+      "va": "0x004d7db0",
+      "len": 4,
+      "fn": "llm_strat_ai_group_move_formation_rotating"
+    },
+    {
+      "manifest": "grand_all_caphike_storagecap",
+      "va": "0x004da949",
+      "len": 4,
+      "fn": "utils_abort"
+    },
+    {
+      "manifest": "grand_all_caphike_storagecap",
+      "va": "0x004da991",
+      "len": 4,
+      "fn": "llm_rand"
+    },
+    {
+      "manifest": "grand_all_caphike_storagecap",
+      "va": "0x004e30ed",
+      "len": 4,
+      "fn": "llm_strat_ai_calc_mine_yield_estimate"
+    },
+    {
+      "manifest": "grand_all_caphike_storagecap",
+      "va": "0x004e9441",
+      "len": 4,
+      "fn": "llm_strat_ai_group_check_arrival_status"
+    },
+    {
+      "manifest": "grand_all_caphike_storagecap",
+      "va": "0x004eb245",
+      "len": 4,
+      "fn": "llm_strat_ai_group_enter_hold"
+    },
+    {
+      "manifest": "grand_all_caphike_storagecap",
+      "va": "0x004eb491",
+      "len": 4,
+      "fn": "llm_strat_ai_group_classify_target_object"
+    },
+    {
+      "manifest": "grand_all_caphike_storagecap",
+      "va": "0x004ec799",
+      "len": 4,
+      "fn": "llm_strat_ai_scan_target_sort_cmp"
+    },
+    {
+      "manifest": "grand_all_relocate",
+      "va": "0x004989c9",
+      "len": 4,
+      "fn": "llm_map_setup_dimensions"
+    },
+    {
+      "manifest": "grand_all_relocate",
+      "va": "0x0049b51d",
+      "len": 4,
+      "fn": "llm_strat_invasion_alert_poll"
+    },
+    {
+      "manifest": "grand_all_relocate",
+      "va": "0x004d370d",
+      "len": 4,
+      "fn": "llm_strat_ai_bldg_count_by_category"
+    },
+    {
+      "manifest": "grand_all_relocate",
+      "va": "0x004d3a2c",
+      "len": 4,
+      "fn": "llm_strat_ai_bldg_type_queue_has_pending"
+    },
+    {
+      "manifest": "grand_all_relocate",
+      "va": "0x004d4f1b",
+      "len": 4,
+      "fn": "llm_strat_ai_group_remove"
+    },
+    {
+      "manifest": "grand_all_relocate",
+      "va": "0x004d552c",
+      "len": 4,
+      "fn": "llm_strat_ai_engage_partition_turret_candidates"
+    },
+    {
+      "manifest": "grand_all_relocate",
+      "va": "0x004d7db0",
+      "len": 4,
+      "fn": "llm_strat_ai_group_move_formation_rotating"
+    },
+    {
+      "manifest": "grand_all_relocate",
+      "va": "0x004da991",
+      "len": 4,
+      "fn": "llm_rand"
+    },
+    {
+      "manifest": "grand_all_relocate",
+      "va": "0x004e30ed",
+      "len": 4,
+      "fn": "llm_strat_ai_calc_mine_yield_estimate"
+    },
+    {
+      "manifest": "grand_all_relocate",
+      "va": "0x004e9441",
+      "len": 4,
+      "fn": "llm_strat_ai_group_check_arrival_status"
+    },
+    {
+      "manifest": "grand_all_relocate",
+      "va": "0x004eb245",
+      "len": 4,
+      "fn": "llm_strat_ai_group_enter_hold"
+    },
+    {
+      "manifest": "grand_all_relocate",
+      "va": "0x004eb491",
+      "len": 4,
+      "fn": "llm_strat_ai_group_classify_target_object"
+    },
+    {
+      "manifest": "net_resync_wait_fix",
+      "va": "0x0049bbec",
+      "len": 3,
+      "fn": "llm_net_join_connect_stub"
+    },
+    {
+      "manifest": "subpools_allcaps_caphike",
+      "va": "0x0048fa98",
+      "len": 4,
+      "fn": "llm_strat_bldg_shuttle_slot_is_free"
+    },
+    {
+      "manifest": "subpools_allcaps_caphike",
+      "va": "0x004d552c",
+      "len": 4,
+      "fn": "llm_strat_ai_engage_partition_turret_candidates"
+    },
+    {
+      "manifest": "subpools_allcaps_relocate",
+      "va": "0x004d552c",
+      "len": 4,
+      "fn": "llm_strat_ai_engage_partition_turret_candidates"
+    },
+    {
+      "manifest": "units_caphike",
+      "va": "0x0049b51d",
+      "len": 4,
+      "fn": "llm_strat_invasion_alert_poll"
+    },
+    {
+      "manifest": "units_caphike",
+      "va": "0x004d370d",
+      "len": 4,
+      "fn": "llm_strat_ai_bldg_count_by_category"
+    },
+    {
+      "manifest": "units_caphike",
+      "va": "0x004d4203",
+      "len": 4,
+      "fn": "llm_strat_ai_unit_is_order_pending"
+    },
+    {
+      "manifest": "units_caphike",
+      "va": "0x004d5860",
+      "len": 4,
+      "fn": "llm_strat_ai_unit_group_assign_by_type"
+    },
+    {
+      "manifest": "units_caphike",
+      "va": "0x004d7db0",
+      "len": 4,
+      "fn": "llm_strat_ai_group_move_formation_rotating"
+    },
+    {
+      "manifest": "units_caphike",
+      "va": "0x004da949",
+      "len": 4,
+      "fn": "utils_abort"
+    },
+    {
+      "manifest": "units_caphike",
+      "va": "0x004da991",
+      "len": 4,
+      "fn": "llm_rand"
+    },
+    {
+      "manifest": "units_caphike",
+      "va": "0x004ec799",
+      "len": 4,
+      "fn": "llm_strat_ai_scan_target_sort_cmp"
+    },
+    {
+      "manifest": "units_relocate",
+      "va": "0x0049b51d",
+      "len": 4,
+      "fn": "llm_strat_invasion_alert_poll"
+    },
+    {
+      "manifest": "units_relocate",
+      "va": "0x004d370d",
+      "len": 4,
+      "fn": "llm_strat_ai_bldg_count_by_category"
+    },
+    {
+      "manifest": "units_relocate",
+      "va": "0x004d7db0",
+      "len": 4,
+      "fn": "llm_strat_ai_group_move_formation_rotating"
+    },
+    {
+      "manifest": "units_relocate",
+      "va": "0x004da991",
+      "len": 4,
+      "fn": "llm_rand"
+    }
+  ],
+  "registered_patch_collisions": [
+    {
+      "patch": "resync_wait_fix",
+      "addr": "0x0049c044",
+      "manifest": "net_resync_wait_fix_EN"
+    },
+    {
+      "patch": "run_without_focus",
+      "addr": "0x004a04ce",
+      "manifest": "run_without_focus_EN"
+    }
+  ],
+  "detour_target_bodies_named": [
+    "llm_cd_locate_and_open_audio",
+    "llm_debug_console_dispatch",
+    "llm_game_land_players_on_planet",
+    "llm_game_return_to_main_menu_cb",
+    "llm_gfx_present_flip",
+    "llm_input_wndproc_tap",
+    "llm_intro_frame",
+    "llm_lobby_begin_map_load",
+    "llm_lobby_build_players_from_slots",
+    "llm_lobby_finalize_transfer_or_enter",
+    "llm_lobby_host_net_dispatch",
+    "llm_lobby_host_start_game",
+    "llm_lobby_map_recv_step_stub",
+    "llm_lobby_map_send_step_stub",
+    "llm_lobby_peer_table_clear",
+    "llm_lobby_remove_player_slot",
+    "llm_lobby_show_intro_wait",
+    "llm_mp_browser_scrollbar_draw",
+    "llm_net_connect_prep_stub",
+    "llm_net_disconnect_stub",
+    "llm_net_discovery_poll_stub",
+    "llm_net_join_connect_stub",
+    "llm_net_lockstep_broadcast_resync_state",
+    "llm_net_poll_recv",
+    "llm_net_send_packet",
+    "llm_net_session_init_stub",
+    "llm_net_transport_recv",
+    "llm_net_transport_send",
+    "llm_rand",
+    "llm_strat_input_update",
+    "llm_strat_order_enqueue",
+    "llm_strat_order_queue_dispatch",
+    "llm_strat_player_presence_lost",
+    "llm_strat_rng_seed_wallclock_seconds",
+    "llm_strat_session_begin_multi",
+    "llm_strat_sim_step",
+    "llm_strat_sim_tick",
+    "llm_strat_time_tick",
+    "llm_strat_ui_storage_bldg_panel",
+    "llm_tact_frame",
+    "llm_tact_group_issue_order",
+    "llm_tact_unit_enqueue_command",
+    "llm_ui_dlg_savegame_io_error",
+    "llm_ui_hud_widget_icon_blit",
+    "llm_ui_main_menu_activate",
+    "llm_ui_main_menu_screen_load",
+    "llm_ui_menu_async_tick",
+    "llm_ui_menu_screen_slide_transition",
+    "llm_ui_menu_state_tick",
+    "llm_ui_modal_key_pump",
+    "llm_ui_outcome_dialog",
+    "llm_view_set_size_mode",
+    "llm_wnd_on_destroy",
+    "llm_wnd_on_devicechange",
+    "time_GetCurrentTime",
+    "utils_abort"
+  ]
+}

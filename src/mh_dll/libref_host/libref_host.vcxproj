@@ -1,0 +1,102 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" ToolsVersion="15.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <!-- LIB-REF: the standalone reference host. CONFIGURATION (3) IS A DLL SINCE FORK F4G: this host
+       imports Release\standalone\libmh.dll (libmh_std.vcxproj) instead of linking the libmh.lib
+       archive into itself, so "libmh + a host, no game binary" is measured against a real dynamic
+       library rather than against a statically-folded copy of one.
+
+       WHAT MOVED, AND WHAT DID NOT. The /WHOLEARCHIVE property this project was built around (every
+       object in the artifact must resolve: it is how three declared-never-defined symbols were
+       found, see main.cpp's banner and docs/dead-ends.md) did not weaken, it MOVED ONE LINK OVER.
+       libmh_std.vcxproj is the project that now carries /WHOLEARCHIVE:libmh.lib, and it compiles no
+       roster TU of its own, so the DLL and the archive are the same object code by construction.
+
+       MH_SPINE_IN_IMAGE IS GONE FROM THIS PROJECT AND ITS ABSENCE IS LOAD-BEARING (G179), for the
+       same reason mh_harness.vcxproj does not define it: the spine now lives in another image, so
+       mh::state::live(), owner_table() and owner_count() must NOT be magic statics here. A second
+       copy would give the host its own region registry, the DLL's rebases would land in the DLL's
+       and the host's hash would walk the abandoned addresses, and nothing would go red.
+
+       MH_LIBMH_BUILD STAYS: it is what crt/crt_select.h reads to pick the vendored CRT over the
+       original binary's VAs, and this host's own TUs instantiate roster inlines.
+       /LTCG is required because mh_common is built with /GL. -->
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Release|Win32">
+      <Configuration>Release</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="dispatch_selftest.cpp" />
+    <ClCompile Include="main.cpp" />
+    <!-- F4D-PRE (ruling Q5): the VA marshalling thunks are PER-IMAGE now, not part of the archive.
+         addr\mh_calls.gen.cpp left libmh.vcxproj's roster so its 19 `mh::call::detail::s_*` shapes
+         stop counting as libmh export contract; the roster still REFERENCES a handful of them
+         (save_live's verify-mode trampoline calls, plus two order-enqueue rows LIB-REF-SPLIT
+         deliberately did not convert), so /WHOLEARCHIVE would leave those unresolved without this
+         row. Compiling it here is the same arrangement mh.vcxproj and mh_nettest.vcxproj already
+         had, and the same "both images link the copy they use" precedent F4B set for
+         mh_net_proto's session_info.cpp.
+
+         IT IS NOT A HOSTED BUILD. This project does not define MH_LIBMH_BUILD, but the thunks do
+         not care: they are naked marshalling shims that take the target VA as an argument and name
+         no address themselves. What makes a standalone host safe is that no live path here reaches
+         one; scan_libmh_vas.py measures what the ARCHIVE carries, and this row takes bytes OUT of
+         that subject rather than adding any. -->
+    <ClCompile Include="..\mh\addr\mh_calls.gen.cpp" />
+  </ItemGroup>
+  <PropertyGroup Label="Globals">
+    <VCProjectVersion>17.0</VCProjectVersion>
+    <ProjectGuid>{2D6F8A31-47C5-4B0E-9A12-5E8D3C7F1B64}</ProjectGuid>
+    <RootNamespace>libref_host</RootNamespace>
+    <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
+    <ProjectName>libref_host</ProjectName>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <UseDebugLibraries>false</UseDebugLibraries>
+    <PlatformToolset>v143</PlatformToolset>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <!-- THE CONFIG-(3) DEPLOYMENT IS A DIRECTORY, and this is it. Release\standalone\ holds exactly
+         two files (libmh.dll and libref_host.exe), which is what "libmh + a host, no game binary"
+         looks like on disk. The exe moved here at fork F4G because the DLL cannot: the loader
+         resolves a static import beside the importer, and Release\ already has a libmh.dll (the
+         HOSTED arm, configuration (2)'s). Two spines with one name, kept apart by the only thing
+         that distinguishes two deployments: the folder they are deployed into.
+         (An XML comment may not contain a double hyphen, which is why this one has none.) -->
+    <OutDir>$(SolutionDir)Release\standalone\</OutDir>
+    <IntDir>$(ProjectDir)$(Configuration)\</IntDir>
+  </PropertyGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <ClCompile>
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <MultiProcessorCompilation>true</MultiProcessorCompilation>
+      <WarningLevel>Level3</WarningLevel>
+      <Optimization>MaxSpeed</Optimization>
+      <PreprocessorDefinitions>WIN32;NDEBUG;_CONSOLE;_CRT_SECURE_NO_WARNINGS;MH_LIBMH_BUILD;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <ConformanceMode>true</ConformanceMode>
+      <LanguageStandard>stdcpp20</LanguageStandard>
+      <AdditionalIncludeDirectories>..\libmh;..\mh;..\mh\include;..\mh_common;..\mh_common\include;..\..\mh_net_proto\include;..\libmh\include</AdditionalIncludeDirectories>
+      <IntrinsicFunctions>true</IntrinsicFunctions>
+      <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <Link>
+      <SubSystem>Console</SubSystem>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <GenerateMapFile>true</GenerateMapFile>
+      <LinkTimeCodeGeneration>UseLinkTimeCodeGeneration</LinkTimeCodeGeneration>
+      <!-- The IMPORT library of Release\standalone\libmh.dll, not the archive. A static import is
+           correct here and is the deliberate inverse of libmh_dll's rule (see libmh_std.def's
+           banner): a standalone host has no configuration to degrade into, so a missing spine
+           failing PROCESS LOAD is the loudest correct answer rather than a hazard. -->
+      <AdditionalDependencies>$(SolutionDir)Release\standalone\libmh.lib;$(SolutionDir)Release\mh_common.lib;$(SolutionDir)Release\mh_net_proto.lib;kernel32.lib;user32.lib;ws2_32.lib;advapi32.lib;%(AdditionalDependencies)</AdditionalDependencies>
+    </Link>
+  </ItemDefinitionGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+</Project>

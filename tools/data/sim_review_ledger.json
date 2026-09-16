@@ -1,0 +1,975 @@
+{
+ "_comment": "Adversarial-review dispositions for the SIM domain, read by tools/migration_loop.py's review_gate(). A function the manifest flags review_required (writes a roster region OR size>p90 OR is root) may not be promoted to `verified` without an entry here. Shape: \"<function name>\": {\"disposition\": \"reviewed\"|\"exempt\", \"session\": \"<YYYY-MM-DD-HHMM>\", \"by\": \"<reimpl-verify workflow / agent>\", \"note\": \"<evidence, or why no shadow/review applies>\"}. A `reviewed` entry MUST name the `session` that ran the review: the driver cross-checks that that session's captured agents (session_reports/loop/<session>/agents.json) actually include an adversarial-review spawn -- a bare `reviewed` with no spawn is rejected. An `exempt` entry needs no agent (it is an explicit human-auditable decision). Keys beginning with _ are comments. Rows verified before the gate landed (2026-08-26) carry explicit grandfather exempt entries (backfilled same day). Two layers now read this file: migration_loop.py gates the TRANSITION to verified per session and cross-checks agent backing; migration_session.py --end fails while ANY review_required+verified row lacks a disposition, so a skip is caught in-session.",
+ "game_SetEvent": {
+  "disposition": "exempt",
+  "session": "",
+  "by": "grandfather backfill (conductor session, 2026-08-26)",
+  "note": "grandfathered -- verified before the review ledger landed 2026-08-26; evidence in the session reports/commits up to that date"
+ },
+ "llm_strat_group_move_order_pathfind": {
+  "disposition": "exempt",
+  "session": "",
+  "by": "grandfather backfill (conductor session, 2026-08-26)",
+  "note": "grandfathered -- verified before the review ledger landed 2026-08-26; evidence in the session reports/commits up to that date"
+ },
+ "llm_strat_group_plan_formation_positions": {
+  "disposition": "exempt",
+  "session": "",
+  "by": "grandfather backfill (conductor session, 2026-08-26)",
+  "note": "grandfathered -- verified before the review ledger landed 2026-08-26; evidence in the session reports/commits up to that date"
+ },
+ "llm_strat_pathfind_build_steps": {
+  "disposition": "exempt",
+  "session": "",
+  "by": "grandfather backfill (conductor session, 2026-08-26)",
+  "note": "grandfathered -- verified before the review ledger landed 2026-08-26; evidence in the session reports/commits up to that date"
+ },
+ "llm_strat_pathfind_trace_route": {
+  "disposition": "exempt",
+  "session": "",
+  "by": "grandfather backfill (conductor session, 2026-08-26)",
+  "note": "grandfathered -- verified before the review ledger landed 2026-08-26; evidence in the session reports/commits up to that date"
+ },
+ "llm_strat_group_path_step_record": {
+  "disposition": "exempt",
+  "session": "",
+  "by": "grandfather backfill (conductor session, 2026-08-26)",
+  "note": "grandfathered -- verified before the review ledger landed 2026-08-26; evidence in the session reports/commits up to that date"
+ },
+ "llm_strat_unit_path_detour": {
+  "disposition": "exempt",
+  "session": "",
+  "by": "grandfather backfill (conductor session, 2026-08-26)",
+  "note": "grandfathered -- verified before the review ledger landed 2026-08-26; evidence in the session reports/commits up to that date"
+ },
+ "llm_map_region_split": {
+  "disposition": "exempt",
+  "session": "",
+  "by": "grandfather backfill (conductor session, 2026-08-26)",
+  "note": "grandfathered -- verified before the review ledger landed 2026-08-26; evidence in the session reports/commits up to that date"
+ },
+ "llm_map_fog_of_war_recompute": {
+  "disposition": "exempt",
+  "session": "",
+  "by": "grandfather backfill (conductor session, 2026-08-26)",
+  "note": "grandfathered -- verified before the review ledger landed 2026-08-26; evidence in the session reports/commits up to that date"
+ },
+ "llm_strat_sim_step": {
+  "disposition": "exempt",
+  "session": "",
+  "by": "grandfather backfill (conductor session, 2026-08-26)",
+  "note": "grandfathered -- verified before the review ledger landed 2026-08-26; evidence in the session reports/commits up to that date"
+ },
+ "game_HandleUpgrade": {
+  "disposition": "exempt",
+  "session": "",
+  "by": "grandfather backfill (conductor session, 2026-08-26)",
+  "note": "grandfathered -- verified before the review ledger landed 2026-08-26; evidence in the session reports/commits up to that date"
+ },
+ "llm_strat_projectile_tick": {
+  "disposition": "exempt",
+  "session": "",
+  "by": "grandfather backfill (conductor session, 2026-08-26)",
+  "note": "grandfathered -- verified before the review ledger landed 2026-08-26; evidence in the session reports/commits up to that date"
+ },
+ "llm_strat_unit_update_target_tracking": {
+  "disposition": "exempt",
+  "session": "",
+  "by": "grandfather backfill (conductor session, 2026-08-26)",
+  "note": "grandfathered -- verified before the review ledger landed 2026-08-26; evidence in the session reports/commits up to that date"
+ },
+ "llm_strat_unit_update_target2_tracking": {
+  "disposition": "exempt",
+  "session": "",
+  "by": "grandfather backfill (conductor session, 2026-08-26)",
+  "note": "grandfathered -- verified before the review ledger landed 2026-08-26; evidence in the session reports/commits up to that date"
+ },
+ "llm_strat_unit_ctrlgroup_leave": {
+  "disposition": "exempt",
+  "session": "",
+  "by": "grandfather backfill (conductor session, 2026-08-26)",
+  "note": "grandfathered -- verified before the review ledger landed 2026-08-26; evidence in the session reports/commits up to that date"
+ },
+ "llm_strat_unit_ctrlgroup_add_member": {
+  "disposition": "exempt",
+  "session": "",
+  "by": "grandfather backfill (conductor session, 2026-08-26)",
+  "note": "grandfathered -- verified before the review ledger landed 2026-08-26; evidence in the session reports/commits up to that date"
+ },
+ "llm_strat_unit_ctrlgroup_remove_member": {
+  "disposition": "exempt",
+  "session": "",
+  "by": "grandfather backfill (conductor session, 2026-08-26)",
+  "note": "grandfathered -- verified before the review ledger landed 2026-08-26; evidence in the session reports/commits up to that date"
+ },
+ "llm_unit_status_bit_set": {
+  "disposition": "exempt",
+  "session": "",
+  "by": "grandfather backfill (conductor session, 2026-08-26)",
+  "note": "grandfathered -- verified before the review ledger landed 2026-08-26; evidence in the session reports/commits up to that date"
+ },
+ "llm_unit_status_bit_clear": {
+  "disposition": "exempt",
+  "session": "",
+  "by": "grandfather backfill (conductor session, 2026-08-26)",
+  "note": "grandfathered -- verified before the review ledger landed 2026-08-26; evidence in the session reports/commits up to that date"
+ },
+ "llm_strat_bldg_kill_credit": {
+  "disposition": "exempt",
+  "session": "",
+  "by": "grandfather backfill (conductor session, 2026-08-26)",
+  "note": "grandfathered -- verified before the review ledger landed 2026-08-26; evidence in the session reports/commits up to that date"
+ },
+ "llm_strat_unit_kill_credit": {
+  "disposition": "exempt",
+  "session": "",
+  "by": "grandfather backfill (conductor session, 2026-08-26)",
+  "note": "grandfathered -- verified before the review ledger landed 2026-08-26; evidence in the session reports/commits up to that date"
+ },
+ "llm_strat_set_landing_site": {
+  "disposition": "exempt",
+  "session": "",
+  "by": "grandfather backfill (conductor session, 2026-08-26)",
+  "note": "grandfathered -- verified before the review ledger landed 2026-08-26; evidence in the session reports/commits up to that date"
+ },
+ "llm_strat_unit_init_record": {
+  "disposition": "exempt",
+  "session": "",
+  "by": "grandfather backfill (conductor session, 2026-08-26)",
+  "note": "grandfathered -- verified before the review ledger landed 2026-08-26; evidence in the session reports/commits up to that date"
+ },
+ "map_unit_Add": {
+  "disposition": "exempt",
+  "session": "",
+  "by": "grandfather backfill (conductor session, 2026-08-26)",
+  "note": "grandfathered -- verified before the review ledger landed 2026-08-26; evidence in the session reports/commits up to that date"
+ },
+ "map_CreateBuilding": {
+  "disposition": "exempt",
+  "session": "",
+  "by": "grandfather backfill (conductor session, 2026-08-26)",
+  "note": "grandfathered -- verified before the review ledger landed 2026-08-26; evidence in the session reports/commits up to that date"
+ },
+ "llm_bldg_queue_construction": {
+  "disposition": "exempt",
+  "session": "",
+  "by": "grandfather backfill (conductor session, 2026-08-26)",
+  "note": "grandfathered -- verified before the review ledger landed 2026-08-26; evidence in the session reports/commits up to that date"
+ },
+ "llm_strat_storage_dock_unit_at_building": {
+  "disposition": "exempt",
+  "session": "",
+  "by": "grandfather backfill (conductor session, 2026-08-26)",
+  "note": "grandfathered -- verified before the review ledger landed 2026-08-26; evidence in the session reports/commits up to that date"
+ },
+ "llm_strat_unit_create": {
+  "disposition": "exempt",
+  "session": "",
+  "by": "grandfather backfill (conductor session, 2026-08-26)",
+  "note": "grandfathered -- verified before the review ledger landed 2026-08-26; evidence in the session reports/commits up to that date"
+ },
+ "llm_unit_create_soldier": {
+  "disposition": "exempt",
+  "session": "",
+  "by": "grandfather backfill (conductor session, 2026-08-26)",
+  "note": "grandfathered -- verified before the review ledger landed 2026-08-26; evidence in the session reports/commits up to that date"
+ },
+ "llm_unit_recruit": {
+  "disposition": "exempt",
+  "session": "",
+  "by": "grandfather backfill (conductor session, 2026-08-26)",
+  "note": "grandfathered -- verified before the review ledger landed 2026-08-26; evidence in the session reports/commits up to that date"
+ },
+ "llm_strat_unit_spawn_on_tile": {
+  "disposition": "exempt",
+  "session": "",
+  "by": "grandfather backfill (conductor session, 2026-08-26)",
+  "note": "grandfathered -- verified before the review ledger landed 2026-08-26; evidence in the session reports/commits up to that date"
+ },
+ "llm_strat_projectile_spawn": {
+  "disposition": "exempt",
+  "session": "",
+  "by": "grandfather backfill (conductor session, 2026-08-26)",
+  "note": "grandfathered -- verified before the review ledger landed 2026-08-26; evidence in the session reports/commits up to that date"
+ },
+ "llm_strat_order_queue_dispatch": {
+  "disposition": "exempt",
+  "session": "",
+  "by": "grandfather backfill (conductor session, 2026-08-26)",
+  "note": "grandfathered -- verified before the review ledger landed 2026-08-26; evidence in the session reports/commits up to that date"
+ },
+ "llm_strat_storage_scrap_docked_units_of_type": {
+  "disposition": "exempt",
+  "session": "",
+  "by": "grandfather backfill (conductor session, 2026-08-26)",
+  "note": "grandfathered -- verified before the review ledger landed 2026-08-26; evidence in the session reports/commits up to that date"
+ },
+ "llm_unit_force_disembark": {
+  "disposition": "exempt",
+  "session": "",
+  "by": "grandfather backfill (conductor session, 2026-08-26)",
+  "note": "grandfathered -- verified before the review ledger landed 2026-08-26; evidence in the session reports/commits up to that date"
+ },
+ "llm_strat_refresh_building": {
+  "disposition": "exempt",
+  "session": "",
+  "by": "grandfather backfill (conductor session, 2026-08-26)",
+  "note": "grandfathered -- verified before the review ledger landed 2026-08-26; evidence in the session reports/commits up to that date"
+ },
+ "llm_bldg_finish_current_order": {
+  "disposition": "exempt",
+  "session": "",
+  "by": "grandfather backfill (conductor session, 2026-08-26)",
+  "note": "grandfathered -- verified before the review ledger landed 2026-08-26; evidence in the session reports/commits up to that date"
+ },
+ "llm_strat_bldg_apply_damage": {
+  "disposition": "exempt",
+  "session": "",
+  "by": "grandfather backfill (conductor session, 2026-08-26)",
+  "note": "grandfathered -- verified before the review ledger landed 2026-08-26; evidence in the session reports/commits up to that date"
+ },
+ "llm_strat_bldg_state_to_unit": {
+  "disposition": "exempt",
+  "session": "",
+  "by": "conductor session, 2026-09-07 (SPCAMP A/B/C)",
+  "note": "RE-DISPOSED 2026-09-07, the SECOND row to break the 2026-08-26 grandfather exemption (see llm_strat_unit_state_squad_merge for the first). The elevation stamp read cfg offset 0x19b (`elevation`) where the asm reads 0x19f (`elevation_2`): 0x00471688 is `MOV EAX,[EAX+0xe4a237]` with EAX=proto*0x23f and cfg_units' base 0xe4a098, so 0xe4a237-0xe4a098 = 0x19f. Two adjacent, identically-typed, UNCOMMENTED int32 fields -- and the .cpp, the header banner's offset table AND the selftest were all written from the same wrong premise, so all three agreed with each other and none with the binary. The tree already knew the right mapping elsewhere (sim_map_unit_add.cpp does `u.elevation = proto.elevation_2`, and sim_unit_state_takeoff.h carries a CORRECTION banner establishing ceiling=0x19b/floor=0x19f). Fixed in all three; the selftest now seeds a THIRD distinct value into the neighbour field and asserts the result is not it, and that assertion is mutation-checked (reverting the .cpp fails it). Found by `--ui-abc spcamp_solo`: ship diverged from the recording at sim step 27,123 in the `units` region and rolling back this one [state_handler_skip] slot cleared all 878 mismatches. Kept `exempt` rather than `reviewed` because no loop session with a captured review spawn backs it."
+ },
+ "llm_strat_bldg_state_turret_attack": {
+  "disposition": "exempt",
+  "session": "",
+  "by": "grandfather backfill (conductor session, 2026-08-26)",
+  "note": "grandfathered -- verified before the review ledger landed 2026-08-26; evidence in the session reports/commits up to that date"
+ },
+ "llm_strat_bldg_state_destroyed": {
+  "disposition": "exempt",
+  "session": "",
+  "by": "grandfather backfill (conductor session, 2026-08-26)",
+  "note": "grandfathered -- verified before the review ledger landed 2026-08-26; evidence in the session reports/commits up to that date"
+ },
+ "llm_strat_bldg_state_dismantle_finish": {
+  "disposition": "exempt",
+  "session": "",
+  "by": "grandfather backfill (conductor session, 2026-08-26)",
+  "note": "grandfathered -- verified before the review ledger landed 2026-08-26; evidence in the session reports/commits up to that date"
+ },
+ "llm_strat_bldg_online_default": {
+  "disposition": "exempt",
+  "session": "",
+  "by": "grandfather backfill (conductor session, 2026-08-26)",
+  "note": "grandfathered -- verified before the review ledger landed 2026-08-26; evidence in the session reports/commits up to that date"
+ },
+ "llm_bldg_reset_construction_anim": {
+  "disposition": "exempt",
+  "session": "",
+  "by": "grandfather backfill (conductor session, 2026-08-26)",
+  "note": "grandfathered -- verified before the review ledger landed 2026-08-26; evidence in the session reports/commits up to that date"
+ },
+ "llm_strat_bldg_online_barracks_garage_a": {
+  "disposition": "exempt",
+  "session": "",
+  "by": "grandfather backfill (conductor session, 2026-08-26)",
+  "note": "grandfathered -- verified before the review ledger landed 2026-08-26; evidence in the session reports/commits up to that date"
+ },
+ "llm_strat_bldg_online_helipad_a": {
+  "disposition": "exempt",
+  "session": "",
+  "by": "grandfather backfill (conductor session, 2026-08-26)",
+  "note": "grandfathered -- verified before the review ledger landed 2026-08-26; evidence in the session reports/commits up to that date"
+ },
+ "llm_strat_bldg_online_helipad_h_or_misc": {
+  "disposition": "exempt",
+  "session": "",
+  "by": "grandfather backfill (conductor session, 2026-08-26)",
+  "note": "grandfathered -- verified before the review ledger landed 2026-08-26; evidence in the session reports/commits up to that date"
+ },
+ "llm_strat_bldg_online_airfield_a": {
+  "disposition": "exempt",
+  "session": "",
+  "by": "grandfather backfill (conductor session, 2026-08-26)",
+  "note": "grandfathered -- verified before the review ledger landed 2026-08-26; evidence in the session reports/commits up to that date"
+ },
+ "llm_strat_bldg_online_airfield_h": {
+  "disposition": "exempt",
+  "session": "",
+  "by": "grandfather backfill (conductor session, 2026-08-26)",
+  "note": "grandfathered -- verified before the review ledger landed 2026-08-26; evidence in the session reports/commits up to that date"
+ },
+ "llm_strat_bldg_online_shuttle_a": {
+  "disposition": "exempt",
+  "session": "",
+  "by": "grandfather backfill (conductor session, 2026-08-26)",
+  "note": "grandfathered -- verified before the review ledger landed 2026-08-26; evidence in the session reports/commits up to that date"
+ },
+ "llm_strat_bldg_online_shuttle_h": {
+  "disposition": "exempt",
+  "session": "",
+  "by": "grandfather backfill (conductor session, 2026-08-26)",
+  "note": "grandfathered -- verified before the review ledger landed 2026-08-26; evidence in the session reports/commits up to that date"
+ },
+ "llm_strat_bldg_start_special_anim": {
+  "disposition": "exempt",
+  "session": "",
+  "by": "grandfather backfill (conductor session, 2026-08-26)",
+  "note": "grandfathered -- verified before the review ledger landed 2026-08-26; evidence in the session reports/commits up to that date"
+ },
+ "llm_strat_bldg_start_liftoff_anim_shuttle": {
+  "disposition": "exempt",
+  "session": "",
+  "by": "grandfather backfill (conductor session, 2026-08-26)",
+  "note": "grandfathered -- verified before the review ledger landed 2026-08-26; evidence in the session reports/commits up to that date"
+ },
+ "llm_strat_bldg_anim_state_trigger": {
+  "disposition": "exempt",
+  "session": "",
+  "by": "grandfather backfill (conductor session, 2026-08-26)",
+  "note": "grandfathered -- verified before the review ledger landed 2026-08-26; evidence in the session reports/commits up to that date"
+ },
+ "llm_strat_bldg_start_liftoff_anim_mother": {
+  "disposition": "exempt",
+  "session": "",
+  "by": "grandfather backfill (conductor session, 2026-08-26)",
+  "note": "grandfathered -- verified before the review ledger landed 2026-08-26; evidence in the session reports/commits up to that date"
+ },
+ "llm_strat_bldg_online_port_a": {
+  "disposition": "exempt",
+  "session": "",
+  "by": "grandfather backfill (conductor session, 2026-08-26)",
+  "note": "grandfathered -- verified before the review ledger landed 2026-08-26; evidence in the session reports/commits up to that date"
+ },
+ "llm_strat_bldg_online_port_h": {
+  "disposition": "exempt",
+  "session": "",
+  "by": "grandfather backfill (conductor session, 2026-08-26)",
+  "note": "grandfathered -- verified before the review ledger landed 2026-08-26; evidence in the session reports/commits up to that date"
+ },
+ "llm_strat_bldg_anim_state_vehicles_h": {
+  "disposition": "exempt",
+  "session": "",
+  "by": "grandfather backfill (conductor session, 2026-08-26)",
+  "note": "grandfathered -- verified before the review ledger landed 2026-08-26; evidence in the session reports/commits up to that date"
+ },
+ "llm_strat_bldg_anim_state_helipad": {
+  "disposition": "exempt",
+  "session": "",
+  "by": "grandfather backfill (conductor session, 2026-08-26)",
+  "note": "grandfathered -- verified before the review ledger landed 2026-08-26; evidence in the session reports/commits up to that date"
+ },
+ "llm_strat_bldg_anim_state_port": {
+  "disposition": "exempt",
+  "session": "",
+  "by": "grandfather backfill (conductor session, 2026-08-26)",
+  "note": "grandfathered -- verified before the review ledger landed 2026-08-26; evidence in the session reports/commits up to that date"
+ },
+ "llm_strat_bldg_construction_complete": {
+  "disposition": "exempt",
+  "session": "",
+  "by": "grandfather backfill (conductor session, 2026-08-26)",
+  "note": "grandfathered -- verified before the review ledger landed 2026-08-26; evidence in the session reports/commits up to that date"
+ },
+ "llm_strat_bldg_update_charge_pips": {
+  "disposition": "exempt",
+  "session": "",
+  "by": "grandfather backfill (conductor session, 2026-08-26)",
+  "note": "grandfathered -- verified before the review ledger landed 2026-08-26; evidence in the session reports/commits up to that date"
+ },
+ "llm_strat_bldg_tick_pip_anim": {
+  "disposition": "exempt",
+  "session": "",
+  "by": "grandfather backfill (conductor session, 2026-08-26)",
+  "note": "grandfathered -- verified before the review ledger landed 2026-08-26; evidence in the session reports/commits up to that date"
+ },
+ "llm_strat_bldg_completion_dispatch": {
+  "disposition": "exempt",
+  "session": "",
+  "by": "grandfather backfill (conductor session, 2026-08-26)",
+  "note": "grandfathered -- verified before the review ledger landed 2026-08-26; evidence in the session reports/commits up to that date"
+ },
+ "llm_strat_mine_scan_deposit_slot": {
+  "disposition": "exempt",
+  "session": "",
+  "by": "grandfather backfill (conductor session, 2026-08-26)",
+  "note": "grandfathered -- verified before the review ledger landed 2026-08-26; evidence in the session reports/commits up to that date"
+ },
+ "llm_strat_hangar_recharge_pulse": {
+  "disposition": "exempt",
+  "session": "",
+  "by": "grandfather backfill (conductor session, 2026-08-26)",
+  "note": "grandfathered -- verified before the review ledger landed 2026-08-26; evidence in the session reports/commits up to that date"
+ },
+ "llm_strat_bldg_unmap_footprint": {
+  "disposition": "exempt",
+  "session": "",
+  "by": "grandfather backfill (conductor session, 2026-08-26)",
+  "note": "grandfathered -- verified before the review ledger landed 2026-08-26; evidence in the session reports/commits up to that date"
+ },
+ "llm_strat_bldg_free_record": {
+  "disposition": "exempt",
+  "session": "",
+  "by": "grandfather backfill (conductor session, 2026-08-26)",
+  "note": "grandfathered -- verified before the review ledger landed 2026-08-26; evidence in the session reports/commits up to that date"
+ },
+ "llm_strat_turret_acquire_target": {
+  "disposition": "exempt",
+  "session": "",
+  "by": "grandfather backfill (conductor session, 2026-08-26)",
+  "note": "grandfathered -- verified before the review ledger landed 2026-08-26; evidence in the session reports/commits up to that date"
+ },
+ "llm_strat_turret_fire": {
+  "disposition": "exempt",
+  "session": "",
+  "by": "grandfather backfill (conductor session, 2026-08-26)",
+  "note": "grandfathered -- verified before the review ledger landed 2026-08-26; evidence in the session reports/commits up to that date"
+ },
+ "llm_strat_unit_state_move_walker": {
+  "disposition": "exempt",
+  "session": "",
+  "by": "grandfather backfill (conductor session, 2026-08-26)",
+  "note": "grandfathered -- verified before the review ledger landed 2026-08-26; evidence in the session reports/commits up to that date"
+ },
+ "llm_strat_unit_update_rotation": {
+  "disposition": "exempt",
+  "session": "",
+  "by": "grandfather backfill (conductor session, 2026-08-26)",
+  "note": "grandfathered -- verified before the review ledger landed 2026-08-26; evidence in the session reports/commits up to that date"
+ },
+ "llm_strat_unit_apply_damage": {
+  "disposition": "exempt",
+  "session": "",
+  "by": "grandfather backfill (conductor session, 2026-08-26)",
+  "note": "grandfathered -- verified before the review ledger landed 2026-08-26; evidence in the session reports/commits up to that date"
+ },
+ "llm_strat_unit_update_soldiers": {
+  "disposition": "exempt",
+  "session": "",
+  "by": "grandfather backfill (conductor session, 2026-08-26)",
+  "note": "grandfathered -- verified before the review ledger landed 2026-08-26; evidence in the session reports/commits up to that date"
+ },
+ "llm_strat_unit_state_squad_merge": {
+  "disposition": "exempt",
+  "session": "",
+  "by": "conductor session, 2026-09-07 (SPCAMP A/B/C)",
+  "note": "RE-DISPOSED 2026-09-07: the 2026-08-26 grandfather exemption on this row was WRONG, and this is the first row proved so. Two real translation defects survived it -- a family-scan off-by-one (`expected` compared before its increment, 0x0047eb05/0x0047eb1b) that made family_count 1 and bailed EVERY merge, and two missing byte copies in loop 2 (cur_x/cur_y = start_x/start_y, 0x0047eecb/0x0047ef03). The offline oracle could not see either: its cfg fixture had been fitted to the buggy predicate (an impossible 1,1,2 soldier_count run) and it never read cur_x/cur_y at all. Both fixed, both now pinned by simtest T8/T11, and both confirmed by an independent adversarial re-derivation from the asm + Ghidra decompile. The evidence that FOUND them is the SPCAMP A/B/C scenario (`--ui-abc spcamp_solo`), a recorded human campaign session in which the player merges soldiers into a squad; kept `exempt` rather than `reviewed` because no loop session with a captured review spawn backs it -- the review was an ad-hoc conductor fan-out."
+ },
+ "llm_strat_unit_state_exit_storage_begin": {
+  "disposition": "exempt",
+  "session": "",
+  "by": "grandfather backfill (conductor session, 2026-08-26)",
+  "note": "grandfathered -- verified before the review ledger landed 2026-08-26; evidence in the session reports/commits up to that date"
+ },
+ "llm_strat_unit_state_exit_wait": {
+  "disposition": "exempt",
+  "session": "",
+  "by": "grandfather backfill (conductor session, 2026-08-26)",
+  "note": "grandfathered -- verified before the review ledger landed 2026-08-26; evidence in the session reports/commits up to that date"
+ },
+ "llm_strat_unit_state_exit_cancel": {
+  "disposition": "exempt",
+  "session": "",
+  "by": "grandfather backfill (conductor session, 2026-08-26)",
+  "note": "grandfathered -- verified before the review ledger landed 2026-08-26; evidence in the session reports/commits up to that date"
+ },
+ "llm_strat_unit_state_exit_walk_out": {
+  "disposition": "exempt",
+  "session": "",
+  "by": "grandfather backfill (conductor session, 2026-08-26)",
+  "note": "grandfathered -- verified before the review ledger landed 2026-08-26; evidence in the session reports/commits up to that date"
+ },
+ "llm_strat_unit_state_dock_taxi_in": {
+  "disposition": "exempt",
+  "session": "",
+  "by": "grandfather backfill (conductor session, 2026-08-26)",
+  "note": "grandfathered -- verified before the review ledger landed 2026-08-26; evidence in the session reports/commits up to that date"
+ },
+ "llm_strat_unit_state_enter_storage_begin": {
+  "disposition": "exempt",
+  "session": "",
+  "by": "grandfather backfill (conductor session, 2026-08-26)",
+  "note": "grandfathered -- verified before the review ledger landed 2026-08-26; evidence in the session reports/commits up to that date"
+ },
+ "llm_strat_unit_state_landing_request": {
+  "disposition": "exempt",
+  "session": "",
+  "by": "grandfather backfill (conductor session, 2026-08-26)",
+  "note": "grandfathered -- verified before the review ledger landed 2026-08-26; evidence in the session reports/commits up to that date"
+ },
+ "llm_strat_unit_state_enter_wait": {
+  "disposition": "exempt",
+  "session": "",
+  "by": "grandfather backfill (conductor session, 2026-08-26)",
+  "note": "grandfathered -- verified before the review ledger landed 2026-08-26; evidence in the session reports/commits up to that date"
+ },
+ "llm_strat_unit_state_enter_walk_in": {
+  "disposition": "exempt",
+  "session": "",
+  "by": "grandfather backfill (conductor session, 2026-08-26)",
+  "note": "grandfathered -- verified before the review ledger landed 2026-08-26; evidence in the session reports/commits up to that date"
+ },
+ "llm_strat_unit_state_move_path": {
+  "disposition": "exempt",
+  "session": "",
+  "by": "grandfather backfill (conductor session, 2026-08-26)",
+  "note": "grandfathered -- verified before the review ledger landed 2026-08-26; evidence in the session reports/commits up to that date"
+ },
+ "llm_strat_unit_state_takeoff_landing": {
+  "disposition": "exempt",
+  "session": "",
+  "by": "grandfather backfill (conductor session, 2026-08-26)",
+  "note": "grandfathered -- verified before the review ledger landed 2026-08-26; evidence in the session reports/commits up to that date"
+ },
+ "llm_strat_unit_state_deploy_to_building": {
+  "disposition": "exempt",
+  "session": "",
+  "by": "grandfather backfill (conductor session, 2026-08-26)",
+  "note": "grandfathered -- verified before the review ledger landed 2026-08-26; evidence in the session reports/commits up to that date"
+ },
+ "llm_strat_unit_state_group_marshal": {
+  "disposition": "exempt",
+  "session": "",
+  "by": "grandfather backfill (conductor session, 2026-08-26)",
+  "note": "grandfathered -- verified before the review ledger landed 2026-08-26; evidence in the session reports/commits up to that date"
+ },
+ "llm_strat_unit_group_step_ground": {
+  "disposition": "exempt",
+  "session": "",
+  "by": "grandfather backfill (conductor session, 2026-08-26)",
+  "note": "grandfathered -- verified before the review ledger landed 2026-08-26; evidence in the session reports/commits up to that date"
+ },
+ "llm_strat_unit_state_attack_unit": {
+  "disposition": "exempt",
+  "session": "",
+  "by": "grandfather backfill (conductor session, 2026-08-26)",
+  "note": "grandfathered -- verified before the review ledger landed 2026-08-26; evidence in the session reports/commits up to that date"
+ },
+ "llm_strat_storage_release_door_held_by_unit": {
+  "disposition": "exempt",
+  "session": "",
+  "by": "grandfather backfill (conductor session, 2026-08-26)",
+  "note": "grandfathered -- verified before the review ledger landed 2026-08-26; evidence in the session reports/commits up to that date"
+ },
+ "llm_strat_unit_state_die_explode": {
+  "disposition": "exempt",
+  "session": "",
+  "by": "grandfather backfill (conductor session, 2026-08-26)",
+  "note": "grandfathered -- verified before the review ledger landed 2026-08-26; evidence in the session reports/commits up to that date"
+ },
+ "llm_strat_unit_state_remove_silent": {
+  "disposition": "exempt",
+  "session": "",
+  "by": "grandfather backfill (conductor session, 2026-08-26)",
+  "note": "grandfathered -- verified before the review ledger landed 2026-08-26; evidence in the session reports/commits up to that date"
+ },
+ "llm_strat_unit_set_state_order_of": {
+  "disposition": "exempt",
+  "session": "",
+  "by": "grandfather backfill (conductor session, 2026-08-26)",
+  "note": "grandfathered -- verified before the review ledger landed 2026-08-26; evidence in the session reports/commits up to that date"
+ },
+ "llm_unit_set_order_param": {
+  "disposition": "exempt",
+  "session": "",
+  "by": "grandfather backfill (conductor session, 2026-08-26)",
+  "note": "grandfathered -- verified before the review ledger landed 2026-08-26; evidence in the session reports/commits up to that date"
+ },
+ "llm_strat_unit_set_state_of": {
+  "disposition": "exempt",
+  "session": "",
+  "by": "grandfather backfill (conductor session, 2026-08-26)",
+  "note": "grandfathered -- verified before the review ledger landed 2026-08-26; evidence in the session reports/commits up to that date"
+ },
+ "map_unit_PutOnMap": {
+  "disposition": "exempt",
+  "session": "",
+  "by": "grandfather backfill (conductor session, 2026-08-26)",
+  "note": "grandfathered -- verified before the review ledger landed 2026-08-26; evidence in the session reports/commits up to that date"
+ },
+ "llm_strat_unit_unlink_tile": {
+  "disposition": "exempt",
+  "session": "",
+  "by": "grandfather backfill (conductor session, 2026-08-26)",
+  "note": "grandfathered -- verified before the review ledger landed 2026-08-26; evidence in the session reports/commits up to that date"
+ },
+ "llm_strat_unit_update_damage_smoke": {
+  "disposition": "exempt",
+  "session": "",
+  "by": "grandfather backfill (conductor session, 2026-08-26)",
+  "note": "grandfathered -- verified before the review ledger landed 2026-08-26; evidence in the session reports/commits up to that date"
+ },
+ "llm_strat_unit_remove_from_map": {
+  "disposition": "exempt",
+  "session": "",
+  "by": "grandfather backfill (conductor session, 2026-08-26)",
+  "note": "grandfathered -- verified before the review ledger landed 2026-08-26; evidence in the session reports/commits up to that date"
+ },
+ "llm_strat_unit_teardown_mapped": {
+  "disposition": "exempt",
+  "session": "",
+  "by": "grandfather backfill (conductor session, 2026-08-26)",
+  "note": "grandfathered -- verified before the review ledger landed 2026-08-26; evidence in the session reports/commits up to that date"
+ },
+ "llm_strat_unit_on_destroyed": {
+  "disposition": "exempt",
+  "session": "",
+  "by": "grandfather backfill (conductor session, 2026-08-26)",
+  "note": "grandfathered -- verified before the review ledger landed 2026-08-26; evidence in the session reports/commits up to that date"
+ },
+ "llm_strat_unit_free_slot": {
+  "disposition": "exempt",
+  "session": "",
+  "by": "grandfather backfill (conductor session, 2026-08-26)",
+  "note": "grandfathered -- verified before the review ledger landed 2026-08-26; evidence in the session reports/commits up to that date"
+ },
+ "llm_strat_unit_teardown": {
+  "disposition": "exempt",
+  "session": "",
+  "by": "grandfather backfill (conductor session, 2026-08-26)",
+  "note": "grandfathered -- verified before the review ledger landed 2026-08-26; evidence in the session reports/commits up to that date"
+ },
+ "llm_unit_transport_unload_field": {
+  "disposition": "exempt",
+  "session": "",
+  "by": "grandfather backfill (conductor session, 2026-08-26)",
+  "note": "grandfathered -- verified before the review ledger landed 2026-08-26; evidence in the session reports/commits up to that date"
+ },
+ "llm_unit_transport_unload_docked": {
+  "disposition": "exempt",
+  "session": "",
+  "by": "grandfather backfill (conductor session, 2026-08-26)",
+  "note": "grandfathered -- verified before the review ledger landed 2026-08-26; evidence in the session reports/commits up to that date"
+ },
+ "llm_strat_unit_change_proto_and_energy": {
+  "disposition": "exempt",
+  "session": "",
+  "by": "grandfather backfill (conductor session, 2026-08-26)",
+  "note": "grandfathered -- verified before the review ledger landed 2026-08-26; evidence in the session reports/commits up to that date"
+ },
+ "llm_strat_unit_soldier_unlink": {
+  "disposition": "exempt",
+  "session": "",
+  "by": "grandfather backfill (conductor session, 2026-08-26)",
+  "note": "grandfathered -- verified before the review ledger landed 2026-08-26; evidence in the session reports/commits up to that date"
+ },
+ "llm_strat_storage_remove_docked_unit": {
+  "disposition": "exempt",
+  "session": "",
+  "by": "grandfather backfill (conductor session, 2026-08-26)",
+  "note": "grandfathered -- verified before the review ledger landed 2026-08-26; evidence in the session reports/commits up to that date"
+ },
+ "llm_strat_storage_place_exit_ground": {
+  "disposition": "exempt",
+  "session": "",
+  "by": "grandfather backfill (conductor session, 2026-08-26)",
+  "note": "grandfathered -- verified before the review ledger landed 2026-08-26; evidence in the session reports/commits up to that date"
+ },
+ "llm_strat_storage_can_enter": {
+  "disposition": "exempt",
+  "session": "",
+  "by": "grandfather backfill (conductor session, 2026-08-26)",
+  "note": "grandfathered -- verified before the review ledger landed 2026-08-26; evidence in the session reports/commits up to that date"
+ },
+ "llm_strat_unit_takeoff_finalize": {
+  "disposition": "exempt",
+  "session": "",
+  "by": "grandfather backfill (conductor session, 2026-08-26)",
+  "note": "grandfathered -- verified before the review ledger landed 2026-08-26; evidence in the session reports/commits up to that date"
+ },
+ "llm_strat_storage_dock_list_append": {
+  "disposition": "exempt",
+  "session": "",
+  "by": "grandfather backfill (conductor session, 2026-08-26)",
+  "note": "grandfathered -- verified before the review ledger landed 2026-08-26; evidence in the session reports/commits up to that date"
+ },
+ "llm_strat_storage_board_unit": {
+  "disposition": "exempt",
+  "session": "",
+  "by": "grandfather backfill (conductor session, 2026-08-26)",
+  "note": "grandfathered -- verified before the review ledger landed 2026-08-26; evidence in the session reports/commits up to that date"
+ },
+ "llm_strat_unit_fire_weapon": {
+  "disposition": "exempt",
+  "session": "",
+  "by": "grandfather backfill (conductor session, 2026-08-26)",
+  "note": "grandfathered -- verified before the review ledger landed 2026-08-26; evidence in the session reports/commits up to that date"
+ },
+ "llm_strat_group_scratch_add_unit_and_normalize_heading": {
+  "disposition": "exempt",
+  "session": "",
+  "by": "grandfather backfill (conductor session, 2026-08-26)",
+  "note": "grandfathered -- verified before the review ledger landed 2026-08-26; evidence in the session reports/commits up to that date"
+ },
+ "llm_prod_shuttle_slot_bind_default": {
+  "disposition": "exempt",
+  "session": "",
+  "by": "grandfather backfill (conductor session, 2026-08-26)",
+  "note": "grandfathered -- verified before the review ledger landed 2026-08-26; evidence in the session reports/commits up to that date"
+ },
+ "llm_strat_bldg_flush_cargo_hold": {
+  "disposition": "exempt",
+  "session": "",
+  "by": "grandfather backfill (conductor session, 2026-08-26)",
+  "note": "grandfathered -- verified before the review ledger landed 2026-08-26; evidence in the session reports/commits up to that date"
+ },
+ "llm_strat_unit_load_into_shuttle_cargo": {
+  "disposition": "exempt",
+  "session": "",
+  "by": "grandfather backfill (conductor session, 2026-08-26)",
+  "note": "grandfathered -- verified before the review ledger landed 2026-08-26; evidence in the session reports/commits up to that date"
+ },
+ "llm_strat_prod_unload_cargo_unit": {
+  "disposition": "exempt",
+  "session": "",
+  "by": "grandfather backfill (conductor session, 2026-08-26)",
+  "note": "grandfathered -- verified before the review ledger landed 2026-08-26; evidence in the session reports/commits up to that date"
+ },
+ "llm_prod_bldg_depart_finalize": {
+  "disposition": "exempt",
+  "session": "",
+  "by": "grandfather backfill (conductor session, 2026-08-26)",
+  "note": "grandfathered -- verified before the review ledger landed 2026-08-26; evidence in the session reports/commits up to that date"
+ },
+ "llm_strat_prod_spawn_arrived_unit": {
+  "disposition": "exempt",
+  "session": "",
+  "by": "grandfather backfill (conductor session, 2026-08-26)",
+  "note": "grandfathered -- verified before the review ledger landed 2026-08-26; evidence in the session reports/commits up to that date"
+ },
+ "llm_strat_storage_launch_parked_to_orbit": {
+  "disposition": "exempt",
+  "session": "",
+  "by": "grandfather backfill (conductor session, 2026-08-26)",
+  "note": "grandfathered -- verified before the review ledger landed 2026-08-26; evidence in the session reports/commits up to that date"
+ },
+ "llm_strat_prod_bind_planet": {
+  "disposition": "exempt",
+  "session": "",
+  "by": "grandfather backfill (conductor session, 2026-08-26)",
+  "note": "grandfathered -- verified before the review ledger landed 2026-08-26; evidence in the session reports/commits up to that date"
+ },
+ "llm_strat_prod_unbind_planet": {
+  "disposition": "exempt",
+  "session": "",
+  "by": "grandfather backfill (conductor session, 2026-08-26)",
+  "note": "grandfathered -- verified before the review ledger landed 2026-08-26; evidence in the session reports/commits up to that date"
+ },
+ "llm_strat_bldg_remove_workers": {
+  "disposition": "exempt",
+  "session": "",
+  "by": "grandfather backfill (conductor session, 2026-08-26)",
+  "note": "grandfathered -- verified before the review ledger landed 2026-08-26; evidence in the session reports/commits up to that date"
+ },
+ "llm_strat_bldg_add_workers": {
+  "disposition": "exempt",
+  "session": "",
+  "by": "grandfather backfill (conductor session, 2026-08-26)",
+  "note": "grandfathered -- verified before the review ledger landed 2026-08-26; evidence in the session reports/commits up to that date"
+ },
+ "llm_strat_bldg_power_network_recompute": {
+  "disposition": "exempt",
+  "session": "",
+  "by": "grandfather backfill (conductor session, 2026-08-26)",
+  "note": "grandfathered -- verified before the review ledger landed 2026-08-26; evidence in the session reports/commits up to that date"
+ },
+ "llm_strat_bldg_link_to_network_if_adjacent": {
+  "disposition": "exempt",
+  "session": "",
+  "by": "grandfather backfill (conductor session, 2026-08-26)",
+  "note": "grandfathered -- verified before the review ledger landed 2026-08-26; evidence in the session reports/commits up to that date"
+ },
+ "llm_strat_prod_try_start_unit": {
+  "disposition": "exempt",
+  "session": "",
+  "by": "grandfather backfill (conductor session, 2026-08-26)",
+  "note": "grandfathered -- verified before the review ledger landed 2026-08-26; evidence in the session reports/commits up to that date"
+ },
+ "llm_unit_apply_production_completion": {
+  "disposition": "exempt",
+  "session": "",
+  "by": "grandfather backfill (conductor session, 2026-08-26)",
+  "note": "grandfathered -- verified before the review ledger landed 2026-08-26; evidence in the session reports/commits up to that date"
+ },
+ "llm_strat_path_make_single_step": {
+  "disposition": "exempt",
+  "session": "",
+  "by": "grandfather backfill (conductor session, 2026-08-26)",
+  "note": "grandfathered -- verified before the review ledger landed 2026-08-26; evidence in the session reports/commits up to that date"
+ },
+ "llm_strat_path_write_from_solver": {
+  "disposition": "exempt",
+  "session": "",
+  "by": "grandfather backfill (conductor session, 2026-08-26)",
+  "note": "grandfathered -- verified before the review ledger landed 2026-08-26; evidence in the session reports/commits up to that date"
+ },
+ "llm_strat_storage_setup_approach_path": {
+  "disposition": "exempt",
+  "session": "",
+  "by": "grandfather backfill (conductor session, 2026-08-26)",
+  "note": "grandfathered -- verified before the review ledger landed 2026-08-26; evidence in the session reports/commits up to that date"
+ },
+ "llm_strat_storage_setup_exit_path": {
+  "disposition": "exempt",
+  "session": "",
+  "by": "grandfather backfill (conductor session, 2026-08-26)",
+  "note": "grandfathered -- verified before the review ledger landed 2026-08-26; evidence in the session reports/commits up to that date"
+ },
+ "llm_bldg_set_connected_flag": {
+  "disposition": "exempt",
+  "session": "",
+  "by": "grandfather backfill (conductor session, 2026-08-26)",
+  "note": "grandfathered -- verified before the review ledger landed 2026-08-26; evidence in the session reports/commits up to that date"
+ },
+ "llm_strat_bldg_clear_flag_bit0_notify": {
+  "disposition": "exempt",
+  "session": "",
+  "by": "grandfather backfill (conductor session, 2026-08-26)",
+  "note": "grandfathered -- verified before the review ledger landed 2026-08-26; evidence in the session reports/commits up to that date"
+ },
+ "llm_strat_bldg_set_staffed_flag": {
+  "disposition": "exempt",
+  "session": "",
+  "by": "grandfather backfill (conductor session, 2026-08-26)",
+  "note": "grandfathered -- verified before the review ledger landed 2026-08-26; evidence in the session reports/commits up to that date"
+ },
+ "llm_strat_bldg_clear_staffed_flag": {
+  "disposition": "exempt",
+  "session": "",
+  "by": "grandfather backfill (conductor session, 2026-08-26)",
+  "note": "grandfathered -- verified before the review ledger landed 2026-08-26; evidence in the session reports/commits up to that date"
+ },
+ "llm_strat_path_free_slot": {
+  "disposition": "exempt",
+  "session": "",
+  "by": "grandfather backfill (conductor session, 2026-08-26)",
+  "note": "grandfathered -- verified before the review ledger landed 2026-08-26; evidence in the session reports/commits up to that date"
+ },
+ "llm_strat_path_attach_slot": {
+  "disposition": "exempt",
+  "session": "",
+  "by": "grandfather backfill (conductor session, 2026-08-26)",
+  "note": "grandfathered -- verified before the review ledger landed 2026-08-26; evidence in the session reports/commits up to that date"
+ },
+ "llm_strat_player_presence_lost": {
+  "disposition": "exempt",
+  "session": "",
+  "by": "grandfather backfill (conductor session, 2026-08-26)",
+  "note": "grandfathered -- verified before the review ledger landed 2026-08-26; evidence in the session reports/commits up to that date"
+ },
+ "llm_strat_mother_reelect_primary": {
+  "disposition": "exempt",
+  "session": "",
+  "by": "grandfather backfill (conductor session, 2026-08-26)",
+  "note": "grandfathered -- verified before the review ledger landed 2026-08-26; evidence in the session reports/commits up to that date"
+ },
+ "llm_strat_spawn_enemy_landing": {
+  "disposition": "exempt",
+  "session": "",
+  "by": "grandfather backfill (conductor session, 2026-08-26)",
+  "note": "grandfathered -- verified before the review ledger landed 2026-08-26; evidence in the session reports/commits up to that date"
+ },
+ "llm_strat_unit_purge_unregistered": {
+  "disposition": "exempt",
+  "session": "",
+  "by": "grandfather backfill (conductor session, 2026-08-26)",
+  "note": "grandfathered -- verified before the review ledger landed 2026-08-26; evidence in the session reports/commits up to that date"
+ },
+ "llm_unit_bldg_energy_refill_full": {
+  "disposition": "exempt",
+  "session": "",
+  "by": "grandfather backfill (conductor session, 2026-08-26)",
+  "note": "grandfathered -- verified before the review ledger landed 2026-08-26; evidence in the session reports/commits up to that date"
+ },
+ "llm_unit_bldg_apply_scaled_damage": {
+  "disposition": "exempt",
+  "session": "",
+  "by": "grandfather backfill (conductor session, 2026-08-26)",
+  "note": "grandfathered -- verified before the review ledger landed 2026-08-26; evidence in the session reports/commits up to that date"
+ },
+ "llm_unit_bldg_apply_lethal_damage": {
+  "disposition": "exempt",
+  "session": "",
+  "by": "grandfather backfill (conductor session, 2026-08-26)",
+  "note": "grandfathered -- verified before the review ledger landed 2026-08-26; evidence in the session reports/commits up to that date"
+ },
+ "llm_strat_storage_purge_dead_docked": {
+  "disposition": "exempt",
+  "session": "",
+  "by": "grandfather backfill (conductor session, 2026-08-26)",
+  "note": "grandfathered -- verified before the review ledger landed 2026-08-26; evidence in the session reports/commits up to that date"
+ },
+ "llm_strat_load_base_layout_dmp": {
+  "disposition": "exempt",
+  "session": "",
+  "by": "grandfather backfill (conductor session, 2026-08-26)",
+  "note": "grandfathered -- verified before the review ledger landed 2026-08-26; evidence in the session reports/commits up to that date"
+ },
+ "llm_strat_target_release_ref": {
+  "disposition": "exempt",
+  "session": "",
+  "by": "grandfather backfill (conductor session, 2026-08-26)",
+  "note": "grandfathered -- verified before the review ledger landed 2026-08-26; evidence in the session reports/commits up to that date"
+ },
+ "llm_strat_unit_notify_status": {
+  "disposition": "exempt",
+  "session": "",
+  "by": "grandfather backfill (conductor session, 2026-08-26)",
+  "note": "grandfathered -- verified before the review ledger landed 2026-08-26; evidence in the session reports/commits up to that date"
+ },
+ "game_UpdateResourceStats": {
+  "disposition": "exempt",
+  "session": "",
+  "by": "grandfather backfill (conductor session, 2026-08-26)",
+  "note": "grandfathered -- verified before the review ledger landed 2026-08-26; evidence in the session reports/commits up to that date"
+ },
+ "llm_diplomacy_ai_relation_swap": {
+  "disposition": "exempt",
+  "session": "",
+  "by": "grandfather backfill (conductor session, 2026-08-26)",
+  "note": "grandfathered -- verified before the review ledger landed 2026-08-26; evidence in the session reports/commits up to that date"
+ },
+ "llm_strat_spawn_invasion_force": {
+  "disposition": "exempt",
+  "session": "",
+  "by": "grandfather backfill (conductor session, 2026-08-26)",
+  "note": "grandfathered -- verified before the review ledger landed 2026-08-26; evidence in the session reports/commits up to that date"
+ },
+ "llm_strat_econ_track_unit_resource_spend": {
+  "disposition": "exempt",
+  "session": "",
+  "by": "grandfather backfill (conductor session, 2026-08-26)",
+  "note": "grandfathered -- verified before the review ledger landed 2026-08-26; evidence in the session reports/commits up to that date"
+ },
+ "llm_strat_bldg_queue_construction": {
+  "disposition": "exempt",
+  "session": "",
+  "by": "grandfather backfill (conductor session, 2026-08-26)",
+  "note": "grandfathered -- verified before the review ledger landed 2026-08-26; evidence in the session reports/commits up to that date"
+ },
+ "llm_strat_bldg_record_resource_expenditure_stats": {
+  "disposition": "exempt",
+  "session": "",
+  "by": "grandfather backfill (conductor session, 2026-08-26)",
+  "note": "grandfathered -- verified before the review ledger landed 2026-08-26; evidence in the session reports/commits up to that date"
+ },
+ "llm_strat_unit_passive_engage_tick": {
+  "disposition": "exempt",
+  "session": "",
+  "by": "grandfather backfill (conductor session, 2026-08-26)",
+  "note": "grandfathered -- verified before the review ledger landed 2026-08-26; evidence in the session reports/commits up to that date"
+ },
+ "llm_strat_trace_greedy_path": {
+  "disposition": "exempt",
+  "session": "",
+  "by": "grandfather backfill (conductor session, 2026-08-26)",
+  "note": "grandfathered -- verified before the review ledger landed 2026-08-26; evidence in the session reports/commits up to that date"
+ },
+ "llm_strat_bldg_init_defaults": {
+  "disposition": "reviewed",
+  "session": "2026-09-10 SIM1-H wave 1",
+  "by": "reimpl-verify fan-out -- a DEDICATED reviewer for this row alone (5531 B, 63% of its wave), plus the three lens-group reviewers over the rest of the wave",
+  "note": "FOUND ONE REAL BUG, which is why the pass was not optional: the H_HELIPAD dock-lift block took its term from width/height where the original reads shuttle_pad_offset_x/y (0x0045ac79 -> 0xd9f402 = +0x782; 0x0045acd4 -> 0xd9f40a = +0x78a). The block never touches width/height at 0xd9ec8a/0xd9ec89. It is docs/dead-ends.md G92's shape ONE FIELD OVER -- a value taken from the wrong place because it resembled a sibling helper's pattern -- and it hid because the two agree whenever the footprint is 3 or 4 while the arm pins both pad offsets to the literal 1. FIXED. The reviewer also returned a full ADDRESS TABLE resolving every absolute store to a number against the instruction operand, and the 38-way switch grouping was independently settled from the RAW jump-table bytes at 0x0045a089 rather than from sibling BUILDING_TYPE_* constants. Evidence: session_reports/2026-09-10-1900-sim1h-batch-h-translated.md. Offline oracle: none of its own -- it is exercised by the promoted-golden A/B (entered 4x from original code per its [promote] liveness line), tier T2."
+ },
+ "llm_map_region_flood_fill": {
+  "disposition": "reviewed",
+  "session": "2026-09-10 SIM1-H wave 2",
+  "by": "reimpl-verify fan-out -- the wave-2 reviewer, with this row called out as the wave's big one (1177 B) and given its own hazard list",
+  "note": "ZERO BUG, ZERO SUSPECT, with a per-unit ADDRESS TABLE resolving every absolute load/store to a number. Two claims it settled rather than accepted: the queue discipline (head/tail over `map::g::path_`, llm_map_bfs_entry[2048] -- a SEPARATE buffer from llm_map_region_split's _G_LLM_MAP_BFS_QUEUE_REGIONSPLIT, not a shared scratch) and the two depth compares at 0x004224c6 (vs 0xe) and 0x004224f8 (vs 3). It also PROVED the body's cached-read safety with a bound rather than hedging it: the depth cap makes the maximum enqueued entries 1 + 4*sum(1..14) = 421, comfortably inside 2048, which is why the original has no overflow check. Evidence: session_reports/2026-09-10-1900-sim1h-batch-h-translated.md. Tier T2 via the promoted-golden A/B; reached through our own intra-batch call, so it has no [promote] liveness line BY DESIGN."
+ }
+}

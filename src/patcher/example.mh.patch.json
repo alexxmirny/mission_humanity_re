@@ -1,0 +1,16 @@
+{
+  "class": "reference",
+  "_class_why": "The documented smoke-test sample: an `imports` edit with no code patch. Never compiled in.",
+  "_comment": "SMOKE TEST as-is: adds the mh.dll import to a stock retail mh.exe with NO code patch, so you can verify the game still launches with mh.dll loaded next to it. The retail exe is not packed; VAs match Ghidra. 'sha256' pins the exact binary (value = clean Russian retail; change/remove it for another build). To redirect a call, add entries to 'patches' like the '_patch_template' below (a real call-site VA from Ghidra + its exact original bytes as the guard). Run: python mhpatch.py apply mh.exe example.mh.patch.json mh.patched.exe",
+  "target": "mh.exe (clean Russian retail, md5 a9bf89a6...)",
+  "sha256": "9c4451cf8934a9f446a4f639a3aaa002168030ba512df83a6495bb61861d6a30",
+  "imports": {
+    "mh.dll": ["DecompressLZWData", "GetSightAreaFromRadius"]
+  },
+  "patches": [],
+  "_patch_template": {
+    "va": "0x004xxxxx",
+    "expect": "e8 xx xx xx xx",
+    "asm": "call dword ptr [import:mh.dll!GetSightAreaFromRadius]"
+  }
+}

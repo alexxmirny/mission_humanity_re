@@ -1,0 +1,1028 @@
+{
+ "_what": "LIB-REF-IN: the ROW DISPOSITION half of the inbound adjudication -- every owned body an original caller reaches, mapped to the inbound entry that serves it or to a recorded exclusion reason.",
+ "_the_rule": [
+  "A row is COVERED (`entry` + the live C++ wrapper that implements it) or EXCLUDED (`exclusion`",
+  "+ `why`). There is no third state: tools/gen_libmh_inbound.py prints the UNCOVERED count and",
+  "--check fails on anything but zero. `impl`/`header` are cross-checked by the COMPILER (the",
+  "generated dispatch calls them), and the declared argument count is cross-checked against the",
+  "committed prototype in tools/data/dll_call_protos.json."
+ ],
+ "_exclusion_codes": {
+  "X-TL": "every reaching edge is TRANSLATE-LATER; the edge dissolves with its caller's translation",
+  "X-TACT": "tactical mode, frozen with its host table (LIB-IFACE-SPLIT); outside the strategic surface",
+  "X-PRES": "a presentation body that leaves libmh at the fork (the LIFT-TACT / LIFT-RESID direction)",
+  "X-UTIL": "host-side utility body (wall clock / fx RNG / string / cfg anim time)",
+  "X-BOOT": "reached only from the cfg/map parsers; covered by libmh_import_snapshot / _world"
+ },
+ "_measured": "2026-09-11 (LIB-REF-IN design), at EN v402.",
+ "rows": [
+  {
+   "name": "SwitchToPlanet",
+   "domain": "sim",
+   "entry": "libmh_planet_switch",
+   "impl": "mh::sim::switch_to_planet",
+   "header": "sim/hostreach/sim_h_switch_to_planet.h"
+  },
+  {
+   "name": "cfg_GetAnimTime",
+   "domain": "lib_trans",
+   "exclusion": "X-UTIL",
+   "why": "host-side utility body (wall clock / fx RNG / string / cfg anim time) -- the fork's host owns it; nothing in the hashed state depends on libmh serving it"
+  },
+  {
+   "name": "cfg_final_planet_Construct",
+   "domain": "lib_trans",
+   "exclusion": "X-BOOT",
+   "why": "reached only from the cfg/map parsers, which the fork reimplements host-side (D-E5); the resulting state crosses as libmh_import_snapshot / libmh_import_world"
+  },
+  {
+   "name": "game_SetEvent",
+   "domain": "sim",
+   "entry": "libmh_post_event",
+   "impl": "mh::sim::game_set_event",
+   "header": "sim/sim_game_set_event.h"
+  },
+  {
+   "name": "llm_bldg_finish_current_order",
+   "domain": "sim",
+   "entry": "libmh_bldg_finish_current_order",
+   "impl": "mh::sim::bldg_finish_current_order",
+   "header": "sim/sim_bldg_finish_order.h"
+  },
+  {
+   "name": "llm_bldg_first_occupied_unit_slot_has_soldiers",
+   "domain": "lib_trans",
+   "entry": "libmh_bldg_slot_has_soldiers",
+   "impl": "mh::sim::first_occupied_unit_slot_has_soldiers",
+   "header": "sim/libtrans/sim_lt_bldg_query.h"
+  },
+  {
+   "name": "llm_bldg_footprint_is_clear",
+   "domain": "sim",
+   "entry": "libmh_bldg_footprint_is_clear",
+   "impl": "mh::sim::bldg_footprint_is_clear",
+   "header": "sim/sim_bldg_footprint_is_clear.h"
+  },
+  {
+   "name": "llm_game_player_set_human",
+   "domain": "sim",
+   "entry": "libmh_game_player_set_human",
+   "impl": "mh::sim::game_player_set_human",
+   "header": "sim/sim_game_player_set_side.h"
+  },
+  {
+   "name": "llm_game_reload_snapshot_resync_clocks",
+   "domain": "lib_trans",
+   "entry": "libmh_clock_reload_resync",
+   "impl": "mh::lockstep::reload_snapshot_resync_clocks",
+   "header": "lockstep/lt_reload_snapshot_resync.h",
+   "entry_why": "ONE OF THREE MIRRORS, not the merged libmh_clock_advance the design sketched. Measured 2026-09-11: the single original caller of this row and of llm_strat_clock_resync_units_and_buildings is llm_strat_sim_clock_advance @0x0044d238, and it is NOT a fixed sequence -- it calls THIS one unconditionally per frame with GAME_CLOCK, and the other one ONLY on the >300 s catch-up branch after advancing the clock by the excess. A merged entry would have had libmh reimplement llm_strat_sim_clock_advance, which is a body libmh does not own. So each of the three clock rows gets an exact positional mirror and the fork's host composes them the way the original driver does."
+  },
+  {
+   "name": "llm_map_build_regions",
+   "domain": "sim",
+   "entry": "libmh_import_world [spine]",
+   "impl": "mh::sim::build_regions",
+   "header": "sim/hostreach/sim_h_map_build_regions.h",
+   "hosted": {
+    "class": "boot-blob",
+    "why": "Served by libmh_import_world, whose contract is blob-in: bytes, then the recorded re-derives (state/spine.cpp). Hosted the world arrives from the ORIGINAL .MP parser, so there is no blob to pass and the entry is not a per-body forward -- routing the seam would run a whole-world import once per map-load call."
+   }
+  },
+  {
+   "name": "llm_map_fog_of_war_recompute",
+   "domain": "sim",
+   "exclusion": "X-BOOT",
+   "why": "reached only from the cfg/map parsers the fork reimplements host-side (D-E5)"
+  },
+  {
+   "name": "llm_map_init_region_route_step_deltas",
+   "domain": "sim",
+   "entry": "libmh_import_world [spine]",
+   "impl": "mh::sim::init_region_route_step_deltas",
+   "header": "sim/hostreach/sim_h_map_region_prep.h",
+   "hosted": {
+    "class": "boot-blob",
+    "why": "Served by libmh_import_world, whose contract is blob-in: bytes, then the recorded re-derives (state/spine.cpp). Hosted the world arrives from the ORIGINAL .MP parser, so there is no blob to pass and the entry is not a per-body forward -- routing the seam would run a whole-world import once per map-load call."
+   }
+  },
+  {
+   "name": "llm_map_region_pool_reset",
+   "domain": "lib_trans",
+   "entry": "libmh_import_world [spine]",
+   "impl": "mh::sim::pool_reset",
+   "header": "sim/libtrans/sim_lt_map_region_pool.h",
+   "hosted": {
+    "class": "boot-blob",
+    "why": "Served by libmh_import_world, whose contract is blob-in: bytes, then the recorded re-derives (state/spine.cpp). Hosted the world arrives from the ORIGINAL .MP parser, so there is no blob to pass and the entry is not a per-body forward -- routing the seam would run a whole-world import once per map-load call.",
+    "api_callers_excused": {
+     "llm_fatal_cleanup": "llm_fatal_cleanup @0x0042613b is the PROCESS-TEARDOWN / fatal-abort path, not a session service: its callees are llm_gfx_release_display_surfaces, the font unloaders, llm_input_di_keyboard_destroy, llm_snd_shutdown, llm_strat_pathfinder_shutdown, llm_game_clear_save_temp_files and CoUninitialize, and its callers are asset-load failures plus llm_wnd_on_destroy (the game's only self-driven exit, mh_addrs.gen.h D15). Its call here frees the nav-region node pool on the way out. At the fork the HOST owns process teardown and frees its own allocations, so this edge needs no lifecycle entry -- it dissolves with the exit path rather than crossing it."
+    }
+   }
+  },
+  {
+   "name": "llm_map_setup_dimensions",
+   "domain": "lib_trans",
+   "entry": "libmh_import_world [spine]",
+   "impl": "mh::sim::map_setup_dimensions",
+   "header": "sim/libtrans/sim_lt_map_setup_dimensions.h",
+   "hosted": {
+    "class": "boot-blob",
+    "why": "Served by libmh_import_world, whose contract is blob-in: bytes, then the recorded re-derives (state/spine.cpp). Hosted the world arrives from the ORIGINAL .MP parser, so there is no blob to pass and the entry is not a per-body forward -- routing the seam would run a whole-world import once per map-load call."
+   }
+  },
+  {
+   "name": "llm_menu_force_return_to_main",
+   "domain": "lib_trans",
+   "exclusion": "X-PRES",
+   "why": "menu/presentation body -- at the fork the host owns returning to its own menu; its one caller is the host's sync busywait, which the fork's transport reimplements"
+  },
+  {
+   "name": "llm_net_session_globals_reset",
+   "domain": "net_session",
+   "entry": "libmh_session_globals_reset",
+   "impl": "mh::lockstep::session_globals_reset",
+   "header": "lockstep/net_session.h"
+  },
+  {
+   "name": "llm_prod_planet_distance_factor",
+   "domain": "sim",
+   "entry": "libmh_planet_distance_factor",
+   "impl": "mh::sim::planet_distance_factor",
+   "header": "sim/sim_prod_planet_distance_factor.h"
+  },
+  {
+   "name": "llm_progress_recheck_planet_system_all_players",
+   "domain": "lib_trans",
+   "entry": "libmh_progress_recheck_all",
+   "impl": "mh::sim::recheck_planet_system_all_players",
+   "header": "sim/libtrans/sim_lt_progress_planet_sweep.h"
+  },
+  {
+   "name": "llm_rand_below_fx",
+   "domain": "lib_trans",
+   "exclusion": "X-UTIL",
+   "why": "host-side utility body (wall clock / fx RNG / string / cfg anim time) -- the fork's host owns it; nothing in the hashed state depends on libmh serving it"
+  },
+  {
+   "name": "llm_snd_ambient_reseed_planet_event_times",
+   "domain": "lib_trans",
+   "entry": "libmh_ambient_reseed",
+   "entry_why": "SPLIT out of the sketched libmh_post_load_fixup. Both rows do have one caller, llm_game_load, but they are NOT a sequence: llm_strat_invasion_alert_reset_all runs early in the load, this one runs at the tail right after llm_strat_time_resync_and_tick, with the whole file read and map_LoadPlanetFromDisk between them (measured 2026-09-11, llm_game_load @0x004475de lines 281-291). It also needs (planet_index, now), which a void post_load_fixup could not carry.",
+   "impl": "mh::sim::ambient_reseed_planet_event_times",
+   "header": "sim/hostreach/sim_h_switch_to_planet.h"
+  },
+  {
+   "name": "llm_str_char_subst",
+   "domain": "lib_trans",
+   "exclusion": "X-UTIL",
+   "why": "host-side utility body (wall clock / fx RNG / string / cfg anim time) -- the fork's host owns it; nothing in the hashed state depends on libmh serving it"
+  },
+  {
+   "name": "llm_strat_advisor_tick",
+   "domain": "sim_resid",
+   "entry": "libmh_sim_step [spine]",
+   "impl": "mh::sim::advisor_tick",
+   "header": "sim/resid/sim_advisor_tick.h",
+   "hosted": {
+    "class": "driver-absorbed",
+    "why": "Every original caller is class DRIVER (llm_strat_sim_tick / llm_strat_advance_sim_clock), whose recorded meaning is that at the fork the edge is ABSORBED BY THE SPINE rather than exported. Hosted it is a crossing only because llm_strat_sim_tick is deliberately left ORIGINAL: the determinism harness owns its entry (turn_engine.h C6), so it sits outside the default [promote] lockstep closure. Routing the seam to libmh_sim_step would RECURSE -- these three are the frame DRIVER's tail, not the step -- and giving them their own entries would export an edge the fork does not have."
+   }
+  },
+  {
+   "name": "llm_strat_bldg_get_coords",
+   "domain": "sim",
+   "entry": "libmh_bldg_get_coords",
+   "impl": "mh::sim::bldg_get_coords",
+   "header": "sim/sim_bldg_get_coords.h",
+   "hosted": {
+    "class": "no-crossing",
+    "why": "No MH_EXPORT_REPLACE seam: the ORIGINAL body serves the hosted call, so there is no hosted original->libmh crossing to route. The entry is standalone-only and stays never-entered hosted."
+   }
+  },
+  {
+   "name": "llm_strat_bldg_is_network_critical",
+   "domain": "sim_resid",
+   "entry": "libmh_bldg_is_network_critical",
+   "impl": "mh::sim::bldg_is_network_critical",
+   "header": "sim/resid/sim_bldg_network_critical.h"
+  },
+  {
+   "name": "llm_strat_bldg_order_assign_workers",
+   "domain": "orders_issue",
+   "entry": "libmh_issue_order",
+   "impl": "mh::orders::issue::bldg_order_assign_workers",
+   "header": "orders/issue/issue_bldg_orders_b.h"
+  },
+  {
+   "name": "llm_strat_bldg_order_depart_confirm_dispatch",
+   "domain": "orders_issue",
+   "entry": "libmh_issue_order",
+   "impl": "mh::orders::issue::bldg_order_depart_confirm_dispatch",
+   "header": "orders/issue/issue_bldg_depart.h"
+  },
+  {
+   "name": "llm_strat_bldg_order_depart_dispatch_by_type",
+   "domain": "orders_issue",
+   "entry": "libmh_issue_order",
+   "impl": "mh::orders::issue::bldg_order_depart_dispatch_by_type",
+   "header": "orders/issue/issue_bldg_depart.h"
+  },
+  {
+   "name": "llm_strat_bldg_order_flush_cargo_hold",
+   "domain": "orders_issue",
+   "entry": "libmh_issue_order",
+   "impl": "mh::orders::issue::bldg_order_flush_cargo_hold",
+   "header": "orders/issue/issue_bldg_orders_b.h"
+  },
+  {
+   "name": "llm_strat_bldg_order_hangar_recharge",
+   "domain": "orders_issue",
+   "entry": "libmh_issue_order",
+   "impl": "mh::orders::issue::bldg_order_hangar_recharge",
+   "header": "orders/issue/issue_bldg_orders_b.h"
+  },
+  {
+   "name": "llm_strat_bldg_order_load_passengers",
+   "domain": "orders_issue",
+   "entry": "libmh_issue_order",
+   "impl": "mh::orders::issue::bldg_order_load_passengers",
+   "header": "orders/issue/issue_bldg_orders_b.h"
+  },
+  {
+   "name": "llm_strat_bldg_order_load_resource",
+   "domain": "orders_issue",
+   "entry": "libmh_issue_order",
+   "impl": "mh::orders::issue::bldg_order_load_resource",
+   "header": "orders/issue/issue_state.h"
+  },
+  {
+   "name": "llm_strat_bldg_order_production_add",
+   "domain": "orders_issue",
+   "entry": "libmh_issue_order",
+   "impl": "mh::orders::issue::bldg_order_production_add",
+   "header": "orders/issue/issue_state.h"
+  },
+  {
+   "name": "llm_strat_bldg_order_production_remove",
+   "domain": "orders_issue",
+   "entry": "libmh_issue_order",
+   "impl": "mh::orders::issue::bldg_order_production_remove",
+   "header": "orders/issue/issue_state.h"
+  },
+  {
+   "name": "llm_strat_bldg_order_purge_dead_docked",
+   "domain": "orders_issue",
+   "entry": "libmh_issue_order",
+   "impl": "mh::orders::issue::bldg_order_purge_dead_docked",
+   "header": "orders/issue/issue_bldg_orders_b.h"
+  },
+  {
+   "name": "llm_strat_bldg_order_repair_cycle_start",
+   "domain": "orders_issue",
+   "entry": "libmh_issue_order",
+   "impl": "mh::orders::issue::bldg_order_repair_cycle_start",
+   "header": "orders/issue/issue_state.h"
+  },
+  {
+   "name": "llm_strat_bldg_order_restart_construction",
+   "domain": "orders_issue",
+   "entry": "libmh_issue_order",
+   "impl": "mh::orders::issue::bldg_order_restart_construction",
+   "header": "orders/issue/issue_bldg_orders_b.h"
+  },
+  {
+   "name": "llm_strat_bldg_order_start_research_project",
+   "domain": "orders_issue",
+   "entry": "libmh_issue_order",
+   "impl": "mh::orders::issue::bldg_order_start_research_project",
+   "header": "orders/issue/issue_bldg_orders_b.h"
+  },
+  {
+   "name": "llm_strat_bldg_order_toggle_active",
+   "domain": "orders_issue",
+   "entry": "libmh_issue_order",
+   "impl": "mh::orders::issue::bldg_order_toggle_active",
+   "header": "orders/issue/issue_bldg_orders_b.h"
+  },
+  {
+   "name": "llm_strat_bldg_order_unassign_workers",
+   "domain": "orders_issue",
+   "entry": "libmh_issue_order",
+   "impl": "mh::orders::issue::bldg_order_unassign_workers",
+   "header": "orders/issue/issue_bldg_orders_b.h"
+  },
+  {
+   "name": "llm_strat_bldg_order_unload_passengers",
+   "domain": "orders_issue",
+   "entry": "libmh_issue_order",
+   "impl": "mh::orders::issue::bldg_order_unload_passengers",
+   "header": "orders/issue/issue_bldg_orders_b.h"
+  },
+  {
+   "name": "llm_strat_bldg_order_unload_resource",
+   "domain": "orders_issue",
+   "entry": "libmh_issue_order",
+   "impl": "mh::orders::issue::bldg_order_unload_resource",
+   "header": "orders/issue/issue_bldg_orders_b.h"
+  },
+  {
+   "name": "llm_strat_bldg_order_upgrade",
+   "domain": "orders_issue",
+   "entry": "libmh_issue_order",
+   "impl": "mh::orders::issue::bldg_order_upgrade",
+   "header": "orders/issue/issue_bldg_orders_b.h"
+  },
+  {
+   "name": "llm_strat_bldg_shuttle_slot_is_free",
+   "domain": "sim",
+   "entry": "libmh_bldg_shuttle_slot_is_free",
+   "impl": "mh::sim::bldg_shuttle_slot_is_free",
+   "header": "sim/sim_bldg_shuttle_slot_is_free.h"
+  },
+  {
+   "name": "llm_strat_bldg_try_begin_placement",
+   "domain": "sim_resid",
+   "entry": "libmh_bldg_begin_placement",
+   "impl": "mh::sim::bldg_try_begin_placement",
+   "header": "sim/resid/sim_bldg_try_begin_placement.h"
+  },
+  {
+   "name": "llm_strat_bldg_uses_workers",
+   "domain": "sim",
+   "entry": "libmh_bldg_uses_workers",
+   "impl": "mh::sim::bldg_uses_workers",
+   "header": "sim/sim_bldg_uses_workers.h"
+  },
+  {
+   "name": "llm_strat_clock_resync_units_and_buildings",
+   "domain": "sim_resid",
+   "entry": "libmh_clock_rebase",
+   "impl": "mh::sim::clock_resync_units_and_buildings",
+   "header": "sim/resid/sim_clock_resync.h",
+   "entry_why": "The catch-up half of the clock trio -- see llm_game_reload_snapshot_resync_clocks's entry_why. Reached only on llm_strat_sim_clock_advance's >300 s branch, so it is a distinct host intent (rebase every live unit/building clock to a new now), not a step of one sequence."
+  },
+  {
+   "name": "llm_strat_ctrl_group_contains_unit",
+   "domain": "sim",
+   "entry": "libmh_ctrlgroup_contains",
+   "impl": "mh::sim::ctrl_group_contains_unit",
+   "header": "sim/sim_storage_dock.h"
+  },
+  {
+   "name": "llm_strat_deploy_starting_squad",
+   "domain": "lib_trans",
+   "entry": "libmh_deploy_starting_squad",
+   "impl": "mh::sim::deploy_starting_squad",
+   "header": "sim/libtrans/sim_lt_deploy_squad.h"
+  },
+  {
+   "name": "llm_strat_facing_step_apply",
+   "domain": "lib_trans",
+   "exclusion": "X-PRES",
+   "why": "presentation body -- at the fork it belongs to the host's renderer, not libmh (LIFT-TACT / LIFT-RESID direction: presentation bodies leave libmh)"
+  },
+  {
+   "name": "llm_strat_frame",
+   "domain": "lib_trans",
+   "exclusion": "X-PRES",
+   "why": "presentation body -- at the fork it belongs to the host's renderer, not libmh (LIFT-TACT / LIFT-RESID direction: presentation bodies leave libmh)"
+  },
+  {
+   "name": "llm_strat_frame_redraw_behind_dialog",
+   "domain": "lib_trans",
+   "exclusion": "X-PRES",
+   "why": "presentation body -- at the fork it belongs to the host's renderer, not libmh (LIFT-TACT / LIFT-RESID direction: presentation bodies leave libmh)"
+  },
+  {
+   "name": "llm_strat_group_issue_attack_order",
+   "domain": "sim",
+   "entry": "libmh_issue_order",
+   "impl": "mh::sim::group_issue_attack_order",
+   "header": "sim/hostreach/sim_h_group_issue_orders.h"
+  },
+  {
+   "name": "llm_strat_group_issue_enter_building_order",
+   "domain": "sim",
+   "entry": "libmh_issue_order",
+   "impl": "mh::sim::group_issue_enter_building_order",
+   "header": "sim/hostreach/sim_h_group_issue_orders.h"
+  },
+  {
+   "name": "llm_strat_group_issue_move_order_confirmed",
+   "domain": "orders_issue",
+   "entry": "libmh_issue_order",
+   "impl": "mh::orders::issue::group_issue_move_order_confirmed",
+   "header": "orders/issue/issue_group_orders.h"
+  },
+  {
+   "name": "llm_strat_group_issue_move_order_deferred",
+   "domain": "orders_issue",
+   "entry": "libmh_issue_order",
+   "impl": "mh::orders::issue::group_issue_move_order_deferred",
+   "header": "orders/issue/issue_group_orders.h"
+  },
+  {
+   "name": "llm_strat_group_order_ack_voice",
+   "domain": "orders_issue",
+   "entry": "libmh_order_ack_voice",
+   "impl": "mh::orders::issue::group_order_ack_voice",
+   "header": "orders/issue/issue_group_orders.h"
+  },
+  {
+   "name": "llm_strat_invasion_alert_poll",
+   "domain": "lib_trans",
+   "entry": "libmh_sim_step [spine]",
+   "impl": "mh::sim::invasion_alert_poll",
+   "header": "sim/libtrans/sim_lt_invasion_alert.h",
+   "hosted": {
+    "class": "driver-absorbed",
+    "why": "Every original caller is class DRIVER (llm_strat_sim_tick / llm_strat_advance_sim_clock), whose recorded meaning is that at the fork the edge is ABSORBED BY THE SPINE rather than exported. Hosted it is a crossing only because llm_strat_sim_tick is deliberately left ORIGINAL: the determinism harness owns its entry (turn_engine.h C6), so it sits outside the default [promote] lockstep closure. Routing the seam to libmh_sim_step would RECURSE -- these three are the frame DRIVER's tail, not the step -- and giving them their own entries would export an edge the fork does not have."
+   }
+  },
+  {
+   "name": "llm_strat_invasion_alert_reset_all",
+   "domain": "sim_resid",
+   "entry": "libmh_invasion_alerts_reset",
+   "entry_why": "The other half of the split -- see llm_snd_ambient_reseed_planet_event_times's entry_why.",
+   "impl": "mh::sim::invasion_alert_reset_all",
+   "header": "sim/resid/sim_invasion_alert_reset.h"
+  },
+  {
+   "name": "llm_strat_invasion_due_check",
+   "domain": "sim_resid",
+   "entry": "libmh_sim_step [spine]",
+   "impl": "mh::sim::invasion_due_check",
+   "header": "sim/resid/sim_invasion_due_check.h",
+   "hosted": {
+    "class": "driver-absorbed",
+    "why": "Every original caller is class DRIVER (llm_strat_sim_tick / llm_strat_advance_sim_clock), whose recorded meaning is that at the fork the edge is ABSORBED BY THE SPINE rather than exported. Hosted it is a crossing only because llm_strat_sim_tick is deliberately left ORIGINAL: the determinism harness owns its entry (turn_engine.h C6), so it sits outside the default [promote] lockstep closure. Routing the seam to libmh_sim_step would RECURSE -- these three are the frame DRIVER's tail, not the step -- and giving them their own entries would export an edge the fork does not have."
+   }
+  },
+  {
+   "name": "llm_strat_locate_active_port",
+   "domain": "sim",
+   "entry": "libmh_locate_active_port",
+   "impl": "mh::sim::locate_active_port",
+   "header": "sim/sim_locate_active_port.h"
+  },
+  {
+   "name": "llm_strat_new_game_init",
+   "domain": "sim_resid",
+   "entry": "libmh_strat_mode_init",
+   "impl": "mh::sim::new_game_init",
+   "header": "sim/resid/sim_new_game_init.h"
+  },
+  {
+   "name": "llm_strat_order_collect_available_projects",
+   "domain": "orders_issue",
+   "entry": "libmh_issue_order",
+   "impl": "mh::orders::issue::order_collect_available_projects",
+   "header": "orders/issue/issue_order_admin.h"
+  },
+  {
+   "name": "llm_strat_order_create_unit_debug",
+   "domain": "orders_issue",
+   "entry": "libmh_issue_order",
+   "impl": "mh::orders::issue::order_create_unit_debug",
+   "header": "orders/issue/issue_order_debug.h"
+  },
+  {
+   "name": "llm_strat_order_credit_conquest_kills",
+   "domain": "orders_issue",
+   "entry": "libmh_issue_order",
+   "impl": "mh::orders::issue::order_credit_conquest_kills",
+   "header": "orders/issue/issue_order_admin.h"
+  },
+  {
+   "name": "llm_strat_order_ctrlgrp_flash_member",
+   "domain": "sim",
+   "entry": "libmh_issue_order",
+   "impl": "mh::sim::order_ctrlgrp_flash_member",
+   "header": "sim/sim_order_enqueue.h",
+   "entry_why": "control-group flash/select ALREADY dispatch lockstep orders 0x34/0x35 (ORDER_SYS_UNIT_STATUS_BIT_SET/_CLEAR) through llm_strat_order_dispatch -- measured 2026-09-11, docs/structs.md map_object_unit +0xd8. So they are order ids, not local commands: the user's 'route control groups through orders' ruling is honoured exactly where the original already honours it. The ROSTER half (add/remove/assign/contains) stays local -- _G_LLM_STRAT_CTRL_GROUPS is GROUP-indexed (10 x 0x194), has no player dimension, and is in no hash column, so replicating it would clobber."
+  },
+  {
+   "name": "llm_strat_order_ctrlgrp_select_member",
+   "domain": "sim",
+   "entry": "libmh_issue_order",
+   "impl": "mh::sim::order_ctrlgrp_select_member",
+   "header": "sim/sim_order_enqueue.h",
+   "entry_why": "control-group flash/select ALREADY dispatch lockstep orders 0x34/0x35 (ORDER_SYS_UNIT_STATUS_BIT_SET/_CLEAR) through llm_strat_order_dispatch -- measured 2026-09-11, docs/structs.md map_object_unit +0xd8. So they are order ids, not local commands: the user's 'route control groups through orders' ruling is honoured exactly where the original already honours it. The ROSTER half (add/remove/assign/contains) stays local -- _G_LLM_STRAT_CTRL_GROUPS is GROUP-indexed (10 x 0x194), has no player dimension, and is in no hash column, so replicating it would clobber."
+  },
+  {
+   "name": "llm_strat_order_debug_damage_scaled",
+   "domain": "orders_issue",
+   "entry": "libmh_issue_order",
+   "impl": "mh::orders::issue::order_debug_damage_scaled",
+   "header": "orders/issue/issue_order_debug.h"
+  },
+  {
+   "name": "llm_strat_order_debug_energy_refill_full",
+   "domain": "orders_issue",
+   "entry": "libmh_issue_order",
+   "impl": "mh::orders::issue::order_debug_energy_refill_full",
+   "header": "orders/issue/issue_order_debug.h"
+  },
+  {
+   "name": "llm_strat_order_debug_kill_group",
+   "domain": "orders_issue",
+   "entry": "libmh_issue_order",
+   "impl": "mh::orders::issue::order_debug_kill_group",
+   "header": "orders/issue/issue_state.h"
+  },
+  {
+   "name": "llm_strat_order_fow_reveal_full",
+   "domain": "orders_issue",
+   "entry": "libmh_issue_order",
+   "impl": "mh::orders::issue::order_fow_reveal_full",
+   "header": "orders/issue/issue_order_admin.h"
+  },
+  {
+   "name": "llm_strat_order_grant_resource",
+   "domain": "orders_issue",
+   "entry": "libmh_issue_order",
+   "impl": "mh::orders::issue::order_grant_resource",
+   "header": "orders/issue/issue_order_admin.h"
+  },
+  {
+   "name": "llm_strat_order_integrity_check",
+   "domain": "sim",
+   "entry": "libmh_submit_order [spine]",
+   "impl": "mh::orders::integrity_check",
+   "header": "orders/order_queue.h",
+   "hosted": {
+    "class": "no-crossing",
+    "why": "No MH_EXPORT_REPLACE seam -- order_queue.cpp's nine live seams deliberately exclude stage_scheduled and integrity_check, so the original body serves the hosted call. Its entry libmh_submit_order additionally has NO 1:1 HOSTED COUNTERPART, measured: llm_strat_order_enqueue takes fields plus the scratch args, DISCARDS the whole queue on overflow and returns the new count; llm_strat_order_pending_enqueue masks four ushorts to their low byte and writes PENDING; llm_strat_order_stage_scheduled byte-duplicates into STAGING. The harness replay injector is the closest shape (raw 68-byte records into order_queue) but OVERWRITES from index 0 and SETS the count, while libmh_submit_order APPENDS at the count -- not equivalent when the frame's own enqueues are already in the queue at sim_step entry. So the entry stays never-entered hosted and that measurement is the reason.",
+    "api_callers_excused": {
+     "llm_net_lockstep_dispatch": "Both NET callers are bodies libmh ITSELF owns and promotes hosted -- llm_net_lockstep_dispatch is mh::lockstep::dispatch (MH_EXPORT_REPLACE, lockstep/turn_engine.cpp) and llm_net_send_order is mh::lockstep's order emitter (MH_EXPORT_REPLACE, lockstep/tx_emit_order.cpp) -- so at the fork this edge is libmh-INTERNAL, not a crossing. The NET class marks the TRANSPORT DRIVER as host-side; these two are the lockstep/order bodies inside it that libmh already owns, and the host reaches the verified order path through libmh_submit_order rather than calling the verifier itself.",
+     "llm_net_send_order": "Both NET callers are bodies libmh ITSELF owns and promotes hosted -- llm_net_lockstep_dispatch is mh::lockstep::dispatch (MH_EXPORT_REPLACE, lockstep/turn_engine.cpp) and llm_net_send_order is mh::lockstep's order emitter (MH_EXPORT_REPLACE, lockstep/tx_emit_order.cpp) -- so at the fork this edge is libmh-INTERNAL, not a crossing. The NET class marks the TRANSPORT DRIVER as host-side; these two are the lockstep/order bodies inside it that libmh already owns, and the host reaches the verified order path through libmh_submit_order rather than calling the verifier itself."
+    }
+   }
+  },
+  {
+   "name": "llm_strat_order_population_delta_debug",
+   "domain": "orders_issue",
+   "entry": "libmh_issue_order",
+   "impl": "mh::orders::issue::order_population_delta_debug",
+   "header": "orders/issue/issue_order_debug.h"
+  },
+  {
+   "name": "llm_strat_order_queue_construction_debug",
+   "domain": "orders_issue",
+   "entry": "libmh_issue_order",
+   "impl": "mh::orders::issue::order_queue_construction_debug",
+   "header": "orders/issue/issue_order_debug.h"
+  },
+  {
+   "name": "llm_strat_order_recheck_buildings",
+   "domain": "orders_issue",
+   "entry": "libmh_issue_order",
+   "impl": "mh::orders::issue::order_recheck_buildings",
+   "header": "orders/issue/issue_order_admin.h"
+  },
+  {
+   "name": "llm_strat_order_recheck_planet_system_all_players",
+   "domain": "orders_issue",
+   "entry": "libmh_issue_order",
+   "impl": "mh::orders::issue::order_recheck_planet_system_all_players",
+   "header": "orders/issue/issue_order_admin.h"
+  },
+  {
+   "name": "llm_strat_order_recheck_projects",
+   "domain": "orders_issue",
+   "entry": "libmh_issue_order",
+   "impl": "mh::orders::issue::order_recheck_projects",
+   "header": "orders/issue/issue_order_admin.h"
+  },
+  {
+   "name": "llm_strat_order_set_player_control_mode",
+   "domain": "orders_issue",
+   "entry": "libmh_issue_order",
+   "impl": "mh::orders::issue::order_set_player_control_mode",
+   "header": "orders/issue/issue_order_player.h"
+  },
+  {
+   "name": "llm_strat_order_set_player_relation",
+   "domain": "orders_issue",
+   "entry": "libmh_issue_order",
+   "impl": "mh::orders::issue::order_set_player_relation",
+   "header": "orders/issue/issue_order_player.h"
+  },
+  {
+   "name": "llm_strat_pathfinder_init",
+   "domain": "sim_resid",
+   "entry": "libmh_strat_mode_init",
+   "impl": "mh::sim::pathfinder_init",
+   "header": "sim/resid/sim_pathfinder_init.h"
+  },
+  {
+   "name": "llm_strat_pixel_delta_wrapped",
+   "domain": "sim",
+   "entry": "libmh_map_pixel_delta",
+   "impl": "mh::sim::pixel_delta_wrapped",
+   "header": "sim/sim_tile_pixel_wrap_delta.h"
+  },
+  {
+   "name": "llm_strat_planet_distance",
+   "domain": "sim",
+   "entry": "libmh_planet_distance",
+   "impl": "mh::sim::planet_distance",
+   "header": "sim/sim_planet_distance.h"
+  },
+  {
+   "name": "llm_strat_planet_map_session_init",
+   "domain": "sim_resid",
+   "entry": "libmh_planet_map_session_init",
+   "impl": "mh::sim::planet_map_session_init",
+   "header": "sim/resid/sim_land_players_on_planet.h",
+   "entry_why": "ONE OF THREE MIRRORS, not the merged libmh_planet_session_begin the design sketched. The three bodies have three DIFFERENT original callers (map_LoadPlanetFromDisk here, the two campaign-start menu paths for the SP begin, llm_lobby_map_load_async_step for the MP one) and three different signatures, so there is no single original function whose ordering a merged entry would be reproducing -- which is the only justification section 2.7 gave for merging at all (and which llm_strat_mode_init really does have)."
+  },
+  {
+   "name": "llm_strat_planet_session_begin",
+   "domain": "sim_resid",
+   "entry": "libmh_planet_session_begin",
+   "impl": "mh::sim::planet_session_begin",
+   "header": "sim/resid/sim_planet_session_begin.h"
+  },
+  {
+   "name": "llm_strat_planet_transition_finalize",
+   "domain": "sim_resid",
+   "entry": "libmh_planet_transition_finalize",
+   "impl": "mh::sim::planet_transition_finalize",
+   "header": "sim/resid/sim_planet_transition_finalize.h"
+  },
+  {
+   "name": "llm_strat_player_by_side_id",
+   "domain": "lib_trans",
+   "entry": "libmh_player_index_by_side",
+   "impl": "mh::lockstep::player_by_side_id",
+   "header": "lockstep/lt_player_by_side_id.h"
+  },
+  {
+   "name": "llm_strat_player_param_defaults_init",
+   "domain": "sim_resid",
+   "entry": "libmh_strat_mode_init",
+   "impl": "mh::sim::player_param_defaults_init",
+   "header": "sim/resid/sim_player_init.h"
+  },
+  {
+   "name": "llm_strat_player_presence_lost",
+   "domain": "sim",
+   "entry": "libmh_player_presence_lost",
+   "impl": "mh::sim::player_presence_lost",
+   "header": "sim/sim_player_presence_lost.h",
+   "hosted": {
+    "class": "no-crossing",
+    "why": "No MH_EXPORT_REPLACE seam: the ORIGINAL body serves the hosted call, so there is no hosted original->libmh crossing to route. The entry is standalone-only and stays never-entered hosted."
+   }
+  },
+  {
+   "name": "llm_strat_prod_set_transfer_destination",
+   "domain": "sim_resid",
+   "entry": "libmh_prod_set_transfer_destination",
+   "impl": "mh::sim::prod_set_transfer_destination",
+   "header": "sim/resid/sim_prod_transfer_destination.h"
+  },
+  {
+   "name": "llm_strat_prod_shuttle_slot_spawn_arrival",
+   "domain": "sim",
+   "entry": "libmh_prod_shuttle_slot_spawn_arrival",
+   "impl": "mh::sim::shuttle_slot_spawn_arrival",
+   "header": "sim/hostreach/sim_h_shuttle_slot_spawn_arrival.h"
+  },
+  {
+   "name": "llm_strat_prod_transfer_progress",
+   "domain": "lib_trans",
+   "entry": "libmh_prod_transfer_progress",
+   "impl": "mh::sim::prod_transfer_progress",
+   "header": "sim/libtrans/sim_lt_prod_transfer.h"
+  },
+  {
+   "name": "llm_strat_session_begin_multi",
+   "domain": "sim_resid",
+   "entry": "libmh_planet_session_begin_multi",
+   "impl": "mh::sim::session_begin_multi",
+   "header": "sim/resid/sim_session_begin_multi.h",
+   "entry_why": "The MP mirror -- see llm_strat_planet_map_session_init's entry_why. It takes the opaque scenario cfg blob the lobby hands it, which the SP begin does not have; a merged (planet_index, multi) entry could not have carried it."
+  },
+  {
+   "name": "llm_strat_session_state_reset",
+   "domain": "sim_resid",
+   "entry": "libmh_session_globals_reset",
+   "impl": "mh::sim::session_state_reset",
+   "header": "sim/resid/sim_planet_session_begin.h"
+  },
+  {
+   "name": "llm_strat_sim_step",
+   "domain": "sim",
+   "entry": "libmh_sim_step [spine]",
+   "impl": "mh::sim::sim_step",
+   "header": "sim/sim_step.h"
+  },
+  {
+   "name": "llm_strat_storage_purge_dead_docked",
+   "domain": "sim",
+   "entry": "libmh_storage_purge_dead_docked",
+   "impl": "mh::sim::storage_purge_dead_docked",
+   "header": "sim/sim_storage_purge_dead_docked.h"
+  },
+  {
+   "name": "llm_strat_tech_tables_reset",
+   "domain": "sim_resid",
+   "entry": "libmh_strat_mode_init",
+   "impl": "mh::sim::tech_tables_reset",
+   "header": "sim/resid/sim_table_resets.h"
+  },
+  {
+   "name": "llm_strat_tile_delta_wrapped",
+   "domain": "sim",
+   "entry": "libmh_map_tile_delta",
+   "impl": "mh::sim::tile_delta_wrapped",
+   "header": "sim/sim_tile_delta_wrapped.h"
+  },
+  {
+   "name": "llm_strat_tile_dist_wrapped",
+   "domain": "sim",
+   "entry": "libmh_map_tile_dist",
+   "impl": "mh::sim::tile_dist_wrapped",
+   "header": "sim/resid/sim_squad_status_gather.h"
+  },
+  {
+   "name": "llm_strat_time_resync_and_tick",
+   "domain": "sim_resid",
+   "entry": "libmh_clock_resync_and_tick",
+   "impl": "mh::sim::time_resync_and_tick",
+   "header": "sim/resid/sim_time_resync.h",
+   "entry_why": "The third clock mirror, and the one that cannot merge with the other two at all: it takes NO argument (it reads the wall clock itself, through the host api) and its SEVEN original callers -- load, campaign entry, lockstep dispatch, mp enter-gameplay sync, the pause wait, time_tick and the menu frame -- have nothing to do with llm_strat_sim_clock_advance, which never calls it."
+  },
+  {
+   "name": "llm_strat_try_enter_tactical_mission",
+   "domain": "sim_resid",
+   "entry": "libmh_enter_tactical_mission",
+   "impl": "mh::sim::try_enter_tactical_mission",
+   "header": "sim/resid/sim_squad_status_gather.h"
+  },
+  {
+   "name": "llm_strat_turret_order_target_building",
+   "domain": "orders_issue",
+   "entry": "libmh_issue_order",
+   "impl": "mh::orders::issue::turret_order_target_building",
+   "header": "orders/issue/issue_turret_orders.h"
+  },
+  {
+   "name": "llm_strat_turret_order_target_unit",
+   "domain": "orders_issue",
+   "entry": "libmh_issue_order",
+   "impl": "mh::orders::issue::turret_order_target_unit",
+   "header": "orders/issue/issue_turret_orders.h"
+  },
+  {
+   "name": "llm_strat_unit_ctrl_group_assign",
+   "domain": "sim",
+   "entry": "libmh_ctrlgroup_assign",
+   "impl": "mh::sim::unit_ctrl_group_assign",
+   "header": "sim/sim_unit_ctrl_group.h"
+  },
+  {
+   "name": "llm_strat_unit_ctrlgroup_add_member",
+   "domain": "sim",
+   "entry": "libmh_ctrlgroup_add_member",
+   "impl": "mh::sim::unit_ctrlgroup_add_member",
+   "header": "sim/sim_unit_ctrlgroup_member.h"
+  },
+  {
+   "name": "llm_strat_unit_ctrlgroup_remove_member",
+   "domain": "sim",
+   "entry": "libmh_ctrlgroup_remove_member",
+   "impl": "mh::sim::unit_ctrlgroup_remove_member",
+   "header": "sim/sim_storage_dock.h"
+  },
+  {
+   "name": "llm_strat_unit_get_coords",
+   "domain": "sim",
+   "entry": "libmh_unit_get_coords",
+   "impl": "mh::sim::get_coords",
+   "header": "sim/sim_unit_fine_pos.h"
+  },
+  {
+   "name": "llm_strat_unit_order_auto_launch_from_storage",
+   "domain": "orders_issue",
+   "entry": "libmh_issue_order",
+   "impl": "mh::orders::issue::unit_order_auto_launch_from_storage",
+   "header": "orders/issue/issue_unit_storage.h"
+  },
+  {
+   "name": "llm_strat_unit_order_exit_storage",
+   "domain": "orders_issue",
+   "entry": "libmh_issue_order",
+   "impl": "mh::orders::issue::unit_order_exit_storage",
+   "header": "orders/issue/issue_unit_storage.h"
+  },
+  {
+   "name": "llm_strat_unit_order_move",
+   "domain": "orders_issue",
+   "entry": "libmh_issue_order",
+   "impl": "mh::orders::issue::unit_order_move",
+   "header": "orders/issue/issue_group_orders.h"
+  },
+  {
+   "name": "llm_strat_unit_order_move_relative",
+   "domain": "orders_issue",
+   "entry": "libmh_issue_order",
+   "impl": "mh::orders::issue::unit_order_move_relative",
+   "header": "orders/issue/issue_unit_move.h"
+  },
+  {
+   "name": "llm_tact_frame",
+   "domain": "tact",
+   "exclusion": "X-TACT",
+   "why": "tactical mode -- frozen with its host table (LIB-IFACE-SPLIT); out of the strategic standalone surface LIB-REF replays"
+  },
+  {
+   "name": "llm_tact_unit_update_anim",
+   "domain": "tact",
+   "exclusion": "X-TACT",
+   "why": "tactical mode -- frozen with its host table (LIB-IFACE-SPLIT); out of the strategic standalone surface LIB-REF replays"
+  },
+  {
+   "name": "llm_tact_view_shift_col_dec",
+   "domain": "tact",
+   "exclusion": "X-TACT",
+   "why": "tactical mode -- frozen with its host table (LIB-IFACE-SPLIT); out of the strategic standalone surface LIB-REF replays"
+  },
+  {
+   "name": "llm_tact_view_shift_col_inc",
+   "domain": "tact",
+   "exclusion": "X-TACT",
+   "why": "tactical mode -- frozen with its host table (LIB-IFACE-SPLIT); out of the strategic standalone surface LIB-REF replays"
+  },
+  {
+   "name": "llm_tact_view_shift_row_dec",
+   "domain": "tact",
+   "exclusion": "X-TACT",
+   "why": "tactical mode -- frozen with its host table (LIB-IFACE-SPLIT); out of the strategic standalone surface LIB-REF replays"
+  },
+  {
+   "name": "llm_tact_view_shift_row_inc",
+   "domain": "tact",
+   "exclusion": "X-TACT",
+   "why": "tactical mode -- frozen with its host table (LIB-IFACE-SPLIT); out of the strategic standalone surface LIB-REF replays"
+  },
+  {
+   "name": "llm_unit_state_is_boarding",
+   "domain": "sim",
+   "entry": "libmh_unit_is_boarding",
+   "impl": "mh::sim::unit_state_is_boarding",
+   "header": "sim/sim_unit_is_boarding.h"
+  },
+  {
+   "name": "llm_wait_screen_frame",
+   "domain": "net_session",
+   "exclusion": "X-PRES",
+   "why": "presentation body -- at the fork it belongs to the host's renderer, not libmh (LIFT-TACT / LIFT-RESID direction: presentation bodies leave libmh)"
+  },
+  {
+   "name": "map_FillDefaults",
+   "domain": "sim_resid",
+   "entry": "libmh_strat_mode_init",
+   "impl": "mh::sim::map_fill_defaults",
+   "header": "sim/resid/sim_map_fill_defaults.h"
+  },
+  {
+   "name": "time_GetCurrentTime",
+   "domain": "lib_trans",
+   "exclusion": "X-UTIL",
+   "why": "host-side utility body (wall clock / fx RNG / string / cfg anim time) -- the fork's host owns it; nothing in the hashed state depends on libmh serving it"
+  },
+  {
+   "name": "llm_strat_bldg_init_all",
+   "domain": "sim",
+   "entry": "libmh_bldg_init_all",
+   "impl": "mh::sim::bldg_init_all",
+   "header": "sim/sim_bldg_init_all.h"
+  },
+  {
+   "name": "llm_strat_bldg_instant_construct_find_slot",
+   "domain": "sim",
+   "entry": "libmh_issue_order",
+   "impl": "mh::sim::bldg_instant_construct_find_slot",
+   "header": "sim/sim_bldg_instant_construct_find_slot.h"
+  },
+  {
+   "name": "llm_unit_order_disembark_soldiers",
+   "domain": "sim",
+   "entry": "libmh_issue_order",
+   "impl": "mh::sim::unit_order_disembark_soldiers",
+   "header": "sim/sim_unit_order_disembark_soldiers.h"
+  }
+ ],
+ "_hosted_classes": {
+  "_what": "LIB-SPINE-API: the HOSTED half of a row's disposition -- why this row's promotion seam cannot be routed through its entry in the BROKERED configuration. A row WITHOUT this block must route: gen_libmh_inbound.py's routing census reports it UNROUTED and --check fails, which is the mutation arm that keeps the brokered claim honest.",
+  "driver-absorbed": "the caller is the sim tick DRIVER, which the fork absorbs into the spine",
+  "boot-blob": "served by libmh_import_world / _snapshot, a blob-in entry with no per-body hosted form",
+  "no-crossing": "no MH_EXPORT_REPLACE seam, so hosted the original body runs and nothing crosses",
+  "_api_callers_excused": "a row asserting the fork does not export its edge must have NO FE/NET/SESSION caller; each one that exists is excused BY NAME with a measured reason, or the generator fails. This is the entry-side half of the EXCLUSION CONTRADICTED BY A LIVE EDGE check."
+ },
+ "_retired_2026_09_12": {
+  "_why": "12 X-TL exclusion rows removed by X-TL-DRAIN step 3. Each body STOPPED BEING AN INBOUND CANDIDATE outright: after the pruned-roots dead-source landed, every remaining caller is an owned body, so there is no original->owned edge left to disposition. This is the X-TL class dissolving by MEASUREMENT rather than by translation -- the callers were dead, not pending. Removing the row is what the generator demands (STALE DISPOSITION); the bodies themselves are untouched and still owned.",
+  "rows": [
+   {
+    "name": "llm_resource_add",
+    "exclusion": "X-TL"
+   },
+   {
+    "name": "llm_strat_bldg_clear_staffed_flag",
+    "exclusion": "X-TL"
+   },
+   {
+    "name": "llm_strat_bldg_set_staffed_flag",
+    "exclusion": "X-TL"
+   },
+   {
+    "name": "llm_strat_dir_from_to",
+    "exclusion": "X-TL"
+   },
+   {
+    "name": "llm_strat_facing24_to_delta",
+    "exclusion": "X-TL"
+   },
+   {
+    "name": "llm_strat_fow_remove_sight",
+    "exclusion": "X-TL"
+   },
+   {
+    "name": "llm_strat_order_enqueue",
+    "exclusion": "X-TL"
+   },
+   {
+    "name": "llm_strat_path_attach_slot",
+    "exclusion": "X-TL"
+   },
+   {
+    "name": "llm_strat_target_class",
+    "exclusion": "X-TL"
+   },
+   {
+    "name": "llm_strat_unit_unlink_tile",
+    "exclusion": "X-TL"
+   },
+   {
+    "name": "map_fow_UpdateFoWPlus",
+    "exclusion": "X-TL"
+   },
+   {
+    "name": "map_unit_PutOnMap",
+    "exclusion": "X-TL"
+   }
+  ]
+ },
+ "_retired_2026_09_12_step4": {
+  "_why": "The whole X-TL exclusion class, discharged. These seven rows were excluded because every reaching edge was TRANSLATE-LATER -- an original caller a later batch would absorb. X-TL-DRAIN was that batch, and as of 2026-09-12 each of the seven has NO original caller left: llm_strat_bldg_init_all, llm_strat_bldg_instant_construct_find_slot, llm_unit_order_disembark_soldiers and llm_strat_order_queue_apply_and_dequeue are all `verified` ledger rows now. With no caller they are not inbound CANDIDATES at all, so the generator fails their disposition as STALE by name rather than leaving a dead exclusion behind. THE CLASS ITSELF IS NOW EMPTY (19 -> 0) and `_exclusion_codes` keeps its X-TL definition for the next time a batch needs it.",
+  "_where_the_edges_went": "UP one level, not away, and that is why this change also ADDS three covered rows. Translating a caller makes it an owned body, so ITS callers become the inbound edge: llm_strat_input_update (FE) now reaches libmh through llm_strat_bldg_instant_construct_find_slot and llm_unit_order_disembark_soldiers, and llm_boot_stage_tick (SESSION) through llm_strat_bldg_init_all. The commissioning measurement predicted exactly these two callers plus llm_strat_pathfind_dispatch_route_order, which needs no entry because it is itself a provably-dead pruned root. The cascade TERMINATES there: no further original caller is exposed.",
+  "rows": [
+   {
+    "name": "llm_strat_bldg_init_defaults",
+    "domain": "sim",
+    "exclusion": "X-TL",
+    "why": "every reaching edge is TRANSLATE-LATER -- original sim/logic a later batch absorbs"
+   },
+   {
+    "name": "llm_strat_order_dispatch",
+    "domain": "sim",
+    "exclusion": "X-TL",
+    "why": "every reaching edge is TRANSLATE-LATER -- original sim/logic a later batch absorbs"
+   },
+   {
+    "name": "llm_strat_order_scratch_reset",
+    "domain": "sim",
+    "exclusion": "X-TL",
+    "why": "every reaching edge is TRANSLATE-LATER -- original sim/logic a later batch absorbs"
+   },
+   {
+    "name": "llm_strat_order_scratch_set_field",
+    "domain": "sim",
+    "exclusion": "X-TL",
+    "why": "every reaching edge is TRANSLATE-LATER -- original sim/logic a later batch absorbs"
+   },
+   {
+    "name": "llm_strat_target_release_ref",
+    "domain": "sim",
+    "exclusion": "X-TL",
+    "why": "every reaching edge is TRANSLATE-LATER -- original sim/logic a later batch absorbs"
+   },
+   {
+    "name": "llm_strat_unit_notify_status",
+    "domain": "sim",
+    "exclusion": "X-TL",
+    "why": "every reaching edge is TRANSLATE-LATER -- original sim/logic a later batch absorbs"
+   },
+   {
+    "name": "llm_unit_set_order_param",
+    "domain": "sim",
+    "exclusion": "X-TL",
+    "why": "every reaching edge is TRANSLATE-LATER -- original sim/logic a later batch absorbs"
+   }
+  ]
+ }
+}

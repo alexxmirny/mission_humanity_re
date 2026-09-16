@@ -1,0 +1,58 @@
+{
+ "_comment": [
+  "seam_dispositions.json -- the AUTHORED half of tools/gen_seam_surface.py. The MEASUREMENT is",
+  "derived from the call graph on every run; this file carries the judgements, one per call-out",
+  "that a checked scope makes into original code.",
+  "",
+  "TWO SOURCES OF TRUTH, and a callee may not be in both -- the same split writer_dispositions.json",
+  "uses. A callee that is already OURS (a migration ledger row with state `verified`) needs no",
+  "entry here: it is not a seam. A callee that stays original needs one, with a named reason.",
+  "",
+  "A SCOPE IS GATED ONE AT A TIME. `checked: false` means the scope is still being worked and its",
+  "undisposed call-outs are expected, so the gate stays green -- the same staging gen_writer_-",
+  "attribution uses, and with the same anti-rot arm: a scope that is FULLY disposed while still",
+  "marked unchecked FAILS, so `checked: false` cannot become a permanent waiver.",
+  "",
+  "`seeds` names the resolver: `item:<ID>` reads the population gen_writer_attribution routes to",
+  "that tracker item; `domain:<d>` reads <d>_migration.json. Membership is never listed here.",
+  "F2D (2026-09-12): the `unshadowable` class was REMOVED. Its whole content was \"the caller's site is never shadow-armed\", and it was gated against the shadow manifest so the prohibition could not rot into an unread note. The differential oracle is gone, so nothing can be shadow-armed and the prohibition is vacuous rather than unenforced. Zero callees were disposed that way at removal (the 3 the SIM-RESID adjudication mentions in its `why` are historical -- that scope's seed set is empty and those call-outs are no longer in `callees`). A callee that would have earned it -- irreversibly effectful AND a writer of tracked state -- is now simply proven offline, which is what those three always were."
+ ],
+ "classes": {
+  "effect-gated": "The callee has an outward effect that the shadow rollback cannot undo, and a seam in mh_effects.gen.h suppresses it in our arm. Requires a row in the domain's *_effect_classes.json; this entry records that the CALLER's scope depends on it.",
+  "effect-free": "Running the callee twice back to back is observationally identical to running it once, so the shadow arm may run it in both arms unsuppressed. The twice-test, not the reaches-a-device-API test (G58).",
+  "state-declared": "The callee writes tracked state, and the caller's shadow site declares those regions (extra_regions), so the restore between arms undoes them. G10 is what happens without this.",
+  "frontier-helper": "A Law-4 shared leaf -- called through mh_calls.gen.h, never migrated, no effect and no tracked write. The ordinary case.",
+  "reentry-acknowledged": "The caller is reachable from its own outward callees (S4/G30). The cycle is understood and the site is either kept unarmed or armed with the nesting handled.",
+  "uncallable": "gen_dll_calls.py can never emit a thunk for this callee (varargs). The translation must not call it -- docs/ai-closure.md:305, docs/sim-closure.md:256."
+ },
+ "scopes": {
+  "SIM-RESID": {
+   "checked": true,
+   "seeds": "item:SIM-RESID",
+   "why": "CLOSED 2026-09-01. All 19 non-ours call-outs carry a disposition; the other 4 of the 23 are already ours and are not seams. S1 19 untranslated / 4 ours, S2 all `ok`, S3 11 wall callees / 0 unclassified, S4 zero re-entry, S5 3 delegating seeds. `checked: true` now makes the gate refuse any NEW call-out, which is the point: the domain is translation-complete, so a new outward call is a regression rather than progress. THE SPREAD IS THE RESULT, not the count -- 5 effect-gated, 6 effect-free, 4 state-declared, 1 frontier-helper, 3 unshadowable. Every one was read off a body at a cited address, and the single frontier-helper -- the only 'just let it run' claim in the scope -- was proven by enumerating all 24 references out of its 142-byte body rather than by its query-sounding name. THREE CALL-OUTS NEEDED A SEVENTH CLASS: llm_strat_frame, llm_strat_frame_redraw_behind_dialog and llm_strat_input_update are each irreversibly effectful AND a writer of tracked state, so `effect-gated` and `state-declared` would both have asserted something untrue. `unshadowable` says what is the case and is itself gated. Consistent with this domain's design -- no sim_resid row has a shadow site and its evidence ceiling is T2. ONE ENTRY IS DELIBERATELY CONTESTABLE and says so: utils_wide_to_short_str is `state-declared` rather than `frontier-helper`, because at this site its caller-chosen destination is Players[1].name, inside the tracked PLAYERS region."
+  }
+ },
+ "not_translated": {},
+ "callees": {
+  "NOTHING2": {
+   "scope": "SIM-RESID",
+   "class": "effect-free",
+   "why": "LT1B (2026-09-02, body read): a genuine no-op -- utils_assert_stack_capacity(4) + RET, zero stores, zero further calls (decompiled @0x004dbb16). llm_progress_finalize_acquire's translation OMITS the call per rule 6 (its committed marshalling is s_void with dead register setup); nothing to seam."
+  },
+  "game_RemoveFromAvailableBuildings": {
+   "scope": "SIM-RESID",
+   "class": "effect-free",
+   "why": "LT1B adoption (2026-09-02): TRANSLATED in-tree (sim_lt_available_remove) and REBOUND -- the reaching seed calls OUR body directly; the residual original is only reached by original code. Its own effect surface is one call into game_InsertItemInPlayerArray writing the AvailableBuildings table (state, restore-safe, no draw/sound/wire)."
+  },
+  "game_RemoveFromAvailableProjects": {
+   "scope": "SIM-RESID",
+   "class": "effect-free",
+   "why": "LT1B adoption (2026-09-02): same as its Buildings sibling -- translated, rebound, table-write only."
+  },
+  "llm_progress_finalize_acquire": {
+   "scope": "SIM-RESID",
+   "class": "reentry-acknowledged",
+   "why": "G30 acknowledged (2026-09-02): reachable from its own outward callees in 9 hops (SetEvent -> planet-select UI -> frame_sim_only -> time_tick -> player_remove -> presence_lost -> UpdateProgress -> itself) ON TOP of its direct self-recursion (CALL its own entry @0x0044061a). BOTH are why the function carries NO shadow site, permanently -- recorded in dll_shadow_manifest.json's _deliberately_not_shadowed; the site stays unarmed AND the acknowledgment is recorded, so neither half of the check's alternative is left implicit. Offline evidence: libtranstest t10 (depth>1 recursion asserted)."
+  }
+ }
+}

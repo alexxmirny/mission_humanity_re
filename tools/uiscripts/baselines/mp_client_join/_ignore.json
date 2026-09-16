@@ -1,0 +1,32 @@
+{
+  "capture_c4_ip_window.png": [
+    [
+      140,
+      116,
+      362,
+      30
+    ],
+    [
+      150,
+      256,
+      212,
+      20
+    ]
+  ],
+  "capture_c5_games_available.png": [
+    [
+      388,
+      46,
+      226,
+      48
+    ]
+  ],
+  "capture_c6_client_lobby.png": [
+    [
+      388,
+      46,
+      226,
+      48
+    ]
+  ]
+}

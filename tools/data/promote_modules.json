@@ -1,0 +1,33 @@
+{
+ "_comment": [
+  "THE WHOLE-SPINE A/B REGISTRY. One row: `sim_closure`, whose A/B arm is the SHIP configuration",
+  "(`[config] mode=brokered`, i.e. tools/uiscripts/ini/ship_config.ini overriding nothing) and whose",
+  "control arm is `[config] mode=original` -- the game running its own bodies end to end. That pair is",
+  "what run_gate's `ab` unit runs.",
+  "",
+  "IT HELD 22 ROWS UNTIL FORK F2E. The other 21 were PER-MODULE bisect rows: each named one",
+  "`[promote]` key, and migration_ab flipped that key to 0 to build a control arm differing from ship",
+  "in exactly one module. F2E deleted the `[promote]` section -- which bodies run is `[config] mode`",
+  "and nothing else, and a surviving section now refuses the run by name -- so a per-module control",
+  "arm can no longer be expressed. The rows went with their 21 ini fragments rather than being left as",
+  "a registry of configurations the DLL would reject.",
+  "",
+  "FIELDS (unchanged): key / function / ini / poke_region / live_served / ship_default / vehicle, plus",
+  "`control` and `installed_key` for the whole-closure row -- `sim_closure` names the whole ship",
+  "configuration, so its fragment cannot carry `sim_closure=1` and its liveness is read off the key it",
+  "actually arms (`sim_step`)."
+ ],
+ "modules": [
+  {
+   "control": "all_original",
+   "function": "llm_strat_sim_step",
+   "ini": "tools/uiscripts/ini/ship_config.ini",
+   "installed_key": "sim_step",
+   "key": "sim_closure",
+   "live_served": "\\[promote\\] sim_step body served call #(\\d+) from game code",
+   "poke_region": "units",
+   "ship_default": 1,
+   "why": "SIM1-P clause 3: the WHOLE-CLOSURE A/B. Not one key -- the ship configuration against the entire DLL rolled back, which is the oracle that replaces the per-body shadow sites clause 2's rebind dissolves. Its liveness signal is sim_step's own served counter, because every one of the 530 rows is reached through that root or through a body it calls. INSTALLED_KEY: sim_step -- there is no `[promote] sim_closure:` line (this key names the ship config, not a seam), so without the override this module reported installed=False forever and its verdict was structurally NOT_LIVE."
+  }
+ ]
+}

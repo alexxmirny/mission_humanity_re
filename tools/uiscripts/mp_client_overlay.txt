@@ -1,0 +1,28 @@
+# P1 debug-overlay verification, CLIENT side: join, enter the match, capture the net.*/perf. panel
+# in-game. Same walk as mp_client_start.txt plus the in-game capture. Pair with mp_host_overlay.txt.
+
+settled value:110
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+present Internet server
+settled Internet server
+clickl Internet server
+present Server address
+settled Connect
+clickl Connect
+sessions 1
+settled Join game
+clickl Join game
+
+# joined lobby -> wait for the host's Start
+present Network players
+settled Cancel
+absent Network players
+
+# In-game: same sim-advanced gate as the host, so both captures show a running match.
+gameclock 5000
+capture ovl_client_ingame
+log CLIENT captured the lockstep overlay in-game
+end

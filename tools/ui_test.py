@@ -1,0 +1,3164 @@
+#!/usr/bin/env python3
+"""tools/ui_test.py -- UI regression runner for the [uitest] script interpreter (Phase 4 of
+the UI-testing plan).
+
+Launches the game with a chosen UI-STATE script (ui_drive.cpp interpreter), waits for the script to
+report `; [script] COMPLETE` (or `TIMEOUT`) in mh_uidrive.log, pulls the per-screen captures the script
+took (capture_<name>.bmp -> PNG), and diffs each against a committed baseline -> per-capture pass/fail.
+
+Single-peer (local host, no network):
+    python tools/ui_test.py mp_menu_walk.txt
+    python tools/ui_test.py mp_menu_walk.txt --update-baselines   # (re)generate the baselines
+
+Multi-peer (reuses mp_run's ssh/scp plumbing). The host may be the local dev box OR a VM (`ip:script`);
+clients are VMs. The host launches first; once it is LISTENING (its lobby is up) each client is pointed at
+the host by rewriting its setup.dat server IP (setup_dat.py -- no keyboard typing) and launched, then every
+peer is waited on concurrently (a host that gates on `peers N` before Start only finishes AFTER the clients
+join, so we don't wait for host COMPLETE up front):
+    python tools/ui_test.py --host mp_host_start.txt --client <peerA>:mp_client_start.txt
+    # both peers on VMs -> the dev box stays free (e.g. for a parallel mp_run lockstep run):
+    python tools/ui_test.py --host <peerA>:mp_host_start.txt --client <peerB>:mp_client_start.txt
+    python tools/ui_test.py --host mp_menu_walk.txt \
+        --client <peerA>:mp_client_join.txt --client <peerB>:mp_client_join.txt
+
+Baselines live in tools/uiscripts/baselines/<peer-label>/<capture>.png and are committed. The diff is
+perceptual (fraction of pixels whose max-channel delta exceeds --pixdelta); a capture PASSES when that
+fraction is <= --tol. This tolerates the mouse-cursor sprite / minor AA while catching layout changes.
+
+Rig facts (see the UI-input notes): the DLL present hook -- which capture AND the interpreter piggyback --
+only installs with the FULL [net] lockstep block (written here); a Hyper-V VM presents frames headless
+(no vmconnect needed). VM peers run the run-without-focus mh.focus.exe via an interactive scheduled task.
+"""
+
+import argparse
+import glob
+import json
+import os
+import re
+import shutil
+import socket
+import subprocess
+import sys
+import time
+
+import desktop  # --desktop: CreateProcessW onto an isolated desktop object
+import machine_config as machine  # LAN/game/VM defaults (bootstrap E2)
+import make_lane  # LANE_ROOT, for the 'lane=<name>' peer spec
+import mp_run  # reuse ssh/scp/ps/sh (the proven VM plumbing)
+import setup_dat  # edit a client's setup.dat server IP (point it at the host without typing)
+from PIL import Image
+
+REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+DLL = os.path.join(REPO, "src", "mh_dll", "Release", "mh.dll")
+# --dll overrides it for ONE run (tools/coverage.py needs the unoptimised build). A module-level
+# constant read at every launch site is exactly what made the Release binary un-overridable.
+DLL_OVERRIDE = ""
+
+
+def g_dll():
+    """The mh.dll this run deploys: --dll if given, else the Release build."""
+    return DLL_OVERRIDE or DLL
+
+
+# The msvfw32 proxy shim. With --stock-exe a peer runs RETAIL bytes and gets
+# mh.dll through this instead of through an added import descriptor. The lane/peer file keeps the
+# name mh.focus.exe either way, so launchers, taskkill and crash_report's image-name attribution are
+# untouched -- only the exe's CONTENT changes.
+SHIM = os.path.join(REPO, "src", "mh_dll", "Release", "msvfw32.dll")
+# SATELLITE DLLs (fork F4B): siblings mh.dll LoadLibrary()s beside itself. They are build outputs
+# exactly like mh.dll, so a run must not leave a peer holding a stale one -- see refresh_satellites()
+# for why they are refreshed rather than deployed, and deploy_peer_satellites() for the VM half.
+# make_lane.DEFAULT_SATELLITES is the authority on which lanes GET one, and since fork F4D this is
+# DERIVED from it rather than repeated: the two were always required to be the same names, and a
+# second satellite (libmh.dll, the spine) is where "required to be the same" stops holding by
+# discipline. A peer left without libmh.dll runs configuration (1) -- it boots, plays, and passes
+# most things, which is precisely why a drifted copy here would not announce itself.
+SATELLITES = list(make_lane.DEFAULT_SATELLITES)
+# Which exe a peer was last staged with, so a run only re-pushes ~2.9 MB when the mode actually
+# changed. Without this, switching modes leaves the previous mode's exe in place and the run silently
+# measures the wrong thing -- the same class of staleness the fatal mh.dll copy below exists to stop.
+PEER_EXE_MARKER = "mh_exe_mode.txt"
+UISCRIPTS = os.path.join(REPO, "tools", "uiscripts")
+BASELINES = os.path.join(UISCRIPTS, "baselines")
+COMMITTED_SAVES = os.path.join(UISCRIPTS, "saves")
+
+
+def resolve_save(name, machine_dir):
+    """Resolve a scenario save by NAME (no extension): the committed copy under
+    tools/uiscripts/saves/ wins; a save not committed there still comes from the machine dir.
+    Fork F1D -- the two scenario saves (11.sav, ayy30.sav) must stage from the repo so a clean
+    clone runs their scenarios without a machine install; the machine fallback keeps every other
+    save (the 137-entry SAVE_STORAGE index, ad-hoc polygon saves) working unchanged."""
+    committed = os.path.join(COMMITTED_SAVES, name + ".sav")
+    if os.path.isfile(committed):
+        return committed
+    return os.path.join(machine_dir, name + ".sav")
+
+
+# The full [net] block the present hook needs (a minimal block silently disarms capture + the interpreter).
+NET_BLOCK = """[net]
+host=0.0.0.0
+port=6501
+host_assign=1
+log=1
+lockstep_step_ms=30
+lockstep_step_eps_ms=0.01
+sim_step_ms=10
+rx_spin=0
+horizon_heartbeat_ms=50
+defang_overlay=1
+log_gamemode=0
+game_speed_pct=0
+eager_advertise=1
+hires_clock=1
+qpc_clock=1
+lockstep_log=1
+bootstrap=1
+"""
+
+
+# Overridable via --defang (default 1 = shipping suppress). Set 0 to let the SYNCHRONIZING/de-sync
+# overlay RENDER (overlay-mapping trace). resync_wait_fix stays on so a defang-off run doesn't perma-hang.
+DEFANG_OVERLAY = 1
+# Extra [net] lines (';'-separated k=v), e.g. the per-group overlay knobs "defang_xui=1;defang_tt_wait=2".
+EXTRA_NET = ""
+# Whole extra INI SECTIONS appended verbatim after the standard blocks (--extra-ini FILE). This is how a
+# test opts into a feature that ships OFF: the debug overlay's [debug] block (tools/uiscripts/ini/) is
+# enabled only for the overlay regression test, so every other baseline keeps rendering an overlay-free
+# frame. Keep such a block's readouts to values that do NOT vary run-to-run, or the baseline will flap.
+EXTRA_INI = ""
+# --extra-ini-host: an ini fragment for the HOST peer ONLY. The asymmetric twin of --extra-ini, and
+# it exists for the same reason harness_extra_host_lines() does -- to make the two peers DIFFER on
+# purpose. O3's promotion test is the case it was built for: run the original container on one peer
+# and the reimplemented one on the other, and let the lockstep hash referee. A symmetric promoted run
+# cannot do that job at all: determinism only proves the two peers agree with EACH OTHER, so a
+# deterministic-but-wrong reimplementation makes both peers wrong identically and the gate goes green.
+EXTRA_INI_HOST = ""
+# --extra-ini-client: the same thing aimed at every NON-host peer, and it is what actually makes an
+# asymmetric run asymmetric TODAY. `--extra-ini-host promote_lockstep.ini` was enough only while
+# promotion was opt-in. Since C8-f made it the SHIPPING DEFAULT (`SHIP_PROMOTE_LOCKSTEP = 1` in
+# mh/seams/net_internal.h), a peer that receives no `[promote]` section at all still promotes -- so
+# the host-only fragment sets a key that was already 1 and both peers run OURS. The shape did not
+# pass while doing it (det_run_report's liveness check refuses a run whose asymmetry evaporated), so
+# nothing was ever waved through; it simply became UNRUNNABLE and stayed that way, reported as a
+# FAIL on every --det-standard invocation. Making the original the reference oracle now takes an
+# explicit `[promote] lockstep=0` on the CLIENT, which is what this flag delivers.
+EXTRA_INI_CLIENT = ""
+
+
+def make_harness_ini(steps, is_host=False):
+    """The [harness] block for the UI-path determinism run, merged into the lane's mh_net.ini.
+
+    ONE FILE SINCE FORK F2G, AND AN EXPLICIT ARM. The block used to be deployed as its own
+    `mh_harness.ini` next to the exe, because that was the only file harness.cpp read AND its very
+    existence was what armed the harness. Both halves are gone: the DLL reads [harness] out of
+    mh_net.ini, and it arms only on `enable=1` below. A stale copy of the old file beside the exe is
+    REFUSED by the DLL now rather than ignored -- which is the direct answer to what this docstring
+    used to warn about, an 800-step gate that actually ran the host to 200 and the client to 3000
+    because whatever mh_harness.ini happened to be sitting on each VM decided the real stop_step.
+
+    `enable=1` LEADS THE BLOCK, and it is emitted here rather than by the caller so that the decision
+    "this run is instrumented" and the config that instruments it cannot be written apart. The merge
+    into the lane ini is BY SECTION (ini_merge_fragment), because an appended second [harness] block
+    would be present and unreachable -- the trap this module's merge helpers exist for, now one file
+    closer to everything else.
+
+    seed_mode=2 -> both peers reseed identically at sim step 0 (same as mp_run), so any divergence is a
+    real desync. NO force-entry: the [net] block deliberately omits mp_players/player_id/mp_map.
+
+    D6: the moving-unit workload rides along here too, and for the same reason it exists at all -- a
+    determinism run over an IDLE world compares a world in which nothing happens, so a transient
+    divergence re-converges for free. ONE seed is drawn per run (module-level SYNTH_SEED) and given to
+    every peer, so the peers agree while the value stays fresh per run.
+    """
+    base = (
+        (mp_run.HARNESS % (steps, ORDER_MODE, ORDER_LOG))
+        + (mp_run.SYNTH % (SYNTH_MOVE, SYNTH_SEED, SYNTH_AT, SYNTH_EVERY))
+        + ("ai_probe_step=%d\n" % AI_PROBE_STEP if AI_PROBE_STEP else "")
+    )
+    return harness_apply_extras(
+        base, harness_extra_lines() + (harness_extra_host_lines() if is_host else "")
+    )
+
+
+def wants_harness(harness_steps, is_host):
+    """Does this launch arm the harness at all? The ONE answer, so the two launch paths agree.
+
+    They did not before F2G: local_launch deployed the harness file on `steps>0 or HARNESS_EXTRA`
+    while remote_launch deployed it on `steps>0` alone, so `--harness-extra` reached a local peer and
+    was silently dropped on a VM one -- an asymmetry nobody asked for in a runner whose whole job is
+    to make two peers identical except where a flag says otherwise. With the file merged there is one
+    ini and one decision; this is it.
+    """
+    return bool(harness_steps > 0 or HARNESS_EXTRA or (is_host and HARNESS_EXTRA_HOST))
+
+
+def harness_apply_extras(base, extras):
+    """Merge extra `k=v` lines into a [harness] block by KEY, overriding in place.
+
+    NOT concatenation, and the difference is load-bearing: `GetPrivateProfileIntA` returns the FIRST
+    occurrence of a key in a section, so an appended `fixed_step=0` after the template's
+    `fixed_step=1` is read as 1 and the override silently does nothing. Caught while wiring
+    P0-SPDET, whose whole point is knobs that turn the oracle on -- a silently-ignored pin_wallclock
+    would have produced a run that looked armed and compared wall-clock garbage.
+
+    Same failure family as the duplicate `[promote]` SECTION that cost a C6 acceptance run; this is
+    the per-KEY version of it, and det_standard_selftest covers both.
+    """
+    over = {}
+    for ln in (extras or "").splitlines():
+        ln = ln.strip()
+        if "=" in ln and not ln.startswith(";"):
+            k, v = ln.split("=", 1)
+            over[k.strip()] = v.strip()
+    out, seen = [], set()
+    for ln in base.splitlines():
+        k = ln.split("=", 1)[0].strip() if "=" in ln and not ln.strip().startswith(";") else None
+        if k in over:
+            out.append("%s=%s" % (k, over[k]))
+            seen.add(k)
+        else:
+            out.append(ln)
+    for k, v in over.items():
+        if k not in seen:
+            out.append("%s=%s" % (k, v))
+    return "\n".join(out) + "\n"
+
+
+def harness_extra_lines():
+    """Extra [harness] lines for EVERY peer (--harness-extra). The symmetric twin of
+    harness_extra_host_lines().
+
+    Added for P0-SPDET, whose knobs (pin_wallclock / fixed_step / region_hash_step) must reach the
+    one peer a single-player run has -- and --harness-extra-host is REFUSED on a single-peer run
+    precisely because there is no second peer to differ from. Symmetric by construction, so unlike
+    the host-only flag it cannot accidentally create the asymmetry a determinism run is measuring.
+    """
+    return "".join(kv.strip() + "\n" for kv in (HARNESS_EXTRA or "").split(";") if kv.strip())
+
+
+def harness_extra_host_lines():
+    """Extra [harness] lines for the HOST peer ONLY (--harness-extra-host).
+
+    Asymmetric BY DESIGN: this is how one peer is perturbed so the gate has something to find
+    (D3's rng_perturb_slot, D11's region_poke). Deploying it to every peer would corrupt them
+    identically and the run would come back clean -- the exact false negative these tests exist to
+    avoid. mp_run.py has the same flag for the force-entry path; this is the UI-path twin.
+    """
+    return "".join(kv.strip() + "\n" for kv in (HARNESS_EXTRA_HOST or "").split(";") if kv.strip())
+
+
+# Artifacts that exist only for SOME runs, so a missing one is not an error. mp_run.LOGNAMES is the
+# always-expected set (a gap there is reported); these are pulled silently. mh_orders.bin is the
+# project's SECOND lockstep oracle -- two peers whose recordings are byte-identical applied the same
+# order stream -- and until 2026-07-28 it was written on the VM and never ferried back, which made it
+# unusable for exactly the question it answers best.
+OPTIONAL_ARTIFACTS = ["mh_orders.bin", "mh_clock.bin"]
+
+# --record: order_mode=1 makes the harness RECORD every dispatched order to mh_orders.bin (plus the
+# per-step clock track mh_clock.bin, which a real-time recording needs because fixed_step=0 means the
+# clock advances by variable per-frame deltas). Both land in the per-run log folder. That turns an
+# interactive session into a replayable artifact -- the point being that a bug found while a human
+# plays can afterwards be reproduced without the human. order_log=1 additionally dumps the queue
+# contents as ";ord" lines, which is what makes the recording readable rather than just replayable.
+ORDER_MODE = 0
+ORDER_LOG = 0
+
+# D6: the synthetic moving-unit workload, ON by default for determinism runs (see make_harness_ini).
+# The seed is drawn ONCE per process with os.urandom and shared by every peer -- a PRNG-derived
+# destination would be identical on every peer by construction and would never exercise the wire.
+SYNTH_MOVE = 1
+SYNTH_SEED = mp_run.synth_seed()
+SYNTH_AT = 60
+SYNTH_EVERY = 1  # every step: keeps units[] changing continuously (cost measured as nil)
+
+# D10 (--ai): cadence of the "; AIPROBE" line -- master gate, loop bound, per-player ai_enabled, and
+# the AI PRNG slot. Set only for AI-active runs, because its ONLY job is to make "the AI actually ran"
+# a thing you READ rather than assume. A value seen once proves nothing; a cadence shows motion.
+AI_PROBE_STEP = 0
+
+# --harness-extra-host: ';'-separated [harness] k=v written to the HOST's ini only. See
+# harness_extra_host_lines() for why it must never reach the clients.
+HARNESS_EXTRA_HOST = ""
+
+# --harness-extra: ';'-separated [harness] k=v written to EVERY peer's ini. See
+# harness_extra_lines(); P0-SPDET's pin_wallclock/fixed_step/region_hash_step ride here.
+HARNESS_EXTRA = ""
+
+
+# --ship-pacing: drop the pinned pacing lines so the DLL's OWN shipping defaults apply (lookahead
+# 100 ms + the adaptive controller, sim sub-step 20 ms). The rig has always pinned 30/10, which was
+# right while those values lived only here -- but it means a green determinism gate says nothing
+# about what a player actually runs. Explicit rather than default, so the pixel baselines keep their
+# established timing.
+SHIP_PACING = False
+# --headless: [video] no_present=1 cuts the DirectDraw blit inside llm_gfx_present_flip. Frames are
+# still COMPOSED in software, so captures are byte-identical (A/B-verified 2026-07-28); only the push
+# to screen is gone. Lets several instances share a machine without fighting over the display.
+# CORRECTNESS RUNS ONLY -- no blit means no vsync wait, which is exactly what makes it wrong for
+# pacing measurement. The parallel-lane notes.
+HEADLESS = False
+# --desktop <name>: run the game on its own Windows desktop object. Empty = the interactive desktop,
+# i.e. today's behaviour. This is the mechanism-INDEPENDENT answer to the window that headless cannot
+# keep unmapped -- see tools/desktop.py for what was ruled out before reaching for it.
+DESKTOP = ""
+# --launch-args / --deploy-save: the two knobs a scenario needs to be driven into a mode the MENU
+# cannot reach. Tactical mode is the case that forced them: a mission is entered from a played
+# strategic game (a live planet, a seated control group, an enemy base in range), so no menu walk
+# reaches one, and the DLL's own `--tactical <save>` verb synthesises the squad blackboard instead
+# (seams/launch.cpp enter_tactical). That verb takes a save NAME and loads `save\<name>.sav`
+# relative to the exe, and a lane is a fresh folder with no save dir -- hence the second knob.
+# Both are empty for every other scenario, so nothing else changes shape.
+LAUNCH_ARGS = ""
+DEPLOY_SAVE = ""
+# rx_spin joined this list on 2026-07-26, when P5 made it a SHIP default: the rig pins it to 0, so
+# without dropping it here --ship-pacing would keep testing the pre-P5 configuration.
+PINNED_PACING = ("lockstep_step_ms=30\n", "sim_step_ms=10\n", "rx_spin=0\n")
+
+
+def ini_merge_section(text, section, lines):
+    """Append `lines` to `[section]` inside `text`, creating the section if it is not there.
+
+    Windows' GetPrivateProfile* reads only the FIRST section with a given name, so emitting a second
+    `[video]` block does not add keys -- it writes dead text and leaves the caller believing both sets
+    applied. Anything that composes an ini from independent fragments has to merge by section.
+    """
+    head = "[%s]" % section.lower()
+    out, seen, i = [], False, 0
+    for ln in text.splitlines():
+        out.append(ln)
+        if not seen and ln.strip().lower() == head:
+            seen = True
+            i = len(out)  # insert point: immediately under the header
+    if not seen:
+        return (
+            (text.rstrip("\n") + "\n\n" if text.strip() else "")
+            + head
+            + "\n"
+            + "".join(ln + "\n" for ln in lines)
+        )
+    # THE "ALREADY SET" TEST IS SCOPED TO THIS SECTION, and until fork F2G it was not: it asked
+    # whether ANY line anywhere in the text already used the key, so a key name shared by two
+    # sections made the merge silently drop the one being merged in. Harmless while the colliding
+    # names were section-private -- and immediately fatal once D12 put every section in ONE file and
+    # made `[harness] enable=1` the harness's arming signal, because `[net] enable=1` sits above it
+    # in every lane ini ever written. The failure is the worst available shape: the merge reports
+    # nothing, the file looks right to a reader who is not modelling GetPrivateProfile*, and the run
+    # comes back green with the instrument it was supposed to arm never armed. An ini key belongs to
+    # its section; a comparison that forgets that is not modelling the reader.
+    end = len(out)
+    for j in range(i, len(out)):
+        t = out[j].strip()
+        if t.startswith("[") and t.endswith("]"):
+            end = j
+            break
+    own = {o.split("=", 1)[0].strip().lower() for o in out[i:end] if "=" in o}
+    for ln in lines:  # skip keys the fragment already sets -- the fragment is the more specific one
+        key = ln.split("=", 1)[0].strip().lower()
+        if key in own:
+            continue
+        own.add(key)
+        out.insert(i, ln)
+        i += 1
+        end += 1
+    return "".join(ln + "\n" for ln in out)
+
+
+def ini_split_sections(fragment):
+    """[(section, [key=value, ...]), ...] for an ini fragment. Comments and blanks are dropped."""
+    out, cur = [], None
+    for raw in fragment.splitlines():
+        ln = raw.strip()
+        if not ln or ln.startswith(";") or ln.startswith("#"):
+            continue
+        if ln.startswith("[") and ln.endswith("]"):
+            cur = (ln[1:-1].strip(), [])
+            out.append(cur)
+        elif cur is not None and "=" in ln:
+            cur[1].append(ln)
+    return out
+
+
+def ini_merge_fragment(text, fragment):
+    """Merge every section of `fragment` into `text`, section by section.
+
+    CONCATENATION IS NOT COMPOSITION, and this cost a C6 acceptance run on 2026-07-29. `--extra-ini`
+    and `--extra-ini-host` used to be simply appended one after the other. Give them a section in
+    common -- two fragments can carry the same section -- and the host
+    ini ends up with TWO `[promote]` blocks. GetPrivateProfile* reads only the FIRST, so the host-only
+    keys were dead text: the run came back ALL PAIRS IDENTICAL with the asymmetry never installed.
+    Exactly the trap `ini_merge_section` was written for, one caller further out.
+    """
+    for section, lines in ini_split_sections(fragment):
+        text = ini_merge_section(text, section, lines)
+    return text
+
+
+def ini_effective(text, section, key):
+    """What GetPrivateProfile* would read: FIRST section with that name, FIRST key in it. None if absent.
+
+    Deliberately models the quirk rather than parsing sanely, because the quirk is what the guard below
+    has to catch -- a key that is present in the file and unreachable by the game.
+    """
+    want, in_section = "[%s]" % section.lower(), False
+    seen_section = False
+    for raw in text.splitlines():
+        ln = raw.strip()
+        if ln.startswith("[") and ln.endswith("]"):
+            if in_section:
+                return None  # left the first matching section without finding the key
+            if ln.lower() == want:
+                if seen_section:
+                    return None  # a LATER duplicate: unreachable
+                in_section, seen_section = True, True
+            continue
+        if in_section and "=" in ln and not ln.startswith((";", "#")):
+            k, _, v = ln.partition("=")
+            if k.strip().lower() == key.strip().lower():
+                return v.strip()
+    return None
+
+
+def make_ini(script_name, timeout_frames, harness_steps=0, is_host=False, ident=None):
+    # --net-extra must OVERRIDE, not merely append. Windows GetPrivateProfile* returns the FIRST match
+    # for a key in a section, so appending `lockstep_step_ms=60` after NET_BLOCK's own
+    # `lockstep_step_ms=30` silently changes nothing: the run uses 30 and the log says 30 while the
+    # command line says 60. That cost a whole P4 comparison on 2026-07-26 -- two runs "pinned" to
+    # different lookaheads were the same config, and their matching numbers read as a real result.
+    # So drop any NET_BLOCK line whose key an extra also sets.
+    extra_kvs = [kv.strip() for kv in EXTRA_NET.split(";") if kv.strip()]
+    extra = "".join(kv + "\n" for kv in extra_kvs)
+    overridden = {kv.split("=", 1)[0].strip() for kv in extra_kvs if "=" in kv}
+    # A lane's PORT must override NET_BLOCK's 6501, not be appended after it: Windows
+    # GetPrivateProfile* returns the FIRST match for a key, the same trap --net-extra already guards.
+    lane_port = (ident or {}).get("port") or 0
+    if lane_port:
+        overridden.add("port")
+    net = "".join(
+        ln
+        for ln in NET_BLOCK.splitlines(keepends=True)
+        if ln.split("=", 1)[0].strip() not in overridden
+    )
+    if lane_port:
+        net += "port=%d\n" % lane_port
+    if SHIP_PACING:
+        for line in PINNED_PACING:
+            net = net.replace(line, "")
+    # Lane identity + headless, re-emitted from lane.json (see local_launch). Without this the
+    # runner's wholesale ini rewrite drops them and every lane silently reverts to the stock
+    # "MHMutex" and the visible present path.
+    #
+    # `lane` LIVES IN [uitest] SINCE FORK F2G -- it had its own one-key `[test]` section, which the
+    # DLL now refuses. Emitted INSIDE the [uitest] block rather than appended after it, because a
+    # second [uitest] section would be unreachable and the lane would fall back to the stock mutex:
+    # the same trap, and the merge is one file wider now.
+    ident = ident or {}
+    uitest = [
+        "enable=1",
+        "script=%s" % script_name,
+        "dump_screens=0",
+        "timeout_frames=%d" % timeout_frames,
+    ]
+    if ident.get("lane"):
+        uitest.append("lane=%d" % ident["lane"])
+    ini = (
+        net.replace("defang_overlay=1", "defang_overlay=%d" % DEFANG_OVERLAY)
+        + extra
+        + "\n[capture]\nevery=0\n\n[uitest]\n"
+        + "".join(ln + "\n" for ln in uitest)
+    )
+    # THE PER-ROW REBIND ROLLBACK USED TO BE EMITTED HERE, as a `[rebind]` section written into
+    # mh_net.ini SPECIFICALLY (harness.cpp read that file beside the exe and nothing else, so the
+    # same rollback in --extra-ini was never read and a run came back clean for the wrong reason).
+    # Fork F2E deleted the section -- which rows bind ours is `[config] mode` and nothing else -- and
+    # the DLL now REFUSES a run whose ini still carries one, so emitting it would kill every lane
+    # rather than bisect anything. The per-row bisect has no successor here; see the promoted-vs-original A/B driver's
+    # derive_control_ini for the same ruling on the promotion side.
+    # The [video] keys have to be MERGED into whatever [video] section --extra-ini already carries,
+    # not emitted as a second one. Windows' GetPrivateProfile* reads only the FIRST section with a
+    # given name, so a later duplicate [video] is dead text -- and headless emitted its block first,
+    # which silently shadowed every size_mode/width/height pin a test relies on. Measured 2026-07-28:
+    # res_hud's in-game capture came back 640x480 against its 1024x768 baseline and res_picker's came
+    # back 640x480 against 1280x800, i.e. the pin the whole test exists to prove was never applied.
+    # Same family as the --net-extra "first match wins" trap already guarded above, one level up.
+    tail = EXTRA_INI.rstrip("\n") + "\n" if EXTRA_INI else ""
+    if (not is_host) and EXTRA_INI_CLIENT:
+        # Merged by section for the same reason the host fragment is: a second `[promote]` block is
+        # dead text to GetPrivateProfile*, and this fragment's whole job is to override a key the
+        # DLL otherwise defaults to 1.
+        tail = ini_merge_fragment(tail, EXTRA_INI_CLIENT)
+    if is_host and EXTRA_INI_HOST:
+        # MERGE BY SECTION, never concatenate: the two fragments routinely share a section (both
+        # two fragments can carry the same section), and a second block of the
+        # same name is dead text to GetPrivateProfile*. See ini_merge_fragment.
+        tail = ini_merge_fragment(tail, EXTRA_INI_HOST)
+    # `HEADLESS` MUST BE IN main()'s `global` LIST, and it was not until 2026-08-01. Without it,
+    # `HEADLESS = resolve_headless(args, ap)` bound a LOCAL and the module global stayed False, so
+    # the headless default never reached this line: every direct `ui_test.py <script>` run against
+    # the default polygon showed a window, `--headless` did nothing, and only LANE runs were quiet
+    # (they come in through ident, which reads lane.json). It survived because the suite runs in
+    # lanes and nothing in the suite looks at windows -- the same blind spot the comment below
+    # already records for no_present-without-no_window. Noticed by the user watching a rig run.
+    if HEADLESS or ident.get("headless"):
+        # BOTH, always together. no_window's offscreen keeper is armed by re-pointing the very call
+        # site that no_present frees, so emitting no_present alone leaves the window on screen --
+        # which is exactly what happened the first time this block was written, and it passed a test
+        # while doing it (the suite does not look at windows).
+        tail = ini_merge_section(tail, "video", ["no_present=1", "no_window=1"])
+    if tail:
+        ini += "\n" + tail
+    # THE [harness] BLOCK IS PART OF THIS FILE NOW (fork F2G, D12). Merged LAST and BY SECTION, so it
+    # wins over an --extra-ini fragment that also names [harness] the way the host/client fragments
+    # already merge over each other -- and so a fragment carrying its own [harness] keys cannot push
+    # the block into a second, unreachable section. `enable=1` comes from make_harness_ini.
+    if wants_harness(harness_steps, is_host):
+        ini = ini_merge_fragment(ini, make_harness_ini(harness_steps, is_host))
+    if is_host and EXTRA_INI_HOST:
+        # SELF-CHECK, and it is here because this exact append was once silently missing: the flag
+        # parsed, the "[cfg] HOST-ONLY" line printed, the fragment never reached the ini, and the run
+        # came back ALL PAIRS IDENTICAL -- a green verdict over a test that had quietly become
+        # symmetric. An asymmetric run whose asymmetry evaporates does not fail; it passes, which is
+        # the worst possible direction. Cheap assertion, un-forgettable.
+        #
+        # AND IT CHECKS READABILITY, NOT PRESENCE (strengthened 2026-07-29). The first version asked
+        # only whether the literal line appeared anywhere in the file. It did -- inside a DUPLICATE
+        # `[promote]` section that GetPrivateProfile* never reaches -- so the guard passed on a run
+        # whose asymmetry was already dead, and the C6 acceptance run came back green with sim_tick
+        # never promoted. A text search cannot answer an ini question; model the reader.
+        for section, lines in ini_split_sections(EXTRA_INI_HOST):
+            for ln in lines:
+                key, _, val = ln.partition("=")
+                got = ini_effective(ini, section, key)
+                if got != val.strip():
+                    raise SystemExit(
+                        "--extra-ini-host: [%s] %s is not READABLE in the host ini (effective value "
+                        "%r, wanted %r) -- refusing to run a test whose asymmetry has silently "
+                        "vanished. A duplicate [%s] section earlier in the file shadows it."
+                        % (section, key.strip(), got, val.strip(), section)
+                    )
+    if (not is_host) and EXTRA_INI_CLIENT:
+        # The same readability self-check, for the same reason: the client fragment is the half that
+        # carries the asymmetry now, so a shadowed or dropped key here is exactly the "asymmetry
+        # evaporated" failure the host check above was written for, only one peer over.
+        for section, lines in ini_split_sections(EXTRA_INI_CLIENT):
+            for ln in lines:
+                key, _, val = ln.partition("=")
+                got = ini_effective(ini, section, key)
+                if got != val.strip():
+                    raise SystemExit(
+                        "--extra-ini-client: [%s] %s is not READABLE in the client ini (effective "
+                        "value %r, wanted %r) -- refusing to run a test whose asymmetry has silently "
+                        "vanished. A duplicate [%s] section earlier in the file shadows it."
+                        % (section, key.strip(), got, val.strip(), section)
+                    )
+    return ini
+
+
+def bmp_to_png(bmp, png):
+    Image.open(bmp).convert("RGB").save(png)
+
+
+def diff_capture(actual_png, baseline_png, pixdelta, tol, ignore=None):
+    """Return (passed, fraction_differing, note). A pixel 'differs' when its max-channel abs delta
+    exceeds pixdelta; the capture PASSES when the differing fraction is <= tol. `ignore` is a list of
+    [x, y, w, h] rectangles zeroed in BOTH images before diffing -- for machine-specific regions (e.g. the
+    on-screen host IP header) that must not count as a regression. The fraction is over the WHOLE frame
+    (masked pixels simply never differ), so a mask stays a small, honest deduction."""
+    import numpy as np
+
+    if not os.path.isfile(baseline_png):
+        return False, 1.0, "no baseline"
+    a = Image.open(actual_png).convert("RGB")
+    b = Image.open(baseline_png).convert("RGB")
+    if a.size != b.size:
+        return False, 1.0, "size %s != baseline %s" % (a.size, b.size)
+    aa = np.asarray(a, dtype=np.int16)
+    bb = np.asarray(b, dtype=np.int16)
+    d = np.abs(aa - bb).max(axis=2)
+    if ignore:
+        h, w = d.shape
+        for x, y, rw, rh in ignore:
+            x0, y0 = max(0, x), max(0, y)
+            x1, y1 = min(w, x + rw), min(h, y + rh)
+            if x1 > x0 and y1 > y0:
+                d[y0:y1, x0:x1] = 0
+    frac = float((d > pixdelta).mean())
+    note = "" if not ignore else "%d region(s) masked" % len(ignore)
+    return (frac <= tol), frac, note
+
+
+# ---- local host peer -------------------------------------------------------------------------------
+
+
+def local_existing_runs(host_dir):
+    return set(glob.glob(os.path.join(host_dir, "logs", "*")))
+
+
+RIG_KEY = "4d48746573746b657900000000000000000000000000000000000000deadbeef\n; rig key (tools/ui_test.py)\n"
+
+
+def write_rig_key(dirpath):
+    """Pin the transport's pre-shared key (mh_key.txt).
+
+    Since 2026-07-25 the transport authenticates + encrypts with this key, and a peer with no file
+    MINTS ITS OWN on first launch -- so two rig peers would each invent a different key and the join
+    would be refused. Writing the same one everywhere keeps multi-peer runs on the SHIPPED secure
+    path (rather than testing a configuration players never use)."""
+    p = os.path.join(dirpath, "mh_key.txt")
+    with open(p, "w", newline="\n") as f:
+        f.write(RIG_KEY)
+    return p
+
+
+def refresh_satellites(host_dir):
+    """Re-copy the satellite DLLs a lane ALREADY HAS, from the build beside the mh.dll being
+    deployed. Fork F4B.
+
+    THE `ALREADY HAS` IS THE WHOLE DESIGN, and it is what makes the absent arm survive a launch. The
+    mh.dll copy one line above exists because a run must never measure a stale build; mh_net.dll is
+    a build output for exactly the same reason, and a peer running last week's transport against
+    this week's mh.dll would be a mismatched pair reported as a scenario failure. But copying the
+    satellite UNCONDITIONALLY would silently re-deploy the file that `make_lane --omit-satellite`
+    was asked to leave out -- turning the one lane whose job is to prove the missing-module
+    degradation into another bound run, green for the wrong reason. So: refresh what is there,
+    create nothing. make_lane decides WHETHER a lane has a satellite; this decides only that it is
+    not stale."""
+    src_dir = os.path.dirname(g_dll())
+    for name in SATELLITES:
+        dst = os.path.join(host_dir, name)
+        if not os.path.isfile(dst):
+            continue
+        src = os.path.join(src_dir, name)
+        if os.path.isfile(src):
+            shutil.copy(src, dst)
+
+
+def local_launch(host_dir, script_src, script_name, timeout_frames, harness_steps=0, is_host=False):
+    # deploy current DLL + script + ini, then launch the run-without-focus exe at the menu.
+    #
+    # G_DLL, NOT THE MODULE CONSTANT, and this copy is why the override has to exist here at all.
+    # It runs on EVERY launch and is deliberate -- it is what stops a run measuring a stale build --
+    # but it also OVERWRITES whatever make_lane deployed, so a lane provisioned with `--dll <Debug>`
+    # for tools/coverage.py silently got the Release binary back one line before launch. Measured
+    # 2026-09-08: the committed sim coverage baseline was recorded against /O2+LTCG, reporting 655
+    # files / 40,797 instrumented lines where the Debug build reports 700 / 61,889 -- i.e. inlined
+    # bodies counted as never executed, the precise reading coverage.py exists to refuse.
+    shutil.copy(g_dll(), os.path.join(host_dir, "mh.dll"))
+    _pdb = os.path.splitext(g_dll())[0] + ".pdb"
+    if os.path.isfile(_pdb):
+        # The collector attributes lines through the PDB; without it the report has no source at all.
+        shutil.copy(_pdb, os.path.join(host_dir, "mh.pdb"))
+    refresh_satellites(host_dir)
+    shutil.copy(script_src, os.path.join(host_dir, script_name))
+    write_rig_key(host_dir)
+    # A LANE's identity must survive this rewrite. We clobber mh_net.ini wholesale, which silently
+    # dropped `[uitest] lane=N` and `[video] no_present=1` -- so every lane fell back to the stock
+    # "MHMutex" (breaking the single-instance separation that makes lanes work at all) and back to the
+    # visible present path. Re-emit them from lane.json, which the runner never writes.
+    ident = make_lane.read_identity(host_dir)
+    with open(os.path.join(host_dir, "mh_net.ini"), "w", newline="\r\n") as f:
+        f.write(make_ini(script_name, timeout_frames, harness_steps, is_host, ident))
+    # ONE FILE (fork F2G): the [harness] block is inside the mh_net.ini written just above, gated on
+    # wants_harness() -- `--harness-extra` alone still arms it, because a scenario can need a
+    # [harness] KNOB without a determinism run's step budget (the tactical capture needs
+    # `tact_hash_step`: arming the tactical cadence is what makes the promoted tact_frame the one
+    # that runs, and without it every converted tactical body is dead code the capture cannot see).
+    #
+    # The OLD file is still swept, unconditionally, and that is not superstition: the DLL now REFUSES
+    # to run with an mh_harness.ini beside the exe, so a lane folder that predates this change (or a
+    # polygon copied from one) would terminate at boot. Sweeping it here turns a stale tree into a
+    # normal run instead of a confusing one.
+    harn = os.path.join(host_dir, "mh_harness.ini")
+    if os.path.isfile(harn):
+        os.remove(harn)
+    # A scenario driven by a launch verb needs its save INSIDE the lane -- `--tactical <name>` and
+    # `--load <name>` both resolve save\<name>.sav relative to the exe.
+    if DEPLOY_SAVE:
+        src = resolve_save(DEPLOY_SAVE, os.path.join(machine.POLYGON, "save"))
+        if not os.path.isfile(src):
+            raise SystemExit(
+                "--deploy-save: no such save: %s (not in tools/uiscripts/saves/ either)" % src
+            )
+        dst_dir = os.path.join(host_dir, "save")
+        os.makedirs(dst_dir, exist_ok=True)
+        shutil.copy2(src, os.path.join(dst_dir, DEPLOY_SAVE + ".sav"))
+    exe = os.path.join(host_dir, "mh.focus.exe")
+    # The verb goes BEFORE --skip-intro because the parser takes the first verb it sees and then
+    # keeps scanning only for --skip-intro (seams/launch.cpp); the order is the parser's, not taste.
+    game_args = (LAUNCH_ARGS.split() if LAUNCH_ARGS else []) + ["--skip-intro"]
+    # -PassThru so we learn the PID. Killing by IMAGE NAME would take down every other lane on this
+    # machine, which is exactly what per-test lanes and concurrent runs must not do.
+    before = set(glob.glob(os.path.join(host_dir, "logs", "*")))
+    with boot_lock(host_dir):
+        # fork F4H: refuse a launch that the single-instance guard would kill silently.
+        conflict = make_lane.lane_conflict(host_dir)
+        if conflict:
+            # sys.exit, not a None return: a launch that cannot succeed must fail HERE with the
+            # reason, not thirty seconds later as "the peer never started". ui_test.py is one process
+            # per peer, so this is the peer's own verdict and nothing else is torn down.
+            sys.exit(conflict)
+        pid = None
+        if DESKTOP:
+            hold_desktop_once()
+            # --desktop: put the game on its own desktop object. Start-Process cannot do this --
+            # lpDesktop lives in STARTUPINFO and neither PowerShell nor subprocess exposes it -- so
+            # this path is a raw CreateProcessW (tools/desktop.py). The window then cannot reach the
+            # interactive desktop whatever creates or shows it, which is the point: three separate
+            # hypotheses about WHO shows it have already been wrong.
+            pid = desktop.spawn(exe, " ".join(game_args), cwd=host_dir, desktop=DESKTOP)
+        else:
+            r = mp_run.ps(
+                "(Start-Process -FilePath '%s' -ArgumentList %s -WorkingDirectory '%s' "
+                "-PassThru).Id" % (exe, ",".join("'%s'" % a for a in game_args), host_dir)
+            )
+            for tok in (getattr(r, "stdout", "") or "").split():
+                if tok.strip().isdigit():
+                    pid = int(tok.strip())
+        if pid:
+            _LOCAL_PIDS.append(pid)
+            retain_exit_handle(pid)
+        wait_past_pack_load(host_dir, before, pid=pid)
+    return pid
+
+
+# ---- the machine-wide BOOT lock ------------------------------------------------------------------
+#
+# Lanes SHARE their resource packs -- `mh.rsr` and friends are symlinks to one physical file, which is
+# what makes a lane 3.5 MB instead of 300. Two instances loading packs at the same moment collide on
+# that file, and the loser does not fail loudly: `rsr::TryReadRsrFile` falls through to the same modal
+# a missing disc raises, so the symptom is the blocking
+#
+#     Insert 'Mission: Humanity' CD into your CD-ROM drive
+#
+# on a machine with no CD-ROM drive at all (the disc-check RE: that dialog has TWO sources, and the
+# packs-not-readable one is the non-obvious half). Measured 2026-07-28: of four lanes launched in the
+# same second, three came up with the modal and one booted; a modal also blocks the frame loop, so the
+# offscreen keeper stops running and the window becomes visible again -- the "modals about cd" the
+# user saw.
+#
+# The fix is to serialise only the PACK-LOAD window, not the run: one launcher at a time until the
+# game has presented its first frame. Boot is a few seconds, so a 12-test suite pays a few seconds per
+# test, and the tests still overlap for the other 99% of their life. Cross-PROCESS (each peer is
+# launched by its own ui_test.py), so it is a lock FILE, not a threading.Lock.
+# The class MOVED to make_lane.py (2026-09-10): make_lane now guards its own provisioning with the
+# same lock, and it cannot import ui_test without a cycle. Re-exported here so every existing
+# `ui_test.boot_lock` caller (this file, test_ui.py) is unchanged.
+BOOT_LOCK = make_lane.BOOT_LOCK
+BOOT_LOCK_STALE = make_lane.BOOT_LOCK_STALE
+boot_lock = make_lane.boot_lock
+
+
+def _alive(pid):
+    """Is this pid still running? None/unknown -> True, so the caller waits rather than guesses."""
+    if not pid or os.name != "nt":
+        return True
+    try:
+        import ctypes
+        from ctypes import wintypes
+
+        k32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        k32.OpenProcess.restype = wintypes.HANDLE
+        k32.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
+        k32.GetExitCodeProcess.argtypes = [wintypes.HANDLE, ctypes.POINTER(wintypes.DWORD)]
+        h = k32.OpenProcess(0x1000, False, int(pid))  # PROCESS_QUERY_LIMITED_INFORMATION
+        if not h:
+            return False
+        code = wintypes.DWORD()
+        ok = k32.GetExitCodeProcess(h, ctypes.byref(code))
+        k32.CloseHandle(h)
+        return bool(ok) and code.value == 259  # STILL_ACTIVE
+    except Exception:
+        return True
+
+
+def wait_past_pack_load(host_dir, before, timeout=60, pid=None):
+    """Block until this peer has presented a frame (or `timeout`), holding the boot lock.
+
+    The first frametime row is the honest 'done loading' signal: the present hook only fires once the
+    game is running frames, which is downstream of every pack read. Waiting on a fixed sleep instead
+    would be a guess that gets stale the moment the machine changes.
+
+    LIVENESS IS CHECKED, AND THAT IS A STARVATION FIX, NOT A TIDY-UP (fork F4H). This lock is
+    MACHINE-WIDE: everything else on the box that wants to boot a game is queued behind it. A peer
+    that dies during boot -- a lane-number collision, a crash, a refused module -- can never present,
+    so the wait ran to its full 60 s every time and the lock was held for 50-odd seconds after the
+    process it was protecting had ceased to exist. Measured in the F4H before-run: the dead peer held
+    it 60 s and the three innocent lanes behind it waited 45 s, 60 s and 66 s, two of them
+    NEAR-MISSing their budgets. Noticing the corpse turns that into ~1 s.
+
+    `pid` is optional because one caller cannot always learn it; without it the behaviour is exactly
+    what it was, which is the right default for a guard that must never be the reason a run fails.
+    """
+    deadline = time.time() + timeout
+    run = None
+    while time.time() < deadline:
+        if run is None:
+            new = [
+                d
+                for d in set(glob.glob(os.path.join(host_dir, "logs", "*"))) - before
+                if os.path.isdir(d)
+            ]
+            if new:
+                run = max(new, key=os.path.getmtime)
+        if run:
+            ft = os.path.join(run, "mh_frametime.log")
+            try:
+                if os.path.getsize(ft) > 0:
+                    return True
+            except OSError:
+                pass
+        if not _alive(pid):
+            # Say it is DEAD, not that it was slow: the two need different remedies and the old
+            # message only ever suggested the wrong one (a bigger budget).
+            print(
+                "  [boot] %s EXITED during boot without presenting a frame after %.0fs -- "
+                "releasing the boot lock now instead of waiting out the %ds budget. Read the lane's "
+                "mh_net.log for the `; EXIT` witness line; a clean exit here is usually a lane-number "
+                "collision (tools/lane_alloc.py) or a refused module."
+                % (os.path.basename(host_dir), timeout - (deadline - time.time()), timeout)
+            )
+            return False
+        time.sleep(0.5)
+    print(
+        "  [boot] %s did not present a frame within %ds -- releasing the boot lock anyway"
+        % (os.path.basename(host_dir), timeout)
+    )
+    return False
+
+
+def local_new_run(host_dir, before, deadline):
+    while time.time() < deadline:
+        now = set(glob.glob(os.path.join(host_dir, "logs", "*")))
+        new = [d for d in now - before if os.path.isdir(d)]
+        if new:
+            return max(new, key=os.path.getmtime)
+        time.sleep(1)
+    return None
+
+
+def local_script_status(run_dir):
+    log = os.path.join(run_dir, "mh_uidrive.log")
+    if not os.path.isfile(log):
+        return None
+    with open(log, errors="replace") as f:
+        txt = f.read()
+    if "; [script] COMPLETE" in txt:
+        return "COMPLETE"
+    if "TIMEOUT at step" in txt:
+        return "TIMEOUT"
+    # A click that resolved no widget ends the script THERE (D15). This has to be a TERMINAL status
+    # like the two above, or the runner reads a finished peer as "still walking" and waits out the
+    # whole --timeout -- which is the exact cost the fail-fast was added to remove.
+    if "; [script] ABORT at step" in txt:
+        return "ABORT"
+    return None
+
+
+_LOCAL_PIDS = []
+
+# ---- D15: what a dead peer's EXIT CODE says -----------------------------------------------------
+# A pid tells you the process is gone. The exit code tells you WHICH WAY it went, and that is the
+# whole question cause #2 has been stuck on: four hosts stopped at once with no WER report, no
+# Application-log event and nothing in any game log, and "died" covered a clean ExitProcess, an
+# abort, a fault WER happened not to record, and this runner's own kill equally well.
+#
+# The number only survives if somebody is holding a HANDLE. Once the last one closes, Windows frees
+# the process object and the pid means nothing (worse: it can be reused, which is how a liveness
+# probe reads a dead peer as alive). So a handle is opened at launch and deliberately never closed --
+# one kernel handle per lane for the life of a suite run, against a diagnosis that has cost two
+# sessions so far.
+_EXIT_HANDLE = {}  # pid -> HANDLE, held for the process's whole lifetime and past it
+
+
+def retain_exit_handle(pid):
+    """Hold a handle on `pid` so GetExitCodeProcess still works after it dies."""
+    try:
+        import ctypes
+
+        SYNCHRONIZE, PROCESS_QUERY_LIMITED_INFORMATION = 0x00100000, 0x1000
+        h = ctypes.windll.kernel32.OpenProcess(
+            SYNCHRONIZE | PROCESS_QUERY_LIMITED_INFORMATION, False, int(pid)
+        )
+        if h:
+            _EXIT_HANDLE[int(pid)] = h
+    except Exception:  # a diagnostic must never be the thing that fails a run
+        pass
+
+
+def peer_exit_code(pid):
+    """The exit code of a peer we launched, or None if we cannot tell."""
+    h = _EXIT_HANDLE.get(int(pid)) if pid else None
+    if not h:
+        return None
+    try:
+        import ctypes
+
+        code = ctypes.c_ulong(0)
+        if not ctypes.windll.kernel32.GetExitCodeProcess(h, ctypes.byref(code)):
+            return None
+        return int(code.value)
+    except Exception:
+        return None
+
+
+def describe_exit(code):
+    """Name the exit code, in the vocabulary of the things that could have produced it.
+
+    STILL_ACTIVE (259) is listed because it is genuinely ambiguous -- Windows returns it for a live
+    process AND for one that exited with 259 -- and an ambiguity stated is worth more than a wrong
+    confident label, which is the failure mode this whole item exists to fix.
+    """
+    if code is None:
+        return "exit code unavailable (no handle was retained for this peer)"
+    known = {
+        0: "0 -- a CLEAN exit: ExitProcess(0) or _exit(0), i.e. the GAME chose to stop. Check "
+        "mh_net.log for the 'EXIT' witness line, which names the path and the caller",
+        1: "1 -- TerminateProcess(.., 1): killed from OUTSIDE by this rig (local_kill / proc.kill), "
+        "so look at what the runner did, not at the game",
+        3: "3 -- abort()",
+        259: "259 -- STILL_ACTIVE, which is ambiguous: either the process is running after all, or "
+        "it really exited with 259. Do not read it as dead",
+    }
+    if code in known:
+        return known[code]
+    if code >= 0xC0000000:
+        nt = {
+            0xC0000005: "ACCESS_VIOLATION",
+            0xC0000017: "NO_MEMORY",
+            0xC000001D: "ILLEGAL_INSTRUCTION",
+            0xC0000025: "NONCONTINUABLE_EXCEPTION",
+            0xC0000026: "INVALID_DISPOSITION",
+            0xC000008C: "ARRAY_BOUNDS_EXCEEDED",
+            0xC0000090: "FLOAT_INVALID_OPERATION",
+            0xC0000094: "INTEGER_DIVIDE_BY_ZERO",
+            0xC00000FD: "STACK_OVERFLOW",
+            0xC0000135: "DLL_NOT_FOUND",
+            0xC0000142: "DLL_INIT_FAILED",
+            0xC000013A: "CONTROL_C_EXIT",
+            0xC0000409: "STACK_BUFFER_OVERRUN / __fastfail",
+            0xC0000374: "HEAP_CORRUPTION",
+        }.get(code)
+        # NOT "proof a fault killed this process" -- that claim outran its evidence and cost fork
+        # F5H three gate reds read as access violations (dead-ends G187). ExitProcess/_exit set the
+        # exit code to WHATEVER they are handed, and this binary's own utils_abort ends in
+        # _exit(status) (mh_addrs.gen.h: "_exit raises no exception, so the process vanishes with
+        # no WER report"). So an NTSTATUS-shaped code is consistent with a fault AND with the game
+        # choosing to die; the code alone cannot separate them. Two things can, and both are cheap:
+        #   * a `; EXIT ...` line in the lane's mh_net.log -> self-driven, and it names the caller
+        #     (exit_witness() reads it, arm-banner checked)
+        #   * a WER record / minidump -> a real unhandled exception -- but a peer on the isolated
+        #     mh_rig desktop (the DEFAULT) is INVISIBLE to WER (G186), so "no dump" is not "no fault".
+        return (
+            "0x%08X -- an NTSTATUS-shaped exit code%s. Not by itself proof of a fault: "
+            "utils_abort ends in _exit(status) and would set this same code raising nothing. "
+            "Check the lane's mh_net.log for `; EXIT` (self-driven, names the caller); a WER "
+            "record means a real fault, but its ABSENCE proves nothing under --desktop (G186)."
+            % (code, (" (%s, IF it was a fault)" % nt) if nt else "")
+        )
+    return "%d (0x%08X) -- not a code this rig produces; the game exited on its own with it" % (
+        code,
+        code,
+    )
+
+
+def local_kill(pid=None):
+    """Kill ONE local peer by pid, or every peer this process started.
+
+    Deliberately NOT `Get-Process mh.focus | Stop-Process`: with per-test lanes or concurrent
+    determinism runs there are several instances on this machine, and killing by image name would
+    take down somebody else's run -- a cross-test failure that would look like a flaky test.
+    """
+    pids = [pid] if pid else list(_LOCAL_PIDS)
+    if not pids:
+        return
+    mp_run.ps(
+        "foreach ($p in %s) { Stop-Process -Id $p -Force -ErrorAction SilentlyContinue }"
+        % ",".join(str(p) for p in pids)
+    )
+    for p in pids:
+        if p in _LOCAL_PIDS:
+            _LOCAL_PIDS.remove(p)
+
+
+# ---- remote (VM) client peer ----------------------------------------------------------------------
+
+
+class _EmptyResult:
+    stdout = ""
+    stderr = ""
+    returncode = 1
+    # NOT AN ANSWER (fork F4H). `returncode = 1` is what a poll loop needs -- "no result yet" -- and
+    # it is exactly wrong for a caller that ACTS on a failure, because a timed-out ssh and a command
+    # that ran and failed become the same object. That is how a busy VM produced
+    #   [.38] ABORT: schtasks /create failed -- is anyone LOGGED ON at that VM's console? ()
+    # in a gate run: nobody had logged out, the create never ran, and the empty parenthesis at the end
+    # is the whole evidence the message had. Callers that abort must read this flag first.
+    timed_out = True
+
+
+# Per-probe ssh timeout for the readiness poll. Short ON PURPOSE: the caller polls on a fixed budget,
+# so a hung poll must cost one poll, not a third of the budget (see remote_listening).
+PROBE_SSH_TIMEOUT = 8
+
+
+def remote(args, ip, cmd, timeout=25, tries=1):
+    # A transient ssh hang (busy VM) must NOT abort a whole run -- poll loops just see "no result yet".
+    #
+    # `tries` > 1 is for the ONE-SHOT calls, not the polls (fork F4H). A poll loop deliberately keeps
+    # this cheap: a hung probe must cost one poll, not a third of the budget, and the next poll is the
+    # retry. A one-shot -- deploy, schtasks create/run -- has no next poll, so a timeout there becomes
+    # a verdict about the VM, and the verdict was wrong twice in one session's gate runs. Retrying
+    # here is not a wider timeout: the budget per attempt is unchanged, and what is added is a second
+    # ATTEMPT at a command that never ran.
+    for attempt in range(max(1, tries)):
+        try:
+            return mp_run.ssh(args.ssh_key, args.vm_user, ip, cmd, timeout=timeout)
+        except subprocess.TimeoutExpired:
+            if attempt + 1 < max(1, tries):
+                print("    (ssh to %s timed out -- retrying, attempt %d)" % (ip, attempt + 2))
+                continue
+            print("    (ssh to %s timed out -- retrying next poll)" % ip)
+    return _EmptyResult()
+
+
+def deploy_peer_exe(args, ip, d, fwd):
+    """Make the peer's mh.focus.exe match the mode this run wants. Returns False to abort the launch.
+
+    Two shapes, one file name. Normal: the import-patched mh.focus.exe from the local install.
+    --stock-exe: retail mh.exe bytes under that same name, plus the msvfw32 shim next to it.
+
+    ABORTING on failure is deliberate, and matters MORE here than for mh.dll. If the shim fails to
+    land, a stock-exe peer does not fail loudly -- it boots as a clean retail game with no mh.dll at
+    all, and the scenario then fails somewhere far away for a reason that looks nothing like "the
+    DLL never loaded". A wrong-build result is worse than no result (see the mh.dll copy below).
+    """
+    want = "stock" if getattr(args, "stock_exe", False) else "focus"
+    # tries=3 (fork F4H): a timed-out read of the marker is NOT "the marker says something else", but
+    # it used to be -- so a busy VM re-staged a 1.9 MB exe over the link that had just hung, right in
+    # front of the launch whose rendezvous window the delay then ate.
+    r = remote(args, ip, "type %s%s%s 2>nul" % (d, "\\", PEER_EXE_MARKER), tries=3)
+    if getattr(r, "timed_out", False):
+        print(
+            "    [%s] ABORT: ssh timed out three times reading the exe marker -- the VM is "
+            "unreachable or saturated. Re-deploying on a non-answer is how this used to hide." % ip
+        )
+        return False
+    have = (getattr(r, "stdout", "") or "").strip()
+
+    if have != want:
+        src = os.path.join(machine.POLYGON, "mh.exe" if want == "stock" else "mh.focus.exe")
+        if not os.path.isfile(src):
+            print("    [%s] ABORT: no %s to deploy" % (ip, src))
+            return False
+        if (
+            mp_run.scp(
+                args.ssh_key, src, "%s@%s:%s/mh.focus.exe" % (args.vm_user, ip, fwd)
+            ).returncode
+            != 0
+        ):
+            print("    [%s] ABORT: could not deploy the %s exe" % (ip, want))
+            return False
+        print("    [%s] staged the %s exe" % (ip, want))
+
+    if want == "stock":
+        # Pushed EVERY run, not just on a mode change: it is a build output like mh.dll, and a peer
+        # holding a stale shim is exactly the silent-inert failure above.
+        if (
+            mp_run.scp(
+                args.ssh_key, SHIM, "%s@%s:%s/msvfw32.dll" % (args.vm_user, ip, fwd)
+            ).returncode
+            != 0
+        ):
+            print("    [%s] ABORT: could not deploy the msvfw32 shim" % ip)
+            return False
+    elif have != want:
+        # Leaving a shim next to an import-patched exe would load mh.dll TWICE over.
+        remote(args, ip, "del /q %s%smsvfw32.dll 2>nul" % (d, "\\"))
+
+    if have != want:
+        remote(args, ip, "echo %s> %s%s%s" % (want, d, "\\", PEER_EXE_MARKER))
+    return True
+
+
+def remote_launch(
+    args, ip, script_src, script_name, timeout_frames, harness_steps=0, is_host=False
+):
+    d = args.vm_dir
+    fwd = d.replace("\\", "/")
+    # A failed DLL copy used to print "scp FAILED" and carry on -- so the peer ran whatever mh.dll it
+    # happened to have, and the run reported on the WRONG build. Seen 2026-07-26 (a "Broken pipe" left
+    # the host on a stale DLL while the client had the new one). A stale-build result is worse than no
+    # result, so this is fatal: retry once, then refuse to launch.
+    if not deploy_peer_exe(args, ip, d, fwd):
+        return False
+    for attempt in (1, 2):
+        if (
+            mp_run.scp(args.ssh_key, DLL, "%s@%s:%s/mh.dll" % (args.vm_user, ip, fwd)).returncode
+            == 0
+        ):
+            break
+        if attempt == 2:
+            print("    [%s] ABORT: could not deploy mh.dll -- refusing to test a stale build" % ip)
+            return False
+        print("    [%s] mh.dll copy failed -- retrying once" % ip)
+        time.sleep(2)
+    # THE SATELLITES (fork F4B), on the same fatal terms as mh.dll and for a sharper reason. A VM has
+    # no lane folder: its game directory persists between runs, so an mh_net.dll that failed to copy
+    # leaves the PREVIOUS build's transport talking to this build's mh.dll -- a mismatched pair, and
+    # the ABI check would refuse it at boot, turning a failed scp into "multiplayer stopped working".
+    # A peer that never had one at all would run the no-module configuration and fail every MP
+    # scenario for a reason that looks nothing like a missing file.
+    #
+    # UNCONDITIONAL HERE, unlike the local refresh: a VM directory is not provisioned per test, so
+    # there is no absent-arm lane to protect. The absent arm is a LOCAL lane (module_absent), which
+    # is also why --local is the suite's default.
+    for name in SATELLITES:
+        src = os.path.join(os.path.dirname(DLL), name)
+        if not os.path.isfile(src):
+            print("    [%s] ABORT: no %s to deploy (build the mh.sln first)" % (ip, name))
+            return False
+        for attempt in (1, 2):
+            if (
+                mp_run.scp(
+                    args.ssh_key, src, "%s@%s:%s/%s" % (args.vm_user, ip, fwd, name)
+                ).returncode
+                == 0
+            ):
+                break
+            if attempt == 2:
+                print(
+                    "    [%s] ABORT: could not deploy %s -- refusing to test a stale pair"
+                    % (ip, name)
+                )
+                return False
+            print("    [%s] %s copy failed -- retrying once" % (ip, name))
+            time.sleep(2)
+    mp_run.scp(args.ssh_key, script_src, "%s@%s:%s/%s" % (args.vm_user, ip, fwd, script_name))
+    ini_local = os.path.join(_scratch(), "ui_test_vm_%s.ini" % ip.replace(".", "_"))
+    with open(ini_local, "w", newline="\r\n") as f:
+        f.write(make_ini(script_name, timeout_frames, harness_steps, is_host))
+    mp_run.scp(args.ssh_key, ini_local, "%s@%s:%s/mh_net.ini" % (args.vm_user, ip, fwd))
+    key_local = write_rig_key(_scratch())  # same PSK as the host peer, or the join is refused
+    mp_run.scp(args.ssh_key, key_local, "%s@%s:%s/mh_key.txt" % (args.vm_user, ip, fwd))
+    # ONE FILE (fork F2G): the [harness] block rode in the mh_net.ini above, so there is no second
+    # scp. The old file is deleted UNCONDITIONALLY now -- it used to be deleted only on a non-harness
+    # run, to stop a stale stop_step halting a plain UI walk. The DLL refuses to run with one beside
+    # the exe at all, so on a VM that has been part of any earlier determinism run this delete is
+    # what keeps the peer bootable rather than merely un-perturbed.
+    remote(args, ip, "del /q %s\\mh_harness.ini 2>nul" % d)
+    bat_local = os.path.join(_scratch(), "ui_test_run.bat")
+    with open(bat_local, "w", newline="\r\n") as f:
+        f.write("@echo off\r\ncd /d %s\r\nmh.focus.exe --skip-intro\r\n" % d)
+    mp_run.scp(args.ssh_key, bat_local, "%s@%s:%s/ui_test_run.bat" % (args.vm_user, ip, fwd))
+    remote(args, ip, "schtasks /delete /tn uitest /f 2>nul")
+    # CHECK THESE TWO. They used to be fire-and-forget with an unconditional `return True`, and the
+    # commonest rig failure by far goes straight through that hole: `/ru <user> /it` needs an INTERACTIVE
+    # TOKEN, so if nobody is logged on at the VM's console the create fails outright -- and the caller
+    # then saw only peer_launch()'s silent None -> "return 1" with NO message at all, because every
+    # abort path in this function prints but this one could not fail. Cost a full diagnosis pass on
+    # 2026-08-29 (both rig VMs were logged out; `schtasks /query /tn uitest` on the VM answered "The
+    # system cannot find the file specified", i.e. the task had never been created). Name the cause here
+    # instead: the peer is either not logged on or the task could not be scheduled.
+    # THREE TRIES, AND A TIMEOUT IS REPORTED AS A TIMEOUT (fork F4H). These two are one-shots on a VM
+    # that the gate has just made busy, and a timed-out ssh used to arrive here as returncode 1 -- so
+    # the run aborted with the logged-out diagnosis above, which was false, and with an empty evidence
+    # string, which is how you can tell. Measured: this is what redded the gate's `det` unit twice
+    # (client never launched, "need >=2 peers with logs; got 1"), while the identical command passes
+    # on an idle box.
+    r = remote(
+        args,
+        ip,
+        'schtasks /create /tn uitest /tr "%s\\ui_test_run.bat" /sc once /st 00:00 /ru %s /it /f'
+        % (d, args.vm_user),
+        tries=3,
+    )
+    if getattr(r, "timed_out", False):
+        print(
+            "    [%s] ABORT: ssh timed out three times on `schtasks /create` -- the command never "
+            "ran, so this says nothing about the task or the console session. The VM is unreachable "
+            "or saturated." % ip
+        )
+        return False
+    if getattr(r, "returncode", 0) != 0:
+        print(
+            "    [%s] ABORT: schtasks /create failed -- is anyone LOGGED ON at that VM's console? "
+            "/it needs an interactive token, so a logged-out peer cannot be launched. (%s)"
+            % (ip, (getattr(r, "stderr", "") or getattr(r, "stdout", "") or "").strip()[:160])
+        )
+        return False
+    r = remote(args, ip, "schtasks /run /tn uitest", tries=3)
+    if getattr(r, "timed_out", False):
+        print(
+            "    [%s] ABORT: ssh timed out three times on `schtasks /run` -- the task exists and may "
+            "or may not have been started; nothing here is evidence either way." % ip
+        )
+        return False
+    if getattr(r, "returncode", 0) != 0:
+        print(
+            "    [%s] ABORT: schtasks /run failed -- the task exists but would not start. (%s)"
+            % (ip, (getattr(r, "stderr", "") or getattr(r, "stdout", "") or "").strip()[:160])
+        )
+        return False
+    return True
+
+
+def remote_newest_run(args, ip):
+    r = remote(
+        args, ip, "for /f %%i in ('dir /b /ad /o-d %s\\logs') do @echo %%i& exit /b" % args.vm_dir
+    )
+    return r.stdout.strip().splitlines()[0].strip() if r.stdout.strip() else None
+
+
+def remote_script_status(args, ip, run):
+    r = remote(args, ip, "type %s\\logs\\%s\\mh_uidrive.log 2>nul" % (args.vm_dir, run))
+    txt = r.stdout or ""
+    if "; [script] COMPLETE" in txt:
+        return "COMPLETE"
+    if "TIMEOUT at step" in txt:
+        return "TIMEOUT"
+    if "; [script] ABORT at step" in txt:  # D15, same terminal status as the local path
+        return "ABORT"
+    return None
+
+
+# ---- peer rendezvous: ferry `signal <name>` from one peer to the others ---------------------------
+#
+# A multi-peer script sometimes has to wait on a fact only the OTHER peer can observe. The case this was
+# built for: the host must not click Start until the CLIENT's UI has reached its lobby, and no protocol
+# message says that -- the host's earliest observable is the JOIN admit, which lands about a second too
+# early, so the client got ~2 frames of lobby and could never settle or capture (measured 2026-07-28).
+#
+# So the runner ferries it. A peer's script runs `signal lobby`, which only writes a marker to its own
+# log; we notice the marker here and drop `rig_lobby.flag` into every OTHER peer's run dir, where their
+# `awaitsignal lobby` sees it. Deliberately a FILE the rig writes, not a new wire message: inventing game
+# protocol to satisfy a test would make the test's subject different from the shipped game.
+SIGNAL_RE = re.compile(r"; \[script\] SIGNAL (\S+)")
+
+
+def peer_signals(args, ip, run):
+    """Signal names this peer has emitted so far."""
+    if ip is None:
+        log = os.path.join(run, "mh_uidrive.log")
+        txt = open(log, errors="replace").read() if os.path.isfile(log) else ""
+    else:
+        txt = (
+            remote(args, ip, "type %s\\logs\\%s\\mh_uidrive.log 2>nul" % (args.vm_dir, run)).stdout
+            or ""
+        )
+    return set(SIGNAL_RE.findall(txt))
+
+
+def deliver_signal(args, peer, name):
+    """Drop rig_<name>.flag into `peer`'s run dir."""
+    if not peer.get("run"):
+        return
+    if peer["ip"] is None:
+        try:
+            open(os.path.join(peer["run"], "rig_%s.flag" % name), "w").close()
+        except OSError as e:
+            print("  [rig] could not deliver signal %r to %s: %s" % (name, peer["key"], e))
+        return
+    local_flag = os.path.join(_scratch(), "rig_%s.flag" % name)
+    open(local_flag, "w").close()
+    mp_run.scp(
+        args.ssh_key,
+        local_flag,
+        "%s@%s:%s/logs/%s/rig_%s.flag"
+        % (args.vm_user, peer["ip"], args.vm_dir.replace("\\", "/"), peer["run"], name),
+    )
+
+
+def pump_signals(args, peers, delivered):
+    """One poll: ferry every new signal to the peers that did not emit it."""
+    for src in peers:
+        if not src.get("run"):
+            continue
+        for name in peer_signals(args, src["ip"], src["run"]):
+            for dst in peers:
+                if dst is src:
+                    continue
+                key = (dst["key"], name)
+                if key in delivered:
+                    continue
+                delivered.add(key)
+                print("[rig] signal %r from %s -> %s" % (name, src["key"], dst["key"]))
+                deliver_signal(args, dst, name)
+
+
+def remote_kill(args, ip):
+    remote(args, ip, "taskkill /im mh.focus.exe /f 2>nul & schtasks /delete /tn uitest /f 2>nul")
+
+
+def remote_listening(args, ip, port):
+    """Is the host's lobby port open yet?
+
+    Uses `netstat` over a SHORT-timeout ssh, deliberately, and the reason is a gate outage worth
+    remembering (2026-07-27). This probe used to launch PowerShell
+    (`Get-NetTCPConnection -State Listen`). PowerShell's cold start on a VM that is already running
+    the game routinely exceeds `remote()`'s 25 s ssh timeout -- and the readiness loop that calls this
+    has a HARD 90 s budget, so three or four hung polls exhaust it and the run aborts with
+    "host never became LISTENING". Measured while that was happening: the game had been listening on
+    6501 since t+17.5 s. Every multi-peer test and the whole determinism gate failed for ~an hour on a
+    host that was up the entire time -- an orchestration failure that reads exactly like a functional
+    regression, because the message names the game's state and not the probe's.
+
+    Two changes, both about the probe never being the thing that fails: `netstat` via cmd costs a
+    fraction of a PowerShell start, and a short per-probe timeout means a hung poll costs one poll
+    instead of a third of the budget.
+
+    NOT a TCP connect from here, though that is cheaper still and needs no ssh: the port belongs to
+    the game's authenticated transport, so probing it would register as a peer connecting and
+    immediately dropping -- the test would perturb what it measures.
+    """
+    r = remote(
+        args,
+        ip,
+        'cmd /c netstat -an ^| findstr /c:":%d " ^| findstr /i "LISTENING"' % port,
+        timeout=PROBE_SSH_TIMEOUT,
+    )
+    return bool((r.stdout or "").strip())
+
+
+def pin_setup(args, ip, ip_val=None, name=None, game=None, pdir=None):
+    """PIN a peer's setup.dat (server IP / player name / game name) so a run is deterministic + machine-
+    independent (the captured name/game/server text no longer depends on the machine's saved history).
+    ip=None -> the LOCAL dev box (args.host_dir); ip='a.b.c.d' -> a VM (pull/push via mp_run scp)."""
+    if args.no_pin or not any(v is not None for v in (ip_val, name, game)):
+        return
+    who = ip or "local"
+    fwd = args.vm_dir.replace("\\", "/")
+    local_path = os.path.join(pdir or args.host_dir, "setup.dat")
+    # tag by LANE for a local peer: two local peers must not share a scratch file
+    tag = (who if ip else os.path.basename(pdir or args.host_dir)).replace(".", "_")
+    tin = os.path.join(_scratch(), "setup_%s_in.dat" % tag)
+    tout = os.path.join(_scratch(), "setup_%s_out.dat" % tag)
+    if ip is None:  # pull (local copy / remote scp)
+        if not os.path.isfile(local_path):
+            print("  [local] WARN: no setup.dat at %s -- skipping pin" % local_path)
+            return
+        shutil.copy(local_path, tin)
+    else:
+        mp_run.scp(args.ssh_key, "%s@%s:%s/setup.dat" % (args.vm_user, ip, fwd), tin)
+        if not os.path.isfile(tin):
+            print("  [%s] WARN: could not pull setup.dat -- skipping pin" % who)
+            return
+    try:
+        setup_dat.set_fields(tin, tout, ip=ip_val, name=name, game=game)
+    except Exception as e:
+        print("  [%s] WARN: setup.dat pin failed (%s) -- leaving as-is" % (who, e))
+        return
+    if ip is None:
+        shutil.copy(tout, local_path)
+    else:
+        mp_run.scp(args.ssh_key, tout, "%s@%s:%s/setup.dat" % (args.vm_user, ip, fwd))
+    tag = ", ".join(
+        "%s=%s" % (k, v) for k, v in (("ip", ip_val), ("name", name), ("game", game)) if v
+    )
+    print("  [%s] setup.dat pinned (%s)" % (who, tag))
+
+
+def parse_peer(spec):
+    r"""Peer spec -> (ip, script, lane_dir).
+
+        '1.2.3.4:script.txt'    -> a VM               ("1.2.3.4", script, None)
+        'lane=ui_h:script.txt'  -> a LOCAL LANE       (None, script, <LANE_ROOT>\ui_h)
+        'script.txt'            -> the local dev box  (None, script, None)  [--host-dir]
+
+    The lane form is what lets SEVERAL local peers coexist: each needs its own game directory, both
+    because mh.dll reads its ini next to the exe and because two peers sharing a folder would fight
+    over setup.dat, mh_net.ini and the logs dir.
+    """
+    if ":" in spec:
+        head, tail = spec.split(":", 1)
+        # a bare Windows drive path ("F:\...") is NOT ip:script -- disambiguate on the dotted-quad head
+        if re.match(r"^\d{1,3}(\.\d{1,3}){3}$", head):
+            return head, tail, None
+        if head.startswith("lane="):
+            name = head[len("lane=") :]
+            d = name if os.path.isabs(name) else os.path.join(make_lane.LANE_ROOT, name)
+            return None, tail, d
+    return None, spec, None
+
+
+# ---- unified peer dispatch: ip=None is the local dev box, ip="a.b.c.d" is a VM (via mp_run ssh/scp) ----
+
+# run token -> the pid that produced it, so a local peer can be killed individually rather than by
+# image name (see local_kill).
+_RUN_PID = {}
+# run token -> (lane directory, launch time). Kept so a peer that DIES can be told apart from a peer
+# that HANGS: see peer_liveness() -- the rig called both "STALLED" until 2026-08-01.
+_RUN_META = {}
+_crash_checked = {}  # run token -> the early liveness probe already fired (it is a PS round trip)
+# run token -> (args, ip) for a peer on a VM. peer_liveness takes only the run token, and a VM
+# peer's two questions (is it alive, did it fault) both need ssh -- so the transport it needs is
+# remembered at launch rather than threaded through every caller.
+_RUN_REMOTE = {}
+
+
+def peer_launch(args, ip, script_src, tf, harness_steps=0, is_host=False, pdir=None):
+    """Launch a peer at the menu; return its run token (local dir path / remote dir name), or None.
+
+    `pdir` is the LOCAL peer's game directory. It defaults to --host-dir, but a caller running
+    per-test lanes (or two local peers at once) passes a distinct lane folder per peer -- that is what
+    keeps one test from inheriting the previous test's setup.dat / ini, and what lets two local peers
+    coexist at all."""
+    if ip is None:
+        d = pdir or args.host_dir
+        before = local_existing_runs(d)
+        # BEFORE the launch: a crash report is matched by lane + time, and a window that starts after
+        # the process did would miss a crash during startup, which is exactly when a bad arm crashes.
+        t0 = time.time() - 5
+        pid = local_launch(d, script_src, os.path.basename(script_src), tf, harness_steps, is_host)
+        run = local_new_run(d, before, time.time() + min(args.timeout, 30))
+        if run:
+            _RUN_PID[run] = pid
+            _RUN_META[run] = (d, t0)
+        return run
+    before = remote_newest_run(args, ip)
+    # Same reason as the local branch: the crash window must open BEFORE the process does, or a
+    # crash during startup falls outside it.
+    t0 = time.time() - 5
+    if (
+        remote_launch(
+            args, ip, script_src, os.path.basename(script_src), tf, harness_steps, is_host
+        )
+        is False
+    ):
+        return None  # deploy refused (stale build) -- do not pretend this peer ran
+    for _ in range(20):  # wait for a NEW run dir (distinct from the previous newest)
+        time.sleep(1)
+        run = remote_newest_run(args, ip)
+        if run and run != before:
+            _RUN_META[run] = (args.vm_dir, t0)
+            _RUN_REMOTE[run] = (args, ip)
+            return run
+    # SAY SO. This used to `return None` mutely and the caller's `if not hrun: return 1` printed
+    # nothing either, so a peer that never started looked identical to a crash in the runner -- the
+    # whole failure was five log lines that stopped mid-sentence. The deploy and the schtasks calls
+    # above are all loud now, so reaching here means the task WAS scheduled and the game still never
+    # produced a run directory.
+    print(
+        "    [%s] ABORT: launched, but no NEW run dir under %s\\logs after 20s (newest is still %r). "
+        "The task was scheduled, so suspect the game itself: no console session to draw into, a "
+        "crash before the first log write, or a stale mh.focus.exe." % (ip, args.vm_dir, before)
+    )
+    return None
+
+
+def peer_status(args, ip, run):
+    return local_script_status(run) if ip is None else remote_script_status(args, ip, run)
+
+
+def peer_ready(args, ip, port):
+    return host_listening(port) if ip is None else remote_listening(args, ip, port)
+
+
+def _wait_host_ready(args, host_ip, host):
+    """Poll until the host is LISTENING (its lobby is up) or its script has already finished.
+
+    The budget is the RUN's own --timeout, not the flat 50 s this used to allow. That 50 s assumed a
+    host starts listening shortly after launch, which is not what a MENU-PATH host does: it only
+    listens once its walk has created the game. Locally that is ~90-120 s, so every local multi-peer
+    test was killed mid-walk -- measured 2026-07-28 with the host at step 10 of 18 and 57 k frames
+    rendered, i.e. a healthy run aborted by a budget that never described what it was waiting for.
+    Progress is printed while waiting, because a silent two-minute poll is indistinguishable from a
+    hang and that is how the too-short budget survived.
+
+    D15: it also gives up the moment the host PROCESS IS GONE. A dead host can never start
+    listening, so every second after that is spent proving something already known -- and this loop
+    owns the whole --timeout, which is where the suite's worst numbers came from: a host that died
+    at 12 s still cost 200 s here (900 s for link_death), and the run then reported a plain
+    "never became ready", which reads like a too-short budget and sent two sessions after the
+    budgets. It is the SAME confusion peer_verdict was written for on the determinism path; this
+    just uses the helper that already existed. Checked every ~10 s rather than every poll because
+    peer_liveness costs a PowerShell round-trip.
+    """
+    deadline, t0, last, last_live = time.time() + args.timeout, time.time(), 0.0, time.time()
+    while time.time() < deadline:
+        if peer_ready(args, host_ip, args.port) or peer_status(args, host_ip, host["run"]):
+            return True
+        if host_ip is None and time.time() - last_live >= 10:
+            last_live = time.time()
+            alive, lines = peer_liveness(host["run"])
+            if alive is False:  # None means "cannot tell" -- never read that as dead
+                print(
+                    "[host] the host PROCESS EXITED after %ds without ever listening on %d -- "
+                    "giving up now rather than waiting out the remaining %ds of --timeout."
+                    % (int(time.time() - t0), args.port, int(deadline - time.time()))
+                )
+                for ln in lines:
+                    print(ln)
+                # Same evidence discipline as report_dead_peer(): the exit code names a CLASS,
+                # not a mechanism -- and "[crash]" prejudged the answer in the label itself (G187).
+                print("  [exit] %s" % describe_exit(peer_exit_code(_RUN_PID.get(host["run"]))))
+                for wln in exit_witness(host["run"]):
+                    print(wln)
+                postmortem_archive(host["run"])
+                host["dead"] = True  # so the caller does not then blame the budget
+                return False
+        if time.time() - last >= 20:
+            last = time.time()
+            print(
+                "[host] not listening on %d yet (%ds elapsed, walking to its lobby) ..."
+                % (args.port, int(last - t0))
+            )
+        time.sleep(2)
+    return bool(peer_ready(args, host_ip, args.port) or peer_status(args, host_ip, host["run"]))
+
+
+def peer_kill(args, ip, run=None):
+    if ip is None:
+        # kill only THIS peer when we know which one it was (per-test lanes / concurrent runs)
+        local_kill(_RUN_PID.get(run))
+    else:
+        remote_kill(args, ip)
+
+
+# ---- U21: a VM peer's crash evidence lives ON THE VM ----------------------------------------------
+# crash_report.py has told a crash from a hang for LOCAL lanes since 2026-08-01, and VM peers were
+# never covered -- so a crash on a determinism peer came back as a bare stall, which is the exact
+# confusion the local half was built to remove, on the peers that matter most (the determinism gate
+# is the main multi-peer user). U21's own access violation was observed on a client VM, so a
+# recurrence would still have been reported as "harness STALLED" and nothing more.
+#
+# Deliberately cmd-only, not PowerShell: PS cold start on a VM already running the game routinely
+# exceeds the ssh timeout, and that cost an hour of gate outage once (see remote_listening). Newest
+# first, copy a handful, and let the LOCAL parser apply the real `since` filter from each report's
+# own EventTime -- the remote ordering only bounds how much we copy.
+VM_WER_ROOTS = (
+    r"%ProgramData%\Microsoft\Windows\WER\ReportArchive",
+    r"%ProgramData%\Microsoft\Windows\WER\ReportQueue",
+    r"%LOCALAPPDATA%\Microsoft\Windows\WER\ReportArchive",
+    r"%LOCALAPPDATA%\Microsoft\Windows\WER\ReportQueue",
+)
+
+
+def remote_alive(args, ip):
+    """Is the game still running on the VM? True/False, or None if the probe itself failed.
+
+    By IMAGE NAME, which would be wrong locally -- several lanes share mh.focus.exe and blaming by
+    image name is a cross-test failure this rig refuses elsewhere (local_kill) -- and is right here:
+    a VM peer runs exactly one game. None is NOT False: a timed-out ssh must never read as a death.
+    """
+    r = remote(args, ip, 'cmd /c tasklist /FI "IMAGENAME eq mh.focus.exe" /NH', timeout=20)
+    out = (getattr(r, "stdout", "") or "").strip()
+    if not out:
+        return None
+    return "mh.focus.exe" in out.lower()
+
+
+def remote_crash_lines(args, ip, since, limit=3):
+    r"""A VM peer's crash evidence, attributed exactly as a local lane's is.
+
+    TWO SOURCES, and the ORDER MATTERS because the obvious one is the one that cannot work here.
+    Measured 2026-08-27 on 192.168.0.38: the rig VMs have
+    HKLM\SOFTWARE\Microsoft\Windows\Windows Error Reporting\Disabled = 1, and both WER trees are
+    empty -- ReportQueue, ReportArchive, per-machine and per-user. A Report.wer pull aimed at these
+    boxes would have been a detector that can never fire, reporting "no crash" for every crash. The
+    APPLICATION EVENT LOG is written regardless, carries the same three facts (faulting module,
+    fault offset, exception code), and is where U21's own evidence came from in the first place.
+    So the event log is primary; the file pull runs after it in case a box has WER on.
+
+    Either way the record goes through crash_report's own offset+image-base -> docs/symbols.md
+    resolution, so a VM crash names a FUNCTION and reads identically to a local one.
+    """
+    try:
+        import crash_report
+    except Exception as e:  # a diagnostic must never be the thing that fails the run
+        return ["  [crash] crash_report unavailable for %s: %s" % (ip, e)]
+
+    lines = []
+    ev = remote(
+        args,
+        ip,
+        "wevtutil qe Application /c:%d /rd:true /f:text /q:*[System[(EventID=1000)]]" % (limit * 8),
+        timeout=40,
+    )
+    for r in crash_report.parse_appcrash_events(
+        getattr(ev, "stdout", "") or "", since=since, app_path=args.vm_dir
+    )[:limit]:
+        lines.append("  [crash] " + crash_report.describe(r))
+        lines.append("  [crash] source: %s on %s" % (r["report"], ip))
+    if lines:
+        return lines
+    # No event said anything. Try the files too -- a box with WER enabled has more detail in them
+    # (loaded modules, the full signature set), and this costs one `dir` on a box that has none.
+    try:
+        listing = remote(
+            args,
+            ip,
+            " & ".join('dir /b /s /o-d "%s\\Report.wer" 2>nul' % r for r in VM_WER_ROOTS),
+            timeout=40,
+        )
+    except Exception as e:  # a diagnostic must never be the thing that fails the run
+        return ["  [crash] could not list WER reports on %s: %s" % (ip, e)]
+    paths = [ln.strip() for ln in (getattr(listing, "stdout", "") or "").splitlines()]
+    paths = [q for q in paths if q.lower().endswith("report.wer")][: limit * 4]
+    if not paths:
+        return []
+    stage = os.path.join(_scratch(), "wer_%s" % ip.replace(".", "_"))
+    shutil.rmtree(stage, ignore_errors=True)  # a previous run's report must not answer for this one
+    pulled = 0
+    for n, q in enumerate(paths):
+        # Keep the report's own directory name: crash_report globs <root>/*/Report.wer, and that
+        # directory is also what distinguishes two reports pulled in the same second.
+        dest = os.path.join(stage, os.path.basename(os.path.dirname(q)) or ("r%d" % n))
+        os.makedirs(dest, exist_ok=True)
+        if (
+            mp_run.scp(
+                args.ssh_key,
+                "%s@%s:%s" % (args.vm_user, ip, q.replace("\\", "/")),
+                os.path.join(dest, "Report.wer"),
+            ).returncode
+            == 0
+        ):
+            pulled += 1
+    if not pulled:
+        return []
+    return crash_report.report_for(args.vm_dir, since, limit=limit, roots=[stage])
+
+
+def peer_captures(args, ip, run):
+    return pull_local_captures(run) if ip is None else pull_remote_captures(args, ip, run)
+
+
+def local_lan_ip():
+    """This box's LAN address, as a VM peer would reach it.
+
+    A UDP connect() to an off-box address picks the interface the routing table would use without
+    sending anything -- more reliable than gethostbyname(gethostname()), which on a machine with
+    Hyper-V switches happily returns a virtual adapter no VM can route back to.
+    """
+    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+        s.connect(("8.8.8.8", 53))
+        return s.getsockname()[0]
+
+
+# ---- net_shim orchestration (link-condition scenarios) ------------------------------------------
+# A scenario that needs latency or a dying link needs `tools/net_shim.py` sitting between the peers.
+# Starting it by hand does not survive contact: on 2026-07-26 a shim left running from a previous run
+# still owned port 6501 with its blackhole latched ON, the replacement failed to bind, and the next
+# run's client talked to the CORPSE -- a silently invalid result rather than an error. So the runner
+# owns the lifetime: refuse to start on an occupied port, and always kill what we started.
+def resolve_headless(args, ap):
+    """Headless on unless --visible -- EXCEPT for runs that measure time.
+
+    A pacing or determinism run is the one thing headless must not silently touch: with no blit there is
+    no vsync wait, and the frame rate that mp_pacing_report.py and the adaptive lookahead controller
+    measure goes from ~60 fps to ~8500. So those runs opt back into the blit.
+
+    An explicit --headless is an INSTRUCTION and is refused (with --force-headless to override); the
+    default is only an assumption, so it is corrected out loud instead of aborting a run nobody
+    mis-specified.
+    """
+    if args.visible:
+        return False
+    timed = args.determinism or getattr(args, "ship_pacing", False)
+    if timed and not args.force_headless:
+        if args.headless:
+            ap.error(
+                "--headless with --determinism/--ship-pacing: no blit means no vsync wait (~60 fps -> "
+                "~8500), which is what the pacing controller measures. Pass --force-headless if you "
+                "really mean it."
+            )
+        print("[rig] pacing/determinism run -- keeping the blit (headless default suspended)")
+        return False
+    return True
+
+
+_DESKTOP_HELD = False
+
+
+def hold_desktop_once():
+    """Create + hold the isolated desktop on first local launch. Idempotent per process."""
+    global _DESKTOP_HELD
+    if _DESKTOP_HELD:
+        return
+    desktop.hold(DESKTOP)
+    _DESKTOP_HELD = True
+    print("[rig] isolated desktop: %s (window/input namespace separate from yours)" % DESKTOP)
+
+
+def resolve_desktop(args):
+    """Isolated desktop unless the caller wants to WATCH the run.
+
+    `--visible` means "put it on my screen", and an isolated desktop is precisely where you cannot see
+    it -- so the two contradict and --visible wins. An EXPLICIT `--desktop` is an instruction and is
+    honoured over that (you may well want a blit-on run parked away from you), but it is worth a line
+    so nobody wonders where their window went.
+
+    SCOPE: this only affects LOCAL launches. `test_ui.py --determinism` builds its peers from
+    `args.vms` and runs entirely on the VM peers, so the flag reaches it but does nothing -- and it
+    was never a local focus thief to begin with. Corrected here after 5ac09a3/59f99ff claimed
+    otherwise in their messages.
+
+    Same shape as resolve_headless, deliberately: default is an ASSUMPTION and is corrected out loud;
+    an explicit flag is an INSTRUCTION and is obeyed.
+    """
+    if args.no_desktop:
+        return ""
+    if args.desktop:
+        if args.visible:
+            print(
+                "[rig] --visible with an explicit --desktop: the window is on desktop %r, not yours"
+                % args.desktop
+            )
+        return args.desktop
+    if args.visible:
+        return ""
+    return desktop.DEFAULT_DESKTOP
+
+
+def shim_listen_port(args):
+    """Where the shim ACCEPTS peer connections.
+
+    On the VM topology this is the game port itself: the shim runs on the dev box and the host is on a
+    VM, so listening on 6501 here collides with nothing. LOCALLY the host lane is on THIS box and binds
+    that very port, so a shim on the same number is a straight collision -- and the shim starts first,
+    so it is the GAME that loses it: `net: bind(:6600) failed 10013`, no host listening, and the client
+    times out on `sessions 1` looking like a discovery bug (H3, measured 2026-07-28). So the local path
+    hands the shim its own port and puts the CLIENT lane on it (`[net] port` is the port a client
+    dials), leaving the host lane's port to the host.
+    """
+    return args.shim_listen_port or args.port
+
+
+def shim_start(args):
+    if not args.shim:
+        return None
+    listen_port = shim_listen_port(args)
+    with socket.socket() as probe:  # fail LOUDLY rather than inherit somebody else's shim
+        probe.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        try:
+            probe.bind(("0.0.0.0", listen_port))
+        except OSError:
+            print(
+                "[shim] port %d is already in use -- a shim from an earlier run is probably still\n"
+                "       alive (and may have a blackhole latched on). Kill it and retry; a run through\n"
+                "       a stale shim looks like a result but is not one." % listen_port
+            )
+            return None
+    os.makedirs(os.path.join(REPO, "tmp", "shim"), exist_ok=True)
+    log = os.path.join(REPO, "tmp", "shim", "ui_test_shim.log")
+    if os.path.exists(log):
+        os.remove(log)
+    cmd = [
+        sys.executable,
+        "-u",
+        os.path.join(REPO, "tools", "net_shim.py"),
+        "--listen",
+        "0.0.0.0:%d" % listen_port,
+        "--target",
+        args.shim if ":" in args.shim else "%s:%d" % (args.shim, args.port),
+        "--delay",
+        str(args.shim_delay),
+        "--jitter",
+        str(args.shim_jitter),
+        "--log",
+        log,
+    ]
+    if args.shim_timeline:
+        t = args.shim_timeline
+        cmd += ["--timeline", t if os.path.isabs(t) else os.path.join(REPO, t)]
+    proc = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
+    time.sleep(1.5)
+    if proc.poll() is not None:
+        print("[shim] failed to start (exit %s) -- see %s" % (proc.returncode, log))
+        return None
+    print(
+        "[shim] listening :%s -> %s  delay=%sms one-way (%sms rtt)%s"
+        % (
+            listen_port,
+            args.shim if ":" in args.shim else "%s:%d" % (args.shim, args.port),
+            args.shim_delay,
+            args.shim_delay * 2,
+            ("  timeline=" + os.path.basename(args.shim_timeline)) if args.shim_timeline else "",
+        )
+    )
+    return proc
+
+
+def shim_stop(proc):
+    if not proc:
+        return
+    proc.terminate()
+    try:
+        proc.wait(timeout=5)
+    except subprocess.TimeoutExpired:
+        proc.kill()
+    log = os.path.join(REPO, "tmp", "shim", "ui_test_shim.log")
+    if os.path.exists(log):
+        print("[shim] stopped; event log:")
+        with open(log, "r", encoding="utf-8", errors="replace") as fh:
+            for line in fh:
+                if any(
+                    k in line
+                    for k in ("OPEN", "CLOSE", "timeline", "STALL", "BLACKHOLE", "CUT", "SET")
+                ):
+                    print("    " + line.rstrip())
+
+
+def _scratch():
+    d = os.path.join(REPO, "tmp", "ui_test")
+    os.makedirs(d, exist_ok=True)
+    return d
+
+
+# ---- capture collection + diff --------------------------------------------------------------------
+
+
+def load_ignore(base_dir):
+    """Optional baselines/<label>/_ignore.json: {"capture_x.png":[[x,y,w,h],...], "*":[...]} -> per-capture
+    ignore rects (machine-specific regions like the on-screen host IP). Missing/broken file -> no masking."""
+    path = os.path.join(base_dir, "_ignore.json")
+    if not os.path.isfile(path):
+        return {}
+    try:
+        with open(path) as f:
+            return json.load(f)
+    except Exception as e:
+        print("  [ignore] WARN: %s unreadable (%s) -- no masking" % (path, e))
+        return {}
+
+
+def collect_and_check(label, png_dir, args):
+    """png_dir holds the pulled capture_<name>.png files. Diff each vs baselines/<label>/. Returns ok."""
+    base_dir = os.path.join(BASELINES, label)
+    caps = sorted(glob.glob(os.path.join(png_dir, "capture_*.png")))
+    if not caps:
+        print("  [%s] NO CAPTURES produced" % label)
+        return False
+    if args.update_baselines:
+        os.makedirs(base_dir, exist_ok=True)
+        for c in caps:
+            shutil.copy(c, os.path.join(base_dir, os.path.basename(c)))
+        print(
+            "  [%s] wrote %d baselines -> %s" % (label, len(caps), os.path.relpath(base_dir, REPO))
+        )
+        return True
+    ignore = load_ignore(base_dir)
+    ok = True
+    for c in caps:
+        name = os.path.basename(c)
+        rects = list(ignore.get("*", [])) + list(ignore.get(name, []))
+        passed, frac, note = diff_capture(
+            c, os.path.join(base_dir, name), args.pixdelta, args.tol, rects
+        )
+        tag = "PASS" if passed else "FAIL"
+        print(
+            "  [%s] %-28s %s  (%.3f%% diff%s)"
+            % (label, name, tag, frac * 100, "; " + note if note else "")
+        )
+        ok = ok and passed
+    return ok
+
+
+def host_listening(port):
+    # The menu-path host starts a TCP listener when it enters its lobby -- the "ready for clients" signal
+    # (used instead of script COMPLETE, since a host that waits for peers only COMPLETEs after they join).
+    r = mp_run.ps(
+        "(Get-NetTCPConnection -State Listen -LocalPort %d -ErrorAction SilentlyContinue | "
+        "Measure-Object).Count" % port
+    )
+    try:
+        return int((r.stdout or "0").strip() or "0") > 0
+    except ValueError:
+        return False
+
+
+def pull_local_captures(run_dir):
+    # The staging dir must be keyed by the LANE as well as the run stamp. The stamp has one-second
+    # resolution, so several tests launched in the same second (routine under --jobs) produced the
+    # SAME name and poured their captures into one directory -- the compare then diffed each test
+    # against the union of everybody's frames. Measured 2026-07-28: esc_menu failed on four captures
+    # that belong to debug_overlay and res_picker. Concurrency did not break the compare; it revealed
+    # that the key was never unique.
+    lane = os.path.basename(os.path.dirname(os.path.dirname(os.path.abspath(run_dir)))) or "local"
+    png_dir = os.path.join(_scratch(), "host_%s_%s" % (lane, os.path.basename(run_dir)))
+    os.makedirs(png_dir, exist_ok=True)
+    for bmp in glob.glob(os.path.join(run_dir, "capture_*.bmp")):
+        try:
+            bmp_to_png(
+                bmp, os.path.join(png_dir, os.path.splitext(os.path.basename(bmp))[0] + ".png")
+            )
+        except Exception as e:
+            print("  (skip unreadable %s: %s)" % (os.path.basename(bmp), e))
+    return png_dir
+
+
+def pull_remote_captures(args, ip, run):
+    png_dir = os.path.join(_scratch(), "client_%s_%s" % (ip.replace(".", "_"), run))
+    os.makedirs(png_dir, exist_ok=True)
+    listing = remote(args, ip, "dir /b %s\\logs\\%s\\capture_*.bmp 2>nul" % (args.vm_dir, run))
+    for fn in listing.stdout.split():
+        fn = fn.strip()
+        if not fn.endswith(".bmp"):
+            continue
+        local_bmp = os.path.join(png_dir, fn)
+        mp_run.scp(
+            args.ssh_key,
+            "%s@%s:%s/logs/%s/%s" % (args.vm_user, ip, args.vm_dir.replace("\\", "/"), run, fn),
+            local_bmp,
+        )
+        if os.path.isfile(local_bmp):
+            try:
+                bmp_to_png(local_bmp, os.path.splitext(local_bmp)[0] + ".png")
+            except Exception as e:
+                print("  (skip unreadable %s: %s)" % (fn, e))
+    return png_dir
+
+
+# ---- UI-path determinism (mp_analyze over harness logs from a real UI-driven run) ------------------
+
+
+def resolve_script(name):
+    return name if os.path.isabs(name) or os.path.isfile(name) else os.path.join(UISCRIPTS, name)
+
+
+# Stock `[video] size_mode` -> the view size the game applies (seams/video.cpp's table). Mode 4 only
+# exists with the resolution picker armed; modes it does not list are left unchecked rather than guessed.
+SIZE_MODES = {0: (640, 480), 1: (800, 576), 2: (1024, 768), 4: (1280, 800)}
+
+
+def pinned_view_size(ini_text):
+    """The view size an ini fragment PINS, or None if it pins none. Pure, so the guard is testable.
+
+    A custom width/height wins over size_mode -- video.cpp forces size_mode=2 when a custom size is
+    set, so the mode number no longer describes the view.
+    """
+    mode, cw, ch = None, None, None
+    in_video = False
+    for raw in ini_text.splitlines():
+        line = raw.split(";", 1)[0].strip()
+        if not line:
+            continue
+        if line.startswith("["):
+            in_video = line.lower().startswith("[video]")
+            continue
+        if not in_video or "=" not in line:
+            continue
+        k, v = (p.strip().lower() for p in line.split("=", 1))
+        try:
+            n = int(v, 0)
+        except ValueError:
+            continue
+        if k == "size_mode":
+            mode = n
+        elif k == "width":
+            cw = n
+        elif k == "height":
+            ch = n
+    if cw and ch:
+        return (cw, ch)
+    return SIZE_MODES.get(mode)
+
+
+def view_exceeds_desktop(view, desktop):
+    """(view, desktop) -> True if the pinned view cannot fit the desktop. Pure.
+
+    THIS GUARD EXISTS BECAUSE THE FAILURE IS SILENT AND EXPENSIVE (2026-08-20).
+    A desktop NARROWER than the pinned mode does not produce "cannot set 1024x768" anywhere: the game
+    launches, walks the whole menu, reaches `session_begin_multi`, serves ONE `[promote] time_tick`
+    call and then never steps again, so the script sits on its next wait until the timeout. It reads
+    exactly like a sim hang, and it cost a full day-long git bisect that came back "every commit is
+    BAD" -- which it was, because the variable was never in git. The two suite tests that pin
+    1024x768 failed and the nine that use the 640x480 default passed, on a 958x945 RDP desktop.
+    """
+    if not view or not desktop:
+        return False
+    return view[0] > desktop[0] or view[1] > desktop[1]
+
+
+def primary_desktop_size():
+    """The primary display's pixel size, or None where it cannot be read (non-Windows, no session)."""
+    try:
+        import ctypes
+
+        user32 = ctypes.windll.user32
+        try:
+            user32.SetProcessDPIAware()  # else GetSystemMetrics returns the SCALED size
+        except Exception:
+            pass
+        w, h = user32.GetSystemMetrics(0), user32.GetSystemMetrics(1)
+        return (w, h) if w > 0 and h > 0 else None
+    except Exception:
+        return None
+
+
+def stall_abort(n, quiet_s, launch_timeout, stall_timeout):
+    """Should a --determinism poll give up? Pure, so the decision can be checked without a rig.
+
+    `n` is the host's logged step count as mp_run.steps_done reports it: -1 = no harness log yet,
+    0 = log present but no step rows, >0 = stepping. `quiet_s` is how long that number has been
+    unchanged. Two limits because "no steps yet" is normal during UI entry and a stall there means
+    something different (the peers never rendezvoused) from a stall mid-run (the sim wedged).
+    Either limit set to 0 disables that half.
+    """
+    limit = launch_timeout if n <= 0 else stall_timeout
+    return bool(limit) and quiet_s > limit
+
+
+def peer_liveness(run):
+    """Is the LOCAL process behind `run` still alive, and did it leave a crash report?
+
+    Returns (alive, lines). `alive` is None when we cannot tell -- a VM peer, or a run we did not
+    launch -- and the caller must not read None as "dead".
+
+    THIS IS THE DIFFERENCE BETWEEN A CRASH AND A HANG, and the rig could not tell them apart. When
+    the sim thread faults the PROCESS usually survives: the render loop keeps presenting, the
+    frametime log keeps growing, and a watchdog that only watches the step count reports
+    `STALLED` -- the same word it uses for a livelock. On 2026-08-01 that cost an hour and produced
+    two confident wrong diagnoses before anyone looked at the Windows crash report, which had named
+    the faulting function all along (2026-08-01).
+
+    So BOTH halves are checked, and they answer different questions:
+      * the PID -- did the process exit? (a fault that does kill it)
+      * WER    -- did anything fault, whether or not the process died? A crashed sim thread inside a
+                  live process is invisible to the PID check, and it is the case that actually
+                  happened here.
+    Attribution is by AppPath against this peer's own lane directory, so concurrent lanes -- all
+    running an exe named mh.focus.exe -- cannot be confused for each other.
+    """
+    meta = _RUN_META.get(run)
+    pid = _RUN_PID.get(run)
+    if meta is None:
+        return None, []
+    lane, t0 = meta
+    rem = _RUN_REMOTE.get(run)
+    if rem is not None:
+        # A VM peer: no pid we own, no handle we could have retained. Same two questions, different
+        # transport -- an image-name query on that box, and its own WER tree pulled back here.
+        rargs, rip = rem
+        return remote_alive(rargs, rip), remote_crash_lines(rargs, rip, t0)
+    alive = None
+    if pid:
+        r = mp_run.ps(
+            "if (Get-Process -Id %d -ErrorAction SilentlyContinue) { 'Y' } else { 'N' }" % pid
+        )
+        txt = (getattr(r, "stdout", "") or "").strip()
+        if txt in ("Y", "N"):
+            alive = txt == "Y"
+    lines = []
+    try:
+        import crash_report
+
+        lines = crash_report.report_for(lane, t0)
+    except Exception as e:  # a diagnostic must never be the thing that fails the run
+        lines = ["  [crash] crash_report unavailable: %s" % e]
+    return alive, lines
+
+
+def exit_witness(run):
+    """The `; EXIT ...` line from this peer's own mh_net.log, if it left one. Lines to print.
+
+    utils_abort -> _exit() and llm_wnd_on_destroy -> ExitProcess are the binary's two SELF-DRIVEN
+    exits, both silent to WER by construction; mh.dll writes a run-before witness for each (D15,
+    seams/net_diag.cpp). Absence is evidence ONLY once the arm banner is confirmed -- otherwise
+    "no line" and "no instrument" read identically. For a local peer `run` IS the run dir
+    (local_new_run); a VM peer's log lives on the VM and is out of this helper's reach.
+    """
+    if not run or run in _RUN_REMOTE or not os.path.isdir(run):
+        return []
+    log = os.path.join(run, "mh_net.log")
+    try:
+        txt = open(log, encoding="utf-8", errors="replace").read()
+    except OSError as e:
+        return ["  [exit] could not read %s: %s" % (log, e)]
+    hits = [ln.strip() for ln in txt.splitlines() if "; EXIT " in ln]
+    if hits:
+        return ["  [exit] SELF-DRIVEN -- %s" % h for h in hits[-2:]]
+    if "exit witness armed on utils_abort" not in txt:
+        return [
+            "  [exit] the exit witness was NEVER ARMED in this run -- silence here means "
+            "nothing; do not read it either way (%s)" % log
+        ]
+    return [
+        "  [exit] witness ARMED and SILENT -> not a self-driven exit; a real fault is the "
+        "remaining explanation. NOTE: under --desktop (the default), WER cannot record it (G186)."
+    ]
+
+
+def postmortem_archive(run):
+    """Copy a dead peer's text logs to tmp/ui_test/postmortem/ before make_lane can rmtree them.
+
+    make_lane.py deletes the whole lane -- logs included -- on every provision, which is how three
+    F5H gate crashes and one reproduction left zero evidence (2026-09-15). Archiving lives HERE, on
+    the dead-peer path, not in make_lane: it costs nothing on a green run, and a blanket keep across
+    ~145 lanes (2-20 MB of text per run) is a gigabyte this disk does not have. Text logs only,
+    tail-capped -- captures are already PNG'd into tmp/ui_test by pull_local_captures.
+    """
+    if not run or run in _RUN_REMOTE or not os.path.isdir(run):
+        return
+    lane, _ = _RUN_META.get(run, (None, None))
+    dst = os.path.join(
+        REPO,
+        "tmp",
+        "ui_test",
+        "postmortem",
+        "%s__%s" % (os.path.basename(lane or "unknown"), os.path.basename(run)),
+    )
+    cap = 512 * 1024
+    try:
+        os.makedirs(dst, exist_ok=True)
+        for f in glob.glob(os.path.join(run, "*.log")) + glob.glob(os.path.join(run, "*.txt")):
+            with open(f, "rb") as src:
+                src.seek(0, 2)
+                size = src.tell()
+                src.seek(max(0, size - cap))
+                data = src.read()
+            with open(os.path.join(dst, os.path.basename(f)), "wb") as out:
+                out.write(data)
+        print("  [postmortem] logs archived to %s" % dst)
+    except OSError as e:  # a diagnostic must never be the thing that fails the run
+        print("  [postmortem] archive failed: %s" % e)
+
+
+def report_dead_peer(key, run):
+    """Say that a peer's PROCESS is gone, and which way it went. True if it is.
+
+    D15: "script TIMED-OUT (no marker)" is what the runner said for a peer that had already exited,
+    and it is a budget-shaped sentence about a process that no longer existed -- the exact wording
+    that sent two sessions after the wall-clock budgets. A dead peer cannot reach its marker, so the
+    honest report is the death, and the exit code names its class.
+    """
+    alive, lines = peer_liveness(run)
+    if alive is not False:  # None = cannot tell (a VM peer); never read that as dead
+        return False
+    print(
+        "  [%s] the game PROCESS IS GONE -- it cannot reach a marker, so this is not a budget" % key
+    )
+    if run not in _RUN_REMOTE:  # the exit code needs a handle, which only a local launch retains
+        print("  [%s] %s" % (key, describe_exit(peer_exit_code(_RUN_PID.get(run)))))
+    # Read the witness ourselves instead of telling a human where it lives (the prose version of
+    # this line went unread through three F5H investigations).
+    for ln in exit_witness(run):
+        print(ln)
+    for ln in lines:
+        print(ln)
+    postmortem_archive(run)
+    return True
+
+
+def peer_verdict(run, stalled_status):
+    """Turn a stall verdict into a CRASH verdict when the evidence says so, and print the evidence.
+
+    Called at the moment the watchdog would have given up. A crash report attributable to this lane
+    outranks the stall reading: the sim stopped stepping BECAUSE it faulted, and reporting the
+    symptom over the cause is what sent the last investigation down a rabbit hole.
+    """
+    alive, lines = peer_liveness(run)
+    for ln in lines:
+        print(ln)
+    if lines:
+        return (
+            stalled_status.replace("STALLED", "CRASHED", 1)
+            if "STALLED" in stalled_status
+            else ("CRASHED " + stalled_status)
+        )
+    if alive is False:
+        # No WER report, but the process is gone. Also not a stall -- and worth saying that WER may
+        # simply be disabled here, rather than implying nothing crashed.
+        print("  [crash] the game process EXITED and no WER report was found for this lane")
+        print(
+            "  [crash] (a lane on the isolated mh_rig desktop -- the DEFAULT -- is INVISIBLE to "
+            "WER: WerFault cannot run there, so this absence is NO INFORMATION, not 'no fault'. "
+            "G186; re-run with --no-desktop to capture one)"
+        )
+        # WHICH exit, though. "The process is gone" is where both previous investigations stopped,
+        # and it is equally compatible with a clean quit, a fault WER did not record, and this rig's
+        # own kill -- three different bugs (D15 cause #2).
+        print("  [exit] %s" % describe_exit(peer_exit_code(_RUN_PID.get(run))))
+        for ln in exit_witness(run):
+            print(ln)
+        postmortem_archive(run)
+        return stalled_status.replace("STALLED", "PROCESS-GONE", 1)
+    return stalled_status
+
+
+def peer_harness_steps(args, ip, run):
+    """(steps_logged, done) from a peer's mh_harness.log -- read in place (local) or pulled (VM)."""
+    if ip is None:
+        return mp_run.steps_done(run)
+    tmp = os.path.join(_scratch(), "det_poll_%s" % ip.replace(".", "_"))
+    os.makedirs(tmp, exist_ok=True)
+    fwd = args.vm_dir.replace("\\", "/")
+    mp_run.scp(
+        args.ssh_key,
+        "%s@%s:%s/logs/%s/mh_harness.log" % (args.vm_user, ip, fwd, run),
+        os.path.join(tmp, "mh_harness.log"),
+    )
+    return mp_run.steps_done(tmp)
+
+
+def peer_script_abort(args, ip, run):
+    """The peer's own `[script] TIMEOUT at step N ... ABORT: <step>` line, or None.
+
+    DET-FLAKE shape (B): on 2026-09-10 the host's script gave up at 37 s on step 15 `peers 1` -- the
+    client's handshake arrived 0.5 s later -- and the driver then sat out its full 300 s launch
+    watchdog before reporting a bare "host step count stuck at 0". The log that said exactly what
+    happened was sitting on the peer the whole time. A stalled launch should be named, not timed out.
+    """
+    if run is None:
+        return None
+    path = os.path.join(run, "mh_uidrive.log")
+    if ip is not None:
+        tmp = os.path.join(_scratch(), "det_abort_%s" % ip.replace(".", "_"))
+        os.makedirs(tmp, exist_ok=True)
+        path = os.path.join(tmp, "mh_uidrive.log")
+        fwd = args.vm_dir.replace("\\", "/")
+        if (
+            mp_run.scp(
+                args.ssh_key,
+                "%s@%s:%s/logs/%s/mh_uidrive.log" % (args.vm_user, ip, fwd, run),
+                path,
+                quiet=True,
+            ).returncode
+            != 0
+        ):
+            return None
+    try:
+        with open(path, "r", errors="replace") as f:
+            for ln in f:
+                if "ABORT:" in ln and "TIMEOUT at step" in ln:
+                    return ln.strip()
+    except OSError:
+        return None
+    return None
+
+
+def pull_peer_logs(args, ip, run, dest):
+    """Copy a peer's harness/net logs (mp_run.LOGNAMES) from its run dir into `dest`. Returns dest."""
+    os.makedirs(dest, exist_ok=True)
+    if ip is None:
+        for nm in mp_run.LOGNAMES + OPTIONAL_ARTIFACTS:
+            src = os.path.join(run, nm)
+            if os.path.isfile(src):
+                shutil.copy(src, os.path.join(dest, nm))
+    else:
+        # OPTIONAL artifacts first, quietly: they exist only under --record, so a missing one is the
+        # normal case and must NOT print the "did NOT copy" line that a missing LOG legitimately does.
+        fwd0 = args.vm_dir.replace("\\", "/")
+        for nm in OPTIONAL_ARTIFACTS:
+            # quiet=True is what makes the comment above TRUE: mp_run.scp prints its own "scp FAILED"
+            # line, so without it this loop announced a failure for every run that simply was not a
+            # --record run -- the loud message this branch exists to avoid, just emitted one level down.
+            mp_run.scp(
+                args.ssh_key,
+                "%s@%s:%s/logs/%s/%s" % (args.vm_user, ip, fwd0, run, nm),
+                os.path.join(dest, nm),
+                quiet=True,
+            )
+    if ip is not None:
+        # Retry once and SAY SO on failure. A silently-dropped pull is how a determinism run ends up
+        # comparing one peer against nothing: 2026-07-28, the host's mh_harness.log (2.8 MB, present on
+        # the VM) failed to copy while its frametime/temporal siblings succeeded, so the pair had no
+        # host data and the run reported INCONCLUSIVE with no hint as to why. The --min-common floor did
+        # its job -- it refused to call that a pass -- but a gate should also name what went missing.
+        fwd = args.vm_dir.replace("\\", "/")
+        for nm in mp_run.LOGNAMES:
+            src = "%s@%s:%s/logs/%s/%s" % (args.vm_user, ip, fwd, run, nm)
+            out = os.path.join(dest, nm)
+            for attempt in (1, 2):
+                if mp_run.scp(args.ssh_key, src, out).returncode == 0 and os.path.isfile(out):
+                    break
+                if attempt == 2:
+                    print("  [pull] %s: %s did NOT copy -- analysis will be missing it" % (ip, nm))
+    return dest
+
+
+def run_determinism(args):
+    """UI-PATH determinism: launch every peer through the REAL menu->lobby->Start (no force-entry), run
+    `--steps` in-game with the [harness] region-hash logger active, then mp_analyze.py the peers' logs for
+    ALL PAIRS IDENTICAL. This exercises the real menu/lobby/handoff code that force-entry mp_run bypasses."""
+    if not args.host:
+        print("[det] --determinism needs --host <ip>:<script> and >=1 --client <ip>:<script>")
+        return 1
+    steps = args.steps
+    host_ip, hspec, hdir = parse_peer(args.host)
+    hsrc = resolve_script(hspec)
+    connect_ip = args.connect_ip or host_ip or args.host_ip
+    clients = []
+    for spec in args.client:
+        cip, cspec, cdir = parse_peer(spec)
+        if cip is None and not cdir:
+            print("[det] a local --client must be 'lane=<name>:script' (it needs its own folder)")
+            return 1
+        clients.append((cip, resolve_script(cspec), cdir))
+    if not clients:
+        print("[det] --determinism needs >=1 --client")
+        return 1
+
+    print(
+        "[det] UI-path determinism: %d steps, host=%s, %d client(s)"
+        % (steps, host_ip or "local", len(clients))
+    )
+    # A determinism run through the shim is how a pacing experiment gets realistic latency (P4/P5) --
+    # and it is also the strongest determinism test there is, since the sim must stay bit-identical
+    # while the link is anything but ideal.
+    shim = shim_start(args)
+    if args.shim and not shim:
+        return 1
+    if shim:
+        connect_ip = local_lan_ip()
+        print("[shim] clients will connect to %s" % connect_ip)
+    peers = []  # (key, ip, run)
+    pin_setup(args, host_ip, name=args.host_name, game=args.game_name, pdir=hdir)
+    print(
+        "[host %s] launching %s (harness %d steps) ..."
+        % (host_ip or "local", os.path.basename(hsrc), steps)
+    )
+    hrun = peer_launch(
+        args, host_ip, hsrc, args.timeout_frames, harness_steps=steps, is_host=True, pdir=hdir
+    )
+    if not hrun:
+        peer_kill(args, host_ip)
+        return 1
+    peers.append(("host", host_ip, hrun))
+    ready_deadline = time.time() + min(max(args.timeout, 90), 90)
+    while time.time() < ready_deadline and not peer_ready(args, host_ip, args.port):
+        time.sleep(2)
+    if not peer_ready(args, host_ip, args.port):
+        print(
+            "[det] host never became LISTENING within 90s -- aborting. If the polls above printed "
+            "ssh timeouts, suspect the PROBE, not the game (2026-07-27 -- see remote_listening)."
+        )
+        peer_kill(args, host_ip)
+        return 1
+    print(
+        "[host %s] LISTENING -- launching clients (connect to %s)"
+        % (host_ip or "local", connect_ip)
+    )
+    for ci, (cip, csrc, cdir) in enumerate(clients):
+        cname = args.client_name if ci == 0 else "%s%d" % (args.client_name, ci + 1)
+        pin_setup(args, cip, ip_val=connect_ip, name=cname, pdir=cdir)
+        print(
+            "[client %s] launching %s ..." % (cip or os.path.basename(cdir), os.path.basename(csrc))
+        )
+        crun = peer_launch(args, cip, csrc, args.timeout_frames, harness_steps=steps, pdir=cdir)
+        peers.append(("client%d" % (ci + 1), cip, crun))
+
+    # Wait for the HOST to log >= `steps` in-game steps, then stop everyone -- the peers run in lockstep so
+    # a host at N steps means every peer logged the same N. NOTE: the DLL defaults [harness] stop_step in the
+    # non-force-entry (UI) path (it does not self-stop / write the per-region breakdown), so we BOUND the run
+    # by polling to n>=steps rather than waiting for `done`. Overshooting N just compares MORE steps (a
+    # stronger check). Generous deadline: real UI entry (~30-60s) + the in-game steps.
+    start_wait = time.time()
+    deadline = start_wait + max(args.timeout, 120 + steps * 0.5)
+    print(
+        "[det] running %d in-game steps (waiting for the host to finish; do not touch any window) ..."
+        % steps
+    )
+    # The determinism path drives the SAME match_launch scripts as the capture suite, so it needs the
+    # same peer rendezvous -- mp_host_start waits on `awaitsignal lobby`. Wiring the ferry into only the
+    # capture-suite wait loop left both peers parked in the menu forever (2026-07-28): the host waited
+    # for a signal nothing was delivering. Two loops, one mechanism; keep them in step.
+    sig_peers = [{"key": k, "ip": ip, "run": run} for (k, ip, run) in peers if run]
+    delivered = set()
+    # PROGRESS WATCHDOG (2026-07-29). `deadline` above is pure wall clock, and at 3000 steps it works
+    # out to ~53 minutes -- so a WEDGED run and a merely slow one look identical for most of an hour.
+    # A total-time bound cannot separate those two; a progress bound can, and the poll below already
+    # has the signal (the host's step count). Lowering the wall clock instead would just start killing
+    # healthy long runs. Two phases, because "no steps yet" is normal during UI entry:
+    #   n <= 0  -- the harness log is absent (-1) or has no step rows yet: still launching, allow
+    #              --launch-timeout (real UI entry is ~30-60 s, plus the peer rendezvous).
+    #   n  > 0  -- stepping: any pause longer than --stall-timeout is a stall. Safe against a legitimate
+    #              barrier park, which is bounded by rx_timeout_ms (10 s default) before the link drops.
+    last_n, last_change, stalled = None, time.time(), False
+    while time.time() < deadline:
+        time.sleep(8)
+        if len(sig_peers) > 1:
+            pump_signals(args, sig_peers, delivered)
+        n, done = peer_harness_steps(args, host_ip, hrun)
+        print("    host=%s%s" % (n, " DONE" if done else ""))
+        if done or n >= steps:
+            break
+        if n != last_n:
+            last_n, last_change = n, time.time()
+            continue
+        quiet = time.time() - last_change
+        limit = args.launch_timeout if n <= 0 else args.stall_timeout
+        # DET-FLAKE (B): before spending the rest of the launch budget, ask the peers whether their
+        # SCRIPT already gave up. A run whose host aborted at step 15 is not slow, it is over --
+        # and the abort line names the step, which "step count stuck at 0" never could. Checked only
+        # while nothing has stepped yet (n <= 0), and only every other poll, to keep the scp cheap.
+        if n <= 0 and quiet >= 24:
+            aborted = [(k, peer_script_abort(args, ip, run)) for k, ip, run in peers if run]
+            aborted = [(k, ln) for k, ln in aborted if ln]
+            if aborted:
+                for k, ln in aborted:
+                    print("[det] %s's SCRIPT ABORTED -- %s" % (k, ln))
+                print(
+                    "[det] the match never started, and the peer said so itself -- not waiting out "
+                    "the remaining %ds of the launch watchdog"
+                    % max(0, int(args.launch_timeout - quiet))
+                )
+                stalled = True
+                break
+        if stall_abort(n, quiet, args.launch_timeout, args.stall_timeout):
+            print(
+                "[det] STALL: host step count stuck at %s for %ds (%s limit %ds) -- aborting rather "
+                "than waiting out the %ds wall clock"
+                % (n, quiet, "launch" if n <= 0 else "stepping", limit, deadline - start_wait)
+            )
+            # Say WHY, when Windows recorded it. A local host that faulted looks identical to one
+            # that wedged, and only one of the two is worth re-running unchanged. (VM peers return
+            # nothing here -- their WER lives on the VM; see peer_liveness.)
+            for ln in peer_liveness(hrun)[1]:
+                print(ln)
+            stalled = True
+            break
+    else:
+        print(
+            "[det] WARN: host did not reach %d steps before the deadline -- analyzing what exists"
+            % steps
+        )
+    if stalled:
+        # Fall through to the pull/analyze path anyway: the min_common floor below is what turns
+        # "almost no steps compared" into a FAIL, so a stalled run is rejected on evidence rather than
+        # on the abort alone -- and the partial logs are worth having.
+        print("[det] (stalled run -- the compared-step floor decides the verdict)")
+
+    det_dir = os.path.join(_scratch(), "determinism")
+    if os.path.isdir(det_dir):
+        shutil.rmtree(det_dir, ignore_errors=True)
+    dirs = []
+    for key, ip, run in peers:
+        if run:
+            dirs.append(pull_peer_logs(args, ip, run, os.path.join(det_dir, key)))
+    for key, ip, run in peers:
+        peer_kill(args, ip, run)
+    shim_stop(shim)
+    if len(dirs) < 2:
+        print("[det] need >=2 peers with logs; got %d -- FAIL" % len(dirs))
+        return 1
+    print("[det] analyzing %d peer log dir(s) via mp_analyze.py ..." % len(dirs))
+    # Require the pair to have actually compared most of the requested steps. Without a floor, a peer
+    # that dies on launch contributes ZERO comparable steps, scores mismatch=0, and the run reports
+    # "ALL PAIRS IDENTICAL" having verified nothing (observed 2026-07-25 after an intermittent client
+    # crash: combined-hash=0). Half the requested steps is a deliberately loose floor -- it rejects the
+    # vacuous case and short runs without flapping on the usual off-by-a-few overlap.
+    min_common = max(1, int(args.steps) // 2)
+    subprocess.run(
+        [
+            sys.executable,
+            os.path.join(REPO, "tools", "mp_analyze.py"),
+            "--min-common",
+            str(min_common),
+            *dirs,
+        ]
+    )
+    clean, nodata, analyzer_verdict = None, 0, None
+    try:
+        with open(os.path.join(dirs[0], "mp_analyze.json")) as f:
+            j = json.load(f)
+        clean = j.get("all_pairwise_clean")
+        nodata = j.get("pairs_without_data") or 0
+        analyzer_verdict = j.get("verdict")
+    except Exception:
+        pass
+    if analyzer_verdict:
+        # SAY WHAT THE ANALYZER SAID. This used to re-derive a verdict from the flags, and the moment
+        # DET-FLAKE's environmental guard landed the two disagreed: a run the analyzer deliberately
+        # keeps as DESYNC (link evidence present but not conclusive -- its fail-closed rule) came back
+        # from here as "FAIL: ENVIRONMENTAL", undoing that rule one layer up. One verdict, one author.
+        verdict = analyzer_verdict
+    elif clean:
+        verdict = "ALL PAIRS IDENTICAL"
+    elif nodata:
+        verdict = (
+            "NO COMPARABLE STEPS (a peer produced <%d hashed steps) -- NOT a pass" % min_common
+        )
+    elif clean is False:
+        verdict = "DESYNC -- NOT clean"
+    else:
+        verdict = "INCONCLUSIVE (see mp_analyze output)"
+    print("\n[det] VERDICT: %s" % verdict)
+
+    # WHERE THE EVIDENCE LIVES. The local copies are transient (the next run wipes the live dir);
+    # each peer VM keeps its own per-run folder, and that archive is the only reason the 2026-09-09
+    # red could be re-analysed a day later. Print it on every run, not only on a red -- a run you
+    # did not think was interesting is exactly the one you want the logs for later.
+    print("[det] peer logs kept on each peer (they outlive the local copies):")
+    for key, ip, run in peers:
+        if run:
+            print("        %-8s %s:%s/logs/%s" % (key, ip or "local", args.vm_dir, run))
+    if not clean:
+        # Keep the last three failures locally, so a red survives the next run's wipe.
+        keep = os.path.join(_scratch(), "determinism.red-%s" % (peers[0][2] or "run"))
+        shutil.rmtree(keep, ignore_errors=True)
+        try:
+            shutil.copytree(det_dir, keep)
+            print("[det] this RED's artifacts kept at %s" % keep)
+        except OSError as e:
+            print("[det] could not keep the red's artifacts: %s" % e)
+        for old in sorted(glob.glob(os.path.join(_scratch(), "determinism.red-*")))[:-3]:
+            shutil.rmtree(old, ignore_errors=True)
+    return 0 if clean else 1
+
+
+def main():
+    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    ap.add_argument(
+        "script", nargs="?", help="single-peer: a script under tools/uiscripts/ (or a path)"
+    )
+    ap.add_argument(
+        "--host", help="multi-peer HOST: 'script' (local dev box) or 'ip:script' (a VM)"
+    )
+    ap.add_argument(
+        "--client",
+        action="append",
+        default=[],
+        metavar="IP:SCRIPT",
+        help="multi-peer: a VM client 'ip:script' (repeatable)",
+    )
+    ap.add_argument(
+        "--connect-ip",
+        default=None,
+        help="IP the clients connect to (written into their setup.dat); default = the host's IP if the "
+        "host is a VM, else --host-ip",
+    )
+    ap.add_argument(
+        "--host-ip",
+        default=machine.HOST_IP,
+        help="the local dev box's LAN IP (used when the host is local)",
+    )
+    ap.add_argument(
+        "--update-baselines", action="store_true", help="(re)generate baselines instead of diffing"
+    )
+    # Deterministic identity: pin each peer's setup.dat (player name / game name / server IP) before launch
+    # so the captured text is machine-independent (not the machine's saved history). --no-pin disables it.
+    ap.add_argument(
+        "--launch-args",
+        default="",
+        help="extra tokens placed BEFORE --skip-intro on the game command line, e.g. "
+        '"--tactical 11". For a scenario the menu cannot reach; empty for every normal walk.',
+    )
+    ap.add_argument(
+        "--deploy-save",
+        default="",
+        help="copy save/<NAME>.sav from the polygon into each peer dir before launch -- what a "
+        "--launch-args verb taking a save name needs, since a lane has no save dir of its own.",
+    )
+    ap.add_argument("--host-name", default="host", help="host player name pinned into setup.dat")
+    ap.add_argument(
+        "--client-name", default="client", help="client player name (client N -> name+N)"
+    )
+    ap.add_argument("--game-name", default="uitest", help="game name the host creates (pinned)")
+    ap.add_argument(
+        "--client-dead-ip",
+        default=None,
+        help="S8(b): give each client an IP MRU of [this DEAD ip, <connect-ip live host>] so the 'Server "
+        "address' field pre-fills to the dead IP (entry 0) and the live host is the selectable 2nd entry -- "
+        "the dead->correct->join round-trip test",
+    )
+    ap.add_argument(
+        "--no-pin",
+        action="store_true",
+        help="do NOT pin setup.dat identity (use the machine's own)",
+    )
+    ap.add_argument("--host-dir", default=machine.POLYGON)
+    ap.add_argument("--vm-user", default=machine.VM_USER)
+    ap.add_argument("--ssh-key", default=machine.SSH_KEY)
+    ap.add_argument("--vm-dir", default=machine.VM_DIR)
+    # DEFAULT since 2026-08-27 (I6b): peers run byte-for-byte RETAIL mh.exe and
+    # get mh.dll from the msvfw32 proxy shim. The peer file keeps its name; only its bytes change,
+    # and it is deployed per run, so switching modes back and forth is safe.
+    ap.add_argument("--stock-exe", action="store_true", help="(default; kept for compatibility)")
+    ap.add_argument(
+        "--patched-exe",
+        action="store_true",
+        help="opt OUT: run peers on the import-patched mh.focus.exe (the pre-2026-08-27 mechanism)",
+    )
+    ap.add_argument(
+        "--port", type=int, default=6501, help="host TCP port (the client-ready listen probe)"
+    )
+    ap.add_argument(
+        "--timeout", type=int, default=90, help="wall-clock seconds to wait for the run"
+    )
+    ap.add_argument(
+        "--timeout-frames",
+        type=int,
+        default=None,
+        help="[uitest] per-step watchdog, in FRAMES. Defaults to 1500 with the blit, and to "
+        "80000 headless -- see the note where it is resolved.",
+    )
+    # --determinism PROGRESS watchdog. Complements --timeout, which is a wall clock and so cannot tell a
+    # wedged run from a slow one; these bound how long NOTHING may happen. 0 disables either half.
+    ap.add_argument(
+        "--stall-timeout",
+        type=int,
+        default=120,
+        help="determinism runs: abort if the host's step count has not advanced for this many seconds "
+        "(default 120; 0=off). Well clear of a legitimate barrier park, which rx_timeout_ms bounds at "
+        "~10 s before the link drops.",
+    )
+    ap.add_argument(
+        "--launch-timeout",
+        type=int,
+        default=300,
+        help="determinism runs: abort if the host has not logged its FIRST step within this many "
+        "seconds (default 300; 0=off). Separate from --stall-timeout because 'no steps yet' is normal "
+        "while the peers walk the menus and rendezvous in the lobby.",
+    )
+    ap.add_argument(
+        "--shim",
+        help="run tools/net_shim.py between the peers, targeting this host (ip or ip:port). The runner "
+        "owns its lifetime and points the clients at THIS box. Use for latency / link-death scenarios.",
+    )
+    ap.add_argument(
+        "--shim-delay", type=float, default=0.0, help="shim ONE-WAY delay in ms (rtt = 2x)"
+    )
+    ap.add_argument("--shim-jitter", type=float, default=0.0, help="shim jitter in ms")
+    ap.add_argument(
+        "--shim-listen-port",
+        type=int,
+        help="port the shim ACCEPTS on (default: --port). Set it when the shim and the HOST share a "
+        "box -- they cannot share a port, and the shim binds first, so the game loses (see "
+        "shim_listen_port()). The peers must dial this port.",
+    )
+    ap.add_argument("--shim-timeline", help="shim timeline file (tools/uiscripts/shim/*.txt)")
+    ap.add_argument(
+        "--determinism",
+        action="store_true",
+        help="UI-path determinism: drive peers into the game via the real UI (no force-entry), run --steps "
+        "in-game with the [harness] logger, then mp_analyze.py -> ALL PAIRS IDENTICAL",
+    )
+    ap.add_argument(
+        "--steps",
+        type=int,
+        default=800,
+        help="--determinism: compare AT LEAST this many in-game steps (poll-bounded, may overshoot)",
+    )
+    ap.add_argument(
+        "--harness",
+        action="store_true",
+        help="single-peer runs (--script): arm the in-game [harness] state logger for --steps steps "
+        "and keep mh_harness.log. This is the SINGLE-PLAYER determinism oracle's run mode (P0-SPDET) "
+        "-- two sequential runs of one peer, promoted vs unpromoted, compared by mp_analyze.sp_compare. "
+        "Pair it with --extra-ini tools/uiscripts/ini/ship_config.ini for the promoted arm, and "
+        "with [harness] pin_wallclock=1 + region_hash_step=1 or the time-tick regions are uncomparable.",
+    )
+    ap.add_argument(
+        "--tol", type=float, default=0.02, help="max fraction of differing pixels to PASS"
+    )
+    ap.add_argument(
+        "--defang",
+        type=int,
+        default=1,
+        help="[net] defang_overlay value (default 1 = shipping suppress). 0 = let the de-sync/SYNCHRONIZING "
+        "overlay RENDER for the overlay-mapping trace (resync_wait_fix stays on).",
+    )
+    ap.add_argument(
+        "--net-extra",
+        default="",
+        help="extra [net] lines, ';'-separated k=v (e.g. 'defang_xui=1') -- per-group overlay-patch knobs.",
+    )
+    ap.add_argument(
+        "--extra-ini-host",
+        help="ini fragment for the HOST peer ONLY -- the asymmetric twin of --extra-ini. Built for "
+        "O3: original container on one peer, promoted on the other, refereed by the lockstep hash. "
+        "A symmetric promoted run cannot referee itself.",
+    )
+    ap.add_argument(
+        "--extra-ini-client",
+        help="ini fragment for every NON-HOST peer -- the other half of the asymmetric pair. Since "
+        "promotion became the SHIPPING DEFAULT (C8-f), this is the half that actually creates the "
+        "asymmetry: a client with no [promote] section still promotes, so making the original the "
+        "reference oracle takes an explicit `[promote] lockstep=0` here.",
+    )
+    ap.add_argument(
+        "--extra-ini",
+        action="append",
+        default=[],
+        metavar="FILE",
+        help="path to a file whose contents are merged into each peer's mh_net.ini (whole extra "
+        "sections, e.g. tools/uiscripts/ini/debug_overlay.ini to switch the debug overlay on for one "
+        "test). REPEATABLE: pass it N times and all N fragments are merged, in order, through "
+        "ini_merge_fragment -- it used to be a scalar option that silently kept only the LAST one, "
+        "which on 2026-08-02 armed 2 of 4 shadow sites on a run whose arming set check_arming_set.py "
+        "had already validated over all 4.",
+    )
+    ap.add_argument(
+        "--pixdelta",
+        type=int,
+        default=40,
+        help="per-pixel max-channel delta that counts as differing",
+    )
+    ap.add_argument(
+        "--record",
+        type=int,
+        default=0,
+        help="harness order_mode: 1 = RECORD the dispatched order stream to mh_orders.bin (+ the "
+        "mh_clock.bin clock track) in each peer's run folder, so an interactive session can be "
+        "replayed later without a human. 2 = REPLAY a recording placed next to the exe.",
+    )
+    ap.add_argument(
+        "--order-log",
+        type=int,
+        default=0,
+        help="harness order_log: 1 = also dump ORDER_PENDING/ORDER_QUEUE contents as ';ord' lines, "
+        "which makes the recording readable (what was ordered, and when).",
+    )
+    ap.add_argument(
+        "--ship-pacing",
+        action="store_true",
+        help="omit the rig's pinned lockstep_step_ms/sim_step_ms so the DLL's SHIPPING defaults apply "
+        "(100 ms lookahead + adaptive controller, 20 ms sim sub-step). Use for a determinism gate that "
+        "validates what players actually run.",
+    )
+    # HEADLESS IS THE DEFAULT (2026-07-28). [video] no_present=1 cuts the DirectDraw blit inside
+    # llm_gfx_present_flip; the frame is still composed in software, so captures are BYTE-IDENTICAL
+    # (A/B-verified by SHA-256), the suite is 12/12 on both topologies, it costs no wall clock (81622
+    # presents / 9.8 s parked vs 83497 / 9.7 s visible) and it steals no focus (foreground sampled 94x:
+    # the game 0 times). --headless stays accepted so existing invocations keep working.
+    ap.add_argument("--headless", action="store_true", help="(default; kept for compatibility)")
+    ap.add_argument(
+        "--visible",
+        action="store_true",
+        help="opt OUT of headless: restore the DirectDraw blit and show the window. Use when you want "
+        "to WATCH a run, and for anything that measures pacing (see --force-headless).",
+    )
+    # DESKTOP ISOLATION IS THE DEFAULT (2026-08-02). The game runs on its own Windows desktop object,
+    # so its window cannot appear on, take focus from, or read the cursor of yours -- whatever creates
+    # or shows it. Unlike --headless this makes no claim about the mechanism, which is exactly why it
+    # is the default: headless cannot keep the window unmapped and three hypotheses about who maps it
+    # were each refuted. Free: suite 12/12 in 4.5 min, identical to the interactive-desktop figure.
+    ap.add_argument(
+        "--desktop",
+        nargs="?",
+        const=desktop.DEFAULT_DESKTOP,
+        default=None,
+        help="name of the isolated desktop (default: %s). Isolation is ON unless --no-desktop or "
+        "--visible; pass this explicitly to isolate a --visible run anyway, or to use a second "
+        "desktop name. Peers sharing a name share one desktop." % desktop.DEFAULT_DESKTOP,
+    )
+    ap.add_argument(
+        "--no-desktop",
+        action="store_true",
+        help="opt OUT of desktop isolation: run the game on YOUR interactive desktop, where it can "
+        "take focus and read your cursor. Needed only when something outside the harness must reach "
+        "the window (a debugger attach by click, a screen recorder).",
+    )
+    ap.add_argument(
+        "--force-headless",
+        action="store_true",
+        help="permit headless for a --determinism / --ship-pacing run, which is otherwise refused: no "
+        "blit means no vsync wait (~60 fps -> ~8500), and that is exactly what mp_pacing_report.py and "
+        "the adaptive lookahead controller measure.",
+    )
+    ap.add_argument(
+        "--harness-extra-host",
+        default="",
+        help="extra [harness] lines, ';'-separated k=v, merged into the HOST peer's [harness] block "
+        "ONLY. Asymmetric by design -- it is how one peer is perturbed so the gate has something to "
+        "find (e.g. 'rng_perturb_slot=2;rng_perturb_step=13000').",
+    )
+    ap.add_argument(
+        "--harness-extra",
+        default="",
+        help="extra [harness] lines, ';'-separated k=v, merged into EVERY peer's [harness] block. "
+        "Symmetric, so unlike --harness-extra-host it cannot create the asymmetry a determinism run "
+        "is measuring. P0-SPDET's single-player oracle rides here: "
+        "'pin_wallclock=1;fixed_step=0;region_hash_step=1'.",
+    )
+    ap.add_argument(
+        "--ai-probe",
+        type=int,
+        default=0,
+        metavar="N",
+        help="harness ai_probe_step: emit an '; AIPROBE' line every N steps carrying the AI master "
+        "gate, the ai_players_tick loop bound, every player's ai_enabled, and the AI PRNG slot. Use on "
+        "AI-active runs (D10) so 'the AI actually ran' is read off the log rather than assumed.",
+    )
+    ap.add_argument(
+        "--dll",
+        default="",
+        metavar="PATH",
+        help="deploy THIS mh.dll (and its sibling .pdb) into every peer instead of the Release "
+        "build. For tools/coverage.py, which needs the UNOPTIMISED one: a Release /O2+LTCG binary "
+        "reports inlined-away bodies as 0%% covered, indistinguishable from never executed. Without "
+        "this the per-launch copy in local_launch silently undoes make_lane's own --dll.",
+    )
+    args = ap.parse_args()
+    if args.dll:
+        if not os.path.isfile(args.dll):
+            sys.exit("--dll: no such file: %s" % args.dll)
+        global DLL_OVERRIDE
+        DLL_OVERRIDE = os.path.abspath(args.dll)
+        print("[dll] deploying %s (overrides the Release build)" % DLL_OVERRIDE)
+    # Same shape as make_lane's `args.headless = not args.visible`: the flag that TRAVELS is
+    # the opt-out, and the effective mode is derived once, here.
+    args.stock_exe = not args.patched_exe
+
+    global \
+        DEFANG_OVERLAY, \
+        EXTRA_NET, \
+        EXTRA_INI, \
+        EXTRA_INI_HOST, \
+        EXTRA_INI_CLIENT, \
+        SHIP_PACING, \
+        ORDER_MODE, \
+        ORDER_LOG, \
+        AI_PROBE_STEP, \
+        HEADLESS, \
+        DESKTOP
+    global HARNESS_EXTRA_HOST, LAUNCH_ARGS, DEPLOY_SAVE
+    LAUNCH_ARGS = args.launch_args
+    DEPLOY_SAVE = args.deploy_save
+    DEFANG_OVERLAY = args.defang
+    SHIP_PACING = args.ship_pacing
+    HEADLESS = resolve_headless(args, ap)
+    # HOLD the desktop for the whole process, not for a `with` block: this runner spawns its peers
+    # and then blocks for the entire scenario, and the desktop dies with its last handle. Released by
+    # the OS at exit, which is exactly when the last peer is gone.
+    # Resolved here, HELD LAZILY at the first local launch (see local_launch). A VM-topology run --
+    # every --determinism run, and the suite's --no-local mode -- launches no game on this box, so
+    # eagerly creating a desktop there would do nothing but print a banner claiming an isolation that
+    # is not in play.
+    DESKTOP = resolve_desktop(args)
+    # THE FRAME WATCHDOG HAS TO FOLLOW THE BLIT. It is budgeted in FRAMES, and headless removes the
+    # vsync wait -- ~60 fps becomes ~8500 -- so 1500 frames does not survive boot on this host
+    # (test_ui.py has carried an 80000 floor for its own lanes since 2026-07-28 for exactly this
+    # reason). Before the `global HEADLESS` fix on the line above, the default path never actually
+    # went headless, so this mismatch could not fire; fixing one without the other turns every
+    # default-polygon run into a TIMEOUT. Only the DEFAULT is scaled -- an explicit --timeout-frames
+    # is an instruction and is left alone.
+    if args.timeout_frames is None:
+        args.timeout_frames = 80000 if HEADLESS else 1500
+        if HEADLESS:
+            print("[rig] headless: per-step frame watchdog raised to %d" % args.timeout_frames)
+    AI_PROBE_STEP = args.ai_probe
+    HARNESS_EXTRA_HOST = args.harness_extra_host
+    global HARNESS_EXTRA
+    HARNESS_EXTRA = args.harness_extra
+    if HARNESS_EXTRA_HOST:
+        print("[cfg] HOST-ONLY [harness] extras: %s" % HARNESS_EXTRA_HOST)
+    ORDER_MODE = args.record
+    ORDER_LOG = args.order_log
+    EXTRA_NET = args.net_extra
+    for one in args.extra_ini:
+        path = one
+        if not os.path.isabs(path):
+            path = os.path.join(REPO, path)
+        with open(path, "r", encoding="utf-8") as fh:
+            text = fh.read()
+        # REFUSED, not merged: fragments are merged with EACH OTHER and then appended as a TAIL to an
+        # ini that already opens with its own [net] block -- so a [net] section here becomes the
+        # SECOND one in the file, and GetPrivateProfile* reads only the first. Every key in it is
+        # silently inert.
+        #
+        # This is the third instance of one trap. The [video] merge below and the --net-extra
+        # "first match wins" guard above are the other two, and both were found the same way: a run
+        # that reported success about a configuration it never had. Measured here 2026-08-27 -- three
+        # 2-peer determinism runs at 3000, 3000 and 2000 steps, an A/B of a fix knob, all reporting
+        # ALL PAIRS IDENTICAL, and all three ran the DEFAULT config because the fragment's [net] was
+        # dead text. The A and B arms were the same run.
+        #
+        # Refused rather than merged on purpose: [net] has a dedicated channel that writes into the
+        # base section, so a fragment reaching for it is a mistake with an obvious right answer, and
+        # silently doing what was meant would leave the next author with the same wrong mental model.
+        for ln in text.splitlines():
+            if ln.split(";", 1)[0].strip().lower() == "[net]":
+                sys.exit(
+                    "REFUSED: %s carries a [net] section. --extra-ini is appended AFTER the base\n"
+                    "ini, which already has [net], and GetPrivateProfile* reads only the FIRST\n"
+                    "section of a given name -- so those keys would be read by nothing and the run\n"
+                    "would report success about a config it never had.\n"
+                    'Use --net-extra "key=value;key=value" instead: it writes into the base [net].'
+                    % one
+                )
+        EXTRA_INI = ini_merge_fragment(EXTRA_INI, text)
+        print("[cfg] ini fragment: %s" % one)
+    if args.extra_ini_host:
+        path = args.extra_ini_host
+        if not os.path.isabs(path):
+            path = os.path.join(REPO, path)
+        with open(path, "r", encoding="utf-8") as fh:
+            EXTRA_INI_HOST = fh.read()
+        print("[cfg] HOST-ONLY ini fragment: %s" % args.extra_ini_host)
+    if args.extra_ini_client:
+        path = args.extra_ini_client
+        if not os.path.isabs(path):
+            path = os.path.join(REPO, path)
+        with open(path, "r", encoding="utf-8") as fh:
+            EXTRA_INI_CLIENT = fh.read()
+        print("[cfg] CLIENT-ONLY ini fragment: %s" % args.extra_ini_client)
+
+    # PREFLIGHT: does the pinned view even fit the desktop? Refuse LOUDLY rather than let the run
+    # reproduce G35 -- see view_exceeds_desktop for what that looks like (it looks like a sim hang).
+    _view = pinned_view_size(EXTRA_INI + "\n" + EXTRA_INI_HOST + "\n" + EXTRA_INI_CLIENT)
+    _desk = primary_desktop_size()
+    if view_exceeds_desktop(_view, _desk):
+        print(
+            "[cfg] ABORT: this run pins a %dx%d view but the primary desktop is only %dx%d.\n"
+            "      The game will NOT report a mode failure -- it launches, walks the menu, reaches\n"
+            "      session_begin_multi, serves one [promote] time_tick call and then stops stepping,\n"
+            "      so the script hangs on its next wait until the timeout and it reads as a sim bug\n"
+            "      -- it reads as a sim bug. Raise the desktop to at least %dx%d, or drop the\n"
+            "      --extra-ini display pin, and re-run." % (_view + _desk + _view)
+        )
+        return 2
+    if _view and _desk:
+        print("[cfg] display: pinned view %dx%d fits desktop %dx%d" % (_view + _desk))
+
+    if args.determinism:
+        return run_determinism(args)
+
+    def resolve(name):
+        return resolve_script(name)
+
+    overall_ok = True
+
+    if args.script and not args.host and not args.client:
+        # ---- single-peer (local, no networking) ----
+        # --extra-ini-host is meaningless here and, worse, USED TO BE SILENT: peer_launch below is
+        # called without is_host, so make_ini skipped both the append AND the self-check that exists to
+        # catch exactly this. The flag parsed, the "[cfg] HOST-ONLY" line printed, nothing reached the
+        # ini, and the run passed. Same failure the self-check was written for, in the one mode it did
+        # not cover. Refuse rather than quietly symmetrise: with one peer there is no asymmetry to
+        # make, so --extra-ini is what the caller meant.
+        if EXTRA_INI_HOST:
+            raise SystemExit(
+                "--extra-ini-host on a single-peer run: there is no second peer for the fragment to "
+                "differ from, so it would silently do nothing. Use --extra-ini."
+            )
+        if EXTRA_INI_CLIENT:
+            raise SystemExit(
+                "--extra-ini-client on a single-peer run: there is no client peer to aim it at, and "
+                "the lone peer launches as the HOST -- so it would silently do nothing. Use "
+                "--extra-ini."
+            )
+        src = resolve(args.script)
+        label = os.path.splitext(os.path.basename(src))[0]
+        deadline = time.time() + args.timeout
+        pin_setup(args, None, name=args.host_name, game=args.game_name)  # deterministic identity
+        # P0-SPDET: --harness arms the in-game state logger on a SINGLE-PEER run, which is what the
+        # single-player oracle needs (two sequential runs of one peer, promoted vs unpromoted). It is
+        # an explicit flag rather than `--steps > 0` because --steps DEFAULTS to 800: keying off it
+        # would arm the harness on every capture test in the suite, and a stop_step halts the sim
+        # mid-walk -- the exact hazard local_launch's stale-ini removal is already there to prevent.
+        run = peer_launch(args, None, src, args.timeout_frames, args.steps if args.harness else 0)
+        status = None
+        if args.harness and run:
+            # A HARNESS run must outlive its script. The scripts end at `end` the moment the game is
+            # entered, and the capture-suite wait below kills the process as soon as that marker
+            # appears -- so a 400-step run died four seconds in, having logged nothing. Wait on the
+            # SAME signal --determinism waits on (the logged step count) with the same stall
+            # watchdog; a third wait loop is what run_determinism's own comment warns against.
+            last_n, last_change = None, time.time()
+            while time.time() < deadline:
+                time.sleep(4)
+                n, done = peer_harness_steps(args, None, run)
+                if done or n >= args.steps:
+                    status = "HARNESS-DONE(%s steps)" % n
+                    break
+                if n != last_n:
+                    last_n, last_change = n, time.time()
+                    continue
+                quiet = time.time() - last_change
+                # A DEAD peer is not worth waiting out the stall budget for. Checked at a quarter of
+                # it rather than every poll: the liveness probe is a PowerShell round trip, and this
+                # loop runs every 4 s for the whole run.
+                if quiet > max(15, args.stall_timeout / 4) and not _crash_checked.get(run):
+                    _crash_checked[run] = True
+                    alive, lines = peer_liveness(run)
+                    if lines or alive is False:
+                        for ln in lines:
+                            print(ln)
+                        status = (
+                            ("CRASHED at %s steps" % n)
+                            if lines
+                            else ("PROCESS-GONE at %s steps" % n)
+                        )
+                        break
+                if stall_abort(n, quiet, args.launch_timeout, args.stall_timeout):
+                    status = peer_verdict(run, "STALLED(at %s steps for %ds)" % (n, int(quiet)))
+                    break
+            print("[host] harness %s" % (status or "WALL-CLOCK TIMEOUT"))
+            # The script's own verdict is still worth printing: a TIMEOUT there means the walk did
+            # not finish, which is a different failure from the harness not stepping.
+            print("[host] script %s" % (local_script_status(run) or "(no marker)"))
+        else:
+            while run and time.time() < deadline and not status:
+                time.sleep(2)
+                status = local_script_status(run)
+            print("[host] script %s" % (status or "TIMED-OUT(no marker)"))
+        local_kill()
+        if not run:
+            return 1
+        if args.harness:
+            # A harness run is judged on whether it STEPPED, not on frames: it is a determinism arm,
+            # not a capture test, and comparing its incidental captures against a baseline would fail
+            # it for reasons that have nothing to do with the sim.
+            overall_ok = bool(status) and status.startswith("HARNESS-DONE")
+        else:
+            png_dir = pull_local_captures(run)
+            overall_ok = collect_and_check(label, png_dir, args) and status == "COMPLETE"
+    elif args.host:
+        # ---- multi-peer. The host may be local OR a VM (`ip:script`). Launch the host, wait until it's
+        #      LISTENING (ready for clients), point each client's setup.dat at the host + launch it, then
+        #      wait for ALL peers to finish (a host that gates on `peers N` only COMPLETEs after the
+        #      clients join, so we can't wait for host COMPLETE up front). Two-VM topology frees the dev box.
+        host_ip, hspec, hdir = parse_peer(args.host)
+        hsrc = resolve(hspec)
+        connect_ip = args.connect_ip or host_ip or args.host_ip
+        peers = [
+            {
+                "key": "host",
+                "ip": host_ip,
+                "dir": hdir,
+                "src": hsrc,
+                "label": os.path.splitext(os.path.basename(hsrc))[0],
+            }
+        ]
+        for spec in args.client:
+            cip, cspec, cdir = parse_peer(spec)
+            # A LOCAL client must name its own lane: peers sharing one folder would fight over
+            # setup.dat / mh_net.ini / logs, which is a corrupted run rather than an error.
+            if cip is None and not cdir:
+                ap.error("a local --client must be 'lane=<name>:script' (it needs its own folder)")
+            csrc = resolve(cspec)
+            peers.append(
+                {
+                    "key": cip or os.path.basename(cdir),
+                    "ip": cip,
+                    "dir": cdir,
+                    "src": csrc,
+                    "label": os.path.splitext(os.path.basename(csrc))[0],
+                }
+            )
+
+        shim = shim_start(args)
+        if args.shim and not shim:
+            return 1
+        if shim:  # peers must dial the shim, not the host
+            # ...but only REPOINT them when the shim is on a different box than the peers. With local
+            # lanes everyone is on 127.0.0.1 already, and the shim's own port (shim_listen_port) is what
+            # separates it from the host -- swapping in the LAN ip there would just be a longer route to
+            # the same socket.
+            if host_ip is not None:
+                connect_ip = local_lan_ip()
+            print("[shim] clients will connect to %s:%d" % (connect_ip, shim_listen_port(args)))
+
+        deadline = time.time() + args.timeout
+        host = peers[0]
+        print("[host %s] launching %s ..." % (host_ip or "local", os.path.basename(hsrc)))
+        # pin the HOST identity (player name + created game name) so its lobby + the clients' browser rows
+        # render deterministic text regardless of the machine's saved history.
+        pin_setup(args, host_ip, name=args.host_name, game=args.game_name, pdir=host.get("dir"))
+        host["run"] = peer_launch(args, host_ip, hsrc, args.timeout_frames, pdir=host.get("dir"))
+        if not host["run"]:
+            peer_kill(args, host_ip, host.get("run"))
+            return 1
+        # The readiness gate answers ONE question: may the clients launch yet? With no clients there is
+        # nothing to gate, and running it anyway is actively wrong -- the host only starts listening when
+        # its walk reaches the lobby, which for a 23-step script is well past the 50 s ready budget. So a
+        # single-peer run was killed mid-walk with "never became ready" (measured 2026-07-28 on a local
+        # lane: the script log ended at step 11 of 23 with the game rendering happily).
+        #
+        # It survived this long because the probe port and the lane port only diverge locally: a lane
+        # binds its own per-test port while test_ui's solo branch left ui_test on the 6501 default, so
+        # the gate watched a port nothing in this run ever binds. Why the same gate does not kill solo
+        # runs on the VM topology has NOT been established -- do not assume it is sound there either.
+        if len(peers) < 2:
+            print(
+                "[host %s] single-peer run -- no readiness gate (no clients to launch)"
+                % (host_ip or "local")
+            )
+        elif not _wait_host_ready(args, host_ip, host):
+            # D15: the two ways this gate fails want OPPOSITE next steps, so do not print one
+            # message for both. A dead process is not a budget problem, and telling the reader to
+            # raise --timeout for it is how the 2026-08-06 sessions ended up investigating budgets
+            # that were only ever 3-16% used.
+            if host.get("dead"):
+                print(
+                    "[host] aborting: the host process is GONE, so no budget would have helped. "
+                    "This is NOT a timeout -- do not raise --timeout for it. Check the lane's logs "
+                    "and `python tools/crash_report.py --lane <lane dir>`."
+                )
+            else:
+                print(
+                    "[host] never became ready (no LISTENING on %d within %ds) -- aborting. If the "
+                    "polls above printed ssh timeouts, suspect the PROBE, not the game: verify from "
+                    "here with a TCP connect to <host>:%d before believing the host is down "
+                    "(2026-07-27 -- see remote_listening). If instead the host was still WALKING, "
+                    "raise --timeout: this gate now spends the whole run budget waiting."
+                    % (args.port, args.timeout, args.port)
+                )
+            peer_kill(args, host_ip)
+            return 1
+        if len(peers) >= 2:
+            print(
+                "[host %s] ready -- launching clients (they connect to %s)"
+                % (host_ip or "local", connect_ip)
+            )
+        for ci, p in enumerate(peers[1:]):
+            cname = args.client_name if ci == 0 else "%s%d" % (args.client_name, ci + 1)
+            # S8(b): a dead-IP round-trip test wants the field to pre-fill to a DEAD address (entry 0) with
+            # the live host selectable in the MRU dropdown (entry 1); else pin the single live connect IP.
+            ip_val = [args.client_dead_ip, connect_ip] if args.client_dead_ip else connect_ip
+            pin_setup(args, p["ip"], ip_val=ip_val, name=cname, pdir=p.get("dir"))
+            print("[client %s] launching %s ..." % (p["key"], os.path.basename(p["src"])))
+            p["run"] = peer_launch(args, p["ip"], p["src"], args.timeout_frames, pdir=p.get("dir"))
+
+        # unified wait: every peer to reach COMPLETE / TIMEOUT
+        results = {}
+        pending = {p["key"] for p in peers if p.get("run")}
+        delivered = set()  # (peer, signal) already ferried -- see pump_signals
+        last_live = time.time()
+        while pending and time.time() < deadline:
+            time.sleep(3)
+            if len(peers) > 1:
+                pump_signals(args, peers, delivered)
+            for p in peers:
+                if p["key"] not in pending:
+                    continue
+                st = peer_status(args, p["ip"], p["run"])
+                if st:
+                    results[p["key"]] = st
+                    pending.discard(p["key"])
+                    print("[%s] script %s" % (p["key"], st))
+            # D15: the same give-up _wait_host_ready got, for the peers that are already RUNNING.
+            # A peer whose process has exited will never write a marker, so every second after that
+            # is spent proving something already known -- and it is spent producing a timeout
+            # message, which is the one reading this failure must not be given. Checked on a slow
+            # cadence because peer_liveness costs a PowerShell round-trip per peer.
+            if time.time() - last_live >= 10:
+                last_live = time.time()
+                for p in list(peers):
+                    # VM peers included: peer_liveness answers for them too now (image-name query
+                    # + their own Application log, pulled back). Leaving them out was the whole of
+                    # the "crash detection on VM peers" gap.
+                    if p["key"] not in pending:
+                        continue
+                    if report_dead_peer(p["key"], p["run"]):
+                        results[p["key"]] = "PROCESS-GONE"
+                        pending.discard(p["key"])
+        for k in pending:
+            results[k] = "TIMED-OUT"
+            print("[%s] script TIMED-OUT (no marker)" % k)
+            run = next((p["run"] for p in peers if p["key"] == k), None)
+            if run:
+                report_dead_peer(k, run)
+
+        # collect + diff every peer, then kill it
+        for p in peers:
+            if p.get("run"):
+                png = peer_captures(args, p["ip"], p["run"])
+                overall_ok &= (
+                    collect_and_check(p["label"], png, args) and results.get(p["key"]) == "COMPLETE"
+                )
+            else:
+                print("  [%s] no run dir -- launch failed" % p["key"])
+                overall_ok = False
+            peer_kill(args, p["ip"], p.get("run"))
+        shim_stop(shim)
+    else:
+        ap.error("give a single script, or --host [ip:]script with --client ip:script")
+
+    print("\nui_test: %s" % ("PASS" if overall_ok else "FAIL"))
+    return 0 if overall_ok else 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())

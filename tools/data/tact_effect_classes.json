@@ -1,0 +1,668 @@
+{
+ "_comment": [
+  "Dispositions for the TACTICAL migration set's outward calls (RI-TACT / TACT-CUT, 2026-08-25).",
+  "Consumed by tools/gen_migration.py --domain tact (--effects prints it; the manifest carries it",
+  "as _outward_effects) and by tools/gen_dll_effects.py, which generates one gate per entry. That",
+  "generator merges EVERY domain's dispositions into one header, because a gate is a hook over an",
+  "ADDRESS and two domains cannot each own one; it refuses a name two domains classify differently.",
+  "",
+  "WHY EACH CLASS MATTERS. Shadow mode snapshots, runs the ORIGINAL, RESTORES the pre-state, runs",
+  "OURS, compares. A state restore does not un-play a sound, un-draw a pixel or un-write a file, so:",
+  "  effectful -- performed in the ORIGINAL arm, SUPPRESSED in ours, RECORDED in both. Fires once.",
+  "  pure      -- a query. Performed in BOTH arms and MUST NOT be suppressed. The seam's NEGATIVE",
+  "               ARM: a suppression built only from the effectful cases passes its own test",
+  "               vacuously. This domain has three, plus eleven `state`.",
+  "  state     -- mutates state, but passes the twice-test below. Performed in both arms.",
+  "",
+  "THE TEST THIS FILE APPLIES, and it is not the obvious one:",
+  "",
+  "    Is running this body TWICE, back to back, with the same inputs, observationally",
+  "    different from running it once?",
+  "",
+  "The obvious rule -- 'effectful only if it reaches present_flip or a device/COM/file API' -- was",
+  "proposed by the adversarial review and is WRONG on real bodies in this very set:",
+  "  * llm_tact_scroll_fade_step calls NOTHING. Its body is load [EDI], mask, ADD 0x2 / 0x80 /",
+  "    0x1000 with saturation, MOV word ptr [EDI],DX (@0x0043c38e) over every framebuffer pixel --",
+  "    a read-modify-write BRIGHTEN. Twice = twice the fade, on a buffer nothing restores.",
+  "  * llm_tact_drag_box_clamp's leaf stores constant dash pixels (idempotent) but ROLs the dash-",
+  "    phase global once per pixel (`ROL byte ptr [0x0055992b],0x1` @0x0043ab30). Twice = a",
+  "    different pattern.",
+  "  * And the rule cuts the other way too: llm_tact_tile_overlay_refresh writes only constants,",
+  "    in its body and in both of its leaves, so it is `state` despite drawing -- the first",
+  "    reading called it effectful and was overturned here.",
+  "So: look for accumulators. A read-modify-write on anything, a rotating pattern register, a queue",
+  "consumed, a PRNG stepped, a running base offset, an in-place format conversion, a handle taken.",
+  "",
+  "THE MEASUREMENT WAS SHORT, AND CLOSING THAT IS HALF OF WHAT THIS ITEM DID. The inventory counts",
+  "edges from the migration set into the domain's declared effect FAMILIES, and this domain's",
+  "families are its 56 named presentation walls -- every one of them a closure member by",
+  "construction. So calls out to SHARED, non-exclusive code were structurally invisible.",
+  "llm_ui_set_draw_surface is called from NINE tactical members; its body sets the blit globals and",
+  "then calls llm_gfx_blit_rect_rows, which memcpys rows into _G_LLM_GFX_DRAW_SURFACE. It drew, it",
+  "was in no gate list, and an armed site over any of those nine would have blitted twice with",
+  "every check green. `select.effect_names` in the domain profile now names such callees, and",
+  "gating that ONE convergence point is what lets llm_tact_ui_char_panel_ammo_draw stay `state` and",
+  "llm_tact_ui_char_panel_row_refresh stay `pure` instead of marking nine ancestors effectful.",
+  "",
+  "SUPPRESSION HAS ITS OWN FAILURE MODE, AND IT IS NOW CHECKED. `--effects` reports BLINDED WRITES:",
+  "every `effectful` target that writes a region carrying `hash` or `shadow`. Suppressing such a",
+  "target removes a write the comparison expected, so an armed call diverges because of the seam",
+  "rather than because of our code. Measured over these 31: exactly one, llm_tact_render_view",
+  "(_G_LLM_MAP_CAM_COL/_ROW), acknowledged in `_blinded_ack` below with its reason. That check is",
+  "the mirror of UNGATED REACH, which only ever guarded the opposite direction.",
+  "",
+  "PROVEN ON THE RIG, BOTH DIRECTIONS, MUTATION-CHECKED. `test_ui.py --tact-effects-probe N` opens",
+  "one shadow window at tactical frame N over a real EFFECTFUL gate and a real non-effectful one",
+  "and requires performed=1/suppressed=1 and performed=2/suppressed=0 respectively. Absence of",
+  "either line is a FAIL, not a pass. Flipping the negative subject to `effectful` drops it to",
+  "performed=1 and the check names the over-refusal; flipping the effectful subject to `state`",
+  "raises it to performed=2 and the check names the double-fire.",
+  "",
+  "A target with no entry here is reported UNCLASSIFIED; an entry naming a target nothing calls any",
+  "more is reported STALE. Both counts are printed even when zero.",
+  "",
+  "FIELDS: class / verified / why / evidence_addr (the instruction the reading turns on) /",
+  "fake_return (what a suppressed call returns; every target here is void, so none needs one) /",
+  "note (traps for a later translator).",
+  "",
+  "TACT-CUT2 (2026-08-27) ADDED THE 31 SHARED CALLEES, and the paragraph above explains why they",
+  "were invisible: effect membership is a name prefix or a named wall, and a wall is a closure",
+  "member by construction, so a call OUT of the closure matched neither half. `select.effect_names`",
+  "in the domain profile is the third half; these 31 names are what it holds. Their bodies were",
+  "classified and adversarially re-checked in tools/data/tact_shared_callees.json (13 effectful,",
+  "6 pure, 12 state; 31/31 verified, zero overturned), and the class carried here verbatim.",
+  "",
+  "WHAT TACT-CUT2 ADDED ON TOP OF THE CARRY-OVER IS THE SECOND QUESTION, which the twice-test does",
+  "not ask: CAN THIS ENTRY ACTUALLY TAKE A GATE, AND CAN OUR ARM SURVIVE THE SUPPRESSION? FIVE",
+  "entries answered no. Each carries `gate: false` with its reason rather than being dropped -- a",
+  "hole somebody wrote down is a different object from a hole nobody noticed, and --effects prints",
+  "them under DELIBERATELY UNGATED on every run while the DLL logs one UNGATED ON PURPOSE line per",
+  "entry at install:",
+  "  * llm_math_atan      -- its 9 stolen bytes are FLD + CALL rel32, and install_trampoline copies",
+  "                          stolen bytes VERBATIM. MEASURED: gating it sent every tactical atan to",
+  "                          a wrong address, the mission ended after frame 1, and the determinism",
+  "                          run reported '0 frames' with no crash dump.",
+  "  * llm_rand           -- the same shape (PUSH EDX + CALL rel32), latent rather than observed.",
+  "                          NOT unmediated, though: the harness pin owns the entry and its",
+  "                          pinned_rand_next() calls mh::effects::enter_deferred().",
+  "  * w_sprintf          -- __cdecl variadic; its proto is a derived one-call-site varargs SHAPE,",
+  "                          and a gate re-pushing only those params would corrupt 61 call sites.",
+  "  * GetResourseFilePtr -- all four call sites dereference the returned buffer unguarded, so any",
+  "                          fake_return is an access violation, not a wrong answer.",
+  "  * time_GetCurrentTime-- the harness pin owns the entry in every tactical rig run AND it is",
+  "                          `pure`, so the gate could only ever record -- into a 64-event window",
+  "                          log its 24 callers would overflow, disabling the INV-4 verdict.",
+  "",
+  "THE FIRST TWO ARE NOW A MECHANICAL GATE RATHER THAN A JUDGEMENT. tools/dump_steal_relbranch.py",
+  "asks Ghidra, for every function with a committed steal length, whether its stolen bytes contain",
+  "a pc-relative branch (18 of 2081 do); gen_dll_effects.py REFUSES to gate a flagged target and",
+  "refuses to run at all if a target it wants to gate is missing from that file. A byte scan cannot",
+  "do this job -- looking for 0xE8/0xE9 finds both real cases and also flags two long-working gates",
+  "whose byte 4 is part of a PUSH imm32 operand.",
+  "",
+  "AN UNGATED TARGET STILL GETS A RECORD, and that is load-bearing rather than tidy: an owner that",
+  "honours the disposition from INSIDE its own replacement calls mh::effects::enter_deferred(addr),",
+  "which looks the record up. That is how llm_rand keeps exactly-once under the pin, proven on the",
+  "rig by the TACTPROBE shared-effectful line and mutation-checked in both directions.",
+  "",
+  "AND SEVEN ENTRIES ALREADY HAD AN OWNER (C4, one owner per entry). The install order is what",
+  "makes that matter: reimpl_probe.cpp installs the gates before the sim shadow sites and the save",
+  "promotion, and net_seams.cpp installs them before video -- so the effects seam WINS every",
+  "contested entry unless it stands down. effects_install.cpp defers five of them on the SAME",
+  "mh_net.ini key the owner itself reads ([video] width/height, [video] picker, [promote] load,",
+  "[shadow] llm_strat_unit_remove_from_map, [shadow] llm_strat_unit_teardown), and each deferral",
+  "is logged BY OWNER NAME rather than counted. The sixth, time_GetCurrentTime, is ungated above.",
+  "The seventh is llm_rand, and it is the one a deferral could not fix: pin_rand replaces the body",
+  "with an LCG that STILL ADVANCES, so both arms would draw. It defers itself from harness.cpp",
+  "(its key lives in the [harness] section, not this one) and its pinned body calls",
+  "mh::effects::enter_deferred() -- the owner honouring the disposition from the inside."
+ ],
+ "llm_gfx_apply_resolution_change": {
+  "class": "effectful",
+  "verified": true,
+  "why": "Own body directly (not through any gated target) calls llm_ui_info_media_draw_p2() at entry, which itself calls llm_ui_widget_list_draw() -- a real screen draw -- and later calls llm_gfx_apply_window_resolution(w,h), whose depth-2 closure is MoveWindow/SetCapture/llm_gfx_release_display_surfaces/llm_gfx_ddraw_set_display_mode/llm_gfx_present_flip/llm_input_dimouse_shutdown: an actual OS window resize + DirectDraw surface teardown-and-recreate + present/flip + input-device release. None of that is undoable by a state restore, and llm_ui_info_media_draw_p2 / llm_tact_ui_sel_panel_free_gfx are both ungated (only p1 and sel_panel_draw are in the 31). Double-firing on an armed shadow call would resize/reflip the real window and redraw the info panel twice while the state diff reads clean. The function also resets several globals (_G_LLM_GFX_VIEW_TILE_HEIGHT_PX, the whole _G_LLM_BANK_SPRITE_BASE table, glyph pointers) but per the doctrine those ride along inside the single recorded effectful call -- reserving effectful is correct here since the irreversible act is the function's own direct job, not something delegated through another of the 31.",
+  "evidence_addr": "0x004294b2"
+ },
+ "llm_gfx_load_all_sprite_banks": {
+  "class": "state",
+  "verified": true,
+  "why": "Own body (0x00465093, 41 bytes) is a bare 2-call sequencing wrapper: llm_gfx_load_sprite_bank_files() then llm_gfx_load_planet_extra_sprite_banks(). Read both callees' full bodies: each does GetResourseFilePtr (deterministic resource-file read) then a chain of REP MOVSD/MOVSB copies into global sprite-bank buffers (_G_LLM_GFX_BANK_PIXELS, _G_LLM_SPRITE_PIX_OFFSETS, _G_LLM_SPRITE_META, _G_LLM_GFX_BANK_PALETTES, _G_LLM_SPRITE_PAL_OFFSETS) plus utils_free and a call to llm_gfx_init_pixel_format (also read: pure loop recomputing palette words into _G_LLM_GFX_BANK_PALETTES_DARK plus a handful of scalar globals, zero calls). No blit, no DirectDraw, no sound anywhere in the closure -- this is a load-into-memory routine, restorable as a shadow region over the listed globals. The one UNGATED REACH hit (llm_gfx_load_sprite_bank_files, a wall not in this 31-name batch) is genuinely benign, not a sign the parent needs to be effectful.",
+  "evidence_addr": "0x004650ab",
+  "note": "llm_gfx_load_planet_extra_sprite_banks (the 2nd callee, not itself a wall so it never surfaced as an UNGATED REACH) has the identical shape -- also read in full via ReVa, same conclusion."
+ },
+ "llm_snd_stop_all_channels": {
+  "class": "effectful",
+  "verified": true,
+  "why": "Own body loops over every sound channel and calls llm_snd_release_channel_voice(i) directly (CALL at 0x0042ef50) -- that callee is NOT one of the 31 gate-list targets, and it issues real DirectSound vtable calls (Stop at vtable+0x24, conditionally +0x48, then Release at vtable+8, read at 0x004d2714-0x004d2756 in the callee) on the channel's live IDirectSoundBuffer. That is an irreversible COM/audio-device action a state restore cannot undo. The function also zeroes each channel's retrigger-time bookkeeping (state), but since the irreversible reach lands on an UNGATED function rather than another of the 31, the doctrine's state-not-effectful exception does not apply -- this is a target whose own body performs (via a direct, non-gated call) the irreversible act.",
+  "evidence_addr": "0x0042ef50",
+  "note": "llm_snd_release_channel_voice is a generic sound-engine internal shared by 7 callers across boot/menu/tactical (llm_game_boot_init, llm_ui_planet_select_screen_open, llm_ui_outcome_dlg_open, llm_game_return_to_main_menu_cb, etc.), not tactical-specific -- correctly outside the 31-name gate list rather than a gap in it."
+ },
+ "llm_tact_blink_overlay_clear": {
+  "class": "state",
+  "verified": true,
+  "why": "Leaf function (calls only utils_assert_stack_capacity, a debug-build stack check, not a real callee). The only write is `MOV byte ptr [EAX + 0x713920],0x1` at 0x0042eda3, filling a 20x20 (400-byte) region of _G_LLM_TILE_DRAWN_MAP (0x00713920, byte[300+] per docs/symbols.md). docs/gfx-sprites.md documents this array as 'internal render-pipeline bookkeeping' stamped by the blitters -- ordinary heap/data-segment memory, not a pixel surface or any hardware-facing target. Fully shadow-region declarable and rollback-safe: no external effect.",
+  "evidence_addr": "0x0042eda3"
+ },
+ "llm_tact_drag_box_clamp": {
+  "class": "effectful",
+  "verified": true,
+  "why": "EFFECTFUL, against the review, and the deciding instruction is one the review did not look for. Its own body only clamps four rect globals -- that much of the overturn is right -- but it calls llm_gfx_draw_dashed_rect_outline (0x0043aa88), whose pixel stores are constants (idempotent) while its DASH PHASE is not: `ROL byte ptr [0x0055992b],0x1` at 0x0043ab30, 0x0043ab61, 0x0043ab96 and again on the fourth edge, once per dash pixel, with the value persisted in a global and reloaded next frame (MOV AL,[0x0055992b] @0x0043aaab). Running the outline twice leaves the marching-ants pattern at a different phase, and nothing restores DAT_0055992b. The review's rule -- effectful only if it reaches present_flip or a device API -- misses every accumulator of this kind.",
+  "evidence_addr": "0x0043ab30",
+  "note": "Params x1,y1,x2,y2 are window/screen-space pixel coords (compared against G_WIN_W/WindowHeight, not tile grid) -- plain int is correct, do NOT retype as map_t_tile_coord/fine_coord."
+ },
+ "llm_tact_frame_cursor_and_reset": {
+  "class": "effectful",
+  "verified": true,
+  "why": "Own body performs two irreversible display acts directly, not through any gated target: CALL llm_gfx_draw_cursor_ingame at 0x0042964c (which conditionally blits the cursor sprite into the live framebuffer via llm_gfx_blit_sprite_rle), then unconditionally CALL llm_gfx_present_flip at 0x00429651 (the DirectDraw surface flip that actually pushes the framebuffer to the display -- the canonical 'un-drawable' act). Neither llm_gfx_draw_cursor_ingame nor llm_gfx_present_flip is in the 31-name gate list, so this reach is ungated and the parent itself must be effectful (doctrine case a). After the two calls the function also loops over _G_LLM_VIEW_TILES_W*_G_LLM_VIEW_TILES_H tiles clearing _G_LLM_TILE_VIS_MAP's low bit and zeroing _G_LLM_TILE_DRAWN_MAP -- pure state bookkeeping, but it cannot be split from the irreversible calls that precede it in the same straight-line body, so the whole target is suppressed as one unit and the oracle is knowingly blind to that state slice for this target.",
+  "evidence_addr": "0x00429651",
+  "note": "Params: none (void/void). No untyped struct pointers or enum opportunities in this body -- it's straight-line index math over already-named globals."
+ },
+ "llm_tact_fx_play_sound": {
+  "class": "effectful",
+  "verified": true,
+  "why": "Body selects one of four output channels (2,3,4,5) by a retrigger-cooldown comparison and calls llm_snd_play_matching_sample (CALL at 0x0042f113/0x0042f161/0x0042f1c3/0x0042f211) -- not a gate-list target -- which on a name match calls llm_snd_channel_configure_voice_and_play (also ungated), whose body (read: DirectSound CreateSoundBuffer at vtable+0xc @0x004d2981, SetFrequency/SetPan @0x004d29cd/0x004d29ed, then the Lock/fill(FUN_0066efc9 memcpy)/Unlock/Play sequence @0x004d2a3e-0x004d2a7e) actually starts audio playback -- irreversible. The function also FSTPs the current time into four per-fx last-triggered timestamps (state), but the irreversible reach is through ungated helpers, so the state exception does not apply.",
+  "evidence_addr": "0x0042f113",
+  "note": "time_GetCurrentTime (also reached) is a pure clock read, not itself part of the effect chain -- listed for completeness only. FUN_0066efc9 is a plain memcpy-style buffer fill inside the Lock/Unlock window, not an unnamed device call itself, but it executes downstream of the real device calls so the whole chain is irreversible regardless."
+ },
+ "llm_tact_gfx_load_banks_alt": {
+  "class": "state",
+  "verified": true,
+  "why": "Own body loads the alt sprite banks (100+, enemy-base interiors) the same way as llm_gfx_load_sprite_bank_files: GetResourseFilePtr + REP-MOVS copies into the shared global sprite-bank buffers, then conditionally calls gfx_TransformBankData on the just-copied pixel buffer and finishes with llm_gfx_init_pixel_format (already verified pure elsewhere in this family). Read gfx_TransformBankData's full body: it is a self-contained in-place RLE-aware byte-shuffle (5-5-5->5-6-5 recolor) of the same buffer, zero CALL instructions, no draw/sound/device access. No presentation or audio effect anywhere in the closure -- restorable as a shadow region over the sprite-bank globals.",
+  "evidence_addr": "0x00428ec7"
+ },
+ "llm_tact_gfx_view_tile_rows_init": {
+  "class": "state",
+  "verified": true,
+  "why": "Body (asm-confirmed, 4 CALLs total) does: CALL llm_gfx_view_metrics_init at 0x004294fb, own-body row-pointer-table writes (_G_LLM_TACT_VIEW_TILE_FB_ROW_PTRS store at 0x0042956b, _G_LLM_TILE_VIS_MAP store at 0x0042957d), CALL game_SetEvent at 0x00429620 with the constant argument EAX=0xa loaded at 0x0042961b (=HUD_REDRAW_ALL), and CALL llm_map_cam_mark_viewport_dirty at 0x00429625. Read all three non-gated callees directly: llm_gfx_view_metrics_init (0x0044e150) contains no CALLs at all besides utils_assert_stack_capacity, only viewport-derived global arithmetic writes; llm_map_cam_mark_viewport_dirty (0x004a5a6b) likewise contains no CALLs, only a dirty-flag store and a memset-style loop over _G_LLM_TILE_VIS_MAP; game_SetEvent's HUD_REDRAW_ALL case (decompile lines 106-109) is just `_G_LLM_STRAT_UI_PANEL_SWITCH_PENDING = 1; _G_LLM_STRAT_UI_VIEW_RESIZE_PENDING = 1;` with no calls -- the llm_snd_play/llm_ui_planet_select_screen_open calls the brief's depth-2/3 closure lists live in game_SetEvent's DIFFERENT ACTION_DENIED_FEEDBACK case (type=11), which this call site never reaches because it always passes the literal constant HUD_REDRAW_ALL (10). So every reachable path from this target is pure global-flag/pointer-table bookkeeping -- nothing irreversible ever fires, matching gen_migration.py reporting no ungated-irreversible finding.",
+  "evidence_addr": "0x0042957d",
+  "note": "llm_gfx_view_metrics_init and llm_tact_view_metrics_init are distinct sibling functions with near-identical names/roles (strategic-resize-triggered vs. tactical-mission-start pointer-table init) -- easy to conflate when skimming; worth double-checking any future doc cross-reference doesn't merge them."
+ },
+ "llm_tact_mark_view_tiles_dirty": {
+  "class": "state",
+  "verified": true,
+  "why": "Leaf function, calls nothing (confirmed in the .asm -- no CALL instruction anywhere in the 0x20-byte body). It only does a REP STOSB memset loop writing 0x01 into a 20-row x 15-col region starting at [_G_LLM_TILE_DRAWN_MAP_PTR] (row stride 0x14=20, 0xf=15 bytes written per row, pad 5). That is a plain dirty-flag array write with no external effect at all -- it is the mechanism that makes the render pass redraw those tiles later, not a render/sound act itself.",
+  "evidence_addr": "0x0043c319"
+ },
+ "llm_tact_render_view": {
+  "class": "effectful",
+  "verified": true,
+  "why": "Top-level per-frame scene renderer. Its OWN body directly calls irreversible draw primitives, not just via callees: CALL llm_gfx_draw_sprite_rle at 0x0042d504/0x0042d56d/0x0042d5d3/0x0042da7c/0x0042db1a/0x0042dd7f..0x0042ddcf (terrain tile overlay sprites, debug-stats sprite, mine-blast sprite, countdown-clock digit sprites), CALL llm_gfx_draw_sprite_v2 at 0x0042dc50 (fog-dimmed tile height sprites), CALL llm_gfx_sprite_clone_frame_pixels at 0x0042d824 and CALL llm_gfx_font_draw_glyph_solid at 0x0042d8cd/0x0042d92e/0x0042d99e/0x0042d9f0/0x0042da37 (debug overlay text). A second execution (armed original + our shadow both drawing) double-draws the frame -- state restore cannot undo a blit already written to the framebuffer/DirectDraw surface. Per doctrine this is the 'own body performs the irreversible act' case, so effectful is correct even though the function also does legitimate camera/vis-map state writes (_G_LLM_MAP_CAM_COL/ROW, _G_LLM_TILE_VIS_MAP, _G_LLM_TILE_DRAWN_MAP, _G_LLM_TACT_HOVERED_UNIT_ID) -- those are accepted collateral of suppressing a genuinely effectful top-level renderer, not a reason to reclassify.",
+  "evidence_addr": "0x0042d504",
+  "note": "Reads a union arm (unit.tact.layers) per the plate's own 2026-08-24 note -- already correctly typed/commented, no further action needed. Suppressing the whole body in the shadow arm means these listed non-gated draw/entity leaves never fire in ours either, which is the intended effect since the parent itself is the effectful target."
+ },
+ "llm_tact_save_screenshot": {
+  "class": "effectful",
+  "verified": true,
+  "why": "Body increments _G_LLM_TACT_SCREENSHOT_COUNTER, sprintf's a 'shot%04d.pcx' filename into a stack buffer, then CALLs llm_gfx_save_screenshot_rle at 0x00499f3a passing the live framebuffer pointer, draw-surface pointer and the filename. Read that callee's body: it builds a PCX header via utils_fill_data and (per the brief's depth-2 closure) calls utils_open_file/utils_write_to_file/utils_close_file -- a genuine disk write. llm_gfx_save_screenshot_rle is not in the gate list, so the reach is ungated and the parent is effectful (doctrine case a) -- a file write is definitionally something a state-restore snapshot cannot undo.",
+  "evidence_addr": "0x00499f3a",
+  "note": "llm_gfx_save_screenshot_rle's second param is unused (undefined4 unused_param2) per its own prototype comment -- a pre-existing observation, not something to act on here."
+ },
+ "llm_tact_scroll_fade_step": {
+  "class": "effectful",
+  "verified": true,
+  "why": "EFFECTFUL, against the review, and this is the clearest case in the set. The function calls NOTHING -- it reaches no device API, no present, no COM, which is exactly why the review's rule cleared it. Its body is a READ-MODIFY-WRITE over every framebuffer pixel: load [EDI], mask each channel, `ADD EBX,0x2` @0x0043c342 / `ADD EBX,0x80` @0x0043c35c / `ADD EBX,0x1000` @0x0043c379 with saturation clamps, then `MOV word ptr [EDI],DX` @0x0043c38e. Running it twice brightens twice. The back-buffer is not a declared shadow region, so nothing restores it, and the frame is presented later regardless of who wrote it. A second execution is a visibly different frame.",
+  "evidence_addr": "0x0043c38e",
+  "note": "Decompile shows the __mh_watcall_ecx_ebx_volatile prototype with two unused undefined4 params passed straight through to an undefined8 return via CONCAT44 -- looks like leftover register content rather than real inputs/outputs (brief confirms the real signature is void(void), consistent with all 31 targets). Worth a todo:proto cleanup if this function is worked for real; not acted on here."
+ },
+ "llm_tact_tile_overlay_refresh": {
+  "class": "state",
+  "verified": true,
+  "why": "STATE -- the review is right and the first reading was not. Every write here is an UNCONDITIONAL STORE OF A CONSTANT computed from values it only reads: 0xc618 / 0xfbef / 0x7bff into _G_LLM_TACT_UI_MINIMAP_OVERLAY_PTR, and both callees are the same shape -- llm_tact_ui_minimap_draw_viewport_outline stores 0xffff/0xffffffff along four edges, llm_tact_tile_clear_margin_patch stores 0x1f1f1f1f and 0x2020202 over a six-row margin. No accumulator anywhere in the subtree, so it passes the twice-test: running it twice leaves the overlay byte-for-byte identical. Reclassified rather than defended, because the rule this file applies to drag_box_clamp and scroll_fade_step has to cut both ways.",
+  "evidence_addr": "0x0043c425",
+  "note": "The exported plate/decompile header still says 'return value passed to llm_tact_frame_cursor_and_reset' from an earlier partial read, but the function's real signature is void(void) (brief confirms all 31 targets are void) -- that plate line is stale and worth fixing when this function is next touched for real (not acted on here, read-only)."
+ },
+ "llm_tact_ui_char_panel_ammo_draw": {
+  "class": "state",
+  "verified": true,
+  "why": "STATE, and only because llm_ui_set_draw_surface is now a GATED TARGET (select.effect_names). The review was right that this body blits -- CALL llm_ui_set_draw_surface @0x00434212, which ends in llm_gfx_blit_rect_rows and memcpys rows into _G_LLM_GFX_DRAW_SURFACE -- and while that callee was ungated, `state` here would have double-blitted the ammo panel on every armed call. The fix is the one the gate design already implies: gate the shared convergence point once, not each of its nine tactical ancestors. With the gate there, this body's own writes are the tile-dirty flags (MOV byte ptr [DAT_00713d1e],0x2 @0x004342fc and @0x00434312) and its whole irreversible reach terminates at gates -- llm_ui_set_draw_surface and llm_ui_text_draw_rgb16 (@0x004342b4/@0x004342e8). Suppressing it instead would blind the oracle to the dirty flags for nothing.",
+  "evidence_addr": "0x004342fc",
+  "note": "Also calls llm_gfx_pack_rgb16 (pure -- reads only G_COLOR_FORMAT per state_matrix.json, no writes), llm_str_ansi_to_wide_scratch (private scratch-buffer string conversion, no externally visible effect), and llm_ui_set_draw_surface (state_matrix.json shows it only writes clip/pointer/pitch config globals like _G_LLM_UI_SURFACE_PTR/_PITCH -- it configures the surface, it does not itself write pixels). None of these three are in the 31 but none perform an irreversible act either, so they are benign and don't constitute an ungated reach."
+ },
+ "llm_tact_ui_char_panel_row_refresh": {
+  "class": "pure",
+  "verified": true,
+  "why": "PURE, for the same reason ammo_draw is now state: the review's overturn to `effectful` was correct against the gate list AS IT STOOD, since llm_tact_ui_char_panel_row_draw calls llm_ui_set_draw_surface directly at 0x00434384 and that was ungated. It is gated now. This body itself writes NOTHING -- it reads _G_LLM_TACT_UI_SEL_PANEL_MULTI_MODE, DAT_00559098, _G_LLM_TACT_SIDEBAR_SLOT_SCROLL and the slot-id array into stack locals to find a row, then makes one conditional CALL at 0x00434f85. Zero stores, so neither `state` nor `effectful` describes it, and it is one of the three targets that give the seam a real negative arm.",
+  "evidence_addr": "0x00434f85",
+  "note": "llm_tact_ui_char_panel_row_draw (0x00434322, not in the 31) is the intermediate hop -- verified by reading its .c: it writes _G_LLM_TILE_VIS_MAP_M6 state itself and calls llm_ui_set_draw_surface (benign config, see sibling row) but every draw call it makes lands on a gate-list target, so it introduces no ungated reach for this target."
+ },
+ "llm_tact_ui_draw_player_row_list": {
+  "class": "effectful",
+  "verified": true,
+  "why": "Body calls llm_ui_set_draw_surface directly (CALL 0x004a8b73 at 0x00435545 and 0x0043560e, once per branch of the per-row highlight/no-highlight split) for the row-highlight icon blit, in addition to calling the gated llm_ui_text_draw_rgb16 (CALL 0x0041be9d at 0x0043559f/0x004355d3) for the row label text. The text-draw reach is fine (stops at a gated target), but the icon-blit reach via llm_ui_set_draw_surface -> llm_gfx_blit_rect_rows is NOT gated, so the function's own body still performs an irreversible framebuffer write outside any gate. Per doctrine this makes the whole target effectful even though it also writes the tile-dirty state at the tail.",
+  "evidence_addr": "0x00435545",
+  "note": "Mixed reach: one call path (llm_ui_text_draw_rgb16) correctly stops at a gated sibling; the other (llm_ui_set_draw_surface, ungated) does not -- the ungated path is what actually decides the class here, matching the doctrine's warning that a target can have both kinds of reach at once."
+ },
+ "llm_tact_ui_sel_panel_draw": {
+  "class": "effectful",
+  "verified": true,
+  "why": "Body directly calls llm_ui_set_draw_surface (e.g. CALL 0x004a8b73 at 0x00435117, repeated ~12x for the icon-slot blits across both single- and multi-mode branches). llm_ui_set_draw_surface is NOT one of the 31 gated targets: it stores the blit params into globals and immediately calls llm_gfx_blit_rect_rows() (verified by reading llm_ui_set_draw_surface's body at 0x004a8b73 -- CALL 0x004a66cc then CALL to blit), which performs the actual framebuffer write -- an irreversible screen effect. Since this irreversible act is reached via a function OUTSIDE the gate list, the doctrine's 'own body reaches it through an ungated function' clause applies, not the state-preserving parent clause. The five DAT_00713d1x/_G_LLM_TACT_TILE_DIRTY_FLAG_B writes at the tail are real state but are dominated by the ungated draw reach -- classifying this state would blind the oracle to nothing (the draws are the whole point) while under-suppressing a real double-render.",
+  "evidence_addr": "0x00435117",
+  "note": "llm_ui_set_draw_surface (0x004a8b73, 42 xrefs across the whole panel-draw family) is the shared blit-surface-bind+dispatch helper for this entire sibling group (sel_panel_draw, draw_player_row_list, char_panel rows, sidebar rows) -- it is itself not in the 31-name gate list even though its callees perform the irreversible act. Every sibling that calls it directly is effectful by the same reasoning; worth flagging to whoever owns the gate-list definition in case llm_ui_set_draw_surface itself should be considered as an alternate suppression point instead of duplicating the finding across every caller."
+ },
+ "llm_tact_ui_sidebar_draw_rows": {
+  "class": "effectful",
+  "verified": true,
+  "why": "Own body (0x00434ceb) is pure loop/dispatch (stack-only counters, reads DAT_005590c4/DAT_005590bc/DAT_005590c0/DAT_005590e8 as bounds, no global writes). It calls llm_tact_ui_sidebar_row_draw_left (0x0043468d, CALL @0x00434d4b) which IS in the 31-name gate list -- fine, gated reach. But it ALSO calls llm_tact_ui_sidebar_row_draw_right (0x004348bf, CALL @0x00434db1) which is NOT in the gate list. row_draw_right's own body unconditionally calls llm_ui_set_draw_surface (@0x0043491f / @0x00434a04), which itself unconditionally calls llm_gfx_blit_rect_rows -- a raw memcpy into the live UI draw surface (confirmed by reading llm_gfx_blit_rect_rows's body). That is an irreversible screen write reached through a function that is not itself gated, so per doctrine this target must be effectful (arm original once, suppress ours) rather than state, or the same blit fires twice.",
+  "evidence_addr": "0x00434db1",
+  "note": "llm_tact_ui_sidebar_row_draw_right (0x004348bf) is structurally the mirror of the gated llm_tact_ui_sidebar_row_draw_left but is absent from the 31-name gate list. It has a single caller (this function), so classifying draw_rows effectful correctly suppresses it wholesale with no separate arm needed -- but if row_draw_right ever gets a second, independent call site outside this batch, it will need its own gate the same way row_draw_left did (row_draw_left has an independent caller, llm_tact_ui_sel_panel_single_mode_tick, which is exactly why it needed its own entry in the list)."
+ },
+ "llm_tact_ui_sidebar_redraw_unit_slot": {
+  "class": "pure",
+  "verified": true,
+  "why": "PURE -- the review caught a straight self-contradiction: the row was submitted as `state` with its own writes_state field reading 'none'. The body is the same slot-scan shape as llm_tact_ui_char_panel_row_refresh and llm_tact_unit_refresh_ui_slot, three functions identical in structure that the fan-out gave three different classes. It writes nothing, and its single CALL (@0x00435065, to llm_tact_ui_char_panel_ammo_draw) lands on a gated target.",
+  "evidence_addr": "0x00435065",
+  "note": "Clean single-call dispatcher, one call site (llm_tact_unit_fire_weapon). No untyped-struct or enum leads beyond what's already flagged for llm_tact_ui_char_panel_ammo_draw's own brief."
+ },
+ "llm_tact_ui_sidebar_roster_refresh": {
+  "class": "effectful",
+  "verified": true,
+  "why": "Body (0x00434b68) does substantial own-body state mutation: rebuilds _G_LLM_TACT_SIDEBAR_SLOT_UNIT_IDS[] (fill loop @0x00434bcf, clear loop @0x00434bf9), clamps _G_LLM_TACT_SIDEBAR_SLOT_SCROLL (@0x00434c1f/2e), and OR/AND-updates the four _G_LLM_TACT_SEL_PANEL_ICON_SLOT_STATE bytes (@0x00434c41-c8d) -- all textbook 'state' material. But at the end it calls llm_tact_ui_char_panel_row_draw directly (CALL @0x00434cda, target 0x00434322), which is NOT one of the 31 gate-list names (its sibling llm_tact_ui_char_panel_row_refresh, a DIFFERENT function at 0x00434f28 that itself wraps row_draw, is the one on the list). I read row_draw's own body via ReVa: it unconditionally calls llm_ui_set_draw_surface (which unconditionally memcpy-blits into the live UI surface via llm_gfx_blit_rect_rows) whenever the char-panel gfx slot is non-null. Because roster_refresh calls row_draw DIRECTLY, it bypasses row_refresh's gate entirely -- an ungated reach to a genuine irreversible act. Per doctrine the 'state, not effectful' exception only holds when the irreversible thing is reached through ANOTHER GATED target; here it is not, so this must be effectful.",
+  "evidence_addr": "0x00434cda",
+  "note": "Likely gate-list gap (finding c): llm_tact_ui_char_panel_row_draw (0x00434322) performs its own irreversible blits but is absent from the 31 while its thin wrapper llm_tact_ui_char_panel_row_refresh (0x00434f28) is present. roster_refresh calls row_draw directly, so row_refresh's gate never covers this path. If row_draw were added to the gate list, roster_refresh's own significant state writes (roster ids/scroll/icon-slot flags) could be reclassified state instead of being blinded -- worth relaying to the conductor/verify phase as a real gate-list-short finding, not just an evidence note."
+ },
+ "llm_tact_ui_sidebar_row_draw_left": {
+  "class": "effectful",
+  "verified": true,
+  "why": "Own body (0x0043468d) directly and unconditionally calls llm_ui_set_draw_surface in both branches of the highlight_flag test (CALL @0x004346ea and CALL @0x004347cc). llm_ui_set_draw_surface is not in the 31-name gate list and its own body unconditionally calls llm_gfx_blit_rect_rows, which memcpy's pixel rows straight into the live UI draw surface -- a genuine irreversible screen write performed directly from this target's own body (not merely reached through a sibling gated target). It also calls the gated llm_ui_text_draw_rgb16 (@0x0043472b/0x00434876), which is fine since that has its own gate. Per doctrine this is squarely 'own body performs the irreversible act' -> effectful, regardless of the state it also writes.",
+  "evidence_addr": "0x004346ea",
+  "note": "The three tile-dirty byte writes here mirror the three _G_LLM_TILE_VIS_MAP_M3/M2/M1 byte writes at the end of the sibling row_draw_right -- looks like two different 3-byte-per-tile row markers (dirty-flag vs. visibility) that share the same row_index*W+11 addressing pattern; worth a struct/enum lead for a later naming pass, not acted on here."
+ },
+ "llm_tact_unit_draw_hp_bar_slot": {
+  "class": "effectful",
+  "verified": true,
+  "why": "Leaf function -- calls nothing (utils_assert_stack_capacity aside). Its own body writes 4-byte pixel-fill dwords directly into the fixed screen draw surface _G_LLM_GFX_DRAW_SURFACE: first store at 0x0043413c (MOV dword ptr [EAX],0x72fd72fd, EAX = draw-surface base + row offset), repeated through the health-fill loop (0x0043413c/0x0043414a) and the background-fill loop (0x00434179/0x00434187). This is the irreversible act itself -- a direct framebuffer/HP-bar pixel write -- performed in this target's own body, not reached through any other gated target, so the state-downgrade rule does not apply. It also marks two tile-dirty flags afterward (stores at 0x004341a7 and 0x004341bd) but that secondary bookkeeping write doesn't change the verdict.",
+  "evidence_addr": "0x0043413c",
+  "note": "Params unit_idx/ui_slot_row are plain int, already sensibly named; no untyped struct pointers in this body. _G_LLM_TACT_UNITS[idx].hp is ushort-scaled against _G_LLM_TACT_CHARACTER_TYPES[type].energy (the HP-like stat, not the power resource) -- consistent with the project's ENERGY-vs-POWER distinction."
+ },
+ "llm_tact_unit_refresh_ui_slot": {
+  "class": "pure",
+  "verified": true,
+  "why": "Own body (0x00434f98-0x00435007) is structurally identical to llm_tact_ui_char_panel_row_refresh: it writes no global state, only reads _G_LLM_TACT_UI_SEL_PANEL_MULTI_MODE / DAT_00559098 / _G_LLM_TACT_SIDEBAR_SLOT_SCROLL / _G_LLM_TACT_SIDEBAR_SLOT_UNIT_IDS to find the matching visible slot, then CALLs the already-gated llm_tact_unit_draw_hp_bar_slot directly at 0x00434ff5 -- no intermediate hop this time. Since draw_hp_bar_slot is itself one of the 31 gate targets (classified effectful above, its own body does the pixel write), the reach stops there and this dispatcher performs no irreversible act and mutates no state of its own -- safe to run unsuppressed in both arms.",
+  "evidence_addr": "0x00434ff5",
+  "note": "Param is named building_id in the existing plate comment but is actually used as a unit id (indexed against _G_LLM_TACT_SIDEBAR_SLOT_UNIT_IDS / passed straight through to llm_tact_unit_draw_hp_bar_slot's unit_idx) -- worth a naming pass, not acted on here since this is read-only."
+ },
+ "llm_tact_view_metrics_init": {
+  "class": "state",
+  "verified": true,
+  "why": "One-time setup called once from llm_tact_mission_start. Body (asm-confirmed) builds two per-tile row-pointer tables via arithmetic writes (_G_LLM_TACT_VIEW_TILE_FB_ROW_PTRS store at 0x00429901-area, verified in .c and matching store pattern; full store confirmed at the MOV writing _G_LLM_TILE_VIS_MAP_PTR/_G_LLM_TILE_VIS_MAP at 0x00429901), then resolves 5 resource-file pointers via CALL GetResourseFilePtr at 0x0042992e/0x0042993d/0x0042994c/0x0042995b/0x0042996a/0x0042999c and frees two scratch buffers via CALL utils_free at 0x00429992/0x004299c4. All of this is idempotent state (pointer-table construction + resource-cache READS, not writes/draws/sounds) -- re-running it just recomputes the same tables and reloads/re-decompresses the same resource bytes into fresh buffers. gen_migration.py's own effects walk reported no ungated-irreversible finding for this target, consistent with treating file reads as non-irreversible.",
+  "evidence_addr": "0x00429901",
+  "note": "Plate already flags the polalfa/tabprze resource names as shared with the boot-stage Polish-alphabet loader and explicitly not re-verified as font data in this context -- worth resolving with a resource-content dump if this function is ever revisited, but out of scope for a read-only classification pass."
+ },
+ "llm_tact_vis_map_clear_right_margin": {
+  "class": "state",
+  "verified": true,
+  "why": "Leaf function (calls nothing). The only write is `MOV byte ptr [EDI],AL` at 0x0043ac52 (AL=2), through EDI derived from _G_LLM_TILE_VIS_MAP_PTR (0x00824ff4) loaded at 0x0043ac29. docs/gfx-sprites.md documents this as the per-tile visibility/fog bookkeeping array the blitters read to decide skip/dim/stencil -- a plain heap buffer allocated once by llm_tact_view_metrics_init, not itself a pixel surface. Same shape as llm_tact_blink_overlay_clear: sentinel-fills bookkeeping memory that can be declared a shadow region and rolled back.",
+  "evidence_addr": "0x0043ac52"
+ },
+ "llm_tact_zone_sound_play": {
+  "class": "effectful",
+  "verified": true,
+  "why": "After the sound-enabled/volume gate, body computes a scaled volume locally (utils_math_trunc @0x0042f27e) and calls llm_snd_play_matching_sample on channel 5 (CALL at 0x0042f2a8) -- the same ungated chain as llm_tact_fx_play_sound (llm_snd_play_matching_sample -> llm_snd_channel_configure_voice_and_play -> DirectSound CreateSoundBuffer/Lock/fill/Unlock/Play). Own body has no persistent writes -- everything it stores is a local stack temp (EBP-0x18/-0x20) -- so this is a pure pass-through into an irreversible device action, i.e. effectful, not state.",
+  "evidence_addr": "0x0042f2a8",
+  "note": "Same shared, cross-domain sound-engine helper chain as llm_tact_fx_play_sound and llm_snd_stop_all_channels -- confirms the family is consistently effectful, not a per-function judgment call. Param 'sound_id' (EAX, indexes _G_LLM_SND_CFG_TABLE) could be typed as an index/enum into that table per re-checklist enum guidance -- surfaced only, not acted on (read-only)."
+ },
+ "llm_tlo_shade_table_build_tact": {
+  "class": "state",
+  "verified": true,
+  "why": "Leaf function: the only CALLs in the whole 697-byte body are utils_assert_stack_capacity and six calls to utils_math_trunc (a pure math helper). The body computes the tactical shade lookup table (_G_LLM_TLO_SHADE_TABLE, 32 darkness levels x 256 palette colors, branching on G_COLOR_FORMAT for RGB565 vs 5/5/5) and the fog-glyph blend table (_G_LLM_TACT_FOG_GLYPH_BLEND_TABLE) purely from a palette buffer (file_ptr) and scalar globals via arithmetic -- no draw, no blit, no sound, no file/device I/O of its own. Textbook state.",
+  "evidence_addr": "0x0043a8eb",
+  "note": "Uses a global `file_ptr` with no parameter list (void-arg function) -- worth a todo:struct/param-typing look per the re-checklist, but out of scope for this read-only classification pass."
+ },
+ "llm_ui_info_media_draw_p1": {
+  "class": "effectful",
+  "verified": true,
+  "why": "Body writes one context field (_G_LLM_UI_INFO_MEDIA_CTX._pad4[56] = G_TEXT_PTRS[0x307], MOV [0x0065fa8b],EAX at 0x004caca2) then calls llm_ui_widget_list_center (layout, CALL 0x004b6fb4 at 0x004cacac) and llm_ui_widget_list_draw (CALL 0x004b7384 at 0x004cacb6). Read llm_ui_widget_list_draw's body directly: it calls llm_ui_widget_list_draw_frame_layer(list) and then, for each visible child widget, invokes the widget's own draw callback via an indirect call ((*(code*)(*local_20)->draw_cb)(*local_20)) -- a real framebuffer draw dispatch. Neither llm_ui_widget_list_center nor llm_ui_widget_list_draw is in the gate list, so the irreversible draw is reached directly from this target's own body.",
+  "evidence_addr": "0x004cacb6",
+  "note": "llm_ui_widget_list_draw's per-widget draw_cb is an indirect call (function pointer) -- its concrete target(s) were not resolved in this pass; if the seam needs the FULL forward closure enumerated for the effects checker, that indirection is worth a follow-up dig, though it does not change this target's own classification since the direct draw dispatch is already decisive."
+ },
+ "llm_ui_text_draw_rgb16": {
+  "class": "effectful",
+  "verified": true,
+  "why": "Body writes _G_LLM_UI_SURFACE_PTR/_G_LLM_UI_SURFACE_PITCH from the current gfx draw surface (MOV [0x005d7190],EAX at 0x0041bec3 and MOV [0x005d7194],EAX at 0x0041becd) then calls llm_gfx_draw_text_blend_clipped (CALL 0x004a2c4c at 0x0041bedf), which is not in the gate list and performs the actual glyph blit to the framebuffer (its own callees are llm_gfx_font_draw_glyph_blend_clipped / llm_gfx_font_layout_text, both pixel-level draw routines). The irreversible act is reached directly, not through any gated target, so this is effectful, not state, despite the two surface-pointer global writes.",
+  "evidence_addr": "0x0041bedf",
+  "note": "This function is itself a caller of llm_ui_set_draw_surface's sibling role for the sel-panel family -- three of the four callers in the brief (llm_tact_active_unit_count_hud_draw, llm_tact_ui_char_panel_row_draw, llm_tact_ui_sidebar_row_draw_right) are outside this batch's gate list, meaning their own reach through this target correctly stops here since llm_ui_text_draw_rgb16 IS gated -- consistent with llm_tact_ui_draw_player_row_list's reach above."
+ },
+ "GetResourseFilePtr": {
+  "class": "effectful",
+  "verified": true,
+  "why": "The resource-load entry point: rsr_GetFileEntry(fileName) locates the pack entry, then the body does CALL file_seek (0x004cf0a9, repositions the pack's shared file handle), CALL utils_malloc (0x004cf0b4, fresh heap allocation), CALL utils_read_from_file (0x004cf0e1, real disk I/O into that buffer), and on an 'LZW' magic match a second CALL utils_malloc (0x004cf110) + CALL LZW_Decompress (0x004cf12a) + CALL utils_free (0x004cf135) of the first buffer.",
+  "evidence_addr": "0x004cf0a9 (CALL file_seek -- first irreversible action) and 0x004cf0e1 (CALL utils_read_from_file -- the actual disk read)",
+  "twice_test": "YES, differs. Two back-to-back calls perform two file seeks + two disk reads and hand back two DISTINCT freshly-malloc'd buffers (plus, on the LZW path, a second decompress + a second free of a different allocation) -- exactly the doctrine's 'a file opened or written' / 'a handle allocated' / 'memory freed' trigger list, not a restorable pure computation.",
+  "shared_callee": true,
+  "gate": false,
+  "gate_why": "SUPPRESSION IS AN ACCESS VIOLATION HERE, not a wrong answer. It returns a freshly loaded resource buffer and ALL FOUR of its tactical call sites dereference the result with no NULL guard: llm_tact_ui_sel_panel_init stores it into _G_LLM_TACT_SEL_PANEL_ICON_GFX and reads the sprite header at 0x00433f24/0x00433f55/0x00433f89; llm_tact_mission_load parses the POZ text buffer byte-by-byte (0x00437454), memcpys the MAP buffer (0x004376fe) and hands the GROUND buffer to llm_tlo_palette_convert_565_to_555, which read-modify-writes it 255 times from 0x0043c7cc. `state`/`pure` are no better: its irreversible leaves are a seek on the shared pack handle (0x004cf0a9) and utils_malloc/utils_free churn (0x004cf0b4, 0x004cf110, 0x004cf135), and NO declared region covers either -- the region named `file_ptr` is a different global (0x00520469, the ground/TLO palette pointer), not the pack handle. Performing it in both arms leaks the GROUND buffer every window, since only one of the two pointers survives the restore and nothing frees the other. So its callers are structurally un-shadow-armable and are proven OFFLINE instead, which is already what llm_tact_mission_load's ledger row records.",
+  "call_sites_correction": "tact_shared_callees.json records call_sites: 2 (one per caller). The real count is 4 -- llm_tact_mission_load calls it three times (POZ text 0x00437454, MAP 0x004376fe, GROUND 0x004379e8). Recorded here rather than silently fixed upstream because a future reader computing the consequence of suppression from that field would miss two sites."
+ },
+ "gfx_LoadSprite": {
+  "class": "state",
+  "verified": true,
+  "why": "Body is four unconditional stores driven purely by the `id` parameter: sprite_data (0x0042655d, bank-pixels base + per-id offset), _G_LLM_CURSOR_PALETTE (0x00426577, bank-palettes base + per-id offset), _G_LLM_CURSOR_HOTSPOT_X (0x00426588, sprite-meta[id].origin_x), _G_LLM_CURSOR_HOTSPOT_Y (0x00426598, sprite-meta[id].origin_y). It calls nothing else (only utils_assert_stack_capacity) -- no draw, no blit, purely a cursor/sprite-pointer latch.",
+  "evidence_addr": "0x00426598 (final MOV [_G_LLM_CURSOR_HOTSPOT_Y],EAX); 0x004265a6 (RET) confirms the body ends there with no further effect",
+  "twice_test": "All four globals are computed strictly from `id` via table lookups (_G_LLM_SPRITE_PIX_OFFSETS/_PAL_OFFSETS/_META), never from their own prior contents. Same `id` twice writes the same four values both times -- passes the twice-test.",
+  "shared_callee": true
+ },
+ "llm_fatal_cleanup": {
+  "class": "effectful",
+  "verified": true,
+  "why": "Sets _G_LLM_GAME_MODE=0, then unconditionally calls a fixed sequence of teardown/shutdown functions: CoUninitialize (device/COM call at 0x0042615a), llm_gfx_free_draw_buffers, llm_gfx_planet_bank_free, FreeGlobalData, llm_strat_pathfinder_shutdown, llm_input_dimouse_shutdown, llm_input_di_keyboard_destroy, llm_gfx_font_unload/free_polalfa, llm_snd_shutdown, llm_gfx_release_display_surfaces, llm_net_shutdown_stub, and finally llm_game_clear_save_temp_files (deletes files) at 0x004261ac -- called immediately before utils::abort(0).",
+  "evidence_addr": "0x0042615a",
+  "twice_test": "YES, catastrophically. This is a one-shot process-fatal teardown: CoUninitialize a second time on an already-uninitialized COM apartment, freeing already-freed graphics/font/sound resources, releasing already-released DirectDraw surfaces, and re-deleting already-deleted save temp files are all real double-free/double-teardown hazards -- the doctrine's own framing ('un-play a sound... un-write a file') applies directly to llm_game_clear_save_temp_files and to the DirectSound/DirectDraw teardown calls.",
+  "shared_callee": true
+ },
+ "llm_gfx_apply_window_resolution": {
+  "class": "effectful",
+  "verified": true,
+  "why": "Full OS-visible video-mode teardown/recreate: CALL llm_input_dimouse_shutdown (0x00428a2c), CALL llm_gfx_release_display_surfaces (0x00428a31, drops DirectDraw surfaces), CALL llm_gfx_set_window_resolution (0x00428a3c), then a real Win32 CALL dword ptr CS:[MoveWindow] on the game's hWnd for one of three fixed resolution branches (0x00428a60 / 0x00428a88 / 0x00428ab0), CALL llm_gfx_display_init (0x00428ac2), CALL SetCapture (0x00428acd, re-grabs the physical mouse), and CALL llm_map_cam_mark_viewport_dirty (0x00428ad4).",
+  "evidence_addr": "0x00428a60 (CALL dword ptr CS:[MoveWindow] -- real Win32 window resize) with corroborating irreversible calls at 0x00428a2c (dimouse_shutdown) and 0x00428acd (SetCapture)",
+  "twice_test": "YES, differs. Calling this twice tears down and recreates the DirectDraw display surfaces and the OS window/mouse-capture state twice (a second MoveWindow + a second SetCapture + a second surface release/recreate cycle), which is player-visible (flicker, focus/capture churn) even when width/height are identical between the two calls -- exactly the doctrine's explicit 'a window resized' trigger, and this project's own D13 comment independently calls the whole release..recreate span 'unsafe to run a frame in'.",
+  "shared_callee": true,
+  "suppression_note": "SUPPRESSION STARVES THE CALLER PARTIALLY, and it stays effectful anyway. Its callee llm_gfx_set_window_resolution (CALL at 0x00428a3c) sets G_COLOR_FORMAT, which is the run/skip guard both 565->555 converters read -- so a suppressed call changes what they do. But the same body performs MoveWindow/SetCapture and a DirectDraw surface teardown-and-recreate, which no restore undoes, so `state` is not available: the honest position is that a caller of this function cannot be shadow-armed at all. (The width/height writes themselves are safe -- llm_tact_mission_start re-hardcodes both immediately after the call.)",
+  "note": "Entry conditionally owned by seams/video.cpp's D13 re-entrancy guard (install_reentrancy_guard, an install_trampoline detour), which is armed only by [video] width/height or [video] picker -- both default 0 and both unset in every rig path. effects_install.cpp defers the gate in exactly that configuration. The deferral is WEAKER than the promotion-shaped ones and deliberately says so: video's detour WRAPS the original rather than replacing it, so it performs the effect once per arm just as an ungated entry would. Operational rule: do not run a tactical shadow session over llm_tact_mission_start with those [video] keys set."
+ },
+ "llm_gfx_convert_pixels_565_to_555": {
+  "class": "effectful",
+  "verified": true,
+  "why": "In-place RGB565->RGB555 squeeze over the caller's sprite_blob pixel array: for every pixel it reads *local_24 (MOVSX at 0x0043c84e), computes ((v&0xffc0)>>1)+(v&0x1f), and writes the result back into the SAME slot (0x0043c873) before advancing the pointer. The write target is also the read source of the transform, so the transform is applied to its own prior output on a repeat call.",
+  "evidence_addr": "0x0043c873 (MOV word ptr [EDX],AX -- the accumulating store back into the pixel just read at 0x0043c84e)",
+  "twice_test": "YES, differs. First call converts real RGB565 data to RGB555 once. A back-to-back second call on the same buffer treats the already-squeezed RGB555 bits as if they were still RGB565 and reapplies the same shift/mask, producing garbage pixel values different from a single conversion -- structurally identical to the doctrine's brighten-RMW example, just for this format instead of the framebuffer.",
+  "shared_callee": true,
+  "suppression_note": "SUPPRESSION STARVES THE CALLER. The body is a pure in-place read-modify-write over the sprite blob passed in (MOV word ptr [EDX],AX at 0x0043c873), and both tactical callers store that same pointer into a persistent array (_G_LLM_TACT_SEL_PANEL_ICON_GFX, _G_LLM_TACT_CHAR_PANEL_GFX) that every later frame blits from. NOT convertible to `state`: the buffer is heap memory whose size comes from the blob's own header, and a shadow region is a fixed base+size -- there is nothing to declare. So it stays effectful and its callers are OFFLINE rows."
+ },
+ "llm_gfx_draw_text_rgb": {
+  "class": "effectful",
+  "verified": true,
+  "why": "Own body sets position/color globals then unconditionally calls llm_gfx_font_draw_glyph_blend_clipped (0x004a2d08 -> 0x004a2fdc), which I decompiled fully: for each covered glyph pixel it reads the CURRENT destination pixel byte (`(char)*psVar14` at 0x004a30ba, used as a LUT index alongside the source coverage/color) and writes the LUT-blended result back into that same destination pixel (0x004a30de). That is a genuine alpha-blend read-modify-write against the framebuffer, not a plain overwrite.",
+  "evidence_addr": "0x004a30b0/0x004a30ba (MOVZX reads of the existing dest pixel byte) and 0x004a30de (MOV word ptr [EDI],BX -- write of the blended value back into that same dest pixel), inside llm_gfx_font_draw_glyph_blend_clipped",
+  "twice_test": "The accumulator is the destination pixel itself: blend(dst) = LUT_A[f(dst_lo)] + LUT_B[f(dst_hi,color)], then dst := blend(dst). Running the glyph draw twice back-to-back re-reads the ALREADY-BLENDED pixel as the new 'dst' input on pass two, producing a different (typically further-blended/darker) color than a single pass -- observably different from running it once. Classic non-idempotent alpha-blend RMW, same shape as the doctrine's dashed-outline phase-rotate example.",
+  "shared_callee": true
+ },
+ "llm_gfx_font_select": {
+  "class": "state",
+  "verified": true,
+  "why": "Body is four unconditional stores driven purely by the font_slot parameter: _G_LLM_GFX_FONT_LINE_HEIGHT (0x004a2544, table lookup by slot), _G_LLM_GFX_CUR_FONT_GLYPH_PTR_TABLE (0x004a2555, table lookup by slot), and DAT_005d81f4 set to one of two fixed constant addresses depending on a slot<1 branch (0x004a2560 / 0x004a256c). No prior value of any of these globals is read before being overwritten.",
+  "evidence_addr": "0x004a2544 (MOV [_G_LLM_GFX_FONT_LINE_HEIGHT],EAX) representative of all four stores; 0x004a257f (RET) confirms no further side effects",
+  "twice_test": "Every store is `global = f(font_slot)` with no term depending on the global's own prior value -- calling with the same font_slot twice writes the same four values both times. Passes the twice-test; this is config-latching, not accumulation.",
+  "shared_callee": true
+ },
+ "llm_gfx_pack_rgb16": {
+  "class": "pure",
+  "verified": true,
+  "why": "Full body is register/stack-local arithmetic: reads global G_COLOR_FORMAT once (0x0043c58a CMP against RGB555) to pick a shift/mask formula over the three byte params, stores the packed value into a local (EBP-0x10), and returns it in EAX. No global or shared memory is ever written -- every MOV target in the disassembly (0x0043c581/84/87/bd/e9) is a stack slot ([EBP+...]), not a DAT_/G_ symbol.",
+  "evidence_addr": "0x0043c5f6 (RET) -- body between entry and RET contains zero writes to any address outside the local frame",
+  "twice_test": "No writes to shared state at all, so there is nothing for a second call to observe differently; a query in the strictest sense. Same inputs always produce the same return value with zero side effects.",
+  "shared_callee": true
+ },
+ "llm_gfx_sprite_pix_offsets_init": {
+  "class": "state",
+  "verified": true,
+  "why": "Computes a single base address puVar1 = _G_LLM_SPRITE_PIX_OFFSETS[0] + _G_LLM_GFX_BANK_PIXELS (both globals it only READS, at 0x0049aca5/0x0049acaa) and then unconditionally stores 8 hardcoded word constants (1,1,1,1,1,1,1,0xffff) into puVar1[0..7] (0x0049acb8..0x0049acf6). Nothing at the target slot is read first; every store is a literal constant, not a function of the slot's own prior contents.",
+  "evidence_addr": "0x0049acb8 (first constant store MOV word ptr [EAX],0x1) through 0x0049acf6 (last, MOV word ptr [EAX+0xe],0xffff)",
+  "twice_test": "NO difference. The base address is recomputed identically from the two input globals each call, and the same 8 literal constants are written to it; a second call overwrites the slot with byte-identical values.",
+  "shared_callee": true
+ },
+ "llm_gfx_view_metrics_init": {
+  "class": "state",
+  "verified": true,
+  "why": "Recomputes ~14 globals (G_WIN_W/H, _G_LLM_FB_PITCH, _G_LLM_VIEW_TILES_W/H, _G_LLM_VIEW_RADIUS_W/H, DAT_00825044/48/50, _G_LLM_GFX_PANEL_ROW_SKIP, _G_LLM_GFX_VIEWPORT_ROW_BYTES, and 5 fixed plane-pointer globals) purely as arithmetic over WindowWidth (0x005202c8) and WindowHeight (0x005202cc), which it only reads, plus one intra-function reuse of values it just computed in the same call (G_WIN_W read back at 0x0044e1a8/0x0044e1ad after being stored at 0x0044e172 -- consistent within one invocation, not an accumulator across invocations). Read the full asm: no field is ever read-modified against its own value from a PRIOR call.",
+  "evidence_addr": "0x0044e172 (MOV [G_WIN_W],EAX -- first of 14 unconditional stores, all likewise fed only by WindowWidth/WindowHeight); ret at 0x0044e289",
+  "twice_test": "NO difference. With the same WindowWidth/WindowHeight inputs, every one of the 14 destination globals gets the same byte-identical value on call 2 as on call 1 -- confirmed by walking the whole asm body, since every store traces back to WindowWidth/WindowHeight/_G_LLM_GFX_VIEW_TILE_HEIGHT_PX, never to the destination global's own prior contents.",
+  "shared_callee": true
+ },
+ "llm_input_key_dequeue": {
+  "class": "effectful",
+  "verified": true,
+  "why": "On queue non-empty, copies 14 bytes (MOVSD.REP, 0x004d1058) from the ring slot into the caller's buffer, then increments and wraps _G_LLM_INPUT_KEY_READ_IDX (INC/AND 0x7f, stored at 0x004d1063) -- a queue-advance, i.e. consumes one entry.",
+  "evidence_addr": "0x004d1063",
+  "twice_test": "YES -- consumes the queue's read index. Two back-to-back calls with the same starting state pop two DIFFERENT entries (or the second is a no-op if the queue only had one), versus one call popping one entry once -- observably different.",
+  "shared_callee": true,
+  "suppression_note": "SUPPRESSION STARVES THE CALLER, and this one is an OUT-PARAMETER: the body memcpys a 0x38-byte ring slot into param_1 (REP MOVSD at 0x004d1058) and advances _G_LLM_INPUT_KEY_READ_IDX, and llm_tact_frame reads the out-buffer on the very next line. This is the one that COULD become `state` -- the ring and the read index are both at fixed addresses -- but _G_LLM_INPUT_KEY_EVENTS (0xe68110, 7168 B) and _G_LLM_INPUT_KEY_READ_IDX (0xe69dac) carry the `view` manifest and NOT `shadow`, so nothing restores them between arms today. Adding `shadow` to both is the change that would make it `state`; until then the pop is a real queue consumption and effectful is the honest class. Moot for the tactical caller in any case: llm_tact_frame's entry is owned by the tactical cadence hook, so no shadow window ever opens over it."
+ },
+ "llm_input_key_queue_empty": {
+  "class": "pure",
+  "verified": true,
+  "why": "Reads _G_LLM_INPUT_KEY_WRITE_IDX (0x00e69db4) and _G_LLM_INPUT_KEY_READ_IDX (0x00e69dac), compares them, returns a bool via SETZ. No memory writes anywhere in the 0x18-byte body.",
+  "evidence_addr": "0x004d102f",
+  "twice_test": "NO -- pure comparison of two indices it does not modify; identical inputs (nothing else runs between the two calls) produce identical output both times.",
+  "shared_callee": true
+ },
+ "llm_input_mouse_buttons_get": {
+  "class": "pure",
+  "verified": true,
+  "why": "Body is just MOV EAX,[0x00824fbc] (a cached button-state mirror written by llm_input_mouse_delta_pump) followed by epilogue/RET. No writes anywhere.",
+  "evidence_addr": "0x0042673e",
+  "twice_test": "NO -- pure read of a global that nothing in this function's own body writes; repeated calls (with no intervening writer) return the same value.",
+  "shared_callee": true
+ },
+ "llm_input_mouse_delta_pump": {
+  "class": "effectful",
+  "verified": true,
+  "why": "Body accumulates into _G_LLM_INPUT_MOUSE_DELTA_X/Y (ADD dword ptr [0x005204d5]/[0x005204d9], 0x004266ce/0x004266d4/0x004266f2/0x004266f8) and drains the mouse event queue in a while(!empty) loop (CALL llm_input_mouse_queue_is_empty @0x00426699, CALL llm_input_mouse_pop_event @0x004266a5) -- a real queue consumer, not idempotent. Overwrites cursor globals _G_LLM_CURSOR_X/Y each iteration and per src/mh_dll/mh/seams/video.cpp:1173 also re-warps the OS cursor via SetCursorPos on frames the OS cursor is hidden.",
+  "evidence_addr": "0x004266a5",
+  "twice_test": "YES -- the mouse event queue is a real accumulator (llm_input_mouse_queue_is_empty/llm_input_mouse_pop_event). First call drains it to empty and produces nonzero deltas; an immediate second call finds the queue already empty and produces zero deltas -- observably different from running once.",
+  "shared_callee": true,
+  "suppression_note": "SUPPRESSION STARVES THE CALLER. It writes _G_LLM_INPUT_MOUSE_DELTA_X/Y and _G_LLM_CURSOR_X/Y, and llm_tact_frame computes the camera-scroll branch straight off _G_LLM_CURSOR_X immediately after the call at 0x0042a0c9. Stays effectful because the body also reaches a real SetCursorPos, which no restore undoes, and because all four globals are `view`-only -- not in the `shadow` manifest. Same mootness as above for the tactical caller: llm_tact_frame cannot be armed."
+ },
+ "llm_math_atan": {
+  "class": "pure",
+  "verified": true,
+  "why": "Entire body is FLD double ptr [ESP+4]; CALL IF@ATAN (the Watcom FPU/CRT atan helper); RET 0x8 -- a thin wrapper around a pure math library routine. No memory writes.",
+  "evidence_addr": "0x004daa5b",
+  "twice_test": "NO -- pure mathematical function of its float argument (atan); identical argument gives identical result every call, no state touched.",
+  "shared_callee": true,
+  "gate": false,
+  "gate_why": "ITS STOLEN BYTES CONTAIN A CALL rel32, SO A TRAMPOLINE OVER IT IS CORRUPT. llm_math_atan is 12 bytes at 0x004daa52 and its committed steal length is 9: `FLD qword ptr [ESP+4]` (4 bytes) followed by `CALL 0x004daa28` (5). mh::hook::install_trampoline copies the stolen bytes VERBATIM into a fresh allocation and relocates nothing, so the copied CALL branches by the original displacement from the new address -- somewhere arbitrary. MEASURED, not feared: gating it made llm_tact_calc_dir24's every atan leave the program, the tactical mission ended after frame 1, and `--tact-determinism` reported '0 frames' with NO crash dump -- a verdict that reads like a scenario problem and says nothing about a hook. Bisected to this one target on 2026-08-27. The class is `pure`, so nothing is lost: a gate would never have suppressed it, and its only contribution would have been INV-4 recording. tools/dump_steal_relbranch.py now measures this property for every proto in Ghidra and gen_dll_effects.py refuses to gate a flagged target (and refuses to run at all if one is missing from that file)."
+ },
+ "llm_rand": {
+  "class": "effectful",
+  "verified": true,
+  "why": "Classic Watcom CRT rand(): dereferences the seed pointer from FUN_004da981, computes seed*0x41c64e6d+0x3039 (IMUL/ADD at 0x00426995... i.e. 0x004da995/0x004da99b), stores the new seed back (0x004da9a1), and returns bits shifted/masked from it. An accumulating LCG state store.",
+  "evidence_addr": "0x004da9a1",
+  "twice_test": "YES -- textbook PRNG: the seed store at 0x004da9a1 makes the second call return a different value than the first (or than repeating the first return) since the internal state advanced.",
+  "shared_callee": true,
+  "fake_return": "0",
+  "note": "ENTRY OWNED BY THE HARNESS PIN, WHICH NOW ASKS THE SEAM ITSELF (TACT-CUT2). `pin_rand=1` is written into every tactical rig ini and MH_Harness_Init installs its LCG over llm_rand's entry before MH_Seam_Init reaches the gates, so an unconditional gate would fail its entry-byte guard and report PARTIALLY ARMED on every tactical run. harness.cpp therefore calls defer_entry() at its arm site AND pinned_rand_next() calls mh::effects::enter_deferred(), honouring the disposition from inside the owning mechanism -- because a bare deferral would only silence the report: the pin's LCG advances in BOTH arms, so the double draw the classification is about would still happen. fake_return 0 is inside rand()'s legal [0,0x7fff] and is deliberately neither the pinned seed (12345) nor the maximum, so it cannot be mistaken for a real draw. SUPPRESSION DOES NOT MAKE A RAND-DEPENDENT BODY ARMABLE -- the original arm draws a real value and ours gets 0, so the two diverge by construction; what it buys is that the game's PRNG advances ONCE per shadowed call instead of twice, which is what stopped a seam artefact from surfacing later as an unrelated sim divergence. Rows whose behaviour depends on a draw are OFFLINE rows.",
+  "gate": false,
+  "gate_why": "SAME TRAMPOLINE HAZARD AS llm_math_atan, and it was latent rather than observed. llm_rand's steal length is 6 and those bytes are `PUSH EDX` + `CALL 0x004da981` (the per-thread CRT data lookup) -- an unrelocatable rel32, so a gate here would have corrupted every draw the first time anyone ran with `pin_rand=0`. Under `pin_rand=1`, which tools/test_ui.py writes into EVERY tactical ini, no gate would have installed anyway: the harness LCG already owns this entry. BEING UNGATED DOES NOT MEAN UNMEDIATED HERE, and that is the point of the record this entry still gets: seams/harness.cpp's pinned_rand_next() calls mh::effects::enter_deferred() and honours the answer, so under the pin the draw happens in the ORIGINAL arm and is suppressed in ours -- proven on the rig by the TACTPROBE shared-effectful line (performed=1 suppressed=1), and mutation-checked both ways. THE RESIDUAL GAP, stated plainly: with `pin_rand=0` there is neither a gate nor a pin, so a shadow window over any of the six tactical callers would draw twice and shift the PRNG. No rig path sets it to 0; if one ever does, that run cannot be read as evidence about a rand-dependent body."
+ },
+ "llm_snd_ambient_reseed_planet_event_times": {
+  "class": "effectful",
+  "verified": true,
+  "why": "Loop of 20 iterations, each computing a delay via utils_math_trunc then CALL llm_rand_below_fx at 0x0045e2d7, storing the draw into events[i].next_time via FSTP at 0x0045e2f2 (next_time = rand_draw + current_time).",
+  "evidence_addr": "0x0045e2d7",
+  "twice_test": "YES, differently. llm_rand_below_fx draws from and ADVANCES the strategic PRNG (_G_LLM_STRAT_RNG_STATE slot 1 per src/mh_dll/mh_harness/harness.cpp's rng-slot table, and src/mh_dll/libmh/sim/sim_fx_debris_burst.h explicitly flags this as a 'SHADOW HAZARD: llm_rand_below_fx ADVANCES _G_LLM_STRAT_RNG_STATE INSIDE A CALLEE'). llm_rand_below_fx is a different function/address (0x00499f84) from the gate-listed llm_rand (0x004da98b), so its PRNG advance is NOT suppressed by any existing gate. A 2nd call draws 20 fresh (different) random numbers and overwrites next_time with different values, and leaves the PRNG state advanced by 20 more draws than a single run would.",
+  "shared_callee": true,
+  "suppression_note": "SUPPRESSION STARVES THE CALLER THROUGH THE RNG CHANNEL. The body burns twenty draws of llm_rand_below_fx (CALL at 0x0045e2d7) against _G_LLM_STRAT_RNG_STATE while filling _G_LLM_SND_AMBIENT_BY_PLANET[...].events[i].next_time, so a suppressed call leaves our arm twenty draws behind the original's -- a divergence that surfaces downstream rather than here. _G_LLM_STRAT_RNG_STATE IS a shadow region, but the ambient table is not, so `state` would fix half of it. Its only caller, llm_tact_mission_end_return_to_strategic, is already recorded un-armable and proven OFFLINE, so the conclusion does not change -- only the reason on record does."
+ },
+ "llm_snd_play_matching_sample": {
+  "class": "effectful",
+  "verified": true,
+  "why": "Scans a 0x2c-stride sound-slot table with strncmp (CALL 0x004e14c0 at 0x004d2b8e) and on a name match dispatches to CALL llm_snd_channel_configure_voice_and_play at 0x004d2ba8.",
+  "evidence_addr": "0x004d2ba8",
+  "twice_test": "YES, differently -- this is the exact case doctrine's own comment block calls out (src/mh_dll/mh/addr/mh_effects.gen.h, around the llm_tact_fx_play_sound / llm_tact_zone_sound_play entries): llm_snd_channel_configure_voice_and_play's body does a real DirectSound CreateSoundBuffer + Lock/fill/Unlock/Play sequence -- starting audio playback is irreversible and running it twice plays the sample twice (or restarts it). mh_effects.gen.h explicitly documents llm_snd_play_matching_sample as 'not a gate-list target' reaching this ungated DirectSound Play, confirming no existing suppression covers it.",
+  "shared_callee": true
+ },
+ "llm_str_ansi_to_wide_scratch": {
+  "class": "state",
+  "verified": true,
+  "why": "Null-check then unconditional CALL (0x004cf412) to llm_str_ansi_to_wide(dst=&DAT_00660d24, src), which I decompiled: it strlen's src, calls Win32 MultiByteToWideChar(src,len,dst,len) to write the converted wide string into dst, then NUL-terminates dst[len]. All writes into the shared scratch buffer DAT_00660d24 are a pure function of the src string's bytes -- no counter, no queue, nothing read from the buffer before being overwritten.",
+  "evidence_addr": "0x004cf412 (CALL llm_str_ansi_to_wide) in llm_str_ansi_to_wide_scratch; inside the callee, 0x004cf3ba (CALL MultiByteToWideChar, the write) and 0x004cf3c9 (MOV word ptr [dst+len],0 -- NUL terminator)",
+  "twice_test": "Given the same src pointer/content, the strlen, the MultiByteToWideChar conversion, and the NUL terminator all reproduce byte-identical output into DAT_00660d24 on a second call -- the scratch buffer's prior contents are never read, only overwritten. Passes the twice-test cleanly.",
+  "shared_callee": true
+ },
+ "llm_strat_time_resync_and_tick": {
+  "class": "state",
+  "verified": true,
+  "why": "Body: CALL llm_time_get_ticks_ms (return value discarded) at 0x00449e39; CALL time_GetCurrentTime at 0x00449e3e; FSTP double ptr [LAST_GAME_TIME] at 0x00449e43 (unconditional overwrite, not an accumulator); CALL llm_strat_time_tick at 0x00449e49.",
+  "evidence_addr": "0x00449e43",
+  "twice_test": "NO for this function's own writes -- LAST_GAME_TIME is unconditionally overwritten with the current wall-clock read each time (an overwrite, not +=). time_GetCurrentTime is already on the existing gate list, so its own effect is already suppressed exactly once wherever reached. llm_time_get_ticks_ms is documented in src/mh_dll/libmh/lockstep/resync.cpp as 'a GetTickCount wrapper ... safe to call in the shadow arm' (pure query). The remaining callee, llm_strat_time_tick, is itself a separately promoted/gated RI-LOCKSTEP target (libmh/lockstep/timekeeper.cpp, MH_EXPORT_REPLACE_llm_strat_time_tick, mh_patches.gen.h entry) -- per doctrine's exception, an irreversible/mixed effect reached through an already-gated target does not make the PARENT effectful.",
+  "shared_callee": true
+ },
+ "llm_strat_unit_remove_from_map": {
+  "class": "effectful",
+  "verified": true,
+  "why": "Body has unconditional accumulator stores on the non-crewed-unit branch: ADD dword ptr [EAX+0xc3a37c],EDX (_G_LLM_STRAT_POP_STATS[player].human += Unit[proto].human) at 0x00487390, immediately followed by SUB dword ptr [EAX+0xc3a378],EDX (human_in_field -= same) at 0x004873c3, then a CALL to llm_strat_population_remove at 0x004873f3. The crewed-unit branch also DECs a live soldier-list counter (DEC word ptr [EAX+0xe0e5a8] at 0x004872ec) once per linked soldier.",
+  "evidence_addr": "0x00487390",
+  "twice_test": "YES, differently. After call #1, units[player][idx].unit_id/.player are zeroed but unit_proto_id (the field the branch reads) is untouched, so a 2nd call re-enters the SAME non-crewed branch and re-applies human += / human_in_field -= and re-calls llm_strat_population_remove -- i.e. the population accumulator is double-counted. Also llm_strat_fow_remove_sight (0x00487265 call site 0x004874b7) is a real per-tile sight-count decrement callee, invoked unconditionally both times.",
+  "shared_callee": true,
+  "note": "Entry conditionally owned by the RI-SIM shadow site ([shadow] llm_strat_unit_remove_from_map, default 0); effects_install.cpp defers the gate on that key. Polarity is the opposite of the lockstep precedent -- the owner is OFF by default, so ordinarily the gate installs and the live tactical call from llm_tact_squad_assault_resolve is covered. The sim domain does not classify this target, so gen_dll_effects' cross-domain merge has nothing to disagree with."
+ },
+ "llm_strat_unit_teardown": {
+  "class": "effectful",
+  "verified": true,
+  "why": "Body has multiple unconditional accumulator decrements by unit category: DEC dword ptr [EAX+0xc38530] (used_vehicles -= 1) at 0x00487ce6, DEC dword ptr [EAX+0xc3853c] (used_planes -= 1) at 0x00487cf5, DEC dword ptr [EAX+0xc38538] (used_helis -= 1) at 0x00487d04, SUB dword ptr [EAX+0xc38534],EDX (used_soldiers -= soldier_count) at 0x00487d3c, plus a units_alive[planet] DEC at 0x00487f13 and a slot-[0].energy += HQ_ENERGY_CREDIT store.",
+  "evidence_addr": "0x00487ce6",
+  "twice_test": "YES, differently. Every housing counter (_G_LLM_STRAT_UNIT_HOUSING_STATS.used_*), units_alive[planet], and the HQ energy credit are decremented/incremented unconditionally on each call with no re-entrancy guard tied to whether the unit was already torn down -- a 2nd call double-decrements housing/units_alive and double-credits HQ energy, and (if units_alive hits 0 the first time) would call llm_strat_player_presence_lost again on the 2nd call too.",
+  "shared_callee": true,
+  "note": "Entry conditionally owned by the RI-SIM shadow site ([shadow] llm_strat_unit_teardown, default 0); same shape and same reasoning as llm_strat_unit_remove_from_map. EVIDENCE CORRECTION carried from the TACT-CUT2 verify stage: the HQ energy credit listed among its irreversible writes IS idempotent (guarded by unit.energy > 0 and zeroed in the same branch). The `effectful` verdict rests on the housing-counter decrements and units_alive alone."
+ },
+ "llm_tact_vis_map_fill_default": {
+  "class": "state",
+  "verified": true,
+  "why": "Nested loop that STOSBs the constant byte 2 across the entire _G_LLM_TILE_VIS_MAP_PTR grid (_G_LLM_VIEW_TILES_W x _G_LLM_VIEW_TILES_H): `STOSB ES:EDI` at 0x0043ac17, writing 2 unconditionally into every cell.",
+  "evidence_addr": "0x0043ac17",
+  "twice_test": "NO -- every write is the same constant (2) into the same fixed grid, computed from no input other than the fixed grid geometry; identical to doctrine's own worked example of llm_tact_tile_overlay_refresh (constant fill, no accumulator). Running it twice leaves the grid identical to running it once.",
+  "shared_callee": true
+ },
+ "llm_tlo_palette_convert_565_to_555": {
+  "class": "effectful",
+  "verified": true,
+  "why": "Same RGB565->RGB555 RMW squeeze as llm_gfx_convert_pixels_565_to_555, but over the global TLO palette buffer pointed to by `file_ptr` (0x00520469), entries 0..254: reads *local_1c (MOVSX at 0x0043c7cc), computes the shifted/masked value, and writes it back into the same slot at 0x0043c7f1 before incrementing.",
+  "evidence_addr": "0x0043c7f1 (MOV word ptr [EDX],AX -- accumulating store back into the palette entry just read at 0x0043c7cc)",
+  "twice_test": "YES, differs. Identical failure mode to the sprite-pixel sibling: a second back-to-back call reconverts already-555-squeezed palette entries as if they were still 565, mangling the palette. No per-entry \"already converted\" guard exists -- only the one-time G_COLOR_FORMAT check gates whether the function runs at all, not whether it has already run.",
+  "shared_callee": true,
+  "suppression_note": "SUPPRESSION STARVES THE CALLER, same shape as llm_gfx_convert_pixels_565_to_555 but through the global `file_ptr` rather than a parameter (write-back at 0x0043c7f1). llm_tact_mission_load calls it and then immediately calls llm_tlo_shade_table_build_tact, which reads the converted palette bytes to build the shade table. Not `state` for the same reason: the palette lives in a heap buffer GetResourseFilePtr allocated, not at a declarable address."
+ },
+ "llm_ui_set_draw_surface": {
+  "class": "state",
+  "verified": true,
+  "why": "Own body (0x004a8b73-0x004a8be7) is nine unconditional MOV stores of its own parameters into globals (DAT_005d8b38/3c/40/44/48/4c, DAT_00603af4, _G_LLM_UI_SURFACE_PTR, _G_LLM_UI_SURFACE_PITCH) -- no read-before-write on any of them. It then unconditionally CALLs llm_gfx_blit_rect_rows (0x004a8bdc -> 0x004a66cc), whose body I decompiled: a straight per-row `memcpy(dst,src,w*2)` loop over the just-set globals, with the row counter reset from DAT_005d8b4c each call -- no accumulator, no LUT-blend, no counter that survives across calls.",
+  "evidence_addr": "0x004a8bdc (CALL llm_gfx_blit_rect_rows) / 0x004a6725 (REP MOVSW memcpy body of the callee, no RMW)",
+  "twice_test": "No accumulator anywhere in the chain -- every global is a plain store of the parameter, and the blit is a byte-for-byte memcpy driven entirely by those just-stored globals. Calling it twice with identical args (surface,pitch,x,y,clip*,src_bitmap) writes byte-identical globals and copies byte-identical pixel rows into the destination surface both times -- same final state, so it passes the twice-test. This mirrors the doctrine's own llm_tact_tile_overlay_refresh example (writes pixels into a display surface with no accumulator = idempotent = state, 'whatever its name suggests'), not the dashed-outline/scroll-fade counter-examples.",
+  "shared_callee": true
+ },
+ "llm_view_set_size_mode": {
+  "class": "state",
+  "verified": true,
+  "why": "Body computes target w/h from size_mode, then at 0x0044e4e1 does CMP EAX,[EBP-0x24] against _G_LLM_VIEW_SIZE_MODE_CACHE; if equal it returns immediately (early-out, no further writes). Otherwise it calls llm_gfx_apply_window_resolution (0x0044e4f9, an already-gate-listed target), stores the applied mode into _G_LLM_VIEW_SIZE_MODE_CACHE (MOV [0x005d0c66],EAX at 0x0044e541), calls llm_map_set_zoom_scale(1.0,1.0) and game_SetEvent(HUD_REDRAW_ALL).",
+  "evidence_addr": "0x0044e4e1",
+  "twice_test": "NO -- the function has a built-in idempotency guard: mh_addrs.gen.h's own comment on _G_LLM_VIEW_SIZE_MODE_CACHE says 'it early-outs when this == the requested mode'. Call #1 (cache != size_mode) does the resize/cache-store/zoom-reset/event; call #2 with the SAME size_mode now hits cache==size_mode and returns immediately with NO further writes at all. Final state after 1 call == after 2 calls. The one non-idempotent-looking sub-call, llm_gfx_apply_window_resolution, is already on the existing gate list, so the exception rule applies regardless.",
+  "shared_callee": true,
+  "note": "Entry conditionally owned by seams/video.cpp's D13b size-mode picker ([video] picker, default 0); effects_install.cpp defers the gate when that key is set. Little is at stake either way: the target is `state`, so the gate never suppresses it, and the body early-outs on an unchanged mode against _G_LLM_VIEW_SIZE_MODE_CACHE (CMP at 0x0044e4e1), so the accumulation a gate would guard against cannot occur anyway."
+ },
+ "map_LoadPlanetFromDisk": {
+  "class": "state",
+  "verified": true,
+  "why": "Opens a fresh file handle (CALL utils_open_file @0x004481fb) and does ~35 sequential LZW_ReadCompressedFromFile calls (first at 0x00448222) that each UNCONDITIONALLY OVERWRITE a fixed-size shared buffer (units, buildings, tile_objects, _G_LLM_STRAT_ORDER_QUEUE, fog_of_war, passable, etc.) with bytes read from the file, then closes the file (0x004485e8) and calls a chain of deterministic setup functions (llm_map_setup_dimensions, llm_map_fog_of_war_recompute, llm_map_cam_set_col/row) that recompute state purely from what was just loaded. This IS the doctrine-noted 'tactical exit reloads all three shared planes wholesale' operation.",
+  "evidence_addr": "0x00448222",
+  "twice_test": "NO -- each buffer write is a full unconditional overwrite from file content, not an accumulator; the file itself is never written by this function (ReadBinary open, no writes), so re-running from the same disk file re-produces byte-identical buffer contents and byte-identical downstream deterministic setup calls. Final state after 2 calls == after 1 call.",
+  "shared_callee": true,
+  "note": "Entry owned by save/save_live.cpp's MH_EXPORT_REPLACE when the save closure is armed (mh::config::save_walkers_ours(), false in every configuration); effects_install.cpp defers the gate on the same key. This is the clean lockstep-shaped case -- a full REPLACE, so the promoted body is the load, and a promotion run opens no shadow window."
+ },
+ "rsr_GetFileRealSize": {
+  "class": "state",
+  "verified": true,
+  "why": "Body itself only calls rsr_GetFileEntry(file_name,&pack) and, if found, reads prVar1->decompressed (0x004cf190) and returns it -- no writes of its own. rsr_GetFileEntry's body (0x004cefb7, read via ReVA) calls ToLower(fileName) which mutates the caller's string buffer in place, then linearly scans read-only pack/entry tables via utils_str_cmp and writes only the *rsr_out pack pointer (a value computed purely from the scan, not from rsr_out's prior contents). ToLower itself (0x004decdf) only stores a byte when it is currently uppercase ((c+0xbf)<0x1a test at 0x004decf1's guard) -- it is a fixed-point transform.",
+  "evidence_addr": "0x004cf190 (MOV EAX,[EAX+0x3c] -- read of prVar1->decompressed, the value returned) / decisive callee write is ToLower's conditional store at 0x004decf1 (*str = cVar1 + ' ')",
+  "twice_test": "NO difference. ToLower converges after one pass (an already-lowercase byte fails the uppercase test on pass 2, so it is left untouched), so file_name is bit-identical after 1 or 2 calls; the subsequent table scan and the returned `decompressed` size are then pure functions of that stabilized name and the (unwritten) pack tables -- same size both times. Note this makes it a WRITER of memory outside its own stack frame (the fileName buffer), just an idempotent one, hence 'state' rather than 'pure'.",
+  "shared_callee": true
+ },
+ "time_GetCurrentTime": {
+  "class": "pure",
+  "verified": true,
+  "why": "Reads _G_LLM_GAME_CLOCK_RAW_TICKS (0x00e654e4, the deterministic SIM clock, not OS wall time despite the CRT-style name), FILDs it, FDIVs by a constant (DAT_0x00500204), FSTPs/FLDs the double result, and returns. No writes anywhere in the body.",
+  "evidence_addr": "0x00427657",
+  "twice_test": "NO -- pure read of the sim-clock global that this function's own body never advances; two back-to-back calls (with no intervening tick) return identical values. Independently confirmed by the project's own docs: src/mh_dll/mh/addr/mh_effects.gen.h:535 explicitly notes \"time_GetCurrentTime (also reached) is a pure clock read, not itself part of the effect chain\" for an unrelated gate target that reaches it, and src/mh_dll/libmh/lockstep/timekeeper.cpp:104 calls it as a plain `mh::call::time_GetCurrentTime` (an ordinary call-table entry, not a gate/replace).",
+  "shared_callee": true,
+  "gate": false,
+  "gate_why": "TWO INDEPENDENT REASONS, either sufficient. (1) C4: the harness pin_wallclock replaces this entry outright (install_jmp, harness.cpp ~4093) and MH_Harness_Init runs BEFORE MH_Seam_Init (mh.c), so the pin always wins the entry -- and tools/test_ui.py's tact_write_config writes `pin_wallclock=1` into EVERY tactical ini, so a gate here would report PARTIALLY ARMED on every single tactical rig run and invalidate the whole banner. A permanent false alarm is worse than no line. (2) It is `pure`, so a gate can never suppress it; its only contribution would be INV-4 effect-log recording -- and with 24 program-wide callers a single shadow window would blow the 64-event log, which DISABLES the INV-4 verdict for that window. Gating it would cost the check it was supposed to feed."
+ },
+ "utils_str_cmp": {
+  "class": "pure",
+  "verified": true,
+  "why": "Word-at-a-time string comparison using the classic 0xfefefeff/0x80808080 zero-byte-detection trick, reading through param_1 (EBX) and param_2 (EDX) only. Every instruction in both exit paths (LAB_004d1744: SUB EAX,EAX; LAB_004d176a: SBB EAX,EAX / OR AL,0x1) operates on registers only -- no memory store anywhere in the 0xa1-byte body.",
+  "evidence_addr": "0x004d1748",
+  "twice_test": "NO -- pure comparison of two byte strings in memory it never modifies; calling it twice on the same two pointers returns the same result both times.",
+  "shared_callee": true
+ },
+ "w_sprintf": {
+  "class": "state",
+  "verified": true,
+  "why": "Formats varargs through the shared formatter __uprtf (CALL 0x004e08d7 at 0x004d033b) into the caller-supplied `dst` buffer, then NUL-terminates it (MOV word ptr [EDX],0x0 at 0x004d0346). Every write lands in the caller's own output buffer, computed purely from the read-only format string + varargs -- e.g. the game's own text-scratch buffer (G_TEXT_TMP) per numerous src/mh_dll/libmh/sim/*.h comments describing it as writing 'only the non-hashed text-scratch buffer'.",
+  "evidence_addr": "0x004d0346",
+  "twice_test": "NO -- given the same dst/format/args, both the formatted characters and the NUL terminator are unconditional overwrites of the same buffer bytes; a 2nd call reproduces byte-identical buffer content. No global/persistent state beyond the passed-in destination buffer is touched.",
+  "shared_callee": true,
+  "gate": false,
+  "gate_why": "A GATE HERE WOULD CORRUPT 61 CALL SITES. w_sprintf is __cdecl and VARIADIC; its entry in dll_call_protos.json is a derived VARARGS SHAPE (`from_varargs_shape` id `vi`, one int32 vararg) recovered for ONE sim call site. A gate re-pushes exactly the parameters the shape names and calls the trampoline, so every caller passing a different number of varargs would have the rest read off the gate's own frame instead of its caller's. The shape is fit for CALLING the function from one known site; it is not a signature, and a hook over the entry needs a signature. Nothing is lost by leaving it ungated: it is `state` (it formats into a caller-supplied buffer), so a gate would never suppress it."
+ },
+ "_benign_passthrough": {
+  "_why_this_block_exists": [
+   "Functions inside an effect family whose BODY was read and found to pass the twice-test:",
+   "running them a second time leaves the same bytes. The gating-soundness walk may descend",
+   "through these instead of reporting them. Deliberately separate from the dispositions above:",
+   "a disposition says what the GATE does at a target, this says what the WALK may pass."
+  ],
+  "llm_gfx_load_sprite_bank_files": {
+   "why": "Idempotent by construction, and the one line that looks otherwise is not. Every destination is memcpy'd from the resource file at the top of its per-bank block (_G_LLM_GFX_BANK_PIXELS, _G_LLM_SPRITE_PIX_OFFSETS, _G_LLM_SPRITE_META, _G_LLM_GFX_BANK_PALETTES) BEFORE the running-base adjustment `_G_LLM_SPRITE_PIX_OFFSETS[base+i] += local_38` is applied -- so the `+=` accumulates onto FRESH file data on every execution, not onto its own previous result. A second run over the same 50 BANK_NN.BNK files therefore produces byte-identical banks. CORRECTION (TACT-CUT2, 2026-08-27): this entry used to end 'Nothing here opens, writes or closes a file: GetResourseFilePtr returns a pointer into the already-loaded resource pack.' That clause is WRONG and the idempotence argument never depended on it. GetResourseFilePtr seeks the pack handle (0x004cf0a9), mallocs (0x004cf0b4) and reads from disk (0x004cf0e1) on every call -- it hands back a fresh buffer, not a pointer into a loaded pack. The memcpy-then-adjust ordering above is what makes this function benign, and it holds either way.",
+   "evidence": "body read, tmp/decomp_tact/llm_gfx_load_sprite_bank_files_00465502.{c,asm} -- the memcpy-then-adjust ordering inside the `for (i = 0; i < 0x32; ++i)` loop"
+  },
+  "gfx_TransformBankData": {
+   "why": "In-place and NOT idempotent on its own -- it repacks each 16-bit pixel word `(w & 0x1f) + ((w & 0xffc0) >> 1)` back into the buffer, so applying it twice to one buffer would mangle the sprites. It is benign because of its CALLER: llm_tact_gfx_load_banks_alt memcpys the bank out of the resource file into _G_LLM_GFX_BANK_PIXELS immediately before each call, so the transform never sees its own output. This entry is therefore a statement about the pair, and it stops being true the moment something calls gfx_TransformBankData without re-copying first.",
+   "evidence": "both bodies read -- tmp/decomp_tact/llm_tact_gfx_load_banks_alt_00428d9e.c (memcpy into _G_LLM_GFX_BANK_PIXELS + local_38, then the guarded CALL) and the wall entry for gfx_TransformBankData in tools/data/tact_walls.json"
+  },
+  "llm_tact_tile_clear_margin_patch": {
+   "why": "Six iterations of four UNCONDITIONAL CONSTANT stores -- 0x1f1f1f1f and a trailing 0x1f into _G_LLM_TILE_DRAWN_MAP_PTR, 0x2020202 and a trailing 2 into _G_LLM_TILE_VIS_MAP_PTR -- at addresses derived only from values it reads (_G_LLM_VIEW_TILES_W, G_WIN_W). No read-modify-write, no counter, no pattern register. Running it twice leaves the margin byte-for-byte identical.",
+   "evidence": "body read, tmp/decomp_tact/llm_tact_tile_clear_margin_patch_0043c39c.{c,asm}"
+  },
+  "llm_tact_ui_minimap_draw_viewport_outline": {
+   "why": "Draws the viewport rectangle onto the minimap overlay with constant stores only (0xffff per edge pixel, 0xffffffff for the run of whole dwords along the top). The cursor walks by fixed strides computed from _G_LLM_VIEW_TILES_H / G_WIN_W / _G_LLM_GFX_PANEL_ROW_SKIP, all read-only. Contrast llm_gfx_draw_dashed_rect_outline, which looks like the same shape and is NOT benign: it ROLs a dash-phase global once per pixel. This one has no such register, which is why the two are classified differently.",
+   "evidence": "body read, tmp/decomp_tact/llm_tact_ui_minimap_draw_viewport_outline_0043c4f2.{c,asm}"
+  },
+  "w_sprintf": {
+   "why": "IDEMPOTENT BY CONSTRUCTION, and the walk reaches it only because TACT-CUT2 marked it `gate: false` (its varargs shape cannot take a hook -- see its disposition above). Formatting is a pure function of the format string and the arguments, written into a buffer the CALLER supplies: running it twice writes the same bytes over the same bytes. It opens nothing, allocates nothing and consumes nothing. The five targets that reach it -- llm_strat_time_resync_and_tick, llm_tact_gfx_view_tile_rows_init, llm_tact_ui_char_panel_row_refresh, llm_view_set_size_mode, map_LoadPlanetFromDisk -- each pass it a stack or scratch destination, so the destination itself is either restored state or dead after the call.",
+   "evidence": "body at 0x004d0320 (48 bytes; __cdecl, dst/format/varargs, no CALL to a file or device API); the varargs-shape derivation recorded in tools/data/dll_call_protos.json `from_varargs_shape` and repeated in this file's `gate_why` for w_sprintf"
+  },
+  "GetResourseFilePtr": {
+   "why": "NOT IDEMPOTENT -- this entry is an argument about its CALLERS, and it is written that way on purpose so it can be checked and can go stale. Its own body seeks the shared pack handle (0x004cf0a9), mallocs (0x004cf0b4) and reads from disk (0x004cf0e1) on every call, so a second execution allocates a SECOND buffer holding the same bytes. It cannot be gated (any fake_return is an unguarded dereference -- see its disposition above), so the walk reaches it through seven `state`/`pure` targets. Accepted because NO SHADOW WINDOW CAN OPEN AROUND ANY OF THEM: every one is reached only from llm_tact_mission_start, llm_tact_mission_end_return_to_strategic, llm_tact_mission_load or llm_tact_unit_fire_weapon, and all four are recorded in tools/data/tact_migration.json as verified via the OFFLINE oracle with `arm_ready: false` -- three of them for reasons that predate this item. What a doubled load would actually cost, if one ever were armed, is a LEAKED buffer (the restore puts the pre-arm pointer back, so nothing frees the original arm's allocation) plus a pointer-value difference in any compared region that stores it -- a visible divergence, not silent corruption. RE-CHECK THIS ENTRY whenever a mission-lifecycle row becomes arm_ready.",
+   "evidence": "body at 0x004cf069 read end to end (rsr_GetFileEntry -> file_seek 0x004cf0a9 -> utils_malloc 0x004cf0b4 -> utils_read_from_file 0x004cf0e1, plus the LZW arm at 0x004cf110/0x004cf12a/0x004cf135); the four callers' `state`/`arm_ready`/`notes` rows in tools/data/tact_migration.json; the reach list printed by `gen_migration.py --domain tact --effects` UNGATED REACH"
+  }
+ },
+ "_blinded_ack": {
+  "_why_this_block_exists": [
+   "An `effectful` target is SUPPRESSED in our arm. If it also writes a region the oracle",
+   "hashes or snapshots, the suppression removes a write the comparison expected and the armed",
+   "call diverges because of the seam rather than because of our code. `--effects` reports",
+   "every such target (BLINDED WRITES); an entry here says the consequence was read and",
+   "accepted, with the reason."
+  ],
+  "llm_tact_render_view": {
+   "why": "It writes _G_LLM_MAP_CAM_COL / _G_LLM_MAP_CAM_ROW (the camera clamp during its viewport tile scan), and both carry `hash`+`shadow`. Accepted for three independent reasons, any one of which would do. (1) render_view is a declared PRESENTATION WALL in tools/data/tact_walls.json -- the revised M6 exit keeps the renderer in the original binary, so no reimplementation of it will ever be the OURS arm of anything. (2) The two camera regions are in the STRATEGIC hash manifest, not in TACT_HASH_REGIONS (src/mh_dll/mh/addr/mh_regions.gen.h), so the tactical cadence's `T`/`TS` lines never read them -- a tactical shadow site cannot see this write in the first place. (3) Its only tactical caller is llm_tact_frame, whose entry the determinism harness owns, so the site that would open a window around it cannot be armed.",
+   "evidence": "tools/gen_migration.py --domain tact --effects BLINDED WRITES (the join of tmp/state_matrix.json against tools/data/state_regions.json manifests); wall membership in tools/data/tact_walls.json; TACT_HASH_REGIONS[] carries no camera entry"
+  },
+  "llm_gfx_apply_resolution_change": {
+   "why": "It writes _G_LLM_GFX_VIEW_TILE_HEIGHT_PX and the _G_LLM_BANK_SPRITE_BASE table while re-deriving the view metrics for the new resolution, and both regions carry `shadow`. Accepted because the write can never be compared: its ONLY caller anywhere in the program is llm_tact_mission_end_return_to_strategic, and that function is recorded in tools/data/tact_migration.json as structurally un-shadow-armable -- it was proven OFFLINE (tact_mission_end_return_to_strategic_selftest.cpp, 8 cases, 4 mutations) for an independent reason. Neither region is in TACT_HASH_REGIONS either, so the tactical cadence's T/TS lines do not read them. This appeared as a finding only after TACT-CUT closed, when the two regions gained their `shadow` manifest entries; the disposition itself did not change.",
+   "evidence": "tools/gen_migration.py --domain tact --effects BLINDED WRITES; the sole-caller edge in tools/data/call_graph_no_crt.json; the un-armable note on llm_tact_mission_end_return_to_strategic in tools/data/tact_migration.json; TACT_HASH_REGIONS[] in src/mh_dll/mh/addr/mh_regions.gen.h carries neither region"
+  },
+  "llm_fatal_cleanup": {
+   "why": "IT WRITES _G_LLM_GAME_MODE, AND THE COMPARISON THAT WOULD READ IT NEVER RUNS. This is the fatal-error teardown: all ten of its callers invoke utils_abort(0) -> _exit immediately after it returns. The original arm runs FIRST, so a shadow window that reaches llm_fatal_cleanup terminates the process during that arm -- there is no ours arm, no restore and no diff. The blinding is therefore unobservable in principle rather than merely unlikely. Suppressing it in an ours arm that could somehow be reached is also the correct behaviour on its own terms: it closes handles and deletes the save temp files (0x004261ac), which a state restore does not undo.",
+   "evidence": "body at 0x00426156 and the ten call sites listed by --effects, every one of which is followed by utils_abort(0); the real call at 0x004261ac (llm_game_clear_save_temp_files)"
+  },
+  "llm_strat_unit_remove_from_map": {
+   "why": "IT WRITES ROSTER REGIONS THE ORACLE COMPARES, and the ack rests on there being no armable caller -- not on the writes being harmless. Accepted because every tactical path to it runs through llm_tact_mission_end_return_to_strategic (directly, or via llm_tact_squad_assault_resolve, which has no other caller), and that function is recorded in tools/data/tact_migration.json as structurally un-shadow-armable and verified OFFLINE. No tactical shadow window can contain this call, so no comparison is blinded today. IF THAT EVER CHANGES, THE FIX IS THE CLASS, NOT A WIDER ACK: every region named in the BLINDED WRITES line is a DECLARED region, and 'its writes are declared as shadow regions and rolled back' is the definition of `state`. The reason it is not `state` today is that the body-level twice-test found real accumulators (the housing-counter decrements and units_alive) and no one has established that the declared set covers the body's WHOLE write closure -- which is the measurement to do before reclassifying, not an assumption to make from this line. The sim domain does not classify this target at all, so there is no cross-domain disagreement for gen_dll_effects' merge to refuse.",
+   "evidence": "tools/data/tact_shared_callees.json's body reading; the sole tactical call sites at src/mh_dll/libmh/tact/tact_squad_assault_resolve.cpp:84-85; the un-armable note on llm_tact_mission_end_return_to_strategic in tools/data/tact_migration.json; `grep llm_strat_unit_remove_from_map tools/data/sim_effect_classes.json` -> no hits"
+  },
+  "llm_strat_unit_teardown": {
+   "why": "IT WRITES ROSTER REGIONS THE ORACLE COMPARES, and the ack rests on there being no armable caller -- not on the writes being harmless. Accepted because every tactical path to it runs through llm_tact_mission_end_return_to_strategic (directly, or via llm_tact_squad_assault_resolve, which has no other caller), and that function is recorded in tools/data/tact_migration.json as structurally un-shadow-armable and verified OFFLINE. No tactical shadow window can contain this call, so no comparison is blinded today. IF THAT EVER CHANGES, THE FIX IS THE CLASS, NOT A WIDER ACK: every region named in the BLINDED WRITES line is a DECLARED region, and 'its writes are declared as shadow regions and rolled back' is the definition of `state`. The reason it is not `state` today is that the body-level twice-test found real accumulators (the housing-counter decrements and units_alive) and no one has established that the declared set covers the body's WHOLE write closure -- which is the measurement to do before reclassifying, not an assumption to make from this line. The sim domain does not classify this target at all, so there is no cross-domain disagreement for gen_dll_effects' merge to refuse. EVIDENCE CORRECTION carried from the TACT-CUT2 verify stage: the HQ energy credit listed among this function's irreversible writes IS idempotent (guarded by unit.energy > 0 and zeroed in the same branch), so the effectful verdict rests on the housing counters and units_alive alone.",
+   "evidence": "tools/data/tact_shared_callees.json's body reading; the sole tactical call site at src/mh_dll/libmh/tact/tact_squad_assault_resolve.cpp:85; the un-armable note on llm_tact_mission_end_return_to_strategic in tools/data/tact_migration.json; `grep llm_strat_unit_teardown tools/data/sim_effect_classes.json` -> no hits"
+  }
+ },
+ "_retired": {
+  "llm_gfx_hittest_check_blit": {
+   "class": "state",
+   "verified": true,
+   "why": "Leaf function, calls nothing (confirmed by both the brief's forward closure and the listing: 8 bytes of code, no CALL). It reads *_G_LLM_HITTEST_PIXEL_PTR (a pointer into the already-drawn framebuffer, set up earlier by llm_gfx_hittest_begin) and compares it against the saved pre-blit pixel value _G_LLM_HITTEST_SAVED_PIXEL, then writes the boolean result into _G_LLM_HITTEST_HIT (CMP at 0x0043bfba; stores at 0x0043bfbf on the no-change path and 0x0043bfc7 on the changed path). No device/file write, no sound, no CALL of any kind -- purely a memory-compare-and-flag operation over globals that are already declared shadow-region state. This is exactly the doctrine's 'mutates state we can declare as a shadow region and roll back' case, not effectful.",
+   "evidence_addr": "0x0043bfbf",
+   "note": "The .c plate itself flags this as an 'Identical twin of llm_gfx_hittest_check' (a duplicate copy used from the blitters) -- a pre-existing dedup lead, not acted on here since read-only.",
+   "retired_why": "RETIRED 2026-08-27 by TACT-CUT2. It went STALE when llm_gfx_blit_finish became a presentation wall (commit 11310cc0): its only two callers, llm_gfx_blit_finish and llm_gfx_blit_sprite_rle_v2, are both outside the migration set now, so no member edge reaches it and --effects reported it as classified-but-uncalled. The body reading is kept here because it is still true and cost real work; re-instate the entry if a member ever calls it again."
+  }
+ }
+}

@@ -1,0 +1,52 @@
+# R-live end-to-end (host side): host a lobby, take a client, then WAIT FOR ITS LINK TO DIE.
+#
+# The host is the peer that was blind on 2026-07-26: it kept advertising into a dead socket for ~90 s
+# and started the match anyway. `peers <1` is the assertion that it now notices at all.
+#
+# It asserts BOTH halves: that the transport noticed (`peers <1`), and that the dropped peer's LOBBY
+# SLOT was then freed (`occ <2`) -- R-live-start. The slot half needs no new code: the host's peer
+# mirror (mp_sync_host_peer_table) already treats "not in MH_Net_ActivePeerIds" as a departure and
+# runs the same retail vacate U12 uses for a graceful LEAVE. What was missing was the DEPARTURE: a
+# blackholed peer never left the active id set, because nothing ever retired its connection. R-live
+# supplies that, so the existing vacate fires -- which is exactly why this is asserted here rather
+# than built.
+
+settled value:110
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+settled Create
+clickl Create
+present Game name
+settled Ok
+clickl Ok
+present Available maps
+settled Ok
+clickl Ok
+
+# in the lobby, waiting for the client
+present Network players
+settled Start
+peers 1
+capture hl1_lobby_linked
+log HOST in lobby with 1 connected peer -- waiting for the transport to lose it
+
+# assertion 1: the transport noticed
+peers <1
+log HOST transport reports 0 peers -- the drop was DETECTED
+
+# assertion 2 (R-live-start): and the dead peer's lobby slot was freed, so Start cannot begin a match
+# against a player who is not there
+occ <2
+log HOST freed the dead peer's lobby slot (occ < 2)
+
+# assertion 3: and Start REFUSES. This is the user-visible half of the 2026-07-26 failure -- the host
+# started a 2-player game against a peer that had been gone 90 s, then starved every lockstep frame
+# (120/120) until the presence timeout ended it. The protection is retail, not ours: `enabled Start` is
+# the game's own "ready to launch" signal (see mp_host_start.txt), which goes false again the moment
+# the slot count drops. So once R-live frees the slot, the button greys itself.
+disabled Start
+capture hl2_after_link_death
+log HOST freed the dead peer's slot; Start greyed out -- a doomed match cannot be launched
+end

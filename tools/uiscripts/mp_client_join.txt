@@ -1,0 +1,71 @@
+# Phase 3 CLIENT walk: JOIN a hosted game by IP (the client-side counterpart of mp_menu_walk.txt).
+#
+# Path: main menu -> NETWORK GAME -> player name -> local-games browser -> "Internet server" -> the IP-join
+# window ("Server address" + Connect) -> Connect DISCOVERS the host (returns to a "Games available" browser
+# that now lists it) -> Join game -> the joined lobby ("Network players", showing both players).
+#
+# HOST PREREQUISITE: a host must be sitting in its lobby, LISTENING on port 6501 (run mp_menu_walk.txt on
+# the host machine). The client connects to the address in the "Server address" field -- here that field is
+# pre-filled from the machine's saved server list (no typing needed). To point at a different host, either
+# save its IP on the client first, or add a keyboard-injection `type` action (Phase-2-deferred) to type it.
+#
+# VALIDATED 2026-07-24 on two machines: host on the dev box (192.168.0.61, player "alice"), client on the
+# Hyper-V VM (192.168.0.37, player "bob"). The client walk drove menu->lobby end to end; the joined lobby
+# showed both players + "bob joined the game" + the host's map (blue monday). Keyed purely on screen-state
+# transitions + the `sessions 1` discovery gate -- no time/frame waits.
+
+# 1. main menu (NETWORK GAME = value 110)
+settled value:110
+capture c1_menu
+clickv 110
+
+# 2. player-name screen (accept the default name)
+present Player name
+settled Ok
+clickl Ok
+
+# 3. local-games browser -> "Internet server" (the direct-IP path)
+present Internet server
+settled Internet server
+clickl Internet server
+
+# 4. IP-join window: "Server address" pre-filled from the saved list -> Connect (discovers the host)
+present Server address
+settled Connect
+capture c4_ip_window
+clickl Connect
+
+# 5. "Games available" browser: the host session is now listed (sessions >= 1) -> Join it
+sessions 1
+settled Join game
+capture c5_games_available
+clickl Join game
+
+# 6. the joined lobby ("Network players"; the client has Cancel, no Start -- only the host starts)
+present Network players
+settled Cancel
+capture c6_client_lobby
+log CLIENT walk COMPLETE -- reached the joined lobby
+
+# 7. U23 NEGATIVE CASE: leaving on purpose explains nothing. Cancel is the third caller of
+# llm_lobby_finalize_transfer_or_enter and the only VOLUNTARY one -- it never sets the exit cause, so
+# MH_MP_ConsumeExitCause returns 0 and the notice is never armed. This is the half of U23's done_when
+# that a positive test cannot cover: without it, a bug that armed the notice unconditionally would
+# pass both scenarios above and tell every player who clicked Cancel that their connection died.
+clickl Cancel
+absent Network players
+onscreen Join game
+absent The host left the game.
+absent Connection to the host was lost.
+# GATE ON THE DISPLAYED STATE, NOT ON THE COUNT. `sessions 1` alone was the gate here until 2026-08-30
+# and it is too weak: _G_LLM_NET_SESSION_COUNT is raised by the rescan that FINDS the host, but the
+# browser's own title only becomes "Games available" (G_TEXT_PTRS[0x2be]) on the branch that renders the
+# result -- so the count LEADS the UI. With the slide take-over on, the transition is instant and the
+# gap never showed; with it off, the same gate captured the browser still titled "Searching for games..."
+# and the resulting ~32% diff was read, for most of a day, as a layout bug. It was a state race in this
+# script. Keep both: the count for the panel content, the title for the render.
+sessions 1
+present Games available
+capture c7_after_cancel
+log CLIENT cancelled out of the lobby -- browser shows NO exit notice
+end

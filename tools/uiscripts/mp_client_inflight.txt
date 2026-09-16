@@ -1,0 +1,50 @@
+# U28 (a)/(c) CLIENT: my own slot disagrees with the host's at the Start click -- I must still enter
+# with the HOST's value.
+#
+# This reproduces 2026-08-28 exactly, without racing anything. On that day the client's race change was
+# still in flight when the host clicked Start: the client had the new value, the host had the old one,
+# and both entered from their OWN array -> step-1 desync, undetected for eight minutes.
+# `pokerace` manufactures precisely that END STATE deterministically -- it writes our race field
+# LOCALLY and does NOT send the 0x0c the spinner would, so the host keeps the old value by construction.
+# A real in-flight edit is a race, and a race cannot be a regression test.
+#
+# WITH the fix the client adopts the host's array and the peers agree (and the client LOGS the
+# disagreement it just lost, which is the other half of U28).
+# WITHOUT it -- host ini `[net] start_slots=0` -- each peer builds from its own array and this same
+# scenario DESYNCS at step 1. That is U28's negative arm; see tools/uiscripts/ini/u28_off.ini.
+#
+# Pair with mp_host_inflight.txt. Runner: tools/test_ui.py race_inflight
+
+settled value:110
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+present Internet server
+settled Internet server
+clickl Internet server
+present Server address
+settled Connect
+clickl Connect
+sessions 1
+settled Join game
+clickl Join game
+
+present Network players
+occ 2
+settled Cancel
+
+# THE INJECTION. Both peers currently agree (both Human, race=1). Set OUR OWN row to Alien locally,
+# with no push -- so the host still has Human and we have Alien, which is the lost-edit state.
+pokerace 1 2
+race 1 2
+capture i1_client_alien_host_unaware
+
+# Tell the host we are ready. It asserts it still sees Human (i.e. our edit really never reached it)
+# and only then clicks Start.
+signal lobby
+absent Network players
+gameclock 6000
+capture i2_launched
+log CLIENT entered -- must be the HOST's race (Human), not our poked Alien
+end

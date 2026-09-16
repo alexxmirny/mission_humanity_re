@@ -1,0 +1,223 @@
+{
+  "_comment": "SIM1-DISPATCH: the disposition of every roster-writing function the direct-call sim closure MISSES. Consumed by tools/check_dispatch_closure.py. The sim migration closure is a forward DIRECT-CALL walk from llm_strat_sim_step; the per-tick behaviour of units/buildings is dispatched through fn-ptr tables (llm_strat_register_state_handlers) and so is invisible to it (docs/libmh-pivot.md, docs/dead-ends.md A). This file records, for each missed roster writer, WHICH subsystem owns it, so 'the closure omits a sim-state writer with no owner' becomes a check that can go red. handler_seeds + owned_roots are derived (reachability); overrides are the authored residue the reachability could not place. Regenerate the measurement with tools/check_dispatch_closure.py.",
+  "recorded": "2026-08-19",
+  "root": "llm_strat_sim_step",
+  "roster_regions": [
+    "units",
+    "buildings",
+    "tile_objects",
+    "player_data",
+    "unit_storage",
+    "_G_LLM_STRAT_PLAYERS"
+  ],
+  "handler_seeds_comment": "The unit + building state-machine handlers installed by llm_strat_register_state_handlers (0x0045f26a). These are the fn-ptr-dispatch roots the closure cannot reach; the DISPATCH disposition = a seed OR anything a seed reaches by direct call. The FOLD (gen_migration) must pull these + their reach into the sim closure as real rows with batches. SECOND SEED SET (SIM1-BLDGCB, 2026-08-23): check_dispatch_closure.py ALSO seeds from the 30 per-building-TYPE callbacks in tools/data/sim_bldg_type_callback_table.json (llm_strat_register_bldg_type_callbacks @0x0045f76a, boot stage 5 -> BLDG_DONE_FUNCS / BLDG_TICK2_FUNCS). That set is EXTRACTED from the disassembly rather than listed here, so it cannot drift out of step with the binary the way an authored list can; it is not folded into this array for the same reason.",
+  "handler_seeds": [
+    "llm_strat_unit_state_default_noop",
+    "llm_strat_unit_state_move_walker",
+    "llm_strat_unit_state_stop_to_default",
+    "llm_strat_unit_state_parked_noop",
+    "llm_strat_unit_state_group_marshal",
+    "llm_strat_unit_state_group_step",
+    "llm_strat_unit_state_enter_class_move",
+    "llm_strat_unit_state_patrol_swap",
+    "llm_strat_unit_state_plot_turn_path",
+    "llm_strat_unit_state_idle_scatter",
+    "llm_strat_unit_state_takeoff_landing",
+    "llm_strat_unit_state_deploy_approach",
+    "llm_strat_unit_state_deploy_to_building",
+    "llm_strat_unit_state_climb_vertical",
+    "llm_strat_unit_state_descend_cruise",
+    "llm_strat_unit_state_ascend_to_orbit",
+    "llm_strat_unit_state_move_path",
+    "llm_strat_unit_state_hover_engage",
+    "llm_strat_unit_state_attack_building",
+    "llm_strat_unit_state_attack_unit",
+    "llm_strat_unit_state_die_explode",
+    "llm_strat_unit_state_remove_silent",
+    "llm_strat_unit_state_corpse_fow_decay",
+    "llm_strat_unit_state_exit_storage_begin",
+    "llm_strat_unit_state_exit_wait",
+    "llm_strat_unit_state_exit_cancel",
+    "llm_strat_unit_state_exit_walk_out",
+    "llm_strat_unit_state_takeoff_taxi",
+    "llm_strat_unit_state_landing_request",
+    "llm_strat_unit_state_enter_storage_begin",
+    "llm_strat_unit_state_enter_arrival_check",
+    "llm_strat_unit_state_enter_wait",
+    "llm_strat_unit_state_enter_walk_in",
+    "llm_strat_unit_state_dock_taxi_in",
+    "llm_strat_unit_state_squad_merge",
+    "llm_strat_unit_state_production_ready",
+    "llm_strat_unit_state_step_adjacent",
+    "llm_strat_bldg_state_default_reset",
+    "llm_strat_bldg_state_construction",
+    "llm_strat_bldg_state_dismantling",
+    "llm_strat_bldg_state_idle_activate",
+    "llm_strat_bldg_state_charge_gate",
+    "llm_strat_bldg_state_charge_step",
+    "llm_strat_bldg_state_hangar_recharge_check",
+    "llm_strat_bldg_state_hangar_recharge_units",
+    "llm_strat_bldg_state_upgrading",
+    "llm_strat_bldg_state_prod_pick_next",
+    "llm_strat_bldg_state_prod_working",
+    "llm_strat_bldg_state_prod_blocked_notify",
+    "llm_strat_bldg_state_prod_retry_wait",
+    "llm_strat_bldg_state_mine_scan_deposits",
+    "llm_strat_bldg_state_mine_check_deposits",
+    "llm_strat_bldg_state_mine_extracting",
+    "llm_strat_bldg_state_mine_depleted",
+    "llm_strat_bldg_state_mine_rescan_wait",
+    "llm_strat_bldg_state_power_primary_check",
+    "llm_strat_bldg_state_power_generate",
+    "llm_strat_bldg_state_turret_scan",
+    "llm_strat_bldg_state_turret_attack",
+    "llm_strat_bldg_state_researching",
+    "llm_strat_bldg_state_deploy_anim_wait",
+    "llm_strat_bldg_state_land_activate",
+    "llm_strat_bldg_state_idle_noop",
+    "llm_strat_bldg_state_deploy_start",
+    "llm_strat_bldg_state_to_unit",
+    "llm_strat_bldg_state_destroyed",
+    "llm_strat_bldg_state_dismantle_finish",
+    "llm_strat_bldg_state_rubble_sight_decay"
+  ],
+  "owned_roots_comment": "A missed roster writer reachable (direct-call) from one of these roots is owned by that subsystem, not the sim tick. Attribution priority: DISPATCH > tactical(prefix) > orders > save > net > boot.",
+  "owned_roots": {
+    "orders": [
+      "llm_strat_order_queue_dispatch"
+    ],
+    "save": [
+      "game_SaveGame",
+      "llm_game_load",
+      "llm_cfg_save_final_snapshot",
+      "llm_cfg_load_final_snapshot"
+    ],
+    "net": [
+      "llm_net_lockstep_dispatch"
+    ],
+    "boot": [
+      "llm_strat_mode_init",
+      "llm_strat_planet_map_session_init",
+      "llm_map_load_objects",
+      "llm_map_load_regions"
+    ]
+  },
+  "overrides_comment": "The residue reachability could not place. category is the believed owner; review:true means it is a lead to confirm during the fold, not an established fact. 'sim_indirect' = believed a sim behaviour reached from a handler via a SECOND indirect edge the seed-walk did not capture (confirm the edge, then it folds into the sim closure). 'boot' = initial-state / scenario / new-game setup (LIB-BOOT territory, not the per-tick sim). 'save' = load/resync path (RI-SAVE). 'scripted' = a scripted-event driver (AI-CREATE). ('bldg_type_callbacks' WAS a category here for the SECOND per-building-type registry; RETIRED 2026-08-23 when SIM1-BLDGCB made those 30 callbacks a derived seed set read from sim_bldg_type_callback_table.json, so the one function that surfaced under it -- llm_strat_bldg_anim_state_helipad -- is now attributed DISPATCH by reachability instead of by an authored owner. Do not reintroduce the category: a new callback in that registry belongs in the extraction, not in an override.) 'review' alone = not yet understood.",
+  "overrides": {
+    "llm_strat_spawn_ai_base": {
+      "category": "boot",
+      "why": "scenario/new-game AI base placement; writes player_data + _G_LLM_STRAT_PLAYERS at setup, not per tick",
+      "review": true
+    },
+    "llm_game_land_players_on_planet": {
+      "category": "boot",
+      "why": "session start: lands players; writes _G_LLM_STRAT_PLAYERS at setup",
+      "review": true
+    },
+    "llm_strat_session_state_reset": {
+      "category": "boot",
+      "why": "session reset; writes _G_LLM_STRAT_PLAYERS",
+      "review": true
+    },
+    "llm_strat_init_human_player_data": {
+      "category": "boot",
+      "why": "player_data init at session start",
+      "review": true
+    },
+    "llm_strat_prod_reset_system": {
+      "category": "boot",
+      "why": "production system reset at setup",
+      "review": true
+    },
+    "llm_strat_sort_sites_by_dist": {
+      "category": "boot",
+      "why": "site sort during setup; writes player_data",
+      "review": true
+    },
+    "llm_map_load_objects_loose": {
+      "category": "boot",
+      "why": "scenario object loader (loose variant); writes tile_objects at load",
+      "review": true
+    },
+    "llm_map_load_main_plane": {
+      "category": "boot",
+      "why": "map plane loader; writes tile_objects at load",
+      "review": true
+    },
+    "llm_map_load_main_plane_loose": {
+      "category": "boot",
+      "why": "map plane loader (loose variant); writes tile_objects at load",
+      "review": true
+    },
+    "llm_strat_clock_resync_units_and_buildings": {
+      "category": "save",
+      "why": "post-load clock resync over units+buildings",
+      "review": true
+    },
+    "llm_game_reload_snapshot_resync_clocks": {
+      "category": "save",
+      "why": "snapshot-reload clock resync",
+      "review": true
+    },
+    "llm_unit_alive_count_resync": {
+      "category": "save",
+      "why": "post-load unit alive-count resync",
+      "review": true
+    },
+    "llm_strat_bldg_footprint_destroy_occupants": {
+      "category": "dead",
+      "review": false,
+      "why": "RE-OWNED dead/unreferenced (SIM1-G-PREP 2026-08-19): FOUR independent static methods find zero callers -- Ghidra ref-manager getReferencesTo=0, find-constant-uses (immediate-address loads)=0, scan_raw_pointers (absolute LE-dword byte-scan over all initialized memory)=TOTAL-ORPHAN, and whole-program search-decompilation by name=self only. Body is a well-formed sim-shaped helper but nothing in this EN build reaches it. RESIDUAL CAVEAT (docs/dead-ends.md ref-manager-blindness): a relative-offset dispatch table would evade all four methods; not adding todo:dead until a fuller pass. Owned=dead so the dispatch-closure has no unattributed writer."
+    },
+    "llm_strat_unit_release_path_and_targets": {
+      "category": "dead",
+      "review": false,
+      "why": "RE-OWNED dead/unreferenced (SIM1-G-PREP 2026-08-19): FOUR independent static methods find zero callers -- Ghidra ref-manager getReferencesTo=0, find-constant-uses (immediate-address loads)=0, scan_raw_pointers (absolute LE-dword byte-scan over all initialized memory)=TOTAL-ORPHAN, and whole-program search-decompilation by name=self only. Body is a well-formed sim-shaped helper but nothing in this EN build reaches it. RESIDUAL CAVEAT (docs/dead-ends.md ref-manager-blindness): a relative-offset dispatch table would evade all four methods; not adding todo:dead until a fuller pass. Owned=dead so the dispatch-closure has no unattributed writer."
+    },
+    "llm_strat_unit_reset_order_and_target": {
+      "category": "dead",
+      "review": false,
+      "why": "RE-OWNED dead/unreferenced (SIM1-G-PREP 2026-08-19): FOUR independent static methods find zero callers -- Ghidra ref-manager getReferencesTo=0, find-constant-uses (immediate-address loads)=0, scan_raw_pointers (absolute LE-dword byte-scan over all initialized memory)=TOTAL-ORPHAN, and whole-program search-decompilation by name=self only. Body is a well-formed sim-shaped helper but nothing in this EN build reaches it. RESIDUAL CAVEAT (docs/dead-ends.md ref-manager-blindness): a relative-offset dispatch table would evade all four methods; not adding todo:dead until a fuller pass. Owned=dead so the dispatch-closure has no unattributed writer."
+    },
+    "llm_strat_unit_path_store_result": {
+      "category": "dead",
+      "review": false,
+      "why": "RE-OWNED dead/unreferenced (SIM1-G-PREP 2026-08-19): FOUR independent static methods find zero callers -- Ghidra ref-manager getReferencesTo=0, find-constant-uses (immediate-address loads)=0, scan_raw_pointers (absolute LE-dword byte-scan over all initialized memory)=TOTAL-ORPHAN, and whole-program search-decompilation by name=self only. Body is a well-formed sim-shaped helper but nothing in this EN build reaches it. RESIDUAL CAVEAT (docs/dead-ends.md ref-manager-blindness): a relative-offset dispatch table would evade all four methods; not adding todo:dead until a fuller pass. Owned=dead so the dispatch-closure has no unattributed writer."
+    },
+    "llm_strat_unit_assign_shared_path": {
+      "category": "dead",
+      "review": false,
+      "why": "RE-OWNED dead/unreferenced (SIM1-G-PREP 2026-08-19): FOUR independent static methods find zero callers -- Ghidra ref-manager getReferencesTo=0, find-constant-uses (immediate-address loads)=0, scan_raw_pointers (absolute LE-dword byte-scan over all initialized memory)=TOTAL-ORPHAN, and whole-program search-decompilation by name=self only. Body is a well-formed sim-shaped helper but nothing in this EN build reaches it. RESIDUAL CAVEAT (docs/dead-ends.md ref-manager-blindness): a relative-offset dispatch table would evade all four methods; not adding todo:dead until a fuller pass. Owned=dead so the dispatch-closure has no unattributed writer."
+    },
+    "llm_strat_squad_assault_resolve": {
+      "category": "tactical",
+      "review": false,
+      "why": "RE-OWNED tactical (SIM1-G-PREP 2026-08-19): sole caller llm_tact_mission_end_return_to_strategic (from llm_tact_frame), a one-time tactical-mission-end transition, never on the llm_strat_sim_step per-tick path. Does strategic-state mutation but is not per-tick sim."
+    },
+    "llm_strat_unit_order_attack_dispatch": {
+      "category": "dead",
+      "review": false,
+      "why": "RE-OWNED dead/unreferenced (SIM1-G-PREP 2026-08-19): FOUR independent static methods find zero callers -- Ghidra ref-manager getReferencesTo=0, find-constant-uses (immediate-address loads)=0, scan_raw_pointers (absolute LE-dword byte-scan over all initialized memory)=TOTAL-ORPHAN, and whole-program search-decompilation by name=self only. Body is a well-formed sim-shaped helper but nothing in this EN build reaches it. RESIDUAL CAVEAT (docs/dead-ends.md ref-manager-blindness): a relative-offset dispatch table would evade all four methods; not adding todo:dead until a fuller pass. Owned=dead so the dispatch-closure has no unattributed writer."
+    },
+    "llm_strat_bldg_is_network_critical": {
+      "category": "ui",
+      "review": false,
+      "why": "RE-OWNED ui (SIM1-G-PREP 2026-08-19): sole caller llm_ui_hud_bldg_network_status_panel_draw (HUD panel query, per-redraw display). Recomputes power-network cut-point for display only, not per-tick simulation."
+    },
+    "llm_unit_ctrl_group_flash_observer": {
+      "category": "ui",
+      "review": false,
+      "why": "RE-OWNED ui (SIM1-G-PREP 2026-08-19): two callers, both input/UI-feedback: llm_unit_ctrl_group_recall (from llm_strat_input_update, the per-frame INPUT pump, a sibling of sim_step under llm_strat_frame, not downstream) and a HUD control-group button click handler. Not on any sim_step path."
+    },
+    "llm_tutorial_step_driver": {
+      "category": "scripted",
+      "why": "tutorial scripted-event driver; belongs to the event/trigger pipeline (AI-CREATE)",
+      "review": true
+    },
+    "llm_strat_ai_player_set_phase_flags": {
+      "category": "dead",
+      "review": false,
+      "why": "RE'd + named 2026-08-22 (SIM1-DISPATCH): a 42-byte (player, flags) setter for player_data.ai_phase_flags, the AI phase-enable bitmask llm_strat_ai_player_tick reads. ZERO callers by four concurring methods (ref-manager, find-constant-uses, scan_raw_pointers TOTAL-ORPHAN, call_graph_no_crt) -- same evidentiary bar and same residual ref-manager-blindness caveat as the six sibling dead rows above. If a caller is ever found, the field is AI-domain, so the owner is RI-AI and not RI-SIM."
+    }
+  }
+}

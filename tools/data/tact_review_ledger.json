@@ -1,0 +1,171 @@
+{
+  "_comment": "Adversarial-review dispositions for the TACTICAL domain, read by tools/migration_loop.py's review_gate(). A function the manifest flags review_required (writes a roster region OR size>p90 OR is root) may not be promoted to `verified` without an entry here. Shape: \"<function name>\": {\"disposition\": \"reviewed\"|\"exempt\", \"session\": \"<YYYY-MM-DD-HHMM>\", \"by\": \"<reimpl-verify workflow / agent>\", \"note\": \"<evidence, or why no shadow/review applies>\"}. A `reviewed` entry MUST name the `session` that ran the review: the driver cross-checks that that session's captured agents (session_reports/loop/<session>/agents.json) actually include an adversarial-review spawn -- a bare `reviewed` with no spawn is rejected. An `exempt` entry needs no agent (it is an explicit human-auditable decision). `reviewed` = run through .claude/workflows/reimpl-verify.js; `exempt` = the session judged the body un-shadowable / exhaustively oracle-covered and SAID SO. Keys beginning with _ are comments. Rows already verified when the gate landed (2026-08-26) carry explicit grandfather exempt entries (backfilled same day). Two layers now read this file: migration_loop.py gates the TRANSITION to verified per session and cross-checks agent backing; migration_session.py --end fails while ANY review_required+verified row lacks a disposition, so a skip is caught in-session.",
+  "llm_tact_door_update_tile_state": {
+    "disposition": "reviewed",
+    "session": "2026-08-27-0128",
+    "by": ".claude/workflows/reimpl-verify.js (batch mode, 3 lens-group reviewers + 1 adjudicator, run wf_0d011c3f-249)",
+    "note": "verdict: DIVERGES -- two real bugs found and fixed before promotion, not false positives. (1) door_clear_leaf_tile's k-sub-loop bound was hardcoded to 6 for BOTH leaves; the original uses 6 for the right leaf (0x004325a5, CMP [EBP-0x34],0x6) but 8 for the left leaf (0x00432827, CMP [EBP-0x34],0x8) -- independently re-confirmed against tmp/decomp_tact/llm_tact_door_update_tile_state_004324c0.asm before applying. (2) not this function's own bug but caught in the same batch review -- see llm_tact_door_apply_to_map's entry. Fixed: door_clear_leaf_tile now takes a k_bound parameter; door_update_tile_state passes 6 for the right-leaf call and 8 for the left-leaf call. Added regression case T23 (tact_door_selftest.cpp) asserting height_row[6]/[7] survive the right leaf's clear but not the left leaf's. Mutation-tested by reverting the left-leaf bound to 6: T23 failed exactly as predicted (2 checks), reverted, confirmed green (4542 checks, 0 failures). Full DLL rebuild PASS after the fix."
+  },
+  "llm_tact_door_apply_to_map": {
+    "disposition": "reviewed",
+    "session": "2026-08-27-0128",
+    "by": ".claude/workflows/reimpl-verify.js (batch mode, 3 lens-group reviewers + 1 adjudicator, run wf_0d011c3f-249)",
+    "note": "verdict: DIVERGES -- a real bug found and fixed before promotion, not a false positive. door_apply_to_map's leaf-mark step was wrongly sharing door_update_tile_state's door_mark_leaf_tile helper, which computes screen_col/vis_row from _G_LLM_MAP_CAM_COL/ROW and stamps _G_LLM_TILE_VIS_MAP (0x713d20) via door_mark_tile_vis. The real llm_tact_door_apply_to_map (@0x00439dcc-0x00439e2c right leaf, @0x00439eed-0x00439f4d left leaf) does neither -- confirmed by grepping the .asm export for 0x713d20 (TILE_VIS_MAP), 0xe58138/0xe58134 (MAP_CAM_COL/ROW): zero hits in either leaf's mark loop, vs. door_update_tile_state's structurally-identical loop which reads both (0x0043266d-0x00432682 computes screen_col/vis_row, 0x004325fb stamps TILE_VIS_MAP). Fixed: added a new door_apply_mark_leaf_tile helper (class_owner writes + height-sprite chain walk only, no vis-map stamp, no camera read), routed door_apply_leaf through it instead of door_mark_leaf_tile. Added regression case T22 (tact_door_selftest.cpp): poisons the vis-map cell door_update_tile_state's own formula would stamp and the camera globals, confirms door_apply_to_map leaves both untouched. Mutation-tested by reinstating the door_mark_tile_vis call: T22 failed exactly as predicted (got 0x02, want the poison 0xaa), reverted, confirmed green (4542 checks, 0 failures). Full DLL rebuild PASS after the fix."
+  },
+  "llm_tact_move_path_build": {
+    "disposition": "reviewed",
+    "session": "2026-08-26-1015",
+    "by": ".claude/workflows/reimpl-verify.js (batch mode, 3 lens-group reviewers + 1 adjudicator, run wf_7bea7f05-38d)",
+    "note": "verdict: equivalent, no fix-required findings. One reviewer + the adjudicator independently flagged the same benign detail (RLE_COUNT loop-exit test is a 16-bit word compare in the original, 0x0041c7bb, vs a full 32-bit compare in the draft) and both confirmed it unreachable: rle_count is bound-checked against 0x129 every iteration before it can grow further, so it can never reach 0x10000 where the widths would disagree. Already rig-verified T2 (migration_sweep.py --tact-synth, 16-33 calls across repeated runs, 0 divergences, 2 mutations caught) before this review ran; the review's job was the branches the 1500-frame rig window is least likely to exercise (goal-surrounded early-exit, diagonal corner-cut gating, RLE overflow-split, free-slot-exhausted arm), all confirmed against the disassembly independently of the rig evidence."
+  },
+  "llm_tact_unit_teleport": {
+    "disposition": "reviewed",
+    "session": "2026-08-26-1218",
+    "by": ".claude/workflows/reimpl-verify.js (batch mode, 3 lens-group reviewers + 1 adjudicator, run wf_e81b9d54-1b6)",
+    "note": "verdict: DIVERGES on the first pass -- a REAL bug found and fixed before promotion, not a false positive. One lens reviewer (semantics group) and the adjudicator INDEPENDENTLY re-derived the same divergence from the raw bytes: the DIRECT-path RANDOM (mode==1) post-loop slot-validity check used `!(dest_col_at(tz,slot)!=0 && dest_row_at(tz,slot)!=0)` (De Morgan-equivalent to 'reset if EITHER field is zero'), but the original (@0x00432fc1-0x00432fe9, JNZ/JZ shape) resets the slot only when BOTH dest_col AND dest_row are zero -- identical shape to the SEQUENCE-mode reset the draft got right one branch earlier. A slot with column==0 and a nonzero row (a legitimate map-edge coordinate) was wrongly treated as empty and reset to slot 0, landing the unit on the wrong tile. Independently re-derived and confirmed by the conductor before applying (not applied on the reviewer's claim alone): fixed to `dest_col_at(tz, slot) == 0 && dest_row_at(tz, slot) == 0`, added regression case T12b (tact_unit_teleport_selftest.cpp) using the reviewer's own concrete input (slots 0-2 populated, slot 3 = (0,20), rand()/4096==3), mutation-tested by reverting to the buggy form -- T12b failed exactly as predicted, reverted clean. Full DLL rebuild + `test_ui.py --tact-determinism --tact-synth --tact-selftest` re-run PASS after the fix. Second lens reviewer (representation group) and the adjudicator both also independently confirmed the draft's reuse of early-captured cur_col/cur_row locals (instead of re-reading unit.pos_col/pos_row at the old-position clear sites) is equivalence-preserving -- llm_tact_unit_vision_remove reads but never writes those fields, confirmed by reading its own .asm. Third lens reviewer (environment group) found no issues. No rig arm exists for this function (arm_ready:false, TACT-CUT2) -- the offline oracle is the only proof this correction has, so the review is load-bearing rather than a secondary check."
+  },
+  "llm_strat_squad_assault_resolve": {
+    "disposition": "reviewed",
+    "session": "2026-08-26-1319",
+    "by": ".claude/workflows/reimpl-verify.js (batch mode, 3 lens-group reviewers + 1 adjudicator, run wf_a2e2e625-e92)",
+    "note": "verdict: DIVERGES on the FIRST PASS, not a false alarm -- all three reviewers independently caught the same bug: the draft collapsed the original's genuine 3-way branch (loss<=0 -> kill; loss>0 && delta(=energy-loss)>0 -> pending_damage; loss>0 && delta<=0 -> TRUE NO-OP, the original's JNC @0x0044d959 jumps straight past both the kill block and the pending_damage add) into a 2-way if/else, routing the no-op case into the kill arm. Independently re-derived from the raw bytes before applying (FLDZ/FCOMP/FNSTSW/SAHF/JC @0x0044d8f8-0x0044d900 and the second FLDZ/FCOMP/JNC @0x0044d951-0x0044d959) -- confirmed the reviewers' reading. Fixed to the 3-way branch, added regression case T2 (loss>0 && delta<=0 must NOT call remove_from_map/teardown and must NOT touch pending_damage/units_lost_total), mutation-tested by reverting to the 2-way collapse (T2 failed exactly as predicted, 3 checks), reverted, confirmed green (1039 checks, 0 failures). Full DLL rebuild + run_selftests.py (ASan+plain) + lint_repo.py + test_ui.py --tact-determinism --tact-synth --tact-selftest all PASS after the fix. One reviewer-raised note (scan_player's uint16_t truncation in the teardown call vs the draft's plain uint32_t cast) was independently confirmed a non-issue: scan_player is a tiny player index, never near 0x10000, so the two representations are observably identical for every value the field can hold -- no action taken. VERIFIED/T2 (offline oracle only -- no rig arm exists or ever will for this function, since its own two direct calls are TACT-CUT2-ungated effectful shared callees)."
+  },
+  "llm_tact_map_reset": {
+    "disposition": "reviewed",
+    "session": "2026-08-26-1319",
+    "by": ".claude/workflows/reimpl-verify.js (batch mode, 3 lens-group reviewers + 1 adjudicator, run wf_a2e2e625-e92)",
+    "note": "verdict: equivalent, no fix-required findings. Independently re-verified against tmp/decomp_tact/llm_tact_map_reset_0042e713.asm: the 16-bit write 0x4002@0x0042e7af decodes little-endian to flags[0]=2/flags[1]=0x40; building/unit[0]/unit[1]/class_owner/visibility all zero at the correct offsets (write order differs from the asm's own emission order but every field store is independent, so final state is identical); passable_at/tile_object_at indexing, path_slot_flag_at(0,*) indexing (PATH_SLOTS_PER_OWNER=100), TACT_MAP_DIM=0x80 loop bounds, and the height-sprite stride (col*1024+row*8+k, derived from the byte address col<<11+row<<4+k*2 divided by sizeof(uint16_t)) all match exactly. VERIFIED/T2 (offline oracle only -- structurally un-shadow-armable, its own tail call to mission_load reaches the same 5 TACT-CUT2-ungated effectful shared callees mission_load's own manifest entry does)."
+  },
+  "llm_tact_unit_enqueue_command": {
+    "disposition": "exempt",
+    "session": "",
+    "by": "grandfather backfill (conductor session, 2026-08-26)",
+    "note": "grandfathered -- verified before the review ledger landed 2026-08-26; evidence in the session reports/commits up to that date"
+  },
+  "llm_tact_move_path_preview_clear": {
+    "disposition": "exempt",
+    "session": "",
+    "by": "grandfather backfill (conductor session, 2026-08-26)",
+    "note": "grandfathered -- verified before the review ledger landed 2026-08-26; evidence in the session reports/commits up to that date"
+  },
+  "llm_tact_move_path_preview_walk": {
+    "disposition": "exempt",
+    "session": "",
+    "by": "grandfather backfill (conductor session, 2026-08-26)",
+    "note": "grandfathered -- verified before the review ledger landed 2026-08-26; evidence in the session reports/commits up to that date"
+  },
+  "llm_tact_unit_move_tick": {
+    "disposition": "exempt",
+    "session": "",
+    "by": "grandfather backfill (conductor session, 2026-08-26)",
+    "note": "grandfathered -- verified before the review ledger landed 2026-08-26; evidence in the session reports/commits up to that date"
+  },
+  "llm_tact_unit_move_advance": {
+    "disposition": "exempt",
+    "session": "",
+    "by": "grandfather backfill (conductor session, 2026-08-26)",
+    "note": "grandfathered -- verified before the review ledger landed 2026-08-26; evidence in the session reports/commits up to that date"
+  },
+  "llm_tact_unit_owner_tick": {
+    "disposition": "exempt",
+    "session": "",
+    "by": "grandfather backfill (conductor session, 2026-08-26)",
+    "note": "grandfathered -- verified before the review ledger landed 2026-08-26; evidence in the session reports/commits up to that date"
+  },
+  "llm_tact_tile_rebuild_occupancy_layer": {
+    "disposition": "exempt",
+    "session": "",
+    "by": "grandfather backfill (conductor session, 2026-08-26)",
+    "note": "grandfathered -- verified before the review ledger landed 2026-08-26; evidence in the session reports/commits up to that date"
+  },
+  "llm_tact_map_compute_bounds": {
+    "disposition": "exempt",
+    "session": "",
+    "by": "grandfather backfill (conductor session, 2026-08-26)",
+    "note": "grandfathered -- verified before the review ledger landed 2026-08-26; evidence in the session reports/commits up to that date"
+  },
+  "llm_tact_move_step_attempt": {
+    "disposition": "exempt",
+    "session": "",
+    "by": "grandfather backfill (conductor session, 2026-08-26)",
+    "note": "grandfathered -- verified before the review ledger landed 2026-08-26; evidence in the session reports/commits up to that date"
+  },
+  "llm_tact_unit_despawn": {
+    "disposition": "reviewed",
+    "session": "2026-08-26-conductor",
+    "by": "reimpl-verify workflow run wf_3b3df476-b68 (3 lens-group reviewers + adjudication, interactive conductor session)",
+    "note": "verdict equivalent, 0 divergences. Notes: body is straight-line (no branches); draft writes exactly the two roster fields the original writes (status=0, type+=0x80 in-place wrapping byte add -- prior type recoverable at T+0x80); the original dead-reads type into a never-used local, correctly omitted. Closes the debt from session 2026-08-26-1449 (promoted verified/T2 on the offline selftest without this review). AMENDED (conductor, same day): the review MISSED a real layout bug -- the tile word store at +0x2 is .building, but the draft (and its self-consistent oracle) cleared unit[0..1] at +4/+5; caught by llm_tact_unit_spawn translator reading the twin write, verified against raw bytes, fixed, oracle corrected to sentinel the unit pair, mutation-tested (5 assertions fire)."
+  },
+  "llm_tact_mission_start": {
+    "disposition": "reviewed",
+    "session": "2026-08-26-conductor",
+    "by": "reimpl-verify workflow run wf_1d36f608-d2a (grouped mode: 3 lens-group reviewers + adjudication per function, 25 agents)",
+    "note": "verdict equivalent, 0 divergences. Reviewed BEFORE any oracle/arm (fail-fast order). Confirmed-faithful notes on: stale-register mod-2^16 wrap arithmetic (update_anim), preserved OOB character_types indexing (update_anim), the range_max kill site that deliberately skips the fx_live_count decrement (fx_update_projectile), the single fresh cmd_index re-read in the op==9 arm (weapons_tick)."
+  },
+  "llm_tact_unit_update_anim": {
+    "disposition": "reviewed",
+    "session": "2026-08-26-conductor",
+    "by": "reimpl-verify workflow run wf_1d36f608-d2a (grouped mode: 3 lens-group reviewers + adjudication per function, 25 agents)",
+    "note": "verdict equivalent, 0 divergences. Reviewed BEFORE any oracle/arm (fail-fast order). Confirmed-faithful notes on: stale-register mod-2^16 wrap arithmetic (update_anim), preserved OOB character_types indexing (update_anim), the range_max kill site that deliberately skips the fx_live_count decrement (fx_update_projectile), the single fresh cmd_index re-read in the op==9 arm (weapons_tick)."
+  },
+  "llm_tact_unit_weapons_tick": {
+    "disposition": "reviewed",
+    "session": "2026-08-26-conductor",
+    "by": "reimpl-verify workflow run wf_1d36f608-d2a (grouped mode: 3 lens-group reviewers + adjudication per function, 25 agents)",
+    "note": "verdict equivalent, 0 divergences. Reviewed BEFORE any oracle/arm (fail-fast order). Confirmed-faithful notes on: stale-register mod-2^16 wrap arithmetic (update_anim), preserved OOB character_types indexing (update_anim), the range_max kill site that deliberately skips the fx_live_count decrement (fx_update_projectile), the single fresh cmd_index re-read in the op==9 arm (weapons_tick)."
+  },
+  "llm_tact_fx_update_projectile": {
+    "disposition": "reviewed",
+    "session": "2026-08-26-conductor",
+    "by": "reimpl-verify workflow run wf_1d36f608-d2a (grouped mode: 3 lens-group reviewers + adjudication per function, 25 agents)",
+    "note": "verdict equivalent, 0 divergences. Reviewed BEFORE any oracle/arm (fail-fast order). Confirmed-faithful notes on: stale-register mod-2^16 wrap arithmetic (update_anim), preserved OOB character_types indexing (update_anim), the range_max kill site that deliberately skips the fx_live_count decrement (fx_update_projectile), the single fresh cmd_index re-read in the op==9 arm (weapons_tick)."
+  },
+  "llm_tact_unit_spawn": {
+    "disposition": "reviewed",
+    "session": "2026-08-26-conductor",
+    "by": "reimpl-verify workflow run wf_1d36f608-d2a (grouped mode: 3 lens-group reviewers + adjudication per function, 25 agents)",
+    "note": "verdict equivalent, 0 divergences. Reviewed BEFORE any oracle/arm (fail-fast order). Confirmed-faithful notes on: stale-register mod-2^16 wrap arithmetic (update_anim), preserved OOB character_types indexing (update_anim), the range_max kill site that deliberately skips the fx_live_count decrement (fx_update_projectile), the single fresh cmd_index re-read in the op==9 arm (weapons_tick)."
+  },
+  "llm_tact_unit_death_tick": {
+    "disposition": "reviewed",
+    "session": "2026-08-26-conductor",
+    "by": "reimpl-verify workflow run wf_1d36f608-d2a (grouped mode: 3 lens-group reviewers + adjudication per function, 25 agents)",
+    "note": "verdict equivalent, 0 divergences. Reviewed BEFORE any oracle/arm (fail-fast order). Confirmed-faithful notes on: stale-register mod-2^16 wrap arithmetic (update_anim), preserved OOB character_types indexing (update_anim), the range_max kill site that deliberately skips the fx_live_count decrement (fx_update_projectile), the single fresh cmd_index re-read in the op==9 arm (weapons_tick)."
+  },
+  "llm_tact_unit_kneel_tick": {
+    "disposition": "reviewed",
+    "session": "2026-08-26-conductor",
+    "by": "reimpl-verify workflow run wf_1d36f608-d2a (grouped mode: 3 lens-group reviewers + adjudication per function, 25 agents)",
+    "note": "verdict equivalent, 0 divergences. Reviewed BEFORE any oracle/arm (fail-fast order). Confirmed-faithful notes on: stale-register mod-2^16 wrap arithmetic (update_anim), preserved OOB character_types indexing (update_anim), the range_max kill site that deliberately skips the fx_live_count decrement (fx_update_projectile), the single fresh cmd_index re-read in the op==9 arm (weapons_tick)."
+  },
+  "llm_tact_mission_load": {
+    "disposition": "reviewed",
+    "session": "2026-08-26-conductor",
+    "by": "reimpl-verify workflow run wf_d34b0eeb-a5b (lenses mode: 6 independent lens reviewers + adjudicator, 7 agents)",
+    "note": "verdict DIVERGES on first pass -- TWO REAL divergences caught and fixed: (1) GROUND's check is an aliased read of ground_tex_name[0] (line+0x80 == the quoted-string out-buffer; MAP leaves the counter at 0x80) -- the draft's zero-padded line[136] would have aborted every real mission; rewritten as the aliasing semantics. (2) DISPOSITION's facing_dir/def_stat are persistent across spawn lines; the draft re-defaulted per line; hoisted to function scope. Also corrected the uninitialised-slot census (prologue zeroes 13 slots incl. BANK's result). Fixes committed; the offline oracle carries regression cases from the reviewers' own counterexamples."
+  },
+  "llm_tact_fx_splash_damage": {
+    "disposition": "reviewed",
+    "session": "2026-08-26-2302",
+    "by": ".claude/workflows/reimpl-verify.js (batch mode, 3 lens-group reviewers + 1 adjudicator, run wf_c3236abe-45f)",
+    "note": "verdict: equivalent, no fix-required findings. One benign note (independently confirmed a non-issue): the draft caches grid_width/grid_height once at function entry instead of re-reading them every (rr,cc) loop iteration as the original disassembly does at 0x0043150d/0x0043151b -- verified safe because the only writer of those globals is tact_mission_start.cpp (cannot run reentrantly mid-call) and none of the three callees invoked inside the loop (facing_to_delta, unit_set_anim_state, unit_refresh_ui_slot) touch that region per their own shadow region declarations. VERIFIED/T1 (offline oracle tact_fx_splash_damage_selftest.cpp, 6 cases covering the lethal/non-lethal split, the AND-gated kill-stamp condition from both sides, the empty-tile and anim_state 2/3 full-skip arms; mutation-tested this session, kill-stamp AND->OR mutation caught)."
+  },
+  "llm_tact_unit_destroy": {
+    "disposition": "reviewed",
+    "session": "2026-08-26-2302",
+    "by": ".claude/workflows/reimpl-verify.js (batch mode, 3 lens-group reviewers + 1 adjudicator, run wf_c3236abe-45f)",
+    "note": "verdict: DIVERGES on the first pass -- a REAL bug found and fixed before promotion, not a false positive. All 3 lens-group reviewers AND the adjudicator independently re-derived the same divergence from the raw bytes: the footprint-clear sweep's block at 0x00431e8b-0x00431ebc reads `col` with NO increment (contrast the genuine +1-col candidates at 0x00431e58/0x00431ebf, which DO `INC EAX` before the shift) and adds a fixed +8 to the tile_object base -- since row-stride is 8 bytes (row<<3) and col-stride is 0x800 (col<<0xb), that block is (col, row+1), not (col+1, row+1) as the draft/header/oracle all transcribed it. The immediately-following block at 0x00431ebc-0x00431eef IS the true (col+1, row+1) check (INC EAX present). The draft collapsed both into a single `clear_if_match(col + 1, row + 1)` call, silently dropping the (col, row+1) candidate from the 9-tile search entirely -- a unit destroyed while stamped at (col, row+1) would leave that tile's `tile_objects[].building` dangling, read by later spawn-placement/pathing/vision passes as if the destroyed unit still occupied it. Independently re-derived from tmp/decomp_tact/llm_tact_unit_destroy_00431d8d.asm before applying (not applied on the reviewers' claim alone): confirmed the exact instruction sequence at 0x00431e8b-0x00431eef. Fixed tact_unit_destroy.cpp to two separate calls (col, row+1) then (col+1, row+1); corrected tact_unit_destroy.h's candidate list (was missing a row, said 'up to 8' instead of 9); corrected the T2 selftest, which had planted its decoy at the WRONG tile ((col+1,row+1) instead of (col,row+1)) and so could not have caught this. Mutation-tested by reverting to the buggy single-call form: T2 failed exactly as predicted (`got 0x0000000c, want 0x00000000` at the (col,row+1) tile), reverted, confirmed green (4477 checks, 0 failures). Full rebuild + run_selftests.py (ASan+plain) PASS after the fix. VERIFIED/T2 (offline oracle only -- no rig arm exists per the manifest's measured 29-function/55-region closure)."
+  },
+  "llm_tact_frame": {
+    "disposition": "reviewed",
+    "session": "2026-08-28-0438",
+    "by": ".claude/workflows/reimpl-verify.js (mode=lenses, 6 per-lens reviewers + 1 adjudicator, run wf_f38cb99c-13f)",
+    "note": "verdict: DIVERGES on the first pass -- a REAL bug found and fixed before promotion, not a false positive. The sentinel-lens reviewer and the adjudicator independently caught it: the draft computed shift_held = (RSHIFT|LSHIFT) ONCE before step 10 and reused that single snapshot at 5 later, independent gate sites (draft lines 301/312/336/350/381, steps 18/19/20b/21/23a), while the original re-reads the live RSHIFT/LSHIFT globals fresh at each of 7 sites (0x00429f24, 0x0042a01e, 0x0042a437, 0x0042a4d9, 0x0042a696, 0x0042a74b, 0x0042a910), each into its own distinct stack slot, never a cached local. Between the first 2 sites (steps 10/12, contiguous, no intervening calls -- caching there is provably safe) and the other 5, the original calls mouse_delta_pump/mouse_buttons_get/gfx_LoadSprite x2/render_view/door_tick/teleport_zone_scan_tick/sidebar_dispatch/up to 4 view_shift_*/cam_follow_selection_tick -- any of which could interleave with a real Shift-key transition. Independently re-confirmed against tmp/decomp_tact/llm_tact_frame_00429b1a.asm before applying (all 7 TEST-byte-ptr sites and their distinct stack slots). Fixed: kept the cached shift_held local only for the two contiguous step-10/12 uses, added a shift_now() lambda re-reading *v.key_rshift_held/*v.key_lshift_held live, and routed the 5 later sites (lines 301,312,336,350,381 pre-fix) through it. Rebuilt; run_selftests.py + lint_repo.py + tact-determinism gate re-run after the fix (see this session's report for the exact commands/results). The other two adjudicated findings (severity=note) were REJECTED as new issues -- both merely restate uncertainties tact_frame.h already flags explicitly (step-3 empty-queue stack-read modeling choice; step-13 mouse_buttons_cur width) and add no new resolution; left as-is per the header's existing UNCERTAINTY framing. This function cannot be shadow-armed offline (tacttest cannot drive mouse/keyboard); its only proof instrument is test_ui.py --tact-determinism, so this review was the PRIMARY correctness evidence, not a secondary check."
+  },
+  "llm_tact_ui_sel_panel_multi_mode_tick": {
+    "disposition": "reviewed",
+    "session": "2026-08-28-0438",
+    "by": ".claude/workflows/reimpl-verify.js (mode=batch, 3 lens-group reviewers + 1 adjudicator, run wf_9b2d3710-e83)",
+    "note": "verdict: equivalent, no fix-required findings (ready_to_arm). All three reviewers + the adjudicator independently examined the header's own documented block-5c asymmetry (camera-recenter: column center subtracts win_w/0x40 but the column CLAMP subtracts win_w/0x20; row center subtracts view_tiles_h/2 but the row CLAMP subtracts the FULL view_tiles_h) and confirmed it is a genuine, correctly-preserved asymmetry in the original -- hand-simulated the SAR/SHL/SBB and SAR/SUB/SAR bit sequences at 0x00436835-0x0043691a for representative negative inputs and matched plain C++ truncating division bit-for-bit; cross-checked against *v.map_width/*v.map_height (_G_LLM_TACT_MAP_WIDTH_CACHE/_HEIGHT_CACHE) and the clamp comparison direction. No fix applied -- explicitly NOT a bug. Every outward call this body makes is a mocked frontier callee in its own _calls struct (including llm_tact_unit_enqueue_command), so unlike some TACT1E siblings this function reaches no unmapped real game VA and is fully offline-oracle-testable; oracle authored this same session (tact_ui_sel_panel_multi_mode_tick_selftest.cpp)."
+  }
+}

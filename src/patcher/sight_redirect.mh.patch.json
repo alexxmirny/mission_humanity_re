@@ -1,0 +1,12 @@
+{
+  "class": "reference",
+  "_class_why": "An `asm` patch whose [import:dll!func] resolves against the target file's addimport-built IAT. Refused by the generator until an applier-side import table exists.",
+  "_comment": "WORKED EXAMPLE - a real function redirect, incl. a NON-STANDARD calling convention. Replaces map::fow::ConvertSightToArea @0x004a62a6 with a thunk that calls mh.dll!GetSightAreaFromRadius(radius). GOTCHA: the game's ConvertSightToArea returns the table pointer in EBP (not EAX) - its callers read straight from EBP - so the thunk must `mov ebp, eax` after the cdecl call, or the fog consumer loops forever (freeze). It also preserves eax/ecx/edx (the original only clobbered EBP). Radius comes from global G_TMP_SIGHT @0xe15400. Overwriting the whole 132-byte body is safe (all 3 callers use only entry + the EBP result). VAs are for clean Russian retail mh.exe. Run: python mhpatch.py apply mh.exe sight_redirect.mh.patch.json mh_mod.exe  (rename to mh.exe to run; never name it *patch*/*setup*/*update* - UAC would elevate & break the game).",
+  "sha256": "9c4451cf8934a9f446a4f639a3aaa002168030ba512df83a6495bb61861d6a30",
+  "imports": { "mh.dll": ["GetSightAreaFromRadius"] },
+  "patches": [
+    { "va": "0x004a62a6",
+      "expect": "bd 52 88 5d 00 80 3d 00 54 e1 00 01 74 75 bd 56 88 5d 00 80 3d 00 54 e1 00 02",
+      "asm": "push eax; push ecx; push edx; movzx eax, byte ptr [0xe15400]; push eax; call dword ptr [import:mh.dll!GetSightAreaFromRadius]; add esp, 4; mov ebp, eax; pop edx; pop ecx; pop eax; ret" }
+  ]
+}

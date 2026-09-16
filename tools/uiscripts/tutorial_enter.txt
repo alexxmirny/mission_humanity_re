@@ -1,0 +1,36 @@
+# TUTORIAL entry, driven through the REAL menu -- no journal replay.
+#
+# Why this exists: `llm_game_start_tutorial` + `llm_tutorial_step_driver` are EXPORT_REPLACE-promoted
+# and, until this script, NOTHING in the suite entered the tutorial at all -- so the whole gate went
+# green on whatever those two bodies did. The UI-REC fixture (tutorial_solo) covers the recorded
+# session; this covers the plain "a player clicks TUTORIAL" path, and it is the arm that says whether
+# a freeze is player-facing or only reachable under replay.
+#
+# The main menu is a sprite menu, so its widgets carry no label -- TUTORIAL is value 116 ('t'),
+# per the UI-input notes' hotkey table.
+
+settled value:116
+capture t1_menu
+clickv 116
+
+# start_tutorial fades out of the menu, stamps the injected planet slot 31, boots the session through
+# session_begin_multi's LOCAL branch, fades again and raises the tutorial WELCOME modal -- "Welcome to
+# the 'Mission: Humanity' game tutorial", with a Start button. THE SIM DOES NOT TICK BEHIND IT (the HUD
+# clock reads 00.00 there, measured), so gating the in-game capture on `gameclock` without dismissing
+# this dialog first waits forever -- which is exactly how the first version of this script failed.
+settled Start
+capture t2_welcome
+clickl Start
+
+# NOW the tutorial is running and `llm_tutorial_step_driver` ticks every frame. Gate on the SIM CLOCK
+# rather than a widget, the same reason mp_host_start.txt does: an `absent`/`settled` gate lands mid
+# fog-of-war reveal and which stage you get follows the frame rate.
+#
+# The clock gate alone is NOT enough for a byte-exact frame: it fires on the first present past the
+# threshold, and how many 0.1 s sim steps that present carried is a frame-rate quantity -- so the
+# Pioneer's rotating sprite lands on a load-dependent phase (2.085% under gate concurrency vs 0.000%
+# standalone, 2026-09-10). The registry entry pins [harness] pin_wallclock=1 for that; read its note.
+gameclock 6000
+capture t3_tutorial_running
+log TUTORIAL entered, session live, step driver has ticked
+end

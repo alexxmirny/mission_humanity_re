@@ -1,0 +1,3 @@
+[12:00:00.000] ; build=EN (EN-only DLL; probe ok)
+[12:00:00.000] ; present hook armed: frametime_log=1 eager_advertise=1 temporal=1
+[12:00:05.000] net: link security ON (key deadbeef00, mh_key.txt). Everyone must use the SAME key.

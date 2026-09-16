@@ -1,0 +1,493 @@
+{
+ "_comment": [
+  "The strategic-sim migration domain (RI-SIM), created 2026-08-07 when SIM1 was decomposed.",
+  "",
+  "WHY THIS DOMAIN CANNOT SELECT BY NAME PREFIX, which is the one real difference from `ai`.",
+  "The AI cluster carries a single consistent prefix; the sim does not. Its closure spans",
+  "llm_strat_unit_ / llm_strat_bldg_ / llm_prod_ / llm_strat_order_ / game_* / map_* and more.",
+  "Worse, the RAW closure from llm_strat_sim_step is 778 functions, because the tick calls",
+  "straight out through sound, UI, minimap and net into most of the binary. So membership is",
+  "closure-minus-cuts: walk forward from the root, refuse to descend into `cut_prefixes`,",
+  "then subtract what another domain's manifest already owns and the shared helpers Law 4",
+  "keeps original. Measured 2026-08-07: 778 raw -> 514 after the walls -> 311 after removing",
+  "the 164 AI-ledger rows inside it and the 39 shared helpers.",
+  "",
+  "THE CUT LIST IS ALSO THE SHADOW-SAFETY BOUNDARY, and that is not a coincidence. Shadow mode",
+  "runs both arms and restores state between them -- but restoring state does not un-send a",
+  "packet or un-draw a dialog. The 59 outward edges from this migration set into the cut set",
+  "(25 distinct targets) are therefore the inventory item SIM-CUT has to classify and seam.",
+  "",
+  "AND IT IS WHAT MAKES THE GRAPH LAYERABLE. The closure contains a 118-function strongly",
+  "connected component that includes the root, so no antichain can order it -- but 22 of those",
+  "118 are cut-set members (UI/net/menu/progress) and removing them collapses the SCC to the",
+  "root alone. The cut is what turns arming from 118 serial rig runs into a layered schedule."
+ ],
+ "domain": "sim",
+ "title": "Strategic sim core",
+ "tracker_domain": "reimpl",
+ "tracker_group": "RI-SIM",
+ "umbrella_item": "SIM1",
+ "root": {
+  "addr": "0043f512",
+  "name": "llm_strat_sim_step",
+  "why": "The fixed-timestep simulation step, called from llm_strat_sim_tick's loop. docs/strategic-sim.md documents its per-player phase structure; it has 12 direct callees."
+ },
+ "select": {
+  "mode": "closure",
+  "cut_prefixes": [
+   "llm_gfx_",
+   "llm_ui_",
+   "llm_snd_",
+   "llm_input_",
+   "llm_menu_",
+   "llm_cam_",
+   "llm_strat_render_",
+   "llm_strat_minimap_",
+   "llm_cd_",
+   "llm_progress_",
+   "llm_chat_",
+   "llm_strat_offscreen_",
+   "llm_net_",
+   "llm_view_",
+   "llm_dlg_",
+   "llm_map_view_",
+   "game_ui_"
+  ],
+  "cut_why": "Presentation, sound, input and net. The target architecture (docs/reimpl-plan.md Sect. 5) keeps render/UI/platform in the original binary, so these are permanent walls, not a scheduling decision. `llm_progress_` is campaign/unlock notification, not sim state. `llm_net_` is already ours at the transport level (RI-WIRE/RI-LOCKSTEP) and is reached here only through UI overlays and presence notifications. `game_ui_` was ADDED 2026-08-07 and is the interesting one: the wall is a NAME predicate, so it walls the `llm_ui_` family and silently misses the two hand-named `game_ui_` functions that do exactly the same job -- `game_ui_PrintTextMessage` and `game_ui_AddTextToPrintQueue`, the on-screen message queue every sim notification ends up in. They sat INSIDE the set, scheduled into batch F for reimplementation, while `llm_ui_print_queue_text_id` -- the same kind of function -- was already cut and classified `effectful`. A cut list keyed on names inherits every inconsistency in the naming, so re-audit it whenever a naming campaign touches a walled domain.",
+  "frontier_prefixes": [
+   "utils_",
+   "LZW_",
+   "llm_str_",
+   "llm_math_",
+   "llm_sqrt",
+   "llm_res_",
+   "rsr_",
+   "GetResourseFilePtr",
+   "ToLower",
+   "w_sprintf",
+   "NOTHING2",
+   "EXTERNAL:",
+   "llm_watcom_",
+   "llm_util_empty_return_stub",
+   "llm_debug_log_msg_stub",
+   "llm_teardown_hook_stub",
+   "cfg_",
+   "llm_rand",
+   "llm_scan_masked_table",
+   "MultiByteToWideChar",
+   "llm_map_region_free",
+   "map_block_8_GetNextBlock",
+   "llm_stack_capacity_guard",
+   "llm_strat_race_alert_text_emit"
+  ],
+  "frontier_why": "Shared helpers and statically-linked library code: CALLED through mh_calls.gen.h, never migrated (Law 4 -- minimise live seams, the work is the cluster and not its leaves). Three entries earn a specific note. `llm_rand*` IS the sim PRNG and is deliberately here: the PRNG state is shared with every un-migrated consumer, so reimplementing it buys nothing and risks the determinism gate -- AI1 called it as original for all 209 rows and that is the precedent. `cfg_` is read-only-after-boot by rule R5. `llm_watcom_` are shared epilogue fragments Ghidra materialised as functions, not callees at all (AI0's finding, docs/dead-ends.md A). `llm_map_region_free` / `map_block_8_GetNextBlock` were ADDED 2026-08-17, closing a gap the SIM1F fourth slice opened but did not mechanise: that slice's progress note already concluded 'llm_map_region nodes are HEAP objects (malloc'd by map::block_8::GetNextBlock(), freed by llm_map_region_free(), both stay ORIGINAL -- Law 4, a shared allocator)' for the region-pool cluster it translated (region_split/region_apply_area/region_pick_smaller/merge_small_regions all call these two as the real malloc/free), but the manifest still carried both rows `not_started` in batch F and `--start` kept re-proposing them. These are exact full names, not prefix roots -- `llm_map_region_free` does not collide with `llm_map_region_split`/`_apply_area`/`_pick_smaller`/`_recompute_adjacency`, which stay migration targets.",
+  "excludes": [
+   "ai"
+  ],
+  "excludes_why": "The AI closure is inside the sim closure (164 of the 209 AI ledger rows are reachable from llm_strat_sim_step). Those rows are owned by RI-AI and must not be double-counted here.",
+  "owned_elsewhere": [
+   "llm_strat_order_queue_apply_and_dequeue",
+   "llm_strat_order_queue_find_index",
+   {
+    "name": "llm_strat_ai_group_move_formation_rotating",
+    "owner": "orders_issue",
+    "why": "RE-HOMED 2026-08-28 (O4B) from `ai` to `orders_issue`; this entry keeps the sim closure off it. It needs saying HERE and not only in ai.json because the two exclusions are not the same mechanism: `excludes: [ai]` subtracted this row for as long as ai's ledger carried it, so the sim walk -- which does reach it -- was held off by ai's ownership rather than by any judgement of sim's. The moment ai gave it up, sim's closure claimed it (measured: 530 -> 531), i.e. a one-sided re-home would have put one function in two ledgers. NOT solved by adding orders_issue to `excludes`, which would drop up to 113 functions out of the sim cohort in one edit."
+   },
+   {
+    "name": "llm_strat_ai_unit_flag_and_move",
+    "owner": "orders_issue",
+    "why": "RE-HOMED 2026-08-28 from `ai` to `orders_issue`, on the same evidence and by the same measurement as llm_strat_ai_group_move_formation_rotating above: the body stamps units[p][id].order_notify_status = 1 (unit +0xe8) and .order_status_flags |= 0x40 (unit +0xe3) and calls llm_strat_unit_order_move_enqueue. THE SAME ONE-SIDED-MOVE HAZARD FIRED AGAIN AND WAS MEASURED, not assumed: with only ai.json edited, regenerating sim went 530 -> 532 and both rows sat in two ledgers at once. `excludes: [ai]` was all that had been holding the sim walk off them -- ai's ownership, not any judgement of sim's -- so releasing them from ai handed them straight to sim. This entry is the other half."
+   },
+   {
+    "name": "llm_strat_ai_group_scatter_to_passable_tile",
+    "owner": "orders_issue",
+    "why": "RE-HOMED 2026-08-28 from `ai` to `orders_issue`, on the same evidence and by the same measurement as llm_strat_ai_group_move_formation_rotating above: the body stamps units[p][id].order_notify_status = 1 (unit +0xe8) and .order_status_flags |= 0x40 (unit +0xe3) and calls llm_strat_unit_order_move_enqueue. THE SAME ONE-SIDED-MOVE HAZARD FIRED AGAIN AND WAS MEASURED, not assumed: with only ai.json edited, regenerating sim went 530 -> 532 and both rows sat in two ledgers at once. `excludes: [ai]` was all that had been holding the sim walk off them -- ai's ownership, not any judgement of sim's -- so releasing them from ai handed them straight to sim. This entry is the other half."
+   },
+   {
+    "name": "llm_strat_facing_step_apply",
+    "owner": "lib_trans",
+    "why": "Renamed at the lib_trans domain close 2026-09-02 (was llm_ui_cursor_* -- the llm_ui_ cut prefix used to keep the sim closure off it, so the rename would otherwise pull an ALREADY-VERIFIED lib_trans row into sim batch A as unfinished). Translated+verified in tools/data/lib_trans_migration.json (LT1E)."
+   },
+   {
+    "name": "llm_strat_squad_placement_offset_lookup",
+    "owner": "lib_trans",
+    "why": "Renamed at the lib_trans domain close 2026-09-02 (was llm_ui_cursor_* -- the llm_ui_ cut prefix used to keep the sim closure off it, so the rename would otherwise pull an ALREADY-VERIFIED lib_trans row into sim batch A as unfinished). Translated+verified in tools/data/lib_trans_migration.json (LT1E)."
+   }
+  ],
+  "owned_elsewhere_why": "Reimplemented by RI-ORDERS in src/mh_dll/libmh/orders/order_queue.cpp (queue_apply_and_dequeue + queue_find_index) before the migration-manifest era, so there is no `excludes` domain to point at. O2b tracks their promotion off T3. The fn-ptr fold reached them from the sim dispatch; they are RI-ORDERS' to promote, not the sim cohort's to re-migrate. The OTHER order functions the fold reached -- issue_0xf_adjacent_enqueue/_by_offset (order ISSUING, movement) and dmp_enqueue_scripted_order (scripted event) -- are NOT reimplemented and stay in the cohort.",
+  "dispatch_seeds_from": "tools/data/sim_dispatch_disposition.json",
+  "dispatch_why": "SIM1-DISPATCH (2026-08-19). The per-tick behaviour of every unit and building is dispatched through fn-ptr tables filled at boot by llm_strat_register_state_handlers, so a forward DIRECT-CALL closure from the root cannot reach it -- 57 roster-writing behaviours were silently absent (docs/libmh-pivot.md, docs/dead-ends.md A). The closure walk is therefore ALSO seeded with these handlers (the `handler_seeds` list in the referenced file, which tools/check_dispatch_closure.py reads too -- ONE source, two views, so the check and the closure cannot disagree the way the matrix and the closure did). Seeds are additional roots; the walls still stop descent below them. This does NOT yet reach the 10 `sim_indirect` writers (a SECOND indirect edge the seed-walk misses) -- those stay flagged in the disposition file until their edge is confirmed.",
+  "bldg_type_seeds_from": "tools/data/sim_bldg_type_callback_table.json",
+  "bldg_type_why": "SIM1-BLDGCB (2026-08-22). The SECOND fn-ptr registry, and the same class of blind spot as dispatch_seeds_from one level over: llm_strat_register_bldg_type_callbacks (0x0045f76a, boot stage 5) fills _G_LLM_STRAT_BLDG_DONE_FUNCS[100] and _BLDG_TICK2_FUNCS[100] with 30 callbacks -- every llm_strat_done_<kind> economy handler plus the 13 per-kind building anim state machines -- reached from the sim root only through a computed [TICK2_FUNCS + building_id*4] call inside llm_strat_bldg_tick_animation_state. Seeding the walk with the state handlers could not reach them (no state handler is upstream of that second indirection), and check_dispatch_closure could not see 29 of the 30 either, because its candidate set is ROSTER writers and the done_* handlers write the per-player STAT blocks instead. They are routed to their OWN batch (H) so batches A-G5 -- all closed and verified -- stay byte-identical. Extracted, not hand-listed: tools/gen_state_handler_table.py --extract-bldg-type.",
+  "member_seeds_from": [
+   "tools/data/migration/sim1h_seeds.json",
+   "tools/data/migration/sim1h_wave2_seeds.json",
+   "tools/data/migration/xtl_drain_seeds.json"
+  ],
+  "member_why": "SIM1-H (2026-09-10). The 8 host-side sim CALLERS SIM-HOSTREACH's fixpoint surfaced: original bodies, outside this closure because they sit one level ABOVE the root, whose calls into bodies we already own are what keeps 24 verified sim rows reachable as originals (report_promotion_reconciliation section 5). The user's 2026-09-10 call is that they are genuine game logic and get TRANSLATED, not installed-around and not residued. They are injected as MEMBERS, never as roots -- seeding them as roots would drag their forward closures (session entry, the save container, the map loader) into a domain that has closed twelve batches. The seed file IS the worklist that measured them, so the batch and its derivation cannot disagree. WAVE 2 (2026-09-10): the nav-region pipeline's other half, six more rows (2692 B). Translating wave 1's llm_map_build_regions is what exposed them -- merge_small_regions and region_pick_smaller are verified rows while the five functions build_regions actually calls to do the work were in no ledger at all, surfacing as gen_va_census sites with NO OWNING ITEM. Translated rather than routed through the host API or written off against the VA ratchet: they are pathfinding, i.e. the deterministic spine. A SECOND seed file rather than an edited first one, because sim1h_seeds.json is SIM-HOSTREACH's measurement artifact and appending to it would make the measurement disagree with itself.  X-TL-DRAIN (2026-09-12): a THIRD member-seed file, same shape and same reason -- three LIVE original callers sitting one level above the root (boot stage 7, the build-placement click-confirm, the unit-side disembark wrapper) whose calls into bodies we already own were the only thing keeping seven owned bodies in the inbound surface's X-TL exclusion class. Members, never roots: seeding them as roots would drag llm_boot_stage_tick and llm_strat_input_update's forward closures in. Measured before seeding -- their entire callee set is already ours or already frontier, so the widening terminates at three functions and 781 bytes. The batch's other 23 members are NOT here: 22 were measured provably dead and are dispositioned on reconciliation_pruned_roots.json, and llm_strat_order_queue_apply_and_dequeue is orders_issue's (select.owned_elsewhere below already names it)."
+ },
+ "paths": {
+  "manifest": "tools/data/sim_migration.json",
+  "batch_overrides": "tools/data/sim_batch_overrides.json",
+  "ready_acks": "tools/data/sim_ready_ack.json",
+  "ready_report": "tmp/sim_ready",
+  "export_dir": "tmp/decomp_sim",
+  "lint_request": "tmp/sim_translation_lint.json",
+  "state_header": "src/mh_dll/libmh/sim/sim_state.h",
+  "state_impl": "src/mh_dll/libmh/sim/sim_state.cpp",
+  "module_dir": "src/mh_dll/mh/sim",
+  "selftest_dir": "src/mh_dll/mh_nettest",
+  "closure_doc": "docs/sim-closure.md",
+  "loop_prompt": "tools/data/sim_loop_prompt.md",
+  "_loop_prompt_why": "ADDED 2026-08-20. Was DELIBERATELY ABSENT until SIM0 landed and the batches became autonomous -- the guard was that migration_loop.py runs UNATTENDED, and while every sim item was in non_autonomous (SIM-PREP/SIM-CUT/SIM0/SIM1-P) there was nothing to drive. That condition is now met: SIM0 is done and `migration_session.py --domain sim --start` proposes real batch slices (SIM1-G1..G5), none of which are in non_autonomous. The gate oracle for this domain is `net_selftest.exe simtest` (oracle.selftest), which the driver folds into the shared prompt blocks via its {SELFTEST} token.",
+  "effect_classes": "tools/data/sim_effect_classes.json"
+ },
+ "batches": {
+  "order": [
+   "C",
+   "A",
+   "B",
+   "D",
+   "E",
+   "F",
+   "G",
+   "G1",
+   "G2",
+   "G3",
+   "G4",
+   "G5",
+   "H",
+   "HR"
+  ],
+  "item": {
+   "A": "SIM1A",
+   "B": "SIM1B",
+   "C": "SIM1C",
+   "D": "SIM1D",
+   "E": "SIM1E",
+   "F": "SIM1F",
+   "G": "SIM1-DISPATCH",
+   "G1": "SIM1-G1",
+   "G2": "SIM1-G2",
+   "G3": "SIM1-G3",
+   "G4": "SIM1-G4",
+   "G5": "SIM1-G5",
+   "H": "SIM1-BLDGCB",
+   "HR": "SIM1-H"
+  },
+  "dispatch_batch": {
+   "batch": "G",
+   "why": "SIM1-DISPATCH (2026-08-19): fn-ptr-dispatched unit/building behaviour, folded into the closure by seeding the walk with the state handlers. NOT reachable-from-root by direct call, so it would otherwise fall to the unreachable_batch (the completed F). The residual G bucket = the PREP worklist: unnamed FUN_ bodies to name, order-queue functions already owned by RI-ORDERS (order_queue.cpp / O2b) to reconcile, and anything no sub-rule placed."
+  },
+  "dispatch_rules": [
+   {
+    "batch": "G4",
+    "why": "building state machine + economy (construction, dismantle, charge, upgrade, research, deploy-anim, land, to-unit, destroyed, rubble, production, mining, power, turret, hangar; the scripted base-layout setup reached from bldg-completion)",
+    "match": [
+     "bldg_state_",
+     "bldg_online_",
+     "bldg_",
+     "_mine_",
+     "mine_",
+     "prod_",
+     "power",
+     "turret",
+     "hangar",
+     "footprint",
+     "network_critical",
+     "base_layout",
+     "reason_to_housing",
+     "dmp_enqueue"
+    ]
+   },
+   {
+    "batch": "G3",
+    "why": "unit lifecycle: storage, docking, deploy, enter/exit, takeoff/landing",
+    "match": [
+     "storage_",
+     "_dock",
+     "dock_",
+     "taxi",
+     "deploy",
+     "enter_",
+     "exit_",
+     "landing",
+     "takeoff",
+     "transport_unload",
+     "land_activate",
+     "liftoff",
+     "squad_merge",
+     "production_ready",
+     "step_adjacent"
+    ]
+   },
+   {
+    "batch": "G5",
+    "why": "unit combat and targeting: weapon fire, weapon-range checks, chase/approach, action-cost",
+    "match": [
+     "fire_at",
+     "weapon_range",
+     "chase",
+     "calc_range",
+     "approach_point",
+     "try_pay_action",
+     "goal_in",
+     "aimed",
+     "walk_step_allowed"
+    ]
+   },
+   {
+    "batch": "G2",
+    "why": "pathfinding, map-region routing and grid geometry",
+    "match": [
+     "path",
+     "pathfind",
+     "map_region_",
+     "trace_",
+     "_dir_",
+     "dir_step",
+     "tile_neighbor",
+     "tiles_adjacent",
+     "wrap_delta",
+     "heading_",
+     "slot_dist",
+     "claim_free_slots",
+     "toroidal",
+     "route"
+    ]
+   },
+   {
+    "batch": "G1",
+    "why": "unit movement, the movement state handlers, and unit-record lifecycle (walker, move-path, group step/marshal/formation, patrol, hover, climb/descend/ascend, idle-scatter; free-slot/teardown/set-state/change-proto/queue-advance)",
+    "match": [
+     "unit_state_",
+     "group_",
+     "formation",
+     "move_walker",
+     "move_path",
+     "_move",
+     "walker",
+     "scatter",
+     "hover",
+     "climb",
+     "descend",
+     "ascend",
+     "patrol",
+     "plot_turn",
+     "free_slot",
+     "teardown",
+     "set_state_order",
+     "change_proto",
+     "queue_advance",
+     "get_ready_home",
+     "issue_0xf_adjacent",
+     "unit_"
+    ]
+   }
+  ],
+  "dispatch_rules_why": "SIM1-DISPATCH sub-batches (reimpl-decompose 2026-08-19). Applied ONLY to dispatch_members (the fn-ptr-folded cohort), first-match, specific families first ('unit' and 'bldg' appear widely). Anything unmatched stays in the residual G bucket = PREP. Order matters: building > lifecycle > pathfinding > movement, so bldg_state_to_unit lands in G4 not G1 and unit_state storage handlers land in G3 not G1.",
+  "strip_prefix": false,
+  "roster_batch": null,
+  "roster_batch_why": "DELIBERATELY NULL, and this is the sharpest difference from the `ai` profile. There, a roster write routed a function to batch D because the AI writing sim state is the R2 architecture violation AI2 exists to burn down. Here the rosters ARE the sim's own state and writing them is the job -- 138 of this migration set's 311 functions write a shared region (the manifest's writes_shared). Routing on that would put half the cluster in a refactor batch and mean nothing.",
+  "unreachable_batch": {
+   "batch": "F",
+   "why": "not reachable from sim_step through migrated edges -- reached via a cut-set caller or a hook, so it needs caller-side treatment"
+  },
+  "rules": [
+   {
+    "batch": "C",
+    "match": [
+     "order_",
+     "_order",
+     "dispatch",
+     "ctrlgrp"
+    ],
+    "why": "The order-dispatch handlers. Subsystem 1 (RI-ORDERS) deliberately took the order CONTAINER and not the handlers -- docs/reimpl-plan.md Sect. 8 says so in as many words -- so this batch is the half that was left."
+   },
+   {
+    "batch": "D",
+    "match": [
+     "prod",
+     "storage",
+     "dock",
+     "shuttle",
+     "cargo",
+     "transport",
+     "deliver",
+     "queue_construction",
+     "available"
+    ],
+    "why": "Production, storage and the shuttle/transport logistics chain."
+   },
+   {
+    "batch": "E",
+    "match": [
+     "projectile",
+     "weapon",
+     "fire_",
+     "damage",
+     "explode",
+     "debris",
+     "combat",
+     "_fx_",
+     "kill_credit",
+     "die_",
+     "sight",
+     "fow"
+    ],
+    "why": "Projectiles, weapons, damage application, death and the fog/sight updates that follow it."
+   },
+   {
+    "batch": "B",
+    "match": [
+     "bldg",
+     "building",
+     "power",
+     "worker",
+     "footprint",
+     "construct",
+     "repair",
+     "staffed",
+     "connected",
+     "mother"
+    ],
+    "why": "The building tick: power network, workers, footprint mapping, construction and the primary-mother tracker."
+   },
+   {
+    "batch": "A",
+    "match": [
+     "unit",
+     "squad",
+     "soldier",
+     "crew",
+     "rotation",
+     "heading",
+     "docked",
+     "facing",
+     "path_",
+     "move"
+    ],
+    "why": "The unit tick and its record lifecycle. Listed AFTER B and E on purpose: 'unit' appears in many building- and combat-side names, so the more specific families claim theirs first."
+   },
+   {
+    "batch": "F",
+    "match": [
+     "population",
+     "econ",
+     "resource",
+     "progress",
+     "invasion",
+     "spawn",
+     "planet",
+     "player",
+     "time_",
+     "map_",
+     "tile",
+     "claim",
+     "diplomacy",
+     "event",
+     "speed",
+     "presence",
+     "session",
+     "sim_",
+     "frame_",
+     "toroidal",
+     "dist",
+     "locate",
+     "dir_",
+     "target",
+     "revoke",
+     "refresh",
+     "notify",
+     "game",
+     "check_",
+     "landing",
+     "pixel_delta",
+     "hook"
+    ],
+    "why": "World and session: population, economy roll-over, planet/landing, invasion scripting, the time tick and the game-event glue. A residue bucket by design -- it is named as such rather than pretending to be a subsystem."
+   }
+  ],
+  "bldg_type_batch": {
+   "batch": "H",
+   "why": "SIM1-BLDGCB (2026-08-22): per-building-TYPE callbacks + whatever their subtree pulls in. Checked BEFORE dispatch_rules, because those rules match on NAME and every one of these would otherwise land in G4 (`bldg_`, `prod_`, `mine_`, `power`, `turret` all match) -- a closed batch. Membership here is by which SEED SET reached the function, not by its name."
+  },
+  "member_batch": {
+   "batch": "HR",
+   "why": "SIM1-H: host-side caller of the sim closure, member-seeded from tools/data/migration/sim1h_seeds.json"
+  }
+ },
+ "roster_regions": [
+  "units",
+  "buildings",
+  "tile_objects",
+  "player_data",
+  "unit_storage",
+  "_G_LLM_STRAT_PLAYERS"
+ ],
+ "region_hints": [
+  "_STRAT_",
+  "UNIT",
+  "BLDG",
+  "BUILDING",
+  "PROD",
+  "PROJECTILE"
+ ],
+ "dead_tag": "todo:dead",
+ "oracle": {
+  "selftest": "simtest",
+  "rig": {
+   "modes": [
+    "soak",
+    "sp"
+   ],
+   "default": "soak",
+   "_why": "The sim core is exercised by whatever the match does, so the all-AI soak is the vehicle with the widest reach and the default. `sp` is retained because a site low in the order pipeline fires there too and the run is shorter."
+  },
+  "ab": {
+   "driver": "soak_golden",
+   "_driver_why": "The ORIGINAL vehicle, named explicitly now that there is a second one: record a golden from a control soak with the module's key flipped to 0, replay it (must match), then run the promoted arm against it. Unchanged behaviour -- what TACT-AB added was the field, so that a domain whose code never runs under llm_strat_sim_step is refused rather than quietly given this.",
+   "steps": 3000,
+   "speed": 1000,
+   "wall_s": 900
+  }
+ },
+ "_preserve_bugs_why": "Original-code defects a reimplementation must REPRODUCE, not fix -- Law 2 (bit-identical behaviour) outranks correctness, because a save, a lockstep peer and the shadow oracle all encode the buggy result. Each entry names the function and states the defect precisely enough that a reviewer seeing the odd-looking C++ does not 'correct' it. gen_migration.py copies these into the manifest rows as `preserve_bug`, and migration_session.py flags such a function PRESERVE-BUG when it proposes it in a slice.",
+ "preserve_bugs": {
+  "llm_strat_order_queue_dispatch": "Table-A case 1 (building order param0 0x6a, handler 0x00468d78) indexes the Building[] CFG table with the ORDER'S KIND NIBBLE instead of the building's building_id, when computing how many workers to unassign. The GUARD is correct -- 0x00468e25 loads buildings[p][b].building_id, IMULs by the 0x842 record stride and compares Building[building_id].builder_count against current_workers -- but the AMOUNT at 0x00468e68 does `IMUL EAX,[EBP-0x38],0x842`, and [EBP-0x38] is the slot holding `owner_and_kind & 0xf0` (written at 0x004668f9, and the value the 0x40/0x80/0xf0/0x20 dispatch chain switches on). Table A is only reachable when kind == 0x40, so the subtrahend is always the CONSTANT Building[0x40].builder_count -- in bounds (Building is cfg_final_struct_Building[100]) and therefore silent. Reproduce literally as Building[0x40]; do NOT 'fix' it to building_id. The two sibling unassign-on-transition sites were checked and are correct: case 2 (0x004693b4) recomputes from building_id, case 0xc (0x00468c4a) uses upgrade_index.",
+  "llm_strat_unit_estimate_weapon_damage": "DECLARED DIVERGENCE, NOT A PRESERVABLE BUG -- listed here because this is the field a reviewer and migration_session both read, and there is nowhere better for 'do not 'correct' the odd-looking C++, and do not believe it is equivalent either'. The armor-scaling branch of the ORIGINAL does not recompute target_owner: it re-reads the stack slot [EBP-0x10], which is written at exactly one site (0x004d32d3-0x004d32d8, `MOV EAX,EBX; AND EAX,0xf; MOV [EBP-0x10],EAX`) under the gate `TEST byte ptr [EBP-0x14],0xa0; JZ` (0x004d32cd), and is read under the INDEPENDENT gate `TEST byte ptr [EBP-0x14],0x40; JNZ` (0x004d33d2) at 0x004d33d8 and 0x004d33fa. With neither bit set the slot was never written, so the original indexes armor_prob -- and picks the target's proto -- with the PREVIOUS FRAME'S RESIDUE. The path is LIVE: llm_strat_ai_commit_attack_order builds `target_ref & 0x0f` at 0x004d562b-0x004d5632 and passes that bare owner nibble at 0x004d56a3, and llm_strat_ai_commit_attack_order_alt does the same at 0x004d57bf -- 2 of the 5 call sites, unconditionally on that arm. We CANNOT reproduce it: there is no C++ expression for the bytes a previous frame left at a fixed stack depth, and an uninitialised C++ local is UB that would not match the original's frame layout anyway. So the translation computes `target_ref & 0xf` deterministically and DIVERGES whenever the residue differs. NEVER mark this function `verified` against an oracle that walks the nibble-only path. Full write-up: docs/dead-ends.md G26. || CORRECTED 2026-08-16 -- THE 'CANNOT REPRODUCE IT' CLAIM ABOVE IS WRONG AND IS RETAINED ONLY SO THE CORRECTION IS LEGIBLE. The value is not a previous frame's residue: `PUSH 0x38; CALL utils_assert_stack_capacity` (0x004d32ad/0x004d32b2) runs AFTER `PUSH EBP`, so the Watcom stack probe's frame overlaps the locals `SUB ESP,0x1c` is about to hand out, and its `PUSH EAX` at 0x004cf47f (EAX = the 0x38 size argument, loaded by the probe's entry `XCHG [ESP+4],EAX`) lands on exactly [EBP-0x10]. Only ESI/EDI are pushed afterwards ([EBP-4]/[EBP-8]), so the slot survives intact and the original reads 0x38 == 56 on EVERY call. The probe reads that slot back as the size itself at 0x004cf4b0, so its own code self-verifies this. MEASURED, not only derived: cdb on a live all-AI soak, breakpoint at 0x004d32cd, 6 hits, [EBP-0x10] == 0x00000038 every time, with [EBP-0x20] == 0xfffffffc and [EBP-0x1c] == target_ref confirming the probe's other imprint slots. General rule + imprint table: docs/dead-ends.md G28. CONSEQUENCE: the original indexes units[56][target_index] (~1.3 MB past the roster, inside player_data at 0x00f1752a) and armor_prob[56] -- deterministic, wildly out of bounds. WHAT DID NOT CHANGE: the .cpp still computes `target_ref & 0xf`, so it is still INEQUIVALENT on (target_ref & 0xe0) == 0, and the bar on `verified` still stands. Reproducing 56 is possible but needs raw mh::state::ptr address arithmetic (the typed sim_view cannot express units[56]) and is a deliberate behaviour decision, not a cleanup -- pending measurement of the live frequency and the damage delta (discriminator: breakpoint 0x004d33d8 and read [EBP-0x10]; a legitimately written value is masked to 0..15, so 0x38 there means the divergent path). || REACHABILITY REFUTED 2026-08-16 -- the 'LIVE path / 2 of the 5 call sites, unconditionally' claim above is WRONG and is retained only so the correction is legible. That audit confused TWO FRAMES' [EBP-0x10]. In llm_strat_ai_commit_attack_order (0x004d55ef), `MOV EDX,EBX; XOR DH,BH; AND DL,0xf; MOV [EBP-0x10],EDX` (0x004d562b-0x004d5632) writes the CALLER's own local, which the caller later passes to a DIFFERENT function at 0x004d568c (`MOVZX EBX,word ptr [EBP-0x10]` -> CALL 0x0046c21c). It never reaches estimate_weapon_damage. The convention is __mh_watcall_ecx_ebx_volatile, so target_ref arrives in EBX, and EBX is not written between the caller's entry and either call site -- both pass the UNMODIFIED incoming ref. _alt (0x004d5708) is structurally identical (0x004d5744-0x004d574b, TEST BL,0x40; JZ). One of the two sites is provably safe besides: 0x004d5645 is on the `BL & 0x40 != 0` arm, so the callee's own 0x40 gate shuts the armor branch. Divergence therefore needs a ref with 0x80, 0x20 AND 0x40 all clear -- the 'no target' encoding per mh_map_object_unit::target_ref's field comment. MEASURED on a shape-valid all-AI soak (soak: PASS, 8 players, mask [11111111], 15000 steps; cdb at 0x004d33d8, an exact discriminator since a written value is masked to 0..15): 443 calls / 300 armor-branch entries / 0 divergent, every branch-reaching ref carrying the 0x80 bit. So this is a LATENT divergence, not a live one -- NOT proven unreachable (llm_strat_target_release_ref at 0x004daca5 passes a STORED ref field whose range is unenumerated), but materially less severe than recorded. docs/dead-ends.md G26 (third correction) + G29 (the two-frames trap). || CLOSED 2026-08-16 -- THE DIVERGENCE IS REPRODUCED AND THIS IS NO LONGER A PRESERVE_BUG IN THE 'cannot be equivalent' SENSE. [EBP-0x10] is modelled in the .cpp as a slot initialised to STACK_PROBE_OWNER_IMPRINT (0x38 == 56, this function's own frame size) which the armor branch RE-READS rather than recomputing -- the original's shape exactly. No raw address was needed: unit_of(v,56,i) is v.units + (56*UNITS_PER_PLAYER + i) and UNITS_PER_PLAYER*sizeof(unit) == 100*0xe9 == 0x5b04, and &cfg_units[p].armor_prob[0]+56 is 0xe4a14d + p*0x23f + 56*4 -- both the original's addresses, out-of-declared-bounds index and all. The oracle now covers region (C) with three cases (fixture roster widened via sim_fixture::wide_u so row 56 is real memory); mutations imprint 0x38->0 and revert-to-`target_ref & 0xf` are BOTH CAUGHT, and the region-(A) control stays green under both. The rule 'a preserve_bug function is verifiable iff its bug is reproducible' did not bend -- the bug turned out to be reproducible. docs/dead-ends.md G26 (resolved) + G28 + G29."
+ },
+ "creation_primitives": [
+  "llm_strat_unit_create",
+  "llm_unit_create_soldier",
+  "llm_strat_unit_spawn_on_tile",
+  "llm_unit_recruit",
+  "map_unit_Add",
+  "map_CreateBuilding",
+  "llm_strat_prod_spawn_arrived_unit"
+ ],
+ "non_autonomous": [
+  "SIM-PREP",
+  "SIM-CUT",
+  "SIM0",
+  "SIM1-P"
+ ],
+ "conductor_owned": [
+  "sim_state.h",
+  "sim_state.cpp",
+  "/addr/",
+  "\\addr\\",
+  ".vcxproj",
+  ".sln",
+  "dll_addr_manifest.json",
+  "dll_shadow_manifest.json",
+  "dll_struct_layouts.json",
+  "sim_migration.json",
+  "state_regions.json",
+  "sim_selftest.cpp"
+ ],
+ "items": {
+  "interface": "SIM0",
+  "_interface_why": "The tracker item that OWNS building the state interface this domain's batches translate into -- `<D>0` in the reimpl-decompose skill's vocabulary, and the item it calls the highest-leverage one. Declared here rather than derived from the domain name because orders_issue's is `O4-0` and a future domain may reuse another domain's interface outright. tools/lint_migration_items.py checks it exists, is not an orphan, and is REACHABLE THROUGH DEPS from every batch. The mutable sim state interface (W1/W2/W3, docs/sim-state.md) + `net_selftest.exe simtest`. SIM1C deps on it directly; the rest chain through SIM1C or SIM1-G-PREP."
+ }
+}

@@ -1,0 +1,55 @@
+# Phase 3+ HOST-AND-LAUNCH walk: host a game, WAIT until all clients have joined, then LAUNCH the match.
+#
+# Extends mp_menu_walk.txt (reach the host lobby) with the key new step: `peers <N>` blocks until N
+# transport-connected peers are present (MH_Net_PeerCount), i.e. "all clients have joined", THEN clicks
+# Start to launch. For a 2-player game N=1 (host + 1 client); a 3-player game uses `peers 2`. `peers N`
+# composes before ANY action -- the general "do X once the session has N peers connected" gate.
+#
+# Pair with mp_client_start.txt on each client. Runner: ui_test.py --host mp_host_start.txt --client <ip>:mp_client_start.txt
+
+# reach the host lobby (create a game named "test" on the pre-selected map)
+settled value:110
+capture m1_menu
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+settled Create
+clickl Create
+present Game name
+settled Ok
+clickl Ok
+present Available maps
+settled Ok
+clickl Ok
+
+# host lobby: BLOCK until the match is startable, then click Start.
+#   `peers N`     = N transport-connected clients joined (host + N; here 1 client).
+#   `enabled Start` = the host lobby registered them as player slots (occ == N+1) and un-greyed the Start
+#                     button -- the game's OWN "ready to launch" signal (the manual host's real Start action
+#                     is llm_lobby_begin_map_load, which the DLL hooks for the U2 FLAG_START handoff).
+present Network players
+peers 1
+# `peers 1` is TRANSPORT-level: it fires when the client's socket connects, which is ~1 s before the
+# client's UI has walked into its lobby. Launching there is a race the client always loses. Wait for the
+# client's own "I am in my lobby" signal (mp_client_start.txt: `signal lobby`) before arming Start.
+awaitsignal lobby
+enabled Start
+settled Start
+capture m2_lobby_ready
+clickl Start
+
+# the match launches on BOTH peers (host begin_map_load + FLAG_START -> client enters) -- lobby goes away
+absent Network players
+# Same sim gate as the client's (mp_client_start.txt): capturing on `absent` alone lands mid
+# fog-of-war reveal, and which stage you get depends on the frame rate. This one looked exempt --
+# 0.000% headless on 2026-07-28 while the client's failed -- but a later run of the same build came
+# back 1.590%, i.e. it was passing on luck inside a 2% tol, not because the host's frame is
+# deterministic. Gate it too.
+# 1500 still left the reveal GROWING (host 0.539% of a 2% tol -- passing, but on luck).
+# 6000 is past saturation, the value res_picker needed for the same reason. Both peers use
+# the SAME number so a lockstep pair also captures the same sim moment.
+gameclock 6000
+capture m3_launched
+log HOST launched the match (all peers connected)
+end

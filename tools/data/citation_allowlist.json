@@ -1,0 +1,20 @@
+{
+ "_what": "fork F5E: RULED COUPLINGS for tools/lint_citations.py. A rule here suppresses a citation from a published source into a path the public tree does not carry -- but only for a coupling somebody has DECIDED about, never for a line nobody has got to yet (that is what the Direction B ratchet in tools/data/citation_baseline.json is for).",
+
+ "_falsifiability": "Carried over verbatim from tools/data/publish_ledger.json's arm 3: `why` is MANDATORY, and A RULE THAT MATCHES ZERO LIVE VIOLATIONS FAILS THE GATE. So a rule cannot outlive the coupling it excuses, and this file cannot quietly become the place violations go to be forgotten. Rules are evaluated in order; the first whose `sources` and `targets` both match owns the violation.",
+
+ "_semantics": "`sources` and `targets` are fnmatch-style globs over forward-slash repo-relative paths, resolved by check_publishable.glob_re (so `*` does not cross `/` and `**` does). An empty or absent `targets` list matches any target.",
+
+ "rules": [
+  {"id": "generated-doc-blocks",
+   "sources": ["docs/symbols.md", "docs/structs.md"],
+   "targets": ["docs/*.md", "tracker/**", "tasks/**", "CLAUDE.md", "NOTES.md",
+               "notes/**", "session_reports/**"],
+   "why": "fork F5E (2026-09-16); the `blocked_on: F5M` marker was dropped 2026-09-16 at F5M S4b, which ruled on this coupling rather than removing it -- the two files stay published and their generated blocks stay un-re-authorable, so this is a permanent ruled row, not a waiting one. These two files are GENERATED: everything below their `<!-- BEGIN generated-... -->` marker is dumped out of the Ghidra database by tools/dump_symbols.py / dump_structs.py, and the citations ARE THE TEXT OF GHIDRA PLATE AND FIELD COMMENTS. Re-authoring one therefore means WRITING TO THE DATABASE -- which the fork freezes and which no F5E editor may do -- while hand-editing the emitted block instead is reverted by the next regeneration, i.e. a fix that silently un-fixes itself. WIDENED 2026-09-16 at F5E phase 3, when Q4's answer flipped docs-research to withhold: the target list said docs/dead-ends.md and now has to say docs/*.md, because three more Ghidra field comments inside docs/structs.md's generated block cite research docs (state-flow.md, hardcoded-limits.md, fx-weapons.md) and they are the same unreachable text for the same reason. The HAND-WRITTEN preambles of both files were drained normally in F5E step 5; this row covers only what the dumper emits. It is narrowed BY TARGET rather than by line number so that a NEW private target appearing in a generated block still fails. Delete this row when the DB comments are re-authored, or when the public cut stops carrying these two files."},
+
+  {"id": "generated-addr-header",
+   "sources": ["src/mh_dll/mh/addr/mh_addrs.gen.h"],
+   "targets": ["docs/*.md", ".claude/**", "tools/*.py"],
+   "why": "fork F5M S4b (2026-09-16). THE SAME CASE AS generated-doc-blocks one row up, in a header instead of a document: everything in src/mh_dll/mh/addr/mh_addrs.gen.h is emitted by gen_dll_addrs.py from the Ghidra database, and the citations ARE THE TEXT OF PLATE COMMENTS a human wrote in Ghidra years of sessions ago. Re-authoring one means WRITING TO THE DATABASE, which the fork freezes; hand-editing the emitted header instead is reverted by the next regeneration, i.e. a fix that un-fixes itself. It had a Direction-B baseline of 15 while its targets were research DOCS; the archive-tool cut added two more (a plate comment naming the readiness report, and one naming the state-matrix generator) and a baseline may only be tightened, so the honest answer is the ruled coupling rather than a raised number. Narrowed BY TARGET, not by line, so a NEW private target appearing in the generated header still fails. Delete this row when the plate comments are re-authored in the database, or when the cut stops carrying this header."}
+ ]
+}

@@ -1,0 +1,66 @@
+# F3E-COV, CLIENT side: join a lobby and leave it with a plain Cancel, on a HEALTHY link. Pair with
+# mp_host_watch_leave.txt, which holds the assertion this walk exists to produce (the host frees the
+# slot from the U12 LEAVE message).
+#
+# Same Cancel as mp_client_join.txt step 7, and this is deliberately NOT a second copy of that test's
+# client-side claims: the U23 negative case and the browser landing are asserted there. What this
+# script adds is the RENDEZVOUS -- it holds the Cancel until the host has captured the seated roster,
+# and holds the PROCESS until the host has read the freed one, so the host's `peers 1` non-vacuity
+# check cannot be satisfied (or broken) by this peer exiting at the wrong moment.
+#
+# THE THIRD ROUTE OUT OF A LOBBY. llm_lobby_finalize_transfer_or_enter has three callers: the retail
+# 0x0e a departing HOST broadcasts (host_recreate), R-live-ui's SYNTHESISED 0x0e on a dead link
+# (link_death), and this one -- the player's own Cancel, the only voluntary one. It is the only route
+# that reaches net_seams.cpp's `MH_Net_SendLeave()` branch: the other two consume a host-left flag
+# first and deliberately send nothing.
+
+settled value:110
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+present Internet server
+settled Internet server
+clickl Internet server
+present Server address
+settled Connect
+clickl Connect
+sessions 1
+settled Join game
+clickl Join game
+
+# the joined lobby, own slot seated and rendered (`occ 2`, the U13 gate -- `settled Cancel` alone goes
+# stable frames before this peer's own slot arrives)
+present Network players
+occ 2
+settled Cancel
+capture c1_lobby_joined
+
+# leave, but only once the host has its own seated capture (see the host script's rendezvous note)
+awaitsignal hseated
+clickl Cancel
+
+# land on the discovery browser. Gate on the RENDERED title, not on the session count -- the count is
+# raised by the rescan that finds the host, the title only by the branch that renders the result
+# (mp_client_join.txt's c7 note).
+absent Network players
+onscreen Join game
+present Games available
+# U23 NEGATIVE CASE: a VOLUNTARY exit explains nothing. Both notice strings must be absent -- the
+# other two routes into llm_lobby_finalize_transfer_or_enter arm one of them, and a bug that armed
+# the notice unconditionally would tell every player who clicked Cancel that their link had died.
+absent The host left the game.
+absent Connection to the host was lost.
+log CLIENT left the lobby with a plain Cancel -- LEAVE sent, link still up
+
+# NO CAPTURE OF THIS BROWSER, deliberately, and the reason is measured. The host's row here carries
+# the S7 occ/cap count, which is refreshed from the host's own ADVERTS -- so whether it reads "2/8"
+# (pre-vacate advert) or "1/8" (post-vacate) is a wire race with no state predicate behind it. The
+# committed mp_client_join baseline for the SAME screen is "1/8" and a fresh run of this walk
+# rendered "2/8"; that baseline survives only because one glyph is ~0.02% of the frame and the
+# default tol is 2%. This peer's evidence is c1 (a lobby that is genuinely gated) plus the
+# predicates above; the browser frame itself is already baselined by client_join's c7_after_cancel.
+
+# stay connected until the host has asserted its side
+awaitsignal hdone
+end

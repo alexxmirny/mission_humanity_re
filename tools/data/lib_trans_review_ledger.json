@@ -1,0 +1,31 @@
+{
+ "_comment": [
+  "lib_trans review-ledger (created at the 2026-09-02 domain close): one disposition per",
+  "review_required row, naming the reimpl-verify run that discharged it. Same contract as the",
+  "sibling *_review_ledger.json files."
+ ],
+ "cfg_final_planet_Construct": {
+  "disposition": "reviewed",
+  "session": "2026-09-02 wave 2",
+  "by": "reimpl-verify batch closure D (conductor session, 2026-09-02)",
+  "note": "equivalent; d1's 3 declared uncertainties adjudicated (strcpy-equivalence PROVEN, the tlo jump table decoded from raw image bytes independently by reviewer AND conductor, the zero-init map_header narrowed to corrupt-map-only paths). See notes/2026-09-02.md wave-2 close + the ledger row."
+ },
+ "llm_progress_propagate_unlocks": {
+  "disposition": "reviewed",
+  "session": "2026-09-02 wave 2",
+  "by": "reimpl-verify batch closure B (conductor session, 2026-09-02)",
+  "note": "the wave's ONE confirmed divergence: sign-extended PlayerSide where the original MOVZX zero-extends -- FIXED and re-reviewed equivalent. See notes/2026-09-02.md wave-2 close."
+ },
+ "llm_strat_deploy_starting_squad": {
+  "disposition": "reviewed",
+  "session": "2026-09-02 wave 2",
+  "by": "reimpl-verify batch closure (conductor session, 2026-09-02)",
+  "note": "equivalent; the 49th stencil byte (dropped by the .c rendering) verified preserved. See the ledger row + notes/2026-09-02.md."
+ },
+ "llm_strat_bldg_recompute_cell_grid": {
+  "disposition": "reviewed",
+  "session": "2026-09-02 domain close",
+  "by": "reimpl-verify whole-closure wf_a6478cd0-58e (conductor session, 2026-09-02)",
+  "note": "equivalent, 3/3 reviewers, zero findings; the G2 halo-probe decompile artifact briefed in and confirmed handled (translated from the .asm). Transcripts read by the conductor."
+ }
+}

@@ -1,0 +1,52 @@
+# D10 HOST: mp_host_start.txt + an AI OPPONENT, for the AI-active determinism run.
+#
+# Why this exists: every determinism run this project has green-lit compared a world in which the AI
+# never drew a random number (PRNG slot 2 read 0 on both peers, D3). D6 fixed "nothing MOVES"; this
+# fixes "nobody THINKS".
+#
+# SLOT INDEX IS THE WHOLE POINT. The host holds row 0 and the joining client takes row 1, so the AI
+# must go in row 2 -- `click 70 149`, the per-slot STATE spinner (llm_lobby_slot_cycle_state_cb,
+# OPEN->AI->CLOSED). An AI at row 1 would sit inside the two player_data slots the harness has always
+# hashed and would prove nothing; at row >= 2 it lands in the ~973 KB that was invisible until D11
+# re-typed game::player_data from [2] to [8] and widened the manifest.
+#
+# ORDERING IS FORCED: seat the client FIRST (`peers 1` + `occ 2`), THEN add the AI. Adding the AI
+# before the client joins would push the client to row 2 and put the AI at row 1 -- the exact
+# configuration that proves nothing.
+#
+# Each state click triggers a widget REBUILD, so gate between clicks on a STATE PREDICATE rather than
+# on time: an AI slot's NAME column becomes the real label "Computer" (the spinner's own text is drawn,
+# not matchable). `present Computer` waits the rebuild out, speed-independently. Recipe proven by
+# mp_host_ai_closed.txt (S7).
+
+settled value:110
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+settled Create
+clickl Create
+present Game name
+settled Ok
+clickl Ok
+present Available maps
+settled Ok
+clickl Ok
+
+# host lobby: wait for the client to connect AND be seated (row 1) before touching any slot
+present Network players
+peers 1
+occ 2
+
+# row 2 OPEN -> AI, then confirm the roster really grew rather than just the spinner redrawing
+click 70 149
+present Computer
+occ 3
+
+enabled Start
+settled Start
+clickl Start
+
+absent Network players
+log HOST launched with an AI opponent seated at slot index 2
+end

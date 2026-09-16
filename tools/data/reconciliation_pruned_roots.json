@@ -1,0 +1,434 @@
+{
+ "_generated_by": "SIM-HOSTREACH Phase C, 2026-09-10 (evidence read via ReVA against /eng/mh.exe)",
+ "_program": "/eng/mh.exe",
+ "_what": "Host functions REMOVED FROM THE SEED SET of report_promotion_reconciliation.py section 5's closure, because nothing live reaches them. A pruned root is still reachable through the closure if any live node calls it -- pruning only withdraws it as a STARTING point. Every entry carries three independent negatives (call graph / byte scan / reference manager) and is re-checked mechanically by --check-roots; see that function for the refusal arm.",
+ "_discipline": "docs/dead-ends.md G94 (orphan closure, address-taken exemption) and section A (an empty find-cross-references is NOT proof of death on this ref-manager-blind binary). A false 'dead' is the cardinal sin: this list asserts only what all three checks agree on.",
+ "_excluded": {
+  "llm_strat_prod_shuttle_slot_spawn_arrival": "0x004906c1 -- the call graph says 0 callers, but ReVA finds a real UNCONDITIONAL_CALL from 0x004c5ba4, which lies inside UndefinedFunction_004c5b7c: Ghidra never created a function there, so the edge has no node and the graph cannot see it. NOT pruned.",
+  "llm_ui_outcome_dlg_open": "0x004c68dc (ends 0x004c6bc4) -- ReVA finds a call from LAB_004c6c05, past its own end, in the same undefined region. Watcom disjoint bodies (G100). NOT pruned."
+ },
+ "pruned_roots": [
+  {
+   "name": "llm_cam_pan_to_building",
+   "address": "0x00498fb4",
+   "evidence": {
+    "orphan_closure": true,
+    "addr_taken": false,
+    "graph_callers": 0,
+    "reva_refs_to": 0,
+    "reva_read": "2026-09-10"
+   }
+  },
+  {
+   "name": "llm_gfx_display_mode_apply",
+   "address": "0x00428981",
+   "evidence": {
+    "orphan_closure": true,
+    "addr_taken": false,
+    "graph_callers": 0,
+    "reva_refs_to": 0,
+    "reva_read": "2026-09-10"
+   }
+  },
+  {
+   "name": "llm_map_fow_reveal_here",
+   "address": "0x00494aaf",
+   "evidence": {
+    "orphan_closure": true,
+    "addr_taken": false,
+    "graph_callers": 0,
+    "reva_refs_to": 0,
+    "reva_read": "2026-09-10"
+   }
+  },
+  {
+   "name": "llm_map_passable_mark_annulus_clear",
+   "address": "0x0048874b",
+   "evidence": {
+    "orphan_closure": true,
+    "addr_taken": false,
+    "graph_callers": 1,
+    "reva_refs_to": 1,
+    "reva_read": "2026-09-12",
+    "undef_call_sites": 0,
+    "fnptr_scan_candidates": 0,
+    "byte_scan": "TOTAL-ORPHAN",
+    "prev_insn_falls_through": false,
+    "callers_all_orphaned": [
+     "llm_strat_unit_approach_weapon_range"
+    ]
+   },
+   "why": "Dead chain (X-TL-DRAIN). Sole caller llm_strat_unit_approach_weapon_range, pruned 2026-09-10.",
+   "added_by": "X-TL-DRAIN step 2, 2026-09-12 (EN v404)"
+  },
+  {
+   "name": "llm_map_passable_mark_annulus_set",
+   "address": "0x00488620",
+   "evidence": {
+    "orphan_closure": true,
+    "addr_taken": false,
+    "graph_callers": 1,
+    "reva_refs_to": 1,
+    "reva_read": "2026-09-12",
+    "undef_call_sites": 0,
+    "fnptr_scan_candidates": 0,
+    "byte_scan": "TOTAL-ORPHAN",
+    "prev_insn_falls_through": false,
+    "callers_all_orphaned": [
+     "llm_strat_unit_approach_weapon_range"
+    ]
+   },
+   "why": "Dead chain (X-TL-DRAIN). Sole caller llm_strat_unit_approach_weapon_range, pruned 2026-09-10.",
+   "added_by": "X-TL-DRAIN step 2, 2026-09-12 (EN v404)"
+  },
+  {
+   "name": "llm_strat_bldg_apply_cfg_resources",
+   "address": "0x00479562",
+   "evidence": {
+    "orphan_closure": true,
+    "addr_taken": false,
+    "graph_callers": 0,
+    "reva_refs_to": 0,
+    "reva_read": "2026-09-10"
+   }
+  },
+  {
+   "name": "llm_strat_bldg_grant_resource_bonus",
+   "address": "0x00493387",
+   "evidence": {
+    "orphan_closure": true,
+    "addr_taken": false,
+    "graph_callers": 0,
+    "reva_refs_to": 0,
+    "reva_read": "2026-09-10"
+   }
+  },
+  {
+   "name": "llm_strat_bldg_staffed_flag_toggle",
+   "address": "0x00496772",
+   "evidence": {
+    "orphan_closure": true,
+    "addr_taken": false,
+    "graph_callers": 0,
+    "reva_refs_to": 0,
+    "reva_read": "2026-09-10"
+   }
+  },
+  {
+   "name": "llm_strat_ctrlgrp_remove_member_by_id",
+   "address": "0x0044ab7d",
+   "evidence": {
+    "orphan_closure": true,
+    "addr_taken": false,
+    "graph_callers": 0,
+    "reva_refs_to": 0,
+    "reva_read": "2026-09-10"
+   }
+  },
+  {
+   "name": "llm_strat_dir_from_to_is_octant_sector",
+   "address": "0x004947c2",
+   "evidence": {
+    "orphan_closure": true,
+    "addr_taken": false,
+    "graph_callers": 1,
+    "reva_refs_to": 8,
+    "reva_read": "2026-09-10",
+    "chain": "all 8 refs are from llm_tact_move_find_approach_tile @0x00427c6c, which is itself pruned here (0 refs, not addr-taken) -- the transitive clause of G94's orphan closure"
+   }
+  },
+  {
+   "name": "llm_strat_fow_remove_sight_r12",
+   "address": "0x00494aec",
+   "evidence": {
+    "orphan_closure": true,
+    "addr_taken": false,
+    "graph_callers": 0,
+    "reva_refs_to": 0,
+    "reva_read": "2026-09-10"
+   }
+  },
+  {
+   "name": "llm_strat_group_member_find_nearest_to_point",
+   "address": "0x0048d53d",
+   "evidence": {
+    "orphan_closure": true,
+    "addr_taken": false,
+    "graph_callers": 0,
+    "reva_refs_to": 0,
+    "reva_read": "2026-09-10"
+   }
+  },
+  {
+   "name": "llm_strat_group_move_member_step_blocked",
+   "address": "0x00495214",
+   "evidence": {
+    "orphan_closure": true,
+    "addr_taken": false,
+    "graph_callers": 0,
+    "reva_refs_to": 0,
+    "reva_read": "2026-09-10"
+   }
+  },
+  {
+   "name": "llm_strat_group_move_request_build",
+   "address": "0x00494f0c",
+   "evidence": {
+    "orphan_closure": true,
+    "addr_taken": false,
+    "graph_callers": 0,
+    "reva_refs_to": 0,
+    "reva_read": "2026-09-10"
+   }
+  },
+  {
+   "name": "llm_strat_pathfind_dispatch_route_order",
+   "address": "0x0043def7",
+   "evidence": {
+    "orphan_closure": true,
+    "addr_taken": false,
+    "graph_callers": 1,
+    "reva_refs_to": 1,
+    "reva_read": "2026-09-10",
+    "chain": "its only ref is llm_strat_group_move_request_build @0x00494f0c, pruned here (0 refs)"
+   }
+  },
+  {
+   "name": "llm_strat_pathfind_next_step",
+   "address": "0x0043cf1b",
+   "evidence": {
+    "orphan_closure": true,
+    "addr_taken": false,
+    "graph_callers": 1,
+    "reva_refs_to": 1,
+    "reva_read": "2026-09-12",
+    "undef_call_sites": 0,
+    "fnptr_scan_candidates": 0,
+    "byte_scan": "TOTAL-ORPHAN",
+    "prev_insn_falls_through": false,
+    "callers_all_orphaned": [
+     "llm_strat_unit_approach_weapon_range"
+    ]
+   },
+   "why": "Dead chain (X-TL-DRAIN). Sole caller llm_strat_unit_approach_weapon_range, pruned 2026-09-10.",
+   "added_by": "X-TL-DRAIN step 2, 2026-09-12 (EN v404)"
+  },
+  {
+   "name": "llm_strat_pathfind_path_list_compact",
+   "address": "0x0043da7e",
+   "evidence": {
+    "orphan_closure": true,
+    "addr_taken": false,
+    "graph_callers": 0,
+    "reva_refs_to": 0,
+    "reva_read": "2026-09-10"
+   }
+  },
+  {
+   "name": "llm_strat_pathfind_path_list_compact_all",
+   "address": "0x0043d28e",
+   "evidence": {
+    "orphan_closure": true,
+    "addr_taken": false,
+    "graph_callers": 0,
+    "reva_refs_to": 0,
+    "reva_read": "2026-09-10"
+   }
+  },
+  {
+   "name": "llm_strat_pathfind_result_col",
+   "address": "0x0043cecc",
+   "evidence": {
+    "orphan_closure": true,
+    "addr_taken": false,
+    "graph_callers": 8,
+    "reva_refs_to": 12,
+    "reva_read": "2026-09-12",
+    "undef_call_sites": 0,
+    "fnptr_scan_candidates": 0,
+    "byte_scan": "TOTAL-ORPHAN",
+    "prev_insn_falls_through": false,
+    "callers_all_orphaned": [
+     "llm_strat_pathfind_dispatch_route_order",
+     "llm_strat_pathfind_next_step",
+     "llm_strat_pathfind_path_list_compact",
+     "llm_strat_pathfind_path_list_compact_all",
+     "llm_strat_pathfind_reserve_route_cells",
+     "llm_strat_pathfind_restore_route_cells",
+     "llm_strat_pathfind_route_bbox",
+     "llm_strat_pathfind_route_start_adjust"
+    ]
+   },
+   "why": "Dead chain (X-TL-DRAIN). 12 call sites in 8 caller functions -- next_step, dispatch_route_order, route_start_adjust (x2), reserve_route_cells, restore_route_cells, path_list_compact, path_list_compact_all, route_bbox -- and EVERY ONE is itself in the orphan closure. This is the shape _ancestor_note prescribes: the tip of a dead chain, not a root.",
+   "added_by": "X-TL-DRAIN step 2, 2026-09-12 (EN v404)"
+  },
+  {
+   "name": "llm_strat_pathfind_result_row",
+   "address": "0x0043cef8",
+   "evidence": {
+    "orphan_closure": true,
+    "addr_taken": false,
+    "graph_callers": 8,
+    "reva_refs_to": 12,
+    "reva_read": "2026-09-12",
+    "undef_call_sites": 0,
+    "fnptr_scan_candidates": 0,
+    "byte_scan": "TOTAL-ORPHAN",
+    "prev_insn_falls_through": false,
+    "callers_all_orphaned": [
+     "llm_strat_pathfind_dispatch_route_order",
+     "llm_strat_pathfind_next_step",
+     "llm_strat_pathfind_path_list_compact",
+     "llm_strat_pathfind_path_list_compact_all",
+     "llm_strat_pathfind_reserve_route_cells",
+     "llm_strat_pathfind_restore_route_cells",
+     "llm_strat_pathfind_route_bbox",
+     "llm_strat_pathfind_route_start_adjust"
+    ]
+   },
+   "why": "Dead chain (X-TL-DRAIN). The row twin of result_col, same 8 orphaned callers at the sibling call sites.",
+   "added_by": "X-TL-DRAIN step 2, 2026-09-12 (EN v404)"
+  },
+  {
+   "name": "llm_strat_pathfind_route_find_next_stop",
+   "address": "0x0043d591",
+   "evidence": {
+    "orphan_closure": true,
+    "addr_taken": false,
+    "graph_callers": 1,
+    "reva_refs_to": 2,
+    "reva_read": "2026-09-10",
+    "chain": "both refs from llm_strat_pathfind_dispatch_route_order @0x0043def7, whose only ref is llm_strat_group_move_request_build @0x00494f0c, which has 0 refs and is not addr-taken -- a two-hop dead chain, chased to a root rather than stopped at hop one (G94)"
+   }
+  },
+  {
+   "name": "llm_strat_pathfind_sort_units_by_path_len",
+   "address": "0x0043d18f",
+   "evidence": {
+    "orphan_closure": true,
+    "addr_taken": false,
+    "graph_callers": 1,
+    "reva_refs_to": 1,
+    "reva_read": "2026-09-12",
+    "undef_call_sites": 0,
+    "fnptr_scan_candidates": 0,
+    "byte_scan": "TOTAL-ORPHAN",
+    "prev_insn_falls_through": false,
+    "callers_all_orphaned": [
+     "llm_strat_pathfind_path_list_compact_all"
+    ]
+   },
+   "why": "Dead chain (X-TL-DRAIN). Sole caller llm_strat_pathfind_path_list_compact_all, itself pruned 2026-09-10. Named this session (ex FUN_0043d18f); the row is keyed on the NEW name, so it needs a call graph regenerated at EN v404 or later.",
+   "added_by": "X-TL-DRAIN step 2, 2026-09-12 (EN v404)"
+  },
+  {
+   "name": "llm_strat_ui_unload_group_from_storage",
+   "address": "0x00444c9c",
+   "evidence": {
+    "orphan_closure": true,
+    "addr_taken": false,
+    "graph_callers": 0,
+    "reva_refs_to": 0,
+    "reva_read": "2026-09-10"
+   }
+  },
+  {
+   "name": "llm_strat_unit_approach_weapon_range",
+   "address": "0x0048802e",
+   "evidence": {
+    "orphan_closure": true,
+    "addr_taken": false,
+    "graph_callers": 0,
+    "reva_refs_to": 0,
+    "reva_read": "2026-09-10"
+   }
+  },
+  {
+   "name": "llm_strat_unit_ctrl_group_assign_by_ref",
+   "address": "0x0044aac5",
+   "evidence": {
+    "orphan_closure": true,
+    "addr_taken": false,
+    "graph_callers": 0,
+    "reva_refs_to": 0,
+    "reva_read": "2026-09-10"
+   }
+  },
+  {
+   "name": "llm_strat_unit_move_to_tile",
+   "address": "0x00486ef7",
+   "evidence": {
+    "orphan_closure": true,
+    "addr_taken": false,
+    "graph_callers": 0,
+    "reva_refs_to": 0,
+    "reva_read": "2026-09-10"
+   }
+  },
+  {
+   "name": "llm_tact_move_commit_pending_path",
+   "address": "0x00494eb8",
+   "evidence": {
+    "orphan_closure": true,
+    "addr_taken": false,
+    "graph_callers": 0,
+    "reva_refs_to": 0,
+    "reva_read": "2026-09-10"
+   }
+  },
+  {
+   "name": "llm_tact_move_find_approach_tile",
+   "address": "0x00427c6c",
+   "evidence": {
+    "orphan_closure": true,
+    "addr_taken": false,
+    "graph_callers": 0,
+    "reva_refs_to": 0,
+    "reva_read": "2026-09-10"
+   }
+  },
+  {
+   "name": "llm_tact_move_flood_reachable_tile",
+   "address": "0x00425098",
+   "evidence": {
+    "orphan_closure": true,
+    "addr_taken": false,
+    "graph_callers": 2,
+    "reva_refs_to": 2,
+    "reva_read": "2026-09-12",
+    "undef_call_sites": 0,
+    "fnptr_scan_candidates": 0,
+    "byte_scan": "TOTAL-ORPHAN",
+    "prev_insn_falls_through": false,
+    "callers_all_orphaned": [
+     "llm_tact_move_find_approach_tile",
+     "llm_tact_move_find_reachable_dest"
+    ]
+   },
+   "why": "Dead chain (X-TL-DRAIN). Both callers are zero-caller dead roots: llm_tact_move_find_approach_tile (pruned 2026-09-10) and llm_tact_move_find_reachable_dest (0x00488876, NOT yet pruned -- see _prune_candidates).",
+   "added_by": "X-TL-DRAIN step 2, 2026-09-12 (EN v404)"
+  },
+  {
+   "name": "llm_unit_order_disembark_soldiers_enqueue",
+   "address": "0x0046e7d6",
+   "evidence": {
+    "orphan_closure": true,
+    "addr_taken": false,
+    "graph_callers": 0,
+    "reva_refs_to": 0,
+    "reva_read": "2026-09-12",
+    "undef_call_sites": 0,
+    "fnptr_scan_candidates": 0,
+    "byte_scan": "TOTAL-ORPHAN",
+    "prev_insn_falls_through": false,
+    "callers_all_orphaned": []
+   },
+   "why": "Zero-caller root. The immediate/local-lane twin of the LIVE llm_unit_order_disembark_soldiers (0x0046e76c, called by llm_strat_input_update): the UI path issues only the replicated-lane order, so the _enqueue mirror was never wired. THE ONLY ONE OF THESE EIGHT THAT WITHDRAWS A SECTION-5 ROW -- it forward-reaches the owned llm_strat_order_enqueue.",
+   "added_by": "X-TL-DRAIN step 2, 2026-09-12 (EN v404)"
+  }
+ ],
+ "_ancestor_note": "Pruning a root but not its equally-dead ANCESTORS is ineffective: the ancestor is still a seed and walks straight back into it. Found 2026-09-10 when llm_strat_pathfind_route_find_next_stop was pruned and still forced llm_strat_facing24_to_delta, because its two orphaned ancestors were not. Prune whole dead chains, not their tips.",
+ "_chain_note": "TWO ROW SHAPES, both legitimate. The 2026-09-10 batch were all zero-caller ROOTS (graph_callers 0). The 2026-09-12 X-TL-DRAIN batch adds DEAD-CHAIN members whose graph_callers is NON-ZERO -- every one of those callers is itself in the orphan closure, recorded per row as callers_all_orphaned. That is not a weaker claim: section 5 seeds its closure from EVERY non-owned node (report_promotion_reconciliation.py ~line 496), so a function with only dead callers is still a SEED and still has to be withdrawn by name. _ancestor_note already mandated exactly this -- 'prune whole dead chains, not their tips' -- and check_roots re-derives it correctly, because orphan_closure is transitive. Read graph_callers 0 as 'root', non-zero as 'chain member'; the refusal arm treats both the same.",
+ "_evidence_note": "The 2026-09-12 rows carry TWO negatives the 2026-09-10 rows predate, both from instruments that did not exist or were not run then: undef_call_sites (tools/data/undef_call_sites.json, the E8/E9 rel32 edges the call graph structurally cannot hold -- docs/dead-ends.md G167, the exact blindness that put both _excluded entries on this list) and fnptr_scan_candidates (mh_materialize_fnptr_refs.py dry run over instruction immediates AND 4-aligned dwords in the non-exec blocks). byte_scan is recorded but is NOT load-bearing and must not be read as one: it is VACUOUS for a rel32-called target, measured this session -- llm_strat_bldg_init_all (1 real caller) and llm_strat_pathfind_result_col (8) both read TOTAL-ORPHAN. It can only ever add evidence of LIFE, never prove death.",
+ "_prune_candidates": "Two functions OUTSIDE the X-TL-DRAIN batch measured orphaned this session and are NOT pruned, because expanding the list past the item's scope silently is the failure this file guards: llm_strat_pathfind_route_bbox (0x0043d01f, 0 callers) and llm_tact_move_find_reachable_dest (0x00488876, 0 callers). Both are seeds of section 5 today. Neither forward-reaches an owned body, so neither changes a count. Recorded here so the next pass finds them rather than re-deriving them."
+}

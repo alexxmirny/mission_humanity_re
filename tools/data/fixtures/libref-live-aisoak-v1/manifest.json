@@ -1,0 +1,150 @@
+{
+ "_what": "LIB-REF-LIVE live-loop fixture: clock track, step-0 world blob, and the hosted live run's per-step lockstep hash stream -- all from ONE run, and NO ORDER STREAM. The absence is the artifact's whole claim: the in-sim AI is the sole order source, nothing is injected and nothing is suppressed, so the standalone host has to reproduce the enqueue/issue/dispatch loop the replay fixtures structurally cover over.",
+ "_read_the_readme": "README.md beside this file carries the re-record procedure and the contract LIB-REF inherits. Do not regenerate half of this set.",
+ "version": 1,
+ "steps": 5000,
+ "provenance": {
+  "commit": "a3324d3e716b178c31e42a6119cd6175218df647",
+  "recorded": "2026-09-11",
+  "scenario_script": "sp_soak.txt",
+  "synth_seed": 20260912,
+  "host": "local lane ui_soak (headless, isolated desktop mh_rig), single peer; run 20260911_230951_solo staged to tmp/libref_live1",
+  "peers": "1 (8-way all-AI: every slot an AI, including the converted local slot; no rig VMs)",
+  "run_dir": "tmp/libref_live1",
+  "stream_from_run": "tmp/libref_live1"
+ },
+ "compare": {
+  "channel": "state",
+  "why": "`state` drops the state_excluded() wall-clock/pacing regions and is identical across runs and across record/replay configurations (measured: step-1 state 52976C9B8B49D2A8 from four independent launches). `combined` folds those regions in and is a property of the RUN, not of the world -- measured different at step 1 of a record and its own replay. LIB-REF compares `state` and the per-region R columns; it must never compare `combined`.",
+  "region_columns": [
+   "buildings",
+   "productions",
+   "mines",
+   "turrets",
+   "unit_storage",
+   "labs",
+   "p0_ai_gates",
+   "p0_local",
+   "p0_ai_econ",
+   "p1_ai_gates",
+   "p1_local",
+   "p1_ai_econ",
+   "strat_players",
+   "planets",
+   "prod_slots",
+   "planet_status",
+   "projectile_pool",
+   "rng_state",
+   "game_clock",
+   "order_pending",
+   "units",
+   "tile_objects",
+   "soldiers",
+   "p2_ai_gates",
+   "p2_local",
+   "p2_ai_econ",
+   "p3_ai_gates",
+   "p3_local",
+   "p3_ai_econ",
+   "p4_ai_gates",
+   "p4_local",
+   "p4_ai_econ",
+   "p5_ai_gates",
+   "p5_local",
+   "p5_ai_econ",
+   "p6_ai_gates",
+   "p6_local",
+   "p6_ai_econ",
+   "p7_ai_gates",
+   "p7_local",
+   "p7_ai_econ",
+   "order_queue",
+   "order_queue_count",
+   "order_staging",
+   "order_staging_count",
+   "order_pending_arr",
+   "ls_horizon",
+   "ls_committed",
+   "peer_horizon",
+   "peer_pending",
+   "peer_timing",
+   "peer_state",
+   "current_game_time",
+   "frame_ring",
+   "fps_estimate",
+   "players",
+   "last_game_time",
+   "total_game_time",
+   "sim_step_interval",
+   "game_time_delta",
+   "game_speed"
+  ]
+ },
+ "step0": {
+  "world_content_hash": "ADCD5D6381B3726F",
+  "lockstep_combined": "B97735A8BC9853B2",
+  "lockstep_state": "4A14D4704680FD25",
+  "game_clock": "3F9111276FB08000",
+  "step": 1,
+  "mask_flags": 7,
+  "hash_sink_fp": "68AADCE3",
+  "hash_manifest_fp": "BD36D78E",
+  "hash_slice_count": 61
+ },
+ "artifacts": {
+  "clock": {
+   "file": "clock.bin.zz",
+   "raw_bytes": 40000,
+   "zlib_bytes": 27966,
+   "sha256_raw": "bfcf3e8df9a8367bc296eab17a84449a67b88da8c047bac91e8da246a60de39c"
+  },
+  "world": {
+   "file": "world.bin.zz",
+   "raw_bytes": 8186488,
+   "zlib_bytes": 486246,
+   "sha256_raw": "70a727cb8f1e78b28bb3f47d3f8632608f7981dfec6e9fddddc392f064cb23bc"
+  },
+  "hash_steps": {
+   "file": "hash_steps.txt.zz",
+   "raw_bytes": 278893,
+   "zlib_bytes": 152094,
+   "sha256_raw": "0b8ff94e2c30a455ff7468fa4eb4660cc429c6e7759a09a44637853e4e1729ff"
+  },
+  "hash_regions": {
+   "file": "hash_regions.txt.zz",
+   "raw_bytes": 5218893,
+   "zlib_bytes": 787520,
+   "sha256_raw": "2f4dda25a26186f5b46c1d6bedd87ff3c8a7a0af52f7658c044f03bc9a54499a"
+  }
+ },
+ "live_contract": {
+  "flags": {
+   "all_ai": 1,
+   "synth_move": 0,
+   "order_mode": 0,
+   "replay_suppress_enqueue": 0,
+   "pin_wallclock": 1,
+   "pin_fpu": 1,
+   "fixed_step": 0,
+   "region_hash_step": 1,
+   "exit_on_stop": 1,
+   "clock_record": 1,
+   "world_capture": 1,
+   "pin_strat_seed": 1,
+   "strat_seed": 20260912
+  },
+  "scenario_script": "sp_soak.txt",
+  "semantics": [
+   "NO ORDER STREAM EXISTS IN THIS FIXTURE, and that is the claim being made. The replay fixtures inject a recorded order stream and suppress the sim's own enqueues, which structurally covers over the enqueue/issue/dispatch loop; here the in-sim AI is the SOLE order source. A standalone host must run that loop for real and still track the recording bit-for-bit.",
+   "all_ai=1: every player slot is an AI, including the local one (a pre-landing status_flags flip, so it spawns through llm_strat_spawn_ai_base like any computer player rather than ticking with no home tile).",
+   "synth_move=0: the harness's synthetic workload is EXPLICITLY disarmed. It is the soak's own default here, but it is stated because a workload order would be a second order source and would make the sole-source claim false -- which is precisely how the replay fixture's step-5000 residual happened.",
+   "replay_suppress_enqueue=0: suppression is OFF. The standalone host must therefore run WITHOUT --no-suppress-enqueue's opposite -- i.e. it must pass --no-suppress-enqueue, since that host suppresses by default for the replay contract.",
+   "clock_record=1 with order_mode=0: the clock track is written WITHOUT an order stream. That combination did not exist before 2026-09-11 -- clock_record was gated on order_mode==1, so the only way to get a clock was to also produce the order stream this fixture forbids. order_mode==1 still implies clock_record, so every older recording path is byte-unchanged (proven: a 300-step sp_det record before and after the split produced byte-identical mh_clock.bin and mh_orders.bin).",
+   "pin_strat_seed=1, strat_seed=20260912: the pinned scenario seed, carried literally. MEASURED INERT for this scenario -- five 200-step runs (two unpinned minutes apart, plus strat_seed 7, 52 and 20260912) are bit-identical on `state` and all 61 region columns -- because the knob's documented effect is the CAMPAIGN landing roll and this is an 8-way skirmish from the default start. The pin is kept as anti-cherry-picking provenance, not as a determinism mechanism.",
+   "the clock track is a legitimate carried INPUT: time is an input, decisions are not. Nothing else about the run is fed to the standalone host."
+  ]
+ },
+ "fidelity": {
+  "re_record": "THE FIRST RECORDING of the live-loop fixture (2026-09-11, LIB-REF-LIVE). Scenario and seed were PINNED IN THE TRACKER BEFORE any recording run, as the item requires, and this recording is under that arrangement verbatim -- see live_contract.flags. WHY IT EXISTS: the replay fixtures inject a recorded order stream and suppress the sim's own enqueues, which structurally covers over the enqueue/issue/dispatch loop. Here the in-sim AI is the SOLE order source: nothing is injected, nothing is suppressed, and there is no order stream at all. TWO THINGS HAD TO CHANGE IN THE RECORDER BEFORE THIS COULD BE RECORDED, both landed the same day. (a) clock_record was gated on order_mode==1, so the only way to get a clock track was to also produce the order stream this fixture forbids -- measured: an order_mode=0 all-AI soak run directory contained mh_world.bin and nothing else. It is now its own key, with order_mode==1 implying it so every older recording path is byte-unchanged (proven: a 300-step sp_det record before and after the split gave byte-identical mh_clock.bin AND mh_orders.bin). (b) The soak's run-shape gate -- the richness gate this item's done_when requires -- was RED on every --soak run since LIB-TRANS-P, because [promote] lockstep requests sim_tick BY REBIND by default, the harness's derived yield disarms that row, and llm_strat_sim_tick had no entry in rebind_yield_dispositions.json. The fall-through was pointed at our body the whole time (the run's own log: `[promote] sim_tick REBOUND ... falls through to OURS`, then the liveness counter at call #1 and #100); only the hand list was missing the row. Adjudicated and mutation-proven both directions before this recording was made. SELF-CONSISTENCY, the gate the whole standalone comparison rests on: two hosted live runs, 5000/5000 steps each, ZERO state mismatches, ZERO clock mismatches, all 61 region columns identical at every step, and mh_clock.bin byte-identical between them. Run-shape PASS on both (all_ai ARMED, converted=1, spawn-verified 1/1, master_gate=1, 8 players, mask [11111111], alive 8@100, 5000 of 5000 hashed steps). THE SEED IS CARRIED LITERALLY AND IS MEASURED INERT. strat_seed=20260912 sits outside the 0..59 clock-second domain harness.cpp reserves for that knob, and it changes nothing here: five 200-step runs -- two unpinned minutes apart, plus strat_seed 7, 52 and 20260912 -- are bit-identical on `state` and all 61 region columns, because the knob's documented effect is the CAMPAIGN landing roll and this is an 8-way skirmish from the default start. The pin is anti-cherry-picking provenance, not a determinism mechanism, and the user ruled it stays literal on exactly that reading. mh_world.bin is NOT byte-identical between the two runs and that is per-run pointer material, the same class the replay fixture carries: 156034 differing dword slots, 83667 of them holding a user-space address in BOTH runs, dominant deltas a heap base shift. The world-defining header value is identical in both -- lockstep_state = 4A14D4704680FD25 -- as are block_count, region_head_ptrs and both build fingerprints. The blob is schema 2 WITH the nav trailer (offset 7718688, len 467800)."
+ }
+}

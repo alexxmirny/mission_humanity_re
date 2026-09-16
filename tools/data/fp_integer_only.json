@@ -1,0 +1,4 @@
+{
+  "_purpose": "FP-FLAGS exemptions (tools/lint_fp_flags.py). A mh/sim or mh/ai TU listed here is allowed to compile WITHOUT /arch:IA32 /fp:precise, on the recorded claim that it has no floating-point operation at all, so the x87 arch flag is a genuine no-op. This is a claim, not a default: a sim/AI TU in neither the flagged set nor this list FAILS lint_fp_flags --check. Empty today -- every sim and AI TU is flagged, which is the strictly safe choice (the flag costs nothing on an integer-only body).",
+  "paths": {}
+}

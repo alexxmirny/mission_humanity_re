@@ -1,0 +1,72 @@
+{
+ "class": "layered",
+ "_class_why": "Its .mhcap cave references arrays at 0x0127ccd0 that exist only once grand_all_* has relocated them into .mhall, so applied alone it points at a page nothing allocates (the generator refuses it). SUBSUMPTION VERIFIED 2026-09-13 (F4C-GATE): all 9 of its sites, va+expect+bytes, are a subset of grand_all_caphike_storagecap's 7,750, and the two .mhcap sections are byte-identical at the same vaddr/vsize -- so the merged manifest carries it whole. NOT deleted: it is still a working on-disk manifest in an mhpatch SEQUENCE, and the subsumption is pinned by a selftest arm instead.",
+ "target": "mh.exe (retail)",
+ "sha256": "9c4451cf8934a9f446a4f639a3aaa002168030ba512df83a6495bb61861d6a30",
+ "_purpose": "VARIABLE per-building-type storage cap: physical docked ceiling == unit_housing_capacity (cfg PARAMETR), housing==physical by construction. Set PARAMETR per storage building in INIT.CFG (<=50); unset => vanilla 50.",
+ "sections": [
+  {
+   "name": ".mhcap",
+   "vaddr": "0x13c0000",
+   "vsize": "0x1000",
+   "data": "83 b8 91 f2 d9 00 00 75 0a c7 80 91 f2 d9 00 32 00 00 00 e9 80 7e 09 ff 89 82 d0 cc 27 01 50 51 8b 45 e4 69 c0 42 08 00 00 8b 88 91 f2 d9 00 89 8a bc cd 27 01 59 58 e9 36 28 0a ff 51 8b 88 bc cd 27 01 85 c9 75 05 b9 32 00 00 00 39 88 a0 cd 27 01 59 0f 8c e2 34 0a ff e9 d8 34 0a ff 51 8b 88 bc cd 27 01 85 c9 75 05 b9 32 00 00 00 39 88 a0 cd 27 01 59 0f 8c 1e 36 0a ff e9 17 36 0a ff 51 8b 88 bc cd 27 01 85 c9 75 05 b9 32 00 00 00 39 88 a0 cd 27 01 59 0f 8c cc aa 0c ff e9 c5 aa 0c ff 51 8b 88 bc cd 27 01 85 c9 75 05 b9 32 00 00 00 39 88 a0 cd 27 01 59 0f 8c 67 ac 0c ff e9 60 ac 0c ff 51 8b 88 bc cd 27 01 85 c9 75 05 b9 32 00 00 00 39 88 d4 cc 27 01 59 0f 8d 92 55 11 ff e9 ce 53 11 ff 51 52 0f b7 55 f0 69 d2 f4 00 00 00 01 da 8b 8a bc cd 27 01 85 c9 75 05 b9 32 00 00 00 39 c8 5a 59 0f 8e 92 a9 0c ff e9 8b a9 0c ff 8b 90 bc cd 27 01 85 d2 75 05 ba 32 00 00 00 8b 80 a0 cd 27 01 e9 1f 74 05 ff",
+   "chars": "0xE0000040"
+  }
+ ],
+ "patches": [
+  {
+   "va": "0x00457e8e",
+   "expect": "c7 80 91 f2 d9 00 32 00 00 00",
+   "bytes": "e9 6d 81 f6 00 90 90 90 90 90",
+   "_note": "housing_default -> cave 0x013c0000"
+  },
+  {
+   "va": "0x0046286c",
+   "expect": "89 82 c0 27 c7 00",
+   "bytes": "e9 a7 d7 f5 00 90",
+   "_note": "populate -> cave 0x013c0018"
+  },
+  {
+   "va": "0x0046352d",
+   "expect": "83 b8 90 28 c7 00 32 7c 05",
+   "bytes": "e9 0a cb f5 00 90 90 90 90",
+   "_note": "find_home1 -> cave 0x013c003c"
+  },
+  {
+   "va": "0x0046368e",
+   "expect": "83 b8 90 28 c7 00 32 7c 02",
+   "bytes": "e9 cb c9 f5 00 90 90 90 90",
+   "_note": "find_home2 -> cave 0x013c005e"
+  },
+  {
+   "va": "0x0048ab5e",
+   "expect": "83 b8 90 28 c7 00 32 7c 02",
+   "bytes": "e9 1d 55 f3 00 90 90 90 90",
+   "_note": "can_enter_occ -> cave 0x013c0080"
+  },
+  {
+   "va": "0x0048ad1b",
+   "expect": "83 b8 90 28 c7 00 32 7c 02",
+   "bytes": "e9 82 53 f3 00 90 90 90 90",
+   "_note": "can_land_occ -> cave 0x013c00a2"
+  },
+  {
+   "va": "0x004d54a7",
+   "expect": "83 b8 c4 27 c7 00 32 0f 8d bf 01 00 00",
+   "bytes": "e9 18 ac ee 00 90 90 90 90 90 90 90 90",
+   "_note": "ai_route_cnt -> cave 0x013c00c4"
+  },
+  {
+   "va": "0x0048aa98",
+   "expect": "83 f8 32 7e 02",
+   "bytes": "e9 49 56 f3 00",
+   "_note": "can_enter_sol -> cave 0x013c00e6"
+  },
+  {
+   "va": "0x00417545",
+   "expect": "8b 80 90 28 c7 00",
+   "bytes": "e9 c8 8b fa 00 90",
+   "_note": "panel_max -> cave 0x013c0112"
+  }
+ ]
+}

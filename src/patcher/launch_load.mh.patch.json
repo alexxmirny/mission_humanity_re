@@ -1,0 +1,11 @@
+{
+  "class": "retired-addimport",
+  "_class_why": "0 sites; `imports` only -- see harness_load.",
+  "_comment": "IMPORT-ONLY patch for the D17 launch-to-state harness (tasks/mods.md D17). Adds the mh.dll import to a stock mh.exe with NO code patches, so DllMain runs and MH_Launch_Init arms the auto-driver when a launch verb (--load <name>, etc.) is on the command line. Deliberately vanilla: no pool relocation, so the sim runs exactly as retail. Run: python mhpatch.py apply mh.exe launch_load.mh.patch.json mh.launch.exe   (then drop mh.dll beside mh.launch.exe and start with:  mh.launch.exe --load <name>). The save name has no extension and resolves to save\\<name>.sav.",
+  "target": "mh.exe (clean Russian retail, md5 a9bf89a6...)",
+  "sha256": "9c4451cf8934a9f446a4f639a3aaa002168030ba512df83a6495bb61861d6a30",
+  "imports": {
+    "mh.dll": ["MH_HostedPoolBase"]
+  },
+  "patches": []
+}

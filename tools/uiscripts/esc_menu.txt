@@ -1,0 +1,40 @@
+# Proves the [uitest] `key` action: reach a screen that is UNREACHABLE by mouse.
+#
+# The ESC/in-game menu and the enter-gameplay options screen are both opened from scancode branches in
+# llm_strat_input_update, so a mouse-only driver could never get to them. `key 0x01` (ESC, PC set-1)
+# injects a down+up pair into the game's own key ring, exactly as the mouse actions do for the mouse
+# ring -- the game then runs its real handler.
+#
+# Only the ESC MENU frame is captured. An in-game HUD shot was tried first and measured 1.37% diff
+# run-to-run (units/AI animate), which is inside the 2% tol but flaps -- and it asserts nothing this
+# test is about. res_hud already covers the HUD.
+
+settled value:110
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+settled Create
+clickl Create
+present Game name
+settled Ok
+clickl Ok
+present Available maps
+settled Ok
+clickl Ok
+present Network players
+settled Start
+click 70 132
+present Computer
+enabled Start
+clickl Start
+
+# in-game, then ESC -> the in-game menu
+absent Network players
+gamemode 2
+gameclock 1500
+key 0x01
+dump
+capture k2_escmenu
+log ESC menu reached via injected keypress
+end

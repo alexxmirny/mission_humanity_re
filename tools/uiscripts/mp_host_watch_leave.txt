@@ -1,0 +1,55 @@
+# F3E-COV, HOST side: the U12 lobby-LEAVE observable -- the host frees the slot of a client that
+# clicked Cancel. Pair with mp_client_leave.txt.
+#
+# WHY THIS EXISTS. `client_join` (mp_client_join.txt step 7) already clicks the client's lobby Cancel
+# and asserts the CLIENT half (it lands on a browser and is told nothing -- U23's negative case). Its
+# host is the capture-only fixture mp_host_lobby.txt, which never looks at its own roster again, so
+# the OTHER half of U12 -- `MH_Net_SendLeave` -> the host's on_leave_recv -> g_lobby_left ->
+# mp_sync_host_peer_table vacating the slot -- has never been asserted anywhere. That is the gap the
+# post-F2 measurement flagged (fork F3E-COV) and this script is the missing half.
+#
+# IT IS NOT VACUOUS, and `peers 1` below is what says so. A lobby Cancel does NOT tear the transport
+# down: the browse connection stays open and MH_Net_PeerCount never drops (net_discovery.cpp's
+# g_lobby_left comment -- "net_udp's dead job"). So the LEAVE MESSAGE is the only thing that can free
+# the slot here, and this is a different route from link_death's, where the slot is freed because the
+# peer left the active-id set. Assert the slot freed WHILE the peer is still connected and the two
+# routes cannot be confused.
+#
+# THE RENDEZVOUS IS LOAD-BEARING (the H1 lesson from mp_host_recreate.txt): the client must not
+# Cancel until this peer has taken its occ-2 capture, and it must not exit until this peer has read
+# the freed roster -- a client process that dies first would drop the connection and free the slot by
+# the OTHER route, which is exactly the confusion `peers 1` is here to prevent.
+
+settled value:110
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+settled Create
+clickl Create
+present Game name
+settled Ok
+clickl Ok
+present Available maps
+settled Ok
+clickl Ok
+
+# the lobby, with the client connected AND seated
+present Network players
+peers 1
+occ 2
+settled Start
+capture h1_client_seated
+signal hseated
+
+# U12: the client clicked Cancel -> LEAVE -> this host vacates its slot.
+occ <2
+# ...and it did so on the MESSAGE, not on a dropped link: the peer is still connected.
+peers 1
+# the retail consequence the player sees: Start greys itself again (it is the game's own
+# "enough players" signal, the same one mp_host_start.txt waits for).
+disabled Start
+capture h2_slot_freed
+log HOST freed the departed client's lobby slot from its LEAVE (peer still connected)
+signal hdone
+end

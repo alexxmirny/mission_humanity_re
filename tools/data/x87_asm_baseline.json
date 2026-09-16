@@ -1,0 +1,7 @@
+{
+ "_generated_by": "tools/lint_x87_asm.py -- do not hand-edit; use --record",
+ "_measures": "real inline __asm blocks in the libmh-destined modules, outside mh/fp/",
+ "total_outside": 0,
+ "in_home": 25,
+ "by_file": {}
+}

@@ -1,0 +1,146 @@
+{
+  "_comment": [
+    "The READER domain (RI-STATE / RD-READY) -- the original functions that READ sim-owned state.",
+    "",
+    "IT IS NOT A MIGRATION DOMAIN AND MUST NOT BECOME ONE. Render, UI and tactical mode are declared",
+    "non-goals of the revised M6 exit; these functions stay original. They are here because SB4's",
+    "runtime rebase has to rewrite every ref site they carry, and a ref-site manifest can only be",
+    "trusted over a set that is named, prototyped and countable. The deliverable is legibility.",
+    "",
+    "SO IT RECORDS NO STATE (`records_state: false`, MIG-SET decision B). The row lifecycle ends at",
+    "`verified`, which in this ledger means a reimplementation was proven equivalent -- there is no",
+    "reimplementation here, so no row could ever legitimately reach it, and DONE_STATES being",
+    "{'verified'} would have this domain read 0/387 forever while finished. The terminal condition is",
+    "instead the readiness predicate over the scope, re-derived from committed data every run:",
+    "not FUN_, dll_call_protos ok, no residual todo:proto / todo:globals / todo:struct. Understood",
+    "permanent exceptions go to ready_acks (named mechanism + evidence, staleness-checked), never to",
+    "a row state. Rejected alternatives and the cost that rejected each are in MIG-SET's `detail`.",
+    "",
+    "MEMBERSHIP IS AN ACCESSOR QUERY with `walk: none`. A forward closure would be actively wrong:",
+    "nothing here is translated, so pulling in a callee frontier would enlarge a set whose only job",
+    "is to be named. The query resolves the SAME 152 regions measured by hand for SIM-BOUNDARY, all",
+    "of them `measured` -- and yields 387 readers rather than the 302 that a name-level join gave,",
+    "because the census attributes by ADDRESS CONTAINMENT, so a reader of an interior window",
+    "(p0_local inside player_data) counts against its host instead of vanishing. The wider number is",
+    "the correct one; the narrower one was quietly dropping readers.",
+    "",
+    "87 OF THE 387 ALSO WRITE a sim-owned region, and that is deliberate rather than a leak. The",
+    "census is per REGION: a function that reads region X and writes region Y is that region's reader",
+    "and this one's writer, and the union over 152 regions therefore contains both roles. Those 87 --",
+    "SwitchToPlanet, llm_game_land_players_on_planet, the llm_map_load_* family, the camera jump/pan",
+    "helpers -- will ALSO be owned by a migration item (SIM-RESID, MAP-LOAD, TACT-PROBE). That is two",
+    "items touching one function for different purposes, not duplicated work: naming and prototyping",
+    "is a PRECONDITION of translating it, so this domain does the legibility half either way. Narrowing",
+    "the query to exclude them would be worse -- their ref sites still have to be covered by SB4's seam,",
+    "and some of them may never be migrated at all.",
+    "",
+    "NO ORACLE, AND THAT IS NOT A GAP. Nothing is translated, so there is nothing for an oracle to",
+    "compare; `oracle.selftest` is absent by design rather than by omission, and no session in this",
+    "domain will ever build one. `loop_prompt` is a DIFFERENT question and the two were conflated",
+    "here until 2026-08-23: migration_loop drives translate-verify sessions AND Ghidra-writing PREP",
+    "sessions, and this domain has the second kind -- in fact it has nothing else. See the",
+    "`_loop_prompt_why` note under `paths` for what the driver does differently for a readiness domain."
+  ],
+  "domain": "readers",
+  "title": "Readers of sim-owned state",
+  "tracker_domain": "reimpl",
+  "tracker_group": "RI-STATE",
+  "umbrella_item": "RD-READY",
+  "records_state": false,
+  "select": {
+    "mode": "seeded",
+    "walk": "none",
+    "walk_why": "The membership IS the answer. These functions are not translated, so their callees are irrelevant -- a forward walk would add code nobody is going to name for a reason nobody could state.",
+    "seeds": [
+      {
+        "kind": "region_accessors",
+        "access": "read",
+        "written_by": "sim",
+        "exclude_ours": true,
+        "why": "Every original function that READS a region the migrated sim writes. `written_by: sim` resolves through the SB1 census to the 152 regions whose writers include a sim-manifest function, so the scope follows the sim's ownership instead of being a pasted list that rots. `access: read` selects the census's read-only set PER REGION -- which is why 87 members also write a DIFFERENT sim-owned region and will additionally be owned by a migration item; see the _comment for why that is kept rather than filtered out."
+      }
+    ]
+  },
+  "paths": {
+    "manifest": "tools/data/readers_migration.json",
+    "ready_report": "tmp/readers_ready",
+    "ready_acks": "tools/data/readers_ready_ack.json",
+    "export_dir": "tmp/decomp_readers",
+    "closure_doc": "docs/readers-closure.md",
+    "loop_prompt": "tools/data/readers_loop_prompt.md",
+    "_loop_prompt_why": "ADDED 2026-08-23. The profile previously declared none and the closure doc called that deliberate, on the reasoning that `migration_loop` drives translate-verify sessions and this domain has neither a translation nor an oracle. That was half right: the driver has TWO session shapes, and the other one -- PREP, which writes the Ghidra database under a re-derivation discipline and is scored on the readiness predicate falling -- is exactly this domain's only shape. So the loop now drives `readers` as a readiness domain: it never proposes a batch session (there is nothing to translate), it runs the READINESS_BLOCK mandate instead of PREP_BLOCK's, it scores each session on the blocked-function count rather than on a `verified` census no row here will ever carry, and it STOPS with a close-out message when the predicate goes green instead of falling through to a slice. `records_state: false` is the one fact all of that keys off (migration_domain.Domain.readiness_domain)."
+  },
+  "batches": {
+    "order": [
+      "A",
+      "B",
+      "C",
+      "D",
+      "E"
+    ],
+    "item": {
+      "A": "RD-A",
+      "B": "RD-B",
+      "C": "RD-C",
+      "D": "RD-D",
+      "E": "RD-E"
+    },
+    "rules": [
+      {
+        "batch": "D",
+        "match": [
+          "llm_strat_ai_"
+        ],
+        "why": "The AI's read set. Listed FIRST because `llm_strat_ai_` is a subset of `llm_strat_` and first match wins. It carries ZERO prototype debt at decomposition -- RI-AI already prototyped its cluster -- so this batch is expected to be green or near it on arrival. That is a real result, not an empty batch: it is the control that shows the predicate reports clean when the work is genuinely done."
+      },
+      {
+        "batch": "B",
+        "match": [
+          "llm_ui_",
+          "llm_gfx_",
+          "llm_snd_",
+          "llm_menu_",
+          "llm_dlg_",
+          "llm_view_",
+          "llm_cam_",
+          "llm_chat_"
+        ],
+        "why": "Presentation readers -- HUD panels, renderers, the minimap, sound. The archetypal 'reads sim state, will never be ours' population, and the one SB4's seam has to be correct about."
+      },
+      {
+        "batch": "C",
+        "match": [
+          "llm_map_",
+          "llm_tact_",
+          "map_",
+          "llm_game_",
+          "llm_boot_",
+          "llm_frame_",
+          "llm_debug_",
+          "llm_tutorial_"
+        ],
+        "why": "Map geometry, tactical mode and boot/session readers. Tactical is here rather than in TACT-PROBE deliberately: naming and prototyping a tactical function is legible work that does not depend on whether tactical mode can ever be verified."
+      },
+      {
+        "batch": "A",
+        "match": [
+          "llm_strat_",
+          "llm_bldg_",
+          "llm_unit_",
+          "llm_prod_",
+          "llm_lobby_",
+          "llm_net_"
+        ],
+        "why": "The strategic sim/economy read set -- the largest batch by both count and bytes, and where two thirds of the prototype debt sits."
+      },
+      {
+        "batch": "E",
+        "match": [
+          ""
+        ],
+        "why": "RESIDUE BUCKET, and it is where the NAMING work is: an empty match string catches everything the rules above did not, which here is the hand-named and still-FUN_ tail. All 17 unnamed functions in the scope land here, so this batch needs the subsystem-naming-drain skill before commit_prototypes.py can touch it -- a different job from the other four, which is why it is its own batch rather than folded into D."
+      }
+    ]
+  },
+  "roster_regions": []
+}

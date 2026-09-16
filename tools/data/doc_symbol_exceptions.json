@@ -1,0 +1,56 @@
+{
+  "_comment": "BS-DOCS D1 (tools/lint_doc_symbols.py). Names that appear in the living docs and are NOT in the current symbol table, but are correct as written. Every entry states WHY -- an exception list without reasons decays into a suppression list, and the next reader cannot tell a reviewed decision from a silenced failure. Prefer FIXING the doc; reach for this only when the prose deliberately names something that does not exist.",
+  "global": {},
+  "_per_file_comment": "Keyed by repo-relative path with forward slashes. A name is only excused in the file that argues for it -- the same token elsewhere is still a finding.",
+  "per_file": {
+    "docs/dead-ends.md": {
+      "_FILE": "This whole file is a ledger of past MISTAKES and it quotes the old, wrong names on purpose -- that is the evidence a row is made of. On 2026-08-05 a mechanical pass 'fixed' two rows here and destroyed both lessons: the U24 row's entire point is that the pump WAS called llm_boot_intro_tick, and rewriting it to the current name made the row argue against itself. Entries below are quoted history; do not update them when the DB renames.",
+      "llm_boot_intro_tick": "the U24 stuck-key row's lesson IS this misnomer (now llm_ui_modal_key_pump); renaming it deletes the point",
+      "_G_LLM_STRAT_AI_BUILD_SPIRAL_SCAN_COUNT": "the pre-fix label in the 'two globals that are really array elements' row (now _G_LLM_STRAT_AI_TILE_SPIRAL_RING_CELL_COUNTS_R5)",
+      "llm_strat_unitq_frontier_release_node": "a name from the row describing how it was reached; the address is DAT_0100302c, never named",
+      "llm_strat_ai_engage_result_hook": "one of the four AI-manifest entries the row is ABOUT -- it turned out to be a shared Watcom epilogue, which is why no such function exists",
+      "_G_LLM_STRAT_SUBTICK_A": "the INVENTED symbol the 'linter that defines the defect it reports' row is about -- the tokenizer produced it by splitting _G_LLM_STRAT_SUBTICK_A/B_PERIOD at the slash; no doc ever wrote it",
+      "llm_ai_notify_unit_lifecycle": "the audit-miss row's whole point is that this function was named but did NOT carry the ai/strat_ai_ prefix at the time (now llm_strat_ai_notify_unit_lifecycle, prefixed since); renaming it here deletes the row's lesson the same way the U24 row's would be",
+      "llm_strat_bldg_order_cancel_construction_enqueue": "the row's own bracketed clause says it explicitly: renamed 2026-08-23 to llm_strat_bldg_order_repair_cycle_start_enqueue, and the old name is kept because it is what the 2026-08-15 reasoning actually used",
+      "llm_strat_storage_capacity_add_thunk": "the row's whole point is that this named, plated function turned out to be a Ghidra split-function artifact of llm_strat_done_port, not a real distinct symbol -- it does not exist post-fix by design",
+      "llm_bigmap_frame": "the 'naming a screen from its arithmetic instead of its text' row IS this rename (-> llm_pause_frame, 2026-08-27); the row's subject line quotes the old name, and the lesson is that it propagated into a doc section, a tracker item, a DLL seam, an ini section, three UI scenarios and a keybind before anyone read the summary",
+      "llm_bigmap_input_scroll": "the other half of the same rename (-> llm_pause_input_wait), quoted in that row's delta list",
+      "llm_ui_bldg_repair_queue_slider_update": "a rename RECORD on the same line as the bigmap pair ('-> llm_ui_bldg_units_panel_row_count_update'), not a reference to a live symbol",
+      "_G_LLM_TACT_TILE_DIRTY_FLAG_B": "the WRONG hand-name the folded-index-bias row is about: a DAT_ singleton at 0x00d1eb88 was named this on 2026-07-04 as if it were a dirty-flag array of its own, when the run is a disp32-folded index bias into the array above it. The label was removed; quoting it is the evidence",
+      "llm_strat_ai_pathfind_trace_route": "G71 quotes U21's ticket text verbatim -- it ran for a month as 'intermittent access violation inside llm_strat_ai_pathfind_trace_route' and none of it was about the right code (the fault was in dsound.dll). The function is llm_strat_pathfind_trace_route @0x0041ef3e now; the ai_ qualifier was mislabelled and dropped. Same shape as llm_ai_notify_unit_lifecycle above: the historical prefix IS part of what the row records"
+    },
+    "docs/strategic-sim.md": {
+      "llm_gfx_cursor_anim_dir_init": "a dated rename RECORD ('renamed llm_gfx_cursor_anim_dir_init, 2026-07-03'), not a reference to a live symbol",
+      "llm_strat_bldg_anim_blend_table_init": "same -- a dated rename record",
+      "_G_LLM_PRODUCTION_QUEUE": "prose name for the [8][10] production-slot array; the base address is reached through computed addressing and has never been resolved to a label. Tracked in tasks/strat-sim-naming.md -- name it in the DB and drop this entry."
+    },
+    "docs/ui-menu.md": {
+      "llm_boot_intro_tick": "a dated rename record: 'named llm_boot_intro_tick until 2026-07-26, when the misnomer was found to be actively misleading'"
+    },
+    "docs/turn-engine.md": {
+      "llm_net_lockstep_pump_0049c088": "a FILENAME, not a symbol: 'tmp/l1/llm_net_lockstep_pump_0049c088.asm', the old export dump's name"
+    },
+    "docs/retired-patches.md": {
+      "llm_net_send_lockstep_ack": "the line explicitly says this function was renamed 'at some point' and that the old .asm dump filename kept the old name -- it is discussing the stale name"
+    },
+    "docs/game-modes.md": {
+      "llm_strat_order_issue_0xNN": "a PLACEHOLDER pattern, not a name -- 'order codes the fan-out had guessed at or left as llm_strat_order_issue_0xNN placeholders'. The real family is llm_strat_order_issue_0xd5 etc.",
+      "llm_strat_bldg_order_demolish": "the sentence names an EXPECTED handler and then refutes it: '..., but llm_strat_order_queue_dispatch's case 2 body shows it' is something else",
+      "llm_bigmap_frame": "a dated rename record -- the line reads 'This was misnamed llm_bigmap_frame / llm_bigmap_input_scroll until 2026-08-27'; see the matching dead-ends.md row",
+      "llm_bigmap_input_scroll": "the second name in that same dated rename record"
+    },
+    "docs/mission-format.md": {
+      "_G_LLM_MISSION_TRIGGERS": "the sentence records a REFUTED theory: 'the _G_LLM_MISSION_TRIGGERS/tile-field theory for this key was wrong'",
+      "llm_building_start_death": "the doc flags it as a misnomer in place ('misnamed llm_building_start_death'); no such function exists in EN"
+    },
+    "docs/fx-weapons.md": {
+      "llm_building_start_death": "same misnomer, cross-referenced from mission-format.md"
+    },
+    "docs/pathfinding.md": {
+      "_G_LLM_STRAT_PATHTRACE_GOAL": "family shorthand for the live _GOAL_ROW/_GOAL_COL/_GOAL_PACKED trio, written without a * or trailing _ so the compact-form grammar cannot see it. The address-keyed resolver (tools/resolve_doc_refs.py) reads this line as OK; only the bare-name scanner objects"
+    },
+    "docs/sim-resid-closure.md": {
+      "llm_ui_widget_006516d3": "quoted history: the RID-drift paragraph's whole point is that this OLD label was renamed to _G_LLM_UI_WGT_FRAME_MENU_PANEL and stranded the binding written against the old RID. Updating it to the current name would make the sentence argue against itself."
+    }
+  }
+}

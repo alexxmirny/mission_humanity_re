@@ -1,0 +1,271 @@
+{
+ "_comment": [
+  "lib_trans -- the 43 adjudicated-translate outward callees (LIB-TRANS), the last game logic the",
+  "migrated modules still call in the original binary. Decomposed 2026-09-02; the numbers and the",
+  "why live in docs/lib-trans-closure.md.",
+  "",
+  "WHY THE MEMBERSHIP IS A FROZEN NAME LIST AND NOT A LIVE QUERY OVER THE ADJUDICATION LEDGER.",
+  "The obvious selector -- 'every libmh_call_ledger.json callee classed translate' -- is",
+  "SELF-UNDERMINING by the domain's own burn-down design: when a callee gains a verified",
+  "migration-ledger row, gen_libmh_calls --check demands its adjudication row's REMOVAL (the",
+  "orphan gate), so a live query would drop each member the moment it completes, taking its",
+  "recorded state with it -- the name_prefix failure mode, mechanized. The list below is the",
+  "translate class as adjudicated at freeze time (43 names, LIB0's ledger, 2026-09-01 state).",
+  "A NEW translate-classed callee (a translation introducing a new mh::call:: into unadjudicated",
+  "territory turns the census gate red first) is ADOPTED by editing this list explicitly --",
+  "visible, like net_session's third-member rule, not silently absorbed.",
+  "",
+  "THE PRNG DOCTRINE REVERSAL, stated so nobody reads it as an accident: every other profile",
+  "carries llm_rand in frontier_prefixes ('its state is shared with every un-migrated consumer,",
+  "so reimplementing it buys nothing'). That was true while the goal was minimising live seams;",
+  "LIB-REF changes the goal -- the RNG family runs ON THE REPLAY PATH, so standalone libmh cannot",
+  "exist without owning it. The hazard the frontier rule guarded against is retired by HOW we",
+  "translate: the bodies keep binding _G_LLM_STRAT_RNG_STATE / the channel state at its original",
+  "region (D1 layout freeze), and promotion is an E9 at the original entry, so every un-migrated",
+  "consumer self-heals into ours -- one state, one implementation, never two. The D-E4 landmine",
+  "stands: llm_rand (Watcom CRT, cosmetic/tactical) and llm_strat_rng_next (the sim LCG, already",
+  "ours) are TWO RNGs and stay two; nothing in this domain touches the CRT one.",
+  "",
+  "THE UNSHADOWABLE PAIR (llm_strat_frame, llm_strat_frame_redraw_behind_dialog) is batch F and",
+  "verification-special: both ADVANCE THE SIM (pump + time_tick + sim_tick), so a shadow arm",
+  "would double-step the world -- no shadow site, ever. They are also tiny (86 + 72 B): pure",
+  "orchestrators whose callees are either already ours (pump, sim_tick, time_tick) or",
+  "host-callback walls (input_update, render_present, render_view). Their evidence is the",
+  "composite A/B the -P runs: with the pair promoted, every determinism oracle exercises OUR",
+  "frame spine end-to-end."
+ ],
+ "domain": "lib_trans",
+ "title": "The adjudicated-translate outward callees",
+ "tracker_domain": "reimpl",
+ "tracker_group": "RI-LIB",
+ "umbrella_item": "LIB-TRANS",
+ "records_state": true,
+ "select": {
+  "mode": "seeded",
+  "walk": "none",
+  "walk_why": "The seeds ARE the answer, but for a different reason than sim_resid's: this domain's closure instrument is the CENSUS, not a graph walk. Translating a member whose callee is original and previously unreferenced creates a new mh::call:: site, which lands in libmh_call_census.json as a new callee, which the LIB0 lint refuses until adjudicated -- a red gate at exactly the moment the edge becomes real, stronger than a static walk's guess in advance. The walk preview (docs/lib-trans-closure.md sect. 4) was still computed and classified so the likely adoptions are named before they happen.",
+  "seeds": [
+   {
+    "kind": "names",
+    "names": [
+     "cfg_GetAnimTime",
+     "cfg_final_planet_Construct",
+     "game_ClearAvailableProjects",
+     "game_RemoveFromAvailableBuildings",
+     "game_RemoveFromAvailableProjects",
+     "game_UpdatePlanetProgress",
+     "llm_bldg_first_occupied_unit_slot_has_soldiers",
+     "llm_diplomacy_init_multiplayer",
+     "llm_diplomacy_init_skirmish",
+     "llm_game_reload_snapshot_resync_clocks",
+     "llm_map_region_free",
+     "llm_map_region_pool_reset",
+     "llm_map_setup_dimensions",
+     "llm_math_manhattan_dist",
+     "llm_math_scale_pct",
+     "llm_menu_force_return_to_main",
+     "llm_net_chat_ally_mask_rebuild",
+     "llm_net_lockstep_peer_timing_reset",
+     "llm_progress_collect_available_projects",
+     "llm_progress_finalize_acquire",
+     "llm_progress_propagate_unlocks",
+     "llm_progress_recheck_buildings",
+     "llm_progress_recheck_planet_system_all_players",
+     "llm_progress_recheck_projects",
+     "llm_rand_below",
+     "llm_rand_below_ai",
+     "llm_rand_below_fx",
+     "llm_rand_state_advance",
+     "llm_scan_masked_table_for_empty_cell",
+     "llm_snd_ambient_reseed_planet_event_times",
+     "llm_str_char_subst",
+     "llm_strat_bldg_recompute_cell_grid",
+     "llm_strat_deploy_starting_squad",
+     "llm_strat_frame",
+     "llm_strat_frame_redraw_behind_dialog",
+     "llm_strat_invasion_alert_clear",
+     "llm_strat_invasion_alert_poll",
+     "llm_strat_player_by_side_id",
+     "llm_strat_prod_transfer_progress",
+     "llm_strat_rng_seed_ch0",
+     "llm_strat_rng_seed_ch1",
+     "llm_strat_facing_step_apply",
+     "llm_strat_squad_placement_offset_lookup",
+     "map_block_8_GetNextBlock",
+     "time_GetCurrentTime"
+    ],
+    "why": "MEMBERSHIP FROZEN 2026-09-02: the libmh_call_ledger.json translate class as adjudicated by LIB0 (43 callees, ~7.9 KB), frozen as names because the live query self-empties through the orphan gate (see _comment). The two settled exclusions are LIB0's, restated so nobody re-adds them: llm_strat_input_update was RECLASSED mixed/walled (SIM-RESID-W walls it; the replay host replaces the input pump; decomposition is post-fork), and the host-callback / cfg-snapshot / crt / dead classes are NOT translation work by adjudication. ADOPTED 2026-09-02 (wave-2 census): game_RemoveFromAvailableBuildings + game_RemoveFromAvailableProjects -- the Progress/Available writers llm_progress_finalize_acquire (b2) reaches; the closure doc's predicted-adoption path, adopted by editing this list explicitly per the rule above."
+   }
+  ],
+  "effect_prefixes": [
+   "llm_gfx_",
+   "llm_ui_",
+   "llm_snd_",
+   "llm_input_",
+   "llm_menu_",
+   "llm_cam_",
+   "llm_cd_",
+   "llm_chat_",
+   "llm_net_",
+   "llm_view_",
+   "llm_dlg_",
+   "llm_map_view_",
+   "llm_map_cam_",
+   "game_ui_",
+   "llm_strat_render_",
+   "llm_strat_input_",
+   "llm_strat_race_alert_",
+   "llm_strat_group_order_ack_voice",
+   "llm_strat_play_select_voice"
+  ],
+  "effect_prefixes_why": "sim_resid's wall list plus the presentation/sound targets this domain's own out-edges measurably reach (cam_set_col/row, race_alert text+sound emit, group_order_ack_voice, render_present/render_view via the frame pair, dlg_build_from_table via menu_force_return). Declared as effect_prefixes because walk is none -- there is no closure to cut; the list drives the shadow-safety inventory: an outward call into one of these fires TWICE per armed call while the state comparison reads clean."
+ },
+ "paths": {
+  "manifest": "tools/data/lib_trans_migration.json",
+  "ready_acks": "tools/data/lib_trans_ready_ack.json",
+  "ready_report": "tmp/lib_trans_ready",
+  "export_dir": "tmp/decomp_lib_trans",
+  "lint_request": "tmp/lib_trans_translation_lint.json",
+  "state_header": "src/mh_dll/libmh/sim/sim_state.h",
+  "state_impl": "src/mh_dll/libmh/sim/sim_state.cpp",
+  "module_dir": "src/mh_dll/libmh/sim/libtrans",
+  "_module_dir_why": "The sim_resid pattern: a subdirectory of mh/sim (same namespace, same state interface, own .cpp tree so the ledger diff does not interleave with sim's rows). DEFAULT destination only -- the roster spans owners (the lockstep-side rows: player_by_side_id, peer_timing_reset, reload_snapshot_resync_clocks; the ai-called RNG draws), and LT-PREP owns the per-row destination decision; a row re-homed into mh/lockstep binds through THAT module's interface instead, recorded in its ledger row's notes. lint_repo's sim raw-address check globs libmh/sim/ and covers the default tree unchanged.",
+  "selftest_dir": "src/mh_dll/mh_nettest",
+  "closure_doc": "docs/lib-trans-closure.md",
+  "effect_classes": "tools/data/sim_effect_classes.json",
+  "_effect_classes_why": "SIM'S SHARED FILE, sim_resid's reason verbatim: gen_dll_effects.py installs a gate over an ADDRESS, so two domains that both reach llm_snd_play cannot each own its class -- the generator refuses a name two domains classify differently. This domain's new effectful targets (race_alert emits, ack_voice, cam_set pair, dlg_build_from_table, render_present/view, chat_target_add) get classified INTO the shared file at LT0."
+ },
+ "items": {
+  "interface": "LT0",
+  "_interface_why": "LT0 is deliberately thin: the state interfaces are REUSED (sim's for the default tree, lockstep's for re-homed rows -- the sim_resid reasoning: these bodies write the same regions through the same stores, and a second store over one region set is the two-bindings hazard). What LT0 OWNS is the delta: binding the regions this domain writes that no interface carries yet (RNG channel state, diplomacy relations, progress/available tables, the map-region pool + block cursor, invasion-alert sentinels, ambient event times, peer timing), the libtranstest oracle, and classifying the new effect targets into the shared file. Every batch deps LT0 directly, which is what lint_migration_items checks."
+ },
+ "ns": "mh::sim",
+ "_ns_why": "Read by translate.js as the writer-brief default; mh::sim is the majority destination. A batch whose rows LT-PREP re-homes into mh/lockstep must pass that module's ns/state_header in its fan-out args instead of inheriting this default -- the TACT1A fail-open lesson; batch D's item carries the reminder.",
+ "oracle": {
+  "selftest": "libtranstest",
+  "_selftest_why": "Its own registered suite (net_selftest libtranstest), built at LT0, exercising all 43 rows through the EXISTING module fixtures rather than a new store binding (the fixture classes are shared scaffolding; the sim_resid two-fixtures hazard is about a second region-binding store, which this suite must not create). One suite = one gate = one number for the umbrella's burn-down; the alternative -- scattering cases across simtest/aitest/lockstest -- leaves the domain's oracle status unreadable. LT0 may still delegate individual cases to a module suite where the fixture genuinely cannot be reached from a shared file; if so the ledger row names the suite that covers it.",
+  "rig": {
+   "modes": [
+    "sp",
+    "soak"
+   ],
+   "default": "sp",
+   "_why": "Split population, so `sp` default with `soak` for the per-tick rows: the session/boot rows (diplomacy inits, seeds, deploy_starting_squad, cfg_final_planet_Construct, peer_timing_reset) run ONCE per run -- a soak buys nothing for them (sim_resid's lesson) -- while the RNG draws, time_GetCurrentTime, invasion_alert_poll, prod_transfer_progress and the cursor helpers are per-tick/per-frame and reach T3 only on a run with real traffic. player_by_side_id and reload_snapshot_resync_clocks need MP shapes (lockstep message handlers / resync) -- their sites take zero calls in sp, which the anti-vacuity rule reports only after the run is spent; check a row's callers before ordering a rig run."
+  }
+ },
+ "batches": {
+  "order": [
+   "A",
+   "B",
+   "C",
+   "D",
+   "E",
+   "F"
+  ],
+  "item": {
+   "A": "LT1A",
+   "B": "LT1B",
+   "C": "LT1C",
+   "D": "LT1D",
+   "E": "LT1E",
+   "F": "LT1F"
+  },
+  "rules": [
+   {
+    "batch": "F",
+    "match": [
+     "llm_strat_frame"
+    ],
+    "why": "THE UNSHADOWABLE PAIR (llm_strat_frame + llm_strat_frame_redraw_behind_dialog -- one prefix catches both). Listed first because 'frame' vocabulary could bleed into other rules. Translate LAST: their callees must already be ours or walled, and their evidence is composite (see _comment)."
+   },
+   {
+    "batch": "A",
+    "match": [
+     "llm_rand_",
+     "rng_seed_ch"
+    ],
+    "why": "THE DETERMINISTIC RNG FAMILY -- rand_below/ai/fx, state_advance, seed_ch0/ch1. First because it is the domain's calibration batch: rand_below has 13 original callers and fires constantly, so its shadow site produces a real armed differential (T3) cheaply, calibrating the offline oracle before the once-per-session rows have to be trusted on T2. Smallest bodies in the domain (31-59 B each); the D-E4 two-RNGs landmine is this batch's one hazard."
+   },
+   {
+    "batch": "B",
+    "match": [
+     "llm_progress_",
+     "AvailableProjects",
+     "PlanetProgress",
+     "AvailableBuildings"
+    ],
+    "why": "THE PROGRESS/INVENTION ENGINE -- the six llm_progress_* bodies plus game_ClearAvailableProjects and game_UpdatePlanetProgress. One closed family over Progress[]/AvailableProjects with its sinks (game_HandleProgress, game_UpdateProgress, game_SetEvent) ALREADY TRANSLATED -- intra-family edges become direct C++ calls (G21). Contains the domain's one self-recursion (finalize_acquire recurses over system planets) and three order_queue_dispatch-reached rows (0xee/0xc dispatch), so orders traffic exercises it. (AvailableBuildings added 2026-09-02 for the two adopted Remove* rows.)"
+   },
+   {
+    "batch": "C",
+    "match": [
+     "llm_map_",
+     "map_block_8",
+     "masked_table",
+     "recompute_cell_grid"
+    ],
+    "why": "MAP-REGION POOL + PLACEMENT GRIDS -- region_free, region_pool_reset, block_8_GetNextBlock (the pool allocator), setup_dimensions, scan_masked_table_for_empty_cell, bldg_recompute_cell_grid. Deterministic segmentation/placement state; callers sit in map build/load paths, so the offline oracle carries most of the evidence. CORRECTED 2026-09-02 (LT-PREP dig): the AI construction scanners consume the passable[] plane via scan_masked_table_for_empty_cell, NOT bldg_recompute_cell_grid's derived grid -- that grid has NO CONFIRMED READER (4-method sweep; see its ledger row note) and may resolve `dead` at batch time."
+   },
+   {
+    "batch": "D",
+    "match": [
+     "diplomacy_init",
+     "chat_ally_mask",
+     "peer_timing_reset",
+     "reload_snapshot_resync",
+     "player_by_side_id",
+     "cfg_final_planet_Construct",
+     "force_return_to_main",
+     "deploy_starting_squad",
+     "ambient_reseed"
+    ],
+    "why": "SESSION/BOOT + THE LOCKSTEP-SIDE ROWS -- the once-per-run writers (diplomacy tables, peer timing, planet clone, starting squad, ambient event reseed) plus the lockstep query player_by_side_id and the desync-path flow control force_return_to_main. The domain's whole effect surface outside batch F lives here (snd_play + cam_set in deploy_starting_squad; the alert/ack emits in reload_snapshot_resync_clocks; dlg_build_from_table in force_return; chat_target_add in diplomacy_init_multiplayer) -- so this batch gates on the effect classes being authored. Rows LT-PREP re-homes into mh/lockstep get that module's ns/state_header in the fan-out args, not this profile's mh::sim default. ambient_reseed calls rand_below_fx (batch A) -- direct C++ once both are ours, hence the item's dep on LT1A."
+   },
+   {
+    "batch": "E",
+    "match": [
+     "llm_math_",
+     "char_subst",
+     "prod_transfer_progress",
+     "first_occupied_unit_slot",
+     "cursor_",
+     "facing_step_apply",
+     "squad_placement_offset_lookup",
+     "time_GetCurrentTime",
+     "invasion_alert",
+     "GetAnimTime"
+    ],
+    "why": "SMALL HELPERS AND QUERIES -- the math pair, str_char_subst, prod_transfer_progress, the soldier-slot query, the two placement-table helpers facing_step_apply + squad_placement_offset_lookup (renamed at the domain close from llm_ui_cursor_*; soldier coords despite the old ui name), time_GetCurrentTime (pure derived read of the sim clock, 24 callers incl. 17 tact), the invasion-alert pair, cfg_GetAnimTime. Mostly pure or single-region writers; per-tick callers give several of them T3 reach."
+   }
+  ]
+ },
+ "roster_regions": [],
+ "conductor_owned": [
+  "sim_state.h",
+  "sim_state.cpp",
+  "/addr/",
+  "\\addr\\",
+  ".vcxproj",
+  ".sln",
+  "dll_addr_manifest.json",
+  "dll_shadow_manifest.json",
+  "dll_struct_layouts.json",
+  "lib_trans_migration.json",
+  "libmh_call_ledger.json",
+  "libmh_call_census.json",
+  "state_regions.json",
+  "seam_dispositions.json",
+  "writer_dispositions.json",
+  "sim_effect_classes.json",
+  "lib_trans_selftest.cpp"
+ ],
+ "_conductor_owned_why": "sim_resid's list plus this domain's own adjudication surfaces: a translation writer that could edit libmh_call_ledger.json or libmh_call_census.json could adjudicate its own new outward call or fake the burn-down the umbrella's done_when is measured on -- the same self-certification hazard as writer_dispositions.json. lib_trans_selftest.cpp is the oracle; the orders_issue rule applies (a writer must not author the expectations its own translation is graded against beyond its per-row cases).",
+ "non_autonomous": [
+  "LIB-TRANS",
+  "LT-PREP",
+  "LT0",
+  "LT1F",
+  "LIB-TRANS-P"
+ ],
+ "_non_autonomous_why": "LIB-TRANS is the umbrella and holds no work of its own. LT-PREP is human-driven Ghidra work plus the per-row destination-module decision. LT0 edits shared conductor-owned interfaces and adjudicates effect classes -- both conductor-only by this profile's own list. LT1F is the unshadowable pair: no per-call oracle exists, its evidence is a composite A/B a human has to read. LIB-TRANS-P decides what runs for real on an asymmetric determinism run. LT-READY and batches A-E are loop-drivable once LT0 lands."
+}

@@ -1,0 +1,5227 @@
+{
+ "_compare": "regression-only, in both halves: --check FAILS when a file's covered-line count DROPS or when a row that used to execute goes COLD. Coverage moves whenever source is edited, so pinning values would go red on every commit; losing reach is the drift worth catching. The ROW half is the stronger one -- a row going cold means the scenario lost reach or the row lost its route, and the second is the silent case.",
+ "_generated_by": "tools/coverage.py --baseline --domain sim_resid",
+ "_measures": "per-file covered/total LINES, and per-ROW did-it-execute, for each registered scenario -- from an UNOPTIMISED build (an optimised one reports inlined bodies as 0%). Row attribution comes from <domain>_liveness.json's tu+ours fields.",
+ "scenarios": {
+  "soak_default": {
+   "files": {
+    "ai_abandon_target.cpp": [
+     0,
+     45
+    ],
+    "ai_active_unit_tick.cpp": [
+     23,
+     119
+    ],
+    "ai_army_milestone.cpp": [
+     6,
+     54
+    ],
+    "ai_attack_candidates.cpp": [
+     0,
+     20
+    ],
+    "ai_attack_commit.cpp": [
+     0,
+     8
+    ],
+    "ai_attacker_intel.cpp": [
+     0,
+     56
+    ],
+    "ai_bldg_queue.cpp": [
+     32,
+     65
+    ],
+    "ai_bldg_queue.h": [
+     2,
+     2
+    ],
+    "ai_bldg_queue_dispatch.cpp": [
+     27,
+     116
+    ],
+    "ai_bldg_queue_dispatch.h": [
+     2,
+     2
+    ],
+    "ai_bldg_repair.cpp": [
+     20,
+     46
+    ],
+    "ai_bldg_weapon_range.cpp": [
+     0,
+     17
+    ],
+    "ai_build.cpp": [
+     28,
+     34
+    ],
+    "ai_build_plan_push.cpp": [
+     4,
+     17
+    ],
+    "ai_build_score.cpp": [
+     45,
+     73
+    ],
+    "ai_build_sources.cpp": [
+     0,
+     35
+    ],
+    "ai_build_sources.h": [
+     0,
+     1
+    ],
+    "ai_construction_plan.cpp": [
+     24,
+     79
+    ],
+    "ai_construction_sites.cpp": [
+     0,
+     96
+    ],
+    "ai_engage.cpp": [
+     0,
+     99
+    ],
+    "ai_engage_candidates.cpp": [
+     0,
+     25
+    ],
+    "ai_engage_scan.cpp": [
+     0,
+     37
+    ],
+    "ai_grid.cpp": [
+     66,
+     128
+    ],
+    "ai_grid_stencil.cpp": [
+     25,
+     72
+    ],
+    "ai_group_building_scan.cpp": [
+     0,
+     52
+    ],
+    "ai_group_centroid.cpp": [
+     0,
+     39
+    ],
+    "ai_group_classify_target.cpp": [
+     0,
+     73
+    ],
+    "ai_group_expansion.cpp": [
+     12,
+     58
+    ],
+    "ai_group_form.cpp": [
+     35,
+     78
+    ],
+    "ai_group_form.h": [
+     4,
+     4
+    ],
+    "ai_group_hold.cpp": [
+     0,
+     29
+    ],
+    "ai_group_home_guard.cpp": [
+     18,
+     44
+    ],
+    "ai_group_member_count.cpp": [
+     0,
+     25
+    ],
+    "ai_group_member_list.cpp": [
+     0,
+     8
+    ],
+    "ai_group_membership.cpp": [
+     15,
+     45
+    ],
+    "ai_group_move_helpers.cpp": [
+     0,
+     38
+    ],
+    "ai_group_muster_pick.cpp": [
+     0,
+     52
+    ],
+    "ai_group_redistribute.cpp": [
+     0,
+     48
+    ],
+    "ai_group_redistribute.h": [
+     0,
+     1
+    ],
+    "ai_group_relocation.cpp": [
+     11,
+     125
+    ],
+    "ai_group_remove.cpp": [
+     0,
+     4
+    ],
+    "ai_group_split_off.cpp": [
+     0,
+     36
+    ],
+    "ai_group_task_attack.cpp": [
+     0,
+     167
+    ],
+    "ai_group_task_attack.h": [
+     0,
+     1
+    ],
+    "ai_group_task_formation.cpp": [
+     8,
+     47
+    ],
+    "ai_group_task_lifecycle.cpp": [
+     0,
+     82
+    ],
+    "ai_group_task_lifecycle.h": [
+     0,
+     1
+    ],
+    "ai_group_task_machine.cpp": [
+     31,
+     108
+    ],
+    "ai_group_task_movement.cpp": [
+     0,
+     81
+    ],
+    "ai_group_task_predicates.cpp": [
+     0,
+     119
+    ],
+    "ai_group_task_queue_ops.cpp": [
+     29,
+     82
+    ],
+    "ai_group_task_recruit.cpp": [
+     0,
+     123
+    ],
+    "ai_group_task_workers.cpp": [
+     0,
+     83
+    ],
+    "ai_group_tick.cpp": [
+     22,
+     47
+    ],
+    "ai_holding_pen.cpp": [
+     8,
+     38
+    ],
+    "ai_hq_attack_commit.cpp": [
+     0,
+     4
+    ],
+    "ai_hq_attack_scenario.cpp": [
+     0,
+     4
+    ],
+    "ai_invasion.cpp": [
+     0,
+     40
+    ],
+    "ai_invasion.h": [
+     0,
+     1
+    ],
+    "ai_launch_storage.cpp": [
+     0,
+     14
+    ],
+    "ai_map_influence.cpp": [
+     18,
+     33
+    ],
+    "ai_map_influence.h": [
+     2,
+     2
+    ],
+    "ai_mine_plan.cpp": [
+     0,
+     37
+    ],
+    "ai_mine_rebalance.cpp": [
+     0,
+     80
+    ],
+    "ai_mine_yield.cpp": [
+     30,
+     50
+    ],
+    "ai_nearest_flagged.cpp": [
+     20,
+     49
+    ],
+    "ai_notify_bldg_constructed.cpp": [
+     25,
+     45
+    ],
+    "ai_notify_map_changed.cpp": [
+     14,
+     39
+    ],
+    "ai_notify_removed.cpp": [
+     13,
+     68
+    ],
+    "ai_notify_removed.h": [
+     1,
+     1
+    ],
+    "ai_notify_unit_lifecycle.cpp": [
+     17,
+     48
+    ],
+    "ai_notify_unit_lifecycle.h": [
+     1,
+     1
+    ],
+    "ai_opponent_relations.cpp": [
+     51,
+     89
+    ],
+    "ai_player_tick.cpp": [
+     44,
+     52
+    ],
+    "ai_players_tick.cpp": [
+     34,
+     36
+    ],
+    "ai_promote.cpp": [
+     181,
+     822
+    ],
+    "ai_queue_enqueue.cpp": [
+     0,
+     102
+    ],
+    "ai_queue_enqueue.h": [
+     0,
+     1
+    ],
+    "ai_queue_reconcile.cpp": [
+     0,
+     43
+    ],
+    "ai_queue_reconcile.h": [
+     0,
+     1
+    ],
+    "ai_queue_release.cpp": [
+     0,
+     39
+    ],
+    "ai_queue_remove.cpp": [
+     0,
+     24
+    ],
+    "ai_queue_rotate.cpp": [
+     0,
+     26
+    ],
+    "ai_queue_type_query.cpp": [
+     22,
+     48
+    ],
+    "ai_reinforcements.cpp": [
+     0,
+     73
+    ],
+    "ai_resource_sites.cpp": [
+     26,
+     46
+    ],
+    "ai_scan_target_add.cpp": [
+     0,
+     22
+    ],
+    "ai_scan_target_sort_cmp.cpp": [
+     0,
+     6
+    ],
+    "ai_scan_targets.cpp": [
+     18,
+     41
+    ],
+    "ai_scan_visible.cpp": [
+     22,
+     44
+    ],
+    "ai_scr_parse.cpp": [
+     16,
+     37
+    ],
+    "ai_shortage_gate.cpp": [
+     0,
+     24
+    ],
+    "ai_shortage_react.cpp": [
+     0,
+     36
+    ],
+    "ai_shortage_state.cpp": [
+     28,
+     40
+    ],
+    "ai_site_dispatch.cpp": [
+     11,
+     32
+    ],
+    "ai_site_scan.cpp": [
+     0,
+     65
+    ],
+    "ai_site_sort.cpp": [
+     10,
+     28
+    ],
+    "ai_site_worth.cpp": [
+     16,
+     42
+    ],
+    "ai_spend_rate.cpp": [
+     26,
+     43
+    ],
+    "ai_spiral_scan.cpp": [
+     0,
+     36
+    ],
+    "ai_spiral_table_init.cpp": [
+     25,
+     32
+    ],
+    "ai_state.cpp": [
+     386,
+     725
+    ],
+    "ai_target.cpp": [
+     0,
+     74
+    ],
+    "ai_target_query.cpp": [
+     0,
+     43
+    ],
+    "ai_target_ref_predicates.cpp": [
+     0,
+     40
+    ],
+    "ai_train_flush.cpp": [
+     0,
+     50
+    ],
+    "ai_train_plan.cpp": [
+     8,
+     69
+    ],
+    "ai_turret_plan.cpp": [
+     33,
+     48
+    ],
+    "ai_turret_threat.cpp": [
+     0,
+     31
+    ],
+    "ai_unit_housing.cpp": [
+     0,
+     54
+    ],
+    "ai_unit_move_bump.cpp": [
+     17,
+     27
+    ],
+    "ai_worker_priority.cpp": [
+     11,
+     26
+    ],
+    "ai_worker_rebalance.cpp": [
+     41,
+     54
+    ],
+    "ctrl_emit.h": [
+     15,
+     15
+    ],
+    "desync_watch.cpp": [
+     41,
+     123
+    ],
+    "desync_watch.h": [
+     12,
+     21
+    ],
+    "detour.cpp": [
+     43,
+     51
+    ],
+    "effects.cpp": [
+     33,
+     94
+    ],
+    "effects.h": [
+     0,
+     1
+    ],
+    "effects_install.cpp": [
+     38,
+     83
+    ],
+    "en_guard.cpp": [
+     8,
+     10
+    ],
+    "export.cpp": [
+     3,
+     3
+    ],
+    "gfx_capture.cpp": [
+     15,
+     47
+    ],
+    "gfx_overlay.cpp": [
+     10,
+     282
+    ],
+    "harness.cpp": [
+     332,
+     1430
+    ],
+    "host_event_sink.cpp": [
+     35,
+     70
+    ],
+    "host_events.cpp": [
+     14,
+     25
+    ],
+    "host_events.h": [
+     28,
+     87
+    ],
+    "issue_ai_move_primitives.cpp": [
+     0,
+     6
+    ],
+    "issue_bldg_depart.cpp": [
+     0,
+     26
+    ],
+    "issue_bldg_footprint.cpp": [
+     0,
+     7
+    ],
+    "issue_bldg_orders.cpp": [
+     0,
+     5
+    ],
+    "issue_group_formation_move.cpp": [
+     0,
+     3
+    ],
+    "issue_group_orders.cpp": [
+     8,
+     14
+    ],
+    "issue_promote.cpp": [
+     117,
+     369
+    ],
+    "issue_state.cpp": [
+     29,
+     36
+    ],
+    "issue_turret_orders.cpp": [
+     0,
+     10
+    ],
+    "issue_unit_attack.cpp": [
+     0,
+     119
+    ],
+    "issue_unit_move.cpp": [
+     0,
+     82
+    ],
+    "issue_unit_storage.cpp": [
+     0,
+     30
+    ],
+    "launch.cpp": [
+     103,
+     395
+    ],
+    "lt_chat_ally_mask.cpp": [
+     3,
+     20
+    ],
+    "lt_peer_timing_reset.cpp": [
+     0,
+     8
+    ],
+    "lt_player_by_side_id.cpp": [
+     0,
+     2
+    ],
+    "lt_reload_snapshot_resync.cpp": [
+     19,
+     24
+    ],
+    "lt_time_query.cpp": [
+     0,
+     2
+    ],
+    "lzw.cpp": [
+     0,
+     111
+    ],
+    "mh.c": [
+     9,
+     15
+    ],
+    "mh_calls.gen.cpp": [
+     662,
+     1453
+    ],
+    "mh_calls.gen.h": [
+     27,
+     748
+    ],
+    "mh_effects.gen.h": [
+     313,
+     730
+    ],
+    "mh_hostapi_bind.gen.cpp": [
+     11,
+     77
+    ],
+    "mh_regions.gen.h": [
+     3,
+     8
+    ],
+    "misc.cpp": [
+     1,
+     15
+    ],
+    "mp_menu.cpp": [
+     90,
+     93
+    ],
+    "net_diag.cpp": [
+     34,
+     214
+    ],
+    "net_discovery.cpp": [
+     64,
+     180
+    ],
+    "net_key.cpp": [
+     13,
+     18
+    ],
+    "net_lockstep.cpp": [
+     170,
+     391
+    ],
+    "net_seams.cpp": [
+     297,
+     566
+    ],
+    "net_session.cpp": [
+     25,
+     48
+    ],
+    "net_session_probe.cpp": [
+     22,
+     25
+    ],
+    "net_transport.cpp": [
+     87,
+     419
+    ],
+    "order_codec.h": [
+     10,
+     19
+    ],
+    "order_queue.cpp": [
+     67,
+     246
+    ],
+    "overlay_hoist.cpp": [
+     0,
+     28
+    ],
+    "patch.cpp": [
+     8,
+     10
+    ],
+    "promoted.cpp": [
+     49,
+     62
+    ],
+    "rebind_gates.cpp": [
+     4,
+     12
+    ],
+    "rebind_shims.cpp": [
+     3,
+     9
+    ],
+    "region_owner.h": [
+     0,
+     3
+    ],
+    "region_view.h": [
+     28,
+     42
+    ],
+    "reimpl_probe.cpp": [
+     51,
+     62
+    ],
+    "resid_promote.cpp": [
+     110,
+     182
+    ],
+    "resync.cpp": [
+     18,
+     97
+    ],
+    "run_context.cpp": [
+     32,
+     41
+    ],
+    "rx_dispatch.cpp": [
+     0,
+     201
+    ],
+    "save_block.cpp": [
+     0,
+     14
+    ],
+    "save_driver.cpp": [
+     0,
+     267
+    ],
+    "save_driver.h": [
+     0,
+     1
+    ],
+    "save_format.cpp": [
+     0,
+     8
+    ],
+    "save_live.cpp": [
+     7,
+     413
+    ],
+    "shadow.cpp": [
+     3,
+     81
+    ],
+    "sim_advisor_tick.cpp": [
+     9,
+     40
+    ],
+    "sim_ai_bldg_queue_construction.cpp": [
+     4,
+     17
+    ],
+    "sim_bldg_add_workers.cpp": [
+     4,
+     36
+    ],
+    "sim_bldg_alive.cpp": [
+     4,
+     4
+    ],
+    "sim_bldg_anim_state_online.cpp": [
+     22,
+     390
+    ],
+    "sim_bldg_anim_state_port.cpp": [
+     0,
+     70
+    ],
+    "sim_bldg_anim_tick.cpp": [
+     24,
+     64
+    ],
+    "sim_bldg_anim_trigger.cpp": [
+     11,
+     39
+    ],
+    "sim_bldg_apply_damage.cpp": [
+     0,
+     32
+    ],
+    "sim_bldg_clear_flag_bit0_notify.cpp": [
+     0,
+     7
+    ],
+    "sim_bldg_completion_dispatch.cpp": [
+     107,
+     172
+    ],
+    "sim_bldg_construct_finalize.cpp": [
+     17,
+     33
+    ],
+    "sim_bldg_construction_complete.cpp": [
+     24,
+     36
+    ],
+    "sim_bldg_defense_cost.cpp": [
+     4,
+     22
+    ],
+    "sim_bldg_done_handlers.cpp": [
+     20,
+     55
+    ],
+    "sim_bldg_economy.cpp": [
+     41,
+     114
+    ],
+    "sim_bldg_find_idle_producer.cpp": [
+     0,
+     21
+    ],
+    "sim_bldg_find_mothership_position.cpp": [
+     0,
+     18
+    ],
+    "sim_bldg_finish_order.cpp": [
+     0,
+     44
+    ],
+    "sim_bldg_flush_cargo_hold.cpp": [
+     19,
+     26
+    ],
+    "sim_bldg_footprint_clear_passable.cpp": [
+     11,
+     18
+    ],
+    "sim_bldg_footprint_is_clear.cpp": [
+     16,
+     23
+    ],
+    "sim_bldg_footprint_random_offset.cpp": [
+     0,
+     20
+    ],
+    "sim_bldg_footprint_set_passable.cpp": [
+     0,
+     18
+    ],
+    "sim_bldg_free_record.cpp": [
+     0,
+     11
+    ],
+    "sim_bldg_get_coords.cpp": [
+     4,
+     14
+    ],
+    "sim_bldg_grant_type_resources.cpp": [
+     0,
+     15
+    ],
+    "sim_bldg_has_aa_weapon.cpp": [
+     0,
+     15
+    ],
+    "sim_bldg_instant_construct.cpp": [
+     0,
+     26
+    ],
+    "sim_bldg_liftoff_anim.cpp": [
+     0,
+     39
+    ],
+    "sim_bldg_link_to_network.cpp": [
+     34,
+     43
+    ],
+    "sim_bldg_load_resource_tail_noop.cpp": [
+     4,
+     5
+    ],
+    "sim_bldg_mother_reelect_primary.cpp": [
+     27,
+     49
+    ],
+    "sim_bldg_mothership_alive.cpp": [
+     0,
+     20
+    ],
+    "sim_bldg_network_critical.cpp": [
+     0,
+     4
+    ],
+    "sim_bldg_notify_state_change.cpp": [
+     4,
+     18
+    ],
+    "sim_bldg_notify_ui.cpp": [
+     8,
+     15
+    ],
+    "sim_bldg_online_secondary.cpp": [
+     0,
+     161
+    ],
+    "sim_bldg_pay_costs.cpp": [
+     8,
+     53
+    ],
+    "sim_bldg_placement_corner.cpp": [
+     0,
+     14
+    ],
+    "sim_bldg_placement_enclosure.cpp": [
+     73,
+     88
+    ],
+    "sim_bldg_placement_preview.cpp": [
+     27,
+     52
+    ],
+    "sim_bldg_population_layoff_workers.cpp": [
+     0,
+     34
+    ],
+    "sim_bldg_power_network_recompute.cpp": [
+     0,
+     49
+    ],
+    "sim_bldg_power_recompute.cpp": [
+     4,
+     16
+    ],
+    "sim_bldg_propagate_network_connectivity.cpp": [
+     21,
+     28
+    ],
+    "sim_bldg_refresh_all_buildings.cpp": [
+     4,
+     19
+    ],
+    "sim_bldg_refund_resources_scaled_by_energy.cpp": [
+     0,
+     27
+    ],
+    "sim_bldg_register_online.cpp": [
+     41,
+     141
+    ],
+    "sim_bldg_remove_workers.cpp": [
+     4,
+     26
+    ],
+    "sim_bldg_reset_construction_anim.cpp": [
+     0,
+     23
+    ],
+    "sim_bldg_roster_queries.cpp": [
+     8,
+     67
+    ],
+    "sim_bldg_scrap_stored_units.cpp": [
+     0,
+     19
+    ],
+    "sim_bldg_set_connected_flag.cpp": [
+     4,
+     7
+    ],
+    "sim_bldg_shuttle_slot_is_free.cpp": [
+     0,
+     22
+    ],
+    "sim_bldg_side_has_aircraft_producer.cpp": [
+     0,
+     21
+    ],
+    "sim_bldg_sprite_anchor.cpp": [
+     0,
+     44
+    ],
+    "sim_bldg_staffed_flag.cpp": [
+     8,
+     26
+    ],
+    "sim_bldg_state_charge.cpp": [
+     35,
+     120
+    ],
+    "sim_bldg_state_deploy.cpp": [
+     20,
+     66
+    ],
+    "sim_bldg_state_destroyed.cpp": [
+     0,
+     85
+    ],
+    "sim_bldg_state_dismantle.cpp": [
+     0,
+     60
+    ],
+    "sim_bldg_state_hangar.cpp": [
+     0,
+     48
+    ],
+    "sim_bldg_state_mine.cpp": [
+     35,
+     82
+    ],
+    "sim_bldg_state_mine_scan.cpp": [
+     13,
+     20
+    ],
+    "sim_bldg_state_power.cpp": [
+     12,
+     26
+    ],
+    "sim_bldg_state_prod.cpp": [
+     0,
+     137
+    ],
+    "sim_bldg_state_reset_idle.cpp": [
+     23,
+     49
+    ],
+    "sim_bldg_state_rubble_decay.cpp": [
+     0,
+     37
+    ],
+    "sim_bldg_state_to_unit.cpp": [
+     0,
+     75
+    ],
+    "sim_bldg_state_turret.cpp": [
+     0,
+     122
+    ],
+    "sim_bldg_state_upgrade_research.cpp": [
+     0,
+     88
+    ],
+    "sim_bldg_tick_animation_state.cpp": [
+     19,
+     34
+    ],
+    "sim_bldg_tick_pip_anim.cpp": [
+     0,
+     24
+    ],
+    "sim_bldg_transfer_notify_noop.cpp": [
+     4,
+     5
+    ],
+    "sim_bldg_turret_combat.cpp": [
+     0,
+     115
+    ],
+    "sim_bldg_turret_reload_tick.cpp": [
+     0,
+     23
+    ],
+    "sim_bldg_unmap_footprint.cpp": [
+     0,
+     85
+    ],
+    "sim_bldg_update_charge_pips.cpp": [
+     15,
+     41
+    ],
+    "sim_bldg_uses_workers.cpp": [
+     4,
+     11
+    ],
+    "sim_bldg_worker_assign.cpp": [
+     14,
+     28
+    ],
+    "sim_building_tick.cpp": [
+     37,
+     56
+    ],
+    "sim_cfg_anim_frame_at_progress.cpp": [
+     15,
+     22
+    ],
+    "sim_cfg_apply_project_resources.cpp": [
+     0,
+     22
+    ],
+    "sim_check_storage_overflow.cpp": [
+     4,
+     16
+    ],
+    "sim_combat_credit_planet_conquest_kills.cpp": [
+     0,
+     35
+    ],
+    "sim_combat_kill_credit.cpp": [
+     0,
+     125
+    ],
+    "sim_debug_roll_random.cpp": [
+     0,
+     5
+    ],
+    "sim_diplomacy_ai_relation_swap.cpp": [
+     4,
+     11
+    ],
+    "sim_diplomacy_set_relation.cpp": [
+     22,
+     28
+    ],
+    "sim_dir_headings.cpp": [
+     0,
+     53
+    ],
+    "sim_dist_out_of_range.cpp": [
+     0,
+     13
+    ],
+    "sim_dmp_enqueue_scripted_order.cpp": [
+     0,
+     16
+    ],
+    "sim_dock_slot_is_busy.cpp": [
+     0,
+     18
+    ],
+    "sim_facing24_from_points.cpp": [
+     0,
+     17
+    ],
+    "sim_fog_of_war.cpp": [
+     88,
+     152
+    ],
+    "sim_fx_anim_chain_find_tail.cpp": [
+     4,
+     11
+    ],
+    "sim_fx_anim_seq_cancel.cpp": [
+     13,
+     25
+    ],
+    "sim_fx_anim_tick.cpp": [
+     16,
+     24
+    ],
+    "sim_fx_debris_burst.cpp": [
+     0,
+     30
+    ],
+    "sim_game_add_planet_to_available.cpp": [
+     7,
+     17
+    ],
+    "sim_game_add_project_to_available.cpp": [
+     0,
+     23
+    ],
+    "sim_game_add_to_available_buildings.cpp": [
+     20,
+     35
+    ],
+    "sim_game_get_starting_unit.cpp": [
+     4,
+     11
+    ],
+    "sim_game_handle_progress.cpp": [
+     18,
+     32
+    ],
+    "sim_game_handle_upgrade.cpp": [
+     0,
+     55
+    ],
+    "sim_game_insert_item_in_player_array.cpp": [
+     19,
+     28
+    ],
+    "sim_game_notify_system_available.cpp": [
+     0,
+     7
+    ],
+    "sim_game_player_set_side.cpp": [
+     8,
+     26
+    ],
+    "sim_game_set_event.cpp": [
+     20,
+     139
+    ],
+    "sim_game_sp_outcome_announce.cpp": [
+     0,
+     11
+    ],
+    "sim_game_speed_adjust.cpp": [
+     0,
+     15
+    ],
+    "sim_game_speed_recompute.cpp": [
+     10,
+     19
+    ],
+    "sim_game_try_start_project.cpp": [
+     0,
+     34
+    ],
+    "sim_game_update_progress.cpp": [
+     29,
+     36
+    ],
+    "sim_game_update_resource_stats.cpp": [
+     4,
+     11
+    ],
+    "sim_geom_toroidal.cpp": [
+     8,
+     35
+    ],
+    "sim_group_move_order_commit.cpp": [
+     0,
+     41
+    ],
+    "sim_group_move_order_pathfind.cpp": [
+     0,
+     234
+    ],
+    "sim_group_move_register_member.cpp": [
+     0,
+     23
+    ],
+    "sim_group_path_step_append.cpp": [
+     0,
+     11
+    ],
+    "sim_group_plan_formation_positions.cpp": [
+     0,
+     83
+    ],
+    "sim_group_scratch_add_unit.cpp": [
+     4,
+     12
+    ],
+    "sim_group_scratch_centroid.cpp": [
+     12,
+     32
+    ],
+    "sim_hangar_energy.cpp": [
+     0,
+     52
+    ],
+    "sim_invasion.cpp": [
+     0,
+     70
+    ],
+    "sim_invasion_alert_arm.cpp": [
+     0,
+     11
+    ],
+    "sim_land_players_on_planet.cpp": [
+     40,
+     56
+    ],
+    "sim_landing_queries.cpp": [
+     8,
+     19
+    ],
+    "sim_landing_spot.cpp": [
+     27,
+     62
+    ],
+    "sim_load_base_layout_dmp.cpp": [
+     17,
+     57
+    ],
+    "sim_locate_active_port.cpp": [
+     0,
+     10
+    ],
+    "sim_lt_ambient.cpp": [
+     0,
+     4
+    ],
+    "sim_lt_anim_time.cpp": [
+     4,
+     11
+    ],
+    "sim_lt_available_remove.cpp": [
+     0,
+     12
+    ],
+    "sim_lt_bldg_cell_grid.cpp": [
+     29,
+     36
+    ],
+    "sim_lt_bldg_query.cpp": [
+     0,
+     21
+    ],
+    "sim_lt_cfg_planet.cpp": [
+     37,
+     38
+    ],
+    "sim_lt_deploy_squad.cpp": [
+     0,
+     37
+    ],
+    "sim_lt_diplomacy.cpp": [
+     22,
+     51
+    ],
+    "sim_lt_frame.cpp": [
+     16,
+     24
+    ],
+    "sim_lt_invasion_alert.cpp": [
+     14,
+     29
+    ],
+    "sim_lt_map_region_pool.cpp": [
+     28,
+     28
+    ],
+    "sim_lt_map_setup_dimensions.cpp": [
+     10,
+     17
+    ],
+    "sim_lt_math.cpp": [
+     0,
+     13
+    ],
+    "sim_lt_menu_teardown.cpp": [
+     0,
+     4
+    ],
+    "sim_lt_prod_transfer.cpp": [
+     0,
+     21
+    ],
+    "sim_lt_progress_finalize.cpp": [
+     11,
+     17
+    ],
+    "sim_lt_progress_planet_sweep.cpp": [
+     14,
+     30
+    ],
+    "sim_lt_progress_unlock_fixpoint.cpp": [
+     31,
+     82
+    ],
+    "sim_lt_promote.cpp": [
+     134,
+     263
+    ],
+    "sim_lt_rng_draws.cpp": [
+     11,
+     25
+    ],
+    "sim_lt_rng_raw_step.cpp": [
+     0,
+     22
+    ],
+    "sim_lt_rng_seed.cpp": [
+     4,
+     22
+    ],
+    "sim_lt_scan_masked_table.cpp": [
+     16,
+     23
+    ],
+    "sim_lt_str.cpp": [
+     3,
+     3
+    ],
+    "sim_map_apply_area.cpp": [
+     27,
+     70
+    ],
+    "sim_map_create_building.cpp": [
+     59,
+     109
+    ],
+    "sim_map_fill_defaults.cpp": [
+     59,
+     59
+    ],
+    "sim_map_fog_of_war_recompute.cpp": [
+     20,
+     32
+    ],
+    "sim_map_fow_reveal_full.cpp": [
+     0,
+     20
+    ],
+    "sim_map_region_helpers.cpp": [
+     4,
+     19
+    ],
+    "sim_map_region_recompute_adjacency.cpp": [
+     4,
+     9
+    ],
+    "sim_map_region_route_marking.cpp": [
+     0,
+     11
+    ],
+    "sim_map_region_routing.cpp": [
+     0,
+     138
+    ],
+    "sim_map_region_split.cpp": [
+     17,
+     24
+    ],
+    "sim_map_region_tile_find.cpp": [
+     0,
+     59
+    ],
+    "sim_map_unit_add.cpp": [
+     41,
+     48
+    ],
+    "sim_map_wrap_delta_row.cpp": [
+     0,
+     11
+    ],
+    "sim_map_wrap_delta_xy.cpp": [
+     8,
+     8
+    ],
+    "sim_map_zoom_scale_x_get.cpp": [
+     0,
+     9
+    ],
+    "sim_mine_scan_deposit_slot.cpp": [
+     56,
+     67
+    ],
+    "sim_new_game_init.cpp": [
+     35,
+     35
+    ],
+    "sim_order_dispatch.cpp": [
+     128,
+     186
+    ],
+    "sim_order_dispatch_admin.cpp": [
+     5,
+     39
+    ],
+    "sim_order_dispatch_bldg.cpp": [
+     11,
+     198
+    ],
+    "sim_order_enqueue.cpp": [
+     96,
+     508
+    ],
+    "sim_order_issue_0xf_adjacent.cpp": [
+     0,
+     37
+    ],
+    "sim_path_alloc_slot.cpp": [
+     0,
+     4
+    ],
+    "sim_path_attach_slot.cpp": [
+     4,
+     11
+    ],
+    "sim_path_group_steps.cpp": [
+     0,
+     155
+    ],
+    "sim_path_make_single_step.cpp": [
+     0,
+     30
+    ],
+    "sim_path_slot_dist.cpp": [
+     0,
+     28
+    ],
+    "sim_path_solver.cpp": [
+     22,
+     39
+    ],
+    "sim_path_step_check_and_request_detour.cpp": [
+     0,
+     36
+    ],
+    "sim_pathfind_dir_code_and_adjacency.cpp": [
+     0,
+     6
+    ],
+    "sim_pathfind_geom_misc.cpp": [
+     2,
+     10
+    ],
+    "sim_pathfind_grid_geometry.cpp": [
+     8,
+     9
+    ],
+    "sim_pathfind_route.cpp": [
+     0,
+     119
+    ],
+    "sim_pathfind_route_leg_group_and_sort.cpp": [
+     0,
+     46
+    ],
+    "sim_pathfind_route_leg_reconcile.cpp": [
+     0,
+     56
+    ],
+    "sim_pathtrace_dir_table.cpp": [
+     26,
+     34
+    ],
+    "sim_pathtrace_greedy.cpp": [
+     106,
+     137
+    ],
+    "sim_planet_distance.cpp": [
+     0,
+     25
+    ],
+    "sim_planet_map_session_init.cpp": [
+     25,
+     25
+    ],
+    "sim_planet_session_begin.cpp": [
+     0,
+     55
+    ],
+    "sim_planet_transition_finalize.cpp": [
+     0,
+     4
+    ],
+    "sim_player_init.cpp": [
+     4,
+     4
+    ],
+    "sim_player_presence_lost.cpp": [
+     8,
+     98
+    ],
+    "sim_player_teardown_hook_stub.cpp": [
+     6,
+     7
+    ],
+    "sim_population_add.cpp": [
+     4,
+     10
+    ],
+    "sim_population_change.cpp": [
+     9,
+     16
+    ],
+    "sim_prod_bind_planet.cpp": [
+     0,
+     11
+    ],
+    "sim_prod_bldg_depart_finalize.cpp": [
+     0,
+     51
+    ],
+    "sim_prod_cargo.cpp": [
+     0,
+     77
+    ],
+    "sim_prod_deliver_arrivals.cpp": [
+     0,
+     41
+    ],
+    "sim_prod_planet_distance_factor.cpp": [
+     0,
+     8
+    ],
+    "sim_prod_shuttle_bay_unload_all.cpp": [
+     19,
+     28
+    ],
+    "sim_prod_shuttle_complete.cpp": [
+     0,
+     55
+    ],
+    "sim_prod_shuttle_depart.cpp": [
+     0,
+     28
+    ],
+    "sim_prod_shuttle_fuel_apply.cpp": [
+     0,
+     10
+    ],
+    "sim_prod_shuttle_fuel_check.cpp": [
+     0,
+     35
+    ],
+    "sim_prod_shuttle_load_passengers.cpp": [
+     0,
+     27
+    ],
+    "sim_prod_shuttle_load_resource.cpp": [
+     0,
+     24
+    ],
+    "sim_prod_shuttle_slot_bind_default.cpp": [
+     0,
+     28
+    ],
+    "sim_prod_shuttle_slot_release.cpp": [
+     17,
+     24
+    ],
+    "sim_prod_shuttle_unload_passengers.cpp": [
+     0,
+     29
+    ],
+    "sim_prod_shuttle_unload_resource.cpp": [
+     4,
+     27
+    ],
+    "sim_prod_spawn_arrived_unit.cpp": [
+     0,
+     47
+    ],
+    "sim_prod_transfer_destination.cpp": [
+     0,
+     26
+    ],
+    "sim_prod_unbind_planet.cpp": [
+     0,
+     15
+    ],
+    "sim_prod_unload_cargo_unit.cpp": [
+     0,
+     43
+    ],
+    "sim_projectile_tick.cpp": [
+     0,
+     116
+    ],
+    "sim_reason_to_housing_bldg.cpp": [
+     0,
+     24
+    ],
+    "sim_refresh_building.cpp": [
+     22,
+     29
+    ],
+    "sim_region_adjacency_edge.cpp": [
+     4,
+     22
+    ],
+    "sim_register_bldg_type_callbacks.cpp": [
+     42,
+     43
+    ],
+    "sim_register_state_handlers.cpp": [
+     32,
+     33
+    ],
+    "sim_resource_add_spend.cpp": [
+     12,
+     26
+    ],
+    "sim_resource_decay.cpp": [
+     0,
+     20
+    ],
+    "sim_resource_spend.cpp": [
+     10,
+     14
+    ],
+    "sim_revoke_invention.cpp": [
+     0,
+     11
+    ],
+    "sim_rng_next.cpp": [
+     0,
+     7
+    ],
+    "sim_scenario_planet_clone.cpp": [
+     4,
+     4
+    ],
+    "sim_session_begin_multi.cpp": [
+     59,
+     63
+    ],
+    "sim_session_clear_presence_flag.cpp": [
+     0,
+     10
+    ],
+    "sim_session_state_reset.cpp": [
+     33,
+     37
+    ],
+    "sim_spawn_ai_base.cpp": [
+     100,
+     100
+    ],
+    "sim_spawn_invasion_force.cpp": [
+     0,
+     63
+    ],
+    "sim_squad_pick_free_formation_anchor.cpp": [
+     0,
+     4
+    ],
+    "sim_squad_status_gather.cpp": [
+     0,
+     39
+    ],
+    "sim_start_tutorial.cpp": [
+     1,
+     63
+    ],
+    "sim_state.cpp": [
+     621,
+     621
+    ],
+    "sim_state.h": [
+     0,
+     1
+    ],
+    "sim_step.cpp": [
+     134,
+     146
+    ],
+    "sim_storage_accepts_unit_type.cpp": [
+     0,
+     20
+    ],
+    "sim_storage_can.cpp": [
+     0,
+     96
+    ],
+    "sim_storage_cancel_pending_docked.cpp": [
+     0,
+     22
+    ],
+    "sim_storage_dock.cpp": [
+     0,
+     87
+    ],
+    "sim_storage_dock_unit_at_building.cpp": [
+     0,
+     29
+    ],
+    "sim_storage_exit_placement.cpp": [
+     0,
+     89
+    ],
+    "sim_storage_exit_query.cpp": [
+     0,
+     4
+    ],
+    "sim_storage_find_home_for_unit.cpp": [
+     0,
+     59
+    ],
+    "sim_storage_get_approach_tile.cpp": [
+     0,
+     21
+    ],
+    "sim_storage_launch_parked_to_orbit.cpp": [
+     0,
+     25
+    ],
+    "sim_storage_path.cpp": [
+     0,
+     59
+    ],
+    "sim_storage_purge_dead_docked.cpp": [
+     0,
+     24
+    ],
+    "sim_storage_release_door_held_by_unit.cpp": [
+     0,
+     20
+    ],
+    "sim_storage_remove_docked_unit.cpp": [
+     0,
+     26
+    ],
+    "sim_storage_scrap.cpp": [
+     0,
+     93
+    ],
+    "sim_storage_type_accepts_unit.cpp": [
+     0,
+     32
+    ],
+    "sim_table_resets.cpp": [
+     36,
+     36
+    ],
+    "sim_target_class.cpp": [
+     0,
+     8
+    ],
+    "sim_target_release_ref.cpp": [
+     0,
+     26
+    ],
+    "sim_tile_delta_wrapped.cpp": [
+     4,
+     14
+    ],
+    "sim_tile_neighbor_reverse_dir.cpp": [
+     0,
+     15
+    ],
+    "sim_tile_pixel_wrap_delta.cpp": [
+     7,
+     75
+    ],
+    "sim_tutorial_step_driver.cpp": [
+     0,
+     111
+    ],
+    "sim_unit_add_docked.cpp": [
+     0,
+     27
+    ],
+    "sim_unit_apply_damage.cpp": [
+     0,
+     48
+    ],
+    "sim_unit_apply_production_completion.cpp": [
+     0,
+     31
+    ],
+    "sim_unit_bldg_apply_lethal_damage.cpp": [
+     0,
+     13
+    ],
+    "sim_unit_bldg_apply_scaled_damage.cpp": [
+     0,
+     17
+    ],
+    "sim_unit_bldg_energy_refill_full.cpp": [
+     0,
+     25
+    ],
+    "sim_unit_calc_range_approach_point.cpp": [
+     0,
+     34
+    ],
+    "sim_unit_change_proto_and_energy.cpp": [
+     0,
+     16
+    ],
+    "sim_unit_chase_check.cpp": [
+     0,
+     48
+    ],
+    "sim_unit_create.cpp": [
+     26,
+     37
+    ],
+    "sim_unit_create_soldier.cpp": [
+     0,
+     42
+    ],
+    "sim_unit_ctrl_group.cpp": [
+     4,
+     27
+    ],
+    "sim_unit_ctrlgroup_leave.cpp": [
+     14,
+     33
+    ],
+    "sim_unit_ctrlgroup_member.cpp": [
+     0,
+     38
+    ],
+    "sim_unit_facing24_delta.cpp": [
+     0,
+     29
+    ],
+    "sim_unit_fine_pos.cpp": [
+     0,
+     93
+    ],
+    "sim_unit_fire_at_target.cpp": [
+     0,
+     48
+    ],
+    "sim_unit_fire_at_target2_if_aimed.cpp": [
+     0,
+     29
+    ],
+    "sim_unit_fire_weapon.cpp": [
+     0,
+     88
+    ],
+    "sim_unit_force_disembark.cpp": [
+     0,
+     21
+    ],
+    "sim_unit_free_slot.cpp": [
+     4,
+     11
+    ],
+    "sim_unit_get_ready_home_building.cpp": [
+     0,
+     25
+    ],
+    "sim_unit_get_sight.cpp": [
+     0,
+     11
+    ],
+    "sim_unit_goal_in_weapon_range.cpp": [
+     0,
+     27
+    ],
+    "sim_unit_group_step_ground.cpp": [
+     65,
+     126
+    ],
+    "sim_unit_group_step_plane.cpp": [
+     0,
+     53
+    ],
+    "sim_unit_housing_count.cpp": [
+     0,
+     46
+    ],
+    "sim_unit_hover_tile_crowded.cpp": [
+     0,
+     20
+    ],
+    "sim_unit_idle_state.cpp": [
+     0,
+     11
+    ],
+    "sim_unit_in_weapon_range.cpp": [
+     0,
+     27
+    ],
+    "sim_unit_init_record.cpp": [
+     0,
+     58
+    ],
+    "sim_unit_is_boarding.cpp": [
+     1,
+     7
+    ],
+    "sim_unit_load_into_shuttle_cargo.cpp": [
+     0,
+     36
+    ],
+    "sim_unit_mount_pos.cpp": [
+     0,
+     95
+    ],
+    "sim_unit_notify.cpp": [
+     14,
+     40
+    ],
+    "sim_unit_on_destroyed.cpp": [
+     0,
+     57
+    ],
+    "sim_unit_passive_engage.cpp": [
+     0,
+     65
+    ],
+    "sim_unit_path_detour.cpp": [
+     0,
+     46
+    ],
+    "sim_unit_path_free_slot.cpp": [
+     4,
+     11
+    ],
+    "sim_unit_path_queue_count.cpp": [
+     0,
+     4
+    ],
+    "sim_unit_path_step_blocked.cpp": [
+     0,
+     4
+    ],
+    "sim_unit_population_remove.cpp": [
+     0,
+     34
+    ],
+    "sim_unit_predict_coords.cpp": [
+     0,
+     4
+    ],
+    "sim_unit_purge_unregistered.cpp": [
+     0,
+     32
+    ],
+    "sim_unit_put_on_map.cpp": [
+     12,
+     32
+    ],
+    "sim_unit_queue_advance.cpp": [
+     0,
+     69
+    ],
+    "sim_unit_recruit.cpp": [
+     0,
+     51
+    ],
+    "sim_unit_refund.cpp": [
+     0,
+     27
+    ],
+    "sim_unit_remove_from_map.cpp": [
+     0,
+     44
+    ],
+    "sim_unit_select_weapon.cpp": [
+     0,
+     17
+    ],
+    "sim_unit_set_state.cpp": [
+     4,
+     11
+    ],
+    "sim_unit_set_state_of.cpp": [
+     4,
+     11
+    ],
+    "sim_unit_set_state_order.cpp": [
+     0,
+     11
+    ],
+    "sim_unit_set_state_order_of.cpp": [
+     0,
+     11
+    ],
+    "sim_unit_soldier_anim.cpp": [
+     0,
+     56
+    ],
+    "sim_unit_soldier_chain.cpp": [
+     0,
+     59
+    ],
+    "sim_unit_soldier_screen_pos.cpp": [
+     0,
+     32
+    ],
+    "sim_unit_spawn_docked.cpp": [
+     0,
+     31
+    ],
+    "sim_unit_spawn_on_tile.cpp": [
+     0,
+     36
+    ],
+    "sim_unit_state_attack_building.cpp": [
+     0,
+     45
+    ],
+    "sim_unit_state_attack_unit.cpp": [
+     0,
+     63
+    ],
+    "sim_unit_state_budget_noop.cpp": [
+     8,
+     20
+    ],
+    "sim_unit_state_corpse_fow_decay.cpp": [
+     18,
+     35
+    ],
+    "sim_unit_state_deploy.cpp": [
+     94,
+     126
+    ],
+    "sim_unit_state_die_explode.cpp": [
+     0,
+     78
+    ],
+    "sim_unit_state_enter.cpp": [
+     0,
+     127
+    ],
+    "sim_unit_state_exit.cpp": [
+     0,
+     120
+    ],
+    "sim_unit_state_flight.cpp": [
+     0,
+     86
+    ],
+    "sim_unit_state_group_marshal.cpp": [
+     0,
+     118
+    ],
+    "sim_unit_state_group_step.cpp": [
+     9,
+     16
+    ],
+    "sim_unit_state_hover_engage.cpp": [
+     23,
+     53
+    ],
+    "sim_unit_state_idle_scatter.cpp": [
+     0,
+     37
+    ],
+    "sim_unit_state_misc2.cpp": [
+     0,
+     81
+    ],
+    "sim_unit_state_move_path.cpp": [
+     54,
+     97
+    ],
+    "sim_unit_state_move_walker.cpp": [
+     0,
+     163
+    ],
+    "sim_unit_state_patrol_swap.cpp": [
+     0,
+     15
+    ],
+    "sim_unit_state_plot_turn_path.cpp": [
+     0,
+     32
+    ],
+    "sim_unit_state_predicates.cpp": [
+     4,
+     51
+    ],
+    "sim_unit_state_remove_silent.cpp": [
+     0,
+     58
+    ],
+    "sim_unit_state_squad_merge.cpp": [
+     0,
+     71
+    ],
+    "sim_unit_state_stop_to_default.cpp": [
+     0,
+     24
+    ],
+    "sim_unit_state_takeoff.cpp": [
+     0,
+     97
+    ],
+    "sim_unit_state_taxi_dock.cpp": [
+     0,
+     143
+    ],
+    "sim_unit_status_bits.cpp": [
+     0,
+     8
+    ],
+    "sim_unit_storage_transit.cpp": [
+     0,
+     12
+    ],
+    "sim_unit_target_tracking.cpp": [
+     0,
+     92
+    ],
+    "sim_unit_teardown.cpp": [
+     42,
+     73
+    ],
+    "sim_unit_teardown_mapped.cpp": [
+     0,
+     51
+    ],
+    "sim_unit_tick.cpp": [
+     37,
+     63
+    ],
+    "sim_unit_transport_unload.cpp": [
+     0,
+     102
+    ],
+    "sim_unit_try_pay_action_cost.cpp": [
+     0,
+     29
+    ],
+    "sim_unit_type_group_index.cpp": [
+     0,
+     11
+    ],
+    "sim_unit_type_predicates.cpp": [
+     16,
+     73
+    ],
+    "sim_unit_unlink_tile.cpp": [
+     12,
+     25
+    ],
+    "sim_unit_update_anim.cpp": [
+     0,
+     27
+    ],
+    "sim_unit_update_damage_smoke.cpp": [
+     0,
+     22
+    ],
+    "sim_unit_update_rotation.cpp": [
+     44,
+     73
+    ],
+    "sim_unit_update_soldiers.cpp": [
+     0,
+     47
+    ],
+    "sim_unit_walk_step_allowed.cpp": [
+     0,
+     19
+    ],
+    "sim_unit_weapon_reload_tick.cpp": [
+     0,
+     23
+    ],
+    "sim_unit_weapons.cpp": [
+     13,
+     41
+    ],
+    "sim_weapon_damage_calc.cpp": [
+     0,
+     49
+    ],
+    "sim_weapon_projectile_spawn.cpp": [
+     16,
+     138
+    ],
+    "standalone.cpp": [
+     9,
+     27
+    ],
+    "state_sink.h": [
+     13,
+     15
+    ],
+    "tact_active_unit_count_hud_draw.cpp": [
+     0,
+     6
+    ],
+    "tact_ambient_sound.cpp": [
+     0,
+     8
+    ],
+    "tact_calc_dir24.cpp": [
+     0,
+     19
+    ],
+    "tact_cam_follow_selection_tick.cpp": [
+     0,
+     6
+    ],
+    "tact_camera_center_on_tile.cpp": [
+     0,
+     20
+    ],
+    "tact_cfg_keyword.cpp": [
+     0,
+     81
+    ],
+    "tact_character_parse.cpp": [
+     0,
+     24
+    ],
+    "tact_dir24_approach.cpp": [
+     0,
+     18
+    ],
+    "tact_door.cpp": [
+     0,
+     135
+    ],
+    "tact_facing_to_delta.cpp": [
+     0,
+     4
+    ],
+    "tact_fov.cpp": [
+     0,
+     58
+    ],
+    "tact_frame.cpp": [
+     0,
+     225
+    ],
+    "tact_fx_spawn.cpp": [
+     0,
+     68
+    ],
+    "tact_fx_splash_damage.cpp": [
+     0,
+     36
+    ],
+    "tact_fx_update_projectile.cpp": [
+     0,
+     83
+    ],
+    "tact_group_issue_order.cpp": [
+     0,
+     40
+    ],
+    "tact_map_bounds.cpp": [
+     0,
+     26
+    ],
+    "tact_map_reset.cpp": [
+     0,
+     22
+    ],
+    "tact_mission_disposition.cpp": [
+     0,
+     46
+    ],
+    "tact_mission_end_finalize.cpp": [
+     1,
+     1
+    ],
+    "tact_mission_end_return_to_strategic.cpp": [
+     0,
+     20
+    ],
+    "tact_mission_load.cpp": [
+     0,
+     413
+    ],
+    "tact_mission_parse.cpp": [
+     0,
+     77
+    ],
+    "tact_mission_start.cpp": [
+     0,
+     78
+    ],
+    "tact_move_path_build.cpp": [
+     0,
+     85
+    ],
+    "tact_move_path_preview_walk.cpp": [
+     0,
+     31
+    ],
+    "tact_move_step_attempt.cpp": [
+     0,
+     51
+    ],
+    "tact_pilot.cpp": [
+     0,
+     24
+    ],
+    "tact_promote.cpp": [
+     29,
+     36
+    ],
+    "tact_scroll_target_proximity_tick.cpp": [
+     0,
+     17
+    ],
+    "tact_select_next_unit.cpp": [
+     0,
+     35
+    ],
+    "tact_selection_clear_unless_ctrl.cpp": [
+     0,
+     12
+    ],
+    "tact_selection_panel_refresh.cpp": [
+     0,
+     6
+    ],
+    "tact_sidebar_dispatch.cpp": [
+     0,
+     72
+    ],
+    "tact_squad_assault_resolve.cpp": [
+     0,
+     37
+    ],
+    "tact_squad_roster_refresh.cpp": [
+     0,
+     55
+    ],
+    "tact_squad_status.cpp": [
+     0,
+     21
+    ],
+    "tact_state.cpp": [
+     70,
+     167
+    ],
+    "tact_state.h": [
+     0,
+     71
+    ],
+    "tact_teleport_cmdqueue_jump.cpp": [
+     0,
+     8
+    ],
+    "tact_teleport_zone.cpp": [
+     0,
+     40
+    ],
+    "tact_tile_occupancy.cpp": [
+     0,
+     32
+    ],
+    "tact_ui_char_panel_row_draw.cpp": [
+     0,
+     52
+    ],
+    "tact_ui_order_buttons_minimap_tick.cpp": [
+     0,
+     65
+    ],
+    "tact_ui_sel_panel_init.cpp": [
+     0,
+     32
+    ],
+    "tact_ui_sel_panel_multi_mode_tick.cpp": [
+     0,
+     111
+    ],
+    "tact_ui_sel_panel_single_mode_tick.cpp": [
+     0,
+     78
+    ],
+    "tact_ui_sidebar_row_draw_right.cpp": [
+     0,
+     47
+    ],
+    "tact_unit_cmd_advance.cpp": [
+     0,
+     24
+    ],
+    "tact_unit_cmd_advance_with_defstat.cpp": [
+     0,
+     7
+    ],
+    "tact_unit_cmd_queue_advance.cpp": [
+     0,
+     17
+    ],
+    "tact_unit_cmd_queue_resubmit_run.cpp": [
+     0,
+     16
+    ],
+    "tact_unit_cmd_stance.cpp": [
+     0,
+     28
+    ],
+    "tact_unit_cmd_teleport_jump_tick.cpp": [
+     0,
+     19
+    ],
+    "tact_unit_death_tick.cpp": [
+     0,
+     20
+    ],
+    "tact_unit_despawn.cpp": [
+     0,
+     26
+    ],
+    "tact_unit_destroy.cpp": [
+     0,
+     35
+    ],
+    "tact_unit_enqueue_command.cpp": [
+     0,
+     63
+    ],
+    "tact_unit_fire_weapon.cpp": [
+     0,
+     53
+    ],
+    "tact_unit_get_muzzle_offset.cpp": [
+     0,
+     4
+    ],
+    "tact_unit_kneel_tick.cpp": [
+     0,
+     24
+    ],
+    "tact_unit_mine_arm_tick.cpp": [
+     0,
+     35
+    ],
+    "tact_unit_move_advance.cpp": [
+     0,
+     26
+    ],
+    "tact_unit_move_tick.cpp": [
+     0,
+     93
+    ],
+    "tact_unit_owner_tick.cpp": [
+     0,
+     48
+    ],
+    "tact_unit_rotate_step.cpp": [
+     0,
+     26
+    ],
+    "tact_unit_rotate_tick.cpp": [
+     0,
+     13
+    ],
+    "tact_unit_set_anim_state.cpp": [
+     0,
+     8
+    ],
+    "tact_unit_spawn.cpp": [
+     0,
+     72
+    ],
+    "tact_unit_stand_tick.cpp": [
+     0,
+     20
+    ],
+    "tact_unit_teleport.cpp": [
+     0,
+     97
+    ],
+    "tact_unit_update_anim.cpp": [
+     0,
+     83
+    ],
+    "tact_unit_vision.cpp": [
+     0,
+     45
+    ],
+    "tact_unit_weapon_in_range.cpp": [
+     0,
+     15
+    ],
+    "tact_unit_weapons_tick.cpp": [
+     0,
+     104
+    ],
+    "tact_update_units_and_fx.cpp": [
+     0,
+     17
+    ],
+    "tact_view_shift.cpp": [
+     0,
+     114
+    ],
+    "tact_weapon_calc_scatter.cpp": [
+     0,
+     4
+    ],
+    "timekeeper.cpp": [
+     12,
+     116
+    ],
+    "tombstone.cpp": [
+     75,
+     147
+    ],
+    "turn_engine.cpp": [
+     130,
+     282
+    ],
+    "tx_emit.cpp": [
+     23,
+     82
+    ],
+    "tx_emit_chat.cpp": [
+     1,
+     21
+    ],
+    "tx_emit_ctrl.cpp": [
+     1,
+     29
+    ],
+    "tx_emit_order.cpp": [
+     2,
+     28
+    ],
+    "ui_drive.cpp": [
+     255,
+     368
+    ],
+    "ui_keyrepeat.cpp": [
+     31,
+     46
+    ],
+    "ui_pause.cpp": [
+     30,
+     40
+    ],
+    "video.cpp": [
+     127,
+     438
+    ],
+    "watcall.cpp": [
+     0,
+     10
+    ]
+   },
+   "rows_flaky": [],
+   "rows_ran": [
+    "llm_game_land_players_on_planet",
+    "llm_strat_advisor_tick",
+    "llm_strat_invasion_alert_reset_all",
+    "llm_strat_landing_spots_reroll_out_of_bounds",
+    "llm_strat_new_game_init",
+    "llm_strat_pathfinder_init",
+    "llm_strat_planet_map_session_init",
+    "llm_strat_player_param_defaults_init",
+    "llm_strat_player_profile_init",
+    "llm_strat_rng_seed_channel",
+    "llm_strat_scenario_planet_clone",
+    "llm_strat_session_begin_multi",
+    "llm_strat_session_state_reset",
+    "llm_strat_sort_sites_by_dist",
+    "llm_strat_spawn_ai_base",
+    "llm_strat_tech_tables_reset",
+    "llm_strat_time_resync_and_tick",
+    "map_FillDefaults"
+   ],
+   "runs": 3
+  },
+  "soak_saved": {
+   "files": {
+    "ai_abandon_target.cpp": [
+     16,
+     45
+    ],
+    "ai_active_unit_tick.cpp": [
+     28,
+     119
+    ],
+    "ai_army_milestone.cpp": [
+     6,
+     54
+    ],
+    "ai_attack_candidates.cpp": [
+     0,
+     20
+    ],
+    "ai_attack_commit.cpp": [
+     4,
+     8
+    ],
+    "ai_attacker_intel.cpp": [
+     36,
+     56
+    ],
+    "ai_bldg_queue.cpp": [
+     39,
+     65
+    ],
+    "ai_bldg_queue.h": [
+     2,
+     2
+    ],
+    "ai_bldg_queue_dispatch.cpp": [
+     33,
+     116
+    ],
+    "ai_bldg_queue_dispatch.h": [
+     2,
+     2
+    ],
+    "ai_bldg_repair.cpp": [
+     29,
+     46
+    ],
+    "ai_bldg_weapon_range.cpp": [
+     0,
+     17
+    ],
+    "ai_build.cpp": [
+     28,
+     34
+    ],
+    "ai_build_plan_push.cpp": [
+     4,
+     17
+    ],
+    "ai_build_score.cpp": [
+     51,
+     73
+    ],
+    "ai_build_sources.cpp": [
+     34,
+     35
+    ],
+    "ai_build_sources.h": [
+     1,
+     1
+    ],
+    "ai_construction_plan.cpp": [
+     27,
+     79
+    ],
+    "ai_construction_sites.cpp": [
+     11,
+     96
+    ],
+    "ai_engage.cpp": [
+     51,
+     99
+    ],
+    "ai_engage_candidates.cpp": [
+     17,
+     25
+    ],
+    "ai_engage_scan.cpp": [
+     16,
+     37
+    ],
+    "ai_grid.cpp": [
+     66,
+     128
+    ],
+    "ai_grid_stencil.cpp": [
+     0,
+     72
+    ],
+    "ai_group_building_scan.cpp": [
+     0,
+     52
+    ],
+    "ai_group_centroid.cpp": [
+     0,
+     39
+    ],
+    "ai_group_classify_target.cpp": [
+     57,
+     73
+    ],
+    "ai_group_expansion.cpp": [
+     12,
+     58
+    ],
+    "ai_group_form.cpp": [
+     35,
+     78
+    ],
+    "ai_group_form.h": [
+     4,
+     4
+    ],
+    "ai_group_hold.cpp": [
+     0,
+     29
+    ],
+    "ai_group_home_guard.cpp": [
+     26,
+     44
+    ],
+    "ai_group_member_count.cpp": [
+     0,
+     25
+    ],
+    "ai_group_member_list.cpp": [
+     4,
+     8
+    ],
+    "ai_group_membership.cpp": [
+     15,
+     45
+    ],
+    "ai_group_move_helpers.cpp": [
+     4,
+     38
+    ],
+    "ai_group_muster_pick.cpp": [
+     0,
+     52
+    ],
+    "ai_group_redistribute.cpp": [
+     0,
+     48
+    ],
+    "ai_group_redistribute.h": [
+     0,
+     1
+    ],
+    "ai_group_relocation.cpp": [
+     15,
+     125
+    ],
+    "ai_group_remove.cpp": [
+     0,
+     4
+    ],
+    "ai_group_split_off.cpp": [
+     0,
+     36
+    ],
+    "ai_group_task_attack.cpp": [
+     0,
+     167
+    ],
+    "ai_group_task_attack.h": [
+     0,
+     1
+    ],
+    "ai_group_task_formation.cpp": [
+     8,
+     47
+    ],
+    "ai_group_task_lifecycle.cpp": [
+     0,
+     82
+    ],
+    "ai_group_task_lifecycle.h": [
+     0,
+     1
+    ],
+    "ai_group_task_machine.cpp": [
+     35,
+     108
+    ],
+    "ai_group_task_movement.cpp": [
+     0,
+     81
+    ],
+    "ai_group_task_predicates.cpp": [
+     9,
+     119
+    ],
+    "ai_group_task_queue_ops.cpp": [
+     29,
+     82
+    ],
+    "ai_group_task_recruit.cpp": [
+     0,
+     123
+    ],
+    "ai_group_task_workers.cpp": [
+     0,
+     83
+    ],
+    "ai_group_tick.cpp": [
+     22,
+     47
+    ],
+    "ai_holding_pen.cpp": [
+     27,
+     38
+    ],
+    "ai_hq_attack_commit.cpp": [
+     0,
+     4
+    ],
+    "ai_hq_attack_scenario.cpp": [
+     0,
+     4
+    ],
+    "ai_invasion.cpp": [
+     0,
+     40
+    ],
+    "ai_invasion.h": [
+     0,
+     1
+    ],
+    "ai_launch_storage.cpp": [
+     0,
+     14
+    ],
+    "ai_map_influence.cpp": [
+     18,
+     33
+    ],
+    "ai_map_influence.h": [
+     2,
+     2
+    ],
+    "ai_mine_plan.cpp": [
+     19,
+     37
+    ],
+    "ai_mine_rebalance.cpp": [
+     25,
+     80
+    ],
+    "ai_mine_yield.cpp": [
+     35,
+     50
+    ],
+    "ai_nearest_flagged.cpp": [
+     20,
+     49
+    ],
+    "ai_notify_bldg_constructed.cpp": [
+     17,
+     45
+    ],
+    "ai_notify_map_changed.cpp": [
+     24,
+     39
+    ],
+    "ai_notify_removed.cpp": [
+     39,
+     68
+    ],
+    "ai_notify_removed.h": [
+     1,
+     1
+    ],
+    "ai_notify_unit_lifecycle.cpp": [
+     17,
+     48
+    ],
+    "ai_notify_unit_lifecycle.h": [
+     1,
+     1
+    ],
+    "ai_opponent_relations.cpp": [
+     73,
+     89
+    ],
+    "ai_player_tick.cpp": [
+     44,
+     52
+    ],
+    "ai_players_tick.cpp": [
+     35,
+     36
+    ],
+    "ai_promote.cpp": [
+     201,
+     822
+    ],
+    "ai_queue_enqueue.cpp": [
+     45,
+     102
+    ],
+    "ai_queue_enqueue.h": [
+     1,
+     1
+    ],
+    "ai_queue_reconcile.cpp": [
+     23,
+     43
+    ],
+    "ai_queue_reconcile.h": [
+     1,
+     1
+    ],
+    "ai_queue_release.cpp": [
+     15,
+     39
+    ],
+    "ai_queue_remove.cpp": [
+     0,
+     24
+    ],
+    "ai_queue_rotate.cpp": [
+     12,
+     26
+    ],
+    "ai_queue_type_query.cpp": [
+     21,
+     48
+    ],
+    "ai_reinforcements.cpp": [
+     0,
+     73
+    ],
+    "ai_resource_sites.cpp": [
+     0,
+     46
+    ],
+    "ai_scan_target_add.cpp": [
+     15,
+     22
+    ],
+    "ai_scan_target_sort_cmp.cpp": [
+     0,
+     6
+    ],
+    "ai_scan_targets.cpp": [
+     22,
+     41
+    ],
+    "ai_scan_visible.cpp": [
+     29,
+     44
+    ],
+    "ai_scr_parse.cpp": [
+     16,
+     37
+    ],
+    "ai_shortage_gate.cpp": [
+     0,
+     24
+    ],
+    "ai_shortage_react.cpp": [
+     0,
+     36
+    ],
+    "ai_shortage_state.cpp": [
+     24,
+     40
+    ],
+    "ai_site_dispatch.cpp": [
+     0,
+     32
+    ],
+    "ai_site_scan.cpp": [
+     0,
+     65
+    ],
+    "ai_site_sort.cpp": [
+     0,
+     28
+    ],
+    "ai_site_worth.cpp": [
+     0,
+     42
+    ],
+    "ai_spend_rate.cpp": [
+     26,
+     43
+    ],
+    "ai_spiral_scan.cpp": [
+     26,
+     36
+    ],
+    "ai_spiral_table_init.cpp": [
+     25,
+     32
+    ],
+    "ai_state.cpp": [
+     386,
+     725
+    ],
+    "ai_target.cpp": [
+     37,
+     74
+    ],
+    "ai_target_query.cpp": [
+     0,
+     43
+    ],
+    "ai_target_ref_predicates.cpp": [
+     4,
+     40
+    ],
+    "ai_train_flush.cpp": [
+     22,
+     50
+    ],
+    "ai_train_plan.cpp": [
+     46,
+     69
+    ],
+    "ai_turret_plan.cpp": [
+     28,
+     48
+    ],
+    "ai_turret_threat.cpp": [
+     0,
+     31
+    ],
+    "ai_unit_housing.cpp": [
+     32,
+     54
+    ],
+    "ai_unit_move_bump.cpp": [
+     17,
+     27
+    ],
+    "ai_worker_priority.cpp": [
+     14,
+     26
+    ],
+    "ai_worker_rebalance.cpp": [
+     41,
+     54
+    ],
+    "ctrl_emit.h": [
+     15,
+     15
+    ],
+    "desync_watch.cpp": [
+     41,
+     123
+    ],
+    "desync_watch.h": [
+     12,
+     21
+    ],
+    "detour.cpp": [
+     43,
+     51
+    ],
+    "effects.cpp": [
+     33,
+     94
+    ],
+    "effects.h": [
+     0,
+     1
+    ],
+    "effects_install.cpp": [
+     38,
+     83
+    ],
+    "en_guard.cpp": [
+     8,
+     10
+    ],
+    "export.cpp": [
+     3,
+     3
+    ],
+    "gfx_capture.cpp": [
+     15,
+     47
+    ],
+    "gfx_overlay.cpp": [
+     10,
+     282
+    ],
+    "harness.cpp": [
+     335,
+     1432
+    ],
+    "host_event_sink.cpp": [
+     40,
+     70
+    ],
+    "host_events.cpp": [
+     14,
+     25
+    ],
+    "host_events.h": [
+     31,
+     87
+    ],
+    "issue_ai_move_primitives.cpp": [
+     0,
+     6
+    ],
+    "issue_bldg_depart.cpp": [
+     0,
+     26
+    ],
+    "issue_bldg_footprint.cpp": [
+     0,
+     7
+    ],
+    "issue_bldg_orders.cpp": [
+     0,
+     5
+    ],
+    "issue_group_formation_move.cpp": [
+     0,
+     3
+    ],
+    "issue_group_orders.cpp": [
+     8,
+     14
+    ],
+    "issue_promote.cpp": [
+     117,
+     369
+    ],
+    "issue_state.cpp": [
+     29,
+     36
+    ],
+    "issue_turret_orders.cpp": [
+     0,
+     10
+    ],
+    "issue_unit_attack.cpp": [
+     0,
+     119
+    ],
+    "issue_unit_move.cpp": [
+     0,
+     82
+    ],
+    "issue_unit_storage.cpp": [
+     0,
+     30
+    ],
+    "launch.cpp": [
+     103,
+     395
+    ],
+    "lt_chat_ally_mask.cpp": [
+     3,
+     20
+    ],
+    "lt_peer_timing_reset.cpp": [
+     0,
+     8
+    ],
+    "lt_player_by_side_id.cpp": [
+     0,
+     2
+    ],
+    "lt_reload_snapshot_resync.cpp": [
+     19,
+     24
+    ],
+    "lt_time_query.cpp": [
+     0,
+     2
+    ],
+    "lzw.cpp": [
+     0,
+     111
+    ],
+    "mh.c": [
+     9,
+     15
+    ],
+    "mh_calls.gen.cpp": [
+     640,
+     1453
+    ],
+    "mh_calls.gen.h": [
+     29,
+     748
+    ],
+    "mh_effects.gen.h": [
+     337,
+     730
+    ],
+    "mh_hostapi_bind.gen.cpp": [
+     11,
+     77
+    ],
+    "mh_regions.gen.h": [
+     3,
+     8
+    ],
+    "misc.cpp": [
+     1,
+     15
+    ],
+    "mp_menu.cpp": [
+     90,
+     93
+    ],
+    "net_diag.cpp": [
+     34,
+     214
+    ],
+    "net_discovery.cpp": [
+     64,
+     180
+    ],
+    "net_key.cpp": [
+     13,
+     18
+    ],
+    "net_lockstep.cpp": [
+     170,
+     391
+    ],
+    "net_seams.cpp": [
+     297,
+     566
+    ],
+    "net_session.cpp": [
+     25,
+     48
+    ],
+    "net_session_probe.cpp": [
+     22,
+     25
+    ],
+    "net_transport.cpp": [
+     87,
+     419
+    ],
+    "order_codec.h": [
+     10,
+     19
+    ],
+    "order_queue.cpp": [
+     67,
+     246
+    ],
+    "overlay_hoist.cpp": [
+     0,
+     28
+    ],
+    "patch.cpp": [
+     8,
+     10
+    ],
+    "promoted.cpp": [
+     49,
+     62
+    ],
+    "rebind_gates.cpp": [
+     4,
+     12
+    ],
+    "rebind_shims.cpp": [
+     3,
+     9
+    ],
+    "region_owner.h": [
+     0,
+     3
+    ],
+    "region_view.h": [
+     28,
+     42
+    ],
+    "reimpl_probe.cpp": [
+     51,
+     62
+    ],
+    "resid_promote.cpp": [
+     114,
+     182
+    ],
+    "resync.cpp": [
+     18,
+     97
+    ],
+    "run_context.cpp": [
+     32,
+     41
+    ],
+    "rx_dispatch.cpp": [
+     0,
+     201
+    ],
+    "save_block.cpp": [
+     0,
+     14
+    ],
+    "save_driver.cpp": [
+     0,
+     267
+    ],
+    "save_driver.h": [
+     0,
+     1
+    ],
+    "save_format.cpp": [
+     0,
+     8
+    ],
+    "save_live.cpp": [
+     7,
+     413
+    ],
+    "shadow.cpp": [
+     3,
+     81
+    ],
+    "sim_advisor_tick.cpp": [
+     3,
+     40
+    ],
+    "sim_ai_bldg_queue_construction.cpp": [
+     4,
+     17
+    ],
+    "sim_bldg_add_workers.cpp": [
+     4,
+     36
+    ],
+    "sim_bldg_alive.cpp": [
+     4,
+     4
+    ],
+    "sim_bldg_anim_state_online.cpp": [
+     124,
+     390
+    ],
+    "sim_bldg_anim_state_port.cpp": [
+     0,
+     70
+    ],
+    "sim_bldg_anim_tick.cpp": [
+     33,
+     64
+    ],
+    "sim_bldg_anim_trigger.cpp": [
+     0,
+     39
+    ],
+    "sim_bldg_apply_damage.cpp": [
+     26,
+     32
+    ],
+    "sim_bldg_clear_flag_bit0_notify.cpp": [
+     4,
+     7
+    ],
+    "sim_bldg_completion_dispatch.cpp": [
+     0,
+     172
+    ],
+    "sim_bldg_construct_finalize.cpp": [
+     0,
+     33
+    ],
+    "sim_bldg_construction_complete.cpp": [
+     0,
+     36
+    ],
+    "sim_bldg_defense_cost.cpp": [
+     8,
+     22
+    ],
+    "sim_bldg_done_handlers.cpp": [
+     26,
+     55
+    ],
+    "sim_bldg_economy.cpp": [
+     57,
+     114
+    ],
+    "sim_bldg_find_idle_producer.cpp": [
+     0,
+     21
+    ],
+    "sim_bldg_find_mothership_position.cpp": [
+     0,
+     18
+    ],
+    "sim_bldg_finish_order.cpp": [
+     24,
+     44
+    ],
+    "sim_bldg_flush_cargo_hold.cpp": [
+     0,
+     26
+    ],
+    "sim_bldg_footprint_clear_passable.cpp": [
+     0,
+     18
+    ],
+    "sim_bldg_footprint_is_clear.cpp": [
+     16,
+     23
+    ],
+    "sim_bldg_footprint_random_offset.cpp": [
+     0,
+     20
+    ],
+    "sim_bldg_footprint_set_passable.cpp": [
+     0,
+     18
+    ],
+    "sim_bldg_free_record.cpp": [
+     4,
+     11
+    ],
+    "sim_bldg_get_coords.cpp": [
+     4,
+     14
+    ],
+    "sim_bldg_grant_type_resources.cpp": [
+     0,
+     15
+    ],
+    "sim_bldg_has_aa_weapon.cpp": [
+     4,
+     15
+    ],
+    "sim_bldg_instant_construct.cpp": [
+     0,
+     26
+    ],
+    "sim_bldg_liftoff_anim.cpp": [
+     0,
+     39
+    ],
+    "sim_bldg_link_to_network.cpp": [
+     0,
+     43
+    ],
+    "sim_bldg_load_resource_tail_noop.cpp": [
+     4,
+     5
+    ],
+    "sim_bldg_mother_reelect_primary.cpp": [
+     30,
+     49
+    ],
+    "sim_bldg_mothership_alive.cpp": [
+     12,
+     20
+    ],
+    "sim_bldg_network_critical.cpp": [
+     0,
+     4
+    ],
+    "sim_bldg_notify_state_change.cpp": [
+     4,
+     18
+    ],
+    "sim_bldg_notify_ui.cpp": [
+     8,
+     15
+    ],
+    "sim_bldg_online_secondary.cpp": [
+     0,
+     161
+    ],
+    "sim_bldg_pay_costs.cpp": [
+     8,
+     53
+    ],
+    "sim_bldg_placement_corner.cpp": [
+     0,
+     14
+    ],
+    "sim_bldg_placement_enclosure.cpp": [
+     29,
+     88
+    ],
+    "sim_bldg_placement_preview.cpp": [
+     27,
+     52
+    ],
+    "sim_bldg_population_layoff_workers.cpp": [
+     4,
+     34
+    ],
+    "sim_bldg_power_network_recompute.cpp": [
+     40,
+     49
+    ],
+    "sim_bldg_power_recompute.cpp": [
+     4,
+     16
+    ],
+    "sim_bldg_propagate_network_connectivity.cpp": [
+     21,
+     28
+    ],
+    "sim_bldg_refresh_all_buildings.cpp": [
+     4,
+     19
+    ],
+    "sim_bldg_refund_resources_scaled_by_energy.cpp": [
+     0,
+     27
+    ],
+    "sim_bldg_register_online.cpp": [
+     0,
+     141
+    ],
+    "sim_bldg_remove_workers.cpp": [
+     4,
+     26
+    ],
+    "sim_bldg_reset_construction_anim.cpp": [
+     0,
+     23
+    ],
+    "sim_bldg_roster_queries.cpp": [
+     12,
+     67
+    ],
+    "sim_bldg_scrap_stored_units.cpp": [
+     0,
+     19
+    ],
+    "sim_bldg_set_connected_flag.cpp": [
+     4,
+     7
+    ],
+    "sim_bldg_shuttle_slot_is_free.cpp": [
+     0,
+     22
+    ],
+    "sim_bldg_side_has_aircraft_producer.cpp": [
+     12,
+     21
+    ],
+    "sim_bldg_sprite_anchor.cpp": [
+     0,
+     44
+    ],
+    "sim_bldg_staffed_flag.cpp": [
+     12,
+     26
+    ],
+    "sim_bldg_state_charge.cpp": [
+     69,
+     120
+    ],
+    "sim_bldg_state_deploy.cpp": [
+     0,
+     66
+    ],
+    "sim_bldg_state_destroyed.cpp": [
+     61,
+     85
+    ],
+    "sim_bldg_state_dismantle.cpp": [
+     0,
+     60
+    ],
+    "sim_bldg_state_hangar.cpp": [
+     0,
+     48
+    ],
+    "sim_bldg_state_mine.cpp": [
+     12,
+     82
+    ],
+    "sim_bldg_state_mine_scan.cpp": [
+     0,
+     20
+    ],
+    "sim_bldg_state_power.cpp": [
+     4,
+     26
+    ],
+    "sim_bldg_state_prod.cpp": [
+     0,
+     137
+    ],
+    "sim_bldg_state_reset_idle.cpp": [
+     4,
+     49
+    ],
+    "sim_bldg_state_rubble_decay.cpp": [
+     30,
+     37
+    ],
+    "sim_bldg_state_to_unit.cpp": [
+     0,
+     75
+    ],
+    "sim_bldg_state_turret.cpp": [
+     40,
+     122
+    ],
+    "sim_bldg_state_upgrade_research.cpp": [
+     0,
+     88
+    ],
+    "sim_bldg_tick_animation_state.cpp": [
+     19,
+     34
+    ],
+    "sim_bldg_tick_pip_anim.cpp": [
+     4,
+     24
+    ],
+    "sim_bldg_transfer_notify_noop.cpp": [
+     4,
+     5
+    ],
+    "sim_bldg_turret_combat.cpp": [
+     29,
+     115
+    ],
+    "sim_bldg_turret_reload_tick.cpp": [
+     10,
+     23
+    ],
+    "sim_bldg_unmap_footprint.cpp": [
+     59,
+     85
+    ],
+    "sim_bldg_update_charge_pips.cpp": [
+     32,
+     41
+    ],
+    "sim_bldg_uses_workers.cpp": [
+     4,
+     11
+    ],
+    "sim_bldg_worker_assign.cpp": [
+     14,
+     28
+    ],
+    "sim_building_tick.cpp": [
+     39,
+     56
+    ],
+    "sim_cfg_anim_frame_at_progress.cpp": [
+     15,
+     22
+    ],
+    "sim_cfg_apply_project_resources.cpp": [
+     0,
+     22
+    ],
+    "sim_check_storage_overflow.cpp": [
+     4,
+     16
+    ],
+    "sim_combat_credit_planet_conquest_kills.cpp": [
+     0,
+     35
+    ],
+    "sim_combat_kill_credit.cpp": [
+     68,
+     125
+    ],
+    "sim_debug_roll_random.cpp": [
+     0,
+     5
+    ],
+    "sim_diplomacy_ai_relation_swap.cpp": [
+     4,
+     11
+    ],
+    "sim_diplomacy_set_relation.cpp": [
+     22,
+     28
+    ],
+    "sim_dir_headings.cpp": [
+     21,
+     53
+    ],
+    "sim_dist_out_of_range.cpp": [
+     7,
+     13
+    ],
+    "sim_dmp_enqueue_scripted_order.cpp": [
+     0,
+     16
+    ],
+    "sim_dock_slot_is_busy.cpp": [
+     0,
+     18
+    ],
+    "sim_facing24_from_points.cpp": [
+     0,
+     17
+    ],
+    "sim_fog_of_war.cpp": [
+     116,
+     152
+    ],
+    "sim_fx_anim_chain_find_tail.cpp": [
+     4,
+     11
+    ],
+    "sim_fx_anim_seq_cancel.cpp": [
+     13,
+     25
+    ],
+    "sim_fx_anim_tick.cpp": [
+     18,
+     24
+    ],
+    "sim_fx_debris_burst.cpp": [
+     0,
+     30
+    ],
+    "sim_game_add_planet_to_available.cpp": [
+     7,
+     17
+    ],
+    "sim_game_add_project_to_available.cpp": [
+     0,
+     23
+    ],
+    "sim_game_add_to_available_buildings.cpp": [
+     0,
+     35
+    ],
+    "sim_game_get_starting_unit.cpp": [
+     4,
+     11
+    ],
+    "sim_game_handle_progress.cpp": [
+     17,
+     32
+    ],
+    "sim_game_handle_upgrade.cpp": [
+     0,
+     55
+    ],
+    "sim_game_insert_item_in_player_array.cpp": [
+     0,
+     28
+    ],
+    "sim_game_notify_system_available.cpp": [
+     0,
+     7
+    ],
+    "sim_game_player_set_side.cpp": [
+     8,
+     26
+    ],
+    "sim_game_set_event.cpp": [
+     16,
+     139
+    ],
+    "sim_game_sp_outcome_announce.cpp": [
+     0,
+     11
+    ],
+    "sim_game_speed_adjust.cpp": [
+     0,
+     15
+    ],
+    "sim_game_speed_recompute.cpp": [
+     10,
+     19
+    ],
+    "sim_game_try_start_project.cpp": [
+     0,
+     34
+    ],
+    "sim_game_update_progress.cpp": [
+     25,
+     36
+    ],
+    "sim_game_update_resource_stats.cpp": [
+     4,
+     11
+    ],
+    "sim_geom_toroidal.cpp": [
+     8,
+     35
+    ],
+    "sim_group_move_order_commit.cpp": [
+     29,
+     41
+    ],
+    "sim_group_move_order_pathfind.cpp": [
+     114,
+     234
+    ],
+    "sim_group_move_register_member.cpp": [
+     16,
+     23
+    ],
+    "sim_group_path_step_append.cpp": [
+     0,
+     11
+    ],
+    "sim_group_plan_formation_positions.cpp": [
+     0,
+     83
+    ],
+    "sim_group_scratch_add_unit.cpp": [
+     4,
+     12
+    ],
+    "sim_group_scratch_centroid.cpp": [
+     12,
+     32
+    ],
+    "sim_hangar_energy.cpp": [
+     0,
+     52
+    ],
+    "sim_invasion.cpp": [
+     45,
+     70
+    ],
+    "sim_invasion_alert_arm.cpp": [
+     4,
+     11
+    ],
+    "sim_land_players_on_planet.cpp": [
+     40,
+     56
+    ],
+    "sim_landing_queries.cpp": [
+     8,
+     19
+    ],
+    "sim_landing_spot.cpp": [
+     27,
+     62
+    ],
+    "sim_load_base_layout_dmp.cpp": [
+     0,
+     57
+    ],
+    "sim_locate_active_port.cpp": [
+     0,
+     10
+    ],
+    "sim_lt_ambient.cpp": [
+     4,
+     4
+    ],
+    "sim_lt_anim_time.cpp": [
+     4,
+     11
+    ],
+    "sim_lt_available_remove.cpp": [
+     0,
+     12
+    ],
+    "sim_lt_bldg_cell_grid.cpp": [
+     29,
+     36
+    ],
+    "sim_lt_bldg_query.cpp": [
+     0,
+     21
+    ],
+    "sim_lt_cfg_planet.cpp": [
+     37,
+     38
+    ],
+    "sim_lt_deploy_squad.cpp": [
+     0,
+     37
+    ],
+    "sim_lt_diplomacy.cpp": [
+     22,
+     51
+    ],
+    "sim_lt_frame.cpp": [
+     16,
+     24
+    ],
+    "sim_lt_invasion_alert.cpp": [
+     14,
+     29
+    ],
+    "sim_lt_map_region_pool.cpp": [
+     28,
+     28
+    ],
+    "sim_lt_map_setup_dimensions.cpp": [
+     10,
+     17
+    ],
+    "sim_lt_math.cpp": [
+     0,
+     13
+    ],
+    "sim_lt_menu_teardown.cpp": [
+     0,
+     4
+    ],
+    "sim_lt_prod_transfer.cpp": [
+     0,
+     21
+    ],
+    "sim_lt_progress_finalize.cpp": [
+     11,
+     17
+    ],
+    "sim_lt_progress_planet_sweep.cpp": [
+     14,
+     30
+    ],
+    "sim_lt_progress_unlock_fixpoint.cpp": [
+     31,
+     82
+    ],
+    "sim_lt_promote.cpp": [
+     142,
+     263
+    ],
+    "sim_lt_rng_draws.cpp": [
+     11,
+     25
+    ],
+    "sim_lt_rng_raw_step.cpp": [
+     0,
+     22
+    ],
+    "sim_lt_rng_seed.cpp": [
+     4,
+     22
+    ],
+    "sim_lt_scan_masked_table.cpp": [
+     16,
+     23
+    ],
+    "sim_lt_str.cpp": [
+     3,
+     3
+    ],
+    "sim_map_apply_area.cpp": [
+     26,
+     70
+    ],
+    "sim_map_create_building.cpp": [
+     0,
+     109
+    ],
+    "sim_map_fill_defaults.cpp": [
+     59,
+     59
+    ],
+    "sim_map_fog_of_war_recompute.cpp": [
+     20,
+     32
+    ],
+    "sim_map_fow_reveal_full.cpp": [
+     0,
+     20
+    ],
+    "sim_map_region_helpers.cpp": [
+     8,
+     19
+    ],
+    "sim_map_region_recompute_adjacency.cpp": [
+     4,
+     9
+    ],
+    "sim_map_region_route_marking.cpp": [
+     11,
+     11
+    ],
+    "sim_map_region_routing.cpp": [
+     116,
+     138
+    ],
+    "sim_map_region_split.cpp": [
+     0,
+     24
+    ],
+    "sim_map_region_tile_find.cpp": [
+     26,
+     59
+    ],
+    "sim_map_unit_add.cpp": [
+     41,
+     48
+    ],
+    "sim_map_wrap_delta_row.cpp": [
+     4,
+     11
+    ],
+    "sim_map_wrap_delta_xy.cpp": [
+     0,
+     8
+    ],
+    "sim_map_zoom_scale_x_get.cpp": [
+     0,
+     9
+    ],
+    "sim_mine_scan_deposit_slot.cpp": [
+     0,
+     67
+    ],
+    "sim_new_game_init.cpp": [
+     35,
+     35
+    ],
+    "sim_order_dispatch.cpp": [
+     134,
+     186
+    ],
+    "sim_order_dispatch_admin.cpp": [
+     5,
+     39
+    ],
+    "sim_order_dispatch_bldg.cpp": [
+     22,
+     198
+    ],
+    "sim_order_enqueue.cpp": [
+     130,
+     508
+    ],
+    "sim_order_issue_0xf_adjacent.cpp": [
+     0,
+     37
+    ],
+    "sim_path_alloc_slot.cpp": [
+     4,
+     4
+    ],
+    "sim_path_attach_slot.cpp": [
+     4,
+     11
+    ],
+    "sim_path_group_steps.cpp": [
+     62,
+     155
+    ],
+    "sim_path_make_single_step.cpp": [
+     0,
+     30
+    ],
+    "sim_path_slot_dist.cpp": [
+     0,
+     28
+    ],
+    "sim_path_solver.cpp": [
+     24,
+     39
+    ],
+    "sim_path_step_check_and_request_detour.cpp": [
+     28,
+     36
+    ],
+    "sim_pathfind_dir_code_and_adjacency.cpp": [
+     3,
+     6
+    ],
+    "sim_pathfind_geom_misc.cpp": [
+     6,
+     10
+    ],
+    "sim_pathfind_grid_geometry.cpp": [
+     5,
+     9
+    ],
+    "sim_pathfind_route.cpp": [
+     0,
+     119
+    ],
+    "sim_pathfind_route_leg_group_and_sort.cpp": [
+     0,
+     46
+    ],
+    "sim_pathfind_route_leg_reconcile.cpp": [
+     0,
+     56
+    ],
+    "sim_pathtrace_dir_table.cpp": [
+     26,
+     34
+    ],
+    "sim_pathtrace_greedy.cpp": [
+     117,
+     137
+    ],
+    "sim_planet_distance.cpp": [
+     0,
+     25
+    ],
+    "sim_planet_map_session_init.cpp": [
+     25,
+     25
+    ],
+    "sim_planet_session_begin.cpp": [
+     0,
+     55
+    ],
+    "sim_planet_transition_finalize.cpp": [
+     0,
+     4
+    ],
+    "sim_player_init.cpp": [
+     4,
+     4
+    ],
+    "sim_player_presence_lost.cpp": [
+     0,
+     98
+    ],
+    "sim_player_teardown_hook_stub.cpp": [
+     6,
+     7
+    ],
+    "sim_population_add.cpp": [
+     4,
+     10
+    ],
+    "sim_population_change.cpp": [
+     9,
+     16
+    ],
+    "sim_prod_bind_planet.cpp": [
+     0,
+     11
+    ],
+    "sim_prod_bldg_depart_finalize.cpp": [
+     0,
+     51
+    ],
+    "sim_prod_cargo.cpp": [
+     0,
+     77
+    ],
+    "sim_prod_deliver_arrivals.cpp": [
+     0,
+     41
+    ],
+    "sim_prod_planet_distance_factor.cpp": [
+     0,
+     8
+    ],
+    "sim_prod_shuttle_bay_unload_all.cpp": [
+     0,
+     28
+    ],
+    "sim_prod_shuttle_complete.cpp": [
+     0,
+     55
+    ],
+    "sim_prod_shuttle_depart.cpp": [
+     0,
+     28
+    ],
+    "sim_prod_shuttle_fuel_apply.cpp": [
+     0,
+     10
+    ],
+    "sim_prod_shuttle_fuel_check.cpp": [
+     0,
+     35
+    ],
+    "sim_prod_shuttle_load_passengers.cpp": [
+     0,
+     27
+    ],
+    "sim_prod_shuttle_load_resource.cpp": [
+     0,
+     24
+    ],
+    "sim_prod_shuttle_slot_bind_default.cpp": [
+     0,
+     28
+    ],
+    "sim_prod_shuttle_slot_release.cpp": [
+     17,
+     24
+    ],
+    "sim_prod_shuttle_unload_passengers.cpp": [
+     0,
+     29
+    ],
+    "sim_prod_shuttle_unload_resource.cpp": [
+     0,
+     27
+    ],
+    "sim_prod_spawn_arrived_unit.cpp": [
+     0,
+     47
+    ],
+    "sim_prod_transfer_destination.cpp": [
+     0,
+     26
+    ],
+    "sim_prod_unbind_planet.cpp": [
+     0,
+     15
+    ],
+    "sim_prod_unload_cargo_unit.cpp": [
+     0,
+     43
+    ],
+    "sim_projectile_tick.cpp": [
+     82,
+     116
+    ],
+    "sim_reason_to_housing_bldg.cpp": [
+     0,
+     24
+    ],
+    "sim_refresh_building.cpp": [
+     23,
+     29
+    ],
+    "sim_region_adjacency_edge.cpp": [
+     4,
+     22
+    ],
+    "sim_register_bldg_type_callbacks.cpp": [
+     42,
+     43
+    ],
+    "sim_register_state_handlers.cpp": [
+     32,
+     33
+    ],
+    "sim_resource_add_spend.cpp": [
+     8,
+     26
+    ],
+    "sim_resource_decay.cpp": [
+     18,
+     20
+    ],
+    "sim_resource_spend.cpp": [
+     10,
+     14
+    ],
+    "sim_revoke_invention.cpp": [
+     4,
+     11
+    ],
+    "sim_rng_next.cpp": [
+     0,
+     7
+    ],
+    "sim_scenario_planet_clone.cpp": [
+     4,
+     4
+    ],
+    "sim_session_begin_multi.cpp": [
+     59,
+     63
+    ],
+    "sim_session_clear_presence_flag.cpp": [
+     0,
+     10
+    ],
+    "sim_session_state_reset.cpp": [
+     33,
+     37
+    ],
+    "sim_spawn_ai_base.cpp": [
+     100,
+     100
+    ],
+    "sim_spawn_invasion_force.cpp": [
+     0,
+     63
+    ],
+    "sim_squad_pick_free_formation_anchor.cpp": [
+     0,
+     4
+    ],
+    "sim_squad_status_gather.cpp": [
+     0,
+     39
+    ],
+    "sim_start_tutorial.cpp": [
+     1,
+     63
+    ],
+    "sim_state.cpp": [
+     621,
+     621
+    ],
+    "sim_state.h": [
+     0,
+     1
+    ],
+    "sim_step.cpp": [
+     140,
+     146
+    ],
+    "sim_storage_accepts_unit_type.cpp": [
+     0,
+     20
+    ],
+    "sim_storage_can.cpp": [
+     0,
+     96
+    ],
+    "sim_storage_cancel_pending_docked.cpp": [
+     0,
+     22
+    ],
+    "sim_storage_dock.cpp": [
+     0,
+     87
+    ],
+    "sim_storage_dock_unit_at_building.cpp": [
+     0,
+     29
+    ],
+    "sim_storage_exit_placement.cpp": [
+     0,
+     89
+    ],
+    "sim_storage_exit_query.cpp": [
+     0,
+     4
+    ],
+    "sim_storage_find_home_for_unit.cpp": [
+     0,
+     59
+    ],
+    "sim_storage_get_approach_tile.cpp": [
+     0,
+     21
+    ],
+    "sim_storage_launch_parked_to_orbit.cpp": [
+     0,
+     25
+    ],
+    "sim_storage_path.cpp": [
+     0,
+     59
+    ],
+    "sim_storage_purge_dead_docked.cpp": [
+     15,
+     24
+    ],
+    "sim_storage_release_door_held_by_unit.cpp": [
+     0,
+     20
+    ],
+    "sim_storage_remove_docked_unit.cpp": [
+     0,
+     26
+    ],
+    "sim_storage_scrap.cpp": [
+     0,
+     93
+    ],
+    "sim_storage_type_accepts_unit.cpp": [
+     0,
+     32
+    ],
+    "sim_table_resets.cpp": [
+     36,
+     36
+    ],
+    "sim_target_class.cpp": [
+     7,
+     8
+    ],
+    "sim_target_release_ref.cpp": [
+     4,
+     26
+    ],
+    "sim_tile_delta_wrapped.cpp": [
+     4,
+     14
+    ],
+    "sim_tile_neighbor_reverse_dir.cpp": [
+     0,
+     15
+    ],
+    "sim_tile_pixel_wrap_delta.cpp": [
+     53,
+     75
+    ],
+    "sim_tutorial_step_driver.cpp": [
+     0,
+     111
+    ],
+    "sim_unit_add_docked.cpp": [
+     0,
+     27
+    ],
+    "sim_unit_apply_damage.cpp": [
+     24,
+     48
+    ],
+    "sim_unit_apply_production_completion.cpp": [
+     0,
+     31
+    ],
+    "sim_unit_bldg_apply_lethal_damage.cpp": [
+     0,
+     13
+    ],
+    "sim_unit_bldg_apply_scaled_damage.cpp": [
+     0,
+     17
+    ],
+    "sim_unit_bldg_energy_refill_full.cpp": [
+     0,
+     25
+    ],
+    "sim_unit_calc_range_approach_point.cpp": [
+     0,
+     34
+    ],
+    "sim_unit_change_proto_and_energy.cpp": [
+     0,
+     16
+    ],
+    "sim_unit_chase_check.cpp": [
+     32,
+     48
+    ],
+    "sim_unit_create.cpp": [
+     26,
+     37
+    ],
+    "sim_unit_create_soldier.cpp": [
+     0,
+     42
+    ],
+    "sim_unit_ctrl_group.cpp": [
+     0,
+     27
+    ],
+    "sim_unit_ctrlgroup_leave.cpp": [
+     0,
+     33
+    ],
+    "sim_unit_ctrlgroup_member.cpp": [
+     0,
+     38
+    ],
+    "sim_unit_facing24_delta.cpp": [
+     15,
+     29
+    ],
+    "sim_unit_fine_pos.cpp": [
+     42,
+     93
+    ],
+    "sim_unit_fire_at_target.cpp": [
+     21,
+     48
+    ],
+    "sim_unit_fire_at_target2_if_aimed.cpp": [
+     0,
+     29
+    ],
+    "sim_unit_fire_weapon.cpp": [
+     52,
+     88
+    ],
+    "sim_unit_force_disembark.cpp": [
+     0,
+     21
+    ],
+    "sim_unit_free_slot.cpp": [
+     4,
+     11
+    ],
+    "sim_unit_get_ready_home_building.cpp": [
+     0,
+     25
+    ],
+    "sim_unit_get_sight.cpp": [
+     4,
+     11
+    ],
+    "sim_unit_goal_in_weapon_range.cpp": [
+     0,
+     27
+    ],
+    "sim_unit_group_step_ground.cpp": [
+     65,
+     126
+    ],
+    "sim_unit_group_step_plane.cpp": [
+     31,
+     53
+    ],
+    "sim_unit_housing_count.cpp": [
+     0,
+     46
+    ],
+    "sim_unit_hover_tile_crowded.cpp": [
+     0,
+     20
+    ],
+    "sim_unit_idle_state.cpp": [
+     4,
+     11
+    ],
+    "sim_unit_in_weapon_range.cpp": [
+     18,
+     27
+    ],
+    "sim_unit_init_record.cpp": [
+     0,
+     58
+    ],
+    "sim_unit_is_boarding.cpp": [
+     1,
+     7
+    ],
+    "sim_unit_load_into_shuttle_cargo.cpp": [
+     0,
+     36
+    ],
+    "sim_unit_mount_pos.cpp": [
+     43,
+     95
+    ],
+    "sim_unit_notify.cpp": [
+     23,
+     40
+    ],
+    "sim_unit_on_destroyed.cpp": [
+     0,
+     57
+    ],
+    "sim_unit_passive_engage.cpp": [
+     51,
+     65
+    ],
+    "sim_unit_path_detour.cpp": [
+     29,
+     46
+    ],
+    "sim_unit_path_free_slot.cpp": [
+     4,
+     11
+    ],
+    "sim_unit_path_queue_count.cpp": [
+     0,
+     4
+    ],
+    "sim_unit_path_step_blocked.cpp": [
+     4,
+     4
+    ],
+    "sim_unit_population_remove.cpp": [
+     23,
+     34
+    ],
+    "sim_unit_predict_coords.cpp": [
+     0,
+     4
+    ],
+    "sim_unit_purge_unregistered.cpp": [
+     0,
+     32
+    ],
+    "sim_unit_put_on_map.cpp": [
+     17,
+     32
+    ],
+    "sim_unit_queue_advance.cpp": [
+     0,
+     69
+    ],
+    "sim_unit_recruit.cpp": [
+     0,
+     51
+    ],
+    "sim_unit_refund.cpp": [
+     0,
+     27
+    ],
+    "sim_unit_remove_from_map.cpp": [
+     0,
+     44
+    ],
+    "sim_unit_select_weapon.cpp": [
+     0,
+     17
+    ],
+    "sim_unit_set_state.cpp": [
+     4,
+     11
+    ],
+    "sim_unit_set_state_of.cpp": [
+     4,
+     11
+    ],
+    "sim_unit_set_state_order.cpp": [
+     4,
+     11
+    ],
+    "sim_unit_set_state_order_of.cpp": [
+     0,
+     11
+    ],
+    "sim_unit_soldier_anim.cpp": [
+     0,
+     56
+    ],
+    "sim_unit_soldier_chain.cpp": [
+     0,
+     59
+    ],
+    "sim_unit_soldier_screen_pos.cpp": [
+     0,
+     32
+    ],
+    "sim_unit_spawn_docked.cpp": [
+     0,
+     31
+    ],
+    "sim_unit_spawn_on_tile.cpp": [
+     0,
+     36
+    ],
+    "sim_unit_state_attack_building.cpp": [
+     0,
+     45
+    ],
+    "sim_unit_state_attack_unit.cpp": [
+     0,
+     63
+    ],
+    "sim_unit_state_budget_noop.cpp": [
+     8,
+     20
+    ],
+    "sim_unit_state_corpse_fow_decay.cpp": [
+     28,
+     35
+    ],
+    "sim_unit_state_deploy.cpp": [
+     0,
+     126
+    ],
+    "sim_unit_state_die_explode.cpp": [
+     0,
+     78
+    ],
+    "sim_unit_state_enter.cpp": [
+     0,
+     127
+    ],
+    "sim_unit_state_exit.cpp": [
+     0,
+     120
+    ],
+    "sim_unit_state_flight.cpp": [
+     0,
+     86
+    ],
+    "sim_unit_state_group_marshal.cpp": [
+     63,
+     118
+    ],
+    "sim_unit_state_group_step.cpp": [
+     9,
+     16
+    ],
+    "sim_unit_state_hover_engage.cpp": [
+     23,
+     53
+    ],
+    "sim_unit_state_idle_scatter.cpp": [
+     24,
+     37
+    ],
+    "sim_unit_state_misc2.cpp": [
+     0,
+     81
+    ],
+    "sim_unit_state_move_path.cpp": [
+     69,
+     97
+    ],
+    "sim_unit_state_move_walker.cpp": [
+     100,
+     163
+    ],
+    "sim_unit_state_patrol_swap.cpp": [
+     0,
+     15
+    ],
+    "sim_unit_state_plot_turn_path.cpp": [
+     25,
+     32
+    ],
+    "sim_unit_state_predicates.cpp": [
+     21,
+     51
+    ],
+    "sim_unit_state_remove_silent.cpp": [
+     0,
+     58
+    ],
+    "sim_unit_state_squad_merge.cpp": [
+     0,
+     71
+    ],
+    "sim_unit_state_stop_to_default.cpp": [
+     15,
+     24
+    ],
+    "sim_unit_state_takeoff.cpp": [
+     0,
+     97
+    ],
+    "sim_unit_state_taxi_dock.cpp": [
+     0,
+     143
+    ],
+    "sim_unit_status_bits.cpp": [
+     0,
+     8
+    ],
+    "sim_unit_storage_transit.cpp": [
+     0,
+     12
+    ],
+    "sim_unit_target_tracking.cpp": [
+     22,
+     92
+    ],
+    "sim_unit_teardown.cpp": [
+     37,
+     73
+    ],
+    "sim_unit_teardown_mapped.cpp": [
+     0,
+     51
+    ],
+    "sim_unit_tick.cpp": [
+     41,
+     63
+    ],
+    "sim_unit_transport_unload.cpp": [
+     0,
+     102
+    ],
+    "sim_unit_try_pay_action_cost.cpp": [
+     0,
+     29
+    ],
+    "sim_unit_type_group_index.cpp": [
+     0,
+     11
+    ],
+    "sim_unit_type_predicates.cpp": [
+     31,
+     73
+    ],
+    "sim_unit_unlink_tile.cpp": [
+     18,
+     25
+    ],
+    "sim_unit_update_anim.cpp": [
+     20,
+     27
+    ],
+    "sim_unit_update_damage_smoke.cpp": [
+     15,
+     22
+    ],
+    "sim_unit_update_rotation.cpp": [
+     58,
+     73
+    ],
+    "sim_unit_update_soldiers.cpp": [
+     0,
+     47
+    ],
+    "sim_unit_walk_step_allowed.cpp": [
+     12,
+     19
+    ],
+    "sim_unit_weapon_reload_tick.cpp": [
+     16,
+     23
+    ],
+    "sim_unit_weapons.cpp": [
+     27,
+     41
+    ],
+    "sim_weapon_damage_calc.cpp": [
+     20,
+     49
+    ],
+    "sim_weapon_projectile_spawn.cpp": [
+     86,
+     138
+    ],
+    "standalone.cpp": [
+     9,
+     27
+    ],
+    "state_sink.h": [
+     13,
+     15
+    ],
+    "tact_active_unit_count_hud_draw.cpp": [
+     0,
+     6
+    ],
+    "tact_ambient_sound.cpp": [
+     0,
+     8
+    ],
+    "tact_calc_dir24.cpp": [
+     0,
+     19
+    ],
+    "tact_cam_follow_selection_tick.cpp": [
+     0,
+     6
+    ],
+    "tact_camera_center_on_tile.cpp": [
+     0,
+     20
+    ],
+    "tact_cfg_keyword.cpp": [
+     0,
+     81
+    ],
+    "tact_character_parse.cpp": [
+     0,
+     24
+    ],
+    "tact_dir24_approach.cpp": [
+     0,
+     18
+    ],
+    "tact_door.cpp": [
+     0,
+     135
+    ],
+    "tact_facing_to_delta.cpp": [
+     0,
+     4
+    ],
+    "tact_fov.cpp": [
+     0,
+     58
+    ],
+    "tact_frame.cpp": [
+     0,
+     225
+    ],
+    "tact_fx_spawn.cpp": [
+     0,
+     68
+    ],
+    "tact_fx_splash_damage.cpp": [
+     0,
+     36
+    ],
+    "tact_fx_update_projectile.cpp": [
+     0,
+     83
+    ],
+    "tact_group_issue_order.cpp": [
+     0,
+     40
+    ],
+    "tact_map_bounds.cpp": [
+     0,
+     26
+    ],
+    "tact_map_reset.cpp": [
+     0,
+     22
+    ],
+    "tact_mission_disposition.cpp": [
+     0,
+     46
+    ],
+    "tact_mission_end_finalize.cpp": [
+     1,
+     1
+    ],
+    "tact_mission_end_return_to_strategic.cpp": [
+     0,
+     20
+    ],
+    "tact_mission_load.cpp": [
+     0,
+     413
+    ],
+    "tact_mission_parse.cpp": [
+     0,
+     77
+    ],
+    "tact_mission_start.cpp": [
+     0,
+     78
+    ],
+    "tact_move_path_build.cpp": [
+     0,
+     85
+    ],
+    "tact_move_path_preview_walk.cpp": [
+     0,
+     31
+    ],
+    "tact_move_step_attempt.cpp": [
+     0,
+     51
+    ],
+    "tact_pilot.cpp": [
+     0,
+     24
+    ],
+    "tact_promote.cpp": [
+     29,
+     36
+    ],
+    "tact_scroll_target_proximity_tick.cpp": [
+     0,
+     17
+    ],
+    "tact_select_next_unit.cpp": [
+     0,
+     35
+    ],
+    "tact_selection_clear_unless_ctrl.cpp": [
+     0,
+     12
+    ],
+    "tact_selection_panel_refresh.cpp": [
+     0,
+     6
+    ],
+    "tact_sidebar_dispatch.cpp": [
+     0,
+     72
+    ],
+    "tact_squad_assault_resolve.cpp": [
+     0,
+     37
+    ],
+    "tact_squad_roster_refresh.cpp": [
+     0,
+     55
+    ],
+    "tact_squad_status.cpp": [
+     0,
+     21
+    ],
+    "tact_state.cpp": [
+     70,
+     167
+    ],
+    "tact_state.h": [
+     0,
+     71
+    ],
+    "tact_teleport_cmdqueue_jump.cpp": [
+     0,
+     8
+    ],
+    "tact_teleport_zone.cpp": [
+     0,
+     40
+    ],
+    "tact_tile_occupancy.cpp": [
+     0,
+     32
+    ],
+    "tact_ui_char_panel_row_draw.cpp": [
+     0,
+     52
+    ],
+    "tact_ui_order_buttons_minimap_tick.cpp": [
+     0,
+     65
+    ],
+    "tact_ui_sel_panel_init.cpp": [
+     0,
+     32
+    ],
+    "tact_ui_sel_panel_multi_mode_tick.cpp": [
+     0,
+     111
+    ],
+    "tact_ui_sel_panel_single_mode_tick.cpp": [
+     0,
+     78
+    ],
+    "tact_ui_sidebar_row_draw_right.cpp": [
+     0,
+     47
+    ],
+    "tact_unit_cmd_advance.cpp": [
+     0,
+     24
+    ],
+    "tact_unit_cmd_advance_with_defstat.cpp": [
+     0,
+     7
+    ],
+    "tact_unit_cmd_queue_advance.cpp": [
+     0,
+     17
+    ],
+    "tact_unit_cmd_queue_resubmit_run.cpp": [
+     0,
+     16
+    ],
+    "tact_unit_cmd_stance.cpp": [
+     0,
+     28
+    ],
+    "tact_unit_cmd_teleport_jump_tick.cpp": [
+     0,
+     19
+    ],
+    "tact_unit_death_tick.cpp": [
+     0,
+     20
+    ],
+    "tact_unit_despawn.cpp": [
+     0,
+     26
+    ],
+    "tact_unit_destroy.cpp": [
+     0,
+     35
+    ],
+    "tact_unit_enqueue_command.cpp": [
+     0,
+     63
+    ],
+    "tact_unit_fire_weapon.cpp": [
+     0,
+     53
+    ],
+    "tact_unit_get_muzzle_offset.cpp": [
+     0,
+     4
+    ],
+    "tact_unit_kneel_tick.cpp": [
+     0,
+     24
+    ],
+    "tact_unit_mine_arm_tick.cpp": [
+     0,
+     35
+    ],
+    "tact_unit_move_advance.cpp": [
+     0,
+     26
+    ],
+    "tact_unit_move_tick.cpp": [
+     0,
+     93
+    ],
+    "tact_unit_owner_tick.cpp": [
+     0,
+     48
+    ],
+    "tact_unit_rotate_step.cpp": [
+     0,
+     26
+    ],
+    "tact_unit_rotate_tick.cpp": [
+     0,
+     13
+    ],
+    "tact_unit_set_anim_state.cpp": [
+     0,
+     8
+    ],
+    "tact_unit_spawn.cpp": [
+     0,
+     72
+    ],
+    "tact_unit_stand_tick.cpp": [
+     0,
+     20
+    ],
+    "tact_unit_teleport.cpp": [
+     0,
+     97
+    ],
+    "tact_unit_update_anim.cpp": [
+     0,
+     83
+    ],
+    "tact_unit_vision.cpp": [
+     0,
+     45
+    ],
+    "tact_unit_weapon_in_range.cpp": [
+     0,
+     15
+    ],
+    "tact_unit_weapons_tick.cpp": [
+     0,
+     104
+    ],
+    "tact_update_units_and_fx.cpp": [
+     0,
+     17
+    ],
+    "tact_view_shift.cpp": [
+     0,
+     114
+    ],
+    "tact_weapon_calc_scatter.cpp": [
+     0,
+     4
+    ],
+    "timekeeper.cpp": [
+     12,
+     116
+    ],
+    "tombstone.cpp": [
+     75,
+     147
+    ],
+    "turn_engine.cpp": [
+     130,
+     282
+    ],
+    "tx_emit.cpp": [
+     23,
+     82
+    ],
+    "tx_emit_chat.cpp": [
+     1,
+     21
+    ],
+    "tx_emit_ctrl.cpp": [
+     1,
+     29
+    ],
+    "tx_emit_order.cpp": [
+     2,
+     28
+    ],
+    "ui_drive.cpp": [
+     255,
+     368
+    ],
+    "ui_keyrepeat.cpp": [
+     31,
+     46
+    ],
+    "ui_pause.cpp": [
+     30,
+     40
+    ],
+    "video.cpp": [
+     127,
+     438
+    ],
+    "watcall.cpp": [
+     0,
+     10
+    ]
+   },
+   "rows_flaky": [],
+   "rows_ran": [
+    "llm_game_land_players_on_planet",
+    "llm_strat_advisor_tick",
+    "llm_strat_invasion_alert_reset_all",
+    "llm_strat_landing_spots_reroll_out_of_bounds",
+    "llm_strat_new_game_init",
+    "llm_strat_pathfinder_init",
+    "llm_strat_planet_map_session_init",
+    "llm_strat_player_param_defaults_init",
+    "llm_strat_player_profile_init",
+    "llm_strat_rng_seed_channel",
+    "llm_strat_scenario_planet_clone",
+    "llm_strat_session_begin_multi",
+    "llm_strat_session_state_reset",
+    "llm_strat_sort_sites_by_dist",
+    "llm_strat_spawn_ai_base",
+    "llm_strat_tech_tables_reset",
+    "llm_strat_time_resync_and_tick",
+    "map_FillDefaults"
+   ],
+   "runs": 3
+  }
+ }
+}

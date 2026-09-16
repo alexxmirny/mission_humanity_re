@@ -1,0 +1,33 @@
+# Debug overlay P0: prove the overlay actually renders on a real composed frame.
+#
+# Run with `--extra-ini tools/uiscripts/ini/debug_overlay.ini`, which enables [debug] with a page of
+# STABLE readouts only (mode/session/res) so the committed baseline does not flap.
+#
+# Two captures on two different screens, because the whole point of the DLL-native blitter (Route B) is
+# that it does not depend on the game's font/render state: the overlay must be present on the sprite main
+# menu AND on a dialog screen. `mode` should read differently from what the game is doing only if the gate
+# is wrong -- both these screens are menu mode, which is exactly where the game's own text stack would have
+# left us invisible.
+
+# PARK THE CURSOR before every capture. This test runs at `tol 0.0` on purpose -- the overlay is only
+# ~0.8% of the frame, so any usable tolerance would hide it vanishing entirely -- and exact-match is
+# incompatible with the game drawing its cursor sprite wherever the last click landed (364 px at
+# (112,192), the NETWORK GAME button: the ONLY thing that differed on 2026-07-28). Parking it in dead
+# background beats masking the rect: the whole frame stays exact, and the baseline stops depending on
+# where a click above it happened to leave the pointer. Park it BOTTOM-RIGHT, not top-left: this ini
+# anchors the overlay at tl (8,8), so a cursor at (5,5) would sit ON the thing under test -- the exact
+# occlusion `tol 0.0` exists to catch.
+# 1. main menu (7-button sprite menu; NETWORK GAME = value 110)
+settled value:110
+cursor 600 450
+capture ovl1_menu
+clickv 110
+
+# 2. player-name screen -- a different screen, still overlaid
+present Player name
+settled Ok
+cursor 600 450
+capture ovl2_playername
+
+log debug overlay COMPLETE -- captured the overlay on 2 screens
+end

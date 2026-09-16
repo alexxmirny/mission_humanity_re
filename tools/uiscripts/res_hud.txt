@@ -1,0 +1,44 @@
+# D13: capture the STRATEGIC HUD, reached through the real menu, at whatever display
+# mode the run is pinned to ([video] size_mode in the run's ini -- see tools/uiscripts/ini/video_*.ini).
+#
+# Single-peer: the host seats an AI in slot 1 and clicks Start by itself, so this needs no client VM
+# while still exercising the real menu -> lobby -> launch path (force-entry would skip exactly the
+# screens whose layout D13 is about). The AI-slot click follows mp_host_ai_closed.txt: the per-slot
+# state spinner rebuilds the widget list, so gate on the "Computer" name label rather than a delay.
+#
+# The two captures are the whole point: w1 is a MENU screen (the game always renders menus at mode 0,
+# 640x480) and w3 is the GAMEPLAY HUD (rendered at the pinned mode). Comparing w3 across modes is how
+# a layout regression at 800x576 / 1024x768 shows up.
+
+settled value:110
+capture w1_menu
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+settled Create
+clickl Create
+present Game name
+settled Ok
+clickl Ok
+present Available maps
+settled Ok
+clickl Ok
+
+# host lobby: seat an AI opponent in slot 1 (OPEN -> AI), then launch alone.
+present Network players
+settled Start
+click 70 132
+present Computer
+capture w2_lobby
+enabled Start
+clickl Start
+
+# in-game: wait for the strategic HUD (GAME_MODE 2) and let the sim advance a little so the HUD has
+# real content (resources ticking, units placed) before the shot.
+absent Network players
+gamemode 2
+gameclock 3000
+capture w3_hud
+log D13 resolution walk COMPLETE -- captured the strategic HUD
+end

@@ -1,0 +1,22 @@
+# Fixture HOST for client-side tests (client_join): walk to the host lobby and STAY there LISTENING --
+# unlike mp_host_start it does NOT launch the match, so a client can browse/join and be observed in the
+# lobby. Distinct baseline label (its own single lobby capture) so it never collides with mp_menu_walk
+# (the standalone solo menu-walk test) even though the walk is the same.
+settled value:110
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+settled Create
+clickl Create
+present Game name
+settled Ok
+clickl Ok
+present Available maps
+settled Ok
+clickl Ok
+present Network players
+settled Start
+capture h_lobby
+log fixture host in lobby -- listening, NOT launching the match
+end

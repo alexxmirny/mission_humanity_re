@@ -1,0 +1,46 @@
+# tools/requirements.txt -- pinned Python dependencies for this repo's tooling (tools/**.py).
+#
+# DERIVED MECHANICALLY, not by hand: tools/lint_requirements.py walks every tools/**.py, collects
+# the third-party top-level imports (excluding the stdlib, sibling tools modules, and the three
+# JVM-runtime-provided packages listed below), maps each to its distribution, and FAILS in
+# lint_repo.py if anything imported here is not pinned here. So this file cannot silently rot: add
+# an import that needs a new package and the gate goes red until the package is added here.
+#   re-derive / audit:  python tools/lint_requirements.py --list
+#   check (also in lint_repo.py):  python tools/lint_requirements.py
+#
+# Install on a fresh machine (empty virtualenv):
+#   python -m pip install -r tools/requirements.txt
+#
+# NOT pip-installable, so deliberately absent: `ghidra`, `java`, `reva`. These resolve only inside a
+# running Ghidra/PyGhidra JVM (the reva_service / pyghidra scripts import them at runtime); they come
+# from the Ghidra install + the built ReVa extension, which E3's bootstrap check verifies separately.
+# `jpype` IS pip-installable and IS pinned (JPype1) -- pyghidra pulls it in, but a oneoff imports it
+# directly, so it is named here rather than left implicit.
+#
+# Versions are pinned to what is installed and known-good on the dev box (Python 3.11). Regenerate a
+# pin after a deliberate upgrade with `python -m pip show <dist>`.
+
+# --- PyGhidra headless bridge (the analysis tier: the ReVA service helper + the pyghidra tools) ---
+pyghidra==3.1.0
+JPype1==1.5.2
+
+# --- core tools (rig harness, exporters, binary I/O, data) ---
+lief==0.17.6
+numpy==2.4.6
+Pillow==12.3.0
+PyYAML==6.0.3
+tqdm==4.66.5
+
+# --- assembler / disassembler + plotting (patch-manifest + oneoff/aux scripts) ---
+capstone==5.0.6
+keystone-engine==0.9.2
+matplotlib==3.9.2
+
+# --- ledger schema (the migration-ledger schema's second guard) ---
+jsonschema==4.23.0
+
+# --- lint gate: ruff is invoked by lint_repo.py as a CLI (`ruff format --check`, `ruff check`), NOT
+#     imported, so lint_requirements.py does not derive it. Pinned here so a fresh `pip install -r`
+#     gives the exact ruff the repo tree is formatted against -- an unpinned ruff drifts the gate
+#     (ruff 0.16.x reformats `python` code fences inside .md; that bit a fresh bootstrap 2026-08-17).
+ruff==0.16.3

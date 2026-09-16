@@ -1,0 +1,34 @@
+# U24 -- one keystroke must produce exactly ONE character in a menu text field.
+#
+# Guards the fix in src/mh_dll/mh/seams/ui_keyrepeat.cpp, which clears the key pair published by
+# llm_ui_modal_key_pump at pump entry so each publish is dispatched once. What this test can and
+# cannot see, stated plainly:
+#
+#   * It CANNOT reproduce the reported bug. The repeat count is (MENU_NOW_MS - STEP_NEXT_MS)/150 + 1,
+#     so it only exceeds 1 on a machine whose menu frames lag behind the menu clock -- our rig keeps
+#     up, which is exactly why the bug was never reproducible here.
+#   * It CAN catch the real risk of the fix: OVER-SUPPRESSION. If clearing the published pair ever
+#     swallows a legitimate keystroke, the field shows the pinned name with NO appended character and
+#     the capture diverges from the baseline. That is the regression this guards, on every DLL change.
+#
+# setup.dat is pinned by ui_test.py (--host-name host), so the field starts as a known string and the
+# baseline is machine-independent: "host" + one typed character.
+
+settled value:110
+clickv 110
+present Player name
+settled Ok
+
+# The 'Your name' widget is the edit field. It must be ACTIVATED before it accepts keystrokes: the
+# modal editor (llm_ui_edit_field_modal_tick) only runs while it is the pending widget. A key sent to
+# an unfocused screen goes to menu navigation instead and leaves the field untouched -- which is a
+# false PASS shape for this test, so the click is load-bearing.
+dump
+clickl Your name
+capture k_name_before
+
+# Scancode 0x02 = '1' (PC set-1, the same table llm_strat_input_update compares against).
+key 0x02
+capture k_name_typed
+log U24: typed one '1' into the player-name field
+end

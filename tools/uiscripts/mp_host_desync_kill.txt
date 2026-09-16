@@ -1,0 +1,36 @@
+# P3 overlay-mapping TRACE part 2 (host/leader): host+launch a 2-player match with defang FULLY OFF,
+# capture the de-sync ICON (spurious GAME_MODE=3 flicker), THEN -- once the runner kills the client
+# (sustained real silence) -- gate on the SYNCHRONIZING modal that sync_overlay_show installs as the
+# ACTIVE list _G_LLM_UI_WGT_LIST_LOCKSTEP_SYNC (0x00654023, fires when SYNC_RETRY_COUNTDOWN<0x38), and
+# capture + dump THAT. Distinguishes the de-sync icon (wait_player path, active-list NULL) from the
+# player-wait/SYNCHRONIZING modal (sync_overlay path, active-list = LOCKSTEP_SYNC).
+#   python tools/ui_test.py --host <ip>:mp_host_desync_kill.txt --client <ip>:mp_client_start.txt --defang 0
+
+settled value:110
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+settled Create
+clickl Create
+present Game name
+settled Ok
+clickl Ok
+present Available maps
+settled Ok
+clickl Ok
+present Network players
+peers 1
+enabled Start
+settled Start
+clickl Start
+absent Network players
+log HOST in-game (defang off)
+gamemode 3
+capture desync_icon
+log HOST captured de-sync ICON; waiting for SUSTAINED sync overlay (client kill)
+screen 0x00654023
+dump
+capture sync_overlay_sustained
+log HOST captured SUSTAINED sync overlay (LOCKSTEP_SYNC active)
+end

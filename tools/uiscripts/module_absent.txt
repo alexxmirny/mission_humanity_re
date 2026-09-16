@@ -1,0 +1,33 @@
+# fork F4B -- THE MISSING-MODULE BOOT (registered at F4A against the spike; retargeted here onto the
+# real transport when the spike died with its knob).
+#
+# The lane is provisioned with `make_lane --omit-satellite mh_net.dll`, so the MP transport is
+# genuinely not on disk. mh.dll still asks for it -- LoadLibrary on an absolute path beside itself,
+# from inside its own DLL_PROCESS_ATTACH -- and gets Win32 error 126. That is the whole point: the
+# absence is REAL, not simulated with a key, which is the half F3F's no_net_boot structurally could
+# not do while the transport was compiled into mh.dll.
+#
+# WHAT THIS SCENARIO IS FOR. The two halves are split on purpose:
+#   (a) HERE: the process reaches its menu and the menu still renders -- on a real frame, not in a
+#       log. A static import would have failed process load with 0xC0000135 before one instruction
+#       of ours ran (measured, docs/dll-split.md), and there would be no frame to capture.
+#   (b) tools/check_module_bind.py, run on this lane by the TESTS entry's `post_check`: the log says
+#       NOT BOUND with the path and the Win32 error, and the arm window's end marker comes AFTER it.
+#       That is the part a capture cannot see -- "the boot survived" and "the bind was even asked
+#       for" are different statements, and a build that silently stopped binding would leave this
+#       capture just as green.
+#
+# WHAT IT IS NOT. It is not the no-module UI test: that is `no_net_boot`, which reaches the same
+# degraded state by DECLINING the load (`[net] module=none`) and gates its capture on the browser's
+# "No network module" notice. This one is about the LOADER. Deeper consequences of a missing
+# satellite belong to each satellite -- libmh.dll absent is config (1) at F4D, mh_harness.dll absent
+# is an uninstrumented run at F4E.
+
+# 1. the 7-button sprite main menu. Sprite menus have no text labels, so the gate is by hotkey
+#    VALUE (110 = NETWORK GAME) -- the same predicate menu_walk and no_net_boot open with.
+#    It is also a real assertion in this configuration: ruling Q2 says the NETWORK GAME button arms
+#    with no transport, so a build that hid the entry when the module is missing times out here.
+settled value:110
+capture w1_menu
+log module-absent boot COMPLETE -- the menu rendered with the bind refused
+end

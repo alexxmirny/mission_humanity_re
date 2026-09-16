@@ -1,0 +1,52 @@
+# Files clang-format must never touch (clang-format >= 18 honors this file).
+# - the GENERATED address header: reformatting it would make gen_dll_addrs.py --check (the
+#   regen + git-diff drift gate) fail forever;
+# - the attic: dead reference code, excluded from the build.
+# (hosted_pool_contract.h was listed here until 2026-07-30 -- it was parsed textually by
+#  tools/gen_pool_reloc_manifest.py; both it and the DLL-hosted pool are retired, RI-STATE / ST0.)
+src/mh_dll/mh/addr/mh_addrs.gen.h
+src/mh_dll/mh/addr/mh_patches.gen.h
+src/mh_dll/mh/addr/mh_tombstones.gen.h
+src/mh_dll/mh/addr/mh_regions.gen.h
+src/mh_dll/libmh/save/save_table.gen.h
+src/mh_dll/mh/attic/*
+src/mh_dll/mh/addr/mh_state_handlers.gen.h
+src/mh_dll/mh/addr/mh_bldg_type_callbacks.gen.h
+# O4-0's order-issue golden: same reason as the address header above -- clang-format would
+# reflow it and gen_order_issue_golden.py --check (the drift gate in lint_repo) would then fail on
+# every run, since the generator emits the canonical form and the formatter would rewrite it.
+src/mh_dll/mh_nettest/order_issue_golden.gen.h
+# CRT-X87's helper module: both files are almost entirely `// clang-format off` __asm blocks, so
+# formatting them is a no-op -- but clang-format's LANGUAGE GUESSER reads the asm's `[operand]` lines
+# as Objective-C message sends and then refuses the file ("Configuration file(s) do(es) not support
+# Objective-C"), because our .clang-format declares only `Language: Cpp`. The guess is heuristic over
+# the whole file, so it flips on an edit as small as adding one helper -- x87.h passes today and
+# x87_shapes.h does not, with identical content shapes. Both are listed so the gate cannot become a
+# mystery failure later. Their C++ lines were normalised once with --assume-filename=x.cpp.
+src/mh_dll/mh/fp/x87_shapes.h
+src/mh_dll/mh/fp/st0_call.h
+# The compiled-in mhpatch manifests: same reason as the address header -- clang-format would
+# re-pack the byte rows and gen_inmem_manifest.py --check (the drift gate in lint_repo) would then
+# fail on every run against a generator that emits the canonical form. WILDCARDED at fork F4C-GATE,
+# when the compile list stopped being one hand-named manifest and became every `class: shipped` one:
+# a per-file line here would have to be edited every time the corpus's classification changes, and
+# the failure mode of forgetting is a lint that fails on every run for a reason nobody edited.
+# (It cost exactly that, once, on this item's own first lint run.) The fixture in mh_nettest/ is the
+# same generator's output and is listed for the same reason.
+src/mh_dll/mh/patch/manifest_*.gen.h
+src/mh_dll/mh/patch/manifests.gen.h
+src/mh_dll/mh_nettest/manifest_*.fixture.gen.h
+# F4D's generated mh.dll <-> libmh.dll bind table and its ~93 naked forwarding thunks: same reason
+# as the address header above -- clang-format would reflow the `__asm` blocks and the string table,
+# and gen_libmh_contract.py --check (the drift gate in lint_repo) would then fail on every run
+# against a generator that emits the canonical form. The .gen.h is listed for the same reason.
+src/mh_dll/mh/seams/libmh_contract.gen.cpp
+src/mh_dll/mh/seams/libmh_contract.gen.h
+# libmh's GENERATED host-interface headers (tools/gen_libmh_hostapi.py, tools/gen_libmh_inbound.py):
+# same reason as the address header above -- clang-format would reflow their X-macro tables and each
+# generator's --check drift gate would then fail on every run against a generator that emits the
+# canonical form. They are only IN SCOPE at all since fork F5O put src/mh_dll/libmh into
+# lint_repo.py's DLL_ROOTS, which is what the roster's move there required.
+src/mh_dll/libmh/include/libmh_host_api.gen.h
+src/mh_dll/libmh/include/libmh_tact_host_api.gen.h
+src/mh_dll/libmh/include/libmh_host_in.gen.h

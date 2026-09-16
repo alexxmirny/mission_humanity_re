@@ -1,0 +1,65 @@
+# S8(b) CLIENT round-trip: a typo'd/dead IP is CORRECTED in the same session (no restart) and the join
+# succeeds. The client's IP MRU is pinned [dead 192.168.0.200, live <host>] (ui_test --client-dead-ip), so
+# the "Server address" field pre-fills to the DEAD entry. Path:
+#   dead IP -> Connect -> empty "Games available" (connect fails ~4s) -> S8 clears the connect latches
+#   -> Cancel back -> Internet server -> re-select the LIVE IP from the MRU list -> Connect -> host is
+#   discovered -> Join -> shared lobby (occ 2).
+# The `retryready` gate (MH_Seam_S8RetryArmed) waits out the ~4s connect-fail deterministically -- no time
+# wait. Pair with the host fixture mp_host_lobby.txt (sits in its lobby LISTENING on 6501).
+
+# 1. main menu -> NETWORK GAME (value 110)
+settled value:110
+clickv 110
+
+# 2. player-name screen -> accept the default name
+present Player name
+settled Ok
+clickl Ok
+
+# 3. local-games browser -> "Internet server" -> the IP-join window (field pre-fills to DEAD 192.168.0.200)
+present Internet server
+settled Internet server
+clickl Internet server
+present Server address
+settled Connect
+
+# 4. Connect to the DEAD IP -> lands on the (empty) "Games available" browser; the async connect fails
+clickl Connect
+present Refresh list
+settled Refresh list
+
+# 5. wait for the S8 latch-clear (the failed connect re-armed the retry), then snapshot the empty browser
+retryready 1
+capture s8_empty_after_dead
+
+# 6. correct the IP: Cancel back to the local browser -> Internet server -> the IP window again
+settled Cancel
+clickl Cancel
+present Internet server
+settled Internet server
+clickl Internet server
+present Server address
+settled Connect
+
+# 7. re-select the LIVE host: click the 2nd MRU row (the live IP, drawn at y~144). A list row commits on
+#    the render-settled HOVER at mouse-DOWN, so a same-frame `click` picks a stale row -- spread it over
+#    frames like a physical click: cursor (settles the hover across a render) then press (commits row1).
+#    This copies the live IP into the "Server address" field (buffer 0xe60760, what the connect reads).
+cursor 310 144
+cursor 310 144
+press 310 144
+release 310 144
+capture s8_ip_live_selected
+
+# 8. Connect to the LIVE host -> discovered this time -> the row lists (sessions >= 1)
+clickl Connect
+sessions 1
+settled Join game
+
+# 9. Join -> the shared lobby, both players seated (occ 2)
+clickl Join game
+present Network players
+occ 2
+capture s8_joined_lobby
+log CLIENT S8 round-trip COMPLETE -- dead IP corrected in-session -> joined the lobby
+end

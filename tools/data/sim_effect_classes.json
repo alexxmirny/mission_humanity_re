@@ -1,0 +1,441 @@
+{
+ "_comment": [
+  "Dispositions for the sim migration set's outward calls into the presentation/net families.",
+  "Consumed by tools/gen_migration.py --domain sim (--effects prints it; the manifest carries it",
+  "as _outward_effects) and by tools/gen_dll_effects.py, which generates the gate for each one.",
+  "The INVENTORY is measured; these DISPOSITIONS are authored -- and as of 2026-08-07 all 25 are",
+  "`verified: true`, meaning each was read off the BODY, at the address in `evidence_addr`, rather",
+  "than off the name.",
+  "",
+  "WHY EACH CLASS MATTERS. Shadow mode snapshots, runs the original, RESTORES the pre-state, runs",
+  "ours, compares. A state restore does not un-send a packet or un-draw a dialog, so:",
+  "  effectful -- performed in the ORIGINAL arm, SUPPRESSED in ours, and RECORDED in both so the",
+  "               two can be compared. Fires exactly once per shadowed call.",
+  "  pure      -- a query. Performed in BOTH arms and MUST NOT be suppressed. These are the seam's",
+  "               NEGATIVE ARM: a suppression built only from the effectful cases passes its own",
+  "               test vacuously, so over-refusal has to be provable.",
+  "  state     -- mutates state we can declare as a shadow region. No suppression; declare it.",
+  "",
+  "READING THIS FILE CHANGED TWO ENTRIES (2026-08-07), and that is the argument for the rule:",
+  "llm_cam_jump_queue_clear and llm_net_chat_ally_mask_rebuild are pure state bookkeeping despite",
+  "`cam_`/`net_` prefixes that had them filed as effectful. llm_snd_play vs",
+  "llm_strat_offscreen_snd_volume shows the same prefix landing on both sides of the line.",
+  "",
+  "THE ONE SUBTLETY WORTH THE PARAGRAPH -- the llm_progress_* family. Two independent reviews came",
+  "back insisting all seven are `effectful`, and their EVIDENCE is correct: each reaches an",
+  "irreversible leaf (game_ui_PrintTextMessage, or game_SetEvent) through game_HandleProgress /",
+  "game_UpdateProgress, sometimes four levels down. They are still `state`, because THE GATE IS AT",
+  "THE TARGET, NOT AT THE CALL SITE: those leaves are themselves gated targets, so the effect is",
+  "already suppressed exactly once, wherever it is reached from. Marking the family `effectful`",
+  "would suppress them wholesale and blind the oracle to the progress / AvailableBuildings /",
+  "AvailableProjects / Unit / Weapon state they legitimately write -- which is the failure both",
+  "reviews explicitly warned about in their own recommendations.",
+  "",
+  "THAT SOUNDNESS CONDITION IS NOT A COMMENT, IT IS CHECKED. `gen_migration.py --domain sim",
+  "--effects` walks the forward closure of every `state` and `pure` target and fails if it can",
+  "reach a known irreversible function WITHOUT passing through a gated target. A `state`",
+  "classification is only as good as that property, and a reader with just the class name in front",
+  "of them cannot verify it.",
+  "",
+  "A target with no entry here is reported UNCLASSIFIED; an entry naming a target nothing calls any",
+  "more is reported STALE. Add `class` and `why` for both, or the generator refuses the file.",
+  "",
+  "FIELDS: class / verified / why / evidence_addr (the instruction the reading turns on) /",
+  "fake_return (what a suppressed call returns; null for void) / note (traps for a later",
+  "translator)."
+ ],
+ "llm_snd_play": {
+  "class": "effectful",
+  "verified": true,
+  "why": "Reaches llm_snd_play_matching_sample on BOTH paths (CALL 0x004d2b44 @0x00425368 and @0x00425408), which calls llm_snd_channel_configure_voice_and_play @0x004e14c0 -- a device write. Also writes per-channel priority (@0x0042537b) and current-sound-id (@0x00425388) unconditionally on the play path. The channel-state query it makes first (llm_snd_channel_get_play_state) is a read-only vtable GetStatus and does not change this.",
+  "fake_return": null,
+  "evidence_addr": "0x00425368"
+ },
+ "game_ui_PrintTextMessage": {
+  "class": "effectful",
+  "verified": true,
+  "why": "One-line forward to game_ui_AddTextToPrintQueue(0, text) @0x00496528, which shifts the 30-slot on-screen message ring, stamps MESSAGE_TIME from TOTAL_GAME_TIME, and sets the floating-msg colour plus queue-active flag. Player-visible on the next frame regardless of any state restore.",
+  "fake_return": 0,
+  "evidence_addr": "0x00496528"
+ },
+ "llm_ui_print_queue_text_id": {
+  "class": "effectful",
+  "verified": true,
+  "why": "Thin wrapper: game_ui_AddTextToPrintQueue(text_id, &DAT_005015fc) @0x00496560 -- the same ring mutation as game_ui_PrintTextMessage. This is the worked example for why a prefix is a hypothesis: it DRAWS, while llm_strat_squad_placement_offset_lookup (nee llm_ui_cursor_lookup_offset_pair) shared the llm_ui_ prefix and does not.",
+  "fake_return": null,
+  "evidence_addr": "0x00496560"
+ },
+ "llm_ui_outcome_dialog": {
+  "class": "effectful",
+  "verified": true,
+  "why": "Opens the win/lose modal: writes _G_LLM_GAME_MODE=3 @0x004c6cec, installs the dialog redraw callback @0x004c6d08 and the outcome widget list @0x004c6d1c, and when the planet-select screen is open also runs llm_dlg_close_and_resume / redraw helpers @0x004c6c73-0x004c6c96. Returns a constant 1.",
+  "fake_return": 1,
+  "evidence_addr": "0x004c6cec",
+  "note": "Also stamps _G_LLM_UI_MENU_NOW_MS from llm_time_get_ticks_ms @0x004c6d26 -- a WALL-CLOCK read. Irrelevant while it is suppressed; a determinism hazard if it is ever translated instead."
+ },
+ "llm_ui_print_floating_msg_red": {
+  "class": "effectful",
+  "verified": true,
+  "why": "Calls game_ui_PrintTextMessage @0x004964db, then forces the floating-message colour to packed RGB(250,0,0) @0x004964ee. Two outward effects; llm_gfx_pack_rgb16 itself is pure.",
+  "fake_return": 0,
+  "evidence_addr": "0x004964db",
+  "note": "Prototype corrected by SIM-READY 2026-08-07: declared void, actually returns a constant 0 (MOV [EBP-0x18],0 @0x004964f4)."
+ },
+ "llm_ui_print_game_speed": {
+  "class": "effectful",
+  "verified": true,
+  "why": "Formats the speed into G_TEXT_TMP (w_sprintf @0x0044b38e) and hands it to game_ui_PrintTextMessage @0x0044b3a4 -- the print-queue mechanism above. All 4 callers discard the result.",
+  "fake_return": null,
+  "evidence_addr": "0x0044b3a4"
+ },
+ "llm_ui_planet_select_screen_open": {
+  "class": "effectful",
+  "verified": true,
+  "why": "Stops every live sound channel through real DirectSound vtable calls (llm_snd_release_channel_voice in a loop @0x004cb42c), then llm_ui_planet_select_screen_build @0x004cb445 sets _G_LLM_GAME_MODE=3 and installs a new per-frame screen handler. Device teardown plus a screen change.",
+  "fake_return": 0,
+  "evidence_addr": "0x004cb42c"
+ },
+ "llm_menu_force_return_to_main": {
+  "class": "effectful",
+  "verified": true,
+  "why": "Emergency teardown: sets the forced-quit flag @0x004c8647, rewires the async menu callbacks, rewrites _G_LLM_DLG_STATE_FLAGS @0x004c866f-0x004c86ba, then llm_ui_dlg_build_from_table @0x004c86cd ACTIVATES a dialog and _G_LLM_GAME_MODE=3 @0x004c86d2.",
+  "fake_return": null,
+  "evidence_addr": "0x004c86cd",
+  "note": "mh::orders::inert_calls() already binds this to a no-op in its shadow arm. The body confirms that precedent is correct rather than merely expedient: no caller reads anything back."
+ },
+ "llm_net_lockstep_send_presence_lost": {
+  "class": "effectful",
+  "verified": true,
+  "why": "Stages a 2-byte control message into the shared send buffer (@0x0049e345, @0x0049e357) and calls llm_net_transport_send @0x0049e36f. That address is the DLL's own Phase-A2 replacement point (MH_EXPORT_REPLACE_llm_net_transport_send; net_seams.cpp binds ADDR_GAME_SEND to it), so under the harness a call there is a REAL UDP send -- the vanilla stub is not what runs.",
+  "fake_return": null,
+  "evidence_addr": "0x0049e36f"
+ },
+ "llm_net_send_lockstep_extend": {
+  "class": "effectful",
+  "verified": true,
+  "why": "Same shape: stages kind=2 plus an 8-byte double horizon and calls llm_net_transport_send @0x0049d3ad. Called from the per-frame lockstep pump and the time tick, so a doubled arm sends a duplicate EXTEND every tick rather than occasionally.",
+  "fake_return": null,
+  "evidence_addr": "0x0049d3ad"
+ },
+ "llm_net_lockstep_extend_ui_enter": {
+  "class": "effectful",
+  "verified": true,
+  "why": "Saves the current mode @0x004c85dc, calls llm_net_lockstep_wait_player_overlay_show @0x004c85e8 (which rebuilds a UI list and can reach llm_net_chat_input_process), then forces _G_LLM_GAME_MODE=8 @0x004c85ed.",
+  "fake_return": null,
+  "evidence_addr": "0x004c85ed",
+  "note": "net_lockstep.cpp's existing `defang_xui` mode already NOPs exactly this overlay call and mode write to kill a ~2s harness freeze -- independent confirmation the effects are outward-only."
+ },
+ "llm_net_lockstep_overlay_dismiss": {
+  "class": "effectful",
+  "verified": true,
+  "why": "Unconditionally calls llm_net_chat_input_process @0x004c7d3e, which drains the keyboard queue, signals a Win32 event, and on an Enter-terminated line reaches llm_net_chat_send_all -> llm_net_transport_send. Also tears down the modal widget list and sets _G_LLM_GAME_MODE to 2 or 3 @0x004c7d7d-0x004c7dac.",
+  "fake_return": 1,
+  "evidence_addr": "0x004c7d3e",
+  "note": "Prototype corrected by SIM-READY 2026-08-07: declared void, actually returns a constant 1 (MOV [EBP-0x18],1 @0x004c7dac). Suppress the WHOLE body -- the chat-input drain is where the irreversible half lives, and it is unconditional, unlike the send."
+ },
+ "llm_net_chat_ally_mask_rebuild": {
+  "class": "state",
+  "verified": true,
+  "why": "RECLASSIFIED from effectful (read off the name) to state. The body has exactly ONE call -- the utils_assert_stack_capacity prologue @0x0049d758 -- and no other CALL, no port access, no indirect call. It recomputes one byte, _G_LLM_CHAT_TARGET_MASK, from diplomacy state already in globals (OR @0x0049d7dc / AND @0x0049d7ed), gated on _G_LLM_CHAT_TARGET_MODE==1 @0x0049d768. Idempotent. Declare the 1-byte region and let both arms run.",
+  "fake_return": null,
+  "evidence_addr": "0x0049d750",
+  "note": "Its plate flags param_1/param_2 as Watcom fake-return artifacts; the real signature is void __watcall(void). Do not translate the phantom params."
+ },
+ "llm_cam_jump_queue_clear": {
+  "class": "state",
+  "verified": true,
+  "why": "RECLASSIFIED from effectful to state. Drains the camera-jump queue by calling llm_cam_jump_queue_pop (@0x0044dd29/@0x0044dd32); the whole transitive closure -- pop -> llm_map_cam_set_col / set_row / llm_map_set_zoom_scale / llm_map_cam_mark_viewport_dirty -- writes only camera, zoom, viewport-dirty and tile-visibility globals. Not one call in that closure reaches sound, net, a dialog or a device. Suppressing it would be an over-refusal: the camera position it leaves is read by the next frame.",
+  "fake_return": null,
+  "evidence_addr": "0x0044dd29",
+  "note": "Two translation blockers in its closure, flagged for whoever declares the region: llm_map_set_zoom_scale reads in_stack_00000004..0x10 with no visible arguments at the call site, and llm_map_cam_mark_viewport_dirty is __mh_watcall_ecx_ebx_volatile."
+ },
+ "llm_strat_offscreen_snd_volume": {
+  "class": "pure",
+  "verified": true,
+  "why": "PROVEN pure by walking every store, not by absence of an obvious one: all 8 stores (@0x00496aec..@0x00496b9d) are EBP-relative stack slots, and its only non-prologue callee, llm_strat_tile_delta_wrapped @0x004941b9, writes exclusively through its two caller-supplied int* out-params. Reads six camera/mask globals, writes none. Returns a 0-100 volume all 8 call sites pass straight into llm_snd_play. MUST NOT be suppressed -- this is the seam's negative arm.",
+  "fake_return": null,
+  "evidence_addr": "0x00496b24"
+ },
+ "llm_strat_offscreen_fx_scale": {
+  "class": "pure",
+  "verified": true,
+  "why": "Byte-for-byte the same instruction sequence as llm_strat_offscreen_snd_volume (same relative offsets, same globals, same callee @0x0044de2b), differing only in retyped params. Every store is a stack local. MUST NOT be suppressed.",
+  "fake_return": null,
+  "evidence_addr": "0x0044de2b"
+ },
+ "llm_progress_collect_available_projects": {
+  "class": "state",
+  "verified": true,
+  "why": "STATE, and the reviews that called it `effectful` were reading the right evidence for the wrong seam placement -- see the family note in _comment. It reaches an irreversible leaf, but only through targets that are THEMSELVES gated, so the gate at those leaves already makes the effect fire exactly once. Suppressing it here would be an over-refusal that blinds the oracle to the progress / AvailableBuildings / AvailableProjects state it legitimately writes. Loops PROJECT entries into game_UpdateProgress @0x0049915a, then tail-calls llm_progress_propagate_unlocks @0x00499165. Its own body stores only to stack.",
+  "fake_return": null,
+  "evidence_addr": "0x00499165"
+ },
+ "llm_progress_finalize_acquire": {
+  "class": "state",
+  "verified": true,
+  "why": "STATE, and the reviews that called it `effectful` were reading the right evidence for the wrong seam placement -- see the family note in _comment. It reaches an irreversible leaf, but only through targets that are THEMSELVES gated, so the gate at those leaves already makes the effect fire exactly once. Suppressing it here would be an over-refusal that blinds the oracle to the progress / AvailableBuildings / AvailableProjects state it legitimately writes. The most directly outward of the family: calls game_SetEvent twice (@0x0044059b, @0x004405cd), both gated on player==PlayerSide, and reaches it again through game_RemoveFromAvailableBuildings/Projects. game_SetEvent is a MIGRATION-SET function whose own outward calls (llm_snd_play, llm_ui_planet_select_screen_open) are gated targets. Writes progress[][].available/.f3 plus the two offer arrays -- all declarable, all non-zero regions.",
+  "fake_return": null,
+  "evidence_addr": "0x0044059b"
+ },
+ "llm_progress_notify_unit_available": {
+  "class": "state",
+  "verified": true,
+  "why": "Its only effect is game_SetEvent(BUILD_PROJECTS_REFRESH=7) @0x00440166, gated on player==PlayerSide @0x00440158. Read that case arm specifically: it sets a panel dirty flag, or (when the defer flag is set) appends to a 256-entry ring. No draw and no sound on code 7 -- the arms that do call llm_snd_play are ACTION_DENIED_FEEDBACK(11), and the literal here is a fixed 7.",
+  "fake_return": null,
+  "evidence_addr": "0x00440166"
+ },
+ "llm_progress_propagate_unlocks": {
+  "class": "state",
+  "verified": true,
+  "why": "STATE, and the reviews that called it `effectful` were reading the right evidence for the wrong seam placement -- see the family note in _comment. It reaches an irreversible leaf, but only through targets that are THEMSELVES gated, so the gate at those leaves already makes the effect fire exactly once. Suppressing it here would be an over-refusal that blinds the oracle to the progress / AvailableBuildings / AvailableProjects state it legitimately writes. The widest of the family and the one a wrong label would have hurt most: its fixpoint loop calls game_HandleProgress @0x00440df7 for EVERY Progress[i].type, not one filtered kind, so it can reach the PLANET and UPGRADE arms that end in game_ui_PrintTextMessage -- a gated target. Also writes Unit / Weapon stat deltas via game_HandleUpgrade.",
+  "fake_return": null,
+  "evidence_addr": "0x00440df7"
+ },
+ "llm_progress_recheck_buildings": {
+  "class": "state",
+  "verified": true,
+  "why": "STATE, and the reviews that called it `effectful` were reading the right evidence for the wrong seam placement -- see the family note in _comment. It reaches an irreversible leaf, but only through targets that are THEMSELVES gated, so the gate at those leaves already makes the effect fire exactly once. Suppressing it here would be an over-refusal that blinds the oracle to the progress / AvailableBuildings / AvailableProjects state it legitimately writes. Structural twin of collect_available_projects: filtered loop into game_HandleProgress @0x00499270, then the unconditional propagate_unlocks tail @0x0049927b.",
+  "fake_return": null,
+  "evidence_addr": "0x0049927b"
+ },
+ "llm_progress_recheck_planet_system_all_players": {
+  "class": "state",
+  "verified": true,
+  "why": "STATE, and the reviews that called it `effectful` were reading the right evidence for the wrong seam placement -- see the family note in _comment. It reaches an irreversible leaf, but only through targets that are THEMSELVES gated, so the gate at those leaves already makes the effect fire exactly once. Suppressing it here would be an over-refusal that blinds the oracle to the progress / AvailableBuildings / AvailableProjects state it legitimately writes. The only member with no player parameter: iterates PLANET/SYSTEM entries and calls game_HandleProgress @0x004548bb for every enabled slot, so the PLANET arm's game_ui_PrintTextMessage is reachable at session start for the local slot. Does NOT call propagate_unlocks.",
+  "fake_return": null,
+  "evidence_addr": "0x004548bb",
+  "note": "Its PLANET arm writes planet_time, which sat at SIZE 0 in the region registry until SIM-READY sized it double[32] on 2026-08-07 from the reset loop @0x0045401e (i < 0x20, SHL EAX,3)."
+ },
+ "llm_progress_recheck_projects": {
+  "class": "state",
+  "verified": true,
+  "why": "STATE, and the reviews that called it `effectful` were reading the right evidence for the wrong seam placement -- see the family note in _comment. It reaches an irreversible leaf, but only through targets that are THEMSELVES gated, so the gate at those leaves already makes the effect fire exactly once. Suppressing it here would be an over-refusal that blinds the oracle to the progress / AvailableBuildings / AvailableProjects state it legitimately writes. Its own loop is filtered to PROJECT and is state-only; the reach comes from the unconditional propagate_unlocks tail @0x004991e3.",
+  "fake_return": null,
+  "evidence_addr": "0x004991e3"
+ },
+ "_benign_passthrough": {
+  "_note": [
+   "Functions that LIVE IN an effect family by name but whose body is not irreversible.",
+   "The gating-soundness walk in gen_migration.py may descend through these.",
+   "",
+   "WHY THIS EXISTS AND WHY IT IS NOT A WEAKENING. The walk asks 'can a non-suppressed",
+   "target reach something irreversible that nothing gates', and it decides 'irreversible'",
+   "from the NAME PREFIX, because that is the only signal available without reading every",
+   "body in the closure. A name predicate inherits every inconsistency in the naming --",
+   "the same failure that let a `game_ui_` printer sit inside the migration set until the",
+   "cut list was re-audited. So the check is deliberately left over-eager and the",
+   "exceptions are written down WITH THE BODY EVIDENCE, rather than the predicate being",
+   "loosened until it stops complaining.",
+   "",
+   "The bar is the ack file's: name the mechanism, cite the address. An entry that the",
+   "walk no longer needs is reported as STALE on every run, so this cannot quietly become",
+   "a place to silence findings."
+  ],
+  "llm_cam_jump_queue_pop": {
+   "addr": "0x0044dd43",
+   "why": "Camera bookkeeping, not presentation output, despite the llm_cam_ prefix. It decrements _G_LLM_CAM_JUMP_QUEUE_COUNT and calls exactly four helpers -- llm_map_cam_set_col (0x0044af33: two global stores, no calls), llm_map_cam_set_row (0x0044af6d: same shape), llm_map_set_zoom_scale (0x004a7e12: clamps two doubles into _G_LLM_MAP_ZOOM_SCALE_X/Y, no calls) and llm_map_cam_mark_viewport_dirty (0x004a5a6b: sets a dirty flag and fills the tile-visibility buffer, no calls). Nothing in that closure reaches sound, net, a dialog or a device, so it is declarable state like its caller.",
+   "evidence": "Read 2026-08-07 alongside llm_cam_jump_queue_clear, which is the target this unblocks: the two were classified together off the same closure walk, and the caller's own reclassification from `effectful` to `state` rests on this body."
+  },
+  "llm_gfx_rgb16_table_entry_update": {
+   "addr": "0x004b6190",
+   "why": "Colour-table bookkeeping, not presentation output, despite the llm_gfx_ prefix. It reads _G_LLM_GFX_UI_COLORS_RGB[index][0/2/1] (0x00656946), calls the stack-only llm_gfx_pack_rgb16 (0x0043c56b: reads G_COLOR_FORMAT, writes one stack local, makes no further call), and stores the resulting ushort to DAT_00656976 + index*2 -- an 8-byte packed-RGB565 cache sitting immediately after the RGB block. That single store is its whole write set: no surface, no blit, no vtable call, no device. Its entire closure is {utils_assert_stack_capacity, llm_gfx_pack_rgb16}.",
+   "evidence": "Read 2026-09-01 alongside llm_menu_tutorial_uistate_restore, which is the target this unblocks: that caller's `state` classification rests on this body."
+  },
+  "llm_gfx_pack_rgb16": {
+   "addr": "0x0043c56b",
+   "why": "A stack-only channel packer, not presentation output, despite the llm_gfx_ prefix. Read 2026-09-01: the whole 140-byte body reads ONE global -- G_COLOR_FORMAT (CMP [0x00559a04],0x22b @0x0043c58a) -- to pick RGB555 vs RGB565, then does AND/SHL/SAR/OR arithmetic on its three parameters into a single stack local and returns it. There is no store outside the frame anywhere in the body, and the only CALL is the utils_assert_stack_capacity probe @0x0043c573. It is what its 77 callers use to compute a pixel value; the ones that make that value visible are the callers, not this.",
+   "evidence": "Read 2026-09-01 as the SECOND level of llm_menu_tutorial_uistate_restore's closure. The first level, llm_gfx_rgb16_table_entry_update, already has an entry here; descending through it is what exposed this one, and the caller's `state` classification rests on both."
+  }
+ },
+ "llm_gfx_draw_cursor_menu": {
+  "class": "effectful",
+  "verified": true,
+  "why": "Points the UI blitter at the LIVE framebuffer and then blits: MOV [_G_LLM_UI_SURFACE_PTR],EAX @0x004a5b64 with EAX = _G_LLM_FRAMEBUFFER (0x00603af8), pitch @0x004a5b69, then up to five CALL llm_gfx_blit_sprite_ui (@0x004a5bcd, 0x004a5c23, 0x004a5c77, 0x004a5ccb, 0x004a5d1f). llm_gfx_blit_sprite_ui (0x004a5d3b) writes pixels into _G_LLM_UI_SURFACE_PTR at _G_LLM_CUR_DST_X/Y and stamps _G_LLM_TILE_VIS_MAP_PTR / _G_LLM_TILE_DRAWN_MAP_PTR for every tile it covers; followed down one level, which the first blit call settles. Gated on _G_LLM_CURSOR_VISIBLE == 1 (CMP @0x004a5b4d), so it is a no-op with the cursor hidden -- which does not change the class.",
+  "fake_return": null,
+  "evidence_addr": "0x004a5bcd",
+  "note": "Convention is __mh_watcall_ecx_volatile, and the body's last two decompiled statements (G_WIN_W = extraout_EAX; G_WIN_H = extraout_ECX) are the volatile-register contract being rendered, NOT real restores. A translator must not emit them: G_WIN_W/G_WIN_H are genuinely SET to WindowWidth/WindowHeight at 0x004a5b6f/0x004a5b74 and left that way."
+ },
+ "llm_gfx_font_desc_for_flags": {
+  "class": "pure",
+  "verified": true,
+  "why": "PROVEN pure by disassembling all 59 bytes, not inferred from the absence of an obvious store. The whole body is: spill the param to [EBP-0x1c], AND EAX,3 @0x004b6173, SHL EAX,3 @0x004b6176, MOV EDX,0x0065425b @0x004b6179, ADD EDX,EAX, store to [EBP-0x18], return it. Both stores are EBP-relative stack slots; there is no memory read beyond the frame, no branch, and the only CALL is the utils_assert_stack_capacity probe @0x004b615d. It returns a pointer INTO a static 4-entry x 8-byte descriptor table and dereferences nothing, so there is no lazy load and nothing to cache. MUST NOT be suppressed -- this is a negative-arm target the llm_gfx_ prefix would have misclassified.",
+  "fake_return": null,
+  "evidence_addr": "0x004b6179",
+  "note": "llm_game_start_tutorial calls it @0x004bb046 and DISCARDS the result -- a dead call, consistent with a body that has no effect to want."
+ },
+ "llm_gfx_present_flip": {
+  "class": "effectful",
+  "verified": true,
+  "why": "The DirectDraw present. Three calls, no branches: llm_gfx_surface_unlock(2) @0x00426467, llm_gfx_ddraw_present(&_G_LLM_GFX_DISPLAY_MODE_DESC = 0x00710050) @0x00426471, llm_gfx_surface_lock(2) @0x0042647b. llm_gfx_ddraw_present (0x004da014) validates three COM vtable pointers at the wrapper's +0x44/+0x4c/+0x50 and then issues GetClientRect + ClientToScreen + vtable-call(+0x58) + vtable-call(+0x14), i.e. a real device Blt/Flip; followed one level down to the vtable dispatch. A state restore cannot un-present a frame.",
+  "fake_return": null,
+  "evidence_addr": "0x00426471"
+ },
+ "llm_gfx_sprite_width": {
+  "class": "pure",
+  "verified": true,
+  "why": "PROVEN pure by disassembling all 77 bytes. Every store is EBP-relative ([EBP-0x20] param spill @0x004bc1ce, [EBP-0x1c] @0x004bc1ea, [EBP-0x18] @0x004bc1f3); there is no store to any global, no branch, and the only CALL is the stack probe @0x004bc1be. It reads three globals -- _G_LLM_GFX_UI_SPRITE_BASE_INDEX (0x006444be), the _G_LLM_SPRITE_PIX_OFFSETS table (0x005d8b60) and _G_LLM_GFX_BANK_PIXELS (0x00603ae0) -- indexes straight through them and does MOVZX EAX,word ptr [EAX] @0x004bc1f0. The lazy-load shape was specifically checked for and is absent: no null test on the bank pointer, no conditional branch of any kind, no call that could load a bank. MUST NOT be suppressed.",
+  "fake_return": null,
+  "evidence_addr": "0x004bc1f0",
+  "note": "The absence of a null check is a FIDELITY hazard, not a disposition one: if _G_LLM_GFX_BANK_PIXELS is 0 this faults rather than lazily loading. An offline oracle must seed 0x00603ae0 and 0x005d8b60 with a real bank."
+ },
+ "llm_gfx_ui_sprite_get_header_field2": {
+  "class": "pure",
+  "verified": true,
+  "why": "PROVEN pure the same way, and byte-for-byte the same instruction sequence as llm_gfx_sprite_width differing ONLY in the final displacement -- MOVZX EAX,word ptr [EAX + 0x2] @0x004bc23d against [EAX]. That is the same relationship llm_strat_offscreen_snd_volume / llm_strat_offscreen_fx_scale already have in this file. All three stores are stack slots (@0x004bc21b, @0x004bc237, @0x004bc241), the sole CALL is the stack probe @0x004bc20b, and there is no branch and no lazy load. MUST NOT be suppressed.",
+  "fake_return": null,
+  "evidence_addr": "0x004bc23d",
+  "note": "Header +0/+2 are width/HEIGHT, which closes this function's plate's 'semantics of +2 unconfirmed'. Three independent readings: llm_ui_widget_list_center reads the pair into a widget's width and height (@0x004b700e/@0x004b7017); llm_game_start_tutorial pairs sprite_width -> .x/.width with this -> .y/.height (@0x004bb052..0x004bb099); llm_ui_diplomacy_screen_build does width = sprite_width(0x24), height = this(0x24). A rename to llm_gfx_sprite_height is warranted and not yet applied."
+ },
+ "llm_menu_tutorial_uistate_restore": {
+  "class": "state",
+  "verified": true,
+  "why": "An idempotent restore of one 0x38-byte UI palette block, with no draw and no device touch. The decompiler renders two memcpy calls; the bytes are an INLINE Watcom copy -- MOV ECX,0x30 / MOV ESI,0x0065d62a / MOV EDI,0x00656946 / REP MOVSD @0x004ba6b0 plus a 0x30&3 == 0 byte tail @0x004ba6b7 -- moving _G_LLM_TUTORIAL_UISTATE_BACKUP (0x0065d62a) into _G_LLM_GFX_UI_COLORS_RGB (0x00656946, int[4][3] = exactly 0x30). It then calls llm_gfx_rgb16_table_entry_update for indices 0..3 (@0x004ba6c6/0x004ba6d3/0x004ba6e0/0x004ba6ed), which recomputes the packed RGB565 cache at DAT_00656976 from that same restored data via the stack-only llm_gfx_pack_rgb16. Running the body twice is indistinguishable from once: a fixed-source copy plus a pure recompute, with no read-modify-write, no queue index and no rotating register anywhere in the closure.",
+  "fake_return": null,
+  "evidence_addr": "0x004ba6b0",
+  "note": "Declare ONE contiguous region 0x00656946..0x0065697e (0x30 bytes of _G_LLM_GFX_UI_COLORS_RGB plus the 8-byte packed cache at 0x00656976). The gating-soundness walk WILL flag this target because llm_gfx_rgb16_table_entry_update matches the llm_gfx_ prefix -- that is what its _benign_passthrough entry is for, not a reclassification of this one."
+ },
+ "llm_ui_menu_bg_redraw_cb": {
+  "class": "effectful",
+  "verified": true,
+  "why": "Repaints the whole strategic scene behind an open menu: CALL llm_strat_render_view (0x0044e5a4) @0x004b800a, unconditionally and as the first act of the body. Then, only when _G_LLM_GAME_TUTORIAL_STEP == 0 (CMP [0x00e5834c],0 @0x004b800f), llm_ui_icon_group_dispatch(0) @0x004b801a draws the panel frame; finally llm_map_cam_mark_viewport_dirty @0x004b801f. The first call alone settles it. Note the tutorial gate means the icon-group draw is SKIPPED on exactly the path SIM-RESID exercises, which does not save the target -- the render call is ungated.",
+  "fake_return": 0,
+  "evidence_addr": "0x004b800a",
+  "note": "Returns a constant 0 (MOV [EBP-0x18],0 @0x004b8024). All 11 call sites discard it, so 0 is safe but not load-bearing. The plate's claim that the return is 'a decompiler artifact (convention-unknown)' is STALE -- the convention is resolved to __watcall and the 0 is a real store."
+ },
+ "llm_ui_screen_fade_transition_tick": {
+  "class": "effectful",
+  "verified": true,
+  "why": "Three independent irreversible acts. (1) CALL llm_gfx_present_flip @0x004bc691 on the fall-through of every non-terminal switch arm -- a DirectDraw present, itself a gated target. (2) llm_gfx_terrain_screen_blend_convert twice (states 1 and 2), which blend-composites DAT_00603af4 into _G_LLM_FRAMEBUFFER through the blend LUTs: a framebuffer read-modify-write, so running it twice is not running it once. (3) llm_time_get_ticks_ms three times, with the state machine's phase advance driven by that wall clock, so the arm is not even deterministic. It also dispatches _G_LLM_UI_FADE_TRANSITION.tick_cb and .done_cb through function pointers, which no closure walk can follow.",
+  "fake_return": 1,
+  "evidence_addr": "0x004bc691",
+  "note": "THE fake_return MUST BE NONZERO OR A SUPPRESSED CALL HANGS THE GAME. Both SIM-RESID call sites are spin loops -- `do { r = tick(); } while (r == 0);` at 0x004bb00e and 0x004bb274 in llm_game_start_tutorial -- and all 15 call sites in the binary are back-edge LAB_ targets of the same idiom. 1 is also the semantically right value: it is what the real state-3 arm returns (@0x004bc6a4) when the fade has completed. Second trap, for whoever TRANSLATES rather than suppresses: the state-3 arm does not always return 1 -- when done_cb is non-null it tail-returns the CALLBACK's value (@0x004bc686)."
+ },
+ "llm_ui_widget_list_center": {
+  "class": "state",
+  "verified": true,
+  "why": "A layout measure pass whose ENTIRE write set is four dwords of its own parameter. Disassembling all 274 bytes: every store is either an EBP slot or [reg+0x18]/[0x1c]/[0x20]/[0x24] where reg is reloaded from [EBP-0x1c] = param_1 (0x004b7060, 0x004b7078, 0x004b708d, 0x004b7096, 0x004b709f, 0x004b70ad, 0x004b70b9). No store to any global, and the only CALL in the body is the stack probe @0x004b6fbc. It reads WindowWidth/Height (0x005202c8/0x005202cc), the frame widget's flags and disp_idx, and one of two sprite-header sources, then centres. Idempotent: 0x004b708d is an ADD [EAX+0x18],EDX, but 0x004b7060 unconditionally ASSIGNS that same field 45 bytes earlier in the same call, so the final value is a function of the inputs only.",
+  "fake_return": null,
+  "evidence_addr": "0x004b7060",
+  "note": "Two things. (1) The pointee is DURABLE, not a caller stack local -- llm_game_start_tutorial passes _G_LLM_UI_MENU_WIDGET_LIST @0x004bb2e1 and llm_tutorial_step_driver passes &_G_LLM_UI_WGT_LIST_TUTORIAL_STEP -- so the region to declare is +0x18..+0x28 of each widget-list container the sim set can reach, not a fixed address. (2) The read-modify-write at 0x004b708d is ORDERING-SENSITIVE: a compute-then-assign reimplementation that hoists the flag-0x20 nudge above the centring assignment diverges. CLASS NOTE: `state` vs `pure` is genuinely contestable here -- the body is a pure computation over its parameter, which is how llm_ui_cursor_lookup_offset_pair and llm_ui_cursor_apply_anim_frame_offset are filed. `state` was chosen because the pointee is a durable global container, so the four fields are worth making visible to the region declarer. Neither class suppresses it and both pass the soundness walk identically."
+ },
+ "llm_ui_widget_list_draw": {
+  "class": "effectful",
+  "verified": true,
+  "why": "The generic menu draw dispatcher, and its irreversible edge is an INDIRECT call: CALL dword ptr [EDX + 0xc] @0x004b73d9 invokes each non-hidden child widget's own draw_cb. That target is a data field, so no forward-closure walk can bound it -- for the tutorial lists it lands in llm_ui_widget_draw and thence llm_gfx_draw_sprite / llm_gfx_draw_sprite_dark / the shadowed text draws, all of which write the framebuffer. Before the loop it calls llm_ui_widget_list_draw_frame_layer @0x004b73a2, which restores a saved background region via llm_mem_copy_words and then draws the frame-layer widgets through the same indirect callback. Suppress the WHOLE body: the frame-layer blit is unconditional, unlike the per-child draws.",
+  "fake_return": 0,
+  "evidence_addr": "0x004b73d9",
+  "note": "Declared void but actually returns a constant 0 in EAX (MOV [EBP-0x18],0 @0x004b73e5) -- the same prototype defect already corrected on llm_ui_print_floating_msg_red and llm_net_lockstep_overlay_dismiss; all callers discard it. Separately: llm_ui_widget_layout_resolve_position, called per child @0x004b73bf, IS a global accumulator on _G_LLM_UI_WIDGET_DRAW_X/Y/W/H -- but llm_ui_widget_list_draw_frame_layer reseeds all four from the container rect at the top of every call, so the accumulator does not survive across calls and is NOT the reason this is effectful."
+ },
+ "llm_view_set_size_mode": {
+  "class": "state",
+  "verified": true,
+  "why": "TRANSFERRED from tact_effect_classes.json's entry for the same body and RE-READ at its evidence address before transferring, because a class is a property of the body and a second copy of a reading is only worth having if it is a second reading. It has a built-in idempotency guard: CMP EAX,[EBP-0x24] @0x0044e4e1 / JNZ @0x0044e4e4 compares _G_LLM_VIEW_SIZE_MODE_CACHE (0x005d0c66) against the requested mode and returns immediately when they match, writing nothing. Only on a CHANGE does it call llm_gfx_apply_window_resolution @0x0044e4f9, store the applied mode back to the cache @0x0044e541, call llm_map_set_zoom_scale(1.0, 1.0) @0x0044e554 and game_SetEvent @0x0044e55e. So the state after one call equals the state after two, which is the twice-test a `state` classification has to pass.",
+  "fake_return": null,
+  "evidence_addr": "0x0044e4e1",
+  "note": "Reached from llm_game_start_tutorial @0x004bafe0, whose RETURN VALUE it stores into view_size_mode -- so this target's result is load-bearing for that body and must not be suppressed; `state` is what makes that automatic. The tact-side entry additionally records that seams/video.cpp's D13b size-mode picker conditionally owns the entry and effects_install.cpp defers the gate when [video] picker is set; that stays true here and costs nothing, since a `state` target is never suppressed. RESIDUAL UNGATED REACH, KNOWN AND ACCEPTED. `gen_migration.py --domain sim_resid --effects` reports this target reaching llm_gfx_apply_window_resolution, llm_snd_play and llm_ui_planet_select_screen_open without passing through a gated one. All three are classified in this file -- but the walk's `gated` set is the domain's DIRECTLY-CALLED outward inventory, and none of the three is called directly by a sim_resid member, so classifying them (which llm_gfx_apply_window_resolution now is, and the other two already were) cannot clear it. The same body is `state` in tact_effect_classes.json and clears the walk THERE, because a tact member does call llm_gfx_apply_window_resolution directly. The class is a property of the BODY and the gate is a property of the DOMAIN's call graph, so the two verdicts are consistent and the reading is not re-opened per domain. Reclassifying this one `effectful` here would clear the report and would be wrong twice over: llm_game_start_tutorial STORES its return (view_size_mode = set_size_mode(0) @0x004bafe0), so suppression would change that body; and the twice-test it passes is the actual safety question. Nothing in sim_resid is armed or has a shadow site, so nothing rests on this today -- but SIM-RESID-P must not arm a site reaching it without revisiting."
+ },
+ "llm_gfx_apply_window_resolution": {
+  "class": "effectful",
+  "verified": true,
+  "why": "Tears down and rebuilds the display and the input device, and moves the OS window. Read 2026-09-01: llm_input_dimouse_shutdown @0x00428a2c releases the DirectInput mouse; llm_gfx_release_display_surfaces @0x00428a31 releases the DirectDraw surfaces; llm_gfx_set_window_resolution @0x00428a3c; one of three MoveWindow calls (@0x00428a60 / 0x00428a88 / 0x00428ab0, selected by width) resizes the real HWND; llm_gfx_display_init @0x00428ac2 recreates the surfaces; SetCapture @0x00428acd recaptures the mouse; llm_map_cam_mark_viewport_dirty @0x00428ad4. Four of those are Win32 or COM device calls. A state restore un-does none of it.",
+  "fake_return": null,
+  "evidence_addr": "0x00428a2c",
+  "note": "Added because llm_view_set_size_mode -- correctly classified `state` on its own idempotency guard -- reached this WITHOUT passing through a gated target, which is exactly what the soundness walk exists to refuse. Classifying the CALLEE is the right repair and reclassifying the caller would have been the wrong one: view_set_size_mode's return value is stored by llm_game_start_tutorial, so suppressing it would change that body's behaviour, while this target's whole point is that it must not run twice."
+ },
+ "llm_net_lockstep_pump": {
+  "class": "effectful",
+  "verified": true,
+  "why": "Network I/O: drains the socket and dispatches lockstep messages (recv cannot be un-consumed, sends cannot be un-sent). The body is OURS -- L1 translated it and it ships promoted -- so in the hosted config a call lands in our promoted body anyway.",
+  "gate": false,
+  "gate_why": "Only reached (in the lib_trans set) from the unshadowable frame pair (llm_strat_frame / llm_strat_frame_redraw_behind_dialog), which by design NEVER carries a shadow site -- both advance the sim (pump + time_tick + sim_tick), so a shadow arm would double-step the world (docs/lib-trans-closure.md sect. 5/7). With no site, the double-fire hazard a gate exists to suppress cannot arise; the rationale IS the disposition, per LT0's done_when. Additionally the pump is promoted-by-default (C8): a gate trampoline here would sit over our own promoted entry."
+ },
+ "llm_strat_input_update": {
+  "class": "effectful",
+  "verified": false,
+  "why": "The 10.8 KB input pump: consumes the OS key/mouse event queues (irreversible reads), drives camera/selection/chat and can reach net sends. Adjudicated mixed/WALLED (SIM-RESID-W; the LIB-ABI ledger reclassed it out of translate) -- the replay host replaces the input pump wholesale.",
+  "gate": false,
+  "gate_why": "Only reached (in the lib_trans set) from the unshadowable frame pair (llm_strat_frame / llm_strat_frame_redraw_behind_dialog), which by design NEVER carries a shadow site -- both advance the sim (pump + time_tick + sim_tick), so a shadow arm would double-step the world (docs/lib-trans-closure.md sect. 5/7). With no site, the double-fire hazard a gate exists to suppress cannot arise; the rationale IS the disposition, per LT0's done_when."
+ },
+ "llm_strat_render_present": {
+  "class": "effectful",
+  "verified": false,
+  "why": "The strategic frame's present: draws the cursor and flips the display (llm_gfx_draw_cursor_menu + llm_gfx_present_flip reach, both already classified effectful) -- a frame cannot be un-presented.",
+  "gate": false,
+  "gate_why": "Only reached (in the lib_trans set) from the unshadowable frame pair (llm_strat_frame / llm_strat_frame_redraw_behind_dialog), which by design NEVER carries a shadow site -- both advance the sim (pump + time_tick + sim_tick), so a shadow arm would double-step the world (docs/lib-trans-closure.md sect. 5/7). With no site, the double-fire hazard a gate exists to suppress cannot arise; the rationale IS the disposition, per LT0's done_when."
+ },
+ "llm_strat_render_view": {
+  "class": "effectful",
+  "verified": false,
+  "why": "The strategic map/unit view renderer (1.5 KB): sprite draws, HUD text, hittest passes -- pure presentation output.",
+  "gate": false,
+  "gate_why": "Only reached (in the lib_trans set) from the unshadowable frame pair (llm_strat_frame / llm_strat_frame_redraw_behind_dialog), which by design NEVER carries a shadow site -- both advance the sim (pump + time_tick + sim_tick), so a shadow arm would double-step the world (docs/lib-trans-closure.md sect. 5/7). With no site, the double-fire hazard a gate exists to suppress cannot arise; the rationale IS the disposition, per LT0's done_when."
+ },
+ "llm_map_cam_set_col": {
+  "class": "state",
+  "verified": false,
+  "why": "Writes the camera scroll-target column global (presentation state, no draw/sound/wire inside; the sibling llm_cam_jump_queue_clear is filed state on the same reasoning). lib_trans caller: deploy_starting_squad centers the camera on the spawn -- a second same-value write is inert."
+ },
+ "llm_map_cam_set_row": {
+  "class": "state",
+  "verified": false,
+  "why": "Row half of llm_map_cam_set_col -- same shape, same reasoning."
+ },
+ "llm_strat_group_order_ack_voice": {
+  "class": "effectful",
+  "verified": false,
+  "why": "Plays a group-acknowledge voice line AND draws from the sim PRNG (llm_rand_below_fx) to pick the variant -- firing it twice both double-plays audio and double-advances the deterministic RNG stream, exactly the two things suppression exists for."
+ },
+ "llm_strat_race_alert_sound_emit": {
+  "class": "effectful",
+  "verified": false,
+  "why": "Race-alert sound emitter: plays via the snd layer and draws llm_rand_below_fx for variant selection; also re-bases its own next-emit timestamp state (reload_snapshot_resync_clocks exploits exactly that under SND_ENABLED=0)."
+ },
+ "llm_strat_race_alert_text_emit": {
+  "class": "effectful",
+  "verified": false,
+  "why": "Race-alert text emitter: reaches llm_ui_print_queue_text_id (already classified effectful -- it draws); same next-emit timestamp re-basing as the sound sibling."
+ },
+ "llm_ui_chat_target_add": {
+  "class": "state",
+  "verified": false,
+  "why": "Appends a slot to the chat target list and recalcs the target mode (llm_ui_chat_recalc_target_mode) -- UI/net bookkeeping state writes only, no draw, no sound, no wire; restore-safe."
+ },
+ "llm_ui_dlg_build_from_table": {
+  "class": "effectful",
+  "verified": false,
+  "why": "Builds a dialog's widget list from a table and draws it -- lib_trans caller is llm_menu_force_return_to_main's forced return-to-menu, where the dialog appearing is the whole point; a second build/draw is a visible duplicate."
+ },
+ "llm_map_set_minimap_zoom_for_size": {
+  "class": "state",
+  "verified": true,
+  "why": "LT1C (2026-09-02, body read): single conditional write of _G_LLM_STRAT_MINIMAP_ZOOM_MODE derived from map width (0x80/width, mode-5 special case). No draw, no sound, no wire; idempotent for unchanged width, restore-safe. Reached as llm_map_setup_dimensions' tail call -- classifying it unblocks arming that unit."
+ },
+ "llm_strat_spawn_debris_burst": {
+  "class": "effectful",
+  "verified": true,
+  "why": "LT1D (2026-09-02, body read): clears and refills the debris/cam-jump pool AND draws llm_rand_below_fx up to 4x per particle pair -- a shadow double-fire double-advances the ch1 fx RNG stream (the group_order_ack_voice reasoning). Reached from llm_strat_deploy_starting_squad(100); missed by the effect-prefix selector (llm_strat_spawn_ is no prefix) -- explicit row instead."
+ },
+ "llm_strat_facing_step_apply": {
+  "class": "pure",
+  "verified": true,
+  "why": "Reads the direction table _G_LLM_CURSOR_ANIM_STATES (@0x00486aaf, @0x00486ae2) and writes only through the caller's out-pointers; no CALL at all in the body beyond the stack probe. Confirmed pure, and MUST NOT be suppressed. (Ghidra symbol renamed from llm_ui_cursor_apply_anim_frame_offset at the LT domain close 2026-09-02.)",
+  "fake_return": null,
+  "evidence_addr": "0x00486ad1",
+  "note": "Two fidelity traps for a translator, neither changing the disposition. (1) The write is an in-place READ-MODIFY-WRITE on a byte (ADD/SUB byte ptr [EAX],0x20 @0x00486ad1/@0x00486ad9), not a fresh assignment -- a compute-then-assign reimplementation diverges unless the pointee is zero on entry. (2) Despite the ui_cursor_ name, none of its 4 callers touch the mouse cursor; two of them alias the out-pointers straight at _G_LLM_STRAT_SOLDIERS[...].start_x/start_y, so the ENCLOSING function's region declaration has to cover that."
+ },
+ "llm_strat_squad_placement_offset_lookup": {
+  "class": "pure",
+  "verified": true,
+  "why": "A table lookup: reads the static table at 0x00ae3618 (@0x00486b44, @0x00486b5b) and writes the two results through the caller-supplied out-pointers (@0x00486b4d, @0x00486b64). No CALL other than the stack probe; no branch; no global store. This is the target the llm_ui_ prefix would have misclassified. MUST NOT be suppressed. (Ghidra symbol renamed from llm_ui_cursor_lookup_offset_pair at the LT domain close 2026-09-02.)",
+  "fake_return": null,
+  "evidence_addr": "0x00486b4d"
+ },
+ "llm_net_lockstep_wait_player_overlay_show": {
+  "class": "effectful",
+  "verified": true,
+  "why": "The early-phase lockstep-stall overlay: rebuilds the single-entry name list from _G_LLM_STRAT_PLAYERS[idx].name through llm_str_ansi_to_wide_scratch @0x004c7e05, sets the leader-only kick-button visibility, and flips _G_LLM_GAME_MODE=3 @0x004c7e91 leaving the active menu list NULL (which is what makes llm_ui_menu_overlay_frame draw the de-sync corner icon). Always returns 1.",
+  "fake_return": 1,
+  "evidence_addr": "0x004c7e91",
+  "note": "Added at LIFT-SCREEN, when llm_net_lockstep_extend_ui_enter was split: the sim closure's outward call on that path is now this overlay rather than its wrapper, so the gate has to move with it or a shadow-compared order_queue_dispatch would fire the overlay twice."
+ }
+}

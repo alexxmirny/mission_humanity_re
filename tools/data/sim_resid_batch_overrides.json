@@ -1,0 +1,62 @@
+{
+  "_comment": [
+    "HAND batch assignments for sim_resid functions no mechanical rule in gen_migration.py can",
+    "classify. Sibling of tools/data/sim_batch_overrides.json and ai_batch_overrides.json; same",
+    "contract, and the domain profile has pointed at this path since the domain was decomposed.",
+    "",
+    "propose_batch() deliberately emits 'unassigned' rather than guessing. A row with no batch is in",
+    "NO item's acceptance test -- every SIM-RESID-* done_when reads 'every function in THIS batch' --",
+    "so it can sit untranslated while the umbrella reports done. That is the failure this file exists",
+    "to prevent, and it had already happened here: both rows below were unassigned from the day the",
+    "ledger was built (2026-08-31) and the file the profile names did not exist.",
+    "",
+    "Every entry MUST carry a `why`, and the generator refuses the file otherwise. Keep the `why`",
+    "about the SCHEDULING decision; per-function RE notes belong in the plate comment.",
+    "",
+    "OPENED 2026-08-31 (SIM-RESID-IF third close / conductor pass). Both rows go to C rather than to",
+    "the batch their CALLERS sit in, and that is deliberate: B is closed at 8/8 verified, and",
+    "reopening a finished batch to schedule a row it never contained would rewrite an acceptance",
+    "clause after the fact. C is open, and both rows match its charter -- 'write a table once, read",
+    "nothing back' -- more exactly than they match B's session-entry one."
+  ],
+
+  "0x0045ba25": {
+    "batch": "C",
+    "why": [
+      "llm_strat_scenario_planet_clone. Builds the reserved scenario planet in Planets[0x1f] as a",
+      "clone of the Planets[1] template, then names it: cfg_final_planet_Construct with a",
+      "stack-built cfg_pre_struct_Planet, a '...' suffix appended when the name runs past 15 chars,",
+      "and one store into the string table (G_TEXT_PTRS[0xa8] @0x0045bb4d). Write set is Planets +",
+      "G_TEXT_PTRS -- a table written once at setup and never read back here, which is batch C's",
+      "shape. No rule matched because C keys on '_init'/'defaults'/'reset', and this one is a",
+      "'clone'.",
+      "",
+      "Its only caller is llm_strat_session_begin_multi (batch B, verified), so B is the other",
+      "defensible home; see this file's header for why a closed batch is not reopened for it. The",
+      "edge is currently routed through mh::call:: and closes when this row lands.",
+      "",
+      "PREREQUISITE, now met: G_TEXT_PTRS was bound READ-ONLY, so this row was the single entry in",
+      "check_state_bindings.py's 'BOUND IN THE READ HALF ONLY' list. sim_store::text_ptr_at() was",
+      "added in the same pass that made this assignment."
+    ]
+  },
+
+  "0x0049b447": {
+    "batch": "C",
+    "why": [
+      "llm_strat_invasion_alert_reset_all. 87 bytes: clears _G_LLM_STRAT_INVASION_ALERT_TIME[0..31]",
+      "to the -1.0 inactive sentinel via llm_strat_invasion_alert_clear, then zeroes",
+      "_G_LLM_STRAT_ADVISOR_NEXT_TIME. A pure table reset called at new-game / load / session reset,",
+      "which is batch C's charter almost word for word. No rule matched because C's reset keys are",
+      "'tables_reset' and 'reset_system', and this one is 'reset_all'.",
+      "",
+      "Two of its three callers -- llm_strat_new_game_init and llm_strat_session_state_reset -- are",
+      "batch B rows already verified, so they reach it through mh::call:: today; the third is",
+      "llm_game_load, outside the domain. Translating it closes the two in-domain edges.",
+      "",
+      "Note the read side is already ours: llm_strat_advisor_tick (batch A, the domain's only T3)",
+      "consumes the advisor accumulator this function zeroes, so a wrong reset here is observable in",
+      "an oracle that already exists."
+    ]
+  }
+}

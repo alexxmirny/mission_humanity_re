@@ -1,0 +1,50 @@
+# House-style clang-format for src/mh_dll (auto-format initiative, 2026-07-23).
+# Philosophy: normalize STRUCTURE (indent, braces, operator/pointer spacing) but never re-LAYOUT --
+# the codebase is comment-table-heavy (aligned ADDR_* tables, trailing-comment columns, byte-array
+# patch strings), so line wrapping and comment reflow are disabled and existing alignment is left
+# alone. VS 2022 picks this file up automatically (Ctrl+K,D); clang-format.exe ships with VS
+# (VC\Tools\Llvm\bin, currently 19.x).
+# MSVC `__asm` blocks: keep them inside `// clang-format off` / `// clang-format on` guards.
+Language: Cpp
+BasedOnStyle: LLVM
+Standard: c++20
+
+IndentWidth: 4
+TabWidth: 4
+UseTab: Never
+AccessModifierOffset: -4
+IndentCaseLabels: true
+NamespaceIndentation: None
+IndentPPDirectives: None
+
+# The two load-bearing choices: never rewrap lines, never reflow comment text.
+ColumnLimit: 0
+ReflowComments: false
+
+BreakBeforeBraces: Attach
+PointerAlignment: Right
+DerivePointerAlignment: false
+SpaceAfterCStyleCast: false
+Cpp11BracedListStyle: true
+FixNamespaceComments: true
+SortIncludes: Never          # include order is semantic here (export headers before net_internal.h)
+
+# Let clang-format OWN the table alignment (the house style aligns these by hand today):
+# consecutive =/declaration columns + trailing comments stay aligned, machine-maintained.
+AlignTrailingComments:
+  Kind: Always
+  OverEmptyLines: 0
+AlignConsecutiveAssignments: Consecutive
+AlignConsecutiveDeclarations: Consecutive
+AlignConsecutiveMacros: Consecutive
+
+# The house style uses compact one-liners liberally (guard clauses, tiny accessors).
+AllowShortFunctionsOnASingleLine: All
+AllowShortIfStatementsOnASingleLine: AllIfsAndElse
+AllowShortLoopsOnASingleLine: true
+AllowShortCaseLabelsOnASingleLine: true
+AllowShortBlocksOnASingleLine: Always
+AllowShortEnumsOnASingleLine: true
+
+KeepEmptyLinesAtTheStartOfBlocks: true
+MaxEmptyLinesToKeep: 2

@@ -1,0 +1,35 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://mh-decompile.local/migration/ledger_row.schema.json",
+  "title": "Migration ledger function row -- progress fields",
+  "description": "The declarative schema for the consistency-critical progress fields of a function row in a migration ledger (tools/data/<domain>_migration.json). It is the SECOND guard beside the imperative tools/migration_ledger.py validate(): the enums here MUST match that module's ALLOWED_STATES / ALLOWED_TIERS, and its self-test asserts they do, so the two cannot drift. Only `state`, `evidence_tier` and `promoted` are described here -- a row carries many other fields that are the generator's business, not this invariant's. `promoted` carries a DESCRIPTION rather than a constraint: its truth is checkable only against the source tree, which a schema cannot read, so the ratchet that enforces it is report_promotion_reconciliation.py --check-flags in lint_repo.",
+  "type": "object",
+  "properties": {
+    "state": {
+      "description": "Lifecycle state. verified and dead are terminal; reviewed is terminal-for-now (reimpl-verify / static review only, no execution proof); the rest are in flight.",
+      "enum": ["not_started", "translated", "reviewed", "armed", "verified", "dead"]
+    },
+    "evidence_tier": {
+      "description": "Grades the strength of an ACCEPTED equivalence proof (T1 strongest). Meaningful ONLY on a verified row; null everywhere else. The old `static` tier was retired 2026-08-14 as redundant with state=reviewed.",
+      "enum": ["T1", "T2", "T3", null]
+    },
+    "promoted": {
+      "description": "AN INSTALLATION FACT, NOT A PROOF GRADE (settled 2026-09-10, X-PROMFLAG; docs/dead-ends.md G167). True means exactly one thing: a source TU in this tree carries an MH_EXPORT_REPLACE(<row name>, ...) -- the entry redirect whose E9 sends the original's entry to our body. It does NOT mean the body is proven (that is state+evidence_tier), does NOT mean it executes (a SHIP_PROMOTE_* key may hold the seam off; the tombstone sweep is the verdict channel), and is NOT the English sense in which a row's STATE gets promoted to verified -- that sense is what leaked into five sim rows flagged with no macro anywhere. A closure-internal row entered by a direct call from a promoted body correctly stays false. A floor on what runs, never a measurement of it.",
+      "type": "boolean"
+    }
+  },
+  "required": ["state"],
+  "allOf": [
+    {
+      "description": "INVARIANT: evidence_tier is set <=> state == verified. A verified row must carry a T1/T2/T3 tier; any other state must carry none (null or absent).",
+      "if": { "properties": { "state": { "const": "verified" } }, "required": ["state"] },
+      "then": {
+        "required": ["evidence_tier"],
+        "properties": { "evidence_tier": { "enum": ["T1", "T2", "T3"] } }
+      },
+      "else": {
+        "properties": { "evidence_tier": { "type": "null" } }
+      }
+    }
+  ]
+}

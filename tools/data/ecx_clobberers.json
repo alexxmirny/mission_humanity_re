@@ -1,0 +1,1397 @@
+{
+  "_comment": [
+    "ECX CLOBBERERS -- __watcall-family functions that do NOT preserve ECX, and therefore must stay",
+    "on __mh_watcall_ecx_volatile now that __watcall itself declares ECX <unaffected>.",
+    "",
+    "GENERATED: run mh_classify_reg_preservation.py in Ghidra, then",
+    "`python tools/gen_reg_clobberers.py`. Applied by mh_set_calling_convention.py. Do not",
+    "hand-edit. A function that becomes a clobberer and is NOT on this list gets a silently stale",
+    "ECX at every call site, which reads as correct code -- the failure this whole split exists to",
+    "prevent.",
+    "",
+    "`why` records which test caught it: `clobbers` writes ECX with no covering PUSH; `unsure`",
+    "pushes it but no exit path was proven to restore it (treated as a clobberer deliberately, since",
+    "the conservative error costs only an honest artifact).",
+    "",
+    "Functions on __stdcall / __cdecl / __mhfastocall are EXCLUDED by construction: those models kill",
+    "ECX already, and forcing a __watcall-derived model onto them would change parameter passing."
+  ],
+  "generated_from": "tmp/reg_preservation.json",
+  "count": 229,
+  "functions": [
+    {
+      "addr": "0x004110a2",
+      "name": "llm_ui_bldg_stat_value_draw",
+      "conv_before": "__mh_watcall_ecx_ebx_volatile",
+      "why": "clobbers"
+    },
+    {
+      "addr": "0x0041172f",
+      "name": "llm_ui_selection_count_row_draw",
+      "conv_before": "__mh_watcall_ecx_ebx_volatile",
+      "why": "clobbers"
+    },
+    {
+      "addr": "0x00415f3b",
+      "name": "llm_strat_ui_bldg_panel_draw",
+      "conv_before": "__mh_watcall_ecx_ebx_volatile",
+      "why": "clobbers"
+    },
+    {
+      "addr": "0x004170ce",
+      "name": "llm_ui_panel_text_pair_draw_centered",
+      "conv_before": "__mh_watcall_ecx_ebx_volatile",
+      "why": "clobbers"
+    },
+    {
+      "addr": "0x00417175",
+      "name": "llm_ui_panel_int_pair_draw_centered",
+      "conv_before": "__mh_watcall_ecx_ebx_volatile",
+      "why": "clobbers"
+    },
+    {
+      "addr": "0x004171cf",
+      "name": "llm_ui_bldg_stat_adjust_row_draw",
+      "conv_before": "__mh_watcall_ecx_ebx_volatile",
+      "why": "clobbers"
+    },
+    {
+      "addr": "0x004185a8",
+      "name": "llm_ui_bldg_mine_resource_stats_draw",
+      "conv_before": "__mh_watcall_ecx_ebx_volatile",
+      "why": "clobbers"
+    },
+    {
+      "addr": "0x00418bc7",
+      "name": "llm_ui_panel_row_icon_label_draw",
+      "conv_before": "__mh_watcall_ecx_ebx_volatile",
+      "why": "clobbers"
+    },
+    {
+      "addr": "0x00418c4a",
+      "name": "llm_ui_bldg_row_unit_effect_draw",
+      "conv_before": "__mh_watcall_ecx_ebx_volatile",
+      "why": "clobbers"
+    },
+    {
+      "addr": "0x00419dd9",
+      "name": "llm_ui_hud_widget_range_define",
+      "conv_before": "__mh_watcall_ecx_ebx_volatile",
+      "why": "clobbers"
+    },
+    {
+      "addr": "0x00419e5c",
+      "name": "llm_ui_hud_scroll_list_define",
+      "conv_before": "__mh_watcall_ecx_ebx_volatile",
+      "why": "clobbers"
+    },
+    {
+      "addr": "0x00419f79",
+      "name": "llm_ui_hud_icon_widget_define",
+      "conv_before": "__mh_watcall_ecx_ebx_volatile",
+      "why": "clobbers"
+    },
+    {
+      "addr": "0x0041be17",
+      "name": "llm_ui_panel_text_draw",
+      "conv_before": "__mh_watcall_ecx_ebx_volatile",
+      "why": "clobbers"
+    },
+    {
+      "addr": "0x0041be9d",
+      "name": "llm_ui_text_draw_rgb16",
+      "conv_before": "__mh_watcall_ecx_ebx_volatile",
+      "why": "clobbers"
+    },
+    {
+      "addr": "0x0041bf38",
+      "name": "llm_gfx_draw_icon_progress_bar",
+      "conv_before": "__mh_watcall_ecx_ebx_volatile",
+      "why": "clobbers"
+    },
+    {
+      "addr": "0x0041bfe3",
+      "name": "llm_ui_hud_icon_draw_clipped",
+      "conv_before": "__mh_watcall_ecx_ebx_volatile",
+      "why": "clobbers"
+    },
+    {
+      "addr": "0x0041e836",
+      "name": "llm_strat_pathfind_build_steps",
+      "conv_before": "__watcall",
+      "why": "clobbers"
+    },
+    {
+      "addr": "0x0041ef3e",
+      "name": "llm_strat_pathfind_trace_route",
+      "conv_before": "__mh_watcall_ecx_ebx_volatile",
+      "why": "clobbers"
+    },
+    {
+      "addr": "0x0041fff5",
+      "name": "llm_strat_pathfind_find_closer_visible_tile",
+      "conv_before": "__mh_watcall_ecx_ebx_volatile",
+      "why": "clobbers"
+    },
+    {
+      "addr": "0x00427c6c",
+      "name": "llm_tact_move_find_approach_tile",
+      "conv_before": "__watcall",
+      "why": "clobbers"
+    },
+    {
+      "addr": "0x00428201",
+      "name": "llm_gfx_draw_sprite_with_bar",
+      "conv_before": "__mh_watcall_ecx_ebx_volatile",
+      "why": "clobbers"
+    },
+    {
+      "addr": "0x0042b09f",
+      "name": "llm_tact_group_issue_order",
+      "conv_before": "__mh_watcall_ecx_ebx_volatile",
+      "why": "clobbers"
+    },
+    {
+      "addr": "0x0042bdce",
+      "name": "llm_tact_fx_spawn",
+      "conv_before": "__mh_watcall_ecx_ebx_volatile",
+      "why": "clobbers"
+    },
+    {
+      "addr": "0x0042c274",
+      "name": "llm_tact_unit_render",
+      "conv_before": "__mh_watcall_ecx_ebx_volatile",
+      "why": "clobbers"
+    },
+    {
+      "addr": "0x0042eaf9",
+      "name": "llm_tact_move_path_preview_walk",
+      "conv_before": "__mh_watcall_ecx_ebx_volatile",
+      "why": "clobbers"
+    },
+    {
+      "addr": "0x0043a1d9",
+      "name": "llm_tact_mission_parse_command_token",
+      "conv_before": "__mh_watcall_ecx_ebx_volatile",
+      "why": "clobbers"
+    },
+    {
+      "addr": "0x0043bbaf",
+      "name": "llm_gfx_skip_sprite_row",
+      "conv_before": "__mh_watcall_ecx_volatile",
+      "why": "clobbers"
+    },
+    {
+      "addr": "0x0043c303",
+      "name": "llm_tact_mark_view_tiles_dirty",
+      "conv_before": "__watcall",
+      "why": "clobbers"
+    },
+    {
+      "addr": "0x0043c39c",
+      "name": "llm_tact_tile_clear_margin_patch",
+      "conv_before": "__mh_watcall_ecx_ebx_volatile",
+      "why": "clobbers"
+    },
+    {
+      "addr": "0x0043c4f2",
+      "name": "llm_tact_ui_minimap_draw_viewport_outline",
+      "conv_before": "__mh_watcall_ecx_ebx_volatile",
+      "why": "clobbers"
+    },
+    {
+      "addr": "0x0043cf1b",
+      "name": "llm_strat_pathfind_next_step",
+      "conv_before": "__watcall",
+      "why": "clobbers"
+    },
+    {
+      "addr": "0x00448cc3",
+      "name": "llm_strat_weapon_pixel_distance_ratio",
+      "conv_before": "__watcall",
+      "why": "clobbers"
+    },
+    {
+      "addr": "0x0044965d",
+      "name": "llm_strat_unit_in_weapon_range",
+      "conv_before": "__mh_watcall_ecx_ebx_volatile",
+      "why": "clobbers"
+    },
+    {
+      "addr": "0x0044988f",
+      "name": "llm_strat_unit_goal_in_weapon_range",
+      "conv_before": "__mh_watcall_ecx_ebx_volatile",
+      "why": "clobbers"
+    },
+    {
+      "addr": "0x00449ac1",
+      "name": "llm_strat_dist_out_of_range",
+      "conv_before": "__mh_watcall_ecx_ebx_volatile",
+      "why": "clobbers"
+    },
+    {
+      "addr": "0x00456f8a",
+      "name": "cfg_final_building_Construct",
+      "conv_before": "__mh_watcall_ecx_ebx_volatile",
+      "why": "clobbers"
+    },
+    {
+      "addr": "0x0045b69c",
+      "name": "cfg_final_planet_Construct",
+      "conv_before": "__mh_watcall_ecx_ebx_volatile",
+      "why": "clobbers"
+    },
+    {
+      "addr": "0x0045ec1d",
+      "name": "llm_map_resources_apply_value_radius",
+      "conv_before": "__mh_watcall_ecx_ebx_volatile",
+      "why": "clobbers"
+    },
+    {
+      "addr": "0x004622cb",
+      "name": "map_CreateBuilding",
+      "conv_before": "__mh_watcall_ecx_ebx_volatile",
+      "why": "clobbers"
+    },
+    {
+      "addr": "0x00462d89",
+      "name": "llm_bldg_queue_construction",
+      "conv_before": "__watcall",
+      "why": "clobbers"
+    },
+    {
+      "addr": "0x00462e66",
+      "name": "llm_bldg_construct_finalize",
+      "conv_before": "__mh_watcall_ecx_ebx_volatile",
+      "why": "clobbers"
+    },
+    {
+      "addr": "0x00463860",
+      "name": "llm_strat_unit_create",
+      "conv_before": "__mh_watcall_ecx_ebx_volatile",
+      "why": "clobbers"
+    },
+    {
+      "addr": "0x00463ac6",
+      "name": "llm_unit_create_soldier",
+      "conv_before": "__mh_watcall_ecx_ebx_volatile",
+      "why": "clobbers"
+    },
+    {
+      "addr": "0x00464119",
+      "name": "llm_strat_unit_spawn_on_tile",
+      "conv_before": "__mh_watcall_ecx_ebx_volatile",
+      "why": "clobbers"
+    },
+    {
+      "addr": "0x00464932",
+      "name": "llm_strat_projectile_spawn",
+      "conv_before": "__watcall",
+      "why": "clobbers"
+    },
+    {
+      "addr": "0x00465fdf",
+      "name": "llm_strat_order_dispatch",
+      "conv_before": "__mh_watcall_ecx_ebx_volatile",
+      "why": "clobbers"
+    },
+    {
+      "addr": "0x00466211",
+      "name": "llm_strat_order_stage_scheduled",
+      "conv_before": "__mh_watcall_ecx_ebx_volatile",
+      "why": "clobbers"
+    },
+    {
+      "addr": "0x00469fe6",
+      "name": "llm_strat_unit_order_move",
+      "conv_before": "__mh_watcall_ecx_ebx_volatile",
+      "why": "clobbers"
+    },
+    {
+      "addr": "0x0046a0d5",
+      "name": "llm_strat_unit_order_move_enqueue",
+      "conv_before": "__mh_watcall_ecx_ebx_volatile",
+      "why": "clobbers"
+    },
+    {
+      "addr": "0x0046a19d",
+      "name": "llm_strat_order_issue_0xf_adjacent_by_offset",
+      "conv_before": "__mh_watcall_ecx_ebx_volatile",
+      "why": "clobbers"
+    },
+    {
+      "addr": "0x0046a221",
+      "name": "llm_strat_order_issue_0xf_adjacent",
+      "conv_before": "__mh_watcall_ecx_ebx_volatile",
+      "why": "clobbers"
+    },
+    {
+      "addr": "0x0046a325",
+      "name": "llm_strat_order_issue_0xf_adjacent_enqueue",
+      "conv_before": "__mh_watcall_ecx_ebx_volatile",
+      "why": "clobbers"
+    },
+    {
+      "addr": "0x0046a402",
+      "name": "llm_strat_unit_order_move_default",
+      "conv_before": "__mh_watcall_ecx_ebx_volatile",
+      "why": "clobbers"
+    },
+    {
+      "addr": "0x0046a4cb",
+      "name": "llm_strat_unit_order_move_default_enqueue",
+      "conv_before": "__mh_watcall_ecx_ebx_volatile",
+      "why": "clobbers"
+    },
+    {
+      "addr": "0x0046a56d",
+      "name": "llm_strat_unit_order_move_auto",
+      "conv_before": "__mh_watcall_ecx_ebx_volatile",
+      "why": "clobbers"
+    },
+    {
+      "addr": "0x0046a626",
+      "name": "llm_strat_unit_order_scatter_from_spawn",
+      "conv_before": "__mh_watcall_ecx_ebx_volatile",
+      "why": "clobbers"
+    },
+    {
+      "addr": "0x0046a6b9",
+      "name": "llm_strat_unit_order_exit_storage",
+      "conv_before": "__mh_watcall_ecx_ebx_volatile",
+      "why": "clobbers"
+    },
+    {
+      "addr": "0x0046a918",
+      "name": "llm_strat_unit_order_exit_storage_enqueue",
+      "conv_before": "__mh_watcall_ecx_ebx_volatile",
+      "why": "clobbers"
+    },
+    {
+      "addr": "0x0046ab08",
+      "name": "llm_strat_unit_order_exit_storage_auto",
+      "conv_before": "__mh_watcall_ecx_ebx_volatile",
+      "why": "clobbers"
+    },
+    {
+      "addr": "0x0046accf",
+      "name": "llm_strat_unit_order_move_confirmed_with_bump",
+      "conv_before": "__mh_watcall_ecx_ebx_volatile",
+      "why": "clobbers"
+    },
+    {
+      "addr": "0x0046ae0a",
+      "name": "llm_strat_ai_unit_order_move_with_bump",
+      "conv_before": "__mh_watcall_ecx_ebx_volatile",
+      "why": "clobbers"
+    },
+    {
+      "addr": "0x0046af1e",
+      "name": "llm_strat_unit_order_attack_target",
+      "conv_before": "__mh_watcall_ecx_ebx_volatile",
+      "why": "clobbers"
+    },
+    {
+      "addr": "0x0046b271",
+      "name": "llm_strat_unit_order_attack_target_enqueue",
+      "conv_before": "__mh_watcall_ecx_ebx_volatile",
+      "why": "clobbers"
+    },
+    {
+      "addr": "0x0046b599",
+      "name": "llm_strat_unit_order_attack_target_alt",
+      "conv_before": "__mh_watcall_ecx_ebx_volatile",
+      "why": "clobbers"
+    },
+    {
+      "addr": "0x0046b8ec",
+      "name": "llm_strat_unit_order_attack_target_alt_enqueue",
+      "conv_before": "__mh_watcall_ecx_ebx_volatile",
+      "why": "clobbers"
+    },
+    {
+      "addr": "0x0046bc14",
+      "name": "llm_strat_unit_order_attack_unit",
+      "conv_before": "__mh_watcall_ecx_ebx_volatile",
+      "why": "clobbers"
+    },
+    {
+      "addr": "0x0046bcfd",
+      "name": "llm_strat_unit_order_attack_unit_enqueue",
+      "conv_before": "__mh_watcall_ecx_ebx_volatile",
+      "why": "clobbers"
+    },
+    {
+      "addr": "0x0046bde6",
+      "name": "llm_strat_unit_order_attack_target_preset_weapon_enqueue",
+      "conv_before": "__mh_watcall_ecx_ebx_volatile",
+      "why": "clobbers"
+    },
+    {
+      "addr": "0x0046bf9c",
+      "name": "llm_strat_unit_order_attack_building_reposition",
+      "conv_before": "__mh_watcall_ecx_ebx_volatile",
+      "why": "clobbers"
+    },
+    {
+      "addr": "0x0046c21c",
+      "name": "llm_strat_unit_order_attack_building_reposition_alt_enqueue",
+      "conv_before": "__mh_watcall_ecx_ebx_volatile",
+      "why": "clobbers"
+    },
+    {
+      "addr": "0x0046c471",
+      "name": "llm_strat_unit_order_attack_building_reposition_enqueue",
+      "conv_before": "__mh_watcall_ecx_ebx_volatile",
+      "why": "clobbers"
+    },
+    {
+      "addr": "0x0046c6c6",
+      "name": "llm_strat_unit_order_attack_building",
+      "conv_before": "__mh_watcall_ecx_ebx_volatile",
+      "why": "clobbers"
+    },
+    {
+      "addr": "0x0046c7a0",
+      "name": "llm_strat_unit_order_attack_building_enqueue",
+      "conv_before": "__mh_watcall_ecx_ebx_volatile",
+      "why": "clobbers"
+    },
+    {
+      "addr": "0x0046c87a",
+      "name": "llm_strat_unit_order_move_relative",
+      "conv_before": "__mh_watcall_ecx_ebx_volatile",
+      "why": "clobbers"
+    },
+    {
+      "addr": "0x0046c99d",
+      "name": "llm_strat_unit_order_move_relative_enqueue",
+      "conv_before": "__mh_watcall_ecx_ebx_volatile",
+      "why": "clobbers"
+    },
+    {
+      "addr": "0x0046cd8b",
+      "name": "llm_strat_unit_order_auto_launch_from_storage",
+      "conv_before": "__mh_watcall_ecx_ebx_volatile",
+      "why": "clobbers"
+    },
+    {
+      "addr": "0x0046cf2c",
+      "name": "llm_strat_unit_order_auto_launch_from_storage_enqueue",
+      "conv_before": "__mh_watcall_ecx_ebx_volatile",
+      "why": "clobbers"
+    },
+    {
+      "addr": "0x0046d229",
+      "name": "llm_strat_bldg_instant_construct_find_slot",
+      "conv_before": "__mh_watcall_ecx_ebx_volatile",
+      "why": "clobbers"
+    },
+    {
+      "addr": "0x0046d514",
+      "name": "llm_strat_bldg_instant_construct_find_slot_enqueue",
+      "conv_before": "__mh_watcall_ecx_ebx_volatile",
+      "why": "clobbers"
+    },
+    {
+      "addr": "0x0046d800",
+      "name": "llm_strat_order_create_unit_debug",
+      "conv_before": "__mh_watcall_ecx_ebx_volatile",
+      "why": "clobbers"
+    },
+    {
+      "addr": "0x0046d873",
+      "name": "llm_strat_dmp_enqueue_scripted_order",
+      "conv_before": "__mh_watcall_ecx_ebx_volatile",
+      "why": "clobbers"
+    },
+    {
+      "addr": "0x0046d8e6",
+      "name": "llm_strat_ai_create_reinforcement_unit",
+      "conv_before": "__mh_watcall_ecx_ebx_volatile",
+      "why": "clobbers"
+    },
+    {
+      "addr": "0x0046da00",
+      "name": "llm_strat_order_queue_construction_debug",
+      "conv_before": "__mh_watcall_ecx_ebx_volatile",
+      "why": "clobbers"
+    },
+    {
+      "addr": "0x0046da70",
+      "name": "llm_strat_order_queue_construction_enqueue",
+      "conv_before": "__mh_watcall_ecx_ebx_volatile",
+      "why": "clobbers"
+    },
+    {
+      "addr": "0x0046dbd0",
+      "name": "llm_strat_bldg_order_production_add_count",
+      "conv_before": "__mh_watcall_ecx_ebx_volatile",
+      "why": "clobbers"
+    },
+    {
+      "addr": "0x0046dc47",
+      "name": "llm_strat_bldg_order_production_add_count_enqueue",
+      "conv_before": "__mh_watcall_ecx_ebx_volatile",
+      "why": "clobbers"
+    },
+    {
+      "addr": "0x0046dd90",
+      "name": "llm_strat_turret_order_target_unit",
+      "conv_before": "__mh_watcall_ecx_ebx_volatile",
+      "why": "clobbers"
+    },
+    {
+      "addr": "0x0046ddf0",
+      "name": "llm_strat_turret_order_target_unit_enqueue",
+      "conv_before": "__mh_watcall_ecx_ebx_volatile",
+      "why": "clobbers"
+    },
+    {
+      "addr": "0x0046de50",
+      "name": "llm_strat_turret_order_target_building",
+      "conv_before": "__mh_watcall_ecx_ebx_volatile",
+      "why": "clobbers"
+    },
+    {
+      "addr": "0x0046deb0",
+      "name": "llm_strat_turret_order_target_building_enqueue",
+      "conv_before": "__mh_watcall_ecx_ebx_volatile",
+      "why": "clobbers"
+    },
+    {
+      "addr": "0x0046e8de",
+      "name": "llm_strat_order_issue_0xd5",
+      "conv_before": "__mh_watcall_ecx_ebx_volatile",
+      "why": "clobbers"
+    },
+    {
+      "addr": "0x0046e93b",
+      "name": "llm_strat_order_issue_0xd5_enqueue",
+      "conv_before": "__mh_watcall_ecx_ebx_volatile",
+      "why": "clobbers"
+    },
+    {
+      "addr": "0x0046ebd8",
+      "name": "llm_strat_bldg_order_load_resource",
+      "conv_before": "__mh_watcall_ecx_ebx_volatile",
+      "why": "clobbers"
+    },
+    {
+      "addr": "0x0046ec35",
+      "name": "llm_strat_bldg_order_load_resource_enqueue",
+      "conv_before": "__mh_watcall_ecx_ebx_volatile",
+      "why": "clobbers"
+    },
+    {
+      "addr": "0x0046ec92",
+      "name": "llm_strat_bldg_order_unload_resource",
+      "conv_before": "__mh_watcall_ecx_ebx_volatile",
+      "why": "clobbers"
+    },
+    {
+      "addr": "0x0046ecef",
+      "name": "llm_strat_bldg_order_unload_resource_enqueue",
+      "conv_before": "__mh_watcall_ecx_ebx_volatile",
+      "why": "clobbers"
+    },
+    {
+      "addr": "0x0047baf9",
+      "name": "llm_strat_turret_acquire_target",
+      "conv_before": "__watcall",
+      "why": "clobbers"
+    },
+    {
+      "addr": "0x0047bf8e",
+      "name": "llm_strat_turret_fire",
+      "conv_before": "__watcall",
+      "why": "clobbers"
+    },
+    {
+      "addr": "0x004854f3",
+      "name": "llm_strat_unit_state_die_explode",
+      "conv_before": "__watcall",
+      "why": "unsure"
+    },
+    {
+      "addr": "0x00486ef7",
+      "name": "llm_strat_unit_move_to_tile",
+      "conv_before": "__mh_watcall_ecx_ebx_volatile",
+      "why": "clobbers"
+    },
+    {
+      "addr": "0x0048b01d",
+      "name": "llm_strat_storage_exit_air",
+      "conv_before": "__watcall",
+      "why": "clobbers"
+    },
+    {
+      "addr": "0x0048ba1a",
+      "name": "llm_strat_storage_accept_landing",
+      "conv_before": "__watcall",
+      "why": "clobbers"
+    },
+    {
+      "addr": "0x0048bb6c",
+      "name": "llm_strat_unit_fire_weapon",
+      "conv_before": "__mh_watcall_ecx_ebx_volatile",
+      "why": "clobbers"
+    },
+    {
+      "addr": "0x0048c6b2",
+      "name": "llm_strat_weapon_scatter_offset",
+      "conv_before": "__mh_watcall_ecx_ebx_volatile",
+      "why": "clobbers"
+    },
+    {
+      "addr": "0x0048d53d",
+      "name": "llm_strat_group_member_find_nearest_to_point",
+      "conv_before": "__mh_watcall_ecx_ebx_volatile",
+      "why": "clobbers"
+    },
+    {
+      "addr": "0x0048d636",
+      "name": "llm_strat_group_formation_trim_far_members",
+      "conv_before": "__mh_watcall_ecx_ebx_volatile",
+      "why": "clobbers"
+    },
+    {
+      "addr": "0x0048f31e",
+      "name": "llm_strat_prod_spawn_arrived_unit",
+      "conv_before": "__mh_watcall_ecx_ebx_volatile",
+      "why": "clobbers"
+    },
+    {
+      "addr": "0x0048fbfa",
+      "name": "llm_strat_locate_active_port",
+      "conv_before": "__mh_watcall_ecx_ebx_volatile",
+      "why": "clobbers"
+    },
+    {
+      "addr": "0x00490eb1",
+      "name": "llm_strat_bldg_get_sprite_anchor_coord",
+      "conv_before": "__mh_watcall_ecx_ebx_volatile",
+      "why": "clobbers"
+    },
+    {
+      "addr": "0x00491086",
+      "name": "llm_strat_unit_soldier_get_sprite_screen_pos",
+      "conv_before": "__mh_watcall_ecx_ebx_volatile",
+      "why": "clobbers"
+    },
+    {
+      "addr": "0x00493fb2",
+      "name": "llm_strat_planet_distance",
+      "conv_before": "__mh_watcall_ecx_ebx_volatile",
+      "why": "clobbers"
+    },
+    {
+      "addr": "0x0049404e",
+      "name": "llm_strat_tile_dist_wrapped",
+      "conv_before": "__watcall",
+      "why": "clobbers"
+    },
+    {
+      "addr": "0x004947c2",
+      "name": "llm_strat_dir_from_to_is_octant_sector",
+      "conv_before": "__mh_watcall_ecx_ebx_volatile",
+      "why": "clobbers"
+    },
+    {
+      "addr": "0x0049482b",
+      "name": "llm_strat_dir_from_to",
+      "conv_before": "__watcall",
+      "why": "clobbers"
+    },
+    {
+      "addr": "0x004948ff",
+      "name": "llm_strat_dir_sector_to",
+      "conv_before": "__mh_watcall_ecx_ebx_volatile",
+      "why": "clobbers"
+    },
+    {
+      "addr": "0x004968b6",
+      "name": "llm_strat_sight_add_circle",
+      "conv_before": "__mh_watcall_ecx_ebx_volatile",
+      "why": "clobbers"
+    },
+    {
+      "addr": "0x0049694f",
+      "name": "llm_strat_sight_remove_circle",
+      "conv_before": "__mh_watcall_ecx_ebx_volatile",
+      "why": "clobbers"
+    },
+    {
+      "addr": "0x00498934",
+      "name": "llm_strat_tiles_adjacent",
+      "conv_before": "__watcall",
+      "why": "clobbers"
+    },
+    {
+      "addr": "0x0049a23d",
+      "name": "llm_strat_path_step_check_and_request_detour",
+      "conv_before": "__mh_watcall_ecx_ebx_volatile",
+      "why": "clobbers"
+    },
+    {
+      "addr": "0x004a2302",
+      "name": "llm_strat_minimap_mark_tiles_drawn",
+      "conv_before": "__mh_watcall_ecx_volatile",
+      "why": "clobbers"
+    },
+    {
+      "addr": "0x004a2344",
+      "name": "llm_strat_minimap_draw_viewport_box",
+      "conv_before": "__watcall",
+      "why": "clobbers"
+    },
+    {
+      "addr": "0x004a3e61",
+      "name": "llm_map_load_loose_fallback",
+      "conv_before": "__mh_watcall_ecx_ebx_volatile",
+      "why": "clobbers"
+    },
+    {
+      "addr": "0x004a44e0",
+      "name": "llm_map_read_planet_header",
+      "conv_before": "__mh_watcall_ecx_ebx_volatile",
+      "why": "clobbers"
+    },
+    {
+      "addr": "0x004a4542",
+      "name": "llm_cfg_map_read_header",
+      "conv_before": "__mh_watcall_ecx_ebx_volatile",
+      "why": "clobbers"
+    },
+    {
+      "addr": "0x004a5b4d",
+      "name": "llm_gfx_draw_cursor_menu",
+      "conv_before": "__mh_watcall_ecx_volatile",
+      "why": "clobbers"
+    },
+    {
+      "addr": "0x004a665a",
+      "name": "llm_gfx_sprite_rle_row_skip",
+      "conv_before": "__mh_watcall_ecx_volatile",
+      "why": "clobbers"
+    },
+    {
+      "addr": "0x004a763f",
+      "name": "FUN_004a763f",
+      "conv_before": "__mh_watcall_ecx_ebx_volatile",
+      "why": "clobbers"
+    },
+    {
+      "addr": "0x004b55be",
+      "name": "llm_gfx_draw_sprite_vclipped",
+      "conv_before": "__mh_watcall_ecx_ebx_volatile",
+      "why": "clobbers"
+    },
+    {
+      "addr": "0x004b5a6e",
+      "name": "llm_ui_rich_text_layout_walk",
+      "conv_before": "__mh_watcall_ecx_ebx_volatile",
+      "why": "clobbers"
+    },
+    {
+      "addr": "0x004b5c8a",
+      "name": "llm_gfx_draw_formatted_text",
+      "conv_before": "__mh_watcall_ecx_ebx_volatile",
+      "why": "clobbers"
+    },
+    {
+      "addr": "0x004b60f6",
+      "name": "llm_ui_text_wrap_find_break_ansi",
+      "conv_before": "__mh_watcall_ecx_ebx_volatile",
+      "why": "clobbers"
+    },
+    {
+      "addr": "0x004bea62",
+      "name": "llm_lobby_build_players_step",
+      "conv_before": "__mh_watcall_ecx_volatile",
+      "why": "clobbers"
+    },
+    {
+      "addr": "0x004beab8",
+      "name": "llm_lobby_build_players_tail_copy",
+      "conv_before": "__mh_watcall_ecx_volatile",
+      "why": "clobbers"
+    },
+    {
+      "addr": "0x004beb33",
+      "name": "llm_lobby_build_players_finish",
+      "conv_before": "__mh_watcall_ecx_volatile",
+      "why": "clobbers"
+    },
+    {
+      "addr": "0x004c29d8",
+      "name": "llm_game_boot_init",
+      "conv_before": "__mh_watcall_ecx_ebx_volatile",
+      "why": "clobbers"
+    },
+    {
+      "addr": "0x004ce0ce",
+      "name": "llm_snd_wav_load",
+      "conv_before": "__mh_watcall_ecx_ebx_volatile",
+      "why": "clobbers"
+    },
+    {
+      "addr": "0x004cf5c7",
+      "name": "CRT_004cf5c7",
+      "conv_before": "__mh_watcall_ecx_ebx_volatile",
+      "why": "clobbers"
+    },
+    {
+      "addr": "0x004cfd58",
+      "name": "utils_read_from_file",
+      "conv_before": "__mh_watcall_ecx_ebx_volatile",
+      "why": "clobbers"
+    },
+    {
+      "addr": "0x004cff57",
+      "name": "utils_write_to_file",
+      "conv_before": "__mh_watcall_ecx_ebx_volatile",
+      "why": "clobbers"
+    },
+    {
+      "addr": "0x004d1194",
+      "name": "llm_input_wndproc_tap",
+      "conv_before": "__mh_watcall_ecx_ebx_volatile",
+      "why": "clobbers"
+    },
+    {
+      "addr": "0x004d2478",
+      "name": "llm_snd_voice_slot_register",
+      "conv_before": "__mh_watcall_ecx_ebx_volatile",
+      "why": "clobbers"
+    },
+    {
+      "addr": "0x004d276c",
+      "name": "llm_snd_channel_configure_voice_and_play",
+      "conv_before": "__mh_watcall_ecx_ebx_volatile",
+      "why": "clobbers"
+    },
+    {
+      "addr": "0x004d2b44",
+      "name": "llm_snd_play_matching_sample",
+      "conv_before": "__mh_watcall_ecx_ebx_volatile",
+      "why": "clobbers"
+    },
+    {
+      "addr": "0x004d32aa",
+      "name": "llm_strat_unit_estimate_weapon_damage",
+      "conv_before": "__mh_watcall_ecx_ebx_volatile",
+      "why": "clobbers"
+    },
+    {
+      "addr": "0x004d3917",
+      "name": "llm_bldg_count_owned_matching_ids",
+      "conv_before": "__mh_watcall_ecx_ebx_volatile",
+      "why": "clobbers"
+    },
+    {
+      "addr": "0x004d3cf0",
+      "name": "llm_strat_ai_target_ref_has_engageable_weapon",
+      "conv_before": "__mh_watcall_ecx_ebx_volatile",
+      "why": "clobbers"
+    },
+    {
+      "addr": "0x004d4b25",
+      "name": "llm_strat_ai_group_task_preempt",
+      "conv_before": "__mh_watcall_ecx_ebx_volatile",
+      "why": "clobbers"
+    },
+    {
+      "addr": "0x004d5245",
+      "name": "llm_strat_ai_engage_rank_candidates_by_range",
+      "conv_before": "__mh_watcall_ecx_ebx_volatile",
+      "why": "unsure"
+    },
+    {
+      "addr": "0x004d53ae",
+      "name": "llm_strat_ai_engage_sort_candidates_by_dist",
+      "conv_before": "__watcall",
+      "why": "unsure"
+    },
+    {
+      "addr": "0x004d55ef",
+      "name": "llm_strat_ai_commit_attack_order",
+      "conv_before": "__mh_watcall_ecx_ebx_volatile",
+      "why": "clobbers"
+    },
+    {
+      "addr": "0x004d5708",
+      "name": "llm_strat_ai_commit_attack_order_alt",
+      "conv_before": "__mh_watcall_ecx_ebx_volatile",
+      "why": "clobbers"
+    },
+    {
+      "addr": "0x004d585e",
+      "name": "llm_strat_ai_unit_group_assign_by_type",
+      "conv_before": "__mh_watcall_ecx_ebx_volatile",
+      "why": "clobbers"
+    },
+    {
+      "addr": "0x004d5c17",
+      "name": "llm_strat_ai_group_compute_centroid",
+      "conv_before": "__mh_watcall_ecx_ebx_volatile",
+      "why": "clobbers"
+    },
+    {
+      "addr": "0x004d5fe7",
+      "name": "llm_strat_ai_unit_move_near_random_point",
+      "conv_before": "__mh_watcall_ecx_ebx_volatile",
+      "why": "clobbers"
+    },
+    {
+      "addr": "0x004d6028",
+      "name": "llm_strat_ai_group_scatter_near_point",
+      "conv_before": "__mh_watcall_ecx_ebx_volatile",
+      "why": "clobbers"
+    },
+    {
+      "addr": "0x004d60f5",
+      "name": "llm_strat_ai_group_scatter_idle_members",
+      "conv_before": "__mh_watcall_ecx_ebx_volatile",
+      "why": "clobbers"
+    },
+    {
+      "addr": "0x004d71c7",
+      "name": "llm_gfx_save_screenshot_rle",
+      "conv_before": "__mh_watcall_ecx_ebx_volatile",
+      "why": "unsure"
+    },
+    {
+      "addr": "0x004d7da9",
+      "name": "llm_strat_ai_group_move_formation_rotating",
+      "conv_before": "__watcall",
+      "why": "clobbers"
+    },
+    {
+      "addr": "0x004d81a6",
+      "name": "llm_strat_ai_target_dist_sq",
+      "conv_before": "__mh_watcall_ecx_ebx_volatile",
+      "why": "clobbers"
+    },
+    {
+      "addr": "0x004d8c7d",
+      "name": "llm_strat_bldg_check_placement_encloses_neighbors",
+      "conv_before": "__mh_watcall_ecx_ebx_volatile",
+      "why": "clobbers"
+    },
+    {
+      "addr": "0x004daec2",
+      "name": "llm_strat_ai_notify_bldg_constructed",
+      "conv_before": "__mh_watcall_ecx_ebx_volatile",
+      "why": "clobbers"
+    },
+    {
+      "addr": "0x004db22f",
+      "name": "llm_strat_ai_bldg_register_visible_building",
+      "conv_before": "__mh_watcall_ecx_ebx_volatile",
+      "why": "clobbers"
+    },
+    {
+      "addr": "0x004db499",
+      "name": "llm_strat_ai_group_member_count_adjust",
+      "conv_before": "__watcall",
+      "why": "clobbers"
+    },
+    {
+      "addr": "0x004dbb38",
+      "name": "llm_strat_ai_notify_unit_lifecycle",
+      "conv_before": "__mh_watcall_ecx_ebx_volatile",
+      "why": "clobbers"
+    },
+    {
+      "addr": "0x004dbe50",
+      "name": "llm_gfx_draw_number_5x7",
+      "conv_before": "__mh_watcall_ecx_ebx_volatile",
+      "why": "clobbers"
+    },
+    {
+      "addr": "0x004dc117",
+      "name": "llm_strat_sort_sites_by_dist",
+      "conv_before": "__mh_watcall_ecx_ebx_volatile",
+      "why": "unsure"
+    },
+    {
+      "addr": "0x004dcd0e",
+      "name": "llm_strat_spawn_ai_base",
+      "conv_before": "__mh_watcall_ecx_ebx_volatile",
+      "why": "clobbers"
+    },
+    {
+      "addr": "0x004dd446",
+      "name": "llm_strat_spawn_invasion_force",
+      "conv_before": "__watcall",
+      "why": "clobbers"
+    },
+    {
+      "addr": "0x004de3f0",
+      "name": "llm_gfx_rle_blit_rows_8bpp",
+      "conv_before": "__mh_watcall_ecx_ebx_volatile",
+      "why": "clobbers"
+    },
+    {
+      "addr": "0x004de441",
+      "name": "FUN_004de441",
+      "conv_before": "__mh_watcall_ecx_volatile",
+      "why": "clobbers"
+    },
+    {
+      "addr": "0x004de459",
+      "name": "llm_gfx_rle_blit_rows_packbits",
+      "conv_before": "__mh_watcall_ecx_ebx_volatile",
+      "why": "clobbers"
+    },
+    {
+      "addr": "0x004de495",
+      "name": "FUN_004de495",
+      "conv_before": "__mh_watcall_ecx_volatile",
+      "why": "clobbers"
+    },
+    {
+      "addr": "0x004de4ab",
+      "name": "llm_gfx_rle_blit_rows_16bpp_clipped",
+      "conv_before": "__mh_watcall_ecx_ebx_volatile",
+      "why": "clobbers"
+    },
+    {
+      "addr": "0x004de519",
+      "name": "FUN_004de519",
+      "conv_before": "__mh_watcall_ecx_ebx_volatile",
+      "why": "clobbers"
+    },
+    {
+      "addr": "0x004de555",
+      "name": "FUN_004de555",
+      "conv_before": "__mh_watcall_ecx_ebx_volatile",
+      "why": "clobbers"
+    },
+    {
+      "addr": "0x004de828",
+      "name": "CRT_004de828",
+      "conv_before": "__mh_watcall_ecx_volatile",
+      "why": "clobbers"
+    },
+    {
+      "addr": "0x004de8a6",
+      "name": "qsort",
+      "conv_before": "__mh_watcall_ecx_ebx_volatile",
+      "why": "clobbers"
+    },
+    {
+      "addr": "0x004ded04",
+      "name": "__exit_with_msg",
+      "conv_before": "__mh_watcall_ecx_ebx_volatile",
+      "why": "unsure"
+    },
+    {
+      "addr": "0x004def00",
+      "name": "str_format_output_engine",
+      "conv_before": "__mh_watcall_ecx_ebx_volatile",
+      "why": "clobbers"
+    },
+    {
+      "addr": "0x004df460",
+      "name": "CRT_004df460",
+      "conv_before": "__mh_watcall_ecx_ebx_volatile",
+      "why": "unsure"
+    },
+    {
+      "addr": "0x004df5dd",
+      "name": "str_fmt_convert_spec",
+      "conv_before": "__mh_watcall_ecx_ebx_volatile",
+      "why": "clobbers"
+    },
+    {
+      "addr": "0x004e08d7",
+      "name": "__uprtf",
+      "conv_before": "__mh_watcall_ecx_ebx_volatile",
+      "why": "clobbers"
+    },
+    {
+      "addr": "0x004e0e7e",
+      "name": "llm_crt_wfmt_convert_spec",
+      "conv_before": "__mh_watcall_ecx_ebx_volatile",
+      "why": "clobbers"
+    },
+    {
+      "addr": "0x004e1370",
+      "name": "FastFillData",
+      "conv_before": "__mh_watcall_ecx_volatile",
+      "why": "clobbers"
+    },
+    {
+      "addr": "0x004e13a7",
+      "name": "__STOSD",
+      "conv_before": "__mh_watcall_ecx_volatile",
+      "why": "clobbers"
+    },
+    {
+      "addr": "0x004e1f02",
+      "name": "llm_crt_scanf_read_int",
+      "conv_before": "__mh_watcall_ecx_ebx_volatile",
+      "why": "clobbers"
+    },
+    {
+      "addr": "0x004e2550",
+      "name": "llm_strat_bldg_queue_construction",
+      "conv_before": "__mh_watcall_ecx_ebx_volatile",
+      "why": "clobbers"
+    },
+    {
+      "addr": "0x004e2c8e",
+      "name": "llm_strat_ai_queue_flush_unit_train_entries",
+      "conv_before": "__mh_watcall_ecx_ebx_volatile",
+      "why": "clobbers"
+    },
+    {
+      "addr": "0x004e2eb9",
+      "name": "llm_strat_ai_calc_resource_sum_5x5",
+      "conv_before": "__watcall",
+      "why": "clobbers"
+    },
+    {
+      "addr": "0x004e30e9",
+      "name": "llm_strat_ai_calc_mine_yield_estimate",
+      "conv_before": "__mh_watcall_ecx_ebx_volatile",
+      "why": "clobbers"
+    },
+    {
+      "addr": "0x004e32ef",
+      "name": "llm_strat_ai_sum_player_mine_resources",
+      "conv_before": "__watcall",
+      "why": "unsure"
+    },
+    {
+      "addr": "0x004e40ae",
+      "name": "llm_strat_ai_count_nearby_turrets",
+      "conv_before": "__watcall",
+      "why": "unsure"
+    },
+    {
+      "addr": "0x004e41a6",
+      "name": "llm_strat_ai_apply_building_proximity_bonus",
+      "conv_before": "__watcall",
+      "why": "clobbers"
+    },
+    {
+      "addr": "0x004e62ad",
+      "name": "llm_strat_ai_resource_site_meets_threshold",
+      "conv_before": "__mh_watcall_ecx_ebx_volatile",
+      "why": "clobbers"
+    },
+    {
+      "addr": "0x004e68dd",
+      "name": "llm_strat_ai_group_split_off_create",
+      "conv_before": "__mh_watcall_ecx_ebx_volatile",
+      "why": "clobbers"
+    },
+    {
+      "addr": "0x004e6d03",
+      "name": "llm_strat_ai_plan_unit_training",
+      "conv_before": "__mh_watcall_ecx_ebx_volatile",
+      "why": "unsure"
+    },
+    {
+      "addr": "0x004e98a7",
+      "name": "llm_strat_ai_group_find_nearest_building_of_types",
+      "conv_before": "__mh_watcall_ecx_ebx_volatile",
+      "why": "clobbers"
+    },
+    {
+      "addr": "0x004e99be",
+      "name": "llm_strat_ai_group_collect_buildings_of_types",
+      "conv_before": "__mh_watcall_ecx_ebx_volatile",
+      "why": "clobbers"
+    },
+    {
+      "addr": "0x004ea729",
+      "name": "llm_strat_ai_group_task_recruit_from_storage",
+      "conv_before": "__mh_watcall_ecx_ebx_volatile",
+      "why": "unsure"
+    },
+    {
+      "addr": "0x004ebf09",
+      "name": "llm_strat_ai_group_scan_building_targets",
+      "conv_before": "__mh_watcall_ecx_ebx_volatile",
+      "why": "unsure"
+    },
+    {
+      "addr": "0x004ed495",
+      "name": "llm_strat_ai_scan_spiral_ring_for_engage_candidates",
+      "conv_before": "__mh_watcall_ecx_ebx_volatile",
+      "why": "clobbers"
+    },
+    {
+      "addr": "0x004ed5f0",
+      "name": "llm_strat_ai_scan_area_for_engage_candidates",
+      "conv_before": "__watcall",
+      "why": "unsure"
+    },
+    {
+      "addr": "0x004eda5a",
+      "name": "llm_strat_ai_scan_for_engage_candidates",
+      "conv_before": "__watcall",
+      "why": "clobbers"
+    },
+    {
+      "addr": "0x004eda8b",
+      "name": "llm_strat_ai_group_dispatch_action_flags",
+      "conv_before": "__mh_watcall_ecx_ebx_volatile",
+      "why": "clobbers"
+    },
+    {
+      "addr": "0x004ee30b",
+      "name": "llm_strat_ai_active_unit_tick",
+      "conv_before": "__mh_watcall_ecx_ebx_volatile",
+      "why": "clobbers"
+    },
+    {
+      "addr": "0x004f030d",
+      "name": "mem_heap_block_resize_inplace",
+      "conv_before": "__mh_watcall_ecx_ebx_volatile",
+      "why": "clobbers"
+    },
+    {
+      "addr": "0x004f0ce2",
+      "name": "CRT_004f0ce2",
+      "conv_before": "__mh_watcall_ecx_ebx_volatile",
+      "why": "clobbers"
+    },
+    {
+      "addr": "0x004f32fa",
+      "name": "__FreeThreadDataList",
+      "conv_before": "__mh_watcall_ecx_ebx_volatile",
+      "why": "unsure"
+    },
+    {
+      "addr": "0x004f3511",
+      "name": "CRT_004f3511",
+      "conv_before": "__mh_watcall_ecx_ebx_volatile",
+      "why": "clobbers"
+    },
+    {
+      "addr": "0x004f35b4",
+      "name": "CRT_004f35b4",
+      "conv_before": "__mh_watcall_ecx_ebx_volatile",
+      "why": "clobbers"
+    },
+    {
+      "addr": "0x004f3688",
+      "name": "_FtoS",
+      "conv_before": "__mh_watcall_ecx_ebx_volatile",
+      "why": "clobbers"
+    },
+    {
+      "addr": "0x004f416b",
+      "name": "CRT_004f416b",
+      "conv_before": "__mh_watcall_ecx_ebx_volatile",
+      "why": "clobbers"
+    },
+    {
+      "addr": "0x004f4c1f",
+      "name": "LZW_decompressImpl",
+      "conv_before": "__mh_watcall_ecx_ebx_volatile",
+      "why": "clobbers"
+    },
+    {
+      "addr": "0x004f4ca7",
+      "name": "LZW_handleCode",
+      "conv_before": "__mh_watcall_ecx_ebx_volatile",
+      "why": "clobbers"
+    },
+    {
+      "addr": "0x004f4ce9",
+      "name": "LZW_updateDict",
+      "conv_before": "__mh_watcall_ecx_ebx_volatile",
+      "why": "clobbers"
+    },
+    {
+      "addr": "0x0055b665",
+      "name": "llm_pf_expand_step",
+      "conv_before": "__mh_watcall_ecx_ebx_volatile",
+      "why": "clobbers"
+    },
+    {
+      "addr": "0x0055e233",
+      "name": "llm_pf_seed_goals",
+      "conv_before": "__mh_watcall_ecx_ebx_volatile",
+      "why": "clobbers"
+    },
+    {
+      "addr": "0x00580223",
+      "name": "llm_strat_pathfind_flood_expand_ring",
+      "conv_before": "__mh_watcall_ecx_ebx_volatile",
+      "why": "clobbers"
+    },
+    {
+      "addr": "0x0058090b",
+      "name": "llm_strat_pathfind_route_extract",
+      "conv_before": "__mh_watcall_ecx_ebx_volatile",
+      "why": "clobbers"
+    },
+    {
+      "addr": "0x00580aae",
+      "name": "llm_strat_pathfind_route_backtrace_recurse",
+      "conv_before": "__mh_watcall_ecx_volatile",
+      "why": "unsure"
+    },
+    {
+      "addr": "0x00580d89",
+      "name": "FUN_00580d89",
+      "conv_before": "__mh_watcall_ecx_volatile",
+      "why": "clobbers"
+    },
+    {
+      "addr": "0x005834bf",
+      "name": "llm_strat_pathfind_flood_seed_from_route",
+      "conv_before": "__mh_watcall_ecx_ebx_volatile",
+      "why": "clobbers"
+    },
+    {
+      "addr": "0x00583716",
+      "name": "llm_strat_pathfind_flood_frontier_step",
+      "conv_before": "__mh_watcall_ecx_ebx_volatile",
+      "why": "clobbers"
+    },
+    {
+      "addr": "0x00583820",
+      "name": "llm_strat_pathfind_backfill_flood_step",
+      "conv_before": "__mh_watcall_ecx_ebx_volatile",
+      "why": "clobbers"
+    },
+    {
+      "addr": "0x0058411b",
+      "name": "llm_strat_pathfind_backfill_resolve_target",
+      "conv_before": "__mh_watcall_ecx_ebx_volatile",
+      "why": "clobbers"
+    },
+    {
+      "addr": "0x005841f3",
+      "name": "llm_strat_pathfind_clearance_check",
+      "conv_before": "__mh_watcall_ecx_volatile",
+      "why": "clobbers"
+    },
+    {
+      "addr": "0x0058429f",
+      "name": "FUN_0058429f",
+      "conv_before": "__mh_watcall_ecx_ebx_volatile",
+      "why": "clobbers"
+    },
+    {
+      "addr": "0x005842c2",
+      "name": "FUN_005842c2",
+      "conv_before": "__mh_watcall_ecx_volatile",
+      "why": "clobbers"
+    },
+    {
+      "addr": "0x0066b4a1",
+      "name": "llm_strat_pathtrace_normalize_repeat_dir_table",
+      "conv_before": "__mh_watcall_ecx_volatile",
+      "why": "clobbers"
+    }
+  ]
+}

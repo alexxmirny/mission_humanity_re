@@ -1,0 +1,41 @@
+# fork F4D -- CONFIGURATION (1): THE GAME WITH NO SPINE.
+#
+# The lane is provisioned with `make_lane --omit-satellite libmh.dll`, so the 627-TU spine -- 94.6%
+# of what mh.dll used to be -- is genuinely not in the process. mh.dll still asks for it (LoadLibrary
+# on an absolute path beside itself, from inside its own DLL_PROCESS_ATTACH) and gets Win32 error
+# 126, and the boot carries on.
+#
+# THIS IS NOT A DEGRADATION SCENARIO, and that is the difference from its sibling `module_absent`.
+# A missing mh_net.dll costs the player something real (multiplayer) and the UI says so. A missing
+# libmh.dll costs nothing a player can see: the game runs the ORIGINAL binary's own bodies, which is
+# a shipped configuration (F4 ruling Q10, ratified) and the one this whole split exists to make
+# possible. So there is no notice to gate on, and there must not be one.
+#
+# THE THREE HALVES, split the same way module_absent's two are:
+#   (a) HERE: the process reaches its menu and the menu renders, on a real frame. A static import
+#       would have failed process load at 0xC0000135 before one instruction of ours ran (measured,
+#       docs/dll-split.md), and there would be no frame to capture. With 101 contract rows resolved
+#       through GetProcAddress, "it still boots" is a claim worth a pixel.
+#   (b) check_module_bind.py --libmh --expect absent, run on this lane by the TESTS entry's
+#       post_check: the log says NOT BOUND with the path and the error, the arm's end marker comes
+#       AFTER it, and -- the part F4D added -- the crossing counters say crossings=0 with
+#       absent-calls > 0. That last clause is what stops the arm being vacuous: the SAME check on
+#       any other lane requires the numbers the other way round, so a pair of counters that always
+#       read the same would fail one side or the other.
+#   (c) the arm-order baseline `config1`, which is this configuration's own template (40 steps
+#       against `original`'s 44 -- see tools/data/arm_order/config1.json for why it is not a
+#       variant of that one).
+#
+# A NOTE ON THE CAPTURE'S JOB. It is deliberately the same frame module_absent captures, from the
+# same predicate, and it is a SEPARATE baseline on purpose: the two lanes differ in which satellite
+# is missing, and "config (1) renders the identical main menu" is a claim this file should be able
+# to lose independently.
+
+# The 7-button sprite main menu. Sprite menus have no text labels, so the gate is by hotkey VALUE
+# (110 = NETWORK GAME) -- the same predicate menu_walk, no_net_boot and module_absent open with.
+# In THIS configuration it asserts something extra: the menu is drawn by original code either way,
+# so a build in which the missing spine broke the front end times out here.
+settled value:110
+capture w1_menu
+log config-(1) boot COMPLETE -- the menu rendered with no spine in the process
+end

@@ -1,0 +1,45 @@
+# U28 / D19 HOST: host a game, wait until the client's RACE CHANGE has actually landed here, then Start.
+#
+# The load-bearing line is `race 1 2`. It is not a settle and not a delay: it blocks until the client's
+# 0x0c slot push has arrived AND been applied to THIS peer's _G_LLM_LOBBY_SLOTS. That turns U28's
+# propagation into the gate -- if the push path or the FLAG_START payload ever regresses, this host
+# TIMES OUT instead of quietly starting a match the two peers disagree about, which is precisely the
+# failure mode that went unnoticed for eight minutes on 2026-08-28.
+#
+# Pair with mp_client_race.txt. Own baseline label (never reuse another test's host script -- the
+# rendered host IP/name differ by topology and --update-baselines would clobber it).
+
+# reach the host lobby (create a game on the pre-selected map)
+settled value:110
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+settled Create
+clickl Create
+present Game name
+settled Ok
+clickl Ok
+present Available maps
+settled Ok
+clickl Ok
+
+present Network players
+peers 1
+# transport-connected != in-lobby; wait for the client's own marker (it signals AFTER its race push).
+awaitsignal lobby
+# THE ASSERTION: the client's race really is Alien on OUR view. Host row 0 must still be Human --
+# a client must only ever be able to edit its OWN slot (U11's negative case).
+race 1 2
+race 0 1
+enabled Start
+settled Start
+capture r2_lobby_alien
+clickl Start
+
+absent Network players
+# Same sim gate + value as the client's, so a lockstep pair captures the same sim moment.
+gameclock 6000
+capture r3_launched
+log HOST launched with MIXED races (host Human, client Alien)
+end

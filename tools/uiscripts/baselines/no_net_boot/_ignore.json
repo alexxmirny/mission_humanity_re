@@ -1,0 +1,4 @@
+{
+  "_why": "The right-hand MP panel's header renders THIS MACHINE's own adapter IP (192.168.0.199 here), which setup.dat pinning cannot touch -- it comes from the adapters, not the saved list. Standard right-panel own-IP rect, kept tight to the band: it sits well above the notice line this test exists to assert (y~155), so the blind spot costs nothing the test cares about.",
+  "capture_w2_browser_notice.png": [[388, 46, 226, 48]]
+}

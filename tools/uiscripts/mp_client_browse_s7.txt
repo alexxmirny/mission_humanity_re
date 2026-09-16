@@ -1,0 +1,36 @@
+# S7 CLIENT BROWSE-ONLY walk: discover a hosted game by IP and capture the "Games available" browser row
+# so the player-count field can be read. Unlike mp_client_join.txt this does NOT join -- it stops right
+# after capturing the discovery row, keeping the test purely about how the row RENDERS.
+#
+# S7 acceptance: the row must read EXACTLY "occ/cap" (single slash, no '+'), where occ = occupied slots
+# incl AI and cap = capacity after closed slots. A host with 1 human on an N-slot map (no AI, no closed
+# slots) reads "1/N". Compare against the pre-S7 render "N-1+1/N" (e.g. "7+1/8").
+#
+# HOST PREREQUISITE: a host sitting in its lobby, LISTENING on 6501 (run mp_menu_walk.txt on the host).
+# The runner rewrites this client's setup.dat "Server address" to the host IP (--connect-ip).
+
+# 1. main menu (NETWORK GAME = value 110)
+settled value:110
+clickv 110
+
+# 2. player-name screen (accept the default name)
+present Player name
+settled Ok
+clickl Ok
+
+# 3. local-games browser -> "Internet server" (the direct-IP path)
+present Internet server
+settled Internet server
+clickl Internet server
+
+# 4. IP-join window: "Server address" pre-filled from setup.dat -> Connect (discovers the host)
+present Server address
+settled Connect
+clickl Connect
+
+# 5. "Games available" browser: the host row is now listed -> CAPTURE it (the S7 frame) and stop.
+sessions 1
+settled Join game
+capture s7_browser_row
+log S7 browse COMPLETE -- discovery row captured
+end

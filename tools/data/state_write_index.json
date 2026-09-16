@@ -1,0 +1,6462 @@
+{
+ "_generated_by": "tools/gen_seam_surface.py --refresh-writers",
+ "_do_not_hand_edit": true,
+ "_comment": [
+  "S5's input: which functions WRITE each state region, projected out of the state",
+  "matrix so that `--check` needs no Ghidra and no 7 MB artefact.",
+  "",
+  "WHY IT IS COMMITTED. Until 2026-09-01 gen_seam_surface read the matrix directly, which",
+  "made it the one lint_repo gate that hard-failed on a fresh clone -- green for whoever",
+  "had run the Ghidra script, red for everyone else. gen_region_accessors.fingerprints()",
+  "states the contract: fingerprinting the matrix 'would make --check unrunnable on a",
+  "fresh clone, which is the opposite of the offline contract every other generator here",
+  "keeps'. Same fix gen_dll_shadow.py already uses for its region sets.",
+  "",
+  "STORES ONLY -- an `imm`/`addr_of` cell is an address TAKE, not a write, and counting",
+  "one inflates every closure (the rule derive_write_closure applies).",
+  "",
+  "CURRENCY IS A GATE, NOT A HABIT: `_provenance` stamps the matrix totals this was built",
+  "from, and --check compares them against the committed docs/state-matrix.md summary row."
+ ],
+ "_provenance": {
+  "program": "mh.exe",
+  "matrix_cells": 10982,
+  "matrix_writes": 9289,
+  "matrix_regions": 3544,
+  "write_kinds": [
+   "write",
+   "rw",
+   "movs"
+  ],
+  "regions_with_a_writer": 1403,
+  "region_function_pairs": 3620
+ },
+ "writers": {
+  "ANIM": [
+   "cfg_CopyStaticToDynamic",
+   "cfg_HandleConfigEntryHead",
+   "cfg_Init",
+   "cfg_ObjectInit"
+  ],
+  "ANIM@00e5c0d0": [
+   "cfg_Init"
+  ],
+  "A_DYM_POJAZD": [
+   "cfg_ConstructAnims"
+  ],
+  "A_OGIEN": [
+   "cfg_ConstructAnims"
+  ],
+  "Anim": [
+   "cfg_ChangeAnimTime",
+   "cfg_anim_Construct",
+   "llm_strat_group_path_step_append",
+   "llm_strat_group_path_step_record"
+  ],
+  "BANK": [
+   "cfg_Init"
+  ],
+  "BANK@00e5b8c4": [
+   "cfg_CopyStaticToDynamic",
+   "cfg_Init"
+  ],
+  "BLOCK_8K": [
+   "LZW_Compress",
+   "llm_lzw_encode_core"
+  ],
+  "BUILDING": [
+   "cfg_CopyStaticToDynamic",
+   "cfg_Init"
+  ],
+  "BUILDING@00e5c9e4": [
+   "cfg_CopyStaticToDynamic",
+   "cfg_HandleConfigEntry",
+   "cfg_HandleConfigEntryHead",
+   "cfg_Init",
+   "cfg_ObjectInit"
+  ],
+  "Building": [
+   "SwitchToPlanet",
+   "cfg_CalcBuildingsTechLevel",
+   "cfg_final_building_Construct",
+   "llm_strat_bldg_init_defaults"
+  ],
+  "CFG_END": [
+   "cfg_CountObjects",
+   "cfg_Init",
+   "cfg_ReadObjects"
+  ],
+  "CFG_PTR": [
+   "cfg_Init"
+  ],
+  "CURRENT_GAME_TIME": [
+   "llm_strat_session_state_reset",
+   "llm_strat_time_tick"
+  ],
+  "CUR_CFG_PTR": [
+   "cfg_Init",
+   "cfg_ReadLine"
+  ],
+  "CUR_LINE": [
+   "cfg_ReadLine"
+  ],
+  "CUR_LINE_PTR": [
+   "ParseDecimalParameter",
+   "ParseStringParameter",
+   "cfg_CountObjects",
+   "cfg_HandleConfigEntry",
+   "cfg_HandleConfigEntryHead",
+   "cfg_HandleDefineObject",
+   "cfg_HandleObjectName",
+   "cfg_HandleText",
+   "cfg_ParseDoubleToken",
+   "cfg_ReadObjects",
+   "cfg_parsing_ObjectEnd"
+  ],
+  "CurrentSystem": [
+   "llm_strat_session_begin_multi",
+   "llm_strat_session_state_reset"
+  ],
+  "DATA": [
+   "LZW_Decompress",
+   "LZW_decompressImpl",
+   "LZW_updateDict"
+  ],
+  "DAT_005007d8": [
+   "llm_gfx_save_screenshot_tga"
+  ],
+  "DAT_00501025": [
+   "llm_game_init_first_run_defaults"
+  ],
+  "DAT_00506f70": [
+   "llm_res_bank_get_file_size"
+  ],
+  "DAT_0050a4e0": [
+   "DEAD_DebugEnter",
+   "DEAD_DebugLeave"
+  ],
+  "DAT_0050a4e4": [
+   "DEAD_DebugEnter",
+   "DEAD_DebugLeave"
+  ],
+  "DAT_0050a5ec": [
+   "DEAD_DebugEnter",
+   "DEAD_DebugLeave"
+  ],
+  "DAT_0050a5f0": [
+   "DEAD_console_set_viewport"
+  ],
+  "DAT_0050a5f2": [
+   "DEAD_console_set_viewport"
+  ],
+  "DAT_0050a5f4": [
+   "DEAD_console_set_viewport"
+  ],
+  "DAT_0050a5f6": [
+   "DEAD_console_set_viewport"
+  ],
+  "DAT_0050a5f8": [
+   "DEAD_console_putchar",
+   "DEAD_console_reset_cursor",
+   "DEAD_console_reset_cursor_default",
+   "DEAD_console_set_cursor_pos",
+   "DEAD_console_set_viewport"
+  ],
+  "DAT_0050a5fa": [
+   "DEAD_console_putchar",
+   "DEAD_console_reset_cursor",
+   "DEAD_console_reset_cursor_default",
+   "DEAD_console_set_cursor_pos",
+   "DEAD_console_set_viewport"
+  ],
+  "DAT_0050a7e8": [
+   "llm_ui_hud_scroll_arrow_handler",
+   "llm_ui_hud_scroll_list_body_handler"
+  ],
+  "DAT_0050a840": [
+   "llm_ui_icon_drag_range_process"
+  ],
+  "DAT_0050a844": [
+   "llm_ui_icon_drag_range_process"
+  ],
+  "DAT_0050be43": [
+   "FUN_0041b35c",
+   "llm_input_mouse_button_hold_update",
+   "llm_ui_icon_group_dispatch"
+  ],
+  "DAT_0050be4f": [
+   "llm_input_mouse_button_hold_update"
+  ],
+  "DAT_00519d28": [
+   "utils_itoa"
+  ],
+  "DAT_00519d38": [
+   "FUN_0041b35c",
+   "llm_input_mouse_button_hold_update"
+  ],
+  "DAT_00519d44": [
+   "FUN_0041b35c",
+   "llm_input_mouse_button_hold_update"
+  ],
+  "DAT_00519d60": [
+   "FUN_0041b35c",
+   "llm_input_mouse_button_hold_update"
+  ],
+  "DAT_00519d64": [
+   "FUN_0041b35c",
+   "llm_input_mouse_button_hold_update"
+  ],
+  "DAT_00519d68": [
+   "FUN_0041b35c",
+   "llm_input_mouse_button_hold_update"
+  ],
+  "DAT_00519d6c": [
+   "FUN_0041b35c",
+   "llm_input_mouse_button_hold_update"
+  ],
+  "DAT_00519d70": [
+   "FUN_0041b35c",
+   "llm_input_mouse_button_hold_update"
+  ],
+  "DAT_00519d74": [
+   "FUN_0041b35c",
+   "llm_input_mouse_button_hold_update"
+  ],
+  "DAT_00519d78": [
+   "FUN_0041b35c",
+   "llm_input_mouse_button_hold_update"
+  ],
+  "DAT_00519d7c": [
+   "FUN_0041b35c",
+   "llm_input_mouse_button_hold_update"
+  ],
+  "DAT_00558c5c": [
+   "llm_ui_debug_stats_overlay_draw"
+  ],
+  "DAT_00558c60": [
+   "llm_ui_debug_stats_overlay_draw"
+  ],
+  "DAT_0055991d": [
+   "llm_gfx_blit_sprite_rle"
+  ],
+  "DAT_00559921": [
+   "llm_gfx_blit_sprite_rle"
+  ],
+  "DAT_00559925": [
+   "llm_gfx_blit_sprite_rle"
+  ],
+  "DAT_00559929": [
+   "llm_gfx_draw_dashed_rect_outline"
+  ],
+  "DAT_0055992a": [
+   "llm_gfx_draw_dashed_rect_outline"
+  ],
+  "DAT_0055992b": [
+   "llm_gfx_draw_dashed_rect_outline"
+  ],
+  "DAT_0055992c": [
+   "llm_gfx_draw_dashed_rect_outline"
+  ],
+  "DAT_0055993d": [
+   "llm_gfx_blit_sprite_rle_v2"
+  ],
+  "DAT_0055993e": [
+   "llm_gfx_blit_sprite_rle_v2"
+  ],
+  "DAT_00559942": [
+   "llm_gfx_blit_sprite_rle_v2"
+  ],
+  "DAT_00559a13": [
+   "llm_pf_run"
+  ],
+  "DAT_0055b398": [
+   "llm_pf_expand_step",
+   "llm_pf_run"
+  ],
+  "DAT_0055b3a3": [
+   "llm_pf_seed_goals"
+  ],
+  "DAT_0055b3a7": [
+   "llm_pf_seed_goals"
+  ],
+  "DAT_0055b3af": [
+   "llm_pf_seed_goals"
+  ],
+  "DAT_0055b3d1": [
+   "llm_pf_seed_goals"
+  ],
+  "DAT_0055b3d7": [
+   "llm_pf_expand_step",
+   "llm_pf_seed_goals"
+  ],
+  "DAT_0055b3df": [
+   "llm_pf_expand_step",
+   "llm_pf_seed_goals"
+  ],
+  "DAT_0055b3e7": [
+   "llm_pf_seed_goals"
+  ],
+  "DAT_0055b3ef": [
+   "llm_pf_seed_goals"
+  ],
+  "DAT_0055b3f3": [
+   "llm_pf_seed_goals"
+  ],
+  "DAT_0055b403": [
+   "llm_pf_expand_step",
+   "llm_pf_expand_wavefront"
+  ],
+  "DAT_0055e594": [
+   "FUN_00580d89",
+   "llm_strat_pathfind_flood_search_driver"
+  ],
+  "DAT_0055e595": [
+   "llm_strat_pathfind_flood_select_grid_level"
+  ],
+  "DAT_0055e59b": [
+   "llm_strat_pathfind_flood_search_driver"
+  ],
+  "DAT_0055e5b1": [
+   "llm_strat_pathfind_flood_select_grid_level"
+  ],
+  "DAT_0057fb4e": [
+   "FUN_0058013c"
+  ],
+  "DAT_0057fcde": [
+   "llm_strat_pathfind_flood_seed_from_route",
+   "llm_strat_pathfind_route_extract"
+  ],
+  "DAT_0057ff11": [
+   "FUN_005842c2",
+   "llm_strat_pathfind_flood_seed_from_route"
+  ],
+  "DAT_0057ff13": [
+   "FUN_005842c2",
+   "llm_strat_pathfind_flood_seed_from_route"
+  ],
+  "DAT_0057ff15": [
+   "FUN_005842c2",
+   "llm_strat_pathfind_flood_seed_from_route"
+  ],
+  "DAT_0057ff17": [
+   "FUN_005842c2",
+   "llm_strat_pathfind_flood_seed_from_route"
+  ],
+  "DAT_0057ff1d": [
+   "llm_strat_pathfind_flood_search_driver"
+  ],
+  "DAT_0057ff1f": [
+   "llm_strat_pathfind_flood_expand_ring",
+   "llm_strat_pathfind_flood_seed_from_route"
+  ],
+  "DAT_0057ff20": [
+   "FUN_005801e9"
+  ],
+  "DAT_0057ff22": [
+   "llm_strat_pathfind_flood_expand_ring"
+  ],
+  "DAT_0057ff24": [
+   "FUN_005801e9",
+   "llm_strat_pathfind_flood_seed_from_route"
+  ],
+  "DAT_0057ff25": [
+   "FUN_005801e9"
+  ],
+  "DAT_0057ff27": [
+   "llm_strat_pathfind_flood_seed_from_route"
+  ],
+  "DAT_0057ff28": [
+   "llm_strat_pathfind_flood_seed_from_route"
+  ],
+  "DAT_0057ff2c": [
+   "llm_strat_pathfind_flood_seed_from_route"
+  ],
+  "DAT_0057ff34": [
+   "llm_strat_pathfind_flood_seed_from_route"
+  ],
+  "DAT_0057ff56": [
+   "llm_strat_pathfind_backfill_resolve_target",
+   "llm_strat_pathfind_flood_seed_from_route"
+  ],
+  "DAT_0057ff5c": [
+   "llm_strat_pathfind_backfill_flood_step",
+   "llm_strat_pathfind_flood_expand_ring",
+   "llm_strat_pathfind_flood_seed_from_route"
+  ],
+  "DAT_0057ff64": [
+   "llm_strat_pathfind_backfill_flood_step",
+   "llm_strat_pathfind_flood_expand_ring",
+   "llm_strat_pathfind_flood_seed_from_route"
+  ],
+  "DAT_0057ff6c": [
+   "llm_strat_pathfind_flood_seed_from_route"
+  ],
+  "DAT_0057ff74": [
+   "llm_strat_pathfind_flood_seed_from_route"
+  ],
+  "DAT_0057ff78": [
+   "llm_strat_pathfind_flood_seed_from_route"
+  ],
+  "DAT_0057ff80": [
+   "llm_strat_pathfind_flood_seed_from_route"
+  ],
+  "DAT_0057ff88": [
+   "llm_strat_pathfind_flood_expand_ring",
+   "llm_strat_pathfind_flood_search_loop"
+  ],
+  "DAT_0058012c": [
+   "llm_strat_pathfind_backfill_flood_step",
+   "llm_strat_pathfind_flood_expand_ring",
+   "llm_strat_pathfind_flood_search_loop"
+  ],
+  "DAT_00580132": [
+   "llm_strat_pathfind_route_backtrace_recurse"
+  ],
+  "DAT_00580133": [
+   "llm_strat_pathfind_route_backtrace_recurse"
+  ],
+  "DAT_00580137": [
+   "llm_strat_pathfind_route_backtrace_recurse"
+  ],
+  "DAT_0058013a": [
+   "FUN_0058013c"
+  ],
+  "DAT_0058090a": [
+   "llm_strat_pathfind_route_extract"
+  ],
+  "DAT_005809cc": [
+   "llm_strat_pathfind_route_extract"
+  ],
+  "DAT_00580aac": [
+   "llm_strat_pathfind_route_backtrace_recurse"
+  ],
+  "DAT_00583415": [
+   "llm_strat_pathfind_flood_search_driver"
+  ],
+  "DAT_005834bb": [
+   "FUN_0058013c",
+   "llm_strat_pathfind_flood_seed_from_route"
+  ],
+  "DAT_00583941": [
+   "llm_strat_pathfind_backfill_resolve_target"
+  ],
+  "DAT_00584115": [
+   "llm_strat_pathfind_backfill_resolve_target"
+  ],
+  "DAT_00584119": [
+   "llm_strat_pathfind_backfill_resolve_target"
+  ],
+  "DAT_00584404": [
+   "llm_gfx_draw_blended_line"
+  ],
+  "DAT_005d0c50": [
+   "llm_cfg_verify_project_inventions_unchanged"
+  ],
+  "DAT_005d0c62": [
+   "llm_ui_floating_tip_tick"
+  ],
+  "DAT_005d0da9": [
+   "llm_game_check_setup_dat_exists"
+  ],
+  "DAT_005d0dc8": [
+   "llm_mp_discovery_browser_refresh"
+  ],
+  "DAT_005d0f50": [
+   "llm_lobby_join_handler"
+  ],
+  "DAT_005d59cc": [
+   "llm_strat_cfg_scan_planet_type_marker"
+  ],
+  "DAT_005d59d0": [
+   "llm_snd_debug_cfg_browser_dispatch"
+  ],
+  "DAT_005d59d4": [
+   "llm_snd_debug_cfg_browser_dispatch"
+  ],
+  "DAT_005d5ff0": [
+   "SplashScreenProc"
+  ],
+  "DAT_005d5ff4": [
+   "SplashScreenProc"
+  ],
+  "DAT_005d617c": [
+   "llm_gfx_draw_glyph_to_framebuffer",
+   "llm_gfx_draw_glyph_to_surface",
+   "llm_gfx_draw_text_blend_clipped",
+   "llm_gfx_draw_text_rgb",
+   "llm_gfx_font_draw_glyph_solid",
+   "llm_ui_text_draw_wrapped_shadowed",
+   "llm_ui_wrapped_text_line_draw"
+  ],
+  "DAT_005d6180": [
+   "llm_gfx_draw_glyph_to_framebuffer",
+   "llm_gfx_draw_glyph_to_surface",
+   "llm_gfx_draw_text_blend_clipped",
+   "llm_gfx_draw_text_rgb",
+   "llm_gfx_font_draw_glyph_solid",
+   "llm_ui_text_draw_wrapped_shadowed",
+   "llm_ui_wrapped_text_line_draw"
+  ],
+  "DAT_005d6188": [
+   "llm_gfx_draw_glyph_to_framebuffer",
+   "llm_gfx_draw_glyph_to_surface",
+   "llm_gfx_draw_text_blend_clipped",
+   "llm_gfx_draw_text_rgb",
+   "llm_gfx_font_draw_glyph_solid",
+   "llm_ui_text_draw_wrapped_shadowed",
+   "llm_ui_wrapped_text_line_draw"
+  ],
+  "DAT_005d618c": [
+   "llm_gfx_font_draw_glyph_solid"
+  ],
+  "DAT_005d6190": [
+   "llm_gfx_draw_glyph_to_framebuffer",
+   "llm_gfx_draw_glyph_to_surface",
+   "llm_gfx_font_layout_text",
+   "llm_ui_text_draw_wrapped_shadowed",
+   "llm_ui_wrapped_text_line_draw"
+  ],
+  "DAT_005d6194": [
+   "llm_gfx_draw_glyph_to_framebuffer",
+   "llm_gfx_draw_glyph_to_surface",
+   "llm_gfx_font_layout_text",
+   "llm_ui_text_draw_wrapped_shadowed",
+   "llm_ui_wrapped_text_line_draw"
+  ],
+  "DAT_005d81f4": [
+   "llm_gfx_font_select"
+  ],
+  "DAT_005d8600": [
+   "llm_gfx_font_load"
+  ],
+  "DAT_005d8601": [
+   "llm_gfx_font_load"
+  ],
+  "DAT_005d8700": [
+   "llm_gfx_font_blit_glyph_solid"
+  ],
+  "DAT_005d8704": [
+   "llm_gfx_font_blit_glyph_solid"
+  ],
+  "DAT_005d870c": [
+   "llm_gfx_font_blit_glyph_solid"
+  ],
+  "DAT_005d8714": [
+   "llm_gfx_font_blit_glyph_solid"
+  ],
+  "DAT_005d8718": [
+   "llm_gfx_font_blit_glyph_solid"
+  ],
+  "DAT_005d871c": [
+   "llm_gfx_font_draw_glyph_blend_clipped"
+  ],
+  "DAT_005d8720": [
+   "llm_gfx_font_draw_glyph_blend_clipped"
+  ],
+  "DAT_005d8724": [
+   "llm_gfx_font_draw_glyph_blend_clipped"
+  ],
+  "DAT_005d8728": [
+   "llm_gfx_font_draw_glyph_blend_clipped"
+  ],
+  "DAT_005d8805": [
+   "llm_gfx_blit_sprite_ui"
+  ],
+  "DAT_005d8809": [
+   "llm_gfx_blit_sprite_ui"
+  ],
+  "DAT_005d880d": [
+   "llm_gfx_blit_sprite_ui"
+  ],
+  "DAT_005d8811": [
+   "llm_gfx_blit_sprite_ui",
+   "llm_gfx_sprite_rle_row_skip"
+  ],
+  "DAT_005d8815": [
+   "llm_gfx_blit_sprite_ui"
+  ],
+  "DAT_005d8819": [
+   "llm_gfx_blit_sprite_ui"
+  ],
+  "DAT_005d8825": [
+   "llm_gfx_draw_dashed_rect_outline_colored"
+  ],
+  "DAT_005d8826": [
+   "llm_gfx_draw_dashed_rect_outline_colored"
+  ],
+  "DAT_005d8b20": [
+   "llm_gfx_bitmap_resample_center_out"
+  ],
+  "DAT_005d8b24": [
+   "llm_gfx_bitmap_resample_center_out"
+  ],
+  "DAT_005d8b28": [
+   "llm_gfx_bitmap_resample_center_out"
+  ],
+  "DAT_005d8b2c": [
+   "llm_gfx_bitmap_resample_center_out"
+  ],
+  "DAT_005d8b30": [
+   "llm_gfx_bitmap_resample_center_out"
+  ],
+  "DAT_005d8b3c": [
+   "llm_ui_set_draw_surface"
+  ],
+  "DAT_005d8b40": [
+   "llm_ui_set_draw_surface"
+  ],
+  "DAT_005d8b44": [
+   "llm_ui_set_draw_surface"
+  ],
+  "DAT_005d8b48": [
+   "llm_ui_set_draw_surface"
+  ],
+  "DAT_005d8b4c": [
+   "llm_ui_set_draw_surface"
+  ],
+  "DAT_00603af4": [
+   "llm_ui_menu_async_tick",
+   "llm_ui_screen_fade_transition_tick",
+   "llm_ui_set_draw_surface"
+  ],
+  "DAT_00603b08": [
+   "llm_gfx_free_draw_buffers",
+   "llm_tact_gfx_init_view_surfaces"
+  ],
+  "DAT_00603f58": [
+   "llm_cd_audio_open_and_init_volume"
+  ],
+  "DAT_00603f64": [
+   "llm_cd_audio_tick"
+  ],
+  "DAT_00604344": [
+   "llm_ui_main_menu_screen_load"
+  ],
+  "DAT_00644351": [
+   "FUN_004be7b1"
+  ],
+  "DAT_006445f7": [
+   "llm_intro_frame",
+   "llm_menu_play_intro_avi",
+   "llm_menu_race_select_cb",
+   "llm_ui_avi_close_return_to_menu",
+   "llm_ui_main_menu_screen_load"
+  ],
+  "DAT_006445fb": [
+   "llm_game_boot_init",
+   "llm_menu_play_intro_avi"
+  ],
+  "DAT_00644f47": [
+   "llm_menu_savegame_list_build"
+  ],
+  "DAT_00644fb3": [
+   "llm_mp_discovery_browser_refresh",
+   "llm_mp_session_browser_rescan"
+  ],
+  "DAT_00644fd7": [
+   "llm_mp_netsetup_field_build_mru"
+  ],
+  "DAT_00644ffb": [
+   "llm_mp_mappicker_populate_list"
+  ],
+  "DAT_0064501b": [
+   "llm_lobby_announce_line"
+  ],
+  "DAT_0064506b": [
+   "llm_ui_scrollbar_bind_range"
+  ],
+  "DAT_00653667": [
+   "llm_lobby_build_slot_widgets"
+  ],
+  "DAT_0065366b": [
+   "llm_lobby_build_slot_widgets"
+  ],
+  "DAT_0065366f": [
+   "llm_lobby_build_slot_widgets"
+  ],
+  "DAT_00654167": [
+   "llm_menu_enter_gameplay_screen_open"
+  ],
+  "DAT_006542ba": [
+   "llm_ui_mouse_poll_next_event"
+  ],
+  "DAT_006542be": [
+   "llm_ui_mouse_poll_next_event"
+  ],
+  "DAT_0065432e": [
+   "llm_ui_widget_input_tick"
+  ],
+  "DAT_0065433e": [
+   "llm_ui_widget_input_tick"
+  ],
+  "DAT_00654352": [
+   "llm_ui_stepper_update_arrow_state"
+  ],
+  "DAT_00654412": [
+   "llm_boot_progress_draw"
+  ],
+  "DAT_00654416": [
+   "llm_boot_progress_draw"
+  ],
+  "DAT_00654442": [
+   "llm_ui_widget_hover_anim_update"
+  ],
+  "DAT_00654466": [
+   "llm_menu_load_game_open",
+   "llm_menu_savename_screen_build"
+  ],
+  "DAT_0065446a": [
+   "llm_menu_load_game_open",
+   "llm_menu_savename_screen_build"
+  ],
+  "DAT_00654486": [
+   "llm_gfx_build_info_desc_pages",
+   "llm_gfx_draw_markup_text",
+   "llm_gfx_draw_wrapped_text_line"
+  ],
+  "DAT_00654496": [
+   "llm_gfx_build_info_desc_pages"
+  ],
+  "DAT_006552fe": [
+   "llm_lobby_map_load_async_step",
+   "llm_menu_loading_countdown_tick"
+  ],
+  "DAT_00655302": [
+   "llm_lobby_wait_dialog_open",
+   "llm_menu_loading_countdown_tick"
+  ],
+  "DAT_00655332": [
+   "llm_lobby_host_net_dispatch",
+   "llm_lobby_kick_player_confirm_cb",
+   "llm_lobby_map_send_tick",
+   "llm_lobby_map_transfer_write_chunk"
+  ],
+  "DAT_00655336": [
+   "llm_lobby_host_net_dispatch"
+  ],
+  "DAT_0065533a": [
+   "llm_lobby_host_net_dispatch",
+   "llm_lobby_map_send_tick",
+   "llm_lobby_map_transfer_write_chunk"
+  ],
+  "DAT_0065671e": [
+   "llm_ui_edit_field_modal_tick",
+   "llm_ui_widget_input_tick"
+  ],
+  "DAT_006567a2": [
+   "llm_lobby_mappicker_selection_changed",
+   "llm_mp_mappicker_populate_list"
+  ],
+  "DAT_00656912": [
+   "llm_ui_main_menu_screen_load"
+  ],
+  "DAT_00656916": [
+   "llm_menu_begin_enter_gameplay"
+  ],
+  "DAT_0065729e": [
+   "llm_ui_demo_slideshow_tick"
+  ],
+  "DAT_006572a2": [
+   "llm_ui_text_layout_line"
+  ],
+  "DAT_006572a6": [
+   "llm_ui_text_layout_line"
+  ],
+  "DAT_006572ae": [
+   "llm_snd_dsound_lazy_init"
+  ],
+  "DAT_006572ce": [
+   "llm_ui_avi_audio_playback_loop"
+  ],
+  "DAT_006572d6": [
+   "llm_snd_dsound_buffer_upload_and_play"
+  ],
+  "DAT_006572da": [
+   "llm_game_shutdown_cleanup"
+  ],
+  "DAT_006572ea": [
+   "llm_lobby_show_intro_wait",
+   "llm_menu_widget_slide_pump",
+   "llm_ui_menu_screen_slide_transition"
+  ],
+  "DAT_00657316": [
+   "llm_menu_show_credits",
+   "llm_ui_demo_slideshow_tick"
+  ],
+  "DAT_0065f70b": [
+   "llm_ui_avi_audio_playback_loop"
+  ],
+  "DAT_0065f70f": [
+   "llm_ui_avi_audio_playback_loop"
+  ],
+  "DAT_0065fd24": [
+   "llm_cd_audio_set_volume"
+  ],
+  "DAT_0065fd28": [
+   "llm_cd_audio_set_volume",
+   "llm_snd_mixer_find_volume_control",
+   "llm_snd_mixer_get_control_value"
+  ],
+  "DAT_0065fd3c": [
+   "llm_cd_audio_query_mode_and_position",
+   "llm_cd_scan_audio_track_range"
+  ],
+  "DAT_0065fd44": [
+   "llm_cd_query_track_length"
+  ],
+  "DAT_00660114": [
+   "llm_game_log_protect_message"
+  ],
+  "DAT_00660118": [
+   "llm_cd_write_cdcheck_log"
+  ],
+  "DAT_00660119": [
+   "llm_cd_write_cdcheck_log"
+  ],
+  "DAT_00660518": [
+   "FUN_004ce581",
+   "llm_build_media_diag_report",
+   "llm_media_diag_read_gfx_resource_records"
+  ],
+  "DAT_0066153c": [
+   "CRT_004e0775",
+   "CRT_004f2188"
+  ],
+  "DAT_00661540": [
+   "CRT_004f212a",
+   "utils_malloc"
+  ],
+  "DAT_00661544": [
+   "CRT_004f212a",
+   "utils_free",
+   "utils_malloc"
+  ],
+  "DAT_0066154c": [
+   "llm_input_dinput_acquire",
+   "llm_input_dinput_release"
+  ],
+  "DAT_00661550": [
+   "llm_input_dinput_acquire"
+  ],
+  "DAT_00661554": [
+   "llm_input_dinput_acquire",
+   "llm_input_dinput_release"
+  ],
+  "DAT_00661558": [
+   "llm_input_dinput_acquire",
+   "llm_input_dinput_release"
+  ],
+  "DAT_00669914": [
+   "llm_snd_dsound_backend_init",
+   "llm_snd_dsound_backend_release"
+  ],
+  "DAT_00669918": [
+   "llm_snd_dsound_backend_init",
+   "llm_snd_dsound_backend_release"
+  ],
+  "DAT_00669920": [
+   "llm_snd_dsound_backend_init",
+   "llm_snd_dsound_backend_release"
+  ],
+  "DAT_0066cef0": [
+   "llm_gfx_rle_widget_draw_dispatch"
+  ],
+  "DAT_0066cef4": [
+   "llm_gfx_rle_widget_draw_dispatch"
+  ],
+  "DAT_0066cef8": [
+   "llm_gfx_rle_widget_draw_dispatch"
+  ],
+  "DAT_0066cefc": [
+   "llm_gfx_rle_widget_draw_dispatch"
+  ],
+  "DAT_0066cf00": [
+   "__NTThreadFini",
+   "__NTThreadInit"
+  ],
+  "DAT_0066d1e0": [
+   "getch"
+  ],
+  "DAT_0066d1f9": [
+   "__NTInit"
+  ],
+  "DAT_0066d200": [
+   "FUN_0066ee56"
+  ],
+  "DAT_0066d204": [
+   "FUN_0066ee56"
+  ],
+  "DAT_0066ecc4": [
+   "llm_snd_waveout_channel_and_buffer_init"
+  ],
+  "DAT_0066ee8f": [
+   "FUN_0066ee9f"
+  ],
+  "DAT_0066ee93": [
+   "FUN_0066ee9f"
+  ],
+  "DAT_0066f460": [
+   "FUN_004ee751",
+   "FUN_004ee795"
+  ],
+  "DAT_0066f48c": [
+   "CRT_004ef8e0"
+  ],
+  "DAT_0066f490": [
+   "CRT_004ef8e0"
+  ],
+  "DAT_0066f494": [
+   "CRT_004ef8e0"
+  ],
+  "DAT_0066f4b0": [
+   "CRT_004ef8e0"
+  ],
+  "DAT_0066f4b4": [
+   "CRT_004ef8e0"
+  ],
+  "DAT_0066f4bc": [
+   "CRT_004ef8e0"
+  ],
+  "DAT_0066f4db": [
+   "CRT_004ef8e0"
+  ],
+  "DAT_0066f502": [
+   "CRT_004ef8e0"
+  ],
+  "DAT_0066f508": [
+   "__NTGetFakeHandle"
+  ],
+  "DAT_0066f578": [
+   "CRT_004f1220",
+   "llm_crt_console_ctrl_handler_install"
+  ],
+  "DAT_0066f5f0": [
+   "CRT_004f30c0"
+  ],
+  "DAT_0066f65c": [
+   "sys_open_device_and_file_handles_once"
+  ],
+  "DAT_0066f660": [
+   "sys_open_device_and_file_handles_once"
+  ],
+  "DAT_0066f66c": [
+   "CRT_004f3199"
+  ],
+  "DAT_0066f670": [
+   "CRT_004f3199"
+  ],
+  "DAT_0066f674": [
+   "CRT_004f3328"
+  ],
+  "DAT_0067f6d4": [
+   "__InitRtns"
+  ],
+  "DAT_0067f6fe": [
+   "__FiniRtns"
+  ],
+  "DAT_0068006c": [
+   "DEAD_DebugEnter",
+   "DEAD_DebugLeave"
+  ],
+  "DAT_00680070": [
+   "llm_log_debug_dir_session_init"
+  ],
+  "DAT_00680075": [
+   "DEAD_console_print_xor_decoded_a",
+   "DEAD_console_print_xor_decoded_b",
+   "llm_debug_console_print_reset"
+  ],
+  "DAT_0070f820": [
+   "llm_snd_load_sound_cfg"
+  ],
+  "DAT_0070f824": [
+   "llm_cfg_read_line",
+   "llm_snd_load_sound_cfg"
+  ],
+  "DAT_0070f828": [
+   "llm_snd_load_sound_cfg"
+  ],
+  "DAT_0070f83e": [
+   "llm_gfx_build_bar_sprite_rle"
+  ],
+  "DAT_0070f83f": [
+   "llm_gfx_build_bar_sprite_rle"
+  ],
+  "DAT_0070f840": [
+   "llm_gfx_build_bar_sprite_rle"
+  ],
+  "DAT_0070f841": [
+   "llm_gfx_build_bar_sprite_rle"
+  ],
+  "DAT_00824fb4": [
+   "llm_gfx_planet_bank_load",
+   "llm_gfx_save_screenshot_tga"
+  ],
+  "DAT_00824fbc": [
+   "llm_input_mouse_delta_pump"
+  ],
+  "DAT_00824fd8": [
+   "llm_tact_view_metrics_init"
+  ],
+  "DAT_0082500c": [
+   "llm_gfx_load_banks"
+  ],
+  "DAT_00825010": [
+   "llm_gfx_load_banks"
+  ],
+  "DAT_00825014": [
+   "llm_gfx_load_banks"
+  ],
+  "DAT_00825018": [
+   "llm_gfx_draw_blended_line",
+   "llm_gfx_draw_line_clipped"
+  ],
+  "DAT_0082501c": [
+   "llm_gfx_draw_blended_line",
+   "llm_gfx_draw_line_clipped"
+  ],
+  "DAT_00825020": [
+   "llm_gfx_draw_blended_line",
+   "llm_gfx_draw_line_clipped"
+  ],
+  "DAT_00825024": [
+   "llm_gfx_draw_blended_line",
+   "llm_gfx_draw_line_clipped"
+  ],
+  "DAT_00825040": [
+   "llm_gfx_draw_blended_line",
+   "llm_gfx_draw_line_clipped"
+  ],
+  "DAT_00825044": [
+   "llm_gfx_view_metrics_init"
+  ],
+  "DAT_00825050": [
+   "llm_gfx_view_metrics_init"
+  ],
+  "DAT_00825096": [
+   "llm_gfx_dashed_rect_outline_set_and_draw"
+  ],
+  "DAT_00ae2a80": [
+   "DEAD_net_bwstat_accum_0049e8ea"
+  ],
+  "DAT_00ae2a88": [
+   "DEAD_net_bwstat_accum_0049e8ea"
+  ],
+  "DAT_00e589b4": [
+   "llm_ui_floating_tip_tick"
+  ],
+  "DAT_00e589b8": [
+   "llm_ui_floating_tip_tick"
+  ],
+  "DAT_00e642a4": [
+   "llm_menu_race_select_cb"
+  ],
+  "DAT_01063ca4": [
+   "sys_open_device_and_file_handles_once"
+  ],
+  "DAT_01063ca8": [
+   "sys_open_device_and_file_handles_once"
+  ],
+  "DAT_01064cac": [
+   "__AddThreadData",
+   "__RemoveThreadData"
+  ],
+  "DEFINE": [
+   "cfg_Init"
+  ],
+  "DEFINE@00e5b9f0": [
+   "cfg_CopyStaticToDynamic",
+   "cfg_HandleConfigEntryHead",
+   "cfg_Init"
+  ],
+  "GAME_TIME_DELTA": [
+   "llm_strat_advance_sim_clock",
+   "llm_strat_session_state_reset",
+   "llm_strat_sim_clock_advance",
+   "llm_strat_sim_tick",
+   "llm_strat_time_tick"
+  ],
+  "G_CD_DATA_PATH": [
+   "llm_cd_ensure_present"
+  ],
+  "G_COLOR_FORMAT": [
+   "llm_gfx_set_window_resolution"
+  ],
+  "G_CONFIG_ENTRY_TYPE": [
+   "cfg_HandleConfigEntry",
+   "cfg_HandleConfigEntryHead",
+   "cfg_HandleObjectName",
+   "cfg_parsing_ObjectEnd"
+  ],
+  "G_CURRENT_RESOURCES": [
+   "llm_ui_bldg_build_menu_icon_draw",
+   "llm_ui_bldg_prod_queue_slot_draw",
+   "llm_ui_build_panel_project_row_draw",
+   "llm_ui_hud_topbar_tick"
+  ],
+  "G_ICON_PTRS": [
+   "LoadPanelData"
+  ],
+  "G_LAST_MAP_INDEX": [
+   "llm_map_region_free",
+   "llm_map_region_pool_reset",
+   "llm_map_seed_regions_multires",
+   "map_block_8_GetNextBlock"
+  ],
+  "G_LZW_MAX_COMPRESSED_SIZE": [
+   "llm_lzw_compress_and_write_block"
+  ],
+  "G_LZW_TEMP_DATA": [
+   "llm_log_dump_all_files"
+  ],
+  "G_OTHER_PLAYERS_MASK": [
+   "llm_strat_fow_remove_sight_apply"
+  ],
+  "G_PLANET_INDEX": [
+   "SwitchToPlanet",
+   "llm_strat_session_begin_multi",
+   "llm_strat_session_state_reset"
+  ],
+  "G_PLANET_STATUS": [
+   "SwitchToPlanet",
+   "game_HandleInvasion",
+   "game_UpdateProgress",
+   "llm_strat_session_state_reset",
+   "llm_tact_mission_end_return_to_strategic",
+   "map_SavePlanetToDisk"
+  ],
+  "G_PLANET_TRANSITION_RESULT": [
+   "llm_strat_planet_transition_perform_switch"
+  ],
+  "G_RSR_FILE_COUNT": [
+   "llm_rsr_close_all_files",
+   "rsr_ReadRsrFile"
+  ],
+  "G_RSR_FILE_PTRS": [
+   "rsr_ReadRsrFile"
+  ],
+  "G_TEXT_BLOCK": [
+   "cfg_SaveText"
+  ],
+  "G_TEXT_PTRS": [
+   "cfg_SaveText",
+   "llm_cfg_text_ptrs_reset",
+   "llm_strat_scenario_planet_clone"
+  ],
+  "G_TEXT_TMP": [
+   "llm_strat_player_presence_lost",
+   "llm_ui_print_game_speed"
+  ],
+  "G_TEXT_TOTAL": [
+   "cfg_SaveText"
+  ],
+  "G_TMP_PLAYER": [
+   "llm_strat_fow_remove_sight",
+   "map_fow_UpdateFoWPlus"
+  ],
+  "G_TMP_SIGHT": [
+   "llm_strat_fow_remove_sight",
+   "map_fow_UpdateFoWPlus"
+  ],
+  "G_TMP_x": [
+   "llm_strat_fow_remove_sight",
+   "map_fow_UpdateFoWPlus"
+  ],
+  "G_TMP_y": [
+   "llm_strat_fow_remove_sight",
+   "map_fow_UpdateFoWPlus"
+  ],
+  "G_WIN_H": [
+   "llm_gfx_draw_cursor_menu",
+   "llm_gfx_draw_sprite_clipped_width",
+   "llm_gfx_draw_sprite_to_buffer",
+   "llm_gfx_draw_sprite_unclipped",
+   "llm_gfx_view_metrics_init"
+  ],
+  "G_WIN_W": [
+   "llm_gfx_draw_cursor_ingame",
+   "llm_gfx_draw_cursor_menu",
+   "llm_gfx_draw_sprite_clipped_width",
+   "llm_gfx_draw_sprite_to_buffer",
+   "llm_gfx_draw_sprite_unclipped",
+   "llm_gfx_view_metrics_init"
+  ],
+  "ICON": [
+   "cfg_HandleConfigEntryHead",
+   "cfg_Init"
+  ],
+  "LAST_GAME_TIME": [
+   "llm_strat_session_state_reset",
+   "llm_strat_time_resync_and_tick",
+   "llm_strat_time_tick"
+  ],
+  "LINE_COUNT": [
+   "cfg_CountObjects"
+  ],
+  "LINE_END": [
+   "cfg_CountObjects",
+   "cfg_Init",
+   "cfg_ReadObjects",
+   "llm_cfg_skip_spaces"
+  ],
+  "LZM_WORD_SIZE": [
+   "LZW_Compress",
+   "llm_lzw_emit_code"
+  ],
+  "LZW_END_PTR": [
+   "LZW_Compress"
+  ],
+  "LZW_UNCOMPRESSED_SIZE": [
+   "LZW_Compress",
+   "LZW_Decompress"
+  ],
+  "MESSAGE_TIME": [
+   "FUN_00496409",
+   "game_ui_AddTextToPrintQueue",
+   "llm_strat_input_update"
+  ],
+  "MULTILINE_COMMENT": [
+   "cfg_CountObjects",
+   "cfg_Init",
+   "cfg_ReadObjects"
+  ],
+  "PLANET": [
+   "cfg_CopyStaticToDynamic",
+   "cfg_HandleConfigEntry",
+   "cfg_HandleConfigEntryHead",
+   "cfg_Init",
+   "cfg_ObjectInit"
+  ],
+  "PLANETS": [
+   "cfg_Init"
+  ],
+  "PROGRESS": [
+   "cfg_Init"
+  ],
+  "PROGRESS@00e5c0d8": [
+   "cfg_CopyStaticToDynamic",
+   "cfg_HandleConfigEntry",
+   "cfg_HandleConfigEntryHead",
+   "cfg_Init",
+   "cfg_ObjectInit"
+  ],
+  "PROJECT": [
+   "cfg_Init"
+  ],
+  "PROJECT@00e5bba8": [
+   "cfg_CopyStaticToDynamic",
+   "cfg_HandleConfigEntry",
+   "cfg_Init",
+   "cfg_ObjectInit"
+  ],
+  "PTR_ARRAY_0065337b": [
+   "llm_ui_dlg_build_from_table"
+  ],
+  "PTR_DAT_0050a650": [
+   "DEAD_console_select_profile"
+  ],
+  "PTR_DAT_00603f20": [
+   "ReadMsgsDat"
+  ],
+  "PTR_DO_NOTHING_0066cf08": [
+   "__InitMultipleThread"
+  ],
+  "PTR_DO_NOTHING_0066cf0c": [
+   "__InitMultipleThread"
+  ],
+  "PTR_DO_NOTHING_0066cf18": [
+   "__InitMultipleThread"
+  ],
+  "PTR_DO_NOTHING_0066cf1c": [
+   "__InitMultipleThread"
+  ],
+  "PTR_DO_NOTHING_0066cf20": [
+   "__InitMultipleThread"
+  ],
+  "PTR_DO_NOTHING_0066cf24": [
+   "__InitMultipleThread"
+  ],
+  "PTR_DO_NOTHING_0066cf28": [
+   "__InitMultipleThread"
+  ],
+  "PTR_DO_NOTHING_0066cf2c": [
+   "__InitMultipleThread"
+  ],
+  "PTR_DO_NOTHING_0066cf30": [
+   "__InitMultipleThread"
+  ],
+  "PTR_DO_NOTHING_0066cf34": [
+   "__InitMultipleThread"
+  ],
+  "PTR_DO_NOTHING_0066cf38": [
+   "__InitMultipleThread"
+  ],
+  "PTR_DO_NOTHING_0066cf3c": [
+   "__InitMultipleThread"
+  ],
+  "PTR_DO_NOTHING_0066cf40": [
+   "__InitMultipleThread"
+  ],
+  "PTR_LAB_0066f57c": [
+   "__InitMultipleThread"
+  ],
+  "PTR_LAB_0066f580": [
+   "__InitMultipleThread"
+  ],
+  "PTR_LAB_0066f584": [
+   "__InitMultipleThread"
+  ],
+  "PTR___NTAddFileHandle_0066cf10": [
+   "__InitMultipleThread"
+  ],
+  "PTR___NTRemoveFileHandle_0066cf14": [
+   "__InitMultipleThread"
+  ],
+  "PTR_llm_crt_get_thread_data_0066cf04": [
+   "__InitMultipleThread"
+  ],
+  "PTR_u_Cannot_initialize_CD-Audio_00603f30": [
+   "ReadMsgsDat"
+  ],
+  "PTR_u_Exit_game_00603f24": [
+   "ReadMsgsDat",
+   "llm_ui_dialog_message_show",
+   "win_ShowErrorMessage"
+  ],
+  "PTR_u_Exit_game_00603f38": [
+   "ReadMsgsDat"
+  ],
+  "PTR_u_Insert_'Mission:_Humanity'_CD_in_00603f1c": [
+   "ReadMsgsDat"
+  ],
+  "PTR_u_Mission:_Humanity_00603f2c": [
+   "ReadMsgsDat"
+  ],
+  "PTR_u_Mission:_Humanity_00603f40": [
+   "ReadMsgsDat"
+  ],
+  "PTR_u_Retry_00603f34": [
+   "ReadMsgsDat"
+  ],
+  "Planets": [
+   "cfg_final_planet_Construct",
+   "cfg_final_planet_FillBankData",
+   "cfg_final_system_Construct",
+   "llm_game_start_tutorial",
+   "llm_lobby_finalize_custom_map_and_sync",
+   "llm_strat_scenario_planet_clone",
+   "llm_strat_session_begin_multi"
+  ],
+  "PlayerSide": [
+   "llm_strat_planet_session_begin",
+   "llm_strat_session_begin_multi"
+  ],
+  "Players": [
+   "llm_diplomacy_set_relation",
+   "llm_game_start_tutorial",
+   "llm_lobby_build_players_finish",
+   "llm_lobby_build_players_step",
+   "llm_lobby_build_players_tail_copy",
+   "llm_ui_diplomacy_apply_and_resume"
+  ],
+  "Progress": [
+   "cfg_final_building_Construct",
+   "cfg_final_invention_Construct",
+   "cfg_final_planet_Construct",
+   "cfg_final_project_Construct",
+   "cfg_final_system_Construct",
+   "cfg_final_unit_Construct",
+   "cfg_final_upgrade_Construct",
+   "llm_strat_tech_tables_reset"
+  ],
+  "Projects": [
+   "cfg_final_project_Construct",
+   "llm_cfg_snapshot_project_inventions",
+   "llm_strat_tech_tables_reset"
+  ],
+  "SOMEINDEX_IN_BLOCK_8K": [
+   "LZW_Compress"
+  ],
+  "SPRITE": [
+   "cfg_CopyStaticToDynamic",
+   "cfg_HandleConfigEntryHead",
+   "cfg_Init",
+   "cfg_ObjectInit"
+  ],
+  "SPRITE@00e5ba80": [
+   "cfg_HandleConfigEntryHead",
+   "cfg_Init"
+  ],
+  "STONE": [
+   "cfg_CopyStaticToDynamic",
+   "cfg_HandleConfigEntryHead",
+   "cfg_Init",
+   "cfg_ObjectInit"
+  ],
+  "STONE@00e5b82c": [
+   "cfg_Init"
+  ],
+  "SYSTEM": [
+   "cfg_CopyStaticToDynamic",
+   "cfg_HandleConfigEntryHead",
+   "cfg_Init",
+   "cfg_ObjectInit"
+  ],
+  "SYSTEM@00e5b824": [
+   "cfg_Init"
+  ],
+  "System": [
+   "cfg_final_system_Construct",
+   "llm_strat_session_begin_multi"
+  ],
+  "TEXT": [
+   "cfg_CopyStaticToDynamic",
+   "cfg_HandleConfigEntryHead",
+   "cfg_Init"
+  ],
+  "TEXT@00e5b828": [
+   "cfg_Init"
+  ],
+  "TOTAL_FRAME_COUNT": [
+   "cfg_anim_Construct"
+  ],
+  "TOTAL_GAME_TIME": [
+   "llm_strat_session_state_reset",
+   "llm_strat_time_tick"
+  ],
+  "TREE": [
+   "cfg_CopyStaticToDynamic",
+   "cfg_HandleConfigEntryHead",
+   "cfg_Init",
+   "cfg_ObjectInit"
+  ],
+  "TREE@00e5b818": [
+   "cfg_Init"
+  ],
+  "Tree": [
+   "cfg_final_tree_Construct"
+  ],
+  "UNDEF_0064fe63": [
+   "llm_boot_apply_lang_variant_bytes"
+  ],
+  "UNDEF_0064fea7": [
+   "llm_boot_apply_lang_variant_bytes"
+  ],
+  "UNDEF_0064feeb": [
+   "llm_boot_apply_lang_variant_bytes"
+  ],
+  "UNDEF_0064ff2f": [
+   "llm_boot_apply_lang_variant_bytes"
+  ],
+  "UNDEF_0064ff73": [
+   "llm_boot_apply_lang_variant_bytes"
+  ],
+  "UNDEF_0064fffb": [
+   "llm_ui_scrollbar_bind_range"
+  ],
+  "UNDEF_006501d7": [
+   "llm_mp_discovery_browser_refresh"
+  ],
+  "UNDEF_0065021b": [
+   "llm_mp_session_browser_rescan"
+  ],
+  "UNDEF_006502a3": [
+   "llm_lobby_host_net_dispatch",
+   "llm_lobby_screen_open"
+  ],
+  "UNDEF_006502e7": [
+   "llm_lobby_apply_selected_session_map",
+   "llm_mp_discovery_browser_refresh",
+   "llm_mp_session_browser_rescan"
+  ],
+  "UNDEF_0065043b": [
+   "FUN_004bd37f",
+   "llm_mp_netsetup_field_build_mru"
+  ],
+  "UNDEF_0065047f": [
+   "llm_lobby_network_setup_screen",
+   "llm_mp_netsetup_enter_connect_ip_screen",
+   "llm_mp_netsetup_enter_game_name_screen"
+  ],
+  "UNDEF_006504c3": [
+   "llm_lobby_screen_open",
+   "llm_mp_local_browser_setup",
+   "llm_mp_map_picker_setup",
+   "llm_mp_session_browser_enter",
+   "llm_ui_lobby_screen_widget_reset"
+  ],
+  "UNDEF_0065054b": [
+   "llm_lobby_screen_open",
+   "llm_lobby_wait_dialog_open",
+   "llm_menu_loading_countdown_tick"
+  ],
+  "UNDEF_006506e3": [
+   "llm_lobby_screen_open"
+  ],
+  "UNDEF_00650727": [
+   "llm_lobby_build_slot_widgets",
+   "llm_lobby_join_handler"
+  ],
+  "UNDEF_0065076b": [
+   "llm_mp_local_browser_setup",
+   "llm_mp_session_browser_enter",
+   "llm_mp_session_browser_rescan"
+  ],
+  "UNDEF_006507af": [
+   "llm_menu_savegame_list_build",
+   "llm_savegame_delete_confirm_cb"
+  ],
+  "UNDEF_00650a9b": [
+   "llm_menu_begin_enter_gameplay",
+   "llm_menu_load_game_open",
+   "llm_menu_savename_screen_build",
+   "llm_ui_main_menu_screen_load",
+   "llm_ui_menu_dialog_open_handler",
+   "llm_ui_menu_screen_restore_config"
+  ],
+  "UNDEF_00650e53": [
+   "llm_menu_newgame_open",
+   "llm_ui_screen_fade_transition_swap"
+  ],
+  "UNDEF_006512d7": [
+   "llm_lobby_show_intro_wait"
+  ],
+  "UNIT": [
+   "cfg_Init"
+  ],
+  "UNIT@00e5f638": [
+   "cfg_CopyStaticToDynamic",
+   "cfg_HandleConfigEntry",
+   "cfg_HandleConfigEntryHead",
+   "cfg_Init",
+   "cfg_ObjectInit"
+  ],
+  "UPGRADE": [
+   "cfg_CopyStaticToDynamic",
+   "cfg_HandleConfigEntryHead",
+   "cfg_Init",
+   "cfg_ObjectInit"
+  ],
+  "UPGRADE@00e5b834": [
+   "cfg_Init"
+  ],
+  "Unit": [
+   "cfg_final_unit_Construct",
+   "game_HandleUpgrade",
+   "llm_strat_new_game_init",
+   "llm_strat_session_state_reset"
+  ],
+  "Upgrades": [
+   "cfg_final_upgrade_Construct",
+   "llm_strat_tech_tables_reset"
+  ],
+  "WEAPON": [
+   "cfg_CopyStaticToDynamic",
+   "cfg_HandleConfigEntryHead",
+   "cfg_Init",
+   "cfg_ObjectInit"
+  ],
+  "WEAPON@00e5b8c8": [
+   "cfg_HandleConfigEntryHead",
+   "cfg_Init"
+  ],
+  "Weapon": [
+   "cfg_final_ConstructWeapons",
+   "game_HandleUpgrade",
+   "llm_strat_new_game_init"
+  ],
+  "WindowHeight": [
+   "llm_game_create_main_window",
+   "llm_game_init_subsystems",
+   "llm_gfx_set_window_resolution",
+   "llm_tact_mission_start",
+   "llm_wnd_on_create"
+  ],
+  "WindowWidth": [
+   "llm_game_create_main_window",
+   "llm_game_init_subsystems",
+   "llm_gfx_set_window_resolution",
+   "llm_tact_mission_start",
+   "llm_wnd_on_create"
+  ],
+  "_G_LLM_ANIM_PLACE_ALLOWED": [
+   "llm_cfg_cache_placement_anims"
+  ],
+  "_G_LLM_ANIM_PLACE_DENIED": [
+   "llm_cfg_cache_placement_anims"
+  ],
+  "_G_LLM_AVI_OPEN_STATUS": [
+   "llm_game_boot_init"
+  ],
+  "_G_LLM_AVI_PLAYER_CTX": [
+   "llm_game_boot_init",
+   "llm_ui_avi_audio_playback_loop",
+   "llm_ui_menu_async_tick"
+  ],
+  "_G_LLM_BANK_SPRITE_BASE": [
+   "llm_gfx_apply_resolution_change",
+   "llm_tact_mission_start"
+  ],
+  "_G_LLM_BLDG_FOOTPRINT_PASSABLE_SAVE_SLOT": [
+   "llm_strat_bldg_set_footprint_passable"
+  ],
+  "_G_LLM_BLIT_CUR_X": [
+   "llm_gfx_blit_sprite_rle"
+  ],
+  "_G_LLM_BLIT_CUR_Y": [
+   "llm_gfx_blit_sprite_rle",
+   "llm_gfx_skip_sprite_row"
+  ],
+  "_G_LLM_BLIT_ROW_X": [
+   "llm_gfx_blit_sprite_rle"
+  ],
+  "_G_LLM_BOOT_FILE_BUF_PUB": [
+   "llm_game_boot_init",
+   "llm_ui_menu_async_tick"
+  ],
+  "_G_LLM_BOOT_MODE_FLAG": [
+   "llm_game_boot_init"
+  ],
+  "_G_LLM_BOOT_PUMP_ACC": [
+   "llm_game_boot_init",
+   "llm_ui_avi_audio_playback_loop",
+   "llm_ui_menu_async_tick"
+  ],
+  "_G_LLM_BOOT_PUMP_FLAG": [
+   "llm_game_boot_init",
+   "llm_ui_avi_close_return_to_menu"
+  ],
+  "_G_LLM_BOOT_PUMP_TICK_BASE": [
+   "llm_game_boot_init",
+   "llm_ui_avi_audio_playback_loop",
+   "llm_ui_menu_async_tick"
+  ],
+  "_G_LLM_BOOT_STAGE": [
+   "llm_boot_stage_tick",
+   "llm_game_init_subsystems"
+  ],
+  "_G_LLM_BOOT_TXT_CURSOR": [
+   "llm_game_boot_init",
+   "llm_ui_menu_async_tick"
+  ],
+  "_G_LLM_BUILD_PLACEMENT_ID": [
+   "llm_menu_begin_enter_gameplay",
+   "llm_menu_enter_gameplay",
+   "llm_menu_finish_enter_gameplay",
+   "llm_strat_bldg_try_begin_placement",
+   "llm_strat_input_update",
+   "llm_strat_session_state_reset",
+   "llm_ui_frame_tick",
+   "map_LoadPlanetFromDisk"
+  ],
+  "_G_LLM_CAM_EDGE_DOWN_ACTIVE": [
+   "llm_strat_input_update"
+  ],
+  "_G_LLM_CAM_EDGE_DOWN_NEXT_TIME": [
+   "llm_strat_input_update"
+  ],
+  "_G_LLM_CAM_EDGE_LEFT_ACTIVE": [
+   "llm_strat_input_update"
+  ],
+  "_G_LLM_CAM_EDGE_LEFT_NEXT_TIME": [
+   "llm_strat_input_update"
+  ],
+  "_G_LLM_CAM_EDGE_RIGHT_ACTIVE": [
+   "llm_strat_input_update"
+  ],
+  "_G_LLM_CAM_EDGE_RIGHT_NEXT_TIME": [
+   "llm_strat_input_update"
+  ],
+  "_G_LLM_CAM_EDGE_UP_ACTIVE": [
+   "llm_strat_input_update"
+  ],
+  "_G_LLM_CAM_EDGE_UP_NEXT_TIME": [
+   "llm_strat_input_update"
+  ],
+  "_G_LLM_CAM_FOLLOW_SELECTION": [
+   "llm_strat_input_update"
+  ],
+  "_G_LLM_CAM_JUMP_QUEUE": [
+   "llm_strat_spawn_debris_burst"
+  ],
+  "_G_LLM_CAM_JUMP_QUEUE_COUNT": [
+   "llm_cam_jump_queue_pop",
+   "llm_strat_spawn_debris_burst"
+  ],
+  "_G_LLM_CAM_SCROLL_DOWN_HELD": [
+   "llm_strat_input_update"
+  ],
+  "_G_LLM_CAM_SCROLL_DOWN_NEXT_TIME": [
+   "llm_strat_input_update"
+  ],
+  "_G_LLM_CAM_SCROLL_DOWN_QUEUED": [
+   "llm_strat_input_update"
+  ],
+  "_G_LLM_CAM_SCROLL_LEFT_HELD": [
+   "llm_strat_input_update"
+  ],
+  "_G_LLM_CAM_SCROLL_LEFT_NEXT_TIME": [
+   "llm_strat_input_update"
+  ],
+  "_G_LLM_CAM_SCROLL_LEFT_QUEUED": [
+   "llm_strat_input_update"
+  ],
+  "_G_LLM_CAM_SCROLL_RIGHT_HELD": [
+   "llm_strat_input_update"
+  ],
+  "_G_LLM_CAM_SCROLL_RIGHT_NEXT_TIME": [
+   "llm_strat_input_update"
+  ],
+  "_G_LLM_CAM_SCROLL_RIGHT_QUEUED": [
+   "llm_strat_input_update"
+  ],
+  "_G_LLM_CAM_SCROLL_UP_HELD": [
+   "llm_strat_input_update"
+  ],
+  "_G_LLM_CAM_SCROLL_UP_NEXT_TIME": [
+   "llm_strat_input_update"
+  ],
+  "_G_LLM_CAM_SCROLL_UP_QUEUED": [
+   "llm_strat_input_update"
+  ],
+  "_G_LLM_CAM_ZOOM_DIRECTION": [
+   "llm_strat_input_update"
+  ],
+  "_G_LLM_CAM_ZOOM_HELD_TAG": [
+   "llm_strat_input_update"
+  ],
+  "_G_LLM_CAM_ZOOM_NEXT_TIME": [
+   "llm_strat_input_update"
+  ],
+  "_G_LLM_CAM_ZOOM_QUEUED": [
+   "llm_strat_input_update"
+  ],
+  "_G_LLM_CD_AUDIO_ACTIVE": [
+   "llm_cd_audio_start_if_enabled",
+   "llm_cd_audio_start_play",
+   "llm_cd_audio_stop",
+   "llm_snd_cd_stop"
+  ],
+  "_G_LLM_CD_AUDIO_MCI_CALLBACK_HWND": [
+   "llm_cd_audio_select_and_open_device"
+  ],
+  "_G_LLM_CD_AUDIO_PLAY_FROM": [
+   "llm_cd_audio_advance_or_restart_track",
+   "llm_game_return_to_main_menu_cb",
+   "llm_menu_enter_gameplay",
+   "llm_ui_main_menu_screen_load"
+  ],
+  "_G_LLM_CD_AUDIO_PLAY_TO": [
+   "llm_cd_audio_advance_or_restart_track",
+   "llm_game_return_to_main_menu_cb",
+   "llm_menu_enter_gameplay",
+   "llm_ui_main_menu_screen_load"
+  ],
+  "_G_LLM_CD_AUDIO_TRACK_BASE": [
+   "llm_cd_scan_audio_track_range"
+  ],
+  "_G_LLM_CD_AUDIO_VOLUME_RAW": [
+   "llm_cd_audio_open_and_init_volume",
+   "llm_snd_apply_option_changes"
+  ],
+  "_G_LLM_CD_RECHECK_IN_PROGRESS": [
+   "llm_wnd_on_devicechange"
+  ],
+  "_G_LLM_CFG_BLDG_FRAME_SPRITE_PREFIX": [
+   "cfg_final_building_Construct"
+  ],
+  "_G_LLM_CFG_BUILDING_BUILDER_ADD": [
+   "cfg_Init"
+  ],
+  "_G_LLM_CFG_BUILDING_BUILDER_MUL": [
+   "cfg_Init"
+  ],
+  "_G_LLM_CFG_BUILDING_BUILD_TIME_ADD": [
+   "cfg_Init"
+  ],
+  "_G_LLM_CFG_BUILDING_BUILD_TIME_MUL": [
+   "cfg_Init"
+  ],
+  "_G_LLM_CFG_BUILDING_ENERGY_ADD": [
+   "cfg_Init"
+  ],
+  "_G_LLM_CFG_BUILDING_ENERGY_MUL": [
+   "cfg_Init"
+  ],
+  "_G_LLM_CFG_BUILDING_HUMAN_ADD": [
+   "cfg_Init"
+  ],
+  "_G_LLM_CFG_BUILDING_HUMAN_MUL": [
+   "cfg_Init"
+  ],
+  "_G_LLM_CFG_BUILDING_POWER_ADD": [
+   "cfg_Init"
+  ],
+  "_G_LLM_CFG_BUILDING_POWER_MUL": [
+   "cfg_Init"
+  ],
+  "_G_LLM_CFG_BUILDING_SIGHT_ADD": [
+   "cfg_Init"
+  ],
+  "_G_LLM_CFG_BUILDING_SIGHT_MUL": [
+   "cfg_Init"
+  ],
+  "_G_LLM_CFG_UNIT_BUILD_TIME_ADD": [
+   "cfg_Init"
+  ],
+  "_G_LLM_CFG_UNIT_BUILD_TIME_MUL": [
+   "cfg_Init"
+  ],
+  "_G_LLM_CFG_UNIT_ENERGY_ADD": [
+   "cfg_Init"
+  ],
+  "_G_LLM_CFG_UNIT_ENERGY_MUL": [
+   "cfg_Init"
+  ],
+  "_G_LLM_CFG_UNIT_RESOURCE_ADD": [
+   "cfg_Init"
+  ],
+  "_G_LLM_CFG_UNIT_RESOURCE_MUL": [
+   "cfg_Init"
+  ],
+  "_G_LLM_CFG_UNIT_SIGHT_ADD": [
+   "cfg_Init"
+  ],
+  "_G_LLM_CFG_UNIT_SIGHT_MUL": [
+   "cfg_Init"
+  ],
+  "_G_LLM_CFG_UNIT_SPEED_ADD": [
+   "cfg_Init"
+  ],
+  "_G_LLM_CFG_UNIT_SPEED_MUL": [
+   "cfg_Init"
+  ],
+  "_G_LLM_CFG_WEAPON_POWER_ADD": [
+   "cfg_Init"
+  ],
+  "_G_LLM_CFG_WEAPON_POWER_MUL": [
+   "cfg_Init"
+  ],
+  "_G_LLM_CFG_WEAPON_TABLE_DYNAMIC_PTR": [
+   "cfg_Init"
+  ],
+  "_G_LLM_CFG_WEAPON_TABLE_STATIC_PTR": [
+   "cfg_Init"
+  ],
+  "_G_LLM_CHAT_HISTORY_CURSOR": [
+   "llm_chat_history_push",
+   "llm_chat_history_reset_cursor",
+   "llm_ui_chat_input_process_scancodes"
+  ],
+  "_G_LLM_CHAT_HISTORY_LINES": [
+   "llm_chat_history_push",
+   "llm_ui_chat_input_process_scancodes"
+  ],
+  "_G_LLM_CHAT_INPUT_ACTIVE": [
+   "game_SetEvent"
+  ],
+  "_G_LLM_CHAT_INPUT_CURSOR": [
+   "game_SetEvent",
+   "llm_ui_chat_input_backspace",
+   "llm_ui_chat_input_char_insert",
+   "llm_ui_chat_input_char_insert_unbounded",
+   "llm_ui_chat_input_erase_char",
+   "llm_ui_chat_input_process_scancodes"
+  ],
+  "_G_LLM_CHAT_INPUT_LEN": [
+   "game_SetEvent",
+   "llm_ui_chat_input_backspace",
+   "llm_ui_chat_input_char_insert",
+   "llm_ui_chat_input_char_insert_unbounded",
+   "llm_ui_chat_input_delete_at_cursor",
+   "llm_ui_chat_input_erase_char",
+   "llm_ui_chat_input_process_scancodes"
+  ],
+  "_G_LLM_CHAT_INPUT_WRITE_POS": [
+   "llm_net_chat_input_process",
+   "llm_strat_input_update"
+  ],
+  "_G_LLM_CHAT_MODE": [
+   "llm_net_chat_input_process",
+   "llm_strat_input_update"
+  ],
+  "_G_LLM_CHAT_TARGET_MASK": [
+   "llm_game_start_tutorial",
+   "llm_lobby_finalize_custom_map_and_sync",
+   "llm_net_chat_ally_mask_rebuild",
+   "llm_strat_session_begin_multi",
+   "llm_ui_chat_target_add",
+   "llm_ui_chat_target_remove"
+  ],
+  "_G_LLM_CHEATS_ENABLED": [
+   "llm_debug_console_dispatch"
+  ],
+  "_G_LLM_CHEAT_CMD_TABLE": [
+   "llm_game_cheats_table_init"
+  ],
+  "_G_LLM_CHEAT_MSG_CURSOR": [
+   "llm_debug_console_dispatch"
+  ],
+  "_G_LLM_CHEAT_PENALTY_SCORE": [
+   "llm_debug_console_dispatch",
+   "llm_strat_session_state_reset"
+  ],
+  "_G_LLM_CHEAT_SEL_BLDG_TYPE": [
+   "llm_debug_console_dispatch"
+  ],
+  "_G_LLM_CHEAT_SEL_UNIT_TYPE": [
+   "llm_debug_console_dispatch"
+  ],
+  "_G_LLM_CLICK_SELECT_TARGET_FLAGS": [
+   "llm_strat_selection_click_resolve"
+  ],
+  "_G_LLM_CLICK_SELECT_TARGET_ID": [
+   "llm_strat_bldg_unmap_footprint",
+   "llm_strat_selection_click_resolve",
+   "llm_strat_selection_drag_finish",
+   "llm_strat_unit_on_destroyed",
+   "llm_strat_unit_remove_from_map",
+   "llm_strat_unit_state_deploy_approach",
+   "llm_strat_unit_teardown",
+   "llm_strat_unit_teardown_mapped",
+   "llm_ui_click_select_target",
+   "llm_unit_ctrl_group_activate",
+   "map_FillDefaults"
+  ],
+  "_G_LLM_CRT_FD_HANDLE_TABLE": [
+   "__NTAddFileHandle",
+   "__NTAtMaxFiles",
+   "__NTInitFileHandles"
+  ],
+  "_G_LLM_CRT_WINMAIN_PTR": [
+   "entry"
+  ],
+  "_G_LLM_CURSOR_ANIM_ID": [
+   "llm_cursor_anim_tick"
+  ],
+  "_G_LLM_CURSOR_ANIM_STATES": [
+   "llm_cursor_anim_tick",
+   "llm_gfx_cursor_anim_init",
+   "llm_ui_main_menu_screen_load"
+  ],
+  "_G_LLM_CURSOR_DISPLAY_COUNT": [
+   "llm_wnd_on_activate",
+   "llm_wnd_on_create",
+   "llm_wnd_on_destroy"
+  ],
+  "_G_LLM_CURSOR_HOTSPOT_X": [
+   "gfx_LoadSprite"
+  ],
+  "_G_LLM_CURSOR_HOTSPOT_Y": [
+   "gfx_LoadSprite"
+  ],
+  "_G_LLM_CURSOR_ICON_HOLD_TIMER": [
+   "llm_strat_input_update"
+  ],
+  "_G_LLM_CURSOR_ICON_OVERRIDE": [
+   "llm_ui_frame_tick",
+   "llm_ui_hud_scroll_list_body_handler",
+   "llm_ui_icon_group_dispatch",
+   "llm_ui_scroll_list_autorepeat_tick"
+  ],
+  "_G_LLM_CURSOR_MENU_X": [
+   "llm_game_init_subsystems",
+   "llm_gfx_set_window_resolution",
+   "llm_map_zoom_translate_cursor",
+   "llm_ui_main_menu_screen_load",
+   "llm_ui_mouse_poll_next_event"
+  ],
+  "_G_LLM_CURSOR_MENU_Y": [
+   "llm_game_init_subsystems",
+   "llm_gfx_set_window_resolution",
+   "llm_map_zoom_translate_cursor",
+   "llm_ui_main_menu_screen_load",
+   "llm_ui_mouse_poll_next_event"
+  ],
+  "_G_LLM_CURSOR_OVL_PALETTES": [
+   "llm_gfx_cursor_overlay_set"
+  ],
+  "_G_LLM_CURSOR_OVL_PIXELS": [
+   "llm_gfx_cursor_overlay_set"
+  ],
+  "_G_LLM_CURSOR_PALETTE": [
+   "gfx_LoadSprite"
+  ],
+  "_G_LLM_CURSOR_VISIBLE": [
+   "llm_ui_hud_minimap_click_handler"
+  ],
+  "_G_LLM_CURSOR_WORLD_COL": [
+   "llm_pause_input_wait",
+   "llm_strat_input_update"
+  ],
+  "_G_LLM_CURSOR_WORLD_ROW": [
+   "llm_pause_input_wait",
+   "llm_strat_input_update"
+  ],
+  "_G_LLM_CURSOR_X": [
+   "llm_game_init_subsystems",
+   "llm_gfx_display_init",
+   "llm_gfx_set_window_resolution",
+   "llm_input_mouse_delta_pump",
+   "llm_map_zoom_translate_cursor",
+   "llm_ui_mouse_poll_next_event"
+  ],
+  "_G_LLM_CURSOR_Y": [
+   "llm_game_init_subsystems",
+   "llm_gfx_display_init",
+   "llm_gfx_set_window_resolution",
+   "llm_input_mouse_delta_pump",
+   "llm_map_zoom_translate_cursor",
+   "llm_ui_mouse_poll_next_event"
+  ],
+  "_G_LLM_CUR_DST_X": [
+   "llm_gfx_draw_cursor_ingame",
+   "llm_gfx_draw_cursor_menu",
+   "llm_gfx_draw_sprite",
+   "llm_gfx_draw_sprite_clipped_width",
+   "llm_gfx_draw_sprite_dark",
+   "llm_gfx_draw_sprite_rle",
+   "llm_gfx_draw_sprite_to_buffer",
+   "llm_gfx_draw_sprite_unclipped",
+   "llm_gfx_draw_sprite_v2"
+  ],
+  "_G_LLM_CUR_DST_Y": [
+   "llm_gfx_blit_sprite_rle_v2",
+   "llm_gfx_draw_cursor_ingame",
+   "llm_gfx_draw_cursor_menu",
+   "llm_gfx_draw_sprite",
+   "llm_gfx_draw_sprite_clipped_width",
+   "llm_gfx_draw_sprite_dark",
+   "llm_gfx_draw_sprite_rle",
+   "llm_gfx_draw_sprite_to_buffer",
+   "llm_gfx_draw_sprite_unclipped",
+   "llm_gfx_draw_sprite_v2"
+  ],
+  "_G_LLM_CUR_SPRITE_HDR": [
+   "llm_gfx_draw_cursor_ingame",
+   "llm_gfx_draw_cursor_menu",
+   "llm_gfx_draw_sprite",
+   "llm_gfx_draw_sprite_clipped_width",
+   "llm_gfx_draw_sprite_dark",
+   "llm_gfx_draw_sprite_rle",
+   "llm_gfx_draw_sprite_to_buffer",
+   "llm_gfx_draw_sprite_unclipped",
+   "llm_gfx_draw_sprite_v2"
+  ],
+  "_G_LLM_CUR_SPRITE_PALETTE": [
+   "llm_gfx_draw_cursor_ingame",
+   "llm_gfx_draw_cursor_menu",
+   "llm_gfx_draw_sprite",
+   "llm_gfx_draw_sprite_clipped_width",
+   "llm_gfx_draw_sprite_dark",
+   "llm_gfx_draw_sprite_rle",
+   "llm_gfx_draw_sprite_to_buffer",
+   "llm_gfx_draw_sprite_unclipped"
+  ],
+  "_G_LLM_CUR_TILE_LAYER": [
+   "llm_gfx_draw_cursor_ingame",
+   "llm_gfx_draw_sprite_rle",
+   "llm_gfx_draw_sprite_v2"
+  ],
+  "_G_LLM_DEBUG_TAP_FLAG": [
+   "llm_debug_console_dispatch",
+   "llm_strat_session_state_reset"
+  ],
+  "_G_LLM_DI_KEYBOARD_DEVICE": [
+   "llm_input_di_keyboard_destroy",
+   "llm_input_dinput_keyboard_init"
+  ],
+  "_G_LLM_DI_MOUSE_DEVICE": [
+   "llm_input_di_mouse_create",
+   "llm_input_dimouse_shutdown"
+  ],
+  "_G_LLM_DLG_STATE_FLAGS": [
+   "FUN_004baf42",
+   "FUN_004bc08a",
+   "FUN_004be7b1",
+   "FUN_004c1f67",
+   "FUN_004c316d",
+   "FUN_004c4311",
+   "llm_dlg_close_and_resume",
+   "llm_game_boot_init",
+   "llm_game_return_to_main_menu_cb",
+   "llm_game_shutdown_cleanup",
+   "llm_game_start_tutorial",
+   "llm_lobby_wait_dialog_open",
+   "llm_menu_begin_enter_gameplay",
+   "llm_menu_enter_gameplay",
+   "llm_menu_force_return_to_main",
+   "llm_menu_loadgame_confirm",
+   "llm_menu_loading_countdown_tick",
+   "llm_menu_ui_state_reset",
+   "llm_menu_widget_selection_reset",
+   "llm_net_lockstep_overlay_dismiss",
+   "llm_net_lockstep_sync_overlay_show",
+   "llm_net_lockstep_wait_player_overlay_show",
+   "llm_strat_planet_transition_error_dismiss",
+   "llm_strat_planet_transition_tick",
+   "llm_tutorial_step_driver",
+   "llm_ui_avi_close_return_to_menu",
+   "llm_ui_dlg_building_construction_status_open",
+   "llm_ui_dlg_building_info_close_cb",
+   "llm_ui_edit_field_modal_tick",
+   "llm_ui_entity_info_screen_close",
+   "llm_ui_entity_info_screen_open",
+   "llm_ui_main_menu_screen_load",
+   "llm_ui_menu_close_to_hud",
+   "llm_ui_menu_dialog_open_handler",
+   "llm_ui_menu_overlay_frame",
+   "llm_ui_menu_state_tick",
+   "llm_ui_menu_transition_settle",
+   "llm_ui_modal_key_pump",
+   "llm_ui_outcome_dialog",
+   "llm_ui_outcome_dlg_open",
+   "llm_ui_planet_select_frame_enter",
+   "llm_ui_planet_select_screen_build",
+   "llm_ui_screen_fade_transition_tick",
+   "llm_ui_text_viewer_open",
+   "llm_ui_text_viewer_tick"
+  ],
+  "_G_LLM_DRAG_SELECT_ANCHOR_COL": [
+   "llm_strat_input_update"
+  ],
+  "_G_LLM_DRAG_SELECT_ANCHOR_ROW": [
+   "llm_strat_input_update"
+  ],
+  "_G_LLM_FB_PITCH": [
+   "llm_gfx_surface_lock",
+   "llm_gfx_view_metrics_init"
+  ],
+  "_G_LLM_FOG_STENCILS_PTR": [
+   "llm_tact_view_metrics_init"
+  ],
+  "_G_LLM_FRAMEBUFFER": [
+   "llm_gfx_display_teardown",
+   "llm_gfx_surface_lock",
+   "llm_ui_menu_async_tick"
+  ],
+  "_G_LLM_GAME_ARGC": [
+   "llm_game_parse_cmdline"
+  ],
+  "_G_LLM_GAME_ARGV": [
+   "llm_game_parse_cmdline"
+  ],
+  "_G_LLM_GAME_BOOT_START_TICKS_MS": [
+   "llm_boot_progress_draw"
+  ],
+  "_G_LLM_GAME_CLOCK_ACCUM_TICKS": [
+   "llm_game_clock_reset",
+   "llm_game_clock_tick_update"
+  ],
+  "_G_LLM_GAME_CLOCK_COUNTDOWN_TICKS": [
+   "llm_game_clock_reset",
+   "llm_game_clock_tick_update"
+  ],
+  "_G_LLM_GAME_CLOCK_MS_PER_TICK": [
+   "llm_game_clock_reset"
+  ],
+  "_G_LLM_GAME_CLOCK_PAUSE_TICK": [
+   "llm_game_clock_pause",
+   "llm_game_clock_reset",
+   "llm_game_clock_resume",
+   "llm_game_clock_tick_update"
+  ],
+  "_G_LLM_GAME_CLOCK_PREV_RAW_TICK": [
+   "llm_game_clock_reset",
+   "llm_game_clock_resume",
+   "llm_game_clock_tick_update"
+  ],
+  "_G_LLM_GAME_CLOCK_RAW_TICKS": [
+   "llm_game_clock_reset",
+   "llm_game_clock_tick_update"
+  ],
+  "_G_LLM_GAME_CLOCK_RAW_TICK_NOW": [
+   "llm_game_clock_resume",
+   "llm_game_clock_tick_update"
+  ],
+  "_G_LLM_GAME_CLOCK_TICKS_PER_MS": [
+   "llm_game_clock_reset"
+  ],
+  "_G_LLM_GAME_HUMAN_PLAYER_MASK": [
+   "llm_game_player_set_ai",
+   "llm_game_player_set_human",
+   "llm_strat_session_state_reset"
+  ],
+  "_G_LLM_GAME_LAND_NO_START_UNIT_FLAG": [
+   "llm_game_land_players_on_planet"
+  ],
+  "_G_LLM_GAME_MODE": [
+   "llm_boot_stage_tick",
+   "llm_fatal_cleanup",
+   "llm_game_enter_menu_mode",
+   "llm_game_init_subsystems",
+   "llm_game_return_to_main_menu_cb",
+   "llm_game_shutdown_cleanup",
+   "llm_intro_frame",
+   "llm_menu_begin_enter_gameplay",
+   "llm_menu_campaign_start_and_enter",
+   "llm_menu_enter_gameplay",
+   "llm_menu_force_return_to_main",
+   "llm_net_lockstep_extend_ui_enter",
+   "llm_net_lockstep_overlay_dismiss",
+   "llm_net_lockstep_sync_overlay_show",
+   "llm_net_lockstep_wait_player_overlay_show",
+   "llm_net_mp_leave_reset_game_mode",
+   "llm_pause_input_wait",
+   "llm_strat_try_enter_tactical_mission",
+   "llm_tact_mission_end_return_to_strategic",
+   "llm_ui_dlg_building_construction_status_open",
+   "llm_ui_entity_info_screen_close",
+   "llm_ui_entity_info_screen_open",
+   "llm_ui_outcome_dialog",
+   "llm_ui_planet_select_screen_build"
+  ],
+  "_G_LLM_GAME_MODE_SAVED": [
+   "llm_net_lockstep_extend_ui_enter"
+  ],
+  "_G_LLM_GAME_MUSIC_ENABLED": [
+   "llm_debug_console_dispatch",
+   "llm_game_init_first_run_defaults"
+  ],
+  "_G_LLM_GAME_QUIT_REQUESTED": [
+   "llm_game_shutdown_cleanup"
+  ],
+  "_G_LLM_GAME_QUIT_TEARDOWN_FORCED_FLAG": [
+   "llm_game_return_to_main_menu_cb",
+   "llm_menu_force_return_to_main",
+   "llm_ui_dlg_confirm_quit_to_menu",
+   "llm_ui_dlg_confirm_quit_to_menu_alt"
+  ],
+  "_G_LLM_GAME_RUNNING": [
+   "WinMain",
+   "llm_wnd_on_activate",
+   "llm_wnd_on_create"
+  ],
+  "_G_LLM_GAME_SESSION_MODE": [
+   "llm_net_session_globals_reset",
+   "llm_strat_planet_session_begin",
+   "llm_strat_player_presence_lost",
+   "llm_strat_session_begin_multi"
+  ],
+  "_G_LLM_GAME_SPEED_PLAYER_FACTOR": [
+   "llm_game_speed_decrease",
+   "llm_game_speed_increase",
+   "llm_strat_player_param_defaults_init"
+  ],
+  "_G_LLM_GAME_TUTORIAL_STEP": [
+   "llm_game_return_to_main_menu_cb",
+   "llm_game_start_tutorial",
+   "llm_tutorial_step_driver",
+   "llm_ui_menu_close_to_hud"
+  ],
+  "_G_LLM_GFX_BANK_PALETTES": [
+   "llm_gfx_load_banks",
+   "llm_gfx_planet_bank_load"
+  ],
+  "_G_LLM_GFX_BANK_PALETTES_DARK": [
+   "llm_gfx_load_banks"
+  ],
+  "_G_LLM_GFX_BANK_PIXELS": [
+   "llm_gfx_load_banks",
+   "llm_gfx_planet_bank_load"
+  ],
+  "_G_LLM_GFX_BANK_PLANET_PIXEL_RESERVE": [
+   "llm_gfx_load_banks"
+  ],
+  "_G_LLM_GFX_BAR_SPRITE_FILL_COLOR": [
+   "llm_gfx_build_bar_sprite_rle"
+  ],
+  "_G_LLM_GFX_CUR_FONT_GLYPH_PTR_TABLE": [
+   "llm_gfx_font_select"
+  ],
+  "_G_LLM_GFX_DASHED_RECT_BOTTOM": [
+   "llm_gfx_dashed_rect_outline_set_and_draw",
+   "llm_tact_drag_box_clamp",
+   "llm_ui_map_drag_select_rect_draw"
+  ],
+  "_G_LLM_GFX_DASHED_RECT_LEFT": [
+   "llm_gfx_dashed_rect_outline_set_and_draw",
+   "llm_tact_drag_box_clamp",
+   "llm_ui_map_drag_select_rect_draw"
+  ],
+  "_G_LLM_GFX_DASHED_RECT_RIGHT": [
+   "llm_gfx_dashed_rect_outline_set_and_draw",
+   "llm_tact_drag_box_clamp",
+   "llm_ui_map_drag_select_rect_draw"
+  ],
+  "_G_LLM_GFX_DASHED_RECT_TOP": [
+   "llm_gfx_dashed_rect_outline_set_and_draw",
+   "llm_tact_drag_box_clamp",
+   "llm_ui_map_drag_select_rect_draw"
+  ],
+  "_G_LLM_GFX_DDRAW_CREATE_PROC": [
+   "llm_gfx_ddraw_dll_acquire",
+   "llm_gfx_ddraw_dll_release"
+  ],
+  "_G_LLM_GFX_DDRAW_DLL_MODULE": [
+   "llm_gfx_ddraw_dll_acquire",
+   "llm_gfx_ddraw_dll_release"
+  ],
+  "_G_LLM_GFX_DDRAW_DLL_REFCOUNT": [
+   "llm_gfx_ddraw_dll_acquire",
+   "llm_gfx_ddraw_dll_release"
+  ],
+  "_G_LLM_GFX_DIM_FLAG": [
+   "llm_tact_render_view"
+  ],
+  "_G_LLM_GFX_DISPLAY_MODE_DESC": [
+   "llm_gfx_set_window_resolution"
+  ],
+  "_G_LLM_GFX_DRAW_SURFACE": [
+   "llm_gfx_free_draw_buffers",
+   "llm_tact_gfx_init_view_surfaces"
+  ],
+  "_G_LLM_GFX_FOG_LOOKUP_COL": [
+   "llm_strat_render_view_metrics_refresh",
+   "llm_tact_tile_fog_set_origin"
+  ],
+  "_G_LLM_GFX_FOG_LOOKUP_ROW": [
+   "llm_strat_render_view_metrics_refresh",
+   "llm_tact_tile_fog_set_origin"
+  ],
+  "_G_LLM_GFX_FONT_GLYPH_PTR_TABLE": [
+   "llm_gfx_font_load"
+  ],
+  "_G_LLM_GFX_FONT_LINE_HEIGHT": [
+   "llm_gfx_font_select",
+   "llm_gfx_font_set_line_height"
+  ],
+  "_G_LLM_GFX_MARGIN_COL_FIRST": [
+   "llm_strat_render_view_metrics_refresh"
+  ],
+  "_G_LLM_GFX_MARGIN_TILES_W": [
+   "llm_strat_render_view_metrics_refresh"
+  ],
+  "_G_LLM_GFX_MARGIN_TILE_COUNT": [
+   "llm_strat_render_view_metrics_refresh"
+  ],
+  "_G_LLM_GFX_MARGIN_TILE_CURSOR": [
+   "llm_strat_render_view_metrics_refresh"
+  ],
+  "_G_LLM_GFX_PANEL_ROW_SKIP": [
+   "llm_gfx_view_metrics_init"
+  ],
+  "_G_LLM_GFX_POLALFA1_GLYPH_PTR": [
+   "llm_gfx_apply_resolution_change",
+   "llm_gfx_init_blend_luts",
+   "llm_tact_view_metrics_init"
+  ],
+  "_G_LLM_GFX_POLALFA2_GLYPH_PTR": [
+   "llm_gfx_apply_resolution_change",
+   "llm_gfx_init_blend_luts",
+   "llm_tact_view_metrics_init"
+  ],
+  "_G_LLM_GFX_RGB565_HALVE_MASK2": [
+   "llm_gfx_init_pixel_format"
+  ],
+  "_G_LLM_GFX_TEXT_LAYOUT_WIDTH": [
+   "llm_gfx_draw_glyph_to_framebuffer",
+   "llm_gfx_draw_glyph_to_surface",
+   "llm_gfx_font_layout_text",
+   "llm_ui_text_draw_wrapped_shadowed",
+   "llm_ui_wrapped_text_line_draw"
+  ],
+  "_G_LLM_GFX_TILE_DRAW_COL": [
+   "llm_strat_minimap_cam_goto",
+   "llm_strat_render_view_metrics_refresh",
+   "llm_tact_render_view"
+  ],
+  "_G_LLM_GFX_TILE_DRAW_FOG_HI": [
+   "llm_gfx_tile_fog_edge_lookup",
+   "llm_strat_render_view_metrics_refresh",
+   "llm_tact_render_view",
+   "llm_tact_tile_calc_fog_edge_shape",
+   "llm_tact_tile_fog_compute_edges"
+  ],
+  "_G_LLM_GFX_TILE_DRAW_FOG_LO": [
+   "llm_gfx_tile_fog_edge_lookup",
+   "llm_strat_minimap_cam_goto",
+   "llm_strat_render_view_metrics_refresh",
+   "llm_tact_render_view",
+   "llm_tact_tile_calc_fog_edge_shape",
+   "llm_tact_tile_fog_compute_edges"
+  ],
+  "_G_LLM_GFX_TILE_DRAW_ROW": [
+   "llm_strat_minimap_cam_goto",
+   "llm_strat_render_view_metrics_refresh",
+   "llm_tact_render_view"
+  ],
+  "_G_LLM_GFX_TILE_DRAW_TERRAIN_ID": [
+   "llm_strat_minimap_cam_goto",
+   "llm_strat_render_view_metrics_refresh",
+   "llm_tact_render_view",
+   "llm_ui_menu_async_tick",
+   "llm_ui_screen_fade_transition_tick"
+  ],
+  "_G_LLM_GFX_TILE_WRAP_MASK": [
+   "llm_strat_render_view_metrics_refresh"
+  ],
+  "_G_LLM_GFX_UI_CLIP_BOTTOM": [
+   "llm_gfx_display_init",
+   "llm_gfx_font_system_init",
+   "llm_ui_scroll_icon_list_draw"
+  ],
+  "_G_LLM_GFX_UI_CLIP_TOP": [
+   "llm_gfx_font_system_init",
+   "llm_ui_scroll_icon_list_draw"
+  ],
+  "_G_LLM_GFX_UI_COLORS_RGB": [
+   "FUN_004b975f",
+   "FUN_004b9b68",
+   "llm_menu_tutorial_uistate_restore",
+   "llm_tutorial_load_script",
+   "llm_tutorial_step_driver",
+   "llm_ui_menu_async_tick",
+   "llm_ui_text_viewer_open"
+  ],
+  "_G_LLM_GFX_UI_SPRITE_BASE_INDEX": [
+   "llm_ui_main_menu_screen_load"
+  ],
+  "_G_LLM_GFX_VIDEO_SURFACE": [
+   "llm_game_boot_init",
+   "llm_ui_avi_close_return_to_menu"
+  ],
+  "_G_LLM_GFX_VIDEO_SURFACE2": [
+   "llm_game_boot_init",
+   "llm_ui_avi_close_return_to_menu"
+  ],
+  "_G_LLM_GFX_VIEWPORT_RECT": [
+   "llm_game_boot_init"
+  ],
+  "_G_LLM_GFX_VIEWPORT_ROW_BYTES": [
+   "llm_gfx_view_metrics_init"
+  ],
+  "_G_LLM_GFX_VIEW_TILES_H": [
+   "llm_strat_render_view_metrics_refresh"
+  ],
+  "_G_LLM_GFX_VIEW_TILES_W": [
+   "llm_strat_render_view_metrics_refresh"
+  ],
+  "_G_LLM_GFX_VIEW_TILE_HEIGHT_PX": [
+   "llm_game_init_subsystems",
+   "llm_gfx_apply_resolution_change",
+   "llm_tact_mission_start"
+  ],
+  "_G_LLM_HEAP_FREE_ROVER": [
+   "CRT_004f212a",
+   "utils_free"
+  ],
+  "_G_LLM_HITTEST_HIT": [
+   "llm_gfx_hittest_begin",
+   "llm_gfx_hittest_check",
+   "llm_gfx_hittest_check_blit",
+   "llm_gfx_sprite_rle_row_skip_hittest"
+  ],
+  "_G_LLM_HITTEST_PIXEL_PTR": [
+   "llm_gfx_hittest_begin"
+  ],
+  "_G_LLM_HITTEST_SAVED_PIXEL": [
+   "llm_gfx_hittest_begin"
+  ],
+  "_G_LLM_HIT_LIST": [
+   "llm_gfx_hittest_add_candidate",
+   "llm_strat_render_view"
+  ],
+  "_G_LLM_HIT_LIST_COUNT": [
+   "llm_gfx_hittest_add_candidate",
+   "llm_strat_render_view"
+  ],
+  "_G_LLM_HIT_LIST_PREV": [
+   "llm_strat_render_view"
+  ],
+  "_G_LLM_HIT_LIST_PREV_COUNT": [
+   "llm_strat_render_view"
+  ],
+  "_G_LLM_INPUT_DI_MOUSE_ACCEL_THRESHOLD": [
+   "FUN_004d1144",
+   "llm_input_mouse_init"
+  ],
+  "_G_LLM_INPUT_DI_MOUSE_DIVISOR": [
+   "FUN_004d1144",
+   "llm_input_mouse_init"
+  ],
+  "_G_LLM_INPUT_KEY_EVENTS": [
+   "llm_input_di_keyboard_poll",
+   "llm_input_key_dequeue",
+   "llm_input_wndproc_tap"
+  ],
+  "_G_LLM_INPUT_KEY_READ_IDX": [
+   "llm_input_key_dequeue",
+   "llm_input_keystate_reset"
+  ],
+  "_G_LLM_INPUT_KEY_WRITE_IDX": [
+   "llm_input_di_keyboard_poll",
+   "llm_input_keystate_reset",
+   "llm_input_wndproc_tap"
+  ],
+  "_G_LLM_INPUT_MOUSE_DELTA_X": [
+   "llm_input_mouse_delta_pump"
+  ],
+  "_G_LLM_INPUT_MOUSE_DELTA_Y": [
+   "llm_input_mouse_delta_pump"
+  ],
+  "_G_LLM_INPUT_MOUSE_EVENTS": [
+   "llm_input_di_mouse_poll",
+   "llm_input_mouse_pop_event",
+   "llm_input_wndproc_tap"
+  ],
+  "_G_LLM_INPUT_MOUSE_LAST_X": [
+   "llm_input_di_mouse_poll",
+   "llm_input_mouse_init",
+   "llm_input_wndproc_tap"
+  ],
+  "_G_LLM_INPUT_MOUSE_LAST_Y": [
+   "llm_input_di_mouse_poll",
+   "llm_input_mouse_init",
+   "llm_input_wndproc_tap"
+  ],
+  "_G_LLM_INPUT_MOUSE_READ_IDX": [
+   "llm_input_mouse_pop_event"
+  ],
+  "_G_LLM_INPUT_MOUSE_WRITE_IDX": [
+   "llm_input_di_mouse_poll",
+   "llm_input_wndproc_tap"
+  ],
+  "_G_LLM_INPUT_RSHIFT_SNAPSHOT": [
+   "llm_strat_input_update"
+  ],
+  "_G_LLM_INPUT_TIME_EPOCH": [
+   "llm_game_clock_reset",
+   "llm_game_clock_resume"
+  ],
+  "_G_LLM_INTRO_FRAME_INIT_DONE": [
+   "llm_intro_frame"
+  ],
+  "_G_LLM_LMB_DOWN_T_CUR": [
+   "llm_strat_input_update"
+  ],
+  "_G_LLM_LMB_DOWN_T_PREV": [
+   "llm_strat_input_update"
+  ],
+  "_G_LLM_LOBBY_AI_DEFAULT_NAME": [
+   "llm_lobby_peer_table_add_ai"
+  ],
+  "_G_LLM_LOBBY_DIRTY_FLAG": [
+   "llm_lobby_host_net_dispatch",
+   "llm_lobby_slot_color_cycle_cb",
+   "llm_lobby_slot_cycle_state_cb",
+   "llm_lobby_slot_race_cycle_cb"
+  ],
+  "_G_LLM_LOBBY_INTRO_WAIT_SHOWN": [
+   "llm_lobby_host_net_dispatch"
+  ],
+  "_G_LLM_LOBBY_KICK_PENDING_SLOT": [
+   "llm_lobby_host_net_dispatch",
+   "llm_lobby_kick_player_confirm_cb",
+   "llm_ui_dlg_lobby_kick_confirm_trigger"
+  ],
+  "_G_LLM_LOBBY_LOCAL_SLOT_INDEX": [
+   "llm_lobby_build_slot_widgets"
+  ],
+  "_G_LLM_LOBBY_MAP_CHUNK_RECEIVED": [
+   "llm_lobby_host_net_dispatch"
+  ],
+  "_G_LLM_LOBBY_MAP_FILE": [
+   "llm_lobby_host_net_dispatch",
+   "llm_lobby_map_file_close"
+  ],
+  "_G_LLM_LOBBY_MAP_STATUS_LINE": [
+   "llm_lobby_clear_map_status_text"
+  ],
+  "_G_LLM_LOBBY_MAP_SUMMARY_LINE": [
+   "llm_lobby_clear_map_status_text"
+  ],
+  "_G_LLM_LOBBY_MAP_XFER_ACTIVE_COUNT": [
+   "llm_lobby_host_net_dispatch",
+   "llm_lobby_map_send_tick"
+  ],
+  "_G_LLM_LOBBY_PEER_TABLE": [
+   "llm_lobby_peer_slot_remove",
+   "llm_lobby_peer_table_add_ai"
+  ],
+  "_G_LLM_LOBBY_PEER_TABLE_COUNT": [
+   "llm_lobby_peer_table_add_ai"
+  ],
+  "_G_LLM_LOBBY_READY_COUNT": [
+   "llm_lobby_host_net_dispatch"
+  ],
+  "_G_LLM_LOBBY_RX_CRC32_COMPUTED": [
+   "llm_net_poll_recv"
+  ],
+  "_G_LLM_LOBBY_RX_PACKET_LEN": [
+   "llm_net_poll_recv"
+  ],
+  "_G_LLM_LOBBY_RX_SENDER_SLOT": [
+   "llm_lobby_host_net_dispatch",
+   "llm_net_poll_recv"
+  ],
+  "_G_LLM_LOBBY_RX_TYPE": [
+   "llm_lobby_host_net_dispatch"
+  ],
+  "_G_LLM_LOBBY_SELECTED_SESSION_STATE": [
+   "llm_lobby_apply_selected_session_map",
+   "llm_lobby_host_new_game_start",
+   "llm_lobby_join_handler",
+   "llm_mp_create_game_action",
+   "llm_mp_discovery_browser_refresh"
+  ],
+  "_G_LLM_LOBBY_SLOTS": [
+   "llm_lobby_build_players_tail_copy",
+   "llm_lobby_ensure_unique_slot_name",
+   "llm_lobby_host_net_dispatch",
+   "llm_lobby_push_local_slot_state",
+   "llm_lobby_slot_assign_color",
+   "llm_lobby_slot_color_cycle_cb",
+   "llm_lobby_slot_compact",
+   "llm_lobby_slot_cycle_state_cb",
+   "llm_lobby_slot_mark_occupied",
+   "llm_lobby_slot_race_cycle_cb"
+  ],
+  "_G_LLM_LOBBY_SLOT_WIDGET_PTRS": [
+   "llm_lobby_build_slot_widgets",
+   "llm_lobby_slot_widget_list_clear"
+  ],
+  "_G_LLM_LOBBY_STATE_SNAPSHOT": [
+   "llm_lobby_host_net_dispatch",
+   "llm_lobby_map_load_async_step"
+  ],
+  "_G_LLM_LOBBY_WIDGETS_BUILT": [
+   "llm_lobby_host_net_dispatch"
+  ],
+  "_G_LLM_LOBBY_WIDGETS_COL2": [
+   "llm_lobby_map_send_tick",
+   "llm_lobby_map_transfer_write_chunk"
+  ],
+  "_G_LLM_LZW_ENC_DICT_SIZE": [
+   "LZW_Compress",
+   "llm_lzw_encode_core"
+  ],
+  "_G_LLM_LZW_ENC_NEXT_CHAR": [
+   "LZW_Compress"
+  ],
+  "_G_LLM_MAP_BFS_QUEUE_REGIONSPLIT": [
+   "llm_map_region_split"
+  ],
+  "_G_LLM_MAP_CAM_COL": [
+   "llm_map_cam_set_col",
+   "llm_tact_cam_follow_selection_tick",
+   "llm_tact_camera_center_on_tile",
+   "llm_tact_frame",
+   "llm_tact_mission_load",
+   "llm_tact_mission_start",
+   "llm_tact_render_view",
+   "llm_tact_ui_order_buttons_minimap_tick",
+   "llm_tact_ui_sel_panel_multi_mode_tick"
+  ],
+  "_G_LLM_MAP_CAM_ROW": [
+   "llm_map_cam_set_row",
+   "llm_tact_cam_follow_selection_tick",
+   "llm_tact_camera_center_on_tile",
+   "llm_tact_frame",
+   "llm_tact_mission_load",
+   "llm_tact_mission_start",
+   "llm_tact_render_view",
+   "llm_tact_ui_order_buttons_minimap_tick",
+   "llm_tact_ui_sel_panel_multi_mode_tick"
+  ],
+  "_G_LLM_MAP_LOAD_FILE_HANDLE": [
+   "cfg_ReadMapFile",
+   "llm_cfg_map_read_header",
+   "llm_map_load_loose_fallback",
+   "llm_map_readfile_loose_fallback"
+  ],
+  "_G_LLM_MAP_OBJECTS": [
+   "llm_map_load_objects"
+  ],
+  "_G_LLM_MAP_OBJECT_TABLE": [
+   "llm_map_load_halfres_plane"
+  ],
+  "_G_LLM_MAP_REGION_BY_INDEX": [
+   "llm_map_load_regions",
+   "llm_map_region_free",
+   "map_block_8_GetNextBlock"
+  ],
+  "_G_LLM_MAP_REGION_COORD_WRAP_MASK": [
+   "llm_map_build_regions"
+  ],
+  "_G_LLM_MAP_REGION_FLOOD_TILE_QUEUE": [
+   "llm_map_region_bfs_reachable_flood",
+   "llm_map_region_flood_reachable"
+  ],
+  "_G_LLM_MAP_REGION_GRID": [
+   "__Nan_Inf",
+   "llm_map_assign_remaining_tiles_to_regions",
+   "llm_map_build_regions",
+   "llm_map_compute_obstacle_proximity_flags",
+   "llm_map_load_regions",
+   "llm_map_merge_small_regions",
+   "llm_map_region_apply_area",
+   "llm_map_region_bfs_reachable_flood",
+   "llm_map_region_flood_fill",
+   "llm_map_region_flood_reachable",
+   "llm_map_region_split",
+   "map_ApplyAreaToMap"
+  ],
+  "_G_LLM_MAP_REGION_LIST_HEAD": [
+   "llm_map_build_regions",
+   "llm_map_load_regions",
+   "llm_map_region_free",
+   "llm_map_seed_regions_multires",
+   "map_block_8_GetNextBlock"
+  ],
+  "_G_LLM_MAP_REGION_MERGE_THRESHOLD": [
+   "llm_map_compute_region_merge_threshold"
+  ],
+  "_G_LLM_MAP_REGION_POOL_FREE_HEAD": [
+   "llm_map_load_regions",
+   "llm_map_region_free",
+   "llm_map_region_pool_reset",
+   "llm_map_seed_regions_multires",
+   "map_block_8_GetNextBlock"
+  ],
+  "_G_LLM_MAP_REGION_ROUTE_BFS_QUEUE": [
+   "llm_map_region_find_route"
+  ],
+  "_G_LLM_MAP_REGION_ROUTE_CAND_SCRATCH": [
+   "llm_map_region_route_search"
+  ],
+  "_G_LLM_MAP_REGION_ROUTE_STEP_DELTAS": [
+   "llm_map_init_region_route_step_deltas"
+  ],
+  "_G_LLM_MAP_REGION_ROUTE_STEP_DELTA_WRAP": [
+   "llm_map_init_region_route_step_deltas"
+  ],
+  "_G_LLM_MAP_VIEWPORT_DIRTY_FLAG": [
+   "llm_map_cam_mark_viewport_dirty"
+  ],
+  "_G_LLM_MAP_ZOOM_SCALE_X": [
+   "llm_map_set_zoom_scale",
+   "llm_map_zoom_scale_x_dec",
+   "llm_map_zoom_scale_x_inc"
+  ],
+  "_G_LLM_MAP_ZOOM_SCALE_Y": [
+   "llm_map_set_zoom_scale",
+   "llm_map_zoom_scale_y_dec",
+   "llm_map_zoom_scale_y_inc"
+  ],
+  "_G_LLM_MENU_NEWGAME_INTRO_VIDEO_PATH": [
+   "llm_menu_race_select_cb"
+  ],
+  "_G_LLM_MENU_PENDING_BUILD_PLACEMENT_ID": [
+   "llm_menu_begin_enter_gameplay",
+   "llm_menu_build_placement_pending_clear",
+   "llm_menu_campaign_start_and_enter",
+   "llm_menu_enter_gameplay",
+   "llm_menu_finish_enter_gameplay"
+  ],
+  "_G_LLM_MENU_SAVE_NAME_PTR": [
+   "FUN_004bb78d",
+   "llm_menu_savelist_select_name"
+  ],
+  "_G_LLM_MINIMAP_CLICK_COL": [
+   "llm_ui_hud_minimap_click_handler"
+  ],
+  "_G_LLM_MINIMAP_CLICK_VALID": [
+   "llm_strat_input_update",
+   "llm_ui_hud_minimap_click_handler"
+  ],
+  "_G_LLM_MINIMAP_TERRAIN_COLOR_MODE": [
+   "llm_strat_input_update"
+  ],
+  "_G_LLM_MOUSE_BUTTONS_CUR": [
+   "llm_pause_input_wait",
+   "llm_strat_input_update",
+   "llm_tact_frame"
+  ],
+  "_G_LLM_MOUSE_BUTTONS_PREV": [
+   "llm_pause_input_wait",
+   "llm_strat_input_update",
+   "map_FillDefaults"
+  ],
+  "_G_LLM_MP_GAME_NAME": [
+   "llm_game_check_setup_dat_exists",
+   "llm_game_init_first_run_defaults"
+  ],
+  "_G_LLM_MP_NETSETUP_MRU_ACTIVE_FIELD": [
+   "llm_mp_netsetup_field_build_mru"
+  ],
+  "_G_LLM_MP_NET_MODE": [
+   "llm_mp_connect_by_ip_action",
+   "llm_mp_create_game_action",
+   "llm_mp_local_browser_setup"
+  ],
+  "_G_LLM_MP_PLAYER_NAME": [
+   "llm_game_check_setup_dat_exists",
+   "llm_game_init_first_run_defaults"
+  ],
+  "_G_LLM_MP_PROBE_SERVER_COUNT": [
+   "llm_net_session_globals_reset"
+  ],
+  "_G_LLM_NET_ACTIVE_PLAYER_COUNT": [
+   "llm_net_lockstep_count_active_players"
+  ],
+  "_G_LLM_NET_BW_STAT": [
+   "DEAD_net_bwstat_accum_0049e8ea",
+   "llm_strat_session_state_reset"
+  ],
+  "_G_LLM_NET_IS_HOST": [
+   "llm_net_session_globals_reset"
+  ],
+  "_G_LLM_NET_LOBBY_MAP_RECV_DONE": [
+   "llm_net_session_globals_reset"
+  ],
+  "_G_LLM_NET_LOBBY_SCAN_HOST_COUNT": [
+   "llm_net_lobby_scan_state_reset",
+   "llm_net_lockstep_dispatch",
+   "llm_net_session_globals_reset",
+   "llm_strat_time_tick"
+  ],
+  "_G_LLM_NET_LOBBY_SCAN_SESSION_COUNT": [
+   "llm_net_lobby_scan_state_reset"
+  ],
+  "_G_LLM_NET_LOBBY_SESSION_LIST": [
+   "llm_lobby_host_net_dispatch",
+   "llm_net_session_list_merge_refresh"
+  ],
+  "_G_LLM_NET_LOBBY_SESSION_LIST_COUNT": [
+   "llm_net_session_list_merge_refresh"
+  ],
+  "_G_LLM_NET_LOCAL_HOSTNAME": [
+   "llm_net_get_local_ip_string"
+  ],
+  "_G_LLM_NET_LOCAL_IP_COUNT": [
+   "llm_net_get_local_ip_string"
+  ],
+  "_G_LLM_NET_LOCAL_PLAYER_INDEX": [
+   "llm_net_session_globals_reset"
+  ],
+  "_G_LLM_NET_LOCAL_PLAYER_SLOT": [
+   "llm_net_session_globals_reset"
+  ],
+  "_G_LLM_NET_LOCKSTEP_OVERLAY_RESULT": [
+   "FUN_004c7bd4",
+   "llm_net_lockstep_sync_overlay_show",
+   "llm_net_lockstep_wait_player_overlay_show"
+  ],
+  "_G_LLM_NET_LOCKSTEP_PEER_STATE": [
+   "llm_net_lockstep_broadcast_player_leave",
+   "llm_net_lockstep_dispatch",
+   "llm_net_lockstep_reset_player_horizon",
+   "llm_net_lockstep_send_horizon_ack",
+   "llm_net_lockstep_send_horizon_desync"
+  ],
+  "_G_LLM_NET_LOCKSTEP_PEER_TIMEOUT_ELAPSED": [
+   "llm_net_lockstep_broadcast_player_leave",
+   "llm_net_session_globals_reset",
+   "llm_strat_time_tick"
+  ],
+  "_G_LLM_NET_LOCKSTEP_PEER_TIMING": [
+   "llm_net_lockstep_peer_timing_reset",
+   "llm_net_lockstep_record_peer_horizon"
+  ],
+  "_G_LLM_NET_LOCKSTEP_PLAYER_COUNT": [
+   "llm_net_lockstep_dispatch",
+   "llm_net_session_globals_reset",
+   "llm_strat_time_tick"
+  ],
+  "_G_LLM_NET_LOCKSTEP_RESYNC_DEADLINE_MS": [
+   "llm_net_lockstep_force_resync"
+  ],
+  "_G_LLM_NET_LOCKSTEP_RESYNC_TRIGGER_COUNT": [
+   "llm_net_lockstep_dispatch",
+   "llm_net_lockstep_force_resync",
+   "llm_net_send_lockstep_keepalive",
+   "llm_net_session_globals_reset"
+  ],
+  "_G_LLM_NET_LOCKSTEP_STALL_NAG_COUNT": [
+   "llm_net_lockstep_dispatch",
+   "llm_net_session_globals_reset",
+   "llm_strat_time_tick"
+  ],
+  "_G_LLM_NET_LOCKSTEP_STATUS_FLAGS": [
+   "llm_net_lockstep_broadcast_player_leave",
+   "llm_net_lockstep_dispatch",
+   "llm_net_lockstep_send_horizon_ack",
+   "llm_net_lockstep_send_horizon_desync",
+   "llm_net_lockstep_send_slot_reset",
+   "llm_strat_order_queue_dispatch",
+   "llm_strat_time_tick",
+   "llm_wait_screen_frame"
+  ],
+  "_G_LLM_NET_LOCKSTEP_SYNC_RETRY_COUNTDOWN": [
+   "FUN_004c7b8a",
+   "llm_net_session_globals_reset",
+   "llm_strat_time_tick"
+  ],
+  "_G_LLM_NET_LOCKSTEP_SYNC_WAIT_ELAPSED": [
+   "FUN_004c7b8a",
+   "llm_net_session_globals_reset",
+   "llm_strat_time_tick"
+  ],
+  "_G_LLM_NET_LOCKSTEP_WAIT_PLAYER_IDX": [
+   "llm_menu_loading_countdown_tick",
+   "llm_net_lockstep_overlay_dismiss",
+   "llm_net_lockstep_wait_player_overlay_show"
+  ],
+  "_G_LLM_NET_PEER_HORIZON": [
+   "llm_net_lockstep_broadcast_player_leave",
+   "llm_net_lockstep_dispatch",
+   "llm_net_lockstep_reset_player_horizon",
+   "llm_strat_player_param_defaults_init"
+  ],
+  "_G_LLM_NET_PEER_HORIZON_PENDING": [
+   "llm_net_lockstep_broadcast_player_leave",
+   "llm_net_lockstep_dispatch",
+   "llm_net_lockstep_reset_player_horizon",
+   "llm_strat_player_param_defaults_init"
+  ],
+  "_G_LLM_NET_RESYNC_IN_PROGRESS": [
+   "llm_net_lockstep_dispatch",
+   "llm_net_lockstep_force_resync",
+   "llm_net_session_globals_reset",
+   "llm_wait_screen_frame"
+  ],
+  "_G_LLM_NET_SEND_BUF": [
+   "llm_net_chat_send_all",
+   "llm_net_chat_send_team",
+   "llm_net_lockstep_broadcast_player_leave",
+   "llm_net_lockstep_broadcast_resync_state",
+   "llm_net_lockstep_dispatch",
+   "llm_net_lockstep_send_horizon_ack",
+   "llm_net_lockstep_send_horizon_desync",
+   "llm_net_lockstep_send_presence_lost",
+   "llm_net_lockstep_send_slot_reset",
+   "llm_net_player_remove",
+   "llm_net_player_remove_timeout",
+   "llm_net_send_lockstep_ctrl_sub2",
+   "llm_net_send_lockstep_extend",
+   "llm_net_send_lockstep_keepalive",
+   "llm_net_send_lockstep_kick",
+   "llm_net_send_lockstep_peer_horizon",
+   "llm_net_send_lockstep_rate_scale",
+   "llm_net_send_lockstep_resync_resume",
+   "llm_net_send_lockstep_step_size",
+   "llm_net_send_order"
+  ],
+  "_G_LLM_NET_SEND_BUF_CURSOR": [
+   "llm_net_chat_send_all",
+   "llm_net_chat_send_team",
+   "llm_net_lockstep_broadcast_player_leave",
+   "llm_net_lockstep_broadcast_resync_state",
+   "llm_net_lockstep_send_horizon_ack",
+   "llm_net_lockstep_send_horizon_desync",
+   "llm_net_lockstep_send_presence_lost",
+   "llm_net_lockstep_send_slot_reset",
+   "llm_net_player_remove",
+   "llm_net_player_remove_timeout",
+   "llm_net_send_buf_flush",
+   "llm_net_send_lockstep_ctrl_sub2",
+   "llm_net_send_lockstep_extend",
+   "llm_net_send_lockstep_keepalive",
+   "llm_net_send_lockstep_kick",
+   "llm_net_send_lockstep_peer_horizon",
+   "llm_net_send_lockstep_rate_scale",
+   "llm_net_send_lockstep_resync_resume",
+   "llm_net_send_lockstep_step_size",
+   "llm_net_send_order",
+   "llm_net_session_globals_reset"
+  ],
+  "_G_LLM_NET_SESSION_COUNT": [
+   "llm_net_session_globals_reset"
+  ],
+  "_G_LLM_NET_SYNC_WAIT_ACTIVE": [
+   "llm_net_session_globals_reset",
+   "llm_strat_time_tick"
+  ],
+  "_G_LLM_PANEL_REFRESH_RETRY": [
+   "llm_ui_frame_tick",
+   "llm_ui_hud_scroll_list_body_handler"
+  ],
+  "_G_LLM_PF_EXPAND_PROGRESS": [
+   "llm_pf_expand_step",
+   "llm_pf_expand_wavefront"
+  ],
+  "_G_LLM_PF_GENERATION": [
+   "llm_pf_seed_goals"
+  ],
+  "_G_LLM_PF_GOAL_REACHED": [
+   "llm_pf_expand_step",
+   "llm_pf_run"
+  ],
+  "_G_LLM_PF_RESOLUTION_MASK_BYTE": [
+   "llm_pf_select_resolution"
+  ],
+  "_G_LLM_PLANET_SEL_FLC": [
+   "llm_ui_planet_select_screen_build"
+  ],
+  "_G_LLM_PLANET_SEL_FOCUS_X": [
+   "llm_ui_planet_select_screen_build"
+  ],
+  "_G_LLM_PLANET_SEL_FOCUS_Y": [
+   "llm_ui_planet_select_screen_build"
+  ],
+  "_G_LLM_PLANET_SEL_OPEN_ARG": [
+   "llm_ui_planet_select_screen_open"
+  ],
+  "_G_LLM_PLANET_SEL_SCREEN_OPEN": [
+   "llm_dlg_close_and_resume",
+   "llm_ui_planet_select_screen_build"
+  ],
+  "_G_LLM_PLANET_SEL_WIDGETS": [
+   "llm_strat_ui_shuttle_colonist_status_list_build",
+   "llm_ui_planet_select_screen_build"
+  ],
+  "_G_LLM_PLANET_SEL_WIDGET_CANCEL": [
+   "FUN_004c4311",
+   "llm_dlg_close_and_resume",
+   "llm_ui_planet_select_screen_build"
+  ],
+  "_G_LLM_PLANET_SEL_WIDGET_PTRS": [
+   "llm_ui_planet_select_screen_build"
+  ],
+  "_G_LLM_PLANET_SEL_WIDGET_PTRS_BEGIN": [
+   "llm_ui_planet_select_screen_build"
+  ],
+  "_G_LLM_PLANET_SEL_WIDGET_PTRS_END": [
+   "llm_strat_ui_shuttle_colonist_status_list_build",
+   "llm_ui_planet_select_screen_build"
+  ],
+  "_G_LLM_PLANET_TLO_THUMBNAIL_2X2_PTR": [
+   "FUN_00455260",
+   "llm_planet_tlo_thumbnail_init"
+  ],
+  "_G_LLM_PLANET_TLO_THUMBNAIL_4X4_PTR": [
+   "FUN_00455260",
+   "llm_planet_tlo_thumbnail_init"
+  ],
+  "_G_LLM_PLANET_TLO_THUMBNAIL_PTR": [
+   "FUN_00455260",
+   "llm_planet_tlo_thumbnail_init"
+  ],
+  "_G_LLM_PLANET_TLO_TILE_COUNT": [
+   "llm_planet_tlo_load"
+  ],
+  "_G_LLM_PLANET_TRANSITION_TICK": [
+   "llm_strat_planet_transition_tick",
+   "llm_ui_planet_select_frame_enter"
+  ],
+  "_G_LLM_PLAYER_CONTROL_MASK": [
+   "llm_game_start_tutorial",
+   "llm_lobby_finalize_custom_map_and_sync",
+   "llm_strat_order_set_player_control_mode",
+   "llm_strat_session_state_reset"
+  ],
+  "_G_LLM_PROD_SHUTTLE_SLOTS": [
+   "llm_prod_bldg_depart_finalize",
+   "llm_prod_shuttle_depart",
+   "llm_prod_shuttle_fuel_check",
+   "llm_prod_shuttle_load_passengers",
+   "llm_prod_shuttle_load_resource",
+   "llm_prod_shuttle_slot_bind_default",
+   "llm_prod_shuttle_unload_passengers",
+   "llm_prod_shuttle_unload_resource",
+   "llm_strat_bldg_flush_cargo_hold",
+   "llm_strat_bldg_state_to_unit",
+   "llm_strat_prod_bind_planet",
+   "llm_strat_prod_set_transfer_destination",
+   "llm_strat_prod_shuttle_slot_release",
+   "llm_strat_prod_spawn_arrived_unit",
+   "llm_strat_prod_unbind_planet",
+   "llm_strat_prod_unload_cargo_unit",
+   "llm_strat_production_complete",
+   "llm_strat_unit_load_into_shuttle_cargo",
+   "llm_strat_unit_state_deploy_to_building",
+   "llm_strat_unit_state_production_ready"
+  ],
+  "_G_LLM_RGB565_HALVE_MASK": [
+   "llm_gfx_init_pixel_format"
+  ],
+  "_G_LLM_RMB_DBLCLICK_T_CUR": [
+   "llm_strat_input_update"
+  ],
+  "_G_LLM_RMB_DBLCLICK_T_PREV": [
+   "llm_strat_input_update"
+  ],
+  "_G_LLM_RSR_SOURCE_MODE": [
+   "llm_boot_progress_draw"
+  ],
+  "_G_LLM_SHARED_EMPTY_WSTRING": [
+   "llm_cfg_text_ptrs_reset"
+  ],
+  "_G_LLM_SND_AMBIENT_BY_PLANET": [
+   "llm_snd_ambient_add",
+   "llm_snd_ambient_init_tables",
+   "llm_snd_ambient_planet_clone",
+   "llm_snd_ambient_reseed_planet_event_times",
+   "llm_snd_ambient_tick"
+  ],
+  "_G_LLM_SND_CFG_TABLE": [
+   "llm_snd_load_sound_cfg"
+  ],
+  "_G_LLM_SND_CFG_TABLE_COUNT": [
+   "llm_snd_load_sound_cfg"
+  ],
+  "_G_LLM_SND_CHANNEL_NEXT_RETRIGGER_TIME": [
+   "llm_snd_stop_all_channels",
+   "llm_tact_ambient_sound_tick",
+   "llm_tact_fx_play_sound"
+  ],
+  "_G_LLM_SND_ENABLED": [
+   "llm_debug_console_dispatch",
+   "llm_game_init_first_run_defaults",
+   "llm_game_reload_snapshot_resync_clocks"
+  ],
+  "_G_LLM_SND_MASTER_VOLUME": [
+   "llm_game_init_first_run_defaults"
+  ],
+  "_G_LLM_SND_MUSIC_VOLUME_PCT": [
+   "llm_game_init_first_run_defaults"
+  ],
+  "_G_LLM_SND_USE_DSOUND_BACKEND": [
+   "llm_snd_dsound_backend_init",
+   "llm_snd_dsound_backend_release"
+  ],
+  "_G_LLM_SND_VOICE_FORMAT_SCRATCH": [
+   "llm_snd_channel_configure_voice_and_play"
+  ],
+  "_G_LLM_SPRITE_PIX_OFFSETS": [
+   "llm_gfx_build_bar_sprite_rle",
+   "llm_gfx_load_banks",
+   "llm_gfx_load_planet_extra_sprite_banks",
+   "llm_gfx_load_sprite_bank_files",
+   "llm_gfx_planet_bank_load",
+   "llm_tact_gfx_load_banks_alt"
+  ],
+  "_G_LLM_SQUAD_BB_SCAN_PLAYER": [
+   "llm_strat_bldg_gather_nearby_squad_status"
+  ],
+  "_G_LLM_SQUAD_BB_TARGET_BUILDING_ID": [
+   "llm_strat_bldg_gather_nearby_squad_status"
+  ],
+  "_G_LLM_SQUAD_BB_TARGET_BUILDING_IDX": [
+   "llm_strat_bldg_gather_nearby_squad_status"
+  ],
+  "_G_LLM_SQUAD_BB_TARGET_ENERGY_PCT": [
+   "llm_strat_bldg_gather_nearby_squad_status",
+   "llm_tact_scroll_target_proximity_tick"
+  ],
+  "_G_LLM_SQUAD_BB_TARGET_OWNER": [
+   "llm_strat_bldg_gather_nearby_squad_status"
+  ],
+  "_G_LLM_SQUAD_STATUS": [
+   "llm_strat_bldg_gather_nearby_squad_status",
+   "llm_tact_squad_sync_hp"
+  ],
+  "_G_LLM_SQUAD_STATUS_COUNT": [
+   "llm_strat_bldg_gather_nearby_squad_status"
+  ],
+  "_G_LLM_STATUS_LINE_TEXT_BUF": [
+   "llm_ui_hud_topbar_tick"
+  ],
+  "_G_LLM_STRAT_ADVISOR_NEXT_TIME": [
+   "llm_strat_advisor_tick",
+   "llm_strat_invasion_alert_reset_all"
+  ],
+  "_G_LLM_STRAT_ADVISOR_PHASE": [
+   "llm_strat_advisor_tick"
+  ],
+  "_G_LLM_STRAT_AI_ACTIVE_PLAYER_COUNT": [
+   "llm_strat_init_human_player_data",
+   "llm_strat_planet_map_session_init",
+   "llm_strat_spawn_ai_base",
+   "llm_strat_spawn_invasion_force"
+  ],
+  "_G_LLM_STRAT_AI_ATTACK_CANDIDATES": [
+   "llm_strat_ai_active_unit_tick",
+   "llm_strat_ai_attack_candidate_add"
+  ],
+  "_G_LLM_STRAT_AI_ATTACK_CANDIDATE_COUNT": [
+   "llm_strat_ai_active_unit_tick",
+   "llm_strat_ai_attack_candidate_add"
+  ],
+  "_G_LLM_STRAT_AI_ATTACK_HQ_UNIT_ID": [
+   "llm_strat_ai_start_hq_attack_scenario"
+  ],
+  "_G_LLM_STRAT_AI_BUILDING_CANDIDATE_SCRATCH_COUNT": [
+   "llm_strat_ai_group_collect_buildings_of_types",
+   "llm_strat_ai_group_task_attack_random_target"
+  ],
+  "_G_LLM_STRAT_AI_BUILDING_CANDIDATE_SCRATCH_LIST": [
+   "llm_strat_ai_group_collect_buildings_of_types"
+  ],
+  "_G_LLM_STRAT_AI_ENABLED": [
+   "FUN_004b845e",
+   "llm_strat_ai_start_hq_attack_scenario",
+   "llm_tutorial_step_driver"
+  ],
+  "_G_LLM_STRAT_AI_ENGAGE_CANDIDATE_SCRATCH": [
+   "llm_strat_ai_engage_candidate_add",
+   "llm_strat_ai_engage_filter_and_commit_target",
+   "llm_strat_ai_engage_partition_turret_candidates",
+   "llm_strat_ai_engage_rank_candidates_by_range",
+   "llm_strat_ai_engage_select_and_commit",
+   "llm_strat_ai_engage_sort_candidates_by_dist"
+  ],
+  "_G_LLM_STRAT_AI_ENGAGE_CANDIDATE_SCRATCH_COUNT": [
+   "llm_strat_ai_engage_candidate_add",
+   "llm_strat_ai_engage_filter_and_commit_target",
+   "llm_strat_ai_engage_select_and_commit",
+   "llm_strat_ai_group_dispatch_action_flags",
+   "llm_strat_ai_unit_select_attack_target",
+   "llm_strat_unit_passive_engage_tick"
+  ],
+  "_G_LLM_STRAT_AI_EXPAND_SITE_COUNT": [
+   "llm_strat_ai_scan_construction_sites"
+  ],
+  "_G_LLM_STRAT_AI_EXPAND_SITE_X": [
+   "llm_strat_ai_scan_construction_sites"
+  ],
+  "_G_LLM_STRAT_AI_EXPAND_SITE_Y": [
+   "llm_strat_ai_scan_construction_sites"
+  ],
+  "_G_LLM_STRAT_AI_FOREIGN_BLDG_CHANGE_FLAG": [
+   "llm_strat_bldg_completion_dispatch",
+   "llm_strat_session_state_reset"
+  ],
+  "_G_LLM_STRAT_AI_GRID_WRAP_MASK": [
+   "llm_scan_masked_table_for_empty_cell",
+   "llm_strat_ai_grid_flood_step",
+   "llm_strat_ai_grid_match_stencil",
+   "llm_strat_ai_grid_stamp_seeds",
+   "llm_strat_ai_grid_stamp_threat_ring",
+   "llm_strat_ai_grid_stencil_all_near_unthreatened"
+  ],
+  "_G_LLM_STRAT_AI_GROUP_UNIT_SCRATCH_COUNT": [
+   "llm_strat_ai_group_reposition_members",
+   "llm_strat_ai_group_task_advance_to_anchor",
+   "llm_strat_ai_group_task_disperse_passable"
+  ],
+  "_G_LLM_STRAT_AI_GROUP_UNIT_SCRATCH_LIST": [
+   "llm_strat_ai_group_reposition_members",
+   "llm_strat_ai_group_task_advance_to_anchor",
+   "llm_strat_ai_group_task_disperse_passable"
+  ],
+  "_G_LLM_STRAT_AI_MINE_REBALANCE_MIN_COUNT": [
+   "llm_strat_ai_plan_mine_construction"
+  ],
+  "_G_LLM_STRAT_AI_MINE_ROSTER_INDEX": [
+   "llm_strat_ai_mine_portfolio_rebalance"
+  ],
+  "_G_LLM_STRAT_AI_MINE_YIELD_ESTIMATE": [
+   "llm_strat_ai_mine_portfolio_rebalance"
+  ],
+  "_G_LLM_STRAT_AI_SCAN_TARGETS": [
+   "llm_strat_ai_active_unit_tick",
+   "llm_strat_ai_build_target_list",
+   "llm_strat_ai_collect_group_scan_targets",
+   "llm_strat_ai_collect_unclaimed_scan_targets",
+   "llm_strat_ai_group_scan_building_targets",
+   "llm_strat_ai_scan_target_list_add"
+  ],
+  "_G_LLM_STRAT_AI_SCAN_TARGET_COUNT": [
+   "llm_strat_ai_active_unit_tick",
+   "llm_strat_ai_scan_target_list_add"
+  ],
+  "_G_LLM_STRAT_AI_SITE_CANDIDATES": [
+   "llm_strat_ai_bldg_scan_grid_candidates",
+   "llm_strat_ai_bldg_scan_resource_site_candidates",
+   "llm_strat_ai_scan_build_site_candidates",
+   "llm_strat_ai_sort_site_candidates_by_dist"
+  ],
+  "_G_LLM_STRAT_AI_SITE_CANDIDATE_COUNT": [
+   "llm_strat_ai_bldg_production_type_dispatch",
+   "llm_strat_ai_bldg_scan_grid_candidates",
+   "llm_strat_ai_bldg_scan_resource_site_candidates",
+   "llm_strat_ai_scan_build_site_candidates"
+  ],
+  "_G_LLM_STRAT_AI_SPREAD_TILES": [
+   "llm_strat_ai_group_reposition_members"
+  ],
+  "_G_LLM_STRAT_AI_SPREAD_TILE_COUNT": [
+   "llm_strat_ai_group_reposition_members"
+  ],
+  "_G_LLM_STRAT_AI_TARGET_SCRATCH_COUNT": [
+   "llm_strat_ai_build_target_list"
+  ],
+  "_G_LLM_STRAT_AI_TILE_SPIRAL_CELL_COUNT": [
+   "llm_strat_ai_spiral_table_init"
+  ],
+  "_G_LLM_STRAT_AI_TILE_SPIRAL_OFFSETS": [
+   "llm_strat_ai_spiral_table_init"
+  ],
+  "_G_LLM_STRAT_AI_TILE_SPIRAL_RING_CELL_COUNTS": [
+   "llm_strat_ai_spiral_table_init"
+  ],
+  "_G_LLM_STRAT_ANIM_FRAME_PARITY": [
+   "llm_strat_render_view"
+  ],
+  "_G_LLM_STRAT_ANIM_FRAME_PHASE": [
+   "llm_strat_render_docked_unit_air",
+   "llm_strat_render_docked_unit_ground",
+   "llm_strat_render_unit_sprite",
+   "llm_strat_render_view"
+  ],
+  "_G_LLM_STRAT_BLDG_CELL_GRID": [
+   "llm_strat_bldg_recompute_cell_grid"
+  ],
+  "_G_LLM_STRAT_BLDG_CELL_GRID_ROW_SHIFT": [
+   "llm_strat_bldg_recompute_cell_grid"
+  ],
+  "_G_LLM_STRAT_BLDG_COMPLETION_ACCUM": [
+   "llm_strat_bldg_completion_dispatch",
+   "llm_strat_session_state_reset"
+  ],
+  "_G_LLM_STRAT_BLDG_COMPLETION_SLOT_COUNT": [
+   "llm_strat_session_state_reset"
+  ],
+  "_G_LLM_STRAT_BLDG_DONE_FUNCS": [
+   "llm_bldg_register_done_callback"
+  ],
+  "_G_LLM_STRAT_BLDG_ENCLOSURE_SCRATCH": [
+   "llm_strat_bldg_check_placement_encloses_neighbors"
+  ],
+  "_G_LLM_STRAT_BLDG_STATE_FUNCS": [
+   "llm_strat_set_bldg_state_handler"
+  ],
+  "_G_LLM_STRAT_BLDG_TICK2_FUNCS": [
+   "llm_bldg_register_tick2_callback"
+  ],
+  "_G_LLM_STRAT_BUILD_PREVIEW_SUPPRESS_FLAG": [
+   "llm_strat_input_update",
+   "map_LoadPlanetFromDisk"
+  ],
+  "_G_LLM_STRAT_CAM_PAN_TARGET_COL": [
+   "llm_cam_center_on_ctrl_group",
+   "llm_cam_pan_to_building",
+   "llm_cam_pan_to_target",
+   "llm_strat_advisor_tick",
+   "llm_strat_bldg_kill_credit",
+   "llm_strat_bldg_state_construction",
+   "llm_strat_bldg_state_destroyed",
+   "llm_strat_bldg_state_mine_check_deposits",
+   "llm_strat_bldg_state_prod_working",
+   "llm_strat_bldg_state_researching",
+   "llm_strat_bldg_state_upgrading",
+   "llm_strat_planet_transition_finalize",
+   "llm_strat_production_complete",
+   "llm_strat_session_state_reset",
+   "llm_strat_unit_kill_credit"
+  ],
+  "_G_LLM_STRAT_CAM_PAN_TARGET_ROW": [
+   "llm_cam_center_on_ctrl_group",
+   "llm_cam_pan_to_building",
+   "llm_cam_pan_to_target",
+   "llm_strat_advisor_tick",
+   "llm_strat_bldg_kill_credit",
+   "llm_strat_bldg_state_construction",
+   "llm_strat_bldg_state_destroyed",
+   "llm_strat_bldg_state_mine_check_deposits",
+   "llm_strat_bldg_state_prod_working",
+   "llm_strat_bldg_state_researching",
+   "llm_strat_bldg_state_upgrading",
+   "llm_strat_production_complete",
+   "llm_strat_unit_kill_credit"
+  ],
+  "_G_LLM_STRAT_CAM_SCROLL_OFFSET_COL": [
+   "llm_map_cam_set_col"
+  ],
+  "_G_LLM_STRAT_CAM_SCROLL_OFFSET_ROW": [
+   "llm_map_cam_set_row"
+  ],
+  "_G_LLM_STRAT_CHAT_INPUT_LINE": [
+   "game_SetEvent",
+   "llm_net_chat_input_process",
+   "llm_strat_input_update",
+   "llm_ui_chat_input_backspace",
+   "llm_ui_chat_input_char_insert",
+   "llm_ui_chat_input_char_insert_unbounded",
+   "llm_ui_chat_input_delete_at_cursor",
+   "llm_ui_chat_input_erase_char",
+   "llm_ui_chat_input_process_scancodes"
+  ],
+  "_G_LLM_STRAT_CTRL_GROUPS": [
+   "llm_game_land_players_on_planet",
+   "llm_strat_bldg_try_begin_placement",
+   "llm_strat_prod_deliver_arrivals",
+   "llm_strat_selection_click_resolve",
+   "llm_strat_selection_drag_finish",
+   "llm_strat_unit_ctrlgroup_add_member",
+   "llm_strat_unit_ctrlgroup_leave",
+   "llm_strat_unit_ctrlgroup_remove_member",
+   "llm_ui_bldg_owned_tab_process_events",
+   "llm_ui_click_select_target",
+   "llm_ui_hud_unassigned_unit_row_click_handler",
+   "llm_unit_ctrl_group_activate",
+   "llm_unit_ctrl_group_flash_observer",
+   "map_FillDefaults"
+  ],
+  "_G_LLM_STRAT_CUR_BUILDING": [
+   "llm_strat_advisor_tick",
+   "llm_strat_sim_step"
+  ],
+  "_G_LLM_STRAT_CUR_FX_ANIM": [
+   "llm_strat_sim_step"
+  ],
+  "_G_LLM_STRAT_CUR_INDEX": [
+   "llm_strat_advisor_tick",
+   "llm_strat_sim_step"
+  ],
+  "_G_LLM_STRAT_CUR_PLAYER": [
+   "llm_strat_advisor_tick",
+   "llm_strat_sim_step"
+  ],
+  "_G_LLM_STRAT_CUR_PROJECTILE": [
+   "llm_strat_sim_step"
+  ],
+  "_G_LLM_STRAT_CUR_UNIT": [
+   "llm_strat_sim_step"
+  ],
+  "_G_LLM_STRAT_DEATH_ANIM_TABLE": [
+   "cfg_ConstructAnims"
+  ],
+  "_G_LLM_STRAT_DEBUG_RESOURCE_YIELD_CUT": [
+   "llm_strat_player_presence_lost",
+   "llm_strat_session_state_reset"
+  ],
+  "_G_LLM_STRAT_DIR8_OFFSET_TABLE": [
+   "llm_strat_dir8_offsets_init"
+  ],
+  "_G_LLM_STRAT_DIR_REMAP_TABLE": [
+   "llm_strat_dir_neighbor_table_init"
+  ],
+  "_G_LLM_STRAT_DIR_STEP_OFFSET_TABLE": [
+   "llm_strat_unit_facing_offset_init"
+  ],
+  "_G_LLM_STRAT_FACING_STEP_SIGN": [
+   "llm_strat_unit_facing_offset_init"
+  ],
+  "_G_LLM_STRAT_FACING_TRIG_TABLE": [
+   "llm_strat_unit_facing_offset_init"
+  ],
+  "_G_LLM_STRAT_FLOATING_MSG_COLOR": [
+   "game_ui_AddTextToPrintQueue",
+   "llm_net_chat_input_process",
+   "llm_strat_input_update",
+   "llm_ui_print_floating_msg_cyan",
+   "llm_ui_print_floating_msg_red"
+  ],
+  "_G_LLM_STRAT_FLOATING_MSG_QUEUE_ACTIVE": [
+   "game_ui_AddTextToPrintQueue",
+   "llm_cfg_text_ptrs_reset",
+   "llm_net_chat_input_process",
+   "llm_net_lockstep_dispatch",
+   "llm_strat_advisor_tick",
+   "llm_strat_bldg_try_begin_placement",
+   "llm_strat_input_update",
+   "llm_strat_sim_tick"
+  ],
+  "_G_LLM_STRAT_FLOATING_MSG_SUPPRESS_FLAG": [
+   "llm_strat_session_state_reset"
+  ],
+  "_G_LLM_STRAT_FOREIGN_BLDG_EVENT_PENDING": [
+   "llm_strat_bldg_completion_dispatch",
+   "map_CreateBuilding",
+   "map_FillDefaults"
+  ],
+  "_G_LLM_STRAT_FPS_ESTIMATE": [
+   "llm_strat_time_tick"
+  ],
+  "_G_LLM_STRAT_FRAME_TIME_RING": [
+   "llm_strat_time_tick"
+  ],
+  "_G_LLM_STRAT_FRAME_TIME_RING_IDX": [
+   "llm_strat_time_tick"
+  ],
+  "_G_LLM_STRAT_FX_ANIMS": [
+   "llm_fx_anim_seq_cancel",
+   "llm_strat_fx_anim_spawn",
+   "llm_strat_fx_anim_tick"
+  ],
+  "_G_LLM_STRAT_GAME_CLOCK": [
+   "SwitchToPlanet",
+   "llm_game_reload_snapshot_resync_clocks",
+   "llm_strat_advance_sim_clock",
+   "llm_strat_session_state_reset",
+   "llm_strat_sim_clock_advance",
+   "llm_strat_sim_tick"
+  ],
+  "_G_LLM_STRAT_GROUP_ANCHOR_X": [
+   "llm_strat_group_move_order_commit"
+  ],
+  "_G_LLM_STRAT_GROUP_ANCHOR_Y": [
+   "llm_strat_group_move_order_commit"
+  ],
+  "_G_LLM_STRAT_GROUP_CENTROID_X": [
+   "llm_strat_group_move_order_pathfind"
+  ],
+  "_G_LLM_STRAT_GROUP_CENTROID_Y": [
+   "llm_strat_group_move_order_pathfind"
+  ],
+  "_G_LLM_STRAT_GROUP_MEMBERS": [
+   "llm_strat_group_move_order_commit"
+  ],
+  "_G_LLM_STRAT_GROUP_MEMBER_COUNT": [
+   "llm_strat_group_move_order_commit"
+  ],
+  "_G_LLM_STRAT_GROUP_MEMBER_TILE": [
+   "llm_strat_group_move_order_pathfind",
+   "llm_strat_group_plan_formation_positions"
+  ],
+  "_G_LLM_STRAT_GROUP_MOVE_DIST_HALF_HEIGHT": [
+   "llm_strat_pathfind_route_leg_group_and_sort"
+  ],
+  "_G_LLM_STRAT_GROUP_MOVE_DIST_HALF_WIDTH": [
+   "llm_strat_pathfind_route_leg_group_and_sort"
+  ],
+  "_G_LLM_STRAT_GROUP_MOVE_DIST_REF_X": [
+   "llm_strat_pathfind_route_leg_group_and_sort"
+  ],
+  "_G_LLM_STRAT_GROUP_MOVE_DIST_REF_Y": [
+   "llm_strat_pathfind_route_leg_group_and_sort"
+  ],
+  "_G_LLM_STRAT_GROUP_MOVE_SCRATCH": [
+   "llm_strat_claim_free_slots_within_dist",
+   "llm_strat_group_formation_trim_far_members",
+   "llm_strat_group_move_order_commit",
+   "llm_strat_group_move_order_pathfind",
+   "llm_strat_group_move_register_member",
+   "llm_strat_group_scratch_add_unit_and_normalize_heading",
+   "llm_strat_pathfind_route_leg_group_and_sort",
+   "llm_strat_pathfind_route_leg_reconcile",
+   "llm_strat_unit_state_group_marshal"
+  ],
+  "_G_LLM_STRAT_GROUP_ORDER_GOAL_X": [
+   "llm_strat_group_move_order_commit",
+   "llm_strat_group_move_order_pathfind"
+  ],
+  "_G_LLM_STRAT_GROUP_ORDER_GOAL_Y": [
+   "llm_strat_group_move_order_commit",
+   "llm_strat_group_move_order_pathfind"
+  ],
+  "_G_LLM_STRAT_GROUP_ORDER_OWNER": [
+   "llm_strat_group_move_order_commit"
+  ],
+  "_G_LLM_STRAT_GROUP_PATH_BUILD_IDX": [
+   "llm_strat_group_move_order_pathfind",
+   "llm_strat_group_path_step_append",
+   "llm_strat_group_path_step_record"
+  ],
+  "_G_LLM_STRAT_GROUP_ROUTE_STEPS": [
+   "llm_strat_group_move_order_commit",
+   "llm_strat_group_move_order_pathfind"
+  ],
+  "_G_LLM_STRAT_GROUP_STEP_HEADING_REMAP": [
+   "llm_strat_group_step_heading_table_init"
+  ],
+  "_G_LLM_STRAT_HEADING_CANDIDATE_TABLE": [
+   "llm_strat_group_step_heading_table_init"
+  ],
+  "_G_LLM_STRAT_INJECTED_MAP_PLANET_SLOT": [
+   "llm_game_start_tutorial",
+   "llm_lobby_finalize_custom_map_and_sync"
+  ],
+  "_G_LLM_STRAT_INVASION_ALERT_TIME": [
+   "llm_strat_invasion_alert_arm",
+   "llm_strat_invasion_alert_clear",
+   "llm_strat_invasion_alert_poll"
+  ],
+  "_G_LLM_STRAT_INVASION_TIME": [
+   "game_HandleInvasion",
+   "llm_strat_invasion_due_check",
+   "llm_strat_session_state_reset"
+  ],
+  "_G_LLM_STRAT_INVENTION_NAME_PLACEHOLDER": [
+   "llm_strat_tech_tables_reset"
+  ],
+  "_G_LLM_STRAT_LANDING_SPOTS": [
+   "llm_map_load_landing_spots",
+   "llm_strat_claim_landing_spot",
+   "llm_strat_landing_spots_reroll_out_of_bounds"
+  ],
+  "_G_LLM_STRAT_LOCAL_PLAYER_SLOT": [
+   "llm_strat_planet_session_begin"
+  ],
+  "_G_LLM_STRAT_LOCKSTEP_ADAPT_NEXT_TIME": [
+   "llm_debug_console_dispatch",
+   "llm_net_lockstep_dispatch",
+   "llm_net_session_globals_reset",
+   "llm_strat_session_begin_multi",
+   "llm_strat_time_tick"
+  ],
+  "_G_LLM_STRAT_LOCKSTEP_COMMITTED_HORIZON": [
+   "llm_net_lockstep_commit_horizon",
+   "llm_net_session_globals_reset"
+  ],
+  "_G_LLM_STRAT_LOCKSTEP_HORIZON": [
+   "llm_net_lockstep_dispatch",
+   "llm_net_lockstep_extend_if_near_horizon",
+   "llm_net_lockstep_force_resync",
+   "llm_net_lockstep_pump",
+   "llm_net_session_globals_reset",
+   "llm_strat_input_update",
+   "llm_strat_order_queue_dispatch",
+   "llm_strat_order_schedule",
+   "llm_strat_time_tick"
+  ],
+  "_G_LLM_STRAT_LOCKSTEP_STALL_COUNT": [
+   "llm_debug_console_dispatch",
+   "llm_net_lockstep_dispatch",
+   "llm_net_session_globals_reset",
+   "llm_strat_time_tick"
+  ],
+  "_G_LLM_STRAT_LOCKSTEP_STEP_MULT": [
+   "llm_strat_session_state_reset"
+  ],
+  "_G_LLM_STRAT_LOCKSTEP_STEP_SIZE": [
+   "llm_debug_console_dispatch",
+   "llm_net_lockstep_dispatch",
+   "llm_net_session_globals_reset",
+   "llm_strat_time_tick"
+  ],
+  "_G_LLM_STRAT_MINIMAP_COORD_WRAP_MASK": [
+   "llm_strat_minimap_render"
+  ],
+  "_G_LLM_STRAT_MINIMAP_CURSOR_TILE": [
+   "llm_strat_minimap_render"
+  ],
+  "_G_LLM_STRAT_MINIMAP_FULLMAP_FLAG": [
+   "llm_strat_minimap_frame"
+  ],
+  "_G_LLM_STRAT_MINIMAP_ORIGIN_COL": [
+   "llm_strat_minimap_frame"
+  ],
+  "_G_LLM_STRAT_MINIMAP_ORIGIN_ROW": [
+   "llm_strat_minimap_frame"
+  ],
+  "_G_LLM_STRAT_MINIMAP_RENDER_PHASE": [
+   "llm_strat_minimap_render"
+  ],
+  "_G_LLM_STRAT_MINIMAP_VIEWPORT_BOX_H": [
+   "llm_strat_minimap_frame"
+  ],
+  "_G_LLM_STRAT_MINIMAP_VIEWPORT_BOX_OFS": [
+   "llm_strat_minimap_frame"
+  ],
+  "_G_LLM_STRAT_MINIMAP_VIEWPORT_BOX_W": [
+   "llm_strat_minimap_frame"
+  ],
+  "_G_LLM_STRAT_MINIMAP_ZOOM_MODE": [
+   "llm_map_set_minimap_zoom_for_size",
+   "llm_ui_hud_minimap_zoom_dec_handler",
+   "llm_ui_hud_minimap_zoom_inc_handler"
+  ],
+  "_G_LLM_STRAT_MOVE_MICROSTEPS": [
+   "llm_strat_microstep_build_row"
+  ],
+  "_G_LLM_STRAT_MP_ALLY_VICTORY_RULE_FLAG": [
+   "llm_strat_planet_session_begin",
+   "llm_strat_session_begin_multi"
+  ],
+  "_G_LLM_STRAT_ORDER_ACK_VOICE_LAST_PLAY_TIME": [
+   "llm_strat_group_order_ack_voice"
+  ],
+  "_G_LLM_STRAT_ORDER_ACK_VOICE_SUPPRESSED_COUNT": [
+   "llm_strat_group_order_ack_voice"
+  ],
+  "_G_LLM_STRAT_ORDER_PENDING": [
+   "llm_strat_order_pending_enqueue",
+   "llm_strat_order_release_due",
+   "llm_strat_order_schedule"
+  ],
+  "_G_LLM_STRAT_ORDER_PENDING_COUNT": [
+   "llm_strat_order_pending_enqueue",
+   "llm_strat_order_release_due",
+   "llm_strat_order_schedule",
+   "map_FillDefaults"
+  ],
+  "_G_LLM_STRAT_ORDER_QUEUE": [
+   "llm_strat_order_enqueue",
+   "llm_strat_order_queue_apply_and_dequeue",
+   "llm_strat_order_queue_dispatch",
+   "llm_strat_order_release_due",
+   "llm_strat_unit_state_hover_engage"
+  ],
+  "_G_LLM_STRAT_ORDER_QUEUE_COUNT": [
+   "llm_strat_order_enqueue",
+   "llm_strat_order_queue_apply_and_dequeue",
+   "llm_strat_order_queue_dispatch",
+   "llm_strat_order_release_due",
+   "map_FillDefaults"
+  ],
+  "_G_LLM_STRAT_ORDER_SCRATCH_ARGS": [
+   "llm_strat_order_scratch_reset",
+   "llm_strat_order_scratch_set_field"
+  ],
+  "_G_LLM_STRAT_ORDER_SEQ_ID_BY_PLAYER": [
+   "llm_strat_ai_group_move_formation_rotating",
+   "llm_strat_group_issue_move_order_confirmed",
+   "llm_strat_group_issue_move_order_deferred",
+   "llm_strat_unit_order_exit_storage",
+   "llm_strat_unit_order_exit_storage_enqueue"
+  ],
+  "_G_LLM_STRAT_ORDER_STAGING": [
+   "llm_strat_order_schedule",
+   "llm_strat_order_stage_scheduled"
+  ],
+  "_G_LLM_STRAT_ORDER_STAGING_COUNT": [
+   "llm_strat_order_schedule",
+   "llm_strat_order_stage_scheduled",
+   "map_FillDefaults"
+  ],
+  "_G_LLM_STRAT_OUTER_PLANET_LANDED_FLAG": [
+   "llm_game_land_players_on_planet",
+   "llm_strat_session_state_reset"
+  ],
+  "_G_LLM_STRAT_OUTER_PLANET_LAND_STATE": [
+   "llm_game_land_players_on_planet",
+   "llm_strat_session_state_reset"
+  ],
+  "_G_LLM_STRAT_PATHFINDER_AIR_MODE_FLAG": [
+   "llm_strat_trace_greedy_path",
+   "llm_strat_unit_group_step_ground",
+   "llm_strat_unit_group_step_plane"
+  ],
+  "_G_LLM_STRAT_PATHFIND_OCCUPANCY_SNAPSHOT": [
+   "llm_strat_pathfind_path_list_compact_all"
+  ],
+  "_G_LLM_STRAT_PATHFIND_UNIT_COLROW": [
+   "llm_strat_pathfind_dispatch_route_order"
+  ],
+  "_G_LLM_STRAT_PATHTRACE_APPROACH_DIR": [
+   "llm_strat_trace_greedy_path"
+  ],
+  "_G_LLM_STRAT_PATHTRACE_BEST_DIR": [
+   "llm_strat_trace_greedy_path"
+  ],
+  "_G_LLM_STRAT_PATHTRACE_BEST_DIST": [
+   "llm_strat_trace_greedy_path"
+  ],
+  "_G_LLM_STRAT_PATHTRACE_COL_MASK": [
+   "llm_strat_trace_greedy_path"
+  ],
+  "_G_LLM_STRAT_PATHTRACE_COORD_MASK": [
+   "llm_strat_trace_greedy_path"
+  ],
+  "_G_LLM_STRAT_PATHTRACE_DIRS": [
+   "llm_strat_pathtrace_normalize_repeat_dir_table",
+   "llm_strat_pathtrace_remove_loops",
+   "llm_strat_trace_greedy_path"
+  ],
+  "_G_LLM_STRAT_PATHTRACE_FORBID_CELLS": [
+   "llm_strat_trace_greedy_path"
+  ],
+  "_G_LLM_STRAT_PATHTRACE_GOAL_COL": [
+   "llm_strat_trace_greedy_path"
+  ],
+  "_G_LLM_STRAT_PATHTRACE_GOAL_PACKED": [
+   "llm_strat_trace_greedy_path"
+  ],
+  "_G_LLM_STRAT_PATHTRACE_GOAL_ROW": [
+   "llm_strat_trace_greedy_path"
+  ],
+  "_G_LLM_STRAT_PATHTRACE_HALF_H": [
+   "llm_strat_trace_greedy_path"
+  ],
+  "_G_LLM_STRAT_PATHTRACE_HALF_H_M1": [
+   "llm_strat_trace_greedy_path"
+  ],
+  "_G_LLM_STRAT_PATHTRACE_HALF_W": [
+   "llm_strat_trace_greedy_path"
+  ],
+  "_G_LLM_STRAT_PATHTRACE_HALF_W_M1": [
+   "llm_strat_trace_greedy_path"
+  ],
+  "_G_LLM_STRAT_PATHTRACE_LEN": [
+   "llm_strat_pathtrace_remove_loops",
+   "llm_strat_trace_greedy_path"
+  ],
+  "_G_LLM_STRAT_PATHTRACE_MAP_H": [
+   "llm_strat_trace_greedy_path"
+  ],
+  "_G_LLM_STRAT_PATHTRACE_MAP_W": [
+   "llm_strat_trace_greedy_path"
+  ],
+  "_G_LLM_STRAT_PATHTRACE_NEG_HALF_H": [
+   "llm_strat_trace_greedy_path"
+  ],
+  "_G_LLM_STRAT_PATHTRACE_NEG_HALF_W": [
+   "llm_strat_trace_greedy_path"
+  ],
+  "_G_LLM_STRAT_PATHTRACE_POS": [
+   "llm_strat_pathtrace_normalize_repeat_dir_table",
+   "llm_strat_pathtrace_remove_loops",
+   "llm_strat_trace_greedy_path"
+  ],
+  "_G_LLM_STRAT_PATHTRACE_ROW_MASK": [
+   "llm_strat_trace_greedy_path"
+  ],
+  "_G_LLM_STRAT_PATHTRACE_START_COL": [
+   "llm_strat_trace_greedy_path"
+  ],
+  "_G_LLM_STRAT_PATHTRACE_START_ROW": [
+   "llm_strat_trace_greedy_path"
+  ],
+  "_G_LLM_STRAT_PATHTRACE_WALK_DIR": [
+   "llm_strat_trace_greedy_path"
+  ],
+  "_G_LLM_STRAT_PATH_BUFFERS": [
+   "llm_strat_group_move_order_pathfind",
+   "llm_strat_group_path_step_append",
+   "llm_strat_group_path_step_record",
+   "llm_strat_group_plan_formation_positions",
+   "llm_strat_path_make_single_step",
+   "llm_strat_path_write_from_solver",
+   "llm_strat_pathfind_build_steps",
+   "llm_strat_storage_setup_approach_path",
+   "llm_strat_storage_setup_exit_path",
+   "llm_strat_unit_assign_path_from_job_result",
+   "llm_strat_unit_assign_shared_path",
+   "llm_strat_unit_path_detour",
+   "llm_strat_unit_path_encode_directions",
+   "llm_strat_unit_path_queue_splice",
+   "llm_strat_unit_path_store_result",
+   "llm_strat_unit_state_move_walker",
+   "llm_strat_unit_state_plot_turn_path",
+   "llm_tact_move_path_build",
+   "llm_tact_move_step_attempt",
+   "llm_tact_unit_move_advance"
+  ],
+  "_G_LLM_STRAT_PATH_FREE_SLOT_COUNT": [
+   "llm_strat_path_attach_slot",
+   "llm_strat_path_free_slot",
+   "map_FillDefaults"
+  ],
+  "_G_LLM_STRAT_PATH_JOB_RESULT_TABLE": [
+   "llm_strat_group_move_request_build",
+   "llm_strat_pathfinder_init"
+  ],
+  "_G_LLM_STRAT_PATH_SLOT_FLAGS": [
+   "llm_strat_path_attach_slot",
+   "llm_strat_path_free_slot",
+   "llm_tact_group_issue_order",
+   "llm_tact_map_reset",
+   "llm_tact_unit_cmd_advance",
+   "llm_tact_unit_move_tick",
+   "map_FillDefaults"
+  ],
+  "_G_LLM_STRAT_PATH_WRAP_MASK": [
+   "llm_strat_group_move_order_commit",
+   "llm_strat_pathfind_route_leg_reconcile",
+   "llm_strat_unit_path_detour"
+  ],
+  "_G_LLM_STRAT_PLANET_INT_TABLE": [
+   "llm_strat_session_state_reset"
+  ],
+  "_G_LLM_STRAT_PLANET_MAP_PAL4_BLACK": [
+   "llm_strat_planet_map_session_init"
+  ],
+  "_G_LLM_STRAT_PLANET_MAP_PAL4_MAGENTA": [
+   "llm_strat_planet_map_session_init"
+  ],
+  "_G_LLM_STRAT_PLANET_MAP_PAL4_WHITE": [
+   "llm_strat_planet_map_session_init"
+  ],
+  "_G_LLM_STRAT_PLANET_MAP_PAL4_YELLOW": [
+   "llm_strat_planet_map_session_init"
+  ],
+  "_G_LLM_STRAT_PLANET_MAP_PAL5_BLACK": [
+   "llm_strat_planet_map_session_init"
+  ],
+  "_G_LLM_STRAT_PLANET_MAP_PAL5_BLUE": [
+   "llm_strat_planet_map_session_init"
+  ],
+  "_G_LLM_STRAT_PLANET_MAP_PAL5_GREEN": [
+   "llm_strat_planet_map_session_init"
+  ],
+  "_G_LLM_STRAT_PLANET_MAP_PAL5_MAGENTA": [
+   "llm_strat_planet_map_session_init"
+  ],
+  "_G_LLM_STRAT_PLANET_MAP_PAL5_RED": [
+   "llm_strat_planet_map_session_init"
+  ],
+  "_G_LLM_STRAT_PLANET_MOTHER_LOST_TIME": [
+   "llm_strat_bldg_completion_dispatch",
+   "llm_strat_bldg_state_destroyed",
+   "llm_strat_session_state_reset"
+  ],
+  "_G_LLM_STRAT_PLANET_TRANSITION_STATE": [
+   "llm_strat_planet_transition_finalize",
+   "llm_strat_session_state_reset"
+  ],
+  "_G_LLM_STRAT_PLANET_TRANSITION_TARGET": [
+   "FUN_004c5bcc",
+   "llm_ui_dlg_confirm_planet_travel"
+  ],
+  "_G_LLM_STRAT_PLAYERS": [
+   "llm_game_land_players_on_planet",
+   "llm_game_session_clear_system_presence_flag",
+   "llm_net_lockstep_dispatch",
+   "llm_net_player_remove",
+   "llm_net_player_remove_timeout",
+   "llm_strat_bldg_completion_dispatch",
+   "llm_strat_bldg_kill_credit",
+   "llm_strat_bldg_state_destroyed",
+   "llm_strat_bldg_state_dismantle_finish",
+   "llm_strat_bldg_state_to_unit",
+   "llm_strat_bldg_unmap_footprint",
+   "llm_strat_mother_reelect_primary",
+   "llm_strat_player_presence_lost",
+   "llm_strat_player_profile_init",
+   "llm_strat_prod_bind_planet",
+   "llm_strat_prod_reset_system",
+   "llm_strat_prod_spawn_arrived_unit",
+   "llm_strat_prod_unbind_planet",
+   "llm_strat_session_state_reset",
+   "llm_strat_set_landing_site",
+   "llm_strat_sim_step",
+   "llm_strat_spawn_ai_base",
+   "llm_strat_spawn_enemy_landing",
+   "llm_strat_spawn_invasion_force",
+   "llm_strat_squad_assault_resolve",
+   "llm_strat_unit_init_record",
+   "llm_strat_unit_kill_credit",
+   "llm_strat_unit_on_destroyed",
+   "llm_strat_unit_state_deploy_to_building",
+   "llm_strat_unit_state_die_explode",
+   "llm_strat_unit_state_remove_silent",
+   "llm_strat_unit_teardown",
+   "llm_strat_unit_teardown_mapped",
+   "map_CreateBuilding",
+   "map_unit_Add"
+  ],
+  "_G_LLM_STRAT_PLAYER_RACE": [
+   "llm_strat_planet_session_begin",
+   "llm_strat_session_begin_multi"
+  ],
+  "_G_LLM_STRAT_POP_STATS": [
+   "llm_strat_add_population_housing",
+   "llm_strat_bldg_assign_workers",
+   "llm_strat_bldg_unassign_workers",
+   "llm_strat_population_add",
+   "llm_strat_population_layoff_workers",
+   "llm_strat_population_remove",
+   "llm_strat_sim_step",
+   "llm_strat_storage_board_unit",
+   "llm_strat_storage_exit_air",
+   "llm_strat_storage_place_exit_ground",
+   "llm_strat_unit_create",
+   "llm_strat_unit_on_destroyed",
+   "llm_strat_unit_remove_from_map",
+   "llm_strat_unit_state_deploy_to_building",
+   "llm_strat_unit_state_production_ready",
+   "llm_strat_unit_state_takeoff_landing",
+   "llm_unit_create_soldier",
+   "map_FillDefaults"
+  ],
+  "_G_LLM_STRAT_POWER_STATS": [
+   "llm_strat_bldg_state_power_generate",
+   "llm_strat_power_consume",
+   "llm_strat_power_generate",
+   "llm_strat_power_recompute",
+   "llm_strat_sim_step",
+   "map_FillDefaults"
+  ],
+  "_G_LLM_STRAT_PROD_COMPLETE_THROTTLE": [
+   "llm_strat_production_complete",
+   "llm_strat_session_state_reset"
+  ],
+  "_G_LLM_STRAT_PROJECTILE_POOL": [
+   "llm_strat_projectile_spawn",
+   "llm_strat_projectile_tick"
+  ],
+  "_G_LLM_STRAT_RACE_ALERT_SOUND_LAST_PLAY_TIME": [
+   "llm_strat_race_alert_sound_emit"
+  ],
+  "_G_LLM_STRAT_RACE_ALERT_SOUND_SUPPRESSED_COUNT": [
+   "llm_strat_race_alert_sound_emit"
+  ],
+  "_G_LLM_STRAT_RACE_ALERT_TEXT_LAST_PLAY_TIME": [
+   "llm_strat_race_alert_text_emit"
+  ],
+  "_G_LLM_STRAT_RACE_ALERT_TEXT_SUPPRESSED_COUNT": [
+   "llm_strat_race_alert_text_emit"
+  ],
+  "_G_LLM_STRAT_RNG_SEED_BYTE": [
+   "llm_strat_session_begin_multi"
+  ],
+  "_G_LLM_STRAT_RNG_STATE": [
+   "llm_rand_prng_tick_slot",
+   "llm_rand_state_advance",
+   "llm_strat_rng_next",
+   "llm_strat_rng_seed_channel"
+  ],
+  "_G_LLM_STRAT_SAVE_MISC_DWORD": [
+   "llm_strat_new_game_init"
+  ],
+  "_G_LLM_STRAT_SHOW_UNIT_FLAGS": [
+   "FUN_004b86a4",
+   "llm_game_start_tutorial",
+   "llm_strat_planet_session_begin",
+   "llm_strat_session_begin_multi"
+  ],
+  "_G_LLM_STRAT_SIM_ACTIVE": [
+   "SwitchToPlanet",
+   "llm_game_reload_snapshot_resync_clocks",
+   "llm_strat_planet_session_begin",
+   "llm_strat_planet_transition_finalize",
+   "llm_strat_session_begin_multi"
+  ],
+  "_G_LLM_STRAT_SIM_STEP_INTERVAL": [
+   "llm_strat_session_state_reset"
+  ],
+  "_G_LLM_STRAT_SOLDIERS": [
+   "llm_strat_render_bldg_docked_unit",
+   "llm_strat_render_tile_object",
+   "llm_strat_storage_place_exit_ground",
+   "llm_strat_unit_init_record",
+   "llm_strat_unit_remove_from_map",
+   "llm_strat_unit_soldier_remove_last",
+   "llm_strat_unit_soldier_unlink",
+   "llm_strat_unit_soldiers_set_heading",
+   "llm_strat_unit_soldiers_start_walk_anim",
+   "llm_strat_unit_state_move_walker",
+   "llm_strat_unit_state_squad_merge",
+   "llm_strat_unit_teardown",
+   "llm_strat_unit_update_soldiers",
+   "llm_unit_transport_unload_docked",
+   "llm_unit_transport_unload_field",
+   "map_FillDefaults"
+  ],
+  "_G_LLM_STRAT_SQUAD_FORMATION_ANCHOR_SCRATCH": [
+   "llm_strat_unit_state_squad_merge"
+  ],
+  "_G_LLM_STRAT_SQUAD_PLACEMENT_OFFSET_TABLE": [
+   "llm_strat_squad_placement_offset_set"
+  ],
+  "_G_LLM_STRAT_STATE_LOOP_GUARD": [
+   "llm_strat_building_tick",
+   "llm_strat_unit_tick"
+  ],
+  "_G_LLM_STRAT_STORAGE_STATS": [
+   "llm_strat_add_storage_capacity",
+   "llm_strat_sim_step",
+   "map_FillDefaults"
+  ],
+  "_G_LLM_STRAT_SYSTEM_LOST_MSG_SHOWN_FLAG": [
+   "llm_debug_console_dispatch",
+   "llm_strat_session_state_reset"
+  ],
+  "_G_LLM_STRAT_TICK_BUDGET": [
+   "llm_strat_bldg_state_charge_step",
+   "llm_strat_bldg_state_construction",
+   "llm_strat_bldg_state_deploy_anim_wait",
+   "llm_strat_bldg_state_destroyed",
+   "llm_strat_bldg_state_dismantle_finish",
+   "llm_strat_bldg_state_dismantling",
+   "llm_strat_bldg_state_hangar_recharge_units",
+   "llm_strat_bldg_state_idle_activate",
+   "llm_strat_bldg_state_idle_noop",
+   "llm_strat_bldg_state_land_activate",
+   "llm_strat_bldg_state_mine_extracting",
+   "llm_strat_bldg_state_mine_rescan_wait",
+   "llm_strat_bldg_state_power_generate",
+   "llm_strat_bldg_state_prod_retry_wait",
+   "llm_strat_bldg_state_prod_working",
+   "llm_strat_bldg_state_researching",
+   "llm_strat_bldg_state_rubble_sight_decay",
+   "llm_strat_bldg_state_turret_attack",
+   "llm_strat_bldg_state_turret_scan",
+   "llm_strat_bldg_state_upgrading",
+   "llm_strat_building_tick",
+   "llm_strat_unit_state_ascend_to_orbit",
+   "llm_strat_unit_state_attack_building",
+   "llm_strat_unit_state_attack_unit",
+   "llm_strat_unit_state_climb_vertical",
+   "llm_strat_unit_state_corpse_fow_decay",
+   "llm_strat_unit_state_default_noop",
+   "llm_strat_unit_state_deploy_to_building",
+   "llm_strat_unit_state_descend_cruise",
+   "llm_strat_unit_state_dock_taxi_in",
+   "llm_strat_unit_state_enter_class_move",
+   "llm_strat_unit_state_enter_wait",
+   "llm_strat_unit_state_enter_walk_in",
+   "llm_strat_unit_state_exit_wait",
+   "llm_strat_unit_state_exit_walk_out",
+   "llm_strat_unit_state_group_marshal",
+   "llm_strat_unit_state_hover_engage",
+   "llm_strat_unit_state_idle_scatter",
+   "llm_strat_unit_state_move_path",
+   "llm_strat_unit_state_move_walker",
+   "llm_strat_unit_state_parked_noop",
+   "llm_strat_unit_state_squad_merge",
+   "llm_strat_unit_state_step_adjacent",
+   "llm_strat_unit_state_stop_to_default",
+   "llm_strat_unit_state_takeoff_landing",
+   "llm_strat_unit_state_takeoff_taxi",
+   "llm_strat_unit_tick"
+  ],
+  "_G_LLM_STRAT_UI_BASE_MARKER_COORDS": [
+   "llm_game_land_players_on_planet",
+   "llm_strat_bldg_completion_dispatch",
+   "llm_strat_ui_panel_init",
+   "llm_ui_bldg_panel_open",
+   "llm_ui_hud_base_marker_button_handler"
+  ],
+  "_G_LLM_STRAT_UI_BLDG_PANEL_REFRESH_PENDING": [
+   "game_SetEvent",
+   "llm_strat_ui_storage_bldg_panel",
+   "llm_ui_bldg_available_projects_tab_process_events",
+   "llm_ui_bldg_owned_tab_process_events",
+   "llm_ui_bldg_panel_tick",
+   "llm_ui_bldg_project_panel_tick",
+   "llm_ui_bldg_shuttle_dock_panel_tick",
+   "llm_ui_bldg_units_panel_tick",
+   "llm_ui_hud_bldg_panel_refresh_tick",
+   "llm_ui_hud_bldg_panel_refresh_tick_dup",
+   "llm_ui_hud_bldg_panel_same_type_count_row_draw",
+   "llm_ui_hud_topbar_tick"
+  ],
+  "_G_LLM_STRAT_UI_BLDG_TAB_SELECT_BLOCKED": [
+   "llm_strat_session_state_reset"
+  ],
+  "_G_LLM_STRAT_UI_DEPART_PENDING_BLDG_A": [
+   "llm_dlg_close_and_resume",
+   "llm_strat_bldg_order_depart_confirm_dispatch"
+  ],
+  "_G_LLM_STRAT_UI_DEPART_PENDING_BLDG_B": [
+   "llm_dlg_close_and_resume",
+   "llm_strat_bldg_order_depart_confirm_dispatch",
+   "llm_ui_hud_planet_select_button_handler"
+  ],
+  "_G_LLM_STRAT_UI_EVENT_DEFER_ACTIVE": [
+   "llm_ui_hud_icon_widget_dispatch",
+   "llm_ui_hud_scroll_arrow_handler",
+   "llm_ui_hud_scroll_list_body_handler"
+  ],
+  "_G_LLM_STRAT_UI_EVENT_QUEUE_BUF": [
+   "game_SetEvent"
+  ],
+  "_G_LLM_STRAT_UI_EVENT_QUEUE_POS": [
+   "game_SetEvent",
+   "llm_ui_frame_tick"
+  ],
+  "_G_LLM_STRAT_UI_MAINPANEL_REFRESH_PENDING": [
+   "game_SetEvent",
+   "llm_ui_hud_topbar_tick",
+   "llm_ui_main_panel_draw"
+  ],
+  "_G_LLM_STRAT_UI_MAINPANEL_TAB_INDEX": [
+   "game_SetEvent"
+  ],
+  "_G_LLM_STRAT_UI_PANEL_FALLBACK_TABLE": [
+   "llm_tutorial_step_driver"
+  ],
+  "_G_LLM_STRAT_UI_PANEL_MODE": [
+   "game_SetEvent",
+   "llm_ui_bldg_panel_open"
+  ],
+  "_G_LLM_STRAT_UI_PANEL_PAGE": [
+   "game_SetEvent",
+   "llm_ui_bldg_panel_open"
+  ],
+  "_G_LLM_STRAT_UI_PANEL_SWITCH_PENDING": [
+   "game_SetEvent",
+   "llm_ui_hud_topbar_tick"
+  ],
+  "_G_LLM_STRAT_UI_PLANET_SEL_ACTION_TARGET": [
+   "llm_strat_bldg_order_depart_confirm_dispatch",
+   "llm_ui_dlg_confirm_planet_travel"
+  ],
+  "_G_LLM_STRAT_UI_SELECTED_BLDG_INDEX": [
+   "llm_strat_bldg_try_begin_placement",
+   "llm_strat_bldg_unmap_footprint",
+   "llm_strat_selection_click_resolve",
+   "llm_strat_selection_drag_finish",
+   "llm_tutorial_step_driver",
+   "llm_ui_bldg_owned_tab_process_events",
+   "llm_ui_click_select_target",
+   "llm_unit_ctrl_group_activate",
+   "map_FillDefaults"
+  ],
+  "_G_LLM_STRAT_UI_UNIT_PANEL_REFRESH_PENDING": [
+   "game_SetEvent",
+   "llm_strat_ui_unit_panel_tick",
+   "llm_ui_hud_topbar_tick",
+   "llm_ui_selection_panel_refresh"
+  ],
+  "_G_LLM_STRAT_UI_UNIT_TAB_TOGGLE": [
+   "game_SetEvent"
+  ],
+  "_G_LLM_STRAT_UI_VIEW_RESIZE_PENDING": [
+   "game_SetEvent",
+   "llm_ui_hud_topbar_tick"
+  ],
+  "_G_LLM_STRAT_UNIT_CHASE_RESULT": [
+   "llm_strat_unit_state_move_path"
+  ],
+  "_G_LLM_STRAT_UNIT_HOUSING_STATS": [
+   "llm_strat_add_unit_capacity_helis",
+   "llm_strat_add_unit_capacity_planes",
+   "llm_strat_add_unit_capacity_soldiers",
+   "llm_strat_add_unit_capacity_vehicles",
+   "llm_strat_sim_step",
+   "llm_strat_storage_find_home_for_unit",
+   "llm_strat_unit_housing_count_add",
+   "llm_strat_unit_housing_count_remove",
+   "llm_strat_unit_spawn_on_tile",
+   "llm_strat_unit_teardown",
+   "llm_strat_unit_teardown_mapped"
+  ],
+  "_G_LLM_STRAT_UNIT_STATE_FUNCS": [
+   "llm_strat_set_unit_state_handler"
+  ],
+  "_G_LLM_TACT_ACTIVE_UNIT_COUNT": [
+   "llm_tact_active_unit_count_hud_draw",
+   "llm_tact_squad_roster_refresh"
+  ],
+  "_G_LLM_TACT_ACTIVE_UNIT_COUNT_CACHED": [
+   "llm_tact_active_unit_count_hud_draw"
+  ],
+  "_G_LLM_TACT_BLAST_MARKER_COL": [
+   "llm_tact_mission_start",
+   "llm_tact_unit_mine_arm_tick"
+  ],
+  "_G_LLM_TACT_BLAST_MARKER_ROW": [
+   "llm_tact_mission_start",
+   "llm_tact_unit_mine_arm_tick"
+  ],
+  "_G_LLM_TACT_CAM_COL_F": [
+   "llm_tact_mission_start"
+  ],
+  "_G_LLM_TACT_CAM_FOLLOW_SELECTION": [
+   "llm_tact_cam_follow_selection_tick"
+  ],
+  "_G_LLM_TACT_CAM_ROW_F": [
+   "llm_tact_mission_start"
+  ],
+  "_G_LLM_TACT_CAM_SCROLL_DOWN_HELD": [
+   "llm_tact_frame"
+  ],
+  "_G_LLM_TACT_CAM_SCROLL_LEFT_HELD": [
+   "llm_tact_frame"
+  ],
+  "_G_LLM_TACT_CAM_SCROLL_RIGHT_HELD": [
+   "llm_tact_frame"
+  ],
+  "_G_LLM_TACT_CAM_SCROLL_UP_HELD": [
+   "llm_tact_frame"
+  ],
+  "_G_LLM_TACT_CHARACTER_TYPES": [
+   "llm_tact_character_parse_frame_table",
+   "llm_tact_frame",
+   "llm_tact_mission_load"
+  ],
+  "_G_LLM_TACT_CHAR_PANEL_GFX": [
+   "llm_tact_mission_load"
+  ],
+  "_G_LLM_TACT_CHAR_SHIFT_LUT": [
+   "llm_gfx_init_blend_luts",
+   "llm_tact_view_metrics_init"
+  ],
+  "_G_LLM_TACT_CLICK_ACTION_TAKEN": [
+   "llm_tact_frame",
+   "llm_tact_mission_start"
+  ],
+  "_G_LLM_TACT_CLICK_SCAN_SCRATCH": [
+   "llm_tact_frame"
+  ],
+  "_G_LLM_TACT_DOOR_TABLE": [
+   "llm_tact_door_anim_start",
+   "llm_tact_door_parse_definition",
+   "llm_tact_door_tick",
+   "llm_tact_mission_load"
+  ],
+  "_G_LLM_TACT_DRAG_ANCHOR_X": [
+   "llm_tact_frame"
+  ],
+  "_G_LLM_TACT_DRAG_ANCHOR_Y": [
+   "llm_tact_frame"
+  ],
+  "_G_LLM_TACT_DRAG_SELECT_ACTIVE": [
+   "llm_tact_frame"
+  ],
+  "_G_LLM_TACT_ENEMY_COUNT": [
+   "llm_tact_mission_load"
+  ],
+  "_G_LLM_TACT_EXIT_CONFIRM_OPEN": [
+   "llm_tact_frame"
+  ],
+  "_G_LLM_TACT_FOG_GLYPH_BLEND_TABLE": [
+   "llm_tlo_shade_table_build_tact"
+  ],
+  "_G_LLM_TACT_FOV_ANGLE_BASE": [
+   "llm_tact_fov_probe_far_cell_and_door_state",
+   "llm_tact_vision_cone_setup"
+  ],
+  "_G_LLM_TACT_FOV_ANGLE_INDEX": [
+   "llm_tact_fov_raycast_stencil"
+  ],
+  "_G_LLM_TACT_FOV_ANGLE_STEP": [
+   "llm_tact_fov_raycast_stencil"
+  ],
+  "_G_LLM_TACT_FOV_ANGLE_WIDTH": [
+   "llm_tact_fov_probe_far_cell_and_door_state",
+   "llm_tact_fov_raycast_stencil",
+   "llm_tact_vision_cone_setup"
+  ],
+  "_G_LLM_TACT_FOV_COL": [
+   "llm_tact_fov_probe_far_cell_and_door_state",
+   "llm_tact_vision_cone_setup"
+  ],
+  "_G_LLM_TACT_FOV_DIR_TABLE_PTR": [
+   "llm_tact_fov_raycast_stencil"
+  ],
+  "_G_LLM_TACT_FOV_DIST": [
+   "llm_tact_fov_probe_far_cell_and_door_state",
+   "llm_tact_vision_cone_setup"
+  ],
+  "_G_LLM_TACT_FOV_NEAREST_HIBIT_CELL": [
+   "llm_tact_fov_raycast_stencil",
+   "llm_tact_fov_update_nearest_target"
+  ],
+  "_G_LLM_TACT_FOV_NEAREST_HIBIT_DIST": [
+   "llm_tact_fov_raycast_stencil",
+   "llm_tact_fov_update_nearest_target"
+  ],
+  "_G_LLM_TACT_FOV_NEAREST_LOW_CELL": [
+   "llm_tact_fov_raycast_stencil",
+   "llm_tact_fov_update_nearest_target"
+  ],
+  "_G_LLM_TACT_FOV_NEAREST_LOW_DIST": [
+   "llm_tact_fov_raycast_stencil",
+   "llm_tact_fov_update_nearest_target"
+  ],
+  "_G_LLM_TACT_FOV_RAY_COUNT": [
+   "llm_tact_fov_raycast_stencil"
+  ],
+  "_G_LLM_TACT_FOV_RAY_DELTA": [
+   "llm_tact_fov_raycast_stencil"
+  ],
+  "_G_LLM_TACT_FOV_RAY_DELTA_NEG": [
+   "llm_tact_fov_raycast_stencil"
+  ],
+  "_G_LLM_TACT_FOV_RAY_INDEX": [
+   "llm_tact_fov_raycast_stencil"
+  ],
+  "_G_LLM_TACT_FOV_ROW": [
+   "llm_tact_fov_probe_far_cell_and_door_state",
+   "llm_tact_vision_cone_setup"
+  ],
+  "_G_LLM_TACT_FOV_STENCIL": [
+   "llm_tact_fov_raycast_stencil"
+  ],
+  "_G_LLM_TACT_FOV_STEP_BUDGET": [
+   "llm_tact_fov_raycast_stencil"
+  ],
+  "_G_LLM_TACT_FX_LIVE_COUNT": [
+   "llm_tact_fx_spawn",
+   "llm_tact_fx_update_projectile"
+  ],
+  "_G_LLM_TACT_FX_POOL": [
+   "llm_tact_fx_spawn",
+   "llm_tact_fx_update_projectile",
+   "llm_tact_mission_load"
+  ],
+  "_G_LLM_TACT_FX_TYPE_TABLE": [
+   "llm_tact_mission_load"
+  ],
+  "_G_LLM_TACT_GROUP_UNIT_ROSTER": [
+   "llm_tact_squad_roster_refresh"
+  ],
+  "_G_LLM_TACT_HOVERED_UNIT_ID": [
+   "llm_tact_frame",
+   "llm_tact_render_view"
+  ],
+  "_G_LLM_TACT_LOS_CACHE_PTR": [
+   "llm_gfx_view_metrics_init",
+   "llm_tact_view_metrics_init"
+  ],
+  "_G_LLM_TACT_MAP_HEIGHT_CACHE": [
+   "llm_tact_map_compute_bounds"
+  ],
+  "_G_LLM_TACT_MAP_TILE_HEIGHT_SPRITES": [
+   "llm_tact_mission_start"
+  ],
+  "_G_LLM_TACT_MAP_WIDTH_CACHE": [
+   "llm_tact_map_compute_bounds"
+  ],
+  "_G_LLM_TACT_MINE_BLAST_DURATION": [
+   "llm_tact_mission_load"
+  ],
+  "_G_LLM_TACT_MINE_BLAST_FIRST_FRAME": [
+   "llm_tact_mission_load"
+  ],
+  "_G_LLM_TACT_MINE_BLAST_FRAME_COUNT": [
+   "llm_tact_mission_load"
+  ],
+  "_G_LLM_TACT_MINE_BLAST_SOUND_ID": [
+   "llm_tact_mission_load"
+  ],
+  "_G_LLM_TACT_MINE_BLAST_TIME_END": [
+   "llm_tact_frame",
+   "llm_tact_mission_start",
+   "llm_tact_unit_mine_arm_tick"
+  ],
+  "_G_LLM_TACT_MOVE_COST_MAP": [
+   "llm_tact_move_flood_reachable_tile",
+   "llm_tact_move_path_build"
+  ],
+  "_G_LLM_TACT_MOVE_CUR_COL": [
+   "llm_tact_unit_weapons_tick"
+  ],
+  "_G_LLM_TACT_MOVE_CUR_ROW": [
+   "llm_tact_unit_weapons_tick"
+  ],
+  "_G_LLM_TACT_MOVE_FLOOD_COORD_MASK": [
+   "llm_tact_move_flood_reachable_tile"
+  ],
+  "_G_LLM_TACT_MOVE_FLOOD_FOUND": [
+   "llm_tact_move_flood_reachable_tile"
+  ],
+  "_G_LLM_TACT_MOVE_FLOOD_GOAL_COL": [
+   "llm_tact_move_find_approach_tile",
+   "llm_tact_move_find_reachable_dest",
+   "llm_tact_move_step_attempt"
+  ],
+  "_G_LLM_TACT_MOVE_FLOOD_GOAL_ROW": [
+   "llm_tact_move_find_approach_tile",
+   "llm_tact_move_find_reachable_dest",
+   "llm_tact_move_step_attempt"
+  ],
+  "_G_LLM_TACT_MOVE_FLOOD_QUEUE_A": [
+   "llm_tact_move_flood_reachable_tile"
+  ],
+  "_G_LLM_TACT_MOVE_FLOOD_QUEUE_B": [
+   "llm_tact_move_flood_reachable_tile"
+  ],
+  "_G_LLM_TACT_MOVE_FLOOD_QUEUE_CUR": [
+   "llm_tact_move_flood_reachable_tile"
+  ],
+  "_G_LLM_TACT_MOVE_FLOOD_RESULT_COL": [
+   "llm_tact_move_flood_reachable_tile",
+   "llm_tact_move_path_build",
+   "llm_tact_move_step_attempt"
+  ],
+  "_G_LLM_TACT_MOVE_FLOOD_RESULT_ROW": [
+   "llm_tact_move_flood_reachable_tile",
+   "llm_tact_move_path_build",
+   "llm_tact_move_step_attempt"
+  ],
+  "_G_LLM_TACT_MOVE_FLOOD_START_COL": [
+   "llm_tact_move_find_approach_tile",
+   "llm_tact_move_find_reachable_dest",
+   "llm_tact_move_step_attempt"
+  ],
+  "_G_LLM_TACT_MOVE_FLOOD_START_PACKED": [
+   "llm_tact_move_flood_reachable_tile"
+  ],
+  "_G_LLM_TACT_MOVE_FLOOD_START_ROW": [
+   "llm_tact_move_find_approach_tile",
+   "llm_tact_move_find_reachable_dest",
+   "llm_tact_move_step_attempt"
+  ],
+  "_G_LLM_TACT_MOVE_FLOOD_TILE_COST": [
+   "llm_tact_move_flood_reachable_tile"
+  ],
+  "_G_LLM_TACT_MOVE_PATH_CACHE_VALID": [
+   "llm_tact_unit_move_tick",
+   "llm_tact_update_units_and_fx"
+  ],
+  "_G_LLM_TACT_MOVE_PATH_COORD_MASK": [
+   "llm_tact_move_path_build"
+  ],
+  "_G_LLM_TACT_MOVE_PATH_GOAL_PACKED": [
+   "llm_tact_move_path_build"
+  ],
+  "_G_LLM_TACT_MOVE_PATH_QUEUE_A": [
+   "llm_tact_move_path_build"
+  ],
+  "_G_LLM_TACT_MOVE_PATH_QUEUE_B": [
+   "llm_tact_move_path_build"
+  ],
+  "_G_LLM_TACT_MOVE_PATH_QUEUE_CUR": [
+   "llm_tact_move_path_build"
+  ],
+  "_G_LLM_TACT_MOVE_PATH_RLE_COUNT": [
+   "llm_tact_move_path_build"
+  ],
+  "_G_LLM_TACT_MOVE_PATH_SLOT_ID": [
+   "llm_tact_move_find_approach_tile",
+   "llm_tact_move_find_reachable_dest",
+   "llm_tact_move_path_build",
+   "llm_tact_move_step_attempt",
+   "llm_tact_unit_move_tick"
+  ],
+  "_G_LLM_TACT_MOVE_PATH_START_PACKED": [
+   "llm_tact_move_path_build"
+  ],
+  "_G_LLM_TACT_MOVE_PATH_TILE_COST": [
+   "llm_tact_move_path_build"
+  ],
+  "_G_LLM_TACT_MOVE_PATH_TRACE_BASE": [
+   "llm_tact_move_path_build"
+  ],
+  "_G_LLM_TACT_MOVE_PATH_TRACE_BEST_DIR": [
+   "llm_tact_move_path_build"
+  ],
+  "_G_LLM_TACT_MOVE_PATH_TRACE_BEST_TILE": [
+   "llm_tact_move_path_build"
+  ],
+  "_G_LLM_TACT_MOVE_PATH_TRACE_COST_SUM": [
+   "llm_tact_move_path_build"
+  ],
+  "_G_LLM_TACT_MOVE_PATH_TRACE_DIAG_CAND": [
+   "llm_tact_move_path_build"
+  ],
+  "_G_LLM_TACT_MOVE_PATH_TRACE_TILE": [
+   "llm_tact_move_path_build"
+  ],
+  "_G_LLM_TACT_OCCUPANCY_REBUILD_MAP_ID": [
+   "llm_tact_tile_rebuild_occupancy_layer_for_map"
+  ],
+  "_G_LLM_TACT_QUIT_TILE_COL": [
+   "llm_tact_mission_load"
+  ],
+  "_G_LLM_TACT_QUIT_TILE_ROW": [
+   "llm_tact_mission_load"
+  ],
+  "_G_LLM_TACT_SAVED_WINDOW_WIDTH": [
+   "llm_tact_mission_start"
+  ],
+  "_G_LLM_TACT_SCREENSHOT_COUNTER": [
+   "llm_tact_save_screenshot"
+  ],
+  "_G_LLM_TACT_SCROLL_CMD": [
+   "llm_tact_frame",
+   "llm_tact_mission_start"
+  ],
+  "_G_LLM_TACT_SEE_ENEMY_FLAG": [
+   "llm_tact_mission_load"
+  ],
+  "_G_LLM_TACT_SEL_PANEL_ICON_GFX": [
+   "llm_tact_ui_sel_panel_init"
+  ],
+  "_G_LLM_TACT_SEL_PANEL_ICON_SLOT_STATE": [
+   "llm_tact_sidebar_dispatch",
+   "llm_tact_ui_sel_panel_multi_mode_tick",
+   "llm_tact_ui_sidebar_roster_refresh"
+  ],
+  "_G_LLM_TACT_SIDEBAR_ACTIVE_GROUP_ID": [
+   "llm_tact_ui_sel_panel_multi_mode_tick",
+   "llm_tact_ui_sel_panel_single_mode_tick"
+  ],
+  "_G_LLM_TACT_SIDEBAR_GROUP_SCROLL_ROW": [
+   "llm_tact_squad_roster_refresh",
+   "llm_tact_ui_sel_panel_single_mode_tick"
+  ],
+  "_G_LLM_TACT_SIDEBAR_HIGHLIGHTED_UNIT_ID": [
+   "llm_tact_sidebar_dispatch",
+   "llm_tact_ui_sel_panel_multi_mode_tick"
+  ],
+  "_G_LLM_TACT_SIDEBAR_MOUSE_X": [
+   "llm_tact_sidebar_dispatch"
+  ],
+  "_G_LLM_TACT_SIDEBAR_MOUSE_Y": [
+   "llm_tact_sidebar_dispatch"
+  ],
+  "_G_LLM_TACT_SIDEBAR_SCROLLBTN_STATE": [
+   "llm_tact_sidebar_dispatch",
+   "llm_tact_squad_roster_refresh",
+   "llm_tact_ui_sel_panel_single_mode_tick"
+  ],
+  "_G_LLM_TACT_SIDEBAR_SLOT_SCROLL": [
+   "llm_tact_ui_sel_panel_multi_mode_tick",
+   "llm_tact_ui_sidebar_roster_refresh"
+  ],
+  "_G_LLM_TACT_SIDEBAR_SLOT_UNIT_IDS": [
+   "llm_tact_ui_sidebar_roster_refresh"
+  ],
+  "_G_LLM_TACT_SIDEBAR_UI_HIT_CODE": [
+   "llm_tact_sidebar_dispatch",
+   "llm_tact_ui_order_buttons_minimap_tick",
+   "llm_tact_ui_sel_panel_multi_mode_tick",
+   "llm_tact_ui_sel_panel_single_mode_tick"
+  ],
+  "_G_LLM_TACT_SIDEBAR_UNASSIGNED_SCROLL_ROW": [
+   "llm_tact_squad_roster_refresh",
+   "llm_tact_ui_sel_panel_single_mode_tick"
+  ],
+  "_G_LLM_TACT_SQUAD_SIZE": [
+   "llm_tact_mission_load"
+  ],
+  "_G_LLM_TACT_TARGET_TILE_COL": [
+   "llm_tact_mission_load"
+  ],
+  "_G_LLM_TACT_TARGET_TILE_ROW": [
+   "llm_tact_mission_load"
+  ],
+  "_G_LLM_TACT_TELEPORT_TABLE": [
+   "llm_tact_mission_load",
+   "llm_tact_teleport_cmdqueue_jump",
+   "llm_tact_teleport_zone_scan_tick",
+   "llm_tact_unit_teleport"
+  ],
+  "_G_LLM_TACT_TILE_BLIT_DST_ROW_PTR": [
+   "llm_tact_tlo_tile_blit"
+  ],
+  "_G_LLM_TACT_UI_MINIMAP_OVERLAY_PTR": [
+   "llm_tact_tile_overlay_refresh"
+  ],
+  "_G_LLM_TACT_UI_SEL_PANEL_MULTI_MODE": [
+   "llm_tact_ui_sel_panel_init",
+   "llm_tact_ui_sel_panel_multi_mode_tick",
+   "llm_tact_ui_sel_panel_single_mode_tick"
+  ],
+  "_G_LLM_TACT_UNASSIGNED_UNIT_ROSTER": [
+   "llm_tact_squad_roster_refresh"
+  ],
+  "_G_LLM_TACT_UNITS": [
+   "llm_tact_frame",
+   "llm_tact_fx_splash_damage",
+   "llm_tact_fx_update_projectile",
+   "llm_tact_group_issue_order",
+   "llm_tact_mission_load",
+   "llm_tact_select_next_unit",
+   "llm_tact_selection_clear_unless_ctrl",
+   "llm_tact_sidebar_dispatch",
+   "llm_tact_ui_sel_panel_multi_mode_tick",
+   "llm_tact_unit_cmd_advance",
+   "llm_tact_unit_cmd_advance_with_defstat",
+   "llm_tact_unit_cmd_queue_advance",
+   "llm_tact_unit_cmd_stance_off",
+   "llm_tact_unit_cmd_stance_on",
+   "llm_tact_unit_death_tick",
+   "llm_tact_unit_despawn",
+   "llm_tact_unit_destroy",
+   "llm_tact_unit_enqueue_command",
+   "llm_tact_unit_fire_weapon",
+   "llm_tact_unit_kneel_tick",
+   "llm_tact_unit_mine_arm_tick",
+   "llm_tact_unit_move_advance",
+   "llm_tact_unit_move_tick",
+   "llm_tact_unit_owner_tick",
+   "llm_tact_unit_rotate_step",
+   "llm_tact_unit_rotate_tick",
+   "llm_tact_unit_set_anim_state",
+   "llm_tact_unit_spawn",
+   "llm_tact_unit_stand_tick",
+   "llm_tact_unit_teleport",
+   "llm_tact_unit_update_anim",
+   "llm_tact_unit_weapons_tick",
+   "llm_tact_units_reset_hp_for_active"
+  ],
+  "_G_LLM_TACT_UNIT_ACTIVE_COUNT": [
+   "llm_tact_unit_despawn",
+   "llm_tact_unit_destroy",
+   "llm_tact_unit_spawn"
+  ],
+  "_G_LLM_TACT_UNIT_POSE_TAG": [
+   "llm_tact_unit_pose_tag_select"
+  ],
+  "_G_LLM_TACT_VIEW_TILE_FB_ROW_PTRS_PTR": [
+   "llm_gfx_view_metrics_init",
+   "llm_tact_view_metrics_init"
+  ],
+  "_G_LLM_TACT_VIEW_TILE_SURFACE_ROW_PTRS_PTR": [
+   "llm_gfx_view_metrics_init",
+   "llm_tact_view_metrics_init"
+  ],
+  "_G_LLM_TILE_DRAWN_MAP": [
+   "llm_gfx_text_mark_tiles_dirty",
+   "llm_map_minimap_render",
+   "llm_tact_blink_overlay_clear",
+   "llm_tact_frame",
+   "llm_tact_frame_cursor_and_reset",
+   "llm_tact_render_view",
+   "llm_ui_debug_stats_overlay_draw"
+  ],
+  "_G_LLM_TILE_DRAWN_MAP_PTR": [
+   "llm_gfx_view_metrics_init",
+   "llm_tact_view_metrics_init"
+  ],
+  "_G_LLM_TILE_VIS_MAP": [
+   "llm_gfx_text_mark_tiles_dirty",
+   "llm_tact_door_update_tile_state",
+   "llm_tact_frame",
+   "llm_tact_frame_cursor_and_reset",
+   "llm_tact_gfx_init_view_surfaces",
+   "llm_tact_gfx_init_view_tile_ptrs",
+   "llm_tact_gfx_view_tile_rows_init",
+   "llm_tact_render_view",
+   "llm_tact_view_metrics_init",
+   "llm_ui_debug_stats_overlay_draw"
+  ],
+  "_G_LLM_TILE_VIS_MAP_M1": [
+   "llm_tact_ui_char_panel_ammo_draw",
+   "llm_tact_ui_draw_player_row_list",
+   "llm_tact_ui_sel_panel_draw",
+   "llm_tact_ui_sidebar_row_draw_right"
+  ],
+  "_G_LLM_TILE_VIS_MAP_M2": [
+   "llm_tact_ui_char_panel_ammo_draw",
+   "llm_tact_ui_draw_player_row_list",
+   "llm_tact_ui_sel_panel_draw",
+   "llm_tact_ui_sidebar_row_draw_right"
+  ],
+  "_G_LLM_TILE_VIS_MAP_M3": [
+   "llm_tact_ui_draw_player_row_list",
+   "llm_tact_ui_sel_panel_draw",
+   "llm_tact_ui_sidebar_row_draw_left",
+   "llm_tact_ui_sidebar_row_draw_right"
+  ],
+  "_G_LLM_TILE_VIS_MAP_M4": [
+   "llm_tact_sidebar_dispatch",
+   "llm_tact_ui_draw_player_row_list",
+   "llm_tact_ui_order_buttons_minimap_tick",
+   "llm_tact_ui_sel_panel_draw",
+   "llm_tact_ui_sidebar_row_draw_left"
+  ],
+  "_G_LLM_TILE_VIS_MAP_M5": [
+   "llm_tact_sidebar_dispatch",
+   "llm_tact_ui_draw_player_row_list",
+   "llm_tact_ui_order_buttons_minimap_tick",
+   "llm_tact_ui_sel_panel_draw",
+   "llm_tact_ui_sidebar_row_draw_left",
+   "llm_tact_unit_draw_hp_bar_slot"
+  ],
+  "_G_LLM_TILE_VIS_MAP_M6": [
+   "llm_tact_sidebar_dispatch",
+   "llm_tact_ui_char_panel_row_draw",
+   "llm_tact_ui_order_buttons_minimap_tick",
+   "llm_tact_ui_sel_panel_multi_mode_tick"
+  ],
+  "_G_LLM_TILE_VIS_MAP_PTR": [
+   "llm_gfx_view_metrics_init",
+   "llm_tact_view_metrics_init"
+  ],
+  "_G_LLM_TIME_TICKS_MS": [
+   "llm_game_clock_reset",
+   "llm_game_clock_tick_update"
+  ],
+  "_G_LLM_TIME_TICKS_MS_LAST": [
+   "llm_game_clock_reset",
+   "llm_time_get_ticks_ms"
+  ],
+  "_G_LLM_TIME_TICK_QUERY_COUNT": [
+   "llm_game_clock_reset",
+   "llm_time_get_ticks_ms"
+  ],
+  "_G_LLM_TUTORIAL_BUILD_TYPE_FILTER": [
+   "llm_game_start_tutorial",
+   "llm_tutorial_step_driver",
+   "llm_ui_menu_close_to_hud"
+  ],
+  "_G_LLM_TUTORIAL_COLORS_RGB": [
+   "llm_tutorial_step_driver"
+  ],
+  "_G_LLM_TUTORIAL_FORCED_BLDG_SELECTION": [
+   "llm_tutorial_load_script",
+   "llm_tutorial_step_driver"
+  ],
+  "_G_LLM_TUTORIAL_HQ_ATTACK_SCENARIO_DONE": [
+   "llm_game_start_tutorial",
+   "llm_strat_ai_start_hq_attack_scenario"
+  ],
+  "_G_LLM_TUTORIAL_PENDING_BUILD_PLACEMENT_ID": [
+   "llm_game_start_tutorial",
+   "llm_tutorial_step_driver",
+   "llm_ui_menu_close_to_hud"
+  ],
+  "_G_LLM_TUTORIAL_RESET_SLOT_0050A678": [
+   "llm_game_start_tutorial",
+   "llm_ui_menu_close_to_hud"
+  ],
+  "_G_LLM_TUTORIAL_RMB_LIMIT_FLAG": [
+   "llm_game_start_tutorial",
+   "llm_tutorial_step_driver",
+   "llm_ui_menu_close_to_hud"
+  ],
+  "_G_LLM_TUTORIAL_STEPS": [
+   "llm_tutorial_load_script"
+  ],
+  "_G_LLM_TUTORIAL_STEP_COUNT": [
+   "llm_tutorial_load_script"
+  ],
+  "_G_LLM_TUTORIAL_UISTATE_BACKUP": [
+   "llm_menu_tutorial_uistate_restore",
+   "llm_tutorial_load_script"
+  ],
+  "_G_LLM_UI_ACM_LAST_RESULT": [
+   "llm_ui_avi_close_codecs",
+   "llm_ui_avi_decode_audio_chunk",
+   "llm_ui_avi_init_codecs"
+  ],
+  "_G_LLM_UI_ACTIVE_DIALOG": [
+   "llm_strat_ui_shipment_contents_dialog",
+   "llm_ui_dlg_build_from_table",
+   "llm_ui_dlg_close_cb",
+   "llm_ui_main_menu_screen_load"
+  ],
+  "_G_LLM_UI_ANIM_FRAME_DELTA": [
+   "llm_ui_main_menu_screen_load",
+   "llm_ui_menu_state_tick"
+  ],
+  "_G_LLM_UI_AVI_LAST_RESULT": [
+   "llm_ui_avi_close",
+   "llm_ui_avi_decode_audio_chunk",
+   "llm_ui_avi_decode_frame",
+   "llm_ui_avi_open",
+   "llm_ui_avi_open_stream",
+   "llm_ui_avi_skip_samples",
+   "llm_ui_avi_stream_begin",
+   "llm_ui_avi_stream_end"
+  ],
+  "_G_LLM_UI_BEVEL_COLOR_TABLE": [
+   "llm_ui_main_menu_screen_load"
+  ],
+  "_G_LLM_UI_BLDG_ADJUST_ROW_HOLD_MS": [
+   "llm_input_mouse_button_hold_update"
+  ],
+  "_G_LLM_UI_BLDG_CONSTRUCTION_STATUS_PENDING_ROW": [
+   "llm_ui_bldg_owned_tab_process_events",
+   "llm_ui_bldg_selected_panel_tick",
+   "llm_ui_hud_storage_slot1_icon_click",
+   "llm_ui_hud_storage_slot1_set"
+  ],
+  "_G_LLM_UI_BLDG_LOAD_CARGO_PENDING": [
+   "llm_ui_bldg_panel_tick",
+   "llm_ui_bldg_shuttle_dock_panel_tick",
+   "llm_ui_hud_icon_widget_hover_draw"
+  ],
+  "_G_LLM_UI_BLDG_OWNED_PANEL_SELECT_ROW_PENDING": [
+   "llm_ui_bldg_owned_tab_process_events",
+   "llm_ui_hud_icon_click_select"
+  ],
+  "_G_LLM_UI_BLDG_OWNED_TAB_TOGGLE_ACTIVE_PENDING_ROW": [
+   "llm_ui_bldg_owned_tab_process_events",
+   "llm_ui_bldg_selected_panel_tick",
+   "llm_ui_hud_storage_slot0_icon_click"
+  ],
+  "_G_LLM_UI_BLDG_PANEL_CLICKED_SLOT": [
+   "llm_strat_ui_storage_bldg_panel",
+   "llm_ui_bldg_units_panel_tick",
+   "llm_ui_hud_bldg_panel_slot_click_handler"
+  ],
+  "_G_LLM_UI_BLDG_PANEL_LAST_SHOWN_INDEX": [
+   "llm_ui_bldg_selected_panel_tick"
+  ],
+  "_G_LLM_UI_BLDG_PANEL_REDRAWN_FLAG": [
+   "llm_strat_ui_storage_bldg_panel",
+   "llm_strat_ui_unit_panel_tick",
+   "llm_ui_bldg_available_projects_tab_process_events",
+   "llm_ui_bldg_owned_tab_process_events",
+   "llm_ui_bldg_panel_refresh_apply",
+   "llm_ui_bldg_project_panel_tick",
+   "llm_ui_bldg_units_panel_tick",
+   "llm_ui_frame_tick",
+   "llm_ui_group_tab_on_click",
+   "llm_ui_hud_base_marker_button_handler",
+   "llm_ui_hud_ingame_menu_button_handler",
+   "llm_ui_hud_mainpanel_tab_row_label_refresh",
+   "llm_ui_hud_minimap_zoom_dec_handler",
+   "llm_ui_hud_minimap_zoom_inc_handler",
+   "llm_ui_hud_widget_icon_blit",
+   "llm_ui_icon_draw_vclipped",
+   "llm_ui_selection_panel_refresh",
+   "llm_ui_slot_icon_draw"
+  ],
+  "_G_LLM_UI_BLDG_PROJECT_PANEL_PENDING_ROW": [
+   "llm_ui_bldg_project_panel_tick",
+   "llm_ui_hud_research_row_click_handler"
+  ],
+  "_G_LLM_UI_BLDG_PROJECT_PANEL_PENDING_START_ROW": [
+   "llm_ui_bldg_project_panel_tick",
+   "llm_ui_hud_research_row_click_handler"
+  ],
+  "_G_LLM_UI_BLDG_RESOURCE_ROW_ADVANCE_X": [
+   "llm_ui_bldg_build_menu_icon_draw",
+   "llm_ui_bldg_prod_queue_slot_draw",
+   "llm_ui_build_panel_project_row_draw",
+   "llm_ui_hud_topbar_tick"
+  ],
+  "_G_LLM_UI_BLDG_RESOURCE_ROW_HIGHLIGHT_FLAG": [
+   "llm_ui_bldg_resource_row_draw"
+  ],
+  "_G_LLM_UI_BLDG_RESOURCE_ROW_LAYOUT_MODE": [
+   "llm_ui_bldg_build_menu_icon_draw",
+   "llm_ui_bldg_prod_queue_slot_draw",
+   "llm_ui_build_panel_project_row_draw",
+   "llm_ui_hud_topbar_tick"
+  ],
+  "_G_LLM_UI_BLDG_RESOURCE_ROW_STEP_X": [
+   "llm_ui_bldg_resource_row_draw"
+  ],
+  "_G_LLM_UI_BLDG_RESOURCE_ROW_STEP_Y": [
+   "llm_ui_bldg_resource_row_draw"
+  ],
+  "_G_LLM_UI_BLDG_RESOURCE_ROW_TEXT_X": [
+   "llm_ui_bldg_resource_row_draw"
+  ],
+  "_G_LLM_UI_BLDG_RESOURCE_ROW_X": [
+   "llm_ui_bldg_build_menu_icon_draw",
+   "llm_ui_bldg_prod_queue_slot_draw",
+   "llm_ui_bldg_resource_row_draw",
+   "llm_ui_build_panel_project_row_draw",
+   "llm_ui_hud_topbar_tick"
+  ],
+  "_G_LLM_UI_BLDG_RESOURCE_ROW_Y": [
+   "llm_ui_bldg_build_menu_icon_draw",
+   "llm_ui_bldg_prod_queue_slot_draw",
+   "llm_ui_bldg_resource_row_draw",
+   "llm_ui_build_panel_project_row_draw",
+   "llm_ui_hud_topbar_tick"
+  ],
+  "_G_LLM_UI_BLDG_STATUS_MSG_BUF": [
+   "llm_ui_dlg_building_construction_status"
+  ],
+  "_G_LLM_UI_BLDG_UNITS_PANEL_BUILDING_TYPE": [
+   "llm_ui_bldg_units_panel_tick"
+  ],
+  "_G_LLM_UI_BLDG_UNITS_PANEL_CLICK_MODE": [
+   "llm_ui_hud_bldg_panel_slot_click_handler"
+  ],
+  "_G_LLM_UI_BLDG_UNITS_PANEL_PENDING_ROW": [
+   "llm_ui_bldg_units_panel_request_pending_row",
+   "llm_ui_bldg_units_panel_tick"
+  ],
+  "_G_LLM_UI_BLDG_UNITS_SCROLL_LIST": [
+   "llm_ui_bldg_units_panel_tick"
+  ],
+  "_G_LLM_UI_BLDG_UPGRADE_REPAIR_PENDING_ROW": [
+   "llm_ui_bldg_owned_tab_process_events",
+   "llm_ui_bldg_selected_panel_tick",
+   "llm_ui_hud_storage_slot2_icon_click",
+   "llm_ui_hud_storage_slot2_set"
+  ],
+  "_G_LLM_UI_BLDG_WORKER_POOL_COUNTER": [
+   "llm_input_mouse_button_hold_update",
+   "llm_ui_bldg_stat_adjust_row_click",
+   "llm_ui_bldg_worker_adjust_btn_tick"
+  ],
+  "_G_LLM_UI_BUILD_MENU_ITEM_PENDING": [
+   "llm_ui_bldg_available_projects_tab_process_events",
+   "llm_ui_bldg_owned_tab_process_events",
+   "llm_ui_build_menu_item_select"
+  ],
+  "_G_LLM_UI_CTRLGROUP_MEMBER_ROW_STATE": [
+   "FUN_00411f47",
+   "llm_ui_bldg_panel_open"
+  ],
+  "_G_LLM_UI_DIGIT_SPRITE_BASE": [
+   "llm_ui_main_menu_screen_load"
+  ],
+  "_G_LLM_UI_DIPLO_CHAT_SPINNERS": [
+   "llm_ui_diplomacy_screen_build"
+  ],
+  "_G_LLM_UI_DIPLO_CHAT_WIDGETS": [
+   "llm_ui_diplomacy_screen_build"
+  ],
+  "_G_LLM_UI_DIPLO_CONTROL_SPINNERS": [
+   "llm_ui_diplomacy_screen_build"
+  ],
+  "_G_LLM_UI_DIPLO_CONTROL_WIDGETS": [
+   "llm_ui_diplomacy_screen_build"
+  ],
+  "_G_LLM_UI_DIPLO_RELATION_SPINNERS": [
+   "llm_ui_diplomacy_screen_build"
+  ],
+  "_G_LLM_UI_DIPLO_RELATION_WIDGETS": [
+   "llm_ui_diplomacy_screen_build"
+  ],
+  "_G_LLM_UI_DIPLO_WIDGET_LIST": [
+   "llm_ui_diplomacy_screen_build"
+  ],
+  "_G_LLM_UI_DLG_OK_STR_SECONDARY": [
+   "ReadMsgsDat"
+  ],
+  "_G_LLM_UI_DLG_TABLE_CONFIRM_QUIT_TO_MENU": [
+   "llm_ui_dlg_confirm_quit_to_menu",
+   "llm_ui_dlg_confirm_quit_to_menu_alt"
+  ],
+  "_G_LLM_UI_DLG_TABLE_MSGBOX_OK": [
+   "llm_mp_local_browser_close_and_refresh_cb",
+   "llm_strat_planet_transition_tick",
+   "llm_ui_dlg_msgbox_ok",
+   "llm_ui_dlg_savegame_io_error"
+  ],
+  "_G_LLM_UI_DLG_TABLE_WIDGET_ARRAY": [
+   "llm_ui_dlg_build_from_table"
+  ],
+  "_G_LLM_UI_DLG_TITLE_STR": [
+   "ReadMsgsDat"
+  ],
+  "_G_LLM_UI_DLG_TRIGGER_ACTIVE": [
+   "FUN_004c5b41",
+   "llm_dlg_close_and_resume",
+   "llm_ui_dlg_confirm_planet_travel",
+   "llm_ui_dlg_shuttle_colonist_status_popup",
+   "llm_ui_planet_select_screen_build"
+  ],
+  "_G_LLM_UI_DLG_TRIGGER_WIDGET": [
+   "FUN_004c5b7c",
+   "FUN_004c5bcc",
+   "llm_dlg_close_and_resume",
+   "llm_ui_dlg_confirm_planet_travel",
+   "llm_ui_dlg_shuttle_colonist_status_popup"
+  ],
+  "_G_LLM_UI_DOUBLE_CLICK_TIME_MS": [
+   "llm_ui_main_menu_screen_load"
+  ],
+  "_G_LLM_UI_FADE_TRANSITION": [
+   "FUN_004b9313",
+   "FUN_004bd0a6",
+   "FUN_004c312e",
+   "llm_game_start_tutorial",
+   "llm_lobby_network_setup_screen",
+   "llm_menu_newgame_open",
+   "llm_menu_play_intro_avi",
+   "llm_menu_show_credits",
+   "llm_mp_local_browser_cancel_to_main",
+   "llm_ui_demo_slideshow_tick",
+   "llm_ui_main_menu_activate",
+   "llm_ui_main_menu_screen_load",
+   "llm_ui_outcome_report_close_to_hud",
+   "llm_ui_screen_fade_transition_swap",
+   "llm_ui_screen_fade_transition_tick",
+   "llm_ui_text_viewer_open",
+   "llm_ui_text_viewer_tick"
+  ],
+  "_G_LLM_UI_FONT_LAYOUT_FILE_END": [
+   "llm_ui_main_menu_screen_load"
+  ],
+  "_G_LLM_UI_HITTEST_CURSOR_X": [
+   "llm_ui_main_menu_screen_load",
+   "llm_ui_mouse_poll_next_event"
+  ],
+  "_G_LLM_UI_HITTEST_CURSOR_Y": [
+   "llm_ui_main_menu_screen_load",
+   "llm_ui_mouse_poll_next_event"
+  ],
+  "_G_LLM_UI_HUD_COLOR_TABLE": [
+   "llm_ui_hud_color_slot_set"
+  ],
+  "_G_LLM_UI_HUD_TOPBAR_TICK_COUNTER": [
+   "llm_ui_frame_tick",
+   "llm_ui_hud_topbar_tick"
+  ],
+  "_G_LLM_UI_HUD_TOPBAR_VIEW_SIZE_MODE_APPLIED": [
+   "llm_ui_hud_topbar_tick"
+  ],
+  "_G_LLM_UI_HUD_WIDGETS": [
+   "llm_ui_hud_widget_define"
+  ],
+  "_G_LLM_UI_ICON_CLICK_CONSUMED_FLAG": [
+   "llm_ui_bldg_units_panel_row_count_update",
+   "llm_ui_icon_group_dispatch"
+  ],
+  "_G_LLM_UI_ICON_DRAG_HOVER_INDEX": [
+   "llm_ui_icon_drag_range_process"
+  ],
+  "_G_LLM_UI_ICON_ENTRIES": [
+   "llm_strat_ui_unit_panel_tick",
+   "llm_ui_bldg_panel_refresh_apply",
+   "llm_ui_bldg_selected_panel_tick",
+   "llm_ui_group_tab_on_click",
+   "llm_ui_hud_mainpanel_tab_row_label_refresh",
+   "llm_ui_hud_topbar_tick",
+   "llm_ui_scroll_icon_list_draw",
+   "llm_ui_selection_panel_refresh",
+   "llm_util_unpack_static_category_table"
+  ],
+  "_G_LLM_UI_ICON_GROUP_FIRST_ENTRY": [
+   "llm_util_unpack_static_category_table"
+  ],
+  "_G_LLM_UI_ICON_HOVER_ACTIVE": [
+   "FUN_0041b35c",
+   "llm_ui_frame_tick",
+   "llm_ui_icon_group_dispatch"
+  ],
+  "_G_LLM_UI_ICON_SPRITE_BASE": [
+   "llm_strat_ui_panel_init"
+  ],
+  "_G_LLM_UI_INFO_DDRAW_SURFACE_DESC": [
+   "llm_game_boot_init",
+   "llm_ui_entity_info_screen_open"
+  ],
+  "_G_LLM_UI_INFO_DESC_COUNT": [
+   "llm_gfx_build_info_desc_pages",
+   "llm_ui_entity_info_screen_close"
+  ],
+  "_G_LLM_UI_INFO_DESC_INDEX": [
+   "FUN_004ca939",
+   "FUN_004ca974",
+   "FUN_004ca9bc"
+  ],
+  "_G_LLM_UI_INFO_DESC_LIST_PTR": [
+   "llm_ui_entity_info_screen_open",
+   "llm_ui_info_text_emit_labeled_stat"
+  ],
+  "_G_LLM_UI_INFO_DESC_PTRS": [
+   "llm_gfx_build_info_desc_pages",
+   "llm_ui_entity_info_screen_close"
+  ],
+  "_G_LLM_UI_INFO_MEDIA_CTX": [
+   "llm_ui_entity_info_screen_close",
+   "llm_ui_entity_info_screen_open",
+   "llm_ui_info_media_draw_p1",
+   "llm_ui_info_media_draw_p2",
+   "llm_ui_info_media_frame_tick"
+  ],
+  "_G_LLM_UI_INFO_PANEL_STAT_LINE_Y": [
+   "llm_gfx_build_info_desc_pages",
+   "llm_gfx_draw_markup_text",
+   "llm_ui_bldg_info_panel_populate_stat_line",
+   "llm_ui_info_panel_weapon_stats_draw",
+   "llm_ui_info_screen_draw_stats",
+   "llm_ui_info_screen_list_draw_columns",
+   "llm_ui_info_stat_line_draw",
+   "llm_ui_info_stat_row_emit",
+   "llm_ui_info_text_build",
+   "llm_ui_info_text_emit_labeled_stat",
+   "llm_ui_info_text_emit_resource_stats"
+  ],
+  "_G_LLM_UI_INFO_SCREEN_FRAME_DELTA_MS": [
+   "llm_ui_entity_info_screen_open",
+   "llm_ui_info_media_frame_tick"
+  ],
+  "_G_LLM_UI_INFO_SCREEN_KIND": [
+   "llm_ui_entity_info_screen_open"
+  ],
+  "_G_LLM_UI_INFO_SCREEN_PENDING_ROW": [
+   "llm_strat_ui_unit_panel_tick",
+   "llm_ui_bldg_available_projects_tab_process_events",
+   "llm_ui_bldg_owned_tab_process_events",
+   "llm_ui_bldg_selected_panel_tick",
+   "llm_ui_info_screen_request_pending_row"
+  ],
+  "_G_LLM_UI_INFO_SCREEN_WORKSPACE": [
+   "llm_ui_bldg_info_panel_populate_stat_line",
+   "llm_ui_info_panel_weapon_stats_draw",
+   "llm_ui_info_screen_draw_stats",
+   "llm_ui_info_screen_list_draw_columns",
+   "llm_ui_info_screen_stats_draw",
+   "llm_ui_info_stat_line_draw",
+   "llm_ui_info_text_build"
+  ],
+  "_G_LLM_UI_INFO_TEXT_CURSOR_X": [
+   "llm_gfx_build_info_desc_pages",
+   "llm_gfx_draw_markup_text",
+   "llm_gfx_draw_wrapped_text_line",
+   "llm_ui_bldg_info_panel_populate_stat_line",
+   "llm_ui_info_screen_list_draw_columns",
+   "llm_ui_info_text_build",
+   "llm_ui_info_text_emit_labeled_stat"
+  ],
+  "_G_LLM_UI_INFO_TXT_INDEX_BEGIN": [
+   "llm_ui_entity_info_screen_open"
+  ],
+  "_G_LLM_UI_INFO_TXT_INDEX_END": [
+   "llm_ui_entity_info_screen_open"
+  ],
+  "_G_LLM_UI_INFO_TXT_RESOURCE_PTR": [
+   "llm_ui_entity_info_screen_open"
+  ],
+  "_G_LLM_UI_INFO_UPGRADE_STAT_MODE": [
+   "llm_ui_info_text_build"
+  ],
+  "_G_LLM_UI_INGAME_MENU_ACTIVE_LIST": [
+   "llm_ui_ingame_menu_open"
+  ],
+  "_G_LLM_UI_IN_MAIN_MENU": [
+   "llm_game_return_to_main_menu_cb",
+   "llm_menu_enter_gameplay",
+   "llm_ui_main_menu_screen_load"
+  ],
+  "_G_LLM_UI_LIST_SELECTED_INDEX": [
+   "llm_menu_enter_gameplay",
+   "llm_menu_screen_close_finalize",
+   "llm_ui_options_menu_open"
+  ],
+  "_G_LLM_UI_MENU_ASYNC_CALLBACK": [
+   "FUN_004c316d",
+   "llm_game_boot_init",
+   "llm_intro_frame",
+   "llm_lobby_begin_map_load",
+   "llm_menu_force_return_to_main",
+   "llm_menu_newgame_arm_start",
+   "llm_net_lockstep_sync_overlay_show",
+   "llm_ui_avi_close_return_to_menu",
+   "llm_ui_dlg_savegame_io_error",
+   "llm_ui_menu_state_tick",
+   "llm_ui_text_viewer_open",
+   "llm_ui_text_viewer_tick"
+  ],
+  "_G_LLM_UI_MENU_ASYNC_CALLBACK_A": [
+   "FUN_004baf42",
+   "FUN_004bb78d",
+   "FUN_004c4311",
+   "llm_dlg_close_and_resume",
+   "llm_game_return_to_main_menu_cb",
+   "llm_game_start_tutorial",
+   "llm_lobby_begin_map_load",
+   "llm_lobby_host_net_dispatch",
+   "llm_lobby_screen_open",
+   "llm_lobby_wait_dialog_open",
+   "llm_menu_enter_gameplay",
+   "llm_menu_force_return_to_main",
+   "llm_menu_savelist_select_name",
+   "llm_menu_ui_state_reset",
+   "llm_mp_discovery_browser_refresh",
+   "llm_mp_local_browser_setup",
+   "llm_mp_map_picker_setup",
+   "llm_mp_session_browser_enter",
+   "llm_mp_session_browser_rescan",
+   "llm_net_lockstep_overlay_dismiss",
+   "llm_net_lockstep_sync_overlay_show",
+   "llm_net_lockstep_wait_player_overlay_show",
+   "llm_ui_dlg_building_construction_status_open",
+   "llm_ui_dlg_confirm_planet_travel",
+   "llm_ui_dlg_savegame_io_error",
+   "llm_ui_lobby_screen_widget_reset",
+   "llm_ui_menu_async_callback_pump",
+   "llm_ui_menu_close_to_hud",
+   "llm_ui_menu_dialog_open_handler",
+   "llm_ui_menu_widget_list_activate",
+   "llm_ui_options_menu_confirm",
+   "llm_ui_options_menu_open",
+   "llm_ui_outcome_dialog",
+   "llm_ui_outcome_dlg_open",
+   "llm_ui_planet_select_frame_enter",
+   "llm_ui_planet_select_screen_build",
+   "llm_ui_text_viewer_open",
+   "llm_ui_text_viewer_tick"
+  ],
+  "_G_LLM_UI_MENU_ASYNC_CALLBACK_B": [
+   "llm_game_return_to_main_menu_cb",
+   "llm_menu_begin_enter_gameplay",
+   "llm_menu_enter_gameplay",
+   "llm_menu_ui_state_reset",
+   "llm_net_lockstep_sync_overlay_show",
+   "llm_ui_menu_async_callback_pump",
+   "llm_ui_menu_close_to_hud",
+   "llm_ui_outcome_dialog"
+  ],
+  "_G_LLM_UI_MENU_BAR_HEIGHT": [
+   "llm_game_boot_init"
+  ],
+  "_G_LLM_UI_MENU_INPUT_LOCK_TIMER": [
+   "llm_ui_main_menu_screen_load",
+   "llm_ui_widget_input_tick"
+  ],
+  "_G_LLM_UI_MENU_MASK_BITMAPS": [
+   "llm_ui_main_menu_screen_load"
+  ],
+  "_G_LLM_UI_MENU_NOW_MS": [
+   "llm_ui_menu_state_tick",
+   "llm_ui_outcome_dialog"
+  ],
+  "_G_LLM_UI_MENU_PENDING_WIDGET": [
+   "FUN_004c1f67",
+   "llm_lobby_begin_map_load",
+   "llm_menu_enter_gameplay",
+   "llm_menu_widget_selection_reset",
+   "llm_ui_menu_state_tick",
+   "llm_ui_widget_input_tick",
+   "llm_ui_widget_menu_request_set"
+  ],
+  "_G_LLM_UI_MENU_SAVED_STATE": [
+   "llm_game_return_to_main_menu_cb",
+   "llm_lobby_finalize_transfer_or_enter",
+   "llm_lobby_host_start_game",
+   "llm_lobby_map_load_async_step",
+   "llm_lobby_wait_dialog_open",
+   "llm_menu_begin_enter_gameplay",
+   "llm_menu_enter_gameplay",
+   "llm_ui_dlg_savegame_io_error",
+   "llm_ui_menu_close_to_hud",
+   "llm_ui_menu_push_screen",
+   "llm_ui_menu_state_tick",
+   "llm_ui_menu_widget_list_activate",
+   "llm_ui_outcome_report_close_to_hud"
+  ],
+  "_G_LLM_UI_MENU_STATE": [
+   "llm_game_boot_init",
+   "llm_intro_frame",
+   "llm_lobby_begin_map_load",
+   "llm_lobby_map_load_async_step",
+   "llm_lobby_wait_dialog_open",
+   "llm_menu_begin_enter_gameplay",
+   "llm_menu_campaign_start_and_enter",
+   "llm_menu_force_return_to_main",
+   "llm_net_lockstep_sync_overlay_show",
+   "llm_ui_dlg_close_cb",
+   "llm_ui_dlg_savegame_io_error",
+   "llm_ui_entity_info_screen_open",
+   "llm_ui_main_menu_activate",
+   "llm_ui_menu_dialog_open_handler",
+   "llm_ui_menu_push_screen",
+   "llm_ui_menu_state_tick",
+   "llm_ui_menu_widget_list_activate",
+   "llm_ui_outcome_dialog",
+   "llm_ui_outcome_dlg_open",
+   "llm_ui_planet_select_screen_build",
+   "llm_ui_text_viewer_open",
+   "llm_ui_text_viewer_tick"
+  ],
+  "_G_LLM_UI_MENU_WIDGET_LIST": [
+   "FUN_004baf42",
+   "FUN_004bd0a6",
+   "llm_game_return_to_main_menu_cb",
+   "llm_game_start_tutorial",
+   "llm_menu_enter_gameplay",
+   "llm_menu_enter_gameplay_screen_open",
+   "llm_menu_finish_enter_gameplay",
+   "llm_menu_force_return_to_main",
+   "llm_menu_reset_widget_list_to_hud",
+   "llm_menu_screen_close_finalize",
+   "llm_menu_ui_state_reset",
+   "llm_mp_connect_by_ip_action",
+   "llm_mp_local_browser_cancel_to_main",
+   "llm_mp_map_picker_open_action",
+   "llm_mp_mappicker_proceed_cb",
+   "llm_mp_netsetup_enter_game_name_screen",
+   "llm_mp_netsetup_game_field_cancel",
+   "llm_mp_netsetup_ip_field_cancel",
+   "llm_mp_netsetup_name_confirm",
+   "llm_net_lockstep_overlay_dismiss",
+   "llm_net_lockstep_sync_overlay_show",
+   "llm_net_lockstep_wait_player_overlay_show",
+   "llm_strat_planet_transition_error_dismiss",
+   "llm_tutorial_step_driver",
+   "llm_ui_dlg_building_construction_status_open",
+   "llm_ui_entity_info_screen_close",
+   "llm_ui_entity_info_screen_open",
+   "llm_ui_ingame_menu_open",
+   "llm_ui_main_menu_activate",
+   "llm_ui_menu_close_to_hud",
+   "llm_ui_menu_overlay_frame",
+   "llm_ui_menu_pop_screen",
+   "llm_ui_menu_push_screen",
+   "llm_ui_menu_widget_list_activate",
+   "llm_ui_outcome_dialog",
+   "llm_ui_outcome_dlg_open",
+   "llm_ui_planet_select_screen_build",
+   "llm_ui_text_viewer_open",
+   "llm_ui_text_viewer_tick"
+  ],
+  "_G_LLM_UI_MINIMAP_EDGE_DRAG_ACTIVE": [
+   "llm_ui_hud_minimap_click_handler"
+  ],
+  "_G_LLM_UI_MODAL_KEY_ASCII": [
+   "llm_ui_modal_key_pump"
+  ],
+  "_G_LLM_UI_MODAL_KEY_SCANCODE": [
+   "llm_ui_modal_key_pump"
+  ],
+  "_G_LLM_UI_MODAL_STEP_DEADLINE_MS": [
+   "llm_ui_modal_key_pump"
+  ],
+  "_G_LLM_UI_MODAL_STEP_NEXT_MS": [
+   "llm_ui_menu_transition_settle",
+   "llm_ui_modal_key_pump"
+  ],
+  "_G_LLM_UI_MOUSE_EVENT_KIND": [
+   "llm_ui_modal_key_pump",
+   "llm_ui_mouse_poll_next_event"
+  ],
+  "_G_LLM_UI_MOUSE_LEFT_PRESS_EDGE": [
+   "FUN_0041b35c",
+   "llm_input_mouse_button_hold_update",
+   "llm_ui_frame_tick"
+  ],
+  "_G_LLM_UI_MOUSE_LEFT_RELEASE_EDGE": [
+   "FUN_0041b35c",
+   "llm_input_mouse_button_hold_update"
+  ],
+  "_G_LLM_UI_MOUSE_RIGHT_PRESS_EDGE": [
+   "FUN_0041b35c",
+   "llm_input_mouse_button_hold_update",
+   "llm_ui_frame_tick"
+  ],
+  "_G_LLM_UI_MOUSE_RIGHT_RELEASE_EDGE": [
+   "FUN_0041b35c",
+   "llm_input_mouse_button_hold_update"
+  ],
+  "_G_LLM_UI_OPTIONS_MENU_OPEN_ACCUM": [
+   "llm_ui_options_menu_open"
+  ],
+  "_G_LLM_UI_OPT_SAVED_SHOW_UNIT_FLAGS": [
+   "llm_ui_options_menu_open"
+  ],
+  "_G_LLM_UI_OPT_SETTINGS_BACKUP_COPY": [
+   "llm_snd_apply_option_changes",
+   "llm_ui_options_menu_open"
+  ],
+  "_G_LLM_UI_OPT_SETTINGS_RESTORE_COPY": [
+   "llm_ui_options_menu_cancel",
+   "llm_ui_options_menu_open"
+  ],
+  "_G_LLM_UI_OPT_SLIDER_MASTER_VOL_VALUE_PTR": [
+   "llm_ui_options_menu_open"
+  ],
+  "_G_LLM_UI_OPT_SLIDER_MUSIC_VOL_VALUE_PTR": [
+   "llm_ui_options_menu_open"
+  ],
+  "_G_LLM_UI_OPT_SPIN_MUSIC_ENABLED": [
+   "llm_ui_options_menu_open"
+  ],
+  "_G_LLM_UI_OPT_SPIN_SND_ENABLED": [
+   "llm_ui_options_menu_open"
+  ],
+  "_G_LLM_UI_OPT_SPIN_VIEW_SIZE": [
+   "llm_ui_options_menu_open"
+  ],
+  "_G_LLM_UI_OUTCOME_DLG_CODE": [
+   "llm_ui_outcome_dialog"
+  ],
+  "_G_LLM_UI_OUTCOME_DLG_MAIN_BTN_ACTION": [
+   "llm_ui_main_menu_screen_load",
+   "llm_ui_outcome_dialog",
+   "llm_ui_outcome_dlg_open",
+   "llm_ui_outcome_dlg_tick"
+  ],
+  "_G_LLM_UI_OUTCOME_DLG_MESSAGE_WIDGET": [
+   "FUN_004c6bc5",
+   "llm_tutorial_step_driver",
+   "llm_ui_outcome_dialog"
+  ],
+  "_G_LLM_UI_OUTCOME_DLG_NOTE_ICON_WIDGET": [
+   "llm_ui_outcome_dialog"
+  ],
+  "_G_LLM_UI_OUTCOME_DLG_NOTE_TEXT_WIDGET": [
+   "llm_ui_outcome_dialog"
+  ],
+  "_G_LLM_UI_OUTCOME_DLG_PLAYER_SIDE_SNAPSHOT": [
+   "llm_ui_outcome_dlg_tick"
+  ],
+  "_G_LLM_UI_OUTCOME_DLG_REVEAL_COUNTER": [
+   "FUN_004c656d",
+   "llm_ui_outcome_dialog",
+   "llm_ui_outcome_dlg_tick"
+  ],
+  "_G_LLM_UI_OUTCOME_DLG_REVEAL_FLAG": [
+   "llm_ui_outcome_dialog"
+  ],
+  "_G_LLM_UI_OUTCOME_DLG_REVEAL_TOTAL": [
+   "llm_ui_outcome_dlg_open",
+   "llm_ui_outcome_stat_cell_add"
+  ],
+  "_G_LLM_UI_OUTCOME_DLG_SHOW_DETAILS": [
+   "llm_ui_outcome_dialog"
+  ],
+  "_G_LLM_UI_OUTCOME_DLG_SKIP_BTN": [
+   "llm_ui_outcome_dialog",
+   "llm_ui_outcome_dlg_open",
+   "llm_ui_outcome_dlg_tick"
+  ],
+  "_G_LLM_UI_OUTCOME_DLG_STAT_ROWS": [
+   "llm_ui_outcome_dlg_open"
+  ],
+  "_G_LLM_UI_OUTCOME_DLG_STAT_ROW_COUNT": [
+   "llm_ui_outcome_dlg_open"
+  ],
+  "_G_LLM_UI_OUTCOME_DLG_TITLE_WIDGET": [
+   "llm_tutorial_step_driver",
+   "llm_ui_outcome_dialog"
+  ],
+  "_G_LLM_UI_OUTCOME_REPORT_WIDGET_LIST": [
+   "llm_ui_outcome_dialog"
+  ],
+  "_G_LLM_UI_PAGED_LIST_NEXT_BTN_WIDGET": [
+   "FUN_004ca9bc",
+   "llm_ui_paged_list_frame"
+  ],
+  "_G_LLM_UI_PAGED_LIST_PREV_BTN_WIDGET": [
+   "FUN_004ca974",
+   "llm_ui_paged_list_frame"
+  ],
+  "_G_LLM_UI_RACE_SEL_PENDING_GFX_IDX": [
+   "FUN_004b845e",
+   "FUN_004b935c",
+   "llm_game_start_tutorial"
+  ],
+  "_G_LLM_UI_SAVEGAME_LIST_WIDGET": [
+   "llm_menu_savegame_list_build"
+  ],
+  "_G_LLM_UI_SCRATCH_CANVAS_PTR": [
+   "llm_ui_main_menu_screen_load"
+  ],
+  "_G_LLM_UI_SCREEN_MAIN_MENU_ID": [
+   "llm_ui_main_menu_screen_load"
+  ],
+  "_G_LLM_UI_SCREEN_RACEBCK_ID": [
+   "llm_boot_progress_draw"
+  ],
+  "_G_LLM_UI_SCREEN_TAB_STOPS": [
+   "llm_lobby_screen_open",
+   "llm_menu_enter_gameplay",
+   "llm_mp_local_browser_setup",
+   "llm_mp_map_picker_setup",
+   "llm_mp_session_browser_enter",
+   "llm_strat_ui_shipment_contents_dialog",
+   "llm_ui_diplomacy_screen_build",
+   "llm_ui_main_menu_screen_load",
+   "llm_ui_menu_screen_restore_config",
+   "llm_ui_outcome_dlg_open"
+  ],
+  "_G_LLM_UI_SCROLL_ACTIVE": [
+   "llm_ui_frame_tick",
+   "llm_ui_hud_scroll_arrow_handler",
+   "llm_ui_hud_scroll_list_body_handler"
+  ],
+  "_G_LLM_UI_SCROLL_AUTOREPEAT_STATE": [
+   "llm_ui_frame_tick",
+   "llm_ui_hud_scroll_arrow_handler",
+   "llm_ui_hud_scroll_list_body_handler"
+  ],
+  "_G_LLM_UI_SCROLL_DESC_BLDG_AVAILABLE": [
+   "llm_ui_bldg_available_projects_tab_process_events"
+  ],
+  "_G_LLM_UI_SCROLL_DESC_BLDG_OWNED": [
+   "llm_ui_bldg_owned_tab_process_events"
+  ],
+  "_G_LLM_UI_SCROLL_DESC_PROJECT": [
+   "llm_ui_bldg_project_panel_tick"
+  ],
+  "_G_LLM_UI_SCROLL_DESC_SELECTION": [
+   "llm_ui_selection_panel_refresh"
+  ],
+  "_G_LLM_UI_SCROLL_DESC_SELECTION_CTRLGRP": [
+   "llm_ui_selection_panel_refresh"
+  ],
+  "_G_LLM_UI_SCROLL_DESC_STORAGE": [
+   "llm_strat_ui_storage_bldg_panel"
+  ],
+  "_G_LLM_UI_SCROLL_DESC_UNIT_UNASSIGNED": [
+   "llm_strat_ui_unit_panel_tick"
+  ],
+  "_G_LLM_UI_SELECTED_BLDG_PROJECT_TYPE": [
+   "llm_ui_bldg_project_panel_tick"
+  ],
+  "_G_LLM_UI_SELECTED_BUILDING_INDEX": [
+   "llm_ui_dlg_building_construction_status_open",
+   "llm_ui_dlg_building_info_close_cb"
+  ],
+  "_G_LLM_UI_SELECTED_CTRL_GROUP_SLOT": [
+   "llm_ui_hud_ctrl_group_button_handler"
+  ],
+  "_G_LLM_UI_SHOW_HEALTH_BARS": [
+   "llm_game_init_first_run_defaults",
+   "llm_strat_input_update"
+  ],
+  "_G_LLM_UI_STAGED_CURSOR_X": [
+   "llm_ui_frame_tick"
+  ],
+  "_G_LLM_UI_STAGED_CURSOR_Y": [
+   "llm_ui_frame_tick"
+  ],
+  "_G_LLM_UI_STORAGE_PANEL_AUTOLAUNCH_PENDING": [
+   "llm_strat_ui_storage_bldg_panel",
+   "llm_ui_hud_storage_panel_open_request"
+  ],
+  "_G_LLM_UI_STORAGE_PANEL_DEPART_TYPE_PENDING": [
+   "llm_strat_ui_storage_bldg_panel",
+   "llm_ui_bldg_panel_tick",
+   "llm_ui_hud_storage_depart_type_select_handler"
+  ],
+  "_G_LLM_UI_STORAGE_PANEL_RECHARGE_PENDING": [
+   "llm_strat_ui_storage_bldg_panel",
+   "llm_ui_hud_storage_recharge_request_set"
+  ],
+  "_G_LLM_UI_STORAGE_PANEL_SELECTED_BLDG_INDEX": [
+   "llm_strat_ui_storage_bldg_panel"
+  ],
+  "_G_LLM_UI_STORAGE_PANEL_SHOW_INFO_SLOT_REQUEST": [
+   "llm_strat_ui_storage_bldg_panel",
+   "llm_ui_storage_panel_request_show_info_slot"
+  ],
+  "_G_LLM_UI_SURFACE_PITCH": [
+   "llm_gfx_draw_cursor_menu",
+   "llm_gfx_draw_glyph_to_framebuffer",
+   "llm_gfx_draw_glyph_to_surface",
+   "llm_gfx_draw_sprite",
+   "llm_gfx_draw_sprite_clipped_width",
+   "llm_gfx_draw_sprite_dark",
+   "llm_gfx_draw_sprite_to_buffer",
+   "llm_gfx_draw_sprite_unclipped",
+   "llm_gfx_draw_text_rgb",
+   "llm_ui_panel_text_draw",
+   "llm_ui_set_draw_surface",
+   "llm_ui_text_draw_rgb16",
+   "llm_ui_text_draw_wrapped_shadowed",
+   "llm_ui_wrapped_text_line_draw"
+  ],
+  "_G_LLM_UI_SURFACE_PTR": [
+   "llm_gfx_draw_cursor_menu",
+   "llm_gfx_draw_glyph_to_framebuffer",
+   "llm_gfx_draw_glyph_to_surface",
+   "llm_gfx_draw_sprite",
+   "llm_gfx_draw_sprite_clipped_width",
+   "llm_gfx_draw_sprite_dark",
+   "llm_gfx_draw_sprite_to_buffer",
+   "llm_gfx_draw_sprite_unclipped",
+   "llm_gfx_draw_text_rgb",
+   "llm_ui_panel_text_draw",
+   "llm_ui_set_draw_surface",
+   "llm_ui_text_draw_rgb16",
+   "llm_ui_text_draw_wrapped_shadowed",
+   "llm_ui_wrapped_text_line_draw"
+  ],
+  "_G_LLM_UI_TEXT_COLOR_OVERRIDE_INDEX": [
+   "FUN_004b9b68"
+  ],
+  "_G_LLM_UI_TEXT_VIEWER_BG_IMAGE": [
+   "llm_menu_show_credits",
+   "llm_ui_demo_slideshow_tick"
+  ],
+  "_G_LLM_UI_TEXT_VIEWER_BODY_WIDGET": [
+   "llm_menu_show_credits",
+   "llm_ui_demo_slideshow_tick",
+   "llm_ui_text_viewer_open",
+   "llm_ui_text_viewer_tick"
+  ],
+  "_G_LLM_UI_TEXT_VIEWER_FILE_BUF": [
+   "llm_ui_text_viewer_open"
+  ],
+  "_G_LLM_UI_TEXT_VIEWER_PREV_TICK_MS": [
+   "llm_ui_text_viewer_open"
+  ],
+  "_G_LLM_UI_TEXT_VIEWER_TEXT_PTR": [
+   "llm_ui_text_viewer_open",
+   "llm_ui_text_viewer_tick"
+  ],
+  "_G_LLM_UI_TEXT_VIEWER_TICK_MS": [
+   "llm_ui_text_viewer_open",
+   "llm_ui_text_viewer_tick"
+  ],
+  "_G_LLM_UI_TOOLTIP_CURSOR_X": [
+   "llm_ui_render_planet_selector_tooltip",
+   "llm_ui_tooltip_layout_init"
+  ],
+  "_G_LLM_UI_TOOLTIP_CURSOR_Y": [
+   "llm_ui_tooltip_draw_text_line",
+   "llm_ui_tooltip_layout_init"
+  ],
+  "_G_LLM_UI_TOOLTIP_TEXT_RECT": [
+   "llm_ui_tooltip_layout_init"
+  ],
+  "_G_LLM_UI_TUTORIAL_HINT_WIDGET": [
+   "llm_game_start_tutorial",
+   "llm_tutorial_step_driver"
+  ],
+  "_G_LLM_UI_UNASSIGNED_ROW_STATE": [
+   "llm_ui_bldg_panel_open",
+   "llm_ui_unassigned_row_state_clear",
+   "llm_ui_unit_unassigned_list_draw_row"
+  ],
+  "_G_LLM_UI_UNASSIGNED_UNIT_SCAN_IDX": [
+   "llm_ui_icon_drag_range_process",
+   "llm_ui_selection_panel_refresh",
+   "llm_ui_unit_unassigned_list_draw_row"
+  ],
+  "_G_LLM_UI_VIDEO_ORIGIN_Y": [
+   "llm_game_boot_init"
+  ],
+  "_G_LLM_UI_VIEW_SIZE_MODE_BIT": [
+   "llm_ui_hud_topbar_tick"
+  ],
+  "_G_LLM_UI_VIEW_SIZE_MODE_CACHE": [
+   "FUN_004b86a4",
+   "llm_debug_console_dispatch",
+   "llm_strat_input_update",
+   "llm_ui_ingame_menu_open",
+   "llm_ui_main_menu_screen_load",
+   "llm_ui_outcome_dlg_open",
+   "llm_ui_planet_select_screen_build",
+   "llm_ui_planet_select_screen_open"
+  ],
+  "_G_LLM_UI_WGT_DESYNC_ICON": [
+   "llm_ui_menu_overlay_frame"
+  ],
+  "_G_LLM_UI_WGT_FRAME_MENU_PANEL": [
+   "llm_game_start_tutorial",
+   "llm_menu_enter_gameplay",
+   "llm_menu_load_game_open",
+   "llm_menu_screen_close_finalize",
+   "llm_ui_menu_screen_slide_transition",
+   "llm_ui_options_menu_open"
+  ],
+  "_G_LLM_UI_WGT_LIST_PLANET_SELECT": [
+   "llm_ui_planet_select_screen_build"
+  ],
+  "_G_LLM_UI_WGT_LIST_SAVEGAME_LIST": [
+   "llm_menu_enter_gameplay",
+   "llm_menu_load_game_open",
+   "llm_menu_screen_close_finalize"
+  ],
+  "_G_LLM_UI_WGT_LOBBY_LOG_LIST": [
+   "llm_lobby_announce_line",
+   "llm_lobby_screen_open"
+  ],
+  "_G_LLM_UI_WGT_LOCKSTEP_KICK_COUNTDOWN_TEXT": [
+   "llm_net_lockstep_wait_player_overlay_show"
+  ],
+  "_G_LLM_UI_WGT_LOCKSTEP_KICK_DISCONNECT_BTN": [
+   "llm_net_lockstep_wait_player_overlay_show"
+  ],
+  "_G_LLM_UI_WGT_LOCKSTEP_KICK_RESET_BTN": [
+   "llm_net_lockstep_wait_player_overlay_show"
+  ],
+  "_G_LLM_UI_WGT_LOCKSTEP_WAIT_PLAYER_LIST": [
+   "llm_net_lockstep_wait_player_overlay_show"
+  ],
+  "_G_LLM_UI_WGT_MAINMENU_NEWGAME_BTN": [
+   "llm_boot_apply_lang_variant_bytes"
+  ],
+  "_G_LLM_UI_WGT_MAINMENU_TUTORIAL_BTN": [
+   "llm_boot_apply_lang_variant_bytes"
+  ],
+  "_G_LLM_UI_WGT_MENU_OK": [
+   "llm_lobby_network_setup_screen",
+   "llm_menu_load_game_open",
+   "llm_menu_savename_screen_build",
+   "llm_mp_map_picker_setup",
+   "llm_mp_mappicker_populate_list",
+   "llm_mp_mappicker_proceed_cb",
+   "llm_mp_netsetup_enter_connect_ip_screen",
+   "llm_mp_netsetup_enter_game_name_screen",
+   "llm_ui_menu_screen_restore_config"
+  ],
+  "_G_LLM_UI_WGT_MENU_SCREEN_TITLE": [
+   "FUN_004bb78d",
+   "llm_game_start_tutorial",
+   "llm_lobby_screen_open",
+   "llm_menu_enter_gameplay",
+   "llm_menu_savegame_list_build",
+   "llm_menu_savelist_select_name",
+   "llm_mp_discovery_browser_refresh",
+   "llm_mp_map_picker_setup",
+   "llm_mp_netsetup_field_build_mru",
+   "llm_mp_session_browser_rescan",
+   "llm_net_lockstep_sync_overlay_show",
+   "llm_ui_diplomacy_screen_build",
+   "llm_ui_ingame_menu_open",
+   "llm_ui_menu_screen_restore_config",
+   "llm_ui_options_menu_open"
+  ],
+  "_G_LLM_UI_WGT_NETSETUP_FIELD_EDIT": [
+   "llm_mp_netsetup_field_build_mru"
+  ],
+  "_G_LLM_UI_WGT_OPTIONS_MP_ONLY_ROW": [
+   "llm_ui_options_menu_open"
+  ],
+  "_G_LLM_UI_WGT_SAVENAME_FIELD": [
+   "llm_menu_load_game_open",
+   "llm_menu_savegame_list_build",
+   "llm_menu_savename_screen_build"
+  ],
+  "_G_LLM_UI_WGT_TUTORIAL_WELCOME": [
+   "llm_game_start_tutorial"
+  ],
+  "_G_LLM_UI_WIDGET_DRAW_H": [
+   "llm_ui_widget_draw",
+   "llm_ui_widget_layout_resolve_position"
+  ],
+  "_G_LLM_UI_WIDGET_DRAW_W": [
+   "llm_ui_widget_layout_resolve_position"
+  ],
+  "_G_LLM_UI_WIDGET_DRAW_X": [
+   "FUN_004b9b68",
+   "FUN_004c13da",
+   "FUN_004c65a6",
+   "llm_boot_progress_draw",
+   "llm_mp_browser_scrollbar_draw",
+   "llm_ui_list_widget_draw",
+   "llm_ui_widget_draw",
+   "llm_ui_widget_draw_content",
+   "llm_ui_widget_input_tick",
+   "llm_ui_widget_layout_resolve_position",
+   "llm_ui_widget_list_draw_frame_layer"
+  ],
+  "_G_LLM_UI_WIDGET_DRAW_Y": [
+   "llm_ui_widget_layout_resolve_position"
+  ],
+  "_G_LLM_UI_WIDGET_HOVERED": [
+   "llm_menu_enter_gameplay",
+   "llm_menu_race_select_cb",
+   "llm_menu_widget_selection_reset",
+   "llm_strat_planet_transition_perform_switch",
+   "llm_ui_menu_push_screen",
+   "llm_ui_menu_state_tick",
+   "llm_ui_widget_input_tick"
+  ],
+  "_G_LLM_UI_WIDGET_KEY_SELECTED": [
+   "FUN_004c1f67",
+   "llm_menu_enter_gameplay",
+   "llm_menu_widget_selection_reset",
+   "llm_ui_avi_close_return_to_menu",
+   "llm_ui_widget_input_tick"
+  ],
+  "_G_LLM_UI_WIDGET_SELECTED": [
+   "FUN_004c1f67",
+   "llm_menu_enter_gameplay",
+   "llm_menu_race_select_cb",
+   "llm_menu_widget_selection_reset",
+   "llm_ui_avi_close_return_to_menu",
+   "llm_ui_menu_push_screen",
+   "llm_ui_menu_state_tick",
+   "llm_ui_widget_input_tick"
+  ],
+  "_G_LLM_UNITQ_CLOSED": [
+   "llm_strat_unit_queue_advance_search"
+  ],
+  "_G_LLM_UNITQ_CLOSED_COUNT": [
+   "llm_strat_unit_queue_advance_search"
+  ],
+  "_G_LLM_UNITQ_CUR_TILE": [
+   "llm_strat_unit_queue_advance_search"
+  ],
+  "_G_LLM_UNITQ_FRONTIER": [
+   "llm_strat_unit_queue_advance_search"
+  ],
+  "_G_LLM_UNITQ_FRONTIER_COUNT": [
+   "llm_strat_unit_queue_advance_search"
+  ],
+  "_G_LLM_UNITQ_ITER": [
+   "llm_strat_unit_queue_advance_search"
+  ],
+  "_G_LLM_VIEW_RADIUS_H": [
+   "llm_gfx_view_metrics_init"
+  ],
+  "_G_LLM_VIEW_RADIUS_W": [
+   "llm_gfx_view_metrics_init"
+  ],
+  "_G_LLM_VIEW_SIZE_MODE": [
+   "FUN_004b86a4",
+   "llm_debug_console_dispatch",
+   "llm_game_init_first_run_defaults",
+   "llm_game_start_tutorial",
+   "llm_map_view_size_mode_apply",
+   "llm_strat_input_update",
+   "llm_ui_menu_close_to_hud",
+   "llm_ui_options_menu_cancel",
+   "llm_ui_options_menu_open"
+  ],
+  "_G_LLM_VIEW_SIZE_MODE_CACHE": [
+   "llm_view_set_size_mode"
+  ],
+  "_G_LLM_VIEW_SIZE_MODE_SAVE": [
+   "llm_game_start_tutorial"
+  ],
+  "_G_LLM_VIEW_TILES_H": [
+   "llm_gfx_view_metrics_init",
+   "llm_tact_mission_start"
+  ],
+  "_G_LLM_VIEW_TILES_W": [
+   "llm_gfx_view_metrics_init",
+   "llm_tact_mission_start"
+  ],
+  "buildings": [
+   "llm_bldg_finish_current_order",
+   "llm_bldg_queue_construction",
+   "llm_bldg_reset_construction_anim",
+   "llm_bldg_set_connected_flag",
+   "llm_game_reload_snapshot_resync_clocks",
+   "llm_prod_bldg_depart_finalize",
+   "llm_prod_shuttle_slot_bind_default",
+   "llm_strat_ai_apply_building_proximity_bonus",
+   "llm_strat_ai_commit_attack_order",
+   "llm_strat_ai_commit_attack_order_alt",
+   "llm_strat_bldg_add_workers",
+   "llm_strat_bldg_anim_state_trigger",
+   "llm_strat_bldg_apply_damage",
+   "llm_strat_bldg_clear_flag_bit0_notify",
+   "llm_strat_bldg_clear_staffed_flag",
+   "llm_strat_bldg_completion_dispatch",
+   "llm_strat_bldg_construction_complete",
+   "llm_strat_bldg_flush_cargo_hold",
+   "llm_strat_bldg_footprint_destroy_occupants",
+   "llm_strat_bldg_free_record",
+   "llm_strat_bldg_is_network_critical",
+   "llm_strat_bldg_kill_credit",
+   "llm_strat_bldg_online_airfield_a",
+   "llm_strat_bldg_online_airfield_h",
+   "llm_strat_bldg_online_barracks_garage_a",
+   "llm_strat_bldg_online_default",
+   "llm_strat_bldg_online_helipad_a",
+   "llm_strat_bldg_online_helipad_h_or_misc",
+   "llm_strat_bldg_online_port_a",
+   "llm_strat_bldg_online_port_h",
+   "llm_strat_bldg_online_shuttle_a",
+   "llm_strat_bldg_online_shuttle_h",
+   "llm_strat_bldg_online_soldiers_h",
+   "llm_strat_bldg_online_vehicles_h",
+   "llm_strat_bldg_remove_workers",
+   "llm_strat_bldg_set_staffed_flag",
+   "llm_strat_bldg_start_liftoff_anim_mother",
+   "llm_strat_bldg_start_liftoff_anim_shuttle",
+   "llm_strat_bldg_start_special_anim",
+   "llm_strat_bldg_state_dismantle_finish",
+   "llm_strat_bldg_state_to_unit",
+   "llm_strat_bldg_tick_pip_anim",
+   "llm_strat_bldg_update_charge_pips",
+   "llm_strat_clock_resync_units_and_buildings",
+   "llm_strat_mother_reelect_primary",
+   "llm_strat_order_queue_dispatch",
+   "llm_strat_refresh_building",
+   "llm_strat_squad_assault_resolve",
+   "llm_strat_target_release_ref",
+   "llm_strat_unit_state_deploy_to_building",
+   "llm_strat_unit_state_dock_taxi_in",
+   "llm_unit_bldg_apply_lethal_damage",
+   "llm_unit_bldg_apply_scaled_damage",
+   "llm_unit_bldg_energy_refill_full",
+   "map_CreateBuilding"
+  ],
+  "counter": [
+   "llm_map_build_regions",
+   "llm_map_region_pool_reset",
+   "llm_map_seed_regions_multires",
+   "map_block_8_GetNextBlock"
+  ],
+  "current_map_data": [
+   "llm_cfg_map_verify_version",
+   "llm_game_start_tutorial",
+   "llm_lobby_apply_selected_session_map",
+   "llm_lobby_join_handler",
+   "llm_lobby_map_transfer_finalize",
+   "llm_lobby_mappicker_selection_changed",
+   "llm_mp_discovery_browser_refresh"
+  ],
+  "d73": [
+   "cfg_CompileText"
+  ],
+  "d74": [
+   "cfg_CompileText"
+  ],
+  "d75": [
+   "cfg_CompileText"
+  ],
+  "d76": [
+   "cfg_CompileText"
+  ],
+  "file_ptr": [
+   "llm_planet_tlo_free",
+   "llm_planet_tlo_load",
+   "llm_tact_mission_load"
+  ],
+  "file_ptr@00e58cc4": [
+   "cfg_ReadMapFile",
+   "llm_map_load_halfres_plane",
+   "llm_map_load_landing_spots",
+   "llm_map_load_main_plane",
+   "llm_map_load_objects",
+   "llm_map_load_passable_plane",
+   "llm_map_load_resources_plane",
+   "map_ReadMap"
+  ],
+  "file_size": [
+   "llm_planet_tlo_load"
+  ],
+  "game_speed": [
+   "SwitchToPlanet",
+   "llm_game_speed_recompute",
+   "llm_strat_input_update",
+   "llm_strat_session_state_reset"
+  ],
+  "general": [
+   "llm_map_setup_dimensions",
+   "llm_strat_bldg_notify_state_change",
+   "llm_strat_bldg_notify_ui",
+   "llm_strat_pathfinder_init",
+   "llm_strat_sim_step",
+   "llm_strat_unit_notify_ui"
+  ],
+  "hChangeHandle_00657296": [
+   "llm_boot_progress_draw"
+  ],
+  "hInstance_00824fd0": [
+   "WinMain",
+   "llm_game_create_main_window"
+  ],
+  "hLibModule_006572aa": [
+   "llm_snd_dsound_lazy_init"
+  ],
+  "hObject_0065729a": [
+   "llm_boot_progress_draw"
+  ],
+  "hObject_006572b6": [
+   "FUN_004b6257"
+  ],
+  "hObject_006572ba": [
+   "FUN_004b6257"
+  ],
+  "hObject_00e58cbc": [
+   "WinMain"
+  ],
+  "hWnd_00824fe8": [
+   "llm_game_create_main_window",
+   "llm_wnd_on_create"
+  ],
+  "height": [
+   "cfg_ReadMapFile",
+   "llm_map_load_loose_fallback",
+   "llm_map_readfile_loose_fallback",
+   "llm_strat_planet_distance",
+   "llm_tact_mission_start",
+   "map_ReadMap"
+  ],
+  "height_m": [
+   "llm_map_build_regions",
+   "llm_strat_ai_players_tick",
+   "llm_strat_planet_map_session_init"
+  ],
+  "is_human": [
+   "llm_game_player_set_ai",
+   "llm_game_player_set_human"
+  ],
+  "labs": [
+   "llm_strat_bldg_unmap_footprint",
+   "llm_strat_order_queue_dispatch",
+   "map_CreateBuilding",
+   "map_FillDefaults"
+  ],
+  "llm_ui_dlg_table_00656d36": [
+   "llm_ui_dlg_building_construction_status"
+  ],
+  "llm_ui_widget_0064ffb7": [
+   "FUN_004b8f58",
+   "FUN_004b903c",
+   "llm_ui_list_widget_append_entry",
+   "llm_ui_list_widget_clear",
+   "llm_ui_scrollbar_bind_range",
+   "llm_ui_stepper_update_arrow_state"
+  ],
+  "llm_ui_widget_0065003f": [
+   "FUN_004b8f58",
+   "FUN_004b903c",
+   "llm_ui_list_widget_append_entry",
+   "llm_ui_list_widget_clear",
+   "llm_ui_scrollbar_bind_range",
+   "llm_ui_stepper_update_arrow_state"
+  ],
+  "llm_ui_widget_006509cf": [
+   "llm_strat_planet_transition_tick",
+   "llm_ui_planet_select_screen_build"
+  ],
+  "llm_ui_widget_00650a13": [
+   "llm_strat_planet_transition_tick",
+   "llm_ui_planet_select_screen_build"
+  ],
+  "llm_ui_widget_00650bab": [
+   "llm_ui_outcome_dlg_tick"
+  ],
+  "llm_ui_widget_00650e0f": [
+   "llm_boot_progress_draw",
+   "llm_menu_newgame_open",
+   "llm_ui_screen_fade_transition_swap"
+  ],
+  "llm_ui_widget_006510fb": [
+   "llm_ui_ingame_menu_open"
+  ],
+  "llm_ui_widget_006511c7": [
+   "llm_ui_diplomacy_screen_build"
+  ],
+  "llm_ui_widget_0065124f": [
+   "llm_ui_ingame_menu_open"
+  ],
+  "llm_ui_widget_00651293": [
+   "llm_lobby_show_intro_wait"
+  ],
+  "llm_ui_widget_006515c3": [
+   "llm_ui_entity_info_screen_open"
+  ],
+  "llm_ui_widget_00651717": [
+   "llm_menu_widget_slide_pump"
+  ],
+  "mciId_0065fd2c": [
+   "llm_cd_audio_close_device",
+   "llm_cd_audio_select_and_open_device"
+  ],
+  "mines": [
+   "llm_strat_bldg_unmap_footprint",
+   "llm_strat_mine_scan_deposit_slot",
+   "map_CreateBuilding",
+   "map_FillDefaults"
+  ],
+  "passable": [
+   "llm_map_bldg_footprint_clear_passable",
+   "llm_map_bldg_footprint_set_passable",
+   "llm_map_load_objects",
+   "llm_map_load_objects_loose",
+   "llm_map_passable_mark_annulus_clear",
+   "llm_map_passable_mark_annulus_set",
+   "llm_strat_bldg_set_footprint_passable",
+   "llm_strat_bldg_unmap_footprint",
+   "llm_strat_group_move_register_member",
+   "llm_strat_storage_board_unit",
+   "llm_strat_storage_place_exit_ground",
+   "llm_strat_unit_remove_from_map",
+   "llm_strat_unit_spawn_on_tile",
+   "llm_strat_unit_state_group_marshal",
+   "llm_strat_unit_state_move_walker",
+   "llm_strat_unit_teardown_mapped",
+   "llm_tact_fx_splash_damage",
+   "llm_tact_fx_update_projectile",
+   "llm_tact_map_compute_bounds",
+   "llm_tact_map_reset",
+   "llm_tact_mission_load",
+   "llm_tact_move_find_approach_tile",
+   "llm_tact_move_step_attempt",
+   "llm_tact_unit_despawn",
+   "llm_tact_unit_destroy",
+   "llm_tact_unit_move_advance",
+   "llm_tact_unit_spawn",
+   "llm_tact_unit_teleport",
+   "llm_unit_create_soldier",
+   "map_CreateBuilding"
+  ],
+  "path_": [
+   "llm_map_region_flood_fill"
+  ],
+  "planet_time": [
+   "game_AddPlanetToAvailable",
+   "llm_strat_session_state_reset",
+   "map_SavePlanetToDisk"
+  ],
+  "player_data": [
+   "game_UpdateResourceStats",
+   "llm_diplomacy_ai_relation_swap",
+   "llm_strat_ai_active_unit_tick",
+   "llm_strat_ai_army_milestone_advance_or_attack",
+   "llm_strat_ai_bldg_queue_handle_recruit_state",
+   "llm_strat_ai_bldg_queue_handle_upgrade_or_cancel",
+   "llm_strat_ai_bldg_queue_process",
+   "llm_strat_ai_bldg_queue_process_entry",
+   "llm_strat_ai_bldg_register_visible_building",
+   "llm_strat_ai_bldg_scan_resource_site_candidates",
+   "llm_strat_ai_build_plan_push",
+   "llm_strat_ai_build_target_list",
+   "llm_strat_ai_commit_attack_order",
+   "llm_strat_ai_group_create",
+   "llm_strat_ai_group_expansion_form_or_repurpose",
+   "llm_strat_ai_group_form_patrol",
+   "llm_strat_ai_group_form_perimeter_patrol",
+   "llm_strat_ai_group_form_standby_from_pool3",
+   "llm_strat_ai_group_form_surplus_from_pool4",
+   "llm_strat_ai_group_member_count_adjust",
+   "llm_strat_ai_group_member_link",
+   "llm_strat_ai_group_member_unlink",
+   "llm_strat_ai_group_rally_formup_worker",
+   "llm_strat_ai_group_redistribute_units",
+   "llm_strat_ai_group_remove",
+   "llm_strat_ai_group_reposition_members",
+   "llm_strat_ai_group_split_off_create",
+   "llm_strat_ai_group_task_activate",
+   "llm_strat_ai_group_task_dequeue",
+   "llm_strat_ai_group_task_disband",
+   "llm_strat_ai_group_task_engage_target",
+   "llm_strat_ai_group_task_enqueue",
+   "llm_strat_ai_group_task_muster_from_pool",
+   "llm_strat_ai_group_task_preempt",
+   "llm_strat_ai_group_task_recruit_from_pool3",
+   "llm_strat_ai_group_task_recruit_from_pool4",
+   "llm_strat_ai_group_task_recruit_from_storage",
+   "llm_strat_ai_group_task_step",
+   "llm_strat_ai_init_build_candidate_priorities",
+   "llm_strat_ai_invasion_launch_attack_group",
+   "llm_strat_ai_invasion_spawn_reinforcements",
+   "llm_strat_ai_notify_bldg_constructed",
+   "llm_strat_ai_notify_map_changed",
+   "llm_strat_ai_notify_map_changed_2",
+   "llm_strat_ai_notify_object_removed",
+   "llm_strat_ai_notify_unit_lifecycle",
+   "llm_strat_ai_plan_construction",
+   "llm_strat_ai_plan_unit_training",
+   "llm_strat_ai_player_set_phase_flags",
+   "llm_strat_ai_player_tick",
+   "llm_strat_ai_players_tick",
+   "llm_strat_ai_queue_bldg_repair",
+   "llm_strat_ai_queue_bldg_upgrade",
+   "llm_strat_ai_queue_flush_unit_train_entries",
+   "llm_strat_ai_queue_reconcile_bldg_change",
+   "llm_strat_ai_queue_release_order",
+   "llm_strat_ai_queue_remove_at",
+   "llm_strat_ai_queue_rotate_newest_to_front",
+   "llm_strat_ai_queue_train_unit",
+   "llm_strat_ai_rebalance_building_workers",
+   "llm_strat_ai_recompute_map_influence",
+   "llm_strat_ai_recompute_shortage_state",
+   "llm_strat_ai_resource_spend_rate_update",
+   "llm_strat_ai_scan_construction_sites",
+   "llm_strat_ai_score_build_categories",
+   "llm_strat_ai_target_list_add",
+   "llm_strat_ai_target_list_remove",
+   "llm_strat_ai_turret_threat_rescan",
+   "llm_strat_ai_update_opponent_relations",
+   "llm_strat_bldg_queue_construction",
+   "llm_strat_bldg_record_resource_expenditure_stats",
+   "llm_strat_econ_track_unit_resource_spend",
+   "llm_strat_init_human_player_data",
+   "llm_strat_load_base_layout_dmp",
+   "llm_strat_sort_sites_by_dist",
+   "llm_strat_spawn_ai_base",
+   "llm_strat_spawn_invasion_force",
+   "llm_strat_unit_order_attack_dispatch",
+   "llm_strat_unit_passive_engage_tick"
+  ],
+  "player_resources": [
+   "game_SpendResource",
+   "llm_resource_add"
+  ],
+  "productions": [
+   "llm_bldg_finish_current_order",
+   "llm_strat_bldg_state_prod_pick_next",
+   "llm_strat_bldg_unmap_footprint",
+   "llm_strat_order_queue_dispatch",
+   "map_CreateBuilding",
+   "map_FillDefaults"
+  ],
+  "progress": [
+   "game_HandleProgress",
+   "game_UpdateProgress",
+   "llm_progress_finalize_acquire",
+   "llm_strat_new_game_init",
+   "llm_strat_revoke_invention",
+   "llm_strat_tech_tables_reset",
+   "map_FillDefaults"
+  ],
+  "resources": [
+   "llm_map_load_resources_plane",
+   "llm_map_load_resources_plane_loose",
+   "llm_map_resources_apply_value_radius",
+   "llm_strat_bldg_completion_dispatch"
+  ],
+  "s_<twoje_imie>_00501018": [
+   "llm_game_init_first_run_defaults"
+  ],
+  "s_DEATH_0050044a": [
+   "llm_tact_unit_pose_tag_select"
+  ],
+  "s_Dane\\_0050302a": [
+   "llm_game_start_tutorial"
+  ],
+  "s_KNEEL_0050043a": [
+   "llm_tact_unit_pose_tag_select"
+  ],
+  "s_MINE_00500452": [
+   "llm_tact_unit_pose_tag_select"
+  ],
+  "s_MYHAMYHAMYHAMYHAMYHAMYHAMYHAMYHA_0056f9be": [
+   "FUN_0058013c",
+   "llm_strat_pathfind_flood_seed_from_route"
+  ],
+  "s_NORMAL0_0050042a": [
+   "llm_tact_unit_pose_tag_select"
+  ],
+  "s_NORMAL1_00500432": [
+   "llm_tact_unit_pose_tag_select"
+  ],
+  "s_SOLDIERTYPE_UNKNOWN_00501d58": [
+   "cfg_ObjectInit"
+  ],
+  "s_SPRITE_ZWYKLY_00501d4a": [
+   "cfg_ObjectInit"
+  ],
+  "s_STAND_00500442": [
+   "llm_tact_unit_pose_tag_select"
+  ],
+  "s_TUTORIAL.MP_00503030": [
+   "llm_game_start_tutorial"
+  ],
+  "s_localhost_005039b8": [
+   "llm_net_get_local_ip_string"
+  ],
+  "s_panelb\\ilp_typ.gfx_00500580": [
+   "llm_tact_mission_load"
+  ],
+  "s_setup.dat_00500cf3": [
+   "llm_cfg_save_setup_dat",
+   "llm_game_check_setup_dat_exists"
+  ],
+  "sprite_data": [
+   "gfx_LoadSprite"
+  ],
+  "tile_objects": [
+   "llm_map_fog_of_war_recompute",
+   "llm_map_load_main_plane",
+   "llm_map_load_main_plane_loose",
+   "llm_map_load_objects",
+   "llm_map_load_objects_loose",
+   "llm_strat_bldg_unmap_footprint",
+   "llm_strat_storage_board_unit",
+   "llm_strat_unit_remove_from_map",
+   "llm_strat_unit_spawn_on_tile",
+   "llm_strat_unit_state_exit_walk_out",
+   "llm_strat_unit_state_move_walker",
+   "llm_strat_unit_teardown_mapped",
+   "llm_strat_unit_unlink_tile",
+   "llm_tact_door_apply_to_map",
+   "llm_tact_door_update_tile_state",
+   "llm_tact_frame",
+   "llm_tact_map_reset",
+   "llm_tact_mission_load",
+   "llm_tact_move_path_preview_clear",
+   "llm_tact_move_path_preview_walk",
+   "llm_tact_tile_rebuild_occupancy_layer",
+   "llm_tact_unit_despawn",
+   "llm_tact_unit_destroy",
+   "llm_tact_unit_move_advance",
+   "llm_tact_unit_spawn",
+   "llm_tact_unit_teleport",
+   "llm_unit_create_soldier",
+   "map_CreateBuilding",
+   "map_unit_PutOnMap"
+  ],
+  "turrets": [
+   "llm_strat_bldg_state_turret_attack",
+   "llm_strat_bldg_state_turret_scan",
+   "llm_strat_bldg_turret_reload_tick",
+   "llm_strat_bldg_unmap_footprint",
+   "llm_strat_order_queue_dispatch",
+   "llm_strat_turret_fire",
+   "map_CreateBuilding",
+   "map_FillDefaults"
+  ],
+  "unit_storage": [
+   "llm_strat_bldg_anim_state_helipad",
+   "llm_strat_bldg_unmap_footprint",
+   "llm_strat_storage_dock_list_append",
+   "llm_strat_storage_dock_unit_at_building",
+   "llm_strat_storage_release_door_held_by_unit",
+   "llm_strat_storage_remove_docked_unit",
+   "llm_strat_storage_scrap_docked_units_of_type",
+   "llm_strat_unit_state_dock_taxi_in",
+   "llm_strat_unit_state_enter_storage_begin",
+   "llm_strat_unit_state_enter_wait",
+   "llm_strat_unit_state_enter_walk_in",
+   "llm_strat_unit_state_exit_cancel",
+   "llm_strat_unit_state_exit_storage_begin",
+   "llm_strat_unit_state_exit_wait",
+   "llm_strat_unit_state_exit_walk_out",
+   "llm_strat_unit_state_landing_request",
+   "llm_strat_unit_takeoff_finalize",
+   "map_CreateBuilding",
+   "map_FillDefaults"
+  ],
+  "units": [
+   "llm_game_reload_snapshot_resync_clocks",
+   "llm_prod_bldg_depart_finalize",
+   "llm_strat_ai_commit_attack_order",
+   "llm_strat_ai_commit_attack_order_alt",
+   "llm_strat_ai_group_dispatch_action_flags",
+   "llm_strat_ai_group_member_link",
+   "llm_strat_ai_group_member_unlink",
+   "llm_strat_ai_group_move_formation_rotating",
+   "llm_strat_ai_group_remove",
+   "llm_strat_ai_group_scatter_to_passable_tile",
+   "llm_strat_ai_notify_unit_lifecycle",
+   "llm_strat_ai_unit_flag_and_move",
+   "llm_strat_ai_unit_select_attack_target",
+   "llm_strat_bldg_anim_state_helipad",
+   "llm_strat_bldg_footprint_destroy_occupants",
+   "llm_strat_bldg_kill_credit",
+   "llm_strat_bldg_state_to_unit",
+   "llm_strat_bldg_unmap_footprint",
+   "llm_strat_clock_resync_units_and_buildings",
+   "llm_strat_group_scratch_add_unit_and_normalize_heading",
+   "llm_strat_hangar_recharge_pulse",
+   "llm_strat_order_queue_apply_and_dequeue",
+   "llm_strat_order_queue_dispatch",
+   "llm_strat_path_attach_slot",
+   "llm_strat_path_free_slot",
+   "llm_strat_path_make_single_step",
+   "llm_strat_path_write_from_solver",
+   "llm_strat_prod_spawn_arrived_unit",
+   "llm_strat_prod_try_start_unit",
+   "llm_strat_prod_unload_cargo_unit",
+   "llm_strat_squad_assault_resolve",
+   "llm_strat_storage_board_unit",
+   "llm_strat_storage_dock_unit_at_building",
+   "llm_strat_storage_launch_parked_to_orbit",
+   "llm_strat_storage_place_exit_ground",
+   "llm_strat_storage_purge_dead_docked",
+   "llm_strat_storage_scrap_docked_units_of_type",
+   "llm_strat_storage_setup_approach_path",
+   "llm_strat_storage_setup_exit_path",
+   "llm_strat_target_release_ref",
+   "llm_strat_unit_apply_damage",
+   "llm_strat_unit_assign_shared_path",
+   "llm_strat_unit_change_proto_and_energy",
+   "llm_strat_unit_create",
+   "llm_strat_unit_ctrlgroup_add_member",
+   "llm_strat_unit_ctrlgroup_leave",
+   "llm_strat_unit_ctrlgroup_remove_member",
+   "llm_strat_unit_fire_weapon",
+   "llm_strat_unit_free_slot",
+   "llm_strat_unit_group_step_ground",
+   "llm_strat_unit_init_record",
+   "llm_strat_unit_kill_credit",
+   "llm_strat_unit_load_into_shuttle_cargo",
+   "llm_strat_unit_notify_status",
+   "llm_strat_unit_on_destroyed",
+   "llm_strat_unit_passive_engage_tick",
+   "llm_strat_unit_path_detour",
+   "llm_strat_unit_path_store_result",
+   "llm_strat_unit_purge_unregistered",
+   "llm_strat_unit_release_path_and_targets",
+   "llm_strat_unit_remove_from_map",
+   "llm_strat_unit_reset_order_and_target",
+   "llm_strat_unit_set_state_of",
+   "llm_strat_unit_set_state_order_of",
+   "llm_strat_unit_soldier_unlink",
+   "llm_strat_unit_spawn_on_tile",
+   "llm_strat_unit_state_dock_taxi_in",
+   "llm_strat_unit_state_group_marshal",
+   "llm_strat_unit_state_remove_silent",
+   "llm_strat_unit_state_squad_merge",
+   "llm_strat_unit_teardown",
+   "llm_strat_unit_teardown_mapped",
+   "llm_strat_unit_unlink_tile",
+   "llm_strat_unit_update_damage_smoke",
+   "llm_strat_unit_update_target2_tracking",
+   "llm_strat_unit_update_target_tracking",
+   "llm_unit_alive_count_resync",
+   "llm_unit_apply_production_completion",
+   "llm_unit_bldg_apply_lethal_damage",
+   "llm_unit_bldg_apply_scaled_damage",
+   "llm_unit_bldg_energy_refill_full",
+   "llm_unit_create_soldier",
+   "llm_unit_ctrl_group_flash_observer",
+   "llm_unit_force_disembark",
+   "llm_unit_recruit",
+   "llm_unit_set_order_param",
+   "llm_unit_status_bit_clear",
+   "llm_unit_status_bit_set",
+   "llm_unit_transport_unload_docked",
+   "llm_unit_transport_unload_field",
+   "map_unit_Add",
+   "map_unit_PutOnMap"
+  ],
+  "version": [
+   "cfg_ReadMapFile",
+   "llm_cfg_map_read_header",
+   "llm_map_load_loose_fallback",
+   "llm_map_readfile_loose_fallback",
+   "map_ReadMap"
+  ],
+  "width": [
+   "cfg_ReadMapFile",
+   "llm_map_load_loose_fallback",
+   "llm_map_readfile_loose_fallback",
+   "llm_strat_planet_distance",
+   "llm_tact_mission_start",
+   "map_ReadMap"
+  ],
+  "width_m": [
+   "llm_map_build_regions",
+   "llm_strat_ai_players_tick",
+   "llm_strat_planet_map_session_init"
+  ]
+ }
+}

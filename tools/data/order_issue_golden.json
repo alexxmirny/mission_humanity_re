@@ -1,0 +1,10047 @@
+{
+ "_generated_by": "tools/gen_order_issue_golden.py",
+ "_do_not_hand_edit": "Edit the generator; inputs are tmp/decomp_orders_issue/*.asm, tools/data/orders_issue_migration.json and tools/data/order_matrix_raw.json.",
+ "_what": "The order-issue GOLDEN: for each of the 112 order-wrapper functions in tools/data/orders_issue_migration.json, the exact register values (unit_index, owner_and_kind, param0, order_code) and scratch-field writes each call site into llm_strat_order_dispatch/llm_strat_order_enqueue/llm_strat_order_scratch_set_field emits, derived by a small forward abstract interpreter walking the function's ORIGINAL disassembly (tmp/decomp_orders_issue/*.asm) -- never from any C++ reimplementation. Values that cannot be pinned to a constant/parameter through the supported instruction vocabulary are UNKNOWN with a reason rather than guessed; every one is listed in `unresolved`. `crosscheck` compares param0/order_code/kind against an independent pcode-based reading (order_matrix_raw.json) and the run fails if they disagree.",
+ "counts": {
+  "wrappers": 116,
+  "sites": 120,
+  "sites_fully_resolved": 105,
+  "sites_with_unknown": 15,
+  "scratch_writes": 156,
+  "scratch_writes_unknown": 46,
+  "guarded_sites": 39,
+  "dead_wrappers": 53
+ },
+ "crosscheck": {
+  "compared": 344,
+  "agreed": 344,
+  "disagreed": []
+ },
+ "unresolved": [
+  {
+   "wrapper": "llm_strat_order_debug_roll_random",
+   "site": "0x0046f33d",
+   "field": "owner_and_kind",
+   "why": "MEM read 0x00e58354"
+  },
+  {
+   "wrapper": "llm_strat_order_recheck_planet_system_all_players",
+   "site": "0x0046f80e",
+   "field": "owner_and_kind",
+   "why": "MEM read 0x00e58354"
+  },
+  {
+   "wrapper": "llm_strat_unit_order_attack_building",
+   "site": "0x0046c792",
+   "field": "scratch[0].value",
+   "why": "stack slot -0x1c never written"
+  },
+  {
+   "wrapper": "llm_strat_unit_order_attack_building",
+   "site": "0x0046c792",
+   "field": "scratch[1].value",
+   "why": "stack slot -0x14 never written"
+  },
+  {
+   "wrapper": "llm_strat_unit_order_attack_building",
+   "site": "0x0046c792",
+   "field": "scratch[4].value",
+   "why": "clobbered by call to llm_strat_unit_select_weapon"
+  },
+  {
+   "wrapper": "llm_strat_unit_order_attack_building_reposition",
+   "site": "0x0046c149",
+   "field": "order_code",
+   "why": "MEM read 0xe4a184"
+  },
+  {
+   "wrapper": "llm_strat_unit_order_attack_building_reposition",
+   "site": "0x0046c149",
+   "field": "scratch[0].value",
+   "why": "unsupported instruction SBB EAX,EDX"
+  },
+  {
+   "wrapper": "llm_strat_unit_order_attack_building_reposition",
+   "site": "0x0046c149",
+   "field": "scratch[1].value",
+   "why": "unsupported instruction SBB EAX,EDX"
+  },
+  {
+   "wrapper": "llm_strat_unit_order_attack_building_reposition",
+   "site": "0x0046c149",
+   "field": "scratch[2].value",
+   "why": "stack slot -0x1c never written"
+  },
+  {
+   "wrapper": "llm_strat_unit_order_attack_building_reposition",
+   "site": "0x0046c149",
+   "field": "scratch[3].value",
+   "why": "stack slot -0x14 never written"
+  },
+  {
+   "wrapper": "llm_strat_unit_order_attack_building_reposition",
+   "site": "0x0046c149",
+   "field": "scratch[6].value",
+   "why": "clobbered by call to llm_strat_unit_select_weapon"
+  },
+  {
+   "wrapper": "llm_strat_unit_order_attack_building_reposition",
+   "site": "0x0046c20e",
+   "field": "scratch[0].value",
+   "why": "unsupported instruction SBB EAX,EDX"
+  },
+  {
+   "wrapper": "llm_strat_unit_order_attack_building_reposition",
+   "site": "0x0046c20e",
+   "field": "scratch[1].value",
+   "why": "unsupported instruction SBB EAX,EDX"
+  },
+  {
+   "wrapper": "llm_strat_unit_order_attack_building_reposition",
+   "site": "0x0046c20e",
+   "field": "scratch[2].value",
+   "why": "stack slot -0x1c never written"
+  },
+  {
+   "wrapper": "llm_strat_unit_order_attack_building_reposition",
+   "site": "0x0046c20e",
+   "field": "scratch[3].value",
+   "why": "stack slot -0x14 never written"
+  },
+  {
+   "wrapper": "llm_strat_unit_order_attack_building_reposition_enqueue",
+   "site": "0x0046c61a",
+   "field": "order_code",
+   "why": "MEM read 0xe4a184"
+  },
+  {
+   "wrapper": "llm_strat_unit_order_attack_building_reposition_enqueue",
+   "site": "0x0046c61a",
+   "field": "scratch[0].value",
+   "why": "unsupported instruction SBB EAX,EDX"
+  },
+  {
+   "wrapper": "llm_strat_unit_order_attack_building_reposition_enqueue",
+   "site": "0x0046c61a",
+   "field": "scratch[1].value",
+   "why": "unsupported instruction SBB EAX,EDX"
+  },
+  {
+   "wrapper": "llm_strat_unit_order_attack_building_reposition_enqueue",
+   "site": "0x0046c61a",
+   "field": "scratch[2].value",
+   "why": "stack slot -0x1c never written"
+  },
+  {
+   "wrapper": "llm_strat_unit_order_attack_building_reposition_enqueue",
+   "site": "0x0046c61a",
+   "field": "scratch[3].value",
+   "why": "stack slot -0x14 never written"
+  },
+  {
+   "wrapper": "llm_strat_unit_order_attack_building_reposition_enqueue",
+   "site": "0x0046c61a",
+   "field": "scratch[6].value",
+   "why": "clobbered by call to llm_strat_unit_select_weapon"
+  },
+  {
+   "wrapper": "llm_strat_unit_order_attack_building_reposition_enqueue",
+   "site": "0x0046c6b8",
+   "field": "scratch[0].value",
+   "why": "unsupported instruction SBB EAX,EDX"
+  },
+  {
+   "wrapper": "llm_strat_unit_order_attack_building_reposition_enqueue",
+   "site": "0x0046c6b8",
+   "field": "scratch[1].value",
+   "why": "unsupported instruction SBB EAX,EDX"
+  },
+  {
+   "wrapper": "llm_strat_unit_order_attack_building_reposition_enqueue",
+   "site": "0x0046c6b8",
+   "field": "scratch[2].value",
+   "why": "stack slot -0x1c never written"
+  },
+  {
+   "wrapper": "llm_strat_unit_order_attack_building_reposition_enqueue",
+   "site": "0x0046c6b8",
+   "field": "scratch[3].value",
+   "why": "stack slot -0x14 never written"
+  },
+  {
+   "wrapper": "llm_strat_unit_order_attack_target",
+   "site": "0x0046b149",
+   "field": "order_code",
+   "why": "MEM read 0xe4a184"
+  },
+  {
+   "wrapper": "llm_strat_unit_order_attack_target",
+   "site": "0x0046b149",
+   "field": "scratch[0].value",
+   "why": "unsupported instruction SBB EAX,EDX"
+  },
+  {
+   "wrapper": "llm_strat_unit_order_attack_target",
+   "site": "0x0046b149",
+   "field": "scratch[1].value",
+   "why": "unsupported instruction SBB EAX,EDX"
+  },
+  {
+   "wrapper": "llm_strat_unit_order_attack_target",
+   "site": "0x0046b149",
+   "field": "scratch[2].value",
+   "why": "stack slot -0x20 never written"
+  },
+  {
+   "wrapper": "llm_strat_unit_order_attack_target",
+   "site": "0x0046b149",
+   "field": "scratch[3].value",
+   "why": "stack slot -0x14 never written"
+  },
+  {
+   "wrapper": "llm_strat_unit_order_attack_target",
+   "site": "0x0046b149",
+   "field": "scratch[6].value",
+   "why": "join point"
+  },
+  {
+   "wrapper": "llm_strat_unit_order_attack_target_alt",
+   "site": "0x0046b7c4",
+   "field": "order_code",
+   "why": "MEM read 0xe4a184"
+  },
+  {
+   "wrapper": "llm_strat_unit_order_attack_target_alt",
+   "site": "0x0046b7c4",
+   "field": "scratch[0].value",
+   "why": "unsupported instruction SBB EAX,EDX"
+  },
+  {
+   "wrapper": "llm_strat_unit_order_attack_target_alt",
+   "site": "0x0046b7c4",
+   "field": "scratch[1].value",
+   "why": "unsupported instruction SBB EAX,EDX"
+  },
+  {
+   "wrapper": "llm_strat_unit_order_attack_target_alt",
+   "site": "0x0046b7c4",
+   "field": "scratch[2].value",
+   "why": "stack slot -0x20 never written"
+  },
+  {
+   "wrapper": "llm_strat_unit_order_attack_target_alt",
+   "site": "0x0046b7c4",
+   "field": "scratch[3].value",
+   "why": "stack slot -0x14 never written"
+  },
+  {
+   "wrapper": "llm_strat_unit_order_attack_target_alt",
+   "site": "0x0046b7c4",
+   "field": "scratch[6].value",
+   "why": "join point"
+  },
+  {
+   "wrapper": "llm_strat_unit_order_attack_target_preset_weapon_enqueue",
+   "site": "0x0046bf65",
+   "field": "order_code",
+   "why": "MEM read 0xe4a184"
+  },
+  {
+   "wrapper": "llm_strat_unit_order_attack_target_preset_weapon_enqueue",
+   "site": "0x0046bf65",
+   "field": "scratch[0].value",
+   "why": "unsupported instruction SBB EAX,EDX"
+  },
+  {
+   "wrapper": "llm_strat_unit_order_attack_target_preset_weapon_enqueue",
+   "site": "0x0046bf65",
+   "field": "scratch[1].value",
+   "why": "unsupported instruction SBB EAX,EDX"
+  },
+  {
+   "wrapper": "llm_strat_unit_order_attack_target_preset_weapon_enqueue",
+   "site": "0x0046bf65",
+   "field": "scratch[2].value",
+   "why": "stack slot -0x14 never written"
+  },
+  {
+   "wrapper": "llm_strat_unit_order_attack_target_preset_weapon_enqueue",
+   "site": "0x0046bf65",
+   "field": "scratch[3].value",
+   "why": "stack slot -0x18 never written"
+  },
+  {
+   "wrapper": "llm_strat_unit_order_attack_unit",
+   "site": "0x0046bcef",
+   "field": "scratch[0].value",
+   "why": "stack slot -0x20 never written"
+  },
+  {
+   "wrapper": "llm_strat_unit_order_attack_unit",
+   "site": "0x0046bcef",
+   "field": "scratch[1].value",
+   "why": "stack slot -0x14 never written"
+  },
+  {
+   "wrapper": "llm_strat_unit_order_attack_unit",
+   "site": "0x0046bcef",
+   "field": "scratch[4].value",
+   "why": "join point"
+  },
+  {
+   "wrapper": "llm_strat_unit_order_auto_launch_from_storage",
+   "site": "0x0046cee1",
+   "field": "param0",
+   "why": "MEM read 0xe4a185"
+  },
+  {
+   "wrapper": "llm_strat_unit_order_auto_launch_from_storage",
+   "site": "0x0046cee1",
+   "field": "scratch[0].value",
+   "why": "MEM read 0xc728a4"
+  },
+  {
+   "wrapper": "llm_strat_unit_order_auto_launch_from_storage",
+   "site": "0x0046cee1",
+   "field": "scratch[0].value",
+   "why": "MEM read 0x00e15398"
+  },
+  {
+   "wrapper": "llm_strat_unit_order_auto_launch_from_storage",
+   "site": "0x0046cee1",
+   "field": "scratch[1].value",
+   "why": "MEM read 0xc728a8"
+  },
+  {
+   "wrapper": "llm_strat_unit_order_auto_launch_from_storage",
+   "site": "0x0046cee1",
+   "field": "scratch[1].value",
+   "why": "MEM read 0x00e153b0"
+  },
+  {
+   "wrapper": "llm_strat_unit_order_auto_launch_from_storage",
+   "site": "0x0046cee1",
+   "field": "scratch[2].value",
+   "why": "MEM read 0x00e15398"
+  },
+  {
+   "wrapper": "llm_strat_unit_order_auto_launch_from_storage",
+   "site": "0x0046cee1",
+   "field": "scratch[3].value",
+   "why": "MEM read 0x00e153b0"
+  },
+  {
+   "wrapper": "llm_strat_unit_order_dispatch_default",
+   "site": "0x00469e64",
+   "field": "param0",
+   "why": "MEM read 0xe4a185"
+  },
+  {
+   "wrapper": "llm_strat_unit_order_dispatch_default",
+   "site": "0x00469e64",
+   "field": "order_code",
+   "why": "MEM read 0xe4a185"
+  },
+  {
+   "wrapper": "llm_strat_unit_order_exit_storage",
+   "site": "0x0046a805",
+   "field": "scratch[1].value",
+   "why": "join point"
+  },
+  {
+   "wrapper": "llm_strat_unit_order_exit_storage",
+   "site": "0x0046a805",
+   "field": "scratch[2].value",
+   "why": "MEM read 0xc728a8"
+  },
+  {
+   "wrapper": "llm_strat_unit_order_exit_storage",
+   "site": "0x0046a898",
+   "field": "scratch[0].value",
+   "why": "join point"
+  },
+  {
+   "wrapper": "llm_strat_unit_order_exit_storage",
+   "site": "0x0046a898",
+   "field": "scratch[1].value",
+   "why": "MEM read 0xc728a8"
+  },
+  {
+   "wrapper": "llm_strat_unit_order_move",
+   "site": "0x0046a092",
+   "field": "param0",
+   "why": "MEM read 0xe4a183"
+  },
+  {
+   "wrapper": "llm_strat_unit_order_move",
+   "site": "0x0046a092",
+   "field": "order_code",
+   "why": "MEM read 0xe4a184"
+  },
+  {
+   "wrapper": "llm_strat_unit_order_move_confirmed_with_bump",
+   "site": "0x0046ad48",
+   "field": "order_code",
+   "why": "MEM read 0xe4a184"
+  },
+  {
+   "wrapper": "llm_strat_unit_order_move_default",
+   "site": "0x0046a488",
+   "field": "order_code",
+   "why": "MEM read 0xe4a184"
+  },
+  {
+   "wrapper": "llm_strat_unit_order_move_default_enqueue",
+   "site": "0x0046a551",
+   "field": "order_code",
+   "why": "MEM read 0xe4a184"
+  },
+  {
+   "wrapper": "llm_strat_unit_order_scatter_from_spawn",
+   "site": "0x0046a69f",
+   "field": "order_code",
+   "why": "MEM read 0xe4a184"
+  },
+  {
+   "wrapper": "llm_strat_unit_reset_order_and_target",
+   "site": "0x00469f7c",
+   "field": "param0",
+   "why": "MEM read 0xe4a185"
+  },
+  {
+   "wrapper": "llm_strat_unit_reset_order_and_target",
+   "site": "0x00469f7c",
+   "field": "order_code",
+   "why": "MEM read 0xe4a185"
+  }
+ ],
+ "wrappers": [
+  {
+   "name": "llm_strat_ai_group_move_formation_rotating",
+   "addr": "0x004d7da9",
+   "batch": "B",
+   "dead": false,
+   "params": [
+    {
+     "name": "player",
+     "type": "game_t_Player",
+     "storage": "EAX:4"
+    },
+    {
+     "name": "unused_param2",
+     "type": "int",
+     "storage": "EDX:4"
+    },
+    {
+     "name": "unused_param3",
+     "type": "int",
+     "storage": "EBX:4"
+    },
+    {
+     "name": "target_x",
+     "type": "int",
+     "storage": "ECX:4"
+    },
+    {
+     "name": "target_y",
+     "type": "int",
+     "storage": "Stack[0x4]:4"
+    }
+   ],
+   "sites": []
+  },
+  {
+   "name": "llm_strat_ai_group_scatter_to_passable_tile",
+   "addr": "0x004d7e6b",
+   "batch": "B",
+   "dead": false,
+   "params": [
+    {
+     "name": "param_1",
+     "type": "uint",
+     "storage": "EAX:4"
+    },
+    {
+     "name": "param_2",
+     "type": "int",
+     "storage": "EDX:4"
+    },
+    {
+     "name": "a2",
+     "type": "int",
+     "storage": "EBX:4"
+    }
+   ],
+   "sites": []
+  },
+  {
+   "name": "llm_strat_ai_unit_flag_and_move",
+   "addr": "0x004d7e22",
+   "batch": "B",
+   "dead": false,
+   "params": [
+    {
+     "name": "param_1",
+     "type": "uint",
+     "storage": "EAX:4"
+    },
+    {
+     "name": "param_2",
+     "type": "int",
+     "storage": "EDX:4"
+    },
+    {
+     "name": "a2",
+     "type": "undefined4",
+     "storage": "EBX:4"
+    },
+    {
+     "name": "param_4",
+     "type": "undefined4",
+     "storage": "ECX:4"
+    }
+   ],
+   "sites": []
+  },
+  {
+   "name": "llm_strat_bldg_footprint_random_point",
+   "addr": "0x00449d41",
+   "batch": "A",
+   "dead": false,
+   "params": [
+    {
+     "name": "param_1",
+     "type": "undefined4",
+     "storage": "EAX:4"
+    },
+    {
+     "name": "param_2",
+     "type": "undefined4",
+     "storage": "EDX:4"
+    },
+    {
+     "name": "a2",
+     "type": "int",
+     "storage": "EBX:4"
+    },
+    {
+     "name": "param_4",
+     "type": "int",
+     "storage": "ECX:4"
+    },
+    {
+     "name": "param_5",
+     "type": "uint *",
+     "storage": "Stack[0x4]:4"
+    },
+    {
+     "name": "param_6",
+     "type": "uint *",
+     "storage": "Stack[0x8]:4"
+    }
+   ],
+   "sites": []
+  },
+  {
+   "name": "llm_strat_bldg_order_activate",
+   "addr": "0x0046e0f2",
+   "batch": "A",
+   "dead": false,
+   "params": [
+    {
+     "name": "player",
+     "type": "uint",
+     "storage": "EAX:4"
+    },
+    {
+     "name": "bldg_idx",
+     "type": "ushort",
+     "storage": "DX:2"
+    }
+   ],
+   "sites": [
+    {
+     "site": "0x0046e125",
+     "root": "llm_strat_order_dispatch",
+     "lane": "replicated",
+     "after_branch": false,
+     "unit_index": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "param",
+       "i": 1
+      },
+      "b": null,
+      "imm": null
+     },
+     "owner_and_kind": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "op",
+       "op": "or8",
+       "a": {
+        "k": "param",
+        "i": 0
+       },
+       "b": null,
+       "imm": 64
+      },
+      "b": null,
+      "imm": null
+     },
+     "param0": {
+      "k": "imm",
+      "v": 128
+     },
+     "order_code": {
+      "k": "imm",
+      "v": 128
+     },
+     "scratch_reset_before": false,
+     "scratch": []
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_bldg_order_assign_workers",
+   "addr": "0x0046dfb6",
+   "batch": "A",
+   "dead": false,
+   "params": [
+    {
+     "name": "player",
+     "type": "ushort",
+     "storage": "AX:2"
+    },
+    {
+     "name": "building_index",
+     "type": "ushort",
+     "storage": "DX:2"
+    },
+    {
+     "name": "count",
+     "type": "uint",
+     "storage": "EBX:4"
+    }
+   ],
+   "sites": [
+    {
+     "site": "0x0046dff8",
+     "root": "llm_strat_order_dispatch",
+     "lane": "replicated",
+     "after_branch": false,
+     "unit_index": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "param",
+       "i": 1
+      },
+      "b": null,
+      "imm": null
+     },
+     "owner_and_kind": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "op",
+       "op": "or8",
+       "a": {
+        "k": "param",
+        "i": 0
+       },
+       "b": null,
+       "imm": 64
+      },
+      "b": null,
+      "imm": null
+     },
+     "param0": {
+      "k": "imm",
+      "v": 126
+     },
+     "order_code": {
+      "k": "imm",
+      "v": 126
+     },
+     "scratch_reset_before": false,
+     "scratch": [
+      {
+       "index": {
+        "k": "imm",
+        "v": 1
+       },
+       "value": {
+        "k": "param",
+        "i": 2
+       },
+       "at": "0x0046dfdd"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_bldg_order_cancel_reset",
+   "addr": "0x0046e564",
+   "batch": "A",
+   "dead": true,
+   "params": [
+    {
+     "name": "target_id",
+     "type": "uint",
+     "storage": "EAX:4"
+    },
+    {
+     "name": "player",
+     "type": "ushort",
+     "storage": "DX:2"
+    }
+   ],
+   "sites": [
+    {
+     "site": "0x0046e597",
+     "root": "llm_strat_order_dispatch",
+     "lane": "replicated",
+     "after_branch": false,
+     "unit_index": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "param",
+       "i": 1
+      },
+      "b": null,
+      "imm": null
+     },
+     "owner_and_kind": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "op",
+       "op": "or8",
+       "a": {
+        "k": "param",
+        "i": 0
+       },
+       "b": null,
+       "imm": 64
+      },
+      "b": null,
+      "imm": null
+     },
+     "param0": {
+      "k": "imm",
+      "v": 131
+     },
+     "order_code": {
+      "k": "imm",
+      "v": 131
+     },
+     "scratch_reset_before": false,
+     "scratch": []
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_bldg_order_cancel_reset_enqueue",
+   "addr": "0x0046e5a5",
+   "batch": "A",
+   "dead": true,
+   "params": [
+    {
+     "name": "target_id",
+     "type": "ushort",
+     "storage": "AX:2"
+    },
+    {
+     "name": "player",
+     "type": "ushort",
+     "storage": "DX:2"
+    }
+   ],
+   "sites": [
+    {
+     "site": "0x0046e5d8",
+     "root": "llm_strat_order_enqueue",
+     "lane": "immediate",
+     "after_branch": false,
+     "unit_index": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "param",
+       "i": 1
+      },
+      "b": null,
+      "imm": null
+     },
+     "owner_and_kind": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "op",
+       "op": "or8",
+       "a": {
+        "k": "param",
+        "i": 0
+       },
+       "b": null,
+       "imm": 64
+      },
+      "b": null,
+      "imm": null
+     },
+     "param0": {
+      "k": "imm",
+      "v": 131
+     },
+     "order_code": {
+      "k": "imm",
+      "v": 131
+     },
+     "scratch_reset_before": false,
+     "scratch": []
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_bldg_order_cargo_bind_slot",
+   "addr": "0x0046e998",
+   "batch": "A",
+   "dead": true,
+   "params": [
+    {
+     "name": "target_id",
+     "type": "uint",
+     "storage": "EAX:4"
+    },
+    {
+     "name": "player",
+     "type": "ushort",
+     "storage": "DX:2"
+    }
+   ],
+   "sites": [
+    {
+     "site": "0x0046e9cb",
+     "root": "llm_strat_order_dispatch",
+     "lane": "replicated",
+     "after_branch": false,
+     "unit_index": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "param",
+       "i": 1
+      },
+      "b": null,
+      "imm": null
+     },
+     "owner_and_kind": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "op",
+       "op": "or8",
+       "a": {
+        "k": "param",
+        "i": 0
+       },
+       "b": null,
+       "imm": 64
+      },
+      "b": null,
+      "imm": null
+     },
+     "param0": {
+      "k": "imm",
+      "v": 214
+     },
+     "order_code": {
+      "k": "imm",
+      "v": 214
+     },
+     "scratch_reset_before": false,
+     "scratch": []
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_bldg_order_cargo_bind_slot_enqueue",
+   "addr": "0x0046e9d9",
+   "batch": "A",
+   "dead": true,
+   "params": [
+    {
+     "name": "target_id",
+     "type": "ushort",
+     "storage": "AX:2"
+    },
+    {
+     "name": "player",
+     "type": "ushort",
+     "storage": "DX:2"
+    }
+   ],
+   "sites": [
+    {
+     "site": "0x0046ea0c",
+     "root": "llm_strat_order_enqueue",
+     "lane": "immediate",
+     "after_branch": false,
+     "unit_index": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "param",
+       "i": 1
+      },
+      "b": null,
+      "imm": null
+     },
+     "owner_and_kind": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "op",
+       "op": "or8",
+       "a": {
+        "k": "param",
+        "i": 0
+       },
+       "b": null,
+       "imm": 64
+      },
+      "b": null,
+      "imm": null
+     },
+     "param0": {
+      "k": "imm",
+      "v": 214
+     },
+     "order_code": {
+      "k": "imm",
+      "v": 214
+     },
+     "scratch_reset_before": false,
+     "scratch": []
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_bldg_order_deactivate",
+   "addr": "0x0046e174",
+   "batch": "A",
+   "dead": false,
+   "params": [
+    {
+     "name": "player",
+     "type": "uint",
+     "storage": "EAX:4"
+    },
+    {
+     "name": "building_idx",
+     "type": "ushort",
+     "storage": "DX:2"
+    }
+   ],
+   "sites": [
+    {
+     "site": "0x0046e1a7",
+     "root": "llm_strat_order_dispatch",
+     "lane": "replicated",
+     "after_branch": false,
+     "unit_index": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "param",
+       "i": 1
+      },
+      "b": null,
+      "imm": null
+     },
+     "owner_and_kind": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "op",
+       "op": "or8",
+       "a": {
+        "k": "param",
+        "i": 0
+       },
+       "b": null,
+       "imm": 64
+      },
+      "b": null,
+      "imm": null
+     },
+     "param0": {
+      "k": "imm",
+      "v": 129
+     },
+     "order_code": {
+      "k": "imm",
+      "v": 129
+     },
+     "scratch_reset_before": false,
+     "scratch": []
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_bldg_order_deactivate_enqueue",
+   "addr": "0x0046e1b5",
+   "batch": "A",
+   "dead": false,
+   "params": [
+    {
+     "name": "owner_kind",
+     "type": "ushort",
+     "storage": "AX:2"
+    },
+    {
+     "name": "bldg_index",
+     "type": "ushort",
+     "storage": "DX:2"
+    }
+   ],
+   "sites": [
+    {
+     "site": "0x0046e1e8",
+     "root": "llm_strat_order_enqueue",
+     "lane": "immediate",
+     "after_branch": false,
+     "unit_index": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "param",
+       "i": 1
+      },
+      "b": null,
+      "imm": null
+     },
+     "owner_and_kind": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "op",
+       "op": "or8",
+       "a": {
+        "k": "param",
+        "i": 0
+       },
+       "b": null,
+       "imm": 64
+      },
+      "b": null,
+      "imm": null
+     },
+     "param0": {
+      "k": "imm",
+      "v": 129
+     },
+     "order_code": {
+      "k": "imm",
+      "v": 129
+     },
+     "scratch_reset_before": false,
+     "scratch": []
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_bldg_order_depart_confirm_dispatch",
+   "addr": "0x00415b41",
+   "batch": "A",
+   "dead": false,
+   "params": [],
+   "sites": []
+  },
+  {
+   "name": "llm_strat_bldg_order_depart_dispatch_by_type",
+   "addr": "0x0046ee88",
+   "batch": "A",
+   "dead": false,
+   "params": [
+    {
+     "name": "player",
+     "type": "uint",
+     "storage": "EAX:4"
+    },
+    {
+     "name": "bldg_idx",
+     "type": "int",
+     "storage": "EDX:4"
+    },
+    {
+     "name": "dest_planet_idx",
+     "type": "game_t_PlanetIndex",
+     "storage": "EBX:4"
+    }
+   ],
+   "sites": []
+  },
+  {
+   "name": "llm_strat_bldg_order_depart_dispatch_by_type_enqueue",
+   "addr": "0x0046efe4",
+   "batch": "A",
+   "dead": true,
+   "params": [
+    {
+     "name": "param_1",
+     "type": "ushort",
+     "storage": "AX:2"
+    },
+    {
+     "name": "param_2",
+     "type": "int",
+     "storage": "EDX:4"
+    },
+    {
+     "name": "a2",
+     "type": "game_t_PlanetIndex",
+     "storage": "EBX:4"
+    }
+   ],
+   "sites": []
+  },
+  {
+   "name": "llm_strat_bldg_order_flush_cargo_hold",
+   "addr": "0x0046ea1a",
+   "batch": "A",
+   "dead": false,
+   "params": [
+    {
+     "name": "player",
+     "type": "uint",
+     "storage": "EAX:4"
+    },
+    {
+     "name": "bldg_unit_id",
+     "type": "uint",
+     "storage": "EDX:4"
+    }
+   ],
+   "sites": [
+    {
+     "site": "0x0046ea4d",
+     "root": "llm_strat_order_dispatch",
+     "lane": "replicated",
+     "after_branch": false,
+     "unit_index": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "param",
+       "i": 1
+      },
+      "b": null,
+      "imm": null
+     },
+     "owner_and_kind": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "op",
+       "op": "or8",
+       "a": {
+        "k": "param",
+        "i": 0
+       },
+       "b": null,
+       "imm": 64
+      },
+      "b": null,
+      "imm": null
+     },
+     "param0": {
+      "k": "imm",
+      "v": 223
+     },
+     "order_code": {
+      "k": "imm",
+      "v": 223
+     },
+     "scratch_reset_before": false,
+     "scratch": []
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_bldg_order_flush_cargo_hold_enqueue",
+   "addr": "0x0046ea5b",
+   "batch": "A",
+   "dead": true,
+   "params": [
+    {
+     "name": "target_id",
+     "type": "ushort",
+     "storage": "AX:2"
+    },
+    {
+     "name": "player",
+     "type": "ushort",
+     "storage": "DX:2"
+    }
+   ],
+   "sites": [
+    {
+     "site": "0x0046ea8e",
+     "root": "llm_strat_order_enqueue",
+     "lane": "immediate",
+     "after_branch": false,
+     "unit_index": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "param",
+       "i": 1
+      },
+      "b": null,
+      "imm": null
+     },
+     "owner_and_kind": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "op",
+       "op": "or8",
+       "a": {
+        "k": "param",
+        "i": 0
+       },
+       "b": null,
+       "imm": 64
+      },
+      "b": null,
+      "imm": null
+     },
+     "param0": {
+      "k": "imm",
+      "v": 223
+     },
+     "order_code": {
+      "k": "imm",
+      "v": 223
+     },
+     "scratch_reset_before": false,
+     "scratch": []
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_bldg_order_hangar_recharge",
+   "addr": "0x0046e4e2",
+   "batch": "A",
+   "dead": false,
+   "params": [
+    {
+     "name": "player",
+     "type": "uint",
+     "storage": "EAX:4"
+    },
+    {
+     "name": "bldg_idx",
+     "type": "int",
+     "storage": "EDX:4"
+    }
+   ],
+   "sites": [
+    {
+     "site": "0x0046e515",
+     "root": "llm_strat_order_dispatch",
+     "lane": "replicated",
+     "after_branch": false,
+     "unit_index": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "param",
+       "i": 1
+      },
+      "b": null,
+      "imm": null
+     },
+     "owner_and_kind": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "op",
+       "op": "or8",
+       "a": {
+        "k": "param",
+        "i": 0
+       },
+       "b": null,
+       "imm": 64
+      },
+      "b": null,
+      "imm": null
+     },
+     "param0": {
+      "k": "imm",
+      "v": 121
+     },
+     "order_code": {
+      "k": "imm",
+      "v": 121
+     },
+     "scratch_reset_before": false,
+     "scratch": []
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_bldg_order_hangar_recharge_enqueue",
+   "addr": "0x0046e523",
+   "batch": "A",
+   "dead": true,
+   "params": [
+    {
+     "name": "target_id",
+     "type": "ushort",
+     "storage": "AX:2"
+    },
+    {
+     "name": "player",
+     "type": "ushort",
+     "storage": "DX:2"
+    }
+   ],
+   "sites": [
+    {
+     "site": "0x0046e556",
+     "root": "llm_strat_order_enqueue",
+     "lane": "immediate",
+     "after_branch": false,
+     "unit_index": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "param",
+       "i": 1
+      },
+      "b": null,
+      "imm": null
+     },
+     "owner_and_kind": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "op",
+       "op": "or8",
+       "a": {
+        "k": "param",
+        "i": 0
+       },
+       "b": null,
+       "imm": 64
+      },
+      "b": null,
+      "imm": null
+     },
+     "param0": {
+      "k": "imm",
+      "v": 121
+     },
+     "order_code": {
+      "k": "imm",
+      "v": 121
+     },
+     "scratch_reset_before": false,
+     "scratch": []
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_bldg_order_load_passengers",
+   "addr": "0x0046ea9c",
+   "batch": "A",
+   "dead": false,
+   "params": [
+    {
+     "name": "player",
+     "type": "ushort",
+     "storage": "AX:2"
+    },
+    {
+     "name": "bldg_idx",
+     "type": "ushort",
+     "storage": "DX:2"
+    },
+    {
+     "name": "planet_idx",
+     "type": "undefined4",
+     "storage": "EBX:4"
+    }
+   ],
+   "sites": [
+    {
+     "site": "0x0046eade",
+     "root": "llm_strat_order_dispatch",
+     "lane": "replicated",
+     "after_branch": false,
+     "unit_index": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "param",
+       "i": 1
+      },
+      "b": null,
+      "imm": null
+     },
+     "owner_and_kind": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "op",
+       "op": "or8",
+       "a": {
+        "k": "param",
+        "i": 0
+       },
+       "b": null,
+       "imm": 64
+      },
+      "b": null,
+      "imm": null
+     },
+     "param0": {
+      "k": "imm",
+      "v": 219
+     },
+     "order_code": {
+      "k": "imm",
+      "v": 219
+     },
+     "scratch_reset_before": false,
+     "scratch": [
+      {
+       "index": {
+        "k": "imm",
+        "v": 1
+       },
+       "value": {
+        "k": "param",
+        "i": 2
+       },
+       "at": "0x0046eac3"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_bldg_order_load_passengers_enqueue",
+   "addr": "0x0046eaeb",
+   "batch": "A",
+   "dead": true,
+   "params": [
+    {
+     "name": "param_1",
+     "type": "ushort",
+     "storage": "AX:2"
+    },
+    {
+     "name": "param_2",
+     "type": "ushort",
+     "storage": "DX:2"
+    },
+    {
+     "name": "a2",
+     "type": "undefined4",
+     "storage": "EBX:4"
+    }
+   ],
+   "sites": [
+    {
+     "site": "0x0046eb2d",
+     "root": "llm_strat_order_enqueue",
+     "lane": "immediate",
+     "after_branch": false,
+     "unit_index": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "param",
+       "i": 1
+      },
+      "b": null,
+      "imm": null
+     },
+     "owner_and_kind": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "op",
+       "op": "or8",
+       "a": {
+        "k": "param",
+        "i": 0
+       },
+       "b": null,
+       "imm": 64
+      },
+      "b": null,
+      "imm": null
+     },
+     "param0": {
+      "k": "imm",
+      "v": 219
+     },
+     "order_code": {
+      "k": "imm",
+      "v": 219
+     },
+     "scratch_reset_before": false,
+     "scratch": [
+      {
+       "index": {
+        "k": "imm",
+        "v": 1
+       },
+       "value": {
+        "k": "param",
+        "i": 2
+       },
+       "at": "0x0046eb12"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_bldg_order_load_resource",
+   "addr": "0x0046ebd8",
+   "batch": "A",
+   "dead": false,
+   "params": [
+    {
+     "name": "param_1",
+     "type": "uint",
+     "storage": "EAX:4"
+    },
+    {
+     "name": "param_2",
+     "type": "ushort",
+     "storage": "DX:2"
+    },
+    {
+     "name": "a2",
+     "type": "undefined4",
+     "storage": "EBX:4"
+    },
+    {
+     "name": "param_4",
+     "type": "undefined4",
+     "storage": "ECX:4"
+    }
+   ],
+   "sites": [
+    {
+     "site": "0x0046ec29",
+     "root": "llm_strat_order_dispatch",
+     "lane": "replicated",
+     "after_branch": false,
+     "unit_index": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "param",
+       "i": 1
+      },
+      "b": null,
+      "imm": null
+     },
+     "owner_and_kind": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "op",
+       "op": "or8",
+       "a": {
+        "k": "param",
+        "i": 0
+       },
+       "b": null,
+       "imm": 64
+      },
+      "b": null,
+      "imm": null
+     },
+     "param0": {
+      "k": "imm",
+      "v": 221
+     },
+     "order_code": {
+      "k": "imm",
+      "v": 221
+     },
+     "scratch_reset_before": false,
+     "scratch": [
+      {
+       "index": {
+        "k": "imm",
+        "v": 3
+       },
+       "value": {
+        "k": "param",
+        "i": 2
+       },
+       "at": "0x0046ec01"
+      },
+      {
+       "index": {
+        "k": "imm",
+        "v": 2
+       },
+       "value": {
+        "k": "param",
+        "i": 3
+       },
+       "at": "0x0046ec0e"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_bldg_order_load_resource_enqueue",
+   "addr": "0x0046ec35",
+   "batch": "A",
+   "dead": true,
+   "params": [
+    {
+     "name": "param_1",
+     "type": "ushort",
+     "storage": "AX:2"
+    },
+    {
+     "name": "param_2",
+     "type": "ushort",
+     "storage": "DX:2"
+    },
+    {
+     "name": "a2",
+     "type": "undefined4",
+     "storage": "EBX:4"
+    },
+    {
+     "name": "param_4",
+     "type": "undefined4",
+     "storage": "ECX:4"
+    }
+   ],
+   "sites": [
+    {
+     "site": "0x0046ec86",
+     "root": "llm_strat_order_enqueue",
+     "lane": "immediate",
+     "after_branch": false,
+     "unit_index": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "param",
+       "i": 1
+      },
+      "b": null,
+      "imm": null
+     },
+     "owner_and_kind": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "op",
+       "op": "or8",
+       "a": {
+        "k": "param",
+        "i": 0
+       },
+       "b": null,
+       "imm": 64
+      },
+      "b": null,
+      "imm": null
+     },
+     "param0": {
+      "k": "imm",
+      "v": 221
+     },
+     "order_code": {
+      "k": "imm",
+      "v": 221
+     },
+     "scratch_reset_before": false,
+     "scratch": [
+      {
+       "index": {
+        "k": "imm",
+        "v": 3
+       },
+       "value": {
+        "k": "param",
+        "i": 2
+       },
+       "at": "0x0046ec5e"
+      },
+      {
+       "index": {
+        "k": "imm",
+        "v": 2
+       },
+       "value": {
+        "k": "param",
+        "i": 3
+       },
+       "at": "0x0046ec6b"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_bldg_order_mine_rescan",
+   "addr": "0x0046e668",
+   "batch": "A",
+   "dead": true,
+   "params": [
+    {
+     "name": "target_id",
+     "type": "uint",
+     "storage": "EAX:4"
+    },
+    {
+     "name": "player",
+     "type": "ushort",
+     "storage": "DX:2"
+    }
+   ],
+   "sites": [
+    {
+     "site": "0x0046e69b",
+     "root": "llm_strat_order_dispatch",
+     "lane": "replicated",
+     "after_branch": false,
+     "unit_index": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "param",
+       "i": 1
+      },
+      "b": null,
+      "imm": null
+     },
+     "owner_and_kind": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "op",
+       "op": "or8",
+       "a": {
+        "k": "param",
+        "i": 0
+       },
+       "b": null,
+       "imm": 64
+      },
+      "b": null,
+      "imm": null
+     },
+     "param0": {
+      "k": "imm",
+      "v": 116
+     },
+     "order_code": {
+      "k": "imm",
+      "v": 116
+     },
+     "scratch_reset_before": false,
+     "scratch": []
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_bldg_order_mine_rescan_enqueue",
+   "addr": "0x0046e6a9",
+   "batch": "A",
+   "dead": true,
+   "params": [
+    {
+     "name": "target_id",
+     "type": "ushort",
+     "storage": "AX:2"
+    },
+    {
+     "name": "player",
+     "type": "ushort",
+     "storage": "DX:2"
+    }
+   ],
+   "sites": [
+    {
+     "site": "0x0046e6dc",
+     "root": "llm_strat_order_enqueue",
+     "lane": "immediate",
+     "after_branch": false,
+     "unit_index": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "param",
+       "i": 1
+      },
+      "b": null,
+      "imm": null
+     },
+     "owner_and_kind": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "op",
+       "op": "or8",
+       "a": {
+        "k": "param",
+        "i": 0
+       },
+       "b": null,
+       "imm": 64
+      },
+      "b": null,
+      "imm": null
+     },
+     "param0": {
+      "k": "imm",
+      "v": 116
+     },
+     "order_code": {
+      "k": "imm",
+      "v": 116
+     },
+     "scratch_reset_before": false,
+     "scratch": []
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_bldg_order_mother_depart",
+   "addr": "0x0046edea",
+   "batch": "A",
+   "dead": false,
+   "params": [
+    {
+     "name": "param_1",
+     "type": "uint",
+     "storage": "EAX:4"
+    },
+    {
+     "name": "param_2",
+     "type": "ushort",
+     "storage": "DX:2"
+    },
+    {
+     "name": "a2",
+     "type": "undefined4",
+     "storage": "EBX:4"
+    }
+   ],
+   "sites": [
+    {
+     "site": "0x0046ee2c",
+     "root": "llm_strat_order_dispatch",
+     "lane": "replicated",
+     "after_branch": false,
+     "unit_index": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "param",
+       "i": 1
+      },
+      "b": null,
+      "imm": null
+     },
+     "owner_and_kind": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "op",
+       "op": "or8",
+       "a": {
+        "k": "param",
+        "i": 0
+       },
+       "b": null,
+       "imm": 64
+      },
+      "b": null,
+      "imm": null
+     },
+     "param0": {
+      "k": "imm",
+      "v": 212
+     },
+     "order_code": {
+      "k": "imm",
+      "v": 212
+     },
+     "scratch_reset_before": false,
+     "scratch": [
+      {
+       "index": {
+        "k": "imm",
+        "v": 6
+       },
+       "value": {
+        "k": "param",
+        "i": 2
+       },
+       "at": "0x0046ee11"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_bldg_order_mother_depart_enqueue",
+   "addr": "0x0046ee39",
+   "batch": "A",
+   "dead": false,
+   "params": [
+    {
+     "name": "param_1",
+     "type": "ushort",
+     "storage": "AX:2"
+    },
+    {
+     "name": "param_2",
+     "type": "ushort",
+     "storage": "DX:2"
+    },
+    {
+     "name": "a2",
+     "type": "undefined4",
+     "storage": "EBX:4"
+    }
+   ],
+   "sites": [
+    {
+     "site": "0x0046ee7b",
+     "root": "llm_strat_order_enqueue",
+     "lane": "immediate",
+     "after_branch": false,
+     "unit_index": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "param",
+       "i": 1
+      },
+      "b": null,
+      "imm": null
+     },
+     "owner_and_kind": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "op",
+       "op": "or8",
+       "a": {
+        "k": "param",
+        "i": 0
+       },
+       "b": null,
+       "imm": 64
+      },
+      "b": null,
+      "imm": null
+     },
+     "param0": {
+      "k": "imm",
+      "v": 212
+     },
+     "order_code": {
+      "k": "imm",
+      "v": 212
+     },
+     "scratch_reset_before": false,
+     "scratch": [
+      {
+       "index": {
+        "k": "imm",
+        "v": 6
+       },
+       "value": {
+        "k": "param",
+        "i": 2
+       },
+       "at": "0x0046ee60"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_bldg_order_port_depart",
+   "addr": "0x0046ed4c",
+   "batch": "A",
+   "dead": false,
+   "params": [
+    {
+     "name": "param_1",
+     "type": "ushort",
+     "storage": "AX:2"
+    },
+    {
+     "name": "param_2",
+     "type": "ushort",
+     "storage": "DX:2"
+    },
+    {
+     "name": "a2",
+     "type": "undefined4",
+     "storage": "EBX:4"
+    }
+   ],
+   "sites": [
+    {
+     "site": "0x0046ed8e",
+     "root": "llm_strat_order_dispatch",
+     "lane": "replicated",
+     "after_branch": false,
+     "unit_index": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "param",
+       "i": 1
+      },
+      "b": null,
+      "imm": null
+     },
+     "owner_and_kind": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "op",
+       "op": "or8",
+       "a": {
+        "k": "param",
+        "i": 0
+       },
+       "b": null,
+       "imm": 64
+      },
+      "b": null,
+      "imm": null
+     },
+     "param0": {
+      "k": "imm",
+      "v": 211
+     },
+     "order_code": {
+      "k": "imm",
+      "v": 211
+     },
+     "scratch_reset_before": false,
+     "scratch": [
+      {
+       "index": {
+        "k": "imm",
+        "v": 6
+       },
+       "value": {
+        "k": "param",
+        "i": 2
+       },
+       "at": "0x0046ed73"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_bldg_order_port_depart_enqueue",
+   "addr": "0x0046ed9b",
+   "batch": "A",
+   "dead": false,
+   "params": [
+    {
+     "name": "player",
+     "type": "ushort",
+     "storage": "AX:2"
+    },
+    {
+     "name": "bldg_idx",
+     "type": "ushort",
+     "storage": "DX:2"
+    },
+    {
+     "name": "planet_idx",
+     "type": "undefined4",
+     "storage": "EBX:4"
+    }
+   ],
+   "sites": [
+    {
+     "site": "0x0046eddd",
+     "root": "llm_strat_order_enqueue",
+     "lane": "immediate",
+     "after_branch": false,
+     "unit_index": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "param",
+       "i": 1
+      },
+      "b": null,
+      "imm": null
+     },
+     "owner_and_kind": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "op",
+       "op": "or8",
+       "a": {
+        "k": "param",
+        "i": 0
+       },
+       "b": null,
+       "imm": 64
+      },
+      "b": null,
+      "imm": null
+     },
+     "param0": {
+      "k": "imm",
+      "v": 211
+     },
+     "order_code": {
+      "k": "imm",
+      "v": 211
+     },
+     "scratch_reset_before": false,
+     "scratch": [
+      {
+       "index": {
+        "k": "imm",
+        "v": 6
+       },
+       "value": {
+        "k": "param",
+        "i": 2
+       },
+       "at": "0x0046edc2"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_bldg_order_production_add",
+   "addr": "0x0046dae0",
+   "batch": "A",
+   "dead": false,
+   "params": [
+    {
+     "name": "player",
+     "type": "uint",
+     "storage": "EAX:4"
+    },
+    {
+     "name": "bldg_idx",
+     "type": "int",
+     "storage": "EDX:4"
+    },
+    {
+     "name": "unit_type",
+     "type": "int",
+     "storage": "EBX:4"
+    }
+   ],
+   "sites": [
+    {
+     "site": "0x0046db4b",
+     "root": "llm_strat_order_dispatch",
+     "lane": "replicated",
+     "after_branch": true,
+     "unit_index": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "param",
+       "i": 1
+      },
+      "b": null,
+      "imm": null
+     },
+     "owner_and_kind": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "op",
+       "op": "or8",
+       "a": {
+        "k": "param",
+        "i": 0
+       },
+       "b": null,
+       "imm": 64
+      },
+      "b": null,
+      "imm": null
+     },
+     "param0": {
+      "k": "imm",
+      "v": 109
+     },
+     "order_code": {
+      "k": "imm",
+      "v": 109
+     },
+     "scratch_reset_before": false,
+     "scratch": [
+      {
+       "index": {
+        "k": "imm",
+        "v": 0
+       },
+       "value": {
+        "k": "param",
+        "i": 2
+       },
+       "at": "0x0046db21"
+      },
+      {
+       "index": {
+        "k": "imm",
+        "v": 1
+       },
+       "value": {
+        "k": "imm",
+        "v": 1
+       },
+       "at": "0x0046db30"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_bldg_order_production_add_count",
+   "addr": "0x0046dbd0",
+   "batch": "A",
+   "dead": true,
+   "params": [
+    {
+     "name": "player",
+     "type": "uint",
+     "storage": "EAX:4"
+    },
+    {
+     "name": "bldg_idx",
+     "type": "int",
+     "storage": "EDX:4"
+    },
+    {
+     "name": "unit_type",
+     "type": "int",
+     "storage": "EBX:4"
+    },
+    {
+     "name": "count",
+     "type": "int",
+     "storage": "ECX:4"
+    }
+   ],
+   "sites": [
+    {
+     "site": "0x0046dc3b",
+     "root": "llm_strat_order_dispatch",
+     "lane": "replicated",
+     "after_branch": true,
+     "unit_index": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "param",
+       "i": 1
+      },
+      "b": null,
+      "imm": null
+     },
+     "owner_and_kind": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "op",
+       "op": "or8",
+       "a": {
+        "k": "param",
+        "i": 0
+       },
+       "b": null,
+       "imm": 64
+      },
+      "b": null,
+      "imm": null
+     },
+     "param0": {
+      "k": "imm",
+      "v": 109
+     },
+     "order_code": {
+      "k": "imm",
+      "v": 109
+     },
+     "scratch_reset_before": false,
+     "scratch": [
+      {
+       "index": {
+        "k": "imm",
+        "v": 0
+       },
+       "value": {
+        "k": "param",
+        "i": 2
+       },
+       "at": "0x0046dc13"
+      },
+      {
+       "index": {
+        "k": "imm",
+        "v": 1
+       },
+       "value": {
+        "k": "param",
+        "i": 3
+       },
+       "at": "0x0046dc20"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_bldg_order_production_add_count_enqueue",
+   "addr": "0x0046dc47",
+   "batch": "A",
+   "dead": true,
+   "params": [
+    {
+     "name": "player",
+     "type": "ushort",
+     "storage": "AX:2"
+    },
+    {
+     "name": "bldg_idx",
+     "type": "int",
+     "storage": "EDX:4"
+    },
+    {
+     "name": "unit_type",
+     "type": "int",
+     "storage": "EBX:4"
+    },
+    {
+     "name": "count",
+     "type": "int",
+     "storage": "ECX:4"
+    }
+   ],
+   "sites": [
+    {
+     "site": "0x0046dcb2",
+     "root": "llm_strat_order_enqueue",
+     "lane": "immediate",
+     "after_branch": true,
+     "unit_index": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "param",
+       "i": 1
+      },
+      "b": null,
+      "imm": null
+     },
+     "owner_and_kind": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "op",
+       "op": "or8",
+       "a": {
+        "k": "param",
+        "i": 0
+       },
+       "b": null,
+       "imm": 64
+      },
+      "b": null,
+      "imm": null
+     },
+     "param0": {
+      "k": "imm",
+      "v": 109
+     },
+     "order_code": {
+      "k": "imm",
+      "v": 109
+     },
+     "scratch_reset_before": false,
+     "scratch": [
+      {
+       "index": {
+        "k": "imm",
+        "v": 0
+       },
+       "value": {
+        "k": "param",
+        "i": 2
+       },
+       "at": "0x0046dc8a"
+      },
+      {
+       "index": {
+        "k": "imm",
+        "v": 1
+       },
+       "value": {
+        "k": "param",
+        "i": 3
+       },
+       "at": "0x0046dc97"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_bldg_order_production_remove",
+   "addr": "0x0046dcbe",
+   "batch": "A",
+   "dead": false,
+   "params": [
+    {
+     "name": "player",
+     "type": "uint",
+     "storage": "EAX:4"
+    },
+    {
+     "name": "bldg_idx",
+     "type": "int",
+     "storage": "EDX:4"
+    },
+    {
+     "name": "unit_type",
+     "type": "int",
+     "storage": "EBX:4"
+    }
+   ],
+   "sites": [
+    {
+     "site": "0x0046dd1a",
+     "root": "llm_strat_order_dispatch",
+     "lane": "replicated",
+     "after_branch": true,
+     "unit_index": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "param",
+       "i": 1
+      },
+      "b": null,
+      "imm": null
+     },
+     "owner_and_kind": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "op",
+       "op": "or8",
+       "a": {
+        "k": "param",
+        "i": 0
+       },
+       "b": null,
+       "imm": 64
+      },
+      "b": null,
+      "imm": null
+     },
+     "param0": {
+      "k": "imm",
+      "v": 111
+     },
+     "order_code": {
+      "k": "imm",
+      "v": 111
+     },
+     "scratch_reset_before": false,
+     "scratch": [
+      {
+       "index": {
+        "k": "imm",
+        "v": 0
+       },
+       "value": {
+        "k": "param",
+        "i": 2
+       },
+       "at": "0x0046dcff"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_bldg_order_production_remove_enqueue",
+   "addr": "0x0046dd27",
+   "batch": "A",
+   "dead": true,
+   "params": [
+    {
+     "name": "player",
+     "type": "ushort",
+     "storage": "AX:2"
+    },
+    {
+     "name": "bldg_idx",
+     "type": "int",
+     "storage": "EDX:4"
+    },
+    {
+     "name": "unit_type",
+     "type": "int",
+     "storage": "EBX:4"
+    }
+   ],
+   "sites": [
+    {
+     "site": "0x0046dd83",
+     "root": "llm_strat_order_enqueue",
+     "lane": "immediate",
+     "after_branch": true,
+     "unit_index": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "param",
+       "i": 1
+      },
+      "b": null,
+      "imm": null
+     },
+     "owner_and_kind": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "op",
+       "op": "or8",
+       "a": {
+        "k": "param",
+        "i": 0
+       },
+       "b": null,
+       "imm": 64
+      },
+      "b": null,
+      "imm": null
+     },
+     "param0": {
+      "k": "imm",
+      "v": 111
+     },
+     "order_code": {
+      "k": "imm",
+      "v": 111
+     },
+     "scratch_reset_before": false,
+     "scratch": [
+      {
+       "index": {
+        "k": "imm",
+        "v": 0
+       },
+       "value": {
+        "k": "param",
+        "i": 2
+       },
+       "at": "0x0046dd68"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_bldg_order_purge_dead_docked",
+   "addr": "0x0046e6ea",
+   "batch": "A",
+   "dead": false,
+   "params": [
+    {
+     "name": "player",
+     "type": "uint",
+     "storage": "EAX:4"
+    },
+    {
+     "name": "bldg_idx",
+     "type": "ushort",
+     "storage": "DX:2"
+    }
+   ],
+   "sites": [
+    {
+     "site": "0x0046e71d",
+     "root": "llm_strat_order_dispatch",
+     "lane": "replicated",
+     "after_branch": false,
+     "unit_index": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "param",
+       "i": 1
+      },
+      "b": null,
+      "imm": null
+     },
+     "owner_and_kind": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "op",
+       "op": "or8",
+       "a": {
+        "k": "param",
+        "i": 0
+       },
+       "b": null,
+       "imm": 64
+      },
+      "b": null,
+      "imm": null
+     },
+     "param0": {
+      "k": "imm",
+      "v": 230
+     },
+     "order_code": {
+      "k": "imm",
+      "v": 230
+     },
+     "scratch_reset_before": false,
+     "scratch": []
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_bldg_order_purge_dead_docked_enqueue",
+   "addr": "0x0046e72b",
+   "batch": "A",
+   "dead": true,
+   "params": [
+    {
+     "name": "target_id",
+     "type": "ushort",
+     "storage": "AX:2"
+    },
+    {
+     "name": "player",
+     "type": "ushort",
+     "storage": "DX:2"
+    }
+   ],
+   "sites": [
+    {
+     "site": "0x0046e75e",
+     "root": "llm_strat_order_enqueue",
+     "lane": "immediate",
+     "after_branch": false,
+     "unit_index": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "param",
+       "i": 1
+      },
+      "b": null,
+      "imm": null
+     },
+     "owner_and_kind": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "op",
+       "op": "or8",
+       "a": {
+        "k": "param",
+        "i": 0
+       },
+       "b": null,
+       "imm": 64
+      },
+      "b": null,
+      "imm": null
+     },
+     "param0": {
+      "k": "imm",
+      "v": 230
+     },
+     "order_code": {
+      "k": "imm",
+      "v": 230
+     },
+     "scratch_reset_before": false,
+     "scratch": []
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_bldg_order_repair_cycle_start",
+   "addr": "0x0046e330",
+   "batch": "A",
+   "dead": false,
+   "params": [
+    {
+     "name": "player",
+     "type": "uint",
+     "storage": "EAX:4"
+    },
+    {
+     "name": "bldg_idx",
+     "type": "int",
+     "storage": "EDX:4"
+    }
+   ],
+   "sites": [
+    {
+     "site": "0x0046e3fb",
+     "root": "llm_strat_order_dispatch",
+     "lane": "replicated",
+     "after_branch": true,
+     "unit_index": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "param",
+       "i": 1
+      },
+      "b": null,
+      "imm": null
+     },
+     "owner_and_kind": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "op",
+       "op": "or8",
+       "a": {
+        "k": "param",
+        "i": 0
+       },
+       "b": null,
+       "imm": 64
+      },
+      "b": null,
+      "imm": null
+     },
+     "param0": {
+      "k": "imm",
+      "v": 106
+     },
+     "order_code": {
+      "k": "imm",
+      "v": 106
+     },
+     "scratch_reset_before": false,
+     "scratch": []
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_bldg_order_restart_construction",
+   "addr": "0x0046e5e6",
+   "batch": "A",
+   "dead": false,
+   "params": [
+    {
+     "name": "target_id",
+     "type": "uint",
+     "storage": "EAX:4"
+    },
+    {
+     "name": "player",
+     "type": "ushort",
+     "storage": "DX:2"
+    }
+   ],
+   "sites": [
+    {
+     "site": "0x0046e619",
+     "root": "llm_strat_order_dispatch",
+     "lane": "replicated",
+     "after_branch": false,
+     "unit_index": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "param",
+       "i": 1
+      },
+      "b": null,
+      "imm": null
+     },
+     "owner_and_kind": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "op",
+       "op": "or8",
+       "a": {
+        "k": "param",
+        "i": 0
+       },
+       "b": null,
+       "imm": 64
+      },
+      "b": null,
+      "imm": null
+     },
+     "param0": {
+      "k": "imm",
+      "v": 107
+     },
+     "order_code": {
+      "k": "imm",
+      "v": 107
+     },
+     "scratch_reset_before": false,
+     "scratch": []
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_bldg_order_set_worker_count",
+   "addr": "0x0046df10",
+   "batch": "A",
+   "dead": true,
+   "params": [
+    {
+     "name": "param_1",
+     "type": "ushort",
+     "storage": "AX:2"
+    },
+    {
+     "name": "param_2",
+     "type": "ushort",
+     "storage": "DX:2"
+    },
+    {
+     "name": "a2",
+     "type": "uint",
+     "storage": "EBX:4"
+    }
+   ],
+   "sites": []
+  },
+  {
+   "name": "llm_strat_bldg_order_set_worker_count_enqueue",
+   "addr": "0x0046df63",
+   "batch": "A",
+   "dead": true,
+   "params": [
+    {
+     "name": "param_1",
+     "type": "ushort",
+     "storage": "AX:2"
+    },
+    {
+     "name": "param_2",
+     "type": "ushort",
+     "storage": "DX:2"
+    },
+    {
+     "name": "a2",
+     "type": "int",
+     "storage": "EBX:4"
+    }
+   ],
+   "sites": []
+  },
+  {
+   "name": "llm_strat_bldg_order_shuttle_depart",
+   "addr": "0x0046e840",
+   "batch": "A",
+   "dead": false,
+   "params": [
+    {
+     "name": "param_1",
+     "type": "uint",
+     "storage": "EAX:4"
+    },
+    {
+     "name": "param_2",
+     "type": "ushort",
+     "storage": "DX:2"
+    },
+    {
+     "name": "a2",
+     "type": "undefined4",
+     "storage": "EBX:4"
+    }
+   ],
+   "sites": [
+    {
+     "site": "0x0046e882",
+     "root": "llm_strat_order_dispatch",
+     "lane": "replicated",
+     "after_branch": false,
+     "unit_index": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "param",
+       "i": 1
+      },
+      "b": null,
+      "imm": null
+     },
+     "owner_and_kind": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "op",
+       "op": "or8",
+       "a": {
+        "k": "param",
+        "i": 0
+       },
+       "b": null,
+       "imm": 64
+      },
+      "b": null,
+      "imm": null
+     },
+     "param0": {
+      "k": "imm",
+      "v": 210
+     },
+     "order_code": {
+      "k": "imm",
+      "v": 210
+     },
+     "scratch_reset_before": false,
+     "scratch": [
+      {
+       "index": {
+        "k": "imm",
+        "v": 6
+       },
+       "value": {
+        "k": "param",
+        "i": 2
+       },
+       "at": "0x0046e867"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_bldg_order_shuttle_depart_enqueue",
+   "addr": "0x0046e88f",
+   "batch": "A",
+   "dead": false,
+   "params": [
+    {
+     "name": "player",
+     "type": "ushort",
+     "storage": "AX:2"
+    },
+    {
+     "name": "bldg_idx",
+     "type": "ushort",
+     "storage": "DX:2"
+    },
+    {
+     "name": "planet_idx",
+     "type": "undefined4",
+     "storage": "EBX:4"
+    }
+   ],
+   "sites": [
+    {
+     "site": "0x0046e8d1",
+     "root": "llm_strat_order_enqueue",
+     "lane": "immediate",
+     "after_branch": false,
+     "unit_index": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "param",
+       "i": 1
+      },
+      "b": null,
+      "imm": null
+     },
+     "owner_and_kind": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "op",
+       "op": "or8",
+       "a": {
+        "k": "param",
+        "i": 0
+       },
+       "b": null,
+       "imm": 64
+      },
+      "b": null,
+      "imm": null
+     },
+     "param0": {
+      "k": "imm",
+      "v": 210
+     },
+     "order_code": {
+      "k": "imm",
+      "v": 210
+     },
+     "scratch_reset_before": false,
+     "scratch": [
+      {
+       "index": {
+        "k": "imm",
+        "v": 6
+       },
+       "value": {
+        "k": "param",
+        "i": 2
+       },
+       "at": "0x0046e8b6"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_bldg_order_start_research_project",
+   "addr": "0x0046f140",
+   "batch": "A",
+   "dead": false,
+   "params": [
+    {
+     "name": "param_1",
+     "type": "uint",
+     "storage": "EAX:4"
+    },
+    {
+     "name": "param_2",
+     "type": "ushort",
+     "storage": "DX:2"
+    },
+    {
+     "name": "a2",
+     "type": "undefined4",
+     "storage": "EBX:4"
+    }
+   ],
+   "sites": [
+    {
+     "site": "0x0046f182",
+     "root": "llm_strat_order_dispatch",
+     "lane": "replicated",
+     "after_branch": false,
+     "unit_index": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "param",
+       "i": 1
+      },
+      "b": null,
+      "imm": null
+     },
+     "owner_and_kind": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "op",
+       "op": "or8",
+       "a": {
+        "k": "param",
+        "i": 0
+       },
+       "b": null,
+       "imm": 64
+      },
+      "b": null,
+      "imm": null
+     },
+     "param0": {
+      "k": "imm",
+      "v": 137
+     },
+     "order_code": {
+      "k": "imm",
+      "v": 137
+     },
+     "scratch_reset_before": false,
+     "scratch": [
+      {
+       "index": {
+        "k": "imm",
+        "v": 7
+       },
+       "value": {
+        "k": "param",
+        "i": 2
+       },
+       "at": "0x0046f167"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_bldg_order_start_research_project_enqueue",
+   "addr": "0x0046f18f",
+   "batch": "A",
+   "dead": true,
+   "params": [
+    {
+     "name": "player",
+     "type": "ushort",
+     "storage": "AX:2"
+    },
+    {
+     "name": "bldg_idx",
+     "type": "ushort",
+     "storage": "DX:2"
+    },
+    {
+     "name": "project_id",
+     "type": "undefined4",
+     "storage": "EBX:4"
+    }
+   ],
+   "sites": [
+    {
+     "site": "0x0046f1d1",
+     "root": "llm_strat_order_enqueue",
+     "lane": "immediate",
+     "after_branch": false,
+     "unit_index": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "param",
+       "i": 1
+      },
+      "b": null,
+      "imm": null
+     },
+     "owner_and_kind": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "op",
+       "op": "or8",
+       "a": {
+        "k": "param",
+        "i": 0
+       },
+       "b": null,
+       "imm": 64
+      },
+      "b": null,
+      "imm": null
+     },
+     "param0": {
+      "k": "imm",
+      "v": 137
+     },
+     "order_code": {
+      "k": "imm",
+      "v": 137
+     },
+     "scratch_reset_before": false,
+     "scratch": [
+      {
+       "index": {
+        "k": "imm",
+        "v": 7
+       },
+       "value": {
+        "k": "param",
+        "i": 2
+       },
+       "at": "0x0046f1b6"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_bldg_order_toggle_active",
+   "addr": "0x0046e1f6",
+   "batch": "A",
+   "dead": false,
+   "params": [
+    {
+     "name": "player",
+     "type": "ushort",
+     "storage": "AX:2"
+    },
+    {
+     "name": "building_index",
+     "type": "int",
+     "storage": "EDX:4"
+    }
+   ],
+   "sites": []
+  },
+  {
+   "name": "llm_strat_bldg_order_toggle_active_enqueue",
+   "addr": "0x0046e252",
+   "batch": "A",
+   "dead": true,
+   "params": [
+    {
+     "name": "player",
+     "type": "uint",
+     "storage": "EAX:4"
+    },
+    {
+     "name": "building_index",
+     "type": "int",
+     "storage": "EDX:4"
+    }
+   ],
+   "sites": []
+  },
+  {
+   "name": "llm_strat_bldg_order_unassign_workers",
+   "addr": "0x0046e054",
+   "batch": "A",
+   "dead": false,
+   "params": [
+    {
+     "name": "player",
+     "type": "ushort",
+     "storage": "AX:2"
+    },
+    {
+     "name": "building_index",
+     "type": "ushort",
+     "storage": "DX:2"
+    },
+    {
+     "name": "count",
+     "type": "uint",
+     "storage": "EBX:4"
+    }
+   ],
+   "sites": [
+    {
+     "site": "0x0046e096",
+     "root": "llm_strat_order_dispatch",
+     "lane": "replicated",
+     "after_branch": false,
+     "unit_index": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "param",
+       "i": 1
+      },
+      "b": null,
+      "imm": null
+     },
+     "owner_and_kind": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "op",
+       "op": "or8",
+       "a": {
+        "k": "param",
+        "i": 0
+       },
+       "b": null,
+       "imm": 64
+      },
+      "b": null,
+      "imm": null
+     },
+     "param0": {
+      "k": "imm",
+      "v": 127
+     },
+     "order_code": {
+      "k": "imm",
+      "v": 127
+     },
+     "scratch_reset_before": false,
+     "scratch": [
+      {
+       "index": {
+        "k": "imm",
+        "v": 1
+       },
+       "value": {
+        "k": "param",
+        "i": 2
+       },
+       "at": "0x0046e07b"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_bldg_order_unload_passengers",
+   "addr": "0x0046eb3a",
+   "batch": "A",
+   "dead": false,
+   "params": [
+    {
+     "name": "player",
+     "type": "uint",
+     "storage": "EAX:4"
+    },
+    {
+     "name": "bldg_idx",
+     "type": "ushort",
+     "storage": "DX:2"
+    },
+    {
+     "name": "passenger_count",
+     "type": "undefined4",
+     "storage": "EBX:4"
+    }
+   ],
+   "sites": [
+    {
+     "site": "0x0046eb7c",
+     "root": "llm_strat_order_dispatch",
+     "lane": "replicated",
+     "after_branch": false,
+     "unit_index": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "param",
+       "i": 1
+      },
+      "b": null,
+      "imm": null
+     },
+     "owner_and_kind": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "op",
+       "op": "or8",
+       "a": {
+        "k": "param",
+        "i": 0
+       },
+       "b": null,
+       "imm": 64
+      },
+      "b": null,
+      "imm": null
+     },
+     "param0": {
+      "k": "imm",
+      "v": 220
+     },
+     "order_code": {
+      "k": "imm",
+      "v": 220
+     },
+     "scratch_reset_before": false,
+     "scratch": [
+      {
+       "index": {
+        "k": "imm",
+        "v": 1
+       },
+       "value": {
+        "k": "param",
+        "i": 2
+       },
+       "at": "0x0046eb61"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_bldg_order_unload_passengers_enqueue",
+   "addr": "0x0046eb89",
+   "batch": "A",
+   "dead": true,
+   "params": [
+    {
+     "name": "player",
+     "type": "ushort",
+     "storage": "AX:2"
+    },
+    {
+     "name": "bldg_idx",
+     "type": "ushort",
+     "storage": "DX:2"
+    },
+    {
+     "name": "unload_count",
+     "type": "undefined4",
+     "storage": "EBX:4"
+    }
+   ],
+   "sites": [
+    {
+     "site": "0x0046ebcb",
+     "root": "llm_strat_order_enqueue",
+     "lane": "immediate",
+     "after_branch": false,
+     "unit_index": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "param",
+       "i": 1
+      },
+      "b": null,
+      "imm": null
+     },
+     "owner_and_kind": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "op",
+       "op": "or8",
+       "a": {
+        "k": "param",
+        "i": 0
+       },
+       "b": null,
+       "imm": 64
+      },
+      "b": null,
+      "imm": null
+     },
+     "param0": {
+      "k": "imm",
+      "v": 220
+     },
+     "order_code": {
+      "k": "imm",
+      "v": 220
+     },
+     "scratch_reset_before": false,
+     "scratch": [
+      {
+       "index": {
+        "k": "imm",
+        "v": 1
+       },
+       "value": {
+        "k": "param",
+        "i": 2
+       },
+       "at": "0x0046ebb0"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_bldg_order_unload_resource",
+   "addr": "0x0046ec92",
+   "batch": "A",
+   "dead": false,
+   "params": [
+    {
+     "name": "player",
+     "type": "uint",
+     "storage": "EAX:4"
+    },
+    {
+     "name": "bldg_idx",
+     "type": "ushort",
+     "storage": "DX:2"
+    },
+    {
+     "name": "resource_slot",
+     "type": "undefined4",
+     "storage": "EBX:4"
+    },
+    {
+     "name": "count",
+     "type": "undefined4",
+     "storage": "ECX:4"
+    }
+   ],
+   "sites": [
+    {
+     "site": "0x0046ece3",
+     "root": "llm_strat_order_dispatch",
+     "lane": "replicated",
+     "after_branch": false,
+     "unit_index": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "param",
+       "i": 1
+      },
+      "b": null,
+      "imm": null
+     },
+     "owner_and_kind": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "op",
+       "op": "or8",
+       "a": {
+        "k": "param",
+        "i": 0
+       },
+       "b": null,
+       "imm": 64
+      },
+      "b": null,
+      "imm": null
+     },
+     "param0": {
+      "k": "imm",
+      "v": 222
+     },
+     "order_code": {
+      "k": "imm",
+      "v": 222
+     },
+     "scratch_reset_before": false,
+     "scratch": [
+      {
+       "index": {
+        "k": "imm",
+        "v": 3
+       },
+       "value": {
+        "k": "param",
+        "i": 2
+       },
+       "at": "0x0046ecbb"
+      },
+      {
+       "index": {
+        "k": "imm",
+        "v": 2
+       },
+       "value": {
+        "k": "param",
+        "i": 3
+       },
+       "at": "0x0046ecc8"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_bldg_order_unload_resource_enqueue",
+   "addr": "0x0046ecef",
+   "batch": "A",
+   "dead": true,
+   "params": [
+    {
+     "name": "param_1",
+     "type": "ushort",
+     "storage": "AX:2"
+    },
+    {
+     "name": "param_2",
+     "type": "ushort",
+     "storage": "DX:2"
+    },
+    {
+     "name": "a2",
+     "type": "undefined4",
+     "storage": "EBX:4"
+    },
+    {
+     "name": "param_4",
+     "type": "undefined4",
+     "storage": "ECX:4"
+    }
+   ],
+   "sites": [
+    {
+     "site": "0x0046ed40",
+     "root": "llm_strat_order_enqueue",
+     "lane": "immediate",
+     "after_branch": false,
+     "unit_index": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "param",
+       "i": 1
+      },
+      "b": null,
+      "imm": null
+     },
+     "owner_and_kind": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "op",
+       "op": "or8",
+       "a": {
+        "k": "param",
+        "i": 0
+       },
+       "b": null,
+       "imm": 64
+      },
+      "b": null,
+      "imm": null
+     },
+     "param0": {
+      "k": "imm",
+      "v": 222
+     },
+     "order_code": {
+      "k": "imm",
+      "v": 222
+     },
+     "scratch_reset_before": false,
+     "scratch": [
+      {
+       "index": {
+        "k": "imm",
+        "v": 3
+       },
+       "value": {
+        "k": "param",
+        "i": 2
+       },
+       "at": "0x0046ed18"
+      },
+      {
+       "index": {
+        "k": "imm",
+        "v": 2
+       },
+       "value": {
+        "k": "param",
+        "i": 3
+       },
+       "at": "0x0046ed25"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_bldg_order_upgrade",
+   "addr": "0x0046e2ae",
+   "batch": "A",
+   "dead": false,
+   "params": [
+    {
+     "name": "player",
+     "type": "uint",
+     "storage": "EAX:4"
+    },
+    {
+     "name": "bldg_unit_id",
+     "type": "uint",
+     "storage": "EDX:4"
+    }
+   ],
+   "sites": [
+    {
+     "site": "0x0046e2e1",
+     "root": "llm_strat_order_dispatch",
+     "lane": "replicated",
+     "after_branch": false,
+     "unit_index": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "param",
+       "i": 1
+      },
+      "b": null,
+      "imm": null
+     },
+     "owner_and_kind": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "op",
+       "op": "or8",
+       "a": {
+        "k": "param",
+        "i": 0
+       },
+       "b": null,
+       "imm": 64
+      },
+      "b": null,
+      "imm": null
+     },
+     "param0": {
+      "k": "imm",
+      "v": 130
+     },
+     "order_code": {
+      "k": "imm",
+      "v": 130
+     },
+     "scratch_reset_before": false,
+     "scratch": []
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_group_issue_move_order_confirmed",
+   "addr": "0x00444fcb",
+   "batch": "B",
+   "dead": false,
+   "params": [
+    {
+     "name": "dst_x",
+     "type": "int",
+     "storage": "EAX:4"
+    },
+    {
+     "name": "dst_y",
+     "type": "int",
+     "storage": "EDX:4"
+    }
+   ],
+   "sites": []
+  },
+  {
+   "name": "llm_strat_group_issue_move_order_deferred",
+   "addr": "0x00444e5f",
+   "batch": "B",
+   "dead": false,
+   "params": [
+    {
+     "name": "op_code",
+     "type": "int",
+     "storage": "EAX:4"
+    },
+    {
+     "name": "op_arg",
+     "type": "int",
+     "storage": "EDX:4"
+    },
+    {
+     "name": "modifier",
+     "type": "int",
+     "storage": "EBX:4"
+    }
+   ],
+   "sites": []
+  },
+  {
+   "name": "llm_strat_group_order_ack_voice",
+   "addr": "0x004259b2",
+   "batch": "B",
+   "dead": false,
+   "params": [],
+   "sites": []
+  },
+  {
+   "name": "llm_strat_order_collect_available_projects",
+   "addr": "0x0046f687",
+   "batch": "C",
+   "dead": false,
+   "params": [
+    {
+     "name": "side",
+     "type": "uint",
+     "storage": "EAX:4"
+    }
+   ],
+   "sites": [
+    {
+     "site": "0x0046f6b2",
+     "root": "llm_strat_order_dispatch",
+     "lane": "replicated",
+     "after_branch": false,
+     "unit_index": {
+      "k": "imm",
+      "v": 0
+     },
+     "owner_and_kind": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "param",
+       "i": 0
+      },
+      "b": null,
+      "imm": null
+     },
+     "param0": {
+      "k": "imm",
+      "v": 238
+     },
+     "order_code": {
+      "k": "imm",
+      "v": 238
+     },
+     "scratch_reset_before": false,
+     "scratch": []
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_order_create_unit_debug",
+   "addr": "0x0046d800",
+   "batch": "B",
+   "dead": false,
+   "params": [
+    {
+     "name": "param_1",
+     "type": "undefined4",
+     "storage": "EAX:4"
+    },
+    {
+     "name": "param_2",
+     "type": "undefined4",
+     "storage": "EDX:4"
+    },
+    {
+     "name": "a2",
+     "type": "undefined4",
+     "storage": "EBX:4"
+    },
+    {
+     "name": "param_4",
+     "type": "uint",
+     "storage": "ECX:4"
+    }
+   ],
+   "sites": [
+    {
+     "site": "0x0046d85d",
+     "root": "llm_strat_order_dispatch",
+     "lane": "replicated",
+     "after_branch": false,
+     "unit_index": {
+      "k": "imm",
+      "v": 0
+     },
+     "owner_and_kind": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "param",
+       "i": 3
+      },
+      "b": null,
+      "imm": null
+     },
+     "param0": {
+      "k": "imm",
+      "v": 235
+     },
+     "order_code": {
+      "k": "imm",
+      "v": 235
+     },
+     "scratch_reset_before": true,
+     "scratch": [
+      {
+       "index": {
+        "k": "imm",
+        "v": 4
+       },
+       "value": {
+        "k": "param",
+        "i": 0
+       },
+       "at": "0x0046d82e"
+      },
+      {
+       "index": {
+        "k": "imm",
+        "v": 5
+       },
+       "value": {
+        "k": "param",
+        "i": 1
+       },
+       "at": "0x0046d83b"
+      },
+      {
+       "index": {
+        "k": "imm",
+        "v": 1
+       },
+       "value": {
+        "k": "param",
+        "i": 2
+       },
+       "at": "0x0046d848"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_order_credit_conquest_kills",
+   "addr": "0x0046f852",
+   "batch": "C",
+   "dead": false,
+   "params": [
+    {
+     "name": "side",
+     "type": "uint",
+     "storage": "EAX:4"
+    }
+   ],
+   "sites": [
+    {
+     "site": "0x0046f87d",
+     "root": "llm_strat_order_dispatch",
+     "lane": "replicated",
+     "after_branch": false,
+     "unit_index": {
+      "k": "imm",
+      "v": 0
+     },
+     "owner_and_kind": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "param",
+       "i": 0
+      },
+      "b": null,
+      "imm": null
+     },
+     "param0": {
+      "k": "imm",
+      "v": 250
+     },
+     "order_code": {
+      "k": "imm",
+      "v": 250
+     },
+     "scratch_reset_before": false,
+     "scratch": []
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_order_credit_conquest_kills_enqueue",
+   "addr": "0x0046f88c",
+   "batch": "C",
+   "dead": true,
+   "params": [
+    {
+     "name": "player",
+     "type": "ushort",
+     "storage": "AX:2"
+    }
+   ],
+   "sites": [
+    {
+     "site": "0x0046f8b7",
+     "root": "llm_strat_order_enqueue",
+     "lane": "immediate",
+     "after_branch": false,
+     "unit_index": {
+      "k": "imm",
+      "v": 0
+     },
+     "owner_and_kind": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "param",
+       "i": 0
+      },
+      "b": null,
+      "imm": null
+     },
+     "param0": {
+      "k": "imm",
+      "v": 250
+     },
+     "order_code": {
+      "k": "imm",
+      "v": 250
+     },
+     "scratch_reset_before": false,
+     "scratch": []
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_order_ctrlgrp_flash_member_raw",
+   "addr": "0x0046f2c5",
+   "batch": "C",
+   "dead": true,
+   "params": [
+    {
+     "name": "param_1",
+     "type": "ushort",
+     "storage": "AX:2"
+    },
+    {
+     "name": "param_2",
+     "type": "ushort",
+     "storage": "DX:2"
+    },
+    {
+     "name": "a2",
+     "type": "undefined4",
+     "storage": "EBX:4"
+    }
+   ],
+   "sites": [
+    {
+     "site": "0x0046f305",
+     "root": "llm_strat_order_enqueue",
+     "lane": "immediate",
+     "after_branch": false,
+     "unit_index": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "param",
+       "i": 1
+      },
+      "b": null,
+      "imm": null
+     },
+     "owner_and_kind": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "param",
+       "i": 0
+      },
+      "b": null,
+      "imm": null
+     },
+     "param0": {
+      "k": "imm",
+      "v": 53
+     },
+     "order_code": {
+      "k": "imm",
+      "v": 53
+     },
+     "scratch_reset_before": true,
+     "scratch": [
+      {
+       "index": {
+        "k": "imm",
+        "v": 0
+       },
+       "value": {
+        "k": "param",
+        "i": 2
+       },
+       "at": "0x0046f2ee"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_order_ctrlgrp_select_member_raw",
+   "addr": "0x0046f22b",
+   "batch": "C",
+   "dead": true,
+   "params": [
+    {
+     "name": "param_1",
+     "type": "ushort",
+     "storage": "AX:2"
+    },
+    {
+     "name": "param_2",
+     "type": "ushort",
+     "storage": "DX:2"
+    },
+    {
+     "name": "a2",
+     "type": "undefined4",
+     "storage": "EBX:4"
+    }
+   ],
+   "sites": [
+    {
+     "site": "0x0046f26b",
+     "root": "llm_strat_order_enqueue",
+     "lane": "immediate",
+     "after_branch": false,
+     "unit_index": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "param",
+       "i": 1
+      },
+      "b": null,
+      "imm": null
+     },
+     "owner_and_kind": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "param",
+       "i": 0
+      },
+      "b": null,
+      "imm": null
+     },
+     "param0": {
+      "k": "imm",
+      "v": 52
+     },
+     "order_code": {
+      "k": "imm",
+      "v": 52
+     },
+     "scratch_reset_before": true,
+     "scratch": [
+      {
+       "index": {
+        "k": "imm",
+        "v": 0
+       },
+       "value": {
+        "k": "param",
+        "i": 2
+       },
+       "at": "0x0046f254"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_order_debug_charge_add_full_group_enqueue",
+   "addr": "0x0046fc7f",
+   "batch": "B",
+   "dead": true,
+   "params": [
+    {
+     "name": "arg0",
+     "type": "int",
+     "storage": "EAX:4"
+    },
+    {
+     "name": "arg1",
+     "type": "int",
+     "storage": "EDX:4"
+    }
+   ],
+   "sites": [
+    {
+     "site": "0x0046fcd2",
+     "root": "llm_strat_order_enqueue",
+     "lane": "immediate",
+     "after_branch": false,
+     "unit_index": {
+      "k": "imm",
+      "v": 0
+     },
+     "owner_and_kind": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "op",
+       "op": "and",
+       "a": {
+        "k": "param",
+        "i": 0
+       },
+       "b": null,
+       "imm": 15
+      },
+      "b": null,
+      "imm": null
+     },
+     "param0": {
+      "k": "imm",
+      "v": 247
+     },
+     "order_code": {
+      "k": "imm",
+      "v": 248
+     },
+     "scratch_reset_before": true,
+     "scratch": [
+      {
+       "index": {
+        "k": "imm",
+        "v": 2
+       },
+       "value": {
+        "k": "param",
+        "i": 0
+       },
+       "at": "0x0046fca9"
+      },
+      {
+       "index": {
+        "k": "imm",
+        "v": 3
+       },
+       "value": {
+        "k": "param",
+        "i": 1
+       },
+       "at": "0x0046fcb6"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_order_debug_charge_add_scaled_enqueue",
+   "addr": "0x0046fbbd",
+   "batch": "C",
+   "dead": true,
+   "params": [
+    {
+     "name": "arg0",
+     "type": "int",
+     "storage": "EAX:4"
+    },
+    {
+     "name": "arg1",
+     "type": "int",
+     "storage": "EDX:4"
+    }
+   ],
+   "sites": [
+    {
+     "site": "0x0046fc10",
+     "root": "llm_strat_order_enqueue",
+     "lane": "immediate",
+     "after_branch": false,
+     "unit_index": {
+      "k": "imm",
+      "v": 0
+     },
+     "owner_and_kind": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "op",
+       "op": "and",
+       "a": {
+        "k": "param",
+        "i": 0
+       },
+       "b": null,
+       "imm": 15
+      },
+      "b": null,
+      "imm": null
+     },
+     "param0": {
+      "k": "imm",
+      "v": 247
+     },
+     "order_code": {
+      "k": "imm",
+      "v": 247
+     },
+     "scratch_reset_before": true,
+     "scratch": [
+      {
+       "index": {
+        "k": "imm",
+        "v": 2
+       },
+       "value": {
+        "k": "param",
+        "i": 0
+       },
+       "at": "0x0046fbe7"
+      },
+      {
+       "index": {
+        "k": "imm",
+        "v": 3
+       },
+       "value": {
+        "k": "param",
+        "i": 1
+       },
+       "at": "0x0046fbf4"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_order_debug_damage_scaled",
+   "addr": "0x0046fb5c",
+   "batch": "C",
+   "dead": false,
+   "params": [
+    {
+     "name": "player_id",
+     "type": "uint",
+     "storage": "EAX:4"
+    },
+    {
+     "name": "damage_amount",
+     "type": "int",
+     "storage": "EDX:4"
+    }
+   ],
+   "sites": [
+    {
+     "site": "0x0046fbaf",
+     "root": "llm_strat_order_dispatch",
+     "lane": "replicated",
+     "after_branch": false,
+     "unit_index": {
+      "k": "imm",
+      "v": 0
+     },
+     "owner_and_kind": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "op",
+       "op": "and",
+       "a": {
+        "k": "param",
+        "i": 0
+       },
+       "b": null,
+       "imm": 15
+      },
+      "b": null,
+      "imm": null
+     },
+     "param0": {
+      "k": "imm",
+      "v": 247
+     },
+     "order_code": {
+      "k": "imm",
+      "v": 247
+     },
+     "scratch_reset_before": true,
+     "scratch": [
+      {
+       "index": {
+        "k": "imm",
+        "v": 2
+       },
+       "value": {
+        "k": "param",
+        "i": 0
+       },
+       "at": "0x0046fb86"
+      },
+      {
+       "index": {
+        "k": "imm",
+        "v": 3
+       },
+       "value": {
+        "k": "param",
+        "i": 1
+       },
+       "at": "0x0046fb93"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_order_debug_energy_refill_full",
+   "addr": "0x0046fa9a",
+   "batch": "C",
+   "dead": false,
+   "params": [
+    {
+     "name": "player_id",
+     "type": "uint",
+     "storage": "EAX:4"
+    },
+    {
+     "name": "target_id",
+     "type": "int",
+     "storage": "EDX:4"
+    }
+   ],
+   "sites": [
+    {
+     "site": "0x0046faed",
+     "root": "llm_strat_order_dispatch",
+     "lane": "replicated",
+     "after_branch": false,
+     "unit_index": {
+      "k": "imm",
+      "v": 0
+     },
+     "owner_and_kind": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "op",
+       "op": "and",
+       "a": {
+        "k": "param",
+        "i": 0
+       },
+       "b": null,
+       "imm": 15
+      },
+      "b": null,
+      "imm": null
+     },
+     "param0": {
+      "k": "imm",
+      "v": 246
+     },
+     "order_code": {
+      "k": "imm",
+      "v": 246
+     },
+     "scratch_reset_before": true,
+     "scratch": [
+      {
+       "index": {
+        "k": "imm",
+        "v": 2
+       },
+       "value": {
+        "k": "param",
+        "i": 0
+       },
+       "at": "0x0046fac4"
+      },
+      {
+       "index": {
+        "k": "imm",
+        "v": 3
+       },
+       "value": {
+        "k": "param",
+        "i": 1
+       },
+       "at": "0x0046fad1"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_order_debug_energy_refill_full_enqueue",
+   "addr": "0x0046fafb",
+   "batch": "C",
+   "dead": true,
+   "params": [
+    {
+     "name": "arg0",
+     "type": "int",
+     "storage": "EAX:4"
+    },
+    {
+     "name": "arg1",
+     "type": "int",
+     "storage": "EDX:4"
+    }
+   ],
+   "sites": [
+    {
+     "site": "0x0046fb4e",
+     "root": "llm_strat_order_enqueue",
+     "lane": "immediate",
+     "after_branch": false,
+     "unit_index": {
+      "k": "imm",
+      "v": 0
+     },
+     "owner_and_kind": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "op",
+       "op": "and",
+       "a": {
+        "k": "param",
+        "i": 0
+       },
+       "b": null,
+       "imm": 15
+      },
+      "b": null,
+      "imm": null
+     },
+     "param0": {
+      "k": "imm",
+      "v": 246
+     },
+     "order_code": {
+      "k": "imm",
+      "v": 246
+     },
+     "scratch_reset_before": true,
+     "scratch": [
+      {
+       "index": {
+        "k": "imm",
+        "v": 2
+       },
+       "value": {
+        "k": "param",
+        "i": 0
+       },
+       "at": "0x0046fb25"
+      },
+      {
+       "index": {
+        "k": "imm",
+        "v": 3
+       },
+       "value": {
+        "k": "param",
+        "i": 1
+       },
+       "at": "0x0046fb32"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_order_debug_kill_group",
+   "addr": "0x0046fc1e",
+   "batch": "C",
+   "dead": false,
+   "params": [
+    {
+     "name": "player_id",
+     "type": "uint",
+     "storage": "EAX:4"
+    },
+    {
+     "name": "damage_amount",
+     "type": "int",
+     "storage": "EDX:4"
+    }
+   ],
+   "sites": [
+    {
+     "site": "0x0046fc71",
+     "root": "llm_strat_order_dispatch",
+     "lane": "replicated",
+     "after_branch": false,
+     "unit_index": {
+      "k": "imm",
+      "v": 0
+     },
+     "owner_and_kind": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "op",
+       "op": "and",
+       "a": {
+        "k": "param",
+        "i": 0
+       },
+       "b": null,
+       "imm": 15
+      },
+      "b": null,
+      "imm": null
+     },
+     "param0": {
+      "k": "imm",
+      "v": 247
+     },
+     "order_code": {
+      "k": "imm",
+      "v": 248
+     },
+     "scratch_reset_before": true,
+     "scratch": [
+      {
+       "index": {
+        "k": "imm",
+        "v": 2
+       },
+       "value": {
+        "k": "param",
+        "i": 0
+       },
+       "at": "0x0046fc48"
+      },
+      {
+       "index": {
+        "k": "imm",
+        "v": 3
+       },
+       "value": {
+        "k": "param",
+        "i": 1
+       },
+       "at": "0x0046fc55"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_order_debug_roll_random",
+   "addr": "0x0046f312",
+   "batch": "C",
+   "dead": true,
+   "params": [],
+   "sites": [
+    {
+     "site": "0x0046f33d",
+     "root": "llm_strat_order_dispatch",
+     "lane": "replicated",
+     "after_branch": false,
+     "unit_index": {
+      "k": "imm",
+      "v": 0
+     },
+     "owner_and_kind": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "unknown",
+       "why": "MEM read 0x00e58354"
+      },
+      "b": null,
+      "imm": null
+     },
+     "param0": {
+      "k": "imm",
+      "v": 231
+     },
+     "order_code": {
+      "k": "imm",
+      "v": 231
+     },
+     "scratch_reset_before": false,
+     "scratch": []
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_order_debug_roll_random_enqueue",
+   "addr": "0x0046f34c",
+   "batch": "C",
+   "dead": true,
+   "params": [],
+   "sites": [
+    {
+     "site": "0x0046f372",
+     "root": "llm_strat_order_enqueue",
+     "lane": "immediate",
+     "after_branch": false,
+     "unit_index": {
+      "k": "imm",
+      "v": 0
+     },
+     "owner_and_kind": {
+      "k": "imm",
+      "v": 0
+     },
+     "param0": {
+      "k": "imm",
+      "v": 231
+     },
+     "order_code": {
+      "k": "imm",
+      "v": 231
+     },
+     "scratch_reset_before": false,
+     "scratch": []
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_order_fow_reveal_full",
+   "addr": "0x0046fce0",
+   "batch": "C",
+   "dead": false,
+   "params": [
+    {
+     "name": "player_id",
+     "type": "uint",
+     "storage": "EAX:4"
+    }
+   ],
+   "sites": [
+    {
+     "site": "0x0046fd24",
+     "root": "llm_strat_order_dispatch",
+     "lane": "replicated",
+     "after_branch": false,
+     "unit_index": {
+      "k": "imm",
+      "v": 0
+     },
+     "owner_and_kind": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "op",
+       "op": "and",
+       "a": {
+        "k": "param",
+        "i": 0
+       },
+       "b": null,
+       "imm": 15
+      },
+      "b": null,
+      "imm": null
+     },
+     "param0": {
+      "k": "imm",
+      "v": 249
+     },
+     "order_code": {
+      "k": "imm",
+      "v": 249
+     },
+     "scratch_reset_before": true,
+     "scratch": [
+      {
+       "index": {
+        "k": "imm",
+        "v": 2
+       },
+       "value": {
+        "k": "param",
+        "i": 0
+       },
+       "at": "0x0046fd08"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_order_fow_reveal_full_enqueue",
+   "addr": "0x0046fd33",
+   "batch": "C",
+   "dead": true,
+   "params": [
+    {
+     "name": "player",
+     "type": "int",
+     "storage": "EAX:4"
+    }
+   ],
+   "sites": [
+    {
+     "site": "0x0046fd77",
+     "root": "llm_strat_order_enqueue",
+     "lane": "immediate",
+     "after_branch": false,
+     "unit_index": {
+      "k": "imm",
+      "v": 0
+     },
+     "owner_and_kind": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "op",
+       "op": "and",
+       "a": {
+        "k": "param",
+        "i": 0
+       },
+       "b": null,
+       "imm": 15
+      },
+      "b": null,
+      "imm": null
+     },
+     "param0": {
+      "k": "imm",
+      "v": 249
+     },
+     "order_code": {
+      "k": "imm",
+      "v": 249
+     },
+     "scratch_reset_before": true,
+     "scratch": [
+      {
+       "index": {
+        "k": "imm",
+        "v": 2
+       },
+       "value": {
+        "k": "param",
+        "i": 0
+       },
+       "at": "0x0046fd5b"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_order_game_speed_decrease",
+   "addr": "0x0046f3f5",
+   "batch": "C",
+   "dead": true,
+   "params": [
+    {
+     "name": "arg",
+     "type": "uint",
+     "storage": "EAX:4"
+    }
+   ],
+   "sites": [
+    {
+     "site": "0x0046f420",
+     "root": "llm_strat_order_dispatch",
+     "lane": "replicated",
+     "after_branch": false,
+     "unit_index": {
+      "k": "imm",
+      "v": 0
+     },
+     "owner_and_kind": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "param",
+       "i": 0
+      },
+      "b": null,
+      "imm": null
+     },
+     "param0": {
+      "k": "imm",
+      "v": 233
+     },
+     "order_code": {
+      "k": "imm",
+      "v": 233
+     },
+     "scratch_reset_before": false,
+     "scratch": []
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_order_game_speed_decrease_enqueue",
+   "addr": "0x0046f42f",
+   "batch": "C",
+   "dead": true,
+   "params": [
+    {
+     "name": "arg",
+     "type": "ushort",
+     "storage": "AX:2"
+    }
+   ],
+   "sites": [
+    {
+     "site": "0x0046f45a",
+     "root": "llm_strat_order_enqueue",
+     "lane": "immediate",
+     "after_branch": false,
+     "unit_index": {
+      "k": "imm",
+      "v": 0
+     },
+     "owner_and_kind": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "param",
+       "i": 0
+      },
+      "b": null,
+      "imm": null
+     },
+     "param0": {
+      "k": "imm",
+      "v": 233
+     },
+     "order_code": {
+      "k": "imm",
+      "v": 233
+     },
+     "scratch_reset_before": false,
+     "scratch": []
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_order_game_speed_increase",
+   "addr": "0x0046f381",
+   "batch": "C",
+   "dead": true,
+   "params": [
+    {
+     "name": "arg",
+     "type": "uint",
+     "storage": "EAX:4"
+    }
+   ],
+   "sites": [
+    {
+     "site": "0x0046f3ac",
+     "root": "llm_strat_order_dispatch",
+     "lane": "replicated",
+     "after_branch": false,
+     "unit_index": {
+      "k": "imm",
+      "v": 0
+     },
+     "owner_and_kind": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "param",
+       "i": 0
+      },
+      "b": null,
+      "imm": null
+     },
+     "param0": {
+      "k": "imm",
+      "v": 232
+     },
+     "order_code": {
+      "k": "imm",
+      "v": 232
+     },
+     "scratch_reset_before": false,
+     "scratch": []
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_order_game_speed_increase_enqueue",
+   "addr": "0x0046f3bb",
+   "batch": "C",
+   "dead": true,
+   "params": [
+    {
+     "name": "arg",
+     "type": "ushort",
+     "storage": "AX:2"
+    }
+   ],
+   "sites": [
+    {
+     "site": "0x0046f3e6",
+     "root": "llm_strat_order_enqueue",
+     "lane": "immediate",
+     "after_branch": false,
+     "unit_index": {
+      "k": "imm",
+      "v": 0
+     },
+     "owner_and_kind": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "param",
+       "i": 0
+      },
+      "b": null,
+      "imm": null
+     },
+     "param0": {
+      "k": "imm",
+      "v": 232
+     },
+     "order_code": {
+      "k": "imm",
+      "v": 232
+     },
+     "scratch_reset_before": false,
+     "scratch": []
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_order_grant_resource",
+   "addr": "0x0046f537",
+   "batch": "C",
+   "dead": false,
+   "params": [
+    {
+     "name": "param_1",
+     "type": "uint",
+     "storage": "EAX:4"
+    },
+    {
+     "name": "param_2",
+     "type": "undefined4",
+     "storage": "EDX:4"
+    },
+    {
+     "name": "a2",
+     "type": "undefined4",
+     "storage": "EBX:4"
+    }
+   ],
+   "sites": [
+    {
+     "site": "0x0046f585",
+     "root": "llm_strat_order_dispatch",
+     "lane": "replicated",
+     "after_branch": false,
+     "unit_index": {
+      "k": "imm",
+      "v": 0
+     },
+     "owner_and_kind": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "param",
+       "i": 0
+      },
+      "b": null,
+      "imm": null
+     },
+     "param0": {
+      "k": "imm",
+      "v": 237
+     },
+     "order_code": {
+      "k": "imm",
+      "v": 237
+     },
+     "scratch_reset_before": true,
+     "scratch": [
+      {
+       "index": {
+        "k": "imm",
+        "v": 3
+       },
+       "value": {
+        "k": "param",
+        "i": 1
+       },
+       "at": "0x0046f563"
+      },
+      {
+       "index": {
+        "k": "imm",
+        "v": 2
+       },
+       "value": {
+        "k": "param",
+        "i": 2
+       },
+       "at": "0x0046f570"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_order_issue_0xd5",
+   "addr": "0x0046e8de",
+   "batch": "C",
+   "dead": true,
+   "params": [
+    {
+     "name": "param_1",
+     "type": "uint",
+     "storage": "EAX:4"
+    },
+    {
+     "name": "param_2",
+     "type": "ushort",
+     "storage": "DX:2"
+    },
+    {
+     "name": "a2",
+     "type": "undefined4",
+     "storage": "EBX:4"
+    },
+    {
+     "name": "param_4",
+     "type": "undefined4",
+     "storage": "ECX:4"
+    }
+   ],
+   "sites": [
+    {
+     "site": "0x0046e92f",
+     "root": "llm_strat_order_dispatch",
+     "lane": "replicated",
+     "after_branch": false,
+     "unit_index": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "param",
+       "i": 1
+      },
+      "b": null,
+      "imm": null
+     },
+     "owner_and_kind": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "op",
+       "op": "or8",
+       "a": {
+        "k": "param",
+        "i": 0
+       },
+       "b": null,
+       "imm": 64
+      },
+      "b": null,
+      "imm": null
+     },
+     "param0": {
+      "k": "imm",
+      "v": 213
+     },
+     "order_code": {
+      "k": "imm",
+      "v": 213
+     },
+     "scratch_reset_before": false,
+     "scratch": [
+      {
+       "index": {
+        "k": "imm",
+        "v": 4
+       },
+       "value": {
+        "k": "param",
+        "i": 2
+       },
+       "at": "0x0046e907"
+      },
+      {
+       "index": {
+        "k": "imm",
+        "v": 5
+       },
+       "value": {
+        "k": "param",
+        "i": 3
+       },
+       "at": "0x0046e914"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_order_issue_0xd5_enqueue",
+   "addr": "0x0046e93b",
+   "batch": "C",
+   "dead": true,
+   "params": [
+    {
+     "name": "param_1",
+     "type": "ushort",
+     "storage": "AX:2"
+    },
+    {
+     "name": "param_2",
+     "type": "ushort",
+     "storage": "DX:2"
+    },
+    {
+     "name": "a2",
+     "type": "undefined4",
+     "storage": "EBX:4"
+    },
+    {
+     "name": "param_4",
+     "type": "undefined4",
+     "storage": "ECX:4"
+    }
+   ],
+   "sites": [
+    {
+     "site": "0x0046e98c",
+     "root": "llm_strat_order_enqueue",
+     "lane": "immediate",
+     "after_branch": false,
+     "unit_index": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "param",
+       "i": 1
+      },
+      "b": null,
+      "imm": null
+     },
+     "owner_and_kind": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "op",
+       "op": "or8",
+       "a": {
+        "k": "param",
+        "i": 0
+       },
+       "b": null,
+       "imm": 64
+      },
+      "b": null,
+      "imm": null
+     },
+     "param0": {
+      "k": "imm",
+      "v": 213
+     },
+     "order_code": {
+      "k": "imm",
+      "v": 213
+     },
+     "scratch_reset_before": false,
+     "scratch": [
+      {
+       "index": {
+        "k": "imm",
+        "v": 4
+       },
+       "value": {
+        "k": "param",
+        "i": 2
+       },
+       "at": "0x0046e964"
+      },
+      {
+       "index": {
+        "k": "imm",
+        "v": 5
+       },
+       "value": {
+        "k": "param",
+        "i": 3
+       },
+       "at": "0x0046e971"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_order_issue_0xf_adjacent",
+   "addr": "0x0046a221",
+   "batch": "C",
+   "dead": true,
+   "params": [
+    {
+     "name": "param_1",
+     "type": "uint",
+     "storage": "EAX:4"
+    },
+    {
+     "name": "param_2",
+     "type": "int",
+     "storage": "EDX:4"
+    },
+    {
+     "name": "a2",
+     "type": "int",
+     "storage": "EBX:4"
+    },
+    {
+     "name": "param_4",
+     "type": "int",
+     "storage": "ECX:4"
+    }
+   ],
+   "sites": [
+    {
+     "site": "0x0046a2e4",
+     "root": "llm_strat_order_dispatch",
+     "lane": "replicated",
+     "after_branch": true,
+     "unit_index": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "param",
+       "i": 1
+      },
+      "b": null,
+      "imm": null
+     },
+     "owner_and_kind": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "op",
+       "op": "or8",
+       "a": {
+        "k": "param",
+        "i": 0
+       },
+       "b": null,
+       "imm": 128
+      },
+      "b": null,
+      "imm": null
+     },
+     "param0": {
+      "k": "imm",
+      "v": 15
+     },
+     "order_code": {
+      "k": "imm",
+      "v": 54
+     },
+     "scratch_reset_before": true,
+     "scratch": [
+      {
+       "index": {
+        "k": "imm",
+        "v": 0
+       },
+       "value": {
+        "k": "param",
+        "i": 2
+       },
+       "at": "0x0046a2bc"
+      },
+      {
+       "index": {
+        "k": "imm",
+        "v": 1
+       },
+       "value": {
+        "k": "param",
+        "i": 3
+       },
+       "at": "0x0046a2c9"
+      }
+     ]
+    },
+    {
+     "site": "0x0046a309",
+     "root": "llm_strat_order_dispatch",
+     "lane": "replicated",
+     "after_branch": true,
+     "unit_index": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "param",
+       "i": 1
+      },
+      "b": null,
+      "imm": null
+     },
+     "owner_and_kind": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "param",
+       "i": 0
+      },
+      "b": null,
+      "imm": null
+     },
+     "param0": {
+      "k": "imm",
+      "v": 251
+     },
+     "order_code": {
+      "k": "imm",
+      "v": 251
+     },
+     "scratch_reset_before": true,
+     "scratch": []
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_order_population_delta_debug",
+   "addr": "0x0046f5ed",
+   "batch": "C",
+   "dead": false,
+   "params": [
+    {
+     "name": "player_id",
+     "type": "uint",
+     "storage": "EAX:4"
+    },
+    {
+     "name": "population_delta",
+     "type": "int",
+     "storage": "EDX:4"
+    }
+   ],
+   "sites": [
+    {
+     "site": "0x0046f62c",
+     "root": "llm_strat_order_dispatch",
+     "lane": "replicated",
+     "after_branch": false,
+     "unit_index": {
+      "k": "imm",
+      "v": 0
+     },
+     "owner_and_kind": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "param",
+       "i": 0
+      },
+      "b": null,
+      "imm": null
+     },
+     "param0": {
+      "k": "imm",
+      "v": 236
+     },
+     "order_code": {
+      "k": "imm",
+      "v": 236
+     },
+     "scratch_reset_before": true,
+     "scratch": [
+      {
+       "index": {
+        "k": "imm",
+        "v": 1
+       },
+       "value": {
+        "k": "param",
+        "i": 1
+       },
+       "at": "0x0046f617"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_order_queue_apply_and_dequeue",
+   "addr": "0x00469a37",
+   "batch": "C",
+   "dead": false,
+   "params": [
+    {
+     "name": "player",
+     "type": "uint",
+     "storage": "EAX:4"
+    },
+    {
+     "name": "unit_idx",
+     "type": "int",
+     "storage": "EDX:4"
+    },
+    {
+     "name": "queue_idx",
+     "type": "int",
+     "storage": "EBX:4"
+    }
+   ],
+   "sites": []
+  },
+  {
+   "name": "llm_strat_order_queue_construction_debug",
+   "addr": "0x0046da00",
+   "batch": "C",
+   "dead": false,
+   "params": [
+    {
+     "name": "param_1",
+     "type": "undefined4",
+     "storage": "EAX:4"
+    },
+    {
+     "name": "param_2",
+     "type": "undefined4",
+     "storage": "EDX:4"
+    },
+    {
+     "name": "a2",
+     "type": "undefined4",
+     "storage": "EBX:4"
+    },
+    {
+     "name": "param_4",
+     "type": "uint",
+     "storage": "ECX:4"
+    }
+   ],
+   "sites": [
+    {
+     "site": "0x0046da5a",
+     "root": "llm_strat_order_dispatch",
+     "lane": "replicated",
+     "after_branch": false,
+     "unit_index": {
+      "k": "imm",
+      "v": 0
+     },
+     "owner_and_kind": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "param",
+       "i": 3
+      },
+      "b": null,
+      "imm": null
+     },
+     "param0": {
+      "k": "imm",
+      "v": 242
+     },
+     "order_code": {
+      "k": "imm",
+      "v": 242
+     },
+     "scratch_reset_before": true,
+     "scratch": [
+      {
+       "index": {
+        "k": "imm",
+        "v": 4
+       },
+       "value": {
+        "k": "param",
+        "i": 0
+       },
+       "at": "0x0046da2e"
+      },
+      {
+       "index": {
+        "k": "imm",
+        "v": 5
+       },
+       "value": {
+        "k": "param",
+        "i": 1
+       },
+       "at": "0x0046da3b"
+      },
+      {
+       "index": {
+        "k": "imm",
+        "v": 0
+       },
+       "value": {
+        "k": "param",
+        "i": 2
+       },
+       "at": "0x0046da45"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_order_recheck_buildings",
+   "addr": "0x0046f76f",
+   "batch": "C",
+   "dead": false,
+   "params": [
+    {
+     "name": "side",
+     "type": "uint",
+     "storage": "EAX:4"
+    }
+   ],
+   "sites": [
+    {
+     "site": "0x0046f79a",
+     "root": "llm_strat_order_dispatch",
+     "lane": "replicated",
+     "after_branch": false,
+     "unit_index": {
+      "k": "imm",
+      "v": 0
+     },
+     "owner_and_kind": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "param",
+       "i": 0
+      },
+      "b": null,
+      "imm": null
+     },
+     "param0": {
+      "k": "imm",
+      "v": 239
+     },
+     "order_code": {
+      "k": "imm",
+      "v": 239
+     },
+     "scratch_reset_before": false,
+     "scratch": []
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_order_recheck_buildings_enqueue",
+   "addr": "0x0046f7a9",
+   "batch": "C",
+   "dead": true,
+   "params": [
+    {
+     "name": "player",
+     "type": "ushort",
+     "storage": "AX:2"
+    }
+   ],
+   "sites": [
+    {
+     "site": "0x0046f7d4",
+     "root": "llm_strat_order_enqueue",
+     "lane": "immediate",
+     "after_branch": false,
+     "unit_index": {
+      "k": "imm",
+      "v": 0
+     },
+     "owner_and_kind": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "param",
+       "i": 0
+      },
+      "b": null,
+      "imm": null
+     },
+     "param0": {
+      "k": "imm",
+      "v": 239
+     },
+     "order_code": {
+      "k": "imm",
+      "v": 239
+     },
+     "scratch_reset_before": false,
+     "scratch": []
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_order_recheck_planet_system_all_players",
+   "addr": "0x0046f7e3",
+   "batch": "C",
+   "dead": false,
+   "params": [],
+   "sites": [
+    {
+     "site": "0x0046f80e",
+     "root": "llm_strat_order_dispatch",
+     "lane": "replicated",
+     "after_branch": false,
+     "unit_index": {
+      "k": "imm",
+      "v": 0
+     },
+     "owner_and_kind": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "unknown",
+       "why": "MEM read 0x00e58354"
+      },
+      "b": null,
+      "imm": null
+     },
+     "param0": {
+      "k": "imm",
+      "v": 241
+     },
+     "order_code": {
+      "k": "imm",
+      "v": 241
+     },
+     "scratch_reset_before": false,
+     "scratch": []
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_order_recheck_planet_system_all_players_enqueue",
+   "addr": "0x0046f81d",
+   "batch": "C",
+   "dead": true,
+   "params": [],
+   "sites": [
+    {
+     "site": "0x0046f843",
+     "root": "llm_strat_order_enqueue",
+     "lane": "immediate",
+     "after_branch": false,
+     "unit_index": {
+      "k": "imm",
+      "v": 0
+     },
+     "owner_and_kind": {
+      "k": "imm",
+      "v": 0
+     },
+     "param0": {
+      "k": "imm",
+      "v": 241
+     },
+     "order_code": {
+      "k": "imm",
+      "v": 241
+     },
+     "scratch_reset_before": false,
+     "scratch": []
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_order_recheck_projects",
+   "addr": "0x0046f6fb",
+   "batch": "C",
+   "dead": false,
+   "params": [
+    {
+     "name": "side",
+     "type": "uint",
+     "storage": "EAX:4"
+    }
+   ],
+   "sites": [
+    {
+     "site": "0x0046f726",
+     "root": "llm_strat_order_dispatch",
+     "lane": "replicated",
+     "after_branch": false,
+     "unit_index": {
+      "k": "imm",
+      "v": 0
+     },
+     "owner_and_kind": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "param",
+       "i": 0
+      },
+      "b": null,
+      "imm": null
+     },
+     "param0": {
+      "k": "imm",
+      "v": 240
+     },
+     "order_code": {
+      "k": "imm",
+      "v": 240
+     },
+     "scratch_reset_before": false,
+     "scratch": []
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_order_recheck_projects_enqueue",
+   "addr": "0x0046f735",
+   "batch": "C",
+   "dead": true,
+   "params": [
+    {
+     "name": "player",
+     "type": "ushort",
+     "storage": "AX:2"
+    }
+   ],
+   "sites": [
+    {
+     "site": "0x0046f760",
+     "root": "llm_strat_order_enqueue",
+     "lane": "immediate",
+     "after_branch": false,
+     "unit_index": {
+      "k": "imm",
+      "v": 0
+     },
+     "owner_and_kind": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "param",
+       "i": 0
+      },
+      "b": null,
+      "imm": null
+     },
+     "param0": {
+      "k": "imm",
+      "v": 240
+     },
+     "order_code": {
+      "k": "imm",
+      "v": 240
+     },
+     "scratch_reset_before": false,
+     "scratch": []
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_order_recruit_unit",
+   "addr": "0x0046d952",
+   "batch": "C",
+   "dead": true,
+   "params": [
+    {
+     "name": "unit_type",
+     "type": "int",
+     "storage": "EAX:4"
+    },
+    {
+     "name": "player",
+     "type": "uint",
+     "storage": "EDX:4"
+    }
+   ],
+   "sites": [
+    {
+     "site": "0x0046d991",
+     "root": "llm_strat_order_dispatch",
+     "lane": "replicated",
+     "after_branch": false,
+     "unit_index": {
+      "k": "imm",
+      "v": 0
+     },
+     "owner_and_kind": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "param",
+       "i": 1
+      },
+      "b": null,
+      "imm": null
+     },
+     "param0": {
+      "k": "imm",
+      "v": 243
+     },
+     "order_code": {
+      "k": "imm",
+      "v": 243
+     },
+     "scratch_reset_before": true,
+     "scratch": [
+      {
+       "index": {
+        "k": "imm",
+        "v": 1
+       },
+       "value": {
+        "k": "param",
+        "i": 0
+       },
+       "at": "0x0046d97c"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_order_set_player_control_mode",
+   "addr": "0x0046f97e",
+   "batch": "C",
+   "dead": false,
+   "params": [
+    {
+     "name": "param_1",
+     "type": "uint",
+     "storage": "EAX:4"
+    },
+    {
+     "name": "param_2",
+     "type": "undefined4",
+     "storage": "EDX:4"
+    },
+    {
+     "name": "a2",
+     "type": "char",
+     "storage": "BL:1"
+    }
+   ],
+   "sites": [
+    {
+     "site": "0x0046fa31",
+     "root": "llm_strat_order_dispatch",
+     "lane": "replicated",
+     "after_branch": true,
+     "unit_index": {
+      "k": "imm",
+      "v": 0
+     },
+     "owner_and_kind": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "param",
+       "i": 0
+      },
+      "b": null,
+      "imm": null
+     },
+     "param0": {
+      "k": "imm",
+      "v": 245
+     },
+     "order_code": {
+      "k": "imm",
+      "v": 245
+     },
+     "scratch_reset_before": true,
+     "scratch": [
+      {
+       "index": {
+        "k": "imm",
+        "v": 2
+       },
+       "value": {
+        "k": "param",
+        "i": 1
+       },
+       "at": "0x0046f9aa"
+      },
+      {
+       "index": {
+        "k": "imm",
+        "v": 3
+       },
+       "value": {
+        "k": "op",
+        "op": "movzx8",
+        "a": {
+         "k": "param",
+         "i": 2
+        },
+        "b": null,
+        "imm": null
+       },
+       "at": "0x0046f9b8"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_order_set_player_control_mode_enqueue",
+   "addr": "0x0046fa3e",
+   "batch": "C",
+   "dead": true,
+   "params": [
+    {
+     "name": "player",
+     "type": "ushort",
+     "storage": "AX:2"
+    },
+    {
+     "name": "param_2",
+     "type": "undefined4",
+     "storage": "EDX:4"
+    },
+    {
+     "name": "a2",
+     "type": "undefined1",
+     "storage": "BL:1"
+    }
+   ],
+   "sites": [
+    {
+     "site": "0x0046fa8d",
+     "root": "llm_strat_order_enqueue",
+     "lane": "immediate",
+     "after_branch": false,
+     "unit_index": {
+      "k": "imm",
+      "v": 0
+     },
+     "owner_and_kind": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "param",
+       "i": 0
+      },
+      "b": null,
+      "imm": null
+     },
+     "param0": {
+      "k": "imm",
+      "v": 245
+     },
+     "order_code": {
+      "k": "imm",
+      "v": 245
+     },
+     "scratch_reset_before": true,
+     "scratch": [
+      {
+       "index": {
+        "k": "imm",
+        "v": 2
+       },
+       "value": {
+        "k": "param",
+        "i": 1
+       },
+       "at": "0x0046fa6a"
+      },
+      {
+       "index": {
+        "k": "imm",
+        "v": 3
+       },
+       "value": {
+        "k": "op",
+        "op": "movzx8",
+        "a": {
+         "k": "param",
+         "i": 2
+        },
+        "b": null,
+        "imm": null
+       },
+       "at": "0x0046fa78"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_order_set_player_relation",
+   "addr": "0x0046f8c6",
+   "batch": "C",
+   "dead": false,
+   "params": [
+    {
+     "name": "player",
+     "type": "uint",
+     "storage": "EAX:4"
+    },
+    {
+     "name": "opponent_idx",
+     "type": "undefined4",
+     "storage": "EDX:4"
+    },
+    {
+     "name": "relation_value",
+     "type": "undefined1",
+     "storage": "BL:1"
+    }
+   ],
+   "sites": [
+    {
+     "site": "0x0046f915",
+     "root": "llm_strat_order_dispatch",
+     "lane": "replicated",
+     "after_branch": false,
+     "unit_index": {
+      "k": "imm",
+      "v": 0
+     },
+     "owner_and_kind": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "param",
+       "i": 0
+      },
+      "b": null,
+      "imm": null
+     },
+     "param0": {
+      "k": "imm",
+      "v": 244
+     },
+     "order_code": {
+      "k": "imm",
+      "v": 244
+     },
+     "scratch_reset_before": true,
+     "scratch": [
+      {
+       "index": {
+        "k": "imm",
+        "v": 2
+       },
+       "value": {
+        "k": "param",
+        "i": 1
+       },
+       "at": "0x0046f8f2"
+      },
+      {
+       "index": {
+        "k": "imm",
+        "v": 3
+       },
+       "value": {
+        "k": "op",
+        "op": "movzx8",
+        "a": {
+         "k": "param",
+         "i": 2
+        },
+        "b": null,
+        "imm": null
+       },
+       "at": "0x0046f900"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_order_set_player_relation_raw",
+   "addr": "0x0046f922",
+   "batch": "C",
+   "dead": true,
+   "params": [
+    {
+     "name": "param_1",
+     "type": "ushort",
+     "storage": "AX:2"
+    },
+    {
+     "name": "param_2",
+     "type": "undefined4",
+     "storage": "EDX:4"
+    },
+    {
+     "name": "a2",
+     "type": "undefined1",
+     "storage": "BL:1"
+    }
+   ],
+   "sites": [
+    {
+     "site": "0x0046f971",
+     "root": "llm_strat_order_enqueue",
+     "lane": "immediate",
+     "after_branch": false,
+     "unit_index": {
+      "k": "imm",
+      "v": 0
+     },
+     "owner_and_kind": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "param",
+       "i": 0
+      },
+      "b": null,
+      "imm": null
+     },
+     "param0": {
+      "k": "imm",
+      "v": 244
+     },
+     "order_code": {
+      "k": "imm",
+      "v": 244
+     },
+     "scratch_reset_before": true,
+     "scratch": [
+      {
+       "index": {
+        "k": "imm",
+        "v": 2
+       },
+       "value": {
+        "k": "param",
+        "i": 1
+       },
+       "at": "0x0046f94e"
+      },
+      {
+       "index": {
+        "k": "imm",
+        "v": 3
+       },
+       "value": {
+        "k": "op",
+        "op": "movzx8",
+        "a": {
+         "k": "param",
+         "i": 2
+        },
+        "b": null,
+        "imm": null
+       },
+       "at": "0x0046f95c"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_turret_order_target_building",
+   "addr": "0x0046de50",
+   "batch": "B",
+   "dead": false,
+   "params": [
+    {
+     "name": "param_1",
+     "type": "ushort",
+     "storage": "AX:2"
+    },
+    {
+     "name": "param_2",
+     "type": "ushort",
+     "storage": "DX:2"
+    },
+    {
+     "name": "a2",
+     "type": "uint",
+     "storage": "EBX:4"
+    },
+    {
+     "name": "param_4",
+     "type": "undefined4",
+     "storage": "ECX:4"
+    }
+   ],
+   "sites": [
+    {
+     "site": "0x0046dea4",
+     "root": "llm_strat_order_dispatch",
+     "lane": "replicated",
+     "after_branch": false,
+     "unit_index": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "param",
+       "i": 1
+      },
+      "b": null,
+      "imm": null
+     },
+     "owner_and_kind": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "op",
+       "op": "or8",
+       "a": {
+        "k": "param",
+        "i": 0
+       },
+       "b": null,
+       "imm": 64
+      },
+      "b": null,
+      "imm": null
+     },
+     "param0": {
+      "k": "imm",
+      "v": 123
+     },
+     "order_code": {
+      "k": "imm",
+      "v": 123
+     },
+     "scratch_reset_before": false,
+     "scratch": [
+      {
+       "index": {
+        "k": "imm",
+        "v": 5
+       },
+       "value": {
+        "k": "op",
+        "op": "or8",
+        "a": {
+         "k": "param",
+         "i": 2
+        },
+        "b": null,
+        "imm": 64
+       },
+       "at": "0x0046de7c"
+      },
+      {
+       "index": {
+        "k": "imm",
+        "v": 6
+       },
+       "value": {
+        "k": "param",
+        "i": 3
+       },
+       "at": "0x0046de89"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_turret_order_target_building_enqueue",
+   "addr": "0x0046deb0",
+   "batch": "B",
+   "dead": true,
+   "params": [
+    {
+     "name": "player",
+     "type": "ushort",
+     "storage": "AX:2"
+    },
+    {
+     "name": "turret_idx",
+     "type": "ushort",
+     "storage": "DX:2"
+    },
+    {
+     "name": "target_bldg_idx",
+     "type": "uint",
+     "storage": "EBX:4"
+    },
+    {
+     "name": "order_arg1",
+     "type": "undefined4",
+     "storage": "ECX:4"
+    }
+   ],
+   "sites": [
+    {
+     "site": "0x0046df04",
+     "root": "llm_strat_order_enqueue",
+     "lane": "immediate",
+     "after_branch": false,
+     "unit_index": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "param",
+       "i": 1
+      },
+      "b": null,
+      "imm": null
+     },
+     "owner_and_kind": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "op",
+       "op": "or8",
+       "a": {
+        "k": "param",
+        "i": 0
+       },
+       "b": null,
+       "imm": 64
+      },
+      "b": null,
+      "imm": null
+     },
+     "param0": {
+      "k": "imm",
+      "v": 123
+     },
+     "order_code": {
+      "k": "imm",
+      "v": 123
+     },
+     "scratch_reset_before": false,
+     "scratch": [
+      {
+       "index": {
+        "k": "imm",
+        "v": 5
+       },
+       "value": {
+        "k": "op",
+        "op": "or8",
+        "a": {
+         "k": "param",
+         "i": 2
+        },
+        "b": null,
+        "imm": 64
+       },
+       "at": "0x0046dedc"
+      },
+      {
+       "index": {
+        "k": "imm",
+        "v": 6
+       },
+       "value": {
+        "k": "param",
+        "i": 3
+       },
+       "at": "0x0046dee9"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_turret_order_target_unit",
+   "addr": "0x0046dd90",
+   "batch": "B",
+   "dead": false,
+   "params": [
+    {
+     "name": "player",
+     "type": "ushort",
+     "storage": "AX:2"
+    },
+    {
+     "name": "building_or_id",
+     "type": "ushort",
+     "storage": "DX:2"
+    },
+    {
+     "name": "target_or_side",
+     "type": "uint",
+     "storage": "EBX:4"
+    },
+    {
+     "name": "target_unit_idx",
+     "type": "uint",
+     "storage": "ECX:4"
+    }
+   ],
+   "sites": [
+    {
+     "site": "0x0046dde4",
+     "root": "llm_strat_order_dispatch",
+     "lane": "replicated",
+     "after_branch": false,
+     "unit_index": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "param",
+       "i": 1
+      },
+      "b": null,
+      "imm": null
+     },
+     "owner_and_kind": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "op",
+       "op": "or8",
+       "a": {
+        "k": "param",
+        "i": 0
+       },
+       "b": null,
+       "imm": 64
+      },
+      "b": null,
+      "imm": null
+     },
+     "param0": {
+      "k": "imm",
+      "v": 123
+     },
+     "order_code": {
+      "k": "imm",
+      "v": 123
+     },
+     "scratch_reset_before": false,
+     "scratch": [
+      {
+       "index": {
+        "k": "imm",
+        "v": 5
+       },
+       "value": {
+        "k": "op",
+        "op": "or8",
+        "a": {
+         "k": "param",
+         "i": 2
+        },
+        "b": null,
+        "imm": 128
+       },
+       "at": "0x0046ddbc"
+      },
+      {
+       "index": {
+        "k": "imm",
+        "v": 6
+       },
+       "value": {
+        "k": "param",
+        "i": 3
+       },
+       "at": "0x0046ddc9"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_turret_order_target_unit_enqueue",
+   "addr": "0x0046ddf0",
+   "batch": "B",
+   "dead": true,
+   "params": [
+    {
+     "name": "param_1",
+     "type": "ushort",
+     "storage": "AX:2"
+    },
+    {
+     "name": "param_2",
+     "type": "ushort",
+     "storage": "DX:2"
+    },
+    {
+     "name": "a2",
+     "type": "uint",
+     "storage": "EBX:4"
+    },
+    {
+     "name": "param_4",
+     "type": "undefined4",
+     "storage": "ECX:4"
+    }
+   ],
+   "sites": [
+    {
+     "site": "0x0046de44",
+     "root": "llm_strat_order_enqueue",
+     "lane": "immediate",
+     "after_branch": false,
+     "unit_index": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "param",
+       "i": 1
+      },
+      "b": null,
+      "imm": null
+     },
+     "owner_and_kind": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "op",
+       "op": "or8",
+       "a": {
+        "k": "param",
+        "i": 0
+       },
+       "b": null,
+       "imm": 64
+      },
+      "b": null,
+      "imm": null
+     },
+     "param0": {
+      "k": "imm",
+      "v": 123
+     },
+     "order_code": {
+      "k": "imm",
+      "v": 123
+     },
+     "scratch_reset_before": false,
+     "scratch": [
+      {
+       "index": {
+        "k": "imm",
+        "v": 5
+       },
+       "value": {
+        "k": "op",
+        "op": "or8",
+        "a": {
+         "k": "param",
+         "i": 2
+        },
+        "b": null,
+        "imm": 128
+       },
+       "at": "0x0046de1c"
+      },
+      {
+       "index": {
+        "k": "imm",
+        "v": 6
+       },
+       "value": {
+        "k": "param",
+        "i": 3
+       },
+       "at": "0x0046de29"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_unit_order_attack_building",
+   "addr": "0x0046c6c6",
+   "batch": "B",
+   "dead": true,
+   "params": [
+    {
+     "name": "param_1",
+     "type": "uint",
+     "storage": "EAX:4"
+    },
+    {
+     "name": "param_2",
+     "type": "int",
+     "storage": "EDX:4"
+    },
+    {
+     "name": "a2",
+     "type": "uint",
+     "storage": "EBX:4"
+    },
+    {
+     "name": "param_4",
+     "type": "int",
+     "storage": "ECX:4"
+    },
+    {
+     "name": "param_5",
+     "type": "uint",
+     "storage": "Stack[0x4]:4"
+    }
+   ],
+   "sites": [
+    {
+     "site": "0x0046c792",
+     "root": "llm_strat_order_dispatch",
+     "lane": "replicated",
+     "after_branch": true,
+     "unit_index": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "param",
+       "i": 1
+      },
+      "b": null,
+      "imm": null
+     },
+     "owner_and_kind": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "op",
+       "op": "or8",
+       "a": {
+        "k": "param",
+        "i": 0
+       },
+       "b": null,
+       "imm": 128
+      },
+      "b": null,
+      "imm": null
+     },
+     "param0": {
+      "k": "imm",
+      "v": 29
+     },
+     "order_code": {
+      "k": "imm",
+      "v": 29
+     },
+     "scratch_reset_before": true,
+     "scratch": [
+      {
+       "index": {
+        "k": "imm",
+        "v": 8
+       },
+       "value": {
+        "k": "unknown",
+        "why": "stack slot -0x1c never written"
+       },
+       "at": "0x0046c73e"
+      },
+      {
+       "index": {
+        "k": "imm",
+        "v": 9
+       },
+       "value": {
+        "k": "unknown",
+        "why": "stack slot -0x14 never written"
+       },
+       "at": "0x0046c74b"
+      },
+      {
+       "index": {
+        "k": "imm",
+        "v": 10
+       },
+       "value": {
+        "k": "op",
+        "op": "movzx16",
+        "a": {
+         "k": "op",
+         "op": "or8",
+         "a": {
+          "k": "param",
+          "i": 2
+         },
+         "b": null,
+         "imm": 64
+        },
+        "b": null,
+        "imm": null
+       },
+       "at": "0x0046c75d"
+      },
+      {
+       "index": {
+        "k": "imm",
+        "v": 11
+       },
+       "value": {
+        "k": "param",
+        "i": 3
+       },
+       "at": "0x0046c76a"
+      },
+      {
+       "index": {
+        "k": "imm",
+        "v": 7
+       },
+       "value": {
+        "k": "op",
+        "op": "movzx8",
+        "a": {
+         "k": "unknown",
+         "why": "clobbered by call to llm_strat_unit_select_weapon"
+        },
+        "b": null,
+        "imm": null
+       },
+       "at": "0x0046c777"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_unit_order_attack_building_reposition",
+   "addr": "0x0046bf9c",
+   "batch": "B",
+   "dead": false,
+   "params": [
+    {
+     "name": "param_1",
+     "type": "uint",
+     "storage": "EAX:4"
+    },
+    {
+     "name": "param_2",
+     "type": "int",
+     "storage": "EDX:4"
+    },
+    {
+     "name": "a2",
+     "type": "uint",
+     "storage": "EBX:4"
+    },
+    {
+     "name": "param_4",
+     "type": "int",
+     "storage": "ECX:4"
+    },
+    {
+     "name": "param_5",
+     "type": "uint",
+     "storage": "Stack[0x4]:4"
+    }
+   ],
+   "sites": [
+    {
+     "site": "0x0046c149",
+     "root": "llm_strat_order_dispatch",
+     "lane": "replicated",
+     "after_branch": true,
+     "unit_index": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "param",
+       "i": 1
+      },
+      "b": null,
+      "imm": null
+     },
+     "owner_and_kind": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "op",
+       "op": "or8",
+       "a": {
+        "k": "param",
+        "i": 0
+       },
+       "b": null,
+       "imm": 128
+      },
+      "b": null,
+      "imm": null
+     },
+     "param0": {
+      "k": "imm",
+      "v": 28
+     },
+     "order_code": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "op",
+       "op": "movzx8",
+       "a": {
+        "k": "unknown",
+        "why": "MEM read 0xe4a184"
+       },
+       "b": null,
+       "imm": null
+      },
+      "b": null,
+      "imm": null
+     },
+     "scratch_reset_before": true,
+     "scratch": [
+      {
+       "index": {
+        "k": "imm",
+        "v": 0
+       },
+       "value": {
+        "k": "op",
+        "op": "sar",
+        "a": {
+         "k": "unknown",
+         "why": "unsupported instruction SBB EAX,EDX"
+        },
+        "b": null,
+        "imm": 5
+       },
+       "at": "0x0046c008"
+      },
+      {
+       "index": {
+        "k": "imm",
+        "v": 1
+       },
+       "value": {
+        "k": "op",
+        "op": "sar",
+        "a": {
+         "k": "unknown",
+         "why": "unsupported instruction SBB EAX,EDX"
+        },
+        "b": null,
+        "imm": 5
+       },
+       "at": "0x0046c027"
+      },
+      {
+       "index": {
+        "k": "imm",
+        "v": 3
+       },
+       "value": {
+        "k": "unknown",
+        "why": "stack slot -0x1c never written"
+       },
+       "at": "0x0046c034"
+      },
+      {
+       "index": {
+        "k": "imm",
+        "v": 4
+       },
+       "value": {
+        "k": "unknown",
+        "why": "stack slot -0x14 never written"
+       },
+       "at": "0x0046c041"
+      },
+      {
+       "index": {
+        "k": "imm",
+        "v": 5
+       },
+       "value": {
+        "k": "op",
+        "op": "movzx16",
+        "a": {
+         "k": "op",
+         "op": "or8",
+         "a": {
+          "k": "param",
+          "i": 2
+         },
+         "b": null,
+         "imm": 64
+        },
+        "b": null,
+        "imm": null
+       },
+       "at": "0x0046c053"
+      },
+      {
+       "index": {
+        "k": "imm",
+        "v": 6
+       },
+       "value": {
+        "k": "param",
+        "i": 3
+       },
+       "at": "0x0046c060"
+      },
+      {
+       "index": {
+        "k": "imm",
+        "v": 7
+       },
+       "value": {
+        "k": "op",
+        "op": "movzx8",
+        "a": {
+         "k": "unknown",
+         "why": "clobbered by call to llm_strat_unit_select_weapon"
+        },
+        "b": null,
+        "imm": null
+       },
+       "at": "0x0046c06d"
+      }
+     ]
+    },
+    {
+     "site": "0x0046c16e",
+     "root": "llm_strat_order_dispatch",
+     "lane": "replicated",
+     "after_branch": true,
+     "unit_index": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "param",
+       "i": 1
+      },
+      "b": null,
+      "imm": null
+     },
+     "owner_and_kind": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "param",
+       "i": 0
+      },
+      "b": null,
+      "imm": null
+     },
+     "param0": {
+      "k": "imm",
+      "v": 251
+     },
+     "order_code": {
+      "k": "imm",
+      "v": 251
+     },
+     "scratch_reset_before": true,
+     "scratch": []
+    },
+    {
+     "site": "0x0046c20e",
+     "root": "llm_strat_order_dispatch",
+     "lane": "replicated",
+     "after_branch": true,
+     "unit_index": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "param",
+       "i": 1
+      },
+      "b": null,
+      "imm": null
+     },
+     "owner_and_kind": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "op",
+       "op": "or8",
+       "a": {
+        "k": "param",
+        "i": 0
+       },
+       "b": null,
+       "imm": 128
+      },
+      "b": null,
+      "imm": null
+     },
+     "param0": {
+      "k": "imm",
+      "v": 1
+     },
+     "order_code": {
+      "k": "imm",
+      "v": 28
+     },
+     "scratch_reset_before": false,
+     "scratch": [
+      {
+       "index": {
+        "k": "imm",
+        "v": 0
+       },
+       "value": {
+        "k": "op",
+        "op": "sar",
+        "a": {
+         "k": "unknown",
+         "why": "unsupported instruction SBB EAX,EDX"
+        },
+        "b": null,
+        "imm": 5
+       },
+       "at": "0x0046c1ba"
+      },
+      {
+       "index": {
+        "k": "imm",
+        "v": 1
+       },
+       "value": {
+        "k": "op",
+        "op": "sar",
+        "a": {
+         "k": "unknown",
+         "why": "unsupported instruction SBB EAX,EDX"
+        },
+        "b": null,
+        "imm": 5
+       },
+       "at": "0x0046c1d9"
+      },
+      {
+       "index": {
+        "k": "imm",
+        "v": 3
+       },
+       "value": {
+        "k": "unknown",
+        "why": "stack slot -0x1c never written"
+       },
+       "at": "0x0046c1e6"
+      },
+      {
+       "index": {
+        "k": "imm",
+        "v": 4
+       },
+       "value": {
+        "k": "unknown",
+        "why": "stack slot -0x14 never written"
+       },
+       "at": "0x0046c1f3"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_unit_order_attack_building_reposition_enqueue",
+   "addr": "0x0046c471",
+   "batch": "B",
+   "dead": true,
+   "params": [
+    {
+     "name": "param_1",
+     "type": "uint",
+     "storage": "EAX:4"
+    },
+    {
+     "name": "param_2",
+     "type": "int",
+     "storage": "EDX:4"
+    },
+    {
+     "name": "a2",
+     "type": "uint",
+     "storage": "EBX:4"
+    },
+    {
+     "name": "param_4",
+     "type": "int",
+     "storage": "ECX:4"
+    },
+    {
+     "name": "param_5",
+     "type": "uint",
+     "storage": "Stack[0x4]:4"
+    }
+   ],
+   "sites": [
+    {
+     "site": "0x0046c61a",
+     "root": "llm_strat_order_enqueue",
+     "lane": "immediate",
+     "after_branch": true,
+     "unit_index": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "param",
+       "i": 1
+      },
+      "b": null,
+      "imm": null
+     },
+     "owner_and_kind": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "op",
+       "op": "or8",
+       "a": {
+        "k": "param",
+        "i": 0
+       },
+       "b": null,
+       "imm": 128
+      },
+      "b": null,
+      "imm": null
+     },
+     "param0": {
+      "k": "imm",
+      "v": 28
+     },
+     "order_code": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "op",
+       "op": "movzx8",
+       "a": {
+        "k": "unknown",
+        "why": "MEM read 0xe4a184"
+       },
+       "b": null,
+       "imm": null
+      },
+      "b": null,
+      "imm": null
+     },
+     "scratch_reset_before": true,
+     "scratch": [
+      {
+       "index": {
+        "k": "imm",
+        "v": 0
+       },
+       "value": {
+        "k": "op",
+        "op": "sar",
+        "a": {
+         "k": "unknown",
+         "why": "unsupported instruction SBB EAX,EDX"
+        },
+        "b": null,
+        "imm": 5
+       },
+       "at": "0x0046c4dd"
+      },
+      {
+       "index": {
+        "k": "imm",
+        "v": 1
+       },
+       "value": {
+        "k": "op",
+        "op": "sar",
+        "a": {
+         "k": "unknown",
+         "why": "unsupported instruction SBB EAX,EDX"
+        },
+        "b": null,
+        "imm": 5
+       },
+       "at": "0x0046c4fc"
+      },
+      {
+       "index": {
+        "k": "imm",
+        "v": 3
+       },
+       "value": {
+        "k": "unknown",
+        "why": "stack slot -0x1c never written"
+       },
+       "at": "0x0046c509"
+      },
+      {
+       "index": {
+        "k": "imm",
+        "v": 4
+       },
+       "value": {
+        "k": "unknown",
+        "why": "stack slot -0x14 never written"
+       },
+       "at": "0x0046c516"
+      },
+      {
+       "index": {
+        "k": "imm",
+        "v": 5
+       },
+       "value": {
+        "k": "op",
+        "op": "movzx16",
+        "a": {
+         "k": "op",
+         "op": "or8",
+         "a": {
+          "k": "param",
+          "i": 2
+         },
+         "b": null,
+         "imm": 64
+        },
+        "b": null,
+        "imm": null
+       },
+       "at": "0x0046c528"
+      },
+      {
+       "index": {
+        "k": "imm",
+        "v": 6
+       },
+       "value": {
+        "k": "param",
+        "i": 3
+       },
+       "at": "0x0046c535"
+      },
+      {
+       "index": {
+        "k": "imm",
+        "v": 7
+       },
+       "value": {
+        "k": "op",
+        "op": "movzx8",
+        "a": {
+         "k": "unknown",
+         "why": "clobbered by call to llm_strat_unit_select_weapon"
+        },
+        "b": null,
+        "imm": null
+       },
+       "at": "0x0046c542"
+      }
+     ]
+    },
+    {
+     "site": "0x0046c6b8",
+     "root": "llm_strat_order_enqueue",
+     "lane": "immediate",
+     "after_branch": true,
+     "unit_index": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "param",
+       "i": 1
+      },
+      "b": null,
+      "imm": null
+     },
+     "owner_and_kind": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "op",
+       "op": "or8",
+       "a": {
+        "k": "param",
+        "i": 0
+       },
+       "b": null,
+       "imm": 128
+      },
+      "b": null,
+      "imm": null
+     },
+     "param0": {
+      "k": "imm",
+      "v": 1
+     },
+     "order_code": {
+      "k": "imm",
+      "v": 28
+     },
+     "scratch_reset_before": false,
+     "scratch": [
+      {
+       "index": {
+        "k": "imm",
+        "v": 0
+       },
+       "value": {
+        "k": "op",
+        "op": "sar",
+        "a": {
+         "k": "unknown",
+         "why": "unsupported instruction SBB EAX,EDX"
+        },
+        "b": null,
+        "imm": 5
+       },
+       "at": "0x0046c664"
+      },
+      {
+       "index": {
+        "k": "imm",
+        "v": 1
+       },
+       "value": {
+        "k": "op",
+        "op": "sar",
+        "a": {
+         "k": "unknown",
+         "why": "unsupported instruction SBB EAX,EDX"
+        },
+        "b": null,
+        "imm": 5
+       },
+       "at": "0x0046c683"
+      },
+      {
+       "index": {
+        "k": "imm",
+        "v": 3
+       },
+       "value": {
+        "k": "unknown",
+        "why": "stack slot -0x1c never written"
+       },
+       "at": "0x0046c690"
+      },
+      {
+       "index": {
+        "k": "imm",
+        "v": 4
+       },
+       "value": {
+        "k": "unknown",
+        "why": "stack slot -0x14 never written"
+       },
+       "at": "0x0046c69d"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_unit_order_attack_dispatch",
+   "addr": "0x004d5801",
+   "batch": "B",
+   "dead": true,
+   "params": [
+    {
+     "name": "player_raw",
+     "type": "uint",
+     "storage": "EAX:4"
+    },
+    {
+     "name": "target_id",
+     "type": "int",
+     "storage": "EDX:4"
+    },
+    {
+     "name": "target_flags",
+     "type": "uint",
+     "storage": "EBX:4"
+    },
+    {
+     "name": "order_arg",
+     "type": "int",
+     "storage": "ECX:4"
+    }
+   ],
+   "sites": []
+  },
+  {
+   "name": "llm_strat_unit_order_attack_target",
+   "addr": "0x0046af1e",
+   "batch": "B",
+   "dead": false,
+   "params": [
+    {
+     "name": "param_1",
+     "type": "uint",
+     "storage": "EAX:4"
+    },
+    {
+     "name": "param_2",
+     "type": "int",
+     "storage": "EDX:4"
+    },
+    {
+     "name": "a2",
+     "type": "uint",
+     "storage": "EBX:4"
+    },
+    {
+     "name": "param_4",
+     "type": "int",
+     "storage": "ECX:4"
+    },
+    {
+     "name": "param_5",
+     "type": "uint",
+     "storage": "Stack[0x4]:4"
+    }
+   ],
+   "sites": [
+    {
+     "site": "0x0046b149",
+     "root": "llm_strat_order_dispatch",
+     "lane": "replicated",
+     "after_branch": true,
+     "unit_index": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "param",
+       "i": 1
+      },
+      "b": null,
+      "imm": null
+     },
+     "owner_and_kind": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "op",
+       "op": "or8",
+       "a": {
+        "k": "param",
+        "i": 0
+       },
+       "b": null,
+       "imm": 128
+      },
+      "b": null,
+      "imm": null
+     },
+     "param0": {
+      "k": "imm",
+      "v": 26
+     },
+     "order_code": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "op",
+       "op": "movzx8",
+       "a": {
+        "k": "unknown",
+        "why": "MEM read 0xe4a184"
+       },
+       "b": null,
+       "imm": null
+      },
+      "b": null,
+      "imm": null
+     },
+     "scratch_reset_before": true,
+     "scratch": [
+      {
+       "index": {
+        "k": "imm",
+        "v": 0
+       },
+       "value": {
+        "k": "op",
+        "op": "sar",
+        "a": {
+         "k": "unknown",
+         "why": "unsupported instruction SBB EAX,EDX"
+        },
+        "b": null,
+        "imm": 5
+       },
+       "at": "0x0046afb4"
+      },
+      {
+       "index": {
+        "k": "imm",
+        "v": 1
+       },
+       "value": {
+        "k": "op",
+        "op": "sar",
+        "a": {
+         "k": "unknown",
+         "why": "unsupported instruction SBB EAX,EDX"
+        },
+        "b": null,
+        "imm": 5
+       },
+       "at": "0x0046afd3"
+      },
+      {
+       "index": {
+        "k": "imm",
+        "v": 3
+       },
+       "value": {
+        "k": "unknown",
+        "why": "stack slot -0x20 never written"
+       },
+       "at": "0x0046afe0"
+      },
+      {
+       "index": {
+        "k": "imm",
+        "v": 4
+       },
+       "value": {
+        "k": "unknown",
+        "why": "stack slot -0x14 never written"
+       },
+       "at": "0x0046afed"
+      },
+      {
+       "index": {
+        "k": "imm",
+        "v": 5
+       },
+       "value": {
+        "k": "op",
+        "op": "movzx16",
+        "a": {
+         "k": "op",
+         "op": "or8",
+         "a": {
+          "k": "param",
+          "i": 2
+         },
+         "b": null,
+         "imm": 128
+        },
+        "b": null,
+        "imm": null
+       },
+       "at": "0x0046afff"
+      },
+      {
+       "index": {
+        "k": "imm",
+        "v": 6
+       },
+       "value": {
+        "k": "param",
+        "i": 3
+       },
+       "at": "0x0046b00c"
+      },
+      {
+       "index": {
+        "k": "imm",
+        "v": 7
+       },
+       "value": {
+        "k": "unknown",
+        "why": "join point"
+       },
+       "at": "0x0046b019"
+      }
+     ]
+    },
+    {
+     "site": "0x0046b16e",
+     "root": "llm_strat_order_dispatch",
+     "lane": "replicated",
+     "after_branch": true,
+     "unit_index": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "param",
+       "i": 1
+      },
+      "b": null,
+      "imm": null
+     },
+     "owner_and_kind": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "param",
+       "i": 0
+      },
+      "b": null,
+      "imm": null
+     },
+     "param0": {
+      "k": "imm",
+      "v": 251
+     },
+     "order_code": {
+      "k": "imm",
+      "v": 251
+     },
+     "scratch_reset_before": true,
+     "scratch": []
+    },
+    {
+     "site": "0x0046b246",
+     "root": "llm_strat_order_dispatch",
+     "lane": "replicated",
+     "after_branch": true,
+     "unit_index": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "param",
+       "i": 1
+      },
+      "b": null,
+      "imm": null
+     },
+     "owner_and_kind": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "op",
+       "op": "or8",
+       "a": {
+        "k": "param",
+        "i": 0
+       },
+       "b": null,
+       "imm": 128
+      },
+      "b": null,
+      "imm": null
+     },
+     "param0": {
+      "k": "imm",
+      "v": 26
+     },
+     "order_code": {
+      "k": "imm",
+      "v": 46
+     },
+     "scratch_reset_before": false,
+     "scratch": []
+    },
+    {
+     "site": "0x0046b263",
+     "root": "llm_strat_order_dispatch",
+     "lane": "replicated",
+     "after_branch": true,
+     "unit_index": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "param",
+       "i": 1
+      },
+      "b": null,
+      "imm": null
+     },
+     "owner_and_kind": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "op",
+       "op": "or8",
+       "a": {
+        "k": "param",
+        "i": 0
+       },
+       "b": null,
+       "imm": 128
+      },
+      "b": null,
+      "imm": null
+     },
+     "param0": {
+      "k": "imm",
+      "v": 1
+     },
+     "order_code": {
+      "k": "imm",
+      "v": 26
+     },
+     "scratch_reset_before": false,
+     "scratch": []
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_unit_order_attack_target_alt",
+   "addr": "0x0046b599",
+   "batch": "B",
+   "dead": false,
+   "params": [
+    {
+     "name": "player",
+     "type": "uint",
+     "storage": "EAX:4"
+    },
+    {
+     "name": "unit_idx",
+     "type": "int",
+     "storage": "EDX:4"
+    },
+    {
+     "name": "target_side",
+     "type": "uint",
+     "storage": "EBX:4"
+    },
+    {
+     "name": "target_unit_idx",
+     "type": "int",
+     "storage": "ECX:4"
+    },
+    {
+     "name": "weapon_idx",
+     "type": "uint",
+     "storage": "Stack[0x4]:4"
+    }
+   ],
+   "sites": [
+    {
+     "site": "0x0046b7c4",
+     "root": "llm_strat_order_dispatch",
+     "lane": "replicated",
+     "after_branch": true,
+     "unit_index": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "param",
+       "i": 1
+      },
+      "b": null,
+      "imm": null
+     },
+     "owner_and_kind": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "op",
+       "op": "or8",
+       "a": {
+        "k": "param",
+        "i": 0
+       },
+       "b": null,
+       "imm": 128
+      },
+      "b": null,
+      "imm": null
+     },
+     "param0": {
+      "k": "imm",
+      "v": 27
+     },
+     "order_code": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "op",
+       "op": "movzx8",
+       "a": {
+        "k": "unknown",
+        "why": "MEM read 0xe4a184"
+       },
+       "b": null,
+       "imm": null
+      },
+      "b": null,
+      "imm": null
+     },
+     "scratch_reset_before": true,
+     "scratch": [
+      {
+       "index": {
+        "k": "imm",
+        "v": 0
+       },
+       "value": {
+        "k": "op",
+        "op": "sar",
+        "a": {
+         "k": "unknown",
+         "why": "unsupported instruction SBB EAX,EDX"
+        },
+        "b": null,
+        "imm": 5
+       },
+       "at": "0x0046b62f"
+      },
+      {
+       "index": {
+        "k": "imm",
+        "v": 1
+       },
+       "value": {
+        "k": "op",
+        "op": "sar",
+        "a": {
+         "k": "unknown",
+         "why": "unsupported instruction SBB EAX,EDX"
+        },
+        "b": null,
+        "imm": 5
+       },
+       "at": "0x0046b64e"
+      },
+      {
+       "index": {
+        "k": "imm",
+        "v": 3
+       },
+       "value": {
+        "k": "unknown",
+        "why": "stack slot -0x20 never written"
+       },
+       "at": "0x0046b65b"
+      },
+      {
+       "index": {
+        "k": "imm",
+        "v": 4
+       },
+       "value": {
+        "k": "unknown",
+        "why": "stack slot -0x14 never written"
+       },
+       "at": "0x0046b668"
+      },
+      {
+       "index": {
+        "k": "imm",
+        "v": 5
+       },
+       "value": {
+        "k": "op",
+        "op": "movzx16",
+        "a": {
+         "k": "op",
+         "op": "or8",
+         "a": {
+          "k": "param",
+          "i": 2
+         },
+         "b": null,
+         "imm": 128
+        },
+        "b": null,
+        "imm": null
+       },
+       "at": "0x0046b67a"
+      },
+      {
+       "index": {
+        "k": "imm",
+        "v": 6
+       },
+       "value": {
+        "k": "param",
+        "i": 3
+       },
+       "at": "0x0046b687"
+      },
+      {
+       "index": {
+        "k": "imm",
+        "v": 7
+       },
+       "value": {
+        "k": "unknown",
+        "why": "join point"
+       },
+       "at": "0x0046b694"
+      }
+     ]
+    },
+    {
+     "site": "0x0046b7e9",
+     "root": "llm_strat_order_dispatch",
+     "lane": "replicated",
+     "after_branch": true,
+     "unit_index": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "param",
+       "i": 1
+      },
+      "b": null,
+      "imm": null
+     },
+     "owner_and_kind": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "param",
+       "i": 0
+      },
+      "b": null,
+      "imm": null
+     },
+     "param0": {
+      "k": "imm",
+      "v": 251
+     },
+     "order_code": {
+      "k": "imm",
+      "v": 251
+     },
+     "scratch_reset_before": true,
+     "scratch": []
+    },
+    {
+     "site": "0x0046b8c1",
+     "root": "llm_strat_order_dispatch",
+     "lane": "replicated",
+     "after_branch": true,
+     "unit_index": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "param",
+       "i": 1
+      },
+      "b": null,
+      "imm": null
+     },
+     "owner_and_kind": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "op",
+       "op": "or8",
+       "a": {
+        "k": "param",
+        "i": 0
+       },
+       "b": null,
+       "imm": 128
+      },
+      "b": null,
+      "imm": null
+     },
+     "param0": {
+      "k": "imm",
+      "v": 26
+     },
+     "order_code": {
+      "k": "imm",
+      "v": 46
+     },
+     "scratch_reset_before": false,
+     "scratch": []
+    },
+    {
+     "site": "0x0046b8de",
+     "root": "llm_strat_order_dispatch",
+     "lane": "replicated",
+     "after_branch": true,
+     "unit_index": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "param",
+       "i": 1
+      },
+      "b": null,
+      "imm": null
+     },
+     "owner_and_kind": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "op",
+       "op": "or8",
+       "a": {
+        "k": "param",
+        "i": 0
+       },
+       "b": null,
+       "imm": 128
+      },
+      "b": null,
+      "imm": null
+     },
+     "param0": {
+      "k": "imm",
+      "v": 1
+     },
+     "order_code": {
+      "k": "imm",
+      "v": 27
+     },
+     "scratch_reset_before": false,
+     "scratch": []
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_unit_order_attack_target_preset_weapon_enqueue",
+   "addr": "0x0046bde6",
+   "batch": "B",
+   "dead": true,
+   "params": [
+    {
+     "name": "param_1",
+     "type": "uint",
+     "storage": "EAX:4"
+    },
+    {
+     "name": "param_2",
+     "type": "int",
+     "storage": "EDX:4"
+    },
+    {
+     "name": "a2",
+     "type": "uint",
+     "storage": "EBX:4"
+    },
+    {
+     "name": "param_4",
+     "type": "int",
+     "storage": "ECX:4"
+    }
+   ],
+   "sites": [
+    {
+     "site": "0x0046bf65",
+     "root": "llm_strat_order_enqueue",
+     "lane": "immediate",
+     "after_branch": true,
+     "unit_index": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "param",
+       "i": 1
+      },
+      "b": null,
+      "imm": null
+     },
+     "owner_and_kind": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "op",
+       "op": "or8",
+       "a": {
+        "k": "param",
+        "i": 0
+       },
+       "b": null,
+       "imm": 128
+      },
+      "b": null,
+      "imm": null
+     },
+     "param0": {
+      "k": "imm",
+      "v": 26
+     },
+     "order_code": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "op",
+       "op": "movzx8",
+       "a": {
+        "k": "unknown",
+        "why": "MEM read 0xe4a184"
+       },
+       "b": null,
+       "imm": null
+      },
+      "b": null,
+      "imm": null
+     },
+     "scratch_reset_before": true,
+     "scratch": [
+      {
+       "index": {
+        "k": "imm",
+        "v": 0
+       },
+       "value": {
+        "k": "op",
+        "op": "sar",
+        "a": {
+         "k": "unknown",
+         "why": "unsupported instruction SBB EAX,EDX"
+        },
+        "b": null,
+        "imm": 5
+       },
+       "at": "0x0046be35"
+      },
+      {
+       "index": {
+        "k": "imm",
+        "v": 1
+       },
+       "value": {
+        "k": "op",
+        "op": "sar",
+        "a": {
+         "k": "unknown",
+         "why": "unsupported instruction SBB EAX,EDX"
+        },
+        "b": null,
+        "imm": 5
+       },
+       "at": "0x0046be54"
+      },
+      {
+       "index": {
+        "k": "imm",
+        "v": 3
+       },
+       "value": {
+        "k": "unknown",
+        "why": "stack slot -0x14 never written"
+       },
+       "at": "0x0046be61"
+      },
+      {
+       "index": {
+        "k": "imm",
+        "v": 4
+       },
+       "value": {
+        "k": "unknown",
+        "why": "stack slot -0x18 never written"
+       },
+       "at": "0x0046be6e"
+      },
+      {
+       "index": {
+        "k": "imm",
+        "v": 5
+       },
+       "value": {
+        "k": "op",
+        "op": "movzx16",
+        "a": {
+         "k": "op",
+         "op": "or8",
+         "a": {
+          "k": "param",
+          "i": 2
+         },
+         "b": null,
+         "imm": 128
+        },
+        "b": null,
+        "imm": null
+       },
+       "at": "0x0046be80"
+      },
+      {
+       "index": {
+        "k": "imm",
+        "v": 6
+       },
+       "value": {
+        "k": "param",
+        "i": 3
+       },
+       "at": "0x0046be8d"
+      }
+     ]
+    },
+    {
+     "site": "0x0046bf90",
+     "root": "llm_strat_order_enqueue",
+     "lane": "immediate",
+     "after_branch": true,
+     "unit_index": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "param",
+       "i": 1
+      },
+      "b": null,
+      "imm": null
+     },
+     "owner_and_kind": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "op",
+       "op": "or8",
+       "a": {
+        "k": "param",
+        "i": 0
+       },
+       "b": null,
+       "imm": 128
+      },
+      "b": null,
+      "imm": null
+     },
+     "param0": {
+      "k": "imm",
+      "v": 1
+     },
+     "order_code": {
+      "k": "imm",
+      "v": 26
+     },
+     "scratch_reset_before": false,
+     "scratch": []
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_unit_order_attack_unit",
+   "addr": "0x0046bc14",
+   "batch": "B",
+   "dead": false,
+   "params": [
+    {
+     "name": "param_1",
+     "type": "uint",
+     "storage": "EAX:4"
+    },
+    {
+     "name": "param_2",
+     "type": "int",
+     "storage": "EDX:4"
+    },
+    {
+     "name": "a2",
+     "type": "uint",
+     "storage": "EBX:4"
+    },
+    {
+     "name": "param_4",
+     "type": "int",
+     "storage": "ECX:4"
+    },
+    {
+     "name": "param_5",
+     "type": "uint",
+     "storage": "Stack[0x4]:4"
+    }
+   ],
+   "sites": [
+    {
+     "site": "0x0046bcef",
+     "root": "llm_strat_order_dispatch",
+     "lane": "replicated",
+     "after_branch": true,
+     "unit_index": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "param",
+       "i": 1
+      },
+      "b": null,
+      "imm": null
+     },
+     "owner_and_kind": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "op",
+       "op": "or8",
+       "a": {
+        "k": "param",
+        "i": 0
+       },
+       "b": null,
+       "imm": 128
+      },
+      "b": null,
+      "imm": null
+     },
+     "param0": {
+      "k": "imm",
+      "v": 30
+     },
+     "order_code": {
+      "k": "imm",
+      "v": 30
+     },
+     "scratch_reset_before": true,
+     "scratch": [
+      {
+       "index": {
+        "k": "imm",
+        "v": 8
+       },
+       "value": {
+        "k": "unknown",
+        "why": "stack slot -0x20 never written"
+       },
+       "at": "0x0046bc9b"
+      },
+      {
+       "index": {
+        "k": "imm",
+        "v": 9
+       },
+       "value": {
+        "k": "unknown",
+        "why": "stack slot -0x14 never written"
+       },
+       "at": "0x0046bca8"
+      },
+      {
+       "index": {
+        "k": "imm",
+        "v": 10
+       },
+       "value": {
+        "k": "op",
+        "op": "movzx16",
+        "a": {
+         "k": "op",
+         "op": "or8",
+         "a": {
+          "k": "param",
+          "i": 2
+         },
+         "b": null,
+         "imm": 128
+        },
+        "b": null,
+        "imm": null
+       },
+       "at": "0x0046bcba"
+      },
+      {
+       "index": {
+        "k": "imm",
+        "v": 11
+       },
+       "value": {
+        "k": "param",
+        "i": 3
+       },
+       "at": "0x0046bcc7"
+      },
+      {
+       "index": {
+        "k": "imm",
+        "v": 7
+       },
+       "value": {
+        "k": "unknown",
+        "why": "join point"
+       },
+       "at": "0x0046bcd4"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_unit_order_auto_launch_from_storage",
+   "addr": "0x0046cd8b",
+   "batch": "B",
+   "dead": false,
+   "params": [
+    {
+     "name": "player",
+     "type": "uint",
+     "storage": "EAX:4"
+    },
+    {
+     "name": "unit_idx",
+     "type": "int",
+     "storage": "EDX:4"
+    },
+    {
+     "name": "x",
+     "type": "uint",
+     "storage": "EBX:4"
+    },
+    {
+     "name": "y",
+     "type": "uint",
+     "storage": "ECX:4"
+    }
+   ],
+   "sites": [
+    {
+     "site": "0x0046cee1",
+     "root": "llm_strat_order_dispatch",
+     "lane": "replicated",
+     "after_branch": true,
+     "unit_index": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "param",
+       "i": 1
+      },
+      "b": null,
+      "imm": null
+     },
+     "owner_and_kind": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "op",
+       "op": "or8",
+       "a": {
+        "k": "param",
+        "i": 0
+       },
+       "b": null,
+       "imm": 128
+      },
+      "b": null,
+      "imm": null
+     },
+     "param0": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "op",
+       "op": "movzx8",
+       "a": {
+        "k": "unknown",
+        "why": "MEM read 0xe4a185"
+       },
+       "b": null,
+       "imm": null
+      },
+      "b": null,
+      "imm": null
+     },
+     "order_code": {
+      "k": "imm",
+      "v": 32
+     },
+     "scratch_reset_before": true,
+     "scratch": [
+      {
+       "index": {
+        "k": "imm",
+        "v": 0
+       },
+       "value": {
+        "k": "op",
+        "op": "and",
+        "a": {
+         "k": "op",
+         "op": "add",
+         "a": {
+          "k": "unknown",
+          "why": "MEM read 0xc728a4"
+         },
+         "b": null,
+         "imm": 2
+        },
+        "b": {
+         "k": "unknown",
+         "why": "MEM read 0x00e15398"
+        },
+        "imm": null
+       },
+       "at": "0x0046ce4f"
+      },
+      {
+       "index": {
+        "k": "imm",
+        "v": 1
+       },
+       "value": {
+        "k": "op",
+        "op": "and",
+        "a": {
+         "k": "op",
+         "op": "add",
+         "a": {
+          "k": "unknown",
+          "why": "MEM read 0xc728a8"
+         },
+         "b": null,
+         "imm": 2
+        },
+        "b": {
+         "k": "unknown",
+         "why": "MEM read 0x00e153b0"
+        },
+        "imm": null
+       },
+       "at": "0x0046ce7b"
+      },
+      {
+       "index": {
+        "k": "imm",
+        "v": 0
+       },
+       "value": {
+        "k": "op",
+        "op": "and",
+        "a": {
+         "k": "param",
+         "i": 2
+        },
+        "b": {
+         "k": "unknown",
+         "why": "MEM read 0x00e15398"
+        },
+        "imm": null
+       },
+       "at": "0x0046ce8d"
+      },
+      {
+       "index": {
+        "k": "imm",
+        "v": 1
+       },
+       "value": {
+        "k": "op",
+        "op": "and",
+        "a": {
+         "k": "param",
+         "i": 3
+        },
+        "b": {
+         "k": "unknown",
+         "why": "MEM read 0x00e153b0"
+        },
+        "imm": null
+       },
+       "at": "0x0046cea0"
+      }
+     ]
+    },
+    {
+     "site": "0x0046cf20",
+     "root": "llm_strat_order_dispatch",
+     "lane": "replicated",
+     "after_branch": true,
+     "unit_index": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "param",
+       "i": 1
+      },
+      "b": null,
+      "imm": null
+     },
+     "owner_and_kind": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "op",
+       "op": "or8",
+       "a": {
+        "k": "param",
+        "i": 0
+       },
+       "b": null,
+       "imm": 128
+      },
+      "b": null,
+      "imm": null
+     },
+     "param0": {
+      "k": "imm",
+      "v": 31
+     },
+     "order_code": {
+      "k": "imm",
+      "v": 35
+     },
+     "scratch_reset_before": true,
+     "scratch": []
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_unit_order_dispatch_default",
+   "addr": "0x00469de6",
+   "batch": "B",
+   "dead": true,
+   "params": [
+    {
+     "name": "player",
+     "type": "uint",
+     "storage": "EAX:4"
+    },
+    {
+     "name": "unit_index",
+     "type": "int",
+     "storage": "EDX:4"
+    }
+   ],
+   "sites": [
+    {
+     "site": "0x00469e64",
+     "root": "llm_strat_order_dispatch",
+     "lane": "replicated",
+     "after_branch": false,
+     "unit_index": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "param",
+       "i": 1
+      },
+      "b": null,
+      "imm": null
+     },
+     "owner_and_kind": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "op",
+       "op": "or8",
+       "a": {
+        "k": "param",
+        "i": 0
+       },
+       "b": null,
+       "imm": 128
+      },
+      "b": null,
+      "imm": null
+     },
+     "param0": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "op",
+       "op": "movzx8",
+       "a": {
+        "k": "unknown",
+        "why": "MEM read 0xe4a185"
+       },
+       "b": null,
+       "imm": null
+      },
+      "b": null,
+      "imm": null
+     },
+     "order_code": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "op",
+       "op": "movzx8",
+       "a": {
+        "k": "unknown",
+        "why": "MEM read 0xe4a185"
+       },
+       "b": null,
+       "imm": null
+      },
+      "b": null,
+      "imm": null
+     },
+     "scratch_reset_before": true,
+     "scratch": []
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_unit_order_exit_storage",
+   "addr": "0x0046a6b9",
+   "batch": "B",
+   "dead": false,
+   "params": [
+    {
+     "name": "param_1",
+     "type": "uint",
+     "storage": "EAX:4"
+    },
+    {
+     "name": "param_2",
+     "type": "uint",
+     "storage": "EDX:4"
+    },
+    {
+     "name": "a2",
+     "type": "int",
+     "storage": "EBX:4"
+    },
+    {
+     "name": "param_4",
+     "type": "undefined4",
+     "storage": "ECX:4"
+    },
+    {
+     "name": "param_5",
+     "type": "undefined4",
+     "storage": "Stack[0x4]:4"
+    }
+   ],
+   "sites": [
+    {
+     "site": "0x0046a805",
+     "root": "llm_strat_order_dispatch",
+     "lane": "replicated",
+     "after_branch": true,
+     "unit_index": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "param",
+       "i": 1
+      },
+      "b": null,
+      "imm": null
+     },
+     "owner_and_kind": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "op",
+       "op": "or8",
+       "a": {
+        "k": "param",
+        "i": 0
+       },
+       "b": null,
+       "imm": 128
+      },
+      "b": null,
+      "imm": null
+     },
+     "param0": {
+      "k": "imm",
+      "v": 36
+     },
+     "order_code": {
+      "k": "imm",
+      "v": 56
+     },
+     "scratch_reset_before": true,
+     "scratch": [
+      {
+       "index": {
+        "k": "imm",
+        "v": 2
+       },
+       "value": {
+        "k": "param",
+        "i": 2
+       },
+       "at": "0x0046a7aa"
+      },
+      {
+       "index": {
+        "k": "imm",
+        "v": 0
+       },
+       "value": {
+        "k": "unknown",
+        "why": "join point"
+       },
+       "at": "0x0046a7dd"
+      },
+      {
+       "index": {
+        "k": "imm",
+        "v": 1
+       },
+       "value": {
+        "k": "unknown",
+        "why": "MEM read 0xc728a8"
+       },
+       "at": "0x0046a7ea"
+      }
+     ]
+    },
+    {
+     "site": "0x0046a898",
+     "root": "llm_strat_order_dispatch",
+     "lane": "replicated",
+     "after_branch": true,
+     "unit_index": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "param",
+       "i": 1
+      },
+      "b": null,
+      "imm": null
+     },
+     "owner_and_kind": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "op",
+       "op": "or8",
+       "a": {
+        "k": "param",
+        "i": 0
+       },
+       "b": null,
+       "imm": 128
+      },
+      "b": null,
+      "imm": null
+     },
+     "param0": {
+      "k": "imm",
+      "v": 41
+     },
+     "order_code": {
+      "k": "imm",
+      "v": 11
+     },
+     "scratch_reset_before": false,
+     "scratch": [
+      {
+       "index": {
+        "k": "imm",
+        "v": 0
+       },
+       "value": {
+        "k": "unknown",
+        "why": "join point"
+       },
+       "at": "0x0046a870"
+      },
+      {
+       "index": {
+        "k": "imm",
+        "v": 1
+       },
+       "value": {
+        "k": "unknown",
+        "why": "MEM read 0xc728a8"
+       },
+       "at": "0x0046a87d"
+      }
+     ]
+    },
+    {
+     "site": "0x0046a8bd",
+     "root": "llm_strat_order_dispatch",
+     "lane": "replicated",
+     "after_branch": true,
+     "unit_index": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "param",
+       "i": 1
+      },
+      "b": null,
+      "imm": null
+     },
+     "owner_and_kind": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "param",
+       "i": 0
+      },
+      "b": null,
+      "imm": null
+     },
+     "param0": {
+      "k": "imm",
+      "v": 251
+     },
+     "order_code": {
+      "k": "imm",
+      "v": 251
+     },
+     "scratch_reset_before": true,
+     "scratch": []
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_unit_order_move",
+   "addr": "0x00469fe6",
+   "batch": "B",
+   "dead": false,
+   "params": [
+    {
+     "name": "param_1",
+     "type": "uint",
+     "storage": "EAX:4"
+    },
+    {
+     "name": "param_2",
+     "type": "int",
+     "storage": "EDX:4"
+    },
+    {
+     "name": "a2",
+     "type": "undefined4",
+     "storage": "EBX:4"
+    },
+    {
+     "name": "param_4",
+     "type": "undefined4",
+     "storage": "ECX:4"
+    },
+    {
+     "name": "param_5",
+     "type": "undefined4",
+     "storage": "Stack[0x4]:4"
+    }
+   ],
+   "sites": [
+    {
+     "site": "0x0046a092",
+     "root": "llm_strat_order_dispatch",
+     "lane": "replicated",
+     "after_branch": false,
+     "unit_index": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "param",
+       "i": 1
+      },
+      "b": null,
+      "imm": null
+     },
+     "owner_and_kind": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "op",
+       "op": "or8",
+       "a": {
+        "k": "param",
+        "i": 0
+       },
+       "b": null,
+       "imm": 128
+      },
+      "b": null,
+      "imm": null
+     },
+     "param0": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "op",
+       "op": "movzx8",
+       "a": {
+        "k": "unknown",
+        "why": "MEM read 0xe4a183"
+       },
+       "b": null,
+       "imm": null
+      },
+      "b": null,
+      "imm": null
+     },
+     "order_code": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "op",
+       "op": "movzx8",
+       "a": {
+        "k": "unknown",
+        "why": "MEM read 0xe4a184"
+       },
+       "b": null,
+       "imm": null
+      },
+      "b": null,
+      "imm": null
+     },
+     "scratch_reset_before": true,
+     "scratch": [
+      {
+       "index": {
+        "k": "imm",
+        "v": 0
+       },
+       "value": {
+        "k": "param",
+        "i": 2
+       },
+       "at": "0x0046a011"
+      },
+      {
+       "index": {
+        "k": "imm",
+        "v": 1
+       },
+       "value": {
+        "k": "param",
+        "i": 3
+       },
+       "at": "0x0046a01e"
+      },
+      {
+       "index": {
+        "k": "imm",
+        "v": 12
+       },
+       "value": {
+        "k": "param",
+        "i": 4
+       },
+       "at": "0x0046a02b"
+      }
+     ]
+    },
+    {
+     "site": "0x0046a0b7",
+     "root": "llm_strat_order_dispatch",
+     "lane": "replicated",
+     "after_branch": true,
+     "unit_index": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "param",
+       "i": 1
+      },
+      "b": null,
+      "imm": null
+     },
+     "owner_and_kind": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "param",
+       "i": 0
+      },
+      "b": null,
+      "imm": null
+     },
+     "param0": {
+      "k": "imm",
+      "v": 251
+     },
+     "order_code": {
+      "k": "imm",
+      "v": 251
+     },
+     "scratch_reset_before": true,
+     "scratch": []
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_unit_order_move_confirmed_with_bump",
+   "addr": "0x0046accf",
+   "batch": "B",
+   "dead": false,
+   "params": [
+    {
+     "name": "param_1",
+     "type": "uint",
+     "storage": "EAX:4"
+    },
+    {
+     "name": "param_2",
+     "type": "int",
+     "storage": "EDX:4"
+    },
+    {
+     "name": "a2",
+     "type": "undefined4",
+     "storage": "EBX:4"
+    },
+    {
+     "name": "param_4",
+     "type": "undefined4",
+     "storage": "ECX:4"
+    }
+   ],
+   "sites": [
+    {
+     "site": "0x0046ad48",
+     "root": "llm_strat_order_dispatch",
+     "lane": "replicated",
+     "after_branch": false,
+     "unit_index": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "param",
+       "i": 1
+      },
+      "b": null,
+      "imm": null
+     },
+     "owner_and_kind": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "op",
+       "op": "or8",
+       "a": {
+        "k": "param",
+        "i": 0
+       },
+       "b": null,
+       "imm": 128
+      },
+      "b": null,
+      "imm": null
+     },
+     "param0": {
+      "k": "imm",
+      "v": 24
+     },
+     "order_code": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "op",
+       "op": "movzx8",
+       "a": {
+        "k": "unknown",
+        "why": "MEM read 0xe4a184"
+       },
+       "b": null,
+       "imm": null
+      },
+      "b": null,
+      "imm": null
+     },
+     "scratch_reset_before": true,
+     "scratch": [
+      {
+       "index": {
+        "k": "imm",
+        "v": 0
+       },
+       "value": {
+        "k": "param",
+        "i": 2
+       },
+       "at": "0x0046acfa"
+      },
+      {
+       "index": {
+        "k": "imm",
+        "v": 1
+       },
+       "value": {
+        "k": "param",
+        "i": 3
+       },
+       "at": "0x0046ad07"
+      }
+     ]
+    },
+    {
+     "site": "0x0046ad6d",
+     "root": "llm_strat_order_dispatch",
+     "lane": "replicated",
+     "after_branch": true,
+     "unit_index": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "param",
+       "i": 1
+      },
+      "b": null,
+      "imm": null
+     },
+     "owner_and_kind": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "param",
+       "i": 0
+      },
+      "b": null,
+      "imm": null
+     },
+     "param0": {
+      "k": "imm",
+      "v": 251
+     },
+     "order_code": {
+      "k": "imm",
+      "v": 251
+     },
+     "scratch_reset_before": true,
+     "scratch": []
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_unit_order_move_default",
+   "addr": "0x0046a402",
+   "batch": "B",
+   "dead": false,
+   "params": [
+    {
+     "name": "param_1",
+     "type": "uint",
+     "storage": "EAX:4"
+    },
+    {
+     "name": "param_2",
+     "type": "int",
+     "storage": "EDX:4"
+    },
+    {
+     "name": "a2",
+     "type": "undefined4",
+     "storage": "EBX:4"
+    },
+    {
+     "name": "param_4",
+     "type": "undefined4",
+     "storage": "ECX:4"
+    },
+    {
+     "name": "param_5",
+     "type": "undefined4",
+     "storage": "Stack[0x4]:4"
+    }
+   ],
+   "sites": [
+    {
+     "site": "0x0046a488",
+     "root": "llm_strat_order_dispatch",
+     "lane": "replicated",
+     "after_branch": false,
+     "unit_index": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "param",
+       "i": 1
+      },
+      "b": null,
+      "imm": null
+     },
+     "owner_and_kind": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "op",
+       "op": "or8",
+       "a": {
+        "k": "param",
+        "i": 0
+       },
+       "b": null,
+       "imm": 128
+      },
+      "b": null,
+      "imm": null
+     },
+     "param0": {
+      "k": "imm",
+      "v": 16
+     },
+     "order_code": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "op",
+       "op": "movzx8",
+       "a": {
+        "k": "unknown",
+        "why": "MEM read 0xe4a184"
+       },
+       "b": null,
+       "imm": null
+      },
+      "b": null,
+      "imm": null
+     },
+     "scratch_reset_before": true,
+     "scratch": [
+      {
+       "index": {
+        "k": "imm",
+        "v": 0
+       },
+       "value": {
+        "k": "param",
+        "i": 2
+       },
+       "at": "0x0046a42d"
+      },
+      {
+       "index": {
+        "k": "imm",
+        "v": 1
+       },
+       "value": {
+        "k": "param",
+        "i": 3
+       },
+       "at": "0x0046a43a"
+      },
+      {
+       "index": {
+        "k": "imm",
+        "v": 12
+       },
+       "value": {
+        "k": "param",
+        "i": 4
+       },
+       "at": "0x0046a447"
+      }
+     ]
+    },
+    {
+     "site": "0x0046a4ad",
+     "root": "llm_strat_order_dispatch",
+     "lane": "replicated",
+     "after_branch": true,
+     "unit_index": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "param",
+       "i": 1
+      },
+      "b": null,
+      "imm": null
+     },
+     "owner_and_kind": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "param",
+       "i": 0
+      },
+      "b": null,
+      "imm": null
+     },
+     "param0": {
+      "k": "imm",
+      "v": 251
+     },
+     "order_code": {
+      "k": "imm",
+      "v": 251
+     },
+     "scratch_reset_before": true,
+     "scratch": []
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_unit_order_move_default_enqueue",
+   "addr": "0x0046a4cb",
+   "batch": "B",
+   "dead": true,
+   "params": [
+    {
+     "name": "param_1",
+     "type": "ushort",
+     "storage": "AX:2"
+    },
+    {
+     "name": "param_2",
+     "type": "int",
+     "storage": "EDX:4"
+    },
+    {
+     "name": "a2",
+     "type": "undefined4",
+     "storage": "EBX:4"
+    },
+    {
+     "name": "param_4",
+     "type": "undefined4",
+     "storage": "ECX:4"
+    },
+    {
+     "name": "param_5",
+     "type": "undefined4",
+     "storage": "Stack[0x4]:4"
+    }
+   ],
+   "sites": [
+    {
+     "site": "0x0046a551",
+     "root": "llm_strat_order_enqueue",
+     "lane": "immediate",
+     "after_branch": false,
+     "unit_index": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "param",
+       "i": 1
+      },
+      "b": null,
+      "imm": null
+     },
+     "owner_and_kind": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "op",
+       "op": "or8",
+       "a": {
+        "k": "param",
+        "i": 0
+       },
+       "b": null,
+       "imm": 128
+      },
+      "b": null,
+      "imm": null
+     },
+     "param0": {
+      "k": "imm",
+      "v": 16
+     },
+     "order_code": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "op",
+       "op": "movzx8",
+       "a": {
+        "k": "unknown",
+        "why": "MEM read 0xe4a184"
+       },
+       "b": null,
+       "imm": null
+      },
+      "b": null,
+      "imm": null
+     },
+     "scratch_reset_before": true,
+     "scratch": [
+      {
+       "index": {
+        "k": "imm",
+        "v": 0
+       },
+       "value": {
+        "k": "param",
+        "i": 2
+       },
+       "at": "0x0046a4f6"
+      },
+      {
+       "index": {
+        "k": "imm",
+        "v": 1
+       },
+       "value": {
+        "k": "param",
+        "i": 3
+       },
+       "at": "0x0046a503"
+      },
+      {
+       "index": {
+        "k": "imm",
+        "v": 12
+       },
+       "value": {
+        "k": "param",
+        "i": 4
+       },
+       "at": "0x0046a510"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_unit_order_move_relative",
+   "addr": "0x0046c87a",
+   "batch": "B",
+   "dead": false,
+   "params": [
+    {
+     "name": "param_1",
+     "type": "uint",
+     "storage": "EAX:4"
+    },
+    {
+     "name": "param_2",
+     "type": "int",
+     "storage": "EDX:4"
+    },
+    {
+     "name": "a2",
+     "type": "int",
+     "storage": "EBX:4"
+    },
+    {
+     "name": "param_4",
+     "type": "int",
+     "storage": "ECX:4"
+    }
+   ],
+   "sites": [
+    {
+     "site": "0x0046c940",
+     "root": "llm_strat_order_dispatch",
+     "lane": "replicated",
+     "after_branch": true,
+     "unit_index": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "param",
+       "i": 1
+      },
+      "b": null,
+      "imm": null
+     },
+     "owner_and_kind": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "op",
+       "op": "or8",
+       "a": {
+        "k": "param",
+        "i": 0
+       },
+       "b": null,
+       "imm": 128
+      },
+      "b": null,
+      "imm": null
+     },
+     "param0": {
+      "k": "imm",
+      "v": 51
+     },
+     "order_code": {
+      "k": "imm",
+      "v": 10
+     },
+     "scratch_reset_before": true,
+     "scratch": [
+      {
+       "index": {
+        "k": "imm",
+        "v": 0
+       },
+       "value": {
+        "k": "param",
+        "i": 2
+       },
+       "at": "0x0046c8fc"
+      },
+      {
+       "index": {
+        "k": "imm",
+        "v": 1
+       },
+       "value": {
+        "k": "param",
+        "i": 3
+       },
+       "at": "0x0046c909"
+      }
+     ]
+    },
+    {
+     "site": "0x0046c965",
+     "root": "llm_strat_order_dispatch",
+     "lane": "replicated",
+     "after_branch": true,
+     "unit_index": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "param",
+       "i": 1
+      },
+      "b": null,
+      "imm": null
+     },
+     "owner_and_kind": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "param",
+       "i": 0
+      },
+      "b": null,
+      "imm": null
+     },
+     "param0": {
+      "k": "imm",
+      "v": 251
+     },
+     "order_code": {
+      "k": "imm",
+      "v": 251
+     },
+     "scratch_reset_before": true,
+     "scratch": []
+    },
+    {
+     "site": "0x0046c991",
+     "root": "llm_strat_order_dispatch",
+     "lane": "replicated",
+     "after_branch": true,
+     "unit_index": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "param",
+       "i": 1
+      },
+      "b": null,
+      "imm": null
+     },
+     "owner_and_kind": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "op",
+       "op": "or8",
+       "a": {
+        "k": "param",
+        "i": 0
+       },
+       "b": null,
+       "imm": 128
+      },
+      "b": null,
+      "imm": null
+     },
+     "param0": {
+      "k": "imm",
+      "v": 1
+     },
+     "order_code": {
+      "k": "imm",
+      "v": 51
+     },
+     "scratch_reset_before": false,
+     "scratch": []
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_unit_order_move_relative_enqueue",
+   "addr": "0x0046c99d",
+   "batch": "B",
+   "dead": true,
+   "params": [
+    {
+     "name": "param_1",
+     "type": "uint",
+     "storage": "EAX:4"
+    },
+    {
+     "name": "param_2",
+     "type": "int",
+     "storage": "EDX:4"
+    },
+    {
+     "name": "a2",
+     "type": "int",
+     "storage": "EBX:4"
+    },
+    {
+     "name": "param_4",
+     "type": "int",
+     "storage": "ECX:4"
+    }
+   ],
+   "sites": [
+    {
+     "site": "0x0046ca63",
+     "root": "llm_strat_order_enqueue",
+     "lane": "immediate",
+     "after_branch": true,
+     "unit_index": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "param",
+       "i": 1
+      },
+      "b": null,
+      "imm": null
+     },
+     "owner_and_kind": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "op",
+       "op": "or8",
+       "a": {
+        "k": "param",
+        "i": 0
+       },
+       "b": null,
+       "imm": 128
+      },
+      "b": null,
+      "imm": null
+     },
+     "param0": {
+      "k": "imm",
+      "v": 51
+     },
+     "order_code": {
+      "k": "imm",
+      "v": 10
+     },
+     "scratch_reset_before": true,
+     "scratch": [
+      {
+       "index": {
+        "k": "imm",
+        "v": 0
+       },
+       "value": {
+        "k": "param",
+        "i": 2
+       },
+       "at": "0x0046ca1f"
+      },
+      {
+       "index": {
+        "k": "imm",
+        "v": 1
+       },
+       "value": {
+        "k": "param",
+        "i": 3
+       },
+       "at": "0x0046ca2c"
+      }
+     ]
+    },
+    {
+     "site": "0x0046ca8d",
+     "root": "llm_strat_order_enqueue",
+     "lane": "immediate",
+     "after_branch": true,
+     "unit_index": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "param",
+       "i": 1
+      },
+      "b": null,
+      "imm": null
+     },
+     "owner_and_kind": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "op",
+       "op": "or8",
+       "a": {
+        "k": "param",
+        "i": 0
+       },
+       "b": null,
+       "imm": 128
+      },
+      "b": null,
+      "imm": null
+     },
+     "param0": {
+      "k": "imm",
+      "v": 1
+     },
+     "order_code": {
+      "k": "imm",
+      "v": 51
+     },
+     "scratch_reset_before": false,
+     "scratch": []
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_unit_order_scatter_from_spawn",
+   "addr": "0x0046a626",
+   "batch": "B",
+   "dead": false,
+   "params": [
+    {
+     "name": "param_1",
+     "type": "ushort",
+     "storage": "AX:2"
+    },
+    {
+     "name": "param_2",
+     "type": "int",
+     "storage": "EDX:4"
+    },
+    {
+     "name": "a2",
+     "type": "undefined4",
+     "storage": "EBX:4"
+    },
+    {
+     "name": "param_4",
+     "type": "undefined4",
+     "storage": "ECX:4"
+    }
+   ],
+   "sites": [
+    {
+     "site": "0x0046a69f",
+     "root": "llm_strat_order_enqueue",
+     "lane": "immediate",
+     "after_branch": false,
+     "unit_index": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "param",
+       "i": 1
+      },
+      "b": null,
+      "imm": null
+     },
+     "owner_and_kind": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "op",
+       "op": "or8",
+       "a": {
+        "k": "param",
+        "i": 0
+       },
+       "b": null,
+       "imm": 128
+      },
+      "b": null,
+      "imm": null
+     },
+     "param0": {
+      "k": "imm",
+      "v": 16
+     },
+     "order_code": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "op",
+       "op": "movzx8",
+       "a": {
+        "k": "unknown",
+        "why": "MEM read 0xe4a184"
+       },
+       "b": null,
+       "imm": null
+      },
+      "b": null,
+      "imm": null
+     },
+     "scratch_reset_before": true,
+     "scratch": [
+      {
+       "index": {
+        "k": "imm",
+        "v": 0
+       },
+       "value": {
+        "k": "param",
+        "i": 2
+       },
+       "at": "0x0046a651"
+      },
+      {
+       "index": {
+        "k": "imm",
+        "v": 1
+       },
+       "value": {
+        "k": "param",
+        "i": 3
+       },
+       "at": "0x0046a65e"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_unit_reset_order_and_target",
+   "addr": "0x00469efe",
+   "batch": "B",
+   "dead": true,
+   "params": [
+    {
+     "name": "player",
+     "type": "uint",
+     "storage": "EAX:4"
+    },
+    {
+     "name": "unit_idx",
+     "type": "int",
+     "storage": "EDX:4"
+    }
+   ],
+   "sites": [
+    {
+     "site": "0x00469f7c",
+     "root": "llm_strat_order_enqueue",
+     "lane": "immediate",
+     "after_branch": false,
+     "unit_index": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "param",
+       "i": 1
+      },
+      "b": null,
+      "imm": null
+     },
+     "owner_and_kind": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "op",
+       "op": "or8",
+       "a": {
+        "k": "param",
+        "i": 0
+       },
+       "b": null,
+       "imm": 128
+      },
+      "b": null,
+      "imm": null
+     },
+     "param0": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "op",
+       "op": "movzx8",
+       "a": {
+        "k": "unknown",
+        "why": "MEM read 0xe4a185"
+       },
+       "b": null,
+       "imm": null
+      },
+      "b": null,
+      "imm": null
+     },
+     "order_code": {
+      "k": "op",
+      "op": "movzx16",
+      "a": {
+       "k": "op",
+       "op": "movzx8",
+       "a": {
+        "k": "unknown",
+        "why": "MEM read 0xe4a185"
+       },
+       "b": null,
+       "imm": null
+      },
+      "b": null,
+      "imm": null
+     },
+     "scratch_reset_before": true,
+     "scratch": []
+    }
+   ]
+  }
+ ]
+}

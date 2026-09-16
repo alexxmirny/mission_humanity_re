@@ -1,0 +1,44 @@
+# U13 full cycle (HOST): create game1, wait for the client, LEAVE (Cancel), then RE-CREATE game2 and wait
+# for the client to re-join -> a fresh lobby. Pair with mp_client_rejoin.txt. Lobby captures are gated on
+# `occ 2` (BOTH slots seated on this peer) -- the deterministic "seated + rendered" gate, so the frame is
+# stable regardless of when the slot snapshot lands. Verifies the leave+recreate round-trip resets the
+# host's session identity (fresh tag) so game2 is a distinct lobby AND re-seats the returning client.
+settled value:110
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+settled Create
+clickl Create
+present Game name
+settled Ok
+clickl Ok
+present Available maps
+settled Ok
+clickl Ok
+present Network players
+occ 2
+capture h1_lobby
+# LEAVE the lobby (host Cancel -> local browser), then RE-CREATE game2.
+# Wait for the client to have TAKEN ITS OWN c1 capture first (mp_client_rejoin.txt: `signal c1shot`).
+# `occ 2` is satisfied on this peer seconds before the client's view is capture-ready, and leaving on it
+# yanked the lobby out from under the client's capture -- see the note in mp_client_rejoin.txt. (H1)
+awaitsignal c1shot
+clickl Cancel
+# Hold the re-create until the client has captured the browser it was just dumped onto (U29/U22 a0,
+# `c1b_after_host_left`). Without this the host's game2 can arrive mid-capture and the frame carries a
+# session row that appears or not depending on timing -- the same class of race as c1shot above.
+awaitsignal c2shot
+settled Create
+clickl Create
+present Game name
+settled Ok
+clickl Ok
+present Available maps
+settled Ok
+clickl Ok
+present Network players
+occ 2
+capture h2_rejoined
+log HOST re-created game2; client re-joined (both seated)
+end

@@ -1,0 +1,22 @@
+.echo ======== probe llm_ui_widget_list_center for the lobby container 0x653f3f ========
+!tt 0
+bc *
+$$ stop at center ONLY when its arg (EAX, __watcall) is the lobby container
+bp0 0x004b6ac4 "j (@eax == 0x653f3f) '.echo LOBBY_CENTER_HIT' 'gc'"
+g
+.echo ---- frame widget ptr = *(container+8) ----
+dd 0x00653f47 L1
+.echo ---- frame widget flags(+9) / sprite-idx(+0x10) ----
+db poi(0x00653f47)+9 L1
+dd poi(0x00653f47)+0x10 L1
+.echo ---- container geometry BEFORE center (+0x18 x / +0x1c y / +0x20 w / +0x24 h) ----
+dd 0x00653f57 L4
+gu
+.echo ---- container geometry AFTER center ----
+dd 0x00653f57 L4
+.echo ======== continue: does center(lobby) fire AGAIN (animation)? ========
+g
+.echo ---- (reached here = center(lobby) hit again OR end-of-trace) geometry: ----
+dd 0x00653f57 L4
+.echo ======== DONE ========
+qq

@@ -1,0 +1,4005 @@
+{
+ "_generated_by": "tools/dump_order_matrix.py",
+ "_do_not_hand_edit": "Regenerate against /eng/mh.exe. Name-keyed: re-run after renames.",
+ "_what": "Raw measurements of the order issue->dispatch wiring: per-call-site routing constants for every caller of the two order-container roots, the two dispatch scan/jump tables as they exist in the binary, and every CALL inside the dispatch body. Joined into the coverage matrix by tools/gen_order_matrix.py.",
+ "program": "/eng/mh.exe",
+ "roots": {
+  "llm_strat_order_dispatch": "replicated",
+  "llm_strat_order_enqueue": "immediate"
+ },
+ "dispatch": {
+  "name": "llm_strat_order_queue_dispatch",
+  "addr": "0x00466892",
+  "min_addr": "0x00466892",
+  "max_addr": "0x00469995",
+  "calls": [
+   {
+    "site": "0x0046689a",
+    "callee": "utils_assert_stack_capacity",
+    "callee_addr": "0x004cf46f"
+   },
+   {
+    "site": "0x004669b2",
+    "callee": "llm_unit_state_is_boarding",
+    "callee_addr": "0x004967ce"
+   },
+   {
+    "site": "0x00466c77",
+    "callee": "llm_unit_transport_unload_docked",
+    "callee_addr": "0x004891d8"
+   },
+   {
+    "site": "0x00466c85",
+    "callee": "llm_unit_transport_unload_field",
+    "callee_addr": "0x00488a8b"
+   },
+   {
+    "site": "0x00466cac",
+    "callee": "llm_unit_force_disembark",
+    "callee_addr": "0x0046d0cd"
+   },
+   {
+    "site": "0x00466d06",
+    "callee": "llm_strat_target_release_ref",
+    "callee_addr": "0x004dac44"
+   },
+   {
+    "site": "0x00466dc6",
+    "callee": "llm_strat_unit_notify_status",
+    "callee_addr": "0x004dae0e"
+   },
+   {
+    "site": "0x00466ddc",
+    "callee": "llm_unit_set_order_param",
+    "callee_addr": "0x0048696f"
+   },
+   {
+    "site": "0x00466df2",
+    "callee": "llm_strat_unit_set_state_of",
+    "callee_addr": "0x004869b0"
+   },
+   {
+    "site": "0x0046705d",
+    "callee": "llm_strat_unit_notify_status",
+    "callee_addr": "0x004dae0e"
+   },
+   {
+    "site": "0x00467088",
+    "callee": "llm_strat_target_release_ref",
+    "callee_addr": "0x004dac44"
+   },
+   {
+    "site": "0x0046712f",
+    "callee": "llm_unit_state_is_boarding",
+    "callee_addr": "0x004967ce"
+   },
+   {
+    "site": "0x00467161",
+    "callee": "llm_strat_target_release_ref",
+    "callee_addr": "0x004dac44"
+   },
+   {
+    "site": "0x004672a2",
+    "callee": "llm_strat_target_release_ref",
+    "callee_addr": "0x004dac44"
+   },
+   {
+    "site": "0x0046737e",
+    "callee": "llm_strat_storage_purge_dead_docked",
+    "callee_addr": "0x0049b8f5"
+   },
+   {
+    "site": "0x0046738a",
+    "callee": "llm_storage_cancel_pending_docked",
+    "callee_addr": "0x0046ca99"
+   },
+   {
+    "site": "0x004673c2",
+    "callee": "llm_strat_bldg_assign_workers",
+    "callee_addr": "0x00491b78"
+   },
+   {
+    "site": "0x004673fa",
+    "callee": "llm_strat_bldg_unassign_workers",
+    "callee_addr": "0x00491c08"
+   },
+   {
+    "site": "0x00467427",
+    "callee": "llm_bldg_footprint_is_clear",
+    "callee_addr": "0x0049396b"
+   },
+   {
+    "site": "0x00467476",
+    "callee": "llm_bldg_pay_build_cost",
+    "callee_addr": "0x00492eb1"
+   },
+   {
+    "site": "0x004674b2",
+    "callee": "llm_bldg_construct_finalize",
+    "callee_addr": "0x00462e66"
+   },
+   {
+    "site": "0x004674da",
+    "callee": "llm_snd_play",
+    "callee_addr": "0x00425233"
+   },
+   {
+    "site": "0x00467504",
+    "callee": "llm_strat_ai_notify_bldg_constructed",
+    "callee_addr": "0x004daec2"
+   },
+   {
+    "site": "0x0046752c",
+    "callee": "llm_snd_play",
+    "callee_addr": "0x00425233"
+   },
+   {
+    "site": "0x00467556",
+    "callee": "llm_strat_ai_notify_bldg_constructed",
+    "callee_addr": "0x004daec2"
+   },
+   {
+    "site": "0x00467584",
+    "callee": "llm_strat_bldg_set_staffed_flag",
+    "callee_addr": "0x004966a4"
+   },
+   {
+    "site": "0x0046769f",
+    "callee": "llm_strat_bldg_clear_staffed_flag",
+    "callee_addr": "0x0049670b"
+   },
+   {
+    "site": "0x004676f2",
+    "callee": "llm_strat_bldg_get_coords",
+    "callee_addr": "0x00449b8a"
+   },
+   {
+    "site": "0x0046776a",
+    "callee": "llm_strat_unit_get_coords",
+    "callee_addr": "0x0044b141"
+   },
+   {
+    "site": "0x004677ba",
+    "callee": "llm_strat_bldg_get_coords",
+    "callee_addr": "0x00449b8a"
+   },
+   {
+    "site": "0x00467834",
+    "callee": "llm_strat_dist_out_of_range",
+    "callee_addr": "0x00449ac1"
+   },
+   {
+    "site": "0x004678c9",
+    "callee": "llm_strat_bldg_notify_ui",
+    "callee_addr": "0x00470bdd"
+   },
+   {
+    "site": "0x004679c0",
+    "callee": "llm_prod_shuttle_slot_bind_default",
+    "callee_addr": "0x0048dea7"
+   },
+   {
+    "site": "0x004679df",
+    "callee": "llm_bldg_transfer_notify_noop",
+    "callee_addr": "0x0048f2f8"
+   },
+   {
+    "site": "0x00467ad6",
+    "callee": "llm_strat_bldg_flush_cargo_hold",
+    "callee_addr": "0x0048e046"
+   },
+   {
+    "site": "0x00467af5",
+    "callee": "llm_bldg_transfer_notify_noop",
+    "callee_addr": "0x0048f2f8"
+   },
+   {
+    "site": "0x00467c06",
+    "callee": "llm_prod_shuttle_slot_bind_default",
+    "callee_addr": "0x0048dea7"
+   },
+   {
+    "site": "0x00467c36",
+    "callee": "llm_prod_shuttle_load_passengers",
+    "callee_addr": "0x0048e5e5"
+   },
+   {
+    "site": "0x00467d53",
+    "callee": "llm_prod_shuttle_unload_passengers",
+    "callee_addr": "0x0048e6f2"
+   },
+   {
+    "site": "0x00467e64",
+    "callee": "llm_prod_shuttle_slot_bind_default",
+    "callee_addr": "0x0048dea7"
+   },
+   {
+    "site": "0x00467e9f",
+    "callee": "llm_prod_shuttle_load_resource",
+    "callee_addr": "0x0048e3bb"
+   },
+   {
+    "site": "0x00467ea7",
+    "callee": "llm_bldg_load_resource_tail_noop",
+    "callee_addr": "0x0049f84a"
+   },
+   {
+    "site": "0x00467fcf",
+    "callee": "llm_prod_shuttle_unload_resource",
+    "callee_addr": "0x0048e4fb"
+   },
+   {
+    "site": "0x0046814f",
+    "callee": "w_sprintf",
+    "callee_addr": "0x004d0320"
+   },
+   {
+    "site": "0x0046815c",
+    "callee": "game_ui_PrintTextMessage",
+    "callee_addr": "0x00496508"
+   },
+   {
+    "site": "0x00468177",
+    "callee": "llm_prod_shuttle_fuel_check",
+    "callee_addr": "0x004934b6"
+   },
+   {
+    "site": "0x0046819a",
+    "callee": "llm_prod_shuttle_fuel_apply",
+    "callee_addr": "0x00493705"
+   },
+   {
+    "site": "0x004681bf",
+    "callee": "llm_prod_shuttle_slot_bind_default",
+    "callee_addr": "0x0048dea7"
+   },
+   {
+    "site": "0x0046820f",
+    "callee": "llm_strat_prod_bind_planet",
+    "callee_addr": "0x0048feef"
+   },
+   {
+    "site": "0x0046822d",
+    "callee": "llm_prod_shuttle_depart",
+    "callee_addr": "0x0048e16a"
+   },
+   {
+    "site": "0x0046824c",
+    "callee": "llm_bldg_transfer_notify_noop",
+    "callee_addr": "0x0048f2f8"
+   },
+   {
+    "site": "0x00468431",
+    "callee": "w_sprintf",
+    "callee_addr": "0x004d0320"
+   },
+   {
+    "site": "0x0046843e",
+    "callee": "game_ui_PrintTextMessage",
+    "callee_addr": "0x00496508"
+   },
+   {
+    "site": "0x00468459",
+    "callee": "llm_prod_shuttle_fuel_check",
+    "callee_addr": "0x004934b6"
+   },
+   {
+    "site": "0x004684b7",
+    "callee": "w_sprintf",
+    "callee_addr": "0x004d0320"
+   },
+   {
+    "site": "0x004684c4",
+    "callee": "game_ui_PrintTextMessage",
+    "callee_addr": "0x00496508"
+   },
+   {
+    "site": "0x004684df",
+    "callee": "llm_prod_shuttle_fuel_apply",
+    "callee_addr": "0x00493705"
+   },
+   {
+    "site": "0x00468504",
+    "callee": "llm_prod_shuttle_slot_bind_default",
+    "callee_addr": "0x0048dea7"
+   },
+   {
+    "site": "0x00468554",
+    "callee": "llm_strat_prod_bind_planet",
+    "callee_addr": "0x0048feef"
+   },
+   {
+    "site": "0x00468572",
+    "callee": "llm_prod_bldg_depart_finalize",
+    "callee_addr": "0x0048ec51"
+   },
+   {
+    "site": "0x00468712",
+    "callee": "llm_bldg_finish_current_order",
+    "callee_addr": "0x00470cab"
+   },
+   {
+    "site": "0x00468737",
+    "callee": "llm_strat_refresh_building",
+    "callee_addr": "0x004705de"
+   },
+   {
+    "site": "0x004688f5",
+    "callee": "llm_unit_apply_production_completion",
+    "callee_addr": "0x00492bf1"
+   },
+   {
+    "site": "0x00468931",
+    "callee": "llm_strat_ai_notify_unit_lifecycle",
+    "callee_addr": "0x004dbb38"
+   },
+   {
+    "site": "0x004689dc",
+    "callee": "game_TryStartProject",
+    "callee_addr": "0x00492cac"
+   },
+   {
+    "site": "0x004689f4",
+    "callee": "llm_bldg_finish_current_order",
+    "callee_addr": "0x00470cab"
+   },
+   {
+    "site": "0x00468ad4",
+    "callee": "w_sprintf",
+    "callee_addr": "0x004d0320"
+   },
+   {
+    "site": "0x00468ae1",
+    "callee": "game_ui_PrintTextMessage",
+    "callee_addr": "0x00496508"
+   },
+   {
+    "site": "0x00468bb3",
+    "callee": "llm_bldg_pay_build_cost",
+    "callee_addr": "0x00492eb1"
+   },
+   {
+    "site": "0x00468bcb",
+    "callee": "llm_bldg_finish_current_order",
+    "callee_addr": "0x00470cab"
+   },
+   {
+    "site": "0x00468c5e",
+    "callee": "llm_strat_bldg_unassign_workers",
+    "callee_addr": "0x00491c08"
+   },
+   {
+    "site": "0x00468ca6",
+    "callee": "llm_strat_bldg_assign_workers",
+    "callee_addr": "0x00491b78"
+   },
+   {
+    "site": "0x00468cde",
+    "callee": "llm_strat_bldg_clear_staffed_flag",
+    "callee_addr": "0x0049670b"
+   },
+   {
+    "site": "0x00468cec",
+    "callee": "llm_strat_bldg_set_staffed_flag",
+    "callee_addr": "0x004966a4"
+   },
+   {
+    "site": "0x00468cf8",
+    "callee": "llm_strat_refresh_building",
+    "callee_addr": "0x004705de"
+   },
+   {
+    "site": "0x00468d05",
+    "callee": "llm_strat_ai_queue_release_order",
+    "callee_addr": "0x004dbf36"
+   },
+   {
+    "site": "0x00468d5c",
+    "callee": "w_sprintf",
+    "callee_addr": "0x004d0320"
+   },
+   {
+    "site": "0x00468d69",
+    "callee": "game_ui_PrintTextMessage",
+    "callee_addr": "0x00496508"
+   },
+   {
+    "site": "0x00468dbb",
+    "callee": "llm_strat_bldg_pay_cycle_inputs",
+    "callee_addr": "0x00492ff9"
+   },
+   {
+    "site": "0x00468dd3",
+    "callee": "llm_bldg_finish_current_order",
+    "callee_addr": "0x00470cab"
+   },
+   {
+    "site": "0x00468e7c",
+    "callee": "llm_strat_bldg_unassign_workers",
+    "callee_addr": "0x00491c08"
+   },
+   {
+    "site": "0x00468eda",
+    "callee": "llm_strat_bldg_assign_workers",
+    "callee_addr": "0x00491b78"
+   },
+   {
+    "site": "0x00468f28",
+    "callee": "llm_strat_bldg_clear_staffed_flag",
+    "callee_addr": "0x0049670b"
+   },
+   {
+    "site": "0x00468f36",
+    "callee": "llm_strat_bldg_set_staffed_flag",
+    "callee_addr": "0x004966a4"
+   },
+   {
+    "site": "0x00468f42",
+    "callee": "llm_strat_refresh_building",
+    "callee_addr": "0x004705de"
+   },
+   {
+    "site": "0x00468fb2",
+    "callee": "w_sprintf",
+    "callee_addr": "0x004d0320"
+   },
+   {
+    "site": "0x00468fbf",
+    "callee": "game_ui_PrintTextMessage",
+    "callee_addr": "0x00496508"
+   },
+   {
+    "site": "0x00469060",
+    "callee": "llm_strat_refresh_building",
+    "callee_addr": "0x004705de"
+   },
+   {
+    "site": "0x0046930d",
+    "callee": "llm_bldg_scrap_stored_units",
+    "callee_addr": "0x0048d7d5"
+   },
+   {
+    "site": "0x00469318",
+    "callee": "llm_bldg_finish_current_order",
+    "callee_addr": "0x00470cab"
+   },
+   {
+    "site": "0x00469323",
+    "callee": "llm_bldg_reset_construction_anim",
+    "callee_addr": "0x00474ae0"
+   },
+   {
+    "site": "0x004693de",
+    "callee": "llm_strat_bldg_unassign_workers",
+    "callee_addr": "0x00491c08"
+   },
+   {
+    "site": "0x00469455",
+    "callee": "llm_strat_bldg_assign_workers",
+    "callee_addr": "0x00491b78"
+   },
+   {
+    "site": "0x004694a3",
+    "callee": "llm_strat_bldg_clear_staffed_flag",
+    "callee_addr": "0x0049670b"
+   },
+   {
+    "site": "0x004694b1",
+    "callee": "llm_strat_bldg_set_staffed_flag",
+    "callee_addr": "0x004966a4"
+   },
+   {
+    "site": "0x004694bd",
+    "callee": "llm_strat_refresh_building",
+    "callee_addr": "0x004705de"
+   },
+   {
+    "site": "0x004694c9",
+    "callee": "llm_bldg_set_connected_flag",
+    "callee_addr": "0x004965d6"
+   },
+   {
+    "site": "0x00469512",
+    "callee": "llm_bldg_finish_current_order",
+    "callee_addr": "0x00470cab"
+   },
+   {
+    "site": "0x0046953b",
+    "callee": "llm_bldg_finish_current_order",
+    "callee_addr": "0x00470cab"
+   },
+   {
+    "site": "0x00469584",
+    "callee": "llm_bldg_finish_current_order",
+    "callee_addr": "0x00470cab"
+   },
+   {
+    "site": "0x004695eb",
+    "callee": "llm_net_lockstep_extend_ui_enter",
+    "callee_addr": "0x004c85bd"
+   },
+   {
+    "site": "0x00469615",
+    "callee": "llm_net_send_lockstep_extend",
+    "callee_addr": "0x0049d33b"
+   },
+   {
+    "site": "0x00469705",
+    "callee": "llm_unit_create_soldier",
+    "callee_addr": "0x00463ac6"
+   },
+   {
+    "site": "0x00469735",
+    "callee": "llm_strat_unit_create",
+    "callee_addr": "0x00463860"
+   },
+   {
+    "site": "0x0046974d",
+    "callee": "llm_unit_recruit",
+    "callee_addr": "0x00463ec8"
+   },
+   {
+    "site": "0x00469778",
+    "callee": "llm_bldg_queue_construction",
+    "callee_addr": "0x00462d89"
+   },
+   {
+    "site": "0x00469792",
+    "callee": "llm_unit_status_bit_set",
+    "callee_addr": "0x0044b09e"
+   },
+   {
+    "site": "0x004697ac",
+    "callee": "llm_unit_status_bit_clear",
+    "callee_addr": "0x0044b0ec"
+   },
+   {
+    "site": "0x004697b6",
+    "callee": "llm_debug_roll_random",
+    "callee_addr": "0x0049fc6f"
+   },
+   {
+    "site": "0x004697c4",
+    "callee": "llm_game_speed_increase",
+    "callee_addr": "0x004976cd"
+   },
+   {
+    "site": "0x004697d2",
+    "callee": "llm_game_speed_decrease",
+    "callee_addr": "0x00497734"
+   },
+   {
+    "site": "0x0046980d",
+    "callee": "llm_resource_add",
+    "callee_addr": "0x00497f4a"
+   },
+   {
+    "site": "0x0046982b",
+    "callee": "game_SpendResource",
+    "callee_addr": "0x00497f94"
+   },
+   {
+    "site": "0x0046985d",
+    "callee": "llm_strat_population_add",
+    "callee_addr": "0x00491328"
+   },
+   {
+    "site": "0x00469872",
+    "callee": "llm_strat_population_remove",
+    "callee_addr": "0x00491486"
+   },
+   {
+    "site": "0x0046987f",
+    "callee": "llm_progress_collect_available_projects",
+    "callee_addr": "0x004990bf"
+   },
+   {
+    "site": "0x0046988c",
+    "callee": "llm_combat_credit_planet_conquest_kills",
+    "callee_addr": "0x0049928a"
+   },
+   {
+    "site": "0x00469899",
+    "callee": "llm_progress_recheck_projects",
+    "callee_addr": "0x00499174"
+   },
+   {
+    "site": "0x004698a6",
+    "callee": "llm_progress_recheck_buildings",
+    "callee_addr": "0x004991f2"
+   },
+   {
+    "site": "0x004698b0",
+    "callee": "llm_progress_recheck_planet_system_all_players",
+    "callee_addr": "0x00454846"
+   },
+   {
+    "site": "0x004698d2",
+    "callee": "llm_diplomacy_set_relation",
+    "callee_addr": "0x0049a0b3"
+   },
+   {
+    "site": "0x004698ff",
+    "callee": "llm_game_player_set_ai",
+    "callee_addr": "0x0049e79c"
+   },
+   {
+    "site": "0x00469909",
+    "callee": "llm_game_player_set_human",
+    "callee_addr": "0x0049e759"
+   },
+   {
+    "site": "0x00469924",
+    "callee": "llm_unit_bldg_energy_refill_full",
+    "callee_addr": "0x0049a8c2"
+   },
+   {
+    "site": "0x0046993f",
+    "callee": "llm_unit_bldg_apply_scaled_damage",
+    "callee_addr": "0x0049a9aa"
+   },
+   {
+    "site": "0x0046995a",
+    "callee": "llm_unit_bldg_apply_lethal_damage",
+    "callee_addr": "0x0049aa6e"
+   },
+   {
+    "site": "0x0046996b",
+    "callee": "llm_map_fow_reveal_full",
+    "callee_addr": "0x0049ab26"
+   },
+   {
+    "site": "0x0046997a",
+    "callee": "llm_strat_unit_notify_status",
+    "callee_addr": "0x004dae0e"
+   }
+  ]
+ },
+ "switches": [
+  {
+   "id": "bldg",
+   "scan": "_G_LLM_STRAT_ORDER_BLDG_SWITCH_SCAN",
+   "targets": [
+    "0x00469545",
+    "0x00468d78",
+    "0x0046906a",
+    "0x0046857c",
+    "0x0046876d",
+    "0x004694d3",
+    "0x00468fc9",
+    "0x004676a9",
+    "0x00467394",
+    "0x004673cc",
+    "0x00467560",
+    "0x0046758e",
+    "0x00468aeb",
+    "0x00469535",
+    "0x0046893b",
+    "0x00467fd9",
+    "0x0046825d",
+    "0x00468256",
+    "0x004678d3",
+    "0x00467aff",
+    "0x00467c40",
+    "0x00467d5d",
+    "0x00467eb1",
+    "0x004679e9",
+    "0x00467364",
+    "0x00467404"
+   ],
+   "entries": 26,
+   "key": "param0",
+   "base": 106,
+   "max_delta": 128,
+   "scan_addr": "0x004672af",
+   "targets_addr": "0x004672c8",
+   "scan_bytes": [
+    128,
+    124,
+    117,
+    116,
+    115,
+    114,
+    113,
+    108,
+    106,
+    105,
+    104,
+    31,
+    25,
+    24,
+    23,
+    22,
+    21,
+    20,
+    17,
+    15,
+    10,
+    5,
+    3,
+    1,
+    0
+   ],
+   "scan_len": 25,
+   "block_exits": [
+    {
+     "kind": "terminator",
+     "target": null
+    },
+    {
+     "kind": "jump",
+     "target": "0x004695cf"
+    },
+    {
+     "kind": "jump",
+     "target": "0x004695cf"
+    },
+    {
+     "kind": "jump",
+     "target": "0x004695cf"
+    },
+    {
+     "kind": "jump",
+     "target": "0x004695cf"
+    },
+    {
+     "kind": "jump",
+     "target": "0x004695cf"
+    },
+    {
+     "kind": "jump",
+     "target": "0x004695cf"
+    },
+    {
+     "kind": "jump",
+     "target": "0x004695cf"
+    },
+    {
+     "kind": "jump",
+     "target": "0x004695cf"
+    },
+    {
+     "kind": "jump",
+     "target": "0x004695cf"
+    },
+    {
+     "kind": "jump",
+     "target": "0x004695cf"
+    },
+    {
+     "kind": "jump",
+     "target": "0x004695cf"
+    },
+    {
+     "kind": "jump",
+     "target": "0x004695cf"
+    },
+    {
+     "kind": "jump",
+     "target": "0x004695cf"
+    },
+    {
+     "kind": "jump",
+     "target": "0x004695cf"
+    },
+    {
+     "kind": "jump",
+     "target": "0x004695cf"
+    },
+    {
+     "kind": "jump",
+     "target": "0x004695cf"
+    },
+    {
+     "kind": "fallthrough",
+     "target": "0x0046825d"
+    },
+    {
+     "kind": "jump",
+     "target": "0x004695cf"
+    },
+    {
+     "kind": "jump",
+     "target": "0x004695cf"
+    },
+    {
+     "kind": "jump",
+     "target": "0x004695cf"
+    },
+    {
+     "kind": "jump",
+     "target": "0x004695cf"
+    },
+    {
+     "kind": "jump",
+     "target": "0x004695cf"
+    },
+    {
+     "kind": "jump",
+     "target": "0x004695cf"
+    },
+    {
+     "kind": "jump",
+     "target": "0x004695cf"
+    },
+    {
+     "kind": "jump",
+     "target": "0x004695cf"
+    }
+   ]
+  },
+  {
+   "id": "admin",
+   "scan": "_G_LLM_STRAT_ORDER_ADMIN_SWITCH_SCAN",
+   "targets": [
+    "0x0046997f",
+    "0x00469782",
+    "0x0046979c",
+    "0x004697b6",
+    "0x004697c0",
+    "0x004697ce",
+    "0x004696c5",
+    "0x00469835",
+    "0x004697dc",
+    "0x0046987c",
+    "0x004698a3",
+    "0x00469896",
+    "0x004698b0",
+    "0x00469757",
+    "0x0046973f",
+    "0x004698ba",
+    "0x004698dc",
+    "0x00469910",
+    "0x0046992b",
+    "0x00469946",
+    "0x00469961",
+    "0x00469889",
+    "0x00469972"
+   ],
+   "entries": 23,
+   "key": "order_code",
+   "base": 52,
+   "max_delta": 199,
+   "scan_addr": "0x0046961f",
+   "targets_addr": "0x00469635",
+   "scan_bytes": [
+    199,
+    198,
+    197,
+    196,
+    195,
+    194,
+    193,
+    192,
+    191,
+    190,
+    189,
+    188,
+    187,
+    186,
+    185,
+    184,
+    183,
+    181,
+    180,
+    179,
+    1,
+    0
+   ],
+   "scan_len": 22,
+   "block_exits": [
+    {
+     "kind": "terminator",
+     "target": null
+    },
+    {
+     "kind": "jump",
+     "target": "0x0046997f"
+    },
+    {
+     "kind": "jump",
+     "target": "0x0046997f"
+    },
+    {
+     "kind": "jump",
+     "target": "0x0046997f"
+    },
+    {
+     "kind": "jump",
+     "target": "0x0046997f"
+    },
+    {
+     "kind": "jump",
+     "target": "0x0046997f"
+    },
+    {
+     "kind": "jump",
+     "target": "0x0046997f"
+    },
+    {
+     "kind": "jump",
+     "target": "0x0046997f"
+    },
+    {
+     "kind": "jump",
+     "target": "0x0046997f"
+    },
+    {
+     "kind": "jump",
+     "target": "0x0046997f"
+    },
+    {
+     "kind": "jump",
+     "target": "0x0046997f"
+    },
+    {
+     "kind": "jump",
+     "target": "0x0046997f"
+    },
+    {
+     "kind": "jump",
+     "target": "0x0046997f"
+    },
+    {
+     "kind": "jump",
+     "target": "0x0046997f"
+    },
+    {
+     "kind": "jump",
+     "target": "0x0046997f"
+    },
+    {
+     "kind": "jump",
+     "target": "0x0046997f"
+    },
+    {
+     "kind": "jump",
+     "target": "0x0046997f"
+    },
+    {
+     "kind": "jump",
+     "target": "0x0046997f"
+    },
+    {
+     "kind": "jump",
+     "target": "0x0046997f"
+    },
+    {
+     "kind": "jump",
+     "target": "0x0046997f"
+    },
+    {
+     "kind": "jump",
+     "target": "0x0046997f"
+    },
+    {
+     "kind": "jump",
+     "target": "0x0046997f"
+    },
+    {
+     "kind": "fallthrough",
+     "target": "0x0046997f"
+    }
+   ]
+  }
+ ],
+ "decompile_failed": [],
+ "wrappers": [
+  {
+   "name": "llm_strat_order_dispatch",
+   "addr": "0x00465fdf",
+   "sites": [
+    {
+     "site": "0x00466082",
+     "root": "llm_strat_order_enqueue",
+     "lane": "immediate",
+     "param0": null,
+     "order_code": null,
+     "kind": null,
+     "kind_source": "no-or",
+     "pcode_available": true,
+     "asm_immediates": {}
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_unit_order_dispatch_default",
+   "addr": "0x00469de6",
+   "sites": [
+    {
+     "site": "0x00469e64",
+     "root": "llm_strat_order_dispatch",
+     "lane": "replicated",
+     "param0": null,
+     "order_code": null,
+     "kind": 128,
+     "kind_source": "or-const",
+     "pcode_available": true,
+     "asm_immediates": {}
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_unit_issue_default_order",
+   "addr": "0x00469e72",
+   "sites": [
+    {
+     "site": "0x00469ef0",
+     "root": "llm_strat_order_enqueue",
+     "lane": "immediate",
+     "param0": null,
+     "order_code": null,
+     "kind": 128,
+     "kind_source": "or-const",
+     "pcode_available": true,
+     "asm_immediates": {}
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_unit_reset_order_and_target",
+   "addr": "0x00469efe",
+   "sites": [
+    {
+     "site": "0x00469f7c",
+     "root": "llm_strat_order_enqueue",
+     "lane": "immediate",
+     "param0": null,
+     "order_code": null,
+     "kind": 128,
+     "kind_source": "or-const",
+     "pcode_available": true,
+     "asm_immediates": {}
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_unit_order_move",
+   "addr": "0x00469fe6",
+   "sites": [
+    {
+     "site": "0x0046a092",
+     "root": "llm_strat_order_dispatch",
+     "lane": "replicated",
+     "param0": null,
+     "order_code": null,
+     "kind": 128,
+     "kind_source": "or-const",
+     "pcode_available": true,
+     "asm_immediates": {}
+    },
+    {
+     "site": "0x0046a0b7",
+     "root": "llm_strat_order_dispatch",
+     "lane": "replicated",
+     "param0": 251,
+     "order_code": 251,
+     "kind": null,
+     "kind_source": "no-or",
+     "pcode_available": true,
+     "asm_immediates": {
+      "param0": 251,
+      "order_code": 251
+     }
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_unit_order_move_enqueue",
+   "addr": "0x0046a0d5",
+   "sites": [
+    {
+     "site": "0x0046a181",
+     "root": "llm_strat_order_enqueue",
+     "lane": "immediate",
+     "param0": null,
+     "order_code": null,
+     "kind": 128,
+     "kind_source": "or-const",
+     "pcode_available": true,
+     "asm_immediates": {}
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_order_issue_0xf_adjacent",
+   "addr": "0x0046a221",
+   "sites": [
+    {
+     "site": "0x0046a2e4",
+     "root": "llm_strat_order_dispatch",
+     "lane": "replicated",
+     "param0": 15,
+     "order_code": 54,
+     "kind": 128,
+     "kind_source": "or-const",
+     "pcode_available": true,
+     "asm_immediates": {
+      "param0": 15,
+      "order_code": 54
+     }
+    },
+    {
+     "site": "0x0046a309",
+     "root": "llm_strat_order_dispatch",
+     "lane": "replicated",
+     "param0": 251,
+     "order_code": 251,
+     "kind": null,
+     "kind_source": "no-or",
+     "pcode_available": true,
+     "asm_immediates": {
+      "param0": 251,
+      "order_code": 251
+     }
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_order_issue_0xf_adjacent_enqueue",
+   "addr": "0x0046a325",
+   "sites": [
+    {
+     "site": "0x0046a3e8",
+     "root": "llm_strat_order_enqueue",
+     "lane": "immediate",
+     "param0": 15,
+     "order_code": 54,
+     "kind": 128,
+     "kind_source": "or-const",
+     "pcode_available": true,
+     "asm_immediates": {
+      "param0": 15,
+      "order_code": 54
+     }
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_unit_order_move_default",
+   "addr": "0x0046a402",
+   "sites": [
+    {
+     "site": "0x0046a488",
+     "root": "llm_strat_order_dispatch",
+     "lane": "replicated",
+     "param0": 16,
+     "order_code": null,
+     "kind": 128,
+     "kind_source": "or-const",
+     "pcode_available": true,
+     "asm_immediates": {
+      "param0": 16
+     }
+    },
+    {
+     "site": "0x0046a4ad",
+     "root": "llm_strat_order_dispatch",
+     "lane": "replicated",
+     "param0": 251,
+     "order_code": 251,
+     "kind": null,
+     "kind_source": "no-or",
+     "pcode_available": true,
+     "asm_immediates": {
+      "param0": 251,
+      "order_code": 251
+     }
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_unit_order_move_default_enqueue",
+   "addr": "0x0046a4cb",
+   "sites": [
+    {
+     "site": "0x0046a551",
+     "root": "llm_strat_order_enqueue",
+     "lane": "immediate",
+     "param0": 16,
+     "order_code": null,
+     "kind": 128,
+     "kind_source": "or-const",
+     "pcode_available": true,
+     "asm_immediates": {
+      "param0": 16
+     }
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_unit_order_move_auto",
+   "addr": "0x0046a56d",
+   "sites": [
+    {
+     "site": "0x0046a60c",
+     "root": "llm_strat_order_enqueue",
+     "lane": "immediate",
+     "param0": null,
+     "order_code": null,
+     "kind": 128,
+     "kind_source": "or-const",
+     "pcode_available": true,
+     "asm_immediates": {}
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_unit_order_scatter_from_spawn",
+   "addr": "0x0046a626",
+   "sites": [
+    {
+     "site": "0x0046a69f",
+     "root": "llm_strat_order_enqueue",
+     "lane": "immediate",
+     "param0": 16,
+     "order_code": null,
+     "kind": 128,
+     "kind_source": "or-const",
+     "pcode_available": true,
+     "asm_immediates": {
+      "param0": 16
+     }
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_unit_order_exit_storage",
+   "addr": "0x0046a6b9",
+   "sites": [
+    {
+     "site": "0x0046a805",
+     "root": "llm_strat_order_dispatch",
+     "lane": "replicated",
+     "param0": 36,
+     "order_code": 56,
+     "kind": 128,
+     "kind_source": "or-const",
+     "pcode_available": true,
+     "asm_immediates": {
+      "param0": 36,
+      "order_code": 56
+     }
+    },
+    {
+     "site": "0x0046a898",
+     "root": "llm_strat_order_dispatch",
+     "lane": "replicated",
+     "param0": 41,
+     "order_code": 11,
+     "kind": 128,
+     "kind_source": "or-const",
+     "pcode_available": true,
+     "asm_immediates": {
+      "param0": 41,
+      "order_code": 11
+     }
+    },
+    {
+     "site": "0x0046a8bd",
+     "root": "llm_strat_order_dispatch",
+     "lane": "replicated",
+     "param0": 251,
+     "order_code": 251,
+     "kind": null,
+     "kind_source": "no-or",
+     "pcode_available": true,
+     "asm_immediates": {
+      "param0": 251,
+      "order_code": 251
+     }
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_unit_order_exit_storage_enqueue",
+   "addr": "0x0046a918",
+   "sites": [
+    {
+     "site": "0x0046aa64",
+     "root": "llm_strat_order_enqueue",
+     "lane": "immediate",
+     "param0": 36,
+     "order_code": 56,
+     "kind": 128,
+     "kind_source": "or-const",
+     "pcode_available": true,
+     "asm_immediates": {
+      "param0": 36,
+      "order_code": 56
+     }
+    },
+    {
+     "site": "0x0046aaaf",
+     "root": "llm_strat_order_enqueue",
+     "lane": "immediate",
+     "param0": 41,
+     "order_code": 11,
+     "kind": 128,
+     "kind_source": "or-const",
+     "pcode_available": true,
+     "asm_immediates": {
+      "param0": 41,
+      "order_code": 11
+     }
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_unit_order_exit_storage_auto",
+   "addr": "0x0046ab08",
+   "sites": [
+    {
+     "site": "0x0046ac54",
+     "root": "llm_strat_order_enqueue",
+     "lane": "immediate",
+     "param0": 36,
+     "order_code": 56,
+     "kind": 128,
+     "kind_source": "or-const",
+     "pcode_available": true,
+     "asm_immediates": {
+      "param0": 36,
+      "order_code": 56
+     }
+    },
+    {
+     "site": "0x0046ac9f",
+     "root": "llm_strat_order_enqueue",
+     "lane": "immediate",
+     "param0": 41,
+     "order_code": 11,
+     "kind": 128,
+     "kind_source": "or-const",
+     "pcode_available": true,
+     "asm_immediates": {
+      "param0": 41,
+      "order_code": 11
+     }
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_unit_order_move_confirmed_with_bump",
+   "addr": "0x0046accf",
+   "sites": [
+    {
+     "site": "0x0046ad48",
+     "root": "llm_strat_order_dispatch",
+     "lane": "replicated",
+     "param0": 24,
+     "order_code": null,
+     "kind": 128,
+     "kind_source": "or-const",
+     "pcode_available": true,
+     "asm_immediates": {
+      "param0": 24
+     }
+    },
+    {
+     "site": "0x0046ad6d",
+     "root": "llm_strat_order_dispatch",
+     "lane": "replicated",
+     "param0": 251,
+     "order_code": 251,
+     "kind": null,
+     "kind_source": "no-or",
+     "pcode_available": true,
+     "asm_immediates": {
+      "param0": 251,
+      "order_code": 251
+     }
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_ai_unit_order_move_with_bump",
+   "addr": "0x0046ae0a",
+   "sites": [
+    {
+     "site": "0x0046ae83",
+     "root": "llm_strat_order_enqueue",
+     "lane": "immediate",
+     "param0": 24,
+     "order_code": null,
+     "kind": 128,
+     "kind_source": "or-const",
+     "pcode_available": true,
+     "asm_immediates": {
+      "param0": 24
+     }
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_unit_order_attack_target",
+   "addr": "0x0046af1e",
+   "sites": [
+    {
+     "site": "0x0046b149",
+     "root": "llm_strat_order_dispatch",
+     "lane": "replicated",
+     "param0": 26,
+     "order_code": null,
+     "kind": 128,
+     "kind_source": "or-const",
+     "pcode_available": true,
+     "asm_immediates": {
+      "param0": 26
+     }
+    },
+    {
+     "site": "0x0046b16e",
+     "root": "llm_strat_order_dispatch",
+     "lane": "replicated",
+     "param0": 251,
+     "order_code": 251,
+     "kind": null,
+     "kind_source": "no-or",
+     "pcode_available": true,
+     "asm_immediates": {
+      "param0": 251,
+      "order_code": 251
+     }
+    },
+    {
+     "site": "0x0046b246",
+     "root": "llm_strat_order_dispatch",
+     "lane": "replicated",
+     "param0": 26,
+     "order_code": 46,
+     "kind": 128,
+     "kind_source": "or-const",
+     "pcode_available": true,
+     "asm_immediates": {
+      "param0": 26,
+      "order_code": 46
+     }
+    },
+    {
+     "site": "0x0046b263",
+     "root": "llm_strat_order_dispatch",
+     "lane": "replicated",
+     "param0": 1,
+     "order_code": 26,
+     "kind": 128,
+     "kind_source": "or-const",
+     "pcode_available": true,
+     "asm_immediates": {
+      "param0": 1,
+      "order_code": 26
+     }
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_unit_order_attack_target_enqueue",
+   "addr": "0x0046b271",
+   "sites": [
+    {
+     "site": "0x0046b498",
+     "root": "llm_strat_order_enqueue",
+     "lane": "immediate",
+     "param0": 26,
+     "order_code": null,
+     "kind": 128,
+     "kind_source": "or-const",
+     "pcode_available": true,
+     "asm_immediates": {
+      "param0": 26
+     }
+    },
+    {
+     "site": "0x0046b56e",
+     "root": "llm_strat_order_enqueue",
+     "lane": "immediate",
+     "param0": 26,
+     "order_code": 46,
+     "kind": 128,
+     "kind_source": "or-const",
+     "pcode_available": true,
+     "asm_immediates": {
+      "param0": 26,
+      "order_code": 46
+     }
+    },
+    {
+     "site": "0x0046b58b",
+     "root": "llm_strat_order_enqueue",
+     "lane": "immediate",
+     "param0": 1,
+     "order_code": 26,
+     "kind": 128,
+     "kind_source": "or-const",
+     "pcode_available": true,
+     "asm_immediates": {
+      "param0": 1,
+      "order_code": 26
+     }
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_unit_order_attack_target_alt",
+   "addr": "0x0046b599",
+   "sites": [
+    {
+     "site": "0x0046b7c4",
+     "root": "llm_strat_order_dispatch",
+     "lane": "replicated",
+     "param0": 27,
+     "order_code": null,
+     "kind": 128,
+     "kind_source": "or-const",
+     "pcode_available": true,
+     "asm_immediates": {
+      "param0": 27
+     }
+    },
+    {
+     "site": "0x0046b7e9",
+     "root": "llm_strat_order_dispatch",
+     "lane": "replicated",
+     "param0": 251,
+     "order_code": 251,
+     "kind": null,
+     "kind_source": "no-or",
+     "pcode_available": true,
+     "asm_immediates": {
+      "param0": 251,
+      "order_code": 251
+     }
+    },
+    {
+     "site": "0x0046b8c1",
+     "root": "llm_strat_order_dispatch",
+     "lane": "replicated",
+     "param0": 26,
+     "order_code": 46,
+     "kind": 128,
+     "kind_source": "or-const",
+     "pcode_available": true,
+     "asm_immediates": {
+      "param0": 26,
+      "order_code": 46
+     }
+    },
+    {
+     "site": "0x0046b8de",
+     "root": "llm_strat_order_dispatch",
+     "lane": "replicated",
+     "param0": 1,
+     "order_code": 27,
+     "kind": 128,
+     "kind_source": "or-const",
+     "pcode_available": true,
+     "asm_immediates": {
+      "param0": 1,
+      "order_code": 27
+     }
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_unit_order_attack_target_alt_enqueue",
+   "addr": "0x0046b8ec",
+   "sites": [
+    {
+     "site": "0x0046bb13",
+     "root": "llm_strat_order_enqueue",
+     "lane": "immediate",
+     "param0": 27,
+     "order_code": null,
+     "kind": 128,
+     "kind_source": "or-const",
+     "pcode_available": true,
+     "asm_immediates": {
+      "param0": 27
+     }
+    },
+    {
+     "site": "0x0046bbe9",
+     "root": "llm_strat_order_enqueue",
+     "lane": "immediate",
+     "param0": 26,
+     "order_code": 46,
+     "kind": 128,
+     "kind_source": "or-const",
+     "pcode_available": true,
+     "asm_immediates": {
+      "param0": 26,
+      "order_code": 46
+     }
+    },
+    {
+     "site": "0x0046bc06",
+     "root": "llm_strat_order_enqueue",
+     "lane": "immediate",
+     "param0": 1,
+     "order_code": 27,
+     "kind": 128,
+     "kind_source": "or-const",
+     "pcode_available": true,
+     "asm_immediates": {
+      "param0": 1,
+      "order_code": 27
+     }
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_unit_order_attack_unit",
+   "addr": "0x0046bc14",
+   "sites": [
+    {
+     "site": "0x0046bcef",
+     "root": "llm_strat_order_dispatch",
+     "lane": "replicated",
+     "param0": 30,
+     "order_code": 30,
+     "kind": 128,
+     "kind_source": "or-const",
+     "pcode_available": true,
+     "asm_immediates": {
+      "param0": 30,
+      "order_code": 30
+     }
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_unit_order_attack_unit_enqueue",
+   "addr": "0x0046bcfd",
+   "sites": [
+    {
+     "site": "0x0046bdd8",
+     "root": "llm_strat_order_enqueue",
+     "lane": "immediate",
+     "param0": 30,
+     "order_code": 30,
+     "kind": 128,
+     "kind_source": "or-const",
+     "pcode_available": true,
+     "asm_immediates": {
+      "param0": 30,
+      "order_code": 30
+     }
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_unit_order_attack_target_preset_weapon_enqueue",
+   "addr": "0x0046bde6",
+   "sites": [
+    {
+     "site": "0x0046bf65",
+     "root": "llm_strat_order_enqueue",
+     "lane": "immediate",
+     "param0": 26,
+     "order_code": null,
+     "kind": 128,
+     "kind_source": "or-const",
+     "pcode_available": true,
+     "asm_immediates": {
+      "param0": 26
+     }
+    },
+    {
+     "site": "0x0046bf90",
+     "root": "llm_strat_order_enqueue",
+     "lane": "immediate",
+     "param0": 1,
+     "order_code": 26,
+     "kind": 128,
+     "kind_source": "or-const",
+     "pcode_available": true,
+     "asm_immediates": {
+      "param0": 1,
+      "order_code": 26
+     }
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_unit_order_attack_building_reposition",
+   "addr": "0x0046bf9c",
+   "sites": [
+    {
+     "site": "0x0046c149",
+     "root": "llm_strat_order_dispatch",
+     "lane": "replicated",
+     "param0": 28,
+     "order_code": null,
+     "kind": 128,
+     "kind_source": "or-const",
+     "pcode_available": true,
+     "asm_immediates": {
+      "param0": 28
+     }
+    },
+    {
+     "site": "0x0046c16e",
+     "root": "llm_strat_order_dispatch",
+     "lane": "replicated",
+     "param0": 251,
+     "order_code": 251,
+     "kind": null,
+     "kind_source": "no-or",
+     "pcode_available": true,
+     "asm_immediates": {
+      "param0": 251,
+      "order_code": 251
+     }
+    },
+    {
+     "site": "0x0046c20e",
+     "root": "llm_strat_order_dispatch",
+     "lane": "replicated",
+     "param0": 1,
+     "order_code": 28,
+     "kind": 128,
+     "kind_source": "or-const",
+     "pcode_available": true,
+     "asm_immediates": {
+      "param0": 1,
+      "order_code": 28
+     }
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_unit_order_attack_building_reposition_alt_enqueue",
+   "addr": "0x0046c21c",
+   "sites": [
+    {
+     "site": "0x0046c3c5",
+     "root": "llm_strat_order_enqueue",
+     "lane": "immediate",
+     "param0": 28,
+     "order_code": null,
+     "kind": 128,
+     "kind_source": "or-const",
+     "pcode_available": true,
+     "asm_immediates": {
+      "param0": 28
+     }
+    },
+    {
+     "site": "0x0046c463",
+     "root": "llm_strat_order_enqueue",
+     "lane": "immediate",
+     "param0": 1,
+     "order_code": 28,
+     "kind": 128,
+     "kind_source": "or-const",
+     "pcode_available": true,
+     "asm_immediates": {
+      "param0": 1,
+      "order_code": 28
+     }
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_unit_order_attack_building_reposition_enqueue",
+   "addr": "0x0046c471",
+   "sites": [
+    {
+     "site": "0x0046c61a",
+     "root": "llm_strat_order_enqueue",
+     "lane": "immediate",
+     "param0": 28,
+     "order_code": null,
+     "kind": 128,
+     "kind_source": "or-const",
+     "pcode_available": true,
+     "asm_immediates": {
+      "param0": 28
+     }
+    },
+    {
+     "site": "0x0046c6b8",
+     "root": "llm_strat_order_enqueue",
+     "lane": "immediate",
+     "param0": 1,
+     "order_code": 28,
+     "kind": 128,
+     "kind_source": "or-const",
+     "pcode_available": true,
+     "asm_immediates": {
+      "param0": 1,
+      "order_code": 28
+     }
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_unit_order_attack_building",
+   "addr": "0x0046c6c6",
+   "sites": [
+    {
+     "site": "0x0046c792",
+     "root": "llm_strat_order_dispatch",
+     "lane": "replicated",
+     "param0": 29,
+     "order_code": 29,
+     "kind": 128,
+     "kind_source": "or-const",
+     "pcode_available": true,
+     "asm_immediates": {
+      "param0": 29,
+      "order_code": 29
+     }
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_unit_order_attack_building_enqueue",
+   "addr": "0x0046c7a0",
+   "sites": [
+    {
+     "site": "0x0046c86c",
+     "root": "llm_strat_order_enqueue",
+     "lane": "immediate",
+     "param0": 29,
+     "order_code": 29,
+     "kind": 128,
+     "kind_source": "or-const",
+     "pcode_available": true,
+     "asm_immediates": {
+      "param0": 29,
+      "order_code": 29
+     }
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_unit_order_move_relative",
+   "addr": "0x0046c87a",
+   "sites": [
+    {
+     "site": "0x0046c940",
+     "root": "llm_strat_order_dispatch",
+     "lane": "replicated",
+     "param0": 51,
+     "order_code": 10,
+     "kind": 128,
+     "kind_source": "or-const",
+     "pcode_available": true,
+     "asm_immediates": {
+      "param0": 51,
+      "order_code": 10
+     }
+    },
+    {
+     "site": "0x0046c965",
+     "root": "llm_strat_order_dispatch",
+     "lane": "replicated",
+     "param0": 251,
+     "order_code": 251,
+     "kind": null,
+     "kind_source": "no-or",
+     "pcode_available": true,
+     "asm_immediates": {
+      "param0": 251,
+      "order_code": 251
+     }
+    },
+    {
+     "site": "0x0046c991",
+     "root": "llm_strat_order_dispatch",
+     "lane": "replicated",
+     "param0": 1,
+     "order_code": 51,
+     "kind": 128,
+     "kind_source": "or-const",
+     "pcode_available": true,
+     "asm_immediates": {
+      "param0": 1,
+      "order_code": 51
+     }
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_unit_order_move_relative_enqueue",
+   "addr": "0x0046c99d",
+   "sites": [
+    {
+     "site": "0x0046ca63",
+     "root": "llm_strat_order_enqueue",
+     "lane": "immediate",
+     "param0": 51,
+     "order_code": 10,
+     "kind": 128,
+     "kind_source": "or-const",
+     "pcode_available": true,
+     "asm_immediates": {
+      "param0": 51,
+      "order_code": 10
+     }
+    },
+    {
+     "site": "0x0046ca8d",
+     "root": "llm_strat_order_enqueue",
+     "lane": "immediate",
+     "param0": 1,
+     "order_code": 51,
+     "kind": 128,
+     "kind_source": "or-const",
+     "pcode_available": true,
+     "asm_immediates": {
+      "param0": 1,
+      "order_code": 51
+     }
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_unit_order_auto_launch_from_storage",
+   "addr": "0x0046cd8b",
+   "sites": [
+    {
+     "site": "0x0046cee1",
+     "root": "llm_strat_order_dispatch",
+     "lane": "replicated",
+     "param0": null,
+     "order_code": 32,
+     "kind": 128,
+     "kind_source": "or-const",
+     "pcode_available": true,
+     "asm_immediates": {
+      "order_code": 32
+     }
+    },
+    {
+     "site": "0x0046cf20",
+     "root": "llm_strat_order_dispatch",
+     "lane": "replicated",
+     "param0": 31,
+     "order_code": 35,
+     "kind": 128,
+     "kind_source": "or-const",
+     "pcode_available": true,
+     "asm_immediates": {
+      "param0": 31,
+      "order_code": 35
+     }
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_unit_order_auto_launch_from_storage_enqueue",
+   "addr": "0x0046cf2c",
+   "sites": [
+    {
+     "site": "0x0046d082",
+     "root": "llm_strat_order_enqueue",
+     "lane": "immediate",
+     "param0": null,
+     "order_code": 32,
+     "kind": 128,
+     "kind_source": "or-const",
+     "pcode_available": true,
+     "asm_immediates": {
+      "order_code": 32
+     }
+    },
+    {
+     "site": "0x0046d0c1",
+     "root": "llm_strat_order_enqueue",
+     "lane": "immediate",
+     "param0": 31,
+     "order_code": 35,
+     "kind": 128,
+     "kind_source": "or-const",
+     "pcode_available": true,
+     "asm_immediates": {
+      "param0": 31,
+      "order_code": 35
+     }
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_bldg_instant_construct_find_slot",
+   "addr": "0x0046d229",
+   "sites": [
+    {
+     "site": "0x0046d4f2",
+     "root": "llm_strat_order_dispatch",
+     "lane": "replicated",
+     "param0": 234,
+     "order_code": 234,
+     "kind": 64,
+     "kind_source": "or-const",
+     "pcode_available": true,
+     "asm_immediates": {
+      "param0": 234,
+      "order_code": 234
+     }
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_bldg_instant_construct_find_slot_enqueue",
+   "addr": "0x0046d514",
+   "sites": [
+    {
+     "site": "0x0046d7de",
+     "root": "llm_strat_order_enqueue",
+     "lane": "immediate",
+     "param0": 234,
+     "order_code": 234,
+     "kind": 64,
+     "kind_source": "or-const",
+     "pcode_available": true,
+     "asm_immediates": {
+      "param0": 234,
+      "order_code": 234
+     }
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_order_create_unit_debug",
+   "addr": "0x0046d800",
+   "sites": [
+    {
+     "site": "0x0046d85d",
+     "root": "llm_strat_order_dispatch",
+     "lane": "replicated",
+     "param0": 235,
+     "order_code": 235,
+     "kind": null,
+     "kind_source": "no-or",
+     "pcode_available": true,
+     "asm_immediates": {
+      "param0": 235,
+      "order_code": 235
+     }
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_dmp_enqueue_scripted_order",
+   "addr": "0x0046d873",
+   "sites": [
+    {
+     "site": "0x0046d8d0",
+     "root": "llm_strat_order_enqueue",
+     "lane": "immediate",
+     "param0": 235,
+     "order_code": 235,
+     "kind": null,
+     "kind_source": "no-or",
+     "pcode_available": true,
+     "asm_immediates": {
+      "param0": 235,
+      "order_code": 235
+     }
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_order_recruit_unit",
+   "addr": "0x0046d952",
+   "sites": [
+    {
+     "site": "0x0046d991",
+     "root": "llm_strat_order_dispatch",
+     "lane": "replicated",
+     "param0": 243,
+     "order_code": 243,
+     "kind": null,
+     "kind_source": "no-or",
+     "pcode_available": true,
+     "asm_immediates": {
+      "param0": 243,
+      "order_code": 243
+     }
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_order_recruit_unit_enqueue",
+   "addr": "0x0046d9a9",
+   "sites": [
+    {
+     "site": "0x0046d9e8",
+     "root": "llm_strat_order_enqueue",
+     "lane": "immediate",
+     "param0": 243,
+     "order_code": 243,
+     "kind": null,
+     "kind_source": "no-or",
+     "pcode_available": true,
+     "asm_immediates": {
+      "param0": 243,
+      "order_code": 243
+     }
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_order_queue_construction_debug",
+   "addr": "0x0046da00",
+   "sites": [
+    {
+     "site": "0x0046da5a",
+     "root": "llm_strat_order_dispatch",
+     "lane": "replicated",
+     "param0": 242,
+     "order_code": 242,
+     "kind": null,
+     "kind_source": "no-or",
+     "pcode_available": true,
+     "asm_immediates": {
+      "param0": 242,
+      "order_code": 242
+     }
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_order_queue_construction_enqueue",
+   "addr": "0x0046da70",
+   "sites": [
+    {
+     "site": "0x0046daca",
+     "root": "llm_strat_order_enqueue",
+     "lane": "immediate",
+     "param0": 242,
+     "order_code": 242,
+     "kind": null,
+     "kind_source": "no-or",
+     "pcode_available": true,
+     "asm_immediates": {
+      "param0": 242,
+      "order_code": 242
+     }
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_bldg_order_production_add",
+   "addr": "0x0046dae0",
+   "sites": [
+    {
+     "site": "0x0046db4b",
+     "root": "llm_strat_order_dispatch",
+     "lane": "replicated",
+     "param0": 109,
+     "order_code": 109,
+     "kind": 64,
+     "kind_source": "or-const",
+     "pcode_available": true,
+     "asm_immediates": {
+      "param0": 109,
+      "order_code": 109
+     }
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_bldg_order_production_add_enqueue",
+   "addr": "0x0046db58",
+   "sites": [
+    {
+     "site": "0x0046dbc3",
+     "root": "llm_strat_order_enqueue",
+     "lane": "immediate",
+     "param0": 109,
+     "order_code": 109,
+     "kind": 64,
+     "kind_source": "or-const",
+     "pcode_available": true,
+     "asm_immediates": {
+      "param0": 109,
+      "order_code": 109
+     }
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_bldg_order_production_add_count",
+   "addr": "0x0046dbd0",
+   "sites": [
+    {
+     "site": "0x0046dc3b",
+     "root": "llm_strat_order_dispatch",
+     "lane": "replicated",
+     "param0": 109,
+     "order_code": 109,
+     "kind": 64,
+     "kind_source": "or-const",
+     "pcode_available": true,
+     "asm_immediates": {
+      "param0": 109,
+      "order_code": 109
+     }
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_bldg_order_production_add_count_enqueue",
+   "addr": "0x0046dc47",
+   "sites": [
+    {
+     "site": "0x0046dcb2",
+     "root": "llm_strat_order_enqueue",
+     "lane": "immediate",
+     "param0": 109,
+     "order_code": 109,
+     "kind": 64,
+     "kind_source": "or-const",
+     "pcode_available": true,
+     "asm_immediates": {
+      "param0": 109,
+      "order_code": 109
+     }
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_bldg_order_production_remove",
+   "addr": "0x0046dcbe",
+   "sites": [
+    {
+     "site": "0x0046dd1a",
+     "root": "llm_strat_order_dispatch",
+     "lane": "replicated",
+     "param0": 111,
+     "order_code": 111,
+     "kind": 64,
+     "kind_source": "or-const",
+     "pcode_available": true,
+     "asm_immediates": {
+      "param0": 111,
+      "order_code": 111
+     }
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_bldg_order_production_remove_enqueue",
+   "addr": "0x0046dd27",
+   "sites": [
+    {
+     "site": "0x0046dd83",
+     "root": "llm_strat_order_enqueue",
+     "lane": "immediate",
+     "param0": 111,
+     "order_code": 111,
+     "kind": 64,
+     "kind_source": "or-const",
+     "pcode_available": true,
+     "asm_immediates": {
+      "param0": 111,
+      "order_code": 111
+     }
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_turret_order_target_unit",
+   "addr": "0x0046dd90",
+   "sites": [
+    {
+     "site": "0x0046dde4",
+     "root": "llm_strat_order_dispatch",
+     "lane": "replicated",
+     "param0": 123,
+     "order_code": 123,
+     "kind": 64,
+     "kind_source": "or-const",
+     "pcode_available": true,
+     "asm_immediates": {
+      "param0": 123,
+      "order_code": 123
+     }
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_turret_order_target_unit_enqueue",
+   "addr": "0x0046ddf0",
+   "sites": [
+    {
+     "site": "0x0046de44",
+     "root": "llm_strat_order_enqueue",
+     "lane": "immediate",
+     "param0": 123,
+     "order_code": 123,
+     "kind": 64,
+     "kind_source": "or-const",
+     "pcode_available": true,
+     "asm_immediates": {
+      "param0": 123,
+      "order_code": 123
+     }
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_turret_order_target_building",
+   "addr": "0x0046de50",
+   "sites": [
+    {
+     "site": "0x0046dea4",
+     "root": "llm_strat_order_dispatch",
+     "lane": "replicated",
+     "param0": 123,
+     "order_code": 123,
+     "kind": 64,
+     "kind_source": "or-const",
+     "pcode_available": true,
+     "asm_immediates": {
+      "param0": 123,
+      "order_code": 123
+     }
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_turret_order_target_building_enqueue",
+   "addr": "0x0046deb0",
+   "sites": [
+    {
+     "site": "0x0046df04",
+     "root": "llm_strat_order_enqueue",
+     "lane": "immediate",
+     "param0": 123,
+     "order_code": 123,
+     "kind": 64,
+     "kind_source": "or-const",
+     "pcode_available": true,
+     "asm_immediates": {
+      "param0": 123,
+      "order_code": 123
+     }
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_bldg_order_assign_workers",
+   "addr": "0x0046dfb6",
+   "sites": [
+    {
+     "site": "0x0046dff8",
+     "root": "llm_strat_order_dispatch",
+     "lane": "replicated",
+     "param0": 126,
+     "order_code": 126,
+     "kind": 64,
+     "kind_source": "or-const",
+     "pcode_available": true,
+     "asm_immediates": {
+      "param0": 126,
+      "order_code": 126
+     }
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_bldg_order_assign_workers_enqueue",
+   "addr": "0x0046e005",
+   "sites": [
+    {
+     "site": "0x0046e047",
+     "root": "llm_strat_order_enqueue",
+     "lane": "immediate",
+     "param0": 126,
+     "order_code": 126,
+     "kind": 64,
+     "kind_source": "or-const",
+     "pcode_available": true,
+     "asm_immediates": {
+      "param0": 126,
+      "order_code": 126
+     }
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_bldg_order_unassign_workers",
+   "addr": "0x0046e054",
+   "sites": [
+    {
+     "site": "0x0046e096",
+     "root": "llm_strat_order_dispatch",
+     "lane": "replicated",
+     "param0": 127,
+     "order_code": 127,
+     "kind": 64,
+     "kind_source": "or-const",
+     "pcode_available": true,
+     "asm_immediates": {
+      "param0": 127,
+      "order_code": 127
+     }
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_bldg_order_unassign_workers_enqueue",
+   "addr": "0x0046e0a3",
+   "sites": [
+    {
+     "site": "0x0046e0e5",
+     "root": "llm_strat_order_enqueue",
+     "lane": "immediate",
+     "param0": 127,
+     "order_code": 127,
+     "kind": 64,
+     "kind_source": "or-const",
+     "pcode_available": true,
+     "asm_immediates": {
+      "param0": 127,
+      "order_code": 127
+     }
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_bldg_order_activate",
+   "addr": "0x0046e0f2",
+   "sites": [
+    {
+     "site": "0x0046e125",
+     "root": "llm_strat_order_dispatch",
+     "lane": "replicated",
+     "param0": 128,
+     "order_code": 128,
+     "kind": 64,
+     "kind_source": "or-const",
+     "pcode_available": true,
+     "asm_immediates": {
+      "param0": 128,
+      "order_code": 128
+     }
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_bldg_order_activate_enqueue",
+   "addr": "0x0046e133",
+   "sites": [
+    {
+     "site": "0x0046e166",
+     "root": "llm_strat_order_enqueue",
+     "lane": "immediate",
+     "param0": 128,
+     "order_code": 128,
+     "kind": 64,
+     "kind_source": "or-const",
+     "pcode_available": true,
+     "asm_immediates": {
+      "param0": 128,
+      "order_code": 128
+     }
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_bldg_order_deactivate",
+   "addr": "0x0046e174",
+   "sites": [
+    {
+     "site": "0x0046e1a7",
+     "root": "llm_strat_order_dispatch",
+     "lane": "replicated",
+     "param0": 129,
+     "order_code": 129,
+     "kind": 64,
+     "kind_source": "or-const",
+     "pcode_available": true,
+     "asm_immediates": {
+      "param0": 129,
+      "order_code": 129
+     }
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_bldg_order_deactivate_enqueue",
+   "addr": "0x0046e1b5",
+   "sites": [
+    {
+     "site": "0x0046e1e8",
+     "root": "llm_strat_order_enqueue",
+     "lane": "immediate",
+     "param0": 129,
+     "order_code": 129,
+     "kind": 64,
+     "kind_source": "or-const",
+     "pcode_available": true,
+     "asm_immediates": {
+      "param0": 129,
+      "order_code": 129
+     }
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_bldg_order_upgrade",
+   "addr": "0x0046e2ae",
+   "sites": [
+    {
+     "site": "0x0046e2e1",
+     "root": "llm_strat_order_dispatch",
+     "lane": "replicated",
+     "param0": 130,
+     "order_code": 130,
+     "kind": 64,
+     "kind_source": "or-const",
+     "pcode_available": true,
+     "asm_immediates": {
+      "param0": 130,
+      "order_code": 130
+     }
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_bldg_order_upgrade_enqueue",
+   "addr": "0x0046e2ef",
+   "sites": [
+    {
+     "site": "0x0046e322",
+     "root": "llm_strat_order_enqueue",
+     "lane": "immediate",
+     "param0": 130,
+     "order_code": 130,
+     "kind": 64,
+     "kind_source": "or-const",
+     "pcode_available": true,
+     "asm_immediates": {
+      "param0": 130,
+      "order_code": 130
+     }
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_bldg_order_repair_cycle_start",
+   "addr": "0x0046e330",
+   "sites": [
+    {
+     "site": "0x0046e3fb",
+     "root": "llm_strat_order_dispatch",
+     "lane": "replicated",
+     "param0": 106,
+     "order_code": 106,
+     "kind": 64,
+     "kind_source": "or-const",
+     "pcode_available": true,
+     "asm_immediates": {
+      "param0": 106,
+      "order_code": 106
+     }
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_bldg_order_repair_cycle_start_enqueue",
+   "addr": "0x0046e409",
+   "sites": [
+    {
+     "site": "0x0046e4d4",
+     "root": "llm_strat_order_enqueue",
+     "lane": "immediate",
+     "param0": 106,
+     "order_code": 106,
+     "kind": 64,
+     "kind_source": "or-const",
+     "pcode_available": true,
+     "asm_immediates": {
+      "param0": 106,
+      "order_code": 106
+     }
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_bldg_order_hangar_recharge",
+   "addr": "0x0046e4e2",
+   "sites": [
+    {
+     "site": "0x0046e515",
+     "root": "llm_strat_order_dispatch",
+     "lane": "replicated",
+     "param0": 121,
+     "order_code": 121,
+     "kind": 64,
+     "kind_source": "or-const",
+     "pcode_available": true,
+     "asm_immediates": {
+      "param0": 121,
+      "order_code": 121
+     }
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_bldg_order_hangar_recharge_enqueue",
+   "addr": "0x0046e523",
+   "sites": [
+    {
+     "site": "0x0046e556",
+     "root": "llm_strat_order_enqueue",
+     "lane": "immediate",
+     "param0": 121,
+     "order_code": 121,
+     "kind": 64,
+     "kind_source": "or-const",
+     "pcode_available": true,
+     "asm_immediates": {
+      "param0": 121,
+      "order_code": 121
+     }
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_bldg_order_cancel_reset",
+   "addr": "0x0046e564",
+   "sites": [
+    {
+     "site": "0x0046e597",
+     "root": "llm_strat_order_dispatch",
+     "lane": "replicated",
+     "param0": 131,
+     "order_code": 131,
+     "kind": 64,
+     "kind_source": "or-const",
+     "pcode_available": true,
+     "asm_immediates": {
+      "param0": 131,
+      "order_code": 131
+     }
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_bldg_order_cancel_reset_enqueue",
+   "addr": "0x0046e5a5",
+   "sites": [
+    {
+     "site": "0x0046e5d8",
+     "root": "llm_strat_order_enqueue",
+     "lane": "immediate",
+     "param0": 131,
+     "order_code": 131,
+     "kind": 64,
+     "kind_source": "or-const",
+     "pcode_available": true,
+     "asm_immediates": {
+      "param0": 131,
+      "order_code": 131
+     }
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_bldg_order_restart_construction",
+   "addr": "0x0046e5e6",
+   "sites": [
+    {
+     "site": "0x0046e619",
+     "root": "llm_strat_order_dispatch",
+     "lane": "replicated",
+     "param0": 107,
+     "order_code": 107,
+     "kind": 64,
+     "kind_source": "or-const",
+     "pcode_available": true,
+     "asm_immediates": {
+      "param0": 107,
+      "order_code": 107
+     }
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_bldg_order_restart_construction_enqueue",
+   "addr": "0x0046e627",
+   "sites": [
+    {
+     "site": "0x0046e65a",
+     "root": "llm_strat_order_enqueue",
+     "lane": "immediate",
+     "param0": 107,
+     "order_code": 107,
+     "kind": 64,
+     "kind_source": "or-const",
+     "pcode_available": true,
+     "asm_immediates": {
+      "param0": 107,
+      "order_code": 107
+     }
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_bldg_order_mine_rescan",
+   "addr": "0x0046e668",
+   "sites": [
+    {
+     "site": "0x0046e69b",
+     "root": "llm_strat_order_dispatch",
+     "lane": "replicated",
+     "param0": 116,
+     "order_code": 116,
+     "kind": 64,
+     "kind_source": "or-const",
+     "pcode_available": true,
+     "asm_immediates": {
+      "param0": 116,
+      "order_code": 116
+     }
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_bldg_order_mine_rescan_enqueue",
+   "addr": "0x0046e6a9",
+   "sites": [
+    {
+     "site": "0x0046e6dc",
+     "root": "llm_strat_order_enqueue",
+     "lane": "immediate",
+     "param0": 116,
+     "order_code": 116,
+     "kind": 64,
+     "kind_source": "or-const",
+     "pcode_available": true,
+     "asm_immediates": {
+      "param0": 116,
+      "order_code": 116
+     }
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_bldg_order_purge_dead_docked",
+   "addr": "0x0046e6ea",
+   "sites": [
+    {
+     "site": "0x0046e71d",
+     "root": "llm_strat_order_dispatch",
+     "lane": "replicated",
+     "param0": 230,
+     "order_code": 230,
+     "kind": 64,
+     "kind_source": "or-const",
+     "pcode_available": true,
+     "asm_immediates": {
+      "param0": 230,
+      "order_code": 230
+     }
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_bldg_order_purge_dead_docked_enqueue",
+   "addr": "0x0046e72b",
+   "sites": [
+    {
+     "site": "0x0046e75e",
+     "root": "llm_strat_order_enqueue",
+     "lane": "immediate",
+     "param0": 230,
+     "order_code": 230,
+     "kind": 64,
+     "kind_source": "or-const",
+     "pcode_available": true,
+     "asm_immediates": {
+      "param0": 230,
+      "order_code": 230
+     }
+    }
+   ]
+  },
+  {
+   "name": "llm_unit_order_disembark_soldiers",
+   "addr": "0x0046e76c",
+   "sites": [
+    {
+     "site": "0x0046e7c8",
+     "root": "llm_strat_order_dispatch",
+     "lane": "replicated",
+     "param0": 50,
+     "order_code": 50,
+     "kind": 128,
+     "kind_source": "or-const",
+     "pcode_available": true,
+     "asm_immediates": {
+      "param0": 50,
+      "order_code": 50
+     }
+    }
+   ]
+  },
+  {
+   "name": "llm_unit_order_disembark_soldiers_enqueue",
+   "addr": "0x0046e7d6",
+   "sites": [
+    {
+     "site": "0x0046e832",
+     "root": "llm_strat_order_enqueue",
+     "lane": "immediate",
+     "param0": 50,
+     "order_code": 50,
+     "kind": 128,
+     "kind_source": "or-const",
+     "pcode_available": true,
+     "asm_immediates": {
+      "param0": 50,
+      "order_code": 50
+     }
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_bldg_order_shuttle_depart",
+   "addr": "0x0046e840",
+   "sites": [
+    {
+     "site": "0x0046e882",
+     "root": "llm_strat_order_dispatch",
+     "lane": "replicated",
+     "param0": 210,
+     "order_code": 210,
+     "kind": 64,
+     "kind_source": "or-const",
+     "pcode_available": true,
+     "asm_immediates": {
+      "param0": 210,
+      "order_code": 210
+     }
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_bldg_order_shuttle_depart_enqueue",
+   "addr": "0x0046e88f",
+   "sites": [
+    {
+     "site": "0x0046e8d1",
+     "root": "llm_strat_order_enqueue",
+     "lane": "immediate",
+     "param0": 210,
+     "order_code": 210,
+     "kind": 64,
+     "kind_source": "or-const",
+     "pcode_available": true,
+     "asm_immediates": {
+      "param0": 210,
+      "order_code": 210
+     }
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_order_issue_0xd5",
+   "addr": "0x0046e8de",
+   "sites": [
+    {
+     "site": "0x0046e92f",
+     "root": "llm_strat_order_dispatch",
+     "lane": "replicated",
+     "param0": 213,
+     "order_code": 213,
+     "kind": 64,
+     "kind_source": "or-const",
+     "pcode_available": true,
+     "asm_immediates": {
+      "param0": 213,
+      "order_code": 213
+     }
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_order_issue_0xd5_enqueue",
+   "addr": "0x0046e93b",
+   "sites": [
+    {
+     "site": "0x0046e98c",
+     "root": "llm_strat_order_enqueue",
+     "lane": "immediate",
+     "param0": 213,
+     "order_code": 213,
+     "kind": 64,
+     "kind_source": "or-const",
+     "pcode_available": true,
+     "asm_immediates": {
+      "param0": 213,
+      "order_code": 213
+     }
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_bldg_order_cargo_bind_slot",
+   "addr": "0x0046e998",
+   "sites": [
+    {
+     "site": "0x0046e9cb",
+     "root": "llm_strat_order_dispatch",
+     "lane": "replicated",
+     "param0": 214,
+     "order_code": 214,
+     "kind": 64,
+     "kind_source": "or-const",
+     "pcode_available": true,
+     "asm_immediates": {
+      "param0": 214,
+      "order_code": 214
+     }
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_bldg_order_cargo_bind_slot_enqueue",
+   "addr": "0x0046e9d9",
+   "sites": [
+    {
+     "site": "0x0046ea0c",
+     "root": "llm_strat_order_enqueue",
+     "lane": "immediate",
+     "param0": 214,
+     "order_code": 214,
+     "kind": 64,
+     "kind_source": "or-const",
+     "pcode_available": true,
+     "asm_immediates": {
+      "param0": 214,
+      "order_code": 214
+     }
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_bldg_order_flush_cargo_hold",
+   "addr": "0x0046ea1a",
+   "sites": [
+    {
+     "site": "0x0046ea4d",
+     "root": "llm_strat_order_dispatch",
+     "lane": "replicated",
+     "param0": 223,
+     "order_code": 223,
+     "kind": 64,
+     "kind_source": "or-const",
+     "pcode_available": true,
+     "asm_immediates": {
+      "param0": 223,
+      "order_code": 223
+     }
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_bldg_order_flush_cargo_hold_enqueue",
+   "addr": "0x0046ea5b",
+   "sites": [
+    {
+     "site": "0x0046ea8e",
+     "root": "llm_strat_order_enqueue",
+     "lane": "immediate",
+     "param0": 223,
+     "order_code": 223,
+     "kind": 64,
+     "kind_source": "or-const",
+     "pcode_available": true,
+     "asm_immediates": {
+      "param0": 223,
+      "order_code": 223
+     }
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_bldg_order_load_passengers",
+   "addr": "0x0046ea9c",
+   "sites": [
+    {
+     "site": "0x0046eade",
+     "root": "llm_strat_order_dispatch",
+     "lane": "replicated",
+     "param0": 219,
+     "order_code": 219,
+     "kind": 64,
+     "kind_source": "or-const",
+     "pcode_available": true,
+     "asm_immediates": {
+      "param0": 219,
+      "order_code": 219
+     }
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_bldg_order_load_passengers_enqueue",
+   "addr": "0x0046eaeb",
+   "sites": [
+    {
+     "site": "0x0046eb2d",
+     "root": "llm_strat_order_enqueue",
+     "lane": "immediate",
+     "param0": 219,
+     "order_code": 219,
+     "kind": 64,
+     "kind_source": "or-const",
+     "pcode_available": true,
+     "asm_immediates": {
+      "param0": 219,
+      "order_code": 219
+     }
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_bldg_order_unload_passengers",
+   "addr": "0x0046eb3a",
+   "sites": [
+    {
+     "site": "0x0046eb7c",
+     "root": "llm_strat_order_dispatch",
+     "lane": "replicated",
+     "param0": 220,
+     "order_code": 220,
+     "kind": 64,
+     "kind_source": "or-const",
+     "pcode_available": true,
+     "asm_immediates": {
+      "param0": 220,
+      "order_code": 220
+     }
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_bldg_order_unload_passengers_enqueue",
+   "addr": "0x0046eb89",
+   "sites": [
+    {
+     "site": "0x0046ebcb",
+     "root": "llm_strat_order_enqueue",
+     "lane": "immediate",
+     "param0": 220,
+     "order_code": 220,
+     "kind": 64,
+     "kind_source": "or-const",
+     "pcode_available": true,
+     "asm_immediates": {
+      "param0": 220,
+      "order_code": 220
+     }
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_bldg_order_load_resource",
+   "addr": "0x0046ebd8",
+   "sites": [
+    {
+     "site": "0x0046ec29",
+     "root": "llm_strat_order_dispatch",
+     "lane": "replicated",
+     "param0": 221,
+     "order_code": 221,
+     "kind": 64,
+     "kind_source": "or-const",
+     "pcode_available": true,
+     "asm_immediates": {
+      "param0": 221,
+      "order_code": 221
+     }
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_bldg_order_load_resource_enqueue",
+   "addr": "0x0046ec35",
+   "sites": [
+    {
+     "site": "0x0046ec86",
+     "root": "llm_strat_order_enqueue",
+     "lane": "immediate",
+     "param0": 221,
+     "order_code": 221,
+     "kind": 64,
+     "kind_source": "or-const",
+     "pcode_available": true,
+     "asm_immediates": {
+      "param0": 221,
+      "order_code": 221
+     }
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_bldg_order_unload_resource",
+   "addr": "0x0046ec92",
+   "sites": [
+    {
+     "site": "0x0046ece3",
+     "root": "llm_strat_order_dispatch",
+     "lane": "replicated",
+     "param0": 222,
+     "order_code": 222,
+     "kind": 64,
+     "kind_source": "or-const",
+     "pcode_available": true,
+     "asm_immediates": {
+      "param0": 222,
+      "order_code": 222
+     }
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_bldg_order_unload_resource_enqueue",
+   "addr": "0x0046ecef",
+   "sites": [
+    {
+     "site": "0x0046ed40",
+     "root": "llm_strat_order_enqueue",
+     "lane": "immediate",
+     "param0": 222,
+     "order_code": 222,
+     "kind": 64,
+     "kind_source": "or-const",
+     "pcode_available": true,
+     "asm_immediates": {
+      "param0": 222,
+      "order_code": 222
+     }
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_bldg_order_port_depart",
+   "addr": "0x0046ed4c",
+   "sites": [
+    {
+     "site": "0x0046ed8e",
+     "root": "llm_strat_order_dispatch",
+     "lane": "replicated",
+     "param0": 211,
+     "order_code": 211,
+     "kind": 64,
+     "kind_source": "or-const",
+     "pcode_available": true,
+     "asm_immediates": {
+      "param0": 211,
+      "order_code": 211
+     }
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_bldg_order_port_depart_enqueue",
+   "addr": "0x0046ed9b",
+   "sites": [
+    {
+     "site": "0x0046eddd",
+     "root": "llm_strat_order_enqueue",
+     "lane": "immediate",
+     "param0": 211,
+     "order_code": 211,
+     "kind": 64,
+     "kind_source": "or-const",
+     "pcode_available": true,
+     "asm_immediates": {
+      "param0": 211,
+      "order_code": 211
+     }
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_bldg_order_mother_depart",
+   "addr": "0x0046edea",
+   "sites": [
+    {
+     "site": "0x0046ee2c",
+     "root": "llm_strat_order_dispatch",
+     "lane": "replicated",
+     "param0": 212,
+     "order_code": 212,
+     "kind": 64,
+     "kind_source": "or-const",
+     "pcode_available": true,
+     "asm_immediates": {
+      "param0": 212,
+      "order_code": 212
+     }
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_bldg_order_mother_depart_enqueue",
+   "addr": "0x0046ee39",
+   "sites": [
+    {
+     "site": "0x0046ee7b",
+     "root": "llm_strat_order_enqueue",
+     "lane": "immediate",
+     "param0": 212,
+     "order_code": 212,
+     "kind": 64,
+     "kind_source": "or-const",
+     "pcode_available": true,
+     "asm_immediates": {
+      "param0": 212,
+      "order_code": 212
+     }
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_bldg_order_start_research_project",
+   "addr": "0x0046f140",
+   "sites": [
+    {
+     "site": "0x0046f182",
+     "root": "llm_strat_order_dispatch",
+     "lane": "replicated",
+     "param0": 137,
+     "order_code": 137,
+     "kind": 64,
+     "kind_source": "or-const",
+     "pcode_available": true,
+     "asm_immediates": {
+      "param0": 137,
+      "order_code": 137
+     }
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_bldg_order_start_research_project_enqueue",
+   "addr": "0x0046f18f",
+   "sites": [
+    {
+     "site": "0x0046f1d1",
+     "root": "llm_strat_order_enqueue",
+     "lane": "immediate",
+     "param0": 137,
+     "order_code": 137,
+     "kind": 64,
+     "kind_source": "or-const",
+     "pcode_available": true,
+     "asm_immediates": {
+      "param0": 137,
+      "order_code": 137
+     }
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_order_ctrlgrp_select_member",
+   "addr": "0x0046f1de",
+   "sites": [
+    {
+     "site": "0x0046f21e",
+     "root": "llm_strat_order_dispatch",
+     "lane": "replicated",
+     "param0": 52,
+     "order_code": 52,
+     "kind": null,
+     "kind_source": "no-or",
+     "pcode_available": true,
+     "asm_immediates": {
+      "param0": 52,
+      "order_code": 52
+     }
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_order_ctrlgrp_select_member_raw",
+   "addr": "0x0046f22b",
+   "sites": [
+    {
+     "site": "0x0046f26b",
+     "root": "llm_strat_order_enqueue",
+     "lane": "immediate",
+     "param0": 52,
+     "order_code": 52,
+     "kind": null,
+     "kind_source": "no-or",
+     "pcode_available": true,
+     "asm_immediates": {
+      "param0": 52,
+      "order_code": 52
+     }
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_order_ctrlgrp_flash_member",
+   "addr": "0x0046f278",
+   "sites": [
+    {
+     "site": "0x0046f2b8",
+     "root": "llm_strat_order_dispatch",
+     "lane": "replicated",
+     "param0": 53,
+     "order_code": 53,
+     "kind": null,
+     "kind_source": "no-or",
+     "pcode_available": true,
+     "asm_immediates": {
+      "param0": 53,
+      "order_code": 53
+     }
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_order_ctrlgrp_flash_member_raw",
+   "addr": "0x0046f2c5",
+   "sites": [
+    {
+     "site": "0x0046f305",
+     "root": "llm_strat_order_enqueue",
+     "lane": "immediate",
+     "param0": 53,
+     "order_code": 53,
+     "kind": null,
+     "kind_source": "no-or",
+     "pcode_available": true,
+     "asm_immediates": {
+      "param0": 53,
+      "order_code": 53
+     }
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_order_debug_roll_random",
+   "addr": "0x0046f312",
+   "sites": [
+    {
+     "site": "0x0046f33d",
+     "root": "llm_strat_order_dispatch",
+     "lane": "replicated",
+     "param0": 231,
+     "order_code": 231,
+     "kind": null,
+     "kind_source": "no-or",
+     "pcode_available": true,
+     "asm_immediates": {
+      "param0": 231,
+      "order_code": 231
+     }
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_order_debug_roll_random_enqueue",
+   "addr": "0x0046f34c",
+   "sites": [
+    {
+     "site": "0x0046f372",
+     "root": "llm_strat_order_enqueue",
+     "lane": "immediate",
+     "param0": 231,
+     "order_code": 231,
+     "kind": 0,
+     "kind_source": "or-const",
+     "pcode_available": true,
+     "asm_immediates": {
+      "param0": 231,
+      "order_code": 231
+     }
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_order_game_speed_increase",
+   "addr": "0x0046f381",
+   "sites": [
+    {
+     "site": "0x0046f3ac",
+     "root": "llm_strat_order_dispatch",
+     "lane": "replicated",
+     "param0": 232,
+     "order_code": 232,
+     "kind": null,
+     "kind_source": "no-or",
+     "pcode_available": true,
+     "asm_immediates": {
+      "param0": 232,
+      "order_code": 232
+     }
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_order_game_speed_increase_enqueue",
+   "addr": "0x0046f3bb",
+   "sites": [
+    {
+     "site": "0x0046f3e6",
+     "root": "llm_strat_order_enqueue",
+     "lane": "immediate",
+     "param0": 232,
+     "order_code": 232,
+     "kind": null,
+     "kind_source": "no-or",
+     "pcode_available": true,
+     "asm_immediates": {
+      "param0": 232,
+      "order_code": 232
+     }
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_order_game_speed_decrease",
+   "addr": "0x0046f3f5",
+   "sites": [
+    {
+     "site": "0x0046f420",
+     "root": "llm_strat_order_dispatch",
+     "lane": "replicated",
+     "param0": 233,
+     "order_code": 233,
+     "kind": null,
+     "kind_source": "no-or",
+     "pcode_available": true,
+     "asm_immediates": {
+      "param0": 233,
+      "order_code": 233
+     }
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_order_game_speed_decrease_enqueue",
+   "addr": "0x0046f42f",
+   "sites": [
+    {
+     "site": "0x0046f45a",
+     "root": "llm_strat_order_enqueue",
+     "lane": "immediate",
+     "param0": 233,
+     "order_code": 233,
+     "kind": null,
+     "kind_source": "no-or",
+     "pcode_available": true,
+     "asm_immediates": {
+      "param0": 233,
+      "order_code": 233
+     }
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_order_grant_resource",
+   "addr": "0x0046f537",
+   "sites": [
+    {
+     "site": "0x0046f585",
+     "root": "llm_strat_order_dispatch",
+     "lane": "replicated",
+     "param0": 237,
+     "order_code": 237,
+     "kind": null,
+     "kind_source": "no-or",
+     "pcode_available": true,
+     "asm_immediates": {
+      "param0": 237,
+      "order_code": 237
+     }
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_order_grant_resource_raw",
+   "addr": "0x0046f592",
+   "sites": [
+    {
+     "site": "0x0046f5e0",
+     "root": "llm_strat_order_enqueue",
+     "lane": "immediate",
+     "param0": 237,
+     "order_code": 237,
+     "kind": null,
+     "kind_source": "no-or",
+     "pcode_available": true,
+     "asm_immediates": {
+      "param0": 237,
+      "order_code": 237
+     }
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_order_population_delta_debug",
+   "addr": "0x0046f5ed",
+   "sites": [
+    {
+     "site": "0x0046f62c",
+     "root": "llm_strat_order_dispatch",
+     "lane": "replicated",
+     "param0": 236,
+     "order_code": 236,
+     "kind": null,
+     "kind_source": "no-or",
+     "pcode_available": true,
+     "asm_immediates": {
+      "param0": 236,
+      "order_code": 236
+     }
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_order_population_delta_enqueue",
+   "addr": "0x0046f63a",
+   "sites": [
+    {
+     "site": "0x0046f679",
+     "root": "llm_strat_order_enqueue",
+     "lane": "immediate",
+     "param0": 236,
+     "order_code": 236,
+     "kind": null,
+     "kind_source": "no-or",
+     "pcode_available": true,
+     "asm_immediates": {
+      "param0": 236,
+      "order_code": 236
+     }
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_order_collect_available_projects",
+   "addr": "0x0046f687",
+   "sites": [
+    {
+     "site": "0x0046f6b2",
+     "root": "llm_strat_order_dispatch",
+     "lane": "replicated",
+     "param0": 238,
+     "order_code": 238,
+     "kind": null,
+     "kind_source": "no-or",
+     "pcode_available": true,
+     "asm_immediates": {
+      "param0": 238,
+      "order_code": 238
+     }
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_order_collect_available_projects_enqueue",
+   "addr": "0x0046f6c1",
+   "sites": [
+    {
+     "site": "0x0046f6ec",
+     "root": "llm_strat_order_enqueue",
+     "lane": "immediate",
+     "param0": 238,
+     "order_code": 238,
+     "kind": null,
+     "kind_source": "no-or",
+     "pcode_available": true,
+     "asm_immediates": {
+      "param0": 238,
+      "order_code": 238
+     }
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_order_recheck_projects",
+   "addr": "0x0046f6fb",
+   "sites": [
+    {
+     "site": "0x0046f726",
+     "root": "llm_strat_order_dispatch",
+     "lane": "replicated",
+     "param0": 240,
+     "order_code": 240,
+     "kind": null,
+     "kind_source": "no-or",
+     "pcode_available": true,
+     "asm_immediates": {
+      "param0": 240,
+      "order_code": 240
+     }
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_order_recheck_projects_enqueue",
+   "addr": "0x0046f735",
+   "sites": [
+    {
+     "site": "0x0046f760",
+     "root": "llm_strat_order_enqueue",
+     "lane": "immediate",
+     "param0": 240,
+     "order_code": 240,
+     "kind": null,
+     "kind_source": "no-or",
+     "pcode_available": true,
+     "asm_immediates": {
+      "param0": 240,
+      "order_code": 240
+     }
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_order_recheck_buildings",
+   "addr": "0x0046f76f",
+   "sites": [
+    {
+     "site": "0x0046f79a",
+     "root": "llm_strat_order_dispatch",
+     "lane": "replicated",
+     "param0": 239,
+     "order_code": 239,
+     "kind": null,
+     "kind_source": "no-or",
+     "pcode_available": true,
+     "asm_immediates": {
+      "param0": 239,
+      "order_code": 239
+     }
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_order_recheck_buildings_enqueue",
+   "addr": "0x0046f7a9",
+   "sites": [
+    {
+     "site": "0x0046f7d4",
+     "root": "llm_strat_order_enqueue",
+     "lane": "immediate",
+     "param0": 239,
+     "order_code": 239,
+     "kind": null,
+     "kind_source": "no-or",
+     "pcode_available": true,
+     "asm_immediates": {
+      "param0": 239,
+      "order_code": 239
+     }
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_order_recheck_planet_system_all_players",
+   "addr": "0x0046f7e3",
+   "sites": [
+    {
+     "site": "0x0046f80e",
+     "root": "llm_strat_order_dispatch",
+     "lane": "replicated",
+     "param0": 241,
+     "order_code": 241,
+     "kind": null,
+     "kind_source": "no-or",
+     "pcode_available": true,
+     "asm_immediates": {
+      "param0": 241,
+      "order_code": 241
+     }
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_order_recheck_planet_system_all_players_enqueue",
+   "addr": "0x0046f81d",
+   "sites": [
+    {
+     "site": "0x0046f843",
+     "root": "llm_strat_order_enqueue",
+     "lane": "immediate",
+     "param0": 241,
+     "order_code": 241,
+     "kind": 0,
+     "kind_source": "or-const",
+     "pcode_available": true,
+     "asm_immediates": {
+      "param0": 241,
+      "order_code": 241
+     }
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_order_credit_conquest_kills",
+   "addr": "0x0046f852",
+   "sites": [
+    {
+     "site": "0x0046f87d",
+     "root": "llm_strat_order_dispatch",
+     "lane": "replicated",
+     "param0": 250,
+     "order_code": 250,
+     "kind": null,
+     "kind_source": "no-or",
+     "pcode_available": true,
+     "asm_immediates": {
+      "param0": 250,
+      "order_code": 250
+     }
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_order_credit_conquest_kills_enqueue",
+   "addr": "0x0046f88c",
+   "sites": [
+    {
+     "site": "0x0046f8b7",
+     "root": "llm_strat_order_enqueue",
+     "lane": "immediate",
+     "param0": 250,
+     "order_code": 250,
+     "kind": null,
+     "kind_source": "no-or",
+     "pcode_available": true,
+     "asm_immediates": {
+      "param0": 250,
+      "order_code": 250
+     }
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_order_set_player_relation",
+   "addr": "0x0046f8c6",
+   "sites": [
+    {
+     "site": "0x0046f915",
+     "root": "llm_strat_order_dispatch",
+     "lane": "replicated",
+     "param0": 244,
+     "order_code": 244,
+     "kind": null,
+     "kind_source": "no-or",
+     "pcode_available": true,
+     "asm_immediates": {
+      "param0": 244,
+      "order_code": 244
+     }
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_order_set_player_relation_raw",
+   "addr": "0x0046f922",
+   "sites": [
+    {
+     "site": "0x0046f971",
+     "root": "llm_strat_order_enqueue",
+     "lane": "immediate",
+     "param0": 244,
+     "order_code": 244,
+     "kind": null,
+     "kind_source": "no-or",
+     "pcode_available": true,
+     "asm_immediates": {
+      "param0": 244,
+      "order_code": 244
+     }
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_order_set_player_control_mode",
+   "addr": "0x0046f97e",
+   "sites": [
+    {
+     "site": "0x0046fa31",
+     "root": "llm_strat_order_dispatch",
+     "lane": "replicated",
+     "param0": 245,
+     "order_code": 245,
+     "kind": null,
+     "kind_source": "no-or",
+     "pcode_available": true,
+     "asm_immediates": {
+      "param0": 245,
+      "order_code": 245
+     }
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_order_set_player_control_mode_enqueue",
+   "addr": "0x0046fa3e",
+   "sites": [
+    {
+     "site": "0x0046fa8d",
+     "root": "llm_strat_order_enqueue",
+     "lane": "immediate",
+     "param0": 245,
+     "order_code": 245,
+     "kind": null,
+     "kind_source": "no-or",
+     "pcode_available": true,
+     "asm_immediates": {
+      "param0": 245,
+      "order_code": 245
+     }
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_order_debug_energy_refill_full",
+   "addr": "0x0046fa9a",
+   "sites": [
+    {
+     "site": "0x0046faed",
+     "root": "llm_strat_order_dispatch",
+     "lane": "replicated",
+     "param0": 246,
+     "order_code": 246,
+     "kind": null,
+     "kind_source": "no-or",
+     "pcode_available": true,
+     "asm_immediates": {
+      "param0": 246,
+      "order_code": 246
+     }
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_order_debug_energy_refill_full_enqueue",
+   "addr": "0x0046fafb",
+   "sites": [
+    {
+     "site": "0x0046fb4e",
+     "root": "llm_strat_order_enqueue",
+     "lane": "immediate",
+     "param0": 246,
+     "order_code": 246,
+     "kind": null,
+     "kind_source": "no-or",
+     "pcode_available": true,
+     "asm_immediates": {
+      "param0": 246,
+      "order_code": 246
+     }
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_order_debug_damage_scaled",
+   "addr": "0x0046fb5c",
+   "sites": [
+    {
+     "site": "0x0046fbaf",
+     "root": "llm_strat_order_dispatch",
+     "lane": "replicated",
+     "param0": 247,
+     "order_code": 247,
+     "kind": null,
+     "kind_source": "no-or",
+     "pcode_available": true,
+     "asm_immediates": {
+      "param0": 247,
+      "order_code": 247
+     }
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_order_debug_charge_add_scaled_enqueue",
+   "addr": "0x0046fbbd",
+   "sites": [
+    {
+     "site": "0x0046fc10",
+     "root": "llm_strat_order_enqueue",
+     "lane": "immediate",
+     "param0": 247,
+     "order_code": 247,
+     "kind": null,
+     "kind_source": "no-or",
+     "pcode_available": true,
+     "asm_immediates": {
+      "param0": 247,
+      "order_code": 247
+     }
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_order_debug_kill_group",
+   "addr": "0x0046fc1e",
+   "sites": [
+    {
+     "site": "0x0046fc71",
+     "root": "llm_strat_order_dispatch",
+     "lane": "replicated",
+     "param0": 247,
+     "order_code": 248,
+     "kind": null,
+     "kind_source": "no-or",
+     "pcode_available": true,
+     "asm_immediates": {
+      "param0": 247,
+      "order_code": 248
+     }
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_order_debug_charge_add_full_group_enqueue",
+   "addr": "0x0046fc7f",
+   "sites": [
+    {
+     "site": "0x0046fcd2",
+     "root": "llm_strat_order_enqueue",
+     "lane": "immediate",
+     "param0": 247,
+     "order_code": 248,
+     "kind": null,
+     "kind_source": "no-or",
+     "pcode_available": true,
+     "asm_immediates": {
+      "param0": 247,
+      "order_code": 248
+     }
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_order_fow_reveal_full",
+   "addr": "0x0046fce0",
+   "sites": [
+    {
+     "site": "0x0046fd24",
+     "root": "llm_strat_order_dispatch",
+     "lane": "replicated",
+     "param0": 249,
+     "order_code": 249,
+     "kind": null,
+     "kind_source": "no-or",
+     "pcode_available": true,
+     "asm_immediates": {
+      "param0": 249,
+      "order_code": 249
+     }
+    }
+   ]
+  },
+  {
+   "name": "llm_strat_order_fow_reveal_full_enqueue",
+   "addr": "0x0046fd33",
+   "sites": [
+    {
+     "site": "0x0046fd77",
+     "root": "llm_strat_order_enqueue",
+     "lane": "immediate",
+     "param0": 249,
+     "order_code": 249,
+     "kind": null,
+     "kind_source": "no-or",
+     "pcode_available": true,
+     "asm_immediates": {
+      "param0": 249,
+      "order_code": 249
+     }
+    }
+   ]
+  }
+ ]
+}

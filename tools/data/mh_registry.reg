@@ -1,0 +1,24 @@
+Windows Registry Editor Version 5.00
+
+; Mission: Humanity boot-gate registry key (RE'd 2026-07-25, docs/cd-check.md).
+;
+; The game's entire boot body (llm_boot_progress_draw, EN 0x004c3c53) sits inside
+;   if (RegOpenKeyExA(HKLM\SOFTWARE\Techland\Mission Humanity) != NULL) { ... }
+; so with NO key the function returns having done nothing and the game NEVER boots -- it
+; pops a blank "Ok" modal and hangs before presenting its first frame. ONLY THE KEY'S
+; EXISTENCE is load-bearing; the individual values are optional (none of the three
+; RegQueryValueExA return codes is tested). SrcPath defaults to "Setup", Lang keeps the
+; built-in variant, DestinationPath is never read (installer bookkeeping).
+;
+; A 32-bit game reading HKLM\SOFTWARE\... is redirected by WOW64, hence WOW6432Node.
+;
+; This is a REQUIRED bootstrap step on any fresh machine (a full game installer would
+; create it; a hand-copied game tree does not). Import with an ELEVATED shell:
+;   reg import tools\data\mh_registry.reg
+; or apply it from tools/provision_rig.py (which does this + builds mh.focus.exe + deploys mh.dll).
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\WOW6432Node\Techland\Mission Humanity]
+"SrcPath"="Setup"
+"Lang"="English"
+"UserID"="0"
+"DestinationPath"="C:\\Games\\MH"

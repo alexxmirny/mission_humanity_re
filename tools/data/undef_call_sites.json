@@ -1,0 +1,7300 @@
+{
+ "_generated_by": "tools/scan_undef_calls.py (X-UNDEFCALL)",
+ "_program": "/eng/mh.exe",
+ "_what": "Every E8/E9 rel32 whose SITE lies outside the union of all defined function bodies and whose resolved target (site+5+rel32) lands inside a defined function. These are the call edges tools/data/call_graph_no_crt.json cannot see, because an undefined source has no node. See docs/dead-ends.md G167.",
+ "_classes": "CODE-DISASM: a real decoded instruction at the site. CODE-PSEUDO: undecoded, but a coherent stream lands on the boundary. SUBSUMED: an operand byte of another instruction. DATA-DEFINED: inside a defined Data object. RAW: undecoded and unreached -- needs judgement.",
+ "defined_functions": 2894,
+ "branch_bytes_outside_functions": 443,
+ "sites": 247,
+ "class_counts": {
+  "CODE-PSEUDO": 195,
+  "CODE-DISASM": 51,
+  "RAW": 1
+ },
+ "calibration": {
+  "control_block": "DGROUP",
+  "branch_bytes_tested": 407,
+  "would_be_code_pseudo": 158,
+  "false_fire_pct": 38.8,
+  "_what": "the CODE-PSEUDO test run over pure DATA: every fire is a false positive, so this is the class's noise floor. Read CODE-PSEUDO as 'not obviously data', never as proof."
+ },
+ "regions": 81,
+ "gaps": [
+  {
+   "gap": [
+    "0x0041122d",
+    "0x00411232"
+   ],
+   "gap_bytes": 5,
+   "span_owner": "llm_ui_bldg_progress_status_text_select",
+   "span_owner_entry": "0x0041111e",
+   "sites": 1,
+   "classes": {
+    "CODE-PSEUDO": 1
+   },
+   "targets": [
+    "llm_ui_bldg_progress_status_text_select"
+   ]
+  },
+  {
+   "gap": [
+    "0x0042c687",
+    "0x0042c68c"
+   ],
+   "gap_bytes": 5,
+   "span_owner": "llm_tact_unit_update_anim",
+   "span_owner_entry": "0x0042c547",
+   "sites": 1,
+   "classes": {
+    "CODE-PSEUDO": 1
+   },
+   "targets": [
+    "llm_tact_unit_update_anim"
+   ]
+  },
+  {
+   "gap": [
+    "0x0042f65e",
+    "0x0042f663"
+   ],
+   "gap_bytes": 5,
+   "span_owner": "llm_tact_unit_weapons_tick",
+   "span_owner_entry": "0x0042f338",
+   "sites": 1,
+   "classes": {
+    "CODE-PSEUDO": 1
+   },
+   "targets": [
+    "llm_tact_unit_weapons_tick"
+   ]
+  },
+  {
+   "gap": [
+    "0x0042f68c",
+    "0x0042f691"
+   ],
+   "gap_bytes": 5,
+   "span_owner": "llm_tact_unit_weapons_tick",
+   "span_owner_entry": "0x0042f338",
+   "sites": 1,
+   "classes": {
+    "CODE-PSEUDO": 1
+   },
+   "targets": [
+    "llm_tact_unit_weapons_tick"
+   ]
+  },
+  {
+   "gap": [
+    "0x0042f6a8",
+    "0x0042f6ad"
+   ],
+   "gap_bytes": 5,
+   "span_owner": "llm_tact_unit_weapons_tick",
+   "span_owner_entry": "0x0042f338",
+   "sites": 1,
+   "classes": {
+    "CODE-PSEUDO": 1
+   },
+   "targets": [
+    "llm_tact_unit_weapons_tick"
+   ]
+  },
+  {
+   "gap": [
+    "0x00441f58",
+    "0x00441f5d"
+   ],
+   "gap_bytes": 5,
+   "span_owner": "llm_strat_input_update",
+   "span_owner_entry": "0x00441b88",
+   "sites": 1,
+   "classes": {
+    "CODE-PSEUDO": 1
+   },
+   "targets": [
+    "llm_strat_input_update"
+   ]
+  },
+  {
+   "gap": [
+    "0x00442030",
+    "0x00442035"
+   ],
+   "gap_bytes": 5,
+   "span_owner": "llm_strat_input_update",
+   "span_owner_entry": "0x00441b88",
+   "sites": 1,
+   "classes": {
+    "CODE-PSEUDO": 1
+   },
+   "targets": [
+    "llm_strat_input_update"
+   ]
+  },
+  {
+   "gap": [
+    "0x0044a0f5",
+    "0x0044a0fa"
+   ],
+   "gap_bytes": 5,
+   "span_owner": "llm_strat_bldg_get_progress_percent",
+   "span_owner_entry": "0x00449ffe",
+   "sites": 1,
+   "classes": {
+    "CODE-PSEUDO": 1
+   },
+   "targets": [
+    "llm_strat_bldg_get_progress_percent"
+   ]
+  },
+  {
+   "gap": [
+    "0x00456827",
+    "0x0045682e"
+   ],
+   "gap_bytes": 7,
+   "span_owner": "cfg_final_unit_Construct",
+   "span_owner_entry": "0x004564c2",
+   "sites": 1,
+   "classes": {
+    "CODE-PSEUDO": 1
+   },
+   "targets": [
+    "cfg_final_unit_Construct"
+   ]
+  },
+  {
+   "gap": [
+    "0x00463398",
+    "0x004633a2"
+   ],
+   "gap_bytes": 10,
+   "span_owner": "llm_strat_storage_find_home_for_unit",
+   "span_owner_entry": "0x00463328",
+   "sites": 2,
+   "classes": {
+    "CODE-PSEUDO": 2
+   },
+   "targets": [
+    "llm_strat_storage_find_home_for_unit"
+   ]
+  },
+  {
+   "gap": [
+    "0x00463f3d",
+    "0x00463f47"
+   ],
+   "gap_bytes": 10,
+   "span_owner": "llm_unit_recruit",
+   "span_owner_entry": "0x00463ec8",
+   "sites": 2,
+   "classes": {
+    "CODE-PSEUDO": 2
+   },
+   "targets": [
+    "llm_unit_recruit"
+   ]
+  },
+  {
+   "gap": [
+    "0x0047486f",
+    "0x00474874"
+   ],
+   "gap_bytes": 5,
+   "span_owner": "llm_strat_bldg_register_online",
+   "span_owner_entry": "0x004747d6",
+   "sites": 1,
+   "classes": {
+    "CODE-PSEUDO": 1
+   },
+   "targets": [
+    "llm_strat_bldg_register_online"
+   ]
+  },
+  {
+   "gap": [
+    "0x0047d8c2",
+    "0x0047d8c7"
+   ],
+   "gap_bytes": 5,
+   "span_owner": "llm_strat_unit_update_rotation",
+   "span_owner_entry": "0x0047d741",
+   "sites": 1,
+   "classes": {
+    "CODE-PSEUDO": 1
+   },
+   "targets": [
+    "llm_strat_unit_update_rotation"
+   ]
+  },
+  {
+   "gap": [
+    "0x0047d8e2",
+    "0x0047d8e7"
+   ],
+   "gap_bytes": 5,
+   "span_owner": "llm_strat_unit_update_rotation",
+   "span_owner_entry": "0x0047d741",
+   "sites": 1,
+   "classes": {
+    "CODE-PSEUDO": 1
+   },
+   "targets": [
+    "llm_strat_unit_update_rotation"
+   ]
+  },
+  {
+   "gap": [
+    "0x00487cd0",
+    "0x00487cd7"
+   ],
+   "gap_bytes": 7,
+   "span_owner": "llm_strat_unit_teardown",
+   "span_owner_entry": "0x00487ba5",
+   "sites": 1,
+   "classes": {
+    "CODE-PSEUDO": 1
+   },
+   "targets": [
+    "llm_strat_unit_teardown"
+   ]
+  },
+  {
+   "gap": [
+    "0x004928ea",
+    "0x004928f4"
+   ],
+   "gap_bytes": 10,
+   "span_owner": "llm_strat_prod_try_start_unit",
+   "span_owner_entry": "0x00492843",
+   "sites": 2,
+   "classes": {
+    "CODE-PSEUDO": 2
+   },
+   "targets": [
+    "llm_strat_prod_try_start_unit"
+   ]
+  },
+  {
+   "gap": [
+    "0x00497b0f",
+    "0x00497b19"
+   ],
+   "gap_bytes": 10,
+   "span_owner": "llm_bldg_storage_accepts_unit_type",
+   "span_owner_entry": "0x00497ac4",
+   "sites": 2,
+   "classes": {
+    "CODE-PSEUDO": 2
+   },
+   "targets": [
+    "llm_bldg_storage_accepts_unit_type"
+   ]
+  },
+  {
+   "gap": [
+    "0x00497c6a",
+    "0x00497c6f"
+   ],
+   "gap_bytes": 5,
+   "span_owner": "llm_strat_storage_type_accepts_unit",
+   "span_owner_entry": "0x00497b91",
+   "sites": 1,
+   "classes": {
+    "CODE-PSEUDO": 1
+   },
+   "targets": [
+    "llm_strat_storage_type_accepts_unit"
+   ]
+  },
+  {
+   "gap": [
+    "0x0049b610",
+    "0x0049b615"
+   ],
+   "gap_bytes": 5,
+   "span_owner": "llm_strat_advisor_tick",
+   "span_owner_entry": "0x0049b5b0",
+   "sites": 1,
+   "classes": {
+    "CODE-PSEUDO": 1
+   },
+   "targets": [
+    "llm_strat_advisor_tick"
+   ]
+  },
+  {
+   "gap": [
+    "0x004a0cff",
+    "0x004a17b3"
+   ],
+   "gap_bytes": 2740,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "sites": 2,
+   "classes": {
+    "CODE-PSEUDO": 2
+   },
+   "targets": [
+    "llm_strat_minimap_draw_viewport_box",
+    "llm_strat_minimap_mark_tiles_drawn"
+   ]
+  },
+  {
+   "gap": [
+    "0x004a1894",
+    "0x004a18b9"
+   ],
+   "gap_bytes": 37,
+   "span_owner": "llm_strat_minimap_render",
+   "span_owner_entry": "0x004a17b3",
+   "sites": 1,
+   "classes": {
+    "CODE-PSEUDO": 1
+   },
+   "targets": [
+    "llm_strat_minimap_render"
+   ]
+  },
+  {
+   "gap": [
+    "0x004a68c2",
+    "0x004a68d1"
+   ],
+   "gap_bytes": 15,
+   "span_owner": "map_fow_UpdateFoWPlus_impl",
+   "span_owner_entry": "0x004a6817",
+   "sites": 1,
+   "classes": {
+    "CODE-PSEUDO": 1
+   },
+   "targets": [
+    "map_fow_ConvertSightToArea"
+   ]
+  },
+  {
+   "gap": [
+    "0x004a6ca0",
+    "0x004a763f"
+   ],
+   "gap_bytes": 2463,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "sites": 15,
+   "classes": {
+    "CODE-PSEUDO": 15
+   },
+   "targets": [
+    "llm_gfx_sprite_rle_row_skip_hittest"
+   ]
+  },
+  {
+   "gap": [
+    "0x004a9776",
+    "0x004a977b"
+   ],
+   "gap_bytes": 5,
+   "span_owner": "cfg_CountObjects",
+   "span_owner_entry": "0x004a96dc",
+   "sites": 1,
+   "classes": {
+    "CODE-PSEUDO": 1
+   },
+   "targets": [
+    "cfg_CountObjects"
+   ]
+  },
+  {
+   "gap": [
+    "0x004b7cbe",
+    "0x004b7cc3"
+   ],
+   "gap_bytes": 5,
+   "span_owner": "llm_ui_menu_state_tick",
+   "span_owner_entry": "0x004b7c3b",
+   "sites": 1,
+   "classes": {
+    "CODE-PSEUDO": 1
+   },
+   "targets": [
+    "llm_ui_menu_state_tick"
+   ]
+  },
+  {
+   "gap": [
+    "0x004c985e",
+    "0x004c9863"
+   ],
+   "gap_bytes": 5,
+   "span_owner": "llm_ui_bldg_info_panel_populate_stat_line",
+   "span_owner_entry": "0x004c97e4",
+   "sites": 1,
+   "classes": {
+    "CODE-PSEUDO": 1
+   },
+   "targets": [
+    "llm_ui_bldg_info_panel_populate_stat_line"
+   ]
+  },
+  {
+   "gap": [
+    "0x004c9872",
+    "0x004c9877"
+   ],
+   "gap_bytes": 5,
+   "span_owner": "llm_ui_bldg_info_panel_populate_stat_line",
+   "span_owner_entry": "0x004c97e4",
+   "sites": 1,
+   "classes": {
+    "CODE-PSEUDO": 1
+   },
+   "targets": [
+    "llm_ui_bldg_info_panel_populate_stat_line"
+   ]
+  },
+  {
+   "gap": [
+    "0x004c98e3",
+    "0x004c98e8"
+   ],
+   "gap_bytes": 5,
+   "span_owner": "llm_ui_bldg_info_panel_populate_stat_line",
+   "span_owner_entry": "0x004c97e4",
+   "sites": 1,
+   "classes": {
+    "CODE-PSEUDO": 1
+   },
+   "targets": [
+    "llm_ui_bldg_info_panel_populate_stat_line"
+   ]
+  },
+  {
+   "gap": [
+    "0x004ccae0",
+    "0x004ccbee"
+   ],
+   "gap_bytes": 270,
+   "span_owner": "llm_ui_acm_result_dispatch",
+   "span_owner_entry": "0x004cc9f9",
+   "sites": 15,
+   "classes": {
+    "CODE-PSEUDO": 15
+   },
+   "targets": [
+    "llm_ui_acm_result_dispatch"
+   ]
+  },
+  {
+   "gap": [
+    "0x004ccc6b",
+    "0x004ccc70"
+   ],
+   "gap_bytes": 5,
+   "span_owner": "llm_ui_avi_icm_result_to_string",
+   "span_owner_entry": "0x004ccc03",
+   "sites": 1,
+   "classes": {
+    "CODE-PSEUDO": 1
+   },
+   "targets": [
+    "llm_ui_avi_icm_result_to_string"
+   ]
+  },
+  {
+   "gap": [
+    "0x004ccc94",
+    "0x004ccc99"
+   ],
+   "gap_bytes": 5,
+   "span_owner": "llm_ui_avi_icm_result_to_string",
+   "span_owner_entry": "0x004ccc03",
+   "sites": 1,
+   "classes": {
+    "CODE-PSEUDO": 1
+   },
+   "targets": [
+    "llm_ui_avi_icm_result_to_string"
+   ]
+  },
+  {
+   "gap": [
+    "0x004ccccd",
+    "0x004cccd2"
+   ],
+   "gap_bytes": 5,
+   "span_owner": "llm_ui_avi_icm_result_to_string",
+   "span_owner_entry": "0x004ccc03",
+   "sites": 1,
+   "classes": {
+    "CODE-PSEUDO": 1
+   },
+   "targets": [
+    "llm_ui_avi_icm_result_to_string"
+   ]
+  },
+  {
+   "gap": [
+    "0x004cce9d",
+    "0x004ccea2"
+   ],
+   "gap_bytes": 5,
+   "span_owner": "llm_ui_avi_check_result",
+   "span_owner_entry": "0x004ccddd",
+   "sites": 1,
+   "classes": {
+    "CODE-PSEUDO": 1
+   },
+   "targets": [
+    "llm_ui_avi_check_result"
+   ]
+  },
+  {
+   "gap": [
+    "0x004ccee5",
+    "0x004cceea"
+   ],
+   "gap_bytes": 5,
+   "span_owner": "llm_ui_avi_check_result",
+   "span_owner_entry": "0x004ccddd",
+   "sites": 1,
+   "classes": {
+    "CODE-PSEUDO": 1
+   },
+   "targets": [
+    "llm_ui_avi_check_result"
+   ]
+  },
+  {
+   "gap": [
+    "0x004ccf09",
+    "0x004ccf0e"
+   ],
+   "gap_bytes": 5,
+   "span_owner": "llm_ui_avi_check_result",
+   "span_owner_entry": "0x004ccddd",
+   "sites": 1,
+   "classes": {
+    "CODE-PSEUDO": 1
+   },
+   "targets": [
+    "llm_ui_avi_check_result"
+   ]
+  },
+  {
+   "gap": [
+    "0x004cf748",
+    "0x004cf7b0"
+   ],
+   "gap_bytes": 104,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "sites": 3,
+   "classes": {
+    "CODE-PSEUDO": 3
+   },
+   "targets": [
+    "utils_get_filemode",
+    "CRT_004cf6ce",
+    "CRT_004cf5c7"
+   ]
+  },
+  {
+   "gap": [
+    "0x004d0501",
+    "0x004d056c"
+   ],
+   "gap_bytes": 107,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "sites": 3,
+   "classes": {
+    "CODE-PSEUDO": 3
+   },
+   "targets": [
+    "llm_game_clock_tick_update",
+    "utils_math_trunc"
+   ]
+  },
+  {
+   "gap": [
+    "0x004d17b6",
+    "0x004d19f0"
+   ],
+   "gap_bytes": 570,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "sites": 3,
+   "classes": {
+    "CODE-PSEUDO": 3
+   },
+   "targets": [
+    "FUN_0066ee79",
+    "FUN_0066ee9f"
+   ]
+  },
+  {
+   "gap": [
+    "0x004d1b6c",
+    "0x004d1bb4"
+   ],
+   "gap_bytes": 72,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "sites": 1,
+   "classes": {
+    "CODE-PSEUDO": 1
+   },
+   "targets": [
+    "llm_snd_backend_startup_dispatch"
+   ]
+  },
+  {
+   "gap": [
+    "0x004d2dd6",
+    "0x004d2eac"
+   ],
+   "gap_bytes": 214,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "sites": 1,
+   "classes": {
+    "CODE-PSEUDO": 1
+   },
+   "targets": [
+    "utils_math_trunc"
+   ]
+  },
+  {
+   "gap": [
+    "0x004d2f64",
+    "0x004d323d"
+   ],
+   "gap_bytes": 729,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "sites": 2,
+   "classes": {
+    "CODE-PSEUDO": 2
+   },
+   "targets": [
+    "llm_snd_dsound_negotiate_mixer_format"
+   ]
+  },
+  {
+   "gap": [
+    "0x004d516c",
+    "0x004d5245"
+   ],
+   "gap_bytes": 217,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "sites": 2,
+   "classes": {
+    "CODE-PSEUDO": 2
+   },
+   "targets": [
+    "utils_assert_stack_capacity",
+    "llm_strat_ai_bldg_has_heli_unit"
+   ]
+  },
+  {
+   "gap": [
+    "0x004da145",
+    "0x004da1f4"
+   ],
+   "gap_bytes": 175,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "sites": 1,
+   "classes": {
+    "CODE-PSEUDO": 1
+   },
+   "targets": [
+    "llm_gfx_ddraw_present"
+   ]
+  },
+  {
+   "gap": [
+    "0x004da2a9",
+    "0x004da3f0"
+   ],
+   "gap_bytes": 327,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "sites": 4,
+   "classes": {
+    "CODE-PSEUDO": 4
+   },
+   "targets": [
+    "llm_gfx_ddraw_dll_acquire",
+    "FUN_004d903c",
+    "llm_gfx_ddraw_read_current_mode",
+    "llm_gfx_ddraw_dll_release"
+   ]
+  },
+  {
+   "gap": [
+    "0x004da47b",
+    "0x004da943"
+   ],
+   "gap_bytes": 1224,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "sites": 3,
+   "classes": {
+    "CODE-PSEUDO": 3
+   },
+   "targets": [
+    "FUN_004d903c"
+   ]
+  },
+  {
+   "gap": [
+    "0x004da9af",
+    "0x004da9c0"
+   ],
+   "gap_bytes": 17,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "sites": 1,
+   "classes": {
+    "CODE-PSEUDO": 1
+   },
+   "targets": [
+    "FUN_004da981"
+   ]
+  },
+  {
+   "gap": [
+    "0x004daa5e",
+    "0x004daa6e"
+   ],
+   "gap_bytes": 16,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "sites": 1,
+   "classes": {
+    "CODE-PSEUDO": 1
+   },
+   "targets": [
+    "IF@ATAN2"
+   ]
+  },
+  {
+   "gap": [
+    "0x004dac28",
+    "0x004dac44"
+   ],
+   "gap_bytes": 28,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "sites": 1,
+   "classes": {
+    "CODE-PSEUDO": 1
+   },
+   "targets": [
+    "IF@TAN"
+   ]
+  },
+  {
+   "gap": [
+    "0x004dc546",
+    "0x004dc597"
+   ],
+   "gap_bytes": 81,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "sites": 1,
+   "classes": {
+    "CODE-DISASM": 1
+   },
+   "targets": [
+    "utils_assert_stack_capacity"
+   ]
+  },
+  {
+   "gap": [
+    "0x004ddcf0",
+    "0x004ddde1"
+   ],
+   "gap_bytes": 241,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "sites": 5,
+   "classes": {
+    "CODE-PSEUDO": 5
+   },
+   "targets": [
+    "FUN_004ddde1"
+   ]
+  },
+  {
+   "gap": [
+    "0x004ddee1",
+    "0x004ddef8"
+   ],
+   "gap_bytes": 23,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "sites": 1,
+   "classes": {
+    "CODE-PSEUDO": 1
+   },
+   "targets": [
+    "_localtime"
+   ]
+  },
+  {
+   "gap": [
+    "0x004de1e5",
+    "0x004de1fd"
+   ],
+   "gap_bytes": 24,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "sites": 2,
+   "classes": {
+    "CODE-PSEUDO": 2
+   },
+   "targets": [
+    "CRT_004de1d5",
+    "FUN_004de1d1"
+   ]
+  },
+  {
+   "gap": [
+    "0x004de609",
+    "0x004de613"
+   ],
+   "gap_bytes": 10,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "sites": 1,
+   "classes": {
+    "CODE-PSEUDO": 1
+   },
+   "targets": [
+    "FUN_004de59d"
+   ]
+  },
+  {
+   "gap": [
+    "0x004dfaf8",
+    "0x004dfb08"
+   ],
+   "gap_bytes": 16,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "sites": 1,
+   "classes": {
+    "CODE-PSEUDO": 1
+   },
+   "targets": [
+    "llm_crt_set_errno"
+   ]
+  },
+  {
+   "gap": [
+    "0x004dfde2",
+    "0x004dfe00"
+   ],
+   "gap_bytes": 30,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "sites": 1,
+   "classes": {
+    "CODE-PSEUDO": 1
+   },
+   "targets": [
+    "utils_free"
+   ]
+  },
+  {
+   "gap": [
+    "0x004dfe31",
+    "0x004dfe43"
+   ],
+   "gap_bytes": 18,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "sites": 1,
+   "classes": {
+    "CODE-DISASM": 1
+   },
+   "targets": [
+    "fputc"
+   ]
+  },
+  {
+   "gap": [
+    "0x004e1413",
+    "0x004e14c0"
+   ],
+   "gap_bytes": 173,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "sites": 1,
+   "classes": {
+    "CODE-PSEUDO": 1
+   },
+   "targets": [
+    "__init_80x87"
+   ]
+  },
+  {
+   "gap": [
+    "0x004ed890",
+    "0x004eda5a"
+   ],
+   "gap_bytes": 458,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "sites": 2,
+   "classes": {
+    "CODE-PSEUDO": 2
+   },
+   "targets": [
+    "utils_assert_stack_capacity",
+    "llm_strat_ai_target_list_refresh_mothers"
+   ]
+  },
+  {
+   "gap": [
+    "0x004ee365",
+    "0x004ee4c2"
+   ],
+   "gap_bytes": 349,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "sites": 4,
+   "classes": {
+    "CODE-PSEUDO": 4
+   },
+   "targets": [
+    "utils_assert_stack_capacity",
+    "llm_strat_ai_target_list_refresh_mothers"
+   ]
+  },
+  {
+   "gap": [
+    "0x004ee8c2",
+    "0x004ee8df"
+   ],
+   "gap_bytes": 29,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "sites": 3,
+   "classes": {
+    "CODE-PSEUDO": 3
+   },
+   "targets": [
+    "utils_assert_stack_capacity",
+    "llm_debug_log_msg_stub",
+    "llm_game_main_window_destroy"
+   ]
+  },
+  {
+   "gap": [
+    "0x004eeebd",
+    "0x004eeedf"
+   ],
+   "gap_bytes": 34,
+   "span_owner": "llm_strat_ai_tick_all_groups",
+   "span_owner_entry": "0x004eec6c",
+   "sites": 1,
+   "classes": {
+    "CODE-PSEUDO": 1
+   },
+   "targets": [
+    "llm_debug_trace_printf"
+   ]
+  },
+  {
+   "gap": [
+    "0x004eef18",
+    "0x004ef24c"
+   ],
+   "gap_bytes": 820,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "sites": 34,
+   "classes": {
+    "CODE-PSEUDO": 34
+   },
+   "targets": [
+    "utils_malloc",
+    "open",
+    "read",
+    "llm_crt_lseek",
+    "close",
+    "utils_free",
+    "strdup",
+    "utils_str_cmp",
+    "llm_lzss_decompress_block"
+   ]
+  },
+  {
+   "gap": [
+    "0x004ef37c",
+    "0x004ef3c5"
+   ],
+   "gap_bytes": 73,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "sites": 4,
+   "classes": {
+    "CODE-PSEUDO": 4
+   },
+   "targets": [
+    "close",
+    "utils_free"
+   ]
+  },
+  {
+   "gap": [
+    "0x004efd7b",
+    "0x004efd92"
+   ],
+   "gap_bytes": 23,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "sites": 1,
+   "classes": {
+    "CODE-PSEUDO": 1
+   },
+   "targets": [
+    "_gmtime"
+   ]
+  },
+  {
+   "gap": [
+    "0x004f1025",
+    "0x004f10c1"
+   ],
+   "gap_bytes": 156,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "sites": 2,
+   "classes": {
+    "CODE-PSEUDO": 2
+   },
+   "targets": [
+    "SetStdHandle",
+    "mem_realloc"
+   ]
+  },
+  {
+   "gap": [
+    "0x004f12dc",
+    "0x004f1363"
+   ],
+   "gap_bytes": 135,
+   "span_owner": "raise",
+   "span_owner_entry": "0x004f125c",
+   "sites": 5,
+   "classes": {
+    "CODE-PSEUDO": 5
+   },
+   "targets": [
+    "llm_crt_set_errno",
+    "_control87",
+    "CRT_004f11b5",
+    "llm_crt_console_ctrl_handler_install",
+    "CRT_004f1220"
+   ]
+  },
+  {
+   "gap": [
+    "0x004f13ef",
+    "0x004f17bf"
+   ],
+   "gap_bytes": 976,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "sites": 5,
+   "classes": {
+    "CODE-PSEUDO": 5
+   },
+   "targets": [
+    "__sigfpe_handler",
+    "raise",
+    "CRT_004f320d",
+    "GetModuleFileNameA",
+    "WriteFile"
+   ]
+  },
+  {
+   "gap": [
+    "0x004f1883",
+    "0x004f18cb"
+   ],
+   "gap_bytes": 72,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "sites": 5,
+   "classes": {
+    "CODE-DISASM": 5
+   },
+   "targets": [
+    "__ReleaseSemaphore",
+    "__NTAddFileHandle",
+    "__CloseSemaphore",
+    "__NTRemoveFileHandle"
+   ]
+  },
+  {
+   "gap": [
+    "0x004f18d2",
+    "0x004f1900"
+   ],
+   "gap_bytes": 46,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "sites": 2,
+   "classes": {
+    "CODE-DISASM": 2
+   },
+   "targets": [
+    "__ReleaseSemaphore"
+   ]
+  },
+  {
+   "gap": [
+    "0x004f1acc",
+    "0x004f1ad6"
+   ],
+   "gap_bytes": 10,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "sites": 1,
+   "classes": {
+    "CODE-PSEUDO": 1
+   },
+   "targets": [
+    "__NTRemoveThread"
+   ]
+  },
+  {
+   "gap": [
+    "0x004f1c0f",
+    "0x004f1c7a"
+   ],
+   "gap_bytes": 107,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "sites": 2,
+   "classes": {
+    "CODE-PSEUDO": 2
+   },
+   "targets": [
+    "__FreeThreadDataList",
+    "__NTThreadFini"
+   ]
+  },
+  {
+   "gap": [
+    "0x004f1fb3",
+    "0x004f2093"
+   ],
+   "gap_bytes": 224,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "sites": 4,
+   "classes": {
+    "CODE-PSEUDO": 4
+   },
+   "targets": [
+    "utils_malloc",
+    "ThrowException",
+    "__shutdown_stream"
+   ]
+  },
+  {
+   "gap": [
+    "0x004f2311",
+    "0x004f23fb"
+   ],
+   "gap_bytes": 234,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "sites": 2,
+   "classes": {
+    "CODE-PSEUDO": 2
+   },
+   "targets": [
+    "_FtoS",
+    "llm_crt_printf_g_trim_trailing_zeros"
+   ]
+  },
+  {
+   "gap": [
+    "0x004f245a",
+    "0x004f246a"
+   ],
+   "gap_bytes": 16,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "sites": 1,
+   "classes": {
+    "CODE-PSEUDO": 1
+   },
+   "targets": [
+    "strtod"
+   ]
+  },
+  {
+   "gap": [
+    "0x004f28eb",
+    "0x004f2984"
+   ],
+   "gap_bytes": 153,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "sites": 1,
+   "classes": {
+    "CODE-PSEUDO": 1
+   },
+   "targets": [
+    "llm_debug_trace_printf"
+   ]
+  },
+  {
+   "gap": [
+    "0x004f2dc0",
+    "0x004f2e50"
+   ],
+   "gap_bytes": 144,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "sites": 1,
+   "classes": {
+    "CODE-PSEUDO": 1
+   },
+   "targets": [
+    "CRT_004f2e9b"
+   ]
+  },
+  {
+   "gap": [
+    "0x004f3a61",
+    "0x004f3ef3"
+   ],
+   "gap_bytes": 1170,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "sites": 42,
+   "classes": {
+    "CODE-DISASM": 42
+   },
+   "targets": [
+    "CRT_004f3940"
+   ]
+  },
+  {
+   "gap": [
+    "0x004f3f19",
+    "0x004f3f78"
+   ],
+   "gap_bytes": 95,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "sites": 3,
+   "classes": {
+    "CODE-PSEUDO": 3
+   },
+   "targets": [
+    "CRT_004f3940",
+    "__fdivp_sti_st"
+   ]
+  },
+  {
+   "gap": [
+    "0x004f4212",
+    "0x004f4220"
+   ],
+   "gap_bytes": 14,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "sites": 1,
+   "classes": {
+    "RAW": 1
+   },
+   "targets": [
+    "CRT_004f416b"
+   ]
+  },
+  {
+   "gap": [
+    "0x004f45ed",
+    "0x004f46a7"
+   ],
+   "gap_bytes": 186,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "sites": 4,
+   "classes": {
+    "CODE-PSEUDO": 4
+   },
+   "targets": [
+    "utils_malloc",
+    "utils_fill_data",
+    "utils_free"
+   ]
+  },
+  {
+   "gap": [
+    "0x004f4751",
+    "0x004f4825"
+   ],
+   "gap_bytes": 212,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "sites": 9,
+   "classes": {
+    "CODE-PSEUDO": 9
+   },
+   "targets": [
+    "__NTThreadInit",
+    "__InitMultipleThread",
+    "GetCurrentThread",
+    "GetCurrentThreadId",
+    "itoa_",
+    "CreateEventA",
+    "CreateThread",
+    "WaitForSingleObject",
+    "CloseHandle"
+   ]
+  }
+ ],
+ "results": [
+  {
+   "site": "0x0041122d",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x0041122d",
+    "0x00411232"
+   ],
+   "gap_bytes": 5,
+   "span_owner": "llm_ui_bldg_progress_status_text_select",
+   "span_owner_entry": "0x0041111e",
+   "self_span": true,
+   "kind": "jmp",
+   "class": "CODE-PSEUDO",
+   "note": "11 back-off stream(s) land on the site; fall-through decodes",
+   "target": "0x004113f3",
+   "target_function": "llm_ui_bldg_progress_status_text_select",
+   "target_crt": false,
+   "target_entry": "0x0041111e",
+   "at_entry": false,
+   "site_label": null,
+   "ghidra_ref": false,
+   "context": "00837ddc790f86c9000000e927010000e9c1010000837ddc740f840c010000e9b201000083",
+   "context_start": "0x0041121d"
+  },
+  {
+   "site": "0x0042c687",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x0042c687",
+    "0x0042c68c"
+   ],
+   "gap_bytes": 5,
+   "span_owner": "llm_tact_unit_update_anim",
+   "span_owner_entry": "0x0042c547",
+   "self_span": true,
+   "kind": "jmp",
+   "class": "CODE-PSEUDO",
+   "note": "18 back-off stream(s) land on the site; fall-through decodes",
+   "target": "0x0042d0c5",
+   "target_function": "llm_tact_unit_update_anim",
+   "target_crt": false,
+   "target_entry": "0x0042c547",
+   "at_entry": false,
+   "site_label": null,
+   "ghidra_ref": false,
+   "context": "e909080000807dd000760ae9be030000e9390a0000837de8010f85380300006955d8f40500",
+   "context_start": "0x0042c677"
+  },
+  {
+   "site": "0x0042f65e",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x0042f65e",
+    "0x0042f663"
+   ],
+   "gap_bytes": 5,
+   "span_owner": "llm_tact_unit_weapons_tick",
+   "span_owner_entry": "0x0042f338",
+   "self_span": true,
+   "kind": "jmp",
+   "class": "CODE-PSEUDO",
+   "note": "18 back-off stream(s) land on the site; fall-through decodes",
+   "target": "0x0042f8b8",
+   "target_function": "llm_tact_unit_weapons_tick",
+   "target_crt": false,
+   "target_entry": "0x0042f338",
+   "at_entry": false,
+   "site_label": null,
+   "ghidra_ref": false,
+   "context": "66837dd40b0f8447020000e95a020000e95502000066837dd404722766837dd4040f866101",
+   "context_start": "0x0042f64e"
+  },
+  {
+   "site": "0x0042f68c",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x0042f68c",
+    "0x0042f691"
+   ],
+   "gap_bytes": 5,
+   "span_owner": "llm_tact_unit_weapons_tick",
+   "span_owner_entry": "0x0042f338",
+   "self_span": true,
+   "kind": "jmp",
+   "class": "CODE-PSEUDO",
+   "note": "22 back-off stream(s) land on the site; fall-through decodes",
+   "target": "0x0042f8b8",
+   "target_function": "llm_tact_unit_weapons_tick",
+   "target_crt": false,
+   "target_entry": "0x0042f338",
+   "at_entry": false,
+   "site_label": null,
+   "ghidra_ref": false,
+   "context": "8301000066837dd408746ae92c020000e92702000066837dd400761566837dd4010f84bd00",
+   "context_start": "0x0042f67c"
+  },
+  {
+   "site": "0x0042f6a8",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x0042f6a8",
+    "0x0042f6ad"
+   ],
+   "gap_bytes": 5,
+   "span_owner": "llm_tact_unit_weapons_tick",
+   "span_owner_entry": "0x0042f338",
+   "self_span": true,
+   "kind": "jmp",
+   "class": "CODE-PSEUDO",
+   "note": "22 back-off stream(s) land on the site; fall-through decodes",
+   "target": "0x0042f8b8",
+   "target_function": "llm_tact_unit_weapons_tick",
+   "target_crt": false,
+   "target_entry": "0x0042f338",
+   "at_entry": false,
+   "site_label": null,
+   "ghidra_ref": false,
+   "context": "66837dd4010f84bd000000e910020000e90b0200006945e0f405000080b8d160820000751d",
+   "context_start": "0x0042f698"
+  },
+  {
+   "site": "0x00441f58",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x00441f58",
+    "0x00441f5d"
+   ],
+   "gap_bytes": 5,
+   "span_owner": "llm_strat_input_update",
+   "span_owner_entry": "0x00441b88",
+   "self_span": true,
+   "kind": "jmp",
+   "class": "CODE-PSEUDO",
+   "note": "23 back-off stream(s) land on the site; fall-through decodes",
+   "target": "0x00442746",
+   "target_function": "llm_strat_input_update",
+   "target_crt": false,
+   "target_entry": "0x00441b88",
+   "at_entry": false,
+   "site_label": null,
+   "ghidra_ref": false,
+   "context": "00807d803e0f8436020000e9ee070000e9e9070000807d80120f8276000000807d80120f86",
+   "context_start": "0x00441f48"
+  },
+  {
+   "site": "0x00442030",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x00442030",
+    "0x00442035"
+   ],
+   "gap_bytes": 5,
+   "span_owner": "llm_strat_input_update",
+   "span_owner_entry": "0x00441b88",
+   "self_span": true,
+   "kind": "jmp",
+   "class": "CODE-PSEUDO",
+   "note": "23 back-off stream(s) land on the site; fall-through decodes",
+   "target": "0x00442746",
+   "target_function": "llm_strat_input_update",
+   "target_crt": false,
+   "target_entry": "0x00441b88",
+   "at_entry": false,
+   "site_label": null,
+   "ghidra_ref": false,
+   "context": "00807d80090f86de000000e916070000e911070000e90c070000f605469de600017509f605",
+   "context_start": "0x00442020"
+  },
+  {
+   "site": "0x0044a0f5",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x0044a0f5",
+    "0x0044a0fa"
+   ],
+   "gap_bytes": 5,
+   "span_owner": "llm_strat_bldg_get_progress_percent",
+   "span_owner_entry": "0x00449ffe",
+   "self_span": true,
+   "kind": "jmp",
+   "class": "CODE-PSEUDO",
+   "note": "22 back-off stream(s) land on the site; fall-through decodes",
+   "target": "0x0044a331",
+   "target_function": "llm_strat_bldg_get_progress_percent",
+   "target_crt": false,
+   "target_entry": "0x00449ffe",
+   "at_entry": false,
+   "site_label": null,
+   "ghidra_ref": false,
+   "context": "66837de06d0f846f010000e93c020000e93702000066837de0640f852c0200000fb745f069",
+   "context_start": "0x0044a0e5"
+  },
+  {
+   "site": "0x00456827",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x00456827",
+    "0x0045682e"
+   ],
+   "gap_bytes": 7,
+   "span_owner": "cfg_final_unit_Construct",
+   "span_owner_entry": "0x004564c2",
+   "self_span": true,
+   "kind": "jmp",
+   "class": "CODE-PSEUDO",
+   "note": "21 back-off stream(s) land on the site; fall-through decodes",
+   "target": "0x00456894",
+   "target_function": "cfg_final_unit_Construct",
+   "target_crt": false,
+   "target_entry": "0x004564c2",
+   "at_entry": false,
+   "site_label": null,
+   "ghidra_ref": false,
+   "context": "7dcc12764e807dcc18765ee96d000000e968000000eb66807dcc017208807dcc0a7604eb18",
+   "context_start": "0x00456817"
+  },
+  {
+   "site": "0x00463398",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x00463398",
+    "0x004633a2"
+   ],
+   "gap_bytes": 10,
+   "span_owner": "llm_strat_storage_find_home_for_unit",
+   "span_owner_entry": "0x00463328",
+   "self_span": true,
+   "kind": "jmp",
+   "class": "CODE-PSEUDO",
+   "note": "18 back-off stream(s) land on the site; fall-through decodes",
+   "target": "0x00463406",
+   "target_function": "llm_strat_storage_find_home_for_unit",
+   "target_crt": false,
+   "target_entry": "0x00463328",
+   "at_entry": false,
+   "site_label": null,
+   "ghidra_ref": false,
+   "context": "4d837dd4180f8667000000e96e000000e969000000e964000000837dd4017208837dd40a76",
+   "context_start": "0x00463388"
+  },
+  {
+   "site": "0x0046339d",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x00463398",
+    "0x004633a2"
+   ],
+   "gap_bytes": 10,
+   "span_owner": "llm_strat_storage_find_home_for_unit",
+   "span_owner_entry": "0x00463328",
+   "self_span": true,
+   "kind": "jmp",
+   "class": "CODE-PSEUDO",
+   "note": "15 back-off stream(s) land on the site; fall-through decodes",
+   "target": "0x00463406",
+   "target_function": "llm_strat_storage_find_home_for_unit",
+   "target_crt": false,
+   "target_entry": "0x00463328",
+   "at_entry": false,
+   "site_label": null,
+   "ghidra_ref": false,
+   "context": "0f8667000000e96e000000e969000000e964000000837dd4017208837dd40a763aeb02eb54",
+   "context_start": "0x0046338d"
+  },
+  {
+   "site": "0x00463f3d",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x00463f3d",
+    "0x00463f47"
+   ],
+   "gap_bytes": 10,
+   "span_owner": "llm_unit_recruit",
+   "span_owner_entry": "0x00463ec8",
+   "self_span": true,
+   "kind": "jmp",
+   "class": "CODE-PSEUDO",
+   "note": "22 back-off stream(s) land on the site; fall-through decodes",
+   "target": "0x00464016",
+   "target_function": "llm_unit_recruit",
+   "target_crt": false,
+   "target_entry": "0x00463ec8",
+   "at_entry": false,
+   "site_label": null,
+   "ghidra_ref": false,
+   "context": "00837dd8180f86de000000e9d9000000e9d4000000e9cf000000837dd801720c837dd80a0f",
+   "context_start": "0x00463f2d"
+  },
+  {
+   "site": "0x00463f42",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x00463f3d",
+    "0x00463f47"
+   ],
+   "gap_bytes": 10,
+   "span_owner": "llm_unit_recruit",
+   "span_owner_entry": "0x00463ec8",
+   "self_span": true,
+   "kind": "jmp",
+   "class": "CODE-PSEUDO",
+   "note": "22 back-off stream(s) land on the site; fall-through decodes",
+   "target": "0x00464016",
+   "target_function": "llm_unit_recruit",
+   "target_crt": false,
+   "target_entry": "0x00463ec8",
+   "at_entry": false,
+   "site_label": null,
+   "ghidra_ref": false,
+   "context": "0f86de000000e9d9000000e9d4000000e9cf000000837dd801720c837dd80a0f8688000000",
+   "context_start": "0x00463f32"
+  },
+  {
+   "site": "0x0047486f",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x0047486f",
+    "0x00474874"
+   ],
+   "gap_bytes": 5,
+   "span_owner": "llm_strat_bldg_register_online",
+   "span_owner_entry": "0x004747d6",
+   "self_span": true,
+   "kind": "jmp",
+   "class": "CODE-PSEUDO",
+   "note": "22 back-off stream(s) land on the site; fall-through decodes",
+   "target": "0x004749cd",
+   "target_function": "llm_strat_bldg_register_online",
+   "target_crt": false,
+   "target_entry": "0x004747d6",
+   "at_entry": false,
+   "site_label": null,
+   "ghidra_ref": false,
+   "context": "00807de41c0f8688000000e9eb000000e959010000807de40a722e807de40a0f8688000000",
+   "context_start": "0x0047485f"
+  },
+  {
+   "site": "0x0047d8c2",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x0047d8c2",
+    "0x0047d8c7"
+   ],
+   "gap_bytes": 5,
+   "span_owner": "llm_strat_unit_update_rotation",
+   "span_owner_entry": "0x0047d741",
+   "self_span": true,
+   "kind": "jmp",
+   "class": "CODE-PSEUDO",
+   "note": "16 back-off stream(s) land on the site; fall-through decodes",
+   "target": "0x0047dc2b",
+   "target_function": "llm_strat_unit_update_rotation",
+   "target_crt": false,
+   "target_entry": "0x0047d741",
+   "at_entry": false,
+   "site_label": null,
+   "ghidra_ref": false,
+   "context": "66837dc8370f84ec020000e969030000e96403000066837dc81c0f861503000066837dc81f",
+   "context_start": "0x0047d8b2"
+  },
+  {
+   "site": "0x0047d8e2",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x0047d8e2",
+    "0x0047d8e7"
+   ],
+   "gap_bytes": 5,
+   "span_owner": "llm_strat_unit_update_rotation",
+   "span_owner_entry": "0x0047d741",
+   "self_span": true,
+   "kind": "jmp",
+   "class": "CODE-PSEUDO",
+   "note": "17 back-off stream(s) land on the site; fall-through decodes",
+   "target": "0x0047dc2b",
+   "target_function": "llm_strat_unit_update_rotation",
+   "target_crt": false,
+   "target_entry": "0x0047d741",
+   "at_entry": false,
+   "site_label": null,
+   "ghidra_ref": false,
+   "context": "66837dc81f0f8449030000e949030000e94403000066837dc802722e66837dc8030f862d03",
+   "context_start": "0x0047d8d2"
+  },
+  {
+   "site": "0x00487cd0",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x00487cd0",
+    "0x00487cd7"
+   ],
+   "gap_bytes": 7,
+   "span_owner": "llm_strat_unit_teardown",
+   "span_owner_entry": "0x00487ba5",
+   "self_span": true,
+   "kind": "jmp",
+   "class": "CODE-PSEUDO",
+   "note": "22 back-off stream(s) land on the site; fall-through decodes",
+   "target": "0x00487d42",
+   "target_function": "llm_strat_unit_teardown",
+   "target_crt": false,
+   "target_entry": "0x00487ba5",
+   "at_entry": false,
+   "site_label": null,
+   "ghidra_ref": false,
+   "context": "7ddc107629837ddc127632e972000000e96d000000eb6b837ddc01732feb630fb745e8c1e0",
+   "context_start": "0x00487cc0"
+  },
+  {
+   "site": "0x004928ea",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004928ea",
+    "0x004928f4"
+   ],
+   "gap_bytes": 10,
+   "span_owner": "llm_strat_prod_try_start_unit",
+   "span_owner_entry": "0x00492843",
+   "self_span": true,
+   "kind": "jmp",
+   "class": "CODE-PSEUDO",
+   "note": "22 back-off stream(s) land on the site; fall-through decodes",
+   "target": "0x004929c3",
+   "target_function": "llm_strat_prod_try_start_unit",
+   "target_crt": false,
+   "target_entry": "0x00492843",
+   "at_entry": false,
+   "site_label": null,
+   "ghidra_ref": false,
+   "context": "00837dd0180f86de000000e9d9000000e9d4000000e9cf000000837dd001720c837dd00a0f",
+   "context_start": "0x004928da"
+  },
+  {
+   "site": "0x004928ef",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004928ea",
+    "0x004928f4"
+   ],
+   "gap_bytes": 10,
+   "span_owner": "llm_strat_prod_try_start_unit",
+   "span_owner_entry": "0x00492843",
+   "self_span": true,
+   "kind": "jmp",
+   "class": "CODE-PSEUDO",
+   "note": "22 back-off stream(s) land on the site; fall-through decodes",
+   "target": "0x004929c3",
+   "target_function": "llm_strat_prod_try_start_unit",
+   "target_crt": false,
+   "target_entry": "0x00492843",
+   "at_entry": false,
+   "site_label": null,
+   "ghidra_ref": false,
+   "context": "0f86de000000e9d9000000e9d4000000e9cf000000837dd001720c837dd00a0f8688000000",
+   "context_start": "0x004928df"
+  },
+  {
+   "site": "0x00497b0f",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x00497b0f",
+    "0x00497b19"
+   ],
+   "gap_bytes": 10,
+   "span_owner": "llm_bldg_storage_accepts_unit_type",
+   "span_owner_entry": "0x00497ac4",
+   "self_span": true,
+   "kind": "jmp",
+   "class": "CODE-PSEUDO",
+   "note": "22 back-off stream(s) land on the site; fall-through decodes",
+   "target": "0x00497b7f",
+   "target_function": "llm_bldg_storage_accepts_unit_type",
+   "target_crt": false,
+   "target_entry": "0x00497ac4",
+   "at_entry": false,
+   "site_label": null,
+   "ghidra_ref": false,
+   "context": "dc10763966837ddc127649e970000000e96b000000e96600000066837ddc01734ae95a0000",
+   "context_start": "0x00497aff"
+  },
+  {
+   "site": "0x00497b14",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x00497b0f",
+    "0x00497b19"
+   ],
+   "gap_bytes": 10,
+   "span_owner": "llm_bldg_storage_accepts_unit_type",
+   "span_owner_entry": "0x00497ac4",
+   "self_span": true,
+   "kind": "jmp",
+   "class": "CODE-PSEUDO",
+   "note": "19 back-off stream(s) land on the site; fall-through decodes",
+   "target": "0x00497b7f",
+   "target_function": "llm_bldg_storage_accepts_unit_type",
+   "target_crt": false,
+   "target_entry": "0x00497ac4",
+   "at_entry": false,
+   "site_label": null,
+   "ghidra_ref": false,
+   "context": "837ddc127649e970000000e96b000000e96600000066837ddc01734ae95a00000066837de8",
+   "context_start": "0x00497b04"
+  },
+  {
+   "site": "0x00497c6a",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x00497c6a",
+    "0x00497c6f"
+   ],
+   "gap_bytes": 5,
+   "span_owner": "llm_strat_storage_type_accepts_unit",
+   "span_owner_entry": "0x00497b91",
+   "self_span": true,
+   "kind": "jmp",
+   "class": "CODE-PSEUDO",
+   "note": "22 back-off stream(s) land on the site; fall-through decodes",
+   "target": "0x00497ce9",
+   "target_function": "llm_strat_storage_type_accepts_unit",
+   "target_crt": false,
+   "target_entry": "0x00497b91",
+   "at_entry": false,
+   "site_label": null,
+   "ghidra_ref": false,
+   "context": "0f8676000000e984000000e97f000000e97a000000837dd4017208837dd40a7646eb05e967",
+   "context_start": "0x00497c5a"
+  },
+  {
+   "site": "0x0049b610",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x0049b610",
+    "0x0049b615"
+   ],
+   "gap_bytes": 5,
+   "span_owner": "llm_strat_advisor_tick",
+   "span_owner_entry": "0x0049b5b0",
+   "self_span": true,
+   "kind": "jmp",
+   "class": "CODE-PSEUDO",
+   "note": "13 back-off stream(s) land on the site; fall-through decodes",
+   "target": "0x0049b8b6",
+   "target_function": "llm_strat_advisor_tick",
+   "target_crt": false,
+   "target_entry": "0x0049b5b0",
+   "at_entry": false,
+   "site_label": null,
+   "ghidra_ref": false,
+   "context": "14837dd8010f848d000000e9a6020000e9a1020000c745e000000000837de00a7c0aeb458b",
+   "context_start": "0x0049b600"
+  },
+  {
+   "site": "0x004a17a7",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004a0cff",
+    "0x004a17b3"
+   ],
+   "gap_bytes": 2740,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "self_span": false,
+   "kind": "call",
+   "class": "CODE-PSEUDO",
+   "note": "11 back-off stream(s) land on the site; fall-through decodes",
+   "target": "0x004a2344",
+   "target_function": "llm_strat_minimap_draw_viewport_box",
+   "target_crt": false,
+   "target_entry": "0x004a2344",
+   "at_entry": true,
+   "site_label": null,
+   "ghidra_ref": false,
+   "context": "00fec0230500615d00490f8530fbffffe8980b0000e8510b000061c360ff0506615d008325",
+   "context_start": "0x004a1797"
+  },
+  {
+   "site": "0x004a17ac",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004a0cff",
+    "0x004a17b3"
+   ],
+   "gap_bytes": 2740,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "self_span": false,
+   "kind": "call",
+   "class": "CODE-PSEUDO",
+   "note": "8 back-off stream(s) land on the site; fall-through decodes",
+   "target": "0x004a2302",
+   "target_function": "llm_strat_minimap_mark_tiles_drawn",
+   "target_crt": false,
+   "target_entry": "0x004a2302",
+   "at_entry": true,
+   "site_label": null,
+   "ghidra_ref": false,
+   "context": "00615d00490f8530fbffffe8980b0000e8510b000061c360ff0506615d00832506615d003f",
+   "context_start": "0x004a179c"
+  },
+  {
+   "site": "0x004a18b4",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004a1894",
+    "0x004a18b9"
+   ],
+   "gap_bytes": 37,
+   "span_owner": "llm_strat_minimap_render",
+   "span_owner_entry": "0x004a17b3",
+   "self_span": true,
+   "kind": "jmp",
+   "class": "CODE-PSEUDO",
+   "note": "20 back-off stream(s) land on the site; fall-through decodes",
+   "target": "0x004a22e8",
+   "target_function": "llm_strat_minimap_render",
+   "target_crt": false,
+   "target_entry": "0x004a17b3",
+   "at_entry": false,
+   "site_label": null,
+   "ghidra_ref": false,
+   "context": "0783c702e2f85f59033d043b6000e2e7e92f0a0000b980000000515750b98000000066c707",
+   "context_start": "0x004a18a4"
+  },
+  {
+   "site": "0x004a68cc",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004a68c2",
+    "0x004a68d1"
+   ],
+   "gap_bytes": 15,
+   "span_owner": "map_fow_UpdateFoWPlus_impl",
+   "span_owner_entry": "0x004a6817",
+   "self_span": false,
+   "kind": "call",
+   "class": "CODE-PSEUDO",
+   "note": "18 back-off stream(s) land on the site; fall-through decodes",
+   "target": "0x004a6792",
+   "target_function": "map_fow_ConvertSightToArea",
+   "target_crt": false,
+   "target_entry": "0x004a6792",
+   "at_entry": true,
+   "site_label": null,
+   "ghidra_ref": false,
+   "context": "d55aebae61c360803d0054e100007477e8c1feffff8b3dd00a5d008b35c002520031dba184",
+   "context_start": "0x004a68bc"
+  },
+  {
+   "site": "0x004a6e66",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004a6ca0",
+    "0x004a763f"
+   ],
+   "gap_bytes": 2463,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "self_span": false,
+   "kind": "call",
+   "class": "CODE-PSEUDO",
+   "note": "23 back-off stream(s) land on the site; fall-through decodes",
+   "target": "0x004a763f",
+   "target_function": "llm_gfx_sprite_rle_row_skip_hittest",
+   "target_crt": false,
+   "target_entry": "0x004a763f",
+   "at_entry": true,
+   "site_label": null,
+   "ghidra_ref": false,
+   "context": "028b1df03a6000833d108a5d00007d07e8d4070000ebf0a1545082003905108a5d007c05e9",
+   "context_start": "0x004a6e56"
+  },
+  {
+   "site": "0x004a6e7a",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004a6ca0",
+    "0x004a763f"
+   ],
+   "gap_bytes": 2463,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "self_span": false,
+   "kind": "jmp",
+   "class": "CODE-PSEUDO",
+   "note": "19 back-off stream(s) land on the site; fall-through decodes",
+   "target": "0x004a76aa",
+   "target_function": "llm_gfx_sprite_rle_row_skip_hittest",
+   "target_crt": false,
+   "target_entry": "0x004a763f",
+   "at_entry": false,
+   "site_label": null,
+   "ghidra_ref": false,
+   "context": "00ebf0a1545082003905108a5d007c05e92b080000570fb606463cfe750f5f033dfc3a6000",
+   "context_start": "0x004a6e6a"
+  },
+  {
+   "site": "0x004a6e9c",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004a6ca0",
+    "0x004a763f"
+   ],
+   "gap_bytes": 2463,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "self_span": false,
+   "kind": "jmp",
+   "class": "CODE-PSEUDO",
+   "note": "21 back-off stream(s) land on the site; fall-through decodes",
+   "target": "0x004a76aa",
+   "target_function": "llm_gfx_sprite_rle_row_skip_hittest",
+   "target_crt": false,
+   "target_entry": "0x004a763f",
+   "at_entry": false,
+   "site_label": null,
+   "ghidra_ref": false,
+   "context": "3a6000ff05108a5d00ebc63cff75065fe9090800000fb6c883e11f24e03c00750601cf01cf",
+   "context_start": "0x004a6e8c"
+  },
+  {
+   "site": "0x004a702b",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004a6ca0",
+    "0x004a763f"
+   ],
+   "gap_bytes": 2463,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "self_span": false,
+   "kind": "call",
+   "class": "CODE-PSEUDO",
+   "note": "21 back-off stream(s) land on the site; fall-through decodes",
+   "target": "0x004a763f",
+   "target_function": "llm_gfx_sprite_rle_row_skip_hittest",
+   "target_crt": false,
+   "target_entry": "0x004a763f",
+   "at_entry": true,
+   "site_label": null,
+   "ghidra_ref": false,
+   "context": "028b1df03a6000833d108a5d00007d07e80f060000ebf0a1545082003905108a5d007c05e9",
+   "context_start": "0x004a701b"
+  },
+  {
+   "site": "0x004a703f",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004a6ca0",
+    "0x004a763f"
+   ],
+   "gap_bytes": 2463,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "self_span": false,
+   "kind": "jmp",
+   "class": "CODE-PSEUDO",
+   "note": "19 back-off stream(s) land on the site; fall-through decodes",
+   "target": "0x004a76aa",
+   "target_function": "llm_gfx_sprite_rle_row_skip_hittest",
+   "target_crt": false,
+   "target_entry": "0x004a763f",
+   "at_entry": false,
+   "site_label": null,
+   "ghidra_ref": false,
+   "context": "00ebf0a1545082003905108a5d007c05e96606000057a1148a5d00a3188a5d000fb606463c",
+   "context_start": "0x004a702f"
+  },
+  {
+   "site": "0x004a706b",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004a6ca0",
+    "0x004a763f"
+   ],
+   "gap_bytes": 2463,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "self_span": false,
+   "kind": "jmp",
+   "class": "CODE-PSEUDO",
+   "note": "24 back-off stream(s) land on the site; fall-through decodes",
+   "target": "0x004a76aa",
+   "target_function": "llm_gfx_sprite_rle_row_skip_hittest",
+   "target_crt": false,
+   "target_entry": "0x004a763f",
+   "at_entry": false,
+   "site_label": null,
+   "ghidra_ref": false,
+   "context": "3a6000ff05108a5d00ebbc3cff75065fe93a0600000fb6c883e11f24e08b15188a5d003c00",
+   "context_start": "0x004a705b"
+  },
+  {
+   "site": "0x004a72f8",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004a6ca0",
+    "0x004a763f"
+   ],
+   "gap_bytes": 2463,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "self_span": false,
+   "kind": "call",
+   "class": "CODE-PSEUDO",
+   "note": "21 back-off stream(s) land on the site; fall-through decodes",
+   "target": "0x004a763f",
+   "target_function": "llm_gfx_sprite_rle_row_skip_hittest",
+   "target_crt": false,
+   "target_entry": "0x004a763f",
+   "at_entry": true,
+   "site_label": null,
+   "ghidra_ref": false,
+   "context": "028b1df03a6000833d108a5d00007d07e842030000ebf0a1545082003905108a5d007c05e9",
+   "context_start": "0x004a72e8"
+  },
+  {
+   "site": "0x004a730c",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004a6ca0",
+    "0x004a763f"
+   ],
+   "gap_bytes": 2463,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "self_span": false,
+   "kind": "jmp",
+   "class": "CODE-PSEUDO",
+   "note": "17 back-off stream(s) land on the site; fall-through decodes",
+   "target": "0x004a76aa",
+   "target_function": "llm_gfx_sprite_rle_row_skip_hittest",
+   "target_crt": false,
+   "target_entry": "0x004a763f",
+   "at_entry": false,
+   "site_label": null,
+   "ghidra_ref": false,
+   "context": "00ebf0a1545082003905108a5d007c05e99903000057a1148a5d00a3188a5d000fb606463c",
+   "context_start": "0x004a72fc"
+  },
+  {
+   "site": "0x004a7338",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004a6ca0",
+    "0x004a763f"
+   ],
+   "gap_bytes": 2463,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "self_span": false,
+   "kind": "jmp",
+   "class": "CODE-PSEUDO",
+   "note": "24 back-off stream(s) land on the site; fall-through decodes",
+   "target": "0x004a76aa",
+   "target_function": "llm_gfx_sprite_rle_row_skip_hittest",
+   "target_crt": false,
+   "target_entry": "0x004a763f",
+   "at_entry": false,
+   "site_label": null,
+   "ghidra_ref": false,
+   "context": "3a6000ff05108a5d00ebbc3cff75065fe96d0300000fb6c883e11f24e08b15188a5d00010d",
+   "context_start": "0x004a7328"
+  },
+  {
+   "site": "0x004a7365",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004a6ca0",
+    "0x004a763f"
+   ],
+   "gap_bytes": 2463,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "self_span": false,
+   "kind": "call",
+   "class": "CODE-PSEUDO",
+   "note": "19 back-off stream(s) land on the site; fall-through decodes",
+   "target": "0x004a763f",
+   "target_function": "llm_gfx_sprite_rle_row_skip_hittest",
+   "target_crt": false,
+   "target_entry": "0x004a763f",
+   "at_entry": true,
+   "site_label": null,
+   "ghidra_ref": false,
+   "context": "01cf01cf01ca3b155850820072b94e5fe8d5020000eb833c20755801ca3b15585082007230",
+   "context_start": "0x004a7355"
+  },
+  {
+   "site": "0x004a73a0",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004a6ca0",
+    "0x004a763f"
+   ],
+   "gap_bytes": 2463,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "self_span": false,
+   "kind": "call",
+   "class": "CODE-PSEUDO",
+   "note": "21 back-off stream(s) land on the site; fall-through decodes",
+   "target": "0x004a763f",
+   "target_function": "llm_gfx_sprite_rle_row_skip_hittest",
+   "target_crt": false,
+   "target_entry": "0x004a763f",
+   "at_entry": true,
+   "site_label": null,
+   "ghidra_ref": false,
+   "context": "66890783c7024975ef03351c8a5d005fe89a020000e945ffffff0fb60646668b0443230570",
+   "context_start": "0x004a7390"
+  },
+  {
+   "site": "0x004a7426",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004a6ca0",
+    "0x004a763f"
+   ],
+   "gap_bytes": 2463,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "self_span": false,
+   "kind": "call",
+   "class": "CODE-PSEUDO",
+   "note": "21 back-off stream(s) land on the site; fall-through decodes",
+   "target": "0x004a763f",
+   "target_function": "llm_gfx_sprite_rle_row_skip_hittest",
+   "target_crt": false,
+   "target_entry": "0x004a763f",
+   "at_entry": true,
+   "site_label": null,
+   "ghidra_ref": false,
+   "context": "4975cf03351c8a5d0003351c8a5d005fe814020000e9bffeffff0fb647018a6601668b5445",
+   "context_start": "0x004a7416"
+  },
+  {
+   "site": "0x004a74e8",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004a6ca0",
+    "0x004a763f"
+   ],
+   "gap_bytes": 2463,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "self_span": false,
+   "kind": "call",
+   "class": "CODE-PSEUDO",
+   "note": "21 back-off stream(s) land on the site; fall-through decodes",
+   "target": "0x004a763f",
+   "target_function": "llm_gfx_sprite_rle_row_skip_hittest",
+   "target_crt": false,
+   "target_entry": "0x004a763f",
+   "at_entry": true,
+   "site_label": null,
+   "ghidra_ref": false,
+   "context": "4975ab03351c8a5d0003351c8a5d005fe852010000e9fdfdffff0fb647018a6601668b5445",
+   "context_start": "0x004a74d8"
+  },
+  {
+   "site": "0x004a759a",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004a6ca0",
+    "0x004a763f"
+   ],
+   "gap_bytes": 2463,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "self_span": false,
+   "kind": "call",
+   "class": "CODE-PSEUDO",
+   "note": "21 back-off stream(s) land on the site; fall-through decodes",
+   "target": "0x004a763f",
+   "target_function": "llm_gfx_sprite_rle_row_skip_hittest",
+   "target_crt": false,
+   "target_entry": "0x004a763f",
+   "at_entry": true,
+   "site_label": null,
+   "ghidra_ref": false,
+   "context": "89174683c7024975d903351c8a5d005fe8a0000000e94bfdffff0fb647018a26668b544500",
+   "context_start": "0x004a758a"
+  },
+  {
+   "site": "0x004a7601",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004a6ca0",
+    "0x004a763f"
+   ],
+   "gap_bytes": 2463,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "self_span": false,
+   "kind": "call",
+   "class": "CODE-PSEUDO",
+   "note": "24 back-off stream(s) land on the site; fall-through decodes",
+   "target": "0x004a763f",
+   "target_function": "llm_gfx_sprite_rle_row_skip_hittest",
+   "target_crt": false,
+   "target_entry": "0x004a763f",
+   "at_entry": true,
+   "site_label": null,
+   "ghidra_ref": false,
+   "context": "70968700d1e866890783c7024975ec5fe839000000e9e4fcffff668b07230570968700d1e8",
+   "context_start": "0x004a75f1"
+  },
+  {
+   "site": "0x004a9776",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004a9776",
+    "0x004a977b"
+   ],
+   "gap_bytes": 5,
+   "span_owner": "cfg_CountObjects",
+   "span_owner_entry": "0x004a96dc",
+   "self_span": true,
+   "kind": "jmp",
+   "class": "CODE-PSEUDO",
+   "note": "18 back-off stream(s) land on the site; fall-through decodes",
+   "target": "0x004a988e",
+   "target_function": "cfg_CountObjects",
+   "target_crt": false,
+   "target_entry": "0x004a96dc",
+   "at_entry": false,
+   "site_label": null,
+   "ghidra_ref": false,
+   "context": "7ddc007610837ddc09740fe918010000e913010000e90e010000833d243b6000000f85bf00",
+   "context_start": "0x004a9766"
+  },
+  {
+   "site": "0x004b7cbe",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004b7cbe",
+    "0x004b7cc3"
+   ],
+   "gap_bytes": 5,
+   "span_owner": "llm_ui_menu_state_tick",
+   "span_owner_entry": "0x004b7c3b",
+   "self_span": true,
+   "kind": "jmp",
+   "class": "CODE-PSEUDO",
+   "note": "23 back-off stream(s) land on the site; fall-through decodes",
+   "target": "0x004b7e84",
+   "target_function": "llm_ui_menu_state_tick",
+   "target_crt": false,
+   "target_entry": "0x004b7c3b",
+   "at_entry": false,
+   "site_label": null,
+   "ghidra_ref": false,
+   "context": "037436e9ce010000807de0007607eb18e9c1010000e800e8ffff85c07505e8d1efffffe9ae",
+   "context_start": "0x004b7cae"
+  },
+  {
+   "site": "0x004c985e",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004c985e",
+    "0x004c9863"
+   ],
+   "gap_bytes": 5,
+   "span_owner": "llm_ui_bldg_info_panel_populate_stat_line",
+   "span_owner_entry": "0x004c97e4",
+   "self_span": true,
+   "kind": "jmp",
+   "class": "CODE-PSEUDO",
+   "note": "22 back-off stream(s) land on the site; fall-through decodes",
+   "target": "0x004c9b86",
+   "target_function": "llm_ui_bldg_info_panel_populate_stat_line",
+   "target_crt": false,
+   "target_entry": "0x004c97e4",
+   "at_entry": false,
+   "site_label": null,
+   "ghidra_ref": false,
+   "context": "00807dd8240f84f6020000e928030000e923030000807dd81e0f8602030000e914030000e9",
+   "context_start": "0x004c984e"
+  },
+  {
+   "site": "0x004c9872",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004c9872",
+    "0x004c9877"
+   ],
+   "gap_bytes": 5,
+   "span_owner": "llm_ui_bldg_info_panel_populate_stat_line",
+   "span_owner_entry": "0x004c97e4",
+   "self_span": true,
+   "kind": "jmp",
+   "class": "CODE-PSEUDO",
+   "note": "22 back-off stream(s) land on the site; fall-through decodes",
+   "target": "0x004c9b86",
+   "target_function": "llm_ui_bldg_info_panel_populate_stat_line",
+   "target_crt": false,
+   "target_entry": "0x004c97e4",
+   "at_entry": false,
+   "site_label": null,
+   "ghidra_ref": false,
+   "context": "00807dd81e0f8602030000e914030000e90f030000807dd8167219807dd8160f861d020000",
+   "context_start": "0x004c9862"
+  },
+  {
+   "site": "0x004c98e3",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004c98e3",
+    "0x004c98e8"
+   ],
+   "gap_bytes": 5,
+   "span_owner": "llm_ui_bldg_info_panel_populate_stat_line",
+   "span_owner_entry": "0x004c97e4",
+   "self_span": true,
+   "kind": "jmp",
+   "class": "CODE-PSEUDO",
+   "note": "13 back-off stream(s) land on the site; fall-through decodes",
+   "target": "0x004c9b86",
+   "target_function": "llm_ui_bldg_info_panel_populate_stat_line",
+   "target_crt": false,
+   "target_entry": "0x004c97e4",
+   "at_entry": false,
+   "site_label": null,
+   "ghidra_ref": false,
+   "context": "00807dd80a0f8691020000e9a3020000e99e020000807dd8027215807dd8020f86ac010000",
+   "context_start": "0x004c98d3"
+  },
+  {
+   "site": "0x004ccae7",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004ccae0",
+    "0x004ccbee"
+   ],
+   "gap_bytes": 270,
+   "span_owner": "llm_ui_acm_result_dispatch",
+   "span_owner_entry": "0x004cc9f9",
+   "self_span": true,
+   "kind": "jmp",
+   "class": "CODE-PSEUDO",
+   "note": "20 back-off stream(s) land on the site; fall-through decodes",
+   "target": "0x004ccbf5",
+   "target_function": "llm_ui_acm_result_dispatch",
+   "target_crt": false,
+   "target_entry": "0x004cc9f9",
+   "at_entry": false,
+   "site_label": null,
+   "ghidra_ref": false,
+   "context": "af2eff248d4bca4c00c745e89c355000e909010000c745e8ab355000e9fd000000c745e8c0",
+   "context_start": "0x004ccad7"
+  },
+  {
+   "site": "0x004ccaf3",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004ccae0",
+    "0x004ccbee"
+   ],
+   "gap_bytes": 270,
+   "span_owner": "llm_ui_acm_result_dispatch",
+   "span_owner_entry": "0x004cc9f9",
+   "self_span": true,
+   "kind": "jmp",
+   "class": "CODE-PSEUDO",
+   "note": "20 back-off stream(s) land on the site; fall-through decodes",
+   "target": "0x004ccbf5",
+   "target_function": "llm_ui_acm_result_dispatch",
+   "target_crt": false,
+   "target_entry": "0x004cc9f9",
+   "at_entry": false,
+   "site_label": null,
+   "ghidra_ref": false,
+   "context": "9c355000e909010000c745e8ab355000e9fd000000c745e8c0355000e9f1000000c745e8d4",
+   "context_start": "0x004ccae3"
+  },
+  {
+   "site": "0x004ccaff",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004ccae0",
+    "0x004ccbee"
+   ],
+   "gap_bytes": 270,
+   "span_owner": "llm_ui_acm_result_dispatch",
+   "span_owner_entry": "0x004cc9f9",
+   "self_span": true,
+   "kind": "jmp",
+   "class": "CODE-PSEUDO",
+   "note": "20 back-off stream(s) land on the site; fall-through decodes",
+   "target": "0x004ccbf5",
+   "target_function": "llm_ui_acm_result_dispatch",
+   "target_crt": false,
+   "target_entry": "0x004cc9f9",
+   "at_entry": false,
+   "site_label": null,
+   "ghidra_ref": false,
+   "context": "ab355000e9fd000000c745e8c0355000e9f1000000c745e8d4355000e9e5000000c745e8e7",
+   "context_start": "0x004ccaef"
+  },
+  {
+   "site": "0x004ccb0b",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004ccae0",
+    "0x004ccbee"
+   ],
+   "gap_bytes": 270,
+   "span_owner": "llm_ui_acm_result_dispatch",
+   "span_owner_entry": "0x004cc9f9",
+   "self_span": true,
+   "kind": "jmp",
+   "class": "CODE-PSEUDO",
+   "note": "20 back-off stream(s) land on the site; fall-through decodes",
+   "target": "0x004ccbf5",
+   "target_function": "llm_ui_acm_result_dispatch",
+   "target_crt": false,
+   "target_entry": "0x004cc9f9",
+   "at_entry": false,
+   "site_label": null,
+   "ghidra_ref": false,
+   "context": "c0355000e9f1000000c745e8d4355000e9e5000000c745e8e7355000e9d9000000c745e8fc",
+   "context_start": "0x004ccafb"
+  },
+  {
+   "site": "0x004ccb17",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004ccae0",
+    "0x004ccbee"
+   ],
+   "gap_bytes": 270,
+   "span_owner": "llm_ui_acm_result_dispatch",
+   "span_owner_entry": "0x004cc9f9",
+   "self_span": true,
+   "kind": "jmp",
+   "class": "CODE-PSEUDO",
+   "note": "20 back-off stream(s) land on the site; fall-through decodes",
+   "target": "0x004ccbf5",
+   "target_function": "llm_ui_acm_result_dispatch",
+   "target_crt": false,
+   "target_entry": "0x004cc9f9",
+   "at_entry": false,
+   "site_label": null,
+   "ghidra_ref": false,
+   "context": "d4355000e9e5000000c745e8e7355000e9d9000000c745e8fc355000e9cd000000c745e80e",
+   "context_start": "0x004ccb07"
+  },
+  {
+   "site": "0x004ccb23",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004ccae0",
+    "0x004ccbee"
+   ],
+   "gap_bytes": 270,
+   "span_owner": "llm_ui_acm_result_dispatch",
+   "span_owner_entry": "0x004cc9f9",
+   "self_span": true,
+   "kind": "jmp",
+   "class": "CODE-PSEUDO",
+   "note": "20 back-off stream(s) land on the site; fall-through decodes",
+   "target": "0x004ccbf5",
+   "target_function": "llm_ui_acm_result_dispatch",
+   "target_crt": false,
+   "target_entry": "0x004cc9f9",
+   "at_entry": false,
+   "site_label": null,
+   "ghidra_ref": false,
+   "context": "e7355000e9d9000000c745e8fc355000e9cd000000c745e80e365000e9c1000000c745e81d",
+   "context_start": "0x004ccb13"
+  },
+  {
+   "site": "0x004ccb2f",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004ccae0",
+    "0x004ccbee"
+   ],
+   "gap_bytes": 270,
+   "span_owner": "llm_ui_acm_result_dispatch",
+   "span_owner_entry": "0x004cc9f9",
+   "self_span": true,
+   "kind": "jmp",
+   "class": "CODE-PSEUDO",
+   "note": "20 back-off stream(s) land on the site; fall-through decodes",
+   "target": "0x004ccbf5",
+   "target_function": "llm_ui_acm_result_dispatch",
+   "target_crt": false,
+   "target_entry": "0x004cc9f9",
+   "at_entry": false,
+   "site_label": null,
+   "ghidra_ref": false,
+   "context": "fc355000e9cd000000c745e80e365000e9c1000000c745e81d365000e9b5000000c745e833",
+   "context_start": "0x004ccb1f"
+  },
+  {
+   "site": "0x004ccb3b",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004ccae0",
+    "0x004ccbee"
+   ],
+   "gap_bytes": 270,
+   "span_owner": "llm_ui_acm_result_dispatch",
+   "span_owner_entry": "0x004cc9f9",
+   "self_span": true,
+   "kind": "jmp",
+   "class": "CODE-PSEUDO",
+   "note": "20 back-off stream(s) land on the site; fall-through decodes",
+   "target": "0x004ccbf5",
+   "target_function": "llm_ui_acm_result_dispatch",
+   "target_crt": false,
+   "target_entry": "0x004cc9f9",
+   "at_entry": false,
+   "site_label": null,
+   "ghidra_ref": false,
+   "context": "0e365000e9c1000000c745e81d365000e9b5000000c745e833365000e9a9000000c745e846",
+   "context_start": "0x004ccb2b"
+  },
+  {
+   "site": "0x004ccb47",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004ccae0",
+    "0x004ccbee"
+   ],
+   "gap_bytes": 270,
+   "span_owner": "llm_ui_acm_result_dispatch",
+   "span_owner_entry": "0x004cc9f9",
+   "self_span": true,
+   "kind": "jmp",
+   "class": "CODE-PSEUDO",
+   "note": "20 back-off stream(s) land on the site; fall-through decodes",
+   "target": "0x004ccbf5",
+   "target_function": "llm_ui_acm_result_dispatch",
+   "target_crt": false,
+   "target_entry": "0x004cc9f9",
+   "at_entry": false,
+   "site_label": null,
+   "ghidra_ref": false,
+   "context": "1d365000e9b5000000c745e833365000e9a9000000c745e846365000e99d000000c745e859",
+   "context_start": "0x004ccb37"
+  },
+  {
+   "site": "0x004ccb53",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004ccae0",
+    "0x004ccbee"
+   ],
+   "gap_bytes": 270,
+   "span_owner": "llm_ui_acm_result_dispatch",
+   "span_owner_entry": "0x004cc9f9",
+   "self_span": true,
+   "kind": "jmp",
+   "class": "CODE-PSEUDO",
+   "note": "20 back-off stream(s) land on the site; fall-through decodes",
+   "target": "0x004ccbf5",
+   "target_function": "llm_ui_acm_result_dispatch",
+   "target_crt": false,
+   "target_entry": "0x004cc9f9",
+   "at_entry": false,
+   "site_label": null,
+   "ghidra_ref": false,
+   "context": "33365000e9a9000000c745e846365000e99d000000c745e859365000e991000000c745e86d",
+   "context_start": "0x004ccb43"
+  },
+  {
+   "site": "0x004ccb5f",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004ccae0",
+    "0x004ccbee"
+   ],
+   "gap_bytes": 270,
+   "span_owner": "llm_ui_acm_result_dispatch",
+   "span_owner_entry": "0x004cc9f9",
+   "self_span": true,
+   "kind": "jmp",
+   "class": "CODE-PSEUDO",
+   "note": "20 back-off stream(s) land on the site; fall-through decodes",
+   "target": "0x004ccbf5",
+   "target_function": "llm_ui_acm_result_dispatch",
+   "target_crt": false,
+   "target_entry": "0x004cc9f9",
+   "at_entry": false,
+   "site_label": null,
+   "ghidra_ref": false,
+   "context": "46365000e99d000000c745e859365000e991000000c745e86d365000e985000000c745e881",
+   "context_start": "0x004ccb4f"
+  },
+  {
+   "site": "0x004ccb6b",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004ccae0",
+    "0x004ccbee"
+   ],
+   "gap_bytes": 270,
+   "span_owner": "llm_ui_acm_result_dispatch",
+   "span_owner_entry": "0x004cc9f9",
+   "self_span": true,
+   "kind": "jmp",
+   "class": "CODE-PSEUDO",
+   "note": "20 back-off stream(s) land on the site; fall-through decodes",
+   "target": "0x004ccbf5",
+   "target_function": "llm_ui_acm_result_dispatch",
+   "target_crt": false,
+   "target_entry": "0x004cc9f9",
+   "at_entry": false,
+   "site_label": null,
+   "ghidra_ref": false,
+   "context": "59365000e991000000c745e86d365000e985000000c745e881365000e979000000c745e897",
+   "context_start": "0x004ccb5b"
+  },
+  {
+   "site": "0x004ccb77",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004ccae0",
+    "0x004ccbee"
+   ],
+   "gap_bytes": 270,
+   "span_owner": "llm_ui_acm_result_dispatch",
+   "span_owner_entry": "0x004cc9f9",
+   "self_span": true,
+   "kind": "jmp",
+   "class": "CODE-PSEUDO",
+   "note": "20 back-off stream(s) land on the site; fall-through decodes",
+   "target": "0x004ccbf5",
+   "target_function": "llm_ui_acm_result_dispatch",
+   "target_crt": false,
+   "target_entry": "0x004cc9f9",
+   "at_entry": false,
+   "site_label": null,
+   "ghidra_ref": false,
+   "context": "6d365000e985000000c745e881365000e979000000c745e897365000e96d000000c745e8a6",
+   "context_start": "0x004ccb67"
+  },
+  {
+   "site": "0x004ccb83",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004ccae0",
+    "0x004ccbee"
+   ],
+   "gap_bytes": 270,
+   "span_owner": "llm_ui_acm_result_dispatch",
+   "span_owner_entry": "0x004cc9f9",
+   "self_span": true,
+   "kind": "jmp",
+   "class": "CODE-PSEUDO",
+   "note": "20 back-off stream(s) land on the site; fall-through decodes",
+   "target": "0x004ccbf5",
+   "target_function": "llm_ui_acm_result_dispatch",
+   "target_crt": false,
+   "target_entry": "0x004cc9f9",
+   "at_entry": false,
+   "site_label": null,
+   "ghidra_ref": false,
+   "context": "81365000e979000000c745e897365000e96d000000c745e8a6365000e961000000c745e8bb",
+   "context_start": "0x004ccb73"
+  },
+  {
+   "site": "0x004ccb8f",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004ccae0",
+    "0x004ccbee"
+   ],
+   "gap_bytes": 270,
+   "span_owner": "llm_ui_acm_result_dispatch",
+   "span_owner_entry": "0x004cc9f9",
+   "self_span": true,
+   "kind": "jmp",
+   "class": "CODE-PSEUDO",
+   "note": "20 back-off stream(s) land on the site; fall-through decodes",
+   "target": "0x004ccbf5",
+   "target_function": "llm_ui_acm_result_dispatch",
+   "target_crt": false,
+   "target_entry": "0x004cc9f9",
+   "at_entry": false,
+   "site_label": null,
+   "ghidra_ref": false,
+   "context": "97365000e96d000000c745e8a6365000e961000000c745e8bb365000eb58c745e8ce365000",
+   "context_start": "0x004ccb7f"
+  },
+  {
+   "site": "0x004ccc6b",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004ccc6b",
+    "0x004ccc70"
+   ],
+   "gap_bytes": 5,
+   "span_owner": "llm_ui_avi_icm_result_to_string",
+   "span_owner_entry": "0x004ccc03",
+   "self_span": true,
+   "kind": "jmp",
+   "class": "CODE-PSEUDO",
+   "note": "9 back-off stream(s) land on the site; fall-through decodes",
+   "target": "0x004ccdc8",
+   "target_function": "llm_ui_avi_icm_result_to_string",
+   "target_crt": false,
+   "target_entry": "0x004ccc03",
+   "at_entry": false,
+   "site_label": null,
+   "ghidra_ref": false,
+   "context": "00837de4040f84cc000000e95d010000e958010000e999000000837de4fd7c1e837de4fd0f",
+   "context_start": "0x004ccc5b"
+  },
+  {
+   "site": "0x004ccc94",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004ccc94",
+    "0x004ccc99"
+   ],
+   "gap_bytes": 5,
+   "span_owner": "llm_ui_avi_icm_result_to_string",
+   "span_owner_entry": "0x004ccc03",
+   "self_span": true,
+   "kind": "jmp",
+   "class": "CODE-PSEUDO",
+   "note": "12 back-off stream(s) land on the site; fall-through decodes",
+   "target": "0x004ccdc8",
+   "target_function": "llm_ui_avi_icm_result_to_string",
+   "target_crt": false,
+   "target_entry": "0x004ccc03",
+   "at_entry": false,
+   "site_label": null,
+   "ghidra_ref": false,
+   "context": "00837de4fe0f8ebb000000e9aa000000e92f010000e9c4000000837de4f67c33837de4f60f",
+   "context_start": "0x004ccc84"
+  },
+  {
+   "site": "0x004ccccd",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004ccccd",
+    "0x004cccd2"
+   ],
+   "gap_bytes": 5,
+   "span_owner": "llm_ui_avi_icm_result_to_string",
+   "span_owner_entry": "0x004ccc03",
+   "self_span": true,
+   "kind": "jmp",
+   "class": "CODE-PSEUDO",
+   "note": "13 back-off stream(s) land on the site; fall-through decodes",
+   "target": "0x004ccdc8",
+   "target_function": "llm_ui_avi_icm_result_to_string",
+   "target_crt": false,
+   "target_entry": "0x004ccc03",
+   "at_entry": false,
+   "site_label": null,
+   "ghidra_ref": false,
+   "context": "00837de4f90f8eb8000000e9aa000000e9f6000000e9bb000000817de438ffffff7c1c817d",
+   "context_start": "0x004cccbd"
+  },
+  {
+   "site": "0x004cce9d",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004cce9d",
+    "0x004ccea2"
+   ],
+   "gap_bytes": 5,
+   "span_owner": "llm_ui_avi_check_result",
+   "span_owner_entry": "0x004ccddd",
+   "self_span": true,
+   "kind": "jmp",
+   "class": "CODE-PSEUDO",
+   "note": "18 back-off stream(s) land on the site; fall-through decodes",
+   "target": "0x004ccfe1",
+   "target_function": "llm_ui_avi_check_result",
+   "target_crt": false,
+   "target_entry": "0x004ccddd",
+   "at_entry": false,
+   "site_label": null,
+   "ghidra_ref": false,
+   "context": "e4714004800f860a010000e90e010000e93f010000e9e9000000817de469400480723c817d",
+   "context_start": "0x004cce8d"
+  },
+  {
+   "site": "0x004ccee5",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004ccee5",
+    "0x004cceea"
+   ],
+   "gap_bytes": 5,
+   "span_owner": "llm_ui_avi_check_result",
+   "span_owner_entry": "0x004ccddd",
+   "self_span": true,
+   "kind": "jmp",
+   "class": "CODE-PSEUDO",
+   "note": "18 back-off stream(s) land on the site; fall-through decodes",
+   "target": "0x004ccfe1",
+   "target_function": "llm_ui_avi_check_result",
+   "target_crt": false,
+   "target_entry": "0x004ccddd",
+   "at_entry": false,
+   "site_label": null,
+   "ghidra_ref": false,
+   "context": "e46c4004800f868f000000e996000000e9f7000000eb6b817de4664004807219817de46640",
+   "context_start": "0x004cced5"
+  },
+  {
+   "site": "0x004ccf09",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004ccf09",
+    "0x004ccf0e"
+   ],
+   "gap_bytes": 5,
+   "span_owner": "llm_ui_avi_check_result",
+   "span_owner_entry": "0x004ccddd",
+   "self_span": true,
+   "kind": "jmp",
+   "class": "CODE-PSEUDO",
+   "note": "21 back-off stream(s) land on the site; fall-through decodes",
+   "target": "0x004ccfe1",
+   "target_function": "llm_ui_avi_check_result",
+   "target_crt": false,
+   "target_entry": "0x004ccddd",
+   "at_entry": false,
+   "site_label": null,
+   "ghidra_ref": false,
+   "context": "4004807629817de467400480762ceb36e9d3000000817de4654004800f85c6000000c745e8",
+   "context_start": "0x004ccef9"
+  },
+  {
+   "site": "0x004cf750",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004cf748",
+    "0x004cf7b0"
+   ],
+   "gap_bytes": 104,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "self_span": false,
+   "kind": "call",
+   "class": "CODE-PSEUDO",
+   "note": "22 back-off stream(s) land on the site; fall-through decodes",
+   "target": "0x004cf4f6",
+   "target_function": "utils_get_filemode",
+   "target_crt": true,
+   "target_entry": "0x004cf4f6",
+   "at_entry": true,
+   "site_label": null,
+   "ghidra_ref": false,
+   "context": "660031c05a595bc35156575589c789d0e8a1fdffff89c585c074508b731089f0ff1508cf66",
+   "context_start": "0x004cf740"
+  },
+  {
+   "site": "0x004cf779",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004cf748",
+    "0x004cf7b0"
+   ],
+   "gap_bytes": 104,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "self_span": false,
+   "kind": "call",
+   "class": "CODE-PSEUDO",
+   "note": "21 back-off stream(s) land on the site; fall-through decodes",
+   "target": "0x004cf6ce",
+   "target_function": "CRT_004cf6ce",
+   "target_crt": true,
+   "target_entry": "0x004cf6ce",
+   "at_entry": true,
+   "site_label": null,
+   "ghidra_ref": false,
+   "context": "d1660000740889f0ff1564d1660089d8e850ffffff89c385c0741d81600c00400000508a12",
+   "context_start": "0x004cf769"
+  },
+  {
+   "site": "0x004cf79a",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004cf748",
+    "0x004cf7b0"
+   ],
+   "gap_bytes": 104,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "self_span": false,
+   "kind": "call",
+   "class": "CODE-PSEUDO",
+   "note": "24 back-off stream(s) land on the site; fall-through decodes",
+   "target": "0x004cf5c7",
+   "target_function": "CRT_004cf5c7",
+   "target_crt": true,
+   "target_entry": "0x004cf5c7",
+   "at_entry": true,
+   "site_label": null,
+   "ghidra_ref": false,
+   "context": "00508a1281e2ff00000089eb89f831c9e828feffff89c389f0ff150ccf660089d85d5f5e59",
+   "context_start": "0x004cf78a"
+  },
+  {
+   "site": "0x004d050a",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004d0501",
+    "0x004d056c"
+   ],
+   "gap_bytes": 107,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "self_span": false,
+   "kind": "call",
+   "class": "CODE-PSEUDO",
+   "note": "22 back-off stream(s) land on the site; fall-through decodes",
+   "target": "0x004d03c4",
+   "target_function": "llm_game_clock_tick_update",
+   "target_crt": false,
+   "target_entry": "0x004d03c4",
+   "at_entry": true,
+   "site_label": null,
+   "ghidra_ref": false,
+   "context": "ec5d5a595b90c38d400053525683ec08e8b5feffffa1f854e6008b150055e60031db29d089",
+   "context_start": "0x004d04fa"
+  },
+  {
+   "site": "0x004d052e",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004d0501",
+    "0x004d056c"
+   ],
+   "gap_bytes": 107,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "self_span": false,
+   "kind": "call",
+   "class": "CODE-PSEUDO",
+   "note": "23 back-off stream(s) land on the site; fall-through decodes",
+   "target": "0x004d0596",
+   "target_function": "utils_math_trunc",
+   "target_crt": true,
+   "target_entry": "0x004d0596",
+   "at_entry": true,
+   "site_label": null,
+   "ghidra_ref": false,
+   "context": "895c2404890424df2c24dc0dd054e600e863000000df3c248b0424895c2404890424df2c24",
+   "context_start": "0x004d051e"
+  },
+  {
+   "site": "0x004d054f",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004d0501",
+    "0x004d056c"
+   ],
+   "gap_bytes": 107,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "self_span": false,
+   "kind": "call",
+   "class": "CODE-PSEUDO",
+   "note": "21 back-off stream(s) land on the site; fall-through decodes",
+   "target": "0x004d0596",
+   "target_function": "utils_math_trunc",
+   "target_crt": true,
+   "target_entry": "0x004d0596",
+   "at_entry": true,
+   "site_label": null,
+   "ghidra_ref": false,
+   "context": "24df2c24dc0dd854e6008b350055e600e842000000df3c248b142401d689350055e60083c4",
+   "context_start": "0x004d053f"
+  },
+  {
+   "site": "0x004d18a5",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004d17b6",
+    "0x004d19f0"
+   ],
+   "gap_bytes": 570,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "self_span": false,
+   "kind": "call",
+   "class": "CODE-PSEUDO",
+   "note": "22 back-off stream(s) land on the site; fall-through decodes",
+   "target": "0x0066ee79",
+   "target_function": "FUN_0066ee79",
+   "target_crt": false,
+   "target_entry": "0x0066ee79",
+   "at_entry": true,
+   "site_label": null,
+   "ghidra_ref": false,
+   "context": "8898660001c0508b0d0094fe005131d2e8cfd519008b3df493fe0083c40885ff0f8e930000",
+   "context_start": "0x004d1895"
+  },
+  {
+   "site": "0x004d1904",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004d17b6",
+    "0x004d19f0"
+   ],
+   "gap_bytes": 570,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "self_span": false,
+   "kind": "call",
+   "class": "CODE-PSEUDO",
+   "note": "22 back-off stream(s) land on the site; fall-through decodes",
+   "target": "0x0066ee79",
+   "target_function": "FUN_0066ee79",
+   "target_crt": false,
+   "target_entry": "0x0066ee79",
+   "at_entry": true,
+   "site_label": null,
+   "ghidra_ref": false,
+   "context": "c88b2d8898660055a10094fe005031d2e870d519008b1df493fe0083c40885db7e3831db8b",
+   "context_start": "0x004d18f4"
+  },
+  {
+   "site": "0x004d1982",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004d17b6",
+    "0x004d19f0"
+   ],
+   "gap_bytes": 570,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "self_span": false,
+   "kind": "call",
+   "class": "CODE-PSEUDO",
+   "note": "24 back-off stream(s) land on the site; fall-through decodes",
+   "target": "0x0066ee9f",
+   "target_function": "FUN_0066ee9f",
+   "target_crt": false,
+   "target_entry": "0x0066ee9f",
+   "at_entry": true,
+   "site_label": null,
+   "ghidra_ref": false,
+   "context": "3d88986600578b2d0094fe00558b0650e818d51900a1889866008a0ddc93fe00d3e0894608",
+   "context_start": "0x004d1972"
+  },
+  {
+   "site": "0x004d1b77",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004d1b6c",
+    "0x004d1bb4"
+   ],
+   "gap_bytes": 72,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "self_span": false,
+   "kind": "call",
+   "class": "CODE-PSEUDO",
+   "note": "22 back-off stream(s) land on the site; fall-through decodes",
+   "target": "0x004d2388",
+   "target_function": "llm_snd_backend_startup_dispatch",
+   "target_crt": false,
+   "target_entry": "0x004d2388",
+   "at_entry": true,
+   "site_label": null,
+   "ghidra_ref": false,
+   "context": "5e5a595bc3535189d131dbba01000000e80c080000595bc39053515289c28b1d90986600b8",
+   "context_start": "0x004d1b67"
+  },
+  {
+   "site": "0x004d2e61",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004d2dd6",
+    "0x004d2eac"
+   ],
+   "gap_bytes": 214,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "self_span": false,
+   "kind": "call",
+   "class": "CODE-PSEUDO",
+   "note": "21 back-off stream(s) land on the site; fall-through decodes",
+   "target": "0x004d0596",
+   "target_function": "utils_math_trunc",
+   "target_crt": true,
+   "target_entry": "0x004d0596",
+   "at_entry": true,
+   "site_label": null,
+   "ghidra_ref": false,
+   "context": "2431c089442404df2c24dc3df6475000e830d7ffffdb5c24088b4c2408518b82c090fe0050",
+   "context_start": "0x004d2e51"
+  },
+  {
+   "site": "0x004d2fb2",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004d2f64",
+    "0x004d323d"
+   ],
+   "gap_bytes": 729,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "self_span": false,
+   "kind": "call",
+   "class": "CODE-PSEUDO",
+   "note": "23 back-off stream(s) land on the site; fall-through decodes",
+   "target": "0x004d2eac",
+   "target_function": "llm_snd_dsound_negotiate_mixer_format",
+   "target_crt": false,
+   "target_entry": "0x004d2eac",
+   "at_entry": true,
+   "site_label": null,
+   "ghidra_ref": false,
+   "context": "000f84a5010000833d4c996600007505e8f5feffff8b3d4c99660085ff0f84c70100006a00",
+   "context_start": "0x004d2fa2"
+  },
+  {
+   "site": "0x004d31b1",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004d2f64",
+    "0x004d323d"
+   ],
+   "gap_bytes": 729,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "self_span": false,
+   "kind": "call",
+   "class": "CODE-PSEUDO",
+   "note": "23 back-off stream(s) land on the site; fall-through decodes",
+   "target": "0x004d2eac",
+   "target_function": "llm_snd_dsound_negotiate_mixer_format",
+   "target_crt": false,
+   "target_entry": "0x004d2eac",
+   "at_entry": true,
+   "site_label": null,
+   "ghidra_ref": false,
+   "context": "1c99660000744b833d4c996600007505e8f6fcffff8b354c99660085f6742f6a008d4c2404",
+   "context_start": "0x004d31a1"
+  },
+  {
+   "site": "0x004d5171",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004d516c",
+    "0x004d5245"
+   ],
+   "gap_bytes": 217,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "self_span": false,
+   "kind": "call",
+   "class": "CODE-PSEUDO",
+   "note": "18 back-off stream(s) land on the site; fall-through decodes",
+   "target": "0x004cf46f",
+   "target_function": "utils_assert_stack_capacity",
+   "target_crt": true,
+   "target_entry": "0x004cf46f",
+   "at_entry": true,
+   "site_label": null,
+   "ghidra_ref": false,
+   "context": "ff05505bfe00e96c2300006818000000e8f9a2ffff535152565731c9e9b20000006bd10cf6",
+   "context_start": "0x004d5161"
+  },
+  {
+   "site": "0x004d5240",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004d516c",
+    "0x004d5245"
+   ],
+   "gap_bytes": 217,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "self_span": false,
+   "kind": "jmp",
+   "class": "CODE-PSEUDO",
+   "note": "18 back-off stream(s) land on the site; fall-through decodes",
+   "target": "0x004d8b83",
+   "target_function": "llm_strat_ai_bldg_has_heli_unit",
+   "target_crt": false,
+   "target_entry": "0x004d8a9d",
+   "at_entry": false,
+   "site_label": null,
+   "ghidra_ref": false,
+   "context": "00a5a5a53b0d505bfe000f8242ffffffe93e3900005589e56840000000e81da2ffff535156",
+   "context_start": "0x004d5230"
+  },
+  {
+   "site": "0x004da19c",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004da145",
+    "0x004da1f4"
+   ],
+   "gap_bytes": 175,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "self_span": false,
+   "kind": "call",
+   "class": "CODE-PSEUDO",
+   "note": "17 back-off stream(s) land on the site; fall-through decodes",
+   "target": "0x004da014",
+   "target_function": "llm_gfx_ddraw_present",
+   "target_crt": false,
+   "target_entry": "0x004da014",
+   "at_entry": true,
+   "site_label": null,
+   "ghidra_ref": false,
+   "context": "4004107412f682cc00000001740989d0e873feffffebee5ac38d4000535183ec0485d2740e",
+   "context_start": "0x004da18c"
+  },
+  {
+   "site": "0x004da2be",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004da2a9",
+    "0x004da3f0"
+   ],
+   "gap_bytes": 327,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "self_span": false,
+   "kind": "call",
+   "class": "CODE-PSEUDO",
+   "note": "23 back-off stream(s) land on the site; fall-through decodes",
+   "target": "0x004da3f0",
+   "target_function": "llm_gfx_ddraw_dll_acquire",
+   "target_crt": false,
+   "target_entry": "0x004da3f0",
+   "at_entry": true,
+   "site_label": null,
+   "ghidra_ref": false,
+   "context": "5256575583ec6c89c38b504485d27521e82d010000833dd099660000750731c0e9d3000000",
+   "context_start": "0x004da2ae"
+  },
+  {
+   "site": "0x004da2ff",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004da2a9",
+    "0x004da3f0"
+   ],
+   "gap_bytes": 327,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "self_span": false,
+   "kind": "call",
+   "class": "CODE-PSEUDO",
+   "note": "21 back-off stream(s) land on the site; fall-through decodes",
+   "target": "0x004d903c",
+   "target_function": "FUN_004d903c",
+   "target_crt": false,
+   "target_entry": "0x004d903c",
+   "at_entry": true,
+   "site_label": null,
+   "ghidra_ref": false,
+   "context": "5bc3ba6c00000089e0bf2000000089e1e838edffff897c2448518b4344508b10ff52308b6c",
+   "context_start": "0x004da2ef"
+  },
+  {
+   "site": "0x004da3a1",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004da2a9",
+    "0x004da3f0"
+   ],
+   "gap_bytes": 327,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "self_span": false,
+   "kind": "call",
+   "class": "CODE-PSEUDO",
+   "note": "23 back-off stream(s) land on the site; fall-through decodes",
+   "target": "0x004da1f4",
+   "target_function": "llm_gfx_ddraw_read_current_mode",
+   "target_crt": false,
+   "target_entry": "0x004da1f4",
+   "at_entry": true,
+   "site_label": null,
+   "ghidra_ref": false,
+   "context": "740c31c083c46c5d5f5e5a595bc389d8e84efeffff83c46c5d5f5e5a595bc3535152833dd0",
+   "context_start": "0x004da391"
+  },
+  {
+   "site": "0x004da3d7",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004da2a9",
+    "0x004da3f0"
+   ],
+   "gap_bytes": 327,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "self_span": false,
+   "kind": "call",
+   "class": "CODE-PSEUDO",
+   "note": "22 back-off stream(s) land on the site; fall-through decodes",
+   "target": "0x004da434",
+   "target_function": "llm_gfx_ddraw_dll_release",
+   "target_crt": false,
+   "target_entry": "0x004da434",
+   "at_entry": true,
+   "site_label": null,
+   "ghidra_ref": false,
+   "context": "750631c05a595bc3538b13ff524c89c2e85800000085d2740631c05a595bc3b8010000005a",
+   "context_start": "0x004da3c7"
+  },
+  {
+   "site": "0x004da575",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004da47b",
+    "0x004da943"
+   ],
+   "gap_bytes": 1224,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "self_span": false,
+   "kind": "call",
+   "class": "CODE-PSEUDO",
+   "note": "20 back-off stream(s) land on the site; fall-through decodes",
+   "target": "0x004d903c",
+   "target_function": "FUN_004d903c",
+   "target_crt": false,
+   "target_entry": "0x004d903c",
+   "at_entry": true,
+   "site_label": null,
+   "ghidra_ref": false,
+   "context": "ecec01000089c689d7ba7c01000089e0e8c2eaffff6a008d5424048b4644528b0850ff512c",
+   "context_start": "0x004da565"
+  },
+  {
+   "site": "0x004da5cd",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004da47b",
+    "0x004da943"
+   ],
+   "gap_bytes": 1224,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "self_span": false,
+   "kind": "call",
+   "class": "CODE-PSEUDO",
+   "note": "23 back-off stream(s) land on the site; fall-through decodes",
+   "target": "0x004d903c",
+   "target_function": "FUN_004d903c",
+   "target_crt": false,
+   "target_entry": "0x004d903c",
+   "at_entry": true,
+   "site_label": null,
+   "ghidra_ref": false,
+   "context": "84247c010000b907100000bf80400000e86aeaffff898c248001000089bc24e40100008b46",
+   "context_start": "0x004da5bd"
+  },
+  {
+   "site": "0x004da6cf",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004da47b",
+    "0x004da943"
+   ],
+   "gap_bytes": 1224,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "self_span": false,
+   "kind": "call",
+   "class": "CODE-PSEUDO",
+   "note": "21 back-off stream(s) land on the site; fall-through decodes",
+   "target": "0x004d903c",
+   "target_function": "FUN_004d903c",
+   "target_crt": false,
+   "target_entry": "0x004d903c",
+   "at_entry": true,
+   "site_label": null,
+   "ghidra_ref": false,
+   "context": "6c0000008d84247c010000bb40080000e868e9ffffba07100000899c24e401000089942480",
+   "context_start": "0x004da6bf"
+  },
+  {
+   "site": "0x004da9b2",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004da9af",
+    "0x004da9c0"
+   ],
+   "gap_bytes": 17,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "self_span": false,
+   "kind": "call",
+   "class": "CODE-PSEUDO",
+   "note": "23 back-off stream(s) land on the site; fall-through decodes",
+   "target": "0x004da981",
+   "target_function": "FUN_004da981",
+   "target_crt": false,
+   "target_entry": "0x004da981",
+   "at_entry": true,
+   "site_label": null,
+   "ghidra_ref": false,
+   "context": "1089d0c1e81025ff7f00005ac35289c2e8caffffff85c0740289105ac300f644240b807420",
+   "context_start": "0x004da9a2"
+  },
+  {
+   "site": "0x004daa66",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004daa5e",
+    "0x004daa6e"
+   ],
+   "gap_bytes": 16,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "self_span": false,
+   "kind": "call",
+   "class": "CODE-PSEUDO",
+   "note": "19 back-off stream(s) land on the site; fall-through decodes",
+   "target": "0x004daa3d",
+   "target_function": "IF@ATAN2",
+   "target_crt": true,
+   "target_entry": "0x004daa3d",
+   "at_entry": true,
+   "site_label": null,
+   "ghidra_ref": false,
+   "context": "e8cdffffffc20800dd44240cdd442404e8d2ffffffc210005351528a10fec281e2ff000000",
+   "context_start": "0x004daa56"
+  },
+  {
+   "site": "0x004dac2c",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004dac28",
+    "0x004dac44"
+   ],
+   "gap_bytes": 28,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "self_span": false,
+   "kind": "call",
+   "class": "CODE-PSEUDO",
+   "note": "23 back-off stream(s) land on the site; fall-through decodes",
+   "target": "0x004dac13",
+   "target_function": "IF@TAN",
+   "target_crt": true,
+   "target_entry": "0x004dac13",
+   "at_entry": true,
+   "site_label": null,
+   "ghidra_ref": false,
+   "context": "d9f2eb05e8b3e60000ddd8c3dd442404e8e2ffffffc2080073ac4d003dad4d00fbad4d00fb",
+   "context_start": "0x004dac1c"
+  },
+  {
+   "site": "0x004dc54b",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004dc546",
+    "0x004dc597"
+   ],
+   "gap_bytes": 81,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "self_span": false,
+   "kind": "call",
+   "class": "CODE-DISASM",
+   "note": "CALL",
+   "target": "0x004cf46f",
+   "target_function": "utils_assert_stack_capacity",
+   "target_crt": true,
+   "target_entry": "0x004cf46f",
+   "at_entry": true,
+   "site_label": null,
+   "ghidra_ref": true,
+   "context": "8638fdffff5f5e5a595bc3680c000000e81f2fffff5383ec040fbe58010fafdb0fbe000faf",
+   "context_start": "0x004dc53b"
+  },
+  {
+   "site": "0x004dddaa",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004ddcf0",
+    "0x004ddde1"
+   ],
+   "gap_bytes": 241,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "self_span": false,
+   "kind": "call",
+   "class": "CODE-PSEUDO",
+   "note": "20 back-off stream(s) land on the site; fall-through decodes",
+   "target": "0x004ddde1",
+   "target_function": "FUN_004ddde1",
+   "target_crt": false,
+   "target_entry": "0x004ddde1",
+   "at_entry": true,
+   "site_label": null,
+   "ghidra_ref": false,
+   "context": "e188dd5e58e9c2ffffff80e902730cf8e832000000aae985ffffff88e80fb6c901ce46f9e8",
+   "context_start": "0x004ddd9a"
+  },
+  {
+   "site": "0x004dddbe",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004ddcf0",
+    "0x004ddde1"
+   ],
+   "gap_bytes": 241,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "self_span": false,
+   "kind": "call",
+   "class": "CODE-PSEUDO",
+   "note": "21 back-off stream(s) land on the site; fall-through decodes",
+   "target": "0x004ddde1",
+   "target_function": "FUN_004ddde1",
+   "target_crt": false,
+   "target_entry": "0x004ddde1",
+   "at_entry": true,
+   "site_label": null,
+   "ghidra_ref": false,
+   "context": "00aae985ffffff88e80fb6c901ce46f9e81e000000c0e105d0e1e814000000d0e1e80d0000",
+   "context_start": "0x004dddae"
+  },
+  {
+   "site": "0x004dddc8",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004ddcf0",
+    "0x004ddde1"
+   ],
+   "gap_bytes": 241,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "self_span": false,
+   "kind": "call",
+   "class": "CODE-PSEUDO",
+   "note": "19 back-off stream(s) land on the site; fall-through decodes",
+   "target": "0x004ddde1",
+   "target_function": "FUN_004ddde1",
+   "target_crt": false,
+   "target_entry": "0x004ddde1",
+   "at_entry": true,
+   "site_label": null,
+   "ghidra_ref": false,
+   "context": "b6c901ce46f9e81e000000c0e105d0e1e814000000d0e1e80d000000d0e1e806000000aae9",
+   "context_start": "0x004dddb8"
+  },
+  {
+   "site": "0x004dddcf",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004ddcf0",
+    "0x004ddde1"
+   ],
+   "gap_bytes": 241,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "self_span": false,
+   "kind": "call",
+   "class": "CODE-PSEUDO",
+   "note": "20 back-off stream(s) land on the site; fall-through decodes",
+   "target": "0x004ddde1",
+   "target_function": "FUN_004ddde1",
+   "target_crt": false,
+   "target_entry": "0x004ddde1",
+   "at_entry": true,
+   "site_label": null,
+   "ghidra_ref": false,
+   "context": "1e000000c0e105d0e1e814000000d0e1e80d000000d0e1e806000000aae959ffffff66d1d2",
+   "context_start": "0x004dddbf"
+  },
+  {
+   "site": "0x004dddd6",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004ddcf0",
+    "0x004ddde1"
+   ],
+   "gap_bytes": 241,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "self_span": false,
+   "kind": "call",
+   "class": "CODE-PSEUDO",
+   "note": "16 back-off stream(s) land on the site; fall-through decodes",
+   "target": "0x004ddde1",
+   "target_function": "FUN_004ddde1",
+   "target_crt": false,
+   "target_entry": "0x004ddde1",
+   "at_entry": true,
+   "site_label": null,
+   "ghidra_ref": false,
+   "context": "d0e1e814000000d0e1e80d000000d0e1e806000000aae959ffffff66d1d2fecc750e668955",
+   "context_start": "0x004dddc6"
+  },
+  {
+   "site": "0x004ddef0",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004ddee1",
+    "0x004ddef8"
+   ],
+   "gap_bytes": 23,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "self_span": false,
+   "kind": "call",
+   "class": "CODE-PSEUDO",
+   "note": "20 back-off stream(s) land on the site; fall-through decodes",
+   "target": "0x004dde90",
+   "target_function": "_localtime",
+   "target_crt": true,
+   "target_entry": "0x004dde90",
+   "at_entry": true,
+   "site_label": null,
+   "ghidra_ref": false,
+   "context": "c3535289c3ff1504cf66008d501489d8e89bffffff5a5bc3c705243b0601380b4a00e9d222",
+   "context_start": "0x004ddee0"
+  },
+  {
+   "site": "0x004de1e9",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004de1e5",
+    "0x004de1fd"
+   ],
+   "gap_bytes": 24,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "self_span": false,
+   "kind": "call",
+   "class": "CODE-PSEUDO",
+   "note": "19 back-off stream(s) land on the site; fall-through decodes",
+   "target": "0x004de1d5",
+   "target_function": "CRT_004de1d5",
+   "target_crt": true,
+   "target_entry": "0x004de1d5",
+   "at_entry": true,
+   "site_label": null,
+   "ghidra_ref": false,
+   "context": "dd442404e8acffffffc20800dd442404e8e7ffffffc20800dd442404e8d7ffffffc2080051",
+   "context_start": "0x004de1d9"
+  },
+  {
+   "site": "0x004de1f5",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004de1e5",
+    "0x004de1fd"
+   ],
+   "gap_bytes": 24,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "self_span": false,
+   "kind": "call",
+   "class": "CODE-PSEUDO",
+   "note": "16 back-off stream(s) land on the site; fall-through decodes",
+   "target": "0x004de1d1",
+   "target_function": "FUN_004de1d1",
+   "target_crt": false,
+   "target_entry": "0x004de1d1",
+   "at_entry": true,
+   "site_label": null,
+   "ghidra_ref": false,
+   "context": "dd442404e8e7ffffffc20800dd442404e8d7ffffffc20800515689c1eb1166833a00740f4b",
+   "context_start": "0x004de1e5"
+  },
+  {
+   "site": "0x004de60e",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004de609",
+    "0x004de613"
+   ],
+   "gap_bytes": 10,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "self_span": false,
+   "kind": "jmp",
+   "class": "CODE-PSEUDO",
+   "note": "20 back-off stream(s) land on the site; fall-through decodes",
+   "target": "0x004de602",
+   "target_function": "FUN_004de59d",
+   "target_crt": false,
+   "target_entry": "0x004de59d",
+   "at_entry": false,
+   "site_label": null,
+   "ghidra_ref": false,
+   "context": "000031c05f5e5a595b5dc3b8ffffffffe9efffffff5589e55053515256578b450ca3f4ce66",
+   "context_start": "0x004de5fe"
+  },
+  {
+   "site": "0x004dfafd",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004dfaf8",
+    "0x004dfb08"
+   ],
+   "gap_bytes": 16,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "self_span": false,
+   "kind": "call",
+   "class": "CODE-PSEUDO",
+   "note": "22 back-off stream(s) land on the site; fall-through decodes",
+   "target": "0x004dfae3",
+   "target_function": "llm_crt_set_errno",
+   "target_crt": true,
+   "target_entry": "0x004dfae3",
+   "at_entry": true,
+   "site_label": null,
+   "ghidra_ref": false,
+   "context": "50045ac3b80e000000ebebb809000000e8e1ffffffb8ffffffffc35289c2ff1504cf660089",
+   "context_start": "0x004dfaed"
+  },
+  {
+   "site": "0x004dfdf1",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004dfde2",
+    "0x004dfe00"
+   ],
+   "gap_bytes": 30,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "self_span": false,
+   "kind": "call",
+   "class": "CODE-PSEUDO",
+   "note": "18 back-off stream(s) land on the site; fall-through decodes",
+   "target": "0x004d0244",
+   "target_function": "utils_free",
+   "target_crt": true,
+   "target_entry": "0x004d0244",
+   "at_entry": true,
+   "site_label": null,
+   "ghidra_ref": false,
+   "context": "c3528b152830000185d2741189d08b12e84e04ffff891528300001ebe55ac353515289c2f6",
+   "context_start": "0x004dfde1"
+  },
+  {
+   "site": "0x004dfe39",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004dfe31",
+    "0x004dfe43"
+   ],
+   "gap_bytes": 18,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "self_span": false,
+   "kind": "call",
+   "class": "CODE-DISASM",
+   "note": "CALL",
+   "target": "0x004e04ff",
+   "target_function": "fputc",
+   "target_crt": true,
+   "target_entry": "0x004e04ff",
+   "at_entry": true,
+   "site_label": null,
+   "ghidra_ref": true,
+   "context": "02884a0d5a595bc3005389c389d08b13e8c1060000ff43105bc35156575589c68b4010ff15",
+   "context_start": "0x004dfe29"
+  },
+  {
+   "site": "0x004e1460",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004e1413",
+    "0x004e14c0"
+   ],
+   "gap_bytes": 173,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "self_span": false,
+   "kind": "call",
+   "class": "CODE-PSEUDO",
+   "note": "7 back-off stream(s) land on the site; fall-through decodes",
+   "target": "0x004f246a",
+   "target_function": "__init_80x87",
+   "target_crt": true,
+   "target_entry": "0x004f246a",
+   "at_entry": true,
+   "site_label": null,
+   "ghidra_ref": false,
+   "context": "6600891df8f5660031c066a1fcf56600e8051001005a5bc3803da51666000075c6c3528a25",
+   "context_start": "0x004e1450"
+  },
+  {
+   "site": "0x004ed895",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004ed890",
+    "0x004eda5a"
+   ],
+   "gap_bytes": 458,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "self_span": false,
+   "kind": "call",
+   "class": "CODE-PSEUDO",
+   "note": "17 back-off stream(s) land on the site; fall-through decodes",
+   "target": "0x004cf46f",
+   "target_function": "utils_assert_stack_capacity",
+   "target_crt": true,
+   "target_entry": "0x004cf46f",
+   "at_entry": true,
+   "site_label": null,
+   "ghidra_ref": false,
+   "context": "03054c5bfe00e9e4efffff681c000000e8d51bfeff535152565783ec0489c6c7054c5bfe00",
+   "context_start": "0x004ed885"
+  },
+  {
+   "site": "0x004eda55",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004ed890",
+    "0x004eda5a"
+   ],
+   "gap_bytes": 458,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "self_span": false,
+   "kind": "jmp",
+   "class": "CODE-PSEUDO",
+   "note": "18 back-off stream(s) land on the site; fall-through decodes",
+   "target": "0x004ec5e4",
+   "target_function": "llm_strat_ai_target_list_refresh_mothers",
+   "target_crt": false,
+   "target_entry": "0x004ec58a",
+   "at_entry": false,
+   "site_label": null,
+   "ghidra_ref": false,
+   "context": "82000f826dfeffffa14c5bfe0083c404e98aebffff5589e56810000000e8081afeff837d0c",
+   "context_start": "0x004eda45"
+  },
+  {
+   "site": "0x004ee36a",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004ee365",
+    "0x004ee4c2"
+   ],
+   "gap_bytes": 349,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "self_span": false,
+   "kind": "call",
+   "class": "CODE-PSEUDO",
+   "note": "5 back-off stream(s) land on the site; fall-through decodes",
+   "target": "0x004cf46f",
+   "target_function": "utils_assert_stack_capacity",
+   "target_crt": true,
+   "target_entry": "0x004cf46f",
+   "at_entry": true,
+   "site_label": null,
+   "ghidra_ref": false,
+   "context": "e900ffffffffe933e8ffff6818000000e80011feff535152565789c7c705142b0201000000",
+   "context_start": "0x004ee35a"
+  },
+  {
+   "site": "0x004ee428",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004ee365",
+    "0x004ee4c2"
+   ],
+   "gap_bytes": 349,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "self_span": false,
+   "kind": "jmp",
+   "class": "CODE-PSEUDO",
+   "note": "16 back-off stream(s) land on the site; fall-through decodes",
+   "target": "0x004ec5e4",
+   "target_function": "llm_strat_ai_target_list_refresh_mothers",
+   "target_crt": false,
+   "target_entry": "0x004ec58a",
+   "at_entry": false,
+   "site_label": null,
+   "ghidra_ref": false,
+   "context": "4b4285db77984183f9080f825fffffffe9b7e1ffff6818000000e83810feff535152565789",
+   "context_start": "0x004ee418"
+  },
+  {
+   "site": "0x004ee432",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004ee365",
+    "0x004ee4c2"
+   ],
+   "gap_bytes": 349,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "self_span": false,
+   "kind": "call",
+   "class": "CODE-PSEUDO",
+   "note": "10 back-off stream(s) land on the site; fall-through decodes",
+   "target": "0x004cf46f",
+   "target_function": "utils_assert_stack_capacity",
+   "target_crt": true,
+   "target_entry": "0x004cf46f",
+   "at_entry": true,
+   "site_label": null,
+   "ghidra_ref": false,
+   "context": "0f825fffffffe9b7e1ffff6818000000e83810feff535152565789c669d8045b00000fb79b",
+   "context_start": "0x004ee422"
+  },
+  {
+   "site": "0x004ee4bd",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004ee365",
+    "0x004ee4c2"
+   ],
+   "gap_bytes": 349,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "self_span": false,
+   "kind": "jmp",
+   "class": "CODE-PSEUDO",
+   "note": "22 back-off stream(s) land on the site; fall-through decodes",
+   "target": "0x004ec5e4",
+   "target_function": "llm_strat_ai_target_list_refresh_mothers",
+   "target_crt": false,
+   "target_entry": "0x004ec58a",
+   "at_entry": false,
+   "site_label": null,
+   "ghidra_ref": false,
+   "context": "00003b88e03bb60072d34383fb0a72c0e922e1ffff6808000000e8a30ffeff83ec0469c004",
+   "context_start": "0x004ee4ad"
+  },
+  {
+   "site": "0x004ee8c7",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004ee8c2",
+    "0x004ee8df"
+   ],
+   "gap_bytes": 29,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "self_span": false,
+   "kind": "call",
+   "class": "CODE-PSEUDO",
+   "note": "19 back-off stream(s) land on the site; fall-through decodes",
+   "target": "0x004cf46f",
+   "target_function": "utils_assert_stack_capacity",
+   "target_crt": true,
+   "target_entry": "0x004cf46f",
+   "at_entry": true,
+   "site_label": null,
+   "ghidra_ref": false,
+   "context": "81c42c0100005e5a595bc36804000000e8a30bfeff85c075f1b8fc6d5000e805000000e903",
+   "context_start": "0x004ee8b7"
+  },
+  {
+   "site": "0x004ee8d5",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004ee8c2",
+    "0x004ee8df"
+   ],
+   "gap_bytes": 29,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "self_span": false,
+   "kind": "call",
+   "class": "CODE-PSEUDO",
+   "note": "13 back-off stream(s) land on the site; fall-through decodes",
+   "target": "0x004ee8df",
+   "target_function": "llm_debug_log_msg_stub",
+   "target_crt": false,
+   "target_entry": "0x004ee8df",
+   "at_entry": true,
+   "site_label": null,
+   "ghidra_ref": false,
+   "context": "0000e8a30bfeff85c075f1b8fc6d5000e805000000e903a2f3ff6804000000e8860bfeffc3",
+   "context_start": "0x004ee8c5"
+  },
+  {
+   "site": "0x004ee8da",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004ee8c2",
+    "0x004ee8df"
+   ],
+   "gap_bytes": 29,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "self_span": false,
+   "kind": "jmp",
+   "class": "CODE-PSEUDO",
+   "note": "10 back-off stream(s) land on the site; fall-through decodes",
+   "target": "0x00428ae2",
+   "target_function": "llm_game_main_window_destroy",
+   "target_crt": false,
+   "target_entry": "0x00428ae2",
+   "at_entry": true,
+   "site_label": null,
+   "ghidra_ref": false,
+   "context": "feff85c075f1b8fc6d5000e805000000e903a2f3ff6804000000e8860bfeffc3682c000000",
+   "context_start": "0x004ee8ca"
+  },
+  {
+   "site": "0x004eeec3",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004eeebd",
+    "0x004eeedf"
+   ],
+   "gap_bytes": 34,
+   "span_owner": "llm_strat_ai_tick_all_groups",
+   "span_owner_entry": "0x004eec6c",
+   "self_span": false,
+   "kind": "call",
+   "class": "CODE-PSEUDO",
+   "note": "19 back-off stream(s) land on the site; fall-through decodes",
+   "target": "0x004f2ad8",
+   "target_function": "llm_debug_trace_printf",
+   "target_crt": false,
+   "target_entry": "0x004f2ad8",
+   "at_entry": true,
+   "site_label": "LAB_004eeec3",
+   "ghidra_ref": false,
+   "context": "75085368676f5000eb0653686c6f5000e8103c000083c40869c1045b000069dbe90000000f",
+   "context_start": "0x004eeeb3"
+  },
+  {
+   "site": "0x004eef30",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004eef18",
+    "0x004ef24c"
+   ],
+   "gap_bytes": 820,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "self_span": false,
+   "kind": "call",
+   "class": "CODE-PSEUDO",
+   "note": "19 back-off stream(s) land on the site; fall-through decodes",
+   "target": "0x004d0155",
+   "target_function": "utils_malloc",
+   "target_crt": true,
+   "target_entry": "0x004d0155",
+   "at_entry": true,
+   "site_label": null,
+   "ghidra_ref": false,
+   "context": "53515256575583ec0c89c7b820000000e82012feff89c1c74014ffffffff89c6a164f46600",
+   "context_start": "0x004eef20"
+  },
+  {
+   "site": "0x004eef5b",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004eef18",
+    "0x004ef24c"
+   ],
+   "gap_bytes": 820,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "self_span": false,
+   "kind": "call",
+   "class": "CODE-PSEUDO",
+   "note": "11 back-off stream(s) land on the site; fall-through decodes",
+   "target": "0x004dfb16",
+   "target_function": "open",
+   "target_crt": true,
+   "target_entry": "0x004dfb16",
+   "at_entry": true,
+   "site_label": null,
+   "ghidra_ref": false,
+   "context": "006800020000c7411800000000578901e8b60bffff83c40889411483f8ff0f84f3000000bb",
+   "context_start": "0x004eef4b"
+  },
+  {
+   "site": "0x004eef83",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004eef18",
+    "0x004ef24c"
+   ],
+   "gap_bytes": 820,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "self_span": false,
+   "kind": "call",
+   "class": "CODE-PSEUDO",
+   "note": "14 back-off stream(s) land on the site; fall-through decodes",
+   "target": "0x004f2c19",
+   "target_function": "read",
+   "target_crt": true,
+   "target_entry": "0x004f2c19",
+   "at_entry": true,
+   "site_label": null,
+   "ghidra_ref": false,
+   "context": "008d69048b411489eac7410400000000e8913c0000817904524553300f849d000000bb0200",
+   "context_start": "0x004eef73"
+  },
+  {
+   "site": "0x004eef9f",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004eef18",
+    "0x004ef24c"
+   ],
+   "gap_bytes": 820,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "self_span": false,
+   "kind": "call",
+   "class": "CODE-PSEUDO",
+   "note": "21 back-off stream(s) land on the site; fall-through decodes",
+   "target": "0x004dffc8",
+   "target_function": "llm_crt_lseek",
+   "target_crt": true,
+   "target_entry": "0x004dffc8",
+   "at_entry": true,
+   "site_label": null,
+   "ghidra_ref": false,
+   "context": "0f849d000000bb020000008b411431d2e82410ffff8944240883f808766cbb01000000baf8",
+   "context_start": "0x004eef8f"
+  },
+  {
+   "site": "0x004eefba",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004eef18",
+    "0x004ef24c"
+   ],
+   "gap_bytes": 820,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "self_span": false,
+   "kind": "call",
+   "class": "CODE-PSEUDO",
+   "note": "17 back-off stream(s) land on the site; fall-through decodes",
+   "target": "0x004dffc8",
+   "target_function": "llm_crt_lseek",
+   "target_crt": true,
+   "target_entry": "0x004dffc8",
+   "at_entry": true,
+   "site_label": null,
+   "ghidra_ref": false,
+   "context": "08766cbb01000000baf8ffffff8b4114e80910ffffbb040000008d5424048b4114e8493c00",
+   "context_start": "0x004eefaa"
+  },
+  {
+   "site": "0x004eefcb",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004eef18",
+    "0x004ef24c"
+   ],
+   "gap_bytes": 820,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "self_span": false,
+   "kind": "call",
+   "class": "CODE-PSEUDO",
+   "note": "12 back-off stream(s) land on the site; fall-through decodes",
+   "target": "0x004f2c19",
+   "target_function": "read",
+   "target_crt": true,
+   "target_entry": "0x004f2c19",
+   "at_entry": true,
+   "site_label": null,
+   "ghidra_ref": false,
+   "context": "0910ffffbb040000008d5424048b4114e8493c0000bb0400000089e28b4114e83a3c000081",
+   "context_start": "0x004eefbb"
+  },
+  {
+   "site": "0x004eefda",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004eef18",
+    "0x004ef24c"
+   ],
+   "gap_bytes": 820,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "self_span": false,
+   "kind": "call",
+   "class": "CODE-PSEUDO",
+   "note": "21 back-off stream(s) land on the site; fall-through decodes",
+   "target": "0x004f2c19",
+   "target_function": "read",
+   "target_crt": true,
+   "target_entry": "0x004f2c19",
+   "at_entry": true,
+   "site_label": null,
+   "ghidra_ref": false,
+   "context": "14e8493c0000bb0400000089e28b4114e83a3c0000817c24045245533075308b4424088b1c",
+   "context_start": "0x004eefca"
+  },
+  {
+   "site": "0x004eeffc",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004eef18",
+    "0x004ef24c"
+   ],
+   "gap_bytes": 820,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "self_span": false,
+   "kind": "call",
+   "class": "CODE-PSEUDO",
+   "note": "18 back-off stream(s) land on the site; fall-through decodes",
+   "target": "0x004dffc8",
+   "target_function": "llm_crt_lseek",
+   "target_crt": true,
+   "target_entry": "0x004dffc8",
+   "at_entry": true,
+   "site_label": null,
+   "ghidra_ref": false,
+   "context": "088b1c2429d889c289411831db8b4114e8c70fffffbb0c00000089ea8b4114e8093c000081",
+   "context_start": "0x004eefec"
+  },
+  {
+   "site": "0x004ef00b",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004eef18",
+    "0x004ef24c"
+   ],
+   "gap_bytes": 820,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "self_span": false,
+   "kind": "call",
+   "class": "CODE-PSEUDO",
+   "note": "17 back-off stream(s) land on the site; fall-through decodes",
+   "target": "0x004f2c19",
+   "target_function": "read",
+   "target_crt": true,
+   "target_entry": "0x004f2c19",
+   "at_entry": true,
+   "site_label": null,
+   "ghidra_ref": false,
+   "context": "14e8c70fffffbb0c00000089ea8b4114e8093c00008179045245533074198b4114e867a1ff",
+   "context_start": "0x004eeffb"
+  },
+  {
+   "site": "0x004ef01c",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004eef18",
+    "0x004ef24c"
+   ],
+   "gap_bytes": 820,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "self_span": false,
+   "kind": "call",
+   "class": "CODE-PSEUDO",
+   "note": "10 back-off stream(s) land on the site; fall-through decodes",
+   "target": "0x004e9188",
+   "target_function": "close",
+   "target_crt": true,
+   "target_entry": "0x004e9188",
+   "at_entry": true,
+   "site_label": null,
+   "ghidra_ref": false,
+   "context": "093c00008179045245533074198b4114e867a1ffff89c8e81c12feffb802000000e97b0000",
+   "context_start": "0x004ef00c"
+  },
+  {
+   "site": "0x004ef023",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004eef18",
+    "0x004ef24c"
+   ],
+   "gap_bytes": 820,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "self_span": false,
+   "kind": "call",
+   "class": "CODE-PSEUDO",
+   "note": "21 back-off stream(s) land on the site; fall-through decodes",
+   "target": "0x004d0244",
+   "target_function": "utils_free",
+   "target_crt": true,
+   "target_entry": "0x004d0244",
+   "at_entry": true,
+   "site_label": null,
+   "ghidra_ref": false,
+   "context": "5245533074198b4114e867a1ffff89c8e81c12feffb802000000e97b0000008b460cc1e005",
+   "context_start": "0x004ef013"
+  },
+  {
+   "site": "0x004ef038",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004eef18",
+    "0x004ef24c"
+   ],
+   "gap_bytes": 820,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "self_span": false,
+   "kind": "call",
+   "class": "CODE-PSEUDO",
+   "note": "17 back-off stream(s) land on the site; fall-through decodes",
+   "target": "0x004d0155",
+   "target_function": "utils_malloc",
+   "target_crt": true,
+   "target_entry": "0x004d0155",
+   "at_entry": true,
+   "site_label": null,
+   "ghidra_ref": false,
+   "context": "b802000000e97b0000008b460cc1e005e81811feff89461085c075348b4614e83ca1ffff89",
+   "context_start": "0x004ef028"
+  },
+  {
+   "site": "0x004ef047",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004eef18",
+    "0x004ef24c"
+   ],
+   "gap_bytes": 820,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "self_span": false,
+   "kind": "call",
+   "class": "CODE-PSEUDO",
+   "note": "16 back-off stream(s) land on the site; fall-through decodes",
+   "target": "0x004e9188",
+   "target_function": "close",
+   "target_crt": true,
+   "target_entry": "0x004e9188",
+   "at_entry": true,
+   "site_label": null,
+   "ghidra_ref": false,
+   "context": "05e81811feff89461085c075348b4614e83ca1ffff89f0e8f111feffb80300000083c40c5d",
+   "context_start": "0x004ef037"
+  },
+  {
+   "site": "0x004ef04e",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004eef18",
+    "0x004ef24c"
+   ],
+   "gap_bytes": 820,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "self_span": false,
+   "kind": "call",
+   "class": "CODE-PSEUDO",
+   "note": "12 back-off stream(s) land on the site; fall-through decodes",
+   "target": "0x004d0244",
+   "target_function": "utils_free",
+   "target_crt": true,
+   "target_entry": "0x004d0244",
+   "at_entry": true,
+   "site_label": null,
+   "ghidra_ref": false,
+   "context": "461085c075348b4614e83ca1ffff89f0e8f111feffb80300000083c40c5d5f5e5a595bc389",
+   "context_start": "0x004ef03e"
+  },
+  {
+   "site": "0x004ef064",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004eef18",
+    "0x004ef24c"
+   ],
+   "gap_bytes": 820,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "self_span": false,
+   "kind": "call",
+   "class": "CODE-PSEUDO",
+   "note": "21 back-off stream(s) land on the site; fall-through decodes",
+   "target": "0x004d0244",
+   "target_function": "utils_free",
+   "target_crt": true,
+   "target_entry": "0x004d0244",
+   "at_entry": true,
+   "site_label": null,
+   "ghidra_ref": false,
+   "context": "0300000083c40c5d5f5e5a595bc389c8e8db11feffb80100000083c40c5d5f5e5a595bc38b",
+   "context_start": "0x004ef054"
+  },
+  {
+   "site": "0x004ef085",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004eef18",
+    "0x004ef24c"
+   ],
+   "gap_bytes": 820,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "self_span": false,
+   "kind": "call",
+   "class": "CODE-PSEUDO",
+   "note": "18 back-off stream(s) land on the site; fall-through decodes",
+   "target": "0x004dffc8",
+   "target_function": "llm_crt_lseek",
+   "target_crt": true,
+   "target_entry": "0x004dffc8",
+   "at_entry": true,
+   "site_label": null,
+   "ghidra_ref": false,
+   "context": "595bc38b46188b560831db01c28b4614e83e0fffff8b5e0c8b56108b4614c1e305e87e3b00",
+   "context_start": "0x004ef075"
+  },
+  {
+   "site": "0x004ef096",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004eef18",
+    "0x004ef24c"
+   ],
+   "gap_bytes": 820,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "self_span": false,
+   "kind": "call",
+   "class": "CODE-PSEUDO",
+   "note": "17 back-off stream(s) land on the site; fall-through decodes",
+   "target": "0x004f2c19",
+   "target_function": "read",
+   "target_crt": true,
+   "target_entry": "0x004f2c19",
+   "at_entry": true,
+   "site_label": null,
+   "ghidra_ref": false,
+   "context": "3e0fffff8b5e0c8b56108b4614c1e305e87e3b000089f8e8d82b000089461c893564f46600",
+   "context_start": "0x004ef086"
+  },
+  {
+   "site": "0x004ef09d",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004eef18",
+    "0x004ef24c"
+   ],
+   "gap_bytes": 820,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "self_span": false,
+   "kind": "call",
+   "class": "CODE-PSEUDO",
+   "note": "15 back-off stream(s) land on the site; fall-through decodes",
+   "target": "0x004f1c7a",
+   "target_function": "strdup",
+   "target_crt": true,
+   "target_entry": "0x004f1c7a",
+   "at_entry": true,
+   "site_label": null,
+   "ghidra_ref": false,
+   "context": "8b56108b4614c1e305e87e3b000089f8e8d82b000089461c893564f4660031c083c40c5d5f",
+   "context_start": "0x004ef08d"
+  },
+  {
+   "site": "0x004ef0ea",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004eef18",
+    "0x004ef24c"
+   ],
+   "gap_bytes": 820,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "self_span": false,
+   "kind": "call",
+   "class": "CODE-PSEUDO",
+   "note": "20 back-off stream(s) land on the site; fall-through decodes",
+   "target": "0x004d16d0",
+   "target_function": "utils_str_cmp",
+   "target_crt": false,
+   "target_entry": "0x004d16d0",
+   "at_entry": true,
+   "site_label": null,
+   "ghidra_ref": false,
+   "context": "d20f86ab00000031c98b561089e801cae8e125feff85c00f85860000008b56108b46188b6c",
+   "context_start": "0x004ef0da"
+  },
+  {
+   "site": "0x004ef109",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004eef18",
+    "0x004ef24c"
+   ],
+   "gap_bytes": 820,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "self_span": false,
+   "kind": "call",
+   "class": "CODE-PSEUDO",
+   "note": "20 back-off stream(s) land on the site; fall-through decodes",
+   "target": "0x004dffc8",
+   "target_function": "llm_crt_lseek",
+   "target_crt": true,
+   "target_entry": "0x004dffc8",
+   "at_entry": true,
+   "site_label": null,
+   "ghidra_ref": false,
+   "context": "108b46188b6c11188d142831db8b4614e8ba0effff8b461001c8f640170174388b401ce834",
+   "context_start": "0x004ef0f9"
+  },
+  {
+   "site": "0x004ef11c",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004eef18",
+    "0x004ef24c"
+   ],
+   "gap_bytes": 820,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "self_span": false,
+   "kind": "call",
+   "class": "CODE-PSEUDO",
+   "note": "9 back-off stream(s) land on the site; fall-through decodes",
+   "target": "0x004d0155",
+   "target_function": "utils_malloc",
+   "target_crt": true,
+   "target_entry": "0x004d0155",
+   "at_entry": true,
+   "site_label": null,
+   "ghidra_ref": false,
+   "context": "ffff8b461001c8f640170174388b401ce83410feff89c58b461089ea8b5c011c8b4614e8e5",
+   "context_start": "0x004ef10c"
+  },
+  {
+   "site": "0x004ef12f",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004eef18",
+    "0x004ef24c"
+   ],
+   "gap_bytes": 820,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "self_span": false,
+   "kind": "call",
+   "class": "CODE-PSEUDO",
+   "note": "12 back-off stream(s) land on the site; fall-through decodes",
+   "target": "0x004f2c19",
+   "target_function": "read",
+   "target_crt": true,
+   "target_entry": "0x004f2c19",
+   "at_entry": true,
+   "site_label": null,
+   "ghidra_ref": false,
+   "context": "feff89c58b461089ea8b5c011c8b4614e8e53a00008b4504e81910feff505589c7e82bebfe",
+   "context_start": "0x004ef11f"
+  },
+  {
+   "site": "0x004ef137",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004eef18",
+    "0x004ef24c"
+   ],
+   "gap_bytes": 820,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "self_span": false,
+   "kind": "call",
+   "class": "CODE-PSEUDO",
+   "note": "19 back-off stream(s) land on the site; fall-through decodes",
+   "target": "0x004d0155",
+   "target_function": "utils_malloc",
+   "target_crt": true,
+   "target_entry": "0x004d0155",
+   "at_entry": true,
+   "site_label": null,
+   "ghidra_ref": false,
+   "context": "ea8b5c011c8b4614e8e53a00008b4504e81910feff505589c7e82bebfeff83c40889e8e8f5",
+   "context_start": "0x004ef127"
+  },
+  {
+   "site": "0x004ef140",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004eef18",
+    "0x004ef24c"
+   ],
+   "gap_bytes": 820,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "self_span": false,
+   "kind": "call",
+   "class": "CODE-PSEUDO",
+   "note": "19 back-off stream(s) land on the site; fall-through decodes",
+   "target": "0x004ddc70",
+   "target_function": "llm_lzss_decompress_block",
+   "target_crt": false,
+   "target_entry": "0x004ddc70",
+   "at_entry": true,
+   "site_label": null,
+   "ghidra_ref": false,
+   "context": "e53a00008b4504e81910feff505589c7e82bebfeff83c40889e8e8f510feffeb1d8b401ce8",
+   "context_start": "0x004ef130"
+  },
+  {
+   "site": "0x004ef14a",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004eef18",
+    "0x004ef24c"
+   ],
+   "gap_bytes": 820,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "self_span": false,
+   "kind": "call",
+   "class": "CODE-PSEUDO",
+   "note": "15 back-off stream(s) land on the site; fall-through decodes",
+   "target": "0x004d0244",
+   "target_function": "utils_free",
+   "target_crt": true,
+   "target_entry": "0x004d0244",
+   "at_entry": true,
+   "site_label": null,
+   "ghidra_ref": false,
+   "context": "feff505589c7e82bebfeff83c40889e8e8f510feffeb1d8b401ce8fc0ffeff8b561089c78b",
+   "context_start": "0x004ef13a"
+  },
+  {
+   "site": "0x004ef154",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004eef18",
+    "0x004ef24c"
+   ],
+   "gap_bytes": 820,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "self_span": false,
+   "kind": "call",
+   "class": "CODE-PSEUDO",
+   "note": "12 back-off stream(s) land on the site; fall-through decodes",
+   "target": "0x004d0155",
+   "target_function": "utils_malloc",
+   "target_crt": true,
+   "target_entry": "0x004d0155",
+   "at_entry": true,
+   "site_label": null,
+   "ghidra_ref": false,
+   "context": "ff83c40889e8e8f510feffeb1d8b401ce8fc0ffeff8b561089c78b5c111c8b4e1489c289c8",
+   "context_start": "0x004ef144"
+  },
+  {
+   "site": "0x004ef169",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004eef18",
+    "0x004ef24c"
+   ],
+   "gap_bytes": 820,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "self_span": false,
+   "kind": "call",
+   "class": "CODE-PSEUDO",
+   "note": "21 back-off stream(s) land on the site; fall-through decodes",
+   "target": "0x004f2c19",
+   "target_function": "read",
+   "target_crt": true,
+   "target_entry": "0x004f2c19",
+   "at_entry": true,
+   "site_label": null,
+   "ghidra_ref": false,
+   "context": "8b561089c78b5c111c8b4e1489c289c8e8ab3a000089f881c4800000005d5f5e5a595bc343",
+   "context_start": "0x004ef159"
+  },
+  {
+   "site": "0x004ef1cf",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004eef18",
+    "0x004ef24c"
+   ],
+   "gap_bytes": 820,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "self_span": false,
+   "kind": "call",
+   "class": "CODE-PSEUDO",
+   "note": "24 back-off stream(s) land on the site; fall-through decodes",
+   "target": "0x004dfb16",
+   "target_function": "open",
+   "target_crt": true,
+   "target_entry": "0x004dfb16",
+   "at_entry": true,
+   "site_label": null,
+   "ghidra_ref": false,
+   "context": "023c0075e85f68000200008d44240450e84209ffff89c183c40883f8ff750f31c081c48000",
+   "context_start": "0x004ef1bf"
+  },
+  {
+   "site": "0x004ef1f4",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004eef18",
+    "0x004ef24c"
+   ],
+   "gap_bytes": 820,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "self_span": false,
+   "kind": "call",
+   "class": "CODE-PSEUDO",
+   "note": "21 back-off stream(s) land on the site; fall-through decodes",
+   "target": "0x004dffc8",
+   "target_function": "llm_crt_lseek",
+   "target_crt": true,
+   "target_entry": "0x004dffc8",
+   "at_entry": true,
+   "site_label": null,
+   "ghidra_ref": false,
+   "context": "00005d5f5e5a595bc3bb0200000031d2e8cf0dffff89c631db31d289c8e8c20dffff85f67f",
+   "context_start": "0x004ef1e4"
+  },
+  {
+   "site": "0x004ef201",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004eef18",
+    "0x004ef24c"
+   ],
+   "gap_bytes": 820,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "self_span": false,
+   "kind": "call",
+   "class": "CODE-PSEUDO",
+   "note": "18 back-off stream(s) land on the site; fall-through decodes",
+   "target": "0x004dffc8",
+   "target_function": "llm_crt_lseek",
+   "target_crt": true,
+   "target_entry": "0x004dffc8",
+   "at_entry": true,
+   "site_label": null,
+   "ghidra_ref": false,
+   "context": "0031d2e8cf0dffff89c631db31d289c8e8c20dffff85f67f1689c8e8779fffff31c081c480",
+   "context_start": "0x004ef1f1"
+  },
+  {
+   "site": "0x004ef20c",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004eef18",
+    "0x004ef24c"
+   ],
+   "gap_bytes": 820,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "self_span": false,
+   "kind": "call",
+   "class": "CODE-PSEUDO",
+   "note": "14 back-off stream(s) land on the site; fall-through decodes",
+   "target": "0x004e9188",
+   "target_function": "close",
+   "target_crt": true,
+   "target_entry": "0x004e9188",
+   "at_entry": true,
+   "site_label": null,
+   "ghidra_ref": false,
+   "context": "db31d289c8e8c20dffff85f67f1689c8e8779fffff31c081c4800000005d5f5e5a595bc389",
+   "context_start": "0x004ef1fc"
+  },
+  {
+   "site": "0x004ef222",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004eef18",
+    "0x004ef24c"
+   ],
+   "gap_bytes": 820,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "self_span": false,
+   "kind": "call",
+   "class": "CODE-PSEUDO",
+   "note": "19 back-off stream(s) land on the site; fall-through decodes",
+   "target": "0x004d0155",
+   "target_function": "utils_malloc",
+   "target_crt": true,
+   "target_entry": "0x004d0155",
+   "at_entry": true,
+   "site_label": null,
+   "ghidra_ref": false,
+   "context": "c081c4800000005d5f5e5a595bc389f0e82e0ffeff89f389c589c289c8e8e539000089c8e8",
+   "context_start": "0x004ef212"
+  },
+  {
+   "site": "0x004ef22f",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004eef18",
+    "0x004ef24c"
+   ],
+   "gap_bytes": 820,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "self_span": false,
+   "kind": "call",
+   "class": "CODE-PSEUDO",
+   "note": "20 back-off stream(s) land on the site; fall-through decodes",
+   "target": "0x004f2c19",
+   "target_function": "read",
+   "target_crt": true,
+   "target_entry": "0x004f2c19",
+   "at_entry": true,
+   "site_label": null,
+   "ghidra_ref": false,
+   "context": "c389f0e82e0ffeff89f389c589c289c8e8e539000089c8e84d9fffff89e881c4800000005d",
+   "context_start": "0x004ef21f"
+  },
+  {
+   "site": "0x004ef236",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004eef18",
+    "0x004ef24c"
+   ],
+   "gap_bytes": 820,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "self_span": false,
+   "kind": "call",
+   "class": "CODE-PSEUDO",
+   "note": "19 back-off stream(s) land on the site; fall-through decodes",
+   "target": "0x004e9188",
+   "target_function": "close",
+   "target_crt": true,
+   "target_entry": "0x004e9188",
+   "at_entry": true,
+   "site_label": null,
+   "ghidra_ref": false,
+   "context": "ff89f389c589c289c8e8e539000089c8e84d9fffff89e881c4800000005d5f5e5a595bc38b",
+   "context_start": "0x004ef226"
+  },
+  {
+   "site": "0x004ef390",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004ef37c",
+    "0x004ef3c5"
+   ],
+   "gap_bytes": 73,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "self_span": false,
+   "kind": "call",
+   "class": "CODE-PSEUDO",
+   "note": "21 back-off stream(s) land on the site; fall-through decodes",
+   "target": "0x004e9188",
+   "target_function": "close",
+   "target_crt": true,
+   "target_entry": "0x004e9188",
+   "at_entry": true,
+   "site_label": null,
+   "ghidra_ref": false,
+   "context": "f4660000743da164f466008b108b4014e8f39dffffa164f466008b4010e8a20efeffa164f4",
+   "context_start": "0x004ef380"
+  },
+  {
+   "site": "0x004ef39d",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004ef37c",
+    "0x004ef3c5"
+   ],
+   "gap_bytes": 73,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "self_span": false,
+   "kind": "call",
+   "class": "CODE-PSEUDO",
+   "note": "12 back-off stream(s) land on the site; fall-through decodes",
+   "target": "0x004d0244",
+   "target_function": "utils_free",
+   "target_crt": true,
+   "target_entry": "0x004d0244",
+   "at_entry": true,
+   "site_label": null,
+   "ghidra_ref": false,
+   "context": "8b4014e8f39dffffa164f466008b4010e8a20efeffa164f466008b401ce8950efeffa164f4",
+   "context_start": "0x004ef38d"
+  },
+  {
+   "site": "0x004ef3aa",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004ef37c",
+    "0x004ef3c5"
+   ],
+   "gap_bytes": 73,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "self_span": false,
+   "kind": "call",
+   "class": "CODE-PSEUDO",
+   "note": "7 back-off stream(s) land on the site; fall-through decodes",
+   "target": "0x004d0244",
+   "target_function": "utils_free",
+   "target_crt": true,
+   "target_entry": "0x004d0244",
+   "at_entry": true,
+   "site_label": null,
+   "ghidra_ref": false,
+   "context": "8b4010e8a20efeffa164f466008b401ce8950efeffa164f46600e88b0efeff891564f46600",
+   "context_start": "0x004ef39a"
+  },
+  {
+   "site": "0x004ef3b4",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004ef37c",
+    "0x004ef3c5"
+   ],
+   "gap_bytes": 73,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "self_span": false,
+   "kind": "call",
+   "class": "CODE-PSEUDO",
+   "note": "7 back-off stream(s) land on the site; fall-through decodes",
+   "target": "0x004d0244",
+   "target_function": "utils_free",
+   "target_crt": true,
+   "target_entry": "0x004d0244",
+   "at_entry": true,
+   "site_label": null,
+   "ghidra_ref": false,
+   "context": "f466008b401ce8950efeffa164f46600e88b0efeff891564f4660085d275c35ac351565789",
+   "context_start": "0x004ef3a4"
+  },
+  {
+   "site": "0x004efd8a",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004efd7b",
+    "0x004efd92"
+   ],
+   "gap_bytes": 23,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "self_span": false,
+   "kind": "call",
+   "class": "CODE-PSEUDO",
+   "note": "17 back-off stream(s) land on the site; fall-through decodes",
+   "target": "0x004efd5d",
+   "target_function": "_gmtime",
+   "target_crt": true,
+   "target_entry": "0x004efd5d",
+   "at_entry": true,
+   "site_label": null,
+   "ghidra_ref": false,
+   "context": "c3535289c3ff1504cf66008d501489d8e8ceffffff5a5bc353515289c3f6c303752b89c2b9",
+   "context_start": "0x004efd7a"
+  },
+  {
+   "site": "0x004f1052",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004f1025",
+    "0x004f10c1"
+   ],
+   "gap_bytes": 156,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "self_span": false,
+   "kind": "call",
+   "class": "CODE-PSEUDO",
+   "note": "24 back-off stream(s) land on the site; fall-through decodes",
+   "target": "0x004f6136",
+   "target_function": "SetStdHandle",
+   "target_crt": false,
+   "target_entry": "0x004f6136",
+   "at_entry": true,
+   "site_label": null,
+   "ghidra_ref": false,
+   "context": "d27512576af6eb08576af5eb03576af4e8df50000089f18b15283b0601c1e10239d67d0aa1",
+   "context_start": "0x004f1042"
+  },
+  {
+   "site": "0x004f1078",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004f1025",
+    "0x004f10c1"
+   ],
+   "gap_bytes": 156,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "self_span": false,
+   "kind": "call",
+   "class": "CODE-PSEUDO",
+   "note": "18 back-off stream(s) land on the site; fall-through decodes",
+   "target": "0x004ddf76",
+   "target_function": "mem_realloc",
+   "target_crt": true,
+   "target_entry": "0x004ddf76",
+   "at_entry": true,
+   "site_label": null,
+   "ghidra_ref": false,
+   "context": "3b0601893c01eb46a12c3b06018d5104e8f9cefeff8b1d283b0601a32c3b060189d8c1e002",
+   "context_start": "0x004f1068"
+  },
+  {
+   "site": "0x004f12f1",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004f12dc",
+    "0x004f1363"
+   ],
+   "gap_bytes": 135,
+   "span_owner": "raise",
+   "span_owner_entry": "0x004f125c",
+   "self_span": false,
+   "kind": "call",
+   "class": "CODE-PSEUDO",
+   "note": "22 back-off stream(s) land on the site; fall-through decodes",
+   "target": "0x004dfae3",
+   "target_function": "llm_crt_set_errno",
+   "target_crt": true,
+   "target_entry": "0x004dfae3",
+   "at_entry": true,
+   "site_label": null,
+   "ghidra_ref": false,
+   "context": "d183f8017c0583f80c7e12b809000000e8ede7feffb803000000595bc3c70568f666005712",
+   "context_start": "0x004f12e1"
+  },
+  {
+   "site": "0x004f132d",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004f12dc",
+    "0x004f1363"
+   ],
+   "gap_bytes": 135,
+   "span_owner": "raise",
+   "span_owner_entry": "0x004f125c",
+   "self_span": false,
+   "kind": "call",
+   "class": "CODE-PSEUDO",
+   "note": "19 back-off stream(s) land on the site; fall-through decodes",
+   "target": "0x004f311a",
+   "target_function": "_control87",
+   "target_crt": true,
+   "target_entry": "0x004f311a",
+   "at_entry": true,
+   "site_label": null,
+   "ghidra_ref": false,
+   "context": "5c00741183fb02750cba9f00000031c0e8e81d0000ff1504cf66008b54d858ff1504cf6600",
+   "context_start": "0x004f131d"
+  },
+  {
+   "site": "0x004f1346",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004f12dc",
+    "0x004f1363"
+   ],
+   "gap_bytes": 135,
+   "span_owner": "raise",
+   "span_owner_entry": "0x004f125c",
+   "self_span": false,
+   "kind": "call",
+   "class": "CODE-PSEUDO",
+   "note": "18 back-off stream(s) land on the site; fall-through decodes",
+   "target": "0x004f11b5",
+   "target_function": "CRT_004f11b5",
+   "target_crt": true,
+   "target_entry": "0x004f11b5",
+   "at_entry": true,
+   "site_label": null,
+   "ghidra_ref": false,
+   "context": "66008b54d858ff1504cf6600894cd858e86afeffff85c0740ae8a0feffff89d0595bc3e8c2",
+   "context_start": "0x004f1336"
+  },
+  {
+   "site": "0x004f134f",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004f12dc",
+    "0x004f1363"
+   ],
+   "gap_bytes": 135,
+   "span_owner": "raise",
+   "span_owner_entry": "0x004f125c",
+   "self_span": false,
+   "kind": "call",
+   "class": "CODE-PSEUDO",
+   "note": "12 back-off stream(s) land on the site; fall-through decodes",
+   "target": "0x004f11f4",
+   "target_function": "llm_crt_console_ctrl_handler_install",
+   "target_crt": true,
+   "target_entry": "0x004f11f4",
+   "at_entry": true,
+   "site_label": null,
+   "ghidra_ref": false,
+   "context": "cf6600894cd858e86afeffff85c0740ae8a0feffff89d0595bc3e8c2feffff89d0595bc383",
+   "context_start": "0x004f133f"
+  },
+  {
+   "site": "0x004f1359",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004f12dc",
+    "0x004f1363"
+   ],
+   "gap_bytes": 135,
+   "span_owner": "raise",
+   "span_owner_entry": "0x004f125c",
+   "self_span": false,
+   "kind": "call",
+   "class": "CODE-PSEUDO",
+   "note": "15 back-off stream(s) land on the site; fall-through decodes",
+   "target": "0x004f1220",
+   "target_function": "CRT_004f1220",
+   "target_crt": true,
+   "target_entry": "0x004f1220",
+   "at_entry": true,
+   "site_label": null,
+   "ghidra_ref": false,
+   "context": "ffff85c0740ae8a0feffff89d0595bc3e8c2feffff89d0595bc383fa017411e91effffffb8",
+   "context_start": "0x004f1349"
+  },
+  {
+   "site": "0x004f1562",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004f13ef",
+    "0x004f17bf"
+   ],
+   "gap_bytes": 976,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "self_span": false,
+   "kind": "call",
+   "class": "CODE-PSEUDO",
+   "note": "16 back-off stream(s) land on the site; fall-through decodes",
+   "target": "0x004f1295",
+   "target_function": "__sigfpe_handler",
+   "target_crt": true,
+   "target_entry": "0x004f1295",
+   "at_entry": true,
+   "site_label": null,
+   "ghidra_ref": false,
+   "context": "ffffffff83f8ff743cc605303b060101e82efdffff85c07522803d303b0601007419e8effe",
+   "context_start": "0x004f1552"
+  },
+  {
+   "site": "0x004f15df",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004f13ef",
+    "0x004f17bf"
+   ],
+   "gap_bytes": 976,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "self_span": false,
+   "kind": "call",
+   "class": "CODE-PSEUDO",
+   "note": "17 back-off stream(s) land on the site; fall-through decodes",
+   "target": "0x004f125c",
+   "target_function": "raise",
+   "target_crt": true,
+   "target_entry": "0x004f125c",
+   "at_entry": true,
+   "site_label": null,
+   "ghidra_ref": false,
+   "context": "837c025803742bc605303b06010189c8e878fcffff803d303b0601000f84bb01000031c0e9",
+   "context_start": "0x004f15cf"
+  },
+  {
+   "site": "0x004f16c5",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004f13ef",
+    "0x004f17bf"
+   ],
+   "gap_bytes": 976,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "self_span": false,
+   "kind": "call",
+   "class": "CODE-PSEUDO",
+   "note": "21 back-off stream(s) land on the site; fall-through decodes",
+   "target": "0x004f320d",
+   "target_function": "CRT_004f320d",
+   "target_crt": true,
+   "target_entry": "0x004f320d",
+   "at_entry": true,
+   "site_label": null,
+   "ghidra_ref": false,
+   "context": "000083c40ce85f4a000031db85c0750ee8431b000083f8ff0f859e00000068fe705000e83b",
+   "context_start": "0x004f16b5"
+  },
+  {
+   "site": "0x004f1725",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004f13ef",
+    "0x004f17bf"
+   ],
+   "gap_bytes": 976,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "self_span": false,
+   "kind": "call",
+   "class": "CODE-PSEUDO",
+   "note": "20 back-off stream(s) land on the site; fall-through decodes",
+   "target": "0x004f61cc",
+   "target_function": "GetModuleFileNameA",
+   "target_crt": false,
+   "target_entry": "0x004f61cc",
+   "at_entry": true,
+   "site_label": null,
+   "ghidra_ref": false,
+   "context": "a5a56a00be2b7150008dbc2424010000e8a24a0000061e07572bc949b000f2ae4f8a068807",
+   "context_start": "0x004f1715"
+  },
+  {
+   "site": "0x004f17a7",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004f13ef",
+    "0x004f17bf"
+   ],
+   "gap_bytes": 976,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "self_span": false,
+   "kind": "call",
+   "class": "CODE-PSEUDO",
+   "note": "14 back-off stream(s) land on the site; fall-through decodes",
+   "target": "0x004f61de",
+   "target_function": "WriteFile",
+   "target_crt": false,
+   "target_entry": "0x004f61de",
+   "at_entry": true,
+   "site_label": null,
+   "ghidra_ref": false,
+   "context": "84242401000050a12c3b06018b500852e8324a0000b80100000081c4200200005d075f5e5b",
+   "context_start": "0x004f1797"
+  },
+  {
+   "site": "0x004f1888",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004f1883",
+    "0x004f18cb"
+   ],
+   "gap_bytes": 72,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "self_span": false,
+   "kind": "jmp",
+   "class": "CODE-DISASM",
+   "note": "JMP",
+   "target": "0x004f1962",
+   "target_function": "__ReleaseSemaphore",
+   "target_crt": true,
+   "target_entry": "0x004f1962",
+   "at_entry": true,
+   "site_label": null,
+   "ghidra_ref": true,
+   "context": "c3b8343b0601e97d000000b8343b0601e9d500000083e00fc1e00405543b0601eb6683e00f",
+   "context_start": "0x004f1878"
+  },
+  {
+   "site": "0x004f18a5",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004f1883",
+    "0x004f18cb"
+   ],
+   "gap_bytes": 72,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "self_span": false,
+   "kind": "jmp",
+   "class": "CODE-DISASM",
+   "note": "JMP",
+   "target": "0x004f1962",
+   "target_function": "__ReleaseSemaphore",
+   "target_crt": true,
+   "target_entry": "0x004f1962",
+   "at_entry": true,
+   "site_label": null,
+   "ghidra_ref": true,
+   "context": "3b0601eb6683e00fc1e00405543b0601e9b8000000e9fdf6ffff5289c283e00fc1e0040554",
+   "context_start": "0x004f1895"
+  },
+  {
+   "site": "0x004f18aa",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004f1883",
+    "0x004f18cb"
+   ],
+   "gap_bytes": 72,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "self_span": false,
+   "kind": "jmp",
+   "class": "CODE-DISASM",
+   "note": "JMP",
+   "target": "0x004f0fac",
+   "target_function": "__NTAddFileHandle",
+   "target_crt": true,
+   "target_entry": "0x004f0fac",
+   "at_entry": true,
+   "site_label": "LAB_004f18aa",
+   "ghidra_ref": true,
+   "context": "83e00fc1e00405543b0601e9b8000000e9fdf6ffff5289c283e00fc1e00405543b0601e88b",
+   "context_start": "0x004f189a"
+  },
+  {
+   "site": "0x004f18bd",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004f1883",
+    "0x004f18cb"
+   ],
+   "gap_bytes": 72,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "self_span": false,
+   "kind": "call",
+   "class": "CODE-DISASM",
+   "note": "CALL",
+   "target": "0x004f184d",
+   "target_function": "__CloseSemaphore",
+   "target_crt": true,
+   "target_entry": "0x004f184d",
+   "at_entry": true,
+   "site_label": null,
+   "ghidra_ref": true,
+   "context": "ffff5289c283e00fc1e00405543b0601e88bffffff89d0e8f8f7ffff5ac3b8543c0601eb2e",
+   "context_start": "0x004f18ad"
+  },
+  {
+   "site": "0x004f18c4",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004f1883",
+    "0x004f18cb"
+   ],
+   "gap_bytes": 72,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "self_span": false,
+   "kind": "call",
+   "class": "CODE-DISASM",
+   "note": "CALL",
+   "target": "0x004f10c1",
+   "target_function": "__NTRemoveFileHandle",
+   "target_crt": true,
+   "target_entry": "0x004f10c1",
+   "at_entry": true,
+   "site_label": null,
+   "ghidra_ref": true,
+   "context": "0fc1e00405543b0601e88bffffff89d0e8f8f7ffff5ac3b8543c0601eb2eb8543c0601e986",
+   "context_start": "0x004f18b4"
+  },
+  {
+   "site": "0x004f18d7",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004f18d2",
+    "0x004f1900"
+   ],
+   "gap_bytes": 46,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "self_span": false,
+   "kind": "jmp",
+   "class": "CODE-DISASM",
+   "note": "JMP",
+   "target": "0x004f1962",
+   "target_function": "__ReleaseSemaphore",
+   "target_crt": true,
+   "target_entry": "0x004f1962",
+   "at_entry": true,
+   "site_label": null,
+   "ghidra_ref": true,
+   "context": "ffff5ac3b8543c0601eb2eb8543c0601e986000000b8443b0601eb1db8443b0601e9750000",
+   "context_start": "0x004f18c7"
+  },
+  {
+   "site": "0x004f18e8",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004f18d2",
+    "0x004f1900"
+   ],
+   "gap_bytes": 46,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "self_span": false,
+   "kind": "jmp",
+   "class": "CODE-DISASM",
+   "note": "JMP",
+   "target": "0x004f1962",
+   "target_function": "__ReleaseSemaphore",
+   "target_crt": true,
+   "target_entry": "0x004f1962",
+   "at_entry": true,
+   "site_label": null,
+   "ghidra_ref": true,
+   "context": "86000000b8443b0601eb1db8443b0601e975000000b8743c0601eb0cb8743c0601eb67b884",
+   "context_start": "0x004f18d8"
+  },
+  {
+   "site": "0x004f1ad1",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004f1acc",
+    "0x004f1ad6"
+   ],
+   "gap_bytes": 10,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "self_span": false,
+   "kind": "call",
+   "class": "CODE-PSEUDO",
+   "note": "21 back-off stream(s) land on the site; fall-through decodes",
+   "target": "0x004f1a7f",
+   "target_function": "__NTRemoveThread",
+   "target_crt": true,
+   "target_entry": "0x004f1a7f",
+   "at_entry": true,
+   "site_label": null,
+   "ghidra_ref": false,
+   "context": "53e8db4600005e5a595bc3b801000000e8a9ffffff51528b1500cf660083faff741052e8f9",
+   "context_start": "0x004f1ac1"
+  },
+  {
+   "site": "0x004f1c57",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004f1c0f",
+    "0x004f1c7a"
+   ],
+   "gap_bytes": 107,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "self_span": false,
+   "kind": "call",
+   "class": "CODE-PSEUDO",
+   "note": "20 back-off stream(s) land on the site; fall-through decodes",
+   "target": "0x004f3323",
+   "target_function": "__FreeThreadDataList",
+   "target_crt": false,
+   "target_entry": "0x004f3323",
+   "at_entry": true,
+   "site_label": null,
+   "ghidra_ref": false,
+   "context": "0039da75f1b8843c0601ff1584f56600e8c7160000b8743c0601ff1584f56600b8643c0601",
+   "context_start": "0x004f1c47"
+  },
+  {
+   "site": "0x004f1c72",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004f1c0f",
+    "0x004f1c7a"
+   ],
+   "gap_bytes": 107,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "self_span": false,
+   "kind": "call",
+   "class": "CODE-PSEUDO",
+   "note": "20 back-off stream(s) land on the site; fall-through decodes",
+   "target": "0x004f1ad6",
+   "target_function": "__NTThreadFini",
+   "target_crt": true,
+   "target_entry": "0x004f1ad6",
+   "at_entry": true,
+   "site_label": null,
+   "ghidra_ref": false,
+   "context": "1584f56600b8643c0601ff1584f56600e85ffeffff5a5bc35152565789c689c7068cd88ec0",
+   "context_start": "0x004f1c62"
+  },
+  {
+   "site": "0x004f1fdc",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004f1fb3",
+    "0x004f2093"
+   ],
+   "gap_bytes": 224,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "self_span": false,
+   "kind": "call",
+   "class": "CODE-PSEUDO",
+   "note": "21 back-off stream(s) land on the site; fall-through decodes",
+   "target": "0x004d0155",
+   "target_function": "utils_malloc",
+   "target_crt": true,
+   "target_entry": "0x004d0155",
+   "at_entry": true,
+   "site_label": null,
+   "ghidra_ref": false,
+   "context": "cf660088158dcf6600eb42b808000000e874e1fdff89c385c0751fb808000000e864e1fdff",
+   "context_start": "0x004f1fcc"
+  },
+  {
+   "site": "0x004f1fec",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004f1fb3",
+    "0x004f2093"
+   ],
+   "gap_bytes": 224,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "self_span": false,
+   "kind": "call",
+   "class": "CODE-PSEUDO",
+   "note": "22 back-off stream(s) land on the site; fall-through decodes",
+   "target": "0x004d0155",
+   "target_function": "utils_malloc",
+   "target_crt": true,
+   "target_entry": "0x004d0155",
+   "at_entry": true,
+   "site_label": null,
+   "ghidra_ref": false,
+   "context": "e874e1fdff89c385c0751fb808000000e864e1fdff89c385c0750fba01000000b87c715000",
+   "context_start": "0x004f1fdc"
+  },
+  {
+   "site": "0x004f2001",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004f1fb3",
+    "0x004f2093"
+   ],
+   "gap_bytes": 224,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "self_span": false,
+   "kind": "call",
+   "class": "CODE-PSEUDO",
+   "note": "13 back-off stream(s) land on the site; fall-through decodes",
+   "target": "0x004ded3b",
+   "target_function": "ThrowException",
+   "target_crt": true,
+   "target_entry": "0x004ded3b",
+   "at_entry": true,
+   "site_label": null,
+   "ghidra_ref": false,
+   "context": "89c385c0750fba01000000b87c715000e835cdfeffa12c300001894b04891d2c30000183c1",
+   "context_start": "0x004f1ff1"
+  },
+  {
+   "site": "0x004f2080",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004f1fb3",
+    "0x004f2093"
+   ],
+   "gap_bytes": 224,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "self_span": false,
+   "kind": "call",
+   "class": "CODE-PSEUDO",
+   "note": "14 back-off stream(s) land on the site; fall-through decodes",
+   "target": "0x004cf810",
+   "target_function": "__shutdown_stream",
+   "target_crt": true,
+   "target_entry": "0x004cf810",
+   "at_entry": true,
+   "site_label": null,
+   "ghidra_ref": false,
+   "context": "08750d39f0720f3d9acf6600730231d2e88bd7fdff4389c885c075d189d85e5a595bc3b8ff",
+   "context_start": "0x004f2070"
+  },
+  {
+   "site": "0x004f23b6",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004f2311",
+    "0x004f23fb"
+   ],
+   "gap_bytes": 234,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "self_span": false,
+   "kind": "call",
+   "class": "CODE-PSEUDO",
+   "note": "20 back-off stream(s) land on the site; fall-through decodes",
+   "target": "0x004f3688",
+   "target_function": "_FtoS",
+   "target_crt": true,
+   "target_entry": "0x004f3688",
+   "at_entry": true,
+   "site_label": null,
+   "ghidra_ref": false,
+   "context": "8b5f0831c968ff0000008d54241489f0e8cd12000031c08a0683f82a7504c647162ac686ff",
+   "context_start": "0x004f23a6"
+  },
+  {
+   "site": "0x004f23df",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004f2311",
+    "0x004f23fb"
+   ],
+   "gap_bytes": 234,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "self_span": false,
+   "kind": "call",
+   "class": "CODE-PSEUDO",
+   "note": "23 back-off stream(s) land on the site; fall-through decodes",
+   "target": "0x004f23fb",
+   "target_function": "llm_crt_printf_g_trim_trailing_zeros",
+   "target_crt": true,
+   "target_entry": "0x004f23fb",
+   "at_entry": true,
+   "site_label": null,
+   "ghidra_ref": false,
+   "context": "31c08a0683f820750346ebf489fa89f0e8170000008cdb89f1c74708ffffffff89da89c883",
+   "context_start": "0x004f23cf"
+  },
+  {
+   "site": "0x004f245f",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004f245a",
+    "0x004f246a"
+   ],
+   "gap_bytes": 16,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "self_span": false,
+   "kind": "call",
+   "class": "CODE-PSEUDO",
+   "note": "18 back-off stream(s) land on the site; fall-through decodes",
+   "target": "0x004ef3ea",
+   "target_function": "strtod",
+   "target_crt": true,
+   "target_entry": "0x004ef3ea",
+   "at_entry": true,
+   "site_label": null,
+   "ghidra_ref": false,
+   "context": "1a4288184084db75f65bc35389d331d2e886cfffffdd1b5bc3c30066509bdbe3d9e8d9eede",
+   "context_start": "0x004f244f"
+  },
+  {
+   "site": "0x004f294d",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004f28eb",
+    "0x004f2984"
+   ],
+   "gap_bytes": 153,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "self_span": false,
+   "kind": "call",
+   "class": "CODE-PSEUDO",
+   "note": "20 back-off stream(s) land on the site; fall-through decodes",
+   "target": "0x004f2ad8",
+   "target_function": "llm_debug_trace_printf",
+   "target_crt": false,
+   "target_entry": "0x004f2ad8",
+   "at_entry": true,
+   "site_label": null,
+   "ghidra_ref": false,
+   "context": "159c04070183c41489e050685c725000e88601000083c4086a0468607250008d442408506a",
+   "context_start": "0x004f293d"
+  },
+  {
+   "site": "0x004f2e32",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004f2dc0",
+    "0x004f2e50"
+   ],
+   "gap_bytes": 144,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "self_span": false,
+   "kind": "call",
+   "class": "CODE-PSEUDO",
+   "note": "20 back-off stream(s) land on the site; fall-through decodes",
+   "target": "0x004f2e9b",
+   "target_function": "CRT_004f2e9b",
+   "target_crt": true,
+   "target_entry": "0x004f2e9b",
+   "at_entry": true,
+   "site_label": null,
+   "ghidra_ref": false,
+   "context": "04214500f7d2f7d089f5235504234500e8640000005e09d2740881e60000008009f2895504",
+   "context_start": "0x004f2e22"
+  },
+  {
+   "site": "0x004f3a9c",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004f3a61",
+    "0x004f3ef3"
+   ],
+   "gap_bytes": 1170,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "self_span": false,
+   "kind": "call",
+   "class": "CODE-DISASM",
+   "note": "CALL",
+   "target": "0x004f3940",
+   "target_function": "CRT_004f3940",
+   "target_crt": true,
+   "target_entry": "0x004f3940",
+   "at_entry": true,
+   "site_label": null,
+   "ghidra_ref": true,
+   "context": "c42cc3db7c240cd9c0db3c24db7c2420e89ffeffffdb6c2420d9c983c42cc383c42ccd06db",
+   "context_start": "0x004f3a8c"
+  },
+  {
+   "site": "0x004f3ab7",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004f3a61",
+    "0x004f3ef3"
+   ],
+   "gap_bytes": 1170,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "self_span": false,
+   "kind": "call",
+   "class": "CODE-DISASM",
+   "note": "CALL",
+   "target": "0x004f3940",
+   "target_function": "CRT_004f3940",
+   "target_crt": true,
+   "target_entry": "0x004f3940",
+   "at_entry": true,
+   "site_label": null,
+   "ghidra_ref": true,
+   "context": "83c42cc383c42ccd06db3c24db7c240ce884feffffdb6c240cd9c983c42cc383c42ccd06d9",
+   "context_start": "0x004f3aa7"
+  },
+  {
+   "site": "0x004f3ada",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004f3a61",
+    "0x004f3ef3"
+   ],
+   "gap_bytes": 1170,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "self_span": false,
+   "kind": "call",
+   "class": "CODE-DISASM",
+   "note": "CALL",
+   "target": "0x004f3940",
+   "target_function": "CRT_004f3940",
+   "target_crt": true,
+   "target_entry": "0x004f3940",
+   "at_entry": true,
+   "site_label": null,
+   "ghidra_ref": true,
+   "context": "06d9c9db7c240cd9c0db3c24db7c2420e861feffffdb6c242083c42cc3db3c24db7c240ce8",
+   "context_start": "0x004f3aca"
+  },
+  {
+   "site": "0x004f3aee",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004f3a61",
+    "0x004f3ef3"
+   ],
+   "gap_bytes": 1170,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "self_span": false,
+   "kind": "call",
+   "class": "CODE-DISASM",
+   "note": "CALL",
+   "target": "0x004f3940",
+   "target_function": "CRT_004f3940",
+   "target_crt": true,
+   "target_entry": "0x004f3940",
+   "at_entry": true,
+   "site_label": null,
+   "ghidra_ref": true,
+   "context": "ffdb6c242083c42cc3db3c24db7c240ce84dfeffff83c42cc3db7c240cdb3c24e83dfeffff",
+   "context_start": "0x004f3ade"
+  },
+  {
+   "site": "0x004f3afe",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004f3a61",
+    "0x004f3ef3"
+   ],
+   "gap_bytes": 1170,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "self_span": false,
+   "kind": "call",
+   "class": "CODE-DISASM",
+   "note": "CALL",
+   "target": "0x004f3940",
+   "target_function": "CRT_004f3940",
+   "target_crt": true,
+   "target_entry": "0x004f3940",
+   "at_entry": true,
+   "site_label": null,
+   "ghidra_ref": true,
+   "context": "e84dfeffff83c42cc3db7c240cdb3c24e83dfeffffdb6c240c83c42cc3db7c240cdb3c24e8",
+   "context_start": "0x004f3aee"
+  },
+  {
+   "site": "0x004f3b12",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004f3a61",
+    "0x004f3ef3"
+   ],
+   "gap_bytes": 1170,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "self_span": false,
+   "kind": "call",
+   "class": "CODE-DISASM",
+   "note": "CALL",
+   "target": "0x004f3940",
+   "target_function": "CRT_004f3940",
+   "target_crt": true,
+   "target_entry": "0x004f3940",
+   "at_entry": true,
+   "site_label": null,
+   "ghidra_ref": true,
+   "context": "ffdb6c240c83c42cc3db7c240cdb3c24e829feffff83c42cc3db7c240cd9c9d9c0db3c24db",
+   "context_start": "0x004f3b02"
+  },
+  {
+   "site": "0x004f3b2a",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004f3a61",
+    "0x004f3ef3"
+   ],
+   "gap_bytes": 1170,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "self_span": false,
+   "kind": "call",
+   "class": "CODE-DISASM",
+   "note": "CALL",
+   "target": "0x004f3940",
+   "target_function": "CRT_004f3940",
+   "target_crt": true,
+   "target_entry": "0x004f3940",
+   "at_entry": true,
+   "site_label": null,
+   "ghidra_ref": true,
+   "context": "c3db7c240cd9c9d9c0db3c24db7c2420e811feffffd9c9db6c2420d9ca83c42cc383c42ccd",
+   "context_start": "0x004f3b1a"
+  },
+  {
+   "site": "0x004f3b49",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004f3a61",
+    "0x004f3ef3"
+   ],
+   "gap_bytes": 1170,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "self_span": false,
+   "kind": "call",
+   "class": "CODE-DISASM",
+   "note": "CALL",
+   "target": "0x004f3940",
+   "target_function": "CRT_004f3940",
+   "target_crt": true,
+   "target_entry": "0x004f3940",
+   "at_entry": true,
+   "site_label": null,
+   "ghidra_ref": true,
+   "context": "2cc383c42ccd06db3c24d9c9db7c240ce8f2fdffffd9c9db6c240cd9ca83c42cc383c42ccd",
+   "context_start": "0x004f3b39"
+  },
+  {
+   "site": "0x004f3b70",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004f3a61",
+    "0x004f3ef3"
+   ],
+   "gap_bytes": 1170,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "self_span": false,
+   "kind": "call",
+   "class": "CODE-DISASM",
+   "note": "CALL",
+   "target": "0x004f3940",
+   "target_function": "CRT_004f3940",
+   "target_crt": true,
+   "target_entry": "0x004f3940",
+   "at_entry": true,
+   "site_label": null,
+   "ghidra_ref": true,
+   "context": "cadb7c240cd9c9d9c0db3c24db7c2420e8cbfdffffd9c9db6c242083c42cc3db3c24d9c9db",
+   "context_start": "0x004f3b60"
+  },
+  {
+   "site": "0x004f3b88",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004f3a61",
+    "0x004f3ef3"
+   ],
+   "gap_bytes": 1170,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "self_span": false,
+   "kind": "call",
+   "class": "CODE-DISASM",
+   "note": "CALL",
+   "target": "0x004f3940",
+   "target_function": "CRT_004f3940",
+   "target_crt": true,
+   "target_entry": "0x004f3940",
+   "at_entry": true,
+   "site_label": null,
+   "ghidra_ref": true,
+   "context": "6c242083c42cc3db3c24d9c9db7c240ce8b3fdffffd9c983c42cc3db7c240cd9c9db3c24e8",
+   "context_start": "0x004f3b78"
+  },
+  {
+   "site": "0x004f3b9c",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004f3a61",
+    "0x004f3ef3"
+   ],
+   "gap_bytes": 1170,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "self_span": false,
+   "kind": "call",
+   "class": "CODE-DISASM",
+   "note": "CALL",
+   "target": "0x004f3940",
+   "target_function": "CRT_004f3940",
+   "target_crt": true,
+   "target_entry": "0x004f3940",
+   "at_entry": true,
+   "site_label": null,
+   "ghidra_ref": true,
+   "context": "ffd9c983c42cc3db7c240cd9c9db3c24e89ffdffffd9c9db6c240c83c42cc3db7c240cd9c9",
+   "context_start": "0x004f3b8c"
+  },
+  {
+   "site": "0x004f3bb4",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004f3a61",
+    "0x004f3ef3"
+   ],
+   "gap_bytes": 1170,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "self_span": false,
+   "kind": "call",
+   "class": "CODE-DISASM",
+   "note": "CALL",
+   "target": "0x004f3940",
+   "target_function": "CRT_004f3940",
+   "target_crt": true,
+   "target_entry": "0x004f3940",
+   "at_entry": true,
+   "site_label": null,
+   "ghidra_ref": true,
+   "context": "6c240c83c42cc3db7c240cd9c9db3c24e887fdffffd9c983c42cc3db7c240cd9cad9c0db3c",
+   "context_start": "0x004f3ba4"
+  },
+  {
+   "site": "0x004f3bce",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004f3a61",
+    "0x004f3ef3"
+   ],
+   "gap_bytes": 1170,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "self_span": false,
+   "kind": "call",
+   "class": "CODE-DISASM",
+   "note": "CALL",
+   "target": "0x004f3940",
+   "target_function": "CRT_004f3940",
+   "target_crt": true,
+   "target_entry": "0x004f3940",
+   "at_entry": true,
+   "site_label": null,
+   "ghidra_ref": true,
+   "context": "c3db7c240cd9cad9c0db3c24db7c2420e86dfdffffd9cadb6c2420d9cb83c42cc383c42ccd",
+   "context_start": "0x004f3bbe"
+  },
+  {
+   "site": "0x004f3bed",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004f3a61",
+    "0x004f3ef3"
+   ],
+   "gap_bytes": 1170,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "self_span": false,
+   "kind": "call",
+   "class": "CODE-DISASM",
+   "note": "CALL",
+   "target": "0x004f3940",
+   "target_function": "CRT_004f3940",
+   "target_crt": true,
+   "target_entry": "0x004f3940",
+   "at_entry": true,
+   "site_label": null,
+   "ghidra_ref": true,
+   "context": "2cc383c42ccd06db3c24d9cadb7c240ce84efdffffd9cadb6c240cd9cb83c42cc383c42ccd",
+   "context_start": "0x004f3bdd"
+  },
+  {
+   "site": "0x004f3c14",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004f3a61",
+    "0x004f3ef3"
+   ],
+   "gap_bytes": 1170,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "self_span": false,
+   "kind": "call",
+   "class": "CODE-DISASM",
+   "note": "CALL",
+   "target": "0x004f3940",
+   "target_function": "CRT_004f3940",
+   "target_crt": true,
+   "target_entry": "0x004f3940",
+   "at_entry": true,
+   "site_label": null,
+   "ghidra_ref": true,
+   "context": "cbdb7c240cd9cad9c0db3c24db7c2420e827fdffffd9cadb6c242083c42cc3db3c24d9cadb",
+   "context_start": "0x004f3c04"
+  },
+  {
+   "site": "0x004f3c2c",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004f3a61",
+    "0x004f3ef3"
+   ],
+   "gap_bytes": 1170,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "self_span": false,
+   "kind": "call",
+   "class": "CODE-DISASM",
+   "note": "CALL",
+   "target": "0x004f3940",
+   "target_function": "CRT_004f3940",
+   "target_crt": true,
+   "target_entry": "0x004f3940",
+   "at_entry": true,
+   "site_label": null,
+   "ghidra_ref": true,
+   "context": "6c242083c42cc3db3c24d9cadb7c240ce80ffdffffd9ca83c42cc3db7c240cd9cadb3c24e8",
+   "context_start": "0x004f3c1c"
+  },
+  {
+   "site": "0x004f3c40",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004f3a61",
+    "0x004f3ef3"
+   ],
+   "gap_bytes": 1170,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "self_span": false,
+   "kind": "call",
+   "class": "CODE-DISASM",
+   "note": "CALL",
+   "target": "0x004f3940",
+   "target_function": "CRT_004f3940",
+   "target_crt": true,
+   "target_entry": "0x004f3940",
+   "at_entry": true,
+   "site_label": null,
+   "ghidra_ref": true,
+   "context": "ffd9ca83c42cc3db7c240cd9cadb3c24e8fbfcffffd9cadb6c240c83c42cc3db7c240cd9ca",
+   "context_start": "0x004f3c30"
+  },
+  {
+   "site": "0x004f3c58",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004f3a61",
+    "0x004f3ef3"
+   ],
+   "gap_bytes": 1170,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "self_span": false,
+   "kind": "call",
+   "class": "CODE-DISASM",
+   "note": "CALL",
+   "target": "0x004f3940",
+   "target_function": "CRT_004f3940",
+   "target_crt": true,
+   "target_entry": "0x004f3940",
+   "at_entry": true,
+   "site_label": null,
+   "ghidra_ref": true,
+   "context": "6c240c83c42cc3db7c240cd9cadb3c24e8e3fcffffd9ca83c42cc3db7c240cd9cbd9c0db3c",
+   "context_start": "0x004f3c48"
+  },
+  {
+   "site": "0x004f3c72",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004f3a61",
+    "0x004f3ef3"
+   ],
+   "gap_bytes": 1170,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "self_span": false,
+   "kind": "call",
+   "class": "CODE-DISASM",
+   "note": "CALL",
+   "target": "0x004f3940",
+   "target_function": "CRT_004f3940",
+   "target_crt": true,
+   "target_entry": "0x004f3940",
+   "at_entry": true,
+   "site_label": null,
+   "ghidra_ref": true,
+   "context": "c3db7c240cd9cbd9c0db3c24db7c2420e8c9fcffffd9cbdb6c2420d9cc83c42cc383c42ccd",
+   "context_start": "0x004f3c62"
+  },
+  {
+   "site": "0x004f3c91",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004f3a61",
+    "0x004f3ef3"
+   ],
+   "gap_bytes": 1170,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "self_span": false,
+   "kind": "call",
+   "class": "CODE-DISASM",
+   "note": "CALL",
+   "target": "0x004f3940",
+   "target_function": "CRT_004f3940",
+   "target_crt": true,
+   "target_entry": "0x004f3940",
+   "at_entry": true,
+   "site_label": null,
+   "ghidra_ref": true,
+   "context": "2cc383c42ccd06db3c24d9cbdb7c240ce8aafcffffd9cbdb6c240cd9cc83c42cc383c42ccd",
+   "context_start": "0x004f3c81"
+  },
+  {
+   "site": "0x004f3cb8",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004f3a61",
+    "0x004f3ef3"
+   ],
+   "gap_bytes": 1170,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "self_span": false,
+   "kind": "call",
+   "class": "CODE-DISASM",
+   "note": "CALL",
+   "target": "0x004f3940",
+   "target_function": "CRT_004f3940",
+   "target_crt": true,
+   "target_entry": "0x004f3940",
+   "at_entry": true,
+   "site_label": null,
+   "ghidra_ref": true,
+   "context": "ccdb7c240cd9cbd9c0db3c24db7c2420e883fcffffd9cbdb6c242083c42cc3db3c24d9cbdb",
+   "context_start": "0x004f3ca8"
+  },
+  {
+   "site": "0x004f3cd0",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004f3a61",
+    "0x004f3ef3"
+   ],
+   "gap_bytes": 1170,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "self_span": false,
+   "kind": "call",
+   "class": "CODE-DISASM",
+   "note": "CALL",
+   "target": "0x004f3940",
+   "target_function": "CRT_004f3940",
+   "target_crt": true,
+   "target_entry": "0x004f3940",
+   "at_entry": true,
+   "site_label": null,
+   "ghidra_ref": true,
+   "context": "6c242083c42cc3db3c24d9cbdb7c240ce86bfcffffd9cb83c42cc3db7c240cd9cbdb3c24e8",
+   "context_start": "0x004f3cc0"
+  },
+  {
+   "site": "0x004f3ce4",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004f3a61",
+    "0x004f3ef3"
+   ],
+   "gap_bytes": 1170,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "self_span": false,
+   "kind": "call",
+   "class": "CODE-DISASM",
+   "note": "CALL",
+   "target": "0x004f3940",
+   "target_function": "CRT_004f3940",
+   "target_crt": true,
+   "target_entry": "0x004f3940",
+   "at_entry": true,
+   "site_label": null,
+   "ghidra_ref": true,
+   "context": "ffd9cb83c42cc3db7c240cd9cbdb3c24e857fcffffd9cbdb6c240c83c42cc3db7c240cd9cb",
+   "context_start": "0x004f3cd4"
+  },
+  {
+   "site": "0x004f3cfc",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004f3a61",
+    "0x004f3ef3"
+   ],
+   "gap_bytes": 1170,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "self_span": false,
+   "kind": "call",
+   "class": "CODE-DISASM",
+   "note": "CALL",
+   "target": "0x004f3940",
+   "target_function": "CRT_004f3940",
+   "target_crt": true,
+   "target_entry": "0x004f3940",
+   "at_entry": true,
+   "site_label": null,
+   "ghidra_ref": true,
+   "context": "6c240c83c42cc3db7c240cd9cbdb3c24e83ffcffffd9cb83c42cc3db7c240cd9ccd9c0db3c",
+   "context_start": "0x004f3cec"
+  },
+  {
+   "site": "0x004f3d16",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004f3a61",
+    "0x004f3ef3"
+   ],
+   "gap_bytes": 1170,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "self_span": false,
+   "kind": "call",
+   "class": "CODE-DISASM",
+   "note": "CALL",
+   "target": "0x004f3940",
+   "target_function": "CRT_004f3940",
+   "target_crt": true,
+   "target_entry": "0x004f3940",
+   "at_entry": true,
+   "site_label": null,
+   "ghidra_ref": true,
+   "context": "c3db7c240cd9ccd9c0db3c24db7c2420e825fcffffd9ccdb6c2420d9cd83c42cc383c42ccd",
+   "context_start": "0x004f3d06"
+  },
+  {
+   "site": "0x004f3d35",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004f3a61",
+    "0x004f3ef3"
+   ],
+   "gap_bytes": 1170,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "self_span": false,
+   "kind": "call",
+   "class": "CODE-DISASM",
+   "note": "CALL",
+   "target": "0x004f3940",
+   "target_function": "CRT_004f3940",
+   "target_crt": true,
+   "target_entry": "0x004f3940",
+   "at_entry": true,
+   "site_label": null,
+   "ghidra_ref": true,
+   "context": "2cc383c42ccd06db3c24d9ccdb7c240ce806fcffffd9ccdb6c240cd9cd83c42cc383c42ccd",
+   "context_start": "0x004f3d25"
+  },
+  {
+   "site": "0x004f3d5c",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004f3a61",
+    "0x004f3ef3"
+   ],
+   "gap_bytes": 1170,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "self_span": false,
+   "kind": "call",
+   "class": "CODE-DISASM",
+   "note": "CALL",
+   "target": "0x004f3940",
+   "target_function": "CRT_004f3940",
+   "target_crt": true,
+   "target_entry": "0x004f3940",
+   "at_entry": true,
+   "site_label": null,
+   "ghidra_ref": true,
+   "context": "cddb7c240cd9ccd9c0db3c24db7c2420e8dffbffffd9ccdb6c242083c42cc3db3c24d9ccdb",
+   "context_start": "0x004f3d4c"
+  },
+  {
+   "site": "0x004f3d74",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004f3a61",
+    "0x004f3ef3"
+   ],
+   "gap_bytes": 1170,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "self_span": false,
+   "kind": "call",
+   "class": "CODE-DISASM",
+   "note": "CALL",
+   "target": "0x004f3940",
+   "target_function": "CRT_004f3940",
+   "target_crt": true,
+   "target_entry": "0x004f3940",
+   "at_entry": true,
+   "site_label": null,
+   "ghidra_ref": true,
+   "context": "6c242083c42cc3db3c24d9ccdb7c240ce8c7fbffffd9cc83c42cc3db7c240cd9ccdb3c24e8",
+   "context_start": "0x004f3d64"
+  },
+  {
+   "site": "0x004f3d88",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004f3a61",
+    "0x004f3ef3"
+   ],
+   "gap_bytes": 1170,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "self_span": false,
+   "kind": "call",
+   "class": "CODE-DISASM",
+   "note": "CALL",
+   "target": "0x004f3940",
+   "target_function": "CRT_004f3940",
+   "target_crt": true,
+   "target_entry": "0x004f3940",
+   "at_entry": true,
+   "site_label": null,
+   "ghidra_ref": true,
+   "context": "ffd9cc83c42cc3db7c240cd9ccdb3c24e8b3fbffffd9ccdb6c240c83c42cc3db7c240cd9cc",
+   "context_start": "0x004f3d78"
+  },
+  {
+   "site": "0x004f3da0",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004f3a61",
+    "0x004f3ef3"
+   ],
+   "gap_bytes": 1170,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "self_span": false,
+   "kind": "call",
+   "class": "CODE-DISASM",
+   "note": "CALL",
+   "target": "0x004f3940",
+   "target_function": "CRT_004f3940",
+   "target_crt": true,
+   "target_entry": "0x004f3940",
+   "at_entry": true,
+   "site_label": null,
+   "ghidra_ref": true,
+   "context": "6c240c83c42cc3db7c240cd9ccdb3c24e89bfbffffd9cc83c42cc3db7c240cd9cdd9c0db3c",
+   "context_start": "0x004f3d90"
+  },
+  {
+   "site": "0x004f3dba",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004f3a61",
+    "0x004f3ef3"
+   ],
+   "gap_bytes": 1170,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "self_span": false,
+   "kind": "call",
+   "class": "CODE-DISASM",
+   "note": "CALL",
+   "target": "0x004f3940",
+   "target_function": "CRT_004f3940",
+   "target_crt": true,
+   "target_entry": "0x004f3940",
+   "at_entry": true,
+   "site_label": null,
+   "ghidra_ref": true,
+   "context": "c3db7c240cd9cdd9c0db3c24db7c2420e881fbffffd9cddb6c2420d9ce83c42cc383c42ccd",
+   "context_start": "0x004f3daa"
+  },
+  {
+   "site": "0x004f3dd9",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004f3a61",
+    "0x004f3ef3"
+   ],
+   "gap_bytes": 1170,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "self_span": false,
+   "kind": "call",
+   "class": "CODE-DISASM",
+   "note": "CALL",
+   "target": "0x004f3940",
+   "target_function": "CRT_004f3940",
+   "target_crt": true,
+   "target_entry": "0x004f3940",
+   "at_entry": true,
+   "site_label": null,
+   "ghidra_ref": true,
+   "context": "2cc383c42ccd06db3c24d9cddb7c240ce862fbffffd9cddb6c240cd9ce83c42cc383c42ccd",
+   "context_start": "0x004f3dc9"
+  },
+  {
+   "site": "0x004f3e00",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004f3a61",
+    "0x004f3ef3"
+   ],
+   "gap_bytes": 1170,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "self_span": false,
+   "kind": "call",
+   "class": "CODE-DISASM",
+   "note": "CALL",
+   "target": "0x004f3940",
+   "target_function": "CRT_004f3940",
+   "target_crt": true,
+   "target_entry": "0x004f3940",
+   "at_entry": true,
+   "site_label": null,
+   "ghidra_ref": true,
+   "context": "cedb7c240cd9cdd9c0db3c24db7c2420e83bfbffffd9cddb6c242083c42cc3db3c24d9cddb",
+   "context_start": "0x004f3df0"
+  },
+  {
+   "site": "0x004f3e18",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004f3a61",
+    "0x004f3ef3"
+   ],
+   "gap_bytes": 1170,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "self_span": false,
+   "kind": "call",
+   "class": "CODE-DISASM",
+   "note": "CALL",
+   "target": "0x004f3940",
+   "target_function": "CRT_004f3940",
+   "target_crt": true,
+   "target_entry": "0x004f3940",
+   "at_entry": true,
+   "site_label": null,
+   "ghidra_ref": true,
+   "context": "6c242083c42cc3db3c24d9cddb7c240ce823fbffffd9cd83c42cc3db7c240cd9cddb3c24e8",
+   "context_start": "0x004f3e08"
+  },
+  {
+   "site": "0x004f3e2c",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004f3a61",
+    "0x004f3ef3"
+   ],
+   "gap_bytes": 1170,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "self_span": false,
+   "kind": "call",
+   "class": "CODE-DISASM",
+   "note": "CALL",
+   "target": "0x004f3940",
+   "target_function": "CRT_004f3940",
+   "target_crt": true,
+   "target_entry": "0x004f3940",
+   "at_entry": true,
+   "site_label": null,
+   "ghidra_ref": true,
+   "context": "ffd9cd83c42cc3db7c240cd9cddb3c24e80ffbffffd9cddb6c240c83c42cc3db7c240cd9cd",
+   "context_start": "0x004f3e1c"
+  },
+  {
+   "site": "0x004f3e44",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004f3a61",
+    "0x004f3ef3"
+   ],
+   "gap_bytes": 1170,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "self_span": false,
+   "kind": "call",
+   "class": "CODE-DISASM",
+   "note": "CALL",
+   "target": "0x004f3940",
+   "target_function": "CRT_004f3940",
+   "target_crt": true,
+   "target_entry": "0x004f3940",
+   "at_entry": true,
+   "site_label": null,
+   "ghidra_ref": true,
+   "context": "6c240c83c42cc3db7c240cd9cddb3c24e8f7faffffd9cd83c42cc3db7c240cd9ced9c0db3c",
+   "context_start": "0x004f3e34"
+  },
+  {
+   "site": "0x004f3e5e",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004f3a61",
+    "0x004f3ef3"
+   ],
+   "gap_bytes": 1170,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "self_span": false,
+   "kind": "call",
+   "class": "CODE-DISASM",
+   "note": "CALL",
+   "target": "0x004f3940",
+   "target_function": "CRT_004f3940",
+   "target_crt": true,
+   "target_entry": "0x004f3940",
+   "at_entry": true,
+   "site_label": null,
+   "ghidra_ref": true,
+   "context": "c3db7c240cd9ced9c0db3c24db7c2420e8ddfaffffd9cedb6c2420d9cf83c42cc383c42ccd",
+   "context_start": "0x004f3e4e"
+  },
+  {
+   "site": "0x004f3e7d",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004f3a61",
+    "0x004f3ef3"
+   ],
+   "gap_bytes": 1170,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "self_span": false,
+   "kind": "call",
+   "class": "CODE-DISASM",
+   "note": "CALL",
+   "target": "0x004f3940",
+   "target_function": "CRT_004f3940",
+   "target_crt": true,
+   "target_entry": "0x004f3940",
+   "at_entry": true,
+   "site_label": null,
+   "ghidra_ref": true,
+   "context": "2cc383c42ccd06db3c24d9cedb7c240ce8befaffffd9cedb6c240cd9cf83c42cc383c42ccd",
+   "context_start": "0x004f3e6d"
+  },
+  {
+   "site": "0x004f3ea4",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004f3a61",
+    "0x004f3ef3"
+   ],
+   "gap_bytes": 1170,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "self_span": false,
+   "kind": "call",
+   "class": "CODE-DISASM",
+   "note": "CALL",
+   "target": "0x004f3940",
+   "target_function": "CRT_004f3940",
+   "target_crt": true,
+   "target_entry": "0x004f3940",
+   "at_entry": true,
+   "site_label": null,
+   "ghidra_ref": true,
+   "context": "cfdb7c240cd9ced9c0db3c24db7c2420e897faffffd9cedb6c242083c42cc3db3c24d9cedb",
+   "context_start": "0x004f3e94"
+  },
+  {
+   "site": "0x004f3ebc",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004f3a61",
+    "0x004f3ef3"
+   ],
+   "gap_bytes": 1170,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "self_span": false,
+   "kind": "call",
+   "class": "CODE-DISASM",
+   "note": "CALL",
+   "target": "0x004f3940",
+   "target_function": "CRT_004f3940",
+   "target_crt": true,
+   "target_entry": "0x004f3940",
+   "at_entry": true,
+   "site_label": null,
+   "ghidra_ref": true,
+   "context": "6c242083c42cc3db3c24d9cedb7c240ce87ffaffffd9ce83c42cc3db7c240cd9cedb3c24e8",
+   "context_start": "0x004f3eac"
+  },
+  {
+   "site": "0x004f3ed0",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004f3a61",
+    "0x004f3ef3"
+   ],
+   "gap_bytes": 1170,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "self_span": false,
+   "kind": "call",
+   "class": "CODE-DISASM",
+   "note": "CALL",
+   "target": "0x004f3940",
+   "target_function": "CRT_004f3940",
+   "target_crt": true,
+   "target_entry": "0x004f3940",
+   "at_entry": true,
+   "site_label": null,
+   "ghidra_ref": true,
+   "context": "ffd9ce83c42cc3db7c240cd9cedb3c24e86bfaffffd9cedb6c240c83c42cc3db7c240cd9ce",
+   "context_start": "0x004f3ec0"
+  },
+  {
+   "site": "0x004f3ee8",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004f3a61",
+    "0x004f3ef3"
+   ],
+   "gap_bytes": 1170,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "self_span": false,
+   "kind": "call",
+   "class": "CODE-DISASM",
+   "note": "CALL",
+   "target": "0x004f3940",
+   "target_function": "CRT_004f3940",
+   "target_crt": true,
+   "target_entry": "0x004f3940",
+   "at_entry": true,
+   "site_label": null,
+   "ghidra_ref": true,
+   "context": "6c240c83c42cc3db7c240cd9cedb3c24e853faffffd9ce83c42cc383ec2cdb3c24db7c240c",
+   "context_start": "0x004f3ed8"
+  },
+  {
+   "site": "0x004f3f23",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004f3f19",
+    "0x004f3f78"
+   ],
+   "gap_bytes": 95,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "self_span": false,
+   "kind": "call",
+   "class": "CODE-PSEUDO",
+   "note": "19 back-off stream(s) land on the site; fall-through decodes",
+   "target": "0x004f3940",
+   "target_function": "CRT_004f3940",
+   "target_crt": true,
+   "target_entry": "0x004f3940",
+   "at_entry": true,
+   "site_label": null,
+   "ghidra_ref": false,
+   "context": "ffff83c42cc383ec2cdb7c240cdb3c24e818faffff83c42cc3508b442408250000807f3d00",
+   "context_start": "0x004f3f13"
+  },
+  {
+   "site": "0x004f3f4a",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004f3f19",
+    "0x004f3f78"
+   ],
+   "gap_bytes": 95,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "self_span": false,
+   "kind": "call",
+   "class": "CODE-PSEUDO",
+   "note": "23 back-off stream(s) land on the site; fall-through decodes",
+   "target": "0x004f3ef3",
+   "target_function": "__fdivp_sti_st",
+   "target_crt": true,
+   "target_entry": "0x004f3ef3",
+   "at_entry": true,
+   "site_label": null,
+   "ghidra_ref": false,
+   "context": "7f7433dfe02500380000740dd9442408e8a4ffffff58c20400d9c983ec0cdb3c24d9442414",
+   "context_start": "0x004f3f3a"
+  },
+  {
+   "site": "0x004f3f5f",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004f3f19",
+    "0x004f3f78"
+   ],
+   "gap_bytes": 95,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "self_span": false,
+   "kind": "call",
+   "class": "CODE-PSEUDO",
+   "note": "19 back-off stream(s) land on the site; fall-through decodes",
+   "target": "0x004f3ef3",
+   "target_function": "__fdivp_sti_st",
+   "target_crt": true,
+   "target_entry": "0x004f3ef3",
+   "at_entry": true,
+   "site_label": null,
+   "ghidra_ref": false,
+   "context": "58c20400d9c983ec0cdb3c24d9442414e88fffffffdb2c24d9c983c40c58c20400d8742408",
+   "context_start": "0x004f3f4f"
+  },
+  {
+   "site": "0x004f4216",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004f4212",
+    "0x004f4220"
+   ],
+   "gap_bytes": 14,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "self_span": false,
+   "kind": "call",
+   "class": "RAW",
+   "note": "no coherent instruction stream reaches this byte (1/24 back-offs)",
+   "target": "0x004f41a4",
+   "target_function": "CRT_004f416b",
+   "target_crt": true,
+   "target_entry": "0x004f416b",
+   "at_entry": false,
+   "site_label": null,
+   "ghidra_ref": false,
+   "context": "8a5db3b6e00d000064a70423c78a0000e889ffffffffffffffff5fc3515689c189de85f675",
+   "context_start": "0x004f4206"
+  },
+  {
+   "site": "0x004f462a",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004f45ed",
+    "0x004f46a7"
+   ],
+   "gap_bytes": 186,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "self_span": false,
+   "kind": "call",
+   "class": "CODE-PSEUDO",
+   "note": "19 back-off stream(s) land on the site; fall-through decodes",
+   "target": "0x004d0155",
+   "target_function": "utils_malloc",
+   "target_crt": true,
+   "target_entry": "0x004d0155",
+   "at_entry": true,
+   "site_label": null,
+   "ghidra_ref": false,
+   "context": "ebf34189d8ebea29f87505b801000000e826bbfdff89c289c385c0746889c8c1e00283c004",
+   "context_start": "0x004f461a"
+  },
+  {
+   "site": "0x004f4641",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004f45ed",
+    "0x004f46a7"
+   ],
+   "gap_bytes": 186,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "self_span": false,
+   "kind": "call",
+   "class": "CODE-PSEUDO",
+   "note": "22 back-off stream(s) land on the site; fall-through decodes",
+   "target": "0x004d0155",
+   "target_function": "utils_malloc",
+   "target_crt": true,
+   "target_entry": "0x004d0155",
+   "at_entry": true,
+   "site_label": null,
+   "ghidra_ref": false,
+   "context": "89c385c0746889c8c1e00283c00401c8e80fbbfdff85c0744ea380f6660031f631c989f880",
+   "context_start": "0x004f4631"
+  },
+  {
+   "site": "0x004f4691",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004f45ed",
+    "0x004f46a7"
+   ],
+   "gap_bytes": 186,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "self_span": false,
+   "kind": "call",
+   "class": "CODE-PSEUDO",
+   "note": "19 back-off stream(s) land on the site; fall-through decodes",
+   "target": "0x004d1780",
+   "target_function": "utils_fill_data",
+   "target_crt": true,
+   "target_entry": "0x004d1780",
+   "at_entry": true,
+   "site_label": null,
+   "ghidra_ref": false,
+   "context": "c10401ca89f3891584f6660089d031d2e8ead0fdffeb0789d0e8a5bbfdff5f5e5a595bc356",
+   "context_start": "0x004f4681"
+  },
+  {
+   "site": "0x004f469a",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004f45ed",
+    "0x004f46a7"
+   ],
+   "gap_bytes": 186,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "self_span": false,
+   "kind": "call",
+   "class": "CODE-PSEUDO",
+   "note": "14 back-off stream(s) land on the site; fall-through decodes",
+   "target": "0x004d0244",
+   "target_function": "utils_free",
+   "target_crt": true,
+   "target_entry": "0x004d0244",
+   "at_entry": true,
+   "site_label": null,
+   "ghidra_ref": false,
+   "context": "f6660089d031d2e8ead0fdffeb0789d0e8a5bbfdff5f5e5a595bc356575589e583ec108b4d",
+   "context_start": "0x004f468a"
+  },
+  {
+   "site": "0x004f4767",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004f4751",
+    "0x004f4825"
+   ],
+   "gap_bytes": 212,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "self_span": false,
+   "kind": "call",
+   "class": "CODE-PSEUDO",
+   "note": "22 back-off stream(s) land on the site; fall-through decodes",
+   "target": "0x004f19e6",
+   "target_function": "__NTThreadInit",
+   "target_crt": true,
+   "target_entry": "0x004f19e6",
+   "at_entry": true,
+   "site_label": null,
+   "ghidra_ref": false,
+   "context": "4089c689dd8b1500cf660083faff7515e87ad2ffff85c0750789d0e9a6000000e87ad3ffff",
+   "context_start": "0x004f4757"
+  },
+  {
+   "site": "0x004f4777",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004f4751",
+    "0x004f4825"
+   ],
+   "gap_bytes": 212,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "self_span": false,
+   "kind": "call",
+   "class": "CODE-PSEUDO",
+   "note": "14 back-off stream(s) land on the site; fall-through decodes",
+   "target": "0x004f1af6",
+   "target_function": "__InitMultipleThread",
+   "target_crt": true,
+   "target_entry": "0x004f1af6",
+   "at_entry": true,
+   "site_label": null,
+   "ghidra_ref": false,
+   "context": "e87ad2ffff85c0750789d0e9a6000000e87ad3ffff89e781c5ff0f000089742420894c2424",
+   "context_start": "0x004f4767"
+  },
+  {
+   "site": "0x004f478c",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004f4751",
+    "0x004f4825"
+   ],
+   "gap_bytes": 212,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "self_span": false,
+   "kind": "call",
+   "class": "CODE-PSEUDO",
+   "note": "15 back-off stream(s) land on the site; fall-through decodes",
+   "target": "0x004f608e",
+   "target_function": "GetCurrentThread",
+   "target_crt": false,
+   "target_entry": "0x004f608e",
+   "at_entry": true,
+   "site_label": null,
+   "ghidra_ref": false,
+   "context": "89e781c5ff0f000089742420894c2424e8fd180000894424288cd881e500f0ffff8ec0be90",
+   "context_start": "0x004f477c"
+  },
+  {
+   "site": "0x004f47b0",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004f4751",
+    "0x004f4825"
+   ],
+   "gap_bytes": 212,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "self_span": false,
+   "kind": "call",
+   "class": "CODE-PSEUDO",
+   "note": "20 back-off stream(s) land on the site; fall-through decodes",
+   "target": "0x004f610c",
+   "target_function": "GetCurrentThreadId",
+   "target_crt": false,
+   "target_entry": "0x004f610c",
+   "at_entry": true,
+   "site_label": null,
+   "ghidra_ref": false,
+   "context": "90735000bb10000000896c242ca5a5a4e8571900008d542408e80bd6ffff89e0506a006a00",
+   "context_start": "0x004f47a0"
+  },
+  {
+   "site": "0x004f47b9",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004f4751",
+    "0x004f4825"
+   ],
+   "gap_bytes": 212,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "self_span": false,
+   "kind": "call",
+   "class": "CODE-PSEUDO",
+   "note": "20 back-off stream(s) land on the site; fall-through decodes",
+   "target": "0x004f1dc9",
+   "target_function": "itoa_",
+   "target_crt": true,
+   "target_entry": "0x004f1dc9",
+   "at_entry": true,
+   "site_label": null,
+   "ghidra_ref": false,
+   "context": "896c242ca5a5a4e8571900008d542408e80bd6ffff89e0506a006a006a00e8bc1800008944",
+   "context_start": "0x004f47a9"
+  },
+  {
+   "site": "0x004f47c7",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004f4751",
+    "0x004f4825"
+   ],
+   "gap_bytes": 212,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "self_span": false,
+   "kind": "call",
+   "class": "CODE-PSEUDO",
+   "note": "16 back-off stream(s) land on the site; fall-through decodes",
+   "target": "0x004f6088",
+   "target_function": "CreateEventA",
+   "target_crt": false,
+   "target_entry": "0x004f6088",
+   "at_entry": true,
+   "site_label": null,
+   "ghidra_ref": false,
+   "context": "2408e80bd6ffff89e0506a006a006a00e8bc180000894424308d442438894424348d44243c",
+   "context_start": "0x004f47b7"
+  },
+  {
+   "site": "0x004f47ec",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004f4751",
+    "0x004f4825"
+   ],
+   "gap_bytes": 212,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "self_span": false,
+   "kind": "call",
+   "class": "CODE-PSEUDO",
+   "note": "18 back-off stream(s) land on the site; fall-through decodes",
+   "target": "0x004f6082",
+   "target_function": "CreateThread",
+   "target_crt": false,
+   "target_entry": "0x004f6082",
+   "at_entry": true,
+   "site_label": null,
+   "ghidra_ref": false,
+   "context": "506a008d4424285068a5464f00556a00e8911800008944243885c0750ac744243cffffffff",
+   "context_start": "0x004f47dc"
+  },
+  {
+   "site": "0x004f480a",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004f4751",
+    "0x004f4825"
+   ],
+   "gap_bytes": 212,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "self_span": false,
+   "kind": "call",
+   "class": "CODE-PSEUDO",
+   "note": "14 back-off stream(s) land on the site; fall-through decodes",
+   "target": "0x004f6100",
+   "target_function": "WaitForSingleObject",
+   "target_crt": false,
+   "target_entry": "0x004f6100",
+   "at_entry": true,
+   "site_label": null,
+   "ghidra_ref": false,
+   "context": "44243cffffffffeb0c6aff8b5c243453e8f11800008b74243056e8891900008b44243c83c4",
+   "context_start": "0x004f47fa"
+  },
+  {
+   "site": "0x004f4814",
+   "block": "BEGTEXT",
+   "gap": [
+    "0x004f4751",
+    "0x004f4825"
+   ],
+   "gap_bytes": 212,
+   "span_owner": null,
+   "span_owner_entry": null,
+   "self_span": false,
+   "kind": "call",
+   "class": "CODE-PSEUDO",
+   "note": "17 back-off stream(s) land on the site; fall-through decodes",
+   "target": "0x004f61a2",
+   "target_function": "CloseHandle",
+   "target_crt": false,
+   "target_entry": "0x004f61a2",
+   "at_entry": true,
+   "site_label": null,
+   "ghidra_ref": false,
+   "context": "ff8b5c243453e8f11800008b74243056e8891900008b44243c83c4405d075f5ec35152ff15",
+   "context_start": "0x004f4804"
+  }
+ ]
+}

@@ -1,0 +1,16 @@
+{
+ "class": "reimplemented",
+ "_class_why": "patches 0x004c37d4, inside llm_cd_locate_and_open_audio -- the body seams/standalone.cpp takes with an exclusive trampoline for the no-CD fallback.",
+ "_comment": "Makes a failed CD-audio device open non-fatal once the disc itself (volume label 'MH') is already confirmed present. llm_cd_locate_and_open_audio (0x004c3217) scans drives for the 'MH' volume label, then calls llm_cd_audio_open_and_init_volume (0x004c7178, MCI cdaudio open) -- on failure it pops a blocking DialogBoxParamA ('Cannot initialize CD Audio') and, on Cancel, calls llm_game_shutdown_cleanup and exits. Hyper-V's virtual DVD-ROM hard-fails this MCI open even for a data-only (no redbook audio) disc that the host tolerates fine, so the VM hits the blocking dialog every launch (tasks/mp-restoration.md, 2026-07-10). NOPing the JNZ at 0x004c32d0 (`TEST EAX,EAX / JNZ 0x004c3307` after the open call) makes execution always fall through to the success path (set G_CD_DATA_PATH + _G_LLM_CD_DRIVE_BITMASK, return 0/found) regardless of the MCI result -- the game just runs muted, exactly like the return value is already silently ignored at llm_intro_frame's and the main menu's own llm_cd_audio_open_and_init_volume call sites. No whole-file sha256 pin: apply this AFTER net_load.mh.patch.json (or any other manifest) has already added the mh.dll import -- the per-patch 'expect' bytes are the safety guard for chaining. Run: python mhpatch.py apply mh.mp.tmp.exe cd_audio_nonfatal.mh.patch.json mh.mp.exe",
+ "target": "mh.exe (English, F:/games/mh_en) -- EN-native port of cd_audio_nonfatal",
+ "patches": [
+  {
+   "va": "0x004c37d4",
+   "expect": "75 35",
+   "bytes": "90 90",
+   "_note": "llm_cd_locate_and_open_audio: NOP the JNZ-on-audio-open-failure so a failed MCI cdaudio open no longer reaches the blocking insert-CD dialog / llm_game_shutdown_cleanup -- falls through to the success path instead (muted, not fatal)",
+   "_ru_va": "0x004c32d0"
+  }
+ ],
+ "sha256": "1cd5810c5c0b845f0b7c8359a494243d9bec51397c8becfe149841be09c2562d"
+}

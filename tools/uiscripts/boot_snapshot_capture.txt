@@ -1,0 +1,22 @@
+# LIB-BOOT: capture the post-cfg prototype snapshot. Reach the main menu and stop.
+#
+# The capture itself is NOT driven from here -- it fires inside mh.dll, off the present tick, on the
+# FIRST present with _G_LLM_GAME_MODE == 3 (boot stage 9 has just set it, so stages 5..8 have all
+# run: the INIT.CFG parse, the sprite banks, llm_strat_bldg_init_defaults and the panel/minimap
+# init). This script exists only to get the process to that point and then let it exit, so it is
+# deliberately the shortest walk there is: one WAIT on the main menu being settled, one capture for
+# evidence, `end`.
+#
+# ARM IT WITH:  python tools/ui_test.py tools/uiscripts/boot_snapshot_capture.txt \
+#                      --harness-extra "boot_snapshot=1"
+# The blob lands in the run folder as mh_boot_snapshot.bin, and the run's mh_harness.log carries the
+# `; BOOT SNAPSHOT:` line with its content hash, schema fingerprint and the two text-pointer tallies.
+#
+# NO CLICKS. Anything past the main menu risks starting a session, and a session begun before the
+# snapshot is imported is exactly the ordering hazard the -4 refusal exists for (Planets slot 0x1f).
+# The capture is one-shot and has already fired by the time this frame settles.
+
+settled value:110
+capture menu
+log boot snapshot capture point reached (main menu, GAME_MODE 3)
+end

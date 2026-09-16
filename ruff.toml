@@ -1,0 +1,11 @@
+# Ruff config for the repo's Python tooling (tools/**). Format-focused for now; enable lint rule
+# families later if wanted (start with E/F). Adopted 2026-07-23 (auto-format initiative).
+line-length = 100
+target-version = "py39"
+
+# The RE tooling favors long annotated lines (like the C++ side); 100 keeps churn sane.
+# Formatting only applies where we run it (tools/); nothing else in the repo is Python.
+
+[format]
+# Keep existing quote characters -- makes the one-time reformat diff structural, not cosmetic.
+quote-style = "preserve"

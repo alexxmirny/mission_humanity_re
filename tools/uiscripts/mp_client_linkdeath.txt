@@ -1,0 +1,84 @@
+# R-live end-to-end (client side): join a lobby, then WAIT FOR THE LINK TO DIE.
+#
+# Same walk as mp_client_join.txt up to the lobby; the point is what follows. `peers <1` blocks until
+# the transport reports it has lost its last connection -- which, before R-live, would have blocked
+# FOREVER on a blackholed link. That is the whole assertion: the script completing at all IS the proof
+# that the detection fires, and the run timing out IS the failure.
+#
+# Drive the death from the shim while this sits in the lobby:
+#     python tools/net_shim.py ctl "stall on"        (then "stall off" -- must NOT satisfy `peers <1`)
+#     python tools/net_shim.py ctl "blackhole on"    (must satisfy it within ~rx_timeout_ms)
+#
+# It asserts BOTH halves: that the transport noticed (`peers <1`), and -- since R-live-ui landed --
+# that the client actually LEAVES the lobby instead of rendering a healthy one forever
+# (`absent Network players`). Before R-live-ui the second step would hang until the frame budget ran
+# out, which is precisely the bug: a client that sits in a dead lobby looks identical to one that is
+# simply waiting.
+
+settled value:110
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+present Internet server
+settled Internet server
+clickl Internet server
+present Server address
+settled Connect
+clickl Connect
+sessions 1
+settled Join game
+clickl Join game
+
+# in the joined lobby, with a live link
+present Network players
+settled Cancel
+capture cl1_lobby_linked
+log CLIENT in lobby, link healthy -- waiting for the transport to lose it
+
+# assertion 1: the transport noticed the link is gone
+peers <1
+log CLIENT transport reports 0 peers -- the drop was DETECTED
+
+# assertion 2 (R-live-ui): and the client LEFT the lobby rather than rendering a dead one
+absent Network players
+
+# ...landing on the discovery browser, the same destination U13's host-left path uses.
+#
+# `onscreen` (centre inside the window), NOT `settled`: `absent` alone fires mid-transition, 16 frames
+# after the drop, when the lobby is gone and the browser has not drawn.
+onscreen Join game
+
+# U22/U29, added 2026-08-29 once the screen was worth pinning. This capture was deliberately ABSENT
+# for a month: the post-lobby browser used to be drawn off-centre, so a baseline here would have
+# pinned a bug and flaked on top of it. Two defects did that, both now fixed -- the shared menu slide
+# frame was left at the wrong end state on the way out of the lobby, and the browser was pushed as a
+# MODAL CHILD of the lobby (SAVED_STATE=1 => "draw the parent"), so the lobby was drawn while the
+# browser took the input.
+# THE POINT OF HAVING IT ON *THIS* SCRIPT is that the LINK-DEATH route is a different exit from the
+# host-left one that host_recreate covers: there the host sends a real 0x0e, here R-live-ui
+# SYNTHESISES one after the socket dies. U22 asks for both, because "the client lands on a correct
+# browser" has to be true however the lobby ended.
+# NOT gated on `settled` -- it reports stable mid-animation on this screen (U22's second symptom).
+# `onscreen Join game` above is the state predicate, and it is what makes this frame capturable.
+# U23: and it is TOLD WHY. The notice rides the browser's own map-status widget (0x006503b3, a child
+# of both MP browser containers), repainted from the present hook while it is live -- so it survives
+# the clear that llm_mp_session_browser_enter does on arrival. This wording is the LINK-LOST one: it
+# must NOT say "the host left", because the whole point of U23 is that a dead wire and a departed host
+# are different facts that R-live-ui deliberately routes through one shared transition.
+present Connection to the host was lost.
+# AND WAIT FOR THE BROWSER TO ACTUALLY RENDER ITS RESULT. `onscreen Join game` above is satisfied as
+# soon as the browser is the active list, which is BEFORE llm_mp_session_browser_rescan's second call
+# has run its scan and relabelled the title from "Searching for games..." (G_TEXT_PTRS[600]) to
+# "Games available" (G_TEXT_PTRS[0x2be]). With the slide take-over on, the transition is instant and the
+# capture always landed after the scan; take the take-over off and the retail 400 ms slide moves the
+# capture to the other side of it, producing a ~31% diff that is a STATE race, not a rendering fault.
+# Same defect and same fix as mp_client_join's c7 gate (2026-08-30). Gate on the rendered title so the
+# frame is comparable across configs.
+present Games available
+# The baseline below was re-cut when this line landed: c3 now carries the notice, which is exactly the
+# "readable on the destination screen" evidence U23 asks for -- the predicate proves the string is in
+# the widget tree, the frame proves it is legible.
+capture c3_browser_after_link_death
+log CLIENT left the lobby after the link died -- told why, on a correctly-centred browser
+end

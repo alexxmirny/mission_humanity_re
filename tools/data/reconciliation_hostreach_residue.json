@@ -1,0 +1,55 @@
+{
+  "_what": "SECTION-5 RESIDUE: verified migration-ledger rows whose ORIGINAL body stays reachable from host code ON PURPOSE, so report_promotion_reconciliation.py section 5 stops counting them as findings and the FULL --check can be a lint gate.",
+  "_why_this_file_exists": [
+    "Section 5 answers 'can original code still enter a body we own', and until SIM1-H every row it",
+    "named was open work -- which is why the lint gate was the narrow --check-flags and the wide",
+    "--check was 'supposed to be red'. SIM1-H drains the last 24 by translating and promoting their",
+    "eight reaching callers. What is left is not open work: it is four rows whose original staying",
+    "reachable is the DECIDED end state. A decided end state with no written adjudication reads",
+    "exactly like undrained work, so it gets written down here and the wide gate turns on.",
+    "",
+    "THE RATCHET, and it is what makes an entry a claim rather than an exemption. Each row records",
+    "the FULL set of callers the section-5 closure reaches it through, computed with the cut nodes",
+    "excluded. The whole argument for the register-hazard rows is 'every edge forcing this is",
+    "front-end code the revised M6 exit (docs/reimpl-plan.md Sect. 5) leaves in the binary' -- so a",
+    "caller appearing that this adjudication never saw is precisely the event that must re-open it.",
+    "report_promotion_reconciliation.py re-derives the set on every run and FAILS BY NAME on a",
+    "drift, on an undispositioned row, and on a disposition whose row has left section 5 (stale).",
+    "Same refusal shape as reconciliation_pruned_roots.json's --check-roots and",
+    "undef_call_dispositions.json's refutes_if.",
+    "",
+    "IT IS NOT A PLACE TO PARK WORK. Adding a row here is asserting that installing the redirect",
+    "would be WRONG, not merely unfinished. Three of the original four were the REBIND-AI-ESI",
+    "hazard class (docs/dead-ends.md): an entry redirect serves EVERY original caller, including",
+    "register state the committed prototype does not cover, so installing one was a live risk",
+    "rather than a chore. THOSE THREE ARE GONE, and how they left is the point -- not by the risk",
+    "being re-judged, but by the RE being done: the missing register contract was named and",
+    "committed, which turned the objection into a thunk. That is the only way a register_hazard row",
+    "may be removed. One row remains, and it is a different class entirely."
+  ],
+  "_measured": "2026-09-11 (LIB-REF-IN), at EN v402. The THREE register_hazard rows LEFT this file: their register contracts were named and committed (flash/select __mh_watcall_ebx_volatile, planet_distance __mh_watcall_ecx_ebx_volatile), so the generated thunk now marshals what used to be ambient EBX/ECX and the REBIND-AI-ESI objection no longer applies -- they are ordinary sim_hostreach installs (18 -> 21). Previously: 2026-09-10 (SIM1-H), at EN v400, section 5 went 28 -> 4 when the eight SIM1-H callers were promoted.",
+  "dispositions": [
+    {
+      "name": "llm_map_fog_of_war_recompute",
+      "domain": "sim",
+      "class": "downstream_of_named_residue",
+      "why": "reached only through map_LoadPlanetFromDisk, itself a NAMED RESIDUE (the save closure is ours in no configuration)",
+      "detail": [
+        "map_LoadPlanetFromDisk is promotable and deliberately NOT promoted at ship -- it is in this",
+        "tool's own RESIDUE table with the reason (the original writes/reads the planet file; the",
+        "promotion is exercised by promote_save.ini in its own runs, SV1-P-LOAD). Because the",
+        "original load walker is what runs, its call into our fog-of-war body is a REAL original",
+        "edge, and it will stay one for exactly as long as mh::config::kSaveClosureOwned is false. This row is",
+        "therefore not independent: it expires when the save/load wave ships promoted, and until",
+        "then installing a redirect on it would be installing around a decision recorded elsewhere.",
+        "REFUTES_IF, beyond the caller-set ratchet: map_LoadPlanetFromDisk leaves the RESIDUE table",
+        "(i.e. kSaveClosureOwned becomes true). The mechanical arm covers it -- cutting that node drops",
+        "this row out of section 5 entirely, and the STALE check then fails asking for the row here",
+        "to be deleted."
+      ],
+      "reaching_callers": [
+        "map_LoadPlanetFromDisk"
+      ]
+    }
+  ]
+}

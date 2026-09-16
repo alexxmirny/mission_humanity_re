@@ -1,0 +1,12 @@
+{
+  "_comment": "Ratchet baseline for tools/lint_source_narration.py: per-file counts of pre-existing session-diary comment lines under src/mh_dll (`//`) and tools/ (`#` comment tokens, added 2026-09-16 at fork F5E step 10). The lint fails a file that EXCEEDS its count; --update-baseline only lowers entries. Drain files toward 0 and regenerate in the same commit.",
+  "_frozen_comment": "`_frozen` is NOT written by --update-baseline and is not a count: it is {path: reason} for files whose narration will never be drained because the file LEAVES with the private layers it serves. A frozen path must be withheld by the publish ledger and must still have at least one hit, or the lint fails -- see the module docstring.",
+  "_frozen": {
+    "tools/oneoff/2026-08-05-fix-doc-symbol-refs.py": "A dated one-off, kept by repo policy as the readable record of a docs/ rename sweep. Its narration IS the record -- rewriting it would falsify the artefact it exists to be -- and the whole tools/oneoff/ tree is WITHHELD, so nothing published carries these words.",
+    "tools/oneoff/2026-08-07-build-sim-prep-requests.py": "Dated one-off: the SIM-PREP central-apply request builder. Its header comment records the decisions the fan-out could not make for itself, per session; that provenance is the artefact. Withheld with tools/oneoff/.",
+    "tools/oneoff/2026-08-07-collect-sim-prep-reviews.py": "Dated one-off: collects the SIM-PREP review journals. Same reason as its sibling builder -- the session it names is the run whose journals it collected. Withheld with tools/oneoff/.",
+    "tools/oneoff/2026-08-16-mutate-sim1e-debt.py": "Dated one-off: the SIM1E verification-debt mutation campaign. The slice ordinal names the batch whose oracles the campaign proved could go red -- the evidence label, not diary. Withheld with tools/oneoff/.",
+    "tools/oneoff/2026-08-22-fix-stale-plates.py": "Dated one-off: a Ghidra inline script that rewrote stale plate prose. Withheld with tools/oneoff/, and its comment records which pass it was.",
+    "tools/oneoff/2026-08-22-fix-stale-plates2.py": "Dated one-off: the second stale-plate pass, whose comment exists precisely to say what the FIRST pass could not see yet. Removing that would remove the reason the file exists. Withheld with tools/oneoff/."
+  }
+}

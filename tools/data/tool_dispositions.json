@@ -1,0 +1,1024 @@
+{
+  "_meta": "Fork disposition for every TOP-LEVEL tools/*.py. Generated-and-gated data, not prose: tools/check_tool_dispositions.py is the lint_repo row that keeps it true, and docs/fork-inventory.md section 1 is the F0 measurement this was seeded from. class=keep means the tool belongs to machinery the fork carries (gate, lint, build, harness, libmh/mh_net, or an operator's hands); class=archive means it belongs to machinery the fork drops, WHICH IS NOT A LIVENESS CLAIM -- many archive rows are still wired at HEAD (`--wired` prints them; each is an invoker the fork cut must remove too). hand_run=true declares 'no machine invoker, a human runs this' and is checked both ways.",
+  "rows": {
+    "_cstrip.py": {
+      "class": "keep",
+      "why": "the shared comment-stripper; imported at module level by gen_libmh_calls.py and gen_libmh_rebind.py and inside coverage.py's scanners -- all keep gates the public lint runs",
+      "evidence": "fork F5M S4a (2026-09-16): re-classed from archive when the archive-class withhold rule was drawn -- a keep gate IMPORTS this module, so the public tree cannot run its own lint without it. Measured by import closure over the keep set; the publish-ledger closure arm cannot see this class of edge, because it scans path-form strings and `import _cstrip` has none."
+    },
+    "_dllsrc.py": {
+      "class": "keep",
+      "why": "the DLL source trees and the one module-relative key space every scanner keys by; imported by the fork's own gates (lint_x87_asm, lint_internal_edges, check_libmh_outbound, check_movable_addresses, check_roster_caps, scan_pointer_slots, coverage, gen_va_census)",
+      "evidence": "fork F5O (2026-09-16): the roster moved from mh/ to libmh/ and harness.cpp to mh_harness/, so the walk roots became three; this module is where that is stated once instead of twenty times"
+    },
+    "_ghidra_lease.py": {
+      "class": "archive",
+      "why": "Ghidra DB write lease, Jython side",
+      "evidence": "F0 triage (docs/fork-inventory.md section 1): the Ghidra DB pipeline (the fork freezes the database)"
+    },
+    "_reimpl.py": {
+      "class": "keep",
+      "why": "the `how much is OURS` derivation; imported at module level by gen_libmh_calls.py, gen_hostapi_callers.py, gen_region_accessors.py and gen_libmh_rebind.py -- all keep gates the public lint runs",
+      "evidence": "fork F5M S4a (2026-09-16): re-classed from archive when the archive-class withhold rule was drawn -- a keep gate IMPORTS this module, so the public tree cannot run its own lint without it. Measured by import closure over the keep set; the publish-ledger closure arm cannot see this class of edge, because it scans path-form strings and `import _cstrip` has none."
+    },
+    "_subsys.py": {
+      "class": "keep",
+      "why": "the subsystem taxonomy; imported at module level by gen_state_registry.py and gen_region_accessors.py, both keep gates the public lint runs",
+      "evidence": "fork F5M S4a (2026-09-16): re-classed from archive when the archive-class withhold rule was drawn -- a keep gate IMPORTS this module, so the public tree cannot run its own lint without it. Measured by import closure over the keep set; the publish-ledger closure arm cannot see this class of edge, because it scans path-form strings and `import _cstrip` has none."
+    },
+    "_worklist.py": {
+      "class": "archive",
+      "why": "naming-pipeline batching/weighting library",
+      "evidence": "F0 triage (docs/fork-inventory.md section 1): the naming/documentation pipeline (Ghidra-side, dropped with the DB)"
+    },
+    "apply_annotations.py": {
+      "class": "archive",
+      "why": "declarative Ghidra rename/label/comment batch applier",
+      "evidence": "F0 triage (docs/fork-inventory.md section 1): the Ghidra DB pipeline (the fork freezes the database)"
+    },
+    "audit_names.py": {
+      "class": "archive",
+      "why": "naming-pipeline: named-function revalidation worklist",
+      "evidence": "F0 triage (docs/fork-inventory.md section 1): the naming/documentation pipeline (Ghidra-side, dropped with the DB)"
+    },
+    "bmp_to_png.py": {
+      "class": "keep",
+      "why": "UI-harness capture BMP->PNG converter",
+      "evidence": "no machine invoker -- run by an analyst turning a harness capture into something readable",
+      "hand_run": true
+    },
+    "bootstrap.py": {
+      "class": "keep",
+      "why": "environment setup checker (needs its Ghidra checks pruned)",
+      "evidence": "no machine invoker -- run by a human on a fresh or relocated machine (the bootstrap skill's step 1); documented in .claude/skills/bootstrap/SKILL.md, .claude/skills/mh-toolchain/SKILL.md",
+      "hand_run": true
+    },
+    "build_public_seed.py": {
+      "class": "keep",
+      "why": "fork F5M S5/S6: builds the public seed -- materializes the publish set, derives the public .gitignore/.gitattributes from a per-entry disposition table, authors the one commit, and re-scans the materialized bytes for operator identity",
+      "evidence": "invoker: tools/lint_repo.py (two rows: --check, --selftest). The public tree runs it too -- on the cut's output --check asserts the installed config IS the committed snapshot under tools/data/public_repo_config/"
+    },
+    "build_data_naming_batch.py": {
+      "class": "archive",
+      "why": "naming-pipeline: data-naming batch pre-build",
+      "evidence": "F0 triage (docs/fork-inventory.md section 1): the naming/documentation pipeline (Ghidra-side, dropped with the DB)"
+    },
+    "call_graph.py": {
+      "class": "keep",
+      "why": "generic static call-graph walker over the committed .asm/decomp exports -- the surviving half of the deleted derive_write_closure.py",
+      "evidence": "used by gen_boot_snapshot.py, gen_notify_readback.py"
+    },
+    "check_arm_order.py": {
+      "class": "keep",
+      "why": "fork F3A: the harness arm-order baseline gate (arm-log line order is part of the refactor contract)",
+      "evidence": "invoked by tools/lint_repo.py"
+    },
+    "check_const_view.py": {
+      "class": "keep",
+      "why": "compile-time proof: module state views reject illegal writes",
+      "evidence": "invoked by tools/lint_repo.py"
+    },
+    "check_cspec.py": {
+      "class": "archive",
+      "why": "validates the Ghidra x86watcom cspec before install",
+      "evidence": "F0 triage (docs/fork-inventory.md section 1): the Ghidra DB pipeline (the fork freezes the database)"
+    },
+    "check_dispatch_closure.py": {
+      "class": "archive",
+      "why": "SIM1-DISPATCH closure/ownership completeness check",
+      "evidence": "F0 triage (docs/fork-inventory.md section 1): the migration / promotion / ledger machinery the fork drops"
+    },
+    "check_fork_d5_hooks.py": {
+      "class": "keep",
+      "why": "fork D5: harness-owned code arms only through the named hook points, never the raw inline-detour primitives",
+      "evidence": "invoked by src/mh_dll/mh_harness/mh_harness.vcxproj, tools/lint_repo.py"
+    },
+    "check_fork_d8.py": {
+      "class": "keep",
+      "why": "fork D8: the deferred-effect machinery stays deleted (zero-survivor scan)",
+      "evidence": "invoked by tools/lint_repo.py"
+    },
+    "check_fork_f2_drop.py": {
+      "class": "keep",
+      "why": "fork F2: the per-row configuration vocabulary stays deleted (zero-survivor scan over src/ + tools/)",
+      "evidence": "invoked by tools/lint_repo.py"
+    },
+    "check_inmem_composition.py": {
+      "class": "keep",
+      "why": "fork: the in-memory patch composition matches the manifest",
+      "evidence": "invoked by tools/lint_repo.py"
+    },
+    "check_inmem_patch_parity.py": {
+      "class": "keep",
+      "why": "fork: in-memory patching reaches byte parity with the static mhpatch output on a real stock-exe lane",
+      "evidence": "invoked by tools/lint_repo.py, tools/run_gate.py"
+    },
+    "check_instrument_wiring.py": {
+      "class": "keep",
+      "why": "fork: every declared instrument is wired to a real arm site",
+      "evidence": "invoked by tools/lint_repo.py"
+    },
+    "check_libmh_outbound.py": {
+      "class": "keep",
+      "why": "libmh layering: no outbound call leaves libmh except through the host-callback ABI",
+      "evidence": "invoked by src/mh_dll/libmh_dll/libmh_dll.vcxproj, tools/lint_repo.py"
+    },
+    "check_module_bind.py": {
+      "class": "keep",
+      "why": "fork: each module binds the state regions its contract declares",
+      "evidence": "invoked by tools/lint_repo.py, tools/run_gate.py"
+    },
+    "check_movable_addresses.py": {
+      "class": "keep",
+      "why": "no code spells a MOVABLE region's address as a constant",
+      "evidence": "invoked by tools/lint_repo.py"
+    },
+    "check_net_lockstep_refs.py": {
+      "class": "keep",
+      "why": "mh_net split: the lockstep references the net module may hold",
+      "evidence": "invoked by tools/lint_repo.py"
+    },
+    "check_net_session_addrs.py": {
+      "class": "keep",
+      "why": "mh_net split: the original-binary addresses the net module may name",
+      "evidence": "invoked by tools/lint_repo.py"
+    },
+    "check_publishable.py": {
+      "class": "keep",
+      "why": "fork F5A: every tracked path carries exactly one publish disposition",
+      "evidence": "invoked by tools/lint_repo.py"
+    },
+    "check_roster_caps.py": {
+      "class": "keep",
+      "why": "no production index expression uses a compile-time roster cap",
+      "evidence": "invoked by tools/lint_repo.py"
+    },
+    "check_save_block_slices.py": {
+      "class": "keep",
+      "why": "every save block is servable under a relocated bind",
+      "evidence": "invoked by tools/lint_repo.py"
+    },
+    "check_sim_addresses.py": {
+      "class": "keep",
+      "why": "no game-state address reaches a sim translation (W2)",
+      "evidence": "invoked by tools/lint_repo.py"
+    },
+    "check_state_bindings.py": {
+      "class": "keep",
+      "why": "can a translation actually WRITE every region it claims",
+      "evidence": "no machine invoker -- run by a translator before arming, to see whether a body can write what it claims",
+      "hand_run": true
+    },
+    "check_tool_dispositions.py": {
+      "class": "keep",
+      "why": "fork F5G: this file's own gate -- every top-level tools/*.py carries a fork disposition and every keep row names what runs it",
+      "evidence": "invoked by tools/lint_repo.py"
+    },
+    "classify_reg_preservation.py": {
+      "class": "archive",
+      "why": "Ghidra per-function register-preservation classifier",
+      "evidence": "F0 triage (docs/fork-inventory.md section 1): the Ghidra DB pipeline (the fork freezes the database)"
+    },
+    "commit_prototypes.py": {
+      "class": "archive",
+      "why": "naming-pipeline prototype committer (Ghidra write)",
+      "evidence": "F0 triage (docs/fork-inventory.md section 1): the naming/documentation pipeline (Ghidra-side, dropped with the DB)"
+    },
+    "coverage.py": {
+      "class": "keep",
+      "why": "execution-lane coverage of our C++ bodies (OpenCppCoverage)",
+      "evidence": "invoked by tools/lint_repo.py"
+    },
+    "crash_report.py": {
+      "class": "keep",
+      "why": "finds/attributes Windows crash reports for a rig peer",
+      "evidence": "invoked by tools/lint_repo.py"
+    },
+    "desktop.py": {
+      "class": "keep",
+      "why": "launches a process on its own Windows desktop (headless rig)",
+      "evidence": "used by mp_run.py, test_ui.py, ui_test.py"
+    },
+    "dump_addr_index.py": {
+      "class": "archive",
+      "why": "Ghidra address->name index dump (for docs)",
+      "evidence": "F0 triage (docs/fork-inventory.md section 1): the Ghidra DB pipeline (the fork freezes the database)"
+    },
+    "dump_addr_taken.py": {
+      "class": "archive",
+      "why": "Ghidra address-taken (indirect entry) dump",
+      "evidence": "F0 triage (docs/fork-inventory.md section 1): the Ghidra DB pipeline (the fork freezes the database)"
+    },
+    "dump_ai_gate_sites.py": {
+      "class": "archive",
+      "why": "Ghidra AI/sim gate-site dump",
+      "evidence": "F0 triage (docs/fork-inventory.md section 1): the Ghidra DB pipeline (the fork freezes the database)"
+    },
+    "dump_aux_symbols.py": {
+      "class": "archive",
+      "why": "Ghidra non-primary-program symbol dump",
+      "evidence": "F0 triage (docs/fork-inventory.md section 1): the Ghidra DB pipeline (the fork freezes the database)"
+    },
+    "dump_call_graph.py": {
+      "class": "archive",
+      "why": "Ghidra call-graph dump",
+      "evidence": "F0 triage (docs/fork-inventory.md section 1): the Ghidra DB pipeline (the fork freezes the database)"
+    },
+    "dump_call_protos.py": {
+      "class": "archive",
+      "why": "Ghidra calling-contract dump (feeds gen_dll_calls.py)",
+      "evidence": "F0 triage (docs/fork-inventory.md section 1): the Ghidra DB pipeline (the fork freezes the database)"
+    },
+    "dump_epilogue_returns.py": {
+      "class": "archive",
+      "why": "Ghidra epilogue-return-value dump (feeds lint_dropped_returns.py)",
+      "evidence": "F0 triage (docs/fork-inventory.md section 1): the Ghidra DB pipeline (the fork freezes the database)"
+    },
+    "dump_functions.py": {
+      "class": "archive",
+      "why": "Ghidra function-extent dump (feeds gen_dll_patches.py)",
+      "evidence": "F0 triage (docs/fork-inventory.md section 1): the Ghidra DB pipeline (the fork freezes the database)"
+    },
+    "dump_interior_refs.py": {
+      "class": "archive",
+      "why": "Ghidra body-shape hazard dump (feeds gen_tombstones.py)",
+      "evidence": "F0 triage (docs/fork-inventory.md section 1): the Ghidra DB pipeline (the fork freezes the database)"
+    },
+    "dump_order_matrix.py": {
+      "class": "archive",
+      "why": "Ghidra order-routing dump",
+      "evidence": "F0 triage (docs/fork-inventory.md section 1): the Ghidra DB pipeline (the fork freezes the database)"
+    },
+    "dump_steal_relbranch.py": {
+      "class": "archive",
+      "why": "Ghidra trampoline-steal-byte safety dump",
+      "evidence": "F0 triage (docs/fork-inventory.md section 1): the Ghidra DB pipeline (the fork freezes the database)"
+    },
+    "dump_struct_layouts.py": {
+      "class": "archive",
+      "why": "Ghidra struct-layout dump (feeds gen_dll_structs.py)",
+      "evidence": "F0 triage (docs/fork-inventory.md section 1): the Ghidra DB pipeline (the fork freezes the database)"
+    },
+    "dump_structs.py": {
+      "class": "archive",
+      "why": "regenerates docs/structs.md from the live Ghidra DB",
+      "evidence": "F0 triage (docs/fork-inventory.md section 1): the Ghidra DB pipeline (the fork freezes the database)"
+    },
+    "dump_symbols.py": {
+      "class": "archive",
+      "why": "regenerates docs/symbols.md + symbol index from the live DB",
+      "evidence": "F0 triage (docs/fork-inventory.md section 1): the Ghidra DB pipeline (the fork freezes the database)"
+    },
+    "ensure_reva.py": {
+      "class": "archive",
+      "why": "auto-launches headless ReVA/Ghidra",
+      "evidence": "F0 triage (docs/fork-inventory.md section 1): the Ghidra DB pipeline (the fork freezes the database)"
+    },
+    "export_decomp.py": {
+      "class": "archive",
+      "why": "bulk decompile export (Ghidra)",
+      "evidence": "F0 triage (docs/fork-inventory.md section 1): the Ghidra DB pipeline (the fork freezes the database)"
+    },
+    "export_metadata.py": {
+      "class": "archive",
+      "why": "Ghidra DB metadata (our work-product) exporter",
+      "evidence": "F0 triage (docs/fork-inventory.md section 1): the Ghidra DB pipeline (the fork freezes the database)"
+    },
+    "finalize_data_naming.py": {
+      "class": "archive",
+      "why": "naming-pipeline apply-prep",
+      "evidence": "F0 triage (docs/fork-inventory.md section 1): the naming/documentation pipeline (Ghidra-side, dropped with the DB)"
+    },
+    "fixture_replay.py": {
+      "class": "keep",
+      "why": "LIB-REF replay fixture: pack/verify/replay (the recorder tool)",
+      "evidence": "used by replay_libref.py"
+    },
+    "gate_timeline.py": {
+      "class": "keep",
+      "why": "per-lane gate-run timeline/utilization report",
+      "evidence": "no machine invoker -- run by a human reading a finished gate run's lane utilization",
+      "hand_run": true
+    },
+    "gen_boot_snapshot.py": {
+      "class": "keep",
+      "why": "LIB-BOOT cfg-snapshot schema (ownership-style verdicts, but feeds a real boot artifact). KEEP: lint_repo drift gate and its --check runs off committed inputs (no Ghidra), and LIB-BOOT is libmh machinery the fork keeps",
+      "evidence": "invoked by tools/lint_repo.py"
+    },
+    "gen_codemap.py": {
+      "class": "archive",
+      "why": "Ghidra coverage HTML report",
+      "evidence": "F0 triage (docs/fork-inventory.md section 1): the Ghidra DB pipeline (the fork freezes the database)"
+    },
+    "gen_dll_addrs.py": {
+      "class": "keep",
+      "why": "generates mh_addrs.gen.h (Ghidra-free, reads committed JSON)",
+      "evidence": "invoked by tools/lint_repo.py"
+    },
+    "gen_dll_calls.py": {
+      "class": "keep",
+      "why": "generates mh_calls.gen.{h,cpp} (Ghidra-free)",
+      "evidence": "invoked by tools/lint_repo.py"
+    },
+    "gen_dll_exports.py": {
+      "class": "keep",
+      "why": "generates mh_export.gen.h (Ghidra-free)",
+      "evidence": "invoked by tools/lint_repo.py"
+    },
+    "gen_dll_patches.py": {
+      "class": "keep",
+      "why": "generates mh_patches.gen.h, extents of promoted functions",
+      "evidence": "invoked by tools/lint_repo.py"
+    },
+    "gen_dll_structs.py": {
+      "class": "keep",
+      "why": "generates mh_structs.gen.h (Ghidra-free)",
+      "evidence": "invoked by tools/lint_repo.py"
+    },
+    "gen_export_request.py": {
+      "class": "archive",
+      "why": "migration-loop AI-cluster export-request builder",
+      "evidence": "F0 triage (docs/fork-inventory.md section 1): the migration / promotion / ledger machinery the fork drops"
+    },
+    "gen_fallthrough_entries.py": {
+      "class": "archive",
+      "why": "Ghidra fall-through-edge dump (feeds check_arming_set.py)",
+      "evidence": "F0 triage (docs/fork-inventory.md section 1): the Ghidra DB pipeline (the fork freezes the database)"
+    },
+    "gen_harness_contract.py": {
+      "class": "keep",
+      "why": "the harness contract rows (the 13-row instrument/hook table) generated from the sources rather than typed",
+      "evidence": "invoked by tools/lint_repo.py, tools/run_gate.py"
+    },
+    "gen_hostapi_callers.py": {
+      "class": "keep",
+      "why": "--check guards tools/data/hostapi_callers.json against libmh/include/libmh_host_api.gen.h + libmh_tact_host_api.gen.h, two headers the public build compiles -- two 2026-09-10 slices shrank those tables without regenerating the evidence",
+      "evidence": "fork F5M S4a (2026-09-16) re-triage, one rule: is this a live drift gate over a file the PUBLIC build compiles or the public tree ships? The F0 class answered a different question (does the fork still need the Ghidra pipeline) and archived gates the public tree wants."
+    },
+    "gen_inmem_manifest.py": {
+      "class": "keep",
+      "why": "the in-memory patch manifest, derived from the static patch set",
+      "evidence": "invoked by tools/lint_repo.py"
+    },
+    "gen_libmh_calls.py": {
+      "class": "keep",
+      "why": "--check guards tools/data/libmh_call_census.json, the outward-call census over src/mh_dll/mh/** that the public build compiles; a new mh::call:: site without a regenerated census is exactly the drift the lib-complete number exists to see",
+      "evidence": "fork F5M S4a (2026-09-16) re-triage, one rule: is this a live drift gate over a file the PUBLIC build compiles or the public tree ships? The F0 class answered a different question (does the fork still need the Ghidra pipeline) and archived gates the public tree wants."
+    },
+    "gen_libmh_contract.py": {
+      "class": "keep",
+      "why": "libmh's build contract: the source roster generated against the vcxproj",
+      "evidence": "invoked by src/mh_dll/libmh_dll/libmh_dll.vcxproj, tools/lint_repo.py, tools/run_gate.py"
+    },
+    "gen_libmh_hostapi.py": {
+      "class": "keep",
+      "why": "generates host-callback ABI tables (real build artifact; sourced from census/ledger data). KEEP: emits a real libmh build artifact and lint gates it",
+      "evidence": "invoked by tools/lint_repo.py"
+    },
+    "gen_libmh_inbound.py": {
+      "class": "keep",
+      "why": "LIB-REF-IN inbound-surface derivation (routing table vs. census). KEEP: lint-gated derivation of libmh's inbound surface",
+      "evidence": "invoked by tools/lint_repo.py"
+    },
+    "gen_libmh_rebind.py": {
+      "class": "keep",
+      "why": "rebind-row generator (explicitly dropped). F0 SAID ARCHIVE AND THAT WAS WRONG (corrected F5G, re-measured at HEAD): lint_repo.py gates `gen_libmh_rebind --check` on every run, and its data is live on both sides -- tools/data/libmh_rebind.json + libmh_rebind_targets.json feed the binder, and test_ui.py reads rebind_yield_dispositions.json to decide whether a YIELDED row costs a promotion (SIM1-P clause 6b). What F2 dropped was the rebind CONFIGURATION surface, not the binder generator",
+      "evidence": "invoked by tools/lint_repo.py"
+    },
+    "gen_libmh_std_contract.py": {
+      "class": "keep",
+      "why": "libmh_std's build contract, same generator family",
+      "evidence": "invoked by tools/lint_repo.py, tools/run_gate.py"
+    },
+    "gen_libmh_vcxproj.py": {
+      "class": "keep",
+      "why": "generates libmh.vcxproj, the static-lib build project",
+      "evidence": "invoked by src/mh_dll/libmh/libmh.vcxproj, src/mh_dll/libmh_dll/libmh_dll.vcxproj, src/mh_dll/libmh_std/libmh_std.vcxproj, tools/lint_repo.py"
+    },
+    "gen_libref_stock_bases.py": {
+      "class": "keep",
+      "why": "importing-host stock-base table for LIB-REF-SPLIT",
+      "evidence": "no machine invoker -- run by a one-per-change regeneration of the LIB-REF-SPLIT stock-base table (its output is committed, so nothing has to run it per gate)",
+      "hand_run": true
+    },
+    "gen_lzw_fixtures.py": {
+      "class": "keep",
+      "why": "recorder: builds savetest LZW fixture from a real save",
+      "evidence": "no machine invoker -- run by a bring-your-own-game user regenerating the savetest fixture locally -- the recorder ships, the recording does not (fork-inventory section 3)",
+      "hand_run": true
+    },
+    "gen_migration.py": {
+      "class": "keep",
+      "why": "carried as a LIBRARY, not as a generator: gen_libmh_inbound.py (keep, a lint_repo row) imports it for load_addr_taken()/orphan_closure(). Its manifest-REGENERATION path imports migration_seeds.py and migration_ledger.py, which stay archive -- both imports are lazy and that path refuses with a named reason off the private tree",
+      "evidence": "fork F5M S4a (2026-09-16): re-classed from archive when the archive-class withhold rule was drawn -- a keep gate IMPORTS this module, so the public tree cannot run its own lint without it. Measured by import closure over the keep set; the publish-ledger closure arm cannot see this class of edge, because it scans path-form strings and `import _cstrip` has none."
+    },
+    "gen_module_calls.py": {
+      "class": "keep",
+      "why": "emits a reimpl module's calls-table snippet from generated headers",
+      "evidence": "no machine invoker -- run by a translator opening a new reimpl module",
+      "hand_run": true
+    },
+    "gen_no_cd_manifest.py": {
+      "class": "keep",
+      "why": "bakes the no-CD mhpatch manifest",
+      "evidence": "used by mp_run.py"
+    },
+    "gen_notify_readback.py": {
+      "class": "keep",
+      "why": "notify-scope write/readback census, doubling as an ABI-hazard gate. KEEP: lint-gated ABI-hazard gate over the notify scopes",
+      "evidence": "invoked by tools/lint_repo.py"
+    },
+    "gen_order_issue_golden.py": {
+      "class": "keep",
+      "why": "derives the order-issue oracle mechanically from disassembly. KEEP: lint-gated, and --check verifies the COMMITTED outputs, so it runs with the DB frozen (whether the derived header ships is publish_ledger's question)",
+      "evidence": "invoked by tools/lint_repo.py"
+    },
+    "gen_order_issue_inventory.py": {
+      "class": "archive",
+      "why": "order-issue ownership inventory (census)",
+      "evidence": "F0 triage (docs/fork-inventory.md section 1): the migration / promotion / ledger machinery the fork drops"
+    },
+    "gen_order_matrix.py": {
+      "class": "archive",
+      "why": "order issue-dispatch coverage matrix",
+      "evidence": "F0 triage (docs/fork-inventory.md section 1): the migration / promotion / ledger machinery the fork drops"
+    },
+    "gen_pool_reloc_manifest.py": {
+      "class": "archive",
+      "why": "Ghidra-dependent array-relocation patch-manifest generator",
+      "evidence": "F0 triage (docs/fork-inventory.md section 1): the Ghidra DB pipeline (the fork freezes the database)"
+    },
+    "gen_proxy_stubs.py": {
+      "class": "keep",
+      "why": "generates the DLL-injection proxy-shim forwarding stubs",
+      "evidence": "invoked by src/mh_shim/msvfw32/msvfw32_shim.vcxproj"
+    },
+    "gen_reg_clobberers.py": {
+      "class": "archive",
+      "why": "turns a Ghidra classifier's output into cspec-model manifests",
+      "evidence": "F0 triage (docs/fork-inventory.md section 1): the Ghidra DB pipeline (the fork freezes the database)"
+    },
+    "gen_region_accessors.py": {
+      "class": "keep",
+      "why": "--check guards tools/data/region_accessors.json against the region registry, and gen_state_registry.py (keep) IMPORTS its currency() for rules 4-6 before emitting mh/addr/mh_regions.gen.h, which the public build compiles",
+      "evidence": "fork F5M S4a (2026-09-16) re-triage, one rule: is this a live drift gate over a file the PUBLIC build compiles or the public tree ships? The F0 class answered a different question (does the fork still need the Ghidra pipeline) and archived gates the public tree wants."
+    },
+    "gen_save_block_table.py": {
+      "class": "archive",
+      "why": "derives the save block table from Ghidra-exported .asm. ARCHIVE: a one-shot derivation from Ghidra .asm exports (--asm-dir), with no --check mode and no invoker -- the table it produced is committed",
+      "evidence": "F0 triage (docs/fork-inventory.md section 1): the Ghidra DB pipeline (the fork freezes the database)"
+    },
+    "gen_save_table_header.py": {
+      "class": "keep",
+      "why": "generates save_table.gen.h from committed JSON",
+      "evidence": "invoked by tools/lint_repo.py"
+    },
+    "gen_seam_surface.py": {
+      "class": "archive",
+      "why": "migration-item call-out risk/cost measurer",
+      "evidence": "F0 triage (docs/fork-inventory.md section 1): the migration / promotion / ledger machinery the fork drops"
+    },
+    "gen_session_report.py": {
+      "class": "keep",
+      "why": "MP run HTML/SVG perf report (hardcoded paths need refresh)",
+      "evidence": "no machine invoker -- run by a human reading an MP run",
+      "hand_run": true
+    },
+    "gen_st0_goldens.py": {
+      "class": "keep",
+      "why": "recorder: lifts the ST0 sin/cos oracle from a rig log",
+      "evidence": "no machine invoker -- run by a bring-your-own-game user regenerating the ST0 oracle from a rig log -- same recorder-ships-not-the-recording rule",
+      "hand_run": true
+    },
+    "gen_state_handler_table.py": {
+      "class": "keep",
+      "why": "extracts strategic dispatch tables from disassembly. KEEP: lint-gated drift check over committed headers (--extract is the Ghidra-only half and is not what the gate runs)",
+      "evidence": "invoked by tools/lint_repo.py"
+    },
+    "gen_state_matrix.py": {
+      "class": "archive",
+      "why": "Ghidra (region x function) read/write matrix",
+      "evidence": "F0 triage (docs/fork-inventory.md section 1): the Ghidra DB pipeline (the fork freezes the database)"
+    },
+    "gen_state_registry.py": {
+      "class": "keep",
+      "why": "state-region registry merge + ownership rules. KEEP: lint-gated, and its docstring states the inputs are committed so --check stays Ghidra-free",
+      "evidence": "invoked by tools/lint_repo.py"
+    },
+    "gen_tact_closure.py": {
+      "class": "archive",
+      "why": "tactical membership closure (Ghidra call-graph walk)",
+      "evidence": "F0 triage (docs/fork-inventory.md section 1): the migration / promotion / ledger machinery the fork drops"
+    },
+    "gen_tombstones.py": {
+      "class": "keep",
+      "why": "--check guards src/mh_dll/mh/addr/mh_tombstones.gen.h ITSELF -- a published header compiled into mh.dll through mh/seams/net_seams.cpp; a ledger row marked dead without a regenerated table ships an unarmed claim",
+      "evidence": "fork F5M S4a (2026-09-16) re-triage, one rule: is this a live drift gate over a file the PUBLIC build compiles or the public tree ships? The F0 class answered a different question (does the fork still need the Ghidra pipeline) and archived gates the public tree wants."
+    },
+    "gen_va_census.py": {
+      "class": "keep",
+      "why": "the LIB-VA ratchet: --check guards tools/data/va_census.json, the committed per-site baseline over the `mh::call::` tokens in src/mh_dll/mh and libmh -- sources the public build compiles -- and it fails in BOTH directions, so a VA call entering or leaving the public tree is caught",
+      "evidence": "fork F5M S4a (2026-09-16) re-triage, one rule: is this a live drift gate over a file the PUBLIC build compiles or the public tree ships? The F0 class answered a different question (does the fork still need the Ghidra pipeline) and archived gates the public tree wants."
+    },
+    "gen_vcxproj_filters.py": {
+      "class": "keep",
+      "why": "fork F5P: derives every hand project's .vcxproj.filters from its .vcxproj by one mechanical rule (folder = the item's on-disk directory), and owns the rule the three GENERATED libmh projects' filters are rendered with too. KEEP: lint-gated both ways (--check + --selftest), and the .filters files it emits are committed build inputs",
+      "evidence": "invoked by tools/lint_repo.py, tools/gen_libmh_vcxproj.py"
+    },
+    "gen_world_snapshot.py": {
+      "class": "keep",
+      "why": "LIB-WORLD step-0 world schema (feeds fixture_replay.py). KEEP: lint-gated accounting for LIB-WORLD, which fixture_replay needs",
+      "evidence": "invoked by tools/lint_repo.py"
+    },
+    "gen_writer_attribution.py": {
+      "class": "archive",
+      "why": "writer-ownership CENSUS (explicit)",
+      "evidence": "F0 triage (docs/fork-inventory.md section 1): the migration / promotion / ledger machinery the fork drops"
+    },
+    "ghidra_write.py": {
+      "class": "archive",
+      "why": "manual Ghidra write-lease helper",
+      "evidence": "F0 triage (docs/fork-inventory.md section 1): the Ghidra DB pipeline (the fork freezes the database)"
+    },
+    "hostlock.py": {
+      "class": "keep",
+      "why": "host-global leases (rig lease stays needed; Ghidra-write lease moot)",
+      "evidence": "invoked by tools/lint_repo.py"
+    },
+    "install_ghidra_shims.py": {
+      "class": "archive",
+      "why": "Ghidra script-shim installer",
+      "evidence": "F0 triage (docs/fork-inventory.md section 1): the Ghidra DB pipeline (the fork freezes the database)"
+    },
+    "journal_coverage.py": {
+      "class": "keep",
+      "why": "recorded-session order-op/UI coverage measurer",
+      "evidence": "no machine invoker -- run by a human deciding whether a recorded session covers what it claims",
+      "hand_run": true
+    },
+    "lane_alloc.py": {
+      "class": "keep",
+      "why": "fork F4H: the ONE place a lane number comes from, plus the disjointness gate",
+      "evidence": "invoked by tools/lint_repo.py"
+    },
+    "lint_annotations.py": {
+      "class": "archive",
+      "why": "Ghidra DB annotation consistency checks",
+      "evidence": "F0 triage (docs/fork-inventory.md section 1): the Ghidra DB pipeline (the fork freezes the database)"
+    },
+    "lint_arch.py": {
+      "class": "archive",
+      "why": "target-vs-measured architecture diff (Ghidra-derived matrix)",
+      "evidence": "F0 triage (docs/fork-inventory.md section 1): the Ghidra DB pipeline (the fork freezes the database)"
+    },
+    "lint_citations.py": {
+      "class": "keep",
+      "why": "fork F5E: no PUBLISHED file may cite a path the public tree does not carry, and no file may cite a path that does not exist -- the prose/comment counterpart to check_publishable --closure's build-edge scan, which cannot see comments or .md by construction",
+      "evidence": "fork F5E step 11 (2026-09-16): WIRED. lint_repo.py runs it as two rows -- 'fork F5E citations: no published file cites a path the cut does not carry (--strict)' and 'fork F5E citations -- the negative cases still fire' (--selftest) -- so the hand_run marker it carried between step 1 and step 11 is gone and check (d) is satisfied by a real invoker. The --strict row is in lint_repo's CI_SKIPS (measured: on the public tree the remaining private citation targets are absent, so the DANGLING arm fires on all of them and both allowlist rules go dead -- it gates the CUT, not the cut's output); the --selftest row runs in CI unskipped."
+    },
+    "lint_detail_calls.py": {
+      "class": "keep",
+      "why": "no live_*_calls() inside a detail:: (offline-mockable) body",
+      "evidence": "invoked by tools/lint_repo.py"
+    },
+    "lint_dll_patches.py": {
+      "class": "keep",
+      "why": "static half of the patch/seam interlock",
+      "evidence": "invoked by tools/lint_repo.py"
+    },
+    "lint_doc_symbols.py": {
+      "class": "archive",
+      "why": "docs-vs-generated-symbol-table lint",
+      "evidence": "F0 triage (docs/fork-inventory.md section 1): the research-doc + diary lints the fork does not ship"
+    },
+    "lint_dropped_returns.py": {
+      "class": "keep",
+      "why": "a promoted body may not drop a return its caller reads",
+      "evidence": "invoked by tools/lint_repo.py"
+    },
+    "lint_dump_coherence.py": {
+      "class": "keep",
+      "why": "guards tools/data/dll_call_protos.json -- published since the Q3 flip, and the single input all five generated-header drift gates (addr/struct/calls/exports/shadow) compare against, so a stale dump is not drift to any of them",
+      "evidence": "fork F5M S4a (2026-09-16) re-triage, one rule: is this a live drift gate over a file the PUBLIC build compiles or the public tree ships? The F0 class answered a different question (does the fork still need the Ghidra pipeline) and archived gates the public tree wants."
+    },
+    "lint_encoding.py": {
+      "class": "keep",
+      "why": "mojibake encoding lint (general mechanism, research-doc motivated). KEEP: a lint_repo row and a generic mechanism -- mojibake is not a research-doc-only failure",
+      "evidence": "invoked by tools/lint_repo.py"
+    },
+    "lint_evidence_tiers.py": {
+      "class": "archive",
+      "why": "migration-ledger evidence-tier consistency",
+      "evidence": "F0 triage (docs/fork-inventory.md section 1): the migration / promotion / ledger machinery the fork drops"
+    },
+    "lint_fp_flags.py": {
+      "class": "keep",
+      "why": "x87 compile-flag coverage for sim/AI translation units",
+      "evidence": "invoked by tools/lint_repo.py"
+    },
+    "lint_fp_helpers.py": {
+      "class": "keep",
+      "why": "mh/fp/ helper state-declaration check",
+      "evidence": "invoked by tools/lint_repo.py"
+    },
+    "lint_internal_edges.py": {
+      "class": "keep",
+      "why": "no our-code-to-our-code call via an original entry (lockstep/net)",
+      "evidence": "invoked by tools/lint_repo.py"
+    },
+    "lint_libmh_layering.py": {
+      "class": "keep",
+      "why": "no libmh module reaches the injection harness unguarded",
+      "evidence": "invoked by tools/lint_repo.py"
+    },
+    "lint_machine_paths.py": {
+      "class": "keep",
+      "why": "guards against reintroduced machine-specific paths",
+      "evidence": "invoked by tools/lint_repo.py"
+    },
+    "lint_md_tables.py": {
+      "class": "keep",
+      "why": "generic markdown-table-rendering hygiene (research-doc motivated). KEEP: a lint_repo row and generic markdown hygiene",
+      "evidence": "invoked by tools/lint_repo.py"
+    },
+    "lint_migration_items.py": {
+      "class": "archive",
+      "why": "migration-domain state-interface-item check",
+      "evidence": "F0 triage (docs/fork-inventory.md section 1): the migration / promotion / ledger machinery the fork drops"
+    },
+    "lint_notes_index.py": {
+      "class": "archive",
+      "why": "NOTES.md session-log index format (research diary)",
+      "evidence": "F0 triage (docs/fork-inventory.md section 1): the research-doc + diary lints the fork does not ship"
+    },
+    "lint_proto_shapes.py": {
+      "class": "keep",
+      "why": "mh_calls.gen.h vs mh_export.gen.h shape consistency",
+      "evidence": "invoked by tools/lint_repo.py"
+    },
+    "lint_region_mirror.py": {
+      "class": "keep",
+      "why": "determinism-harness region-manifest mirror check",
+      "evidence": "invoked by tools/lint_repo.py"
+    },
+    "lint_repo.py": {
+      "class": "keep",
+      "why": "the master Ghidra-free repo gate (unit list needs heavy pruning)",
+      "evidence": "invoked by tools/run_gate.py"
+    },
+    "lint_requirements.py": {
+      "class": "keep",
+      "why": "tools/requirements.txt completeness guard",
+      "evidence": "invoked by tools/lint_repo.py"
+    },
+    "lint_source_narration.py": {
+      "class": "keep",
+      "why": "bans session-diary narration comments in src/mh_dll",
+      "evidence": "invoked by tools/lint_repo.py"
+    },
+    "lint_strided_regions.py": {
+      "class": "keep",
+      "why": "a row-strided region must be longer than one row",
+      "evidence": "invoked by tools/lint_repo.py"
+    },
+    "lint_translation.py": {
+      "class": "archive",
+      "why": "migration-translation region/callee-set reviewer",
+      "evidence": "F0 triage (docs/fork-inventory.md section 1): the migration / promotion / ledger machinery the fork drops"
+    },
+    "lint_translation_sets.py": {
+      "class": "archive",
+      "why": "same, sim-domain (no state-header parsing) variant",
+      "evidence": "F0 triage (docs/fork-inventory.md section 1): the migration / promotion / ledger machinery the fork drops"
+    },
+    "lint_workflows.py": {
+      "class": "archive",
+      "why": "validates .claude/workflows/*.js (naming/migration workflows)",
+      "evidence": "F0 triage (docs/fork-inventory.md section 1): the research-doc + diary lints the fork does not ship"
+    },
+    "lint_x87_asm.py": {
+      "class": "keep",
+      "why": "inline x87 asm may only shrink, and only inside mh/fp/",
+      "evidence": "invoked by tools/lint_repo.py"
+    },
+    "loop_worktree.py": {
+      "class": "archive",
+      "why": "migration-loop git-worktree runner",
+      "evidence": "F0 triage (docs/fork-inventory.md section 1): the migration / promotion / ledger machinery the fork drops"
+    },
+    "machine_config.py": {
+      "class": "keep",
+      "why": "the one machine-specific-constant module",
+      "evidence": "used by bootstrap.py, check_const_view.py, check_inmem_patch_parity.py, check_module_bind.py, check_net_lockstep_refs.py, check_net_session_addrs.py, coverage.py, gen_harness_contract.py, gen_libmh_contract.py, gen_libref_stock_bases.py, gen_no_cd_manifest.py, gen_session_report.py, hostlock.py, lint_machine_paths.py, lint_repo.py, make_lane.py, mp_prep_manual.py, mp_run.py, mp_run_sweep.py, mp_step_sweep.py, provision_rig.py, replay_libref.py, rig_batch.py, run_gate.py, test_ui.py, ui_test.py"
+    },
+    "make_lane.py": {
+      "class": "keep",
+      "why": "builds a parallel rig test-lane install",
+      "evidence": "used by check_inmem_patch_parity.py, gate_timeline.py, mp_run.py, test_ui.py, ui_test.py"
+    },
+    "materialize_fnptr_refs.py": {
+      "class": "archive",
+      "why": "Ghidra function-pointer reference materializer",
+      "evidence": "F0 triage (docs/fork-inventory.md section 1): the Ghidra DB pipeline (the fork freezes the database)"
+    },
+    "migration_ab.py": {
+      "class": "archive",
+      "why": "promoted-golden A/B driver for dispatcher reimplementations",
+      "evidence": "F0 triage (docs/fork-inventory.md section 1): the migration / promotion / ledger machinery the fork drops"
+    },
+    "migration_domain.py": {
+      "class": "keep",
+      "why": "the domain-profile loader; imported at module level by gen_migration.py and lazily by _reimpl.py, and it names no private path of its own",
+      "evidence": "fork F5M S4a (2026-09-16): re-classed from archive when the archive-class withhold rule was drawn -- a keep gate IMPORTS this module, so the public tree cannot run its own lint without it. Measured by import closure over the keep set; the publish-ledger closure arm cannot see this class of edge, because it scans path-form strings and `import _cstrip` has none."
+    },
+    "migration_ledger.py": {
+      "class": "archive",
+      "why": "migration ledger schema (state/evidence-tier vocabulary)",
+      "evidence": "F0 triage (docs/fork-inventory.md section 1): the migration / promotion / ledger machinery the fork drops"
+    },
+    "migration_loop.py": {
+      "class": "archive",
+      "why": "unattended migration session-loop driver",
+      "evidence": "F0 triage (docs/fork-inventory.md section 1): the migration / promotion / ledger machinery the fork drops"
+    },
+    "migration_ready.py": {
+      "class": "archive",
+      "why": "migration slice readiness gate",
+      "evidence": "F0 triage (docs/fork-inventory.md section 1): the migration / promotion / ledger machinery the fork drops"
+    },
+    "migration_seeds.py": {
+      "class": "archive",
+      "why": "access-defined migration domain membership",
+      "evidence": "F0 triage (docs/fork-inventory.md section 1): the migration / promotion / ledger machinery the fork drops"
+    },
+    "migration_session.py": {
+      "class": "archive",
+      "why": "migration session bookends (--start/--end)",
+      "evidence": "F0 triage (docs/fork-inventory.md section 1): the migration / promotion / ledger machinery the fork drops"
+    },
+    "mp_analyze.py": {
+      "class": "keep",
+      "why": "MP run log analyzer / determinism verdict",
+      "evidence": "invoked by tools/lint_repo.py"
+    },
+    "mp_desync_snap_diff.py": {
+      "class": "keep",
+      "why": "desync full-state snapshot byte-diff",
+      "evidence": "no machine invoker -- run by a human holding two desync snapshots",
+      "hand_run": true
+    },
+    "mp_order_diff.py": {
+      "class": "keep",
+      "why": "peer order-recording diff/decoder",
+      "evidence": "used by rig_batch.py"
+    },
+    "mp_pacing_report.py": {
+      "class": "keep",
+      "why": "MP pacing metrics report",
+      "evidence": "used by rig_batch.py"
+    },
+    "mp_prep_manual.py": {
+      "class": "keep",
+      "why": "preps peers for a manual (hand-clicked) MP test",
+      "evidence": "no machine invoker -- run by a human about to hand-click a multiplayer test",
+      "hand_run": true
+    },
+    "mp_run.py": {
+      "class": "keep",
+      "why": "one-command N-peer MP test runner",
+      "evidence": "used by hostlock.py, mp_prep_manual.py, mp_run_sweep.py, mp_step_sweep.py, provision_rig.py, test_ui.py, ui_test.py"
+    },
+    "mp_run_sweep.py": {
+      "class": "keep",
+      "why": "MP pacing-knob combination sweep",
+      "evidence": "no machine invoker -- run by a human sweeping the pacing knobs; the gate runs fixed settings; documented in .claude/skills/mh-toolchain/SKILL.md",
+      "hand_run": true
+    },
+    "mp_step_sweep.py": {
+      "class": "keep",
+      "why": "sub-millisecond lockstep-step sweep",
+      "evidence": "no machine invoker -- run by a human sweeping sub-millisecond step sizes",
+      "hand_run": true
+    },
+    "mutate.py": {
+      "class": "keep",
+      "why": "mutation-testing engine for reimplementation modules",
+      "evidence": "no machine invoker -- run by a human asking whether a module's selftests would notice a planted defect",
+      "hand_run": true
+    },
+    "net_shim.py": {
+      "class": "keep",
+      "why": "controllable TCP middlebox for the 2-VM rig",
+      "evidence": "used by ui_test.py"
+    },
+    "order_stream.py": {
+      "class": "keep",
+      "why": "hook-free per-step order-decision channel reader",
+      "evidence": "no machine invoker -- run by a human reading the per-step order channel (migration_ab.py also imports it, but that is an archive-side caller and cannot carry the row)",
+      "hand_run": true
+    },
+    "probe_global_widths.py": {
+      "class": "archive",
+      "why": "Ghidra global-width probe",
+      "evidence": "F0 triage (docs/fork-inventory.md section 1): the Ghidra DB pipeline (the fork freezes the database)"
+    },
+    "proc.py": {
+      "class": "keep",
+      "why": "subprocess helpers with orphan-proof timeouts",
+      "evidence": "used by mutate.py"
+    },
+    "prof_resolve.py": {
+      "class": "keep",
+      "why": "profiler RVA resolver (mh.dll half fine; mh.exe half needs docs/symbols.md). KEEP as a hand-run harness tool: the mh.dll half needs nothing from Ghidra; the mh.exe half degrades to unresolved addresses without docs/symbols.md",
+      "evidence": "no machine invoker -- run by a human resolving a profiler dump",
+      "hand_run": true
+    },
+    "propagate_crt.py": {
+      "class": "archive",
+      "why": "Ghidra CRT-tag propagation/rename",
+      "evidence": "F0 triage (docs/fork-inventory.md section 1): the Ghidra DB pipeline (the fork freezes the database)"
+    },
+    "provision_rig.py": {
+      "class": "keep",
+      "why": "brings a fresh/relocated machine to rig-bootable state",
+      "evidence": "no machine invoker -- run by a human bringing a rig up (the bootstrap skill); documented in .claude/skills/bootstrap/SKILL.md",
+      "hand_run": true
+    },
+    "rank_dig_targets.py": {
+      "class": "archive",
+      "why": "naming-pipeline dig-target ranker",
+      "evidence": "F0 triage (docs/fork-inventory.md section 1): the naming/documentation pipeline (Ghidra-side, dropped with the DB)"
+    },
+    "record_dead_dispositions.py": {
+      "class": "archive",
+      "why": "migration-ledger dead-row disposition writer",
+      "evidence": "F0 triage (docs/fork-inventory.md section 1): the migration / promotion / ledger machinery the fork drops"
+    },
+    "replay_libref.py": {
+      "class": "keep",
+      "why": "the libref replay driver (a gate unit)",
+      "evidence": "invoked by tools/lint_repo.py, tools/run_gate.py"
+    },
+    "report_inbound_liveness.py": {
+      "class": "keep",
+      "why": "which libmh inbound entries a run actually entered. KEEP as a hand-run report: the run-side complement to gen_libmh_inbound's static gate (LIB-SPINE-API)",
+      "evidence": "no machine invoker -- run by a human asking which inbound entries a finished run entered",
+      "hand_run": true
+    },
+    "report_patch_surface.py": {
+      "class": "archive",
+      "why": "Ghidra-dependent patch-surface report",
+      "evidence": "F0 triage (docs/fork-inventory.md section 1): the Ghidra DB pipeline (the fork freezes the database)"
+    },
+    "report_type_usage.py": {
+      "class": "archive",
+      "why": "Ghidra struct-type usage report",
+      "evidence": "F0 triage (docs/fork-inventory.md section 1): the Ghidra DB pipeline (the fork freezes the database)"
+    },
+    "resolve_doc_refs.py": {
+      "class": "archive",
+      "why": "address-based doc symbol-reference resolver",
+      "evidence": "F0 triage (docs/fork-inventory.md section 1): the research-doc + diary lints the fork does not ship"
+    },
+    "retype_split_globals.py": {
+      "class": "archive",
+      "why": "Ghidra split-double global retyper",
+      "evidence": "F0 triage (docs/fork-inventory.md section 1): the Ghidra DB pipeline (the fork freezes the database)"
+    },
+    "reva_call.py": {
+      "class": "archive",
+      "why": "ReVA MCP HTTP transport CLI",
+      "evidence": "F0 triage (docs/fork-inventory.md section 1): the Ghidra DB pipeline (the fork freezes the database)"
+    },
+    "reva_service.py": {
+      "class": "archive",
+      "why": "headless Ghidra+ReVA launcher",
+      "evidence": "F0 triage (docs/fork-inventory.md section 1): the Ghidra DB pipeline (the fork freezes the database)"
+    },
+    "rig_batch.py": {
+      "class": "keep",
+      "why": "paired determinism-experiment batch runner",
+      "evidence": "no machine invoker -- run by a human running a paired determinism experiment",
+      "hand_run": true
+    },
+    "run_gate.py": {
+      "class": "keep",
+      "why": "overlapped DLL-gate driver (unit list needs pruning)",
+      "evidence": "no machine invoker -- run by a human -- this IS the gate driver, the root of everything below it; documented in .claude/skills/ui-testing/SKILL.md",
+      "hand_run": true
+    },
+    "run_selftests.py": {
+      "class": "keep",
+      "why": "DLL selftest gate (ASan-by-default) driver",
+      "evidence": "invoked by tools/run_gate.py"
+    },
+    "save_checkin.py": {
+      "class": "archive",
+      "why": "Ghidra save+checkin script",
+      "evidence": "F0 triage (docs/fork-inventory.md section 1): the Ghidra DB pipeline (the fork freezes the database)"
+    },
+    "scan_asm_writes.py": {
+      "class": "archive",
+      "why": "migration-domain write-set re-derivation from .asm",
+      "evidence": "F0 triage (docs/fork-inventory.md section 1): the migration / promotion / ledger machinery the fork drops"
+    },
+    "scan_dat_mismatches.py": {
+      "class": "archive",
+      "why": "Ghidra _DAT_ width-mismatch scan",
+      "evidence": "F0 triage (docs/fork-inventory.md section 1): the Ghidra DB pipeline (the fork freezes the database)"
+    },
+    "scan_interior_ptrs.py": {
+      "class": "keep",
+      "why": "interior-pointer scan over the committed exports (relocation hazard)",
+      "evidence": "invoked by tools/lint_repo.py"
+    },
+    "scan_libmh_vas.py": {
+      "class": "keep",
+      "why": "link-proof scan: no original VA survives in built libmh.lib",
+      "evidence": "invoked by src/mh_dll/libmh/libmh.vcxproj, tools/lint_repo.py"
+    },
+    "scan_limit_refsites.py": {
+      "class": "archive",
+      "why": "Ghidra hardcoded-limit-array ref-site classifier",
+      "evidence": "F0 triage (docs/fork-inventory.md section 1): the Ghidra DB pipeline (the fork freezes the database)"
+    },
+    "scan_pointer_slots.py": {
+      "class": "keep",
+      "why": "pointer-typed state-region relocation-hazard scan. KEEP: a lint_repo row; pointer-slot relocation hazard is a libmh hosting concern, not a research one",
+      "evidence": "invoked by tools/lint_repo.py"
+    },
+    "scan_raw_pointers.py": {
+      "class": "archive",
+      "why": "Ghidra raw (untracked) pointer reverse-index scan",
+      "evidence": "F0 triage (docs/fork-inventory.md section 1): the Ghidra DB pipeline (the fork freezes the database)"
+    },
+    "scan_undef_calls.py": {
+      "class": "archive",
+      "why": "Ghidra calls-into-undefined-bytes scan",
+      "evidence": "F0 triage (docs/fork-inventory.md section 1): the Ghidra DB pipeline (the fork freezes the database)"
+    },
+    "scan_unnamed_globals.py": {
+      "class": "archive",
+      "why": "naming-pipeline unnamed-global scan",
+      "evidence": "F0 triage (docs/fork-inventory.md section 1): the naming/documentation pipeline (Ghidra-side, dropped with the DB)"
+    },
+    "scan_untyped_structs.py": {
+      "class": "archive",
+      "why": "Ghidra untyped-struct-pointer survey",
+      "evidence": "F0 triage (docs/fork-inventory.md section 1): the Ghidra DB pipeline (the fork freezes the database)"
+    },
+    "set_calling_convention.py": {
+      "class": "archive",
+      "why": "Ghidra calling-convention setter",
+      "evidence": "F0 triage (docs/fork-inventory.md section 1): the Ghidra DB pipeline (the fork freezes the database)"
+    },
+    "setup_dat.py": {
+      "class": "keep",
+      "why": "edits the game's setup.dat MRU lists (rig client IP pinning)",
+      "evidence": "used by ui_test.py"
+    },
+    "slice_asm.py": {
+      "class": "archive",
+      "why": ".asm slicer for migration-translation lint pairing",
+      "evidence": "F0 triage (docs/fork-inventory.md section 1): the migration / promotion / ledger machinery the fork drops"
+    },
+    "sweep_saves.py": {
+      "class": "archive",
+      "why": "AI-state save indexer for migration scenario coverage",
+      "evidence": "F0 triage (docs/fork-inventory.md section 1): the migration / promotion / ledger machinery the fork drops"
+    },
+    "tact_divergence_hunt.py": {
+      "class": "keep",
+      "why": "tactical A/B divergence rate-measurement loop. KEEP as a hand-run instrument: it is what turns 'a run went green' into a rate with an N beside it for the tactical determinism blocker",
+      "evidence": "no machine invoker -- run by a human measuring the tactical divergence rate over N runs",
+      "hand_run": true
+    },
+    "tact_profile.py": {
+      "class": "keep",
+      "why": "differential rig wall-time profiler",
+      "evidence": "no machine invoker -- run by a human profiling a differential rig run",
+      "hand_run": true
+    },
+    "temporal_unify.py": {
+      "class": "keep",
+      "why": "MP per-event temporal-trace unifier",
+      "evidence": "no machine invoker -- run by a human unifying two peers' event traces after a desync; documented in .claude/skills/mh-toolchain/SKILL.md",
+      "hand_run": true
+    },
+    "test_ui.py": {
+      "class": "keep",
+      "why": "UI regression suite driver",
+      "evidence": "invoked by tools/lint_repo.py, tools/run_gate.py"
+    },
+    "track.py": {
+      "class": "archive",
+      "why": "structured-tracker query/regenerate (trackers dropped)",
+      "evidence": "F0 triage (docs/fork-inventory.md section 1): the migration / promotion / ledger machinery the fork drops"
+    },
+    "ui_test.py": {
+      "class": "keep",
+      "why": "UI regression runner (single- and multi-peer)",
+      "evidence": "used by fixture_replay.py, rig_batch.py, test_ui.py"
+    }
+  }
+}

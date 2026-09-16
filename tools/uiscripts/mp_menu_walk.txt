@@ -1,0 +1,38 @@
+# Phase 3 done_when: the full MP menu walk, keyed PURELY on UI-state transitions (no frame/time waits).
+# main menu -> NETWORK GAME -> player name -> local-games browser -> Create -> game name -> map pick -> lobby.
+# A frame is captured at each of the 6 screens (capture_wN_*.bmp).
+
+# 1. main menu (7-button sprite menu; NETWORK GAME = value 110)
+settled value:110
+capture w1_menu
+clickv 110
+
+# 2. player-name screen (title "Player name"; accept default name via Ok)
+present Player name
+settled Ok
+capture w2_playername
+clickl Ok
+
+# 3. local-games browser (host a game via "Create game")
+settled Create
+capture w3_browser
+clickl Create
+
+# 4. game-name screen (title "Game name"; accept via Ok)
+present Game name
+settled Ok
+capture w4_gamename
+clickl Ok
+
+# 5. map picker (title "Available maps"; accept the pre-selected map via Ok)
+present Available maps
+settled Ok
+capture w5_mappick
+clickl Ok
+
+# 6. lobby (title "Network players"; the host waiting room with Start/Cancel)
+present Network players
+settled Start
+capture w6_lobby
+log MP menu walk COMPLETE -- reached the host lobby
+end

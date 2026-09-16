@@ -1,0 +1,52 @@
+# P0-SPDET: the SINGLE-PLAYER determinism oracle's scenario.
+#
+# Drive ONE peer through the real menu into a live game and then get out of the way -- the harness,
+# not this script, decides when the run ends (test_ui.py --sp-determinism waits on the logged step
+# count, exactly as --determinism does). So there are no captures here and no long in-game wait: the
+# script's whole job is to reach GAME_MODE 2 deterministically and stop.
+#
+# SINGLE-PEER, and that is the point. mp_host_start_ai.txt looks like the right script and is NOT --
+# it waits on `peers 1` for a human client to join, so a solo run aborts there (measured: TIMEOUT at
+# step 14 after 80001 frames). The solo pattern is res_hud.txt's: seat an AI in slot 1 and click
+# Start alone. res_hud itself is a registered CAPTURE test with a committed baseline and a D13
+# resolution intent, so this is a separate file rather than a reuse -- a determinism arm must not be
+# able to fail on a pixel diff.
+#
+# SESSION MODE: launching alone leaves _G_LLM_NET_LOBBY_SCAN_HOST_COUNT < 2, so
+# llm_strat_session_begin_multi writes SESSION_MODE = 2 -- the non-3 branch, which is what C2's LIVE
+# classification means. The mode-1 CAMPAIGN entry is a different path and is NOT covered here; that
+# is tracker P0-SPCAMP.
+#
+# The AI-slot click follows mp_host_ai_closed.txt: the per-slot state spinner rebuilds the widget
+# list, so gate on the "Computer" name label rather than a delay.
+
+settled value:110
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+settled Create
+clickl Create
+present Game name
+settled Ok
+clickl Ok
+present Available maps
+settled Ok
+clickl Ok
+
+# host lobby: seat an AI opponent in slot 1 (OPEN -> AI), then launch alone.
+present Network players
+settled Start
+click 70 132
+present Computer
+enabled Start
+clickl Start
+
+# in-game. Wait for the strategic HUD and for the sim to have actually started stepping, so the
+# script's COMPLETE marker cannot be mistaken for "the run is over" -- then hand the run to the
+# harness, which is what the step-count wait is watching.
+absent Network players
+gamemode 2
+gameclock 1000
+log SP determinism scenario: in-game at GAME_MODE 2, handing the run to the harness
+end

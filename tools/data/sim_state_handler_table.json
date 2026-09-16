@@ -1,0 +1,498 @@
+{
+  "_comment": "EXTRACTED by tools/gen_state_handler_table.py from the exported disassembly of llm_strat_register_state_handlers -- do not hand-edit. Each table is filled 0..slots-1 with `default` and then overwritten at each `assign` state, in the order listed. `at` is the setter call site.",
+  "registrar": "llm_strat_register_state_handlers",
+  "tables": {
+    "unit": {
+      "setter": "llm_strat_set_unit_state_handler",
+      "base": "0x00e15a3c",
+      "slots": 255,
+      "default": {
+        "name": "llm_strat_unit_state_default_noop",
+        "addr": "0x0047e2ac",
+        "at": "0x0045f2a1"
+      },
+      "assign": [
+        {
+          "name": "llm_strat_unit_state_move_walker",
+          "addr": "0x0047c903",
+          "at": "0x0045f2b2",
+          "state": 15
+        },
+        {
+          "name": "llm_strat_unit_state_stop_to_default",
+          "addr": "0x0047e1e1",
+          "at": "0x0045f2c1",
+          "state": 1
+        },
+        {
+          "name": "llm_strat_unit_state_parked_noop",
+          "addr": "0x0047e276",
+          "at": "0x0045f2d0",
+          "state": 31
+        },
+        {
+          "name": "llm_strat_unit_state_group_marshal",
+          "addr": "0x00482451",
+          "at": "0x0045f2df",
+          "state": 10
+        },
+        {
+          "name": "llm_strat_unit_state_group_step",
+          "addr": "0x00482f7f",
+          "at": "0x0045f2ee",
+          "state": 11
+        },
+        {
+          "name": "llm_strat_unit_state_enter_class_move",
+          "addr": "0x00482f2e",
+          "at": "0x0045f2fd",
+          "state": 12
+        },
+        {
+          "name": "llm_strat_unit_state_patrol_swap",
+          "addr": "0x0047e2e2",
+          "at": "0x0045f30c",
+          "state": 16
+        },
+        {
+          "name": "llm_strat_unit_state_plot_turn_path",
+          "addr": "0x00485d43",
+          "at": "0x0045f31b",
+          "state": 45
+        },
+        {
+          "name": "llm_strat_unit_state_idle_scatter",
+          "addr": "0x00485ebb",
+          "at": "0x0045f32a",
+          "state": 19
+        },
+        {
+          "name": "llm_strat_unit_state_takeoff_landing",
+          "addr": "0x004813f1",
+          "at": "0x0045f339",
+          "state": 22
+        },
+        {
+          "name": "llm_strat_unit_state_takeoff_landing",
+          "addr": "0x004813f1",
+          "at": "0x0045f348",
+          "state": 21
+        },
+        {
+          "name": "llm_strat_unit_state_deploy_approach",
+          "addr": "0x0048117c",
+          "at": "0x0045f357",
+          "state": 24
+        },
+        {
+          "name": "llm_strat_unit_state_deploy_to_building",
+          "addr": "0x00481a6b",
+          "at": "0x0045f366",
+          "state": 23
+        },
+        {
+          "name": "llm_strat_unit_state_climb_vertical",
+          "addr": "0x00481960",
+          "at": "0x0045f375",
+          "state": 124
+        },
+        {
+          "name": "llm_strat_unit_state_descend_cruise",
+          "addr": "0x00481f7c",
+          "at": "0x0045f384",
+          "state": 48
+        },
+        {
+          "name": "llm_strat_unit_state_ascend_to_orbit",
+          "addr": "0x0048214d",
+          "at": "0x0045f393",
+          "state": 49
+        },
+        {
+          "name": "llm_strat_unit_state_move_path",
+          "addr": "0x00480b53",
+          "at": "0x0045f3a2",
+          "state": 17
+        },
+        {
+          "name": "llm_strat_unit_state_move_path",
+          "addr": "0x00480b53",
+          "at": "0x0045f3b1",
+          "state": 18
+        },
+        {
+          "name": "llm_strat_unit_state_move_path",
+          "addr": "0x00480b53",
+          "at": "0x0045f3c0",
+          "state": 44
+        },
+        {
+          "name": "llm_strat_unit_state_hover_engage",
+          "addr": "0x004807d9",
+          "at": "0x0045f3cf",
+          "state": 46
+        },
+        {
+          "name": "llm_strat_unit_state_hover_engage",
+          "addr": "0x004807d9",
+          "at": "0x0045f3de",
+          "state": 47
+        },
+        {
+          "name": "llm_strat_unit_state_hover_engage",
+          "addr": "0x004807d9",
+          "at": "0x0045f3ed",
+          "state": 55
+        },
+        {
+          "name": "llm_strat_unit_state_attack_building",
+          "addr": "0x00484e10",
+          "at": "0x0045f3fc",
+          "state": 28
+        },
+        {
+          "name": "llm_strat_unit_state_attack_unit",
+          "addr": "0x00485008",
+          "at": "0x0045f40b",
+          "state": 27
+        },
+        {
+          "name": "llm_strat_unit_state_attack_unit",
+          "addr": "0x00485008",
+          "at": "0x0045f41a",
+          "state": 26
+        },
+        {
+          "name": "llm_strat_unit_state_die_explode",
+          "addr": "0x004854f3",
+          "at": "0x0045f429",
+          "state": 2
+        },
+        {
+          "name": "llm_strat_unit_state_remove_silent",
+          "addr": "0x0048592d",
+          "at": "0x0045f438",
+          "state": 3
+        },
+        {
+          "name": "llm_strat_unit_state_corpse_fow_decay",
+          "addr": "0x004822dc",
+          "at": "0x0045f447",
+          "state": 4
+        },
+        {
+          "name": "llm_strat_unit_state_exit_storage_begin",
+          "addr": "0x0047efc6",
+          "at": "0x0045f456",
+          "state": 32
+        },
+        {
+          "name": "llm_strat_unit_state_exit_wait",
+          "addr": "0x0047f270",
+          "at": "0x0045f465",
+          "state": 34
+        },
+        {
+          "name": "llm_strat_unit_state_exit_cancel",
+          "addr": "0x0047f351",
+          "at": "0x0045f474",
+          "state": 35
+        },
+        {
+          "name": "llm_strat_unit_state_exit_walk_out",
+          "addr": "0x0047f3a1",
+          "at": "0x0045f483",
+          "state": 33
+        },
+        {
+          "name": "llm_strat_unit_state_takeoff_taxi",
+          "addr": "0x0047f69f",
+          "at": "0x0045f492",
+          "state": 39
+        },
+        {
+          "name": "llm_strat_unit_state_parked_noop",
+          "addr": "0x0047e276",
+          "at": "0x0045f4a1",
+          "state": 40
+        },
+        {
+          "name": "llm_strat_unit_state_landing_request",
+          "addr": "0x004800a8",
+          "at": "0x0045f4b0",
+          "state": 41
+        },
+        {
+          "name": "llm_strat_unit_state_enter_storage_begin",
+          "addr": "0x0047ff50",
+          "at": "0x0045f4bf",
+          "state": 36
+        },
+        {
+          "name": "llm_strat_unit_state_enter_arrival_check",
+          "addr": "0x0047fe68",
+          "at": "0x0045f4ce",
+          "state": 56
+        },
+        {
+          "name": "llm_strat_unit_state_enter_wait",
+          "addr": "0x00480218",
+          "at": "0x0045f4dd",
+          "state": 37
+        },
+        {
+          "name": "llm_strat_unit_state_enter_walk_in",
+          "addr": "0x004803bf",
+          "at": "0x0045f4ec",
+          "state": 38
+        },
+        {
+          "name": "llm_strat_unit_state_dock_taxi_in",
+          "addr": "0x0047f981",
+          "at": "0x0045f4fb",
+          "state": 42
+        },
+        {
+          "name": "llm_strat_unit_state_parked_noop",
+          "addr": "0x0047e276",
+          "at": "0x0045f50a",
+          "state": 43
+        },
+        {
+          "name": "llm_strat_unit_state_squad_merge",
+          "addr": "0x0047ea62",
+          "at": "0x0045f519",
+          "state": 51
+        },
+        {
+          "name": "llm_strat_unit_state_production_ready",
+          "addr": "0x00486106",
+          "at": "0x0045f528",
+          "state": 205
+        },
+        {
+          "name": "llm_strat_unit_state_step_adjacent",
+          "addr": "0x00485bab",
+          "at": "0x0045f537",
+          "state": 54
+        }
+      ]
+    },
+    "bldg": {
+      "setter": "llm_strat_set_bldg_state_handler",
+      "base": "0x00e15448",
+      "slots": 255,
+      "default": {
+        "name": "llm_strat_bldg_state_default_reset",
+        "addr": "0x004711c3",
+        "at": "0x0045f55b"
+      },
+      "assign": [
+        {
+          "name": "llm_strat_bldg_state_construction",
+          "addr": "0x004724af",
+          "at": "0x0045f56c",
+          "state": 100
+        },
+        {
+          "name": "llm_strat_bldg_state_dismantling",
+          "addr": "0x00472eb7",
+          "at": "0x0045f57b",
+          "state": 107
+        },
+        {
+          "name": "llm_strat_bldg_state_idle_activate",
+          "addr": "0x00472415",
+          "at": "0x0045f58a",
+          "state": 1
+        },
+        {
+          "name": "llm_strat_bldg_state_charge_gate",
+          "addr": "0x00472674",
+          "at": "0x0045f599",
+          "state": 105
+        },
+        {
+          "name": "llm_strat_bldg_state_charge_step",
+          "addr": "0x00472979",
+          "at": "0x0045f5a8",
+          "state": 106
+        },
+        {
+          "name": "llm_strat_bldg_state_hangar_recharge_check",
+          "addr": "0x00472b26",
+          "at": "0x0045f5b7",
+          "state": 120
+        },
+        {
+          "name": "llm_strat_bldg_state_hangar_recharge_units",
+          "addr": "0x00472b9d",
+          "at": "0x0045f5c6",
+          "state": 121
+        },
+        {
+          "name": "llm_strat_bldg_state_upgrading",
+          "addr": "0x00472c42",
+          "at": "0x0045f5d5",
+          "state": 130
+        },
+        {
+          "name": "llm_strat_bldg_state_prod_pick_next",
+          "addr": "0x00473a20",
+          "at": "0x0045f5e4",
+          "state": 108
+        },
+        {
+          "name": "llm_strat_bldg_state_prod_working",
+          "addr": "0x00473ca8",
+          "at": "0x0045f5f3",
+          "state": 109
+        },
+        {
+          "name": "llm_strat_bldg_state_prod_blocked_notify",
+          "addr": "0x00474139",
+          "at": "0x0045f602",
+          "state": 110
+        },
+        {
+          "name": "llm_strat_bldg_state_prod_retry_wait",
+          "addr": "0x0047430b",
+          "at": "0x0045f611",
+          "state": 112
+        },
+        {
+          "name": "llm_strat_bldg_state_mine_scan_deposits",
+          "addr": "0x00474384",
+          "at": "0x0045f620",
+          "state": 114
+        },
+        {
+          "name": "llm_strat_bldg_state_mine_check_deposits",
+          "addr": "0x004743e1",
+          "at": "0x0045f62f",
+          "state": 115
+        },
+        {
+          "name": "llm_strat_bldg_state_mine_extracting",
+          "addr": "0x0047457a",
+          "at": "0x0045f63e",
+          "state": 116
+        },
+        {
+          "name": "llm_strat_bldg_state_mine_depleted",
+          "addr": "0x0047464e",
+          "at": "0x0045f64d",
+          "state": 117
+        },
+        {
+          "name": "llm_strat_bldg_state_mine_rescan_wait",
+          "addr": "0x0047468e",
+          "at": "0x0045f65c",
+          "state": 118
+        },
+        {
+          "name": "llm_strat_bldg_state_power_primary_check",
+          "addr": "0x00474707",
+          "at": "0x0045f66b",
+          "state": 138
+        },
+        {
+          "name": "llm_strat_bldg_state_power_generate",
+          "addr": "0x0047477a",
+          "at": "0x0045f67a",
+          "state": 139
+        },
+        {
+          "name": "llm_strat_bldg_state_turret_scan",
+          "addr": "0x00471ab1",
+          "at": "0x0045f689",
+          "state": 122
+        },
+        {
+          "name": "llm_strat_bldg_state_turret_attack",
+          "addr": "0x00471e53",
+          "at": "0x0045f698",
+          "state": 123
+        },
+        {
+          "name": "llm_strat_bldg_state_researching",
+          "addr": "0x00472f3c",
+          "at": "0x0045f6a7",
+          "state": 137
+        },
+        {
+          "name": "llm_strat_bldg_state_deploy_anim_wait",
+          "addr": "0x00471239",
+          "at": "0x0045f6b6",
+          "state": 132
+        },
+        {
+          "name": "llm_strat_bldg_state_land_activate",
+          "addr": "0x00471288",
+          "at": "0x0045f6c5",
+          "state": 133
+        },
+        {
+          "name": "llm_strat_bldg_state_idle_noop",
+          "addr": "0x00471203",
+          "at": "0x0045f6d4",
+          "state": 119
+        },
+        {
+          "name": "llm_strat_bldg_state_idle_noop",
+          "addr": "0x00471203",
+          "at": "0x0045f6e3",
+          "state": 135
+        },
+        {
+          "name": "llm_strat_bldg_state_idle_noop",
+          "addr": "0x00471203",
+          "at": "0x0045f6f2",
+          "state": 134
+        },
+        {
+          "name": "llm_strat_bldg_state_idle_noop",
+          "addr": "0x00471203",
+          "at": "0x0045f701",
+          "state": 136
+        },
+        {
+          "name": "llm_strat_bldg_state_idle_noop",
+          "addr": "0x00471203",
+          "at": "0x0045f710",
+          "state": 140
+        },
+        {
+          "name": "llm_strat_bldg_state_deploy_start",
+          "addr": "0x00471377",
+          "at": "0x0045f71f",
+          "state": 125
+        },
+        {
+          "name": "llm_strat_bldg_state_to_unit",
+          "addr": "0x00471443",
+          "at": "0x0045f72e",
+          "state": 124
+        },
+        {
+          "name": "llm_strat_bldg_state_destroyed",
+          "addr": "0x00473194",
+          "at": "0x0045f73d",
+          "state": 2
+        },
+        {
+          "name": "llm_strat_bldg_state_dismantle_finish",
+          "addr": "0x004736a2",
+          "at": "0x0045f74c",
+          "state": 3
+        },
+        {
+          "name": "llm_strat_bldg_state_rubble_sight_decay",
+          "addr": "0x004738a3",
+          "at": "0x0045f75b",
+          "state": 4
+        }
+      ]
+    }
+  }
+}

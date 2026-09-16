@@ -1,0 +1,111 @@
+{
+ "_generated_by": "tools/gen_va_census.py -- do not hand-edit; regenerate instead",
+ "_measures": "every mh::call:: site in the modules that become libmh (ai lockstep orders save sim state tact), routed to the tracker item that will remove it. LIB-VA0's instrument.",
+ "summary": {
+  "tramp_sites": 4,
+  "total_sites": 2,
+  "routed": 2,
+  "kept": 2,
+  "needing_work": 0,
+  "unrouted": 0,
+  "guarded_out": 5,
+  "by_owner": {
+   "LIB-VA0": 2
+  },
+  "by_class": {
+   "constsig-keep": 2
+  },
+  "by_shape": {
+   "binder": 2
+  },
+  "by_module": {
+   "lockstep": 2
+  },
+  "call_census_standalone_sites": 3
+ },
+ "sites": [
+  {
+   "file": "lockstep/rx_dispatch.cpp",
+   "line": 582,
+   "callee": "llm_strat_order_pending_enqueue",
+   "module": "lockstep",
+   "shape": "binder",
+   "fn": "live_dispatch_calls",
+   "shadow_arm": false,
+   "guarded": false,
+   "owner": "LIB-VA0",
+   "cls": "constsig-keep",
+   "why": "LIB-CONSTSIG, adjudicated 2026-09-04. The calls-struct slot is `int32_t (*)(const game_order *)`, inherited from the generated prototype, while mh::orders::pending_enqueue takes `order *` NON-const -- and the non-const is the CORRECT signature, not an oversight: the body masks four ushort fields of *rec to their low byte IN PLACE before copying, exactly as the original does at 0x004667b4-0x004667c6. So the const on the slot is the wrong half, and changing it would change a HOSTED calls-struct member type. Rediscovered independently at LIB-REF-SPLIT 2026-09-11 when MH_PROMOTED's type check refused the conversion; gen_libmh_rebind.py prints the same finding as the row's [semantics] reason. Cross-referenced: libmh_va_adjudication.json class `libmh-constsig-residue`, 3 occurrences of 0x00466790.",
+   "handed": false,
+   "kept": true
+  },
+  {
+   "file": "lockstep/tx_emit_ctrl.cpp",
+   "line": 45,
+   "callee": "llm_strat_order_pending_enqueue",
+   "module": "lockstep",
+   "shape": "binder",
+   "fn": "live_ctrl_calls",
+   "shadow_arm": false,
+   "guarded": false,
+   "owner": "LIB-VA0",
+   "cls": "constsig-keep",
+   "why": "LIB-CONSTSIG, adjudicated 2026-09-04. The calls-struct slot is `int32_t (*)(const game_order *)`, inherited from the generated prototype, while mh::orders::pending_enqueue takes `order *` NON-const -- and the non-const is the CORRECT signature, not an oversight: the body masks four ushort fields of *rec to their low byte IN PLACE before copying, exactly as the original does at 0x004667b4-0x004667c6. So the const on the slot is the wrong half, and changing it would change a HOSTED calls-struct member type. Rediscovered independently at LIB-REF-SPLIT 2026-09-11 when MH_PROMOTED's type check refused the conversion; gen_libmh_rebind.py prints the same finding as the row's [semantics] reason. Cross-referenced: libmh_va_adjudication.json class `libmh-constsig-residue`, 3 occurrences of 0x00466790.",
+   "handed": false,
+   "kept": true
+  }
+ ],
+ "unrouted_sites": [],
+ "guarded_sites": [
+  {
+   "file": "save/save_live.cpp",
+   "line": 538,
+   "callee": "detail::g_load_tramp",
+   "module": "save",
+   "shape": "tramp",
+   "fn": "call_original_load",
+   "shadow_arm": false,
+   "guarded": true
+  },
+  {
+   "file": "save/save_live.cpp",
+   "line": 1110,
+   "callee": "detail::g_container_tramp",
+   "module": "save",
+   "shape": "tramp",
+   "fn": "call_original_savegame",
+   "shadow_arm": false,
+   "guarded": true
+  },
+  {
+   "file": "save/save_live.cpp",
+   "line": 1294,
+   "callee": "detail::g_container_load_tramp",
+   "module": "save",
+   "shape": "tramp",
+   "fn": "call_original_loadgame",
+   "shadow_arm": false,
+   "guarded": true
+  },
+  {
+   "file": "save/save_live.cpp",
+   "line": 1441,
+   "callee": "detail::g_tramp",
+   "module": "save",
+   "shape": "tramp",
+   "fn": "call_original",
+   "shadow_arm": false,
+   "guarded": true
+  },
+  {
+   "file": "sim/resid/sim_start_tutorial.cpp",
+   "line": 35,
+   "callee": "llm_tutorial_load_script",
+   "module": "sim",
+   "shape": "direct",
+   "fn": "load_tutorial_script",
+   "shadow_arm": false,
+   "guarded": true
+  }
+ ]
+}

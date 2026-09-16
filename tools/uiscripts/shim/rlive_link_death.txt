@@ -1,0 +1,41 @@
+# R-live, end-to-end in the real game rather than the loopback selftest.
+#
+# One run, two verdicts, both read from the peers' mh_net.log and from whether the scripts COMPLETE:
+#
+#   1. the STALL must produce NOTHING. 8 s of silence is under the 10 s rx_timeout_ms, and a quiet
+#      link that is still alive must never be dropped. This is the negative control, and it is the
+#      half a positive test can never prove.
+#   2. the BLACKHOLE must produce "conn N dropped -- no data from peer within the link timeout" on
+#      BOTH peers within ~10 s. This is precisely the 2026-07-26 failure: sockets open, nothing
+#      arriving, previously invisible to both peers.
+#
+# Drive it with the linkdeath scripts, which sit in the lobby on `peers <1` -- so the run COMPLETING
+# is itself the proof that the detection fired, and a timeout is the failure:
+#
+#   python tools/net_shim.py --listen 0.0.0.0:6501 --target 192.168.0.37:6501 --delay 100 \
+#          --timeline tools/uiscripts/shim/rlive_link_death.txt
+#   python tools/ui_test.py --host 192.168.0.37:mp_host_linkdeath.txt \
+#          --client 192.168.0.38:mp_client_linkdeath.txt --connect-ip <dev box> #          --timeout-frames 20000 --timeout 600
+#
+# BUDGET TRAP (cost two runs, 2026-07-26). `--timeout` is the PYTHON runner's wall-clock patience;
+# the script's per-step watchdog is `--timeout-frames` ([uitest] timeout_frames, default 1500).
+# Raising --timeout does nothing for a script that waits. And the early abort is silent about being
+# early: the runner kills the peers, and the far side logs "peer closed the connection" -- which looks
+# exactly like the network event you were trying to cause. Check the peer's mh_uidrive.log for
+# "TIMEOUT at step N after F frames" and compare F to what you set. Frame rates differ by an order of
+# magnitude by screen: ~200 fps walking the menus, ~40 fps waiting in the lobby.
+#
+# Offsets are from the FIRST CONNECTION (the client's discovery connect), measured ~20-40 s after
+# launch on this rig, with the lobby settled a few seconds later.
+#
+# VERIFIED 2026-07-26 with exactly these offsets: the stall produced no drop and traffic resumed; the
+# blackhole at t+60.0 closed the link at t+69.95 with the HOST logging "no data from peer within the
+# link timeout" -- the 10 s rx_timeout_ms, to within 50 ms -- and both scripts COMPLETE.
+# The CLIENT logs "peer closed the connection" instead, because `blackhole` discards payload but not
+# connection state: the host's shutdown() still travelled through the shim. That is one event seen
+# from two sides, not a client-side watchdog failure. For independent double-detection, blackhole a
+# single direction.
+
+30000   stall on          # quiet, but alive
+38000   stall off         # ...and back. Expect NO drop line from either peer.
+60000   blackhole on      # gone, without a close. Expect the rx-timeout drop on BOTH peers ~10 s later.

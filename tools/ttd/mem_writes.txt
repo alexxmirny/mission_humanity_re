@@ -1,0 +1,9 @@
+.echo ======== writes to container+0x18 (0x653f57) -- origin-X history ========
+dx @$cursession.TTD.Memory(0x00653f57, 4, "w").Count()
+.echo ---- each write: position + value written (watch for animation vs single -545) ----
+dx -r2 @$cursession.TTD.Memory(0x00653f57, 4, "w").Select(w => new { Pos = w.TimeStart, Val = w.Value, Was = w.OverwrittenValue })
+.echo ======== also +0x24 height (0x653f63) ========
+dx @$cursession.TTD.Memory(0x00653f63, 4, "w").Count()
+dx -r2 @$cursession.TTD.Memory(0x00653f63, 4, "w").Select(w => new { Pos = w.TimeStart, Val = w.Value })
+.echo ======== DONE ========
+qq

@@ -1,0 +1,382 @@
+{
+  "_generated_by": "HAND-MAINTAINED, deliberately. LIFT-R3B's ledger.",
+  "_what": "The answer to every readback tools/gen_notify_readback.py finds. R3b says a notify scope may not write state that translated libmh reads back in the same frame -- under a NULL-callback host the dispatch defers to frame edge and libmh reads LAST frame's value. The generator finds candidates mechanically; this file says what each one actually is.",
+  "_why_a_list_and_not_a_rule": "The intersection cannot see frame ORDER. A reader that provably always runs before the emit is harmless, and no closure over a call graph can tell you that -- somebody has to read the frame body and say so. Same shape as tools/data/rebind_yield_dispositions.json: the gate refuses anything unlisted, and every entry carries the reason that made it acceptable.",
+  "_history": "The sweep this ledger came out of was itself a missed check. R3b was written at LIFT-TACT slice 0 (e2e6907c, 22:48) and the on_screen scopes had landed 49-71 minutes EARLIER; nothing ran the new rule backwards over them. The 2026-09-04 hand sweep found 8 readbacks over 42 scopes, one severe (INV_TACT_SIDEBAR_ROSTER). This file plus the generator is what stops the next rule arriving after the next scope.",
+  "_frame_cuts": {
+    "llm_strat_frame_sim_only": "The game's own frame driver. Several screen scopes reach it (a modal that pumps the frame), and past it the closure saturates at 775 functions -- the whole reachable program. Those writes belong to the FRAME, not to the scope that opened the modal, so the walk stops here and records that it crossed. WITHOUT this cut, outcome_dialog / overlay_dismiss / bldg_panel_open / planet_select_open / sync_overlay_show / wait_player_show / mp_leave_reset / progress_notify all report 775 reachable and 'writes everything', which is true and useless."
+  },
+  "_frame_cuts_rejected": {
+    "game_SetEvent": "MEASURED and REJECTED 2026-09-09. Cutting here collapses llm_ui_bldg_panel_open 50 -> 1 and llm_progress_notify_unit_available 50 -> 1, which is exactly why it is tempting and exactly why it is wrong: game_SetEvent is the game's EVENT DISPATCHER, not a frame loop. A scope that fires a game event genuinely causes that event's writes, and hiding them behind a cut would be tuning the cut set until the report is short. Only a re-entry into the frame loop qualifies as a cut."
+  },
+  "_verdicts": {
+    "fixed": "The readback no longer reaches libmh -- the write was hoisted above the emit, or the value is now computed by libmh itself. The entry stays so the gate does not re-open it.",
+    "required-class": "The entry is NOT converted to a notify record; it stays a required host-table call, dispatched synchronously by contract. R3's own escape hatch.",
+    "justified-exempt": "The intersection is real but harmless, for a reason the closure cannot see -- the reader provably precedes the emit, the read is a dead store, or the region is not consumed for any decision. The reason must say WHICH.",
+    "over-approximation": "The pair exists only because the closure over-reaches past a frame cut or through a shared leaf; the scope's own subtree does not write it on any live path.",
+    "handed-off": "The readback is real and the FIX belongs to another tracker item, named in the reason. Distinct from justified-exempt: nothing here argues it is harmless -- it argues it is someone else's slice. The gate stays green only because the owning item exists and is open."
+  },
+  "_how_to_add": "Run `python tools/gen_notify_readback.py --md` for the worklist, read the actual frame body, then add a pairs[] entry {kind, region, verdict, reason} or, for a crossed/blind scope, a scopes[] entry {kind, verdict, reason}. A reason that only cites a rule is not a reason -- cite the code.",
+  "pairs": [
+    {
+      "kind": "LIBMH_EVK_CAM_SET_COL",
+      "region": "MAP_CAM_COL",
+      "verdict": "fixed",
+      "reason": "HOISTED 2026-09-09. mh::state::evt::cam_set_col now writes RID_MAP_CAM_COL itself before emitting (state/host_events.cpp), so llm_strat_spawn_enemy_landing's hashed landing_x fallback (sim_landing_spot.cpp:147-150) reads a value libmh owns rather than one the host may not have applied yet. The double write is idempotent BY MEASUREMENT: llm_map_cam_set_col @0x0044af33 is `mov [0x00e58138],eax` verbatim -- no clamp, no transform -- then derives SCROLL_OFFSET_COL = col<<5, and no translated body reads that derived value (zero hits for CAM_SCROLL_OFFSET across src/mh_dll)."
+    },
+    {
+      "kind": "LIBMH_EVK_CAM_SET_ROW",
+      "region": "MAP_CAM_ROW",
+      "verdict": "fixed",
+      "reason": "Row half of the CAM_SET_COL hoist, same shape and same measurement (llm_map_cam_set_row @0x0044af6d). See that entry for the evidence."
+    },
+    {
+      "kind": "LIBMH_EVK_VIEW_ZOOM_SCALE",
+      "region": "MAP_ZOOM_SCALE_X",
+      "verdict": "justified-exempt",
+      "reason": "DEAD READ, and the source says so in as many words: the only translated consumer is sim_fx_debris_burst.cpp:83, `(void)c.zoom_scale_x_get();`, whose own comment keeps the call solely for the original's internal state-read and discards the value. Nothing branches on the zoom scale, so a frame-stale value changes nothing."
+    },
+    {
+      "kind": "LIBMH_EVK_INV_TACT_SIDEBAR_ROSTER",
+      "region": "TACT_SIDEBAR_SLOT_UNIT_IDS",
+      "verdict": "fixed",
+      "reason": "FIXED 2026-09-09 at LIFT-TACT slice A -- the SEVERE finding, and the only one of LIFT-R3B's eight that needed code rather than a reason. llm_tact_ui_sidebar_roster_refresh @0x00434b68 is an R2 split that shipped unsplit: three STATE steps (rebuild the visible-slot list from live tact_units, clamp sidebar_slot_scroll, set the four sel_panel_icon_slot_state arrow bits) and then a redraw loop. llm_tact_sidebar_dispatch reads ALL THREE back later in the same frame -- slot ids at tact_sidebar_dispatch.cpp:144/153, icon slot state at :130 -- and turns a slot id into a hashed tact_units.status write. libmh now computes the state half itself in detail::roster_slots_rebuild(), above the emit (tact_selection_panel_refresh.cpp); the scope keeps only the draw. The double write is idempotent by construction: steps 1-3 are a pure function of tact_units + sidebar_slot_visible_count and nothing between the hoist and the host's execution touches either. Pinned by tacttest T5a/T5b/T5c and MUTATION-PROVEN -- deleting the tail zero-fill turns T5a red with the stale poison value still in the slot map."
+    },
+    {
+      "kind": "LIBMH_EVK_INV_TACT_SIDEBAR_ROSTER",
+      "region": "TACT_SIDEBAR_SLOT_SCROLL",
+      "verdict": "fixed",
+      "reason": "Fixed by the same roster_slots_rebuild hoist as TACT_SIDEBAR_SLOT_UNIT_IDS -- the scroll clamp is its second state step (@0x00434bc9-0x00434bf5), computed in libmh above the emit and pinned by tacttest T5b. See that entry for the derivation."
+    },
+    {
+      "kind": "LIBMH_EVK_SCR_MENU_BG_REDRAW",
+      "region": "SPRITE_PIX_OFFSETS",
+      "verdict": "over-approximation",
+      "reason": "ELEMENT-DISJOINT, which a region-granular intersection cannot see. The write reaches only the single fixed slot _G_LLM_SPRITE_PIX_OFFSETS[0x12] (llm_gfx_build_bar_sprite_rle @0x004282a3, the generic status-bar sprite), while all three readers index at frame_val + bank_sprite_base_at(20), and that base is 5000 (tact_mission_start.cpp:100). Index 18 and the 5000+ range never collide."
+    },
+    {
+      "kind": "LIBMH_EVK_SCR_MENU_BG_REDRAW",
+      "region": "STRAT_SOLDIERS",
+      "verdict": "justified-exempt",
+      "reason": "NOT CONSUMED FOR A DECISION. llm_strat_render_tile_object @0x0045229a increments strat_soldiers[].anim_change_count per render; the reader, sim_unit_soldier_screen_pos.cpp:67, folds it into a walk-cycle SPRITE FRAME used only to place a muzzle flash or an unload sprite (sim_unit_fire_weapon.cpp, sim_unit_transport_unload.cpp). A frame-stale animation phase misplaces a visual by one walk frame; nothing hashed reads it."
+    },
+    {
+      "kind": "LIBMH_EVK_SCR_CURSOR_MENU_DRAW",
+      "region": "G_WIN_H",
+      "verdict": "justified-exempt",
+      "reason": "IDEMPOTENT COPY OF A SESSION-STABLE SOURCE. llm_gfx_draw_cursor_menu @0x004a5b74 stores G_WIN_H = WindowHeight, and WindowHeight is written only at boot and at explicit resolution-change entry points, never per frame. Deferring the copy by a frame cannot change its value, because the source does not move between the two instants."
+    },
+    {
+      "kind": "LIBMH_EVK_SCR_CURSOR_MENU_DRAW",
+      "region": "G_WIN_W",
+      "verdict": "justified-exempt",
+      "reason": "Same idempotent-copy argument as G_WIN_H (@0x004a5b6f), plus mode exclusivity: the two extra readers (llm_tact_cam_follow_selection_tick, llm_tact_camera_center_on_tile) are tactical-only, reached solely via llm_frame_dispatch case 6, while this scope's only translated emit site is gated on own.game_mode()==3 (sim_tutorial_step_driver.cpp:308-309). They cannot share a frame at all."
+    },
+    {
+      "kind": "LIBMH_EVK_SCR_PRESENT_FLIP",
+      "region": "FRAMEBUFFER",
+      "verdict": "justified-exempt",
+      "reason": "DESTINATION-ONLY, and mode-exclusive besides. _G_LLM_FRAMEBUFFER is a POINTER to the locked back buffer that llm_gfx_present_flip @0x0042644a re-caches after its unlock/present/lock cycle; all five readers use own.gfx_framebuffer() purely as the destination address of a memmove/blit (tact_view_shift.cpp:55,102,148,193; tact_mission_start.cpp:151), never as a branch input. The readers are tactical-mode; both emit sites (sim_tutorial_step_driver.cpp:310, sim_start_tutorial.cpp:67) are strategic/tutorial."
+    },
+    {
+      "kind": "LIBMH_EVK_SCR_FADE_TRANSITION_RUN",
+      "region": "FRAMEBUFFER",
+      "verdict": "justified-exempt",
+      "reason": "Same writer and same argument as SCR_PRESENT_FLIP: the fade tick reaches llm_gfx_present_flip -> llm_gfx_surface_lock on every step, and FRAMEBUFFER's readers are tactical-only while this scope's only emit site (sim_start_tutorial.cpp:60,162) is strategic session setup."
+    },
+    {
+      "kind": "LIBMH_EVK_SCR_FADE_TRANSITION_RUN",
+      "region": "GAME_CLOCK_RAW_TICKS",
+      "verdict": "justified-exempt",
+      "reason": "CORRECTED 2026-09-09, same day it was written -- the first reason was too strong and a determinism run disproved it. It said the readback was 'pacing, not determinism (R8)'. GAME_CLOCK_RAW_TICKS and TIME_TICKS_MS are indeed absent from tools/data/hash_manifest.json, but the VALUE does not stop there: sim_session_state_reset.cpp:65 stamps own.last_game_time() from time_get_current_time(), and last_game_time IS hashed -- as are current_game_time, total_game_time, game_time_delta, game_clock, frame_ring and fps_estimate, every one of which mp_analyze compares peer-to-peer. So the chain does reach hashed state and the original reason was wrong about where it ended. THE EXEMPTION STILL HOLDS, for a different and simpler reason: this scope's ONLY emit sites are sim_start_tutorial.cpp:60 and :162 -- the single-player tutorial, which is not a lockstep session and has no peer to diverge from. A deferred fade there shifts one session-start timestamp on the only machine that has one."
+    },
+    {
+      "kind": "LIBMH_EVK_SCR_FADE_TRANSITION_RUN",
+      "region": "TIME_TICKS_MS",
+      "verdict": "justified-exempt",
+      "reason": "Written by the same llm_game_clock_tick_update as GAME_CLOCK_RAW_TICKS and exempt for the same corrected reason -- see that entry. Its only translated reader is llm_time_get_ticks_ms itself, i.e. the clock-read path, not a distinct consumer."
+    },
+    {
+      "kind": "LIBMH_EVK_CAM_JUMP_QUEUE_CLEAR",
+      "region": "MAP_ZOOM_SCALE_X",
+      "verdict": "justified-exempt",
+      "reason": "DEAD READ, same as the VIEW_ZOOM_SCALE entry: the only translated consumer of the zoom scale is sim_fx_debris_burst.cpp:83's discarded `(void)c.zoom_scale_x_get();`, kept solely for the original's internal state-read. Reached here because llm_cam_jump_queue_pop applies a queued jump through llm_map_set_zoom_scale; nothing branches on the result."
+    },
+    {
+      "kind": "LIBMH_EVK_FX_DEBRIS_BURST",
+      "region": "MAP_ZOOM_SCALE_X",
+      "verdict": "justified-exempt",
+      "reason": "DEAD READ, same as the VIEW_ZOOM_SCALE entry: the only translated consumer of the zoom scale is sim_fx_debris_burst.cpp:83's discarded `(void)c.zoom_scale_x_get();`, kept solely for the original's internal state-read. Reached here because llm_cam_jump_queue_pop applies a queued jump through llm_map_set_zoom_scale; nothing branches on the result."
+    },
+    {
+      "kind": "LIBMH_EVK_CAM_JUMP_QUEUE_CLEAR",
+      "region": "MAP_CAM_COL",
+      "verdict": "fixed",
+      "reason": "FIXED 2026-09-09 by draining in libmh. The hazardous site was sim_fx_debris_burst.cpp:33, which emitted the clear and THEN refilled the queue the host was being asked to drain (offsets 46-62, count :77) -- under poll the deferred drain would have consumed the burst libmh had just queued, a different action rather than a stale read. libmh now performs llm_cam_jump_queue_pop @0x0044dd43's loop itself, crossing the channel through the existing kinds so the hosted arm makes the same original calls in the same order (R5). The two remaining emit sites keep the record and are safe by MEASUREMENT, not assumption: llm_strat_session_state_reset and llm_game_load do not refill afterwards, and neither is reachable from llm_strat_frame, so neither can share a frame with the camera readback."
+    },
+    {
+      "kind": "LIBMH_EVK_CAM_JUMP_QUEUE_CLEAR",
+      "region": "MAP_CAM_ROW",
+      "verdict": "fixed",
+      "reason": "FIXED 2026-09-09 by draining in libmh. The hazardous site was sim_fx_debris_burst.cpp:33, which emitted the clear and THEN refilled the queue the host was being asked to drain (offsets 46-62, count :77) -- under poll the deferred drain would have consumed the burst libmh had just queued, a different action rather than a stale read. libmh now performs llm_cam_jump_queue_pop @0x0044dd43's loop itself, crossing the channel through the existing kinds so the hosted arm makes the same original calls in the same order (R5). The two remaining emit sites keep the record and are safe by MEASUREMENT, not assumption: llm_strat_session_state_reset and llm_game_load do not refill afterwards, and neither is reachable from llm_strat_frame, so neither can share a frame with the camera readback."
+    },
+    {
+      "kind": "LIBMH_EVK_FX_DEBRIS_BURST",
+      "region": "MAP_CAM_COL",
+      "verdict": "fixed",
+      "reason": "FIXED 2026-09-09 by draining in libmh. The hazardous site was sim_fx_debris_burst.cpp:33, which emitted the clear and THEN refilled the queue the host was being asked to drain (offsets 46-62, count :77) -- under poll the deferred drain would have consumed the burst libmh had just queued, a different action rather than a stale read. libmh now performs llm_cam_jump_queue_pop @0x0044dd43's loop itself, crossing the channel through the existing kinds so the hosted arm makes the same original calls in the same order (R5). The two remaining emit sites keep the record and are safe by MEASUREMENT, not assumption: llm_strat_session_state_reset and llm_game_load do not refill afterwards, and neither is reachable from llm_strat_frame, so neither can share a frame with the camera readback."
+    },
+    {
+      "kind": "LIBMH_EVK_FX_DEBRIS_BURST",
+      "region": "MAP_CAM_ROW",
+      "verdict": "fixed",
+      "reason": "FIXED 2026-09-09 by draining in libmh. The hazardous site was sim_fx_debris_burst.cpp:33, which emitted the clear and THEN refilled the queue the host was being asked to drain (offsets 46-62, count :77) -- under poll the deferred drain would have consumed the burst libmh had just queued, a different action rather than a stale read. libmh now performs llm_cam_jump_queue_pop @0x0044dd43's loop itself, crossing the channel through the existing kinds so the hosted arm makes the same original calls in the same order (R5). The two remaining emit sites keep the record and are safe by MEASUREMENT, not assumption: llm_strat_session_state_reset and llm_game_load do not refill afterwards, and neither is reachable from llm_strat_frame, so neither can share a frame with the camera readback."
+    },
+    {
+      "kind": "LIBMH_EVK_SCR_TACT_BLAST_TRANSITION",
+      "region": "FRAMEBUFFER",
+      "verdict": "justified-exempt",
+      "reason": "NO READER RUNS BETWEEN THIS EMIT AND THE END OF ITS BRANCH -- measured, not argued. The scope's one site is llm_tact_frame's mine-blast exit branch (tact_frame.cpp:140), and everything libmh does after it before the branch returns is blink_overlay_clear, vis_map_fill_default, units_reset_hp_for_active, squad_sync_hp, scroll_target_proximity_tick and mission_end_return_to_strategic -- grepped, and between them they contain ZERO references to gfx_framebuffer or the window metrics. The closure's readers (view_shift x4, mission_start) are reached on other frames entirely. Deferring the whole wipe to the frame edge therefore cannot be observed by libmh on this path."
+    },
+    {
+      "kind": "LIBMH_EVK_SCR_TACT_BLAST_TRANSITION",
+      "region": "G_WIN_W",
+      "verdict": "justified-exempt",
+      "reason": "Same no-reader-after-the-emit measurement as FRAMEBUFFER above, AND the idempotent-copy argument SCR_CURSOR_MENU_DRAW already carries for this region: the write is llm_gfx_draw_cursor_ingame copying WindowWidth into G_WIN_W, and WindowWidth moves only at boot and at explicit resolution-change entry points, never per frame. A deferred copy of a source that does not move between the two instants stores the same value."
+    },
+    {
+      "kind": "LIBMH_EVK_SCR_TACT_FRAME_PRESENT",
+      "region": "FRAMEBUFFER",
+      "verdict": "justified-exempt",
+      "reason": "DESTINATION-ONLY, and the one site where it is NOT terminal is named rather than glossed. Two emit sites: llm_tact_frame's last statement (tact_frame.cpp:475), where nothing of libmh's runs afterwards at all, and llm_tact_mission_start step 2 (tact_mission_start.cpp:70), which DOES read own.gfx_framebuffer() later in the same call, at :151. That second one is a genuine same-call readback and it is exempt on what the value IS, not on ordering: _G_LLM_FRAMEBUFFER is the address of the locked back buffer, and :151 uses it purely as the destination of a 480-row memcpy -- never as a branch input, never hashed, not a TACT_HASH_REGIONS member. A stale pointer there lands the intro blit on the surface that is about to be presented rather than the one after it: one frame of presentation, and by R8 it cannot reach the sim. The same destination-only reading already exempts SCR_PRESENT_FLIP and SCR_FADE_TRANSITION_RUN for this region; what does NOT carry over is their second leg, mode exclusivity, since this scope and its readers are both tactical."
+    },
+    {
+      "kind": "LIBMH_EVK_SCR_TACT_FRAME_PRESENT",
+      "region": "G_WIN_W",
+      "verdict": "justified-exempt",
+      "reason": "IDEMPOTENT COPY OF A SESSION-STABLE SOURCE, the same argument SCR_CURSOR_MENU_DRAW carries: llm_gfx_draw_cursor_ingame stores G_WIN_W = WindowWidth, and WindowWidth is written only at boot and at explicit resolution-change entry points, never per frame. Deferring the copy by a frame cannot change its value because the source does not move between the two instants. Mode exclusivity is NOT claimed here -- this scope and its readers are both tactical -- so the idempotence is doing all the work."
+    },
+    {
+      "kind": "LIBMH_EVK_INV_GFX_VIEW_METRICS",
+      "region": "GFX_PANEL_ROW_SKIP",
+      "verdict": "justified-exempt",
+      "reason": "MISSION-BOUNDARY ONE-SHOT: EVERY READER IS IN A LATER FRAME, and the emitter reads none of it. Measured both halves. (1) Structure: llm_tact_mission_start is reached ONLY from llm_strat_try_enter_tactical_mission and llm_tact_mission_end_return_to_strategic only from llm_tact_frame's mission-end branch (committed call graph), while every reader below is reached only from a later frame's llm_tact_frame / llm_strat_frame. A frame-edge drain therefore lands before any of them runs -- which is the ordering fact the gate says it cannot see, and the reason this ledger exists rather than the gate deciding. (2) Self-read: the emitting body reads NOTHING it emits after the emit -- mission_start's only window_width read is at :116-117, BEFORE the emits; view_tiles_w/h at :133-134 are writes, not reads; and it never mentions sprite_pix_offsets, tile_vis_map_ptr, los_cache or gfx_panel_row_skip at all. mission_end mentions none of them. Contrast the two entries this slice REVERTED: llm_gfx_apply_window_resolution and llm_gfx_apply_resolution_change failed exactly this second check and stayed required. NOTE this pair was a REAL same-call readback until earlier the same day: llm_tact_ui_sel_panel_init read it three times inside mission_start's own call chain, and slice A moved that draw head host-side. The region now has ZERO translated readers -- all five remaining references are in mh.dll's sink. The gate still lists the original-graph readers, which is why the pair needs a row rather than disappearing."
+    },
+    {
+      "kind": "LIBMH_EVK_INV_GFX_VIEW_METRICS",
+      "region": "G_WIN_H",
+      "verdict": "justified-exempt",
+      "reason": "MISSION-BOUNDARY ONE-SHOT: EVERY READER IS IN A LATER FRAME, and the emitter reads none of it. Measured both halves. (1) Structure: llm_tact_mission_start is reached ONLY from llm_strat_try_enter_tactical_mission and llm_tact_mission_end_return_to_strategic only from llm_tact_frame's mission-end branch (committed call graph), while every reader below is reached only from a later frame's llm_tact_frame / llm_strat_frame. A frame-edge drain therefore lands before any of them runs -- which is the ordering fact the gate says it cannot see, and the reason this ledger exists rather than the gate deciding. (2) Self-read: the emitting body reads NOTHING it emits after the emit -- mission_start's only window_width read is at :116-117, BEFORE the emits; view_tiles_w/h at :133-134 are writes, not reads; and it never mentions sprite_pix_offsets, tile_vis_map_ptr, los_cache or gfx_panel_row_skip at all. mission_end mentions none of them. Contrast the two entries this slice REVERTED: llm_gfx_apply_window_resolution and llm_gfx_apply_resolution_change failed exactly this second check and stayed required."
+    },
+    {
+      "kind": "LIBMH_EVK_INV_GFX_VIEW_METRICS",
+      "region": "G_WIN_W",
+      "verdict": "justified-exempt",
+      "reason": "MISSION-BOUNDARY ONE-SHOT: EVERY READER IS IN A LATER FRAME, and the emitter reads none of it. Measured both halves. (1) Structure: llm_tact_mission_start is reached ONLY from llm_strat_try_enter_tactical_mission and llm_tact_mission_end_return_to_strategic only from llm_tact_frame's mission-end branch (committed call graph), while every reader below is reached only from a later frame's llm_tact_frame / llm_strat_frame. A frame-edge drain therefore lands before any of them runs -- which is the ordering fact the gate says it cannot see, and the reason this ledger exists rather than the gate deciding. (2) Self-read: the emitting body reads NOTHING it emits after the emit -- mission_start's only window_width read is at :116-117, BEFORE the emits; view_tiles_w/h at :133-134 are writes, not reads; and it never mentions sprite_pix_offsets, tile_vis_map_ptr, los_cache or gfx_panel_row_skip at all. mission_end mentions none of them. Contrast the two entries this slice REVERTED: llm_gfx_apply_window_resolution and llm_gfx_apply_resolution_change failed exactly this second check and stayed required."
+    },
+    {
+      "kind": "LIBMH_EVK_INV_GFX_VIEW_METRICS",
+      "region": "TACT_LOS_CACHE_PTR",
+      "verdict": "justified-exempt",
+      "reason": "MISSION-BOUNDARY ONE-SHOT: EVERY READER IS IN A LATER FRAME, and the emitter reads none of it. Measured both halves. (1) Structure: llm_tact_mission_start is reached ONLY from llm_strat_try_enter_tactical_mission and llm_tact_mission_end_return_to_strategic only from llm_tact_frame's mission-end branch (committed call graph), while every reader below is reached only from a later frame's llm_tact_frame / llm_strat_frame. A frame-edge drain therefore lands before any of them runs -- which is the ordering fact the gate says it cannot see, and the reason this ledger exists rather than the gate deciding. (2) Self-read: the emitting body reads NOTHING it emits after the emit -- mission_start's only window_width read is at :116-117, BEFORE the emits; view_tiles_w/h at :133-134 are writes, not reads; and it never mentions sprite_pix_offsets, tile_vis_map_ptr, los_cache or gfx_panel_row_skip at all. mission_end mentions none of them. Contrast the two entries this slice REVERTED: llm_gfx_apply_window_resolution and llm_gfx_apply_resolution_change failed exactly this second check and stayed required."
+    },
+    {
+      "kind": "LIBMH_EVK_INV_GFX_VIEW_METRICS",
+      "region": "TILE_VIS_MAP_PTR",
+      "verdict": "justified-exempt",
+      "reason": "MISSION-BOUNDARY ONE-SHOT: EVERY READER IS IN A LATER FRAME, and the emitter reads none of it. Measured both halves. (1) Structure: llm_tact_mission_start is reached ONLY from llm_strat_try_enter_tactical_mission and llm_tact_mission_end_return_to_strategic only from llm_tact_frame's mission-end branch (committed call graph), while every reader below is reached only from a later frame's llm_tact_frame / llm_strat_frame. A frame-edge drain therefore lands before any of them runs -- which is the ordering fact the gate says it cannot see, and the reason this ledger exists rather than the gate deciding. (2) Self-read: the emitting body reads NOTHING it emits after the emit -- mission_start's only window_width read is at :116-117, BEFORE the emits; view_tiles_w/h at :133-134 are writes, not reads; and it never mentions sprite_pix_offsets, tile_vis_map_ptr, los_cache or gfx_panel_row_skip at all. mission_end mentions none of them. Contrast the two entries this slice REVERTED: llm_gfx_apply_window_resolution and llm_gfx_apply_resolution_change failed exactly this second check and stayed required."
+    },
+    {
+      "kind": "LIBMH_EVK_INV_GFX_VIEW_METRICS",
+      "region": "VIEW_TILES_H",
+      "verdict": "justified-exempt",
+      "reason": "MISSION-BOUNDARY ONE-SHOT: EVERY READER IS IN A LATER FRAME, and the emitter reads none of it. Measured both halves. (1) Structure: llm_tact_mission_start is reached ONLY from llm_strat_try_enter_tactical_mission and llm_tact_mission_end_return_to_strategic only from llm_tact_frame's mission-end branch (committed call graph), while every reader below is reached only from a later frame's llm_tact_frame / llm_strat_frame. A frame-edge drain therefore lands before any of them runs -- which is the ordering fact the gate says it cannot see, and the reason this ledger exists rather than the gate deciding. (2) Self-read: the emitting body reads NOTHING it emits after the emit -- mission_start's only window_width read is at :116-117, BEFORE the emits; view_tiles_w/h at :133-134 are writes, not reads; and it never mentions sprite_pix_offsets, tile_vis_map_ptr, los_cache or gfx_panel_row_skip at all. mission_end mentions none of them. Contrast the two entries this slice REVERTED: llm_gfx_apply_window_resolution and llm_gfx_apply_resolution_change failed exactly this second check and stayed required."
+    },
+    {
+      "kind": "LIBMH_EVK_INV_GFX_VIEW_METRICS",
+      "region": "VIEW_TILES_W",
+      "verdict": "justified-exempt",
+      "reason": "MISSION-BOUNDARY ONE-SHOT: EVERY READER IS IN A LATER FRAME, and the emitter reads none of it. Measured both halves. (1) Structure: llm_tact_mission_start is reached ONLY from llm_strat_try_enter_tactical_mission and llm_tact_mission_end_return_to_strategic only from llm_tact_frame's mission-end branch (committed call graph), while every reader below is reached only from a later frame's llm_tact_frame / llm_strat_frame. A frame-edge drain therefore lands before any of them runs -- which is the ordering fact the gate says it cannot see, and the reason this ledger exists rather than the gate deciding. (2) Self-read: the emitting body reads NOTHING it emits after the emit -- mission_start's only window_width read is at :116-117, BEFORE the emits; view_tiles_w/h at :133-134 are writes, not reads; and it never mentions sprite_pix_offsets, tile_vis_map_ptr, los_cache or gfx_panel_row_skip at all. mission_end mentions none of them. Contrast the two entries this slice REVERTED: llm_gfx_apply_window_resolution and llm_gfx_apply_resolution_change failed exactly this second check and stayed required."
+    },
+    {
+      "kind": "LIBMH_EVK_INV_TACT_VIEW_METRICS",
+      "region": "TACT_LOS_CACHE_PTR",
+      "verdict": "justified-exempt",
+      "reason": "MISSION-BOUNDARY ONE-SHOT: EVERY READER IS IN A LATER FRAME, and the emitter reads none of it. Measured both halves. (1) Structure: llm_tact_mission_start is reached ONLY from llm_strat_try_enter_tactical_mission and llm_tact_mission_end_return_to_strategic only from llm_tact_frame's mission-end branch (committed call graph), while every reader below is reached only from a later frame's llm_tact_frame / llm_strat_frame. A frame-edge drain therefore lands before any of them runs -- which is the ordering fact the gate says it cannot see, and the reason this ledger exists rather than the gate deciding. (2) Self-read: the emitting body reads NOTHING it emits after the emit -- mission_start's only window_width read is at :116-117, BEFORE the emits; view_tiles_w/h at :133-134 are writes, not reads; and it never mentions sprite_pix_offsets, tile_vis_map_ptr, los_cache or gfx_panel_row_skip at all. mission_end mentions none of them. Contrast the two entries this slice REVERTED: llm_gfx_apply_window_resolution and llm_gfx_apply_resolution_change failed exactly this second check and stayed required."
+    },
+    {
+      "kind": "LIBMH_EVK_INV_TACT_VIEW_METRICS",
+      "region": "TILE_VIS_MAP_PTR",
+      "verdict": "justified-exempt",
+      "reason": "MISSION-BOUNDARY ONE-SHOT: EVERY READER IS IN A LATER FRAME, and the emitter reads none of it. Measured both halves. (1) Structure: llm_tact_mission_start is reached ONLY from llm_strat_try_enter_tactical_mission and llm_tact_mission_end_return_to_strategic only from llm_tact_frame's mission-end branch (committed call graph), while every reader below is reached only from a later frame's llm_tact_frame / llm_strat_frame. A frame-edge drain therefore lands before any of them runs -- which is the ordering fact the gate says it cannot see, and the reason this ledger exists rather than the gate deciding. (2) Self-read: the emitting body reads NOTHING it emits after the emit -- mission_start's only window_width read is at :116-117, BEFORE the emits; view_tiles_w/h at :133-134 are writes, not reads; and it never mentions sprite_pix_offsets, tile_vis_map_ptr, los_cache or gfx_panel_row_skip at all. mission_end mentions none of them. Contrast the two entries this slice REVERTED: llm_gfx_apply_window_resolution and llm_gfx_apply_resolution_change failed exactly this second check and stayed required. This is the sharpest case in the group and the reason the frame measurement was run rather than assumed: llm_tact_view_metrics_init RE-ALLOCATES the buffer, so a deferred dispatch would leave a DANGLING pointer, not a stale value. The four readers are tact_view_shift's, reached solely from llm_tact_frame."
+    },
+    {
+      "kind": "LIBMH_EVK_INV_TACT_SPRITE_BANKS",
+      "region": "SPRITE_PIX_OFFSETS",
+      "verdict": "justified-exempt",
+      "reason": "MISSION-BOUNDARY ONE-SHOT: EVERY READER IS IN A LATER FRAME, and the emitter reads none of it. Measured both halves. (1) Structure: llm_tact_mission_start is reached ONLY from llm_strat_try_enter_tactical_mission and llm_tact_mission_end_return_to_strategic only from llm_tact_frame's mission-end branch (committed call graph), while every reader below is reached only from a later frame's llm_tact_frame / llm_strat_frame. A frame-edge drain therefore lands before any of them runs -- which is the ordering fact the gate says it cannot see, and the reason this ledger exists rather than the gate deciding. (2) Self-read: the emitting body reads NOTHING it emits after the emit -- mission_start's only window_width read is at :116-117, BEFORE the emits; view_tiles_w/h at :133-134 are writes, not reads; and it never mentions sprite_pix_offsets, tile_vis_map_ptr, los_cache or gfx_panel_row_skip at all. mission_end mentions none of them. Contrast the two entries this slice REVERTED: llm_gfx_apply_window_resolution and llm_gfx_apply_resolution_change failed exactly this second check and stayed required."
+    },
+    {
+      "kind": "LIBMH_EVK_INV_ALL_SPRITE_BANKS",
+      "region": "SPRITE_PIX_OFFSETS",
+      "verdict": "justified-exempt",
+      "reason": "MISSION-BOUNDARY ONE-SHOT: EVERY READER IS IN A LATER FRAME, and the emitter reads none of it. Measured both halves. (1) Structure: llm_tact_mission_start is reached ONLY from llm_strat_try_enter_tactical_mission and llm_tact_mission_end_return_to_strategic only from llm_tact_frame's mission-end branch (committed call graph), while every reader below is reached only from a later frame's llm_tact_frame / llm_strat_frame. A frame-edge drain therefore lands before any of them runs -- which is the ordering fact the gate says it cannot see, and the reason this ledger exists rather than the gate deciding. (2) Self-read: the emitting body reads NOTHING it emits after the emit -- mission_start's only window_width read is at :116-117, BEFORE the emits; view_tiles_w/h at :133-134 are writes, not reads; and it never mentions sprite_pix_offsets, tile_vis_map_ptr, los_cache or gfx_panel_row_skip at all. mission_end mentions none of them. Contrast the two entries this slice REVERTED: llm_gfx_apply_window_resolution and llm_gfx_apply_resolution_change failed exactly this second check and stayed required."
+    },
+    {
+      "kind": "LIBMH_EVK_INV_PLANET_GFX_SETUP",
+      "region": "PLANETS",
+      "verdict": "justified-exempt",
+      "reason": "WHICH: the intersection is at REGION granularity and the fields are disjoint; for the ONE reader where they are not, the reader provably precedes the emit by whole frames. FIELD-LEVEL DISJOINTNESS, measured, plus an ordering the intersection cannot see. The gate works at REGION granularity and PLANETS is one 34016-byte region, so any write to it intersects every reader of any field. This scope's whole write set is TWO BYTES per record -- Planets[i].tlo_index (+0x425) and Planets[i].soldier_sprite_bank_offset (+0x426) -- plus cfg_final_planet_FillBankData, whose own target is bank[] (+0x38d, 100 B). It is a verbatim relocation of 0x0045b8fe..0x0045ba1c and stores nowhere else. NO TRANSLATED BODY READS EITHER FIELD, OR bank[]: zero hits for tlo_index / soldier_sprite_bank_offset across src/mh_dll outside the walker that masks them and the sink that writes them, and LIFT-TABLE S2 took all 102 bytes out of the determinism hash on the same measurement (the only image-wide readers are llm_gfx_planet_bank_needed / llm_gfx_load_banks / llm_gfx_load_planet_extra_sprite_banks, all gfx). The three named readers read OTHER fields: game_AddPlanetToAvailable gates on system_index (+0x8), game_HandleInvasion on the invasion scalars, and game_SaveGame copies the record wholesale. THE SAVE IS THE ONE THAT NEEDS THE ORDERING ARGUMENT, and it holds structurally rather than by luck: cfg_final_planet_Construct has exactly TWO callers image-wide -- cfg_ConstructPlanets @0x004b2c74 (the boot cfg parse) and llm_strat_scenario_planet_clone @0x0045ba25 (the per-session clone into slot 0x1f) -- both session-entry, many frames before a save can be taken, while a NULL-callback host drains at the END OF THAT SAME FRAME. A host that ignores the record entirely leaves both bytes 0 in its own saves, which is correct for it: they are graphics state that host owns, and it never reads them back."
+    },
+    {
+      "kind": "LIBMH_EVK_SCR_STRAT_FRAME_PRESENT",
+      "region": "SPRITE_PIX_OFFSETS",
+      "verdict": "over-approximation",
+      "reason": "ELEMENT-DISJOINT, and re-verified off the body rather than copied from the SCR_MENU_BG_REDRAW row that shares the writer. The only write in this closure is llm_gfx_build_bar_sprite_rle @0x004282a3, whose single store is `_G_LLM_SPRITE_PIX_OFFSETS[0x12] = &DAT_0070f830 - _G_LLM_GFX_BANK_PIXELS` (decompile line 92) -- one fixed slot, the scratch id its own caller then blits (llm_gfx_draw_sprite(0x12) in llm_gfx_draw_sprite_with_bar). The two tactical door readers index at `frame_val + bank_sprite_base_at(20)`, which is 5000+ (tact_door.cpp:116; the base is pinned at tact_mission_start.cpp:100), so 18 and that range never collide. The third reader, llm_strat_bldg_sprite_anchor_offset, indexes a building TYPE's configured sprite (Anim[Building[id].anim[0]+1].sprite_id, sim_bldg_sprite_anchor.cpp:41-52) rather than a bank-20 offset, so the disjointness claim does NOT cover it and the ordering argument on this scope's other rows is what does: its two callers image-wide are llm_strat_bldg_init_defaults (only caller llm_strat_bldg_init_all, only caller llm_boot_stage_tick case 7 -- boot, once) and llm_strat_bldg_get_sprite_anchor_coord (only caller llm_strat_turret_fire, 10 sites -- inside the sim tick, which runs BEFORE this emit)."
+    },
+    {
+      "kind": "LIBMH_EVK_SCR_STRAT_FRAME_PRESENT",
+      "region": "STRAT_SOLDIERS",
+      "verdict": "justified-exempt",
+      "reason": "READER PROVABLY PRECEDES THE EMIT, IN THE BODY'S OWN STATEMENT ORDER. Both strategic frame bodies run c.sim_tick() and only THEN emit -- sim_lt_frame.cpp:66-67 for `frame` and :77-78 for `frame_redraw_behind_dialog` -- and the emit is the LAST statement of each. So in the hosted arm the write lands at the end of frame N; in queue mode it lands at frame N's edge; and every reader below runs inside a sim tick, i.e. before the emit in frame N and after the drain in frame N+1. Both consumptions hand a reader the same bytes, which is the ordering fact the region-granular intersection cannot see. AND the byte is outside the verdict anyway: both writers in this closure -- llm_strat_render_tile_object @0x0045229a and llm_strat_render_bldg_docked_unit @0x004515dd (decompile lines 99-100, `anim_change_count += 1` on the crew walk) -- touch exactly ONE field, strat_soldiers[].anim_change_count, and mh::state::emit_soldiers masks that single byte out of the determinism hash (region_view.h:84-92, mask_soldier_anim, default on). The neighbouring idle_wander_flag, which IS sim RNG state, is deliberately not masked and is not written here. The 2026-09-04 SCR_MENU_BG_REDRAW row named only the first writer; this one names both, verified off the body."
+    },
+    {
+      "kind": "LIBMH_EVK_SCR_STRAT_FRAME_PRESENT",
+      "region": "FRAMEBUFFER",
+      "verdict": "justified-exempt",
+      "reason": "DESTINATION-ONLY, same writer and same argument as SCR_PRESENT_FLIP and SCR_TACT_FRAME_PRESENT: the write is llm_gfx_surface_lock re-caching the address of the locked back buffer, and all five readers use own.gfx_framebuffer() purely as the destination of a memmove/blit (tact_view_shift.cpp:55,102,148,193; tact_mission_start.cpp:151), never as a branch input, never hashed. Mode exclusivity holds on top: every reader is tactical while this scope's emit site is the STRATEGIC frame. READER PROVABLY PRECEDES THE EMIT, IN THE BODY'S OWN STATEMENT ORDER. Both strategic frame bodies run c.sim_tick() and only THEN emit -- sim_lt_frame.cpp:66-67 for `frame` and :77-78 for `frame_redraw_behind_dialog` -- and the emit is the LAST statement of each. So in the hosted arm the write lands at the end of frame N; in queue mode it lands at frame N's edge; and every reader below runs inside a sim tick, i.e. before the emit in frame N and after the drain in frame N+1. Both consumptions hand a reader the same bytes, which is the ordering fact the region-granular intersection cannot see."
+    },
+    {
+      "kind": "LIBMH_EVK_SCR_STRAT_FRAME_PRESENT",
+      "region": "G_WIN_W",
+      "verdict": "justified-exempt",
+      "reason": "IDEMPOTENT COPY OF A SESSION-STABLE SOURCE -- the same writer and the same argument SCR_CURSOR_MENU_DRAW carries: llm_gfx_draw_cursor_menu stores G_WIN_W = WindowWidth, and WindowWidth moves only at boot and at the explicit resolution-change entry points, never per frame, so a deferred copy stores the same value. READER PROVABLY PRECEDES THE EMIT, IN THE BODY'S OWN STATEMENT ORDER. Both strategic frame bodies run c.sim_tick() and only THEN emit -- sim_lt_frame.cpp:66-67 for `frame` and :77-78 for `frame_redraw_behind_dialog` -- and the emit is the LAST statement of each. So in the hosted arm the write lands at the end of frame N; in queue mode it lands at frame N's edge; and every reader below runs inside a sim tick, i.e. before the emit in frame N and after the drain in frame N+1. Both consumptions hand a reader the same bytes, which is the ordering fact the region-granular intersection cannot see."
+    },
+    {
+      "kind": "LIBMH_EVK_SCR_STRAT_FRAME_PRESENT",
+      "region": "G_WIN_H",
+      "verdict": "justified-exempt",
+      "reason": "Same writer and same idempotent-copy argument as G_WIN_W above (llm_gfx_draw_cursor_menu, G_WIN_H = WindowHeight). READER PROVABLY PRECEDES THE EMIT, IN THE BODY'S OWN STATEMENT ORDER. Both strategic frame bodies run c.sim_tick() and only THEN emit -- sim_lt_frame.cpp:66-67 for `frame` and :77-78 for `frame_redraw_behind_dialog` -- and the emit is the LAST statement of each. So in the hosted arm the write lands at the end of frame N; in queue mode it lands at frame N's edge; and every reader below runs inside a sim tick, i.e. before the emit in frame N and after the drain in frame N+1. Both consumptions hand a reader the same bytes, which is the ordering fact the region-granular intersection cannot see."
+    },
+    {
+      "kind": "LIBMH_EVK_SCR_STRAT_FRAME_REDRAW",
+      "region": "SPRITE_PIX_OFFSETS",
+      "verdict": "over-approximation",
+      "reason": "Same single-slot write as LIBMH_EVK_SCR_STRAT_FRAME_PRESENT's row -- the two closures share llm_gfx_build_bar_sprite_rle @0x004282a3 and its one store to _G_LLM_SPRITE_PIX_OFFSETS[0x12] -- so the element-disjointness is identical. See that row for the reader indices and for the one reader it does not cover."
+    },
+    {
+      "kind": "LIBMH_EVK_SCR_STRAT_FRAME_REDRAW",
+      "region": "STRAT_SOLDIERS",
+      "verdict": "justified-exempt",
+      "reason": "Same two writers, same masked single byte and same ordering as LIBMH_EVK_SCR_STRAT_FRAME_PRESENT's row. THE SECOND EMIT SITE IS NAMED RATHER THAN GLOSSED: besides the promoted frame body this record reaches the ring through sim_tutorial_step_driver.cpp:299, which calls MH_LIBMH_BIND(llm_strat_frame_redraw_behind_dialog) MID-body. Everything libmh does after it there is presentation -- ui_menu_bg_redraw_cb, ui_widget_list_center/_draw, then either menu_tutorial_uistate_restore or gfx_draw_cursor_menu + gfx_present_flip (:300-311), all themselves records -- plus two own-state reads (ui_menu_widget_list, game_mode). None of them touches strat_soldiers or sprite_pix_offsets; grepped, not assumed."
+    },
+    {
+      "kind": "LIBMH_EVK_INV_PLANET_EXTRA_SPRITE_BANKS",
+      "region": "SPRITE_PIX_OFFSETS",
+      "verdict": "justified-exempt",
+      "reason": "LOAD-BOUNDARY ONE-SHOT: EVERY READER IS IN A LATER FRAME, and the emitter reads none of it -- the same two halves INV_ALL_SPRITE_BANKS measures for its mission boundary, re-measured here for the save/load one (the closures overlap because the original llm_gfx_load_all_sprite_banks CALLS this entry). (1) Self-read: the emit is the LAST statement of run_ours_load_planet (save_live.cpp:462, the translated apply phase of map_LoadPlanetFromDisk @0x00448649), and save_live.cpp contains ZERO references to sprite_pix_offsets or gfx_bank_pixels -- grepped. Its one libmh caller, run_ours_load_container, does time_resync, ambient reseed and three notify records after it (:822-836) and touches neither. (2) Structure: llm_strat_bldg_sprite_anchor_offset has exactly TWO callers image-wide -- llm_strat_bldg_init_defaults, whose only caller is llm_strat_bldg_init_all, whose only caller is llm_boot_stage_tick case 7 (boot, once, strictly before any load), and llm_strat_bldg_get_sprite_anchor_coord, whose only caller is llm_strat_turret_fire (10 sites, inside the sim tick). llm_tact_door_apply_to_map and llm_tact_door_update_tile_state are tactical bodies reached from llm_tact_frame. A strategic container load is inside neither frame body, so a frame-edge drain lands before any of them runs."
+    }
+  ],
+  "scopes": [
+    {
+      "kind": "LIBMH_EVK_PROGRESS_UNIT_AVAILABLE",
+      "verdict": "over-approximation",
+      "reason": "CONTROL-FLOW BLINDNESS, not a readback. llm_progress_notify_unit_available @0x00440138 writes nothing itself; its whole body is a guarded game_SetEvent(BUILD_PROJECTS_REFRESH=7) with a FIXED event code. The closure pulls in game_SetEvent's other switch arms -- the ones reaching llm_ui_planet_select_screen_open and thence the frame cut -- which this caller's constant argument can never take, and every intersecting region lives on those arms."
+    },
+    {
+      "kind": "LIBMH_EVK_SCR_OVERLAY_DISMISS",
+      "verdict": "fixed",
+      "reason": "HOISTED BEFORE R3b HAD A NAME -- lockstep/overlay_hoist.cpp is the reference implementation. llm_net_lockstep_overlay_dismiss @0x004c7d1c writes only game_mode / GAME_MODE_SAVED / OVERLAY_RESULT, and every production site wraps the emit in the latch-call-store law (sim_player_presence_lost.cpp:250-253,272-274; lockstep/timekeeper.cpp:235-239). The remaining intersections (CURSOR_X/Y, NET_SEND_BUF*, PANEL_MODE/PAGE) are absent from the body and are pure frame-cut artifacts."
+    },
+    {
+      "kind": "LIBMH_EVK_SCR_WAIT_PLAYER_SHOW",
+      "verdict": "fixed",
+      "reason": "Same overlay_hoist treatment as SCR_OVERLAY_DISMISS. llm_net_lockstep_wait_player_overlay_show @0x004c7dc0 writes only NET_LOCKSTEP_WAIT_PLAYER_IDX and the mode pair, hoisted at lockstep/timekeeper.cpp:310-315; everything else the closure lists is post-cut artifact."
+    },
+    {
+      "kind": "LIBMH_EVK_SCR_MP_LEAVE_RESET",
+      "verdict": "fixed",
+      "reason": "Same overlay_hoist treatment. llm_net_mp_leave_reset_game_mode @0x004c85fe writes only the mode pair, hoisted at lockstep/net_session.cpp:74-77 (resync_complete_local); the rest is post-cut artifact."
+    },
+    {
+      "kind": "LIBMH_EVK_SCR_SYNC_OVERLAY_SHOW",
+      "verdict": "fixed",
+      "reason": "GAME_MODE and OVERLAY_RESULT are hoisted at the one call site, lockstep/timekeeper.cpp:345-376, in the same latch-call-store shape. The body also nulls UI_MENU_ASYNC_CALLBACK_B unconditionally, whose only libmh reader (llm_tutorial_step_driver) runs solely in an SP tutorial while this scope fires solely from the MP lockstep stall path -- mutually exclusive session modes, so that write and that read cannot meet. The remaining intersections are post-cut artifacts."
+    },
+    {
+      "kind": "LIBMH_EVK_INV_TACT_VIEW_TILES",
+      "verdict": "over-approximation",
+      "reason": "llm_tact_mark_view_tiles_dirty @0x0043c303 writes only the 20x15 window at _G_LLM_TILE_DRAWN_MAP_PTR (a memset of 1) -- pointer-mediated, hence BLIND. TILE_DRAWN_MAP has zero ours_readers and nothing in src/mh_dll calls tile_drawn_map_at() except writers; its only consumer is llm_tact_render_view, which stays REQUIRED and synchronous under R3b. No readback exists."
+    },
+    {
+      "kind": "LIBMH_EVK_INV_TACT_VIS_MAP",
+      "verdict": "justified-exempt",
+      "reason": "THE EMITTING BRANCH CANNOT REACH THE READER IN THE SAME CALL -- sharper than the 2026-09-04 sweep's 'the reader runs first'. llm_tact_vis_map_fill_default @0x0043abfe fills the vis grid through _G_LLM_TILE_VIS_MAP_PTR (pointer-mediated, hence BLIND); its one emit site, tact_frame.cpp:143, sits in the branch that sets run_main_body=false and returns immediately, never reaching step 14's view_shift calls at :252/260/269/278. The reader can only run on a later frame, past any poll-mode drain."
+    },
+    {
+      "kind": "LIBMH_EVK_INV_TACT_VIS_MARGIN",
+      "verdict": "justified-exempt",
+      "reason": "READER PROVABLY PRECEDES THE EMIT. llm_tact_vis_map_clear_right_margin @0x0043ac28 fills the off-view margin columns of the same pointer-mediated vis grid. Every translated path to its sole emitter (active_unit_count_hud_draw, tact_active_unit_count_hud_draw.cpp:56) is reached from tact_frame steps 15, 18, 23 or 25 -- all strictly after step 14's view_shift reads at tact_frame.cpp:252-278 in the same frame body."
+    },
+    {
+      "kind": "LIBMH_EVK_PLAYER_SET_COLOR",
+      "verdict": "over-approximation",
+      "reason": "llm_strat_player_set_color @0x00454c51 writes only _G_LLM_STRAT_PLAYER_COLOR_LUT[player_idx] -- a variable-INDEX store (base + idx*2), the second flavour of write the direct-operand scan misses. No translated body reads that global (zero grep hits across src/mh_dll), which sim_player_init.h:142 already states independently as 'No sim_view reads.'"
+    },
+    {
+      "kind": "LIBMH_EVK_MSG_QUEUE_CLEAR",
+      "verdict": "justified-exempt",
+      "reason": "SESSION-ESTABLISHMENT ONE-SHOT, not per-tick. llm_ui_message_queue_clear_all @0x00455b0a clears 30 slots through a handed-off pointer (param-mediated, hence BLIND). MESSAGE_QUEUE does have a live translated reader -- the chat append at lockstep/rx_dispatch.cpp:285 -- but every emit site (sim_planet_session_begin.cpp:92,137; sim_session_begin_multi.cpp:140,175) runs inside session setup, which cannot be concurrent with dispatching packets for a session that setup has not finished creating."
+    },
+    {
+      "kind": "LIBMH_EVK_SCR_FONT_DESC_FOR_FLAGS",
+      "verdict": "over-approximation",
+      "reason": "PURE QUERY -- no store instruction in the body. llm_gfx_font_desc_for_flags @0x004b6155 returns an offset into a static font-descriptor table plus a stack probe, and the sink discards the pointer. Nothing is written, so nothing can be read back; the BLIND class here is the measurement, not a hole."
+    },
+    {
+      "kind": "LIBMH_EVK_SCR_TUT_HINT_LAYOUT",
+      "verdict": "over-approximation",
+      "reason": "PURE QUERIES, and the writes are the SINK's. Both dispatch targets (llm_gfx_sprite_width @0x004bc1b6, llm_gfx_ui_sprite_get_header_field2 @0x004bc203) only read sprite metadata; the four geometry assignments happen host-side in host_event_sink.cpp:299-309. Translated libmh touches that widget only as .label writes and .flags reads (sim_tutorial_step_driver.cpp:223-224,275-276), exactly as libmh_host_events.h's kind 17 comment claims."
+    },
+    {
+      "kind": "LIBMH_EVK_SCR_BLDG_PANEL_OPEN",
+      "verdict": "fixed",
+      "reason": "HOISTED 2026-09-09, belt and braces. llm_ui_bldg_panel_open @0x0041c14b-0x0041c151 ends with PANEL_MODE = 1 and PANEL_PAGE = (primary_mother_bldg[planet] == 0), both read for real decisions by sim_game_set_event.cpp and sim_bldg_unmap_footprint.cpp:222/230/243 -- so the comment at sim_map_fill_defaults.cpp calling them reader-free was false and is corrected. The pair is now re-stored at the call site beside the two clears already there. It was never a SAME-FRAME hazard, and that is measured rather than asserted: neither map_FillDefaults nor llm_ui_bldg_panel_load_state is reachable from llm_strat_frame or llm_strat_sim_tick, so both emit sites are boundary one-shots."
+    },
+    {
+      "kind": "LIBMH_EVK_SCR_PLANET_SELECT_OPEN",
+      "verdict": "fixed",
+      "reason": "HOISTED 2026-09-09. llm_ui_planet_select_screen_build @0x004c5de5 sets GAME_MODE = 3 as its second statement -- two hops in, BEFORE the re-entry into llm_strat_frame_sim_only, so it is the scope's own write and not a frame-cut artifact. GAME_MODE's readers are the per-frame mode dispatchers (llm_strat_frame, frame_redraw_behind_dialog, tutorial_step_driver). Re-stored after the emit at both sim_game_set_event.cpp sites. The other three intersections (CURSOR_X/Y) are absent from the body: post-cut artifacts."
+    },
+    {
+      "kind": "LIBMH_EVK_SCR_OUTCOME_DIALOG",
+      "verdict": "fixed",
+      "reason": "HOISTED 2026-09-09 -- the one panel writer that GENUINELY shares a frame. llm_ui_outcome_dialog @0x004c6c5e gates on _G_LLM_PLANET_SEL_SCREEN_OPEN and that branch fires game_SetEvent(BUILD_OPEN_AUTOPAGE) twice, writing STRAT_UI_PANEL_MODE/_PAGE/_SWITCH_PENDING; the emitters (unit_on_destroyed, player_presence_lost) AND the readers (bldg_unmap_footprint, game_SetEvent) are all reachable from llm_strat_sim_tick. mh::lockstep::outcome_dialog_panel_hoist() reads the gate -- the flag was registered as RID_PLANET_SEL_SCREEN_OPEN for exactly this -- and applies the same three stores at all four emit sites. GAME_MODE was already hoisted at all four (stage E). UI_MENU_ASYNC_CALLBACK_B is justified-exempt: its write is guarded by GAME_TUTORIAL_STEP == 0 while its only reader, llm_tutorial_step_driver, runs only when that is non-zero -- complements of the same variable. The remaining ~26 regions are post-cut artifacts, absent from the body."
+    },
+    {
+      "kind": "LIBMH_EVK_INV_TACT_VIEW_TILE_ROWS",
+      "verdict": "over-approximation",
+      "reason": "CLOSURE SATURATION, not a subtree. llm_tact_gfx_view_tile_rows_init's own body rebuilds the tactical tile-row pointer table; the walk reaches 52 functions only by crossing llm_strat_frame_sim_only, so the regions it reports (GAME_MODE, CURSOR_X/Y, the strat panel pair) belong to the frame it crossed into and not to this entry. Its OWN write family -- the view-metrics pointers -- is the same one LIBMH_EVK_INV_TACT_VIEW_METRICS carries a row for, on the same mission-boundary frame argument, and mission_end reads none of it after the emit."
+    },
+    {
+      "kind": "LIBMH_EVK_INV_SPRITE_PIX_OFFSETS",
+      "verdict": "justified-exempt",
+      "reason": "BLIND for the tool's documented reason -- llm_gfx_sprite_pix_offsets_init writes the offset table through a POINTER, which the direct-operand write index cannot see -- so the silence here is not evidence and this row supplies what the scan cannot. What it writes is _G_LLM_SPRITE_PIX_OFFSETS, the same table its two sibling scopes (INV_TACT_SPRITE_BANKS, INV_ALL_SPRITE_BANKS) are dispositioned for, and those rows carry the measurement: the readers are llm_tact_door_* and llm_strat_bldg_sprite_anchor_offset, all reached from a later frame, and its emitter (mission_start's last statement, :165) reads nothing after it."
+    },
+    {
+      "kind": "LIBMH_EVK_INV_PLANET_MAP_PALETTE",
+      "verdict": "justified-exempt",
+      "reason": "BLIND FOR A DIFFERENT REASON THAN THE POINTER-MEDIATED ONES, and the difference is the whole disposition. The closure IS measured -- the helper walk resolves planet_map_palette() to llm_gfx_pack_rgb16 -- and it yields no write symbols because pack_rgb16 is PURE: it packs three channels into AX and stores nothing. The scope's actual write set is the NINE STORES THE SINK PERFORMS ITSELF, host-side C++ that no scan of the original image can see. Named in full: _G_LLM_STRAT_PLANET_MAP_PAL5_{RED,BLUE,MAGENTA,GREEN,BLACK} and _..._PAL4_{WHITE,BLACK,MAGENTA,YELLOW}. WHICH exemption: the region is not consumed for any decision, anywhere. All nine are write-only IMAGE-WIDE -- one WRITE cross-reference each and no reader in libmh, in the seams or in the original (checked through the reference manager, not a text search) -- so there is no readback to have, in this frame or any other. That same measurement is why docs/libmh-abi.md sec 6's UI-capture oracle for S4 does not exist: no pixel depends on these cells."
+    },
+    {
+      "kind": "LIBMH_EVK_INV_PLAYER_COLOR_LUT",
+      "verdict": "justified-exempt",
+      "reason": "BLIND for the tool's documented reason, and this row supplies what the direct-operand scan cannot see: llm_strat_player_set_color's only store is `*(undefined2 *)(&_G_LLM_STRAT_PLAYER_COLOR_LUT + player_idx * 2)` (decompile line 46) -- a variable-INDEX store, the second flavour of write the index misses, which is why this three-function closure reports zero write symbols. Same global and same finding LIBMH_EVK_PLAYER_SET_COLOR's row already carries, since apply_all_colors is nothing but a 0..7 loop over that callee: _G_LLM_STRAT_PLAYER_COLOR_LUT @0x00ae1948, 16 bytes, no translated reader anywhere in src/mh_dll, and absent from BOTH hash tables (checked against every HASH_REGIONS and TACT_HASH_REGIONS extent in mh_regions.gen.h). There is no readback to have. What the scope READS is hashed -- strat_players[].color_index, the loop's input -- so the R3c half is answered at the site instead: nothing between the emit (save_live.cpp:814) and the end of run_ours_load_container writes a colour index, libmh's only writer of the field being llm_strat_player_profile_init (sim_player_init.cpp:74) on the session-begin path, so a deferred drain re-reads the same eight values."
+    },
+    {
+      "kind": "LIBMH_EVK_SCR_SET_DISPLAY_MODE",
+      "verdict": "justified-exempt",
+      "reason": "18 REGIONS, ALL REAL -- this scope is `crossed`, but almost NONE of it is saturation, and the first pass that assumed otherwise was wrong. Measured by re-walking the closure with llm_strat_frame_sim_only cut: the uncut subtree is 132 functions (775 crossing it), and every one of the 18 reported regions has a writer INSIDE those 132. llm_view_set_size_mode really does tear down and rebuild the display (llm_gfx_apply_window_resolution -> release_display_surfaces / set_window_resolution -> llm_gfx_view_metrics_init / llm_gfx_display_init), so an `over-approximation` verdict here would have been a false claim. The scope's ONE emit site is sim_start_tutorial.cpp:44 -- tact's copy stays a REQUIRED host-table entry (frozen table), so no tactical body emits this record at all. Five groups, each answered at that site.\n(1) TWELVE REGIONS HAVE ONLY TACTICAL READERS -- CURSOR_X/Y, FRAMEBUFFER, GFX_DRAW_SURFACE, GFX_PANEL_ROW_SKIP, TACT_LOS_CACHE_PTR, TILE_VIS_MAP_PTR, VIEW_TILES_W/H, WINDOWWIDTH, WINDOWHEIGHT and the tactical half of G_WIN_W's reader list. Every reader is an llm_tact_* body, reached via llm_frame_dispatch case 6; the single emitter is strategic session setup. They cannot share a frame -- the same mode-exclusivity leg SCR_CURSOR_MENU_DRAW and SCR_PRESENT_FLIP already carry for this family.\n(2) GAME_MODE and MAP_REGION_LIST_HEAD ARE ON THE PROCESS-DEATH PATH. Their writers are reached ONLY through llm_gfx_display_init -> llm_fatal_cleanup (-> llm_map_region_pool_reset -> llm_map_region_free) -- traced, not assumed: llm_gfx_display_init calls the fatal cleanup when DirectDraw init fails. llm_fatal_cleanup is the `fatal` group, whose contract is that it does not return, so there is no later frame to hand a stale value to.\n(3) GAME_MODE's other writer, and STRAT_UI_PANEL_MODE/PAGE, ARE THE DISPATCHER'S. game_SetEvent writes the two panel cells itself and reaches llm_ui_planet_select_screen_build; libmh calls game_SetEvent(0xa) ITSELF on the very next line (sim_start_tutorial.cpp:48) as an un-deferred MH_LIBMH_BIND, so those writes land at the original instant no matter when this record drains. The generator's own docstring refuses to cut game_SetEvent, correctly; this row does not cut it either, it observes that the same dispatch happens anyway.\n(4) MAP_ZOOM_SCALE_X is the DEAD READ already dispositioned twice (LIBMH_EVK_VIEW_ZOOM_SCALE, LIBMH_EVK_CAM_JUMP_QUEUE_CLEAR): the write is llm_map_set_zoom_scale(1.0,1.0) in the body itself, and the only translated consumer is sim_fx_debris_burst.cpp:83's discarded `(void)c.zoom_scale_x_get();`.\n(5) G_WIN_W / G_WIN_H ARE A GENUINE SAME-CALL READBACK, and this is the one that needed measuring rather than citing. Writer llm_gfx_view_metrics_init, squarely inside the entry's own subtree; readers llm_game_land_players_on_planet and llm_strat_deploy_starting_squad are STRATEGIC, and land_players_on_planet is reached from this very body AFTER the emit (start_tutorial -> session_begin_multi -> land_players_on_planet). THE STANDING IDEMPOTENT-COPY PRECEDENT DOES NOT APPLY AND MUST NOT BE CITED HERE: SCR_CURSOR_MENU_DRAW's wording is that WindowWidth moves only at boot and AT EXPLICIT RESOLUTION-CHANGE ENTRY POINTS -- this scope IS one of those entry points, so it is the exception that argument names. Exempt instead on what the value is USED for, read off both readers: win_w/win_h feed nothing but the initial camera centring -- sim_land_players_on_planet.cpp:197-203 (c.cam_set_col / c.cam_set_row) and sim_lt_deploy_squad.cpp:117-122 -- and the destinations _G_LLM_MAP_CAM_COL/_G_LLM_MAP_CAM_ROW are MF_VIEW|MF_MEASURED|MF_SAVE and in NEITHER hash table (address-overlap checked against every HASH_REGIONS and TACT_HASH_REGIONS extent). Nothing branches on them into hashed state, and deploy_squad places its soldiers from wc/wr, not from the metrics. A frame-stale window metric moves the OPENING CAMERA by up to half a viewport and changes nothing else."
+    }
+  ]
+}

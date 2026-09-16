@@ -1,0 +1,75 @@
+# tact_panel (LIFT-TACT L4b): the first scenario that captures a TACTICAL frame.
+#
+# WHAT IT IS FOR. Every other registered scenario is menu, lobby or strategic, so before this one
+# the entire tactical HUD could stop rendering and the suite would stay green. This closes that
+# hole: a real tactical mission, a real selection, and two captured frames.
+#
+# WHAT IT DOES **NOT** PROVE, measured rather than assumed, because the obvious reading of the two
+# frames is wrong. It does NOT isolate LIFT-TACT's converted draw scopes. With all three of them
+# (INV_TACT_SEL_PANEL_BG, INV_TACT_SEL_PANEL, INV_TACT_ACTIVE_COUNT_HUD) no-op'd in the sink and the
+# tactical cadence armed so OUR tact_frame is the one running, both captures came back at 0.000%
+# diff (2026-09-03). The reason is structural: llm_tact_sidebar_dispatch runs EVERY frame from
+# tact_frame step 15 and still repaints the same panel through the ORIGINAL host entries -- it is an
+# L4b body that has not been converted yet. So the panel on screen is not evidence about which path
+# drew it, and no per-body capture can be while a sibling repaints the same pixels unconditionally.
+# This becomes a real regression gate for the cluster once L4b is finished; until then read it as
+# tactical-mode coverage, not as proof of the lift. Do not quote it as the latter.
+#
+# (Two earlier readings were also wrong and are recorded so nobody re-derives them: a capture with
+# no selection driven at all is drawn entirely by the mission-start path, and in a DEFAULT run
+# `; [promote] tact_frame NOT promoted` -- the ORIGINAL body runs and the whole converted cluster is
+# dead code. Hence the click below and the harness arming in the TESTS registry entry.)
+#
+# HOW IT GETS THERE. Not by a menu walk -- a tactical mission is entered from a played strategic
+# game and no script can satisfy the entry gate's roster predicates (see ini/tact_panel.ini). The
+# runner launches `--tactical 11`, the DLL loads save 11, synthesises the squad blackboard and
+# enters the mission directly (seams/launch.cpp enter_tactical).
+#
+# THE GATE IS `gamemode 6`, NOT A WIDGET. There is no tactical widget list to wait on -- the HUD is
+# drawn by the render path, not by llm_ui_widget_input_tick -- so the predicate that says "the
+# mission is running" is GAME_MODE itself. 2 = strategic, 6 = tactical; the run passes THROUGH
+# strategic (the save loads first), so waiting on 6 is also what makes the capture land after the
+# transition rather than during it.
+gamemode 6
+
+# PARK THE CURSOR before every capture. The game draws its cursor sprite at the last pointer
+# position, and tactical is the one screen where the pointer ALSO drives hover highlighting on units
+# -- a cursor left over the roster would repaint unit brackets and make the baseline depend on where
+# the pointer happened to be. Park it in dead map area, away from the panel under test.
+cursor 600 450
+
+# ---- capture 1: the mission as it starts, nothing selected -------------------------------------
+# Drawn by the mission-start path. It is the CONTRAST for capture 2 -- the readout reads 8/0 here
+# and 8/1 there, so a reader can see the selection actually happened.
+capture tact_hud_idle
+
+# ---- drive a real selection --------------------------------------------------------------------
+# A left-click on an owned unit is llm_tact_frame's step-18 select-one arm, and it ends in
+# llm_tact_selection_panel_refresh() -- which is the entry into the converted path: refresh emits
+# INV_TACT_SEL_PANEL_BG and INV_TACT_SEL_PANEL, then calls llm_tact_active_unit_count_hud_draw,
+# which emits INV_TACT_ACTIVE_COUNT_HUD.
+#
+# SPLIT THE CLICK, for the reason the skill's list-row trap describes and one more that is specific
+# to tactical: the arm is gated on `hovered_unit_id > 0`, and hover is set by the RENDER pass from
+# the cursor position -- so a same-frame move+down would test the hover from before the move was
+# drawn. Move, let a frame render, then press.
+cursor 200 150
+cursor 200 150
+press 200 150
+release 200 150
+
+# ---- capture 2: the frame the lift is actually about --------------------------------------------
+# WHY THE WAIT IS `tactsel` AND NOT A SETTLE. There is no widget list in tactical mode, so no widget
+# predicate applies. The counter this reads is written by exactly one function --
+# llm_tact_active_unit_count_hud_draw -- so the predicate says the panel-refresh path HAS RUN and
+# recounted, not merely that a frame has passed. Without it the capture races the click and can land
+# on the pre-selection frame, which is capture 1 again.
+#
+# 1 because a left-click selects exactly the hovered unit: the readout goes 8/0 -> 8/1 and the
+# panel redraws through the sink.
+tactsel 1
+cursor 600 450
+capture tact_hud_selected
+
+log tact_panel COMPLETE -- one unit selected, panel refreshed, readout 8/0 -> 8/1
+end

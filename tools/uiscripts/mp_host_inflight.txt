@@ -1,0 +1,38 @@
+# U28 (a)/(c) HOST: start while the client's local slot disagrees with mine -- my array must win.
+#
+# `race 1 1` is the assertion that makes the scenario meaningful: the client has poked its OWN copy to
+# Alien WITHOUT pushing, so I must still see Human. If I saw Alien the injection would have leaked
+# through some other path and the test would be proving nothing.
+#
+# Pair with mp_client_inflight.txt. Own baseline label.
+
+settled value:110
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+settled Create
+clickl Create
+present Game name
+settled Ok
+clickl Ok
+present Available maps
+settled Ok
+clickl Ok
+
+present Network players
+peers 1
+awaitsignal lobby
+# I never saw the client's edit -- exactly the 2026-08-28 state at the Start click.
+race 1 1
+race 0 1
+enabled Start
+settled Start
+capture i1_host_sees_human
+clickl Start
+
+absent Network players
+gameclock 6000
+capture i2_launched
+log HOST launched while the client's local slot disagreed -- the host array must win
+end

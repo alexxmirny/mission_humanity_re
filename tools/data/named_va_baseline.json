@@ -1,0 +1,3 @@
+{
+  "_comment": "Ratchet baseline for tools/check_sim_addresses.py: per-file counts of pre-existing `mh::addr::<data symbol>` uses in the libmh modules. THE BASELINE IS EMPTY, AND THAT IS THE POINT -- SB-BIND opened it at 191 uses in 14 files (T0, 2026-09-06), T4 drained lockstep's 160 and T5 the save module's 31, so the ratchet is now a HARD ZERO: a file absent here has an implicit 0, so any new `mh::addr::<data symbol>` in mh/sim, mh/tact, mh/ai, mh/orders, mh/save, mh/state or mh/lockstep fails the check outright. Keep the file: `--update-baseline` only ever LOWERS, so an empty ledger cannot be widened back by accident, and deleting it would make the ratchet indistinguishable from an absent one. See docs/state-boundary.md D6."
+}

@@ -1,0 +1,64 @@
+# DERIVED -- do not hand-edit. `python tools/build_public_seed.py --check` fails if this file and
+# the derivation disagree.
+#
+# Line-ending + binary policy, SCOPED TO KNOWN EXTENSIONS on purpose (see the binary block at the
+# end for why a blanket `* text=auto` is not used here).
+
+# -- text sources: LF in the repo AND LF in the working tree --
+#
+# `eol=lf` is explicit rather than left to core.autocrlf ON PURPOSE. Git for Windows ships
+# `core.autocrlf=true` in its SYSTEM gitconfig, so a bare `text` attribute gives every clone on
+# Windows a CRLF working tree against an LF blob -- and a working file whose size differs from its
+# blob is a stat-cache landmine: a branch checkout can leave the index caching the BLOB's size,
+# after which git short-circuits on the size mismatch and reports the file modified WITHOUT hashing
+# it. `git status` then says `M` forever while `git diff` says nothing, and `git update-index
+# --refresh` cannot repair it (plain --refresh is stat-only). Stating eol here makes it a property
+# of the REPOSITORY, so it holds for a fresh clone on a box nobody controls.
+*.cpp     text eol=lf
+*.c       text eol=lf
+*.h       text eol=lf
+*.py      text eol=lf
+*.md      text eol=lf
+*.json    text eol=lf
+*.yaml    text eol=lf
+*.yml     text eol=lf
+*.js      text eol=lf
+*.toml    text eol=lf
+*.txt     text eol=lf
+*.ini     text eol=lf
+*.html    text eol=lf
+
+# The hand-derived module-definition files: LF blobs whose drift gate (gen_harness_contract --check
+# / gen_libmh_contract --check) compares rendered text against the checkout. Pinned per PATH, not
+# `*.def`, because libmh_std.def and proxy_exports.gen.def are CRLF blobs written that way by their
+# generators, and renormalising them would flip THEIR gates.
+src/mh_dll/mh/mh.def                 text eol=lf
+src/mh_dll/mh_harness/mh_harness.def text eol=lf
+src/mh_dll/mh_net/mh_net.def         text eol=lf
+src/mh_dll/libmh_dll/libmh.def       text eol=lf
+
+# -- Visual Studio project files: CRLF, because VS writes them that way --
+#
+# Deliberately narrow. Only *.vcxproj / *.filters are genuinely CRLF, and only because Visual Studio
+# rewrites them on save; LF there would mean permanent churn. Everything else Windows-flavoured in
+# this tree (the .bat, the .sln, the .ini fragments the DLL parses at runtime) works LF -- measured,
+# not assumed -- so the exception leaves six files carrying a working-tree size that differs from
+# their blob rather than sixty.
+*.vcxproj text eol=crlf
+*.filters text eol=crlf
+
+# -- binary artifacts: byte-verbatim, never eol-converted --
+#
+# The game's own binary config and the seed the UI harness copies from, the Watcom function-ID
+# databases, and the file types a build or a capture can drop into the tree. A blanket
+# `* text=auto` is deliberately NOT used anywhere in this file: a misdetected binary getting
+# CRLF-normalised on commit round-trips only by accident, and stops doing so the moment someone
+# clones with a different autocrlf setting.
+setup.dat     -text
+*.seed.dat    -text
+*.fidb    -text
+*.dll     -text
+*.exe     -text
+*.patch   -text
+*.png     -text
+*.bmp     -text

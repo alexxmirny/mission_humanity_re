@@ -1,0 +1,831 @@
+{
+  "_comment": "AUTHORED (not generated). The FIXED-ARITY shapes a variadic callee is actually called with, so the marshalling layer can emit one callable per shape instead of a blanket MH_UNAVAILABLE stub. Read by tools/dump_call_protos.py, which appends one synthesized `status: ok` row per shape to tools/data/dll_call_protos.json; from there the ordinary machinery in tools/gen_dll_calls.py emits the wrapper, the shape thunk AND the `net_selftest callstest` case with no varargs-specific code anywhere.",
+  "_why_authored": "A variadic callee's arity is a property of its CALL SITES, not of the callee, so nothing in Ghidra can derive it -- `Function.hasVarArgs()` is true and the parameter list stops at the fixed prefix. These shapes were MEASURED off the disassembly (the `ADD ESP,n` that follows each CALL states the pushed byte count authoritatively, exactly as `RET imm` does for callee-cleanup) and each one records that evidence. Adding a shape is therefore a measurement, and it must cite the site it was measured at.",
+  "_why_not_one_variadic_template": "Considered and rejected -- see tracker item SIM-VARARGS. Giving a variadic function a single fixed arity is the 2026-07-16 probe-6 mistake (vsprintf's apparent '4th param' was an internally-set callback). Per-shape declarations are not the same thing as pretending the function is not variadic: the original row KEEPS its `varargs` status and stays uncallable, and only the explicitly measured shapes become callable.",
+  "_rules": [
+    "Every shape MUST carry `why` (what it is for) and `evidence` (a call site VA and the ADD ESP that proves the byte count).",
+    "`cleanup` is CALLER for these: a C-style variadic ends in a bare RET (purge 0), so the caller pops. Ghidra may label the convention __stdcall; that contradicts the function's own RET and the `varargs` status short-circuits the purge cross-check that would otherwise flag it.",
+    "Stack offsets start at 4 (the return address occupies 0) and each argument is padded to a 4-byte boundary. A `double` vararg occupies EIGHT bytes and MUST be declared `double` with size 8 -- not two u32s. The byte count agrees either way, which is exactly what makes the mistake invisible until a value changes.",
+    "The synthesized cident is `<name>__<id>`, so every shape is greppable and no shape can silently shadow the real symbol."
+  ],
+  "functions": {
+    "w_sprintf": {
+      "va": "0x004d0320",
+      "cc": "__cdecl",
+      "cleanup": "caller",
+      "why": "The game's wide-string sprintf. 135 call sites program-wide, 9 of them inside the sim migration set (measured 2026-08-08 by walking every CALL reference and reading the following `ADD ESP,n`). The sim set needs the four shapes below; formatting output cannot reach determinism because all sites format into G_TEXT_TMP (0x00e15178), whose region record is MF_VIEW only -- not MF_HASH, MF_SAVE or MF_MEASURED -- and every site discards the return value.",
+      "ret": {
+        "type": "int",
+        "ctype": "int32_t",
+        "storage": "u32"
+      },
+      "shapes": [
+        {
+          "id": "vs",
+          "why": "One %s. Format strings `%s (%s)` / `.%s (%s)` with the leading conversion supplied by the caller.",
+          "evidence": "llm_strat_invasion_chance_roll and llm_diplomacy_set_relation; ADD ESP,0xc after the CALL (3 dwords).",
+          "params": [
+            {
+              "name": "dst",
+              "type": "void *",
+              "ctype": "void *",
+              "kind": "ptr",
+              "slot": {
+                "kind": "stack",
+                "off": 4,
+                "size": 4
+              }
+            },
+            {
+              "name": "format",
+              "type": "LPWSTR",
+              "ctype": "const wchar_t *",
+              "kind": "ptr",
+              "slot": {
+                "kind": "stack",
+                "off": 8,
+                "size": 4
+              }
+            },
+            {
+              "name": "a0",
+              "type": "LPWSTR",
+              "ctype": "const wchar_t *",
+              "kind": "ptr",
+              "slot": {
+                "kind": "stack",
+                "off": 12,
+                "size": 4
+              }
+            }
+          ],
+          "sites": [
+            {
+              "call": "0x0049a165",
+              "format": "0x0050170e"
+            },
+            {
+              "call": "0x0049a188",
+              "format": "0x00501726"
+            }
+          ]
+        },
+        {
+          "id": "vss",
+          "why": "Two %s. The `\"%s: %s\"` name-plus-reason message shape -- the most common one in the sim set.",
+          "evidence": "llm_strat_order_queue_dispatch has SIX sites of this shape alone (0x0046814f, 0x00468431, 0x004684b7, 0x00468ad4, 0x00468d5c, 0x00468fb2), every one followed by ADD ESP,0x10 (4 dwords). Also game_AddPlanetToAvailable, game_HandleInvasion, llm_game_notify_system_available, llm_strat_bldg_state_destroyed, llm_strat_player_presence_lost.",
+          "params": [
+            {
+              "name": "dst",
+              "type": "void *",
+              "ctype": "void *",
+              "kind": "ptr",
+              "slot": {
+                "kind": "stack",
+                "off": 4,
+                "size": 4
+              }
+            },
+            {
+              "name": "format",
+              "type": "LPWSTR",
+              "ctype": "const wchar_t *",
+              "kind": "ptr",
+              "slot": {
+                "kind": "stack",
+                "off": 8,
+                "size": 4
+              }
+            },
+            {
+              "name": "a0",
+              "type": "LPWSTR",
+              "ctype": "const wchar_t *",
+              "kind": "ptr",
+              "slot": {
+                "kind": "stack",
+                "off": 12,
+                "size": 4
+              }
+            },
+            {
+              "name": "a1",
+              "type": "LPWSTR",
+              "ctype": "const wchar_t *",
+              "kind": "ptr",
+              "slot": {
+                "kind": "stack",
+                "off": 16,
+                "size": 4
+              }
+            }
+          ],
+          "sites": [
+            {
+              "call": "0x0046814f",
+              "format": "0x005011be"
+            },
+            {
+              "call": "0x004401f7",
+              "format": "0x005009e8"
+            },
+            {
+              "call": "0x004733c9",
+              "format": "0x005012ec"
+            },
+            {
+              "call": "0x004981f2",
+              "format": "0x0050163b"
+            }
+          ]
+        },
+        {
+          "id": "vsss",
+          "why": "Three %s. The `\"%s: %s (%s)\"` name-plus-reason-plus-detail message shape -- SIM1-G4's llm_strat_bldg_state_prod_blocked_notify names the blocked building, the block reason, and (when the reason is a housing shortfall) the specific housing building type, all three as G_TEXT_PTRS lookups.",
+          "evidence": "llm_strat_bldg_state_prod_blocked_notify @0x00474139, sole site 0x0047421e, format 0x0050133a read-memory-confirmed \"%s: %s (%s)\" (25 00 73 00 3A 00 20 00 25 00 73 00 20 00 28 00 25 00 73 00 29 00 0000), ADD ESP,0x14 (20 bytes = 5 dwords: dst+format+a0+a1+a2).",
+          "params": [
+            {
+              "name": "dst",
+              "type": "void *",
+              "ctype": "void *",
+              "kind": "ptr",
+              "slot": {
+                "kind": "stack",
+                "off": 4,
+                "size": 4
+              }
+            },
+            {
+              "name": "format",
+              "type": "LPWSTR",
+              "ctype": "const wchar_t *",
+              "kind": "ptr",
+              "slot": {
+                "kind": "stack",
+                "off": 8,
+                "size": 4
+              }
+            },
+            {
+              "name": "a0",
+              "type": "LPWSTR",
+              "ctype": "const wchar_t *",
+              "kind": "ptr",
+              "slot": {
+                "kind": "stack",
+                "off": 12,
+                "size": 4
+              }
+            },
+            {
+              "name": "a1",
+              "type": "LPWSTR",
+              "ctype": "const wchar_t *",
+              "kind": "ptr",
+              "slot": {
+                "kind": "stack",
+                "off": 16,
+                "size": 4
+              }
+            },
+            {
+              "name": "a2",
+              "type": "LPWSTR",
+              "ctype": "const wchar_t *",
+              "kind": "ptr",
+              "slot": {
+                "kind": "stack",
+                "off": 20,
+                "size": 4
+              }
+            }
+          ],
+          "sites": [
+            {
+              "call": "0x0047421e",
+              "format": "0x0050133a"
+            }
+          ]
+        },
+        {
+          "id": "vdi",
+          "why": "A double followed by an int -- format `random %.2f  %d`. THE TRAP SHAPE: the decompile renders the double as two dwords (GAME_CLOCK._0_4_, GAME_CLOCK._4_4_) because a double vararg is pushed as 8 bytes, so declaring it as two u32s produces the same byte count and is invisible until a value changes. Declared `double` so gen_dll_calls emits detail::bits() (a bit reinterpret) rather than a numeric conversion.",
+          "evidence": "llm_debug_roll_random @0x0049fc6f, sole site, ADD ESP,0x14 (20 bytes = 4 + 4 + 8 + 4).",
+          "params": [
+            {
+              "name": "dst",
+              "type": "void *",
+              "ctype": "void *",
+              "kind": "ptr",
+              "slot": {
+                "kind": "stack",
+                "off": 4,
+                "size": 4
+              }
+            },
+            {
+              "name": "format",
+              "type": "LPWSTR",
+              "ctype": "const wchar_t *",
+              "kind": "ptr",
+              "slot": {
+                "kind": "stack",
+                "off": 8,
+                "size": 4
+              }
+            },
+            {
+              "name": "a0",
+              "type": "double",
+              "ctype": "double",
+              "kind": "float",
+              "slot": {
+                "kind": "stack",
+                "off": 12,
+                "size": 8
+              }
+            },
+            {
+              "name": "a1",
+              "type": "int",
+              "ctype": "int32_t",
+              "kind": "int",
+              "slot": {
+                "kind": "stack",
+                "off": 20,
+                "size": 4
+              }
+            }
+          ],
+          "sites": [
+            {
+              "call": "0x0049fcb0",
+              "format": "0x00501b18"
+            }
+          ]
+        },
+        {
+          "id": "visis",
+          "why": "Four varargs, int/string alternating -- format `%d (%s)  %d (%s)`. The widest shape the sim set uses, and the one that would catch an off-by-one in the stack layout furthest from the frame base.",
+          "evidence": "llm_diplomacy_set_relation, ADD ESP,0x18 (24 bytes = six dwords).",
+          "params": [
+            {
+              "name": "dst",
+              "type": "void *",
+              "ctype": "void *",
+              "kind": "ptr",
+              "slot": {
+                "kind": "stack",
+                "off": 4,
+                "size": 4
+              }
+            },
+            {
+              "name": "format",
+              "type": "LPWSTR",
+              "ctype": "const wchar_t *",
+              "kind": "ptr",
+              "slot": {
+                "kind": "stack",
+                "off": 8,
+                "size": 4
+              }
+            },
+            {
+              "name": "a0",
+              "type": "int",
+              "ctype": "int32_t",
+              "kind": "int",
+              "slot": {
+                "kind": "stack",
+                "off": 12,
+                "size": 4
+              }
+            },
+            {
+              "name": "a1",
+              "type": "LPWSTR",
+              "ctype": "const wchar_t *",
+              "kind": "ptr",
+              "slot": {
+                "kind": "stack",
+                "off": 16,
+                "size": 4
+              }
+            },
+            {
+              "name": "a2",
+              "type": "int",
+              "ctype": "int32_t",
+              "kind": "int",
+              "slot": {
+                "kind": "stack",
+                "off": 20,
+                "size": 4
+              }
+            },
+            {
+              "name": "a3",
+              "type": "LPWSTR",
+              "ctype": "const wchar_t *",
+              "kind": "ptr",
+              "slot": {
+                "kind": "stack",
+                "off": 24,
+                "size": 4
+              }
+            }
+          ],
+          "sites": [
+            {
+              "call": "0x0049a128",
+              "format": "0x005016c8"
+            }
+          ]
+        },
+        {
+          "id": "vi",
+          "why": "One INT32 vararg, no %s. llm_strat_invasion_chance_roll's debug print (format string at 0x0050164b, read-memory-confirmed to be an unfilled/all-spaces placeholder -- the call formats into G_TEXT_TMP, which nothing subsequently reads on this path, a dead store). The format string consumes ZERO specifiers (confirmed all-spaces); `a0` is a genuinely unconsumed trailing stack slot the original pushes anyway -- see dump_call_protos.py's allow_unconsumed_tail escape hatch.",
+          "evidence": "SIM1F third slice (2026-08-16) re-derived from the raw asm at 0x0049960d: PUSH order (bottom to top) is the loop variable `i` (int), then the format-string address 0x0050164b, then G_TEXT_TMP (dst) -- ADD ESP,0xc after the CALL (3 dwords), same frame size as `vs` but the third slot is an int32, not a wchar_t*.",
+          "params": [
+            {
+              "name": "dst",
+              "type": "void *",
+              "ctype": "void *",
+              "kind": "ptr",
+              "slot": {
+                "kind": "stack",
+                "off": 4,
+                "size": 4
+              }
+            },
+            {
+              "name": "format",
+              "type": "LPWSTR",
+              "ctype": "const wchar_t *",
+              "kind": "ptr",
+              "slot": {
+                "kind": "stack",
+                "off": 8,
+                "size": 4
+              }
+            },
+            {
+              "name": "a0",
+              "type": "int",
+              "ctype": "int32_t",
+              "kind": "int",
+              "slot": {
+                "kind": "stack",
+                "off": 12,
+                "size": 4
+              }
+            }
+          ],
+          "sites": [
+            {
+              "call": "0x0049960d",
+              "format": "0x0050164b"
+            }
+          ],
+          "allow_unconsumed_tail": true
+        },
+        {
+          "id": "vii",
+          "why": "Two INT32 varargs -- the order-issue domain's player-control-mode debug line. Both format strings are UTF-16 and read-memory-confirmed to consume exactly two %d and nothing else: 0x005011cc is u\"<46 spaces>(%d)<13 spaces>%d\" (132 B) and 0x00501250 the same with one space fewer (130 B). The leading run of spaces is a right-alignment pad, NOT a blanked placeholder -- a 40-byte read of either address shows only spaces and reads as the `vi` shape's all-spaces case, which is why the whole string is quoted here. The call formats into G_TEXT_TMP and nothing on either arm reads it back, so the effect is a dead store the translation must still make.",
+          "evidence": "llm_strat_order_set_player_control_mode (O4C), BOTH sites: 0x0046f9ea (the mask-CLEAR arm) and 0x0046fa19 (the mask-SET arm). PUSH order bottom to top at each is param_2 (int), PlayerSide (MOVZX word from 0x00e58354, int), the format-string address, then G_TEXT_TMP (dst); each CALL is followed by ADD ESP,0x10 -- 16 bytes = 4 dwords. The format strings' two %d conversions independently confirm the two trailing slots are ints and not a pointer pair, which the byte count alone cannot say.",
+          "sites": [
+            {
+              "call": "0x0046f9ea",
+              "format": "0x005011cc"
+            },
+            {
+              "call": "0x0046fa19",
+              "format": "0x00501250"
+            }
+          ],
+          "params": [
+            {
+              "name": "dst",
+              "type": "void *",
+              "ctype": "void *",
+              "kind": "ptr",
+              "slot": {
+                "kind": "stack",
+                "off": 4,
+                "size": 4
+              }
+            },
+            {
+              "name": "format",
+              "type": "LPWSTR",
+              "ctype": "const wchar_t *",
+              "kind": "ptr",
+              "slot": {
+                "kind": "stack",
+                "off": 8,
+                "size": 4
+              }
+            },
+            {
+              "name": "a0",
+              "type": "int",
+              "ctype": "int32_t",
+              "kind": "int",
+              "slot": {
+                "kind": "stack",
+                "off": 12,
+                "size": 4
+              }
+            },
+            {
+              "name": "a1",
+              "type": "int",
+              "ctype": "int32_t",
+              "kind": "int",
+              "slot": {
+                "kind": "stack",
+                "off": 16,
+                "size": 4
+              }
+            }
+          ]
+        },
+        {
+          "id": "v",
+          "why": "ZERO varargs -- TACT1E's llm_tact_ui_sel_panel_init calls it twice this way, once per fixed panel label. RESTORED 2026-08-28 by the O4A-C sweep. This shape shipped in the GENERATED tools/data/dll_call_protos.json at commit 62b25e6c (TACT1E) but its declaration here was never committed, so the generated file was ahead of its own input and the next regeneration deleted the shape and broke the build. Reconstructed from that committed row plus a fresh read of the call site; the params are byte-identical to what shipped.",
+          "evidence": "0x00433fc3 and 0x00433ffb, both re-read 2026-08-28: PUSH order (bottom to top) is the format pointer, then dst -- ADD ESP,0x8 after each CALL (2 dwords), so there is no vararg tail at all. NOTE THE FORMAT IS RUNTIME-RESOLVED at these sites: the original pushes `dword ptr [0x00584d1c]` / `[0x00584d20]`, i.e. G_TEXT_PTRS[580] / [581], which are 0 in the static image. The specifier cross-check therefore reads an empty string and confirms only that zero varargs are consumed, which is vacuously true; the ADD ESP,0x8 byte count is the whole of this shape's machine evidence, and that is stated here rather than left for a reader to discover from a passing check.",
+          "params": [
+            {
+              "name": "dst",
+              "type": "void *",
+              "ctype": "void *",
+              "kind": "ptr",
+              "slot": {
+                "kind": "stack",
+                "off": 4,
+                "size": 4
+              }
+            },
+            {
+              "name": "format",
+              "type": "LPWSTR",
+              "ctype": "const wchar_t *",
+              "kind": "ptr",
+              "slot": {
+                "kind": "stack",
+                "off": 8,
+                "size": 4
+              }
+            }
+          ],
+          "sites": [
+            {
+              "call": "0x00433fc3",
+              "format": "0x00584d1c"
+            },
+            {
+              "call": "0x00433ffb",
+              "format": "0x00584d20"
+            }
+          ]
+        },
+        {
+          "id": "vis",
+          "why": "Two varargs, INT then STRING -- format u\"%2d.%s\" (unit index, then a character-type name string). TACT1E's llm_tact_ui_char_panel_row_draw is the sole call site. RESTORED 2026-08-28 by the O4A-C sweep. This shape shipped in the GENERATED tools/data/dll_call_protos.json at commit 62b25e6c (TACT1E) but its declaration here was never committed, so the generated file was ahead of its own input and the next regeneration deleted the shape and broke the build. Reconstructed from that committed row plus a fresh read of the call site; the params are byte-identical to what shipped.",
+          "evidence": "CALL at 0x0043440f (the pushes run 0x004343fb-0x0043440e), re-read 2026-08-28: PUSH order (bottom to top) is G_TEXT_PTRS[591] (the %s string), then the unit index (the %2d int), then the format-string address 0x005004ca, then dst -- ADD ESP,0x10 after the CALL (4 dwords). The format at 0x005004ca is read-memory-confirmed u\"%2d.%s\", so the two trailing slots are pinned as int-then-pointer by the specifiers and not by the byte count alone.",
+          "params": [
+            {
+              "name": "dst",
+              "type": "void *",
+              "ctype": "void *",
+              "kind": "ptr",
+              "slot": {
+                "kind": "stack",
+                "off": 4,
+                "size": 4
+              }
+            },
+            {
+              "name": "format",
+              "type": "LPWSTR",
+              "ctype": "const wchar_t *",
+              "kind": "ptr",
+              "slot": {
+                "kind": "stack",
+                "off": 8,
+                "size": 4
+              }
+            },
+            {
+              "name": "a0",
+              "type": "int",
+              "ctype": "int32_t",
+              "kind": "int",
+              "slot": {
+                "kind": "stack",
+                "off": 12,
+                "size": 4
+              }
+            },
+            {
+              "name": "a1",
+              "type": "LPWSTR",
+              "ctype": "const wchar_t *",
+              "kind": "ptr",
+              "slot": {
+                "kind": "stack",
+                "off": 16,
+                "size": 4
+              }
+            }
+          ],
+          "sites": [
+            {
+              "call": "0x0043440f",
+              "format": "0x005004ca"
+            }
+          ]
+        }
+      ],
+      "fixed_argc": 2,
+      "_sites_why": "Machine-readable evidence, checked on every dump by check_shape_against_binary(): `call` must be followed by an ADD ESP equal to this shape's frame size, and the FORMAT STRING at `format` must consume exactly the vararg classes the shape declares. The format string is the only oracle that separates a `double` vararg from two u32s -- both are 8 bytes, so the byte count agrees either way."
+    },
+    "utils_sprintf": {
+      "va": "0x004cfb9c",
+      "cc": "__cdecl",
+      "cleanup": "caller",
+      "narrow_format": true,
+      "why": "The game's ANSI (narrow) sprintf, the char* sibling of w_sprintf. The sim migration set needs exactly one shape: llm_strat_spawn_invasion_force (SIM1F ninth slice, the LAST sim function) formats the per-planet AI-script filename `init\\ai%02d.scr` with G_PLANET_INDEX before handing it to llm_strat_ai_scr_parse. Formatting output cannot reach determinism -- the dst is a local stack buffer that is consumed only by the file open in scr_parse and never hashed/saved/shadowed.",
+      "ret": {
+        "type": "int",
+        "ctype": "int32_t",
+        "storage": "u32"
+      },
+      "shapes": [
+        {
+          "id": "vi",
+          "why": "One INT vararg -- format `init\\ai%02d.scr`, the planet index. spawn_invasion_force's sole call.",
+          "evidence": "SIM1F ninth slice, derived from the raw asm at 0x004dd47b: PUSH order (bottom to top) is G_PLANET_INDEX (int), then the format-string address 0x00506d90, then the dst stack buffer -- ADD ESP,0xc after the CALL (3 dwords = dst + format + int) read-memory-confirmed (83 c4 0c).",
+          "params": [
+            {
+              "name": "dst",
+              "type": "void *",
+              "ctype": "void *",
+              "kind": "ptr",
+              "slot": {
+                "kind": "stack",
+                "off": 4,
+                "size": 4
+              }
+            },
+            {
+              "name": "format",
+              "type": "LPSTR",
+              "ctype": "const char *",
+              "kind": "ptr",
+              "slot": {
+                "kind": "stack",
+                "off": 8,
+                "size": 4
+              }
+            },
+            {
+              "name": "a0",
+              "type": "int",
+              "ctype": "int32_t",
+              "kind": "int",
+              "slot": {
+                "kind": "stack",
+                "off": 12,
+                "size": 4
+              }
+            }
+          ],
+          "sites": [
+            {
+              "call": "0x004dd47b",
+              "format": "0x00506d90"
+            }
+          ]
+        },
+        {
+          "id": "vssii",
+          "why": "Two STRING + two INT varargs -- format \"%s%s_%02d%02d.DMP\", building the base-layout .DMP filename (\"init\\\\\" + race letter + \"_\" + 2-digit planet index + 2-digit landing-spot index). llm_strat_bldg_completion_dispatch's only call, MOTHER-arrival branch (SIM1-G4 fifth slice, 2026-08-22).",
+          "evidence": "0x00479963-0x00479969: MOV EAX,0xe58245 (dst); PUSH EAX; CALL 0x004cfb9c. ADD ESP,0x18 after the call (24 bytes = 6 dwords: dst + format + 2 string ptrs + 2 ints) read-memory-confirmed (83 c4 18). PUSH order bottom-to-top (deepest-pushed first): landing_spot_index[planet] (int, 0x00479925), G_PLANET_INDEX (int, 0x0047992b), race_str (\"A\"/\"H\", 0x00479954), \"init\\\\\" literal (0x0047995c), format string (0x00479962), dst (0x00479968) -- i.e. logical call order dst, format, \"init\\\\\", race_str, G_PLANET_INDEX, landing_spot_index[planet].",
+          "params": [
+            {
+              "name": "dst",
+              "type": "void *",
+              "ctype": "void *",
+              "kind": "ptr",
+              "slot": {
+                "kind": "stack",
+                "off": 4,
+                "size": 4
+              }
+            },
+            {
+              "name": "format",
+              "type": "const char *",
+              "ctype": "const char *",
+              "kind": "ptr",
+              "slot": {
+                "kind": "stack",
+                "off": 8,
+                "size": 4
+              }
+            },
+            {
+              "name": "a0",
+              "type": "LPSTR",
+              "ctype": "const char *",
+              "kind": "ptr",
+              "slot": {
+                "kind": "stack",
+                "off": 12,
+                "size": 4
+              }
+            },
+            {
+              "name": "a1",
+              "type": "LPSTR",
+              "ctype": "const char *",
+              "kind": "ptr",
+              "slot": {
+                "kind": "stack",
+                "off": 16,
+                "size": 4
+              }
+            },
+            {
+              "name": "a2",
+              "type": "int",
+              "ctype": "int32_t",
+              "kind": "int",
+              "slot": {
+                "kind": "stack",
+                "off": 20,
+                "size": 4
+              }
+            },
+            {
+              "name": "a3",
+              "type": "int",
+              "ctype": "int32_t",
+              "kind": "int",
+              "slot": {
+                "kind": "stack",
+                "off": 24,
+                "size": 4
+              }
+            }
+          ],
+          "sites": [
+            {
+              "call": "0x00479969",
+              "format": "0x0050139e"
+            }
+          ]
+        },
+        {
+          "id": "vs",
+          "why": "One STRING vararg -- format \"panelb\\\\%s.gfx\", building a sprite filename from an icon-name string. TACT1E's llm_tact_ui_sel_panel_init is the sole call site. RESTORED 2026-08-28 by the O4A-C sweep. This shape shipped in the GENERATED tools/data/dll_call_protos.json at commit 62b25e6c (TACT1E) but its declaration here was never committed, so the generated file was ahead of its own input and the next regeneration deleted the shape and broke the build. Reconstructed from that committed row plus a fresh read of the call site; the params are byte-identical to what shipped.",
+          "evidence": "CALL at 0x00433ede (the pushes run 0x00433ecc-0x00433edd), re-read 2026-08-28: PUSH order (bottom to top) is the icon-name string address (0x00559104 + slot*0xa), then the format-string address 0x005004b4, then dst -- ADD ESP,0xc after the CALL (3 dwords). The format at 0x005004b4 is read-memory-confirmed ANSI \"panelb\\\\%s.gfx\" (the decl's `narrow_format` applies), whose single %s pins the trailing slot as a pointer.",
+          "params": [
+            {
+              "name": "dst",
+              "type": "void *",
+              "ctype": "void *",
+              "kind": "ptr",
+              "slot": {
+                "kind": "stack",
+                "off": 4,
+                "size": 4
+              }
+            },
+            {
+              "name": "format",
+              "type": "const char *",
+              "ctype": "const char *",
+              "kind": "ptr",
+              "slot": {
+                "kind": "stack",
+                "off": 8,
+                "size": 4
+              }
+            },
+            {
+              "name": "a0",
+              "type": "LPSTR",
+              "ctype": "const char *",
+              "kind": "ptr",
+              "slot": {
+                "kind": "stack",
+                "off": 12,
+                "size": 4
+              }
+            }
+          ],
+          "sites": [
+            {
+              "call": "0x00433ede",
+              "format": "0x005004b4"
+            }
+          ]
+        }
+      ],
+      "fixed_argc": 2,
+      "_sites_why": "Same machine-readable evidence contract as w_sprintf above -- the ADD ESP,0xc frame size and the one-int-specifier format string are checked on every dump."
+    },
+    "llm_ui_show_formatted_error_dialog": {
+      "va": "0x004b51bd",
+      "cc": "__cdecl",
+      "cleanup": "caller",
+      "why": "The game's modal formatted error/info dialog (formats into a 512-byte stack buffer via the wide vswprintf helper at 0x004de151, publishes the pointer through the dialog-init-param record at 0x00603f40+4, then DialogBoxParamA on resource 0x6e). 9 call sites program-wide, measured 2026-08-24 by walking every CALL reference and reading the following ADD ESP,n. EIGHT of them are the `vss` shape below (ADD ESP,0xc); the NINTH, llm_boot_progress_draw at 0x004c3d2b, is ADD ESP,0x4 -- a no-vararg `v` shape whose format argument is a RUNTIME buffer (0x00e616a0), not a literal, so check_shape_against_binary's format-string oracle has nothing to read there and the shape is deliberately NOT declared. In the readers migration set only llm_ui_entity_info_screen_open (0x004cad31) calls this, and both of its sites are `vss`.",
+      "ret": {
+        "type": "void",
+        "ctype": "void",
+        "storage": "void"
+      },
+      "shapes": [
+        {
+          "id": "vss",
+          "why": "Two %s. Every literal format reached by this shape is a `%s: %s` variant (0x0050317a u\"%s: %s\n\", 0x00503169 u\"%s: %s\", 0x00502d0b u\"%s: %s\n.\") -- a caption/detail pair, the detail usually produced by llm_str_ansi_to_wide_scratch (0x004cf3e0) from an ANSI filename or error string.",
+          "evidence": "Eight sites, all ADD ESP,0xc (3 dwords) immediately after the CALL: 0x004b55a3 (rsr_GetMenuFile), 0x004b657d / 0x004b65e5 / 0x004b671d (llm_ui_main_menu_screen_load), 0x004c2b50 / 0x004c3047 (llm_game_boot_init), 0x004cb18f / 0x004cb267 (llm_ui_entity_info_screen_open). Cross-validated independently of the byte count: each site's format literal contains exactly two %s conversions, so the 3 dwords are format + 2 pointer varargs and not, say, format + one 8-byte double.",
+          "params": [
+            {
+              "name": "format",
+              "type": "LPWSTR",
+              "ctype": "const wchar_t *",
+              "kind": "ptr",
+              "slot": {
+                "kind": "stack",
+                "off": 4,
+                "size": 4
+              }
+            },
+            {
+              "name": "a0",
+              "type": "LPWSTR",
+              "ctype": "const wchar_t *",
+              "kind": "ptr",
+              "slot": {
+                "kind": "stack",
+                "off": 8,
+                "size": 4
+              }
+            },
+            {
+              "name": "a1",
+              "type": "LPWSTR",
+              "ctype": "const wchar_t *",
+              "kind": "ptr",
+              "slot": {
+                "kind": "stack",
+                "off": 12,
+                "size": 4
+              }
+            }
+          ],
+          "sites": [
+            {
+              "call": "0x004cb18f",
+              "format": "0x0050317a"
+            },
+            {
+              "call": "0x004cb267",
+              "format": "0x0050317a"
+            },
+            {
+              "call": "0x004c3047",
+              "format": "0x0050317a"
+            },
+            {
+              "call": "0x004c2b50",
+              "format": "0x00503169"
+            },
+            {
+              "call": "0x004b55a3",
+              "format": "0x00502d0b"
+            },
+            {
+              "call": "0x004b657d",
+              "format": "0x00502d0b"
+            },
+            {
+              "call": "0x004b65e5",
+              "format": "0x00502d0b"
+            },
+            {
+              "call": "0x004b671d",
+              "format": "0x00502d0b"
+            }
+          ]
+        }
+      ],
+      "fixed_argc": 1,
+      "_sites_why": "Machine-readable evidence, checked on every dump by check_shape_against_binary(): `call` must be followed by an ADD ESP equal to this shape's frame size, and the FORMAT STRING at `format` must consume exactly the vararg classes the shape declares. The format string is the only oracle that separates a `double` vararg from two u32s -- both are 8 bytes, so the byte count agrees either way."
+    }
+  }
+}

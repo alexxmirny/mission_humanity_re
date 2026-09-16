@@ -1,0 +1,14 @@
+{
+  "class": "reimplemented",
+  "_class_why": "RU sibling of net_resync_wait_fix_EN. RU-targeted: its sha256 pins the frozen Russian exe, so mhpatch refuses it against the EN image (measured 2026-09-13) and it can never be an in-memory subject. Kept as the on-disk patch for the RU build.",
+  "_comment": "Fixes the MP client permanent-hang root-caused from mh_hang.dmp (Win11Gen1 VM, 2026-07-10; tasks/mp-restoration.md). llm_net_lockstep_sync_busywait (0x0049e29d) is a hard GetTickCount busy-wait (no message pump) whose duration comes from llm_net_lockstep_sync_delay_stub (0x0049bbd4) -- a dead/cut-MP stub that returns an UNINITIALIZED stack local (confirmed in disasm + the Ghidra decompiler: `return CONCAT44(param_2, local_2c)`, local_2c never written). When the lockstep stall-recovery resync fires (leader's LEADER_STALL_COUNTER > players*100, tripped by VM frame-hitches -> horizon stall), both peers process the type-4/0xd resync record and enter this busy-wait; the garbage delay (~6.1M ms / ~102 min in the dump) makes the main thread spin forever while holding game CS 0x0064461b -> Windows 'not responding'. FIX: patch the stub's `mov eax,[ebp-0x28]` (8B 45 D8 at 0x0049bbec) to `xor eax,eax; nop` (31 C0 90) so it returns 0. Then the busy-wait computes deadline=now+0 and exits immediately (returns 1='waited ok'), and the '<0' error gate in llm_strat_session_begin_multi (0x0045450e) sees a non-error 0. Safe: the stub never returned a meaningful value (the sync-wait was always broken; retail never reached it), the lockstep is proven bit-deterministic (A3), and the resync's real recovery work (rebaseline timestamp, re-advertise horizon, broadcast, llm_strat_time_resync_and_tick) still runs -- only the broken wait is neutralized. No whole-file sha256 pin: chain this AFTER net_load + cd_audio_nonfatal (they touch different regions); the per-patch 'expect' byte guard is the safety check. Run: python mhpatch.py apply mh.mp.tmp2.exe net_resync_wait_fix.mh.patch.json mh.mp.exe",
+  "target": "mh.exe (clean Russian retail, md5 a9bf89a6...)",
+  "patches": [
+    {
+      "va": "0x0049bbec",
+      "expect": "8B 45 D8",
+      "bytes": "31 C0 90",
+      "_note": "llm_net_lockstep_sync_delay_stub: `mov eax,[ebp-0x28]` (returns uninitialized stack) -> `xor eax,eax; nop` (returns 0), making the lockstep resync/sync busy-wait instant instead of a garbage-length spin"
+    }
+  ]
+}

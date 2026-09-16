@@ -1,0 +1,35 @@
+# P1 debug-overlay verification, HOST side: reach a REAL 2-peer lockstep match and capture the
+# net.*/perf.* panel on a live in-game frame. Same walk as mp_host_start.txt, plus in-game captures.
+#
+# Pair with mp_client_overlay.txt. Run with --extra-ini tools/uiscripts/ini/debug_overlay_net.ini (or
+# ..._sim.ini for the sim.* family).
+# NOT a pixel-baseline test -- packet counters and frame times legitimately vary; this exists to be READ.
+
+settled value:110
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+settled Create
+clickl Create
+present Game name
+settled Ok
+clickl Ok
+present Available maps
+settled Ok
+clickl Ok
+
+# host lobby: block until the client has joined, then launch
+present Network players
+peers 1
+enabled Start
+settled Start
+clickl Start
+absent Network players
+
+# In-game. Gate on the SIM having really advanced (gameclock), not on a frame/time offset -- a
+# horizon-starved peer never gets here and the script times out, which is the correct failure.
+gameclock 5000
+capture ovl_host_ingame
+log HOST captured the lockstep overlay in-game
+end

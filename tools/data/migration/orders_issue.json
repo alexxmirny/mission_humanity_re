@@ -1,0 +1,201 @@
+{
+  "_comment": [
+    "The ORDER-ISSUE domain (RI-ORDERS / O4-ISSUE) -- the first SEEDED domain, and the reason",
+    "MIG-SET exists. RI-ORDERS owns the order CONTAINER (order_queue.cpp); the wrappers that CALL it",
+    "were never in scope for that item nor for any other, and exactly ONE of the 113 is in the AI",
+    "manifest -- so the AI closure does not sweep them up.",
+    "",
+    "WHY IT CANNOT BE A ROOT-BASED DOMAIN. `name_prefix` cannot express it (two unrelated patterns:",
+    "llm_strat_*_order_* and llm_strat_order_*) and `closure` cannot either -- these functions are a",
+    "CALLER set, defined by what they call, and no single root reaches them. The membership is a",
+    "query, re-evaluated every regeneration, with the gained/lost delta printed.",
+    "",
+    "THE WALK IS `forward` AND IT COSTS ALMOST NOTHING, measured 2026-08-22 before this profile was",
+    "written: the closure beyond the 113 seeds is 49 functions, of which 35 are ALREADY OURS and 14",
+    "are not -- 3138 B, and all but one of those are wall or frontier material (llm_snd_play, the UI",
+    "dialog chain, llm_rand_below_fx, w_sprintf). The single real helper the walk pulls in is",
+    "llm_strat_bldg_footprint_random_point (224 B). So the domain is essentially its seeds.",
+    "",
+    "DECOMPOSED 2026-08-23. Batch rules below; the closure analysis and the numbers behind them are docs/orders-issue-closure.md. There is still no `oracle.selftest` and no `loop_prompt`: the container's orderstest covers O2's logic, not these wrappers, so O4-0 has to decide whether to extend it or add a sibling -- and under Law 5 nothing here can be promoted until that exists."
+  ],
+  "domain": "orders_issue",
+  "title": "Order-issue surface",
+  "tracker_domain": "reimpl",
+  "tracker_group": "RI-ORDERS",
+  "umbrella_item": "O4-ISSUE",
+  "select": {
+    "mode": "seeded",
+    "walk": "forward",
+    "seeds": [
+      {
+        "kind": "name_regex",
+        "pattern": "llm_strat_.*_order_|llm_strat_order_",
+        "exclude_ours": true,
+        "why": "The order-issue wrappers: every function that enqueues into the order container from outside the sim. Two name families (llm_strat_<thing>_order_* and llm_strat_order_*), which is why a single prefix cannot select them. `exclude_ours` drops llm_strat_order_queue_dispatch and the other container functions RI-ORDERS already reimplemented."
+      },
+      {
+        "kind": "names",
+        "names": [
+          "llm_strat_ai_group_move_formation_rotating",
+          "llm_strat_ai_unit_flag_and_move",
+          "llm_strat_ai_group_scatter_to_passable_tile"
+        ],
+        "why": "ADOPTED 2026-08-28 (O4B). The 113th entry of this surface, and the one no query can reach: the name_regex above needs `_order_` in the name and this one does not have it, while `ai`'s prefix selector claimed it purely for its `llm_strat_ai_` prefix. It is an order-issue wrapper by behaviour -- order-notify bits + llm_strat_unit_order_move_enqueue + the per-player order sequence id -- see ai.json's select.owned_elsewhere for the field measurement that settled it. NOTE its sink is llm_strat_unit_order_move_enqueue, one level ABOVE the container, so gen_order_issue_golden.py records NO site for it (its roots are llm_strat_order_dispatch / llm_strat_order_enqueue): this row's oracle is hand-authored and it is a T2 for that reason, exactly like the domain's other no-golden-site rows.  ADOPTED 2026-08-28, two more on the same evidence: llm_strat_ai_unit_flag_and_move (73 B) and llm_strat_ai_group_scatter_to_passable_tile (163 B). Both write unit +0xe8 = 1 and +0xe3 |= 0x40 -- the identical pair, offsets and constants -- then call llm_strat_unit_order_move_enqueue. flag_and_move is the move primitive ten AI group tasks call, so it is the highest-traffic wrapper this domain has. Like the 2026-08-28 adoption above, their sink is one level ABOVE the container, so gen_order_issue_golden.py records no site for them and their oracles are hand-authored T2 for that reason."
+      },
+      {
+        "kind": "names",
+        "names": [
+          "llm_strat_order_queue_apply_and_dequeue"
+        ],
+        "exclude_ours": false,
+        "exclude_ours_why": "FALSE, and it is the whole point of the entry. This row is EXACTLY what `exclude_ours` is designed to subtract -- a function carrying an installed MH_EXPORT_REPLACE in src/mh_dll -- and subtracting it is what left it with no ledger row anywhere. The regex seed above matches the name (`llm_strat_order_`) and drops it for that reason; this seed puts it back by name.",
+        "why": "ADOPTED 2026-09-12 (X-TL-DRAIN step 5). RI-ORDERS reimplemented llm_strat_order_queue_apply_and_dequeue in libmh/orders/order_queue.cpp BEFORE the migration-manifest era, so it has a body, a shadow site and a promotion seam but had never been in any ledger -- and `state: verified|dead` is exactly how gen_libmh_inbound.py decides a caller is no longer an ORIGINAL. With no row it read as a live original caller, and llm_strat_target_release_ref, llm_strat_unit_notify_status and llm_unit_set_order_param stayed in the inbound surface's X-TL exclusion class on its account: three owned bodies held there by a fourth owned body's missing bookkeeping. sim.json's select.owned_elsewhere already names this domain as its owner ('RI-ORDERS ... they are RI-ORDERS' to promote, not the sim cohort's to re-migrate'), so this is where the row belongs. Its evidence is unchanged and is NOT re-derived here: unit-tested in `orderstest`, adversarially reviewed, shadow site armed but reached ZERO times by any available scenario -- T3, and tracker item O2b (deferred 2026-08-30, done_when unchanged) owns the work of reaching it. Its sibling llm_strat_order_queue_find_index is in the same position and is deliberately NOT adopted here: it calls no owned body, so it forces no inbound row and is out of this item's scope."
+      }
+    ],
+    "cut_prefixes": [
+      "llm_snd_",
+      "llm_ui_",
+      "llm_menu_",
+      "llm_gfx_",
+      "llm_view_",
+      "llm_dlg_",
+      "llm_cam_",
+      "llm_net_"
+    ],
+    "cut_why": "The same permanent walls the sim domain declares, for the same reason (docs/reimpl-plan.md Sect. 5: render/UI/sound/net stay in the original binary). Measured, these are exactly what the forward walk from the wrappers runs into -- llm_snd_play at depth 1 and the llm_ui_dlg_* / llm_menu_* chain below it.",
+    "frontier_prefixes": [
+      "w_sprintf",
+      "llm_rand",
+      "llm_math_",
+      "llm_str_",
+      "utils_",
+      "llm_teardown_hook_stub",
+      "EXTERNAL:",
+      "CRT_",
+      "llm_watcom_epilogue"
+    ],
+    "frontier_why": "Shared helpers Law 4 keeps original -- called through mh_calls.gen.h, never migrated. The PRNG is here deliberately: its state is shared with every un-migrated consumer, so reimplementing it buys nothing and risks the determinism gate. ADDED 2026-08-28 (O4B): llm_watcom_epilogue -- Ghidra types a cross-function JMP into a SHARED Watcom epilogue as a CALL, so the forward walk from the re-homed row's tail pulled llm_watcom_epilogue_004d601f in as a member. It is a code fragment, not a function: no other domain's ledger carries one (checked across all six manifests), and migration_ready reports the same shape as PHANTOM elsewhere. Frontier rather than a cut so the edge stays visible.",
+    "excludes": [
+      "ai",
+      "sim"
+    ],
+    "excludes_why": "A function another domain's manifest already owns is not this domain's work. One of the 113 is an AI-manifest row (llm_strat_ai_commit_attack_order_alt) and one is a sim row; without this they would be double-counted and re-scheduled."
+  },
+  "paths": {
+    "manifest": "tools/data/orders_issue_migration.json",
+    "ready_report": "tmp/orders_issue_ready",
+    "export_dir": "tmp/decomp_orders_issue",
+    "closure_doc": "docs/orders-issue-closure.md",
+    "effect_classes": "tools/data/orders_issue_effect_classes.json",
+    "ready_acks": "tools/data/orders_issue_ready_ack.json",
+    "state_header": "src/mh_dll/libmh/orders/issue/issue_state.h",
+    "module_dir": "src/mh_dll/libmh/orders/issue",
+    "selftest_dir": "src/mh_dll/mh_nettest",
+    "lint_request": "tmp/orders_issue_translation_lint.json",
+    "_translation_paths_why": "ADDED 2026-08-27 by O4-0, which is this domain's `items.interface` and therefore owns them. `state_impl` holds the region and container bindings and nothing else, so a wrapper's own TU includes only issue_state.h and physically cannot spell an address or call the container except through the injected sink -- which is what makes the oracle's recording sink see everything the wrapper emits. `lint_translation.py --domain orders_issue` refused with \"declares no path 'state_header'\" until this landed, and translate.js would have silently briefed every writer with the AI domain's mh::ai / ai_state.h defaults -- the same fail-open TACT1A hit.",
+    "state_impl": "src/mh_dll/libmh/orders/issue/issue_state.cpp",
+    "loop_prompt": "tools/data/orders_issue_loop_prompt.md",
+    "_loop_prompt_why": "ADDED 2026-08-27, the moment it became honest to have one, and the reason it was ABSENT until then is the reason it exists now. Under Law 5 a domain with no oracle cannot promote anything, so while `oracle.selftest` was undeclared an unattended driver had nothing it could legitimately finish -- migration_loop refused the domain BY DESIGN, not by oversight. O4-0 built the oracle (net_selftest issuetest) and the state interface, so that condition is gone and both session shapes are now available: MODE_PREP for O4-READY (Ghidra-writing work scored on the readiness predicate falling) and MODE_BATCH for O4A/O4B/O4C. DERIVED from sim_loop_prompt.md -- keep the three in step where the text is domain-neutral. The domain-specific half is mostly one guard: the oracle's expectations live in a GENERATED file whose whole value is that the translator did not write it, so the prompt's first section tells the session that a disagreement with the golden means the TRANSLATION is the suspect, and that the file is never to be edited to make a test pass."
+  },
+  "batches": {
+    "order": [
+      "A",
+      "B",
+      "C"
+    ],
+    "item": {
+      "A": "O4A",
+      "B": "O4B",
+      "C": "O4C"
+    },
+    "rules": [
+      {
+        "batch": "A",
+        "match": [
+          "_bldg_"
+        ],
+        "why": "Building order wrappers -- construction, repair, activation, worker assignment, cargo/depart. The largest family by count and the most uniform in shape, so it is the batch that establishes the translation pattern for the rest."
+      },
+      {
+        "batch": "B",
+        "match": [
+          "_unit_",
+          "_turret_",
+          "_group_",
+          "_squad_"
+        ],
+        "why": "Unit, turret and group order wrappers -- move, attack, target, formation, storage entry/exit. The largest family by BYTES (the unit wrappers carry the arithmetic), and it holds the four functions that write STRAT_ORDER_SEQ_ID_BY_PLAYER, i.e. what stands between SB5 and marking the order container moved."
+      },
+      {
+        "batch": "C",
+        "match": [
+          "llm_strat_order_"
+        ],
+        "why": "The order-core family: player-control/relation setters, the numeric-code issue sites (issue_0xd5, issue_0xf_adjacent) and the debug-console orders. Last because its disposition question is the open one -- 14 of these are debug-issued per docs/order-matrix.md, and whether a debug-only order is worth owning is a decision, not a translation."
+      }
+    ]
+  },
+  "roster_regions": [],
+  "items": {
+    "interface": "O4-0",
+    "_interface_why": "The tracker item that OWNS building the state interface this domain's batches translate into -- `<D>0` in the reimpl-decompose skill's vocabulary, and the item it calls the highest-leverage one. Declared here rather than derived from the domain name because orders_issue's is `O4-0` and a future domain may reuse another domain's interface outright. tools/lint_migration_items.py checks it exists, is not an orphan, and is REACHABLE THROUGH DEPS from every batch. The order-issue interface item; all three batches dep on it directly alongside O4-READY."
+  },
+  "ns": "mh::orders::issue",
+  "_ns_why": "Read by .claude/workflows/translate.js, whose default is the ai domain's `mh::ai`. The domain sits INSIDE mh::orders rather than beside it because these wrappers are the container's callers, not a peer subsystem -- the container is mh::orders, this is the layer above it.",
+  "conductor_owned": [
+    "issue_state.h",
+    "issue_state.cpp",
+    "/addr/",
+    "\\addr\\",
+    ".vcxproj",
+    ".sln",
+    "dll_addr_manifest.json",
+    "dll_shadow_manifest.json",
+    "dll_struct_layouts.json",
+    "orders_issue_migration.json",
+    "state_regions.json",
+    "issue_selftest.cpp",
+    "order_issue_golden.gen.h",
+    "orders_issue_effect_classes.json"
+  ],
+  "_conductor_owned_why": "order_issue_golden.gen.h is on the list for a reason the other domains have no equivalent of: it is the ORACLE'S EXPECTATIONS, generated from the original's disassembly. A translation writer that could edit it could make its own output correct by construction, which is exactly the independence this domain's oracle exists to buy. Regenerate it with tools/gen_order_issue_golden.py; never hand-edit it, and never let a writer touch it.",
+  "oracle": {
+    "selftest": "issuetest",
+    "_selftest_why": "net_selftest.exe issuetest (src/mh_dll/mh_nettest/issue_selftest.cpp), built at O4-0 on 2026-08-27. IT IS NOT LIKE THE OTHER DOMAINS' SUITES, and the difference is the point: its expectations are not written in the file. src/mh_dll/mh_nettest/order_issue_golden.gen.h is GENERATED by tools/gen_order_issue_golden.py from the ORIGINAL's disassembly -- per call site, the four container arguments and every scratch write, as expressions over the wrapper's own parameters -- and the suite evaluates them for concrete inputs and compares against what our C++ handed the container. So the expectations do not share an author with the translation, and adding a wrapper is one row in the PILOTS table rather than a fresh set of hand-derived constants: O4A/B/C inherit the oracle instead of re-authoring it 106 times. The generator cross-checks itself against the independent pcode reading in order_matrix_raw.json (344 comparisons, 0 disagreements) and exits non-zero on any disagreement; lint_repo drift-gates the header. WHAT IT DOES NOT COVER: the guard PREDICATE is not derivable from a register-level extractor, so the negative cases (guard rejects => nothing emitted) are hand-authored per wrapper and are the one part that does share an author with the translation -- read them as weaker evidence than the positive comparisons. Rationale + the extend-vs-sibling decision: docs/orders-issue-closure.md Sect. 9.",
+    "_no_ab_driver_why": "No `ab` block. A wrapper's output is not state, it is a QUEUED COMMAND, so the promotion evidence has to reach past the wrapper into what the container does with it -- which is O4-P's problem and O4-P's design, not a golden-trajectory driver this item can name in advance. Left absent deliberately rather than filled in with the strategic default, which would be the same 'named a vehicle that measures nothing' failure TACT-AB records.",
+    "rig": {
+      "modes": [
+        "soak",
+        "sp"
+      ],
+      "default": "soak",
+      "_why": "These wrappers are STRATEGIC, so both strategic vehicles reach the mode; the all-AI soak is the default because it generates the most order traffic. BUT THE VEHICLE DOES NOT REACH THE WHOLE DOMAIN, and that is a property of who CALLS a wrapper, not of the wrapper. Joined against docs/order-matrix.md, the issue sites root as: sim 60, ui 24, debug 14, ai 2. A UI-ROOTED wrapper is never called in a soak -- nothing clicks -- so arming one reads ZERO CALLS, which the anti-vacuity rule correctly reports as NOT COVERED only after the run has been spent. For those, either drive the UI path (tools/ui_test.py, the `ui-scripted` class in docs/order-matrix.md) or prove the row offline against the golden; `issuetest` needs no vehicle at all. Check a candidate's issue domain BEFORE ordering a rig run."
+    }
+  },
+  "non_autonomous": [
+    "O4-ISSUE",
+    "O4-P"
+  ],
+  "_non_autonomous_why": "O4-ISSUE is the umbrella and holds no work of its own. O4-P decides what RUNS FOR REAL and its evidence has to reach past the wrapper into what the container then does with the order -- a wrapper that packs a subtly wrong triple produces a perfectly valid order meaning something else, and every state comparison at the wrapper boundary reads clean. That is a judgement, not a slice. O4-0 and O4-PREP are DONE and deliberately absent from this list; O4-READY is a PREP-shaped item the driver can and should drive.",
+  "lint": {
+    "_why": "Read by tools/lint_translation.py. Both keys are OPT-IN and absent from every other domain profile, so the shared lint is inert for ai/sim/tact by construction. They exist because this domain has a shape the lint was not written for: its wrappers reach the order CONTAINER through a SECOND indirection struct, and they call each other.",
+    "extra_call_tables": [
+      {
+        "struct": "order_sink",
+        "site_prefixes": [
+          "s"
+        ],
+        "binder_ns": "mh::orders",
+        "binding_alias": {
+          "scratch_reset": "llm_strat_order_scratch_reset",
+          "scratch_set_field": "llm_strat_order_scratch_set_field",
+          "dispatch": "llm_strat_order_dispatch",
+          "enqueue": "llm_strat_order_enqueue"
+        },
+        "why": "order_sink's four members ARE this domain's whole observable emission, and live_sink() binds them to mh::orders::* -- OUR promoted container (O3) -- not to a mh::call:: thunk, so the binder cannot name the original and the alias has to say which original each member stands for. Without this every one of the 112 rows reported llm_strat_order_dispatch MISSING: the single most important callee in the domain, unresolvable, on every row."
+      }
+    ],
+    "sibling_detail_prefix": "llm_strat_",
+    "_sibling_why": "Wrappers in this domain call EACH OTHER (toggle_active -> activate/deactivate, depart_dispatch_by_type -> the three depart forms, the group movers -> unit_order_move). A sibling that is itself a migration row stays a plain detail:: call -- it is ours, and routing it through a calls struct would mean mocking a function under test. The .asm still references the ORIGINAL's name, so the lint needs to know that detail::<name minus this prefix> IS that callee, or a caller reports its callee MISSING for having been correctly reimplemented."
+  }
+}

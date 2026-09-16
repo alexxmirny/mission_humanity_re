@@ -1,0 +1,78 @@
+{
+  "_hand_authored": "Hand-authored. `migration_ready.py --domain tact` reads it; nothing writes it.",
+  "_note": [
+    "Acknowledged readiness blockers for the tactical domain (TACT-READY). Same bar as",
+    "sim_ready_ack.json / ai_ready_ack.json: an entry must name the MECHANISM and cite the EVIDENCE.",
+    "'I could not fix it' is not a reason, and an entry that only defers the work must name the item",
+    "that owns it.",
+    "",
+    "Stale acks are reported on every run, so this file cannot quietly become a graveyard: once the",
+    "underlying defect is fixed the ack stops firing and the report says so.",
+    "",
+    "EVERY ENTRY HERE IS ONE MECHANISM -- the FOLDED-BIAS ALIAS. This build's compiler folds a",
+    "constant index bias into an instruction's disp32 instead of keeping it in the register, so a write",
+    "to `array[k*stride - N]` is encoded as `[reg + (array_base - N)]`. Ghidra sees an address BELOW",
+    "the array and auto-labels it as a separate datum. Three independent instances were confirmed on",
+    "2026-08-24 (0x00713d1a..1f into _G_LLM_TILE_VIS_MAP; 0x00d1eb88/8f into tile_objects; 0x0086fde4",
+    "into _G_LLM_TACT_GROUP_UNIT_ROSTER) and there is a docs/dead-ends.md row for the family."
+  ],
+  "_not_for": "R7 conf:low is NOT ackable -- an unsettled name is settled by reading, not by recording that it is unsettled.",
+  "acks": [
+    {
+      "addr": "0x00434322",
+      "name": "llm_tact_ui_char_panel_row_draw",
+      "check": "R8 region registered",
+      "recorded": "2026-08-24",
+      "reason": "The 'unregistered write target' _G_LLM_TILE_VIS_MAP_M6 is not a region. It is a FOLDED-BIAS ALIAS of _G_LLM_TILE_VIS_MAP (0x00713d20, byte[300]), which IS registered: the byte actually written lies inside that array, and registering the alias would create a 1-byte phantom region that no accessor should ever serve. Nothing can 'fix' this at the source -- the alias is an artifact of the instruction encoding, not of the markup -- so the honest resolution is a named symbol plus a plate, both applied at EN v346, and this ack.",
+      "evidence": "Every reference has the shape `IMUL EAX,[_G_LLM_VIEW_TILES_W],k` then `MOV byte [EAX + 0x00713d1a],2`; the effective address is _G_LLM_TILE_VIS_MAP[k*VIEW_TILES_W - 6], i.e. row k-1, column VIEW_TILES_W-6. Worked example in llm_tact_sidebar_dispatch, 0x00435a4c-0x00435a6f: one IMUL by 7 feeding three consecutive stores at +0x713d1a/1b/1c, which are columns W-6, W-5, W-4 of row 6. 0x00713d20 - 6 = 0x00713d1a closes the arithmetic exactly."
+    },
+    {
+      "addr": "0x004348bf",
+      "name": "llm_tact_ui_sidebar_row_draw_right",
+      "check": "R8 region registered",
+      "recorded": "2026-08-24",
+      "reason": "Same mechanism as 0x00434322: _G_LLM_TILE_VIS_MAP_M1/M2/M3 are folded-bias aliases of the registered _G_LLM_TILE_VIS_MAP, not regions of their own.",
+      "evidence": "0x00713d20 - 1/2/3 = 0x00713d1f/1e/1d. llm_tact_ui_draw_player_row_list writes 0x713d1b..0x713d1f with the SAME unbiased EAX = [_G_LLM_VIEW_TILES_W] at all five sites -- five consecutive addresses, i.e. TILE_VIS_MAP[W-5 .. W-1], the last five columns of row 0. Five stores that only make sense as one array."
+    },
+    {
+      "addr": "0x00435972",
+      "name": "llm_tact_sidebar_dispatch",
+      "check": "R8 region registered",
+      "recorded": "2026-08-24",
+      "reason": "Same mechanism: _G_LLM_TILE_VIS_MAP_M4/M5/M6 are folded-bias aliases of the registered _G_LLM_TILE_VIS_MAP.",
+      "evidence": "0x00435a4c IMUL EAX,[0x00825090],0x7 ; 0x00435a53 MOV byte [EAX+0x713d1a],2 ; 0x00435a61 [EAX+0x713d1b] ; 0x00435a6f [EAX+0x713d1c] -- one index, three adjacent columns. This is also the site that shows the OLD markup was wrong: 0x00713d1b carried the hand name _G_LLM_TACT_TILE_DIRTY_FLAG_B (applied 2026-07-04), which modelled the run as a dirty-flag array in its own right; it was renamed to _G_LLM_TILE_VIS_MAP_M5 at EN v346."
+    },
+    {
+      "addr": "0x00435cea",
+      "name": "llm_tact_ui_order_buttons_minimap_tick",
+      "check": "R8 region registered",
+      "recorded": "2026-08-24",
+      "reason": "Same mechanism: _G_LLM_TILE_VIS_MAP_M4/M5/M6 are folded-bias aliases of the registered _G_LLM_TILE_VIS_MAP.",
+      "evidence": "Four sites in this function repeat the `IMUL [_G_LLM_VIEW_TILES_W],k` + `[EAX + 0x713d1a..1c]` idiom. See the 0x00435972 entry for the worked arithmetic."
+    },
+    {
+      "addr": "0x004361b5",
+      "name": "llm_tact_ui_sel_panel_multi_mode_tick",
+      "check": "R8 region registered",
+      "recorded": "2026-08-24",
+      "reason": "Same mechanism: _G_LLM_TILE_VIS_MAP_M6 is a folded-bias alias of the registered _G_LLM_TILE_VIS_MAP.",
+      "evidence": "Same `row*VIEW_TILES_W + (W-6)` idiom as the other four functions; 0x00713d20 - 6 = 0x00713d1a."
+    },
+    {
+      "addr": "0x00437138",
+      "name": "llm_tact_fov_update_nearest_target",
+      "check": "R3 decompile usable",
+      "recorded": "2026-08-24",
+      "reason": "Genuine ambient-register input that no prototype can express -- and a FRAME-SHARING helper, not merely a convention gap. The function has NO PROLOGUE (its first instruction is a CMP) and it dereferences the CALLER's frame directly: `*(byte *)(unaff_EBP + 4 + cell_index * 8)`. EBP belongs to llm_tact_fov_raycast_stencil, which is a PUSHAD function whose 64x64 stencil window lives in its own locals. Declaring an EBP parameter would be a fiction (the caller sets up no such argument -- it simply never changes EBP), and there is no calling convention in this program's spec that names EBP as an inbound argument register. The correct treatment when this function is translated is an explicit pointer parameter supplied by the translated caller, which is a translation-time decision, not a markup one.",
+      "evidence": "Body 0x00437138-0x0043717e, 0x47 bytes: no PUSH EBP / MOV EBP,ESP; the only stack traffic is PUSH EBX / POP EBX around each of the two comparison arms. Reads at 0x00437138 and 0x0043715b are `CMP byte [EBP + EAX*0x8 + 0x4]` -- an 8-byte-strided window indexed by the EAX parameter, with EBP unwritten anywhere in the body. Its sole caller llm_tact_fov_raycast_stencil (0x00436f30) opens with PUSHAD."
+    },
+    {
+      "addr": "0x00436f30",
+      "name": "llm_tact_fov_raycast_stencil",
+      "check": "R3 decompile usable",
+      "recorded": "2026-08-24",
+      "reason": "The four `extraout_EAX` tokens are the mirror image of the entry above and have the same structural cause. This function calls llm_tact_fov_update_nearest_target(cell_index) in four DDA arms and keeps using the same cell index afterwards. update_nearest_target never writes EAX -- it only PUSHes/POPs EBX and stores AX to a global -- so EAX survives the call by construction; but a `void __watcall` callee is modelled as clobbering EAX, so the decompiler must invent a fresh extraout_EAX at each of the four call sites. Declaring the callee to RETURN its own cell_index would silence the token by asserting a return value the code never computes, which is a worse record than the artifact. Resolvable only by giving update_nearest_target an explicit parameter at translation time (see 0x00437138).",
+      "evidence": "update_nearest_target body 0x00437138-0x0043717e contains no write to EAX/AX/AL (the only AX traffic is `MOV [0x008260ce],AX` and `MOV [0x008260cc],AX`, both reads of AX). The four call sites are 0x0043708f-ish, one per DDA direction arm, each followed by a reuse of the same index -- visible in the draft as `uVar3 = extraout_EAX / extraout_EAX_00 / _01 / _02`."
+    }
+  ]
+}

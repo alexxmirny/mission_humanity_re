@@ -1,0 +1,58 @@
+{
+  "_comment": [
+    "THE TARGET ARCHITECTURE, as a machine-readable contract (P2-RULES, docs/reimpl-plan.md §5).",
+    "",
+    "This is the SINGLE source of truth for the five rules: tools/lint_arch.py evaluates them against",
+    "the measured matrix, and tools/gen_state_matrix.py reads the same file for its report section, so",
+    "the doc and the lint cannot disagree.",
+    "",
+    "Each rule is a forbidden (fn_layer, access, region_layer) triple over the layer vocabulary in",
+    "tools/_subsys.py. An edge present in the MEASURED matrix but forbidden here is an ILLEGAL EDGE --",
+    "a work item that is either 'the target is wrong, adjust it' or 'this needs a seam'. The unwaived",
+    "count is the burn-down metric for the whole M6 effort and should fall monotonically.",
+    "",
+    "TWO DIFFERENT WAYS TO RESOLVE AN EDGE, and picking the wrong one buries the question:",
+    "  * The LAYER LABEL is wrong -> fix the classification in tools/_subsys.py's *_LAYER_OVERRIDES",
+    "    (with a written reason) and REGENERATE the matrix. The edge disappears because it was never",
+    "    real. Use this only with evidence about what the code actually does.",
+    "  * The edge is REAL but accepted -> add a waiver below, with a reason. The edge stays visible in",
+    "    the report as waived, so it can never be silently forgotten.",
+    "A waiver is NOT the way to make a misclassification go away, and an override is NOT the way to",
+    "excuse a genuine violation."
+  ],
+  "rules": [
+    {
+      "id": "R1/R2",
+      "title": "Sim state is mutated only by sim code; AI/UI/net write ORDERS, not state",
+      "why": "A single writer is the entire determinism argument, and the command bus is the only legitimate mutation path. R1 and R2 are one lint because at layer granularity R2 is exactly R1 restricted to {ai,ui,net} -- reporting them separately would double-count the same edges.",
+      "access": "write",
+      "fn_layers": ["ai", "ui", "net", "view"],
+      "region_layers": ["sim"]
+    },
+    {
+      "id": "R3",
+      "title": "Sim never reads presentation state",
+      "why": "Presentation state (camera, selection, hover, UI mode) is a third state island that render also reads, so it is not UI-internal. A sim read of it desyncs multiplayer SILENTLY -- there is no crash and no log line, only two machines quietly disagreeing.",
+      "access": "read",
+      "fn_layers": ["sim"],
+      "region_layers": ["ui"]
+    },
+    {
+      "id": "R4",
+      "title": "Render writes nothing but the framebuffer and presentation state",
+      "why": "Render must stay replaceable without sim risk -- it is the one subsystem the plan leaves in the original binary indefinitely, so it must not be load-bearing for determinism.",
+      "access": "write",
+      "fn_layers": ["view"],
+      "region_layers": ["sim", "ai", "net"]
+    },
+    {
+      "id": "R5",
+      "title": "cfg/resources are write-once at boot, read-only after",
+      "why": "Data-driven tables must stay pure inputs; a runtime write to cfg makes the same save load differently depending on what happened earlier in the session.",
+      "access": "write",
+      "fn_layers": ["sim", "ai", "net", "ui", "view"],
+      "region_layers": ["data"]
+    }
+  ],
+  "waivers": []
+}

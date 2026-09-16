@@ -1,0 +1,11 @@
+{
+  "class": "retired-addimport",
+  "_class_why": "0 sites; `imports` only -- see harness_load.",
+  "_comment": "EN-native twin of net_load.mh.patch.json (E1, MP-PORT). IMPORT-ONLY: adds the mh.dll import to a clean English retail /eng/mh.exe (md5 b3b389e8..., sha256 1cd5810c...) with NO code patches, so DllMain runs and the four module inits arm the MP stack when mh_net.ini is present. The DLL now runtime-detects EN (mh_port) and retargets every RU code VA to its EN counterpart, so the SAME mh.dll serves both the frozen RU rig and the EN primary. Run: python mhpatch.py apply <clean EN mh.exe> net_load_EN.mh.patch.json mh.mp.exe (then drop mh.dll + mh_net.ini beside mh.mp.exe on BOTH peers; role=host on one, role=client + host=<host-ip> on the other). Vanilla otherwise (no pool relocation) so the lobby/sim run exactly as EN retail.",
+  "target": "mh.exe (clean English retail, md5 b3b389e8...)",
+  "sha256": "1cd5810c5c0b845f0b7c8359a494243d9bec51397c8becfe149841be09c2562d",
+  "imports": {
+    "mh.dll": ["MH_HostedPoolBase"]
+  },
+  "patches": []
+}

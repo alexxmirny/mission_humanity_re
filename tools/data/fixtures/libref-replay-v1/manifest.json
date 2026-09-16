@@ -1,0 +1,179 @@
+{
+ "_what": "LIB-REF replay fixture: order+clock recording, step-0 world blob, and the replay's per-step lockstep hash stream -- all from ONE run.",
+ "_read_the_readme": "README.md beside this file carries the re-record procedure and the contract LIB-REF inherits. Do not regenerate half of this set.",
+ "version": 1,
+ "steps": 5000,
+ "provenance": {
+  "commit": "28c2b6be4fb79ad2aed06fdfd269b647f1a077ac",
+  "recorded": "2026-09-11",
+  "scenario_script": "sp_det.txt",
+  "synth_seed": 20260911,
+  "host": "local lane ui_libref_rec (headless, isolated desktop mh_rig), single peer",
+  "peers": "1 (single-player: host + 1 seated AI; no rig VMs)",
+  "run_dir": "workdir/mh_lanes/ui_libref_rec/logs/20260911_221943_solo",
+  "stream_from_run": "workdir/mh_lanes/ui_libref_rec/logs/20260911_222210_solo"
+ },
+ "replay_contract": {
+  "flags": {
+   "order_mode": 2,
+   "replay_ai_off": 0,
+   "replay_suppress_enqueue": 1,
+   "pin_wallclock": 1,
+   "fixed_step": 0,
+   "region_hash_step": 1,
+   "exit_on_stop": 1
+  },
+  "record_flags": {
+   "order_mode": 1,
+   "world_capture": 1,
+   "pin_wallclock": 1,
+   "fixed_step": 0,
+   "region_hash_step": 1,
+   "exit_on_stop": 1,
+   "synth_move": 1,
+   "synth_seed": 20260911,
+   "synth_at": 60,
+   "synth_every": 1,
+   "pin_fpu": 1,
+   "seed_mode": 2
+  },
+  "semantics": [
+   "replay_ai_off=0: the AI RUNS inside the sim. Turning it off changes the battlefield -- measured: strat_players/units/tile_objects diverge from ~step 200, because the AI does more than enqueue orders and the recording only holds orders.",
+   "replay_suppress_enqueue=1: the immediate-lane enqueue returns 0 and appends nothing, so the INJECTED recording is the only thing that reaches the order queue. The check sits at the SINK (mh::orders::detail::enqueue), not at the game entry's promotion wrapper where it lived until 2026-09-11 -- a wrapper gate saw only callers that crossed 0x00466094 and missed every libmh-internal caller the rebind routes straight to our body, which is how the harness's own synth_move workload appended one order per step past it. A standalone replayer must therefore suppress AT THE SINK too, or it is not reproducing this flag. SCOPE: the immediate lane is the only appender in a non-lockstep session; the mode-3 lane reaches the queue via release_due, which this flag deliberately does NOT suppress.",
+   "the injector overwrites QUEUE[0..n] and sets COUNT at the TOP of each sim step, before the step is hashed.",
+   "exit_on_stop=1 exits ONE STEP BOUNDARY LATE (harness.cpp, LIB-REF-REC): the stop step's sim body runs before the process leaves, so the recorder -- which hangs off llm_strat_order_queue_dispatch's entry, inside the body -- snapshots the exit step like every other step. Before that fix mh_orders.bin stopped one step short of mh_clock.bin and the replay injected k=0 on the final step."
+  ]
+ },
+ "compare": {
+  "channel": "state",
+  "why": "`state` drops the state_excluded() wall-clock/pacing regions and is identical across runs and across record/replay configurations (measured: step-1 state 52976C9B8B49D2A8 from four independent launches). `combined` folds those regions in and is a property of the RUN, not of the world -- measured different at step 1 of a record and its own replay. LIB-REF compares `state` and the per-region R columns; it must never compare `combined`.",
+  "region_columns": [
+   "buildings",
+   "productions",
+   "mines",
+   "turrets",
+   "unit_storage",
+   "labs",
+   "p0_ai_gates",
+   "p0_local",
+   "p0_ai_econ",
+   "p1_ai_gates",
+   "p1_local",
+   "p1_ai_econ",
+   "strat_players",
+   "planets",
+   "prod_slots",
+   "planet_status",
+   "projectile_pool",
+   "rng_state",
+   "game_clock",
+   "order_pending",
+   "units",
+   "tile_objects",
+   "soldiers",
+   "p2_ai_gates",
+   "p2_local",
+   "p2_ai_econ",
+   "p3_ai_gates",
+   "p3_local",
+   "p3_ai_econ",
+   "p4_ai_gates",
+   "p4_local",
+   "p4_ai_econ",
+   "p5_ai_gates",
+   "p5_local",
+   "p5_ai_econ",
+   "p6_ai_gates",
+   "p6_local",
+   "p6_ai_econ",
+   "p7_ai_gates",
+   "p7_local",
+   "p7_ai_econ",
+   "order_queue",
+   "order_queue_count",
+   "order_staging",
+   "order_staging_count",
+   "order_pending_arr",
+   "ls_horizon",
+   "ls_committed",
+   "peer_horizon",
+   "peer_pending",
+   "peer_timing",
+   "peer_state",
+   "current_game_time",
+   "frame_ring",
+   "fps_estimate",
+   "players",
+   "last_game_time",
+   "total_game_time",
+   "sim_step_interval",
+   "game_time_delta",
+   "game_speed"
+  ]
+ },
+ "step0": {
+  "world_content_hash": "36E21EFDCF184CFA",
+  "lockstep_combined": "F452009FFCE2B0FF",
+  "lockstep_state": "52976C9B8B49D2A8",
+  "game_clock": "3F9111276FB08000",
+  "step": 1,
+  "mask_flags": 7,
+  "hash_sink_fp": "68AADCE3",
+  "hash_manifest_fp": "BD36D78E",
+  "hash_slice_count": 61
+ },
+ "artifacts": {
+  "orders": {
+   "file": "orders.bin.zz",
+   "raw_bytes": 3968432,
+   "zlib_bytes": 206039,
+   "sha256_raw": "ec625663aa066aed99bcd224e5266015439fa7187114ff42afc6a144e78b0968"
+  },
+  "clock": {
+   "file": "clock.bin.zz",
+   "raw_bytes": 40000,
+   "zlib_bytes": 27966,
+   "sha256_raw": "bfcf3e8df9a8367bc296eab17a84449a67b88da8c047bac91e8da246a60de39c"
+  },
+  "world": {
+   "file": "world.bin.zz",
+   "raw_bytes": 8186488,
+   "zlib_bytes": 471546,
+   "sha256_raw": "b5a6501e1883d0b8d7628356c41b4b78be847fef50e87bfdedc3e5f1984b1b3b"
+  },
+  "hash_steps": {
+   "file": "hash_steps.txt.zz",
+   "raw_bytes": 278893,
+   "zlib_bytes": 152128,
+   "sha256_raw": "34c3625113de4b6d567c080e151e1e2aafa4e78f0c7619b6e7485cff379c3553"
+  },
+  "hash_regions": {
+   "file": "hash_regions.txt.zz",
+   "raw_bytes": 5218893,
+   "zlib_bytes": 535108,
+   "sha256_raw": "12f1ef6384c8a4e7154bc635942e02609e54beaae46e70e2afd7f6d4ec948af4"
+  }
+ },
+ "fidelity": {
+  "counts_guard": {
+   "checked": true,
+   "source_run": "workdir/mh_lanes/ui_libref_rec/logs/20260911_222257_solo",
+   "source_orders_sha256": "ec625663aa066aed99bcd224e5266015439fa7187114ff42afc6a144e78b0968",
+   "steps_measured": 5000,
+   "midstep_arrival_steps": [
+    75,
+    675,
+    1275,
+    1875,
+    2475,
+    3075,
+    3675,
+    4275,
+    4875
+   ],
+   "zero_to_n_steps": [],
+   "why": "A step whose top-of-step queue count is 0 but whose dispatch-entry count is not would never open the replay's count gate (dispatch is count-gated and the suppressed enqueue cannot raise it), so its orders would silently never execute. Measured, not assumed."
+  },
+  "re_record": "THE SIXTH RECORDING (2026-09-11, user ruling: the recorder exit-step fix and the suppression sink move, taken together in ONE re-record). `pack` rewrites this file wholesale, so the v1-v5 history is carried here in compressed form rather than lost: v1-v2 established the fixture; v3 was superseded by the INJECTOR TAIL-CLEAR (order_queue is hashed WHOLE, 300 slots of 0x44, while only [0, count) is live); v4 cleared the tail in the REPLAY injector only, and that asymmetry was itself a defect the verify guard correctly refused; v5 made the clear an unconditional step-level call in BOTH arms (harness.cpp order_queue_tail_clear), and the residue collapsed to the nine periodic instants. WHAT THE SIXTH CHANGES, and both halves are measured rather than argued. (2) THE RECORDER'S EXIT STEP: exit_on_stop used to ExitProcess from on_sim_step, i.e. at llm_strat_sim_step's ENTRY -- so the stop step's BODY never ran and order_record(), which hangs off llm_strat_order_queue_dispatch's entry inside that body, never snapshotted it. v5's mh_orders.bin therefore stopped at step 4999 while mh_clock.bin carried all 5000, the replay injected k=0 on the final step, and the standalone reference host came out one order short there. The exit is now deferred by one step boundary (consumed at the next on_sim_step or on_sim_tick, both provably after the body, with g_active already false so nothing of step N+1 is observed). MEASURED: mh_orders.bin is BYTE-IDENTICAL to v5 for its whole 3966632-byte prefix and gains exactly 1800 bytes = 25 records, all tagged step 5000, all of one identity (unit_index 1, owner_and_kind 0x80, param0 0x12, order_code 0x0B) -- the synth_move mothership move. mh_clock.bin is BYTE-IDENTICAL to v5 (5000 doubles both): the clock was never truncated, only the orders were. (3) SUPPRESSION AT THE SINK: replay_suppress_enqueue's check moved from mh::orders::promoted::enqueue (the thunk behind the game's 0x00466094 entry) to mh::orders::detail::enqueue. The wrapper gate saw only callers that crossed that entry, so every libmh-internal caller the rebind sends straight to our body walked past it -- including the harness's own synth_move workload, which appended one order per step the flag was supposed to have stopped. This CHANGES THE REPLAY TRAJECTORY (internal enqueues now return 0), which is why the hash streams legitimately moved and why a re-record was owed. THE RECORD ARM IS UNTOUCHED BY IT -- suppression is gated on order_mode==2 -- which is what the byte-identical prefix above independently confirms. THE RESIDUE SHRANK, and the guard was not relaxed to make it: verify PASSES fail-closed with attribute() untouched and --accept-marks NOT passed. 55 of 61 regions are identical across all 5000 steps (v5: 53), and the two declared marks are GONE -- the `units` blip at step 76 and the persistent `p1_local` AI-influence-grid mark from step 676 both had the un-suppressed workload order as their trigger, so closing the gate removed them at the source rather than excusing them. The nine periodic instants [75, 675, ... 4875] and their +0-step re-convergence remain, unchanged, as the sampling-instant mechanism attribute() has always described. counts-guard reproduces exactly (9 mid-step arrivals, 0 of them 0 -> n) and that run's mh_orders.bin and mh_clock.bin are byte-identical to the committed pair. world.bin is NOT byte-identical to v5 and that is expected: 66438 dwords differ, 60647 of them holding a user-space address in BOTH runs with a dominant constant delta of -5120 (a heap base shift), and registry_span_ptrs moves 107470 -> 106670 -- per-run pointer material, which the header counts precisely so it is visible rather than silent. The header's world-independent fields are unchanged, including lockstep_state = 52976C9B8B49D2A8, block_count 829, region_head_ptrs 11, and both build fingerprints. worldtest on the new blob: 13 checks, 0 failures. Same seed (20260911), scenario, flags and single-peer local lane as every recording since v1."
+ }
+}

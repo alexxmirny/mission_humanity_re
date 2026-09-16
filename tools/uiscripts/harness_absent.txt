@@ -1,0 +1,40 @@
+# fork F4E -- THE UNINSTRUMENTED BOOT: the game with no mh_harness.dll.
+#
+# The lane is provisioned with `make_lane --omit-satellite mh_harness.dll`, so the determinism/replay
+# instrument -- 8.3k lines that used to be mh.dll's single largest file -- is genuinely not in the
+# process. mh.dll still asks for it (LoadLibrary on an absolute path beside itself, from inside its
+# own DLL_PROCESS_ATTACH) and gets Win32 error 126, and the boot carries on.
+#
+# THE THIRD MEANING OF "ABSENT", and it is the quietest of the three. A missing mh_net.dll costs the
+# player multiplayer and the browser says so. A missing libmh.dll is configuration (1) -- the game
+# runs the original binary's own bodies. A missing mh_harness.dll costs NOTHING AT ALL: the harness
+# only ever observes, so this boot is bit-for-bit the boot every shipping player already gets, since
+# the instrument arms on `[harness] enable=1` and nothing else. That is exactly why it needs a test.
+# A lane that quietly lost this file would go on passing every pixel scenario in the suite while
+# `--determinism` had nothing to read.
+#
+# THE THREE HALVES, the same split as libmh_absent's:
+#   (a) HERE: the process reaches its menu and the menu renders, on a real frame. A static import
+#       would have failed process load at 0xC0000135 before one instruction of ours ran (measured,
+#       docs/dll-split.md), and there would be no frame to capture.
+#   (b) check_module_bind.py --module mh_harness --expect absent, run on this lane by the TESTS
+#       entry's post_check: the log says NOT BOUND with the path and the error, and the arm's end
+#       marker comes AFTER it -- the boot did not merely start, it ran the whole arm with the
+#       instrument missing. The entry also asserts the other two satellites are BOUND, so this
+#       scenario cannot pass on a lane that lost one of them instead.
+#   (c) the arm-order baselines, which carry this outcome as an `alt` on the bind's own step rather
+#       than as a fifth template: the harness's absence changes ONE line's text and nothing else's
+#       position, because an un-armed instrument and an absent one arm identically.
+#
+# WHAT IS DELIBERATELY NOT TESTED HERE: `[harness] enable=1` with the module missing, which is the
+# one loud case (mh_harness_refused.log on three channels). That is not a pixel question either --
+# it is a CONSOLE-LAUNCH shape, checked by hand with stderr redirected under R2's discipline, because
+# a green scenario proves the process survived and says nothing about what it wrote.
+
+# The 7-button sprite main menu. Sprite menus have no text labels, so the gate is by hotkey VALUE
+# (110 = NETWORK GAME) -- the same predicate menu_walk, no_net_boot, module_absent and libmh_absent
+# all open with.
+settled value:110
+capture w1_menu
+log uninstrumented boot COMPLETE -- the menu rendered with no harness in the process
+end

@@ -1,0 +1,538 @@
+{
+  "_generated_by": "tools/gen_inmem_manifest.py --audit",
+  "_what": "Every src/patcher manifest classified for IN-MEMORY application. `verdict` is a MANIFEST property: complete = its relocation metadata is total, so the cave may be placed anywhere; incomplete = appliable only at the baked VA, with `reason`; refused = structurally unrepresentable, no header is emitted. `prereqs` is the SEPARATE axis -- what mh/patch/inmem_patch.h must gain before that manifest can be compiled in. `class` is a THIRD axis and the manifest's own declaration (fork ruling Q7): what the file is FOR. The compile list is every class `shipped` manifest and nothing else, so this extract is where a change to what mh.dll carries becomes visible.",
+  "manifest_count": 40,
+  "site_count": 46294,
+  "by_verdict": {
+    "complete": 32,
+    "incomplete": 0,
+    "refused": 8
+  },
+  "sites_by_verdict": {
+    "complete": 46282,
+    "incomplete": 0,
+    "refused": 12
+  },
+  "by_class": {
+    "layered": 1,
+    "reference": 25,
+    "reimplemented": 7,
+    "retired-addimport": 4,
+    "shipped": 3
+  },
+  "shipped": [
+    "grand_all_caphike_storagecap_EN",
+    "projectile_pool_caphike_EN",
+    "projectile_pool_relocate_EN"
+  ],
+  "cave_space_hi": "0x013d0000",
+  "manifests": [
+    {
+      "name": "allpools_roster_caphike",
+      "class": "reference",
+      "sites": 3913,
+      "verdict": "complete",
+      "reason": "",
+      "sections": 1,
+      "refs": 2110,
+      "ref_kinds": {
+        "abs32_to_section": 2038,
+        "rel32_to_image": 49,
+        "rel32_to_section": 23
+      },
+      "prereqs": []
+    },
+    {
+      "name": "allpools_roster_relocate",
+      "class": "reference",
+      "sites": 2038,
+      "verdict": "complete",
+      "reason": "",
+      "sections": 1,
+      "refs": 2038,
+      "ref_kinds": {
+        "abs32_to_section": 2038
+      },
+      "prereqs": []
+    },
+    {
+      "name": "buildings_caphike",
+      "class": "reference",
+      "sites": 2952,
+      "verdict": "complete",
+      "reason": "",
+      "sections": 1,
+      "refs": 1642,
+      "ref_kinds": {
+        "abs32_to_section": 1570,
+        "rel32_to_image": 49,
+        "rel32_to_section": 23
+      },
+      "prereqs": []
+    },
+    {
+      "name": "buildings_relocate",
+      "class": "reference",
+      "sites": 1570,
+      "verdict": "complete",
+      "reason": "",
+      "sections": 1,
+      "refs": 1570,
+      "ref_kinds": {
+        "abs32_to_section": 1570
+      },
+      "prereqs": []
+    },
+    {
+      "name": "cd_audio_nonfatal",
+      "class": "reimplemented",
+      "sites": 1,
+      "verdict": "complete",
+      "reason": "",
+      "sections": 0,
+      "refs": 0,
+      "ref_kinds": {},
+      "prereqs": []
+    },
+    {
+      "name": "cd_audio_nonfatal_EN",
+      "class": "reimplemented",
+      "sites": 1,
+      "verdict": "complete",
+      "reason": "",
+      "sections": 0,
+      "refs": 0,
+      "ref_kinds": {},
+      "prereqs": []
+    },
+    {
+      "name": "example",
+      "class": "reference",
+      "sites": 0,
+      "verdict": "refused",
+      "reason": "example carries 1 key(s) this generator does not read, and an unread key is refused rather than ignored: `imports` (manifest): `imports` is an addimport-time instruction: it adds an IMPORT DESCRIPTOR to the target FILE, which the fork retires (the proxy injector replaces it). Accepting it would mean claiming parity with an mhpatch output that differs by a whole import section",
+      "sections": 0,
+      "refs": 0,
+      "ref_kinds": {},
+      "prereqs": []
+    },
+    {
+      "name": "grand_all_caphike",
+      "class": "reference",
+      "sites": 7748,
+      "verdict": "complete",
+      "reason": "",
+      "sections": 1,
+      "refs": 4218,
+      "ref_kinds": {
+        "abs32_to_section": 4073,
+        "rel32_to_image": 98,
+        "rel32_to_section": 47
+      },
+      "prereqs": []
+    },
+    {
+      "name": "grand_all_caphike_storagecap",
+      "class": "reference",
+      "sites": 7750,
+      "verdict": "complete",
+      "reason": "",
+      "sections": 2,
+      "refs": 4250,
+      "ref_kinds": {
+        "abs32_to_section": 4081,
+        "rel32_to_image": 113,
+        "rel32_to_section": 56
+      },
+      "prereqs": []
+    },
+    {
+      "name": "grand_all_caphike_storagecap_EN",
+      "class": "shipped",
+      "sites": 7770,
+      "verdict": "complete",
+      "reason": "",
+      "sections": 2,
+      "refs": 4260,
+      "ref_kinds": {
+        "abs32_to_section": 4091,
+        "rel32_to_image": 113,
+        "rel32_to_section": 56
+      },
+      "prereqs": []
+    },
+    {
+      "name": "grand_all_relocate",
+      "class": "reference",
+      "sites": 4073,
+      "verdict": "complete",
+      "reason": "",
+      "sections": 1,
+      "refs": 4073,
+      "ref_kinds": {
+        "abs32_to_section": 4073
+      },
+      "prereqs": []
+    },
+    {
+      "name": "harness_load",
+      "class": "retired-addimport",
+      "sites": 0,
+      "verdict": "refused",
+      "reason": "harness_load carries 1 key(s) this generator does not read, and an unread key is refused rather than ignored: `imports` (manifest): `imports` is an addimport-time instruction: it adds an IMPORT DESCRIPTOR to the target FILE, which the fork retires (the proxy injector replaces it). Accepting it would mean claiming parity with an mhpatch output that differs by a whole import section",
+      "sections": 0,
+      "refs": 0,
+      "ref_kinds": {},
+      "prereqs": []
+    },
+    {
+      "name": "housing85",
+      "class": "reference",
+      "sites": 1,
+      "verdict": "complete",
+      "reason": "",
+      "sections": 0,
+      "refs": 0,
+      "ref_kinds": {},
+      "prereqs": []
+    },
+    {
+      "name": "launch_load",
+      "class": "retired-addimport",
+      "sites": 0,
+      "verdict": "refused",
+      "reason": "launch_load carries 1 key(s) this generator does not read, and an unread key is refused rather than ignored: `imports` (manifest): `imports` is an addimport-time instruction: it adds an IMPORT DESCRIPTOR to the target FILE, which the fork retires (the proxy injector replaces it). Accepting it would mean claiming parity with an mhpatch output that differs by a whole import section",
+      "sections": 0,
+      "refs": 0,
+      "ref_kinds": {},
+      "prereqs": []
+    },
+    {
+      "name": "net_load",
+      "class": "retired-addimport",
+      "sites": 0,
+      "verdict": "refused",
+      "reason": "net_load carries 1 key(s) this generator does not read, and an unread key is refused rather than ignored: `imports` (manifest): `imports` is an addimport-time instruction: it adds an IMPORT DESCRIPTOR to the target FILE, which the fork retires (the proxy injector replaces it). Accepting it would mean claiming parity with an mhpatch output that differs by a whole import section",
+      "sections": 0,
+      "refs": 0,
+      "ref_kinds": {},
+      "prereqs": []
+    },
+    {
+      "name": "net_load_EN",
+      "class": "retired-addimport",
+      "sites": 0,
+      "verdict": "refused",
+      "reason": "net_load_EN carries 1 key(s) this generator does not read, and an unread key is refused rather than ignored: `imports` (manifest): `imports` is an addimport-time instruction: it adds an IMPORT DESCRIPTOR to the target FILE, which the fork retires (the proxy injector replaces it). Accepting it would mean claiming parity with an mhpatch output that differs by a whole import section",
+      "sections": 0,
+      "refs": 0,
+      "ref_kinds": {},
+      "prereqs": []
+    },
+    {
+      "name": "net_resync_wait_fix",
+      "class": "reimplemented",
+      "sites": 1,
+      "verdict": "complete",
+      "reason": "",
+      "sections": 0,
+      "refs": 0,
+      "ref_kinds": {},
+      "prereqs": []
+    },
+    {
+      "name": "net_resync_wait_fix_EN",
+      "class": "reimplemented",
+      "sites": 1,
+      "verdict": "complete",
+      "reason": "",
+      "sections": 0,
+      "refs": 0,
+      "ref_kinds": {},
+      "prereqs": []
+    },
+    {
+      "name": "no_cd_EN",
+      "class": "reimplemented",
+      "sites": 1,
+      "verdict": "complete",
+      "reason": "",
+      "sections": 1,
+      "refs": 2,
+      "ref_kinds": {
+        "rel32_to_image": 1,
+        "rel32_to_section": 1
+      },
+      "prereqs": []
+    },
+    {
+      "name": "projectile_pool_caphike",
+      "class": "reference",
+      "sites": 77,
+      "verdict": "complete",
+      "reason": "",
+      "sections": 1,
+      "refs": 75,
+      "ref_kinds": {
+        "abs32_to_section": 75
+      },
+      "prereqs": []
+    },
+    {
+      "name": "projectile_pool_caphike_EN",
+      "class": "shipped",
+      "sites": 77,
+      "verdict": "complete",
+      "reason": "",
+      "sections": 1,
+      "refs": 75,
+      "ref_kinds": {
+        "abs32_to_section": 75
+      },
+      "prereqs": []
+    },
+    {
+      "name": "projectile_pool_relocate",
+      "class": "reference",
+      "sites": 75,
+      "verdict": "complete",
+      "reason": "",
+      "sections": 1,
+      "refs": 75,
+      "ref_kinds": {
+        "abs32_to_section": 75
+      },
+      "prereqs": []
+    },
+    {
+      "name": "projectile_pool_relocate_EN",
+      "class": "shipped",
+      "sites": 75,
+      "verdict": "complete",
+      "reason": "",
+      "sections": 1,
+      "refs": 75,
+      "ref_kinds": {
+        "abs32_to_section": 75
+      },
+      "prereqs": []
+    },
+    {
+      "name": "recovered",
+      "class": "reference",
+      "sites": 2,
+      "verdict": "refused",
+      "reason": "recovered carries 3 key(s) this generator does not read, and an unread key is refused rather than ignored: `imports` (manifest): `imports` is an addimport-time instruction: it adds an IMPORT DESCRIPTOR to the target FILE, which the fork retires (the proxy injector replaces it). Accepting it would mean claiming parity with an mhpatch output that differs by a whole import section; `fixups` (patch 0): `fixups` overwrites 4 bytes with a resolved IAT slot VA (src/patcher/mhpatch.py:429) and is read by NOTHING on the in-memory path. A manifest whose relocation-critical key is dropped cannot be claimed relocatable; `fixups` (patch 1): `fixups` overwrites 4 bytes with a resolved IAT slot VA (src/patcher/mhpatch.py:429) and is read by NOTHING on the in-memory path. A manifest whose relocation-critical key is dropped cannot be claimed relocatable",
+      "sections": 0,
+      "refs": 0,
+      "ref_kinds": {},
+      "prereqs": []
+    },
+    {
+      "name": "run_without_focus",
+      "class": "reimplemented",
+      "sites": 1,
+      "verdict": "complete",
+      "reason": "",
+      "sections": 0,
+      "refs": 0,
+      "ref_kinds": {},
+      "prereqs": []
+    },
+    {
+      "name": "run_without_focus_EN",
+      "class": "reimplemented",
+      "sites": 1,
+      "verdict": "complete",
+      "reason": "",
+      "sections": 0,
+      "refs": 0,
+      "ref_kinds": {},
+      "prereqs": []
+    },
+    {
+      "name": "sight_redirect",
+      "class": "reference",
+      "sites": 1,
+      "verdict": "refused",
+      "reason": "sight_redirect carries 1 key(s) this generator does not read, and an unread key is refused rather than ignored: `imports` (manifest): `imports` is an addimport-time instruction: it adds an IMPORT DESCRIPTOR to the target FILE, which the fork retires (the proxy injector replaces it). Accepting it would mean claiming parity with an mhpatch output that differs by a whole import section",
+      "sections": 0,
+      "refs": 0,
+      "ref_kinds": {},
+      "prereqs": []
+    },
+    {
+      "name": "soldiers_caphike",
+      "class": "reference",
+      "sites": 355,
+      "verdict": "complete",
+      "reason": "",
+      "sections": 1,
+      "refs": 201,
+      "ref_kinds": {
+        "abs32_to_section": 183,
+        "rel32_to_image": 12,
+        "rel32_to_section": 6
+      },
+      "prereqs": []
+    },
+    {
+      "name": "soldiers_relocate",
+      "class": "reference",
+      "sites": 183,
+      "verdict": "complete",
+      "reason": "",
+      "sections": 1,
+      "refs": 183,
+      "ref_kinds": {
+        "abs32_to_section": 183
+      },
+      "prereqs": []
+    },
+    {
+      "name": "storage100_housing85",
+      "class": "reference",
+      "sites": 43,
+      "verdict": "complete",
+      "reason": "",
+      "sections": 1,
+      "refs": 36,
+      "ref_kinds": {
+        "rel32_to_image": 18,
+        "rel32_to_section": 18
+      },
+      "prereqs": []
+    },
+    {
+      "name": "storage_cap_variable",
+      "class": "reference",
+      "sites": 9,
+      "verdict": "complete",
+      "reason": "",
+      "sections": 1,
+      "refs": 24,
+      "ref_kinds": {
+        "rel32_to_image": 15,
+        "rel32_to_section": 9
+      },
+      "prereqs": []
+    },
+    {
+      "name": "storage_cap_variable_grand",
+      "class": "layered",
+      "sites": 9,
+      "verdict": "refused",
+      "reason": "section 0 holds an absolute 0x127ccd0 at +0x1a naming CAVE SPACE that no declared section covers",
+      "sections": 0,
+      "refs": 0,
+      "ref_kinds": {},
+      "prereqs": []
+    },
+    {
+      "name": "subpools_4cap_caphike",
+      "class": "reference",
+      "sites": 405,
+      "verdict": "complete",
+      "reason": "",
+      "sections": 1,
+      "refs": 185,
+      "ref_kinds": {
+        "abs32_to_section": 185
+      },
+      "prereqs": []
+    },
+    {
+      "name": "subpools_4cap_relocate",
+      "class": "reference",
+      "sites": 185,
+      "verdict": "complete",
+      "reason": "",
+      "sections": 1,
+      "refs": 185,
+      "ref_kinds": {
+        "abs32_to_section": 185
+      },
+      "prereqs": []
+    },
+    {
+      "name": "subpools_allcaps_caphike",
+      "class": "reference",
+      "sites": 935,
+      "verdict": "complete",
+      "reason": "",
+      "sections": 1,
+      "refs": 443,
+      "ref_kinds": {
+        "abs32_to_section": 443
+      },
+      "prereqs": []
+    },
+    {
+      "name": "subpools_allcaps_relocate",
+      "class": "reference",
+      "sites": 443,
+      "verdict": "complete",
+      "reason": "",
+      "sections": 1,
+      "refs": 443,
+      "ref_kinds": {
+        "abs32_to_section": 443
+      },
+      "prereqs": []
+    },
+    {
+      "name": "turrets_caphike",
+      "class": "reference",
+      "sites": 172,
+      "verdict": "complete",
+      "reason": "",
+      "sections": 1,
+      "refs": 88,
+      "ref_kinds": {
+        "abs32_to_section": 88
+      },
+      "prereqs": []
+    },
+    {
+      "name": "turrets_relocate",
+      "class": "reference",
+      "sites": 88,
+      "verdict": "complete",
+      "reason": "",
+      "sections": 1,
+      "refs": 88,
+      "ref_kinds": {
+        "abs32_to_section": 88
+      },
+      "prereqs": []
+    },
+    {
+      "name": "units_caphike",
+      "class": "reference",
+      "sites": 3486,
+      "verdict": "complete",
+      "reason": "",
+      "sections": 1,
+      "refs": 1928,
+      "ref_kinds": {
+        "abs32_to_section": 1852,
+        "rel32_to_image": 51,
+        "rel32_to_section": 25
+      },
+      "prereqs": []
+    },
+    {
+      "name": "units_relocate",
+      "class": "reference",
+      "sites": 1852,
+      "verdict": "complete",
+      "reason": "",
+      "sections": 1,
+      "refs": 1852,
+      "ref_kinds": {
+        "abs32_to_section": 1852
+      },
+      "prereqs": []
+    }
+  ]
+}

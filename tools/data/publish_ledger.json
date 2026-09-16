@@ -1,0 +1,294 @@
+{
+ "_what": "fork F5A: the PUBLISHABILITY LEDGER. One disposition for every path git tracks, so that the public cut is a derived set and not a judgement call made per file at cut time. Dispositions: publish | withhold | user_pending | publish_after. The publish set is exactly `disposition == publish`; everything else stays out of the public tree (a user_pending row is withheld-for-now, not withheld-forever).",
+
+ "_derived_from": "git ls-files at HEAD -- NOT from docs/fork-inventory.md sec 3, which this file supersedes. The inventory was measured 2026-09-12 against a four-milestone-older tree and enumerated by hand; enumerating from it again was the named risk on the F5A tracker item. These rules are matched against a live `git ls-files` on every run, so a path that appears after this file was written has NO rule and FAILS -- new files fail closed, they do not default to publishable.",
+
+ "_verify": "python tools/check_publishable.py           -- every tracked path dispositioned, every rule alive, count asserted against git ls-files\npython tools/check_publishable.py --closure  -- no PUBLISHED source needs a non-published path (the F5C contradiction class), except the declared exceptions below\npython tools/check_publishable.py --report   -- the pending summary: how many rows, waiting on which question\npython tools/check_publishable.py --publish-list -- the publish set itself (F5C/F5M consume this)\npython tools/check_publishable.py --selftest -- the planted-violation reds\nThe first two are lint_repo rows.",
+
+ "_falsifiability": "Three arms make this file a declaration that can be PROVEN WRONG rather than a list that can quietly rot: (1) a tracked path no rule matches is a FAILURE, so the ledger cannot fall behind the tree; (2) a rule that matches ZERO paths is a FAILURE, so a rule cannot outlive the files it was written for (a deleted file leaves a dead rule that must be removed deliberately); (3) every closure exception below must still REPRODUCE -- when F5C repoints the fixtures or the user rules Q3, the exception stops reproducing and the check FAILS until the row is deleted. This is the tools/data/libref_asset_dispositions.json (F4G) precedent applied to the whole tree.",
+
+ "_two_axes_warning": "`publish` here means PUBLISHABLE AND INTENDED FOR THE PUBLIC TREE -- no retail bytes, no private data, and wanted in the cut. It is NOT the same question as KEEP-vs-ARCHIVE, which is F5G's (is this tool still used?). Where the two could disagree, this ledger takes the publish call and F5G refines within `tools/`; F5G's disposition file must not contradict a row here without saying so.",
+
+ "_measured": {
+  "date": "2026-09-14",
+  "head": "145ddcd9",
+  "tracked_paths": 3801,
+  "tracked_paths_note": "3,800 at HEAD 145ddcd9 plus this item's own two files (tools/check_publishable.py, tools/data/publish_ledger.json), which land under the tools-tree rule, minus the root setup.dat F5B deleted (Q9). The check reports drift from this number as a note, never as a failure -- the FAILURE for a new file is that no rule covers it.",
+  "tracked_bytes": 126260082,
+  "tracked_MiB": 120.41,
+  "note_on_inherited_counts": "The F5 measurement quoted 3,799 files / 120.1MB at 433744ff. Re-derived: 3,799 at 433744ff is EXACT (git ls-tree -r), and HEAD is 3,800 because notes/2026-09-14.md was added after the measurement -- the only path difference between the two commits. 120.41 MiB (126,260,082 bytes) vs the quoted 120.1MB is a MiB-vs-MB rendering of one tree, not a change.",
+  "retail_expect_bytes": 191736,
+  "retail_expect_sites": 46294,
+  "retail_replacement_bytes": 191710,
+  "patch_manifests": 40,
+  "note_on_expect_bytes": "191,736 / 46,294 CONFIRMED EXACT against the inherited figures -- but only after a correction worth recording: the first walk here counted every hex string under a patch record and returned 383,451 bytes over 92,588 sites, exactly double. Each record carries BOTH `expect` (the retail bytes, 191,736) and `bytes` (our replacement, 191,710). Only `expect` is retail. A doubled count would have overstated the Q3 surface by 100%.",
+  "retail_entry_guard_bytes_mh_export": 16792,
+  "retail_entry_guard_bytes_dll_call_protos": 21328,
+  "baseline_pngs": 77,
+  "baseline_png_MiB": 19.32,
+  "baseline_scenario_dirs": 35,
+  "baseline_ignore_masks": 19,
+  "libref_fixture_MiB": 4.17,
+  "lzw_fixture_header_bytes": 383920,
+  "lzw_fixture_save_bytes": 38170,
+  "lzw_fixture_blocks": 6,
+  "lzw_source_save": "tools/uiscripts/saves/11.sav",
+  "lzw_source_md5": "3101b024f369d266a15c5deee0e12978",
+  "note_on_lzw_fixtures": "F5C, 2026-09-14. The F0 row's `384 KB` is the .h FILE (383,920 bytes of C source text); the SAVE bytes embedded are 38,170 across 6 blocks -- a 10x gap between text size and retail surface, the same conflation class as the doubled expect-bytes walk above. The repoint from machine.DEFAULT_SAV to the committed save changed NOTHING in the header: the machine-local 11.sav and the committed one are the same file (md5 3101b024f369d266a15c5deee0e12978, 378,352 bytes, 102 LZW blocks, identical per-block bits/resets census), and the regenerated header is byte-for-byte the committed one. The committed default is also the only one that WORKS on a clean clone -- machine_config's committed DEFAULT_SAV (F:/games/mh_en/save/11.sav) does not exist even on this box, which resolves it through machine.local.json.",
+  "publishonly_build_errors": 85,
+  "note_on_publishonly_build": "F5C, 2026-09-14. Release build of a scratch tree holding ONLY the publish set: 85 hard errors, all Q3 (81 TUs missing addr/mh_export.gen.h, 2 missing the compiled caphike manifest, 2 missing the CRT transcription sources). The withheld set (1,292 paths) costs the build NOTHING -- that tree, plus the user_pending set, builds all 7 named artifacts and passes selftests + libref.",
+  "crt_naked_transcribed_bodies": 27,
+  "crt_asm_lines_by_mnemonic": 1111,
+  "crt_asm_lines_by_asm_block": 1210,
+  "note_on_crt_asm_lines": "The inherited figure was 933 (685 crt_vendor + 248 fp_x87). Re-derived two ways and neither reproduces it: matching x86 mnemonics gives 915 + 196 = 1,111; counting every non-comment line inside an __asm block gives 1,005 + 205 = 1,210. The count is method-dependent and no method is privileged, so the ledger carries the range and leans on the STRUCTURAL figure instead -- 27 naked transcribed bodies, which is exact and countable. Treat any quoted line total as an order of magnitude."
+ },
+
+ "_public_tree_marker": {
+  "rule": "private-research-layers",
+  "why": "fork F5M: HOW A TOOL TELLS THE PRIVATE WORKING TREE FROM THE CUT'S OUTPUT, declared here rather than inferred at each call site. A tree is the CUT'S OUTPUT when the named rule owns ZERO tracked paths. That rule is the research repo itself -- notes/, session_reports/, tasks/, tracker/, .claude/, report/ and the four root process documents -- so a private checkout always carries some of it and the public cut never carries any of it. WHY NOT THE OBVIOUS TEST ('no tracked path is non-published'): that answer is destroyed by the very defect the public check exists to catch. One leaked baseline PNG would make a public clone read as private, the public arms would never run, and the leak would go unreported. Keying on ONE rule that a leak elsewhere cannot touch keeps the detector honest -- and a leak of THIS rule's own files is still caught, because the private arms then run against a tree where every other withhold rule matches nothing, which is their dead-rule failure. Either way it is RED, which is the only property that matters. Used by check_publishable --public and by lint_repo, which chooses the publish-ledger rows by tree rather than by its --ci flag (--ci runs on the private repo too)."
+ },
+
+ "_rule_semantics": "Rules are evaluated IN ORDER; the FIRST rule whose glob set matches a path owns it. So specific rows precede the subtree rows they carve out of. `globs` are fnmatch patterns over the forward-slash repo-relative path.",
+
+ "rules": [
+
+  {"id": "setup-seed-dat", "disposition": "publish", "globs": ["tools/uiscripts/setup.seed.dat"],
+   "why": "The lane-provisioning seed: our own provisioning artifact, and a lane needs the MRU server-IP list that a never-played install lacks (make_lane.py's comment above SEED_SETUP). It was `publish_after` because its BYTES carried a personal relay host; F5B regenerated it with tools/setup_dat.py, which rewrites ONLY the IP MRU record and keeps the 97-byte header + LZW settings block and both trailers byte-for-byte -- so it is still a PLAYED-shape file and the pin still works, which a fresh never-played stub would not be. Pinned values are now the rig's documented defaults (server 192.168.0.37 = machine_config RIG_PEER_A; game `uitest`, player `host` were already the harness's own neutral names). Proven live: a real lane provision plus the ip_cancel UI scenario, whose i2 capture renders that very field."},
+
+  {"id": "mh-tunnel", "disposition": "publish", "globs": ["tools/mh_tunnel.bat", "tools/mh_tunnel.ps1"],
+   "why": "The rig's SSH reverse-tunnel scripts. Our own code, no retail content. They used to default to one operator's own VPS; F5B took the host out entirely -- argument, then %MH_TUNNEL_VPS%, and with neither the .ps1 REFUSES rather than dialling whatever was committed here. (A .ps1 deployed next to the game cannot import machine_config.py, so it reads the same MH_-prefixed environment variable that module's override layer uses.)"},
+
+  {"id": "lzw-fixtures", "disposition": "publish",
+   "globs": ["src/mh_dll/mh_nettest/sv1_lzw_fixtures.gen.h"],
+   "why": "Q6, ruled by the conductor; FLIPPED from publish_after by F5C 2026-09-14. SIZE CORRECTED while flipping (R9): the F0 row said `384 KB of LZW blocks copied byte-for-byte out of a save file`, which is the .h FILE size (383,920 bytes of C source text). The save bytes actually embedded are 38,170 across SIX blocks -- a 10x overstatement of the retail surface, the same text-size-for-byte-count conflation F5A caught in the expect-bytes walk. The F0 inventory ruled this unpublishable, but that verdict PREDATES the user's 2026-09-12 ruling that tools/uiscripts/saves/*.sav publish. F5C repointed gen_lzw_fixtures.py's DEFAULT_SAV from machine.DEFAULT_SAV (a path into a machine-local game install) to the committed tools/uiscripts/saves/11.sav and regenerated: the header is now derived from a user-ruled-publishable source, and a clean clone can re-derive it with no machine configuration. MEASURED, not assumed: the two files were byte-identical (md5 3101b024f369d266a15c5deee0e12978, 378,352 bytes, 102 LZW blocks, identical per-block feature census), so the regenerated header is byte-for-byte the committed one -- the repoint moved the PROVENANCE, not the fixtures, and savetest's assertions needed no re-derivation. This row was the F5C blocker: save_selftest.cpp:21 includes the header unconditionally, so the public tree did not compile while the row said publish_after (the save-selftest-lzw closure exception, deleted with this flip)."},
+
+  {"id": "retail-expect-manifests", "disposition": "publish",
+   "globs": ["src/patcher/*.mh.patch.json"],
+   "why": "Q3 ANSWERED (user, 2026-09-15): PUBLISH. 40 manifests carrying 46,294 patch sites and 191,736 bytes of ORIGINAL retail machine code in their `expect` fields (re-measured at HEAD; the replacement `bytes` fields are ours, 191,710). WHY THAT IS NOT A REDISTRIBUTION, measured at F5M before the flip: the entire Q3 surface is ~268,031 bytes = 2.03% of a 12.6 MB executable, and it is DISCONTIGUOUS -- median expect site 4 bytes, p90 4, max 79. Nothing contiguous, nothing reassemblable into a runnable anything. The expect field is what makes a patch REFUSE a binary it was not built for -- strip it and mhpatch becomes a blind byte-poker that will corrupt somebody's exe. The bytes are a per-site fingerprint of code the user must already own to use any of this."},
+
+  {"id": "retail-expect-compiled-manifests", "disposition": "publish",
+   "globs": ["src/mh_dll/mh/patch/manifest_*.gen.h", "src/mh_dll/mh_nettest/manifest_no_cd_en.fixture.gen.h"],
+   "why": "Q3 ANSWERED (user, 2026-09-15): PUBLISH, with its source row above -- the same discontiguous ~4-byte expect fingerprints (2.03% of the exe in total), compiled. manifest_grand_all_caphike_storagecap_en.gen.h alone is 2.39 MB (23,328 byte-triple rows); the two projectile-pool manifests and the no_cd fixture are small. The Q3 withhold branch is now closed: it would have taken in-memory patching out of the public build entirely, which is what the inmem-compiled-manifests closure exception existed to measure -- deleted with this flip, since manifests.gen.h now includes only published headers."},
+
+  {"id": "retail-entry-guards-export", "disposition": "publish",
+   "globs": ["src/mh_dll/mh/addr/mh_export.gen.h"],
+   "why": "Q3 ANSWERED (user, 2026-09-15): PUBLISH -- 2,099 discontiguous 8-byte guards, part of the ~268,031-byte / 2.03%-of-the-exe Q3 surface F5M measured. NOT IN THE F0 LEDGER AND NOT IN THE F5 MEASUREMENT -- found by F5A. 2,099 eight-byte entry-point guards (16,792 bytes of literal retail machine code) live in this generated header as the arm guard for MH_EXPORT_REPLACE: the detour refuses to install unless the function's first 8 bytes are what the DB said they were. Structurally identical to the manifest expect-bytes, and load-bearing for exactly the same reason, so it belonged to Q3. The withhold branch was never a corner: the header is the spine of every promotion and the build would have stopped. F5C MEASURED THAT STOP rather than predicting it (2026-09-14): a scratch tree holding the publish set ONLY -- every user_pending path physically absent -- fails the Release build with 85 hard errors, and ALL 85 ARE Q3: 81 translation units on `Cannot open include file: addr/mh_export.gen.h`, 2 on the compiled caphike manifest, 2 on the missing CRT transcription sources. Nothing in the failure set comes from Q2, Q4 or Q5. Read the 81 against the 42 dependent SOURCES this ledger reports: 37 of those #include the header directly and the rest reach it through headers, so the per-TU blast radius is roughly double the per-file one."},
+
+  {"id": "retail-entry-guards-protos", "disposition": "publish",
+   "globs": ["tools/data/dll_call_protos.json"],
+   "why": "Q3 ANSWERED (user, 2026-09-15): PUBLISH -- 2,666 discontiguous 8-byte entry words, inside the same ~268,031-byte / 2.03% Q3 surface. NOT IN THE F0 LEDGER -- found by F5A. The same 8-byte entry words as the header above, at their source: 2,666 `entry8` fields = 21,328 bytes of retail code, alongside the names/VAs/storage that make up the rest of the file. This is the ONE tools/data JSON that carries retail bytes rather than only names and addresses (verified: aux_symbols.json is names + address->name maps + function extents; en_addr_index.json is addresses, names, extents and call-site labels; neither holds a byte array). gen_dll_calls.py/gen_dll_exports.py consume it and lint_repo drift-gates on it."},
+
+  {"id": "crt-transcriptions", "disposition": "publish",
+   "globs": ["src/mh_dll/mh_nettest/crt_vendor_selftest.cpp", "src/mh_dll/mh_nettest/fp_x87_selftest.cpp"],
+   "why": "Q3 ANSWERED (user, 2026-09-15): PUBLISH. This is the one genuinely CONTIGUOUS transcription in the Q3 set, and it is OPEN WATCOM's runtime rather than Techland's game logic -- THIRD_PARTY.md already names it under the Sybase Open Watcom Public License 1.0, so the answer and Q2's no-retail-assets statement agree. 27 `__declspec(naked)` bodies in crt_vendor_selftest.cpp transcribed from the statically-linked Watcom CRT inside the retail exe, plus the x87 asm in fp_x87_selftest.cpp. Line counts are method-dependent (915 + 196 = 1,111 by an x86-mnemonic match; 1,005 + 205 = 1,210 counting every non-comment line inside an __asm block; the inherited figure was 933) -- the structural claim, 27 transcribed bodies, is exact. They are the oracle proving our vendored replacements match, and without them the vendoring is unproven."},
+
+  {"id": "libref-fixtures", "disposition": "publish",
+   "globs": ["tools/data/fixtures/**"],
+   "why": "Q5 ANSWERED (user, 2026-09-15): PUBLISH. 4.17 MiB of structured SIM STATE (world.bin.zz, clock.bin.zz, orders.bin.zz, per-step and per-region hash streams) captured off live runs, across three fixture sets. Not retail file bytes and not rendered frames -- derived state produced by running the game, closer to a hashed oracle than to a recording. These ARE the offline half of CI: withheld, replay_libref.py would have had nothing to replay and the umbrella's named offline CI subset would have lost roughly half its surface, leaving build + selftests only. tools/data/libref_asset_dispositions.json (F4G) is the companion declaration about what the fixtures ask of a bank they do not carry. F5C MEASURED Q5's cost the same way (2026-09-14): withholding these costs the BUILD nothing -- they are data, not compile inputs, and the publish-only build's 85 errors are all Q3 -- and costs config (3) everything: with the directory absent replay_libref.py has no fixture to discover and REFUSES at exit 2 (`no fixture directory at ...`). It used to die there with a FileNotFoundError traceback at exit 1, which in CI reads like a broken tool rather than a declared absence; F5C made the missing root take the same Refusal path the empty one already took."},
+
+  {"id": "baseline-frames", "disposition": "withhold",
+   "globs": ["tools/uiscripts/baselines/**/*.png"],
+   "why": "Q7, RULED by the conductor: 77 PNGs / 19.32 MiB of the real game's rendered frames across 35 scenario directories. Rendered retail art, machine-recordable, and the largest single mass in the tree. The UI suite ships bring-your-own-game: `test_ui.py --update-baselines` against the user's own copy is the on-ramp."},
+
+  {"id": "baseline-masks", "disposition": "publish",
+   "globs": ["tools/uiscripts/baselines/**/_ignore.json"],
+   "why": "MY CALL, stated per the brief: the 19 `_ignore.json` region masks PUBLISH even though the frames beside them do not. They are hand-authored rectangles naming which parts of a frame are non-deterministic (IP text, clocks) -- tiny, human work, zero retail content. Withholding them would make the --update-baselines on-ramp lossy: a user would regenerate the PNGs and then immediately re-derive masks we already wrote. The empty scenario directories that result are the intended shape -- the mask says what the frame will need when the user makes one."},
+
+  {"id": "journals", "disposition": "publish",
+   "globs": ["tools/uiscripts/journals/*.journal", "tools/uiscripts/journals/*.oracle.gz"],
+   "why": "D10, ruled at the plan: 9 hand-recorded UI input streams (a human played the scenario) and 2 hashed replay oracles. Human work and hashes, not recordings of retail output. Note the F0 inventory's third journal row, journals/raw/*.zip, has no tracked file at HEAD -- the raw pre-trim captures are not in git, so there is no row for them."},
+
+  {"id": "saves", "disposition": "publish",
+   "globs": ["tools/uiscripts/saves/**"],
+   "why": "User-ruled publishable 2026-09-12. 11.sav and ayy30.sav are the committed save fixtures; 11.sav is the source F5C repoints the LZW fixtures at."},
+
+  {"id": "derived-goldens", "disposition": "publish",
+   "globs": ["src/mh_dll/mh_nettest/st0_sincos_goldens.h", "src/mh_dll/mh_nettest/order_issue_golden.gen.h"],
+   "why": "D10, ruled at the plan; CONTENT CONFIRMED by F5C 2026-09-14 (the ruling assumed derived-not-retail -- this is the check of that assumption, both files read, not inferred from their names). st0_sincos_goldens.h is 17,060 bytes holding 192 rows = 96 sweep inputs x 2 x87 precision settings, each row an (input, sin_bits, cos_bits) triple MEASURED by running llm_math_fsin_reduce_loop/llm_math_cos_impl at their original addresses in a hosted process. They are retail-DERIVED NUMERICS -- outputs of retail code, carrying not one retail instruction byte -- and they exist precisely because the vendored transcription cannot be its own oracle. D10 covers that class. order_issue_golden.gen.h is 81,534 bytes of abstract-interpretation result: 120 call-site rows of g_node expression trees plus the wrapper/site VAs of the original (decimal, e.g. 4645106u). Zero retail bytes; the VAs are the same class the already-published mh_addrs.gen.h family carries wholesale."},
+
+  {"id": "docs-dead-ends", "disposition": "withhold",
+   "globs": ["docs/dead-ends.md"],
+   "why": "Q4 ANSWERED (user, 2026-09-15): the failure ledger is a research artifact that needs refinement before it is public, so it stays private -- carved out of the seven-doc design set below. It is a SEPARATE row rather than folded into docs-research because of what it costs: 300 citation lines in published material point here, and the user's rule for them is INLINE THE FINDING or STRIP -- never a bare pointer deletion that loses the trap's substance. F5E owns that re-authoring; its step 1 re-authored the 17 Python string constants --closure can see, which is what let this row flip without turning the closure arm red."},
+
+  {"id": "docs-recommended-publish", "disposition": "publish",
+   "globs": ["docs/architecture.md", "docs/dll-split.md", "docs/inmem-patching.md",
+             "docs/libmh-abi.md", "docs/libmh-sim-abi.md", "docs/save-format.md", "docs/state-boundary.md"],
+   "why": "The docs the plan's own recommendation names as the design/reference set the code cites as a present-tense contract. Q4 ANSWERED (user, 2026-09-15): PUBLISH -- MINUS docs/dead-ends.md, which the row above carves out. The set was eight globs while it was pending; it is seven now, and the eighth is not coming back."},
+
+  {"id": "docs-conventions", "disposition": "publish",
+   "globs": ["docs/conventions.md"],
+   "why": "fork F5E (2026-09-16), ruling R5: CREATED BY this item, as the legal target for the 74 published-code citations that said 'the convention lives in CLAUDE.md'. CLAUDE.md is withheld by private-research-layers and is not coming back, and inlining 74 restatements of one convention is worse than the disease -- so the TARGET was created instead, which is the user's inline-don't-delete rule applied one level up. It carries the sections the CODE cites (the llm_/_G_LLM_ naming convention incl. strategic-vs-tactical and the AI-cluster exception, the `::` flattening, the semantic typedefs and the map_t_tile_coord trap, the CRT classification rules, ENERGY-vs-POWER, the subagent model policy, the script policy, the generated-docs rule, the commit cadence) COPIED from CLAUDE.md rather than re-authored, with the private-layer cross-references described rather than linked (a published doc may not cite a withheld path -- that is this item's own Direction A rule). CLAUDE.md remains the source of truth and carries a pointer at this mirror."},
+
+  {"id": "docs-generated-symbol-tables", "disposition": "publish",
+   "globs": ["docs/symbols.md", "docs/structs.md"],
+   "why": "Q4 ANSWERED. The user's answer named 'the recommended docs minus dead-ends'; this row's standing recommendation was PUBLISH, and F5E R1 rules the residue to it rather than leaving a pending row the answer had already covered. The plan said the generated docs do not publish, but the code disagreed with the plan: src/ cites them 59 times across 35 files and tools/ another 138 times. Withholding them would make 197 citations dangle -- a re-authoring, not a deletion, and F5E's largest single AVOIDABLE cleanup (89 citation lines plus 8 closure edges, measured). Content-wise they are symbol names and VAs, the same class as the mh_addrs.gen.h family already in the build, so there is no retail-bytes objection."},
+
+  {"id": "docs-text-ids", "disposition": "withhold",
+   "globs": ["docs/text-ids.md"],
+   "why": "WITHHELD (Q4 answered 2026-09-15: the recommended set minus dead-ends; recommendation here was withhold) -- this one's generated block is localized string IDs and names dumped out of the RU game's initlang.cfg -- game-config-derived content, not our prose. Listed separately so a blanket Q4 'publish the docs' answer does not sweep it in by accident."},
+
+  {"id": "docs-research", "disposition": "withhold",
+   "globs": ["docs/*.md"],
+   "why": "The remaining 76 docs: the RE research record (subsystem findings, closures, inventories, plans, session-facing measurements). WITHHELD per the user's Q4 answer (2026-09-15: publish the recommended set minus dead-ends; this rule's recommendation was withhold). Flipped 2026-09-16 at F5E phase 2, after the code-side citations into these docs were re-authored (G5: 400 lines, one plain-language mechanism name per doc); individual promotion later is a one-glob move into docs-recommended-publish."},
+
+  {"id": "private-research-layers", "disposition": "withhold",
+   "globs": ["notes/**", "session_reports/**", "tasks/**", "tracker/**", ".claude/**", "report/**",
+             "NOTES.md", "TASKS.md", "ROADMAP.md", "CLAUDE.md"],
+   "why": "The private layers, per the fork plan: the session diary (72 files), the per-session batons (229), the open-problem ledger (43), the structured trackers (5), the agent skills and workflows (15), the two MP performance report HTMLs, and the four root index/process documents. These ARE the research repo -- they narrate what was reverse-engineered, from whom, and in what order. None of it is the software."},
+
+  {"id": "bnk-format-doc", "disposition": "publish",
+   "globs": ["BNK_FORMAT.md"],
+   "why": "Q2 ANSWERED (user, 2026-09-15): MIT on our own code + a THIRD_PARTY roster + no retail assets -- so this PUBLISHES WITH THE ATTRIBUTION INTACT, which is what the credit line asks for, and THIRD_PARTY.md carries its notice. NOT IN THE F0 LEDGER -- found by F5A. A sprite-bank format reference whose first line credits @dupan_80025 (PC Vandalus): third-party authored, not ours to relicense, which is why it rode Q2 (licensing) rather than Q4."},
+
+  {"id": "watcom-fidb", "disposition": "publish",
+   "globs": ["tools/ghidra/watcom_fidb/*.fidb", "tools/ghidra/watcom_fidb/README*.md", "tools/ghidra/watcom_fidb/*.java"],
+   "why": "Q2 ANSWERED (user, 2026-09-15): MIT + a THIRD_PARTY roster + no retail assets -- PUBLISH, and THIRD_PARTY.md carries the Open Watcom notice these fall under. NOT IN THE F0 LEDGER -- found by F5A. Three Ghidra function-ID databases (384 KB total) built from OPEN WATCOM runtime libraries, plus their build script and notes: a .fidb stores hashes and names, not code, Open Watcom is open-source, and without them a fresh clone cannot reproduce the CRT classification the docs describe. THE FLIP HAD A MEASURED COST, paid at F5M: F5B's widened machine-path lint scans THE PUBLISH SET, so this subtree had never been scanned -- pulling it in surfaced 6 absolute-path literals in README.md / README-watcom105.md (one of them a pre-relocation path), scrubbed to placeholders in the same commit."},
+
+  {"id": "ghidra-install-customizations", "disposition": "publish",
+   "globs": ["tools/ghidra/README.md", "tools/ghidra/x86watcom.cspec.*", "tools/ghidra/sleigh_memcpy/**"],
+   "why": "The Ghidra-side customizations a fresh machine must re-apply: the __watcall float-return cspec fix (stock + fixed, so the diff is readable), the rep-movs decompiler patch, and the reproducible ReVa-from-source build notes. Our own work, bootstrap-critical, no game content."},
+
+  {"id": "session-audit-trail", "disposition": "withhold",
+   "globs": ["tools/applied/**"],
+   "why": "710 archived apply_annotations request files -- the readable audit trail of every batch mutation made to the Ghidra database, dated and per-session. It is the research repo's change log in JSON form: it documents the RE campaign, it needs a DB that does not ship, and it is worth nothing to someone building the software. Verified it is only ever an OUTPUT: every citation from code (apply_annotations.py, commit_prototypes.py, retype_split_globals.py) is a tool announcing where it archived a request, and apply_annotations.py:482 creates the directory when missing -- so nothing breaks by the tree arriving without it."},
+
+  {"id": "oneoff-scripts", "disposition": "withhold",
+   "globs": ["tools/oneoff/**"],
+   "why": "125 dated one-shot scripts kept per the never-delete-a-one-timer policy, because a deleted one-timer erases the only record of what it changed. That reason is a RESEARCH-REPO reason: nearly all of them drive Ghidra, they ran once against a specific DB state, and none is invoked by the build, the gate, or the lint. They stay with the history they document. NOTE FOR F5E: several published sources name a generator here in a comment (overlay_font.h's provenance line is the clearest) -- those are prose citations, not build edges, and inlining the finding is F5E's job, not a reason to publish the directory."},
+
+  {"id": "llm-eval", "disposition": "withhold",
+   "globs": ["tools/llm_eval/**"],
+   "why": "The LLM evaluation harness and its results (dataset.json, three results_*.json, silver_labels.json). This measures how well a model labels THIS binary's subsystems -- it is research about the RE method, not part of the software, and nothing in src/ or the gate reads it (verified: zero citations from code, 11 from prose)."},
+
+  {"id": "ttd-scripts", "disposition": "publish",
+   "globs": ["tools/ttd/**"],
+   "why": "Eight hand-written WinDbg/TTD debugger scripts and their notes (breakpoint programs and dx queries, not captured traces -- checked). Human-authored tooling. NOTE FOR F5B: walk_forward.txt line 3 carries an absolute machine path (F:\\apps\\mh_decompile.rep\\...), which the widened machine-path lint must catch."},
+
+  {"id": "mp-analyze-testdata", "disposition": "publish",
+   "globs": ["tools/testdata/**"],
+   "why": "Eight log files across four scenario directories, used as fixed inputs by mp_analyze's own tests. They are OUR DLL's log output (mh_net.log / mh_frametime.log), not retail data or rendered output."},
+
+  {"id": "patch-manifest-tooling", "disposition": "publish",
+   "globs": ["src/patcher/README.md", "src/patcher/mhpatch.py", "src/patcher/mh_net.ini.template"],
+   "why": "The patcher itself and its config template -- our code. Carved out of the manifest row above so that a Q3 'withhold the expect-bytes' answer does not accidentally take the patcher with it."},
+
+  {"id": "ci-workflows", "disposition": "publish",
+   "globs": [".github/**"],
+   "why": "fork F5D: the CI workflow. It is written FOR the public tree -- it drives lint_repo.py --ci, which is the mode that exists because the private research layers will not be there. Kept as its own rule rather than folded into repo-config so the public tree's own gate is visible as a line in this ledger."},
+
+  {"id": "public-doc-set", "disposition": "publish",
+   "globs": ["README.md", "INSTALL.md", "LICENSE", "THIRD_PARTY.md", "src/README.md"],
+   "why": "fork F5F: the public tree's own front door -- what the project is, how to build it, how to run each of the three configurations, the MIT grant on our code, and the third-party/retail-IP notices. Written FOR the public cut and citing only paths this ledger publishes. WHY src/README.md IS IN THIS ROW rather than left to source-tree (which would also match it, later): it is part of the same rewritten doc set, and it is the row's ANCHOR -- the four root files are not in the index until the cut stages them, and a rule matching zero tracked paths is a FAILURE by _falsifiability (2). Anchoring on a tracked member of the set keeps the rule honest and alive from the moment it is written. First-match-wins, so source-tree still covers everything else under src/."},
+
+  {"id": "repo-config", "disposition": "publish",
+   "globs": [".gitignore", ".gitattributes", ".editorconfig", ".clang-format", ".clang-format-ignore", "ruff.toml"],
+   "why": "Formatter and VCS configuration. lint_repo enforces clang-format over src/mh_dll and ruff format over tools/, so a clone without these cannot run the lint it is asked to pass."},
+
+  {"id": "mod-src", "disposition": "publish",
+   "globs": ["mod_src/**"],
+   "why": "mod_src/cfg/aliases.yaml: a hand-authored modding alias table (F0 ruling: human-authored tooling config, not game data)."},
+
+  {"id": "source-tree", "disposition": "publish",
+   "globs": ["src/**"],
+   "why": "The software: the four DLLs, the selftests, the patcher, the format tools, the wire-protocol tests, the shim. Our own C++/Python, plus generated headers whose content is symbol names, VAs, struct layouts and ABI tables. The four retail-byte carriers inside src/ are carved out above (the compiled manifests, mh_export.gen.h, the two CRT transcriptions, the LZW fixtures); everything else here is ours."},
+
+  {"id": "loop-prompt-drivers", "disposition": "withhold",
+   "globs": ["tools/data/*_loop_prompt.md"],
+   "why": "fork F5E (2026-09-16), ruling R3. Six markdown DRIVER PROMPTS (ai, orders_issue, readers, sim, sim_resid, tact) that the unattended migration loop feeds to an agent. Carved out of tools-tree because they are not tooling the public tree can run OR read usefully: their subject IS the private research layer -- they instruct an agent to read the tracker domain, write a session report, follow the notes-index rule and spawn the agent workflows, none of which the public tree carries. That coupling is also 57 of F5E's citation lines, and re-authoring a prompt that drives the tracker so that it stops naming the tracker is nonsense; withholding the prompt is the honest disposition and it removes the citations with it. The loop machinery they feed is archive-class in tools/data/tool_dispositions.json, so this row and that class agree."},
+
+  {"id": "archive-class-tools", "disposition": "withhold",
+   "globs": [
+             "tools/_ghidra_lease.py",
+             "tools/_worklist.py",
+             "tools/apply_annotations.py",
+             "tools/audit_names.py",
+             "tools/build_data_naming_batch.py",
+             "tools/check_cspec.py",
+             "tools/check_dispatch_closure.py",
+             "tools/classify_reg_preservation.py",
+             "tools/commit_prototypes.py",
+             "tools/dump_addr_index.py",
+             "tools/dump_addr_taken.py",
+             "tools/dump_ai_gate_sites.py",
+             "tools/dump_aux_symbols.py",
+             "tools/dump_call_graph.py",
+             "tools/dump_call_protos.py",
+             "tools/dump_epilogue_returns.py",
+             "tools/dump_functions.py",
+             "tools/dump_interior_refs.py",
+             "tools/dump_order_matrix.py",
+             "tools/dump_steal_relbranch.py",
+             "tools/dump_struct_layouts.py",
+             "tools/dump_structs.py",
+             "tools/dump_symbols.py",
+             "tools/ensure_reva.py",
+             "tools/export_decomp.py",
+             "tools/export_metadata.py",
+             "tools/finalize_data_naming.py",
+             "tools/gen_codemap.py",
+             "tools/gen_export_request.py",
+             "tools/gen_fallthrough_entries.py",
+             "tools/gen_order_issue_inventory.py",
+             "tools/gen_order_matrix.py",
+             "tools/gen_pool_reloc_manifest.py",
+             "tools/gen_reg_clobberers.py",
+             "tools/gen_save_block_table.py",
+             "tools/gen_seam_surface.py",
+             "tools/gen_state_matrix.py",
+             "tools/gen_tact_closure.py",
+             "tools/gen_writer_attribution.py",
+             "tools/ghidra_write.py",
+             "tools/install_ghidra_shims.py",
+             "tools/lint_annotations.py",
+             "tools/lint_arch.py",
+             "tools/lint_doc_symbols.py",
+             "tools/lint_evidence_tiers.py",
+             "tools/lint_migration_items.py",
+             "tools/lint_notes_index.py",
+             "tools/lint_translation.py",
+             "tools/lint_translation_sets.py",
+             "tools/lint_workflows.py",
+             "tools/loop_worktree.py",
+             "tools/materialize_fnptr_refs.py",
+             "tools/migration_ab.py",
+             "tools/migration_ledger.py",
+             "tools/migration_loop.py",
+             "tools/migration_ready.py",
+             "tools/migration_seeds.py",
+             "tools/migration_session.py",
+             "tools/probe_global_widths.py",
+             "tools/propagate_crt.py",
+             "tools/rank_dig_targets.py",
+             "tools/record_dead_dispositions.py",
+             "tools/report_patch_surface.py",
+             "tools/report_type_usage.py",
+             "tools/resolve_doc_refs.py",
+             "tools/retype_split_globals.py",
+             "tools/reva_call.py",
+             "tools/reva_service.py",
+             "tools/save_checkin.py",
+             "tools/scan_asm_writes.py",
+             "tools/scan_dat_mismatches.py",
+             "tools/scan_limit_refsites.py",
+             "tools/scan_raw_pointers.py",
+             "tools/scan_undef_calls.py",
+             "tools/scan_unnamed_globals.py",
+             "tools/scan_untyped_structs.py",
+             "tools/set_calling_convention.py",
+             "tools/slice_asm.py",
+             "tools/sweep_saves.py",
+             "tools/track.py"],
+   "why": "fork F5M S4b (2026-09-16), the ARCHIVE-TOOL CUT, ruled by the user: the archive-class tools are WITHHELD from the public tree rather than deleted from the repo. The set is not listed by judgement -- it is exactly `class == archive` in tools/data/tool_dispositions.json (F5G), and tools/check_tool_dispositions.py --ledger asserts the two agree IN BOTH DIRECTIONS, so a tool archived tomorrow cannot silently stay in the seed and a tool re-classed keep cannot silently stay out. WHY WITHHOLD AND NOT DELETE: `fork` merges to `master`, so deleting these 80 files would delete the research repo's own daily tooling -- track.py's tracker domains are not in here, but save_checkin.py, apply_annotations.py, dump_symbols.py and the whole Ghidra pipeline are, and the private repo runs them every session. WHY A LEDGER RULE AND NOT AN EXPORT-TIME SUBTRACTION: measured at F5M -- subtracting at cut time makes the publish set stop being ledger-derived (F5A's spine) while lint_repo --ci keeps rows whose tools the seed lacks, i.e. a red public CI. As a rule, --closure and lint_citations become the mechanical COMPLETENESS PROOF that the unwiring is finished. Placed ahead of tools-tree, which still publishes everything else under tools/."},
+
+  {"id": "tools-tree", "disposition": "publish",
+   "globs": ["tools/**"],
+   "why": "The automation: the generators the build drift-gates on, the lints, the gate runners, the rig and UI harness, the migration ledgers, the Ghidra-side dumpers, and tools/data's Ghidra-derived JSON (names, VAs, extents, layouts, call graphs, region tables -- one file, dll_call_protos.json, also carries retail entry bytes and is carved out above). Our own code and our own derived metadata; no retail content and no private data once F5B's scrub lands. F5G REFINES WITHIN THIS ROW on the other axis (keep vs archive). That refinement USED to say 'a tool F5G archives leaves this ledger by deletion, not by re-disposition' -- AMENDED 2026-09-16 (F5M S4b) by the user's ruling, and the amendment is the whole point of the archive-class-tools row above: an archive tool leaves the PUBLIC TREE by re-disposition and stays in the repo. The reason the original line cannot be honoured literally is that `fork` merges to `master`: deleting the archive class would delete save_checkin.py, apply_annotations.py, dump_symbols.py and the rest of the pipeline the private repo runs every session. So the two axes still do not collapse -- this row publishes tools/, that row carves out the class F5G archives, and a lint keeps the carve-out equal to the class instead of hand-maintained."}
+
+ ],
+
+ "_closure_exception_semantics": "A row here declares a KNOWN edge from a published source into a path the public tree does not carry. `source` and `needs` are globs (or lists of globs). A declared row suppresses the failure AND MUST STILL REPRODUCE: when the edge is gone, the row goes stale and the check FAILS until it is deleted. That is what stops this list from becoming the place violations go to be forgotten. Only edges into WITHHOLD targets can fail in the first place -- an edge into a user_pending/publish_after target is reported as CONDITIONAL, grouped by the question it waits on, because it is a measurement of what an answer costs and not a defect.",
+
+ "_closure_exceptions_emptied": "fork F5M S4b, 2026-09-16: BOTH remaining rows were deleted here, by the arm that forced it. research-orchestration-subject (17 edges) and research-doc-generators (5 edges) both declared the same coupling -- a published tool whose SUBJECT is a private layer -- and both were blocked_on F5M. The archive-tool cut withheld six of their ten sources outright; the four survivors were re-authored one by one (a generator that defaulted its output into the committed report tree now writes to scratch, a missing-dump message that named a Ghidra-side dumper now names the mechanism, and an environment check that hard-coded the shim installer now discovers it). The check then REFUSED the stale rows and would not go green until they were gone, which is the property this list was built for: the exceptions are the completeness proof of the unwiring, not the place violations go to be forgotten. An empty list is the correct end state, not an omission -- a new row here needs a new reason.",
+ "closure_exceptions": [
+ ]
+}

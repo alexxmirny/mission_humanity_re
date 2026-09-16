@@ -1,0 +1,179 @@
+# CI -- the offline gate, on a runner with no game and no rig.
+#
+# THIS WORKFLOW TARGETS THE PUBLIC TREE. On the private repo some checks only pass because the
+# private research layers (notes/, tracker/, tasks/, .claude/) and a local Ghidra export directory
+# (tmp/) exist; `lint_repo.py --ci` is what makes the lint portable, and it names every row it holds
+# back rather than dropping it silently. Read its CI_SKIPS table for the list and the reason behind
+# each entry -- four classes, measured on a materialized publish-set tree: private research layers,
+# a gitignored Ghidra export, a retail game copy + the publish ledger's own subject, and a drift
+# gate whose comparison document the cut withholds. Everything else runs here exactly as it runs on
+# the dev box -- the live counts are the runner's own `total/run/skipped` line and the table's own
+# length, not this comment (numbers here go stale; two already did).
+#
+# THIS WORKFLOW ALSO RUNS ON THE PRIVATE REPO -- `branches: ["**"]` above, against a private remote
+# -- so `--ci` is a statement about the RUNNER (no game, no rig, no Ghidra export), never about
+# which tree was checked out. A row needing different behaviour on the two trees detects the tree
+# instead: the publish-ledger rows ask the ledger's own `_public_tree_marker` and run
+# `check_publishable --public` here and the private arms there (fork F5M).
+#
+# WHAT A GREEN RUN DOES NOT PROVE. The rig half of the gate is bring-your-own-game (fork ruling Q10):
+# the UI capture suite, the two-peer determinism run, the in-memory patch parity oracle and anything
+# else that boots the retail executable cannot run here and are not pretended to. src/mh_dll/README.md
+# "The gate" is the full article; this is its offline subset.
+#
+# TWO JOBS ON PURPOSE (fork F5D's risk note). `build` is the fast fail: a compile break should cost
+# ~3 minutes, not the whole suite. `gate` is the expensive half and only starts once `build` is
+# green. The two do NOT share binaries -- `gate` rebuilds, because run_selftests.py and
+# replay_libref.py both want a Release tree in place and passing ~200 MB of DLLs between jobs buys
+# less than it costs in a path-fragile download step.
+
+name: ci
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  # The repo tree is formatted against the ruff and clang-format pinned/derived below. 3.11 is what
+  # tools/requirements.txt's pins were taken from.
+  PYTHON_VERSION: "3.11"
+
+jobs:
+  build:
+    name: build (Release|x86)
+    # PINNED, NOT windows-latest. `windows-latest` AND `windows-2025` both resolve to the VS 2026
+    # image since 2026-09 (measured: two red runs, `Image: windows-2025-vs2026`), and the gate FAILS
+    # there: VS 2026 dropped the x86-host VC/Tools/Llvm/bin layout and bundles LLVM 20, while the
+    # tree is formatted against clang-format 19.1.x (VS 2022 17.14, the dev box's BuildTools).
+    # windows-2022 carries VS 2022 Enterprise 17.14 + VC.Llvm.Clang 17.14 -- the same formatter --
+    # so the lint verdict here is the dev box's verdict. The vswhere `-version` range below is the
+    # second guard: it names VS 2022 explicitly, so if this label migrates too the step fails with
+    # "no VS 2022" rather than silently picking a newer toolset. Bump both deliberately, with a
+    # clang-format --version check, never via `latest`.
+    runs-on: windows-2022
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: locate the Visual Studio install
+        shell: pwsh
+        run: |
+          # MH_VS_INSTALL_ROOT is the ONE per-machine override this repo needs (fork F5C measured it);
+          # everything else in tools/machine_config.py resolves from its committed defaults or from
+          # __file__. On a self-hosted runner whose VS lives somewhere else, set MH_VS_INSTALL_ROOT in
+          # the job env and delete this step -- that is the whole portability story.
+          #
+          # DERIVE, NEVER PASTE: a wrong MSBuild path fails SILENTLY the moment the command is piped
+          # (two builds "succeeded" having never run).
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          $root = & $vswhere -latest -products * -version '[17.0,18.0)' -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+          if (-not $root) { throw "vswhere found no VS 2022 (17.x) install carrying the x86/x64 VC tools" }
+          "MH_VS_INSTALL_ROOT=$root" >> $env:GITHUB_ENV
+          "MSBUILD=$root\MSBuild\Current\Bin\MSBuild.exe" >> $env:GITHUB_ENV
+          Write-Host "VS root: $root"
+
+      - name: build
+        shell: pwsh
+        run: |
+          # The recipe from src/mh_dll/README.md step 1, verbatim in its flags. `/nodeReuse:false` IS
+          # PART OF IT: with node reuse on, MSBuild's workers outlive the build holding the stdout
+          # handle, and any caller that captures output waits forever for an EOF that never arrives.
+          & "$env:MSBUILD" "$env:GITHUB_WORKSPACE\src\mh_dll\mh.sln" `
+            /t:Build /p:Configuration=Release /p:Platform=x86 /m /nodeReuse:false /v:minimal /nologo
+          if ($LASTEXITCODE -ne 0) { throw "msbuild exit $LASTEXITCODE" }
+
+      - name: the seven artifacts, by name
+        shell: pwsh
+        run: |
+          # One msbuild produces all three configurations, and a single green build line is exactly
+          # what would hide one artifact that silently stopped being produced (run_gate.py says the
+          # same thing in the same words). Configurations: (1)+(2) mh.dll/mh_net.dll/mh_harness.dll
+          # [+libmh.dll], (3) Release\standalone\.
+          $rel = "$env:GITHUB_WORKSPACE\src\mh_dll\Release"
+          $want = @(
+            "mh.dll", "mh_net.dll", "mh_harness.dll", "libmh.dll",
+            "standalone\libmh.dll", "standalone\libref_host.exe", "net_selftest.exe"
+          )
+          $missing = @()
+          foreach ($a in $want) {
+            $p = Join-Path $rel $a
+            if (Test-Path $p) { "{0,-28} {1,10} B" -f $a, (Get-Item $p).Length | Write-Host }
+            else { $missing += $a }
+          }
+          if ($missing) { throw "BUILD PRODUCED NO $($missing -join ', ')" }
+
+  gate:
+    name: gate (selftests + libref + lint --ci)
+    needs: build
+    runs-on: windows-2022  # same pin as `build`, same reason (the clang-format version)
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: python deps
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r tools/requirements.txt
+
+      - name: locate the Visual Studio install
+        shell: pwsh
+        run: |
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          $root = & $vswhere -latest -products * -version '[17.0,18.0)' -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+          if (-not $root) { throw "vswhere found no VS 2022 (17.x) install carrying the x86/x64 VC tools" }
+          "MH_VS_INSTALL_ROOT=$root" >> $env:GITHUB_ENV
+          "MSBUILD=$root\MSBuild\Current\Bin\MSBuild.exe" >> $env:GITHUB_ENV
+          # MH_CLANG_FORMAT: machine_config DERIVES this from the VS root, so it is normally already
+          # right. It is set explicitly here only to FAIL LOUDLY if the VS install carries no
+          # clang-format -- substituting some other clang-format would be worse than failing, because
+          # the formatting verdict is version-dependent and a different binary re-formats a tree that
+          # is correct. If this throws, install the "C++ Clang tools for Windows" component (or point
+          # MH_CLANG_FORMAT at the exact version the tree is formatted against).
+          $cf = "$root\VC\Tools\Llvm\bin\clang-format.exe"
+          if (-not (Test-Path $cf)) { throw "no clang-format at $cf -- install the VS 'C++ Clang tools for Windows' component; do NOT substitute another build" }
+          "MH_CLANG_FORMAT=$cf" >> $env:GITHUB_ENV
+          & $cf --version
+
+      - name: environment check (build tier gated, analysis/game/rig expected-absent)
+        shell: pwsh
+        run: python tools/bootstrap.py --ci
+
+      - name: build
+        shell: pwsh
+        run: |
+          & "$env:MSBUILD" "$env:GITHUB_WORKSPACE\src\mh_dll\mh.sln" `
+            /t:Build /p:Configuration=Release /p:Platform=x86 /m /nodeReuse:false /v:minimal /nologo
+          if ($LASTEXITCODE -ne 0) { throw "msbuild exit $LASTEXITCODE" }
+
+      - name: selftests (ASan + plain)
+        shell: pwsh
+        # THE GATE, not a bare `net_selftest.exe <suite>` run. A bare suite's "0 failures" is not
+        # evidence the run did not silently corrupt heap memory; ASan turns that into a deterministic
+        # stack trace on run #1. The project's pinned selftest-gate rule, in a machine.
+        run: python tools/run_selftests.py
+
+      - name: configuration (3) -- the standalone replay
+        shell: pwsh
+        # Replays the committed step-0 fixtures against Release\standalone\libmh.dll through
+        # libref_host.exe. No game, no rig. It REFUSES with exit 2 and a named reason if the fixture
+        # root is absent (fork F5C), so a withheld-fixtures answer to Q5 surfaces as a named refusal
+        # rather than a traceback.
+        run: python tools/replay_libref.py
+
+      - name: lint (the public subset)
+        shell: pwsh
+        run: python tools/lint_repo.py --ci

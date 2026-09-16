@@ -1,0 +1,126 @@
+{
+  "_generated_by": "SIM-HOSTREACH, 2026-09-10 -- derived from report_promotion_reconciliation.py section 5's edges",
+  "_domain_hint": "sim1h",
+  "_what": "SEED LIST for the proposed SIM1-H translation batch. These are the ORIGINAL sim/logic functions that still call bodies we own, i.e. the TRANSLATE-LATER half of the section-5 edge classification (docs/libmh-abi.md section 8). They are NOT front-end code: the user's 2026-09-10 decision is that they get TRANSLATED, not installed-around and not residued, and the 8 rows they force stop being host-reachable when this batch lands and promotes.",
+  "_how_to_consume": "The sim domain selects by CLOSURE from a root minus cut_prefixes (tools/data/migration/sim.json), and these sit OUTSIDE that closure -- they are callers of it, or behind a cut. So they cannot be picked up by widening sim's root. Feed them as an explicit seed set: either a new profile with select.mode seeded over `seeds` below, or as sim.json seeds if SIM1-P's reopening absorbs them. Batch assignment then goes in a *_batch_overrides.json exactly as sim's 11 hand rows do.",
+  "_measurement": {
+    "distinct_callers": 8,
+    "total_bytes": 8817,
+    "owned_rows_unblocked": 8,
+    "red_flag_scan": "all 8 decompiles clean of unaff_/extraout_/jump-table/baddata markers; the one real flag is the undefined-region caller noted on llm_strat_prod_shuttle_slot_spawn_arrival"
+  },
+  "seeds": [
+    {
+      "name": "SwitchToPlanet",
+      "addr": "0x0044ce13",
+      "size_bytes": 730,
+      "reaches_owned": [
+        "llm_strat_revoke_invention"
+      ],
+      "unblocks": "llm_strat_revoke_invention",
+      "callers_up": [
+        "llm_strat_planet_transition_perform_switch"
+      ],
+      "caller_count": 1,
+      "red_flags": ""
+    },
+    {
+      "name": "llm_diplomacy_restore_relations",
+      "addr": "0x00465c6e",
+      "size_bytes": 137,
+      "reaches_owned": [
+        "llm_diplomacy_set_relation"
+      ],
+      "unblocks": "llm_diplomacy_set_relation",
+      "callers_up": [
+        "SwitchToPlanet"
+      ],
+      "caller_count": 1,
+      "red_flags": ""
+    },
+    {
+      "name": "llm_map_assign_remaining_tiles_to_regions",
+      "addr": "0x00422a42",
+      "size_bytes": 530,
+      "reaches_owned": [
+        "llm_map_region_pick_smaller"
+      ],
+      "unblocks": "llm_map_region_pick_smaller",
+      "callers_up": [
+        "llm_map_seed_regions_multires"
+      ],
+      "caller_count": 1,
+      "red_flags": ""
+    },
+    {
+      "name": "llm_map_build_regions",
+      "addr": "0x00423335",
+      "size_bytes": 387,
+      "reaches_owned": [
+        "llm_map_merge_small_regions"
+      ],
+      "unblocks": "llm_map_merge_small_regions",
+      "callers_up": [
+        "llm_map_load_passable_plane",
+        "llm_map_load_passable_plane_loose"
+      ],
+      "caller_count": 2,
+      "red_flags": ""
+    },
+    {
+      "name": "llm_strat_bldg_init_defaults",
+      "addr": "0x0045a068",
+      "size_bytes": 5531,
+      "reaches_owned": [
+        "llm_strat_bldg_sprite_anchor_offset"
+      ],
+      "unblocks": "llm_strat_bldg_sprite_anchor_offset",
+      "callers_up": [
+        "llm_strat_bldg_init_all"
+      ],
+      "caller_count": 1,
+      "red_flags": "Largest by far (5531 B, 423 decompiled lines) -- ~63% of the batch's bytes. Likely wants its own slice rather than sharing one."
+    },
+    {
+      "name": "llm_strat_group_issue_attack_order",
+      "addr": "0x00444894",
+      "size_bytes": 1032,
+      "reaches_owned": [
+        "llm_strat_unit_select_weapon"
+      ],
+      "unblocks": "llm_strat_unit_select_weapon",
+      "callers_up": [
+        "llm_strat_input_update"
+      ],
+      "caller_count": 1,
+      "red_flags": ""
+    },
+    {
+      "name": "llm_strat_group_issue_enter_building_order",
+      "addr": "0x004451d2",
+      "size_bytes": 300,
+      "reaches_owned": [
+        "llm_unit_state_is_boarding"
+      ],
+      "unblocks": "llm_unit_state_is_boarding",
+      "callers_up": [
+        "llm_strat_input_update"
+      ],
+      "caller_count": 1,
+      "red_flags": ""
+    },
+    {
+      "name": "llm_strat_prod_shuttle_slot_spawn_arrival",
+      "addr": "0x004906c1",
+      "size_bytes": 170,
+      "reaches_owned": [
+        "llm_strat_bldg_find_mothership_position",
+        "llm_strat_prod_spawn_arrived_unit"
+      ],
+      "unblocks": "llm_strat_bldg_find_mothership_position, llm_strat_prod_spawn_arrived_unit",
+      "callers_up": [],
+      "caller_count": 0,
+      "red_flags": "RED FLAG: graph says 0 callers, but ReVA finds a real UNCONDITIONAL_CALL from 0x004c5ba4 inside UndefinedFunction_004c5b7c -- Ghidra never made a function there, so the edge is invisible to every call-graph-derived measure (docs/dead-ends.md G167). Settle its entry conditions from the DISASSEMBLY, not the graph, before translating."
+    }
+  ]
+}

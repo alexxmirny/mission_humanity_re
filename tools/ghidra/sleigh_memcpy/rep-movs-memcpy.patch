@@ -1,0 +1,51 @@
+--- /f/apps/mh_decompile.rep/tools/ghidra/sleigh_memcpy/ia.sinc.stock	2026-07-18 23:13:15.266706000 +0300
++++ /f/apps/ghidra_12.0_PUBLIC_20251205/Ghidra/Processors/x86/data/languages/ia.sinc	2026-07-18 23:42:31.803143500 +0300
+@@ -4074,9 +4074,31 @@
+ :MOVNTI Mem,Reg64       is $(LONGMODE_ON) & vexMode=0 & opsize = 2; byte=0xf; byte=0xc3; Mem & Reg64 ...     { *Mem = Reg64; }
+ @endif
+ 
+-:MOVSB^rep^reptail eseDI1,dseSI1    is vexMode=0 & rep & reptail & byte=0xa4 & eseDI1 & dseSI1          { build rep; build eseDI1; build dseSI1; eseDI1 = dseSI1; build reptail; }
+-:MOVSW^rep^reptail eseDI2,dseSI2    is vexMode=0 & rep & reptail & opsize=0 & byte=0xa5 & eseDI2 & dseSI2   { build rep; build eseDI2; build dseSI2; eseDI2 = dseSI2; build reptail; }
+-:MOVSD^rep^reptail eseDI4,dseSI4    is vexMode=0 & rep & reptail & opsize=1 & byte=0xa5 & eseDI4 & dseSI4   { build rep; build eseDI4; build dseSI4; eseDI4 = dseSI4; build reptail; }
++# --- mh_decompile REP MOVS/STOS -> memcpy/memset readability patch (forward/DF=0 assumed) ---
++# repx matches the REP prefix with no loop body; memcpy/memset are opaque userops
++# (emulation of these instructions is lost -- acceptable for decompilation). Revert: restore ia.sinc.stock-bak.
++repx: ".REP" is ((repprefx=1 & repneprefx=0)|(repprefx=0 & repneprefx=1))  { }
++define pcodeop memcpy;
++define pcodeop memset;
++
++:MOVSB^rep^reptail eseDI1,dseSI1    is vexMode=0 & rep & reptail & repprefx=0 & repneprefx=0 &byte=0xa4 & eseDI1 & dseSI1          { build rep; build eseDI1; build dseSI1; eseDI1 = dseSI1; build reptail; }
++:MOVSB^repx EDI,ESI  is vexMode=0 & addrsize=1 & repx &byte=0xa4 & EDI & ESI  { local n:4 = ECX; memcpy(EDI,ESI,n); EDI=EDI+n; ESI=ESI+n; ECX=0; }
++:MOVSB^repx DI,SI    is vexMode=0 & addrsize=0 & repx &byte=0xa4 & DI & SI      { local n:2 = CX; memcpy(DI,SI,n); DI=DI+n; SI=SI+n; CX=0; }
++@ifdef IA64
++:MOVSB^repx RDI,RSI  is vexMode=0 & addrsize=2 & repx &byte=0xa4 & RDI & RSI    { local n:8 = RCX; memcpy(RDI,RSI,n); RDI=RDI+n; RSI=RSI+n; RCX=0; }
++@endif
++:MOVSW^rep^reptail eseDI2,dseSI2    is vexMode=0 & rep & reptail & repprefx=0 & repneprefx=0 &opsize=0 & byte=0xa5 & eseDI2 & dseSI2   { build rep; build eseDI2; build dseSI2; eseDI2 = dseSI2; build reptail; }
++:MOVSW^repx EDI,ESI  is vexMode=0 & addrsize=1 & repx &opsize=0 & byte=0xa5 & EDI & ESI  { local n:4 = ECX * 2; memcpy(EDI,ESI,n); EDI=EDI+n; ESI=ESI+n; ECX=0; }
++:MOVSW^repx DI,SI    is vexMode=0 & addrsize=0 & repx &opsize=0 & byte=0xa5 & DI & SI      { local n:2 = CX * 2; memcpy(DI,SI,n); DI=DI+n; SI=SI+n; CX=0; }
++@ifdef IA64
++:MOVSW^repx RDI,RSI  is vexMode=0 & addrsize=2 & repx &opsize=0 & byte=0xa5 & RDI & RSI    { local n:8 = RCX * 2; memcpy(RDI,RSI,n); RDI=RDI+n; RSI=RSI+n; RCX=0; }
++@endif
++:MOVSD^rep^reptail eseDI4,dseSI4    is vexMode=0 & rep & reptail & repprefx=0 & repneprefx=0 &opsize=1 & byte=0xa5 & eseDI4 & dseSI4   { build rep; build eseDI4; build dseSI4; eseDI4 = dseSI4; build reptail; }
++:MOVSD^repx EDI,ESI  is vexMode=0 & addrsize=1 & repx &opsize=1 & byte=0xa5 & EDI & ESI  { local n:4 = ECX * 4; memcpy(EDI,ESI,n); EDI=EDI+n; ESI=ESI+n; ECX=0; }
++:MOVSD^repx DI,SI    is vexMode=0 & addrsize=0 & repx &opsize=1 & byte=0xa5 & DI & SI      { local n:2 = CX * 4; memcpy(DI,SI,n); DI=DI+n; SI=SI+n; CX=0; }
++@ifdef IA64
++:MOVSD^repx RDI,RSI  is vexMode=0 & addrsize=2 & repx &opsize=1 & byte=0xa5 & RDI & RSI    { local n:8 = RCX * 4; memcpy(RDI,RSI,n); RDI=RDI+n; RSI=RSI+n; RCX=0; }
++@endif
+ @ifdef IA64
+ :MOVSQ^rep^reptail eseDI8,dseSI8    is $(LONGMODE_ON) & vexMode=0 & rep & reptail & opsize=2 & byte=0xa5 & eseDI8 & dseSI8   { build rep; build eseDI8; build dseSI8; eseDI8 = dseSI8; build reptail; }
+ @endif
+@@ -4744,7 +4766,12 @@
+ 
+ :STMXCSR m32        is vexMode=0 & byte=0xf; byte=0xae; ( mod != 0b11 & reg_opcode=3 ) ... & m32 { m32 = MXCSR; }
+ 
+-:STOSB^rep^reptail eseDI1   is vexMode=0 & rep & reptail & byte=0xaa & eseDI1           { build rep; build eseDI1; eseDI1=AL; build reptail; }
++:STOSB^rep^reptail eseDI1   is vexMode=0 & rep & reptail & repprefx=0 & repneprefx=0 &byte=0xaa & eseDI1           { build rep; build eseDI1; eseDI1=AL; build reptail; }
++:STOSB^repx EDI  is vexMode=0 & addrsize=1 & repx &byte=0xaa & EDI  { local n:4 = ECX; memset(EDI,AL,n); EDI=EDI+n; ECX=0; }
++:STOSB^repx DI   is vexMode=0 & addrsize=0 & repx &byte=0xaa & DI    { local n:2 = CX; memset(DI,AL,n); DI=DI+n; CX=0; }
++@ifdef IA64
++:STOSB^repx RDI  is vexMode=0 & addrsize=2 & repx &byte=0xaa & RDI   { local n:8 = RCX; memset(RDI,AL,n); RDI=RDI+n; RCX=0; }
++@endif
+ :STOSW^rep^reptail eseDI2   is vexMode=0 & rep & reptail & opsize=0 & byte=0xab & eseDI2    { build rep; build eseDI2; eseDI2=AX; build reptail; }
+ :STOSD^rep^reptail eseDI4   is vexMode=0 & rep & reptail & opsize=1 & byte=0xab & eseDI4    { build rep; build eseDI4; eseDI4=EAX; build reptail; }
+ @ifdef IA64

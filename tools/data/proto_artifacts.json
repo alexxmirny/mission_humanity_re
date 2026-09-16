@@ -1,0 +1,657 @@
+{
+ "_generated_by": "tools/lint_annotations.py (PROTO check)",
+ "_do_not_hand_edit": true,
+ "_note": "A hit means the decompile is not usable as a translation draft. It does NOT by itself mean the prototype is wrong -- an ambient-register input produces the same token.",
+ "scanned": 2156,
+ "real": [
+  {
+   "addr": "0x0049c2cd",
+   "name": "llm_net_lockstep_dispatch",
+   "hits": 80,
+   "tokens": [
+    "in_stack_fffff9c8",
+    "in_stack_fffff9cc",
+    "in_stack_fffff9fc",
+    "in_stack_fffffa00",
+    "in_stack_fffffa04",
+    "in_stack_fffffa08"
+   ]
+  },
+  {
+   "addr": "0x004f49fd",
+   "name": "llm_lzw_encode_core",
+   "hits": 28,
+   "tokens": [
+    "extraout_EDX",
+    "in_EDX",
+    "unaff_EBP",
+    "unaff_EDI",
+    "unaff_ESI"
+   ]
+  },
+  {
+   "addr": "0x004bea62",
+   "name": "llm_lobby_build_players_step",
+   "hits": 24,
+   "tokens": [
+    "unaff_EBP"
+   ]
+  },
+  {
+   "addr": "0x00466348",
+   "name": "llm_strat_order_schedule",
+   "hits": 22,
+   "tokens": [
+    "in_stack_ffffff90",
+    "in_stack_ffffffd0"
+   ]
+  },
+  {
+   "addr": "0x004beb33",
+   "name": "llm_lobby_build_players_finish",
+   "hits": 22,
+   "tokens": [
+    "unaff_EBP"
+   ]
+  },
+  {
+   "addr": "0x004bec08",
+   "name": "llm_lobby_finalize_custom_map_and_sync",
+   "hits": 21,
+   "tokens": [
+    "in_EAX",
+    "unaff_EBP"
+   ]
+  },
+  {
+   "addr": "0x004a763f",
+   "name": "llm_gfx_sprite_rle_row_skip_hittest",
+   "hits": 18,
+   "tokens": [
+    "in_stack_00000018",
+    "in_stack_00000020",
+    "unaff_ESI"
+   ]
+  },
+  {
+   "addr": "0x004de613",
+   "name": "llm_gfx_rle_widget_draw_dispatch",
+   "hits": 17,
+   "tokens": [
+    "in_stack_00000004",
+    "in_stack_00000008",
+    "in_stack_0000000c"
+   ]
+  },
+  {
+   "addr": "0x004a665a",
+   "name": "llm_gfx_sprite_rle_row_skip",
+   "hits": 14,
+   "tokens": [
+    "in_stack_00000000",
+    "unaff_ESI"
+   ]
+  },
+  {
+   "addr": "0x0043bbaf",
+   "name": "llm_gfx_skip_sprite_row",
+   "hits": 12,
+   "tokens": [
+    "unaff_ESI"
+   ]
+  },
+  {
+   "addr": "0x004b47e3",
+   "name": "llm_mem_copy_words",
+   "hits": 12,
+   "tokens": [
+    "in_stack_00000004",
+    "in_stack_00000008",
+    "in_stack_0000000c"
+   ]
+  },
+  {
+   "addr": "0x004b47bb",
+   "name": "llm_util_memset16",
+   "hits": 11,
+   "tokens": [
+    "in_stack_00000004",
+    "in_stack_00000008",
+    "in_stack_0000000c"
+   ]
+  },
+  {
+   "addr": "0x004beab8",
+   "name": "llm_lobby_build_players_tail_copy",
+   "hits": 11,
+   "tokens": [
+    "unaff_EBP",
+    "unaff_EDI",
+    "unaff_ESI"
+   ]
+  },
+  {
+   "addr": "0x004e96b1",
+   "name": "llm_strat_ai_group_task_step",
+   "hits": 11,
+   "tokens": [
+    "unaff_EBX"
+   ]
+  },
+  {
+   "addr": "0x00580aae",
+   "name": "llm_strat_pathfind_route_backtrace_recurse",
+   "hits": 9,
+   "tokens": [
+    "unaff_EDI"
+   ]
+  },
+  {
+   "addr": "0x004e1af1",
+   "name": "llm_crt_scanf_read_scanset",
+   "hits": 8,
+   "tokens": [
+    "unaff_ESI"
+   ]
+  },
+  {
+   "addr": "0x004de459",
+   "name": "llm_gfx_rle_blit_rows_packbits",
+   "hits": 7,
+   "tokens": [
+    "unaff_ESI"
+   ]
+  },
+  {
+   "addr": "0x004f46a7",
+   "name": "llm_crt_thread_entry_trampoline",
+   "hits": 7,
+   "tokens": [
+    "in_stack_0000000c"
+   ]
+  },
+  {
+   "addr": "0x00472f3c",
+   "name": "llm_strat_bldg_state_researching",
+   "hits": 6,
+   "tokens": [
+    "unaff_EBX",
+    "unaff_ECX"
+   ]
+  },
+  {
+   "addr": "0x004a8084",
+   "name": "llm_map_zoom_apply",
+   "hits": 6,
+   "tokens": [
+    "in_EDX",
+    "unaff_EBX",
+    "unaff_ECX"
+   ]
+  },
+  {
+   "addr": "0x004d97cc",
+   "name": "llm_gfx_ddraw_set_display_mode",
+   "hits": 6,
+   "tokens": [
+    "unaff_EBX",
+    "unaff_EDI"
+   ]
+  },
+  {
+   "addr": "0x00472674",
+   "name": "llm_strat_bldg_state_charge_gate",
+   "hits": 5,
+   "tokens": [
+    "extraout_EBX",
+    "unaff_ECX"
+   ]
+  },
+  {
+   "addr": "0x00472c42",
+   "name": "llm_strat_bldg_state_upgrading",
+   "hits": 5,
+   "tokens": [
+    "extraout_EBX",
+    "unaff_ECX"
+   ]
+  },
+  {
+   "addr": "0x0058090b",
+   "name": "llm_strat_pathfind_route_extract",
+   "hits": 5,
+   "tokens": [
+    "extraout_AX",
+    "extraout_var"
+   ]
+  },
+  {
+   "addr": "0x00481a6b",
+   "name": "llm_strat_unit_state_deploy_to_building",
+   "hits": 4,
+   "tokens": [
+    "extraout_EBX",
+    "extraout_ECX"
+   ]
+  },
+  {
+   "addr": "0x0049d3c8",
+   "name": "llm_net_send_order",
+   "hits": 4,
+   "tokens": [
+    "extraout_EAX",
+    "in_stack_ffffff5c"
+   ]
+  },
+  {
+   "addr": "0x004a5b4d",
+   "name": "llm_gfx_draw_cursor_menu",
+   "hits": 4,
+   "tokens": [
+    "extraout_EAX",
+    "extraout_ECX"
+   ]
+  },
+  {
+   "addr": "0x004b72d8",
+   "name": "llm_ui_widget_list_draw_frame_layer",
+   "hits": 4,
+   "tokens": [
+    "in_EDX",
+    "unaff_EBX"
+   ]
+  },
+  {
+   "addr": "0x004d2008",
+   "name": "llm_snd_waveout_backend_init",
+   "hits": 4,
+   "tokens": [
+    "extraout_EBX",
+    "extraout_EDX"
+   ]
+  },
+  {
+   "addr": "0x004d5245",
+   "name": "llm_strat_ai_engage_rank_candidates_by_range",
+   "hits": 4,
+   "tokens": [
+    "unaff_ESI"
+   ]
+  },
+  {
+   "addr": "0x004d53ae",
+   "name": "llm_strat_ai_engage_sort_candidates_by_dist",
+   "hits": 4,
+   "tokens": [
+    "unaff_ESI"
+   ]
+  },
+  {
+   "addr": "0x004de3f0",
+   "name": "llm_gfx_rle_blit_rows_8bpp",
+   "hits": 4,
+   "tokens": [
+    "unaff_ESI"
+   ]
+  },
+  {
+   "addr": "0x004e8773",
+   "name": "llm_strat_ai_invasion_spawn_reinforcements",
+   "hits": 4,
+   "tokens": [
+    "unaff_EDI"
+   ]
+  },
+  {
+   "addr": "0x00437138",
+   "name": "llm_tact_fov_update_nearest_target",
+   "hits": 3,
+   "tokens": [
+    "unaff_EBP"
+   ]
+  },
+  {
+   "addr": "0x004a4ff4",
+   "name": "llm_strat_render_view_metrics_refresh",
+   "hits": 3,
+   "tokens": [
+    "extraout_EAX"
+   ]
+  },
+  {
+   "addr": "0x004b4c3f",
+   "name": "llm_strat_ai_grid_stamp_threat_ring",
+   "hits": 3,
+   "tokens": [
+    "unaff_EDX"
+   ]
+  },
+  {
+   "addr": "0x004ce728",
+   "name": "llm_build_media_diag_report",
+   "hits": 3,
+   "tokens": [
+    "in_stack_ffffff80"
+   ]
+  },
+  {
+   "addr": "0x004de4ab",
+   "name": "llm_gfx_rle_blit_rows_16bpp_clipped",
+   "hits": 3,
+   "tokens": [
+    "unaff_ESI"
+   ]
+  },
+  {
+   "addr": "0x004e1beb",
+   "name": "llm_crt_scanf_read_float",
+   "hits": 3,
+   "tokens": [
+    "unaff_EBP"
+   ]
+  },
+  {
+   "addr": "0x005834bf",
+   "name": "llm_strat_pathfind_flood_seed_from_route",
+   "hits": 3,
+   "tokens": [
+    "extraout_ECX"
+   ]
+  },
+  {
+   "addr": "0x0058411b",
+   "name": "llm_strat_pathfind_backfill_resolve_target",
+   "hits": 3,
+   "tokens": [
+    "extraout_ECX"
+   ]
+  },
+  {
+   "addr": "0x00410c97",
+   "name": "llm_log_dump_all_files",
+   "hits": 2,
+   "tokens": [
+    "in_stack_fffff9c0"
+   ]
+  },
+  {
+   "addr": "0x0041bf38",
+   "name": "llm_gfx_draw_icon_progress_bar",
+   "hits": 2,
+   "tokens": [
+    "extraout_var"
+   ]
+  },
+  {
+   "addr": "0x0041bfe3",
+   "name": "llm_ui_hud_icon_draw_clipped",
+   "hits": 2,
+   "tokens": [
+    "extraout_var"
+   ]
+  },
+  {
+   "addr": "0x0042c48b",
+   "name": "llm_tact_unit_apply_move_offset",
+   "hits": 2,
+   "tokens": [
+    "extraout_EAX"
+   ]
+  },
+  {
+   "addr": "0x00436f30",
+   "name": "llm_tact_fov_raycast_stencil",
+   "hits": 2,
+   "tokens": [
+    "extraout_EAX"
+   ]
+  },
+  {
+   "addr": "0x0043b1ce",
+   "name": "llm_gfx_draw_cursor_ingame",
+   "hits": 2,
+   "tokens": [
+    "extraout_EAX"
+   ]
+  },
+  {
+   "addr": "0x0043e5b8",
+   "name": "llm_gfx_draw_blended_line",
+   "hits": 2,
+   "tokens": [
+    "in_ECX"
+   ]
+  },
+  {
+   "addr": "0x00449ffe",
+   "name": "llm_strat_bldg_get_progress_percent",
+   "hits": 2,
+   "tokens": [
+    "extraout_EAX"
+   ]
+  },
+  {
+   "addr": "0x0045f122",
+   "name": "llm_strat_set_unit_state_handler",
+   "hits": 2,
+   "tokens": [
+    "in_register_00000002"
+   ]
+  },
+  {
+   "addr": "0x0045f168",
+   "name": "llm_strat_set_bldg_state_handler",
+   "hits": 2,
+   "tokens": [
+    "in_register_00000002"
+   ]
+  },
+  {
+   "addr": "0x004702af",
+   "name": "llm_strat_power_generate",
+   "hits": 2,
+   "tokens": [
+    "extraout_EAX"
+   ]
+  },
+  {
+   "addr": "0x004773f4",
+   "name": "llm_strat_bldg_anim_state_helipad",
+   "hits": 2,
+   "tokens": [
+    "extraout_EBX"
+   ]
+  },
+  {
+   "addr": "0x004795dd",
+   "name": "llm_strat_bldg_completion_dispatch",
+   "hits": 2,
+   "tokens": [
+    "extraout_EBX"
+   ]
+  },
+  {
+   "addr": "0x004a3e61",
+   "name": "llm_map_load_loose_fallback",
+   "hits": 2,
+   "tokens": [
+    "extraout_EAX"
+   ]
+  },
+  {
+   "addr": "0x004a5d3b",
+   "name": "llm_gfx_blit_sprite_ui",
+   "hits": 2,
+   "tokens": [
+    "extraout_EDX"
+   ]
+  },
+  {
+   "addr": "0x004b6472",
+   "name": "llm_ui_text_extract_mnemonic_char",
+   "hits": 2,
+   "tokens": [
+    "extraout_var"
+   ]
+  },
+  {
+   "addr": "0x004b6e9c",
+   "name": "llm_snd_dsound_buffer_upload_and_play",
+   "hits": 2,
+   "tokens": [
+    "extraout_EDX"
+   ]
+  },
+  {
+   "addr": "0x004b84ff",
+   "name": "llm_menu_campaign_start_and_enter",
+   "hits": 2,
+   "tokens": [
+    "in_EDX"
+   ]
+  },
+  {
+   "addr": "0x004bee94",
+   "name": "llm_lobby_map_load_async_step",
+   "hits": 2,
+   "tokens": [
+    "extraout_EAX"
+   ]
+  },
+  {
+   "addr": "0x004bfd35",
+   "name": "llm_lobby_host_net_dispatch",
+   "hits": 2,
+   "tokens": [
+    "extraout_EAX"
+   ]
+  },
+  {
+   "addr": "0x004c1b15",
+   "name": "llm_ui_widget_draw_content",
+   "hits": 2,
+   "tokens": [
+    "unaff_EBX"
+   ]
+  },
+  {
+   "addr": "0x004c2111",
+   "name": "llm_ui_avi_audio_playback_loop",
+   "hits": 2,
+   "tokens": [
+    "extraout_EDX"
+   ]
+  },
+  {
+   "addr": "0x004cd792",
+   "name": "llm_ui_avi_decode_audio_chunk",
+   "hits": 2,
+   "tokens": [
+    "unaff_ECX"
+   ]
+  },
+  {
+   "addr": "0x004ce633",
+   "name": "llm_media_diag_read_gfx_resource_records",
+   "hits": 2,
+   "tokens": [
+    "in_stack_ffffffd8"
+   ]
+  },
+  {
+   "addr": "0x004d1bb4",
+   "name": "llm_snd_dsound_backend_init",
+   "hits": 2,
+   "tokens": [
+    "extraout_EDX"
+   ]
+  },
+  {
+   "addr": "0x004d5eaf",
+   "name": "llm_strat_ai_random_point_near",
+   "hits": 2,
+   "tokens": [
+    "extraout_ST1"
+   ]
+  },
+  {
+   "addr": "0x004dffc8",
+   "name": "llm_crt_lseek",
+   "hits": 2,
+   "tokens": [
+    "extraout_EDX"
+   ]
+  },
+  {
+   "addr": "0x004e0e7e",
+   "name": "llm_crt_wfmt_convert_spec",
+   "hits": 2,
+   "tokens": [
+    "extraout_var"
+   ]
+  },
+  {
+   "addr": "0x004ead22",
+   "name": "llm_strat_ai_group_task_loiter_wander",
+   "hits": 2,
+   "tokens": [
+    "extraout_ST1"
+   ]
+  },
+  {
+   "addr": "0x0055b665",
+   "name": "llm_pf_expand_step",
+   "hits": 2,
+   "tokens": [
+    "extraout_EDX"
+   ]
+  },
+  {
+   "addr": "0x00580223",
+   "name": "llm_strat_pathfind_flood_expand_ring",
+   "hits": 2,
+   "tokens": [
+    "extraout_EDX"
+   ]
+  },
+  {
+   "addr": "0x00583716",
+   "name": "llm_strat_pathfind_flood_frontier_step",
+   "hits": 2,
+   "tokens": [
+    "in_CL"
+   ]
+  }
+ ],
+ "cosmetic": [
+  {
+   "addr": "0x00493fb2",
+   "name": "llm_strat_planet_distance",
+   "tokens": [
+    "unaff_EBX"
+   ]
+  },
+  {
+   "addr": "0x004b8e52",
+   "name": "llm_fs_scan_dir",
+   "tokens": [
+    "unaff_EBX",
+    "unaff_ECX"
+   ]
+  },
+  {
+   "addr": "0x004cb5ad",
+   "name": "llm_ui_info_text_track_cursor",
+   "tokens": [
+    "unaff_EBX"
+   ]
+  },
+  {
+   "addr": "0x004cd19a",
+   "name": "llm_ui_avi_stream_begin",
+   "tokens": [
+    "unaff_ECX"
+   ]
+  }
+ ]
+}

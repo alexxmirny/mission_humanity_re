@@ -1,0 +1,58 @@
+# D19 MP GATE (host) -- the big-map hotkey must be INERT in a lockstep match.
+#
+# Mode 5 skips llm_strat_sim_tick, so a peer that entered it would stop advancing the sim while its
+# partner kept going -- a stalled match, not a desync the hash gate would even reach. The seam
+# therefore refuses to fire when _G_LLM_GAME_SESSION_MODE == 3 (src/mh_dll/mh/seams/ui_pause.cpp).
+#
+# THE ASSERTION IS THE `simstep` AFTER THE KEY, not the `gamemode`: a mode check right after the
+# keypress would pass trivially (the mode cannot change until the next input update anyway). Instead
+# we press the key and then require the SIM to advance another ~300 steps -- which mode 5 cannot do,
+# because it never ticks the sim. If the gate ever regresses, this step hangs and the test fails on
+# time. (It used to be `gameclock 6000`, which asserted the same thing through the clock; `simstep`
+# asserts it through the counter the clock is derived from, and pins the capture as well -- below.)
+#
+# Same menu->lobby->launch walk as mp_host_start.txt, minus its captures (this test asserts behaviour,
+# not pixels). Pair with mp_client_pause_gate.txt.
+
+settled value:110
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+settled Create
+clickl Create
+present Game name
+settled Ok
+clickl Ok
+present Available maps
+settled Ok
+clickl Ok
+
+present Network players
+peers 1
+awaitsignal lobby
+enabled Start
+settled Start
+clickl Start
+
+absent Network players
+gamemode 2
+gameclock 3000
+key 0x19
+simstep 600
+gamemode 2
+# The capture is secondary (the sim-advance assertion above is the test), but a scenario with no
+# capture is a FAIL by the runner's rules -- and a live in-game frame is the right thing to pin
+# anyway: it proves the peer is still rendering the STRATEGIC view, not a frozen big map that happens
+# to look similar. Step 600 is `gameclock 6000` in the rig's pinned pacing (sim_step_ms=10), i.e. the
+# same sim gate match_launch uses, past fog-of-war saturation.
+#
+# WHY `simstep` AND NOT `gameclock` (fork F5J). Both flip at the same deterministic step, and both are
+# READ on a present -- so the frame carried whatever the frame's catch-up burst had reached, and the
+# Pioneer's sprite phase moved with it: 1.343 / 1.839 / 1.839 / 2.018% against a 2% tol, i.e. a test
+# that had already flapped across its own threshold on one build. `simstep` fires ON the step (the
+# harness truncates that burst at 600 and holds the sim there), so the capture is exact instead of
+# nearly exact. The pin_wallclock workaround cannot do this on the CLIENT at all -- see that script.
+capture g1_host_ingame
+log D19 MP gate: the big-map key stayed inert in a lockstep session (sim kept ticking, mode still 2)
+end

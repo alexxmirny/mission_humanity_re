@@ -1,0 +1,21 @@
+{
+ "_comment": "WHY each NOT-LIVE row of the sim liveness census is allowed to be not live. Read by tools/gen_liveness_census.py; SIM1-P clause 1 ('the NOT-LIVE list is empty, or every row on it carries a recorded reason'). The SET is derived by the census -- only these reasons are written by hand, and --check fails BOTH ways: a NOT-LIVE row with no entry here, and an entry here for a row that has since gone live (delete it then). NOT LIVE means our translated body is inert in the ship configuration; the ORIGINAL still runs, so the game is not wrong -- the migration simply does not own that address yet.",
+ "_reviewed": "2026-09-05",
+ "rows": {
+  "llm_strat_rng_next": {
+   "reason": "DELIBERATE, and the strongest of the three. Its only two callers in the binary are llm_rand_below and llm_rand_below_fx, and BOTH match the sim profile's `llm_rand` frontier prefix, so both stay ORIGINAL under Law 4 -- the migration wall sits one level up the call chain, on the callers. There is therefore no C++ caller to bind and no entry to install without moving that wall. The ledger row's own batch_why already records it as a candidate for LEAVING the set. Separately load-bearing: _G_LLM_STRAT_RNG_STATE (harness RNG slots 0/2, seams/harness.cpp:171-179) is inside the determinism state hash, so a divergence here would surface as an RNG-series mismatch rather than silently -- which is why leaving the original in place is safe rather than merely convenient.",
+   "reviewed": "2026-09-05",
+   "route_if_ever": "would need SIM-CUT to move the frontier onto llm_rand_below/_fx, or an entry seam"
+  },
+  "llm_strat_bldg_queue_construction_thunk": {
+   "reason": "It is the TARGET of a shared Watcom tail-jump epilogue, not of a CALL: the original reaches it as `JMP llm_strat_bldg_queue_construction_thunk` (recorded at sim_ai_bldg_queue_construction.h:44 and ai/ai_unit_housing.cpp:82). Nothing in our tree calls it, so there is no binder site for the generator to key on -- its own TU only declares a calls struct for what IT calls out to, and that callee (llm_strat_bldg_queue_construction) IS a bound row. No signature obstacle: the wrapper matches mh_calls.gen.h exactly. So this row is not-live for lack of a caller, not for lack of a mechanism.",
+   "reviewed": "2026-09-05",
+   "route_if_ever": "an entry seam would work; a calls-struct rebind cannot, since the reaching edge is a JMP"
+  },
+  "llm_strat_spawn_debris_burst": {
+   "reason": "Its single call site in our tree is seams/host_event_sink.cpp:237, the LIFT-NOTIFY event sink -- whose whole job is to replay a lifted effect back into the HOST's presentation layer, so reaching the original there is the intended behaviour and not a residue. `seams/` is outside MIGRATED_MODULES in gen_libmh_rebind.py, which is why no binder row exists. Our translated body is verified and inert; the original FX runs. Rebinding this site would move a presentation effect into the DLL, which is a SIM-CUT/LIFT question and not something clause 2 should decide silently.",
+   "reviewed": "2026-09-05",
+   "route_if_ever": "only if the debris FX itself is lifted; today the sink is the wall"
+  }
+ }
+}

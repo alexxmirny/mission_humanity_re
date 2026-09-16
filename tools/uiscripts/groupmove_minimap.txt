@@ -1,0 +1,62 @@
+# AI1C read-bridge (the AI closure): drive the group-move machinery and prove the six regions
+# the minimap reads are actually written.
+#
+# WHAT THIS CAPTURE DOES AND DOES NOT SHOW -- read this before trusting the frame. The capture shows
+# a developed base with the control group SELECTED (the green brackets are llm_unit_ctrl_group_
+# activate's selection). It does NOT show a minimap group marker or route: on 2026-08-07 the minimap
+# panel rendered EMPTY in this HUD state, and why is an OPEN QUESTION (a panel toggle? no vision? a
+# mode?) -- llm_map_minimap_render was never shown to run at all. So the frame is NOT the evidence
+# here; the evidence is the `; GROUPMOVE ok` line in mh_harness.log, which asserts the six regions
+# CHANGED. Do not read a green pixel-diff on this capture as "the minimap draws the route".
+#
+# WHAT THIS IS EVIDENCE FOR. _G_LLM_STRAT_GROUP_CENTROID_X/Y and _G_LLM_STRAT_GROUP_ROUTE_STEPS are
+# read by llm_map_minimap_render (2 and 8 refs) and written only by llm_strat_group_move_order_commit
+# / _pathfind. Nothing in the UI suite reached that machinery before: a group move is not a call but
+# an ORDER, and the writer's sole caller is the state-0x0a GROUP_MARSHAL handler, which nothing calls
+# directly. The harness workload `synth_groupmove` issues the order the way a player does (assign N
+# units to a hotkey group -> activate it -> issue the group move over CTRL_GROUPS[0]) and carries its
+# own vacuity guard: it FAILS the run if the six regions are byte-identical 60 steps later.
+#
+# So this script's job is only to reach the HUD and hold there long enough for the marker and route
+# to be on screen when the frame is taken. Read `; GROUPMOVE ok` in mh_harness.log alongside the
+# capture -- the frame alone cannot tell you the regions were written rather than merely stale.
+#
+# Single-peer, same menu walk as res_hud.txt: seat an AI in slot 1 and Start alone, so the real
+# menu -> lobby -> launch path runs with no client VM.
+
+settled value:110
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+settled Create
+clickl Create
+present Game name
+settled Ok
+clickl Ok
+present Available maps
+settled Ok
+clickl Ok
+
+# host lobby: OPEN -> AI on slot 1, gated on the "Computer" name label because the per-slot spinner
+# rebuilds the widget list (a click fired mid-rebuild misses).
+present Network players
+settled Start
+click 70 132
+present Computer
+enabled Start
+clickl Start
+
+# In-game. The run seeds a DEVELOPED base via loadgame_at (a skirmish start gives the human ONE
+# mothership, and a group move needs >= 2 units -- the workload's own vacuity guard caught exactly
+# that on the first attempt). synth_groupmove then fires at the step named by `[harness]
+# synth_groupmove` in the lane's mh_net.ini (it was a separate mh_harness.ini until fork F2G; a
+# leftover copy of that file beside the exe is REFUSED now, not read) and the
+# guard re-reads the six regions 60 steps later; the gate below is past both, so the route is drawn
+# rather than merely ordered.
+absent Network players
+gamemode 2
+gameclock 60000
+capture minimap_groupmove
+log AI1C read-bridge walk COMPLETE -- captured the HUD after a real group move
+end

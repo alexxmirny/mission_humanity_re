@@ -1,0 +1,196 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MH multiplayer — session report 2026-07-10/11</title>
+<style>
+  :root{
+    --bg:#f4f6f5; --panel:#fff; --panel2:#eef2f1; --ink:#12201e; --ink-2:#4a5c58;
+    --line:#d7e0dd; --line-2:#c4d0cc; --accent:#0f7d74; --accent-ink:#0a5a53;
+    --ok:#1c7d4d; --ok-bg:#e2f2e8; --warn:#a6741a; --warn-bg:#f6ecd6; --bad:#b23b3b; --bad-bg:#f6e0df;
+    --mono:ui-monospace,"Cascadia Code","SFMono-Regular",Consolas,monospace;
+    --sans:"Segoe UI",system-ui,-apple-system,Roboto,Helvetica,Arial,sans-serif;
+  }
+  @media (prefers-color-scheme:dark){:root{
+    --bg:#0d1413; --panel:#141d1b; --panel2:#0f1817; --ink:#e6efec; --ink-2:#93a7a2;
+    --line:#243230; --line-2:#31423f; --accent:#4fd6c8; --accent-ink:#7fe6db;
+    --ok:#5ecf92; --ok-bg:#13291f; --warn:#e0b055; --warn-bg:#2a2211; --bad:#f08a8a; --bad-bg:#2c1717;}}
+  :root[data-theme="dark"]{
+    --bg:#0d1413; --panel:#141d1b; --panel2:#0f1817; --ink:#e6efec; --ink-2:#93a7a2;
+    --line:#243230; --line-2:#31423f; --accent:#4fd6c8; --accent-ink:#7fe6db;
+    --ok:#5ecf92; --ok-bg:#13291f; --warn:#e0b055; --warn-bg:#2a2211; --bad:#f08a8a; --bad-bg:#2c1717;}
+  :root[data-theme="light"]{
+    --bg:#f4f6f5; --panel:#fff; --panel2:#eef2f1; --ink:#12201e; --ink-2:#4a5c58;
+    --line:#d7e0dd; --line-2:#c4d0cc; --accent:#0f7d74; --accent-ink:#0a5a53;
+    --ok:#1c7d4d; --ok-bg:#e2f2e8; --warn:#a6741a; --warn-bg:#f6ecd6; --bad:#b23b3b; --bad-bg:#f6e0df;}
+  *{box-sizing:border-box}
+  body{background:var(--bg);color:var(--ink);font-family:var(--sans);line-height:1.55;margin:0;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:900px;margin:0 auto;padding:clamp(20px,4vw,52px) clamp(16px,4vw,30px) 90px}
+  .eyebrow{font-family:var(--mono);font-size:12px;letter-spacing:.18em;text-transform:uppercase;color:var(--accent-ink);font-weight:600}
+  h1{font-size:clamp(25px,4.2vw,37px);line-height:1.1;margin:.35em 0 .12em;letter-spacing:-.01em;text-wrap:balance}
+  h2{font-size:19px;letter-spacing:-.01em;margin:0 0 3px}
+  .sub{color:var(--ink-2);font-size:15px;max-width:66ch}
+  a{color:var(--accent-ink)}
+  .mono{font-family:var(--mono)} code{font-family:var(--mono);font-size:.9em;background:var(--panel2);padding:1px 5px;border-radius:5px}
+  .meta{display:flex;flex-wrap:wrap;gap:7px 18px;margin-top:14px;font-family:var(--mono);font-size:12.5px;color:var(--ink-2)}
+  .meta b{color:var(--ink);font-weight:600}
+  header{border-bottom:1px solid var(--line);padding-bottom:22px;margin-bottom:8px}
+  section{margin-top:34px}
+  .lead{display:flex;align-items:baseline;gap:12px;margin-bottom:14px}
+  .lead .n{font-family:var(--mono);color:var(--accent);font-size:13px;font-weight:600}
+  .pill{display:inline-flex;align-items:center;gap:6px;font-family:var(--mono);font-size:11.5px;font-weight:600;padding:3px 9px;border-radius:999px;border:1px solid transparent;text-transform:uppercase}
+  .pill.ok{color:var(--ok);background:var(--ok-bg);border-color:color-mix(in srgb,var(--ok) 30%,transparent)}
+  .pill.bad{color:var(--bad);background:var(--bad-bg);border-color:color-mix(in srgb,var(--bad) 30%,transparent)}
+  .pill.warn{color:var(--warn);background:var(--warn-bg);border-color:color-mix(in srgb,var(--warn) 30%,transparent)}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:13px;padding:20px 22px}
+  .verdict{background:linear-gradient(180deg,color-mix(in srgb,var(--ok) 7%,transparent),transparent)}
+  .verdict .big{font-family:var(--mono);font-size:clamp(26px,5vw,40px);font-weight:700;color:var(--ok);letter-spacing:-.02em;line-height:1}
+  table{width:100%;border-collapse:collapse;font-size:13.5px}
+  .scroll{overflow-x:auto;border:1px solid var(--line);border-radius:10px}
+  th,td{text-align:left;padding:8px 13px;border-bottom:1px solid var(--line);white-space:nowrap}
+  th{font-family:var(--mono);font-size:11px;letter-spacing:.05em;text-transform:uppercase;color:var(--ink-2);background:var(--panel2)}
+  tr:last-child td{border-bottom:none} td.mono,.num{font-family:var(--mono)} .num{text-align:right;font-variant-numeric:tabular-nums}
+  ul.clean{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:9px}
+  ul.clean li{padding-left:20px;position:relative;font-size:14.5px}
+  ul.clean li::before{content:"";position:absolute;left:2px;top:8px;width:7px;height:7px;border-radius:2px;background:var(--accent)}
+  ul.clean li b{font-weight:600} .why{color:var(--ink-2)}
+  .figure{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px 18px 10px;margin-top:14px}
+  .figure .cap{font-size:13px;color:var(--ink-2);margin:2px 0 10px} .figure .cap b{color:var(--ink)}
+  .chart{width:100%;height:auto;display:block}
+  .grid{stroke:var(--line);stroke-width:.6}
+  .axl{fill:var(--ink-2);font-family:var(--mono);font-size:10px} .axtitle{fill:var(--ink-2);font-family:var(--mono);font-size:11px;text-anchor:middle}
+  .leg{fill:var(--ink);font-family:var(--mono);font-size:11px} .barval{fill:var(--ink);font-family:var(--mono);font-size:13px;font-weight:600}
+  .commits{font-family:var(--mono);font-size:12.5px;color:var(--ink-2);display:flex;flex-direction:column;gap:5px} .commits b{color:var(--ink)}
+  footer{margin-top:46px;padding-top:20px;border-top:1px solid var(--line);color:var(--ink-2);font-size:12.5px;font-family:var(--mono)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="eyebrow">Mission: Humanity · multiplayer · session report</div>
+    <h1>Instrumentation, deterministic replay &amp; the performance ceiling</h1>
+    <div class="sub">Built the MP measurement platform, proved live cross-machine determinism through a
+      full played game, localized a real desync to the endgame, and mapped the input-latency floor to a
+      single architectural cause.</div>
+    <div class="meta">
+      <span><b>Session</b> 2026-07-10 21:45 → 2026-07-11</span>
+      <span><b>Rig</b> AMD dev-box host + Win11 Hyper-V VM client</span>
+      <span><b>Commits</b> ~20</span>
+      <span><b>Plan</b> tasks/mp-instrumentation.md</span>
+    </div>
+  </header>
+
+  <section>
+    <div class="card verdict">
+      <div class="big">5410 / 5410 in sync</div>
+      <div class="sub" style="margin-top:10px">A full ~9-minute played game was <b>bit-identical
+        cross-machine every lockstep step</b> — units, buildings, projectiles, economy, and the
+        player-local view state all matched. Live MP lockstep is sound. The desync you saw is confined to
+        the <b>endgame</b>, and the input latency is bounded by one architectural cause (below).</div>
+    </div>
+  </section>
+
+  <!-- 1 · what was built -->
+  <section>
+    <div class="lead"><span class="n">01</span><h2>What was built (all validated on live runs)</h2></div>
+    <div class="scroll"><table>
+      <thead><tr><th>phase</th><th>deliverable</th><th>status</th></tr></thead>
+      <tbody>
+        <tr><td class="mono">0a/0b</td><td>per-run log folders + <code>tools/mp_analyze.py</code> (cross-peer desync diff, perf, freeze/horizon)</td><td><span class="pill ok">done</span></td></tr>
+        <tr><td class="mono">1a/1b</td><td>per-region-per-step hashing + <code>player_data</code> split ×6</td><td><span class="pill ok">done</span></td></tr>
+        <tr><td class="mono">2</td><td>order record/replay — faithful-substitute proven; human session replays bit-identical (clock track)</td><td><span class="pill ok">done</span></td></tr>
+        <tr><td class="mono">3</td><td>real present/flip frame-time instrument (<code>frametime_log</code>)</td><td><span class="pill ok">done</span></td></tr>
+        <tr><td class="mono">4</td><td>horizon audit — self-slot &amp; dropped-peer resolved</td><td><span class="pill ok">done</span></td></tr>
+        <tr><td class="mono">5a/5b</td><td>run-without-focus patch + one-command 2-peer runner</td><td><span class="pill ok">done</span></td></tr>
+      </tbody>
+    </table></div>
+  </section>
+
+  <!-- 2 · the desync -->
+  <section>
+    <div class="lead"><span class="n">02</span><h2>The desync — localized to the endgame</h2></div>
+    <p class="sub" style="margin-bottom:6px">You played the host to a win vs an idle VM; the client didn't
+      know it lost (mother still flying, "host left"). The per-region diff pinned it precisely:</p>
+    <ul class="clean">
+      <li><b>Steps 1–5410 (~9 min): perfect lockstep.</b> <span class="why">Every battlefield region
+        bit-identical cross-machine, incl. <code>projectile_pool</code> and both <code>player_data.local</code>
+        view sub-regions — which <i>disproved</i> the earlier "local view state is the desync" theory.</span></li>
+      <li><b>Step 5411 (game-clock 541 s): lockstep breaks.</b> <span class="why">The host won,
+        <code>SESSION_MODE</code> left 3 (the lockstep log stops dead there), both peers dropped to
+        free-running their own clocks and diverged — host to the win screen, client with no synchronized
+        game-over.</span></li>
+      <li><b>Root:</b> <span class="why">the win / game-over is host-local, not lockstep-synchronized.
+        Deferred, scoped in <code>tasks/mp-restoration.md</code>.</span></li>
+    </ul>
+  </section>
+
+  <!-- 3 · performance -->
+  <section>
+    <div class="lead"><span class="n">03</span><h2>Performance — the real picture</h2></div>
+
+    <div class="figure">
+      <div class="cap"><b>Present-to-present frame time over the played game</b> (per-second max). The host
+        holds ~17 ms (≈57 fps); the VM is pinned at ~31 ms (≈32 fps) — a steady virtualized-render cap,
+        not jitter.</div>
+      %%FT_SVG%%
+    </div>
+
+    <div class="figure">
+      <div class="cap"><b>Input-latency cliff.</b> Percent of wall-time frozen in the 2 s SYNCHRONIZING
+        overlay, vs the lockstep lookahead. There is a hard cliff between 300 and 200 ms.</div>
+      %%CLIFF_SVG%%
+    </div>
+    <div class="scroll" style="margin-top:12px"><table>
+      <thead><tr><th>lookahead</th><th>ticks</th><th class="num">% frozen</th><th class="num">since-rx p95</th><th>verdict</th></tr></thead>
+      <tbody>
+        <tr><td class="mono">100 ms</td><td class="mono">1</td><td class="num">%%F100%%%</td><td class="num">%%S100%% ms</td><td><span class="pill bad">unplayable</span></td></tr>
+        <tr><td class="mono">200 ms</td><td class="mono">2</td><td class="num">%%F200%%%</td><td class="num">%%S200%% ms</td><td><span class="pill bad">unplayable</span></td></tr>
+        <tr><td class="mono">300 ms</td><td class="mono">3</td><td class="num">%%F300%%%</td><td class="num">%%S300%% ms</td><td><span class="pill ok">smooth</span></td></tr>
+      </tbody>
+    </table></div>
+
+    <div class="figure">
+      <div class="cap"><b>Why the cliff:</b> host's "time since last peer packet." At 300 ms it stays
+        ~200 ms (peer delivers fine, 0 freezes). Drop the buffer below the VM's ~200 ms delivery jitter
+        and it underruns → the 2 s overlay fires → the frozen peer stops sending → since-rx spikes to
+        ~2 s → the loop repeats.</div>
+      %%SR_SVG%%
+    </div>
+  </section>
+
+  <!-- 4 · the ceiling -->
+  <section>
+    <div class="lead"><span class="n">04</span><h2>The one architectural cause</h2></div>
+    <p class="sub">All of it — the fps-capped sim, the frame-time tail, and the freeze cliff — traces to a
+      single fact: <b>the lockstep horizon is advertised once per rendered frame</b>
+      (<code>llm_strat_time_tick</code> → <code>llm_net_send_lockstep_extend</code>). So a <i>render</i>
+      hitch on either peer becomes a <i>netcode</i> stall, and the sim clock advances only as fast as the
+      slowest peer renders. Input latency therefore has a hard floor of <b>one sim tick = 100 ms</b>
+      (the sim is fixed at 0.1 s — the movement/production constants are hardcoded per-tick, so the tick
+      can't be made finer without changing game speed), and on a render-hitchy peer the practical floor is
+      whatever buffer covers its worst hitch.</p>
+    <p class="sub" style="margin-top:12px"><b>The fix</b> (scoped in <code>tasks/mp-perf-decouple.md</code>):
+      advertise the horizon on a fixed real-time cadence independent of the render loop, so a render hitch
+      no longer starves the peer. Same change fixes the fps-capped sim. Determinism (proven this session)
+      is preserved — only the wall-clock pacing of advertisement changes, never the sim content.</p>
+  </section>
+
+  <!-- 5 · artifacts -->
+  <section>
+    <div class="lead"><span class="n">05</span><h2>Artifacts &amp; landed work</h2></div>
+    <div class="commits">
+      <span><b>tools/</b> mp_analyze.py · mp_run.py · gen_session_report.py</span>
+      <span><b>src/mh_dll</b> run_context · order record/replay + clock track · frametime hook · run-without-focus</span>
+      <span><b>replays/</b> turret-highfire-2026-07-11 · endgame-desync-2026-07-11 (save + orders + clock + hashes)</span>
+      <span><b>tasks/</b> mp-instrumentation · mp-restoration (endgame-sync) · mp-perf-decouple</span>
+    </div>
+    <p class="sub" style="margin-top:14px">The MP core is in far better shape than "it feels laggy"
+      suggested: provably deterministic through a full game, with the remaining friction reduced to two
+      bounded, well-specified tasks — endgame game-over sync, and horizon/render decoupling.</p>
+  </section>
+
+  <footer>reverse-engineering · mh.exe (Watcom x86) · generated by tools/gen_session_report.py</footer>
+</div>
+</body>
+</html>

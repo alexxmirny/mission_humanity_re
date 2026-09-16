@@ -1,0 +1,72 @@
+{
+ "class": "reference",
+ "_class_why": "RU-targeted: its sha256 pins the frozen Russian exe, so mhpatch refuses it against the EN image (measured 2026-09-13) and it can never be an in-memory subject. Kept as the on-disk patch for the RU build.",
+ "target": "mh.exe (retail)",
+ "sha256": "9c4451cf8934a9f446a4f639a3aaa002168030ba512df83a6495bb61861d6a30",
+ "_purpose": "VARIABLE per-building-type storage cap: physical docked ceiling == unit_housing_capacity (cfg PARAMETR), housing==physical by construction. Set PARAMETR per storage building in INIT.CFG (<=50); unset => vanilla 50.",
+ "sections": [
+  {
+   "name": ".mhcap",
+   "vaddr": "0x10f0000",
+   "vsize": "0x1000",
+   "data": "83 b8 91 f2 d9 00 00 75 0a c7 80 91 f2 d9 00 32 00 00 00 e9 80 7e 36 ff 89 82 c0 27 c7 00 50 51 8b 45 e4 69 c0 42 08 00 00 8b 88 91 f2 d9 00 89 8a ac 28 c7 00 59 58 e9 36 28 37 ff 51 8b 88 ac 28 c7 00 85 c9 75 05 b9 32 00 00 00 39 88 90 28 c7 00 59 0f 8c e2 34 37 ff e9 d8 34 37 ff 51 8b 88 ac 28 c7 00 85 c9 75 05 b9 32 00 00 00 39 88 90 28 c7 00 59 0f 8c 1e 36 37 ff e9 17 36 37 ff 51 8b 88 ac 28 c7 00 85 c9 75 05 b9 32 00 00 00 39 88 90 28 c7 00 59 0f 8c cc aa 39 ff e9 c5 aa 39 ff 51 8b 88 ac 28 c7 00 85 c9 75 05 b9 32 00 00 00 39 88 90 28 c7 00 59 0f 8c 67 ac 39 ff e9 60 ac 39 ff 51 8b 88 ac 28 c7 00 85 c9 75 05 b9 32 00 00 00 39 88 c4 27 c7 00 59 0f 8d 92 55 3e ff e9 ce 53 3e ff 51 52 0f b7 55 f0 69 d2 f4 00 00 00 01 da 8b 8a ac 28 c7 00 85 c9 75 05 b9 32 00 00 00 39 c8 5a 59 0f 8e 92 a9 39 ff e9 8b a9 39 ff 8b 90 ac 28 c7 00 85 d2 75 05 ba 32 00 00 00 8b 80 90 28 c7 00 e9 1f 74 32 ff",
+   "chars": "0xE0000040"
+  }
+ ],
+ "patches": [
+  {
+   "va": "0x00457e8e",
+   "expect": "c7 80 91 f2 d9 00 32 00 00 00",
+   "bytes": "e9 6d 81 c9 00 90 90 90 90 90",
+   "_note": "housing_default -> cave 0x010f0000"
+  },
+  {
+   "va": "0x0046286c",
+   "expect": "89 82 c0 27 c7 00",
+   "bytes": "e9 a7 d7 c8 00 90",
+   "_note": "populate -> cave 0x010f0018"
+  },
+  {
+   "va": "0x0046352d",
+   "expect": "83 b8 90 28 c7 00 32 7c 05",
+   "bytes": "e9 0a cb c8 00 90 90 90 90",
+   "_note": "find_home1 -> cave 0x010f003c"
+  },
+  {
+   "va": "0x0046368e",
+   "expect": "83 b8 90 28 c7 00 32 7c 02",
+   "bytes": "e9 cb c9 c8 00 90 90 90 90",
+   "_note": "find_home2 -> cave 0x010f005e"
+  },
+  {
+   "va": "0x0048ab5e",
+   "expect": "83 b8 90 28 c7 00 32 7c 02",
+   "bytes": "e9 1d 55 c6 00 90 90 90 90",
+   "_note": "can_enter_occ -> cave 0x010f0080"
+  },
+  {
+   "va": "0x0048ad1b",
+   "expect": "83 b8 90 28 c7 00 32 7c 02",
+   "bytes": "e9 82 53 c6 00 90 90 90 90",
+   "_note": "can_land_occ -> cave 0x010f00a2"
+  },
+  {
+   "va": "0x004d54a7",
+   "expect": "83 b8 c4 27 c7 00 32 0f 8d bf 01 00 00",
+   "bytes": "e9 18 ac c1 00 90 90 90 90 90 90 90 90",
+   "_note": "ai_route_cnt -> cave 0x010f00c4"
+  },
+  {
+   "va": "0x0048aa98",
+   "expect": "83 f8 32 7e 02",
+   "bytes": "e9 49 56 c6 00",
+   "_note": "can_enter_sol -> cave 0x010f00e6"
+  },
+  {
+   "va": "0x00417545",
+   "expect": "8b 80 90 28 c7 00",
+   "bytes": "e9 c8 8b cd 00 90",
+   "_note": "panel_max -> cave 0x010f0112"
+  }
+ ]
+}

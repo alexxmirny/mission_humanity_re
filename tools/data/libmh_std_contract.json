@@ -1,0 +1,168 @@
+{
+ "rows": [
+  {
+   "mangled": "?fill_tables@detail@sim@mh@@YA_NPAP6AXXZH0H@Z",
+   "export": "?fill_tables@detail@sim@mh@@YA_NPAP6AXXZH0H@Z"
+  },
+  {
+   "mangled": "?fixes@lockstep@mh@@YAABUreimpl_fixes@12@XZ",
+   "export": "?fixes@lockstep@mh@@YAABUreimpl_fixes@12@XZ"
+  },
+  {
+   "mangled": "?frame@detail@sim@mh@@YAXABUsim_view@23@AAVsim_store@23@ABUlt_frame_calls@23@@Z",
+   "export": "?frame@detail@sim@mh@@YAXABUsim_view@23@AAVsim_store@23@ABUlt_frame_calls@23@@Z"
+  },
+  {
+   "mangled": "?hash_manifest_fingerprint@world@state@mh@@YAIXZ",
+   "export": "?hash_manifest_fingerprint@world@state@mh@@YAIXZ"
+  },
+  {
+   "mangled": "?hash_sink_fingerprint@world@state@mh@@YAIXZ",
+   "export": "?hash_sink_fingerprint@world@state@mh@@YAIXZ"
+  },
+  {
+   "mangled": "?last_import@nav@state@mh@@YAABUimport_stats@123@XZ",
+   "export": "?last_import@nav@state@mh@@YAABUimport_stats@123@XZ"
+  },
+  {
+   "mangled": "?last_trap@libmh_in@mh@@YAPBDXZ",
+   "export": "?last_trap@libmh_in@mh@@YAPBDXZ"
+  },
+  {
+   "mangled": "?live@state@mh@@YAAAUlive_table@12@XZ",
+   "export": "?live@state@mh@@YAAAUlive_table@12@XZ"
+  },
+  {
+   "mangled": "?live_calls@lockstep@mh@@YAABUgame_calls@12@XZ",
+   "export": "?live_calls@lockstep@mh@@YAABUgame_calls@12@XZ"
+  },
+  {
+   "mangled": "?live_lt_frame_calls@sim@mh@@YAABUlt_frame_calls@12@XZ",
+   "export": "?live_lt_frame_calls@sim@mh@@YAABUlt_frame_calls@12@XZ"
+  },
+  {
+   "mangled": "?owner_count@state@mh@@YAAAHXZ",
+   "export": "?owner_count@state@mh@@YAAAHXZ"
+  },
+  {
+   "mangled": "?owner_table@state@mh@@YAPAUowner_slot@12@XZ",
+   "export": "?owner_table@state@mh@@YAPAUowner_slot@12@XZ"
+  },
+  {
+   "mangled": "?rng_trace_add_note@sim@mh@@YAXIIIIIII@Z",
+   "export": "?rng_trace_add_note@sim@mh@@YAXIIIIIII@Z"
+  },
+  {
+   "mangled": "?rng_trace_at@sim@mh@@YAABUrng_trace_entry@12@H@Z",
+   "export": "?rng_trace_at@sim@mh@@YAABUrng_trace_entry@12@H@Z"
+  },
+  {
+   "mangled": "?rng_trace_count@sim@mh@@YAHXZ",
+   "export": "?rng_trace_count@sim@mh@@YAHXZ"
+  },
+  {
+   "mangled": "?rng_trace_note_at@sim@mh@@YAABUrng_trace_note@12@H@Z",
+   "export": "?rng_trace_note_at@sim@mh@@YAABUrng_trace_note@12@H@Z"
+  },
+  {
+   "mangled": "?rng_trace_note_count@sim@mh@@YAHXZ",
+   "export": "?rng_trace_note_count@sim@mh@@YAHXZ"
+  },
+  {
+   "mangled": "?rng_trace_overflowed@sim@mh@@YA_NXZ",
+   "export": "?rng_trace_overflowed@sim@mh@@YA_NXZ"
+  },
+  {
+   "mangled": "?rng_trace_set_step@sim@mh@@YAXI@Z",
+   "export": "?rng_trace_set_step@sim@mh@@YAXI@Z"
+  },
+  {
+   "mangled": "?rng_trace_window@sim@mh@@YAXII@Z",
+   "export": "?rng_trace_window@sim@mh@@YAXII@Z"
+  },
+  {
+   "mangled": "?set_suppress_enqueue@orders@mh@@YAX_N@Z",
+   "export": "?set_suppress_enqueue@orders@mh@@YAX_N@Z"
+  },
+  {
+   "mangled": "?sim_step@sim@mh@@YAXXZ",
+   "export": "?sim_step@sim@mh@@YAXXZ"
+  },
+  {
+   "mangled": "?sim_tick@detail@lockstep@mh@@YAXABUengine_state@23@ABUgame_calls@23@ABUreimpl_fixes@23@@Z",
+   "export": "?sim_tick@detail@lockstep@mh@@YAXABUengine_state@23@ABUgame_calls@23@ABUreimpl_fixes@23@@Z"
+  },
+  {
+   "mangled": "?state@lockstep@mh@@YA?AUengine_state@12@XZ",
+   "export": "?state@lockstep@mh@@YA?AUengine_state@12@XZ"
+  },
+  {
+   "mangled": "?state@sim@mh@@YA?AUsim_state@12@XZ",
+   "export": "?state@sim@mh@@YA?AUsim_state@12@XZ"
+  },
+  {
+   "mangled": "?time_tick@detail@lockstep@mh@@YAHABUtimekeeper_state@23@ABUtimekeeper_calls@23@ABUreimpl_fixes@23@N@Z",
+   "export": "?time_tick@detail@lockstep@mh@@YAHABUtimekeeper_state@23@ABUtimekeeper_calls@23@ABUreimpl_fixes@23@N@Z"
+  },
+  {
+   "mangled": "?timekeeper@lockstep@mh@@YA?AUtimekeeper_state@12@XZ",
+   "export": "?timekeeper@lockstep@mh@@YA?AUtimekeeper_state@12@XZ"
+  },
+  {
+   "mangled": "?timekeeper_live_calls@lockstep@mh@@YAABUtimekeeper_calls@12@XZ",
+   "export": "?timekeeper_live_calls@lockstep@mh@@YAABUtimekeeper_calls@12@XZ"
+  },
+  {
+   "mangled": "?trap_count@libmh_in@mh@@YAHXZ",
+   "export": "?trap_count@libmh_in@mh@@YAHXZ"
+  },
+  {
+   "mangled": "_libmh_abi_version",
+   "export": "libmh_abi_version"
+  },
+  {
+   "mangled": "_libmh_bind_regions",
+   "export": "libmh_bind_regions"
+  },
+  {
+   "mangled": "_libmh_bound_count",
+   "export": "libmh_bound_count"
+  },
+  {
+   "mangled": "_libmh_host_api_unbound",
+   "export": "libmh_host_api_unbound"
+  },
+  {
+   "mangled": "_libmh_import_world",
+   "export": "libmh_import_world"
+  },
+  {
+   "mangled": "_libmh_in_open",
+   "export": "libmh_in_open"
+  },
+  {
+   "mangled": "_libmh_install_fp_precision",
+   "export": "libmh_install_fp_precision"
+  },
+  {
+   "mangled": "_libmh_region_count",
+   "export": "libmh_region_count"
+  },
+  {
+   "mangled": "_libmh_set_host_api",
+   "export": "libmh_set_host_api"
+  },
+  {
+   "mangled": "_libmh_set_tact_host_api",
+   "export": "libmh_set_tact_host_api"
+  },
+  {
+   "mangled": "_libmh_state_hash",
+   "export": "libmh_state_hash"
+  },
+  {
+   "mangled": "_libmh_tact_host_api_unbound",
+   "export": "libmh_tact_host_api_unbound"
+  }
+ ]
+}

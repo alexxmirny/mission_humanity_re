@@ -1,0 +1,517 @@
+{
+ "_comment": [
+  "THE PATCH/SEAM INTERLOCK REGISTRY (tracker/reimpl.yaml C1).",
+  "",
+  "Every byte patch the DLL writes into mh.exe's image is declared here, together with the ORIGINAL",
+  "FUNCTION that owns the target address. tools/lint_dll_patches.py cross-checks that ownership",
+  "against the set of functions the DLL can PROMOTE (replace with a C++ body), because a patch whose",
+  "owning function has been promoted writes bytes that are no longer executed -- the entry has been",
+  "JMP'd away -- while patch_bytes_guarded still reports 'armed'. Half a fix, with a log line that",
+  "says otherwise. That is the exact bug this file exists to make impossible to miss.",
+  "",
+  "FIELDS",
+  "  id        stable name for the patch",
+  "  sources   where it is written from: {file, expr} pairs naming the ADDRESS EXPRESSION as it",
+  "            appears at the patch_bytes_guarded call site. The lint enumerates every call site in",
+  "            the tree and fails on one that is not registered here -- that is what makes a NEW",
+  "            unregistered patch a build failure rather than a surprise.",
+  "  addrs     the target address(es), or [] with dynamic:true",
+  "  dynamic   true when the addresses are DISCOVERED AT RUNTIME (a .text scan) and so cannot be",
+  "            listed. Exempt from the address checks BY DECLARATION; `rationale` must say why, and",
+  "            the runtime half (hook/promoted.h) is what covers it instead.",
+  "  kind      'code' (must resolve to a function) or 'data' (must NOT resolve to a function -- a",
+  "            data patch landing inside a function body means one of the two labels is wrong)",
+  "  owner     expected owning function name; the lint re-derives it from tools/data/en_functions.json",
+  "            and compares, so a Ghidra re-split or a moved boundary surfaces as a diff",
+  "  knob      the ini key gating it, or null if unconditional",
+  "  carrier   REQUIRED when `owner` is promotable. Three accepted forms:",
+  "              'migrated:<ini key>' -- a branch in our reimplemented body behind that same knob (C3)",
+  "              'pending:<tracker id>' -- the collision is REAL and the fix is NOT carried yet. This",
+  "                 is the honest state while a migration is in flight; the lint accepts it but",
+  "                 ANNOUNCES it on every run, and the runtime arming report names it too. Saying",
+  "                 'none:<reason>' instead would assert a deliberate decision that was never made.",
+  "              'none:<reason>' -- deliberately not carried, with the reason.",
+  "            null = not applicable, i.e. the owner is not promotable.",
+  "  note      why the patch exists, one line"
+ ],
+ "patches": [
+  {
+   "id": "resync_trigger_reset",
+   "sources": [
+    {
+     "file": "mh/seams/net_lockstep.cpp",
+     "expr": "ADDR_RESYNC_RECOVERY_SPLICE"
+    }
+   ],
+   "addrs": [
+    "0x0043f2a5"
+   ],
+   "kind": "code",
+   "owner": [
+    "llm_strat_time_tick"
+   ],
+   "knob": "resync_trigger_reset",
+   "carrier": "migrated:resync_trigger_reset",
+   "note": "call-splice time_tick's recovery-branch store to also zero RESYNC_TRIGGER_COUNT (default OFF). MIGRATED (C3 slice 3, 2026-07-29): our detail::time_tick carries the same store behind the same ini key, at the RECOVERY exit only -- identifiable as 0x0043f2a5 because it is the one exit that also disarms the peer timeout. Covered by lockstest in BOTH flag states AND at both of the other two episode-exits (the un-stalled-while-parked stand_down and NOTE (8)'s inline reload), which is where a too-broad migration would show; mutation-checked 6/6 by name (tools/oneoff/2026-07-29-mutate-c3-reset.py). The site-scoping mutations are the point: the first version of the other-site test passed against a mutant that DID reset there, because it forgot to pass its fixes struct -- the mutation run is what found that."
+  },
+  {
+   "id": "resync_wait_fix",
+   "sources": [
+    {
+     "file": "mh/seams/net_lockstep.cpp",
+     "expr": "ADDR_RESYNC_STUB_RET"
+    }
+   ],
+   "addrs": [
+    "0x0049c044"
+   ],
+   "kind": "code",
+   "owner": [
+    "llm_net_lockstep_sync_delay_stub"
+   ],
+   "knob": "resync_wait_fix",
+   "carrier": "migrated:lockstep",
+   "note": "sync_delay_stub returns uninitialised stack -> a garbage-length busy-wait; patch its return to 0. CARRIED SINCE C8-c by mh::lockstep::detail::sync_delay_stub, which returns 0. TWO THINGS THAT MAKE THIS CARRIER UNLIKE THE OTHERS. (1) The knob is `[net] resync_wait_fix` but the carrier key is `[promote] lockstep`, because our body carries the fix UNCONDITIONALLY rather than branching on the knob -- the alternative would be reproducing a read of uninitialised stack, i.e. deliberately reintroducing the measured MP hang (mh_hang.dmp, ~6.1M ms of spin on the main thread holding the game CS) behind a flag. resync.h argues it at length. So under promotion `resync_wait_fix=0` is inert; install_resync_wait_fix says so by name in the log, and the rollback arm for that A/B is `[promote] lockstep=0`. (2) It is therefore the one carrier whose absence would be a HANG, not a degradation -- docs/reimpl-seam-classes.md 4c R3 makes it ineligible for the diagnostic-config exception, which is why C8-e may only retire this patch AFTER the seam is promoted, never alongside."
+  },
+  {
+   "id": "icon_count",
+   "sources": [
+    {
+     "file": "mh/seams/net_lockstep.cpp",
+     "expr": "ADDR_OVL_WAIT_CALL"
+    }
+   ],
+   "addrs": [
+    "0x0043f0fc"
+   ],
+   "kind": "code",
+   "owner": [
+    "llm_strat_time_tick"
+   ],
+   "knob": "icon_count",
+   "carrier": "none:diagnostic",
+   "note": "P4 de-sync-icon counter. RE-KEYED FROM defang_tt_wait BY C8-e (2026-07-30): the defang was dropped as a scope decision, but the PATCH AT THIS SITE SURVIVES because it was never solely the defang's -- install_overlay_gate() fired on `defang_tt_wait == 2 || (defang_tt_wait == 0 && icon_count)`, and [net] icon_count is an unrelated diagnostic that is DEFAULT ON. With the defang gone icon_count is the whole condition and the thunk is a pure pass-through counter (g_icon_gate is permanently 0; the thunk's gate branch is left in place, dead, because deleting hand-written asm does not belong in a knob retirement). carrier `none:diagnostic`: this counts, it does not fix, so there is nothing for a reimplementation to carry -- under promotion the call site never executes and the run's log says the counters are UNAVAILABLE, not zero."
+  },
+  {
+   "id": "defang_xui",
+   "sources": [
+    {
+     "file": "mh/seams/net_lockstep.cpp",
+     "expr": "ADDR_OVL_XUI_WAIT"
+    },
+    {
+     "file": "mh/seams/net_lockstep.cpp",
+     "expr": "ADDR_OVL_XUI_MODE8"
+    }
+   ],
+   "addrs": [
+    "0x004c85e8",
+    "0x004c85ed"
+   ],
+   "kind": "code",
+   "owner": [
+    "llm_net_lockstep_extend_ui_enter"
+   ],
+   "knob": "defang_xui",
+   "carrier": null,
+   "note": "NOP the extend-UI wait call + the `mov byte [GAME_MODE],8` -- the dominant ~2s mode-8 freeze"
+  },
+  {
+   "id": "browser_row_count_fmt",
+   "sources": [
+    {
+     "file": "mh/ui/lobby_widgets.cpp",
+     "expr": "mh::addr::browser_row_count_fmt"
+    }
+   ],
+   "addrs": [
+    "0x00503068"
+   ],
+   "kind": "data",
+   "owner": [],
+   "knob": null,
+   "carrier": null,
+   "note": "S7: rewrite the server-browser row format string in place"
+  },
+  {
+   "id": "video_res_label_slot2",
+   "sources": [
+    {
+     "file": "mh/seams/video.cpp",
+     "expr": "mh::addr::ui_opt_res_label_slot2"
+    }
+   ],
+   "addrs": [
+    "0x0064508f"
+   ],
+   "kind": "data",
+   "owner": [],
+   "knob": "video.size_mode",
+   "carrier": null,
+   "note": "D13b: retarget the options-screen resolution label slot-2 pointer"
+  },
+  {
+   "id": "video_res_options_table",
+   "sources": [
+    {
+     "file": "mh/seams/video.cpp",
+     "expr": "mh::addr::ui_opt_res_options_table"
+    },
+    {
+     "file": "mh/seams/video.cpp",
+     "expr": "mh::addr::ui_opt_res_count"
+    }
+   ],
+   "addrs": [
+    "0x006450c3",
+    "0x006450c7"
+   ],
+   "kind": "data",
+   "owner": [],
+   "knob": "video.size_mode",
+   "carrier": null,
+   "note": "D13b: repoint the resolution options table and its count"
+  },
+  {
+   "id": "interlock_selftest_fake_entry",
+   "sources": [
+    {
+     "file": "mh_nettest/interlock_selftest.cpp",
+     "expr": "F_ENTRY"
+    },
+    {
+     "file": "mh_nettest/interlock_selftest.cpp",
+     "expr": "(uintptr_t)g_fake_entry2"
+    }
+   ],
+   "addrs": [],
+   "dynamic": true,
+   "kind": "detour",
+   "owner": [],
+   "knob": null,
+   "carrier": null,
+   "note": "U31: interlock_selftest drives install_trampoline/install_jmp against its OWN buffers",
+   "rationale": "These are not patches on mh.exe at all -- the target is a 16-byte static buffer inside net_selftest.exe, so there is no function to resolve and no promotion to collide with, by construction. They exist because U31's claim is about the state the primitives LEAVE BEHIND when VirtualAlloc/VirtualProtect fail (pointer untouched, thunk freed, refusal filed), and no run in this tree has ever taken those paths -- so the only instrument is a unit test that really calls them, with mh::hook::set_page_ops supplying failing page operations. The C9 check this lint cannot perform here is exactly the check the test is EXERCISING: detour_refusal is driven directly, both ways, a few lines above."
+  },
+  {
+   "id": "hostapi_selftest_unbound_hook_table",
+   "sources": [
+    {
+     "file": "mh_nettest/hostapi_selftest.cpp",
+     "expr": "0"
+    }
+   ],
+   "addrs": [],
+   "dynamic": true,
+   "kind": "detour",
+   "owner": [],
+   "knob": null,
+   "carrier": null,
+   "note": "F4D-PRE: hostapitest asserts that an UNBOUND hook table refuses install_trampoline",
+   "rationale": "Target 0, and that is the assertion rather than an accident. libmh_hook.h says an unbound install_trampoline row answers false; the test proves it answers BEFORE touching the target, so it passes an address no process can have -- a regression that forwarded into the real mh::hook:: primitive would fault here instead of passing quietly. Nothing is patched: the table's slot is null, the accessor returns false, and the check beside it asserts the trampoline pointer was not published. There is no function to resolve and no promotion to collide with, by construction -- the same argument as interlock_selftest_fake_entry one row class over, with an even weaker premise (that one at least owns a buffer)."
+  },
+  {
+   "id": "video_view_array_reloc",
+   "sources": [
+    {
+     "file": "mh/seams/video.cpp",
+     "expr": "sites[i][k]"
+    }
+   ],
+   "addrs": [],
+   "dynamic": true,
+   "kind": "code",
+   "owner": [],
+   "knob": "video.max_tiles",
+   "carrier": null,
+   "note": "relocate the view arrays by rewriting every .text immediate that names their base",
+   "rationale": "The refsites are FOUND by scanning .text for the base immediate (video.cpp scan_text), so no static address list exists and none can be manufactured -- the set depends on the loaded image. Covered by the RUNTIME half instead: patch_bytes_guarded consults hook/promoted.h on every write, so an immediate that happens to sit inside a promoted body is refused and logged rather than silently lost."
+  },
+  {
+   "id": "video_mode2_immediates",
+   "sources": [
+    {
+     "file": "mh/seams/video.cpp",
+     "expr": "site + off"
+    },
+    {
+     "file": "mh/seams/video.cpp",
+     "expr": "P[i].site + P[i].off"
+    },
+    {
+     "file": "mh/seams/video.cpp",
+     "expr": "CUR[i].site"
+    }
+   ],
+   "addrs": [],
+   "dynamic": true,
+   "kind": "code",
+   "owner": [],
+   "knob": "video.size_mode",
+   "carrier": null,
+   "note": "rewrite the 13 mode-2 resolution immediates, and NOP the boot cursor stores",
+   "rationale": "Addresses come from the P[]/CUR[] tables as `site + off` and are re-poked per mode switch with a rolling `expect`, so the effective target is a computed expression rather than a constant. Same runtime coverage as video_view_array_reloc."
+  },
+  {
+   "id": "run_without_focus",
+   "sources": [
+    {
+     "file": "mh/seams/standalone.cpp",
+     "expr": "ADDR_WND_ACTIVATE_INACTIVE"
+    }
+   ],
+   "addrs": [
+    "0x004a04ce"
+   ],
+   "kind": "code",
+   "owner": [
+    "llm_wnd_on_activate"
+   ],
+   "knob": null,
+   "carrier": null,
+   "note": "The runtime twin of src/patcher/run_without_focus_EN.mh.patch.json, moved into the DLL so a byte-for-byte STOCK mh.exe behaves like build_focus's exe (tasks/injection.md I4). Replaces llm_wnd_on_activate's WA_INACTIVE block-head `CMP dword[_G_LLM_GAME_RUNNING],0` with `JMP 0x004a0008` (the function's shared epilogue) + 2 NOP pad, so focus loss stops clearing GAME_RUNNING / pausing the clock / showing the cursor -- and, since GAME_RUNNING stays 1, refocus is a no-op too. Identical bytes to the manifest, so an exe that ALREADY carries the static patch fails the expected-bytes guard and nothing is written: the same DLL serves stock and patched exes. No knob -- the rig requires this unconditionally (mp_run.py: the run MUST use the focus-patched exe else a focus loss stalls it), and a stock exe has no other source for it."
+  },
+  {
+   "id": "detour_sim_tick",
+   "kind": "detour",
+   "sources": [
+    {
+     "file": "mh/hook/hookpoint.cpp",
+     "expr": "mh::addr::llm_strat_sim_tick"
+    }
+   ],
+   "owner": [
+    "llm_strat_sim_tick"
+   ],
+   "knob": null,
+   "carrier": "rebind:C6",
+   "note": "The determinism harness's frame-pump detour. llm_strat_sim_tick is PROMOTABLE (it is deliberately NOT in the default lockstep closure -- opt in with [promote] sim_tick=1), and when it is promoted this detour KEEPS the entry: reimpl_probe rebinds what it falls through to (MH_Harness_RebindSimStep). That is C6's protocol, not a collision, which is why the call site passes entry_claim::rebind. ---- FORK F3C (2026-09-13): THE SITE MOVED, THE FACTS DID NOT. Ruling D5 took the harness off the raw primitives, so this detour is now a ROW of the named hook-point table (mh/hook/hookpoint.cpp); harness.cpp names a `point` instead of a target, a steal width, a claim and a guard. lint_dll_patches reads that table as the call-site list, so the target still resolves and check 7 still asks the collision question -- the source key below is the row's own target expression."
+  },
+  {
+   "id": "detour_sim_step",
+   "kind": "detour",
+   "sources": [
+    {
+     "file": "mh/hook/hookpoint.cpp",
+     "expr": "mh::addr::llm_strat_sim_step"
+    }
+   ],
+   "owner": [
+    "llm_strat_sim_step"
+   ],
+   "knob": null,
+   "carrier": "rebind:C6",
+   "note": "Same C6 rebind protocol as detour_sim_tick, for the step half (RI-SIM / SIM1F). The 'REBOUND' line is logged by reimpl_probe, not at the install site. ---- FORK F3C (2026-09-13): THE SITE MOVED, THE FACTS DID NOT. Ruling D5 took the harness off the raw primitives, so this detour is now a ROW of the named hook-point table (mh/hook/hookpoint.cpp); harness.cpp names a `point` instead of a target, a steal width, a claim and a guard. lint_dll_patches reads that table as the call-site list, so the target still resolves and check 7 still asks the collision question -- the source key below is the row's own target expression."
+  },
+  {
+   "id": "detour_desync_sim_step",
+   "kind": "detour",
+   "sources": [
+    {
+     "file": "mh/seams/net_seams.cpp",
+     "expr": "ADDR_DESYNC_SIM_STEP"
+    }
+   ],
+   "owner": [
+    "llm_strat_sim_step"
+   ],
+   "knob": null,
+   "carrier": "none:the harness path feeds the same detector directly",
+   "note": "D21's SHIP-path per-step hook for the runtime desync detector -- the SECOND detour on this entry, and the two are mutually exclusive BY CONSTRUCTION rather than by luck. detour_sim_step (the determinism harness) is installed from DllMain via MH_Harness_Init, which runs before MH_Seam_Init; this one is installed from MH_Seam_Init and only takes the entry if it is still free. So: harness armed -> this install is refused and the harness calls mh::desync::on_sim_step_hashed from its own detour with the hash it already computed; no harness (a shipped game) -> this is the only sampling point that exists, because the turn engine's calls.sim_step edge is dead there (llm_strat_sim_tick is not in the default [promote] lockstep closure). carrier 'none' is the honest answer: a refusal loses NOTHING, because the facility the detour drives is fed by the other path in exactly the runs where the refusal happens. It claims the entry (entry_claim::exclusive) when it does install, so a later writer is refused by name rather than silently."
+  },
+  {
+   "id": "detour_tact_frame",
+   "kind": "detour",
+   "sources": [
+    {
+     "file": "mh/hook/hookpoint.cpp",
+     "expr": "mh::addr::llm_tact_frame"
+    }
+   ],
+   "owner": [
+    "llm_tact_frame"
+   ],
+   "knob": null,
+   "carrier": null,
+   "note": "The TACTICAL cadence detour (TACT-PREP), armed under [harness] tact_hash_step / tact_synth -- it carries the per-frame `T` hash line that IS the tactical trajectory oracle. TACT1E (2026-08-28) made llm_tact_frame promotable, and this detour KEEPS the entry under the same C6 protocol as detour_sim_step: reimpl_probe reads [promote] tact_frame and rebinds what the detour falls through to (MH_Harness_RebindTactFrame), so on_tact_frame still hashes the pre-body state first. The rebind is not one option of two here -- it is the ONLY route: an MH_EXPORT_REPLACE install was measured being refused, '; [export] llm_tact_frame NOT armed -- entry is OWNED by an unnamed DLL detour'. And the harness must be the entry owner rather than the promotion, because if the INSTRUMENT is the side that loses the race a determinism run is silently VOIDED (no hashes recorded) instead of failed. ---- FORK F2E (2026-09-13): THE CARRIER IS GONE BECAUSE THE PROMOTION IS. Tactical mode is demoted permanently -- the fork's selector has two hosted answers and the reimplemented spine brokered serves is the STRATEGIC one -- so libmh/tact/tact_promote.{h,cpp}, the 18 MH_EXPORT_REPLACE installs and both routes onto this entry were deleted. This detour still owns the entry and still does its job; what it falls through to is the ORIGINAL body, which is now the only body there is in a hosted process. `carrier` is therefore null: a carrier names how a promotion survives a detour, and there is no promotion to survive it. ---- FORK F3C (2026-09-13): THE SITE MOVED, THE FACTS DID NOT. Ruling D5 took the harness off the raw primitives, so this detour is now a ROW of the named hook-point table (mh/hook/hookpoint.cpp); harness.cpp names a `point` instead of a target, a steal width, a claim and a guard. lint_dll_patches reads that table as the call-site list, so the target still resolves and check 7 still asks the collision question -- the source key below is the row's own target expression."
+  },
+  {
+   "id": "detour_order_dispatch",
+   "kind": "detour",
+   "sources": [
+    {
+     "file": "mh/hook/hookpoint.cpp",
+     "expr": "mh::addr::llm_strat_order_queue_dispatch"
+    }
+   ],
+   "owner": [
+    "llm_strat_order_queue_dispatch"
+   ],
+   "knob": null,
+   "carrier": "rebind:D18",
+   "note": "The order-RECORD harness hook, armed only when [test] order_mode=1. CORRECTION 2026-08-27: an earlier note here said its target is promoted by default by [promote] orders -- WRONG. llm_strat_order_queue_dispatch is NOT one of mh::orders' 9 seams; it is promoted by [promote] sim_dispatch, whose ship default is SHIP_PROMOTE_SIM_DISPATCH = 0. So recording was never broken in the ship config, and the collision runs the OTHER WAY: with the recorder on, the DETOUR wins the entry and the promotion is refused. Measured -- `[promote] sim_dispatch=1` plus --record printed \"[export] llm_strat_order_queue_dispatch NOT armed -- entry bytes 90909070837229E9 != expected 0000008468E58955 (wrong build, or already hooked)\", a build diagnosis from a good build, and the two facilities were silently exclusive. RESOLVED BY REBIND (D18), the C4/C6 protocol: the detour keeps the entry so recording still runs first, and reimpl_probe moves only its fall-through (MH_Harness_RebindOrderDispatch). Verified in one run: '[promote] sim_dispatch REBOUND', 337 KB of mh_orders.bin, and '[promote] ai_work order_queue_dispatch calls=200' proving OUR body served them. ---- FORK F3C (2026-09-13): THE SITE MOVED, THE FACTS DID NOT. Ruling D5 took the harness off the raw primitives, so this detour is now a ROW of the named hook-point table (mh/hook/hookpoint.cpp); harness.cpp names a `point` instead of a target, a steal width, a claim and a guard. lint_dll_patches reads that table as the call-site list, so the target still resolves and check 7 still asks the collision question -- the source key below is the row's own target expression."
+  },
+  {
+   "id": "detour_resync_order_horizon",
+   "kind": "detour",
+   "sources": [
+    {
+     "file": "mh/seams/net_lockstep.cpp",
+     "expr": "ADDR_BROADCAST_RESYNC_STATE"
+    }
+   ],
+   "owner": [
+    "llm_net_lockstep_broadcast_resync_state"
+   ],
+   "knob": "resync_order_horizon",
+   "carrier": "migrated:resync_order_horizon",
+   "note": "MP D14's clamp: raise the CTL_RESYNC_BEGIN synthetic order's exec_time to LOCKSTEP_HORIZON so both peers release it on the same step. CARRIED SINCE D17 (2026-08-27) by reimpl_fixes::resync_order_horizon, applied once at the top of detail::lockstep_broadcast_resync_state -- before BOTH consumers, since exec_time feeds the wire payload and the local mirror order and clamping one without the other would part the peers further than the bug does. The trampoline is still here and still arms on an UNPROMOTED run; the promoted path now logs 'DISPLACED ... our body CARRIES the clamp'. Before D17 this fix was in NO ship-default run at all: reimpl_probe_install() promotes before lockstep_install_core() arms, so the entry already held the promotion's jump. Measured in the kept logs at the time: 67 'NOT armed' vs 17 'armed', splitting exactly on [promote] lockstep."
+  },
+  {
+   "id": "detour_time_tick",
+   "kind": "detour",
+   "sources": [
+    {
+     "file": "mh/seams/net_lockstep.cpp",
+     "expr": "ADDR_TIME_TICK"
+    }
+   ],
+   "owner": [
+    "llm_strat_time_tick"
+   ],
+   "knob": null,
+   "carrier": "rebind:C4",
+   "note": "The pacing / adaptive / rx_spin / graceful_drop detour. llm_strat_time_tick is in the DEFAULT promoted closure, and C4's rule is that this detour keeps the entry while the promotion rebinds its fall-through ('; [promote] time_tick REBOUND'). It also claims the entry via note_entry_owner, so a second writer is refused by name. Passes entry_claim::rebind."
+  },
+  {
+   "id": "detour_save_promote",
+   "kind": "detour",
+   "sources": [
+    {
+     "file": "libmh/save/save_live.cpp",
+     "expr": "target"
+    }
+   ],
+   "owner": [],
+   "knob": null,
+   "carrier": null,
+   "dynamic": true,
+   "rationale": "Generic helper: `target` is a parameter, so there is no static address. It is a promoter rather than a competing detour, which is the reason it is exempt rather than merely unresolvable.",
+   "note": "save_live's promote_via_trampoline() -- a PROMOTER, the same category as hook/export.cpp's install_jmp. It is the code that makes a body promoted, so it passes entry_claim::rebind and the interlock must not stand in front of it."
+  },
+  {
+   "id": "detour_net_trace",
+   "kind": "detour",
+   "sources": [
+    {
+     "file": "mh/seams/net_diag.cpp",
+     "expr": "va"
+    }
+   ],
+   "owner": [],
+   "knob": null,
+   "carrier": null,
+   "dynamic": true,
+   "rationale": "The target VAs come from the ini at runtime and cannot exist in any static list. Covered by displaced_by_promotion() in hook/detour.cpp, which will now refuse and NAME the promoted owner instead of installing a counter onto dead code.",
+   "note": "The [trace] facility installs a counting trampoline on VAs supplied by the ini at runtime. These are arbitrary and user-chosen -- including, legitimately, addresses inside promoted bodies -- so the runtime guard is the only thing that can adjudicate them."
+  },
+  {
+   "id": "detour_video_reentrancy",
+   "kind": "detour",
+   "sources": [
+    {
+     "file": "mh/seams/video.cpp",
+     "expr": "G[i].site"
+    }
+   ],
+   "owner": [],
+   "knob": null,
+   "carrier": null,
+   "dynamic": true,
+   "rationale": "Loop over a local table: the target is G[i].site. The sites are static and could be listed here, but listing them would duplicate a table that lives two lines from the install and would go stale silently; the runtime guard covers them without that risk.",
+   "note": "The video re-entrancy guard arms a small static group of sites through a local table, so the expression is G[i].site. It prologue-checks every member before arming any of them."
+  },
+  {
+   "id": "detour_shadow_sites",
+   "kind": "detour",
+   "sources": [
+    {
+     "file": "mh/shadow/shadow.cpp",
+     "expr": "s.target"
+    }
+   ],
+   "owner": [],
+   "knob": null,
+   "carrier": null,
+   "dynamic": true,
+   "rationale": "Table-driven: the target is a struct field (s.target). Covered by shadow's own promotion refusal and, underneath it, by displaced_by_promotion() in hook/detour.cpp.",
+   "note": "The differential oracle used to arm one trampoline per site from its own site table, refusing wholesale when the subsystem was promoted -- a comparison against an original that is no longer installed is meaningless. That oracle was retired at F2D; this row records the trampoline shape it used, which the patch layer still emits for other consumers."
+  },
+  {
+   "id": "detour_allai_land_players",
+   "kind": "detour",
+   "sources": [
+    {
+     "file": "mh/hook/hookpoint.cpp",
+     "expr": "mh::exp::addr_llm_game_land_players_on_planet"
+    }
+   ],
+   "owner": [
+    "llm_game_land_players_on_planet"
+   ],
+   "knob": null,
+   "carrier": "none:mutually exclusive configurations, both directions refuse LOUDLY. The ALLAI landing-conversion detour arms only under [test] all_ai=1 -- a rig-soak instrument, never a ship config -- and llm_game_land_players_on_planet is promoted by [promote] sim_resid (SIM-RESID-P, 2026-09-01). Whichever installs second is refused by the entry guard and SAYS SO: promotion-first leaves 'ALLAI NOT armed: install REFUSED' and all_ai=0, which the soak shape rules then fail on the ALLAI VERIFY read; detour-first leaves the sim_resid install PARTIAL, which install_promotion_resid logs as 'treat this run as invalid'. An all-AI soak that needs the promoted resid domain requires the C6 rebind protocol for this entry -- tracked in SIM-RESID-P's progress, not silently carried.",
+   "rationale": " ---- FORK F3C (2026-09-13): THE SITE MOVED, THE FACTS DID NOT. Ruling D5 took the harness off the raw primitives, so this detour is now a ROW of the named hook-point table (mh/hook/hookpoint.cpp); harness.cpp names a `point` instead of a target, a steal width, a claim and a guard. lint_dll_patches reads that table as the call-site list, so the target still resolves and check 7 still asks the collision question -- the source key below is the row's own target expression."
+  },
+  {
+   "id": "detour_session_begin_multi_logger",
+   "kind": "detour",
+   "sources": [
+    {
+     "file": "mh/seams/net_seams.cpp",
+     "expr": "ADDR_SESSION_BEGIN_MULTI"
+    }
+   ],
+   "owner": [
+    "llm_strat_session_begin_multi"
+   ],
+   "knob": null,
+   "carrier": "none:a pure DIAGNOSTIC logger (armed only when the lockstep diagnostic log is on), and the promoted body carries its own entry evidence. reimpl_probe_install runs before this logger's install, so with [promote] sim_resid=1 the promotion owns the entry and the logger is refused loudly ('session_begin_multi logger NOT armed'); the promoted body's first-call line ('; [promote] sim_resid: llm_strat_session_begin_multi call #1 (OURS is live)') preserves the entered-at-all evidence the logger existed for. Unpromoted runs keep the logger exactly as before."
+  },
+  {
+   "id": "lt1c_c4_dead_store_probe",
+   "sources": [
+    {
+     "file": "mh/seams/net_seams.cpp",
+     "expr": "ADDR_BLDG_CELL_GRID_RECOMPUTE"
+    }
+   ],
+   "addrs": [
+    "0x004dc25f"
+   ],
+   "kind": "detour",
+   "owner": [
+    "llm_strat_bldg_recompute_cell_grid"
+   ],
+   "knob": "[probe] bldg_cell_grid_poison",
+   "carrier": "none:diagnostic",
+   "note": "LT1C c4's dead-store AUDIT lever (2026-09-02): opt-in (default 0), whole-body replaces the writer with a stub that SUPPRESSES the recompute and poisons both output regions 0xCD -- the runtime leg of the no-reader claim (UI suite + asymmetric determinism green with it armed; recorded in the ledger row). MUTUALLY EXCLUSIVE with this function's LIB-TRANS-P promotion BY DESIGN: promotions install first (reimpl_probe), so under [promote] lib_trans=1 an armed probe is REFUSED with the promotion named as owner -- a probe audit run must set [promote_skip] llm_strat_bldg_recompute_cell_grid=1 (probe_cell_grid.ini carries it). Nothing is lost when the probe loses: it is an audit, not a fix."
+  },
+  {
+   "id": "detour_tj_enqueue",
+   "kind": "detour",
+   "sources": [
+    {
+     "file": "mh/hook/hookpoint.cpp",
+     "expr": "ADDR_TACT_ENQUEUE"
+    }
+   ],
+   "owner": [
+    "llm_tact_unit_enqueue_command"
+   ],
+   "knob": "[harness] tact_journal_rec / tact_journal_probe",
+   "carrier": null,
+   "note": "The TJ order-enqueue RECORDER. llm_tact_unit_enqueue_command is promotable and, unlike its siblings, had NO entry seam at all -- its only live route was its rebind row, which clause 6's derived yield disarms because this detour claims the entry. So arming the journal recorder ran the ORIGINAL body and silently un-promoted the very body it was recording: 80 -> 46 covered lines in poz1-combat and in all four journal scenarios, from 93a4b8da until the gate was next run (TACT-COV-YIELD). Now C6's protocol: the detour KEEPS the entry and reimpl_probe rebinds what it falls through to (MH_Harness_RebindTactEnqueue). The claim stays entry_claim::EXCLUSIVE on purpose, unlike detour_sim_tick's -- a recorder must remain the sole owner of this entry so a stray second patch is still refused, and the promotion arrives by rebind rather than by install, so nothing contends for it. The row STAYS yielded deliberately: a recorder must see every call. ---- FORK F2E (2026-09-13): THE CARRIER IS GONE BECAUSE THE PROMOTION IS. Tactical mode is demoted permanently -- the fork's selector has two hosted answers and the reimplemented spine brokered serves is the STRATEGIC one -- so libmh/tact/tact_promote.{h,cpp}, the 18 MH_EXPORT_REPLACE installs and both routes onto this entry were deleted. This detour still owns the entry and still does its job; what it falls through to is the ORIGINAL body, which is now the only body there is in a hosted process. `carrier` is therefore null: a carrier names how a promotion survives a detour, and there is no promotion to survive it. ---- FORK F3C (2026-09-13): THE SITE MOVED, THE FACTS DID NOT. Ruling D5 took the harness off the raw primitives, so this detour is now a ROW of the named hook-point table (mh/hook/hookpoint.cpp); harness.cpp names a `point` instead of a target, a steal width, a claim and a guard. lint_dll_patches reads that table as the call-site list, so the target still resolves and check 7 still asks the collision question -- the source key below is the row's own target expression."
+  }
+ ]
+}

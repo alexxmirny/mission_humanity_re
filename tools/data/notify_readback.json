@@ -1,0 +1,2594 @@
+{
+ "_generated_by": "tools/gen_notify_readback.py -- DO NOT HAND-EDIT",
+ "_what": "Per notify scope: what its host-side subtree writes, and which of those regions translated libmh reads back (R3b). The ledger that answers it is tools/data/notify_readback_dispositions.json.",
+ "_provenance": {
+  "sink": "src/mh_dll/mh/seams/host_event_sink.cpp",
+  "frame_cuts": [
+   "llm_strat_frame_sim_only"
+  ],
+  "scopes": 83,
+  "buckets": {
+   "clean": 43,
+   "crossed": 10,
+   "blind": 10,
+   "readback": 20
+  },
+  "readback_pairs": 43,
+  "crossed_pairs": 101
+ },
+ "scopes": [
+  {
+   "channel": "event",
+   "kind": "LIBMH_EVK_SND_PLAY",
+   "kind_no": 1,
+   "dispatch": [
+    "llm_snd_play"
+   ],
+   "targets_absent_from_graph": [],
+   "reachable_fns": 5,
+   "write_symbols": 1,
+   "frame_cuts_crossed": [],
+   "bucket": "clean",
+   "readback": []
+  },
+  {
+   "channel": "event",
+   "kind": "LIBMH_EVK_SND_AMBIENT_TICK",
+   "kind_no": 2,
+   "dispatch": [
+    "llm_snd_ambient_tick"
+   ],
+   "targets_absent_from_graph": [],
+   "reachable_fns": 8,
+   "write_symbols": 3,
+   "frame_cuts_crossed": [],
+   "bucket": "clean",
+   "readback": []
+  },
+  {
+   "channel": "event",
+   "kind": "LIBMH_EVK_SND_AMBIENT_CLONE",
+   "kind_no": 3,
+   "dispatch": [
+    "llm_snd_ambient_planet_clone"
+   ],
+   "targets_absent_from_graph": [],
+   "reachable_fns": 1,
+   "write_symbols": 1,
+   "frame_cuts_crossed": [],
+   "bucket": "clean",
+   "readback": []
+  },
+  {
+   "channel": "event",
+   "kind": "LIBMH_EVK_SND_STOP_ALL",
+   "kind_no": 4,
+   "dispatch": [
+    "llm_snd_stop_all_channels"
+   ],
+   "targets_absent_from_graph": [],
+   "reachable_fns": 2,
+   "write_symbols": 1,
+   "frame_cuts_crossed": [],
+   "bucket": "clean",
+   "readback": []
+  },
+  {
+   "channel": "event",
+   "kind": "LIBMH_EVK_SND_RACE_ALERT",
+   "kind_no": 5,
+   "dispatch": [
+    "llm_strat_race_alert_sound_emit"
+   ],
+   "targets_absent_from_graph": [],
+   "reachable_fns": 8,
+   "write_symbols": 4,
+   "frame_cuts_crossed": [],
+   "bucket": "clean",
+   "readback": []
+  },
+  {
+   "channel": "event",
+   "kind": "LIBMH_EVK_SND_ZONE_PLAY",
+   "kind_no": 6,
+   "dispatch": [
+    "llm_tact_zone_sound_play"
+   ],
+   "targets_absent_from_graph": [],
+   "reachable_fns": 4,
+   "write_symbols": 1,
+   "frame_cuts_crossed": [],
+   "bucket": "clean",
+   "readback": []
+  },
+  {
+   "channel": "event",
+   "kind": "LIBMH_EVK_SND_FX_PLAY",
+   "kind_no": 7,
+   "dispatch": [
+    "llm_tact_fx_play_sound"
+   ],
+   "targets_absent_from_graph": [],
+   "reachable_fns": 5,
+   "write_symbols": 2,
+   "frame_cuts_crossed": [],
+   "bucket": "clean",
+   "readback": []
+  },
+  {
+   "channel": "event",
+   "kind": "LIBMH_EVK_TEXT_QUEUE_ID",
+   "kind_no": 8,
+   "dispatch": [
+    "llm_ui_print_queue_text_id"
+   ],
+   "targets_absent_from_graph": [],
+   "reachable_fns": 4,
+   "write_symbols": 3,
+   "frame_cuts_crossed": [],
+   "bucket": "clean",
+   "readback": []
+  },
+  {
+   "channel": "event",
+   "kind": "LIBMH_EVK_TEXT_GAME_SPEED",
+   "kind_no": 9,
+   "dispatch": [
+    "llm_ui_print_game_speed"
+   ],
+   "targets_absent_from_graph": [],
+   "reachable_fns": 6,
+   "write_symbols": 4,
+   "frame_cuts_crossed": [],
+   "bucket": "clean",
+   "readback": []
+  },
+  {
+   "channel": "event",
+   "kind": "LIBMH_EVK_TEXT_RACE_ALERT",
+   "kind_no": 10,
+   "dispatch": [
+    "llm_strat_race_alert_text_emit"
+   ],
+   "targets_absent_from_graph": [],
+   "reachable_fns": 10,
+   "write_symbols": 6,
+   "frame_cuts_crossed": [],
+   "bucket": "clean",
+   "readback": []
+  },
+  {
+   "channel": "event",
+   "kind": "LIBMH_EVK_PROGRESS_UNIT_AVAILABLE",
+   "kind_no": 11,
+   "dispatch": [
+    "llm_progress_notify_unit_available"
+   ],
+   "targets_absent_from_graph": [],
+   "reachable_fns": 50,
+   "write_symbols": 53,
+   "frame_cuts_crossed": [
+    "llm_strat_frame_sim_only"
+   ],
+   "bucket": "crossed",
+   "readback": [
+    {
+     "region": "CURSOR_X",
+     "symbol": "_G_LLM_CURSOR_X",
+     "readers": [
+      "llm_tact_frame",
+      "llm_tact_sidebar_dispatch"
+     ]
+    },
+    {
+     "region": "CURSOR_Y",
+     "symbol": "_G_LLM_CURSOR_Y",
+     "readers": [
+      "llm_tact_frame",
+      "llm_tact_sidebar_dispatch"
+     ]
+    },
+    {
+     "region": "GAME_MODE",
+     "symbol": "_G_LLM_GAME_MODE",
+     "readers": [
+      "llm_strat_frame",
+      "llm_strat_frame_redraw_behind_dialog",
+      "llm_tutorial_step_driver"
+     ]
+    },
+    {
+     "region": "STRAT_UI_PANEL_MODE",
+     "symbol": "_G_LLM_STRAT_UI_PANEL_MODE",
+     "readers": [
+      "llm_strat_bldg_unmap_footprint"
+     ]
+    },
+    {
+     "region": "STRAT_UI_PANEL_PAGE",
+     "symbol": "_G_LLM_STRAT_UI_PANEL_PAGE",
+     "readers": [
+      "llm_strat_bldg_unmap_footprint"
+     ]
+    }
+   ]
+  },
+  {
+   "channel": "event",
+   "kind": "LIBMH_EVK_PLAYER_SET_COLOR",
+   "kind_no": 12,
+   "dispatch": [
+    "llm_strat_player_set_color"
+   ],
+   "targets_absent_from_graph": [],
+   "reachable_fns": 2,
+   "write_symbols": 0,
+   "frame_cuts_crossed": [],
+   "bucket": "blind",
+   "readback": []
+  },
+  {
+   "channel": "event",
+   "kind": "LIBMH_EVK_MSG_QUEUE_CLEAR",
+   "kind_no": 13,
+   "dispatch": [
+    "llm_ui_message_queue_clear_all"
+   ],
+   "targets_absent_from_graph": [],
+   "reachable_fns": 2,
+   "write_symbols": 0,
+   "frame_cuts_crossed": [],
+   "bucket": "blind",
+   "readback": []
+  },
+  {
+   "channel": "event",
+   "kind": "LIBMH_EVK_CAM_JUMP_QUEUE_CLEAR",
+   "kind_no": 14,
+   "dispatch": [
+    "llm_cam_jump_queue_clear"
+   ],
+   "targets_absent_from_graph": [],
+   "reachable_fns": 6,
+   "write_symbols": 8,
+   "frame_cuts_crossed": [],
+   "bucket": "readback",
+   "readback": [
+    {
+     "region": "MAP_CAM_COL",
+     "symbol": "_G_LLM_MAP_CAM_COL",
+     "readers": [
+      "llm_strat_spawn_enemy_landing",
+      "llm_tact_door_update_tile_state",
+      "llm_tact_fx_spawn",
+      "map_LoadPlanetFromDisk"
+     ]
+    },
+    {
+     "region": "MAP_CAM_ROW",
+     "symbol": "_G_LLM_MAP_CAM_ROW",
+     "readers": [
+      "llm_strat_spawn_enemy_landing",
+      "llm_tact_door_update_tile_state",
+      "llm_tact_fx_spawn",
+      "map_LoadPlanetFromDisk"
+     ]
+    },
+    {
+     "region": "MAP_ZOOM_SCALE_X",
+     "symbol": "_G_LLM_MAP_ZOOM_SCALE_X",
+     "readers": [
+      "llm_map_zoom_scale_x_get"
+     ]
+    }
+   ]
+  },
+  {
+   "channel": "event",
+   "kind": "LIBMH_EVK_MENU_PLACEMENT_CLEAR",
+   "kind_no": 15,
+   "dispatch": [
+    "llm_menu_build_placement_pending_clear"
+   ],
+   "targets_absent_from_graph": [],
+   "reachable_fns": 1,
+   "write_symbols": 1,
+   "frame_cuts_crossed": [],
+   "bucket": "clean",
+   "readback": []
+  },
+  {
+   "channel": "event",
+   "kind": "LIBMH_EVK_CAM_SET_COL",
+   "kind_no": 16,
+   "dispatch": [
+    "llm_map_cam_set_col"
+   ],
+   "targets_absent_from_graph": [],
+   "reachable_fns": 1,
+   "write_symbols": 2,
+   "frame_cuts_crossed": [],
+   "bucket": "readback",
+   "readback": [
+    {
+     "region": "MAP_CAM_COL",
+     "symbol": "_G_LLM_MAP_CAM_COL",
+     "readers": [
+      "llm_strat_spawn_enemy_landing",
+      "llm_tact_door_update_tile_state",
+      "llm_tact_fx_spawn",
+      "map_LoadPlanetFromDisk"
+     ]
+    }
+   ]
+  },
+  {
+   "channel": "event",
+   "kind": "LIBMH_EVK_CAM_SET_ROW",
+   "kind_no": 17,
+   "dispatch": [
+    "llm_map_cam_set_row"
+   ],
+   "targets_absent_from_graph": [],
+   "reachable_fns": 1,
+   "write_symbols": 2,
+   "frame_cuts_crossed": [],
+   "bucket": "readback",
+   "readback": [
+    {
+     "region": "MAP_CAM_ROW",
+     "symbol": "_G_LLM_MAP_CAM_ROW",
+     "readers": [
+      "llm_strat_spawn_enemy_landing",
+      "llm_tact_door_update_tile_state",
+      "llm_tact_fx_spawn",
+      "map_LoadPlanetFromDisk"
+     ]
+    }
+   ]
+  },
+  {
+   "channel": "event",
+   "kind": "LIBMH_EVK_VIEW_ZOOM_SCALE",
+   "kind_no": 18,
+   "dispatch": [
+    "llm_map_set_zoom_scale"
+   ],
+   "targets_absent_from_graph": [],
+   "reachable_fns": 1,
+   "write_symbols": 2,
+   "frame_cuts_crossed": [],
+   "bucket": "readback",
+   "readback": [
+    {
+     "region": "MAP_ZOOM_SCALE_X",
+     "symbol": "_G_LLM_MAP_ZOOM_SCALE_X",
+     "readers": [
+      "llm_map_zoom_scale_x_get"
+     ]
+    }
+   ]
+  },
+  {
+   "channel": "event",
+   "kind": "LIBMH_EVK_VIEW_MINIMAP_ZOOM",
+   "kind_no": 19,
+   "dispatch": [
+    "llm_map_set_minimap_zoom_for_size"
+   ],
+   "targets_absent_from_graph": [],
+   "reachable_fns": 1,
+   "write_symbols": 1,
+   "frame_cuts_crossed": [],
+   "bucket": "clean",
+   "readback": []
+  },
+  {
+   "channel": "event",
+   "kind": "LIBMH_EVK_SND_PLAY_AT",
+   "kind_no": 20,
+   "dispatch": [
+    "llm_strat_offscreen_snd_volume",
+    "llm_snd_play"
+   ],
+   "targets_absent_from_graph": [],
+   "reachable_fns": 7,
+   "write_symbols": 1,
+   "frame_cuts_crossed": [],
+   "bucket": "clean",
+   "readback": []
+  },
+  {
+   "channel": "event",
+   "kind": "LIBMH_EVK_FX_DEBRIS_BURST",
+   "kind_no": 21,
+   "dispatch": [
+    "llm_strat_offscreen_fx_scale",
+    "llm_strat_spawn_debris_burst"
+   ],
+   "targets_absent_from_graph": [],
+   "reachable_fns": 12,
+   "write_symbols": 10,
+   "frame_cuts_crossed": [],
+   "bucket": "readback",
+   "readback": [
+    {
+     "region": "MAP_CAM_COL",
+     "symbol": "_G_LLM_MAP_CAM_COL",
+     "readers": [
+      "llm_strat_spawn_enemy_landing",
+      "llm_tact_door_update_tile_state",
+      "llm_tact_fx_spawn",
+      "map_LoadPlanetFromDisk"
+     ]
+    },
+    {
+     "region": "MAP_CAM_ROW",
+     "symbol": "_G_LLM_MAP_CAM_ROW",
+     "readers": [
+      "llm_strat_spawn_enemy_landing",
+      "llm_tact_door_update_tile_state",
+      "llm_tact_fx_spawn",
+      "map_LoadPlanetFromDisk"
+     ]
+    },
+    {
+     "region": "MAP_ZOOM_SCALE_X",
+     "symbol": "_G_LLM_MAP_ZOOM_SCALE_X",
+     "readers": [
+      "llm_map_zoom_scale_x_get"
+     ]
+    }
+   ]
+  },
+  {
+   "channel": "event",
+   "kind": "LIBMH_EVK_SCREENSHOT_SAVE",
+   "kind_no": 22,
+   "dispatch": [
+    "llm_tact_save_screenshot"
+   ],
+   "targets_absent_from_graph": [],
+   "reachable_fns": 5,
+   "write_symbols": 1,
+   "frame_cuts_crossed": [],
+   "bucket": "clean",
+   "readback": []
+  },
+  {
+   "channel": "invalidate",
+   "kind": "LIBMH_EVK_INV_TACT_ACTIVE_COUNT_HUD",
+   "kind_no": null,
+   "dispatch": [
+    "llm_gfx_pack_rgb16",
+    "llm_str_ansi_to_wide_scratch",
+    "llm_ui_set_draw_surface",
+    "llm_ui_text_draw_rgb16",
+    "utils_sprintf__vi"
+   ],
+   "targets_absent_from_graph": [
+    "utils_sprintf__vi"
+   ],
+   "reachable_fns": 10,
+   "write_symbols": 18,
+   "frame_cuts_crossed": [],
+   "bucket": "clean",
+   "readback": []
+  },
+  {
+   "channel": "invalidate",
+   "kind": "LIBMH_EVK_INV_TACT_SEL_PANEL_BG",
+   "kind_no": null,
+   "dispatch": [
+    "llm_ui_set_draw_surface"
+   ],
+   "targets_absent_from_graph": [],
+   "reachable_fns": 2,
+   "write_symbols": 8,
+   "frame_cuts_crossed": [],
+   "bucket": "clean",
+   "readback": []
+  },
+  {
+   "channel": "invalidate",
+   "kind": "LIBMH_EVK_INV_TACT_ORDER_BUTTON",
+   "kind_no": null,
+   "dispatch": [
+    "llm_ui_set_draw_surface"
+   ],
+   "targets_absent_from_graph": [],
+   "reachable_fns": 2,
+   "write_symbols": 8,
+   "frame_cuts_crossed": [],
+   "bucket": "clean",
+   "readback": []
+  },
+  {
+   "channel": "invalidate",
+   "kind": "LIBMH_EVK_INV_TACT_SEL_PANEL",
+   "kind_no": null,
+   "dispatch": [
+    "llm_tact_ui_sel_panel_draw"
+   ],
+   "targets_absent_from_graph": [],
+   "reachable_fns": 3,
+   "write_symbols": 13,
+   "frame_cuts_crossed": [],
+   "bucket": "clean",
+   "readback": []
+  },
+  {
+   "channel": "invalidate",
+   "kind": "LIBMH_EVK_INV_TACT_CHAR_PANEL_ROW_DRAW",
+   "kind_no": null,
+   "dispatch": [
+    "llm_tact_ui_char_panel_row_draw"
+   ],
+   "targets_absent_from_graph": [],
+   "reachable_fns": 14,
+   "write_symbols": 22,
+   "frame_cuts_crossed": [],
+   "bucket": "clean",
+   "readback": []
+  },
+  {
+   "channel": "invalidate",
+   "kind": "LIBMH_EVK_INV_PLANET_GFX_SETUP",
+   "kind_no": null,
+   "dispatch": [
+    "cfg_final_planet_FillBankData"
+   ],
+   "targets_absent_from_graph": [],
+   "reachable_fns": 1,
+   "write_symbols": 1,
+   "frame_cuts_crossed": [],
+   "bucket": "readback",
+   "readback": [
+    {
+     "region": "PLANETS",
+     "symbol": "Planets",
+     "readers": [
+      "SwitchToPlanet",
+      "game_AddPlanetToAvailable",
+      "game_HandleInvasion",
+      "game_SaveGame",
+      "llm_game_land_players_on_planet",
+      "llm_game_load",
+      "llm_game_session_clear_system_presence_flag",
+      "llm_prod_bldg_depart_finalize",
+      "llm_progress_finalize_acquire",
+      "llm_progress_propagate_unlocks",
+      "llm_strat_bldg_completion_dispatch",
+      "llm_strat_invasion_chance_roll",
+      "llm_strat_planet_transition_finalize",
+      "llm_strat_player_presence_lost",
+      "llm_strat_prod_set_transfer_destination",
+      "llm_strat_production_complete",
+      "llm_strat_sim_tick",
+      "llm_strat_unit_state_ascend_to_orbit"
+     ]
+    }
+   ]
+  },
+  {
+   "channel": "invalidate",
+   "kind": "LIBMH_EVK_INV_PLANET_MAP_PALETTE",
+   "kind_no": null,
+   "dispatch": [
+    "llm_gfx_pack_rgb16"
+   ],
+   "targets_absent_from_graph": [],
+   "reachable_fns": 1,
+   "write_symbols": 0,
+   "frame_cuts_crossed": [],
+   "bucket": "blind",
+   "readback": []
+  },
+  {
+   "channel": "invalidate",
+   "kind": "LIBMH_EVK_INV_PLAYER_COLOR_LUT",
+   "kind_no": null,
+   "dispatch": [
+    "llm_strat_player_apply_all_colors"
+   ],
+   "targets_absent_from_graph": [],
+   "reachable_fns": 3,
+   "write_symbols": 0,
+   "frame_cuts_crossed": [],
+   "bucket": "blind",
+   "readback": []
+  },
+  {
+   "channel": "invalidate",
+   "kind": "LIBMH_EVK_INV_PLANET_EXTRA_SPRITE_BANKS",
+   "kind_no": null,
+   "dispatch": [
+    "llm_gfx_load_planet_extra_sprite_banks"
+   ],
+   "targets_absent_from_graph": [],
+   "reachable_fns": 12,
+   "write_symbols": 5,
+   "frame_cuts_crossed": [],
+   "bucket": "readback",
+   "readback": [
+    {
+     "region": "SPRITE_PIX_OFFSETS",
+     "symbol": "_G_LLM_SPRITE_PIX_OFFSETS",
+     "readers": [
+      "llm_gfx_bldg_frame_center_offset",
+      "llm_strat_bldg_sprite_anchor_offset",
+      "llm_tact_door_apply_to_map",
+      "llm_tact_door_update_tile_state"
+     ]
+    }
+   ]
+  },
+  {
+   "channel": "invalidate",
+   "kind": "LIBMH_EVK_INV_TACT_VIEW_TILES",
+   "kind_no": 1,
+   "dispatch": [
+    "llm_tact_mark_view_tiles_dirty"
+   ],
+   "targets_absent_from_graph": [],
+   "reachable_fns": 1,
+   "write_symbols": 0,
+   "frame_cuts_crossed": [],
+   "bucket": "blind",
+   "readback": []
+  },
+  {
+   "channel": "invalidate",
+   "kind": "LIBMH_EVK_INV_VIEWPORT",
+   "kind_no": 2,
+   "dispatch": [
+    "llm_map_cam_mark_viewport_dirty"
+   ],
+   "targets_absent_from_graph": [],
+   "reachable_fns": 1,
+   "write_symbols": 1,
+   "frame_cuts_crossed": [],
+   "bucket": "clean",
+   "readback": []
+  },
+  {
+   "channel": "invalidate",
+   "kind": "LIBMH_EVK_INV_TACT_VIS_MAP",
+   "kind_no": 3,
+   "dispatch": [
+    "llm_tact_vis_map_fill_default"
+   ],
+   "targets_absent_from_graph": [],
+   "reachable_fns": 1,
+   "write_symbols": 0,
+   "frame_cuts_crossed": [],
+   "bucket": "blind",
+   "readback": []
+  },
+  {
+   "channel": "invalidate",
+   "kind": "LIBMH_EVK_INV_TACT_VIS_MARGIN",
+   "kind_no": 4,
+   "dispatch": [
+    "llm_tact_vis_map_clear_right_margin"
+   ],
+   "targets_absent_from_graph": [],
+   "reachable_fns": 1,
+   "write_symbols": 0,
+   "frame_cuts_crossed": [],
+   "bucket": "blind",
+   "readback": []
+  },
+  {
+   "channel": "invalidate",
+   "kind": "LIBMH_EVK_INV_TACT_UNIT_SLOT",
+   "kind_no": 5,
+   "dispatch": [
+    "llm_tact_unit_refresh_ui_slot"
+   ],
+   "targets_absent_from_graph": [],
+   "reachable_fns": 2,
+   "write_symbols": 1,
+   "frame_cuts_crossed": [],
+   "bucket": "clean",
+   "readback": []
+  },
+  {
+   "channel": "invalidate",
+   "kind": "LIBMH_EVK_INV_TACT_SIDEBAR_ROSTER",
+   "kind_no": 6,
+   "dispatch": [
+    "llm_tact_ui_sidebar_roster_refresh"
+   ],
+   "targets_absent_from_graph": [],
+   "reachable_fns": 15,
+   "write_symbols": 25,
+   "frame_cuts_crossed": [],
+   "bucket": "readback",
+   "readback": [
+    {
+     "region": "TACT_SIDEBAR_SLOT_SCROLL",
+     "symbol": "_G_LLM_TACT_SIDEBAR_SLOT_SCROLL",
+     "readers": [
+      "llm_tact_sidebar_dispatch"
+     ]
+    },
+    {
+     "region": "TACT_SIDEBAR_SLOT_UNIT_IDS",
+     "symbol": "_G_LLM_TACT_SIDEBAR_SLOT_UNIT_IDS",
+     "readers": [
+      "llm_tact_sidebar_dispatch",
+      "llm_tact_ui_sel_panel_multi_mode_tick"
+     ]
+    }
+   ]
+  },
+  {
+   "channel": "invalidate",
+   "kind": "LIBMH_EVK_INV_TACT_SIDEBAR_ROWS",
+   "kind_no": 7,
+   "dispatch": [
+    "llm_tact_ui_sidebar_draw_rows"
+   ],
+   "targets_absent_from_graph": [],
+   "reachable_fns": 11,
+   "write_symbols": 23,
+   "frame_cuts_crossed": [],
+   "bucket": "clean",
+   "readback": []
+  },
+  {
+   "channel": "invalidate",
+   "kind": "LIBMH_EVK_INV_TACT_SIDEBAR_SLOT",
+   "kind_no": 8,
+   "dispatch": [
+    "llm_tact_ui_sidebar_redraw_unit_slot"
+   ],
+   "targets_absent_from_graph": [],
+   "reachable_fns": 12,
+   "write_symbols": 20,
+   "frame_cuts_crossed": [],
+   "bucket": "clean",
+   "readback": []
+  },
+  {
+   "channel": "invalidate",
+   "kind": "LIBMH_EVK_INV_TACT_PLAYER_ROWS",
+   "kind_no": 9,
+   "dispatch": [
+    "llm_tact_ui_draw_player_row_list"
+   ],
+   "targets_absent_from_graph": [],
+   "reachable_fns": 11,
+   "write_symbols": 23,
+   "frame_cuts_crossed": [],
+   "bucket": "clean",
+   "readback": []
+  },
+  {
+   "channel": "invalidate",
+   "kind": "LIBMH_EVK_INV_TACT_CHAR_PANEL_ROW",
+   "kind_no": 10,
+   "dispatch": [
+    "llm_tact_ui_char_panel_row_refresh"
+   ],
+   "targets_absent_from_graph": [],
+   "reachable_fns": 15,
+   "write_symbols": 22,
+   "frame_cuts_crossed": [],
+   "bucket": "clean",
+   "readback": []
+  },
+  {
+   "channel": "invalidate",
+   "kind": "LIBMH_EVK_INV_TACT_GROUP_PANEL",
+   "kind_no": 15,
+   "dispatch": [
+    "llm_ui_set_draw_surface"
+   ],
+   "targets_absent_from_graph": [],
+   "reachable_fns": 2,
+   "write_symbols": 8,
+   "frame_cuts_crossed": [],
+   "bucket": "clean",
+   "readback": []
+  },
+  {
+   "channel": "invalidate",
+   "kind": "LIBMH_EVK_INV_TACT_SEL_PANEL_MODE_TAB",
+   "kind_no": 16,
+   "dispatch": [
+    "llm_ui_set_draw_surface"
+   ],
+   "targets_absent_from_graph": [],
+   "reachable_fns": 2,
+   "write_symbols": 8,
+   "frame_cuts_crossed": [],
+   "bucket": "clean",
+   "readback": []
+  },
+  {
+   "channel": "invalidate",
+   "kind": "LIBMH_EVK_INV_TACT_SEL_PANEL_ROW_TOGGLE",
+   "kind_no": 17,
+   "dispatch": [
+    "llm_ui_set_draw_surface"
+   ],
+   "targets_absent_from_graph": [],
+   "reachable_fns": 2,
+   "write_symbols": 8,
+   "frame_cuts_crossed": [],
+   "bucket": "clean",
+   "readback": []
+  },
+  {
+   "channel": "invalidate",
+   "kind": "LIBMH_EVK_INV_TACT_SIDEBAR_ROW_HOVER",
+   "kind_no": 19,
+   "dispatch": [
+    "llm_tact_ui_sidebar_row_draw_left",
+    "llm_tact_ui_sidebar_row_draw_right"
+   ],
+   "targets_absent_from_graph": [],
+   "reachable_fns": 10,
+   "write_symbols": 23,
+   "frame_cuts_crossed": [],
+   "bucket": "clean",
+   "readback": []
+  },
+  {
+   "channel": "invalidate",
+   "kind": "LIBMH_EVK_INV_TACT_SEL_PANEL_INIT",
+   "kind_no": 20,
+   "dispatch": [
+    "GetResourseFilePtr",
+    "llm_gfx_convert_pixels_565_to_555",
+    "llm_gfx_font_select",
+    "llm_gfx_pack_rgb16",
+    "llm_ui_set_draw_surface",
+    "llm_ui_text_draw_rgb16",
+    "utils_sprintf__vs",
+    "w_sprintf__v"
+   ],
+   "targets_absent_from_graph": [
+    "utils_sprintf__vs",
+    "w_sprintf__v"
+   ],
+   "reachable_fns": 18,
+   "write_symbols": 23,
+   "frame_cuts_crossed": [],
+   "bucket": "clean",
+   "readback": []
+  },
+  {
+   "channel": "invalidate",
+   "kind": "LIBMH_EVK_INV_TACT_CURSOR_SPRITE",
+   "kind_no": 21,
+   "dispatch": [
+    "gfx_LoadSprite"
+   ],
+   "targets_absent_from_graph": [],
+   "reachable_fns": 1,
+   "write_symbols": 4,
+   "frame_cuts_crossed": [],
+   "bucket": "clean",
+   "readback": []
+  },
+  {
+   "channel": "invalidate",
+   "kind": "LIBMH_EVK_INV_TACT_DRAWN_MAP_CLEAR",
+   "kind_no": 22,
+   "dispatch": [
+    "llm_tact_blink_overlay_clear"
+   ],
+   "targets_absent_from_graph": [],
+   "reachable_fns": 1,
+   "write_symbols": 1,
+   "frame_cuts_crossed": [],
+   "bucket": "clean",
+   "readback": []
+  },
+  {
+   "channel": "invalidate",
+   "kind": "LIBMH_EVK_INV_TACT_DRAG_BOX",
+   "kind_no": 23,
+   "dispatch": [
+    "llm_tact_drag_box_clamp"
+   ],
+   "targets_absent_from_graph": [],
+   "reachable_fns": 2,
+   "write_symbols": 8,
+   "frame_cuts_crossed": [],
+   "bucket": "clean",
+   "readback": []
+  },
+  {
+   "channel": "invalidate",
+   "kind": "LIBMH_EVK_INV_TACT_MINIMAP_OVERLAY",
+   "kind_no": 24,
+   "dispatch": [
+    "llm_tact_tile_overlay_refresh"
+   ],
+   "targets_absent_from_graph": [],
+   "reachable_fns": 3,
+   "write_symbols": 1,
+   "frame_cuts_crossed": [],
+   "bucket": "clean",
+   "readback": []
+  },
+  {
+   "channel": "invalidate",
+   "kind": "LIBMH_EVK_INV_GFX_VIEW_METRICS",
+   "kind_no": 25,
+   "dispatch": [
+    "llm_gfx_view_metrics_init"
+   ],
+   "targets_absent_from_graph": [],
+   "reachable_fns": 1,
+   "write_symbols": 16,
+   "frame_cuts_crossed": [],
+   "bucket": "readback",
+   "readback": [
+    {
+     "region": "GFX_PANEL_ROW_SKIP",
+     "symbol": "_G_LLM_GFX_PANEL_ROW_SKIP",
+     "readers": [
+      "llm_tact_active_unit_count_hud_draw",
+      "llm_tact_selection_panel_refresh",
+      "llm_tact_sidebar_dispatch",
+      "llm_tact_ui_order_buttons_minimap_tick",
+      "llm_tact_ui_sel_panel_init",
+      "llm_tact_ui_sel_panel_multi_mode_tick",
+      "llm_tact_ui_sel_panel_single_mode_tick"
+     ]
+    },
+    {
+     "region": "G_WIN_H",
+     "symbol": "G_WIN_H",
+     "readers": [
+      "llm_game_land_players_on_planet",
+      "llm_strat_deploy_starting_squad"
+     ]
+    },
+    {
+     "region": "G_WIN_W",
+     "symbol": "G_WIN_W",
+     "readers": [
+      "llm_game_land_players_on_planet",
+      "llm_strat_deploy_starting_squad",
+      "llm_tact_cam_follow_selection_tick",
+      "llm_tact_camera_center_on_tile",
+      "llm_tact_frame",
+      "llm_tact_sidebar_dispatch",
+      "llm_tact_ui_order_buttons_minimap_tick",
+      "llm_tact_ui_sel_panel_multi_mode_tick"
+     ]
+    },
+    {
+     "region": "TACT_LOS_CACHE_PTR",
+     "symbol": "_G_LLM_TACT_LOS_CACHE_PTR",
+     "readers": [
+      "llm_tact_view_shift_col_dec",
+      "llm_tact_view_shift_col_inc",
+      "llm_tact_view_shift_row_dec",
+      "llm_tact_view_shift_row_inc"
+     ]
+    },
+    {
+     "region": "TILE_VIS_MAP_PTR",
+     "symbol": "_G_LLM_TILE_VIS_MAP_PTR",
+     "readers": [
+      "llm_tact_view_shift_col_dec",
+      "llm_tact_view_shift_col_inc",
+      "llm_tact_view_shift_row_dec",
+      "llm_tact_view_shift_row_inc"
+     ]
+    },
+    {
+     "region": "VIEW_TILES_H",
+     "symbol": "_G_LLM_VIEW_TILES_H",
+     "readers": [
+      "llm_tact_door_update_tile_state",
+      "llm_tact_fx_spawn",
+      "llm_tact_ui_sel_panel_multi_mode_tick"
+     ]
+    },
+    {
+     "region": "VIEW_TILES_W",
+     "symbol": "_G_LLM_VIEW_TILES_W",
+     "readers": [
+      "llm_tact_door_update_tile_state",
+      "llm_tact_fx_spawn",
+      "llm_tact_sidebar_dispatch",
+      "llm_tact_ui_order_buttons_minimap_tick",
+      "llm_tact_ui_sel_panel_multi_mode_tick"
+     ]
+    }
+   ]
+  },
+  {
+   "channel": "invalidate",
+   "kind": "LIBMH_EVK_INV_TACT_VIEW_METRICS",
+   "kind_no": 26,
+   "dispatch": [
+    "llm_tact_view_metrics_init"
+   ],
+   "targets_absent_from_graph": [],
+   "reachable_fns": 10,
+   "write_symbols": 13,
+   "frame_cuts_crossed": [],
+   "bucket": "readback",
+   "readback": [
+    {
+     "region": "TACT_LOS_CACHE_PTR",
+     "symbol": "_G_LLM_TACT_LOS_CACHE_PTR",
+     "readers": [
+      "llm_tact_view_shift_col_dec",
+      "llm_tact_view_shift_col_inc",
+      "llm_tact_view_shift_row_dec",
+      "llm_tact_view_shift_row_inc"
+     ]
+    },
+    {
+     "region": "TILE_VIS_MAP_PTR",
+     "symbol": "_G_LLM_TILE_VIS_MAP_PTR",
+     "readers": [
+      "llm_tact_view_shift_col_dec",
+      "llm_tact_view_shift_col_inc",
+      "llm_tact_view_shift_row_dec",
+      "llm_tact_view_shift_row_inc"
+     ]
+    }
+   ]
+  },
+  {
+   "channel": "invalidate",
+   "kind": "LIBMH_EVK_INV_TACT_VIEW_TILE_ROWS",
+   "kind_no": 27,
+   "dispatch": [
+    "llm_tact_gfx_view_tile_rows_init"
+   ],
+   "targets_absent_from_graph": [],
+   "reachable_fns": 52,
+   "write_symbols": 71,
+   "frame_cuts_crossed": [
+    "llm_strat_frame_sim_only"
+   ],
+   "bucket": "crossed",
+   "readback": [
+    {
+     "region": "CURSOR_X",
+     "symbol": "_G_LLM_CURSOR_X",
+     "readers": [
+      "llm_tact_frame",
+      "llm_tact_sidebar_dispatch"
+     ]
+    },
+    {
+     "region": "CURSOR_Y",
+     "symbol": "_G_LLM_CURSOR_Y",
+     "readers": [
+      "llm_tact_frame",
+      "llm_tact_sidebar_dispatch"
+     ]
+    },
+    {
+     "region": "GAME_MODE",
+     "symbol": "_G_LLM_GAME_MODE",
+     "readers": [
+      "llm_strat_frame",
+      "llm_strat_frame_redraw_behind_dialog",
+      "llm_tutorial_step_driver"
+     ]
+    },
+    {
+     "region": "GFX_PANEL_ROW_SKIP",
+     "symbol": "_G_LLM_GFX_PANEL_ROW_SKIP",
+     "readers": [
+      "llm_tact_active_unit_count_hud_draw",
+      "llm_tact_selection_panel_refresh",
+      "llm_tact_sidebar_dispatch",
+      "llm_tact_ui_order_buttons_minimap_tick",
+      "llm_tact_ui_sel_panel_init",
+      "llm_tact_ui_sel_panel_multi_mode_tick",
+      "llm_tact_ui_sel_panel_single_mode_tick"
+     ]
+    },
+    {
+     "region": "G_WIN_H",
+     "symbol": "G_WIN_H",
+     "readers": [
+      "llm_game_land_players_on_planet",
+      "llm_strat_deploy_starting_squad"
+     ]
+    },
+    {
+     "region": "G_WIN_W",
+     "symbol": "G_WIN_W",
+     "readers": [
+      "llm_game_land_players_on_planet",
+      "llm_strat_deploy_starting_squad",
+      "llm_tact_cam_follow_selection_tick",
+      "llm_tact_camera_center_on_tile",
+      "llm_tact_frame",
+      "llm_tact_sidebar_dispatch",
+      "llm_tact_ui_order_buttons_minimap_tick",
+      "llm_tact_ui_sel_panel_multi_mode_tick"
+     ]
+    },
+    {
+     "region": "STRAT_UI_PANEL_MODE",
+     "symbol": "_G_LLM_STRAT_UI_PANEL_MODE",
+     "readers": [
+      "llm_strat_bldg_unmap_footprint"
+     ]
+    },
+    {
+     "region": "STRAT_UI_PANEL_PAGE",
+     "symbol": "_G_LLM_STRAT_UI_PANEL_PAGE",
+     "readers": [
+      "llm_strat_bldg_unmap_footprint"
+     ]
+    },
+    {
+     "region": "TACT_LOS_CACHE_PTR",
+     "symbol": "_G_LLM_TACT_LOS_CACHE_PTR",
+     "readers": [
+      "llm_tact_view_shift_col_dec",
+      "llm_tact_view_shift_col_inc",
+      "llm_tact_view_shift_row_dec",
+      "llm_tact_view_shift_row_inc"
+     ]
+    },
+    {
+     "region": "TILE_VIS_MAP_PTR",
+     "symbol": "_G_LLM_TILE_VIS_MAP_PTR",
+     "readers": [
+      "llm_tact_view_shift_col_dec",
+      "llm_tact_view_shift_col_inc",
+      "llm_tact_view_shift_row_dec",
+      "llm_tact_view_shift_row_inc"
+     ]
+    },
+    {
+     "region": "VIEW_TILES_H",
+     "symbol": "_G_LLM_VIEW_TILES_H",
+     "readers": [
+      "llm_tact_door_update_tile_state",
+      "llm_tact_fx_spawn",
+      "llm_tact_ui_sel_panel_multi_mode_tick"
+     ]
+    },
+    {
+     "region": "VIEW_TILES_W",
+     "symbol": "_G_LLM_VIEW_TILES_W",
+     "readers": [
+      "llm_tact_door_update_tile_state",
+      "llm_tact_fx_spawn",
+      "llm_tact_sidebar_dispatch",
+      "llm_tact_ui_order_buttons_minimap_tick",
+      "llm_tact_ui_sel_panel_multi_mode_tick"
+     ]
+    }
+   ]
+  },
+  {
+   "channel": "invalidate",
+   "kind": "LIBMH_EVK_INV_TACT_SPRITE_BANKS",
+   "kind_no": 28,
+   "dispatch": [
+    "llm_tact_gfx_load_banks_alt"
+   ],
+   "targets_absent_from_graph": [],
+   "reachable_fns": 12,
+   "write_symbols": 5,
+   "frame_cuts_crossed": [],
+   "bucket": "readback",
+   "readback": [
+    {
+     "region": "SPRITE_PIX_OFFSETS",
+     "symbol": "_G_LLM_SPRITE_PIX_OFFSETS",
+     "readers": [
+      "llm_gfx_bldg_frame_center_offset",
+      "llm_strat_bldg_sprite_anchor_offset",
+      "llm_tact_door_apply_to_map",
+      "llm_tact_door_update_tile_state"
+     ]
+    }
+   ]
+  },
+  {
+   "channel": "invalidate",
+   "kind": "LIBMH_EVK_INV_ALL_SPRITE_BANKS",
+   "kind_no": 29,
+   "dispatch": [
+    "llm_gfx_load_all_sprite_banks"
+   ],
+   "targets_absent_from_graph": [],
+   "reachable_fns": 14,
+   "write_symbols": 5,
+   "frame_cuts_crossed": [],
+   "bucket": "readback",
+   "readback": [
+    {
+     "region": "SPRITE_PIX_OFFSETS",
+     "symbol": "_G_LLM_SPRITE_PIX_OFFSETS",
+     "readers": [
+      "llm_gfx_bldg_frame_center_offset",
+      "llm_strat_bldg_sprite_anchor_offset",
+      "llm_tact_door_apply_to_map",
+      "llm_tact_door_update_tile_state"
+     ]
+    }
+   ]
+  },
+  {
+   "channel": "invalidate",
+   "kind": "LIBMH_EVK_INV_SPRITE_PIX_OFFSETS",
+   "kind_no": 30,
+   "dispatch": [
+    "llm_gfx_sprite_pix_offsets_init"
+   ],
+   "targets_absent_from_graph": [],
+   "reachable_fns": 1,
+   "write_symbols": 0,
+   "frame_cuts_crossed": [],
+   "bucket": "blind",
+   "readback": []
+  },
+  {
+   "channel": "screen",
+   "kind": "LIBMH_EVK_SCR_STRAT_FRAME_PRESENT",
+   "kind_no": null,
+   "dispatch": [
+    "llm_strat_render_present"
+   ],
+   "targets_absent_from_graph": [],
+   "reachable_fns": 85,
+   "write_symbols": 90,
+   "frame_cuts_crossed": [],
+   "bucket": "readback",
+   "readback": [
+    {
+     "region": "FRAMEBUFFER",
+     "symbol": "_G_LLM_FRAMEBUFFER",
+     "readers": [
+      "llm_tact_mission_start",
+      "llm_tact_view_shift_col_dec",
+      "llm_tact_view_shift_col_inc",
+      "llm_tact_view_shift_row_dec",
+      "llm_tact_view_shift_row_inc"
+     ]
+    },
+    {
+     "region": "G_WIN_H",
+     "symbol": "G_WIN_H",
+     "readers": [
+      "llm_game_land_players_on_planet",
+      "llm_strat_deploy_starting_squad"
+     ]
+    },
+    {
+     "region": "G_WIN_W",
+     "symbol": "G_WIN_W",
+     "readers": [
+      "llm_game_land_players_on_planet",
+      "llm_strat_deploy_starting_squad",
+      "llm_tact_cam_follow_selection_tick",
+      "llm_tact_camera_center_on_tile",
+      "llm_tact_frame",
+      "llm_tact_sidebar_dispatch",
+      "llm_tact_ui_order_buttons_minimap_tick",
+      "llm_tact_ui_sel_panel_multi_mode_tick"
+     ]
+    },
+    {
+     "region": "SPRITE_PIX_OFFSETS",
+     "symbol": "_G_LLM_SPRITE_PIX_OFFSETS",
+     "readers": [
+      "llm_gfx_bldg_frame_center_offset",
+      "llm_strat_bldg_sprite_anchor_offset",
+      "llm_tact_door_apply_to_map",
+      "llm_tact_door_update_tile_state"
+     ]
+    },
+    {
+     "region": "STRAT_SOLDIERS",
+     "symbol": "_G_LLM_STRAT_SOLDIERS",
+     "readers": [
+      "llm_strat_prod_try_start_unit",
+      "llm_strat_unit_soldier_get_sprite_screen_pos",
+      "llm_strat_unit_spawn_docked",
+      "llm_strat_unit_squad_pick_lead_soldier_in_direction",
+      "llm_unit_create_soldier",
+      "llm_unit_recruit"
+     ]
+    }
+   ]
+  },
+  {
+   "channel": "screen",
+   "kind": "LIBMH_EVK_SCR_STRAT_FRAME_REDRAW",
+   "kind_no": null,
+   "dispatch": [
+    "llm_strat_render_view"
+   ],
+   "targets_absent_from_graph": [],
+   "reachable_fns": 65,
+   "write_symbols": 86,
+   "frame_cuts_crossed": [],
+   "bucket": "readback",
+   "readback": [
+    {
+     "region": "SPRITE_PIX_OFFSETS",
+     "symbol": "_G_LLM_SPRITE_PIX_OFFSETS",
+     "readers": [
+      "llm_gfx_bldg_frame_center_offset",
+      "llm_strat_bldg_sprite_anchor_offset",
+      "llm_tact_door_apply_to_map",
+      "llm_tact_door_update_tile_state"
+     ]
+    },
+    {
+     "region": "STRAT_SOLDIERS",
+     "symbol": "_G_LLM_STRAT_SOLDIERS",
+     "readers": [
+      "llm_strat_prod_try_start_unit",
+      "llm_strat_unit_soldier_get_sprite_screen_pos",
+      "llm_strat_unit_spawn_docked",
+      "llm_strat_unit_squad_pick_lead_soldier_in_direction",
+      "llm_unit_create_soldier",
+      "llm_unit_recruit"
+     ]
+    }
+   ]
+  },
+  {
+   "channel": "screen",
+   "kind": "LIBMH_EVK_SCR_SET_DISPLAY_MODE",
+   "kind_no": null,
+   "dispatch": [
+    "llm_view_set_size_mode"
+   ],
+   "targets_absent_from_graph": [],
+   "reachable_fns": 131,
+   "write_symbols": 111,
+   "frame_cuts_crossed": [
+    "llm_strat_frame_sim_only"
+   ],
+   "bucket": "crossed",
+   "readback": [
+    {
+     "region": "CURSOR_X",
+     "symbol": "_G_LLM_CURSOR_X",
+     "readers": [
+      "llm_tact_frame",
+      "llm_tact_sidebar_dispatch"
+     ]
+    },
+    {
+     "region": "CURSOR_Y",
+     "symbol": "_G_LLM_CURSOR_Y",
+     "readers": [
+      "llm_tact_frame",
+      "llm_tact_sidebar_dispatch"
+     ]
+    },
+    {
+     "region": "FRAMEBUFFER",
+     "symbol": "_G_LLM_FRAMEBUFFER",
+     "readers": [
+      "llm_tact_mission_start",
+      "llm_tact_view_shift_col_dec",
+      "llm_tact_view_shift_col_inc",
+      "llm_tact_view_shift_row_dec",
+      "llm_tact_view_shift_row_inc"
+     ]
+    },
+    {
+     "region": "GAME_MODE",
+     "symbol": "_G_LLM_GAME_MODE",
+     "readers": [
+      "llm_strat_frame",
+      "llm_strat_frame_redraw_behind_dialog",
+      "llm_tutorial_step_driver"
+     ]
+    },
+    {
+     "region": "GFX_DRAW_SURFACE",
+     "symbol": "_G_LLM_GFX_DRAW_SURFACE",
+     "readers": [
+      "llm_tact_active_unit_count_hud_draw",
+      "llm_tact_mission_start",
+      "llm_tact_selection_panel_refresh",
+      "llm_tact_sidebar_dispatch",
+      "llm_tact_ui_order_buttons_minimap_tick",
+      "llm_tact_ui_sel_panel_init",
+      "llm_tact_ui_sel_panel_multi_mode_tick",
+      "llm_tact_ui_sel_panel_single_mode_tick"
+     ]
+    },
+    {
+     "region": "GFX_PANEL_ROW_SKIP",
+     "symbol": "_G_LLM_GFX_PANEL_ROW_SKIP",
+     "readers": [
+      "llm_tact_active_unit_count_hud_draw",
+      "llm_tact_selection_panel_refresh",
+      "llm_tact_sidebar_dispatch",
+      "llm_tact_ui_order_buttons_minimap_tick",
+      "llm_tact_ui_sel_panel_init",
+      "llm_tact_ui_sel_panel_multi_mode_tick",
+      "llm_tact_ui_sel_panel_single_mode_tick"
+     ]
+    },
+    {
+     "region": "G_WIN_H",
+     "symbol": "G_WIN_H",
+     "readers": [
+      "llm_game_land_players_on_planet",
+      "llm_strat_deploy_starting_squad"
+     ]
+    },
+    {
+     "region": "G_WIN_W",
+     "symbol": "G_WIN_W",
+     "readers": [
+      "llm_game_land_players_on_planet",
+      "llm_strat_deploy_starting_squad",
+      "llm_tact_cam_follow_selection_tick",
+      "llm_tact_camera_center_on_tile",
+      "llm_tact_frame",
+      "llm_tact_sidebar_dispatch",
+      "llm_tact_ui_order_buttons_minimap_tick",
+      "llm_tact_ui_sel_panel_multi_mode_tick"
+     ]
+    },
+    {
+     "region": "MAP_REGION_LIST_HEAD",
+     "symbol": "_G_LLM_MAP_REGION_LIST_HEAD",
+     "readers": [
+      "llm_map_compute_region_merge_threshold",
+      "llm_map_merge_small_regions",
+      "llm_map_region_find_route",
+      "llm_map_region_pool_reset",
+      "llm_map_region_recompute_adjacency",
+      "llm_map_region_route_prepass",
+      "llm_strat_group_plan_formation_positions",
+      "map_ApplyAreaToMap"
+     ]
+    },
+    {
+     "region": "MAP_ZOOM_SCALE_X",
+     "symbol": "_G_LLM_MAP_ZOOM_SCALE_X",
+     "readers": [
+      "llm_map_zoom_scale_x_get"
+     ]
+    },
+    {
+     "region": "STRAT_UI_PANEL_MODE",
+     "symbol": "_G_LLM_STRAT_UI_PANEL_MODE",
+     "readers": [
+      "llm_strat_bldg_unmap_footprint"
+     ]
+    },
+    {
+     "region": "STRAT_UI_PANEL_PAGE",
+     "symbol": "_G_LLM_STRAT_UI_PANEL_PAGE",
+     "readers": [
+      "llm_strat_bldg_unmap_footprint"
+     ]
+    },
+    {
+     "region": "TACT_LOS_CACHE_PTR",
+     "symbol": "_G_LLM_TACT_LOS_CACHE_PTR",
+     "readers": [
+      "llm_tact_view_shift_col_dec",
+      "llm_tact_view_shift_col_inc",
+      "llm_tact_view_shift_row_dec",
+      "llm_tact_view_shift_row_inc"
+     ]
+    },
+    {
+     "region": "TILE_VIS_MAP_PTR",
+     "symbol": "_G_LLM_TILE_VIS_MAP_PTR",
+     "readers": [
+      "llm_tact_view_shift_col_dec",
+      "llm_tact_view_shift_col_inc",
+      "llm_tact_view_shift_row_dec",
+      "llm_tact_view_shift_row_inc"
+     ]
+    },
+    {
+     "region": "VIEW_TILES_H",
+     "symbol": "_G_LLM_VIEW_TILES_H",
+     "readers": [
+      "llm_tact_door_update_tile_state",
+      "llm_tact_fx_spawn",
+      "llm_tact_ui_sel_panel_multi_mode_tick"
+     ]
+    },
+    {
+     "region": "VIEW_TILES_W",
+     "symbol": "_G_LLM_VIEW_TILES_W",
+     "readers": [
+      "llm_tact_door_update_tile_state",
+      "llm_tact_fx_spawn",
+      "llm_tact_sidebar_dispatch",
+      "llm_tact_ui_order_buttons_minimap_tick",
+      "llm_tact_ui_sel_panel_multi_mode_tick"
+     ]
+    },
+    {
+     "region": "WINDOWHEIGHT",
+     "symbol": "WindowHeight",
+     "readers": [
+      "llm_tact_cam_follow_selection_tick",
+      "llm_tact_camera_center_on_tile",
+      "llm_tact_frame",
+      "llm_tact_ui_order_buttons_minimap_tick",
+      "llm_tact_ui_sel_panel_multi_mode_tick",
+      "llm_tact_ui_sel_panel_single_mode_tick"
+     ]
+    },
+    {
+     "region": "WINDOWWIDTH",
+     "symbol": "WindowWidth",
+     "readers": [
+      "llm_tact_frame"
+     ]
+    }
+   ]
+  },
+  {
+   "channel": "screen",
+   "kind": "LIBMH_EVK_SCR_OUTCOME_DIALOG",
+   "kind_no": 1,
+   "dispatch": [
+    "llm_ui_outcome_dialog"
+   ],
+   "targets_absent_from_graph": [],
+   "reachable_fns": 242,
+   "write_symbols": 274,
+   "frame_cuts_crossed": [
+    "llm_strat_frame_sim_only"
+   ],
+   "bucket": "crossed",
+   "readback": [
+    {
+     "region": "BUILD_PLACEMENT_ID",
+     "symbol": "_G_LLM_BUILD_PLACEMENT_ID",
+     "readers": [
+      "llm_tutorial_step_driver"
+     ]
+    },
+    {
+     "region": "CURSOR_X",
+     "symbol": "_G_LLM_CURSOR_X",
+     "readers": [
+      "llm_tact_frame",
+      "llm_tact_sidebar_dispatch"
+     ]
+    },
+    {
+     "region": "CURSOR_Y",
+     "symbol": "_G_LLM_CURSOR_Y",
+     "readers": [
+      "llm_tact_frame",
+      "llm_tact_sidebar_dispatch"
+     ]
+    },
+    {
+     "region": "FRAMEBUFFER",
+     "symbol": "_G_LLM_FRAMEBUFFER",
+     "readers": [
+      "llm_tact_mission_start",
+      "llm_tact_view_shift_col_dec",
+      "llm_tact_view_shift_col_inc",
+      "llm_tact_view_shift_row_dec",
+      "llm_tact_view_shift_row_inc"
+     ]
+    },
+    {
+     "region": "GAME_CLOCK_RAW_TICKS",
+     "symbol": "_G_LLM_GAME_CLOCK_RAW_TICKS",
+     "readers": [
+      "time_GetCurrentTime"
+     ]
+    },
+    {
+     "region": "GAME_MODE",
+     "symbol": "_G_LLM_GAME_MODE",
+     "readers": [
+      "llm_strat_frame",
+      "llm_strat_frame_redraw_behind_dialog",
+      "llm_tutorial_step_driver"
+     ]
+    },
+    {
+     "region": "GFX_DRAW_SURFACE",
+     "symbol": "_G_LLM_GFX_DRAW_SURFACE",
+     "readers": [
+      "llm_tact_active_unit_count_hud_draw",
+      "llm_tact_mission_start",
+      "llm_tact_selection_panel_refresh",
+      "llm_tact_sidebar_dispatch",
+      "llm_tact_ui_order_buttons_minimap_tick",
+      "llm_tact_ui_sel_panel_init",
+      "llm_tact_ui_sel_panel_multi_mode_tick",
+      "llm_tact_ui_sel_panel_single_mode_tick"
+     ]
+    },
+    {
+     "region": "GFX_PANEL_ROW_SKIP",
+     "symbol": "_G_LLM_GFX_PANEL_ROW_SKIP",
+     "readers": [
+      "llm_tact_active_unit_count_hud_draw",
+      "llm_tact_selection_panel_refresh",
+      "llm_tact_sidebar_dispatch",
+      "llm_tact_ui_order_buttons_minimap_tick",
+      "llm_tact_ui_sel_panel_init",
+      "llm_tact_ui_sel_panel_multi_mode_tick",
+      "llm_tact_ui_sel_panel_single_mode_tick"
+     ]
+    },
+    {
+     "region": "G_WIN_H",
+     "symbol": "G_WIN_H",
+     "readers": [
+      "llm_game_land_players_on_planet",
+      "llm_strat_deploy_starting_squad"
+     ]
+    },
+    {
+     "region": "G_WIN_W",
+     "symbol": "G_WIN_W",
+     "readers": [
+      "llm_game_land_players_on_planet",
+      "llm_strat_deploy_starting_squad",
+      "llm_tact_cam_follow_selection_tick",
+      "llm_tact_camera_center_on_tile",
+      "llm_tact_frame",
+      "llm_tact_sidebar_dispatch",
+      "llm_tact_ui_order_buttons_minimap_tick",
+      "llm_tact_ui_sel_panel_multi_mode_tick"
+     ]
+    },
+    {
+     "region": "MAP_CAM_COL",
+     "symbol": "_G_LLM_MAP_CAM_COL",
+     "readers": [
+      "llm_strat_spawn_enemy_landing",
+      "llm_tact_door_update_tile_state",
+      "llm_tact_fx_spawn",
+      "map_LoadPlanetFromDisk"
+     ]
+    },
+    {
+     "region": "MAP_CAM_ROW",
+     "symbol": "_G_LLM_MAP_CAM_ROW",
+     "readers": [
+      "llm_strat_spawn_enemy_landing",
+      "llm_tact_door_update_tile_state",
+      "llm_tact_fx_spawn",
+      "map_LoadPlanetFromDisk"
+     ]
+    },
+    {
+     "region": "MAP_REGION_LIST_HEAD",
+     "symbol": "_G_LLM_MAP_REGION_LIST_HEAD",
+     "readers": [
+      "llm_map_compute_region_merge_threshold",
+      "llm_map_merge_small_regions",
+      "llm_map_region_find_route",
+      "llm_map_region_pool_reset",
+      "llm_map_region_recompute_adjacency",
+      "llm_map_region_route_prepass",
+      "llm_strat_group_plan_formation_positions",
+      "map_ApplyAreaToMap"
+     ]
+    },
+    {
+     "region": "MAP_ZOOM_SCALE_X",
+     "symbol": "_G_LLM_MAP_ZOOM_SCALE_X",
+     "readers": [
+      "llm_map_zoom_scale_x_get"
+     ]
+    },
+    {
+     "region": "NET_SEND_BUF",
+     "symbol": "_G_LLM_NET_SEND_BUF",
+     "readers": [
+      "llm_net_lockstep_dispatch"
+     ]
+    },
+    {
+     "region": "NET_SEND_BUF_CURSOR",
+     "symbol": "_G_LLM_NET_SEND_BUF_CURSOR",
+     "readers": [
+      "llm_strat_order_schedule"
+     ]
+    },
+    {
+     "region": "SPRITE_PIX_OFFSETS",
+     "symbol": "_G_LLM_SPRITE_PIX_OFFSETS",
+     "readers": [
+      "llm_gfx_bldg_frame_center_offset",
+      "llm_strat_bldg_sprite_anchor_offset",
+      "llm_tact_door_apply_to_map",
+      "llm_tact_door_update_tile_state"
+     ]
+    },
+    {
+     "region": "STRAT_SOLDIERS",
+     "symbol": "_G_LLM_STRAT_SOLDIERS",
+     "readers": [
+      "llm_strat_prod_try_start_unit",
+      "llm_strat_unit_soldier_get_sprite_screen_pos",
+      "llm_strat_unit_spawn_docked",
+      "llm_strat_unit_squad_pick_lead_soldier_in_direction",
+      "llm_unit_create_soldier",
+      "llm_unit_recruit"
+     ]
+    },
+    {
+     "region": "STRAT_UI_PANEL_MODE",
+     "symbol": "_G_LLM_STRAT_UI_PANEL_MODE",
+     "readers": [
+      "llm_strat_bldg_unmap_footprint"
+     ]
+    },
+    {
+     "region": "STRAT_UI_PANEL_PAGE",
+     "symbol": "_G_LLM_STRAT_UI_PANEL_PAGE",
+     "readers": [
+      "llm_strat_bldg_unmap_footprint"
+     ]
+    },
+    {
+     "region": "TACT_LOS_CACHE_PTR",
+     "symbol": "_G_LLM_TACT_LOS_CACHE_PTR",
+     "readers": [
+      "llm_tact_view_shift_col_dec",
+      "llm_tact_view_shift_col_inc",
+      "llm_tact_view_shift_row_dec",
+      "llm_tact_view_shift_row_inc"
+     ]
+    },
+    {
+     "region": "TILE_VIS_MAP_PTR",
+     "symbol": "_G_LLM_TILE_VIS_MAP_PTR",
+     "readers": [
+      "llm_tact_view_shift_col_dec",
+      "llm_tact_view_shift_col_inc",
+      "llm_tact_view_shift_row_dec",
+      "llm_tact_view_shift_row_inc"
+     ]
+    },
+    {
+     "region": "TIME_TICKS_MS",
+     "symbol": "_G_LLM_TIME_TICKS_MS",
+     "readers": [
+      "llm_time_get_ticks_ms"
+     ]
+    },
+    {
+     "region": "UI_MENU_ASYNC_CALLBACK_B",
+     "symbol": "_G_LLM_UI_MENU_ASYNC_CALLBACK_B",
+     "readers": [
+      "llm_tutorial_step_driver"
+     ]
+    },
+    {
+     "region": "VIEW_SIZE_MODE",
+     "symbol": "_G_LLM_VIEW_SIZE_MODE",
+     "readers": [
+      "llm_tact_mission_end_return_to_strategic"
+     ]
+    },
+    {
+     "region": "VIEW_TILES_H",
+     "symbol": "_G_LLM_VIEW_TILES_H",
+     "readers": [
+      "llm_tact_door_update_tile_state",
+      "llm_tact_fx_spawn",
+      "llm_tact_ui_sel_panel_multi_mode_tick"
+     ]
+    },
+    {
+     "region": "VIEW_TILES_W",
+     "symbol": "_G_LLM_VIEW_TILES_W",
+     "readers": [
+      "llm_tact_door_update_tile_state",
+      "llm_tact_fx_spawn",
+      "llm_tact_sidebar_dispatch",
+      "llm_tact_ui_order_buttons_minimap_tick",
+      "llm_tact_ui_sel_panel_multi_mode_tick"
+     ]
+    },
+    {
+     "region": "WINDOWHEIGHT",
+     "symbol": "WindowHeight",
+     "readers": [
+      "llm_tact_cam_follow_selection_tick",
+      "llm_tact_camera_center_on_tile",
+      "llm_tact_frame",
+      "llm_tact_ui_order_buttons_minimap_tick",
+      "llm_tact_ui_sel_panel_multi_mode_tick",
+      "llm_tact_ui_sel_panel_single_mode_tick"
+     ]
+    },
+    {
+     "region": "WINDOWWIDTH",
+     "symbol": "WindowWidth",
+     "readers": [
+      "llm_tact_frame"
+     ]
+    }
+   ]
+  },
+  {
+   "channel": "screen",
+   "kind": "LIBMH_EVK_SCR_OVERLAY_DISMISS",
+   "kind_no": 2,
+   "dispatch": [
+    "llm_net_lockstep_overlay_dismiss"
+   ],
+   "targets_absent_from_graph": [],
+   "reachable_fns": 65,
+   "write_symbols": 63,
+   "frame_cuts_crossed": [
+    "llm_strat_frame_sim_only"
+   ],
+   "bucket": "crossed",
+   "readback": [
+    {
+     "region": "CURSOR_X",
+     "symbol": "_G_LLM_CURSOR_X",
+     "readers": [
+      "llm_tact_frame",
+      "llm_tact_sidebar_dispatch"
+     ]
+    },
+    {
+     "region": "CURSOR_Y",
+     "symbol": "_G_LLM_CURSOR_Y",
+     "readers": [
+      "llm_tact_frame",
+      "llm_tact_sidebar_dispatch"
+     ]
+    },
+    {
+     "region": "GAME_MODE",
+     "symbol": "_G_LLM_GAME_MODE",
+     "readers": [
+      "llm_strat_frame",
+      "llm_strat_frame_redraw_behind_dialog",
+      "llm_tutorial_step_driver"
+     ]
+    },
+    {
+     "region": "NET_SEND_BUF",
+     "symbol": "_G_LLM_NET_SEND_BUF",
+     "readers": [
+      "llm_net_lockstep_dispatch"
+     ]
+    },
+    {
+     "region": "NET_SEND_BUF_CURSOR",
+     "symbol": "_G_LLM_NET_SEND_BUF_CURSOR",
+     "readers": [
+      "llm_strat_order_schedule"
+     ]
+    },
+    {
+     "region": "STRAT_UI_PANEL_MODE",
+     "symbol": "_G_LLM_STRAT_UI_PANEL_MODE",
+     "readers": [
+      "llm_strat_bldg_unmap_footprint"
+     ]
+    },
+    {
+     "region": "STRAT_UI_PANEL_PAGE",
+     "symbol": "_G_LLM_STRAT_UI_PANEL_PAGE",
+     "readers": [
+      "llm_strat_bldg_unmap_footprint"
+     ]
+    }
+   ]
+  },
+  {
+   "channel": "screen",
+   "kind": "LIBMH_EVK_SCR_WAIT_PLAYER_SHOW",
+   "kind_no": 3,
+   "dispatch": [
+    "llm_net_lockstep_wait_player_overlay_show"
+   ],
+   "targets_absent_from_graph": [],
+   "reachable_fns": 71,
+   "write_symbols": 70,
+   "frame_cuts_crossed": [
+    "llm_strat_frame_sim_only"
+   ],
+   "bucket": "crossed",
+   "readback": [
+    {
+     "region": "CURSOR_X",
+     "symbol": "_G_LLM_CURSOR_X",
+     "readers": [
+      "llm_tact_frame",
+      "llm_tact_sidebar_dispatch"
+     ]
+    },
+    {
+     "region": "CURSOR_Y",
+     "symbol": "_G_LLM_CURSOR_Y",
+     "readers": [
+      "llm_tact_frame",
+      "llm_tact_sidebar_dispatch"
+     ]
+    },
+    {
+     "region": "GAME_MODE",
+     "symbol": "_G_LLM_GAME_MODE",
+     "readers": [
+      "llm_strat_frame",
+      "llm_strat_frame_redraw_behind_dialog",
+      "llm_tutorial_step_driver"
+     ]
+    },
+    {
+     "region": "NET_SEND_BUF",
+     "symbol": "_G_LLM_NET_SEND_BUF",
+     "readers": [
+      "llm_net_lockstep_dispatch"
+     ]
+    },
+    {
+     "region": "NET_SEND_BUF_CURSOR",
+     "symbol": "_G_LLM_NET_SEND_BUF_CURSOR",
+     "readers": [
+      "llm_strat_order_schedule"
+     ]
+    },
+    {
+     "region": "STRAT_UI_PANEL_MODE",
+     "symbol": "_G_LLM_STRAT_UI_PANEL_MODE",
+     "readers": [
+      "llm_strat_bldg_unmap_footprint"
+     ]
+    },
+    {
+     "region": "STRAT_UI_PANEL_PAGE",
+     "symbol": "_G_LLM_STRAT_UI_PANEL_PAGE",
+     "readers": [
+      "llm_strat_bldg_unmap_footprint"
+     ]
+    }
+   ]
+  },
+  {
+   "channel": "screen",
+   "kind": "LIBMH_EVK_SCR_MP_LEAVE_RESET",
+   "kind_no": 4,
+   "dispatch": [
+    "llm_net_mp_leave_reset_game_mode"
+   ],
+   "targets_absent_from_graph": [],
+   "reachable_fns": 66,
+   "write_symbols": 63,
+   "frame_cuts_crossed": [
+    "llm_strat_frame_sim_only"
+   ],
+   "bucket": "crossed",
+   "readback": [
+    {
+     "region": "CURSOR_X",
+     "symbol": "_G_LLM_CURSOR_X",
+     "readers": [
+      "llm_tact_frame",
+      "llm_tact_sidebar_dispatch"
+     ]
+    },
+    {
+     "region": "CURSOR_Y",
+     "symbol": "_G_LLM_CURSOR_Y",
+     "readers": [
+      "llm_tact_frame",
+      "llm_tact_sidebar_dispatch"
+     ]
+    },
+    {
+     "region": "GAME_MODE",
+     "symbol": "_G_LLM_GAME_MODE",
+     "readers": [
+      "llm_strat_frame",
+      "llm_strat_frame_redraw_behind_dialog",
+      "llm_tutorial_step_driver"
+     ]
+    },
+    {
+     "region": "NET_SEND_BUF",
+     "symbol": "_G_LLM_NET_SEND_BUF",
+     "readers": [
+      "llm_net_lockstep_dispatch"
+     ]
+    },
+    {
+     "region": "NET_SEND_BUF_CURSOR",
+     "symbol": "_G_LLM_NET_SEND_BUF_CURSOR",
+     "readers": [
+      "llm_strat_order_schedule"
+     ]
+    },
+    {
+     "region": "STRAT_UI_PANEL_MODE",
+     "symbol": "_G_LLM_STRAT_UI_PANEL_MODE",
+     "readers": [
+      "llm_strat_bldg_unmap_footprint"
+     ]
+    },
+    {
+     "region": "STRAT_UI_PANEL_PAGE",
+     "symbol": "_G_LLM_STRAT_UI_PANEL_PAGE",
+     "readers": [
+      "llm_strat_bldg_unmap_footprint"
+     ]
+    }
+   ]
+  },
+  {
+   "channel": "screen",
+   "kind": "LIBMH_EVK_SCR_BLDG_PANEL_OPEN",
+   "kind_no": 5,
+   "dispatch": [
+    "llm_ui_bldg_panel_open"
+   ],
+   "targets_absent_from_graph": [],
+   "reachable_fns": 50,
+   "write_symbols": 56,
+   "frame_cuts_crossed": [
+    "llm_strat_frame_sim_only"
+   ],
+   "bucket": "crossed",
+   "readback": [
+    {
+     "region": "CURSOR_X",
+     "symbol": "_G_LLM_CURSOR_X",
+     "readers": [
+      "llm_tact_frame",
+      "llm_tact_sidebar_dispatch"
+     ]
+    },
+    {
+     "region": "CURSOR_Y",
+     "symbol": "_G_LLM_CURSOR_Y",
+     "readers": [
+      "llm_tact_frame",
+      "llm_tact_sidebar_dispatch"
+     ]
+    },
+    {
+     "region": "GAME_MODE",
+     "symbol": "_G_LLM_GAME_MODE",
+     "readers": [
+      "llm_strat_frame",
+      "llm_strat_frame_redraw_behind_dialog",
+      "llm_tutorial_step_driver"
+     ]
+    },
+    {
+     "region": "STRAT_UI_PANEL_MODE",
+     "symbol": "_G_LLM_STRAT_UI_PANEL_MODE",
+     "readers": [
+      "llm_strat_bldg_unmap_footprint"
+     ]
+    },
+    {
+     "region": "STRAT_UI_PANEL_PAGE",
+     "symbol": "_G_LLM_STRAT_UI_PANEL_PAGE",
+     "readers": [
+      "llm_strat_bldg_unmap_footprint"
+     ]
+    }
+   ]
+  },
+  {
+   "channel": "screen",
+   "kind": "LIBMH_EVK_SCR_PLANET_SELECT_OPEN",
+   "kind_no": 6,
+   "dispatch": [
+    "llm_ui_planet_select_screen_open"
+   ],
+   "targets_absent_from_graph": [],
+   "reachable_fns": 43,
+   "write_symbols": 37,
+   "frame_cuts_crossed": [
+    "llm_strat_frame_sim_only"
+   ],
+   "bucket": "crossed",
+   "readback": [
+    {
+     "region": "CURSOR_X",
+     "symbol": "_G_LLM_CURSOR_X",
+     "readers": [
+      "llm_tact_frame",
+      "llm_tact_sidebar_dispatch"
+     ]
+    },
+    {
+     "region": "CURSOR_Y",
+     "symbol": "_G_LLM_CURSOR_Y",
+     "readers": [
+      "llm_tact_frame",
+      "llm_tact_sidebar_dispatch"
+     ]
+    },
+    {
+     "region": "GAME_MODE",
+     "symbol": "_G_LLM_GAME_MODE",
+     "readers": [
+      "llm_strat_frame",
+      "llm_strat_frame_redraw_behind_dialog",
+      "llm_tutorial_step_driver"
+     ]
+    }
+   ]
+  },
+  {
+   "channel": "screen",
+   "kind": "LIBMH_EVK_SCR_DLG_FROM_TABLE",
+   "kind_no": 7,
+   "dispatch": [
+    "llm_ui_dlg_build_from_table"
+   ],
+   "targets_absent_from_graph": [],
+   "reachable_fns": 2,
+   "write_symbols": 3,
+   "frame_cuts_crossed": [],
+   "bucket": "clean",
+   "readback": []
+  },
+  {
+   "channel": "screen",
+   "kind": "LIBMH_EVK_SCR_SYNC_OVERLAY_SHOW",
+   "kind_no": 8,
+   "dispatch": [
+    "llm_net_lockstep_sync_overlay_show"
+   ],
+   "targets_absent_from_graph": [],
+   "reachable_fns": 68,
+   "write_symbols": 67,
+   "frame_cuts_crossed": [
+    "llm_strat_frame_sim_only"
+   ],
+   "bucket": "crossed",
+   "readback": [
+    {
+     "region": "CURSOR_X",
+     "symbol": "_G_LLM_CURSOR_X",
+     "readers": [
+      "llm_tact_frame",
+      "llm_tact_sidebar_dispatch"
+     ]
+    },
+    {
+     "region": "CURSOR_Y",
+     "symbol": "_G_LLM_CURSOR_Y",
+     "readers": [
+      "llm_tact_frame",
+      "llm_tact_sidebar_dispatch"
+     ]
+    },
+    {
+     "region": "GAME_MODE",
+     "symbol": "_G_LLM_GAME_MODE",
+     "readers": [
+      "llm_strat_frame",
+      "llm_strat_frame_redraw_behind_dialog",
+      "llm_tutorial_step_driver"
+     ]
+    },
+    {
+     "region": "NET_SEND_BUF",
+     "symbol": "_G_LLM_NET_SEND_BUF",
+     "readers": [
+      "llm_net_lockstep_dispatch"
+     ]
+    },
+    {
+     "region": "NET_SEND_BUF_CURSOR",
+     "symbol": "_G_LLM_NET_SEND_BUF_CURSOR",
+     "readers": [
+      "llm_strat_order_schedule"
+     ]
+    },
+    {
+     "region": "STRAT_UI_PANEL_MODE",
+     "symbol": "_G_LLM_STRAT_UI_PANEL_MODE",
+     "readers": [
+      "llm_strat_bldg_unmap_footprint"
+     ]
+    },
+    {
+     "region": "STRAT_UI_PANEL_PAGE",
+     "symbol": "_G_LLM_STRAT_UI_PANEL_PAGE",
+     "readers": [
+      "llm_strat_bldg_unmap_footprint"
+     ]
+    },
+    {
+     "region": "UI_MENU_ASYNC_CALLBACK_B",
+     "symbol": "_G_LLM_UI_MENU_ASYNC_CALLBACK_B",
+     "readers": [
+      "llm_tutorial_step_driver"
+     ]
+    }
+   ]
+  },
+  {
+   "channel": "screen",
+   "kind": "LIBMH_EVK_SCR_TUT_UISTATE_RESTORE",
+   "kind_no": 9,
+   "dispatch": [
+    "llm_menu_tutorial_uistate_restore"
+   ],
+   "targets_absent_from_graph": [],
+   "reachable_fns": 3,
+   "write_symbols": 2,
+   "frame_cuts_crossed": [],
+   "bucket": "clean",
+   "readback": []
+  },
+  {
+   "channel": "screen",
+   "kind": "LIBMH_EVK_SCR_MENU_BG_REDRAW",
+   "kind_no": 10,
+   "dispatch": [
+    "llm_ui_menu_bg_redraw_cb"
+   ],
+   "targets_absent_from_graph": [],
+   "reachable_fns": 74,
+   "write_symbols": 90,
+   "frame_cuts_crossed": [],
+   "bucket": "readback",
+   "readback": [
+    {
+     "region": "SPRITE_PIX_OFFSETS",
+     "symbol": "_G_LLM_SPRITE_PIX_OFFSETS",
+     "readers": [
+      "llm_gfx_bldg_frame_center_offset",
+      "llm_strat_bldg_sprite_anchor_offset",
+      "llm_tact_door_apply_to_map",
+      "llm_tact_door_update_tile_state"
+     ]
+    },
+    {
+     "region": "STRAT_SOLDIERS",
+     "symbol": "_G_LLM_STRAT_SOLDIERS",
+     "readers": [
+      "llm_strat_prod_try_start_unit",
+      "llm_strat_unit_soldier_get_sprite_screen_pos",
+      "llm_strat_unit_spawn_docked",
+      "llm_strat_unit_squad_pick_lead_soldier_in_direction",
+      "llm_unit_create_soldier",
+      "llm_unit_recruit"
+     ]
+    }
+   ]
+  },
+  {
+   "channel": "screen",
+   "kind": "LIBMH_EVK_SCR_CURSOR_MENU_DRAW",
+   "kind_no": 11,
+   "dispatch": [
+    "llm_gfx_draw_cursor_menu"
+   ],
+   "targets_absent_from_graph": [],
+   "reachable_fns": 5,
+   "write_symbols": 15,
+   "frame_cuts_crossed": [],
+   "bucket": "readback",
+   "readback": [
+    {
+     "region": "G_WIN_H",
+     "symbol": "G_WIN_H",
+     "readers": [
+      "llm_game_land_players_on_planet",
+      "llm_strat_deploy_starting_squad"
+     ]
+    },
+    {
+     "region": "G_WIN_W",
+     "symbol": "G_WIN_W",
+     "readers": [
+      "llm_game_land_players_on_planet",
+      "llm_strat_deploy_starting_squad",
+      "llm_tact_cam_follow_selection_tick",
+      "llm_tact_camera_center_on_tile",
+      "llm_tact_frame",
+      "llm_tact_sidebar_dispatch",
+      "llm_tact_ui_order_buttons_minimap_tick",
+      "llm_tact_ui_sel_panel_multi_mode_tick"
+     ]
+    }
+   ]
+  },
+  {
+   "channel": "screen",
+   "kind": "LIBMH_EVK_SCR_PRESENT_FLIP",
+   "kind_no": 12,
+   "dispatch": [
+    "llm_gfx_present_flip"
+   ],
+   "targets_absent_from_graph": [],
+   "reachable_fns": 15,
+   "write_symbols": 2,
+   "frame_cuts_crossed": [],
+   "bucket": "readback",
+   "readback": [
+    {
+     "region": "FRAMEBUFFER",
+     "symbol": "_G_LLM_FRAMEBUFFER",
+     "readers": [
+      "llm_tact_mission_start",
+      "llm_tact_view_shift_col_dec",
+      "llm_tact_view_shift_col_inc",
+      "llm_tact_view_shift_row_dec",
+      "llm_tact_view_shift_row_inc"
+     ]
+    }
+   ]
+  },
+  {
+   "channel": "screen",
+   "kind": "LIBMH_EVK_SCR_FONT_DESC_FOR_FLAGS",
+   "kind_no": 13,
+   "dispatch": [
+    "llm_gfx_font_desc_for_flags"
+   ],
+   "targets_absent_from_graph": [],
+   "reachable_fns": 1,
+   "write_symbols": 0,
+   "frame_cuts_crossed": [],
+   "bucket": "blind",
+   "readback": []
+  },
+  {
+   "channel": "screen",
+   "kind": "LIBMH_EVK_SCR_WGTL_CENTER",
+   "kind_no": 14,
+   "dispatch": [
+    "llm_ui_widget_list_center",
+    "llm_ui_widget_list_draw"
+   ],
+   "targets_absent_from_graph": [],
+   "reachable_fns": 5,
+   "write_symbols": 4,
+   "frame_cuts_crossed": [],
+   "bucket": "clean",
+   "readback": []
+  },
+  {
+   "channel": "screen",
+   "kind": "LIBMH_EVK_SCR_WGTL_DRAW",
+   "kind_no": 15,
+   "dispatch": [
+    "llm_ui_widget_list_center",
+    "llm_ui_widget_list_draw"
+   ],
+   "targets_absent_from_graph": [],
+   "reachable_fns": 5,
+   "write_symbols": 4,
+   "frame_cuts_crossed": [],
+   "bucket": "clean",
+   "readback": []
+  },
+  {
+   "channel": "screen",
+   "kind": "LIBMH_EVK_SCR_FADE_TRANSITION_RUN",
+   "kind_no": 16,
+   "dispatch": [
+    "llm_ui_screen_fade_transition_tick"
+   ],
+   "targets_absent_from_graph": [],
+   "reachable_fns": 20,
+   "write_symbols": 15,
+   "frame_cuts_crossed": [],
+   "bucket": "readback",
+   "readback": [
+    {
+     "region": "FRAMEBUFFER",
+     "symbol": "_G_LLM_FRAMEBUFFER",
+     "readers": [
+      "llm_tact_mission_start",
+      "llm_tact_view_shift_col_dec",
+      "llm_tact_view_shift_col_inc",
+      "llm_tact_view_shift_row_dec",
+      "llm_tact_view_shift_row_inc"
+     ]
+    },
+    {
+     "region": "GAME_CLOCK_RAW_TICKS",
+     "symbol": "_G_LLM_GAME_CLOCK_RAW_TICKS",
+     "readers": [
+      "time_GetCurrentTime"
+     ]
+    },
+    {
+     "region": "TIME_TICKS_MS",
+     "symbol": "_G_LLM_TIME_TICKS_MS",
+     "readers": [
+      "llm_time_get_ticks_ms"
+     ]
+    }
+   ]
+  },
+  {
+   "channel": "screen",
+   "kind": "LIBMH_EVK_SCR_TUT_HINT_LAYOUT",
+   "kind_no": 17,
+   "dispatch": [
+    "llm_gfx_sprite_width",
+    "llm_gfx_ui_sprite_get_header_field2"
+   ],
+   "targets_absent_from_graph": [],
+   "reachable_fns": 2,
+   "write_symbols": 0,
+   "frame_cuts_crossed": [],
+   "bucket": "blind",
+   "readback": []
+  },
+  {
+   "channel": "screen",
+   "kind": "LIBMH_EVK_SCR_TACT_BLAST_TRANSITION",
+   "kind_no": 18,
+   "dispatch": [
+    "llm_tact_blink_overlay_clear",
+    "llm_tact_frame_cursor_and_reset",
+    "llm_tact_scroll_fade_step"
+   ],
+   "targets_absent_from_graph": [],
+   "reachable_fns": 23,
+   "write_symbols": 17,
+   "frame_cuts_crossed": [],
+   "bucket": "readback",
+   "readback": [
+    {
+     "region": "FRAMEBUFFER",
+     "symbol": "_G_LLM_FRAMEBUFFER",
+     "readers": [
+      "llm_tact_mission_start",
+      "llm_tact_view_shift_col_dec",
+      "llm_tact_view_shift_col_inc",
+      "llm_tact_view_shift_row_dec",
+      "llm_tact_view_shift_row_inc"
+     ]
+    },
+    {
+     "region": "G_WIN_W",
+     "symbol": "G_WIN_W",
+     "readers": [
+      "llm_game_land_players_on_planet",
+      "llm_strat_deploy_starting_squad",
+      "llm_tact_cam_follow_selection_tick",
+      "llm_tact_camera_center_on_tile",
+      "llm_tact_frame",
+      "llm_tact_sidebar_dispatch",
+      "llm_tact_ui_order_buttons_minimap_tick",
+      "llm_tact_ui_sel_panel_multi_mode_tick"
+     ]
+    }
+   ]
+  },
+  {
+   "channel": "screen",
+   "kind": "LIBMH_EVK_SCR_TACT_FRAME_PRESENT",
+   "kind_no": 19,
+   "dispatch": [
+    "llm_tact_frame_cursor_and_reset"
+   ],
+   "targets_absent_from_graph": [],
+   "reachable_fns": 21,
+   "write_symbols": 17,
+   "frame_cuts_crossed": [],
+   "bucket": "readback",
+   "readback": [
+    {
+     "region": "FRAMEBUFFER",
+     "symbol": "_G_LLM_FRAMEBUFFER",
+     "readers": [
+      "llm_tact_mission_start",
+      "llm_tact_view_shift_col_dec",
+      "llm_tact_view_shift_col_inc",
+      "llm_tact_view_shift_row_dec",
+      "llm_tact_view_shift_row_inc"
+     ]
+    },
+    {
+     "region": "G_WIN_W",
+     "symbol": "G_WIN_W",
+     "readers": [
+      "llm_game_land_players_on_planet",
+      "llm_strat_deploy_starting_squad",
+      "llm_tact_cam_follow_selection_tick",
+      "llm_tact_camera_center_on_tile",
+      "llm_tact_frame",
+      "llm_tact_sidebar_dispatch",
+      "llm_tact_ui_order_buttons_minimap_tick",
+      "llm_tact_ui_sel_panel_multi_mode_tick"
+     ]
+    }
+   ]
+  },
+  {
+   "channel": "screen",
+   "kind": "LIBMH_EVK_SCR_TACT_MISSION_MEDIA",
+   "kind_no": 20,
+   "dispatch": [
+    "llm_ui_info_media_draw_p1"
+   ],
+   "targets_absent_from_graph": [],
+   "reachable_fns": 6,
+   "write_symbols": 5,
+   "frame_cuts_crossed": [],
+   "bucket": "clean",
+   "readback": []
+  },
+  {
+   "channel": "text",
+   "kind": "LIBMH_EVTK_TEXT_MAIN",
+   "kind_no": 1,
+   "dispatch": [
+    "game_ui_PrintTextMessage"
+   ],
+   "targets_absent_from_graph": [],
+   "reachable_fns": 4,
+   "write_symbols": 3,
+   "frame_cuts_crossed": [],
+   "bucket": "clean",
+   "readback": []
+  },
+  {
+   "channel": "text",
+   "kind": "LIBMH_EVTK_TEXT_FLOAT_RED",
+   "kind_no": 2,
+   "dispatch": [
+    "llm_ui_print_floating_msg_red"
+   ],
+   "targets_absent_from_graph": [],
+   "reachable_fns": 6,
+   "write_symbols": 3,
+   "frame_cuts_crossed": [],
+   "bucket": "clean",
+   "readback": []
+  },
+  {
+   "channel": "text",
+   "kind": "LIBMH_EVTK_TEXT_FLOAT_CYAN",
+   "kind_no": 3,
+   "dispatch": [
+    "llm_ui_print_floating_msg_cyan"
+   ],
+   "targets_absent_from_graph": [],
+   "reachable_fns": 6,
+   "write_symbols": 3,
+   "frame_cuts_crossed": [],
+   "bucket": "clean",
+   "readback": []
+  },
+  {
+   "channel": "text",
+   "kind": "LIBMH_EVTK_TEXT_TACT_EXIT_CONFIRM",
+   "kind_no": 4,
+   "dispatch": [
+    "llm_gfx_draw_text_rgb"
+   ],
+   "targets_absent_from_graph": [],
+   "reachable_fns": 5,
+   "write_symbols": 14,
+   "frame_cuts_crossed": [],
+   "bucket": "clean",
+   "readback": []
+  }
+ ]
+}

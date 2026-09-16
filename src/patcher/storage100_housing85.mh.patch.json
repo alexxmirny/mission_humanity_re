@@ -1,0 +1,276 @@
+{
+ "class": "reference",
+ "_class_why": "RU-targeted: its sha256 pins the frozen Russian exe, so mhpatch refuses it against the EN image (measured 2026-09-13) and it can never be an in-memory subject. Kept as the on-disk patch for the RU build.",
+ "target": "mh.exe (retail)",
+ "sha256": "9c4451cf8934a9f446a4f639a3aaa002168030ba512df83a6495bb61861d6a30",
+ "_purpose": "docked_units int[50]->short[100] (100/building) + housing 50->85",
+ "sections": [
+  {
+   "name": ".mhstor",
+   "vaddr": "0x10f0000",
+   "vsize": "240",
+   "data": "0fb780c827c700e984f639ff0fb780c827c700e931f739ff0fb780c827c700e9a3d539ff0fb780c827c700e9f3ca37ff0fb780c827c700e9efb438ff0fb780c827c700e9d3ae38ff0fb780c827c700e9aaaf38ff0fb780c827c700e9a7b43aff0fb780c827c700e9a49b39ff0fb780c827c700e96fcb37ff0fb790c827c70069d2e9000000e9559032ff0fb790c827c70069d2e9000000e976a739ff0fb790c827c70069d2e9000000e9b0a739ff0fb780c827c70069c0e9000000e9eaa739ff668998c827c700e9a4b239ff668982c827c700e93e3637ff668990c827c700e9ad9b39ff0fb792ca27c700e99b9b39ff",
+   "chars": "0xE0000040"
+  }
+ ],
+ "patches": [
+  {
+   "va": "0x004190d2",
+   "expect": "02",
+   "bytes": "01",
+   "_note": "list index i*4->i*2 (SHL,2->,1)"
+  },
+  {
+   "va": "0x0048f687",
+   "expect": "02",
+   "bytes": "01",
+   "_note": "list index i*4->i*2 (SHL,2->,1)"
+  },
+  {
+   "va": "0x0048f740",
+   "expect": "02",
+   "bytes": "01",
+   "_note": "list index i*4->i*2 (SHL,2->,1)"
+  },
+  {
+   "va": "0x0048d5be",
+   "expect": "02",
+   "bytes": "01",
+   "_note": "list index i*4->i*2 (SHL,2->,1)"
+  },
+  {
+   "va": "0x0046cb1a",
+   "expect": "02",
+   "bytes": "01",
+   "_note": "list index i*4->i*2 (SHL,2->,1)"
+  },
+  {
+   "va": "0x0047b522",
+   "expect": "02",
+   "bytes": "01",
+   "_note": "list index i*4->i*2 (SHL,2->,1)"
+  },
+  {
+   "va": "0x0047b553",
+   "expect": "02",
+   "bytes": "01",
+   "_note": "list index i*4->i*2 (SHL,2->,1)"
+  },
+  {
+   "va": "0x0047af12",
+   "expect": "02",
+   "bytes": "01",
+   "_note": "list index i*4->i*2 (SHL,2->,1)"
+  },
+  {
+   "va": "0x0047aff5",
+   "expect": "02",
+   "bytes": "01",
+   "_note": "list index i*4->i*2 (SHL,2->,1)"
+  },
+  {
+   "va": "0x0048a805",
+   "expect": "02",
+   "bytes": "01",
+   "_note": "list index i*4->i*2 (SHL,2->,1)"
+  },
+  {
+   "va": "0x0048a851",
+   "expect": "02",
+   "bytes": "01",
+   "_note": "list index i*4->i*2 (SHL,2->,1)"
+  },
+  {
+   "va": "0x0048a89d",
+   "expect": "02",
+   "bytes": "01",
+   "_note": "list index i*4->i*2 (SHL,2->,1)"
+  },
+  {
+   "va": "0x0049b4fe",
+   "expect": "02",
+   "bytes": "01",
+   "_note": "list index i*4->i*2 (SHL,2->,1)"
+  },
+  {
+   "va": "0x00489c07",
+   "expect": "02",
+   "bytes": "01",
+   "_note": "list index i*4->i*2 (SHL,2->,1)"
+  },
+  {
+   "va": "0x00489c82",
+   "expect": "02",
+   "bytes": "01",
+   "_note": "list index i*4->i*2 (SHL,2->,1)"
+  },
+  {
+   "va": "0x0046cbde",
+   "expect": "02",
+   "bytes": "01",
+   "_note": "list index i*4->i*2 (SHL,2->,1)"
+  },
+  {
+   "va": "0x0048b351",
+   "expect": "02",
+   "bytes": "01",
+   "_note": "list index i*4->i*2 (SHL,2->,1)"
+  },
+  {
+   "va": "0x004636f6",
+   "expect": "02",
+   "bytes": "01",
+   "_note": "list index i*4->i*2 (SHL,2->,1)"
+  },
+  {
+   "va": "0x0048f68a",
+   "expect": "8b 80 c8 27 c7 00",
+   "bytes": "e9 71 09 c6 00 90",
+   "_note": "list read int->word (tramp@0x10f0000)"
+  },
+  {
+   "va": "0x0048f743",
+   "expect": "8b 80 c8 27 c7 00",
+   "bytes": "e9 c4 08 c6 00 90",
+   "_note": "list read int->word (tramp@0x10f000c)"
+  },
+  {
+   "va": "0x0048d5c1",
+   "expect": "8b 80 c8 27 c7 00",
+   "bytes": "e9 52 2a c6 00 90",
+   "_note": "list read int->word (tramp@0x10f0018)"
+  },
+  {
+   "va": "0x0046cb1d",
+   "expect": "8b 80 c8 27 c7 00",
+   "bytes": "e9 02 35 c8 00 90",
+   "_note": "list read int->word (tramp@0x10f0024)"
+  },
+  {
+   "va": "0x0047b525",
+   "expect": "8b 80 c8 27 c7 00",
+   "bytes": "e9 06 4b c7 00 90",
+   "_note": "list read int->word (tramp@0x10f0030)"
+  },
+  {
+   "va": "0x0047af15",
+   "expect": "8b 80 c8 27 c7 00",
+   "bytes": "e9 22 51 c7 00 90",
+   "_note": "list read int->word (tramp@0x10f003c)"
+  },
+  {
+   "va": "0x0047aff8",
+   "expect": "8b 80 c8 27 c7 00",
+   "bytes": "e9 4b 50 c7 00 90",
+   "_note": "list read int->word (tramp@0x10f0048)"
+  },
+  {
+   "va": "0x0049b501",
+   "expect": "8b 80 c8 27 c7 00",
+   "bytes": "e9 4e 4b c5 00 90",
+   "_note": "list read int->word (tramp@0x10f0054)"
+  },
+  {
+   "va": "0x00489c0a",
+   "expect": "8b 80 c8 27 c7 00",
+   "bytes": "e9 51 64 c6 00 90",
+   "_note": "list read int->word (tramp@0x10f0060)"
+  },
+  {
+   "va": "0x0046cbe1",
+   "expect": "8b 80 c8 27 c7 00",
+   "bytes": "e9 86 34 c8 00 90",
+   "_note": "list read int->word (tramp@0x10f006c)"
+  },
+  {
+   "va": "0x004190d5",
+   "expect": "69 90 c8 27 c7 00 e9 00 00 00",
+   "bytes": "e9 9e 6f cd 00 90 90 90 90 90",
+   "_note": "list read*233 int->word (tramp@0x10f0078)"
+  },
+  {
+   "va": "0x0048a808",
+   "expect": "69 90 c8 27 c7 00 e9 00 00 00",
+   "bytes": "e9 7d 58 c6 00 90 90 90 90 90",
+   "_note": "list read*233 int->word (tramp@0x10f008a)"
+  },
+  {
+   "va": "0x0048a854",
+   "expect": "69 90 c8 27 c7 00 e9 00 00 00",
+   "bytes": "e9 43 58 c6 00 90 90 90 90 90",
+   "_note": "list read*233 int->word (tramp@0x10f009c)"
+  },
+  {
+   "va": "0x0048a8a0",
+   "expect": "69 80 c8 27 c7 00 e9 00 00 00",
+   "bytes": "e9 09 58 c6 00 90 90 90 90 90",
+   "_note": "list read*233 int->word (tramp@0x10f00ae)"
+  },
+  {
+   "va": "0x0048b36a",
+   "expect": "89 98 c8 27 c7 00",
+   "bytes": "e9 51 4d c6 00 90",
+   "_note": "list write int->word(low16) (tramp@0x10f00c0)"
+  },
+  {
+   "va": "0x00463710",
+   "expect": "89 82 c8 27 c7 00",
+   "bytes": "e9 b7 c9 c8 00 90",
+   "_note": "list write int->word(low16) (tramp@0x10f00cc)"
+  },
+  {
+   "va": "0x00489c8b",
+   "expect": "89 90 c8 27 c7 00",
+   "bytes": "e9 48 64 c6 00 90",
+   "_note": "list write int->word(low16) (tramp@0x10f00d8)"
+  },
+  {
+   "va": "0x00489c85",
+   "expect": "8b 92 cc 27 c7 00",
+   "bytes": "e9 5a 64 c6 00 90",
+   "_note": "list[i+1] read int->word(disp-2) (tramp@0x10f00e4)"
+  },
+  {
+   "va": "0x0047b556",
+   "expect": "c7 80 c8 27 c7 00 00 00 00 00",
+   "bytes": "66 c7 80 c8 27 c7 00 00 00 90",
+   "_note": "list clear int->word0(in place)"
+  },
+  {
+   "va": "0x00463533",
+   "expect": "32",
+   "bytes": "64",
+   "_note": "storage occ/count cap 50->100"
+  },
+  {
+   "va": "0x00463694",
+   "expect": "32",
+   "bytes": "64",
+   "_note": "storage occ/count cap 50->100"
+  },
+  {
+   "va": "0x0048ab64",
+   "expect": "32",
+   "bytes": "64",
+   "_note": "storage occ/count cap 50->100"
+  },
+  {
+   "va": "0x0048ad21",
+   "expect": "32",
+   "bytes": "64",
+   "_note": "storage occ/count cap 50->100"
+  },
+  {
+   "va": "0x004d54ad",
+   "expect": "32",
+   "bytes": "64",
+   "_note": "storage occ/count cap 50->100"
+  },
+  {
+   "va": "0x00457e94",
+   "expect": "32",
+   "bytes": "55",
+   "_note": "unit_housing_capacity 50->85 (Construct)"
+  }
+ ]
+}

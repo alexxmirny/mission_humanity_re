@@ -1,0 +1,13 @@
+# P1: does the adaptive lookahead controller respond to a MID-RUN latency change?
+#
+# The one acceptance criterion P1 has never met -- the relay runs all had a constant RTT, so
+# "grows to avoid a stall storm, shrinks back when it clears" was never demonstrated.
+#
+# Read the result from both peers' mh_net.log "adaptive: lookahead A -> B ms" lines against these
+# timestamps. Expected: flat around the floor in phase 1, a climb starting shortly after 180000,
+# and a decay back after 360000 -- with the determinism verdict still ALL PAIRS IDENTICAL, because
+# the lookahead is a LOCAL control decision and must never affect the simulation.
+
+0       set delay 40      # phase 1: 80 ms rtt -- a good connection; controller should settle low
+180000  set delay 220     # phase 2: 440 ms rtt, applied in one step -- expect a stall storm, then GROWTH
+360000  set delay 40      # phase 3: back to good -- expect the lookahead to decay again

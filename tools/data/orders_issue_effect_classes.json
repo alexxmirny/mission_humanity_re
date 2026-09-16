@@ -1,0 +1,27 @@
+{
+  "_comment": [
+    "OUTWARD-EFFECT DISPOSITIONS for the order-issue domain (RI-ORDERS / O4-ISSUE).",
+    "",
+    "WHY THIS FILE EXISTS. Shadow mode snapshots state, runs the original, RESTORES the pre-state,",
+    "runs ours, and compares. Restoring state does not un-play a sound. So an outward call with an",
+    "external effect fires TWICE per armed call while the state comparison still reads clean. This",
+    "file is the authored half of the answer -- the INVENTORY is measured",
+    "(`gen_migration.py --domain orders_issue --effects`), the DISPOSITION is a judgement.",
+    "",
+    "THE SURFACE HERE IS ONE TARGET, which is the whole point of an order-issue wrapper: it packs a",
+    "command and hands it to the container. Two of the 112 talk to anything irreversible, and both",
+    "talk to the same function.",
+    "",
+    "`verified: true` is inherited, not re-asserted: this is the SAME target the sim domain already",
+    "confirmed against its body (tools/data/sim_effect_classes.json), at the same evidence address.",
+    "Two domains calling one function do not need two readings of it -- but if that entry is ever",
+    "revised, revise this one with it."
+  ],
+  "llm_snd_play": {
+    "class": "effectful",
+    "verified": true,
+    "why": "Device write. Reaches llm_snd_play_matching_sample on BOTH paths (CALL 0x004d2b44 @0x00425368 and @0x00425408) -> llm_snd_channel_configure_voice_and_play @0x004e14c0, and writes per-channel priority (@0x0042537b) and current-sound-id (@0x00425388) unconditionally on the play path. Read against the body for the sim domain; the same reading holds here. Its two callers in this domain are the order-acknowledgement voice line (llm_strat_group_order_ack_voice) and the move-with-bump confirmation (llm_strat_unit_order_move_confirmed_with_bump) -- so an unseamed shadow arm would double every order-ack chirp the player hears.",
+    "fake_return": null,
+    "evidence_addr": "0x00425368"
+  }
+}

@@ -1,0 +1,669 @@
+{
+ "_what": "LIB-REF-IN: the CALLER CLASSIFICATION half of the inbound adjudication -- what the fork does with each original function that calls a body libmh owns.",
+ "_derived_vs_written": [
+  "The caller SET is derived on every run by tools/gen_libmh_inbound.py (per-function ledgers +",
+  "call_graph_no_crt.json, cut-free and all-domain -- see that tool's banner for why the",
+  "reconciliation's section-5 cut is the WRONG model for this question). This file is the",
+  "hand-written half: what CLASS each caller is. A caller with no row here FAILS the generator",
+  "by name; a row here naming a caller that is no longer a caller FAILS as stale. Neither is",
+  "silently defaulted, which is the failure docs/libmh-abi.md section 8 already demonstrated."
+ ],
+ "_classes": {
+  "FE": "front-end (UI/HUD/menu/dialog/input/selection/camera/render/sound/debug console/frame loop) -- the fork's host reimplements it, so its call into an owned body needs a designed entry",
+  "NET": "transport/lockstep driver -- host-side at the fork (mh_common/net_transport.cpp), so its call into an owned body needs a designed entry",
+  "SESSION": "boot/session orchestration -- host-side at the fork, so its call into an owned body needs a designed lifecycle entry",
+  "DRIVER": "the sim tick driver -- at the fork this IS libmh_sim_step, so the edge is absorbed by the spine rather than exported",
+  "BOOT": "cfg/map parser -- reimplemented host-side post-fork (docs/endgame-plan.md D-E5); the state it produces crosses as libmh_import_snapshot / libmh_import_world",
+  "TL": "original sim/logic code a later translation batch absorbs -- the edge dissolves with its caller and implies no inbound API"
+ },
+ "_measured": "2026-09-11 (LIB-REF-IN design), at EN v402.",
+ "callers": [
+  {
+   "name": "DEAD_str_stylize_004545f5",
+   "class": "FE"
+  },
+  {
+   "name": "FUN_0045455d",
+   "class": "FE"
+  },
+  {
+   "name": "llm_ui_tutorial_step_enter_cb",
+   "class": "FE"
+  },
+  {
+   "name": "FUN_004bb944",
+   "class": "FE"
+  },
+  {
+   "name": "FUN_004c5b7c",
+   "class": "FE"
+  },
+  {
+   "name": "cfg_ConstructPlanets",
+   "class": "BOOT"
+  },
+  {
+   "name": "cfg_ReadMapFile",
+   "class": "BOOT"
+  },
+  {
+   "name": "cfg_final_building_Construct",
+   "class": "BOOT"
+  },
+  {
+   "name": "llm_boot_stage_tick",
+   "class": "SESSION"
+  },
+  {
+   "name": "llm_cam_center_on_ctrl_group",
+   "class": "FE"
+  },
+  {
+   "name": "llm_debug_console_dispatch",
+   "class": "FE"
+  },
+  {
+   "name": "llm_fatal_cleanup",
+   "class": "SESSION"
+  },
+  {
+   "name": "llm_frame_dispatch",
+   "class": "FE"
+  },
+  {
+   "name": "llm_game_init_subsystems",
+   "class": "SESSION"
+  },
+  {
+   "name": "llm_game_load",
+   "class": "SESSION"
+  },
+  {
+   "name": "llm_game_return_to_main_menu_cb",
+   "class": "FE"
+  },
+  {
+   "name": "llm_gfx_anim_get_frame_sprite",
+   "class": "FE"
+  },
+  {
+   "name": "llm_lobby_map_load_async_step",
+   "class": "FE"
+  },
+  {
+   "name": "llm_map_cam_snap_to_ctrl_group0_if_offscreen",
+   "class": "FE"
+  },
+  {
+   "name": "llm_map_load_loose_fallback",
+   "class": "BOOT"
+  },
+  {
+   "name": "llm_map_load_passable_plane",
+   "class": "BOOT"
+  },
+  {
+   "name": "llm_map_load_passable_plane_loose",
+   "class": "BOOT"
+  },
+  {
+   "name": "llm_map_load_regions",
+   "class": "BOOT"
+  },
+  {
+   "name": "llm_map_readfile_loose_fallback",
+   "class": "BOOT"
+  },
+  {
+   "name": "llm_map_view_size_mode_apply",
+   "class": "FE"
+  },
+  {
+   "name": "llm_menu_campaign_start_and_enter",
+   "class": "FE"
+  },
+  {
+   "name": "llm_menu_campaign_start_confirm_cb",
+   "class": "FE"
+  },
+  {
+   "name": "llm_net_chat_input_process",
+   "class": "NET"
+  },
+  {
+   "name": "llm_net_lockstep_broadcast_player_leave",
+   "class": "NET"
+  },
+  {
+   "name": "llm_net_lockstep_dispatch",
+   "class": "NET"
+  },
+  {
+   "name": "llm_net_lockstep_is_local_leader_peer",
+   "class": "NET"
+  },
+  {
+   "name": "llm_net_lockstep_send_horizon_ack",
+   "class": "NET"
+  },
+  {
+   "name": "llm_net_lockstep_send_horizon_desync",
+   "class": "NET"
+  },
+  {
+   "name": "llm_net_lockstep_send_slot_reset",
+   "class": "NET"
+  },
+  {
+   "name": "llm_net_lockstep_sync_busywait",
+   "class": "NET"
+  },
+  {
+   "name": "llm_net_mp_enter_gameplay_sync",
+   "class": "NET"
+  },
+  {
+   "name": "llm_net_player_remove",
+   "class": "NET"
+  },
+  {
+   "name": "llm_net_player_remove_timeout",
+   "class": "NET"
+  },
+  {
+   "name": "llm_net_send_order",
+   "class": "NET"
+  },
+  {
+   "name": "llm_pause_input_wait",
+   "class": "FE"
+  },
+  {
+   "name": "llm_progress_notify_unit_available",
+   "class": "FE"
+  },
+  {
+   "name": "llm_snd_ambient_tick",
+   "class": "FE"
+  },
+  {
+   "name": "llm_str_input_sanitize",
+   "class": "FE"
+  },
+  {
+   "name": "llm_strat_advance_sim_clock",
+   "class": "DRIVER"
+  },
+  {
+   "name": "llm_strat_bldg_ui_shuttle_slot_free",
+   "class": "FE"
+  },
+  {
+   "name": "llm_strat_check_bldg_placement_valid",
+   "class": "FE"
+  },
+  {
+   "name": "llm_strat_ctrlgrp_assign_unit_by_row_click",
+   "class": "FE"
+  },
+  {
+   "name": "llm_strat_ctrlgrp_remove_member_by_index",
+   "class": "FE"
+  },
+  {
+   "name": "llm_strat_debug_make_all_players_human",
+   "class": "FE"
+  },
+  {
+   "name": "llm_strat_draw_mine_resource_overlay",
+   "class": "FE"
+  },
+  {
+   "name": "llm_strat_group_issue_move_order",
+   "class": "TL"
+  },
+  {
+   "name": "llm_strat_input_update",
+   "class": "FE"
+  },
+  {
+   "name": "llm_strat_mode_init",
+   "class": "SESSION"
+  },
+  {
+   "name": "llm_strat_offscreen_fx_scale",
+   "class": "FE"
+  },
+  {
+   "name": "llm_strat_offscreen_snd_volume",
+   "class": "FE"
+  },
+  {
+   "name": "llm_strat_planet_transition_perform_switch",
+   "class": "TL"
+  },
+  {
+   "name": "llm_strat_planet_transition_tick",
+   "class": "TL"
+  },
+  {
+   "name": "llm_strat_play_select_voice_group",
+   "class": "FE"
+  },
+  {
+   "name": "llm_strat_play_select_voice_single",
+   "class": "FE"
+  },
+  {
+   "name": "llm_strat_prod_shuttle_calc_position",
+   "class": "FE"
+  },
+  {
+   "name": "llm_strat_race_alert_sound_emit",
+   "class": "FE"
+  },
+  {
+   "name": "llm_strat_render_bldg_docked_unit",
+   "class": "FE"
+  },
+  {
+   "name": "llm_strat_render_docked_unit_air",
+   "class": "FE"
+  },
+  {
+   "name": "llm_strat_render_docked_unit_ground",
+   "class": "FE"
+  },
+  {
+   "name": "llm_strat_render_selection_markers",
+   "class": "FE"
+  },
+  {
+   "name": "llm_strat_render_tile_object",
+   "class": "FE"
+  },
+  {
+   "name": "llm_strat_render_unit_shadow",
+   "class": "FE"
+  },
+  {
+   "name": "llm_strat_render_unit_sprite",
+   "class": "FE"
+  },
+  {
+   "name": "llm_strat_render_view",
+   "class": "FE"
+  },
+  {
+   "name": "llm_strat_selection_click_resolve",
+   "class": "FE"
+  },
+  {
+   "name": "llm_strat_selection_drag_finish",
+   "class": "FE"
+  },
+  {
+   "name": "llm_strat_sim_clock_advance",
+   "class": "DRIVER"
+  },
+  {
+   "name": "llm_strat_sim_tick",
+   "class": "DRIVER"
+  },
+  {
+   "name": "llm_strat_tile_collect_own_units_in_elev_range",
+   "class": "FE"
+  },
+  {
+   "name": "llm_strat_time_tick",
+   "class": "DRIVER"
+  },
+  {
+   "name": "llm_strat_ui_bldg_panel_draw",
+   "class": "FE"
+  },
+  {
+   "name": "llm_strat_ui_storage_bldg_panel",
+   "class": "FE"
+  },
+  {
+   "name": "llm_strat_ui_unit_panel_tick",
+   "class": "FE"
+  },
+  {
+   "name": "llm_tact_fx_play_sound",
+   "class": "FE"
+  },
+  {
+   "name": "llm_tact_gfx_view_tile_rows_init",
+   "class": "FE"
+  },
+  {
+   "name": "llm_tact_render_view",
+   "class": "FE"
+  },
+  {
+   "name": "llm_tact_unit_render",
+   "class": "FE"
+  },
+  {
+   "name": "llm_ui_bldg_available_projects_tab_process_events",
+   "class": "FE"
+  },
+  {
+   "name": "llm_ui_bldg_info_panel_populate_stat_line",
+   "class": "FE"
+  },
+  {
+   "name": "llm_ui_bldg_owned_tab_process_events",
+   "class": "FE"
+  },
+  {
+   "name": "llm_ui_bldg_panel_open",
+   "class": "FE"
+  },
+  {
+   "name": "llm_ui_bldg_panel_tick",
+   "class": "FE"
+  },
+  {
+   "name": "llm_ui_bldg_progress_status_text_select",
+   "class": "FE"
+  },
+  {
+   "name": "llm_ui_bldg_project_panel_tick",
+   "class": "FE"
+  },
+  {
+   "name": "llm_ui_bldg_selected_panel_tick",
+   "class": "FE"
+  },
+  {
+   "name": "llm_ui_bldg_shuttle_dock_panel_tick",
+   "class": "FE"
+  },
+  {
+   "name": "llm_ui_bldg_stat_adjust_row_click",
+   "class": "FE"
+  },
+  {
+   "name": "llm_ui_bldg_units_panel_row_count_update",
+   "class": "FE"
+  },
+  {
+   "name": "llm_ui_bldg_units_panel_tick",
+   "class": "FE"
+  },
+  {
+   "name": "llm_ui_bldg_worker_adjust_apply",
+   "class": "FE"
+  },
+  {
+   "name": "llm_ui_building_finish_order_cb",
+   "class": "FE"
+  },
+  {
+   "name": "llm_ui_building_restart_construction_cb",
+   "class": "FE"
+  },
+  {
+   "name": "llm_ui_click_select_target",
+   "class": "FE"
+  },
+  {
+   "name": "llm_ui_cursor_probe_anim_frame_offsets",
+   "class": "FE"
+  },
+  {
+   "name": "llm_ui_debug_stats_overlay_draw",
+   "class": "FE"
+  },
+  {
+   "name": "llm_ui_dialog_bg_redraw_cb",
+   "class": "FE"
+  },
+  {
+   "name": "llm_ui_dialog_redraw_cb",
+   "class": "FE"
+  },
+  {
+   "name": "llm_ui_diplomacy_apply_and_resume",
+   "class": "FE"
+  },
+  {
+   "name": "llm_ui_dlg_building_construction_status",
+   "class": "FE"
+  },
+  {
+   "name": "llm_ui_dlg_confirm_planet_travel",
+   "class": "FE"
+  },
+  {
+   "name": "llm_ui_dlg_shuttle_colonist_status_popup",
+   "class": "FE"
+  },
+  {
+   "name": "llm_ui_floating_tip_tick",
+   "class": "FE"
+  },
+  {
+   "name": "llm_ui_frame_tick",
+   "class": "FE"
+  },
+  {
+   "name": "llm_ui_group_tab_on_click",
+   "class": "FE"
+  },
+  {
+   "name": "llm_ui_hud_bldg_load_button_handler",
+   "class": "FE"
+  },
+  {
+   "name": "llm_ui_hud_bldg_network_status_panel_draw",
+   "class": "FE"
+  },
+  {
+   "name": "llm_ui_hud_bldg_unload_button_handler",
+   "class": "FE"
+  },
+  {
+   "name": "llm_ui_hud_ctrl_group_button_handler",
+   "class": "FE"
+  },
+  {
+   "name": "llm_ui_hud_fire_event_button_handler",
+   "class": "FE"
+  },
+  {
+   "name": "llm_ui_hud_scroll_arrow_handler",
+   "class": "FE"
+  },
+  {
+   "name": "llm_ui_hud_scroll_list_body_handler",
+   "class": "FE"
+  },
+  {
+   "name": "llm_ui_hud_unassigned_unit_row_click_handler",
+   "class": "FE"
+  },
+  {
+   "name": "llm_ui_icon_drag_range_process",
+   "class": "FE"
+  },
+  {
+   "name": "llm_ui_main_menu_screen_load",
+   "class": "FE"
+  },
+  {
+   "name": "llm_ui_map_drag_select_rect_draw",
+   "class": "FE"
+  },
+  {
+   "name": "llm_ui_menu_frame",
+   "class": "FE"
+  },
+  {
+   "name": "llm_ui_menu_overlay_frame",
+   "class": "FE"
+  },
+  {
+   "name": "llm_ui_outcome_dialog",
+   "class": "FE"
+  },
+  {
+   "name": "llm_ui_outcome_dlg_open",
+   "class": "FE"
+  },
+  {
+   "name": "llm_ui_paged_list_frame",
+   "class": "FE"
+  },
+  {
+   "name": "llm_ui_render_planet_selector_tooltip",
+   "class": "FE"
+  },
+  {
+   "name": "llm_ui_selection_panel_refresh",
+   "class": "FE"
+  },
+  {
+   "name": "llm_unit_ctrl_group_activate",
+   "class": "FE"
+  },
+  {
+   "name": "llm_unit_ctrl_group_flash_observer",
+   "class": "FE"
+  },
+  {
+   "name": "llm_unit_ctrl_group_recall",
+   "class": "FE"
+  },
+  {
+   "name": "llm_view_set_size_mode",
+   "class": "FE"
+  },
+  {
+   "name": "map_LoadPlanetFromDisk",
+   "class": "BOOT"
+  },
+  {
+   "name": "map_ReadMap",
+   "class": "BOOT"
+  },
+  {
+   "name": "map_ReadMap_pre",
+   "class": "BOOT"
+  }
+ ],
+ "_retired_2026_09_12": {
+  "_why": "21 caller rows removed by X-TL-DRAIN step 3. Each named function is certified dead by tools/data/reconciliation_pruned_roots.json, which gen_libmh_inbound.py now honours as a dead-source (derived orphan-closure membership x a written prune row, both required). A dead original makes no calls, so it is not an inbound caller and the generator fails its row as STALE by name -- these are those failures, discharged. 14 of the 21 were pruned 2026-09-10 and had been counted as live callers ever since, because this tool did not read that file; the other 7 were pruned 2026-09-12 by this item. Their CLASS is not lost -- it is restated below, so re-establishing a prune's evidence restores the row without re-deriving it.",
+  "rows": [
+   {
+    "name": "llm_cam_pan_to_building",
+    "class": "FE"
+   },
+   {
+    "name": "llm_gfx_display_mode_apply",
+    "class": "FE"
+   },
+   {
+    "name": "llm_map_fow_reveal_here",
+    "class": "TL"
+   },
+   {
+    "name": "llm_strat_bldg_apply_cfg_resources",
+    "class": "TL"
+   },
+   {
+    "name": "llm_strat_bldg_grant_resource_bonus",
+    "class": "TL"
+   },
+   {
+    "name": "llm_strat_bldg_staffed_flag_toggle",
+    "class": "TL"
+   },
+   {
+    "name": "llm_strat_ctrlgrp_remove_member_by_id",
+    "class": "FE"
+   },
+   {
+    "name": "llm_strat_dir_from_to_is_octant_sector",
+    "class": "TL"
+   },
+   {
+    "name": "llm_strat_fow_remove_sight_r12",
+    "class": "TL"
+   },
+   {
+    "name": "llm_strat_group_member_find_nearest_to_point",
+    "class": "TL"
+   },
+   {
+    "name": "llm_strat_group_move_member_step_blocked",
+    "class": "TL"
+   },
+   {
+    "name": "llm_strat_pathfind_path_list_compact",
+    "class": "TL"
+   },
+   {
+    "name": "llm_strat_pathfind_path_list_compact_all",
+    "class": "TL"
+   },
+   {
+    "name": "llm_strat_pathfind_route_find_next_stop",
+    "class": "TL"
+   },
+   {
+    "name": "llm_strat_ui_unload_group_from_storage",
+    "class": "FE"
+   },
+   {
+    "name": "llm_strat_unit_approach_weapon_range",
+    "class": "TL"
+   },
+   {
+    "name": "llm_strat_unit_ctrl_group_assign_by_ref",
+    "class": "FE"
+   },
+   {
+    "name": "llm_strat_unit_move_to_tile",
+    "class": "TL"
+   },
+   {
+    "name": "llm_tact_move_commit_pending_path",
+    "class": "TL"
+   },
+   {
+    "name": "llm_tact_move_find_approach_tile",
+    "class": "TL"
+   },
+   {
+    "name": "llm_unit_order_disembark_soldiers_enqueue",
+    "class": "TL"
+   }
+  ]
+ },
+ "_retired_2026_09_12_step4": {
+  "_why": "4 caller rows removed by X-TL-DRAIN step 4, for the OPPOSITE reason to the 21 above: not because the caller is dead, but because it is now OURS. Each of these four is a `verified` row in a migration ledger as of 2026-09-12 -- three newly translated (sim), one a pre-ledger RI-ORDERS body finally given its row (orders_issue) -- and an owned body is not an ORIGINAL caller, so the generator fails its row as STALE by name. Their CLASS is restated below: if a translation were ever backed out, the row comes back with its adjudication intact rather than being re-derived.",
+  "_and_what_replaced_them": "llm_boot_stage_tick, added to the live set in the same change. It is the boot-stage driver and the sole caller of llm_strat_bldg_init_all, which was an original until this item translated it -- so the edge did not disappear, it MOVED UP one level, exactly as the item's commissioning measurement predicted ('llm_boot_stage_tick (SESSION, likewise API)'). The second exposed caller, llm_strat_input_update, was already classified FE and needed no new row.",
+  "rows": [
+   {
+    "name": "llm_strat_bldg_init_all",
+    "class": "TL"
+   },
+   {
+    "name": "llm_strat_bldg_instant_construct_find_slot",
+    "class": "TL"
+   },
+   {
+    "name": "llm_strat_order_queue_apply_and_dequeue",
+    "class": "TL"
+   },
+   {
+    "name": "llm_unit_order_disembark_soldiers",
+    "class": "TL"
+   }
+  ]
+ }
+}

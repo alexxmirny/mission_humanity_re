@@ -1,0 +1,51 @@
+# SPCAMP: the SINGLE-PLAYER CAMPAIGN start, driven through the real menu.
+#
+# The mode-1 entry P0-SPDET does NOT cover: sp_det.txt reaches a lobby-created skirmish
+# (llm_strat_session_begin_multi -> SESSION_MODE 2), while NEW GAME goes through
+# llm_menu_campaign_start_and_enter -> llm_strat_planet_session_begin -> SESSION_MODE 1, which is a
+# different session-initialisation path (campaign definition, campaign planet state, landing).
+#
+# TWO THINGS MAKE THIS SCRIPTABLE, and both were discovered the hard way (2026-09-07). Neither is
+# obvious from the widget dump, and four probes were spent before the frame was actually looked at.
+#
+# 1. `hovered`, NOT `screen`/`present`/`settled`, IS THE GATE. Activating a menu item writes its
+#    `nav_target` into the active-list pointer IMMEDIATELY, so every list-reading predicate reports
+#    the race picker the instant NEW GAME is clicked -- while the frame still shows the main menu and
+#    its ship for another ~1 s (a capture proved it). `hovered` asks the GAME's own hit test and
+#    re-injects the move itself, so it is true only once the screen is really live.
+#
+# 2. THE RACE BUTTONS ARE ONE RECTANGLE WITH TWO STENCILS. Human and Alien are byte-identical
+#    widgets -- same rect (160,72) 304x208, same action_cb (llm_menu_race_select_cb), same flags --
+#    differing only in `value` ('h' 104 / 'a' 97) and `hit_mask_idx` (7 = RACEHM.GFX, 8 = RACEAM.GFX).
+#    llm_ui_widget_input_tick hit-tests them against those 1bpp stencils, so the shared rect centre
+#    is transparent for Alien and a click there picks neither. `clickv` targets the nearest OWNED
+#    pixel now; do not replace these with raw coordinates.
+#
+# COST: the race pick plays Intro_NewGameH.avi plus the NEWGAME.TXT briefing before the sim starts.
+# NO SECONDS FIGURE HERE ANY MORE, and that is the point: this line used to read "~124 s of wall clock
+# in which the sim does not tick", which was measured once for a scripted run and then read for weeks
+# as a property of the MOVIE. It is not. Measured per game_mode off mh_frametime.log 2026-09-07: a
+# headless replay's whole menu phase is 14.3 s -- the movie is not slow where nothing waits on a
+# present. VISIBLE it is ~128 s and the movie IS that cost -- `--skip-intro-avi` presses the game's own
+# SPACE for it and takes the phase to 6.6 s. That flag is OFF by default even in the --ui-equiv arms:
+# it moves the menu's present timeline, which is enough to take a shallow rung red
+# (G144/G145). If you need the number, measure the phase:
+#   awk 'NR>1{if(p!=""){d[$2]+=($1-pq)} p=$2; pq=$1} END{for(m in d) print m, d[m]/1e6}' mh_frametime.log
+#
+# The game opens asking the player to place their ship ("choose a place to land your ship"), so the
+# landing is a CLICK, not the llm_strat_claim_landing_spot roll -- that roll seats the AI players.
+# This script stops at GAME_MODE 2 and hands the run to the harness, exactly as sp_det.txt does.
+
+settled value:103
+clickv 103
+
+# the race picker, once it is really on screen
+hovered value:104
+clickv 104
+
+# in-game. Wait for the strategic HUD and for the sim to have actually started stepping, so COMPLETE
+# cannot be mistaken for "the run is over".
+gamemode 2
+gameclock 1000
+log SP campaign scenario: in-game at GAME_MODE 2 (mode-1 session), handing the run to the harness
+end

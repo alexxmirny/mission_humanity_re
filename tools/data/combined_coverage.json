@@ -1,0 +1,101 @@
+{
+ "_generated_by": "tools/coverage.py --combined",
+ "_measures": "the UNION of every tools/data/<domain>_coverage.json, per file. `unique` is what one scenario covers that NO other does -- the number that says whether a fixture earns its rig time.",
+ "_sources": [
+  "sim_coverage.json",
+  "sim_resid_coverage.json",
+  "tact_coverage.json",
+  "uirec_coverage.json"
+ ],
+ "combined": {
+  "files": 700,
+  "hit": 35171,
+  "total": 61889
+ },
+ "drift": [],
+ "never_entered": [
+  "ai_group_building_scan.cpp",
+  "ai_group_centroid.cpp",
+  "ai_group_muster_pick.cpp",
+  "ai_group_redistribute.cpp",
+  "ai_group_redistribute.h",
+  "ai_group_split_off.cpp",
+  "ai_group_split_off.h",
+  "ai_group_task_attack.cpp",
+  "ai_group_task_attack.h",
+  "ai_group_task_lifecycle.h",
+  "ai_group_task_movement.cpp",
+  "ai_group_task_recruit.cpp",
+  "ai_group_task_workers.cpp",
+  "ai_hq_attack_commit.cpp",
+  "ai_hq_attack_scenario.cpp",
+  "ai_invasion.cpp",
+  "ai_invasion.h",
+  "ai_queue_remove.cpp",
+  "ai_reinforcements.cpp",
+  "issue_group_formation_move.cpp",
+  "issue_order_admin.cpp",
+  "issue_order_core.cpp",
+  "issue_order_debug.cpp",
+  "issue_order_player.cpp",
+  "issue_turret_orders.cpp",
+  "issue_unit_storage.cpp",
+  "lt_player_by_side_id.cpp",
+  "lt_time_query.cpp",
+  "mh_net_queue_policy.h",
+  "overlay_hoist.h",
+  "rebind_traps.gen.cpp",
+  "rx_dispatch.cpp",
+  "save_ext.cpp",
+  "save_format.cpp",
+  "shadow.h",
+  "sim_bldg_network_critical.cpp",
+  "sim_clock_resync.cpp",
+  "sim_lt_deploy_squad.cpp",
+  "sim_lt_menu_teardown.cpp",
+  "sim_prod_transfer_destination.cpp",
+  "sim_spawn_invasion_force.cpp",
+  "sim_squad_status_gather.cpp",
+  "sim_start_tutorial.cpp",
+  "sim_tutorial_step_driver.cpp",
+  "sim_unit_calc_range_approach_point.cpp",
+  "sim_unit_path_release.cpp",
+  "sim_unit_path_store.cpp",
+  "sim_unit_predict_coords.cpp",
+  "tx_emit_chat.cpp"
+ ],
+ "no_line_data": [
+  "sim_resid/soak_default",
+  "sim_resid/soak_saved"
+ ],
+ "per_scenario": {
+  "sim/soak_default": {
+   "hit": 25699,
+   "unique": 1264
+  },
+  "sim/soak_saved": {
+   "hit": 22534,
+   "unique": 436
+  },
+  "tact/poz-stand-exit": {
+   "hit": 14489,
+   "unique": 8
+  },
+  "tact/poz1-combat": {
+   "hit": 14642,
+   "unique": 171
+  },
+  "tact/poz1-quiet-patrol": {
+   "hit": 13886,
+   "unique": 13
+  },
+  "tact/poz3-teleport": {
+   "hit": 14604,
+   "unique": 248
+  },
+  "uirec/spcamp_solo": {
+   "hit": 25690,
+   "unique": 2497
+  }
+ }
+}

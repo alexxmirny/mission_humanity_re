@@ -1,0 +1,44 @@
+# U38 (solo): Browser -> Internet server -> Cancel, the path that slid in TWICE.
+#
+# THE DEFECT IS AN ANIMATION, WHICH A PIXEL CANNOT SEE, so be honest about what this test is for.
+# llm_mp_netsetup_ip_field_cancel (0x004bd805) calls llm_lobby_show_intro_wait(0) and then, at the very
+# next instruction, llm_mp_local_browser_setup -- which ends with its OWN show_intro_wait(0). Two 400 ms
+# slide-ins back to back. The fix suppresses the first by return address; the PROOF that it fired is the
+# seam log line `; slide: suppressed the redundant ip-cancel slide-in`, and the full slide trace is
+# available with [net] slide_diag=1.
+#
+# What THIS script is for is the other half: that suppressing a slide did not break the navigation it
+# was part of. That is the regression a return-address suppression can plausibly cause -- wrong site,
+# wrong screen, dead button -- and it is exactly what a state predicate can assert. So: walk in, walk
+# out, and require the local browser to be functional on arrival (Create game is present AND clickable,
+# not merely drawn).
+settled value:110
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+
+# the local-games browser -- the screen we must come back to
+settled Create
+capture i1_browser
+
+# -> the "connect by IP" screen (widget 0x0065010b -> llm_mp_netsetup_enter_connect_ip_screen)
+clickl Internet server
+present Server address
+settled Cancel
+capture i2_ip_window
+
+# -> Cancel returns here. `settled Create` rather than `present Create`: present would pass mid-slide,
+# and the whole subject of this test is the slide, so the assertion has to outlast it.
+clickl Cancel
+absent Server address
+settled Create
+capture i3_back_on_browser
+
+# ...and the browser is not just drawn but LIVE. A suppression that landed on the wrong call site could
+# leave a correctly-rendered screen whose widgets were never re-wired; clicking through proves the
+# setup() that owns the surviving slide-in really ran.
+clickl Create
+present Game name
+log IP-cancel round trip COMPLETE -- browser came back live after the de-duplicated slide
+end

@@ -1,0 +1,3861 @@
+{
+  "_comment": [
+    "EBX CLOBBERER PINNING -- __watcall declares EBX <unaffected>, and the functions listed here do",
+    "not preserve it. This manifest pins each to a model whose killedbycall matches what it actually",
+    "clobbers. The models already existed from the 2026-08-03 legacy-convention migration, so this",
+    "needs no cspec change.",
+    "",
+    "DELIBERATELY EXCLUDED, and the exclusions are most of the raw count:",
+    "  * unknown/default functions that clobber NEITHER register. Their effective model is already",
+    "    __watcall (it is the default_proto), so pinning them explicitly is churn with no semantic",
+    "    change.",
+    "  * EBX clobberers on __stdcall / __fastcall / __cdecl. Different INPUT contract; a",
+    "    __watcall-derived model would move their parameters, which is worse than the bug.",
+    "",
+    "GENERATED: run mh_classify_reg_preservation.py in Ghidra, then",
+    "`python tools/gen_reg_clobberers.py`. Applied by mh_set_calling_convention.py. Re-run the",
+    "classifier after anything that changes function bodies."
+  ],
+  "generated_from": "tmp/reg_preservation.json",
+  "counts": {
+    "__mh_watcall_ebx_volatile": 246,
+    "__mh_watcall_ecx_ebx_volatile": 207
+  },
+  "groups": {
+    "__mh_watcall_ebx_volatile": [
+      {
+        "addr": "0x0041111e",
+        "name": "llm_ui_bldg_progress_status_text_select",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x004124ba",
+        "name": "llm_ui_bldg_stat_adjust_row_click",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x004127ef",
+        "name": "llm_ui_bldg_units_panel_row_count_update",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x00412c97",
+        "name": "llm_ui_icon_drag_range_process",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x00413364",
+        "name": "llm_ui_bldg_worker_adjust_btn_tick",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x004134b1",
+        "name": "llm_ui_bldg_worker_adjust_apply",
+        "from": "__watcall",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x00418320",
+        "name": "llm_ui_hud_label_value_row_draw",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x0041899c",
+        "name": "llm_ui_panel_text_draw_centered",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x00419c16",
+        "name": "llm_gfx_palette_scale_rgb",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x00419d84",
+        "name": "llm_ui_hud_color_slot_set",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x0041b9a4",
+        "name": "llm_ui_icon_draw_vclipped",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x0041f7ef",
+        "name": "llm_strat_group_path_step_record",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x0042039c",
+        "name": "llm_strat_pathfind_plan_group_route",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x004209b2",
+        "name": "llm_strat_unit_path_detour",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x00421758",
+        "name": "llm_strat_unit_path_queue_splice",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x00422450",
+        "name": "llm_map_region_flood_fill",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x004228e9",
+        "name": "llm_map_try_seed_region_at",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x00423fb8",
+        "name": "llm_map_region_split",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x00424406",
+        "name": "map_ApplyAreaToMap",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x004245c3",
+        "name": "llm_map_region_apply_area",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x0042673f",
+        "name": "llm_gfx_draw_line_clipped",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x004282a3",
+        "name": "llm_gfx_build_bar_sprite_rle",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x0042b948",
+        "name": "llm_tact_unit_spawn",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x0042c48b",
+        "name": "llm_tact_unit_apply_move_offset",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x0042e0e2",
+        "name": "llm_tact_calc_dir24",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x0042e220",
+        "name": "llm_tact_fov_probe_far_cell_and_door_state",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x0042f060",
+        "name": "llm_tact_fx_play_sound",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x00430855",
+        "name": "llm_tact_unit_fire_weapon",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x00430c77",
+        "name": "llm_tact_weapon_calc_scatter",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x004311bf",
+        "name": "llm_tact_facing_to_delta",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x004314aa",
+        "name": "llm_tact_fx_splash_damage",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x00432105",
+        "name": "llm_tact_unit_get_muzzle_offset",
+        "from": "__watcall",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x00433c0d",
+        "name": "llm_tact_unit_weapon_in_range",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x00433d57",
+        "name": "llm_tact_calc_approach_dir24_to_tile_stamp",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x0043468d",
+        "name": "llm_tact_ui_sidebar_row_draw_left",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x004348bf",
+        "name": "llm_tact_ui_sidebar_row_draw_right",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x00439bdf",
+        "name": "llm_tact_mission_parse_int_token",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x0043d01f",
+        "name": "llm_strat_pathfind_route_bbox",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x0043d591",
+        "name": "llm_strat_pathfind_route_find_next_stop",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x00444894",
+        "name": "llm_strat_group_issue_attack_order",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x00444e5f",
+        "name": "llm_strat_group_issue_move_order_deferred",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x004451d2",
+        "name": "llm_strat_group_issue_enter_building_order",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x00446e90",
+        "name": "llm_strat_tile_collect_own_units_in_elev_range",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x00448661",
+        "name": "llm_lzw_compress_and_write_block",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x004486e6",
+        "name": "LZW_ReadCompressedFromFile",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x00449401",
+        "name": "llm_strat_unit_ctrlgroup_add_member",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x0044947e",
+        "name": "llm_strat_unit_ctrlgroup_remove_member",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x00449b8a",
+        "name": "llm_strat_bldg_get_coords",
+        "from": "__watcall",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x00449c61",
+        "name": "llm_strat_bldg_footprint_random_offset",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x00449d41",
+        "name": "llm_strat_bldg_footprint_random_point",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x00449ffe",
+        "name": "llm_strat_bldg_get_progress_percent",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x0044b141",
+        "name": "llm_strat_unit_get_coords",
+        "from": "__watcall",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x0044d34f",
+        "name": "llm_strat_try_enter_tactical_mission",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x0044d468",
+        "name": "llm_strat_bldg_gather_nearby_squad_status",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x0044fcbe",
+        "name": "llm_strat_render_unit_sprite",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x00450a60",
+        "name": "llm_strat_bldg_sprite_anchor_offset",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x00450d1f",
+        "name": "llm_strat_render_docked_unit_air",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x00451251",
+        "name": "llm_strat_render_docked_unit_ground",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x004536e6",
+        "name": "llm_strat_check_bldg_placement_valid",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x00453a6d",
+        "name": "llm_bldg_placement_check_and_preview",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x0045eb8b",
+        "name": "cfg_final_tree_Construct",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x00461340",
+        "name": "llm_strat_microstep_build_row",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x004619b0",
+        "name": "llm_strat_unit_init_record",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x00461e9e",
+        "name": "map_unit_Add",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x00463328",
+        "name": "llm_strat_storage_find_home_for_unit",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x004636bc",
+        "name": "llm_strat_storage_dock_unit_at_building",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x0046434c",
+        "name": "llm_strat_unit_spawn_docked",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x0046443a",
+        "name": "llm_strat_unit_add_docked",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x00466094",
+        "name": "llm_strat_order_enqueue",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x00469a37",
+        "name": "llm_strat_order_queue_apply_and_dequeue",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x0046dae0",
+        "name": "llm_strat_bldg_order_production_add",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x0046db58",
+        "name": "llm_strat_bldg_order_production_add_enqueue",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x0046dcbe",
+        "name": "llm_strat_bldg_order_production_remove",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x0046dd27",
+        "name": "llm_strat_bldg_order_production_remove_enqueue",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x0046df10",
+        "name": "llm_strat_bldg_order_set_worker_count",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x0046df63",
+        "name": "llm_strat_bldg_order_set_worker_count_enqueue",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x0046dfb6",
+        "name": "llm_strat_bldg_order_assign_workers",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x0046e005",
+        "name": "llm_strat_bldg_order_assign_workers_enqueue",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x0046e054",
+        "name": "llm_strat_bldg_order_unassign_workers",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x0046e0a3",
+        "name": "llm_strat_bldg_order_unassign_workers_enqueue",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x0046e840",
+        "name": "llm_strat_bldg_order_shuttle_depart",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x0046e88f",
+        "name": "llm_strat_bldg_order_shuttle_depart_enqueue",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x0046ea9c",
+        "name": "llm_strat_bldg_order_load_passengers",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x0046eaeb",
+        "name": "llm_strat_bldg_order_load_passengers_enqueue",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x0046eb3a",
+        "name": "llm_strat_bldg_order_unload_passengers",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x0046eb89",
+        "name": "llm_strat_bldg_order_unload_passengers_enqueue",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x0046ed4c",
+        "name": "llm_strat_bldg_order_port_depart",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x0046ed9b",
+        "name": "llm_strat_bldg_order_port_depart_enqueue",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x0046edea",
+        "name": "llm_strat_bldg_order_mother_depart",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x0046ee39",
+        "name": "llm_strat_bldg_order_mother_depart_enqueue",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x0046ee88",
+        "name": "llm_strat_bldg_order_depart_dispatch_by_type",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x0046efe4",
+        "name": "llm_strat_bldg_order_depart_dispatch_by_type_enqueue",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x0046f140",
+        "name": "llm_strat_bldg_order_start_research_project",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x0046f18f",
+        "name": "llm_strat_bldg_order_start_research_project_enqueue",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x0046f1de",
+        "name": "llm_strat_order_ctrlgrp_select_member",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x0046f22b",
+        "name": "llm_strat_order_ctrlgrp_select_member_raw",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x0046f278",
+        "name": "llm_strat_order_ctrlgrp_flash_member",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x0046f2c5",
+        "name": "llm_strat_order_ctrlgrp_flash_member_raw",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x0046f537",
+        "name": "llm_strat_order_grant_resource",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x0046f592",
+        "name": "llm_strat_order_grant_resource_raw",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x0046f8c6",
+        "name": "llm_strat_order_set_player_relation",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x0046f922",
+        "name": "llm_strat_order_set_player_relation_raw",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x0046f97e",
+        "name": "llm_strat_order_set_player_control_mode",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x0046fa3e",
+        "name": "llm_strat_order_set_player_control_mode_enqueue",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x0047ab20",
+        "name": "llm_strat_mine_scan_deposit_slot",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x00486c6a",
+        "name": "map_unit_PutOnMap",
+        "from": "__watcall",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x004888f4",
+        "name": "llm_strat_unit_release_path_and_targets",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x0048905e",
+        "name": "llm_strat_unit_squad_pick_lead_soldier_in_direction",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x0048967b",
+        "name": "llm_strat_unit_soldier_unlink",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x00489dc4",
+        "name": "llm_strat_storage_remove_docked_unit",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x00489f54",
+        "name": "llm_strat_storage_place_exit_ground",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x0048a548",
+        "name": "llm_strat_storage_can_exit",
+        "from": "__watcall",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x0048a808",
+        "name": "llm_strat_storage_can_enter",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x0048b294",
+        "name": "llm_strat_tile_neighbor_in_dir",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x0048b308",
+        "name": "llm_strat_tile_neighbor_reverse_dir",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x0048b37c",
+        "name": "llm_strat_storage_get_approach_tile",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x0048b5a7",
+        "name": "llm_strat_storage_dock_list_append",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x0048b6ba",
+        "name": "llm_strat_storage_board_unit",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x0048c83f",
+        "name": "llm_strat_unit_calc_fine_axis_pos",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x0048ca68",
+        "name": "llm_strat_unit_calc_render_axis_pos",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x0048d054",
+        "name": "llm_bldg_calc_placement_corner_from_center",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x0048d0ea",
+        "name": "llm_bldg_calc_placement_corner_from_center_by_type",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x0048d16b",
+        "name": "llm_strat_group_move_register_member",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x0048d283",
+        "name": "llm_strat_group_scratch_add_unit_and_normalize_heading",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x0048d36f",
+        "name": "llm_strat_group_scratch_compute_centroid",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x0048e16a",
+        "name": "llm_prod_shuttle_depart",
+        "from": "__watcall",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x0048e3bb",
+        "name": "llm_prod_shuttle_load_resource",
+        "from": "__watcall",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x0048e4fb",
+        "name": "llm_prod_shuttle_unload_resource",
+        "from": "__watcall",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x0048e7c5",
+        "name": "llm_strat_unit_load_into_shuttle_cargo",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x0048ea27",
+        "name": "llm_strat_prod_unload_cargo_unit",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x0048ec51",
+        "name": "llm_prod_bldg_depart_finalize",
+        "from": "__watcall",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x0048efcc",
+        "name": "llm_strat_prod_set_transfer_destination",
+        "from": "__watcall",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x00490841",
+        "name": "llm_strat_unit_calc_mount_fine_pos",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x00490b82",
+        "name": "llm_strat_unit_calc_mount_render_pos",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x00491b78",
+        "name": "llm_strat_bldg_assign_workers",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x00491c08",
+        "name": "llm_strat_bldg_unassign_workers",
+        "from": "__watcall",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x00492cac",
+        "name": "game_TryStartProject",
+        "from": "__watcall",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x004934b6",
+        "name": "llm_prod_shuttle_fuel_check",
+        "from": "__watcall",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x00493705",
+        "name": "llm_prod_shuttle_fuel_apply",
+        "from": "__watcall",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x00493a96",
+        "name": "llm_strat_bldg_footprint_destroy_occupants",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x00494f0c",
+        "name": "llm_strat_group_move_request_build",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x0049508a",
+        "name": "llm_strat_unit_assign_path_from_job_result",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x00495214",
+        "name": "llm_strat_group_move_member_step_blocked",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x0049581d",
+        "name": "llm_strat_path_write_from_solver",
+        "from": "__watcall",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x00495aa0",
+        "name": "llm_strat_unit_path_store_result",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x00495b6f",
+        "name": "llm_strat_storage_setup_approach_path",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x00495cd3",
+        "name": "llm_strat_storage_setup_exit_path",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x00495f87",
+        "name": "llm_strat_unit_assign_shared_path",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x00496e42",
+        "name": "llm_strat_bldg_mine_scan_nearby_resource",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x00497f4a",
+        "name": "llm_resource_add",
+        "from": "__watcall",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x00497f94",
+        "name": "game_SpendResource",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x00498aad",
+        "name": "llm_strat_mother_reelect_primary",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x0049a0b3",
+        "name": "llm_diplomacy_set_relation",
+        "from": "__watcall",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x0049a688",
+        "name": "llm_strat_bldg_set_footprint_passable",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x0049f110",
+        "name": "llm_strat_unit_show_debug_status",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x0049f146",
+        "name": "llm_strat_unit_format_debug_status",
+        "from": "__watcall",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x004a2c9a",
+        "name": "llm_gfx_draw_text_rgb",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x004b3fe1",
+        "name": "llm_ui_progress_bar_draw",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x004b42df",
+        "name": "llm_gfx_draw_gauge_bar_horizontal",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x004b44cc",
+        "name": "llm_gfx_draw_gauge_bar_vertical",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x004b579b",
+        "name": "llm_ui_text_layout_line",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x004b6257",
+        "name": "FUN_004b6257",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x004bcacb",
+        "name": "llm_net_send_broadcast",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x004be683",
+        "name": "llm_lobby_announce_line",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x004bea15",
+        "name": "llm_lobby_build_players_from_slots",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x004bf730",
+        "name": "llm_lobby_slot_assign_color",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x004c57e1",
+        "name": "llm_ui_planet_sel_stack_icon_pos",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x004c8738",
+        "name": "FUN_004c8738",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x004c8fa7",
+        "name": "llm_ui_info_text_emit_stat",
+        "from": "__watcall",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x004c936e",
+        "name": "llm_ui_info_text_emit_labeled_stat",
+        "from": "__watcall",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x004c9754",
+        "name": "llm_ui_info_stat_row_emit",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x004c9f0a",
+        "name": "llm_ui_info_text_build",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x004cba1e",
+        "name": "llm_strat_pathfind_route_leg_group_and_sort",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x004cdd57",
+        "name": "llm_snd_wav_open_and_read_fmt",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x004ceb28",
+        "name": "llm_file_crc32_range_checksum",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x004cf68b",
+        "name": "_fsopen",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x004cf96e",
+        "name": "__opendir",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x004d36c4",
+        "name": "llm_strat_bldg_find_by_ai_build_and_type",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x004d3e61",
+        "name": "llm_strat_bldg_max_defense_radius_sq",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x004d44d0",
+        "name": "llm_strat_bldg_find_mother_position_indexed",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x004d4919",
+        "name": "llm_strat_ai_group_member_unlink",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x004d4af5",
+        "name": "llm_strat_ai_group_member_move",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x004d4c20",
+        "name": "llm_strat_ai_group_task_enqueue",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x004d5801",
+        "name": "llm_strat_unit_order_attack_dispatch",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x004d5eaf",
+        "name": "llm_strat_ai_random_point_near",
+        "from": "__watcall",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x004d5f4c",
+        "name": "llm_strat_ai_group_scatter_random_worker",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x004d69ce",
+        "name": "llm_strat_ai_group_area_scan_hostile",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x004d6d67",
+        "name": "llm_strat_ai_target_list_add",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x004d6e6f",
+        "name": "llm_strat_ai_target_list_remove",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x004d77cc",
+        "name": "llm_strat_bldg_connectivity_flood_fill",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x004d7b95",
+        "name": "llm_gfx_render_ai_vision_debug_map",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x004d7e6b",
+        "name": "llm_strat_ai_group_scatter_to_passable_tile",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x004d82ca",
+        "name": "llm_strat_ai_notify_map_changed",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x004d83c7",
+        "name": "llm_strat_ai_notify_map_changed_2",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x004d900c",
+        "name": "llm_ui_message_box_confirm",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x004d9bb4",
+        "name": "llm_gfx_ddraw_lock_surface",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x004dac44",
+        "name": "llm_strat_target_release_ref",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x004db551",
+        "name": "llm_strat_ai_notify_object_removed",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x004dbdf6",
+        "name": "llm_gfx_plot_pixel_mark_tile_visible",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x004dbf36",
+        "name": "llm_strat_ai_queue_release_order",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x004de0ae",
+        "name": "utils_w_str_cmp_prefix",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x004de1fd",
+        "name": "llm_str_copy_fixed_w",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x004de22b",
+        "name": "_ustrncat",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x004de2f5",
+        "name": "_ustrnicmp",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x004ded74",
+        "name": "__NTInit",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x004deee1",
+        "name": "__exit",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x004df43c",
+        "name": "CRT_004df43c",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x004df483",
+        "name": "CRT_004df483",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x004df4e1",
+        "name": "CRT_004df4e1",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x004dfe43",
+        "name": "__fprtf",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x004dffc8",
+        "name": "llm_crt_lseek",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x004e0459",
+        "name": "llm_crt_write_fd",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x004e05c2",
+        "name": "__MemAllocator",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x004e0c9c",
+        "name": "CRT_004e0c9c",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x004e0cbd",
+        "name": "CRT_004e0cbd",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x004e0ce2",
+        "name": "CRT_004e0ce2",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x004e0d3f",
+        "name": "CRT_004e0d3f",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x004e0e41",
+        "name": "CRT_004e0e41",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x004e14c0",
+        "name": "strncmp",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x004e14e9",
+        "name": "strncpy",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x004e151d",
+        "name": "__scnf",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x004e1af1",
+        "name": "llm_crt_scanf_read_scanset",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x004e3006",
+        "name": "llm_strat_ai_calc_building_extract_value",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x004e30ab",
+        "name": "llm_strat_ai_calc_site_resource_score",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x004e4e54",
+        "name": "llm_strat_ai_find_nearest_flagged_building",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x004e612e",
+        "name": "llm_strat_ai_mine_exists_nearby",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x004e7138",
+        "name": "llm_strat_ai_pick_owned_tile_or_home",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x004e8ed0",
+        "name": "write",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x004ec1f6",
+        "name": "llm_strat_ai_collect_group_scan_targets",
+        "from": "__watcall",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x004ec2d0",
+        "name": "llm_strat_ai_scan_target_list_add",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x004ed1ae",
+        "name": "llm_strat_ai_scan_targets_by_owner_and_id_for_engage",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x004ed74b",
+        "name": "llm_strat_ai_unit_scan_engage_candidates_at_max_weapon_range",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x004ed78d",
+        "name": "llm_strat_ai_unit_scan_engage_candidates_in_range",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x004edcca",
+        "name": "llm_strat_ai_engage_select_and_commit",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x004efc48",
+        "name": "calendar_decompose",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x004f04ba",
+        "name": "__uscnf",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x004f0f2e",
+        "name": "__umemchr",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x004f0f43",
+        "name": "__umemcmp",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x004f1d7f",
+        "name": "utoa",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x004f1e1b",
+        "name": "ultoa",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x004f2200",
+        "name": "_uutoa",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x004f2294",
+        "name": "_uultoa",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x004f2517",
+        "name": "__math2err",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x004f2c19",
+        "name": "read",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x004f3617",
+        "name": "CRT_004f3617",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x004f4222",
+        "name": "strnicmp",
+        "from": "__mh_watcall_ebx_volatile",
+        "clobbers": [
+          "EBX"
+        ]
+      }
+    ],
+    "__mh_watcall_ecx_ebx_volatile": [
+      {
+        "addr": "0x004110a2",
+        "name": "llm_ui_bldg_stat_value_draw",
+        "from": "__mh_watcall_ecx_ebx_volatile",
+        "clobbers": [
+          "ECX",
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x0041172f",
+        "name": "llm_ui_selection_count_row_draw",
+        "from": "__mh_watcall_ecx_ebx_volatile",
+        "clobbers": [
+          "ECX",
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x00415f3b",
+        "name": "llm_strat_ui_bldg_panel_draw",
+        "from": "__mh_watcall_ecx_ebx_volatile",
+        "clobbers": [
+          "ECX",
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x004170ce",
+        "name": "llm_ui_panel_text_pair_draw_centered",
+        "from": "__mh_watcall_ecx_ebx_volatile",
+        "clobbers": [
+          "ECX",
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x00417175",
+        "name": "llm_ui_panel_int_pair_draw_centered",
+        "from": "__mh_watcall_ecx_ebx_volatile",
+        "clobbers": [
+          "ECX",
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x004171cf",
+        "name": "llm_ui_bldg_stat_adjust_row_draw",
+        "from": "__mh_watcall_ecx_ebx_volatile",
+        "clobbers": [
+          "ECX",
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x004185a8",
+        "name": "llm_ui_bldg_mine_resource_stats_draw",
+        "from": "__mh_watcall_ecx_ebx_volatile",
+        "clobbers": [
+          "ECX",
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x00418bc7",
+        "name": "llm_ui_panel_row_icon_label_draw",
+        "from": "__mh_watcall_ecx_ebx_volatile",
+        "clobbers": [
+          "ECX",
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x00418c4a",
+        "name": "llm_ui_bldg_row_unit_effect_draw",
+        "from": "__mh_watcall_ecx_ebx_volatile",
+        "clobbers": [
+          "ECX",
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x00419dd9",
+        "name": "llm_ui_hud_widget_range_define",
+        "from": "__mh_watcall_ecx_ebx_volatile",
+        "clobbers": [
+          "ECX",
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x00419e5c",
+        "name": "llm_ui_hud_scroll_list_define",
+        "from": "__mh_watcall_ecx_ebx_volatile",
+        "clobbers": [
+          "ECX",
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x00419f79",
+        "name": "llm_ui_hud_icon_widget_define",
+        "from": "__mh_watcall_ecx_ebx_volatile",
+        "clobbers": [
+          "ECX",
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x0041be17",
+        "name": "llm_ui_panel_text_draw",
+        "from": "__mh_watcall_ecx_ebx_volatile",
+        "clobbers": [
+          "ECX",
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x0041be9d",
+        "name": "llm_ui_text_draw_rgb16",
+        "from": "__mh_watcall_ecx_ebx_volatile",
+        "clobbers": [
+          "ECX",
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x0041bf38",
+        "name": "llm_gfx_draw_icon_progress_bar",
+        "from": "__mh_watcall_ecx_ebx_volatile",
+        "clobbers": [
+          "ECX",
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x0041bfe3",
+        "name": "llm_ui_hud_icon_draw_clipped",
+        "from": "__mh_watcall_ecx_ebx_volatile",
+        "clobbers": [
+          "ECX",
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x0041e836",
+        "name": "llm_strat_pathfind_build_steps",
+        "from": "__watcall",
+        "clobbers": [
+          "ECX",
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x0041ef3e",
+        "name": "llm_strat_pathfind_trace_route",
+        "from": "__mh_watcall_ecx_ebx_volatile",
+        "clobbers": [
+          "ECX",
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x0041fff5",
+        "name": "llm_strat_pathfind_find_closer_visible_tile",
+        "from": "__mh_watcall_ecx_ebx_volatile",
+        "clobbers": [
+          "ECX",
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x00427c6c",
+        "name": "llm_tact_move_find_approach_tile",
+        "from": "__watcall",
+        "clobbers": [
+          "ECX",
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x00428201",
+        "name": "llm_gfx_draw_sprite_with_bar",
+        "from": "__mh_watcall_ecx_ebx_volatile",
+        "clobbers": [
+          "ECX",
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x0042b09f",
+        "name": "llm_tact_group_issue_order",
+        "from": "__mh_watcall_ecx_ebx_volatile",
+        "clobbers": [
+          "ECX",
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x0042bdce",
+        "name": "llm_tact_fx_spawn",
+        "from": "__mh_watcall_ecx_ebx_volatile",
+        "clobbers": [
+          "ECX",
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x0042c274",
+        "name": "llm_tact_unit_render",
+        "from": "__mh_watcall_ecx_ebx_volatile",
+        "clobbers": [
+          "ECX",
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x0042eaf9",
+        "name": "llm_tact_move_path_preview_walk",
+        "from": "__mh_watcall_ecx_ebx_volatile",
+        "clobbers": [
+          "ECX",
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x0043a1d9",
+        "name": "llm_tact_mission_parse_command_token",
+        "from": "__mh_watcall_ecx_ebx_volatile",
+        "clobbers": [
+          "ECX",
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x0043c39c",
+        "name": "llm_tact_tile_clear_margin_patch",
+        "from": "__mh_watcall_ecx_ebx_volatile",
+        "clobbers": [
+          "ECX",
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x0043c4f2",
+        "name": "llm_tact_ui_minimap_draw_viewport_outline",
+        "from": "__mh_watcall_ecx_ebx_volatile",
+        "clobbers": [
+          "ECX",
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x00448cc3",
+        "name": "llm_strat_weapon_pixel_distance_ratio",
+        "from": "__watcall",
+        "clobbers": [
+          "ECX",
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x0044965d",
+        "name": "llm_strat_unit_in_weapon_range",
+        "from": "__mh_watcall_ecx_ebx_volatile",
+        "clobbers": [
+          "ECX",
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x0044988f",
+        "name": "llm_strat_unit_goal_in_weapon_range",
+        "from": "__mh_watcall_ecx_ebx_volatile",
+        "clobbers": [
+          "ECX",
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x00449ac1",
+        "name": "llm_strat_dist_out_of_range",
+        "from": "__mh_watcall_ecx_ebx_volatile",
+        "clobbers": [
+          "ECX",
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x00456f8a",
+        "name": "cfg_final_building_Construct",
+        "from": "__mh_watcall_ecx_ebx_volatile",
+        "clobbers": [
+          "ECX",
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x0045b69c",
+        "name": "cfg_final_planet_Construct",
+        "from": "__mh_watcall_ecx_ebx_volatile",
+        "clobbers": [
+          "ECX",
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x0045ec1d",
+        "name": "llm_map_resources_apply_value_radius",
+        "from": "__mh_watcall_ecx_ebx_volatile",
+        "clobbers": [
+          "ECX",
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x004622cb",
+        "name": "map_CreateBuilding",
+        "from": "__mh_watcall_ecx_ebx_volatile",
+        "clobbers": [
+          "ECX",
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x00462d89",
+        "name": "llm_bldg_queue_construction",
+        "from": "__watcall",
+        "clobbers": [
+          "ECX",
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x00462e66",
+        "name": "llm_bldg_construct_finalize",
+        "from": "__mh_watcall_ecx_ebx_volatile",
+        "clobbers": [
+          "ECX",
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x00463860",
+        "name": "llm_strat_unit_create",
+        "from": "__mh_watcall_ecx_ebx_volatile",
+        "clobbers": [
+          "ECX",
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x00463ac6",
+        "name": "llm_unit_create_soldier",
+        "from": "__mh_watcall_ecx_ebx_volatile",
+        "clobbers": [
+          "ECX",
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x00464119",
+        "name": "llm_strat_unit_spawn_on_tile",
+        "from": "__mh_watcall_ecx_ebx_volatile",
+        "clobbers": [
+          "ECX",
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x00464932",
+        "name": "llm_strat_projectile_spawn",
+        "from": "__watcall",
+        "clobbers": [
+          "ECX",
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x00465fdf",
+        "name": "llm_strat_order_dispatch",
+        "from": "__mh_watcall_ecx_ebx_volatile",
+        "clobbers": [
+          "ECX",
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x00466211",
+        "name": "llm_strat_order_stage_scheduled",
+        "from": "__mh_watcall_ecx_ebx_volatile",
+        "clobbers": [
+          "ECX",
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x00469fe6",
+        "name": "llm_strat_unit_order_move",
+        "from": "__mh_watcall_ecx_ebx_volatile",
+        "clobbers": [
+          "ECX",
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x0046a0d5",
+        "name": "llm_strat_unit_order_move_enqueue",
+        "from": "__mh_watcall_ecx_ebx_volatile",
+        "clobbers": [
+          "ECX",
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x0046a19d",
+        "name": "llm_strat_order_issue_0xf_adjacent_by_offset",
+        "from": "__mh_watcall_ecx_ebx_volatile",
+        "clobbers": [
+          "ECX",
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x0046a221",
+        "name": "llm_strat_order_issue_0xf_adjacent",
+        "from": "__mh_watcall_ecx_ebx_volatile",
+        "clobbers": [
+          "ECX",
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x0046a325",
+        "name": "llm_strat_order_issue_0xf_adjacent_enqueue",
+        "from": "__mh_watcall_ecx_ebx_volatile",
+        "clobbers": [
+          "ECX",
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x0046a402",
+        "name": "llm_strat_unit_order_move_default",
+        "from": "__mh_watcall_ecx_ebx_volatile",
+        "clobbers": [
+          "ECX",
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x0046a4cb",
+        "name": "llm_strat_unit_order_move_default_enqueue",
+        "from": "__mh_watcall_ecx_ebx_volatile",
+        "clobbers": [
+          "ECX",
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x0046a56d",
+        "name": "llm_strat_unit_order_move_auto",
+        "from": "__mh_watcall_ecx_ebx_volatile",
+        "clobbers": [
+          "ECX",
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x0046a626",
+        "name": "llm_strat_unit_order_scatter_from_spawn",
+        "from": "__mh_watcall_ecx_ebx_volatile",
+        "clobbers": [
+          "ECX",
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x0046a6b9",
+        "name": "llm_strat_unit_order_exit_storage",
+        "from": "__mh_watcall_ecx_ebx_volatile",
+        "clobbers": [
+          "ECX",
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x0046a918",
+        "name": "llm_strat_unit_order_exit_storage_enqueue",
+        "from": "__mh_watcall_ecx_ebx_volatile",
+        "clobbers": [
+          "ECX",
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x0046ab08",
+        "name": "llm_strat_unit_order_exit_storage_auto",
+        "from": "__mh_watcall_ecx_ebx_volatile",
+        "clobbers": [
+          "ECX",
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x0046accf",
+        "name": "llm_strat_unit_order_move_confirmed_with_bump",
+        "from": "__mh_watcall_ecx_ebx_volatile",
+        "clobbers": [
+          "ECX",
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x0046ae0a",
+        "name": "llm_strat_ai_unit_order_move_with_bump",
+        "from": "__mh_watcall_ecx_ebx_volatile",
+        "clobbers": [
+          "ECX",
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x0046af1e",
+        "name": "llm_strat_unit_order_attack_target",
+        "from": "__mh_watcall_ecx_ebx_volatile",
+        "clobbers": [
+          "ECX",
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x0046b271",
+        "name": "llm_strat_unit_order_attack_target_enqueue",
+        "from": "__mh_watcall_ecx_ebx_volatile",
+        "clobbers": [
+          "ECX",
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x0046b599",
+        "name": "llm_strat_unit_order_attack_target_alt",
+        "from": "__mh_watcall_ecx_ebx_volatile",
+        "clobbers": [
+          "ECX",
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x0046b8ec",
+        "name": "llm_strat_unit_order_attack_target_alt_enqueue",
+        "from": "__mh_watcall_ecx_ebx_volatile",
+        "clobbers": [
+          "ECX",
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x0046bc14",
+        "name": "llm_strat_unit_order_attack_unit",
+        "from": "__mh_watcall_ecx_ebx_volatile",
+        "clobbers": [
+          "ECX",
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x0046bcfd",
+        "name": "llm_strat_unit_order_attack_unit_enqueue",
+        "from": "__mh_watcall_ecx_ebx_volatile",
+        "clobbers": [
+          "ECX",
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x0046bde6",
+        "name": "llm_strat_unit_order_attack_target_preset_weapon_enqueue",
+        "from": "__mh_watcall_ecx_ebx_volatile",
+        "clobbers": [
+          "ECX",
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x0046bf9c",
+        "name": "llm_strat_unit_order_attack_building_reposition",
+        "from": "__mh_watcall_ecx_ebx_volatile",
+        "clobbers": [
+          "ECX",
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x0046c21c",
+        "name": "llm_strat_unit_order_attack_building_reposition_alt_enqueue",
+        "from": "__mh_watcall_ecx_ebx_volatile",
+        "clobbers": [
+          "ECX",
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x0046c471",
+        "name": "llm_strat_unit_order_attack_building_reposition_enqueue",
+        "from": "__mh_watcall_ecx_ebx_volatile",
+        "clobbers": [
+          "ECX",
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x0046c6c6",
+        "name": "llm_strat_unit_order_attack_building",
+        "from": "__mh_watcall_ecx_ebx_volatile",
+        "clobbers": [
+          "ECX",
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x0046c7a0",
+        "name": "llm_strat_unit_order_attack_building_enqueue",
+        "from": "__mh_watcall_ecx_ebx_volatile",
+        "clobbers": [
+          "ECX",
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x0046c87a",
+        "name": "llm_strat_unit_order_move_relative",
+        "from": "__mh_watcall_ecx_ebx_volatile",
+        "clobbers": [
+          "ECX",
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x0046c99d",
+        "name": "llm_strat_unit_order_move_relative_enqueue",
+        "from": "__mh_watcall_ecx_ebx_volatile",
+        "clobbers": [
+          "ECX",
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x0046cd8b",
+        "name": "llm_strat_unit_order_auto_launch_from_storage",
+        "from": "__mh_watcall_ecx_ebx_volatile",
+        "clobbers": [
+          "ECX",
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x0046cf2c",
+        "name": "llm_strat_unit_order_auto_launch_from_storage_enqueue",
+        "from": "__mh_watcall_ecx_ebx_volatile",
+        "clobbers": [
+          "ECX",
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x0046d229",
+        "name": "llm_strat_bldg_instant_construct_find_slot",
+        "from": "__mh_watcall_ecx_ebx_volatile",
+        "clobbers": [
+          "ECX",
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x0046d514",
+        "name": "llm_strat_bldg_instant_construct_find_slot_enqueue",
+        "from": "__mh_watcall_ecx_ebx_volatile",
+        "clobbers": [
+          "ECX",
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x0046d800",
+        "name": "llm_strat_order_create_unit_debug",
+        "from": "__mh_watcall_ecx_ebx_volatile",
+        "clobbers": [
+          "ECX",
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x0046d873",
+        "name": "llm_strat_dmp_enqueue_scripted_order",
+        "from": "__mh_watcall_ecx_ebx_volatile",
+        "clobbers": [
+          "ECX",
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x0046d8e6",
+        "name": "llm_strat_ai_create_reinforcement_unit",
+        "from": "__mh_watcall_ecx_ebx_volatile",
+        "clobbers": [
+          "ECX",
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x0046da00",
+        "name": "llm_strat_order_queue_construction_debug",
+        "from": "__mh_watcall_ecx_ebx_volatile",
+        "clobbers": [
+          "ECX",
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x0046da70",
+        "name": "llm_strat_order_queue_construction_enqueue",
+        "from": "__mh_watcall_ecx_ebx_volatile",
+        "clobbers": [
+          "ECX",
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x0046dbd0",
+        "name": "llm_strat_bldg_order_production_add_count",
+        "from": "__mh_watcall_ecx_ebx_volatile",
+        "clobbers": [
+          "ECX",
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x0046dc47",
+        "name": "llm_strat_bldg_order_production_add_count_enqueue",
+        "from": "__mh_watcall_ecx_ebx_volatile",
+        "clobbers": [
+          "ECX",
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x0046dd90",
+        "name": "llm_strat_turret_order_target_unit",
+        "from": "__mh_watcall_ecx_ebx_volatile",
+        "clobbers": [
+          "ECX",
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x0046ddf0",
+        "name": "llm_strat_turret_order_target_unit_enqueue",
+        "from": "__mh_watcall_ecx_ebx_volatile",
+        "clobbers": [
+          "ECX",
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x0046de50",
+        "name": "llm_strat_turret_order_target_building",
+        "from": "__mh_watcall_ecx_ebx_volatile",
+        "clobbers": [
+          "ECX",
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x0046deb0",
+        "name": "llm_strat_turret_order_target_building_enqueue",
+        "from": "__mh_watcall_ecx_ebx_volatile",
+        "clobbers": [
+          "ECX",
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x0046e8de",
+        "name": "llm_strat_order_issue_0xd5",
+        "from": "__mh_watcall_ecx_ebx_volatile",
+        "clobbers": [
+          "ECX",
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x0046e93b",
+        "name": "llm_strat_order_issue_0xd5_enqueue",
+        "from": "__mh_watcall_ecx_ebx_volatile",
+        "clobbers": [
+          "ECX",
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x0046ebd8",
+        "name": "llm_strat_bldg_order_load_resource",
+        "from": "__mh_watcall_ecx_ebx_volatile",
+        "clobbers": [
+          "ECX",
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x0046ec35",
+        "name": "llm_strat_bldg_order_load_resource_enqueue",
+        "from": "__mh_watcall_ecx_ebx_volatile",
+        "clobbers": [
+          "ECX",
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x0046ec92",
+        "name": "llm_strat_bldg_order_unload_resource",
+        "from": "__mh_watcall_ecx_ebx_volatile",
+        "clobbers": [
+          "ECX",
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x0046ecef",
+        "name": "llm_strat_bldg_order_unload_resource_enqueue",
+        "from": "__mh_watcall_ecx_ebx_volatile",
+        "clobbers": [
+          "ECX",
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x0047baf9",
+        "name": "llm_strat_turret_acquire_target",
+        "from": "__watcall",
+        "clobbers": [
+          "ECX",
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x0047bf8e",
+        "name": "llm_strat_turret_fire",
+        "from": "__watcall",
+        "clobbers": [
+          "ECX",
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x004854f3",
+        "name": "llm_strat_unit_state_die_explode",
+        "from": "__watcall",
+        "clobbers": [
+          "ECX",
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x00486ef7",
+        "name": "llm_strat_unit_move_to_tile",
+        "from": "__mh_watcall_ecx_ebx_volatile",
+        "clobbers": [
+          "ECX",
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x0048b01d",
+        "name": "llm_strat_storage_exit_air",
+        "from": "__watcall",
+        "clobbers": [
+          "ECX",
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x0048ba1a",
+        "name": "llm_strat_storage_accept_landing",
+        "from": "__watcall",
+        "clobbers": [
+          "ECX",
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x0048bb6c",
+        "name": "llm_strat_unit_fire_weapon",
+        "from": "__mh_watcall_ecx_ebx_volatile",
+        "clobbers": [
+          "ECX",
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x0048c6b2",
+        "name": "llm_strat_weapon_scatter_offset",
+        "from": "__mh_watcall_ecx_ebx_volatile",
+        "clobbers": [
+          "ECX",
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x0048d53d",
+        "name": "llm_strat_group_member_find_nearest_to_point",
+        "from": "__mh_watcall_ecx_ebx_volatile",
+        "clobbers": [
+          "ECX",
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x0048d636",
+        "name": "llm_strat_group_formation_trim_far_members",
+        "from": "__mh_watcall_ecx_ebx_volatile",
+        "clobbers": [
+          "ECX",
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x0048f31e",
+        "name": "llm_strat_prod_spawn_arrived_unit",
+        "from": "__mh_watcall_ecx_ebx_volatile",
+        "clobbers": [
+          "ECX",
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x0048fbfa",
+        "name": "llm_strat_locate_active_port",
+        "from": "__mh_watcall_ecx_ebx_volatile",
+        "clobbers": [
+          "ECX",
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x00490eb1",
+        "name": "llm_strat_bldg_get_sprite_anchor_coord",
+        "from": "__mh_watcall_ecx_ebx_volatile",
+        "clobbers": [
+          "ECX",
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x00491086",
+        "name": "llm_strat_unit_soldier_get_sprite_screen_pos",
+        "from": "__mh_watcall_ecx_ebx_volatile",
+        "clobbers": [
+          "ECX",
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x00493fb2",
+        "name": "llm_strat_planet_distance",
+        "from": "__mh_watcall_ecx_ebx_volatile",
+        "clobbers": [
+          "ECX",
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x0049404e",
+        "name": "llm_strat_tile_dist_wrapped",
+        "from": "__watcall",
+        "clobbers": [
+          "ECX",
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x004947c2",
+        "name": "llm_strat_dir_from_to_is_octant_sector",
+        "from": "__mh_watcall_ecx_ebx_volatile",
+        "clobbers": [
+          "ECX",
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x0049482b",
+        "name": "llm_strat_dir_from_to",
+        "from": "__watcall",
+        "clobbers": [
+          "ECX",
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x004948ff",
+        "name": "llm_strat_dir_sector_to",
+        "from": "__mh_watcall_ecx_ebx_volatile",
+        "clobbers": [
+          "ECX",
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x004968b6",
+        "name": "llm_strat_sight_add_circle",
+        "from": "__mh_watcall_ecx_ebx_volatile",
+        "clobbers": [
+          "ECX",
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x0049694f",
+        "name": "llm_strat_sight_remove_circle",
+        "from": "__mh_watcall_ecx_ebx_volatile",
+        "clobbers": [
+          "ECX",
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x00498934",
+        "name": "llm_strat_tiles_adjacent",
+        "from": "__watcall",
+        "clobbers": [
+          "ECX",
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x0049a23d",
+        "name": "llm_strat_path_step_check_and_request_detour",
+        "from": "__mh_watcall_ecx_ebx_volatile",
+        "clobbers": [
+          "ECX",
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x004a2344",
+        "name": "llm_strat_minimap_draw_viewport_box",
+        "from": "__watcall",
+        "clobbers": [
+          "ECX",
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x004a3e61",
+        "name": "llm_map_load_loose_fallback",
+        "from": "__mh_watcall_ecx_ebx_volatile",
+        "clobbers": [
+          "ECX",
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x004a44e0",
+        "name": "llm_map_read_planet_header",
+        "from": "__mh_watcall_ecx_ebx_volatile",
+        "clobbers": [
+          "ECX",
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x004a4542",
+        "name": "llm_cfg_map_read_header",
+        "from": "__mh_watcall_ecx_ebx_volatile",
+        "clobbers": [
+          "ECX",
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x004b55be",
+        "name": "llm_gfx_draw_sprite_vclipped",
+        "from": "__mh_watcall_ecx_ebx_volatile",
+        "clobbers": [
+          "ECX",
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x004b5a6e",
+        "name": "llm_ui_rich_text_layout_walk",
+        "from": "__mh_watcall_ecx_ebx_volatile",
+        "clobbers": [
+          "ECX",
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x004b5c8a",
+        "name": "llm_gfx_draw_formatted_text",
+        "from": "__mh_watcall_ecx_ebx_volatile",
+        "clobbers": [
+          "ECX",
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x004b60f6",
+        "name": "llm_ui_text_wrap_find_break_ansi",
+        "from": "__mh_watcall_ecx_ebx_volatile",
+        "clobbers": [
+          "ECX",
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x004c29d8",
+        "name": "llm_game_boot_init",
+        "from": "__mh_watcall_ecx_ebx_volatile",
+        "clobbers": [
+          "ECX",
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x004ce0ce",
+        "name": "llm_snd_wav_load",
+        "from": "__mh_watcall_ecx_ebx_volatile",
+        "clobbers": [
+          "ECX",
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x004cf5c7",
+        "name": "CRT_004cf5c7",
+        "from": "__mh_watcall_ecx_ebx_volatile",
+        "clobbers": [
+          "ECX",
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x004cfd58",
+        "name": "utils_read_from_file",
+        "from": "__mh_watcall_ecx_ebx_volatile",
+        "clobbers": [
+          "ECX",
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x004cff57",
+        "name": "utils_write_to_file",
+        "from": "__mh_watcall_ecx_ebx_volatile",
+        "clobbers": [
+          "ECX",
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x004d1194",
+        "name": "llm_input_wndproc_tap",
+        "from": "__mh_watcall_ecx_ebx_volatile",
+        "clobbers": [
+          "ECX",
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x004d2478",
+        "name": "llm_snd_voice_slot_register",
+        "from": "__mh_watcall_ecx_ebx_volatile",
+        "clobbers": [
+          "ECX",
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x004d276c",
+        "name": "llm_snd_channel_configure_voice_and_play",
+        "from": "__mh_watcall_ecx_ebx_volatile",
+        "clobbers": [
+          "ECX",
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x004d2b44",
+        "name": "llm_snd_play_matching_sample",
+        "from": "__mh_watcall_ecx_ebx_volatile",
+        "clobbers": [
+          "ECX",
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x004d32aa",
+        "name": "llm_strat_unit_estimate_weapon_damage",
+        "from": "__mh_watcall_ecx_ebx_volatile",
+        "clobbers": [
+          "ECX",
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x004d3917",
+        "name": "llm_bldg_count_owned_matching_ids",
+        "from": "__mh_watcall_ecx_ebx_volatile",
+        "clobbers": [
+          "ECX",
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x004d3cf0",
+        "name": "llm_strat_ai_target_ref_has_engageable_weapon",
+        "from": "__mh_watcall_ecx_ebx_volatile",
+        "clobbers": [
+          "ECX",
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x004d4b25",
+        "name": "llm_strat_ai_group_task_preempt",
+        "from": "__mh_watcall_ecx_ebx_volatile",
+        "clobbers": [
+          "ECX",
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x004d5245",
+        "name": "llm_strat_ai_engage_rank_candidates_by_range",
+        "from": "__mh_watcall_ecx_ebx_volatile",
+        "clobbers": [
+          "ECX",
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x004d53ae",
+        "name": "llm_strat_ai_engage_sort_candidates_by_dist",
+        "from": "__watcall",
+        "clobbers": [
+          "ECX",
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x004d55ef",
+        "name": "llm_strat_ai_commit_attack_order",
+        "from": "__mh_watcall_ecx_ebx_volatile",
+        "clobbers": [
+          "ECX",
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x004d5708",
+        "name": "llm_strat_ai_commit_attack_order_alt",
+        "from": "__mh_watcall_ecx_ebx_volatile",
+        "clobbers": [
+          "ECX",
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x004d585e",
+        "name": "llm_strat_ai_unit_group_assign_by_type",
+        "from": "__mh_watcall_ecx_ebx_volatile",
+        "clobbers": [
+          "ECX",
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x004d5c17",
+        "name": "llm_strat_ai_group_compute_centroid",
+        "from": "__mh_watcall_ecx_ebx_volatile",
+        "clobbers": [
+          "ECX",
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x004d5fe7",
+        "name": "llm_strat_ai_unit_move_near_random_point",
+        "from": "__mh_watcall_ecx_ebx_volatile",
+        "clobbers": [
+          "ECX",
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x004d6028",
+        "name": "llm_strat_ai_group_scatter_near_point",
+        "from": "__mh_watcall_ecx_ebx_volatile",
+        "clobbers": [
+          "ECX",
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x004d60f5",
+        "name": "llm_strat_ai_group_scatter_idle_members",
+        "from": "__mh_watcall_ecx_ebx_volatile",
+        "clobbers": [
+          "ECX",
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x004d71c7",
+        "name": "llm_gfx_save_screenshot_rle",
+        "from": "__mh_watcall_ecx_ebx_volatile",
+        "clobbers": [
+          "ECX",
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x004d7da9",
+        "name": "llm_strat_ai_group_move_formation_rotating",
+        "from": "__watcall",
+        "clobbers": [
+          "ECX",
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x004d81a6",
+        "name": "llm_strat_ai_target_dist_sq",
+        "from": "__mh_watcall_ecx_ebx_volatile",
+        "clobbers": [
+          "ECX",
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x004d8c7d",
+        "name": "llm_strat_bldg_check_placement_encloses_neighbors",
+        "from": "__mh_watcall_ecx_ebx_volatile",
+        "clobbers": [
+          "ECX",
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x004daec2",
+        "name": "llm_strat_ai_notify_bldg_constructed",
+        "from": "__mh_watcall_ecx_ebx_volatile",
+        "clobbers": [
+          "ECX",
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x004db22f",
+        "name": "llm_strat_ai_bldg_register_visible_building",
+        "from": "__mh_watcall_ecx_ebx_volatile",
+        "clobbers": [
+          "ECX",
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x004db499",
+        "name": "llm_strat_ai_group_member_count_adjust",
+        "from": "__watcall",
+        "clobbers": [
+          "ECX",
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x004dbb38",
+        "name": "llm_strat_ai_notify_unit_lifecycle",
+        "from": "__mh_watcall_ecx_ebx_volatile",
+        "clobbers": [
+          "ECX",
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x004dbe50",
+        "name": "llm_gfx_draw_number_5x7",
+        "from": "__mh_watcall_ecx_ebx_volatile",
+        "clobbers": [
+          "ECX",
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x004dc117",
+        "name": "llm_strat_sort_sites_by_dist",
+        "from": "__mh_watcall_ecx_ebx_volatile",
+        "clobbers": [
+          "ECX",
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x004dcd0e",
+        "name": "llm_strat_spawn_ai_base",
+        "from": "__mh_watcall_ecx_ebx_volatile",
+        "clobbers": [
+          "ECX",
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x004dd446",
+        "name": "llm_strat_spawn_invasion_force",
+        "from": "__watcall",
+        "clobbers": [
+          "ECX",
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x004de3f0",
+        "name": "llm_gfx_rle_blit_rows_8bpp",
+        "from": "__mh_watcall_ecx_ebx_volatile",
+        "clobbers": [
+          "ECX",
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x004de459",
+        "name": "llm_gfx_rle_blit_rows_packbits",
+        "from": "__mh_watcall_ecx_ebx_volatile",
+        "clobbers": [
+          "ECX",
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x004de4ab",
+        "name": "llm_gfx_rle_blit_rows_16bpp_clipped",
+        "from": "__mh_watcall_ecx_ebx_volatile",
+        "clobbers": [
+          "ECX",
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x004de519",
+        "name": "FUN_004de519",
+        "from": "__mh_watcall_ecx_ebx_volatile",
+        "clobbers": [
+          "ECX",
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x004de555",
+        "name": "FUN_004de555",
+        "from": "__mh_watcall_ecx_ebx_volatile",
+        "clobbers": [
+          "ECX",
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x004de8a6",
+        "name": "qsort",
+        "from": "__mh_watcall_ecx_ebx_volatile",
+        "clobbers": [
+          "ECX",
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x004ded04",
+        "name": "__exit_with_msg",
+        "from": "__mh_watcall_ecx_ebx_volatile",
+        "clobbers": [
+          "ECX",
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x004def00",
+        "name": "str_format_output_engine",
+        "from": "__mh_watcall_ecx_ebx_volatile",
+        "clobbers": [
+          "ECX",
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x004df460",
+        "name": "CRT_004df460",
+        "from": "__mh_watcall_ecx_ebx_volatile",
+        "clobbers": [
+          "ECX",
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x004df5dd",
+        "name": "str_fmt_convert_spec",
+        "from": "__mh_watcall_ecx_ebx_volatile",
+        "clobbers": [
+          "ECX",
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x004e08d7",
+        "name": "__uprtf",
+        "from": "__mh_watcall_ecx_ebx_volatile",
+        "clobbers": [
+          "ECX",
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x004e0e7e",
+        "name": "llm_crt_wfmt_convert_spec",
+        "from": "__mh_watcall_ecx_ebx_volatile",
+        "clobbers": [
+          "ECX",
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x004e1f02",
+        "name": "llm_crt_scanf_read_int",
+        "from": "__mh_watcall_ecx_ebx_volatile",
+        "clobbers": [
+          "ECX",
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x004e2550",
+        "name": "llm_strat_bldg_queue_construction",
+        "from": "__mh_watcall_ecx_ebx_volatile",
+        "clobbers": [
+          "ECX",
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x004e2c8e",
+        "name": "llm_strat_ai_queue_flush_unit_train_entries",
+        "from": "__mh_watcall_ecx_ebx_volatile",
+        "clobbers": [
+          "ECX",
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x004e2eb9",
+        "name": "llm_strat_ai_calc_resource_sum_5x5",
+        "from": "__watcall",
+        "clobbers": [
+          "ECX",
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x004e30e9",
+        "name": "llm_strat_ai_calc_mine_yield_estimate",
+        "from": "__mh_watcall_ecx_ebx_volatile",
+        "clobbers": [
+          "ECX",
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x004e32ef",
+        "name": "llm_strat_ai_sum_player_mine_resources",
+        "from": "__watcall",
+        "clobbers": [
+          "ECX",
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x004e40ae",
+        "name": "llm_strat_ai_count_nearby_turrets",
+        "from": "__watcall",
+        "clobbers": [
+          "ECX",
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x004e41a6",
+        "name": "llm_strat_ai_apply_building_proximity_bonus",
+        "from": "__watcall",
+        "clobbers": [
+          "ECX",
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x004e62ad",
+        "name": "llm_strat_ai_resource_site_meets_threshold",
+        "from": "__mh_watcall_ecx_ebx_volatile",
+        "clobbers": [
+          "ECX",
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x004e68dd",
+        "name": "llm_strat_ai_group_split_off_create",
+        "from": "__mh_watcall_ecx_ebx_volatile",
+        "clobbers": [
+          "ECX",
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x004e6d03",
+        "name": "llm_strat_ai_plan_unit_training",
+        "from": "__mh_watcall_ecx_ebx_volatile",
+        "clobbers": [
+          "ECX",
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x004e98a7",
+        "name": "llm_strat_ai_group_find_nearest_building_of_types",
+        "from": "__mh_watcall_ecx_ebx_volatile",
+        "clobbers": [
+          "ECX",
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x004e99be",
+        "name": "llm_strat_ai_group_collect_buildings_of_types",
+        "from": "__mh_watcall_ecx_ebx_volatile",
+        "clobbers": [
+          "ECX",
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x004ea729",
+        "name": "llm_strat_ai_group_task_recruit_from_storage",
+        "from": "__mh_watcall_ecx_ebx_volatile",
+        "clobbers": [
+          "ECX",
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x004ebf09",
+        "name": "llm_strat_ai_group_scan_building_targets",
+        "from": "__mh_watcall_ecx_ebx_volatile",
+        "clobbers": [
+          "ECX",
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x004ed495",
+        "name": "llm_strat_ai_scan_spiral_ring_for_engage_candidates",
+        "from": "__mh_watcall_ecx_ebx_volatile",
+        "clobbers": [
+          "ECX",
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x004ed5f0",
+        "name": "llm_strat_ai_scan_area_for_engage_candidates",
+        "from": "__watcall",
+        "clobbers": [
+          "ECX",
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x004eda8b",
+        "name": "llm_strat_ai_group_dispatch_action_flags",
+        "from": "__mh_watcall_ecx_ebx_volatile",
+        "clobbers": [
+          "ECX",
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x004ee30b",
+        "name": "llm_strat_ai_active_unit_tick",
+        "from": "__mh_watcall_ecx_ebx_volatile",
+        "clobbers": [
+          "ECX",
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x004f030d",
+        "name": "mem_heap_block_resize_inplace",
+        "from": "__mh_watcall_ecx_ebx_volatile",
+        "clobbers": [
+          "ECX",
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x004f0ce2",
+        "name": "CRT_004f0ce2",
+        "from": "__mh_watcall_ecx_ebx_volatile",
+        "clobbers": [
+          "ECX",
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x004f32fa",
+        "name": "__FreeThreadDataList",
+        "from": "__mh_watcall_ecx_ebx_volatile",
+        "clobbers": [
+          "ECX",
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x004f3511",
+        "name": "CRT_004f3511",
+        "from": "__mh_watcall_ecx_ebx_volatile",
+        "clobbers": [
+          "ECX",
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x004f35b4",
+        "name": "CRT_004f35b4",
+        "from": "__mh_watcall_ecx_ebx_volatile",
+        "clobbers": [
+          "ECX",
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x004f3688",
+        "name": "_FtoS",
+        "from": "__mh_watcall_ecx_ebx_volatile",
+        "clobbers": [
+          "ECX",
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x004f416b",
+        "name": "CRT_004f416b",
+        "from": "__mh_watcall_ecx_ebx_volatile",
+        "clobbers": [
+          "ECX",
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x004f4ca7",
+        "name": "LZW_handleCode",
+        "from": "__mh_watcall_ecx_ebx_volatile",
+        "clobbers": [
+          "ECX",
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x004f4ce9",
+        "name": "LZW_updateDict",
+        "from": "__mh_watcall_ecx_ebx_volatile",
+        "clobbers": [
+          "ECX",
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x0055b665",
+        "name": "llm_pf_expand_step",
+        "from": "__mh_watcall_ecx_ebx_volatile",
+        "clobbers": [
+          "ECX",
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x0055e233",
+        "name": "llm_pf_seed_goals",
+        "from": "__mh_watcall_ecx_ebx_volatile",
+        "clobbers": [
+          "ECX",
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x00580223",
+        "name": "llm_strat_pathfind_flood_expand_ring",
+        "from": "__mh_watcall_ecx_ebx_volatile",
+        "clobbers": [
+          "ECX",
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x0058090b",
+        "name": "llm_strat_pathfind_route_extract",
+        "from": "__mh_watcall_ecx_ebx_volatile",
+        "clobbers": [
+          "ECX",
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x005834bf",
+        "name": "llm_strat_pathfind_flood_seed_from_route",
+        "from": "__mh_watcall_ecx_ebx_volatile",
+        "clobbers": [
+          "ECX",
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x00583716",
+        "name": "llm_strat_pathfind_flood_frontier_step",
+        "from": "__mh_watcall_ecx_ebx_volatile",
+        "clobbers": [
+          "ECX",
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x00583820",
+        "name": "llm_strat_pathfind_backfill_flood_step",
+        "from": "__mh_watcall_ecx_ebx_volatile",
+        "clobbers": [
+          "ECX",
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x0058411b",
+        "name": "llm_strat_pathfind_backfill_resolve_target",
+        "from": "__mh_watcall_ecx_ebx_volatile",
+        "clobbers": [
+          "ECX",
+          "EBX"
+        ]
+      },
+      {
+        "addr": "0x0058429f",
+        "name": "FUN_0058429f",
+        "from": "__mh_watcall_ecx_ebx_volatile",
+        "clobbers": [
+          "ECX",
+          "EBX"
+        ]
+      }
+    ]
+  }
+}

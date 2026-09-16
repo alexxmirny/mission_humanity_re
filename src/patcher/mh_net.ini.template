@@ -1,0 +1,205 @@
+; mh_net.ini -- MP transport config (Phase A0+, tasks/mp-restoration.md, docs/mp-lobby.md).
+; Copy this beside the patched exe as "mh_net.ini". Like the determinism harness, its mere PRESENCE
+; would arm the transport IF a build wires MH_Net_Init to read it; the A0 self-test configures the
+; transport directly (MH_Net_InitEx) and does not need this file. The in-game seam wiring (A1/A2)
+; will read the live lobby params, not this template -- keep this as the manual/direct-connect config.
+;
+; Topology: client-server STAR (host listens + relays; clients connect to the host IP). LAN / direct
+; connect for v1; the relay-server mode (Milestone R) is a later addition.
+
+[net]
+; host = this peer listens and relays.  client = this peer connects to `host`.
+role=host
+
+; client: the host's IPv4 (shown on mh.exe's network-setup screen via llm_net_get_local_ip_string).
+;         host: bind address ("" or 0.0.0.0 = all local adapters).
+host=127.0.0.1
+
+; TCP port both sides use.
+port=6501
+
+; This peer's player id. Host is conventionally 0; give each client a distinct id (1..7).
+; (In-game this comes from the lobby slot assignment; set manually only for direct/testing.)
+player_id=0
+
+; host: expected number of clients (informational / logging only; cap is MH_NET_MAX_PEERS = 8).
+peers=1
+
+; 1 = append diagnostics to mh_net.log next to the exe.
+log=1
+
+; Lockstep lookahead / input-lag control (game-time milliseconds). The retail game defaults this to
+; 10000 ms (10 game-seconds!) and then ADAPTIVELY scales it by FRAMERATE (not ping) in
+; llm_strat_time_tick -- low FPS or an alt-tab FPS crash inflates it to several seconds, which is the
+; multi-second input lag (ping is irrelevant: 4ms LAN still lags). Set this to pin the lookahead to a
+; fixed value and override the adaptive scaling. Smaller = less input lag but less tolerance for
+; frame-time jitter (too small on a stuttery peer can re-introduce stalls). 0 = leave the game default.
+; Good starting point on a LAN: 200-400. Tune per setup.
+lockstep_step_ms=300
+
+; Horizon heartbeat (perf-decouple, tasks/mp-perf-decouple.md). The retail game advertises its lockstep
+; horizon ONLY from the render/frame path, so a render hitch stops advertisement and starves the peer's
+; sim -> the 2s SYNCHRONIZING overlay, and at a small lookahead a self-reinforcing freeze-storm (the
+; input-latency cliff). Set this >0 to run a background thread that re-emits the horizon-EXTEND packet
+; every N ms of REAL time, independent of rendering -- so a peer's render stall no longer stalls the
+; other peer, and the sim stops being fps-coupled. Determinism-preserving (advertises pacing only; never
+; touches the sim). Both peers should set it. Good value: ~lockstep_step_ms/4..1/6 (e.g. 50 for step 300).
+; 0 = off (retail render-coupled behaviour).
+horizon_heartbeat_ms=50
+
+; Overlay de-fang (perf-decouple step 2, tasks/mp-perf-decouple.md). At a tight lookahead the sim catches
+; the committed horizon nearly every step and the retail game pops the modal SYNCHRONIZING overlay
+; (_G_LLM_GAME_MODE=3) to wait one round-trip -- but that overlay dismiss is gated by a ~1 s accumulator,
+; so each ~100 ms of clock costs a ~2 s input-locked freeze even though packets arrive in <100 ms. Set
+; this to 1 to byte-patch out the two overlay-show calls in llm_strat_time_tick's stall path: a horizon-
+; wait then keeps the strategic frame running (input responsive) and costs ~1 frame of latency instead of
+; the freeze. Display/pacing only -- the sim still steps only when committed allows, so determinism holds.
+; It patches FOUR sites: the two time_tick overlay calls (mode-3 path) AND -- the real fix (2026-07-11) --
+; the extend_ui_enter mode-8 entry, which llm_strat_order_queue_dispatch triggers on a lockstep-extend
+; SYSTEM order and is the DOMINANT 2s freeze. With all four + horizon_heartbeat_ms, step 100 (100ms input
+; latency) went from ~139 freezes/90%-frozen to 0-1 freezes, 800/800 steps bit-identical cross-machine.
+; Display/input-lock only -- the sim stays clamped to committed, so determinism holds. Guarded (build-safe).
+; 1 = on (recommended, pairs with the heartbeat). 0 = retail 2 s modal.
+defang_overlay=1
+
+; Eager horizon advertisement (perf-decouple, tasks/mp-perf-latency.md). At a 1-step lookahead the sim
+; runs at only ~0.74x real-time even on a ~0 ms link -- NOT a network round-trip cost (the peer's horizon
+; races ahead; RX is ~15 ms fresh). Root cause is LOCAL: the retail frame advertises the horizon in
+; time_tick BEFORE sim_tick advances the clock, so the horizon reflecting a just-taken step isn't sent
+; until the NEXT frame, and time_tick hard-clamps TOTAL=committed with that stalled wall-time DISCARDED --
+; ~1 frame (~25 ms) forfeited per step. Set this to 1 to advertise + commit the POST-step horizon in the
+; present hook (which runs after sim_tick), closing the gap: our committed rises this frame and the peer
+; learns the new horizon a frame sooner, so the sim becomes wall-bound (~1.0x) with NO lookahead change
+; (no input-latency cost, unlike raising lockstep_step_ms). Both peers should set it. Determinism-safe
+; (advertisement/commit PACING only; the sim_step sequence + committed VALUE are unchanged, just reached
+; sooner) -- but VERIFY with the per-step region-hash oracle. 0 = off (retail render-coupled advertisement).
+; NOTE (2026-07-16): eager_advertise is a determinism-safe DIAGNOSTIC that turned out to have NO rate effect
+; -- committed is never the binding constraint at a 1-step buffer (it stays a full step ahead). The sim-rate
+; loss is intrinsic frame-quantization in the lockstep TOTAL-clamp, not the horizon exchange; there is no
+; free fix (a "preserve the overshoot" patch was tried and REVERTED -- it breaks lockstep -> desync). The
+; levers remain lookahead (lockstep_step_ms, trades input latency) and frame rate. See tasks/mp-perf-latency.md.
+eager_advertise=0
+
+; Endgame game-over sync (2026-07-11). The retail win/loss resolver leaves lockstep (SESSION_MODE 3->2)
+; only on the WINNER's side; the LOSER detects its defeat but stays in lockstep behind its "You lost"
+; dialog and FREEZES waiting for a peer that already left. 1 = detour the outcome dialog to downgrade
+; SESSION 3->2 on entry, so both peers leave lockstep and show their result immediately. Determinism-safe
+; (the game is already decided). Pairs with the heartbeat's post-lockstep grace. 0 = retail (loser freezes).
+sync_gameover=1
+
+; 1 = write a per-frame lockstep timing trace to mh_lockstep.log (columns: wall_ms clock_ms total_ms
+; local_h_ms committed_ms peer0_ms peer1_ms step_ms stall pcount tx_pkts rx_pkts since_rx_ms). Use it
+; to diagnose freezes: a freeze shows as a big wall_ms gap between rows; compare committed_ms vs
+; total_ms (sim stalled when total catches committed) and peer horizons / since_rx_ms to see if the
+; peer or the transport is starving the horizon. 0 = off (default).
+lockstep_log=0
+
+; 1 = write a per-PRESENT frame-time trace to mh_frametime.log (columns: qpc_us game_mode). This hooks
+; the actual DirectDraw blit/flip (llm_gfx_present_flip), so present-to-present deltas are what the
+; player FEELS -- distinct from the sim/net cadence lockstep_log samples. mp_analyze.py reports the
+; distribution (mean/p50/p95/p99/max + fps) for the strategic-gameplay (mode 2) frames and catches the
+; ~2s sync-overlay hitches. Use on the laggy peer to quantify felt frame drops. 0 = off (default).
+frametime_log=0
+
+; --- Multiplayer main-menu button (Workstream U) ---
+; The MP transport DLL also restores the severed "Multiplayer" button on the main menu (it clones a
+; sibling menu button and points it at the network-game browser). Placement is auto by default (one
+; row below the lowest existing button); set explicit screen coords here to tune it in-game without
+; rebuilding. Leave commented for auto.
+[menu]
+; mp_x=200
+; mp_y=280
+
+; -------------------------------------------------------------------------------------------------
+; [harness] -- the determinism & replay harness (docs/mp-replay-harness.md).
+;
+; ONE FILE SINCE FORK F2G. This block used to be a separate mh_harness.ini beside the exe, and the
+; harness armed off THAT FILE'S MERE EXISTENCE -- there was no enable key. Both are gone: the block
+; lives here, and `enable=1` below is the whole of the arm. A leftover mh_harness.ini beside the exe
+; is now REFUSED by mh.dll (the run is terminated with the reason named in mh_config_refused.log)
+; rather than silently doing nothing, because a file that used to arm an instrument and now arms
+; nothing is a run whose author believes it is instrumented.
+;
+; DELETE THIS WHOLE SECTION (or set enable=0) for a plain play install. The default with the section
+; absent is OFF, so an ordinary mh_net.ini carrying only [net] never arms the harness.
+;
+; Outputs: mh_harness.log (per-step hashes) goes into a PER-RUN folder
+;   <exedir>\logs\<YYYYMMDD_HHMMSS>_<role>\  (role = host/client/solo; see mh_run.txt breadcrumb).
+;   Config inputs (this file) and mh_harness_seed.bin stay next to the exe.
+; Analyze a run (or a host+client pair) with:  python tools/mp_analyze.py <logs-folder> [<other>]
+; -------------------------------------------------------------------------------------------------
+[harness]
+; THE ARM. 1 = install the sim hooks and hash every step; 0 (or an absent key/section) = inert.
+enable=1
+
+; step at which to dump/inject the seed blob (0 = never). Sim steps count from 1.
+seed_step=1
+
+; 0 = DUMP state to mh_harness_seed.bin at seed_step
+; 1 = INJECT mh_harness_seed.bin over the arrays at seed_step (forces an identical start)
+; 2 = OFF (no seed I/O; just hash) -- the primary mode for same-machine and cross-vendor runs
+seed_mode=2
+
+; step at which to write the per-region breakdown and stop logging (0 = run forever)
+stop_step=2000
+
+; 1 = ExitProcess after the stop_step report (handy for scripted A/B runs)
+exit_on_stop=0
+
+; 1 = pin the timestep: TOTAL_GAME_TIME = GAME_CLOCK + interval at each sim_tick, so the game's
+;     natural SP mode advances exactly ONE deterministic 0.1s sim_step per frame. This is how the
+;     replay is made deterministic -- do NOT confuse with entering MP mode 3 (that path is
+;     network-gated and stalls single-process; see docs/mp-replay-harness.md). The game will run
+;     fast (sim advances framerate x 0.1 s/s) -- expected.
+fixed_step=1
+
+; 1 = pin the x87 control word (round-nearest, 53-bit) at init. Keep IDENTICAL on both machines
+;     in a cross-vendor run -- determinism needs consistency, and 53-bit narrows 80-bit divergence.
+pin_fpu=1
+
+; Emit an "R <step> <region-hash>..." line every N sim steps (0 = off). Lets mp_analyze.py pinpoint
+; the exact (step, region) of a cross-peer state-hash divergence WITHOUT a re-run. Set 1 for MP/A3
+; runs where a desync may appear (e.g. a played host vs an idle client); costs one extra log line per
+; N steps. Leave 0 for pure same-machine determinism replays (the combined hash already suffices).
+region_hash_step=0
+
+; ---------------------------------------------------------------------------------------------------
+; Phase 2 -- ORDER RECORD / REPLAY (deterministic input playback; docs/mp-replay-harness.md).
+; A lockstep RTS sim is a pure function of (start state, seed, tick-ordered ORDER stream) -- so the
+; replayable "input" is the order stream, NOT mouse/keys. Orders are captured/injected at the unified
+; command queue (llm_strat_order_queue_dispatch); file = mh_orders.bin next to the exe.
+;   0 = off
+;   1 = RECORD: snapshot the order queue every step it executes -> mh_orders.bin (+ mh_clock.bin, the
+;       per-step game clock -- needed to replay a REAL-TIME recording faithfully; see below)
+;   2 = REPLAY: inject mh_orders.bin into the queue each step (bypasses input + network). If mh_clock.bin
+;       is present it also PINS the per-step clock to the recording, so a real-time (fixed_step=0) human
+;       session reproduces the exact variable per-step deltas -- without it, fixed_step's 0.1s march
+;       diverges from step 2. (Battlefield replays bit-identical; only the AI's internal economy
+;       bookkeeping p0_ai_econ + cosmetic rng drift, which don't affect units/buildings/projectiles.)
+order_mode=0
+
+; Replay only: 1 = zero every player's ai_enabled once at start so ONLY the recorded orders drive the
+; sim (else the deterministic AI re-issues its orders and doubles them). This is LOSSY for an AI game --
+; disabling the AI also removes its non-order per-tick effects (targeting/bookkeeping), so buildings/
+; turrets/projectiles drift. Use replay_suppress_enqueue instead to test faithfulness (below). A HUMAN
+; game has no non-order tick effects, so a human recording replays completely either way.
+replay_ai_off=0
+
+; Replay only: 1 = neuter llm_strat_order_enqueue (the SP+AI immediate-lane append) so the live order
+; source can't add to the queue -- ONLY the injected recording does -- WHILE the AI keeps running its
+; non-order tick. This is the faithful-substitute test: an AI-on record vs this replay is BIT-IDENTICAL
+; every region every step (verified 2026-07-11 on 4-saibel-4), proving the order capture/injection is a
+; perfect substitute for the live order path. (Leave 0 for normal replay.)
+replay_suppress_enqueue=0
+
+; ---------------------------------------------------------------------------------------------------
+; A3 -- LIVE MULTIPLAYER determinism (harness + MP transport in ONE process; needs mh_net.ini too).
+; DllMain composes the harness with the MP seams, so deploy BOTH inis + launch with --mp-host /
+; --mp-join. Two overrides vs the SP replay config above:
+;   fixed_step=0   -- do NOT pin the timestep; the REAL lockstep (committed peer horizon) drives the
+;                     sim clock. Pinning would fight the lockstep. The harness just HASHES each real
+;                     lockstep sim_step as it happens.
+;   seed_mode=2    -- OFF (no inject); both peers already start byte-identical via the force-entry
+;                     (same .MP -> same RNG seed). seed_step is then irrelevant.
+; Keep pin_fpu=1 on both peers. Run both, then diff the state column (field 4) of each mh_harness.log
+; -- identical every step = bit-perfect live lockstep. (Same compare as the offline cross-vendor test.)

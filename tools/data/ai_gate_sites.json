@@ -1,0 +1,65 @@
+{
+ "_generated_by": "tools/dump_ai_gate_sites.py",
+ "_do_not_hand_edit": "Regenerate against /eng/mh.exe; it is name-keyed, so re-run after renames.",
+ "_what": "Functions in the llm_strat_ai_ closure whose decompiled body tests player_data[].ai_enabled -- i.e. the measured AI/sim SEAM. Everything below a gate site runs only for AI players; the gate site itself runs for everyone. Absence of the gate is NOT a verdict: a callee of a gated function does not re-check.",
+ "scanned": 209,
+ "decompile_failed": [],
+ "gate_sites": [
+  {
+   "addr": "0x004d6d67",
+   "name": "llm_strat_ai_target_list_add"
+  },
+  {
+   "addr": "0x004d74de",
+   "name": "llm_strat_ai_update_opponent_relations"
+  },
+  {
+   "addr": "0x004d7a2e",
+   "name": "llm_strat_ai_recompute_map_influence"
+  },
+  {
+   "addr": "0x004d82ca",
+   "name": "llm_strat_ai_notify_map_changed"
+  },
+  {
+   "addr": "0x004d83c7",
+   "name": "llm_strat_ai_notify_map_changed_2"
+  },
+  {
+   "addr": "0x004daec2",
+   "name": "llm_strat_ai_notify_bldg_constructed"
+  },
+  {
+   "addr": "0x004db499",
+   "name": "llm_strat_ai_group_member_count_adjust"
+  },
+  {
+   "addr": "0x004db551",
+   "name": "llm_strat_ai_notify_object_removed"
+  },
+  {
+   "addr": "0x004db905",
+   "name": "llm_strat_ai_players_tick"
+  },
+  {
+   "addr": "0x004dbb38",
+   "name": "llm_strat_ai_notify_unit_lifecycle"
+  },
+  {
+   "addr": "0x004dbf36",
+   "name": "llm_strat_ai_queue_release_order"
+  },
+  {
+   "addr": "0x004e853f",
+   "name": "llm_strat_ai_recompute_shortage_state"
+  },
+  {
+   "addr": "0x004e8b9d",
+   "name": "llm_strat_ai_player_tick"
+  },
+  {
+   "addr": "0x004ee30b",
+   "name": "llm_strat_ai_active_unit_tick"
+  }
+ ]
+}

@@ -1,0 +1,583 @@
+{
+  "_comment": "EXTRACTED by tools/gen_state_handler_table.py --extract-bldg-type from the exported disassembly of llm_strat_register_bldg_type_callbacks -- do not hand-edit. `tables` is the (building TYPE -> callback) pairing: each table is filled, for every type in default.type_lo..default.type_hi, with `default`, then overwritten at each `assign` type in the order listed. It is NOT a (building_id -> callback) table and cannot be: each setter LOOPS over building ids first_id..slots-1 and writes the callback into every slot whose *(uint8)(cfg_scan_base + id*cfg_stride) equals its type argument, so the id map depends on cfg data loaded at runtime -- a reimplementation reproduces that SCAN, using the constants recorded here. `callbacks` is the flat distinct set (`via` naming which table each is installed into), consumed by gen_migration.py as a second dispatch seed set (batch H / SIM1-BLDGCB) and by tools/check_dispatch_closure.py.",
+  "registrar": "llm_strat_register_bldg_type_callbacks",
+  "tables": {
+    "done": {
+      "setter": "llm_bldg_register_done_callback",
+      "base": "0x00ae4830",
+      "slots": 100,
+      "first_id": 1,
+      "cfg_stride": 2114,
+      "cfg_scan_base": "0x00d9ec88",
+      "default": {
+        "name": "llm_strat_done_default",
+        "addr": "0x0046ff2c",
+        "at": "0x0045f79e",
+        "type_lo": 1,
+        "type_hi": 39
+      },
+      "assign": [
+        {
+          "name": "llm_strat_done_port",
+          "addr": "0x00470198",
+          "at": "0x0045f7af",
+          "type": 12
+        },
+        {
+          "name": "llm_strat_done_port",
+          "addr": "0x00470198",
+          "at": "0x0045f7be",
+          "type": 32
+        },
+        {
+          "name": "llm_strat_done_relay",
+          "addr": "0x00470171",
+          "at": "0x0045f7cd",
+          "type": 15
+        },
+        {
+          "name": "llm_strat_done_relay",
+          "addr": "0x00470171",
+          "at": "0x0045f7dc",
+          "type": 35
+        },
+        {
+          "name": "llm_strat_done_mother",
+          "addr": "0x0046ff4e",
+          "at": "0x0045f7eb",
+          "type": 6
+        },
+        {
+          "name": "llm_strat_done_mother",
+          "addr": "0x0046ff4e",
+          "at": "0x0045f7fa",
+          "type": 26
+        },
+        {
+          "name": "llm_strat_done_plant",
+          "addr": "0x0046ff7f",
+          "at": "0x0045f809",
+          "type": 3
+        },
+        {
+          "name": "llm_strat_done_plant",
+          "addr": "0x0046ff7f",
+          "at": "0x0045f818",
+          "type": 23
+        },
+        {
+          "name": "llm_strat_done_colony",
+          "addr": "0x0046ffa6",
+          "at": "0x0045f827",
+          "type": 4
+        },
+        {
+          "name": "llm_strat_done_colony",
+          "addr": "0x0046ffa6",
+          "at": "0x0045f836",
+          "type": 24
+        },
+        {
+          "name": "llm_strat_done_quarters_vehicles",
+          "addr": "0x0046ffd2",
+          "at": "0x0045f845",
+          "type": 7
+        },
+        {
+          "name": "llm_strat_done_quarters_vehicles",
+          "addr": "0x0046ffd2",
+          "at": "0x0045f854",
+          "type": 27
+        },
+        {
+          "name": "llm_strat_done_quarters_soldiers",
+          "addr": "0x0046fffe",
+          "at": "0x0045f863",
+          "type": 8
+        },
+        {
+          "name": "llm_strat_done_quarters_soldiers",
+          "addr": "0x0046fffe",
+          "at": "0x0045f872",
+          "type": 28
+        },
+        {
+          "name": "llm_strat_done_airfield",
+          "addr": "0x0047002a",
+          "at": "0x0045f881",
+          "type": 9
+        },
+        {
+          "name": "llm_strat_done_airfield",
+          "addr": "0x0047002a",
+          "at": "0x0045f890",
+          "type": 29
+        },
+        {
+          "name": "llm_strat_done_helipad",
+          "addr": "0x00470056",
+          "at": "0x0045f89f",
+          "type": 10
+        },
+        {
+          "name": "llm_strat_done_helipad",
+          "addr": "0x00470056",
+          "at": "0x0045f8ae",
+          "type": 30
+        },
+        {
+          "name": "llm_strat_done_mine",
+          "addr": "0x00470082",
+          "at": "0x0045f8bd",
+          "type": 2
+        },
+        {
+          "name": "llm_strat_done_mine",
+          "addr": "0x00470082",
+          "at": "0x0045f8cc",
+          "type": 22
+        },
+        {
+          "name": "llm_strat_done_production",
+          "addr": "0x004700ae",
+          "at": "0x0045f8db",
+          "type": 1
+        },
+        {
+          "name": "llm_strat_done_production",
+          "addr": "0x004700ae",
+          "at": "0x0045f8ea",
+          "type": 21
+        },
+        {
+          "name": "llm_strat_done_turret",
+          "addr": "0x004700fc",
+          "at": "0x0045f8f9",
+          "type": 5
+        },
+        {
+          "name": "llm_strat_done_turret",
+          "addr": "0x004700fc",
+          "at": "0x0045f908",
+          "type": 25
+        },
+        {
+          "name": "llm_strat_done_silos",
+          "addr": "0x00470123",
+          "at": "0x0045f917",
+          "type": 16
+        },
+        {
+          "name": "llm_strat_done_silos",
+          "addr": "0x00470123",
+          "at": "0x0045f926",
+          "type": 36
+        },
+        {
+          "name": "llm_strat_done_shuttle",
+          "addr": "0x0047014f",
+          "at": "0x0045f935",
+          "type": 13
+        },
+        {
+          "name": "llm_strat_done_shuttle",
+          "addr": "0x0047014f",
+          "at": "0x0045f944",
+          "type": 33
+        },
+        {
+          "name": "llm_strat_done_lab",
+          "addr": "0x004700d5",
+          "at": "0x0045f953",
+          "type": 11
+        },
+        {
+          "name": "llm_strat_done_lab",
+          "addr": "0x004700d5",
+          "at": "0x0045f962",
+          "type": 31
+        }
+      ]
+    },
+    "tick2": {
+      "setter": "llm_bldg_register_tick2_callback",
+      "base": "0x00ae49c0",
+      "slots": 100,
+      "first_id": 1,
+      "cfg_stride": 2114,
+      "cfg_scan_base": "0x00d9ec88",
+      "default": {
+        "name": "llm_strat_bldg_anim_tick",
+        "addr": "0x00476447",
+        "at": "0x0045f983",
+        "type_lo": 1,
+        "type_hi": 39
+      },
+      "assign": [
+        {
+          "name": "llm_strat_bldg_anim_state_barracks_garage_a",
+          "addr": "0x00476627",
+          "at": "0x0045f994",
+          "type": 7
+        },
+        {
+          "name": "llm_strat_bldg_anim_state_barracks_garage_a",
+          "addr": "0x00476627",
+          "at": "0x0045f9a3",
+          "type": 8
+        },
+        {
+          "name": "llm_strat_bldg_anim_state_soldiers_h",
+          "addr": "0x00476e9d",
+          "at": "0x0045f9b2",
+          "type": 28
+        },
+        {
+          "name": "llm_strat_bldg_anim_state_vehicles_h",
+          "addr": "0x004769a9",
+          "at": "0x0045f9c1",
+          "type": 27
+        },
+        {
+          "name": "llm_strat_bldg_anim_state_helipad_a",
+          "addr": "0x00477231",
+          "at": "0x0045f9d0",
+          "type": 10
+        },
+        {
+          "name": "llm_strat_bldg_anim_state_helipad",
+          "addr": "0x004773f4",
+          "at": "0x0045f9df",
+          "type": 30
+        },
+        {
+          "name": "llm_strat_bldg_anim_state_airfield_a",
+          "addr": "0x00477881",
+          "at": "0x0045f9ee",
+          "type": 9
+        },
+        {
+          "name": "llm_strat_bldg_anim_state_airfield_h",
+          "addr": "0x00477bed",
+          "at": "0x0045f9fd",
+          "type": 29
+        },
+        {
+          "name": "llm_strat_bldg_anim_state_online_toggle",
+          "addr": "0x00478520",
+          "at": "0x0045fa0c",
+          "type": 6
+        },
+        {
+          "name": "llm_strat_bldg_anim_state_online_toggle",
+          "addr": "0x00478520",
+          "at": "0x0045fa1b",
+          "type": 26
+        },
+        {
+          "name": "llm_strat_bldg_anim_state_online_toggle",
+          "addr": "0x00478520",
+          "at": "0x0045fa2a",
+          "type": 14
+        },
+        {
+          "name": "llm_strat_bldg_anim_state_online_toggle",
+          "addr": "0x00478520",
+          "at": "0x0045fa39",
+          "type": 34
+        },
+        {
+          "name": "llm_strat_bldg_anim_state_online_toggle",
+          "addr": "0x00478520",
+          "at": "0x0045fa48",
+          "type": 18
+        },
+        {
+          "name": "llm_strat_bldg_anim_state_online_toggle",
+          "addr": "0x00478520",
+          "at": "0x0045fa57",
+          "type": 38
+        },
+        {
+          "name": "llm_strat_bldg_anim_state_shuttle_a",
+          "addr": "0x00477d9e",
+          "at": "0x0045fa66",
+          "type": 13
+        },
+        {
+          "name": "llm_strat_bldg_anim_state_shuttle_h",
+          "addr": "0x0047815f",
+          "at": "0x0045fa75",
+          "type": 33
+        },
+        {
+          "name": "llm_strat_bldg_anim_state_port",
+          "addr": "0x004786f5",
+          "at": "0x0045fa84",
+          "type": 12
+        },
+        {
+          "name": "llm_strat_bldg_anim_state_port_h",
+          "addr": "0x00478bfe",
+          "at": "0x0045fa93",
+          "type": 32
+        },
+        {
+          "name": "llm_strat_bldg_anim_state_turret",
+          "addr": "0x00476605",
+          "at": "0x0045faa2",
+          "type": 5
+        },
+        {
+          "name": "llm_strat_bldg_anim_state_turret",
+          "addr": "0x00476605",
+          "at": "0x0045fab1",
+          "type": 25
+        }
+      ]
+    }
+  },
+  "unnamed": [],
+  "callbacks": [
+    {
+      "name": "llm_strat_done_default",
+      "addr": "0x0046ff2c",
+      "via": [
+        "done"
+      ],
+      "first_at": "0x0045f79e"
+    },
+    {
+      "name": "llm_strat_done_port",
+      "addr": "0x00470198",
+      "via": [
+        "done"
+      ],
+      "first_at": "0x0045f7af"
+    },
+    {
+      "name": "llm_strat_done_relay",
+      "addr": "0x00470171",
+      "via": [
+        "done"
+      ],
+      "first_at": "0x0045f7cd"
+    },
+    {
+      "name": "llm_strat_done_mother",
+      "addr": "0x0046ff4e",
+      "via": [
+        "done"
+      ],
+      "first_at": "0x0045f7eb"
+    },
+    {
+      "name": "llm_strat_done_plant",
+      "addr": "0x0046ff7f",
+      "via": [
+        "done"
+      ],
+      "first_at": "0x0045f809"
+    },
+    {
+      "name": "llm_strat_done_colony",
+      "addr": "0x0046ffa6",
+      "via": [
+        "done"
+      ],
+      "first_at": "0x0045f827"
+    },
+    {
+      "name": "llm_strat_done_quarters_vehicles",
+      "addr": "0x0046ffd2",
+      "via": [
+        "done"
+      ],
+      "first_at": "0x0045f845"
+    },
+    {
+      "name": "llm_strat_done_quarters_soldiers",
+      "addr": "0x0046fffe",
+      "via": [
+        "done"
+      ],
+      "first_at": "0x0045f863"
+    },
+    {
+      "name": "llm_strat_done_airfield",
+      "addr": "0x0047002a",
+      "via": [
+        "done"
+      ],
+      "first_at": "0x0045f881"
+    },
+    {
+      "name": "llm_strat_done_helipad",
+      "addr": "0x00470056",
+      "via": [
+        "done"
+      ],
+      "first_at": "0x0045f89f"
+    },
+    {
+      "name": "llm_strat_done_mine",
+      "addr": "0x00470082",
+      "via": [
+        "done"
+      ],
+      "first_at": "0x0045f8bd"
+    },
+    {
+      "name": "llm_strat_done_production",
+      "addr": "0x004700ae",
+      "via": [
+        "done"
+      ],
+      "first_at": "0x0045f8db"
+    },
+    {
+      "name": "llm_strat_done_turret",
+      "addr": "0x004700fc",
+      "via": [
+        "done"
+      ],
+      "first_at": "0x0045f8f9"
+    },
+    {
+      "name": "llm_strat_done_silos",
+      "addr": "0x00470123",
+      "via": [
+        "done"
+      ],
+      "first_at": "0x0045f917"
+    },
+    {
+      "name": "llm_strat_done_shuttle",
+      "addr": "0x0047014f",
+      "via": [
+        "done"
+      ],
+      "first_at": "0x0045f935"
+    },
+    {
+      "name": "llm_strat_done_lab",
+      "addr": "0x004700d5",
+      "via": [
+        "done"
+      ],
+      "first_at": "0x0045f953"
+    },
+    {
+      "name": "llm_strat_bldg_anim_tick",
+      "addr": "0x00476447",
+      "via": [
+        "tick2"
+      ],
+      "first_at": "0x0045f983"
+    },
+    {
+      "name": "llm_strat_bldg_anim_state_barracks_garage_a",
+      "addr": "0x00476627",
+      "via": [
+        "tick2"
+      ],
+      "first_at": "0x0045f994"
+    },
+    {
+      "name": "llm_strat_bldg_anim_state_soldiers_h",
+      "addr": "0x00476e9d",
+      "via": [
+        "tick2"
+      ],
+      "first_at": "0x0045f9b2"
+    },
+    {
+      "name": "llm_strat_bldg_anim_state_vehicles_h",
+      "addr": "0x004769a9",
+      "via": [
+        "tick2"
+      ],
+      "first_at": "0x0045f9c1"
+    },
+    {
+      "name": "llm_strat_bldg_anim_state_helipad_a",
+      "addr": "0x00477231",
+      "via": [
+        "tick2"
+      ],
+      "first_at": "0x0045f9d0"
+    },
+    {
+      "name": "llm_strat_bldg_anim_state_helipad",
+      "addr": "0x004773f4",
+      "via": [
+        "tick2"
+      ],
+      "first_at": "0x0045f9df"
+    },
+    {
+      "name": "llm_strat_bldg_anim_state_airfield_a",
+      "addr": "0x00477881",
+      "via": [
+        "tick2"
+      ],
+      "first_at": "0x0045f9ee"
+    },
+    {
+      "name": "llm_strat_bldg_anim_state_airfield_h",
+      "addr": "0x00477bed",
+      "via": [
+        "tick2"
+      ],
+      "first_at": "0x0045f9fd"
+    },
+    {
+      "name": "llm_strat_bldg_anim_state_online_toggle",
+      "addr": "0x00478520",
+      "via": [
+        "tick2"
+      ],
+      "first_at": "0x0045fa0c"
+    },
+    {
+      "name": "llm_strat_bldg_anim_state_shuttle_a",
+      "addr": "0x00477d9e",
+      "via": [
+        "tick2"
+      ],
+      "first_at": "0x0045fa66"
+    },
+    {
+      "name": "llm_strat_bldg_anim_state_shuttle_h",
+      "addr": "0x0047815f",
+      "via": [
+        "tick2"
+      ],
+      "first_at": "0x0045fa75"
+    },
+    {
+      "name": "llm_strat_bldg_anim_state_port",
+      "addr": "0x004786f5",
+      "via": [
+        "tick2"
+      ],
+      "first_at": "0x0045fa84"
+    },
+    {
+      "name": "llm_strat_bldg_anim_state_port_h",
+      "addr": "0x00478bfe",
+      "via": [
+        "tick2"
+      ],
+      "first_at": "0x0045fa93"
+    },
+    {
+      "name": "llm_strat_bldg_anim_state_turret",
+      "addr": "0x00476605",
+      "via": [
+        "tick2"
+      ],
+      "first_at": "0x0045faa2"
+    }
+  ]
+}

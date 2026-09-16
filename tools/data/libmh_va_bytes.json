@@ -1,0 +1,8 @@
+{
+ "_generated_by": "tools/scan_libmh_vas.py --record -- do not hand-edit",
+ "_measures": "4-byte little-endian original-image VAs (from addr/mh_calls.gen.h and addr/mh_addrs.gen.h) appearing in the CODE or INITIALISED-DATA sections of the built libmh.lib. Debug sections are excluded -- CodeView records produce false positives; data sections are NOT, because a VA in a static initialiser is exactly the dependency this tool exists to catch (see the docstring).",
+ "_lib": "src/mh_dll/libmh/Release/libmh.lib",
+ "total_vas": 0,
+ "total_sites": 0,
+ "vas": {}
+}

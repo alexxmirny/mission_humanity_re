@@ -1,0 +1,50 @@
+# U28 (e) -- 3-PEER: does the Start barrier cover EVERY occupied human slot, or only slot 1?
+#
+# Both clients poke their OWN slot to Alien LOCALLY with no 0x0c push, so at the host's Start click the
+# host still has Human for both and each client has Alien for itself. With the fix each client adopts
+# the host's array, LOGS the disagreement it just lost, and all three peers enter identical.
+#
+# THE POKE MUST LAND AFTER THE HOST'S LAST LOBBY SNAPSHOT, and that is what the signal handshake below
+# is for. Measured 2026-08-29: with the clients poking as soon as they were seated, the host's periodic
+# 0x09 snapshot (461 B, carries the slot array) landed in the gap while the host was still waiting for
+# the second client and REPAINTED the poke -- client1 poked at 15:11:07.28, a snapshot arrived at
+# 15:11:07.53, and by Start its slot read Human again, so no disagreement existed to detect. Client2
+# poked at 15:11:07.60, 90 ms AFTER its last snapshot, and its diff fired. Same build, same run,
+# opposite outcomes purely on snapshot timing -- i.e. the old scripts tested whatever the network
+# happened to do. So: both clients report ready, the HOST signals `pokenow` once it is done waiting,
+# and only then do they poke. That collapses the exposed window to one signal round-trip.
+#
+# REGISTERED: this is the `U28 3-PEER START BARRIER` shape of the determinism gate --
+# `tools/test_ui.py --determinism --det-3peer`, and it runs automatically inside `--det-standard`
+# alongside the two promotion shapes. Capture-free, so it has no pixel baseline; its verdict is
+# mp_analyze's ALL PAIRS IDENTICAL *plus* proof that both clients really disagreed (run_det_3peer /
+# det3_barrier_report in test_ui.py). Do not hand-roll the ui_test.py invocation -- the shape sets
+# `peers=2`, the lane port and the frame budget for you, and getting any of the three wrong fails
+# silently in a way that reads like a game bug.
+#
+# THIS FILE: client 2 -> lobby slot 2.
+settled value:110
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+present Internet server
+settled Internet server
+clickl Internet server
+present Server address
+settled Connect
+clickl Connect
+sessions 1
+settled Join game
+clickl Join game
+present Network players
+occ 3
+settled Cancel
+signal ready2
+awaitsignal pokenow
+pokerace 2 2
+race 2 2
+signal poked2
+absent Network players
+log CLIENT2 entered -- must be the HOST's race (Human), not our poked Alien
+end

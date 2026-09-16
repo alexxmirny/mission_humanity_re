@@ -1,0 +1,31 @@
+{
+ "_what": "fork F4G: bank paths the committed LIB-REF fixtures ASK FOR and the RETAIL BANK DOES NOT CONTAIN. libref_host answers these with a MISS instead of trapping, because a miss is exactly what the hosted arm answers -- the game's own lookup misses them too. Anything not listed here still TRAPS: this file is a declaration about the bank, not a permission to invent answers.",
+ "_derived_from": "the .nam index of the retail packs (mh.nam + mh_ex.nam), which is a table of 64-byte entries {filename[47], type[5], offset, size, final_size} -- see src/formats/unpack.py. Names only; no game content is committed here.",
+ "_verify": "tools/replay_libref.py re-verifies every row against a real mh.nam on any box that has the game (machine_config.POLYGON) and REFUSES if a declared-absent name turns out to be present. On a box without the game it says so and continues -- the declaration is then carried, not re-proved.",
+ "_measured": {
+  "date": "2026-09-13",
+  "banks": "workdir/mh_en (EN retail)",
+  "mh.nam entries": 843,
+  "mh_ex.nam entries": 71,
+  "*.DMP entries": 224,
+  "init\\H_*.DMP entries": 112,
+  "lowest init\\H_*.DMP": "init\\H_0100.DMP",
+  "highest init\\H_*.DMP": "init\\H_2507.DMP"
+ },
+ "absent_from_bank": [
+  {
+   "name": "init\\H_3100.DMP",
+   "why": "an AI player's scripted base layout, requested by sim/sim_load_base_layout_dmp.cpp at landing. Player index 0 of the 8 the ai-soak fixtures land. The bank's highest H_ script is H_2507, so the retail lookup misses it and the loader takes its `len <= 0` early return in BOTH arms."
+  },
+  {
+   "name": "init\\H_3101.DMP",
+   "why": "as above, player index 1. This is the ONE request the libref-replay-v1 fixture makes."
+  },
+  {"name": "init\\H_3102.DMP", "why": "as above, player index 2."},
+  {"name": "init\\H_3103.DMP", "why": "as above, player index 3."},
+  {"name": "init\\H_3104.DMP", "why": "as above, player index 4."},
+  {"name": "init\\H_3105.DMP", "why": "as above, player index 5."},
+  {"name": "init\\H_3106.DMP", "why": "as above, player index 6."},
+  {"name": "init\\H_3107.DMP", "why": "as above, player index 7."}
+ ]
+}

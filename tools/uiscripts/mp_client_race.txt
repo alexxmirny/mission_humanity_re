@@ -1,0 +1,54 @@
+# U28 / D19 CLIENT: join, change MY OWN race Human -> Alien, then enter the match the host starts.
+#
+# Why this scenario exists. Every other 2-peer scenario leaves both players on race=1, so the whole
+# race-propagation path -- the client's 0x0c slot push, the host applying it, and (U28) the host
+# shipping its authoritative array back with FLAG_START -- is never exercised, and neither is any bug
+# in it. The 2026-08-28 internet game desynced from step 1 for exactly that reason: the client's race
+# change was lost on the host, and no test could have caught it.
+# It is also D19's acceptance input: p2_ai_gates is written through a deliberate +1 aliasing whose
+# lookups are RACE-selected, so it only agrees for the right reason when the two players differ.
+#
+# Pair with mp_host_race.txt. Runner: ui_test.py --host <ip>:mp_host_race.txt --client <ip>:mp_client_race.txt
+
+# join the host by IP -> the joined lobby (same flow as mp_client_join.txt)
+settled value:110
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+present Internet server
+settled Internet server
+clickl Internet server
+present Server address
+settled Connect
+clickl Connect
+sessions 1
+settled Join game
+clickl Join game
+
+present Network players
+# `occ 2` = both players really seated on our view, so the slot rows are built and the spinners exist.
+occ 2
+settled Cancel
+capture r1_lobby_human
+
+# Change OUR OWN race. The row spinners carry no matchable label (their text is DRAWN), so click by
+# absolute coords like the AI-slot cycler does: x=293 is the race column, y=132 is slot 1 (rows are
+# 17px apart from y=115). Only our own row is clickable here -- the host's row 0 spinners carry the
+# 0x40 disabled bit on this peer, which is U11's host-authority holding and is asserted below.
+click 293 132
+# Gate on the STATE, not on a settle: our own race really is Alien now. A click mid-widget-rebuild
+# misses, and this fires only once the rebuild has landed the new value.
+race 1 2
+settled Cancel
+capture r2_lobby_alien
+
+# Tell the host we are in our lobby AND have pushed our race (it gates its Start on seeing race 1 = 2,
+# so the propagation is the rendezvous, not a timing guess).
+signal lobby
+absent Network players
+# Same sim gate + value as match_launch, so this in-game frame is a deterministic reveal stage.
+gameclock 6000
+capture r3_launched
+log CLIENT entered the match as ALIEN (host stays Human)
+end

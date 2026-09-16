@@ -1,0 +1,623 @@
+{
+ "_comment": [
+  "LEGACY CONVENTION MIGRATION -- retires the hand-made __mhfastocall / __custumocall / __mh_float",
+  "models, which predate the imported Watcom cspec (author: the project's analyst, confirmed",
+  "2026-08-03) and declare EVERY register <unaffected> with an empty killedbycall. 23 of the 76",
+  "functions on them clobber a register they promise to preserve, which yields NO artifact at all --",
+  "callers silently get a stale value.",
+  "",
+  "SAFE BECAUSE PARAMETER STORAGE DOES NOT MOVE. 47 of the 76 carry per-function custom storage,",
+  "which overrides the model (verified empirically: setCallingConvention leaves storage and the",
+  "custom flag untouched). The other 29 are __mhfastocall with <=1 parameter, whose sole parameter",
+  "is EAX under both the old and the new model. Zero functions needed re-derivation from",
+  "disassembly.",
+  "",
+  "TARGET SELECTION is measured, not assumed: mh_classify_reg_preservation.py decides which",
+  "registers each function actually clobbers. Note 68 land on plain __watcall because EDX is NOT in",
+  "its <unaffected> list, so an EDX-only clobberer is already correctly modelled there.",
+  "",
+  "GENERATED. Re-run the classifier and regenerate rather than hand-editing."
+ ],
+ "counts": {
+  "__mh_watcall_ebx_volatile": 5,
+  "__mh_watcall_ecx_ebx_volatile": 3,
+  "__watcall": 68
+ },
+ "groups": {
+  "__mh_watcall_ebx_volatile": [
+   {
+    "addr": "0x00422450",
+    "name": "llm_map_region_flood_fill",
+    "from": "__mhfastocall",
+    "custom_storage": true,
+    "clobbers": [
+     "EBX",
+     "EDX"
+    ]
+   },
+   {
+    "addr": "0x004228e9",
+    "name": "llm_map_try_seed_region_at",
+    "from": "__mhfastocall",
+    "custom_storage": true,
+    "clobbers": [
+     "EBX",
+     "EDX"
+    ]
+   },
+   {
+    "addr": "0x00448661",
+    "name": "llm_lzw_compress_and_write_block",
+    "from": "__mhfastocall",
+    "custom_storage": true,
+    "clobbers": [
+     "EBX",
+     "EDX"
+    ]
+   },
+   {
+    "addr": "0x00497f94",
+    "name": "SpendResource",
+    "from": "__mhfastocall",
+    "custom_storage": true,
+    "clobbers": [
+     "EBX",
+     "EDX"
+    ]
+   },
+   {
+    "addr": "0x004cf68b",
+    "name": "_fsopen",
+    "from": "__mhfastocall",
+    "custom_storage": true,
+    "clobbers": [
+     "EBX",
+     "EDX"
+    ]
+   }
+  ],
+  "__mh_watcall_ecx_ebx_volatile": [
+   {
+    "addr": "0x004a3e61",
+    "name": "llm_map_load_loose_fallback",
+    "from": "__mhfastocall",
+    "custom_storage": true,
+    "clobbers": [
+     "EBX",
+     "ECX",
+     "EDX"
+    ]
+   },
+   {
+    "addr": "0x004daec2",
+    "name": "llm_strat_ai_notify_bldg_constructed",
+    "from": "__mhfastocall",
+    "custom_storage": true,
+    "clobbers": [
+     "EBX",
+     "ECX",
+     "EDX"
+    ]
+   },
+   {
+    "addr": "0x004f4b7e",
+    "name": "Decompress",
+    "from": "__mhfastocall",
+    "custom_storage": true,
+    "clobbers": [
+     "EBX",
+     "ECX",
+     "EDX"
+    ]
+   }
+  ],
+  "__watcall": [
+   {
+    "addr": "0x00413a52",
+    "name": "SetEvent",
+    "from": "__mhfastocall",
+    "custom_storage": false,
+    "clobbers": []
+   },
+   {
+    "addr": "0x0041c02e",
+    "name": "ClearAvailableProjects",
+    "from": "__mhfastocall",
+    "custom_storage": false,
+    "clobbers": []
+   },
+   {
+    "addr": "0x004222cf",
+    "name": "GetNextBlock",
+    "from": "__mhfastocall",
+    "custom_storage": false,
+    "clobbers": []
+   },
+   {
+    "addr": "0x0042239a",
+    "name": "llm_map_region_free",
+    "from": "__mhfastocall",
+    "custom_storage": false,
+    "clobbers": []
+   },
+   {
+    "addr": "0x004229c3",
+    "name": "llm_map_region_pick_smaller",
+    "from": "__mhfastocall",
+    "custom_storage": true,
+    "clobbers": [
+     "EDX"
+    ]
+   },
+   {
+    "addr": "0x00422c54",
+    "name": "llm_map_seed_regions_multires",
+    "from": "__mhfastocall",
+    "custom_storage": false,
+    "clobbers": []
+   },
+   {
+    "addr": "0x00423335",
+    "name": "llm_map_build_regions",
+    "from": "__mhfastocall",
+    "custom_storage": false,
+    "clobbers": []
+   },
+   {
+    "addr": "0x00427616",
+    "name": "GetCurrentTime",
+    "from": "__mh_float",
+    "custom_storage": true,
+    "clobbers": []
+   },
+   {
+    "addr": "0x00447bb3",
+    "name": "SavePlanetToDisk",
+    "from": "__mhfastocall",
+    "custom_storage": true,
+    "clobbers": [
+     "EDX"
+    ]
+   },
+   {
+    "addr": "0x0044c35a",
+    "name": "llm_cfg_snapshot_project_inventions",
+    "from": "__mhfastocall",
+    "custom_storage": false,
+    "clobbers": []
+   },
+   {
+    "addr": "0x00453ee4",
+    "name": "llm_strat_session_state_reset",
+    "from": "__mhfastocall",
+    "custom_storage": false,
+    "clobbers": []
+   },
+   {
+    "addr": "0x004552d6",
+    "name": "ReadMap_pre",
+    "from": "__mhfastocall",
+    "custom_storage": false,
+    "clobbers": []
+   },
+   {
+    "addr": "0x0045603e",
+    "name": "FillDefaults",
+    "from": "__mhfastocall",
+    "custom_storage": false,
+    "clobbers": []
+   },
+   {
+    "addr": "0x00456e74",
+    "name": "CalcWidth",
+    "from": "__mhfastocall",
+    "custom_storage": false,
+    "clobbers": []
+   },
+   {
+    "addr": "0x00456eff",
+    "name": "CalcHeight",
+    "from": "__mhfastocall",
+    "custom_storage": true,
+    "clobbers": []
+   },
+   {
+    "addr": "0x00461691",
+    "name": "ChangeAnimTime",
+    "from": "__mhfastocall",
+    "custom_storage": true,
+    "clobbers": []
+   },
+   {
+    "addr": "0x004616fd",
+    "name": "GetAnimTime",
+    "from": "__mhfastocall",
+    "custom_storage": true,
+    "clobbers": []
+   },
+   {
+    "addr": "0x00464855",
+    "name": "llm_strat_fx_anim_spawn",
+    "from": "__mhfastocall",
+    "custom_storage": true,
+    "clobbers": [
+     "EDX"
+    ]
+   },
+   {
+    "addr": "0x0047048e",
+    "name": "llm_strat_add_unit_capacity_vehicles",
+    "from": "__mhfastocall",
+    "custom_storage": false,
+    "clobbers": []
+   },
+   {
+    "addr": "0x00470bdd",
+    "name": "llm_strat_bldg_notify_ui",
+    "from": "__mhfastocall",
+    "custom_storage": true,
+    "clobbers": [
+     "EDX"
+    ]
+   },
+   {
+    "addr": "0x00492ff9",
+    "name": "llm_strat_bldg_pay_cycle_inputs",
+    "from": "__mhfastocall",
+    "custom_storage": true,
+    "clobbers": [
+     "EDX"
+    ]
+   },
+   {
+    "addr": "0x004965d6",
+    "name": "llm_bldg_set_connected_flag",
+    "from": "__mhfastocall",
+    "custom_storage": true,
+    "clobbers": [
+     "EDX"
+    ]
+   },
+   {
+    "addr": "0x00499fbf",
+    "name": "llm_strat_rng_seed_ch0",
+    "from": "__mhfastocall",
+    "custom_storage": true,
+    "clobbers": []
+   },
+   {
+    "addr": "0x004a33d1",
+    "name": "llm_map_load_main_plane",
+    "from": "__mhfastocall",
+    "custom_storage": true,
+    "clobbers": []
+   },
+   {
+    "addr": "0x004a34f8",
+    "name": "llm_map_load_passable_plane",
+    "from": "__mhfastocall",
+    "custom_storage": false,
+    "clobbers": []
+   },
+   {
+    "addr": "0x004a3594",
+    "name": "llm_map_load_halfres_plane",
+    "from": "__mhfastocall",
+    "custom_storage": false,
+    "clobbers": []
+   },
+   {
+    "addr": "0x004a36c5",
+    "name": "llm_map_load_objects",
+    "from": "__mhfastocall",
+    "custom_storage": true,
+    "clobbers": []
+   },
+   {
+    "addr": "0x004a3b1c",
+    "name": "llm_map_load_landing_spots",
+    "from": "__mhfastocall",
+    "custom_storage": false,
+    "clobbers": []
+   },
+   {
+    "addr": "0x004a3b9d",
+    "name": "ReadMapFile",
+    "from": "__custumocall",
+    "custom_storage": true,
+    "clobbers": []
+   },
+   {
+    "addr": "0x004a4177",
+    "name": "llm_map_readfile_loose_fallback",
+    "from": "__custumocall",
+    "custom_storage": true,
+    "clobbers": []
+   },
+   {
+    "addr": "0x004a9bca",
+    "name": "GetDefineIndex",
+    "from": "__mhfastocall",
+    "custom_storage": true,
+    "clobbers": []
+   },
+   {
+    "addr": "0x004a9c6f",
+    "name": "GetBankIndex",
+    "from": "__mhfastocall",
+    "custom_storage": false,
+    "clobbers": []
+   },
+   {
+    "addr": "0x004a9d00",
+    "name": "GetSpriteIndex",
+    "from": "__custumocall",
+    "custom_storage": true,
+    "clobbers": []
+   },
+   {
+    "addr": "0x004a9da5",
+    "name": "GetIconIndex",
+    "from": "__custumocall",
+    "custom_storage": true,
+    "clobbers": []
+   },
+   {
+    "addr": "0x004a9e4a",
+    "name": "GetAnimIndex",
+    "from": "__mhfastocall",
+    "custom_storage": false,
+    "clobbers": []
+   },
+   {
+    "addr": "0x004a9eef",
+    "name": "GetWeaponIndex",
+    "from": "__mhfastocall",
+    "custom_storage": false,
+    "clobbers": []
+   },
+   {
+    "addr": "0x004a9f82",
+    "name": "GetUnitIndex",
+    "from": "__mhfastocall",
+    "custom_storage": false,
+    "clobbers": []
+   },
+   {
+    "addr": "0x004aa015",
+    "name": "GetBuildingIndex",
+    "from": "__mhfastocall",
+    "custom_storage": true,
+    "clobbers": []
+   },
+   {
+    "addr": "0x004aa0a8",
+    "name": "GetInventionIndex",
+    "from": "__mhfastocall",
+    "custom_storage": true,
+    "clobbers": []
+   },
+   {
+    "addr": "0x004aa13b",
+    "name": "GetPlanetIndex",
+    "from": "__mhfastocall",
+    "custom_storage": true,
+    "clobbers": []
+   },
+   {
+    "addr": "0x004aac19",
+    "name": "CopyStaticToDynamic",
+    "from": "__mhfastocall",
+    "custom_storage": true,
+    "clobbers": []
+   },
+   {
+    "addr": "0x004b085a",
+    "name": "ConstructWeapons",
+    "from": "__mhfastocall",
+    "custom_storage": false,
+    "clobbers": []
+   },
+   {
+    "addr": "0x004b0de8",
+    "name": "ConstructUnits",
+    "from": "__mhfastocall",
+    "custom_storage": false,
+    "clobbers": []
+   },
+   {
+    "addr": "0x004b178f",
+    "name": "ConstructBuildings",
+    "from": "__mhfastocall",
+    "custom_storage": false,
+    "clobbers": []
+   },
+   {
+    "addr": "0x004b2c74",
+    "name": "ConstructPlanets",
+    "from": "__custumocall",
+    "custom_storage": true,
+    "clobbers": []
+   },
+   {
+    "addr": "0x004b33ce",
+    "name": "ConstructUpgrades",
+    "from": "__mhfastocall",
+    "custom_storage": false,
+    "clobbers": []
+   },
+   {
+    "addr": "0x004b3db1",
+    "name": "CompileText",
+    "from": "__mhfastocall",
+    "custom_storage": false,
+    "clobbers": []
+   },
+   {
+    "addr": "0x004b3f16",
+    "name": "ConstructTrees",
+    "from": "__mhfastocall",
+    "custom_storage": false,
+    "clobbers": []
+   },
+   {
+    "addr": "0x004b84ff",
+    "name": "llm_menu_campaign_start_and_enter",
+    "from": "__mhfastocall",
+    "custom_storage": false,
+    "clobbers": []
+   },
+   {
+    "addr": "0x004b9582",
+    "name": "GetTloIndex",
+    "from": "__custumocall",
+    "custom_storage": true,
+    "clobbers": []
+   },
+   {
+    "addr": "0x004be21d",
+    "name": "llm_lobby_join_handler",
+    "from": "__mhfastocall",
+    "custom_storage": true,
+    "clobbers": []
+   },
+   {
+    "addr": "0x004cefb7",
+    "name": "GetFileEntry",
+    "from": "__custumocall",
+    "custom_storage": true,
+    "clobbers": [
+     "EDX"
+    ]
+   },
+   {
+    "addr": "0x004cf331",
+    "name": "wide_to_short_str",
+    "from": "__mhfastocall",
+    "custom_storage": true,
+    "clobbers": [
+     "EDX"
+    ]
+   },
+   {
+    "addr": "0x004cf427",
+    "name": "getAsciiVer",
+    "from": "__mhfastocall",
+    "custom_storage": false,
+    "clobbers": []
+   },
+   {
+    "addr": "0x004d0155",
+    "name": "malloc",
+    "from": "__custumocall",
+    "custom_storage": true,
+    "clobbers": []
+   },
+   {
+    "addr": "0x004d0582",
+    "name": "w_strlen",
+    "from": "__mhfastocall",
+    "custom_storage": false,
+    "clobbers": []
+   },
+   {
+    "addr": "0x004d0596",
+    "name": "trunc",
+    "from": "__mh_float",
+    "custom_storage": true,
+    "clobbers": []
+   },
+   {
+    "addr": "0x004d1030",
+    "name": "llm_input_key_dequeue",
+    "from": "__mhfastocall",
+    "custom_storage": false,
+    "clobbers": []
+   },
+   {
+    "addr": "0x004d1780",
+    "name": "fill_data",
+    "from": "__mhfastocall",
+    "custom_storage": true,
+    "clobbers": [
+     "EDX"
+    ]
+   },
+   {
+    "addr": "0x004d4658",
+    "name": "IsAiPlane",
+    "from": "__mhfastocall",
+    "custom_storage": true,
+    "clobbers": [
+     "EDX"
+    ]
+   },
+   {
+    "addr": "0x004d46a4",
+    "name": "IsAiHeli",
+    "from": "__mhfastocall",
+    "custom_storage": true,
+    "clobbers": [
+     "EDX"
+    ]
+   },
+   {
+    "addr": "0x004d4760",
+    "name": "IsAiGround",
+    "from": "__mhfastocall",
+    "custom_storage": true,
+    "clobbers": [
+     "EDX"
+    ]
+   },
+   {
+    "addr": "0x004d47be",
+    "name": "IsAiSoldier",
+    "from": "__mhfastocall",
+    "custom_storage": true,
+    "clobbers": [
+     "EDX"
+    ]
+   },
+   {
+    "addr": "0x004d4a2e",
+    "name": "llm_strat_ai_group_member_link",
+    "from": "__mhfastocall",
+    "custom_storage": true,
+    "clobbers": [
+     "EDX"
+    ]
+   },
+   {
+    "addr": "0x004dbeec",
+    "name": "UpdateResourceStats",
+    "from": "__mhfastocall",
+    "custom_storage": true,
+    "clobbers": [
+     "EDX"
+    ]
+   },
+   {
+    "addr": "0x004de180",
+    "name": "lower_char",
+    "from": "__mhfastocall",
+    "custom_storage": true,
+    "clobbers": []
+   },
+   {
+    "addr": "0x004f1900",
+    "name": "__AccessSemaphore",
+    "from": "__mhfastocall",
+    "custom_storage": true,
+    "clobbers": []
+   },
+   {
+    "addr": "0x004f1987",
+    "name": "__MultipleThread",
+    "from": "__mhfastocall",
+    "custom_storage": true,
+    "clobbers": []
+   }
+  ]
+ }
+}

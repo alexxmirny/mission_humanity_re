@@ -1,0 +1,420 @@
+{
+ "_generated_by": "tools/check_net_session_addrs.py --rederive",
+ "_do_not_hand_edit": true,
+ "_comment": [
+  "NET-SESSION's address table, extracted from the RETAIL bytes of",
+  "llm_net_session_globals_reset -- every absolute store the original performs, folded",
+  "into the 22 fields libmh's session_init_state claims.",
+  "",
+  "WHAT IT IS EVIDENCE FOR. The offline oracle netsessiontest proves our body writes the",
+  "right values into a fixture; it cannot prove our 22 pointers name the addresses the",
+  "ORIGINAL writes. This table is that second half, read out of the instruction stream",
+  "rather than out of a hand list -- see the header of the generator for the four arms",
+  "and for what it replaces (the live read-back probe, deleted at fork F2).",
+  "",
+  "VALUES ARE RAW BIT PATTERNS. The doubles are stored by the original as two dword",
+  "immediates, so the comparison is over the eight bytes (0x4024000000000000 == 10.0),",
+  "which is exact rather than an epsilon question.",
+  "",
+  "REBASELINING IS EXPLICIT: --rederive, never a silent re-stamp on a changed binary."
+ ],
+ "_measured": "2026-09-12",
+ "function": {
+  "name": "llm_net_session_globals_reset",
+  "entry": "0x0049e4c3",
+  "end": "0x0049e5fc",
+  "size": 314
+ },
+ "provenance": {
+  "exe": "mh.exe",
+  "exe_sha256": "1cd5810c5c0b845f0b7c8359a494243d9bec51397c8becfe149841be09c2562d",
+  "body_sha256": "60be4b056e444201d02f62e2d4fd930198aec9502ce45d3569e3d1acdb513556"
+ },
+ "classification": {
+  "instructions": 46,
+  "bytes": 314,
+  "by_kind": {
+   "epilogue": 8,
+   "prologue": 9,
+   "stack_probe_call": 1,
+   "store": 28
+  },
+  "unclassified": []
+ },
+ "stores": [
+  {
+   "at": "0x0049e4db",
+   "addr": "0x005d55ac",
+   "width": 4,
+   "value": "0x00000000"
+  },
+  {
+   "at": "0x0049e4e5",
+   "addr": "0x005d55b8",
+   "width": 4,
+   "value": "0x00000000"
+  },
+  {
+   "at": "0x0049e4ef",
+   "addr": "0x005d55b0",
+   "width": 4,
+   "value": "0x00000000"
+  },
+  {
+   "at": "0x0049e4f9",
+   "addr": "0x005d54c0",
+   "width": 4,
+   "value": "0x00000000"
+  },
+  {
+   "at": "0x0049e503",
+   "addr": "0x005d54c8",
+   "width": 4,
+   "value": "0x00000000"
+  },
+  {
+   "at": "0x0049e50d",
+   "addr": "0x005d59c4",
+   "width": 4,
+   "value": "0x00000000"
+  },
+  {
+   "at": "0x0049e517",
+   "addr": "0x005d1358",
+   "width": 4,
+   "value": "0x00000000"
+  },
+  {
+   "at": "0x0049e521",
+   "addr": "0x005d1364",
+   "width": 4,
+   "value": "0x00000000"
+  },
+  {
+   "at": "0x0049e52b",
+   "addr": "0x005d54bc",
+   "width": 4,
+   "value": "0x00000000"
+  },
+  {
+   "at": "0x0049e535",
+   "addr": "0x005d558c",
+   "width": 4,
+   "value": "0x00000000"
+  },
+  {
+   "at": "0x0049e53f",
+   "addr": "0x005d5590",
+   "width": 4,
+   "value": "0x40240000"
+  },
+  {
+   "at": "0x0049e549",
+   "addr": "0x005d5594",
+   "width": 4,
+   "value": "0x00000000"
+  },
+  {
+   "at": "0x0049e553",
+   "addr": "0x005d5598",
+   "width": 4,
+   "value": "0x40240000"
+  },
+  {
+   "at": "0x0049e55d",
+   "addr": "0x005d55bc",
+   "width": 4,
+   "value": "0x00000000"
+  },
+  {
+   "at": "0x0049e567",
+   "addr": "0x005d55c0",
+   "width": 4,
+   "value": "0x40240000"
+  },
+  {
+   "at": "0x0049e571",
+   "addr": "0x005d55c4",
+   "width": 4,
+   "value": "0x00000000"
+  },
+  {
+   "at": "0x0049e57b",
+   "addr": "0x005d55c8",
+   "width": 4,
+   "value": "0x40518000"
+  },
+  {
+   "at": "0x0049e585",
+   "addr": "0x00e58344",
+   "width": 4,
+   "value": "0x00000002"
+  },
+  {
+   "at": "0x0049e58f",
+   "addr": "0x00e58789",
+   "width": 4,
+   "value": "0x0000003c"
+  },
+  {
+   "at": "0x0049e599",
+   "addr": "0x00e5878d",
+   "width": 4,
+   "value": "0x00000000"
+  },
+  {
+   "at": "0x0049e5a3",
+   "addr": "0x00e58791",
+   "width": 4,
+   "value": "0x00000000"
+  },
+  {
+   "at": "0x0049e5ad",
+   "addr": "0x00e58795",
+   "width": 4,
+   "value": "0x00000000"
+  },
+  {
+   "at": "0x0049e5b7",
+   "addr": "0x00e58799",
+   "width": 4,
+   "value": "0x00000000"
+  },
+  {
+   "at": "0x0049e5c1",
+   "addr": "0x00e5879d",
+   "width": 4,
+   "value": "0x3ff00000"
+  },
+  {
+   "at": "0x0049e5cb",
+   "addr": "0x00e587a1",
+   "width": 4,
+   "value": "0x00000000"
+  },
+  {
+   "at": "0x0049e5d5",
+   "addr": "0x00e587a5",
+   "width": 4,
+   "value": "0xbff00000"
+  },
+  {
+   "at": "0x0049e5df",
+   "addr": "0x00e587a9",
+   "width": 4,
+   "value": "0x00000000"
+  },
+  {
+   "at": "0x0049e5e9",
+   "addr": "0x00e587ad",
+   "width": 4,
+   "value": "0x00000000"
+  }
+ ],
+ "fields": [
+  {
+   "region": "NET_LOCAL_PLAYER_INDEX",
+   "addr": "0x005d55ac",
+   "width": 4,
+   "bits": "0x00000000",
+   "stores": [
+    "0x0049e4db"
+   ]
+  },
+  {
+   "region": "NET_LOCAL_PLAYER_SLOT",
+   "addr": "0x005d55b8",
+   "width": 4,
+   "bits": "0x00000000",
+   "stores": [
+    "0x0049e4e5"
+   ]
+  },
+  {
+   "region": "NET_IS_HOST",
+   "addr": "0x005d55b0",
+   "width": 4,
+   "bits": "0x00000000",
+   "stores": [
+    "0x0049e4ef"
+   ]
+  },
+  {
+   "region": "NET_LOCKSTEP_PLAYER_COUNT",
+   "addr": "0x005d54c0",
+   "width": 4,
+   "bits": "0x00000000",
+   "stores": [
+    "0x0049e4f9"
+   ]
+  },
+  {
+   "region": "NET_LOBBY_MAP_RECV_DONE",
+   "addr": "0x005d54c8",
+   "width": 4,
+   "bits": "0x00000000",
+   "stores": [
+    "0x0049e503"
+   ]
+  },
+  {
+   "region": "NET_SEND_BUF_CURSOR",
+   "addr": "0x005d59c4",
+   "width": 4,
+   "bits": "0x00000000",
+   "stores": [
+    "0x0049e50d"
+   ]
+  },
+  {
+   "region": "MP_PROBE_SERVER_COUNT",
+   "addr": "0x005d1358",
+   "width": 4,
+   "bits": "0x00000000",
+   "stores": [
+    "0x0049e517"
+   ]
+  },
+  {
+   "region": "NET_SESSION_COUNT",
+   "addr": "0x005d1364",
+   "width": 4,
+   "bits": "0x00000000",
+   "stores": [
+    "0x0049e521"
+   ]
+  },
+  {
+   "region": "NET_LOBBY_SCAN_HOST_COUNT",
+   "addr": "0x005d54bc",
+   "width": 4,
+   "bits": "0x00000000",
+   "stores": [
+    "0x0049e52b"
+   ]
+  },
+  {
+   "region": "STRAT_LOCKSTEP_COMMITTED_HORIZON",
+   "addr": "0x005d558c",
+   "width": 8,
+   "bits": "0x4024000000000000",
+   "stores": [
+    "0x0049e535",
+    "0x0049e53f"
+   ]
+  },
+  {
+   "region": "STRAT_LOCKSTEP_HORIZON",
+   "addr": "0x005d5594",
+   "width": 8,
+   "bits": "0x4024000000000000",
+   "stores": [
+    "0x0049e549",
+    "0x0049e553"
+   ]
+  },
+  {
+   "region": "STRAT_LOCKSTEP_STEP_SIZE",
+   "addr": "0x005d55bc",
+   "width": 8,
+   "bits": "0x4024000000000000",
+   "stores": [
+    "0x0049e55d",
+    "0x0049e567"
+   ]
+  },
+  {
+   "region": "STRAT_LOCKSTEP_ADAPT_NEXT_TIME",
+   "addr": "0x005d55c4",
+   "width": 8,
+   "bits": "0x4051800000000000",
+   "stores": [
+    "0x0049e571",
+    "0x0049e57b"
+   ]
+  },
+  {
+   "region": "GAME_SESSION_MODE",
+   "addr": "0x00e58344",
+   "width": 4,
+   "bits": "0x00000002",
+   "stores": [
+    "0x0049e585"
+   ]
+  },
+  {
+   "region": "NET_LOCKSTEP_SYNC_RETRY_COUNTDOWN",
+   "addr": "0x00e58789",
+   "width": 4,
+   "bits": "0x0000003c",
+   "stores": [
+    "0x0049e58f"
+   ]
+  },
+  {
+   "region": "NET_LOCKSTEP_STALL_NAG_COUNT",
+   "addr": "0x00e5878d",
+   "width": 4,
+   "bits": "0x00000000",
+   "stores": [
+    "0x0049e599"
+   ]
+  },
+  {
+   "region": "NET_LOCKSTEP_RESYNC_TRIGGER_COUNT",
+   "addr": "0x00e58791",
+   "width": 4,
+   "bits": "0x00000000",
+   "stores": [
+    "0x0049e5a3"
+   ]
+  },
+  {
+   "region": "STRAT_LOCKSTEP_STALL_COUNT",
+   "addr": "0x00e58795",
+   "width": 4,
+   "bits": "0x00000000",
+   "stores": [
+    "0x0049e5ad"
+   ]
+  },
+  {
+   "region": "NET_LOCKSTEP_SYNC_WAIT_ELAPSED",
+   "addr": "0x00e58799",
+   "width": 8,
+   "bits": "0x3ff0000000000000",
+   "stores": [
+    "0x0049e5b7",
+    "0x0049e5c1"
+   ]
+  },
+  {
+   "region": "NET_LOCKSTEP_PEER_TIMEOUT_ELAPSED",
+   "addr": "0x00e587a1",
+   "width": 8,
+   "bits": "0xbff0000000000000",
+   "stores": [
+    "0x0049e5cb",
+    "0x0049e5d5"
+   ]
+  },
+  {
+   "region": "NET_SYNC_WAIT_ACTIVE",
+   "addr": "0x00e587a9",
+   "width": 4,
+   "bits": "0x00000000",
+   "stores": [
+    "0x0049e5df"
+   ]
+  },
+  {
+   "region": "NET_RESYNC_IN_PROGRESS",
+   "addr": "0x00e587ad",
+   "width": 4,
+   "bits": "0x00000000",
+   "stores": [
+    "0x0049e5e9"
+   ]
+  }
+ ]
+}

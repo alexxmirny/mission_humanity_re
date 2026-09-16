@@ -1,0 +1,5106 @@
+{
+ "_generated_by": "tools/gen_world_snapshot.py --refresh",
+ "_do_not_hand_edit": "verdicts are derived; the reasons live in world_snapshot_dispositions.json",
+ "universe": 845,
+ "carried": 829,
+ "carried_bytes": 7711960,
+ "excluded": 16,
+ "unaccounted": 0,
+ "hash_backed_regions": 51,
+ "overlapping_blocks": [
+  {
+   "a": "MESSAGE_TIME",
+   "b": "ANIM",
+   "bytes": 16
+  },
+  {
+   "a": "UPGRADES",
+   "b": "PROD_SHUTTLE_SLOTS",
+   "bytes": 20
+  },
+  {
+   "a": "CLICK_SELECT_TARGET_ID",
+   "b": "CLICK_SELECT_TARGET_FLAGS",
+   "bytes": 2
+  },
+  {
+   "a": "GAME_SESSION_MODE",
+   "b": "DEBUG_TAP_FLAG",
+   "bytes": 1619
+  }
+ ],
+ "blocks": [
+  {
+   "rid": 4,
+   "id": "STRAT_ORDER_ACK_VOICE_COOLDOWN_SEC",
+   "name": "_G_LLM_STRAT_ORDER_ACK_VOICE_COOLDOWN_SEC",
+   "len": 8
+  },
+  {
+   "rid": 5,
+   "id": "STRAT_RELOAD_TICK_BACKDATE",
+   "name": "_G_LLM_STRAT_RELOAD_TICK_BACKDATE",
+   "len": 8
+  },
+  {
+   "rid": 6,
+   "id": "STRAT_RELOAD_CYCLE_BACKDATE",
+   "name": "_G_LLM_STRAT_RELOAD_CYCLE_BACKDATE",
+   "len": 8
+  },
+  {
+   "rid": 7,
+   "id": "GAME_CLOCK_TICKS_PER_SECOND",
+   "name": "_G_LLM_GAME_CLOCK_TICKS_PER_SECOND",
+   "len": 8
+  },
+  {
+   "rid": 8,
+   "id": "TACT_UNIT_ANIM_FRAME_INTERVAL_BASE",
+   "name": "_G_LLM_TACT_UNIT_ANIM_FRAME_INTERVAL_BASE",
+   "len": 8
+  },
+  {
+   "rid": 9,
+   "id": "TACT_UNIT_ANIM_STEP_SEC_1",
+   "name": "_G_LLM_TACT_UNIT_ANIM_STEP_SEC_1",
+   "len": 8
+  },
+  {
+   "rid": 10,
+   "id": "TACT_UNIT_ANIM_JITTER_SCALE_1",
+   "name": "_G_LLM_TACT_UNIT_ANIM_JITTER_SCALE_1",
+   "len": 8
+  },
+  {
+   "rid": 11,
+   "id": "TACT_UNIT_ANIM_STEP_SEC_2",
+   "name": "_G_LLM_TACT_UNIT_ANIM_STEP_SEC_2",
+   "len": 8
+  },
+  {
+   "rid": 12,
+   "id": "TACT_UNIT_ANIM_JITTER_SCALE_2",
+   "name": "_G_LLM_TACT_UNIT_ANIM_JITTER_SCALE_2",
+   "len": 8
+  },
+  {
+   "rid": 13,
+   "id": "TACT_DOOR_OPEN_HOLD_TIME_SEC",
+   "name": "_G_LLM_TACT_DOOR_OPEN_HOLD_TIME_SEC",
+   "len": 8
+  },
+  {
+   "rid": 14,
+   "id": "TACT_UNIT_WANDER_RETRY_INTERVAL",
+   "name": "_G_LLM_TACT_UNIT_WANDER_RETRY_INTERVAL",
+   "len": 8
+  },
+  {
+   "rid": 15,
+   "id": "TACT_SIDEBAR_FMT_UNIT_ID",
+   "name": "_G_LLM_TACT_SIDEBAR_FMT_UNIT_ID",
+   "len": 8
+  },
+  {
+   "rid": 16,
+   "id": "TACT_SIDEBAR_FMT_UNIT_NAME",
+   "name": "_G_LLM_TACT_SIDEBAR_FMT_UNIT_NAME",
+   "len": 6
+  },
+  {
+   "rid": 17,
+   "id": "TACT_COLISION1_BIAS",
+   "name": "_G_LLM_TACT_COLISION1_BIAS",
+   "len": 8
+  },
+  {
+   "rid": 18,
+   "id": "TACT_COLISION2_BIAS",
+   "name": "_G_LLM_TACT_COLISION2_BIAS",
+   "len": 8
+  },
+  {
+   "rid": 19,
+   "id": "TACT_TELEPORT_DEATH_BIAS",
+   "name": "_G_LLM_TACT_TELEPORT_DEATH_BIAS",
+   "len": 8
+  },
+  {
+   "rid": 20,
+   "id": "NET_LOCKSTEP_PEER_TIMEOUT_SECS",
+   "name": "_G_LLM_NET_LOCKSTEP_PEER_TIMEOUT_SECS",
+   "len": 8
+  },
+  {
+   "rid": 21,
+   "id": "U__S___S",
+   "name": "u_%s_(%s)",
+   "len": 16
+  },
+  {
+   "rid": 22,
+   "id": "STRAT_LOCKSTEP_STEP_MAX",
+   "name": "_G_LLM_STRAT_LOCKSTEP_STEP_MAX",
+   "len": 8
+  },
+  {
+   "rid": 23,
+   "id": "STRAT_LOCKSTEP_STEP_GROW_MUL",
+   "name": "_G_LLM_STRAT_LOCKSTEP_STEP_GROW_MUL",
+   "len": 8
+  },
+  {
+   "rid": 24,
+   "id": "STRAT_LOCKSTEP_STEP_SHRINK_DIV",
+   "name": "_G_LLM_STRAT_LOCKSTEP_STEP_SHRINK_DIV",
+   "len": 8
+  },
+  {
+   "rid": 25,
+   "id": "STRAT_LOCKSTEP_STEP_MIN_FPS_NUM_CMP",
+   "name": "_G_LLM_STRAT_LOCKSTEP_STEP_MIN_FPS_NUM_CMP",
+   "len": 8
+  },
+  {
+   "rid": 26,
+   "id": "STRAT_LOCKSTEP_STEP_MIN_FPS_NUM_SET",
+   "name": "_G_LLM_STRAT_LOCKSTEP_STEP_MIN_FPS_NUM_SET",
+   "len": 8
+  },
+  {
+   "rid": 27,
+   "id": "STRAT_LOCKSTEP_ADAPT_INTERVAL_SECS",
+   "name": "_G_LLM_STRAT_LOCKSTEP_ADAPT_INTERVAL_SECS",
+   "len": 8
+  },
+  {
+   "rid": 28,
+   "id": "STRAT_FPS_WINDOW_NUM",
+   "name": "_G_LLM_STRAT_FPS_WINDOW_NUM",
+   "len": 8
+  },
+  {
+   "rid": 29,
+   "id": "STRAT_SUBTICK_A_PERIOD",
+   "name": "_G_LLM_STRAT_SUBTICK_A_PERIOD",
+   "len": 8
+  },
+  {
+   "rid": 30,
+   "id": "STRAT_SUBTICK_A_PERIOD_POS",
+   "name": "_G_LLM_STRAT_SUBTICK_A_PERIOD_POS",
+   "len": 8
+  },
+  {
+   "rid": 31,
+   "id": "STRAT_SUBTICK_A_PERIOD_NEG",
+   "name": "_G_LLM_STRAT_SUBTICK_A_PERIOD_NEG",
+   "len": 8
+  },
+  {
+   "rid": 32,
+   "id": "STRAT_SUBTICK_B_PERIOD",
+   "name": "_G_LLM_STRAT_SUBTICK_B_PERIOD",
+   "len": 8
+  },
+  {
+   "rid": 33,
+   "id": "STRAT_SUBTICK_B_PERIOD_POS",
+   "name": "_G_LLM_STRAT_SUBTICK_B_PERIOD_POS",
+   "len": 8
+  },
+  {
+   "rid": 34,
+   "id": "STRAT_SUBTICK_B_PERIOD_NEG",
+   "name": "_G_LLM_STRAT_SUBTICK_B_PERIOD_NEG",
+   "len": 8
+  },
+  {
+   "rid": 35,
+   "id": "STRAT_PROD_CHECK_PERIOD_NEG",
+   "name": "_G_LLM_STRAT_PROD_CHECK_PERIOD_NEG",
+   "len": 8
+  },
+  {
+   "rid": 36,
+   "id": "GAME_PLANET_AVAILABLE_NOTIFY_DELAY",
+   "name": "_G_LLM_GAME_PLANET_AVAILABLE_NOTIFY_DELAY",
+   "len": 8
+  },
+  {
+   "rid": 37,
+   "id": "STRAT_UPGRADE_SPEED_PERCENT_DIVISOR",
+   "name": "_G_LLM_STRAT_UPGRADE_SPEED_PERCENT_DIVISOR",
+   "len": 8
+  },
+  {
+   "rid": 38,
+   "id": "STRAT_UPGRADE_MSG_SEP_BEFORE_CATEGORY",
+   "name": "_G_LLM_STRAT_UPGRADE_MSG_SEP_BEFORE_CATEGORY",
+   "len": 2
+  },
+  {
+   "rid": 39,
+   "id": "STRAT_UPGRADE_MSG_SEP_BEFORE_NAME",
+   "name": "_G_LLM_STRAT_UPGRADE_MSG_SEP_BEFORE_NAME",
+   "len": 2
+  },
+  {
+   "rid": 40,
+   "id": "STRAT_UPGRADE_MSG_CLAUSE_SEP_FIRST",
+   "name": "_G_LLM_STRAT_UPGRADE_MSG_CLAUSE_SEP_FIRST",
+   "len": 2
+  },
+  {
+   "rid": 41,
+   "id": "STRAT_UPGRADE_MSG_CLAUSE_SEP_NEXT",
+   "name": "_G_LLM_STRAT_UPGRADE_MSG_CLAUSE_SEP_NEXT",
+   "len": 2
+  },
+  {
+   "rid": 42,
+   "id": "STRAT_UPGRADE_MSG_TRAILER",
+   "name": "_G_LLM_STRAT_UPGRADE_MSG_TRAILER",
+   "len": 2
+  },
+  {
+   "rid": 43,
+   "id": "100F",
+   "name": "_100f",
+   "len": 8
+  },
+  {
+   "rid": 44,
+   "id": "MATH_PERCENT_DIVISOR",
+   "name": "_G_LLM_MATH_PERCENT_DIVISOR",
+   "len": 8
+  },
+  {
+   "rid": 45,
+   "id": "STRAT_BLDG_MAIN_BASE_DAMAGE_MULT",
+   "name": "_G_LLM_STRAT_BLDG_MAIN_BASE_DAMAGE_MULT",
+   "len": 8
+  },
+  {
+   "rid": 46,
+   "id": "STRAT_BLDG_LOST_FEEDBACK_COOLDOWN_MOTHER",
+   "name": "_G_LLM_STRAT_BLDG_LOST_FEEDBACK_COOLDOWN_MOTHER",
+   "len": 8
+  },
+  {
+   "rid": 47,
+   "id": "STRAT_BLDG_LOST_FEEDBACK_COOLDOWN_OTHER",
+   "name": "_G_LLM_STRAT_BLDG_LOST_FEEDBACK_COOLDOWN_OTHER",
+   "len": 8
+  },
+  {
+   "rid": 48,
+   "id": "STRAT_UNIT_LOST_FEEDBACK_COOLDOWN",
+   "name": "_G_LLM_STRAT_UNIT_LOST_FEEDBACK_COOLDOWN",
+   "len": 8
+  },
+  {
+   "rid": 49,
+   "id": "STRAT_UNIT_ENERGY_STATUS_PERCENT_SCALE",
+   "name": "_G_LLM_STRAT_UNIT_ENERGY_STATUS_PERCENT_SCALE",
+   "len": 8
+  },
+  {
+   "rid": 50,
+   "id": "STRAT_BLDG_ENERGY_STATUS_PERCENT_SCALE",
+   "name": "_G_LLM_STRAT_BLDG_ENERGY_STATUS_PERCENT_SCALE",
+   "len": 8
+  },
+  {
+   "rid": 51,
+   "id": "STRAT_SQUAD_ASSAULT_POWER_PERCENT_SCALE",
+   "name": "_G_LLM_STRAT_SQUAD_ASSAULT_POWER_PERCENT_SCALE",
+   "len": 8
+  },
+  {
+   "rid": 52,
+   "id": "STRAT_BLDG_ENERGY_TO_PERCENT_SCALE",
+   "name": "_G_LLM_STRAT_BLDG_ENERGY_TO_PERCENT_SCALE",
+   "len": 8
+  },
+  {
+   "rid": 53,
+   "id": "STRAT_BLDG_ENERGY_PERCENT_TO_ABS_SCALE",
+   "name": "_G_LLM_STRAT_BLDG_ENERGY_PERCENT_TO_ABS_SCALE",
+   "len": 8
+  },
+  {
+   "rid": 54,
+   "id": "FX_DEBRIS_SCALE_DIVISOR",
+   "name": "_G_LLM_FX_DEBRIS_SCALE_DIVISOR",
+   "len": 4
+  },
+  {
+   "rid": 55,
+   "id": "STRAT_LOCKSTEP_SESSION_ADAPT_DELAY",
+   "name": "_G_LLM_STRAT_LOCKSTEP_SESSION_ADAPT_DELAY",
+   "len": 8
+  },
+  {
+   "rid": 56,
+   "id": "STRAT_INVENTION_NAME_PLACEHOLDER",
+   "name": "_G_LLM_STRAT_INVENTION_NAME_PLACEHOLDER",
+   "len": 12
+  },
+  {
+   "rid": 57,
+   "id": "STRAT_EMPTY_NAME_STR",
+   "name": "_G_LLM_STRAT_EMPTY_NAME_STR",
+   "len": 1
+  },
+  {
+   "rid": 58,
+   "id": "STRAT_STORAGE_STATS_INIT_DELAY",
+   "name": "_G_LLM_STRAT_STORAGE_STATS_INIT_DELAY",
+   "len": 8
+  },
+  {
+   "rid": 59,
+   "id": "STRAT_PROJECTILE_DIST_SCALE",
+   "name": "_G_LLM_STRAT_PROJECTILE_DIST_SCALE",
+   "len": 8
+  },
+  {
+   "rid": 60,
+   "id": "STRAT_PROJECTILE_DIR_Y_SIGN",
+   "name": "_G_LLM_STRAT_PROJECTILE_DIR_Y_SIGN",
+   "len": 8
+  },
+  {
+   "rid": 61,
+   "id": "S_PROPOZYCJAROZKAZU_005011A4",
+   "name": "s_PropozycjaRozkazu_005011a4",
+   "len": 18
+  },
+  {
+   "rid": 62,
+   "id": "U___D___D_005011CC",
+   "name": "u_(%d)_%d_005011cc",
+   "len": 132
+  },
+  {
+   "rid": 63,
+   "id": "U___D___D_00501250",
+   "name": "u_(%d)_%d_00501250",
+   "len": 130
+  },
+  {
+   "rid": 64,
+   "id": "STRAT_HANGAR_RECHARGE_PERIOD",
+   "name": "_G_LLM_STRAT_HANGAR_RECHARGE_PERIOD",
+   "len": 8
+  },
+  {
+   "rid": 65,
+   "id": "STRAT_HANGAR_RECHARGE_PERIOD_NEG",
+   "name": "_G_LLM_STRAT_HANGAR_RECHARGE_PERIOD_NEG",
+   "len": 8
+  },
+  {
+   "rid": 66,
+   "id": "STRAT_DISMANTLE_PROGRESS_DIVISOR",
+   "name": "_G_LLM_STRAT_DISMANTLE_PROGRESS_DIVISOR",
+   "len": 8
+  },
+  {
+   "rid": 67,
+   "id": "STRAT_BLDG_DISMANTLE_HQ_ENERGY_CREDIT",
+   "name": "_G_LLM_STRAT_BLDG_DISMANTLE_HQ_ENERGY_CREDIT",
+   "len": 8
+  },
+  {
+   "rid": 68,
+   "id": "STRAT_RUBBLE_SIGHT_DECAY_PERIOD",
+   "name": "_G_LLM_STRAT_RUBBLE_SIGHT_DECAY_PERIOD",
+   "len": 8
+  },
+  {
+   "rid": 69,
+   "id": "STRAT_RUBBLE_SIGHT_DECAY_PERIOD_NEG",
+   "name": "_G_LLM_STRAT_RUBBLE_SIGHT_DECAY_PERIOD_NEG",
+   "len": 8
+  },
+  {
+   "rid": 70,
+   "id": "STRAT_RUBBLE_CLEANUP_PERIOD",
+   "name": "_G_LLM_STRAT_RUBBLE_CLEANUP_PERIOD",
+   "len": 8
+  },
+  {
+   "rid": 71,
+   "id": "STRAT_PROD_RETRY_PERIOD",
+   "name": "_G_LLM_STRAT_PROD_RETRY_PERIOD",
+   "len": 8
+  },
+  {
+   "rid": 72,
+   "id": "STRAT_PROD_RETRY_PERIOD_NEG",
+   "name": "_G_LLM_STRAT_PROD_RETRY_PERIOD_NEG",
+   "len": 8
+  },
+  {
+   "rid": 73,
+   "id": "STRAT_MINE_EXTRACT_PERIOD",
+   "name": "_G_LLM_STRAT_MINE_EXTRACT_PERIOD",
+   "len": 8
+  },
+  {
+   "rid": 74,
+   "id": "STRAT_MINE_EXTRACT_PERIOD_NEG",
+   "name": "_G_LLM_STRAT_MINE_EXTRACT_PERIOD_NEG",
+   "len": 8
+  },
+  {
+   "rid": 75,
+   "id": "STRAT_MINE_RESCAN_PERIOD",
+   "name": "_G_LLM_STRAT_MINE_RESCAN_PERIOD",
+   "len": 8
+  },
+  {
+   "rid": 76,
+   "id": "STRAT_MINE_RESCAN_PERIOD_NEG",
+   "name": "_G_LLM_STRAT_MINE_RESCAN_PERIOD_NEG",
+   "len": 8
+  },
+  {
+   "rid": 77,
+   "id": "STRAT_REFUND_ENERGY_FACTOR",
+   "name": "_G_LLM_STRAT_REFUND_ENERGY_FACTOR",
+   "len": 8
+  },
+  {
+   "rid": 78,
+   "id": "STRAT_MOTHER_LOST_ESCALATION_INTERVAL",
+   "name": "_G_LLM_STRAT_MOTHER_LOST_ESCALATION_INTERVAL",
+   "len": 8
+  },
+  {
+   "rid": 79,
+   "id": "STRAT_UNIT_DEATH_HQ_ENERGY_CREDIT",
+   "name": "_G_LLM_STRAT_UNIT_DEATH_HQ_ENERGY_CREDIT",
+   "len": 8
+  },
+  {
+   "rid": 80,
+   "id": "STRAT_STORAGE_EXIT_WAIT_OPERATIONAL_BUMP",
+   "name": "_G_LLM_STRAT_STORAGE_EXIT_WAIT_OPERATIONAL_BUMP",
+   "len": 8
+  },
+  {
+   "rid": 81,
+   "id": "STRAT_STORAGE_EXIT_WAIT_DEFAULT_BUMP",
+   "name": "_G_LLM_STRAT_STORAGE_EXIT_WAIT_DEFAULT_BUMP",
+   "len": 8
+  },
+  {
+   "rid": 82,
+   "id": "STRAT_UNIT_EXIT_WALK_SOLDIER_STEP_SCALE",
+   "name": "_G_LLM_STRAT_UNIT_EXIT_WALK_SOLDIER_STEP_SCALE",
+   "len": 8
+  },
+  {
+   "rid": 83,
+   "id": "STRAT_UNIT_TAKEOFF_TAXI_STEP_SPEED_MULT",
+   "name": "_G_LLM_STRAT_UNIT_TAKEOFF_TAXI_STEP_SPEED_MULT",
+   "len": 8
+  },
+  {
+   "rid": 84,
+   "id": "STRAT_UNIT_DOCK_TAXI_STEP_SPEED_MULT",
+   "name": "_G_LLM_STRAT_UNIT_DOCK_TAXI_STEP_SPEED_MULT",
+   "len": 8
+  },
+  {
+   "rid": 85,
+   "id": "STRAT_UNIT_ENTER_WAIT_ACTIVITY_BACKOFF",
+   "name": "_G_LLM_STRAT_UNIT_ENTER_WAIT_ACTIVITY_BACKOFF",
+   "len": 8
+  },
+  {
+   "rid": 86,
+   "id": "STRAT_UNIT_ENTER_WALK_SOLDIER_STEP_SCALE",
+   "name": "_G_LLM_STRAT_UNIT_ENTER_WALK_SOLDIER_STEP_SCALE",
+   "len": 8
+  },
+  {
+   "rid": 87,
+   "id": "STRAT_MOVE_PATH_HEADING_SCALE_FAR",
+   "name": "_G_LLM_STRAT_MOVE_PATH_HEADING_SCALE_FAR",
+   "len": 8
+  },
+  {
+   "rid": 88,
+   "id": "STRAT_MOVE_PATH_HEADING_SCALE_MID",
+   "name": "_G_LLM_STRAT_MOVE_PATH_HEADING_SCALE_MID",
+   "len": 8
+  },
+  {
+   "rid": 89,
+   "id": "STRAT_UNIT_TAKEOFF_LANDING_STEP_COST_SCALE",
+   "name": "_G_LLM_STRAT_UNIT_TAKEOFF_LANDING_STEP_COST_SCALE",
+   "len": 8
+  },
+  {
+   "rid": 90,
+   "id": "STRAT_UNIT_TAKEOFF_LANDING_HELIPAD_ACTIVITY_BUMP",
+   "name": "_G_LLM_STRAT_UNIT_TAKEOFF_LANDING_HELIPAD_ACTIVITY_BUMP",
+   "len": 8
+  },
+  {
+   "rid": 91,
+   "id": "STRAT_UNIT_STEP_ADJACENT_BUDGET_GATE",
+   "name": "_G_LLM_STRAT_UNIT_STEP_ADJACENT_BUDGET_GATE",
+   "len": 8
+  },
+  {
+   "rid": 92,
+   "id": "STRAT_DMG_SMOKE_LEVEL_SCALE",
+   "name": "_G_LLM_STRAT_DMG_SMOKE_LEVEL_SCALE",
+   "len": 8
+  },
+  {
+   "rid": 93,
+   "id": "PROD_SHUTTLE_BOARD_ACTIVITY_BUMP",
+   "name": "_G_LLM_PROD_SHUTTLE_BOARD_ACTIVITY_BUMP",
+   "len": 8
+  },
+  {
+   "rid": 94,
+   "id": "PROD_SHUTTLE_DURATION_MULT_DEAD_BRANCH",
+   "name": "_G_LLM_PROD_SHUTTLE_DURATION_MULT_DEAD_BRANCH",
+   "len": 8
+  },
+  {
+   "rid": 95,
+   "id": "STRAT_POP_GROWTH_FACTOR",
+   "name": "_G_LLM_STRAT_POP_GROWTH_FACTOR",
+   "len": 8
+  },
+  {
+   "rid": 96,
+   "id": "STRAT_POP_DECAY_FACTOR",
+   "name": "_G_LLM_STRAT_POP_DECAY_FACTOR",
+   "len": 8
+  },
+  {
+   "rid": 97,
+   "id": "STRAT_RESOURCE_DECAY_RATE",
+   "name": "_G_LLM_STRAT_RESOURCE_DECAY_RATE",
+   "len": 8
+  },
+  {
+   "rid": 98,
+   "id": "STRAT_DIR24_RAD2DEG_NUM",
+   "name": "_G_LLM_STRAT_DIR24_RAD2DEG_NUM",
+   "len": 8
+  },
+  {
+   "rid": 99,
+   "id": "STRAT_DIR24_RAD2DEG_DEN",
+   "name": "_G_LLM_STRAT_DIR24_RAD2DEG_DEN",
+   "len": 8
+  },
+  {
+   "rid": 100,
+   "id": "STRAT_DIR24_HALF_TURN_DEG",
+   "name": "_G_LLM_STRAT_DIR24_HALF_TURN_DEG",
+   "len": 8
+  },
+  {
+   "rid": 101,
+   "id": "STRAT_DIR24_BIAS_DEG",
+   "name": "_G_LLM_STRAT_DIR24_BIAS_DEG",
+   "len": 8
+  },
+  {
+   "rid": 102,
+   "id": "STRAT_DIR24_WRAP_ADD_DEG",
+   "name": "_G_LLM_STRAT_DIR24_WRAP_ADD_DEG",
+   "len": 8
+  },
+  {
+   "rid": 103,
+   "id": "STRAT_DIR24_WRAP_LIMIT_DEG",
+   "name": "_G_LLM_STRAT_DIR24_WRAP_LIMIT_DEG",
+   "len": 8
+  },
+  {
+   "rid": 104,
+   "id": "STRAT_DIR24_WRAP_SUB_DEG",
+   "name": "_G_LLM_STRAT_DIR24_WRAP_SUB_DEG",
+   "len": 8
+  },
+  {
+   "rid": 105,
+   "id": "STRAT_DIR24_SECTOR_DEG",
+   "name": "_G_LLM_STRAT_DIR24_SECTOR_DEG",
+   "len": 8
+  },
+  {
+   "rid": 106,
+   "id": "STRAT_DIR128_RAD2DEG_NUM",
+   "name": "_G_LLM_STRAT_DIR128_RAD2DEG_NUM",
+   "len": 8
+  },
+  {
+   "rid": 107,
+   "id": "STRAT_DIR128_RAD2DEG_DEN",
+   "name": "_G_LLM_STRAT_DIR128_RAD2DEG_DEN",
+   "len": 8
+  },
+  {
+   "rid": 108,
+   "id": "STRAT_DIR128_HALF_TURN_DEG",
+   "name": "_G_LLM_STRAT_DIR128_HALF_TURN_DEG",
+   "len": 8
+  },
+  {
+   "rid": 109,
+   "id": "STRAT_DIR128_BIAS_DEG",
+   "name": "_G_LLM_STRAT_DIR128_BIAS_DEG",
+   "len": 8
+  },
+  {
+   "rid": 110,
+   "id": "STRAT_DIR128_WRAP_ADD_DEG",
+   "name": "_G_LLM_STRAT_DIR128_WRAP_ADD_DEG",
+   "len": 8
+  },
+  {
+   "rid": 111,
+   "id": "STRAT_DIR128_WRAP_LIMIT_DEG",
+   "name": "_G_LLM_STRAT_DIR128_WRAP_LIMIT_DEG",
+   "len": 8
+  },
+  {
+   "rid": 112,
+   "id": "STRAT_DIR128_WRAP_SUB_DEG",
+   "name": "_G_LLM_STRAT_DIR128_WRAP_SUB_DEG",
+   "len": 8
+  },
+  {
+   "rid": 113,
+   "id": "STRAT_DIR128_SECTOR_DEG",
+   "name": "_G_LLM_STRAT_DIR128_SECTOR_DEG",
+   "len": 8
+  },
+  {
+   "rid": 114,
+   "id": "STRAT_BLDG_COUNT_OFFLINE_DECREMENT",
+   "name": "_G_LLM_STRAT_BLDG_COUNT_OFFLINE_DECREMENT",
+   "len": 8
+  },
+  {
+   "rid": 115,
+   "id": "GAME_SPEED_FACTOR_MAX",
+   "name": "_G_LLM_GAME_SPEED_FACTOR_MAX",
+   "len": 8
+  },
+  {
+   "rid": 116,
+   "id": "GAME_SPEED_FACTOR_STEP_UP",
+   "name": "_G_LLM_GAME_SPEED_FACTOR_STEP_UP",
+   "len": 8
+  },
+  {
+   "rid": 117,
+   "id": "GAME_SPEED_FACTOR_MIN",
+   "name": "_G_LLM_GAME_SPEED_FACTOR_MIN",
+   "len": 8
+  },
+  {
+   "rid": 118,
+   "id": "GAME_SPEED_FACTOR_STEP_DOWN",
+   "name": "_G_LLM_GAME_SPEED_FACTOR_STEP_DOWN",
+   "len": 8
+  },
+  {
+   "rid": 119,
+   "id": "U__0050164B",
+   "name": "u__0050164b",
+   "len": 104
+  },
+  {
+   "rid": 120,
+   "id": "STRAT_INVASION_ROLL_BASE_TIME",
+   "name": "_G_LLM_STRAT_INVASION_ROLL_BASE_TIME",
+   "len": 8
+  },
+  {
+   "rid": 121,
+   "id": "STRAT_INVASION_ALERT_INTERVAL",
+   "name": "_G_LLM_STRAT_INVASION_ALERT_INTERVAL",
+   "len": 8
+  },
+  {
+   "rid": 122,
+   "id": "STRAT_ADVISOR_DUE_DELAY",
+   "name": "_G_LLM_STRAT_ADVISOR_DUE_DELAY",
+   "len": 8
+  },
+  {
+   "rid": 123,
+   "id": "STRAT_ADVISOR_STAFF_THRESHOLD",
+   "name": "_G_LLM_STRAT_ADVISOR_STAFF_THRESHOLD",
+   "len": 8
+  },
+  {
+   "rid": 124,
+   "id": "STRAT_ADVISOR_INTERVAL",
+   "name": "_G_LLM_STRAT_ADVISOR_INTERVAL",
+   "len": 8
+  },
+  {
+   "rid": 125,
+   "id": "NET_LOCKSTEP_PUMP_REFILL_FRAC",
+   "name": "_G_LLM_NET_LOCKSTEP_PUMP_REFILL_FRAC",
+   "len": 8
+  },
+  {
+   "rid": 126,
+   "id": "NET_LOCKSTEP_KEEPALIVE_MARGIN_MUL",
+   "name": "_G_LLM_NET_LOCKSTEP_KEEPALIVE_MARGIN_MUL",
+   "len": 8
+  },
+  {
+   "rid": 127,
+   "id": "NET_LOCKSTEP_KEEPALIVE_STEP_MUL",
+   "name": "_G_LLM_NET_LOCKSTEP_KEEPALIVE_STEP_MUL",
+   "len": 8
+  },
+  {
+   "rid": 128,
+   "id": "S_NETGAMEREAD_005017A8",
+   "name": "s_NetgameRead_005017a8",
+   "len": 12
+  },
+  {
+   "rid": 129,
+   "id": "STRAT_LOCKSTEP_EMERGENCY_STEP_MUL",
+   "name": "_G_LLM_STRAT_LOCKSTEP_EMERGENCY_STEP_MUL",
+   "len": 8
+  },
+  {
+   "rid": 130,
+   "id": "U__S___S__005017BC",
+   "name": "u_%s_(%s)_005017bc",
+   "len": 16
+  },
+  {
+   "rid": 131,
+   "id": "U__S___S_005017CC",
+   "name": "u_%s:_%s_005017cc",
+   "len": 14
+  },
+  {
+   "rid": 132,
+   "id": "U__S_005017DA",
+   "name": "u_%s_005017da",
+   "len": 6
+  },
+  {
+   "rid": 133,
+   "id": "NET_LOCKSTEP_RESYNC_TIMEOUT_MS",
+   "name": "_G_LLM_NET_LOCKSTEP_RESYNC_TIMEOUT_MS",
+   "len": 8
+  },
+  {
+   "rid": 134,
+   "id": "NET_LOCKSTEP_RESYNC_DEADLINE_PAD_MS",
+   "name": "_G_LLM_NET_LOCKSTEP_RESYNC_DEADLINE_PAD_MS",
+   "len": 8
+  },
+  {
+   "rid": 135,
+   "id": "SINGLE_INSTANCE_MUTEX_NAME",
+   "name": "_G_LLM_SINGLE_INSTANCE_MUTEX_NAME",
+   "len": 8
+  },
+  {
+   "rid": 136,
+   "id": "U__S__D__D__D_00503068",
+   "name": "u_%s_%d+%d/%d_00503068",
+   "len": 24
+  },
+  {
+   "rid": 138,
+   "id": "STRAT_GROUP_MOVE_WAVE_DIST_SCALE",
+   "name": "_G_LLM_STRAT_GROUP_MOVE_WAVE_DIST_SCALE",
+   "len": 8
+  },
+  {
+   "rid": 139,
+   "id": "STRAT_GROUP_MOVE_WAVE_DIST_BIAS",
+   "name": "_G_LLM_STRAT_GROUP_MOVE_WAVE_DIST_BIAS",
+   "len": 8
+  },
+  {
+   "rid": 140,
+   "id": "STRAT_AI_BASE_SPAWN_TIMER_STAGGER_SCALE",
+   "name": "_G_LLM_STRAT_AI_BASE_SPAWN_TIMER_STAGGER_SCALE",
+   "len": 8
+  },
+  {
+   "rid": 141,
+   "id": "STRAT_AI_INVASION_CLOCK_STAGGER",
+   "name": "_G_LLM_STRAT_AI_INVASION_CLOCK_STAGGER",
+   "len": 8
+  },
+  {
+   "rid": 142,
+   "id": "STRAT_AI_CLOCK_STAGGER_FRACTION",
+   "name": "_G_LLM_STRAT_AI_CLOCK_STAGGER_FRACTION",
+   "len": 8
+  },
+  {
+   "rid": 143,
+   "id": "STRAT_AI_LOITER_ANGLE_SCALE",
+   "name": "_G_LLM_STRAT_AI_LOITER_ANGLE_SCALE",
+   "len": 8
+  },
+  {
+   "rid": 144,
+   "id": "TUTORIAL_BUILD_TYPE_FILTER",
+   "name": "_G_LLM_TUTORIAL_BUILD_TYPE_FILTER",
+   "len": 4
+  },
+  {
+   "rid": 145,
+   "id": "STRAT_UI_PANEL_FALLBACK_TABLE",
+   "name": "_G_LLM_STRAT_UI_PANEL_FALLBACK_TABLE",
+   "len": 16
+  },
+  {
+   "rid": 146,
+   "id": "TUTORIAL_RESET_SLOT_0050A678",
+   "name": "_G_LLM_TUTORIAL_RESET_SLOT_0050A678",
+   "len": 4
+  },
+  {
+   "rid": 147,
+   "id": "TUTORIAL_PENDING_BUILD_PLACEMENT_ID",
+   "name": "_G_LLM_TUTORIAL_PENDING_BUILD_PLACEMENT_ID",
+   "len": 4
+  },
+  {
+   "rid": 148,
+   "id": "TUTORIAL_RMB_LIMIT_FLAG",
+   "name": "_G_LLM_TUTORIAL_RMB_LIMIT_FLAG",
+   "len": 4
+  },
+  {
+   "rid": 149,
+   "id": "STRAT_UI_DEPART_PENDING_BLDG_A",
+   "name": "_G_LLM_STRAT_UI_DEPART_PENDING_BLDG_A",
+   "len": 4
+  },
+  {
+   "rid": 150,
+   "id": "STRAT_UI_DEPART_PENDING_BLDG_B",
+   "name": "_G_LLM_STRAT_UI_DEPART_PENDING_BLDG_B",
+   "len": 4
+  },
+  {
+   "rid": 151,
+   "id": "STRAT_UI_PLANET_SEL_ACTION_TARGET",
+   "name": "_G_LLM_STRAT_UI_PLANET_SEL_ACTION_TARGET",
+   "len": 4
+  },
+  {
+   "rid": 152,
+   "id": "CHAT_INPUT_LEN",
+   "name": "_G_LLM_CHAT_INPUT_LEN",
+   "len": 4
+  },
+  {
+   "rid": 153,
+   "id": "CHAT_INPUT_ACTIVE",
+   "name": "_G_LLM_CHAT_INPUT_ACTIVE",
+   "len": 4
+  },
+  {
+   "rid": 154,
+   "id": "CHAT_INPUT_CURSOR",
+   "name": "_G_LLM_CHAT_INPUT_CURSOR",
+   "len": 4
+  },
+  {
+   "rid": 155,
+   "id": "STRAT_CHAT_INPUT_LINE",
+   "name": "_G_LLM_STRAT_CHAT_INPUT_LINE",
+   "len": 81
+  },
+  {
+   "rid": 156,
+   "id": "AVAILABLEBUILDINGS",
+   "name": "AvailableBuildings",
+   "len": 1600
+  },
+  {
+   "rid": 157,
+   "id": "AVAILABLEPROJECTS",
+   "name": "AvailableProjects",
+   "len": 3200
+  },
+  {
+   "rid": 158,
+   "id": "STRAT_UI_BASE_MARKER_COORDS",
+   "name": "_G_LLM_STRAT_UI_BASE_MARKER_COORDS",
+   "len": 64
+  },
+  {
+   "rid": 159,
+   "id": "UI_HUD_WIDGETS",
+   "name": "_G_LLM_UI_HUD_WIDGETS",
+   "len": 9296
+  },
+  {
+   "rid": 160,
+   "id": "G_ICON_PTRS",
+   "name": "G_ICON_PTRS",
+   "len": 1252
+  },
+  {
+   "rid": 161,
+   "id": "STRAT_UI_EVENT_DEFER_ACTIVE",
+   "name": "_G_LLM_STRAT_UI_EVENT_DEFER_ACTIVE",
+   "len": 4
+  },
+  {
+   "rid": 162,
+   "id": "STRAT_UI_EVENT_QUEUE_POS",
+   "name": "_G_LLM_STRAT_UI_EVENT_QUEUE_POS",
+   "len": 4
+  },
+  {
+   "rid": 163,
+   "id": "STRAT_UI_EVENT_QUEUE_BUF",
+   "name": "_G_LLM_STRAT_UI_EVENT_QUEUE_BUF",
+   "len": 1024
+  },
+  {
+   "rid": 164,
+   "id": "TACT_UI_MINIMAP_ORIGIN_X",
+   "name": "_G_LLM_TACT_UI_MINIMAP_ORIGIN_X",
+   "len": 4
+  },
+  {
+   "rid": 165,
+   "id": "TACT_UI_MINIMAP_ORIGIN_Y",
+   "name": "_G_LLM_TACT_UI_MINIMAP_ORIGIN_Y",
+   "len": 4
+  },
+  {
+   "rid": 166,
+   "id": "STRAT_UI_PANEL_MODE",
+   "name": "_G_LLM_STRAT_UI_PANEL_MODE",
+   "len": 4
+  },
+  {
+   "rid": 167,
+   "id": "STRAT_UI_PANEL_PAGE",
+   "name": "_G_LLM_STRAT_UI_PANEL_PAGE",
+   "len": 4
+  },
+  {
+   "rid": 168,
+   "id": "STRAT_UI_UNIT_TAB_TOGGLE",
+   "name": "_G_LLM_STRAT_UI_UNIT_TAB_TOGGLE",
+   "len": 4
+  },
+  {
+   "rid": 169,
+   "id": "STRAT_UI_MAINPANEL_TAB_INDEX",
+   "name": "_G_LLM_STRAT_UI_MAINPANEL_TAB_INDEX",
+   "len": 4
+  },
+  {
+   "rid": 170,
+   "id": "STRAT_UI_BLDG_PANEL_REFRESH_PENDING",
+   "name": "_G_LLM_STRAT_UI_BLDG_PANEL_REFRESH_PENDING",
+   "len": 4
+  },
+  {
+   "rid": 171,
+   "id": "STRAT_UI_PANEL_SWITCH_PENDING",
+   "name": "_G_LLM_STRAT_UI_PANEL_SWITCH_PENDING",
+   "len": 4
+  },
+  {
+   "rid": 172,
+   "id": "STRAT_UI_UNIT_PANEL_REFRESH_PENDING",
+   "name": "_G_LLM_STRAT_UI_UNIT_PANEL_REFRESH_PENDING",
+   "len": 4
+  },
+  {
+   "rid": 173,
+   "id": "STRAT_UI_MAINPANEL_REFRESH_PENDING",
+   "name": "_G_LLM_STRAT_UI_MAINPANEL_REFRESH_PENDING",
+   "len": 4
+  },
+  {
+   "rid": 174,
+   "id": "STRAT_UI_VIEW_RESIZE_PENDING",
+   "name": "_G_LLM_STRAT_UI_VIEW_RESIZE_PENDING",
+   "len": 4
+  },
+  {
+   "rid": 175,
+   "id": "TACT_MOVE_PATH_TRACE_TILE",
+   "name": "_G_LLM_TACT_MOVE_PATH_TRACE_TILE",
+   "len": 4
+  },
+  {
+   "rid": 176,
+   "id": "TACT_MOVE_PATH_TRACE_BASE",
+   "name": "_G_LLM_TACT_MOVE_PATH_TRACE_BASE",
+   "len": 4
+  },
+  {
+   "rid": 177,
+   "id": "TACT_MOVE_PATH_TRACE_DIAG_CAND",
+   "name": "_G_LLM_TACT_MOVE_PATH_TRACE_DIAG_CAND",
+   "len": 4
+  },
+  {
+   "rid": 178,
+   "id": "TACT_MOVE_PATH_GOAL_PACKED",
+   "name": "_G_LLM_TACT_MOVE_PATH_GOAL_PACKED",
+   "len": 4
+  },
+  {
+   "rid": 179,
+   "id": "TACT_MOVE_PATH_START_PACKED",
+   "name": "_G_LLM_TACT_MOVE_PATH_START_PACKED",
+   "len": 4
+  },
+  {
+   "rid": 180,
+   "id": "TACT_MOVE_PATH_QUEUE_B",
+   "name": "_G_LLM_TACT_MOVE_PATH_QUEUE_B",
+   "len": 8192
+  },
+  {
+   "rid": 181,
+   "id": "TACT_MOVE_PATH_QUEUE_A",
+   "name": "_G_LLM_TACT_MOVE_PATH_QUEUE_A",
+   "len": 8192
+  },
+  {
+   "rid": 182,
+   "id": "TACT_MOVE_PATH_QUEUE_CUR",
+   "name": "_G_LLM_TACT_MOVE_PATH_QUEUE_CUR",
+   "len": 4
+  },
+  {
+   "rid": 183,
+   "id": "TACT_MOVE_PATH_COORD_MASK",
+   "name": "_G_LLM_TACT_MOVE_PATH_COORD_MASK",
+   "len": 4
+  },
+  {
+   "rid": 184,
+   "id": "TACT_MOVE_PATH_TILE_COST",
+   "name": "_G_LLM_TACT_MOVE_PATH_TILE_COST",
+   "len": 4
+  },
+  {
+   "rid": 185,
+   "id": "TACT_MOVE_PATH_TRACE_BEST_DIR",
+   "name": "_G_LLM_TACT_MOVE_PATH_TRACE_BEST_DIR",
+   "len": 1
+  },
+  {
+   "rid": 186,
+   "id": "TACT_MOVE_PATH_RLE_COUNT",
+   "name": "_G_LLM_TACT_MOVE_PATH_RLE_COUNT",
+   "len": 4
+  },
+  {
+   "rid": 187,
+   "id": "TACT_MOVE_PATH_TRACE_BEST_TILE",
+   "name": "_G_LLM_TACT_MOVE_PATH_TRACE_BEST_TILE",
+   "len": 4
+  },
+  {
+   "rid": 188,
+   "id": "STRAT_GROUP_CENTROID_X",
+   "name": "_G_LLM_STRAT_GROUP_CENTROID_X",
+   "len": 4
+  },
+  {
+   "rid": 189,
+   "id": "STRAT_GROUP_CENTROID_Y",
+   "name": "_G_LLM_STRAT_GROUP_CENTROID_Y",
+   "len": 4
+  },
+  {
+   "rid": 190,
+   "id": "STRAT_GROUP_MEMBER_COUNT",
+   "name": "_G_LLM_STRAT_GROUP_MEMBER_COUNT",
+   "len": 4
+  },
+  {
+   "rid": 191,
+   "id": "STRAT_GROUP_PATH_BUILD_IDX",
+   "name": "_G_LLM_STRAT_GROUP_PATH_BUILD_IDX",
+   "len": 4
+  },
+  {
+   "rid": 192,
+   "id": "MAP_DIR_STEP_DELTAS",
+   "name": "_G_LLM_MAP_DIR_STEP_DELTAS",
+   "len": 56
+  },
+  {
+   "rid": 193,
+   "id": "MAP_REGION_LIST_HEAD",
+   "name": "_G_LLM_MAP_REGION_LIST_HEAD",
+   "len": 4
+  },
+  {
+   "rid": 194,
+   "id": "MAP_REGION_POOL_FREE_HEAD",
+   "name": "_G_LLM_MAP_REGION_POOL_FREE_HEAD",
+   "len": 4
+  },
+  {
+   "rid": 195,
+   "id": "COUNTER",
+   "name": "counter",
+   "len": 4
+  },
+  {
+   "rid": 196,
+   "id": "MAP_REGION_ROUTE_DIR_CODES",
+   "name": "_G_LLM_MAP_REGION_ROUTE_DIR_CODES",
+   "len": 32
+  },
+  {
+   "rid": 197,
+   "id": "MAP_PROXIMITY_STENCIL",
+   "name": "_G_LLM_MAP_PROXIMITY_STENCIL",
+   "len": 676
+  },
+  {
+   "rid": 198,
+   "id": "STRAT_ORDER_ACK_VOICE_SND_ID_BY_RACE",
+   "name": "_G_LLM_STRAT_ORDER_ACK_VOICE_SND_ID_BY_RACE",
+   "len": 24
+  },
+  {
+   "rid": 199,
+   "id": "STRAT_ORDER_ACK_VOICE_LAST_PLAY_TIME",
+   "name": "_G_LLM_STRAT_ORDER_ACK_VOICE_LAST_PLAY_TIME",
+   "len": 8
+  },
+  {
+   "rid": 200,
+   "id": "STRAT_ORDER_ACK_VOICE_SUPPRESSED_COUNT",
+   "name": "_G_LLM_STRAT_ORDER_ACK_VOICE_SUPPRESSED_COUNT",
+   "len": 4
+  },
+  {
+   "rid": 201,
+   "id": "WINDOWWIDTH",
+   "name": "WindowWidth",
+   "len": 4
+  },
+  {
+   "rid": 202,
+   "id": "WINDOWHEIGHT",
+   "name": "WindowHeight",
+   "len": 4
+  },
+  {
+   "rid": 203,
+   "id": "GAME_MODE",
+   "name": "_G_LLM_GAME_MODE",
+   "len": 1
+  },
+  {
+   "rid": 204,
+   "id": "GAME_LAND_NO_START_UNIT_FLAG",
+   "name": "_G_LLM_GAME_LAND_NO_START_UNIT_FLAG",
+   "len": 4
+  },
+  {
+   "rid": 205,
+   "id": "BANK_SPRITE_BASE",
+   "name": "_G_LLM_BANK_SPRITE_BASE",
+   "len": 188
+  },
+  {
+   "rid": 206,
+   "id": "FILE_PTR",
+   "name": "file_ptr",
+   "len": 4
+  },
+  {
+   "rid": 207,
+   "id": "CURSOR_X",
+   "name": "_G_LLM_CURSOR_X",
+   "len": 4
+  },
+  {
+   "rid": 208,
+   "id": "CURSOR_Y",
+   "name": "_G_LLM_CURSOR_Y",
+   "len": 4
+  },
+  {
+   "rid": 209,
+   "id": "CURSOR_VISIBLE",
+   "name": "_G_LLM_CURSOR_VISIBLE",
+   "len": 4
+  },
+  {
+   "rid": 210,
+   "id": "INPUT_MOUSE_DELTA_X",
+   "name": "_G_LLM_INPUT_MOUSE_DELTA_X",
+   "len": 4
+  },
+  {
+   "rid": 211,
+   "id": "INPUT_MOUSE_DELTA_Y",
+   "name": "_G_LLM_INPUT_MOUSE_DELTA_Y",
+   "len": 4
+  },
+  {
+   "rid": 212,
+   "id": "GFX_VIEW_TILE_HEIGHT_PX",
+   "name": "_G_LLM_GFX_VIEW_TILE_HEIGHT_PX",
+   "len": 4
+  },
+  {
+   "rid": 213,
+   "id": "STRAT_MINIMAP_ZOOM_MODE",
+   "name": "_G_LLM_STRAT_MINIMAP_ZOOM_MODE",
+   "len": 4
+  },
+  {
+   "rid": 214,
+   "id": "TACT_MOVE_FLOOD_START_COL",
+   "name": "_G_LLM_TACT_MOVE_FLOOD_START_COL",
+   "len": 1
+  },
+  {
+   "rid": 215,
+   "id": "TACT_MOVE_FLOOD_START_ROW",
+   "name": "_G_LLM_TACT_MOVE_FLOOD_START_ROW",
+   "len": 1
+  },
+  {
+   "rid": 216,
+   "id": "TACT_MOVE_FLOOD_GOAL_COL",
+   "name": "_G_LLM_TACT_MOVE_FLOOD_GOAL_COL",
+   "len": 1
+  },
+  {
+   "rid": 217,
+   "id": "TACT_MOVE_FLOOD_GOAL_ROW",
+   "name": "_G_LLM_TACT_MOVE_FLOOD_GOAL_ROW",
+   "len": 1
+  },
+  {
+   "rid": 218,
+   "id": "TACT_MOVE_FLOOD_RESULT_COL",
+   "name": "_G_LLM_TACT_MOVE_FLOOD_RESULT_COL",
+   "len": 1
+  },
+  {
+   "rid": 219,
+   "id": "TACT_MOVE_FLOOD_RESULT_ROW",
+   "name": "_G_LLM_TACT_MOVE_FLOOD_RESULT_ROW",
+   "len": 1
+  },
+  {
+   "rid": 220,
+   "id": "TACT_MOVE_PATH_SLOT_ID",
+   "name": "_G_LLM_TACT_MOVE_PATH_SLOT_ID",
+   "len": 4
+  },
+  {
+   "rid": 221,
+   "id": "TACT_MOVE_PATH_TRACE_COST_SUM",
+   "name": "_G_LLM_TACT_MOVE_PATH_TRACE_COST_SUM",
+   "len": 4
+  },
+  {
+   "rid": 222,
+   "id": "TACT_SCROLL_CMD",
+   "name": "_G_LLM_TACT_SCROLL_CMD",
+   "len": 4
+  },
+  {
+   "rid": 223,
+   "id": "TACT_FX_SPLASH_SPARE_NONZERO_OWNER",
+   "name": "_G_LLM_TACT_FX_SPLASH_SPARE_NONZERO_OWNER",
+   "len": 4
+  },
+  {
+   "rid": 224,
+   "id": "TACT_MINE_BLAST_TIME_END",
+   "name": "_G_LLM_TACT_MINE_BLAST_TIME_END",
+   "len": 8
+  },
+  {
+   "rid": 225,
+   "id": "TACT_WHO_XOR_KEY",
+   "name": "_G_LLM_TACT_WHO_XOR_KEY",
+   "len": 4
+  },
+  {
+   "rid": 226,
+   "id": "TACT_MOVE_PATH_CACHE_VALID",
+   "name": "_G_LLM_TACT_MOVE_PATH_CACHE_VALID",
+   "len": 4
+  },
+  {
+   "rid": 227,
+   "id": "TACT_UNIT_ACTIVE_COUNT",
+   "name": "_G_LLM_TACT_UNIT_ACTIVE_COUNT",
+   "len": 4
+  },
+  {
+   "rid": 228,
+   "id": "TACT_FX_LIVE_COUNT",
+   "name": "_G_LLM_TACT_FX_LIVE_COUNT",
+   "len": 4
+  },
+  {
+   "rid": 229,
+   "id": "TACT_HOVERED_UNIT_ID",
+   "name": "_G_LLM_TACT_HOVERED_UNIT_ID",
+   "len": 4
+  },
+  {
+   "rid": 230,
+   "id": "TACT_CLICK_SCAN_SCRATCH",
+   "name": "_G_LLM_TACT_CLICK_SCAN_SCRATCH",
+   "len": 4
+  },
+  {
+   "rid": 231,
+   "id": "TACT_DIR8_DELTA_TABLE",
+   "name": "_G_LLM_TACT_DIR8_DELTA_TABLE",
+   "len": 64
+  },
+  {
+   "rid": 232,
+   "id": "TACT_SIDEBAR_HIGHLIGHTED_UNIT_ID",
+   "name": "_G_LLM_TACT_SIDEBAR_HIGHLIGHTED_UNIT_ID",
+   "len": 4
+  },
+  {
+   "rid": 233,
+   "id": "TACT_CAM_FOLLOW_SELECTION",
+   "name": "_G_LLM_TACT_CAM_FOLLOW_SELECTION",
+   "len": 4
+  },
+  {
+   "rid": 234,
+   "id": "TACT_CAM_FOLLOW_TARGET_COL",
+   "name": "_G_LLM_TACT_CAM_FOLLOW_TARGET_COL",
+   "len": 4
+  },
+  {
+   "rid": 235,
+   "id": "TACT_CAM_FOLLOW_TARGET_ROW",
+   "name": "_G_LLM_TACT_CAM_FOLLOW_TARGET_ROW",
+   "len": 4
+  },
+  {
+   "rid": 236,
+   "id": "TACT_CAM_COL_F",
+   "name": "_G_LLM_TACT_CAM_COL_F",
+   "len": 8
+  },
+  {
+   "rid": 237,
+   "id": "TACT_CAM_ROW_F",
+   "name": "_G_LLM_TACT_CAM_ROW_F",
+   "len": 8
+  },
+  {
+   "rid": 238,
+   "id": "TACT_SEE_ENEMY_FLAG",
+   "name": "_G_LLM_TACT_SEE_ENEMY_FLAG",
+   "len": 4
+  },
+  {
+   "rid": 239,
+   "id": "TACT_DRAG_ANCHOR_X",
+   "name": "_G_LLM_TACT_DRAG_ANCHOR_X",
+   "len": 4
+  },
+  {
+   "rid": 240,
+   "id": "TACT_DRAG_ANCHOR_Y",
+   "name": "_G_LLM_TACT_DRAG_ANCHOR_Y",
+   "len": 4
+  },
+  {
+   "rid": 241,
+   "id": "TACT_DRAG_SELECT_ACTIVE",
+   "name": "_G_LLM_TACT_DRAG_SELECT_ACTIVE",
+   "len": 4
+  },
+  {
+   "rid": 242,
+   "id": "TACT_CAM_SCROLL_UP_HELD",
+   "name": "_G_LLM_TACT_CAM_SCROLL_UP_HELD",
+   "len": 4
+  },
+  {
+   "rid": 243,
+   "id": "TACT_CAM_SCROLL_DOWN_HELD",
+   "name": "_G_LLM_TACT_CAM_SCROLL_DOWN_HELD",
+   "len": 4
+  },
+  {
+   "rid": 244,
+   "id": "TACT_CAM_SCROLL_LEFT_HELD",
+   "name": "_G_LLM_TACT_CAM_SCROLL_LEFT_HELD",
+   "len": 4
+  },
+  {
+   "rid": 245,
+   "id": "TACT_CAM_SCROLL_RIGHT_HELD",
+   "name": "_G_LLM_TACT_CAM_SCROLL_RIGHT_HELD",
+   "len": 4
+  },
+  {
+   "rid": 246,
+   "id": "TACT_EXIT_CONFIRM_OPEN",
+   "name": "_G_LLM_TACT_EXIT_CONFIRM_OPEN",
+   "len": 4
+  },
+  {
+   "rid": 247,
+   "id": "SND_CHANNEL_NEXT_RETRIGGER_TIME",
+   "name": "_G_LLM_SND_CHANNEL_NEXT_RETRIGGER_TIME",
+   "len": 48
+  },
+  {
+   "rid": 248,
+   "id": "TACT_MINES_ENABLED",
+   "name": "_G_LLM_TACT_MINES_ENABLED",
+   "len": 4
+  },
+  {
+   "rid": 249,
+   "id": "TACT_DIR24_APPROACH_DELTA",
+   "name": "_G_LLM_TACT_DIR24_APPROACH_DELTA",
+   "len": 192
+  },
+  {
+   "rid": 250,
+   "id": "TACT_OCCUPANCY_REBUILD_MAP_ID",
+   "name": "_G_LLM_TACT_OCCUPANCY_REBUILD_MAP_ID",
+   "len": 4
+  },
+  {
+   "rid": 251,
+   "id": "TACT_UI_SEL_PANEL_MULTI_MODE",
+   "name": "_G_LLM_TACT_UI_SEL_PANEL_MULTI_MODE",
+   "len": 4
+  },
+  {
+   "rid": 252,
+   "id": "TACT_SEL_PANEL_ICON_GFX",
+   "name": "_G_LLM_TACT_SEL_PANEL_ICON_GFX",
+   "len": 164
+  },
+  {
+   "rid": 253,
+   "id": "TACT_CHAR_PANEL_GFX",
+   "name": "_G_LLM_TACT_CHAR_PANEL_GFX",
+   "len": 64
+  },
+  {
+   "rid": 254,
+   "id": "TACT_SEL_PANEL_ICON_SLOT_STATE",
+   "name": "_G_LLM_TACT_SEL_PANEL_ICON_SLOT_STATE",
+   "len": 16
+  },
+  {
+   "rid": 255,
+   "id": "TACT_SIDEBAR_SLOT_SCROLL",
+   "name": "_G_LLM_TACT_SIDEBAR_SLOT_SCROLL",
+   "len": 4
+  },
+  {
+   "rid": 256,
+   "id": "TACT_SIDEBAR_SLOT_VISIBLE_COUNT",
+   "name": "_G_LLM_TACT_SIDEBAR_SLOT_VISIBLE_COUNT",
+   "len": 4
+  },
+  {
+   "rid": 257,
+   "id": "TACT_SIDEBAR_SCROLLBTN_STATE",
+   "name": "_G_LLM_TACT_SIDEBAR_SCROLLBTN_STATE",
+   "len": 32
+  },
+  {
+   "rid": 258,
+   "id": "TACT_SIDEBAR_UNASSIGNED_SCROLL_ROW",
+   "name": "_G_LLM_TACT_SIDEBAR_UNASSIGNED_SCROLL_ROW",
+   "len": 4
+  },
+  {
+   "rid": 259,
+   "id": "TACT_SIDEBAR_GROUP_SCROLL_ROW",
+   "name": "_G_LLM_TACT_SIDEBAR_GROUP_SCROLL_ROW",
+   "len": 4
+  },
+  {
+   "rid": 260,
+   "id": "TACT_SIDEBAR_MULTI_PANEL_VISIBLE_ROWS",
+   "name": "_G_LLM_TACT_SIDEBAR_MULTI_PANEL_VISIBLE_ROWS",
+   "len": 4
+  },
+  {
+   "rid": 261,
+   "id": "TACT_SIDEBAR_ACTIVE_GROUP_ID",
+   "name": "_G_LLM_TACT_SIDEBAR_ACTIVE_GROUP_ID",
+   "len": 4
+  },
+  {
+   "rid": 262,
+   "id": "TACT_ACTIVE_UNIT_COUNT",
+   "name": "_G_LLM_TACT_ACTIVE_UNIT_COUNT",
+   "len": 4
+  },
+  {
+   "rid": 263,
+   "id": "TACT_ACTIVE_UNIT_COUNT_CACHED",
+   "name": "_G_LLM_TACT_ACTIVE_UNIT_COUNT_CACHED",
+   "len": 4
+  },
+  {
+   "rid": 264,
+   "id": "TACT_SIDEBAR_MOUSE_X",
+   "name": "_G_LLM_TACT_SIDEBAR_MOUSE_X",
+   "len": 4
+  },
+  {
+   "rid": 265,
+   "id": "TACT_SIDEBAR_MOUSE_Y",
+   "name": "_G_LLM_TACT_SIDEBAR_MOUSE_Y",
+   "len": 4
+  },
+  {
+   "rid": 266,
+   "id": "TACT_SIDEBAR_UI_HIT_CODE",
+   "name": "_G_LLM_TACT_SIDEBAR_UI_HIT_CODE",
+   "len": 4
+  },
+  {
+   "rid": 267,
+   "id": "TACT_SEL_PANEL_ICON_COUNT",
+   "name": "_G_LLM_TACT_SEL_PANEL_ICON_COUNT",
+   "len": 4
+  },
+  {
+   "rid": 268,
+   "id": "TACT_SEL_PANEL_ICON_NAMES",
+   "name": "_G_LLM_TACT_SEL_PANEL_ICON_NAMES",
+   "len": 410
+  },
+  {
+   "rid": 269,
+   "id": "TACT_FOV_ANGLE_STEP",
+   "name": "_G_LLM_TACT_FOV_ANGLE_STEP",
+   "len": 4
+  },
+  {
+   "rid": 270,
+   "id": "TACT_FOV_RAY_COUNT",
+   "name": "_G_LLM_TACT_FOV_RAY_COUNT",
+   "len": 4
+  },
+  {
+   "rid": 271,
+   "id": "TACT_FOV_DIR_TABLE_PTR",
+   "name": "_G_LLM_TACT_FOV_DIR_TABLE_PTR",
+   "len": 4
+  },
+  {
+   "rid": 272,
+   "id": "TACT_FOV_RAY_INDEX",
+   "name": "_G_LLM_TACT_FOV_RAY_INDEX",
+   "len": 4
+  },
+  {
+   "rid": 273,
+   "id": "TACT_FOV_CANDIDATE_DIST",
+   "name": "_G_LLM_TACT_FOV_CANDIDATE_DIST",
+   "len": 4
+  },
+  {
+   "rid": 274,
+   "id": "TACT_FOV_STEP_BUDGET",
+   "name": "_G_LLM_TACT_FOV_STEP_BUDGET",
+   "len": 4
+  },
+  {
+   "rid": 275,
+   "id": "TACT_FOV_ANGLE_INDEX",
+   "name": "_G_LLM_TACT_FOV_ANGLE_INDEX",
+   "len": 4
+  },
+  {
+   "rid": 276,
+   "id": "TACT_FOV_RAY_DELTA",
+   "name": "_G_LLM_TACT_FOV_RAY_DELTA",
+   "len": 4
+  },
+  {
+   "rid": 277,
+   "id": "TACT_FOV_RAY_DELTA_NEG",
+   "name": "_G_LLM_TACT_FOV_RAY_DELTA_NEG",
+   "len": 4
+  },
+  {
+   "rid": 278,
+   "id": "TACT_FOV_DELTA_TABLE_72",
+   "name": "_G_LLM_TACT_FOV_DELTA_TABLE_72",
+   "len": 144
+  },
+  {
+   "rid": 279,
+   "id": "TACT_FOV_DELTA_TABLE_120",
+   "name": "_G_LLM_TACT_FOV_DELTA_TABLE_120",
+   "len": 240
+  },
+  {
+   "rid": 280,
+   "id": "TACT_FOV_DELTA_TABLE_360",
+   "name": "_G_LLM_TACT_FOV_DELTA_TABLE_360",
+   "len": 720
+  },
+  {
+   "rid": 281,
+   "id": "TACT_FOV_NEAREST_HIBIT_DIST",
+   "name": "_G_LLM_TACT_FOV_NEAREST_HIBIT_DIST",
+   "len": 4
+  },
+  {
+   "rid": 282,
+   "id": "TACT_FOV_NEAREST_LOW_DIST",
+   "name": "_G_LLM_TACT_FOV_NEAREST_LOW_DIST",
+   "len": 4
+  },
+  {
+   "rid": 283,
+   "id": "TACT_SQUAD_SIZE",
+   "name": "_G_LLM_TACT_SQUAD_SIZE",
+   "len": 4
+  },
+  {
+   "rid": 284,
+   "id": "TACT_ENEMY_COUNT",
+   "name": "_G_LLM_TACT_ENEMY_COUNT",
+   "len": 4
+  },
+  {
+   "rid": 285,
+   "id": "TACT_MINE_BLAST_FIRST_FRAME",
+   "name": "_G_LLM_TACT_MINE_BLAST_FIRST_FRAME",
+   "len": 4
+  },
+  {
+   "rid": 286,
+   "id": "TACT_MINE_BLAST_FRAME_COUNT",
+   "name": "_G_LLM_TACT_MINE_BLAST_FRAME_COUNT",
+   "len": 4
+  },
+  {
+   "rid": 287,
+   "id": "TACT_MINE_BLAST_DURATION",
+   "name": "_G_LLM_TACT_MINE_BLAST_DURATION",
+   "len": 8
+  },
+  {
+   "rid": 288,
+   "id": "TACT_MINE_BLAST_SOUND_ID",
+   "name": "_G_LLM_TACT_MINE_BLAST_SOUND_ID",
+   "len": 4
+  },
+  {
+   "rid": 289,
+   "id": "TACT_BLAST_MARKER_COL",
+   "name": "_G_LLM_TACT_BLAST_MARKER_COL",
+   "len": 4
+  },
+  {
+   "rid": 290,
+   "id": "TACT_BLAST_MARKER_ROW",
+   "name": "_G_LLM_TACT_BLAST_MARKER_ROW",
+   "len": 4
+  },
+  {
+   "rid": 291,
+   "id": "TACT_QUIT_TILE_COL",
+   "name": "_G_LLM_TACT_QUIT_TILE_COL",
+   "len": 4
+  },
+  {
+   "rid": 292,
+   "id": "TACT_QUIT_TILE_ROW",
+   "name": "_G_LLM_TACT_QUIT_TILE_ROW",
+   "len": 4
+  },
+  {
+   "rid": 293,
+   "id": "TACT_TARGET_TILE_COL",
+   "name": "_G_LLM_TACT_TARGET_TILE_COL",
+   "len": 4
+  },
+  {
+   "rid": 294,
+   "id": "TACT_TARGET_TILE_ROW",
+   "name": "_G_LLM_TACT_TARGET_TILE_ROW",
+   "len": 4
+  },
+  {
+   "rid": 295,
+   "id": "G_TEXT_PTRS",
+   "name": "G_TEXT_PTRS",
+   "len": 3224
+  },
+  {
+   "rid": 296,
+   "id": "G_TEXT_BLOCK",
+   "name": "G_TEXT_BLOCK",
+   "len": 300000
+  },
+  {
+   "rid": 297,
+   "id": "MESSAGE_QUEUE",
+   "name": "MESSAGE_QUEUE",
+   "len": 7200
+  },
+  {
+   "rid": 298,
+   "id": "STRAT_ORDER_QUEUE_COUNT",
+   "name": "_G_LLM_STRAT_ORDER_QUEUE_COUNT",
+   "len": 4
+  },
+  {
+   "rid": 299,
+   "id": "STRAT_GAME_CLOCK",
+   "name": "_G_LLM_STRAT_GAME_CLOCK",
+   "len": 8
+  },
+  {
+   "rid": 300,
+   "id": "STRAT_AI_ENABLED",
+   "name": "_G_LLM_STRAT_AI_ENABLED",
+   "len": 4
+  },
+  {
+   "rid": 301,
+   "id": "STRAT_ORDER_STAGING_COUNT",
+   "name": "_G_LLM_STRAT_ORDER_STAGING_COUNT",
+   "len": 4
+  },
+  {
+   "rid": 302,
+   "id": "STRAT_ORDER_PENDING_COUNT",
+   "name": "_G_LLM_STRAT_ORDER_PENDING_COUNT",
+   "len": 4
+  },
+  {
+   "rid": 303,
+   "id": "STRAT_SIM_ACTIVE",
+   "name": "_G_LLM_STRAT_SIM_ACTIVE",
+   "len": 4
+  },
+  {
+   "rid": 304,
+   "id": "BUILD_PLACEMENT_ID",
+   "name": "_G_LLM_BUILD_PLACEMENT_ID",
+   "len": 4
+  },
+  {
+   "rid": 305,
+   "id": "STRAT_BUILD_PREVIEW_SUPPRESS_FLAG",
+   "name": "_G_LLM_STRAT_BUILD_PREVIEW_SUPPRESS_FLAG",
+   "len": 4
+  },
+  {
+   "rid": 306,
+   "id": "STRAT_ORDER_SEQ_ID_BY_PLAYER",
+   "name": "_G_LLM_STRAT_ORDER_SEQ_ID_BY_PLAYER",
+   "len": 8
+  },
+  {
+   "rid": 307,
+   "id": "G_SAVE_DIR",
+   "name": "G_SAVE_DIR",
+   "len": 1
+  },
+  {
+   "rid": 308,
+   "id": "G_SAVE_TEMP_DIR",
+   "name": "G_SAVE_TEMP_DIR",
+   "len": 1
+  },
+  {
+   "rid": 309,
+   "id": "G_LZW_MAX_COMPRESSED_SIZE",
+   "name": "G_LZW_MAX_COMPRESSED_SIZE",
+   "len": 4
+  },
+  {
+   "rid": 310,
+   "id": "S_EXTERMINATION__DEMO_VERSION_005D08F4",
+   "name": "s_Extermination,_demo_version_005d08f4",
+   "len": 35
+  },
+  {
+   "rid": 311,
+   "id": "GAME_MISSION_VERSION_INDEX",
+   "name": "_G_LLM_GAME_MISSION_VERSION_INDEX",
+   "len": 4
+  },
+  {
+   "rid": 312,
+   "id": "CAM_JUMP_QUEUE_COUNT",
+   "name": "_G_LLM_CAM_JUMP_QUEUE_COUNT",
+   "len": 4
+  },
+  {
+   "rid": 313,
+   "id": "STRAT_FRAME_TIME_RING",
+   "name": "_G_LLM_STRAT_FRAME_TIME_RING",
+   "len": 160
+  },
+  {
+   "rid": 314,
+   "id": "STRAT_FRAME_TIME_RING_IDX",
+   "name": "_G_LLM_STRAT_FRAME_TIME_RING_IDX",
+   "len": 4
+  },
+  {
+   "rid": 315,
+   "id": "VIEW_SIZE_MODE_CACHE",
+   "name": "_G_LLM_VIEW_SIZE_MODE_CACHE",
+   "len": 4
+  },
+  {
+   "rid": 316,
+   "id": "STRAT_UNIT_CHASE_RESULT",
+   "name": "_G_LLM_STRAT_UNIT_CHASE_RESULT",
+   "len": 4
+  },
+  {
+   "rid": 317,
+   "id": "STRAT_DEBUG_CAMPAIGN_CHEAT",
+   "name": "_G_LLM_STRAT_DEBUG_CAMPAIGN_CHEAT",
+   "len": 4
+  },
+  {
+   "rid": 318,
+   "id": "BLDG_FOOTPRINT_PASSABLE_SAVE_SLOT",
+   "name": "_G_LLM_BLDG_FOOTPRINT_PASSABLE_SAVE_SLOT",
+   "len": 4
+  },
+  {
+   "rid": 319,
+   "id": "STRAT_ADVISOR_PHASE",
+   "name": "_G_LLM_STRAT_ADVISOR_PHASE",
+   "len": 4
+  },
+  {
+   "rid": 320,
+   "id": "MP_PLAYER_NAME",
+   "name": "_G_LLM_MP_PLAYER_NAME",
+   "len": 6
+  },
+  {
+   "rid": 321,
+   "id": "MP_GAME_NAME",
+   "name": "_G_LLM_MP_GAME_NAME",
+   "len": 1
+  },
+  {
+   "rid": 322,
+   "id": "MP_PROBE_SERVER_COUNT",
+   "name": "_G_LLM_MP_PROBE_SERVER_COUNT",
+   "len": 4
+  },
+  {
+   "rid": 323,
+   "id": "NET_SESSION_LIST",
+   "name": "_G_LLM_NET_SESSION_LIST",
+   "len": 4
+  },
+  {
+   "rid": 324,
+   "id": "NET_SESSION_COUNT",
+   "name": "_G_LLM_NET_SESSION_COUNT",
+   "len": 4
+  },
+  {
+   "rid": 325,
+   "id": "NET_ROSTER_LIVE",
+   "name": "_G_LLM_NET_ROSTER_LIVE",
+   "len": 8192
+  },
+  {
+   "rid": 326,
+   "id": "NET_LOBBY_SESSION_LIST",
+   "name": "_G_LLM_NET_LOBBY_SESSION_LIST",
+   "len": 328
+  },
+  {
+   "rid": 327,
+   "id": "NET_LOBBY_SESSION_LIST_COUNT",
+   "name": "_G_LLM_NET_LOBBY_SESSION_LIST_COUNT",
+   "len": 4
+  },
+  {
+   "rid": 328,
+   "id": "NET_LOBBY_SCAN_HOST_COUNT",
+   "name": "_G_LLM_NET_LOBBY_SCAN_HOST_COUNT",
+   "len": 4
+  },
+  {
+   "rid": 329,
+   "id": "NET_LOCKSTEP_PLAYER_COUNT",
+   "name": "_G_LLM_NET_LOCKSTEP_PLAYER_COUNT",
+   "len": 4
+  },
+  {
+   "rid": 330,
+   "id": "NET_ACTIVE_PLAYER_COUNT",
+   "name": "_G_LLM_NET_ACTIVE_PLAYER_COUNT",
+   "len": 4
+  },
+  {
+   "rid": 331,
+   "id": "NET_LOBBY_MAP_RECV_DONE",
+   "name": "_G_LLM_NET_LOBBY_MAP_RECV_DONE",
+   "len": 4
+  },
+  {
+   "rid": 332,
+   "id": "NET_PEER_HORIZON",
+   "name": "_G_LLM_NET_PEER_HORIZON",
+   "len": 64
+  },
+  {
+   "rid": 333,
+   "id": "NET_PEER_HORIZON_PENDING",
+   "name": "_G_LLM_NET_PEER_HORIZON_PENDING",
+   "len": 64
+  },
+  {
+   "rid": 334,
+   "id": "GAME_SPEED_PLAYER_FACTOR",
+   "name": "_G_LLM_GAME_SPEED_PLAYER_FACTOR",
+   "len": 64
+  },
+  {
+   "rid": 335,
+   "id": "STRAT_LOCKSTEP_COMMITTED_HORIZON",
+   "name": "_G_LLM_STRAT_LOCKSTEP_COMMITTED_HORIZON",
+   "len": 8
+  },
+  {
+   "rid": 336,
+   "id": "STRAT_LOCKSTEP_HORIZON",
+   "name": "_G_LLM_STRAT_LOCKSTEP_HORIZON",
+   "len": 8
+  },
+  {
+   "rid": 337,
+   "id": "NET_LOCAL_PLAYER_INDEX",
+   "name": "_G_LLM_NET_LOCAL_PLAYER_INDEX",
+   "len": 4
+  },
+  {
+   "rid": 338,
+   "id": "NET_IS_HOST",
+   "name": "_G_LLM_NET_IS_HOST",
+   "len": 4
+  },
+  {
+   "rid": 339,
+   "id": "NET_LOCKSTEP_STATUS_FLAGS",
+   "name": "_G_LLM_NET_LOCKSTEP_STATUS_FLAGS",
+   "len": 1
+  },
+  {
+   "rid": 340,
+   "id": "NET_LOCAL_PLAYER_SLOT",
+   "name": "_G_LLM_NET_LOCAL_PLAYER_SLOT",
+   "len": 4
+  },
+  {
+   "rid": 341,
+   "id": "STRAT_LOCKSTEP_STEP_SIZE",
+   "name": "_G_LLM_STRAT_LOCKSTEP_STEP_SIZE",
+   "len": 8
+  },
+  {
+   "rid": 342,
+   "id": "STRAT_LOCKSTEP_ADAPT_NEXT_TIME",
+   "name": "_G_LLM_STRAT_LOCKSTEP_ADAPT_NEXT_TIME",
+   "len": 8
+  },
+  {
+   "rid": 343,
+   "id": "NET_SEND_BUF",
+   "name": "_G_LLM_NET_SEND_BUF",
+   "len": 1016
+  },
+  {
+   "rid": 344,
+   "id": "NET_SEND_BUF_CURSOR",
+   "name": "_G_LLM_NET_SEND_BUF_CURSOR",
+   "len": 4
+  },
+  {
+   "rid": 345,
+   "id": "G_OTHER_PLAYERS_MASK",
+   "name": "G_OTHER_PLAYERS_MASK",
+   "len": 1
+  },
+  {
+   "rid": 346,
+   "id": "SIGHT_AREA_1",
+   "name": "SIGHT_AREA_1",
+   "len": 3
+  },
+  {
+   "rid": 347,
+   "id": "SIGHT_AREA_2",
+   "name": "SIGHT_AREA_2",
+   "len": 9
+  },
+  {
+   "rid": 348,
+   "id": "SIGHT_AREA_3",
+   "name": "SIGHT_AREA_3",
+   "len": 15
+  },
+  {
+   "rid": 349,
+   "id": "SIGHT_AREA_4",
+   "name": "SIGHT_AREA_4",
+   "len": 21
+  },
+  {
+   "rid": 350,
+   "id": "SIGHT_AREA_5",
+   "name": "SIGHT_AREA_5",
+   "len": 27
+  },
+  {
+   "rid": 351,
+   "id": "SIGHT_AREA_6",
+   "name": "SIGHT_AREA_6",
+   "len": 33
+  },
+  {
+   "rid": 352,
+   "id": "SIGHT_AREA_7",
+   "name": "SIGHT_AREA_7",
+   "len": 39
+  },
+  {
+   "rid": 353,
+   "id": "SIGHT_AREA_8",
+   "name": "SIGHT_AREA_8",
+   "len": 45
+  },
+  {
+   "rid": 354,
+   "id": "SIGHT_AREA_9",
+   "name": "SIGHT_AREA_9",
+   "len": 51
+  },
+  {
+   "rid": 355,
+   "id": "SIGHT_AREA_10",
+   "name": "SIGHT_AREA_10",
+   "len": 57
+  },
+  {
+   "rid": 356,
+   "id": "MAP_ZOOM_SCALE_X",
+   "name": "_G_LLM_MAP_ZOOM_SCALE_X",
+   "len": 8
+  },
+  {
+   "rid": 357,
+   "id": "SPRITE_PIX_OFFSETS",
+   "name": "_G_LLM_SPRITE_PIX_OFFSETS",
+   "len": 88000
+  },
+  {
+   "rid": 358,
+   "id": "GFX_BANK_PIXELS",
+   "name": "_G_LLM_GFX_BANK_PIXELS",
+   "len": 4
+  },
+  {
+   "rid": 359,
+   "id": "FRAMEBUFFER",
+   "name": "_G_LLM_FRAMEBUFFER",
+   "len": 4
+  },
+  {
+   "rid": 360,
+   "id": "FB_PITCH",
+   "name": "_G_LLM_FB_PITCH",
+   "len": 4
+  },
+  {
+   "rid": 361,
+   "id": "GFX_DRAW_SURFACE",
+   "name": "_G_LLM_GFX_DRAW_SURFACE",
+   "len": 4
+  },
+  {
+   "rid": 362,
+   "id": "GFX_PANEL_ROW_SKIP",
+   "name": "_G_LLM_GFX_PANEL_ROW_SKIP",
+   "len": 4
+  },
+  {
+   "rid": 363,
+   "id": "STRAT_AI_GRID_WRAP_MASK",
+   "name": "_G_LLM_STRAT_AI_GRID_WRAP_MASK",
+   "len": 4
+  },
+  {
+   "rid": 364,
+   "id": "STRAT_RNG_STATE",
+   "name": "_G_LLM_STRAT_RNG_STATE",
+   "len": 16
+  },
+  {
+   "rid": 365,
+   "id": "STRAT_RNG_NORM_DIVISOR",
+   "name": "_G_LLM_STRAT_RNG_NORM_DIVISOR",
+   "len": 8
+  },
+  {
+   "rid": 366,
+   "id": "PTR_S_MENUBCK1_GFX_00604288",
+   "name": "PTR_s_MENUBCK1.GFX_00604288",
+   "len": 4
+  },
+  {
+   "rid": 369,
+   "id": "GAME_MODE_SAVED",
+   "name": "_G_LLM_GAME_MODE_SAVED",
+   "len": 1
+  },
+  {
+   "rid": 370,
+   "id": "INTRO_FRAME_INIT_DONE",
+   "name": "_G_LLM_INTRO_FRAME_INIT_DONE",
+   "len": 4
+  },
+  {
+   "rid": 371,
+   "id": "BOOT_MODE_FLAG",
+   "name": "_G_LLM_BOOT_MODE_FLAG",
+   "len": 4
+  },
+  {
+   "rid": 372,
+   "id": "LOBBY_MAP_STATUS_LINE",
+   "name": "_G_LLM_LOBBY_MAP_STATUS_LINE",
+   "len": 512
+  },
+  {
+   "rid": 373,
+   "id": "SELECTED_BROWSER_ROW",
+   "name": "selected_browser_row",
+   "len": 4
+  },
+  {
+   "rid": 375,
+   "id": "UI_OPT_SPIN_VIEW_SIZE",
+   "name": "_G_LLM_UI_OPT_SPIN_VIEW_SIZE",
+   "len": 20
+  },
+  {
+   "rid": 376,
+   "id": "UI_WGT_MAINMENU_NEWGAME_BTN",
+   "name": "_G_LLM_UI_WGT_MAINMENU_NEWGAME_BTN",
+   "len": 68
+  },
+  {
+   "rid": 377,
+   "id": "UI_WGT_MAINMENU_TUTORIAL_BTN",
+   "name": "_G_LLM_UI_WGT_MAINMENU_TUTORIAL_BTN",
+   "len": 68
+  },
+  {
+   "rid": 378,
+   "id": "UNDEF_0064FE63",
+   "name": "UNDEF_0064fe63",
+   "len": 68
+  },
+  {
+   "rid": 379,
+   "id": "UNDEF_0064FEA7",
+   "name": "UNDEF_0064fea7",
+   "len": 68
+  },
+  {
+   "rid": 380,
+   "id": "UNDEF_0064FEEB",
+   "name": "UNDEF_0064feeb",
+   "len": 68
+  },
+  {
+   "rid": 381,
+   "id": "UNDEF_0064FF2F",
+   "name": "UNDEF_0064ff2f",
+   "len": 68
+  },
+  {
+   "rid": 382,
+   "id": "UNDEF_0065076B",
+   "name": "UNDEF_0065076b",
+   "len": 68
+  },
+  {
+   "rid": 383,
+   "id": "UI_WGT_MENU_OK",
+   "name": "_G_LLM_UI_WGT_MENU_OK",
+   "len": 68
+  },
+  {
+   "rid": 384,
+   "id": "UI_OUTCOME_DLG_MESSAGE_WIDGET",
+   "name": "_G_LLM_UI_OUTCOME_DLG_MESSAGE_WIDGET",
+   "len": 68
+  },
+  {
+   "rid": 385,
+   "id": "UI_WGT_MENU_SCREEN_TITLE",
+   "name": "_G_LLM_UI_WGT_MENU_SCREEN_TITLE",
+   "len": 68
+  },
+  {
+   "rid": 386,
+   "id": "UI_OUTCOME_DLG_TITLE_WIDGET",
+   "name": "_G_LLM_UI_OUTCOME_DLG_TITLE_WIDGET",
+   "len": 68
+  },
+  {
+   "rid": 387,
+   "id": "UI_TUTORIAL_HINT_WIDGET",
+   "name": "_G_LLM_UI_TUTORIAL_HINT_WIDGET",
+   "len": 68
+  },
+  {
+   "rid": 388,
+   "id": "UI_WGT_TUTORIAL_WELCOME",
+   "name": "_G_LLM_UI_WGT_TUTORIAL_WELCOME",
+   "len": 68
+  },
+  {
+   "rid": 389,
+   "id": "LLM_UI_WIDGET_00651293",
+   "name": "llm_ui_widget_00651293",
+   "len": 68
+  },
+  {
+   "rid": 390,
+   "id": "UNDEF_006512D7",
+   "name": "UNDEF_006512d7",
+   "len": 68
+  },
+  {
+   "rid": 391,
+   "id": "UI_WGT_FRAME_MENU_PANEL",
+   "name": "_G_LLM_UI_WGT_FRAME_MENU_PANEL",
+   "len": 68
+  },
+  {
+   "rid": 392,
+   "id": "UI_WGT_LIST_GAMEPLAY_HUD",
+   "name": "_G_LLM_UI_WGT_LIST_GAMEPLAY_HUD",
+   "len": 76
+  },
+  {
+   "rid": 393,
+   "id": "UI_WGT_LIST_MP_LOCAL_BROWSER",
+   "name": "_G_LLM_UI_WGT_LIST_MP_LOCAL_BROWSER",
+   "len": 76
+  },
+  {
+   "rid": 394,
+   "id": "UI_WGT_LIST_MP_SESSION_BROWSER",
+   "name": "_G_LLM_UI_WGT_LIST_MP_SESSION_BROWSER",
+   "len": 76
+  },
+  {
+   "rid": 395,
+   "id": "UI_SCREEN_LOBBY_WIDGET_LIST",
+   "name": "_G_LLM_UI_SCREEN_LOBBY_WIDGET_LIST",
+   "len": 76
+  },
+  {
+   "rid": 396,
+   "id": "UI_WGT_LIST_MP_MAP_PICKER",
+   "name": "_G_LLM_UI_WGT_LIST_MP_MAP_PICKER",
+   "len": 76
+  },
+  {
+   "rid": 397,
+   "id": "UI_WGT_LIST_LOCKSTEP_SYNC",
+   "name": "_G_LLM_UI_WGT_LIST_LOCKSTEP_SYNC",
+   "len": 76
+  },
+  {
+   "rid": 398,
+   "id": "UI_SCREEN_MAIN_MENU_ID",
+   "name": "_G_LLM_UI_SCREEN_MAIN_MENU_ID",
+   "len": 4
+  },
+  {
+   "rid": 399,
+   "id": "UI_SCREEN_RACEBCK_ID",
+   "name": "_G_LLM_UI_SCREEN_RACEBCK_ID",
+   "len": 4
+  },
+  {
+   "rid": 400,
+   "id": "UI_MENU_MASK_BITMAPS",
+   "name": "_G_LLM_UI_MENU_MASK_BITMAPS",
+   "len": 48
+  },
+  {
+   "rid": 401,
+   "id": "UI_MENU_STATE",
+   "name": "_G_LLM_UI_MENU_STATE",
+   "len": 1
+  },
+  {
+   "rid": 402,
+   "id": "UI_MENU_SAVED_STATE",
+   "name": "_G_LLM_UI_MENU_SAVED_STATE",
+   "len": 1
+  },
+  {
+   "rid": 403,
+   "id": "UI_MENU_WIDGET_LIST",
+   "name": "_G_LLM_UI_MENU_WIDGET_LIST",
+   "len": 4
+  },
+  {
+   "rid": 404,
+   "id": "UI_ACTIVE_DIALOG",
+   "name": "_G_LLM_UI_ACTIVE_DIALOG",
+   "len": 4
+  },
+  {
+   "rid": 405,
+   "id": "UI_WIDGET_SELECTED",
+   "name": "_G_LLM_UI_WIDGET_SELECTED",
+   "len": 4
+  },
+  {
+   "rid": 406,
+   "id": "UI_WIDGET_HOVERED",
+   "name": "_G_LLM_UI_WIDGET_HOVERED",
+   "len": 4
+  },
+  {
+   "rid": 407,
+   "id": "UI_MENU_ASYNC_CALLBACK",
+   "name": "_G_LLM_UI_MENU_ASYNC_CALLBACK",
+   "len": 4
+  },
+  {
+   "rid": 408,
+   "id": "UI_MENU_ASYNC_CALLBACK_A",
+   "name": "_G_LLM_UI_MENU_ASYNC_CALLBACK_A",
+   "len": 4
+  },
+  {
+   "rid": 409,
+   "id": "UI_MENU_ASYNC_CALLBACK_B",
+   "name": "_G_LLM_UI_MENU_ASYNC_CALLBACK_B",
+   "len": 4
+  },
+  {
+   "rid": 410,
+   "id": "UI_MOUSE_EVENT_KIND",
+   "name": "_G_LLM_UI_MOUSE_EVENT_KIND",
+   "len": 1
+  },
+  {
+   "rid": 411,
+   "id": "UI_MODAL_STEP_DEADLINE_MS",
+   "name": "_G_LLM_UI_MODAL_STEP_DEADLINE_MS",
+   "len": 4
+  },
+  {
+   "rid": 412,
+   "id": "UI_MODAL_KEY_SCANCODE",
+   "name": "_G_LLM_UI_MODAL_KEY_SCANCODE",
+   "len": 4
+  },
+  {
+   "rid": 413,
+   "id": "UI_MODAL_KEY_ASCII",
+   "name": "_G_LLM_UI_MODAL_KEY_ASCII",
+   "len": 2
+  },
+  {
+   "rid": 414,
+   "id": "UI_MODAL_STEP_NEXT_MS",
+   "name": "_G_LLM_UI_MODAL_STEP_NEXT_MS",
+   "len": 4
+  },
+  {
+   "rid": 415,
+   "id": "UI_MENU_NOW_MS",
+   "name": "_G_LLM_UI_MENU_NOW_MS",
+   "len": 4
+  },
+  {
+   "rid": 416,
+   "id": "UI_MENU_INPUT_LOCK_TIMER",
+   "name": "_G_LLM_UI_MENU_INPUT_LOCK_TIMER",
+   "len": 4
+  },
+  {
+   "rid": 417,
+   "id": "UI_WIDGET_DRAW_X",
+   "name": "_G_LLM_UI_WIDGET_DRAW_X",
+   "len": 4
+  },
+  {
+   "rid": 418,
+   "id": "UI_WIDGET_DRAW_Y",
+   "name": "_G_LLM_UI_WIDGET_DRAW_Y",
+   "len": 4
+  },
+  {
+   "rid": 419,
+   "id": "UI_WIDGET_DRAW_W",
+   "name": "_G_LLM_UI_WIDGET_DRAW_W",
+   "len": 4
+  },
+  {
+   "rid": 420,
+   "id": "UI_WIDGET_DRAW_H",
+   "name": "_G_LLM_UI_WIDGET_DRAW_H",
+   "len": 4
+  },
+  {
+   "rid": 421,
+   "id": "DLG_STATE_FLAGS",
+   "name": "_G_LLM_DLG_STATE_FLAGS",
+   "len": 4
+  },
+  {
+   "rid": 422,
+   "id": "UI_VIEW_SIZE_MODE_CACHE",
+   "name": "_G_LLM_UI_VIEW_SIZE_MODE_CACHE",
+   "len": 4
+  },
+  {
+   "rid": 423,
+   "id": "VIEW_SIZE_MODE_SAVE",
+   "name": "_G_LLM_VIEW_SIZE_MODE_SAVE",
+   "len": 4
+  },
+  {
+   "rid": 424,
+   "id": "UI_RACE_SEL_PENDING_GFX_IDX",
+   "name": "_G_LLM_UI_RACE_SEL_PENDING_GFX_IDX",
+   "len": 4
+  },
+  {
+   "rid": 425,
+   "id": "MENU_SAVE_NAME_PTR",
+   "name": "_G_LLM_MENU_SAVE_NAME_PTR",
+   "len": 4
+  },
+  {
+   "rid": 426,
+   "id": "NET_MAX_PROTOCOL_VERSION",
+   "name": "_G_LLM_NET_MAX_PROTOCOL_VERSION",
+   "len": 4
+  },
+  {
+   "rid": 427,
+   "id": "LOBBY_SLOTS",
+   "name": "_G_LLM_LOBBY_SLOTS",
+   "len": 456
+  },
+  {
+   "rid": 428,
+   "id": "CURRENT_MAP_DATA",
+   "name": "current_map_data",
+   "len": 380
+  },
+  {
+   "rid": 429,
+   "id": "LOBBY_SELECTED_SESSION_STATE",
+   "name": "_G_LLM_LOBBY_SELECTED_SESSION_STATE",
+   "len": 1
+  },
+  {
+   "rid": 430,
+   "id": "LOBBY_WIDGETS_BUILT",
+   "name": "_G_LLM_LOBBY_WIDGETS_BUILT",
+   "len": 4
+  },
+  {
+   "rid": 431,
+   "id": "UI_FADE_TRANSITION",
+   "name": "_G_LLM_UI_FADE_TRANSITION",
+   "len": 32
+  },
+  {
+   "rid": 432,
+   "id": "GAME_QUIT_TEARDOWN_FORCED_FLAG",
+   "name": "_G_LLM_GAME_QUIT_TEARDOWN_FORCED_FLAG",
+   "len": 4
+  },
+  {
+   "rid": 433,
+   "id": "TLO_REGISTRY",
+   "name": "_G_LLM_TLO_REGISTRY",
+   "len": 72
+  },
+  {
+   "rid": 434,
+   "id": "MP_NET_MODE",
+   "name": "_G_LLM_MP_NET_MODE",
+   "len": 4
+  },
+  {
+   "rid": 435,
+   "id": "NET_LOCKSTEP_WAIT_PLAYER_IDX",
+   "name": "_G_LLM_NET_LOCKSTEP_WAIT_PLAYER_IDX",
+   "len": 4
+  },
+  {
+   "rid": 436,
+   "id": "NET_LOCKSTEP_OVERLAY_RESULT",
+   "name": "_G_LLM_NET_LOCKSTEP_OVERLAY_RESULT",
+   "len": 4
+  },
+  {
+   "rid": 437,
+   "id": "LOBBY_LOCAL_SLOT_INDEX",
+   "name": "_G_LLM_LOBBY_LOCAL_SLOT_INDEX",
+   "len": 4
+  },
+  {
+   "rid": 438,
+   "id": "GFX_UI_COLORS_RGB",
+   "name": "_G_LLM_GFX_UI_COLORS_RGB",
+   "len": 48
+  },
+  {
+   "rid": 440,
+   "id": "TUTORIAL_HQ_ATTACK_SCENARIO_DONE",
+   "name": "_G_LLM_TUTORIAL_HQ_ATTACK_SCENARIO_DONE",
+   "len": 1
+  },
+  {
+   "rid": 441,
+   "id": "TUTORIAL_FORCED_BLDG_SELECTION",
+   "name": "_G_LLM_TUTORIAL_FORCED_BLDG_SELECTION",
+   "len": 4
+  },
+  {
+   "rid": 442,
+   "id": "TUTORIAL_STEP_COUNT",
+   "name": "_G_LLM_TUTORIAL_STEP_COUNT",
+   "len": 4
+  },
+  {
+   "rid": 443,
+   "id": "TUTORIAL_STEPS",
+   "name": "_G_LLM_TUTORIAL_STEPS",
+   "len": 24768
+  },
+  {
+   "rid": 444,
+   "id": "TUTORIAL_COLORS_RGB",
+   "name": "_G_LLM_TUTORIAL_COLORS_RGB",
+   "len": 60
+  },
+  {
+   "rid": 445,
+   "id": "TUTORIAL_UISTATE_BACKUP",
+   "name": "_G_LLM_TUTORIAL_UISTATE_BACKUP",
+   "len": 48
+  },
+  {
+   "rid": 446,
+   "id": "STRAT_AI_ATTACK_HQ_UNIT_ID",
+   "name": "_G_LLM_STRAT_AI_ATTACK_HQ_UNIT_ID",
+   "len": 4
+  },
+  {
+   "rid": 447,
+   "id": "LOBBY_RX_PACKET_LEN",
+   "name": "_G_LLM_LOBBY_RX_PACKET_LEN",
+   "len": 4
+  },
+  {
+   "rid": 448,
+   "id": "LOBBY_RX_CRC32_COMPUTED",
+   "name": "_G_LLM_LOBBY_RX_CRC32_COMPUTED",
+   "len": 4
+  },
+  {
+   "rid": 449,
+   "id": "LOBBY_RX_SENDER_ID",
+   "name": "_G_LLM_LOBBY_RX_SENDER_ID",
+   "len": 4
+  },
+  {
+   "rid": 450,
+   "id": "LOBBY_RX_TYPE",
+   "name": "_G_LLM_LOBBY_RX_TYPE",
+   "len": 1
+  },
+  {
+   "rid": 451,
+   "id": "LOBBY_RX_CRC32_RECV",
+   "name": "_G_LLM_LOBBY_RX_CRC32_RECV",
+   "len": 4
+  },
+  {
+   "rid": 452,
+   "id": "LOBBY_PEER_TABLE_COUNT",
+   "name": "_G_LLM_LOBBY_PEER_TABLE_COUNT",
+   "len": 4
+  },
+  {
+   "rid": 453,
+   "id": "PLANET_SEL_SCREEN_OPEN",
+   "name": "_G_LLM_PLANET_SEL_SCREEN_OPEN",
+   "len": 4
+  },
+  {
+   "rid": 454,
+   "id": "DI_MOUSE_DEVICE",
+   "name": "_G_LLM_DI_MOUSE_DEVICE",
+   "len": 4
+  },
+  {
+   "rid": 455,
+   "id": "INPUT_DI_MOUSE_ACCEL_THRESHOLD",
+   "name": "_G_LLM_INPUT_DI_MOUSE_ACCEL_THRESHOLD",
+   "len": 4
+  },
+  {
+   "rid": 456,
+   "id": "INPUT_DI_MOUSE_DIVISOR",
+   "name": "_G_LLM_INPUT_DI_MOUSE_DIVISOR",
+   "len": 4
+  },
+  {
+   "rid": 457,
+   "id": "STRAT_AI_ACTIVE_PLAYER_COUNT",
+   "name": "_G_LLM_STRAT_AI_ACTIVE_PLAYER_COUNT",
+   "len": 4
+  },
+  {
+   "rid": 458,
+   "id": "STRAT_AI_RESOURCE_VALUE_WEIGHTS",
+   "name": "_G_LLM_STRAT_AI_RESOURCE_VALUE_WEIGHTS",
+   "len": 16
+  },
+  {
+   "rid": 459,
+   "id": "STRAT_AI_MINE_YIELD_KERNEL",
+   "name": "_G_LLM_STRAT_AI_MINE_YIELD_KERNEL",
+   "len": 400
+  },
+  {
+   "rid": 460,
+   "id": "STRAT_AI_STRATEGY_PERIOD",
+   "name": "_G_LLM_STRAT_AI_STRATEGY_PERIOD",
+   "len": 4
+  },
+  {
+   "rid": 461,
+   "id": "STRAT_AI_TACTIC_PERIOD",
+   "name": "_G_LLM_STRAT_AI_TACTIC_PERIOD",
+   "len": 4
+  },
+  {
+   "rid": 462,
+   "id": "STRAT_AI_MOVE_PERIOD",
+   "name": "_G_LLM_STRAT_AI_MOVE_PERIOD",
+   "len": 4
+  },
+  {
+   "rid": 463,
+   "id": "STRAT_AI_HOME_GUARD_TARGET_PCT",
+   "name": "_G_LLM_STRAT_AI_HOME_GUARD_TARGET_PCT",
+   "len": 4
+  },
+  {
+   "rid": 464,
+   "id": "STRAT_AI_PATROL_GROUP_SIZE",
+   "name": "_G_LLM_STRAT_AI_PATROL_GROUP_SIZE",
+   "len": 4
+  },
+  {
+   "rid": 465,
+   "id": "STRAT_AI_PATROL_GROUP_MAX",
+   "name": "_G_LLM_STRAT_AI_PATROL_GROUP_MAX",
+   "len": 4
+  },
+  {
+   "rid": 466,
+   "id": "STRAT_AI_PATROL_WANDER_BOUNCES",
+   "name": "_G_LLM_STRAT_AI_PATROL_WANDER_BOUNCES",
+   "len": 4
+  },
+  {
+   "rid": 467,
+   "id": "STRAT_AI_LOITER_JITTER_RADIUS",
+   "name": "_G_LLM_STRAT_AI_LOITER_JITTER_RADIUS",
+   "len": 4
+  },
+  {
+   "rid": 468,
+   "id": "STRAT_AI_EXPAND_MIN_BUILDING_COUNT",
+   "name": "_G_LLM_STRAT_AI_EXPAND_MIN_BUILDING_COUNT",
+   "len": 4
+  },
+  {
+   "rid": 469,
+   "id": "STRAT_AI_EXPAND_MIN_TICKS",
+   "name": "_G_LLM_STRAT_AI_EXPAND_MIN_TICKS",
+   "len": 4
+  },
+  {
+   "rid": 470,
+   "id": "STRAT_AI_RELAY_TO_MINE_RATIO_PCT",
+   "name": "_G_LLM_STRAT_AI_RELAY_TO_MINE_RATIO_PCT",
+   "len": 4
+  },
+  {
+   "rid": 471,
+   "id": "STRAT_AI_CFG_MINE_WORTH",
+   "name": "_G_LLM_STRAT_AI_CFG_MINE_WORTH",
+   "len": 4
+  },
+  {
+   "rid": 472,
+   "id": "STRAT_AI_UNEMPLOYED_MIN",
+   "name": "_G_LLM_STRAT_AI_UNEMPLOYED_MIN",
+   "len": 4
+  },
+  {
+   "rid": 473,
+   "id": "STRAT_AI_UNEMPLOYED_RATIO",
+   "name": "_G_LLM_STRAT_AI_UNEMPLOYED_RATIO",
+   "len": 4
+  },
+  {
+   "rid": 474,
+   "id": "STRAT_AI_MAX_FUCK_RATIO",
+   "name": "_G_LLM_STRAT_AI_MAX_FUCK_RATIO",
+   "len": 4
+  },
+  {
+   "rid": 475,
+   "id": "STRAT_AI_EXTRA_SPACE",
+   "name": "_G_LLM_STRAT_AI_EXTRA_SPACE",
+   "len": 4
+  },
+  {
+   "rid": 476,
+   "id": "STRAT_AI_ENERGY_RATIO",
+   "name": "_G_LLM_STRAT_AI_ENERGY_RATIO",
+   "len": 4
+  },
+  {
+   "rid": 477,
+   "id": "STRAT_AI_SILO_RATIO",
+   "name": "_G_LLM_STRAT_AI_SILO_RATIO",
+   "len": 4
+  },
+  {
+   "rid": 478,
+   "id": "STRAT_AI_REPAIR_RATIO",
+   "name": "_G_LLM_STRAT_AI_REPAIR_RATIO",
+   "len": 4
+  },
+  {
+   "rid": 479,
+   "id": "STRAT_AI_TRAIN_QUEUE_PER_UNIT_CAP",
+   "name": "_G_LLM_STRAT_AI_TRAIN_QUEUE_PER_UNIT_CAP",
+   "len": 4
+  },
+  {
+   "rid": 480,
+   "id": "STRAT_AI_CFG_PROMO_ADD",
+   "name": "_G_LLM_STRAT_AI_CFG_PROMO_ADD",
+   "len": 4
+  },
+  {
+   "rid": 481,
+   "id": "STRAT_AI_CFG_PROMO_SUB",
+   "name": "_G_LLM_STRAT_AI_CFG_PROMO_SUB",
+   "len": 4
+  },
+  {
+   "rid": 482,
+   "id": "STRAT_AI_CFG_START_UNITS",
+   "name": "_G_LLM_STRAT_AI_CFG_START_UNITS",
+   "len": 4
+  },
+  {
+   "rid": 483,
+   "id": "STRAT_AI_REPOSITION_SMALL_GROUP_MAX",
+   "name": "_G_LLM_STRAT_AI_REPOSITION_SMALL_GROUP_MAX",
+   "len": 4
+  },
+  {
+   "rid": 484,
+   "id": "STRAT_AI_SURPLUS_GROUP_MIN_POOL4",
+   "name": "_G_LLM_STRAT_AI_SURPLUS_GROUP_MIN_POOL4",
+   "len": 4
+  },
+  {
+   "rid": 485,
+   "id": "STRAT_AI_ATTACK_OVERKILL_PCT",
+   "name": "_G_LLM_STRAT_AI_ATTACK_OVERKILL_PCT",
+   "len": 4
+  },
+  {
+   "rid": 486,
+   "id": "STRAT_AI_MIN_ATTACK_STRENGTH",
+   "name": "_G_LLM_STRAT_AI_MIN_ATTACK_STRENGTH",
+   "len": 4
+  },
+  {
+   "rid": 487,
+   "id": "STRAT_AI_MINE_LOW_SHARE_PCT_THRESHOLD",
+   "name": "_G_LLM_STRAT_AI_MINE_LOW_SHARE_PCT_THRESHOLD",
+   "len": 4
+  },
+  {
+   "rid": 488,
+   "id": "STRAT_AI_ATTACK_MILESTONE_COUNT",
+   "name": "_G_LLM_STRAT_AI_ATTACK_MILESTONE_COUNT",
+   "len": 4
+  },
+  {
+   "rid": 489,
+   "id": "STRAT_AI_SCR_KEYWORD_TABLE",
+   "name": "_G_LLM_STRAT_AI_SCR_KEYWORD_TABLE",
+   "len": 4
+  },
+  {
+   "rid": 490,
+   "id": "SND_VOICE_FORMAT_SCRATCH",
+   "name": "_G_LLM_SND_VOICE_FORMAT_SCRATCH",
+   "len": 4
+  },
+  {
+   "rid": 491,
+   "id": "UNITQ_NEIGHBOR_DX",
+   "name": "_G_LLM_UNITQ_NEIGHBOR_DX",
+   "len": 32
+  },
+  {
+   "rid": 492,
+   "id": "UNITQ_NEIGHBOR_DY",
+   "name": "_G_LLM_UNITQ_NEIGHBOR_DY",
+   "len": 32
+  },
+  {
+   "rid": 493,
+   "id": "STRAT_DIR_BITMASK_TABLE",
+   "name": "_G_LLM_STRAT_DIR_BITMASK_TABLE",
+   "len": 32
+  },
+  {
+   "rid": 494,
+   "id": "STRAT_COORD_SIGN_LUT",
+   "name": "_G_LLM_STRAT_COORD_SIGN_LUT",
+   "len": 256
+  },
+  {
+   "rid": 495,
+   "id": "STRAT_MOVE_DIR_TABLE",
+   "name": "_G_LLM_STRAT_MOVE_DIR_TABLE",
+   "len": 192
+  },
+  {
+   "rid": 496,
+   "id": "STRAT_DIR8_STEP_OFFSETS",
+   "name": "_G_LLM_STRAT_DIR8_STEP_OFFSETS",
+   "len": 16
+  },
+  {
+   "rid": 497,
+   "id": "STRAT_PATHTRACE_DIR_MERGE_LUT",
+   "name": "_G_LLM_STRAT_PATHTRACE_DIR_MERGE_LUT",
+   "len": 64
+  },
+  {
+   "rid": 498,
+   "id": "STRAT_PATHTRACE_COORD_MASK",
+   "name": "_G_LLM_STRAT_PATHTRACE_COORD_MASK",
+   "len": 4
+  },
+  {
+   "rid": 499,
+   "id": "STRAT_PATHTRACE_COL_MASK",
+   "name": "_G_LLM_STRAT_PATHTRACE_COL_MASK",
+   "len": 4
+  },
+  {
+   "rid": 500,
+   "id": "STRAT_PATHTRACE_ROW_MASK",
+   "name": "_G_LLM_STRAT_PATHTRACE_ROW_MASK",
+   "len": 4
+  },
+  {
+   "rid": 501,
+   "id": "STRAT_PATHTRACE_MAP_W",
+   "name": "_G_LLM_STRAT_PATHTRACE_MAP_W",
+   "len": 4
+  },
+  {
+   "rid": 502,
+   "id": "STRAT_PATHTRACE_MAP_H",
+   "name": "_G_LLM_STRAT_PATHTRACE_MAP_H",
+   "len": 4
+  },
+  {
+   "rid": 503,
+   "id": "STRAT_PATHTRACE_HALF_W",
+   "name": "_G_LLM_STRAT_PATHTRACE_HALF_W",
+   "len": 4
+  },
+  {
+   "rid": 504,
+   "id": "STRAT_PATHTRACE_HALF_H",
+   "name": "_G_LLM_STRAT_PATHTRACE_HALF_H",
+   "len": 4
+  },
+  {
+   "rid": 505,
+   "id": "STRAT_PATHTRACE_HALF_W_M1",
+   "name": "_G_LLM_STRAT_PATHTRACE_HALF_W_M1",
+   "len": 4
+  },
+  {
+   "rid": 506,
+   "id": "STRAT_PATHTRACE_HALF_H_M1",
+   "name": "_G_LLM_STRAT_PATHTRACE_HALF_H_M1",
+   "len": 4
+  },
+  {
+   "rid": 507,
+   "id": "STRAT_PATHTRACE_NEG_HALF_W",
+   "name": "_G_LLM_STRAT_PATHTRACE_NEG_HALF_W",
+   "len": 4
+  },
+  {
+   "rid": 508,
+   "id": "STRAT_PATHTRACE_NEG_HALF_H",
+   "name": "_G_LLM_STRAT_PATHTRACE_NEG_HALF_H",
+   "len": 4
+  },
+  {
+   "rid": 509,
+   "id": "STRAT_PATHTRACE_START_COL",
+   "name": "_G_LLM_STRAT_PATHTRACE_START_COL",
+   "len": 4
+  },
+  {
+   "rid": 510,
+   "id": "STRAT_PATHTRACE_START_ROW",
+   "name": "_G_LLM_STRAT_PATHTRACE_START_ROW",
+   "len": 4
+  },
+  {
+   "rid": 511,
+   "id": "STRAT_PATHTRACE_WALK_DIR",
+   "name": "_G_LLM_STRAT_PATHTRACE_WALK_DIR",
+   "len": 4
+  },
+  {
+   "rid": 512,
+   "id": "STRAT_PATHTRACE_GOAL_COL",
+   "name": "_G_LLM_STRAT_PATHTRACE_GOAL_COL",
+   "len": 4
+  },
+  {
+   "rid": 513,
+   "id": "STRAT_PATHTRACE_GOAL_ROW",
+   "name": "_G_LLM_STRAT_PATHTRACE_GOAL_ROW",
+   "len": 4
+  },
+  {
+   "rid": 514,
+   "id": "STRAT_PATHTRACE_GOAL_PACKED",
+   "name": "_G_LLM_STRAT_PATHTRACE_GOAL_PACKED",
+   "len": 4
+  },
+  {
+   "rid": 515,
+   "id": "STRAT_PATHTRACE_APPROACH_DIR",
+   "name": "_G_LLM_STRAT_PATHTRACE_APPROACH_DIR",
+   "len": 4
+  },
+  {
+   "rid": 516,
+   "id": "STRAT_PATHTRACE_LEN",
+   "name": "_G_LLM_STRAT_PATHTRACE_LEN",
+   "len": 4
+  },
+  {
+   "rid": 517,
+   "id": "STRAT_PATHTRACE_DIRS",
+   "name": "_G_LLM_STRAT_PATHTRACE_DIRS",
+   "len": 512
+  },
+  {
+   "rid": 518,
+   "id": "STRAT_PATHTRACE_POS",
+   "name": "_G_LLM_STRAT_PATHTRACE_POS",
+   "len": 1024
+  },
+  {
+   "rid": 519,
+   "id": "STRAT_PATHTRACE_BEST_DIR",
+   "name": "_G_LLM_STRAT_PATHTRACE_BEST_DIR",
+   "len": 4
+  },
+  {
+   "rid": 520,
+   "id": "STRAT_PATHTRACE_BEST_DIST",
+   "name": "_G_LLM_STRAT_PATHTRACE_BEST_DIST",
+   "len": 4
+  },
+  {
+   "rid": 521,
+   "id": "STRAT_PATHTRACE_FORBID_CELLS",
+   "name": "_G_LLM_STRAT_PATHTRACE_FORBID_CELLS",
+   "len": 28
+  },
+  {
+   "rid": 522,
+   "id": "STRAT_PATHFINDER_AIR_MODE_FLAG",
+   "name": "_G_LLM_STRAT_PATHFINDER_AIR_MODE_FLAG",
+   "len": 4
+  },
+  {
+   "rid": 523,
+   "id": "STRAT_PATHTRACE_DIR_SPLIT_TABLE",
+   "name": "_G_LLM_STRAT_PATHTRACE_DIR_SPLIT_TABLE",
+   "len": 128
+  },
+  {
+   "rid": 524,
+   "id": "STRAT_AI_QUADRANT_DX2",
+   "name": "_G_LLM_STRAT_AI_QUADRANT_DX2",
+   "len": 16
+  },
+  {
+   "rid": 525,
+   "id": "STRAT_AI_QUADRANT_DY2",
+   "name": "_G_LLM_STRAT_AI_QUADRANT_DY2",
+   "len": 16
+  },
+  {
+   "rid": 526,
+   "id": "STRAT_AI_RESOURCE_SPEND_WEIGHTS",
+   "name": "_G_LLM_STRAT_AI_RESOURCE_SPEND_WEIGHTS",
+   "len": 16
+  },
+  {
+   "rid": 527,
+   "id": "STRAT_GROUP_ROUTE_STEPS",
+   "name": "_G_LLM_STRAT_GROUP_ROUTE_STEPS",
+   "len": 512
+  },
+  {
+   "rid": 528,
+   "id": "STRAT_GROUP_MEMBER_TILE",
+   "name": "_G_LLM_STRAT_GROUP_MEMBER_TILE",
+   "len": 512
+  },
+  {
+   "rid": 529,
+   "id": "STRAT_GROUP_MEMBERS",
+   "name": "_G_LLM_STRAT_GROUP_MEMBERS",
+   "len": 1536
+  },
+  {
+   "rid": 530,
+   "id": "STRAT_PATH_WRAP_MASK",
+   "name": "_G_LLM_STRAT_PATH_WRAP_MASK",
+   "len": 4
+  },
+  {
+   "rid": 531,
+   "id": "STRAT_GROUP_ORDER_OWNER",
+   "name": "_G_LLM_STRAT_GROUP_ORDER_OWNER",
+   "len": 4
+  },
+  {
+   "rid": 532,
+   "id": "STRAT_GROUP_ORDER_GOAL_Y",
+   "name": "_G_LLM_STRAT_GROUP_ORDER_GOAL_Y",
+   "len": 4
+  },
+  {
+   "rid": 533,
+   "id": "STRAT_GROUP_ORDER_GOAL_X",
+   "name": "_G_LLM_STRAT_GROUP_ORDER_GOAL_X",
+   "len": 4
+  },
+  {
+   "rid": 534,
+   "id": "STRAT_GROUP_ANCHOR_Y",
+   "name": "_G_LLM_STRAT_GROUP_ANCHOR_Y",
+   "len": 4
+  },
+  {
+   "rid": 535,
+   "id": "STRAT_GROUP_ANCHOR_X",
+   "name": "_G_LLM_STRAT_GROUP_ANCHOR_X",
+   "len": 4
+  },
+  {
+   "rid": 536,
+   "id": "MAP_REGION_FLOOD_TILE_QUEUE",
+   "name": "_G_LLM_MAP_REGION_FLOOD_TILE_QUEUE",
+   "len": 16384
+  },
+  {
+   "rid": 537,
+   "id": "MAP_REGION_BY_INDEX",
+   "name": "_G_LLM_MAP_REGION_BY_INDEX",
+   "len": 16384
+  },
+  {
+   "rid": 538,
+   "id": "MAP_REGION_GRID",
+   "name": "_G_LLM_MAP_REGION_GRID",
+   "len": 524288
+  },
+  {
+   "rid": 539,
+   "id": "MAP_REGION_MERGE_THRESHOLD",
+   "name": "_G_LLM_MAP_REGION_MERGE_THRESHOLD",
+   "len": 4
+  },
+  {
+   "rid": 540,
+   "id": "MAP_REGION_ROUTE_CAND_SCRATCH",
+   "name": "_G_LLM_MAP_REGION_ROUTE_CAND_SCRATCH",
+   "len": 32
+  },
+  {
+   "rid": 541,
+   "id": "MAP_REGION_ROUTE_STEP_DELTAS",
+   "name": "_G_LLM_MAP_REGION_ROUTE_STEP_DELTAS",
+   "len": 32
+  },
+  {
+   "rid": 542,
+   "id": "MAP_REGION_ROUTE_STEP_DELTA_WRAP",
+   "name": "_G_LLM_MAP_REGION_ROUTE_STEP_DELTA_WRAP",
+   "len": 4
+  },
+  {
+   "rid": 543,
+   "id": "G_LAST_MAP_INDEX",
+   "name": "G_LAST_MAP_INDEX",
+   "len": 4
+  },
+  {
+   "rid": 544,
+   "id": "MAP_REGION_COORD_WRAP_MASK",
+   "name": "_G_LLM_MAP_REGION_COORD_WRAP_MASK",
+   "len": 4
+  },
+  {
+   "rid": 545,
+   "id": "PATH",
+   "name": "path_",
+   "len": 8192
+  },
+  {
+   "rid": 546,
+   "id": "MAP_REGION_ROUTE_BFS_QUEUE",
+   "name": "_G_LLM_MAP_REGION_ROUTE_BFS_QUEUE",
+   "len": 2048
+  },
+  {
+   "rid": 547,
+   "id": "MAP_BFS_QUEUE_REGIONSPLIT",
+   "name": "_G_LLM_MAP_BFS_QUEUE_REGIONSPLIT",
+   "len": 8192
+  },
+  {
+   "rid": 548,
+   "id": "TILE_DRAWN_MAP",
+   "name": "_G_LLM_TILE_DRAWN_MAP",
+   "len": 300
+  },
+  {
+   "rid": 549,
+   "id": "TILE_VIS_MAP_M6",
+   "name": "_G_LLM_TILE_VIS_MAP_M6",
+   "len": 1
+  },
+  {
+   "rid": 550,
+   "id": "TILE_VIS_MAP_M5",
+   "name": "_G_LLM_TILE_VIS_MAP_M5",
+   "len": 1
+  },
+  {
+   "rid": 551,
+   "id": "TILE_VIS_MAP_M4",
+   "name": "_G_LLM_TILE_VIS_MAP_M4",
+   "len": 1
+  },
+  {
+   "rid": 552,
+   "id": "TILE_VIS_MAP_M3",
+   "name": "_G_LLM_TILE_VIS_MAP_M3",
+   "len": 1
+  },
+  {
+   "rid": 553,
+   "id": "TILE_VIS_MAP_M2",
+   "name": "_G_LLM_TILE_VIS_MAP_M2",
+   "len": 1
+  },
+  {
+   "rid": 554,
+   "id": "TILE_VIS_MAP_M1",
+   "name": "_G_LLM_TILE_VIS_MAP_M1",
+   "len": 1
+  },
+  {
+   "rid": 555,
+   "id": "TILE_VIS_MAP",
+   "name": "_G_LLM_TILE_VIS_MAP",
+   "len": 300
+  },
+  {
+   "rid": 556,
+   "id": "SPRITE_META",
+   "name": "_G_LLM_SPRITE_META",
+   "len": 528000
+  },
+  {
+   "rid": 557,
+   "id": "FOG_OF_WAR",
+   "name": "fog_of_war",
+   "len": 589824
+  },
+  {
+   "rid": 558,
+   "id": "TACT_LOS_CACHE_PTR",
+   "name": "_G_LLM_TACT_LOS_CACHE_PTR",
+   "len": 4
+  },
+  {
+   "rid": 559,
+   "id": "HWND_00824FE8",
+   "name": "hWnd_00824fe8",
+   "len": 4
+  },
+  {
+   "rid": 560,
+   "id": "G_TMP_PLAYER",
+   "name": "G_TMP_PLAYER",
+   "len": 4
+  },
+  {
+   "rid": 561,
+   "id": "TILE_VIS_MAP_PTR",
+   "name": "_G_LLM_TILE_VIS_MAP_PTR",
+   "len": 4
+  },
+  {
+   "rid": 562,
+   "id": "STRAT_SAVE_MISC_DWORD",
+   "name": "_G_LLM_STRAT_SAVE_MISC_DWORD",
+   "len": 4
+  },
+  {
+   "rid": 563,
+   "id": "IS_HUMAN",
+   "name": "is_human",
+   "len": 4
+  },
+  {
+   "rid": 564,
+   "id": "MOUSE_BUTTONS_CUR",
+   "name": "_G_LLM_MOUSE_BUTTONS_CUR",
+   "len": 1
+  },
+  {
+   "rid": 565,
+   "id": "G_WIN_H",
+   "name": "G_WIN_H",
+   "len": 4
+  },
+  {
+   "rid": 566,
+   "id": "G_WIN_W",
+   "name": "G_WIN_W",
+   "len": 4
+  },
+  {
+   "rid": 567,
+   "id": "HEIGHT",
+   "name": "height",
+   "len": 4
+  },
+  {
+   "rid": 568,
+   "id": "VIEW_TILES_H",
+   "name": "_G_LLM_VIEW_TILES_H",
+   "len": 4
+  },
+  {
+   "rid": 569,
+   "id": "TACT_MAP_TILE_HEIGHT_SPRITES",
+   "name": "_G_LLM_TACT_MAP_TILE_HEIGHT_SPRITES",
+   "len": 4
+  },
+  {
+   "rid": 570,
+   "id": "WIDTH",
+   "name": "width",
+   "len": 4
+  },
+  {
+   "rid": 571,
+   "id": "VIEW_TILES_W",
+   "name": "_G_LLM_VIEW_TILES_W",
+   "len": 4
+  },
+  {
+   "rid": 572,
+   "id": "TACT_FOV_STENCIL",
+   "name": "_G_LLM_TACT_FOV_STENCIL",
+   "len": 4096
+  },
+  {
+   "rid": 573,
+   "id": "TACT_FOV_DIST",
+   "name": "_G_LLM_TACT_FOV_DIST",
+   "len": 4
+  },
+  {
+   "rid": 574,
+   "id": "TACT_FOV_ROW",
+   "name": "_G_LLM_TACT_FOV_ROW",
+   "len": 4
+  },
+  {
+   "rid": 575,
+   "id": "TACT_SAVED_WINDOW_WIDTH",
+   "name": "_G_LLM_TACT_SAVED_WINDOW_WIDTH",
+   "len": 4
+  },
+  {
+   "rid": 576,
+   "id": "TACT_CLICK_ACTION_TAKEN",
+   "name": "_G_LLM_TACT_CLICK_ACTION_TAKEN",
+   "len": 4
+  },
+  {
+   "rid": 577,
+   "id": "TACT_FOV_ANGLE_BASE",
+   "name": "_G_LLM_TACT_FOV_ANGLE_BASE",
+   "len": 4
+  },
+  {
+   "rid": 578,
+   "id": "TACT_FOV_COL",
+   "name": "_G_LLM_TACT_FOV_COL",
+   "len": 4
+  },
+  {
+   "rid": 579,
+   "id": "TACT_FOV_ANGLE_WIDTH",
+   "name": "_G_LLM_TACT_FOV_ANGLE_WIDTH",
+   "len": 4
+  },
+  {
+   "rid": 580,
+   "id": "TACT_FOV_NEAREST_LOW_CELL",
+   "name": "_G_LLM_TACT_FOV_NEAREST_LOW_CELL",
+   "len": 2
+  },
+  {
+   "rid": 581,
+   "id": "TACT_FOV_NEAREST_HIBIT_CELL",
+   "name": "_G_LLM_TACT_FOV_NEAREST_HIBIT_CELL",
+   "len": 2
+  },
+  {
+   "rid": 582,
+   "id": "TACT_UNITS",
+   "name": "_G_LLM_TACT_UNITS",
+   "len": 196596
+  },
+  {
+   "rid": 583,
+   "id": "TACT_MOVE_CUR_COL",
+   "name": "_G_LLM_TACT_MOVE_CUR_COL",
+   "len": 4
+  },
+  {
+   "rid": 584,
+   "id": "TACT_MOVE_CUR_ROW",
+   "name": "_G_LLM_TACT_MOVE_CUR_ROW",
+   "len": 4
+  },
+  {
+   "rid": 585,
+   "id": "TACT_FX_POOL",
+   "name": "_G_LLM_TACT_FX_POOL",
+   "len": 83968
+  },
+  {
+   "rid": 586,
+   "id": "TACT_SIDEBAR_ICON_SLOT_UNIT_LUT",
+   "name": "_G_LLM_TACT_SIDEBAR_ICON_SLOT_UNIT_LUT",
+   "len": 40
+  },
+  {
+   "rid": 587,
+   "id": "TACT_UNASSIGNED_UNIT_ROSTER",
+   "name": "_G_LLM_TACT_UNASSIGNED_UNIT_ROSTER",
+   "len": 256
+  },
+  {
+   "rid": 588,
+   "id": "TACT_GROUP_UNIT_ROSTER",
+   "name": "_G_LLM_TACT_GROUP_UNIT_ROSTER",
+   "len": 2048
+  },
+  {
+   "rid": 589,
+   "id": "TACT_SIDEBAR_SLOT_UNIT_IDS",
+   "name": "_G_LLM_TACT_SIDEBAR_SLOT_UNIT_IDS",
+   "len": 256
+  },
+  {
+   "rid": 590,
+   "id": "TACT_FX_TYPE_TABLE",
+   "name": "_G_LLM_TACT_FX_TYPE_TABLE",
+   "len": 4736
+  },
+  {
+   "rid": 591,
+   "id": "TACT_CHARACTER_TYPES",
+   "name": "_G_LLM_TACT_CHARACTER_TYPES",
+   "len": 1728
+  },
+  {
+   "rid": 592,
+   "id": "TACT_DOOR_TABLE",
+   "name": "_G_LLM_TACT_DOOR_TABLE",
+   "len": 1664
+  },
+  {
+   "rid": 593,
+   "id": "TACT_MAP_WIDTH_CACHE",
+   "name": "_G_LLM_TACT_MAP_WIDTH_CACHE",
+   "len": 4
+  },
+  {
+   "rid": 594,
+   "id": "TACT_MAP_HEIGHT_CACHE",
+   "name": "_G_LLM_TACT_MAP_HEIGHT_CACHE",
+   "len": 4
+  },
+  {
+   "rid": 595,
+   "id": "TACT_TELEPORT_TABLE",
+   "name": "_G_LLM_TACT_TELEPORT_TABLE",
+   "len": 3300
+  },
+  {
+   "rid": 596,
+   "id": "CAM_JUMP_QUEUE",
+   "name": "_G_LLM_CAM_JUMP_QUEUE",
+   "len": 480
+  },
+  {
+   "rid": 597,
+   "id": "STRAT_HEADING_CANDIDATE_TABLE",
+   "name": "_G_LLM_STRAT_HEADING_CANDIDATE_TABLE",
+   "len": 1152
+  },
+  {
+   "rid": 598,
+   "id": "G_LZW_TEMP_DATA",
+   "name": "G_LZW_TEMP_DATA",
+   "len": 1
+  },
+  {
+   "rid": 599,
+   "id": "STRAT_GROUP_STEP_HEADING_REMAP",
+   "name": "_G_LLM_STRAT_GROUP_STEP_HEADING_REMAP",
+   "len": 96
+  },
+  {
+   "rid": 600,
+   "id": "STRAT_PATH_JOB_RESULT_TABLE",
+   "name": "_G_LLM_STRAT_PATH_JOB_RESULT_TABLE",
+   "len": 800
+  },
+  {
+   "rid": 601,
+   "id": "STRAT_DIR_REMAP_TABLE",
+   "name": "_G_LLM_STRAT_DIR_REMAP_TABLE",
+   "len": 384
+  },
+  {
+   "rid": 602,
+   "id": "NET_BW_STAT",
+   "name": "_G_LLM_NET_BW_STAT",
+   "len": 8
+  },
+  {
+   "rid": 603,
+   "id": "STRAT_FPS_ESTIMATE",
+   "name": "_G_LLM_STRAT_FPS_ESTIMATE",
+   "len": 8
+  },
+  {
+   "rid": 604,
+   "id": "VIEW_SIZE_MODE",
+   "name": "_G_LLM_VIEW_SIZE_MODE",
+   "len": 4
+  },
+  {
+   "rid": 605,
+   "id": "SND_ENABLED",
+   "name": "_G_LLM_SND_ENABLED",
+   "len": 4
+  },
+  {
+   "rid": 606,
+   "id": "ANIM_PLACE_DENIED",
+   "name": "_G_LLM_ANIM_PLACE_DENIED",
+   "len": 8
+  },
+  {
+   "rid": 607,
+   "id": "STRAT_DIR_STEP_OFFSET_TABLE",
+   "name": "_G_LLM_STRAT_DIR_STEP_OFFSET_TABLE",
+   "len": 320
+  },
+  {
+   "rid": 608,
+   "id": "STRAT_GROUP_MOVE_SCRATCH",
+   "name": "_G_LLM_STRAT_GROUP_MOVE_SCRATCH",
+   "len": 2000
+  },
+  {
+   "rid": 609,
+   "id": "STRAT_SQUAD_PLACEMENT_OFFSET_TABLE",
+   "name": "_G_LLM_STRAT_SQUAD_PLACEMENT_OFFSET_TABLE",
+   "len": 288
+  },
+  {
+   "rid": 610,
+   "id": "STRAT_TICK_BUDGET",
+   "name": "_G_LLM_STRAT_TICK_BUDGET",
+   "len": 8
+  },
+  {
+   "rid": 611,
+   "id": "STRAT_MOVE_MICROSTEPS",
+   "name": "_G_LLM_STRAT_MOVE_MICROSTEPS",
+   "len": 2304
+  },
+  {
+   "rid": 612,
+   "id": "STRAT_SQUAD_FORMATION_ANCHOR_SCRATCH",
+   "name": "_G_LLM_STRAT_SQUAD_FORMATION_ANCHOR_SCRATCH",
+   "len": 40
+  },
+  {
+   "rid": 613,
+   "id": "CURSOR_ANIM_STATES",
+   "name": "_G_LLM_CURSOR_ANIM_STATES",
+   "len": 256
+  },
+  {
+   "rid": 614,
+   "id": "STRAT_FACING_STEP_SIGN",
+   "name": "_G_LLM_STRAT_FACING_STEP_SIGN",
+   "len": 200
+  },
+  {
+   "rid": 615,
+   "id": "STRAT_BLDG_DONE_FUNCS",
+   "name": "_G_LLM_STRAT_BLDG_DONE_FUNCS",
+   "len": 400
+  },
+  {
+   "rid": 616,
+   "id": "STRAT_BLDG_TICK2_FUNCS",
+   "name": "_G_LLM_STRAT_BLDG_TICK2_FUNCS",
+   "len": 400
+  },
+  {
+   "rid": 617,
+   "id": "STRAT_DIR8_OFFSET_TABLE",
+   "name": "_G_LLM_STRAT_DIR8_OFFSET_TABLE",
+   "len": 64
+  },
+  {
+   "rid": 618,
+   "id": "MESSAGE_TIME",
+   "name": "MESSAGE_TIME",
+   "len": 240
+  },
+  {
+   "rid": 619,
+   "id": "ANIM",
+   "name": "Anim",
+   "len": 40016
+  },
+  {
+   "rid": 620,
+   "id": "STRAT_PATH_BUFFERS",
+   "name": "_G_LLM_STRAT_PATH_BUFFERS",
+   "len": 480000
+  },
+  {
+   "rid": 621,
+   "id": "STRAT_PATH_FREE_SLOT_COUNT",
+   "name": "_G_LLM_STRAT_PATH_FREE_SLOT_COUNT",
+   "len": 32
+  },
+  {
+   "rid": 622,
+   "id": "STRAT_CTRL_GROUPS",
+   "name": "_G_LLM_STRAT_CTRL_GROUPS",
+   "len": 4040
+  },
+  {
+   "rid": 623,
+   "id": "STRAT_ADVISOR_NEXT_TIME",
+   "name": "_G_LLM_STRAT_ADVISOR_NEXT_TIME",
+   "len": 8
+  },
+  {
+   "rid": 624,
+   "id": "PASSABLE",
+   "name": "passable",
+   "len": 65536
+  },
+  {
+   "rid": 625,
+   "id": "STRAT_PATH_SLOT_FLAGS",
+   "name": "_G_LLM_STRAT_PATH_SLOT_FLAGS",
+   "len": 800
+  },
+  {
+   "rid": 626,
+   "id": "TACT_MOVE_COST_MAP",
+   "name": "_G_LLM_TACT_MOVE_COST_MAP",
+   "len": 262144
+  },
+  {
+   "rid": 627,
+   "id": "STRAT_ORDER_QUEUE",
+   "name": "_G_LLM_STRAT_ORDER_QUEUE",
+   "len": 20400
+  },
+  {
+   "rid": 628,
+   "id": "STRAT_ORDER_PENDING",
+   "name": "_G_LLM_STRAT_ORDER_PENDING",
+   "len": 68000
+  },
+  {
+   "rid": 629,
+   "id": "STRAT_INVASION_ALERT_TIME",
+   "name": "_G_LLM_STRAT_INVASION_ALERT_TIME",
+   "len": 256
+  },
+  {
+   "rid": 630,
+   "id": "STRAT_ORDER_STAGING",
+   "name": "_G_LLM_STRAT_ORDER_STAGING",
+   "len": 20400
+  },
+  {
+   "rid": 631,
+   "id": "UPGRADES",
+   "name": "Upgrades",
+   "len": 10400
+  },
+  {
+   "rid": 632,
+   "id": "PROD_SHUTTLE_SLOTS",
+   "name": "_G_LLM_PROD_SHUTTLE_SLOTS",
+   "len": 63700
+  },
+  {
+   "rid": 633,
+   "id": "SYSTEM",
+   "name": "System",
+   "len": 560
+  },
+  {
+   "rid": 634,
+   "id": "PROJECTS",
+   "name": "Projects",
+   "len": 20800
+  },
+  {
+   "rid": 635,
+   "id": "PLANETS",
+   "name": "Planets",
+   "len": 34016
+  },
+  {
+   "rid": 636,
+   "id": "SND_AMBIENT_BY_PLANET",
+   "name": "_G_LLM_SND_AMBIENT_BY_PLANET",
+   "len": 23168
+  },
+  {
+   "rid": 637,
+   "id": "STRAT_STORAGE_STATS",
+   "name": "_G_LLM_STRAT_STORAGE_STATS",
+   "len": 704
+  },
+  {
+   "rid": 638,
+   "id": "STRAT_POWER_STATS",
+   "name": "_G_LLM_STRAT_POWER_STATS",
+   "len": 192
+  },
+  {
+   "rid": 639,
+   "id": "STRAT_DEATH_ANIM_TABLE",
+   "name": "_G_LLM_STRAT_DEATH_ANIM_TABLE",
+   "len": 96
+  },
+  {
+   "rid": 640,
+   "id": "STRAT_FX_ANIMS",
+   "name": "_G_LLM_STRAT_FX_ANIMS",
+   "len": 210000
+  },
+  {
+   "rid": 641,
+   "id": "RESOURCES",
+   "name": "resources",
+   "len": 65536
+  },
+  {
+   "rid": 642,
+   "id": "STRAT_UNIT_HOUSING_STATS",
+   "name": "_G_LLM_STRAT_UNIT_HOUSING_STATS",
+   "len": 512
+  },
+  {
+   "rid": 643,
+   "id": "BLDG_PIP_ANIM_BASE_FRAME",
+   "name": "_G_LLM_BLDG_PIP_ANIM_BASE_FRAME",
+   "len": 16
+  },
+  {
+   "rid": 644,
+   "id": "A_OGIEN",
+   "name": "A_OGIEN",
+   "len": 16
+  },
+  {
+   "rid": 645,
+   "id": "PROGRESS",
+   "name": "progress",
+   "len": 7200
+  },
+  {
+   "rid": 646,
+   "id": "STRAT_POP_STATS",
+   "name": "_G_LLM_STRAT_POP_STATS",
+   "len": 416
+  },
+  {
+   "rid": 647,
+   "id": "A_DYM_POJAZD",
+   "name": "A_DYM_POJAZD",
+   "len": 16
+  },
+  {
+   "rid": 648,
+   "id": "WEAPON",
+   "name": "Weapon",
+   "len": 11648
+  },
+  {
+   "rid": 649,
+   "id": "BUILDINGS",
+   "name": "buildings",
+   "len": 218400
+  },
+  {
+   "rid": 650,
+   "id": "UNIT_STORAGE",
+   "name": "unit_storage",
+   "len": 48800
+  },
+  {
+   "rid": 651,
+   "id": "MAP_OBJECTS",
+   "name": "_G_LLM_MAP_OBJECTS",
+   "len": 240000
+  },
+  {
+   "rid": 652,
+   "id": "TURRETS",
+   "name": "turrets",
+   "len": 14080
+  },
+  {
+   "rid": 653,
+   "id": "MAP_OBJECT_TABLE",
+   "name": "_G_LLM_MAP_OBJECT_TABLE",
+   "len": 240000
+  },
+  {
+   "rid": 654,
+   "id": "STRAT_PLAYERS",
+   "name": "_G_LLM_STRAT_PLAYERS",
+   "len": 14848
+  },
+  {
+   "rid": 655,
+   "id": "STONES",
+   "name": "Stones",
+   "len": 800
+  },
+  {
+   "rid": 656,
+   "id": "LABS",
+   "name": "labs",
+   "len": 1600
+  },
+  {
+   "rid": 657,
+   "id": "CHEAT_CMD_TABLE",
+   "name": "_G_LLM_CHEAT_CMD_TABLE",
+   "len": 192
+  },
+  {
+   "rid": 658,
+   "id": "MINES",
+   "name": "mines",
+   "len": 14336
+  },
+  {
+   "rid": 659,
+   "id": "MAP_HALFRES_GRID",
+   "name": "_G_LLM_MAP_HALFRES_GRID",
+   "len": 65536
+  },
+  {
+   "rid": 660,
+   "id": "TILE_OBJECTS",
+   "name": "tile_objects",
+   "len": 524288
+  },
+  {
+   "rid": 661,
+   "id": "BUILDING",
+   "name": "Building",
+   "len": 211400
+  },
+  {
+   "rid": 662,
+   "id": "PRODUCTIONS",
+   "name": "productions",
+   "len": 25920
+  },
+  {
+   "rid": 663,
+   "id": "STRAT_LANDING_SPOTS",
+   "name": "_G_LLM_STRAT_LANDING_SPOTS",
+   "len": 192
+  },
+  {
+   "rid": 664,
+   "id": "UNITS",
+   "name": "units",
+   "len": 186400
+  },
+  {
+   "rid": 665,
+   "id": "PLAYER_RESOURCES",
+   "name": "player_resources",
+   "len": 320
+  },
+  {
+   "rid": 666,
+   "id": "STRAT_SOLDIERS",
+   "name": "_G_LLM_STRAT_SOLDIERS",
+   "len": 23200
+  },
+  {
+   "rid": 667,
+   "id": "TREE",
+   "name": "Tree",
+   "len": 4400
+  },
+  {
+   "rid": 668,
+   "id": "G_TEXT_TMP",
+   "name": "G_TEXT_TMP",
+   "len": 512
+  },
+  {
+   "rid": 670,
+   "id": "STRAT_CUR_FX_ANIM",
+   "name": "_G_LLM_STRAT_CUR_FX_ANIM",
+   "len": 4
+  },
+  {
+   "rid": 671,
+   "id": "STRAT_CUR_PROJECTILE",
+   "name": "_G_LLM_STRAT_CUR_PROJECTILE",
+   "len": 4
+  },
+  {
+   "rid": 672,
+   "id": "GENERAL",
+   "name": "general",
+   "len": 40
+  },
+  {
+   "rid": 673,
+   "id": "G_TMP_X",
+   "name": "G_TMP_x",
+   "len": 4
+  },
+  {
+   "rid": 674,
+   "id": "G_TMP_Y",
+   "name": "G_TMP_y",
+   "len": 4
+  },
+  {
+   "rid": 675,
+   "id": "G_TMP_SIGHT",
+   "name": "G_TMP_SIGHT",
+   "len": 4
+  },
+  {
+   "rid": 676,
+   "id": "FILE_SIZE",
+   "name": "file_size",
+   "len": 4
+  },
+  {
+   "rid": 677,
+   "id": "STRAT_BLDG_STATE_FUNCS",
+   "name": "_G_LLM_STRAT_BLDG_STATE_FUNCS",
+   "len": 1020
+  },
+  {
+   "rid": 678,
+   "id": "STRAT_FACING_TRIG_TABLE",
+   "name": "_G_LLM_STRAT_FACING_TRIG_TABLE",
+   "len": 480
+  },
+  {
+   "rid": 679,
+   "id": "STRAT_STATE_LOOP_GUARD",
+   "name": "_G_LLM_STRAT_STATE_LOOP_GUARD",
+   "len": 4
+  },
+  {
+   "rid": 680,
+   "id": "STRAT_UNIT_STATE_FUNCS",
+   "name": "_G_LLM_STRAT_UNIT_STATE_FUNCS",
+   "len": 1020
+  },
+  {
+   "rid": 681,
+   "id": "SQUAD_BB_SCAN_PLAYER",
+   "name": "_G_LLM_SQUAD_BB_SCAN_PLAYER",
+   "len": 4
+  },
+  {
+   "rid": 682,
+   "id": "SQUAD_BB_TARGET_OWNER",
+   "name": "_G_LLM_SQUAD_BB_TARGET_OWNER",
+   "len": 4
+  },
+  {
+   "rid": 683,
+   "id": "SQUAD_BB_TARGET_BUILDING_ID",
+   "name": "_G_LLM_SQUAD_BB_TARGET_BUILDING_ID",
+   "len": 4
+  },
+  {
+   "rid": 684,
+   "id": "SQUAD_BB_TARGET_ENERGY_PCT",
+   "name": "_G_LLM_SQUAD_BB_TARGET_ENERGY_PCT",
+   "len": 4
+  },
+  {
+   "rid": 685,
+   "id": "SQUAD_BB_TARGET_BUILDING_IDX",
+   "name": "_G_LLM_SQUAD_BB_TARGET_BUILDING_IDX",
+   "len": 4
+  },
+  {
+   "rid": 686,
+   "id": "SQUAD_STATUS",
+   "name": "_G_LLM_SQUAD_STATUS",
+   "len": 1024
+  },
+  {
+   "rid": 687,
+   "id": "SQUAD_STATUS_COUNT",
+   "name": "_G_LLM_SQUAD_STATUS_COUNT",
+   "len": 4
+  },
+  {
+   "rid": 688,
+   "id": "STRAT_FLOATING_MSG_QUEUE_ACTIVE",
+   "name": "_G_LLM_STRAT_FLOATING_MSG_QUEUE_ACTIVE",
+   "len": 4
+  },
+  {
+   "rid": 689,
+   "id": "STRAT_ORDER_SCRATCH_ARGS",
+   "name": "_G_LLM_STRAT_ORDER_SCRATCH_ARGS",
+   "len": 52
+  },
+  {
+   "rid": 690,
+   "id": "CLICK_SELECT_TARGET_ID",
+   "name": "_G_LLM_CLICK_SELECT_TARGET_ID",
+   "len": 4
+  },
+  {
+   "rid": 691,
+   "id": "CLICK_SELECT_TARGET_FLAGS",
+   "name": "_G_LLM_CLICK_SELECT_TARGET_FLAGS",
+   "len": 2
+  },
+  {
+   "rid": 692,
+   "id": "STRAT_FLOATING_MSG_COLOR",
+   "name": "_G_LLM_STRAT_FLOATING_MSG_COLOR",
+   "len": 60
+  },
+  {
+   "rid": 693,
+   "id": "STRAT_CUR_BUILDING",
+   "name": "_G_LLM_STRAT_CUR_BUILDING",
+   "len": 4
+  },
+  {
+   "rid": 694,
+   "id": "STRAT_CUR_UNIT",
+   "name": "_G_LLM_STRAT_CUR_UNIT",
+   "len": 4
+  },
+  {
+   "rid": 695,
+   "id": "PROGRESS_00E162E4",
+   "name": "Progress",
+   "len": 30900
+  },
+  {
+   "rid": 696,
+   "id": "STRAT_PROJECTILE_POOL",
+   "name": "_G_LLM_STRAT_PROJECTILE_POOL",
+   "len": 181500
+  },
+  {
+   "rid": 697,
+   "id": "STRAT_FOREIGN_BLDG_EVENT_PENDING",
+   "name": "_G_LLM_STRAT_FOREIGN_BLDG_EVENT_PENDING",
+   "len": 4
+  },
+  {
+   "rid": 698,
+   "id": "UNIT",
+   "name": "Unit",
+   "len": 57500
+  },
+  {
+   "rid": 699,
+   "id": "MAP_CAM_ROW",
+   "name": "_G_LLM_MAP_CAM_ROW",
+   "len": 4
+  },
+  {
+   "rid": 700,
+   "id": "MAP_CAM_COL",
+   "name": "_G_LLM_MAP_CAM_COL",
+   "len": 4
+  },
+  {
+   "rid": 701,
+   "id": "STRAT_UI_SELECTED_BLDG_INDEX",
+   "name": "_G_LLM_STRAT_UI_SELECTED_BLDG_INDEX",
+   "len": 6
+  },
+  {
+   "rid": 702,
+   "id": "STRAT_CUR_INDEX",
+   "name": "_G_LLM_STRAT_CUR_INDEX",
+   "len": 2
+  },
+  {
+   "rid": 703,
+   "id": "STRAT_CUR_PLAYER",
+   "name": "_G_LLM_STRAT_CUR_PLAYER",
+   "len": 2
+  },
+  {
+   "rid": 704,
+   "id": "STRAT_LAND_DMP_PATH_SCRATCH",
+   "name": "_G_LLM_STRAT_LAND_DMP_PATH_SCRATCH",
+   "len": 32
+  },
+  {
+   "rid": 705,
+   "id": "STRAT_DMP_PATH_SCRATCH",
+   "name": "_G_LLM_STRAT_DMP_PATH_SCRATCH",
+   "len": 32
+  },
+  {
+   "rid": 706,
+   "id": "GAME_SESSION_MODE",
+   "name": "_G_LLM_GAME_SESSION_MODE",
+   "len": 1623
+  },
+  {
+   "rid": 707,
+   "id": "DEBUG_TAP_FLAG",
+   "name": "_G_LLM_DEBUG_TAP_FLAG",
+   "len": 4
+  },
+  {
+   "rid": 708,
+   "id": "GAME_TUTORIAL_STEP",
+   "name": "_G_LLM_GAME_TUTORIAL_STEP",
+   "len": 4
+  },
+  {
+   "rid": 709,
+   "id": "STRAT_AI_FOREIGN_BLDG_CHANGE_FLAG",
+   "name": "_G_LLM_STRAT_AI_FOREIGN_BLDG_CHANGE_FLAG",
+   "len": 4
+  },
+  {
+   "rid": 710,
+   "id": "PLAYERSIDE",
+   "name": "PlayerSide",
+   "len": 2
+  },
+  {
+   "rid": 711,
+   "id": "STRAT_DEBUG_RESOURCE_YIELD_CUT",
+   "name": "_G_LLM_STRAT_DEBUG_RESOURCE_YIELD_CUT",
+   "len": 8
+  },
+  {
+   "rid": 712,
+   "id": "STRAT_LOCAL_PLAYER_SLOT",
+   "name": "_G_LLM_STRAT_LOCAL_PLAYER_SLOT",
+   "len": 2
+  },
+  {
+   "rid": 713,
+   "id": "STRAT_PROD_COMPLETE_THROTTLE",
+   "name": "_G_LLM_STRAT_PROD_COMPLETE_THROTTLE",
+   "len": 1
+  },
+  {
+   "rid": 714,
+   "id": "STRAT_PLAYER_RACE",
+   "name": "_G_LLM_STRAT_PLAYER_RACE",
+   "len": 4
+  },
+  {
+   "rid": 715,
+   "id": "STRAT_UI_BLDG_TAB_SELECT_BLOCKED",
+   "name": "_G_LLM_STRAT_UI_BLDG_TAB_SELECT_BLOCKED",
+   "len": 1
+  },
+  {
+   "rid": 716,
+   "id": "G_PLANET_INDEX",
+   "name": "G_PLANET_INDEX",
+   "len": 4
+  },
+  {
+   "rid": 717,
+   "id": "STRAT_PLANET_TRANSITION_STATE",
+   "name": "_G_LLM_STRAT_PLANET_TRANSITION_STATE",
+   "len": 1
+  },
+  {
+   "rid": 718,
+   "id": "G_PLANET_STATUS",
+   "name": "G_PLANET_STATUS",
+   "len": 128
+  },
+  {
+   "rid": 719,
+   "id": "STRAT_FLOATING_MSG_SUPPRESS_FLAG",
+   "name": "_G_LLM_STRAT_FLOATING_MSG_SUPPRESS_FLAG",
+   "len": 1
+  },
+  {
+   "rid": 720,
+   "id": "PLANET_TIME",
+   "name": "planet_time",
+   "len": 256
+  },
+  {
+   "rid": 721,
+   "id": "STRAT_LOCKSTEP_STEP_MULT",
+   "name": "_G_LLM_STRAT_LOCKSTEP_STEP_MULT",
+   "len": 1
+  },
+  {
+   "rid": 722,
+   "id": "STRAT_OUTER_PLANET_LAND_STATE",
+   "name": "_G_LLM_STRAT_OUTER_PLANET_LAND_STATE",
+   "len": 4
+  },
+  {
+   "rid": 723,
+   "id": "STRAT_PLANET_MOTHER_LOST_TIME",
+   "name": "_G_LLM_STRAT_PLANET_MOTHER_LOST_TIME",
+   "len": 256
+  },
+  {
+   "rid": 724,
+   "id": "CHEAT_PENALTY_SCORE",
+   "name": "_G_LLM_CHEAT_PENALTY_SCORE",
+   "len": 4
+  },
+  {
+   "rid": 725,
+   "id": "STRAT_INVASION_TIME",
+   "name": "_G_LLM_STRAT_INVASION_TIME",
+   "len": 256
+  },
+  {
+   "rid": 726,
+   "id": "STRAT_OUTER_PLANET_LANDED_FLAG",
+   "name": "_G_LLM_STRAT_OUTER_PLANET_LANDED_FLAG",
+   "len": 4
+  },
+  {
+   "rid": 727,
+   "id": "STRAT_PLANET_INT_TABLE",
+   "name": "_G_LLM_STRAT_PLANET_INT_TABLE",
+   "len": 128
+  },
+  {
+   "rid": 728,
+   "id": "STRAT_BLDG_COMPLETION_SLOT_COUNT",
+   "name": "_G_LLM_STRAT_BLDG_COMPLETION_SLOT_COUNT",
+   "len": 1
+  },
+  {
+   "rid": 729,
+   "id": "STRAT_BLDG_COMPLETION_ACCUM",
+   "name": "_G_LLM_STRAT_BLDG_COMPLETION_ACCUM",
+   "len": 4
+  },
+  {
+   "rid": 730,
+   "id": "CURRENTSYSTEM",
+   "name": "CurrentSystem",
+   "len": 4
+  },
+  {
+   "rid": 731,
+   "id": "NET_LOCKSTEP_SYNC_RETRY_COUNTDOWN",
+   "name": "_G_LLM_NET_LOCKSTEP_SYNC_RETRY_COUNTDOWN",
+   "len": 4
+  },
+  {
+   "rid": 732,
+   "id": "NET_LOCKSTEP_STALL_NAG_COUNT",
+   "name": "_G_LLM_NET_LOCKSTEP_STALL_NAG_COUNT",
+   "len": 4
+  },
+  {
+   "rid": 733,
+   "id": "NET_LOCKSTEP_RESYNC_TRIGGER_COUNT",
+   "name": "_G_LLM_NET_LOCKSTEP_RESYNC_TRIGGER_COUNT",
+   "len": 4
+  },
+  {
+   "rid": 734,
+   "id": "STRAT_LOCKSTEP_STALL_COUNT",
+   "name": "_G_LLM_STRAT_LOCKSTEP_STALL_COUNT",
+   "len": 4
+  },
+  {
+   "rid": 735,
+   "id": "NET_LOCKSTEP_SYNC_WAIT_ELAPSED",
+   "name": "_G_LLM_NET_LOCKSTEP_SYNC_WAIT_ELAPSED",
+   "len": 8
+  },
+  {
+   "rid": 736,
+   "id": "NET_LOCKSTEP_PEER_TIMEOUT_ELAPSED",
+   "name": "_G_LLM_NET_LOCKSTEP_PEER_TIMEOUT_ELAPSED",
+   "len": 8
+  },
+  {
+   "rid": 737,
+   "id": "NET_SYNC_WAIT_ACTIVE",
+   "name": "_G_LLM_NET_SYNC_WAIT_ACTIVE",
+   "len": 4
+  },
+  {
+   "rid": 738,
+   "id": "NET_RESYNC_IN_PROGRESS",
+   "name": "_G_LLM_NET_RESYNC_IN_PROGRESS",
+   "len": 4
+  },
+  {
+   "rid": 739,
+   "id": "CURRENT_GAME_TIME",
+   "name": "CURRENT_GAME_TIME",
+   "len": 8
+  },
+  {
+   "rid": 740,
+   "id": "LAST_GAME_TIME",
+   "name": "LAST_GAME_TIME",
+   "len": 8
+  },
+  {
+   "rid": 741,
+   "id": "TOTAL_GAME_TIME",
+   "name": "TOTAL_GAME_TIME",
+   "len": 8
+  },
+  {
+   "rid": 742,
+   "id": "STRAT_SIM_STEP_INTERVAL",
+   "name": "_G_LLM_STRAT_SIM_STEP_INTERVAL",
+   "len": 8
+  },
+  {
+   "rid": 743,
+   "id": "GAME_TIME_DELTA",
+   "name": "GAME_TIME_DELTA",
+   "len": 8
+  },
+  {
+   "rid": 744,
+   "id": "GAME_SPEED",
+   "name": "game_speed",
+   "len": 8
+  },
+  {
+   "rid": 745,
+   "id": "STRAT_CAM_PAN_TARGET_COL",
+   "name": "_G_LLM_STRAT_CAM_PAN_TARGET_COL",
+   "len": 4
+  },
+  {
+   "rid": 746,
+   "id": "STRAT_CAM_PAN_TARGET_ROW",
+   "name": "_G_LLM_STRAT_CAM_PAN_TARGET_ROW",
+   "len": 4
+  },
+  {
+   "rid": 747,
+   "id": "PLAYERS",
+   "name": "Players",
+   "len": 416
+  },
+  {
+   "rid": 748,
+   "id": "STRAT_INJECTED_MAP_PLANET_SLOT",
+   "name": "_G_LLM_STRAT_INJECTED_MAP_PLANET_SLOT",
+   "len": 1
+  },
+  {
+   "rid": 749,
+   "id": "STRAT_RNG_SEED_BYTE",
+   "name": "_G_LLM_STRAT_RNG_SEED_BYTE",
+   "len": 1
+  },
+  {
+   "rid": 750,
+   "id": "CHAT_TARGET_MASK",
+   "name": "_G_LLM_CHAT_TARGET_MASK",
+   "len": 1
+  },
+  {
+   "rid": 751,
+   "id": "GAME_HUMAN_PLAYER_MASK",
+   "name": "_G_LLM_GAME_HUMAN_PLAYER_MASK",
+   "len": 1
+  },
+  {
+   "rid": 752,
+   "id": "PLAYER_CONTROL_MASK",
+   "name": "_G_LLM_PLAYER_CONTROL_MASK",
+   "len": 1
+  },
+  {
+   "rid": 754,
+   "id": "STRAT_SHOW_UNIT_FLAGS",
+   "name": "_G_LLM_STRAT_SHOW_UNIT_FLAGS",
+   "len": 4
+  },
+  {
+   "rid": 755,
+   "id": "STRAT_MP_ALLY_VICTORY_RULE_FLAG",
+   "name": "_G_LLM_STRAT_MP_ALLY_VICTORY_RULE_FLAG",
+   "len": 4
+  },
+  {
+   "rid": 756,
+   "id": "STRAT_SYSTEM_LOST_MSG_SHOWN_FLAG",
+   "name": "_G_LLM_STRAT_SYSTEM_LOST_MSG_SHOWN_FLAG",
+   "len": 4
+  },
+  {
+   "rid": 757,
+   "id": "MOUSE_BUTTONS_PREV",
+   "name": "_G_LLM_MOUSE_BUTTONS_PREV",
+   "len": 17
+  },
+  {
+   "rid": 758,
+   "id": "STRAT_SCENARIO_PLANET_NAME_W",
+   "name": "_G_LLM_STRAT_SCENARIO_PLANET_NAME_W",
+   "len": 32
+  },
+  {
+   "rid": 759,
+   "id": "NET_LOCKSTEP_EXTEND_MARGIN_1",
+   "name": "_G_LLM_NET_LOCKSTEP_EXTEND_MARGIN_1",
+   "len": 8
+  },
+  {
+   "rid": 760,
+   "id": "NET_LOCKSTEP_EXTEND_MARGIN_2",
+   "name": "_G_LLM_NET_LOCKSTEP_EXTEND_MARGIN_2",
+   "len": 8
+  },
+  {
+   "rid": 761,
+   "id": "NET_LOCKSTEP_PEER_STATE",
+   "name": "_G_LLM_NET_LOCKSTEP_PEER_STATE",
+   "len": 64
+  },
+  {
+   "rid": 762,
+   "id": "NET_LOCKSTEP_RESYNC_DEADLINE_MS",
+   "name": "_G_LLM_NET_LOCKSTEP_RESYNC_DEADLINE_MS",
+   "len": 4
+  },
+  {
+   "rid": 763,
+   "id": "NET_LOCKSTEP_PEER_TIMING",
+   "name": "_G_LLM_NET_LOCKSTEP_PEER_TIMING",
+   "len": 96
+  },
+  {
+   "rid": 764,
+   "id": "SYSTEM_00E5A690",
+   "name": "SYSTEM",
+   "len": 4488
+  },
+  {
+   "rid": 765,
+   "id": "PROGRESS_00E5C0D8",
+   "name": "PROGRESS@00e5c0d8",
+   "len": 2316
+  },
+  {
+   "rid": 766,
+   "id": "BUILDING_00E5C9E4",
+   "name": "BUILDING@00e5c9e4",
+   "len": 11348
+  },
+  {
+   "rid": 767,
+   "id": "UNIT_00E5F638",
+   "name": "UNIT@00e5f638",
+   "len": 3820
+  },
+  {
+   "rid": 771,
+   "id": "MENU_NEWGAME_RACE",
+   "name": "menu_newgame_race",
+   "len": 4
+  },
+  {
+   "rid": 772,
+   "id": "STRAT_GROUP_MOVE_DIST_REF_X",
+   "name": "_G_LLM_STRAT_GROUP_MOVE_DIST_REF_X",
+   "len": 4
+  },
+  {
+   "rid": 773,
+   "id": "STRAT_GROUP_MOVE_DIST_REF_Y",
+   "name": "_G_LLM_STRAT_GROUP_MOVE_DIST_REF_Y",
+   "len": 4
+  },
+  {
+   "rid": 774,
+   "id": "STRAT_GROUP_MOVE_DIST_HALF_HEIGHT",
+   "name": "_G_LLM_STRAT_GROUP_MOVE_DIST_HALF_HEIGHT",
+   "len": 4
+  },
+  {
+   "rid": 775,
+   "id": "STRAT_GROUP_MOVE_DIST_HALF_WIDTH",
+   "name": "_G_LLM_STRAT_GROUP_MOVE_DIST_HALF_WIDTH",
+   "len": 4
+  },
+  {
+   "rid": 776,
+   "id": "GAME_CLOCK_TICKS_PER_MS",
+   "name": "_G_LLM_GAME_CLOCK_TICKS_PER_MS",
+   "len": 8
+  },
+  {
+   "rid": 777,
+   "id": "GAME_CLOCK_RAW_TICKS",
+   "name": "_G_LLM_GAME_CLOCK_RAW_TICKS",
+   "len": 4
+  },
+  {
+   "rid": 778,
+   "id": "TIME_TICK_QUERY_COUNT",
+   "name": "_G_LLM_TIME_TICK_QUERY_COUNT",
+   "len": 4
+  },
+  {
+   "rid": 779,
+   "id": "INPUT_TIME_EPOCH",
+   "name": "_G_LLM_INPUT_TIME_EPOCH",
+   "len": 4
+  },
+  {
+   "rid": 780,
+   "id": "TIME_TICKS_MS",
+   "name": "_G_LLM_TIME_TICKS_MS",
+   "len": 4
+  },
+  {
+   "rid": 781,
+   "id": "TIME_TICKS_MS_LAST",
+   "name": "_G_LLM_TIME_TICKS_MS_LAST",
+   "len": 4
+  },
+  {
+   "rid": 782,
+   "id": "INPUT_MOUSE_EVENTS",
+   "name": "_G_LLM_INPUT_MOUSE_EVENTS",
+   "len": 7168
+  },
+  {
+   "rid": 783,
+   "id": "INPUT_KEY_EVENTS",
+   "name": "_G_LLM_INPUT_KEY_EVENTS",
+   "len": 7168
+  },
+  {
+   "rid": 785,
+   "id": "KEY_LCTRL_HELD",
+   "name": "_G_LLM_KEY_LCTRL_HELD",
+   "len": 1
+  },
+  {
+   "rid": 786,
+   "id": "KEY_LSHIFT_HELD",
+   "name": "_G_LLM_KEY_LSHIFT_HELD",
+   "len": 1
+  },
+  {
+   "rid": 787,
+   "id": "KEY_RSHIFT_HELD",
+   "name": "_G_LLM_KEY_RSHIFT_HELD",
+   "len": 1
+  },
+  {
+   "rid": 788,
+   "id": "KEY_LALT_HELD",
+   "name": "_G_LLM_KEY_LALT_HELD",
+   "len": 1
+  },
+  {
+   "rid": 789,
+   "id": "INPUT_MOUSE_WRITE_IDX",
+   "name": "_G_LLM_INPUT_MOUSE_WRITE_IDX",
+   "len": 4
+  },
+  {
+   "rid": 790,
+   "id": "INPUT_MOUSE_LAST_Y",
+   "name": "_G_LLM_INPUT_MOUSE_LAST_Y",
+   "len": 4
+  },
+  {
+   "rid": 791,
+   "id": "INPUT_MOUSE_LAST_X",
+   "name": "_G_LLM_INPUT_MOUSE_LAST_X",
+   "len": 4
+  },
+  {
+   "rid": 792,
+   "id": "INPUT_KEY_READ_IDX",
+   "name": "_G_LLM_INPUT_KEY_READ_IDX",
+   "len": 4
+  },
+  {
+   "rid": 793,
+   "id": "INPUT_MOUSE_READ_IDX",
+   "name": "_G_LLM_INPUT_MOUSE_READ_IDX",
+   "len": 4
+  },
+  {
+   "rid": 794,
+   "id": "INPUT_KEY_WRITE_IDX",
+   "name": "_G_LLM_INPUT_KEY_WRITE_IDX",
+   "len": 4
+  },
+  {
+   "rid": 795,
+   "id": "STRAT_AI_ATTACK_STRENGTH_TABLE",
+   "name": "_G_LLM_STRAT_AI_ATTACK_STRENGTH_TABLE",
+   "len": 128
+  },
+  {
+   "rid": 796,
+   "id": "STRAT_AI_ATTACK_TIME_TABLE",
+   "name": "_G_LLM_STRAT_AI_ATTACK_TIME_TABLE",
+   "len": 128
+  },
+  {
+   "rid": 797,
+   "id": "STRAT_PLANET_MAP_PAL4_WHITE",
+   "name": "_G_LLM_STRAT_PLANET_MAP_PAL4_WHITE",
+   "len": 2
+  },
+  {
+   "rid": 798,
+   "id": "STRAT_PLANET_MAP_PAL4_BLACK",
+   "name": "_G_LLM_STRAT_PLANET_MAP_PAL4_BLACK",
+   "len": 2
+  },
+  {
+   "rid": 799,
+   "id": "STRAT_PLANET_MAP_PAL4_MAGENTA",
+   "name": "_G_LLM_STRAT_PLANET_MAP_PAL4_MAGENTA",
+   "len": 2
+  },
+  {
+   "rid": 800,
+   "id": "STRAT_PLANET_MAP_PAL4_YELLOW",
+   "name": "_G_LLM_STRAT_PLANET_MAP_PAL4_YELLOW",
+   "len": 2
+  },
+  {
+   "rid": 801,
+   "id": "STRAT_AI_GROUP_UNIT_SCRATCH_LIST",
+   "name": "_G_LLM_STRAT_AI_GROUP_UNIT_SCRATCH_LIST",
+   "len": 400
+  },
+  {
+   "rid": 802,
+   "id": "PLAYER_DATA",
+   "name": "player_data",
+   "len": 1329136
+  },
+  {
+   "rid": 803,
+   "id": "STRAT_AI_TILE_SPIRAL_RING_CELL_COUNTS",
+   "name": "_G_LLM_STRAT_AI_TILE_SPIRAL_RING_CELL_COUNTS",
+   "len": 512
+  },
+  {
+   "rid": 804,
+   "id": "STRAT_BLDG_CELL_GRID",
+   "name": "_G_LLM_STRAT_BLDG_CELL_GRID",
+   "len": 6400
+  },
+  {
+   "rid": 805,
+   "id": "STRAT_AI_ENGAGE_CANDIDATE_SCRATCH",
+   "name": "_G_LLM_STRAT_AI_ENGAGE_CANDIDATE_SCRATCH",
+   "len": 3072
+  },
+  {
+   "rid": 806,
+   "id": "STRAT_AI_SITE_CANDIDATES",
+   "name": "_G_LLM_STRAT_AI_SITE_CANDIDATES",
+   "len": 65536
+  },
+  {
+   "rid": 807,
+   "id": "STRAT_AI_TILE_SPIRAL_OFFSETS",
+   "name": "_G_LLM_STRAT_AI_TILE_SPIRAL_OFFSETS",
+   "len": 131072
+  },
+  {
+   "rid": 808,
+   "id": "STRAT_BLDG_CELL_GRID_ROW_SHIFT",
+   "name": "_G_LLM_STRAT_BLDG_CELL_GRID_ROW_SHIFT",
+   "len": 400
+  },
+  {
+   "rid": 809,
+   "id": "WIDTH_M",
+   "name": "width_m",
+   "len": 4
+  },
+  {
+   "rid": 810,
+   "id": "HEIGHT_M",
+   "name": "height_m",
+   "len": 4
+  },
+  {
+   "rid": 811,
+   "id": "STRAT_AI_GROUP_UNIT_SCRATCH_COUNT",
+   "name": "_G_LLM_STRAT_AI_GROUP_UNIT_SCRATCH_COUNT",
+   "len": 4
+  },
+  {
+   "rid": 812,
+   "id": "STRAT_AI_ENGAGE_CANDIDATE_SCRATCH_COUNT",
+   "name": "_G_LLM_STRAT_AI_ENGAGE_CANDIDATE_SCRATCH_COUNT",
+   "len": 4
+  },
+  {
+   "rid": 813,
+   "id": "STRAT_AI_SITE_CANDIDATE_COUNT",
+   "name": "_G_LLM_STRAT_AI_SITE_CANDIDATE_COUNT",
+   "len": 4
+  },
+  {
+   "rid": 814,
+   "id": "STRAT_AI_TILE_SPIRAL_CELL_COUNT",
+   "name": "_G_LLM_STRAT_AI_TILE_SPIRAL_CELL_COUNT",
+   "len": 4
+  },
+  {
+   "rid": 815,
+   "id": "STRAT_PLANET_MAP_PAL5_BLACK",
+   "name": "_G_LLM_STRAT_PLANET_MAP_PAL5_BLACK",
+   "len": 2
+  },
+  {
+   "rid": 816,
+   "id": "STRAT_PLANET_MAP_PAL5_MAGENTA",
+   "name": "_G_LLM_STRAT_PLANET_MAP_PAL5_MAGENTA",
+   "len": 2
+  },
+  {
+   "rid": 817,
+   "id": "STRAT_PLANET_MAP_PAL5_GREEN",
+   "name": "_G_LLM_STRAT_PLANET_MAP_PAL5_GREEN",
+   "len": 2
+  },
+  {
+   "rid": 818,
+   "id": "STRAT_PLANET_MAP_PAL5_RED",
+   "name": "_G_LLM_STRAT_PLANET_MAP_PAL5_RED",
+   "len": 2
+  },
+  {
+   "rid": 819,
+   "id": "STRAT_PLANET_MAP_PAL5_BLUE",
+   "name": "_G_LLM_STRAT_PLANET_MAP_PAL5_BLUE",
+   "len": 2
+  },
+  {
+   "rid": 820,
+   "id": "STRAT_BLDG_ENCLOSURE_SCRATCH",
+   "name": "_G_LLM_STRAT_BLDG_ENCLOSURE_SCRATCH",
+   "len": 65536
+  },
+  {
+   "rid": 821,
+   "id": "STRAT_AI_SPREAD_TILES",
+   "name": "_G_LLM_STRAT_AI_SPREAD_TILES",
+   "len": 6144
+  },
+  {
+   "rid": 822,
+   "id": "STRAT_AI_SPREAD_TILE_COUNT",
+   "name": "_G_LLM_STRAT_AI_SPREAD_TILE_COUNT",
+   "len": 4
+  },
+  {
+   "rid": 823,
+   "id": "UNITQ_CUR_TILE",
+   "name": "_G_LLM_UNITQ_CUR_TILE",
+   "len": 4
+  },
+  {
+   "rid": 824,
+   "id": "UNITQ_CLOSED_COUNT",
+   "name": "_G_LLM_UNITQ_CLOSED_COUNT",
+   "len": 4
+  },
+  {
+   "rid": 825,
+   "id": "UNITQ_ITER",
+   "name": "_G_LLM_UNITQ_ITER",
+   "len": 4
+  },
+  {
+   "rid": 826,
+   "id": "UNITQ_FRONTIER_COUNT",
+   "name": "_G_LLM_UNITQ_FRONTIER_COUNT",
+   "len": 4
+  },
+  {
+   "rid": 827,
+   "id": "UNITQ_CLOSED",
+   "name": "_G_LLM_UNITQ_CLOSED",
+   "len": 8192
+  },
+  {
+   "rid": 828,
+   "id": "UNITQ_FRONTIER",
+   "name": "_G_LLM_UNITQ_FRONTIER",
+   "len": 1024
+  },
+  {
+   "rid": 829,
+   "id": "STRAT_AI_MINE_REBALANCE_MIN_COUNT",
+   "name": "_G_LLM_STRAT_AI_MINE_REBALANCE_MIN_COUNT",
+   "len": 4
+  },
+  {
+   "rid": 830,
+   "id": "STRAT_AI_BLDG_CONNECTIVITY_TRIAL",
+   "name": "_G_LLM_STRAT_AI_BLDG_CONNECTIVITY_TRIAL",
+   "len": 100
+  },
+  {
+   "rid": 831,
+   "id": "STRAT_AI_BLDG_CONNECTIVITY_BASE",
+   "name": "_G_LLM_STRAT_AI_BLDG_CONNECTIVITY_BASE",
+   "len": 100
+  },
+  {
+   "rid": 832,
+   "id": "STRAT_AI_MINE_ROSTER_INDEX",
+   "name": "_G_LLM_STRAT_AI_MINE_ROSTER_INDEX",
+   "len": 128
+  },
+  {
+   "rid": 833,
+   "id": "STRAT_AI_MINE_QUALITY_HIST",
+   "name": "_G_LLM_STRAT_AI_MINE_QUALITY_HIST",
+   "len": 384
+  },
+  {
+   "rid": 834,
+   "id": "STRAT_AI_MINE_YIELD_ESTIMATE",
+   "name": "_G_LLM_STRAT_AI_MINE_YIELD_ESTIMATE",
+   "len": 1024
+  },
+  {
+   "rid": 835,
+   "id": "STRAT_AI_EXPAND_SITE_COUNT",
+   "name": "_G_LLM_STRAT_AI_EXPAND_SITE_COUNT",
+   "len": 4
+  },
+  {
+   "rid": 836,
+   "id": "STRAT_AI_EXPAND_SITE_Y",
+   "name": "_G_LLM_STRAT_AI_EXPAND_SITE_Y",
+   "len": 1024
+  },
+  {
+   "rid": 837,
+   "id": "STRAT_AI_EXPAND_SITE_X",
+   "name": "_G_LLM_STRAT_AI_EXPAND_SITE_X",
+   "len": 1024
+  },
+  {
+   "rid": 838,
+   "id": "STRAT_AI_BUILDING_CANDIDATE_SCRATCH_LIST",
+   "name": "_G_LLM_STRAT_AI_BUILDING_CANDIDATE_SCRATCH_LIST",
+   "len": 1024
+  },
+  {
+   "rid": 839,
+   "id": "STRAT_AI_BUILDING_CANDIDATE_SCRATCH_COUNT",
+   "name": "_G_LLM_STRAT_AI_BUILDING_CANDIDATE_SCRATCH_COUNT",
+   "len": 4
+  },
+  {
+   "rid": 840,
+   "id": "STRAT_AI_SCAN_TARGETS",
+   "name": "_G_LLM_STRAT_AI_SCAN_TARGETS",
+   "len": 45056
+  },
+  {
+   "rid": 841,
+   "id": "STRAT_AI_ATTACK_CANDIDATES",
+   "name": "_G_LLM_STRAT_AI_ATTACK_CANDIDATES",
+   "len": 2048
+  },
+  {
+   "rid": 842,
+   "id": "STRAT_AI_ATTACK_CANDIDATE_COUNT",
+   "name": "_G_LLM_STRAT_AI_ATTACK_CANDIDATE_COUNT",
+   "len": 4
+  },
+  {
+   "rid": 843,
+   "id": "STRAT_AI_SCAN_TARGET_COUNT",
+   "name": "_G_LLM_STRAT_AI_SCAN_TARGET_COUNT",
+   "len": 4
+  }
+ ],
+ "exclusions": [
+  {
+   "id": "STRAT_DEPLOY_FORMATION_STENCIL",
+   "name": "_G_LLM_STRAT_DEPLOY_FORMATION_STENCIL",
+   "verdict": "exclude:no-extent",
+   "why": ""
+  },
+  {
+   "id": "LLM_UI_MENU_SCREEN_SLIDE_TRANSITION",
+   "name": "llm_ui_menu_screen_slide_transition",
+   "verdict": "exclude:no-extent",
+   "why": ""
+  },
+  {
+   "id": "NETSETUP_IP_CANCEL_INTRO_WAIT_RET",
+   "name": "netsetup_ip_cancel_intro_wait_ret",
+   "verdict": "exclude:no-extent",
+   "why": ""
+  },
+  {
+   "id": "CREATE_GAME_DEAD_SLIDE_RET",
+   "name": "create_game_dead_slide_ret",
+   "verdict": "exclude:no-extent",
+   "why": ""
+  },
+  {
+   "id": "LOBBY_ANNOUNCE_FMT",
+   "name": "lobby_announce_fmt",
+   "verdict": "exclude:no-extent",
+   "why": ""
+  },
+  {
+   "id": "LOBBY_ANNOUNCE_VERB_LEFT",
+   "name": "lobby_announce_verb_left",
+   "verdict": "exclude:no-extent",
+   "why": ""
+  },
+  {
+   "id": "LOBBY_ANNOUNCE_VERB_JOINED",
+   "name": "lobby_announce_verb_joined",
+   "verdict": "exclude:no-extent",
+   "why": ""
+  },
+  {
+   "id": "UI_OPT_RES_LABEL_SLOT2",
+   "name": "ui_opt_res_label_slot2",
+   "verdict": "exclude:no-extent",
+   "why": ""
+  },
+  {
+   "id": "SLIDE_ANIM_ELAPSED",
+   "name": "slide_anim_elapsed",
+   "verdict": "exclude:no-extent",
+   "why": ""
+  },
+  {
+   "id": "G_SAVE_MODE_RESET_DWORDS",
+   "name": "G_SAVE_MODE_RESET_DWORDS",
+   "verdict": "exclude:no-extent",
+   "why": ""
+  },
+  {
+   "id": "CHAT_TARGET_MODE",
+   "name": "_G_LLM_CHAT_TARGET_MODE",
+   "verdict": "exclude:no-extent",
+   "why": ""
+  },
+  {
+   "id": "SESSION_DESC_CANDIDATE_B",
+   "name": "session_desc_candidate_b",
+   "verdict": "exclude:no-extent",
+   "why": ""
+  },
+  {
+   "id": "SESSION_DESC_CANDIDATES",
+   "name": "session_desc_candidates",
+   "verdict": "exclude:no-extent",
+   "why": ""
+  },
+  {
+   "id": "BROWSER_UI_ROWS",
+   "name": "browser_ui_rows",
+   "verdict": "exclude:no-extent",
+   "why": ""
+  },
+  {
+   "id": "INPUT_KEYSTATE",
+   "name": "_G_LLM_INPUT_KEYSTATE",
+   "verdict": "exclude:no-extent",
+   "why": ""
+  },
+  {
+   "id": "IAT_GETTICKCOUNT",
+   "name": "IAT_GETTICKCOUNT",
+   "verdict": "exclude:no-extent",
+   "why": ""
+  }
+ ]
+}

@@ -1,0 +1,68 @@
+# D15 -- the POSITIVE case for the exit witness (D15, net_diag.cpp).
+#
+# NOT a suite scenario, and it cannot become one: it ends by making the game QUIT, so the run has no
+# COMPLETE status and no capture to compare -- ui_test reports it as PROCESS-GONE, which is the point.
+# It is a probe, kept because an instrument that has only been proven to ARM is not proven to FIRE,
+# and this whole item exists because of diagnostics that looked fine and said nothing.
+#
+# What it proves, in one run and on a death whose cause we already know:
+#   * `; EXIT llm_wnd_on_destroy caller=0x... mode=2 ...` reaches mh_net.log BEFORE the process goes.
+#   * the runner prints `[crash] 0 -- a CLEAN exit ...`, i.e. the retained-handle exit code works and
+#     names the right class -- the game chose to stop, nothing killed it, nothing faulted.
+#
+# It is also a rehearsal of the cause-#2 incident shape: a peer that stops mid-script with no WER
+# report. Compare what this run prints against the 2026-08-06 record, where all four hosts produced
+# "never became ready" and nothing else.
+#
+# The walk to a live game is menu_walk's, verbatim; only the tail differs. `&Quit game` is value 113
+# in the ESC menu list (dumped 2026-08-27: Options 111, Diplomacy 100, Quit game 113, Return 103).
+
+settled value:110
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+settled Create
+clickl Create
+present Game name
+settled Ok
+clickl Ok
+present Available maps
+settled Ok
+clickl Ok
+present Network players
+settled Start
+click 70 132
+present Computer
+enabled Start
+clickl Start
+
+# in-game, then ESC -> the in-game menu -> Quit game -> confirm
+absent Network players
+gamemode 2
+gameclock 1500
+key 0x01
+settled value:113
+log about to click Quit game -- every line after this one is a bonus
+clickv 113
+
+# "Are you sure you want to leave the game ?" -- &Yes is value 121, &No is 110 (dumped by this
+# probe's own first run, which timed out sitting on the confirm dialog).
+settled value:121
+clickv 121
+
+# "Quit game" in the ESC menu leaves the MATCH, not the program -- it lands back on the main menu
+# (7 unlabelled widgets, values 105/103/110/116/108/99/113). The last one is the real exit.
+settled value:113
+clickv 113
+
+# "Are you sure you want to exit the program ?" -- &Yes 121 again. THIS is the click that reaches
+# WM_DESTROY, and everything above it is just the walk to get here.
+settled value:121
+clickv 121
+
+# Deliberately unreachable if the quit works. If the run DOES get here the game did not exit, and
+# that is itself the finding: the click missed, or Quit no longer leads to WM_DESTROY.
+gameclock 9000
+log STILL ALIVE after Quit game -- the exit path did not fire
+end

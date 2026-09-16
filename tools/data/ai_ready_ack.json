@@ -1,0 +1,71 @@
+{
+ "_hand_authored": true,
+ "_note": "ACKNOWLEDGED readiness blockers: findings that are UNDERSTOOD and PERMANENT, so they do not gate. Read tools/migration_ready.py's ack section before adding one. The bar is deliberately high: an entry must name the specific mechanism and the evidence that settled it, and 'I could not fix it' is NOT a reason -- 'no prototype can express this, because X' is. Everything here was verified by reading the listing or by a rolled-back experiment, not inferred from the token name. Acks are checked for staleness on every run: if a finding stops firing, the run says so, so this file cannot quietly become a graveyard.",
+ "_not_for": "Open work. R7 conf:low means the reading is genuinely unsettled -- that is a real blocker and belongs in tasks/, not here.",
+ "acks": [
+  {
+   "addr": "0x004d53ae",
+   "name": "llm_strat_ai_engage_sort_candidates_by_dist",
+   "check": "R3 decompile usable",
+   "recorded": "2026-08-06",
+   "reason": "The original reads ESI as a sort-completion flag before ever writing it -- a genuine uninitialised read in the shipped code, not a modelling defect.",
+   "evidence": "The decompile is `while (unaff_ESI == 0) { ... unaff_ESI = 1; ... unaff_ESI = 0; }` -- the bubble-sort 'swapped' flag, tested on entry and only assigned inside the loop body. ESI is not a __watcall argument register for this signature (source_ref=EAX, source_index=EDX), and the function's own first touch of ESI is the prologue `PUSH ESI` at 0x004d53bd, i.e. the callee-save, not a define. No prototype can declare an uninitialised read away; a translation must decide to reproduce or fix it, which is a reimplementation decision rather than a readiness one."
+  },
+  {
+   "addr": "0x004e96b1",
+   "name": "llm_strat_ai_group_task_step",
+   "check": "R3 decompile usable",
+   "recorded": "2026-08-06",
+   "reason": "The task-code switch's `default` arm returns EBX without ever assigning it, so the return value on that path is whatever the caller left in EBX. A real behavioural quirk of the original, and the 11 tokens are all one variable.",
+   "evidence": "switch(player_data[].ai_groups[].task_code) assigns EBX on the arms for task codes 2/3/4/0xc, 7, 10, 0xb, 0xd, 0x16; `default:` jumps straight to switchD_004e970c_caseD_1, whose body is `return unaff_EBX;`. The sole caller llm_strat_ai_unit_group_tick leaves EBX == group_index at the call site (IMUL EDX,EBX,0xa66 then MOV EDX,EBX at 0x004eb3ec-0x004eb3fc), so an unrecognised task_code returns the group index as a truthiness value -- usually nonzero, i.e. usually 'true'. The value read is real but coincidental rather than contractual, which is exactly what no signature can express. A translation must pick a defined value for the default arm and say so."
+  },
+  {
+   "addr": "0x004e8773",
+   "name": "llm_strat_ai_invasion_spawn_reinforcements",
+   "check": "R3 decompile usable",
+   "recorded": "2026-08-06",
+   "reason": "A min-index tracker that is only assigned inside the 'found a new minimum' branch, then used unconditionally as an array index -- uninitialised in the shipped code whenever no element beats the seed value.",
+   "evidence": "`unaff_EDI = uVar4;` sits inside `if (auStackY_424[uVar4] < uVar5)`, and EDI is then used outside that guard as the destination index in `auStackY_224[unaff_EDI] = auStackY_224[uVar5];` and the parallel `auStackY_424[...]` store. EDI is not a __watcall argument register for this signature (player_idx=EAX) and the function's first touch of it is the prologue `PUSH EDI` at 0x004e8784. Same class as the ESI sort flag above."
+  },
+  {
+   "addr": "0x004b4c3f",
+   "name": "llm_strat_ai_grid_stamp_threat_ring",
+   "check": "R3 decompile usable",
+   "recorded": "2026-08-06",
+   "reason": "A partial-register write: the body defines only the low bits of EDX and the grid index consumes the full 32, so the decompiler has to source the upper bits from the incoming register. Not a missing parameter -- the function is __cdecl and takes all six arguments on the stack.",
+   "evidence": "The index renders as `CONCAT31((int3)(CONCAT22((short)((uint)unaff_EDX >> 0x10), ...` -- the signature shape of a sub-register define widened by a full-width read, not of an ambient input. Checked the caller rather than assuming: llm_strat_ai_turret_threat_rescan sets EDX at 0x004d8694 only as scratch while computing the pointer it then PUSHes (SHL/ADD/ADD/PUSH EAX at 0x004d8696-0x004d86a3), so EDX at the call is a dead intermediate, not an argument anybody intended to pass."
+  },
+  {
+   "addr": "0x004ead22",
+   "name": "llm_strat_ai_group_task_loiter_wander",
+   "check": "R3 decompile usable",
+   "recorded": "2026-08-06",
+   "reason": "x87 stack DEPTH, which a scalar return type cannot model: two float values are live across a call, so the earlier one is visible to the decompiler only as extraout_ST1.",
+   "evidence": "Both math helpers are already correctly declared as returning ST0 (`double llm_math_fsin_reduce_loop(void)` @0x004dabc6, `double llm_math_cos_impl(void)` @0x004dabbc) and each is a 4-instruction in-place FSIN/FCOS retry loop that transforms ST0 rather than pushing. The caller holds a second value across the call, so it lands in ST1. Tested rather than assumed: widening fsin_reduce_loop's return to float10 in a rolled-back transaction changed the token set NOT AT ALL, in this function or in random_point_near. The remaining C is a usable draft -- the arithmetic is legible and only the operand naming is ugly."
+  },
+  {
+   "addr": "0x004d5eaf",
+   "name": "llm_strat_ai_random_point_near",
+   "check": "R3 decompile usable",
+   "recorded": "2026-08-06",
+   "reason": "Same x87 stack-depth effect as llm_strat_ai_group_task_loiter_wander -- the two share the identical sin/cos/floor/trunc sequence.",
+   "evidence": "`dVar4 = floor((double)(extraout_ST1 * (float10)(uint)radius));` -- ST1 is the sin/cos result still live while floor's argument is computed. Covered by the same rolled-back experiment recorded above: declaring a float10 return on the helper moved nothing. The extraout_ECX/extraout_EDX this function also carried were NOT acknowledged -- they were a real defect and were fixed on 2026-08-06 by pinning `floor` off __stdcall, which is what leaves ST1 alone here."
+  },
+  {
+   "addr": "0x004d4d85",
+   "name": "llm_strat_ai_group_create",
+   "check": "R10 field read named",
+   "recorded": "2026-08-29",
+   "reason": "llm_strat_ai_unit_group +0x16 has NO CONSUMER ANYWHERE IN THE IMAGE, so no name can express what it means -- there is nothing for a name to be derived from. This is not 'I could not fix it': the field is now named (reserved_0x16) and carries the full derivation as its field comment, and the translation's only obligation -- store 0 into the word at group creation -- is fully specified by the evidence. R10 keeps firing because `reserved_0x..` is deliberately in LISTING_ANON_FIELD's placeholder set, which is correct behaviour: the gate is refusing to accept a placeholder as a resolved name, and the designed exit for a field that genuinely has no resolvable name is this file.",
+   "evidence": "The only access image-wide is one unconditional 16-bit zero-store at llm_strat_ai_group_create @0x004d4e3c (`MOV word ptr [EAX + 0xe7e43e],0x0`); the pool-full arm returns -1 at 0x004d4db9 before reaching it. Three independent instruments, with working controls: (1) instruction scan of all 252238 instructions for the folded disp32 0x00e7e43e -> 1 hit, while the same scan on the neighbouring fields returns 9 hits for +0x18 link_target_group (0xe7e440) and 39 for +0x14 goal (0xe7e43c), proving the scan sees raw-offset reads of this struct; (2) search-decompilation program-wide for field_0x16/field_0x17 -> only that store (one further textual hit is map::object::turret's unrelated same-named field); (3) grep of the 210-function AI cluster export of 2026-08-29. No other allocator writes it (llm_strat_ai_group_split_off_create @0x004e68dd goes through group_create and then sets only link_target_group/goal/active_member_count; llm_strat_ai_group_split_half @0x004d4e6b is dead), and llm_strat_ai_group_remove's swap-compaction moves the bytes inside a whole-struct copy without inspecting them. The word is therefore 0 for every group's whole lifetime."
+  },
+  {
+   "addr": "0x004ec2d0",
+   "name": "llm_strat_ai_scan_target_list_add",
+   "check": "R10 field read named",
+   "recorded": "2026-08-29",
+   "reason": "llm_strat_ai_scan_target_entry +0x08 is never written independently and never read anywhere in the image, so no name can express what it means. Same disposition and same reasoning as the llm_strat_ai_group_create ack above: the field is named (reserved_0x08) with the full derivation in its field comment, the translation's only obligation -- the dword zero-store that covers class_flags and this word -- is fully specified, and R10 keeps firing only because `reserved_0x..` is deliberately in the placeholder set.",
+   "evidence": "Every write is the upper half of a DWORD store aimed at class_flags (+6): llm_strat_ai_scan_target_list_add @0x004ec334 (`MOV dword ptr [EAX + 0x101731a],0x0`, array base 0x01017314 so +6), plus the two UNREACHABLE producers in llm_strat_ai_group_scan_building_targets @0x004ec067 (dword 0x10) and @0x004ec1cd (dword 0). No instruction stores to the word alone. Never read: find-cross-references program-wide on the array base and its two interior anchors enumerates 7 referrer functions, and the 3 live ones (this function, llm_strat_ai_active_unit_tick, llm_strat_ai_log_scan_targets) plus llm_strat_ai_group_classify_target_object -- which fills every other field past +0x04 -- contain no register-relative `+ 0x8` access at all in their .asm; the classifier's OR-byte writes all target class_flags' low byte at +6. The 4 dead referrers carry the word only inside a whole-record 0x14-byte memcpy. A disp32 scan for base+8 (0x0101731c) and the +1024-entry interior +8 (0x0101cb1c) returns 0 hits and is corroboration only -- its control at +0xa tile_x also returns 0 although the classifier writes tile_x through a register base, so the .asm read of the referrer set is what carries this."
+  }
+ ]
+}

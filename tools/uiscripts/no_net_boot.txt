@@ -1,0 +1,43 @@
+# fork F3F -- THE NO-NETWORK-MODULE BOOT.
+#
+# Run with `--net-extra "module=none"` (the TESTS entry passes it). That is NOT `[net] enable=0`:
+# enable is the operator's off switch for a transport that is here, module=none says there is no
+# transport at all -- the configuration fork F4 produces for real when mh_net.dll is missing.
+#
+# WHAT THIS SCENARIO IS FOR. Until F3F no no-module configuration had ever booted, so every
+# graceful-degradation claim about one was a prediction. Three things are asserted here and nowhere
+# else:
+#   (a) the game BOOTS to its menu with no transport (w1),
+#   (b) the NETWORK GAME button still arms and its screens still walk -- ruling Q2 keeps the menu
+#       one shape rather than growing and shrinking with the build,
+#   (c) the browser EXPLAINS its empty list. `present No network module` is a state predicate on
+#       the real rendered widget label (_G_LLM_LOBBY_MAP_STATUS_LINE), so the notice is proven to
+#       exist on screen, not merely to have been armed in a log.
+#
+# The arm-log half of F3F's claim -- the core sequence intact, the net lines absent, no reorder,
+# and the spine armed with non-zero work -- is gated separately by
+# `check_arm_order <run-dir> --spine-armed` against the brokered_nomodule baseline.
+#
+# The walk STOPS at the browser. Create/game-name/map-pick/lobby are menu_walk's job and they are
+# a host path: hosting with no transport is a lobby nobody can ever reach, which is a question for
+# F4's module split, not a state this scenario should capture.
+
+# 1. main menu (7-button sprite menu; NETWORK GAME = value 110 -- sprite menus have no labels)
+settled value:110
+capture w1_menu
+clickv 110
+
+# 2. player-name screen (title "Player name"; accept the pinned default name via Ok)
+present Player name
+settled Ok
+clickl Ok
+
+# 3. the local-games browser. `settled Create` is the screen-is-up gate (the same one menu_walk
+#    uses); `present No network module` is the ASSERTION -- with a transport it would never be
+#    true, so a regression that stops arming the notice TIMES OUT here instead of quietly
+#    capturing an unexplained empty panel.
+settled Create
+present No network module
+capture w2_browser_notice
+log no-net boot COMPLETE -- menu reached, NETWORK GAME armed, browser carries the no-module notice
+end

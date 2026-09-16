@@ -1,0 +1,143 @@
+{
+ "_comment": "Adversarial-review dispositions for the SIM-RESID domain, read by tools/migration_loop.py's review_gate(). A function the manifest flags review_required (writes a roster region OR size>p90 OR is root) may not be promoted to `verified` without an entry here. Shape: \"<function name>\": {\"disposition\": \"reviewed\"|\"exempt\", \"session\": \"<YYYY-MM-DD-HHMM>\", \"by\": \"<reimpl-verify workflow / agent>\", \"note\": \"<evidence, or why no shadow/review applies>\"}. A `reviewed` entry MUST name the `session` that ran the review: the driver cross-checks that that session's captured agents (session_reports/loop/<session>/agents.json) actually include an adversarial-review spawn -- a bare `reviewed` with no spawn is rejected. An `exempt` entry needs no agent (it is an explicit human-auditable decision). Keys beginning with _ are comments. Two layers read this file: migration_loop.py gates the TRANSITION to verified per session and cross-checks agent backing; migration_session.py --end fails while ANY review_required+verified row lacks a disposition, so a skip is caught in-session.",
+ "_created": "2026-08-31, empty, alongside tools/data/sim_resid_loop_prompt.md. Created rather than left absent so the first loop session finds the shape instead of inventing it -- 17 of the 39 ledger rows carry review_required, so this gate WILL fire on the first batch. There are no grandfather entries: unlike sim, no sim_resid row was verified before the gate existed, so every disposition here has to be earned.",
+ "_do_not_exempt_for_this_reason": "T3 (armed differential) is unavailable for almost every row in this domain -- 37 of 39 members run once per run at session entry, and their write closures reach effectful callees. That is the DOMAIN'S NORMAL CONDITION, not a reason to exempt: exempting on it would empty the gate in one pass. With T3 off the table, adversarial review is HALF the evidence behind every `verified` here, which makes this ledger more load-bearing than sim's, not less. `exempt` is for a body genuinely covered exhaustively by the offline oracle, and the note must say which paths.",
+ "llm_strat_clock_resync_units_and_buildings": {
+  "disposition": "reviewed",
+  "session": "2026-08-31-1157",
+  "by": ".claude/workflows/reimpl-verify.js (mode batch, 3 reviewers + adjudicator, model sonnet)",
+  "note": "Reviewed against tmp/decomp_sim_resid/llm_strat_clock_resync_units_and_buildings_00499a3a.asm with the ALIVE gate, both live-count headers, the count-driven unbounded scan, the raw two-dword double copy and the five field offsets named in the brief. All 3 reviewers returned verdict `equivalent` with zero findings; the adjudicator confirmed 3/3 ran. Independently re-derived by the conductor from the .asm before the fan-out (loop bounds, strides 0x5b04/0xe9 and 0x6aa4/0x111, offsets +0x8/+0x10/+0x5/+0x33) and cross-checked against mh_structs.gen.h's offsetof static_asserts."
+ },
+ "llm_game_session_clear_system_presence_flag": {
+  "disposition": "reviewed",
+  "session": "2026-08-31-1157",
+  "by": ".claude/workflows/reimpl-verify.js (mode batch, 3 reviewers + adjudicator, model sonnet)",
+  "note": "Reviewed against tmp/decomp_sim_resid/llm_game_session_clear_system_presence_flag_004987ae.asm. The brief told the reviewers NOT to trust the field name from any source and to re-derive it, because this function's own Ghidra plate was wrong until EN v378 (finding 2026-08-31-1157-1) and the first translation draft inherited the error. All 3 reviewers returned `equivalent` with zero findings on the corrected body. The single-iteration outer bound, the signed JLE sense, the unvisited-planet arm's j == G_PLANET_INDEX exemption, the buildings_alive/units_alive pair and the AND 0xfd write mask were each named in the brief and are each pinned by a mutation-tested oracle case."
+ },
+ "llm_strat_advisor_tick": {
+  "disposition": "reviewed",
+  "session": "2026-08-31-1404",
+  "by": ".claude/workflows/reimpl-verify.js (mode batch, 3 reviewers + adjudicator, model sonnet)",
+  "note": "Reviewed against tmp/decomp_sim_resid/llm_strat_advisor_tick_0049b5b0.asm together with the other three rows promoted this session. The run CONFIRMED one divergence: the phase-1 scan's advance of the ambient globals CUR_INDEX/CUR_BUILDING sits at LAB_0049b6e1, BETWEEN the body and the remaining==0 test at LAB_0049b6d6, and every body exit -- including the understaffed hit that zeroes `remaining` at 0x0049b880 and falls through LAB_0049b887 -- reaches it, so the original always ends one slot past the last examined; ours ended one behind. Re-derived from the listing by the conductor before acting, fixed in sim_advisor_tick.cpp (idx hoisted, advance restated after the loop) and pinned by oracle cases T22/T23, which the conductor mutation-tested by removing the advance again."
+ },
+ "llm_strat_planet_transition_finalize": {
+  "disposition": "reviewed",
+  "session": "2026-08-31-1404",
+  "by": ".claude/workflows/reimpl-verify.js (mode batch, 3 reviewers + adjudicator, model sonnet)",
+  "note": "Same run. No divergence. One PLAUSIBLE note recorded OPEN rather than applied: `const int32_t me = *v.player_side` sign-extends an int16_t where 0x0044d1f2's MOVZX zero-extends, which the reviewer itself showed is unreachable because both writers of PlayerSide in the translated set bound it to 0..7. Left open because the session's DLL was already under a determinism run; it is a literalness fix, not a behaviour fix."
+ },
+ "llm_strat_planet_map_session_init": {
+  "disposition": "reviewed",
+  "session": "2026-08-31-1404",
+  "by": ".claude/workflows/reimpl-verify.js (mode batch, 3 reviewers + adjudicator, model sonnet)",
+  "note": "Same run. No divergence. The reviewers were pointed specifically at the nine pack_rgb16 argument triples, the ORDER their results land in the nine palette globals (two argument-identical pairs), and the rng_seed_channel argument order."
+ },
+ "llm_strat_new_game_init": {
+  "disposition": "reviewed",
+  "session": "2026-08-31-1404",
+  "by": ".claude/workflows/reimpl-verify.js (mode batch, 3 reviewers + adjudicator, model sonnet)",
+  "note": "Same run. No divergence. The reviewers were pointed at the per-player and shuttle loop bounds, the Weapon[32]/Unit[100] baseline-column-8 copies and their field widths, the progress[] zeroing bounds and the 589824-byte utils_fill_data fog-of-war escape at 0x00456006-0x00456012."
+ },
+ "llm_strat_session_state_reset": {
+  "disposition": "reviewed",
+  "session": "2026-08-31-1740",
+  "by": ".claude/workflows/reimpl-verify.js (mode grouped, 3 lens-group reviewers + adjudicator per function, model sonnet; 14 agents, 1.28M tokens)",
+  "note": "Verdict `equivalent`, 3/3 reviewers ran. ONE note, raised independently by two lens groups and confirmed inert by both: the original's store at 0x004540f2 is a 4-byte `MOV dword ptr [0x00e583eb],0x0` while the bound accessor is uint8_t&, so three bytes (0xe583ec-ee) are written by the original and not by us. Those three addresses have zero references anywhere in src/mh_dll and zero xrefs in the binary, and the next registered region (planet_time) starts at 0xe583ef -- compiler padding between adjacent globals, not a field. No change made. The DELIBERATE OMISSION briefed to the reviewers (the unreachable tail at 0x0045418d, gated by a constant-true 0x1bc <= 0x1f4) was not challenged."
+ },
+ "llm_game_land_players_on_planet": {
+  "disposition": "reviewed",
+  "session": "2026-08-31-1740",
+  "by": ".claude/workflows/reimpl-verify.js (mode grouped, 3 lens-group reviewers + adjudicator per function, model sonnet; 14 agents, 1.28M tokens)",
+  "note": "Verdict `equivalent`, 3/3 reviewers ran, zero findings. The brief pointed them at the trap this body is built around -- the function's own `planet_index` ARGUMENT versus the G_PLANET_INDEX global, which the eligibility gate at 0x0045552e reads while the claim/sprintf/tail-mark paths index by the argument -- and at the is_ship literal 2 and the land_dmp_scratch address escape. None was found wrong."
+ },
+ "llm_strat_planet_session_begin": {
+  "disposition": "reviewed",
+  "session": "2026-08-31-1740",
+  "by": ".claude/workflows/reimpl-verify.js (mode grouped, 3 lens-group reviewers + adjudicator per function, model sonnet; 14 agents, 1.28M tokens)",
+  "note": "Verdict `equivalent`, 3/3 reviewers ran, zero findings. Composite: three direct detail:: sibling calls plus the four defaulted c_* parameters threading the transitive closure's calls tables. The double rng_seed_ch0 (0x004541e5 wallclock and 0x0045433d from RNG_SEED_BYTE, both unconditional) and the dead Watcom compare at 0x004541fc were briefed and confirmed."
+ },
+ "llm_strat_session_begin_multi": {
+  "disposition": "reviewed",
+  "session": "2026-08-31-1740",
+  "by": ".claude/workflows/reimpl-verify.js (mode grouped, 3 lens-group reviewers + adjudicator per function, model sonnet; 14 agents, 1.28M tokens)",
+  "note": "Verdict `diverges` -> TWO CONFIRMED divergences, both fixed and both re-verified against the .asm by the conductor before acting. (1) `MOV dword ptr [0x00be1a40],0x1f` @0x004543cd targets System's int-index 4 (base 0x00be1a30 + 0x10), not index 1. The translation AND its oracle both encoded 1, because both read the slot number off the Ghidra draft's field NAME (`planets[1]`) rather than off the address -- and sim_land_players_on_planet.cpp already warns that name is untrustworthy since cfg_final_struct_System is anchored 8 bytes late. Index 1 is 0x00be1a34, the define_index/name field three other functions read as a G_TEXT_PTRS index, so the bug both failed to set the intended cell and clobbered a live one. AN ORACLE THAT SHARES THE TRANSLATION'S PREMISE CANNOT FAIL ON IT: no mutation of that file would ever have caught this, which is the whole argument for adversarial review in a T2-ceiling domain. Oracle corrected to index 4 and given a negative arm asserting index 1 is UNTOUCHED; mutating the constant back to 1 now turns both red. (2) `const int32_t me = *v.player_side` sign-extends where 0x00454398's MOVZX zero-extends -- and the other two PlayerSide reads in the SAME function already cast through unsigned, so this was an internal inconsistency. Unreachable (the lobby bounds the slot to 0..7) but fixed per Law 2. Both introduced by the conductor's own 1740 edit replacing the writer's proposed system_planet_slot_mut(0,1) accessor with the generic one."
+ },
+ "llm_strat_player_profile_init": {
+  "disposition": "reviewed",
+  "session": "2026-08-31-1757",
+  "by": ".claude/workflows/reimpl-verify.js (mode grouped, 3 reviewers + adjudicator per unit, model sonnet)",
+  "note": "Reviewed on a QUIESCENT tree. The first pass of this run is void and was repeated: it overlapped a mutation battery, so reviewers read files that were temporarily modified on disk -- one duly reported a `<< 4` shift that does not exist in git, and the adjudicator caught the mismatch. The verdicts recorded here are from the re-run. 3/3 reviewers `equivalent`, zero findings. The brief named the five things a careless translation would flatten: the inlined byte-pair strcpy vs. the draft's byte loop for even/odd/12/13/empty names; the `CMP ECX,0xc`/`JBE` predicate against the REPNE-SCASB length (and the NOT/DEC at 0x004549f0-0x004549f2 that produces it); whether the second SCASB's `DEC EDI` lands on index 9; the eleven-array PRESERVE-BUG loop running 1..31; and the exact struct offsets. The suffix string at 0x00501039 was independently CONFIRMED BY A ReVA MEMORY READ this session as 2E 2E 2E 00, so the draft's \"...\" literal is measured, not inferred. Mutation-tested three ways (M1 loop start 1->0, M2 predicate 12->13, M8 flag_sprite_id 0x453f->0x4540); each turned red the assertion that names the mechanism."
+ },
+ "llm_strat_player_param_defaults_init": {
+  "disposition": "reviewed",
+  "session": "2026-08-31-1757",
+  "by": ".claude/workflows/reimpl-verify.js (mode grouped, 3 reviewers + adjudicator per unit, model sonnet)",
+  "note": "Reviewed on a QUIESCENT tree. The first pass of this run is void and was repeated: it overlapped a mutation battery, so reviewers read files that were temporarily modified on disk -- one duly reported a `<< 4` shift that does not exist in git, and the adjudicator caught the mismatch. The verdicts recorded here are from the re-run. Same unit, 3/3 `equivalent`. The reviewers were asked to confirm the three double literals carry the identical bit patterns the original stores as raw 32-bit immediate pairs (0x40240000 / 0xbff00000 / 0x3ff00000 high words, zero low words) and that the loop runs 0..7. Mutation M3 (-1.0 -> -2.0) turns 8 named T7 assertions red."
+ },
+ "llm_strat_prod_reset_system": {
+  "disposition": "reviewed",
+  "session": "2026-08-31-1757",
+  "by": ".claude/workflows/reimpl-verify.js (mode grouped, 3 reviewers + adjudicator per unit, model sonnet)",
+  "note": "Reviewed on a QUIESCENT tree. The first pass of this run is void and was repeated: it overlapped a mutation battery, so reviewers read files that were temporarily modified on disk -- one duly reported a `<< 4` shift that does not exist in git, and the adjudicator caught the mismatch. The verdicts recorded here are from the re-run. 3/3 `equivalent`, zero findings. Small body reviewed exhaustively: both loop bounds, the base+stride arithmetic (0xcff1f4 = _G_LLM_STRAT_PLAYERS 0xcff060 + 0x194, cross-checked against mh_structs.gen.h's offsetof static_assert for prod_queue_slot), and the EAX/EDX argument mapping of the ten shuttle-release calls. Two mutations: M4 (slot bound 32->31) and M5 (arguments transposed, 75 assertions red). The oracle asserts the 80 recorded (player, slot) pairs in the original's own order, which is what makes the transposition catchable -- 0..7 and 0..9 are asymmetric domains."
+ },
+ "llm_strat_unit_path_encode_directions": {
+  "disposition": "reviewed",
+  "session": "2026-08-31-1757",
+  "by": ".claude/workflows/reimpl-verify.js (mode grouped, 3 reviewers + adjudicator per unit, model sonnet)",
+  "note": "Reviewed on a QUIESCENT tree. The first pass of this run is void and was repeated: it overlapped a mutation battery, so reviewers read files that were temporarily modified on disk -- one duly reported a `<< 4` shift that does not exist in git, and the adjudicator caught the mismatch. The verdicts recorded here are from the re-run. 3/3 `equivalent`. The reviewers were asked which arm of `CMP byte ptr [addr],0x0` exits, whether `static_cast<uint8_t>(run_length << 5)` reproduces the ORIGINAL'S 8-BIT `SHL byte ptr [...],5` (bits 3..7 discarded), and whether path_slot_id's generated type could sign-extend. Mutation M6 (shift 5 -> 4) turns two named assertions red, one of them the byte-truncation case (0xD6 -> 0xC0). The unguarded path_slot_id == 0xff read is transcribed as a PRESERVE-BUG and deliberately not exercised: it indexes far outside the fixture's allocation."
+ },
+ "llm_strat_unit_release_path_and_targets": {
+  "disposition": "reviewed",
+  "session": "2026-08-31-1757",
+  "by": ".claude/workflows/reimpl-verify.js (mode grouped, 3 reviewers + adjudicator per unit, model sonnet)",
+  "note": "Reviewed on a QUIESCENT tree. The first pass of this run is void and was repeated: it overlapped a mutation battery, so reviewers read files that were temporarily modified on disk -- one duly reported a `<< 4` shift that does not exist in git, and the adjudicator caught the mismatch. The verdicts recorded here are from the re-run. 3/3 `equivalent`. The three independent guards were reviewed for predicate sense, for the call-then-clear order inside each, and for the one thing that is UNCONDITIONAL -- the two-dword clear through the caller's EBX pointer at 0x00488a0a/0x00488a13. Both mutations target exactly that shape: M7 (secondary release mode 3 -> 1) and M9 (the unconditional out-pair clear pulled inside the last guard, 10 assertions red including the all-guards-false arm)."
+ },
+ "llm_strat_unit_path_store_result": {
+  "disposition": "reviewed",
+  "session": "2026-08-31-1757",
+  "by": ".claude/workflows/reimpl-verify.js (mode grouped, 3 reviewers + adjudicator per unit, model sonnet)",
+  "note": "Reviewed together with its two siblings as ONE unit -- deliberately, so a cross-function protocol difference stays visible. 3/3 reviewers `equivalent`. This unit's files were NOT touched by the mutation battery during the review window, so its first-pass verdict stands. The adjudicator additionally RULED ON two questions raised by the conductor and by the oracle author independently: (a) the draft loads the job-result `steps` pointer lazily where the original loads it at entry, and llm_strat_path_free_slot @0x004969e8 was READ to confirm it touches only path_slot_id, _G_LLM_STRAT_PATH_SLOT_FLAGS and a per-player counter -- never 0x00ae1958 -- so the reorder is unobservable; (b) the original consumes only the LOW 16 BITS of `player` (MOVZX word ptr before every stride multiply) while the shared accessors take an unmasked uint32_t, which is a codebase-wide accessor-layer pattern rather than anything this draft introduced, and is unreachable while every call site passes a 0..7 loop index. Mutation M12 (dirs pointer not pre-advanced) turns four named T5 assertions red, including the one pinning the first stored byte as dirs[1] rather than dirs[0]."
+ },
+ "llm_strat_unit_assign_shared_path": {
+  "disposition": "reviewed",
+  "session": "2026-08-31-1757",
+  "by": ".claude/workflows/reimpl-verify.js (mode grouped, 3 reviewers + adjudicator per unit, model sonnet)",
+  "note": "Same unit and same run as llm_strat_unit_path_store_result; 3/3 `equivalent`. The brief named every way the three siblings differ, and the oracle pins each: the slot-search predicate (`!= 0` here vs `== 1` in assign_path_from_job_result -- a flag value of 2 is the only input that can tell them apart, and one case uses exactly that), the 0xff terminator, and the SECOND unconditional 0xff at the next slot's entry 0 (0x004960bc). Mutation M13 retargets that second terminator and turns its named PRESERVE-BUG assertion red. One corner is transcribed but deliberately NOT exercised because it leaves the fixture's allocation: the last slot of the last player, where that second write leaves the region entirely."
+ },
+ "llm_strat_unit_assign_path_from_job_result": {
+  "disposition": "reviewed",
+  "session": "2026-08-31-1757",
+  "by": ".claude/workflows/reimpl-verify.js (mode grouped, 3 reviewers + adjudicator per unit, model sonnet)",
+  "note": "Same unit and same run; 3/3 `equivalent`. Not flagged review_required in the ledger; recorded here anyway because it was reviewed as part of the closure and its predicate is half of the discrimination the sibling entry describes. Mutations M10 (predicate `== 1` -> `!= 0`, caught by the flag==2 case) and M11 (heading stored without the `INC DL` +1 at 0x00495147)."
+ },
+ "llm_strat_init_human_player_data": {
+  "disposition": "reviewed",
+  "session": "2026-08-31-2205",
+  "by": ".claude/workflows/reimpl-verify.js (mode batch, 3 reviewers, model sonnet)",
+  "note": "Reviewed against tmp/decomp_sim_resid/llm_strat_init_human_player_data_004dd91d.asm together with map_FillDefaults in one batch prompt, so a cross-body protocol error would stay visible. All three reviewers returned `equivalent` with an EMPTY findings list. The brief named the five points the row turns on rather than asking for a general read: the UNSIGNED high-water-mark compare and its JC direction at 0x004dd933-0x004dd93c; the x87 stagger arithmetic at 0x004dd9a8-0x004dd9e6, where each product must reload the float local rather than chain so the 80-bit intermediates stay independent; that the stagger constant is 0x00506da8 and NOT 0x00506da0, a different constant holding the same 0.125 today; the ai_clock bit pattern 0x3a83126f; and ai_player_relation over [0,8). Reviewers were told the offline oracle exists but that a case existing is not evidence the C++ is right. NO ARMED DIFFERENTIAL IS AVAILABLE: this is a once-per-run session-entry writer, the domain's normal condition -- so this review plus run_init_human_player_data_tests (U1-U7, two red mutations) is the whole of the evidence, which is why the row is T2 and not T1."
+ },
+ "map_FillDefaults": {
+  "disposition": "reviewed",
+  "session": "2026-08-31-2205",
+  "by": ".claude/workflows/reimpl-verify.js (mode batch, 3 reviewers, model sonnet)",
+  "note": "Same batch run, same three reviewers, same `equivalent` verdict with an empty findings list. The brief pointed them at what this 1156-byte body can get wrong invisibly: the COUNT, ORDER and every (dest, len) pair of the 25 utils_fill_data calls -- three of which (map_object_table 0x00456111, map_objects 0x00456122, map_halfres_grid 0x00456133) were MISSING from this file's first draft and are the reason the row was deferred at all; the PRESERVE-BUG at 0x004562c3-0x004562d9, where the index comes from the INNER counter left at 10 rather than the player counter, so the FSTP resolves to the fixed 0xbf50c0 on all eight iterations and no player's storage_stats.subtick_b_clock is ever written; and the dynamically-read progress-row bound. NO ARMED DIFFERENTIAL IS AVAILABLE, and for this row it is doubly unavailable: it calls llm_ui_bldg_panel_open, an UNCLASSIFIED wall callee a shadow arm would double-fire while the state comparison still read clean. This review plus run_map_fill_defaults_tests (T1-T2, two red mutations, plus a literal omission arm that turns the run red) is the whole of the evidence -- hence T2, not T1."
+ },
+ "llm_strat_bldg_is_network_critical": {
+  "disposition": "reviewed",
+  "session": "2026-09-01-0730",
+  "by": ".claude/workflows/reimpl-verify.js (Workflow run wf_11198cce-81c)",
+  "note": "reimpl-verify wf_11198cce-81c, 3 lens-group reviewers + adjudicator. VERDICT: equivalent, 0 confirmed divergences, 9 confirming notes. Independently re-derived and CONFIRMED all five flagged claims: the slot-0 sentinel headcount; both scan loops bounded 1..99 and indexed only by player and the loop counter (never b_index); the +1.0-vs-DECREMENT asymmetry (non-corrupting because the shipped constant is exactly -1.0, hexBytes 000000000000f0bf, and T2 pins the round trip); the NaN polarity (JNC is not taken for NaN, so the fallthrough is `!(e <= 0.0)` and the Ghidra draft's `0.0 < e` would be wrong); and the inlined FISTP width from the opcode bytes `db 5d dc` at both sites. Also verified the write set is exactly two slots' .energy and nothing else. NEW COVERAGE GAP RAISED, not a defect: b_index==0 aliases sentinel and candidate in BOTH the original and the draft (identically -- proven by tracing, and the draft holds true C++ references into one array), but no oracle case uses b_index=0. Left as a gap on record. BACKING NOTE (read before trusting the `session` field): this was an INTERACTIVE session, not a loop session, so there is no session_reports/loop/2026-09-01-0730/agents.json for migration_loop._reviewed_entry_backed() to cross-check -- that path only exists for driver runs, and these rows are promoted outside it. The durable evidence is instead: Workflow run wf_11198cce-81c (.claude/workflows/reimpl-verify.js), 12 agents / 1.44M tokens / 138 tool uses, mode=grouped -- 3 units x 3 lens-group reviewers + 3 adjudicators, journal at ~/.claude/projects/F--repo-mh-decompile-rep/<session>/subagents/workflows/wf_11198cce-81c/journal.jsonl, and session_reports/2026-09-01-0730-det-gate-repair-and-batch-e-oracles.md. Stated rather than left implicit because a `reviewed` entry whose backing cannot be mechanically re-derived should say so."
+ },
+ "llm_strat_sort_sites_by_dist": {
+  "disposition": "reviewed",
+  "session": "2026-09-01-0730",
+  "by": ".claude/workflows/reimpl-verify.js (Workflow run wf_11198cce-81c)",
+  "note": "reimpl-verify wf_11198cce-81c. VERDICT: equivalent, 0 confirmed divergences. All four flagged claims confirmed (unsigned MOVZX grid reads shifted <<2, the unbounded-beyond-count 1024 scratch, the whole-record 10-byte swap plus its separate key swap, the ESI early-exit). ONE SIGNEDNESS NOTE: the original's two loop bounds compare ai_resource_site_count UNSIGNED (CMP/JC) where the draft uses signed int32_t. Separating input is count < 0, which the reviewer showed is unreachable -- every writer in the tree (sim_spawn_ai_base.cpp:210/239, sim_spawn_invasion_force.cpp:153) only zeroes or increments it. Recorded rather than fixed: at count==-1 the ORIGINAL would run ~4.29e9 iterations off the end of a 1024-entry scratch, so the draft's signed form is the safer of the two and matching it exactly would import a latent overrun. BACKING NOTE (read before trusting the `session` field): this was an INTERACTIVE session, not a loop session, so there is no session_reports/loop/2026-09-01-0730/agents.json for migration_loop._reviewed_entry_backed() to cross-check -- that path only exists for driver runs, and these rows are promoted outside it. The durable evidence is instead: Workflow run wf_11198cce-81c (.claude/workflows/reimpl-verify.js), 12 agents / 1.44M tokens / 138 tool uses, mode=grouped -- 3 units x 3 lens-group reviewers + 3 adjudicators, journal at ~/.claude/projects/F--repo-mh-decompile-rep/<session>/subagents/workflows/wf_11198cce-81c/journal.jsonl, and session_reports/2026-09-01-0730-det-gate-repair-and-batch-e-oracles.md. Stated rather than left implicit because a `reviewed` entry whose backing cannot be mechanically re-derived should say so."
+ },
+ "llm_strat_spawn_ai_base": {
+  "disposition": "reviewed",
+  "session": "2026-09-01-0730",
+  "by": ".claude/workflows/reimpl-verify.js (Workflow run wf_11198cce-81c)",
+  "note": "reimpl-verify wf_11198cce-81c. VERDICT: equivalent, 0 confirmed divergences, on the largest unit (62833 chars). All ten flagged claims confirmed, including the two unconditional script parses, resource_spend_total = 1, the INCLUSIVE JBE bound, both loop-axis pairings, the coarse sweep's two independent rules, the duplicated zero stores, the fixed-index group goals and the player+1 aliased housing read. THREE NOTES, each with a separating input shown unreachable: (1) the high-water mark uses unsigned JA vs the draft's signed <=; (2) the staggered-clock FILD idiom zero-extends (unsigned) where the draft converts signed -- both separate only at player < 0 or >= 2^31, and every call site passes 0..7; (3) ai_phase_flags is a 4-byte dword store of 7 in the original covering the field plus _pad_0x15[3], where the draft writes the byte only -- raised INDEPENDENTLY BY TWO REVIEWERS. The padding was checked to have no reader: nothing memcmps or serializes mh_game_player_data raw, the desync hash is a named per-field manifest rather than a raw struct hash, and the sibling spawn path already does the byte-only write. Worth keeping in mind if a raw-bytes reader of player_data is ever added. BACKING NOTE (read before trusting the `session` field): this was an INTERACTIVE session, not a loop session, so there is no session_reports/loop/2026-09-01-0730/agents.json for migration_loop._reviewed_entry_backed() to cross-check -- that path only exists for driver runs, and these rows are promoted outside it. The durable evidence is instead: Workflow run wf_11198cce-81c (.claude/workflows/reimpl-verify.js), 12 agents / 1.44M tokens / 138 tool uses, mode=grouped -- 3 units x 3 lens-group reviewers + 3 adjudicators, journal at ~/.claude/projects/F--repo-mh-decompile-rep/<session>/subagents/workflows/wf_11198cce-81c/journal.jsonl, and session_reports/2026-09-01-0730-det-gate-repair-and-batch-e-oracles.md. Stated rather than left implicit because a `reviewed` entry whose backing cannot be mechanically re-derived should say so."
+ }
+}

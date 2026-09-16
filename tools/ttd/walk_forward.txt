@@ -1,0 +1,42 @@
+$$ U3 lobby-container walk -- forward-breakpoint navigation of a full TTD trace.
+$$ Avoids the slow global index: replays forward from tt 0 to the first build_slot_widgets.
+$$ Run FROM THE REPO ROOT (cdb resolves both this -c script and the .scriptload below against its
+$$ working directory, so the paths stay machine-independent):
+$$   cdb -z <trace>.run -c "$$><tools\ttd\walk_forward.txt"
+.echo ======== U3 forward-walk ========
+!tt 0
+bc *
+bp0 0x004bf497
+.echo -- running forward to build_slot_widgets (0x4bf497)... if this reaches end-of-trace,
+.echo -- the 1GB cap filled BEFORE the lobby and we must re-capture with a ring buffer.
+g
+.echo ======== stopped -- position/eip (expect 004bf497) ========
+r eip
+.echo ---- field2_0x8 (build loop bound = map player count) @0x654fef ----
+dd 0x00654fef L1
+.echo ---- WIDGETS_BUILT latch @0x6552fa ----
+db 0x006552fa L1
+.echo ---- container ptr (_G_LLM_UI_MENU_WIDGET_LIST) @0x65428d ----
+dd 0x0065428d L1
+$$ step out of build_slot_widgets so the rows are written
+gu
+.echo ======== POST-BUILD ========
+.echo ---- built slot array @0x653663 (first entries) ----
+dd 0x00653663 L14
+.echo ---- container child array *(container) ----
+dd poi(0x0065428d) L14
+.echo ---- menu_state / saved_state @0x65428b ----
+db 0x0065428b L2
+.scriptload tools\ttd\u3_lobby_dump.js
+.echo ======== JS container walk (post-build) ========
+dx @$scriptContents.dumpLobby()
+.echo ======== advancing to the lobby's widget_list_draw (0x4b6e94) ========
+bc *
+bp0 0x004b6e94
+g
+r eip
+r eax
+.echo ---- (EAX = container being drawn) JS walk at draw time ----
+dx @$scriptContents.dumpLobby()
+.echo ======== DONE ========
+qq

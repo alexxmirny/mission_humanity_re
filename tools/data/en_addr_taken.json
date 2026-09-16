@@ -1,0 +1,2524 @@
+{
+ "_generated_by": "tools/dump_addr_taken.py (run as mh_dump_addr_taken.py inside Ghidra)",
+ "_program": "mh.exe",
+ "_what": "Function entries whose address is materialised as a literal little-endian dword anywhere in the image (function-pointer table, vtable, callback argument, `MOV reg,<fn>` immediate), plus the PE entry point and exports. Consumed by gen_migration.py to EXEMPT indirectly-entered functions from its orphan verdict. Presence here is not evidence of liveness -- see the module docstring.",
+ "_bytes_scanned": 2892288,
+ "_function_count": 2894,
+ "entry_roots": [
+  "0x004ddef8"
+ ],
+ "addr_taken": {
+  "0x00410055": {
+   "name": "DEAD_console_reset_cursor",
+   "sites": [
+    "DGROUP:0x005025d8",
+    "DGROUP:0x00502600",
+    "DGROUP:0x005026d4",
+    "DGROUP:0x00506e3d"
+   ],
+   "site_count": 4
+  },
+  "0x0041181a": {
+   "name": "llm_ui_hud_minimap_click_handler",
+   "sites": [
+    "BEGTEXT:0x0041a070"
+   ],
+   "site_count": 1
+  },
+  "0x00411a43": {
+   "name": "llm_ui_hud_base_marker_button_handler",
+   "sites": [
+    "BEGTEXT:0x0041a0a8"
+   ],
+   "site_count": 1
+  },
+  "0x00411c12": {
+   "name": "llm_ui_hud_ctrl_group_button_handler",
+   "sites": [
+    "BEGTEXT:0x0041ab81"
+   ],
+   "site_count": 1
+  },
+  "0x00411d36": {
+   "name": "llm_ui_hud_fire_event_button_handler",
+   "sites": [
+    "BEGTEXT:0x0041a1e9",
+    "BEGTEXT:0x0041a216",
+    "BEGTEXT:0x0041a243",
+    "BEGTEXT:0x0041a270",
+    "BEGTEXT:0x0041a29d",
+    "BEGTEXT:0x0041a2ca",
+    "BEGTEXT:0x0041a2f7",
+    "BEGTEXT:0x0041a324"
+   ],
+   "site_count": 9
+  },
+  "0x00411d8d": {
+   "name": "llm_ui_hud_storage_depart_type_select_handler",
+   "sites": [
+    "BEGTEXT:0x0041a8c2",
+    "BEGTEXT:0x0041a8f6"
+   ],
+   "site_count": 2
+  },
+  "0x00411dbf": {
+   "name": "llm_ui_hud_planet_select_button_handler",
+   "sites": [
+    "BEGTEXT:0x0041a92a",
+    "BEGTEXT:0x0041a95e",
+    "BEGTEXT:0x0041a992"
+   ],
+   "site_count": 3
+  },
+  "0x00411e22": {
+   "name": "llm_ui_hud_icon_widget_hover_draw",
+   "sites": [
+    "BEGTEXT:0x0041a837",
+    "BEGTEXT:0x0041a864"
+   ],
+   "site_count": 2
+  },
+  "0x00411f12": {
+   "name": "llm_ui_unassigned_row_state_clear",
+   "sites": [
+    "DGROUP:0x0051028b"
+   ],
+   "site_count": 1
+  },
+  "0x00411f47": {
+   "name": "FUN_00411f47",
+   "sites": [
+    "DGROUP:0x0051029b"
+   ],
+   "site_count": 1
+  },
+  "0x00411f7c": {
+   "name": "llm_strat_ctrlgrp_assign_unit_by_row_click",
+   "sites": [
+    "DGROUP:0x00510283"
+   ],
+   "site_count": 1
+  },
+  "0x00411fba": {
+   "name": "llm_ui_ctrlgroup_member_scroll_row_click_remove",
+   "sites": [
+    "DGROUP:0x00510293"
+   ],
+   "site_count": 1
+  },
+  "0x00412129": {
+   "name": "llm_ui_hud_scroll_list_body_handler",
+   "sites": [
+    "BEGTEXT:0x00419ea9"
+   ],
+   "site_count": 1
+  },
+  "0x004126c8": {
+   "name": "llm_ui_hud_bldg_load_button_handler",
+   "sites": [
+    "BEGTEXT:0x0041ac08"
+   ],
+   "site_count": 1
+  },
+  "0x0041275d": {
+   "name": "llm_ui_hud_bldg_unload_button_handler",
+   "sites": [
+    "BEGTEXT:0x0041ac35"
+   ],
+   "site_count": 1
+  },
+  "0x004129a8": {
+   "name": "llm_ui_hud_bldg_units_count_inc_handler",
+   "sites": [
+    "BEGTEXT:0x0041a47f"
+   ],
+   "site_count": 1
+  },
+  "0x004129e3": {
+   "name": "llm_ui_hud_bldg_units_count_dec_handler",
+   "sites": [
+    "BEGTEXT:0x0041a4ac"
+   ],
+   "site_count": 1
+  },
+  "0x00412a1b": {
+   "name": "llm_ui_unit_unassigned_list_draw_row",
+   "sites": [
+    "DGROUP:0x00510287"
+   ],
+   "site_count": 1
+  },
+  "0x00412b43": {
+   "name": "llm_ui_ctrlgroup_member_icon_row_draw",
+   "sites": [
+    "DGROUP:0x00510297"
+   ],
+   "site_count": 1
+  },
+  "0x00412c25": {
+   "name": "llm_ui_unit_unassigned_list_scroll_row_draw",
+   "sites": [
+    "DGROUP:0x005100bb"
+   ],
+   "site_count": 1
+  },
+  "0x00412c5e": {
+   "name": "llm_ui_ctrlgroup_member_icon_scroll_row_draw",
+   "sites": [
+    "DGROUP:0x005100ec"
+   ],
+   "site_count": 1
+  },
+  "0x00412f78": {
+   "name": "llm_ui_hud_row_drag_toggle_handler",
+   "sites": [
+    "BEGTEXT:0x0041abdb"
+   ],
+   "site_count": 1
+  },
+  "0x00412fae": {
+   "name": "llm_ui_hud_icon_drag_select_bind",
+   "sites": [
+    "BEGTEXT:0x0041abae"
+   ],
+   "site_count": 1
+  },
+  "0x00412fe4": {
+   "name": "llm_ui_hud_scroll_arrow_handler",
+   "sites": [
+    "BEGTEXT:0x00419ee3",
+    "BEGTEXT:0x00419f29"
+   ],
+   "site_count": 2
+  },
+  "0x0041315f": {
+   "name": "llm_ui_build_menu_item_select",
+   "sites": [
+    "BEGTEXT:0x0041a605"
+   ],
+   "site_count": 1
+  },
+  "0x004131f9": {
+   "name": "llm_ui_hud_icon_click_select",
+   "sites": [
+    "BEGTEXT:0x0041a632"
+   ],
+   "site_count": 1
+  },
+  "0x004132c2": {
+   "name": "llm_ui_info_screen_request_pending_row",
+   "sites": [
+    "BEGTEXT:0x0041a65f",
+    "BEGTEXT:0x0041a9c6",
+    "BEGTEXT:0x0041ab0f"
+   ],
+   "site_count": 3
+  },
+  "0x004132f8": {
+   "name": "llm_ui_bldg_units_panel_request_pending_row",
+   "sites": [
+    "BEGTEXT:0x0041a53d"
+   ],
+   "site_count": 1
+  },
+  "0x0041352d": {
+   "name": "llm_ui_bldg_worker_adj_btn0_tick",
+   "sites": [
+    "BEGTEXT:0x0041a68c",
+    "BEGTEXT:0x0041a9f3"
+   ],
+   "site_count": 2
+  },
+  "0x00413563": {
+   "name": "llm_ui_bldg_worker_adj_btn1_tick",
+   "sites": [
+    "BEGTEXT:0x0041a6b9",
+    "BEGTEXT:0x0041aa20"
+   ],
+   "site_count": 2
+  },
+  "0x00413599": {
+   "name": "llm_ui_hud_icon_widget_dispatch",
+   "sites": [
+    "BEGTEXT:0x00419fd0"
+   ],
+   "site_count": 1
+  },
+  "0x004136aa": {
+   "name": "llm_ui_hud_minimap_zoom_inc_handler",
+   "sites": [
+    "BEGTEXT:0x0041a10c"
+   ],
+   "site_count": 1
+  },
+  "0x00413707": {
+   "name": "llm_ui_hud_minimap_zoom_dec_handler",
+   "sites": [
+    "BEGTEXT:0x0041a140"
+   ],
+   "site_count": 1
+  },
+  "0x00413764": {
+   "name": "llm_ui_hud_ingame_menu_button_handler",
+   "sites": [
+    "BEGTEXT:0x0041a0d8"
+   ],
+   "site_count": 1
+  },
+  "0x00413799": {
+   "name": "llm_ui_hud_storage_panel_open_request",
+   "sites": [
+    "BEGTEXT:0x0041a76d",
+    "BEGTEXT:0x0041a79e",
+    "BEGTEXT:0x0041a891"
+   ],
+   "site_count": 3
+  },
+  "0x004137c9": {
+   "name": "llm_ui_hud_storage_recharge_request_set",
+   "sites": [
+    "BEGTEXT:0x0041a7cf",
+    "BEGTEXT:0x0041a803"
+   ],
+   "site_count": 2
+  },
+  "0x004137f9": {
+   "name": "llm_ui_hud_storage_slot1_set",
+   "sites": [
+    "BEGTEXT:0x0041aaae"
+   ],
+   "site_count": 1
+  },
+  "0x00413828": {
+   "name": "llm_ui_hud_storage_slot2_set",
+   "sites": [
+    "BEGTEXT:0x0041aa7a"
+   ],
+   "site_count": 1
+  },
+  "0x00413857": {
+   "name": "llm_ui_hud_storage_slot1_icon_click",
+   "sites": [
+    "BEGTEXT:0x0041a740"
+   ],
+   "site_count": 1
+  },
+  "0x004138af": {
+   "name": "llm_ui_hud_storage_slot2_icon_click",
+   "sites": [
+    "BEGTEXT:0x0041a713"
+   ],
+   "site_count": 1
+  },
+  "0x00413907": {
+   "name": "llm_ui_hud_storage_slot0_icon_click",
+   "sites": [
+    "BEGTEXT:0x0041a6e6",
+    "BEGTEXT:0x0041aa4d"
+   ],
+   "site_count": 2
+  },
+  "0x0041395f": {
+   "name": "llm_ui_hud_research_row_click_handler",
+   "sites": [
+    "BEGTEXT:0x0041a5a1"
+   ],
+   "site_count": 1
+  },
+  "0x004139e5": {
+   "name": "llm_ui_hud_bldg_panel_slot_click_handler",
+   "sites": [
+    "BEGTEXT:0x0041a50d"
+   ],
+   "site_count": 1
+  },
+  "0x00414395": {
+   "name": "llm_ui_hud_topbar_tick",
+   "sites": [
+    "DGROUP:0x005102e9"
+   ],
+   "site_count": 1
+  },
+  "0x004158a7": {
+   "name": "llm_ui_hud_mainpanel_tab_row_label_refresh",
+   "sites": [
+    "DGROUP:0x005104de"
+   ],
+   "site_count": 1
+  },
+  "0x00415930": {
+   "name": "llm_ui_main_panel_draw",
+   "sites": [
+    "DGROUP:0x00510cb2"
+   ],
+   "site_count": 1
+  },
+  "0x00415bc5": {
+   "name": "llm_ui_bldg_panel_refresh_apply",
+   "sites": [
+    "DGROUP:0x005106d3"
+   ],
+   "site_count": 1
+  },
+  "0x004163db": {
+   "name": "llm_ui_bldg_available_projects_tab_process_events",
+   "sites": [
+    "DGROUP:0x00511291"
+   ],
+   "site_count": 1
+  },
+  "0x004164e8": {
+   "name": "llm_ui_bldg_build_menu_icon_draw",
+   "sites": [
+    "DGROUP:0x0051011d"
+   ],
+   "site_count": 1
+  },
+  "0x004165ea": {
+   "name": "llm_ui_bldg_owned_tab_process_events",
+   "sites": [
+    "DGROUP:0x00511486"
+   ],
+   "site_count": 1
+  },
+  "0x0041687c": {
+   "name": "llm_ui_bldg_list_icon_draw",
+   "sites": [
+    "DGROUP:0x0051014e"
+   ],
+   "site_count": 1
+  },
+  "0x0041695e": {
+   "name": "llm_ui_bldg_selected_panel_tick",
+   "sites": [
+    "DGROUP:0x0051167b"
+   ],
+   "site_count": 1
+  },
+  "0x00416ec6": {
+   "name": "llm_ui_bldg_units_panel_tick",
+   "sites": [
+    "DGROUP:0x00511870"
+   ],
+   "site_count": 1
+  },
+  "0x00417c3b": {
+   "name": "llm_ui_storage_bldg_panel_kind1",
+   "sites": [
+    "DGROUP:0x00511a65"
+   ],
+   "site_count": 1
+  },
+  "0x00417c6d": {
+   "name": "llm_ui_storage_bldg_panel_kind0",
+   "sites": [
+    "DGROUP:0x00511c5a"
+   ],
+   "site_count": 1
+  },
+  "0x00417c9c": {
+   "name": "llm_ui_storage_bldg_panel_kind3",
+   "sites": [
+    "DGROUP:0x00511e4f"
+   ],
+   "site_count": 1
+  },
+  "0x00417cce": {
+   "name": "llm_ui_bldg_shuttle_dock_panel_tick",
+   "sites": [
+    "DGROUP:0x00512044"
+   ],
+   "site_count": 1
+  },
+  "0x00417e2e": {
+   "name": "llm_ui_build_panel_project_row_draw",
+   "sites": [
+    "DGROUP:0x00510059"
+   ],
+   "site_count": 1
+  },
+  "0x00417fb3": {
+   "name": "llm_ui_bldg_project_panel_tick",
+   "sites": [
+    "DGROUP:0x0051242e"
+   ],
+   "site_count": 1
+  },
+  "0x0041817c": {
+   "name": "llm_ui_bldg_panel_tick",
+   "sites": [
+    "DGROUP:0x00512239"
+   ],
+   "site_count": 1
+  },
+  "0x0041848e": {
+   "name": "llm_ui_hud_pop_panel_draw",
+   "sites": [
+    "DGROUP:0x00512623"
+   ],
+   "site_count": 1
+  },
+  "0x0041885d": {
+   "name": "llm_ui_hud_bldg_mine_panel_draw",
+   "sites": [
+    "DGROUP:0x00512818"
+   ],
+   "site_count": 1
+  },
+  "0x00418909": {
+   "name": "llm_ui_hud_bldg_network_status_panel_draw",
+   "sites": [
+    "DGROUP:0x00512a0d"
+   ],
+   "site_count": 1
+  },
+  "0x00418a37": {
+   "name": "llm_ui_hud_bldg_count_only_panel_draw",
+   "sites": [
+    "DGROUP:0x00512c02"
+   ],
+   "site_count": 1
+  },
+  "0x00418a68": {
+   "name": "llm_ui_hud_bldg_same_type_count_row_draw_by_race",
+   "sites": [
+    "DGROUP:0x00512df7"
+   ],
+   "site_count": 1
+  },
+  "0x00418ab0": {
+   "name": "llm_ui_hud_power_panel_draw",
+   "sites": [
+    "DGROUP:0x00512fec"
+   ],
+   "site_count": 1
+  },
+  "0x00418b43": {
+   "name": "llm_ui_hud_bldg_panel_refresh_tick",
+   "sites": [
+    "DGROUP:0x005131e1"
+   ],
+   "site_count": 1
+  },
+  "0x00418b85": {
+   "name": "llm_ui_hud_bldg_panel_refresh_tick_dup",
+   "sites": [
+    "DGROUP:0x005133d6"
+   ],
+   "site_count": 1
+  },
+  "0x00418d97": {
+   "name": "llm_ui_unit_ctrlgroup_panel_draw_row",
+   "sites": [
+    "DGROUP:0x0051008a"
+   ],
+   "site_count": 1
+  },
+  "0x00418ed7": {
+   "name": "llm_ui_bldg_prod_queue_slot_draw",
+   "sites": [
+    "DGROUP:0x0050fff7"
+   ],
+   "site_count": 1
+  },
+  "0x00419077": {
+   "name": "llm_strat_ui_storage_panel_draw_row",
+   "sites": [
+    "DGROUP:0x00510028"
+   ],
+   "site_count": 1
+  },
+  "0x00419166": {
+   "name": "llm_ui_hud_unassigned_unit_row_click_handler",
+   "sites": [
+    "BEGTEXT:0x0041aae2"
+   ],
+   "site_count": 1
+  },
+  "0x00419221": {
+   "name": "llm_ui_group_tab_on_click",
+   "sites": [
+    "DGROUP:0x005108c8"
+   ],
+   "site_count": 1
+  },
+  "0x00419549": {
+   "name": "llm_strat_ui_unit_panel_tick",
+   "sites": [
+    "DGROUP:0x00510ea7"
+   ],
+   "site_count": 1
+  },
+  "0x004197ba": {
+   "name": "llm_ui_selection_panel_refresh",
+   "sites": [
+    "DGROUP:0x0051109c"
+   ],
+   "site_count": 1
+  },
+  "0x00440049": {
+   "name": "game_AddToAvailableBuildingsWithCheck",
+   "sites": [
+    "DGROUP:0x005027b2"
+   ],
+   "site_count": 1
+  },
+  "0x0046ff2c": {
+   "name": "llm_strat_done_default",
+   "sites": [
+    "BEGTEXT:0x0045f797"
+   ],
+   "site_count": 1
+  },
+  "0x0046ff4e": {
+   "name": "llm_strat_done_mother",
+   "sites": [
+    "BEGTEXT:0x0045f7e2",
+    "BEGTEXT:0x0045f7f1"
+   ],
+   "site_count": 2
+  },
+  "0x0046ff7f": {
+   "name": "llm_strat_done_plant",
+   "sites": [
+    "BEGTEXT:0x0045f800",
+    "BEGTEXT:0x0045f80f"
+   ],
+   "site_count": 2
+  },
+  "0x0046ffa6": {
+   "name": "llm_strat_done_colony",
+   "sites": [
+    "BEGTEXT:0x0045f81e",
+    "BEGTEXT:0x0045f82d"
+   ],
+   "site_count": 2
+  },
+  "0x0046ffd2": {
+   "name": "llm_strat_done_quarters_vehicles",
+   "sites": [
+    "BEGTEXT:0x0045f83c",
+    "BEGTEXT:0x0045f84b"
+   ],
+   "site_count": 2
+  },
+  "0x0046fffe": {
+   "name": "llm_strat_done_quarters_soldiers",
+   "sites": [
+    "BEGTEXT:0x0045f85a",
+    "BEGTEXT:0x0045f869"
+   ],
+   "site_count": 2
+  },
+  "0x0047002a": {
+   "name": "llm_strat_done_airfield",
+   "sites": [
+    "BEGTEXT:0x0045f878",
+    "BEGTEXT:0x0045f887"
+   ],
+   "site_count": 2
+  },
+  "0x00470056": {
+   "name": "llm_strat_done_helipad",
+   "sites": [
+    "BEGTEXT:0x0045f896",
+    "BEGTEXT:0x0045f8a5"
+   ],
+   "site_count": 2
+  },
+  "0x00470082": {
+   "name": "llm_strat_done_mine",
+   "sites": [
+    "BEGTEXT:0x0045f8b4",
+    "BEGTEXT:0x0045f8c3"
+   ],
+   "site_count": 2
+  },
+  "0x004700ae": {
+   "name": "llm_strat_done_production",
+   "sites": [
+    "BEGTEXT:0x0045f8d2",
+    "BEGTEXT:0x0045f8e1"
+   ],
+   "site_count": 2
+  },
+  "0x004700d5": {
+   "name": "llm_strat_done_lab",
+   "sites": [
+    "BEGTEXT:0x0045f94a",
+    "BEGTEXT:0x0045f959"
+   ],
+   "site_count": 2
+  },
+  "0x004700fc": {
+   "name": "llm_strat_done_turret",
+   "sites": [
+    "BEGTEXT:0x0045f8f0",
+    "BEGTEXT:0x0045f8ff"
+   ],
+   "site_count": 2
+  },
+  "0x00470123": {
+   "name": "llm_strat_done_silos",
+   "sites": [
+    "BEGTEXT:0x0045f90e",
+    "BEGTEXT:0x0045f91d"
+   ],
+   "site_count": 2
+  },
+  "0x0047014f": {
+   "name": "llm_strat_done_shuttle",
+   "sites": [
+    "BEGTEXT:0x0045f92c",
+    "BEGTEXT:0x0045f93b"
+   ],
+   "site_count": 2
+  },
+  "0x00470171": {
+   "name": "llm_strat_done_relay",
+   "sites": [
+    "BEGTEXT:0x0045f7c4",
+    "BEGTEXT:0x0045f7d3"
+   ],
+   "site_count": 2
+  },
+  "0x00470198": {
+   "name": "llm_strat_done_port",
+   "sites": [
+    "BEGTEXT:0x0045f7a6",
+    "BEGTEXT:0x0045f7b5"
+   ],
+   "site_count": 2
+  },
+  "0x004711c3": {
+   "name": "llm_strat_bldg_state_default_reset",
+   "sites": [
+    "BEGTEXT:0x0045f554"
+   ],
+   "site_count": 1
+  },
+  "0x00471203": {
+   "name": "llm_strat_bldg_state_idle_noop",
+   "sites": [
+    "BEGTEXT:0x0045f6cb",
+    "BEGTEXT:0x0045f6da",
+    "BEGTEXT:0x0045f6e9",
+    "BEGTEXT:0x0045f6f8",
+    "BEGTEXT:0x0045f707"
+   ],
+   "site_count": 5
+  },
+  "0x00471239": {
+   "name": "llm_strat_bldg_state_deploy_anim_wait",
+   "sites": [
+    "BEGTEXT:0x0045f6ad"
+   ],
+   "site_count": 1
+  },
+  "0x00471288": {
+   "name": "llm_strat_bldg_state_land_activate",
+   "sites": [
+    "BEGTEXT:0x0045f6bc"
+   ],
+   "site_count": 1
+  },
+  "0x00471377": {
+   "name": "llm_strat_bldg_state_deploy_start",
+   "sites": [
+    "BEGTEXT:0x0045f716"
+   ],
+   "site_count": 1
+  },
+  "0x00471443": {
+   "name": "llm_strat_bldg_state_to_unit",
+   "sites": [
+    "BEGTEXT:0x0045f725"
+   ],
+   "site_count": 1
+  },
+  "0x00471ab1": {
+   "name": "llm_strat_bldg_state_turret_scan",
+   "sites": [
+    "BEGTEXT:0x0045f680"
+   ],
+   "site_count": 1
+  },
+  "0x00471e53": {
+   "name": "llm_strat_bldg_state_turret_attack",
+   "sites": [
+    "BEGTEXT:0x0045f68f"
+   ],
+   "site_count": 1
+  },
+  "0x00472415": {
+   "name": "llm_strat_bldg_state_idle_activate",
+   "sites": [
+    "BEGTEXT:0x0045f581"
+   ],
+   "site_count": 1
+  },
+  "0x004724af": {
+   "name": "llm_strat_bldg_state_construction",
+   "sites": [
+    "BEGTEXT:0x0045f563"
+   ],
+   "site_count": 1
+  },
+  "0x00472674": {
+   "name": "llm_strat_bldg_state_charge_gate",
+   "sites": [
+    "BEGTEXT:0x0045f590"
+   ],
+   "site_count": 1
+  },
+  "0x00472979": {
+   "name": "llm_strat_bldg_state_charge_step",
+   "sites": [
+    "BEGTEXT:0x0045f59f"
+   ],
+   "site_count": 1
+  },
+  "0x00472b26": {
+   "name": "llm_strat_bldg_state_hangar_recharge_check",
+   "sites": [
+    "BEGTEXT:0x0045f5ae"
+   ],
+   "site_count": 1
+  },
+  "0x00472b9d": {
+   "name": "llm_strat_bldg_state_hangar_recharge_units",
+   "sites": [
+    "BEGTEXT:0x0045f5bd"
+   ],
+   "site_count": 1
+  },
+  "0x00472c42": {
+   "name": "llm_strat_bldg_state_upgrading",
+   "sites": [
+    "BEGTEXT:0x0045f5cc"
+   ],
+   "site_count": 1
+  },
+  "0x00472eb7": {
+   "name": "llm_strat_bldg_state_dismantling",
+   "sites": [
+    "BEGTEXT:0x0045f572"
+   ],
+   "site_count": 1
+  },
+  "0x00472f3c": {
+   "name": "llm_strat_bldg_state_researching",
+   "sites": [
+    "BEGTEXT:0x0045f69e"
+   ],
+   "site_count": 1
+  },
+  "0x00473194": {
+   "name": "llm_strat_bldg_state_destroyed",
+   "sites": [
+    "BEGTEXT:0x0045f734"
+   ],
+   "site_count": 1
+  },
+  "0x004736a2": {
+   "name": "llm_strat_bldg_state_dismantle_finish",
+   "sites": [
+    "BEGTEXT:0x0045f743"
+   ],
+   "site_count": 1
+  },
+  "0x004738a3": {
+   "name": "llm_strat_bldg_state_rubble_sight_decay",
+   "sites": [
+    "BEGTEXT:0x0045f752"
+   ],
+   "site_count": 1
+  },
+  "0x00473a20": {
+   "name": "llm_strat_bldg_state_prod_pick_next",
+   "sites": [
+    "BEGTEXT:0x0045f5db"
+   ],
+   "site_count": 1
+  },
+  "0x00473ca8": {
+   "name": "llm_strat_bldg_state_prod_working",
+   "sites": [
+    "BEGTEXT:0x0045f5ea"
+   ],
+   "site_count": 1
+  },
+  "0x00474139": {
+   "name": "llm_strat_bldg_state_prod_blocked_notify",
+   "sites": [
+    "BEGTEXT:0x0045f5f9"
+   ],
+   "site_count": 1
+  },
+  "0x0047430b": {
+   "name": "llm_strat_bldg_state_prod_retry_wait",
+   "sites": [
+    "BEGTEXT:0x0045f608"
+   ],
+   "site_count": 1
+  },
+  "0x00474384": {
+   "name": "llm_strat_bldg_state_mine_scan_deposits",
+   "sites": [
+    "BEGTEXT:0x0045f617"
+   ],
+   "site_count": 1
+  },
+  "0x004743e1": {
+   "name": "llm_strat_bldg_state_mine_check_deposits",
+   "sites": [
+    "BEGTEXT:0x0045f626"
+   ],
+   "site_count": 1
+  },
+  "0x0047457a": {
+   "name": "llm_strat_bldg_state_mine_extracting",
+   "sites": [
+    "BEGTEXT:0x0045f635"
+   ],
+   "site_count": 1
+  },
+  "0x0047464e": {
+   "name": "llm_strat_bldg_state_mine_depleted",
+   "sites": [
+    "BEGTEXT:0x0045f644"
+   ],
+   "site_count": 1
+  },
+  "0x0047468e": {
+   "name": "llm_strat_bldg_state_mine_rescan_wait",
+   "sites": [
+    "BEGTEXT:0x0045f653"
+   ],
+   "site_count": 1
+  },
+  "0x00474707": {
+   "name": "llm_strat_bldg_state_power_primary_check",
+   "sites": [
+    "BEGTEXT:0x0045f662"
+   ],
+   "site_count": 1
+  },
+  "0x0047477a": {
+   "name": "llm_strat_bldg_state_power_generate",
+   "sites": [
+    "BEGTEXT:0x0045f671"
+   ],
+   "site_count": 1
+  },
+  "0x00476447": {
+   "name": "llm_strat_bldg_anim_tick",
+   "sites": [
+    "BEGTEXT:0x0045f97c"
+   ],
+   "site_count": 1
+  },
+  "0x00476605": {
+   "name": "llm_strat_bldg_anim_state_turret",
+   "sites": [
+    "BEGTEXT:0x0045fa99",
+    "BEGTEXT:0x0045faa8"
+   ],
+   "site_count": 2
+  },
+  "0x00476627": {
+   "name": "llm_strat_bldg_anim_state_barracks_garage_a",
+   "sites": [
+    "BEGTEXT:0x0045f98b",
+    "BEGTEXT:0x0045f99a"
+   ],
+   "site_count": 2
+  },
+  "0x004769a9": {
+   "name": "llm_strat_bldg_anim_state_vehicles_h",
+   "sites": [
+    "BEGTEXT:0x0045f9b8"
+   ],
+   "site_count": 1
+  },
+  "0x00476e9d": {
+   "name": "llm_strat_bldg_anim_state_soldiers_h",
+   "sites": [
+    "BEGTEXT:0x0045f9a9"
+   ],
+   "site_count": 1
+  },
+  "0x00477231": {
+   "name": "llm_strat_bldg_anim_state_helipad_a",
+   "sites": [
+    "BEGTEXT:0x0045f9c7"
+   ],
+   "site_count": 1
+  },
+  "0x004773f4": {
+   "name": "llm_strat_bldg_anim_state_helipad",
+   "sites": [
+    "BEGTEXT:0x0045f9d6"
+   ],
+   "site_count": 1
+  },
+  "0x00477881": {
+   "name": "llm_strat_bldg_anim_state_airfield_a",
+   "sites": [
+    "BEGTEXT:0x0045f9e5"
+   ],
+   "site_count": 1
+  },
+  "0x00477bed": {
+   "name": "llm_strat_bldg_anim_state_airfield_h",
+   "sites": [
+    "BEGTEXT:0x0045f9f4"
+   ],
+   "site_count": 1
+  },
+  "0x00477d9e": {
+   "name": "llm_strat_bldg_anim_state_shuttle_a",
+   "sites": [
+    "BEGTEXT:0x0045fa5d"
+   ],
+   "site_count": 1
+  },
+  "0x0047815f": {
+   "name": "llm_strat_bldg_anim_state_shuttle_h",
+   "sites": [
+    "BEGTEXT:0x0045fa6c"
+   ],
+   "site_count": 1
+  },
+  "0x00478520": {
+   "name": "llm_strat_bldg_anim_state_online_toggle",
+   "sites": [
+    "BEGTEXT:0x0045fa03",
+    "BEGTEXT:0x0045fa12",
+    "BEGTEXT:0x0045fa21",
+    "BEGTEXT:0x0045fa30",
+    "BEGTEXT:0x0045fa3f",
+    "BEGTEXT:0x0045fa4e"
+   ],
+   "site_count": 6
+  },
+  "0x004786f5": {
+   "name": "llm_strat_bldg_anim_state_port",
+   "sites": [
+    "BEGTEXT:0x0045fa7b"
+   ],
+   "site_count": 1
+  },
+  "0x00478bfe": {
+   "name": "llm_strat_bldg_anim_state_port_h",
+   "sites": [
+    "BEGTEXT:0x0045fa8a"
+   ],
+   "site_count": 1
+  },
+  "0x0047c903": {
+   "name": "llm_strat_unit_state_move_walker",
+   "sites": [
+    "BEGTEXT:0x0045f2a9"
+   ],
+   "site_count": 1
+  },
+  "0x0047e1e1": {
+   "name": "llm_strat_unit_state_stop_to_default",
+   "sites": [
+    "BEGTEXT:0x0045f2b8"
+   ],
+   "site_count": 1
+  },
+  "0x0047e276": {
+   "name": "llm_strat_unit_state_parked_noop",
+   "sites": [
+    "BEGTEXT:0x0045f2c7",
+    "BEGTEXT:0x0045f498",
+    "BEGTEXT:0x0045f501"
+   ],
+   "site_count": 3
+  },
+  "0x0047e2ac": {
+   "name": "llm_strat_unit_state_default_noop",
+   "sites": [
+    "BEGTEXT:0x0045f29a"
+   ],
+   "site_count": 1
+  },
+  "0x0047e2e2": {
+   "name": "llm_strat_unit_state_patrol_swap",
+   "sites": [
+    "BEGTEXT:0x0045f303"
+   ],
+   "site_count": 1
+  },
+  "0x0047ea62": {
+   "name": "llm_strat_unit_state_squad_merge",
+   "sites": [
+    "BEGTEXT:0x0045f510"
+   ],
+   "site_count": 1
+  },
+  "0x0047efc6": {
+   "name": "llm_strat_unit_state_exit_storage_begin",
+   "sites": [
+    "BEGTEXT:0x0045f44d"
+   ],
+   "site_count": 1
+  },
+  "0x0047f270": {
+   "name": "llm_strat_unit_state_exit_wait",
+   "sites": [
+    "BEGTEXT:0x0045f45c"
+   ],
+   "site_count": 1
+  },
+  "0x0047f351": {
+   "name": "llm_strat_unit_state_exit_cancel",
+   "sites": [
+    "BEGTEXT:0x0045f46b"
+   ],
+   "site_count": 1
+  },
+  "0x0047f3a1": {
+   "name": "llm_strat_unit_state_exit_walk_out",
+   "sites": [
+    "BEGTEXT:0x0045f47a"
+   ],
+   "site_count": 1
+  },
+  "0x0047f69f": {
+   "name": "llm_strat_unit_state_takeoff_taxi",
+   "sites": [
+    "BEGTEXT:0x0045f489"
+   ],
+   "site_count": 1
+  },
+  "0x0047f981": {
+   "name": "llm_strat_unit_state_dock_taxi_in",
+   "sites": [
+    "BEGTEXT:0x0045f4f2"
+   ],
+   "site_count": 1
+  },
+  "0x0047fe68": {
+   "name": "llm_strat_unit_state_enter_arrival_check",
+   "sites": [
+    "BEGTEXT:0x0045f4c5"
+   ],
+   "site_count": 1
+  },
+  "0x0047ff50": {
+   "name": "llm_strat_unit_state_enter_storage_begin",
+   "sites": [
+    "BEGTEXT:0x0045f4b6"
+   ],
+   "site_count": 1
+  },
+  "0x004800a8": {
+   "name": "llm_strat_unit_state_landing_request",
+   "sites": [
+    "BEGTEXT:0x0045f4a7"
+   ],
+   "site_count": 1
+  },
+  "0x00480218": {
+   "name": "llm_strat_unit_state_enter_wait",
+   "sites": [
+    "BEGTEXT:0x0045f4d4"
+   ],
+   "site_count": 1
+  },
+  "0x004803bf": {
+   "name": "llm_strat_unit_state_enter_walk_in",
+   "sites": [
+    "BEGTEXT:0x0045f4e3"
+   ],
+   "site_count": 1
+  },
+  "0x004807d9": {
+   "name": "llm_strat_unit_state_hover_engage",
+   "sites": [
+    "BEGTEXT:0x0045f3c6",
+    "BEGTEXT:0x0045f3d5",
+    "BEGTEXT:0x0045f3e4"
+   ],
+   "site_count": 3
+  },
+  "0x00480b53": {
+   "name": "llm_strat_unit_state_move_path",
+   "sites": [
+    "BEGTEXT:0x0045f399",
+    "BEGTEXT:0x0045f3a8",
+    "BEGTEXT:0x0045f3b7"
+   ],
+   "site_count": 3
+  },
+  "0x0048117c": {
+   "name": "llm_strat_unit_state_deploy_approach",
+   "sites": [
+    "BEGTEXT:0x0045f34e"
+   ],
+   "site_count": 1
+  },
+  "0x004813f1": {
+   "name": "llm_strat_unit_state_takeoff_landing",
+   "sites": [
+    "BEGTEXT:0x0045f330",
+    "BEGTEXT:0x0045f33f"
+   ],
+   "site_count": 2
+  },
+  "0x00481960": {
+   "name": "llm_strat_unit_state_climb_vertical",
+   "sites": [
+    "BEGTEXT:0x0045f36c"
+   ],
+   "site_count": 1
+  },
+  "0x00481a6b": {
+   "name": "llm_strat_unit_state_deploy_to_building",
+   "sites": [
+    "BEGTEXT:0x0045f35d"
+   ],
+   "site_count": 1
+  },
+  "0x00481f7c": {
+   "name": "llm_strat_unit_state_descend_cruise",
+   "sites": [
+    "BEGTEXT:0x0045f37b"
+   ],
+   "site_count": 1
+  },
+  "0x0048214d": {
+   "name": "llm_strat_unit_state_ascend_to_orbit",
+   "sites": [
+    "BEGTEXT:0x0045f38a"
+   ],
+   "site_count": 1
+  },
+  "0x004822dc": {
+   "name": "llm_strat_unit_state_corpse_fow_decay",
+   "sites": [
+    "BEGTEXT:0x0045f43e"
+   ],
+   "site_count": 1
+  },
+  "0x00482451": {
+   "name": "llm_strat_unit_state_group_marshal",
+   "sites": [
+    "BEGTEXT:0x0045f2d6"
+   ],
+   "site_count": 1
+  },
+  "0x00482f2e": {
+   "name": "llm_strat_unit_state_enter_class_move",
+   "sites": [
+    "BEGTEXT:0x0045f2f4"
+   ],
+   "site_count": 1
+  },
+  "0x00482f7f": {
+   "name": "llm_strat_unit_state_group_step",
+   "sites": [
+    "BEGTEXT:0x0045f2e5"
+   ],
+   "site_count": 1
+  },
+  "0x00484e10": {
+   "name": "llm_strat_unit_state_attack_building",
+   "sites": [
+    "BEGTEXT:0x0045f3f3"
+   ],
+   "site_count": 1
+  },
+  "0x00485008": {
+   "name": "llm_strat_unit_state_attack_unit",
+   "sites": [
+    "BEGTEXT:0x0045f402",
+    "BEGTEXT:0x0045f411"
+   ],
+   "site_count": 2
+  },
+  "0x004854f3": {
+   "name": "llm_strat_unit_state_die_explode",
+   "sites": [
+    "BEGTEXT:0x0045f420"
+   ],
+   "site_count": 1
+  },
+  "0x0048592d": {
+   "name": "llm_strat_unit_state_remove_silent",
+   "sites": [
+    "BEGTEXT:0x0045f42f"
+   ],
+   "site_count": 1
+  },
+  "0x00485bab": {
+   "name": "llm_strat_unit_state_step_adjacent",
+   "sites": [
+    "BEGTEXT:0x0045f52e"
+   ],
+   "site_count": 1
+  },
+  "0x00485d43": {
+   "name": "llm_strat_unit_state_plot_turn_path",
+   "sites": [
+    "BEGTEXT:0x0045f312"
+   ],
+   "site_count": 1
+  },
+  "0x00485ebb": {
+   "name": "llm_strat_unit_state_idle_scatter",
+   "sites": [
+    "BEGTEXT:0x0045f321"
+   ],
+   "site_count": 1
+  },
+  "0x00486106": {
+   "name": "llm_strat_unit_state_production_ready",
+   "sites": [
+    "BEGTEXT:0x0045f51f"
+   ],
+   "site_count": 1
+  },
+  "0x004a0524": {
+   "name": "llm_wnd_proc",
+   "sites": [
+    "BEGTEXT:0x004a0719"
+   ],
+   "site_count": 1
+  },
+  "0x004a08cb": {
+   "name": "SplashScreenProc",
+   "sites": [
+    "BEGTEXT:0x004a0a74"
+   ],
+   "site_count": 1
+  },
+  "0x004a0b38": {
+   "name": "WinMain",
+   "sites": [
+    "BEGTEXT:0x004ddefe"
+   ],
+   "site_count": 1
+  },
+  "0x004a5ae8": {
+   "name": "llm_map_view_tilevis_fill_bottom_row",
+   "sites": [
+    "BEGTEXT:0x004caa10"
+   ],
+   "site_count": 1
+  },
+  "0x004b4fb8": {
+   "name": "llm_ui_error_dialog_proc",
+   "sites": [
+    "BEGTEXT:0x004b5205",
+    "BEGTEXT:0x004c34a2",
+    "BEGTEXT:0x004c3517",
+    "BEGTEXT:0x004c3812"
+   ],
+   "site_count": 4
+  },
+  "0x004b6418": {
+   "name": "llm_ui_main_menu_activate",
+   "sites": [
+    "BEGTEXT:0x004b6c53"
+   ],
+   "site_count": 1
+  },
+  "0x004b7f5a": {
+   "name": "llm_ui_dlg_confirm_quit_to_desktop",
+   "sites": [
+    "DGROUP:0x0064fe67"
+   ],
+   "site_count": 1
+  },
+  "0x004b7f90": {
+   "name": "llm_menu_screen_close_finalize",
+   "sites": [
+    "BEGTEXT:0x004bba97",
+    "BEGTEXT:0x004bbb2f"
+   ],
+   "site_count": 2
+  },
+  "0x004b7ff2": {
+   "name": "llm_ui_menu_bg_redraw_cb",
+   "sites": [
+    "BEGTEXT:0x004c866b"
+   ],
+   "site_count": 1
+  },
+  "0x004b8245": {
+   "name": "llm_menu_finish_enter_gameplay",
+   "sites": [
+    "BEGTEXT:0x004bb46f",
+    "DGROUP:0x00651363"
+   ],
+   "site_count": 2
+  },
+  "0x004b82c1": {
+   "name": "llm_snd_apply_option_changes",
+   "sites": [
+    "BEGTEXT:0x004b8409"
+   ],
+   "site_count": 1
+  },
+  "0x004b8383": {
+   "name": "llm_ui_options_menu_open",
+   "sites": [
+    "DGROUP:0x006510ff"
+   ],
+   "site_count": 1
+  },
+  "0x004b845e": {
+   "name": "FUN_004b845e",
+   "sites": [
+    "BEGTEXT:0x004b84de"
+   ],
+   "site_count": 1
+  },
+  "0x004b849e": {
+   "name": "llm_menu_newgame_open",
+   "sites": [
+    "DGROUP:0x0064fddf"
+   ],
+   "site_count": 1
+  },
+  "0x004b84ff": {
+   "name": "llm_menu_campaign_start_and_enter",
+   "sites": [
+    "BEGTEXT:0x004b85b3"
+   ],
+   "site_count": 1
+  },
+  "0x004b857c": {
+   "name": "llm_menu_newgame_arm_start",
+   "sites": [
+    "BEGTEXT:0x004b92e6"
+   ],
+   "site_count": 1
+  },
+  "0x004b8618": {
+   "name": "llm_ui_options_menu_cancel",
+   "sites": [
+    "DGROUP:0x00651473"
+   ],
+   "site_count": 1
+  },
+  "0x004b86a4": {
+   "name": "FUN_004b86a4",
+   "sites": [
+    "DGROUP:0x0065142f"
+   ],
+   "site_count": 1
+  },
+  "0x004b892e": {
+   "name": "llm_ui_dlg_quit_cancel_cb",
+   "sites": [
+    "DGROUP:0x006539c7"
+   ],
+   "site_count": 1
+  },
+  "0x004b8f58": {
+   "name": "FUN_004b8f58",
+   "sites": [
+    "DGROUP:0x0064ffbb"
+   ],
+   "site_count": 1
+  },
+  "0x004b903c": {
+   "name": "FUN_004b903c",
+   "sites": [
+    "DGROUP:0x00650043"
+   ],
+   "site_count": 1
+  },
+  "0x004b922d": {
+   "name": "llm_ui_dialog_bg_redraw_cb",
+   "sites": [
+    "BEGTEXT:0x004bb465"
+   ],
+   "site_count": 1
+  },
+  "0x004b9278": {
+   "name": "llm_menu_race_select_cb",
+   "sites": [
+    "DGROUP:0x006507f7",
+    "DGROUP:0x0065083b"
+   ],
+   "site_count": 2
+  },
+  "0x004b9313": {
+   "name": "FUN_004b9313",
+   "sites": [
+    "DGROUP:0x006508c3"
+   ],
+   "site_count": 1
+  },
+  "0x004b935c": {
+   "name": "FUN_004b935c",
+   "sites": [
+    "DGROUP:0x006507ff",
+    "DGROUP:0x00650843",
+    "DGROUP:0x00650887"
+   ],
+   "site_count": 3
+  },
+  "0x004b941e": {
+   "name": "llm_game_return_to_main_menu_cb",
+   "sites": [
+    "DGROUP:0x006539c3",
+    "DGROUP:0x00656d7e"
+   ],
+   "site_count": 2
+  },
+  "0x004b9538": {
+   "name": "llm_ui_dlg_confirm_quit_to_menu",
+   "sites": [
+    "DGROUP:0x0065131f"
+   ],
+   "site_count": 1
+  },
+  "0x004b95f6": {
+   "name": "llm_ui_dlg_confirm_quit_to_menu_alt",
+   "sites": [
+    "DGROUP:0x00651253"
+   ],
+   "site_count": 1
+  },
+  "0x004b96a0": {
+   "name": "llm_ui_text_viewer_draw",
+   "sites": [
+    "DGROUP:0x0065169b"
+   ],
+   "site_count": 1
+  },
+  "0x004b975f": {
+   "name": "FUN_004b975f",
+   "sites": [
+    "BEGTEXT:0x004b9943"
+   ],
+   "site_count": 1
+  },
+  "0x004b97f3": {
+   "name": "llm_ui_text_viewer_tick",
+   "sites": [
+    "BEGTEXT:0x004b9b4a"
+   ],
+   "site_count": 1
+  },
+  "0x004b9aff": {
+   "name": "llm_menu_show_credits",
+   "sites": [
+    "DGROUP:0x0064feef"
+   ],
+   "site_count": 1
+  },
+  "0x004b9b68": {
+   "name": "FUN_004b9b68",
+   "sites": [
+    "DGROUP:0x00650f6f"
+   ],
+   "site_count": 1
+  },
+  "0x004ba8af": {
+   "name": "llm_tutorial_step_driver",
+   "sites": [
+    "BEGTEXT:0x004baf74"
+   ],
+   "site_count": 1
+  },
+  "0x004baf11": {
+   "name": "llm_tutorial_menu_redraw_cb",
+   "sites": [
+    "BEGTEXT:0x004bb2a1"
+   ],
+   "site_count": 1
+  },
+  "0x004baf42": {
+   "name": "FUN_004baf42",
+   "sites": [
+    "DGROUP:0x00651033"
+   ],
+   "site_count": 1
+  },
+  "0x004bafb1": {
+   "name": "llm_game_start_tutorial",
+   "sites": [
+    "DGROUP:0x0064fe23"
+   ],
+   "site_count": 1
+  },
+  "0x004bb35f": {
+   "name": "llm_ui_menu_close_to_hud",
+   "sites": [
+    "DGROUP:0x00650fab"
+   ],
+   "site_count": 1
+  },
+  "0x004bb60e": {
+   "name": "llm_menu_savegame_confirm",
+   "sites": [
+    "BEGTEXT:0x004bb717"
+   ],
+   "site_count": 1
+  },
+  "0x004bb6d3": {
+   "name": "llm_menu_savelist_select_name",
+   "sites": [
+    "BEGTEXT:0x004bbb1b"
+   ],
+   "site_count": 1
+  },
+  "0x004bb72f": {
+   "name": "llm_menu_loadgame_confirm",
+   "sites": [
+    "BEGTEXT:0x004bb7d1"
+   ],
+   "site_count": 1
+  },
+  "0x004bb78d": {
+   "name": "FUN_004bb78d",
+   "sites": [
+    "BEGTEXT:0x004bba83"
+   ],
+   "site_count": 1
+  },
+  "0x004bb7e9": {
+   "name": "FUN_004bb7e9",
+   "sites": [
+    "BEGTEXT:0x004bb87f"
+   ],
+   "site_count": 1
+  },
+  "0x004bb944": {
+   "name": "FUN_004bb944",
+   "sites": [
+    "BEGTEXT:0x004bb9d2"
+   ],
+   "site_count": 1
+  },
+  "0x004bb9f9": {
+   "name": "FUN_004bb9f9",
+   "sites": [
+    "DGROUP:0x006513a7"
+   ],
+   "site_count": 1
+  },
+  "0x004bba2f": {
+   "name": "FUN_004bba2f",
+   "sites": [
+    "DGROUP:0x006513eb"
+   ],
+   "site_count": 1
+  },
+  "0x004bba65": {
+   "name": "llm_menu_load_game_open",
+   "sites": [
+    "DGROUP:0x0064feab"
+   ],
+   "site_count": 1
+  },
+  "0x004bbb7b": {
+   "name": "llm_ui_dlg_confirm_delete_savegame",
+   "sites": [
+    "DGROUP:0x006507b3"
+   ],
+   "site_count": 1
+  },
+  "0x004bbbba": {
+   "name": "llm_savegame_delete_confirm_cb",
+   "sites": [
+    "DGROUP:0x006539f7"
+   ],
+   "site_count": 1
+  },
+  "0x004bbd30": {
+   "name": "llm_ui_edit_field_modal_tick",
+   "sites": [
+    "DGROUP:0x006500cb",
+    "DGROUP:0x006510bb"
+   ],
+   "site_count": 2
+  },
+  "0x004bc08a": {
+   "name": "FUN_004bc08a",
+   "sites": [
+    "BEGTEXT:0x004bb85a",
+    "DGROUP:0x00650087",
+    "DGROUP:0x00650153",
+    "DGROUP:0x00650197",
+    "DGROUP:0x00650263",
+    "DGROUP:0x00650593",
+    "DGROUP:0x00650907",
+    "DGROUP:0x00650ae3"
+   ],
+   "site_count": 12
+  },
+  "0x004bcb08": {
+   "name": "llm_lobby_network_setup_screen",
+   "sites": [
+    "DGROUP:0x0064ff77"
+   ],
+   "site_count": 1
+  },
+  "0x004bcbbe": {
+   "name": "llm_mp_discovery_browser_refresh",
+   "sites": [
+    "BEGTEXT:0x004bcbf4",
+    "BEGTEXT:0x004bcfbf"
+   ],
+   "site_count": 2
+  },
+  "0x004bd03f": {
+   "name": "llm_mp_netsetup_name_confirm",
+   "sites": [
+    "BEGTEXT:0x004bcb57"
+   ],
+   "site_count": 1
+  },
+  "0x004bd0a6": {
+   "name": "FUN_004bd0a6",
+   "sites": [
+    "BEGTEXT:0x004bcb61"
+   ],
+   "site_count": 1
+  },
+  "0x004bd117": {
+   "name": "llm_mp_map_picker_open_action",
+   "sites": [
+    "BEGTEXT:0x004bd25e"
+   ],
+   "site_count": 1
+  },
+  "0x004bd183": {
+   "name": "llm_mp_netsetup_game_field_cancel",
+   "sites": [
+    "BEGTEXT:0x004bd268"
+   ],
+   "site_count": 1
+  },
+  "0x004bd1ec": {
+   "name": "llm_mp_netsetup_enter_game_name_screen",
+   "sites": [
+    "DGROUP:0x0065021f"
+   ],
+   "site_count": 1
+  },
+  "0x004bd2a5": {
+   "name": "llm_mp_local_browser_cancel_to_main",
+   "sites": [
+    "BEGTEXT:0x004bcfc9"
+   ],
+   "site_count": 1
+  },
+  "0x004bd37f": {
+   "name": "FUN_004bd37f",
+   "sites": [
+    "DGROUP:0x0065043f"
+   ],
+   "site_count": 1
+  },
+  "0x004bd77a": {
+   "name": "llm_mp_connect_by_ip_action",
+   "sites": [
+    "BEGTEXT:0x004bd8a1"
+   ],
+   "site_count": 1
+  },
+  "0x004bd805": {
+   "name": "llm_mp_netsetup_ip_field_cancel",
+   "sites": [
+    "BEGTEXT:0x004bd8b5"
+   ],
+   "site_count": 1
+  },
+  "0x004bd86f": {
+   "name": "llm_mp_netsetup_enter_connect_ip_screen",
+   "sites": [
+    "DGROUP:0x0065010f"
+   ],
+   "site_count": 1
+  },
+  "0x004bd957": {
+   "name": "llm_mp_session_browser_back_to_local_list",
+   "sites": [
+    "BEGTEXT:0x004bd910"
+   ],
+   "site_count": 1
+  },
+  "0x004bd99c": {
+   "name": "llm_mp_create_game_action",
+   "sites": [
+    "DGROUP:0x006501db"
+   ],
+   "site_count": 1
+  },
+  "0x004bda06": {
+   "name": "llm_mp_local_browser_close_and_refresh_cb",
+   "sites": [
+    "BEGTEXT:0x004bdad4"
+   ],
+   "site_count": 1
+  },
+  "0x004bdb11": {
+   "name": "llm_mp_session_browser_rescan",
+   "sites": [
+    "BEGTEXT:0x004bd906",
+    "BEGTEXT:0x004bdb42"
+   ],
+   "site_count": 2
+  },
+  "0x004be303": {
+   "name": "llm_lobby_join_head",
+   "sites": [
+    "DGROUP:0x006502eb"
+   ],
+   "site_count": 1
+  },
+  "0x004be468": {
+   "name": "llm_lobby_kick_player_confirm_cb",
+   "sites": [
+    "DGROUP:0x00653a2b"
+   ],
+   "site_count": 1
+  },
+  "0x004be552": {
+   "name": "llm_ui_dlg_lobby_kick_confirm_trigger",
+   "sites": [
+    "BEGTEXT:0x004bfb5b"
+   ],
+   "site_count": 1
+  },
+  "0x004be7b1": {
+   "name": "FUN_004be7b1",
+   "sites": [
+    "DGROUP:0x006503fb"
+   ],
+   "site_count": 1
+  },
+  "0x004bece0": {
+   "name": "llm_menu_loading_countdown_tick",
+   "sites": [
+    "BEGTEXT:0x004bee2c"
+   ],
+   "site_count": 1
+  },
+  "0x004bee94": {
+   "name": "llm_lobby_map_load_async_step",
+   "sites": [
+    "BEGTEXT:0x004befbe"
+   ],
+   "site_count": 1
+  },
+  "0x004bef6e": {
+   "name": "llm_lobby_begin_map_load",
+   "sites": [
+    "BEGTEXT:0x004be965"
+   ],
+   "site_count": 1
+  },
+  "0x004bf058": {
+   "name": "llm_lobby_host_start_game",
+   "sites": [
+    "BEGTEXT:0x004be97d"
+   ],
+   "site_count": 1
+  },
+  "0x004bf0f1": {
+   "name": "llm_lobby_finalize_transfer_or_enter",
+   "sites": [
+    "BEGTEXT:0x004be990"
+   ],
+   "site_count": 1
+  },
+  "0x004bf1d9": {
+   "name": "llm_lobby_slot_race_cycle_cb",
+   "sites": [
+    "BEGTEXT:0x004bfb6f"
+   ],
+   "site_count": 1
+  },
+  "0x004bf292": {
+   "name": "llm_lobby_slot_color_cycle_cb",
+   "sites": [
+    "BEGTEXT:0x004bfb79"
+   ],
+   "site_count": 1
+  },
+  "0x004bf65d": {
+   "name": "llm_lobby_slot_cycle_state_cb",
+   "sites": [
+    "BEGTEXT:0x004bfb65"
+   ],
+   "site_count": 1
+  },
+  "0x004bfd35": {
+   "name": "llm_lobby_host_net_dispatch",
+   "sites": [
+    "BEGTEXT:0x004bfe21"
+   ],
+   "site_count": 1
+  },
+  "0x004c08bb": {
+   "name": "llm_lobby_apply_selected_session_map",
+   "sites": [
+    "DGROUP:0x00644fa7"
+   ],
+   "site_count": 1
+  },
+  "0x004c0a03": {
+   "name": "llm_mp_mappicker_add_mapfile",
+   "sites": [
+    "BEGTEXT:0x004c0b05"
+   ],
+   "site_count": 1
+  },
+  "0x004c0a5c": {
+   "name": "llm_mp_mappicker_add_folder",
+   "sites": [
+    "BEGTEXT:0x004c0aed"
+   ],
+   "site_count": 1
+  },
+  "0x004c0b76": {
+   "name": "llm_lobby_mappicker_selection_changed",
+   "sites": [
+    "DGROUP:0x00644fef"
+   ],
+   "site_count": 1
+  },
+  "0x004c0d60": {
+   "name": "llm_mp_mappicker_proceed_cb",
+   "sites": [
+    "BEGTEXT:0x004c0d08"
+   ],
+   "site_count": 1
+  },
+  "0x004c0dd5": {
+   "name": "llm_mp_mappicker_activate_cb",
+   "sites": [
+    "BEGTEXT:0x004c0cfe"
+   ],
+   "site_count": 1
+  },
+  "0x004c10db": {
+   "name": "FUN_004c10db",
+   "sites": [
+    "DGROUP:0x00650c3f"
+   ],
+   "site_count": 1
+  },
+  "0x004c1100": {
+   "name": "llm_ui_widget_draw",
+   "sites": [
+    "BEGTEXT:0x004bfb83",
+    "BEGTEXT:0x004c79d0",
+    "DGROUP:0x0064fde7",
+    "DGROUP:0x0064fe2b",
+    "DGROUP:0x0064fe6f",
+    "DGROUP:0x0064feb3",
+    "DGROUP:0x0064fef7",
+    "DGROUP:0x0064ff3b"
+   ],
+   "site_count": 76
+  },
+  "0x004c13da": {
+   "name": "FUN_004c13da",
+   "sites": [
+    "DGROUP:0x006500d3",
+    "DGROUP:0x00650403",
+    "DGROUP:0x006510c3"
+   ],
+   "site_count": 3
+  },
+  "0x004c18b0": {
+   "name": "llm_ui_list_widget_draw",
+   "sites": [
+    "DGROUP:0x0065008f",
+    "DGROUP:0x0065015b",
+    "DGROUP:0x0065019f",
+    "DGROUP:0x0065026b",
+    "DGROUP:0x0065090f",
+    "DGROUP:0x0065107f"
+   ],
+   "site_count": 6
+  },
+  "0x004c1b15": {
+   "name": "llm_ui_widget_draw_content",
+   "sites": [
+    "BEGTEXT:0x004bfb8d",
+    "BEGTEXT:0x004c8359",
+    "DGROUP:0x0064fc4f",
+    "DGROUP:0x0064fcd7",
+    "DGROUP:0x0064fd5f",
+    "DGROUP:0x0064fda3"
+   ],
+   "site_count": 6
+  },
+  "0x004c1d37": {
+   "name": "llm_ui_menu_pending_widget_option_advance",
+   "sites": [
+    "BEGTEXT:0x004c8337",
+    "DGROUP:0x0064fc47",
+    "DGROUP:0x0064fccf",
+    "DGROUP:0x0064fd57",
+    "DGROUP:0x0064fd9b"
+   ],
+   "site_count": 5
+  },
+  "0x004c1daa": {
+   "name": "llm_mp_browser_scrollbar_draw",
+   "sites": [
+    "DGROUP:0x0064fc93",
+    "DGROUP:0x0064fd1b",
+    "DGROUP:0x00650007",
+    "DGROUP:0x00650513"
+   ],
+   "site_count": 4
+  },
+  "0x004c1f67": {
+   "name": "FUN_004c1f67",
+   "sites": [
+    "DGROUP:0x0064fc8b",
+    "DGROUP:0x0064fd13",
+    "DGROUP:0x0064ffff",
+    "DGROUP:0x0065050b"
+   ],
+   "site_count": 4
+  },
+  "0x004c2111": {
+   "name": "llm_ui_avi_audio_playback_loop",
+   "sites": [
+    "DGROUP:0x0064485b"
+   ],
+   "site_count": 1
+  },
+  "0x004c240c": {
+   "name": "llm_ui_menu_async_tick",
+   "sites": [
+    "BEGTEXT:0x004c2f48"
+   ],
+   "site_count": 1
+  },
+  "0x004c312e": {
+   "name": "FUN_004c312e",
+   "sites": [
+    "BEGTEXT:0x004c318b"
+   ],
+   "site_count": 1
+  },
+  "0x004c316d": {
+   "name": "FUN_004c316d",
+   "sites": [
+    "BEGTEXT:0x004c31ef"
+   ],
+   "site_count": 1
+  },
+  "0x004c31aa": {
+   "name": "llm_menu_play_intro_avi",
+   "sites": [
+    "DGROUP:0x0064ff33"
+   ],
+   "site_count": 1
+  },
+  "0x004c4119": {
+   "name": "llm_strat_planet_transition_error_dismiss",
+   "sites": [
+    "BEGTEXT:0x004c41b0"
+   ],
+   "site_count": 1
+  },
+  "0x004c4165": {
+   "name": "llm_strat_planet_transition_tick",
+   "sites": [
+    "BEGTEXT:0x004c432f"
+   ],
+   "site_count": 1
+  },
+  "0x004c4311": {
+   "name": "FUN_004c4311",
+   "sites": [
+    "DGROUP:0x00656b16"
+   ],
+   "site_count": 1
+  },
+  "0x004c4386": {
+   "name": "FUN_004c4386",
+   "sites": [
+    "DGROUP:0x0065094b"
+   ],
+   "site_count": 1
+  },
+  "0x004c48da": {
+   "name": "llm_strat_planet_sel_widget_list_reset",
+   "sites": [
+    "BEGTEXT:0x004c49a7"
+   ],
+   "site_count": 1
+  },
+  "0x004c4978": {
+   "name": "llm_ui_planet_select_frame_enter",
+   "sites": [
+    "BEGTEXT:0x004c617d"
+   ],
+   "site_count": 1
+  },
+  "0x004c4c09": {
+   "name": "llm_strat_ui_shipment_list_item_draw",
+   "sites": [
+    "BEGTEXT:0x004c4880"
+   ],
+   "site_count": 1
+  },
+  "0x004c5178": {
+   "name": "llm_ui_render_planet_selector_tooltip",
+   "sites": [
+    "BEGTEXT:0x004c6022"
+   ],
+   "site_count": 1
+  },
+  "0x004c5b41": {
+   "name": "FUN_004c5b41",
+   "sites": [
+    "DGROUP:0x00656a12",
+    "DGROUP:0x00656a46",
+    "DGROUP:0x00656a7e",
+    "DGROUP:0x00656aae",
+    "DGROUP:0x00656ae2"
+   ],
+   "site_count": 5
+  },
+  "0x004c5b7c": {
+   "name": "FUN_004c5b7c",
+   "sites": [
+    "DGROUP:0x00656a7a",
+    "DGROUP:0x00656ab2"
+   ],
+   "site_count": 2
+  },
+  "0x004c5bcc": {
+   "name": "FUN_004c5bcc",
+   "sites": [
+    "DGROUP:0x00656a16",
+    "DGROUP:0x00656a4a",
+    "DGROUP:0x00656a82",
+    "DGROUP:0x00656ab6",
+    "DGROUP:0x00656ae6",
+    "DGROUP:0x00656b1a"
+   ],
+   "site_count": 6
+  },
+  "0x004c5c11": {
+   "name": "llm_ui_dlg_shuttle_colonist_status_popup",
+   "sites": [
+    "BEGTEXT:0x004c488a"
+   ],
+   "site_count": 1
+  },
+  "0x004c61a4": {
+   "name": "llm_ui_dlg_confirm_planet_travel",
+   "sites": [
+    "BEGTEXT:0x004c602c"
+   ],
+   "site_count": 1
+  },
+  "0x004c633c": {
+   "name": "llm_dlg_close_and_resume",
+   "sites": [
+    "DGROUP:0x0065098f"
+   ],
+   "site_count": 1
+  },
+  "0x004c6481": {
+   "name": "llm_menu_reset_and_enter_gameplay",
+   "sites": [
+    "BEGTEXT:0x004c6db2"
+   ],
+   "site_count": 1
+  },
+  "0x004c64b7": {
+   "name": "llm_menu_campaign_start_confirm_cb",
+   "sites": [
+    "BEGTEXT:0x004c6e0c"
+   ],
+   "site_count": 1
+  },
+  "0x004c6506": {
+   "name": "llm_ui_outcome_report_close_to_hud",
+   "sites": [
+    "BEGTEXT:0x004c6ddf",
+    "BEGTEXT:0x004c6e39",
+    "BEGTEXT:0x004c6e63",
+    "BEGTEXT:0x004c6e8d",
+    "BEGTEXT:0x004c6fb3"
+   ],
+   "site_count": 5
+  },
+  "0x004c656d": {
+   "name": "FUN_004c656d",
+   "sites": [
+    "BEGTEXT:0x004c6fc7"
+   ],
+   "site_count": 1
+  },
+  "0x004c65a6": {
+   "name": "FUN_004c65a6",
+   "sites": [
+    "DGROUP:0x0065059b",
+    "DGROUP:0x00650bb7"
+   ],
+   "site_count": 2
+  },
+  "0x004c6649": {
+   "name": "llm_ui_outcome_dlg_tick",
+   "sites": [
+    "BEGTEXT:0x004c6ba8"
+   ],
+   "site_count": 1
+  },
+  "0x004c68ab": {
+   "name": "llm_ui_dialog_redraw_cb",
+   "sites": [
+    "BEGTEXT:0x004c6d0e"
+   ],
+   "site_count": 1
+  },
+  "0x004c6bc5": {
+   "name": "FUN_004c6bc5",
+   "sites": [
+    "DGROUP:0x00650c7b"
+   ],
+   "site_count": 1
+  },
+  "0x004c6c1e": {
+   "name": "FUN_004c6c1e",
+   "sites": [
+    "DGROUP:0x00650cbf"
+   ],
+   "site_count": 1
+  },
+  "0x004c6fef": {
+   "name": "llm_ui_dlg_building_info_close_cb",
+   "sites": [
+    "BEGTEXT:0x004c7504"
+   ],
+   "site_count": 1
+  },
+  "0x004c703b": {
+   "name": "llm_ui_building_finish_order_cb",
+   "sites": [
+    "BEGTEXT:0x004c740a"
+   ],
+   "site_count": 1
+  },
+  "0x004c707a": {
+   "name": "llm_ui_building_restart_construction_cb",
+   "sites": [
+    "BEGTEXT:0x004c7395"
+   ],
+   "site_count": 1
+  },
+  "0x004c70b9": {
+   "name": "llm_ui_dlg_building_construction_status",
+   "sites": [
+    "BEGTEXT:0x004c7615"
+   ],
+   "site_count": 1
+  },
+  "0x004c78ce": {
+   "name": "llm_game_confirm_quit_to_desktop_cb",
+   "sites": [
+    "DGROUP:0x0065398f"
+   ],
+   "site_count": 1
+  },
+  "0x004c7904": {
+   "name": "llm_ui_dlg_close_cb",
+   "sites": [
+    "BEGTEXT:0x004bc6d8",
+    "BEGTEXT:0x004bda29",
+    "DGROUP:0x00653993",
+    "DGROUP:0x006539fb",
+    "DGROUP:0x00653a2f",
+    "DGROUP:0x00653a5f"
+   ],
+   "site_count": 6
+  },
+  "0x004c7b8a": {
+   "name": "FUN_004c7b8a",
+   "sites": [
+    "DGROUP:0x0065061b"
+   ],
+   "site_count": 1
+  },
+  "0x004c7bd4": {
+   "name": "FUN_004c7bd4",
+   "sites": [
+    "DGROUP:0x0065065f"
+   ],
+   "site_count": 1
+  },
+  "0x004c7c0a": {
+   "name": "llm_ui_menu_overlay_frame",
+   "sites": [
+    "BEGTEXT:0x004c7ea6",
+    "BEGTEXT:0x004c7f47"
+   ],
+   "site_count": 2
+  },
+  "0x004c7fc6": {
+   "name": "llm_ui_diplomacy_apply_and_resume",
+   "sites": [
+    "BEGTEXT:0x004c85a5",
+    "DGROUP:0x006511cb"
+   ],
+   "site_count": 2
+  },
+  "0x004c811c": {
+   "name": "llm_ui_diplomacy_screen_build",
+   "sites": [
+    "DGROUP:0x00651143"
+   ],
+   "site_count": 1
+  },
+  "0x004ca939": {
+   "name": "FUN_004ca939",
+   "sites": [
+    "DGROUP:0x0065153f"
+   ],
+   "site_count": 1
+  },
+  "0x004ca974": {
+   "name": "FUN_004ca974",
+   "sites": [
+    "DGROUP:0x006514b7"
+   ],
+   "site_count": 1
+  },
+  "0x004ca9bc": {
+   "name": "FUN_004ca9bc",
+   "sites": [
+    "DGROUP:0x006514fb"
+   ],
+   "site_count": 1
+  },
+  "0x004caa08": {
+   "name": "FUN_004caa08",
+   "sites": [
+    "DGROUP:0x006515cf"
+   ],
+   "site_count": 1
+  },
+  "0x004caa46": {
+   "name": "llm_ui_info_media_frame_tick",
+   "sites": [
+    "DGROUP:0x0065158b"
+   ],
+   "site_count": 1
+  },
+  "0x004cab6e": {
+   "name": "FUN_004cab6e",
+   "sites": [
+    "DGROUP:0x00651613"
+   ],
+   "site_count": 1
+  },
+  "0x004cb45a": {
+   "name": "llm_ui_demo_slideshow_tick",
+   "sites": [
+    "BEGTEXT:0x004cb473",
+    "BEGTEXT:0x004cb4c8"
+   ],
+   "site_count": 2
+  },
+  "0x004cbe0c": {
+   "name": "FUN_004cbe0c",
+   "sites": [
+    "BEGTEXT:0x004cbb1a"
+   ],
+   "site_count": 1
+  },
+  "0x004cbe42": {
+   "name": "FUN_004cbe42",
+   "sites": [
+    "BEGTEXT:0x004cbbc1"
+   ],
+   "site_count": 1
+  },
+  "0x004cf46e": {
+   "name": "CRT_004cf46e",
+   "sites": [
+    "DGROUP:0x0067f6d6"
+   ],
+   "site_count": 1
+  },
+  "0x004d1773": {
+   "name": "CRT_004d1773",
+   "sites": [
+    "DGROUP:0x0067f700"
+   ],
+   "site_count": 1
+  },
+  "0x004d2304": {
+   "name": "lpStartAddress_004d1e04",
+   "sites": [
+    "BEGTEXT:0x004d23b7"
+   ],
+   "site_count": 1
+  },
+  "0x004da943": {
+   "name": "CRT_004da943",
+   "sites": [
+    "DGROUP:0x00669d64",
+    "DGROUP:0x00669d68",
+    "DGROUP:0x00669d6c"
+   ],
+   "site_count": 3
+  },
+  "0x004ded64": {
+   "name": "llm_crt_get_thread_data",
+   "sites": [
+    "DGROUP:0x0066cf04"
+   ],
+   "site_count": 1
+  },
+  "0x004ded69": {
+   "name": "DO_NOTHING",
+   "sites": [
+    "DGROUP:0x0066cf08",
+    "DGROUP:0x0066cf0c",
+    "DGROUP:0x0066cf18",
+    "DGROUP:0x0066cf1c",
+    "DGROUP:0x0066cf20",
+    "DGROUP:0x0066cf24",
+    "DGROUP:0x0066cf28",
+    "DGROUP:0x0066cf2c"
+   ],
+   "site_count": 13
+  },
+  "0x004ded6a": {
+   "name": "__NTAddFileHandle",
+   "sites": [
+    "DGROUP:0x0066cf10"
+   ],
+   "site_count": 1
+  },
+  "0x004ded6f": {
+   "name": "__NTRemoveFileHandle",
+   "sites": [
+    "DGROUP:0x0066cf14"
+   ],
+   "site_count": 1
+  },
+  "0x004ec792": {
+   "name": "llm_strat_ai_scan_target_sort_cmp",
+   "sites": [
+    "BEGTEXT:0x004ec7c8"
+   ],
+   "site_count": 1
+  },
+  "0x004f115c": {
+   "name": "FUN_004f115c",
+   "sites": [
+    "BEGTEXT:0x004f1202",
+    "BEGTEXT:0x004f122e"
+   ],
+   "site_count": 2
+  },
+  "0x004f13c1": {
+   "name": "__SigInit",
+   "sites": [
+    "DGROUP:0x0066cf44"
+   ],
+   "site_count": 1
+  },
+  "0x004f13ee": {
+   "name": "CRT_004f13ee",
+   "sites": [
+    "DGROUP:0x0066cf48"
+   ],
+   "site_count": 1
+  },
+  "0x004f184d": {
+   "name": "__CloseSemaphore",
+   "sites": [
+    "BEGTEXT:0x004f1b52"
+   ],
+   "site_count": 1
+  },
+  "0x004f1879": {
+   "name": "FUN_004f1879",
+   "sites": [
+    "BEGTEXT:0x004f1b11"
+   ],
+   "site_count": 1
+  },
+  "0x004f18cb": {
+   "name": "FUN_004f18cb",
+   "sites": [
+    "BEGTEXT:0x004f1b57"
+   ],
+   "site_count": 1
+  },
+  "0x004f1900": {
+   "name": "__AccessSemaphore",
+   "sites": [
+    "BEGTEXT:0x004f1b1d"
+   ],
+   "site_count": 1
+  },
+  "0x004f1962": {
+   "name": "__ReleaseSemaphore",
+   "sites": [
+    "BEGTEXT:0x004f1b4d"
+   ],
+   "site_count": 1
+  },
+  "0x004f1987": {
+   "name": "__MultipleThread",
+   "sites": [
+    "BEGTEXT:0x004f1c04"
+   ],
+   "site_count": 1
+  },
+  "0x004f1de4": {
+   "name": "CRT_004f1de4",
+   "sites": [
+    "DGROUP:0x0066f588",
+    "DGROUP:0x0066f58c"
+   ],
+   "site_count": 2
+  },
+  "0x004f3108": {
+   "name": "CRT_004f3108",
+   "sites": [
+    "DGROUP:0x0066f668"
+   ],
+   "site_count": 1
+  },
+  "0x004f4275": {
+   "name": "CRT_004f4275",
+   "sites": [
+    "DGROUP:0x0066f690"
+   ],
+   "site_count": 1
+  },
+  "0x004f453c": {
+   "name": "thunk_FUN_004f48be",
+   "sites": [
+    "DGROUP:0x0066f67c"
+   ],
+   "site_count": 1
+  },
+  "0x004f4825": {
+   "name": "CRT_004f4825",
+   "sites": [
+    "DGROUP:0x0066f68c"
+   ],
+   "site_count": 1
+  }
+ }
+}

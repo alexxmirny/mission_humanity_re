@@ -1,0 +1,210 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" ToolsVersion="15.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Debug|Win32">
+      <Configuration>Debug</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|Win32">
+      <Configuration>Release</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="seams\libmh_bind.cpp" />
+    <ClCompile Include="seams\libmh_contract.gen.cpp" />
+    <ClCompile Include="addr\mh_calls.gen.cpp" />
+    <ClCompile Include="addr\mh_hostapi_bind.gen.cpp" />
+    <ClCompile Include="en_guard.cpp" />
+    <ClCompile Include="hook\detour.cpp" />
+    <ClCompile Include="hook\patch.cpp" />
+    <ClCompile Include="hook\promoted.cpp" />
+    <ClCompile Include="patch\inmem_patch.cpp" />
+    <ClCompile Include="patch\inmem_install.cpp" />
+    <ClCompile Include="hook\tombstone.cpp" />
+    <ClCompile Include="hook\watcall.cpp" />
+    <ClCompile Include="mh.c" />
+    <ClCompile Include="seams\gfx_capture.cpp" />
+    <ClCompile Include="seams\core_arm.cpp" />
+    <ClCompile Include="seams\harness_bind.cpp" />
+    <ClCompile Include="seams\module_bind.cpp" />
+    <ClCompile Include="seams\libmh_hook_host.cpp" />
+    <ClCompile Include="seams\gfx_overlay.cpp" />
+    <ClCompile Include="seams\save_triggers.cpp" />
+    <ClCompile Include="seams\ui_drive.cpp" />
+    <ClCompile Include="seams\ui_keyrepeat.cpp" />
+    <ClCompile Include="seams\ui_pause.cpp" />
+    <ClCompile Include="seams\launch.cpp" />
+    <ClCompile Include="seams\mp_menu.cpp" />
+    <ClCompile Include="seams\standalone.cpp" />
+    <ClCompile Include="seams\net_diag.cpp" />
+    <ClCompile Include="seams\net_discovery.cpp" />
+    <ClCompile Include="seams\net_lockstep.cpp" />
+    <ClCompile Include="seams\net_seams.cpp" />
+    <ClCompile Include="seams\reimpl_probe.cpp" />
+    <ClCompile Include="ui\ui_runtime.cpp" />
+    <ClCompile Include="ui\lobby_slide.cpp" />
+    <ClCompile Include="ui\lobby_notice.cpp" />
+    <ClCompile Include="ui\lobby_widgets.cpp" />
+    <ClCompile Include="ui\lobby_announce.cpp" />
+    <ClCompile Include="hook\export.cpp" />
+    <ClCompile Include="hook\hookpoint.cpp" />
+    <ClCompile Include="seams\host_event_sink.cpp" />
+    <ClCompile Include="seams\hostapi_io_bind.cpp" />
+    <ClCompile Include="desync\desync_watch.cpp" />
+    <!-- THE x87 FLAG POLICY LEFT THIS PROJECT AT FORK F4D and the roster's files left it at F5O.
+         mh.vcxproj compiles no roster TU any more, so there is nothing here to flag: the sim's
+         /arch:IA32 /fp:precise requirement (the sim is x87 and MSVC x86 emits SSE2 by default,
+         docs/reimpl-plan.md Sect. 6) is carried BLANKET by libmh.vcxproj and libmh_dll.vcxproj and
+         per-file by mh_nettest.vcxproj, which tools/lint_fp_flags.py gates.
+         (An XML comment may not contain a double hyphen, which is why this one has none.) -->
+    <ClCompile Include="seams\video.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="mh.def" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="addr\mh_addrs.gen.h" />
+    <ClInclude Include="addr\mh_calls.gen.h" />
+    <ClInclude Include="addr\mh_structs.gen.h" />
+    <ClInclude Include="en_guard.h" />
+    <ClInclude Include="addr\mh_export.gen.h" />
+    <ClInclude Include="hook\detour.h" />
+    <ClInclude Include="hook\export.h" />
+    <ClInclude Include="hook\hookpoint.h" />
+    <ClInclude Include="..\libmh\orders\order_queue.h" />
+    <ClInclude Include="..\libmh\orders\issue\issue_state.h" />
+    <ClInclude Include="..\libmh\lockstep\turn_engine.h" />
+    <ClInclude Include="fix\resync_clamp.h" />
+    <ClInclude Include="desync\desync_watch.h" />
+    <ClInclude Include="hook\patch.h" />
+    <ClInclude Include="hook\watcall.h" />
+    <ClInclude Include="include\mh_standalone_export.h" />
+    <ClInclude Include="include\mh_harness_export.h" />
+    <ClInclude Include="include\mh_launch_export.h" />
+    <ClInclude Include="include\mh_mpmenu_export.h" />
+    <ClInclude Include="include\mh_module_bind.h" />
+    <ClInclude Include="include\mh_seam_export.h" />
+    <ClInclude Include="include\projectile.h" />
+    <ClInclude Include="seams\net_internal.h" />
+    <ClInclude Include="ui\lobby_ui.h" />
+    <ClInclude Include="ui\ui_internal.h" />
+  </ItemGroup>
+  <PropertyGroup Label="Globals">
+    <VCProjectVersion>15.0</VCProjectVersion>
+    <ProjectGuid>{F99EDCAB-8EF1-4BDB-8C23-46163A8D4B45}</ProjectGuid>
+    <Keyword>Win32Proj</Keyword>
+    <RootNamespace>mh</RootNamespace>
+    <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
+    <ProjectName>mh</ProjectName>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">
+    <ConfigurationType>DynamicLibrary</ConfigurationType>
+    <UseDebugLibraries>true</UseDebugLibraries>
+    <PlatformToolset>v143</PlatformToolset>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" Label="Configuration">
+    <ConfigurationType>DynamicLibrary</ConfigurationType>
+    <UseDebugLibraries>false</UseDebugLibraries>
+    <PlatformToolset>v143</PlatformToolset>
+    <WholeProgramOptimization>true</WholeProgramOptimization>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <ImportGroup Label="ExtensionSettings">
+  </ImportGroup>
+  <ImportGroup Label="Shared">
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <PropertyGroup Label="UserMacros">
+    <!-- Where the post-build step deploys mh.dll. Machine-specific: defaults to this box's game dir,
+         overridable via an environment variable or /p:MhDeployDir=... . The post-build copy is GUARDED
+         on the dir existing, so a checkout on a machine without it builds fine (no deploy, no failure). -->
+    <MhDeployDir Condition="'$(MhDeployDir)'==''">F:\games\mh_en</MhDeployDir>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <LinkIncremental>true</LinkIncremental>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <LinkIncremental>false</LinkIncremental>
+  </PropertyGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <ClCompile>
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <MultiProcessorCompilation>true</MultiProcessorCompilation>
+      <WarningLevel>Level3</WarningLevel>
+      <Optimization>Disabled</Optimization>
+      <SDLCheck>true</SDLCheck>
+      <PreprocessorDefinitions>WIN32;_DEBUG;MH_EXPORTS;_WINDOWS;_USRDLL;_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <ConformanceMode>true</ConformanceMode>
+      <LanguageStandard>stdcpp20</LanguageStandard>
+      <LanguageStandard_C>Default</LanguageStandard_C>
+      <AdditionalIncludeDirectories>$(ProjectDir);$(SolutionDir)libmh;$(ProjectDir)include;$(SolutionDir)mh_common;$(SolutionDir)mh_common\include;$(SolutionDir)..\mh_net_proto\include</AdditionalIncludeDirectories>
+      <IntrinsicFunctions>false</IntrinsicFunctions>
+      <FavorSizeOrSpeed>Neither</FavorSizeOrSpeed>
+      <WholeProgramOptimization>false</WholeProgramOptimization>
+    </ClCompile>
+    <Link>
+      <SubSystem>Windows</SubSystem>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <!-- The sampling profiler (harness.cpp prof_start) reports mh.dll RVAs, and this is what
+           turns them into names. A PDB cannot be read without WinDbg/DIA or llvm-symbolizer, none
+           of which is on this machine; a linker map is a text file every tool can parse. -->
+      <GenerateMapFile>true</GenerateMapFile>
+      <ModuleDefinitionFile>mh.def</ModuleDefinitionFile>
+      <AdditionalDependencies>$(OutDir)mh_common.lib;$(OutDir)mh_net_proto.lib;%(AdditionalDependencies)</AdditionalDependencies>
+    </Link>
+    <PostBuildEvent>
+      <Command>if exist "$(MhDeployDir)" copy /Y "$(OutputPath)\mh.dll" "$(MhDeployDir)\mh.dll"</Command>
+    </PostBuildEvent>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <ClCompile>
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <MultiProcessorCompilation>true</MultiProcessorCompilation>
+      <WarningLevel>Level3</WarningLevel>
+      <Optimization>MaxSpeed</Optimization>
+      <SDLCheck>true</SDLCheck>
+      <PreprocessorDefinitions>WIN32;MH_EXPORTS;_WINDOWS;_USRDLL;_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <ConformanceMode>true</ConformanceMode>
+      <LanguageStandard>stdcpp20</LanguageStandard>
+      <LanguageStandard_C>Default</LanguageStandard_C>
+      <AdditionalIncludeDirectories>$(ProjectDir);$(SolutionDir)libmh;$(ProjectDir)include;$(SolutionDir)mh_common;$(SolutionDir)mh_common\include;$(SolutionDir)..\mh_net_proto\include</AdditionalIncludeDirectories>
+      <IntrinsicFunctions>true</IntrinsicFunctions>
+      <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
+    </ClCompile>
+    <Link>
+      <SubSystem>Windows</SubSystem>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <!-- The sampling profiler (harness.cpp prof_start) reports mh.dll RVAs, and this is what
+           turns them into names. A PDB cannot be read without WinDbg/DIA or llvm-symbolizer, none
+           of which is on this machine; a linker map is a text file every tool can parse. -->
+      <GenerateMapFile>true</GenerateMapFile>
+      <ModuleDefinitionFile>mh.def</ModuleDefinitionFile>
+      <AdditionalDependencies>$(OutDir)mh_common.lib;$(OutDir)mh_net_proto.lib;%(AdditionalDependencies)</AdditionalDependencies>
+    </Link>
+    <PostBuildEvent>
+      <Command>if exist "$(MhDeployDir)" copy /Y "$(OutputPath)\mh.dll" "$(MhDeployDir)\mh.dll"</Command>
+    </PostBuildEvent>
+  </ItemDefinitionGroup>
+  <!-- fork F4A's R2 MEASUREMENT ARM (/p:MhSpikeStatic=1) WAS HERE AND F4B REMOVED IT WITH ITS
+       SUBJECT. It made mh.dll statically import the spike satellite, which is how F4A measured the
+       two facts that rule mechanism C out: a statically imported satellite's DllMain runs 181 us
+       BEFORE its importer's, and a missing one fails PROCESS LOAD at 0xC0000135 with zero log
+       directories created. Both numbers are recorded in docs\dll-split.md; the spike they were
+       measured on is deleted (F4A ruling (a): real satellites are unconditional, so a knob-gated
+       stand-in has no job once mh_net.dll exists). To re-measure, build a satellite with an import
+       library and add it here; keeping a build configuration nothing builds would be the
+       measurement equivalent of a dead knob.
+       (An XML comment may not contain a double hyphen, which is why this one has none.) -->
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+  <ImportGroup Label="ExtensionTargets">
+  </ImportGroup>
+</Project>

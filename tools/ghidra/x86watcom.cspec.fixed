@@ -1,0 +1,449 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<compiler_spec>
+  <data_organization>
+     <absolute_max_alignment value="0" />
+     <machine_alignment value="8" />
+     <default_alignment value="1" />
+     <default_pointer_alignment value="4" />
+     <pointer_size value="4" />
+     <wchar_size value="2" />
+     <short_size value="2" />
+     <integer_size value="4" />
+     <long_size value="4" />
+     <long_long_size value="8" />
+     <float_size value="4" />
+     <double_size value="8" />
+     <long_double_size value="12" />
+     <size_alignment_map>
+          <entry size="1" alignment="1" />
+          <entry size="2" alignment="2" />
+          <entry size="4" alignment="4" />
+          <entry size="8" alignment="4" />
+     </size_alignment_map>
+  </data_organization>
+  <global>
+    <range space="ram"/>
+  </global>
+  <stackpointer register="ESP" space="ram"/>
+  <default_proto>
+    <prototype name="__watcall" extrapop="unknown" stackshift="4">
+      <input>
+        <pentry minsize="1" maxsize="4">
+          <register name="EAX"/>
+        </pentry>
+        <pentry minsize="1" maxsize="4">
+          <register name="EDX"/>
+        </pentry>
+        <pentry minsize="1" maxsize="4">
+          <register name="EBX"/>
+        </pentry>
+        <pentry minsize="1" maxsize="4">
+          <register name="ECX"/>
+        </pentry>
+        <pentry minsize="1" maxsize="500" align="4">
+          <addr offset="4" space="stack"/>
+        </pentry>
+      </input>
+      <output killedbycall="true">
+        <pentry minsize="4" maxsize="10" metatype="float" extension="float">
+          <register name="ST0"/>
+        </pentry>
+        <pentry minsize="1" maxsize="4">
+          <register name="EAX"/>
+        </pentry>
+        <pentry minsize="5" maxsize="8">
+          <addr space="join" piece1="EDX" piece2="EAX"/>
+        </pentry>
+      </output>
+      <unaffected>
+        <varnode space="ram" offset="0" size="4"/>
+        <register name="ESP"/>
+        <register name="EBP"/>
+        <register name="ESI"/>
+        <register name="EDI"/>
+        <register name="EBX"/>
+        <!-- ECX moved here from killedbycall, 2026-08-03. Measured program-wide by
+             mh_classify_reg_preservation.py over 2815 functions: 90.1% preserve ECX (1655 never
+             write it, 880 save and restore it) against 9.4% that clobber it. The comparison that
+             decides it is EBX, one line up, which has been <unaffected> all along and is preserved
+             by only 81.9% with 487 clobberers. ECX is preserved MORE reliably than the register
+             this model already trusts. EDX stays killed: 41.5% clobber it, so it really is the
+             volatile one. The 9.4% minority is not left to chance: every __watcall function that
+             clobbers ECX is assigned __mh_watcall_ecx_volatile below. -->
+        <register name="ECX"/>
+        <register name="DF"/>
+      </unaffected>
+      <killedbycall>
+        <register name="ST0"/>
+        <register name="ST1"/>
+      </killedbycall>
+    </prototype>
+  </default_proto>
+  <!-- __mh_watcall_ecx_volatile: __watcall as it stood before 2026-08-03, i.e. with ECX killed by
+       the call. __watcall itself now declares ECX <unaffected> because 90.1% of the program's
+       functions preserve it; this model is for the measured 9.4% that do not, and it exists so
+       that majority fix does not silently corrupt the minority.
+
+       That corruption is the whole reason the change is not a one-line flip. When a caller holds a
+       value in ECX across a call to a function that really does clobber it, declaring ECX
+       unaffected does not produce a visible artifact; it produces a SILENTLY STALE VALUE that
+       reads as correct code. An honest `extraout_ECX` is the better failure of the two, so the
+       clobberers keep it.
+
+       ASSIGNMENT IS GENERATED, NOT JUDGED. tools/data/ecx_clobberers.json is emitted by
+       mh_classify_reg_preservation.py (writes ECX with no covering PUSH, or pushes it but no exit
+       path restores it) and applied by mh_set_calling_convention.py. Re-run the classifier after
+       any change that alters function bodies or boundaries; a function that becomes a clobberer
+       and is not on this model is exactly the silent case above. Functions already on __stdcall /
+       __cdecl / __mhfastocall are deliberately NOT touched, because those models kill ECX already and
+       forcing a __watcall-derived model onto them would change how their PARAMETERS are passed. -->
+  <!-- __mh_watcall_ebx_volatile / __mh_watcall_ecx_ebx_volatile: __watcall for functions measured
+       to clobber EBX (and, for the second, ECX too). Both are generated from
+       __mh_watcall_ecx_volatile so their <input> pentries cannot drift from it; that identity is
+       what makes a convention change a decompilation-only change rather than an ABI one.
+
+       Added 2026-08-03 to retire the hand-made __mhfastocall / __custumocall / __mh_float models,
+       which predate the imported Watcom cspec and declared EVERY register <unaffected> with an
+       empty killedbycall. 76 functions sat on them and 23 clobbered something they promised to
+       keep. 68 of the 76 move to plain __watcall (EDX is not in its <unaffected> list, so EDX-only
+       clobberers are already correctly modelled there); these two models cover the remaining 8.
+
+       EBX is <unaffected> in __watcall program-wide and 487 functions violate that: a separate,
+       larger open item (tasks/tooling.md). These two models are NOT that fix; they are the local
+       one for the eight functions this migration touches. -->
+  <prototype name="__mh_watcall_ebx_volatile" extrapop="unknown" stackshift="4">
+    <input>
+      <pentry minsize="1" maxsize="4">
+        <register name="EAX"/>
+      </pentry>
+      <pentry minsize="1" maxsize="4">
+        <register name="EDX"/>
+      </pentry>
+      <pentry minsize="1" maxsize="4">
+        <register name="EBX"/>
+      </pentry>
+      <pentry minsize="1" maxsize="4">
+        <register name="ECX"/>
+      </pentry>
+      <pentry minsize="1" maxsize="500" align="4">
+        <addr offset="4" space="stack"/>
+      </pentry>
+    </input>
+    <output killedbycall="true">
+      <pentry minsize="4" maxsize="10" metatype="float" extension="float">
+        <register name="ST0"/>
+      </pentry>
+      <pentry minsize="1" maxsize="4">
+        <register name="EAX"/>
+      </pentry>
+      <pentry minsize="5" maxsize="8">
+        <addr space="join" piece1="EDX" piece2="EAX"/>
+      </pentry>
+    </output>
+    <unaffected>
+      <varnode space="ram" offset="0" size="4"/>
+      <register name="ESP"/>
+      <register name="EBP"/>
+      <register name="ESI"/>
+      <register name="EDI"/>
+      <register name="ECX"/>
+      <register name="DF"/>
+    </unaffected>
+    <killedbycall>
+      <register name="EBX"/>
+      <register name="ST0"/>
+      <register name="ST1"/>
+    </killedbycall>
+  </prototype>
+  <prototype name="__mh_watcall_ecx_ebx_volatile" extrapop="unknown" stackshift="4">
+    <input>
+      <pentry minsize="1" maxsize="4">
+        <register name="EAX"/>
+      </pentry>
+      <pentry minsize="1" maxsize="4">
+        <register name="EDX"/>
+      </pentry>
+      <pentry minsize="1" maxsize="4">
+        <register name="EBX"/>
+      </pentry>
+      <pentry minsize="1" maxsize="4">
+        <register name="ECX"/>
+      </pentry>
+      <pentry minsize="1" maxsize="500" align="4">
+        <addr offset="4" space="stack"/>
+      </pentry>
+    </input>
+    <output killedbycall="true">
+      <pentry minsize="4" maxsize="10" metatype="float" extension="float">
+        <register name="ST0"/>
+      </pentry>
+      <pentry minsize="1" maxsize="4">
+        <register name="EAX"/>
+      </pentry>
+      <pentry minsize="5" maxsize="8">
+        <addr space="join" piece1="EDX" piece2="EAX"/>
+      </pentry>
+    </output>
+    <unaffected>
+      <varnode space="ram" offset="0" size="4"/>
+      <register name="ESP"/>
+      <register name="EBP"/>
+      <register name="ESI"/>
+      <register name="EDI"/>
+      <register name="DF"/>
+    </unaffected>
+    <killedbycall>
+      <register name="ECX"/>
+      <register name="EBX"/>
+      <register name="ST0"/>
+      <register name="ST1"/>
+    </killedbycall>
+    <likelytrash>
+      <register name="ECX"/>
+    </likelytrash>
+  </prototype>
+  <prototype name="__mh_watcall_ecx_volatile" extrapop="unknown" stackshift="4">
+    <input>
+      <pentry minsize="1" maxsize="4">
+        <register name="EAX"/>
+      </pentry>
+      <pentry minsize="1" maxsize="4">
+        <register name="EDX"/>
+      </pentry>
+      <pentry minsize="1" maxsize="4">
+        <register name="EBX"/>
+      </pentry>
+      <pentry minsize="1" maxsize="4">
+        <register name="ECX"/>
+      </pentry>
+      <pentry minsize="1" maxsize="500" align="4">
+        <addr offset="4" space="stack"/>
+      </pentry>
+    </input>
+    <output killedbycall="true">
+      <pentry minsize="4" maxsize="10" metatype="float" extension="float">
+        <register name="ST0"/>
+      </pentry>
+      <pentry minsize="1" maxsize="4">
+        <register name="EAX"/>
+      </pentry>
+      <pentry minsize="5" maxsize="8">
+        <addr space="join" piece1="EDX" piece2="EAX"/>
+      </pentry>
+    </output>
+    <unaffected>
+      <varnode space="ram" offset="0" size="4"/>
+      <register name="ESP"/>
+      <register name="EBP"/>
+      <register name="ESI"/>
+      <register name="EDI"/>
+      <register name="EBX"/>
+      <register name="DF"/>
+    </unaffected>
+    <killedbycall>
+      <register name="ECX"/>
+      <register name="ST0"/>
+      <register name="ST1"/>
+    </killedbycall>
+    <likelytrash>
+      <register name="ECX"/>
+    </likelytrash>
+  </prototype>
+  <prototype name="__stdcall" extrapop="unknown" stackshift="4">
+    <input>
+      <pentry minsize="1" maxsize="500" align="4">
+        <addr offset="4" space="stack"/>
+      </pentry>
+    </input>
+    <output>
+      <pentry minsize="4" maxsize="10" metatype="float" extension="float">
+        <register name="ST0"/>
+      </pentry>
+      <pentry minsize="1" maxsize="4">
+        <register name="EAX"/>
+      </pentry>
+      <pentry minsize="5" maxsize="8">
+        <addr space="join" piece1="EDX" piece2="EAX"/>
+      </pentry>
+    </output>
+    <unaffected>
+      <varnode space="ram" offset="0" size="4"/>
+      <register name="ESP"/>
+      <register name="EBP"/>
+      <register name="ESI"/>
+      <register name="EDI"/>
+      <register name="EBX"/>
+      <register name="DF"/>
+    </unaffected>
+    <killedbycall>
+      <register name="ECX"/>
+  	<register name="EDX"/>
+    </killedbycall>
+    <likelytrash>
+      <register name="ECX"/>
+    </likelytrash>
+  </prototype>
+  <!-- __mh_stkprobe: __stdcall's stack discipline, but the callee preserves EVERY register.
+       Written for Watcom's stack-probe trampoline `assert_stack_capacity` @0x004cf46f, which the
+       compiler emits into the prologue of essentially every non-leaf function in this binary. It
+       takes its size on the stack and callee-cleans (RET 0x4), so its STACK contract really is
+       __stdcall; its REGISTER contract is not, and inheriting __stdcall's `killedbycall` ECX/EDX
+       is what manufactured `extraout_EDX` in 117 of the 222 exported AI listings. Because the
+       probe is called BEFORE the prologue reads the caller-set registers, the incoming EDX
+       parameter of the enclosing function is orphaned and its declared name is lost.
+
+       The preservation is proven by exhaustive inspection rather than inferred: the whole call
+       chain is 53 bytes and none of it writes EDX, ECX or EBX.
+         assert_stack_capacity 0x004cf46f (16 B) XCHG [ESP+4],EAX / CALL __STK / MOV EAX,[ESP+4] /
+                                                 RET 4. An EAX-preserving trampoline; its only
+                                                 purpose is to hand the size to __STK (which takes
+                                                 it in EAX) and give the caller back its EAX.
+         __STK                 0x004cf47f (31 B) touches EAX and ESI only, both PUSH/POP'd.
+         llm_crt_get_thread_data 0x004ded64 (6 B) MOV EAX,[0x01003024] / RET.
+       `likelytrash` ECX is dropped too: it directly contradicts ECX being unaffected.
+
+       Deliberately NOT applied to __STK itself, whose parameter arrives in EAX and which returns
+       with a plain RET. That is a different input contract which this model would misstate, and
+       fixing the trampoline is what the callers see, so it is the whole of the benefit.
+
+       SECOND MEMBER, and the name is now HISTORICAL (2026-08-06, AI-READY). `floor` @0x004daadb
+       was pinned here too. It is not a stack probe — it is the Watcom CRT `floor` — but its
+       contract is this model exactly, and the model is what the name should have described:
+       __stdcall stack discipline (`RET 0x8`, callee-cleans its one double arg), an ST0 return,
+       and every register preserved. Proven the same way, by reading all 27 instructions: it
+       PUSHes EAX/EBX/EDX in the prologue and POPs all three, and never writes ECX at all —
+       independently agreeing with tools/classify_reg_preservation.py, which scores it
+       ECX=never_writes, EDX=saved, EBX=saved. Inheriting __stdcall's `killedbycall` ECX/EDX was
+       manufacturing `extraout_ECX`/`extraout_EDX` in the three AI functions that call it
+       (`rebalance_building_workers`, `random_point_near`, `group_task_loiter_wander`); pinning it
+       here cleared all three. Read the name as "stdcall stack, everything preserved" rather than
+       as being about stack probes; renaming the prototype is a Ghidra-restart-scoped change and
+       is tracked in tasks/tooling.md instead of being done in passing.
+
+       NOT a licence to move `__stdcall` wholesale. 50 of the 82 `__stdcall` functions are Win32
+       import thunks, which genuinely DO clobber ECX/EDX under Microsoft's stdcall; this model is
+       for the in-binary Watcom bodies that Ghidra put on `__stdcall` for their stack shape alone.
+       ~19 of the 32 real bodies classify as preservers and are candidates, but each needs its own
+       evidence before being pinned.
+
+       SCOPE: this says nothing about the separate question of whether __watcall should preserve
+       ECX generally, and must not be widened to it without its own evidence. 28 of the exported
+       AI functions write ECX and never save it, so a blanket change would swap an honest artifact
+       for a silently stale value at their call sites. See tasks/tooling.md. -->
+  <prototype name="__mh_stkprobe" extrapop="unknown" stackshift="4">
+    <input>
+      <pentry minsize="1" maxsize="500" align="4">
+        <addr offset="4" space="stack"/>
+      </pentry>
+    </input>
+    <output>
+      <pentry minsize="4" maxsize="10" metatype="float" extension="float">
+        <register name="ST0"/>
+      </pentry>
+      <pentry minsize="1" maxsize="4">
+        <register name="EAX"/>
+      </pentry>
+      <pentry minsize="5" maxsize="8">
+        <addr space="join" piece1="EDX" piece2="EAX"/>
+      </pentry>
+    </output>
+    <unaffected>
+      <varnode space="ram" offset="0" size="4"/>
+      <register name="ESP"/>
+      <register name="EBP"/>
+      <register name="ESI"/>
+      <register name="EDI"/>
+      <register name="EBX"/>
+      <register name="ECX"/>
+      <register name="EDX"/>
+      <register name="DF"/>
+    </unaffected>
+  </prototype>
+  <!-- __cdecl: ECX and EDX moved to <unaffected> 2026-08-06. Measured by
+       tools/classify_reg_preservation.py over the 18 functions actually on this model: 17 of 18
+       preserve BOTH (each either never writes the register or pushes and pops it). The lone
+       exception, llm_crt_thread_entry_trampoline @0x004f46a7, is pinned to __mh_cdecl_volatile
+       below; it clobbers ECX, EDX *and* EBX, and has ZERO in-binary callers because the OS
+       enters it through a thread-start function pointer.
+
+       This is textbook-cdecl-versus-this-binary: standard x86 cdecl treats ECX/EDX as scratch, and
+       Watcom's codegen here saves them anyway (`push ebx / push ecx / push edx` prologues). The
+       model described the ABI Watcom could have used, not the one it emitted, and the cost was
+       fabricated extraout_ECX/extraout_EDX in every CALLER that kept a value in those registers
+       across one of these calls. llm_strat_ai_recompute_map_influence was unreadable for exactly
+       this reason, with 12 extraout_ locals and invented loop bounds, while both its callees were
+       correctly typed __cdecl the whole time. 96 distinct callers are affected, 87 of them llm_.
+
+       Same shape as §3's __watcall ECX change: correct the majority in the model, pin the measured
+       minority to a model that still tells the truth, because for a function that really does
+       clobber the register an <unaffected> claim yields a SILENTLY STALE VALUE rather than a
+       visible artifact. The contradictory <likelytrash> ECX is dropped for the same reason it was
+       dropped from __mh_stkprobe in §2. -->
+  <prototype name="__cdecl" extrapop="4" stackshift="4">
+    <input>
+      <pentry minsize="1" maxsize="500" align="4">
+        <addr offset="4" space="stack"/>
+      </pentry>
+    </input>
+    <output>
+      <pentry minsize="4" maxsize="10" metatype="float" extension="float">
+        <register name="ST0"/>
+      </pentry>
+      <pentry minsize="1" maxsize="4">
+        <register name="EAX"/>
+      </pentry>
+      <pentry minsize="5" maxsize="8">
+        <addr space="join" piece1="EDX" piece2="EAX"/>
+      </pentry>
+    </output>
+    <unaffected>
+      <varnode space="ram" offset="0" size="4"/>
+      <register name="ESP"/>
+      <register name="EBP"/>
+      <register name="ESI"/>
+      <register name="EDI"/>
+      <register name="EBX"/>
+      <register name="ECX"/>
+      <register name="EDX"/>
+      <register name="DF"/>
+    </unaffected>
+  </prototype>
+  <!-- __mh_cdecl_volatile: __cdecl as it stood before 2026-08-06, plus EBX, for the measured
+       minority that preserves nothing beyond ESP/EBP/ESI/EDI. Identical <input>/<output> to
+       __cdecl, so assigning it is a decompilation-only change and never moves a parameter.
+       Currently one function: llm_crt_thread_entry_trampoline. Re-run
+       tools/classify_reg_preservation.py after anything that changes function bodies; a __cdecl
+       function that becomes a clobberer and is not moved here is the silent-stale-value case. -->
+  <prototype name="__mh_cdecl_volatile" extrapop="4" stackshift="4">
+    <input>
+      <pentry minsize="1" maxsize="500" align="4">
+        <addr offset="4" space="stack"/>
+      </pentry>
+    </input>
+    <output>
+      <pentry minsize="4" maxsize="10" metatype="float" extension="float">
+        <register name="ST0"/>
+      </pentry>
+      <pentry minsize="1" maxsize="4">
+        <register name="EAX"/>
+      </pentry>
+      <pentry minsize="5" maxsize="8">
+        <addr space="join" piece1="EDX" piece2="EAX"/>
+      </pentry>
+    </output>
+    <unaffected>
+      <varnode space="ram" offset="0" size="4"/>
+      <register name="ESP"/>
+      <register name="EBP"/>
+      <register name="ESI"/>
+      <register name="EDI"/>
+      <register name="DF"/>
+    </unaffected>
+    <killedbycall>
+      <register name="ECX"/>
+      <register name="EDX"/>
+      <register name="EBX"/>
+    </killedbycall>
+  </prototype>
+</compiler_spec>

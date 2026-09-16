@@ -1,0 +1,851 @@
+{
+  "regions": [
+    {
+      "name": "buildings",
+      "addr": "0x00c3d2a0",
+      "size": 218400,
+      "pre": [],
+      "inline": "map::object::building[8][100]",
+      "cont": [],
+      "excluded": false
+    },
+    {
+      "name": "productions",
+      "addr": "0x00dd2648",
+      "size": 25920,
+      "pre": [],
+      "inline": "map::object::production[8][8]",
+      "cont": [],
+      "excluded": false
+    },
+    {
+      "name": "mines",
+      "addr": "0x00d03480",
+      "size": 14336,
+      "pre": [],
+      "inline": "map::object::mine[8][32]",
+      "cont": [],
+      "excluded": false
+    },
+    {
+      "name": "turrets",
+      "addr": "0x00cc0fe0",
+      "size": 14080,
+      "pre": [],
+      "inline": "map::object::turret[8][32]",
+      "cont": [],
+      "excluded": false
+    },
+    {
+      "name": "unit_storage",
+      "addr": "0x00c727c0",
+      "size": 48800,
+      "pre": [],
+      "inline": "map::object::unit_storage[8][25]",
+      "cont": [],
+      "excluded": false
+    },
+    {
+      "name": "labs",
+      "addr": "0x00d02d80",
+      "size": 1600,
+      "pre": [],
+      "inline": "map::object::lab[8][25]",
+      "cont": [],
+      "excluded": false
+    },
+    {
+      "name": "p0_ai_gates",
+      "addr": "0x00e6dec0",
+      "size": 56,
+      "pre": [
+        "game::player_data[2] (stride 0x288fc/player) split per-player into 3 sub-slices so a played-vs-",
+        "idle run localizes the \"player_data desync\" (docs/mp-instrumentation): ai_gates = AI enable/",
+        "trigger scalars (reset by llm_strat_init_human_player_data; sim); local = the 65KB block at",
+        "+0x38..+0x1003c that human-init does NOT touch -> SUSPECTED player-local view/selection/message",
+        "state (the desync suspect); ai_econ = AI timers/build-plan/groups[32]/bldg_queue/scores (sim)."
+      ],
+      "inline": "player 0: +0x00..+0x38",
+      "cont": [],
+      "excluded": false
+    },
+    {
+      "name": "p0_local",
+      "addr": "0x00e6def8",
+      "size": 65540,
+      "pre": [],
+      "inline": "player 0: +0x38..+0x1003c  (SUSPECT)",
+      "cont": [],
+      "excluded": false
+    },
+    {
+      "name": "p0_ai_econ",
+      "addr": "0x00e7defc",
+      "size": 100544,
+      "pre": [],
+      "inline": "player 0: +0x1003c..+0x288fc",
+      "cont": [],
+      "excluded": false
+    },
+    {
+      "name": "p1_ai_gates",
+      "addr": "0x00e967bc",
+      "size": 56,
+      "pre": [],
+      "inline": "player 1: +0x00..+0x38",
+      "cont": [],
+      "excluded": false
+    },
+    {
+      "name": "p1_local",
+      "addr": "0x00e967f4",
+      "size": 65540,
+      "pre": [],
+      "inline": "player 1: +0x38..+0x1003c  (SUSPECT)",
+      "cont": [],
+      "excluded": false
+    },
+    {
+      "name": "p1_ai_econ",
+      "addr": "0x00ea67f8",
+      "size": 100544,
+      "pre": [],
+      "inline": "player 1: +0x1003c..+0x288fc",
+      "cont": [],
+      "excluded": false
+    },
+    {
+      "name": "strat_players",
+      "addr": "0x00cff060",
+      "size": 14848,
+      "pre": [],
+      "inline": "llm_strat_player_profile[8] (14848 = 0x3a00)",
+      "cont": [],
+      "excluded": false
+    },
+    {
+      "name": "planets",
+      "addr": "0x00be6da0",
+      "size": 34016,
+      "pre": [],
+      "inline": "cfg::final::struct::Planet[32]",
+      "cont": [],
+      "excluded": false
+    },
+    {
+      "name": "prod_slots",
+      "addr": "0x00bd215c",
+      "size": 63680,
+      "pre": [],
+      "inline": "llm_prod_shuttle_slot[80]",
+      "cont": [],
+      "excluded": false
+    },
+    {
+      "name": "planet_status",
+      "addr": "0x00e5836b",
+      "size": 128,
+      "pre": [],
+      "inline": "E_PLANET_STATUS[32]",
+      "cont": [],
+      "excluded": false
+    },
+    {
+      "name": "projectile_pool",
+      "addr": "0x00e1db98",
+      "size": 181500,
+      "pre": [],
+      "inline": "llm_strat_projectile[1500]  (stock .bss VA)",
+      "cont": [],
+      "excluded": false
+    },
+    {
+      "name": "rng_state",
+      "addr": "0x00603ecc",
+      "size": 16,
+      "pre": [],
+      "inline": "_G_LLM_STRAT_RNG_STATE uint[4] -- desync canary. D3",
+      "cont": [
+        "(2026-07-27): was 0x40, i.e. 48 bytes of .bss nothing",
+        "writes. Hashed FOG-STYLE MASKED (hash_rng_state) and",
+        "INCLUDED in the state-only hash -- see the block below."
+      ],
+      "excluded": false
+    },
+    {
+      "name": "game_clock",
+      "addr": "0x005d0198",
+      "size": 8,
+      "pre": [],
+      "inline": "_G_LLM_STRAT_GAME_CLOCK double",
+      "cont": [],
+      "excluded": false
+    },
+    {
+      "name": "order_pending",
+      "addr": "0x005d01a8",
+      "size": 4,
+      "pre": [],
+      "inline": "_G_LLM_STRAT_ORDER_PENDING_COUNT",
+      "cont": [],
+      "excluded": true
+    },
+    {
+      "name": "units",
+      "addr": "0x00dd8c48",
+      "size": 186400,
+      "pre": [
+        "D1 (2026-07-27): the three strategic regions this manifest was MISSING. Found by the cross-check",
+        "against docs/state-matrix.md that D1's own acceptance test called for (>=30 write-sites, >=4 KB).",
+        "APPENDED, not inserted: the IDX_* constants below and tools/mp_analyze.py's REGION_NAMES are",
+        "positional, so anything but an append silently re-labels every existing region."
+      ],
+      "inline": "map::object::unit[8][100] -- 356 write-sites / 1489 reads,",
+      "cont": [
+        "the MOST-accessed region in the game and previously unhashed"
+      ],
+      "excluded": false
+    },
+    {
+      "name": "tile_objects",
+      "addr": "0x00d1ec80",
+      "size": 524288,
+      "pre": [],
+      "inline": "map::tile_object_data[256][256] -- map occupancy; 16",
+      "cont": [
+        "strategic writers (fog-of-war, walker move, spawn/removal)"
+      ],
+      "excluded": false
+    },
+    {
+      "name": "soldiers",
+      "addr": "0x00e0e5a8",
+      "size": 23200,
+      "pre": [],
+      "inline": "_G_LLM_STRAT_SOLDIERS -- 66 write-sites",
+      "cont": [],
+      "excluded": false
+    },
+    {
+      "name": "p2_ai_gates",
+      "addr": "0x00ebf0b8",
+      "size": 56,
+      "pre": [
+        "DELIBERATELY NOT HASHED, adjudicated rather than silently omitted (D1):",
+        " - `Building` (0x00d9ec80, 451 w) and `Unit` (0x00e4a098, 98 w) are the cfg TYPE tables. 448 of",
+        "   Building's 451 writes are Construct + llm_strat_bldg_init_defaults, i.e. boot/config; the",
+        "   stragglers (SwitchToPlanet, CalcBuildingsTechLevel, HandleUpgrade) are deterministic functions",
+        "   of game state whose effects land in the hashed rosters. Revisit if a tech/upgrade desync is",
+        "   ever suspected.",
+        " - tact_* regions are tactical-mode (single-player) and out of MP scope.",
+        "D11 (2026-07-27): player_data slots 2..7. `game::player_data` was TYPED [2] in Ghidra, so this",
+        "manifest covered two players -- but llm_game_land_players_on_planet (0x45534e) loops idx=0..7",
+        "(`CMP [EBP-0x18],8` @0x45539d) calling llm_strat_init_human_player_data(idx) /",
+        "llm_strat_spawn_ai_base(idx), each indexing player_data[idx] and raising",
+        "_G_LLM_STRAT_AI_ACTIVE_PLAYER_COUNT to idx+1; llm_strat_ai_players_tick then iterates 0..COUNT-1.",
+        "So the array is [8] (re-typed, EN v150) and ~973 KB of per-player AI/econ store sat outside every",
+        "region here. Invisible while both peers are humans in slots 0/1 -- and about to stop being",
+        "invisible, because an AI opponent takes slot >= 2 (D10). Same trap as D1, one slot to the right.",
+        "",
+        "NOT inherited: the p0/p1 `ai_econ` state-only EXCLUSION. That exclusion rests on a 2026-07-22",
+        "measurement of players 0/1 under host interaction; it says nothing about slots 2..7, which are",
+        "exactly the AI ones. These are all IN the state-only verdict until a measurement says otherwise",
+        "-- that measurement is D10. In a 2-peer run slots 2..7 are unclaimed and read zero on both peers,",
+        "so including them cannot make the current gate red for a benign reason."
+      ],
+      "inline": "",
+      "cont": [],
+      "excluded": false
+    },
+    {
+      "name": "p2_local",
+      "addr": "0x00ebf0f0",
+      "size": 65540,
+      "pre": [],
+      "inline": "",
+      "cont": [],
+      "excluded": false
+    },
+    {
+      "name": "p2_ai_econ",
+      "addr": "0x00ecf0f4",
+      "size": 100544,
+      "pre": [],
+      "inline": "",
+      "cont": [],
+      "excluded": false
+    },
+    {
+      "name": "p3_ai_gates",
+      "addr": "0x00ee79b4",
+      "size": 56,
+      "pre": [],
+      "inline": "",
+      "cont": [],
+      "excluded": false
+    },
+    {
+      "name": "p3_local",
+      "addr": "0x00ee79ec",
+      "size": 65540,
+      "pre": [],
+      "inline": "",
+      "cont": [],
+      "excluded": false
+    },
+    {
+      "name": "p3_ai_econ",
+      "addr": "0x00ef79f0",
+      "size": 100544,
+      "pre": [],
+      "inline": "",
+      "cont": [],
+      "excluded": false
+    },
+    {
+      "name": "p4_ai_gates",
+      "addr": "0x00f102b0",
+      "size": 56,
+      "pre": [],
+      "inline": "",
+      "cont": [],
+      "excluded": false
+    },
+    {
+      "name": "p4_local",
+      "addr": "0x00f102e8",
+      "size": 65540,
+      "pre": [],
+      "inline": "",
+      "cont": [],
+      "excluded": false
+    },
+    {
+      "name": "p4_ai_econ",
+      "addr": "0x00f202ec",
+      "size": 100544,
+      "pre": [],
+      "inline": "",
+      "cont": [],
+      "excluded": false
+    },
+    {
+      "name": "p5_ai_gates",
+      "addr": "0x00f38bac",
+      "size": 56,
+      "pre": [],
+      "inline": "",
+      "cont": [],
+      "excluded": false
+    },
+    {
+      "name": "p5_local",
+      "addr": "0x00f38be4",
+      "size": 65540,
+      "pre": [],
+      "inline": "",
+      "cont": [],
+      "excluded": false
+    },
+    {
+      "name": "p5_ai_econ",
+      "addr": "0x00f48be8",
+      "size": 100544,
+      "pre": [],
+      "inline": "",
+      "cont": [],
+      "excluded": false
+    },
+    {
+      "name": "p6_ai_gates",
+      "addr": "0x00f614a8",
+      "size": 56,
+      "pre": [],
+      "inline": "",
+      "cont": [],
+      "excluded": false
+    },
+    {
+      "name": "p6_local",
+      "addr": "0x00f614e0",
+      "size": 65540,
+      "pre": [],
+      "inline": "",
+      "cont": [],
+      "excluded": false
+    },
+    {
+      "name": "p6_ai_econ",
+      "addr": "0x00f714e4",
+      "size": 100544,
+      "pre": [],
+      "inline": "",
+      "cont": [],
+      "excluded": false
+    },
+    {
+      "name": "p7_ai_gates",
+      "addr": "0x00f89da4",
+      "size": 56,
+      "pre": [],
+      "inline": "",
+      "cont": [],
+      "excluded": false
+    },
+    {
+      "name": "p7_local",
+      "addr": "0x00f89ddc",
+      "size": 65540,
+      "pre": [],
+      "inline": "",
+      "cont": [],
+      "excluded": false
+    },
+    {
+      "name": "p7_ai_econ",
+      "addr": "0x00f99de0",
+      "size": 100544,
+      "pre": [],
+      "inline": "",
+      "cont": [],
+      "excluded": false
+    },
+    {
+      "name": "order_queue",
+      "addr": "0x00bb4ed0",
+      "size": 20400,
+      "pre": [
+        "O3 (2026-07-28): THE ORDER CONTAINER'S OWN STATE. Until now the only order region here was",
+        "`order_pending`, which is the 4-byte COUNT -- the three arrays it counts, 108 KB of the state",
+        "the container actually owns, were never hashed. That was tolerable while the container was",
+        "original code. It is not tolerable for O3: promoting mh::orders means the arrays are written by",
+        "OUR code, and an asymmetric run (one peer original, one peer promoted) can only catch what the",
+        "hash can see. Without these, a wrong record that the dispatcher happens to treat the same, or a",
+        "difference in a not-yet-consumed pending entry, is invisible.",
+        "APPENDED, not inserted -- the IDX_* constants and mp_analyze.py's REGION_NAMES are positional."
+      ],
+      "inline": "llm_strat_order[300], the due-now queue",
+      "cont": [],
+      "excluded": false
+    },
+    {
+      "name": "order_queue_count",
+      "addr": "0x005d0194",
+      "size": 4,
+      "pre": [],
+      "inline": "",
+      "cont": [],
+      "excluded": false
+    },
+    {
+      "name": "order_staging",
+      "addr": "0x00bca920",
+      "size": 20400,
+      "pre": [],
+      "inline": "llm_strat_order[300], proposed this frame",
+      "cont": [],
+      "excluded": true
+    },
+    {
+      "name": "order_staging_count",
+      "addr": "0x005d01a4",
+      "size": 4,
+      "pre": [],
+      "inline": "",
+      "cont": [],
+      "excluded": true
+    },
+    {
+      "name": "order_pending_arr",
+      "addr": "0x00bb9e80",
+      "size": 68000,
+      "pre": [],
+      "inline": "llm_strat_order[1000], scheduled -- the ARRAY",
+      "cont": [
+        "whose count is region \"order_pending\" above"
+      ],
+      "excluded": true
+    },
+    {
+      "name": "ls_horizon",
+      "addr": "0x005d5594",
+      "size": 8,
+      "pre": [
+        "L1-P (2026-07-28): THE TURN ENGINE'S OWN STATE, and this is O3's step 1 repeated for the other",
+        "half of the spine. Of everything mh::lockstep reads and writes, this manifest hashed exactly",
+        "TWO things -- game_clock and the order_pending count. The barrier itself, the per-peer horizon",
+        "tables and the lockstep status matrix were all invisible, so an asymmetric run could not have",
+        "caught a wrong barrier at all: the sim clock only diverges once a wrong horizon has already let",
+        "one peer run past the other, by which point the cause is several steps behind the symptom.",
+        "",
+        "APPENDED, not inserted -- the IDX_* constants and mp_analyze.py's REGION_NAMES are positional.",
+        "",
+        "EXPECT THE BASELINE TO HAVE AN OPINION ABOUT THE LAST FOUR. `horizon` is what THIS peer has",
+        "requested and `peer_horizon` is what it has HEARD, so both are in-flight and phase-shifted by",
+        "the link: at any given step the two peers legitimately hold different values, and only",
+        "`committed` (the min, which is what actually gates the sim) is required to agree. That is the",
+        "same shape that made O3's order-container baseline red for a benign reason, which is why these",
+        "go in BEFORE the promotion and get a both-peers-original baseline run to adjudicate them."
+      ],
+      "inline": "_G_LLM_STRAT_LOCKSTEP_HORIZON -- our own request",
+      "cont": [],
+      "excluded": true
+    },
+    {
+      "name": "ls_committed",
+      "addr": "0x005d558c",
+      "size": 8,
+      "pre": [],
+      "inline": "_..._COMMITTED_HORIZON -- THE BARRIER; the sim may not",
+      "cont": [
+        "pass it, so this is the one that must agree"
+      ],
+      "excluded": true
+    },
+    {
+      "name": "peer_horizon",
+      "addr": "0x005d54cc",
+      "size": 64,
+      "pre": [],
+      "inline": "_G_LLM_NET_PEER_HORIZON double[8] -- the barrier's input",
+      "cont": [],
+      "excluded": true
+    },
+    {
+      "name": "peer_pending",
+      "addr": "0x005d550c",
+      "size": 64,
+      "pre": [],
+      "inline": "_G_LLM_NET_PEER_HORIZON_PENDING double[8]",
+      "cont": [],
+      "excluded": false
+    },
+    {
+      "name": "peer_timing",
+      "addr": "0x00e58c40",
+      "size": 96,
+      "pre": [],
+      "inline": "llm_net_lockstep_peer_timing[8], stride 0xc",
+      "cont": [],
+      "excluded": false
+    },
+    {
+      "name": "peer_state",
+      "addr": "0x00e58bd8",
+      "size": 64,
+      "pre": [],
+      "inline": "_G_LLM_NET_LOCKSTEP_PEER_STATE byte[8][8]",
+      "cont": [],
+      "excluded": false
+    },
+    {
+      "name": "current_game_time",
+      "addr": "0x00e587b1",
+      "size": 8,
+      "pre": [
+        "P0-SPDET (2026-07-29): llm_strat_time_tick's OWN OUTPUTS. Everything above hashes what the sim",
+        "does with the clock; nothing hashed what time_tick COMPUTES it from. That gap is invisible in",
+        "MP (the mode-3 block dominates) and fatal in SP: time_tick is C2-class LIVE (mixed), its",
+        "unconditional lines 44-48 + 177-184 are the real single-player clock, and C8 promotes it. Of",
+        "the four values those lines write, only game_clock was hashed -- TOTAL_GAME_TIME is PINNED OVER",
+        "by on_sim_tick's fixed-step replay, and CURRENT/LAST/DELTA + the frame ring were not hashed at",
+        "all. So a promoted time_tick could get its whole SP block wrong and every existing run stays",
+        "green. See tracker P0-SPDET.",
+        "APPENDED, not inserted -- the IDX_* constants and mp_analyze.py's REGION_NAMES are positional.",
+        "ALL THREE ARE state_excluded() BY DEFAULT and that is deliberate, not an oversight: frame_ring",
+        "and fps_estimate are FRAME-RATE dependent, and two peers legitimately run at different frame",
+        "rates (measured 2835 vs 3079 frames over the same 3000 sim steps). Putting them in the",
+        "state-only verdict would turn the shipped MP gate red for a benign reason. The SP oracle reads",
+        "them from the per-region `R` lines instead, where a frame-rate-pinned run makes them comparable.",
+        "",
+        "SB-HOSTFREE H0 (2026-09-06): SPLIT INTO SIX, AND RENAMED WITH IT. This entry used to be a",
+        "48-byte window over all six clock doubles -- but five of them are SEPARATE registry regions,",
+        "so under a relocated bind they move independently and this slice would have read 8 live bytes",
+        "followed by 40 bytes of whatever happened to lie past the relocated CURRENT_GAME_TIME. The",
+        "determinism hash would have stopped observing the clock family entirely while still printing a",
+        "hash for it: the vacuous-green shape this oracle exists to refuse, in the one instrument",
+        "SB-HOSTFREE needs in order to trust its own relocation arm. The other five are APPENDED at the",
+        "end of the table, because the order is a wire contract; gen_state_registry.py now REFUSES any",
+        "slice that runs past its host region's measured size, so the shape cannot come back by hand.",
+        "The rename is part of the repair, not decoration -- a name meaning `the six` on a slice",
+        "covering one is exactly how a desync report comes to name the wrong thing."
+      ],
+      "inline": "CURRENT_GAME_TIME -- the strategic clock. The other five clock",
+      "cont": [
+        "doubles that shared this slice until H0 are appended at the",
+        "end of the table, each hashed as the region it actually is."
+      ],
+      "excluded": true
+    },
+    {
+      "name": "frame_ring",
+      "addr": "0x005d0af4",
+      "size": 160,
+      "pre": [],
+      "inline": "_G_LLM_STRAT_FRAME_TIME_RING double[20] (time_tick:177-184)",
+      "cont": [],
+      "excluded": true
+    },
+    {
+      "name": "fps_estimate",
+      "addr": "0x00ae2aa0",
+      "size": 8,
+      "pre": [],
+      "inline": "_G_LLM_STRAT_FPS_ESTIMATE double",
+      "cont": [],
+      "excluded": true
+    },
+    {
+      "name": "players",
+      "addr": "0x00e587e9",
+      "size": 416,
+      "pre": [
+        "D23 (2026-08-29): game::g::Players[8], 8 x 0x34 -- race, colour, the sprite/swatch index,",
+        "controller_flags, scenario_side_id and the 8-byte relation row. THE ENTIRE per-player identity",
+        "that llm_lobby_build_players_from_slots produces and that the whole match is built on, and it",
+        "was in NO hashed region: the oracle was blind to the lobby->game handoff's own output. That is",
+        "how D18 (a per-peer relation diagonal) survived from N1 on 2026-07-22 to 2026-08-29 with the",
+        "gate reporting ALL PAIRS IDENTICAL in BOTH arms -- with the bug live and with it fixed.",
+        "NOT `strat_players`, which is a DIFFERENT table (_G_LLM_STRAT_PLAYERS @0x00cff060, stride",
+        "0x740) and is hashed separately above. Confusing the two is the reason this gap read as covered.",
+        "HASHED WHOLE, WITH NO MASK, and that was MEASURED field-by-field before it was added, not",
+        "assumed -- all 52 bytes of the stride traced to a writer. Every one is derived from host-synced",
+        "lobby-slot data (_G_LLM_LOBBY_SLOTS, broadcast in the host's 0x1cd snapshot and copied wholesale",
+        "by the client) or from compile-time constants. Nothing reads a local socket, a local-only UI",
+        "selection, or a pointer. The ONE historically peer-local write --",
+        "build_players_finish's Players[PlayerSide].relation[k] = 2, keyed on the LOCAL peer -- is",
+        "idempotent only BECAUSE D18 is fixed: it now writes the same constant the synced slot row",
+        "already carries. This region is hashable because of that fix, so the ordering is not incidental.",
+        "APPENDED, not inserted -- the IDX_* constants and mp_analyze.py's REGION_NAMES are positional.",
+        "PROVEN RED 2026-08-29 before it was trusted: region_poke_at=1;region_poke_min=55;region_poke_off=16",
+        "on the host only -> DESYNC at step 1, and after the peer-local exclusions the state-only diverging",
+        "set is `players` ALONE; the same command without the poke is ALL PAIRS IDENTICAL over 400 steps.",
+        "The poke goes to +0x10 (name[32]), which the sim reads nowhere -- byte 0 is race, and poking live",
+        "state would prove the region is hashed while changing behaviour, contaminating the localization."
+      ],
+      "inline": "game::g::Players[8] -- llm_strat_player_desc[8], 416 = 8 * 0x34",
+      "cont": [],
+      "excluded": false
+    },
+    {
+      "name": "last_game_time",
+      "addr": "0x00e587b9",
+      "size": 8,
+      "pre": [
+        "SB-HOSTFREE H0 (2026-09-06): the five doubles `time_globals` used to swallow, now hashed as",
+        "the separate registry regions they have always been. Same bytes, same order within the family,",
+        "same `excluded` verdict -- what changes is that each one follows ITS OWN region when a host",
+        "binds it somewhere else, which is the property statetest arm M asserts by poking each of the",
+        "five in its relocated home. They stay state_excluded() for the reason the family always was:",
+        "wall-clock derived, and two MP peers legitimately run at different frame rates. The SP oracle",
+        "compares them explicitly from the per-region R columns (mp_analyze.SP_TIME_REGIONS), which is",
+        "where a decomposed clock actually pays.",
+        "APPENDED, not inserted -- the IDX_* constants and mp_analyze.py's REGION_NAMES are positional."
+      ],
+      "inline": "LAST_GAME_TIME -- previous frame's clock value",
+      "cont": [],
+      "excluded": true
+    },
+    {
+      "name": "total_game_time",
+      "addr": "0x00e587c1",
+      "size": 8,
+      "pre": [],
+      "inline": "TOTAL_GAME_TIME -- cumulative elapsed session time",
+      "cont": [],
+      "excluded": true
+    },
+    {
+      "name": "sim_step_interval",
+      "addr": "0x00e587c9",
+      "size": 8,
+      "pre": [],
+      "inline": "_G_LLM_STRAT_SIM_STEP_INTERVAL -- seconds per sim step",
+      "cont": [],
+      "excluded": true
+    },
+    {
+      "name": "game_time_delta",
+      "addr": "0x00e587d1",
+      "size": 8,
+      "pre": [],
+      "inline": "GAME_TIME_DELTA -- this frame's advance",
+      "cont": [],
+      "excluded": true
+    },
+    {
+      "name": "game_speed",
+      "addr": "0x00e587d9",
+      "size": 8,
+      "pre": [],
+      "inline": "game_speed -- the speed multiplier the delta is scaled by",
+      "cont": [],
+      "excluded": true
+    }
+  ],
+  "tact_regions": [
+    {
+      "name": "tact_units",
+      "addr": "0x008260d0",
+      "size": 196596,
+      "pre": [
+        "TACT-PREP piece 2: the TACTICAL hash manifest. A SEPARATE ordered list from `regions`",
+        "above, and deliberately so. Appending the tactical arena to the strategic manifest would",
+        "(a) fold ~290 KB of stale arena into every strategic `combined`/`state` hash, so a",
+        "strategic desync report could name a tactical region that no strategic code touches, and",
+        "(b) invalidate every recorded golden trajectory. The tactical cadence hook emits its own",
+        "`T` line over THIS list, on llm_tact_frame rather than llm_strat_sim_step (which mode 6",
+        "never calls -- docs/tactical-probe.md Sect. 2).",
+        "",
+        "SAME ORDER CONTRACT as `regions`: APPEND only. The `T` line is positional."
+      ],
+      "inline": "tact_unit_record[129], stride 0x5f4 -- the tactical roster",
+      "cont": [],
+      "excluded": false
+    },
+    {
+      "name": "tact_fx_pool",
+      "addr": "0x0085b4e0",
+      "size": 83968,
+      "pre": [],
+      "inline": "llm_tact_fx[1024], stride 0x52 -- projectiles/explosions",
+      "cont": [],
+      "excluded": false
+    },
+    {
+      "name": "tact_doors",
+      "addr": "0x008742c4",
+      "size": 1664,
+      "pre": [],
+      "inline": "llm_tact_door[16] -- advanced by llm_tact_door_tick with no input",
+      "cont": [],
+      "excluded": false
+    },
+    {
+      "name": "tact_teleports",
+      "addr": "0x00874950",
+      "size": 3300,
+      "pre": [],
+      "inline": "llm_tact_teleport[66] -- scanned every frame",
+      "cont": [],
+      "excluded": false
+    },
+    {
+      "name": "tact_char_types",
+      "addr": "0x00873c04",
+      "size": 1728,
+      "pre": [],
+      "inline": "llm_tact_character_type[16] -- mission-loaded; unit spawn reads .energy to turn the blackboard's hp PERCENT into absolute hp, so it is an input to entry determinism",
+      "cont": [],
+      "excluded": false
+    },
+    {
+      "name": "tact_fx_types",
+      "addr": "0x00872984",
+      "size": 4736,
+      "pre": [],
+      "inline": "llm_tact_fx_type[64] -- mission-loaded FX definitions",
+      "cont": [],
+      "excluded": false
+    },
+    {
+      "name": "tact_fov_stencil",
+      "addr": "0x0082509c",
+      "size": 4096,
+      "pre": [],
+      "inline": "the FOV raycast stencil -- derived, but it localises a vision divergence one step before the roster shows it",
+      "cont": [],
+      "excluded": false
+    },
+    {
+      "name": "tact_active_unit_count",
+      "addr": "0x005590ec",
+      "size": 4,
+      "pre": [],
+      "inline": "_G_LLM_TACT_ACTIVE_UNIT_COUNT -- also llm_tact_frame's mission-end predicate",
+      "cont": [],
+      "excluded": false
+    },
+    {
+      "name": "tact_active_unit_count_cached",
+      "addr": "0x005590f0",
+      "size": 4,
+      "pre": [],
+      "inline": "the per-frame cached copy; a divergence between the two localises a recount bug",
+      "cont": [],
+      "excluded": false
+    },
+    {
+      "name": "tact_squad_size",
+      "addr": "0x00559888",
+      "size": 4,
+      "pre": [],
+      "inline": "how many blackboard slots the mission load consumed",
+      "cont": [],
+      "excluded": false
+    },
+    {
+      "name": "tact_map_width",
+      "addr": "0x00874948",
+      "size": 4,
+      "pre": [],
+      "inline": "_G_LLM_TACT_MAP_WIDTH_CACHE, written by llm_tact_map_compute_bounds",
+      "cont": [],
+      "excluded": false
+    },
+    {
+      "name": "tact_map_height",
+      "addr": "0x0087494c",
+      "size": 4,
+      "pre": [],
+      "inline": "_G_LLM_TACT_MAP_HEIGHT_CACHE",
+      "cont": [],
+      "excluded": false
+    },
+    {
+      "name": "tile_objects",
+      "addr": "0x00d1ec80",
+      "size": 524288,
+      "pre": [],
+      "inline": "SHARED plane. Tactical wipes the 128x128 top-left sub-block at the same 256-element stride and the strategic contents are restored from disk on exit (docs/tactical-probe.md Sect. 5) -- hashed here because during a mission this IS tactical occupancy state",
+      "cont": [],
+      "excluded": false
+    },
+    {
+      "name": "passable",
+      "addr": "0x00b64bb0",
+      "size": 65536,
+      "pre": [],
+      "inline": "SHARED plane, same story as tile_objects. Note it carries MF_VIEW|MF_MEASURED|MF_SAVE but NOT MF_HASH -- the strategic manifest never hashed it, and this is the first list that does",
+      "cont": [],
+      "excluded": false
+    },
+    {
+      "name": "tact_units_sim",
+      "addr": "0x008260d0",
+      "size": 196596,
+      "pre": [
+        "THE SIM-ONLY SLICE (TACT-REC, 2026-08-25). Deliberately an ALIAS of tact_units above --",
+        "the SAME 129 records at the SAME address -- emitted a second time with the render-written",
+        "animation window marked local(). It exists because tactical animation is RENDER-DRIVEN",
+        "(docs/tactical-probe.md 9k): llm_tact_unit_update_anim is reached only through",
+        "llm_tact_render_view's camera-viewport tile scan, and it writes anim_frame_time /",
+        "frame_index / anim_cycle_time / frame_interval / sprite_id straight into the hashed roster.",
+        "",
+        "TWO HASHES RATHER THAN A MASK, and that is the whole point. Masking tact_units would DELETE",
+        "the signal -- and the leading alternative cause is an occupancy loss in tile_objects, which",
+        "is sim state, so a mask could hide a real divergence (the same vacuous-gate shape 9e already",
+        "sprang once). Keeping both means a run can say WHICH: full differs + sim identical =",
+        "presentation drift; both differ = real. Only the arguable-free fields are dropped;",
+        "anim_state, progress and cmd_wait_until_time stay IN precisely because they are arguable.",
+        "",
+        "EXCLUDED FROM THE COMBINED `T` HASH because its bytes are already in tact_units -- folding",
+        "it in would double-count, not add coverage. It still occupies its own positional column on",
+        "the `TR` line and feeds the separate `TS` (sim-only combined) line."
+      ],
+      "inline": "ALIAS of tact_units with the render-written animation window local() -- see TACT_ANIM_* in state/region_view.h",
+      "cont": [],
+      "excluded": true
+    }
+  ]
+}

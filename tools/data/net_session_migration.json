@@ -1,0 +1,136 @@
+{
+  "_generated_by": "tools/gen_migration.py --domain net_session",
+  "_domain": "net_session",
+  "_profile": "tools/data/migration/net_session.json",
+  "_do_not_hand_edit": "Derived fields are regenerated. Only state, evidence_tier, promoted, notes are preserved across a regen -- record progress there and nowhere else.",
+  "_inputs": [
+    "docs/symbols.md",
+    "tools/data/en_functions.json",
+    "tools/data/call_graph_no_crt.json",
+    "tmp/state_matrix.json"
+  ],
+  "_reclassified_out": [],
+  "_select_report": {
+    "seeds": {
+      "queries": [
+        {
+          "kind": "names",
+          "matched": 2,
+          "after_exclude_ours": 2,
+          "why": "MEMBERSHIP FROZEN 2026-09-01: the domain is COMPLETE (both rows verified AND promoted -- the SIM-RESID-P wave's census refresh re-attributed the last NET-SESSION-routed writers to `ours`, so the original writer_attribution seed now legitimately resolves to nothing and would refuse). The original derivation is preserved in this note: every original writer of a region LIBMH WRITES that routed to item NET-SESSION via gen_writer_attribution.owning_item(); it produced exactly these two functions and the attribution ledger's history carries the routing."
+        }
+      ],
+      "seeds": 2
+    },
+    "seeds_unresolved": [],
+    "closure_raw": 2,
+    "pulled_in_by_walk": 0,
+    "cut_walls": 0,
+    "shared_helpers": 0,
+    "owned_by_other_domains": {},
+    "symbols_augmented_from_callgraph": 437
+  },
+  "_method_note": "MEMBERSHIP IS BY NAME PREFIX (''), not by evidence. A function is in this ledger because someone once called it AI, and drops out the moment it is renamed -- so a misnamed function is silently in, and correcting the name silently removes it along with any progress recorded against it. See _reclassified_out for rows removed that way, and re-read a row's `callers_in_ai` before trusting its membership: a row with callers_in_ai 0 AND reachable_from_root false is only in this file on the strength of its name. Reachability here is UNCUT: a plain BFS from the root over the whole call graph. docs/ai-closure.md cut the BFS at ui/view edges (to keep the closure from swallowing render/audio at 779 functions), so it reports 155 ai-prefixed functions reachable and 63 not. This file reports more reachable (164) and fewer orphans because a path THROUGH a ui function still makes an AI function reachable -- the right test for 'does this need a caller-side hook', which is what batch E turns on. The two are not in conflict; they answer different questions. Layering is computed on AI-only edges, because only AI functions are ever armed and only they can nest with each other.",
+  "root": null,
+  "root_note": "seeded domain -- membership is select.seeds, not a walk from one entry (MIG-SET)",
+  "summary": {
+    "functions": 2,
+    "reachable_from_root": 2,
+    "zero_callers": 0,
+    "proto_uncommitted": 0,
+    "writes_shared": 2,
+    "review_required": 0,
+    "max_layer": 0,
+    "in_cycle": 0,
+    "size_bytes_total": 421,
+    "size_p90": 314,
+    "by_batch": {
+      "A": 2
+    }
+  },
+  "functions": [
+    {
+      "addr": "0x0043ee38",
+      "name": "llm_wait_screen_frame",
+      "size_bytes": 107,
+      "signature": "void llm_wait_screen_frame(void)",
+      "tags": [],
+      "proto_committed": true,
+      "reachable_from_root": true,
+      "layer": 0,
+      "in_cycle": false,
+      "callers_in_ai": 0,
+      "callers_total": 1,
+      "zero_callers": false,
+      "writes_shared": [
+        "_G_LLM_NET_LOCKSTEP_STATUS_FLAGS",
+        "_G_LLM_NET_RESYNC_IN_PROGRESS"
+      ],
+      "writes_island": [],
+      "roster_write_via": [],
+      "creates_units": [],
+      "ai_gate_site": null,
+      "batch": "A",
+      "batch_why": "sub-domain match on 'llm_wait_screen_frame'",
+      "review_required": false,
+      "preserve_bug": null,
+      "state": "verified",
+      "evidence_tier": "T2",
+      "promoted": true,
+      "notes": "VERIFIED 2026-09-01. Translated in libmh/lockstep/net_session.cpp; its resync-completion transition is `resync_complete_local`, which rx_dispatch's CTL_RESYNC_END arm now calls too -- one implementation for the leader and the peer, which is what this item was opened for. Evidence: `net_selftest netsessiontest` covers all three branches (not leader / leader-below-deadline / leader-past-deadline), the JBE boundary from BOTH sides, the UNSIGNED compare across the GetTickCount wrap (deadline 0xFFFFFFF0, ticks 0x10 -- a signed reading acts, ours does not), the short circuit (a non-leader frame reads the clock ZERO times), and the act ORDER with mocks that sample the state they run under; `net_selftest lockstest` drives the leader path and the peer path over one world fixture and asserts an identical (STATUS_FLAGS, RESYNC_IN_PROGRESS) end state and the same three local acts. Mutation-tested: breaking the shared transition goes red on BOTH ends, which is what shows the RX arm routes through it rather than agreeing by coincidence. NOT shadow-armed: the body SENDS a CTL_RESYNC_END packet and DRAINS the socket, neither of which a state restore can undo. T2 rather than T1 because no available scenario drives a real leader-side resync to completion -- that needs a genuine stall -- so there is no live equivalence evidence for this body, only for the peer end of the same transition, which real MP runs exercise."
+    },
+    {
+      "addr": "0x0049e4c3",
+      "name": "llm_net_session_globals_reset",
+      "size_bytes": 314,
+      "signature": "void llm_net_session_globals_reset(void)",
+      "tags": [
+        "conf:high"
+      ],
+      "proto_committed": true,
+      "reachable_from_root": true,
+      "layer": 0,
+      "in_cycle": false,
+      "callers_in_ai": 0,
+      "callers_total": 1,
+      "zero_callers": false,
+      "writes_shared": [
+        "_G_LLM_GAME_SESSION_MODE",
+        "_G_LLM_NET_LOBBY_SCAN_HOST_COUNT",
+        "_G_LLM_NET_LOCKSTEP_PEER_TIMEOUT_ELAPSED",
+        "_G_LLM_NET_LOCKSTEP_PLAYER_COUNT",
+        "_G_LLM_NET_LOCKSTEP_STALL_NAG_COUNT",
+        "_G_LLM_NET_LOCKSTEP_SYNC_RETRY_COUNTDOWN",
+        "_G_LLM_NET_LOCKSTEP_SYNC_WAIT_ELAPSED",
+        "_G_LLM_NET_RESYNC_IN_PROGRESS",
+        "_G_LLM_NET_SYNC_WAIT_ACTIVE",
+        "_G_LLM_STRAT_LOCKSTEP_ADAPT_NEXT_TIME",
+        "_G_LLM_STRAT_LOCKSTEP_HORIZON",
+        "_G_LLM_STRAT_LOCKSTEP_STALL_COUNT",
+        "_G_LLM_STRAT_LOCKSTEP_STEP_SIZE"
+      ],
+      "writes_island": [
+        "_G_LLM_MP_PROBE_SERVER_COUNT",
+        "_G_LLM_NET_IS_HOST",
+        "_G_LLM_NET_LOBBY_MAP_RECV_DONE",
+        "_G_LLM_NET_LOCAL_PLAYER_INDEX",
+        "_G_LLM_NET_LOCAL_PLAYER_SLOT",
+        "_G_LLM_NET_LOCKSTEP_RESYNC_TRIGGER_COUNT",
+        "_G_LLM_NET_SEND_BUF_CURSOR",
+        "_G_LLM_NET_SESSION_COUNT",
+        "_G_LLM_STRAT_LOCKSTEP_COMMITTED_HORIZON"
+      ],
+      "roster_write_via": [],
+      "creates_units": [],
+      "ai_gate_site": null,
+      "batch": "A",
+      "batch_why": "sub-domain match on 'llm_net_session_globals_reset'",
+      "review_required": false,
+      "preserve_bug": null,
+      "state": "verified",
+      "evidence_tier": "T1",
+      "promoted": true,
+      "notes": "VERIFIED 2026-09-01. Translated in libmh/lockstep/net_session.cpp, promoted into the `[promote] lockstep` closure. Evidence, two independent kinds. OFFLINE: `net_selftest netsessiontest` asserts all 22 stores against the values the listing stores (0x0049e4db..0x0049e5e9), the four doubles as BIT PATTERNS (0x4024000000000000 = 10.0, 0x4051800000000000 = 70.0, 0x3ff0.. = 1.0, 0xbff0.. = -1.0), plus idempotence; three mutations were each caught by the assertion that names them. LIVE: the read-back probe (seams/net_session_probe.cpp) at llm_net_init_stub -- the instruction after this function's call site -- reported `22/22 fields match, 0 mismatch` in BOTH arms: promoted (promote_lockstep=1, ours_calls=1, so OUR body wrote them) and stock (promote_lockstep=0, ours_calls=0, so the ORIGINAL did, which is what proves the address table rather than our own pointers). Negative arm: writing ADAPT_NEXT_TIME as 71.0 made the promoted run report `MISMATCH STRAT_LOCKSTEP_ADAPT_NEXT_TIME @0x005d55c4 = 0x4051c00000000000, want 0x4051800000000000` and 21/22. NOT shadow-armed and never will be: one call per process, so there is no second call to compare against."
+    }
+  ]
+}
