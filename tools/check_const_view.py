@@ -2,11 +2,11 @@
 
 TWO TARGETS, TWO DIFFERENT PROPERTIES (the second added 2026-08-08 for RI-SIM / SIM0):
 
-  * `mh_nettest/ai_const_negative.cpp` -- AI0's const view. The AI reads the rosters and writes only
+  * `libmh_test/ai_const_negative.cpp` -- AI0's const view. The AI reads the rosters and writes only
     its own island, so P2-RULES' R2 is expressible as pointer-to-const throughout and every case
     fails with an assign-through-const diagnostic.
 
-  * `mh_nettest/sim_write_negative.cpp` -- SIM0's MUTABLE interface. The sim writes the rosters, so
+  * `libmh_test/sim_write_negative.cpp` -- SIM0's MUTABLE interface. The sim writes the rosters, so
     const-ness cannot carry the rule; sim/sim_state.h states three instead (W1 the read view is
     const and its MEMBERSHIP is the claim, W2 the write store hands out no address, W3 the store
     cannot be constructed outside the module). W2 and W3 are ACCESS-CONTROL properties, so those
@@ -52,7 +52,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import machine_config as machine  # noqa: E402
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-NETTEST = os.path.join(REPO, "src", "mh_dll", "mh_nettest")
+LIBMH_TEST = os.path.join(REPO, "src", "mh_dll", "libmh_test")
 INCLUDE_DIRS = [
     # F5O: the roster is under libmh/ now; mh/ still carries addr/, crt/, fp/, include/.
     os.path.join(REPO, "src", "mh_dll", "libmh"),
@@ -88,7 +88,7 @@ DIAGNOSTIC_CLASSES = {"const": CONST_DIAGNOSTICS, "access": ACCESS_DIAGNOSTICS}
 TARGETS = [
     {
         "name": "ai",
-        "tu": os.path.join(NETTEST, "ai_const_negative.cpp"),
+        "tu": os.path.join(LIBMH_TEST, "ai_const_negative.cpp"),
         "macro": "MH_CONST_NEGATIVE_CASE_%d",
         "case_re": re.compile(r"MH_CONST_NEGATIVE_CASE_(\d+)\)(?:\s*//\s*EXPECT\s+(\w+))?"),
         "banner": "AI0: a write through ai_view must not compile",
@@ -96,7 +96,7 @@ TARGETS = [
     },
     {
         "name": "sim",
-        "tu": os.path.join(NETTEST, "sim_write_negative.cpp"),
+        "tu": os.path.join(LIBMH_TEST, "sim_write_negative.cpp"),
         "macro": "MH_SIM_NEGATIVE_CASE_%d",
         "case_re": re.compile(r"MH_SIM_NEGATIVE_CASE_(\d+)\)(?:\s*//\s*EXPECT\s+(\w+))?"),
         "banner": "SIM0: W1 const view / W2 no escaping address / W3 no forged store",
@@ -104,7 +104,7 @@ TARGETS = [
     },
     {
         "name": "tact",
-        "tu": os.path.join(NETTEST, "tact_write_negative.cpp"),
+        "tu": os.path.join(LIBMH_TEST, "tact_write_negative.cpp"),
         "macro": "MH_TACT_NEGATIVE_CASE_%d",
         "case_re": re.compile(r"MH_TACT_NEGATIVE_CASE_(\d+)\)(?:\s*//\s*EXPECT\s+(\w+))?"),
         "banner": "TACT0: W1 const view (strategic state is read-only to a mission) / W2 / W3, "

@@ -378,7 +378,7 @@ def self_checks(hdr, holders, head_total, raw, blocks, idx, regions):
                 pass
     # boot_snapshot_selftest exercises the DERIVED block through the boot-snapshot API (and
     # excuses the raw one from its byte compare) -- it never touches the live region.
-    tlo_allowed = {"libmh/state/boot_snapshot.cpp", "mh_nettest/boot_snapshot_selftest.cpp"}
+    tlo_allowed = {"libmh/state/boot_snapshot.cpp", "libmh_test/boot_snapshot_selftest.cpp"}
     out.append(
         (
             tlo_files == tlo_allowed,

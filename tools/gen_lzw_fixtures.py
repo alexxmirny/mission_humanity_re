@@ -69,7 +69,7 @@ MAGIC = b"LZW "
 # path so a clean clone regenerates this header with no machine configuration at all.
 DEFAULT_SAV = os.path.join(REPO, "tools", "uiscripts", "saves", "11.sav")
 DEFAULT_BLOCKS = "20,7,56,5,86,85"
-OUT = os.path.join(REPO, "src", "mh_dll", "mh_nettest", "sv1_lzw_fixtures.gen.h")
+OUT = os.path.join(REPO, "src", "mh_dll", "libmh_test", "sv1_lzw_fixtures.gen.h")
 VERSION_HEADER_BYTES = 40
 
 

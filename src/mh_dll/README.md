@@ -14,7 +14,8 @@ Plan and history for that refactor are in the git log.
 | `mh_common/` | static lib | Game-binary-independent utilities: `bnk`/`bmp_io`/`misc` (geometry), `run_context`, `net_transport` (Winsock TCP star — no game VAs), `net_key` (the `mh_key.txt` pre-shared key), and `lzw` — the game's LZW codec **both directions** plus its LZSS sibling (SV1 batch B; the encoder is a reimplementation, verified byte-identical against 501 real save blocks). Pure buffer logic, no game VA: the save-format framing that calls it lives in `libmh/save/save_block.*`. |
 | `../mh_net_proto/` | static lib | The SESSION_INFO/JOIN control-frame protocol **and `net_crypto`** — SHA-256/HMAC/ChaCha20, the PSK handshake and the encrypted record layer (own CMake too, for the Linux relay). Hand-written crypto, so its unit tests pin the published RFC vectors: `net_proto_test` is not optional. |
 | `mh_tools/` | console exe | Host-side asset/pool tooling. |
-| `mh_nettest/` | console exe | `net_selftest.exe` — transport loopback tests (`selftest`, `selftest3`). Compiles the real transport+seam sources directly (no game, no DllMain). `build_selftest.bat` = thin msbuild wrapper (exe → `%TEMP%\mh_nettest`). |
+| `mh_nettest/` | console exe | `net_selftest.exe` — the **HOSTED** offline oracle (no `MH_LIBMH_BUILD`): the transport loopback tests (`selftest`, `selftest3`) and the rest of mh.dll's own machinery — the marshalling thunks, the patch/tombstone instruments, the hook table. Compiles the real transport+seam sources directly (no game, no DllMain). `build_selftest.bat` = thin msbuild wrapper that builds **both** selftest projects (exes → `%TEMP%\mh_nettest`). |
+| `libmh_test/` | console exe | `libmh_selftest.exe` — the **STANDALONE** offline oracle (fork F5I): the same 628 roster TUs compiled with `MH_LIBMH_BUILD` + `MH_SPINE_IN_IMAGE` as the whole program, running the suites that are about libmh itself. It also owns the 338 selftest TUs. **GENERATED** — `tools/gen_libmh_vcxproj.py` walks this directory, so a new `*_selftest.cpp` joins the exe by rerunning it (and `--check` reds until you do). Which suite runs on which exe is `tools/data/selftest_roster.json`'s `exe` column. |
 
 ## Layout of `mh/` and `libmh/` (relocated 2026-09-16, fork F5O)
 
@@ -23,12 +24,14 @@ under `mh/<domain>/` even though three projects compiled it. It now lives in the
 library that owns it, domain subdirectories intact:
 
 - **`libmh/{ai,lockstep,orders,save,sim,state,tact}/`** — the SHARED ROSTER, compiled by `libmh`
-  (the archive), `libmh_dll` (the hosted arm) and `mh_nettest` (the offline oracle). This is
+  (the archive), `libmh_dll` (the hosted arm), `mh_nettest` (the hosted offline oracle) and
+  `libmh_test` (the standalone one, fork F5I). This is
   **shared location 1 of 2**, and it is explicitly so: a library's second CRT arm and its tests
   compiling the library's own sources from the library's own directory is the intended reading of
   "one directory per target".
 - **`mh/addr/mh_calls.gen.cpp`** — **shared location 2 of 2**: ruling Q5's PER-IMAGE shim, compiled
-  by six projects (`libmh_dll`, `libmh_std`, `libref_host`, `mh`, `mh_harness`, `mh_nettest`),
+  by SEVEN projects (`libmh_dll`, `libmh_std`, `libref_host`, `mh`, `mh_harness`, `mh_nettest`,
+  `libmh_test`),
   because whichever image compiles the roster must supply the `mh::call::detail::s_*` shapes.
 - **`mh/`** — mh.dll's own code (`seams/`, `hook/`, `ui/`, `desync/`, `patch/`) plus the
   header-only trees `addr/`, `crt/`, `fp/`, `config/`, `fix/`, `include/`.
@@ -37,12 +40,38 @@ library that owns it, domain subdirectories intact:
 
 **The include rule (why no `#include` line moved).** Every project that compiles or includes the
 roster carries **both** `..\libmh` and `..\mh` on `AdditionalIncludeDirectories` — `libmh`,
-`libmh_dll`, `libmh_std`, `libref_host`, `mh`, `mh_harness`, `mh_nettest`. A roster TU's
+`libmh_dll`, `libmh_std`, `libref_host`, `mh`, `mh_harness`, `mh_nettest`, `libmh_test`. A roster TU's
 `#include "sim/sim_state.h"` resolves under `libmh/` and its `#include "addr/mh_calls.gen.h"` under
 `mh/`, so all 1260 files moved with zero source edits. Rationale and the tooling consequences:
 [docs/dll-split.md](../../docs/dll-split.md) § "F5O".
 
 Bullets below say `sim/`, `orders/` and so on for the module; the directory is `libmh/<that>`.
+
+**The two test directories (fork F5I).** The offline suites live where the exe that runs them is
+built, split by the ARM the suite's subject needs, not by file name:
+
+- **`libmh_test/`** — the 338 selftest TUs whose subject is the spine (`ai_*`, `sim_*`, `tact_*`,
+  `save_*`, `lockstep_*`, the CRT/x87 transcriptions, ...) plus their 8 support headers
+  (`sim_test_support.h`, `ai_test_support.h`, `tact_test_support.h`, `sim_resid_sibling_mocks.h`,
+  the generated goldens/fixtures) and `libmh_selftest.cpp` (the standalone main). The project is
+  GENERATED from a directory walk, so a new `*_selftest.cpp` here needs `gen_libmh_vcxproj.py`
+  re-run, not a hand edit. The three `*_negative.cpp` are compile-REFUSAL TUs driven by
+  `tools/check_const_view.py` and are in no project.
+- **`mh_nettest/`** — the 13 hosted TUs (`net_selftest.cpp`, the transport/queue/watchdog/desync
+  tests, the patch/tombstone/interlock/hostapi instruments, `state_selftest.cpp` +
+  `hostin_selftest.cpp` — the suites whose precondition is the STOCK bind, see "The gate" step 2)
+  and the three generated `mh_*_selftest.gen.cpp`. Two things here are SHARED with `libmh_test`
+  the way `mh/addr/mh_calls.gen.cpp` is: `selftest_dispatch.h` (the table type, adapters,
+  `--list-suites` and the unknown-mode handling both mains use) and
+  `mh_hostapi_selftest.gen.cpp` + `hostapi_selftest_support.h` + `hostapi_trap.cpp` (the selftest
+  host tables and the trap policy, which the standalone main binds too). `libmh_test.vcxproj`
+  compiles those by `..\mh_nettest\` path and carries `..\mh_nettest` as an include root for
+  exactly that reason.
+- Which suite runs on which exe is `tools/data/selftest_roster.json`; `check_selftest_roster.py`
+  (lint) and `run_selftests.py` (live `--list-suites`) both refuse a drift between the file and
+  the two `SUITE_TABLE`s. Details and the four things the split found:
+  [docs/dll-split.md](../../docs/dll-split.md) § "F5I".
+
 
 - `addr/mh_addrs.gen.h` — **GENERATED** EN VAs (`tools/gen_dll_addrs.py` from
   `tools/data/dll_addr_manifest.json`). Never hand-edit, never hand-type hex VAs in code; add the
@@ -140,10 +169,10 @@ Bullets below say `sim/`, `orders/` and so on for the module; the directory is `
   private and every write is a typed accessor returning ONE record, so no address escapes to go stale
   when ST2 moves a roster; **W3** the store's constructor is private with two friends, `state()` and
   the offline fixture.
-  - Proven, not asserted: `mh_nettest/sim_write_negative.cpp` + `tools/check_const_view.py` (5 cases,
+  - Proven, not asserted: `libmh_test/sim_write_negative.cpp` + `tools/check_const_view.py` (5 cases,
     **per-case** expected diagnostic — W1 → the const family, W2/W3 → C2248 — plus a positive arm),
     `net_selftest.exe statetest` consumer 5 (rebase `RID_UNITS`, the write half checked *through the
-    accessor* because there is no pointer to compare), and `net_selftest.exe simtest`.
+    accessor* because there is no pointer to compare), and `libmh_selftest.exe simtest`.
   - `tools/check_sim_addresses.py` (in `lint_repo.py`) enforces the half the compiler cannot: **only
     `sim/sim_state.cpp` may name `mh::state::ptr` or a game data address.** A TU that resolved a
     region itself would compile, run and pass everything else.
@@ -310,14 +339,15 @@ Bullets below say `sim/`, `orders/` and so on for the module; the directory is `
 > this project has; the thunks count, and the counters are reported at the end of the arm.
 
 ```powershell
-# 1. build (produces mh.dll, mh_net.dll and net_selftest.exe in Release\)
+# 1. build (produces mh.dll, mh_net.dll, net_selftest.exe and libmh_selftest.exe in Release\)
 #    `/nodeReuse:false` IS PART OF THE RECIPE. With node reuse on, MSBuild's `/m` workers outlive the
 #    build by ~15 min holding the stdout handle they were started with, so any caller that captures
 #    output (a script, or an agent running this in the background) waits forever for an EOF that
 #    never arrives -- a 0%-CPU "hang" with an empty log, whose surviving process tree is not killed
 #    when the caller is. This is what produced the stray build/selftest trees on 2026-08-02.
 #    `/m` IS NOT ENOUGH ON ITS OWN and never was: it parallelizes across PROJECTS, and this solution
-#    is two big ones (mh 453 TUs, mh_nettest 669). Within a project, source files compile one at a
+#    is three big ones (mh 453 TUs, mh_nettest 689, libmh_test 971 -- re-counted at fork F5I; it was
+#    mh_nettest 669 alone before the test split). Within a project, source files compile one at a
 #    time unless the project sets `<MultiProcessorCompilation>`, which none of the five did until
 #    2026-08-23 -- so a full build used exactly one core for ~10 min while `/m` sat in the command
 #    line looking like it had handled the matter. Full rebuild of the solution is now ~97 s.
@@ -332,8 +362,10 @@ $vs   = (python "$repo/tools/machine_config.py" --json | ConvertFrom-Json).VS_IN
 & "$vs\MSBuild\Current\Bin\MSBuild.exe" "$repo\src\mh_dll\mh.sln" `
   /t:Build /p:Configuration=Release /p:Platform=x86 /m /nodeReuse:false /v:minimal /nologo
 # 2. the selftests -- ONE COMMAND, and it runs the whole suite UNDER ASan first.
-#    ~26 s when nothing changed since the last run, ~165 s when both modes build from scratch
-#    (re-measured 2026-08-23; it was 627 s before the build fixes recorded below).
+#    ~24 s when nothing changed since the last run (both exes, 32 suites, the flaky repeats), ~146 s
+#    when both modes rebuild incrementally; a COLD libmh_test build is ~209 s plain / ~185 s ASan on
+#    top of that, because it compiles the 628-TU roster a second time (re-measured 2026-09-16 at
+#    fork F5I; it was 627 s before the 2026-08-23 build fixes recorded below).
 python $repo\tools\run_selftests.py    # expect: run_selftests: PASS
 #    ASan IS THE DEFAULT HERE since 2026-08-06, because the alternative is measurably worse: the
 #    plain build turns an out-of-bounds write into DELAYED, NON-LOCAL, INTERMITTENT heap damage, and
@@ -343,10 +375,30 @@ python $repo\tools\run_selftests.py    # expect: run_selftests: PASS
 #    suspicious and ASan named the file and line on run #1. The driver also repeats the two
 #    heap-graph suites (`aitest`, `statetest`) on the plain pass, checks EXIT CODES rather than
 #    parsing output for a verdict, and refuses to report a clean ASan pass from a binary that is not
-#    actually instrumented (both modes stage through the shared ..\Release\net_selftest.exe, so a
+#    actually instrumented (both modes stage both exes through the shared ..\Release\, so a
 #    silently-no-op ASan build would otherwise look green). `--no-asan` for the fast iterate loop.
 #
 #    The hand-run form below is what the driver does; keep it for running ONE suite while debugging.
+#
+#    TWO EXES, AND THE SUITE NAME PICKS ONE (fork F5I). `build_selftest.bat` builds both and
+#    stages both into the same directory, so the only thing that changes per line below is
+#    which exe answers:
+#      * `net_selftest.exe`   -- the HOSTED arm (no MH_LIBMH_BUILD). mh.dll's own machinery:
+#        the transport, the marshalling/entry thunks, the patch + tombstone + hook instruments,
+#        and the three suites whose precondition is the STOCK bind (`statetest`, `bindtest`,
+#        `hostintest`). 17 suites.
+#      * `libmh_selftest.exe` -- the STANDALONE arm (MH_LIBMH_BUILD + MH_SPINE_IN_IMAGE),
+#        compiling the 628 roster TUs exactly as the whole program does. Every suite whose
+#        subject is the spine itself. 15 suites.
+#    Why those three stayed hosted rather than moving with the rest of the spine's oracles:
+#    their subject is a region's STOCK VA, and standalone every stock base is 0 by design
+#    (mh_regions.gen.h's MH_STOCK_BASE keeps original VAs out of libmh.lib's data) -- so all
+#    three would be asserting over a table of zeros and printing green. The standalone side of
+#    that question is run_gate's `libref` unit instead.
+#    The routing is tools/data/selftest_roster.json's `exe` column, asserted against each exe's
+#    own `--list-suites` before the gate runs anything. `<exe> --list-suites` prints its 17/15.
+#    A suite name given to the WRONG exe exits 2 with that exe's mode list -- deliberately, so a
+#    stale recipe fails instead of silently running something else.
 #    A MISTYPED MODE NAME NOW EXITS 2 with the mode list. Until 2026-08-01 it fell through to
 #    `selftest` and printed its PASS banner, so a typo in this list produced a green result for a
 #    test that does not exist -- which is how `lockstepstest` (for `lockstest`) "passed" a gate run.
@@ -357,7 +409,7 @@ cmd /c $repo\src\mh_dll\mh_nettest\build_selftest.bat
 & $env:TEMP\mh_nettest\net_selftest.exe linktest   # R-live: a CONNECTED-but-silent peer is dropped (and not early)
 & $env:TEMP\mh_nettest\net_selftest.exe callstest   # P0-CALLS: every generated marshalling thunk, both cleanup disciplines
 & $env:TEMP\mh_nettest\net_selftest.exe exportstest # P0-EXPORT: every generated ENTRY thunk + its stack-cleanup contract
-& $env:TEMP\mh_nettest\net_selftest.exe orderstest  # O2: the order container's logic, incl. the overflow branches no rig can reach
+& $env:TEMP\mh_nettest\libmh_selftest.exe orderstest  # O2: the order container's logic, incl. the overflow branches no rig can reach
 & $env:TEMP\mh_nettest\net_selftest.exe interlocktest # C1/C4: the patch/seam interlock decision + entry ownership
 #    Both halves of the interlock are about things NOT happening -- a byte that was not written, a
 #    second entry patch that was refused -- and a green rig run looks exactly like a run where the
@@ -389,7 +441,7 @@ cmd /c $repo\src\mh_dll\mh_nettest\build_selftest.bat
 #    DIVERGENT), plus an assertion that the manifest's exclusions actually reached the generated
 #    header, so re-dropping the regions goes red here.
 foreach ($i in 1..3) {
-  & $env:TEMP\mh_nettest\net_selftest.exe aitest    # AI0: the strategic AI's decision logic over heap buffers.
+  & $env:TEMP\mh_nettest\libmh_selftest.exe aitest    # AI0: the strategic AI's decision logic over heap buffers.
   if ($LASTEXITCODE -ne 0) { Write-Error "aitest exited $LASTEXITCODE on run $i (a CRASH, not a failed check)" }
 }
 #    Most of the ~215-function AI cluster is PURE over its state, so this -- not the rig -- is the
@@ -398,7 +450,7 @@ foreach ($i in 1..3) {
 #    reaches. Mutation-checked. Read what it does NOT prove in the file header: self-consistency
 #    with the disassembly as read, not equivalence with the original.
 foreach ($i in 1..3) {
-  & $env:TEMP\mh_nettest\net_selftest.exe simtest   # SIM0: the strategic SIM's logic over heap buffers.
+  & $env:TEMP\mh_nettest\libmh_selftest.exe simtest   # SIM0: the strategic SIM's logic over heap buffers.
   if ($LASTEXITCODE -ne 0) { Write-Error "simtest exited $LASTEXITCODE on run $i (a CRASH, not a failed check)" }
 }
 #    The aitest of the 307-function sim migration, and worth more here than it was there because the
@@ -408,8 +460,8 @@ foreach ($i in 1..3) {
 #    lesson is in the file: a mutant only tests an assertion where the two behaviours differ AT THE
 #    POINT THE ASSERTION RUNS -- one was missed because the fixture had already set the bit the
 #    mutant would have set.
-& $env:TEMP\mh_nettest\net_selftest.exe lockstest   # L1: the turn engine's horizon/barrier logic over heap buffers
-& $env:TEMP\mh_nettest\net_selftest.exe resynctest  # C8-c: the six resync residue functions over plain locals
+& $env:TEMP\mh_nettest\libmh_selftest.exe lockstest   # L1: the turn engine's horizon/barrier logic over heap buffers
+& $env:TEMP\mh_nettest\libmh_selftest.exe resynctest  # C8-c: the six resync residue functions over plain locals
 & $env:TEMP\mh_nettest\net_selftest.exe watchdogtest # D16: the link watchdog's TIMING decisions, pure
 #    A watchdog may only charge a peer for time it was WATCHING. MH_Net_Send holds the conn lock
 #    across a blocking send() (SO_SNDTIMEO 5 s), so a stalled link starves the watchdog: it emits no
@@ -419,12 +471,12 @@ foreach ($i in 1..3) {
 #    to block (a LAN never is; a relayed internet game did, 2026-08-02), and the load-bearing half
 #    is a drop that must NOT happen. Mutation-checked THREE ways -- no crediting (the bug), credit
 #    everything, never-drop -- the obvious wrong fixes fail silently in OPPOSITE directions.
-& $env:TEMP\mh_nettest\net_selftest.exe savetest    # SV1: the save format -- version gate (A) + block layer & LZW codec (B)
+& $env:TEMP\mh_nettest\libmh_selftest.exe savetest    # SV1: the save format -- version gate (A) + block layer & LZW codec (B)
 #    savetest takes an OPTIONAL argv[2] = a real .sav, which pushes every block of that file
 #    through read_block AND re-encodes it, expecting byte identity ('ALL BLOCKS IDENTICAL').
 #    Not part of the gate -- the hermetic fixtures are -- but it is the broadest evidence
 #    there is for the codec: 501 blocks across four saves, e.g.
-#        net_selftest.exe savetest tools\uiscripts\saves\11.sav
+#        libmh_selftest.exe savetest tools\uiscripts\saves\11.sav
 # 3. UI regression suite: every committed menu/lobby/HUD walk, diffed vs baselines
 #     `tutorial_enter` is the one scenario here whose failure is NOT a pixel diff. It walks the real
 #     main menu into TUTORIAL, clicks Start, and gates its in-game capture on the SIM CLOCK -- so if
@@ -619,7 +671,7 @@ python $repo\tools\replay_libref.py   # expect: PASS (3 fixture(s))
 #    + diff the host mh_net.log ';'-lines vs tmp/refactor-baseline/host_logs/mh_net.log
 #      (exclude the timing/heap-dependent GameRecv/label= DIAG lines)
 # repo lint (fast, Ghidra-free): addr drift + clang-format + ruff, plus check_const_view -- which
-# compiles src/mh_dll/mh_nettest/ai_const_negative.cpp once per case and requires each write through
+# compiles src/mh_dll/libmh_test/ai_const_negative.cpp once per case and requires each write through
 # the AI const state view to FAIL WITH A CONST DIAGNOSTIC, and the positive arm to compile. It is in
 # the fast gate rather than a script somebody remembers, because the failure mode is a `const`
 # quietly disappearing from a header during an unrelated edit, which nothing else here can see.
@@ -633,7 +685,7 @@ is no longer something to remember. The manual form, for driving ONE suite while
 
 ```powershell
 cmd /c $repo\src\mh_dll\mh_nettest\build_selftest.bat --asan
-& $env:TEMP\mh_nettest_asan\net_selftest.exe aitest      # own outdir; runtime DLL copied beside it
+& $env:TEMP\mh_nettest_asan\libmh_selftest.exe aitest      # own outdir; runtime DLL copied beside it
 ```
 
 **Why it stopped being opt-in.** It was "reach for it deliberately" until 2026-08-06, when the second

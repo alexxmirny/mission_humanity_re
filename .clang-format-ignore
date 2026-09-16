@@ -15,7 +15,7 @@ src/mh_dll/mh/addr/mh_bldg_type_callbacks.gen.h
 # O4-0's order-issue golden: same reason as the address header above -- clang-format would
 # reflow it and gen_order_issue_golden.py --check (the drift gate in lint_repo) would then fail on
 # every run, since the generator emits the canonical form and the formatter would rewrite it.
-src/mh_dll/mh_nettest/order_issue_golden.gen.h
+src/mh_dll/libmh_test/order_issue_golden.gen.h
 # CRT-X87's helper module: both files are almost entirely `// clang-format off` __asm blocks, so
 # formatting them is a no-op -- but clang-format's LANGUAGE GUESSER reads the asm's `[operand]` lines
 # as Objective-C message sends and then refuses the file ("Configuration file(s) do(es) not support

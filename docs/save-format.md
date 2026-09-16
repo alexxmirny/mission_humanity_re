@@ -365,7 +365,7 @@ that a reimplementation which gave the block layer a *private* buffer on the str
 claim would have been reasoning from a false premise. Same failure shape as every other one of these: a
 negative claim true of the functions we were looking at, written down as true of the image.
 
-**Evidence.** `net_selftest.exe savetest` = **101 checks, 0 failures**, over six real blocks chosen to
+**Evidence.** `libmh_selftest.exe savetest` = **101 checks, 0 failures**, over six real blocks chosen to
 cover 9/10/11/12-bit codes, a mid-stream dictionary reset and the expansion case; each is decoded
 against a plaintext hash produced by `src/formats/decompress.py` (an *independent* decoder, written
 2026-07-05 from the resource format) and then **re-encoded byte-identically to the original's own
@@ -419,7 +419,7 @@ compressed** (routing it back through the 600 000-byte staging buffer would reim
 an extension exists to escape), and a **short read is refused** (the vanilla block reader cannot detect
 truncation because it discards its read count; this framing is ours, so it checks).
 
-Evidence: 26 `SVX:` checks in `net_selftest.exe savetest`, and **11/11 mutations caught**
+Evidence: 26 `SVX:` checks in `libmh_selftest.exe savetest`, and **11/11 mutations caught**
 driven from a dated one-off. Three of those eleven only became catchable
 after the *harness* was fixed: a mutation the driver cannot OBSERVE is not a mutation the check caught, which is worth remembering before
 writing the next mutation driver.
@@ -871,7 +871,7 @@ and both instances are read-side only:
 
 Neither is reachable from a save this build wrote (it stamps version 5); they exist to read an older
 *Extermination* file. They are injected hooks on `driver_env` rather than inline code, so the driver
-stays bindable to `net_selftest savetest`, which has no game to call into — and **which step fires
+stays bindable to `libmh_selftest.exe savetest`, which has no game to call into — and **which step fires
 which hook is found by constexpr predicates over the generated table, with `static_assert`s on the
 match count**. A table reshape therefore breaks the build instead of silently disarming a compat path,
 which is the failure mode that matters when nothing in the test corpus exercises it.

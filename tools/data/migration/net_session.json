@@ -63,7 +63,7 @@
   "export_dir": "tmp/decomp_net_session",
   "state_header": "src/mh_dll/libmh/lockstep/net_session.h",
   "module_dir": "src/mh_dll/mh/lockstep",
-  "selftest_dir": "src/mh_dll/mh_nettest",
+  "selftest_dir": "src/mh_dll/libmh_test",
   "_state_header_why": "This domain's state interface is the module header itself: both bodies take their state and calls as parameters (session_init_state / wait_screen_state), which is what lets the oracle run them over plain locals with no game."
  },
  "items": {

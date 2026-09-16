@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""gen_libmh_vcxproj.py -- generate ALL THREE libmh projects from the one module tree.
+"""gen_libmh_vcxproj.py -- generate ALL FOUR libmh projects from the one module tree.
 
 TWO COMPILATIONS OF ONE ROSTER, TWO QUESTIONS (the distinction is F4D-PRE's, and getting it wrong
 measures the wrong edge -- see tools/check_libmh_outbound.py's header) -- and, since fork F4G,
@@ -16,6 +16,39 @@ THREE ARTIFACTS, because the standalone arm ships as a DLL as well as an archive
   libmh_dll/libmh_dll.vcxproj  the HOSTED arm (fork F4D): libmh.dll, the file that ships beside
                             mh.dll. Built WITHOUT MH_LIBMH_BUILD -- it is the same 627 TUs mh.dll
                             used to compile, so it is the build whose edges decide the split.
+  libmh_test/libmh_test.vcxproj  fork F5I: `libmh_selftest.exe`, the spine's OWN offline oracle.
+                            The STANDALONE arm again (MH_LIBMH_BUILD + MH_SPINE_IN_IMAGE, the pair
+                            libmh.vcxproj sets) but as an APPLICATION that COMPILES the roster
+                            rather than linking libmh.lib -- because the point of this exe is that
+                            ASan instruments the SPINE, and an archive built without
+                            /fsanitize=address is not instrumented by the exe that links it.
+
+WHY THE TEST EXE IS A FOURTH PROJECT AND NOT A MODE OF mh_nettest (fork F5I). mh_nettest builds the
+HOSTED arm: no MH_LIBMH_BUILD, so every promotion seam and hook row compiles in and MH_CRT() names
+the original binary's VAs. It therefore cannot answer "does the spine still behave the same when it
+IS the whole program", which is what the 15 spine suites (simtest, aitest, tacttest, orderstest,
+issuetest, lockstest, resynctest, netsessiontest, libtranstest, savetest, boottest, worldtest,
+navtest, crttest, fptest) ask on libmh's behalf. The 17 that stay net-side are about
+mh.dll's own machinery -- the transport, the marshalling thunks, the patch and tombstone
+instruments, the hook table -- and have no standalone reading at all.
+
+THE SPLIT IS BY SUBJECT, NOT BY SUITE (rulings R6 and R8), and `statetest`/`bindtest`/`hostintest`
+are the three that make the difference legible: their TUs are spine code, but their SUBJECT is
+hosted-only, and in each case the hosted-only thing is the STOCK bind. statetest is ST2 (a region
+moving off its STOCK VA); bindtest asserts the hosted answer to "where does each region live";
+hostintest's first arm is an inbound open being REFUSED over an unanswered registry. In the
+standalone arm every stock base is 0 by construction, because mh/addr/mh_regions.gen.h's
+MH_STOCK_BASE zeroes the column so that no original VA reaches libmh.lib's initialised data
+(measured: it was the largest single source of them). Run here, all three would assert over a table
+of zeros and print green. They stay net-side; the standalone side of the same question is run_gate's
+libref unit, which binds a real arena, opens the inbound surface for real, and replays.
+
+THE SOURCE WALK IS WHAT MAKES THIS PROJECT GENERATED RATHER THAN HAND-LISTED, and it is a different
+walk from the roster's: its test TUs are `every *.cpp in src/mh_dll/libmh_test/ except
+*_negative.cpp`. The three negatives are compile-REFUSAL fixtures driven by
+tools/check_const_view.py and must never be in a project, since their whole contract is that
+compiling them FAILS. So dropping a new `*_selftest.cpp` into that directory and not regenerating
+reds `--check`, exactly as adding a roster module .cpp does.
 
 WHY THE STANDALONE DLL IS A THIRD ARTIFACT AND NOT libmh_dll's OUTPUT (fork F4G, measured). The
 hosted DLL cannot replay standalone and the reason is one macro: `MH_LIBMH_BUILD` is what
@@ -59,9 +92,9 @@ than incidental:
      lib's own sources from the lib's own directory is the natural reading of "one dir per
      target", not a violation of it.
   2. `src/mh_dll/mh/addr/mh_calls.gen.cpp` -- ruling Q5's PER-IMAGE shim. It is not in the
-     archive (see NAMED_SHIMS below) and it is not one project's file either: SIX projects
-     compile their own copy (libmh_dll, libmh_std, libref_host, mh, mh_harness, mh_nettest),
-     because whichever image compiles the roster must supply the `mh::call::detail::s_*` shapes
+     archive (see NAMED_SHIMS below) and it is not one project's file either: SEVEN projects
+     compile their own copy (libmh_dll, libmh_std, libmh_test, libref_host, mh, mh_harness,
+     mh_nettest), because whichever image compiles the roster must supply the `mh::call::detail::s_*` shapes
      the roster's bodies reference. It stays under mh/addr/ with the rest of the generated VA
      layer. tools/check_libmh_outbound.py rules the resulting unresolved externals as the `shim`
      bucket, so the arrangement is gated rather than merely asserted here.
@@ -80,12 +113,12 @@ flags are semantically inert on integer-only code and mandatory on x87-sensitive
 blanket setting cannot rot the way a hand-list does. No /GL (WholeProgramOptimization): the
 archive must stay consumable by a non-LTCG standalone host (LIB-REF).
 
-THE .filters TRAVEL WITH THE PROJECT (fork F5P). Each of the three also gets its
+THE .filters TRAVEL WITH THE PROJECT (fork F5P). Each of the four also gets its
 `<project>.vcxproj.filters` emitted here, in the same pass and under the same `--check`, because a
 filters file is a second copy of the project's item list and a second copy that nothing gates is the
 hand-list failure this generator exists to prevent. The RULE is not defined here: the renderer is
 tools/gen_vcxproj_filters.py (folder = the item's directory part with leading `..\\` folded away, so
-libmh_dll shows `libmh\\sim` and `mh\\addr` as top-level folders), shared verbatim with the nine hand
+libmh_dll shows `libmh\\sim` and `mh\\addr` as top-level folders), shared verbatim with the hand
 projects so there is one rule in the tree rather than two that agree by coincidence.
 """
 
@@ -103,6 +136,9 @@ OUT_PATH = os.path.join(REPO, "src", "mh_dll", "libmh", "libmh.vcxproj")
 DLL_OUT_PATH = os.path.join(REPO, "src", "mh_dll", "libmh_dll", "libmh_dll.vcxproj")
 
 STD_OUT_PATH = os.path.join(REPO, "src", "mh_dll", "libmh_std", "libmh_std.vcxproj")
+
+TEST_SRC = os.path.join(REPO, "src", "mh_dll", "libmh_test")
+TEST_OUT_PATH = os.path.join(TEST_SRC, "libmh_test.vcxproj")
 
 MODULES = ("sim", "ai", "orders", "tact", "save", "state", "lockstep")
 # EMPTY SINCE FORK F4D-PRE (ruling Q5). It held exactly one entry, `addr\mh_calls.gen.cpp` -- the
@@ -460,6 +496,198 @@ STD_TEMPLATE = """﻿<?xml version="1.0" encoding="utf-8"?>
 STD_COMPILES = ("..\\mh\\addr\\mh_calls.gen.cpp", "libmh_std_dllmain.cpp")
 
 
+# ---------------------------------------------------------------------------------------------
+# THE SPINE'S OWN OFFLINE ORACLE -- libmh_selftest.exe (fork F5I)
+# ---------------------------------------------------------------------------------------------
+# An APPLICATION built from the standalone arm's flag set. Four decisions, each one a ruling rather
+# than a default:
+#
+#   1. IT COMPILES THE ROSTER, it does not link libmh.lib. The whole reason this exe exists as a
+#      second image is that ASan must instrument THE SPINE -- and /fsanitize=address is a COMPILE
+#      flag, so an archive built without it is not instrumented by the exe that links it. Linking
+#      would give a green ASan pass over uninstrumented spine objects, which is the
+#      "uninstrumented binary reports no memory errors" trap run_selftests.py's is_instrumented()
+#      already exists to refuse one level up.
+#   2. MH_LIBMH_BUILD **and** MH_SPINE_IN_IMAGE, the pair libmh.vcxproj sets. The first is what
+#      crt/crt_select.h reads to pick the VENDORED CRT over the original binary's VAs -- the arm a
+#      process with no mh.exe mapped can actually run. The second says this image CONTAINS the
+#      spine, so mh::state::live() and the owner tables are its magic statics; an exe that compiles
+#      the roster and omits it would get them from nowhere.
+#   3. BLANKET /arch:IA32 /fp:precise and NO /GL, again as libmh.vcxproj. The blanket form cannot
+#      rot the way mh_nettest's per-TU hand-list can (which is why tools/lint_fp_flags.py audits
+#      that project per-TU and this one's ItemDefinitionGroup as a whole).
+#   4. THE SAME EnableASAN OutDir/IntDir SPLIT mh_nettest.vcxproj carries, and for the same measured
+#      reason: the two modes used to share both, so each invalidated the other's objects and every
+#      gate run paid two full rebuilds. The OutDir is deliberately the SAME `..\Release[_asan]\` the
+#      other exe stages from -- one place holds the build's artifacts, which is what run_gate.py's
+#      artifact assertion and CI both read -- while the IntDir is this project's own.
+#
+# WHAT IT LINKS, MEASURED rather than copied from libref_host. The starting point was that host's
+# line (libmh.lib + mh_common.lib + mh_net_proto.lib + kernel32/user32/ws2_32/advapi32); the answer
+# is that this image needs NO project-specific link input at all. Its own objects -- the roster, the
+# moved test TUs, Q5's per-image shim, the generated selftest host table and its trap, and
+# mh_common's lzw.cpp -- resolve everything, and the MSBuild default library set covers the rest
+# (ws2_32 is not among them and is not wanted: nothing here opens a socket).
+#
+# The mh_common TU is COMPILED IN rather than linked as the .lib libref_host uses, which is
+# mh_nettest's arrangement copied for mh_nettest's reasons: mh_common is built /GL + /MT, so linking
+# it would drag /LTCG and a CRT-model pin into a project that wants neither, its objects would arrive
+# UNINSTRUMENTED under ASan (the one thing this exe exists to avoid), and the .lib would have to
+# exist before this project could link at all -- an ordering constraint a two-msbuild build bat
+# cannot express.
+TEST_GUID = "{8A47F3C6-1D52-4E09-B73A-5C6F2E90D148}"
+
+TEST_TEMPLATE = """﻿<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" ToolsVersion="15.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <!-- GENERATED by tools/gen_libmh_vcxproj.py - do not hand-edit; rerun the generator. -->
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Debug|Win32">
+      <Configuration>Debug</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|Win32">
+      <Configuration>Release</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+  </ItemGroup>
+  <ItemGroup>
+%(compiles)s  </ItemGroup>
+  <PropertyGroup Label="Globals">
+    <VCProjectVersion>17.0</VCProjectVersion>
+    <ProjectGuid>%(guid)s</ProjectGuid>
+    <Keyword>Win32Proj</Keyword>
+    <RootNamespace>libmhtest</RootNamespace>
+    <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
+    <ProjectName>libmh_test</ProjectName>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\\Microsoft.Cpp.Default.props" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <UseDebugLibraries>true</UseDebugLibraries>
+    <PlatformToolset>v143</PlatformToolset>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <UseDebugLibraries>false</UseDebugLibraries>
+    <PlatformToolset>v143</PlatformToolset>
+    <!-- NO WholeProgramOptimization, following libmh.vcxproj rather than mh_nettest.vcxproj. The
+         archive drops /GL so a non LTCG standalone host can consume it; this exe drops it because
+         /GL buys nothing here and costs two things that have already bitten this tree. One: the
+         LTCG backend produced a reproducible C1001 (an access violation inside c2.dll during
+         "Generating code") on mh_nettest after one TU was added, three runs in a row, with no
+         note printed. Two: the ASan build of that same project printed "Incremental LTCG not
+         compatible with Address Sanitizer" one line above an internal compiler error, and that
+         note went unread through three wrong workarounds because the build output was being
+         filtered for /error/. Neither failure is possible in a project that never turns /GL on.
+         (An XML comment may not contain a double hyphen, which is why this one has none.) -->
+    <WholeProgramOptimization>false</WholeProgramOptimization>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\\Microsoft.Cpp.props" />
+  <!-- The ASan and plain builds get SEPARATE intermediate directories and stage into separate
+       output directories, copied from mh_nettest.vcxproj where it was measured: they used to share
+       both, /fsanitize=address changes the compiler flags, so each mode INVALIDATED the other's
+       objects and every run_selftests.py run paid two FULL rebuilds even when nothing had changed.
+       `EnableASAN` is the property build_selftest.bat already passes, so this needs no new switch
+       and cannot disagree with which mode is actually being compiled.
+       OutDir is shared with mh_nettest ON PURPOSE (both exes are artifacts of one build, and
+       run_gate.py + ci.yml assert both out of that one directory); IntDir is this project's own,
+       under this project's directory. -->
+  <PropertyGroup>
+    <MhAsanSuffix Condition="'$(EnableASAN)'=='true'">_asan</MhAsanSuffix>
+    <OutDir>..\\$(Configuration)$(MhAsanSuffix)\\</OutDir>
+    <IntDir>$(Platform)\\$(Configuration)$(MhAsanSuffix)\\</IntDir>
+    <TargetName>libmh_selftest</TargetName>
+  </PropertyGroup>
+  <ItemDefinitionGroup>
+    <ClCompile>
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <MultiProcessorCompilation>true</MultiProcessorCompilation>
+      <WarningLevel>Level3</WarningLevel>
+      <SDLCheck>true</SDLCheck>
+      <ConformanceMode>true</ConformanceMode>
+      <LanguageStandard>stdcpp20</LanguageStandard>
+      <!-- mh_nettest's list plus `..\\mh_nettest`: save_selftest.cpp and this project's own main
+           include hostapi_selftest_support.h, which stays in the directory that owns the host
+           table it describes. -->
+      <AdditionalIncludeDirectories>..\\mh_common\\include;..\\libmh;..\\mh\\include;..\\mh;..\\mh_common;..\\..\\mh_net_proto\\include;..\\mh_nettest;%%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <Link>
+      <SubSystem>Console</SubSystem>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+    </Link>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <ClCompile>
+      <Optimization>Disabled</Optimization>
+      <PreprocessorDefinitions>WIN32;_DEBUG;_CONSOLE;_CRT_SECURE_NO_WARNINGS;MH_LIBMH_BUILD;MH_SPINE_IN_IMAGE;%%(PreprocessorDefinitions)</PreprocessorDefinitions>
+    </ClCompile>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <ClCompile>
+      <PreprocessorDefinitions>WIN32;NDEBUG;_CONSOLE;_CRT_SECURE_NO_WARNINGS;MH_LIBMH_BUILD;MH_SPINE_IN_IMAGE;%%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <Optimization>MaxSpeed</Optimization>
+      <FunctionLevelLinking>true</FunctionLevelLinking>
+      <IntrinsicFunctions>true</IntrinsicFunctions>
+    </ClCompile>
+    <Link>
+      <EnableCOMDATFolding>true</EnableCOMDATFolding>
+      <OptimizeReferences>true</OptimizeReferences>
+    </Link>
+  </ItemDefinitionGroup>
+  <Import Project="$(VCTargetsPath)\\Microsoft.Cpp.targets" />
+  <ImportGroup Label="ExtensionTargets">
+  </ImportGroup>
+</Project>
+"""
+
+# Compiled on top of the roster and this project's own test TUs.
+#   `..\\mh\\addr\\mh_calls.gen.cpp`            -- Q5's per-image shim (see the note above).
+#   `..\\mh_nettest\\mh_hostapi_selftest.gen.cpp` -- the GENERATED selftest host table, reached from
+#       the directory that owns it exactly as the shim is. It is what libmh_selftest.cpp binds in
+#       main() and what save_selftest.cpp takes its short table from, and generating a second copy
+#       into this directory would be two files for one gen_libmh_hostapi.py --check to keep in step.
+#   `..\\mh_nettest\\hostapi_trap.cpp`          -- the ONE implementation of that table's trap policy
+#       (fork F5I S2 split it out of hostapi_selftest.cpp, which also carries the hostapitest suite
+#       and therefore cannot come here: that suite binds mh.dll's real hook table).
+#   `..\\mh_common\\lzw.cpp`                    -- mh::lzw and mh::lzss, which save/save_block.cpp
+#       calls from read_block/write_block. COMPILED rather than linked as mh_common.lib, which is
+#       mh_nettest's arrangement for mh_nettest's reasons (see "WHAT IT LINKS" above). MEASURED
+#       (2026-09-16): dropping this row is the ONLY one of the five mh_common / mh_net_proto TUs
+#       mh_nettest compiles that leaves an unresolved external here -- run_context.cpp,
+#       session_info.cpp, net_wire.cpp and net_crypto.cpp are reachable only from the transport and
+#       lobby code, which is mh.dll's and stays in the other exe.
+TEST_EXTRA = (
+    "..\\mh\\addr\\mh_calls.gen.cpp",
+    "..\\mh_nettest\\mh_hostapi_selftest.gen.cpp",
+    "..\\mh_nettest\\hostapi_trap.cpp",
+    "..\\mh_common\\lzw.cpp",
+)
+
+
+def test_sources():
+    """Every .cpp in libmh_test/, minus the compile-refusal fixtures.
+
+    `*_negative.cpp` is a TU whose contract is that compiling it FAILS (tools/check_const_view.py
+    drives them one at a time and asserts the error), so a project must never carry one. The
+    exclusion is by SUFFIX rather than by a name list for the same reason the rest of this file
+    walks a directory: a fourth negative added later needs no edit here.
+    """
+    out = sorted(fn for fn in os.listdir(TEST_SRC) if fn.endswith(".cpp"))
+    return [fn for fn in out if not fn.endswith("_negative.cpp")]
+
+
+def render_test():
+    rows = ["..\\libmh\\" + rel for rel in sources()]
+    rows += test_sources()
+    rows += list(TEST_EXTRA)
+    compiles = "".join('    <ClCompile Include="%s" />\n' % rel for rel in rows)
+    return TEST_TEMPLATE % {"guid": TEST_GUID, "compiles": compiles}
+
+
 def render_std():
     compiles = "".join('    <ClCompile Include="%s" />\n' % rel for rel in STD_COMPILES)
     return STD_TEMPLATE % {"guid": STD_GUID, "compiles": compiles}
@@ -500,11 +728,12 @@ OUTPUTS = (
     (OUT_PATH, render, "libmh.vcxproj"),
     (DLL_OUT_PATH, render_dll, "libmh_dll.vcxproj"),
     (STD_OUT_PATH, render_std, "libmh_std.vcxproj"),
+    (TEST_OUT_PATH, render_test, "libmh_test.vcxproj"),
 )
 
 
 def render_all(root=None):
-    """[(path, text, label)] -- the three projects AND their three .filters, in that pairing.
+    """[(path, text, label)] -- the four projects AND their four .filters, in that pairing.
 
     `root`, when given, relocates every path into a temp tree; the TEXT is unchanged, which is what
     lets selftest() plant a defect on disk and watch the comparison below go red."""
@@ -559,12 +788,37 @@ def selftest():
             ok = False
 
     pairs = render_all()
-    ck("six outputs: three projects + three .filters", len(pairs) == 6)
+    ck("eight outputs: four projects + four .filters", len(pairs) == 8)
     ck("the roster is not empty (>= 500 TUs)", len(sources()) >= 500)
+    # The test project's own walk, with its own floor and its own exclusion, because neither is
+    # covered by the roster's: an emptied libmh_test/ would render a project that links and runs
+    # and answers `--list-suites` with nothing.
+    ck("the test roster is not empty (>= 300 TUs)", len(test_sources()) >= 300)
+    ck(
+        "the compile-refusal fixtures are excluded",
+        not any(fn.endswith("_negative.cpp") for fn in test_sources())
+        and any(fn.endswith("_negative.cpp") for fn in os.listdir(TEST_SRC) if fn.endswith(".cpp")),
+    )
+    test_v = dict((lbl, txt) for _p, txt, lbl in pairs)["libmh_test.vcxproj"]
+    ck("the test project carries the STANDALONE arm's defines", "MH_LIBMH_BUILD" in test_v)
+    ck("... and MH_SPINE_IN_IMAGE with it", "MH_SPINE_IN_IMAGE" in test_v)
+    ck(
+        "... and blanket /arch:IA32 + /fp:precise, not per TU",
+        test_v.count("<EnableEnhancedInstructionSet>NoExtensions") == 1
+        and test_v.count("<FloatingPointModel>Precise") == 1,
+    )
+    ck("... and no whole-program optimisation", "<WholeProgramOptimization>false" in test_v)
     lib_f = dict((lbl, txt) for _p, txt, lbl in pairs)["libmh.vcxproj.filters"]
     dll_f = dict((lbl, txt) for _p, txt, lbl in pairs)["libmh_dll.vcxproj.filters"]
     ck("libmh's filters name its own domain folders", '<Filter Include="ai">' in lib_f)
     ck("libmh_dll's filters fold the `..` away", '<Filter Include="libmh\\ai">' in dll_f)
+    test_f = dict((lbl, txt) for _p, txt, lbl in pairs)["libmh_test.vcxproj.filters"]
+    ck(
+        "libmh_test's filters separate the borrowed trees from its own",
+        '<Filter Include="libmh\\sim">' in test_f
+        and '<Filter Include="mh\\addr">' in test_f
+        and '<Filter Include="mh_nettest">' in test_f,
+    )
     ck(
         "libmh_dll's filters carry the per-image shim's folder",
         '<Filter Include="mh\\addr">' in dll_f,

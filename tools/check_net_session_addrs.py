@@ -3,7 +3,7 @@
 
 WHAT IT REPLACES, AND WHY THE REPLACEMENT IS NOT A DOWNGRADE. `llm_net_session_globals_reset`
 @0x0049e4c3 exists to leave 22 session/pacing globals holding specific values, and libmh's
-translation of it writes through 22 pointers. `net_selftest netsessiontest` proves our body writes
+translation of it writes through 22 pointers. `libmh_selftest.exe netsessiontest` proves our body writes
 the right values into a FIXTURE; it cannot prove the 22 pointers name the addresses the original
 writes. Until F1B that second half was answered by a LIVE read-back (mh/seams/net_session_probe.cpp,
 read by tools/check_netprobe.py -- both deleted at fork F2F, which this check made possible):  # CITATION-OK

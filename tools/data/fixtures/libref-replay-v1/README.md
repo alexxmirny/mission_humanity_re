@@ -115,7 +115,7 @@ python tools/fixture_replay.py verify --replay-log <replay2>/mh_harness.log \
 
 # 7. the world half, against the LIB-WORLD oracle, from the committed form
 python tools/fixture_replay.py unpack --lane <tmp> --world <tmp>/fixture_world.bin
-src/mh_dll/Release/net_selftest.exe worldtest <tmp>/fixture_world.bin
+src/mh_dll/Release/libmh_selftest.exe worldtest <tmp>/fixture_world.bin
 ```
 
 ## Traps, each paid for once

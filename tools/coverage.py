@@ -81,6 +81,38 @@ REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 COV_DIR = os.path.join(REPO, "tmp", "cov")
 DEFAULT_OCC = r"C:\Program Files\OpenCppCoverage\OpenCppCoverage.exe"
 
+# WHICH EXE ANSWERS TO A SUITE (fork F5I S4). There are two offline test executables since the
+# libmh_test split -- net_selftest.exe (hosted arm) and libmh_selftest.exe (standalone arm) -- and
+# which one carries a suite is tools/data/selftest_roster.json's business, not this file's. Routing
+# matters here rather than merely being tidy: this tool's own default suite is `tacttest`, which
+# moved, and building the wrong project would produce an exe that exits 2 on the suite name and a
+# coverage report of nothing. Read, never re-listed.
+ROSTER_PATH = os.path.join(REPO, "tools", "data", "selftest_roster.json")
+_ROSTER = json.load(open(ROSTER_PATH, encoding="utf-8"))
+SUITE_EXE = {r["suite"]: r["exe"] for r in _ROSTER["suites"]}
+EXE_BUILD = _ROSTER["exes"]
+# THE FLOOR: every exe the suite rows name must have a build recipe here. A roster that grows a
+# third exe reds this import instead of silently routing its suites to one of the two that exist.
+_unknown = sorted({r["exe"] for r in _ROSTER["suites"]} - set(EXE_BUILD))
+if _unknown:
+    raise SystemExit(
+        "coverage.py: selftest_roster.json routes suite(s) to exe(s) with no `exes` entry: %s"
+        % ", ".join(_unknown)
+    )
+
+
+def suite_build(suite):
+    """(project path, exe basename) for a suite, from the roster. Unknown suite -> a named error,
+    not a default: a typo used to build mh_nettest and measure a run that exited 2."""
+    exe = SUITE_EXE.get(suite)
+    if exe is None:
+        raise SystemExit(
+            "coverage.py: %r is not a roster suite. Known: %s"
+            % (suite, ", ".join(sorted(SUITE_EXE)))
+        )
+    cfg = EXE_BUILD[exe]
+    return os.path.join(REPO, *cfg["vcxproj"].split("/")), cfg["staged"]
+
 
 def find_occ():
     p = getattr(machine, "OPENCPPCOVERAGE", None) or DEFAULT_OCC
@@ -132,14 +164,16 @@ def build_debug_dll():
     return dll
 
 
-def build_debug():
-    """Build the unoptimised selftest. Not piped through a filter -- a pipe hides the build's exit code."""
+def build_debug(suite="tacttest"):
+    """Build the unoptimised selftest THAT CARRIES THIS SUITE, and return its exe.
+
+    Not piped through a filter -- a pipe hides the build's exit code."""
     vs = machine.VS_INSTALL_ROOT
     msbuild = os.path.join(vs, "MSBuild", "Current", "Bin", "MSBuild.exe")
     if not os.path.isfile(msbuild):
         print("FAIL: MSBuild not at %s (machine_config.VS_INSTALL_ROOT)" % msbuild)
         return None
-    proj = os.path.join(REPO, "src", "mh_dll", "mh_nettest", "mh_nettest.vcxproj")
+    proj, exe_name = suite_build(suite)
     r = subprocess.run(
         [
             msbuild,
@@ -155,9 +189,9 @@ def build_debug():
         capture_output=True,
         text=True,
     )
-    exe = os.path.join(REPO, "src", "mh_dll", "Debug", "net_selftest.exe")
+    exe = os.path.join(REPO, "src", "mh_dll", "Debug", exe_name)
     if r.returncode != 0 or not os.path.isfile(exe):
-        print("FAIL: debug build failed (exit %d)" % r.returncode)
+        print("FAIL: debug build of %s failed (exit %d)" % (os.path.basename(proj), r.returncode))
         print(r.stdout[-2000:])
         return None
     return exe
@@ -2213,7 +2247,11 @@ def run_baseline(args, occ):
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument(
-        "--suite", action="append", default=[], help="net_selftest suite name; repeatable"
+        "--suite",
+        action="append",
+        default=[],
+        help="offline oracle suite name (routed to its exe by tools/data/selftest_roster.json); "
+        "repeatable",
     )
     ap.add_argument("--cmd", help="arbitrary command line to measure instead of a suite")
     ap.add_argument(
@@ -2399,15 +2437,24 @@ def main():
         targets = [("custom", args.cmd.split())]
     else:
         suites = args.suite or ["tacttest"]
+        # PER SUITE, because the two exes answer to disjoint suite sets (F5I S4). A single `exe`
+        # here would have silently measured `net_selftest.exe tacttest`, which exits 2.
+        targets = []
         if args.release:
-            exe = os.path.join(REPO, "src", "mh_dll", "Release", "net_selftest.exe")
             print("*** --release: /O2 + WholeProgramOptimization inlines the small bodies away.")
             print("*** A 0% here means 'inlined', NOT 'never executed'. Do not act on it.")
-        else:
-            exe = build_debug()
-            if not exe:
-                return 1
-        targets = [(s, [exe, s]) for s in suites]
+        built = {}
+        for s in suites:
+            if args.release:
+                exe = os.path.join(REPO, "src", "mh_dll", "Release", suite_build(s)[1])
+            else:
+                proj = suite_build(s)[0]
+                if proj not in built:
+                    built[proj] = build_debug(s)
+                exe = built[proj]
+                if not exe:
+                    return 1
+            targets.append((s, [exe, s]))
 
     rc = 0
     for name, cmd in targets:

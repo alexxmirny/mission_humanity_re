@@ -2236,6 +2236,38 @@ void test_build_candidates() {
 void test_view_binding() {
     using namespace mh::state;
     const ai_state before = state();
+#ifdef MH_LIBMH_BUILD
+    // THE SAME CLAIM, AGAINST THE ONLY ANCHOR THIS ARM HAS (fork F5I S2). The hosted assertion is
+    // that the view resolves through the registry rather than through a constexpr, and it says so by
+    // comparing against base_of() -- a DIFFERENT expression from the one ptr<T>() evaluates. There is
+    // no base_of() here: mh_regions.gen.h's MH_STOCK_BASE zeroes the whole stock column so libmh.lib
+    // carries no original VA (LIB-REF-SPLIT's measured zero), and comparing the view against
+    // live_base() instead would be a tautology, since ptr<T>() IS live_base(). So the anchor is a
+    // base this test PUT there: bind the three regions to local buffers and require the view to come
+    // back pointing at them. That is the same property -- the view follows the registry -- and it is
+    // the form that can fail, which a zero-against-zero comparison could not.
+    static uint8_t pd[64], un[64], bl[64];
+    const uint32_t pd_was = live_base(RID_PLAYER_DATA), un_was = live_base(RID_UNITS),
+                   bl_was = live_base(RID_BUILDINGS);
+    rebase(RID_PLAYER_DATA, (uint32_t)(uintptr_t)pd, (uint32_t)sizeof pd);
+    rebase(RID_UNITS, (uint32_t)(uintptr_t)un, (uint32_t)sizeof un);
+    rebase(RID_BUILDINGS, (uint32_t)(uintptr_t)bl, (uint32_t)sizeof bl);
+    const ai_state bound = state();
+    ck((void *)bound.read.players == (void *)pd && (void *)bound.read.units == (void *)un &&
+           (void *)bound.read.buildings == (void *)bl,
+       "binding: the view returns each region's LIVE base -- rebase the three and the next state() "
+       "comes back pointing at the new buffers, so the resolution is through the registry and not "
+       "through a constant");
+    // Put them back before anything else in this suite reads the view. unrebase() restores the
+    // seeded base, which standalone is the same 0 they started at -- so the registry is exactly as
+    // it was, not merely close to it.
+    unrebase(RID_PLAYER_DATA);
+    unrebase(RID_UNITS);
+    unrebase(RID_BUILDINGS);
+    ck(live_base(RID_PLAYER_DATA) == pd_was && live_base(RID_UNITS) == un_was &&
+           live_base(RID_BUILDINGS) == bl_was,
+       "binding: ...and the fixture put the registry back exactly as it found it");
+#else
     ck((uint32_t)(uintptr_t)before.read.players == base_of(RID_PLAYER_DATA) &&
            (uint32_t)(uintptr_t)before.read.units == base_of(RID_UNITS) &&
            (uint32_t)(uintptr_t)before.read.buildings == base_of(RID_BUILDINGS),
@@ -2243,6 +2275,7 @@ void test_view_binding() {
     ck((void *)before.read.players == (void *)before.own.players,
        "binding: the read view and the store address the SAME player_data -- the split is about "
        "what may be written, not about two copies of the state");
+#endif
 }
 
 // ---- 7. the target-list pair (batch A layer 1) ---------------------------------------------------

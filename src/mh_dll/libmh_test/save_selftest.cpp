@@ -896,7 +896,27 @@ void *space_resolve_region(void *ctx, uint16_t rid, uint32_t off, uint32_t len) 
         return g_moved_buf + off;
     // Everything else stays where the fixture put it, reached by its stock address -- the same
     // fall-through a resolver with no region view gets.
-    return static_cast<sparse_space *>(ctx)->find(mh::state::REGIONS[rid].base + off, len);
+    //
+    // F5I: THAT STOCK ADDRESS COMES FROM THE SLICE ROW, NOT FROM `REGIONS[rid].base`. The two spell
+    // the same number in the hosted arm -- `stock == REGIONS[rid].base + off` holds for all 56
+    // region runs in BLOCK_SLICES, by construction of the generator -- but under MH_LIBMH_BUILD the
+    // region table's stock column is zeroed by MH_STOCK_BASE (mh/addr/mh_regions.gen.h), so
+    // `REGIONS[rid].base + off` collapsed every region onto whatever this pool happens to map at
+    // address 0 and the fixture silently aliased all of them onto one slab. It did not fault: it
+    // corrupted the state a container load scattered, which surfaced three checks later as a wrong
+    // member predicate and a null `members[0].bytes`. resolve_region is only ever asked about a
+    // BLOCK_SLICES run (save_driver.cpp's slice_at is its only caller), so the run's own `stock` is
+    // both the exact domain of the question and the one spelling of the address that survives the
+    // standalone arm. Note what this is NOT: the driver itself never describes a region by its
+    // stock base (it asks the injected resolver by rid), so this was a harness defect, not a spine
+    // one -- and the reason the ratchet did not catch it is that `REGIONS[].base` is a data member
+    // that quietly reads 0, not one of the accessors LIB-REF-SPLIT #ifndef's out.
+    for (int i = 0; i < tbl::BLOCK_SLICE_COUNT; ++i) {
+        const tbl::block_slice &s = tbl::BLOCK_SLICES[i];
+        if (s.rid == rid && s.off == off && s.len == len)
+            return static_cast<sparse_space *>(ctx)->find(s.stock, len);
+    }
+    return nullptr;
 }
 
 // Compare state against the pre-save snapshot for exactly the regions ONE table names. The pool holds

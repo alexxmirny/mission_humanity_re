@@ -92,7 +92,7 @@ def names_from_asm(path):
 
 # ---- --recording: the offline oracle's half ------------------------------------------------------
 #
-# A module's `calls` table exists so `net_selftest simtest` can drive the body with stubs instead of
+# A module's `calls` table exists so `libmh_selftest.exe simtest` can drive the body with stubs instead of
 # the game image. Writing those stubs by hand is the same transcription problem the struct itself
 # had, one member later and with more to get wrong: a stub that widens its argument differently from
 # the member's declared type records a value the test then asserts on. So the recording table is

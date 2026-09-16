@@ -49,6 +49,7 @@
 
 #include "mh_net_export.h"
 #include "mh_seam_export.h"
+#include "selftest_dispatch.h"                // F5I: the suite table mechanism, shared with libmh_test
 #include "hostapi_selftest_support.h"         // LIB-ABI: the selftest host table bound in main()
 #include "../libmh/state/host_api.h"          // LIB-ABI: libmh_set_host_api
 #include "../mh/include/mh_libmh_hook_bind.h" // F4D-PRE: MH_LibMH_BindHookApi
@@ -821,27 +822,6 @@ static int run_authtest(int port) {
 int run_callstest();
 // mh_export_selftest.gen.cpp -- generated with the entry thunks it verifies (gen_dll_exports.py)
 int run_exportstest();
-// orders_selftest.cpp -- the order container's logic over heap buffers (branches no rig can reach)
-int run_orderstest();
-// issue_selftest.cpp -- O4-0: the order-ISSUE wrappers, one layer ABOVE the container. Drives each
-// reimplemented wrapper with concrete inputs and compares what it handed the container against a
-// golden EXTRACTED FROM THE ORIGINAL's disassembly (order_issue_golden.gen.h), so the expectations
-// are not authored by the same reading that authored the translation.
-int run_issuetest();
-// lockstep_selftest.cpp -- the turn engine's horizon/barrier logic, same arrangement (L1)
-int run_lockstest();
-// save_selftest.cpp -- the save FORMAT over buffers: batch A's version gate and batch B's block
-// layer + LZW codec. Optional argv[2] = a real .sav to push every block of through the layer.
-int run_savetest(int argc, char **argv);
-int run_resynctest();
-// net_session_selftest.cpp -- NET-SESSION: the process-level lockstep bootstrap
-// (llm_net_session_globals_reset) and the mode-8 leader resync frame (llm_wait_screen_frame).
-// Neither is armable -- one runs ONCE per process at WM_CREATE, the other SENDS a packet and drains
-// the socket -- so this plus the live `[netprobe]` read-back is their whole evidence.
-int run_netsessiontest();
-// lib_trans_selftest.cpp -- LT0: the lib_trans domain oracle's expectation layer (RNG-family golden
-// vectors + batch-A wrapper contracts, pinned against the verified rng_next body).
-int run_libtranstest();
 int run_watchdogtest();
 int run_desynctest();
 // net_queue_selftest.cpp -- D24: which inbound frame a FULL transport queue may destroy.
@@ -866,53 +846,139 @@ int run_hostintest();
 // state_selftest.cpp -- ST2's synthetic rebase fixture: a region moves and the hash, the save
 // resolver and the shadow region sets all follow, mutation-checked in BOTH directions.
 int run_statetest();
-int run_boottest(int argc, char **argv);
-// world_snapshot_selftest.cpp -- LIB-WORLD: the step-0 world fixture. `worldtest` runs a
-// synthesised blob through the format, the refusals and all three coverage arms; `worldtest <blob>`
-// imports a REAL step-0 capture into a poisoned arena and reproduces the recording peer's lockstep
-// hash -- the done_when's oracle, in a process with no game to reproduce it from.
-int run_worldtest(int argc, char **argv);
-int run_navtest();
 // state_selftest.cpp (same TU) -- SB-BIND T1: the HOST answers where the state is, through the C
 // ABI a standalone host will use. The stock answer is a no-op BY CONSTRUCTION; the arm with teeth
 // relocates one region and shows the size-vs-reach choice decide whether an overrunning save block
 // resolves or comes back null.
 int run_bindtest();
-// ai_selftest.cpp -- AI0: the strategic AI's decision logic over heap buffers. Most of the ~215-
-// function AI cluster is pure over its state, so this is the oracle it is verified with; a rig run
-// cannot reach an empty candidate list, a negative damage tally, or the player-7 record overrun.
-int run_aitest();
-// sim_selftest.cpp -- SIM0: the strategic sim's logic over heap buffers, the sibling of aitest and
-// the lever that keeps the 307-function sim migration off the rig. The sim's rig runs are the
-// expensive ones, so per-function iteration happening here instead is the largest saving RI-SIM has.
-int run_simtest();
-// crt_sprintf_selftest.cpp -- LIB-CRT: the vendored sprintf family. A standalone libmh cannot reach
-// the binary's Watcom CRT at a VA, so crt/crt_sprintf.h supplies the 12 shapes and this is the oracle
-// that says they mean the same thing. The half that earns it is the six NARROW sites: they build
-// filenames, nothing else compares them, and a wrong one loads a different file rather than
-// misdrawing a pixel.
-int run_crttest();
-// crt_vendor_selftest.cpp -- LIB-CRT, the other five vendored headers (crt_string / crt_math /
-// crt_heap / crt_rand / crt_qsort). Same suite name, separate TU: its reference arm is the ORIGINAL
-// MACHINE CODE transcribed into naked functions, so `crttest` runs both halves and the failure
-// counts are summed.
-int run_crt_vendor_test();
-// fp_x87_selftest.cpp -- CRT-X87 step 2: mh/fp/x87.h's helpers were assembly and are now C++, and
-// this keeps a verbatim copy of the assembly as the reference arm so the equality is re-proved every
-// run rather than trusted from a note. Runs at BOTH x87 precision settings, because the harness pins
-// PC=53 and the bare default is PC=64 and a helper correct at only one would look fine for months.
-int run_fptest();
-// tact_selftest.cpp -- TACT-DOMAIN: the OFFLINE half of the tactical oracle. The trajectory oracle
-// (test_ui.py --tact-determinism) compares a COMBINED hash over 14 slices and therefore cannot
-// audit its own coverage: a wrong slice length, or a mask that dropped everything, makes both arms
-// identically wrong and prints green. This is where all 14 slices are proven to be read, and the
-// arena's strides proven to match the manifest -- in a process with no game, no rig, no mission.
-int run_tacttest();
+
+
+// ---- THE SUITE TABLE ----------------------------------------------------------------------------
+//
+// One row per mode. It replaced a 43-arm `else if (strcmp(...))` chain at fork F5I, for one reason:
+// the chain was the ONLY statement of what suites exist, and nothing outside this file could read
+// it. `tools/run_selftests.py` carried a second, hand-maintained copy of the gate's 32 names, the
+// unknown-mode error message carried a third, and the three drifted independently -- a suite could
+// be added here and never run by the gate, or listed in the error text and not exist.
+//
+// Now there is one list. `--list-suites` prints the `gate` rows, the error message is rendered FROM
+// the table, and tools/data/selftest_roster.json is checked against both (by
+// tools/check_selftest_roster.py against this source, and by run_selftests.py against the LIVE
+// `--list-suites` output of the exe it is about to run).
+//
+// `gate` marks the suites the offline gate runs. The rest are the TRANSPORT and rig modes: they
+// take a port, expect a peer, spawn or are spawned, and several deliberately never return on their
+// own -- run_selftests.py cannot run them, which is why the flag exists rather than the roster
+// being "every row". `seamtest` is a third case: a self-contained suite that is a KNOWN failure on
+// the baseline commit, so it is not gate-flagged either.
+
+// `suite_args`, `suite_fn`, `suite_row` and the three adapt_<shape> templates live in
+// selftest_dispatch.h, shared with libmh_test/libmh_selftest.cpp since F5I S2 -- two mains needing
+// the same dispatch mechanism is exactly the second-uncompared-copy shape the table replaced.
+// WHICH suites exist, and why, stays here: that is this exe's own business.
+
+// The three rows that do not fit one of the shared shapes.
+static int adapt_client(const suite_args &a) {
+    return run_client(a.port, (a.argc > 3) ? a.argv[3] : NULL);
+}
+static int adapt_recv(const suite_args &a) {
+    return run_recv(a.port, a.extra ? a.extra : 2);
+}
+static int adapt_bcast(const suite_args &a) {
+    return run_bcast(a.port, a.extra ? a.extra : 1);
+}
+// clang-format off
+static const suite_row SUITE_TABLE[] = {
+    // ---- transport / rig modes: a peer, a port, and usually another process --------------------
+    {"host",        false, adapt_port<run_host>},
+    {"client",      false, adapt_client},
+    {"recv",        false, adapt_recv},
+    {"bcast",       false, adapt_bcast},
+    {"seam_host",   false, adapt_port<run_seam_host>},
+    {"seam_client", false, adapt_port<run_seam_client>},
+    // NOT gate-flagged: a KNOWN pre-existing failure that crashes on the baseline commit too
+    // (verified 2026-07-25 by stashing). Putting it in the gate would make the gate permanently red
+    // and train everyone to ignore it.
+    {"seamtest",    false, adapt_port<run_seamtest>},
+    {"watch_host",  false, adapt_port<run_watch_host>},
+    {"mute_peer",   false, adapt_port<run_mute_peer>},
+    {"probe",       false, adapt_port<run_mute_probe>},
+    // RETIRED at tracker U18 (2026-07-24) -- the self-render splice it validated no longer exists,
+    // and the replacement is a game-coupled restore verified live. The row stays so the name still
+    // resolves to its own explanation instead of to "unknown mode".
+    {"menutest",    false, adapt_void<run_menutest>},
+
+    // ---- the gate's 17 -- the OTHER 15 now live in libmh_selftest.exe ----------------------------
+    // F5I S3 CUT THEM. The 15 SPINE suites (aitest, simtest, tacttest, orderstest, issuetest,
+    // lockstest, resynctest, netsessiontest, libtranstest, savetest, boottest, worldtest, navtest,
+    // crttest, fptest) are gone from this table, their declarations are gone, and their 338 TUs are
+    // gone from mh_nettest.vcxproj. They are gate-flagged in libmh_test/libmh_selftest.cpp instead,
+    // which builds the same TUs in the STANDALONE arm (MH_LIBMH_BUILD);
+    // tools/data/selftest_roster.json's `exe` column routes each name to one exe and
+    // tools/check_selftest_roster.py asserts the partition.
+    //
+    // S2 kept those rows here as `gate: false` so that the arm was the ONLY variable in the
+    // identity measurement (the same build still answered `net_selftest.exe simtest`, so the new
+    // exe's transcript could be compared against both the recorded baseline and this exe running
+    // the same suite). That measurement is done -- 32/32 -- and the rows are now DELETED rather
+    // than left un-gated on purpose: a stale consumer that still says `net_selftest.exe aitest`
+    // must exit 2 with the mode list, not run a second copy of the suite in the wrong arm and
+    // print green. That is the same argument as the unknown-mode error below, one level up.
+    //
+    // THE SPLIT IS BY SUBJECT, NOT BY SUITE (rulings R6 and R8), which is why `statetest`,
+    // `bindtest` and `hostintest` stayed here with their TUs while the rest of the spine's oracles
+    // left. All three have the same precondition: the STOCK bind. statetest's subject is ST2 -- a
+    // region moving off its STOCK VA; bindtest asserts the HOSTED answer to "where does each region
+    // live"; hostintest's first arm is an inbound open being REFUSED over an unanswered registry.
+    // Standalone, every stock base is 0 by design (mh_regions.gen.h's MH_STOCK_BASE, so that no
+    // original VA reaches libmh.lib's data), so all three would be asserting over a table of zeros
+    // and printing green. The standalone side of that same question is proven instead by run_gate's
+    // libref unit, which binds a real arena, opens the inbound surface for real, and replays.
+    //
+    // Nothing gate-flagged below is reachable from libmh_selftest.exe and nothing gate-flagged
+    // there is reachable here; tools/check_selftest_roster.py asserts both directions against the
+    // two tables, so the pair cannot drift into overlapping or into a gap.
+    // `selftest` MUST BE NAMED. It used to reach run_selftest only via the fall-through at the
+    // bottom, and when that fall-through became an error (2026-08-01, so a mistyped mode stops
+    // printing PASS) this branch was not added -- so the gate's own documented first step,
+    // `net_selftest.exe selftest`, started exiting 2 with the mode list. Found 2026-08-01 by
+    // running the gate; the hardening fix had broken the thing it was hardening. The BARE
+    // invocation still defaults to this row, which is a documented convenience and cannot be a typo.
+    {"selftest",       true, adapt_port<run_selftest>},
+    {"selftest3",      true, adapt_port<run_selftest3>},
+    {"authtest",       true, adapt_port<run_authtest>},
+    {"linktest",       true, adapt_port<run_linktest>},
+    {"callstest",      true, adapt_void<run_callstest>},
+    {"exportstest",    true, adapt_void<run_exportstest>},
+    {"launchtest",     true, adapt_void<run_launchtest>},
+    {"interlocktest",  true, adapt_void<run_interlocktest>},
+    {"patchtest",      true, adapt_void<run_patchtest>},
+    {"tombstonetest",  true, adapt_void<run_tombstonetest>},
+    {"hostapitest",    true, adapt_void<run_hostapitest>},
+    // It must run BEFORE anything binds the regions -- its first arm is the open being refused over
+    // an unanswered registry -- which the gate ordering happens to give it; if that stops holding
+    // the suite says so rather than silently skipping the arm.
+    {"hostintest",     true, adapt_void<run_hostintest>},
+    {"statetest",      true, adapt_void<run_statetest>},
+    {"bindtest",       true, adapt_void<run_bindtest>},
+    {"watchdogtest",   true, adapt_void<run_watchdogtest>},
+    {"desynctest",     true, adapt_void<run_desynctest>},
+    {"queuetest",      true, adapt_void<run_queuetest>},
+};
+// clang-format on
+
+static const size_t SUITE_COUNT = sizeof(SUITE_TABLE) / sizeof(SUITE_TABLE[0]);
 
 int main(int argc, char **argv) {
     const char *mode = (argc > 1) ? argv[1] : "selftest";
-    int         port = (argc > 2) ? atoi(argv[2]) : 39500;
-    if (port <= 0) port = 39500;
+
+    // ANSWERED BEFORE ANYTHING IS BOUND. `--list-suites` is what tools/run_selftests.py reads to
+    // assert the exe's roster equals the committed one, so it must not be able to fail for a reason
+    // unrelated to the roster (a host-table version skew below would exit 3, and the assertion would
+    // read that as "the exe lists nothing").
+    if (strcmp(mode, "--list-suites") == 0) return selftest_list_suites(SUITE_TABLE, SUITE_COUNT);
+
+    const suite_args a = selftest_args(argc, argv);
 
     // LIB-REBIND R11: net_selftest is a host too, and it arms NOTHING -- the offline oracle drives
     // module bodies through their recording stubs, not through the rebind. Arming an empty set is
@@ -955,79 +1021,14 @@ int main(int argc, char **argv) {
         return 3;
     }
 
-    int extra = (argc > 3) ? atoi(argv[3]) : 0; // per-mode: player id for recv/bcast
-    if (strcmp(mode, "host") == 0) return run_host(port);
-    else if (strcmp(mode, "client") == 0) return run_client(port, (argc > 3) ? argv[3] : NULL);
-    else if (strcmp(mode, "recv") == 0) return run_recv(port, extra ? extra : 2);
-    // `selftest` NAMED EXPLICITLY. It used to reach run_selftest only via the fall-through below,
-    // and when that fall-through became an error (2026-08-01, so a mistyped mode stops printing
-    // PASS) this branch was not added -- so the gate's own documented first step,
-    // `net_selftest.exe selftest`, started exiting 2 with the mode list. Found 2026-08-01 by running
-    // the gate; the hardening fix had broken the thing it was hardening.
-    else if (strcmp(mode, "selftest") == 0) return run_selftest(port);
-    else if (strcmp(mode, "bcast") == 0) return run_bcast(port, extra ? extra : 1);
-    else if (strcmp(mode, "selftest3") == 0) return run_selftest3(port);
-    else if (strcmp(mode, "seam_host") == 0) return run_seam_host(port);
-    else if (strcmp(mode, "seam_client") == 0) return run_seam_client(port);
-    else if (strcmp(mode, "seamtest") == 0) return run_seamtest(port);
-    else if (strcmp(mode, "watch_host") == 0) return run_watch_host(port);
-    else if (strcmp(mode, "mute_peer") == 0) return run_mute_peer(port);
-    else if (strcmp(mode, "linktest") == 0) return run_linktest(port);
-    else if (strcmp(mode, "probe") == 0) return run_mute_probe(port);
-    else if (strcmp(mode, "authtest") == 0) return run_authtest(port);
-    else if (strcmp(mode, "menutest") == 0) return run_menutest();
-    else if (strcmp(mode, "launchtest") == 0) return run_launchtest();
-    else if (strcmp(mode, "callstest") == 0) return run_callstest();
-    else if (strcmp(mode, "exportstest") == 0) return run_exportstest();
-    else if (strcmp(mode, "orderstest") == 0) return run_orderstest();
-    else if (strcmp(mode, "issuetest") == 0) return run_issuetest();
-    else if (strcmp(mode, "lockstest") == 0) return run_lockstest();
-    else if (strcmp(mode, "savetest") == 0) return run_savetest(argc, argv);
-    else if (strcmp(mode, "resynctest") == 0) return run_resynctest();
-    else if (strcmp(mode, "netsessiontest") == 0) return run_netsessiontest();
-    else if (strcmp(mode, "libtranstest") == 0) return run_libtranstest();
-    else if (strcmp(mode, "watchdogtest") == 0) return run_watchdogtest();
-    else if (strcmp(mode, "desynctest") == 0) return run_desynctest();
-    else if (strcmp(mode, "queuetest") == 0) return run_queuetest();
-    else if (strcmp(mode, "interlocktest") == 0) return run_interlocktest();
-    else if (strcmp(mode, "patchtest") == 0) return run_patchtest();
-    else if (strcmp(mode, "tombstonetest") == 0) return run_tombstonetest();
-    else if (strcmp(mode, "hostapitest") == 0) return run_hostapitest();
-    else if (strcmp(mode, "hostintest") == 0) return run_hostintest();
-    else if (strcmp(mode, "statetest") == 0) return run_statetest();
-    else if (strcmp(mode, "boottest") == 0) return run_boottest(argc, argv);
-    else if (strcmp(mode, "worldtest") == 0) return run_worldtest(argc, argv);
-    else if (strcmp(mode, "navtest") == 0) return run_navtest();
-    else if (strcmp(mode, "bindtest") == 0) return run_bindtest();
-    else if (strcmp(mode, "aitest") == 0) return run_aitest();
-    else if (strcmp(mode, "simtest") == 0) return run_simtest();
-    else if (strcmp(mode, "tacttest") == 0) return run_tacttest();
-    else if (strcmp(mode, "crttest") == 0) {
-        // LIB-CRT has TWO halves and both must run: the sprintf family (expectations written out
-        // from the standard) and the other five vendored headers (expectations transcribed from the
-        // original machine code). Run both and SUM -- returning the first non-zero would hide a
-        // failure in the second.
-        const int a = run_crttest();
-        const int b = run_crt_vendor_test();
-        return (a != 0 || b != 0) ? 1 : 0;
-    } else if (strcmp(mode, "fptest") == 0) return run_fptest();
-    else if (argc > 1) {
-        // AN UNRECOGNISED MODE IS AN ERROR, NOT A DEFAULT. This used to fall through to
-        // run_selftest, so a mistyped name printed "=== PASS: transport loopback round-trip
-        // succeeded ===" and exited 0 -- a green result for a test that does not exist. Measured
-        // 2026-08-01 while running the gate by hand: `lockstepstest` (a typo of `lockstest`)
-        // reported PASS. Every check in this file exists because a green result that could not go
-        // red is worth less than no check, and the dispatcher was quietly manufacturing them.
-        // The BARE invocation still defaults to selftest -- that is a documented convenience, and
-        // it cannot be a typo.
-        printf("unknown mode '%s'\n", mode);
-        printf("modes: host client recv bcast selftest selftest3 seam_host seam_client seamtest\n"
-               "       watch_host mute_peer linktest probe authtest menutest launchtest callstest\n"
-               "       exportstest orderstest issuetest lockstest savetest resynctest interlocktest patchtest desynctest\n"
-               "       queuetest\n"
-               "       statetest boottest worldtest aitest simtest tacttest tombstonetest hostapitest\n"
-               "       hostintest\n"
-               "       crttest fptest\n");
-        return 2;
-    } else return run_selftest(port);
+    if (const suite_row *row = selftest_find(SUITE_TABLE, SUITE_COUNT, mode)) return row->run(a);
+
+    // AN UNRECOGNISED MODE IS AN ERROR, NOT A DEFAULT. This used to fall through to run_selftest, so
+    // a mistyped name printed "=== PASS: transport loopback round-trip succeeded ===" and exited 0
+    // -- a green result for a test that does not exist. Measured 2026-08-01 while running the gate
+    // by hand: `lockstepstest` (a typo of `lockstest`) reported PASS. Every check in this file
+    // exists because a green result that could not go red is worth less than no check, and the
+    // dispatcher was quietly manufacturing them. The BARE invocation still defaults to `selftest`
+    // via the table row above -- that is a documented convenience, and it cannot be a typo.
+    return selftest_unknown_mode(mode, SUITE_TABLE, SUITE_COUNT);
 }

@@ -792,6 +792,9 @@ NET_EXPORT_H = os.path.join("src", "mh_dll", "mh_common", "include", "mh_net_exp
 NET_DEF = os.path.join("src", "mh_dll", "mh_net", "mh_net.def")
 MH_VCXPROJ = os.path.join("src", "mh_dll", "mh", "mh.vcxproj")
 NETTEST_VCXPROJ = os.path.join("src", "mh_dll", "mh_nettest", "mh_nettest.vcxproj")
+# fork F5I S2: the second offline exe. It compiles the same 628 roster TUs as mh_nettest
+# but in the STANDALONE arm, and it must carry NEITHER module_bind TU -- see the check.
+LIBMH_TEST_VCXPROJ = os.path.join("src", "mh_dll", "libmh_test", "libmh_test.vcxproj")
 MH_SEAMS_DIR = os.path.join("src", "mh_dll", "mh")
 
 # The two module-level entries are exported but are NOT transport rows: mh.dll calls them directly
@@ -931,6 +934,22 @@ def check_net_surface(repo):
                 "image (23 duplicate symbols), and that rule is kept by the project files, not by "
                 "an #ifdef" % (proj_name, avoid.rstrip('"'))
             )
+    # THE THIRD PROJECT CARRIES NEITHER (fork F5I S2). libmh_test.vcxproj compiles the roster too,
+    # so it is exactly where the two-TU rule could be broken next, and the failure would be the same
+    # 23 duplicate symbols -- or worse, a silent second answer if only one of the pair came across.
+    # A separate check rather than a third row of the loop above because its want-set is EMPTY:
+    # "this project compiles neither" has no positive half, and inventing a `want` for it would make
+    # the check about the wrong file. _read() refuses a missing project, so the arm cannot silently
+    # have nothing to read.
+    libmh_test_proj = _read(repo, LIBMH_TEST_VCXPROJ)
+    for needle in ('module_bind_compiled_in.cpp"', 'seams\\module_bind.cpp"'):
+        if needle in libmh_test_proj:
+            fails.append(
+                "libmh_test.vcxproj compiles %s -- the shims and the real transport bodies must "
+                "never be in one image, and libmh_test is a THIRD image compiling the roster. It "
+                "needs neither TU: it links no transport at all." % needle.rstrip('"')
+            )
+
     if "mh_net\\net_transport.cpp" in mh_proj:
         fails.append(
             "mh.vcxproj compiles net_transport.cpp. The transport lives in mh_net.dll since F4B; "
@@ -946,7 +965,9 @@ def check_net_surface(repo):
 
 
 # The planted trees. The first must pass; the rest are each a way the construction breaks silently.
-def _plant_surface(d, rows, exports, decls, calls_extra="", mh_extra="", test_extra=""):
+def _plant_surface(
+    d, rows, exports, decls, calls_extra="", mh_extra="", test_extra="", libmh_test_extra=""
+):
     def w(rel, text):
         p = os.path.join(d, *rel.split("/"))
         os.makedirs(os.path.dirname(p), exist_ok=True)
@@ -975,6 +996,13 @@ def _plant_surface(d, rows, exports, decls, calls_extra="", mh_extra="", test_ex
         NETTEST_VCXPROJ.replace("\\", "/"),
         '<Project><ClCompile Include="module_bind_compiled_in.cpp" />%s</Project>\n' % test_extra,
     )
+    # The THIRD project's shipped shape is EMPTY of both module_bind TUs (fork F5I S2), so the
+    # planted-positive has to spell that emptiness rather than leaving the file out -- _read()
+    # refuses a missing project, which is the point of the arm.
+    w(
+        LIBMH_TEST_VCXPROJ.replace("\\", "/"),
+        '<Project><ClCompile Include="libmh_selftest.cpp" />%s</Project>\n' % libmh_test_extra,
+    )
 
 
 ROWS = ["MH_Net_R%02d" % i for i in range(MIN_SYMBOLS + 3)]
@@ -984,6 +1012,26 @@ SURFACE_CASES = [
     (
         "a row nobody exports",
         dict(rows=ROWS, exports=ROWS[:-1] + sorted(MODULE_ENTRIES), decls=ROWS),
+        False,
+    ),
+    (
+        "the third project compiles the shims",
+        dict(
+            rows=ROWS,
+            exports=ROWS + sorted(MODULE_ENTRIES),
+            decls=ROWS,
+            libmh_test_extra='<ClCompile Include="module_bind_compiled_in.cpp" />',
+        ),
+        False,
+    ),
+    (
+        "the third project compiles the real bodies",
+        dict(
+            rows=ROWS,
+            exports=ROWS + sorted(MODULE_ENTRIES),
+            decls=ROWS,
+            libmh_test_extra='<ClCompile Include="..\\mh\\seams\\module_bind.cpp" />',
+        ),
         False,
     ),
     (

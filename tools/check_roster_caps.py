@@ -6,7 +6,8 @@ capacity carried on each module's view/store (`v.caps.units`, `caps_.buildings`,
 that binds a 500-cap roster is followed rather than mis-indexed. The constants survive only as the
 offline fixtures' default and as documentation of the stock strides.
 
-WHY A RATCHET AT ZERO RATHER THAN A FLAT BAN. `src/mh_dll/mh_nettest/` legitimately uses the
+WHY A RATCHET AT ZERO RATHER THAN A FLAT BAN. `src/mh_dll/libmh_test/` (and `mh_nettest/`)
+legitimately use the
 constants -- its fixtures allocate 8*100 vectors and index them, and several declare real C arrays
 (`uint8_t flags[BUILDINGS_PER_PLAYER]`) that could not be runtime-sized without changing the test.
 So the rule is scoped to the MODULE tree, where the count is 0 and must stay 0.

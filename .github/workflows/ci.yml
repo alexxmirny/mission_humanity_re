@@ -10,8 +10,8 @@
 # the dev box -- the live counts are the runner's own `total/run/skipped` line and the table's own
 # length, not this comment (numbers here go stale; two already did).
 #
-# THIS WORKFLOW ALSO RUNS ON THE PRIVATE REPO -- `branches: ["**"]` above, against a private remote
-# -- so `--ci` is a statement about the RUNNER (no game, no rig, no Ghidra export), never about
+# THIS WORKFLOW ALSO RUNS ON THE PRIVATE REPO -- dispatched by hand there too, against a private
+# remote -- so `--ci` is a statement about the RUNNER (no game, no rig, no Ghidra export), never about
 # which tree was checked out. A row needing different behaviour on the two trees detects the tree
 # instead: the publish-ledger rows ask the ledger's own `_public_tree_marker` and run
 # `check_publishable --public` here and the private arms there (fork F5M).
@@ -29,10 +29,9 @@
 
 name: ci
 
+# MANUAL ONLY (user ruling 2026-09-16): a run on every push is not needed. Trigger it from the
+# Actions tab (or `gh workflow run ci.yml --ref <branch>`) when a branch is worth the ~25 minutes.
 on:
-  push:
-    branches: ["**"]
-  pull_request:
   workflow_dispatch:
 
 permissions:
@@ -101,7 +100,8 @@ jobs:
           $rel = "$env:GITHUB_WORKSPACE\src\mh_dll\Release"
           $want = @(
             "mh.dll", "mh_net.dll", "mh_harness.dll", "libmh.dll",
-            "standalone\libmh.dll", "standalone\libref_host.exe", "net_selftest.exe"
+            "standalone\libmh.dll", "standalone\libref_host.exe",
+            "net_selftest.exe", "libmh_selftest.exe"
           )
           $missing = @()
           foreach ($a in $want) {

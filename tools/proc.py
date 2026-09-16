@@ -33,7 +33,12 @@ import subprocess
 # Image names this repo's own tooling spawns and may orphan. NEVER add `java.exe` (that is Ghidra),
 # and never widen this to a pattern -- the existing `kill_stray_game` comment in the unattended loop driver explains
 # why an image-name kill has to be an explicit allowlist on this box.
-STRAY_IMAGES = ("net_selftest.exe", "MSBuild.exe", "VBCSCompiler.exe")
+STRAY_IMAGES = (
+    "net_selftest.exe",
+    "libmh_selftest.exe",  # fork F5I: the second offline exe, same orphaning risk
+    "MSBuild.exe",
+    "VBCSCompiler.exe",
+)
 
 
 def kill_tree(pid: int) -> None:

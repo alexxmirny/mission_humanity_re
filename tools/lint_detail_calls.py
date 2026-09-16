@@ -4,15 +4,15 @@
 THE RULE. A `detail::` body is what an offline oracle DRIVES. Every callee it reaches must therefore
 be substitutable by the test, which is what the `<tu>_calls` struct is for (translator-brief 3b). A
 `live_<x>_calls()` evaluated inside such a body defeats that: the table it returns holds
-`mh::call::` thunks, each a `__declspec(naked)` jump to an absolute game VA, and `net_selftest.exe`
-loads no game image -- so the case FAULTS before its first assertion rather than failing. The
+`mh::call::` thunks, each a `__declspec(naked)` jump to an absolute game VA, and the offline
+test exe (`libmh_selftest.exe` for every migration domain since fork F5I) loads no game image -- so the case FAULTS before its first assertion rather than failing. The
 parent's own mock cannot intercept it, because the sibling is not reached through `c`.
 
 A public wrapper doing the same thing is CORRECT and is 913 of the 919 call sites in this tree: the
 wrapper is the boundary where the live tables are supposed to be bound.
 
 WHY A LINT AND NOT A PARAGRAPH -- the brief already had the paragraph. Rule 3b states this exact
-failure mode ("unmapped inside `net_selftest.exe` ... the case faults instead of failing") and then
+failure mode ("unmapped inside the offline test exe ... the case faults instead of failing") and then
 exempts an in-manifest SAME-TU sibling, on the reasoning that the parent's mock reaches it. In the
 same TU that is true. Across TUs it is not, and the brief neither says where a cross-TU sibling's
 table comes from nor carries the same-TU condition into the exemption -- so four writers working in

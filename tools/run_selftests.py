@@ -47,9 +47,17 @@ Each mode has had its OWN build tree since 2026-08-23 (..\\Release\\ vs ..\\Rele
 matching IntDirs), so neither leaves the other's exe lying around and neither forces the other to
 rebuild. The plain pass still runs last because it is a real pass -- it is where the flaky-crash
 repeats live -- not merely to undo the ASan one.
+
+TWO EXES SINCE FORK F5I S2, AND THE OPERATOR INTERFACE DID NOT CHANGE. `net_selftest.exe` is the
+HOSTED arm and keeps mh.dll's own machinery; `libmh_selftest.exe` is the STANDALONE arm
+(MH_LIBMH_BUILD) and runs the suites that are about libmh itself. Which suite goes where is the
+`exe` column of tools/data/selftest_roster.json and nothing in this file -- one build bat builds
+both, both are staged into the same directory, both are roster-asserted before anything runs, and
+both are checked for ASan instrumentation. The command is still `python tools/run_selftests.py`.
 """
 
 import argparse
+import json
 import os
 import subprocess
 import sys
@@ -57,131 +65,83 @@ import time
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 BUILD_BAT = os.path.join(REPO, "src", "mh_dll", "mh_nettest", "build_selftest.bat")
+ROSTER = os.path.join(REPO, "tools", "data", "selftest_roster.json")
 TEMP = os.environ.get(
     "TEMP", os.path.join(os.environ.get("USERPROFILE", ""), "AppData", "Local", "Temp")
 )
+# THE STAGING DIRECTORIES KEEP THEIR NAMES, and that is deliberate rather than an oversight: the
+# run contract `%TEMP%\\mh_nettest[_asan]\\` is what build_selftest.bat has always reported,
+# tools/lint_machine_paths.py allows by name, and half a dozen hand-run recipes in
+# src/mh_dll/README.md paste. F5I added a second EXE to those directories; it did not rename them.
 PLAIN_DIR = os.path.join(TEMP, "mh_nettest")
 ASAN_DIR = os.path.join(TEMP, "mh_nettest_asan")
 
-# The gate's list, in the README's order. `seamtest` is deliberately ABSENT: it is a KNOWN
-# pre-existing failure that crashes on the baseline commit too (verified 2026-07-25 by stashing).
-# Adding it here would make the gate permanently red and train everyone to ignore this script.
-SUITES = (
-    "selftest",
-    "selftest3",
-    "authtest",
-    "linktest",
-    "callstest",
-    "exportstest",
-    # ADDED 2026-08-23 (TACT-PREP). It was omitted, and that omission had teeth: `launchtest`
-    # asserts MH_Launch_ParseCmdline's verb ordinals as LITERALS, so inserting a verb into the enum
-    # renumbers every later one -- and adding --tactical did exactly that on the first attempt, with
-    # nothing in the gate to report it. The test costs milliseconds and guards an append-only
-    # contract; there is no reason it was ever outside the suite.
-    "launchtest",
-    "orderstest",
-    # ADDED 2026-08-27 (O4-0). The order-ISSUE oracle: the layer above `orderstest`, proving a
-    # reimplemented wrapper packs the SAME order the original packed. Its expectations come from a
-    # generated golden, so it grows with the domain rather than with hand-written constants.
-    "issuetest",
-    "interlocktest",
-    # ADDED 2026-09-12 (F1E). The in-memory static-patch applier and its REFUSALS -- a moved guarded
-    # byte, an image that already carries the patch, a site inside a promoted body, a cave VA that is
-    # taken. Same argument as interlocktest: each is about a write that must NOT happen, so a green
-    # rig run cannot stand in for it, and the applier's host table is injected so it touches no real
-    # image. Milliseconds.
-    "patchtest",
-    # ADDED 2026-09-01 (X-TOMB). The tombstone instrument's arming DECISION -- which bodies are
-    # filled, over what extent (entry+8 for a promoted body's live redirect, whole for a dead one),
-    # and which are correctly skipped. Like interlocktest it is about things NOT happening, so a
-    # green rig run cannot stand in for it; the fill is injected, so it touches no real memory.
-    "tombstonetest",
-    # ADDED 2026-09-02 (LIB-ABI stage B). The host-callback table's BINDING CONTRACT: the
-    # version handshake (a mismatched host is refused without clobbering a working binding),
-    # the unbound-walk (a missing entry is reported BY NAME), and the trap discipline (a
-    # REQUIRED entry reached through the selftest host names itself -- the carrier for the
-    # done_when's "no-op'ing a non-notify entry is caught by a test that names it").
-    "hostapitest",
-    # ADDED 2026-09-11 (LIB-REF-IN). The INBOUND surface's binding contract -- the same three arms
-    # as hostapitest in the other direction (handshake, named walk, named trap), and the only place
-    # the holed-table states can be reached at all: in a shipped build every inbound entry is an
-    # ordinary linked C function, so the one reachable hole is the RUNTIME dispatch table, which
-    # only a test seam can punch. Milliseconds, no arena. It must run BEFORE anything binds the
-    # regions -- its first arm is the open being refused over an unanswered registry -- which the
-    # ordering here happens to give it; if that stops holding the suite says so rather than
-    # silently skipping the arm.
-    "hostintest",
-    "statetest",
-    # LIB-BOOT: the post-cfg snapshot import path, its schema guards, the ordering refusal, and
-    # the per-block mutation arm that says no carried block is outside the comparison.
-    "boottest",
-    # LIB-WORLD: the step-0 world fixture -- the format, the refusals, and all THREE coverage arms
-    # (hash-slice mutation over the 61 determinism slices, per-block mutation over all 829 blocks,
-    # per-block content). ~8 s plain and it earns them: arm B alone re-imports a 7.7 MB blob once
-    # per block, which is the only way to say that no carried block is outside the comparison.
-    # Under ASan it is slower still and stays in anyway -- this suite mallocs and fills a 7.7 MB
-    # arena hundreds of times, which is exactly the shape the ASan pass exists for.
-    "worldtest",
-    # ADDED 2026-09-11 (LIB-REF). The world blob's FORMAT 2 nav trailer: the map-region
-    # decomposition carried as slot indices instead of rebuilt from the `passable` plane, because a
-    # rebuild is measurably NOT the recording's partition (2181 of 65536 tiles differ). This suite
-    # round-trips a synthetic pool and asserts the reconstruction is SLOT-EXACT -- both list ORDERS,
-    # not just membership, because the free list's order decides which node a later region_split
-    # gets. The end-to-end proof is the standalone replay, which costs a rig and a fixture; this is
-    # the half that costs neither, and it is where every one of the format's refusals is actually
-    # fired. Mutation-proven three ways (push-front relink, terrain_flags clobber, free-node
-    # neighbour translation), each turning exactly one arm red.
-    "navtest",
-    # ADDED 2026-09-06 (SB-BIND T1). The state ABI: the host answers where every region lives,
-    # through the same C entry a standalone host will use. Shares state_selftest.cpp's TU but is
-    # its own suite -- its subject is the BINDING, not the move. Not in FLAKY: its only arena is a
-    # 10 KB static, and the registry it touches it puts back.
-    "bindtest",
-    "aitest",
-    "simtest",
-    # ADDED 2026-08-24 (TACT-DOMAIN). The OFFLINE half of the tactical oracle: it proves all 14
-    # tactical hash slices are actually read and that the manifest lengths match the record strides
-    # the disassembly recovered. Not in FLAKY -- its arena is ~880 KB of vectors it only reads and
-    # pokes one byte of at a time, not the mutable roster graphs that produced both 0xC0000374s.
-    "tacttest",
-    # ADDED 2026-09-08 (LIB-CRT). The vendored sprintf family: crt/crt_sprintf.h supplies the 12
-    # shapes a standalone libmh cannot reach at a VA, and this says they mean the same thing. The
-    # half that earns the suite is the six NARROW sites -- they build filenames ("init\AI03.SCR",
-    # "poz3o.dat"), nothing else in the tree compares them, and a wrong one loads a different file
-    # instead of misdrawing a pixel. Not in FLAKY: no arena at all, just local buffers.
-    "crttest",
-    # ADDED 2026-09-08 (CRT-X87 step 2). mh/fp/x87.h's two helpers were inline x87 and are now C++;
-    # this keeps a verbatim copy of the assembly as the reference arm and re-proves the equality at
-    # BOTH precision settings every run. Its negative arm is load-bearing -- it requires a 53-bit
-    # intermediate to still diverge at PC=64, so a sweep that went blind fails instead of passing.
-    "fptest",
-    "lockstest",
-    "resynctest",
-    "netsessiontest",
-    # ADDED 2026-09-02 (LT0). The lib_trans domain oracle's expectation layer: the RNG-family
-    # golden vectors + batch-A wrapper contracts, pinned against the verified rng_next body.
-    "libtranstest",
-    "watchdogtest",
-    # ADDED 2026-08-30 (D21). The runtime desync detector's decisions: what counts as a
-    # comparable sample, which regions the verdict drops, and the two arms that must NOT report a
-    # desync (a sample from a step we have not reached, and one whose ring entry is gone).
-    "desynctest",
-    # ADDED 2026-09-02 (D24). Which inbound frame a FULL transport queue may destroy. The defect it
-    # guards is silent and luck-dependent -- a peer whose main thread froze lost 15 replicated orders
-    # to the old drop-oldest policy -- so a green rig campaign cannot stand in for it.
-    "queuetest",
-    "savetest",
-)
+# THE ROSTER IS DATA (fork F5I). The gate's suite list used to live here as a hand-maintained
+# tuple, and it was the SECOND copy of a list whose first copy is the dispatch table in
+# src/mh_dll/mh_nettest/net_selftest.cpp -- with nothing comparing them. A suite could be added to
+# the exe and never run by the gate, or sit in this tuple after the exe stopped carrying it, and
+# both read as a green run. The per-suite comments that used to sit in this tuple -- the record of
+# WHICH DEFECT got each suite added -- moved into the JSON's `why` field with it; they are the most
+# valuable thing in the list and were not going to survive as a comment on a deleted tuple.
+#
+# Three readers, one list: this driver, tools/check_selftest_roster.py (source-side, so the lint
+# needs no build) and tools/prove_suite_identity.py.
+_ROSTER = json.load(open(ROSTER, encoding="utf-8"))
+SUITES = tuple(r["suite"] for r in _ROSTER["suites"])
+# suite -> the executable that answers to it, and the exes in roster order. Both derived, so adding
+# a third exe is a roster edit and nothing here.
+SUITE_EXE = {r["suite"]: r["exe"] for r in _ROSTER["suites"]}
+EXES = tuple(dict.fromkeys(r["exe"] for r in _ROSTER["suites"]))
 
 # The ones that operate big graphs of heap buffers, i.e. whose failure mode includes DYING.
-# Repeated on the PLAIN pass, where a crash is the only symptom corruption produces. `simtest` joined
-# them at SIM0 (2026-08-08): its fixture is ~4 MB of real-extent rosters and the sim writes them, so
-# it is in exactly the population that produced both historical 0xC0000374s.
-FLAKY = ("aitest", "simtest", "statetest")
+# Repeated on the PLAIN pass, where a crash is the only symptom corruption produces. (See the
+# roster's `_flaky` note for why each is in here.)
+FLAKY = tuple(_ROSTER["flaky"])
+
+
+def assert_roster(exe):
+    """The exe's OWN suite list must equal the roster's, for this exe, BEFORE anything runs.
+
+    This is the assertion the tuple could never make. `run_suite` checks an exit code, so a suite
+    that vanished from the exe cannot be distinguished from one that passed -- the gate would run 32
+    names against a binary that only answers to 30 and the two strangers would exit 2 with the mode
+    list, which IS caught, and a suite silently ADDED to the exe would never be noticed at all.
+    Comparing the live `--list-suites` output closes both directions at the cost of one process
+    launch.
+
+    Sets, not sequences: the order lives in the roster file (see its `_order` note) and a reordered
+    table is not a defect.
+    """
+    want = {
+        r["suite"]
+        for r in _ROSTER["suites"]
+        if r["exe"] == os.path.splitext(os.path.basename(exe))[0]
+    }
+    r = subprocess.run([exe, "--list-suites"], capture_output=True, text=True, cwd=REPO)
+    if r.returncode != 0:
+        print(f"[FAIL] {exe} --list-suites exited {r.returncode} -- cannot verify the roster")
+        return False
+    live = {ln.strip() for ln in r.stdout.splitlines() if ln.strip()}
+    if live != want:
+        print(f"[FAIL] roster mismatch: exe lists {sorted(live)}, roster lists {sorted(want)}")
+        missing, extra = sorted(want - live), sorted(live - want)
+        if missing:
+            print(f"       in the roster but NOT in the exe: {', '.join(missing)}")
+        if extra:
+            print(f"       in the exe but NOT in the roster: {', '.join(extra)}")
+        print(f"       fix that exe's SUITE_TABLE or {ROSTER} (the map is in")
+        print("       tools/check_selftest_roster.py's SOURCES)")
+        return False
+    return True
 
 
 def build(asan):
-    """Build one mode. Returns the exe path, or None if the build failed."""
+    """Build one mode. Returns {exe name: path}, or None if the build or the staging failed.
+
+    ONE BAT, BOTH PROJECTS. A missing exe is a FAILED BUILD here, not a skipped suite: a driver
+    that ran whichever exes it happened to find would report a green pass over half the roster,
+    which is the shape every other assertion in this file exists to refuse.
+    """
     label = "ASan" if asan else "plain"
     cmd = ["cmd", "/c", BUILD_BAT] + (["--asan"] if asan else [])
     t0 = time.time()
@@ -191,12 +151,15 @@ def build(asan):
         print(f"[FAIL] build ({label}) exited {r.returncode}")
         print("      " + "\n      ".join((r.stdout + r.stderr).strip().splitlines()[-20:]))
         return None
-    exe = os.path.join(ASAN_DIR if asan else PLAIN_DIR, "net_selftest.exe")
-    if not os.path.exists(exe):
-        print(f"[FAIL] build ({label}) reported success but {exe} is missing")
-        return None
-    print(f"[ok] build ({label}) -- {dt:.0f}s")
-    return exe
+    out = {}
+    for name in EXES:
+        exe = os.path.join(ASAN_DIR if asan else PLAIN_DIR, name + ".exe")
+        if not os.path.exists(exe):
+            print(f"[FAIL] build ({label}) reported success but {exe} is missing")
+            return None
+        out[name] = exe
+    print(f"[ok] build ({label}) -- {dt:.0f}s, {len(out)} exe(s)")
+    return out
 
 
 def is_instrumented(exe):
@@ -254,30 +217,40 @@ def main():
     t0 = time.time()
 
     if not args.no_asan:
-        exe = build(asan=True)
-        if exe is None:
+        exes = build(asan=True)
+        if exes is None:
             return 1
-        if not is_instrumented(exe):
-            print(f"[FAIL] {exe} is NOT instrumented -- the ASan build staged a plain exe.")
-            print("       Refusing to report a clean ASan pass from an uninstrumented binary.")
-            return 1
+        # EVERY exe is checked, not just the first: an uninstrumented binary reports no memory
+        # errors, which reads exactly like a clean pass, and "the second exe was not instrumented"
+        # would be invisible for exactly the spine suites the ASan pass exists for.
+        for name, exe in exes.items():
+            if not is_instrumented(exe):
+                print(f"[FAIL] {exe} is NOT instrumented -- the ASan build staged a plain exe.")
+                print("       Refusing to report a clean ASan pass from an uninstrumented binary.")
+                return 1
+            if not assert_roster(exe):
+                return 1
         for suite in SUITES:
-            ok &= run_suite(exe, suite, "asan")
-        print(f"[{'ok' if ok else 'FAIL'}] ASan pass ({len(SUITES)} suites)")
+            ok &= run_suite(exes[SUITE_EXE[suite]], suite, "asan")
+        print(f"[{'ok' if ok else 'FAIL'}] ASan pass ({len(SUITES)} suites, {len(exes)} exes)")
 
     # The plain pass is a pass in its own right, not cleanup: it is where the flaky-crash repeats
     # run, since a crash is the only symptom corruption produces in an uninstrumented build. (Before
     # 2026-08-23 it was also cleanup -- the modes shared a staging path -- which is no longer true.)
-    exe = build(asan=False)
-    if exe is None:
+    exes = build(asan=False)
+    if exes is None:
         return 1
+    for exe in exes.values():
+        if not assert_roster(exe):
+            return 1
     for suite in SUITES:
         reps = args.repeats if suite in FLAKY else 1
         for i in range(reps):
             tag = f"plain[{i + 1}/{reps}]" if reps > 1 else "plain"
-            ok &= run_suite(exe, suite, tag)
+            ok &= run_suite(exes[SUITE_EXE[suite]], suite, tag)
     print(
-        f"[{'ok' if ok else 'FAIL'}] plain pass ({len(SUITES)} suites, {args.repeats}x {'/'.join(FLAKY)})"
+        f"[{'ok' if ok else 'FAIL'}] plain pass ({len(SUITES)} suites across {len(exes)} exes, "
+        f"{args.repeats}x {'/'.join(FLAKY)})"
     )
 
     print(f"run_selftests: {'PASS' if ok else 'FAIL'} in {time.time() - t0:.0f}s")

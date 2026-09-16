@@ -130,7 +130,7 @@
   "state_impl": "src/mh_dll/libmh/sim/sim_state.cpp",
   "module_dir": "src/mh_dll/libmh/sim/libtrans",
   "_module_dir_why": "The sim_resid pattern: a subdirectory of mh/sim (same namespace, same state interface, own .cpp tree so the ledger diff does not interleave with sim's rows). DEFAULT destination only -- the roster spans owners (the lockstep-side rows: player_by_side_id, peer_timing_reset, reload_snapshot_resync_clocks; the ai-called RNG draws), and LT-PREP owns the per-row destination decision; a row re-homed into mh/lockstep binds through THAT module's interface instead, recorded in its ledger row's notes. lint_repo's sim raw-address check globs libmh/sim/ and covers the default tree unchanged.",
-  "selftest_dir": "src/mh_dll/mh_nettest",
+  "selftest_dir": "src/mh_dll/libmh_test",
   "closure_doc": "docs/lib-trans-closure.md",
   "effect_classes": "tools/data/sim_effect_classes.json",
   "_effect_classes_why": "SIM'S SHARED FILE, sim_resid's reason verbatim: gen_dll_effects.py installs a gate over an ADDRESS, so two domains that both reach llm_snd_play cannot each own its class -- the generator refuses a name two domains classify differently. This domain's new effectful targets (race_alert emits, ack_voice, cam_set pair, dlg_build_from_table, render_present/view, chat_target_add) get classified INTO the shared file at LT0."
@@ -143,7 +143,7 @@
  "_ns_why": "Read by translate.js as the writer-brief default; mh::sim is the majority destination. A batch whose rows LT-PREP re-homes into mh/lockstep must pass that module's ns/state_header in its fan-out args instead of inheriting this default -- the TACT1A fail-open lesson; batch D's item carries the reminder.",
  "oracle": {
   "selftest": "libtranstest",
-  "_selftest_why": "Its own registered suite (net_selftest libtranstest), built at LT0, exercising all 43 rows through the EXISTING module fixtures rather than a new store binding (the fixture classes are shared scaffolding; the sim_resid two-fixtures hazard is about a second region-binding store, which this suite must not create). One suite = one gate = one number for the umbrella's burn-down; the alternative -- scattering cases across simtest/aitest/lockstest -- leaves the domain's oracle status unreadable. LT0 may still delegate individual cases to a module suite where the fixture genuinely cannot be reached from a shared file; if so the ledger row names the suite that covers it.",
+  "_selftest_why": "Its own registered suite (libmh_selftest.exe libtranstest), built at LT0, exercising all 43 rows through the EXISTING module fixtures rather than a new store binding (the fixture classes are shared scaffolding; the sim_resid two-fixtures hazard is about a second region-binding store, which this suite must not create). One suite = one gate = one number for the umbrella's burn-down; the alternative -- scattering cases across simtest/aitest/lockstest -- leaves the domain's oracle status unreadable. LT0 may still delegate individual cases to a module suite where the fixture genuinely cannot be reached from a shared file; if so the ledger row names the suite that covers it.",
   "rig": {
    "modes": [
     "sp",

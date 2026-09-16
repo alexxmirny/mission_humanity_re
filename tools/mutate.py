@@ -37,6 +37,8 @@ inside a foreground call's timeout in halves rather than needing a background la
 
 from __future__ import annotations
 
+import json
+import os
 import re
 import subprocess
 import sys
@@ -47,8 +49,37 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import proc  # noqa: E402
 
 REPO = Path(__file__).resolve().parent.parent
+# ONE BAT, TWO EXES (fork F5I). build_selftest.bat builds and stages both test executables into the
+# same directory; which one answers to a campaign's `mode` is the roster's `exe` column, and every
+# migration campaign this engine has ever run (aitest, simtest, tacttest, savetest, issuetest) is on
+# the side that MOVED. Hardcoding net_selftest.exe here would run the campaign's mode against an exe
+# that exits 2 with the mode list -- and an exit-2 run produces no `N checks, M failures` line, so
+# every mutation would report as MISSED and the campaign would read as "the assertions are weak".
 BAT = REPO / "src" / "mh_dll" / "mh_nettest" / "build_selftest.bat"
-EXE = Path.home() / "AppData/Local/Temp/mh_nettest/net_selftest.exe"
+_STAGE = Path(os.environ.get("TEMP", str(Path.home() / "AppData/Local/Temp"))) / "mh_nettest"
+_ROSTER = json.loads((REPO / "tools" / "data" / "selftest_roster.json").read_text(encoding="utf-8"))
+_SUITE_EXE = {r["suite"]: r["exe"] for r in _ROSTER["suites"]}
+_EXES = _ROSTER["exes"]
+_unknown = sorted(set(_SUITE_EXE.values()) - set(_EXES))
+if _unknown:
+    raise SystemExit(
+        "mutate.py: selftest_roster.json routes suite(s) to exe(s) with no `exes` entry: %s"
+        % ", ".join(_unknown)
+    )
+
+
+def exe_for(mode: str) -> Path:
+    """The staged executable that answers to `mode`. A mode the roster does not carry is a NAMED
+    error rather than a default -- a campaign pointed at a typo used to build, run, get exit 2 and
+    report every mutation MISSED."""
+    exe = _SUITE_EXE.get(mode)
+    if exe is None:
+        raise SystemExit(
+            "mutate.py: %r is not a roster suite (tools/data/selftest_roster.json). Known: %s"
+            % (mode, ", ".join(sorted(_SUITE_EXE)))
+        )
+    return _STAGE / _EXES[exe]["staged"]
+
 
 BUILD_TIMEOUT_S = 900
 # Deliberately tight. The suite runs in seconds; anything approaching this is a mutation that turned
@@ -93,12 +124,13 @@ def restore_interrupted(paths) -> list[Path]:
 
 
 def build_and_run(mode: str):
-    """Build the selftest and run one mode. Returns (stdout, error_text) -- exactly one is None."""
+    """Build the selftests and run one mode. Returns (stdout, error_text) -- exactly one is None."""
+    exe = exe_for(mode)
     try:
         b = proc.run_capture(["cmd", "/c", str(BAT)], timeout=BUILD_TIMEOUT_S, cwd=REPO)
     except subprocess.TimeoutExpired:
         return None, f"BUILD TIMED OUT after {BUILD_TIMEOUT_S}s (process tree killed)"
-    if b.returncode != 0 or not EXE.exists():
+    if b.returncode != 0 or not exe.exists():
         return None, (b.stdout or "")[-1500:] + (b.stderr or "")[-1500:]
     # RUN IT TWICE IF THE FIRST COMES BACK EMPTY. Measured 2026-08-03: on a long sweep the exe
     # occasionally returns with NO stdout at all -- the build has just rewritten it, and the launch
@@ -108,7 +140,7 @@ def build_and_run(mode: str):
     # settles it, and a mutation that really produces no output will simply report twice.
     for _ in range(2):
         try:
-            r = proc.run_capture([str(EXE), mode], timeout=TEST_TIMEOUT_S, cwd=REPO)
+            r = proc.run_capture([str(exe), mode], timeout=TEST_TIMEOUT_S, cwd=REPO)
         except subprocess.TimeoutExpired:
             # Not a failure of the harness: a mutation that hangs the binary IS caught, loudly.
             return None, f"TEST HUNG >{TEST_TIMEOUT_S}s -- mutation removed a loop's advance"

@@ -729,7 +729,7 @@ def selftest():
     probe_rule = {
         "id": "_selftest_probe",
         "disposition": "withhold",
-        "globs": ["src/mh_dll/mh_nettest/sv1_lzw_fixtures.gen.h"],
+        "globs": ["src/mh_dll/libmh_test/sv1_lzw_fixtures.gen.h"],
         "why": "selftest probe",
     }
     probe_rule["_res"] = [glob_re(g) for g in probe_rule["globs"]]
@@ -740,8 +740,8 @@ def selftest():
     control = [
         v
         for v in probe_vios
-        if v[0] == "src/mh_dll/mh_nettest/save_selftest.cpp"
-        and v[2] == "src/mh_dll/mh_nettest/sv1_lzw_fixtures.gen.h"
+        if v[0] == "src/mh_dll/libmh_test/save_selftest.cpp"
+        and v[2] == "src/mh_dll/libmh_test/sv1_lzw_fixtures.gen.h"
     ]
     expect(
         "KNOWN-POSITIVE (real tree, synthetic withhold): save_selftest.cpp -> "
@@ -751,7 +751,7 @@ def selftest():
     expect("KNOWN-POSITIVE: found at line 21", bool(control) and control[0][1] == 21)
     expect(
         "and it is NOT a violation under the real ledger (the row publishes)",
-        not [v for v in vios if v[2] == "src/mh_dll/mh_nettest/sv1_lzw_fixtures.gen.h"],
+        not [v for v in vios if v[2] == "src/mh_dll/libmh_test/sv1_lzw_fixtures.gen.h"],
     )
 
     # ---- synthetic ledger + tree ---------------------------------------------------------------

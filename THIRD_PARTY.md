@@ -64,7 +64,7 @@ copyright line.
 | Component | Where | License | Canonical text |
 | --- | --- | --- | --- |
 | **DejaVu Sans Mono** (derived from **Bitstream Vera**) | `src/mh_dll/mh/seams/overlay_font.h` | Bitstream Vera Fonts License + the DejaVu changes (public domain) | <https://dejavu-fonts.github.io/License.html> |
-| **Open Watcom** runtime libraries | `tools/ghidra/watcom_fidb/*.fidb` and the transcribed CRT bodies in `src/mh_dll/mh_nettest/crt_vendor_selftest.cpp` + `src/mh_dll/mh_nettest/fp_x87_selftest.cpp` | Sybase Open Watcom Public License version 1.0 | <https://github.com/open-watcom/open-watcom-v2/blob/master/license.txt> |
+| **Open Watcom** runtime libraries | `tools/ghidra/watcom_fidb/*.fidb` and the transcribed CRT bodies in `src/mh_dll/libmh_test/crt_vendor_selftest.cpp` + `src/mh_dll/libmh_test/fp_x87_selftest.cpp` | Sybase Open Watcom Public License version 1.0 | <https://github.com/open-watcom/open-watcom-v2/blob/master/license.txt> |
 
 **The font.** `overlay_font.h` is a generated 6x10 monochrome bitmap of ASCII `0x20`-`0x7e`,
 rasterised from DejaVu Sans Mono at ppem 10 for the in-game debug overlay's text blitter. No font

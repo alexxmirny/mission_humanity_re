@@ -136,10 +136,10 @@
   "state_header": "src/mh_dll/libmh/sim/sim_state.h",
   "state_impl": "src/mh_dll/libmh/sim/sim_state.cpp",
   "module_dir": "src/mh_dll/mh/sim",
-  "selftest_dir": "src/mh_dll/mh_nettest",
+  "selftest_dir": "src/mh_dll/libmh_test",
   "closure_doc": "docs/sim-closure.md",
   "loop_prompt": "tools/data/sim_loop_prompt.md",
-  "_loop_prompt_why": "ADDED 2026-08-20. Was DELIBERATELY ABSENT until SIM0 landed and the batches became autonomous -- the guard was that migration_loop.py runs UNATTENDED, and while every sim item was in non_autonomous (SIM-PREP/SIM-CUT/SIM0/SIM1-P) there was nothing to drive. That condition is now met: SIM0 is done and `migration_session.py --domain sim --start` proposes real batch slices (SIM1-G1..G5), none of which are in non_autonomous. The gate oracle for this domain is `net_selftest.exe simtest` (oracle.selftest), which the driver folds into the shared prompt blocks via its {SELFTEST} token.",
+  "_loop_prompt_why": "ADDED 2026-08-20. Was DELIBERATELY ABSENT until SIM0 landed and the batches became autonomous -- the guard was that migration_loop.py runs UNATTENDED, and while every sim item was in non_autonomous (SIM-PREP/SIM-CUT/SIM0/SIM1-P) there was nothing to drive. That condition is now met: SIM0 is done and `migration_session.py --domain sim --start` proposes real batch slices (SIM1-G1..G5), none of which are in non_autonomous. The gate oracle for this domain is `libmh_selftest.exe simtest` (oracle.selftest), which the driver folds into the shared prompt blocks via its {SELFTEST} token.",
   "effect_classes": "tools/data/sim_effect_classes.json"
  },
  "batches": {
@@ -488,6 +488,6 @@
  ],
  "items": {
   "interface": "SIM0",
-  "_interface_why": "The tracker item that OWNS building the state interface this domain's batches translate into -- `<D>0` in the reimpl-decompose skill's vocabulary, and the item it calls the highest-leverage one. Declared here rather than derived from the domain name because orders_issue's is `O4-0` and a future domain may reuse another domain's interface outright. tools/lint_migration_items.py checks it exists, is not an orphan, and is REACHABLE THROUGH DEPS from every batch. The mutable sim state interface (W1/W2/W3, docs/sim-state.md) + `net_selftest.exe simtest`. SIM1C deps on it directly; the rest chain through SIM1C or SIM1-G-PREP."
+  "_interface_why": "The tracker item that OWNS building the state interface this domain's batches translate into -- `<D>0` in the reimpl-decompose skill's vocabulary, and the item it calls the highest-leverage one. Declared here rather than derived from the domain name because orders_issue's is `O4-0` and a future domain may reuse another domain's interface outright. tools/lint_migration_items.py checks it exists, is not an orphan, and is REACHABLE THROUGH DEPS from every batch. The mutable sim state interface (W1/W2/W3, docs/sim-state.md) + `libmh_selftest.exe simtest`. SIM1C deps on it directly; the rest chain through SIM1C or SIM1-G-PREP."
  }
 }

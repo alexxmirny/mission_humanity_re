@@ -56,6 +56,8 @@ Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "libmh_dll", "libmh_dll\libm
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "mh_harness", "mh_harness\mh_harness.vcxproj", "{9D1C4E77-0B62-4A3F-9E51-2C7A83D6F014}"
 EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "libmh_test", "libmh_test\libmh_test.vcxproj", "{8A47F3C6-1D52-4E09-B73A-5C6F2E90D148}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|x86 = Debug|x86
@@ -110,6 +112,10 @@ Global
 		{2E51C7A4-9F3D-4B6C-8A17-D0E45B92C381}.Debug|x86.Build.0 = Debug|Win32
 		{2E51C7A4-9F3D-4B6C-8A17-D0E45B92C381}.Release|x86.ActiveCfg = Release|Win32
 		{2E51C7A4-9F3D-4B6C-8A17-D0E45B92C381}.Release|x86.Build.0 = Release|Win32
+		{8A47F3C6-1D52-4E09-B73A-5C6F2E90D148}.Debug|x86.ActiveCfg = Debug|Win32
+		{8A47F3C6-1D52-4E09-B73A-5C6F2E90D148}.Debug|x86.Build.0 = Debug|Win32
+		{8A47F3C6-1D52-4E09-B73A-5C6F2E90D148}.Release|x86.ActiveCfg = Release|Win32
+		{8A47F3C6-1D52-4E09-B73A-5C6F2E90D148}.Release|x86.Build.0 = Release|Win32
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

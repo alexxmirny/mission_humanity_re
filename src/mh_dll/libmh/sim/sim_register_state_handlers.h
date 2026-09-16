@@ -94,6 +94,33 @@ int                    handler_binding_count();
 // asserted so the caller can refuse to install a half-filled table.
 const handler_binding *binding_for(uintptr_t original_va);
 
+
+// ---- THE STANDALONE BINDING TABLE, READABLE (fork F5I S2) ---------------------------------------
+//
+// Exposed for exactly the reason the hosted pair above is exposed: the offline oracle has to be able
+// to read the rows the fill uses, or it can only compare the fill against itself. The hosted table
+// is keyed by the ORIGINAL VA; this configuration has no original address to key by -- the VA rows
+// are compiled out so that libmh.lib's initialised data carries none (LIB-REF-SPLIT's measured
+// zero) -- so the same rows are keyed by NAME. That is the ONLY difference, and confining it here
+// is what lets the oracle keep one body for both arms.
+#ifdef MH_LIBMH_BUILD
+// One row of it. `ours` is the body the slot will hold: the direct C++ function for the 63
+// zero-argument handlers, and the zero-argument ADAPTER for the five whose committed prototype takes
+// four __watcall register parameters (see the allow-list in the .cpp). It is never null for a name
+// this returns a row for -- a name on the table but off the allow-list resolves to nullptr instead,
+// which fill_tables turns into a refusal before it writes anything.
+struct sa_binding {
+    const char *name;
+    void (*ours)();
+};
+
+int sa_handler_binding_count();
+// The i-th binding's name, or "" out of range -- an index-free way to walk the set, so the oracle
+// need not be handed the array itself.
+const char       *sa_handler_binding_name(int i);
+const sa_binding *sa_handler_binding_for(const char *name);
+#endif // MH_LIBMH_BUILD
+
 // Fill both tables exactly as the original registrar fills the game's: default everywhere first,
 // then each assigned state. Writes NOTHING and returns false if a table is smaller than the
 // generated one or any VA has no binding -- a partially-filled dispatch table is worse than none.

@@ -34,9 +34,6 @@ void ck(bool ok, const char *what) {
     }
 }
 
-int  g_trap_count = 0;
-char g_last_trap[128];
-
 int             g_walk_reports = 0;
 char            g_walk_last[128];
 extern "C" void on_unbound(const char *name) {
@@ -46,38 +43,12 @@ extern "C" void on_unbound(const char *name) {
 
 } // namespace
 
-static int g_trap_capture = 0;
-
-void mh_hostapi_trap(const char *name) {
-    ++g_trap_count;
-    snprintf(g_last_trap, sizeof(g_last_trap), "%s", name);
-    printf("[hostapi] REQUIRED entry %s called with no host impl\n", name);
-    if (!g_trap_capture) {
-        // Fatal outside hostapitest: a suite that needs a required entry must mock it (its
-        // own calls struct) or the selftest host must grow a real impl -- never limp on a
-        // silent default. The exit IS the "test that names it".
-        printf("[hostapi] FATAL: required host entry reached in a selftest run -- failing\n");
-        fflush(stdout);
-        exit(1);
-    }
-}
-
-void mh_hostapi_trap_set_capture(int on) {
-    g_trap_capture = on;
-}
-
-int mh_hostapi_trap_count() {
-    return g_trap_count;
-}
-
-const char *mh_hostapi_last_trap() {
-    return g_last_trap;
-}
-
-void mh_hostapi_trap_reset() {
-    g_trap_count   = 0;
-    g_last_trap[0] = '\0';
-}
+// THE TRAP ITSELF IS IN hostapi_trap.cpp SINCE FORK F5I S2, and the split is not tidy-up. Both
+// selftest executables compile the generated host tables, so both need the trap; only this exe can
+// carry the SUITE below, because it binds mh.dll's real hook table (MH_LibMH_BindHookApi, defined
+// in mh/seams/libmh_hook_host.cpp, which is in no roster). One implementation of the policy, two
+// images, one suite that asserts it -- see that file's banner. The state it keeps is reached here
+// only through mh_hostapi_trap_count() / _last_trap() / _reset(), never directly.
 
 int run_hostapitest() {
     printf("hostapitest: the host-callback ABI binding contract "

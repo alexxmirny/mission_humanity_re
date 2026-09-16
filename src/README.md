@@ -9,7 +9,7 @@ how to build and run it. This file is the map of the source.
 ## `mh_dll/` — the MSBuild solution (`mh.sln`, `Release|Win32`, v143, C++20)
 
 One build produces every artifact of all three configurations; the configuration is which files a
-deployment has beside `mh.dll`, never a build switch. Twelve projects:
+deployment has beside `mh.dll`, never a build switch. Thirteen projects:
 
 | Project | Output | Role |
 | --- | --- | --- |
@@ -22,7 +22,8 @@ deployment has beside `mh.dll`, never a build switch. Twelve projects:
 | `mh_harness/` | `Release\mh_harness.dll` | the determinism and replay instrument. It only ever observes, and it ships disarmed |
 | `mh_common/` | static lib | game-independent utilities: sprite-bank and BMP I/O, geometry, the run-context paths, and the game's LZW codec in both directions plus its LZSS sibling |
 | `../mh_net_proto/` | static lib | the control-frame protocol and its cryptography (see below) |
-| `mh_nettest/` | `Release\net_selftest.exe` | the offline suites — the oracle for everything that can be tested without the game |
+| `mh_nettest/` | `Release\net_selftest.exe` | the offline suites' HOSTED arm — the oracle for mh.dll's own machinery (the transport, the generated thunks, the patch/tombstone/hook instruments) |
+| `libmh_test/` | `Release\libmh_selftest.exe` | the offline suites' STANDALONE arm (fork F5I) — the same 628 roster TUs built the way the whole program builds them, running every suite whose subject is the spine itself. **GENERATED** project (`tools/gen_libmh_vcxproj.py`) |
 | `mh_tools/` | `Release\mh_tools.exe` | host-side sprite-bank tooling: `unpack` every sprite to editable bitmaps, `pack` them back, `verify` the round trip |
 | `../mh_shim/msvfw32/` | `Release\msvfw32.dll` | the loader shim (see below) |
 

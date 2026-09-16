@@ -755,14 +755,20 @@ def exec_bits(root=REPO):
     return ex
 
 
-def materialize(dest, allow_no_identity=False, say=print):
-    """Copy exactly the publish set into `dest`, then install the derived VCS config."""
+def materialize(dest, allow_no_identity=False, say=print, into_clone=False):
+    """Copy exactly the publish set into `dest`, then install the derived VCS config.
+
+    `into_clone`: `dest` is a clone whose worktree has been emptied (`git rm -r .`), so the only
+    thing allowed to be there is `.git`. Anything else is still a refusal -- a follow-up must not
+    layer the publish set over files it did not put there."""
     led = cp.load_ledger()
     tracked = cp.tracked_paths()
     take = cp.publish_list(tracked, led)
     ex = exec_bits()
 
-    if os.path.exists(dest) and os.listdir(dest):
+    present = os.listdir(dest) if os.path.exists(dest) else []
+    allowed = {".git"} if into_clone else set()
+    if set(present) - allowed:
         say("REFUSED: %s exists and is not empty" % dest)
         return None
     copied, missing = 0, []
@@ -937,7 +943,13 @@ def seed(dest, take, branch=SEED_BRANCH, name=None, email=None, say=print):
     if r.returncode:
         say("git commit failed: %s" % (r.stderr or r.stdout).strip())
         return None
+    return _verify_commit(dest, take, branch, name, email, "SEED", say=say)
 
+
+def _verify_commit(dest, take, branch, name, email, label, say=print, public_check=True):
+    """After a commit in `dest`: the tracked set is exactly the publish set plus the derived
+    config, and the tree passes check_publishable --public from its own copy of the tool. Shared by
+    the seed and the follow-up so a follow-up cannot be held to a weaker standard than the seed."""
     tracked = [
         p.strip().replace("\\", "/")
         for p in _git(dest, "ls-files").stdout.splitlines()
@@ -964,32 +976,129 @@ def seed(dest, take, branch=SEED_BRANCH, name=None, email=None, say=print):
         for f in files:
             total += os.path.getsize(os.path.join(root, f))
     say("")
-    say("SEED  branch %s  commit %s" % (branch, head[:12]))
+    say("%-5s branch %s  commit %s" % (label, branch, head[:12]))
     say("      tree   %s" % tree)
     say("      files  %d tracked" % len(tracked))
     say("      size   %d bytes (%.2f MiB) of worktree" % (total, total / 1048576.0))
     say("      author %s <%s>" % (name, email))
 
-    r = subprocess.run(
-        [sys.executable, os.path.join(dest, "tools", "check_publishable.py"), "--public"],
-        capture_output=True,
-        text=True,
-    )
-    for ln in (r.stdout or "").splitlines()[-6:]:
-        say("      %s" % ln)
-    if r.returncode:
-        say("FAIL: the seed does not satisfy check_publishable --public")
-        return None
+    if public_check:
+        r = subprocess.run(
+            [sys.executable, os.path.join(dest, "tools", "check_publishable.py"), "--public"],
+            capture_output=True,
+            text=True,
+        )
+        for ln in (r.stdout or "").splitlines()[-6:]:
+            say("      %s" % ln)
+        if r.returncode:
+            say("FAIL: the tree does not satisfy check_publishable --public")
+            return None
     return {"head": head, "tree": tree, "files": len(tracked), "bytes": total}
 
 
-def push(dest, url, branch=SEED_BRANCH, say=print):
-    """Only ever runs when --push is given. Point it at a throwaway bare repo first, and set that
-    repo's HEAD to `branch` before cloning (`git init --bare` leaves HEAD on master)."""
-    r = _git(dest, "remote", "add", "origin", url)
+def follow_up(
+    url,
+    dest,
+    branch=SEED_BRANCH,
+    name=None,
+    email=None,
+    message=None,
+    say=print,
+    materialize_fn=None,
+    public_check=True,
+):
+    """A FOLLOW-UP commit on an already-published repository (fork F5N, 2026-09-16).
+
+    The seed is one commit; the public repo then lives on and every later private milestone lands
+    on it as a new commit rather than a replaced history (the user's call at F5I). The shape is:
+    clone `url` at `branch`, EMPTY the worktree (`git rm -r .`, so a file the publish set no longer
+    carries is a deletion in the commit, not a survivor), materialize the publish set into the
+    emptied clone, commit as the LICENSE holder, and hold the result to the seed's own standard
+    (`_verify_commit`). An unchanged publish set is reported and NOT committed. Pushing is a
+    separate, explicit step (`--push`), exactly as for the seed.
+
+    `materialize_fn` / `public_check` exist for the selftest, which drives the git mechanics on a
+    two-file synthetic set instead of the 2,000-file real one."""
+    name = name or license_holder()
+    email = author_email(email)
+    if not name or not email:
+        say("REFUSED: the follow-up commit needs an author (see --author-email)")
+        return None
+    if os.path.exists(dest) and os.listdir(dest):
+        say("REFUSED: %s exists and is not empty" % dest)
+        return None
+    r = _git(os.path.dirname(dest) or ".", "clone", "-q", "--branch", branch, url, dest)
     if r.returncode:
-        say("git remote add failed: %s" % (r.stderr or r.stdout).strip())
-        return False
+        say("git clone failed: %s" % (r.stderr or r.stdout).strip())
+        return None
+    _git(dest, "config", "user.name", name)
+    _git(dest, "config", "user.email", email)
+    _git(dest, "config", "core.autocrlf", "false")
+    before = _git(dest, "rev-parse", "HEAD").stdout.strip()
+    r = _git(dest, "rm", "-r", "-q", ".")
+    if r.returncode:
+        say("git rm failed: %s" % (r.stderr or r.stdout).strip())
+        return None
+    # `git rm` leaves the emptied directories behind; materialize's refusal is about FILES, but
+    # clear them so a stray non-tracked file cannot hide in one either.
+    for entry in os.listdir(dest):
+        if entry != ".git":
+            full = os.path.join(dest, entry)
+            shutil.rmtree(full) if os.path.isdir(full) else os.remove(full)
+    take = (materialize_fn or materialize)(dest, say=say, into_clone=True)
+    if take is None:
+        return None
+    if not ignored_published(dest, take, say=say):
+        return None
+    r = _git(dest, "add", "-A")
+    if r.returncode:
+        say("git add failed: %s" % (r.stderr or r.stdout).strip())
+        return None
+    if _git(dest, "diff", "--cached", "--quiet").returncode == 0:
+        say("NOTHING TO COMMIT: the public tree at %s already equals the publish set" % before[:12])
+        return {"head": before, "unchanged": True, "files": len(take)}
+    stat = _git(dest, "diff", "--cached", "--shortstat").stdout.strip()
+    r = _git(dest, "commit", "-q", "-m", message or follow_up_message())
+    if r.returncode:
+        say("git commit failed: %s" % (r.stderr or r.stdout).strip())
+        return None
+    info = _verify_commit(
+        dest, take, branch, name, email, "FUP", say=say, public_check=public_check
+    )
+    if info is None:
+        return None
+    say("      on top of %s: %s" % (before[:12], stat))
+    info["parent"] = before
+    info["unchanged"] = False
+    return info
+
+
+def follow_up_message():
+    """The default follow-up subject names the PRIVATE commit it was cut from, which is the one
+    link between a public commit and the private history behind it."""
+    head = subprocess.run(
+        ["git", "rev-parse", "--short=12", "HEAD"], cwd=REPO, capture_output=True, text=True
+    ).stdout.strip()
+    subject = subprocess.run(
+        ["git", "log", "-1", "--format=%s"], cwd=REPO, capture_output=True, text=True
+    ).stdout.strip()
+    return "publish: private %s -- %s" % (head, subject[:200])
+
+
+def push(dest, url, branch=SEED_BRANCH, say=print, existing_origin=False):
+    """Only ever runs when --push is given. Point it at a throwaway bare repo first, and set that
+    repo's HEAD to `branch` before cloning (`git init --bare` leaves HEAD on master).
+    `existing_origin`: the follow-up clone already has origin = url; assert rather than add."""
+    if existing_origin:
+        have = _git(dest, "remote", "get-url", "origin").stdout.strip()
+        if have != url:
+            say("REFUSED: the clone's origin is %s, --push says %s" % (have, url))
+            return False
+    else:
+        r = _git(dest, "remote", "add", "origin", url)
+        if r.returncode:
+            say("git remote add failed: %s" % (r.stderr or r.stdout).strip())
+            return False
     r = _git(dest, "push", "-u", "origin", branch)
     say((r.stdout or "").strip() or (r.stderr or "").strip())
     return r.returncode == 0
@@ -1150,6 +1259,113 @@ def selftest(say=print):
     #    --selftest run in either tree still exercises it).
     arm("the committed snapshots reproduce", check_config(say=lambda *_a: None))
 
+    # 6. The follow-up's git mechanics, on a synthetic two-file publish set against a throwaway
+    #    bare repo: a changed file is a modification, a dropped file is a DELETION (not a survivor),
+    #    a new file is added, the tracked set is exactly the set, and an unchanged set commits
+    #    nothing. The real materialize and the real public check are injected out -- they are the
+    #    seed's arms, proven above and by --check; this arm is about the clone/strip/commit shape.
+    tmp = tempfile.mkdtemp(prefix="f5n_fup_")
+    try:
+        bare = os.path.join(tmp, "remote.git")
+        subprocess.run(["git", "init", "-q", "--bare", "-b", SEED_BRANCH, bare], check=True)
+        first = os.path.join(tmp, "first")
+        os.makedirs(first)
+        for rel, text in (
+            ("a.txt", "a1\n"),
+            ("b.txt", "b\n"),
+            (".gitignore", "x\n"),
+            (".gitattributes", "y\n"),
+        ):
+            _write(os.path.join(first, rel), text)
+        _git(first, "init", "-q", "-b", SEED_BRANCH)
+        _git(first, "config", "user.name", "t")
+        _git(first, "config", "user.email", "t@t")
+        _git(first, "add", "-A")
+        _git(first, "commit", "-q", "-m", "seed")
+        _git(first, "remote", "add", "origin", bare)
+        _git(first, "push", "-q", "-u", "origin", SEED_BRANCH)
+
+        def syn_materialize(
+            dest, say=print, into_clone=False, files=(("a.txt", "a2\n"), ("c.txt", "c\n"))
+        ):
+            if set(os.listdir(dest)) - {".git"}:
+                return None
+            for rel, text in files:
+                _write(os.path.join(dest, rel), text)
+            for which in SNAPSHOTS.values():
+                _write(os.path.join(dest, which), "z\n")
+            return [rel for rel, _t in files]
+
+        def quiet(*_a):
+            pass
+
+        c1 = os.path.join(tmp, "c1")
+        info = follow_up(
+            bare,
+            c1,
+            name="t",
+            email="t@t",
+            message="fup",
+            say=quiet,
+            materialize_fn=syn_materialize,
+            public_check=False,
+        )
+        tracked = set(_git(c1, "ls-files").stdout.split())
+        arm(
+            "follow-up: a commit lands on top of the seed", bool(info) and not info.get("unchanged")
+        )
+        arm(
+            "follow-up: tracked set == the new publish set (b.txt DELETED, c.txt added)",
+            tracked == {"a.txt", "c.txt", ".gitignore", ".gitattributes"},
+        )
+        arm(
+            "follow-up: the seed is the parent",
+            bool(info) and info.get("parent") == _git(c1, "rev-parse", "HEAD~1").stdout.strip(),
+        )
+        arm(
+            "follow-up: push refuses a URL that is not the clone's origin",
+            not push(c1, bare + ".elsewhere", say=quiet, existing_origin=True),
+        )
+        arm(
+            "follow-up: push to the clone's own origin succeeds",
+            push(c1, bare, say=quiet, existing_origin=True),
+        )
+        c2 = os.path.join(tmp, "c2")
+        info2 = follow_up(
+            bare,
+            c2,
+            name="t",
+            email="t@t",
+            message="fup2",
+            say=quiet,
+            materialize_fn=syn_materialize,
+            public_check=False,
+        )
+        arm(
+            "follow-up: an unchanged publish set commits NOTHING",
+            bool(info2)
+            and info2.get("unchanged") is True
+            and _git(c2, "rev-list", "--count", "HEAD").stdout.strip() == "2",
+        )
+        c3 = os.path.join(tmp, "c3")
+        os.makedirs(c3)
+        _write(os.path.join(c3, "stray"), "x\n")
+        arm(
+            "follow-up: a non-empty clone dir is REFUSED",
+            follow_up(
+                bare,
+                c3,
+                name="t",
+                email="t@t",
+                say=quiet,
+                materialize_fn=syn_materialize,
+                public_check=False,
+            )
+            is None,
+        )
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
     bad = [n for n, okk in results if not okk]
     say("")
     say("build_public_seed --selftest: %d arm(s), %d failed" % (len(results), len(bad)))
@@ -1163,7 +1379,22 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--out", help="materialize the publish set into this directory")
     ap.add_argument("--seed", help="materialize, then git init + one authored commit")
-    ap.add_argument("--push", help="with --seed: git remote add origin <url> && git push -u")
+    ap.add_argument(
+        "--push",
+        help="with --seed: git remote add origin <url> && git push -u; with --follow-up: push "
+        "the follow-up commit (must equal the --follow-up url)",
+    )
+    ap.add_argument(
+        "--follow-up",
+        metavar="URL",
+        help="clone URL, replace its tree with the publish set, ONE follow-up commit (fork F5N). "
+        "Needs --clone-dir.",
+    )
+    ap.add_argument("--clone-dir", help="with --follow-up: where to clone (must not exist)")
+    ap.add_argument(
+        "--message",
+        help="with --follow-up: the commit message (default: names the private HEAD it was cut from)",
+    )
     ap.add_argument(
         "--author-email",
         help="the seed commit author's email (or MH_SEED_AUTHOR_EMAIL). The NAME is read "
@@ -1199,11 +1430,45 @@ def main():
             )
         return 0
 
+    if args.follow_up:
+        if args.seed or args.out:
+            ap.error("--follow-up excludes --seed/--out")
+        if not args.clone_dir:
+            ap.error("--follow-up needs --clone-dir")
+        if args.push and args.push != args.follow_up:
+            ap.error(
+                "--push must equal the --follow-up url (a follow-up goes back where it came from)"
+            )
+        if not (license_holder() and author_email(args.author_email)):
+            print("REFUSED: the follow-up commit needs an author (LICENSE holder + --author-email)")
+            return 1
+        if not preflight():
+            return 1
+        dest = os.path.abspath(args.clone_dir)
+        info = follow_up(
+            args.follow_up,
+            dest,
+            branch=args.branch,
+            email=args.author_email,
+            message=args.message,
+        )
+        if info is None:
+            return 1
+        if args.json:
+            print(json.dumps(info, indent=1))
+        if info.get("unchanged"):
+            return 0
+        if args.push:
+            return 0 if push(dest, args.push, branch=args.branch, existing_origin=True) else 1
+        return 0
+
     dest = args.seed or args.out
     if not dest:
-        ap.error("one of --out, --seed, --check, --update-config, --selftest is required")
+        ap.error(
+            "one of --out, --seed, --follow-up, --check, --update-config, --selftest is required"
+        )
     if args.push and not args.seed:
-        ap.error("--push needs --seed")
+        ap.error("--push needs --seed (or --follow-up)")
     dest = os.path.abspath(dest)
 
     # The author is resolved BEFORE the copy: a missing email should cost a second, not a 2,370-file

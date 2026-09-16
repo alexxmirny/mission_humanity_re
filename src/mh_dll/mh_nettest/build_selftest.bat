@@ -1,14 +1,30 @@
 @echo off
-rem Build the MP-transport loopback self-test (Phase A0).
+rem Build BOTH offline selftest executables (fork F5I S2).
 rem
 rem Since refactor Phase 5 mh_nettest is a real project in mh.sln, so
-rem this bat is a THIN WRAPPER around msbuild -- the source list lives in mh_nettest.vcxproj ONLY
+rem this bat is a THIN WRAPPER around msbuild -- the source list lives in the vcxproj files ONLY
 rem (it used to be duplicated here and needed updating every time a seam TU was added). The
-rem historical run contract is preserved: the exe lands in [outdir] (default %TEMP%\mh_nettest).
+rem historical run contract is preserved: the exes land in [outdir] (default %TEMP%\mh_nettest).
+rem
+rem TWO PROJECTS, ONE BAT, TWO MSBUILD INVOCATIONS:
+rem   mh_nettest\mh_nettest.vcxproj    -> net_selftest.exe     the HOSTED arm (no MH_LIBMH_BUILD):
+rem                                       mh.dll's own machinery -- transport, marshalling thunks,
+rem                                       the patch and tombstone instruments, the hook table.
+rem   libmh_test\libmh_test.vcxproj    -> libmh_selftest.exe   the STANDALONE arm (MH_LIBMH_BUILD +
+rem                                       MH_SPINE_IN_IMAGE): the same 628 roster TUs compiled as
+rem                                       the whole program, running the suites about libmh itself.
+rem Which suite runs on which is tools/data/selftest_roster.json's `exe` column. BOTH are staged
+rem into the SAME outdir, because that directory is the run contract tools/run_selftests.py checks
+rem and a second directory would only be a second thing to keep in step.
+rem
+rem A FAILED BUILD OF EITHER IS A FAILED BUILD. Staging whichever exe compiled would leave the
+rem driver running half the roster and reporting green, which is the failure the roster assertion
+rem exists to make impossible.
 rem
 rem Usage:  build_selftest.bat  [outdir]  [--asan]
-rem Then:   net_selftest.exe selftest    (2-node PING/PONG round-trip)
-rem         net_selftest.exe selftest3   (3-node broadcast relay fan-out)
+rem Then:   net_selftest.exe selftest       (2-node PING/PONG round-trip)
+rem         net_selftest.exe selftest3      (3-node broadcast relay fan-out)
+rem         libmh_selftest.exe --list-suites (what the standalone arm answers to)
 rem NODE REUSE IS DISABLED ON PURPOSE -- do not "restore" it for build speed. With `/m` and default
 rem node reuse, MSBuild's worker nodes outlive the build by ~15 minutes AND inherit whatever stdout
 rem handle this bat was started with. A caller using subprocess.run(capture_output=True) then reads
@@ -21,7 +37,9 @@ rem Builds the same sources with /fsanitize=address into a SEPARATE output dir, 
 rem never be mistaken for the one the gate times or the rig runs.
 rem
 rem WHY IT IS WORTH HAVING. `aitest` is the primary oracle for ~215 reimplemented AI functions, and
-rem an out-of-bounds read/write is exactly what a translation with a wrong extent produces. Without
+rem an out-of-bounds read/write is exactly what a translation with a wrong extent produces. (Since
+rem F5I S2 that suite is libmh_selftest.exe's, so the worked example below is now a crash trace from
+rem the OTHER exe this bat builds -- the bug, the tool and the argument are unchanged.) Without
 rem ASan that surfaces as DELAYED, NON-LOCAL, INTERMITTENT heap damage: on 2026-08-03 a one-element
 rem `std::vector<uint32_t> ring_counts{128}` (initializer_list ctor, not a size) made aitest die
 rem 0xC0000374 on ~60% of runs, with a stack pointing at `recorder::clear` freeing a
@@ -46,8 +64,9 @@ rem
 rem THE TWO MODES NO LONGER SHARE A STAGING PATH (2026-08-23). ASan builds into ..\Release_asan\ and
 rem plain into ..\Release\, with separate IntDirs, so neither can be mistaken for the other AND
 rem neither forces a full rebuild of the other -- which is what made every gate run pay two full
-rem 669-TU passes. Still run the copy in the outdir this script reports rather than reading
-rem ..\Release\ directly: that is the contract run_selftests.py checks.
+rem 669-TU passes. Both projects follow the same rule and share those two output directories while
+rem keeping their own IntDirs. Still run the copy in the outdir this script reports rather than
+rem reading ..\Release\ directly: that is the contract run_selftests.py checks.
 setlocal enabledelayedexpansion
 set HERE=%~dp0
 rem Resolve the VS/BuildTools install via vswhere (portable across machines); fall back to this box's
@@ -73,15 +92,29 @@ if "%ASAN%"=="1" set EXTRA=/p:EnableASAN=true /p:AdditionalOptions="/Zi"
 
 "%VSDIR%\MSBuild\Current\Bin\MSBuild.exe" "%HERE%mh_nettest.vcxproj" /p:Configuration=Release /p:Platform=Win32 %EXTRA% /m /nodeReuse:false /v:minimal /nologo
 if errorlevel 1 (
-  echo BUILD FAILED
+  echo BUILD FAILED ^(mh_nettest^)
   exit /b 1
 )
-rem Each mode builds into its OWN ..\Release[_asan]\ (mh_nettest.vcxproj splits OutDir/IntDir
+"%VSDIR%\MSBuild\Current\Bin\MSBuild.exe" "%HERE%..\libmh_test\libmh_test.vcxproj" /p:Configuration=Release /p:Platform=Win32 %EXTRA% /m /nodeReuse:false /v:minimal /nologo
+if errorlevel 1 (
+  echo BUILD FAILED ^(libmh_test^)
+  exit /b 1
+)
+rem Each mode builds into its OWN ..\Release[_asan]\ (both vcxproj split OutDir/IntDir
 rem on EnableASAN), so the two no longer invalidate each other's objects -- an unchanged
 rem rebuild is ~1 s instead of a full 669-TU pass -- and neither can be mistaken for the other.
-set STAGE=%HERE%..\Release\net_selftest.exe
-if "%ASAN%"=="1" set STAGE=%HERE%..\Release_asan\net_selftest.exe
-copy /y "%STAGE%" "%OUT%\" >nul
+set STAGEDIR=%HERE%..\Release
+if "%ASAN%"=="1" set STAGEDIR=%HERE%..\Release_asan
+copy /y "%STAGEDIR%\net_selftest.exe" "%OUT%\" >nul
+if errorlevel 1 (
+  echo STAGING FAILED: %STAGEDIR%\net_selftest.exe
+  exit /b 1
+)
+copy /y "%STAGEDIR%\libmh_selftest.exe" "%OUT%\" >nul
+if errorlevel 1 (
+  echo STAGING FAILED: %STAGEDIR%\libmh_selftest.exe
+  exit /b 1
+)
 
 if "%ASAN%"=="1" (
   rem Newest toolset wins: /o:n sorts ascending, so the last match is the highest version. Resolved
@@ -99,5 +132,5 @@ if "%ASAN%"=="1" (
     echo asan runtime: !ASANRT!
   )
 )
-echo built: %OUT%\net_selftest.exe
+echo built: %OUT%\net_selftest.exe and %OUT%\libmh_selftest.exe
 endlocal

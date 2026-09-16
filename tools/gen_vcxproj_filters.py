@@ -45,10 +45,10 @@ WHO GENERATES WHAT.
   * Every other project under src/ is handled here, its .filters committed, and
     `--check` is a lint_repo row so a hand-edit or a stale file fails the gate.
 
-mh_nettest (1026 entries) IS INCLUDED, and the tracker's "wait for F5I" note does not apply to this
-half: F5I splits that project in two, and whatever the successors are called, running this tool
-against them regenerates their .filters from their own item lists. There is nothing to hand-carry
-across the split -- which is the argument for deriving rather than hand-listing, made one more time.
+mh_nettest (1026 entries) IS INCLUDED, and the tracker's "wait for F5I" note did not apply to this
+half: F5I split that project in two, and the successor -- libmh_test, generated -- got its .filters
+from the same renderer on the same day, with nothing hand-carried across the split. That is the
+argument for deriving rather than hand-listing, made once more by the event it was written about.
 
 USAGE
 
@@ -76,8 +76,13 @@ REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SRC = os.path.join(REPO, "src")
 MSB = "{http://schemas.microsoft.com/developer/msbuild/2003}"
 
-# The three whose .vcxproj AND .filters both come out of tools/gen_libmh_vcxproj.py.
-GENERATED = ("libmh.vcxproj", "libmh_dll.vcxproj", "libmh_std.vcxproj")
+# The four whose .vcxproj AND .filters both come out of tools/gen_libmh_vcxproj.py.
+GENERATED = (
+    "libmh.vcxproj",
+    "libmh_dll.vcxproj",
+    "libmh_std.vcxproj",
+    "libmh_test.vcxproj",  # fork F5I
+)
 
 # Item elements that carry an Include= but are NOT files and must never reach a .filters tree.
 NON_FILE_ITEMS = (

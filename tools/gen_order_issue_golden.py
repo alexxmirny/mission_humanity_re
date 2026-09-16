@@ -41,7 +41,7 @@ conservative (and more honest) than a from-scratch dataflow analysis would be:
 OUTPUTS.
   tools/data/order_issue_golden.json                  -- the JSON golden + the crosscheck + every
                                                           unresolved leaf, grouped by wrapper/site/field.
-  src/mh_dll/mh_nettest/order_issue_golden.gen.h       -- the same data as a self-contained, constexpr
+  src/mh_dll/libmh_test/order_issue_golden.gen.h       -- the same data as a self-contained, constexpr
                                                           C++ table for the (separately written) shadow
                                                           evaluator to walk without touching JSON at
                                                           runtime.
@@ -68,7 +68,7 @@ ASM_DIR = REPO / "tmp" / "decomp_orders_issue"
 LEDGER = REPO / "tools" / "data" / "orders_issue_migration.json"
 RAW = REPO / "tools" / "data" / "order_matrix_raw.json"
 OUT_JSON = REPO / "tools" / "data" / "order_issue_golden.json"
-OUT_HDR = REPO / "src" / "mh_dll" / "mh_nettest" / "order_issue_golden.gen.h"
+OUT_HDR = REPO / "src" / "mh_dll" / "libmh_test" / "order_issue_golden.gen.h"
 
 DISPATCH = "llm_strat_order_dispatch"
 ENQUEUE = "llm_strat_order_enqueue"

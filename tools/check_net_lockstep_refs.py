@@ -87,7 +87,14 @@ import sys
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SRC = os.path.join(REPO, "src", "mh_dll")
 SEAM_DIR = os.path.join(SRC, "mh", "seams")
-LOCKSTEP_DIR = os.path.join(SRC, "mh", "lockstep")
+# libmh/, NOT mh/, and that was a LIVE BUG until fork F5I S4. The closure's sources moved to
+# src/mh_dll/libmh/lockstep at fork F4D; this constant kept pointing at src/mh_dll/mh/lockstep,
+# which since then has not existed. Everything derived from it silently became empty -- the
+# provider map the OBJ pass builds, the extraction tail's cross-object pass, `attribute()`'s
+# report column -- so the `link` column read `no` for every row for the same reason a genuinely
+# uncoupled build would: nothing to compare against. Caught by the non-vacuity floor added below
+# (zero collected closure symbols is now fatal), which is the whole argument for that floor.
+LOCKSTEP_DIR = os.path.join(SRC, "libmh", "lockstep")
 # Where the extracted instrument lives since F3D. Named here so extraction_tail() reads the real
 # module rather than a path that silently matches nothing once the files move again.
 DESYNC_DIR = os.path.join(SRC, "mh", "desync")
@@ -111,6 +118,11 @@ SEAM_OBJS = [t[:-4] for t in SEAM_TUS if t.endswith(".cpp")]
 DEFAULT_OBJDIRS = [
     os.path.join(SRC, "mh", "Debug"),
     os.path.join(SRC, "mh_nettest", "Win32", "Debug"),
+    # NOT libmh_test's IntDir. Measured at fork F5I S4: it holds the 628-TU roster and the tests,
+    # so it has every CLOSURE object -- but not `net_seams.obj`, because the four seam TUs are
+    # mh.dll's and that project does not compile them. A directory with no seam objects can never
+    # be the primary objdir (the probe below looks for exactly that file); it belongs in
+    # SPINE_OBJDIRS, where find_obj consults it for the closure half, and it is there.
 ]
 
 # THE CLOSURE'S OBJECTS MOVED AT FORK F4D, and the OBJ mechanism has to follow them or it quietly
@@ -125,6 +137,12 @@ DEFAULT_OBJDIRS = [
 SPINE_OBJDIRS = [
     os.path.join(SRC, "libmh_dll", "Debug"),
     os.path.join(SRC, "libmh", "libmh", "Release"),
+    # fork F5I S3, same reason as the DEFAULT_OBJDIRS entry: libmh_test compiles the 628-TU roster
+    # in the standalone arm, so its IntDir is a third place a closure object legitimately lives.
+    # Debug, matching the configuration DEFAULT_OBJDIRS looks for -- the OBJ pass compares symbol
+    # tables, and mixing an optimised object into a Debug run is how a symbol goes missing for a
+    # reason that has nothing to do with the closure.
+    os.path.join(SRC, "libmh_test", "Win32", "Debug"),
 ]
 
 
@@ -514,8 +532,19 @@ def undecorate(dumpbin, obj):
 
 
 def scan_objects(objdir, dumpbin):
-    """Return (findings, notes). findings: list of dicts with tu/symbol/undecorated/provider."""
-    notes = []
+    """Return (findings, notes, gaps).
+
+    findings: list of dicts with tu/symbol/undecorated/provider.
+    gaps:     the objects this tool EXPECTED and did not find. Separate from `notes` on purpose --
+              see the non-vacuity floor in main(). Until fork F5I S4 every one of these was a note,
+              which is printed and then ignored: a run that located ZERO of the closure's objects
+              reported "closure object missing" once per file and still printed OK, because the
+              OBJ pass contributes only additional findings and finding none reads as clean --
+              a gate that cannot go red because it read nothing, which is the failure this project
+              keeps re-learning. The F5I split is exactly the event that moves objects out from
+              under such a scan.
+    """
+    notes, gaps = [], []
     # The closure itself, PLUS mh/sim -- the latter only so the `link` column is honest for the
     # mh::sim couplings the desync_watch install path carries. They are reported under scope "sim"
     # and never counted toward the D1 verdict, which is about mh/lockstep alone.
@@ -530,6 +559,7 @@ def scan_objects(objdir, dumpbin):
         if not os.path.exists(obj):
             if closure:
                 notes.append("closure object missing (not built here): %s.obj" % base)
+                gaps.append("%s.obj (mh/lockstep closure)" % base)
             continue
         _, defd, note = dump_externals(dumpbin, obj)
         if note:
@@ -549,6 +579,7 @@ def scan_objects(objdir, dumpbin):
         src = os.path.join(SEAM_DIR, base + ".cpp")
         if not os.path.exists(obj):
             notes.append("seam object missing (not built here): %s.obj" % base)
+            gaps.append("%s.obj (net seam, SEAM_TUS)" % base)
             continue
         undef, _, note = dump_externals(dumpbin, obj)
         if note:
@@ -572,7 +603,7 @@ def scan_objects(objdir, dumpbin):
                         provider=sorted(provider[s]),
                     )
                 )
-    return findings, notes
+    return findings, notes, gaps, len(provider)
 
 
 def extraction_tail(objdir, dumpbin):
@@ -702,6 +733,7 @@ def main():
 
     # --- OBJ -----------------------------------------------------------------------------------
     obj_findings, obj_notes, objdir_used, dumpbin = [], [], None, None
+    obj_gaps, obj_provider_syms = [], 0
     if not args.src_only:
         dumpbin = find_dumpbin(args.dumpbin)
         if not dumpbin:
@@ -718,7 +750,9 @@ def main():
                     % ", ".join(c for c in cands if c)
                 )
             else:
-                obj_findings, notes = scan_objects(objdir_used, dumpbin)
+                obj_findings, notes, obj_gaps, obj_provider_syms = scan_objects(
+                    objdir_used, dumpbin
+                )
                 obj_notes.extend(notes)
 
     link_level = {}
@@ -824,6 +858,14 @@ def main():
             if f["symbol"] not in dw_src:
                 print("    %-40s (link only)  [%s]" % (f["symbol"], f["provider"]))
         print()
+        if objdir_used:
+            # PRINT THE DENOMINATOR. The `link` column is only as good as the provider map behind
+            # it, and an empty map prints exactly like a clean one -- so the size of the map is
+            # part of the report rather than something a reader has to take on trust.
+            print(
+                "  [obj] %d closure symbol(s) collected from mh/lockstep + mh/sim objects"
+                % obj_provider_syms
+            )
         for note in obj_notes:
             print("  [obj] %s" % note)
         if obj_only:
@@ -860,6 +902,34 @@ def main():
             "FAIL(drift): %d reference(s) into the closure carry no ruling: %s\n"
             "Classify each in RULINGS (bucket + the guard that justifies it) before this passes."
             % (len(unruled), ", ".join(unruled)),
+            file=sys.stderr,
+        )
+        return 2
+    # THE NON-VACUITY FLOOR (fork F5I S4). The OBJ mechanism only ever ADDS findings, so "it found
+    # nothing" and "it read nothing" produce the same verdict. Two ways it can read nothing, and
+    # both are now fatal instead of a printed note:
+    #   * an object this tool NAMES is missing (a seam TU from SEAM_TUS, or a .cpp that exists in
+    #     mh/lockstep) -- the F5I split moved the roster's objects, and a stale objdir list is
+    #     exactly how that would have surfaced;
+    #   * the provider map came back EMPTY, i.e. not one mh::lockstep/mh::sim symbol was collected
+    #     from any closure object, so nothing the seam objects reference could ever have matched.
+    # Both are conditioned on the OBJ pass having actually run: no dumpbin, no objdir or --src-only
+    # still SKIP, loudly and by name, which is the documented single-tree case.
+    if objdir_used and obj_gaps:
+        print(
+            "FAIL(tool): the OBJ pass could not find %d object(s) it names: %s\n"
+            "Every symbol those objects define is invisible to this run, so a link-level reference\n"
+            "into the closure would go unreported and the run would still print OK. Build the Debug\n"
+            "configuration, or point --objdir at a tree that has them."
+            % (len(obj_gaps), ", ".join(obj_gaps)),
+            file=sys.stderr,
+        )
+        return 2
+    if objdir_used and obj_provider_syms == 0:
+        print(
+            "FAIL(tool): the OBJ pass collected ZERO mh::lockstep/mh::sim symbols from the closure\n"
+            "objects in %s. Nothing the seam objects reference could match, so the link column is\n"
+            "vacuous rather than clean." % objdir_used,
             file=sys.stderr,
         )
         return 2

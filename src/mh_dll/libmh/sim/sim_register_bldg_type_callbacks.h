@@ -105,6 +105,29 @@ int                               bldg_type_callback_binding_count();
 // asserted so the caller can refuse to install a half-filled table.
 const bldg_type_callback_binding *bldg_type_binding_for(uintptr_t original_va);
 
+
+// ---- THE STANDALONE BINDING TABLE, READABLE (fork F5I S2) ---------------------------------------
+//
+// Exposed for exactly the reason the hosted pair above is exposed: the offline oracle has to be able
+// to read the rows the fill uses, or it can only compare the fill against itself. The hosted table
+// is keyed by the ORIGINAL VA; this configuration has no original address to key by -- the VA rows
+// are compiled out so that libmh.lib's initialised data carries none (LIB-REF-SPLIT's measured
+// zero) -- so the same rows are keyed by NAME. That is the ONLY difference, and confining it here
+// is what lets the oracle keep one body for both arms.
+#ifdef MH_LIBMH_BUILD
+// One row. `ours` is the body the slot will hold: the direct C++ function for the 22 zero-argument
+// callbacks, the zero-argument ADAPTER for the eight whose committed prototype takes four __watcall
+// register parameters (the allow-list in the .cpp). Never null for a name this returns a row for.
+struct sa_cb_binding_row {
+    const char *name;
+    void (*ours)();
+};
+
+int                      sa_bldg_type_binding_count();
+const char              *sa_bldg_type_binding_name(int i); // "" out of range
+const sa_cb_binding_row *sa_bldg_type_binding_for(const char *name);
+#endif // MH_LIBMH_BUILD
+
 // Fill both tables exactly as the original registrar fills the game's: for each table, the default
 // callback into every id whose cfg type is in the default-fill range, then each assigned type in
 // the order the original performs those writes.

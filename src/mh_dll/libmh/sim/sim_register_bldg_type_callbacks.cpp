@@ -87,10 +87,10 @@ using sa_cb_fn = bldg_done_fn;
 constexpr sa_cb_fn sa_cb_bind(void (*f)()) { return f; }
 constexpr sa_cb_fn sa_cb_bind(void (*)(uint32_t, uint32_t, uint32_t, uint32_t)) { return nullptr; }
 
-struct sa_cb_binding {
-    const char *name;
-    sa_cb_fn    ours;
-};
+// The row type is detail::sa_cb_binding_row, declared in the header since F5I S2 so the offline
+// oracle can read the same rows the fill uses. `ours` nullptr here == a register-parameter callback;
+// the allow-list below is what resolves it.
+using sa_cb_binding = detail::sa_cb_binding_row;
 
 constexpr sa_cb_binding kBindingsSA[] = {
 #define MH_SIM_BLDGCB_BIND_SA(FULL, STEM) {#FULL, sa_cb_bind(&::mh::sim::STEM)},
@@ -222,9 +222,34 @@ void fill_one_sa(const sim_bldg_callback_tables &t, bldg_done_fn *table, int id_
         for (int id = mh::addr::BLDG_TYPE_FIRST_ID; id < id_limit; ++id)
             if (type_of(t, id) == static_cast<int>(a.type)) table[id] = b->ours;
     }
+    // THE COUNT IS "HOW MANY SLOTS ARE OURS", NOT "HOW MANY ARE NON-NULL" (fixed at fork F5I S2).
+    //
+    // This is what the hosted twin ten lines up counts, via is_our_bldg_type_callback, and it is
+    // what register_bldg_type_callbacks LOGS as its non-vacuity evidence -- "done[N] now M ours".
+    // Counting non-null instead over-reports by every slot the fill deliberately never touched: id
+    // 0, and every id whose cfg type is outside [type_lo, type_hi], which the original never writes
+    // either (see fill_one's comment). Those keep whatever the caller left in them, and a caller
+    // that left something non-null -- the offline fixture leaves 0xdeadbeef, a live table holds the
+    // ORIGINAL's callbacks -- was being counted as ours. Measured by the standalone oracle the day
+    // it first ran: 100 reported against the 95 the same cfg gives hosted, the 5 being id 0 plus
+    // the four out-of-range ids 0x28..0x2b.
+    //
+    // It could not simply call is_our_bldg_type_callback: that walks the VA-keyed table, which is
+    // the empty stub in this configuration. The name-keyed set is the standalone form of the same
+    // membership question, so it is asked of that -- through sa_cb_binding_for, so a
+    // register-parameter callback is compared as the ADAPTER the fill actually installed.
     int n = 0;
-    for (int id = 0; id < id_limit; ++id)
-        if (table[id] != nullptr) ++n;
+    for (int id = 0; id < id_limit; ++id) {
+        if (table[id] == nullptr) continue;
+        for (int b = 0; b < kBindingCountSA; ++b) {
+            const sa_cb_binding *row = sa_cb_binding_for(kBindingsSA[b].name);
+            if (row != nullptr && reinterpret_cast<const void *>(row->ours) ==
+                                      reinterpret_cast<const void *>(table[id])) {
+                ++n;
+                break;
+            }
+        }
+    }
     *filled = n;
 }
 #endif
@@ -235,6 +260,20 @@ namespace detail {
 
 const bldg_type_callback_binding *bldg_type_callback_bindings() { return kBindings; }
 int                               bldg_type_callback_binding_count() { return kBindingCount; }
+
+#ifdef MH_LIBMH_BUILD
+// The standalone trio, forwarding to the arm above. Declared in the header for the oracle's sake;
+// see the note there.
+int sa_bldg_type_binding_count() {
+    return kBindingCountSA;
+}
+const char *sa_bldg_type_binding_name(int i) {
+    return (i >= 0 && i < kBindingCountSA) ? kBindingsSA[i].name : "";
+}
+const sa_cb_binding_row *sa_bldg_type_binding_for(const char *name) {
+    return sa_cb_binding_for(name);
+}
+#endif // MH_LIBMH_BUILD
 
 const bldg_type_callback_binding *bldg_type_binding_for(uintptr_t original_va) {
     for (int i = 0; i < kBindingCount; ++i)

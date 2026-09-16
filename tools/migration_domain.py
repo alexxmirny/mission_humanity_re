@@ -170,8 +170,39 @@ class Domain:
 
     @property
     def selftest(self):
-        """The offline oracle's net_selftest subcommand, e.g. 'aitest'. None if none exists yet."""
+        """The offline oracle's suite name, e.g. 'aitest'. None if none exists yet."""
         return self.raw.get("oracle", {}).get("selftest")
+
+    @property
+    def selftest_cmd(self):
+        """The suite as a RUNNABLE command line -- `<exe> <suite>` -- or None if the domain has no
+        oracle yet.
+
+        WHY THIS IS NOT `"net_selftest.exe " + self.selftest` (fork F5I S4). There are two offline
+        test executables since the libmh_test split, and every migration domain's oracle
+        (aitest / simtest / tacttest / issuetest / libtranstest / ...) is on the side that MOVED to
+        `libmh_selftest.exe`. The routing lives in tools/data/selftest_roster.json's `exe` column,
+        which is the one list; this reads it rather than repeating it.
+
+        It matters because the consumer is an AGENT BRIEF. A stale `net_selftest.exe aitest` in a
+        prompt does not fail loudly for the agent that runs it -- the exe exits 2 with its mode
+        list, which has no `N checks, M failures` line and no FAIL line, and an agent skimming for
+        the word FAIL can read that as a clean run. A suite the roster does not carry is a named
+        error here instead.
+        """
+        suite = self.selftest
+        if not suite:
+            return None
+        roster = json.load(
+            open(os.path.join(REPO, "tools", "data", "selftest_roster.json"), encoding="utf-8")
+        )
+        exe = {r["suite"]: r["exe"] for r in roster["suites"]}.get(suite)
+        if exe is None:
+            raise SystemExit(
+                "migration_domain: domain %r declares oracle.selftest %r, which is not in "
+                "tools/data/selftest_roster.json" % (self.name, suite)
+            )
+        return "%s %s" % (roster["exes"][exe]["staged"], suite)
 
     @property
     def rig_modes(self):

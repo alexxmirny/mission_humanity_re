@@ -158,6 +158,11 @@
       "why": "every save block is servable under a relocated bind",
       "evidence": "invoked by tools/lint_repo.py"
     },
+    "check_selftest_roster.py": {
+      "class": "keep",
+      "why": "the committed selftest roster equals the exe's own suite table (fork F5I)",
+      "evidence": "invoked by tools/lint_repo.py"
+    },
     "check_sim_addresses.py": {
       "class": "keep",
       "why": "no game-state address reaches a sim translation (W2)",
@@ -837,6 +842,12 @@
       "class": "archive",
       "why": "Ghidra CRT-tag propagation/rename",
       "evidence": "F0 triage (docs/fork-inventory.md section 1): the Ghidra DB pipeline (the fork freezes the database)"
+    },
+    "prove_suite_identity.py": {
+      "class": "keep",
+      "why": "per-suite transcript+exit-code identity baseline for the selftest exe -- the oracle F5I's move and exe split are measured against (fork F5I)",
+      "evidence": "no machine invoker -- run by hand around a change claimed to be behaviour-neutral: --record on the known-good build, --check on the candidate",
+      "hand_run": true
     },
     "provision_rig.py": {
       "class": "keep",

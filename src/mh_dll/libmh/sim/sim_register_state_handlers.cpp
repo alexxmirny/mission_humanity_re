@@ -135,10 +135,10 @@ using sa_fn = void (*)();
 constexpr sa_fn sa_bind(void (*f)()) { return f; }
 constexpr sa_fn sa_bind(void (*)(uint32_t, uint32_t, uint32_t, uint32_t)) { return nullptr; }
 
-struct sa_handler_binding {
-    const char *name;
-    sa_fn       ours; // nullptr == a register-parameter handler; see the allow-list below
-};
+// The row type is detail::sa_binding, declared in the header since F5I S2 so the offline oracle can
+// read the same rows the fill uses. `ours` nullptr here == a register-parameter handler; the
+// allow-list below is what resolves it.
+using sa_handler_binding = detail::sa_binding;
 
 constexpr sa_handler_binding kBindingsSA[] = {
 #define MH_SIM_HANDLER_BIND_SA(FULL, STEM) {#FULL, sa_bind(&::mh::sim::STEM)},
@@ -213,6 +213,7 @@ static_assert(sa_unbound_count() == kZeroParamCountSA,
 // Resolves a handler name to the body the standalone table will hold: the direct C++ function for
 // the 63, the zero-argument adapter for the five on the allow-list. A name that is neither is a
 // nullptr return, which fill_tables turns into a refusal BEFORE it writes anything.
+const sa_handler_binding *sa_binding_for(const char *name);
 const sa_handler_binding *sa_binding_for(const char *name) {
     for (int i = 0; i < kBindingCountSA; ++i)
         if (std::strcmp(kBindingsSA[i].name, name) == 0) {
@@ -272,6 +273,20 @@ const handler_binding *binding_for(uintptr_t original_va) {
         if (kBindings[i].original_va == original_va) return &kBindings[i];
     return nullptr;
 }
+
+#ifdef MH_LIBMH_BUILD
+// The standalone trio, forwarding to the arm above. Declared in the header for the oracle's sake;
+// see the note there.
+int sa_handler_binding_count() {
+    return kBindingCountSA;
+}
+const char *sa_handler_binding_name(int i) {
+    return (i >= 0 && i < kBindingCountSA) ? kBindingsSA[i].name : "";
+}
+const sa_binding *sa_handler_binding_for(const char *name) {
+    return sa_binding_for(name);
+}
+#endif // MH_LIBMH_BUILD
 
 bool fill_tables(unit_state_fn *unit_tbl, int32_t unit_slots, bldg_state_fn *bldg_tbl,
                  int32_t bldg_slots) {

@@ -353,7 +353,16 @@ def build():
             os.path.join(rel, "standalone", "libref_host.exe"),
             "config (3): the host",
         ),
-        ("net_selftest.exe", os.path.join(rel, "net_selftest.exe"), "the offline suites"),
+        (
+            "net_selftest.exe",
+            os.path.join(rel, "net_selftest.exe"),
+            "the offline suites, HOSTED arm",
+        ),
+        (
+            "libmh_selftest.exe",
+            os.path.join(rel, "libmh_selftest.exe"),
+            "the offline suites, STANDALONE arm (F5I)",
+        ),
     ]
     missing = [n for n, p, _w in artifacts if not os.path.isfile(p)]
     if missing:

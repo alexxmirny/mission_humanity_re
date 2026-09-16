@@ -17,6 +17,37 @@
 // or someone "simplifying" a helper is caught by a red suite rather than by a desync three sessions
 // later.
 //
+// AND THE FLAG CHANGE IS NOT HYPOTHETICAL -- fork F5I MEASURED ONE (ruling R9). This TU is compiled
+// by BOTH offline oracles, and they do not give it the same instruction set:
+//
+//   * mh_nettest.vcxproj (net_selftest.exe, HOSTED) applies EnableEnhancedInstructionSet=NoExtensions
+//     -- /arch:IA32 -- PER TU, from tools/lint_fp_flags.py's classification of the 500 FP-relevant
+//     roster TUs. This TU is a TEST, so it is not in that classification and compiles at the x86
+//     default, /arch:SSE2.
+//   * libmh_test.vcxproj (libmh_selftest.exe, STANDALONE) applies the same setting to the WHOLE
+//     project, following libmh.vcxproj -- and libmh.vcxproj's flags are THE ARCHIVE'S flags, the
+//     ones the shipped spine is actually built with.
+//
+// The consequence lands squarely on cases T1/T4/T5/T13, the four the T table calls PC=53-DEPENDENT.
+// Their reference arm is `__asm`, i.e. x87 unconditionally; their subject arm is a C++ expression.
+// Under /arch:SSE2 that expression's intermediates are SSE doubles the x87 control word cannot
+// reach, so raising the word to PC=64 moves ONE arm and the two answers separate (4 / 1743 / 4 /
+// 1743 divergences). Under /arch:IA32 the same expression compiles to x87 as well, the control word
+// moves BOTH arms together, and the columns agree.
+//
+// MEASURED, not inferred: setting EnableEnhancedInstructionSet=StreamingSIMDExtensions2 on THIS ONE
+// FILE in libmh_test.vcxproj reproduces the hosted numbers exactly (4 / 1743 / 4 / 1743, and the W
+// table's trunc_scaled_int 986 rather than 985). The /GL hypothesis was tested first and REFUTED:
+// building the whole standalone exe with WholeProgramOptimization=true changed nothing at all.
+//
+// So the finding is: UNDER THE FLAGS THE SHIPPED ARCHIVE IS BUILT WITH, PC=53 IS NOT LOAD-BEARING
+// FOR T1/T4/T5/T13 -- their C++ intermediates are already 64 bits wide, exactly like the assembly's.
+// It is load-bearing for the code that is NOT compiled /arch:IA32, which is why the guarantee stays
+// and why case P still tests the install. The T table's PC=64 column is therefore asserted
+// ARM-AWARE below: nonzero hosted, equal-to-the-PC=53-column standalone. What is NOT arm-aware is
+// the blindness guard -- some case must still separate under PC=64 in either arm, or every zero in
+// the table is a blind read; that is `trunc_scaled_int`, and it is asserted in both.
+//
 // WHAT THE EXPERIMENT ESTABLISHED, and what this suite keeps checking:
 //   * ONLY `trunc_i32` became C++. It agrees with the assembly at BOTH x87 precision settings, which
 //     matters because the DLL harness pins PC=53 (harness.cpp `pin_fpu`, default on) while the bare
@@ -1397,9 +1428,18 @@ void report_conversions() {
     printf("  %-38s %8s %8s %9s   %s\n", "helper", "PC=53", "PC=64", "inputs", "note");
     for (int i = 0; i < g_tn; ++i) {
         const trow &t = g_t[i];
-        printf("  %-38s %8d %8d %9d   %s\n", t.name, t.d53, t.d64, t.n,
-               t.pc53_dependent ? "PC=53-DEPENDENT (PC=64 column is EXPECTED nonzero)"
-                                : "not PC-dependent");
+        // The NOTE column is arm-aware for the same reason the assertion below is: a row that is
+        // PC=53-dependent under /arch:SSE2 is not under /arch:IA32, and printing "EXPECTED nonzero"
+        // over a legitimate zero would make the table say the opposite of what it measured.
+#ifdef MH_LIBMH_BUILD
+        const char *note = t.pc53_dependent ? "PC=53-DEPENDENT under /arch:SSE2 -- /arch:IA32 here, "
+                                              "so the two columns must AGREE"
+                                            : "not PC-dependent";
+#else
+        const char *note = t.pc53_dependent ? "PC=53-DEPENDENT (PC=64 column is EXPECTED nonzero)"
+                                            : "not PC-dependent";
+#endif
+        printf("  %-38s %8d %8d %9d   %s\n", t.name, t.d53, t.d64, t.n, note);
         // The guarantee is PC=53, so PC=53 is where the equality is asserted -- for every row.
         std::snprintf(msg, sizeof(msg), "%s: equals the assembly at PC=53 (%d of %d differ)", t.name,
                       t.d53, t.n);
@@ -1412,12 +1452,66 @@ void report_conversions() {
                           t.name, t.d64);
             ck(t.d64 == 0, msg);
         } else {
+#ifdef MH_LIBMH_BUILD
+            // F5I R9: THE SAME ROW, THE OTHER ARM -- and the difference is a compiler flag, not a
+            // behaviour. The file banner has the measurement; the short form is that this TU is
+            // /arch:IA32 here (libmh_test.vcxproj applies it project-wide, following libmh.vcxproj,
+            // which is what the shipped archive is built with) and /arch:SSE2 in net_selftest.exe
+            // (mh_nettest.vcxproj applies it per TU and does not classify a test). With the C++ body
+            // compiled to x87 the control word moves the subject arm and the __asm reference arm
+            // TOGETHER, so the PC=64 column must EQUAL the PC=53 column rather than exceed it.
+            //
+            // THE CLAIM IS THE EQUALITY, NOT THE ZERO. `t.d53 == 0` is asserted separately above, so
+            // this row says something the other assertion does not: that raising the precision did
+            // not separate the two arms. It fails if the blanket /arch:IA32 is dropped from this
+            // project, or if the helper acquires a double round-trip (a store through a `double`
+            // temporary narrows one arm and not the other) -- both real regressions, both invisible
+            // to a `d64 == 0` written from a measurement.
+            std::snprintf(msg, sizeof(msg),
+                          "%s: PC=64 agrees with PC=53 (%d == %d) -- /arch:IA32 puts the C++ body in "
+                          "the same x87 registers as the assembly, so the word moves both arms",
+                          t.name, t.d64, t.d53);
+            ck(t.d64 == t.d53, msg);
+#else
             std::snprintf(msg, sizeof(msg),
                           "%s: PC=64 STILL diverges (%d) -- the PC=53 guarantee is load-bearing here, "
                           "not decoration",
                           t.name, t.d64);
             ck(t.d64 > 0, msg);
+#endif
         }
+    }
+
+    // ---- THE BLINDNESS GUARD, AND IT IS NOT ARM-AWARE --------------------------------------------
+    //
+    // Every PC=64 column above is evidence only if the second sweep really ran at a different
+    // precision. In the standalone arm the four PC=53-DEPENDENT rows now legitimately read zero
+    // there, which is exactly the shape a broken harness produces -- a `sweep_conversions(true)` that
+    // never had `_controlfp_s(_PC_64)` applied to it would print the same zeros and pass every row.
+    //
+    // So one named witness has to separate. `trunc_scaled_int` is the choice because it is a W-table
+    // REFUSAL: it is still assembly on both sides of its own probe, its divergence comes from the
+    // EXPONENT range rather than from the significand, and it is therefore untouched by which
+    // instruction set the C++ helpers got -- it diverges more at PC=64 than at PC=53 in both arms.
+    //
+    // ASSERTED AS A STRICT INEQUALITY BETWEEN THE TWO COLUMNS, not against a recorded count, so no
+    // number from any run is written down here. Falsification, done by hand once (F5I S2): comment
+    // out the `_controlfp_s(&cur, _PC_64, _MCW_PC)` line in run_fptest and the second sweep re-runs
+    // at PC=53. Measured result -- this check reds with "(17 > 17)", while `ck(t.d53 == 0)` and
+    // every standalone PC=64 row above stay green, which is precisely the failure they can no
+    // longer see for themselves. (Case N reds too, on its own inputs; that is corroboration, not a
+    // reason to drop this one -- N proves the PROCESS reached PC=64, this proves the W/T SWEEP did,
+    // and the standalone T table's four zeros are only readable as a finding once both hold.)
+    {
+        const wrow *w = nullptr;
+        for (int i = 0; i < g_wn; ++i)
+            if (std::strcmp(g_w[i].name, "trunc_scaled_int") == 0) w = &g_w[i];
+        std::snprintf(msg, sizeof(msg),
+                      "T: NOT BLIND -- trunc_scaled_int separates FURTHER at PC=64 than at PC=53 "
+                      "(%d > %d), so a zero in the PC=64 column above is a finding and not an "
+                      "un-raised control word",
+                      w != nullptr ? w->d64 : -1, w != nullptr ? w->d53 : -1);
+        ck(w != nullptr && w->d64 > w->d53, msg);
     }
 }
 
@@ -1460,10 +1554,14 @@ int run_fptest() {
 
     // ---- P. THE PC=53 GUARANTEE, TESTED RATHER THAN ASSERTED -------------------------------------
     //
-    // Eleven helpers are C++ because libmh guarantees PC=53, and three of them are measurably wrong
-    // at PC=64 (the T table above prints the counts and REQUIRES them nonzero, so the dependency
-    // cannot quietly stop being real). A guarantee that is only written down is not a guarantee, so
-    // this arm exercises the install itself.
+    // Eleven helpers are C++ because libmh guarantees PC=53, and four of them are measurably wrong
+    // at PC=64 WHEN THIS TU IS COMPILED /arch:SSE2 -- which is the hosted exe; the T table prints
+    // the counts and requires them nonzero there, so the dependency cannot quietly stop being real.
+    // In the standalone exe this TU is /arch:IA32 (the archive's flags) and those four columns read
+    // zero for a reason the banner sets out; the T table asserts the equality instead, and the
+    // blindness guard keeps the zero honest. Either way the GUARANTEE still has to be installed for
+    // the code that is not compiled /arch:IA32, and a guarantee that is only written down is not a
+    // guarantee -- so this arm exercises the install itself.
     //
     // IT STARTS AT PC=64 ON PURPOSE. Asserting "the word is 53" after doing nothing would pass in
     // this process no matter what the installer does -- the CRT already leaves it at 53, which is

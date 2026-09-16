@@ -82,7 +82,8 @@ A full build is a few minutes cold. It must produce **seven** artifacts under
 | `libmh.dll` | (2) | the re-implemented spine, **hosted** build |
 | `standalone\libmh.dll` | (3) | the re-implemented spine, **standalone** build (vendored C runtime) |
 | `standalone\libref_host.exe` | (3) | the host that drives the standalone spine |
-| `net_selftest.exe` | — | the offline test suites |
+| `net_selftest.exe` | — | the offline test suites, HOSTED arm (17 of them) |
+| `libmh_selftest.exe` | — | the offline test suites, STANDALONE arm (the other 15; fork F5I). Which suite runs on which is `tools/data/selftest_roster.json`'s `exe` column |
 
 Two more are built beside them and are used by §4-§7 rather than being a configuration of their
 own: `msvfw32.dll` (the loader shim) and `mh_tools.exe` (asset tooling).

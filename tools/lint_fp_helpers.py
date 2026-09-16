@@ -27,7 +27,7 @@ import sys
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 FP_DIR = os.path.join(REPO, "src", "mh_dll", "mh", "fp")
-FPTEST = os.path.join(REPO, "src", "mh_dll", "mh_nettest", "fp_x87_selftest.cpp")
+FPTEST = os.path.join(REPO, "src", "mh_dll", "libmh_test", "fp_x87_selftest.cpp")
 
 DEF_RE = re.compile(
     r"^(?:__declspec\(naked\)\s*)?(?:__declspec\(noinline\)\s*)?inline\s+"

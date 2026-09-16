@@ -15,6 +15,16 @@ ai_construction_plan.cpp and ai_army_milestone.cpp reason explicitly about x87 e
 (The planning census guessed 32 mh/sim TUs were also unflagged; direct measurement here found sim
 already 356/356 -- the gap was exactly the 99 AI TUs, in both vcxproj.)
 
+TWO PROJECTS ARE AUDITED PER-TU AND TWO ARE NOT, and the difference is how they set the flags.
+mh.vcxproj and mh_nettest.vcxproj flag each ClCompile row individually, which is a hand-list and is
+what the per-TU audit below exists for. libmh.vcxproj and (since fork F5I S2) libmh_test.vcxproj set
+`EnableEnhancedInstructionSet=NoExtensions` + `FloatingPointModel=Precise` ONCE, in an
+ItemDefinitionGroup covering every TU -- strictly stronger, and it cannot rot the way a hand-list
+can. A per-TU audit of a blanket project would report every one of its sim/AI rows as MISSING, so
+those two get the check that actually applies to them: the blanket settings are THERE. That check is
+cheap and it is not decorative -- deleting the ItemDefinitionGroup line is exactly how a blanket
+project silently becomes an SSE2 one, and nothing else in the tree reads it.
+
 A TU may be EXEMPT only via tools/data/fp_integer_only.json -- a path -> reason map for bodies with
 no floating-point operation at all, where the arch flag is genuinely a no-op. The exemption is a
 recorded claim, not a default: a new sim/AI TU in neither the flagged set nor the exemption list
@@ -35,6 +45,16 @@ REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DLL_VCX = os.path.join(REPO, "src", "mh_dll", "mh", "mh.vcxproj")
 NET_VCX = os.path.join(REPO, "src", "mh_dll", "mh_nettest", "mh_nettest.vcxproj")
 EXEMPT = os.path.join(REPO, "tools", "data", "fp_integer_only.json")
+
+# The projects that set the two flags for the WHOLE project instead of per TU (see the header).
+BLANKET_VCX = (
+    os.path.join(REPO, "src", "mh_dll", "libmh", "libmh.vcxproj"),
+    os.path.join(REPO, "src", "mh_dll", "libmh_test", "libmh_test.vcxproj"),
+)
+BLANKET_SETTINGS = (
+    "<EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>",
+    "<FloatingPointModel>Precise</FloatingPointModel>",
+)
 
 SETTINGS = (
     "      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>\n"
@@ -160,7 +180,28 @@ def main():
             "  tree clean." % checked
         )
         return 1
-    print("lint_fp_flags: every sim and ai TU is x87 in both vcxproj (%d classified)" % checked)
+    # The blanket projects, checked as wholes (see the header).
+    for path in BLANKET_VCX:
+        base = os.path.basename(path)
+        if not os.path.exists(path):
+            print(
+                "lint_fp_flags: FAIL -- %s is missing; the blanket arm has nothing to read" % base
+            )
+            return 1
+        src = open(path, encoding="utf-8-sig").read()
+        gone = [w for w in BLANKET_SETTINGS if w not in src]
+        if gone:
+            print(
+                "lint_fp_flags: FAIL -- %s no longer sets %s for the whole project. It compiles the\n"
+                "  roster, so dropping this is the SSE2 landmine for every sim/AI TU in it at once."
+                % (base, " and ".join(gone))
+            )
+            return 1
+        print("lint_fp_flags: %s -- blanket /arch:IA32 /fp:precise (whole project)" % base)
+    print(
+        "lint_fp_flags: every sim and ai TU is x87 in both per-TU vcxproj (%d classified), and "
+        "%d blanket project(s) set it whole" % (checked, len(BLANKET_VCX))
+    )
     return 0
 
 

@@ -50,7 +50,7 @@
     "state_header": "src/mh_dll/libmh/ai/ai_state.h",
     "state_impl": "src/mh_dll/libmh/ai/ai_state.cpp",
     "module_dir": "src/mh_dll/mh/ai",
-    "selftest_dir": "src/mh_dll/mh_nettest",
+    "selftest_dir": "src/mh_dll/libmh_test",
     "closure_doc": "docs/ai-closure.md",
     "reclassified": "tools/data/migration/ai_reclassified.json"
   },
@@ -184,6 +184,6 @@
   "refactor_why": "RETIRED as a batch mapping 2026-08-28: batch D is now a TRANSLATION batch (AI1D) and AI2 is the later order-emitter refactor layered on the translated bodies. Kept as a note because the reason batch D existed at all -- these functions write the sim rosters -- is still true and is still what makes them the interesting batch.",
   "items": {
     "interface": "AI0",
-    "_interface_why": "The tracker item that OWNS building the state interface this domain's batches translate into -- `<D>0` in the reimpl-decompose skill's vocabulary, and the item it calls the highest-leverage one. Declared here rather than derived from the domain name because orders_issue's is `O4-0` and a future domain may reuse another domain's interface outright. tools/lint_migration_items.py checks it exists, is not an orphan, and is REACHABLE THROUGH DEPS from every batch. The const AI state view + `net_selftest.exe aitest`. Batch A deps on it directly; B/C/E chain through A."
+    "_interface_why": "The tracker item that OWNS building the state interface this domain's batches translate into -- `<D>0` in the reimpl-decompose skill's vocabulary, and the item it calls the highest-leverage one. Declared here rather than derived from the domain name because orders_issue's is `O4-0` and a future domain may reuse another domain's interface outright. tools/lint_migration_items.py checks it exists, is not an orphan, and is REACHABLE THROUGH DEPS from every batch. The const AI state view + `libmh_selftest.exe aitest`. Batch A deps on it directly; B/C/E chain through A."
   }
 }

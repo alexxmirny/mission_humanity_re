@@ -69,7 +69,7 @@ declared list of rows, BY NAME, in the run output, and prints total/run/skipped.
 runs exactly as it does here. See CI_SKIPS for the list and the measured reason behind each entry.
 
 WHAT --ci DOES NOT MEAN (measured at fork F5M): it does not mean "this is the public tree". The
-workflow that passes it triggers on every branch and this repo has a private GitHub remote, so --ci
+workflow that passes it is dispatched by hand on this repo's private GitHub remote as well, so --ci
 runs against the PRIVATE tree at least as often as against the cut. A row that must behave
 differently on the two trees therefore DETECTS the tree -- see _tree_is_the_cut(), which asks the
 publish ledger's declared `_public_tree_marker` -- and never keys off this flag.
@@ -92,7 +92,7 @@ CLANG_FORMAT = os.environ.get("MH_CLANG_FORMAT", machine.CLANG_FORMAT)
 # "libmh" joined at fork F5O, when the 628-TU roster moved out of mh/ into the directory of
 # the project that owns it. Leaving it out would have dropped 1260 files out of clang-format
 # silently -- the scope-emptying failure this list is written as a literal to make visible.
-DLL_ROOTS = ("mh", "libmh", "mh_common", "mh_nettest")
+DLL_ROOTS = ("mh", "libmh", "mh_common", "mh_nettest", "libmh_test")
 # The proxy-DLL shims are a separate tree but the same C++ discipline applies,
 # so they are formatted with the rest. Their generated stub bodies are excluded below: 47 naked
 # inline-asm thunks are emitted by tools/gen_proxy_stubs.py and clang-format would only fight it.
@@ -227,7 +227,7 @@ def _tree_is_the_cut():
     Asked of the publish ledger, which declares the answer in its `_public_tree_marker` block --
     NOT inferred from --ci. --ci is a statement about what is INSTALLED on the runner (no game, no
     rig, no Ghidra export); it is not a statement about which tree was checked out, and .github's
-    workflow runs on every branch of the private remote as well. Cached: the answer costs a
+    workflow is dispatched on the private remote as well. Cached: the answer costs a
     `git ls-files` and declare_checks runs three times under --ci-selftest.
 
     Falls back to `private` if the ledger machinery is unreadable, which keeps the rows on the arm
@@ -660,7 +660,7 @@ def declare_checks(args):
     # O4-0 (2026-08-27). The order-ISSUE oracle's GOLDEN -- per call site, the four container
     # arguments and the scratch writes, extracted from the original's disassembly as expressions over
     # each wrapper's parameters. Drift-gated for a reason the other generated headers do not share:
-    # it is the EXPECTATIONS `net_selftest issuetest` compares against, so a stale or edited golden
+    # it is the EXPECTATIONS `libmh_selftest.exe issuetest` compares against, so a stale or edited golden
     # does not make the suite fail, it makes the suite agree with whatever the code now does. The
     # generator also cross-checks itself against the independent pcode reading in
     # order_matrix_raw.json and exits non-zero on disagreement, so this gate covers both.
@@ -819,7 +819,7 @@ def declare_checks(args):
     #
     # WHICH ARM RUNS IS CHOSEN BY THE TREE, NOT BY --ci (fork F5M). The obvious wiring -- skip these
     # two under --ci -- rests on "--ci means the public tree", and that is FALSE here: .github's
-    # workflow triggers on `branches: ["**"]` and this repo has a private GitHub remote, so --ci
+    # workflow is dispatched by hand on this repo's private GitHub remote as well, so --ci
     # runs on the PRIVATE tree too and skipping there covered nothing while costing the row. So the
     # rows ask the ledger which tree this is (check_publishable.is_public_tree, declared by the
     # ledger's own _public_tree_marker) and run the matching arm, naming it in the row. On the
@@ -1168,6 +1168,21 @@ def declare_checks(args):
     check(
         "the .filters drift rules still fire (gen_vcxproj_filters --selftest)",
         [sys.executable, os.path.join(REPO, "tools", "gen_vcxproj_filters.py"), "--selftest"],
+    )
+    # fork F5I. The selftest gate's SUITE LIST, which existed three times with nothing comparing the
+    # copies -- a tuple in run_selftests.py, the dispatch table in net_selftest.cpp, and that
+    # dispatcher's hand-written mode message. A suite added to the exe and not to the tuple simply
+    # never ran, and the gate stayed green while doing less. tools/data/selftest_roster.json is now
+    # the committed statement of the table, and this is its no-build arm: it PARSES THE SOURCE,
+    # because lint has no toolchain. run_selftests.py carries the stronger half -- the same
+    # assertion against the exe's live `--list-suites` -- and neither subsumes the other.
+    check(
+        "the selftest roster matches the exe's suite table (check_selftest_roster --check)",
+        [sys.executable, os.path.join(REPO, "tools", "check_selftest_roster.py"), "--check"],
+    )
+    check(
+        "selftest-roster drift -- the negative cases still fire (check_selftest_roster --selftest)",
+        [sys.executable, os.path.join(REPO, "tools", "check_selftest_roster.py"), "--selftest"],
     )
     # fork F4G: the STANDALONE arm's export contract -- configuration (3)'s libmh.dll
     # (Release\standalone\) and the list its host imports. Same two-half split as F4D's one row down:

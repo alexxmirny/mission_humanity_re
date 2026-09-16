@@ -136,7 +136,7 @@ rather than glossed for the same reason.
 **The two INTERNALIZEs are EXECUTED (SIMABI-CHAT, 2026-09-10, table 27 → 25, tact byte-identical).**
 Both bodies live in `libmh/lockstep/lt_chat_ally_mask.{h,cpp}` beside the mask rebuild that reads their
 output — one state set, one set of traps, no second TU restating them. The offline oracle is
-`net_selftest libtranstest` t18/t19 (20 checks over a `chat_target_state` of plain locals): no rig, and
+`libmh_selftest.exe libtranstest` t18/t19 (20 checks over a `chat_target_state` of plain locals): no rig, and
 no shadow site, because a body that is pure over its state gets the cheap parameterised test rather
 than a T3 arm. Four things the execution learned that the register did not say.
 
@@ -257,7 +257,7 @@ failure and not this slice's (tracked with the tooling work). What was proven in
 world-independent:
 
 - With all four save roots promoted, a whole `.sav` written through the reshaped entries: 1,183,818
-  bytes, `container promoted=1`, rc=1. `net_selftest savetest` over it: **287 blocks, 287 decoded,
+  bytes, `container promoted=1`, rc=1. `libmh_selftest.exe savetest` over it: **287 blocks, 287 decoded,
   287 re-encoded BYTE-IDENTICALLY, ended at 1183818 of 1183818**; through the reimplemented drivers
   **ROUND-TRIP IDENTICAL**, ver=5, 19 container blocks, 3 members (1,153,109 bytes), tail 234, every
   member IDENTICAL. The member section parsing at all is `vfs_seek`/`vfs_tell` being right.

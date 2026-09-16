@@ -1120,21 +1120,23 @@ say what the build does.
 **EXACTLY TWO LOCATIONS ARE SHARED BETWEEN BUILD TARGETS, and both are stated rather than
 incidental** — a reader should never have to infer that a directory is multi-target:
 
-1. **`src/mh_dll/libmh/<domain>/`** — the roster. `libmh` (the archive), `libmh_dll` (the hosted arm)
-   and `mh_nettest` (the offline oracle) all compile these same TUs. A library's second CRT arm and
-   its tests compiling the library's own sources out of the library's own directory is the natural
-   reading of "one directory per target", not an exception to it.
+1. **`src/mh_dll/libmh/<domain>/`** — the roster. `libmh` (the archive), `libmh_dll` (the hosted arm),
+   `mh_nettest` (the hosted offline oracle) and, since fork F5I, `libmh_test` (the standalone one)
+   all compile these same TUs. A library's second CRT arm and its tests compiling the library's own
+   sources out of the library's own directory is the natural reading of "one directory per target",
+   not an exception to it.
 2. **`src/mh_dll/mh/addr/mh_calls.gen.cpp`** — ruling Q5's PER-IMAGE shim. It is not in the archive
-   and it is not any one project's file: **six** projects compile their own copy (`libmh_dll`,
-   `libmh_std`, `libref_host`, `mh`, `mh_harness`, `mh_nettest`), because whichever image compiles
-   the roster must supply the `mh::call::detail::s_*` shapes the roster's bodies reference. It stays
-   under `mh/addr/` with the rest of the generated VA layer, and `check_libmh_outbound.py` rules the
-   resulting unresolved externals as the `shim` bucket — so the arrangement is gated, not asserted.
+   and it is not any one project's file: **seven** projects compile their own copy (`libmh_dll`,
+   `libmh_std`, `libmh_test`, `libref_host`, `mh`, `mh_harness`, `mh_nettest`), because whichever
+   image compiles the roster must supply the `mh::call::detail::s_*` shapes the roster's bodies
+   reference. It stays under `mh/addr/` with the rest of the generated VA layer, and
+   `check_libmh_outbound.py` rules the resulting unresolved externals as the `shim` bucket — so the
+   arrangement is gated, not asserted.
 
 **The include rule.** Every project that compiles or includes the roster carries **both** `..\libmh`
 and `..\mh` on `AdditionalIncludeDirectories` (spelled `$(SolutionDir)…` or `$(ProjectDir)..\…` to
-match each project's own style): `libmh`, `libmh_dll`, `libmh_std`, `libref_host`, `mh`,
-`mh_harness`, `mh_nettest`. That is what let 1260 files move with **zero** edits to their `#include`
+match each project's own style): `libmh`, `libmh_dll`, `libmh_std`, `libmh_test`, `libref_host`,
+`mh`, `mh_harness`, `mh_nettest`. That is what let 1260 files move with **zero** edits to their `#include`
 lines — a roster TU's `#include "sim/sim_state.h"` resolves under `libmh/`, its
 `#include "addr/mh_calls.gen.h"` under `mh/`, and neither spelling had to learn where it now lives.
 `mh/` is still on the path because it still holds mh.dll's own code plus the header-only trees
@@ -1168,6 +1170,71 @@ else in this repo reads. Folder GUIDs are `uuid5(project, folder)`, not fresh `u
 regeneration would be a diff and the drift gate could not tell stale from re-rolled.
 
 ---
+
+## F5I — two offline oracles: the hosted exe and the standalone exe
+
+Before F5I one test binary, `net_selftest.exe`, compiled all 340 selftest TUs and ran all 32 gate
+suites in the HOSTED arm (no `MH_LIBMH_BUILD`). That meant the standalone arm — the archive
+`libref_host.exe` replays, the configuration-(3) `libmh.dll` — was proven only end to end, never by
+the per-function suites. F5I split the binary by ARM, and the split is by SUBJECT, not by file:
+
+| | `net_selftest.exe` (`mh_nettest/`, hand-listed) | `libmh_selftest.exe` (`libmh_test/`, generated) |
+| --- | --- | --- |
+| arm | hosted: mh.dll's own machinery + the transport | standalone: `MH_LIBMH_BUILD` + `MH_SPINE_IN_IMAGE`, the pair `libmh.vcxproj` uses |
+| gate suites | 17 | 15 |
+| roster | compiles the 628 roster TUs hosted | compiles the same 628 standalone, INTO the exe (no `libmh.lib`: an archive built without `/fsanitize=address` would hand the ASan pass a green report over uninstrumented spine objects) |
+| own tests | 13 TUs | 338 TUs (the three `*_negative.cpp` compile-refusal TUs are driven by `check_const_view.py`, never in a project) |
+| flags | per-TU `/arch:IA32 /fp:precise` from `lint_fp_flags.py`'s classification | the archive's blanket `/arch:IA32 /fp:precise`, no `/GL` |
+
+**Which suite runs where is data**: `tools/data/selftest_roster.json` (suite → exe, check count,
+the `why` each suite is in the gate), asserted three ways — `check_selftest_roster.py` parses both
+`SUITE_TABLE`s out of source (lint, no build), `run_selftests.py` compares each exe's live
+`--list-suites` before running anything, and the two gate sets must be disjoint with their union the
+roster. A suite that silently stopped running would have read as a pass; now it reads as a roster
+mismatch.
+
+**The move was proven behaviour-neutral in three isolated steps** (`tools/prove_suite_identity.py`
+records every suite's normalised transcript + exit code and diffs a later exe against it): the
+dispatch refactor (32/32 identical), the file move alone (32/32), then the second exe running the
+moved suites in the standalone arm against the HOSTED baseline. That last comparison is the
+oracle-subject risk the tracker named, and it was real — it read 28/32 the first time:
+
+- **Three suites stayed hosted because their precondition is the STOCK bind.** `statetest`'s subject
+  is a region moving off its stock VA; `bindtest` asserts the hosted answer to "where does each
+  region live"; `hostintest`'s first arm requires the stock bind to answer for every region. Under
+  `MH_LIBMH_BUILD` every one of the 845 regions' stock base is literally 0 (`MH_STOCK_BASE`, by
+  design: the largest source of original VAs in the archive), so standalone all three would assert
+  over a table of zeros and print green. The standalone binding proof is `run_gate`'s libref unit.
+- **`simtest`'s registrar oracles needed an arm-specific form.** Hosted, every original has its own
+  naked thunk, so body ↔ name is 1:1. Standalone, `ours` is the C++ function itself and MSVC's
+  identical-COMDAT folding aliases identical bodies (three no-op state handlers; the empty, the
+  `power_consume()`-only and the `add_storage_capacity(); power_consume();` building callbacks). The
+  injectivity checks became CONTAINMENT in an enumerated alias-group list — containment, not
+  equality, because the plain link folds and the `/fsanitize=address` link does not, so an equality
+  would be red in exactly one of the two builds the gate runs. A copy-paste binding a second original
+  to an existing wrapper still creates an unlisted alias in every configuration.
+- **`fptest`'s negative arm is flag-dependent.** Its four `PC=53-DEPENDENT` rows expect the C++ body
+  to diverge from the transcribed x87 at PC=64. Hosted that holds because the test TU compiles at the
+  x86 default `/arch:SSE2`; under the archive's blanket `/arch:IA32` the C++ body is x87 too and the
+  control word reaches both arms, so the standalone form asserts the two columns AGREE. The `/GL`
+  hypothesis was tried first and refuted by experiment. An arm-neutral blindness guard
+  (`trunc_scaled_int` must separate further at PC=64 than at PC=53) replaces the per-case zero and
+  was proved to red with the control word never set.
+- **`savetest` crashed standalone, and the fault was the FIXTURE.** Its region resolver read
+  `REGIONS[rid].base + off`, which is 0 standalone, so every region aliased onto one slab and a
+  container load scattered state that surfaced three checks later as a null member buffer. It now
+  resolves through `BLOCK_SLICES[].stock`, proved arm-neutral over all 56 region runs. The
+  `save_driver` itself never describes a region by stock base.
+- **One genuine spine defect.** `fill_one_sa` counted `table[id] != nullptr` as "ours" where its
+  hosted twin asks `is_our_bldg_type_callback`; that over-reports by id 0 and the four out-of-range
+  ids — 100 against the 95 the same cfg gives hosted — and it is the number the registrar LOGS as its
+  non-vacuity evidence. It now asks the name-keyed binding set.
+
+After the cut `mh_nettest.vcxproj` is 689 rows. Every consumer that names the exe routes by the
+roster's `exe` column (`coverage.py`, `mutate.py`, the migration loop's brief, the loop prompts);
+the sweep's non-vacuity floors caught `check_net_lockstep_refs`' OBJ arm dead since F4D (its
+lockstep directory had moved with F4D; closure symbols 0 → 263). `build_selftest.bat` builds both
+projects and stages both exes; `run_selftests.py` is unchanged for the operator.
 
 ## What F4B / F4D / F4E inherit
 
