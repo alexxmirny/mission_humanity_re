@@ -5,19 +5,16 @@
 //
 #include "sim/resid/sim_bldg_try_begin_placement.h"
 
-#include "addr/mh_calls.gen.h" // typed callables for the effectful/frontier originals we still call OUT to
+#include "sim/sim_bldg_pay_costs.h" // bldg_can_afford_build_cost: the side-effect-free probe (mp:D25)
 #include "state/host_api.h"
 #include "state/host_events.h"
-#include "addr/mh_rebind.gen.h" // LIB-REBIND: the config-selected binder
-#include "state/rebind_targets.gen.h"
 
 namespace mh::sim {
 
 const bldg_try_begin_placement_calls &live_bldg_try_begin_placement_calls() {
     static const bldg_try_begin_placement_calls c = {
-        MH_LIBMH_BIND(llm_bldg_pay_build_cost),
+        mh::sim::bldg_can_afford_build_cost,
         mh::state::evt::text_queue_id,
-        MH_LIBMH_BIND(llm_strat_bldg_grant_type_resources),
     };
     return c;
 }
@@ -36,9 +33,11 @@ int bldg_try_begin_placement(const sim_view &v, sim_store &own, const bldg_try_b
         return 0;
     }
 
-    // 0x00448c4f-0x00448c5b: pay the build cost. A REAL outward effect on player_resources, but
-    // charged entirely inside the original callee -- nothing to write here beyond the return value.
-    const int text_id = c.pay_build_cost(player_idx, building_idx);
+    // 0x00448c4f-0x00448c5b: the original PAYS here (llm_bldg_pay_build_cost) and re-grants at
+    // 0x00448c90. mp:D25: the probe is now side-effect-free -- same verdict, same text id, no
+    // stock movement, no gains-counter booking (see the header). The payment itself is build order
+    // 0x19's, on every peer.
+    const int text_id = c.can_afford_build_cost(player_idx, building_idx);
 
     if (text_id != 0) {
         // 0x00448c64-0x00448c87: can't afford it. The 0/print/1 sequence around the print is a
@@ -50,9 +49,9 @@ int bldg_try_begin_placement(const sim_view &v, sim_store &own, const bldg_try_b
         return 0;
     }
 
-    // 0x00448c89-0x00448cb0: affordable and already charged -- grant the building type's configured
-    // resources, arm build-placement mode, and clear the two UI fields.
-    c.grant_type_resources(player_idx, building_idx);
+    // 0x00448c89-0x00448cb0: affordable -- arm build-placement mode and clear the two UI fields.
+    // The original's grant_type_resources call at 0x00448c90 is deliberately absent (mp:D25): it
+    // only ever undid the payment above, and its counter booking was the desync.
     own.build_placement_id()     = building_idx; // 0x00448c98: _G_LLM_BUILD_PLACEMENT_ID
     own.ctrl_group_at(0).count   = 0;            // 0x00448c9d: first dword of _G_LLM_STRAT_CTRL_GROUPS
     own.ui_selected_bldg_index() = 0;            // 0x00448ca7: 16-bit store

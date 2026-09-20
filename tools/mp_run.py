@@ -30,7 +30,7 @@
 # (SSH key, compat shim, clean-VA mh.mp.exe present to re-patch from). A mounted 'Mh' CD is NO LONGER
 # required on any peer since the no-CD stage landed (2026-07-25) -- a disc, if present, still works.
 
-import argparse, os, sys, time, subprocess, glob, shutil
+import argparse, os, re, sys, time, subprocess, glob, shutil
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))  # importable from any cwd
 import gen_no_cd_manifest  # noqa: E402  bakes the per-layout no-CD manifest (the disc-check RE)
@@ -226,9 +226,41 @@ def ps(script):
 
 
 def newest_run(logs_dir, role):
+    """This peer's PROCESS ("menu") run directory.
+
+    SES1 made a run directory per SESSION, so `logs/` now holds two shapes for one run:
+    `<UTC>_menu_<role>` (the process one, created at boot) and `<UTC>_<mid8>_<slot>_<role>` (one per
+    match). BOTH still end in `_<role>`, which is what keeps the glob below working at all -- but the
+    newest match would win a plain mtime sort, and mh_harness.log is not in it: mh_harness.dll copies
+    its output paths once at init, before any lobby exists, so the determinism evidence THIS FILE
+    polls for (steps_done) is always in the process directory.
+    So: prefer a `_menu_` directory, and fall back to the old newest-by-mtime for a pre-SES1 layout.
+
+    Note that mp_run's own runs are FORCE-ENTRY (the `--mp-host` verb), which never creates a lobby
+    and therefore never opens a session at all -- the fallback is for reading someone else's logs,
+    not for this script's own runs."""
     c = [d for d in glob.glob(os.path.join(logs_dir, "*_" + role)) if os.path.isdir(d)]
     c.sort(key=os.path.getmtime, reverse=True)
-    return c[0] if c else None
+    menu = [d for d in c if "_menu_" in os.path.basename(d)]
+    return (menu or c or [None])[0]
+
+
+# SES1: a SESSION directory, exactly as mh_session_dir.h spells it --
+# "<UTC YYYYMMDDTHHMMSSZ>_<8 hex>_<slot>_<role>". Matched by SHAPE, not by "is not a menu folder":
+# a pre-SES1 `<YYYYMMDD>_<HHMMSS>_<role>` folder left over on a rig peer is not a menu folder either,
+# and letting one through appends an unrelated run's logs onto this one's (measured on the SES1
+# determinism run: two boot banners in one file, verdict NO COMPARABLE STEPS).
+SESSION_DIR_RE = re.compile(r"^\d{8}T\d{6}Z_[0-9a-f]{8}_\d+_[A-Za-z0-9]+$")
+
+
+def session_runs(logs_dir, role):
+    """SES1: the SESSION directories for `role`, oldest first (empty for a force-entry run)."""
+    c = [
+        d
+        for d in glob.glob(os.path.join(logs_dir, "*_" + role))
+        if os.path.isdir(d) and SESSION_DIR_RE.match(os.path.basename(d))
+    ]
+    return sorted(c, key=lambda d: os.path.basename(d))
 
 
 def steps_done(run_dir):
@@ -762,8 +794,15 @@ def main():
             host_dir = newest_run(logs, "host")
 
             def _hostlog(nm):
-                p = os.path.join(host_dir, nm) if host_dir else None
-                return open(p, errors="replace").read() if p and os.path.isfile(p) else ""
+                # SES1: the process directory first, then every session directory, concatenated --
+                # the same reconstruction pull_peer_logs does. A drop test reads for the JOIN admit
+                # and the U14 delta lines, and both are inside a match if this run ever opened one.
+                parts = []
+                for d in ([host_dir] if host_dir else []) + session_runs(logs, "host"):
+                    p = os.path.join(d, nm)
+                    if os.path.isfile(p):
+                        parts.append(open(p, errors="replace").read())
+                return "".join(parts)
 
             slotted = "player 1" in _hostlog("mh_net.log")
             print("    pre-kill: host sees the client as player 1: %s" % slotted)
@@ -842,8 +881,28 @@ def main():
     client_dirs = []
     for i, ip in enumerate(clients):
         pid = i + 1
+        # SES1: mh_run.txt names the NEWEST directory, which is a SESSION directory whenever one is
+        # open -- and mh_harness.log is never in one (mh_harness.dll copies its output paths at boot,
+        # before any lobby). Pulling only what the breadcrumb points at would therefore hand the
+        # analyzer a client with no harness log, which the `dirs` filter below silently drops. So the
+        # process directory is pulled FIRST and each session directory is appended over it, exactly
+        # as tools/ui_test.py's pull_peer_logs does, reconstructing the single stream that used to be.
+        # (A force-entry run -- which is all mp_run.py makes -- opens no session, so in practice this
+        # loop finds one directory and behaves as it always did.)
         run = ssh(key, args.vm_user, ip, "type %s\\mh_run.txt" % args.vm_dir).stdout.strip()
         run_fwd = run.replace("\\", "/").rstrip("/")
+        parent_fwd = run_fwd.rsplit("/", 1)[0]
+        names = [
+            ln.strip()
+            for ln in (
+                ssh(key, args.vm_user, ip, "dir /b /ad %s\\logs 2>nul" % args.vm_dir).stdout or ""
+            ).splitlines()
+            if ln.strip()
+        ]
+        procs = sorted(n for n in names if "_menu_" in n)
+        order = ([procs[-1]] if procs else [run_fwd.rsplit("/", 1)[-1]]) + sorted(
+            n for n in names if SESSION_DIR_RE.match(n)
+        )
         cdst = os.path.join(scratch, "client%d" % pid)
         os.makedirs(cdst, exist_ok=True)
         for nm in LOGNAMES:
@@ -851,16 +910,62 @@ def main():
                 os.remove(os.path.join(cdst, nm))
             except OSError:
                 pass
-            scp(key, "%s@%s:%s/%s" % (args.vm_user, ip, run_fwd, nm), os.path.join(cdst, nm))
+        for j, d in enumerate(order):
+            for nm in LOGNAMES:
+                out = os.path.join(cdst, nm)
+                tmp = out if j == 0 else out + ".part"
+                if (
+                    scp(
+                        key,
+                        "%s@%s:%s/%s/%s" % (args.vm_user, ip, parent_fwd, d, nm),
+                        tmp,
+                        quiet=(j > 0),
+                    ).returncode
+                    == 0
+                    and j > 0
+                    and os.path.isfile(tmp)
+                ):
+                    with open(tmp, "rb") as fi, open(out, "ab") as fo:
+                        fo.write(fi.read())
+                    os.remove(tmp)
+            if j > 0:
+                scp(
+                    key,
+                    "%s@%s:%s/%s/session.json" % (args.vm_user, ip, parent_fwd, d),
+                    os.path.join(cdst, "session.json"),
+                    quiet=True,
+                )
         client_dirs.append(cdst)
 
     print("[8] analyzing (host + %d client(s), all-pairwise) ..." % len(clients))
+    # SES1: the HOST reads its own logs in place, so it gets the session halves the same way -- by
+    # appending each session directory's copy onto the process directory's, into a scratch folder.
+    # Done here rather than in newest_run because newest_run's other caller (steps_done, polled every
+    # 8 s during the run) wants the live process directory, not a snapshot.
+    host_merged = host_dir
+    sessions = session_runs(logs, "host") if host_dir else []
+    if sessions:
+        host_merged = os.path.join(scratch, "host")
+        os.makedirs(host_merged, exist_ok=True)
+        for nm in LOGNAMES + ["session.json"]:
+            out = os.path.join(host_merged, nm)
+            try:
+                os.remove(out)
+            except OSError:
+                pass
+            for d in [host_dir] + sessions:
+                src = os.path.join(d, nm)
+                if not os.path.isfile(src):
+                    continue
+                mode = "wb" if (nm == "session.json") else "ab"
+                with open(src, "rb") as fi, open(out, mode) as fo:
+                    fo.write(fi.read())
     dirs = [
         d
-        for d in ([host_dir] + client_dirs)
+        for d in ([host_merged] + client_dirs)
         if d and os.path.isfile(os.path.join(d, "mh_harness.log"))
     ]
-    if host_dir and len(dirs) >= 2:
+    if host_merged and len(dirs) >= 2:
         subprocess.run([sys.executable, os.path.join(HERE, "mp_analyze.py")] + dirs)
         return 0
     print("    missing logs (host_dir=%s, client_dirs=%s)" % (host_dir, client_dirs))

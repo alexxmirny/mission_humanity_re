@@ -53,6 +53,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import tempfile
 import re
 import sys
 import tokenize
@@ -295,6 +296,22 @@ def update_baseline():
     )
 
 
+def _selftest_root(prefix):
+    """One root for every temp tree the selftest makes, removed at interpreter exit.
+
+    The selftest used to mkdtemp per synthetic tree and never remove any of them: measured
+    2026-09-18 at 21,462 leaked f2drop_* dirs in %TEMP% (with d8_*, d5hooks_*, inmem_selftest_*
+    and narration_selftest_* alongside) -- one lint run leaks a few, and the lint runs every
+    session. mkdtemp(dir=root) keeps every tree under one directory that atexit removes.
+    """
+    import atexit
+    import shutil
+
+    root = tempfile.mkdtemp(prefix=prefix)
+    atexit.register(shutil.rmtree, root, ignore_errors=True)
+    return root
+
+
 def selftest():
     """The negative cases still fire -- on synthetic data, never the live tree."""
     fake = {"src/mh_dll/mh/x.cpp": [3, 9], "src/mh_dll/mh/y.h": [1]}  # CITATION-OK
@@ -326,9 +343,7 @@ def selftest():
     ln = "// this session NARRATION-OK: legit wording"
     assert not scan_hits_line(ln), "the NARRATION-OK escape must work"
     # tools/ scanning: a `#` comment trips, a docstring and a trailing comment do not
-    import tempfile
-
-    tmp = tempfile.mkdtemp(prefix="narration_selftest_")
+    tmp = _selftest_root("narration_selftest_")
     py = os.path.join(tmp, "plant.py")
     with open(py, "w", encoding="utf-8", newline="\n") as fh:
         fh.write(

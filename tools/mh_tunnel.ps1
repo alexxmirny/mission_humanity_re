@@ -24,6 +24,15 @@
 # is the same fail-closed shape tools/machine_config.py gives the Python side (env MH_<NAME> ->
 # tools/machine.local.json -> committed default); a .ps1 deployed next to the game cannot import that
 # module, so it reads the same MH_-prefixed environment variable directly.
+#
+# THE SAME HOST NOW HAS A NAME ON THE PYTHON SIDE (dist DS1): machine_config.VPS_HOST, empty in the
+# committed defaults, real in the gitignored local overrides file this script's own directory holds.
+# So the order below is MH_TUNNEL_VPS -> MH_VPS_HOST -> that file's VPS_HOST -> REFUSE. The file read
+# is best-effort and silent on failure ON PURPOSE: the canonical copy of this script lives in tools/
+# next to the overrides, but the COPY you actually run sits next to the game, where there is no such
+# file and no Python -- and a deployed copy that threw because it could not find a config it is not
+# supposed to have would be worse than one that asks for an argument. Refusal, not a guess, is still
+# the end of the chain.
 param(
     [string]$Vps  = $env:MH_TUNNEL_VPS,
     [int]   $Port = 6501,
@@ -31,9 +40,17 @@ param(
 )
 
 $ErrorActionPreference = "Continue"
+if ([string]::IsNullOrWhiteSpace($Vps)) { $Vps = $env:MH_VPS_HOST }
 if ([string]::IsNullOrWhiteSpace($Vps)) {
-    Write-Error ("mh_tunnel: no relay host. Pass one (mh_tunnel.bat user@vps.example.com [port]) or " +
-                 "set MH_TUNNEL_VPS. The internet-play notes says what the VPS needs (GatewayPorts).")
+    $local = Join-Path $PSScriptRoot "machine.local.json"   # gitignored; absent beside the game  # CITATION-OK
+    if (Test-Path $local) {
+        try { $Vps = (Get-Content $local -Raw | ConvertFrom-Json).VPS_HOST } catch { }
+    }
+}
+if ([string]::IsNullOrWhiteSpace($Vps)) {
+    Write-Error ("mh_tunnel: no relay host. Pass one (mh_tunnel.bat user@vps.example.com [port]), " +
+                 "set MH_TUNNEL_VPS or MH_VPS_HOST, or put VPS_HOST in the machine overrides file " +
+                 "beside this script. The internet-play notes says what the VPS needs (GatewayPorts).")
     exit 2
 }
 if (-not (Test-Path $LogDir)) { New-Item -ItemType Directory -Path $LogDir -Force | Out-Null }

@@ -1,0 +1,45 @@
+# mp:R7a RELAY-PUNCH CLIENT walk: JOIN a RELAY-listed game from the FIRST browser (no IP window),
+# then wait for the host's Start and enter the match, so the hole-punch has time to promote off the
+# relay while the pair keeps playing.
+#
+# WHY THE FIRST BROWSER, and why relay_punch moved here at R7a. relay_punch has NO force_relay (it is
+# the twin of relay_match with the pin OFF, so the pair PUNCHES). Since R7a the SESSION browser's
+# *Internet server* + Connect is a genuine DIRECT dial -- so a no-force_relay client that walked that
+# path would connect directly and never put the relay in the path, and there would be no punch to
+# observe. The FIRST browser is the relay-DISCOVERY screen (mp:R7): a dial from it is relayed even
+# without force_relay, which is exactly the relay-first-then-punch state this scenario needs. The pair
+# then promotes to a direct path mid-handshake; check_relay_path (the post_check) reads the
+# `udp path DIRECT ... after N ms of punching` line to prove it.
+#
+# HOST: mp_host_start.txt on a relay lane (test_ui.py relay_punch). Shares the m2_lobby/m3_launched
+# capture NAMES with the match walks, but its own baseline label (frames are browser-independent).
+
+# 1. main menu (NETWORK GAME = value 110)
+settled value:110
+clickv 110
+
+# 2. player-name screen (accept the default name)
+present Player name
+settled Ok
+clickl Ok
+
+# 3. THE FIRST BROWSER lists the relay-hosted game by itself (mp:R7): `sessions 1` is the probe's
+# count, and the Internet-server button is on screen but MUST stay unclicked (that is the direct path).
+present Internet server
+sessions 1
+settled Join game
+clickl Join game
+
+# 4. the joined lobby -> wait for the host's Start (it broadcasts FLAG_START; the client auto-enters)
+present Network players
+signal lobby
+settled Cancel
+capture m2_lobby
+absent Network players
+
+# 5. in the live game: hold long enough that the mid-handshake promotion has logged (the punch lands
+# ~300 ms after the candidate exchange, well before this). gameclock is speed-independent.
+gameclock 6000
+capture m3_launched
+log CLIENT punched through the relay, joined from the FIRST browser -- never visited the IP window
+end

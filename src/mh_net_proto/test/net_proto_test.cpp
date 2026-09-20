@@ -2,7 +2,9 @@
 // Built + run by CMake (ctest) on both Windows and Linux. See S1.
 #include "mh_net_proto/net_wire.h"
 #include "mh_net_proto/net_crypto.h"
+#include "mh_net_proto/net_udp.h"
 #include "mh_net_proto/session_info.h"
+#include "mh_net_proto/uuid7.h"
 #include <cstdio>
 #include <cstring>
 
@@ -294,6 +296,141 @@ int main() {
         char trailing[KEY_HEX_LEN + 4];
         std::snprintf(trailing, sizeof(trailing), "%sxx", text);
         CHECK(!key_from_hex(trailing, back));                          // trailing junk
+    }
+
+    // ---- UUIDv7 match_id (SES0) ----------------------------------------------------------------
+    // The PORTABLE arm. The full offline oracle is net_selftest.exe sessionidtest (Windows, and it
+    // also holds the admit-decision refusals); this is what the relay's own toolchain compiles, so
+    // it is what would catch a gcc/clang disagreement about the bit packing before the relay lands.
+    {
+        const std::uint64_t MS = 1789646400000ULL;
+        std::uint8_t r[UUID7_RAND_MAX];
+        for (int i = 0; i < (int)UUID7_RAND_MAX; ++i) r[i] = (std::uint8_t)(0xa0 + i);
+        std::uint8_t id[UUID7_BYTES];
+        uuid7_make(MS, r, id);
+        CHECK(uuid7_version(id) == 7 && uuid7_variant(id) == 2);
+        CHECK(uuid7_unix_ms(id) == MS);                       // the stamp decodes back to the input
+        CHECK(!uuid7_is_nil(id));
+        char hex[UUID7_HEX_CAP];
+        uuid7_hex(id, hex, sizeof(hex));
+        CHECK(std::strcmp(hex, "01a0af3cea0070a1a2a3a4a5a6a7a8a9") == 0);
+        std::uint8_t back[UUID7_BYTES];
+        CHECK(uuid7_parse(hex, back) && std::memcmp(back, id, UUID7_BYTES) == 0);
+
+        std::uint8_t other[UUID7_BYTES];
+        r[9] ^= 0xff;
+        uuid7_make(MS, r, other);
+        CHECK(std::memcmp(id, other, UUID7_BYTES) != 0);      // two mints differ
+
+        std::uint8_t c0[CONN_ID_BYTES], c5[CONN_ID_BYTES];
+        conn_id_from_match(id, 0, c0);
+        conn_id_from_match(id, 5, c5);
+        CHECK(std::memcmp(c0, id, CONN_ID_BYTES) == 0);
+        CHECK(std::memcmp(c5, id, CONN_ID_BYTES - 1) == 0 && c5[7] == (std::uint8_t)(id[7] ^ 5));
+
+        char line[SESSION_LOG_LINE_CAP];
+        session_match_id_log_line(id, line, sizeof(line));
+        CHECK(std::strcmp(line, "; [session] match_id=01a0af3cea0070a1a2a3a4a5a6a7a8a9\n") == 0);
+
+        // The record grew and the id survives it; a v2 advert still decodes with a nil id.
+        SessionInfo s{};
+        s.tag = 1; s.host_version = 2; s.protocol = 1; s.cur_players = 1; s.max_players = 2;
+        std::strcpy(s.name, "g"); std::strcpy(s.map, "m");
+        std::memcpy(s.match_id, id, UUID7_BYTES);
+        s.codepage = 1251;                            // mp:F3 -- the pinned input codepage (v4)
+        for (int i = 0; i < MAP_HASH_BYTES; ++i) s.map_hash[i] = (std::uint8_t)(0xA0 + i);
+        s.map_size = 462065;                          // mp:X2 -- the map's content hash + size (v5)
+        std::uint8_t sb[SESSION_INFO_MAX_ENCODED];
+        std::size_t sn = session_info_encode(s, sb);
+        CHECK(sb[0] == SESSION_INFO_FORMAT && SESSION_INFO_FORMAT == 5);
+        SessionInfo sd{};
+        CHECK(session_info_decode(sb, sn, sd) && std::memcmp(sd.match_id, id, UUID7_BYTES) == 0);
+        CHECK(sd.codepage == 1251);
+        CHECK(map_hash_equal(sd.map_hash, s.map_hash) && sd.map_size == 462065);
+        // Every earlier prefix still decodes, and each missing suffix reads as its own "absent"
+        // rather than as a zero that means something: no claim is not a hash of zero.
+        const std::size_t v4n = sn - MAP_HASH_BYTES - 4;
+        sb[0] = 4;
+        CHECK(session_info_decode(sb, v4n, sd) && map_hash_is_none(sd.map_hash) && sd.map_size == 0);
+        CHECK(sd.codepage == 1251);
+        sb[0] = 2;
+        CHECK(session_info_decode(sb, v4n - UUID7_BYTES - 2, sd) && uuid7_is_nil(sd.match_id) && sd.codepage == 0);
+
+        // The negative case: a pre-SES0 JOIN is refused BY VERSION, not by content.
+        SessionInfo mine = s;
+        JoinRequest jr = join_request_for(mine, mine.codepage);
+        CHECK(std::memcmp(jr.match_id, id, UUID7_BYTES) == 0);
+        CHECK(jr.codepage == 1251);
+        std::uint8_t jb[JOIN_REQUEST_MAX_ENCODED];
+        std::size_t jn = join_request_encode(jr, jb);
+        JoinRequest got{};
+        CHECK(join_admit(jb, jn, mine, got) == JoinAdmit::Admit);
+        jb[0] = 2;                                   // an old client's format byte...
+        CHECK(join_admit(jb, jn - MAP_HASH_BYTES - UUID7_BYTES - 2, mine, got) == JoinAdmit::RefusedOldProtocol);
+        CHECK(std::strcmp(join_admit_reason(JoinAdmit::RefusedOldProtocol), "old protocol (no match_id)") == 0);
+
+        // mp:F3's negative case, in the PORTABLE arm too: the relay's toolchain compiles this decision
+        // and a gcc/clang disagreement about the trailing u16 would show up here rather than on a rig.
+        JoinRequest mismatched = join_request_for(mine, 1250);
+        jn = join_request_encode(mismatched, jb);
+        CHECK(join_admit(jb, jn, mine, got) == JoinAdmit::RefusedCodepage);
+        CHECK(got.codepage == 1250);
+        CHECK(std::strcmp(join_admit_reason(JoinAdmit::RefusedCodepage), "input codepage mismatch") == 0);
+        SessionInfo unpinned = mine; unpinned.codepage = 0;   // a host with no pin admits anyone
+        CHECK(join_admit(jb, jn, unpinned, got) == JoinAdmit::Admit);
+    }
+
+    // ---- UDP packet format: the PORTABLE smoke arm (mp:T0) ----
+    // The real oracle for net_udp is the shared fixture set, read by `net_selftest.exe udpwiretest`
+    // and `cargo test -p mh_relay` (docs/mp-wire-udp.md). Both of those are Windows/Rust; THIS is
+    // the only place the format is exercised in the CMake build the Linux relay will use, so it is
+    // deliberately small and deliberately here: it exists to catch net_udp.cpp failing to compile,
+    // link or round-trip under a non-MSVC compiler, which a fixture living behind msbuild cannot.
+    {
+        using namespace mh_net_proto::udp;
+        std::uint8_t enc[KEY_LEN], mac[KEY_LEN], conn[CONN_ID_BYTES];
+        for (int i = 0; i < (int)KEY_LEN; ++i) { enc[i] = (std::uint8_t)(i + 1); mac[i] = (std::uint8_t)(0x80 + i); }
+        for (int i = 0; i < (int)CONN_ID_BYTES; ++i) conn[i] = (std::uint8_t)(0xA0 + i);
+
+        std::uint8_t in[8] = {1, 2, 3, 4}, payload[64], body[128], pkt[MAX_DATAGRAM];
+        InputEntry   e[2] = {{100, in, 4}, {99, in, 4}};
+        const std::size_t pn = input_encode(e, 2, payload, sizeof(payload));
+        CHECK(pn > 0);
+        std::size_t used = 0;
+        CHECK(frame_append(body, sizeof(body), &used, CH_INPUT, payload, pn));
+
+        Verdict why = Verdict::Ok;
+        const std::size_t n = packet_encode(PKT_DATA, conn, 42, enc, mac, body, used, pkt, why);
+        CHECK(n == HDR_SIZE + used + TAG_SIZE);
+
+        Header       hdr{};
+        std::size_t  blen = 0;
+        ReplayWindow win;
+        CHECK(packet_decode(pkt, n, conn, enc, mac, &win, hdr, &blen) == Verdict::Ok);
+        CHECK(hdr.seq == 42 && blen == used && std::memcmp(pkt + HDR_SIZE, body, used) == 0);
+        // The three refusals the acceptance clauses name, in their cheapest form.
+        std::uint8_t again[MAX_DATAGRAM];
+        std::memcpy(again, pkt, n);
+        CHECK(packet_decode(again, n, conn, enc, mac, &win, hdr, &blen) == Verdict::Replay);
+        std::memcpy(again, pkt, n);
+        again[HDR_SIZE] ^= 0x01;
+        ReplayWindow w2;
+        CHECK(packet_decode(again, n, conn, enc, mac, &w2, hdr, &blen) == Verdict::BadMac);
+        std::uint8_t over[MAX_DATAGRAM + 1] = {0};
+        CHECK(packet_decode(over, sizeof(over), conn, enc, mac, nullptr, hdr, &blen) == Verdict::TooLong);
+    }
+
+    // ---- mp:F3c: the REFUSED announce round-trips and refuses a truncated frame ----
+    {
+        std::uint8_t ab[ANNOUNCE_MAX_ENCODED];
+        std::size_t  n = announce_refused_encode(5, "codepage 1252/1251", ab);
+        std::uint8_t who = 0; char why[ANNOUNCE_TEXT_CAP];
+        CHECK(ab[0] == ANNOUNCE_REFUSED && ab[1] == 5 && ab[n - 1] == 0);
+        CHECK(announce_refused_decode(ab, n, &who, why, sizeof(why)) && who == 5
+              && std::strcmp(why, "codepage 1252/1251") == 0);
+        CHECK(!announce_refused_decode(ab, n - 1, &who, why, sizeof(why)));   // NUL outside len -> truncated
+        std::uint8_t joined[4] = {ANNOUNCE_JOINED, 1, 'x', 0};
+        CHECK(!announce_refused_decode(joined, 4, &who, why, sizeof(why)));   // wrong kind
     }
 
     std::printf(g_fails ? "\n%d CHECK(S) FAILED\n" : "ALL PASS\n", g_fails);

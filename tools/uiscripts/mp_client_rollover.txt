@@ -1,0 +1,67 @@
+# SES1b (CLIENT): three Join -> occ 2 -> (host leaves) rounds in ONE instance, no match played.
+# Pair with mp_host_rollover.txt -- see its header for the shape, the post-check, and the signal
+# contract (c<N>_shot / c<N>_ready).
+#
+# ONLY THE HOST ACTIVELY LEAVES each round (its `clickl Cancel`) -- this peer is always PASSIVELY
+# ejected, exactly as mp_client_rejoin.txt's round 1 is: detected by `absent Network players` +
+# `sessions <1` (the lobby list emptying), never by a signal from the host saying so. The
+# `sessions <1` BEFORE the next round's `sessions 1` is not decoration -- mp_client_rejoin.txt's own
+# comment records the U26 bug this order fixes: `sessions 1` alone can match the OLD, about-to-be-
+# withdrawn session row, and the `Join game` click that follows lands on a row the browser has
+# already refreshed away.
+settled value:110
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+
+# ---- round 1 ------------------------------------------------------------------------------------
+present Internet server
+settled Internet server
+clickl Internet server
+present Server address
+settled Connect
+clickl Connect
+sessions 1
+settled Join game
+clickl Join game
+present Network players
+occ 2
+settled Cancel
+capture r1_lobby
+signal c1_shot
+absent Network players
+sessions <1
+present The host left the game.
+signal c1_ready
+
+# ---- round 2 ------------------------------------------------------------------------------------
+sessions 1
+settled Join game
+clickl Join game
+present Network players
+occ 2
+settled Cancel
+capture r2_lobby
+signal c2_shot
+absent Network players
+sessions <1
+present The host left the game.
+signal c2_ready
+
+# ---- round 3 ------------------------------------------------------------------------------------
+sessions 1
+settled Join game
+clickl Join game
+present Network players
+occ 2
+settled Cancel
+capture r3_lobby
+signal c3_shot
+# The host closes round 3 too (mp_host_rollover.txt's final `clickl Cancel`) -- observe it the same
+# passive way as rounds 1-2, so this peer's third session directory also gets a real SESSION_END.
+absent Network players
+sessions <1
+present The host left the game.
+log CLIENT completed three Join rounds -- 3 session directories, pairwise-identical match_ids
+end

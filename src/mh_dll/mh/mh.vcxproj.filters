@@ -82,6 +82,9 @@
     <ClCompile Include="seams\core_arm.cpp">
       <Filter>seams</Filter>
     </ClCompile>
+    <ClCompile Include="seams\crash_marker.cpp">
+      <Filter>seams</Filter>
+    </ClCompile>
     <ClCompile Include="seams\harness_bind.cpp">
       <Filter>seams</Filter>
     </ClCompile>
@@ -92,6 +95,15 @@
       <Filter>seams</Filter>
     </ClCompile>
     <ClCompile Include="seams\gfx_overlay.cpp">
+      <Filter>seams</Filter>
+    </ClCompile>
+    <ClCompile Include="seams\gfx_font_guard.cpp">
+      <Filter>seams</Filter>
+    </ClCompile>
+    <ClCompile Include="seams\ui_chat_input.cpp">
+      <Filter>seams</Filter>
+    </ClCompile>
+    <ClCompile Include="seams\ui_net_indicator.cpp">
       <Filter>seams</Filter>
     </ClCompile>
     <ClCompile Include="seams\save_triggers.cpp">
@@ -119,6 +131,9 @@
       <Filter>seams</Filter>
     </ClCompile>
     <ClCompile Include="seams\net_discovery.cpp">
+      <Filter>seams</Filter>
+    </ClCompile>
+    <ClCompile Include="seams\map_transfer.cpp">
       <Filter>seams</Filter>
     </ClCompile>
     <ClCompile Include="seams\net_lockstep.cpp">
@@ -178,6 +193,9 @@
       <Filter>addr</Filter>
     </ClInclude>
     <ClInclude Include="en_guard.h" />
+    <ClInclude Include="seams\ui_net_indicator.h">
+      <Filter>seams</Filter>
+    </ClInclude>
     <ClInclude Include="addr\mh_export.gen.h">
       <Filter>addr</Filter>
     </ClInclude>

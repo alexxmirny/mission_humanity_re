@@ -1,0 +1,945 @@
+{
+ "_what": "MEASURED evidence for tools/data/abc_excusals.json (tools/abc_region_diff.py, tooling TL-GATE-D25FX): the per-region column diff of two --ui-abc arms over every common step, and the byte-level diff of the rdumped region at each dumped step. Regenerate with the command in `command`; do not hand-edit.",
+ "_read": "one entry per measured arms pair under `runs`; the newest is last. `region_columns_differing` is the whole-run R-column diff, `rdump` the byte ranges at the dumped steps, `verdict` PROVED when every one of them is inside a declared excused range.",
+ "runs": [
+  {
+   "_what": "MEASURED evidence for tools/data/abc_excusals.json (tools/abc_region_diff.py, tooling TL-GATE-D25FX): the per-region column diff of two --ui-abc arms over every common step, and the byte-level diff of the rdumped region at each dumped step. Regenerate with the command in `command`; do not hand-edit.",
+   "generated": "2026-09-20",
+   "command": "python tools/abc_region_diff.py <ship run> <original run> --excusals tools/data/abc_excusals.json --write-evidence tools/data/abc_excusal_evidence.json",
+   "arms": {
+    "ship": "20260919T223934Z_menu_solo_tutorial_solo_ship",
+    "original": "20260919T223935Z_menu_solo_tutorial_solo_original"
+   },
+   "note": "tutorial_solo, EARLY window: rdump_rid=8 (p0_ai_econ) steps 796..800 around the first A-vs-B mismatch at 797 (the human's first build click). Both arms launched by --ui-abc tutorial_solo --ui-slot 2 --ui-abc-ini <[harness] rdump_rid=8;rdump_lo=796;rdump_hi=800>. resource_spent reads ship [5400,4000,3000,2000] vs original [6400,4700,3500,2000] from 797 on: +1000/+700/+500, one click.",
+   "common_steps": 18317,
+   "region_columns_differing": [
+    {
+     "column": 8,
+     "region": "p0_ai_econ",
+     "compared": 18317,
+     "mismatches": 17521,
+     "first": 797
+    }
+   ],
+   "rdump": [
+    {
+     "step": 796,
+     "region": "p0_ai_econ",
+     "column": 8,
+     "bytes": 100544,
+     "differs": []
+    },
+    {
+     "step": 797,
+     "region": "p0_ai_econ",
+     "column": 8,
+     "bytes": 100544,
+     "differs": [
+      {
+       "offset": 24,
+       "len": 2,
+       "ship": "1815",
+       "original": "0019",
+       "dword_at": 24,
+       "ship_int32": [
+        5400
+       ],
+       "original_int32": [
+        6400
+       ],
+       "excused": true
+      },
+      {
+       "offset": 28,
+       "len": 2,
+       "ship": "A00F",
+       "original": "5C12",
+       "dword_at": 28,
+       "ship_int32": [
+        4000
+       ],
+       "original_int32": [
+        4700
+       ],
+       "excused": true
+      },
+      {
+       "offset": 32,
+       "len": 2,
+       "ship": "B80B",
+       "original": "AC0D",
+       "dword_at": 32,
+       "ship_int32": [
+        3000
+       ],
+       "original_int32": [
+        3500
+       ],
+       "excused": true
+      }
+     ]
+    },
+    {
+     "step": 798,
+     "region": "p0_ai_econ",
+     "column": 8,
+     "bytes": 100544,
+     "differs": [
+      {
+       "offset": 24,
+       "len": 2,
+       "ship": "1815",
+       "original": "0019",
+       "dword_at": 24,
+       "ship_int32": [
+        5400
+       ],
+       "original_int32": [
+        6400
+       ],
+       "excused": true
+      },
+      {
+       "offset": 28,
+       "len": 2,
+       "ship": "A00F",
+       "original": "5C12",
+       "dword_at": 28,
+       "ship_int32": [
+        4000
+       ],
+       "original_int32": [
+        4700
+       ],
+       "excused": true
+      },
+      {
+       "offset": 32,
+       "len": 2,
+       "ship": "B80B",
+       "original": "AC0D",
+       "dword_at": 32,
+       "ship_int32": [
+        3000
+       ],
+       "original_int32": [
+        3500
+       ],
+       "excused": true
+      }
+     ]
+    },
+    {
+     "step": 799,
+     "region": "p0_ai_econ",
+     "column": 8,
+     "bytes": 100544,
+     "differs": [
+      {
+       "offset": 24,
+       "len": 2,
+       "ship": "1815",
+       "original": "0019",
+       "dword_at": 24,
+       "ship_int32": [
+        5400
+       ],
+       "original_int32": [
+        6400
+       ],
+       "excused": true
+      },
+      {
+       "offset": 28,
+       "len": 2,
+       "ship": "A00F",
+       "original": "5C12",
+       "dword_at": 28,
+       "ship_int32": [
+        4000
+       ],
+       "original_int32": [
+        4700
+       ],
+       "excused": true
+      },
+      {
+       "offset": 32,
+       "len": 2,
+       "ship": "B80B",
+       "original": "AC0D",
+       "dword_at": 32,
+       "ship_int32": [
+        3000
+       ],
+       "original_int32": [
+        3500
+       ],
+       "excused": true
+      }
+     ]
+    },
+    {
+     "step": 800,
+     "region": "p0_ai_econ",
+     "column": 8,
+     "bytes": 100544,
+     "differs": [
+      {
+       "offset": 24,
+       "len": 2,
+       "ship": "1815",
+       "original": "0019",
+       "dword_at": 24,
+       "ship_int32": [
+        5400
+       ],
+       "original_int32": [
+        6400
+       ],
+       "excused": true
+      },
+      {
+       "offset": 28,
+       "len": 2,
+       "ship": "A00F",
+       "original": "5C12",
+       "dword_at": 28,
+       "ship_int32": [
+        4000
+       ],
+       "original_int32": [
+        4700
+       ],
+       "excused": true
+      },
+      {
+       "offset": 32,
+       "len": 2,
+       "ship": "B80B",
+       "original": "AC0D",
+       "dword_at": 32,
+       "ship_int32": [
+        3000
+       ],
+       "original_int32": [
+        3500
+       ],
+       "excused": true
+      }
+     ]
+    }
+   ],
+   "verdict": "PROVED"
+  },
+  {
+   "_what": "MEASURED evidence for tools/data/abc_excusals.json (tools/abc_region_diff.py, tooling TL-GATE-D25FX): the per-region column diff of two --ui-abc arms over every common step, and the byte-level diff of the rdumped region at each dumped step. Regenerate with the command in `command`; do not hand-edit.",
+   "generated": "2026-09-20",
+   "command": "python tools/abc_region_diff.py <ship run> <original run> --excusals tools/data/abc_excusals.json --write-evidence tools/data/abc_excusal_evidence.json",
+   "arms": {
+    "ship": "20260919T224205Z_menu_solo_tutorial_solo_ship",
+    "original": "20260919T224207Z_menu_solo_tutorial_solo_original"
+   },
+   "note": "tutorial_solo, LATE window: rdump_rid=8 (p0_ai_econ) steps 18310..18317 = the journal's last 8 steps. Same launch with rdump_lo=18310;rdump_hi=18317. All four resource_spent slots differ by then; nothing else in the 100544-byte region does.",
+   "common_steps": 18317,
+   "region_columns_differing": [
+    {
+     "column": 8,
+     "region": "p0_ai_econ",
+     "compared": 18317,
+     "mismatches": 17521,
+     "first": 797
+    }
+   ],
+   "rdump": [
+    {
+     "step": 18310,
+     "region": "p0_ai_econ",
+     "column": 8,
+     "bytes": 100544,
+     "differs": [
+      {
+       "offset": 24,
+       "len": 2,
+       "ship": "B22A",
+       "original": "463C",
+       "dword_at": 24,
+       "ship_int32": [
+        10930
+       ],
+       "original_int32": [
+        15430
+       ],
+       "excused": true
+      },
+      {
+       "offset": 28,
+       "len": 2,
+       "ship": "D61F",
+       "original": "882C",
+       "dword_at": 28,
+       "ship_int32": [
+        8150
+       ],
+       "original_int32": [
+        11400
+       ],
+       "excused": true
+      },
+      {
+       "offset": 32,
+       "len": 2,
+       "ship": "B414",
+       "original": "F41A",
+       "dword_at": 32,
+       "ship_int32": [
+        5300
+       ],
+       "original_int32": [
+        6900
+       ],
+       "excused": true
+      },
+      {
+       "offset": 36,
+       "len": 2,
+       "ship": "AC08",
+       "original": "2409",
+       "dword_at": 36,
+       "ship_int32": [
+        2220
+       ],
+       "original_int32": [
+        2340
+       ],
+       "excused": true
+      }
+     ]
+    },
+    {
+     "step": 18311,
+     "region": "p0_ai_econ",
+     "column": 8,
+     "bytes": 100544,
+     "differs": [
+      {
+       "offset": 24,
+       "len": 2,
+       "ship": "B22A",
+       "original": "463C",
+       "dword_at": 24,
+       "ship_int32": [
+        10930
+       ],
+       "original_int32": [
+        15430
+       ],
+       "excused": true
+      },
+      {
+       "offset": 28,
+       "len": 2,
+       "ship": "D61F",
+       "original": "882C",
+       "dword_at": 28,
+       "ship_int32": [
+        8150
+       ],
+       "original_int32": [
+        11400
+       ],
+       "excused": true
+      },
+      {
+       "offset": 32,
+       "len": 2,
+       "ship": "B414",
+       "original": "F41A",
+       "dword_at": 32,
+       "ship_int32": [
+        5300
+       ],
+       "original_int32": [
+        6900
+       ],
+       "excused": true
+      },
+      {
+       "offset": 36,
+       "len": 2,
+       "ship": "AC08",
+       "original": "2409",
+       "dword_at": 36,
+       "ship_int32": [
+        2220
+       ],
+       "original_int32": [
+        2340
+       ],
+       "excused": true
+      }
+     ]
+    },
+    {
+     "step": 18312,
+     "region": "p0_ai_econ",
+     "column": 8,
+     "bytes": 100544,
+     "differs": [
+      {
+       "offset": 24,
+       "len": 2,
+       "ship": "B22A",
+       "original": "463C",
+       "dword_at": 24,
+       "ship_int32": [
+        10930
+       ],
+       "original_int32": [
+        15430
+       ],
+       "excused": true
+      },
+      {
+       "offset": 28,
+       "len": 2,
+       "ship": "D61F",
+       "original": "882C",
+       "dword_at": 28,
+       "ship_int32": [
+        8150
+       ],
+       "original_int32": [
+        11400
+       ],
+       "excused": true
+      },
+      {
+       "offset": 32,
+       "len": 2,
+       "ship": "B414",
+       "original": "F41A",
+       "dword_at": 32,
+       "ship_int32": [
+        5300
+       ],
+       "original_int32": [
+        6900
+       ],
+       "excused": true
+      },
+      {
+       "offset": 36,
+       "len": 2,
+       "ship": "AC08",
+       "original": "2409",
+       "dword_at": 36,
+       "ship_int32": [
+        2220
+       ],
+       "original_int32": [
+        2340
+       ],
+       "excused": true
+      }
+     ]
+    },
+    {
+     "step": 18313,
+     "region": "p0_ai_econ",
+     "column": 8,
+     "bytes": 100544,
+     "differs": [
+      {
+       "offset": 24,
+       "len": 2,
+       "ship": "B22A",
+       "original": "463C",
+       "dword_at": 24,
+       "ship_int32": [
+        10930
+       ],
+       "original_int32": [
+        15430
+       ],
+       "excused": true
+      },
+      {
+       "offset": 28,
+       "len": 2,
+       "ship": "D61F",
+       "original": "882C",
+       "dword_at": 28,
+       "ship_int32": [
+        8150
+       ],
+       "original_int32": [
+        11400
+       ],
+       "excused": true
+      },
+      {
+       "offset": 32,
+       "len": 2,
+       "ship": "B414",
+       "original": "F41A",
+       "dword_at": 32,
+       "ship_int32": [
+        5300
+       ],
+       "original_int32": [
+        6900
+       ],
+       "excused": true
+      },
+      {
+       "offset": 36,
+       "len": 2,
+       "ship": "AC08",
+       "original": "2409",
+       "dword_at": 36,
+       "ship_int32": [
+        2220
+       ],
+       "original_int32": [
+        2340
+       ],
+       "excused": true
+      }
+     ]
+    },
+    {
+     "step": 18314,
+     "region": "p0_ai_econ",
+     "column": 8,
+     "bytes": 100544,
+     "differs": [
+      {
+       "offset": 24,
+       "len": 2,
+       "ship": "B22A",
+       "original": "463C",
+       "dword_at": 24,
+       "ship_int32": [
+        10930
+       ],
+       "original_int32": [
+        15430
+       ],
+       "excused": true
+      },
+      {
+       "offset": 28,
+       "len": 2,
+       "ship": "D61F",
+       "original": "882C",
+       "dword_at": 28,
+       "ship_int32": [
+        8150
+       ],
+       "original_int32": [
+        11400
+       ],
+       "excused": true
+      },
+      {
+       "offset": 32,
+       "len": 2,
+       "ship": "B414",
+       "original": "F41A",
+       "dword_at": 32,
+       "ship_int32": [
+        5300
+       ],
+       "original_int32": [
+        6900
+       ],
+       "excused": true
+      },
+      {
+       "offset": 36,
+       "len": 2,
+       "ship": "AC08",
+       "original": "2409",
+       "dword_at": 36,
+       "ship_int32": [
+        2220
+       ],
+       "original_int32": [
+        2340
+       ],
+       "excused": true
+      }
+     ]
+    },
+    {
+     "step": 18315,
+     "region": "p0_ai_econ",
+     "column": 8,
+     "bytes": 100544,
+     "differs": [
+      {
+       "offset": 24,
+       "len": 2,
+       "ship": "B22A",
+       "original": "463C",
+       "dword_at": 24,
+       "ship_int32": [
+        10930
+       ],
+       "original_int32": [
+        15430
+       ],
+       "excused": true
+      },
+      {
+       "offset": 28,
+       "len": 2,
+       "ship": "D61F",
+       "original": "882C",
+       "dword_at": 28,
+       "ship_int32": [
+        8150
+       ],
+       "original_int32": [
+        11400
+       ],
+       "excused": true
+      },
+      {
+       "offset": 32,
+       "len": 2,
+       "ship": "B414",
+       "original": "F41A",
+       "dword_at": 32,
+       "ship_int32": [
+        5300
+       ],
+       "original_int32": [
+        6900
+       ],
+       "excused": true
+      },
+      {
+       "offset": 36,
+       "len": 2,
+       "ship": "AC08",
+       "original": "2409",
+       "dword_at": 36,
+       "ship_int32": [
+        2220
+       ],
+       "original_int32": [
+        2340
+       ],
+       "excused": true
+      }
+     ]
+    },
+    {
+     "step": 18316,
+     "region": "p0_ai_econ",
+     "column": 8,
+     "bytes": 100544,
+     "differs": [
+      {
+       "offset": 24,
+       "len": 2,
+       "ship": "B22A",
+       "original": "463C",
+       "dword_at": 24,
+       "ship_int32": [
+        10930
+       ],
+       "original_int32": [
+        15430
+       ],
+       "excused": true
+      },
+      {
+       "offset": 28,
+       "len": 2,
+       "ship": "D61F",
+       "original": "882C",
+       "dword_at": 28,
+       "ship_int32": [
+        8150
+       ],
+       "original_int32": [
+        11400
+       ],
+       "excused": true
+      },
+      {
+       "offset": 32,
+       "len": 2,
+       "ship": "B414",
+       "original": "F41A",
+       "dword_at": 32,
+       "ship_int32": [
+        5300
+       ],
+       "original_int32": [
+        6900
+       ],
+       "excused": true
+      },
+      {
+       "offset": 36,
+       "len": 2,
+       "ship": "AC08",
+       "original": "2409",
+       "dword_at": 36,
+       "ship_int32": [
+        2220
+       ],
+       "original_int32": [
+        2340
+       ],
+       "excused": true
+      }
+     ]
+    },
+    {
+     "step": 18317,
+     "region": "p0_ai_econ",
+     "column": 8,
+     "bytes": 100544,
+     "differs": [
+      {
+       "offset": 24,
+       "len": 2,
+       "ship": "B22A",
+       "original": "463C",
+       "dword_at": 24,
+       "ship_int32": [
+        10930
+       ],
+       "original_int32": [
+        15430
+       ],
+       "excused": true
+      },
+      {
+       "offset": 28,
+       "len": 2,
+       "ship": "D61F",
+       "original": "882C",
+       "dword_at": 28,
+       "ship_int32": [
+        8150
+       ],
+       "original_int32": [
+        11400
+       ],
+       "excused": true
+      },
+      {
+       "offset": 32,
+       "len": 2,
+       "ship": "B414",
+       "original": "F41A",
+       "dword_at": 32,
+       "ship_int32": [
+        5300
+       ],
+       "original_int32": [
+        6900
+       ],
+       "excused": true
+      },
+      {
+       "offset": 36,
+       "len": 2,
+       "ship": "AC08",
+       "original": "2409",
+       "dword_at": 36,
+       "ship_int32": [
+        2220
+       ],
+       "original_int32": [
+        2340
+       ],
+       "excused": true
+      }
+     ]
+    }
+   ],
+   "verdict": "PROVED"
+  },
+  {
+   "_what": "MEASURED evidence for tools/data/abc_excusals.json (tools/abc_region_diff.py, tooling TL-GATE-D25FX): the per-region column diff of two --ui-abc arms over every common step, and the byte-level diff of the rdumped region at each dumped step. Regenerate with the command in `command`; do not hand-edit.",
+   "generated": "2026-09-20",
+   "command": "python tools/abc_region_diff.py <ship run> <original run> --excusals tools/data/abc_excusals.json --write-evidence tools/data/abc_excusal_evidence.json",
+   "arms": {
+    "ship": "20260919T225028Z_menu_solo_spcamp_solo_ship",
+    "original": "20260919T225030Z_menu_solo_spcamp_solo_original"
+   },
+   "note": "spcamp_solo, EARLY window: rdump_rid=8 (p0_ai_econ) steps 592..596 around the first A-vs-B mismatch at 593 (the human's first build click on the campaign map). Launched by --ui-abc spcamp_solo --ui-abc-ini <[harness] rdump_rid=8;rdump_lo=592;rdump_hi=596>.",
+   "common_steps": 30042,
+   "region_columns_differing": [
+    {
+     "column": 8,
+     "region": "p0_ai_econ",
+     "compared": 30042,
+     "mismatches": 29450,
+     "first": 593
+    }
+   ],
+   "rdump": [
+    {
+     "step": 592,
+     "region": "p0_ai_econ",
+     "column": 8,
+     "bytes": 100544,
+     "differs": []
+    },
+    {
+     "step": 593,
+     "region": "p0_ai_econ",
+     "column": 8,
+     "bytes": 100544,
+     "differs": [
+      {
+       "offset": 24,
+       "len": 2,
+       "ship": "1815",
+       "original": "3818",
+       "dword_at": 24,
+       "ship_int32": [
+        5400
+       ],
+       "original_int32": [
+        6200
+       ],
+       "excused": true
+      },
+      {
+       "offset": 28,
+       "len": 2,
+       "ship": "A00F",
+       "original": "6211",
+       "dword_at": 28,
+       "ship_int32": [
+        4000
+       ],
+       "original_int32": [
+        4450
+       ],
+       "excused": true
+      }
+     ]
+    },
+    {
+     "step": 594,
+     "region": "p0_ai_econ",
+     "column": 8,
+     "bytes": 100544,
+     "differs": [
+      {
+       "offset": 24,
+       "len": 2,
+       "ship": "1815",
+       "original": "3818",
+       "dword_at": 24,
+       "ship_int32": [
+        5400
+       ],
+       "original_int32": [
+        6200
+       ],
+       "excused": true
+      },
+      {
+       "offset": 28,
+       "len": 2,
+       "ship": "A00F",
+       "original": "6211",
+       "dword_at": 28,
+       "ship_int32": [
+        4000
+       ],
+       "original_int32": [
+        4450
+       ],
+       "excused": true
+      }
+     ]
+    },
+    {
+     "step": 595,
+     "region": "p0_ai_econ",
+     "column": 8,
+     "bytes": 100544,
+     "differs": [
+      {
+       "offset": 24,
+       "len": 2,
+       "ship": "1815",
+       "original": "3818",
+       "dword_at": 24,
+       "ship_int32": [
+        5400
+       ],
+       "original_int32": [
+        6200
+       ],
+       "excused": true
+      },
+      {
+       "offset": 28,
+       "len": 2,
+       "ship": "A00F",
+       "original": "6211",
+       "dword_at": 28,
+       "ship_int32": [
+        4000
+       ],
+       "original_int32": [
+        4450
+       ],
+       "excused": true
+      }
+     ]
+    },
+    {
+     "step": 596,
+     "region": "p0_ai_econ",
+     "column": 8,
+     "bytes": 100544,
+     "differs": [
+      {
+       "offset": 24,
+       "len": 2,
+       "ship": "1815",
+       "original": "3818",
+       "dword_at": 24,
+       "ship_int32": [
+        5400
+       ],
+       "original_int32": [
+        6200
+       ],
+       "excused": true
+      },
+      {
+       "offset": 28,
+       "len": 2,
+       "ship": "A00F",
+       "original": "6211",
+       "dword_at": 28,
+       "ship_int32": [
+        4000
+       ],
+       "original_int32": [
+        4450
+       ],
+       "excused": true
+      }
+     ]
+    }
+   ],
+   "verdict": "PROVED"
+  }
+ ]
+}

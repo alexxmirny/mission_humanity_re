@@ -772,9 +772,13 @@ def selftest_inert():
 # would now measure nothing (and would go green on a tree where the shims were deleted). What has
 # to hold instead is four statements, and each one is a way the construction could silently break:
 #
-#   1. TABLE == .def. Every contract row is exported by the module, and every export is a contract
-#      row (plus the two module-level entries). A symbol in one and not the other is a null pointer
-#      at runtime or dead weight in the DLL -- the G106 hand-list failure, one level down.
+#   1. TABLE == .def, FOR EVERY TRANSPORT MODULE. Every contract row is exported by the module, and
+#      every export is a contract row (plus the two module-level entries). A symbol in one and not
+#      the other is a null pointer at runtime or dead weight in the DLL -- the G106 hand-list
+#      failure, one level down. SINCE mp:T1 THERE ARE TWO MODULES (mh_net.dll and mh_net_udp.dll,
+#      chosen by `[net] transport`), both answering the same table, so this runs once per .def AND
+#      once across the pair: the two export lists must be equal to each other, because a symbol that
+#      exists on one transport and not the other is a game that works on tcp and calls null on udp.
 #   2. HEADER subset TABLE. Every MH_Net_* declared in mh_net_export.h has a row. A function added
 #      to the header but not the table gets no shim, and mh.dll fails to LINK -- which is a fine
 #      outcome, but saying so here names the fix instead of leaving an unresolved external.
@@ -789,7 +793,12 @@ MIN_SYMBOLS = 20
 
 NET_MODULE_H = os.path.join("src", "mh_dll", "mh_common", "include", "mh_net_module.h")
 NET_EXPORT_H = os.path.join("src", "mh_dll", "mh_common", "include", "mh_net_export.h")
+# THE TRANSPORT MODULES, by module name -> its .def. Both answer MH_NET_MODULE_SYMBOLS; mh.dll binds
+# exactly one per run (`[net] transport`, mh/seams/module_bind.cpp). Adding a third transport means
+# adding a row here and nothing else in this file.
 NET_DEF = os.path.join("src", "mh_dll", "mh_net", "mh_net.def")
+NET_DEF_UDP = os.path.join("src", "mh_dll", "mh_net_udp", "mh_net_udp.def")
+NET_DEFS = [("mh_net", NET_DEF), ("mh_net_udp", NET_DEF_UDP)]
 MH_VCXPROJ = os.path.join("src", "mh_dll", "mh", "mh.vcxproj")
 NETTEST_VCXPROJ = os.path.join("src", "mh_dll", "mh_nettest", "mh_nettest.vcxproj")
 # fork F5I S2: the second offline exe. It compiles the same 628 roster TUs as mh_nettest
@@ -836,7 +845,9 @@ def check_net_surface(repo):
     dups = sorted({n for n in table if table.count(n) > 1})
     tableset = set(table)
 
-    exports = set(DEF_EXPORT_RE.findall(_read(repo, NET_DEF)))
+    exports_by_module = [
+        (name, set(DEF_EXPORT_RE.findall(_read(repo, path)))) for name, path in NET_DEFS
+    ]
     declared = set(DECL_RE.findall(_read(repo, NET_EXPORT_H)))
 
     sources = []
@@ -864,32 +875,50 @@ def check_net_surface(repo):
     test_proj = _read(repo, NETTEST_VCXPROJ)
 
     print("check_module_bind --net-surface: %d contract row(s)" % len(table))
-    print("  .def exports      %d" % len(exports))
+    for name, exports in exports_by_module:
+        print("  %-12s exports %d" % (name + ".def", len(exports)))
     print("  header decls      %d" % len(declared))
     print("  call sites        %d distinct name(s) across mh/" % len(calls))
 
     fails = []
     if dups:
         fails.append("MH_NET_MODULE_SYMBOLS lists %s twice" % ", ".join(dups))
-    missing_export = sorted(tableset - exports)
-    if missing_export:
-        fails.append(
-            "in the symbol table but NOT exported by mh_net.def: %s. mh.dll would GetProcAddress "
-            "them, get null, and refuse the whole module at boot." % ", ".join(missing_export)
-        )
-    extra_export = sorted(exports - tableset - MODULE_ENTRIES)
-    if extra_export:
-        fails.append(
-            "exported by mh_net.def but NOT in the symbol table: %s. Nothing in mh.dll can reach "
-            "them -- either add a row (with its absent value) or stop exporting them."
-            % ", ".join(extra_export)
-        )
-    missing_entry = sorted(MODULE_ENTRIES - exports)
-    if missing_entry:
-        fails.append(
-            "mh_net.def does not export %s -- the bind calls these two directly and refuses the "
-            "module without them" % ", ".join(missing_entry)
-        )
+    for name, exports in exports_by_module:
+        missing_export = sorted(tableset - exports)
+        if missing_export:
+            fails.append(
+                "in the symbol table but NOT exported by %s.def: %s. mh.dll would GetProcAddress "
+                "them, get null, and refuse the whole module at boot."
+                % (name, ", ".join(missing_export))
+            )
+        extra_export = sorted(exports - tableset - MODULE_ENTRIES)
+        if extra_export:
+            fails.append(
+                "exported by %s.def but NOT in the symbol table: %s. Nothing in mh.dll can reach "
+                "them -- either add a row (with its absent value) or stop exporting them."
+                % (name, ", ".join(extra_export))
+            )
+        missing_entry = sorted(MODULE_ENTRIES - exports)
+        if missing_entry:
+            fails.append(
+                "%s.def does not export %s -- the bind calls these two directly and refuses the "
+                "module without them" % (name, ", ".join(missing_entry))
+            )
+    # AND THE PAIR AGAINST ITSELF. Each module was just checked against the table, so in a green tree
+    # this is implied -- but it is stated separately because it is the claim an OPERATOR relies on
+    # when flipping `[net] transport`, and because a table change that drifted BOTH .defs in the same
+    # wrong direction would pass every check above and this one is the sentence that names why it
+    # matters ("tcp works, udp calls null").
+    base_name, base_exports = exports_by_module[0]
+    for name, exports in exports_by_module[1:]:
+        diff = sorted(base_exports ^ exports)
+        if diff:
+            fails.append(
+                "%s.def and %s.def do not export the same set: %s. Both answer the SAME module "
+                "contract and mh.dll binds one of them per run, so a symbol present in one and "
+                "absent from the other is a game that works on one transport and calls a null "
+                "pointer on the other." % (base_name, name, ", ".join(diff))
+            )
     undeclared = sorted(declared - tableset)
     if undeclared:
         fails.append(
@@ -955,6 +984,20 @@ def check_net_surface(repo):
             "mh.vcxproj compiles net_transport.cpp. The transport lives in mh_net.dll since F4B; "
             "compiling it into mh.dll puts the real bodies next to their own forwarding shims."
         )
+    # THE SAME RULE FOR THE SECOND TRANSPORT (mp:T1), and it has a twist the first does not.
+    # mh_net_udp.dll splits into udp_endpoint.cpp (the core, which defines NO MH_Net_* symbol) and
+    # udp_transport.cpp (the 23 exports over one Endpoint). ONLY THE SECOND is a duplicate-symbol
+    # hazard, and that split is exactly what lets net_selftest.exe drive three endpoints in one
+    # process while already carrying net_transport.cpp's 23 bodies. So the needle names
+    # udp_transport.cpp specifically: forbidding the whole directory would forbid the loopback suite.
+    for proj_name, proj in (("mh.vcxproj", mh_proj), ("mh_nettest.vcxproj", test_proj)):
+        if "udp_transport.cpp" in proj:
+            fails.append(
+                "%s compiles mh_net_udp\\udp_transport.cpp -- that TU defines all 23 MH_Net_* "
+                "symbols, and this image already has one definition of each (the shims in mh.dll, "
+                "net_transport.cpp in the selftest). Compile udp_endpoint.cpp instead: it is the "
+                "transport core and defines none of them." % proj_name
+            )
 
     for f in fails:
         print("[FAIL] %s" % f)
@@ -966,7 +1009,15 @@ def check_net_surface(repo):
 
 # The planted trees. The first must pass; the rest are each a way the construction breaks silently.
 def _plant_surface(
-    d, rows, exports, decls, calls_extra="", mh_extra="", test_extra="", libmh_test_extra=""
+    d,
+    rows,
+    exports,
+    decls,
+    calls_extra="",
+    mh_extra="",
+    test_extra="",
+    libmh_test_extra="",
+    udp_exports=None,
 ):
     def w(rel, text):
         p = os.path.join(d, *rel.split("/"))
@@ -982,6 +1033,13 @@ def _plant_surface(
     w(
         NET_DEF.replace("\\", "/"),
         "LIBRARY mh_net\nEXPORTS\n" + "".join("    %s\n" % e for e in exports),
+    )
+    # The SECOND transport's .def. It defaults to the first's list, so every pre-T1 case keeps
+    # meaning what it meant, and the two T1 cases below are the ones that vary it.
+    w(
+        NET_DEF_UDP.replace("\\", "/"),
+        "LIBRARY mh_net_udp\nEXPORTS\n"
+        + "".join("    %s\n" % e for e in (exports if udp_exports is None else udp_exports)),
     )
     w(NET_EXPORT_H.replace("\\", "/"), "".join("int %s(void);\n" % d2 for d2 in decls))
     w(
@@ -1083,6 +1141,57 @@ SURFACE_CASES = [
         "a truncated table (the floor)",
         dict(rows=ROWS[:3], exports=ROWS[:3] + sorted(MODULE_ENTRIES), decls=ROWS[:3]),
         False,
+    ),
+    # ---- the second transport (mp:T1) ------------------------------------------------------------
+    (
+        "the udp module misses a row",
+        dict(
+            rows=ROWS,
+            exports=ROWS + sorted(MODULE_ENTRIES),
+            decls=ROWS,
+            udp_exports=ROWS[:-1] + sorted(MODULE_ENTRIES),
+        ),
+        False,
+    ),
+    (
+        "the udp module exports a row nobody binds",
+        dict(
+            rows=ROWS,
+            exports=ROWS + sorted(MODULE_ENTRIES),
+            decls=ROWS,
+            udp_exports=ROWS + sorted(MODULE_ENTRIES) + ["MH_Net_UdpOnly"],
+        ),
+        False,
+    ),
+    (
+        "mh.dll compiles the udp export surface",
+        dict(
+            rows=ROWS,
+            exports=ROWS + sorted(MODULE_ENTRIES),
+            decls=ROWS,
+            mh_extra='<ClCompile Include="..\\mh_net_udp\\udp_transport.cpp" />',
+        ),
+        False,
+    ),
+    (
+        "the selftest compiles the udp export surface",
+        dict(
+            rows=ROWS,
+            exports=ROWS + sorted(MODULE_ENTRIES),
+            decls=ROWS,
+            test_extra='<ClCompile Include="..\\mh_net_udp\\udp_transport.cpp" />',
+        ),
+        False,
+    ),
+    (
+        "the selftest compiles the udp CORE (the shipped shape -- must stay green)",
+        dict(
+            rows=ROWS,
+            exports=ROWS + sorted(MODULE_ENTRIES),
+            decls=ROWS,
+            test_extra='<ClCompile Include="..\\mh_net_udp\\udp_endpoint.cpp" />',
+        ),
+        True,
     ),
 ]
 

@@ -1,0 +1,60 @@
+# deploy/Caddyfile -- edge for the VPS production stack (tracker dist:RP4, plan D14 / D15(c) /
+# section 6 answer 4). Identical in substance to src/collector/Caddyfile (RP2) -- same
+# self-signed-cert-until-a-domain-exists reasoning, same edge body-size cap, same reverse proxy
+# target -- kept as its own file here (rather than a symlink or an include) because deploy.yml
+# syncs exactly two files (docker-compose.yml, Caddyfile) to the VPS and a symlink does not
+# survive `scp`. If you change one of the two Caddyfiles, change both; tools/lint_compose.py does
+# not diff them (a Caddyfile is not YAML), so this stays a human discipline, not a gate.
+#
+# No domain exists yet, so this serves a SELF-SIGNED certificate via Caddy's `tls internal`
+# directive (its own local CA, generated on first run) rather than attempting public ACME
+# issuance, which would fail with no DNS name to validate. The launcher (dist RP1) is expected to
+# pin a public key rather than trust a CA -- and it must be the LOCAL ROOT CA's key, not the
+# leaf's: `tls internal` re-issues short-lived leaves (and re-keys them), so a leaf SPKI pin
+# breaks on the first rotation. Print the root once the stack is up with:
+#   docker compose exec caddy caddy trust  # or: openssl s_client -connect <host>:443 </dev/null 2>/dev/null | openssl x509 -pubkey -noout | openssl pkey -pubin -outform der | openssl dgst -sha256 -binary | base64
+# Revisit once a domain exists: swap `tls internal` for a bare site address and Caddy's automatic
+# HTTPS (Let's Encrypt) takes over with no other change.
+
+# THE SITE ADDRESS IS AN ENVIRONMENT VARIABLE, AND `default_sni` IS LOAD-BEARING (first live deploy,
+# 2026-09-18). A bare `:443` site names no host, so `tls internal` has nothing to issue a
+# certificate FOR: the listener came up with zero certificates and every TLS handshake died with
+# `alert internal error` (curl: HTTP 000, the deploy's /healthz poll never passed). The address
+# has to be the name or IP clients dial, and this file may not carry the VPS's IP (the repo's
+# machine-path lint refuses it; the value lives in the GitHub Environment secret VPS_HOST), so it
+# arrives as MH_SITE_ADDR -- deploy.yml writes it into the VPS's .env, docker-compose.yml hands it
+# to this container. Unset (the local dev compose) it falls back to `localhost`.
+# `default_sni` matters on its own: a client that dials an IP LITERAL sends no SNI at all (RFC 6066
+# forbids it), and without a default name Caddy has no way to choose the certificate even once one
+# exists. The launcher (dist RP1) and the deploy's own curl both dial the IP.
+{
+	default_sni {$MH_SITE_ADDR:localhost}
+}
+
+{$MH_SITE_ADDR:localhost} {
+	tls internal
+
+	# The edge body-size cap (plan D14): a request over 64 MB is rejected with 413 HERE, before
+	# Caddy even finishes proxying it to the collector process. The collector also enforces the
+	# same limit itself (collector/middleware.py) so it is not solely dependent on this front door.
+	request_body {
+		max_size 64MB
+	}
+
+	reverse_proxy collector:8000 {
+		# Give large uploads (up to 64 MB) room to actually transfer.
+		transport http {
+			read_timeout 120s
+			write_timeout 120s
+		}
+	}
+
+	log {
+		output stdout
+		format json
+	}
+}
+
+:80 {
+	redir https://{host}{uri} permanent
+}

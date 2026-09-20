@@ -31,6 +31,12 @@
       "why": "naming-pipeline batching/weighting library",
       "evidence": "F0 triage (docs/fork-inventory.md section 1): the naming/documentation pipeline (Ghidra-side, dropped with the DB)"
     },
+    "abc_region_diff.py": {
+      "class": "keep",
+      "why": "tooling TL-GATE-D25FX: names the BYTES two UI-REC arms disagree about (R-column diff + RX rdump byte diff) and checks them against the declared A/B/C excusals -- the evidence half of tools/data/abc_excusals.json",
+      "evidence": "hand-run by the operator when an A-vs-B leg goes red or an excusal row is added/refreshed (ui-testing skill, RECORDED-SESSION path); its output is committed as tools/data/abc_excusal_evidence.json, which lint_fixture_currency.py checks",
+      "hand_run": true
+    },
     "apply_annotations.py": {
       "class": "archive",
       "why": "declarative Ghidra rename/label/comment batch applier",
@@ -53,15 +59,15 @@
       "evidence": "no machine invoker -- run by a human on a fresh or relocated machine (the bootstrap skill's step 1); documented in .claude/skills/bootstrap/SKILL.md, .claude/skills/mh-toolchain/SKILL.md",
       "hand_run": true
     },
-    "build_public_seed.py": {
-      "class": "keep",
-      "why": "fork F5M S5/S6: builds the public seed -- materializes the publish set, derives the public .gitignore/.gitattributes from a per-entry disposition table, authors the one commit, and re-scans the materialized bytes for operator identity",
-      "evidence": "invoker: tools/lint_repo.py (two rows: --check, --selftest). The public tree runs it too -- on the cut's output --check asserts the installed config IS the committed snapshot under tools/data/public_repo_config/"
-    },
     "build_data_naming_batch.py": {
       "class": "archive",
       "why": "naming-pipeline: data-naming batch pre-build",
       "evidence": "F0 triage (docs/fork-inventory.md section 1): the naming/documentation pipeline (Ghidra-side, dropped with the DB)"
+    },
+    "build_public_seed.py": {
+      "class": "keep",
+      "why": "fork F5M S5/S6: builds the public seed -- materializes the publish set, derives the public .gitignore/.gitattributes from a per-entry disposition table, authors the one commit, and re-scans the materialized bytes for operator identity",
+      "evidence": "invoker: tools/lint_repo.py (two rows: --check, --selftest). The public tree runs it too -- on the cut's output --check asserts the installed config IS the committed snapshot under tools/data/public_repo_config/"
     },
     "call_graph.py": {
       "class": "keep",
@@ -72,6 +78,16 @@
       "class": "keep",
       "why": "fork F3A: the harness arm-order baseline gate (arm-log line order is part of the refactor contract)",
       "evidence": "invoked by tools/lint_repo.py"
+    },
+    "check_cam_trace.py": {
+      "class": "keep",
+      "why": "mp:SES3 -- reads the camera latches on the [input] mouse_trace line; the cam_edge_scroll scenario's post-check and the reader a player's stuck-scroll log is judged with",
+      "evidence": "invoked by tools/test_ui.py (TESTS post_check, cam_edge_scroll); its own --selftest plants a log per outcome"
+    },
+    "check_codepage_adopt.py": {
+      "class": "keep",
+      "why": "mp:F3c: the codepage_adopt / codepage_refused UI scenarios' cross-peer post_check -- the joiner adopted the host's codepage (both logs), or was refused AND told (host REFUSED + sent JOIN_REFUSED, client JOIN REFUSED + join_refused session close, host never ADMITTED)",
+      "evidence": "invoked by tools/test_ui.py's codepage_adopt and codepage_refused TESTS entries (post_check, post_check_peers) and tools/lint_repo.py (--selftest)"
     },
     "check_const_view.py": {
       "class": "keep",
@@ -103,6 +119,11 @@
       "why": "fork F2: the per-row configuration vocabulary stays deleted (zero-survivor scan over src/ + tools/)",
       "evidence": "invoked by tools/lint_repo.py"
     },
+    "check_graceful_quit.py": {
+      "class": "keep",
+      "why": "mp:U19: the clean ESC-quit scenario's post_check -- the quitter announced its own removal over a LIVE link, the survivor learned of it from the lockstep dispatch rather than from the socket dying, and both peers ended the match on the same game clock",
+      "evidence": "invoked by tools/test_ui.py's graceful_quit TESTS entry (post_check); its own --selftest plants a log pair per outcome"
+    },
     "check_inmem_composition.py": {
       "class": "keep",
       "why": "fork: the in-memory patch composition matches the manifest",
@@ -122,6 +143,11 @@
       "class": "keep",
       "why": "libmh layering: no outbound call leaves libmh except through the host-callback ABI",
       "evidence": "invoked by src/mh_dll/libmh_dll/libmh_dll.vcxproj, tools/lint_repo.py"
+    },
+    "check_map_transfer.py": {
+      "class": "keep",
+      "why": "mp:X2 -- the two peers agreed about a map they disagreed about: the host claimed content, the joiner stored it under the content-addressed name outside the map directory, its own file is byte-unchanged, and the host held Start meanwhile. Needs BOTH peers logs, so a single-lane checker could only ever report half the claim",
+      "evidence": "invoked by tools/lint_repo.py (--selftest, the planted negative cases) and by tools/test_ui.py (map_absent, map_conflict, map_have post_check_peers)"
     },
     "check_module_bind.py": {
       "class": "keep",
@@ -163,6 +189,11 @@
       "why": "the committed selftest roster equals the exe's own suite table (fork F5I)",
       "evidence": "invoked by tools/lint_repo.py"
     },
+    "check_session_rollover.py": {
+      "class": "keep",
+      "why": "SES1b: the three-match session-rollover UI scenario's post_check -- 3 session directories per peer, pairwise-identical match_ids, each properly closed",
+      "evidence": "invoked by tools/test_ui.py's session_rollover TESTS entry (post_check) and tools/lint_repo.py (--selftest)"
+    },
     "check_sim_addresses.py": {
       "class": "keep",
       "why": "no game-state address reaches a sim translation (W2)",
@@ -203,6 +234,11 @@
       "class": "keep",
       "why": "launches a process on its own Windows desktop (headless rig)",
       "evidence": "used by mp_run.py, test_ui.py, ui_test.py"
+    },
+    "drain_reports.py": {
+      "class": "keep",
+      "why": "dist RP3: pulls new report directories off the VPS collector (dist:RP2) over a read-only rrsync key, into a local gitignored store, and prints one summary line per new report",
+      "evidence": "invoked by tools/lint_repo.py (--selftest)"
     },
     "dump_addr_index.py": {
       "class": "archive",
@@ -520,6 +556,11 @@
       "why": "--check guards src/mh_dll/mh/addr/mh_tombstones.gen.h ITSELF -- a published header compiled into mh.dll through mh/seams/net_seams.cpp; a ledger row marked dead without a regenerated table ships an unarmed claim",
       "evidence": "fork F5M S4a (2026-09-16) re-triage, one rule: is this a live drift gate over a file the PUBLIC build compiles or the public tree ships? The F0 class answered a different question (does the fork still need the Ghidra pipeline) and archived gates the public tree wants."
     },
+    "gen_update_manifest.py": {
+      "class": "keep",
+      "why": "dist LA2: builds and minisign-signs the manifest.json the launcher fetches -- the publishing half of the update path. Reads dist/'s three zips plus SHA256SUMS, re-hashes every asset and refuses a digest the packager did not compute, an incomplete configuration set, or a password-protected signing key. --genkey makes the key pair whose PUBLIC half is compiled into src/launcher/src/update.rs; the secret half never enters the tree",
+      "evidence": "invoked by tools/lint_repo.py (--selftest), and by .github/workflows/release.yml once dist LA3 lands; src/launcher/tests/data/manifest.json is its output, verified in-tree by the minisign-verify crate"
+    },
     "gen_va_census.py": {
       "class": "keep",
       "why": "the LIB-VA ratchet: --check guards tools/data/va_census.json, the committed per-site baseline over the `mh::call::` tokens in src/mh_dll/mh and libmh -- sources the public build compiles -- and it fails in BOTH directions, so a VA call entering or leaving the public tree is caught",
@@ -581,6 +622,11 @@
       "why": "fork F5E: no PUBLISHED file may cite a path the public tree does not carry, and no file may cite a path that does not exist -- the prose/comment counterpart to check_publishable --closure's build-edge scan, which cannot see comments or .md by construction",
       "evidence": "fork F5E step 11 (2026-09-16): WIRED. lint_repo.py runs it as two rows -- 'fork F5E citations: no published file cites a path the cut does not carry (--strict)' and 'fork F5E citations -- the negative cases still fire' (--selftest) -- so the hand_run marker it carried between step 1 and step 11 is gone and check (d) is satisfied by a real invoker. The --strict row is in lint_repo's CI_SKIPS (measured: on the public tree the remaining private citation targets are absent, so the DANGLING arm fires on all of them and both allowlist rules go dead -- it gates the CUT, not the cut's output); the --selftest row runs in CI unskipped."
     },
+    "lint_compose.py": {
+      "class": "keep",
+      "why": "dist RP4: the compose-file gate -- the relay service must run with network_mode: host, the collector must not, and nothing may reference Watchtower",
+      "evidence": "invoked by tools/lint_repo.py"
+    },
     "lint_detail_calls.py": {
       "class": "keep",
       "why": "no live_*_calls() inside a detail:: (offline-mockable) body",
@@ -636,6 +682,16 @@
       "why": "no libmh module reaches the injection harness unguarded",
       "evidence": "invoked by tools/lint_repo.py"
     },
+    "lint_log_formats.py": {
+      "class": "keep",
+      "why": "mp:SES2: the log line format registry gate -- a parser's needle, the registry entry and the C++ emitter must still agree",
+      "evidence": "invoked by tools/lint_repo.py"
+    },
+    "lint_fixture_currency.py": {
+      "class": "keep",
+      "why": "tooling TL-GATE-D25FX: every recorded `state` artifact (libref fixtures, UI-REC oracles) is stamped with the CURRENT hash-manifest fingerprint and every A/B/C excusal names a region the manifest still has -- the gate for 'a manifest change means a re-capture in the same session'",
+      "evidence": "invoked by tools/lint_repo.py"
+    },
     "lint_machine_paths.py": {
       "class": "keep",
       "why": "guards against reintroduced machine-specific paths",
@@ -675,6 +731,11 @@
       "class": "keep",
       "why": "tools/requirements.txt completeness guard",
       "evidence": "invoked by tools/lint_repo.py"
+    },
+    "lint_rust.py": {
+      "class": "keep",
+      "why": "dist DS1: the Rust half of the repo gate -- cargo fmt --all --check and cargo clippy --workspace --all-targets -- -D warnings over the src/launcher + src/relay workspace, with a three-valued verdict so a machine without cargo SKIPS the rows by name instead of passing them vacuously",
+      "evidence": "invoked by tools/lint_repo.py (two rust_row() rows plus its own --selftest row)"
     },
     "lint_source_narration.py": {
       "class": "keep",
@@ -865,6 +926,11 @@
       "why": "migration-ledger dead-row disposition writer",
       "evidence": "F0 triage (docs/fork-inventory.md section 1): the migration / promotion / ledger machinery the fork drops"
     },
+    "release_package.py": {
+      "class": "keep",
+      "why": "TL-CI1: the release packager -- assembles the three drop-in zips (net / net-debug / brokered-debug) plus SHA256SUMS from a built Release tree, and refuses a missing artifact, a version the binaries do not carry, or the standalone libmh.dll offered as the hosted one",
+      "evidence": "invoked by tools/lint_repo.py (--selftest) and by .github/workflows/release.yml"
+    },
     "replay_libref.py": {
       "class": "keep",
       "why": "the libref replay driver (a gate unit)",
@@ -1026,10 +1092,67 @@
       "why": "structured-tracker query/regenerate (trackers dropped)",
       "evidence": "F0 triage (docs/fork-inventory.md section 1): the migration / promotion / ledger machinery the fork drops"
     },
+    "udp_rtt_probe.py": {
+      "class": "keep",
+      "why": "UDP echo + round-trip prober: what the rig path actually delivers, measured by something that is not the game",
+      "evidence": "no machine invoker -- an operator deploys the echo half to a rig peer and runs the probe half through net_shim when a latency number has to be checked against the wire. Added at mp:T3b, which is the failure it exists to stop: the shim had been 'cleared' on a LOOPBACK echo while the DLL was measured on a two-VM path, so the two numbers were never compared on ONE path. `selftest` proves the instrument itself.",
+      "hand_run": true
+    },
     "ui_test.py": {
       "class": "keep",
       "why": "UI regression runner (single- and multi-peer)",
       "evidence": "used by fixture_replay.py, rig_batch.py, test_ui.py"
+    },
+    "check_net_indicator.py": {
+      "class": "keep",
+      "why": "mp:L1: the player-visible connection indicator's NUMBERS, read off the `; [netind]` lines in mh_net.log. The suite's capture baseline proves the element is drawn in the right place with the right labels and masks the number cells (they differ every run); this proves the digits mean something -- a measured srtt, a bar level in range, and cmd_ms == look_ms + step_ms, the display's own definition of command latency.",
+      "evidence": "invoked by tools/lint_repo.py (--selftest, the planted-log negatives) and as the net_hud scenario's post_check in tools/test_ui.py"
+    },
+    "check_shim_rtt.py": {
+      "class": "keep",
+      "why": "tooling:TL-SHIMUDP-C: a shimmed UDP match really measured a delayed round trip rather than a silently-bypassed shim, read off srtt0_ms in mh_lockstep.log (net_lockstep.cpp's RFC 6298 estimator). A registered scenario can look green with the shim skipped entirely -- the match still plays and captures clean -- and the median measured srtt is the one signal that tells a real ~2x-one-way-delay round trip apart from the LAN's real (near-zero) one.",
+      "evidence": "invoked by tools/lint_repo.py (--selftest, the planted-log negatives) and as the shim_udp scenario's post_check in tools/test_ui.py"
+    },
+    "check_relay_path.py": {
+      "class": "keep",
+      "why": "mp:R3a: the relay_punch scenario's claim -- a mid-handshake hole-punch path switch does not break the link -- made an assertion rather than an implication, by reading `udp path DIRECT` off the host lane's mh_net.log.",
+      "evidence": "invoked by tools/lint_repo.py (--selftest, the planted-log negatives) and as the relay_punch scenario's post_check in tools/test_ui.py"
+    },
+    "check_direct_dial.py": {
+      "class": "keep",
+      "why": "mp:R7a: the direct_dial_with_relay_set scenario's claim -- a client with `[net] relay` set that uses *Internet server* + a typed IP connects DIRECT and never contacts the relay -- made an assertion rather than an implication, by reading the client's mh_net.log for `; R7a: client dial is DIRECT` and the ABSENCE of any relay contact, and the relay's own counters line for peers_registered=0.",
+      "evidence": "invoked by tools/lint_repo.py (--selftest, the planted-log negatives) and as the direct_dial_with_relay_set scenario's post_check in tools/test_ui.py"
+    },
+    "check_relay_leg.py": {
+      "class": "keep",
+      "why": "mp:R7a: the positive twin of check_direct_dial -- the relay_browse_local scenario's claim that a first-browser join really goes THROUGH the relay (a `udp relay leg UP` and a `udp path` line are present, and the relay carried the session), so a regression that silently made the first-browser path direct cannot pass.",
+      "evidence": "invoked by tools/lint_repo.py (--selftest, the planted-log negatives) and as the relay_browse_local scenario's post_check in tools/test_ui.py"
+    },
+    "check_relay_stale.py": {
+      "class": "keep",
+      "why": "mp:R4a: the relay_stale_notice scenario's claim -- a peer that dialled a relay BEHIND its protocol level says so -- read off the logs the pixels cannot show: the one named `relay protocol <theirs> < <ours>` line in a peer's mh_net.log, the `; R4a: relay notice queued` line that proves the text reached mh.dll's browser carrier, and the relay's own protocol_level / hello_level_mismatch on its log. `--expect matching` is the negative every other relay scenario's pair must satisfy.",
+      "evidence": "invoked by tools/lint_repo.py (--selftest, the planted-log negatives) and as the relay_stale_notice scenario's post_check in tools/test_ui.py"
+    },
+    "check_relay_restart.py": {
+      "class": "keep",
+      "why": "mp:R4b: the relay_restart scenario's claim -- a relayed pair survives the relay process restarting mid-match by re-HELLOing -- made an assertion rather than an implication, by reading `udp relay leg LOST` + `udp relay leg RESTORED` off both peers' mh_net.log and two `listening` lines off the relay's own log.",
+      "evidence": "invoked by tools/lint_repo.py (--selftest, the planted-log negatives) and as the relay_restart scenario's post_check in tools/test_ui.py"
+    },
+    "check_relay_rooms.py": {
+      "class": "keep",
+      "why": "mp:R6: the relayed scenarios' claim that a HOST registers under a MINTED room (never its `[net] port`), that hosts in one run hold distinct rooms, that every client dialled a minted one through the directory, and that the relay refused no registration -- read off every peer's mh_net.log (`net: udp relay -- host room`, `leg UP ... room=`) and the relay's counters line, since a frame cannot show a room code.",
+      "evidence": "invoked by tools/lint_repo.py (--selftest, the planted-log negatives) and as the relay_match / relay_browse scenarios' post_check in tools/test_ui.py"
+    },
+    "deploy_relay_direct.py": {
+      "class": "keep",
+      "why": "hand-run: the relay's iteration deploy path -- local musl cross-build -> scp -> image built on the VPS -> compose up, bypassing images.yml/deploy.yml (the release path). docs/deploy.md section 4a.",
+      "evidence": "added 2026-09-19 (user: CI too long per rebuild); first run put the R4b relay on the VPS as dev-d148460b0f, restart 0.94 s. Reads machine_config.VPS_HOST/VPS_SSH_KEY, refuses when empty.",
+      "hand_run": true
+    },
+    "lint_ini_string_keys.py": {
+      "class": "keep",
+      "why": "2026-09-20 (user ruling): no string-valued key in mh_net.example.ini may carry a same-line comment -- GetPrivateProfileStringA returns it as the value (probe_text drew its comment on every present of a stock install; relay= dialled its comment). The key set is derived from the DLL's readers, so the row cannot fall behind a new string key.",
+      "evidence": "invoked by tools/lint_repo.py"
     }
   }
 }

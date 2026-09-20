@@ -65,6 +65,10 @@
     <CharacterSet>Unicode</CharacterSet>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <!-- THE BUILD STAMP (tracker TL-CI1). Brings in MhVersion / MhGitSha, the shared
+       VERSIONINFO resource, and the MH_VERSION_* defines. Imported by the five modules a
+       release ships and by no other project; see mh_version.props for why. -->
+  <Import Project="..\mh_version.props" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <LinkIncremental>true</LinkIncremental>
   </PropertyGroup>

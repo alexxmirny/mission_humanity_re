@@ -38,13 +38,17 @@
 #include "include/mh_overlay_export.h"     // MH_Overlay_Install (gfx_overlay.cpp) -- debug overlay
 #include "include/mh_keyrepeat_export.h"   // MH_KeyRepeat_Install (ui_keyrepeat.cpp) -- U24 modal key-repeat fix
 #include "include/mh_pause_export.h"       // MH_Pause_Install (ui_pause.cpp) -- D19 pause-screen (mode 5) hotkey
+#include "include/mh_fontguard_export.h"   // MH_FontGuard_Install (gfx_font_guard.cpp) -- F2 glyph-table bounds guard
+#include "include/mh_chatinput_export.h"   // MH_ChatInput_Install (ui_chat_input.cpp) -- F3 layout-aware typed input
 #include "include/mh_uidrive_export.h"     // MH_UIDrive_Install (ui_drive.cpp) -- UI automation Phase 2
 #include "include/mh_video_export.h"       // MH_Video_Install (video.cpp) -- D13 display-mode selection
 #include "include/mh_standalone_export.h"  // MH_Standalone_Install (standalone.cpp) -- boot a stock exe
 #include "include/mh_inmem_patch_export.h" // MH_InMemPatch_Install (patch/inmem_install.cpp) -- F1E, default OFF
 #include "include/mh_transport_present.h"  // F3F: is there a network transport at all -- NOT `[net] enable`
 #include "ui/lobby_ui.h"                   // D4: the UI-owned lobby/browser fixup module (mh/ui)
+#include "mh_net_proto/session_info.h"     // F3c: the REFUSED announce kind + its decoder
 #include "include/mh_run_context.h"        // MH_RunDir (per-run log folder), MH_ExeDir (config inputs)
+#include "include/mh_log_rotate.h"         // SES2: the shared size cap + one-generation rotation
 #include "addr/mh_addrs.gen.h"             // generated EN VAs (tools/gen_dll_addrs.py)
 #include "addr/mh_patches.gen.h"           // promotable-function extents (the C1 interlock table)
 #include "addr/mh_tombstones.gen.h"        // ledger-dead body extents (the X-TOMB dead table)
@@ -60,6 +64,7 @@
 #include "addr/mh_rebind.gen.h"            // LIB-REBIND R11: report_arming at the arm-time report
 #include "en_guard.h"                      // EN-only build gate
 #include "net_internal.h"                  // shared spine: PROLOGUE, TEV_*, init-written globals, net_diag decls
+#include "seams/map_transfer.h"            // mp:X2: the map download, its Start gate and its resolve seam
 #include "hook/detour.h"                   // install_jmp / install_trampoline (shared toolkit)
 #include "hook/hookpoint.h"                // D5/R7: the named hook points -- the C10 session-begin observer
 #include "hook/tombstone.h"                // X-TOMB: trap-fill every body we claim dead
@@ -92,13 +97,55 @@ MH_SeamAddrs g_a = {
     (int *)mh::addr::_G_LLM_NET_IS_HOST,
 };
 
+// SES2: the mh_net.log SIZE CAP. `[net] log_max_mb`, default 64 MB, 0 = uncapped; at the cap the
+// file is renamed over mh_net.prev.log and the next line opens a fresh one, so disk is bounded at
+// 2x the cap however long a session runs (the same one-generation policy mh_temporal.log has had
+// since it was capped -- mh_common/include/mh_log_rotate.h now owns both).
+//
+// WHY mh_net.log AND NOT ONLY mh_temporal.log. This is the stream a bug report is read from and the
+// only one FIVE writers in THREE images append to (seam_log here, mh_net.dll's logf, mp_menu.cpp,
+// libmh_bind.cpp, module_bind.cpp). It was the last unbounded stream in the tree, and a
+// `[net] lockstep_log=1` session writes the bulk of it through THIS function -- net_lockstep.cpp's
+// per-step DIAG lines are 43 of the 138 seam_log call sites -- so the cap belongs here rather than
+// in any of the event-driven writers.
+//
+// THE SIZE IS THE FILE'S, NOT A COUNTER OF OUR OWN. With five appenders a per-writer byte count
+// would each believe the file is a fraction of its real size; GetFileSizeEx on the handle we have
+// just opened costs one call and is right for all of them.
+//
+// READ LAZILY. seam_log runs from DllMain for the arm banner, before build_paths() has filled g_ini,
+// so the ini cannot be consulted on the first lines. Until it can, the compiled default applies and
+// nothing is cached -- the first call after the ini path exists settles the cap for the process.
+long long        g_log_max_bytes = -1; // -1 = not read yet
+static long long seam_log_cap() {
+    if (g_log_max_bytes >= 0) return g_log_max_bytes;
+    if (g_ini[0] == '\0') return 64LL * 1024 * 1024; // the DllMain window: default, uncached
+    g_log_max_bytes = mh_log_cap_bytes(g_ini, "net", "log_max_mb", 64);
+    return g_log_max_bytes;
+}
+
 // Append one line to mh_net.log (the transport's own log; used for the arm banner, which happens in
 // DllMain before the transport's logger is configured). EXTERNAL linkage (declared in net_internal.h)
 // -- the sibling seam TUs (net_discovery.cpp) log through this too.
 void seam_log(const char *s) {
+    // SES1: resolve the directory at OPEN time, every line. mh_net.log is the headline per-SESSION
+    // stream -- the one a bug report is read from -- so when a lobby opens the next line goes into
+    // the new folder without any writer here knowing a session exists. One integer compare per line
+    // (the generation), against a file this function already opens and closes per line anyway.
+    seam_paths_tick();
     HANDLE h = CreateFileA(g_log, FILE_APPEND_DATA, FILE_SHARE_READ | FILE_SHARE_WRITE,
                            nullptr, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
     if (h == INVALID_HANDLE_VALUE) return;
+    // SES2: rotate at the cap. seam_paths_tick() has already re-pointed g_log at the CURRENT
+    // session's directory, so this acts inside the open match's folder -- a rotation never reaches
+    // back into an earlier match's, and each new folder starts at zero bytes. A failed rename leaves
+    // the handle usable and this line still lands (see mh_log_rotate.h); we simply try again next
+    // line rather than dropping the line that might say why the session died.
+    if (mh_log_rotate_open_handle(&h, g_log, seam_log_cap())) {
+        h = CreateFileA(g_log, FILE_APPEND_DATA, FILE_SHARE_READ | FILE_SHARE_WRITE,
+                        nullptr, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
+        if (h == INVALID_HANDLE_VALUE) return;
+    }
     SetFilePointer(h, 0, nullptr, FILE_END);
     DWORD wrote = 0;
     // Same local wall-clock stamp the transport's logf() writes, so the "; " seam lines and the
@@ -146,20 +193,25 @@ int  g_tried_init = 0;
 // Manual-menu lobby sync (Workstream U Phase 2). Per-lobby-frame detour on the lobby dispatch: mirror our
 // TCP peers into the game peer table (host only) so the lobby allocates the client slot + broadcasts the
 // snapshot. Without a launch verb the force-entry's per-frame support never runs; this reinstates it.
-constexpr uintptr_t ADDR_LOBBY_DISPATCH = mh::addr::llm_lobby_host_net_dispatch; // per-lobby-frame, both roles
-extern "C" void     MH_MP_SyncHostPeerTable(void);                               // launch.cpp -- mirror transport peers -> game peer table
-extern "C" void     MH_MP_ArmManualLobby(void);                                  // launch.cpp -- run the proven lobby driver for the manual path
-extern "C" void     MH_MP_HostEntryTick(void);                                   // launch.cpp -- host: auto-enter once 2 slots synced (dispatch-driven)
-extern "C" int      MH_MP_IsManual(void);                                        // launch.cpp -- 1 = pure manual session (gate all manual host work)
-extern "C" void     MH_MP_ClientOnHostLeft(void);                                // net_discovery -- U13 client: withdraw session on host 0x0e
-extern "C" int      MH_MP_ConsumeHostLeft(void);                                 // net_discovery -- U13: 1 iff this finalize is a host-LEFT
-extern "C" void     MH_MP_MarkExitCauseLinkLost(void);                           // net_discovery -- U23: correct the cause to LINK_LOST
-extern "C" int      MH_MP_ConsumeExitCause(void);                                // net_discovery -- U23: 1 host-left, 2 link-lost, 0 Cancel
-extern "C" void     MH_MP_HostResetSessionIdentity(void);                        // net_discovery -- U13 host: fresh tag + join gate on leave
-extern "C" void     MH_MP_ResetHostMirror(void);                                 // launch.cpp -- U13 host: reset peer-mirror edge on leave
-void               *g_lobby_tramp = nullptr;
-void                host_send_map(void); // fwd (defined near the recv seam, where ADDR_CUR_MAP is in scope)
-bool                g_map_recv = false;  // client: host's selected map has arrived (entry gate)
+constexpr uintptr_t    ADDR_LOBBY_DISPATCH = mh::addr::llm_lobby_host_net_dispatch; // per-lobby-frame, both roles
+extern "C" void        MH_MP_SyncHostPeerTable(void);                               // launch.cpp -- mirror transport peers -> game peer table
+extern "C" void        MH_MP_ArmManualLobby(void);                                  // launch.cpp -- run the proven lobby driver for the manual path
+extern "C" void        MH_MP_HostEntryTick(void);                                   // launch.cpp -- host: auto-enter once 2 slots synced (dispatch-driven)
+extern "C" int         MH_MP_IsManual(void);                                        // launch.cpp -- 1 = pure manual session (gate all manual host work)
+extern "C" void        MH_MP_ClientOnHostLeft(void);                                // net_discovery -- U13 client: withdraw session on host 0x0e
+extern "C" int         MH_MP_ConsumeHostLeft(void);                                 // net_discovery -- U13: 1 iff this finalize is a host-LEFT
+extern "C" void        MH_MP_MarkExitCauseLinkLost(void);                           // net_discovery -- U23: correct the cause to LINK_LOST
+extern "C" int         MH_MP_ConsumeExitCause(void);                                // net_discovery -- U23: 1 host-left, 2 link-lost, 3 join-refused (F3c), 0 Cancel
+extern "C" void        MH_MP_ClientOnJoinRefused(const char *reason);               // net_discovery -- F3c client (recv thread): the host refused our JOIN
+extern "C" int         MH_MP_TakeJoinRefused(void);                                 // net_discovery -- F3c: 1 once while a refusal is pending
+extern "C" int         MH_MP_HasJoined(int player_id);                              // net_discovery -- N2: 1 = this peer's own JOIN was admitted (mp:R6 hello replay)
+extern "C" void        MH_MP_MarkExitCauseJoinRefused(void);                        // net_discovery -- F3c: the exit cause the refusal bounce sets
+extern "C" const char *MH_MP_JoinRefusedReason(void);                               // net_discovery -- F3c: the host's reason text
+extern "C" void        MH_MP_HostResetSessionIdentity(void);                        // net_discovery -- U13 host: fresh tag + join gate on leave
+extern "C" void        MH_MP_ResetHostMirror(void);                                 // launch.cpp -- U13 host: reset peer-mirror edge on leave
+void                  *g_lobby_tramp = nullptr;
+void                   host_send_map(void); // fwd (defined near the recv seam, where ADDR_CUR_MAP is in scope)
+bool                   g_map_recv = false;  // client: host's selected map has arrived (entry gate)
 
 
 int g_hold_start = 0; // [net] hold_start=1: manual host does NOT auto-enter at 2 slots (dev
@@ -188,6 +240,22 @@ extern "C" int MH_MP_MapReceived(void); // client: host's real map has arrived (
 // Payload: [0]=is_join, [1]=affected player id, [2..]=name (NUL-terminated ANSI).
 void on_announce_recv(int /*sender*/, const unsigned char *buf, int len) {
     if (!buf || len < 3) return;
+    // mp:F3c: the third kind is ADDRESSED, not rendered. "Your JOIN was refused: <reason>" is for
+    // the peer whose id is byte [1] and for nobody else -- the others log it (the host never seated
+    // that peer, so there is no row to announce about) and do nothing.
+    if (buf[0] == mh_net_proto::ANNOUNCE_REFUSED) {
+        uint8_t target = 0;
+        char    reason[mh_net_proto::ANNOUNCE_TEXT_CAP];
+        if (!mh_net_proto::announce_refused_decode(buf, (size_t)len, &target, reason, sizeof(reason))) return;
+        if ((int)target == MH_Net_LocalPlayerId()) {
+            MH_MP_ClientOnJoinRefused(reason);
+        } else {
+            char b[160];
+            wsprintfA(b, "; F3c: host refused player %u's JOIN: %s\n", (unsigned)target, reason);
+            seam_log(b);
+        }
+        return;
+    }
     // Skip an announce about OURSELVES: the joiner already gets its own "X joined" from the retail path,
     // so also rendering our broadcast would double the joiner's own line. Other peers keep it. (U16)
     if ((int)buf[1] == MH_Net_LocalPlayerId()) return;
@@ -211,7 +279,13 @@ int ui_client_session_gate(void) {
 
 void on_lobby_dispatch() {
     mh::ui::announce_drain(); // U16: render any host-broadcast join/left lines (main thread)
-    int is_host                 = *g_a.is_host;
+    int is_host = *g_a.is_host;
+    // ---- mp:X2: the map download, driven from the one per-lobby-frame tick both roles run -------
+    // HOST: refresh the content claim if the picker moved, arm the next peer's transfer, and open or
+    // close the Start gate. CLIENT: drive the receive and, when a download lands, report it back.
+    // Both sides repaint the lobby's status line, which is where the refusal names the peer.
+    mh::seams::maps::lobby_tick(is_host);
+    if (!is_host && mh::seams::maps::client_take_rejoin()) mp_join_resend_map_report();
     *(int *)ADDR_NET_PLAYERSIDE = is_host ? 0 : mp_client_slot(); // N1: own/assigned slot (was hardcoded 1)
     // ---- N2 item 1: pin the client's own player-id + lobby slot index every frame (N>2 corruption root) -
     // At N>2 the interactive lobby corrupted a human slot to player_id=0/host-name + spawned a duplicate.
@@ -506,8 +580,11 @@ void build_paths() {
     for (char *p = exe; *p; ++p)
         if (*p == '\\' || *p == '/') slash = p;
     slash[1] = '\0';
-    wsprintfA(g_ini, "%smh_net.ini", exe);         // config INPUT stays next to the exe
-    wsprintfA(g_log, "%smh_net.log", MH_RunDir()); // log OUTPUT -> per-run folder
+    wsprintfA(g_ini, "%smh_net.ini", exe); // config INPUT stays next to the exe
+    // log OUTPUT -> the CURRENT run folder. Seeded here so the arm-time derivations below
+    // (mh_lockstep / mh_frametime / mh_temporal / mh_trace / mh_gamemode all take their directory
+    // from g_log) have something to derive from; seam_paths_tick keeps it current thereafter.
+    seam_paths_tick();
 }
 
 
@@ -518,7 +595,14 @@ void build_paths() {
 void lazy_start() {
     if (g_tried_init) return;
     g_tried_init = 1;
-    if (MH_Net_IsStarted()) return; // e.g. a test already started the transport
+    // U40: THE ONE PLACE ALLOWED TO RE-ENTER MH_Net_InitEx ON A STARTED TRANSPORT. The relink latch
+    // is set only by mp_session_close, only at a MATCH-end reason, only on a manual client -- and it
+    // is CONSUMED here, so one boundary buys exactly one re-dial. Without the latch this guard still
+    // means what it always meant ("a test / an earlier dial already started the transport, leave it
+    // alone"), which is what keeps the force-entry and harness paths byte-for-byte unchanged.
+    const bool relink = (InterlockedExchange(&g_net_relink, 0) != 0);
+    if (MH_Net_IsStarted() && !relink) return;
+    if (relink) seam_log("; U40 relink: re-initialising the transport for a fresh dial to the host\n");
     MH_NetConfig cfg;
     memset(&cfg, 0, sizeof(cfg));
     cfg.role      = (*g_a.is_host != 0) ? 0 : 1; // 0 = host, 1 = client -- mirrors mh.exe
@@ -560,6 +644,37 @@ void lazy_start() {
     // WELCOMEs each conn a distinct first-free id, and the client waits for it. The verb/harness path
     // (IsManual()==0) keeps the ini value -- it uses declared, distinct ids from mp_run.
     if (MH_MP_IsManual()) cfg.host_assign = 1;
+    // mp:R7a -- THE RELAY DIAL REACHES THE MODULE THROUGH MH_NetConfig, decided HERE. The module no
+    // longer reads `[net] relay` for the dial (it tunnels iff cfg.relay_addr is non-empty), so a peer
+    // with a relay configured finally has a direct mode: only a relay-discovery dial is relayed.
+    //   - HOST: always registers on the relay when one is configured (hosting is not a dial -- mp:R6
+    //     mints its room, cfg.relay_room=0 tells the module to mint).
+    //   - MANUAL CLIENT: the kick site's per-dial decision (dial_wants_relay: first browser / a relay
+    //     row -> relay; *Internet server* + typed IP -> direct). A direct dial leaves relay_addr empty,
+    //     and cfg.host is already the typed IP (the U1c block above), so the module dials it directly.
+    //   - FORCE-ENTRY / determinism (not manual): relay when configured, unchanged -- that path has no
+    //     browser to read a decision from, and its relay runs are the point of the gate.
+    // cfg was memset to 0, so relay_addr is empty (a direct dial) unless this sets it.
+    {
+        char relay_ini[80];
+        if (mp_relay_addr(relay_ini, (int)sizeof(relay_ini))) {
+            const bool relayed =
+                (cfg.role == 0) ? true : (!MH_MP_IsManual() ? true : mp_dial_is_relayed());
+            if (relayed) {
+                lstrcpynA(cfg.relay_addr, relay_ini, (int)sizeof(cfg.relay_addr));
+                // Host: 0 => the module mints (mp:R6). Client: the directory's pick, or `[net] port`
+                // as the pre-directory guess (mp_relay_dial_room), which was cfg.port until R7a.
+                cfg.relay_room = (cfg.role == 0) ? 0u : (unsigned)mp_relay_dial_room();
+                char b[160];
+                wsprintfA(b, "; R7a: %s dial is RELAYED via %s (room %u)\n",
+                          cfg.role == 0 ? "host" : "client", cfg.relay_addr, cfg.relay_room);
+                seam_log(b);
+            } else {
+                seam_log("; R7a: client dial is DIRECT (Internet server + typed IP) -- `[net] relay` "
+                         "is configured but NOT used for this connection\n");
+            }
+        }
+    }
     MH_Net_InitEx(&cfg);
 
     // Start the horizon heartbeat once the transport is up (off loader-lock, like the transport
@@ -672,12 +787,20 @@ void                on_lobby_finalize() {
     // the host is already gone, and a LEAVE to a departed host is noise.
     if (MH_MP_ConsumeHostLeft()) {
         if (g_ls_log) seam_log("; U13: client exit is a host-LEFT -> to discovery (no LEAVE sent)\n");
-        mh::ui::browser_notice_arm(MH_MP_ConsumeExitCause()); // U23: tell the player WHY, on the destination screen
+        // SES1: the exit CAUSE is already decided here, so the session's reason is free. U23's codes:
+        // 1 = the host broadcast its leave, 2 = the link died under us, 3 = the host refused our JOIN
+        // (F3c -- the host never seated us, so like a host-left there is no LEAVE worth sending).
+        const int cause = MH_MP_ConsumeExitCause();
+        mp_session_close(cause == 2 ? "link_lost" : cause == 3 ? "join_refused"
+                                                                              : "host_left");
+        if (cause == 3) mh::ui::browser_notice_arm_refused(MH_MP_JoinRefusedReason()); // F3c: the reason, verbatim
+        else mh::ui::browser_notice_arm(cause);                                        // U23: tell the player WHY, on the destination screen
         return;
     }
     MH_MP_ConsumeExitCause(); // U23: a deliberate Cancel shows nothing -- and cannot inherit a stale cause
     MH_Net_SendLeave();
     if (g_ls_log) seam_log("; U12: client leaving lobby (Cancel) -> sent LEAVE to host\n");
+    mp_session_close("leave"); // SES1: our own Cancel -- the last line of this match's directory
 }
 __declspec(naked) void finalize_detour() {
     __asm {
@@ -767,49 +890,78 @@ void install_mp_bootstrap() {
         seam_log("; MP bootstrap disabled (ini)\n");
         return;
     }
-    // F3F: THE SEVEN PROTOCOL STUBS ARE TRANSPORT-DEPENDENT; THE NINE BELOW THEM ARE NOT.
+    // F3F: FIVE OF THE SEVEN PROTOCOL STUBS ARE TRANSPORT-DEPENDENT; HOST-ADVERTISE AND THE MAP-SEND
+    // NO-OP ARE NOT (U43); THE NINE BELOW THEM ARE NOT EITHER.
     //
-    // Every one of the seven exists to put OUR transport where net_udp's dead job used to be:
-    // discover/host_adv/join drive it directly (on_discover_poll kicks the S3 connect and builds the
-    // browser from the received-record store, on_host_advertise marks the host role for lazy_start,
-    // on_join_connect sends the S4 JOIN frame), and connect/disconnect/map_send/map_recv are the
-    // no-ops that clear the retail path AHEAD of it. With no module there is nothing for any of them
-    // to do, and three of them would drive a transport that is not there.
+    // discover/join/connect/disconnect/map_send/map_recv drive OUR transport directly where net_udp's
+    // dead job used to be (on_discover_poll kicks the S3 connect and builds the browser from the
+    // received-record store, on_join_connect sends the S4 JOIN frame, connect/disconnect/map_send/
+    // map_recv are the no-ops that clear the retail path AHEAD of it). With no module there is
+    // nothing for any of them to do, and running them would drive a transport that is not there.
     //
-    // The other nine are lobby/menu/widget fixes that have nothing to do with the wire -- the
-    // scrollbar guard, the self-removal dialog suppression, the Start clear-loop fix, the
-    // PlayerSide/peer-mirror detour, the slot restore, the U12/U13 Cancel detours, the N2 slot0
-    // guard, the S7 row format -- plus the two slide detours below, and ruling Q2 requires the MP
-    // menu surface to stand up with no module, so they arm exactly as they always did.
+    // on_host_advertise() (ADDR_HOST_ADVERTISE) is DIFFERENT, and was misclassified with the other
+    // six until U43: read its body (net_discovery.cpp) -- it sets is_host/LOCALIDX/PLAYERSIDE and
+    // arms the manual-lobby menu-tick hook, and touches the wire NOT AT ALL. Leaving it gated on
+    // net_mod meant _G_LLM_NET_IS_HOST -- written NOWHERE ELSE in the whole binary except this one
+    // hook (llm_net_session_globals_reset only ever zeroes it at boot; confirmed by an EN
+    // find-cross-references sweep of _G_LLM_NET_IS_HOST) -- stayed at its game-init default of 0 for
+    // a module=none manual host. Retail's own llm_lobby_host_net_dispatch (0x004bfd35 EN) and
+    // llm_lobby_screen_open (0x004be8a7 EN) both branch on that flag: with it false the HOST silently
+    // took the CLIENT half of both functions -- llm_lobby_screen_open leaves Start's 0x80 HIDDEN bit
+    // set (host branch clears it) and llm_lobby_host_net_dispatch's first tick sends a doomed 0x17
+    // "client hello" and sets _G_LLM_LOBBY_WIDGETS_BUILT=0 instead of calling
+    // llm_lobby_build_slot_widgets() (0x004bf99b EN) -- which is why U42 measured the WHOLE slot-row
+    // panel empty, not even the host's own row, and Start absent from the widget list outright. So
+    // install this one unconditionally: it is exactly as wire-free as the nine UI-only installs
+    // below, and everything it enables downstream either touches only local widget/slot state or
+    // calls an MH_Net_* forwarding shim (module_bind.cpp MH_NET_BIND_SHIM), which already returns its
+    // real "not started" value when no module is bound -- the same contract MH_Seam_GameSend/
+    // MH_Seam_GameRecv already lean on unconditionally in the in-game lockstep path. A module=none
+    // host that fills its open slots (AI or otherwise) can Start and reach gameplay the same way a
+    // module=none game already reaches it once launched: `on_begin_map_load()`'s
+    // `MH_Net_PeerCount() < 1` branch (launch.cpp) already leaves a peerless host's Start click to
+    // retail's own body, untouched -- the "skirmish-vs-AI" path this fix now makes reachable from the
+    // manual-menu Create flow was already load-bearing for force-entry.
     //
-    // NOT INSTALLED rather than DEAD-STUBBED, deliberately. The tempting alternative -- point all
-    // seven at ret_zero_detour so nothing retail runs -- requires knowing each entry's success
-    // convention, and getting one wrong (a "nothing received" that reads as "a packet arrived")
-    // would hand the lobby garbage. The retail bodies these replace are the binary's own net stubs,
-    // which have no socket layer to reach (the lobby RE, "dead at the wire"), so leaving them in
-    // place is the measured-safe answer and the one the F3F scope names.
+    // The other five keep the ORIGINAL retail body (NOT DEAD-STUBBED), deliberately (map_send is the
+    // measured exception, see the Phase 2 comment below): the tempting
+    // alternative -- point them all at ret_zero_detour so nothing retail runs -- requires knowing
+    // each entry's success convention, and getting one wrong (a "nothing received" that reads as "a
+    // packet arrived") would hand the lobby garbage. The retail bodies these replace are the binary's
+    // own net stubs, which have no socket layer to reach (the lobby RE, "dead at the wire"), so
+    // leaving them in place is the measured-safe answer and the one the F3F scope names.
     const bool net_mod = mh::net::transport_present();
     if (!net_mod)
-        seam_log("; MP bootstrap: NO NETWORK MODULE -- the seven protocol stubs (discover, "
-                 "host_adv, connect, join, disconnect, map_send, map_recv) are NOT installed and "
-                 "report zero below; the nine UI installs after them arm as usual (ruling Q2)\n");
+        seam_log("; MP bootstrap: NO NETWORK MODULE -- the five wire-touching protocol stubs (discover, "
+                 "connect, join, disconnect, map_recv) are NOT installed and report zero below; "
+                 "host_adv (role-marking only) and map_send (a no-op, U43) and the nine UI installs "
+                 "after them arm as usual (ruling Q2/Q8)\n");
     // U30: the `if (*ADDR == PROLOGUE)` each of these used to carry is GONE -- the byte compare now
     // lives inside install_jmp/install_trampoline, which is the only place that can also ask who owns
     // the entry and say which of the two refused it. Each site passes the name its refusal, and the
     // end-of-arming summary, will print.
     bool okd = false, okh = false, okp = false, okj = false, okc = false, okx = false;
+    // U43: host_advertise installs UNCONDITIONALLY -- it is role-marking, not a wire primitive (see
+    // the block comment above). This is the one line that makes a module=none host's own slot row +
+    // Start reachable; everything else in this function is unchanged.
+    okh = install_jmp(ADDR_HOST_ADVERTISE, (void *)host_advertise_detour, entry_claim::exclusive, "the host-advertise stub");
     if (net_mod) {
         okd = install_jmp(ADDR_DISCOVER_POLL, (void *)discover_poll_detour, entry_claim::exclusive, "the synth discovery-poll stub");
-        okh = install_jmp(ADDR_HOST_ADVERTISE, (void *)host_advertise_detour, entry_claim::exclusive, "the host-advertise stub");
         okp = install_jmp(ADDR_CONNECT_PREP, (void *)ret_zero_detour, entry_claim::exclusive, "the connect-prep no-op stub");
         okj = install_jmp(ADDR_JOIN_CONNECT, (void *)join_connect_detour, entry_claim::exclusive, "the S4 join-on-click stub");
-        okc = install_jmp(ADDR_NET_DISCONNECT, (void *)ret_zero_detour, entry_claim::exclusive, "the net-disconnect no-op stub");
+        okc = install_jmp(ADDR_NET_DISCONNECT, (void *)net_disconnect_detour, entry_claim::exclusive, "the net-disconnect no-op stub (+ the R7 first-browser probe arm)");
     }
     okx = mh::ui::install_scrollbar_guard();
     // Phase 2: unblock the lobby->game async entry (both peers pre-load the map, so skip streaming).
     bool okms = false, okmr = false;
+    // U43: the map-send no-op installs UNCONDITIONALLY as well. Retail's llm_lobby_map_send_step_stub
+    // (0x0049bc19 EN) is hollow and returns an UNINITIALISED stack value, and the host's async
+    // map-load step (llm_lobby_map_load_async_step, 0x004bee94 EN) treats any non-zero as failure --
+    // the "Can't create the game" dialog (text 0x30c) a module=none host got on Start once its slot
+    // rows existed. ret_zero touches no wire, and the retail body it replaces never did either.
+    // map_recv stays gated: it is the CLIENT loop, and a client cannot exist without a transport.
+    okms = install_jmp(ADDR_MAP_SEND_STUB, (void *)ret_zero_detour, entry_claim::exclusive, "the map-send no-op stub");
     if (net_mod) {
-        okms = install_jmp(ADDR_MAP_SEND_STUB, (void *)ret_zero_detour, entry_claim::exclusive, "the map-send no-op stub");
         okmr = install_jmp(ADDR_MAP_RECV_STUB, (void *)map_recv_step_detour, entry_claim::exclusive, "the map-recv step stub");
     }
     // Phase 2c: suppress the spurious self-removal modal at entry (a dialog, so the UI module owns
@@ -1026,15 +1178,72 @@ bool link_lost_in_lobby() {
     return true;
 }
 
+// mp:R6 -- A CLIENT'S RETAIL 0x17 "HELLO" THAT ARRIVED BEFORE ITS S4 JOIN WAS ADMITTED. The retail
+// lobby's first dispatch on the client sends 0x17, and the retail host answers it with the slot
+// table (0x08/0x13/0x09) -- but only for a peer its admin loop can see, i.e. one the S4 mirror has
+// seated, i.e. one whose JOIN this host has ADMITTED. Since R6 a relayed client's link comes up
+// AFTER the browser row it clicked (the room is learned from the directory and dialled then), so
+// its JOIN is re-sent when the link is up (net_discovery.cpp g_join_pending) and can land a tick
+// after the hello: measured 2026-09-19, hello at .535, JOIN admitted at .537, the client seated
+// itself in a lobby the host never populated. So an early hello is HELD here, per sender, and
+// handed to the retail dispatch again once that sender's JOIN is admitted -- one packet, same
+// bytes, delivered in the order the retail host requires. Held rather than dropped and rather than
+// passed through: retail did nothing with the early one (the measurement), and a second hello from
+// the client never comes. A hold outliving its peer (a client that dropped before admission, its id
+// later re-assigned) replays one extra hello at the next admission of that id -- retail answers it
+// with one more snapshot broadcast, which every peer already tolerates at 1 Hz.
+namespace {
+constexpr int EARLY_HELLO_LEN = 5; // the 0x17 the client sends: type + 4 bytes, measured
+unsigned char g_early_hello[8][EARLY_HELLO_LEN];
+volatile LONG g_early_hello_held[8] = {0};
+} // namespace
+
 extern "C" int MH_Seam_PollRecv(void) {
     lazy_start();
     if (!MH_Net_IsStarted()) return 0;
+
+    // mp:R6 -- replay a held hello whose sender has been admitted since (see above).
+    if (MH_MP_IsManual() && g_a.is_host && *g_a.is_host) {
+        for (int s = 1; s < 8; ++s) {
+            if (!g_early_hello_held[s] || !MH_MP_HasJoined(s)) continue;
+            InterlockedExchange(&g_early_hello_held[s], 0);
+            char b[96];
+            wsprintfA(b, "; R6: player %d's early 0x17 hello replayed now that its JOIN is admitted\n", s);
+            seam_log(b);
+            memset(g_a.rx_type, 0, RX_SIZE);
+            memcpy(g_a.rx_type, g_early_hello[s], EARLY_HELLO_LEN);
+            *g_a.rx_sender_id    = s;
+            *g_a.rx_crc_embedded = 0;
+            *g_a.rx_crc_computed = 0;
+            *g_a.rx_len          = RX_SIZE;
+            return RX_SIZE;
+        }
+    }
 
     // Manufacture the retail 0x0e ("host left / transition") the host WOULD have sent had it left
     // cleanly. Synthesising the packet rather than calling the exit path directly is deliberate: 0x0e
     // is already handled below and by the retail dispatch, which U13 proved navigates a client out of
     // the lobby to the discovery browser -- so a dead host and a departed host converge on ONE tested
     // transition instead of two. The sender is the host (0); the dispatch only needs the type byte.
+    // mp:F3c: the host REFUSED our JOIN. The retail join path seated us in our own lobby before any
+    // reply could exist, so the reply's job is to un-seat us: the same synthesised 0x0e a dead or
+    // departed host uses (one tested transition, three causes), with the cause set to JOIN_REFUSED so
+    // the browser we land on names the host's reason. Only while the lobby is the active screen: a
+    // refusal that lands during the slide-in waits a frame, and one that lands after the player
+    // already cancelled out has nothing to bounce -- the flag is cleared by the next JOIN we send.
+    if (MH_MP_IsManual() && g_a.is_host && !*g_a.is_host &&
+        *(void **)mh::addr::_G_LLM_UI_MENU_WIDGET_LIST == (void *)mh::addr::lobby_widget_origin && MH_MP_TakeJoinRefused()) {
+        seam_log("; F3c: JOIN refused -> synthesising retail 0x0e (leave to browser, the notice names the reason)\n");
+        memset(g_a.rx_type, 0, RX_SIZE);
+        g_a.rx_type[0]       = 0x0e;
+        *g_a.rx_sender_id    = 0;
+        *g_a.rx_crc_embedded = 0;
+        *g_a.rx_crc_computed = 0;
+        *g_a.rx_len          = RX_SIZE;
+        MH_MP_ClientOnHostLeft();         // withdraw the stored session + suppress the LEAVE (we were never seated)
+        MH_MP_MarkExitCauseJoinRefused(); // ...and correct the default HOST_LEFT cause to the refusal
+        return RX_SIZE;
+    }
     if (link_lost_in_lobby()) {
         seam_log("; R-live-ui: host link lost in the lobby -> synthesising retail 0x0e (leave to browser)\n");
         memset(g_a.rx_type, 0, RX_SIZE);
@@ -1074,6 +1283,20 @@ extern "C" int MH_Seam_PollRecv(void) {
         // (Our OWN start uses FLAG_START, never retail 0x0e, so a received 0x0e is unambiguously a host-leave.)
         if ((unsigned char)g_a.rx_type[0] == 0x0e && MH_MP_IsManual() && g_a.is_host && !*g_a.is_host) {
             MH_MP_ClientOnHostLeft();
+        }
+        // mp:R6 -- an early 0x17 hello from a peer whose JOIN is not admitted yet: hold it, replay it
+        // at admission (the block at the top of this function). See the note above PollRecv.
+        if ((unsigned char)g_a.rx_type[0] == 0x17 && MH_MP_IsManual() && g_a.is_host && *g_a.is_host &&
+            sender >= 1 && sender < 8 && !MH_MP_HasJoined(sender) && len <= EARLY_HELLO_LEN) {
+            memset(g_early_hello[sender], 0, EARLY_HELLO_LEN);
+            memcpy(g_early_hello[sender], g_a.rx_type, (size_t)len);
+            InterlockedExchange(&g_early_hello_held[sender], 1);
+            if (g_ls_log) {
+                char b[96];
+                wsprintfA(b, "; R6: held player %d's 0x17 hello -- its JOIN is not admitted yet\n", sender);
+                seam_log(b);
+            }
+            continue;
         }
         // N2: guard the retail host slot-push handler (0x0c / 0x0b) against an OUT-OF-BOUNDS write. That
         // handler resolves the sender's slot via slot_for_player(sender) and memcpy's the pushed 0x38-byte
@@ -1172,8 +1395,11 @@ extern "C" int MH_Seam_GameRecv(int *out_sender, unsigned char *buf, int *inout_
 extern "C" void MH_Seam_StartTransport(void) { lazy_start(); }
 
 // S8: re-arm the transport-init latch after a failed connect, so lazy_start re-runs on the next kick and
-// re-reads the (corrected) typed IP. Safe: MH_Net_InitEx early-returns only while started (g_started stays
-// false after a failed connect), so a re-call re-runs start_client with the new host.
+// re-reads the (corrected) typed IP. Safe after a FAILED connect because g_started stays false, so the
+// re-call simply re-runs start_client with the new host.
+// U40 made this key TWO things rather than one, and the difference is the relink latch, not this
+// function: on a started transport lazy_start still refuses unless g_net_relink is set, and when it IS
+// set MH_Net_InitEx stops the old transport before dialling (net_transport.cpp's net_reset).
 extern "C" void MH_Seam_ResetTransportInit(void) { g_tried_init = 0; }
 
 // S3 dev gate: 1 => the manual host must NOT auto-enter the game at 2 occupied slots (so it stays in the
@@ -1389,6 +1615,7 @@ static void MH_UI_Arm(void) {
     mh::ui::set_client_session_gate(ui_client_session_gate);                   // the slide take-over's one net question
     install_mp_bootstrap();                                                    // Workstream U Phase 1: synth discovery + no-op connect stubs + scrollbar guard
     MH_Menu_Install();                                                         // Workstream U: restore the severed Multiplayer main-menu button (best-effort)
+    mh::seams::maps::install();                                                // mp:X2: the map-load resolve seam (the replaced utils_open_file)
     if (!mh::net::transport_present()) mh::ui::browser_notice_arm_no_module(); // ruling Q2's visible half
 }
 
@@ -1531,6 +1758,8 @@ static int MH_Core_Arm(void) {
     }
     MH_KeyRepeat_Install(); // U24: modal key pump -> one dispatch per keystroke in menu/lobby text fields (best-effort)
     MH_Pause_Install();     // D19: [pause] key -> enter the orphaned mode-5 PAUSE screen from the strategic view (best-effort)
+    MH_FontGuard_Install(); // F2: bounds-guard glyph_table[code_unit] in llm_gfx_font_layout_text + the [fonts] probe (best-effort)
+    MH_ChatInput_Install(); // F3: layout-aware key translate + in-game chat codec + the pinned [input] codepage (best-effort)
     MH_Overlay_Install();   // debug overlay: [debug] ini pages -> painted on present BEFORE capture reads (best-effort)
     MH_Capture_Install();   // UI capture harness: hook present-flip -> F12/[capture] frame dump (best-effort)
     MH_UIDrive_Install();   // UI automation harness (Phase 2): [uitest] click-driver via the mouse ring (best-effort)

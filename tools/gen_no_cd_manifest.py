@@ -25,7 +25,7 @@
 #   rather than CWD-derived on purpose: a launcher with the wrong working directory (the 2026-07-10
 #   schtasks trap) must not be able to resurrect the dialog.
 #
-#   NOT the same thing as cd_audio_nonfatal, which only defuses a FAILED MCI open while a disc IS
+#   NOT the same thing as the RETIRED cd_audio_nonfatal (user, 2026-09-17), which only defused a FAILED MCI open while a disc IS
 #   present -- that branch is unreachable when no disc is in the drive.
 #
 # LAYOUT: mhpatch's add_data_section demands `vaddr == the input's next-free VA`, so a manifest with
@@ -166,7 +166,7 @@ def bake(input_exe, out_path, cave_va=None, pin=False):
             "DIRECTORY (GetModuleFileNameA, truncated after the last '\\'; \".\\\" if that fails) "
             "before rejoining the original 'return 0' epilogue. Module-derived, not CWD-derived, so "
             "a launcher with the wrong working directory cannot resurrect the dialog. NOT the same "
-            "as cd_audio_nonfatal (which only defuses a FAILED MCI open while a disc IS present). "
+            "as the retired cd_audio_nonfatal (which only defused a FAILED MCI open while a disc IS present). "
             "The cave is an APPENDED section, so this manifest is baked for ONE chain position -- "
             "regenerate it for another with tools/gen_no_cd_manifest.py --input/--out. "
             "GENERATED FILE -- do not hand-edit."

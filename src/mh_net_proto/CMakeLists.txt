@@ -12,8 +12,10 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 add_library(mh_net_proto STATIC
     src/net_crypto.cpp
+    src/net_udp.cpp
     src/net_wire.cpp
     src/session_info.cpp
+    src/uuid7.cpp
 )
 target_include_directories(mh_net_proto PUBLIC include)
 

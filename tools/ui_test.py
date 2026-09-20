@@ -32,6 +32,7 @@ only installs with the FULL [net] lockstep block (written here); a Hyper-V VM pr
 
 import argparse
 import glob
+import hashlib
 import json
 import os
 import re
@@ -42,8 +43,9 @@ import sys
 import time
 
 import desktop  # --desktop: CreateProcessW onto an isolated desktop object
+import lane_alloc  # TL-LANECOLLIDE: this tree's own solo lane, for the 'solo=<name>' peer spec
 import machine_config as machine  # LAN/game/VM defaults (bootstrap E2)
-import make_lane  # LANE_ROOT, for the 'lane=<name>' peer spec
+import make_lane  # LANE_ROOT, for the 'lane=<name>' / 'solo=<name>' peer specs
 import mp_run  # reuse ssh/scp/ps/sh (the proven VM plumbing)
 import setup_dat  # edit a client's setup.dat server IP (point it at the host without typing)
 from PIL import Image
@@ -122,6 +124,26 @@ bootstrap=1
 DEFANG_OVERLAY = 1
 # Extra [net] lines (';'-separated k=v), e.g. the per-group overlay knobs "defang_xui=1;defang_tt_wait=2".
 EXTRA_NET = ""
+# mp:R7a -- extra [net] lines for the CLIENT peers ONLY (--net-extra-client). See make_ini.
+CLIENT_NET_EXTRA = ""
+# Which transport this run asked for -- `[net] transport`, resolved ONCE from --net-extra (mp:T1).
+# DEFAULT udp SINCE 2026-09-20 (user ruling): the DLL's own compiled default flipped from tcp to udp
+# and the lane ini (NET_BLOCK) carries no `transport=` line, so this default MUST equal the DLL's --
+# the readiness probe below is keyed by it, and a harness that assumed tcp against a lane that bound
+# mh_net_udp.dll would report a healthy host as never-ready. A scenario that needs TCP pins
+# `transport=tcp` in its net_extra (test_ui.py rows); nothing relies on the default being tcp.
+# It is a harness-visible fact and not merely a game setting, because the "host is ready" probe is
+# transport-specific: a udp host never appears in a TCP listener table, so a probe that assumes tcp
+# reports a perfectly healthy host as never-ready and the run aborts naming the GAME's state. That
+# is exactly the 2026-07-27 outage in remote_listening's docstring, one layer up, which is why the
+# transport is resolved here rather than sniffed at each probe: one place to be wrong, and it is
+# printed. --extra-ini cannot carry it (a fragment's [net] is REFUSED in main), so --net-extra is
+# the whole channel and this is complete.
+RUN_TRANSPORT = "udp"
+# net_shim.py's control-port default (DEFAULT_CONTROL_PORT there). shim_start never forwards
+# `--control`, so a shim it launches always listens here; shim_arm dials it directly rather than
+# threading a --shim-control flag through for a port nothing here ever changes.
+SHIM_CONTROL_PORT = 6699
 # Whole extra INI SECTIONS appended verbatim after the standard blocks (--extra-ini FILE). This is how a
 # test opts into a feature that ships OFF: the debug overlay's [debug] block (tools/uiscripts/ini/) is
 # enabled only for the overlay regression test, so every other baseline keeps rendering an overlay-free
@@ -419,6 +441,30 @@ def ini_effective(text, section, key):
     return None
 
 
+def resolve_transport(net_extra):
+    """`[net] transport` out of a --net-extra string, defaulting to the shipping udp (2026-09-20).
+
+    REFUSES an unknown value instead of falling back, deliberately mirroring what mh.dll itself does
+    with the same key (module_bind.cpp transport_file -> mh_config_refused.log). A harness that
+    quietly ran tcp for `--net-extra transport=udo` would produce a green determinism verdict for a
+    transport nobody exercised -- the same class of result as the three "ALL PAIRS IDENTICAL" runs
+    of 2026-08-27 that all ran the default config.
+    """
+    got = "udp"
+    for kv in (net_extra or "").split(";"):
+        k, _, v = kv.partition("=")
+        if k.strip().lower() == "transport" and v.strip():
+            got = v.strip().lower()
+    if got not in ("tcp", "udp"):
+        sys.exit(
+            "REFUSED: --net-extra transport=%s is not a transport this build implements.\n"
+            "The values are `udp` (the shipping default -- mh_net_udp.dll) and `tcp` (mh_net.dll).\n"
+            "mh.dll would refuse this run too; refusing here as well keeps the harness from\n"
+            "reporting a verdict about a transport it never ran." % got
+        )
+    return got
+
+
 def make_ini(script_name, timeout_frames, harness_steps=0, is_host=False, ident=None):
     # --net-extra must OVERRIDE, not merely append. Windows GetPrivateProfile* returns the FIRST match
     # for a key in a section, so appending `lockstep_step_ms=60` after NET_BLOCK's own
@@ -427,6 +473,13 @@ def make_ini(script_name, timeout_frames, harness_steps=0, is_host=False, ident=
     # different lookaheads were the same config, and their matching numbers read as a real result.
     # So drop any NET_BLOCK line whose key an extra also sets.
     extra_kvs = [kv.strip() for kv in EXTRA_NET.split(";") if kv.strip()]
+    # mp:R7a -- --net-extra-client adds [net] keys to the CLIENT lanes ONLY. It is the client-only twin
+    # of --net-extra, needed so `direct_dial_with_relay_set` can put `relay=` in the CLIENT ini while
+    # the HOST stays off the relay entirely (the relay then registers NOBODY, so a truly untouched relay
+    # -- peers=0 -- is the assertion, not a relay that carries the host but not the dial). --extra-ini
+    # cannot carry it (a fragment's [net] is refused), which is why this is a [net] channel like --net-extra.
+    if (not is_host) and CLIENT_NET_EXTRA:
+        extra_kvs += [kv.strip() for kv in CLIENT_NET_EXTRA.split(";") if kv.strip()]
     extra = "".join(kv + "\n" for kv in extra_kvs)
     overridden = {kv.split("=", 1)[0].strip() for kv in extra_kvs if "=" in kv}
     # A lane's PORT must override NET_BLOCK's 6501, not be appended after it: Windows
@@ -558,12 +611,19 @@ def bmp_to_png(bmp, png):
     Image.open(bmp).convert("RGB").save(png)
 
 
-def diff_capture(actual_png, baseline_png, pixdelta, tol, ignore=None):
+def diff_capture(actual_png, baseline_png, pixdelta, tol, ignore=None, only=None):
     """Return (passed, fraction_differing, note). A pixel 'differs' when its max-channel abs delta
     exceeds pixdelta; the capture PASSES when the differing fraction is <= tol. `ignore` is a list of
     [x, y, w, h] rectangles zeroed in BOTH images before diffing -- for machine-specific regions (e.g. the
     on-screen host IP header) that must not count as a regression. The fraction is over the WHOLE frame
-    (masked pixels simply never differ), so a mask stays a small, honest deduction."""
+    (masked pixels simply never differ), so a mask stays a small, honest deduction.
+
+    `only` = {"rect": [x, y, w, h], "mode": "rgb" | "ink"} inverts the mask: ONLY that rectangle is
+    compared and the fraction is over the rectangle. Mode "ink" first reduces both crops to a
+    luminance threshold (pixel is ink or not), so the comparison is colour-blind -- for text drawn
+    in a colour the game picks per run (mp:F3b: a chat line is drawn in the SENDER's faction colour,
+    cyan one run and red the next, while its glyph shapes are what the capture exists to gate).
+    Shape still counts: a substitute box in place of a glyph moves the ink and fails."""
     import numpy as np
 
     if not os.path.isfile(baseline_png):
@@ -572,6 +632,17 @@ def diff_capture(actual_png, baseline_png, pixdelta, tol, ignore=None):
     b = Image.open(baseline_png).convert("RGB")
     if a.size != b.size:
         return False, 1.0, "size %s != baseline %s" % (a.size, b.size)
+    if only:
+        x, y, rw, rh = only["rect"]
+        a = a.crop((x, y, x + rw, y + rh))
+        b = b.crop((x, y, x + rw, y + rh))
+        if only.get("mode") == "ink":
+            a = a.convert("L").point(lambda v: 255 if v > 64 else 0)
+            b = b.convert("L").point(lambda v: 255 if v > 64 else 0)
+            d = np.abs(np.asarray(a, dtype=np.int16) - np.asarray(b, dtype=np.int16))
+            frac = float((d > pixdelta).mean())
+            return (frac <= tol), frac, "only %dx%d at %d,%d (ink)" % (rw, rh, x, y)
+        ignore = None
     aa = np.asarray(a, dtype=np.int16)
     bb = np.asarray(b, dtype=np.int16)
     d = np.abs(aa - bb).max(axis=2)
@@ -584,6 +655,13 @@ def diff_capture(actual_png, baseline_png, pixdelta, tol, ignore=None):
                 d[y0:y1, x0:x1] = 0
     frac = float((d > pixdelta).mean())
     note = "" if not ignore else "%d region(s) masked" % len(ignore)
+    if only:
+        note = "only %dx%d at %d,%d" % (
+            only["rect"][2],
+            only["rect"][3],
+            only["rect"][0],
+            only["rect"][1],
+        )
     return (frac <= tol), frac, note
 
 
@@ -606,8 +684,21 @@ def write_rig_key(dirpath):
     path (rather than testing a configuration players never use)."""
     p = os.path.join(dirpath, "mh_key.txt")
     with open(p, "w", newline="\n") as f:
-        f.write(RIG_KEY)
+        f.write(rig_key_text())
     return p
+
+
+def rig_key_text():
+    """The mh_key.txt every rig peer gets. `MH_RIG_KEY=open` swaps the pinned PSK for the OPEN
+    (unauthenticated, plaintext) link -- the one configuration a peer needs to talk to a relay
+    that runs without --key-file, which is what the VPS relay does until dist:RP5 gives it a
+    deployment key (ship-plan Phase 3). Any other value is taken as the hex key itself. Read at
+    call time, not import time, so the flag reaches the child ui_test.py processes test_ui.py
+    spawns through the environment they inherit."""
+    v = os.environ.get("MH_RIG_KEY", "").strip()
+    if not v:
+        return RIG_KEY
+    return v + "\n; rig key override (MH_RIG_KEY)\n"
 
 
 def refresh_satellites(host_dir):
@@ -798,8 +889,11 @@ def wait_past_pack_load(host_dir, before, timeout=60, pid=None):
                 for d in set(glob.glob(os.path.join(host_dir, "logs", "*"))) - before
                 if os.path.isdir(d)
             ]
-            if new:
-                run = max(new, key=os.path.getmtime)
+            # SES1: the PROCESS directory -- mh_frametime.log's boot rows are written there, long
+            # before any lobby could create a session directory to outrank it.
+            menu = [d for d in new if "_menu_" in os.path.basename(d)]
+            if menu or new:
+                run = max(menu or new, key=os.path.getmtime)
         if run:
             ft = os.path.join(run, "mh_frametime.log")
             try:
@@ -827,11 +921,19 @@ def wait_past_pack_load(host_dir, before, timeout=60, pid=None):
 
 
 def local_new_run(host_dir, before, deadline):
+    """The PROCESS ("menu") directory this launch created.
+
+    SES1: a peer that reaches a lobby creates further directories, one per match, and they are
+    newer. This function's answer is what the runner then polls for mh_uidrive.log and drops
+    rig_*.flag into for the whole scenario -- both of which the DLL deliberately keeps in the process
+    directory -- so a session directory winning the mtime sort here would strand the runner on an
+    empty log and every multi-peer scenario would time out rather than run."""
     while time.time() < deadline:
         now = set(glob.glob(os.path.join(host_dir, "logs", "*")))
         new = [d for d in now - before if os.path.isdir(d)]
-        if new:
-            return max(new, key=os.path.getmtime)
+        menu = [d for d in new if "_menu_" in os.path.basename(d)]
+        if menu or new:
+            return max(menu or new, key=os.path.getmtime)
         time.sleep(1)
     return None
 
@@ -1085,6 +1187,16 @@ def remote_launch(
 ):
     d = args.vm_dir
     fwd = d.replace("\\", "/")
+    # TL-RIGKILL (2026-09-18): kill any leftover peer process BEFORE the first upload, not just at
+    # teardown. An aborted/killed prior run (this process crashed, was Ctrl+C'd, or the whole rig
+    # tool was killed externally) skips peer_kill()'s normal end-of-run remote_kill(), so the VM keeps
+    # running mh.focus.exe -- and Windows holds an open exe/DLL file for write, so the NEXT run's
+    # `deploy_peer_exe` scp of mh.focus.exe or the msvfw32 shim fails ("scp: dest open ... Failure" ->
+    # "ABORT: could not deploy the msvfw32 shim"), poisoning a run that never even reached this peer's
+    # own game code. Doing it here, first, means a leftover process can never win that race -- it is
+    # always dead before the first byte of this run's deploy goes over the wire.
+    print("    [%s] killing any leftover peer process before deploy" % ip)
+    remote_kill(args, ip)
     # A failed DLL copy used to print "scp FAILED" and carry on -- so the peer ran whatever mh.dll it
     # happened to have, and the run reported on the WRONG build. Seen 2026-07-26 (a "Broken pipe" left
     # the host on a stale DLL while the client had the new one). A stale-build result is worse than no
@@ -1203,10 +1315,17 @@ def remote_launch(
 
 
 def remote_newest_run(args, ip):
-    r = remote(
-        args, ip, "for /f %%i in ('dir /b /ad /o-d %s\\logs') do @echo %%i& exit /b" % args.vm_dir
-    )
-    return r.stdout.strip().splitlines()[0].strip() if r.stdout.strip() else None
+    """The VM peer's newest PROCESS ("menu") directory -- see local_new_run for why not the newest.
+
+    Lists ALL of them rather than taking the first line, because `/o-d` newest-first would hand back
+    a session directory the moment that peer reached a lobby, and this name is what the runner then
+    polls (mh_uidrive.log) and drops rig_*.flag into for the rest of the scenario."""
+    r = remote(args, ip, "dir /b /ad /o-d %s\\logs 2>nul" % args.vm_dir)
+    names = [ln.strip() for ln in (r.stdout or "").splitlines() if ln.strip()]
+    if not names:
+        return None
+    menu = [n for n in names if "_menu_" in n]
+    return (menu or names)[0]
 
 
 def remote_script_status(args, ip, run):
@@ -1268,12 +1387,35 @@ def deliver_signal(args, peer, name):
     )
 
 
+# mp:R4b -- `--signal-touch NAME=PATH`: a script signal that reaches OUTSIDE the pair. The ferry
+# above carries a signal to the OTHER PEERS; this carries it to the RUNNER'S CALLER (test_ui.py),
+# which owns things a script cannot reach -- the relay process a relayed scenario runs against, in
+# the first instance. A file, for the ferry's own reason: the caller already polls files, and a
+# touch is the one gesture that needs no protocol. Touched once per name per run.
+SIGNAL_TOUCH = {}  # name -> path, from --signal-touch
+_signal_touched = set()
+
+
+def touch_for_signal(name):
+    path = SIGNAL_TOUCH.get(name)
+    if path is None or name in _signal_touched:
+        return
+    _signal_touched.add(name)
+    try:
+        os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
+        open(path, "w").close()
+        print("[rig] signal %r -> touched %s" % (name, path))
+    except OSError as e:
+        print("  [rig] could not touch %s for signal %r: %s" % (path, name, e))
+
+
 def pump_signals(args, peers, delivered):
     """One poll: ferry every new signal to the peers that did not emit it."""
     for src in peers:
         if not src.get("run"):
             continue
         for name in peer_signals(args, src["ip"], src["run"]):
+            touch_for_signal(name)
             for dst in peers:
                 if dst is src:
                     continue
@@ -1289,7 +1431,7 @@ def remote_kill(args, ip):
     remote(args, ip, "taskkill /im mh.focus.exe /f 2>nul & schtasks /delete /tn uitest /f 2>nul")
 
 
-def remote_listening(args, ip, port):
+def remote_listening(args, ip, port, transport="tcp"):
     """Is the host's lobby port open yet?
 
     Uses `netstat` over a SHORT-timeout ssh, deliberately, and the reason is a gate outage worth
@@ -1309,13 +1451,21 @@ def remote_listening(args, ip, port):
     NOT a TCP connect from here, though that is cheaper still and needs no ssh: the port belongs to
     the game's authenticated transport, so probing it would register as a peer connecting and
     immediately dropping -- the test would perturb what it measures.
+
+    mp:T1 made this transport-aware. UDP has no LISTEN state at all -- a bound datagram socket is
+    simply a row in `netstat -an -p UDP` -- so the tcp form above matches nothing for a udp host and
+    the readiness loop burns its whole budget on a host that came up on time. Measured before this
+    branch existed: `[det] host never became LISTENING within 90s -- aborting` against that VM's own
+    log reading `net: udp HOST listening on :6501 as player 0 (K=3) [key set]` seven seconds in.
+    Two ports of the same number are also two different rows, so the udp probe must not match a
+    leftover tcp one: `-p UDP` scopes the table rather than filtering its text.
     """
-    r = remote(
-        args,
-        ip,
-        'cmd /c netstat -an ^| findstr /c:":%d " ^| findstr /i "LISTENING"' % port,
-        timeout=PROBE_SSH_TIMEOUT,
+    cmd = (
+        'cmd /c netstat -an -p UDP ^| findstr /c:":%d "' % port
+        if transport == "udp"
+        else 'cmd /c netstat -an ^| findstr /c:":%d " ^| findstr /i "LISTENING"' % port
     )
+    r = remote(args, ip, cmd, timeout=PROBE_SSH_TIMEOUT)
     return bool((r.stdout or "").strip())
 
 
@@ -1357,11 +1507,68 @@ def pin_setup(args, ip, ip_val=None, name=None, game=None, pdir=None):
     print("  [%s] setup.dat pinned (%s)" % (who, tag))
 
 
+def _solo_lane_dir(name):
+    """(Re)provision THIS TREE's own copy of the named solo lane, under a lane NUMBER only this tree
+    holds (lane_alloc.tree_slot -- TL-LANECOLLIDE, 2026-09-18), and return its folder.
+
+    WHY THIS EXISTS, separately from the plain `lane=NAME` form below. `workdir/mh_lanes`
+    (make_lane.LANE_ROOT) is ONE machine-wide folder and lane_alloc's BLOCKS are ONE machine-wide set
+    of numbers -- both built when "a tree" meant the single interactive checkout. A git WORKTREE is a
+    second, independent process tree on the same box that imports this exact code and picks the exact
+    same folder name AND the exact same number for a plain `lane=NAME` spec, so two worktrees each
+    running their own solo scenario collided on both: the shared folder (a provision from one tree
+    could stomp the other's files mid-run) and the shared mutex (the DLL's bare, machine-wide
+    `MHMutNN`, which is what actually killed the second run -- see lane_alloc.py's header comment for
+    the exact symptom). `solo=NAME` sidesteps both: the folder is suffixed with a hash of this tree's
+    own absolute repo root (so two trees' "devloop" never alias the same directory), and the lane
+    NUMBER comes from lane_alloc's per-tree claim (so two trees' "devloop" never alias the same
+    mutex either) -- the existing `lane=NAME` form is left exactly as it was, for callers that already
+    coordinate their own numbers by hand.
+    """
+    slot = lane_alloc.tree_slot()
+    if slot is None:
+        raise SystemExit(
+            "solo=%s: no free per-tree solo lane -- every slot in lane_alloc's %r block is claimed "
+            "by another live worktree (`python tools/lane_alloc.py --list` shows who holds which). "
+            "Free one with `python tools/lane_alloc.py --release-solo` on the tree that is done with "
+            "it, or fall back to an explicit `lane=NAME` with a hand-picked number."
+            % (name, lane_alloc.SOLO_BLOCK)
+        )
+    tag_hash = hashlib.sha1(lane_alloc._tree_tag().encode("utf-8")).hexdigest()[:8]
+    d = os.path.join(make_lane.LANE_ROOT, "%s__t%s" % (name, tag_hash))
+    ident = make_lane.read_identity(d)
+    if ident.get("lane") != slot:
+        # First use by this tree, or a stale/foreign folder left at this exact suffixed path -- build
+        # (or rebuild) it fresh, under THIS tree's own claimed number. Mirrors make_lane.py main()'s
+        # own defaults for a plain `--lane N` call (stock exe, headless, the standard satellite set).
+        args = argparse.Namespace(
+            src=machine.POLYGON,
+            dst=d,
+            lane=slot,
+            port=0,
+            headless=True,
+            fps_limit=None,
+            extra_ini="",
+            dll="",
+            stock_exe=True,
+            satellite=[],
+            omit_satellite=[],
+        )
+        with make_lane.boot_lock("solo:%s" % name):
+            make_lane._provision(args)
+    return d
+
+
 def parse_peer(spec):
     r"""Peer spec -> (ip, script, lane_dir).
 
         '1.2.3.4:script.txt'    -> a VM               ("1.2.3.4", script, None)
         'lane=ui_h:script.txt'  -> a LOCAL LANE       (None, script, <LANE_ROOT>\ui_h)
+        'solo=ui_h:script.txt'  -> a per-TREE LANE    (None, script, <LANE_ROOT>\ui_h__t<hash>),
+                                    auto-provisioned under this tree's own lane_alloc.tree_slot()
+                                    number -- safe for two worktrees to use the SAME name at once
+                                    (TL-LANECOLLIDE); 'lane=' does not get this, deliberately (its
+                                    number is whatever the caller provisioned it with by hand).
         'script.txt'            -> the local dev box  (None, script, None)  [--host-dir]
 
     The lane form is what lets SEVERAL local peers coexist: each needs its own game directory, both
@@ -1377,6 +1584,8 @@ def parse_peer(spec):
             name = head[len("lane=") :]
             d = name if os.path.isabs(name) else os.path.join(make_lane.LANE_ROOT, name)
             return None, tail, d
+        if head.startswith("solo="):
+            return None, tail, _solo_lane_dir(head[len("solo=") :])
     return None, spec, None
 
 
@@ -1450,7 +1659,8 @@ def peer_status(args, ip, run):
 
 
 def peer_ready(args, ip, port):
-    return host_listening(port) if ip is None else remote_listening(args, ip, port)
+    t = RUN_TRANSPORT
+    return host_listening(port, t) if ip is None else remote_listening(args, ip, port, t)
 
 
 def _wait_host_ready(args, host_ip, host):
@@ -1482,9 +1692,14 @@ def _wait_host_ready(args, host_ip, host):
             alive, lines = peer_liveness(host["run"])
             if alive is False:  # None means "cannot tell" -- never read that as dead
                 print(
-                    "[host] the host PROCESS EXITED after %ds without ever listening on %d -- "
+                    "[host] the host PROCESS EXITED after %ds without ever listening on %d/%s -- "
                     "giving up now rather than waiting out the remaining %ds of --timeout."
-                    % (int(time.time() - t0), args.port, int(deadline - time.time()))
+                    % (
+                        int(time.time() - t0),
+                        args.port,
+                        RUN_TRANSPORT,
+                        int(deadline - time.time()),
+                    )
                 )
                 for ln in lines:
                     print(ln)
@@ -1499,8 +1714,8 @@ def _wait_host_ready(args, host_ip, host):
         if time.time() - last >= 20:
             last = time.time()
             print(
-                "[host] not listening on %d yet (%ds elapsed, walking to its lobby) ..."
-                % (args.port, int(last - t0))
+                "[host] not listening on %d/%s yet (%ds elapsed, walking to its lobby) ..."
+                % (args.port, RUN_TRANSPORT, int(last - t0))
             )
         time.sleep(2)
     return bool(peer_ready(args, host_ip, args.port) or peer_status(args, host_ip, host["run"]))
@@ -1727,15 +1942,24 @@ def shim_start(args):
     if not args.shim:
         return None
     listen_port = shim_listen_port(args)
-    with socket.socket() as probe:  # fail LOUDLY rather than inherit somebody else's shim
+    # mp:TL-SHIMUDP -- the occupancy probe has to match the transport it is checking. TCP and UDP are
+    # independent port spaces, so a TCP bind() here says nothing about a UDP shim already holding
+    # this port: a stale `--udp` shim from an earlier run would sail past this check, and the run that
+    # then dials it inherits a corpse with whatever delay/blackhole it last had -- silently invalid
+    # rather than refused (the exact failure this probe exists to catch, one paragraph below).
+    probe_kind = socket.SOCK_DGRAM if RUN_TRANSPORT == "udp" else socket.SOCK_STREAM
+    with socket.socket(
+        socket.AF_INET, probe_kind
+    ) as probe:  # fail LOUDLY, not inherit a stale shim
         probe.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         try:
             probe.bind(("0.0.0.0", listen_port))
         except OSError:
             print(
-                "[shim] port %d is already in use -- a shim from an earlier run is probably still\n"
+                "[shim] %s port %d is already in use -- a shim from an earlier run is probably still\n"
                 "       alive (and may have a blackhole latched on). Kill it and retry; a run through\n"
-                "       a stale shim looks like a result but is not one." % listen_port
+                "       a stale shim looks like a result but is not one."
+                % (RUN_TRANSPORT, listen_port)
             )
             return None
     os.makedirs(os.path.join(REPO, "tmp", "shim"), exist_ok=True)
@@ -1757,6 +1981,21 @@ def shim_start(args):
         "--log",
         log,
     ]
+    # mp:TL-SHIMUDP -- this used to be TCP unconditionally, so every `[net] transport=udp` run had to
+    # be shimmed by hand (start net_shim.py --udp yourself, point ui_test at it): nothing here ever
+    # told the shim which mode to forward in. RUN_TRANSPORT is resolved once in main() before either
+    # caller of shim_start runs, so it is always current by the time we get here.
+    manual_arm = False
+    if RUN_TRANSPORT == "udp":
+        cmd.append("--udp")
+        if args.shim_timeline:
+            # UDP has no connection state, so "first datagram" (the timeline's normal zero point) is
+            # any stray packet that happens to land on this port before the real peer does -- an OS
+            # broadcast, a leftover socket from a previous run, anything. This runner DOES know the
+            # right zero point (the host it just confirmed LISTENING), so it arms the shim explicitly
+            # instead of trusting whatever arrives first. See tools/net_shim.py --manual-arm / `arm`.
+            cmd.append("--manual-arm")
+            manual_arm = True
     if args.shim_timeline:
         t = args.shim_timeline
         cmd += ["--timeline", t if os.path.isabs(t) else os.path.join(REPO, t)]
@@ -1765,17 +2004,43 @@ def shim_start(args):
     if proc.poll() is not None:
         print("[shim] failed to start (exit %s) -- see %s" % (proc.returncode, log))
         return None
+    proc.manual_arm = manual_arm  # read by shim_arm() once the caller knows the host is ready
     print(
-        "[shim] listening :%s -> %s  delay=%sms one-way (%sms rtt)%s"
+        "[shim] listening :%s -> %s (%s)  delay=%sms one-way (%sms rtt)%s"
         % (
             listen_port,
             args.shim if ":" in args.shim else "%s:%d" % (args.shim, args.port),
+            RUN_TRANSPORT,
             args.shim_delay,
             args.shim_delay * 2,
             ("  timeline=" + os.path.basename(args.shim_timeline)) if args.shim_timeline else "",
         )
     )
     return proc
+
+
+def shim_arm(proc):
+    """mp:TL-SHIMUDP -- tell a --manual-arm shim its timeline clock starts NOW.
+
+    Call this once the caller has confirmed the real session began (the host is LISTENING), not on a
+    fixed delay -- that is the whole point of manual-arm over the datagram-triggered default. A no-op
+    for a shim that was not started --manual-arm (proc.manual_arm is only set True by shim_start when
+    RUN_TRANSPORT is udp and a timeline was requested).
+    """
+    if not proc or not getattr(proc, "manual_arm", False):
+        return
+    try:
+        with socket.create_connection(("127.0.0.1", SHIM_CONTROL_PORT), timeout=5) as s:
+            s.sendall(b"arm\n")
+            s.settimeout(5)
+            reply = s.recv(4096)
+        print("[shim] %s" % reply.decode("utf-8", "replace").strip())
+    except OSError as e:
+        print(
+            "[shim] WARN: could not arm the timeline clock (%s) -- the shim was started --manual-arm, "
+            "so its timeline will now never start; the run's delay/jitter still apply, only a "
+            "scheduled mid-run CHANGE (a timeline step) will not fire" % e
+        )
 
 
 def shim_stop(proc):
@@ -1809,7 +2074,9 @@ def _scratch():
 
 def load_ignore(base_dir):
     """Optional baselines/<label>/_ignore.json: {"capture_x.png":[[x,y,w,h],...], "*":[...]} -> per-capture
-    ignore rects (machine-specific regions like the on-screen host IP). Missing/broken file -> no masking."""
+    ignore rects (machine-specific regions like the on-screen host IP). Missing/broken file -> no masking.
+    Keys starting with "_" are options, not captures: "_why" (prose), "_only" (compare ONLY a rect,
+    optionally colour-blind -- see diff_capture)."""
     path = os.path.join(base_dir, "_ignore.json")
     if not os.path.isfile(path):
         return {}
@@ -1841,8 +2108,10 @@ def collect_and_check(label, png_dir, args):
     for c in caps:
         name = os.path.basename(c)
         rects = list(ignore.get("*", [])) + list(ignore.get(name, []))
+        # `_only` (see diff_capture): {"capture_x.png": {"rect": [x, y, w, h], "mode": "ink"}}
+        only = (ignore.get("_only") or {}).get(name)
         passed, frac, note = diff_capture(
-            c, os.path.join(base_dir, name), args.pixdelta, args.tol, rects
+            c, os.path.join(base_dir, name), args.pixdelta, args.tol, rects, only
         )
         tag = "PASS" if passed else "FAIL"
         print(
@@ -1853,13 +2122,20 @@ def collect_and_check(label, png_dir, args):
     return ok
 
 
-def host_listening(port):
-    # The menu-path host starts a TCP listener when it enters its lobby -- the "ready for clients" signal
+def host_listening(port, transport="tcp"):
+    # The menu-path host opens its lobby port when it enters its lobby -- the "ready for clients" signal
     # (used instead of script COMPLETE, since a host that waits for peers only COMPLETEs after they join).
-    r = mp_run.ps(
-        "(Get-NetTCPConnection -State Listen -LocalPort %d -ErrorAction SilentlyContinue | "
+    # Which TABLE that shows up in is transport-specific (mp:T1): a tcp host is a LISTEN row in the TCP
+    # connection table, a udp host is a bound endpoint and has no state to be in at all. Asking the
+    # wrong table is indistinguishable from a host that never started -- see remote_listening.
+    q = (
+        "(Get-NetUDPEndpoint -LocalPort %d -ErrorAction SilentlyContinue | Measure-Object).Count"
+        % port
+        if transport == "udp"
+        else "(Get-NetTCPConnection -State Listen -LocalPort %d -ErrorAction SilentlyContinue | "
         "Measure-Object).Count" % port
     )
+    r = mp_run.ps(q)
     try:
         return int((r.stdout or "0").strip() or "0") > 0
     except ValueError:
@@ -2226,15 +2502,75 @@ def peer_script_abort(args, ip, run):
     return None
 
 
+# SES1: a SESSION directory, exactly as mh_session_dir.h spells it --
+# "<UTC YYYYMMDDTHHMMSSZ>_<8 hex>_<slot>_<role>". A process ("menu") directory has `menu` where the
+# hex is, so it cannot match; and neither can a pre-SES1 `<YYYYMMDD>_<HHMMSS>_<role>` folder, which
+# is the one that actually bit (see peer_session_dirs).
+SESSION_DIR_RE = re.compile(r"^\d{8}T\d{6}Z_[0-9a-f]{8}_\d+_[A-Za-z0-9]+$")
+
+
+def peer_session_dirs(args, ip, run):
+    """SES1: the SESSION directories that opened under the process directory `run`, oldest first.
+
+    A run's output is two kinds of folder since SES1. `run` is the PROCESS ("menu") directory -- the
+    one this runner discovered at launch and has been polling for mh_uidrive.log -- and it keeps the
+    streams whose subject is the process: the harness outputs, the UI-automation channel, the
+    captures, the arm-time banners. Everything whose subject is the MATCH (mh_net.log,
+    mh_lockstep.log, mh_frametime.log, mh_launch.log) moves into a session directory the moment a
+    lobby opens, and moves back out when it closes.
+
+    Identified by NAME SHAPE plus ordering, rather than by reading each session.json: one directory
+    listing answers it, where a json per candidate would be one round trip each on a VM.
+
+    THE SHAPE TEST IS NOT BELT-AND-BRACES. The first version of this used only "sorts after `run`
+    and is not a menu directory", and a rig VM whose logs/ still held PRE-SES1 folders
+    (`20260917_155937_solo`) silently matched them: `_` is 0x5F and `T` is 0x54, so an old-format
+    name from EARLIER the same day sorts AFTER a new-format one. The determinism gate then appended
+    an unrelated 800-step run's harness log onto this run's, and came back NO COMPARABLE STEPS with
+    two boot banners in one file. Matching the shape SES1 actually emits is what makes the ordering
+    comparison meaningful, because both sides of it are then the same format."""
+    base = os.path.basename(run.rstrip("/\\"))
+    if ip is None:
+        names = [
+            os.path.basename(d.rstrip("/\\"))
+            for d in glob.glob(os.path.join(os.path.dirname(os.path.abspath(run)), "*"))
+            if os.path.isdir(d)
+        ]
+    else:
+        r = remote(args, ip, "dir /b /ad %s\\logs 2>nul" % args.vm_dir)
+        names = [ln.strip() for ln in (r.stdout or "").splitlines() if ln.strip()]
+    return sorted(n for n in names if SESSION_DIR_RE.match(n) and n > base)
+
+
 def pull_peer_logs(args, ip, run, dest):
-    """Copy a peer's harness/net logs (mp_run.LOGNAMES) from its run dir into `dest`. Returns dest."""
+    """Copy a peer's harness/net logs (mp_run.LOGNAMES) from its run dir into `dest`. Returns dest.
+
+    SES1: `dest` stays FLAT and stays one file per log name, because every consumer downstream
+    (mp_analyze, det_run_report, det3_barrier_report) reads it that way -- and because the flat file
+    is what the pre-SES1 single directory produced. The process directory's copy is written first
+    and each session directory's copy is APPENDED in stamp order, which reconstructs exactly the
+    stream that used to exist: the menu phase, then each match, in the order they happened. The
+    newest session's session.json comes along too, so the analyzer can pair these peers by match_id
+    rather than by the operator having handed it the right two folders."""
     os.makedirs(dest, exist_ok=True)
+    sessions = peer_session_dirs(args, ip, run)
     if ip is None:
         for nm in mp_run.LOGNAMES + OPTIONAL_ARTIFACTS:
             src = os.path.join(run, nm)
             if os.path.isfile(src):
                 shutil.copy(src, os.path.join(dest, nm))
-    else:
+        parent = os.path.dirname(os.path.abspath(run))
+        for sd in sessions:
+            for nm in mp_run.LOGNAMES:
+                src = os.path.join(parent, sd, nm)
+                if os.path.isfile(src):
+                    with open(src, "rb") as fi, open(os.path.join(dest, nm), "ab") as fo:
+                        fo.write(fi.read())
+            sj = os.path.join(parent, sd, "session.json")
+            if os.path.isfile(sj):
+                shutil.copy(sj, os.path.join(dest, "session.json"))
+        return dest
+    if True:
         # OPTIONAL artifacts first, quietly: they exist only under --record, so a missing one is the
         # normal case and must NOT print the "did NOT copy" line that a missing LOG legitimately does.
         fwd0 = args.vm_dir.replace("\\", "/")
@@ -2254,15 +2590,49 @@ def pull_peer_logs(args, ip, run, dest):
         # the VM) failed to copy while its frametime/temporal siblings succeeded, so the pair had no
         # host data and the run reported INCONCLUSIVE with no hint as to why. The --min-common floor did
         # its job -- it refused to call that a pass -- but a gate should also name what went missing.
+        #
+        # SES1 MOVED THE REPORT TO THE END. A stream that is per-SESSION is legitimately ABSENT from
+        # the process directory -- mh_lockstep.log is written only in mode 3, so a peer's menu folder
+        # never has one -- and warning here made the determinism gate print two "did NOT copy" lines
+        # on every GREEN run, for files that arrived a few lines later out of the session folder. The
+        # retry stays; the verdict on whether anything is missing is taken once, over the merge.
         fwd = args.vm_dir.replace("\\", "/")
         for nm in mp_run.LOGNAMES:
             src = "%s@%s:%s/logs/%s/%s" % (args.vm_user, ip, fwd, run, nm)
             out = os.path.join(dest, nm)
             for attempt in (1, 2):
-                if mp_run.scp(args.ssh_key, src, out).returncode == 0 and os.path.isfile(out):
+                if mp_run.scp(
+                    args.ssh_key, src, out, quiet=True
+                ).returncode == 0 and os.path.isfile(out):
                     break
-                if attempt == 2:
-                    print("  [pull] %s: %s did NOT copy -- analysis will be missing it" % (ip, nm))
+        # SES1: then each session directory's half of the same streams, appended in stamp order.
+        # Pulled to a scratch name and concatenated rather than scp'd over the destination, so a
+        # failed session pull cannot destroy the menu-phase half that already arrived.
+        for sd in sessions:
+            for nm in mp_run.LOGNAMES:
+                tmp = os.path.join(dest, "_ses_%s" % nm)
+                if mp_run.scp(
+                    args.ssh_key,
+                    "%s@%s:%s/logs/%s/%s" % (args.vm_user, ip, fwd, sd, nm),
+                    tmp,
+                    quiet=True,
+                ).returncode == 0 and os.path.isfile(tmp):
+                    with open(tmp, "rb") as fi, open(os.path.join(dest, nm), "ab") as fo:
+                        fo.write(fi.read())
+                    os.remove(tmp)
+            mp_run.scp(
+                args.ssh_key,
+                "%s@%s:%s/logs/%s/session.json" % (args.vm_user, ip, fwd, sd),
+                os.path.join(dest, "session.json"),
+                quiet=True,
+            )
+        # THE ONE VERDICT ON WHAT IS MISSING, taken over the merged result (see the note above the
+        # process-directory pull). 2026-07-28's failure -- a 2.8 MB mh_harness.log present on the VM
+        # and silently absent locally, leaving the pair with no host data -- is still named here; what
+        # is no longer named is a per-session stream that the process directory correctly lacks.
+        for nm in mp_run.LOGNAMES:
+            if not os.path.isfile(os.path.join(dest, nm)):
+                print("  [pull] %s: %s did NOT copy -- analysis will be missing it" % (ip, nm))
     return dest
 
 
@@ -2319,11 +2689,15 @@ def run_determinism(args):
         time.sleep(2)
     if not peer_ready(args, host_ip, args.port):
         print(
-            "[det] host never became LISTENING within 90s -- aborting. If the polls above printed "
+            "[det] host never opened %d/%s within 90s -- aborting. If the polls above printed "
             "ssh timeouts, suspect the PROBE, not the game (2026-07-27 -- see remote_listening)."
+            % (args.port, RUN_TRANSPORT)
         )
         peer_kill(args, host_ip)
         return 1
+    shim_arm(
+        shim
+    )  # mp:TL-SHIMUDP -- the host is really up now; a manual-arm shim's clock starts here
     print(
         "[host %s] LISTENING -- launching clients (connect to %s)"
         % (host_ip or "local", connect_ip)
@@ -2552,6 +2926,13 @@ def main():
         "the dead->correct->join round-trip test",
     )
     ap.add_argument(
+        "--no-client-ip",
+        action="store_true",
+        help="mp:R7a: pin the client's name/game but NO server address, so the client has no saved server "
+        "-- which is what makes the FIRST browser probe the relay (R7's no-saved-address case). Used by "
+        "relay_punch (first-browser join); direct_dial keeps its pinned IP so the first browser stays quiet.",
+    )
+    ap.add_argument(
         "--no-pin",
         action="store_true",
         help="do NOT pin setup.dat identity (use the machine's own)",
@@ -2652,6 +3033,22 @@ def main():
         "--net-extra",
         default="",
         help="extra [net] lines, ';'-separated k=v (e.g. 'defang_xui=1') -- per-group overlay-patch knobs.",
+    )
+    ap.add_argument(
+        "--net-extra-client",
+        default="",
+        help="mp:R7a -- extra [net] lines for the CLIENT peers ONLY (the client-only twin of "
+        "--net-extra). Built for direct_dial_with_relay_set: `relay=` on the client, the host off "
+        "the relay, so an untouched relay (peers=0) is the assertion.",
+    )
+    ap.add_argument(
+        "--signal-touch",
+        action="append",
+        default=[],
+        metavar="NAME=PATH",
+        help="mp:R4b -- when any peer's script emits `signal NAME`, create PATH (once). The way a "
+        "script reaches the caller that started this run: test_ui.py's relay_restart scenario "
+        "restarts its relay process on the peers' `signal ingame`.",
     )
     ap.add_argument(
         "--extra-ini-host",
@@ -2793,6 +3190,8 @@ def main():
     global \
         DEFANG_OVERLAY, \
         EXTRA_NET, \
+        CLIENT_NET_EXTRA, \
+        RUN_TRANSPORT, \
         EXTRA_INI, \
         EXTRA_INI_HOST, \
         EXTRA_INI_CLIENT, \
@@ -2836,6 +3235,23 @@ def main():
     ORDER_MODE = args.record
     ORDER_LOG = args.order_log
     EXTRA_NET = args.net_extra
+    CLIENT_NET_EXTRA = args.net_extra_client
+    if CLIENT_NET_EXTRA:
+        print("[cfg] CLIENT-ONLY [net] extras: %s" % CLIENT_NET_EXTRA)
+    for kv in args.signal_touch:
+        if "=" not in kv:
+            sys.exit("--signal-touch wants NAME=PATH, got %r" % kv)
+        n, p = kv.split("=", 1)
+        SIGNAL_TOUCH[n.strip()] = os.path.abspath(p.strip())
+    RUN_TRANSPORT = resolve_transport(EXTRA_NET)
+    if RUN_TRANSPORT != "udp":
+        # Printed unconditionally for the non-default choice: every readiness line, every abort and
+        # every verdict below is about THIS transport, and a run transcript that does not say which
+        # one cannot be read afterwards. (udp is the default since 2026-09-20; tcp is the explicit one.)
+        print(
+            "[cfg] transport: %s -- mh.dll binds mh_net.dll, and the host-ready probe reads the "
+            "TCP listener table" % RUN_TRANSPORT
+        )
     for one in args.extra_ini:
         path = one
         if not os.path.isabs(path):
@@ -3046,7 +3462,17 @@ def main():
         # pin the HOST identity (player name + created game name) so its lobby + the clients' browser rows
         # render deterministic text regardless of the machine's saved history.
         pin_setup(args, host_ip, name=args.host_name, game=args.game_name, pdir=host.get("dir"))
-        host["run"] = peer_launch(args, host_ip, hsrc, args.timeout_frames, pdir=host.get("dir"))
+        # `is_host=True` -- mp:X1b, and it is a BUG FIX rather than a new capability. `--harness-extra-host`
+        # is parsed, printed by test_ui's "[cfg] HOST-ONLY [harness] extras:" line and documented as the
+        # asymmetric twin of --harness-extra, but this launcher (the multi-peer UI-SCRIPT path, as
+        # distinct from --determinism's at the top of this file) never told peer_launch which peer it
+        # was launching, so make_harness_ini's `is_host` was False for the host too and every host-only
+        # key was silently dropped. Measured: `--harness-extra-host snapshot_at=120` produced a lane ini
+        # with no snapshot_at in it while the runner printed the flag back. Inert for every scenario
+        # that does not pass the flag (HARNESS_EXTRA_HOST is "" and both helpers return "").
+        host["run"] = peer_launch(
+            args, host_ip, hsrc, args.timeout_frames, is_host=True, pdir=host.get("dir")
+        )
         if not host["run"]:
             peer_kill(args, host_ip, host.get("run"))
             return 1
@@ -3087,6 +3513,9 @@ def main():
                 )
             peer_kill(args, host_ip)
             return 1
+        shim_arm(
+            shim
+        )  # mp:TL-SHIMUDP -- host confirmed ready; a manual-arm shim's clock starts here
         if len(peers) >= 2:
             print(
                 "[host %s] ready -- launching clients (they connect to %s)"
@@ -3096,7 +3525,15 @@ def main():
             cname = args.client_name if ci == 0 else "%s%d" % (args.client_name, ci + 1)
             # S8(b): a dead-IP round-trip test wants the field to pre-fill to a DEAD address (entry 0) with
             # the live host selectable in the MRU dropdown (entry 1); else pin the single live connect IP.
-            ip_val = [args.client_dead_ip, connect_ip] if args.client_dead_ip else connect_ip
+            # mp:R7a: --no-client-ip CLEARS the server-address MRU (an empty list, not None -- None would
+            # keep the template's saved IP), so the client has no saved server. That is what makes the
+            # FIRST browser probe the relay (R7's "no saved/typed address" case); a saved IP leaves it quiet.
+            if args.no_client_ip:
+                ip_val = []
+            elif args.client_dead_ip:
+                ip_val = [args.client_dead_ip, connect_ip]
+            else:
+                ip_val = connect_ip
             pin_setup(args, p["ip"], ip_val=ip_val, name=cname, pdir=p.get("dir"))
             print("[client %s] launching %s ..." % (p["key"], os.path.basename(p["src"])))
             p["run"] = peer_launch(args, p["ip"], p["src"], args.timeout_frames, pdir=p.get("dir"))

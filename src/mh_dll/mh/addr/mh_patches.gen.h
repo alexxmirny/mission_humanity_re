@@ -256,6 +256,7 @@ inline constexpr mh::hook::owner_range promotable_ranges[] = {
     {"llm_tutorial_step_driver",                            0x004ba8afu, 0x004baf10u, "sim"     }, // libmh/sim/resid/resid_promote.cpp
     {"llm_game_start_tutorial",                             0x004bafb1u, 0x004bb2f9u, "sim"     }, // libmh/sim/resid/resid_promote.cpp
     {"llm_menu_force_return_to_main",                       0x004c862fu, 0x004c86e2u, "sim"     }, // libmh/sim/libtrans/sim_lt_promote.cpp
+    {"utils_open_file",                                     0x004cf6c4u, 0x004cf6cdu, "seams"   }, // mh/seams/map_transfer.cpp
     {"llm_time_get_ticks_ms",                               0x004d056cu, 0x004d0581u, ""        }, // mh_harness/harness.cpp
     {"utils_w_strlen",                                      0x004d0582u, 0x004d0594u, "seams"   }, // mh/seams/reimpl_probe.cpp
     {"llm_strat_ai_score_reinforcement_unit",               0x004d352cu, 0x004d3607u, "ai"      }, // libmh/ai/ai_promote.cpp
@@ -423,7 +424,7 @@ inline constexpr mh::hook::owner_range promotable_ranges[] = {
     {"llm_strat_ai_engage_filter_and_commit_target",        0x004ede8bu, 0x004ee05bu, "ai"      }, // libmh/ai/ai_promote.cpp
     {"llm_strat_ai_active_unit_tick",                       0x004ee30bu, 0x004ee364u, "ai"      }, // libmh/ai/ai_promote.cpp
 };
-inline constexpr int promotable_range_count = 401;
+inline constexpr int promotable_range_count = 402;
 
 // EVERY migration-ledger row at state `verified`, with its LEDGER domain -- the set X-TOMB's
 // per-domain force-arm has to sweep. The table above holds only what carries an

@@ -204,6 +204,33 @@
    ]
   },
   {
+   "export": "MH_Net_SnapshotPoll",
+   "mangled": "_MH_Net_SnapshotPoll",
+   "pretty": "_MH_Net_SnapshotPoll",
+   "slot": "MH_Net_SnapshotPoll",
+   "used_by": [
+    "harness.obj"
+   ]
+  },
+  {
+   "export": "MH_Net_SnapshotSend",
+   "mangled": "_MH_Net_SnapshotSend",
+   "pretty": "_MH_Net_SnapshotSend",
+   "slot": "MH_Net_SnapshotSend",
+   "used_by": [
+    "harness.obj"
+   ]
+  },
+  {
+   "export": "MH_Net_SnapshotStatus",
+   "mangled": "_MH_Net_SnapshotStatus",
+   "pretty": "_MH_Net_SnapshotStatus",
+   "slot": "MH_Net_SnapshotStatus",
+   "used_by": [
+    "harness.obj"
+   ]
+  },
+  {
    "export": "MH_RunDir",
    "mangled": "_MH_RunDir",
    "pretty": "_MH_RunDir",
@@ -386,6 +413,15 @@
    ]
   },
   {
+   "export": "?lockstep_hash@world@state@mh@@YAXIPA_K0@Z",
+   "mangled": "?lockstep_hash@world@state@mh@@YAXIPA_K0@Z",
+   "pretty": "void __cdecl mh::state::world::lockstep_hash(unsigned int,unsigned __int64 *,unsigned __int64 *)",
+   "slot": "mh_state_world_lockstep_hash",
+   "used_by": [
+    "harness.obj"
+   ]
+  },
+  {
    "export": "?owner_count@state@mh@@YAAAHXZ",
    "mangled": "?owner_count@state@mh@@YAAAHXZ",
    "pretty": "int & __cdecl mh::state::owner_count(void)",
@@ -408,6 +444,15 @@
    "mangled": "?promotion_active@save@mh@@YA_NXZ",
    "pretty": "bool __cdecl mh::save::promotion_active(void)",
    "slot": "mh_save_promotion_active",
+   "used_by": [
+    "harness.obj"
+   ]
+  },
+  {
+   "export": "?reset_session_latch_for_test@boot@state@mh@@YAXXZ",
+   "mangled": "?reset_session_latch_for_test@boot@state@mh@@YAXXZ",
+   "pretty": "void __cdecl mh::state::boot::reset_session_latch_for_test(void)",
+   "slot": "mh_state_boot_reset_session_latch_for_test",
    "used_by": [
     "harness.obj"
    ]
@@ -543,6 +588,15 @@
    "mangled": "?verify_active@save@mh@@YA_NXZ",
    "pretty": "bool __cdecl mh::save::verify_active(void)",
    "slot": "mh_save_verify_active",
+   "used_by": [
+    "harness.obj"
+   ]
+  },
+  {
+   "export": "libmh_import_world",
+   "mangled": "_libmh_import_world",
+   "pretty": "_libmh_import_world",
+   "slot": "libmh_import_world",
    "used_by": [
     "harness.obj"
    ]

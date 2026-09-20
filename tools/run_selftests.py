@@ -206,6 +206,15 @@ def main():
         "--no-asan", action="store_true", help="skip the ASan pass (iterating; seconds)"
     )
     ap.add_argument(
+        "--pass",
+        dest="which",
+        choices=("both", "asan", "plain"),
+        default="both",
+        help="run only one half. CI runs the halves as two PARALLEL jobs: on a 2-core hosted "
+        "runner the ASan build alone measured 936 s (v0.1.0-rc1, 2026-09-18) and the serial gate "
+        "blew its 30-minute job budget before the plain build finished. Locally `both` (the gate).",
+    )
+    ap.add_argument(
         "--repeats",
         type=int,
         default=3,
@@ -216,7 +225,7 @@ def main():
     ok = True
     t0 = time.time()
 
-    if not args.no_asan:
+    if not args.no_asan and args.which != "plain":
         exes = build(asan=True)
         if exes is None:
             return 1
@@ -237,23 +246,25 @@ def main():
     # The plain pass is a pass in its own right, not cleanup: it is where the flaky-crash repeats
     # run, since a crash is the only symptom corruption produces in an uninstrumented build. (Before
     # 2026-08-23 it was also cleanup -- the modes shared a staging path -- which is no longer true.)
-    exes = build(asan=False)
-    if exes is None:
-        return 1
-    for exe in exes.values():
-        if not assert_roster(exe):
+    if args.which != "asan":
+        exes = build(asan=False)
+        if exes is None:
             return 1
-    for suite in SUITES:
-        reps = args.repeats if suite in FLAKY else 1
-        for i in range(reps):
-            tag = f"plain[{i + 1}/{reps}]" if reps > 1 else "plain"
-            ok &= run_suite(exes[SUITE_EXE[suite]], suite, tag)
-    print(
-        f"[{'ok' if ok else 'FAIL'}] plain pass ({len(SUITES)} suites across {len(exes)} exes, "
-        f"{args.repeats}x {'/'.join(FLAKY)})"
-    )
+        for exe in exes.values():
+            if not assert_roster(exe):
+                return 1
+        for suite in SUITES:
+            reps = args.repeats if suite in FLAKY else 1
+            for i in range(reps):
+                tag = f"plain[{i + 1}/{reps}]" if reps > 1 else "plain"
+                ok &= run_suite(exes[SUITE_EXE[suite]], suite, tag)
+        print(
+            f"[{'ok' if ok else 'FAIL'}] plain pass ({len(SUITES)} suites across {len(exes)} exes, "
+            f"{args.repeats}x {'/'.join(FLAKY)})"
+        )
 
-    print(f"run_selftests: {'PASS' if ok else 'FAIL'} in {time.time() - t0:.0f}s")
+    half = "" if args.which == "both" else f" ({args.which} half only)"
+    print(f"run_selftests: {'PASS' if ok else 'FAIL'} in {time.time() - t0:.0f}s{half}")
     return 0 if ok else 1
 
 

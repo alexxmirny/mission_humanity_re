@@ -1,0 +1,50 @@
+# mp:F3b -- TWO-PEER in-game chat, receiving half, run against a MERGED font install. Pair with
+# mp_host_chat_glyphs.txt.
+#
+# mp_client_chat.txt (mp:F3) already proves the CODE POINTS are right (`wmsg` against the UTF-16
+# needle -- see that script's header for why `wmsg` and not `field`). This scenario asserts the
+# same thing AND THEN captures the frame, because F3 alone cannot show whether those code points
+# draw as real glyphs or the font guard's substitute box -- that half is mp:F2's merge, which is
+# not in this repo, so the scenario is opt-in exactly like font_merged (see
+# tools/test_ui.py's font_merge_precondition() / this test's own `requires`/`lane_src`): it SKIPS
+# BY NAME on a machine without a merged install at MH_FONT_MERGE_DIR.
+#
+# THE NEEDLE IS STILL CODE POINTS, NOT BYTES (mp_client_chat.txt's reasoning applies unchanged):
+# 1f04 4004 3804 3204 3504 4204 is U+041F U+0440 U+0438 U+0432 U+0435 U+0442, "Privet". Passing
+# `wmsg` first is what makes the CAPTURE meaningful -- it proves the queued text is exactly this
+# line before a screenshot is taken of it, so a reader isn't just trusting that the pixels came
+# from the right characters.
+
+settled value:110
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+present Internet server
+settled Internet server
+clickl Internet server
+present Server address
+settled Connect
+clickl Connect
+sessions 1
+settled Join game
+clickl Join game
+
+present Network players
+signal lobby
+settled Cancel
+capture c_lobby
+absent Network players
+gamemode 2
+gameclock 6000
+
+# The host signals once the line is submitted; the wait after it is on the RECEIVED text, so a
+# transport that dropped the message times out here rather than passing on a stale queue entry.
+awaitsignal chatsent
+wmsg hex:1f0440043804320435044204
+# The claim this scenario exists for: capture the frame RIGHT AFTER the code-point check above
+# passed, so the committed PNG is proof the on-screen floating message renders those six code
+# points as real Cyrillic glyphs, not the font guard's '?' or box substitute.
+capture c1_privet
+log F3b CLIENT: received the Cyrillic chat line as U+041F U+0440 U+0438 U+0432 U+0435 U+0442 and captured it rendered
+end

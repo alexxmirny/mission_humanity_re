@@ -32,6 +32,9 @@ EXPORTS
     MH_Core_ArmPaths
     MH_Core_TrapsAtOpen
     MH_Net_Send
+    MH_Net_SnapshotPoll
+    MH_Net_SnapshotSend
+    MH_Net_SnapshotStatus
     MH_RunDir
     MH_Temporal_Event
     MH_UIDrive_ActiveScreen

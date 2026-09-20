@@ -40,6 +40,7 @@
 
 #include <cstdarg>
 #include <cstdio>
+#include <cstring>
 
 #include "addr/mh_addrs.gen.h"
 #include "addr/mh_calls.gen.h"
@@ -203,6 +204,67 @@ void notify_once(uint32_t step) {
 // a property of its traversal, not of its manifest len. Decoder: tools/mp_desync_snap_diff.py.
 constexpr uint32_t SNAP_MAGIC = 0x4e53484du; // 'MHSN' little-endian
 
+// THE DUMP MUST NOT STALL THE SIM. The first shape of this function wrote straight to the file
+// from the emit callback -- thousands of small unbuffered WriteFile calls per region, two emit
+// passes per region (one to count) -- and the first real internet match to trip the watch
+// (2026-09-19) measured what that costs: 2.7 MB per dump, 5.5 s of frozen game per dump on the
+// host (three dumps, `stall=7` on the peer each time), 2 s on the client. Players called them
+// "stalls"; they were the evidence collector. So the stream is now built in memory in ONE pass
+// (the length prefix is patched in after the region is emitted) and handed to a thread that owns
+// the buffer and the handle; the sim thread's cost is the emit, which is the same walk the hash
+// already pays. A machine that cannot allocate 3 MB writes nothing and says so.
+struct SnapJob {
+    HANDLE   h;
+    uint8_t *buf;
+    uint32_t len;
+    uint32_t step;
+    int      no;
+    char     path[MAX_PATH];
+};
+
+DWORD WINAPI snapshot_writer(LPVOID arg) {
+    SnapJob *j  = static_cast<SnapJob *>(arg);
+    DWORD    w  = 0;
+    BOOL     ok = WriteFile(j->h, j->buf, j->len, &w, nullptr);
+    CloseHandle(j->h);
+    if (ok && w == j->len)
+        say("; [desync] SNAPSHOT: %d-region VERDICT-stream dump at step %lu -> %s (dump #%d, %lu "
+            "bytes, written off the sim thread; diff the peers' files with "
+            "tools/mp_desync_snap_diff.py)\n",
+            N, (unsigned long)j->step, j->path, j->no, (unsigned long)j->len);
+    else
+        say("; [desync] SNAPSHOT FAILED: short write to %s (%lu of %lu bytes, err %lu)\n", j->path,
+            (unsigned long)w, (unsigned long)j->len, GetLastError());
+    HeapFree(GetProcessHeap(), 0, j->buf);
+    HeapFree(GetProcessHeap(), 0, j);
+    return 0;
+}
+
+struct SnapBuf {
+    uint8_t *p;
+    uint32_t len, cap;
+    bool     overflow;
+};
+
+void snap_put(SnapBuf &b, const void *src, uint32_t n) {
+    if (b.overflow) return;
+    if (b.len + n > b.cap) {
+        // Grow geometrically; the first dump of a run sizes the next one exactly.
+        uint32_t ncap = b.cap ? b.cap : (4u << 20);
+        while (ncap < b.len + n) ncap *= 2;
+        uint8_t *np = static_cast<uint8_t *>(
+            b.p ? HeapReAlloc(GetProcessHeap(), 0, b.p, ncap) : HeapAlloc(GetProcessHeap(), 0, ncap));
+        if (np == nullptr) {
+            b.overflow = true;
+            return;
+        }
+        b.p   = np;
+        b.cap = ncap;
+    }
+    memcpy(b.p + b.len, src, n);
+    b.len += n;
+}
+
 void do_snapshot(uint32_t step) {
     char path[MAX_PATH];
     wsprintfA(path, "%smh_desync_snap_%lu.bin", MH_RunDir(), (unsigned long)step);
@@ -215,32 +277,47 @@ void do_snapshot(uint32_t step) {
     struct {
         uint32_t magic, ver, step, region_count;
         uint64_t manifest_fp;
-    } hdr   = {SNAP_MAGIC, 1, step, (uint32_t)N, g_manifest_fp};
-    DWORD w = 0;
-    WriteFile(h, &hdr, sizeof(hdr), &w, nullptr);
+    } hdr     = {SNAP_MAGIC, 1, step, (uint32_t)N, g_manifest_fp};
+    SnapBuf b = {nullptr, 0, 0, false};
+    snap_put(b, &hdr, sizeof(hdr));
     for (int i = 0; i < N; ++i) {
-        uint32_t len = 0;
-        {
-            mh::state::fn_sink count(
-                mh::state::sink_mode::VERDICT,
-                [](void *ctx, const void *, uint32_t n) { *static_cast<uint32_t *>(ctx) += n; },
-                &len);
-            mh::state::emit_slice(i, count);
-        }
-        WriteFile(h, &len, sizeof(len), &w, nullptr);
+        const uint32_t at   = b.len; // where this region's length prefix goes
+        uint32_t       zero = 0;
+        snap_put(b, &zero, sizeof(zero));
         mh::state::fn_sink out(
             mh::state::sink_mode::VERDICT,
-            [](void *ctx, const void *p, uint32_t n) {
-                DWORD ww = 0;
-                WriteFile(*static_cast<HANDLE *>(ctx), p, n, &ww, nullptr);
-            },
-            &h);
+            [](void *ctx, const void *p, uint32_t n) { snap_put(*static_cast<SnapBuf *>(ctx), p, n); },
+            &b);
         mh::state::emit_slice(i, out);
+        if (b.overflow) break;
+        const uint32_t len = b.len - at - sizeof(zero);
+        memcpy(b.p + at, &len, sizeof(len));
     }
-    CloseHandle(h);
-    say("; [desync] SNAPSHOT: %d-region VERDICT-stream dump at step %lu -> %s (dump #%d; diff the "
-        "peers' files with tools/mp_desync_snap_diff.py)\n",
-        N, (unsigned long)step, path, g_snaps_done + 1);
+    if (b.overflow) {
+        say("; [desync] SNAPSHOT FAILED: out of memory building the %lu-byte stream for %s\n",
+            (unsigned long)b.len, path);
+        if (b.p) HeapFree(GetProcessHeap(), 0, b.p);
+        CloseHandle(h);
+        return;
+    }
+    SnapJob *j = static_cast<SnapJob *>(HeapAlloc(GetProcessHeap(), 0, sizeof(SnapJob)));
+    if (j == nullptr) {
+        HeapFree(GetProcessHeap(), 0, b.p);
+        CloseHandle(h);
+        return;
+    }
+    j->h    = h;
+    j->buf  = b.p;
+    j->len  = b.len;
+    j->step = step;
+    j->no   = g_snaps_done + 1;
+    lstrcpynA(j->path, path, MAX_PATH);
+    HANDLE t = CreateThread(nullptr, 0, snapshot_writer, j, 0, nullptr);
+    if (t == nullptr) {
+        snapshot_writer(j); // no thread: still write it, on this thread, and say so through the line
+        return;
+    }
+    CloseHandle(t);
 }
 
 // The per-step gate, shared by both hooks. Runs BEFORE the sampling-cadence gate: the dump must not

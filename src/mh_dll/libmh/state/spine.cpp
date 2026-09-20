@@ -128,7 +128,8 @@
 #include "../../libmh/include/libmh.h"
 
 #include "addr/mh_regions.gen.h"
-#include "ai/ai_state.h" // ai_say -- the shared trace sink the liveness line writes to
+#include "addr/mh_world_snapshot.gen.h" // mp:X3: the carried-block table the preserve pass scans
+#include "ai/ai_state.h"                // ai_say -- the shared trace sink the liveness line writes to
 #include "orders/order_queue.h"
 #include "sim/hostreach/sim_h_map_region_prep.h"
 #include "sim/libtrans/sim_lt_map_region_pool.h"
@@ -164,6 +165,95 @@ void in_live(bool &fired, const char *name) {
 // the recording process's heap. See the banner.
 // NOTE THE ABSENCE OF RID_MAP_REGION_GRID -- it is handled separately below, and the reason is a
 // measurement rather than tidiness.
+// ---- mp:X3: THE PROCESS-LOCAL RESOURCE HANDLES, PRESERVED ACROSS A LIVE IMPORT ------------------
+//
+// MEASURED FIRST, ON THE RIG, AND THE MEASUREMENT IS THE WHOLE JUSTIFICATION. mp:X1b left the
+// importing peer dying with 0xC000041D within about a sim step of a successful import, and two
+// causes were indistinguishable from outside: the REWIND (live-step inputs over an older world) or
+// these seven re-derives run against a live session. mp:X3 asked the cheap question -- import and
+// then HOLD THE SIM, so no step body ever runs over the imported world -- and the peer died anyway,
+// with the crash marker naming it exactly:
+//
+//     code=0xc0000005  address=0x004a5759  read of 0x0F39E630 (ESI)
+//     0x004a5759 is `MOV AL, byte ptr [ESI]` inside llm_strat_render_ground_tile @0x004a5167,
+//     where ESI = file_ptr + 0x200 + terrain_id * 0x400.
+//
+// `file_ptr` is `map::tlo::g::file_ptr` (RID_FILE_PTR, 4 bytes, MF_VIEW|MF_MEASURED) -- the pointer
+// to the .TLO tile-graphics buffer THIS PROCESS allocated when it loaded the map. The blob carries
+// it verbatim, so after the import it holds the SENDING process's heap address, and the first
+// strategic frame the receiver draws blits ground tiles out of it. Not the sim. Not the rewind. The
+// RENDERER, on the next frame, through a carried heap pointer.
+//
+// SO THIS IS A CARRY-POLICY FIX, NOT A RE-DERIVE. The nav graph and the dispatch tables are
+// re-derived below because their content can be RECOMPUTED here. A loaded-asset pointer cannot: the
+// buffer it names is already correct in this process and nothing in the blob describes it. The
+// right answer is simply not to overwrite it -- which is the shape (4) already uses for
+// last_map_index / region_alloc_counter one step further on, and for the same reason.
+//
+// THE POPULATION IS SIX AND IT IS ENUMERATED, not guessed. Of the 829 carried blocks, 357 are four
+// bytes wide and exactly six of those are named as pointers by the registry. Every one is MF_VIEW
+// and NONE of them backs a determinism-hash slice (no entry in the hash manifest), so this pass
+// CANNOT move the step hash -- a property the SNAPCAP/SNAPIMP comparison re-measures on every run
+// rather than a claim made here. A seventh would have to be a pointer the registry does not call
+// one, which is a naming bug to fix at the registry rather than a reason to widen this by guesswork.
+//
+// WHAT IT DOES NOT COVER, stated because the honest scope is narrower than "pointers". A pointer
+// living at an INTERIOR offset of a bigger carried region is invisible to this table -- that is the
+// same blindness the capture's own `region_head_ptrs` census has, and state/spine.cpp's banner
+// already records what it cost once (G_TEXT_PTRS, 806 carried dwords, none counted, faulting in
+// format_core<wchar_t> after 2000 clean steps). This pass makes the measured crash go away and
+// makes the NEXT one cheap to name -- the crash marker names a faulting instruction, and one
+// decompile turns that into a region -- it does not close the class.
+constexpr mh::state::region_id LIVE_PRESERVE_REGIONS[] = {
+    mh::state::RID_FILE_PTR,                    // map::tlo::g::file_ptr -- the .TLO tile-graphics buffer.
+                                                // MEASURED: the first one the rig crash marker named.
+    mh::state::RID_GFX_DRAW_SURFACE,            // _G_LLM_GFX_DRAW_SURFACE -- the shared secondary
+                                                // surface. MEASURED: the SECOND one, after the first
+                                                // fix moved the crash into llm_strat_minimap_render.
+    mh::state::RID_TILE_VIS_MAP_PTR,            // the per-tile visibility plane the ground blitter reads
+    mh::state::RID_TACT_LOS_CACHE_PTR,          // the LOS/fog cache plane, read on the same path
+    mh::state::RID_TACT_FOV_DIR_TABLE_PTR,      // the tactical FOV direction table
+    mh::state::RID_MENU_SAVE_NAME_PTR,          // the menu's save-name buffer
+    mh::state::RID_PTR_S_MENUBCK1_GFX_00604288, // the menu background .GFX
+};
+
+// ---- ...AND THE RULE THE LIST ALONE COULD NOT BE -------------------------------------------------
+//
+// THE EXPLICIT LIST WAS MEASURED INSUFFICIENT ON ITS SECOND RUN, which is the honest reason this
+// criterion exists. Enumerating the six carried 4-byte regions the registry NAMES as pointers fixed
+// the ground-tile blitter and moved the fault straight into `llm_strat_minimap_render` @0x004a17b3,
+// writing through `_G_LLM_GFX_DRAW_SURFACE` -- a carried 4-byte MF_VIEW region that holds a pointer
+// and is not called one. So "named as a pointer" was a property of the NAMING, not of the class, and
+// a list grown one rig run at a time is a bisection with a crash per step.
+//
+// THE CRITERION IS ABOUT THE VALUE, NOT THE NAME. A carried block is preserved when all of:
+//   * it is FOUR BYTES and its region is MF_VIEW with neither MF_SAVE nor MF_HASH -- presentation
+//     state the receiving process already owns, and provably not a determinism slice;
+//   * the LIVE value looks like a process-local heap handle (4-aligned, above the image's extended
+//     .bss top, below the user/kernel split); and
+//   * the BLOB's value looks like one too and is DIFFERENT. Both halves matter: requiring the
+//     incoming value to be a plausible handle is what keeps an ordinary counter that happens to be
+//     large from being preserved, and requiring them to differ is what makes the pass a no-op on a
+//     capture whose allocator landed in the same place.
+//
+// WHY THIS CANNOT MOVE THE STEP HASH, which is the property that makes a value-shaped rule safe at
+// all: MF_HASH is excluded by construction, so no region the determinism manifest reads can be
+// preserved, and the SNAPCAP/SNAPIMP comparison re-measures that on every run rather than trusting
+// this paragraph. The residual risk is the opposite one -- preserving a 4-byte MF_VIEW scalar that
+// merely looks like a pointer on both peers -- and it is bounded by what MF_VIEW means: view state
+// the importing process is already the right owner of. Every preserve is LOGGED by name, so the
+// population is auditable from any run's own log instead of being argued about here.
+//
+// WHAT IT STILL DOES NOT COVER: a pointer at an INTERIOR offset of a larger carried region. That is
+// the same blindness the capture's `region_head_ptrs` census has, and the one that cost LIB-REF-LIVE
+// a fault in format_core<wchar_t> over G_TEXT_PTRS after 2000 clean steps. Closing it needs a
+// generated (holder rid, offset, pointee rid) fixup trailer and a re-record -- a blob-format change.
+inline bool looks_like_process_handle(uint32_t v) {
+    // The image, including the .bss extended to 0x1064dff, ends below 0x01100000; every heap
+    // address this has been measured against (0x0B8A0030, 0x654DDDD0, 0x034F07BC) is above it.
+    return v >= 0x01100000u && v < 0x7ff00000u && (v & 3u) == 0u;
+}
+
 constexpr mh::state::region_id FOREIGN_POINTER_REGIONS[] = {
     mh::state::RID_MAP_REGION_BY_INDEX,         // 4096 llm_map_region*, by region index -- all pointer
     mh::state::RID_MAP_REGION_LIST_HEAD,        // the active-region list head
@@ -191,6 +281,98 @@ constexpr mh::state::region_id FOREIGN_POINTER_REGIONS[] = {
 // every one of the 65536 pointer dwords unconditionally, which is what makes clearing them merely
 // belt-and-braces rather than load-bearing -- but they are still cleared, because "no foreign pointer
 // survives any window in which something might walk it" is a property worth keeping cheap.
+// The two halves of the preserve pass. SAVE runs before world::import() writes a byte; RESTORE runs
+// immediately after it returns OK and BEFORE anything else -- before the zeroing, before
+// pathfinder_init, before import_nav -- so there is no window in which this process holds a foreign
+// resource handle at all. A frame can be drawn from another thread's pump at any instant; the
+// window is what killed the peer, so the fix does not open a smaller one.
+constexpr int LIVE_PRESERVE_N = (int)(sizeof(LIVE_PRESERVE_REGIONS) / sizeof(LIVE_PRESERVE_REGIONS[0]));
+
+// The candidate set is every carried 4-byte MF_VIEW-only block; 335 of the 829 blocks qualify in
+// this build. Sized with headroom and CHECKED rather than assumed -- a build that grew past the cap
+// would otherwise silently stop protecting the tail of the table, which is the failure mode this
+// whole pass exists to remove.
+constexpr int LIVE_PRESERVE_SCAN_CAP = 512;
+
+struct handle_slot {
+    uint16_t block; // index into WORLD_SNAPSHOT_BLOCKS
+    uint32_t live;  // the value this process held before the byte engine ran
+};
+
+struct handle_set {
+    handle_slot slot[LIVE_PRESERVE_SCAN_CAP];
+    int         n;
+    bool        overflowed;
+};
+
+bool preserve_candidate(int i) {
+    const mh::state::region_id r = mh::state::WORLD_SNAPSHOT_BLOCKS[i].rid;
+    if (mh::state::WORLD_SNAPSHOT_BLOCKS[i].len != 4u) return false;
+    const uint8_t f = mh::state::REGIONS[r].manifests;
+    if ((f & mh::state::MF_VIEW) == 0) return false;
+    if ((f & (mh::state::MF_SAVE | mh::state::MF_HASH)) != 0) return false;
+    return true;
+}
+
+bool on_explicit_list(mh::state::region_id r) {
+    for (int k = 0; k < LIVE_PRESERVE_N; ++k)
+        if (LIVE_PRESERVE_REGIONS[k] == r) return true;
+    return false;
+}
+
+// SAVE runs before world::import() writes a byte.
+void live_handles_save(handle_set &out) {
+    out.n          = 0;
+    out.overflowed = false;
+    for (int i = 0; i < mh::state::WORLD_SNAPSHOT_BLOCK_COUNT; ++i) {
+        const mh::state::region_id r = mh::state::WORLD_SNAPSHOT_BLOCKS[i].rid;
+        if (!preserve_candidate(i) && !on_explicit_list(r)) continue;
+        uint32_t v = 0;
+        // Through state/region_runtime.h, never a local ptr<>: that header is the only place
+        // allowed to bind an address and check_sim_addresses enforces it. The rule caught this
+        // file the first time the pass was written, which is the rule working.
+        if (!mh::state::read_region_u32(r, &v)) continue;
+        if (out.n >= LIVE_PRESERVE_SCAN_CAP) {
+            out.overflowed = true;
+            break;
+        }
+        out.slot[out.n].block = (uint16_t)i;
+        out.slot[out.n].live  = v;
+        ++out.n;
+    }
+}
+
+// RESTORE runs immediately after import() returns OK and BEFORE anything else -- before the
+// zeroing, before pathfinder_init, before import_nav -- so there is no window in which this process
+// holds a foreign resource handle at all. A frame can be drawn from the game's own pump at any
+// instant, and a window is exactly what killed the importing peer, so the fix does not open a
+// smaller one.
+//
+// AND IT SAYS SO PER HANDLE, with both values. A silent preserve is the shape that makes the next
+// reader wonder whether the pass ran; naming the incoming value is what tells "the blob carried
+// another process's pointer" (the case this exists for) apart from "the two agreed anyway" (a
+// capture whose allocator happened to land in the same place -- the run that would make the pass
+// look unnecessary).
+void live_handles_restore(const handle_set &saved) {
+    if (saved.overflowed)
+        mh::ai::ai_say("; [import] preserve scan OVERFLOWED at %d slots -- the tail of the block "
+                       "table was NOT protected\n",
+                       LIVE_PRESERVE_SCAN_CAP);
+    for (int k = 0; k < saved.n; ++k) {
+        const mh::state::region_id r        = mh::state::WORLD_SNAPSHOT_BLOCKS[saved.slot[k].block].rid;
+        uint32_t                   imported = 0;
+        if (!mh::state::read_region_u32(r, &imported)) continue;
+        const uint32_t live = saved.slot[k].live;
+        if (imported == live) continue;
+        const bool forced = on_explicit_list(r);
+        if (!forced && !(looks_like_process_handle(live) && looks_like_process_handle(imported)))
+            continue;
+        mh::state::write_region_u32(r, live);
+        mh::ai::ai_say("; [import] preserved %s: blob %08X -> live %08X (process-local handle%s)\n",
+                       mh::state::REGIONS[r].name, imported, live, forced ? ", listed" : "");
+    }
+}
+
 void zero_foreign_pointer_regions() {
     // Through mh::state::clear_region, not a local ptr<>: state/region_runtime.h is the only header
     // allowed to bind an address and check_sim_addresses enforces it. The rule caught this TU the
@@ -218,8 +400,20 @@ extern "C" uint32_t libmh_abi_version(void) {
 extern "C" int libmh_import_world(const void *blob, size_t n) {
     static bool fired = false;
     in_live(fired, "libmh_import_world");
+
+    // (0) mp:X3 -- READ the process-local resource handles BEFORE the byte engine overwrites them.
+    //     Cheap (six dwords) and unconditional: a boot-time import reads six values it then writes
+    //     back unchanged, and a live one is the case this exists for. See the table's banner.
+    static handle_set live_handles; // ~4 KB; static rather than a 4 KB stack frame in a hosted DLL
+    live_handles_save(live_handles);
+
     const int rc = mh::state::world::import(blob, n);
     if (rc != mh::state::world::WORLD_OK) return rc;
+
+    //     ...and put them back before ANYTHING can walk one. import() validates completely before
+    //     its first write, so a refusal above leaves the live values in place and this is skipped
+    //     along with everything else.
+    live_handles_restore(live_handles);
 
     // (1) neutralise the imported graph BEFORE anything walks it -- see the banner.
     zero_foreign_pointer_regions();

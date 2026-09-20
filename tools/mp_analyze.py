@@ -291,6 +291,9 @@ REGION_NAMES = [
     "sim_step_interval",  # _G_LLM_STRAT_SIM_STEP_INTERVAL -- seconds per sim step
     "game_time_delta",  # GAME_TIME_DELTA -- this frame's advance
     "game_speed",  # game_speed -- the speed multiplier the delta is scaled by
+    "player_resources",  # player_resources int[8][10] -- the stock every affordability check reads (D25)
+    # (2026-09-19): was never hashed; the first real internet match diverged here alongside
+    # resource_spent and the verdict could not see it. Appended (the contract), state-only.
 ]
 # Mirrors the DLL's hash_region::excluded flag. NOTE the frame-rate-dependent regions (the
 # six clock doubles, frame_ring, fps_estimate) ARE in this set: the harness has always
@@ -315,6 +318,95 @@ STATE_EXCLUDED = {
     "game_speed",
 }
 # --- END generated region manifest ---
+
+
+# ---- the state fold, and the manifest fingerprint (tooling TL-GATE-D25FX, 2026-09-20) ----------
+#
+# `state` is not an opaque number: libmh/state/world_snapshot.cpp lockstep_hash() folds the per-region
+# hashes -- the same values the `R` line prints -- with FNV-1a 64 over each hash's 8 little-endian
+# bytes, in manifest order, skipping the excluded regions. So a run's `state` column is REDERIVABLE
+# from its `R` columns, and a variant that drops one more region is derivable the same way. That is
+# what lets the A/B/C verdict excuse a NAMED region on one leg without a DLL change and without
+# touching what the other legs compare: `state_fold(cols)` must reproduce `state` (the self-check
+# every consumer runs before trusting the variant), `state_fold(cols, drop={"p0_ai_econ"})` is the
+# leg's `state~excused`. Measured before it was relied on: 0 of 18317 + 30042 steps disagreed on
+# either arm of both A/B/C fixtures.
+FNV64_OFFSET = 1469598103934665603
+FNV64_PRIME = 1099511628211
+FNV32_OFFSET = 2166136261
+FNV32_PRIME = 16777619
+
+
+def state_fold(cols, drop=(), names=None, excluded=None):
+    """The `state` hash re-derived from one `R` line's columns, minus the regions in `drop`.
+
+    `cols` are the hex strings of one R line (positional, REGION_NAMES order). Returns the 16-hex
+    upper-case string the harness prints, or None if the line is short of the manifest."""
+    names = REGION_NAMES if names is None else names
+    excluded = STATE_EXCLUDED if excluded is None else excluded
+    if len(cols) < len(names):
+        return None
+    h = FNV64_OFFSET
+    for nm, c in zip(names, cols):
+        if nm in excluded or nm in drop:
+            continue
+        v = int(c, 16)
+        for i in range(8):
+            h ^= (v >> (8 * i)) & 0xFF
+            h = (h * FNV64_PRIME) & 0xFFFFFFFFFFFFFFFF
+    return "%016X" % h
+
+
+REGIONS_GEN_H = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+    "src",
+    "mh_dll",
+    "mh",
+    "addr",
+    "mh_regions.gen.h",
+)
+
+
+def hash_manifest_rows(header_text=None):
+    """[(name, rid, offset, len, excluded)] from the generated HASH_REGIONS[] table -- what the DLL
+    was compiled from, which is what its fingerprint describes."""
+    text = header_text if header_text is not None else open(REGIONS_GEN_H, encoding="utf-8").read()
+    m = re.search(r"enum region_id : uint16_t \{(.*?)\};", text, re.S)
+    rid = {name: int(val) for name, val in re.findall(r"(RID_\w+)\s*=\s*(\d+)", m.group(1))}
+    m = re.search(r"inline constexpr hash_region HASH_REGIONS\[\] = \{(.*?)\n\};", text, re.S)
+    rows = re.findall(
+        r'\{"(\w+)",\s*(RID_\w+),\s*(\d+)u,\s*MH_STOCK_BASE\(0x[0-9a-fA-F]+u\),\s*(\d+)u,\s*(true|false)\}',
+        m.group(1),
+    )
+    return [(n, rid[r], int(o), int(ln), ex == "true") for n, r, o, ln, ex in rows]
+
+
+def hash_manifest_fingerprint(header_text=None):
+    """mh::state::world::hash_manifest_fingerprint(), in Python: FNV-1a 32 over (count, then per
+    region rid/offset/len/excluded as u32 LE + the name's bytes). It is what every world blob and
+    (since TL-GATE-D25FX) every UI-REC oracle is stamped with, so a fixture captured under another
+    manifest is refused as STALE before its numbers are compared. Verified against the DLL: the
+    pre-D25 header gives BD36D78E, the value the 2026-09-11/12 fixtures carry."""
+    rows = hash_manifest_rows(header_text)
+    h = FNV32_OFFSET
+
+    def mix(v):
+        nonlocal h
+        for i in range(4):
+            h ^= (v >> (8 * i)) & 0xFF
+            h = (h * FNV32_PRIME) & 0xFFFFFFFF
+
+    mix(len(rows))
+    for name, rid, off, ln, ex in rows:
+        mix(rid)
+        mix(off)
+        mix(ln)
+        mix(1 if ex else 0)
+        for c in name.encode("ascii"):
+            h ^= c
+            h = (h * FNV32_PRIME) & 0xFFFFFFFF
+    return "%08X" % h
+
 
 LOCKSTEP_COLS = [
     "wall_ms",
@@ -348,6 +440,23 @@ LOCKSTEP_COLS_OPT = [
     "sim_burst",
     "icon_calls",
     "icon_shown",
+    # mp:T3 (2026-09-18). The first columns in this stream that can be a NON-NUMERIC token: the
+    # literal `n/a`, when the bound transport cannot measure a round trip (the TCP module has no
+    # channel B) or when no sample has landed yet. `parse_lockstep` keeps them OUT of the row rather
+    # than storing a 0 -- see the note there.
+    "srtt0_ms",
+    "srtt1_ms",
+    "rttvar0_ms",
+    "rttvar1_ms",
+    "ipdv0_ms",
+    "ipdv1_ms",
+    "loss0_pm",
+    "loss1_pm",
+    "late_p50_ms",
+    "late_tail95_ms",
+    "late_tail99_ms",
+    "late_n",
+    "late_peer",
 ]
 
 
@@ -357,7 +466,30 @@ LOCKSTEP_COLS_OPT = [
 def parse_harness(path):
     """Return the LAST run segment: {steps: {step: {clock,combined,state}},
     regions: {step: [h0..hN]}, breakdown: {name: hash}, banner: str, path}."""
-    seg = {"steps": {}, "regions": {}, "breakdown": {}, "banner": None, "path": path, "arming": ""}
+    seg = {
+        "steps": {},
+        "regions": {},
+        "breakdown": {},
+        "banner": None,
+        "path": path,
+        "arming": "",
+        # mp:X1b. Two more region-hash streams, keyed by the step they describe. SNAPCAP is the
+        # SENDER's reading at the capture step; SNAPIMP is the RECEIVER's re-derived reading right
+        # after the import, tagged with the step the BLOB carried (not the receiver's own step), so
+        # the two are keyed alike and a comparison needs no alignment argument.
+        "snapcap": {},
+        "snapimp": {},
+        "snapshot_lines": [],
+        # mp:X3. The SUB-DOMAIN trail. `domains` maps a domain name to the ordered list of region
+        # names the DLL put in it (read from the run's own `; [subdomain]` lines -- see below for
+        # why this is read rather than held), and `rd` maps step -> {domain: hash}.
+        "domains": {},
+        "rd": {},
+        # `hold` is the step a `; SIM HOLD` line named, or None. A peer that HELD its sim stopped
+        # producing step rows on purpose, and a verdict that read that as a peer dying or lagging
+        # would be describing the instrument rather than the run.
+        "hold_step": None,
+    }
     with open(path, "r", errors="replace") as f:
         for line in f:
             line = line.rstrip("\n")
@@ -372,6 +504,12 @@ def parse_harness(path):
                     "banner": line,
                     "path": path,
                     "arming": "",
+                    "snapcap": {},
+                    "snapimp": {},
+                    "snapshot_lines": [],
+                    "domains": {},
+                    "rd": {},
+                    "hold_step": None,
                 }
                 continue
             if line.startswith("; all_ai="):
@@ -382,12 +520,72 @@ def parse_harness(path):
                 # comment line).
                 seg["arming"] = line
                 continue
+            if line.startswith("; SIM HOLD "):
+                # mp:X3. The peer FROZE its sim here, deliberately. Recorded as a step so the
+                # rollup can say so instead of reporting a peer that stopped stepping as a peer
+                # that stopped.
+                m = re.match(r"; SIM HOLD step=(\d+)", line)
+                if m:
+                    seg["hold_step"] = int(m.group(1))
+                continue
+            if line.startswith("; [subdomain] "):
+                # THE PARTITION IS READ FROM THE RUN, NOT HELD HERE, and that is the point rather
+                # than laziness. The DLL owns the region -> domain classification (harness.cpp
+                # rd_classify); a second copy in this file is a mirror that goes stale the day a
+                # region is appended -- exactly the failure tools/lint_region_mirror.py exists to
+                # watch for on the REGION list itself. So a run whose DLL classified a region
+                # differently says so in its own log, and this reader simply believes it.
+                #
+                #   `; [subdomain] units = units unit_storage soldiers projectile_pool`
+                #   a trailing * marks a region EXCLUDED from the state-only verdict
+                body = line[len("; [subdomain] ") :]
+                if "=" in body:
+                    name, _, members = body.partition("=")
+                    name = name.strip()
+                    mem = [w for w in members.split() if w and w != "(none)"]
+                    if name:
+                        seg["domains"][name] = mem
+                continue
+            if line.startswith("; SNAPSHOT "):
+                # mp:X1b's structural lines: SEND / IMPORT / IMPORT HASHES / RX. Kept verbatim --
+                # they are evidence a reader quotes, not fields anything computes on, and a parser
+                # that split them would be a second place to keep the format.
+                seg["snapshot_lines"].append(line)
+                continue
             if line.startswith(";"):
                 m = re.match(r";\s+(\w[\w ]*?)\s+([0-9A-Fa-f]{16})\s*$", line)
                 if m and m.group(1).strip() in REGION_NAMES:
                     seg["breakdown"][m.group(1).strip()] = m.group(2).upper()
                 continue
             parts = line.split()
+            if parts and parts[0] in ("SNAPCAP", "SNAPIMP"):
+                # Same shape and same manifest order as the R line, deliberately: one column layout,
+                # one reader, and a three-way comparison (R / SNAPCAP / SNAPIMP) that needs no
+                # translation between them.
+                try:
+                    seg["SNAPCAP" == parts[0] and "snapcap" or "snapimp"][int(parts[1])] = [
+                        x.upper() for x in parts[2:]
+                    ]
+                except (ValueError, IndexError):
+                    pass
+                continue
+            if parts and parts[0] == "RD":
+                # mp:X3: RD <step> units=<16hex> buildings=<16hex> ... -- one fold per sub-domain
+                # over its UNEXCLUDED members only, from the same per[] the R row is built from. A
+                # domain with no unexcluded member prints `-` and is stored as None rather than
+                # dropped, so "this build has no unexcluded member here" and "this run did not emit
+                # the column" stay different answers.
+                try:
+                    step = int(parts[1])
+                except (ValueError, IndexError):
+                    continue
+                row = {}
+                for tok in parts[2:]:
+                    k, _, v = tok.partition("=")
+                    if k:
+                        row[k] = None if v == "-" else v.upper()
+                seg["rd"][step] = row
+                continue
             if parts and parts[0] == "R":
                 # per-region hash line: R <step> <h0> <h1> ...
                 try:
@@ -426,11 +624,20 @@ def parse_lockstep(path):
             row = dict(zip(LOCKSTEP_COLS, vals))
             # `flags` is written as 0x%02x, so int(x, 0) rather than int(x); everything else is
             # decimal. A row that stops partway through the optional tail keeps what it had.
+            #
+            # mp:T3: an UNPARSEABLE optional column is SKIPPED, not a reason to stop reading the row.
+            # It used to break out of the loop, which was right while every optional column was an
+            # integer -- the first non-integer meant a torn write. T3's latency columns emit the
+            # literal `n/a` for "this transport cannot measure that", and over TCP eight of them do
+            # on every row; breaking there would have silently dropped the five lateness columns that
+            # follow, which ARE measured over TCP. The absent key is the signal: a caller that finds
+            # no `srtt0_ms` in the row knows it was not measured, where a 0 would have claimed a
+            # perfect link.
             for name, raw in zip(LOCKSTEP_COLS_OPT, parts[len(LOCKSTEP_COLS) :]):
                 try:
                     row[name] = int(raw, 0)
                 except ValueError:
-                    break
+                    continue
             rows.append(row)
     return rows
 
@@ -656,6 +863,33 @@ def parse_events(path):
 # working. Both are worth printing, and neither is inferred from the other.
 _DESYNC_RE = re.compile(r";\s*\[desync\]\s*(.*)$")
 
+# SES0: the match_id -- the UUIDv7 the host mints at lobby creation and every peer writes once per
+# distinct id. THE LINE IS A CONTRACT, built in exactly one place
+# (mh_net_proto::session_match_id_log_line) and read in exactly one place, here:
+#
+#     ; [session] match_id=<32 lowercase hex>
+#
+# It is what makes two machines' logs one match. Until it existed the only way to pair a host's logs
+# with a client's was the folder timestamp and the operator's memory -- which is fine on a rig where
+# one person starts both peers seconds apart, and useless for the reports a player will send.
+_MATCH_ID_RE = re.compile(r";\s*\[session\]\s*match_id=([0-9a-f]{32})\b")
+
+
+def parse_match_ids(lines):
+    """The match_ids this peer logged, in order, de-duplicated.
+
+    A LIST, not a scalar, and deliberately: a peer that hosts, leaves and re-creates a lobby without
+    restarting logs a SECOND id (the host_recreate scenario), and a run directory is still per
+    PROCESS until SES1 lands. So "the" match_id of a peer is the LAST one -- the match whose steps
+    the harness log actually holds -- while the earlier ones are the lobbies it passed through.
+    """
+    ids = []
+    for raw in lines or []:
+        m = _MATCH_ID_RE.search(raw)
+        if m and (not ids or ids[-1] != m.group(1)):
+            ids.append(m.group(1))
+    return ids
+
 
 def parse_desync(lines):
     """mh_net.log lines -> {armed, notices, mismatches, last_status, first, cost_probe, inert}."""
@@ -828,6 +1062,186 @@ def diff_peers(a, b, name_a, name_b):
         ]
     res["verdict"] = "DESYNC: state-hash first differs at step %d" % s0
     return res
+
+
+# ---- mp:X1b: DID THE TRANSFERRED WORLD LAND? ----------------------------------------------------
+#
+# A THIRD COMPARISON, and it is a different question from both of the others. diff_peers asks whether
+# two peers STAYED equal while simulating; sp_compare asks whether two runs of one peer agree. This
+# asks whether one peer's memory, after importing a blob that crossed a socket, is the SAME WORLD the
+# other peer captured -- a single instant on each side, not a trajectory.
+#
+# THE KEYING IS WHAT MAKES IT AN EQUALITY AND NOT A HOPE. The receiver stamps its SNAPIMP line with
+# the step the BLOB carried, not with the step it happened to be on when the transfer finished (which
+# is 30-60 s of wall clock later and is nobody's choice). So a SNAPCAP at step N and a SNAPIMP at step
+# N are two readings of one world, and the comparison is column against column with no alignment
+# argument to get wrong.
+#
+# EVERY REGION COUNTS HERE, INCLUDING THE EXCLUDED ONES. diff_peers rests on the state-only hash
+# because a live pair legitimately differs on peer-local horizons and on frame-rate-dependent clocks.
+# None of that applies to a blob: the capture carried those regions too, so if `rng_state` or
+# `p0_ai_econ` disagrees after an import, the import did not land. STATE_EXCLUDED is reported for
+# context and is not a licence.
+def snapshot_compare(cap_peer, imp_peer, name_cap, name_imp):
+    """Match each SNAPIMP line on the importing peer to the SNAPCAP of the same step on the other.
+
+    Returns None when neither peer emitted a snapshot line (the overwhelmingly common case: nothing
+    in the suite arms the verbs), so callers can skip the section entirely."""
+    cap = cap_peer.get("snapcap") or {}
+    imp = imp_peer.get("snapimp") or {}
+    if not cap and not imp:
+        return None
+    res = {
+        "capturer": name_cap,
+        "importer": name_imp,
+        "capture_steps": sorted(cap),
+        "import_steps": sorted(imp),
+        "pairs": [],
+    }
+    if not cap or not imp:
+        # ONE-SIDED IS A REPORTABLE OUTCOME, not an absent section. A run that captured and never
+        # imported is the transfer failing, and it must not read as "nothing was armed".
+        res["verdict"] = (
+            "INCOMPLETE: %s captured %d snapshot(s) and %s imported %d -- the transfer did not "
+            "complete" % (name_cap, len(cap), name_imp, len(imp))
+        )
+        return res
+    for step in sorted(imp):
+        row = {"step": step, "differ": [], "columns": len(imp[step])}
+        if step not in cap:
+            row["verdict"] = "NO CAPTURE at step %d on %s" % (step, name_cap)
+            res["pairs"].append(row)
+            continue
+        a, b = cap[step], imp[step]
+        if len(a) != len(b):
+            row["verdict"] = (
+                "COLUMN COUNT DIFFERS (%d vs %d) -- the two peers hash different "
+                "manifests" % (len(a), len(b))
+            )
+            res["pairs"].append(row)
+            continue
+        for i, (x, y) in enumerate(zip(a, b)):
+            if x != y:
+                row["differ"].append(REGION_NAMES[i] if i < len(REGION_NAMES) else "region[%d]" % i)
+        row["verdict"] = (
+            "IDENTICAL across all %d regions" % len(a)
+            if not row["differ"]
+            else "DIFFER in %d of %d regions" % (len(row["differ"]), len(a))
+        )
+        # rng_state is called out BY NAME because it is the clause the item is written around and
+        # because it is the region the MP verdict used to exclude (D3) -- a reader must not have to
+        # scan a 41-name list to find whether the RNG crossed.
+        row["rng_state_ok"] = "rng_state" not in row["differ"]
+        res["pairs"].append(row)
+    clean = [r for r in res["pairs"] if not r.get("differ") and "IDENTICAL" in r.get("verdict", "")]
+    res["verdict"] = (
+        "SNAPSHOT IMPORT VERIFIED: %d of %d imported world(s) match the capturing peer's "
+        "per-region hashes exactly" % (len(clean), len(res["pairs"]))
+        if len(clean) == len(res["pairs"]) and res["pairs"]
+        else "SNAPSHOT IMPORT MISMATCH: %d of %d imported world(s) differ from the capture"
+        % (len(res["pairs"]) - len(clean), len(res["pairs"]))
+    )
+    return res
+
+
+# ---- mp:X3: THE SUB-DOMAIN TRAIL ----------------------------------------------------------------
+#
+# WHAT IT ADDS OVER THE R ROW, because "another per-region comparison" would be worth nothing. The R
+# row is 61 columns and costs over a kilobyte per emission, so a run samples it every
+# `region_hash_step` steps -- fine in SPACE, coarse in TIME. The RD row is nine folds, cheap enough
+# to write on EVERY step -- coarse in space, fine in time. So the pair answers a question neither
+# answers alone: the RD trail gives the FIRST STEP a subsystem moved, and the R row then names the
+# region inside that subsystem at the next sampled step. Without the trail, "the desync began
+# somewhere in the 200 steps before the sample" is the best a single run can do.
+#
+# THE PARTITION COMES FROM THE LOG (`; [subdomain]` lines, emitted once by the DLL). A copy here
+# would be a mirror of a table in harness.cpp with nothing holding the two level.
+def subdomain_compare(a, b, name_a, name_b):
+    """First diverging step per sub-domain, across two peers' RD trails.
+
+    Returns None when neither peer emitted an RD row -- the overwhelmingly common case, since
+    `[harness] domain_hash_step` is off by default -- so callers can skip the section entirely."""
+    ra, rb = a.get("rd") or {}, b.get("rd") or {}
+    if not ra and not rb:
+        return None
+    res = {
+        "peer_a": name_a,
+        "peer_b": name_b,
+        "rows_a": len(ra),
+        "rows_b": len(rb),
+        "domains": {},
+        # The two peers' partitions, reported rather than merged: two builds that classify a region
+        # differently produce comparable-looking hashes that are not comparable, and that has to be
+        # visible instead of silently averaged.
+        "partition_a": a.get("domains") or {},
+        "partition_b": b.get("domains") or {},
+    }
+    if not ra or not rb:
+        res["verdict"] = (
+            "INCOMPLETE: %s emitted %d RD row(s) and %s emitted %d -- only one peer "
+            "armed the trail" % (name_a, len(ra), name_b, len(rb))
+        )
+        return res
+    pa, pb = res["partition_a"], res["partition_b"]
+    if pa and pb and pa != pb:
+        res["partition_mismatch"] = True
+    common = sorted(set(ra) & set(rb))
+    res["common_steps"] = len(common)
+    if not common:
+        res["verdict"] = "NO OVERLAP: the two RD trails share no step"
+        return res
+    names = []
+    for st in common[:1]:
+        names = [k for k in ra[st].keys() if k in rb[st]]
+    for dom in names:
+        first = None
+        n_diff = 0
+        for st in common:
+            x, y = ra[st].get(dom), rb[st].get(dom)
+            if x is None or y is None:
+                continue
+            if x != y:
+                n_diff += 1
+                if first is None:
+                    first = st
+        res["domains"][dom] = {"first_diverging_step": first, "diverging_steps": n_diff}
+    diverged = {k: v for k, v in res["domains"].items() if v["first_diverging_step"] is not None}
+    if not diverged:
+        res["verdict"] = "ALL SUB-DOMAINS IDENTICAL over %d common step(s)" % len(common)
+    else:
+        earliest = min(v["first_diverging_step"] for v in diverged.values())
+        lead = sorted(k for k, v in diverged.items() if v["first_diverging_step"] == earliest)
+        res["earliest_step"] = earliest
+        res["earliest_domains"] = lead
+        res["verdict"] = (
+            "SUB-DOMAIN DIVERGENCE: %s first at step %d (%d of %d domain(s) ever "
+            "differ)" % ("/".join(lead), earliest, len(diverged), len(res["domains"]))
+        )
+    return res
+
+
+# THE REGION INSIDE THE DOMAIN. The trail names a subsystem; this turns that into the region, using
+# the R rows the same run already carries and the partition the DLL printed. Kept separate from
+# subdomain_compare because it answers the SECOND question and needs a different input (R, not RD),
+# and because a run may have one without the other.
+def subdomain_regions_at(a, b, step, partition):
+    """Names, per domain, the regions whose R-column differs at `step`. {} if either peer has no row."""
+    ra, rb = (a.get("regions") or {}).get(step), (b.get("regions") or {}).get(step)
+    if not ra or not rb or len(ra) != len(rb):
+        return {}
+    owner = {}
+    for dom, members in (partition or {}).items():
+        for m in members:
+            owner[m.rstrip("*")] = dom
+    out = {}
+    for i, (x, y) in enumerate(zip(ra, rb)):
+        if x == y:
+            continue
+        rn = REGION_NAMES[i] if i < len(REGION_NAMES) else "region[%d]" % i
+        if rn in STATE_EXCLUDED:
+            continue  # peer-local by construction; never the culprit named
+        out.setdefault(owner.get(rn, "other"), []).append(rn)
+    return out
 
 
 # ---- P0-SPDET: the SINGLE-PLAYER equivalence comparison -----------------------------------------
@@ -1009,9 +1423,47 @@ LOG_NAMES = {
 GAME_MODE_NAMES = {2: "strategic", 3: "sync-overlay", 6: "tactical"}
 
 
+def read_session_json(folder):
+    """SES1: a session directory's session.json, or None. The machine-readable half of the
+    SESSION_BEGIN/SESSION_END records -- the id, the roster, the reason, and `process_dir`.
+
+    Deliberately read instead of parsing the log lines: pairing two peers by a regex over a sentence
+    written for a human is a pairing that breaks the first time the sentence is improved."""
+    fp = os.path.join(folder, "session.json")
+    if not os.path.isfile(fp):
+        return None
+    try:
+        with open(fp, encoding="utf-8", errors="replace") as fh:
+            d = json.load(fh)
+    except (OSError, ValueError):
+        return None
+    return d if isinstance(d, dict) else None
+
+
+def _hits_in(folder):
+    hits = {}
+    for kind, nm in LOG_NAMES.items():
+        fp = os.path.join(folder, nm)
+        if os.path.isfile(fp):
+            hits[kind] = fp
+    return hits
+
+
 def discover(path):
     """path -> dict of {kind: filepath}. A folder is searched (incl. one level of per-run
-    subfolders, newest by mtime); a bare file is classified by name."""
+    subfolders, newest by mtime); a bare file is classified by name.
+
+    SES1 ADDED THE SECOND HALF OF THIS FUNCTION. A run's output is now TWO directories, not one:
+    the SESSION directory (mh_net.log, mh_lockstep.log, mh_frametime.log, mh_launch.log,
+    session.json) and the PROCESS directory it hangs off, which keeps the streams whose subject is
+    the process rather than the match -- above all `mh_harness.log`, whose path mh_harness.dll
+    copies once at init, before any lobby exists. A discover() that stopped at the session folder
+    would return no harness log, and the determinism verdict is computed FROM the harness log: the
+    gate would have gone from ALL PAIRS IDENTICAL to "0 peers with a harness log" on a rename.
+
+    So: take the session directory's streams, then fill any MISSING kind from the process directory
+    that session.json names. Session beats process on a collision, which is the right precedence --
+    a session's own mh_net.log is the match's, and the process one is the menu phase around it."""
     found = {}
     if os.path.isfile(path):
         base = os.path.basename(path).lower()
@@ -1025,21 +1477,29 @@ def discover(path):
     # otherwise fall back to the newest per-run subfolder (pointed at a logs/ parent).
     subs = [d for d in glob.glob(os.path.join(path, "*")) if os.path.isdir(d)]
     subs.sort(key=lambda d: os.path.getmtime(d), reverse=True)
-    candidates = [path] + subs
-    for cand in candidates:
-        hits = {}
-        for kind, nm in LOG_NAMES.items():
-            fp = os.path.join(cand, nm)
-            if os.path.isfile(fp):
-                hits[kind] = fp
-        if hits:
-            return hits
+    for cand in [path] + subs:
+        hits = _hits_in(cand)
+        if not hits:
+            continue
+        sess = read_session_json(cand)
+        proc = (sess or {}).get("process_dir") or ""
+        if proc:
+            # `process_dir` is a LEAF name, not a path: the two directories are copied off a VM
+            # together and an absolute path does not survive the trip. Resolve it beside the session.
+            pdir = os.path.join(os.path.dirname(os.path.abspath(cand)), proc)
+            if os.path.isdir(pdir):
+                for kind, fp in _hits_in(pdir).items():
+                    hits.setdefault(kind, fp)
+        return hits
     return {}
 
 
 def load_peer(path):
     logs = discover(path)
     peer = {"path": path, "logs": logs}
+    # SES1: the directory's own declaration of which match it is, independent of the log prose.
+    if os.path.isdir(path):
+        peer["session"] = read_session_json(path)
     if "harness" in logs:
         peer["harness"] = parse_harness(logs["harness"])
     if "lockstep" in logs:
@@ -1267,6 +1727,7 @@ def selftest():
                 min_common=1,
                 json=os.path.join(d, "out.json"),
                 selftest=False,
+                allow_mismatch=False,
             )
             buf, keep = io.StringIO(), sys.stdout
             sys.stdout = buf
@@ -1293,6 +1754,73 @@ def selftest():
                 ok, name = False, name + " (+marker false positive on a GREEN run)"
             print("   %-64s %s" % (name, "ok" if ok else "FAIL -- got %r clean=%s" % (got, clean)))
             bad += 0 if ok else 1
+        # ---- SES1: pairing by match_id, and the REFUSAL ------------------------------------------
+        #
+        # The acceptance clause reads "mp_analyze pairs peers by match_id and refuses to pair two
+        # directories with different ids". Both halves are asserted here rather than on the rig,
+        # because staging the negative on the rig means deliberately handing the analyzer the wrong
+        # folder -- a mistake you cannot commit as evidence. Each arm builds two ORDINARY clean
+        # peers (identical hashes, so the determinism verdict would be green) and varies only
+        # session.json: a green run that is refused is exactly the point.
+        A = "01a0af721310721a8d552b0ddedd707c"
+        B = "01a0b00000007111aabbccddeeff0011"
+
+        def _ses_arm(slug, name, host_id, client_id, allow, want_rc, want_text):
+            nonlocal bad
+            d = os.path.join(root, "ses_" + slug)
+            dirs = []
+            for role, mid in (("host", host_id), ("client1", client_id)):
+                p = os.path.join(d, role)
+                _fx_peer(p, role=role, steps=50, interval=0.01)
+                if mid:
+                    with open(os.path.join(p, "mh_net.log"), "w") as f:
+                        f.write("[00:00:01.000] ; [session] match_id=%s\n" % mid)
+                    with open(os.path.join(p, "session.json"), "w") as f:
+                        json.dump(
+                            {"match_id": mid, "slot": 0, "role": role, "reason": "gameover"}, f
+                        )
+                dirs.append(p)
+            ns = argparse.Namespace(
+                paths=dirs,
+                freeze_ms=200,
+                min_common=1,
+                json=os.path.join(d, "out.json"),
+                selftest=False,
+                allow_mismatch=allow,
+            )
+            buf, keep = io.StringIO(), sys.stdout
+            sys.stdout = buf
+            try:
+                rc = analyse(ns)
+            finally:
+                sys.stdout = keep
+            printed = buf.getvalue()
+            ok = (rc or 0) == want_rc and want_text in printed
+            print("   %-64s %s" % (name, "ok" if ok else "FAIL -- rc=%s" % (rc,)))
+            bad += 0 if ok else 1
+
+        _ses_arm(
+            "same", "SES1 same match_id -> paired", A, A, False, 0, "SAME MATCH on all 2 peer(s)"
+        )
+        _ses_arm("diff", "SES1 different match_ids -> REFUSED", A, B, False, 2, "REFUSED")
+        _ses_arm(
+            "allow",
+            "SES1 --allow-mismatch overrides the refusal",
+            A,
+            B,
+            True,
+            0,
+            "MISMATCH ALLOWED",
+        )
+        _ses_arm(
+            "none",
+            "SES1 no ids at all (pre-SES0 logs) -> not compared",
+            None,
+            None,
+            False,
+            0,
+            "NOT COMPARED",
+        )
     finally:
         shutil.rmtree(root, ignore_errors=True)
     print("mp_analyze --selftest: %s" % ("PASS" if not bad else "%d ARM(S) FAILED" % bad))
@@ -1315,7 +1843,15 @@ def selftest():
 # SCOPE: unplanned link death / match end only. A run whose harness banner arms a deliberate end
 # (`gameover_step != 0`) passes through untouched -- an elimination legitimately desyncs the peers
 # and that class is filed separately rather than folded in here.
-UNPLANNED_END_MARKERS = ("fast-drop: transport-dead peer", "kicked-off the game")
+# SES2b (dead-ends G198): this list used to also carry "kicked-off the game", which nothing in
+# src/mh_dll ever emitted -- grepped at mp:SES2 (tools/data/log_formats.json's now-removed
+# net.unplanned_kickoff row). The only place that wording exists at all is a COMMENT in
+# launch.cpp's mp_sync (the retail kick_player_confirm_cb callback announces "kicked off" AND
+# "incompatible version" text) documenting why we deliberately do NOT take that retail path for a
+# disconnection -- kick_player_confirm_cb itself has no committed prototype and nothing calls it
+# from the injected DLL, so it can write nothing to mh_net.log. Dropped rather than rewired: there
+# is no real emitter to point it at.
+UNPLANNED_END_MARKERS = ("fast-drop: transport-dead peer",)
 # Lines that merely NAME those functions rather than reporting one. Without this the `[tombstone]
 # armed:` banner matched on every run including the GREEN control -- caught by running the guard over
 # a known-good pair before wiring it up, which is why the green control is a selftest arm.
@@ -1559,13 +2095,55 @@ def main():
         "yields mismatch=0 and a vacuous 'ALL PAIRS IDENTICAL'. Raise it (e.g. to ~the requested step "
         "count) to also reject runs that only got part-way.",
     )
+    ap.add_argument(
+        "--allow-mismatch",
+        action="store_true",
+        help="SES1: compare peers whose match_ids DISAGREE. Off by default: a run directory is per "
+        "MATCH since SES1, so two folders with different ids are two different matches and a "
+        "cross-match desync report is a wrong explanation with a rig's authority behind it. Pass "
+        "this for the pre-SES1 per-process layout, or for a deliberate cross-match look.",
+    )
+    ap.add_argument(
+        "--snapshot-verify",
+        action="store_true",
+        help="mp:X1b: exit non-zero unless a snapshot captured on one peer was imported on another "
+        "and EVERY per-region hash of the imported world matches the capture, rng_state included. "
+        "Without it the snapshot section is reported and the exit code ignores it -- which is right "
+        "for a person reading a run and wrong for a gate, because a run in which the transfer never "
+        "completed has no snapshot section at all and would otherwise pass by saying nothing.",
+    )
     args = ap.parse_args()
     if args.selftest:
         return selftest()
     if not args.paths:
         ap.error("give at least one run path (or --selftest)")
-    analyse(args)
-    return 0
+    rc = analyse(args) or 0
+    if args.snapshot_verify:
+        rc = snapshot_verdict_rc(rc)
+    return rc
+
+
+# mp:X1b. THE GATE'S HALF OF snapshot_compare, kept apart from it for one reason: analyse() prints a
+# report and its exit code is about the DESYNC verdict. A caller that wants the snapshot claim to
+# decide the run needs the absence of a snapshot to be a failure too, and "there was no section"
+# cannot be expressed as a verdict string inside a section that does not exist.
+_SNAPSHOT_SEEN = []
+
+
+def snapshot_verdict_rc(rc):
+    if not _SNAPSHOT_SEEN:
+        print(
+            "\nSNAPSHOT VERIFY: FAILED -- no peer pair produced a SNAPCAP/SNAPIMP pair. Either the "
+            "verbs were never armed (`[harness] snapshot_at` on the host, `snapshot_import` on both) "
+            "or the transfer did not complete inside the run."
+        )
+        return rc or 1
+    bad = [v for v in _SNAPSHOT_SEEN if not v.startswith("SNAPSHOT IMPORT VERIFIED")]
+    if bad:
+        print("\nSNAPSHOT VERIFY: FAILED -- %s" % "; ".join(bad))
+        return rc or 1
+    print("\nSNAPSHOT VERIFY: PASS -- %s" % "; ".join(_SNAPSHOT_SEEN))
+    return rc
 
 
 def analyse(args):
@@ -1717,7 +2295,46 @@ def analyse(args):
                         )
                     )
 
+        if pr.get("session"):
+            # SES1: the directory SAYS which match it holds. Printed before the log-derived ids
+            # below because it is the stronger statement: session.json is written by the peer that
+            # opened the session and rewritten when it closes, so it describes THIS FOLDER, while
+            # the `; [session] match_id=` lines describe everything the peer passed through.
+            s = pr["session"]
+            pj["session"] = s
+            print(
+                "   session.json: match_id=%s slot=%s map=%s%s"
+                % (
+                    s.get("match_id") or "(none)",
+                    s.get("slot"),
+                    s.get("map") or "?",
+                    (" reason=%s" % s["reason"]) if s.get("reason") else " (still open / no END)",
+                )
+            )
+
         if pr.get("net"):
+            # SES0: which match(es) this peer was in, by id.
+            mids = parse_match_ids(pr["net"])
+            pj["match_ids"] = mids
+            pj["match_id"] = mids[-1] if mids else None
+            # SES1: inside a session directory the FOLDER's id wins. A session's mh_net.log can
+            # still carry an earlier id (the client logs the host's advert before it joins), and
+            # "the last one mentioned" is the pre-SES1 approximation this replaces.
+            if pr.get("session") and pr["session"].get("match_id"):
+                pj["match_id"] = pr["session"]["match_id"]
+            if mids:
+                print(
+                    "   session: match_id=%s%s"
+                    % (
+                        mids[-1],
+                        ""
+                        if len(mids) == 1
+                        else "  (after %d earlier lobby/lobbies: %s)"
+                        % (len(mids) - 1, ", ".join(mids[:-1])),
+                    )
+                )
+            else:
+                print("   session: no match_id logged (pre-SES0 build, or never in a lobby)")
             # D21: what this peer said about the match WHILE IT WAS RUNNING.
             dw = parse_desync(pr["net"])
             pj["desync_watch"] = dw
@@ -1757,6 +2374,69 @@ def analyse(args):
                 print("   %s" % e.strip())
         out["peers"].append(pj)
 
+    # ---- SES0/SES1: do the peers agree on WHICH MATCH this was? ----------------------------------
+    # SES0 MADE THIS A WARNING. SES1 MAKES IT A REFUSAL, and the reason is that the ground under it
+    # moved. Under SES0 a run directory was per PROCESS, so two folders disagreeing about the id
+    # could mean nothing worse than "the host re-created its lobby and the client's last advert was
+    # the old one" -- a real possibility that had nothing to do with the operator. A refusal then
+    # would have turned an ordinary sequence into a red.
+    #
+    # A directory is now per SESSION. Two session directories carrying different ids are two
+    # DIFFERENT MATCHES, full stop; there is no reading under which comparing their steps means
+    # anything. Continuing would produce a desync report -- possibly a spectacular one -- for peers
+    # that were never in the same game, which is worse than no report: it is a wrong explanation
+    # arriving with a rig's authority behind it. So it stops, names both ids, and says which flag
+    # says "I know, these are the old per-process folders": `--allow-mismatch`.
+    #
+    # Comparison is over each peer's OWN id: session.json's when the folder declares one, else the
+    # last id its mh_net.log mentions (the pre-SES1 approximation, kept for legacy layouts).
+    paired = [p for p in out["peers"] if p.get("match_id")]
+    ids = {p["match_id"] for p in paired}
+    out["match_ids_by_peer"] = {p["role"]: p.get("match_ids") for p in out["peers"]}
+    out["match_id"] = list(ids)[0] if len(ids) == 1 else None
+    out["match_id_agree"] = (len(ids) == 1) if len(paired) >= 2 else None
+    if len(out["peers"]) >= 2:
+        print("\n" + "-" * 72)
+        print("SESSION ID (SES0)")
+        print("-" * 72)
+        for p in out["peers"]:
+            print("   %-10s %s" % (p["role"], p.get("match_id") or "(none logged)"))
+        if len(paired) < 2:
+            print(
+                "   -> NOT COMPARED: %d of %d peer(s) logged a match_id (a pre-SES0 build, or a peer "
+                "that never reached a lobby)" % (len(paired), len(out["peers"]))
+            )
+        elif len(ids) == 1:
+            print("   -> SAME MATCH on all %d peer(s): %s" % (len(paired), out["match_id"]))
+        elif getattr(args, "allow_mismatch", False):
+            print(
+                "   -> MISMATCH ALLOWED (--allow-mismatch): peers report %d DIFFERENT match_ids. "
+                "Everything below compares peers that were NOT in the same match." % len(ids)
+            )
+        else:
+            out["refused"] = "match_id_mismatch"
+            print(
+                "   -> REFUSED: peers report %d DIFFERENT match_ids, so these directories are %d "
+                "DIFFERENT MATCHES and there is nothing to compare between them."
+                % (len(ids), len(ids))
+            )
+            for p in out["peers"]:
+                print(
+                    "        %-10s %s  %s" % (p["role"], p.get("match_id") or "(none)", p["path"])
+                )
+            print(
+                "      A session directory is per MATCH since SES1, so this is not the "
+                "host-re-created-its-lobby case a warning used to cover -- it is the wrong folder. "
+                "Check the paths (the newest `*_host` folder is the LAST match that peer played).\n"
+                "      Pass --allow-mismatch to compare anyway (pre-SES1 per-process folders, or a "
+                "deliberate cross-match look)."
+            )
+            if args.json:
+                with open(args.json, "w", encoding="utf-8") as fh:
+                    json.dump(out, fh, indent=2)
+                print("\nJSON -> %s" % args.json)
+            return 2
+
     # cross-peer diff -- ALL pairwise combinations (N1: a 3-peer game must be identical across all 3 pairs,
     # not just host-vs-first-client). With 2 peers this is the single pair as before.
     import itertools
@@ -1795,6 +2475,97 @@ def analyse(args):
                     "   total mismatching steps: %d (combined-hash: %d)"
                     % (d["mismatch_count"], d["combined_mismatch_count"])
                 )
+            # mp:X3. The SUB-DOMAIN trail, printed BEFORE the snapshot section and after the
+            # region list above, because it answers the question a reader of those two lines asks
+            # next: the region list is a single step's worth, and this says when the subsystem the
+            # regions belong to FIRST moved.
+            sd = subdomain_compare(a["harness"], b["harness"], a["role"], b["role"])
+            if sd is not None:
+                d["subdomain"] = sd
+                print("   sub-domain trail: %s" % sd["verdict"])
+                if sd.get("partition_mismatch"):
+                    print(
+                        "   !! the two peers printed DIFFERENT sub-domain partitions -- their "
+                        "folds are not comparable; compare the `; [subdomain]` lines"
+                    )
+                for dom in sorted(sd.get("domains", {})):
+                    row = sd["domains"][dom]
+                    if row["first_diverging_step"] is None:
+                        continue
+                    print(
+                        "     %-10s first differs at step %d (%d step(s) differ)"
+                        % (dom, row["first_diverging_step"], row["diverging_steps"])
+                    )
+                # ...and then the REGION inside it, off the R rows of the nearest sampled step at or
+                # after the earliest divergence. Named separately because the trail cannot do it:
+                # the RD fold is over a domain, so a difference in it names a domain and nothing
+                # finer, by construction.
+                if sd.get("earliest_step") is not None:
+                    part = sd.get("partition_a") or sd.get("partition_b")
+                    cand = sorted(
+                        st
+                        for st in (a["harness"].get("regions") or {})
+                        if st >= sd["earliest_step"] and st in (b["harness"].get("regions") or {})
+                    )
+                    if cand:
+                        named = subdomain_regions_at(a["harness"], b["harness"], cand[0], part)
+                        d["subdomain_regions_step"] = cand[0]
+                        d["subdomain_regions"] = named
+                        print(
+                            "     region(s) inside, at the nearest sampled step %d: %s"
+                            % (
+                                cand[0],
+                                ", ".join(
+                                    "%s -> %s" % (k, "/".join(v)) for k, v in sorted(named.items())
+                                )
+                                or "(no unexcluded region differs there)",
+                            )
+                        )
+                    else:
+                        print(
+                            "     no R row at or after step %d on both peers -- raise "
+                            "[harness] region_hash_step to name the region" % sd["earliest_step"]
+                        )
+            # mp:X3. A peer that HELD its sim said so, and the rollup has to repeat it: a held peer
+            # stops emitting step rows on purpose, so every "stopped at step N" reading below is
+            # about the instrument rather than about the peer.
+            for pr in (a, b):
+                hs = pr["harness"].get("hold_step")
+                if hs is not None:
+                    print(
+                        "   %s HELD its sim at step %d ([harness] snapshot_hold) -- it emits no "
+                        "step row after that BY DESIGN, so a short trail on this peer is the knob, "
+                        "not a death" % (pr["role"], hs)
+                    )
+            # mp:X1b. Tried BOTH WAYS round because the pair is unordered here: whichever peer
+            # captured is the one with SNAPCAP lines, and the registry does not promise which of the
+            # two a `combinations()` pair puts first.
+            for cp, ip in ((a, b), (b, a)):
+                sc = snapshot_compare(cp["harness"], ip["harness"], cp["role"], ip["role"])
+                if sc is None:
+                    continue
+                d["snapshot"] = sc
+                _SNAPSHOT_SEEN.append(sc["verdict"])
+                print("   snapshot: %s" % sc["verdict"])
+                for row in sc["pairs"]:
+                    print(
+                        "     step %d: %s%s"
+                        % (
+                            row["step"],
+                            row["verdict"],
+                            ""
+                            if not row.get("differ")
+                            else "  [%s]" % ", ".join(row["differ"][:8]),
+                        )
+                    )
+                    if "rng_state_ok" in row:
+                        print(
+                            "       rng_state: %s"
+                            % ("IDENTICAL" if row["rng_state_ok"] else "DIFFERS")
+                        )
+                for ln in ip["harness"].get("snapshot_lines", []):
+                    print("     %s" % ln)
+                break
             bd = diff_breakdown(a["harness"], b["harness"])
             if bd:
                 d["breakdown_diff"] = bd
@@ -1849,6 +2620,19 @@ def analyse(args):
         out["environmental"] = env_kind in ("ended", "ended_explains")
         out["environmental_kind"] = env_kind
         out["environmental_reasons"] = env_reasons
+        # mp:X3 / D26. MACHINE-READABLE, and the VERDICT IS DELIBERATELY UNTOUCHED. A run whose
+        # harness banner arms `gameover_step` was TOLD to end, and the elimination that ends it
+        # legitimately desyncs the peers (presence_lost clears the loser's ALIVE bit and downgrades
+        # SESSION 3->2 on one side only) -- so the DESYNC this file reports on such a run is true of
+        # the hashes and misleading about the run. Whether the verdict should be truncated at match
+        # end for every shape is D26's open ruling and a USER DECISION, not something a sibling item
+        # flips on its way past; X3 needs only to be able to ASK the question, so that a resync
+        # trigger can exclude the class without re-deriving the arming line. The printed
+        # `LINK/MATCH:` reason above already says it in prose; this is the same fact as a key.
+        out["deliberate_match_end"] = any(
+            re.search(r"gameover_step=([1-9]\d*)", ((p.get("harness") or {}).get("arming") or ""))
+            for p in harness_peers
+        )
 
         out["all_pairwise_clean"] = worst == 0 and nodata == 0 and not out["environmental"]
         out["pairs_without_data"] = nodata

@@ -24,7 +24,9 @@ first --vms IP and each client on the next, and a test is SKIPPED (not failed) w
 """
 
 import argparse
+import atexit
 import concurrent.futures as cf
+import contextlib
 import glob
 import gzip
 import io as _io
@@ -398,6 +400,113 @@ TACT_SCENARIOS = [
     },
 ]
 
+# ---- mp:F2b: the MERGED Cyrillic/Polish font install, and whether this run can reach one --------
+#
+# F2's positive case (real Cyrillic + Polish glyphs, not the guard's substitute) was verified once by
+# hand against a private merged install; its baseline depends on 61 RU retail bitmaps `fnt.py merge`
+# lifts from a real RU disc, and the tool deliberately writes nothing it produces into this repo. So
+# the font_merged scenario below is OPT-IN: it runs a real lane against a merged mh_ex pack when one
+# exists on this machine, and SKIPS BY NAME -- not FAIL -- when it does not.
+#
+# THE PRECONDITION IS A READ, NOT A MARKER FILE. `fnt.py install` writes no sentinel of its own (a
+# hand-built merge -- `fnt.py merge` + a manual repack -- would carry none either), so the check reads
+# the FONTLAY entry count straight off the candidate install's mh_ex pack with fnt.py's OWN reader
+# (the same Source/font_layer machinery --selftest uses) and asks whether one probe character from
+# each of the merge's three shapes actually resolves: a Cyrillic letter LIFTED byte-for-byte from the
+# RU override, a Cyrillic letter DRAWN from scratch (the RU override never shipped it), and the
+# guard's own DRAWN box glyph. Any one missing means this install was never merged, or the merge is
+# stale/partial -- either way, not what this scenario probes.
+#
+# WHY A SEPARATE LANE SOURCE, NOT THE SHARED POLYGON. Every ordinary lane symlinks its packs from
+# machine.POLYGON (make_lane.py's default --src), and font_guard's NEGATIVE baseline assumes that
+# install is stock retail data -- merging Cyrillic into it would flip font_guard red on purpose (see
+# that scenario's own header). So font_merged points its OWN lane at a SEPARATE, machine-local
+# install via make_lane.py --src (the `lane_src` test-registry key below) and never touches the
+# polygon.
+FONT_MERGE_DIR = os.environ.get("MH_FONT_MERGE_DIR") or os.path.join(REPO, "workdir", "mh_en_fonts")
+
+# One probe code point per merge shape: U+041F P (Cyrillic, LIFTED byte-for-byte from the RU
+# override), U+041A K (Cyrillic, DRAWN -- a straight copy of Latin K, since the RU override never
+# shipped an uppercase K glyph at all), U+FFFD (the guard's box, DRAWN). All three land in FONTLAY
+# only after a real F2 merge -- none of the three is in any shipped retail FONTLAY (measured: the RU
+# override covers 61 of the 64 plain Cyrillic letters and zero Polish; EN base/override cover neither
+# alphabet at all).
+_FONT_MERGE_PROBE_CPS = (0x041F, 0x041A, 0xFFFD)
+
+
+def _import_fnt():
+    """src/formats/fnt.py is not normally on sys.path from tools/ -- same pattern gen_lzw_fixtures.py
+    already uses for decompress.py, one directory over."""
+    d = os.path.join(REPO, "src", "formats")
+    if d not in sys.path:
+        sys.path.insert(0, d)
+    import fnt  # noqa: E402
+
+    return fnt
+
+
+def font_merge_available(game_dir):
+    """True if `game_dir`'s mh_ex pack carries the F2b merge -- read directly, not from a marker
+    `fnt.py install` may or may not have left behind."""
+    if not os.path.isdir(game_dir):
+        return False
+    try:
+        layer = _import_fnt().Source(game_dir).font_layer("mh_ex")
+    except (FileNotFoundError, OSError, ValueError):
+        return False
+    if layer is None:
+        return False
+    return all(cp in layer.index for cp in _FONT_MERGE_PROBE_CPS)
+
+
+def font_merge_precondition(args):
+    """(ok, reason) for the font_merged scenario's `requires` hook. Checked ONCE, before
+    provisioning (see the --local branch in main()) -- an unmet precondition must SKIP this one
+    test, not crash make_lane.py on a --src that does not exist and abort every OTHER scenario's
+    provisioning with it (the same whole-suite-abort shape fork F4H already had to fix once)."""
+    if not args.local:
+        # make_lane.py --src is the only channel that can point a lane at an alternate install; the
+        # VM/rig topology has no equivalent (a peer's game directory there is fixed), so this
+        # scenario can only ever run under --local, merged install or not.
+        return False, "needs --local -- only a local lane can be pointed at a merged install"
+    if not font_merge_available(FONT_MERGE_DIR):
+        return False, (
+            "no merged font install at %s (or its mh_ex pack is not a full F2 merge) -- build one "
+            "with `python src/formats/fnt.py install --game <a scratch dir under workdir/, NEVER "
+            "the polygon>`, or point MH_FONT_MERGE_DIR at one" % FONT_MERGE_DIR
+        )
+    return True, ""
+
+
+# TL-HARN17. The DLL-side per-step watchdog (ui_drive.cpp inside mh_harness.dll) is irreducibly
+# frame-counted -- that does not change here, and changing it would be a DLL rebuild (see the note
+# where --timeout-frames is resolved in ui_test.py). What DOES change: every bare frame COUNT in this
+# file used to be picked to "look big enough" at some assumed frame rate, which is exactly the unit
+# mismatch the name invites -- a reader sees `1200000` and has no way to tell what real-world wait it
+# is supposed to survive. `frames_for_seconds` makes the INTENT (a wall-clock budget) the thing
+# written down, and derives the frame count from a documented FLOOR rate -- roughly half of the
+# lowest rate this file has ever cited for that lane shape (see each constant's comment for its
+# source), so the derived budget still holds under a slowdown of that size instead of assuming the
+# nominal rate holds for the whole run. This is the "convert to a wall-clock budget derived from the
+# lane's measured frame rate" fix; the flag/ini key stay named `timeout_frames` because at the DLL
+# boundary that is exactly what they are. Defined before TESTS (rather than beside LOCAL_TIMEOUT_FRAMES
+# further down) because TESTS is a module-level literal evaluated at import time -- a row that wants
+# frames_for_seconds has to find it already defined.
+SOLO_HEADLESS_FPS_FLOOR = 900  # half of the ~1876 fps measured 2026-07-28 (see the det3 section
+# further down: "the client aborted `peers <1` at 60001 frames / 31.985 s")
+BLIT_LOCAL_FPS_FLOOR = 25  # half of the "lobby's ~52 fps" cited where --timeout-frames is resolved
+# for a kept-blit --determinism run, further down
+BLIT_VM_FPS_FLOOR = 1500  # half of "VM peers were measured at ~3115 fps WITH the blit on this rig"
+# (det3 section further down)
+
+
+def frames_for_seconds(seconds, floor_fps):
+    """A wall-clock seconds budget -> the frame count the DLL's per-step watchdog actually wants,
+    using a documented FLOOR rate (not the nominal one) for the lane shape -- see the block comment
+    above. Always at least 1 frame."""
+    return max(1, round(seconds * floor_fps))
+
+
 TESTS = [
     {
         "name": "tutorial_enter",
@@ -552,9 +661,12 @@ TESTS = [
         # 0xC0000135, which is the measured fate of the static-import alternative (docs/dll-split.md).
         # Folding them would delete the only test of the path a player can actually create.
         #
-        # The absence is REAL, not a key: make_lane deploys mh_net.dll into every lane by default
-        # since F4B, and `--omit-satellite` is this entry asking for the one lane that has none.
-        "omit_satellite": ["mh_net.dll"],
+        # The absence is REAL, not a key: make_lane deploys both transports into every lane by
+        # default (F4B, mp:T1), and `--omit-satellite` is this entry asking for the one lane that
+        # lacks the file mh.dll asks for. THAT FILE IS mh_net_udp.dll SINCE 2026-09-20 (user ruling:
+        # `[net] transport` defaults to udp), so this omits the UDP module -- omitting mh_net.dll
+        # would leave the default bind intact and the lane would quietly read `bound`.
+        "omit_satellite": ["mh_net_udp.dll"],
         # THE ASSERTION IS THE post_check, NOT THE PIXELS. A capture proves the process reached its
         # menu; it cannot prove the bind was ever ATTEMPTED. check_module_bind reads this lane's own
         # mh_net.log and requires the `absent` outcome -- specifically NOT `declined`, which is what
@@ -604,6 +716,48 @@ TESTS = [
         "desc": "F3F: boot with NO network module -- menu reached, NETWORK GAME armed, browser explains its empty list",
     },
     {
+        "name": "no_net_lobby",
+        "kind": "solo",
+        "script": "no_net_lobby.txt",
+        # fork F4 / U42/U43, F4's Q8 ruling ("ARM and explain, not gate" a Create with no module). This
+        # is the HOST-LOBBY half no_net_boot deliberately stopped short of ("hosting with no transport
+        # is a lobby nobody can ever reach, which is a question for F4's module split"): F4 landed, so
+        # this walks all the way to the real "Network players" screen on the same module=none lane.
+        #
+        # U42 landed the EXPLAIN half and measured `absent Start` (the whole slot-row panel, not even
+        # the host's own row, never built). U43 found why: net_seams.cpp's install_mp_bootstrap() had
+        # grouped on_host_advertise()'s INSTALL with the six WIRE-touching protocol stubs, so it never
+        # ran on a module=none lane even though its body (net_discovery.cpp) is role-marking only and
+        # touches the wire not at all -- _G_LLM_NET_IS_HOST (written NOWHERE ELSE in the binary) stayed
+        # 0, so retail's own llm_lobby_screen_open / llm_lobby_host_net_dispatch silently took their
+        # CLIENT branch for the host. U43 installs on_host_advertise() unconditionally; this script now
+        # proves the flip all the way to a launched match, not merely that the button reappears.
+        #
+        # THREE live assertions, neither a log/pixel guess: `present No network module` -- the SAME
+        # standing line no_net_boot proves on the browser also paints here (one shared widget, see
+        # mh/ui/lobby_notice.cpp), unchanged by U43; `settled Start` + `occ 2` after seating an AI at
+        # slot 1 -- the host's own row (slot 0) is real, not just the button, because the slot-1 cycle
+        # needs slot 0 already built; `absent Network players` + `gamemode 2` after clicking Start --
+        # the match actually launches with no transport in the process. Each is a state predicate: a
+        # regression that stops arming the notice, or that regresses the slot-build fix, times out or
+        # reds here instead of being forgiven by a loose pixel tolerance.
+        "net_extra": "module=none",
+        # tol 0.0: same reasoning as no_net_boot -- the notice is one line of text on a 640x480 frame,
+        # far under the 2% default, and the lobby/HUD states this walk pins (a slot row, the Start
+        # button's enabled border, the HUD after launch) are each a small fraction of the frame too --
+        # the same tightness res_hud.txt / mp_ai_closed_start.txt already measured for this exact
+        # solo-AI-launch pattern.
+        "tol": 0.0,
+        # U43 NEGATIVE ARM, recorded rather than left to be re-derived: the OLD walk (U42's shape --
+        # reach Network players and assert `absent Start` with no AI seated) now TIMES OUT on this
+        # build with `settle diag: target resolved on 0 frames ... NEVER FOUND` inverted -- i.e.
+        # `absent Start` itself is what fails now, proving the fix did not just relabel the same dead
+        # lobby. mp_host_lobby.txt / mp_host_ai_closed.txt (module-PRESENT lanes) keep asserting
+        # `absent No network module`, unchanged, and still pass -- U43 touches only the module=none
+        # branch of the install, not the module-present one.
+        "desc": "U42/U43/Q8: module=none HOST reaches Network players, seats an AI, and Start launches the match with no transport",
+    },
+    {
         "name": "ip_cancel",
         "kind": "solo",
         "script": "mp_ip_cancel.txt",
@@ -611,6 +765,10 @@ TESTS = [
     },
     {
         "name": "match_launch",
+        # transport=tcp PINNED (user ruling 2026-09-20): `[net] transport` now defaults to udp, and
+        # this row relied on the old tcp default. Pinned so the suite's TCP coverage stays TCP
+        # rather than silently becoming a second UDP run.
+        "net_extra": "transport=tcp",
         "kind": "multi",
         "host": "mp_host_start.txt",
         "clients": ["mp_client_start.txt"],
@@ -623,7 +781,96 @@ TESTS = [
         "desc": "2-peer: host waits for the client, clicks Start; BOTH enter the live game",
     },
     {
+        # mp:D25 (2026-09-19) -- the build-menu click that desynced every real internet match. The
+        # host clicks a building icon in the live match and never places it; the client idles. THE
+        # ASSERTION IS THE post_check: mp_analyze over both peers' harness R rows must read ALL PAIRS
+        # IDENTICAL. With the original body (llm_strat_bldg_try_begin_placement pays + re-grants as
+        # its affordability probe, booking the cost into the gains-only resource_spent counter on the
+        # clicking peer alone) this reads DIFFER in p0_ai_econ; libmh's side-effect-free probe is the
+        # fix. region_hash_step=50 gives the analyzer rows to compare; synth_move=0 keeps the random
+        # workload out of the capture.
+        "name": "d25_buildclick",
+        # transport=tcp PINNED (user ruling 2026-09-20): `[net] transport` now defaults to udp, and
+        # this row relied on the old tcp default. Pinned so the suite's TCP coverage stays TCP
+        # rather than silently becoming a second UDP run.
+        "net_extra": "transport=tcp",
+        "kind": "multi",
+        "host": "mp_host_buildclick.txt",
+        "clients": ["mp_client_idle.txt"],
+        "extra_ini": "tools/uiscripts/ini/video_1024.ini",
+        "harness_extra": "region_hash_step=50;synth_move=0",
+        "post_check": ["tools/mp_analyze.py"],
+        "post_check_peers": True,
+        "desc": "D25: host clicks a build-menu icon mid-match, client idles -- mp_analyze must say ALL PAIRS IDENTICAL",
+    },
+    {
+        "name": "shim_udp",
+        "kind": "multi",
+        "host": "mp_host_start.txt",
+        "clients": ["mp_client_start.txt"],
+        # tooling:TL-SHIMUDP-C -- match_launch's own walk (same scripts, same baselines -- the trick
+        # relay_punch/relay_match already use for the same reason: a frame that differed under the
+        # altered network would be a real failure, not a second baseline nobody compares), run
+        # through tools/net_shim.py on the udp transport with a plain per-packet delay. TL-SHIMUDP
+        # wired --shim-delay into ui_test, but nothing in the registry EXERCISED it on udp with a
+        # constant delay -- link_death is the only existing `"shim": True` entry and it arms `stall`
+        # (a scripted BLACKHOLE), which the udp shim REFUSES outright (see net_shim.py), so it proves
+        # nothing about the plain-delay path this scenario is for.
+        "net_extra": "transport=udp",
+        "shim": True,
+        # ONE-WAY, so round-trip is ~80 ms -- deliberately a PLAIN latency value (unlike
+        # link_death's 100 ms, chosen for an outage), and comfortably clear on both sides of
+        # check_shim_rtt.py's 20 ms floor: near-zero if the shim were bypassed, ~80 ms if it ran.
+        "shim_delay": 40,
+        "extra_ini": "tools/uiscripts/ini/video_1024.ini",
+        # THE ASSERTION IS THE post_check, NOT THE PIXELS -- same reasoning as net_hud/mp_snapshot:
+        # the captures prove the walk still reaches a live match under the added delay; they cannot
+        # prove the delay was real (a bypassed shim renders an identical frame). check_shim_rtt reads
+        # srtt0_ms out of mh_lockstep.log and FAILS when it reads near-zero -- the bypassed-shim case.
+        "post_check": ["tools/check_shim_rtt.py"],
+        "desc": "TL-SHIMUDP-C: match_launch's walk through the udp shim -- srtt0_ms must show the delay was measured, not bypassed",
+    },
+    {
+        "name": "chat_relay",
+        # transport=tcp PINNED (user ruling 2026-09-20): `[net] transport` now defaults to udp, and
+        # this row relied on the old tcp default. Pinned so the suite's TCP coverage stays TCP
+        # rather than silently becoming a second UDP run.
+        "net_extra": "transport=tcp",
+        "kind": "multi",
+        "host": "mp_host_chat.txt",
+        "clients": ["mp_client_chat.txt"],
+        # BOTH peers pin 1251, and they have to: the codepage rides SESSION_INFO and is echoed in
+        # JOIN, so a pair that disagreed would be refused at the join with "input codepage mismatch"
+        # rather than reaching the chat at all. (That refusal is asserted offline in
+        # net_selftest.exe sessionidtest -- staging it here would need two differently-localised
+        # Windows installs.)
+        "extra_ini": [
+            "tools/uiscripts/ini/video_1024.ini",
+            "tools/uiscripts/ini/input_cp1251.ini",
+        ],
+        # AND IT IS THE ONLY PLACE THE IN-GAME CHAT CAN BE TESTED AT ALL. A solo version was written
+        # first (an AI-seated single-peer game, res_hud's walk) and it cannot work: the chat only
+        # OPENS on Enter when `_G_LLM_GAME_SESSION_MODE == SESSION_MP_LOCKSTEP` and the target mode is
+        # not 3 (llm_strat_input_update, the branch at 0x00441c82 that writes _G_LLM_CHAT_MODE). Measured
+        # 2026-09-18: the solo run typed all six characters, `type` reported them delivered, and
+        # `field chat` read ZERO bytes -- the keystrokes went to the strategic hotkeys because chat had
+        # never opened. So the chat needs a real second peer, not merely a real match.
+        #
+        # mp:F3 END TO END, and the only test in the suite where the two halves of the codec are on
+        # DIFFERENT MACHINES: the host encodes the line with its pinned codepage, the client widens
+        # the received bytes with its own. A peer that widened cf f0 e8 e2 e5 f2 under CP1252 would
+        # get six perfectly well-formed Western accented letters -- a wrong message that looks like a
+        # right one -- so the client's assertion is on CODE POINTS (`wmsg hex:1f0440...`), not bytes.
+        # One process agreeing with itself about a codepage proves nothing, which is why this cannot
+        # be a solo scenario.
+        "desc": "F3 2-peer: host types a Cyrillic chat line, the client receives the same code points",
+    },
+    {
         "name": "mixed_race",
+        # transport=tcp PINNED (user ruling 2026-09-20): `[net] transport` now defaults to udp, and
+        # this row relied on the old tcp default. Pinned so the suite's TCP coverage stays TCP
+        # rather than silently becoming a second UDP run.
+        "net_extra": "transport=tcp",
         "kind": "multi",
         "host": "mp_host_race.txt",
         "clients": ["mp_client_race.txt"],
@@ -639,6 +886,10 @@ TESTS = [
     },
     {
         "name": "race_inflight",
+        # transport=tcp PINNED (user ruling 2026-09-20): `[net] transport` now defaults to udp, and
+        # this row relied on the old tcp default. Pinned so the suite's TCP coverage stays TCP
+        # rather than silently becoming a second UDP run.
+        "net_extra": "transport=tcp",
         "kind": "multi",
         "host": "mp_host_inflight.txt",
         "clients": ["mp_client_inflight.txt"],
@@ -652,7 +903,190 @@ TESTS = [
         "desc": "U28: client's local slot disagrees with the host at Start -- the host's array wins",
     },
     {
+        "name": "relay_match",
+        "kind": "multi",
+        "host": "mp_host_start.txt",
+        "clients": ["mp_client_start.txt"],
+        "relay": True,
+        # mp:R3 PINS THIS SCENARIO TO THE RELAY, and without the pin the test would quietly stop
+        # being one. R3 makes a relayed pair try to go DIRECT in the background and, on this rig,
+        # succeed in ~300 ms -- measured, and BEFORE the T0 handshake even completes, so the relay
+        # forwards zero game datagrams for the whole run (`forwarded=0` in its counters). The
+        # scenario would still be green and would no longer be testing what its name says. So it
+        # keeps `force_relay=1`: this row is R1/R2's claim (a relayed match plays), the promotion
+        # has its own evidence, and the two do not get to be the same run.
+        "net_extra": "transport=udp;force_relay=1",
+        # The SAME scripts match_launch runs, through a relay process started on this box. That is
+        # the point and the reason it does not get scripts of its own: the claim is that a relayed
+        # match is indistinguishable from a direct one all the way into the live game, and sharing
+        # the scripts means sharing the baselines (they are keyed by script basename), so a frame
+        # that differed would be a failure rather than a second baseline nobody compares.
+        "extra_ini": "tools/uiscripts/ini/video_1024.ini",
+        # The relay adds a loopback hop and a 34-byte envelope per datagram; the lobby handshake
+        # therefore takes a little longer to settle than on the LAN, and the host's `peers 1` waits
+        # for a client that dialled a third machine first.
+        "timeout": 300,
+        # TL-HARN17: this row used to carry no override, so a relay-slowed WAIT stepped down to the
+        # suite's shared LOCAL_TIMEOUT_FRAMES/whatever ui_test.py's own default resolved to for that
+        # invocation -- generous when the lane behaves, but not sized to THIS test's own bound. Give
+        # it the same 300 s as --timeout above, so --timeout stays the real cap (the established
+        # pattern; see link_death) rather than the per-step frame watchdog firing first under load.
+        "timeout_frames": frames_for_seconds(300, SOLO_HEADLESS_FPS_FLOOR),
+        # mp:R6 -- the room the host registered under is MINTED (never `[net] port`, which is 6501
+        # for every player on a shared relay), the client dialled that room through the directory,
+        # and the relay refused nothing. None of that is on a frame; the checker reads both peers'
+        # mh_net.log and the relay's counters line. With one host the distinct-rooms clause is
+        # vacuous here (the rig cannot bind two hosts on one box: SO_EXCLUSIVEADDRUSE, one port per
+        # lane) -- that clause is `net_selftest.exe udproomtest` + `cargo test -p mh_relay`'s.
+        "post_check": [
+            "tools/check_relay_rooms.py",
+            "--relay-log",
+            "tmp/relay_relay_match.log",
+        ],
+        "post_check_peers": True,
+        "desc": "R2: match_launch end to end THROUGH a relay process -- both peers enter the live game",
+    },
+    {
+        "name": "relay_browse",
+        "kind": "multi",
+        "host": "mp_host_relay_leave.txt",
+        "clients": ["mp_client_relay_browse.txt"],
+        "relay": True,
+        # mp:R3 -- pinned for relay_match's reason, plus one of its own: this test's subject is the
+        # relay's session DIRECTORY, whose whole traffic is the browsing client's LIST. A promotion
+        # would take the game traffic off the relay and leave the directory half being exercised by
+        # a peer that has no other reason to be talking to it, which is a narrower test wearing the
+        # same name.
+        "net_extra": "transport=udp;force_relay=1",
+        # mp:R2's own assertion, and the one clause the relay directory is the ONLY way to satisfy:
+        # the client lists a game it reached through the relay, and the row goes away when the host
+        # leaves. See the client script for why the vanish cannot be satisfied by the connected
+        # store alone.
+        "extra_ini": "tools/uiscripts/ini/video_1024.ini",
+        # The withdrawal is a sequence of timers (the host's advert goes stale at 3 s, the client
+        # re-LISTs every 2 s), so this test WAITS where the others walk. The budget is the walk plus
+        # that sequence plus room for a lost datagram, not a guess at how slow the menu is.
+        "timeout": 300,
+        # TL-HARN17: see relay_match above -- same reasoning, same 300 s so --timeout is the real cap.
+        "timeout_frames": frames_for_seconds(300, SOLO_HEADLESS_FPS_FLOOR),
+        # mp:R6 -- same checker as relay_match, on the scenario whose subject is the DIRECTORY: the
+        # row the client listed carried the host's minted room, and the client's leg came up in it.
+        "post_check": [
+            "tools/check_relay_rooms.py",
+            "--relay-log",
+            "tmp/relay_relay_browse.log",
+        ],
+        "post_check_peers": True,
+        "desc": "R2: the browser lists a RELAY-hosted game, and the row vanishes when the host leaves",
+    },
+    {
+        "name": "relay_browse_local",
+        "kind": "multi",
+        "host": "mp_host_lobby.txt",
+        "clients": ["mp_client_relay_local.txt"],
+        "relay": True,
+        # mp:R7 -- discovery + join from the FIRST browser, the screen right after the player
+        # name, with the IP window never visited: the DLL holds PROBE_SERVER_COUNT at 1 while a
+        # relay is configured, so retail's own (otherwise dead) LAN refresh loop runs one probe
+        # through the discovery-poll detour and lists the relay directory there. The HOST side is
+        # the second half of the same item: mp_host_lobby.txt reaches Create game THROUGH that
+        # browser, whose refresh dialled the relay as a client, so this scenario is also the proof
+        # that Create after a browse re-initialises the transport as host (the R7 relink) -- a
+        # host still on the browse's client socket would register nothing and the client's
+        # `sessions 1` would never come. force_relay keeps the pair on the relayed path so the
+        # directory, not a LAN shortcut, is what the client joined through (relay_browse's reason).
+        "net_extra": "transport=udp;force_relay=1",
+        "extra_ini": "tools/uiscripts/ini/video_1024.ini",
+        "timeout": 300,
+        "timeout_frames": frames_for_seconds(300, SOLO_HEADLESS_FPS_FLOOR),
+        # mp:R7a -- the POSITIVE control for the dial-mode split: the first-browser join really went
+        # THROUGH the relay (a leg came up, a `udp path` line was written, the relay carried the
+        # session). check_direct_dial asserts the ABSENCE of exactly these lines on the direct twin;
+        # this asserts their PRESENCE here, so a regression that quietly stopped relaying the
+        # first-browser path cannot pass. (mp:R7 proved the pixels; this proves the mode.)
+        "post_check": [
+            "tools/check_relay_leg.py",
+            "--relay-log",
+            "tmp/relay_relay_browse_local.log",
+        ],
+        "post_check_peers": True,
+        "desc": "R7: a relay-listed game is discovered and joined from the FIRST browser -- no IP window",
+    },
+    {
+        "name": "relay_punch",
+        "kind": "multi",
+        "host": "mp_host_start.txt",
+        "clients": ["mp_client_relay_punch.txt"],
+        "relay": True,
+        # mp:R7a -- no saved server on the client, so its FIRST browser probes the relay (R7's
+        # no-saved-address case). Without force_relay, that is what makes this dial relayed so the
+        # punch has a relay to promote off; a saved IP would leave the first browser quiet.
+        "no_client_ip": True,
+        # mp:R3 -- relay_match's twin with the pin OFF, so the pair punches.
+        # mp:R7a MOVED THE CLIENT TO THE FIRST BROWSER. relay_punch has no force_relay (that is the
+        # point -- it PUNCHES), and since R7a the session browser's *Internet server* + Connect is a
+        # genuine DIRECT dial, so a no-force_relay client on mp_client_start.txt (which walks Internet
+        # server) would connect directly and there would be no relay to punch off. The first browser is
+        # the relay-discovery screen: a dial from it is relayed even without force_relay, which is the
+        # relay-first state the punch needs. Its own client script + baseline (mp_client_relay_punch),
+        # since the walk differs from the match scripts; the lobby/in-game frames are browser-independent.
+        "net_extra": "transport=udp",
+        "extra_ini": "tools/uiscripts/ini/video_1024.ini",
+        # WHAT THIS ROW CLAIMS, stated narrowly because it is easy to over-read. It is NOT "the pair
+        # went direct" -- these lanes are on ONE box, so a promotion here crosses a loopback and says
+        # nothing about NAT traversal, and nothing in the capture grammar can read a log line anyway
+        # (the path is in mh_net.log, not on the screen). What it claims is the thing that would
+        # actually break: SWITCHING THE SEND PATH MID-STREAM MUST NOT BREAK THE LINK. On the rig the
+        # promotion lands ~300 ms after the candidate exchange and BEFORE the T0 handshake completes,
+        # which is precisely the window where a botched switch would strand a half-open connection --
+        # and the visible symptom would be this scenario's lobby never reaching `peers 1`. The
+        # promotion's own evidence is the rig determinism pair (punching on: the relay forwards zero
+        # game datagrams; force_relay=1: it forwards all of them).
+        "timeout": 300,
+        # mp:R3a -- THE ASSERTION IS THE post_check, NOT THE PIXELS, same reasoning as net_hud's: the
+        # captures prove the lobby reached a live match under the mid-handshake switch; they cannot
+        # prove the switch actually HAPPENED (a pair that stayed relayed the whole time renders the
+        # identical frame). check_relay_path reads `net: udp path DIRECT` out of mh_net.log and FAILS
+        # when it is absent -- which it correctly is on a force_relay-pinned lane (relay_match,
+        # relay_browse), proving this is a real assertion and not merely "any relay-shaped log passes".
+        "post_check": ["tools/check_relay_path.py"],
+        "desc": "R3: a relayed match that PUNCHES -- the path switches mid-handshake and both peers "
+        "still enter the live game",
+    },
+    {
+        "name": "relay_restart",
+        "kind": "multi",
+        "host": "mp_host_relay_restart.txt",
+        "clients": ["mp_client_relay_restart.txt"],
+        "relay": True,
+        # mp:R4b -- THE RELAY IS KILLED AND RESPAWNED MID-MATCH, on the client's `signal ingame`
+        # (both peers past their m3_launched capture), and the pair has to keep playing: both
+        # scripts then wait for the game clock to advance a further ~18 s of sim, which a pair
+        # whose link died cannot do (the lockstep stalls, the clock freezes, the WAIT times out).
+        # Pinned to the relay so the restart is on the path -- a promoted pair would not notice it.
+        "net_extra": "transport=udp;force_relay=1",
+        "relay_restart_on": "ingame",
+        "extra_ini": "tools/uiscripts/ini/video_1024.ini",
+        "timeout": 300,
+        "timeout_frames": frames_for_seconds(300, SOLO_HEADLESS_FPS_FLOOR),
+        # THE ASSERTION IS THE post_check, same as relay_punch: the clock advancing proves the link
+        # lived, but not HOW -- check_relay_restart reads `leg LOST` + `leg RESTORED` on both
+        # peers, refuses a `dropped -- no data from peer`, and requires two `listening` lines in
+        # the relay's own log (a restart that did not happen would pass the pixels).
+        "post_check": [
+            "tools/check_relay_restart.py",
+            "--relay-log",
+            "tmp/relay_relay_restart.log",
+        ],
+        "post_check_peers": True,
+        "desc": "R4b: the relay restarts mid-match and both peers re-HELLO and keep playing",
+    },
+    {
         "name": "s7_occ_cap",
+        # transport=tcp PINNED (user ruling 2026-09-20): `[net] transport` now defaults to udp, and
+        # this row relied on the old tcp default. Pinned so the suite's TCP coverage stays TCP
+        # rather than silently becoming a second UDP run.
+        "net_extra": "transport=tcp",
         "kind": "multi",
         "host": "mp_host_ai_closed.txt",
         "clients": ["mp_client_browse_s7.txt"],
@@ -689,13 +1123,138 @@ TESTS = [
     },
     {
         "name": "client_join",
+        # transport=tcp PINNED (user ruling 2026-09-20): `[net] transport` now defaults to udp, and
+        # this row relied on the old tcp default. Pinned so the suite's TCP coverage stays TCP
+        # rather than silently becoming a second UDP run.
+        "net_extra": "transport=tcp",
         "kind": "multi",
         "host": "mp_host_lobby.txt",
         "clients": ["mp_client_join.txt"],
         "desc": "client discovers a host by IP and joins through to the shared lobby",
     },
     {
+        "name": "direct_dial_with_relay_set",
+        "kind": "multi",
+        "host": "mp_host_lobby.txt",
+        "clients": ["mp_client_direct_dial.txt"],
+        "relay": True,
+        # mp:R7a -- THE DIRECT HALF of the dial-mode split. The CLIENT has `[net] relay` set but uses
+        # *Internet server* + a typed address, which since R7a is a genuine DIRECT dial. A relay
+        # process is started (relay: True) precisely so it can be proven NOT contacted; relay_client_only
+        # puts `relay=` on the CLIENT ini only, so the HOST never registers either and the relay stays
+        # at peers=0 -- an untouched relay is the assertion, not one that carries the host but not the
+        # dial. Both peers are UDP (they must agree on a transport); the client dials the host's LAN
+        # address directly, no tunnel.
+        "net_extra": "transport=udp",
+        "relay_client_only": True,
+        # TL-LANEPOOL: the capture suite's lane block is at the DLL's mutex ceiling (lane_alloc.py),
+        # so this row owns NO lanes of its own -- it BORROWS client_join's, the comparable 2-peer
+        # scenario it is a variant of, and the runner schedules the pair serially so the lane is never
+        # shared in time. Its own client script/baseline (mp_client_direct_dial); the host frame is
+        # mp_host_lobby's, shared.
+        "share_lanes": "client_join",
+        "timeout": 300,
+        "timeout_frames": frames_for_seconds(300, SOLO_HEADLESS_FPS_FLOOR),
+        # The assertion is the post_check, not the pixels: check_direct_dial reads the CLIENT's log for
+        # the R7a `client dial is DIRECT` decision and the ABSENCE of any relay contact, and the relay's
+        # own log for peers_registered=0. The `occ 2` in the client script is what proves the direct
+        # dial still reached the lobby.
+        "post_check": [
+            "tools/check_direct_dial.py",
+            "--relay-log",
+            "tmp/relay_direct_dial_with_relay_set.log",
+        ],
+        "post_check_peers": True,
+        "desc": "R7a: Internet server + a typed IP connects DIRECT with a relay configured -- the relay is never contacted",
+    },
+    {
+        "name": "relay_stale_notice",
+        "kind": "multi",
+        "host": "mp_host_lobby.txt",
+        "clients": ["mp_client_relay_stale.txt"],
+        "relay": True,
+        # mp:R4a -- THE OLDER RELAY, staged: `--advertise-level 0` makes the relay claim no protocol
+        # level, i.e. send the 4-byte WELCOME a pre-R4a build sends (the wire shape is byte-identical;
+        # the op table is not touched). Both peers' HELLOs carry level 1, so each logs the one named
+        # `relay protocol 0 < 1` line and hands mh.dll the notice; the CLIENT is on the first browser
+        # when its browse dial's WELCOME lands (mp:R7), so the notice paints THERE and the capture
+        # reads it -- the pixels are the done_when's "shows the notice in the lobby/browser". The
+        # stale relay still carries everything (the join goes through; nothing this build sends is
+        # actually missing from its table), which is the point: a stale relay is a VISIBLE failure,
+        # not a broken one. relay_browse_local's twin: same host fixture, same walk, one more gate.
+        "relay_args": ["--advertise-level", "0"],
+        "net_extra": "transport=udp;force_relay=1",
+        "extra_ini": "tools/uiscripts/ini/video_1024.ini",
+        # TL-LANEPOOL: no lanes of its own -- it BORROWS relay_browse_local's (the scenario it is a
+        # variant of), scheduled serially with it, as direct_dial_with_relay_set does with client_join.
+        "share_lanes": "relay_browse_local",
+        "timeout": 300,
+        "timeout_frames": frames_for_seconds(300, SOLO_HEADLESS_FPS_FLOOR),
+        # tol 0: the notice is one line of text, far under the default 2% budget (codepage_refused's
+        # reasoning); the post_check reads the R4a line + the queued notice in the peer logs and the
+        # relay's own protocol_level=0 / hello_level_mismatch on its counters line.
+        "tol": 0.0,
+        "post_check": [
+            "tools/check_relay_stale.py",
+            "--relay-log",
+            "tmp/relay_relay_stale_notice.log",
+        ],
+        "post_check_peers": True,
+        "desc": "R4a: a relay BEHIND this build's protocol level is reported -- the R4a line in both logs and `Relay outdated` on the client's browser",
+    },
+    {
+        "name": "codepage_adopt",
+        # transport=tcp PINNED (user ruling 2026-09-20): `[net] transport` now defaults to udp, and
+        # this row relied on the old tcp default. Pinned so the suite's TCP coverage stays TCP
+        # rather than silently becoming a second UDP run.
+        "net_extra": "transport=tcp",
+        "kind": "multi",
+        "host": "mp_host_lobby.txt",
+        "clients": ["mp_client_join.txt"],
+        # mp:F3c, the POSITIVE half. The host is pinned to 1252 and the client to 1251 -- the pair
+        # that was refused outright until F3c ("input codepage mismatch", measured on the first real
+        # internet lobby 2026-09-19 with the joiner never told). The client now ADOPTS the host's
+        # value from the advert at its JOIN, so the walk is client_join's walk and its frames are
+        # client_join's frames (same scripts, same baselines); THE ASSERTION IS THE post_check, which
+        # reads both logs: the client's `adopted the host's input codepage 1252 ... (ours is 1251)`
+        # and the host's ADMITTED with no codepage refusal anywhere. Both pins are explicit rather
+        # than one of them `acp`, so the scenario means the same thing on a rig whose ACP is 1251.
+        "extra_ini_host": "tools/uiscripts/ini/input_cp1252.ini",
+        "extra_ini_client": "tools/uiscripts/ini/input_cp1251.ini",
+        "post_check": ["tools/check_codepage_adopt.py", "--expect", "adopt"],
+        "post_check_peers": True,
+        "desc": "F3c: host 1252 + client 1251 join one lobby -- the joiner adopts the host's codepage (both logs)",
+    },
+    {
+        "name": "codepage_refused",
+        # transport=tcp PINNED (user ruling 2026-09-20): `[net] transport` now defaults to udp, and
+        # this row relied on the old tcp default. Pinned so the suite's TCP coverage stays TCP
+        # rather than silently becoming a second UDP run.
+        "net_extra": "transport=tcp",
+        "kind": "multi",
+        "host": "mp_host_lobby.txt",
+        "clients": ["mp_client_join_refused.txt"],
+        # mp:F3c, the NEGATIVE half, and the one the tracker's done_when is really about: a client
+        # that declares it will NOT switch ([input] codepage_adopt=0) is refused by the host -- and
+        # TOLD. The host's JOIN_REFUSED announce bounces it out of the lobby it seated itself in (the
+        # same synthesised 0x0e a departed host uses) and the browser it lands on names the reason.
+        # The script gates on the destination + the notice text (`onscreen Join refused`); the
+        # post_check reads both logs for the refusal, the reply, the client's receipt and its
+        # `join_refused` session close, and requires that the host never ADMITTED. tol 0: the notice
+        # is one line of text, far under the default 2% budget.
+        "extra_ini_host": "tools/uiscripts/ini/input_cp1252.ini",
+        "extra_ini_client": "tools/uiscripts/ini/input_cp1251_noadopt.ini",
+        "post_check": ["tools/check_codepage_adopt.py", "--expect", "refused"],
+        "post_check_peers": True,
+        "tol": 0.0,
+        "desc": "F3c: a client that will not adopt is refused AND told -- bounced to the browser, notice names the reason",
+    },
+    {
         "name": "leave_frees_slot",
+        # transport=tcp PINNED (user ruling 2026-09-20): `[net] transport` now defaults to udp, and
+        # this row relied on the old tcp default. Pinned so the suite's TCP coverage stays TCP
+        # rather than silently becoming a second UDP run.
+        "net_extra": "transport=tcp",
         "kind": "multi",
         "host": "mp_host_watch_leave.txt",
         "clients": ["mp_client_leave.txt"],
@@ -726,6 +1285,10 @@ TESTS = [
     },
     {
         "name": "link_death",
+        # transport=tcp PINNED (user ruling 2026-09-20): `[net] transport` now defaults to udp, and
+        # this row relied on the old tcp default. Pinned so the suite's TCP coverage stays TCP
+        # rather than silently becoming a second UDP run.
+        "net_extra": "transport=tcp",
         "kind": "multi",
         "host": "mp_host_linkdeath.txt",
         "clients": ["mp_client_linkdeath.txt"],
@@ -753,13 +1316,153 @@ TESTS = [
     },
     {
         "name": "host_recreate",
+        # transport=tcp PINNED (user ruling 2026-09-20): `[net] transport` now defaults to udp, and
+        # this row relied on the old tcp default. Pinned so the suite's TCP coverage stays TCP
+        # rather than silently becoming a second UDP run.
+        "net_extra": "transport=tcp",
         "kind": "multi",
         "host": "mp_host_recreate.txt",
         "clients": ["mp_client_rejoin.txt"],
         "desc": "U13: host leaves + re-creates a game; client re-discovers + re-joins -> fresh lobby (occ 2)",
     },
     {
+        "name": "host_rematch",
+        # transport=tcp PINNED (user ruling 2026-09-20): `[net] transport` now defaults to udp, and
+        # this row relied on the old tcp default. Pinned so the suite's TCP coverage stays TCP
+        # rather than silently becoming a second UDP run.
+        "net_extra": "transport=tcp",
+        "kind": "multi",
+        "host": "mp_host_rematch.txt",
+        "clients": ["mp_client_rematch.txt"],
+        # U40. THE SIBLING OF host_recreate, and the difference is the only reason both exist: there
+        # the host leaves a LOBBY and no match ever runs, so nothing about the transport or the
+        # session identity is disturbed. Here a MATCH runs and both peers quit out of it -- the
+        # boundary the 2026-09-01 internet session died on, where the host re-created a game and
+        # advertised it to `peers=0` for over a minute while the clients sat in an empty browser.
+        #
+        # WHAT IT GATES AND WHAT IT DOES NOT, measured rather than hoped: on a rig the sockets
+        # SURVIVE a match, so this scenario cannot reproduce the dead-link half of U40 -- that half's
+        # oracle is `net_selftest.exe relinktest`, which is mutation-checked against the pre-U40
+        # MH_Net_InitEx. What this one does gate is the HOST half, and it has real teeth: pre-U40 a
+        # re-created game reused the finished match's tag and match_id, the S4 join gate was still
+        # open and the peer mirror's was_member[] edge was still set for this client, so the re-JOIN
+        # fires no JOIN edge and `occ 2` never arrives on either peer.
+        #
+        # The IN-GAME leg is the cheapest one that reaches a real match end: ESC -> Quit game ->
+        # llm_game_return_to_main_menu_cb, the seam that calls mp_session_close("quit"). Its mode is
+        # PINNED for the reason esc_menu's is -- the ESC menu renders at the GAMEPLAY resolution,
+        # which is a persisted setup.dat preference, so an unpinned run inherits whatever the last
+        # test on that lane saved.
+        "extra_ini": "tools/uiscripts/ini/video_640.ini",
+        # U19c (2026-09-18): NO LONGER PINNED -- this now runs in the SHIPPING configuration
+        # (`[net] graceful_leave` default ON since U19), which is the U40 RE-HOST boundary players
+        # actually hit. The walk that used to time out here (measured 2026-09-18: `clickv 113` lands,
+        # `settled value:121` never does, 305 s, because the client's ESC-quit reaches this peer over
+        # the wire and ends ITS match before it opens its own ESC menu) is fixed IN THE SCRIPT, not by
+        # pinning the knob back off: mp_host_rematch.txt now waits for and dismisses the engine's own
+        # end-of-match dialog (`clickl Ok`) FIRST -- which RE (ReVA on /eng/mh.exe) showed returns to
+        # the GAMEPLAY HUD via llm_ui_outcome_report_close_to_hud, not the main menu -- and only then
+        # walks the same ESC -> Quit -> Yes it always used. All five captures are unchanged: none of
+        # them was ever the outcome dialog itself (q1_lobby_game1 is the first lobby, q2/q3 are the
+        # re-hosted lobby, all AFTER this peer is back on the main menu and has re-created), so the
+        # fix only inserts steps between two already-passing captures rather than altering either.
+        # ONE OF THE LONGEST WALKS IN THE REGISTRY -- two whole menu->lobby walks with a match in
+        # between: create, join, launch, 3000 game-clock ms, both peers quit through the ESC menu,
+        # then create and join a SECOND time. It runs in ~40 s once the signals order the two peers
+        # correctly; the budget is raised because the UNORDERED version of this walk spent 205 s and
+        # then 426 s waiting on races, and a scenario that blocks on a signal has no frame-rate floor
+        # under it -- the cap it can hit is wall clock under suite contention, not frames.
+        "timeout": 300,
+        "desc": "U40: a match ENDS, the host re-creates in the same instance, the client re-discovers + re-joins",
+    },
+    {
+        "name": "graceful_quit",
+        "kind": "multi",
+        "host": "mp_host_gquit.txt",
+        "clients": ["mp_client_gquit.txt"],
+        # U19. The CLEAN in-game leave, driven end to end for the first time: a client walks
+        # ESC -> Quit game -> Yes out of a running lockstep match with `[net] graceful_leave=1`, so
+        # on_quit_to_menu broadcasts its own removal (subtype 8) before the retail teardown.
+        #
+        # TWO SEATS, NO AI, and that is measured rather than chosen for simplicity: seating an AI at
+        # slot 2 does NOT keep the survivor above the quorum llm_net_player_remove ends a match at
+        # (measured with `occ 3` and the AI visibly seated -- the host still got "Game over / You are
+        # the last player !"), so the AI bought an extra click and nothing else. Two seats also puts
+        # the quitter's own self-removal BELOW quorum, which is the shape U19's game-over-flash
+        # worry was about. What two seats cannot cover is U19's 3-player clause; see the script.
+        #
+        # THE KNOB IS PASSED EXPLICITLY even though U19 made it the default, so this scenario still
+        # exercises the mechanism if the default is ever reconsidered. It cannot ride extra_ini: it
+        # is a [net] key, and ui_test REFUSES a fragment carrying a second [net] section.
+        # transport=tcp PINNED (user ruling 2026-09-20): `[net] transport` now defaults to udp, and
+        # this row relied on the old tcp default. Pinned so the suite's TCP coverage stays TCP
+        # rather than silently becoming a second UDP run.
+        "net_extra": "transport=tcp;graceful_leave=1",
+        # tol 0 = exact match, and it is affordable only because every IN-GAME frame was removed
+        # from the baseline set. Each was measured before it went: the survivor's post-drop frame
+        # 6.606% against its own baseline one run later (the departure notice fades on a wall clock
+        # and the landing site is still revealing, and the drop lands at whatever real time the
+        # client's ESC walk reaches), the survivor's pre-quit frame 0.739%, and the client's
+        # pre-quit frame 0.000% twice in isolation and then 0.722% under `--jobs 4`. What is left is
+        # one lobby frame and one main-menu frame, 0.000% across repeat runs and under contention.
+        "tol": 0.0,
+        # The ESC menu renders at the GAMEPLAY resolution, a persisted setup.dat preference, so an
+        # unpinned run inherits whatever the last test on this lane saved (host_rematch's reason).
+        "extra_ini": "tools/uiscripts/ini/video_640.ini",
+        # A signal-ordered walk with a match in it: the peers block on each other, so the cap that
+        # can actually bite is wall clock under suite contention, not frames (host_rematch's note).
+        "timeout": 300,
+        # THE MEASUREMENT IS THE post_check, NOT THE PIXELS, and it is about ROUTE as much as speed:
+        # the frame looks identical whether the survivor learned of the departure from a lockstep
+        # control frame or from the socket dying, and those are the two things U19 had to separate.
+        # The checker reads both peers' logs for the ordering (no U40 relink between the session
+        # close and the broadcast -- the defect U19 found), for the absence of the B2 fast-drop line
+        # on the survivor, and for the two peers ending on the same game clock, which is what an
+        # in-order drop means and what a pixel cannot say.
+        "post_check": [
+            "tools/check_graceful_quit.py",
+            "--expect-graceful",
+            "--expect-same-end-clock",
+            # U19e: and it ended through the below-quorum presence loss, not through the
+            # unknown-outer-tag arm that used to raise outcome 7 (NETWORK_ERROR) on a clean quit.
+            "--expect-no-network-error",
+            "--max-drop-steps",
+            "2",
+        ],
+        "desc": "U19: a client ESC-quits a running match -- it lands on the main menu, and the "
+        "departure reaches the survivor over the wire, in order, at the same game clock",
+    },
+    {
+        "name": "session_rollover",
+        # transport=tcp PINNED (user ruling 2026-09-20): `[net] transport` now defaults to udp, and
+        # this row relied on the old tcp default. Pinned so the suite's TCP coverage stays TCP
+        # rather than silently becoming a second UDP run.
+        "net_extra": "transport=tcp",
+        "kind": "multi",
+        "host": "mp_host_rollover.txt",
+        "clients": ["mp_client_rollover.txt"],
+        # SES1b. SES1 (mh_session_dir.h) gave a match its own run directory, opened at lobby
+        # create/JOIN and closed on leave|gameover|host_left|link_lost|timeout|quit, and PROVED the
+        # THREE-MATCH ROLLOVER once by hand from a scratchpad script -- 3+3 directories with
+        # pairwise-identical match_ids -- before that scratchpad was lost. This registers the same
+        # walk (three Create/Join/Cancel rounds, no match played -- see mp_host_rollover.txt's
+        # header for why the lobby-only shape already exercises the SESSION_BEGIN/END boundary) so a
+        # regression in the rollover state machine (mh_session_state_begin/_end) is caught by the
+        # suite instead of by the next player report.
+        #
+        # THE ASSERTION IS THE post_check, NOT THE PIXELS, same reasoning as module_absent's: "three
+        # session directories per peer, pairwise-identical match_ids" has no pixels a capture could
+        # carry -- captures here only prove the three lobbies rendered, which check_module_bind.py's
+        # own comment already named as the wrong half of a claim like this one.
+        "post_check": ["tools/check_session_rollover.py"],
+        "desc": "SES1b: three Create/Join/Cancel rounds in one instance -- 3 session directories per peer, pairwise-identical match_ids",
+    },
+    {
         "name": "ip_retry",
+        # transport=tcp PINNED (user ruling 2026-09-20): `[net] transport` now defaults to udp, and
+        # this row relied on the old tcp default. Pinned so the suite's TCP coverage stays TCP
+        # rather than silently becoming a second UDP run.
+        "net_extra": "transport=tcp",
         "kind": "multi",
         "host": "mp_host_lobby.txt",
         "clients": ["mp_client_ipretry.txt"],
@@ -826,7 +1529,16 @@ TESTS = [
         # it disappear; and everything OUTSIDE the overlay rect is pixel-identical run-to-run (measured),
         # so exactness is achievable here rather than merely aspirational.
         "tol": 0.0,
-        "desc": "P0 debug overlay renders on 2 different screens (the ONLY test that enables [debug])",
+        # 2026-09-20 (user ruling): the debug zips ship the overlay INSTALLED BUT HIDDEN ([debug]
+        # overlay=0 left release_package.py's DEBUG_KEYS) and the Ctrl+Alt+D toggle must work, so
+        # this scenario now STARTS HIDDEN and toggles: absent on the first frame, present after the
+        # chord (the two original captures, byte-identical to before), absent after a second chord.
+        # The chord is synthesised (`hotkey`, ui_drive.cpp) because GetAsyncKeyState reads 0 on the
+        # isolated desktop a headless lane runs on; the overlay's own parse/modifier/edge logic runs.
+        # Folded into this row rather than registered as a sibling because the capture suite's lane
+        # block is at its ceiling (tools/lane_alloc.py; a new solo row is one lane the pool lacks).
+        "desc": "P0 debug overlay: installed-hidden, Ctrl+Alt+D shows it on 2 screens, hides it again "
+        "(the ONLY test that enables [debug])",
     },
     {
         "name": "pause_hotkey",
@@ -860,6 +1572,10 @@ TESTS = [
     },
     {
         "name": "pause_mp_gate",
+        # transport=tcp PINNED (user ruling 2026-09-20): `[net] transport` now defaults to udp, and
+        # this row relied on the old tcp default. Pinned so the suite's TCP coverage stays TCP
+        # rather than silently becoming a second UDP run.
+        "net_extra": "transport=tcp",
         "kind": "multi",
         "host": "mp_host_pause_gate.txt",
         "clients": ["mp_client_pause_gate.txt"],
@@ -932,6 +1648,164 @@ TESTS = [
         "desc": "U24: one keypress in the player-name field types exactly ONE character",
     },
     {
+        "name": "cam_edge_scroll",
+        "kind": "solo",
+        "script": "cam_edge_scroll.txt",
+        # mp:SES3. The only registered run with `[input] mouse_trace=1`, because it is the only one
+        # that asserts anything about the trace.
+        "extra_ini": "tools/uiscripts/ini/cam_trace.ini",
+        # THE ASSERTION IS THE post_check, NOT THE PIXELS. s0_menu is a boot-sanity frame (the main
+        # menu, before the walk); the claim is in the log. Four clauses, and each one exists because
+        # a weaker gate would pass on a broken instrument:
+        #   --expect-pinned 3   an edge latch held over >= 3 consecutive samples at ONE cursor
+        #                       position WITH the camera moving -- the stuck-scroll shape (H1)
+        #   --expect-rise-fall  some edge flag rose and later fell, so the clause above cannot be
+        #                       satisfied by latches that were simply never cleared
+        #   --max-lines-per-frame 1.0   SES3's cost clause, measured rather than asserted in prose
+        #   --expect-di         exactly one `; [input] di_keyboard=` line per run (U25 step 1)
+        "post_check": [
+            "tools/check_cam_trace.py",
+            "--expect-pinned",
+            "3",
+            "--expect-rise-fall",
+            "--max-lines-per-frame",
+            "1.0",
+            "--expect-di",
+        ],
+        "desc": "SES3: cursor pinned at the left screen edge -- the edge latch holds and the camera "
+        "scrolls while the cursor does not move; releasing it clears the latch",
+    },
+    {
+        "name": "type_ascii",
+        "kind": "solo",
+        "script": "type_ascii.txt",
+        # F4: `type <text>` must be the SAME INPUT as the `key` sequence that spells it, not a second
+        # way in. The scenario asserts that twice over -- the driver's own key journal (identical
+        # scancode/event-type streams) and the resulting field text -- plus the modifier half, which
+        # the ring cannot carry and three capitals are the only thing here that tests.
+        #
+        # tol 0 = exact match, for key_repeat's reason: the whole subject is a handful of glyphs in
+        # one field, ~0.1% of the frame, so any tol big enough to absorb jitter would absorb the
+        # entire regression. The menus are deterministic and this measured 0.000%.
+        "tol": 0.0,
+        "desc": "F4: `type ho1` == `key 0x23 0x18 0x02` byte for byte; and shifted `type ABC`",
+    },
+    {
+        "name": "type_cyrillic",
+        "kind": "solo",
+        "script": "type_cyrillic.txt",
+        # mp:F3. THE ONLY REASON THIS NEEDS AN INI is that the ship default is `acp` -- the ambient
+        # process codepage, CP1252 on this rig -- and CP1252 has no byte for any Cyrillic letter. The
+        # pin is the feature under test, not scaffolding around it.
+        "extra_ini": "tools/uiscripts/ini/input_cp1251.ini",
+        # F4 built it; F3 (2026-09-18) is what it now asserts. Non-ASCII text through the game's REAL
+        # keyboard path -- the Russian layout loaded for the run, six physical scancodes pressed, the
+        # game's own translate step resolving them. The assertion is on the field BUFFER because the
+        # stock EN fonts have no Cyrillic glyphs, so pixels cannot tell right from wrong here.
+        #
+        # ITS EXPECTED BYTES WERE SIX '?' UNTIL F3 LANDED, and that was a measurement rather than a
+        # shrug: the layout resolved every character (the log still prints the CP1251 byte per
+        # character) and ToAscii then folded them through the PROCESS codepage. F3 replaced that step
+        # with ToUnicodeEx + an encode through the pinned codepage, so the line now reads
+        # hex:686f7374cff0e8e2e5f2 -- "host" plus the six bytes the layout meant. THE t_cyr BASELINE
+        # WAS RE-BLESSED in the same change: different bytes in the field draw differently.
+        "tol": 0.0,
+        # (the literal is deliberately NOT in this file: the summary table prints `desc` to a console
+        # whose encoding is the operator's, and a Cyrillic row would raise there rather than in a test)
+        "desc": "F3/F4: `type` 6 Cyrillic chars on a Russian layout -- 6 scancodes, 6 CP1251 bytes stored",
+    },
+    {
+        "name": "type_polish",
+        "kind": "solo",
+        "script": "type_polish.txt",
+        "extra_ini": "tools/uiscripts/ini/input_cp1250.ini",
+        # mp:F3's SECOND LAYOUT, and it is not a duplicate of type_cyrillic: it is AltGr-based (the
+        # accented letters sit behind ctrl+alt, so a codec that read only the shift bit would type
+        # plain ASCII and pass nothing here), it pins a DIFFERENT codepage (1250, which agrees with
+        # 1251 and 1252 below 0x80 and disagrees above it -- so a silent fallback to the process ACP
+        # would still pass an ASCII test), and its four bytes land in three different places of the
+        # high half. Together the two scenarios say the codepage is a parameter rather than a
+        # hardcoded second guess.
+        #
+        # tol 0 = exact match, for key_repeat's reason: four glyphs in one field are well under 0.1%
+        # of the frame, so any tolerance that absorbed jitter would absorb the whole regression.
+        "tol": 0.0,
+        "desc": "F3: `type` 4 Polish chars on the PL layout (AltGr) -- 4 CP1250 bytes stored",
+    },
+    {
+        "name": "font_guard",
+        "kind": "solo",
+        "script": "font_guard.txt",
+        "extra_ini": "tools/uiscripts/ini/font_guard.ini",
+        # mp:F2 NEGATIVE CASE. The ONLY test that arms [fonts], so every other baseline stays
+        # probe-free. Two code points no shipped FONTLAY maps (U+4E00, U+05D0) go through the game's
+        # own layout pass; the guard substitutes each with one glyph and leaves the surrounding ASCII
+        # alone. Before it, the same string on font slot 0 read past a 257-entry charmap and used the
+        # integer it found as a glyph-pointer index.
+        #
+        # tol 0 = exact match, for key_repeat's reason: the probe is well under 0.1% of the frame, so
+        # any tolerance that absorbed jitter would also absorb the probe vanishing entirely.
+        #
+        # THE BASELINE ASSUMES STOCK RETAIL FONTS (the suite's default). `fnt.py install` merges
+        # Cyrillic + Polish + a U+FFFD box into the local mh_ex.rsr, and the substitute then becomes
+        # the box rather than '?' -- a deliberate red, not a flake. See the script header.
+        "tol": 0.0,
+        "desc": "F2: unmappable code points render a substitute glyph and do not crash the layout pass",
+    },
+    {
+        "name": "font_merged",
+        "kind": "solo",
+        "script": "font_merged.txt",
+        "extra_ini": "tools/uiscripts/ini/font_merged.ini",
+        # mp:F2b POSITIVE CASE, opt-in. `requires` is checked before provisioning (main()'s --local
+        # branch); on a machine with no merged font install this SKIPS BY NAME rather than failing or
+        # aborting the suite -- see font_merge_precondition() above.
+        "requires": font_merge_precondition,
+        # THE LANE'S OWN PACKS, NOT THE POLYGON'S. make_lane.py --src <FONT_MERGE_DIR> so this test's
+        # lane symlinks a SEPARATE merged mh_ex.rsr/.nam -- font_guard's negative baseline depends on
+        # the shared polygon staying stock, so the merge must never land there.
+        "lane_src": FONT_MERGE_DIR,
+        # tol 0 = exact match, same reason font_guard states: the probe is a couple hundred pixels on
+        # a 1024x768 frame, well under a tenth of a percent.
+        "tol": 0.0,
+        "desc": "F2b: with a merged install, Cyrillic + Polish probe text renders real glyphs (SKIPS "
+        "by name without one)",
+    },
+    {
+        "name": "chat_glyphs",
+        # transport=tcp PINNED (user ruling 2026-09-20): `[net] transport` now defaults to udp, and
+        # this row relied on the old tcp default. Pinned so the suite's TCP coverage stays TCP
+        # rather than silently becoming a second UDP run.
+        "net_extra": "transport=tcp",
+        "kind": "multi",
+        "host": "mp_host_chat_glyphs.txt",
+        "clients": ["mp_client_chat_glyphs.txt"],
+        # mp:F3b -- END TO END: mp:F3's chat codec (chat_relay) proves the CODE POINTS are right;
+        # mp:F2b's merge (font_merged) proves the FONT carries real glyphs for a fixed debug probe
+        # string. Neither, alone, proves a typed chat line actually DRAWS as Cyrillic -- this
+        # scenario is the two put together: BOTH peers pin [input] codepage=1251 (input_cp1251.ini,
+        # same as chat_relay) AND run against a lane built from the merged font install (lane_src,
+        # same opt-in tier as font_merged) instead of the polygon.
+        "extra_ini": [
+            "tools/uiscripts/ini/video_1024.ini",
+            "tools/uiscripts/ini/input_cp1251.ini",
+        ],
+        # REUSES font_merge_precondition() verbatim -- same opt-in tier as font_merged, not a
+        # second precondition: `--local` only, and MH_FONT_MERGE_DIR's mh_ex pack must resolve the
+        # three probe code points (see that function's docstring above). SKIPS BY NAME on a machine
+        # without a merged install, exactly like font_merged.
+        "requires": font_merge_precondition,
+        # THE LANE'S OWN PACKS, NOT THE POLYGON'S, for BOTH peers -- font_guard's negative baseline
+        # depends on the shared polygon staying stock, so this merge must never land there either.
+        "lane_src": FONT_MERGE_DIR,
+        # tol 0 = exact match, same reason font_merged/font_guard state: the rendered chat line is a
+        # couple hundred pixels of text on a 1024x768 in-game frame, well under the 2% default --
+        # a regression back to the substitute box would otherwise be invisible to the diff.
+        "tol": 0.0,
+        "desc": "F3b: with a merged install, a 2-peer Cyrillic chat line the host types renders as "
+        "real glyphs on the client that receives it (SKIPS by name without one)",
+    },
+    {
         "name": "tact_panel",
         "kind": "solo",
         "script": "tact_panel.txt",
@@ -1002,6 +1876,223 @@ TESTS = [
         # swallow -- the verdict that matters here is completion, not the pixels.
         "harness_extra": "boot_snapshot=1",
         "desc": "LIB-BOOT: the post-cfg snapshot capture path is armed and the process still reaches the menu",
+    },
+    {
+        "name": "net_hud",
+        "kind": "multi",
+        "host": "mp_host_hud.txt",
+        "clients": ["mp_client_hud.txt"],
+        # transport=udp is LOAD-BEARING, not a variation. The indicator's ping, jitter and loss all
+        # come from the UDP module's channel B; the TCP module reports lat_supported=0 and the
+        # indicator honestly prints `n/a` with an empty bar. A tcp run of this test would pass while
+        # showing nothing, which is the vacuous-green shape the suite keeps refusing.
+        "net_extra": "transport=udp",
+        # PINNED resolution: the capture is an in-game frame, so its size follows the persisted
+        # setup.dat preference (same reason match_launch pins it).
+        "extra_ini": "tools/uiscripts/ini/video_1024.ini",
+        # mp:TL-UISTALL -- the third capture (n1_stall, below) needs a real blackhole, so this
+        # scenario now runs its peers through the shim even on the clean-link half. `shim_delay: 0`
+        # keeps that half a plain relay (no added latency/jitter -- the ping/bar/cmd assertions below
+        # are still about the UNSHIMMED clean link); the timeline is what actually does something.
+        "shim": True,
+        "shim_delay": 0,
+        "shim_timeline": "tools/uiscripts/shim/net_hud_stall.txt",
+        # THE PIXELS AND THE post_check PROVE DIFFERENT HALVES, and neither is redundant.
+        #
+        # `_only` (baselines/mp_*_hud/_ignore.json) compares ONE rectangle: the indicator's first
+        # line up to but NOT including its digits -- the `PING [####]` label and the stability bar.
+        # That is everything about the element whose correct value is FIXED: that it is drawn at
+        # all, in the right place, in the game's own font, and that the bar reads full on a clean
+        # local link. tol 0 over that rect, so the whole feature vanishing is a FAIL rather than a
+        # rounding error inside a whole-frame 2% budget. L1d moved the rect: the indicator is now
+        # right-aligned in the map viewport's top-right (from WindowWidth/G_WIN_W), not the frame's
+        # top-left, so the rect is keyed off the RIGHT edge of the label -- see the re-cut
+        # `_ignore.json` comments for the measured coordinates at this resolution.
+        #
+        # The digits are deliberately outside the rect, because they cannot be baselined: the ping
+        # differs every run and the command-latency number moves with the adaptive lookahead. They
+        # are asserted instead by the post_check, off the `; [netind]` lines -- a measured srtt, a
+        # bar level in range, and cmd_ms == look_ms + step_ms (the display's own definition of
+        # command latency). A capture alone would have to mask exactly the cells carrying the claim.
+        "tol": 0.0,
+        # mp:L1c -- post_check_peers so BOTH peers' logs are checked (net_hud used to hand over only
+        # the host's, which is the one side that never had the bug: the host learns real transport
+        # ids from HELLO, only a client's one connection is declared-id -1). --reject-placeholder-name
+        # turns that into an assertion instead of a thing nobody was looking at.
+        # mp:TL-UISTALL -- the shim timeline's blackhole makes a stall a DETERMINISTIC part of this
+        # run now, so `--expect-stall` asserts the client's log actually named a peer (not just that
+        # the pixels happened to render one) alongside `--reject-placeholder-name`.
+        "post_check": [
+            "tools/check_net_indicator.py",
+            "--reject-placeholder-name",
+            "--expect-stall",
+        ],
+        "post_check_peers": True,
+        # The scripts sit ~20 game-seconds into the match so the RFC 6298 estimator has folded in
+        # enough round trips to print a ping rather than `n/a`. mp:TL-UISTALL's stall capture then
+        # waits on the shim timeline's scheduled blackhole (300s from shim-arm, measured generous --
+        # see tools/uiscripts/shim/net_hud_stall.txt), so the suite default budget is nowhere close;
+        # 900s mirrors link_death's own wall-clock-timeline budget.
+        "timeout": 900,
+        "desc": "L1/L1c/L1d/TL-UISTALL: the player-visible connection indicator on a live 2-peer udp match -- ping, stability bar, command latency, peer naming, and the WAITING FOR frame under a blackhole",
+    },
+    {
+        "name": "mp_snapshot",
+        "kind": "multi",
+        "host": "mp_host_snapshot.txt",
+        "clients": ["mp_client_snapshot.txt"],
+        # THE ONLY REGISTERED SCENARIO ON THE UDP TRANSPORT BY NAME, and it has to be: channel C is
+        # mh_net_udp.dll's, the TCP module answers the three snapshot rows "unsupported" (which is a
+        # named status, not a failure -- net_selftest udpsnaptest arm U asserts it), so this scenario
+        # on the shipping default would correctly prove nothing.
+        "net_extra": "transport=udp",
+        # In-game captures -> the display mode must be pinned (it is a persisted setup.dat setting).
+        "extra_ini": "tools/uiscripts/ini/video_1024.ini",
+        # SYMMETRIC: both peers arm the RECEIVER. A peer nothing is sent to polls an empty lane and
+        # gets MH_SNAP_IDLE -- the module opens its 32 MiB receive arena on the first CHUNK, never on
+        # a poll -- so arming it on the sender costs one call per step plus the harness's own ~8 MB
+        # destination buffer, and saves a second asymmetric knob. region_hash_step gives mp_analyze
+        # the ordinary R rows to localize a desync with; synth_move=0 keeps the per-run random
+        # workload out of the pixel captures.
+        # `snapshot_hold=1` is mp:X3 step one and it is set on BOTH peers only because there is no
+        # client-only knob: the host never imports, so its hold can never fire. On the CLIENT it
+        # stops the sim at the instant of a successful import -- the importing step's body is
+        # skipped and the clock is pinned -- which is what makes the run survivable at all. Without
+        # it this peer takes 0xC000041D within about one sim step (X1b, 3 runs of 3) and the
+        # scenario could only ever be `optin`.
+        # `domain_hash_step=1` is mp:X3's SUB-DOMAIN trail, and 1 (every step) is the setting it was
+        # built for: nine hashes a row against the R row's 61, so it is affordable at full rate and
+        # names the diverging SUBSYSTEM on the exact step it first moves, with the R row (every 200)
+        # naming the region inside it from the next sample.
+        "harness_extra": "snapshot_import=1;snapshot_log=200;region_hash_step=200;synth_move=0;"
+        "snapshot_hold=1;domain_hash_step=1",
+        # ASYMMETRIC: only the HOST captures and sends. Two peers each pushing 8 MB at the other is
+        # not a test of anything, and `snapshot_to=1` is the client's transport player id.
+        "harness_extra_host": "snapshot_at=120;snapshot_to=1",
+        # THE ASSERTION IS THE post_check, NOT THE PIXELS -- and it needs BOTH peers' logs, which is
+        # what `post_check_peers` exists for: the capture is in one file and the import in the other,
+        # and a checker handed one of them can only ever see half the claim, which would read as a
+        # pass. `--snapshot-verify` also fails a run that produced no snapshot section at all, so a
+        # transfer that never completed cannot pass by saying nothing.
+        "post_check": ["tools/mp_analyze.py", "--snapshot-verify"],
+        "post_check_peers": True,
+        # OPT-IN, NOT IN THE DEFAULT SUITE, AND WHY -- stated so nobody has to re-derive it from a
+        # red run. The mechanism is proven and the post_check says so (measured 2026-09-18 on the
+        # local 2-peer rig: 8,186,488 B in 500 body + 1 manifest chunk, root 4283ea434c7a52e8, 0
+        # re-requests, 19.6 s armed->READY; "IDENTICAL across all 61 regions", rng_state included,
+        # and the blob's recorded lockstep pair re-folded from live memory to the same two numbers).
+        # What is NOT green is what happens next: the importing peer FAULTS within about one sim
+        # step of a successful import (0xC000041D, no self-driven `; EXIT` witness), because the
+        # import rewinds its world to the sender's step while its turn engine keeps feeding it inputs
+        # for the live one -- or because one of libmh_import_world's seven re-derives is not safe to
+        # run against a session already in progress. Which of those it is, and what to do about it,
+        # is mp:X3: an import has to become a RESYNC (buffer the inputs, import, fast-forward), not a
+        # rewind. Until then this row would red the gate for everyone on a known, tracked cause.
+        # DELETE THE `optin` KEY when X3 lands -- the scenario is otherwise complete.
+        "optin": True,
+        # A FULL WORLD SNAPSHOT IS A 30-60 s TRANSFER at channel C's rate limit (mp:X1 measured
+        # 31.5 / 43.3 / 59.8 s over three runs at 5% injected loss), so this scenario is the longest
+        # in the registry by construction rather than by accident. The `gameclock 75000` wait in both
+        # scripts is what the peers sit on; these budgets have to outlast it. (`gameclock` and NOT
+        # `simstep`: the sim fence would freeze the very sim-step hook the transfer's poll runs in --
+        # see either script's header.)
+        "timeout": 420,
+        "timeout_frames": 200000,
+        "desc": "mp:X1b: the host captures a live world at a sim step, channel C moves it to the "
+        "client, and the client imports it -- every per-region hash identical, rng_state included",
+    },
+    # ---- mp:X2 -- THE MAP DOWNLOAD, three scenarios over one mechanism ---------------------------
+    #
+    # WHY THREE AND NOT ONE. X2's clauses are three different STARTING STATES of the joiner, and the
+    # interesting behaviour is different in each: a peer with no map must fetch one, a peer with a
+    # DIFFERENT file of the same name must fetch one AND keep its own, and a peer that already has
+    # the content must fetch NOTHING. A single scenario could only ever exercise the first.
+    #
+    # `transport=udp` IS LOAD-BEARING in all three, for mp_snapshot's reason: the transfer is channel
+    # C, which is mh_net_udp.dll's; the TCP module answers the snapshot rows "unsupported", so a tcp
+    # run would prove nothing while passing.
+    #
+    # THE CLIENT-SIDE STAGING LIVES IN THE DLL (`[net] map_test_pretend=none|other`), and that is
+    # not where a test knob would normally go. The reason is mechanical: every clause needs the
+    # CLIENT to start holding something particular while the HOST holds the real map, and this
+    # harness has no per-peer file staging -- it copies the same mh.dll, ini and key to every peer.
+    # The knob is therefore symmetric in the ini and asymmetric in effect (only a client acts on it)
+    # and it announces itself in mh_net.log.
+    #
+    # IT STAGES A DECISION AND TOUCHES NO FILE, which is a correction rather than a preference. The
+    # first version renamed the map aside on the client -- and `tools/make_lane.py` builds a lane
+    # with LINKED_DIRS = ["Res", "Maps"], so every lane's Maps is a SYMLINK to the one shared game
+    # image. "Make it absent for me" therefore took the map away from the host too: the host logged
+    # `send REFUSED -- Maps\<name> could not be read`, both scripts timed out, and the shared
+    # image had to be repaired by hand. The knob now changes only what the client REPORTS holding
+    # and whether its resolver considers the base-name candidate; the download, the
+    # content-addressed write (into `mh_dl\` beside the executable -- NOT under `Maps\`, whose
+    # sub-folders the picker lists as browsable rows, which cost a second rig run) and the
+    # redirect all really happen.
+    #
+    # WHAT THAT COSTS, stated rather than left to be assumed: on a shared-Maps lane the client's
+    # base file IS the host's content, so a broken redirect would still open matching bytes and
+    # these scenarios would still pass. The redirect's own proof is `net_selftest.exe maptest`
+    # arms E and W, where the local file is genuinely different bytes. These three prove the
+    # INTEGRATION: the claim, the gate, the transfer, the content-addressed write, and a match.
+    #
+    # `blue monday.mpm` is the map picker's own pre-selected entry, which is what the `clickl Ok`
+    # on the "Available maps" screen accepts in every host script here.
+    {
+        "name": "map_absent",
+        "kind": "multi",
+        "host": "mp_host_map.txt",
+        "clients": ["mp_client_map.txt"],
+        "net_extra": "transport=udp;map_test_pretend=none",
+        "extra_ini": "tools/uiscripts/ini/video_1024.ini",
+        # `--expect-gate` is the non-vacuity arm: without it a run where the host never made a claim
+        # (so nothing was ever held, downloaded or refused) would satisfy every other assertion by
+        # doing nothing. The host script's own `disabled Start` says the same thing on a frame.
+        "post_check": ["tools/check_map_transfer.py", "--expect-gate"],
+        "post_check_peers": True,
+        # A 115-460 KB map over channel C is seconds, not the snapshot's minute -- but the host sits
+        # on `enabled Start` for the whole of it, so the budget has to cover a transfer plus the
+        # ordinary two-peer walk.
+        "timeout": 300,
+        "desc": "X2: the client does NOT have the host's map -- Start is HELD, the map crosses "
+        "channel C, and both peers enter the match",
+    },
+    {
+        "name": "map_conflict",
+        "kind": "multi",
+        "host": "mp_host_map.txt",
+        "clients": ["mp_client_map.txt"],
+        # THE CASE THE ITEM EXISTS FOR: the client holds a file with the RIGHT NAME and the WRONG
+        # BYTES. Before X2 both peers would have loaded "blue monday.mpm", built different terrain
+        # and desynced on step 1 with nothing in any log naming the cause. `pretend=other` reports a
+        # hash that is deliberately not the host's, so the host's log reads `has=<hex>` rather than
+        # `has=none` -- the two scenarios differ at exactly the decision that distinguishes them.
+        "net_extra": "transport=udp;map_test_pretend=other",
+        "extra_ini": "tools/uiscripts/ini/video_1024.ini",
+        "post_check": ["tools/check_map_transfer.py", "--expect-gate"],
+        "post_check_peers": True,
+        "timeout": 300,
+        "desc": "X2: the client holds a DIFFERENT file of the same name -- it receives the host's "
+        "content, plays, and its own file is byte-unchanged afterwards",
+    },
+    {
+        "name": "map_have",
+        "kind": "multi",
+        # The ORDINARY scripts, deliberately: this scenario's whole claim is that a peer which
+        # already holds the content plays exactly as it did before X2 -- no gate, no transfer, no
+        # extra wait -- so it must not run a script that expects any of those.
+        "host": "mp_host_start.txt",
+        "clients": ["mp_client_start.txt"],
+        "net_extra": "transport=udp",
+        "extra_ini": "tools/uiscripts/ini/video_1024.ini",
+        # `--expect-nothing` asserts an ABSENCE (no transfer armed, nothing stored), which is the
+        # weakest kind of evidence there is -- so the checker only accepts it BESIDE the positive
+        # `; [map] peer ... holds the map` line. "Nothing was transferred" and "the mechanism never
+        # ran" are then different verdicts rather than the same green.
+        "post_check": ["tools/check_map_transfer.py", "--expect-nothing"],
+        "post_check_peers": True,
+        "desc": "X2: a joiner that already holds the map content transfers NOTHING and the host's "
+        "Start is never held",
     },
 ]
 
@@ -1320,9 +2411,41 @@ SP_PROMOTE_INI = os.path.join(REPO, "tools", "uiscripts", "ini", "ship_config.in
 SP_ROLLBACK_INI = os.path.join(REPO, "tools", "uiscripts", "ini", "rollback_original.ini")
 
 
+def sp_net_text(log_dir):
+    """mh_net.log for a PROCESS run dir -- its own, plus every SESSION sibling's the process opened.
+
+    Since the per-session log split, mh_net.log is per SESSION: the lines the DLL writes once a
+    match is open (`[promote] sim_step body served`, `[promote] sim_tick: call #`, a PARTIAL install
+    reported at landing) land in `<ts>_<session>_0_solo/mh_net.log`, while the process dir
+    (`<ts>_menu_solo`, the one holding the harness log) keeps only the pre-session lines. The soak's
+    clause-6b liveness rule read the process file alone and failed every --soak run at HEAD with
+    "liveness signal ABSENT" while the signal sat in the sibling (found by the TL-GATE-D25FX
+    re-record, 2026-09-20). Concatenated, newest last, so a substring search sees the whole run."""
+    parts = []
+    own = os.path.join(log_dir, "mh_net.log")
+    if os.path.isfile(own):
+        parts.append(open(own, encoding="utf-8", errors="replace").read())
+    parent = os.path.dirname(log_dir)
+    stamp = os.path.basename(log_dir).split("_")[0]
+    for d in sorted(glob.glob(os.path.join(parent, "*_solo"))):
+        if d == log_dir or "_menu_" in os.path.basename(d):
+            continue
+        if os.path.basename(d).split("_")[0] < stamp:
+            continue  # an older session, not this process's
+        p = os.path.join(d, "mh_net.log")
+        if os.path.isfile(p):
+            parts.append(open(p, encoding="utf-8", errors="replace").read())
+    return "\n".join(parts)
+
+
 def sp_newest_run(lane_dir):
+    # SES1: prefer the PROCESS ("menu") directory. A single-player lane never opens a lobby so it
+    # only ever has one shape of folder -- but this is also used to read a lane that DID, and there
+    # the harness outputs (which is what every caller here wants) are in the process directory, while
+    # a newer session directory would win a plain mtime sort.
     runs = sorted(glob.glob(os.path.join(lane_dir, "logs", "*")), key=os.path.getmtime)
-    return runs[-1] if runs else None
+    menu = [d for d in runs if "_menu_" in os.path.basename(d)]
+    return (menu or runs)[-1] if runs else None
 
 
 def sp_arm_game_speed(log_dir):
@@ -1534,8 +2657,7 @@ def soak_report(log_dir, args):
     # PASS. Two coverage baselines were recorded off runs the DLL had already declared invalid before
     # this check existed. The configuration is documented as mutually exclusive in
     # tools/data/dll_patch_manifest.json; this is what makes that documentation bite.
-    nl = os.path.join(log_dir, "mh_net.log")
-    ntext = open(nl, encoding="utf-8", errors="replace").read() if os.path.isfile(nl) else ""
+    ntext = sp_net_text(log_dir)
     for m in re.finditer(
         r"; \[promote\] (\w+): (\d+)/(\d+) seams installed -- PARTIAL[^\r\n]*", ntext
     ):
@@ -4243,16 +5365,167 @@ UI_EXCUSED_CHANNELS = (
 )
 
 
+# ---- DECLARED EXCUSALS (tooling TL-GATE-D25FX, 2026-09-20) ------------------------------------
+#
+# A second kind of excused channel, and it is nothing like the wall-clock set above. Those are a
+# property of what a replay controls; these are a NAMED, BOUNDED divergence between the ship and the
+# original bodies that the verdict is allowed to look past ON ONE LEG -- today exactly one: D25 made
+# libmh's build-click probe side-effect-free while the original binary still pays + re-grants into
+# the gains-only resource_spent counter, so ship-vs-original differs in that counter from the
+# human's first build click by design (the fix IS the difference). The rows live in
+# tools/data/abc_excusals.json, each with the region, the bytes it is for, the reason and the item;
+# a lint cross-checks every row against the hash manifest.
+#
+# HOW IT IS APPLIED without touching the DLL or the other legs: `state` is the FNV fold of the
+# per-region hashes the `R` line already prints (mp_analyze.state_fold re-derives it, and the
+# consumer REFUSES the variant unless that re-derivation reproduces `state` on every step of both
+# arms). So on the excused leg the required channel becomes `state~excused` -- the same fold with
+# the excused region column(s) dropped -- while B-vs-C and A-vs-C still compare the full `state`.
+# The excused column itself is printed with its own mismatch count, so the excusal is visible, and
+# never a tolerance: a region the rows do not name is compared exactly as before.
+ABC_EXCUSALS = os.path.join(REPO, "tools", "data", "abc_excusals.json")
+
+
+def ui_load_excusals(leg="A-vs-B", path=ABC_EXCUSALS):
+    """The declared excusal rows whose `legs` include `leg` -- [] when the file is absent.
+
+    A row may name A-vs-B and A-vs-C, never B-vs-C: C is an all-original recording, so a
+    ship-vs-C difference has the same cause as a ship-vs-original one and gets the same declared
+    excusal, while original-vs-C is the replayer's own claim and takes none."""
+    if not os.path.isfile(path):
+        return []
+    try:
+        d = json.load(open(path, encoding="utf-8"))
+    except (OSError, ValueError) as e:
+        print("  WARNING: %s unreadable (%s) -- no excusal applied" % (path, e))
+        return []
+    return [r for r in d.get("excusals", []) if leg in (r.get("legs") or []) and r.get("region")]
+
+
+def ui_excused_fold(seg, step, drop):
+    """(full, excused) folds for one step of a segment, or None where the segment cannot supply
+    them. A live arm supplies both from its R columns; a committed oracle supplies the excused
+    fold it was cut with (its own R columns are not stored), and only if its excused set is the
+    one being asked for."""
+    import mp_analyze as _m
+
+    row = seg["regions"].get(step)
+    st = seg["steps"].get(step) or {}
+    if row and all(
+        v is not None for nm, v in zip(_m.REGION_NAMES, row) if nm not in _m.STATE_EXCLUDED
+    ):
+        return _m.state_fold(row), _m.state_fold(row, drop=drop)
+    pre = st.get("state~excused")
+    if pre is not None and set(seg.get("excused_regions") or ()) == set(drop):
+        return st.get("state"), pre.upper()
+    return None
+
+
+def ui_apply_excusals(res, seg_a, seg_b, excusals, leg="A-vs-B"):
+    """Add the `state~excused` channel to an sp_compare() result, per the declared rows.
+
+    Fail-closed in both directions: with no rows this is a no-op (the verdict stays on `state`);
+    with rows, the fold MUST reproduce each arm's own `state` on every common step first, or the
+    derived channel is refused and the verdict falls back to the full `state` -- which is red, and
+    says why. Returns the list of applied rows (for the summary line)."""
+    import mp_analyze as _m
+
+    if not excusals:
+        return []
+    names = set(_m.REGION_NAMES)
+    unknown = [r["region"] for r in excusals if r["region"] not in names]
+    if unknown:
+        res["excusal_refused"] = "region(s) not in the hash manifest: %s" % ", ".join(unknown)
+        return []
+    drop = {r["region"] for r in excusals}
+    common = sorted(set(seg_a["steps"]) & set(seg_b["steps"]))
+    idx = {nm: i for i, nm in enumerate(_m.REGION_NAMES)}
+    bad_self, compared, bad, unsupplied = 0, 0, [], 0
+    per_region = {nm: {"compared": 0, "mismatch_count": 0, "first_mismatch": None} for nm in drop}
+    for st in common:
+        fa, fb = ui_excused_fold(seg_a, st, drop), ui_excused_fold(seg_b, st, drop)
+        if fa is None or fb is None:
+            unsupplied += 1
+            continue
+        # THE SELF-CHECK: the fold over ALL columns must be the side's own printed `state`.
+        if (
+            fa[0] != seg_a["steps"][st]["state"].upper()
+            or fb[0] != seg_b["steps"][st]["state"].upper()
+        ):
+            bad_self += 1
+            continue
+        compared += 1
+        if fa[1] != fb[1]:
+            bad.append(st)
+        ra, rb = seg_a["regions"].get(st), seg_b["regions"].get(st)
+        for nm in drop:
+            i = idx[nm]
+            pr = per_region[nm]
+            if ra and rb and ra[i] is not None and rb[i] is not None:
+                pr["compared"] += 1
+                if ra[i] != rb[i]:
+                    pr["mismatch_count"] += 1
+                    if pr["first_mismatch"] is None:
+                        pr["first_mismatch"] = st
+    if bad_self or compared == 0:
+        res["excusal_refused"] = (
+            "the R-column fold does not reproduce `state` on %d step(s) (compared %d, %d step(s) "
+            "where a side could not supply the excused fold -- an oracle cut under another excusal "
+            "set, or no R columns) -- the derived channel cannot be trusted, the full `state` "
+            "decides" % (bad_self, compared, unsupplied)
+        )
+        return []
+    res["channels"]["state~excused"] = {
+        "compared": compared,
+        "mismatch_count": len(bad),
+        "first_mismatch": bad[0] if bad else None,
+    }
+    res["excusals"] = [
+        {
+            "id": r.get("id", "?"),
+            "region": r["region"],
+            "reason": r.get("reason", ""),
+            "since": r.get("since", ""),
+            "leg": leg,
+            "stats": per_region[r["region"]],
+        }
+        for r in excusals
+    ]
+    return res["excusals"]
+
+
 def ui_verdict(res):
     """(ok, lines) for a UI-REC comparison -- the required channels only, with the rest named.
 
     Deliberately NOT sp_compare's own `ok`: that requires every channel, which is right for two runs
     launched identically and wrong for a recording compared against its replay. Reported rather than
-    silently dropped, so nobody reads this verdict as "everything matched"."""
+    silently dropped, so nobody reads this verdict as "everything matched".
+
+    With declared excusals applied (ui_apply_excusals), `state~excused` is the required channel and
+    `state` is printed, not required; each excused region is printed with its own mismatch count and
+    the row's id + reason, so the excusal is on the page every time it is used."""
     lines, ok = [], True
     if not res["compared_steps"]:
         return False, ["      NO OVERLAPPING STEPS -- the two runs compared nothing"]
-    for ch in UI_REQUIRED_CHANNELS:
+    excused = res.get("excusals") or []
+    if res.get("excusal_refused"):
+        lines.append("      EXCUSAL REFUSED: %s" % res["excusal_refused"])
+    required = list(UI_REQUIRED_CHANNELS)
+    if excused:
+        required = ["state~excused"] + [c for c in required if c != "state"]
+        v = res["channels"].get("state")
+        if v is not None:
+            lines.append(
+                "      %-18s compared %-6d mismatches %-6d first %s   [excused: %s -- verdict is state~excused]"
+                % (
+                    "state",
+                    v["compared"],
+                    v["mismatch_count"],
+                    v["first_mismatch"],
+                    ", ".join(e["id"] for e in excused),
+                )
+            )
+    for ch in required:
         v = res["channels"].get(ch)
         if v is None:
             ok = False
@@ -4276,6 +5549,29 @@ def ui_verdict(res):
             "      %-18s compared %-6d mismatches %-6d first %s   [excused: wall clock]"
             % (ch, v["compared"], v["mismatch_count"], v["first_mismatch"])
         )
+    for e in excused:
+        st = e["stats"]
+        if st["compared"]:
+            lines.append(
+                "      %-18s compared %-6d mismatches %-6d first %s   [EXCUSED on %s: %s, since %s]"
+                % (
+                    e["region"],
+                    st["compared"],
+                    st["mismatch_count"],
+                    st["first_mismatch"],
+                    e["leg"],
+                    e["id"],
+                    e["since"] or "?",
+                )
+            )
+        else:
+            # The recording stores no per-region column, so the excused region's own count is
+            # not measurable on a C leg; its effect is the state / state~excused pair above.
+            lines.append(
+                "      %-18s (no per-region column on the recording side)   [EXCUSED on %s: %s, since %s]"
+                % (e["region"], e["leg"], e["id"], e["since"] or "?")
+            )
+        lines.append("      %-18s   reason: %s" % ("", e["reason"]))
     if res.get("uncompared_regions"):
         ok = False
         lines.append("      UNCOMPARED regions: %s" % ", ".join(res["uncompared_regions"]))
@@ -4348,6 +5644,21 @@ def ui_oracle_extract(harness_log, dst, meta=None):
     steps = sorted(set(seg["steps"]) & set(seg["regions"]))
     if not steps:
         return None, 0
+    # THE EXCUSED COLUMN (TL-GATE-D25FX): the recording's `state~excused` for the A-vs-C leg,
+    # folded here from the source run's R columns under the declared A-vs-C excusal set (the
+    # oracle does not store its R columns, so this is the one moment the fold can be taken). The
+    # set it was cut under is stamped; a later change to the declared set makes the oracle stale
+    # for that leg, and ui_excused_fold refuses to use it. Refused outright if the fold does not
+    # reproduce the run's own `state` -- an oracle whose derived column is wrong is worse than none.
+    drop = sorted({r["region"] for r in ui_load_excusals("A-vs-C")})
+    for s in steps:
+        if _m.state_fold(seg["regions"][s]) != seg["steps"][s]["state"].upper():
+            print(
+                "FAIL: the R-column fold does not reproduce `state` at step %d of %s -- the "
+                "oracle's state~excused column cannot be derived; is the analyzer's REGION_NAMES "
+                "current with the DLL's manifest?" % (s, harness_log)
+            )
+            return None, 0
     with gzip.open(dst, "wt", encoding="utf-8", newline="\n") as f:
         f.write(
             "; UI-REC recording oracle -- the per-step channels a replay is REQUIRED to match.\n"
@@ -4358,11 +5669,26 @@ def ui_oracle_extract(harness_log, dst, meta=None):
         )
         for k, v in sorted((meta or {}).items()):
             f.write("; %s: %s\n" % (k, v))
+        # THE MANIFEST STAMP (TL-GATE-D25FX): `state` is a fold over the hash manifest's regions, so
+        # an oracle is only comparable under the manifest it was cut under. Every world blob has
+        # carried this fingerprint since LIB-WORLD; the oracle did not, and D25's appended region
+        # turned both A/B/C fixtures red from step 1 with nothing saying "stale" -- see dead-ends.
+        f.write("; hash_manifest_fp: %s\n" % _m.hash_manifest_fingerprint())
+        f.write("; excused_regions: %s\n" % (" ".join(drop) or "-"))
+        f.write("; columns: step state state~excused %s\n" % " ".join(UI_ORACLE_REGIONS))
         f.write("; regions: %s\n" % " ".join(UI_ORACLE_REGIONS))
         f.write("; steps: %d\n" % len(steps))
         for s in steps:
             r = seg["regions"][s]
-            f.write("%d %s %s\n" % (s, seg["steps"][s]["state"], " ".join(r[c] for c in cols)))
+            f.write(
+                "%d %s %s %s\n"
+                % (
+                    s,
+                    seg["steps"][s]["state"],
+                    _m.state_fold(r, drop=set(drop)),
+                    " ".join(r[c] for c in cols),
+                )
+            )
     return dst, len(steps)
 
 
@@ -4378,17 +5704,37 @@ def ui_oracle_load(path):
     cols = [idx[nm] for nm in UI_ORACLE_REGIONS]
     width = len(_m.REGION_NAMES)
     seg = {"steps": {}, "regions": {}, "breakdown": {}, "banner": None, "path": path}
+    seg["hash_manifest_fp"] = None
+    seg["excused_regions"] = []
     with gzip.open(path, "rt", encoding="utf-8", errors="replace") as f:
         for line in f:
             if line.startswith(";"):
+                m = re.match(r";\s*hash_manifest_fp:\s*([0-9A-Fa-f]{8})", line)
+                if m:
+                    seg["hash_manifest_fp"] = m.group(1).upper()
+                m = re.match(r";\s*excused_regions:\s*(.+)", line)
+                if m:
+                    seg["excused_regions"] = [x for x in m.group(1).split() if x != "-"]
                 continue
             p = line.split()
-            if len(p) != 2 + len(cols):
+            # Two shapes: `step state r1..rN` (pre-2026-09-20) and `step state state~excused r1..rN`.
+            if len(p) == 3 + len(cols):
+                s = int(p[0])
+                seg["steps"][s] = {
+                    "clock": None,
+                    "combined": None,
+                    "state": p[1].upper(),
+                    "state~excused": p[2].upper(),
+                }
+                tail = p[3:]
+            elif len(p) == 2 + len(cols):
+                s = int(p[0])
+                seg["steps"][s] = {"clock": None, "combined": None, "state": p[1].upper()}
+                tail = p[2:]
+            else:
                 continue
-            s = int(p[0])
-            seg["steps"][s] = {"clock": None, "combined": None, "state": p[1].upper()}
             row = [None] * width
-            for c, v in zip(cols, p[2:]):
+            for c, v in zip(cols, tail):
                 row[c] = v.upper()
             seg["regions"][s] = row
     return seg
@@ -4972,20 +6318,26 @@ def run_ui_equiv(args):
     for ln in report:
         print(ln)
     res = _m.sp_compare(runs["ship"], runs["original"], "ship", "original")
+    # ship-vs-original IS the A-vs-B leg, so the declared excusals apply here exactly as in --ui-abc.
+    applied = ui_apply_excusals(res, runs["ship"], runs["original"], ui_load_excusals("A-vs-B"))
     print("      compared steps: %d" % res["compared_steps"])
     v_ok, v_lines = ui_verdict(res)
     for ln in v_lines:
         print(ln)
+    print(
+        "      excusals applied: %d%s"
+        % (len(applied), " (" + ", ".join(e["id"] for e in applied) + ")" if applied else "")
+    )
     if gored:
         # THE VERDICT IS INVERTED, and the SHAPE checks are not. An arm that crashed also fails to
         # match, so "it went red" is only evidence if both arms otherwise ran the fixture properly --
         # `ok` is what says they did, and it is required in BOTH directions.
-        st = res["channels"].get("state")
+        st = res["channels"].get("state~excused") or res["channels"].get("state")
         first = st["first_mismatch"] if st else None
         red_here = st is not None and st["mismatch_count"] > 0
         final = ok and red_here
         print(
-            "      GO-RED: `state` %s (poked at step %d, first mismatch at %s)"
+            "      GO-RED: the deciding state channel %s (poked at step %d, first mismatch at %s)"
             % (
                 "DIVERGED" if red_here else "did NOT diverge -- the comparison is blind",
                 gored,
@@ -5043,6 +6395,36 @@ def run_ui_abc(args):
     gored = getattr(args, "ui_gored", 0)
     print("UI-REC A/B/C: %s" % journal)
     print("  oracle    %s" % oracle)
+    # STALE BEFORE ANYTHING RUNS (TL-GATE-D25FX). The C arm's `state` column is a fold over the
+    # hash manifest's regions, so an oracle cut under another manifest is incomparable, not wrong --
+    # and until this check it read as "B-vs-C mismatches from step 1", indistinguishable from a
+    # broken replayer, after two arms had spent their minutes. Checked here, before a lane is
+    # provisioned, against the fingerprint the DLL was built with.
+    cur_fp = _m.hash_manifest_fingerprint()
+    orc_fp = ui_oracle_load(oracle).get("hash_manifest_fp")
+    if orc_fp != cur_fp:
+        print(
+            "FAIL: STALE ORACLE: %s was captured under hash manifest %s, current is %s -- its "
+            "`state` column is a fold over a different region set and cannot be compared. Re-cut "
+            "it from a mode=original replay of the journal (python tools/test_ui.py --ui-oracle "
+            "<run dir> --ui-oracle-out %s --ui-oracle-note ...), with the equivalence proof in its "
+            "header; the libref fixtures need the same re-capture (tools/replay_libref.py says so)."
+            % (
+                oracle,
+                orc_fp or "UNSTAMPED",
+                cur_fp,
+                os.path.relpath(oracle, REPO).replace(chr(92), "/"),
+            )
+        )
+        return 1
+    print("  oracle manifest fingerprint %s == current (not stale)" % cur_fp)
+    excusals = {leg: ui_load_excusals(leg) for leg in ("A-vs-B", "A-vs-C")}
+    for leg in ("A-vs-B", "A-vs-C"):
+        if excusals[leg]:
+            print(
+                "  declared excusal(s) on %s: %s (tools/data/abc_excusals.json)"
+                % (leg, ", ".join("%s -> %s" % (e.get("id"), e["region"]) for e in excusals[leg]))
+            )
     if bounded:
         print(
             "  NOTE: --ui-steps %d bounds this to a RUNG. The scenario's own claim is the WHOLE "
@@ -5078,6 +6460,30 @@ def run_ui_abc(args):
             return 1
         arm_lanes[arm] = (slot, ld)
 
+    # --ui-abc-ini: the SHARED diagnostic fragment(s), merged into both arms before the arm's own
+    # selector so the selector wins any overlap. Refused if a fragment touches a configuration
+    # section: the arms differ in [config] mode and nothing else, and a shared fragment that armed
+    # a promotion key would make the "promotion oracle" compare two ship configurations.
+    both_ini = tuple(getattr(args, "ui_abc_ini", None) or ())
+    for frag in both_ini:
+        fp = frag if os.path.isabs(frag) else os.path.join(REPO, frag)
+        if not os.path.isfile(fp):
+            print("FAIL: --ui-abc-ini fragment not found: %s" % frag)
+            return 1
+        sects = [
+            ln.strip().strip("[]").lower()
+            for ln in open(fp, encoding="utf-8")
+            if ln.strip().startswith("[")
+        ]
+        bad = sorted(set(sects) & {"config", "promote", "rebind", "shadow"})
+        if bad:
+            print(
+                "FAIL: --ui-abc-ini %s names %s -- a fragment shared by both arms may carry "
+                "diagnostics only, never a configuration key" % (frag, ", ".join(bad))
+            )
+            return 1
+        print("  both arms: --ui-abc-ini %s (sections %s)" % (frag, ", ".join(sects) or "none"))
+
     def _run_one_arm(arm, extra):
         slot, ld = arm_lanes[arm]
         sub = argparse.Namespace(**vars(args))
@@ -5085,7 +6491,7 @@ def run_ui_abc(args):
             sub,
             journal,
             slot=slot,
-            extra_ini=extra,
+            extra_ini=both_ini + tuple(extra),
             label=arm,
             poke_at=gored if arm == "ship" else 0,
             budget=args.ui_steps if bounded else 0,
@@ -5304,10 +6710,20 @@ def run_ui_abc(args):
         kw = {"time_regions": regions} if regions else {}
         res = _m.sp_compare(runs[a], runs[b], a, b, **kw)
         results[title] = res
+        applied = []
+        leg = title.replace(" ", "-")
+        if leg in excusals:
+            # THE TWO SHIP LEGS. B-vs-C compares the full `state` and takes no excusal: a
+            # replayer bug must never be excused as a promotion difference.
+            applied = ui_apply_excusals(res, runs[a], runs[b], excusals[leg], leg)
         print("\n  %s -- %s (%s)" % (title, why, "%d compared steps" % res["compared_steps"]))
         v_ok, v_lines = ui_verdict(res)
         for ln in v_lines:
             print(ln)
+        print(
+            "      excusals applied: %d%s"
+            % (len(applied), " (" + ", ".join(e["id"] for e in applied) + ")" if applied else "")
+        )
         if not gored:
             ok &= v_ok
     if gored:
@@ -5322,7 +6738,8 @@ def run_ui_abc(args):
         # fail for a reason that has nothing to do with the poke, and the next person would either
         # delete the clause or stop running the arm. Tighten it when that residue is fixed.
         def st_of(t):
-            return results[t]["channels"].get("state") or {}
+            ch = results[t]["channels"]
+            return ch.get("state~excused") or ch.get("state") or {}
 
         def red_at(t):
             s = st_of(t)
@@ -5368,7 +6785,14 @@ def run_ui_oracle(args):
     if not dst:
         print("FAIL: --ui-oracle needs --ui-oracle-out <path>")
         return 1
-    path, n = ui_oracle_extract(log, dst, {"source": os.path.basename(os.path.dirname(log) or log)})
+    meta = {"source": os.path.basename(os.path.dirname(log) or log)}
+    for kv in getattr(args, "ui_oracle_note", None) or []:
+        k, _, v = kv.partition("=")
+        if not k.strip() or not v.strip():
+            print("FAIL: --ui-oracle-note wants KEY=VALUE, got %r" % kv)
+            return 1
+        meta[k.strip()] = v.strip()
+    path, n = ui_oracle_extract(log, dst, meta)
     if not path:
         print("FAIL: the log carries no per-step region hashes (region_hash_step off?)")
         return 1
@@ -7731,7 +9155,10 @@ DET_LOCAL_LANE_BASE = lane_alloc.block("det_local")[0]
 # budgeted in FRAMES, expires far sooner in wall-clock than it does with the blit enabled. 1500 (the
 # default) does not even survive boot on this host. This is a floor; a test with its own timeout_frames
 # still wins. Headless frames tick so fast they blow a FRAME-budget watchdog.
-LOCAL_TIMEOUT_FRAMES = 80000
+#
+# TL-HARN17: see frames_for_seconds() near the top of this file for what this derives from. 90 s at
+# the floor rate (was a bare 80000, i.e. ~89 s at this same floor -- this is not a cut).
+LOCAL_TIMEOUT_FRAMES = frames_for_seconds(90, SOLO_HEADLESS_FPS_FLOOR)
 
 # D15: a test this close to its wall-clock budget is reported as a NEAR-MISS. 0.7 rather than 0.9
 # because the whole point is lead time -- the 2026-08-06 failures were tests that had been sitting
@@ -7741,7 +9168,18 @@ WARN_FRAC = 0.7
 
 
 def lane_names(test):
-    """Every lane a test needs, in peer order (host first)."""
+    """Every lane a test needs, in peer order (host first).
+
+    mp:R7a -- a test with `share_lanes: "<other>"` OWNS NO LANES: it reuses the lanes (and port) of a
+    comparable scenario it never runs concurrently with, and so contributes NOTHING to the suite's
+    lane demand. The capture suite allocates one lane per registry row and the block is at the DLL's
+    mutex ceiling (lane_alloc.py, TL-LANEPOOL), so a new row that needed its own two lanes could not
+    be added at all; sharing is how direct_dial_with_relay_set joins the registry without one. The
+    reuse is made safe by the runner scheduling a share pair SERIALLY (never both on the shared lane
+    at once) and by every run redeploying its own script/ini into the lane folder before it launches.
+    """
+    if test.get("share_lanes"):
+        return []
     if test["kind"] == "solo":
         return ["ui_" + test["name"]]
     return ["ui_%s_host" % test["name"]] + [
@@ -7761,7 +9199,26 @@ def provision_lanes(tests, headless=True, port_base=None, lane_base=0, stock_exe
     # and silently took over ui_soak's 32, --sp-determinism's 31 and the tactical lanes' 33..36 --
     # every one of those a machine-wide single-instance mutex, and every collision a game that dies
     # at boot without a log line. Overflowing the block is now a refusal with the two numbers in it.
-    need = sum(len(lane_names(t)) for t in tests)
+    # mp:R7a -- a share_lanes test borrows another's lanes ONLY WHEN THAT OTHER IS ALSO IN THIS RUN.
+    # Run alone (e.g. iterating on direct_dial_with_relay_set by itself) it provisions its own lanes,
+    # so a subset run does not fail for want of the scenario it usually borrows from. The full-registry
+    # demand the lint checks (lane_alloc.suite_demand -> lane_names, which returns [] for a sharer)
+    # always has the target present, so a sharer is 0 there -- which is the headroom this buys.
+    present = {t["name"] for t in tests}
+
+    def _provision_names(t):
+        tg = t.get("share_lanes")
+        if tg and tg in present:
+            return []
+        if tg:  # target absent from this run -> stand on our own lanes
+            if t["kind"] == "solo":
+                return ["ui_" + t["name"]]
+            return ["ui_%s_host" % t["name"]] + [
+                "ui_%s_c%d" % (t["name"], i + 1) for i in range(len(t["clients"]))
+            ]
+        return lane_names(t)
+
+    need = sum(len(_provision_names(t)) for t in tests)
     owner = next((n for n, (b, _c) in lane_alloc.BLOCKS.items() if b == lane_base), None)
     if owner:
         cap = lane_alloc.block(owner)[1]
@@ -7778,7 +9235,7 @@ def provision_lanes(tests, headless=True, port_base=None, lane_base=0, stock_exe
     for ti, t in enumerate(tests):
         port = port_base + ti
         shim_port = (LOCAL_SHIM_PORT_BASE + ti) if t.get("shim") else 0
-        names = lane_names(t)
+        names = _provision_names(t)
         for i, nm in enumerate(names):
             lane_no += 1
             # host lane (i == 0) keeps the game port; a shim test's CLIENTS dial the shim's port
@@ -7811,15 +9268,38 @@ def provision_lanes(tests, headless=True, port_base=None, lane_base=0, stock_exe
             # scenarios would silently be measuring the degraded configuration.
             for sat in t.get("omit_satellite", []) or []:
                 cmd += ["--omit-satellite", sat]
+            # mp:F2b: a scenario may point its OWN lane at a non-polygon install (font_merged's
+            # merged mh_ex pack). Additive -- every other test omits this key and keeps the default
+            # machine.POLYGON source make_lane.py already falls back to.
+            if t.get("lane_src"):
+                cmd += ["--src", t["lane_src"]]
             r = subprocess.run(cmd, capture_output=True, text=True)
             if r.returncode != 0:
                 print("  lane %s FAILED: %s" % (nm, (r.stderr or r.stdout).strip()[:200]))
                 return None
         plan[t["name"]] = (port, shim_port, names)
-        print(
-            "  %-14s port %d%s  lanes: %s"
-            % (t["name"], port, ("  shim %d" % shim_port) if shim_port else "", ", ".join(names))
-        )
+        if names:
+            print(
+                "  %-14s port %d%s  lanes: %s"
+                % (
+                    t["name"],
+                    port,
+                    ("  shim %d" % shim_port) if shim_port else "",
+                    ", ".join(names),
+                )
+            )
+    # mp:R7a -- a share_lanes test that borrowed (provisioned no lanes of its own) aliases its plan
+    # entry to the scenario it borrows, so build_argv finds the same port/lanes. The runner schedules
+    # the pair serially, so the borrowed lane is never in use by both at once. A sharer running WITHOUT
+    # its target present provisioned its own lanes above and keeps them.
+    for t in tests:
+        target = t.get("share_lanes")
+        if target and target in present:
+            plan[t["name"]] = plan[target]
+            print(
+                "  %-14s SHARES the lanes of %s (mp:R7a, TL-LANEPOOL headroom)"
+                % (t["name"], target)
+            )
     return plan
 
 
@@ -7837,6 +9317,258 @@ def shim_argv(test, forward_to, shim_port=0):
     if test.get("shim_timeline"):
         argv += ["--shim-timeline", test["shim_timeline"]]
     return argv
+
+
+# ---- mp:R2: a real relay PROCESS beside the rig --------------------------------------------------
+#
+# A relayed scenario is not a configuration of a LAN scenario: the peers dial a third process, and
+# whether that process behaves is half of what the test asserts. So a test carrying `"relay": True`
+# gets one started for it, on this box, for the length of the run -- and the acceptance is then
+# reproducible on any machine with the repo, rather than depending on a relay somebody left running.
+#
+# WHY A LOCAL RELAY AND NOT THE DEPLOYED ONE. The deployed relay is a deployment fact (it moves, it
+# restarts, it serves other people); a gate that needs it is a gate that goes red for reasons the
+# tree cannot see. The VPS relay is where a LIVE run is proven; this is where the REGRESSION is.
+# THE PORT IS EPHEMERAL, NOT 7100, AND THAT IS NOT TIDINESS. Two relay scenarios in the suite's
+# multi-peer pool start at the same moment; with a fixed port the second relay cannot bind and its
+# test SKIPs -- which is what happened on the first run of this pair, and a SKIP is the one verdict
+# that looks like nothing went wrong. Binding :0 and reading the port back out of the relay's own
+# "listening" line makes the count of concurrent relayed scenarios a non-question.
+RELAY_PORT = 0
+# `tracing-subscriber` colourises even when stdout is a FILE, so the line reads
+# `addr<ESC>[0m<ESC>[2m=<ESC>[0m0.0.0.0:54901` -- a plain `addr=` needle finds nothing and the
+# scenario SKIPs with the relay running perfectly well beside it. Strip the escapes, then match.
+RELAY_ANSI_RE = re.compile(r"\x1b\[[0-9;]*m")
+RELAY_LISTEN_RE = re.compile(r"addr=(?:[0-9.]+|\[[^\]]+\]):(\d+)")
+# mp:R4b -- the `listening` LINE specifically. RELAY_LISTEN_RE above matches any `addr=` field,
+# which `peer_registered` lines carry too; that was harmless while only the FIRST match was read
+# (the listening line is the first line), and wrong the moment a restart has to find the SECOND.
+RELAY_LISTENING_LINE_RE = re.compile(r'"listening"[^\n]*?addr=(?:[0-9.]+|\[[^\]]+\]):(\d+)')
+
+
+def relay_source_newer_than(exe):
+    """The newest source the relay crate is built from, if it is newer than `exe` (else None).
+
+    A prebuilt `mh_relay.exe` is silently STALE once src/relay changes, and a stale relay does not
+    fail loudly: it refuses the new op as a counted `bad_op` once a second while the peers keep
+    talking to it, so a scenario like relay_punch simply never promotes (dead-ends G241, wave 9:
+    the R1c leg re-key merged, the 11:42 relay kept answering bad_op, relay_punch went red with
+    nothing in the peers' logs). Walking the crate here costs a few stats per scenario.
+    """
+    try:
+        exe_m = os.path.getmtime(exe)
+    except OSError:
+        return None
+    crate = os.path.join(REPO, "src", "relay")
+    newest = None
+    for root, _dirs, files in os.walk(os.path.join(crate, "src")):
+        for f in files:
+            if f.endswith(".rs"):
+                q = os.path.join(root, f)
+                if os.path.getmtime(q) > exe_m and (
+                    newest is None or os.path.getmtime(q) > os.path.getmtime(newest)
+                ):
+                    newest = q
+    for f in ("Cargo.toml", "Cargo.lock"):
+        q = os.path.join(crate, f)
+        if os.path.isfile(q) and os.path.getmtime(q) > exe_m:
+            newest = q
+    return newest
+
+
+def relay_binary(build_if_missing=True):
+    """`mh_relay.exe`, building it when it is missing OR older than the crate's sources.
+
+    Returns (path, note) or (None, why). "prebuilt" means the exe is at least as new as every
+    source under src/relay; a stale exe is rebuilt (or, with build_if_missing=False, refused with
+    the offending source named) -- never handed out silently.
+    """
+    target = os.environ.get("CARGO_TARGET_DIR") or os.path.join(REPO, "target")
+    exe = os.path.join(target, "release", "mh_relay.exe")
+    stale = relay_source_newer_than(exe) if os.path.isfile(exe) else None
+    if os.path.isfile(exe) and stale is None:
+        return exe, "prebuilt"
+    if not build_if_missing:
+        if stale:
+            return None, "%s is STALE: %s is newer -- `cargo build --release -p mh_relay`" % (
+                exe,
+                stale,
+            )
+        return None, "no %s" % exe
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    import lint_rust  # noqa: E402  the one place that knows where cargo is on this machine
+
+    cargo = lint_rust.resolve_cargo(os.environ)
+    if not cargo:
+        return (
+            None,
+            "cargo not found (no MH_CARGO, none on PATH) -- `cargo build --release -p mh_relay`",
+        )
+    p = subprocess.run(
+        [cargo, "build", "--release", "-p", "mh_relay"],
+        cwd=REPO,
+        capture_output=True,
+        text=True,
+    )
+    if p.returncode != 0 or not os.path.isfile(exe):
+        return None, "cargo build -p mh_relay failed: %s" % (p.stderr or "").strip()[-400:]
+    return exe, ("rebuilt (was older than %s)" % os.path.relpath(stale, REPO)) if stale else "built"
+
+
+class RelayProc:
+    """One `mh_relay` for one scenario. Human-readable log into the run directory, and the counters
+    line it prints at shutdown is what says whether the relay saw the traffic the test claims."""
+
+    def __init__(self, port, log_path, restart_request=None, extra_args=None):
+        self.port = port
+        self.log_path = log_path
+        self.proc = None
+        self.note = ""
+        # mp:R4a -- a row's `relay_args`: extra mh_relay CLI switches, e.g. `--advertise-level 0` to
+        # stage a relay that CLAIMS a lower protocol level (or none) than the peers were built with.
+        self.extra_args = list(extra_args or [])
+        # mp:R4b -- a path that, when it appears, makes the watcher below kill and respawn the relay
+        # on the SAME port (same log, appended). The relay_restart scenario's client script touches
+        # it through ui_test's --signal-touch once both peers are in the live game; what the
+        # scenario then proves is that the pair survives the relay coming back with no state.
+        self.restart_request = restart_request
+        self.restarts = 0
+        self._lock = threading.Lock()
+        self._stop = threading.Event()
+        self._watcher = None
+
+    def _spawn(self, bind_port):
+        exe, why = relay_binary()
+        if not exe:
+            return None, why
+        key = ui_test.rig_key_text().splitlines()[0].strip()
+        return (
+            subprocess.Popen(
+                [
+                    exe,
+                    "--bind",
+                    "0.0.0.0:%d" % bind_port,
+                    "--key",
+                    key,
+                    "--log",
+                    "human",
+                    "--stats-secs",
+                    "10",
+                ]
+                + self.extra_args,
+                cwd=REPO,
+                stdout=self.fh,
+                stderr=subprocess.STDOUT,
+            ),
+            why,
+        )
+
+    def _await_listening(self, min_lines):
+        """Wait for the `listening` line number `min_lines` (1-based) in the log; returns the port."""
+        for _ in range(100):
+            time.sleep(0.1)
+            try:
+                with open(self.log_path, encoding="utf-8", errors="replace") as fh:
+                    text = fh.read()
+            except OSError:
+                text = ""
+            hits = RELAY_LISTENING_LINE_RE.findall(RELAY_ANSI_RE.sub("", text))
+            if len(hits) >= min_lines:
+                return int(hits[min_lines - 1])
+            if self.proc is not None and self.proc.poll() is not None:
+                return -1
+        return 0
+
+    def _watch(self):
+        while not self._stop.wait(0.1):
+            if not os.path.isfile(self.restart_request):
+                continue
+            try:
+                os.remove(self.restart_request)
+            except OSError:
+                pass
+            self.restart()
+
+    def restart(self):
+        """Kill the relay and bring a fresh one up on the same port -- the redeploy, in miniature."""
+        with self._lock:
+            if self.proc is None:
+                return False
+            t0 = time.time()
+            try:
+                self.proc.terminate()
+                self.proc.wait(timeout=10)
+            except Exception:
+                self.proc.kill()
+            self.fh.write("[test_ui] relay restart requested -- respawning on :%d\n" % self.port)
+            self.fh.flush()
+            self.restarts += 1
+            self.proc, _ = self._spawn(self.port)
+            got = self._await_listening(self.restarts + 1)
+            secs = time.time() - t0
+            self.fh.write("[test_ui] relay back after %.1f s (listening=%s)\n" % (secs, got))
+            self.fh.flush()
+            return got == self.port
+
+    def __enter__(self):
+        # The rig peers hold ui_test's pinned PSK, and the relay authenticates its leg with a key
+        # derived from that same value -- a relay on a different key answers nothing and the run
+        # reads as "no host in the room", which is the least informative way to be wrong.
+        os.makedirs(os.path.dirname(self.log_path), exist_ok=True)
+        self.fh = open(self.log_path, "w", encoding="utf-8", errors="replace")
+        self.proc, why = self._spawn(self.port)
+        if self.proc is None:
+            self.note = why
+            return self
+        # READINESS IS THE RELAY'S OWN "listening" LINE, which is also where the ephemeral port
+        # comes back from. A relay that failed to bind must not look like a relay that is simply
+        # quiet -- the peers would then fail for a reason nothing in their logs explains.
+        got = self._await_listening(1)
+        if got > 0:
+            self.port = got
+            self.note = "listening on :%d (%s)" % (self.port, why)
+            if self.restart_request:
+                try:
+                    os.remove(self.restart_request)
+                except OSError:
+                    pass
+                self._watcher = threading.Thread(target=self._watch, daemon=True)
+                self._watcher.start()
+            return self
+        if got < 0:
+            try:
+                with open(self.log_path, encoding="utf-8", errors="replace") as fh:
+                    text = fh.read()
+            except OSError:
+                text = ""
+            self.note = "exited at once -- %s" % (text.strip().splitlines() or ["(no output)"])[-1]
+            return self
+        self.note = "FAILED to report a listening address within 10 s"
+        return self
+
+    def __exit__(self, *_):
+        self._stop.set()
+        if self._watcher is not None:
+            self._watcher.join(timeout=2)
+        with self._lock:
+            if self.proc is not None:
+                try:
+                    self.proc.terminate()
+                    self.proc.wait(timeout=10)
+                except Exception:
+                    self.proc.kill()
+                self.fh.close()
+        return False
+
+    @property
+    def ok(self):
+        return self.proc is not None and self.proc.poll() is None and self.port > 0
+
+
+def relay_addr_for_peers(local):
+    """Where the PEERS reach this box. Lanes on this machine use loopback; VM peers need the LAN
+    address, which is the one machine_config already calls HOST_IP for exactly this purpose."""
+    return "127.0.0.1" if local else machine.HOST_IP
 
 
 def build_argv(test, vms, common, plan=None):
@@ -7858,6 +9590,15 @@ def build_argv(test, vms, common, plan=None):
     if test.get("kind") == "multi" and test.get("fps_cap", True):
         _ei.append("tools/uiscripts/ini/fps60.ini")
     extra = [a for f in _ei for a in ("--extra-ini", f)]
+    # mp:F3c. A scenario whose two peers must carry DIFFERENT ini fragments (the codepage pair: host
+    # pinned 1252, client pinned 1251). ui_test.py has had --extra-ini-host / --extra-ini-client since
+    # the determinism pair needed a one-sided perturbation; this is the registry's way to reach them.
+    # Same warning as harness_extra_host: a knob put here makes the two peers structurally different,
+    # which is the point for a codepage test and the opposite of the point for a determinism pair.
+    if test.get("extra_ini_host"):
+        extra += ["--extra-ini-host", test["extra_ini_host"]]
+    if test.get("extra_ini_client"):
+        extra += ["--extra-ini-client", test["extra_ini_client"]]
     # Per-test tolerance override. MUST come after `common` (argparse keeps the last --tol). Needed when
     # the thing under test occupies a small fraction of the frame: the default 2% tol is ~2.5x the debug
     # overlay's whole footprint, so the overlay could vanish entirely and the capture would still "PASS"
@@ -7886,12 +9627,27 @@ def build_argv(test, vms, common, plan=None):
     # deliberately perturbing one side of a determinism pair.
     if test.get("harness_extra"):
         tail += ["--harness-extra", test["harness_extra"]]
+    # mp:X1b. The HOST-ONLY twin, for a scenario whose two peers must play DIFFERENT parts. It has
+    # existed on ui_test.py since the determinism pair needed a one-sided perturbation and was simply
+    # never reachable from the registry; snapshot_import needs one peer to capture and send while
+    # both receive, which is the same asymmetry without the perturbation. Read the warning in
+    # ui_test.harness_extra_host_lines() before adding a second user: a knob put here rather than in
+    # `harness_extra` makes the two peers structurally different, which is exactly what a determinism
+    # pair must NOT be.
+    if test.get("harness_extra_host"):
+        tail += ["--harness-extra-host", test["harness_extra_host"]]
     # `[net]` knobs, which CANNOT ride --extra-ini: ui_test builds the whole [net] block itself and
     # REFUSES a fragment carrying a second one (a duplicate section is unreachable, and Windows
     # GetPrivateProfile* would answer from the first). --net-extra writes into the base block, with
     # its own first-match-wins override guard. Fork F3F's no_net_boot is the first user ("module=none").
     if test.get("net_extra"):
         tail += ["--net-extra", test["net_extra"]]
+    if test.get("net_extra_client"):  # mp:R7a -- [net] keys on the CLIENT peers only
+        tail += ["--net-extra-client", test["net_extra_client"]]
+    if test.get("no_client_ip"):  # mp:R7a -- no saved server, so the first browser probes the relay
+        tail += ["--no-client-ip"]
+    if test.get("signal_touch"):  # mp:R4b -- set by the runner from relay_restart_on
+        tail += ["--signal-touch", test["signal_touch"]]
     if plan is not None:  # --local: every peer of every test is its own lane on this machine
         port, shim_port, names = plan[test["name"]]
         if test["kind"] == "solo":
@@ -8196,10 +9952,11 @@ def main():
     ap.add_argument(
         "--tact-jobs",
         type=int,
-        default=3,
+        default=2,
         metavar="N",
-        help="TACT-REC: replay arms to run concurrently, one lane each (default 3 = all of them). "
-        "1 keeps the single historical lane and runs them back to back.",
+        help="TACT-REC: replay arms to run concurrently, one lane each (default 2 = the `tact` lane "
+        "block's width since 2026-09-19; 3 ran all arms at once). 1 keeps the single historical lane "
+        "and runs them back to back.",
     )
     ap.add_argument(
         "--tact-slot",
@@ -8365,6 +10122,15 @@ def main():
         "Needs --ui-oracle-out. Also prints the order histogram to paste into the registry entry.",
     )
     ap.add_argument(
+        "--ui-oracle-note",
+        action="append",
+        default=[],
+        metavar="KEY=VALUE",
+        help="--ui-oracle: a provenance line written into the oracle's header (repeatable) -- "
+        "the human-recording it descends from, the recut date and the equivalence proof that "
+        "justifies cutting a C arm from a replay. The manifest fingerprint is stamped by itself.",
+    )
+    ap.add_argument(
         "--ui-oracle-out",
         metavar="PATH",
         help="--ui-oracle: where to write the .oracle.gz.",
@@ -8405,6 +10171,17 @@ def main():
         help="--ui-equiv: THE GO-RED ARM. Poke every hashed region on the `original` arm at this sim "
         "step; the run then PASSES only if the comparison diverges. A fixture whose red has never "
         "been seen is not evidence when it is green.",
+    )
+    ap.add_argument(
+        "--ui-abc-ini",
+        action="append",
+        default=[],
+        metavar="FILE",
+        help="--ui-abc: an ini fragment merged into BOTH arms' lanes, identically -- the diagnostic "
+        "lever for a red A-vs-B (an rdump window over the differing region, say). It is NOT the "
+        "promotion lever: the arms must differ in nothing but [config] mode, so a fragment that "
+        "names a [promote]/[rebind]/[config] key is refused (TL-GATE-D25FX's byte-level proof "
+        "was made with `[harness] rdump_rid=8;rdump_lo=796;rdump_hi=800`).",
     )
     ap.add_argument(
         "--ui-strat-seed",
@@ -8781,7 +10558,50 @@ def main():
         "--net-extra",
         default="",
         help="';'-separated k=v appended to [net], overriding the same key in place (including the "
-        "rig's pinned pacing). Forwarded to --determinism runs.",
+        "rig's pinned pacing). Forwarded to --determinism runs AND to every registry scenario.",
+    )
+    ap.add_argument(
+        "--transport",
+        choices=("tcp", "udp"),
+        default="udp",
+        help="mp:T1 -- which net module EVERY peer of this run binds: udp = mh_net_udp.dll (the "
+        "shipping default since 2026-09-20), tcp = mh_net.dll. Folded into --net-extra as "
+        "`transport=<t>`, so it reaches "
+        "the determinism run and every registry scenario by the one channel ui_test already "
+        "overrides [net] keys through. It is a suite-level flag and not a per-test one because the "
+        "two transports speak different wire formats: a udp client cannot join a tcp host, so a run "
+        "with peers on different transports does not fail, it hangs.",
+    )
+    ap.add_argument(
+        "--relay",
+        action="store_true",
+        help="mp:R2 -- start an mh_relay process on THIS box for the run and point every peer at "
+        "it (`[net] relay=<this box>:<the port it binds>`, folded into --net-extra the same way "
+        "--transport is). Applies to --determinism and to any registry scenario the flag is used "
+        "with; the two relay_* scenarios start one for themselves and do not need it. Use it to "
+        "run the ordinary determinism gate over the relayed path -- the relay's own log lands in "
+        "tmp/relay_run.log.",
+    )
+    ap.add_argument(
+        "--shim-delay",
+        type=float,
+        default=0.0,
+        metavar="MS",
+        help="mp:TL-SHIMUDP -- run --determinism's peers through tools/net_shim.py at this ONE-WAY "
+        "delay in ms (rtt = 2x). Before this the shim needed a hand-started net_shim.py pointed at "
+        "the host and a manually-widened --timeout-frames; this makes `--determinism --shim-delay N` "
+        "(with --transport udp, if that is the run) a single command -- the shim is started "
+        "targeting the host VM, the clients are pointed at it instead, and the [uitest] frame budget "
+        "is scaled with the delay (mp:T3d: a shimmed run's `peers 1` connect step needs more real "
+        "time than the LAN-tuned default). VM-topology --determinism only (0 = off, the default; "
+        "not supported with --det-local this wave).",
+    )
+    ap.add_argument(
+        "--shim-jitter",
+        type=float,
+        default=0.0,
+        metavar="MS",
+        help="+/- uniform ms around --shim-delay (mp:TL-SHIMUDP; meaningless without --shim-delay).",
     )
     # The AUDIT LEVER (2026-09-01): --net-extra reaches only [net] keys and per-scenario extra_ini
     # lives in the TESTS registry, so a suite-wide [tombstone] arm_dead audit had NO route -- its
@@ -8916,6 +10736,43 @@ def main():
     ap.add_argument("--pixdelta", type=int, default=40)
     args = ap.parse_args()
 
+    # --transport folds into --net-extra rather than travelling beside it, so there is exactly ONE
+    # thing the child reads and one thing the printed replay command shows. Appended LAST because
+    # ui_test.resolve_transport takes the last `transport=` it sees -- an explicit --net-extra
+    # transport= plus a --transport would otherwise resolve by argument order, which is not a rule
+    # anyone should have to know.
+    if (
+        args.transport != "udp"
+    ):  # udp is the DLL's default (2026-09-20); only the other one is folded
+        args.net_extra = (args.net_extra + ";" if args.net_extra else "") + (
+            "transport=%s" % args.transport
+        )
+
+    # mp:R2 -- `--relay` folds in the same way and for the same reason: one channel the child reads,
+    # one thing the replay command shows. The process lives for the whole run (atexit, so it is
+    # stopped on every exit path including a KeyboardInterrupt), because the peers of a --determinism
+    # run come and go and a per-scenario lifetime would take the relay with the first of them.
+    if getattr(args, "relay", False):
+        _relay_stack = contextlib.ExitStack()
+        atexit.register(_relay_stack.close)
+        _rp = _relay_stack.enter_context(
+            RelayProc(RELAY_PORT, os.path.join(REPO, "tmp", "relay_run.log"))
+        )
+        if not _rp.ok:
+            print("[relay] could not start: %s" % _rp.note)
+            return 2
+        # WHICH ADDRESS THE PEERS DIAL, and the one way to get it wrong: `--local` defaults to TRUE
+        # (it is how the capture suite runs), but a --determinism run without --det-local puts its
+        # peers on the VMs, where 127.0.0.1 is the VM itself. The first relayed determinism run
+        # handed both VMs `relay=127.0.0.1` and they sat in a lobby nothing could reach -- reported
+        # as a launch timeout, which names neither the relay nor the address.
+        _local = (
+            getattr(args, "det_local", False) if args.determinism else getattr(args, "local", False)
+        )
+        _knob = "relay=%s:%d" % (relay_addr_for_peers(_local), _rp.port)
+        args.net_extra = (args.net_extra + ";" if args.net_extra else "") + _knob
+        print("[relay] %s -- every peer dials %s (log: tmp/relay_run.log)" % (_rp.note, _knob))
+
     global DESKTOP, NO_DESKTOP, STOCK_EXE
     NO_DESKTOP = bool(args.no_desktop)
     STOCK_EXE = not args.patched_exe
@@ -8971,7 +10828,18 @@ def main():
         return run_tact_suite(args)
 
     wanted = set(args.only) | set(args.only_flag)
-    tests = [t for t in TESTS if not wanted or t["name"] in wanted]
+    # `optin` (mp:X1b): a registered scenario that the DEFAULT suite does not run, and it is a
+    # narrow door rather than a general one. It exists for a scenario whose MECHANISM is proven and
+    # whose run still ends red for a reason that belongs to another tracker item -- mp_snapshot moves
+    # a world between two live peers and verifies it region for region in its post_check, and then
+    # the importing peer faults stepping the world it just imported, which is mp:X3's to fix. The
+    # alternatives are both worse: leaving it in the default suite reds the gate for everyone on a
+    # known, tracked cause, and not registering it at all loses the scripts, the lanes and the
+    # baselines. Named with --only it runs exactly as before. Drop the key when its cause is fixed.
+    if wanted:
+        tests = [t for t in TESTS if t["name"] in wanted]
+    else:
+        tests = [t for t in TESTS if not t.get("optin")]
     if args.solo:
         tests = [t for t in tests if t["kind"] == "solo"]
     if wanted:
@@ -9073,17 +10941,47 @@ def main():
                 # here because a determinism run keeps the blit: ~29 s at the lobby's ~52 fps. The
                 # driver needs ~22 s just to notice the host is LISTENING and launch the client (2 s
                 # poll granularity + setup.dat scp + ssh), and the client then needs ~7.5 s of its own
-                # to walk to Connect. That run missed by 0.5 s. 6000 frames is ~2 min at the same
-                # cadence, comfortably past the driver's launch cost and still well inside
-                # --launch-timeout (300 s), which is what actually bounds a wedged rendezvous.
+                # to walk to Connect. That run missed by 0.5 s.
                 #
-                # THE UNIT IS STILL WRONG and this does not fix it: a per-step watchdog counted in
-                # FRAMES cannot express "wait N seconds for another machine", which is why the same
-                # default means ~29 s blitted and minutes headless. Changing it is a DLL change
-                # (the uidrive watchdog lives in the harness), and is an open item.
+                # TL-HARN17: was a bare "6000" (~2 min at the nominal ~52 fps cadence above). Expressed
+                # now as the wall-clock budget it was actually standing in for -- frames_for_seconds
+                # reproduces the SAME 6000 at BLIT_LOCAL_FPS_FLOOR (240 s @ 25 fps == 6000), so this is
+                # not a cut, only the unit made explicit: a reader now sees "240 s", not "6000", and a
+                # future change to the floor constant keeps this in proportion instead of silently
+                # drifting. Comfortably inside --launch-timeout (300 s), which is what actually bounds a
+                # wedged rendezvous.
+                #
+                # THE UNDERLYING MECHANISM IS STILL FRAMES and this does not change that: a per-step
+                # watchdog counted in FRAMES cannot express "wait N seconds for another machine" on its
+                # own, which is why the same frame count means ~29 s blitted and minutes headless.
+                # Changing THAT is a DLL change (the uidrive watchdog lives in the harness), and is an
+                # open item -- this fix only makes the NUMBER IN THIS FILE mean what its author intended.
                 "--timeout-frames",
-                "6000",
+                str(frames_for_seconds(240, BLIT_LOCAL_FPS_FLOOR)),
             ]
+        if args.shim_delay:
+            # mp:TL-SHIMUDP -- makes the shim orchestration automatic (ui_test's shim_start owns its
+            # lifetime; no hand-started net_shim.py and no baseline confusion from a stale one -- see
+            # its port-occupancy probe). VM topology only: the local determinism pair shares this box
+            # with the shim, which is the port-collision case shim_listen_port exists to avoid for
+            # registry tests, and threading that through --det-local is not done this wave.
+            if args.det_local:
+                print(
+                    "[det] --shim-delay needs the VM pair -- not supported with --det-local this "
+                    "wave (mp:TL-SHIMUDP residue)"
+                )
+                return 2
+            argv += ["--shim", args.vms[0], "--shim-delay", str(args.shim_delay)]
+            if args.shim_jitter:
+                argv += ["--shim-jitter", str(args.shim_jitter)]
+            # mp:T3d -- a shimmed run's `peers 1` step (the client's connect) needs more real time
+            # than the LAN-tuned 6000-frame default: measured failure was the BARE ui_test.py default
+            # (1500 frames, no wrapper) aborting `peers 1` at 30-48s under a 200 ms RTT link armed
+            # before the client launched, while both peers' own mh_net.log looked healthy throughout
+            # -- a harness budget too tight for the link, not a stall in the transport. Linear in
+            # shim_delay rather than one more flat constant, so a larger --shim-delay does not
+            # silently need another hand-raised number.
+            argv += ["--timeout-frames", str(6000 + int(args.shim_delay) * 40)]
         if args.ship_pacing:
             argv.append("--ship-pacing")
         for frag in args.extra_ini:
@@ -9092,6 +10990,13 @@ def main():
             argv += ["--extra-ini-host", args.extra_ini_host]
         if args.harness_extra_host:
             argv += ["--harness-extra-host", args.harness_extra_host]
+        # mp:R2 -- the SYMMETRIC one was never forwarded, which made a whole class of determinism
+        # shape unreachable from here. `synth_at` is the case that found it: D16's idle-then-play
+        # run needs the moving-unit workload to start LATE, so the world is genuinely idle for the
+        # first N steps and genuinely in motion afterwards -- and that is a [harness] knob every
+        # peer must share, so --harness-extra-host is exactly the wrong lever for it.
+        if args.harness_extra:
+            argv += ["--harness-extra", args.harness_extra]
         if args.net_extra:
             # Forwarded so a determinism run can override a PINNED_PACING key in place -- ui_test's
             # make_ini drops the NET_BLOCK line whose key an extra also sets, so this is a real
@@ -9128,15 +11033,41 @@ def main():
     # fragments; anything visual in one would rightly fail the diff.
     if args.extra_ini_all:
         common += ["--extra-ini", args.extra_ini_all]
+    # Registry scenarios get --net-extra too (mp:T1). Before this they did not, so `--transport udp`
+    # would have changed the determinism run and silently left every multi-peer CAPTURE test on tcp
+    # -- a suite reporting PASS for a transport it never bound. Gated on non-empty so no existing
+    # green run changes shape.
+    if args.net_extra:
+        common += ["--net-extra", args.net_extra]
     # Pass the resolved choice DOWN explicitly rather than relying on ui_test's own default, so a
     # suite run and the ui_test.py command it prints mean the same thing when replayed by hand.
     headless = not args.visible
     common.append("--headless" if headless else "--visible")
 
+    # mp:F2b (and any future opt-in scenario): a test may declare `requires(args) -> (ok, reason)`.
+    # Checked ONCE here, before provisioning -- this cannot simply live inside run_one, because
+    # provisioning happens up front for every test in `tests`, and letting make_lane.py fail on an
+    # unmet precondition (e.g. font_merged's --src does not exist) would abort EVERY test's lanes
+    # with it (provision_lanes returns None on any single lane failure). `tests` itself stays the
+    # full list -- the summary and the run loop below still print a row for a skipped test; only
+    # PROVISIONING excludes it.
+    precondition_skip = {}
+    for t in tests:
+        req = t.get("requires")
+        if req is None:
+            continue
+        ok, why = req(args)
+        if not ok:
+            precondition_skip[t["name"]] = why
+    provisionable = [t for t in tests if t["name"] not in precondition_skip]
+
     plan = None
     if args.local:
-        print("provisioning %d local lane set(s) under %s ..." % (len(tests), make_lane.LANE_ROOT))
-        plan = provision_lanes(tests, headless=headless, stock_exe=STOCK_EXE)
+        print(
+            "provisioning %d local lane set(s) under %s ..."
+            % (len(provisionable), make_lane.LANE_ROOT)
+        )
+        plan = provision_lanes(provisionable, headless=headless, stock_exe=STOCK_EXE)
         if plan is None:
             return 1
         common += ["--timeout-frames", str(LOCAL_TIMEOUT_FRAMES)]
@@ -9229,7 +11160,27 @@ def main():
         if not lane_names_:
             return False, "  post-check FAILED: no lane recorded for %s" % test["name"]
         lane_dir = os.path.join(make_lane.LANE_ROOT, lane_names_[0])
-        argv = [sys.executable, os.path.join(REPO, *cmd[0].split("/"))] + list(cmd[1:]) + [lane_dir]
+        # SES1: hand over the PROCESS ("menu") run directory, not the lane. Every post-check here is
+        # about a BOOT-TIME fact -- which satellites bound at DllMain -- and those lines are written
+        # before any lobby exists. check_module_bind resolves a bare lane to its newest run by mtime,
+        # which since SES1 is the newest SESSION directory the scenario opened: menu_walk creates a
+        # game, so its newest folder holds the match's logs and no `[modules]` line at all, and the
+        # check REFUSED (correctly -- it will not pass a log it cannot see the bind in).
+        target = sp_newest_run(lane_dir) or lane_dir
+        # mp:X1b. A CROSS-PEER post-check gets EVERY peer's run directory, not only the host's.
+        # Every existing checker asks a question about one process (did this boot bind that module),
+        # so one lane was the right argument and still is. "Did the world one peer captured arrive
+        # in the other peer's memory" cannot be asked of a single log by construction: the capture
+        # is in one file and the import in another, and a checker handed one of them can only ever
+        # report half the claim -- which would read as a pass.
+        if test.get("post_check_peers"):
+            targets = []
+            for nm in lane_names_:
+                d = os.path.join(make_lane.LANE_ROOT, nm)
+                targets.append(sp_newest_run(d) or d)
+        else:
+            targets = [target]
+        argv = [sys.executable, os.path.join(REPO, *cmd[0].split("/"))] + list(cmd[1:]) + targets
         r = subprocess.run(argv, capture_output=True, text=True)
         out = (r.stdout or "") + (r.stderr or "")
         head = "  post-check %s: %s" % ("PASS" if r.returncode == 0 else "FAILED", " ".join(cmd))
@@ -9252,6 +11203,11 @@ def main():
         )
         if jobs == 1:
             print(head)
+        if t["name"] in precondition_skip:
+            msg = "  SKIP -- %s" % precondition_skip[t["name"]]
+            if jobs == 1:
+                print(msg)
+            return t["name"], "SKIP", head + "\n" + msg
         if abort:
             msg = (
                 "  SKIP -- suite aborted: %s hit an INSTALL-TIME refusal, which fails every "
@@ -9270,13 +11226,62 @@ def main():
         # The wrapper kill-timeout must outlast the test's OWN wall-clock budget, or it kills the run
         # before ui_test can report -- and a killed run has no verdict, only a missing one.
         t0 = time.time()
-        rc, text = run_ui_test(
-            build_argv(t, args.vms, common, plan),
-            max(args.per_test_timeout, t["timeout"] + 120)
-            if t.get("timeout")
-            else args.per_test_timeout,
-            capture=jobs > 1,
+        # mp:R2 -- a relayed scenario runs against a relay process started for it, here, and told
+        # to the peers as a `[net] relay=` knob. Unconditional context manager so the cleanup path
+        # is the same whether or not this test wants one.
+        relay_note = ""
+        # mp:R4b -- `relay_restart_on: <signal>`: the relay is killed and respawned on the same port
+        # when a peer's script emits that signal (ui_test's --signal-touch drops the request file).
+        restart_req = (
+            os.path.join(REPO, "tmp", "relay_%s.restart" % t["name"])
+            if t.get("relay_restart_on")
+            else None
         )
+        with (
+            RelayProc(
+                RELAY_PORT,
+                os.path.join(REPO, "tmp", "relay_%s.log" % t["name"]),
+                restart_request=restart_req,
+                extra_args=t.get("relay_args"),
+            )
+            if t.get("relay")
+            else contextlib.nullcontext()
+        ) as relay:
+            if t.get("relay"):
+                if not relay.ok:
+                    msg = "  SKIP -- the relay could not be started: %s" % relay.note
+                    if jobs == 1:
+                        print(msg)
+                    return t["name"], "SKIP", head + "\n" + msg
+                knob = "relay=%s:%d" % (relay_addr_for_peers(args.local), relay.port)
+                # mp:R7a -- `relay_client_only: True` puts `relay=` on the CLIENT peers ONLY, so the
+                # HOST never registers and the relay stays truly idle (peers=0). That is what
+                # direct_dial_with_relay_set needs: a relay that EXISTS to be NOT contacted, proving the
+                # client's *Internet server* + typed-IP dial went direct. Every other relay scenario
+                # wants both peers on the relay (net_extra), which is the default.
+                if t.get("relay_client_only"):
+                    t = dict(
+                        t,
+                        net_extra_client=(t.get("net_extra_client", "") + ";" + knob).lstrip(";"),
+                    )
+                else:
+                    t = dict(
+                        t, net_extra=(t["net_extra"] + ";" + knob) if t.get("net_extra") else knob
+                    )
+                if restart_req:
+                    t["signal_touch"] = "%s=%s" % (t["relay_restart_on"], restart_req)
+                relay_note = "  [relay %s -> tmp/relay_%s.log]" % (relay.note, t["name"])
+                if jobs == 1:
+                    print(relay_note)
+            rc, text = run_ui_test(
+                build_argv(t, args.vms, common, plan),
+                max(args.per_test_timeout, t["timeout"] + 120)
+                if t.get("timeout")
+                else args.per_test_timeout,
+                capture=jobs > 1,
+            )
+        if relay_note:
+            text = (text or "") + "\n" + relay_note
         # Wall clock per test, because "the suite takes too long" is not actionable until you can see
         # WHICH test spends the time. Pairs with the per-step milliseconds ui_drive now logs.
         #
@@ -9357,25 +11362,52 @@ def main():
         # untouched. --jobs 1 keeps the fully-serial order for debugging (no split).
         solos = [(i, t) for i, t in enumerate(tests, 1) if t.get("kind") != "multi"]
         multis = [(i, t) for i, t in enumerate(tests, 1) if t.get("kind") == "multi"]
-        net_jobs = max(1, min(args.net_jobs, len(multis) or 1))
+        # mp:R7a -- a share_lanes test borrows a comparable scenario's lanes, so the two must NEVER run
+        # at once. Fold each sharer into its target's work item and run the pair SERIALLY in one worker;
+        # a sharer whose target is not in this run (a subset) stands alone on its own provisioned lanes.
+        present = {t["name"] for _, t in multis}
+        sharers_of = {}
+        for i, t in multis:
+            tg = t.get("share_lanes")
+            if tg and tg in present:
+                sharers_of.setdefault(tg, []).append((i, t))
+        groups = []  # each is a list of (idx, test) run back-to-back in ONE worker
+        for i, t in multis:
+            tg = t.get("share_lanes")
+            if tg and tg in present:
+                continue  # runs with its target's group
+            groups.append([(i, t)] + sharers_of.get(t["name"], []))
+        net_jobs = max(1, min(args.net_jobs, len(groups) or 1))
         print(
             "\nrunning %d tests: %d solo at --jobs %d + %d multi-peer in their own pool "
             "(--net-jobs %d; capped peers wait more than they compute)"
             % (len(tests), len(solos), jobs, len(multis), net_jobs)
         )
         done = 0
+
+        def run_group(grp):
+            """Run one or more tests serially in a single worker (a share-lanes pair, or a solo group
+            of one). Returns a list of (name, verdict, text)."""
+            return [run_one(i, t) for i, t in grp]
+
         with (
             cf.ThreadPoolExecutor(max_workers=jobs) as ex_cpu,
             cf.ThreadPoolExecutor(max_workers=net_jobs) as ex_net,
         ):
-            futs = {ex_cpu.submit(run_one, i, t): t for i, t in solos}
-            futs.update({ex_net.submit(run_one, i, t): t for i, t in multis})
+            solo_futs = {ex_cpu.submit(run_one, i, t): [t] for i, t in solos}
+            group_futs = {ex_net.submit(run_group, g): [t for _, t in g] for g in groups}
+            futs = {}
+            futs.update(solo_futs)
+            futs.update(group_futs)
             for f in cf.as_completed(futs):
-                name, verdict, text = f.result()
-                results[name] = verdict
-                done += 1
-                print(text)
-                print("  --> %s %s   (%d/%d complete)" % (name, verdict, done, len(tests)))
+                res = f.result()
+                if f in solo_futs:  # run_one returns a single tuple
+                    res = [res]
+                for name, verdict, text in res:
+                    results[name] = verdict
+                    done += 1
+                    print(text)
+                    print("  --> %s %s   (%d/%d complete)" % (name, verdict, done, len(tests)))
 
     print("\n" + "=" * 78)
     print("UI TEST SUITE")

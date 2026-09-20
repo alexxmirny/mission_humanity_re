@@ -38,8 +38,10 @@ in it, not a gate red in a scenario that has nothing to do with the change.
 """
 
 import argparse
+import json
 import os
 import sys
+import time
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -53,35 +55,60 @@ LANE_MAX = 99
 # demand and the capacity printed, which is the signal the old hand-picked constants could not give.
 BLOCKS = {
     # The capture suite: one lane per PEER, so its demand is the registry's peer count and it is the
-    # only block that grows on its own. 48 is ~12 peers of headroom over today's 36, and the lint row
-    # is what says when that has run out -- the whole failure was headroom nobody re-measured.
-    "suite": (0, 48),
-    # test_ui --soak, one lane per --soak-slot. migration_ab runs fixtures and verification arms on
-    # disjoint slots, so this needs width, not just a pair.
-    "soak": (48, 10),
+    # only block that grows on its own. 73 is 2 peers of headroom over the 71 the registry needs
+    # after the 2026-09-18 wave-9 landings (map_absent/map_conflict/map_have took it 63 -> 71 an
+    # hour after 70 was set over 63 for wave 8 -- net_hud, mp_snapshot, relay_punch; it was 60 over 57 a
+    # few hours earlier, 56 over 49 a day before, 48 over 36 before that), and the lint row is what
+    # says when that has run out -- the whole failure was headroom nobody re-measured. The ten lanes
+    # came out of the hand-sized blocks below (soak 10 -> 6, tact 6 -> 4, ui_play 6 -> 4,
+    # det_local 4 -> 2), each still at or above its consumer's live demand; lane() refuses a slot
+    # past a block's width, so an under-sized block is a loud refusal, never aliasing.
+    # 75 on 2026-09-19: d25_buildclick (2 peers) took the last two lanes of headroom; the two came
+    # out of `sweep` (4 -> 2, sweep_saves' default --jobs lowered to match), the one remaining
+    # block whose consumer is hand-run and whose own usage example already says --jobs 2.
+    # 79 later the same day: codepage_adopt + codepage_refused (mp:F3c, 2 peers each) -- ZERO
+    # headroom now. Three came out of `soak` (6 -> 3: migration_ab's default --jobs 2 -> 1, one
+    # plan entry's record + three arms at a time; --jobs 2 now refuses at lane() rather than
+    # aliasing) and one out of `tact` (4 -> 3, exactly --tact-jobs' default). The next registry
+    # row has to find its lane in one of the hand-run blocks below or lower a consumer's default.
+    # 81 an hour later (mp:R7 relay_browse_local, 2 peers): tact 3 -> 2 (--tact-jobs default 3 ->
+    # 2) and sweep 2 -> 1 (sweep_saves --jobs 2 -> 1). EVERY hand-run block is now at its floor;
+    # the next row cannot be paid for by shrinking a block -- tooling TL-LANEPOOL (allocate suite
+    # lanes per concurrent JOB rather than per registry row) is the way out of the 99 ceiling.
+    "suite": (0, 81),
+    # test_ui --soak, one lane per --soak-slot. migration_ab runs one plan entry's record + its
+    # three verification arms on disjoint slots (--jobs 1 since 2026-09-19); 3 is that demand.
+    "soak": (81, 3),
     # The tactical journal lanes (--tact-jobs / the suite's pooled journal tail), one per slot.
-    "tact": (58, 6),
+    # 2 = --tact-jobs' default since 2026-09-19 (was 3 = all arms at once).
+    "tact": (84, 2),
     # ui_play: the recorded-session lanes (--ui-replay / --ui-abc), one per --ui-slot. The gate runs
-    # two A/B/C units at disjoint slot bases, so four is the live demand and six the headroom.
-    "ui_play": (64, 6),
+    # two A/B/C units at disjoint slot bases, so four is the live demand (the headroom went to the
+    # capture suite, 2026-09-18).
+    "ui_play": (86, 4),
     # --sp-determinism's single lane.
-    "sp_det": (70, 2),
-    # --det-local's blitted host+client pair (provision_lanes numbers from the base).
-    "det_local": (72, 4),
+    "sp_det": (90, 1),
+    # --det-local's blitted host+client pair (provision_lanes numbers from the base) -- exactly two.
+    "det_local": (91, 2),
     # The U28 3-peer barrier's LOCAL third peer.
-    "det3": (76, 2),
+    "det3": (93, 1),
     # check_inmem_patch_parity's stock-exe lane -- a GATE UNIT, and it was on lane 9, i.e. inside the
     # capture suite's block. Three sub-second launches beside a suite that owns lane 9 is the same
     # aliasing as ui_soak's, just with a much narrower window to be unlucky in.
-    "inmem": (78, 2),
+    "inmem": (94, 1),
     # sweep_saves' worker lanes -- `50 + i`, which was inside the suite's block AND on top of the old
-    # `50 + slot` soak numbering.
-    "sweep": (80, 8),
+    # `50 + slot` soak numbering. 4 -> 2 -> 1 on 2026-09-19 (the capture suite needed the lanes;
+    # the tool's default --jobs is 1 to match, and lane() refuses a slot past the width).
+    "sweep": (95, 1),
     # Hand-provisioned investigation lanes (f3a, f4e_bound, ui_probe, ...). Nothing here is allocated
     # automatically -- the block exists so a one-off session has somewhere to take a number FROM
     # instead of guessing into an automatic block. The live-mutex guard (`mutex_in_use`) is what
     # covers the case where somebody guesses anyway.
-    "scratch": (88, 11),
+    # Shrunk 11 -> 3 on 2026-09-18 to give the capture suite room. NOT LOWER: since TL-LANECOLLIDE
+    # this is also the per-TREE solo pool (tree_slot), one slot per concurrent worktree agent, and
+    # --selftest exhausts exactly three. The wave-9 X2 landing took its two lanes from sp_det and
+    # det3 (single-lane consumers) instead.
+    "scratch": (96, 3),
 }
 
 
@@ -156,6 +183,150 @@ def mutex_in_use(lane_no):
     except Exception:
         pass  # a guard that cannot run must not be the thing that fails a run
     return False
+
+
+# ---- TL-LANECOLLIDE (2026-09-18): a per-TREE claim on the "scratch" block -----------------------
+#
+# THE BUG. `workdir/mh_lanes` (machine.LANE_ROOT) is ONE machine-wide folder, and BLOCKS above hands
+# out ONE machine-wide set of numbers -- both built when "a tree" meant the single interactive
+# checkout. A git WORKTREE is a second, fully independent process tree on the same box -- its own
+# source, build outputs and commits, coordinating with the main checkout only through host-global
+# leases outside any tree (the same pattern tools/hostlock.py uses) -- but it imports this exact
+# same file and computes the exact same numbers from it. Two worktrees each running their own "solo"
+# scenario (the ui-testing skill's dev loop, `python tools/ui_test.py <script>`, or a hand-provisioned
+# investigation lane) picked the same lane, i.e. the same bare, machine-wide `MHMutNN` mutex -- and the
+# second one died inside retail's own single-instance guard: "lane 1's single-instance mutex MHMut01
+# is ALREADY HELD".
+#
+# THE FIX is not a bigger allocation (the DLL's `%02d` ceiling is 99 and every number above is already
+# spoken for) -- it is a small, HOST-GLOBAL, PERSISTENT claim on the block this file already reserves
+# for exactly this kind of ad hoc use ("scratch": hand-provisioned investigation lanes; nothing
+# allocates there automatically). `tree_slot()` hands each TREE (identified by its own absolute repo
+# root) the lowest scratch index no other still-fresh tree has claimed, and remembers the assignment
+# in `machine.SHARED_LOCK_DIR` -- the SAME host-global directory `hostlock.py` already uses for its
+# leases, so every worktree and the main checkout agree on one location without either owning the
+# other's tree. The claim is a REGISTRY entry, not a lock: it is not released when a run ends, only
+# when explicitly released or aged out (STALE_TREE_TTL) -- a tree keeps the same solo lane for the
+# life of the worktree, which is what "the SAME tree gets the SAME number on every later call" means.
+SOLO_BLOCK = "scratch"
+STALE_TREE_TTL = 7 * 24 * 3600  # an unrefreshed claim this old is presumed an abandoned worktree
+
+
+def _tree_tag():
+    """A stable identity for THIS git tree (a worktree or the main checkout): its own absolute repo
+    root. Every process launched from the same tree resolves to the same tag; a DIFFERENT worktree
+    resolves to a different one -- that difference is the whole fix. Overridable for tests."""
+    return os.environ.get("MH_LANE_TREE_TAG") or os.path.normcase(os.path.abspath(REPO))
+
+
+def _slots_root():
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    import machine_config as machine  # noqa: PLC0415 -- lazy: only the tree-slot allocator needs it
+
+    return os.path.join(machine.SHARED_LOCK_DIR, "lane_trees")
+
+
+def _slot_dir(block_name):
+    return os.path.join(_slots_root(), block_name)
+
+
+def _slot_path(block_name, index):
+    return os.path.join(_slot_dir(block_name), "%d.json" % index)
+
+
+def _read_slot(path):
+    try:
+        with open(path, encoding="utf-8") as f:
+            return json.load(f)
+    except (OSError, ValueError):  # absent, or a torn read mid-write -- both mean "nothing usable"
+        return None
+
+
+def _write_slot_excl(path, obj):
+    """Atomically CREATE `path` with `obj`. False if it already exists (another tree got there
+    first)."""
+    try:
+        fd = os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o644)
+    except FileExistsError:
+        return False
+    try:
+        os.write(fd, json.dumps(obj).encode("utf-8"))
+    finally:
+        os.close(fd)
+    return True
+
+
+def tree_claims(block_name=SOLO_BLOCK):
+    """Every fresh claim on `block_name`'s slots: {index: {"tag":..., "at":...}}. A claim older than
+    STALE_TREE_TTL with no refresh is dropped (and removed from disk) -- a worktree deleted weeks ago
+    must not permanently squat a slot."""
+    d = _slot_dir(block_name)
+    out = {}
+    if not os.path.isdir(d):
+        return out
+    now = time.time()
+    for fname in os.listdir(d):
+        if not fname.endswith(".json"):
+            continue
+        try:
+            idx = int(fname[:-5])
+        except ValueError:
+            continue
+        entry = _read_slot(os.path.join(d, fname))
+        if entry is None:
+            continue
+        if now - float(entry.get("at", 0) or 0) > STALE_TREE_TTL:
+            try:
+                os.remove(os.path.join(d, fname))
+            except OSError:
+                pass
+            continue
+        out[idx] = entry
+    return out
+
+
+def tree_slot(block_name=SOLO_BLOCK, tag=None, claim=True):
+    """This TREE's own lane number inside `block_name` (default "scratch") -- host-global, persistent,
+    and disjoint from every OTHER tree's claim on the same block (TL-LANECOLLIDE, 2026-09-18).
+
+    The SAME tree gets the SAME number back on every call (refreshed so it does not go stale under
+    it); a DIFFERENT tree gets a DIFFERENT number, the lowest one nobody else has fresh-claimed. If
+    every slot in the block is already claimed by OTHER live trees, returns None -- there is no
+    number left to hand out automatically, and the caller must free one (`--release-solo`) or pick a
+    number by hand.
+
+    `claim=False` only LOOKS (diagnostics / `--list`); it never allocates or refreshes."""
+    tag = tag or _tree_tag()
+    base, cap = block(block_name)
+    d = _slot_dir(block_name)
+    claims = tree_claims(block_name)
+    for idx, entry in claims.items():
+        if entry.get("tag") == tag:
+            if claim:
+                with open(_slot_path(block_name, idx), "w", encoding="utf-8") as f:
+                    json.dump({"tag": tag, "at": time.time()}, f)
+            return base + 1 + idx
+    if not claim:
+        return None
+    os.makedirs(d, exist_ok=True)
+    for idx in range(cap):
+        if idx in claims:
+            continue
+        if _write_slot_excl(os.path.join(d, "%d.json" % idx), {"tag": tag, "at": time.time()}):
+            return base + 1 + idx
+    return None  # every slot in the block is claimed by another live tree
+
+
+def release_tree_slot(block_name=SOLO_BLOCK, tag=None):
+    """Give up THIS tree's claim on `block_name`, if it has one. Not called automatically -- a solo
+    lane is meant to persist for the worktree's whole life, the same way its lane FOLDER does."""
+    tag = tag or _tree_tag()
+    for idx, entry in tree_claims(block_name).items():
+        if entry.get("tag") == tag:
+            try:
+                os.remove(_slot_path(block_name, idx))
+            except OSError:
+                pass
 
 
 # ---- the gate ------------------------------------------------------------------------------------
@@ -282,7 +453,71 @@ def selftest():
     print("  %-34s %s" % ("the live allocation", "clean" if not live else "DIRTY"))
     for b in live:
         print("     " + b)
-    return 0 if ok and not live else 1
+    tree_ok = _selftest_tree_slots()
+    return 0 if ok and not live and tree_ok else 1
+
+
+def _selftest_tree_slots():
+    """TL-LANECOLLIDE: two (or more) TREES claiming the same block must get DISJOINT numbers, the
+    same tree must get the SAME number back, and a released slot must become claimable again.
+    Isolated in a temp directory -- this must never read or write the box's REAL tree claims, which
+    other worktrees may be relying on for a solo run happening right now."""
+    import tempfile
+
+    global _slots_root
+    real_slots_root = _slots_root
+    tmp = tempfile.mkdtemp()
+    _slots_root = lambda: tmp  # noqa: E731 -- selftest-local, restored in `finally`
+    ok = True
+
+    def check_(desc, cond):
+        nonlocal ok
+        print("  %-34s %s" % (desc, "ok" if cond else "XX"))
+        if not cond:
+            ok = False
+
+    try:
+        base, cap = block(SOLO_BLOCK)
+        tag_a, tag_b, tag_c, tag_d = (
+            "selftest:tree-A",
+            "selftest:tree-B",
+            "selftest:tree-C",
+            "selftest:tree-D",
+        )
+        slot_a = tree_slot(tag=tag_a)
+        slot_b = tree_slot(tag=tag_b)
+        check_("two DIFFERENT trees get DIFFERENT solo lanes", slot_a != slot_b)
+        check_(
+            "both are real numbers inside the block's range",
+            slot_a is not None
+            and slot_b is not None
+            and base + 1 <= slot_a <= base + cap
+            and base + 1 <= slot_b <= base + cap,
+        )
+        check_("mutex names differ too (the actual collision this fixes)", slot_a != slot_b)
+        check_(
+            "the SAME tree gets the SAME lane back on a later call", tree_slot(tag=tag_a) == slot_a
+        )
+        # exhaust the block's remaining capacity (cap=3 today: A and B took 2, C takes the last).
+        slot_c = tree_slot(tag=tag_c)
+        check_(
+            "a third tree fills the block's last slot",
+            slot_c is not None and slot_c not in (slot_a, slot_b),
+        )
+        check_(
+            "a fourth tree, with none free, is told so rather than handed a colliding number",
+            tree_slot(tag=tag_d) is None,
+        )
+        release_tree_slot(tag=tag_a)
+        slot_d = tree_slot(tag=tag_d)
+        check_("releasing a claim frees it for the next tree that asks", slot_d == slot_a)
+        check_("claim=False never allocates", tree_slot(tag="selftest:tree-E", claim=False) is None)
+    finally:
+        _slots_root = real_slots_root
+        import shutil as _shutil
+
+        _shutil.rmtree(tmp, ignore_errors=True)
+    return ok
 
 
 def main():
@@ -290,15 +525,48 @@ def main():
     ap.add_argument("--list", action="store_true", help="print the blocks and exit")
     ap.add_argument("--check", action="store_true", help="the gate: no overlap, no overflow")
     ap.add_argument("--selftest", action="store_true", help="the gate's negative cases")
+    ap.add_argument(
+        "--solo",
+        action="store_true",
+        help="print THIS tree's own persistent solo-scenario lane number (TL-LANECOLLIDE), "
+        "claiming one if it doesn't have one yet; e.g. `make_lane.py --name ui_h --lane "
+        "$(python tools/lane_alloc.py --solo)`",
+    )
+    ap.add_argument(
+        "--release-solo", action="store_true", help="give up this tree's solo-lane claim"
+    )
     args = ap.parse_args()
     if args.selftest:
         return selftest()
+    if args.solo:
+        n = tree_slot()
+        if n is None:
+            print(
+                "no free solo lane -- every slot in block %r is claimed by another live tree "
+                "(`python tools/lane_alloc.py --list` shows who)" % SOLO_BLOCK,
+                file=sys.stderr,
+            )
+            return 1
+        print(n)
+        return 0
+    if args.release_solo:
+        release_tree_slot()
+        print("released this tree's solo-lane claim (if it had one)")
+        return 0
     if args.list:
         check(demand=suite_demand())
         for name in sorted(BLOCKS, key=lambda n: BLOCKS[n][0]):
             for n in lanes(name):
                 if mutex_in_use(n):
                     print("  lane %d (%s): mutex %s IS HELD RIGHT NOW" % (n, name, mutex_name(n)))
+        my_tag = _tree_tag()
+        claims = tree_claims(SOLO_BLOCK)
+        if claims:
+            base = block(SOLO_BLOCK)[0]
+            print("  tree claims on block %r:" % SOLO_BLOCK)
+            for idx, entry in sorted(claims.items()):
+                mine = " (this tree)" if entry.get("tag") == my_tag else ""
+                print("    lane %d -> %s%s" % (base + 1 + idx, entry.get("tag"), mine))
         return 0
     bad = check(verbose=args.check)
     if bad:

@@ -1,0 +1,42 @@
+# mp:F2b -- THE POSITIVE CASE: with the F2 merge installed, Cyrillic + Polish characters render
+# their REAL glyphs through the game's own text path, not the guard's substitute.
+#
+# Run with `--extra-ini tools/uiscripts/ini/font_merged.ini`, which arms the SAME [fonts] probe_text
+# render probe font_guard.txt uses (src/mh_dll/mh/seams/gfx_font_guard.cpp) -- see that scenario's
+# header for why a probe, not typed text, is the only way to put an arbitrary UTF-16 code point on a
+# frame before mp:F3 lands (typed Cyrillic still folds through ToAscii/CP_ACP today).
+#
+# THIS SCENARIO IS OPT-IN AND SKIPS BY NAME WITHOUT A MERGED INSTALL (mp:F2b). test_ui.py points its
+# OWN lane at MH_FONT_MERGE_DIR (default workdir/mh_en_fonts, gitignored/machine-local) via
+# `make_lane.py --src`, rather than the shared polygon -- font_guard's NEGATIVE baseline depends on
+# the polygon staying stock retail data, so the merge must never land there. See
+# font_merge_precondition() in tools/test_ui.py. Build a merged install with:
+#   python src/formats/fnt.py install --game <a scratch dir under workdir/, NEVER the polygon>
+#
+# WHAT A GREEN HERE MEANS, exactly (the fonts page's "What the merge produces" section has the full derivation
+# table; this probes one character from every family in it):
+#   * Privet (Cyrillic Privet, U+041F/0440/0438/0432/0435/0442) -- a LIFTED word, copied byte-for-byte
+#     from the RU override at its own FONTLAY ordinal.
+#   * the five DRAWN Cyrillic glyphs the RU override does not ship at all: uppercase K/hard-sign/YU
+#     (U+041A/042A/042E) and IO/io (U+0401/0451).
+#   * Lodz (U+0141 L-stroke, U+00F3 o-acute-lift, ascii d, U+017A z-acute-lift) -- Polish, DRAWN.
+#   * Aeze-n-Sc-c (U+0104/0119 ogonek, U+017B dot-above, U+0144/015A/0107 more acute-lifts) -- the
+#     remaining two Polish derivation families.
+#   * the guard's own box (U+FFFD), probed directly here as a REAL mapped glyph -- the substitute
+#     path font_guard.txt exercises is the code that draws it when a character is NOT mapped; this
+#     scenario is the proof that these particular characters now ARE.
+#   * the run reaches `end` and the ASCII around the probe is unharmed.
+#
+# tol 0 = exact match, same reason font_guard.txt states: the probe is a couple hundred pixels of
+# text on a 1024x768 frame, well under a tenth of a percent, so any tolerance big enough to absorb
+# jitter would absorb the whole subject.
+
+# PARK THE CURSOR before the capture (debug_overlay.txt's rule, same cause as font_guard.txt): at
+# tol 0.0 the game's cursor sprite sitting wherever the last click left it is a diff. Bottom-right is
+# dead background, nowhere near the probe at (24,24).
+settled value:110
+cursor 600 450
+capture fm1_menu
+
+log F2b: probe rendered; merged Cyrillic + Polish glyphs resolved to real glyph records, not the substitute
+end

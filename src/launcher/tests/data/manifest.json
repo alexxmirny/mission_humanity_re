@@ -1,0 +1,28 @@
+{
+  "schema": 1,
+  "version": "0.2.0",
+  "issued_at": "2026-09-17T12:00:00Z",
+  "launcher": {
+    "version": "0.2.0",
+    "url": "http://127.0.0.1:8099/mh_launcher.exe",
+    "sha256": "25d6eea776d0403f5e227d9e0ec76c0dc6a30edcea4779e68b05bdc014ab8d48"
+  },
+  "game": {
+    "net": {
+      "url": "http://127.0.0.1:8099/mission_humanity_re-0.2.0-net.zip",
+      "sha256": "f374c01207b6673bab68cc055b1b81b2a54781c350f1035554970e3c0ab2a769",
+      "size": 15
+    },
+    "net-debug": {
+      "url": "http://127.0.0.1:8099/mission_humanity_re-0.2.0-net-debug.zip",
+      "sha256": "5916a537f5ba3e916755300fc6d96611e5ed2dcd3256e43a8993b2fb3bbecfbd",
+      "size": 21
+    },
+    "brokered-debug": {
+      "url": "http://127.0.0.1:8099/mission_humanity_re-0.2.0-brokered-debug.zip",
+      "sha256": "9feaba772902bda9c91ef50f339087248022fd4e09dd89365f94e64f742a9e89",
+      "size": 26
+    }
+  },
+  "notes_url": "http://127.0.0.1:8099/notes.html"
+}

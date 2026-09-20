@@ -1,0 +1,49 @@
+# mp:F2 -- THE NEGATIVE CASE: a string containing code points no font maps must render a substitute
+# and must not take the process down.
+#
+# Run with `--extra-ini tools/uiscripts/ini/font_guard.ini`, which arms the `[fonts] probe_text`
+# render probe in src/mh_dll/mh/seams/gfx_font_guard.cpp. The probe draws that string once per
+# present through the game's OWN text path -- llm_gfx_draw_text_blend_clipped ->
+# llm_gfx_font_layout_text -> the glyph blitter -- so what lands on the frame is the real lookup
+# this seam guards, not a picture of it.
+#
+# WHY A PROBE AND NOT A TYPED STRING. Nothing else in the harness can put an arbitrary UTF-16 code
+# point on a frame. `type` goes through the game's ToAscii, which folds through the PROCESS ANSI
+# codepage (measured in type_cyrillic.txt: six Cyrillic keystrokes store six '?'), and setup.dat is
+# byte-transparent, so both can only ever deliver an 8-bit value. mp:F3 is the item that fixes that,
+# and it DEPENDS on this one -- so F2 cannot be accepted through the typed path without a cycle.
+#
+# WHAT A GREEN HERE MEANS, exactly:
+#   * the two unmappable characters (U+4E00, U+05D0) each render ONE substitute glyph. On stock
+#     retail fonts that substitute is '?' -- the last entry in the guard's fallback chain, and the
+#     only one a stock FONTLAY carries. With the merged fonts installed (`fnt.py install`) it is the
+#     U+FFFD box instead, and THIS BASELINE THEN GOES RED ON PURPOSE: the suite's default state is
+#     stock retail data, and the merge is an opt-in local step.
+#   * the ASCII on both sides of them is unharmed -- the guard substitutes a character, it does not
+#     truncate the string or shift the rest.
+#   * the run reaches `end`. Before the guard, the same string on font slot 0 indexed a 257-entry
+#     charmap with a code unit of 0x4E00 and used whatever integer it found past the end as a
+#     glyph-table index.
+#
+# tol 0 = exact match, for key_repeat's reason: the probe is a couple of hundred pixels of text on a
+# 1024x768 frame, well under a tenth of a percent, so any tolerance big enough to absorb jitter would
+# absorb the whole subject.
+
+# PARK THE CURSOR before the capture (debug_overlay.txt's rule, same cause): at tol 0.0 the game's
+# cursor sprite sitting wherever the last click left it is a diff. Bottom-right is dead background,
+# and it is nowhere near the probe at (24,24).
+settled value:110
+cursor 600 450
+capture fg1_menu
+
+# A second screen, for the debug-overlay reason: the probe must not depend on which screen composed
+# the frame. The player-name screen is also the one whose text field type_ascii/type_cyrillic drive,
+# so a regression that broke the game's own text rendering shows here next to the probe.
+clickv 110
+present Player name
+settled Ok
+cursor 600 450
+capture fg2_playername
+
+log F2: probe rendered on 2 screens; 2 unmappable code points substituted, ASCII intact
+end

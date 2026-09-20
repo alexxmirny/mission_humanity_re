@@ -1,0 +1,22 @@
+# mp:TL-UISTALL -- net_hud's third capture: the CLIENT's `; [netind] WAITING FOR host` frame, gated
+# on the new `stalled [<ms>]` WAIT predicate (true while `MH_Lockstep_StallBindingPeer() >= 0`,
+# ui_drive.cpp) instead of on a guessed wall-clock window. Before that predicate existed, a timed
+# blackhole always landed after the message's 1 s hold had already expired -- see mp:L1's progress
+# note ("NOT CAPTURED: the stall name ON THE FRAME... a stall freezes gameclock, the only in-match
+# gate, so no capture can fire during one").
+#
+# ONE DIRECTION ONLY (s2c: host -> client, tools/net_shim.py's `blackhole on|off|c2s|s2c`). This
+# blocks only the CLIENT's INCOMING traffic, so only the CLIENT's sim stalls -- it can no longer
+# learn the host's advertised PEER_HORIZON -- while the host keeps ticking normally throughout. The
+# host's own `capture n1_hud` and the client's own (earlier, in mp_client_hud.txt) are both taken
+# well before this ever fires. One direction rather than a bidirectional cut is what gives
+# independent double-detection: both peers would report an identical event on a full cut.
+#
+# THE OFFSET IS MEASURED, not guessed: a full net_hud run (host+client boot, the host's listen wait,
+# the client's menu/lobby walk, gameclock 20000 into the match, both n1_hud captures) was clocked
+# end to end at ~225s wall on this rig under the SAME contention this suite normally runs under
+# (2026-09-18, wave 9 -- several agents building/testing in parallel on the machine). 300000 ms
+# leaves ~75s of margin past that measurement before the blackhole starts, so it cannot race either
+# n1_hud capture even under load; it never turns back off, because the script ends shortly after the
+# stall frame is captured.
+300000  blackhole s2c

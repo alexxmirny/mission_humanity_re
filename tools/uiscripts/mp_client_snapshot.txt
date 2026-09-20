@@ -1,0 +1,64 @@
+# mp:X1b CLIENT -- receive the host's world snapshot over channel C and import it into live memory.
+#
+# The walk is mp_client_start.txt's, unchanged. `[harness] snapshot_import=1` (symmetric, both peers)
+# makes the harness poll MH_Net_SnapshotPoll every sim step; when the blob is whole and manifest-
+# verified it calls libmh_import_world and writes SNAPIMP -- its per-region hashes RE-DERIVED from
+# live memory, stamped with the step the BLOB carried.
+#
+# WHAT HAPPENS TO THIS PEER'S LOCKSTEP AFTERWARDS, stated because a reader of a red run will ask.
+# The import REWINDS this peer's world to the host's step-N state while its turn engine's step
+# counter stays where it is, so from the next step on the two peers simulate different worlds and the
+# cross-peer verdict goes DESYNC. That is expected and is NOT what this scenario measures: making an
+# import a RESYNC (buffer the inputs, fast-forward to the live step) is mp:X3's item. The claim here
+# is the one the post_check makes -- the imported world IS the captured world, region for region.
+#
+# Pair with mp_host_snapshot.txt.
+
+# join the host by IP -> the joined lobby
+settled value:110
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+present Internet server
+settled Internet server
+clickl Internet server
+present Server address
+settled Connect
+clickl Connect
+sessions 1
+settled Join game
+clickl Join game
+
+# joined lobby: tell the host we are really here, then wait for its Start
+present Network players
+signal lobby
+settled Cancel
+absent Network players
+gamemode 2
+# The capture is gated on the SIM, not on `absent`, for match_launch's measured reason: a peer
+# entering on FLAG_START renders its first frames mid fog-of-war reveal, and at headless frame rates
+# that stage is frame-rate dependent. 6000 is past saturation and is the number every other in-game
+# capture in the suite uses, so both peers pin the same sim moment.
+gameclock 6000
+capture s1_client_ingame
+log CLIENT in a live UDP match; polling for the host's snapshot every sim step
+# NO `simstep` WAIT ANYWHERE IN THIS SCRIPT, and the reason survives the rewrite below: `simstep N`
+# arms the harness's own SIM FENCE, and the snapshot poll runs inside the sim-step hook -- a fenced
+# peer stops polling, so the fence would freeze the very loop the transfer is waiting on.
+#
+# mp:X3 step one -- A RENDEZVOUS, NOT A CLOCK, and the substitution is the whole point of this
+# script's tail. Under `[harness] snapshot_hold=1` this peer STOPS ITS SIM the instant a blob
+# imports: the importing step's body is skipped and the game clock is pinned. Every `gameclock`
+# wait on this side would then block until the scenario's timeout, so the wait that proves the peer
+# is alive would be indistinguishable from the peer being dead. `awaitsignal` is ferried by the
+# RUNNER off the host's log and needs nothing of this process but a frame loop and a script
+# interpreter -- exactly the two things a survived hold still has, and exactly the two a
+# 0xC000041D takes away. Passing it IS the survival evidence.
+awaitsignal held
+# Both of these run after the hold, so both are alive-witnesses: the first reads live game state
+# (the strategic mode global) through the same interpreter, the second writes a line into this
+# process's own log at a wall-clock moment tens of seconds past the import.
+gamemode 2
+log CLIENT survived the import: script alive, sim held, strategic mode still 2
+end

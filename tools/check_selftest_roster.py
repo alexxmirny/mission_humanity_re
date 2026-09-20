@@ -54,7 +54,13 @@ SOURCES = {
     "net_selftest": os.path.join(REPO, "src", "mh_dll", "mh_nettest", "net_selftest.cpp"),
     "libmh_selftest": os.path.join(REPO, "src", "mh_dll", "libmh_test", "libmh_selftest.cpp"),
 }
-EXPECT_COUNT = 32  # F5I's measured roster size; a change here is a deliberate edit, not a drift
+# F5I measured 32; +1 at SES0 (sessionidtest); +1 at mp:T0 (udpwiretest); +1 at mp:SES1
+# (sessiondirtest); +1 at mp:T1 (udploopbacktest); +1 at mp:SES2 (logrottest); +1 at mp:U40
+# (relinktest); +1 at mp:T1b (udprelinktest); +1 at mp:T2 (udpbulktest); +1 at mp:T3 (udpstatstest);
+# +1 at mp:X1 (udpsnaptest); +1 at mp:R3 (udppunchtest); +1 at mp:X2 (maptest); +1 at mp:R6
+# (udproomtest); +1 at mp:R3e (udprelaytest); +1 at mp:R7a (netcfgtest). A change here is a
+# deliberate edit, not a drift
+EXPECT_COUNT = 47
 
 # A table row: {"name", <gate>, <adapter>},  -- clang-format pads the name column, so the whitespace
 # is free-form. Comment lines never match, because a `//` line has no leading `{"`.

@@ -42,13 +42,14 @@
 #include <string.h>
 
 #include "include/mh_overlay_export.h"
-#include "include/mh_net_export.h"  // MH_Net_LocalPlayerId (sim.power's per-player index)
-#include "include/mh_run_context.h" // MH_RunDir
-#include "addr/mh_addrs.gen.h"      // generated EN VAs
-#include "state/region_runtime.h"   // SB-HOSTFREE: live_base/ptr -- a movable region is read
-                                    // where it IS, not where the binary put it
-#include "en_guard.h"               // EN-only build gate
-#include "overlay_font.h"           // GENERATED 6x10 ASCII cells
+#include "include/mh_net_export.h"     // MH_Net_LocalPlayerId (sim.power's per-player index)
+#include "include/mh_uidrive_export.h" // MH_UIDrive_SynthKeyDown (the `hotkey` verb's chord, 2026-09-20)
+#include "include/mh_run_context.h"    // MH_RunDir
+#include "addr/mh_addrs.gen.h"         // generated EN VAs
+#include "state/region_runtime.h"      // SB-HOSTFREE: live_base/ptr -- a movable region is read
+                                       // where it IS, not where the binary put it
+#include "en_guard.h"                  // EN-only build gate
+#include "overlay_font.h"              // GENERATED 6x10 ASCII cells
 
 #pragma comment(lib, "user32.lib") // wsprintfA / GetAsyncKeyState
 
@@ -159,14 +160,11 @@ struct Extra {
 Extra g_extra[MAX_EXTRA];
 int   g_nextra = 0;
 
-char g_log[MAX_PATH];
-bool g_log_ready = false;
+char          g_log[MAX_PATH];
+unsigned long g_log_gen = 0; // SES1: PROCESS-scoped -- arm-time banners, written before any session
 
 void ovl_log(const char *fmt, ...) {
-    if (!g_log_ready) {
-        wsprintfA(g_log, "%smh_overlay.log", MH_RunDir());
-        g_log_ready = true;
-    }
+    mh_proc_path(g_log, MAX_PATH, "%smh_overlay.log", &g_log_gen);
     char    line[512];
     va_list ap;
     va_start(ap, fmt);
@@ -547,16 +545,25 @@ bool parse_key(const char *spec, KeyBind *out) {
     return false;
 }
 
+// A key is HELD if the OS says so OR the UI harness is synthesising it (2026-09-20). The second arm
+// exists because GetAsyncKeyState answers 0 for a process on a non-input desktop -- every headless
+// lane -- so the toggle could never be exercised by the suite; the `hotkey` script verb holds a chord
+// in the harness's own table and this is the one place the overlay consults it. Zero cost and zero
+// effect outside a running script (the table is all-zero unless a script sets it).
+bool vk_held(int vk) {
+    return (GetAsyncKeyState(vk) & 0x8000) != 0 || MH_UIDrive_SynthKeyDown(vk) != 0;
+}
+
 // Rising edge, with the modifier state required by the binding. Our GetAsyncKeyState path is
 // independent of the game's DirectInput ring, so a collision DOUBLE-FIRES rather than overriding --
 // which is exactly why these are rebindable and default to Ctrl+Alt.
 bool key_fired(KeyBind *k) {
     if (!k->vk) return false;
-    bool down = (GetAsyncKeyState(k->vk) & 0x8000) != 0;
+    bool down = vk_held(k->vk);
     if (down) {
-        if (k->ctrl && !(GetAsyncKeyState(VK_CONTROL) & 0x8000)) down = false;
-        if (k->alt && !(GetAsyncKeyState(VK_MENU) & 0x8000)) down = false;
-        if (k->shift && !(GetAsyncKeyState(VK_SHIFT) & 0x8000)) down = false;
+        if (k->ctrl && !vk_held(VK_CONTROL)) down = false;
+        if (k->alt && !vk_held(VK_MENU)) down = false;
+        if (k->shift && !vk_held(VK_SHIFT)) down = false;
     }
     bool fired = down && !k->prev;
     k->prev    = down;

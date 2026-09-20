@@ -1,0 +1,62 @@
+# src/collector/docker-compose.yml -- collector + Caddy (tracker dist:RP2, plan D14).
+#
+# UNVERIFIED on this machine: Docker is not installed here (2026-09-17). Once
+# it is, from src/collector:
+#   mkdir -p secrets && echo -n "<a long random token>" > secrets/report_token.txt
+#   docker compose up --build
+# See README.md for the full run instructions and what each done_when clause
+# looks like against this compose stack.
+
+services:
+  collector:
+    build: .
+    image: mh-collector:local
+    restart: unless-stopped
+    environment:
+      REPORTS_DIR: /data/reports
+      TOKEN_FILE: /run/secrets/report_token
+      MAX_BODY_MB: "64"
+      RATE_PER_MIN: "10"
+      TIMESTAMP_SKEW_SECONDS: "600"
+    secrets:
+      - report_token
+    volumes:
+      - reports:/data/reports
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/healthz', timeout=3).status == 200 else 1)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    expose:
+      - "8000"
+    # No host port mapping here on purpose -- only Caddy is reachable from
+    # outside the compose network; the collector is only reachable through it.
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    depends_on:
+      collector:
+        condition: service_healthy
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      # The name or IP clients dial, for the Caddyfile's site address + default_sni (its header
+      # says why a bare :443 cannot work). deploy.yml writes MH_SITE_ADDR into .env on the VPS from
+      # the VPS_HOST secret; unset, Caddy serves `localhost` -- right for the local dev compose.
+      - MH_SITE_ADDR=${MH_SITE_ADDR:-localhost}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+
+secrets:
+  report_token:
+    file: ./secrets/report_token.txt
+
+volumes:
+  reports:
+  caddy_data:
+  caddy_config:

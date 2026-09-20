@@ -1,22 +1,22 @@
 {
   "_generated_by": "tools/gen_inmem_manifest.py --audit",
   "_what": "Every src/patcher manifest classified for IN-MEMORY application. `verdict` is a MANIFEST property: complete = its relocation metadata is total, so the cave may be placed anywhere; incomplete = appliable only at the baked VA, with `reason`; refused = structurally unrepresentable, no header is emitted. `prereqs` is the SEPARATE axis -- what mh/patch/inmem_patch.h must gain before that manifest can be compiled in. `class` is a THIRD axis and the manifest's own declaration (fork ruling Q7): what the file is FOR. The compile list is every class `shipped` manifest and nothing else, so this extract is where a change to what mh.dll carries becomes visible.",
-  "manifest_count": 40,
-  "site_count": 46294,
+  "manifest_count": 38,
+  "site_count": 46292,
   "by_verdict": {
-    "complete": 32,
+    "complete": 30,
     "incomplete": 0,
     "refused": 8
   },
   "sites_by_verdict": {
-    "complete": 46282,
+    "complete": 46280,
     "incomplete": 0,
     "refused": 12
   },
   "by_class": {
     "layered": 1,
     "reference": 25,
-    "reimplemented": 7,
+    "reimplemented": 5,
     "retired-addimport": 4,
     "shipped": 3
   },
@@ -81,28 +81,6 @@
       "ref_kinds": {
         "abs32_to_section": 1570
       },
-      "prereqs": []
-    },
-    {
-      "name": "cd_audio_nonfatal",
-      "class": "reimplemented",
-      "sites": 1,
-      "verdict": "complete",
-      "reason": "",
-      "sections": 0,
-      "refs": 0,
-      "ref_kinds": {},
-      "prereqs": []
-    },
-    {
-      "name": "cd_audio_nonfatal_EN",
-      "class": "reimplemented",
-      "sites": 1,
-      "verdict": "complete",
-      "reason": "",
-      "sections": 0,
-      "refs": 0,
-      "ref_kinds": {},
       "prereqs": []
     },
     {

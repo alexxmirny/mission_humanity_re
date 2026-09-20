@@ -1,0 +1,69 @@
+# fork F4 / U43 -- THE MODULE=NONE HOST LOBBY, ARMED (Q8's other half).
+#
+# U42 closed Q8's EXPLAIN half (the standing "No network module" line also paints on the "Network
+# players" screen). U42 ALSO measured that Start never appeared -- not even the host's own slot row --
+# and believed (wrongly) that on_host_advertise() (net_discovery.cpp) was already ungated on
+# transport_present(); it was not. U43 found the real gate: net_seams.cpp's install_mp_bootstrap()
+# grouped on_host_advertise()'s INSTALL with the six WIRE-touching protocol stubs and skipped it
+# whenever `!transport_present()`. on_host_advertise() only marks the host role
+# (_G_LLM_NET_IS_HOST/LOCALIDX/PLAYERSIDE) and arms the manual-lobby driver -- it touches the wire NOT
+# AT ALL -- so skipping its install left _G_LLM_NET_IS_HOST at its game-init default of 0 (the ONLY
+# place in the whole binary that ever writes 1 to it), and retail's own llm_lobby_screen_open /
+# llm_lobby_host_net_dispatch (0x004be8a7 / 0x004bfd35 EN) both silently ran their CLIENT branch for a
+# "host" that read back as a client: Start stayed HIDDEN and llm_lobby_build_slot_widgets (0x004bf99b
+# EN) never ran at all.
+#
+# U43's fix installs on_host_advertise() UNCONDITIONALLY -- exactly as wire-free as the nine always-on
+# UI installs already were -- and the map-send no-op with it: retail's hollow map_send stub returns an
+# uninitialised value that the host's async map-load step reads as failure ("Can't create the game",
+# the first post-fix run's frame), so a module=none Start needs that no-op as much as a networked one. This flips U42's `absent Start` to the opposite, and proves the fix past
+# "the button appears": the host seats an AI (res_hud.txt / mp_ai_closed_start.txt's proven solo-
+# launch pattern -- Start un-greys at occ 2 and an AI counts toward occ, so a host plus one computer
+# player can launch alone) and actually launches, entirely without a transport in the process.
+#
+# THREE THINGS ARE ASSERTED, ALL LIVE ON THE RENDERED SCREEN, NOT INFERRED FROM A LOG:
+#   (a) the standing "No network module" line still paints here (unchanged from U42 -- the module IS
+#       still absent; only the slot machinery being gated on its presence was the bug).
+#   (b) the host's own row is real, not merely the button: seating an AI at slot 1 needs
+#       llm_lobby_slot_cycle_state_cb to find a row 1 to cycle, which needs row 0 (the host) already
+#       built -- `occ 2` after the click is the roster (host + AI), not a guess.
+#   (c) Start actually launches the game with no transport in the process at all: `absent Network
+#       players` + `gamemode 2` after clicking it.
+
+settled value:110
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+settled Create
+clickl Create
+present Game name
+settled Ok
+clickl Ok
+present Available maps
+settled Ok
+clickl Ok
+present Network players
+present No network module
+settled Start
+capture no_net_lobby
+
+# seat an AI opponent in slot 1 (OPEN -> AI) -- res_hud.txt / mp_ai_closed_start.txt's proven pattern.
+# The per-slot state spinner rebuilds the widget list, so gate on the "Computer" name label rather
+# than a delay (mp_host_ai_closed.txt's recipe).
+click 70 132
+present Computer
+occ 2
+capture no_net_lobby_ai_seated
+
+enabled Start
+clickl Start
+
+# the match launches with NO transport in the process at all -- U43's actual claim, not merely that
+# the button is clickable.
+absent Network players
+gamemode 2
+gameclock 3000
+capture no_net_lobby_launched
+log U43: module=none host seats an AI and Start launches the match with no transport in the process
+end

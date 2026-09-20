@@ -114,6 +114,8 @@ EXPORTS
     ?group_issue_order@tact@mh@@YAXHIIII@Z
     ?last_save_path@save@mh@@YAPBDXZ
     ?last_trap@libmh_in@mh@@YAPBDXZ
+    ?lockstep_hash@world@state@mh@@YAXIPA_K0@Z
+    ?reset_session_latch_for_test@boot@state@mh@@YAXXZ
     ?rng_trace_add_note@sim@mh@@YAXIIIIIII@Z
     ?rng_trace_at@sim@mh@@YAABUrng_trace_entry@12@H@Z
     ?rng_trace_count@sim@mh@@YAHXZ
@@ -127,6 +129,7 @@ EXPORTS
     ?set_time_resync_pace_disabled@sim@mh@@YAX_N@Z
     ?unit_enqueue_command@tact@mh@@YAHHHEHGGG@Z
     ?verify_active@save@mh@@YA_NXZ
+    libmh_import_world
 
 ; The module-level entries (libmh/include/libmh_module.h). Not part of the spine contract:
 ; the ABI handshake and the loader-order probe, which mh.dll calls directly rather than

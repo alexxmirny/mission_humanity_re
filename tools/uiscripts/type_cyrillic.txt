@@ -1,0 +1,41 @@
+# mp:F4 + mp:F3 -- typing NON-ASCII text through the game's real keyboard path, and STORING IT RIGHT.
+#
+# `layout 00000419` loads the Russian layout for the run (restored on every exit path, including a
+# timeout or an abort); `type <utf8>` then resolves each character against THAT layout with
+# VkKeyScanEx/MapVirtualKeyEx and presses the physical keys a Russian-keyboard player would press.
+# Nothing here is a table baked into the harness: the same two lines with 00000415 type Polish
+# (type_polish.txt does exactly that).
+#
+# THE ASSERTION IS ON THE FIELD BUFFER, NOT THE PIXELS, and that is forced rather than convenient:
+# the stock EN fonts carry no Cyrillic glyphs, so a frame cannot tell correctly stored Cyrillic from
+# wrong -- it shows the F2 guard's substitute either way. `field name hex:...` names the exact bytes
+# the game stored.
+#
+# WHAT CHANGED HERE, AND WHY THE BASELINE MOVED (2026-09-18, mp:F3).
+# This line used to read `hex:686f73743f3f3f3f3f3f` -- "host" plus SIX QUESTION MARKS -- and that was
+# a MEASUREMENT of a real defect, not a shrug: the layout resolved every character perfectly (the
+# run's log still prints, per character, the scancode and the byte the layout's own codepage gives:
+# CP1251 cf f0 e8 e2 e5 f2), and then llm_input_key_dequeue_translate_ascii called ToAscii, whose ANSI
+# conversion goes through the PROCESS codepage rather than the keyboard layout's, and stored 0x3f for
+# all six. F3 replaced that step with ToUnicodeEx under the active layout plus an encode through the
+# codepage pinned by `[input] codepage` (1251 here, via tools/uiscripts/ini/input_cp1251.ini), so the
+# six bytes are now the six the layout meant. The `t_cyr` capture was RE-BLESSED in the same change:
+# the field now holds cf f0 e8 e2 e5 f2 where it held six '?', and those bytes draw differently.
+#
+# THE SIX BYTES ARE THE WHOLE POINT, so read them as a unit: cf f0 e8 e2 e5 f2 is "Privet" in CP1251.
+# The 686f7374 in front of them is the "host" the runner pins into the name field (--host-name).
+
+settled value:110
+clickv 110
+present Player name
+settled Ok
+
+clickl Your name
+
+layout 00000419
+type Привет
+field name hex:686f7374cff0e8e2e5f2
+capture t_cyr
+layout default
+log F3/F4: typed 6 Cyrillic characters via scancodes 22 23 30 20 14 31 on the RU layout -> CP1251 bytes
+end

@@ -119,6 +119,26 @@
    "globs": ["docs/conventions.md"],
    "why": "fork F5E (2026-09-16), ruling R5: CREATED BY this item, as the legal target for the 74 published-code citations that said 'the convention lives in CLAUDE.md'. CLAUDE.md is withheld by private-research-layers and is not coming back, and inlining 74 restatements of one convention is worse than the disease -- so the TARGET was created instead, which is the user's inline-don't-delete rule applied one level up. It carries the sections the CODE cites (the llm_/_G_LLM_ naming convention incl. strategic-vs-tactical and the AI-cluster exception, the `::` flattening, the semantic typedefs and the map_t_tile_coord trap, the CRT classification rules, ENERGY-vs-POWER, the subagent model policy, the script policy, the generated-docs rule, the commit cadence) COPIED from CLAUDE.md rather than re-authored, with the private-layer cross-references described rather than linked (a published doc may not cite a withheld path -- that is this item's own Direction A rule). CLAUDE.md remains the source of truth and carries a pointer at this mirror."},
 
+  {"id": "docs-release", "disposition": "publish",
+   "globs": ["docs/release.md"],
+   "why": "TL-CI1 (2026-09-17): CREATED BY the release flow, and written FOR the public tree the way ci.yml was. It is the maintainer's page for the thing the public repo's Releases page shows -- the tag/version convention the workflow DEPENDS on (annotated only, the message is the body, a `-` means prerelease), the private-rehearsal-then-public order, how the version stamp reaches the binaries, how to run tools/release_package.py by hand, and the same bring-your-own-game statement ci.yml makes. Its own row rather than a glob added to docs-recommended-publish because that set is the DESIGN/reference docs the code cites as a present-tense contract, and this is process; and because README.md and INSTALL.md both link it, which under the Direction A rule (a published document may not point at a withheld one) makes its disposition load-bearing rather than a preference. It cites only published paths: INSTALL.md, README.md, docs/dll-split.md, src/mh_dll/mh_version.props, mh_version.rc, mh_net.example.ini, src/mh_dll/README.md, tools/release_package.py and .github/workflows/release.yml."},
+
+  {"id": "docs-wire-udp", "disposition": "publish",
+   "globs": ["docs/mp-wire-udp.md"],
+   "why": "mp:T0 (2026-09-17): the UDP wire-format specification that src/mh_net_proto (published) implements and cites from its README and its portable test, and that the Rust relay implements from the same page. A published library whose format page is withheld has no readable contract. Same class as docs/release.md: written FOR the public tree, settled facts only; it links no withheld page (the plan and the latency vocabulary are named in prose, not cited)."},
+
+  {"id": "docs-deploy", "disposition": "publish",
+   "globs": ["docs/deploy.md"],
+   "why": "dist:RP4 (2026-09-17): the deploy runbook for the two container images the public tree builds (.github/workflows/images.yml, deploy.yml, deploy/docker-compose.yml, tools/lint_compose.py all cite it). Same class as docs/release.md: process written FOR the public tree, no host, key or identity literal (the VPS values are GitHub Environment secrets named by role), and it cites only published paths."},
+
+  {"id": "docs-relay", "disposition": "publish",
+   "globs": ["docs/mp-relay.md"],
+   "why": "mp:R1 (2026-09-17): the relay design page -- the authenticated leg envelope, handle-vs-conn_id routing, session learning from the connect token, the 3x cap and the ping that satisfies it -- that src/relay (published, a container image the public tree builds) and mh_net_udp's udp_relay.cpp both name. Same class as docs-wire-udp: a published binary whose protocol page is withheld has no readable contract; settled design only, no host or key literal."},
+
+  {"id": "docs-mp-internet", "disposition": "publish",
+   "globs": ["docs/mp-internet.md"],
+   "why": "mp:R5 (2026-09-20): the PLAYER-FACING internet-play page, rewritten FOR the public tree around the launcher + relay (LA6/R3/R7/R7a): run the launcher, Host or Join from the first browser, no port forwarding; the direct dial as the one path that needs a forwarded port; the SSH tunnel as the legacy TCP fallback. INSTALL.md (published) links it as 'the new flow' -- R5's done_when -- and a published front door may not cite a withheld page (lint_citations direction A), so it publishes with the same class as docs-deploy / docs-relay: process written for the public cut, no host, key or identity literal (the relay address is `<relay-host>:7100` throughout), citing only published paths."},
+
   {"id": "docs-generated-symbol-tables", "disposition": "publish",
    "globs": ["docs/symbols.md", "docs/structs.md"],
    "why": "Q4 ANSWERED. The user's answer named 'the recommended docs minus dead-ends'; this row's standing recommendation was PUBLISH, and F5E R1 rules the residue to it rather than leaving a pending row the answer had already covered. The plan said the generated docs do not publish, but the code disagreed with the plan: src/ cites them 59 times across 35 files and tools/ another 138 times. Withholding them would make 197 citations dangle -- a re-authoring, not a deletion, and F5E's largest single AVOIDABLE cleanup (89 citation lines plus 8 closure edges, measured). Content-wise they are symbol names and VAs, the same class as the mh_addrs.gen.h family already in the build, so there is no retail-bytes objection."},
@@ -183,6 +203,14 @@
   {"id": "repo-config", "disposition": "publish",
    "globs": [".gitignore", ".gitattributes", ".editorconfig", ".clang-format", ".clang-format-ignore", "ruff.toml"],
    "why": "Formatter and VCS configuration. lint_repo enforces clang-format over src/mh_dll and ruff format over tools/, so a clone without these cannot run the lint it is asked to pass."},
+
+  {"id": "rust-workspace", "disposition": "publish",
+   "globs": ["Cargo.toml", "Cargo.lock", "rust-toolchain.toml"],
+   "why": "dist DS1: the cargo workspace root for src/launcher + src/relay. Same reasoning as repo-config, which it sits beside -- these three files ARE the build and lint configuration for the Rust half of the tree, so a clone without them cannot build either crate or run the two lint_repo rows (tools/lint_rust.py) it is asked to pass. Our own content: a member list, a profile, and a toolchain channel + component list; no retail bytes, no machine-specific path, no host. Cargo.lock is tracked because both members are BINARIES (the launcher is downloaded by players, the relay is a container layer), which is cargo's own stated rule for when a lockfile belongs in version control."},
+
+  {"id": "deploy-set", "disposition": "publish",
+   "globs": [".dockerignore", "deny.toml", "deploy/**"],
+   "why": "dist RP4 (2026-09-17): the deployment unit for the two images the public tree builds -- the compose file + Caddyfile the deploy workflow ships to the VPS, the secret-file EXAMPLE (a placeholder, gitignored real name beside it), cargo-deny's policy for the supply-chain job, and the .dockerignore the relay Dockerfile's repo-root build context needs. Same class as rust-workspace: our own configuration, no host, key, path or identity literal (the VPS values are Environment secrets named by role); a clone without them cannot run images.yml, deploy.yml or the lint_compose rows it is asked to pass."},
 
   {"id": "mod-src", "disposition": "publish",
    "globs": ["mod_src/**"],

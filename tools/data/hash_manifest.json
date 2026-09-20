@@ -681,6 +681,18 @@
       "inline": "game_speed -- the speed multiplier the delta is scaled by",
       "cont": [],
       "excluded": true
+    },
+    {
+      "name": "player_resources",
+      "addr": "0x00e0e468",
+      "size": 320,
+      "pre": [],
+      "inline": "player_resources int[8][10] -- the stock every affordability check reads (D25)",
+      "cont": [
+        "(2026-09-19): was never hashed; the first real internet match diverged here alongside",
+        "resource_spent and the verdict could not see it. Appended (the contract), state-only."
+      ],
+      "excluded": false
     }
   ],
   "tact_regions": [

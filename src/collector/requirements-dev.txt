@@ -1,0 +1,11 @@
+# src/collector/requirements-dev.txt -- additional pinned deps needed ONLY to
+# run this package's test suite locally (`python -m pytest src/collector`).
+# NOT installed into the Docker image (see ./Dockerfile, which installs
+# requirements.txt alone) -- keeps the shipped image lean.
+#
+#   python -m pip install -r src/collector/requirements.txt -r src/collector/requirements-dev.txt
+
+-r requirements.txt
+
+pytest==9.1.1
+httpx==0.28.1

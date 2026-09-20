@@ -1,0 +1,159 @@
+[package]
+name = "mh_launcher"
+description = "Per-user updater/launcher for Mission Humanity"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+# THE ONE FIELD THIS CRATE DOES NOT INHERIT, and it is a statement of fact rather than a preference.
+# The workspace declares 1.74 -- what the two placeholder crates needed -- and `eframe 0.36.2` itself
+# declares `rust-version = "1.95"` (zip 8.6 says 1.88). A launcher that kept claiming 1.74 would be
+# claiming an MSRV no toolchain could honour, and `cargo clippy`'s `incompatible_msrv` lint would be
+# measuring this crate's code against a floor its own dependency tree already broke. Raise this when
+# a dependency raises its own; the relay stays on the workspace value.
+rust-version = "1.95"
+
+# The launcher itself. A 64-bit process launching the 32-bit game (plan decision D10): nothing here
+# loads into the game, so there is no reason to build an i686 binary and every reason not to.
+[[bin]]
+name = "mh_launcher"
+path = "src/main.rs"
+
+# THE EXIT-CODE FIXTURE, and the reason it is a shipped target rather than a throwaway. The whole
+# point of `launch.rs` is telling a crash from a quit, and the only honest way to prove that is to
+# wait on a process that really did exit with a `STATUS_*` code. `mh_exit_probe <code>` is that
+# process: point the launcher's game directory at a copy of it named mh.exe and the Launch view has
+# a real fault to classify. Keeping it in the tree keeps the acceptance test reproducible; it is a
+# few lines, it ships in no zip, and `cargo clippy --all-targets` lints it like everything else.
+[[bin]]
+name = "mh_exit_probe"
+path = "src/bin/mh_exit_probe.rs"
+
+[dependencies]
+# The window. `default-features = false` drops the X11/Wayland/accesskit feature set a Windows-only
+# per-user launcher cannot use, and `default_fonts` is what makes a build render Latin text without
+# shipping a font of its own.
+#
+# BOTH RENDERERS ARE BUILT IN, AND THAT IS NOT INDECISION. eframe's default is `glow`, which needs
+# OpenGL 2.0+ from the display driver -- and a Windows machine with no OpenGL ICD (a Hyper-V or
+# VirtualBox guest, a plain RDP session, a fresh install before the GPU driver) has only Microsoft's
+# software OpenGL 1.1, on which `run_native` fails outright with "egui_glow requires opengl 2.0+".
+# Measured on this project's own test VM, which is exactly the shape of machine an old game gets
+# played on. `wgpu` reaches the same screen through D3D12/D3D11 and falls back to the WARP software
+# rasteriser, so it starts where glow cannot; main.rs tries wgpu first and glow second, and the two
+# backends together cost about 3 MB of a binary nobody downloads twice.
+eframe = { version = "0.36.2", default-features = false, features = [
+    "glow",
+    "wgpu",
+    "default_fonts",
+] }
+egui = { version = "0.36.2", default-features = false }
+
+# The native folder/file pickers on the status view. default-features = false is again about the
+# Linux half (the XDG portal backend and the tokio it drags in); on Windows rfd is COM IFileDialog.
+rfd = { version = "0.17.2", default-features = false }
+
+# The release zip. Only DEFLATE: that is what tools/release_package.py writes
+# (`zipfile.ZIP_DEFLATED`), and a reader that also understands bzip2/zstd/lzma would be accepting
+# archives this project cannot produce.
+zip = { version = "8.6.0", default-features = false, features = ["deflate"] }
+
+# launcher.toml.
+serde = { version = "1.0.229", features = ["derive"] }
+toml = "1.1.6"
+
+# %LOCALAPPDATA%, asked of the OS rather than assembled from %USERPROFILE%.
+directories = "6.0.0"
+
+# Install-manifest digests. The launcher records what it copied so uninstall can tell "the file I
+# put here" from "a file the player has since replaced" -- and dist LA2's signed manifest is
+# SHA-256 too, so this is the crate that item needs anyway.
+sha2 = "0.10.9"
+
+# Log and manifest timestamps, in UTC. `clock` is the only feature used; the rest of chrono's
+# default set (serde, the locale tables) is not.
+chrono = { version = "0.4.45", default-features = false, features = ["clock", "std"] }
+# ---- dist LA2: the update path ------------------------------------------------------------------
+
+# The one crate in this tree that opens a socket. `default-features = false` drops gzip (a release
+# zip is already DEFLATE, so transfer compression buys nothing and costs a decoder) and, more to the
+# point, `win-system-proxy` -- an updater whose destination can be changed by a system setting is an
+# updater whose destination is not the one src/launcher/src/update.rs states.
+#
+# `rustls-webpki-roots` COMPILES THE TRUST STORE IN rather than reading Windows'. The launcher talks
+# to two hosts it chose, and a fixed root set means an enterprise MITM root or a hand-installed CA
+# cannot silently re-point them. The cost is that the roots age with the binary, which the manifest
+# signature absorbs: a launcher too old to trust the CDN's chain fails to FETCH rather than fetching
+# something wrong.
+ureq = { version = "3.4.2", default-features = false, features = ["rustls", "rustls-webpki-roots"] }
+
+# Verifying manifest.json against the key compiled into update.rs. Zero dependencies of its own --
+# it carries its own Ed25519 and BLAKE2b -- which is what you want under a signature check: the
+# thing that decides whether to trust a download should not itself be a dependency tree.
+minisign-verify = "0.2.5"
+
+# Replacing a RUNNING executable, which Windows will not let you simply overwrite. mitsuhiko's
+# crate does the rename-then-move dance; the launcher's own contribution is refusing to do it at all
+# until the candidate has answered `--verify-binary`.
+self-replace = "1.5.0"
+
+# The rollback refusal. `0.2.0-rc1 < 0.2.0 < 0.10.0` is exactly what a string compare gets wrong in
+# both directions, and "is this offer actually newer" is a security decision here, not a nicety.
+semver = "1.0.28"
+
+# manifest.json, and -- since LA4 -- report.json and the `meta` object RP1 will POST beside the zip.
+# Reached only AFTER the signature has verified on the update path: a JSON parser is a larger attack
+# surface than an Ed25519 check, so it never sees an unauthenticated byte.
+serde_json = "1.0.151"
+
+# ---- dist RP1: sending the report ---------------------------------------------------------------
+
+# The collector's request signature (`src/collector/collector/signing.py`): hex HMAC-SHA256 over
+# `{timestamp}\n{sha256(body)}`, keyed by the shared token. RustCrypto's `hmac`, driving the `sha2`
+# this crate already depends on for the install manifest and the update digests -- so the whole
+# addition is one 200-line crate over a hash implementation that was already linked in, rather than
+# a second crypto stack. Already in the workspace lockfile (it arrives under minidump-writer), so
+# this pulls nothing new down. NOT hand-rolled: HMAC is short enough to write and exactly the kind
+# of thing whose hand-rolled version is subtly wrong for keys longer than the block size.
+hmac = "0.12.1"
+
+# ---- dist LA4: report assembly and crash capture ------------------------------------------------
+
+# The out-of-process minidump (plan decision D12). Microsoft's own guidance is that
+# `MiniDumpWriteDump` should be called from a SEPARATE process, and this crate's Windows backend is
+# a thin, correctly-aligned binding over exactly that call: `dump_crash_context` takes the target's
+# pid, the crashing thread id and a pointer to the target's own `EXCEPTION_POINTERS`, sets
+# `ClientPointers` when the pid is not our own, and lets `MiniDumpWriteDump` read the exception
+# across the process boundary with `ReadProcessMemory`. Writing the dump IN-process -- from inside a
+# vectored handler, in a 32-bit game whose heap may be the broken thing -- is the failure this
+# avoids. The crate is also why the launcher does not hand-roll a `CONTEXT` binding: the `winapi`
+# `CONTEXT` is famously under-aligned, and it re-exports `crash-context`'s correct one.
+minidump-writer = "0.13.0"
+
+# report.json's machine facts, the named events the game's handler signals on, and the marker
+# handshake. Deliberately these six small features rather than a machine-inventory crate: every
+# fact report.json carries is one registry read or one syscall, and `sysinfo`-shaped dependencies
+# are a large surface for a short, fixed list of strings.
+#
+# Win32_System_Diagnostics_Debug (dist LA5): the raw minidump structs `crash.rs`'s
+# `append_exception_stream` reads/writes by hand -- WOW64_CONTEXT, EXCEPTION_RECORD32,
+# MINIDUMP_HEADER/_DIRECTORY/_EXCEPTION(_STREAM). No new syscall surface: this feature is types
+# only, nothing in it is linked.
+windows-sys = { version = "0.61.2", features = [
+    "Win32_Foundation",
+    "Win32_Security",
+    "Win32_System_Diagnostics_Debug",
+    "Win32_System_Registry",
+    "Win32_System_SystemInformation",
+    "Win32_System_Threading",
+] }
+
+[dev-dependencies]
+# THE DUMP IS CHECKED BY READING IT BACK. `cdb`/WinDbg is not installed on this project's machine
+# (checked 2026-09-17: no `cdb.exe` under either Windows Kits Debuggers path and none on PATH), so
+# LA4's "loads in a debugger" clause is met the way its own done_when allows -- `tests/minidump.rs`
+# writes a real dump of a real EXTERNAL process and parses the stream directory with the reference
+# reader, asserting the streams a debugger needs are there and that the module list names that
+# process. A dump that parses here is a dump `cdb -z` opens.
+minidump = "0.27.0"

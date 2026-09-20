@@ -7,7 +7,7 @@ nobody re-measured.
 ## What this is, and what it is NOT
 
 LIB-REF's oracle compares a STANDALONE replay against the IN-BINARY replay of this same
-fixture. That comparison is bit-identical on all 61 regions at every step -- replay vs
+fixture. That comparison is bit-identical on all 62 regions at every step -- replay vs
 replay, measured -- so it needs NO exclusions and nothing in this file takes anything away
 from it. In particular `p1_local` is inside LIB-REF's comparison, not outside it.
 

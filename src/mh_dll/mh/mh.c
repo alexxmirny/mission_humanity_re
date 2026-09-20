@@ -10,9 +10,19 @@
 #include "mh_harness_export.h"  // MH_Harness_Init (mh_lib/harness.cpp) -- determinism replay harness
 #include "mh_seam_export.h"     // MH_Seam_Init (mh_lib/net_seams.cpp) -- MP transport seam wiring
 #include "mh_launch_export.h"   // MH_Launch_Init (mh_lib/launch.cpp) -- D17 launch-to-state harness
+#include "mh_crash_export.h"    // MH_CrashMarker_Init/Shutdown (mh/seams/crash_marker.cpp) -- LA4
 
 BOOL APIENTRY DllMain(HANDLE hModule, DWORD dwReason, LPVOID lpReserved) {
     if (dwReason == DLL_PROCESS_ATTACH) {
+        // BEFORE THE ZEROTH CALL, AND THAT IS NOT A CONTRADICTION OF THE CONTRACT BELOW. dist LA4's
+        // crash handler is the one arm here that depends on NOTHING -- no satellite, no export
+        // table, no run context, no ini section any other arm reads. It is AddVectoredExceptionHandler
+        // plus two environment reads. Putting it first is what makes it cover the rest of DllMain:
+        // a fault inside a module bind or inside MH_Seam_Init is precisely the crash a player cannot
+        // describe and a log cannot show, and a handler installed after the boot is a handler that
+        // is absent for the part of the run most likely to need it. It writes no line into
+        // mh_net.log, so the arm-order gate (tools/check_arm_order.py) sees nothing new.
+        MH_CrashMarker_Init();
         // FOUR CALLS, and the ORDER between them is a contract, not a convenience (fork F3B split
         // what used to be three). The three ARMING subsystems are orthogonal -- each hooks DISJOINT
         // functions, no memory-patch overlap -- so all can arm in the same process:
@@ -93,6 +103,19 @@ BOOL APIENTRY DllMain(HANDLE hModule, DWORD dwReason, LPVOID lpReserved) {
         MH_Core_Arm_Early(); // core arm, phase 1 -- must precede the harness (G104)
         MH_Harness_Init();
         MH_Seam_Init(); // core arm, phase 2 -> the net arm -> the UI arm -> the hand-off
+    } else if (dwReason == DLL_PROCESS_DETACH) {
+        // THE FIRST DETACH ARM THIS DllMain HAS EVER HAD, and exactly one thing needs it. Byte
+        // patches, trampolines and hosted tables all die with the process that owns them, which is
+        // why there was nothing here before dist LA4. A VECTORED EXCEPTION HANDLER does not: it is
+        // a node in a process-wide list the OS walks on every exception, so an mh.dll that unloaded
+        // while its handler was still registered would turn the next exception in the process --
+        // any exception, including one the game handles routinely -- into a call into unmapped
+        // memory. See mh/include/mh_crash_export.h.
+        //
+        // Nothing else is unwound here on purpose. A process TERMINATING (lpReserved != NULL) is
+        // the overwhelmingly common case and the OS is about to reclaim everything; adding
+        // teardown for things that do not need it is how a detach path acquires a deadlock.
+        MH_CrashMarker_Shutdown();
     }
     return TRUE;
 }

@@ -26,10 +26,14 @@
     <ClCompile Include="mh.c" />
     <ClCompile Include="seams\gfx_capture.cpp" />
     <ClCompile Include="seams\core_arm.cpp" />
+    <ClCompile Include="seams\crash_marker.cpp" />
     <ClCompile Include="seams\harness_bind.cpp" />
     <ClCompile Include="seams\module_bind.cpp" />
     <ClCompile Include="seams\libmh_hook_host.cpp" />
     <ClCompile Include="seams\gfx_overlay.cpp" />
+    <ClCompile Include="seams\gfx_font_guard.cpp" />
+    <ClCompile Include="seams\ui_chat_input.cpp" />
+    <ClCompile Include="seams\ui_net_indicator.cpp" />
     <ClCompile Include="seams\save_triggers.cpp" />
     <ClCompile Include="seams\ui_drive.cpp" />
     <ClCompile Include="seams\ui_keyrepeat.cpp" />
@@ -39,6 +43,7 @@
     <ClCompile Include="seams\standalone.cpp" />
     <ClCompile Include="seams\net_diag.cpp" />
     <ClCompile Include="seams\net_discovery.cpp" />
+    <ClCompile Include="seams\map_transfer.cpp" />
     <ClCompile Include="seams\net_lockstep.cpp" />
     <ClCompile Include="seams\net_seams.cpp" />
     <ClCompile Include="seams\reimpl_probe.cpp" />
@@ -68,6 +73,7 @@
     <ClInclude Include="addr\mh_calls.gen.h" />
     <ClInclude Include="addr\mh_structs.gen.h" />
     <ClInclude Include="en_guard.h" />
+    <ClInclude Include="seams\ui_net_indicator.h" />
     <ClInclude Include="addr\mh_export.gen.h" />
     <ClInclude Include="hook\detour.h" />
     <ClInclude Include="hook\export.h" />
@@ -113,6 +119,10 @@
     <CharacterSet>Unicode</CharacterSet>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <!-- THE BUILD STAMP (tracker TL-CI1). Brings in MhVersion / MhGitSha, the shared
+       VERSIONINFO resource, and the MH_VERSION_* defines. Imported by the five modules a
+       release ships and by no other project; see mh_version.props for why. -->
+  <Import Project="..\mh_version.props" />
   <ImportGroup Label="ExtensionSettings">
   </ImportGroup>
   <ImportGroup Label="Shared">

@@ -1,0 +1,551 @@
+# RELEASE -- build the shipping set with a stamped version, gate it, and publish the three zips.
+#
+# WHAT IT DOES. A pushed tag `vMAJOR.MINOR.PATCH[-rcN]` builds `src/mh_dll/mh.sln` with
+# `/p:MhVersion=<tag without the v> /p:MhGitSha=<short sha>`, runs the SAME offline gate ci.yml runs
+# (selftests under ASan and plain, the standalone replay, `lint_repo.py --ci`) ON THE STAMPED
+# BINARIES, packages them with `tools/release_package.py`, and publishes a GitHub Release carrying
+# the three drop-in zips and a SHA256SUMS. A `workflow_dispatch` run does everything except the
+# publish: it uploads the zips as a workflow artifact and creates nothing.
+#
+# WHAT A GREEN RUN DOES NOT PROVE, and this is the same statement ci.yml makes because it is the
+# same gate: the rig half is bring-your-own-game. The UI capture suite, the two-peer determinism
+# run and the in-memory patch parity oracle cannot run on a runner with no game and no second
+# machine, and are not pretended to here. src/mh_dll/README.md "The gate" is the full article; a
+# published release has passed its offline subset, on binaries stamped with the tag, and nothing
+# more is claimed. Publishing is therefore a decision a human makes by pushing a tag, not something
+# a green pipeline earns on its own.
+#
+# THE TAG CONVENTION, which this file depends on rather than merely documents:
+#
+#   * `vMAJOR.MINOR.PATCH` or `vMAJOR.MINOR.PATCH-rcN` (also -beta, -alpha). The leading `v` is
+#     stripped for MhVersion and for the zip names; the tag itself keeps it.
+#   * A `-` anywhere in the tag makes the release a PRERELEASE. That is the whole rule.
+#   * THE TAG MUST BE ANNOTATED, and its MESSAGE IS THE RELEASE NOTES (user ruling). The public
+#     history is squash seeds, so auto-generated notes would say nothing a reader can use. A
+#     LIGHTWEIGHT tag, or an annotated one with an empty message, FAILS the publish job instead of
+#     publishing an empty body -- a release whose notes nobody wrote is worse than no release.
+#
+#       git tag -a v0.1.0 -m "..." ; git push origin v0.1.0
+#
+# THE REHEARSAL ORDER (user ruling). Cut the first tag of a series on the PRIVATE repository with an
+# `-rc` suffix and watch this workflow end to end there -- a prerelease with three zips and a
+# SHA256SUMS attached, its body the tag message. Only then push the tag to the public repository.
+# The workflow file itself travels to the public tree the way ci.yml did, through
+# `tools/build_public_seed.py --follow-up`; the publish ledger's `ci-workflows` rule already
+# publishes `.github/**`, so no ledger edit is needed to carry it.
+#
+# TWO JOBS, AND THE SPLIT IS THE PERMISSION BOUNDARY. `build-and-gate` compiles, tests and packages
+# with `contents: read` -- it cannot create a release even if something in it wanted to.
+# `publish` holds `contents: write` and does nothing but download the artifact and call `gh`. The
+# token scope is per job for that reason; the workflow default below is read.
+#
+# NO THIRD-PARTY RELEASE ACTION. `gh` is preinstalled on the runner and `GH_TOKEN` is the job's own
+# token. A release step is the one step in this repository that can publish, so it runs code from
+# the runner image and from here, and from nowhere else.
+#
+# DUPLICATION WITH ci.yml IS DELIBERATE. The VS-locating, build and gate steps are copied rather
+# than factored into a reusable workflow: the two files are read at different moments by different
+# people, and a shared workflow would mean a change made for CI silently changes what a release is
+# gated on. Keep them in step by editing both.
+
+name: release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  PYTHON_VERSION: "3.11"
+
+jobs:
+  build-and-gate:
+    name: build (stamped) + replay + lint + package
+    # PINNED, NOT windows-latest, for ci.yml's measured reason: `windows-latest` and `windows-2025`
+    # both resolve to the VS 2026 image, which dropped the x86-host VC/Tools/Llvm/bin layout and
+    # bundles LLVM 20 while this tree is formatted against clang-format 19.1.x. The vswhere
+    # `-version` range below is the second guard. Bump both deliberately.
+    runs-on: windows-2022
+    # 45: the first tagged run (v0.1.0-rc1, 2026-09-18) reached its lint step at 27 minutes and the
+    # lint alone took 7 -- the 35 the parallel split assumed left no room for package + upload.
+    timeout-minutes: 45
+    outputs:
+      # Read by `publish`'s dist LA3 steps (`needs.build-and-gate.outputs.version`) -- a step id is
+      # only visible within its OWN job, so the version this job's `stamp` step derived has to cross
+      # the job boundary explicitly to reach the manifest-signing steps below.
+      version: ${{ steps.stamp.outputs.version }}
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: derive the version and the commit
+        id: stamp
+        shell: pwsh
+        run: |
+          # THE ONE PLACE THE VERSION IS DECIDED. A tag run takes the tag minus its `v`; a
+          # workflow_dispatch run stamps 0.0.0-dev, which is the sheet's own default -- so the dry
+          # run still packages under the STRICT stamp check rather than under --allow-dev, and the
+          # zips it produces are named in a way nobody can mistake for a release.
+          $ref = "${{ github.ref }}"
+          if ($ref.StartsWith("refs/tags/")) {
+            $tag = $ref.Substring("refs/tags/".Length)
+            $version = $tag -replace '^v', ''
+            if ($version -notmatch '^\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$') {
+              throw "tag '$tag' is not vMAJOR.MINOR.PATCH[-suffix]; see this file's header"
+            }
+          } else {
+            $tag = ""
+            $version = "0.0.0-dev"
+          }
+          $sha = (git rev-parse --short=8 HEAD).Trim()
+          "tag=$tag"         >> $env:GITHUB_OUTPUT
+          "version=$version" >> $env:GITHUB_OUTPUT
+          "sha=$sha"         >> $env:GITHUB_OUTPUT
+          Write-Host "tag='$tag' version=$version sha=$sha"
+
+      - name: python deps
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r tools/requirements.txt
+
+      - name: locate the Visual Studio install
+        shell: pwsh
+        run: |
+          # DERIVE, NEVER PASTE: a wrong MSBuild path fails SILENTLY the moment the command is
+          # piped (two builds "succeeded" having never run). MH_VS_INSTALL_ROOT is the one
+          # per-machine override this repo needs; MH_CLANG_FORMAT is set explicitly only so a VS
+          # install carrying no clang-format FAILS LOUDLY rather than having another build
+          # substituted -- the formatting verdict is version-dependent.
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          $root = & $vswhere -latest -products * -version '[17.0,18.0)' -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+          if (-not $root) { throw "vswhere found no VS 2022 (17.x) install carrying the x86/x64 VC tools" }
+          "MH_VS_INSTALL_ROOT=$root" >> $env:GITHUB_ENV
+          "MSBUILD=$root\MSBuild\Current\Bin\MSBuild.exe" >> $env:GITHUB_ENV
+          $cf = "$root\VC\Tools\Llvm\bin\clang-format.exe"
+          if (-not (Test-Path $cf)) { throw "no clang-format at $cf -- install the VS 'C++ Clang tools for Windows' component; do NOT substitute another build" }
+          "MH_CLANG_FORMAT=$cf" >> $env:GITHUB_ENV
+          & $cf --version
+
+      - name: environment check (build tier gated, analysis/game/rig expected-absent)
+        shell: pwsh
+        run: python tools/bootstrap.py --ci
+
+      - name: build (stamped)
+        shell: pwsh
+        run: |
+          # The recipe from src/mh_dll/README.md step 1 plus the two stamp properties.
+          # `/nodeReuse:false` IS PART OF IT: with node reuse on, MSBuild's workers outlive the
+          # build holding the stdout handle, and any caller that captures output waits forever for
+          # an EOF that never arrives.
+          & "$env:MSBUILD" "$env:GITHUB_WORKSPACE\src\mh_dll\mh.sln" `
+            /t:Build /p:Configuration=Release /p:Platform=x86 /m /nodeReuse:false /v:minimal /nologo `
+            /p:MhVersion=${{ steps.stamp.outputs.version }} /p:MhGitSha=${{ steps.stamp.outputs.sha }}
+          if ($LASTEXITCODE -ne 0) { throw "msbuild exit $LASTEXITCODE" }
+
+      - name: the eight artifacts, by name
+        shell: pwsh
+        run: |
+          # One msbuild produces all three configurations, and a single green build line is exactly
+          # what would hide one artifact that silently stopped being produced. Same list as ci.yml.
+          $rel = "$env:GITHUB_WORKSPACE\src\mh_dll\Release"
+          $want = @(
+            "mh.dll", "mh_net.dll", "mh_harness.dll", "libmh.dll",
+            "standalone\libmh.dll", "standalone\libref_host.exe",
+            "net_selftest.exe", "libmh_selftest.exe"
+          )
+          $missing = @()
+          foreach ($a in $want) {
+            $p = Join-Path $rel $a
+            if (Test-Path $p) { "{0,-28} {1,10} B" -f $a, (Get-Item $p).Length | Write-Host }
+            else { $missing += $a }
+          }
+          if ($missing) { throw "BUILD PRODUCED NO $($missing -join ', ')" }
+
+      - name: the stamp reached the binaries
+        shell: pwsh
+        run: |
+          # The eight-artifact step above proves the files exist; this proves they are THIS release.
+          # It is separate so a stamping regression reads as a stamping regression rather than as a
+          # packaging failure three steps later.
+          $rel = "$env:GITHUB_WORKSPACE\src\mh_dll\Release"
+          $want = "${{ steps.stamp.outputs.version }}"
+          $bad = @()
+          foreach ($a in @("msvfw32.dll","mh.dll","mh_net.dll","mh_harness.dll","libmh.dll")) {
+            $got = (Get-Item (Join-Path $rel $a)).VersionInfo.FileVersion
+            "{0,-16} {1}" -f $a, $got | Write-Host
+            if (($got -split '\+')[0] -ne $want) { $bad += "$a=$got" }
+          }
+          if ($bad) { throw "VERSIONINFO does not carry $want -- $($bad -join ', ')" }
+
+      - name: configuration (3) -- the standalone replay
+        shell: pwsh
+        run: python tools/replay_libref.py
+
+      - name: lint (the public subset)
+        shell: pwsh
+        run: python tools/lint_repo.py --ci
+
+      - name: package
+        shell: pwsh
+        run: |
+          python tools/release_package.py --version ${{ steps.stamp.outputs.version }}
+          if ($LASTEXITCODE -ne 0) { throw "release_package exit $LASTEXITCODE" }
+          Get-ChildItem dist | Format-Table Name, Length | Out-String | Write-Host
+          Get-Content dist\SHA256SUMS | Write-Host
+
+      - name: upload the zips
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-${{ steps.stamp.outputs.version }}
+          path: dist/
+          if-no-files-found: error
+          retention-days: 14
+
+  # TWO PARALLEL HALVES, not one job: on the 2-core hosted runner the ASan build alone measured
+  # 936 s on the first tagged run (v0.1.0-rc1, 2026-09-18) and the serial gate was cancelled at its
+  # 30-minute budget with the plain build still compiling. Each half is its own tree and its own
+  # pass (run_selftests.py --pass); together they are exactly the local gate.
+  selftests-asan:
+    name: selftests (ASan half)
+    runs-on: windows-2022
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: python deps
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r tools/requirements.txt
+
+      - name: locate the Visual Studio install
+        shell: pwsh
+        run: |
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          $root = & $vswhere -latest -products * -version '[17.0,18.0)' -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+          if (-not $root) { throw "vswhere found no VS 2022 (17.x) install carrying the x86/x64 VC tools" }
+          "MH_VS_INSTALL_ROOT=$root" >> $env:GITHUB_ENV
+          Write-Host "VS root: $root"
+
+      - name: selftests (ASan half)
+        shell: pwsh
+        # THE GATE, not a bare `net_selftest.exe <suite>` run. A bare suite's "0 failures" is not
+        # evidence the run did not silently corrupt heap memory; ASan turns that into a deterministic
+        # stack trace on run #1. The project's pinned selftest-gate rule, in a machine.
+        run: python tools/run_selftests.py --pass asan
+
+  selftests-plain:
+    name: selftests (plain half)
+    runs-on: windows-2022
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: python deps
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r tools/requirements.txt
+
+      - name: locate the Visual Studio install
+        shell: pwsh
+        run: |
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          $root = & $vswhere -latest -products * -version '[17.0,18.0)' -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+          if (-not $root) { throw "vswhere found no VS 2022 (17.x) install carrying the x86/x64 VC tools" }
+          "MH_VS_INSTALL_ROOT=$root" >> $env:GITHUB_ENV
+          Write-Host "VS root: $root"
+
+      - name: selftests (plain half)
+        shell: pwsh
+        # THE GATE, not a bare `net_selftest.exe <suite>` run. A bare suite's "0 failures" is not
+        # evidence the run did not silently corrupt heap memory; ASan turns that into a deterministic
+        # stack trace on run #1. The project's pinned selftest-gate rule, in a machine.
+        run: python tools/run_selftests.py --pass plain
+
+  publish:
+    name: publish the GitHub Release
+    needs: [build-and-gate, selftests-asan, selftests-plain]
+    # TAGS ONLY. A workflow_dispatch run stops after build-and-gate, having uploaded the zips as a
+    # workflow artifact -- that is the dry run, and it publishes nothing.
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: windows-2022
+    # 15 minutes for the game-zips publish itself, plus dist LA3's manifest steps: up to 20 minutes
+    # polling for launcher-release.yml's exe (see this job's own comment on that step) plus a couple
+    # of minutes to sign and upload. See launcher-release.yml's header for why the two workflows
+    # poll for each other instead of a tighter dependency.
+    timeout-minutes: 40
+    permissions:
+      # THE ONLY WRITE SCOPE IN THIS FILE, on the job that does nothing but call `gh` (create/upload
+      # the release) and `python tools/gen_update_manifest.py` (sign the manifest -- pure stdlib, no
+      # network of its own).
+      contents: write
+    outputs:
+      # Passed through for `publish-pages` (a separate job cannot read this job's own step outputs).
+      version: ${{ needs.build-and-gate.outputs.version }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          # The release BODY is the annotated tag's message, so this job needs the tag OBJECT, not
+          # just the commit it points at. A shallow checkout of a tag push carries the commit and
+          # the ref; `--tags --force` below fetches the annotated object itself.
+          fetch-depth: 0
+
+      - name: read the annotated tag message
+        id: notes
+        shell: pwsh
+        run: |
+          $tag = "${{ github.ref_name }}"
+          git fetch --tags --force --quiet
+          # LIGHTWEIGHT TAGS ARE REFUSED. `git cat-file -t` answers `tag` for an annotated tag and
+          # `commit` for a lightweight one, which is the only reliable way to tell them apart --
+          # `%(contents)` on a lightweight tag helpfully returns the COMMIT's message, which would
+          # publish a release whose notes are somebody's commit subject.
+          $type = (git cat-file -t "$tag").Trim()
+          if ($type -ne "tag") {
+            throw "$tag is a LIGHTWEIGHT tag ($type). The release body is the annotated tag's message: re-cut it with 'git tag -a $tag -m ...' (see .github/workflows/release.yml's header)."
+          }
+          $body = (git tag -l --format='%(contents)' "$tag") -join "`n"
+          if ([string]::IsNullOrWhiteSpace($body)) {
+            throw "$tag has an EMPTY annotated message, and the message IS the release notes. Publishing an empty body is worse than not publishing."
+          }
+          # tmp/ rather than a fresh directory: it is gitignored, so the workspace stays clean and
+          # the path is an untracked-by-design one rather than a citation of a repo file that does
+          # not exist. It is NOT dist/, because the publish step attaches every file in dist/ to the
+          # release and the notes are the body, not an asset.
+          New-Item -ItemType Directory -Force tmp | Out-Null
+          Set-Content -Path tmp/release-notes.md -Value $body -Encoding utf8
+          # A `-` anywhere in the tag means prerelease: v0.1.0-rc1, v0.2.0-beta.
+          $pre = if ($tag -match '-') { "true" } else { "false" }
+          "prerelease=$pre" >> $env:GITHUB_OUTPUT
+          Write-Host "tag=$tag prerelease=$pre notes=$($body.Length) chars"
+
+      - name: download the zips
+        uses: actions/download-artifact@v4
+        with:
+          pattern: release-*
+          merge-multiple: true
+          path: dist
+
+      - name: publish
+        shell: pwsh
+        env:
+          # The runner's preinstalled gh, with this job's own token. No third-party action touches
+          # the release.
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $tag = "${{ github.ref_name }}"
+          $files = Get-ChildItem dist -File | ForEach-Object { $_.FullName }
+          if (-not $files) { throw "the artifact carried no files -- nothing to attach to $tag" }
+          $files | ForEach-Object { Write-Host "attach $_" }
+          # NOT $args: that is an automatic variable in PowerShell, and assigning to it inside a
+          # script block is the kind of thing that works until it does not.
+          $ghArgs = @("release", "create", $tag) + $files + @(
+            "--title", $tag, "--notes-file", "tmp/release-notes.md", "--verify-tag")
+          if ("${{ steps.notes.outputs.prerelease }}" -eq "true") { $ghArgs += "--prerelease" }
+          & gh @ghArgs
+          if ($LASTEXITCODE -ne 0) { throw "gh release create exit $LASTEXITCODE" }
+          Write-Host "published $tag"
+
+      # ---------------------------------------------------------------------------------------
+      # dist LA3: the manifest .github/workflows/launcher-release.yml's launcher reads at update
+      # time. Lives HERE, not in launcher-release.yml, because this job already holds the one thing
+      # the manifest cannot be built without -- the game zips' SHA256SUMS, freshly re-verified by
+      # `dist/` above -- and dist LA3's own tracker row says so verbatim ("the manifest generation
+      # step added to release.yml"). See launcher-release.yml's header for the ordering problem this
+      # creates (that workflow finishes in minutes, this job's own build-and-gate takes 30-45) and
+      # why each file polls for the ONE thing it is missing rather than the two being made to
+      # depend on each other more tightly than that.
+      - name: require the launcher signing secret, or fail rather than publish unsigned
+        shell: pwsh
+        env:
+          MH_LAUNCHER_MINISIGN_KEY: ${{ secrets.MH_LAUNCHER_MINISIGN_KEY }}
+        run: |
+          # THE REFUSAL IS HERE, BEFORE ANYTHING ELSE IN THIS BLOCK RUNS -- tools/gen_update_manifest.py
+          # would itself refuse an unreadable --secret-key path (Refusal, exit 2), but that refusal
+          # reads like a path typo three steps from now. Naming the actual cause -- the repository
+          # secret is unset -- here is what makes "a tag without the signing secret fails the job
+          # rather than publishing an unsigned manifest" (dist LA3's done_when) the FIRST thing a
+          # failed run says, not something read out of a stack trace.
+          # $env:MH_LAUNCHER_MINISIGN_KEY (PowerShell's own env accessor), NOT
+          # ${{ env.MH_LAUNCHER_MINISIGN_KEY }} (a GitHub Actions expression substituted into the
+          # script TEXT before pwsh ever parses it) -- a secret's content is exactly the kind of
+          # value that expression substitution is unsafe for (a stray `"` or backtick in it would
+          # corrupt the generated script rather than merely fail this check), and GitHub's own log
+          # masking is keyed on the runtime value regardless of which accessor reads it.
+          if ($env:MH_LAUNCHER_MINISIGN_KEY -eq "") {
+            throw "MH_LAUNCHER_MINISIGN_KEY repository secret is unset -- refusing to publish an " +
+                  "unsigned manifest.json. Generate a release keypair with " +
+                  "'rsign generate --unencrypted' (src/launcher/src/update.rs PUBLIC_KEY documents " +
+                  "the exact recipe), set the secret key's file content as this secret " +
+                  "(Settings -> Secrets and variables -> Actions -> Secrets), and re-run."
+          }
+          New-Item -ItemType Directory -Force tmp | Out-Null
+          Set-Content -Path tmp/launcher_minisign.key -Value $env:MH_LAUNCHER_MINISIGN_KEY -Encoding utf8
+          Write-Host "signing secret present ($($env:MH_LAUNCHER_MINISIGN_KEY.Length) chars)"
+
+      - name: wait for launcher-release.yml to attach the launcher exe to this tag
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # SHORT poll, not the 70-minute one launcher-release.yml runs: by the time THIS job starts,
+          # build-and-gate has already spent 30-45 minutes, and the launcher build (a few minutes)
+          # has near-certainly finished and is itself sitting in ITS OWN poll for this release to
+          # exist -- which this job's earlier "publish" step just satisfied. 20 minutes of margin
+          # covers a slow or queued launcher-release.yml run without this job hanging indefinitely.
+          $tag = "${{ github.ref_name }}"
+          $deadline = (Get-Date).AddMinutes(20)
+          $found = $false
+          while ((Get-Date) -lt $deadline) {
+            $assets = (gh release view $tag --json assets --jq '.assets[].name') 2>$null
+            if ($LASTEXITCODE -eq 0 -and ($assets -split "`n" | Where-Object { $_ -like 'mh_launcher-*.exe' })) {
+              $found = $true; break
+            }
+            Write-Host "no mh_launcher-*.exe on $tag yet -- waiting (checked $(Get-Date -Format o))"
+            Start-Sleep -Seconds 20
+          }
+          if (-not $found) {
+            throw "no mh_launcher-*.exe appeared on $tag within 20 minutes -- check " +
+                  "launcher-release.yml's run for this tag before re-running this job."
+          }
+          New-Item -ItemType Directory -Force dist | Out-Null
+          gh release download $tag --pattern "mh_launcher-*.exe" --dir dist --clobber
+          if ($LASTEXITCODE -ne 0) { throw "gh release download exit $LASTEXITCODE" }
+          $exe = Get-ChildItem dist -Filter "mh_launcher-*.exe" | Select-Object -First 1
+          if (-not $exe) { throw "downloaded nothing matching mh_launcher-*.exe" }
+          "exe_path=$($exe.FullName)" >> $env:GITHUB_ENV
+          "exe_name=$($exe.Name)"     >> $env:GITHUB_ENV
+          Write-Host "downloaded $($exe.Name) ($($exe.Length) B)"
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: build and sign manifest.json (dist LA2's schema, the manifest the launcher reads)
+        shell: pwsh
+        env:
+          # dist LA6: THE RELAY THE LAUNCHER PROVISIONS, injected at signing time and nowhere else.
+          # Both land INSIDE the signed body as `relay: {addr, key}` (tools/gen_update_manifest.py
+          # reads these two names from its environment; neither is a literal in this tree --
+          # lint_machine_paths refuses a public host, and machine_config.RELAY_KEY says why the key
+          # stays out). The address is a repository VARIABLE (it is an address, and every player
+          # reads it out of the published manifest anyway); the key is a repository SECRET so that
+          # GitHub masks it in this job's log -- it is public once shipped (user decision 2026-09-19:
+          # it keeps scanners off the relay, not players), but a CI log is a wider audience than a
+          # manifest fetch. BOTH UNSET -> the manifest simply has no relay field and a launcher leaves
+          # the player's mh_net.ini alone; that is a valid manifest, not a failure (the private
+          # rehearsal repo has neither). ONE of the two set -> the tool REFUSES and this step fails,
+          # because an address without its key is a relay nobody can authenticate to.
+          MH_RELAY_ADDR: ${{ vars.MH_RELAY_ADDR }}
+          MH_RELAY_KEY: ${{ secrets.MH_RELAY_KEY }}
+        run: |
+          # ASSET-BASE-URL is the RELEASE's own download URL, not the Pages URL -- Pages carries only
+          # manifest.json + its signature (see the publish-pages job below); every byte the manifest
+          # names is fetched from the release CDN, per src/launcher/src/update.rs's own module header
+          # ("WHY A SIGNED FILE ON PAGES AND NOT THE GITHUB API"). `github.repository` is an Actions
+          # expression, never a literal in this file, so lint_machine_paths has nothing to catch here.
+          $tag = "${{ github.ref_name }}"
+          $version = "${{ needs.build-and-gate.outputs.version }}"
+          $assetBase = "https://github.com/${{ github.repository }}/releases/download/$tag"
+          python tools/gen_update_manifest.py `
+            --version $version `
+            --dist dist `
+            --secret-key tmp/launcher_minisign.key `
+            --asset-base-url $assetBase `
+            --launcher-exe "$env:exe_path" `
+            --launcher-version $version `
+            --launcher-url "$assetBase/$env:exe_name" `
+            --notes-url "https://github.com/${{ github.repository }}/releases/tag/$tag"
+          if ($LASTEXITCODE -ne 0) { throw "gen_update_manifest exit $LASTEXITCODE" }
+          # THE KEY FILE IS DELETED THE MOMENT SIGNING IS DONE -- it only ever existed on this
+          # runner's disk, inside a job whose logs never print it (the earlier step prints a length,
+          # never the content), and the runner itself is destroyed at the end of the job regardless.
+          Remove-Item tmp/launcher_minisign.key -Force
+          # THE MANIFEST IS PRINTED WITH ITS RELAY KEY BLANKED, not relied on being masked: GitHub
+          # masks a secret's exact bytes, and the manifest carries the key normalised to lower case
+          # (gen_update_manifest.check_relay_key), which is not the exact bytes if the secret was
+          # pasted in upper case. The address stays visible -- it is what a reviewer wants to see.
+          Get-Content dist/manifest.json | ForEach-Object {
+            if ($_ -match '^(\s*"key":\s*)"[^"]*"') { $matches[1] + '"<blanked in this log>"' } else { $_ }
+          } | Write-Host
+
+      - name: attach the manifest and its signature to the release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $tag = "${{ github.ref_name }}"
+          gh release upload $tag dist/manifest.json dist/manifest.json.minisig --clobber
+          if ($LASTEXITCODE -ne 0) { throw "gh release upload exit $LASTEXITCODE" }
+          Write-Host "attached manifest.json + manifest.json.minisig to $tag"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: manifest-${{ needs.build-and-gate.outputs.version }}
+          path: |
+            dist/manifest.json
+            dist/manifest.json.minisig
+          if-no-files-found: error
+          retention-days: 14
+
+  publish-pages:
+    name: publish manifest.json to GitHub Pages
+    needs: publish
+    # GATED ON A REPOSITORY VARIABLE (2026-09-18): GitHub Pages is not available on a PRIVATE
+    # repository on the free plan, so on the private rehearsal remote this job can only fail, after
+    # `publish` has already produced the release and attached the manifest. Set MH_PAGES_PUBLISH to
+    # `true` (Settings -> Secrets and variables -> Actions -> Variables) on the PUBLIC repo only,
+    # where Pages exists and Source is set to GitHub Actions; unset, the job is SKIPPED (grey, not
+    # red) and the manifest still ships as a release asset.
+    if: startsWith(github.ref, 'refs/tags/v') && vars.MH_PAGES_PUBLISH == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      # THE PAGES DEPLOYMENT SCOPES, and nothing else -- this job downloads an artifact and calls two
+      # first-party actions; it never touches the release or the repository contents.
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: manifest-${{ needs.publish.outputs.version }}
+          path: pages
+
+      # WHY actions/upload-pages-artifact + actions/deploy-pages OVER A gh-pages BRANCH (dist LA3's
+      # tracker row asks for a named choice here). Both are first-party GitHub actions -- the same
+      # trust tier as actions/checkout and actions/download-artifact already used throughout this
+      # repo's workflows, unlike the third-party actions (e.g. peaceiris/actions-gh-pages) a branch-
+      # based deploy would otherwise need. A branch additionally accumulates every past deploy's
+      # binary content in its git history forever unless something force-pushes it, and needs its own
+      # git identity/token configuration; the Pages deployment API instead keeps ONE current
+      # deployment with GitHub's own deployment history, and nothing here has to be a git commit.
+      # Neither choice changes what the SHIPPED launcher does or how it talks to the network: the
+      # constraint dist LA3 names ("no unauthenticated GitHub API use by the launcher") is about
+      # update.rs's runtime fetch, which is a plain HTTPS GET against whichever static host serves
+      # manifest.json either way -- it does not favour one CI publishing mechanism over the other.
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: pages
+
+      - id: deploy
+        uses: actions/deploy-pages@v4

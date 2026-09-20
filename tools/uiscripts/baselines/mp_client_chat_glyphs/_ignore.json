@@ -1,0 +1,14 @@
+{
+  "_why": "F3b. capture_c1_privet.png is an IN-GAME frame: the map view differs by ~15% between runs (fog, camera, unit idle animation), and the chat line itself is drawn in the SENDER's faction colour, which the game assigns per match (cyan one run, red the next). Only the chat line's glyph SHAPES are the claim, so this capture is compared ONLY inside the top-left text band, colour-blind (ink mode). The band is kept tight: one line of text at the frame's top-left.",
+  "_only": {
+    "capture_c1_privet.png": {
+      "rect": [
+        0,
+        0,
+        220,
+        40
+      ],
+      "mode": "ink"
+    }
+  }
+}

@@ -59,6 +59,31 @@ _DEFAULTS = {
     "VM_USER": "vmadmin",  # ssh user on the VM peers
     "VM_DIR": r"C:\games\mh",  # the game install path inside the VM (remote Windows path)
     "SSH_KEY": r"F:\HyperV\Win11Gen1\ssh\vm_key",  # private key for the VM peers
+    # --- the relay VPS (dist DS1 / plan decision D20) -------------------------------------
+    # Where the multiplayer relay and the report collector are deployed, and the ssh key that
+    # reaches it. BOTH COMMITTED DEFAULTS ARE EMPTY AND MUST STAY EMPTY -- for the same two reasons
+    # the IDENTITY_TOKENS block below states and one more:
+    #   1. a public host in a published file is exactly what fork F5B took OUT of mh_tunnel.ps1
+    #      (tools/lint_machine_paths.py fails on any public IPv4 in the publish set, and this file
+    #      is IN it), and a key path is a machine path;
+    #   2. REFUSE BY DEFAULT BEATS GUESS BY DEFAULT. The failure a baked-in host produces is SILENT:
+    #      a missing argument connects you to whatever was committed rather than telling you the
+    #      value was never set. mh_tunnel.ps1 is the precedent -- with neither argument nor
+    #      environment variable it REFUSES. A caller reading these must do the same: empty means
+    #      "this machine has no relay configured", never "use the default one".
+    # Put the real values in the GITIGNORED tools/machine.local.json (or MH_VPS_HOST /
+    # MH_VPS_SSH_KEY). Shape: VPS_HOST is an ssh destination ("user@host"), VPS_SSH_KEY an absolute
+    # path to the private key. tools/bootstrap.py --check reports both, and says which of the three
+    # sources answered.
+    "VPS_HOST": "",
+    "VPS_SSH_KEY": "",
+    # dist:RP5 -- the relay DEPLOYMENT KEY: the 64-hex value in the VPS's deploy/secrets/relay_key.txt,
+    # which is also what every player's mh_key.txt must hold to reach that relay (the leg key derives
+    # from it). Not a secret against players (LA6 ships it in the signed manifest) but never tree
+    # content: a published key would let anyone register on the relay without the client. Empty
+    # means "no deployment key configured" -- a tool that needs it must refuse, not fall back to
+    # `open` (the OPEN key is what RP5 took off the VPS).
+    "RELAY_KEY": "",
     # --- toolchain installs --------------------------------------------------------------
     "GHIDRA_INSTALL": r"F:\apps\ghidra_12.1.2_PUBLIC",  # Ghidra 12.1.2 (reva_service / pyghidra)
     "GHIDRA_VERSION": "12.1.2",  # expected Ghidra version (E3 verifies the install matches)

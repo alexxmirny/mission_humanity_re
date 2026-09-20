@@ -1,0 +1,33 @@
+# The Rust workspace root (dist DS1). Two members today, both PLACEHOLDERS -- see each crate's
+# README.md; dist LA1 writes the launcher and dist R1 writes the relay.
+#
+# A VIRTUAL MANIFEST (no [package] here) so the repo root is not itself a crate: the C++ tree is
+# the bulk of this repository and `src/` holds both. `members` is a literal list rather than a
+# `src/*` glob so a new C++ directory under src/ cannot silently become a workspace member and a
+# new Rust crate cannot silently escape `cargo fmt`/`cargo clippy` -- both rows in
+# tools/lint_rust.py run over --workspace, so membership is what puts a crate under the gate.
+#
+# `resolver = "2"` is stated explicitly because a VIRTUAL manifest defaults to the old resolver 1
+# and warns on every build regardless of the members' editions.
+[workspace]
+resolver = "2"
+members = ["src/launcher", "src/relay"]
+
+# Inherited by the members via `version.workspace = true` etc., so the two crates cannot drift apart
+# on edition or licence. 0.0.0 says "nothing has shipped": the launcher's real version will be the
+# one the release manifest advertises (plan decision D11) and is set when LA2 lands.
+[workspace.package]
+version = "0.0.0"
+edition = "2021"
+rust-version = "1.74"
+license = "MIT"
+publish = false
+
+# Release builds of the two shipped binaries. Kept minimal and shared: the launcher is a per-user
+# binary a player downloads and the relay is a container image layer, so both care about size.
+[profile.release]
+opt-level = "s"
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true

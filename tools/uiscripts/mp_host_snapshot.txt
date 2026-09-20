@@ -1,0 +1,71 @@
+# mp:X1b HOST -- capture a live world at a sim step and push it to the client over channel C.
+#
+# The walk is mp_host_start.txt's, unchanged, because nothing about the MENU is under test here: the
+# scenario's whole assertion lives in the two peers' mh_harness.log files and is made by
+# `mp_analyze.py --snapshot-verify` (the registry's post_check). What this script has to do is get a
+# real 2-peer match RUNNING, on the UDP transport, and then keep it running long enough for an 8 MB
+# transfer to finish at channel C's rate limit.
+#
+# WHY THE VERBS ARE NOT SCRIPT OPS. `[harness] snapshot_at=N` (host only, via --harness-extra-host)
+# fires inside the sim-step hash block, so the blob and the per-region hashes it must reproduce are
+# taken from one instant. A script op would fire on the UI driver's clock -- "when the walk reaches
+# this line" -- which is a frame, not a step, and would reopen the very gap the placement closes.
+#
+# Pair with mp_client_snapshot.txt.
+
+# reach the host lobby (create a game on the pre-selected map)
+settled value:110
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+settled Create
+clickl Create
+present Game name
+settled Ok
+clickl Ok
+present Available maps
+settled Ok
+clickl Ok
+
+# host lobby: block until the client is really in ITS lobby, then launch
+present Network players
+peers 1
+awaitsignal lobby
+enabled Start
+settled Start
+clickl Start
+
+# in-game. The capture + send fires from the harness at `snapshot_at`; this script's only job from
+# here is to stay in the match. THE WAIT IS A SIM-STEP COUNT, NOT A WALL CLOCK: the transfer's cost
+# is channel C's per-tick piece budget, so what has to elapse is transport ticks, and the sim step
+# is the only clock both peers share that a script can read.
+absent Network players
+gamemode 2
+# The capture is gated on the SIM, not on `absent`, for match_launch's measured reason: a peer
+# entering on FLAG_START renders its first frames mid fog-of-war reveal, and at headless frame rates
+# that stage is frame-rate dependent. 6000 is past saturation and is the number every other in-game
+# capture in the suite uses, so both peers pin the same sim moment.
+gameclock 6000
+capture s1_host_ingame
+log HOST in a live UDP match; the harness captures + sends the world at [harness] snapshot_at
+# THE TERMINAL WAIT IS `gameclock`, NOT `simstep`, and the difference is the whole scenario.
+# `simstep N` arms the harness's SIM FENCE: it truncates the catch-up burst at N and HOLDS the sim
+# there. The snapshot poll and the import run inside the sim-step hook, so a fenced peer stops
+# polling -- the fence would freeze the very loop the transfer is waiting on. `gameclock` is a
+# passive wait and the sim keeps ticking under it.
+#
+# 75000 ms, and the number is measured rather than picked. On this rig the game clock tracks the
+# wall clock almost exactly (a pinned 600-step lane: 5,999 ms of game clock in 6,375 ms of wall), and
+# a full world snapshot is a ~30 s transfer at channel C's rate limit (mp:X1: 1,953 ms for the clean
+# 32-chunk reference, i.e. ~16 chunks/s, against 480 body chunks). 75 s is that with room for a lossy
+# link, and the registry's `timeout` outlasts it.
+gameclock 75000
+log HOST reached the end-of-transfer window
+# mp:X3 step one. The HOST is the only peer whose sim clock is guaranteed to keep running: under
+# `[harness] snapshot_hold` the importing peer FREEZES its sim the moment the blob lands, so every
+# `gameclock` wait on that side would block forever. So the host owns the clock and RELEASES the
+# client with a rendezvous, which is the one wait the held peer can still satisfy.
+signal held
+log HOST released the client
+end

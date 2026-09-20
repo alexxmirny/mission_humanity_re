@@ -64,17 +64,15 @@ int   g_custom_w   = 0;  // [video] width/height once validated + armed (0 = no 
 int   g_custom_h   = 0;
 void *g_menu_tramp = nullptr;
 
-char g_log_path[MAX_PATH];
-bool g_log_ready = false;
+char          g_log_path[MAX_PATH];
+unsigned long g_log_gen = 0; // SES1: 0 = not yet composed (mh_proc_path pins it to the process dir)
 
 // Own log file (mh_video.log), like the debug overlay: the seam arm-log sequence in mh_net.log is
 // diffed against a committed baseline by the refactor gate, so a new optional feature must not add
 // lines to it.
 void vid_log(const char *fmt, ...) {
-    if (!g_log_ready) {
-        wsprintfA(g_log_path, "%smh_video.log", MH_RunDir());
-        g_log_ready = true;
-    }
+    // SES1: PROCESS-scoped -- every line here is an arm-time decision, taken long before a lobby.
+    mh_proc_path(g_log_path, MAX_PATH, "%smh_video.log", &g_log_gen);
     char    line[256];
     va_list ap;
     va_start(ap, fmt);

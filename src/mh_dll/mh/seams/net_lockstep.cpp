@@ -27,6 +27,11 @@
 #include "include/mh_net_key.h"        // MH_Key_Load -- mint mh_key.txt on the first frame (see ensure_key_once)
 #include "include/mh_capture_export.h" // MH_Capture_OnPresent (gfx_capture.cpp) -- UI frame capture
 #include "include/mh_overlay_export.h" // MH_Overlay_OnPresent (gfx_overlay.cpp) -- debug overlay (drawn first)
+// MH_FontGuard_OnPresent (gfx_font_guard.cpp) -- mp:F2 [fonts] probe_text. The comment is ABOVE the
+// include, not beside it: this path is one character longer than the block's longest, and a trailing
+// comment here would re-align every other line in it.
+#include "include/mh_fontguard_export.h"
+#include "seams/ui_net_indicator.h"    // mp:L1 MH_NetIndicator_OnPresent -- the player-visible indicator
 #include "include/mh_uidrive_export.h" // MH_UIDrive_OnPresent (ui_drive.cpp) -- UI automation Phase 2
 #include "include/mh_harness_export.h" // MH_Harness_RebindSimTick -- C6 sim_tick promotion by rebind
 #include "include/mh_module_bind.h"    // MH_Libmh_OnPresent -- F4D's spine-crossing report
@@ -43,6 +48,12 @@
 #include "addr/mh_export.gen.h"        // entry_llm_strat_time_tick (the C4 direct-install fallback)
 #include "hook/export.h"               // install_export_ok
 #include "ui/lobby_ui.h"               // D4: the present hook drives two UI-module repaints
+// mp:T3. Reached by relative path rather than through an include directory because it is a
+// satellite module's header and mh.dll is not that module -- the same shape as
+// hostapi_io_bind.cpp's "../../libmh/include/libmh.h". It is header-only so that the three
+// projects that need the arithmetic (mh, mh_net_udp, mh_nettest) share ONE definition, and so
+// the offline suite that proves it (net_selftest.exe udpstatstest) proves the code mh.dll runs.
+#include "../../mh_net_udp/udp_stats.h" // RFC 6298 / 3393 / 7680 + the lookahead decision
 
 // R7 RESOLVED (fork F3C): the two mh::sim installs that used to be forward-declared and called from
 // here are GONE. LT1F's frame-pair promotion and SIM-SAVE-DIV's time_resync prelude are now reached
@@ -55,6 +66,7 @@
 #pragma comment(lib, "winmm.lib")  // timeBeginPeriod (hires_clock)
 // WIN32_LEAN_AND_MEAN drops <mmsystem.h>, so declare the one multimedia-timer call we use.
 extern "C" __declspec(dllimport) unsigned int __stdcall timeBeginPeriod(unsigned int uPeriod);
+extern "C" void MH_MP_DrainRelayNotice(void); // net_discovery -- mp:R4a: arm the queued relay-level notice (main thread)
 
 using mh::hook::install_trampoline;
 using mh::hook::patch_bytes_guarded;
@@ -234,8 +246,9 @@ int  g_icon_count = 1; // [net] icon_count -- install the counting thunk even wh
 // cannot double-count.
 void icon_note_wanted() { ++g_icon_calls; }
 void icon_note_shown() { ++g_icon_shown; }
-int  g_desync_icon_gate = 0; // [net] desync_icon_gate -- MP U20; reimpl-only, see reimpl_fixes
-int  g_defang_xui       = 0; // extend_ui_enter wait+mode8 pair (the DOMINANT ~2s mode-8 freeze): 0=live 1=NOP
+int  g_desync_icon_gate      = 0; // [net] desync_icon_gate -- MP U20; reimpl-only, see reimpl_fixes
+int  g_gone_peer_frame_guard = 1; // [net] gone_peer_frame_guard -- MP U19e; reimpl-only, DEFAULT ON, see reimpl_fixes
+int  g_defang_xui            = 0; // extend_ui_enter wait+mode8 pair (the DOMINANT ~2s mode-8 freeze): 0=live 1=NOP
 int  g_resync_trigger_reset =
     0; // 1 = zero RESYNC_TRIGGER_COUNT on horizon recovery (spurious-resync ROOT fix, option b; see install_resync_trigger_reset)
 int g_resync_trigger_gate =
@@ -277,10 +290,20 @@ int g_eager_adv = 0; // 1 = advertise+commit the post-step horizon in the presen
 int g_sync_gameover = 0; // 1 = install the game-over leave-lockstep detour
 // U17 (a) clean in-game leave: when THIS peer quits a running lockstep game (ESC->Quit->Yes ->
 // llm_game_return_to_main_menu_cb), broadcast our own removal BEFORE the teardown so survivors drop us
-// in-order. DEFAULT OFF (2026-07-25): B2 (graceful_drop) already catches a clean quit via the socket-close,
-// so (a) is redundant for the survivor side; its quitter-side self-removal isn't end-to-end rig-tested yet
-// (possible 2-player game-over flash). Opt-in via [net] graceful_leave=1.
-int   g_graceful_leave = 0;
+// in-order.
+//
+// DEFAULT ON SINCE U19 (2026-09-18), and the two sentences the old default rested on were both wrong.
+// It said B2 (graceful_drop) "already catches a clean quit via the socket-close", so (a) was redundant.
+// It does not: a player who quits to the MAIN MENU leaves the process running with its socket open, and
+// the U40 relink that would close it is consumed by the discovery browser, which a player who walks away
+// never opens. Measured on the rig with the knob OFF: the survivor sat in the SYNCHRONIZING spinner for
+// 56.7 s (974 overlay icon calls) before the retail silence timeout ended its match. With the knob ON the
+// same walk ended the survivor's match 187 ms after the quitter's broadcast, at the SAME game clock on
+// both peers (3259 ms) -- the in-order dispatch drop the design always promised. The second wrong
+// sentence was "possible 2-player game-over flash": the quitter's self-removal DOES reach on_gameover
+// below quorum, and the outcome dialog is suppressed there already (`selfremove_dlg_suppressed`), so the
+// quitter's captured frame is the plain main menu. Set [net] graceful_leave=0 to go back to the timeout.
+int   g_graceful_leave = 1;
 void *g_quit_tramp     = nullptr;
 // The game-over fix's trampoline. Introduced by F1C as the no-gate fallback; the only host since
 // fork F2F dropped the effects gates.
@@ -295,13 +318,18 @@ int g_graceful_drop = 1;
 int g_pending_dead      = -1;
 int g_pending_dead_wait = 0;
 int g_pending_dead_max  = 600; // frames (~10 s at 60 fps) before the safety valve fires anyway
+// U19d: GetTickCount() at the last REAL fast-drop broadcast just below (0 = never yet this process).
+// Declared here, ahead of on_time_tick, because that is where it is SET; on_gameover_post (further
+// down, by the block comment at OUTCOME_NETWORK_ERROR) is where it is READ.
+DWORD g_last_fastdrop_tick = 0;
 
 // Optional per-frame lockstep timing log (mh_net.ini [net] lockstep_log=1 -> mh_lockstep.log). One
 // line per strategic frame while in mode-3, so freezes show up as large wall-time gaps between rows
 // and we can see WHETHER the sim is starved by the peer horizon, the pump cadence, or rx delivery.
 // (The g_ls_log gate itself lives in net_internal.h -- net_seams + net_diag read it for DIAG gating.)
-HANDLE g_ls_h = INVALID_HANDLE_VALUE;
-char   g_ls_path[MAX_PATH];
+HANDLE        g_ls_h = INVALID_HANDLE_VALUE;
+char          g_ls_path[MAX_PATH];
+unsigned long g_ls_gen = 0; // SES1: the run-directory generation g_ls_path was composed for
 
 // SP clock cross-check (mh_net.ini [net] sp_clock_log=1). Bypasses the mode-3
 // gate below so the SAME per-frame row (wall_ms/total_ms/clock_ms) is emitted in a SINGLE-PLAYER --load
@@ -315,9 +343,10 @@ bool g_ls_log_sp = false;
 // player FEELS -- distinct from the sim/net cadence the lockstep log samples. One line per presented
 // frame: high-res QPC microseconds + the game mode (2=strategic, 3=sync overlay, 6=tactical) so the
 // analyzer can isolate strategic-gameplay frame times and catch the ~2s overlay hitches.
-bool   g_ft_log = false;
-HANDLE g_ft_h   = INVALID_HANDLE_VALUE;
-char   g_ft_path[MAX_PATH];
+bool          g_ft_log = false;
+HANDLE        g_ft_h   = INVALID_HANDLE_VALUE;
+char          g_ft_path[MAX_PATH];
+unsigned long g_ft_gen = 0; // SES1: the run-directory generation g_ft_path was composed for
 // g_qpc_freq -> net_internal.h (shared: frametime log here + net_diag.cpp's temporal trace)
 void *g_ft_tramp = nullptr;
 
@@ -373,8 +402,11 @@ void on_present() {
     // run", which is also why ensure_key_once sits here (minting a key needs LoadLibrary advapi32).
     MH_Libmh_OnPresent();          // F4D's standing arm: report the spine-boundary crossing counters
     ensure_key_once();             // first frame: make sure the host has a key it can share
+    MH_MP_DrainRelayNotice();      // mp:R4a: a relay-level notice the UDP module queued -> arm it (main thread)
     mh::ui::browser_notice_tick(); // U23: keep the involuntary-exit notice on the browser status line
     mh::ui::slide_geom_watch();    // U37 diag ([net] slide_diag): log any change to the menu frame geometry
+    MH_FontGuard_OnPresent();      // F2: [fonts] probe_text through the game's own font path, before overlay+capture
+    MH_NetIndicator_OnPresent();   // mp:L1: the player-visible net indicator, through the GAME font path
     MH_Overlay_OnPresent();        // debug overlay: paint BEFORE capture reads, so captured frames include it
     MH_Capture_OnPresent();        // UI capture harness: grab the composed frame if a trigger fired (cheap when idle)
     MH_UIDrive_OnPresent();        // UI automation harness (Phase 2): hotkeys + auto-click state predicate (cheap when idle)
@@ -410,6 +442,11 @@ void on_present() {
         ((void (*)())ADDR_COMMIT_HORIZON_FN)();    // raise OUR committed THIS frame
     }
     if (!g_ft_log) return;
+    // SES1: per-SESSION, handle swapped on a boundary so the header lands in each file (see ls_log_tick).
+    if (mh_run_path(g_ft_path, MAX_PATH, "%smh_frametime.log", &g_ft_gen) && g_ft_h != INVALID_HANDLE_VALUE) {
+        CloseHandle(g_ft_h);
+        g_ft_h = INVALID_HANDLE_VALUE;
+    }
     if (g_ft_h == INVALID_HANDLE_VALUE) {
         g_ft_h = CreateFileA(g_ft_path, FILE_APPEND_DATA, FILE_SHARE_READ | FILE_SHARE_WRITE,
                              nullptr, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
@@ -462,6 +499,271 @@ constexpr int LS_POST3_MAX = 1200; // ~20s@60fps cap so a legit mode-2 tail can'
 // visible stutter). No extra hook -- pure delta of a value ls_log already reads.
 long g_ls_prev_clock_ms = -1;
 
+// ==== mp:T3 -- ARRIVAL LATENESS, AND THE COLUMNS THAT CARRY IT ===================================
+//
+// WHY THIS HALF IS HERE AND NOT IN THE TRANSPORT. SRTT/RTTVAR/IPDV/loss are properties of the LINK
+// and the transport measures them (udp_stats.h, fed from mh_net_udp's channel B). Arrival lateness
+// is not a link property at all: it is "did peer P's horizon cover the sub-step the sim wanted,
+// and by how much" -- a question about the LOCKSTEP PROTOCOL's own state, answerable only where the
+// peer-horizon array and the sim clock are both in view, which is this file. A transport that
+// measured it would be measuring a game it does not know it is carrying.
+//
+// THE SIGN, and it is the project's agreed one for this quantity: POSITIVE = ms of margin before
+// the deadline, NEGATIVE = ms the sim sat blocked waiting. Two sample kinds, and the asymmetry is
+// deliberate:
+//
+//   a POSITIVE sample, once per sim-clock advance per live peer: (peer_horizon - (clock + sim_step))
+//     -- the margin the peer's last advertisement actually left. Taken only when the clock moved, so
+//     the sample rate is the SIM's, not the frame rate's: a 200 fps menu-grade frame loop would
+//     otherwise flood the window with copies of one advertisement and make a spiky link look calm.
+//
+//   a NEGATIVE sample, once per blocked EPISODE, attributed to the peer that bound COMMITTED: the
+//     wall ms between the sim first being unable to fund a sub-step and the peer's EXTEND landing.
+//     Attribution uses COMMITTED (the value the sim actually clamps to) rather than a per-peer
+//     comparison, because COMMITTED = min(local, peers) is the condition that really blocks, and the
+//     argmin peer is the one that really held it.
+//
+// A block that outlasts LATE_STALL_SPLIT_MS emits an interim sample and re-arms, so a peer that
+// stalls for ten seconds reaches the controller during the stall instead of only on recovery -- the
+// old starved-fraction proxy's one genuine advantage, kept.
+//
+// The percentile reduction is refreshed on a timer, not per frame: one sort of <=256 ints every
+// LATE_SNAP_MS is free, and per frame it would be the most expensive thing in the log path.
+//
+// WHICH SLOTS ARE PEERS -- measured, not assumed, and this cost a rig run to learn. The first build
+// read a slot as live if its horizon was non-zero and not our own. On a 2-player match that admitted
+// SLOTS 2..7 as well, because retail initialises every PEER_HORIZON entry to the stock lookahead of
+// 10.0 GAME-SECONDS (_G_LLM_STRAT_LOCKSTEP_STEP_SIZE's retail default) and leaves an
+// unused one there forever. For the first ten seconds of a match that is a huge POSITIVE margin and
+// looks merely odd; past ten seconds it goes negative without bound, becomes the smallest horizon in
+// the array, and is therefore always the "binding peer". Measured on the 2026-09-18 clean-LAN UDP
+// run: at game clock 27.7 s the controller was reading `peer=2 tail95 -1439 ms` off an empty slot and
+// had saddled the lookahead at the 400 ms ceiling on a sub-millisecond LAN.
+//
+// The test that actually distinguishes them is MOVEMENT. An unused slot never changes; a real peer's
+// horizon advances every time it advertises. So a slot becomes live when its value first changes,
+// and stops being live after LATE_LIVE_MS of no change -- which also retires a peer that has died or
+// left, instead of letting its frozen horizon pin the lookahead at the ceiling for the rest of the
+// match. Deliberately NOT MH_Net_ActivePeerIds: that answers in TRANSPORT ids, and a client's single
+// conn to the host carries player_id -1 (the declared-id convention, mh_net_export.h), so the client
+// -- the peer that most needs this -- would see an empty set.
+constexpr int   LS_LATE_PEERS       = 8;    // the retail PEER_HORIZON array's width
+constexpr DWORD LATE_SNAP_MS        = 250;  // how often the published percentiles are recomputed
+constexpr DWORD LATE_STALL_SPLIT_MS = 2000; // a block longer than this reports in, then re-arms
+constexpr DWORD LATE_LIVE_MS        = 5000; // a horizon unchanged this long is not a peer advertising
+
+mh::netstats::LatenessWindow g_late_w[LS_LATE_PEERS];
+DWORD                        g_late_blocked[LS_LATE_PEERS]   = {0};
+double                       g_late_last_h[LS_LATE_PEERS]    = {0.0};
+DWORD                        g_late_last_move[LS_LATE_PEERS] = {0};
+long                         g_late_prev_clk                 = -1;
+DWORD                        g_late_snap_t                   = 0;
+// The published reduction -- read by ls_log_tick's columns, the net.late overlay provider and the
+// adaptive controller. `g_late_have` is false until some peer has AD_LATE_MIN_SAMPLES samples, and
+// every reader renders that as `n/a` rather than as a zero.
+bool g_late_have   = false;
+int  g_late_p50    = 0;
+int  g_late_tail95 = 0;
+int  g_late_tail99 = 0;
+int  g_late_n      = 0;
+int  g_late_peer   = -1;
+
+// mp:T3c -- UNUSED HORIZON, the second surplus signal. Same window machinery, one sample per
+// strategic frame: local_h - COMMITTED, floored at zero. It is 0 for whichever peer's own horizon is
+// the binding one and positive for the peer that is being clamped by the other side, which is
+// exactly the case the arrival-lateness tail is blind to (udp_stats.h's AD_SLACK_MULT note has the
+// measurement). The MEDIAN is published rather than a tail because the quantity sawtooths by
+// construction -- COMMITTED steps up each time the peer's EXTEND lands and then sits while our own
+// horizon crawls -- so its minimum is near zero every window and says nothing about the surplus.
+mh::netstats::LatenessWindow g_slack_w;
+int                          g_slack_p50 = 0;
+
+// mp:T3c -- the join warm-up's clock. Armed by adaptive_tick the first time a peer's measurement
+// exists at all, cleared by the match reset just above (a new match is a new join). It lives here
+// rather than with the other g_ad_* state because THIS is the function that knows a match restarted.
+DWORD g_ad_warm_t0 = 0;
+
+// A latency column is either a number or the literal token `n/a`. It is never a zero standing in for
+// "unmeasured": the TCP module cannot measure a round trip at all, and a 0 ms SRTT in a log would be
+// read by every later reader as a perfect link. (dead-ends: the same shape as G198's silent nan.)
+void lat_int_col(char *b, bool have, long v) {
+    if (have) wsprintfA(b, "%ld", v);
+    else lstrcpyA(b, "n/a");
+}
+
+void lat_us_col(char *b, bool have, int us) {
+    if (have) wsprintfA(b, "%ld", (long)((us + 500) / 1000));
+    else lstrcpyA(b, "n/a");
+}
+
+// A DECISION CONSUMES THE SAMPLES IT WAS MADE ON, and this is not an optimisation -- it is the
+// difference between a controller and a ratchet. Measured 2026-09-18 on the rig, at 80 ms RTT with
+// the shipping 100 ms lookahead: a joining client is genuinely starved for its first half-second
+// (the host has not advertised yet), so the first window reads tail95 -31 ms and the controller
+// GROWS, correctly. The growth worked -- the very next window recorded zero starved time. But the
+// window is a rolling ring of the last 256 samples, so the join burst was still 20% of it, still
+// dragging the 5th percentile below zero, and the fast path re-read those same dead samples every
+// 500 ms: 100 -> 141 -> 182 -> 227 -> 284 -> 355 -> 400 ms in two and a half seconds, five of the six
+// steps answering a problem that had already been fixed. Then, because shrinking is 4% per window by
+// design, it took ninety-five seconds to give the overshoot back -- on a LAN.
+//
+// Clearing after each decision makes every tail a statement about the regime SINCE the last move,
+// which is the only thing a control loop can act on. The two sample-count gates
+// (mh::netstats::AD_LATE_MIN_SAMPLES to decide at all, AD_FAST_MIN_SAMPLES to decide EARLY) are what
+// stop the emptied window from producing a confident number off three samples.
+//
+// Only while the controller is running: with `lockstep_adaptive=0` nothing consumes the samples, and
+// the log columns are then a rolling 256-sample view, which is the more useful thing for a pinned
+// run being measured rather than tuned.
+void lateness_snapshot();
+
+void lateness_consume() {
+    for (int i = 0; i < LS_LATE_PEERS; ++i) g_late_w[i].reset();
+    g_slack_w.reset(); // mp:T3c: the unused-horizon window is consumed with the rest, same reason
+    lateness_snapshot();
+}
+
+void lateness_snapshot() {
+    // The BINDING peer is the one whose pessimistic tail is worst; that is the peer the lookahead
+    // has to cover, and covering the average peer instead is how a two-client game ends up tuned for
+    // the good link and stalling on the bad one.
+    int best_peer = -1, best_t95 = 0, best_p50 = 0, best_t99 = 0, best_n = 0;
+    for (int i = 0; i < LS_LATE_PEERS; ++i) {
+        if (g_late_w[i].count() < mh::netstats::AD_LATE_MIN_SAMPLES) continue;
+        int p50 = 0, t95 = 0, t99 = 0;
+        if (!g_late_w[i].percentiles(p50, t95, t99)) continue;
+        if (best_peer < 0 || t95 < best_t95) {
+            best_peer = i;
+            best_p50  = p50;
+            best_t95  = t95;
+            best_t99  = t99;
+            best_n    = g_late_w[i].count();
+        }
+    }
+    g_late_have   = (best_peer >= 0);
+    g_late_peer   = best_peer;
+    g_late_p50    = best_p50;
+    g_late_tail95 = best_t95;
+    g_late_tail99 = best_t99;
+    g_late_n      = best_n;
+    // mp:T3c. Same minimum weight as a lateness tail: a median off three frames is not a median.
+    int sp50 = 0, s95 = 0, s99 = 0;
+    g_slack_p50 = (g_slack_w.count() >= mh::netstats::AD_LATE_MIN_SAMPLES &&
+                   g_slack_w.percentiles(sp50, s95, s99))
+                      ? sp50
+                      : 0;
+}
+
+// mp:L1 -- THE ADDITIVE GETTER, and it is additive on purpose: the adaptive controller and its
+// signal belong to mp:T3/T3c, so the player-visible indicator (seams/ui_net_indicator.cpp) reads
+// this state through an accessor rather than growing a second copy of the argmin inside another TU.
+// It computes nothing and writes nothing: `g_late_blocked[i]` is already exactly "the tick at which
+// the sim became blocked on peer i, 0 = not blocked", maintained by lateness_tick below, and only
+// one slot can be non-zero at a time (the block is charged to the peer that bound COMMITTED).
+// Returns that peer's PEER_HORIZON / strategic-player slot and how long the block has lasted, or
+// -1 when the sim is not blocked at all.
+extern "C" int MH_Lockstep_StallBindingPeer(unsigned long *blocked_ms) {
+    for (int i = 0; i < LS_LATE_PEERS; ++i) {
+        if (g_late_blocked[i] == 0) continue;
+        if (blocked_ms) *blocked_ms = (unsigned long)(GetTickCount() - g_late_blocked[i]);
+        return i;
+    }
+    if (blocked_ms) *blocked_ms = 0;
+    return -1;
+}
+
+// Main thread, from on_time_tick, BEFORE adaptive_tick reads the snapshot. Runs whether or not the
+// adaptive controller is on, because the log columns and the overlay want the measurement either
+// way -- a pinned-lookahead run that shows a healthy tail is evidence about the pin.
+void lateness_tick() {
+    if (*(const uint8_t *)ADDR_SESSION_MODE != 3) return;
+    if (!MH_Net_IsStarted() || MH_Net_PeerCount() <= 0) return;
+    double clk, com, sim;
+    memcpy(&clk, (const void *)ADDR_GAME_CLOCK, sizeof(double));
+    memcpy(&com, (const void *)ADDR_COMMITTED(), sizeof(double));
+    memcpy(&sim, (const void *)ADDR_SIM_STEP_INT(), sizeof(double));
+    if (sim <= 0.0) return;
+    const DWORD  now      = GetTickCount();
+    const double required = clk + sim;
+    const long   clk_ms   = (long)(clk * 1000.0 + 0.5);
+    // A clock that went BACKWARDS is a new match (or a resync), not a frame: everything measured
+    // about the previous one is about a different link state and a different peer set.
+    if (g_late_prev_clk >= 0 && clk_ms < g_late_prev_clk) {
+        for (int i = 0; i < LS_LATE_PEERS; ++i) {
+            g_late_w[i].reset();
+            g_late_blocked[i]   = 0;
+            g_late_last_h[i]    = 0.0;
+            g_late_last_move[i] = 0;
+        }
+        g_late_have = false;
+        g_late_peer = -1;
+        g_late_n    = 0;
+        g_slack_w.reset();
+        g_slack_p50  = 0;
+        g_ad_warm_t0 = 0; // mp:T3c: a new match is a new join, so the warm-up runs again
+    }
+    const bool advanced = (g_late_prev_clk >= 0 && clk_ms != g_late_prev_clk);
+    g_late_prev_clk     = clk_ms;
+
+    const int me = MH_Net_LocalPlayerId();
+    double    h[LS_LATE_PEERS];
+    bool      live[LS_LATE_PEERS];
+    int       bind = -1;
+    for (int i = 0; i < LS_LATE_PEERS; ++i) {
+        memcpy(&h[i], (const void *)(ADDR_PEER_HORIZON() + (unsigned)i * 8u), sizeof(double));
+        if (h[i] != g_late_last_h[i]) {
+            g_late_last_h[i]    = h[i];
+            g_late_last_move[i] = now ? now : 1;
+        }
+        // See the LATE_LIVE_MS note above: MOVEMENT is what tells a peer from an empty slot holding
+        // retail's 10-second sentinel, and it retires a departed peer for free.
+        live[i] = (i != me) && (h[i] > 0.0) && g_late_last_move[i] != 0 &&
+                  (now - g_late_last_move[i]) <= LATE_LIVE_MS;
+        if (live[i] && (bind < 0 || h[i] < h[bind])) bind = i;
+    }
+
+    if (com < required) { // horizon cannot fund the next sub-step: we are blocked, on `bind`
+        if (bind >= 0) {
+            if (g_late_blocked[bind] == 0) g_late_blocked[bind] = now ? now : 1;
+            else if (now - g_late_blocked[bind] >= LATE_STALL_SPLIT_MS) {
+                g_late_w[bind].push(-(int)(now - g_late_blocked[bind]));
+                g_late_blocked[bind] = now ? now : 1;
+            }
+        }
+    } else {
+        for (int i = 0; i < LS_LATE_PEERS; ++i) {
+            if (!live[i]) {
+                g_late_blocked[i] = 0;
+                continue;
+            }
+            if (g_late_blocked[i] != 0) { // the episode ended: charge it, and skip this frame's margin
+                g_late_w[i].push(-(int)(now - g_late_blocked[i]));
+                g_late_blocked[i] = 0;
+            } else if (advanced) {
+                // Game milliseconds. At the shipping 100% game speed that is wall milliseconds; at
+                // any other speed it is still the right unit, because the deadline it is measured
+                // against is a game-clock deadline too.
+                g_late_w[i].push((int)((h[i] - required) * 1000.0));
+            }
+        }
+    }
+    // mp:T3c -- one unused-horizon sample per advancing frame, on the same cadence and in the same
+    // game milliseconds as the lateness samples above. `advanced` gates it for the same reason: a
+    // frame the sim did not move on re-measures the same instant and would weight it twice.
+    if (advanced) {
+        double lh;
+        memcpy(&lh, (const void *)ADDR_LOCAL_HORIZON, sizeof(double));
+        if (lh > 0.0 && com > 0.0 && bind >= 0) {
+            const int slack = (int)((lh - com) * 1000.0);
+            g_slack_w.push(slack > 0 ? slack : 0);
+        }
+    }
+    if (now - g_late_snap_t >= LATE_SNAP_MS) {
+        g_late_snap_t = now;
+        lateness_snapshot();
+    }
+}
+
 void ls_log_tick() {
     if (!g_ls_log && !g_ls_log_sp) return;
     int sess = (int)*(const uint8_t *)ADDR_SESSION_MODE;
@@ -476,6 +778,14 @@ void ls_log_tick() {
         }
     }
     // sp_clock_log: log every strategic frame unconditionally (mode-2 SP has no lockstep to gate on).
+    // SES1: per-SESSION. The path is re-resolved here rather than at arm time, and a rebuild closes
+    // the open handle so the header is rewritten into the new file -- a session's mh_lockstep.log is
+    // then self-describing, which is what tools/mp_analyze.py's column parse needs.
+    if (mh_run_path(g_ls_path, MAX_PATH, "%smh_lockstep.log", &g_ls_gen) &&
+        g_ls_h != INVALID_HANDLE_VALUE) {
+        CloseHandle(g_ls_h);
+        g_ls_h = INVALID_HANDLE_VALUE;
+    }
     if (g_ls_h == INVALID_HANDLE_VALUE) {
         g_ls_h = CreateFileA(g_ls_path, FILE_APPEND_DATA, FILE_SHARE_READ | FILE_SHARE_WRITE,
                              nullptr, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
@@ -483,11 +793,30 @@ void ls_log_tick() {
             g_ls_log = false;
             return;
         }
+        // mp:T3 APPENDED 13 COLUMNS AFTER icon_shown, and the append is the contract: this file's
+        // two readers are header-driven (mp_pacing_report.read_lockstep) and
+        // positional-with-an-optional-tail (mp_analyze.parse_lockstep), so a column added at the END
+        // is read by both and an OLDER log stays readable by today's tools. Never insert in the
+        // middle.
+        //   srtt/rttvar/ipdv/loss  the TRANSPORT's per-peer measurement (MH_NetStats::lat[]), by
+        //                          TRANSPORT peer slot -- which is not necessarily the lockstep
+        //                          horizon slot peer0_ms/peer1_ms use, and on a 2-player game there
+        //                          is exactly one peer so the question does not arise. `n/a` means
+        //                          the bound transport does not measure its link (the TCP module has
+        //                          no channel B), which is a different claim from 0.
+        //   late_*                 the LOCKSTEP's arrival-lateness reduction in L0's sign: POSITIVE
+        //                          = ms of margin before the deadline. tail95/tail99 are the 5th/1st
+        //                          percentiles -- the PESSIMISTIC tail, which is the LOW end under
+        //                          that sign (udp_stats.h's LatenessWindow explains the naming).
+        //   late_peer              the horizon slot whose tail bound the decision; -1 = none yet.
         const char *hdr = "# wall_ms clock_ms total_ms local_h_ms committed_ms peer0_ms peer1_ms "
                           "step_ms stall pcount tx_pkts rx_pkts since_rx_ms "
                           "sess game flags grace_ms syncwait countdn p54bc sync_ms sim_burst "
-                          "icon_calls icon_shown\n"; // P4: CUMULATIVE -- diff two rows for a rate
-        DWORD       w;
+                          "icon_calls icon_shown " // P4: CUMULATIVE -- diff two rows for a rate
+                          "srtt0_ms srtt1_ms rttvar0_ms rttvar1_ms ipdv0_ms ipdv1_ms "
+                          "loss0_pm loss1_pm "
+                          "late_p50_ms late_tail95_ms late_tail99_ms late_n late_peer\n";
+        DWORD w;
         WriteFile(g_ls_h, hdr, lstrlenA(hdr), &w, nullptr);
         g_ls_prev_clock_ms = -1; // fresh file -> first row's burst is a baseline (0)
     }
@@ -502,9 +831,25 @@ void ls_log_tick() {
     MH_NetStats s;
     MH_Net_GetStats(&s);
     DWORD now = GetTickCount();
-    char  line[340];
+    // mp:T3 -- the eight transport columns are rendered BEFORE the row, so an unmeasurable one can
+    // be the literal `n/a` rather than a zero that reads as a perfect link.
+    char srtt[2][16], rttvar[2][16], ipdv[2][16], loss[2][16];
+    for (int pi = 0; pi < 2; ++pi) {
+        const bool slot = (s.lat_supported != 0) && pi < s.lat_count;
+        const bool meas = slot && s.lat[pi].samples > 0;
+        lat_us_col(srtt[pi], meas, slot ? s.lat[pi].srtt_us : 0);
+        lat_us_col(rttvar[pi], meas, slot ? s.lat[pi].rttvar_us : 0);
+        lat_us_col(ipdv[pi], meas, slot ? s.lat[pi].ipdv_us : 0);
+        lat_int_col(loss[pi], slot && s.lat[pi].loss_pm >= 0, slot ? s.lat[pi].loss_pm : 0);
+    }
+    char late50[16], late95[16], late99[16];
+    lat_int_col(late50, g_late_have, g_late_p50);
+    lat_int_col(late95, g_late_have, g_late_tail95);
+    lat_int_col(late99, g_late_have, g_late_tail99);
+    char  line[560];
     int   n = wsprintfA(line, "%lu %ld %ld %ld %ld %ld %ld %ld %d %d %ld %ld %lu "
-                                "%d %d 0x%02x %ld %d %d %d %ld %ld %ld %ld\n",
+                                "%d %d 0x%02x %ld %d %d %d %ld %ld %ld %ld "
+                                "%s %s %s %s %s %s %s %s %s %s %s %d %d\n",
                         now, clock_ms, ms_of(ADDR_TOTAL_TIME), ms_of(ADDR_LOCAL_HORIZON), ms_of(ADDR_COMMITTED()),
                         ms_of(ADDR_PEER_HORIZON() + 0 * 8), ms_of(ADDR_PEER_HORIZON() + 1 * 8), ms_of(ADDR_STEP_SIZE),
                         *(const int *)ADDR_STALL_COUNT, *(const int *)ADDR_PLAYER_COUNT,
@@ -512,7 +857,9 @@ void ls_log_tick() {
                         sess, (int)*(const uint8_t *)ADDR_GAME_MODE, (unsigned)*(const uint8_t *)ADDR_STATUS_FLAGS,
                         ms_of(ADDR_GRACE_TIMER()), *(const int *)ADDR_SYNC_WAIT(), *(const int *)ADDR_SYNC_COUNTDN,
                         *(const int *)ADDR_PLAYERCT_54BC, ms_of(ADDR_SYNC_ACCUM()), sim_burst,
-                        g_icon_calls, g_icon_shown);
+                        g_icon_calls, g_icon_shown,
+                        srtt[0], srtt[1], rttvar[0], rttvar[1], ipdv[0], ipdv[1], loss[0], loss[1],
+                        late50, late95, late99, g_late_n, g_late_peer);
     DWORD w;
     WriteFile(g_ls_h, line, n, &w, nullptr);
 }
@@ -611,6 +958,46 @@ void ovp_step_ms(char *b, int cap) {
     wsprintfA(b, "%ld", ms_of(ADDR_STEP_SIZE));
 }
 
+// mp:T3 -- three latency readouts, and there are three rather than one for the reason the Age of
+// Empires netcode write-up gives: players tolerate a high STEADY delay far better than a lower
+// delay that varies, so a link can have a low, steady ping and still feel bad. A single blended
+// number would hide exactly the thing that matters. `net.srtt` is the recognisable ping (with its RFC 6298
+// deviation term beside it, which is the "is it steady" half); `net.loss` and `net.late` are the
+// two that a ping cannot say anything about. All three print `n/a` rather than 0 when nothing
+// measured them -- over the TCP module the first two always do, because it has no channel B.
+void ovp_srtt(char *b, int cap) {
+    (void)cap;
+    MH_NetStats s;
+    MH_Net_GetStats(&s);
+    const bool meas = s.lat_supported && s.lat_count > 0 && s.lat[0].samples > 0;
+    if (!meas) {
+        lstrcpyA(b, "n/a");
+        return;
+    }
+    wsprintfA(b, "%ld +/-%ld", (long)((s.lat[0].srtt_us + 500) / 1000),
+              (long)((s.lat[0].rttvar_us + 500) / 1000));
+}
+
+void ovp_loss(char *b, int cap) {
+    (void)cap;
+    MH_NetStats s;
+    MH_Net_GetStats(&s);
+    char c0[16];
+    lat_int_col(c0, s.lat_supported && s.lat_count > 0 && s.lat[0].loss_pm >= 0,
+                (s.lat_supported && s.lat_count > 0) ? s.lat[0].loss_pm : 0);
+    wsprintfA(b, "%s pm", c0); // per mille, so a 0.3% loss reads as `3 pm` rather than rounding to 0%
+}
+
+// The arrival-lateness tail the adaptive controller is steering on, and the peer it named.
+void ovp_late(char *b, int cap) {
+    (void)cap;
+    if (!g_late_have) {
+        lstrcpyA(b, "n/a");
+        return;
+    }
+    wsprintfA(b, "%d/%d/%d p%d n%d", g_late_p50, g_late_tail95, g_late_tail99, g_late_peer, g_late_n);
+}
+
 void ovp_stall(char *b, int cap) {
     (void)cap;
     wsprintfA(b, "%d", *(const int *)ADDR_STALL_COUNT);
@@ -646,6 +1033,9 @@ void register_overlay_providers() {
     MH_Overlay_RegisterProvider("net.lag", ovp_lag);             // committed - clock; <=0 = starved
     MH_Overlay_RegisterProvider("net.peer_ms", ovp_peer_ms);     // peer0/peer1 horizons
     MH_Overlay_RegisterProvider("net.step_ms", ovp_step_ms);     // lockstep lookahead
+    MH_Overlay_RegisterProvider("net.srtt", ovp_srtt);           // mp:T3 peer0 SRTT +/- RTTVAR, ms
+    MH_Overlay_RegisterProvider("net.loss", ovp_loss);           // mp:T3 peer0 loss, per mille
+    MH_Overlay_RegisterProvider("net.late", ovp_late);           // mp:T3 lateness p50/tail95/tail99
     MH_Overlay_RegisterProvider("net.stall", ovp_stall);         // stall count
     MH_Overlay_RegisterProvider("net.pcount", ovp_pcount);       // lockstep player count
     MH_Overlay_RegisterProvider("net.flags", ovp_flags);         // lockstep status flags
@@ -703,16 +1093,30 @@ void notify_player_dropped(int side) {
     }
 }
 
-// ==== Adaptive lookahead controller (P1) ========================================================
+// ==== Adaptive lookahead controller (P1, re-signalled at mp:T3) =================================
 // Auto-tunes the lookahead (== input latency) to the lowest value this link sustains at ~1.0x. It
 // reuses the STOCK grow/shrink scaffold's shape but NOT its signal: retail scales STEP_SIZE by FPS
 // and a stall-count-vs-player-count heuristic, which ratchets to multi-second lag after an alt-tab
-// FPS crash -- that is why we pin it off. This drives off MEASURED HORIZON STARVATION instead.
+// FPS crash -- that is why we pin it off.
 //
-// Signal: per frame in live lockstep, "starved" = COMMITTED cannot fund even one more sim sub-step
-// (com < clk + sim_step) -- the same clamped condition rx_spin waits on. Over a 2 s window, the
-// starved FRACTION is the controller's error term: it is high exactly when the horizon window is
-// shorter than the confirmation round-trip, which is the thing the lookahead has to cover.
+// SIGNAL, since mp:T3: the BINDING PEER'S ARRIVAL-LATENESS TAIL (lateness_tick, above) -- the
+// 95th-percentile-worst margin, in ms, between a peer's advertised horizon and the deadline the sim
+// needed it by. What it replaced was a LOCAL PROXY: the fraction of a 2 s window during which
+// COMMITTED could not fund the next sub-step. The proxy was not wrong, it was blunt in three ways
+// that each cost a measurable amount:
+//   * it was a BOOLEAN per frame, so it could say the horizon ran out but never by HOW MUCH -- the
+//     controller then had to guess its step size (mp:P1 fix (d) is the scar: a flat +25% took four
+//     windows to climb the 100 ms a 200 ms link was short by, starving the player for all eight
+//     seconds). The tail is in milliseconds, so the growth step is simply the missing margin.
+//   * it was PEER-BLIND. COMMITTED is a minimum, so "we were starved" names no peer; in a 3-player
+//     game the lookahead was tuned by whoever happened to bind, with no record of who. The tail is
+//     per peer, and the decision names the peer it came from (`late_peer`).
+//   * it could only fire AFTER the horizon had already run out. Lateness is measured while the
+//     margin is still positive, so the controller can grow before the first stall rather than in
+//     response to it.
+// The starved fraction is still accumulated and still printed on every move, as a diagnostic that
+// keeps new runs comparable with every earlier mp:P1/mp:P5 pacing measurement, all of which are
+// expressed in it.
 //
 // Why a purely LOCAL controller is safe: COMMITTED = min(local_horizon, peer_horizons), and the sim
 // clamps to COMMITTED. So a peer's lookahead only ever gates ITS OWN willingness to run ahead -- the
@@ -723,7 +1127,9 @@ void notify_player_dropped(int side) {
 //
 // Asymmetric by design: grow fast (a stall storm is felt immediately), shrink slowly (latency is a
 // comfort win, and oscillating around the floor is worse than sitting slightly above it). The gap
-// between the two thresholds is the hysteresis band.
+// between the two thresholds is the hysteresis band. Both thresholds, and the decision itself, live
+// in mh::netstats (udp_stats.h) so that the asymmetry is an offline assertion rather than a claim
+// about code only a two-VM rig can reach.
 //
 // THE FLOOR IS RELATIVE TO sim_step, not absolute (learned the hard way, 2026-07-25). The first
 // version floored at a flat 30 ms, taken from the LAN sweep -- but that sweep ran at sim_step=10, so
@@ -734,36 +1140,46 @@ void notify_player_dropped(int side) {
 // that it is permanently at the horizon and one hiccup wedges it. So the effective floor is
 // max(configured floor, AD_SIM_FLOOR_MULT x sim_step), which reproduces the measured 30 ms sweet
 // spot at sim_step=10 and gives 60 ms at sim_step=20.
-constexpr DWORD  AD_WINDOW_MS      = 2000; // decide at most once per window
-constexpr int    AD_MIN_FRAMES     = 30;   // ...and only on enough samples to mean anything
-constexpr DWORD  AD_MAX_SAMPLE_MS  = 250;  // clamp one frame's contribution (an alt-tab is not starvation)
-constexpr double AD_GROW           = 1.25; // starving -> +25% (the FLOOR on a growth step)
-constexpr double AD_GROW_MAX       = 2.00; // ...and the ceiling, so one bad window cannot double twice
-constexpr double AD_SHRINK         = 0.96; // sustained-clean -> -4%
-constexpr int    AD_SHRINK_AFTER   = 3;    // ...and only after this many CONSECUTIVE clean windows
-constexpr double AD_STARVE_HI      = 0.06; // >6% of frames starved -> grow
-constexpr double AD_STARVE_LO      = 0.01; // <1% -> shrink (between the two: hold)
-constexpr double AD_SIM_FLOOR_MULT = 3.0;  // never shrink below this many sim sub-steps of horizon
-int              g_adaptive        = 0;    // [net] lockstep_adaptive
+constexpr DWORD AD_WINDOW_MS = 2000; // decide at most once per window...
+constexpr DWORD AD_FAST_MS   = 500;  // ...except to GROW, which may decide this early
+// ...and only off a tail with some weight behind it. mh::netstats::AD_LATE_MIN_SAMPLES (8) is the
+// floor for a tail to exist at all; the SHORTCUT needs more, because the moment it would otherwise
+// fire hardest is the join transient -- the first half-second in lockstep, when the peer has not
+// advertised yet and every sample is legitimately terrible. Measured 2026-09-18 on a clean LAN: the
+// client grew 100 -> 400 ms in 2.5 s off a first window of 8 samples, then spent 95 s giving it back.
+// At ~50 samples/s (one per sim sub-step) 32 samples is ~0.6 s, so the 200 ms clause still has three
+// times the headroom it needs inside its 2 s budget.
+constexpr int AD_FAST_MIN_SAMPLES = 32;
+// mp:T3c -- and the sample gate above was still not enough on its own, because the transient is a
+// WALL-CLOCK event, not a sample-count one: 32 samples arrive in ~0.6 s at 50 sub-steps a second,
+// and the clean-LAN measurement below had the client still genuinely starved at 0.5 s. So the
+// controller additionally declines to decide anything for this long after the peer measurement
+// first exists, and throws each window away while it waits, so the first real decision is made
+// entirely on samples taken after the join settled. 1.5 s is three times the measured transient and
+// still comfortably inside the 2 s budget T3's 200 ms growth clause allows, which is the other
+// constraint it has to fit between -- and it is only ever paid once per match.
+constexpr DWORD  AD_WARMUP_MS      = 1500;
+constexpr DWORD  AD_MAX_SAMPLE_MS  = 250; // clamp one frame's contribution (an alt-tab is not starvation)
+constexpr double AD_SIM_FLOOR_MULT = 3.0; // never shrink below this many sim sub-steps of horizon
+int              g_adaptive        = 0;   // [net] lockstep_adaptive
 double           g_ls_min          = 0.030;
 double           g_ls_max          = 0.400; // U35 2026-09-02: 200 saddled on real internet links (the icon storm); LAN settles ~100 and never nears it
 double           g_step_eps_ms     = 0.01;  // shared with the fixed-pin path (anti-alias nudge)
 DWORD            g_ad_t0           = 0;
 int              g_ad_frames = 0, g_ad_starved = 0;
-// P1 fix (a), 2026-07-26: starvation is accumulated as TIME, not as a frame count. The old fraction
-// starved_frames/frames aliases against the starvation waveform -- it is a transient that opens after
-// a sim step and closes when the peer's EXTEND lands, so a fast peer samples inside it repeatedly
-// while a slow peer can step straight over it. Measured on ONE link: the dev box read 8-39 starved
-// frames per window and grew, while the 60 fps VM read 0-1 and shrank to the floor. Weighting each
-// sample by the time it stands for removes the frame-rate dependence.
+// The starved-TIME accounting mp:P1 fix (a) built. It is NO LONGER THE ERROR TERM -- mp:T3 replaced
+// that with the binding peer's arrival-lateness tail (lateness_tick above) -- but it is kept and
+// still printed on every controller move, for two reasons. It is the quantity every earlier P1/P5
+// mp:P1/mp:P5 pacing measurement is expressed in, so a new run stays comparable with the old ones;
+// and when the two disagree (a window that reads 0% starved while the tail says the margin is gone)
+// that disagreement is the interesting thing, and it is only visible if both are on the line.
 DWORD g_ad_last_ms = 0, g_ad_time_ms = 0, g_ad_starved_ms = 0;
-// P1 fix (c), 2026-07-26: shrink only after SUSTAINED cleanliness. With (a) alone the controller
-// climbed correctly to 200 ms and then immediately gave it back -- "0% starved" is the SUCCESS
-// condition, and treating one clean window as proof of surplus walks it straight off the value that
-// produced the success. Measured: a 184<->200 oscillation spending a starved window on every cycle
-// (13.5% deficit against 5.8% for a fixed 200). Growth answers something the player feels now;
-// shrinking only buys back input latency, so it can afford to wait for evidence.
-int g_ad_clean = 0; // consecutive windows below AD_STARVE_LO
+// P1 fix (c), 2026-07-26: shrink only after SUSTAINED cleanliness. Carried across into mp:T3's
+// controller unchanged (mh::netstats::AD_LATE_SHRINK_AFTER), because the reason still holds: "the
+// margin is comfortable" is the SUCCESS condition, and treating one comfortable window as proof of
+// surplus walks straight off the value that produced it. Measured then: a 184<->200 oscillation
+// spending a starved window on every cycle (13.5% deficit against 5.8% for a fixed 200).
+int g_ad_clean = 0; // consecutive windows above the shrink threshold
 
 // Keep the value OFF the 10 ms clock grid: an exactly-on-grid lookahead phase-locks with the
 // centisecond clock and forfeits an extra quantum most steps (the MP latency notes CORRECTION 3).
@@ -783,75 +1199,86 @@ void adaptive_tick() {
     memcpy(&com, (const void *)ADDR_COMMITTED(), sizeof(double));
     memcpy(&sim, (const void *)ADDR_SIM_STEP_INT(), sizeof(double));
     if (sim <= 0.0) return;
-    DWORD now     = GetTickCount();
-    bool  starved = (com < clk + sim); // horizon can't fund the next sub-step
+    DWORD now = GetTickCount();
+    // The starved-time diagnostic (see the g_ad_last_ms note): accumulated exactly as before, read
+    // by nothing but the log line below.
+    const bool starved = (com < clk + sim);
     ++g_ad_frames;
-    if (starved) ++g_ad_starved; // kept for the log line: frames stay the readable unit
-    if (g_ad_last_ms) {          // (a) weight by TIME, so the error term does not depend on frame rate
+    if (starved) ++g_ad_starved;
+    if (g_ad_last_ms) {
         DWORD dt = now - g_ad_last_ms;
         if (dt > AD_MAX_SAMPLE_MS) dt = AD_MAX_SAMPLE_MS;
         g_ad_time_ms += dt;
         if (starved) g_ad_starved_ms += dt;
     }
     g_ad_last_ms = now;
-
     if (g_ad_t0 == 0) g_ad_t0 = now;
-    if ((now - g_ad_t0) < AD_WINDOW_MS) return;
 
-    if (g_ad_frames >= AD_MIN_FRAMES && g_ad_time_ms > 0) {
-        double frac = (double)g_ad_starved_ms / (double)g_ad_time_ms;
-        double cur  = g_lockstep_step;
-        if (cur <= 0.0) memcpy(&cur, (const void *)ADDR_STEP_SIZE, sizeof(double));
-        // P1 finding (b) -- "committed = min over peers, so the lower peer binds and the higher one
-        // sees starvation it cannot fix" -- is REAL but is NOT actionable this way, and the attempt is
-        // recorded because it is an easy idea to have twice. Gating growth on "am I the binding peer?"
-        // (local_horizon <= committed) suppressed growth ENTIRELY: measured 48.5% deficit with zero
-        // controller moves, worse than doing nothing. The reason is that COMMITTED is the minimum over
-        // the OTHER peers' horizons as last received, so on a 200 ms link it is ~200 ms stale by
-        // construction -- a peer's own live horizon is almost always above it, and the test reads
-        // "someone else binds" on every peer at once, exactly on the links that need to grow.
-        // Kept as a LOGGED diagnostic (bind=), not a control input. The asymmetry (b) describes is
-        // believed to be downstream of (a) anyway: once both peers measure starvation in TIME they
-        // agree about the link, so they climb together instead of one running away -- which is what
-        // the numbers below have to confirm.
-        double local_h = 0.0;
-        memcpy(&local_h, (const void *)ADDR_LOCAL_HORIZON, sizeof(double));
-        bool   we_bind = (local_h <= com + sim * 0.5);
-        double want    = cur;
-        if (frac > AD_STARVE_HI) {
-            // P1 fix (d), 2026-07-26: grow PROPORTIONALLY to how starved we are, not by a flat +25%.
-            // A fixed step ignores the size of the error, so the climb from the shipping 100 ms to the
-            // 200 ms a 200 ms link needs took four 2 s windows -- and the peer is heavily starved for
-            // all eight seconds of it (measured 54/37/40/21%). On a short match that ramp IS the whole
-            // deficit. Scaling by the measured starved fraction reaches the same place in about half
-            // the windows, while a lightly-starved link still gets the gentle old step because AD_GROW
-            // is the floor. Capped so a single pathological window cannot overshoot the band wildly.
-            double g = 1.0 + frac;
-            if (g < AD_GROW) g = AD_GROW;
-            if (g > AD_GROW_MAX) g = AD_GROW_MAX;
-            want       = cur * g;
-            g_ad_clean = 0; // any starvation resets the patience counter
-        } else if (frac < AD_STARVE_LO) {
-            if (++g_ad_clean >= AD_SHRINK_AFTER) want = cur * AD_SHRINK;
-        } else {
-            g_ad_clean = 0; // in the hysteresis band: hold, and accrue no credit toward shrinking
-        }
-        double floor_s = g_ls_min;
-        if (AD_SIM_FLOOR_MULT * sim > floor_s) floor_s = AD_SIM_FLOOR_MULT * sim; // sim-relative floor
-        if (want < floor_s) want = floor_s;
-        if (want > g_ls_max) want = g_ls_max;
-        double want_ms = off_grid_ms(want * 1000.0);
-        want           = want_ms / 1000.0;
-        if (want != cur) {
-            g_lockstep_step = want; // on_time_tick pins it into STEP_SIZE from here on
-            if (g_ls_log) {
-                char b[160];
-                wsprintfA(b, "; adaptive: lookahead %ld -> %ld ms (starved %ld/%ld ms = %d%%, %d/%d frames, bind=%d)\n",
-                          (long)(cur * 1000.0), (long)want_ms, (long)g_ad_starved_ms,
-                          (long)g_ad_time_ms, (int)(frac * 100.0), g_ad_starved, g_ad_frames,
-                          we_bind ? 1 : 0);
-                seam_log(b);
-            }
+    const double sim_ms = sim * 1000.0;
+    // RAISE FAST, LOWER SLOWLY -- the asymmetry the AoE finding and mp:P1 both arrived at, now with
+    // teeth on the fast half: a window that is ALREADY under the grow threshold does not have to be
+    // waited out, because nothing it can still measure will change the verdict, and every extra
+    // millisecond spent waiting is a millisecond the player is stalling. Shrinking keeps the full
+    // window (and then AD_LATE_SHRINK_AFTER of them), because giving latency back is never urgent.
+    const bool urgent = g_late_have && g_late_n >= AD_FAST_MIN_SAMPLES &&
+                        (double)g_late_tail95 < mh::netstats::AD_LATE_GROW_MULT * sim_ms;
+    const DWORD due = urgent ? AD_FAST_MS : AD_WINDOW_MS;
+    if ((now - g_ad_t0) < due) return;
+
+    // mp:T3c -- the join warm-up. The clock starts the moment ANY peer measurement exists (not at
+    // lockstep entry: before a peer has advertised there is nothing to be early about), and until it
+    // runs out every window below is judged LA_WARMUP and its samples are dropped by the
+    // lateness_consume() at the end. `g_ad_warm_t0` is cleared by the match reset in lateness_tick.
+    if (g_ad_warm_t0 == 0 && g_late_have) g_ad_warm_t0 = now ? now : 1;
+    const bool warm = (g_ad_warm_t0 != 0) && (now - g_ad_warm_t0) >= AD_WARMUP_MS;
+
+    double cur = g_lockstep_step;
+    if (cur <= 0.0) memcpy(&cur, (const void *)ADDR_STEP_SIZE, sizeof(double));
+    double floor_s = g_ls_min;
+    if (AD_SIM_FLOOR_MULT * sim > floor_s) floor_s = AD_SIM_FLOOR_MULT * sim; // sim-relative floor
+
+    // THE WHOLE JUDGEMENT IS mh::netstats::lookahead_decide, and it is there rather than here so it
+    // can be asserted without a rig: net_selftest.exe udpstatstest drives it through the exact three
+    // claims this item's done_when asks of the rig (climbs within one window at 200 ms, settles on
+    // the floor on a clean link, cannot shrink before AD_LATE_SHRINK_AFTER clean windows).
+    //
+    // DETERMINISM. This moves g_lockstep_step, which on_time_tick pins into STEP_SIZE -- a peer's
+    // own ADVERTISED horizon. COMMITTED is min(local, peers) and the sim clamps to COMMITTED, so a
+    // peer's lookahead gates only its OWN willingness to run ahead; the step sequence is unchanged
+    // however the two peers' values differ. Nothing here reads or writes sim state, and the new
+    // error term is measured from PEER_HORIZON, which is an input to the sim's clamp and not an
+    // output of it. Proven, not argued: the determinism gate over UDP with the controller active.
+    mh::netstats::LookaheadIn in;
+    in.cur_ms                          = cur * 1000.0;
+    in.sim_ms                          = sim_ms;
+    in.floor_ms                        = floor_s * 1000.0;
+    in.ceil_ms                         = g_ls_max * 1000.0;
+    in.have                            = g_late_have;
+    in.tail95_ms                       = (double)g_late_tail95;
+    in.clean_in                        = g_ad_clean;
+    in.warm                            = warm;                // mp:T3c
+    in.slack_ms                        = (double)g_slack_p50; // mp:T3c
+    const mh::netstats::LookaheadOut d = mh::netstats::lookahead_decide(in);
+    g_ad_clean                         = d.clean_out;
+
+    const double want_ms = off_grid_ms(d.want_ms);
+    const double want    = want_ms / 1000.0;
+    if (want != cur) {
+        g_lockstep_step = want; // on_time_tick pins it into STEP_SIZE from here on
+        if (g_ls_log) {
+            const char *verdict = (d.verdict == mh::netstats::LA_GROW)     ? "grow"
+                                  : (d.verdict == mh::netstats::LA_SHRINK) ? "shrink"
+                                  : (d.verdict == mh::netstats::LA_HOLD)   ? "hold"
+                                  : (d.verdict == mh::netstats::LA_WARMUP) ? "warmup"
+                                                                           : "nosamples";
+            char        b[256];
+            wsprintfA(b,
+                      "; [adaptive] t=%lu lookahead %ld -> %ld ms %s (late p50 %d tail95 %d tail99 "
+                      "%d ms, n=%d, peer=%d, slack %d ms; starved %ld/%ld ms diag)\n",
+                      now, (long)(cur * 1000.0), (long)want_ms, verdict, g_late_p50, g_late_tail95,
+                      g_late_tail99, g_late_n, g_late_peer, g_slack_p50, (long)g_ad_starved_ms,
+                      (long)g_ad_time_ms);
+            seam_log(b);
         }
     }
     g_ad_t0         = now;
@@ -859,9 +1286,11 @@ void adaptive_tick() {
     g_ad_starved    = 0;
     g_ad_time_ms    = 0;
     g_ad_starved_ms = 0;
+    lateness_consume(); // the next decision is made on samples taken after this one -- see there
 }
 
 void on_time_tick() {
+    lateness_tick(); // mp:T3 -- sample first: the controller below reads the snapshot it publishes
     adaptive_tick(); // may move g_lockstep_step; the pin below applies it the same frame
     if (g_lockstep_step > 0.0) memcpy((void *)ADDR_STEP_SIZE, &g_lockstep_step, sizeof(double));
     if (g_game_speed > 0.0) memcpy((void *)ADDR_GAME_SPEED, &g_game_speed, sizeof(double)); // pin before time_tick reads it
@@ -906,7 +1335,8 @@ void on_time_tick() {
                 const int dead = g_pending_dead;
                 g_pending_dead = -1;
                 mh::hook::call_watcall1(mh::addr::llm_net_player_remove, (void *)(intptr_t)dead);
-                notify_player_dropped(dead); // host-side "player dropped" HUD notice
+                notify_player_dropped(dead);           // host-side "player dropped" HUD notice
+                g_last_fastdrop_tick = GetTickCount(); // U19d: a REAL transport death -- see on_gameover_post
                 if (g_ls_log) {
                     char b[192];
                     wsprintfA(b,
@@ -915,6 +1345,12 @@ void on_time_tick() {
                               dead, parked ? "PARKED" : "TIMEOUT-UNPARKED", g_pending_dead_wait);
                     seam_log(b);
                 }
+                // SES1: a kick that leaves NOBODY is the end of this match for us -- there is no peer
+                // left to be in lockstep with, and the seams that normally close a session (gameover,
+                // either leave) will not fire, because the player is still sitting in a game that has
+                // quietly become single. Guarded on the peer count rather than on the kick itself: in
+                // a 3-peer game losing one is an incident, not an ending.
+                if (MH_Net_PeerCount() <= 0) mp_session_close("timeout");
             }
         }
     }
@@ -962,12 +1398,64 @@ void lt_frame_pace_time_tick() {
 bool g_tt_promoted_ok       = false;
 bool g_sim_tick_promoted_ok = false;
 
+// U19d: on a 2-player graceful quit the SURVIVOR's end-of-match dialog reads "Connection to server
+// lost" instead of naming the departure -- RIG-MEASURED 2026-09-18 (host_rematch, no net_extra pin):
+// exactly ONE call to this entry point, log line `; on_gameover ENTER sess=3 outcome=0` (the naked
+// thunk could not recover `outcome` before this fix, hence the always-0), dumped widget text
+// literally "Connection to server lost", no `; U17 fast-drop` anywhere in the host's log -- i.e. a
+// perfectly clean quit, not a transport failure, producing the wrong text on its FIRST and ONLY
+// entry. (An earlier theory here guessed a REDUNDANT second call and a debounce fix; the rig proved
+// that wrong -- there was only ever one call -- and the debounce is gone.)
+//
+// RE'D via the promoted C++ this build actually runs (libmh/lockstep/rx_dispatch.cpp -- wire
+// promotion is armed BY DEFAULT under `[config] mode=brokered`, so the retail assembly this
+// comment used to cite is not what executes): `detail::dispatch_packet`'s outer loop
+// (rx_dispatch.cpp:469-474) reads a leading tag byte per message and, for any tag it does not
+// recognise, calls `handle_garbled` -- which unconditionally fires
+// `calls.outcome_dialog(OUTCOME_NETWORK_ERROR)` (=7, rx_dispatch.cpp:85/283), the ONLY caller of
+// outcome code 7 anywhere in the closure, mapping (llm_ui_outcome_dialog's MP switch, retail
+// 0x004c6c4f) to `G_TEXT_PTRS[0x30d]` = "connection_to_server_lost" (text-id table row 781). The
+// CORRECT below-quorum path (`handle_peer_drop` -> `last_peer_teardown` -> `presence_lost`) maps to
+// `G_TEXT_PTRS[0x2dc]` = "you_are_the_last_player" (row 732) instead. Exactly how a clean quit's own
+// bytes end up read as an unrecognised tag was not pinned down further (a framing/cursor question
+// inside a migration-owned TU, rx_dispatch.cpp, outside this file's write set) -- but the SYMPTOM,
+// the DISCRIMINATOR below, and the FIX are all measured directly, which is enough to correct what
+// the player sees without touching that file.
+//
+// FIX: this entry point (gameover_outcome_dialog == llm_ui_outcome_dialog @0x004c6c4f) is exclusively
+// ours already (gameover_detour), so rather than hook the wire layer -- where every candidate
+// (llm_net_lockstep_send_presence_lost, llm_net_lockstep_dispatch) is ALREADY claimed by the wire/
+// turn-engine promotion closures, armed by the same default -- this is now a WRAP detour: it recovers
+// the real `outcome` byte (Watcom `__watcall`'s single param arrives in AL), runs on_gameover_pre
+// BEFORE the original body (unchanged: session downgrade + mp_session_close, same ordering as
+// before), CALLS (not jmp's to) the stolen-prologue trampoline so the original dialog-setup body
+// still runs and returns here, then runs on_gameover_post: if the outcome the ORIGINAL body just
+// rendered was OUTCOME_NETWORK_ERROR(7) AND no REAL transport failure was observed recently
+// (g_last_fastdrop_tick, set at the U17 fast-drop broadcast in on_time_tick -- a genuine transport
+// death), it overwrites the ONE widget field retail's own switch would have set differently for a
+// below-quorum drop: `_G_LLM_UI_OUTCOME_DLG_MESSAGE_WIDGET.label` (+0x38, 0x00650b17) ->
+// `G_TEXT_PTRS[0x2dc]`. That widget is shared -- per its own addr-header plate -- between the initial
+// modal and the transitional REPORT screen the "Ok" button slides through on the way to the HUD, so
+// one poke fixes both. The NOTE/"continue game" text (G_TEXT_PTRS[0x2dd]) is identical for outcome
+// 6/7/8 in retail's own switch, so it needs no correction.
+//
+// RESIDUE, stated rather than hidden: the discriminator is "no fast-drop in the last
+// g_fastdrop_recent_ms", which is exactly right for every case the rig has measured (a graceful
+// quit's B2 line never appears; U17 fast-drop always precedes a real transport death) but is not a
+// proof for a hypothetical byte-corrupted-yet-still-connected link, which nothing in the suite
+// exercises today -- link_death (tools/test_ui.py) is a LOBBY-phase blackhole test and never reaches
+// this entry point at all, so it cannot regress from this change either way.
+constexpr uint8_t OUTCOME_NETWORK_ERROR = 7;    // mirrors libmh/lockstep/rx_dispatch.cpp's own constant
+DWORD             g_fastdrop_recent_ms  = 2000; // generous vs. the one-frame gap fast-drop -> its own dialog
+uint8_t           g_go_outcome          = 0;    // the real `outcome` byte, captured by gameover_detour from
+                                                // AL before pushad; read by both on_gameover_pre/_post
+
 // Run-before the game-over/outcome dialog: leave lockstep so the LOSER shows its result immediately
 // (see the block comment at g_sync_gameover). SESSION_MODE is a dword; 3 = lockstep, 2 = MP-local.
 // The downgrade is idempotent, which is why the shape below can run it unconditionally: SESSION is
-// 3 or it is not. The two-argument signature is U33's participant shape, kept because the naked
-// thunk pushes the same two words (both zero -- see gameover_detour).
-void on_gameover(uint32_t outcome, uint32_t) {
+// 3 or it is not. Ordering is unchanged from before U19d: this still runs BEFORE the original body.
+void on_gameover_pre() {
+    const uint32_t outcome = g_go_outcome;
     if (g_ls_log) {
         char b[160];
         wsprintfA(b, "; on_gameover ENTER sess=%d outcome=%u gclk=%ld (downgrade=%d)\n",
@@ -977,34 +1465,92 @@ void on_gameover(uint32_t outcome, uint32_t) {
     }
     if (*(volatile uint32_t *)ADDR_SESSION_MODE == 3)
         *(volatile uint32_t *)ADDR_SESSION_MODE = 2; // SESSION_MP_LOCKSTEP -> SESSION_MP_LOCAL
+    // SES1: leaving lockstep because the match ENDED is the session's natural close, and it is the
+    // one close that happens on BOTH peers at (near) the same step -- which is what makes two
+    // directories with the same match_id comparable at their last row.
+    mp_session_close("gameover");
+}
+// U19d -- see the block comment above on_gameover_pre. Runs AFTER the original dialog-setup body
+// (gameover_detour is now a WRAP, not a tail jmp), so this corrects what the original just wrote
+// rather than trying to influence it.
+void on_gameover_post() {
+    if (g_go_outcome != OUTCOME_NETWORK_ERROR) return;
+    const DWORD now                  = GetTickCount();
+    const bool  real_transport_death = g_last_fastdrop_tick != 0 &&
+                                      (now - g_last_fastdrop_tick) < g_fastdrop_recent_ms;
+    if (real_transport_death) return; // a genuine link death -- leave "Connection to server lost" alone
+    void **const label_slot = (void **)(mh::addr::_G_LLM_UI_OUTCOME_DLG_MESSAGE_WIDGET + 0x38);
+    void **const text_ptrs  = (void **)mh::addr::cfg_G_TEXT_PTRS;
+    *label_slot             = text_ptrs[0x2dc]; // "you_are_the_last_player" -- text-id table row 732
+    if (g_ls_log)
+        seam_log("; U19d: outcome-dialog said 'Connection to server lost' with no real transport "
+                 "failure -- corrected to 'you are the last player'\n");
 }
 // The pre-U33 naked shape, restored by F1C as the no-gate fallback and the only host since fork
-// F2F. The outcome argument is not recoverable here, so on_gameover logs it as 0.
+// F2F. U19d turned it from a tail jmp into a WRAP (`call [g_go_tramp]`, not `jmp`): the stolen
+// prologue + jmp-back still runs the ORIGINAL dialog-setup body exactly as before, but now RETURNS
+// here (the original's own `ret` pops the return address this `call` pushed) so on_gameover_post can
+// read/correct what it just rendered. EAX (the original's `return 1`) survives the trailing
+// pushad/pushfd .. popfd/popad pair unperturbed, so the caller sees the same return value as before.
 __declspec(naked) void gameover_detour() {
     __asm {
+        mov  byte ptr [g_go_outcome], al // Watcom __watcall: the byte `outcome` param arrives in AL
         pushad
         pushfd
-        push 0 // a1 (unused)
-        push 0 // outcome: not recoverable in the naked shape
-        call on_gameover
-        add  esp, 8
+        call on_gameover_pre
         popfd
         popad
-        jmp  dword ptr [g_go_tramp] // stolen prologue + back to llm_ui_outcome_dialog+8
+        call dword ptr [g_go_tramp] // WRAP: stolen prologue + jmp to llm_ui_outcome_dialog+8, returns HERE
+        pushad
+        pushfd
+        call on_gameover_post
+        popfd
+        popad
+        ret // EAX (the original's `return 1`) survived both pushad/popad pairs untouched
     }
 }
 
 // U17 (a) run-before llm_game_return_to_main_menu_cb: if we are quitting a RUNNING lockstep game,
 // broadcast our own CLEAN removal (subtype 8) with our side_id. llm_net_player_remove flushes the wire
 // frame via llm_net_transport_send BEFORE it mutates local state, so it reaches survivors while the
-// transport is still up; they apply it in dispatch order (determinism-safe) and resume immediately. The
+// transport is still up -- which it did NOT until U19 held U40's relink latch across the call; see
+// the block comment at that hold. They apply it in dispatch order (determinism-safe). The
 // retail teardown body then runs and returns us to the menu. No leader-gate: the quitter authoritatively
 // self-removes (exactly one sender). SESSION_MODE byte: 3 = SESSION_MP_LOCKSTEP.
 void on_quit_to_menu() {
+    // SES1: FIRST, and outside both gates below. Quit-to-menu ends the session whether or not the
+    // graceful-leave broadcast is armed and whether or not we were still in mode 3 -- a player who
+    // ESCs out of a lobby has left the match just as surely as one who quits a running game, and a
+    // session left open here would swallow the next match's menu lines.
+    mp_session_close("quit");
     if (!g_graceful_leave) return;
     if (*(const uint8_t *)ADDR_SESSION_MODE != 3) return; // not in a running lockstep game
     int side = *(const int32_t *)mh::addr::_G_LLM_NET_LOCAL_PLAYER_INDEX;
+    // U19 -- HOLD U40's RELINK LATCH ACROSS THE BROADCAST, or there is no broadcast.
+    //
+    // mp_session_close() above ends in client_relink_arm() on a manual client, and
+    // llm_net_player_remove reaches the wire through MH_Seam_GameSend, whose FIRST statement is
+    // lazy_start() -- the one site allowed to re-enter MH_Net_InitEx on a started transport, and the
+    // site that CONSUMES that latch. So the send meant to announce our departure instead tore the
+    // link down and handed the frame to a socket that was still handshaking.
+    //
+    // MEASURED on the rig 2026-09-18, before this guard, with graceful_leave=1: the quitter logged
+    // `U40 relink: re-initialising the transport`, then `net: conn 0 closed` (+1 ms), and only then
+    // `U17 graceful-leave: broadcast self-removal side=1` (+195 ms); the host's log carries no
+    // GameRecv of a removal at all and dropped us through `U17 fast-drop: transport-dead peer`
+    // instead. The knob's whole mechanism was a no-op with a side effect -- the departure LOOKED
+    // fast only because the accidental socket close woke the B2 catch.
+    //
+    // Clearing the latch for the length of the call and restoring it after keeps both halves: the
+    // removal frame rides the LIVE link and survivors apply it in dispatch order (determinism-safe,
+    // through the retail receiver), and the browser still re-dials when the player goes looking for
+    // another game. Ordering the broadcast BEFORE mp_session_close would also work and is the
+    // smaller diff, but it hands the session-end reason to whichever seam the self-removal trips on
+    // the way (a below-quorum self-removal reaches on_gameover), and SES1's reason vocabulary is
+    // worth more than three lines.
+    const LONG relink_held = InterlockedExchange(&g_net_relink, 0);
     mh::hook::call_watcall1(mh::addr::llm_net_player_remove, (void *)(intptr_t)side); // EAX = side_id
+    if (relink_held) InterlockedExchange(&g_net_relink, relink_held);
     if (g_ls_log) {
         char b[96];
         wsprintfA(b, "; U17 graceful-leave: broadcast self-removal side=%d before quit-to-menu\n", side);
@@ -1458,6 +2004,38 @@ void install_qpc_clock() {
 
 } // namespace
 
+// ---- SES1: the numbers the SESSION_BEGIN / SESSION_END records report ---------------------------
+//
+// It lives in THIS TU because this TU owns them: the game's cumulative stall counter, the two icon
+// counters the overlay thunk feeds, and the two pacing pins (lookahead + sim sub-step) that the ini
+// set and on_time_tick writes into the game every frame. net_discovery.cpp, which owns the session
+// record, can see none of that -- and a second reader of these addresses would be a second answer.
+//
+// Every argument is optional: the OPEN only wants the two step periods (nothing has run yet, so the
+// counters would all read zero), and the CLOSE only wants the counters. Passing null for the half you
+// do not want is cheaper than two functions that would drift apart.
+//
+// The step periods are reported in MILLISECONDS and prefer OUR pinned value over the game global:
+// g_lockstep_step is a DLL double with no torn-read window, while STEP_SIZE (0x005d55bc) is only
+// 4-aligned -- the same preference horizon_heartbeat_thread makes, for the same reason.
+extern "C" void MH_Seam_SessionPacing(long *clock_ms, long *stall, long *icon_calls, long *icon_shown,
+                                      int *step_ms, int *sim_step_ms) {
+    if (clock_ms) *clock_ms = ms_of(ADDR_GAME_CLOCK);
+    if (stall) *stall = (long)*(const int *)ADDR_STALL_COUNT;
+    if (icon_calls) *icon_calls = g_icon_calls;
+    if (icon_shown) *icon_shown = g_icon_shown;
+    if (step_ms) {
+        double s = g_lockstep_step;
+        if (s <= 0.0) memcpy(&s, (const void *)ADDR_STEP_SIZE, sizeof(double));
+        *step_ms = (int)(s * 1000.0 + 0.5);
+    }
+    if (sim_step_ms) {
+        double s = g_sim_step;
+        if (s <= 0.0) memcpy(&s, (const void *)ADDR_SIM_STEP_INT(), sizeof(double));
+        *sim_step_ms = (int)(s * 1000.0 + 0.5);
+    }
+}
+
 // ==== install entries (called from net_seams' MH_Seam_Init, in this order) ========================
 // Config knobs + overlay de-fang + hires/qpc clock + the timing-log path + the time_tick hook.
 // Verbatim the pre-split MH_Seam_Init block (minus hold_start, which stays a net_seams concern).
@@ -1549,7 +2127,7 @@ void lockstep_install_core() {
         seam_log(b);
     }
     g_sync_gameover  = GetPrivateProfileIntA("net", "sync_gameover", 1, g_ini);  // default ON (endgame fix)
-    g_graceful_leave = GetPrivateProfileIntA("net", "graceful_leave", 0, g_ini); // U17 (a) clean-quit self-removal; default OFF (opt-in; B2 covers quit via socket-close)
+    g_graceful_leave = GetPrivateProfileIntA("net", "graceful_leave", 1, g_ini); // U17 (a) clean-quit self-removal; default ON since U19 (B2 does NOT catch a quit-to-menu -- see g_graceful_leave)
     g_graceful_drop  = GetPrivateProfileIntA("net", "graceful_drop", 1, g_ini);  // U17 (b) fast hard-drop on transport-death; default ON
     // Horizon heartbeat cadence (perf-decouple): >0 arms a thread that advertises the lockstep horizon
     // on real time, independent of render frames. Read here (DllMain, no thread); the thread starts in
@@ -1579,6 +2157,10 @@ void lockstep_install_core() {
     // it; the arming line below says so rather than letting a run believe it is gated.
     g_desync_icon_gate     = GetPrivateProfileIntA("net", "desync_icon_gate", 0, g_ini);
     g_resync_order_horizon = GetPrivateProfileIntA("net", "resync_order_horizon", 1, g_ini); // MP D14: schedule the resync-begin synthetic order at the horizon like every other replicated order; DEFAULT ON
+    // MP U19e. DEFAULT ON: without it the leader's re-broadcast of a peer drop overwrites the very
+    // datagram it is dispatching (one shared _G_LLM_NET_SEND_BUF for TX and RX), and the parse walks
+    // into the payload and raises outcome 7 on a clean quit. Reimpl-ONLY, like desync_icon_gate.
+    g_gone_peer_frame_guard = GetPrivateProfileIntA("net", "gone_peer_frame_guard", 1, g_ini);
     // C8-e: the three retired `defang_*` knobs. A SCOPE DECISION, not a retirement -- the capability
     // is gone, so there is no carrier to point at and refuse_uncarried_fix would be the wrong message
     // (it says "the fix moved and you are not running the thing that carries it"; here there is no
@@ -1682,6 +2264,9 @@ void lockstep_install_core() {
         // counter with `g_icon_gate` hardcoded 0. So an UNPROMOTED run with this set has no gate at
         // all, and that has to be said out loud rather than discovered from an unchanged icon rate.
         fx.desync_icon_gate = g_desync_icon_gate != 0;
+        // U19e. Same footing as the line above -- reimpl-only, no byte-patch carrier -- but its ini
+        // default is 1, so an UNPROMOTED run silently has no guard. The arming line below says so.
+        fx.gone_peer_frame_guard = g_gone_peer_frame_guard != 0;
         mh::lockstep::set_fixes(fx);
         if (g_desync_icon_gate) {
             const bool carried = g_lockstep_promoted.time_tick;
@@ -1696,6 +2281,13 @@ void lockstep_install_core() {
                                 "[promote] lockstep, or accept the stock icon knowingly.");
             seam_log(b);
         }
+        // U19e: this one is ON by default, so the informative case is the INERT one -- a run with the
+        // wire/turn-engine promotion off has no guard at all (there is no byte patch to fall back on)
+        // and its leader will still trample the datagram it re-broadcasts a drop for.
+        if (g_gone_peer_frame_guard && !g_lockstep_promoted.active)
+            seam_log("; gone_peer_frame_guard=1 but INERT -- the lockstep promotion is OFF this run, "
+                     "so dispatch_packet is retail's and a frame from an already-dropped peer still "
+                     "overwrites itself (MP U19e)\n");
         if (fx.rig_fixed_step_loop) {
             char b[160];
             wsprintfA(b, "; rig_fixed_step_loop=1 (SP integrates at SIM_STEP_INTERVAL); sim_tick promoted=%d\n",
@@ -1737,12 +2329,7 @@ void lockstep_install_core() {
     if (GetPrivateProfileIntA("net", "qpc_clock", SHIP_QPC_CLOCK, g_ini)) install_qpc_clock();
 
     int sp_log = GetPrivateProfileIntA("net", "sp_clock_log", 0, g_ini); // SP clock cross-check (log every frame)
-    if (ls_log || sp_log) {                                              // build mh_lockstep.log path next to the exe
-        lstrcpynA(g_ls_path, g_log, MAX_PATH);                           // g_log = "...\mh_net.log"
-        char *slash = g_ls_path;
-        for (char *p = g_ls_path; *p; ++p)
-            if (*p == '\\' || *p == '/') slash = p;
-        lstrcpyA(slash + 1, "mh_lockstep.log");
+    if (ls_log || sp_log) {                                              // the path itself is composed per write (SES1: per session) in ls_log_tick
         g_ls_log    = ls_log != 0;
         g_ls_log_sp = sp_log != 0;
     }
@@ -1880,13 +2467,7 @@ void lockstep_install_present_gameover() {
     // and reports ARMED while journalling nothing the moment a fragment sets eager_advertise=0.
     int ui_journal = MH_Harness_WantsPresentTick();
     if (ft_log || eager_adv || temporal || ui_journal) {
-        if (ft_log) {
-            lstrcpynA(g_ft_path, g_log, MAX_PATH); // derive path next to mh_net.log (run folder)
-            char *slash = g_ft_path;
-            for (char *p = g_ft_path; *p; ++p)
-                if (*p == '\\' || *p == '/') slash = p;
-            lstrcpyA(slash + 1, "mh_frametime.log");
-        }
+        // (SES1: g_ft_path is composed per write in the present hook, so ft_log only sets the gate.)
         // ONE ENTRY, ONE OWNER (hook/promoted.h C4). This site used to have TWO hosts: a pre-hook
         // registered with the effects gate that owned llm_gfx_present_flip's entry (U33), and this
         // own detour as the fallback for `[effects] arm=0`. Fork F2F deleted the deferred-effect
@@ -1945,20 +2526,43 @@ void lockstep_install_present_gameover() {
                      "the reason\n");
     }
 
-    // U17 (a) clean-quit self-removal: hook llm_game_return_to_main_menu_cb entry (55 89 E5 68 prologue).
-    if (g_graceful_leave) {
-        // THE NAMED NEXT VICTIM (U30's census). This site is un-collided only because nothing targets
-        // llm_game_return_to_main_menu_cb yet -- and it IS promotable
-        // (mh::exp::addr_llm_game_return_to_main_menu_cb exists with no MH_EXPORT_REPLACE bound), so
-        // the day something claims it this would have printed the same wrong-build message the
-        // gameover site printed for its whole life. It is under the general guard now, by name,
-        // BEFORE the collision rather than after it.
-        if (install_trampoline(mh::addr::llm_game_return_to_main_menu_cb, (void *)quit_to_menu_detour,
-                               &g_quit_tramp, 8, mh::hook::entry_claim::exclusive,
-                               "the U17 graceful-leave detour ([net] graceful_leave)"))
-            seam_log("; U17 graceful-leave armed (ESC->Quit broadcasts self-removal before teardown)\n");
-        else
-            seam_log("; U17 graceful-leave NOT armed -- see the [interlock] line for the reason\n");
+    // Quit-to-main-menu: hook llm_game_return_to_main_menu_cb entry (55 89 E5 68 prologue).
+    //
+    // INSTALLED UNCONDITIONALLY SINCE U40, AND THE GATE THAT USED TO BE HERE WAS A REAL DEFECT. The
+    // site arrived with U17 (a), whose graceful-leave broadcast is opt-in ([net] graceful_leave,
+    // default OFF), so the INSTALL inherited that gate. SES1 then hung the session close on the same
+    // body -- and in the shipping configuration the body was never reached, so `mp_session_close
+    // ("quit")` had never once run: a player who ESCs out of a match to the main menu left the
+    // session directory OPEN with no SESSION_END, and every line of the next match landed in the
+    // finished one's folder. Measured 2026-09-17 on the rig: a peer that quit through the ESC menu
+    // wrote no SESSION_END at all. U40 hangs its own boundary work on the same close, which is how
+    // this surfaced. on_quit_to_menu gates the graceful-leave HALF internally, so the knob keeps its
+    // meaning exactly; what stops being optional is noticing that the match ended.
+    //
+    // THE NAMED NEXT VICTIM (U30's census). This site is un-collided only because nothing targets
+    // llm_game_return_to_main_menu_cb yet -- and it IS promotable
+    // (mh::exp::addr_llm_game_return_to_main_menu_cb exists with no MH_EXPORT_REPLACE bound), so
+    // the day something claims it this would have printed the same wrong-build message the
+    // gameover site printed for its whole life. It is under the general guard now, by name,
+    // BEFORE the collision rather than after it.
+    //
+    // THE ARM-LOG LINE IS PRINTED FOR THE ABNORMAL CASE ONLY, and the reason is unchanged even
+    // though U19 inverted which case that is: tools/data/arm_order/*.json record the healthy arm
+    // sequence of five configurations, so a line present in a healthy run is a baseline row, and a
+    // new row can only be added together with five real boots to re-record them. While
+    // graceful_leave defaulted OFF the healthy run was the silent one and the SUCCESS line was the
+    // gated one; since U19 made ON the default it is the other way round, so the line now names a
+    // run someone has DISABLED the clean leave on -- which is exactly the configuration a reader of
+    // a slow-departure report needs to see. The FAILURE line stays unconditional for the same
+    // reason it always was: no baseline contains a refused install.
+    {
+        const bool armed = install_trampoline(
+            mh::addr::llm_game_return_to_main_menu_cb, (void *)quit_to_menu_detour, &g_quit_tramp, 8,
+            mh::hook::entry_claim::exclusive, "the quit-to-menu detour (session close + [net] graceful_leave)");
+        if (!armed) seam_log("; quit-to-menu NOT armed -- see the [interlock] line for the reason\n");
+        else if (!g_graceful_leave)
+            seam_log("; U17 graceful-leave DISABLED by config ([net] graceful_leave=0): a quit-to-menu "
+                     "will leave survivors waiting out the retail silence timeout\n");
     }
 }
 

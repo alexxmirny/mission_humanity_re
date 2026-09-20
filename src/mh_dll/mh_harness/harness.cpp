@@ -47,6 +47,7 @@
 #include "seams/net_internal.h"             // SHIP_REBIND_DEFAULT -- the R11 gate policy load_gates takes
 #include "config/config.h"                  // F2A: the D11 selector that gate policy now derives from
 #include "mh_net_export.h"                  // U30(b): MH_Net_Send -- the garbled-frame injector below
+#include "mh_net_module.h"                  // mp:X1b: the three snapshot rows + MH_NetSnapshotStatus
 #include "addr/mh_addrs.gen.h"              // generated EN VAs (tools/gen_dll_addrs.py)
 #include "addr/mh_structs.gen.h"            // generated struct mirrors (llm_strat_player_profile -- D6)
 #include "addr/mh_calls.gen.h"              // generated typed callables + __watcall thunks (P0-CALLS)
@@ -517,16 +518,77 @@ struct Config {
     // only ever loads it leaves the multi-member extraction loop untested -- and "1 of 1 members
     // byte-identical" reads just as green as "3 of 3".
     char loadgame_name[64] = "uitest";
-    int  loadgame_at       = 0;      // step at which to read a whole .sav back via llm_game_load
-                                     // (0 = never). The container READ root -- and, unlike load_at,
-                                     // it also re-extracts every embedded per-planet member, so it
-                                     // REWRITES save%02d.dat. Place it AFTER savegame_at: the two
-                                     // together are the only in-game route to a container round trip,
-                                     // there being no UI path to save/load in a network session.
-    int load_every = 0;              // re-load cadence in steps (0 = load once)
-    int load_count = 1;              // how many loads in total. Interleaving saves and loads is what
-                                     // exposes the period-2 invariant: every load reverses the region
-                                     // record order, so save1 and save3 agree and save2 is the reverse.
+    int  loadgame_at       = 0; // step at which to read a whole .sav back via llm_game_load
+                                // (0 = never). The container READ root -- and, unlike load_at,
+                                // it also re-extracts every embedded per-planet member, so it
+                                // REWRITES save%02d.dat. Place it AFTER savegame_at: the two
+                                // together are the only in-game route to a container round trip,
+                                // there being no UI path to save/load in a network session.
+    int load_every = 0;         // re-load cadence in steps (0 = load once)
+    int load_count = 1;         // how many loads in total. Interleaving saves and loads is what
+                                // exposes the period-2 invariant: every load reverses the region
+                                // record order, so save1 and save3 agree and save2 is the reverse.
+    // ---- mp:X1b: the live snapshot verbs ---------------------------------------------------------
+    //
+    // TWO KEYS AND THEY ARE DELIBERATELY ASYMMETRIC, which is unusual here and is the whole design:
+    //
+    //   snapshot_at=N     the SENDER's verb. At sim step N this peer captures the world (the same
+    //                     capture LIB-WORLD's world_capture writes to a file) and hands the blob to
+    //                     MH_Net_SnapshotSend. Host-only in every registered scenario, via
+    //                     ui_test's --harness-extra-host, because two peers each sending a snapshot
+    //                     to the other is not a test of anything.
+    //   snapshot_import=1 the RECEIVER's verb, and it is SYMMETRIC on purpose: both peers arm it.
+    //                     A peer nothing is sent to polls, gets MH_SNAP_IDLE forever and allocates
+    //                     nothing (the module opens its arena on the first CHUNK, not on the first
+    //                     poll), so arming it on the sender costs one call per step and removes the
+    //                     need for a second asymmetric knob. The peer that IS sent to imports.
+    //
+    // WHY THE VERBS ARE INI KEYS AND NOT uiscript OPS. A uiscript op would put the trigger on the
+    // UI-driver's clock -- "when the walk reaches this line" -- and the thing being captured is a SIM
+    // STEP. `snapshot_at=N` fires inside on_sim_step's hash block, from the same `per[]` the R line
+    // is written from, so the blob and the hashes it must reproduce describe ONE instant with no
+    // window between them. That is world_capture's own argument for its placement and it applies
+    // unchanged; a frame-clock trigger would reopen exactly the gap it closes.
+    int snapshot_at     = 0; // step at which to capture + send the world (0 = never)
+    int snapshot_to     = 1; // which player id to send it to (the host's client is 1)
+    int snapshot_import = 0; // poll for an inbound snapshot every step and import it when whole
+    int snapshot_log    = 0; // log a `; SNAPSHOT RX` progress line every N steps (0 = off)
+    // ---- mp:X3 step one: IMPORT AND HOLD ------------------------------------------------------
+    //
+    // THIS KNOB EXISTS TO SPLIT ONE MEASUREMENT IN TWO, and it is a diagnostic instrument rather
+    // than a feature. X1b left a fault: a peer that imports a live world blob dies with
+    // 0xC000041D within about one sim step, 3 runs of 3, and TWO causes were indistinguishable
+    // from the outside --
+    //
+    //   (a) THE REWIND. The import rewinds this peer's world (clock, order queues, rosters) to the
+    //       sender's step while the turn engine keeps feeding it inputs for the LIVE step. Every
+    //       subsequent sim step then runs an old world under new inputs.
+    //   (b) THE RE-DERIVES. libmh_import_world runs seven of them against a session already in
+    //       progress -- pathfinder_init REALLOCATES the two heap blocks `general` points at,
+    //       pool_reset drains the region pool, and two registrars rewrite the 255-entry unit and
+    //       building dispatch tables the match is dispatching through right now.
+    //
+    // Set `snapshot_hold=1` and the harness STOPS THE SIM at the moment of a successful import:
+    // the importing step's own body never runs and the clock is frozen so no further step is ever
+    // funded. Nothing about (b) changes -- the seven re-derives all ran. So:
+    //
+    //   the peer SURVIVES the hold  -> the import itself is safe here and the fault is (a), which
+    //                                  is exactly the thing a resync (buffer, import, fast-forward)
+    //                                  replaces. The rewind is the bug.
+    //   the peer DIES anyway        -> the fault is (b) or the frame/render path walking imported
+    //                                  memory, and no amount of input buffering can help; the
+    //                                  re-derive ordering has to be fixed first.
+    //
+    // It holds the SIM only. The frame loop, the renderer, the UI interpreter and the transport
+    // all keep running -- which is what makes the negative arm meaningful: a process that survives
+    // 60 s of rendering the imported world has had every pointer the renderer walks exercised.
+    int snapshot_hold = 0; // 1 = freeze the sim on a successful import (mp:X3 step one)
+    // mp:X3. The SUB-DOMAIN trail's cadence, in steps (0 = off). Separate from region_hash_step
+    // and deliberately meant to be set to 1: the RD row is nine hashes (~260 bytes) against the R
+    // row's 61 (~1.1 KB), so it is affordable EVERY step, which is what makes it a trail rather
+    // than a sample. The partition itself is printed once as `; [subdomain]` lines -- see
+    // subdomain_map_emit for why the analyzer reads it from the log instead of holding a copy.
+    int domain_hash_step = 0;
     int region_hash_step = 0;        // emit an "R <step> <h0>..<hN>" per-region line every N steps (0=off).
                                      // Lets mp_analyze.py pinpoint the exact (step, region) of a cross-peer
                                      // desync without a re-run. Set 1 for MP runs where a desync may appear.
@@ -1265,7 +1327,13 @@ void load_config() {
     g_cfg.load_at                 = GetPrivateProfileIntA("harness", "load_at", g_cfg.load_at, g_ini_path);
     g_cfg.load_every              = GetPrivateProfileIntA("harness", "load_every", g_cfg.load_every, g_ini_path);
     g_cfg.load_count              = GetPrivateProfileIntA("harness", "load_count", g_cfg.load_count, g_ini_path);
+    g_cfg.snapshot_at             = GetPrivateProfileIntA("harness", "snapshot_at", g_cfg.snapshot_at, g_ini_path);
+    g_cfg.snapshot_to             = GetPrivateProfileIntA("harness", "snapshot_to", g_cfg.snapshot_to, g_ini_path);
+    g_cfg.snapshot_import         = GetPrivateProfileIntA("harness", "snapshot_import", g_cfg.snapshot_import, g_ini_path);
+    g_cfg.snapshot_log            = GetPrivateProfileIntA("harness", "snapshot_log", g_cfg.snapshot_log, g_ini_path);
+    g_cfg.snapshot_hold           = GetPrivateProfileIntA("harness", "snapshot_hold", g_cfg.snapshot_hold, g_ini_path);
     g_cfg.region_hash_step        = GetPrivateProfileIntA("harness", "region_hash_step", g_cfg.region_hash_step, g_ini_path);
+    g_cfg.domain_hash_step        = GetPrivateProfileIntA("harness", "domain_hash_step", g_cfg.domain_hash_step, g_ini_path);
     g_cfg.order_mode              = GetPrivateProfileIntA("harness", "order_mode", g_cfg.order_mode, g_ini_path);
     g_cfg.replay_ai_off           = GetPrivateProfileIntA("harness", "replay_ai_off", g_cfg.replay_ai_off, g_ini_path);
     g_cfg.replay_suppress_enqueue = GetPrivateProfileIntA("harness", "replay_suppress_enqueue", g_cfg.replay_suppress_enqueue, g_ini_path);
@@ -1550,6 +1618,167 @@ void boot_snapshot_tick() {
     boot_snapshot_capture();
 }
 
+// ---- mp:X3: THE SUB-DOMAIN HASH TRAIL -----------------------------------------------------------
+//
+// THE PROBLEM IT SOLVES. A desync is reported as "the state hash differs at step N", and the only
+// thing that localises it is the per-region `R` line -- 61 columns, emitted every
+// `region_hash_step` steps because emitting it every step is over a kilobyte per step of log. So
+// the trail a reader actually has is coarse in TIME (the R cadence) and expensive to widen. The
+// sub-domain fold is the opposite trade: nine numbers, cheap enough to write on EVERY step, naming
+// the SUBSYSTEM that diverged and the exact step it first did. The R line then names the region
+// inside it, from the next sampled step. Coarse-in-space/fine-in-time and fine-in-space/coarse-in-
+// time, and the two together are what make "which subsystem, and when" answerable from one run.
+//
+// THE MEMBERSHIP IS BY NAME AND IT IS EXPLICIT. A region this table does not recognise lands in
+// `other` rather than in a plausible neighbour -- so growing HASH_REGIONS[] makes an unclassified
+// region VISIBLE (its hash starts moving in `other`) instead of silently changing the meaning of a
+// domain a reader is comparing across runs.
+//
+// EXCLUDED REGIONS DO NOT FOLD IN. The point of the trail is the desync verdict, and the verdict is
+// the state-only hash; folding the peer-local regions in would make `clock` and `lockstep` differ
+// on every step of a healthy match, which is the cry-wolf shape D21 already refused once. A domain
+// whose every member is excluded prints `-` rather than a hash of nothing.
+//
+// AND THERE IS NO `pathfinding` DOMAIN, which is a measured absence rather than an omission: NO
+// pathfinding state is in the hash manifest at all. The nav-region graph (MAP_REGION_GRID,
+// MAP_REGION_BY_INDEX, the pool heads) and the pathfinder's two heap blocks are MF_VIEW -- carried
+// by a world blob, re-derived on import, hashed by nothing. `map` below is the closest the trail
+// can get and it is a PROXY: tile_objects is the occupancy plane pathing READS, not the
+// decomposition pathing WALKS. A desync inside the nav graph names no domain here because it names
+// no region either.
+enum region_domain {
+    RD_UNITS = 0,
+    RD_BUILDINGS,
+    RD_MAP,
+    RD_ORDERS,
+    RD_RNG,
+    RD_PLAYERS,
+    RD_CLOCK,
+    RD_LOCKSTEP,
+    RD_OTHER,
+    RD_COUNT
+};
+
+constexpr const char *RD_NAMES[RD_COUNT] = {"units", "buildings", "map", "orders", "rng",
+                                            "players", "clock", "lockstep", "other"};
+
+// Exact names first, then the two FAMILIES that are genuinely open-ended (the per-player slices are
+// p0_..p7_ and the turn engine's are ls_/peer_). Everything else must be spelled, on purpose.
+inline bool rd_name_is(const char *n, const char *lit) { return lstrcmpA(n, lit) == 0; }
+
+inline bool rd_starts(const char *n, const char *pre) {
+    while (*pre)
+        if (*n++ != *pre++) return false;
+    return true;
+}
+
+inline int rd_classify(const char *n) {
+    if (rd_name_is(n, "units") || rd_name_is(n, "unit_storage") || rd_name_is(n, "soldiers") ||
+        rd_name_is(n, "projectile_pool"))
+        return RD_UNITS;
+    if (rd_name_is(n, "buildings") || rd_name_is(n, "productions") || rd_name_is(n, "mines") ||
+        rd_name_is(n, "turrets") || rd_name_is(n, "labs") || rd_name_is(n, "prod_slots"))
+        return RD_BUILDINGS;
+    if (rd_name_is(n, "tile_objects") || rd_name_is(n, "planets") || rd_name_is(n, "planet_status"))
+        return RD_MAP;
+    if (rd_starts(n, "order_")) return RD_ORDERS;
+    if (rd_name_is(n, "rng_state")) return RD_RNG;
+    if (rd_name_is(n, "strat_players") || rd_name_is(n, "players")) return RD_PLAYERS;
+    // p0_.. p7_ -- the eight per-player slices, three each.
+    if (n[0] == 'p' && n[1] >= '0' && n[1] <= '7' && n[2] == '_') return RD_PLAYERS;
+    if (rd_name_is(n, "game_clock") || rd_name_is(n, "current_game_time") ||
+        rd_name_is(n, "last_game_time") || rd_name_is(n, "total_game_time") ||
+        rd_name_is(n, "sim_step_interval") || rd_name_is(n, "game_time_delta") ||
+        rd_name_is(n, "game_speed") || rd_name_is(n, "frame_ring") || rd_name_is(n, "fps_estimate"))
+        return RD_CLOCK;
+    if (rd_starts(n, "ls_") || rd_starts(n, "peer_")) return RD_LOCKSTEP;
+    return RD_OTHER;
+}
+
+// THE MAP IS PRINTED, ONCE, AND THAT IS WHAT KEEPS IT SINGLE-OWNER. tools/mp_analyze.py needs the
+// same partition to fold the R columns the same way, and a second copy of this table in Python is a
+// mirror that goes stale the day a region is appended -- the exact failure lint_region_mirror.py
+// exists to watch for on the REGION list itself. So the analyzer READS the partition out of the log
+// rather than holding one, and a run whose DLL classified a region differently says so in its own
+// file instead of being silently re-folded by the reader.
+void subdomain_map_emit() {
+    static bool done = false;
+    if (done) return;
+    done = true;
+    for (int d = 0; d < RD_COUNT; ++d) {
+        char line[900];
+        int  off = wsprintfA(line, "; [subdomain] %s =", RD_NAMES[d]);
+        int  n   = 0;
+        for (int i = 0; i < N_REGIONS; ++i) {
+            if (rd_classify(REGIONS[i].name) != d) continue;
+            if (off > (int)sizeof(line) - 48) break; // never write past the buffer -- see sim_hold_now
+            off += wsprintfA(line + off, " %s%s", REGIONS[i].name, REGIONS[i].excluded ? "*" : "");
+            ++n;
+        }
+        if (n == 0) off += wsprintfA(line + off, " (none)");
+        line[off++] = '\n';
+        line[off]   = '\0';
+        append_line(g_log_path, line);
+    }
+    append_line(g_log_path,
+                "; [subdomain] a trailing * marks a region EXCLUDED from the state-only verdict; "
+                "those do not fold into the RD hashes, and a domain with no unexcluded member "
+                "prints -.\n");
+}
+
+// One RD row. `per[]` is the caller's freshly computed per-region hash array, so this reads the
+// same numbers the R row and the desync sample are built from and cannot describe a different
+// instant.
+void subdomain_row(const uint64_t *per) {
+    uint64_t h[RD_COUNT];
+    bool     any[RD_COUNT];
+    for (int d = 0; d < RD_COUNT; ++d) {
+        h[d]   = 1469598103934665603ULL; // the same FNV-1a-64 basis the state fold uses
+        any[d] = false;
+    }
+    for (int i = 0; i < N_REGIONS; ++i) {
+        if (state_excluded(i)) continue;
+        const int d = rd_classify(REGIONS[i].name);
+        h[d]        = fnv1a(&per[i], sizeof(per[i]), h[d]);
+        any[d]      = true;
+    }
+    // Capacity DERIVED from RD_COUNT, for the reason the R row's R_HDR is derived from N_REGIONS:
+    // each column is at most name(9) + '=' + 16 hex + a space = 27, and a table that grows must not
+    // require remembering a number somewhere else in the file.
+    char rl[32 + RD_COUNT * 28];
+    int  off = wsprintfA(rl, "RD %lu", g_step);
+    for (int d = 0; d < RD_COUNT; ++d) {
+        if (any[d])
+            off += wsprintfA(rl + off, " %s=%08lX%08lX", RD_NAMES[d], (unsigned long)(h[d] >> 32),
+                             (unsigned long)(h[d] & 0xffffffffu));
+        else
+            off += wsprintfA(rl + off, " %s=-", RD_NAMES[d]);
+    }
+    rl[off++] = '\n';
+    rl[off]   = '\0';
+    append_line(g_log_path, rl);
+}
+
+// ---- mp:X3: THE SIM HOLD ------------------------------------------------------------------------
+//
+// `g_sim_hold` is read by sim_step_detour's naked asm, so it is a `long` and not a `bool` -- the
+// same reason net_lockstep.cpp's `g_icon_gate` is (asm cannot read a C++ bool cheaply, and a
+// one-byte compare against a type whose representation the standard does not pin is a trap nobody
+// needs). NON-ZERO MEANS: llm_strat_sim_step's body must not run.
+//
+// TWO HALVES, AND BOTH ARE NEEDED. Freezing the clock alone (the F5J fence) stops the NEXT step
+// from being funded but cannot stop the step we are already inside -- on_sim_step is the ENTRY
+// detour, so its caller is about to run the body the moment we return. The hold therefore also
+// makes the detour `ret` instead of falling through. Skipping the body is safe at this exact site
+// and only here: llm_strat_sim_step is `void (void)` (__watcall callee, no stack
+// arguments), so returning to its caller is the same machine state the body would have left.
+long g_sim_hold = 0;
+// The hold line's `why` is TRUNCATED at this many characters by a `%.*s`, so a caller cannot
+// size the log buffer from the other end of the file. See sim_hold_now for what it cost to
+// learn that the other way round.
+constexpr int HOLD_WHY_MAX = 320;
+void          sim_hold_now(const char *why); // defined next to fence_freeze_clock, whose globals it sets
+
 // ---- LIB-WORLD: the step-0 world capture --------------------------------------------------------
 //
 // Called from on_sim_step's hash block with the numbers that block just computed -- see the call
@@ -1626,6 +1855,277 @@ void world_snapshot_capture(uint64_t combined, uint64_t state, uint64_t clock) {
     append_line(g_log_path, line);
     log_flush(); // same reason as the boot capture's: a short run must not lose its evidence line
     HeapFree(GetProcessHeap(), 0, blob);
+}
+
+// ---- mp:X1b: the LIVE snapshot verbs (capture -> send / poll -> import) -------------------------
+//
+// LIB-WORLD's world_snapshot_capture above writes the same blob to a FILE. These two do the thing a
+// file cannot: move it to another mh.exe, in a running match, and put it into that peer's live
+// memory. Everything about the format, the chunking, the hashes and the refusals belongs to
+// mh_net_udp's pipeline; what is here is the two ends of it -- what to capture, and what to do with
+// the bytes that come out.
+//
+// ---- THE TWO REGION-HASH LINES ARE THE WHOLE ORACLE ----------------------------------------------
+//
+// `SNAPCAP <step> <h0>..<hN>` on the sender and `SNAPIMP <step> <h0>..<hN>` on the receiver, one
+// column per hashed region, same manifest order as the `R` line so mp_analyze reads all three with
+// one parser. The claim they let a run make is exact and is checkable by a tool rather than by a
+// person: EVERY column of SNAPIMP equals the matching column of SNAPCAP, including `rng_state`.
+//
+// WHY NOT JUST COMPARE THE `R` LINES. Because the R line is emitted every `region_hash_step` steps
+// and the import lands whenever the transfer finishes -- which is 30-60 s of wall clock later, at a
+// step nobody chose. Comparing "the client's R line at some step" against "the host's R line at
+// step N" would be comparing two different instants and hoping. SNAPCAP is taken AT the capture and
+// SNAPIMP immediately after the import returns, so both name the instant they describe.
+//
+// AND SNAPIMP IS RE-DERIVED, NOT COPIED OUT OF THE BLOB. It is hash_slice() over whatever is bound
+// NOW, in this process, after the import has written it -- the same call on_sim_step makes. A line
+// echoing numbers the blob carried would prove the blob arrived intact, which channel C and the
+// manifest already prove twice over; re-hashing live memory is the only reading that can say the
+// import actually landed where the sim will read it.
+
+// One region-hash line, tagged. The capacity arithmetic is DERIVED from N_REGIONS for the reason the
+// `R` line's own comment gives at length: this buffer overflowed once when the manifest grew from 23
+// regions to 41, and "remember to grow a buffer somewhere else in the file" is not a rule that holds.
+void snapshot_region_line(const char *tag, uint32_t step, const uint64_t *per) {
+    constexpr int R_HDR = 8 + 10 + 2; // tag + space + up to 10 digits of step + '\n' + NUL
+    char          rl[R_HDR + N_REGIONS * 17];
+    int           off = wsprintfA(rl, "%s %lu", tag, (unsigned long)step);
+    for (int i = 0; i < N_REGIONS; ++i)
+        off += wsprintfA(rl + off, " %08X%08X", (unsigned)(per[i] >> 32), (unsigned)per[i]);
+    rl[off++] = '\n';
+    rl[off]   = '\0';
+    append_line(g_log_path, rl);
+}
+
+// THE SENDER. Called from on_sim_step's hash block with the `per[]` that block just computed, for
+// the same reason world_snapshot_capture is called there: the blob and the hashes it has to
+// reproduce must describe ONE instant, and the cheapest way to guarantee that is not to argue it but
+// to take both from the same variables one statement apart.
+//
+// LOUD ON EVERY REFUSAL. A send that silently did not happen is indistinguishable from a run that
+// was never armed -- the shape that makes a missing transfer look like an operator error an hour
+// later, on a scenario whose whole point is the transfer.
+//
+// AND IT RETRIES, RATHER THAN BEING ONE-SHOT, for one reason that is not defensive programming:
+// `bulk_send_src` refuses when the destination is not an ADMITTED peer yet, and admission is a
+// transport fact that a sim-step counter knows nothing about. In practice a launched match has
+// already admitted its peer (steps only advance because inputs crossed), so the first attempt is
+// expected to take -- but a scenario author who sets `snapshot_at` to the first step of the match
+// should get a transfer a few steps later, not a silent nothing that reads as a broken surface.
+// Bounded, decimated, and every attempt is logged: an unbounded retry would capture 8 MB per step.
+void snapshot_send_now(const uint64_t *per, uint64_t combined, uint64_t state, uint64_t clock) {
+    namespace w          = mh::state::world;
+    static bool done     = false;
+    static int  attempts = 0;
+    if (done) return;
+    // The first attempt is ON the armed step; the rest are every 25 steps after it, up to 20 tries.
+    if (attempts > 0 && ((g_step - (uint32_t)g_cfg.snapshot_at) % 25u) != 0u) return;
+    if (++attempts >= 20) done = true;
+
+    char line[420];
+
+    w::capture_params p;
+    p.lockstep_combined = combined;
+    p.lockstep_state    = state;
+    p.game_clock        = clock;
+    p.step              = g_step;
+    p.mask_flags        = (g_cfg.mask_ctrl_group ? w::MASK_CTRL_GROUP : 0u) |
+                   (g_cfg.mask_soldier_anim ? w::MASK_SOLDIER_ANIM : 0u) |
+                   (g_cfg.mask_planets_gfx ? w::MASK_PLANETS_GFX : 0u);
+
+    const size_t need = w::capture_capacity();
+    uint8_t     *blob = static_cast<uint8_t *>(HeapAlloc(GetProcessHeap(), 0, need));
+    if (blob == nullptr) {
+        wsprintfA(line, "; SNAPSHOT SEND step=%lu REFUSED -- HeapAlloc failed for %lu bytes\n",
+                  (unsigned long)g_step, (unsigned long)need);
+        append_line(g_log_path, line);
+        log_flush();
+        return;
+    }
+    size_t    got = 0;
+    const int rc  = w::capture(blob, need, &got, p);
+    if (rc != w::WORLD_OK) {
+        wsprintfA(line, "; SNAPSHOT SEND step=%lu REFUSED -- capture rc=%d\n", (unsigned long)g_step,
+                  rc);
+        append_line(g_log_path, line);
+        log_flush();
+        HeapFree(GetProcessHeap(), 0, blob);
+        return;
+    }
+
+    // The hashes BEFORE the send, so the evidence exists even if the transport refuses.
+    snapshot_region_line("SNAPCAP", g_step, per);
+
+    // MH_Net_SnapshotSend COPIES (mh_net_module.h's ownership rule), so this blob is ours to free
+    // the instant it returns -- which is why the 8 MB does not have to stay on our heap for the 30-60
+    // seconds the transfer runs.
+    const int sent = MH_Net_SnapshotSend(g_cfg.snapshot_to, blob, (int)got);
+    HeapFree(GetProcessHeap(), 0, blob);
+    if (sent) done = true; // one transfer per run; the retry above exists only for admission
+
+    MH_NetSnapshotStatus st;
+    MH_Net_SnapshotStatus(&st);
+    wsprintfA(line,
+              "; SNAPSHOT SEND step=%lu dst=%d bytes=%lu rc=%d supported=%d state=%d err=%d"
+              "  lockstep=%08lX%08lX state=%08lX%08lX\n",
+              (unsigned long)g_step, g_cfg.snapshot_to, (unsigned long)got, sent, st.supported,
+              st.state, st.last_err, (unsigned long)(combined >> 32),
+              (unsigned long)(combined & 0xffffffffu), (unsigned long)(state >> 32),
+              (unsigned long)(state & 0xffffffffu));
+    append_line(g_log_path, line);
+    log_flush();
+}
+
+// THE RECEIVER. Polled every sim step while `snapshot_import` is set. On a peer nothing is sent to
+// the per-step cost is one call: MH_Net_SnapshotPoll drains an empty lane and answers MH_SNAP_IDLE,
+// and the module does not open its 32 MiB receive arena until a CHUNK lands.
+//
+// THE ONE COST THAT IS PAID ANYWAY is the destination buffer below -- capture_capacity(), ~8 MB, off
+// this process's heap on the first poll, on every armed peer including the sender. It is stated
+// rather than avoided because avoiding it would mean a two-call probe-then-deliver protocol on a
+// surface whose whole job is to be small, and because this is an INSTRUMENTED run: `[harness]
+// snapshot_import` is never set in a shipping game.
+void snapshot_poll_now(void) {
+    namespace w = mh::state::world;
+    // The destination, allocated once. capture_capacity() is exactly the ceiling a capture from THIS
+    // build can produce, so a blob that does not fit is a blob from a different build -- which the
+    // manifest's own format/root checks have already refused long before this.
+    static uint8_t *dst      = nullptr;
+    static size_t   dst_cap  = 0;
+    static bool     imported = false;
+    if (imported) return; // one import per run; a second would be X3's business, not a verb's
+    if (dst == nullptr) {
+        dst_cap = w::capture_capacity();
+        dst     = static_cast<uint8_t *>(HeapAlloc(GetProcessHeap(), 0, dst_cap));
+        if (dst == nullptr) {
+            g_cfg.snapshot_import = 0; // disarm rather than retry an allocation that failed once
+            append_line(g_log_path, "; SNAPSHOT RX DISARMED -- no room for the destination buffer\n");
+            log_flush();
+            return;
+        }
+    }
+
+    int       len   = (int)dst_cap;
+    int       state = 0;
+    const int ready = MH_Net_SnapshotPoll(dst, &len, &state);
+
+    if (!ready) {
+        if (g_cfg.snapshot_log > 0 && (g_step % (uint32_t)g_cfg.snapshot_log) == 0 &&
+            state != MH_SNAP_IDLE) {
+            MH_NetSnapshotStatus st;
+            MH_Net_SnapshotStatus(&st);
+            char pl[300];
+            wsprintfA(pl,
+                      "; SNAPSHOT RX step=%lu state=%d verified=%lu/%lu bytes=%lu refused=%d "
+                      "err=%d root=%.16s\n",
+                      (unsigned long)g_step, state, (unsigned long)st.rx_verified,
+                      (unsigned long)st.rx_chunks, (unsigned long)st.rx_len, st.rx_refused,
+                      st.last_err, st.root_hex[0] ? st.root_hex : "-");
+            append_line(g_log_path, pl);
+        }
+        return;
+    }
+
+    imported = true;
+
+    // The blob's own header, read BEFORE the import so the line below can name what arrived even if
+    // the import refuses it.
+    const w::blob_header *h         = reinterpret_cast<const w::blob_header *>(dst);
+    const unsigned long   blob_step = (unsigned long)h->step;
+    const uint64_t        b_comb    = h->lockstep_combined;
+    const uint64_t        b_state   = h->lockstep_state;
+
+    // THE FULL RE-DERIVE, NOT world::import() ALONE, and the difference is a crash rather than a
+    // subtlety. `world::import()` is the BYTE half by design. A blob carries pointer-valued bytes --
+    // `general`'s two pathfinder heap blocks, the nav-region graph, and the two 255-entry state
+    // dispatch tables that in a promoted run hold THE CAPTURING PROCESS'S mh.dll addresses. Writing
+    // those verbatim into this process and then stepping the sim is a call through a garbage pointer
+    // (state/spine.cpp records the measurement: EIP == the fault address, inside the recorder's
+    // mh.dll). libmh_import_world is import() plus the seven re-derives that make the imported world
+    // belong to THIS process, and it is the only honest entry for a live import.
+    // ---- THE SESSION-BEGUN LATCH, AND WHY THIS VERB LIFTS IT ------------------------------------
+    //
+    // MEASURED FIRST, then reasoned about: the first rig run of this scenario moved 8,186,488 bytes
+    // across a real UDP link, delivered them whole and manifest-verified, and libmh_import_world
+    // answered -4 -- ERR_SESSION_BEGUN. `world_policy::refuse_import()` returns
+    // mh::state::boot::session_begun(), a monotone latch set by the two session-begin bodies
+    // (sim_planet_session_begin / sim_session_begin_multi). In a live match it is ALWAYS set, so a
+    // live world import is refused by construction, which is exactly the wall mp:X1 said it could
+    // not see from inside one process.
+    //
+    // THE LATCH IS RIGHT FOR THE BLOB IT WAS WRITTEN FOR AND IS THE OPEN QUESTION FOR THIS ONE.
+    // world_snapshot.cpp says it shares LIB-BOOT's latch "deliberately rather than duplicated",
+    // because "importing a world over live session state is the same hazard". For a BOOT blob it
+    // plainly is: that blob carries post-cfg prototype tables which the session has since rewritten,
+    // so importing over them mid-session puts boot-time values under live code. A WORLD blob is the
+    // other case -- it was CAPTURED mid-session and carries the session's own state, all 829 bound
+    // regions of it, which is the whole premise of join-in-progress. Whether the shared latch should
+    // grow a per-policy answer is mp:X3's ruling to make, not this item's.
+    //
+    // SO THIS IS AN INSTRUMENT OVERRIDE, NOT A POLICY CHANGE. The latch is cleared only here, only
+    // under `[harness] snapshot_import`, only on the step a verified blob was delivered, and the
+    // clearing is LOGGED -- so no run can lift it without saying so, and a reader of a log can tell
+    // an import that the policy allowed from one an instrument permitted. `reset_session_latch_for_
+    // test` is libmh's own name for this door; it exists because "an arm that proves the refusal
+    // fires has to be able to un-fire it", and this is that arm one process further out.
+    append_line(g_log_path, "; SNAPSHOT IMPORT LIFTING the session-begun latch (harness override; "
+                            "world::import refuses a live session by policy -- mp:X3 owns the "
+                            "ruling, this verb only measures what an import would do)\n");
+    mh::state::boot::reset_session_latch_for_test();
+    const int irc = libmh_import_world(dst, (size_t)len);
+
+    char line[420];
+    if (irc != w::WORLD_OK) {
+        wsprintfA(line,
+                  "; SNAPSHOT IMPORT step=%lu REFUSED rc=%d bytes=%lu blobstep=%lu -- the world is "
+                  "UNTOUCHED (import validates completely before its first write)\n",
+                  (unsigned long)g_step, irc, (unsigned long)len, blob_step);
+        append_line(g_log_path, line);
+        log_flush();
+        return;
+    }
+
+    // THE POST-IMPORT READING. hash_slice over live memory, under the masks this run hashes with --
+    // the same three the capture recorded, so a mask mismatch shows up as a whole-line difference
+    // rather than as a puzzle.
+    uint64_t per[N_REGIONS];
+    for (int i = 0; i < N_REGIONS; ++i)
+        per[i] = mh::state::hash_slice(i, g_cfg.mask_ctrl_group != 0, g_cfg.mask_soldier_anim != 0,
+                                       g_cfg.mask_planets_gfx != 0);
+    snapshot_region_line("SNAPIMP", blob_step, per);
+
+    // And the lockstep pair re-folded from the same live memory, which is the blob's own second
+    // witness: world::lockstep_hash is the function that must reproduce the capturing peer's two
+    // numbers after an import, and the header carries what they were.
+    uint64_t now_comb = 0, now_state = 0;
+    w::lockstep_hash(h->mask_flags, &now_comb, &now_state);
+
+    MH_NetSnapshotStatus st;
+    MH_Net_SnapshotStatus(&st);
+    wsprintfA(line,
+              "; SNAPSHOT IMPORT step=%lu OK bytes=%lu blobstep=%lu refused=%d root=%.16s\n",
+              (unsigned long)g_step, (unsigned long)len, blob_step, st.rx_refused,
+              st.root_hex[0] ? st.root_hex : "-");
+    append_line(g_log_path, line);
+    wsprintfA(line,
+              "; SNAPSHOT IMPORT HASHES blob=%08lX%08lX/%08lX%08lX live=%08lX%08lX/%08lX%08lX "
+              "match=%d\n",
+              (unsigned long)(b_comb >> 32), (unsigned long)(b_comb & 0xffffffffu),
+              (unsigned long)(b_state >> 32), (unsigned long)(b_state & 0xffffffffu),
+              (unsigned long)(now_comb >> 32), (unsigned long)(now_comb & 0xffffffffu),
+              (unsigned long)(now_state >> 32), (unsigned long)(now_state & 0xffffffffu),
+              (now_comb == b_comb && now_state == b_state) ? 1 : 0);
+    append_line(g_log_path, line);
+    log_flush(); // a run that desyncs itself a step later must not lose these two lines
+
+    // mp:X3 STEP ONE -- the hold, LAST, after every witness above is written and flushed. If the
+    // process is going to die it dies in the first sim step over the imported world, so the hold's
+    // whole value is that the step never happens and the evidence survives.
+    if (g_cfg.snapshot_hold)
+        sim_hold_now("mp:X3 step one: imported a world blob and STOPPED, to separate the rewind "
+                     "(the turn engine feeding live inputs to an older world) from the re-derives "
+                     "libmh_import_world just ran against a live session");
 }
 
 // ---- order record/replay (Phase 2) --------------------------------------------------------------
@@ -2341,6 +2841,39 @@ void fence_freeze_clock() {
     double gc;
     memcpy(&gc, reinterpret_cast<const void *>(ADDR_GAME_CLOCK), sizeof(gc));
     memcpy(reinterpret_cast<void *>(ADDR_TOTAL_TIME), &gc, sizeof(gc));
+}
+
+// mp:X3. Declared up beside the snapshot verbs (their caller), defined here because it borrows the
+// fence's two globals: g_fence_hit makes on_sim_tick re-freeze the clock on EVERY frame, so nothing
+// downstream (the mode-3 catch-up loop, the clock-track replay, the fixed pin) can fund another
+// step, and g_sim_hold makes the detour skip the body of the step we are already inside.
+void sim_hold_now(const char *why) {
+    if (g_sim_hold) return; // idempotent: the first hold is the one that gets logged
+    g_sim_hold  = 1;
+    g_fence_hit = true;
+    fence_freeze_clock();
+    // THE CAPACITY IS DERIVED, NOT PICKED, and this line has already been the bug it now guards
+    // against. The first version was `char hb[300]` against a ~175-character fixed part and a
+    // `why` the call site writes as a 197-character sentence: wsprintfA wrote 394 bytes into
+    // 300, /GS caught the smashed cookie on return, and the peer died with 0xC0000409 -- INSIDE
+    // the very measurement whose whole question is "did the peer die". A stack smash in the
+    // instrument is indistinguishable from the fault under investigation, so the size follows
+    // the inputs rather than a round number. (The harness's per-region `R` line learned exactly
+    // this when D11 took the manifest from 23 regions to 41; see its R_HDR derivation.)
+    // `%.319s` AND NOT `%.*s`: wsprintfA is USER32's wvsprintf, whose format subset does NOT
+    // include the asterisk for width or precision -- a `*` here would be printed, not consumed,
+    // and the truncation that makes the buffer safe would silently not happen. The literal and
+    // HOLD_WHY_MAX are tied together by the static_assert below so they cannot drift apart.
+    constexpr int HOLD_FIXED = 224; // the format's own text + 10 digits of step + NUL, w/ margin
+    static_assert(HOLD_WHY_MAX == 320, "the %.319s literal above must match HOLD_WHY_MAX - 1");
+    char hb[HOLD_FIXED + HOLD_WHY_MAX];
+    wsprintfA(hb,
+              "; SIM HOLD step=%lu -- %.319s. The sim is frozen HERE: this step's body is skipped and "
+              "the clock is pinned, so no further sim step is funded. The frame loop, the renderer "
+              "and the transport keep running.\n",
+              g_step, why);
+    append_line(g_log_path, hb);
+    log_flush(); // a hold whose reason is a crash under investigation must not die in the buffer
 }
 
 // ---- fixed-timestep pin (called from the naked sim_tick detour, BEFORE the mode branch) ---------
@@ -6725,12 +7258,27 @@ void on_sim_step() {
     // size on both is a lockstep hiccup nobody needs.)
     if (g_cfg.world_capture && g_step == 1) world_snapshot_capture(combined, state, clock);
 
+    // mp:X1b -- the live snapshot verbs, HERE for world_snapshot_capture's reason one line up: the
+    // blob and the per-region hashes it must reproduce are taken from the same `per[]`/`combined`/
+    // `state` this block just computed, so there is no window between them for state to move.
+    if (g_cfg.snapshot_at > 0 && g_step >= (uint32_t)g_cfg.snapshot_at)
+        snapshot_send_now(per, combined, state, clock);
+    if (g_cfg.snapshot_import) snapshot_poll_now();
+
     char line[160];
     wsprintfA(line, "%lu %08X%08X %08X%08X %08X%08X\n", g_step,
               (unsigned)(clock >> 32), (unsigned)clock,
               (unsigned)(combined >> 32), (unsigned)combined,
               (unsigned)(state >> 32), (unsigned)state);
     append_line(g_log_path, line);
+
+    // mp:X3: the SUB-DOMAIN trail, BEFORE the R row and from the same per[], so a step carrying
+    // both has them describing one instant with the coarse row first -- which is also the order a
+    // reader wants them in (which subsystem, then which region inside it).
+    if (g_cfg.domain_hash_step > 0 && (g_step % (uint32_t)g_cfg.domain_hash_step) == 0) {
+        subdomain_map_emit(); // one-shot; a compare per row after the first
+        subdomain_row(per);
+    }
 
     // Phase 1a: per-region hash line every N steps -- "R <step> <h0> <h1> ... <hN>". mp_analyze.py
     // reads this to localize the (step, region) of a cross-peer desync without re-running.
@@ -7090,19 +7638,32 @@ __declspec(naked) void sim_step_detour() {
         call on_sim_step
         popfd
         popad
-                            // RI-SIM / SIM1F domain-root PROMOTED-GOLDEN (C6 rebind, mirroring sim_tick_detour above): with
-                            // [promote] sim_step=1 the detour falls through to OUR entry thunk instead of the original body,
-                            // AFTER on_sim_step hashed the pre-body state, so the per-step golden trajectory measures our
-                            // body against the original's. The CMP clobbers EFLAGS after POPFD restored them -- safe here
-                            // and only here because this is a FUNCTION ENTRY: neither llm_strat_sim_step's Watcom prologue
-                            // nor our entry thunk reads incoming flags. The thunk is jumped to (tail), so it returns
-                            // straight to llm_strat_sim_step's caller, skipping the original body. Do not copy to a
-                            // mid-function splice. (Same note as sim_tick_detour / net_lockstep.cpp's time_tick_detour.)
+                            // mp:X3 THE SIM HOLD. Checked BEFORE the promotion branch, because it has to hold both
+                            // arms: a promoted run reaches the body through g_sim_step_promoted and an unpromoted one
+                            // through the stolen prologue, and "the sim must not step" is a statement about the body,
+                            // not about which implementation of it would have run. The CMP clobbers EFLAGS after POPFD
+                            // restored them -- safe here for the reason the promotion CMP below is safe and no other:
+                            // this is a FUNCTION ENTRY, and neither llm_strat_sim_step's Watcom prologue nor its caller
+                            // reads incoming flags. RET (not JMP) because llm_strat_sim_step is `void (void)` with no
+                            // stack arguments, so returning to its caller leaves exactly the machine state the body's
+                            // own return would have. Do not copy this to a mid-function splice.
+        cmp  dword ptr [g_sim_hold], 0
+        jne  sim_step_held
+            // RI-SIM / SIM1F domain-root PROMOTED-GOLDEN (C6 rebind, mirroring sim_tick_detour above): with
+            // [promote] sim_step=1 the detour falls through to OUR entry thunk instead of the original body,
+            // AFTER on_sim_step hashed the pre-body state, so the per-step golden trajectory measures our
+            // body against the original's. The CMP clobbers EFLAGS after POPFD restored them -- safe here
+            // and only here because this is a FUNCTION ENTRY: neither llm_strat_sim_step's Watcom prologue
+            // nor our entry thunk reads incoming flags. The thunk is jumped to (tail), so it returns
+            // straight to llm_strat_sim_step's caller, skipping the original body. Do not copy to a
+            // mid-function splice. (Same note as sim_tick_detour / net_lockstep.cpp's time_tick_detour.)
         cmp  dword ptr [g_sim_step_promoted], 0
         jne  sim_step_promoted
         jmp  dword ptr [g_sim_tramp] // NOT promoted: stolen prologue + jmp back to sim_step+8 (original)
     sim_step_promoted:
         jmp  dword ptr [g_sim_step_promoted] // the generated entry thunk -> mh::sim::sim_step
+    sim_step_held:
+        ret // mp:X3: the body does not run this step, nor any later one
     }
 }
 

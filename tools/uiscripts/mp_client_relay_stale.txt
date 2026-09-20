@@ -1,0 +1,44 @@
+# mp:R4a CLIENT walk: dial a relay that is BEHIND this build's protocol level, and be TOLD.
+#
+# Same path as mp_client_relay_local.txt (mp:R7): main menu -> NETWORK GAME -> player name -> the
+# FIRST browser, whose own refresh dials the relay as a client and lists its directory. The relay
+# this lane runs against was started with `--advertise-level 0` (test_ui.py relay_stale_notice), so
+# its WELCOME is the 4-byte one a pre-R4a build sends -- no level. The tunnel reads that as "old",
+# writes the one named `relay protocol 0 < 1` line to mh_net.log and hands mh.dll the notice, and
+# the browser we are standing on paints it on its status line (the F3c carrier).
+#
+# WHAT IS ASSERTED. Before R4a a relay missing an op this build sends refused it as a silent bad_op
+# and the player saw a match that "just never" punched / re-keyed / re-minted (dead-ends G241).
+# Since R4a the mismatch is a line of text on the very screen the relay is dialled from. So the
+# gate is the NOTICE TEXT, then the directory row (the stale relay still carries everything this
+# build actually sends -- a stale relay is visible, not broken), then the capture. The join is then
+# walked through to the lobby to prove the notice cost the flow nothing; the post_check reads both
+# peers' logs for the R4a line + the queued notice and the relay's own level/mismatch counters.
+#
+# HOST PREREQUISITE: mp_host_lobby.txt on the same relay (test_ui.py relay_stale_notice).
+
+# 1. main menu (NETWORK GAME = value 110)
+settled value:110
+clickv 110
+
+# 2. player-name screen (accept the default name)
+present Player name
+settled Ok
+clickl Ok
+
+# 3. THE FIRST BROWSER dials the relay by itself; the WELCOME lands within the first refresh and
+# the tunnel's notice reaches the status line on the next frame. The notice dwells 10 s once shown,
+# so the directory row is gated AFTER it (the 2 s LIST cadence lands inside the dwell).
+present Internet server
+present Relay outdated (protocol 0 < 1)
+sessions 1
+settled Join game
+capture c3_first_browser_relay_outdated
+clickl Join game
+
+# 4. the joined lobby -- the stale relay still carried the join (occ 2 = seated on both peers)
+present Network players
+occ 2
+settled Cancel
+log CLIENT told the relay is outdated on the first browser, then joined through it anyway
+end

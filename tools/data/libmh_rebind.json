@@ -324,7 +324,7 @@
    "seam_kind": "FROZEN",
    "domain": "sim",
    "header": "sim/sim_bldg_pay_costs.h",
-   "sites": 2,
+   "sites": 1,
    "addr": 4796081
   },
   {
@@ -3951,7 +3951,7 @@
    "seam_kind": "FROZEN",
    "domain": "sim",
    "header": "sim/sim_bldg_grant_type_resources.h",
-   "sites": 2,
+   "sites": 1,
    "addr": 4798399
   },
   {

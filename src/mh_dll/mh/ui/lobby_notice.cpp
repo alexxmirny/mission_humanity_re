@@ -9,11 +9,14 @@
 // the whole of the D4 boundary here.
 //
 // WHERE it renders: _G_LLM_LOBBY_MAP_STATUS_LINE, the wchar_t[256] that is the `label` of widget
-// 0x006503b3. That widget is a child of BOTH MP browser containers, so it is on screen whichever
-// browser finalize pushes; its draw_cb is the generic llm_ui_widget_draw, which renders any non-NULL
-// label through llm_gfx_draw_formatted_text. Nothing else on a menu screen can show text: the
-// floating-message queue is read only by the in-match strategic renderer and the lobby announce line
-// belongs to the screen we are leaving (both settled 2026-08-29 -- do not retry them).
+// 0x006503b3. That widget is a child of BOTH MP browser containers AND of the lobby container
+// (_G_LLM_UI_SCREEN_LOBBY_WIDGET_LIST / mh::addr::lobby_widget_origin -- read live off the lobby's
+// children array at U42, correcting the "both browsers" phrasing above), so it is on screen whichever
+// browser finalize pushes, or the manual lobby the player Created; its draw_cb is the generic
+// llm_ui_widget_draw, which renders any non-NULL label through llm_gfx_draw_formatted_text. Nothing
+// else on a menu screen can show text: the floating-message queue is read only by the in-match
+// strategic renderer and the lobby announce line belongs to the screen we are leaving (both settled
+// 2026-08-29 -- do not retry them).
 //
 // WHY a per-frame repaint and not a one-shot write: the buffer is not ours. It is NULLed by
 // llm_lobby_clear_map_status_text from inside llm_mp_session_browser_enter, and re-cleared by every
@@ -46,13 +49,17 @@ namespace {
 constexpr uintptr_t ADDR_MAP_STATUS_LINE = mh::addr::_G_LLM_LOBBY_MAP_STATUS_LINE;
 constexpr uintptr_t ADDR_BROWSER_SESSION = mh::addr::_G_LLM_UI_WGT_LIST_MP_SESSION_BROWSER;
 constexpr uintptr_t ADDR_BROWSER_LOCAL   = mh::addr::local_browser_widget_origin;
-constexpr DWORD     NOTICE_DWELL_MS      = 10000; // how long it stays readable once the browser is up
-constexpr DWORD     NOTICE_ARM_MAX_MS    = 30000; // give up if the exit never reaches a browser
+constexpr uintptr_t ADDR_LOBBY           = mh::addr::lobby_widget_origin; // U42: widget 0x6503b3 is ALSO a
+                                                                          // child of the lobby container --
+                                                                          // see no_module_notice_tick below.
+constexpr DWORD NOTICE_DWELL_MS   = 10000;                                // how long it stays readable once the browser is up
+constexpr DWORD NOTICE_ARM_MAX_MS = 30000;                                // give up if the exit never reaches a browser
 
-const wchar_t *g_notice       = nullptr; // main thread only (finalize detour + present hook)
-DWORD          g_notice_armed = 0;       // GetTickCount at arm
-DWORD          g_notice_until = 0;       // dwell deadline; meaningless until g_notice_shown
-bool           g_notice_shown = false;   // the browser has been on screen at least once
+const wchar_t *g_notice = nullptr;     // main thread only (finalize detour + present hook)
+wchar_t        g_refused_line[256];    // F3c: "Join refused: <reason>", composed at arm time
+DWORD          g_notice_armed = 0;     // GetTickCount at arm
+DWORD          g_notice_until = 0;     // dwell deadline; meaningless until g_notice_shown
+bool           g_notice_shown = false; // the browser has been on screen at least once
 
 // ---- F3F / ruling Q2: the STANDING "no network module" line ------------------------------------
 //
@@ -63,9 +70,9 @@ bool           g_notice_shown = false;   // the browser has been on screen at le
 // no dwell, and it says the same thing every frame.
 //
 // It reuses U23's carrier and its per-frame-repaint argument unchanged (the buffer is not ours; see
-// above). The two cannot contend in practice -- g_notice is armed only by a LOBBY EXIT, and with no
-// module there is no lobby to be ejected from -- but the event still wins if it ever is, because an
-// event is news and a standing fact is not.
+// above). The two cannot contend in practice today -- g_notice is armed only by a LOBBY EXIT cause
+// (host-left/link-lost), which requires a live session, and a no-transport peer never has one -- but
+// the event still wins if it ever does, because an event is news and a standing fact is not.
 //
 // English literal, per the U18 / R-live-ui / U23 precedent, and short for the same reason: the
 // widget's flags (0x04868042) do not request auto-wrap, so the line runs until it ends.
@@ -77,9 +84,26 @@ bool on_a_browser() {
     return list == (const void *)ADDR_BROWSER_SESSION || list == (const void *)ADDR_BROWSER_LOCAL;
 }
 
+// U42: on_host_advertise() (net_discovery.cpp) arms the manual host lobby unconditionally -- it is
+// one of the seven protocol stubs F3F left ungated at INSTALL time, so a module=none host still
+// reaches the real "Network players" screen (ruling Q8: ARM and explain, not gate). Until this fix
+// that lobby carried no explanation for why Start never does anything useful -- the browser's
+// standing line never painted there. It turns out it does not need a second buffer or a second
+// widget: reading the lobby container's own child list (_G_LLM_UI_SCREEN_LOBBY_WIDGET_LIST,
+// mh::addr::lobby_widget_origin) shows widget 0x6503b3 -- the SAME status-line widget the browser
+// notice uses -- is ALSO one of its children (non-hidden, same flags 0x04868042), a fact the
+// original U23 comment above ("child of BOTH MP browser containers") did not have. So the lobby
+// gets the identical standing line through the identical mechanism: no new widget, no new buffer,
+// just one more screen this predicate recognizes.
+bool on_a_browser_or_lobby() {
+    const void *list = *(void **)mh::addr::_G_LLM_UI_MENU_WIDGET_LIST;
+    return list == (const void *)ADDR_BROWSER_SESSION || list == (const void *)ADDR_BROWSER_LOCAL ||
+           list == (const void *)ADDR_LOBBY;
+}
+
 void no_module_notice_tick() {
-    // Not on a browser: the screen we ARE on may own this buffer (the map picker does).
-    if (!on_a_browser()) return;
+    // Not on a browser or the lobby: the screen we ARE on may own this buffer (the map picker does).
+    if (!on_a_browser_or_lobby()) return;
     lstrcpynW((wchar_t *)ADDR_MAP_STATUS_LINE, kNoModuleLine, 256);
 }
 
@@ -101,11 +125,56 @@ void browser_notice_arm(int cause) {
     }
 }
 
+// F3c. The reason is the host's ASCII text (mh_net_proto::join_refusal_text), widened byte for byte
+// -- no codepage question arises, which is the point of the host composing it from numbers and
+// English words. Same dwell + same per-frame repaint as the two U23 causes, and the same width
+// budget: this widget draws one unwrapped line of ~32 characters (U23's "Connection to the host was
+// lost." fills it exactly), so the prefix is 9 and the protocol caps the reason at 20
+// (JOIN_REFUSAL_TEXT_MAX). The first cut of this line ("Join refused: input codepage mismatch (host
+// 1252, yours 1251)") was measured clipped at the panel edge -- the long form is the host's log line.
+void browser_notice_arm_refused(const char *reason) {
+    const wchar_t *pfx = L"Refused: ";
+    int            n   = 0;
+    while (pfx[n]) {
+        g_refused_line[n] = pfx[n];
+        ++n;
+    }
+    for (const char *p = reason ? reason : ""; *p && n < 255; ++p) g_refused_line[n++] = (wchar_t)(unsigned char)*p;
+    g_refused_line[n] = 0;
+    g_notice          = g_refused_line;
+    g_notice_armed    = GetTickCount();
+    g_notice_shown    = false;
+    if (ui_verbose()) {
+        char b[160];
+        wsprintfA(b, "; F3c: browser notice armed (join refused: %s)\n", reason ? reason : "");
+        ui_log(b);
+    }
+}
+
+// mp:R4a. The relay-level notice. Same buffer discipline as F3c's (widened byte for byte, composed
+// at arm time, one unwrapped line): the UDP module composes "Relay outdated (protocol 0 < 1)" -- 31
+// characters against the line's ~32 -- and this side adds nothing, because the module is the party
+// that knows both numbers and mh.dll must not learn what a relay is. Shares g_refused_line: the two
+// cannot be live at once (a JOIN refusal needs a lobby, a relay dial happens on the browser before
+// one), and if they ever were the later arm is the newer news.
+void browser_notice_arm_relay(const char *line) {
+    int n = 0;
+    for (const char *p = line ? line : ""; *p && n < 255; ++p) g_refused_line[n++] = (wchar_t)(unsigned char)*p;
+    g_refused_line[n] = 0;
+    g_notice          = g_refused_line;
+    g_notice_armed    = GetTickCount();
+    g_notice_shown    = false;
+    char b[128];
+    wsprintfA(b, "; R4a: browser notice armed (relay: %s)\n", line ? line : "");
+    ui_log(b);
+}
+
 void browser_notice_arm_no_module() {
     g_no_module = true;
-    ui_log("; [net] no-module browser notice armed -- with no transport the MP browsers list "
-           "nothing, so they carry a standing line saying why instead of an unexplained empty "
-           "list (ruling Q2)\n");
+    ui_log("; [net] no-module notice armed -- with no transport the MP browsers list nothing and a "
+           "hosted lobby is one nobody else can reach (its own Start works vs AI since U43), so both "
+           "carry the same standing line saying why instead of an unexplained empty list (ruling Q2, "
+           "lobby coverage U42)\n");
 }
 
 // Called every frame from the lockstep present hook. Cheap when idle.

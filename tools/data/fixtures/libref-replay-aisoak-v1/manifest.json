@@ -4,14 +4,14 @@
  "version": 1,
  "steps": 5000,
  "provenance": {
-  "commit": "708137a4e93adb37920a2fb9f9650f210565a998",
-  "recorded": "2026-09-12",
+  "commit": "5d5600404e101da81ba76eab6a65768f158ad0b6",
+  "recorded": "2026-09-20",
   "scenario_script": "sp_soak.txt",
   "synth_seed": 20260912,
-  "host": "local lane ui_soak (headless, isolated desktop mh_rig), single peer; run 20260912_000416_solo staged to tmp/libref_soak_rec",
+  "host": "local lane ui_soak (headless, isolated desktop mh_rig; soak lane 82, port 6682), single peer; run staged to tmp/libref_soak_rec",
   "peers": "1 (8-way all-AI: every slot an AI, including the converted local slot; no rig VMs)",
   "run_dir": "tmp/libref_soak_rec",
-  "stream_from_run": "workdir/mh_lanes/ui_soak/logs/20260912_000536_solo"
+  "stream_from_run": "tmp/libref_soak_replay1"
  },
  "replay_contract": {
   "flags": {
@@ -110,19 +110,20 @@
    "total_game_time",
    "sim_step_interval",
    "game_time_delta",
-   "game_speed"
+   "game_speed",
+   "player_resources"
   ]
  },
  "step0": {
-  "world_content_hash": "4A5E447CC1D4650F",
-  "lockstep_combined": "B97735A8BC9853B2",
-  "lockstep_state": "4A14D4704680FD25",
+  "world_content_hash": "E0BDF84535A4090C",
+  "lockstep_combined": "435585A1F860139D",
+  "lockstep_state": "ED2F04D98448A012",
   "game_clock": "3F9111276FB08000",
   "step": 1,
   "mask_flags": 7,
   "hash_sink_fp": "68AADCE3",
-  "hash_manifest_fp": "BD36D78E",
-  "hash_slice_count": 61
+  "hash_manifest_fp": "9221967E",
+  "hash_slice_count": 62
  },
  "artifacts": {
   "clock": {
@@ -135,7 +136,7 @@
    "file": "world.bin.zz",
    "raw_bytes": 8186488,
    "zlib_bytes": 506391,
-   "sha256_raw": "62cc299877ec20fe9ccc4732ddc3e92ee91fc33c00b193664574d327cdccd7dc"
+   "sha256_raw": "ed30b67b5613769011ba09351b2983081ea0dd91e6c4ad92f06dd47e39842eb5"
   },
   "orders": {
    "file": "orders.bin.zz",
@@ -146,20 +147,21 @@
   "hash_steps": {
    "file": "hash_steps.txt.zz",
    "raw_bytes": 278893,
-   "zlib_bytes": 152088,
-   "sha256_raw": "5474c0a34594dbdb892c9bd2e6f32fe4a33c12f3697ac7958f9ddbcb96294b22"
+   "zlib_bytes": 152080,
+   "sha256_raw": "726d6f1e6ff0c6d118988e1ded41bc953c9b2e6a8aa3cb1cbf4606931f79fbfc"
   },
   "hash_regions": {
    "file": "hash_regions.txt.zz",
-   "raw_bytes": 5218893,
-   "zlib_bytes": 788940,
-   "sha256_raw": "2d3fb4fb3f77d7addfb5776098c82c4c3734203656dfbd110af80072de95100a"
+   "raw_bytes": 5303893,
+   "zlib_bytes": 789785,
+   "sha256_raw": "b660c48287bc460eb73b95bd086d58339b4946932195a808f3eb2962d6a6aeb1"
   }
  },
  "fidelity": {
+  "re_record": "THE FIRST RECORDING of the all-AI REPLAY fixture (2026-09-12, LIB-REF-SOAK). Scenario and seed were PINNED IN THE TRACKER BEFORE any recording run, and this recording is under that arrangement verbatim: the same soak_default world LIB-REF-LIVE pinned, with the replay-mode overlay (order_mode=1 at record; replayed under order_mode=2, replay_ai_off=0, replay_suppress_enqueue=1 at the sink). SAME WORLD AS THE LIVE FIXTURE, PROVEN NOT ASSUMED: both blobs carry lockstep_state = 4A14D4704680FD25, and the two recordings' mh_clock.bin are BYTE-IDENTICAL -- so arming the order recorder changed nothing about the run's trajectory or pacing. The two fixtures describe one world through two contracts, which is the point of the pair. THE INSTANTS GRID IS 75, NOT 600, AND THAT WAS MEASURED RATHER THAN INHERITED. The order stream is 108 records over 67 steps at [1, 75, 150, ... 4950] -- the periodic llm_strat_order_collect_available_projects (opcode 0xEE), one per player. sp_det's fixture has 9 instants on a 600 grid and a dense stream from a synthetic workload; nothing about that grid generalises, and assuming it would have mis-declared this fixture's whole residue. TWO INSTRUMENT PREMISES WERE FALSIFIED BY THIS FIXTURE AND REFORMED BEFORE IT WAS ACCEPTED. Both were untested assumptions that a dense order stream starting after step 1 had hidden. (1) THE 0 -> n RECORDER GUARD refused all 67 arrival steps on the reasoning that 'the replay could not open the count gate for them, so its orders would silently never execute'. That is a claim about the REPLAYER, and it is false for the injector in use, which writes count = k. Measured at arrival step 75 with the count ledger: tag 16 k=1/count=1 (the gate IS opened), tag 2 the dispatcher walking that record, tag 14 entry 1 -> kept 0 (executed and consumed). `0 -> n` here means only that the queue is EMPTY BETWEEN BURSTS. The refused class is REAL and still refused -- an injector that appends without setting the count loses those orders silently -- so the guard was reformed as an EVIDENCE-GATED exception rather than a premise swap: the replay now emits, unconditionally, a READBACK of the count it set at every arrival step, and the exception applies only when that line is present, reports zero append-without-set, and its arrival count matches the committed recording's order-carrying step count. Mutation-proven three ways (line removed / line reporting append-without-set / line from a different run) -- each refuses again. (2) THE HOST'S STEP-0 CLAUSE compared the PRE-INJECTION imported world against the committed stream's step-1 line, which a replay samples AFTER injection. Those agree only when the recording carries no step-1 records -- true of sp_det, and why it held for months. This fixture's stream starts AT step 1, and the clause failed a world that was byte-perfect (only order_queue and order_queue_count differed, while the ordinary per-step comparison, which runs post-injection and does cover step 1, reported 0 mismatches over all 5000 steps). Split in two: the import clause now compares against the blob's OWN carried lockstep_state -- phase-correct by construction and applicable to every fixture -- and the blob-vs-stream same-run cross-check is kept but gated on the recording carrying no step-1 records, PRINTING which arm ran rather than skipping in silence. It still RUNS on sp_det, so it is not vacuous. Mutation-proven by flipping one bit of a scratch blob's header lockstep_state. ACCEPTANCE: fixture_replay verify PASS on its own strength (integrity ok; self-consistency per-step and per-region BIT-IDENTICAL; 55 of 61 regions identical across all 5000 steps; the only non-excluded residue is order_queue + order_queue_count at exactly the 67 instants, max +0 steps to re-converge, ZERO marks). The standalone libref_host replays it 5000/5000 ALL STEPS IDENTICAL, 0 sim traps, 0 tact traps, 0 inbound refusals, with the injector reporting count SET at 67 of 67 arrival steps and 0 append-without-set. The richness gate (soak run-shape rules) PASSED on the recording run, and the recording is byte-reproducible: a second record run's mh_orders.bin and mh_clock.bin are byte-identical to the committed pair. LEDGER NOTE: tag 15 (enqueue SUPPRESSED) is ARMED for the first time by this fixture -- at step 75 the sink refuses the sim's own duplicate of an order the injector had just supplied, which is the suppression contract visibly working on a live-AI replay. Tags 11, 12 and 13 remain unarmed. world.bin is not byte-identical to any other capture and that is per-run pointer material, the class the header's own counters exist to make visible; the world-defining lockstep_state is what matches.",
   "counts_guard": {
    "checked": true,
-   "source_run": "workdir/mh_lanes/ui_soak/logs/20260912_000630_solo",
+   "source_run": "tmp/libref_soak_guard",
    "source_orders_sha256": "6801156d714b34e21fd829aa81fd4017298aea92b3e4acecb3ace5fbf76b3e69",
    "steps_measured": 5000,
    "midstep_arrival_steps": [
@@ -301,7 +303,6 @@
     4950
    ],
    "why": "A step whose top-of-step queue count is 0 but whose dispatch-entry count is not would never open the replay's count gate (dispatch is count-gated and the suppressed enqueue cannot raise it), so its orders would silently never execute. Measured, not assumed."
-  },
-  "re_record": "THE FIRST RECORDING of the all-AI REPLAY fixture (2026-09-12, LIB-REF-SOAK). Scenario and seed were PINNED IN THE TRACKER BEFORE any recording run, and this recording is under that arrangement verbatim: the same soak_default world LIB-REF-LIVE pinned, with the replay-mode overlay (order_mode=1 at record; replayed under order_mode=2, replay_ai_off=0, replay_suppress_enqueue=1 at the sink). SAME WORLD AS THE LIVE FIXTURE, PROVEN NOT ASSUMED: both blobs carry lockstep_state = 4A14D4704680FD25, and the two recordings' mh_clock.bin are BYTE-IDENTICAL -- so arming the order recorder changed nothing about the run's trajectory or pacing. The two fixtures describe one world through two contracts, which is the point of the pair. THE INSTANTS GRID IS 75, NOT 600, AND THAT WAS MEASURED RATHER THAN INHERITED. The order stream is 108 records over 67 steps at [1, 75, 150, ... 4950] -- the periodic llm_strat_order_collect_available_projects (opcode 0xEE), one per player. sp_det's fixture has 9 instants on a 600 grid and a dense stream from a synthetic workload; nothing about that grid generalises, and assuming it would have mis-declared this fixture's whole residue. TWO INSTRUMENT PREMISES WERE FALSIFIED BY THIS FIXTURE AND REFORMED BEFORE IT WAS ACCEPTED. Both were untested assumptions that a dense order stream starting after step 1 had hidden. (1) THE 0 -> n RECORDER GUARD refused all 67 arrival steps on the reasoning that 'the replay could not open the count gate for them, so its orders would silently never execute'. That is a claim about the REPLAYER, and it is false for the injector in use, which writes count = k. Measured at arrival step 75 with the count ledger: tag 16 k=1/count=1 (the gate IS opened), tag 2 the dispatcher walking that record, tag 14 entry 1 -> kept 0 (executed and consumed). `0 -> n` here means only that the queue is EMPTY BETWEEN BURSTS. The refused class is REAL and still refused -- an injector that appends without setting the count loses those orders silently -- so the guard was reformed as an EVIDENCE-GATED exception rather than a premise swap: the replay now emits, unconditionally, a READBACK of the count it set at every arrival step, and the exception applies only when that line is present, reports zero append-without-set, and its arrival count matches the committed recording's order-carrying step count. Mutation-proven three ways (line removed / line reporting append-without-set / line from a different run) -- each refuses again. (2) THE HOST'S STEP-0 CLAUSE compared the PRE-INJECTION imported world against the committed stream's step-1 line, which a replay samples AFTER injection. Those agree only when the recording carries no step-1 records -- true of sp_det, and why it held for months. This fixture's stream starts AT step 1, and the clause failed a world that was byte-perfect (only order_queue and order_queue_count differed, while the ordinary per-step comparison, which runs post-injection and does cover step 1, reported 0 mismatches over all 5000 steps). Split in two: the import clause now compares against the blob's OWN carried lockstep_state -- phase-correct by construction and applicable to every fixture -- and the blob-vs-stream same-run cross-check is kept but gated on the recording carrying no step-1 records, PRINTING which arm ran rather than skipping in silence. It still RUNS on sp_det, so it is not vacuous. Mutation-proven by flipping one bit of a scratch blob's header lockstep_state. ACCEPTANCE: fixture_replay verify PASS on its own strength (integrity ok; self-consistency per-step and per-region BIT-IDENTICAL; 55 of 61 regions identical across all 5000 steps; the only non-excluded residue is order_queue + order_queue_count at exactly the 67 instants, max +0 steps to re-converge, ZERO marks). The standalone libref_host replays it 5000/5000 ALL STEPS IDENTICAL, 0 sim traps, 0 tact traps, 0 inbound refusals, with the injector reporting count SET at 67 of 67 arrival steps and 0 append-without-set. The richness gate (soak run-shape rules) PASSED on the recording run, and the recording is byte-reproducible: a second record run's mh_orders.bin and mh_clock.bin are byte-identical to the committed pair. LEDGER NOTE: tag 15 (enqueue SUPPRESSED) is ARMED for the first time by this fixture -- at step 75 the sink refuses the sim's own duplicate of an order the injector had just supplied, which is the suppression contract visibly working on a live-AI replay. Tags 11, 12 and 13 remain unarmed. world.bin is not byte-identical to any other capture and that is per-run pointer material, the class the header's own counters exist to make visible; the world-defining lockstep_state is what matches."
+  }
  }
 }

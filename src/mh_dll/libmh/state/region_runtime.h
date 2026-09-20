@@ -168,4 +168,38 @@ inline void clear_region(region_id r) {
     if (p != nullptr) std::memset(p, 0, reach_of(r));
 }
 
+// ---- a whole FOUR-BYTE region, read and written (mp:X3's live-import preserve pass) -------------
+//
+// The sibling of clear_region above and it lives here for the identical reason: this header is the
+// only place allowed to bind an address (check_sim_addresses enforces it), and the caller --
+// state/spine.cpp's libmh_import_world -- is not a sim body with a store to reach through.
+//
+// RID-KEYED AND WHOLE-REGION ON PURPOSE. It takes no address and no length from its caller, so it
+// cannot be pointed at a slice of something; and it refuses any region whose registry extent is not
+// exactly four bytes, because the thing it exists for is a region that IS a single 32-bit handle.
+// A caller that wants three bytes of a bigger record wants a different function.
+//
+// WHY THE PAIR EXISTS AT ALL. A world blob carries every bound region verbatim, which is right for
+// state and wrong for a PROCESS-LOCAL RESOURCE HANDLE -- the .TLO buffer, the framebuffer, a
+// DirectInput device pointer. The importing host has to read those before the byte engine runs and
+// put them back after; see state/spine.cpp for the measurement that made that non-optional.
+//
+// `read_region_u32` answers false for an unbound region or a wrong-sized one, which is what lets
+// the caller skip rather than guess.
+inline bool read_region_u32(region_id r, uint32_t *out) {
+    if (out == nullptr || reach_of(r) != 4u) return false;
+    const void *const p = ptr<const void>(r);
+    if (p == nullptr) return false;
+    std::memcpy(out, p, sizeof(uint32_t));
+    return true;
+}
+
+inline bool write_region_u32(region_id r, uint32_t v) {
+    if (reach_of(r) != 4u) return false;
+    void *const p = ptr<void>(r);
+    if (p == nullptr) return false;
+    std::memcpy(p, &v, sizeof(v));
+    return true;
+}
+
 } // namespace mh::state

@@ -1,0 +1,325 @@
+#!/usr/bin/env python3
+"""lint_fixture_currency.py -- every recorded hash fixture is CURRENT, every excusal is REAL
+(tooling TL-GATE-D25FX, 2026-09-20).
+
+THE TRAP THIS CLOSES. A hash-manifest change (D25 appended region 62, player_resources) silently
+stales every artifact that carries a `state` hash: the three libref world blobs + their streams, and
+the UI-REC A/B/C oracles. Nothing said "stale" -- the next full gate, a day later, read them as
+"first mismatch at step 1", the shape of a broken replayer, and the D25 session had run
+run_selftests (green: it hashes nothing recorded) rather than the gate. The blobs DID carry the
+manifest fingerprint and libref_host DID refuse them by it; the refusal was one line in a 5000-line
+log under a "no ALL STEPS IDENTICAL" headline, and the oracles carried no stamp at all.
+
+So this lint makes the rule "a manifest change means a re-capture IN THE SAME SESSION" a gate
+rather than a sentence: it computes the manifest fingerprint the DLL is built with
+(mp_analyze.hash_manifest_fingerprint, from the generated header) and requires
+
+  (1) every committed libref fixture's manifest.json step0.hash_manifest_fp to equal it;
+  (2) every committed UI-REC oracle (tools/uiscripts/journals/*.oracle.gz) to carry
+      `; hash_manifest_fp: <fp>` equal to it -- an unstamped oracle is stale by definition;
+  (3) every row of tools/data/abc_excusals.json to name a region that EXISTS in
+      tools/data/hash_manifest.json and is not excluded there, with every byte range inside the
+      region, `legs` within {A-vs-B, A-vs-C}, and a reason / since / tracker -- a region that stops existing fails
+      here rather than silently excusing nothing;
+  (4) the evidence file each row cites to exist, and every run in it to read PROVED with no region
+      an excusal does not name.
+
+Exit 0 = current. 1 = something is stale or malformed (the lines say what and how to re-capture).
+`--selftest` plants each failure in a scratch copy and requires it to go red.
+"""
+
+from __future__ import annotations
+
+import argparse
+import glob
+import gzip
+import json
+import os
+import re
+import shutil
+import sys
+import tempfile
+
+REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+import mp_analyze as _m  # noqa: E402
+
+FIXTURES = os.path.join(REPO, "tools", "data", "fixtures")
+JOURNALS = os.path.join(REPO, "tools", "uiscripts", "journals")
+EXCUSALS = os.path.join(REPO, "tools", "data", "abc_excusals.json")
+HASH_MANIFEST = os.path.join(REPO, "tools", "data", "hash_manifest.json")
+
+RECAPTURE_HINT = (
+    "re-capture under the current manifest in THIS session: libref fixtures per "
+    "tools/data/fixtures/libref-replay-v1/README.md (record -> pack -> replay -> stream -> "
+    "counts-guard -> replay -> verify), oracles via `python tools/test_ui.py --ui-oracle <mode="
+    "original arm> --ui-oracle-out <oracle> --ui-oracle-note ...` with the equivalence proof"
+)
+
+
+def oracle_fp(path):
+    with gzip.open(path, "rt", encoding="utf-8", errors="replace") as f:
+        for line in f:
+            if not line.startswith(";"):
+                break
+            m = re.match(r";\s*hash_manifest_fp:\s*([0-9A-Fa-f]{8})", line)
+            if m:
+                return m.group(1).upper()
+    return None
+
+
+def check(
+    fixtures=FIXTURES,
+    journals=JOURNALS,
+    excusals=EXCUSALS,
+    hash_manifest=HASH_MANIFEST,
+    header_text=None,
+):
+    errs = []
+    cur = _m.hash_manifest_fingerprint(header_text)
+
+    # (1) the libref fixtures
+    for mf in sorted(glob.glob(os.path.join(fixtures, "*", "manifest.json"))):
+        name = os.path.basename(os.path.dirname(mf))
+        try:
+            man = json.load(open(mf, encoding="utf-8"))
+        except (OSError, ValueError) as e:
+            errs.append("%s: unreadable manifest (%s)" % (name, e))
+            continue
+        fp = (man.get("step0") or {}).get("hash_manifest_fp")
+        if fp is None:
+            continue  # not a hash fixture (pacing-frametime has no step0)
+        if fp.upper() != cur:
+            errs.append(
+                "STALE FIXTURE %s: captured under hash manifest %s, current %s -- %s"
+                % (name, fp, cur, RECAPTURE_HINT)
+            )
+
+    # (2) the UI-REC oracles
+    for op in sorted(glob.glob(os.path.join(journals, "*.oracle.gz"))):
+        name = os.path.basename(op)
+        try:
+            fp = oracle_fp(op)
+        except (OSError, EOFError) as e:
+            errs.append("%s: unreadable oracle (%s)" % (name, e))
+            continue
+        if fp is None:
+            errs.append(
+                "UNSTAMPED ORACLE %s: no `; hash_manifest_fp:` header, so it is stale by "
+                "definition (current %s) -- %s" % (name, cur, RECAPTURE_HINT)
+            )
+        elif fp != cur:
+            errs.append(
+                "STALE ORACLE %s: captured under hash manifest %s, current %s -- %s"
+                % (name, fp, cur, RECAPTURE_HINT)
+            )
+
+    # (3) the excusal rows against the hash manifest
+    regions = {}
+    try:
+        for r in json.load(open(hash_manifest, encoding="utf-8"))["regions"]:
+            regions[r["name"]] = r
+    except (OSError, ValueError, KeyError) as e:
+        errs.append("hash_manifest.json unreadable (%s)" % e)
+    rows = []
+    if os.path.isfile(excusals):
+        try:
+            rows = json.load(open(excusals, encoding="utf-8")).get("excusals", [])
+        except (OSError, ValueError) as e:
+            errs.append("abc_excusals.json unreadable (%s)" % e)
+    named = set()
+    for i, e in enumerate(rows):
+        tag = "excusal[%d] %s" % (i, e.get("id", "?"))
+        for k in ("id", "legs", "region", "reason", "since", "tracker"):
+            if not e.get(k):
+                errs.append("%s: missing `%s`" % (tag, k))
+        legs = e.get("legs") or []
+        if not isinstance(legs, list) or not legs or not set(legs) <= {"A-vs-B", "A-vs-C"}:
+            errs.append(
+                "%s: legs %r -- only the SHIP legs (A-vs-B, A-vs-C) may carry an excusal; "
+                "B-vs-C is the replayer's own claim and compares the recording in full"
+                % (tag, legs)
+            )
+        reg = regions.get(e.get("region"))
+        if reg is None:
+            errs.append(
+                "%s: region %r is not in tools/data/hash_manifest.json -- the excusal names "
+                "nothing; drop the row or re-target it" % (tag, e.get("region"))
+            )
+            continue
+        named.add(e["region"])
+        if reg.get("excluded"):
+            errs.append(
+                "%s: region %r is already excluded from `state` by the manifest -- an excusal "
+                "on it is vacuous" % (tag, e["region"])
+            )
+        for b in e.get("bytes") or []:
+            off, ln = int(b.get("offset", -1)), int(b.get("len", 0))
+            if off < 0 or ln <= 0 or off + ln > int(reg["size"]):
+                errs.append(
+                    "%s: bytes [%d, +%d) fall outside %s (%d bytes)"
+                    % (tag, off, ln, e["region"], int(reg["size"]))
+                )
+        # (4) the evidence
+        ev = e.get("evidence")
+        if not ev:
+            errs.append("%s: no `evidence` file cited" % tag)
+        else:
+            evp = os.path.join(REPO, ev) if not os.path.isabs(ev) else ev
+            if not os.path.isfile(evp):
+                errs.append("%s: evidence file %s does not exist" % (tag, ev))
+            else:
+                try:
+                    runs = json.load(open(evp, encoding="utf-8")).get("runs", [])
+                except (OSError, ValueError) as ex:
+                    errs.append("%s: evidence %s unreadable (%s)" % (tag, ev, ex))
+                    runs = None
+                if runs is not None:
+                    if not runs:
+                        errs.append("%s: evidence %s holds no run" % (tag, ev))
+                    for j, run in enumerate(runs):
+                        if run.get("verdict") != "PROVED":
+                            errs.append(
+                                "%s: evidence run %d verdict %r, not PROVED"
+                                % (tag, j, run.get("verdict"))
+                            )
+                        for r in run.get("region_columns_differing", []):
+                            if r.get("region") not in {x.get("region") for x in rows}:
+                                errs.append(
+                                    "%s: evidence run %d shows %s differing and no excusal "
+                                    "names it" % (tag, j, r.get("region"))
+                                )
+    return cur, errs
+
+
+def report(cur, errs, label=""):
+    print("fixture currency%s: hash manifest fingerprint %s" % (label, cur))
+    for e in errs:
+        print("  RED: %s" % e)
+    print("  %s" % ("PASS" if not errs else "%d problem(s)" % len(errs)))
+    return 0 if not errs else 1
+
+
+def selftest():
+    """Plant each failure in a scratch copy of the inputs; every one must go red, the clean copy green."""
+    tmp = tempfile.mkdtemp(prefix="lint_fixture_currency_")
+    try:
+        fx = os.path.join(tmp, "fixtures")
+        jn = os.path.join(tmp, "journals")
+        os.makedirs(fx)
+        os.makedirs(jn)
+        for d in glob.glob(os.path.join(FIXTURES, "*")):
+            mf = os.path.join(d, "manifest.json")
+            if os.path.isfile(mf):
+                os.makedirs(os.path.join(fx, os.path.basename(d)))
+                shutil.copy(mf, os.path.join(fx, os.path.basename(d), "manifest.json"))
+        for op in glob.glob(os.path.join(JOURNALS, "*.oracle.gz")):
+            shutil.copy(op, jn)
+        exc = os.path.join(tmp, "abc_excusals.json")
+        shutil.copy(EXCUSALS, exc)
+        # NORMALISE THE COPY to the current fingerprint first: the selftest proves the MECHANISM,
+        # and must not depend on whether the tree happens to be mid-re-capture (it was, the first
+        # time this ran -- two fixtures were still being re-recorded, and "clean copy is green"
+        # would have reported the tree's state rather than the lint's).
+        cur = _m.hash_manifest_fingerprint()
+        for mf in glob.glob(os.path.join(fx, "*", "manifest.json")):
+            man = json.load(open(mf, encoding="utf-8"))
+            if "step0" in man:
+                man["step0"]["hash_manifest_fp"] = cur
+                json.dump(man, open(mf, "w", encoding="utf-8"))
+        for op in glob.glob(os.path.join(jn, "*.oracle.gz")):
+            lines = gzip.open(op, "rt", encoding="utf-8").read().splitlines(True)
+            lines = [ln for ln in lines if "hash_manifest_fp" not in ln]
+            lines.insert(1, "; hash_manifest_fp: %s\n" % cur)
+            with gzip.open(op, "wt", encoding="utf-8", newline="\n") as f:
+                f.writelines(lines)
+
+        def run(label, want_red, **kw):
+            cur, errs = check(
+                fixtures=kw.get("fixtures", fx),
+                journals=kw.get("journals", jn),
+                excusals=kw.get("excusals", exc),
+            )
+            red = bool(errs)
+            ok = red == want_red
+            print(
+                "  %-52s %s%s"
+                % (
+                    label,
+                    "PASS" if ok else "FAIL",
+                    "" if ok else " (%s)" % ("; ".join(errs[:2]) or "no error"),
+                )
+            )
+            return ok
+
+        ok = run("clean copy is green", False)
+
+        # (a) a fixture stamped with a foreign fingerprint
+        mfs = glob.glob(os.path.join(fx, "*", "manifest.json"))
+        mfs = [m for m in mfs if "step0" in json.load(open(m))]
+        assert mfs, "no hash fixture to plant in"
+        bak = open(mfs[0], encoding="utf-8").read()
+        man = json.loads(bak)
+        man["step0"]["hash_manifest_fp"] = "DEADBEEF"
+        json.dump(man, open(mfs[0], "w", encoding="utf-8"))
+        ok &= run("a fixture under another manifest goes RED", True)
+        open(mfs[0], "w", encoding="utf-8").write(bak)
+
+        # (b) an oracle without its stamp, (c) one with a foreign stamp
+        ops = glob.glob(os.path.join(jn, "*.oracle.gz"))
+        assert ops, "no oracle to plant in"
+        lines = gzip.open(ops[0], "rt", encoding="utf-8").read().splitlines(True)
+        with gzip.open(ops[0], "wt", encoding="utf-8", newline="\n") as f:
+            f.writelines(ln for ln in lines if "hash_manifest_fp" not in ln)
+        ok &= run("an UNSTAMPED oracle goes RED", True)
+        with gzip.open(ops[0], "wt", encoding="utf-8", newline="\n") as f:
+            f.writelines(
+                re.sub(r"hash_manifest_fp:\s*\w+", "hash_manifest_fp: DEADBEEF", ln) for ln in lines
+            )
+        ok &= run("an oracle under another manifest goes RED", True)
+        with gzip.open(ops[0], "wt", encoding="utf-8", newline="\n") as f:
+            f.writelines(lines)
+        ok &= run("restored copy is green again", False)
+
+        # (d) an excusal naming a region the manifest does not have
+        ex_bak = open(exc, encoding="utf-8").read()
+        d = json.loads(ex_bak)
+        d["excusals"][0]["region"] = "no_such_region"
+        json.dump(d, open(exc, "w", encoding="utf-8"))
+        ok &= run("an excusal on a region that stopped existing goes RED", True)
+        # (e) bytes outside the region
+        d = json.loads(ex_bak)
+        d["excusals"][0]["bytes"] = [{"offset": 10**9, "len": 4}]
+        json.dump(d, open(exc, "w", encoding="utf-8"))
+        ok &= run("an excusal whose bytes fall outside the region goes RED", True)
+        # (f) the wrong leg
+        d = json.loads(ex_bak)
+        d["excusals"][0]["legs"] = ["A-vs-B", "B-vs-C"]
+        json.dump(d, open(exc, "w", encoding="utf-8"))
+        ok &= run("an excusal naming B-vs-C goes RED", True)
+        # (g) an already-excluded region
+        d = json.loads(ex_bak)
+        d["excusals"][0]["region"] = "current_game_time"
+        json.dump(d, open(exc, "w", encoding="utf-8"))
+        ok &= run("an excusal on an excluded region goes RED", True)
+        open(exc, "w", encoding="utf-8").write(ex_bak)
+        ok &= run("restored excusals are green again", False)
+        print("lint_fixture_currency --selftest: %s" % ("PASS" if ok else "FAIL"))
+        return 0 if ok else 1
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+def main():
+    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    ap.add_argument("--selftest", action="store_true")
+    args = ap.parse_args()
+    if args.selftest:
+        return selftest()
+    cur, errs = check()
+    return report(cur, errs)
+
+
+if __name__ == "__main__":
+    sys.exit(main())

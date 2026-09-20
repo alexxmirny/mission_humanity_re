@@ -1,7 +1,7 @@
 {
   "class": "retired-addimport",
   "_class_why": "0 sites; `imports` only -- see harness_load.",
-  "_comment": "IMPORT-ONLY patch for the MP transport (Phase A1, tasks/mp-restoration.md Step 2). Adds the mh.dll import to a stock mh.exe with NO code patches, so DllMain runs and MH_Seam_Init arms the lobby send/recv seam hooks when mh_net.ini is present next to the exe. The DLL install (VirtualProtect + E9) then redirects llm_net_send_packet (0x004bc4f3) and llm_net_poll_recv (0x004bc532) onto the TCP transport. Deliberately vanilla otherwise (no pool relocation), so the lobby/sim run exactly as retail. Run: python mhpatch.py apply mh.exe net_load.mh.patch.json mh.mp.exe   (then drop mh.dll + mh_net.ini beside mh.mp.exe on BOTH peers; set role=host on one, role=client + host=<host-ip> on the other).",
+  "_comment": "IMPORT-ONLY patch for the MP transport (Phase A1, docs/mp-restoration-history.md Step 2). Adds the mh.dll import to a stock mh.exe with NO code patches, so DllMain runs and MH_Seam_Init arms the lobby send/recv seam hooks when mh_net.ini is present next to the exe. The DLL install (VirtualProtect + E9) then redirects llm_net_send_packet (0x004bc4f3) and llm_net_poll_recv (0x004bc532) onto the TCP transport. Deliberately vanilla otherwise (no pool relocation), so the lobby/sim run exactly as retail. Run: python mhpatch.py apply mh.exe net_load.mh.patch.json mh.mp.exe   (then drop mh.dll + mh_net.ini beside mh.mp.exe on BOTH peers; set role=host on one, role=client + host=<host-ip> on the other).",
   "target": "mh.exe (clean Russian retail, md5 a9bf89a6...)",
   "sha256": "9c4451cf8934a9f446a4f639a3aaa002168030ba512df83a6495bb61861d6a30",
   "imports": {

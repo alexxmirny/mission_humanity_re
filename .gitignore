@@ -27,6 +27,7 @@ mod_src/cfg/*
 mod_src/map/
 
 # build outputs
+dist/
 src/**/Debug/
 src/**/Release/
 src/**/Release_asan/
@@ -41,6 +42,7 @@ src/**/*.user
 src/**/__pycache__/
 __pycache__/
 *.pyc
+/target/
 
 # editor and IDE state
 .obsidian/

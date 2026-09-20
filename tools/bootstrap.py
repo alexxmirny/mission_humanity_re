@@ -24,12 +24,21 @@ Exit code is 0 only when every REQUIRED check is green. A check can be:
                   when the Ghidra install itself is missing) -- attributed, not counted as its own
                   failure, so a single root cause reports as a single red line.
   ABSENT grey  -- --ci only: a group this environment is not expected to have. Named, never hidden.
+  OPT   yellow -- installed on no machine by default and required by nothing that runs TODAY, so its
+                  absence is a normal state and not a defect. NAMED WITH ITS REMEDY LIKE A RED, but
+                  it does not set exit 1 (dist DS1). This exists because the alternatives are both
+                  lies: a FAIL makes every session on a machine that does not build the launcher
+                  red, and a red that is always red is a red nobody reads; an OK for something that
+                  is not installed is the vacuous pass tools/lint_rust.py is written against. The
+                  three OPT rows today are cargo, docker and the relay VPS config -- each becomes a
+                  hard gate the day something in the default build path needs it (dist LA1/R1/R4).
 """
 
 import argparse
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -41,7 +50,7 @@ import machine_config as machine  # noqa: E402
 REPO = Path(__file__).resolve().parent.parent
 GHIDRA = Path(machine.GHIDRA_INSTALL)
 
-OK, FAIL, SKIP, ABSENT = "OK", "FAIL", "SKIP", "ABSENT"
+OK, FAIL, SKIP, ABSENT, OPT = "OK", "FAIL", "SKIP", "ABSENT", "OPT"
 
 # fork F5D -- the --ci tiers. A CI runner builds and tests; it does not reverse-engineer and it has
 # no game. So these GROUPS are expected-absent there and their reds become named ABSENT lines rather
@@ -399,6 +408,194 @@ def check_msvc():
     ]
 
 
+RUSTUP_URL = "https://win.rustup.rs/x86_64"
+RUSTUP_REMEDY = (
+    "install rustup (%s), run `rustup-init -y --profile minimal --default-toolchain stable`, "
+    "then open a NEW shell so %%USERPROFILE%%\\.cargo\\bin is on PATH" % RUSTUP_URL
+)
+
+
+def check_rust():
+    """cargo, and the two components tools/lint_rust.py's lint_repo rows need (dist DS1).
+
+    OPT, not FAIL, for the reason the status vocabulary above states: nothing in today's default
+    build path is Rust, so a machine without cargo is correctly configured, and lint_rust already
+    reports its two rows as SKIPPED-with-reason rather than passing them. The day dist LA1 or R1
+    lands a shipped Rust artifact, these become gates and this comment is the note to change.
+
+    THE INSTALLED-BUT-NOT-ON-PATH STATE IS REPORTED SEPARATELY, because it is the one that fools
+    people: rustup-init writes %USERPROFILE%\\.cargo\\bin into the USER PATH in the registry, which
+    the shell that ran it (and every process that shell already spawned) does not see. The symptom
+    is a lint that skips its Rust rows on a machine where Rust is demonstrably installed."""
+    out = []
+    cargo = shutil.which("cargo")
+    if cargo:
+        ver = ""
+        try:
+            ver = subprocess.run(
+                [cargo, "--version"], capture_output=True, text=True, timeout=30
+            ).stdout.strip()
+        except (OSError, subprocess.SubprocessError):
+            pass
+        out.append(Check("Rust toolchain", "cargo on PATH", OK, ver or cargo))
+    else:
+        home_cargo = Path(os.path.expanduser("~")) / ".cargo" / "bin"
+        installed = (home_cargo / "cargo.exe").is_file() or (home_cargo / "cargo").is_file()
+        out.append(
+            Check(
+                "Rust toolchain",
+                "cargo on PATH",
+                OPT,
+                "installed at %s but NOT on this shell's PATH -- the lint_repo rust rows will SKIP"
+                % home_cargo
+                if installed
+                else "not installed -- the lint_repo rust rows SKIP, src/launcher + src/relay do not build",
+                "open a new shell (the installer already wrote the user PATH)"
+                if installed
+                else RUSTUP_REMEDY,
+            )
+        )
+        return out
+
+    # The components. rust-toolchain.toml NAMES them, so rustup installs them on first use -- this
+    # row is what says whether that has happened yet, because the failure otherwise arrives as
+    # `cargo fmt` exiting nonzero, which reads exactly like a formatting violation.
+    missing = []
+    for sub in ("fmt", "clippy"):
+        try:
+            r = subprocess.run(
+                [cargo, sub, "--version"], capture_output=True, text=True, timeout=60
+            )
+            if r.returncode != 0:
+                missing.append(sub)
+        except (OSError, subprocess.SubprocessError):
+            missing.append(sub)
+    out.append(
+        Check(
+            "Rust toolchain",
+            "rustfmt + clippy components",
+            OK if not missing else OPT,
+            "both present (rust-toolchain.toml pins them)"
+            if not missing
+            else "missing: %s -- the lint_repo rust rows would FAIL, not skip" % ", ".join(missing),
+            "" if not missing else "rustup component add rustfmt clippy",
+        )
+    )
+    return out
+
+
+def check_docker():
+    """A docker CLI that can talk to a daemon -- for the relay + collector images (plan D15/R4/RP2).
+
+    OPT for the same reason as cargo, and with an extra one: installing Docker Desktop or a WSL2
+    distro needs administrator rights and a reboot, so it is not something a check can nudge a
+    session into doing. `docker version` (not `--version`) because the CLI alone answers a version
+    string with no daemon behind it, and an image build needs the daemon."""
+    exe = shutil.which("docker")
+    if not exe:
+        return [
+            Check(
+                "Docker",
+                "docker CLI",
+                OPT,
+                "not installed -- relay/collector IMAGE builds (dist R4/RP2) cannot run here; "
+                "nothing else needs it",
+                "install Docker Desktop (winget install -e --id Docker.DockerDesktop), or a WSL2 "
+                "distro with docker (wsl --install -d Ubuntu). Both need admin + a reboot.",
+            )
+        ]
+    try:
+        r = subprocess.run(
+            [exe, "version", "--format", "{{.Server.Version}}"],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+    except (OSError, subprocess.SubprocessError) as e:
+        return [
+            Check(
+                "Docker",
+                "docker CLI",
+                OPT,
+                "docker present but unusable: %s" % e,
+                "start Docker Desktop",
+            )
+        ]
+    if r.returncode == 0 and r.stdout.strip():
+        return [Check("Docker", "docker CLI + daemon", OK, "server %s" % r.stdout.strip())]
+    return [
+        Check(
+            "Docker",
+            "docker CLI + daemon",
+            OPT,
+            "CLI at %s but no daemon answered" % exe,
+            "start Docker Desktop (or `wsl -d <distro> -- sudo service docker start`)",
+        )
+    ]
+
+
+def check_vps_config():
+    """The relay/collector deployment target, resolved through machine_config (dist DS1).
+
+    What this proves is not that a host is reachable -- it is that the tree does not CONTAIN one.
+    The committed defaults are empty by rule (see the machine_config block), so an OK here means the
+    value came from the gitignored overrides file or an MH_ variable, and the row prints WHICH.
+    A configured host whose key file is missing is a genuine FAIL: that is a broken configuration
+    rather than an absent one, and it fails at deploy time with a confusing ssh error."""
+    out = []
+    host = machine.as_dict().get("VPS_HOST", "")
+    key = machine.as_dict().get("VPS_SSH_KEY", "")
+    src = machine_config_source("VPS_HOST")
+    if host:
+        out.append(Check("Relay VPS", "VPS_HOST", OK, "set, from %s" % src))
+    else:
+        out.append(
+            Check(
+                "Relay VPS",
+                "VPS_HOST",
+                OPT,
+                "not configured -- deploy/tunnel tools REFUSE rather than guess a host",
+                'put {"VPS_HOST": "user@host"} in tools/machine.local.json, or set MH_VPS_HOST',
+            )
+        )
+    if not key:
+        out.append(
+            Check(
+                "Relay VPS",
+                "VPS_SSH_KEY",
+                OPT,
+                "not configured",
+                'put {"VPS_SSH_KEY": "<abs path to the private key>"} in the same file, or set '
+                "MH_VPS_SSH_KEY",
+            )
+        )
+    elif Path(key).is_file():
+        out.append(
+            Check(
+                "Relay VPS",
+                "VPS_SSH_KEY",
+                OK,
+                "set and present, from %s" % machine_config_source("VPS_SSH_KEY"),
+            )
+        )
+    else:
+        out.append(
+            Check(
+                "Relay VPS",
+                "VPS_SSH_KEY",
+                FAIL,
+                "configured but the key file does not exist",
+                "fix the path in tools/machine.local.json (or MH_VPS_SSH_KEY), or clear it",
+            )
+        )
+    return out
+
+
+def machine_config_source(name):
+    """Which layer answered for NAME -- env / the local overrides file / the committed default."""
+    return machine._source_of(name)
+
+
 def check_game_artifacts():
     out = []
     polygon = Path(machine.POLYGON)
@@ -564,6 +761,31 @@ def _ping(host):
         return False
 
 
+def _peer_ssh(ip, remote_cmd, timeout=8):
+    """Minimal, dependency-free ssh runner. Deliberately NOT the mp_run module's ssh(): mp_run imports the
+    patching/desktop modules, and this module must import and run cleanly even when those deps are
+    the very thing --check is about to report missing."""
+    try:
+        return subprocess.run(
+            [
+                "ssh",
+                "-o",
+                "ConnectTimeout=%d" % timeout,
+                "-o",
+                "StrictHostKeyChecking=no",
+                "-i",
+                machine.SSH_KEY,
+                "%s@%s" % (machine.VM_USER, ip),
+                remote_cmd,
+            ],
+            capture_output=True,
+            text=True,
+            timeout=timeout + 5,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+
+
 def check_rig():
     out = []
     peers = [("host (this box)", machine.HOST_IP)] + [
@@ -578,6 +800,27 @@ def check_rig():
                 OK if up else FAIL,
                 "reachable" if up else "no ping reply",
                 "" if up else "power on the LAN peer, or update machine_config RIG_PEER_*/HOST_IP",
+            )
+        )
+        if not up or label.startswith("host"):
+            continue
+        # TL-PROBEDEPLOY: mp:T3b's independent RTT probe is placed by `provision_rig.py`, not
+        # scp'd by hand -- verify it actually landed on THIS peer rather than assuming the last
+        # provisioning run covered it.
+        r = _peer_ssh(
+            ip,
+            'if exist "%s\\udp_rtt_probe.py" (echo PRESENT) else (echo ABSENT)' % machine.VM_DIR,
+        )
+        present = bool(r) and r.returncode == 0 and "PRESENT" in (r.stdout or "")
+        out.append(
+            Check(
+                "Rig peers",
+                f"{label} udp_rtt_probe.py",
+                OK if present else FAIL,
+                "present"
+                if present
+                else "MISSING -- the independent RTT probe (mp:T3b) is undeployed",
+                "" if present else "python tools/provision_rig.py",
             )
         )
     return out
@@ -597,6 +840,9 @@ def run_all():
     checks += check_reva(ghidra_ok)
     checks += check_ghidra_shims()
     checks += check_msvc()
+    checks += check_rust()
+    checks += check_docker()
+    checks += check_vps_config()
     checks += check_game_artifacts()
     checks += check_rig_bootable()
     checks += check_rig()
@@ -628,12 +874,18 @@ def check_ci_tier_list(checks):
     ]
 
 
-_COLORS = {OK: "\033[32m", FAIL: "\033[31m", SKIP: "\033[90m", ABSENT: "\033[90m"}
+_COLORS = {
+    OK: "\033[32m",
+    FAIL: "\033[31m",
+    SKIP: "\033[90m",
+    ABSENT: "\033[90m",
+    OPT: "\033[33m",
+}
 _RESET = "\033[0m"
 
 
 def _fmt(status):
-    tag = {OK: "OK  ", FAIL: "FAIL", SKIP: "SKIP", ABSENT: "ABSN"}[status]
+    tag = {OK: "OK  ", FAIL: "FAIL", SKIP: "SKIP", ABSENT: "ABSN", OPT: "OPT "}[status]
     if sys.stdout.isatty():
         return f"{_COLORS[status]}{tag}{_RESET}"
     return tag
@@ -691,7 +943,7 @@ def main():
         if c.detail:
             line += f" -- {c.detail}"
         print(line)
-        if c.status == FAIL and c.remedy:
+        if c.status in (FAIL, OPT) and c.remedy:
             print(f"         remedy: {c.remedy}")
 
     print()

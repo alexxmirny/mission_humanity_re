@@ -1,0 +1,3334 @@
+{
+  "_what": "THE LOG LINE FORMAT REGISTRY (mp:SES2). One entry per distinct line format that a tool in this repo PARSES out of a stream the injected DLLs write. Built by INVENTORY of what the tree does today -- no format here was invented, proposed or normalised; where a parser and an emitter disagree, the entry says so rather than describing the version that ought to exist. docs/instrument-channels.md measured the state this replaces: ~65 parsed formats across 11 consumer tools with zero shared registry, every parser hard-coding its own needle and nothing connecting a needle to the C++ that emits it.",
+  "_gate": "tools/lint_log_formats.py is what keeps this true, in three arms: STALE ENTRY (a registered needle must still appear in the parser that claims it), UNREGISTERED PARSE (every `; [tag]` channel a registered parser matches must be a registered format of that tool), and STALE EMITTER (a registered `emit` literal must still exist in the named C++ file). The lint's docstring carries the matching rule and its limits; `--selftest` plants each failure and requires it to go red.",
+  "_schema": "id: <stream-prefix>.<slug>, unique. stream: the FILE the line comes from, from `streams` below. emitter: the C++ file that writes it (`null` when nothing in src/mh_dll does -- see `status`). emit: a distinctive fragment of the emitter's format string; what arm C looks for. tags: the `; [tag]` channel tags the format carries, which is what arm B matches against. needles: the exact strings the PARSERS use to recognise it -- verbatim, as they appear in the .py. fields: the values a parser extracts. parsers: `tools/x.py:function`. since: the item or date it appeared. status: `live`, or `stale-emitter` for a needle no current emitter produces. note: the semantics and the trap.",
+  "_status": "SES2 found TWO `stale-emitter` rows by building this inventory; SES2b (dead-ends G198) fixed both parsers and the registry now carries no stale-emitter row. frametime.qpc_freq_header (mp_pacing_report.read_frametimes gated its whole ms conversion on a header token D22 removed, silently nan/0-ing every frame-time column) is DELETED -- the fixed reader shares the real live format (`frametime.row`, `qpc_us`) with mp_analyze's parser instead of needing a separate needle, and refuses rather than guesses when a log's header cannot confirm that shape. net.unplanned_kickoff (mp_analyze's second unplanned-end marker matched text nothing emits) is DELETED outright -- UNPLANNED_END_MARKERS no longer carries it; there is no real emitter to rewire it to (the only place that wording exists is a launch.cpp comment about the retail kick_player_confirm_cb path, which the injected DLL never calls).",
+  "_scope": "NOT EVERY LINE THE DLLs WRITE -- every line a TOOL READS. An emitted line nothing parses is not a format in this sense and is not listed; the channel census that pins the writer set is tools/check_instrument_wiring.py's CHANNEL_OWNERS, and the arm-window ORDER is tools/data/arm_order/*.json. This file is the third leg: what the content means and who depends on it.",
+  "streams": {
+    "mh_net.log": "the CORE-ARM log (fork ruling Q9) despite the name: 51 of the 74 brokered arm steps come from mh.dll, 23 from libmh.dll, 0 from mh_net.dll -- whose `net: ` lines all land after the arm window. Per SESSION. Capped + rotated at [net] log_max_mb since mp:SES2.",
+    "mh_lockstep.log": "per-frame lockstep pacing columns. Per SESSION. `#`-header + whitespace fields.",
+    "mh_frametime.log": "per-PRESENT qpc_us + game mode -- what the player FEELS. Per SESSION.",
+    "mh_temporal.log": "the per-EVENT temporal trace ([trace] temporal=1). Per SESSION; rotates at [trace] temporal_max_mb.",
+    "mh_harness.log": "the determinism/replay instrument's channel, held open and buffered by mh_harness.dll. Per PROCESS -- mh.dll composes the path once and the harness copies the string at init.",
+    "mh_uidrive.log": "the UI-automation channel the rig polls. Per PROCESS, necessarily: the runner discovers ONE directory at launch.",
+    "mh_launch.log": "launch-verb and start-barrier events. Per SESSION.",
+    "session.json": "the session record, structured. Per SESSION, written at the open AND at the close.",
+    "relay.log": "the mh_relay binary's OWN structured log (`src/relay`, tracker mp:R1) -- one JSON object per line by default (`--local` gives human-readable text instead). Per PROCESS: one relay serves every room/session it forwards for, not one per game session.",
+    "mh_crash.marker": "dist LA4's crash marker, written ONCE by mh.dll's vectored exception handler when the game takes a fatal fault. Not a log: one `key=value` block, one WriteFile, per PROCESS, named by the launcher (MH_CRASH_MARKER) or `<exedir>\\logs\\mh_crash_<pid>.marker` when no launcher is listening. Read by the Rust launcher (src/launcher/src/crash.rs), which turns it into report.json's `crash` object -- the thing tools/crash_report.py resolves to a function name. dist LA5 added one key, `ctx=0|1`: whether the handler also wrote a `<marker path>.ctx32` sidecar (see the `mh_crash.ctx32` stream below) -- an unknown key is ignored by construction, so this did not bump MH_CRASH_MARKER_VERSION.",
+    "mh_crash.ctx32": "dist LA5's sidecar, `<marker path>.ctx32` -- present only when the marker's `ctx=1`. NOT key=value text: the raw x86 EXCEPTION_RECORD (80 bytes) immediately followed by the raw CONTEXT (716 bytes), one WriteFile, written by mh.dll's handler (`mh/seams/crash_marker.cpp::write_context`) because it is running natively as the same x86 the fault happened in and so has none of the WOW64 cross-bitness read a 64-bit MiniDumpWriteDump cannot do (LA4's measurement, docs/launcher.md §8). Read by `src/launcher/src/crash.rs::append_exception_stream`, which turns it into a real minidump Exception stream appended to the dump `write_dump` already wrote -- never parsed as text, so it carries no `formats[]` entry of its own.",
+    "mh_video.log": "the mh.dll-only ADVISORY gfx channel (ruling Q4: reported by check_arm_order, never gated) -- [video] arming, the F2 glyph-guard's arm line and its probe notices. Per SESSION. Registered 2026-09-20 for the probe_text trailing-comment notice; nothing parses it."
+  },
+  "formats": [
+    {
+      "id": "net.wall_stamp",
+      "stream": "mh_net.log",
+      "emitter": "src/mh_dll/mh_common/include/mh_run_context.h",
+      "emit": "\"[%02u:%02u:%02u.%03u] \"",
+      "tags": [],
+      "needles": [
+        "^\\[(\\d{2}):(\\d{2}):(\\d{2})\\.(\\d{3})\\]"
+      ],
+      "fields": [
+        "h",
+        "m",
+        "s",
+        "ms"
+      ],
+      "parsers": [
+        "tools/mp_analyze.py:_wall_seconds",
+        "tools/mp_analyze.py:_nots"
+      ],
+      "since": "2026-08-06",
+      "status": "live",
+      "note": "The LOCAL wall-clock prefix on (almost) every line, from mh_log_stamp(). Both mh.dll's seam_log and mh_net.dll's logf emit it from the same inline so the '; ' and 'net: ' lines interleave into one timeline. Every anchored parser strips it first (_nots); an unstamped line is tolerated."
+    },
+    {
+      "id": "net.session_match_id",
+      "stream": "mh_net.log",
+      "emitter": "src/mh_dll/mh/seams/net_discovery.cpp",
+      "emit": "; [session] match_id=",
+      "tags": [
+        "session"
+      ],
+      "needles": [
+        "\\[session\\]\\s*match_id=([0-9a-f]{32})",
+        "^; \\[session\\] match_id=([0-9a-fA-F]+)\\s*$"
+      ],
+      "fields": [
+        "match_id"
+      ],
+      "parsers": [
+        "tools/mp_analyze.py:parse_match_ids",
+        "tools/crash_report.py:session_match_ids_in_zip"
+      ],
+      "since": "mp:SES0",
+      "status": "live",
+      "note": "The UUIDv7 match id. Read as a LIST (de-duplicated by consecutive-equal), not a scalar: a peer that re-hosts without restarting logs a second one, and mp_analyze REFUSES to pair two peers whose ids differ."
+    },
+    {
+      "id": "net.session_begin",
+      "stream": "mh_net.log",
+      "emitter": "src/mh_dll/mh/seams/net_discovery.cpp",
+      "emit": "SESSION_BEGIN",
+      "tags": [],
+      "needles": [
+        "SESSION_BEGIN"
+      ],
+      "fields": [
+        "match_id",
+        "slot",
+        "role",
+        "build",
+        "map",
+        "map_hash",
+        "roster",
+        "step_ms"
+      ],
+      "parsers": [
+        "tools/mp_analyze.py:discover"
+      ],
+      "since": "mp:SES1",
+      "status": "live",
+      "note": "key=value session opener, written at the moment the session directory opens. session.json carries the same fields, and the tools read THAT -- this line is the human-readable half of the same record."
+    },
+    {
+      "id": "net.session_end",
+      "stream": "mh_net.log",
+      "emitter": "src/mh_dll/mh/seams/net_discovery.cpp",
+      "emit": "SESSION_END",
+      "tags": [
+        "session"
+      ],
+      "needles": [
+        "SESSION_END"
+      ],
+      "fields": [
+        "reason",
+        "final_step",
+        "stalls"
+      ],
+      "parsers": [
+        "tools/mp_analyze.py:discover",
+        "tools/check_graceful_quit.py:check"
+      ],
+      "since": "mp:SES1",
+      "status": "live",
+      "note": "The closer. A crashed peer never writes one, which is why session.json is also written AT THE OPEN -- an empty `reason` in session.json IS the crashed-peer marker.  TAG ADDED AT U19: the line has always been written `; [session] SESSION_END ...`, but this row carried no `tags`, so lint_log_formats arm B could not connect a tool that reads it to this entry -- the first tool to hold the tagged literal (check_graceful_quit) went red against a registry that was simply incomplete here, not wrong about the format."
+    },
+    {
+      "id": "net.desync_watch",
+      "stream": "mh_net.log",
+      "emitter": "src/mh_dll/mh/desync/desync_watch.cpp",
+      "emit": "; [desync] ",
+      "tags": [
+        "desync"
+      ],
+      "needles": [
+        ";\\s*\\[desync\\]\\s*(.*)$",
+        "STATUS:"
+      ],
+      "fields": [
+        "armed",
+        "cost_probe",
+        "notices",
+        "mismatch_lines",
+        "samples",
+        "compared",
+        "mismatching",
+        "too_old"
+      ],
+      "parsers": [
+        "tools/mp_analyze.py:parse_desync",
+        "tools/mp_analyze.py:desync_counts"
+      ],
+      "since": "mp:D21",
+      "status": "live",
+      "note": "ONE tag with seven dispatched bodies (ARMED / COST PROBE / NOTICE SHOWN / *** DESYNC / STATUS / INERT / DISABLED). The *** DESYNC lines are THROTTLED, so their count is a floor -- the STATUS line carries the real tally and is what a verdict must read."
+    },
+    {
+      "id": "net.tombstone_armed_names",
+      "stream": "mh_net.log",
+      "emitter": "src/mh_dll/mh/hook/tombstone.cpp",
+      "emit": "[tombstone]",
+      "tags": [
+        "tombstone"
+      ],
+      "needles": [
+        "[tombstone]"
+      ],
+      "fields": [
+        "domain",
+        "symbols"
+      ],
+      "parsers": [
+        "tools/mp_analyze.py:parse_match_end",
+        "tools/check_arm_order.py:is_bulk"
+      ],
+      "since": "fork X-TOMB",
+      "status": "live",
+      "note": "The per-domain / per-symbol tombstone rows. THE TRAP: these merely NAME the player-removal functions, so `mp_analyze`'s unplanned-end scan matched them on every healthy run until _MARKER_NOISE excluded them. check_arm_order folds the same rows OUT of its order gate as contents rather than order."
+    },
+    {
+      "id": "net.tombstone_headline",
+      "stream": "mh_net.log",
+      "emitter": "src/mh_dll/mh/hook/tombstone.cpp",
+      "emit": "bodies armed",
+      "tags": [],
+      "needles": [
+        "^; \\[tombstone\\] (\\d+) bodies armed"
+      ],
+      "fields": [
+        "bodies_armed"
+      ],
+      "parsers": [
+        "tools/check_arm_order.py:check_spine_armed"
+      ],
+      "since": "fork F3A",
+      "status": "live",
+      "note": "The COUNT, which the order gate structurally cannot see (normalize() masks every digit). --spine-armed requires it non-zero, which is the arm that would catch 'the tombstones armed nothing'."
+    },
+    {
+      "id": "net.statebind_regions",
+      "stream": "mh_net.log",
+      "emitter": "src/mh_dll/mh/seams/net_seams.cpp",
+      "emit": "[statebind] regions bound",
+      "tags": [
+        "statebind"
+      ],
+      "needles": [
+        "^; \\[statebind\\] regions bound: (\\d+)/(\\d+),"
+      ],
+      "fields": [
+        "bound",
+        "total"
+      ],
+      "parsers": [
+        "tools/check_arm_order.py:check_spine_armed"
+      ],
+      "since": "fork SB-BIND",
+      "status": "live",
+      "note": "Checked bound == total, not merely non-zero: a partial walk ('the walk is holey') is a distinct failure from no walk at all."
+    },
+    {
+      "id": "net.promote_live",
+      "stream": "mh_net.log",
+      "emitter": "src/mh_dll/libmh/lockstep/net_session.cpp",
+      "emit": "(OURS is live)",
+      "tags": [
+        "promote"
+      ],
+      "needles": [
+        "\\[promote\\]\\s+([A-Za-z0-9_]+): call #(\\d+) \\(OURS is live\\)",
+        "(OURS is live)"
+      ],
+      "fields": [
+        "seam",
+        "call_count"
+      ],
+      "parsers": [
+        "tools/test_ui.py:peer_promotion",
+        "tools/check_arm_order.py:is_bulk"
+      ],
+      "since": "fork F3A",
+      "status": "live",
+      "note": "THE NEEDLE-COLLISION CASE. The suffix is emitted from ~15 TUs across mh::lockstep, mh::orders, mh::ai and mh::sim with BARE seam names, so a grep for any such line overreads WHICH closure is live. test_ui keys on the captured seam name, never on the suffix alone."
+    },
+    {
+      "id": "net.promote_partial",
+      "stream": "mh_net.log",
+      "emitter": "src/mh_dll/libmh/ai/ai_promote.cpp",
+      "emit": "seams installed",
+      "tags": [
+        "promote"
+      ],
+      "needles": [
+        "; \\[promote\\] (\\w+): (\\d+)/(\\d+) seams installed -- PARTIAL"
+      ],
+      "fields": [
+        "subsystem",
+        "installed",
+        "total"
+      ],
+      "parsers": [
+        "tools/test_ui.py:soak_report"
+      ],
+      "since": "2026-09-05",
+      "status": "live",
+      "note": "The DLL's OWN invalidity verdict. It was emitted for months before the Python side honoured it -- two coverage baselines had been recorded off runs the DLL had already declared invalid."
+    },
+    {
+      "id": "net.rebind_headline",
+      "stream": "mh_net.log",
+      "emitter": "src/mh_dll/libmh/state/rebind_arming.cpp",
+      "emit": "[rebind]",
+      "tags": [
+        "rebind"
+      ],
+      "needles": [
+        "[rebind]"
+      ],
+      "fields": [
+        "armed",
+        "total",
+        "mode"
+      ],
+      "parsers": [
+        "tools/check_arm_order.py:is_bulk",
+        "tools/test_ui.py:soak_report"
+      ],
+      "since": "fork LIB-REBIND",
+      "status": "live",
+      "note": "Two shapes under one tag: the structural HEADLINE (`armed N of M row(s) [config mode=...]`) and ~716 BULK per-row `sym -> OURS` lines that check_arm_order folds out. The bulk half is contents; only the headline is order-gated."
+    },
+    {
+      "id": "net.config_mode",
+      "stream": "mh_net.log",
+      "emitter": "src/mh_dll/libmh/state/rebind_arming.cpp",
+      "emit": "[config mode=",
+      "tags": [],
+      "needles": [
+        "\\[config mode=(\\w+)\\]"
+      ],
+      "fields": [
+        "mode"
+      ],
+      "parsers": [
+        "tools/check_arm_order.py:detect_mode"
+      ],
+      "since": "fork F3A",
+      "status": "live",
+      "note": "First axis of check_arm_order's baseline key. ABSENT under configuration (1), because its emitter lives inside the libmh.dll that configuration does not have -- which is why the config1 axis is tested FIRST."
+    },
+    {
+      "id": "net.interlock_end",
+      "stream": "mh_net.log",
+      "emitter": "src/mh_dll/mh/hook/promoted.cpp",
+      "emit": "detour install(s)",
+      "tags": [
+        "interlock"
+      ],
+      "needles": [
+        ";\\s*\\[interlock\\]\\s+.*detour install\\(s\\)\\s",
+        "; [interlock] "
+      ],
+      "fields": [
+        "installs"
+      ],
+      "parsers": [
+        "tools/check_arm_order.py:read_log",
+        "tools/check_module_bind.py:classify",
+        "tools/test_ui.py:install_refusal_lines"
+      ],
+      "since": "fork F3A",
+      "status": "live",
+      "note": "MH_Seam_Init's LAST report, and therefore the arm window's END MARKER. A missing one is a REFUSAL in both gates, never a clean read -- after it the log is the scenario talking, whose order is a property of the UI script rather than of the arm."
+    },
+    {
+      "id": "net.modules_outcome",
+      "stream": "mh_net.log",
+      "emitter": "src/mh_dll/mh/seams/module_bind.cpp",
+      "emit": "[modules]",
+      "tags": [
+        "modules"
+      ],
+      "needles": [
+        "[modules]",
+        "NOT BOUND",
+        "ABI MISMATCH"
+      ],
+      "fields": [
+        "module",
+        "outcome"
+      ],
+      "parsers": [
+        "tools/check_module_bind.py:classify",
+        "tools/check_arm_order.py:detect_mode"
+      ],
+      "since": "fork F4D",
+      "status": "live",
+      "note": "One outcome line per satellite per boot (absent / declined / wrong module / ABI mismatch / BOUND at). Since F4D two share the log, so the module tag capture is load-bearing -- and `libmh: NOT BOUND` is what selects check_arm_order's flat `config1` baseline."
+    },
+    {
+      "id": "net.libmh_crossings",
+      "stream": "mh_net.log",
+      "emitter": "src/mh_dll/mh/seams/libmh_bind.cpp",
+      "emit": "crossings=",
+      "tags": [
+        "libmh"
+      ],
+      "needles": [
+        "; [libmh] crossings=",
+        "absent-calls="
+      ],
+      "fields": [
+        "crossings",
+        "absent_calls",
+        "configuration"
+      ],
+      "parsers": [
+        "tools/check_module_bind.py:check_libmh"
+      ],
+      "since": "fork F4D",
+      "status": "live",
+      "note": "Emitted on the FIRST PRESENTED FRAME, not at arm time: absence means the run never presented a frame, NOT zero crossings. A lane that binds libmh and never calls through it reads exactly like one that crossed 13,465 times, which is what the counters exist to separate."
+    },
+    {
+      "id": "net.uitest_lane",
+      "stream": "mh_net.log",
+      "emitter": "src/mh_dll/mh/config/config.h",
+      "emit": "[uitest]",
+      "tags": [
+        "uitest"
+      ],
+      "needles": [
+        "; [uitest] lane="
+      ],
+      "fields": [
+        "lane"
+      ],
+      "parsers": [
+        "tools/check_module_bind.py:selftest"
+      ],
+      "since": "2026-07-24",
+      "status": "live",
+      "note": "The lane banner the UI harness's ini section produces. check_module_bind only carries it as a fixture line -- it is registered so that the tag its fixture matches is a format the registry names."
+    },
+    {
+      "id": "net.owner_table_full",
+      "stream": "mh_net.log",
+      "emitter": "src/mh_dll/mh/hook/promoted.cpp",
+      "emit": "[owner] TABLE FULL",
+      "tags": [
+        "owner"
+      ],
+      "needles": [
+        "; \\[owner\\] TABLE FULL \\((\\d+) slots\\) at ([0-9A-Fa-f]+)"
+      ],
+      "fields": [
+        "slots",
+        "first_drop_addr"
+      ],
+      "parsers": [
+        "tools/test_ui.py:soak_report"
+      ],
+      "since": "2026-09-05",
+      "status": "live",
+      "note": "claim_entry's capacity overflow. Further claims are DROPPED silently, so this is failed by the same rule as a PARTIAL install: the run is invalid, not merely noisy."
+    },
+    {
+      "id": "net.run_config",
+      "stream": "mh_net.log",
+      "emitter": "src/mh_dll/libmh/lockstep/turn_engine.cpp",
+      "emit": "RUN-CONFIG:",
+      "tags": [],
+      "needles": [
+        "RUN-CONFIG:"
+      ],
+      "fields": [
+        "verdict"
+      ],
+      "parsers": [
+        "tools/test_ui.py:peer_promotion",
+        "tools/test_ui.py:det_run_report"
+      ],
+      "since": "2026-09-05",
+      "status": "live",
+      "note": "The machine-readable promotion verdict. Only SHIP counts as promoted; DIAGNOSTIC / INVALID / REFUSED are each 'not this', and reading the line as a boolean loses that."
+    },
+    {
+      "id": "net.exit_witness",
+      "stream": "mh_net.log",
+      "emitter": "src/mh_dll/mh/seams/net_diag.cpp",
+      "emit": "; EXIT ",
+      "tags": [],
+      "needles": [
+        "; EXIT "
+      ],
+      "fields": [
+        "caller",
+        "mode",
+        "sess",
+        "gclk"
+      ],
+      "parsers": [
+        "tools/ui_test.py:exit_witness"
+      ],
+      "since": "mp:D15",
+      "status": "live",
+      "note": "The self-driven exit witness. ABSENCE IS ONLY EVIDENCE once net.exit_witness_armed confirms it was armed -- the canonical instance of the absent-line discipline in this tree."
+    },
+    {
+      "id": "net.exit_witness_armed",
+      "stream": "mh_net.log",
+      "emitter": "src/mh_dll/mh/seams/net_diag.cpp",
+      "emit": "exit witness armed on utils_abort",
+      "tags": [],
+      "needles": [
+        "exit witness armed on utils_abort"
+      ],
+      "fields": [],
+      "parsers": [
+        "tools/ui_test.py:exit_witness"
+      ],
+      "since": "mp:D15",
+      "status": "live",
+      "note": "The arm banner that makes the line above readable. A sibling banner for llm_wnd_on_destroy exists and is deliberately NOT read: one armed witness is enough to tell 'never armed' from 'armed and silent'."
+    },
+    {
+      "id": "net.present_hook_armed",
+      "stream": "mh_net.log",
+      "emitter": "src/mh_dll/mh/seams/net_diag.cpp",
+      "emit": "present hook armed",
+      "tags": [],
+      "needles": [
+        "present hook armed"
+      ],
+      "fields": [
+        "frametime_log",
+        "eager_advertise"
+      ],
+      "parsers": [
+        "tools/mp_analyze.py:find_lobby_clip_qpc"
+      ],
+      "since": "2026-07-20",
+      "status": "live",
+      "note": "Used purely as a wall-clock anchor for the D22 lobby/game clip, never for its own fields."
+    },
+    {
+      "id": "net.present_hook_refused",
+      "stream": "mh_net.log",
+      "emitter": "src/mh_dll/mh/seams/net_lockstep.cpp",
+      "emit": "present hook NOT armed",
+      "tags": [],
+      "needles": [
+        "present hook NOT armed"
+      ],
+      "fields": [],
+      "parsers": [
+        "tools/test_ui.py:install_refusal_lines"
+      ],
+      "since": "G99",
+      "status": "live",
+      "note": "The ONLY entry in test_ui's INSTALL_REFUSALS table: an install-time refusal that aborts the WHOLE suite rather than one scenario, because capture, the UI driver and the overlay all piggyback on_present. The table's own comment records what is deliberately NOT a needle and why -- `[interlock] install_trampoline at ...` is the line that named the outage, but a HEALTHY run carries one too (the MP D14 resync detour, DISPLACED because its target is promoted), so matching it would abort the suite on any ordinary UI regression and blame an unrelated line. A check whose candidate set is not its verdict."
+    },
+    {
+      "id": "net.session_begin_multi",
+      "stream": "mh_net.log",
+      "emitter": "src/mh_dll/mh/seams/net_seams.cpp",
+      "emit": "session_begin_multi ENTER",
+      "tags": [],
+      "needles": [
+        "session_begin_multi ENTER"
+      ],
+      "fields": [
+        "p54bc",
+        "pcount",
+        "sess",
+        "gclk"
+      ],
+      "parsers": [
+        "tools/mp_analyze.py:find_lobby_clip_qpc"
+      ],
+      "since": "2026-07-20",
+      "status": "live",
+      "note": "The other half of the lobby-clip anchor pair. The fallback when neither is present is the longest contiguous GAME_MODE 3 run in mh_frametime.log."
+    },
+    {
+      "id": "net.gameover_enter",
+      "stream": "mh_net.log",
+      "emitter": "src/mh_dll/mh/seams/net_lockstep.cpp",
+      "emit": "on_gameover ENTER",
+      "tags": [],
+      "needles": [
+        "on_gameover ENTER",
+        "gclk=(\\d+)"
+      ],
+      "fields": [
+        "gclk_ms"
+      ],
+      "parsers": [
+        "tools/mp_analyze.py:parse_match_end"
+      ],
+      "since": "mp:D19",
+      "status": "live",
+      "note": "Only gclk is extracted; sess/outcome/downgrade are on the line and ignored."
+    },
+    {
+      "id": "net.time_tick_armed",
+      "stream": "mh_net.log",
+      "emitter": "src/mh_dll/mh/seams/net_lockstep.cpp",
+      "emit": "time_tick hook armed",
+      "tags": [],
+      "needles": [
+        "time_tick hook armed",
+        "lockstep_step="
+      ],
+      "fields": [
+        "lockstep_step",
+        "adaptive",
+        "sim_step",
+        "rx_spin"
+      ],
+      "parsers": [
+        "tools/mp_pacing_report.py:armed_config"
+      ],
+      "since": "2026-07-26",
+      "status": "live",
+      "note": "Deliberately re-reads what ACTUALLY armed rather than trusting the requested config -- a silent relaunch failure on 2026-07-26 made a report describe a config the run never had. 4 of its ~8 key=value tokens are captured; the rest are on the line and unread."
+    },
+    {
+      "id": "net.game_speed",
+      "stream": "mh_net.log",
+      "emitter": "src/mh_dll/mh/seams/net_lockstep.cpp",
+      "emit": "game_speed:",
+      "tags": [],
+      "needles": [
+        "game_speed:\\s*(\\d+)%"
+      ],
+      "fields": [
+        "percent"
+      ],
+      "parsers": [
+        "tools/test_ui.py:sp_arm_game_speed"
+      ],
+      "since": "2026-09-05",
+      "status": "live",
+      "note": "Absence means a build older than the line, NOT 100% -- the coverage baselines do not reproduce without the speed, so assuming a default would silently describe a different measurement."
+    },
+    {
+      "id": "net.transport_event",
+      "stream": "mh_net.log",
+      "emitter": "src/mh_dll/mh_net/net_transport.cpp",
+      "emit": "net: ",
+      "tags": [],
+      "needles": [
+        "net:"
+      ],
+      "fields": [
+        "raw"
+      ],
+      "parsers": [
+        "tools/mp_analyze.py:analyse"
+      ],
+      "since": "mp:A0",
+      "status": "live",
+      "note": "The generic transport-prefix bucket: collected and printed verbatim, and used as a presence signal for 'was there any network activity'. The specific net: formats below are recognised by their own needles ON TOP of this prefix."
+    },
+    {
+      "id": "net.welcome_player",
+      "stream": "mh_net.log",
+      "emitter": "src/mh_dll/mh_net/net_transport.cpp",
+      "emit": "net: WELCOME -- host assigned us player",
+      "tags": [],
+      "needles": [
+        "assigned us player (\\d+)"
+      ],
+      "fields": [
+        "player_id"
+      ],
+      "parsers": [
+        "tools/mp_analyze.py:role_of"
+      ],
+      "since": "mp:A0",
+      "status": "live",
+      "note": "Preferred over the CLIENT-connected guess because it carries the HOST-ASSIGNED id rather than the pre-assignment one."
+    },
+    {
+      "id": "net.host_listening",
+      "stream": "mh_net.log",
+      "emitter": "src/mh_dll/mh_net/net_transport.cpp",
+      "emit": "net: HOST listening on",
+      "tags": [],
+      "needles": [
+        "HOST listening"
+      ],
+      "fields": [],
+      "parsers": [
+        "tools/mp_analyze.py:role_of"
+      ],
+      "since": "mp:A0",
+      "status": "live",
+      "note": "Presence-only; infers role=host."
+    },
+    {
+      "id": "net.client_connected",
+      "stream": "mh_net.log",
+      "emitter": "src/mh_dll/mh_net/net_transport.cpp",
+      "emit": "net: CLIENT connected to",
+      "tags": [],
+      "needles": [
+        "CLIENT connected",
+        "as player (\\d+)"
+      ],
+      "fields": [
+        "player_id"
+      ],
+      "parsers": [
+        "tools/mp_analyze.py:role_of"
+      ],
+      "since": "mp:A0",
+      "status": "live",
+      "note": "Fallback role source, consulted only when net.welcome_player matched nothing."
+    },
+    {
+      "id": "net.conn_is_player",
+      "stream": "mh_net.log",
+      "emitter": "src/mh_dll/mh_net/net_transport.cpp",
+      "emit": "net: conn %d is player %d",
+      "tags": [],
+      "needles": [
+        "player 1"
+      ],
+      "fields": [
+        "conn",
+        "player_id"
+      ],
+      "parsers": [
+        "tools/mp_run.py:main"
+      ],
+      "since": "mp:A0",
+      "status": "live",
+      "note": "Matched as the literal substring 'player 1' by the U14 drop-test path -- a formatted-slot needle that would not survive a two-digit player id. Registered as it is, not as it should be."
+    },
+    {
+      "id": "net.watchdog_armed",
+      "stream": "mh_net.log",
+      "emitter": "src/mh_dll/mh_net/net_transport.cpp",
+      "emit": "net: link watchdog armed",
+      "tags": [],
+      "needles": [
+        "link watchdog armed",
+        "drop after (\\d+) ms"
+      ],
+      "fields": [
+        "ping_ms",
+        "rx_timeout_ms"
+      ],
+      "parsers": [
+        "tools/mp_analyze.py:parse_match_end"
+      ],
+      "since": "mp:R-live",
+      "status": "live",
+      "note": "Read once per file; mp_analyze falls back to a hardcoded 10000 ms if it never appears."
+    },
+    {
+      "id": "net.watchdog_blocked",
+      "stream": "mh_net.log",
+      "emitter": "src/mh_dll/mh_net/net_transport.cpp",
+      "emit": "net: link watchdog was blocked",
+      "tags": [],
+      "needles": [
+        "watchdog was blocked",
+        "blocked (\\d+) ms"
+      ],
+      "fields": [
+        "max_block_ms"
+      ],
+      "parsers": [
+        "tools/mp_analyze.py:parse_match_end"
+      ],
+      "since": "mp:R-live",
+      "status": "live",
+      "note": "A self-reported PROCESS stall (a send holding the conn lock, a suspend) -- tracked as a max over the file."
+    },
+    {
+      "id": "net.fast_drop",
+      "stream": "mh_net.log",
+      "emitter": "src/mh_dll/mh/seams/net_lockstep.cpp",
+      "emit": "fast-drop: transport-dead peer",
+      "tags": [],
+      "needles": [
+        "fast-drop: transport-dead peer"
+      ],
+      "fields": [
+        "side"
+      ],
+      "parsers": [
+        "tools/mp_analyze.py:parse_match_end",
+        "tools/check_graceful_quit.py:check"
+      ],
+      "since": "mp:U17",
+      "status": "live",
+      "note": "An UNPLANNED-END marker: the run ended because a peer's transport died, not because the match finished."
+    },
+    {
+      "id": "net.graceful_leave_broadcast",
+      "stream": "mh_net.log",
+      "emitter": "src/mh_dll/mh/seams/net_lockstep.cpp",
+      "emit": "graceful-leave: broadcast self-removal side=",
+      "tags": [],
+      "needles": [
+        "; U17 graceful-leave: broadcast self-removal side="
+      ],
+      "fields": [
+        "side"
+      ],
+      "parsers": [
+        "tools/check_graceful_quit.py:check"
+      ],
+      "since": "mp:U19 (2026-09-18)",
+      "status": "live",
+      "note": "The quitter's own CLEAN removal (subtype 8), written AFTER llm_net_player_remove returns, so the line's presence means the frame was handed to the transport -- not that it arrived. It lands in the MENU run directory, not the session one: SES1's mp_session_close(\"quit\") runs a few statements earlier in the same seam and has already switched the peer's log folder. Default ON since U19."
+    },
+    {
+      "id": "net.graceful_leave_disabled",
+      "stream": "mh_net.log",
+      "emitter": "src/mh_dll/mh/seams/net_lockstep.cpp",
+      "emit": "graceful-leave DISABLED by config",
+      "tags": [],
+      "needles": [
+        "; U17 graceful-leave DISABLED by config"
+      ],
+      "fields": [],
+      "parsers": [
+        "tools/check_graceful_quit.py:check"
+      ],
+      "since": "mp:U19 (2026-09-18)",
+      "status": "live",
+      "note": "The arm-time line for the OPT-OUT, printed for the abnormal case only -- which since U19 is graceful_leave=0. tools/data/arm_order/*.json record the healthy boot of five configurations, so a line present in a healthy run is a baseline row and could only be added together with five real boots to re-record them; naming the disabled case instead costs nothing and is what a reader of a slow-departure report needs to see."
+    },
+    {
+      "id": "net.u40_relink",
+      "stream": "mh_net.log",
+      "emitter": "src/mh_dll/mh/seams/net_seams.cpp",
+      "emit": "U40 relink: re-initialising the transport",
+      "tags": [],
+      "needles": [
+        "; U40 relink: re-initialising the transport"
+      ],
+      "fields": [],
+      "parsers": [
+        "tools/check_graceful_quit.py:check"
+      ],
+      "since": "mp:U19 (2026-09-18)",
+      "status": "live",
+      "note": "lazy_start consuming U40's relink latch -- the ONE site allowed to re-enter MH_Net_InitEx on a started transport. Read by check_graceful_quit as an ORDERING assertion rather than a presence one: if it appears BEFORE the graceful-leave broadcast, the departure announcement closed its own socket first and the frame went to a handshaking transport (the U19 defect, fixed by the relink-latch hold in on_quit_to_menu)."
+    },
+    {
+      "id": "net.nomodule_banner",
+      "stream": "mh_net.log",
+      "emitter": "src/mh_dll/mh/seams/net_seams.cpp",
+      "emit": "NO NETWORK MODULE",
+      "tags": [],
+      "needles": [
+        "====\\s+NO NETWORK MODULE\\b"
+      ],
+      "fields": [],
+      "parsers": [
+        "tools/check_arm_order.py:detect_mode"
+      ],
+      "since": "fork F4B",
+      "status": "live",
+      "note": "Second axis of the baseline key. Anchored on its own `====` so it is not satisfied by the separate 'NO NETWORK MODULE' line install_mp_bootstrap writes further down -- a needle-collision caught in review."
+    },
+    {
+      "id": "net.netoff_banner",
+      "stream": "mh_net.log",
+      "emitter": "src/mh_dll/mh/seams/net_seams.cpp",
+      "emit": "MP transport NOT armed",
+      "tags": [],
+      "needles": [
+        "MP transport NOT armed: \\[net\\] enable="
+      ],
+      "fields": [],
+      "parsers": [
+        "tools/check_arm_order.py:detect_mode"
+      ],
+      "since": "fork F4F",
+      "status": "live",
+      "note": "Fourth axis. `[net] enable=0` is a DIFFERENT fact from a missing module -- measured disjoint over the five shipped lanes, which is why it got its own baseline rather than an `alt`."
+    },
+    {
+      "id": "net.build_stamp",
+      "stream": "mh_net.log",
+      "emitter": "src/mh_dll/mh/seams/module_bind.cpp",
+      "emit": "[build]",
+      "tags": [
+        "build"
+      ],
+      "needles": [
+        "[build]"
+      ],
+      "fields": [
+        "version"
+      ],
+      "parsers": [
+        "tools/check_arm_order.py:is_bulk",
+        "tools/release_package.py:_stamp"
+      ],
+      "since": "fork F5M",
+      "status": "live",
+      "note": "mh_net.log's very first line. Folded OUT of the order gate for a reason unlike the other bulk rows: normalize() cannot make it value-independent (a short sha can survive the hex mask as literal text), so it would red on every tagged build. release_package gates it instead."
+    },
+    {
+      "id": "net.save_loadgame",
+      "stream": "mh_net.log",
+      "emitter": "src/mh_dll/libmh/save/save_live.cpp",
+      "emit": "; [save] LOADGAME",
+      "tags": [
+        "save"
+      ],
+      "needles": [
+        "; [save] LOADGAME"
+      ],
+      "fields": [
+        "step",
+        "name",
+        "rc"
+      ],
+      "parsers": [
+        "tools/test_ui.py:soak_ai_premise"
+      ],
+      "since": "2026-09-05",
+      "status": "live",
+      "note": "The DERIVED-NOT-DECLARED fix for SOAK-SAVED-MIXED: a soak's AI premise is read off whether the load actually returned rc=1, rather than off a scenario flag nobody was checking. An rc=0 load had silently continued and been judged by the wrong premise."
+    },
+    {
+      "id": "lockstep.columns",
+      "stream": "mh_lockstep.log",
+      "emitter": "src/mh_dll/mh/seams/net_lockstep.cpp",
+      "emit": "# wall_ms",
+      "tags": [],
+      "needles": [
+        "wall_ms"
+      ],
+      "fields": [
+        "wall_ms",
+        "clock_ms",
+        "total_ms",
+        "local_h_ms",
+        "committed_ms",
+        "peer0_ms",
+        "peer1_ms",
+        "step_ms",
+        "stall",
+        "pcount",
+        "tx_pkts",
+        "rx_pkts",
+        "since_rx_ms",
+        "sess",
+        "game",
+        "flags",
+        "grace_ms",
+        "syncwait",
+        "countdn",
+        "p54bc",
+        "sync_ms",
+        "sim_burst",
+        "icon_calls",
+        "icon_shown",
+        "srtt0_ms",
+        "srtt1_ms",
+        "rttvar0_ms",
+        "rttvar1_ms",
+        "ipdv0_ms",
+        "ipdv1_ms",
+        "loss0_pm",
+        "loss1_pm",
+        "late_p50_ms",
+        "late_tail95_ms",
+        "late_tail99_ms",
+        "late_n",
+        "late_peer"
+      ],
+      "parsers": [
+        "tools/mp_pacing_report.py:read_lockstep",
+        "tools/mp_analyze.py:parse_lockstep",
+        "tools/check_graceful_quit.py:lockstep_step_ms",
+        "tools/check_shim_rtt.py:main"
+      ],
+      "since": "mp:D9",
+      "status": "live",
+      "note": "THE BEST-STRUCTURED FORMAT IN THE TREE and the only one designed for a column to be added later: a `#`-header naming the columns, then fixed-count whitespace fields. Read TWO different ways -- mp_pacing_report is header-driven (dict(zip(names, parts)) off the file's own header) and mp_analyze is POSITIONAL against a fixed LOCKSTEP_COLS list, so the two tolerate schema drift differently. mp:T3 (2026-09-18) APPENDED 13 columns after icon_shown -- the transport's per-peer srtt/rttvar/ipdv/loss and the lockstep's arrival-lateness reduction. They are the first columns in this stream that can be a NON-NUMERIC token: the literal `n/a`, emitted when the bound transport cannot measure a round trip at all (mh_net.dll has no channel B) or when no sample has landed yet. A zero would read as a perfect link, which is the one answer worse than no answer, so both parsers must tolerate the token rather than assume int()."
+    },
+    {
+      "id": "frametime.row",
+      "stream": "mh_frametime.log",
+      "emitter": "src/mh_dll/mh/seams/net_lockstep.cpp",
+      "emit": "# qpc_us game_mode",
+      "tags": [],
+      "needles": [
+        "# qpc_us game_mode",
+        "qpc_us"
+      ],
+      "fields": [
+        "qpc_us",
+        "game_mode"
+      ],
+      "parsers": [
+        "tools/mp_analyze.py:parse_frametime",
+        "tools/mp_pacing_report.py:read_frametimes"
+      ],
+      "since": "mp:D22",
+      "status": "live",
+      "note": "Per-PRESENT row: microseconds and the game mode. SES2b (dead-ends G198): read_frametimes used to gate its ms conversion on a separate `qpc_freq=` header token D22 removed (recorded here as the now-deleted `frametime.qpc_freq_header` row), so every frame-time column in the pacing report printed nan/0 with exit 0 on every current log. Fixed to match parse_frametime's approach -- the `qpc_us` column has ALWAYS been already-microseconds (true before D22 too, confirmed at `git show 5be708e4`), so ms = us / 1000 needs no frequency at all; the header is used only to CONFIRM the `qpc_us` shape (present under both the old and current header text) before trusting it, and read_frametimes now REFUSES (raises) rather than silently emits nan/0 when it cannot."
+    },
+    {
+      "id": "temporal.event_row",
+      "stream": "mh_temporal.log",
+      "emitter": "src/mh_dll/mh/seams/net_diag.cpp",
+      "emit": "# qpc_us id clk_ms",
+      "tags": [],
+      "needles": [
+        "EVENT",
+        "sim_step"
+      ],
+      "fields": [
+        "qpc",
+        "event_id",
+        "clk_ms",
+        "tot_ms",
+        "com_ms",
+        "loc_ms"
+      ],
+      "parsers": [
+        "tools/temporal_unify.py:load",
+        "tools/temporal_unify.py:step_qpc"
+      ],
+      "since": "2026-07-20",
+      "status": "live",
+      "note": "Per-EVENT rows, recognised STRUCTURALLY (>=6 whitespace ints, not '#'-prefixed) rather than by a needle. step_qpc reduces them to the first sim_step per distinct game-clock value, which is how the two peers' QPC epochs are aligned."
+    },
+    {
+      "id": "temporal.truncation",
+      "stream": "mh_temporal.log",
+      "emitter": "src/mh_dll/mh/seams/net_diag.cpp",
+      "emit": "hit TEV_MAX",
+      "tags": [],
+      "needles": [
+        "hit TEV_MAX"
+      ],
+      "fields": [],
+      "parsers": [
+        "tools/temporal_unify.py:main"
+      ],
+      "since": "2026-07-20",
+      "status": "live",
+      "note": "A '#'-prefixed warning, so load()'s comment filter SKIPS it -- it is found only by a separate whole-file scan run before load() is trusted. Without that scan a truncated capture unifies into a trace that looks complete (the 2026-07-20 sim_step-225-of-800 incident)."
+    },
+    {
+      "id": "temporal.rotation",
+      "stream": "mh_temporal.log",
+      "emitter": "src/mh_dll/mh/seams/net_diag.cpp",
+      "emit": ".prev.log",
+      "tags": [],
+      "needles": [
+        "mh_temporal.log"
+      ],
+      "fields": [],
+      "parsers": [
+        "tools/temporal_unify.py:main"
+      ],
+      "since": "2026-07-25",
+      "status": "live",
+      "note": "NOT A LINE FORMAT BUT A FILE ONE, registered because tools glob it: at [trace] temporal_max_mb the stream rotates to mh_temporal.prev.log. Since mp:SES2 mh_net.log rotates the same way, through the same derivation in mh_common/include/mh_log_rotate.h."
+    },
+    {
+      "id": "uidrive.script_complete",
+      "stream": "mh_uidrive.log",
+      "emitter": "src/mh_dll/mh/seams/ui_drive.cpp",
+      "emit": "; [script] COMPLETE",
+      "tags": [
+        "script"
+      ],
+      "needles": [
+        "; [script] COMPLETE"
+      ],
+      "fields": [],
+      "parsers": [
+        "tools/ui_test.py:local_script_status",
+        "tools/ui_test.py:remote_script_status"
+      ],
+      "since": "mp:D15",
+      "status": "live",
+      "note": "The terminal PASS verdict of a [uitest] script, and the line ui_test polls a peer's run directory for. This is why mh_uidrive.log is PROCESS-scoped and not per-session: a log that followed the session would strand the runner on an empty file and time out every multi-peer scenario."
+    },
+    {
+      "id": "uidrive.script_timeout",
+      "stream": "mh_uidrive.log",
+      "emitter": "src/mh_dll/mh/seams/ui_drive.cpp",
+      "emit": "TIMEOUT at step",
+      "tags": [
+        "script"
+      ],
+      "needles": [
+        "TIMEOUT at step",
+        "ABORT:"
+      ],
+      "fields": [
+        "step",
+        "frames",
+        "elapsed"
+      ],
+      "parsers": [
+        "tools/ui_test.py:local_script_status",
+        "tools/ui_test.py:peer_script_abort"
+      ],
+      "since": "mp:D15",
+      "status": "live",
+      "note": "One physical line serving two readers: a terminal status for the poller, and (with 'ABORT:') the NAME of the step a peer gave up on, so a multi-peer launch reports the cause instead of hitting its own watchdog."
+    },
+    {
+      "id": "uidrive.script_abort",
+      "stream": "mh_uidrive.log",
+      "emitter": "src/mh_dll/mh/seams/ui_drive.cpp",
+      "emit": "; [script] ABORT at step",
+      "tags": [
+        "script"
+      ],
+      "needles": [
+        "; [script] ABORT at step"
+      ],
+      "fields": [
+        "step"
+      ],
+      "parsers": [
+        "tools/ui_test.py:local_script_status"
+      ],
+      "since": "mp:D15",
+      "status": "live",
+      "note": "D15 made a click that resolves no widget a TERMINAL status rather than a still-walking one -- before that a dead script was indistinguishable from a slow one until the watchdog fired."
+    },
+    {
+      "id": "uidrive.script_signal",
+      "stream": "mh_uidrive.log",
+      "emitter": "src/mh_dll/mh/seams/ui_drive.cpp",
+      "emit": "; [script] SIGNAL",
+      "tags": [
+        "script"
+      ],
+      "needles": [
+        "; \\[script\\] SIGNAL (\\S+)"
+      ],
+      "fields": [
+        "signal_name"
+      ],
+      "parsers": [
+        "tools/ui_test.py:peer_signals"
+      ],
+      "since": "mp:D15",
+      "status": "live",
+      "note": "The rig-ferried rendezvous: one peer's `signal <name>` becomes rig_<name>.flag in every other peer's run directory. Those flags are PROCESS-scoped for the same reason the log is."
+    },
+    {
+      "id": "harness.armed_banner",
+      "stream": "mh_harness.log",
+      "emitter": "src/mh_dll/mh_harness/harness.cpp",
+      "emit": "; ==== mh replay harness armed",
+      "tags": [],
+      "needles": [
+        "; ==== mh replay harness armed"
+      ],
+      "fields": [
+        "seed_step"
+      ],
+      "parsers": [
+        "tools/mp_analyze.py:parse_harness"
+      ],
+      "since": "mp:D6",
+      "status": "live",
+      "note": "RESETS the parsed segment to the LAST run in the file -- a file with several armings keeps only the newest, because the harness appends across relaunches."
+    },
+    {
+      "id": "harness.arming_line",
+      "stream": "mh_harness.log",
+      "emitter": "src/mh_dll/mh_harness/harness.cpp",
+      "emit": "; all_ai=",
+      "tags": [],
+      "needles": [
+        "; all_ai="
+      ],
+      "fields": [
+        "all_ai",
+        "observer",
+        "gameover_step",
+        "gameover_stop"
+      ],
+      "parsers": [
+        "tools/mp_analyze.py:parse_harness"
+      ],
+      "since": "mp:D6",
+      "status": "live",
+      "note": "Stored as raw text and re-parsed later by regex out of the stored string, not re-read from the file."
+    },
+    {
+      "id": "harness.step_row",
+      "stream": "mh_harness.log",
+      "emitter": "src/mh_dll/mh_harness/harness.cpp",
+      "emit": "; per-region breakdown",
+      "tags": [],
+      "needles": [
+        "per-region breakdown"
+      ],
+      "fields": [
+        "step",
+        "clock",
+        "combined",
+        "state"
+      ],
+      "parsers": [
+        "tools/mp_analyze.py:parse_harness",
+        "tools/mp_run.py:steps_done"
+      ],
+      "since": "mp:D6",
+      "status": "live",
+      "note": "The determinism spine's per-step row has NO literal prefix -- it is recognised structurally (not ';' or 'R', >=4 whitespace fields, first parses as int), so any other 4-field line would misparse as one. The registered needle is the END MARKER that bounds the block; a killed or UI-path run never writes it, which is why test_ui bounds by polling the step count instead of waiting for 'done'."
+    },
+    {
+      "id": "harness.region_row",
+      "stream": "mh_harness.log",
+      "emitter": "src/mh_dll/mh_harness/harness.cpp",
+      "emit": "\"R %lu\"",
+      "tags": [],
+      "needles": [
+        "R "
+      ],
+      "fields": [
+        "step",
+        "per_region_hashes"
+      ],
+      "parsers": [
+        "tools/mp_analyze.py:parse_harness",
+        "tools/test_ui.py:ui_orders_after_last_landing"
+      ],
+      "since": "mp:D6",
+      "status": "live",
+      "note": "A POSITIONAL array matched against REGION_NAMES (generated from tools/data/hash_manifest.json). An INSERTION rather than an append anywhere upstream silently relabels every region -- the file's own header says so."
+    },
+    {
+      "id": "harness.rdump_row",
+      "stream": "mh_harness.log",
+      "emitter": "src/mh_dll/mh_harness/harness.cpp",
+      "emit": "\"RX %lu %d %lu \"",
+      "tags": [],
+      "needles": [
+        "RX "
+      ],
+      "fields": [
+        "step",
+        "rid",
+        "offset",
+        "hex_bytes"
+      ],
+      "parsers": [
+        "tools/fixture_replay.py:cmd_counts_guard",
+        "tools/abc_region_diff.py:read_rx"
+      ],
+      "since": "LIB-REF-REC (registered TL-GATE-D25FX, 2026-09-20)",
+      "status": "live",
+      "note": "The RAW REGION DUMP: [harness] rdump_rid=<hash column>;rdump_lo=<step>;rdump_hi=<step> dumps that region's bytes at the SAME sample point as the `R` line, 64 bytes per row, `rid` = the hash column (-1 for an rdump_addr window, -2 for an rdump_regid registry region). counts-guard reads the order_queue_count slice off it; abc_region_diff diffs a whole region between two arms to name the bytes a `state` mismatch is about. Was parsed unregistered until 2026-09-20 -- arm B only discovers the `; [tag]` class."
+    },
+    {
+      "id": "harness.hash_fingerprint",
+      "stream": "mh_harness.log",
+      "emitter": "src/mh_dll/mh_harness/harness.cpp",
+      "emit": "; HASH FINGERPRINT",
+      "tags": [],
+      "needles": [
+        "; HASH FINGERPRINT "
+      ],
+      "fields": [
+        "fingerprint"
+      ],
+      "parsers": [
+        "tools/test_ui.py:hash_fingerprint"
+      ],
+      "since": "2026-08-30",
+      "status": "live",
+      "note": "Stamps a golden with the hash implementation that produced it. Without it a golden compared across a hash change diverges in EVERY region at once and is misread as catastrophic breakage rather than a stale file."
+    },
+    {
+      "id": "harness.gameover",
+      "stream": "mh_harness.log",
+      "emitter": "src/mh_dll/mh_harness/harness.cpp",
+      "emit": "; GAMEOVER survivor=",
+      "tags": [],
+      "needles": [
+        "; GAMEOVER survivor=(\\d+) units=(-?\\d+) buildings=(-?\\d+)"
+      ],
+      "fields": [
+        "survivor",
+        "units",
+        "buildings"
+      ],
+      "parsers": [
+        "tools/test_ui.py:soak_report",
+        "tools/test_ui.py:run_det_conquest"
+      ],
+      "since": "2026-09-05",
+      "status": "live",
+      "note": "Steps past this line are a FINISHED world and must not be counted as coverage."
+    },
+    {
+      "id": "harness.gameover_watch",
+      "stream": "mh_harness.log",
+      "emitter": "src/mh_dll/mh_harness/harness.cpp",
+      "emit": "; GAMEOVER-WATCH step=",
+      "tags": [],
+      "needles": [
+        "; GAMEOVER-WATCH step=(\\d+) alive=(\\d+)"
+      ],
+      "fields": [
+        "step",
+        "alive",
+        "was"
+      ],
+      "parsers": [
+        "tools/test_ui.py:soak_report",
+        "tools/test_ui.py:run_det_conquest"
+      ],
+      "since": "2026-09-05",
+      "status": "live",
+      "note": "STATE-WATCHED (class B), and that is the point: it replaced the entry-hooked presence_lost channel, which a promoted caller bypassing the entry silences (the G120 shape). A drop in `alive` IS the elimination verdict."
+    },
+    {
+      "id": "harness.allai_converted",
+      "stream": "mh_harness.log",
+      "emitter": "src/mh_dll/mh_harness/harness.cpp",
+      "emit": "; ALLAI converted",
+      "tags": [],
+      "needles": [
+        "; ALLAI converted (\\d+) human slot\\(s\\)"
+      ],
+      "fields": [
+        "n_converted"
+      ],
+      "parsers": [
+        "tools/test_ui.py:soak_report"
+      ],
+      "since": "2026-09-05",
+      "status": "live",
+      "note": "n_conv == 0 has TWO causes -- status_flags said nothing to convert, or the conversion detour was bypassed by a promoted direct call -- and only the presence of `; ALLAI slot=` tells them apart."
+    },
+    {
+      "id": "harness.libmh_in_call1",
+      "stream": "mh_harness.log",
+      "emitter": "src/mh_dll/libmh/state/host_in.cpp",
+      "emit": "[libmh_in]",
+      "tags": [],
+      "needles": [
+        "\\[libmh_in\\] (libmh_[A-Za-z0-9_]+) call #1"
+      ],
+      "fields": [
+        "entry_name"
+      ],
+      "parsers": [
+        "tools/report_inbound_liveness.py:scan"
+      ],
+      "since": "fork LIB-REF-IN",
+      "status": "live",
+      "note": "Only the FIRST call is tagged `call #1`; that one-shot marker is the liveness signal. The per-call bulk rows under the same tag are folded out of the order gate."
+    },
+    {
+      "id": "harness.libmh_in_arm",
+      "stream": "mh_harness.log",
+      "emitter": "src/mh_dll/mh/seams/net_seams.cpp",
+      "emit": "inbound surface: open=",
+      "tags": [],
+      "needles": [
+        "\\[libmh_in\\] inbound surface: open=(\\d+), version 0x([0-9A-Fa-f]+)"
+      ],
+      "fields": [
+        "open",
+        "version"
+      ],
+      "parsers": [
+        "tools/report_inbound_liveness.py:scan"
+      ],
+      "since": "fork LIB-REF-IN",
+      "status": "live",
+      "note": "open != 1 across the arm lines is reported as a CLOSED SURFACE. It is also check_arm_order's harness-channel END MARKER, emitted at the first hashed sim step -- so a harness-armed run killed at the menu leaves the file EMPTY and is REFUSED rather than passed."
+    },
+    {
+      "id": "harness.libmh_in_trap",
+      "stream": "mh_harness.log",
+      "emitter": "src/mh_dll/libmh/state/host_in.cpp",
+      "emit": "[libmh_in] TRAP",
+      "tags": [],
+      "needles": [
+        "\\[libmh_in\\] TRAP ([^:]+): (\\S+)"
+      ],
+      "fields": [
+        "trap_kind",
+        "trap_target"
+      ],
+      "parsers": [
+        "tools/report_inbound_liveness.py:scan"
+      ],
+      "since": "fork LIB-REF-IN",
+      "status": "live",
+      "note": "Only the FIRST trap is shown in the report's summary line; the rest are counted."
+    },
+    {
+      "id": "harness.tact_frame",
+      "stream": "mh_harness.log",
+      "emitter": "src/mh_dll/mh_harness/harness.cpp",
+      "emit": "T %lu %08X%08X",
+      "tags": [],
+      "needles": [
+        "T "
+      ],
+      "fields": [
+        "tact_frame",
+        "combined_hash"
+      ],
+      "parsers": [
+        "tools/test_ui.py:tact_last_frame",
+        "tools/test_ui.py:tact_read"
+      ],
+      "since": "TACT-DOMAIN",
+      "status": "live",
+      "note": "Tactical's per-frame combined verdict hash. Its siblings TS (sim-only alias, animation window excluded) and TR (per-region row) are SEPARATE hashes rather than a mask, so the three can say WHICH slice moved."
+    },
+    {
+      "id": "harness.tact_clock",
+      "stream": "mh_harness.log",
+      "emitter": "src/mh_dll/mh_harness/harness.cpp",
+      "emit": "; TACT CLOCK",
+      "tags": [],
+      "needles": [
+        "; TACT CLOCK",
+        "tact_frame=(\\d+) rand=(\\d+)/([0-9A-F]+)"
+      ],
+      "fields": [
+        "pin_now",
+        "strat_steps",
+        "tact_frame",
+        "rand_draws",
+        "state_hash"
+      ],
+      "parsers": [
+        "tools/test_ui.py:tact_rand_series"
+      ],
+      "since": "TACT-DOMAIN",
+      "status": "live",
+      "note": "The cheapest first-divergence signal there is: measured seeing drift at frame 1025 where the order stream did not show it until frame 2765."
+    },
+    {
+      "id": "harness.tj_replay_verdict",
+      "stream": "mh_harness.log",
+      "emitter": "src/mh_dll/mh_harness/harness.cpp",
+      "emit": "; TJ REPLAY: issued",
+      "tags": [],
+      "needles": [
+        "; TJ REPLAY: issued (\\d+) (?:input record\\(s\\) \\+ \\d+ barrier\\(s\\) of|of) (\\d+)"
+      ],
+      "fields": [
+        "issued",
+        "loaded"
+      ],
+      "parsers": [
+        "tools/test_ui.py:tact_journal_verdict",
+        "tools/test_ui.py:ui_replay_report"
+      ],
+      "since": "2026-09-07",
+      "status": "live",
+      "note": "ONE regex carrying BOTH spellings: the pre-2026-09-07 'issued N of M' and the widened 'issued N input record(s) + B barrier(s) of M'. The widening broke a positional p[6] reader, which is what the alternation replaced -- the same species of trap as a needle collision, one format evolving instead of two colliding."
+    },
+    {
+      "id": "harness.tj_replay_armed",
+      "stream": "mh_harness.log",
+      "emitter": "src/mh_dll/mh_harness/harness.cpp",
+      "emit": "; TJ REPLAY ARMED:",
+      "tags": [],
+      "needles": [
+        "; TJ REPLAY ARMED:"
+      ],
+      "fields": [
+        "n_loaded"
+      ],
+      "parsers": [
+        "tools/test_ui.py:tact_journal_armed"
+      ],
+      "since": "2026-09-07",
+      "status": "live",
+      "note": "Distinguishes a KILLED run ('armed 14317, then the wall') from a NEVER-ARMED one, which an end-of-run verdict line alone cannot."
+    },
+    {
+      "id": "harness.tj_replay_dropped",
+      "stream": "mh_harness.log",
+      "emitter": "src/mh_dll/mh_harness/harness.cpp",
+      "emit": "; TJ REPLAY DROPPED",
+      "tags": [],
+      "needles": [
+        "; TJ REPLAY DROPPED"
+      ],
+      "fields": [
+        "n_dropped"
+      ],
+      "parsers": [
+        "tools/test_ui.py:tact_journal_dropped"
+      ],
+      "since": "G53",
+      "status": "live",
+      "note": "Lines the loader could not READ, as distinct from lines it deliberately SKIPS. G53: the field scanner rejected 2,154 of 9,311 negative mouse deltas and still logged ARMED."
+    },
+    {
+      "id": "harness.uirec_armed",
+      "stream": "mh_harness.log",
+      "emitter": "src/mh_dll/mh_harness/harness.cpp",
+      "emit": "; UI-REC ARMED",
+      "tags": [],
+      "needles": [
+        "; UI-REC ARMED"
+      ],
+      "fields": [],
+      "parsers": [
+        "tools/test_ui.py:ui_replay_report"
+      ],
+      "since": "2026-09-04",
+      "status": "live",
+      "note": "AN EMPTY LOG IS NOT PROOF THIS NEVER ARMED: the harness buffers and flushes at report points, so a wall-clock kill before any flush looks identical. mh_net.log's eager `ui_journal=1` line is the tiebreaker."
+    },
+    {
+      "id": "harness.ord_header",
+      "stream": "mh_harness.log",
+      "emitter": "src/mh_dll/mh_harness/harness.cpp",
+      "emit": ";ord %lu",
+      "tags": [],
+      "needles": [
+        ";ord "
+      ],
+      "fields": [
+        "step",
+        "pend",
+        "q",
+        "stage"
+      ],
+      "parsers": [
+        "tools/test_ui.py:ui_orders_after_last_landing"
+      ],
+      "since": "2026-08-15",
+      "status": "live",
+      "note": "A ONE-SPACE prefix, and its sibling harness.ord_detail is a THREE-space one. test_ui's own code spells the exclusion out -- startswith(';ord ') and not startswith(';ord   ') -- which is a needle collision inside a single format family, avoided by hand."
+    },
+    {
+      "id": "harness.ord_detail",
+      "stream": "mh_harness.log",
+      "emitter": "src/mh_dll/mh_harness/harness.cpp",
+      "emit": ";ord   ",
+      "tags": [],
+      "needles": [
+        ";ord   "
+      ],
+      "fields": [
+        "own",
+        "unit",
+        "code",
+        "p0",
+        "exec_ms"
+      ],
+      "parsers": [
+        "tools/test_ui.py:ui_order_histogram",
+        "tools/test_ui.py:ui_orders_after_last_landing"
+      ],
+      "since": "2026-08-15",
+      "status": "live",
+      "note": "The three-space detail row. See harness.ord_header for why the space count is load-bearing."
+    },
+    {
+      "id": "harness.land_session_mode",
+      "stream": "mh_harness.log",
+      "emitter": "src/mh_dll/mh_harness/harness.cpp",
+      "emit": "; LAND SESSION_MODE=",
+      "tags": [],
+      "needles": [
+        "; LAND SESSION_MODE=(\\d+)"
+      ],
+      "fields": [
+        "mode"
+      ],
+      "parsers": [
+        "tools/test_ui.py:ui_land_modes"
+      ],
+      "since": "2026-08-20",
+      "status": "live",
+      "note": "land_mode is a SCENARIO property (1 = campaign, 2 = skirmish), not a constant -- hardcoding it failed the tutorial fixture twice. The LAND line carries no step of its own, which is why the R row is read alongside."
+    },
+    {
+      "id": "harness.reloc_report",
+      "stream": "mh_harness.log",
+      "emitter": "src/mh_dll/mh/seams/core_arm.cpp",
+      "emit": "[reloc]",
+      "tags": [],
+      "needles": [
+        "[reloc]"
+      ],
+      "fields": [
+        "regions",
+        "bytes",
+        "slices_moved"
+      ],
+      "parsers": [
+        "tools/test_ui.py:tact_reloc_line"
+      ],
+      "since": "SB-HOSTFREE",
+      "status": "live",
+      "note": "Slices-moved is read back from the DLL's OWN banner rather than assumed from the flag that was passed in: 'I set relocate_state=1' is not evidence anything moved."
+    },
+    {
+      "id": "harness.pin_wallclock",
+      "stream": "mh_harness.log",
+      "emitter": "src/mh_dll/mh_harness/harness.cpp",
+      "emit": "pin_wallclock ARMED",
+      "tags": [],
+      "needles": [
+        "pin_wallclock ARMED"
+      ],
+      "fields": [],
+      "parsers": [
+        "tools/test_ui.py:sp_arm_report"
+      ],
+      "since": "2026-09-04",
+      "status": "live",
+      "note": "A not-armed pin and an armed-but-never-called pin look IDENTICAL in the hashes, so the arm is read explicitly rather than inferred from a matching trajectory."
+    },
+    {
+      "id": "harness.conq_fail",
+      "stream": "mh_harness.log",
+      "emitter": "src/mh_dll/mh_harness/harness.cpp",
+      "emit": "; CONQ FAIL",
+      "tags": [],
+      "needles": [
+        "; CONQ FAIL[^\\r\\n]*"
+      ],
+      "fields": [
+        "reason"
+      ],
+      "parsers": [
+        "tools/test_ui.py:run_det_conquest"
+      ],
+      "since": "2026-09-05",
+      "status": "live",
+      "note": "The conquest workload's own phase watchdog: one needle over several distinct guard-trip sites. A tripped guard fails the run however the match ended."
+    },
+    {
+      "id": "launch.u14_departed",
+      "stream": "mh_launch.log",
+      "emitter": "src/mh_dll/mh/seams/launch.cpp",
+      "emit": "departed",
+      "tags": [],
+      "needles": [
+        "U14",
+        "DROPPED"
+      ],
+      "fields": [
+        "player_id",
+        "kind"
+      ],
+      "parsers": [
+        "tools/mp_run.py:main"
+      ],
+      "since": "mp:U14",
+      "status": "live",
+      "note": "The PASS/FAIL of the whole --drop-test mode hangs on this one line."
+    },
+    {
+      "id": "launch.u28_slot_diff",
+      "stream": "mh_launch.log",
+      "emitter": "src/mh_dll/mh/seams/launch.cpp",
+      "emit": "U28 SLOT DIFF",
+      "tags": [],
+      "needles": [
+        "U28 SLOT DIFF at Start slot[%d]",
+        "bytes differing:"
+      ],
+      "fields": [
+        "slot",
+        "differing_bytes"
+      ],
+      "parsers": [
+        "tools/test_ui.py:det3_barrier_report"
+      ],
+      "since": "mp:U28",
+      "status": "live",
+      "note": "Checked EXACTLY equal to '05' (the race byte), not merely non-empty: pokerace writes ONE field, so anything else on that line is real drift rather than the expected difference."
+    },
+    {
+      "id": "launch.u28_adopted",
+      "stream": "mh_launch.log",
+      "emitter": "src/mh_dll/mh/seams/launch.cpp",
+      "emit": "adopted the host's authoritative",
+      "tags": [],
+      "needles": [
+        "adopted the host's authoritative"
+      ],
+      "fields": [
+        "occupancy"
+      ],
+      "parsers": [
+        "tools/test_ui.py:det3_barrier_report"
+      ],
+      "since": "mp:U28",
+      "status": "live",
+      "note": "Must CO-OCCUR with launch.u28_slot_diff, or the 3-peer start barrier was not actually exercised for that peer -- a pass that proves nothing otherwise."
+    },
+    {
+      "id": "launch.tactical_entered",
+      "stream": "mh_launch.log",
+      "emitter": "src/mh_dll/mh/seams/launch.cpp",
+      "emit": "--tactical",
+      "tags": [],
+      "needles": [
+        "--tactical"
+      ],
+      "fields": [
+        "verdict"
+      ],
+      "parsers": [
+        "tools/test_ui.py:tact_entered"
+      ],
+      "since": "TACT-PREP",
+      "status": "live",
+      "note": "The launch verb's own verdict, read rather than inferred from the harness having logged anything."
+    },
+    {
+      "id": "session.json",
+      "stream": "session.json",
+      "emitter": "src/mh_dll/mh_common/include/mh_session_dir.h",
+      "emit": "match_id",
+      "tags": [],
+      "needles": [
+        "session.json"
+      ],
+      "fields": [
+        "match_id",
+        "slot",
+        "role",
+        "build",
+        "map",
+        "map_hash",
+        "roster",
+        "process_dir",
+        "began_utc",
+        "reason"
+      ],
+      "parsers": [
+        "tools/mp_analyze.py:read_session_json",
+        "tools/crash_report.py:session_context"
+      ],
+      "since": "mp:SES1",
+      "status": "live",
+      "note": "STRUCTURED, not a line format -- deliberately, so a tool never parses prose for the match id. Written at the OPEN as well as at the close, so a crashed peer still leaves one naming its match (an empty `reason` is itself the crashed marker). `process_dir` names the folder the process-scoped streams are in, which is how mp_analyze resolves a peer as session-union-process."
+    },
+    {
+      "id": "net.relay_mode",
+      "stream": "mh_net.log",
+      "emitter": "src/mh_dll/mh_net_udp/udp_relay.cpp",
+      "emit": "net: udp RELAY mode -- ",
+      "tags": [],
+      "needles": [
+        "net: udp RELAY mode -- "
+      ],
+      "fields": [
+        "host",
+        "port",
+        "room",
+        "role"
+      ],
+      "parsers": [],
+      "since": "mp:R1",
+      "status": "live",
+      "note": "The one line that says a run is RELAYED (udp_relay.cpp start(), both roles). No tool parses it yet; it is registered because the registry is the inventory of what the DLLs write for a reader, and a relayed run is exactly the run whose log someone will read."
+    },
+    {
+      "id": "net.relay_leg_up",
+      "stream": "mh_net.log",
+      "emitter": "src/mh_dll/mh_net_udp/udp_relay.cpp",
+      "emit": "net: udp relay leg UP -- ",
+      "tags": [],
+      "needles": [
+        "net: udp relay leg UP -- "
+      ],
+      "fields": [
+        "host",
+        "port",
+        "room",
+        "handle"
+      ],
+      "parsers": [],
+      "since": "mp:R1",
+      "status": "live",
+      "note": "The relay accepted this peer and named it. The handle here is the `handle` field of the relay's own peer_registered event, which is what ties one peer's mh_net.log to a line in the relay's JSON log."
+    },
+    {
+      "id": "net.relay_match_id",
+      "stream": "mh_net.log",
+      "emitter": "src/mh_dll/mh_net_udp/udp_relay.cpp",
+      "emit": "net: udp relay session match_id=",
+      "tags": [],
+      "needles": [
+        "net: udp relay session match_id=([0-9a-f]{32})"
+      ],
+      "fields": [
+        "match_id"
+      ],
+      "parsers": [],
+      "since": "mp:R1",
+      "status": "live",
+      "note": "The R1 acceptance clause in one line: the 32-hex match_id this peer told the relay -- the same id `; [session] match_id=` carries and the same one the relay logs as its `match_id` field. Written once per distinct id, read from the SESSION_INFO both roles already pass through udp_transport.cpp."
+    },
+    {
+      "id": "net.relay_refused",
+      "stream": "mh_net.log",
+      "emitter": "src/mh_dll/mh_net_udp/udp_relay.cpp",
+      "emit": "net: udp relay refused us -- ",
+      "tags": [],
+      "needles": [
+        "net: udp relay refused us -- "
+      ],
+      "fields": [
+        "reason"
+      ],
+      "parsers": [],
+      "since": "mp:R1",
+      "status": "live",
+      "note": "The relay sent an ERROR: no host in the room, room busy, not registered, room full, or no such peer. Logged once per distinct code so a retry loop cannot flood the file."
+    },
+    {
+      "id": "net.relay_protocol_older",
+      "stream": "mh_net.log",
+      "emitter": "src/mh_dll/mh_net_udp/udp_relay.cpp",
+      "emit": "net: udp relay -- relay protocol %u < %u",
+      "tags": [],
+      "needles": [
+        "net: udp relay -- relay protocol (\\d+) < (\\d+)"
+      ],
+      "fields": [
+        "theirs",
+        "ours"
+      ],
+      "parsers": [
+        "tools/check_relay_stale.py:check"
+      ],
+      "since": "mp:R4a",
+      "status": "live",
+      "note": "The relay this peer dialled is BEHIND this build: its WELCOME carried a lower protocol level, or none (theirs=0: a pre-R4a relay sends the 4-byte WELCOME). One line per distinct level seen (a redeployed relay may come back at another), and the same event puts `Relay outdated (protocol <theirs> < <ours>)` on the browser's status line through mh.dll's MH_Seam_RelayNotice. The level rides in HELLO's flags byte (bits 1..7) and in the WELCOME's fifth byte (leg.rs PROTOCOL_LEVEL); what it means for the player: an op this build sends that the relay lacks is a silent bad_op there (dead-ends G241)."
+    },
+    {
+      "id": "net.relay_protocol_newer",
+      "stream": "mh_net.log",
+      "emitter": "src/mh_dll/mh_net_udp/udp_relay.cpp",
+      "emit": "net: udp relay -- relay protocol %u > %u",
+      "tags": [],
+      "needles": [
+        "net: udp relay -- relay protocol (\\d+) > (\\d+)"
+      ],
+      "fields": [
+        "theirs",
+        "ours"
+      ],
+      "parsers": [
+        "tools/check_relay_stale.py:check"
+      ],
+      "since": "mp:R4a",
+      "status": "live",
+      "note": "The relay is NEWER than this build. Information only -- no notice: every op this build sends is inside the relay's table, so nothing will be refused. A matching pair writes neither this nor net.relay_protocol_older."
+    },
+    {
+      "id": "net.relay_protocol_legver",
+      "stream": "mh_net.log",
+      "emitter": "src/mh_dll/mh_net_udp/udp_relay.cpp",
+      "emit": "net: udp relay -- relay protocol leg v%u != v%u",
+      "tags": [],
+      "needles": [
+        "net: udp relay -- relay protocol leg v"
+      ],
+      "fields": [
+        "theirs",
+        "ours"
+      ],
+      "parsers": [],
+      "since": "mp:R4a",
+      "status": "live",
+      "note": "A leg-family datagram from the relay's address at a WIRE version (the header's low nibble) this build does not speak. No WELCOME can follow, so this is the only signal; once per tunnel start, unauthenticated by necessity (a tag under another version is not this build's to check). Notice text: `Incompatible relay (leg v<theirs>/v<ours>)`."
+    },
+    {
+      "id": "net.relay_notice_undeliverable",
+      "stream": "mh_net.log",
+      "emitter": "src/mh_dll/mh_net_udp/udp_relay.cpp",
+      "emit": "net: udp relay -- browser notice not deliverable in this build: ",
+      "tags": [],
+      "needles": [
+        "net: udp relay -- browser notice not deliverable in this build: "
+      ],
+      "fields": [
+        "text"
+      ],
+      "parsers": [],
+      "since": "mp:R4a",
+      "status": "live",
+      "note": "The UDP module wanted to put a relay notice on the browser but the process has no mh.dll exporting MH_Seam_RelayNotice (net_selftest.exe, a standalone module, an older mh.dll). Carries the text the player would have seen; udprelaytest arm D reads it as the proof the notice path fired. In a full build the equivalent is `; R4a: relay notice queued for the browser:` in mh_net.log's seam channel and `; R4a: browser notice armed` in the UI log."
+    },
+    {
+      "id": "net.relay_lobby_published",
+      "stream": "mh_net.log",
+      "emitter": "src/mh_dll/mh_net_udp/udp_relay.cpp",
+      "emit": "net: udp relay -- lobby published to the relay's directory",
+      "tags": [],
+      "needles": [
+        "net: udp relay -- lobby published to the relay's directory"
+      ],
+      "fields": [
+        "room",
+        "bytes"
+      ],
+      "parsers": [],
+      "since": "mp:R2",
+      "status": "live",
+      "note": "HOST side. The SESSION_INFO this peer advertises is now registered with the relay, so a browsing client lists this game without being connected to it. Written once per publication, not per ~1 Hz refresh; the withdrawal is net.relay_lobby_withdrawn."
+    },
+    {
+      "id": "net.relay_lobby_withdrawn",
+      "stream": "mh_net.log",
+      "emitter": "src/mh_dll/mh_net_udp/udp_relay.cpp",
+      "emit": "net: udp relay -- lobby withdrawn from the relay's directory",
+      "tags": [],
+      "needles": [
+        "net: udp relay -- lobby withdrawn from the relay's directory"
+      ],
+      "fields": [],
+      "parsers": [],
+      "since": "mp:R2",
+      "status": "live",
+      "note": "HOST side, and the sender half of the row-vanish clause: mh.dll stopped advertising (the player left the lobby), so the tunnel takes the descriptor off the relay rather than leaving it to age out on the relay's session TTL."
+    },
+    {
+      "id": "net.relay_directory_browse",
+      "stream": "mh_net.log",
+      "emitter": "src/mh_dll/mh_net_udp/udp_relay.cpp",
+      "emit": "is not hosted -- browsing the relay's session ",
+      "tags": [],
+      "needles": [
+        "is not hosted -- browsing the relay's session "
+      ],
+      "fields": [
+        "room"
+      ],
+      "parsers": [],
+      "since": "mp:R2",
+      "status": "live",
+      "note": "CLIENT side. The room this peer was told to dial has no host, so it re-registered in the relay's DIRECTORY room (0) -- a registration that buys the session list and nothing else. This is the line that explains a browser which lists games it was never configured for."
+    },
+    {
+      "id": "net.r2_directory_row",
+      "stream": "mh_net.log",
+      "emitter": "src/mh_dll/mh/seams/net_discovery.cpp",
+      "emit": "; R2 relay directory: ",
+      "tags": [
+        "R2"
+      ],
+      "needles": [
+        "; R2 relay directory: "
+      ],
+      "fields": [
+        "lobby_id",
+        "map",
+        "players",
+        "room"
+      ],
+      "parsers": [],
+      "since": "mp:R2",
+      "status": "live",
+      "note": "CLIENT side, mh.dll's half: a lobby the relay listed entered (or left) the discovery browser's row set. The `-> listed` form carries the real name / map / occ / cap out of the host's own SESSION_INFO; the `stopped being listed` form is the row ageing out when the relay stops carrying it."
+    },
+    {
+      "id": "net.r2_relayed_dial",
+      "stream": "mh_net.log",
+      "emitter": "src/mh_dll/mh/seams/net_discovery.cpp",
+      "emit": "; R2: relayed connect to room ",
+      "tags": [
+        "R2"
+      ],
+      "needles": [
+        "; R2: relayed connect to room "
+      ],
+      "fields": [
+        "room",
+        "why"
+      ],
+      "parsers": [],
+      "since": "mp:R2",
+      "status": "live",
+      "note": "CLIENT side. The relay replaces the typed host IP, so this is the line that says WHICH lobby a dial is for. The room is the browser's pick once the directory has named one, and `[net] port` before that."
+    },
+    {
+      "id": "uidrive.mtrace",
+      "stream": "mh_uidrive.log",
+      "emitter": "src/mh_dll/mh/seams/ui_drive.cpp",
+      "emit": "; [mtrace] f=%u produced=%u depth=%u max=%u",
+      "tags": [
+        "mtrace"
+      ],
+      "needles": [
+        "; \\[mtrace\\] f="
+      ],
+      "fields": [
+        "f",
+        "produced",
+        "depth",
+        "max",
+        "di",
+        "last_x",
+        "last_y",
+        "cur_x",
+        "cur_y",
+        "vis",
+        "edge",
+        "held",
+        "cam_col",
+        "cam_row",
+        "camd",
+        "gest_lmb",
+        "gest_rmb"
+      ],
+      "parsers": [
+        "tools/check_cam_trace.py:parse"
+      ],
+      "since": "mp:SES3 (camera half; the mouse half is TACT-REC 2026-08-24)",
+      "status": "live",
+      "note": "[input] mouse_trace=1, one sample per present. The mouse half measured the VM clamp (docs/vm-input.md 9c-9d); SES3 added the camera half -- edge=LRUD are the four _G_LLM_CAM_EDGE_*_ACTIVE flags, held=LRUD the four _G_LLM_CAM_SCROLL_*_HELD latches, cam= is _G_LLM_MAP_CAM_COL/ROW and camd= counts camera moves since the last PRINTED line. A set flag prints its letter, a clear one '-'. Printed on a latch transition, on the mouse-ring conditions, or at most once per 500 ms while the camera moves with the latches unchanged -- so a still frame costs nothing and a stuck scroll is bounded. gest=<lmb><rmb> carries the two gesture bytes the set/clear block is gated on (0 none / 1 begun / 2 active): the edge flags are neither set nor cleared while either is 1, while the apply loops that move the camera run anyway, so a latch held with gest=10 or gest=01 is a different failure from one held with gest=00."
+    },
+    {
+      "id": "uidrive.mtrace_quiet",
+      "stream": "mh_uidrive.log",
+      "emitter": "src/mh_dll/mh/seams/ui_drive.cpp",
+      "emit": "quiet frame(s)",
+      "tags": [
+        "mtrace"
+      ],
+      "needles": [
+        "; \\[mtrace\\] (?P<n>\\d+) quiet frame\\(s\\)"
+      ],
+      "fields": [
+        "quiet_frames"
+      ],
+      "parsers": [
+        "tools/check_cam_trace.py:parse"
+      ],
+      "since": "TACT-REC (2026-08-24)",
+      "status": "live",
+      "note": "The collapse of a run of frames in which nothing the trace watches changed -- no events, no ring depth, no cursor movement, no latch transition and no camera movement. It is what makes the lines/frame budget in check_cam_trace meaningful: without it a quiet minute would cost a line per present."
+    },
+    {
+      "id": "net.di_keyboard",
+      "stream": "mh_net.log",
+      "emitter": "src/mh_dll/mh/seams/ui_drive.cpp",
+      "emit": "; [input] di_keyboard=",
+      "tags": [
+        "input"
+      ],
+      "needles": [
+        "; \\[input\\] di_keyboard="
+      ],
+      "fields": [
+        "live",
+        "dev"
+      ],
+      "parsers": [
+        "tools/check_cam_trace.py:di_lines"
+      ],
+      "since": "mp:SES3 / U25 step 1",
+      "status": "live",
+      "note": "One line per run, at the first present (the earliest point provably after the game's own DirectInput init). live=0 means llm_input_dinput_keyboard_init failed silently and the raw WM_KEYDOWN fallback is the producer -- the path that appends every OS auto-repeat (U25). Not gated behind [input] mouse_trace: a report is only self-diagnosing if the line is always there."
+    },
+    {
+      "stream": "mh_net.log",
+      "emitter": "src/mh_dll/mh_net_udp/udp_channel_c.cpp",
+      "emit": "net: udp bulk chunk lane depth ",
+      "tags": [],
+      "needles": [
+        "net: udp bulk chunk lane depth "
+      ],
+      "fields": [
+        "lane_depth",
+        "lane_cap",
+        "lane_high_water",
+        "lane_evicted",
+        "lane_refused",
+        "tx_base_chunk",
+        "tx_chunks_total",
+        "tx_pieces",
+        "tx_retx",
+        "rx_chunks",
+        "rx_pieces",
+        "rx_dup",
+        "rx_out_of_window",
+        "rx_sha_fail",
+        "verify_ok",
+        "verify_fail"
+      ],
+      "parsers": [],
+      "since": "mp:T2",
+      "status": "live",
+      "note": "Channel C's rollup, on the counter cadence (10 s) and printed only when a counter actually moved, so an idle link stays silent. `evicted` is in the line because mp:T2's acceptance clause is a NEGATIVE -- no completed chunk was ever thrown away -- and a negative has to be a number a rig log can be grepped for rather than a property asserted in a comment. It is zero by construction: a chunk is mh::net::queue_policy::lane::bulk, the overflow policy of that lane is REFUSE (the sender is simply not acknowledged and holds its window), and no code path can choose a bulk frame as a victim. `refused` non-zero is therefore backpressure, NOT loss -- reading it as an error is the trap. The high-water is the lane's, in chunks out of LANE_SLOTS; it is unrelated to the `net: udp inbound queue depth high-water` line, which is the GAME queue and D24's business.",
+      "id": "net.bulk_lane_rollup"
+    },
+    {
+      "id": "net.adaptive_lookahead",
+      "stream": "mh_net.log",
+      "emitter": "src/mh_dll/mh/seams/net_lockstep.cpp",
+      "emit": "; [adaptive] t=",
+      "tags": [
+        "adaptive"
+      ],
+      "needles": [
+        "; [adaptive] ",
+        "lookahead (\\d+) -> (\\d+) ms (\\w+)"
+      ],
+      "fields": [
+        "t_ms",
+        "from_ms",
+        "to_ms",
+        "verdict",
+        "late_p50",
+        "late_tail95",
+        "late_tail99",
+        "late_n",
+        "late_peer",
+        "slack_ms",
+        "starved_ms",
+        "window_ms"
+      ],
+      "parsers": [
+        "tools/mp_pacing_report.py:adaptive_moves"
+      ],
+      "since": "mp:P1, re-signalled + re-tagged at mp:T3",
+      "status": "live",
+      "note": "THE ONLY RECORD OF WHY THE LOOKAHEAD MOVED. The step_ms column in mh_lockstep.log shows THAT it moved; this line carries the error term behind the move, so a run where the controller misbehaved can be read without re-running it. It carries its own `t=` GetTickCount stamp precisely so it can be lined up with mh_lockstep.log's wall_ms column -- mh_net.log lines are otherwise untimestamped. `slack N ms` (mp:T3c) is the window's median UNUSED horizon (local_h - COMMITTED): it is 0 for the peer whose own horizon binds the match and positive for the peer being clamped by the other side, which is the surplus the arrival-lateness tail is structurally blind to. `starved .. diag` is the PRE-T3 error term, kept on the line as a diagnostic so new runs stay comparable with every P1/P5 number in docs/mp-perf.md; it no longer drives anything. Written only when the value actually changes, so a controller sitting on the floor is silent."
+    },
+    {
+      "id": "net.udp_rtt_sample",
+      "stream": "mh_net.log",
+      "emitter": "src/mh_dll/mh_net_udp/udp_endpoint.cpp",
+      "emit": "net: udp conn %d rtt %ld us (tick clock %ld ms)",
+      "tags": [],
+      "needles": [
+        "net: udp conn ",
+        "us (tick clock "
+      ],
+      "fields": [
+        "conn",
+        "rtt_us",
+        "tick_rtt_ms",
+        "srtt_us",
+        "rttvar_us",
+        "slot",
+        "outstanding",
+        "sample"
+      ],
+      "parsers": [],
+      "since": "mp:T3b",
+      "status": "live",
+      "note": "One line per matched channel-B echo, ~1 Hz per peer. It carries the SAME round trip TWICE, on two independent clocks: `rtt` is the QPC stopwatch the estimator eats, and `tick clock` is GetTickCount minus the echoed t_origin (our own tick at send time) -- coarse at a ~15.6 ms quantum, which is why it is not what the estimator eats, but independent of the QPC probe table this line also prints. mp:T3b added it because a rig run read SRTT ~19 ms below what an independent prober measured on the same VM path, and no amount of reading the code could say which of the two numbers was wrong; two clocks that agree retire the stamping hypothesis in one run. `slot`/`outstanding` say which probe-table entry the echo matched and how many probes are still unanswered -- the shape a wrong-slot match or a one-way loss would make."
+    },
+    {
+      "id": "net.punch_armed",
+      "stream": "mh_net.log",
+      "emitter": "src/mh_dll/mh_net_udp/udp_relay.cpp",
+      "emit": "net: udp punch ARMED -- ",
+      "tags": [],
+      "needles": [
+        "net: udp punch ARMED -- "
+      ],
+      "fields": [
+        "v4_port",
+        "v6_port"
+      ],
+      "parsers": [],
+      "since": "mp:R3",
+      "status": "live",
+      "note": "Written once at start() on a relayed run that MAY go direct. It exists because the absence of punching and the absence of a build that has punching look identical in a log otherwise; the two ports are the sockets the probes leave from, and a v6 port of 0 is the ordinary state on a machine with no IPv6, not a fault. Its mutually exclusive twin is net.punch_forced."
+    },
+    {
+      "id": "net.punch_forced",
+      "stream": "mh_net.log",
+      "emitter": "src/mh_dll/mh_net_udp/udp_relay.cpp",
+      "emit": "net: udp path RELAY (forced) -- ",
+      "tags": [],
+      "needles": [
+        "net: udp path RELAY (forced) -- "
+      ],
+      "fields": [],
+      "parsers": [
+        "tools/check_relay_path.py:main"
+      ],
+      "since": "mp:R3",
+      "status": "live",
+      "note": "`[net] force_relay=1`. Written once at start() INSTEAD of net.punch_armed, so exactly one of the two is in every relayed run's log and 'which mode was this run in' is never an inference from silence."
+    },
+    {
+      "id": "net.punch_candidates",
+      "stream": "mh_net.log",
+      "emitter": "src/mh_dll/mh_net_udp/udp_relay.cpp",
+      "emit": "net: udp punch -- peer %u offered %d candidate(s)",
+      "tags": [],
+      "needles": [
+        "net: udp punch -- peer "
+      ],
+      "fields": [
+        "peer_handle",
+        "offered",
+        "new"
+      ],
+      "parsers": [],
+      "since": "mp:R3",
+      "status": "live",
+      "note": "The counterpart's candidate list arrived through the relay. Written only when something in it was NEW, because the list is re-sent at ~1 Hz for as long as a pair is still relayed and a line per copy would bury the two transitions. A pair that never goes direct WITH this line present had candidates and could not reach them; without it, the exchange itself never happened -- which is a different fault with a different fix, and is why this is logged at all."
+    },
+    {
+      "id": "net.path_direct",
+      "stream": "mh_net.log",
+      "emitter": "src/mh_dll/mh_net_udp/udp_relay.cpp",
+      "emit": "net: udp path DIRECT -- peer %u via %s after %u ms of punching",
+      "tags": [],
+      "needles": [
+        "net: udp path DIRECT -- peer "
+      ],
+      "fields": [
+        "peer_handle",
+        "addr",
+        "punch_ms",
+        "promotion_n"
+      ],
+      "parsers": [
+        "tools/check_relay_path.py:main"
+      ],
+      "since": "mp:R3",
+      "status": "live",
+      "note": "THE PROMOTION. mp:R3's first acceptance clause is read out of this line and its timestamp: which peer, over what address, and how long the punch took from the first candidate to the validated path. `promotion_n` counts them, so a pair that flaps between the two paths is visible as a rising number rather than as a repeated line."
+    },
+    {
+      "id": "net.path_relay",
+      "stream": "mh_net.log",
+      "emitter": "src/mh_dll/mh_net_udp/udp_relay.cpp",
+      "emit": "net: udp path RELAY -- peer %u demoted after %u ms direct",
+      "tags": [],
+      "needles": [
+        "net: udp path RELAY -- peer "
+      ],
+      "fields": [
+        "peer_handle",
+        "direct_ms",
+        "dead_ms",
+        "demotion_n"
+      ],
+      "parsers": [
+        "tools/check_relay_path.py:main"
+      ],
+      "since": "mp:R3",
+      "status": "live",
+      "note": "THE DEMOTION, and the one mp:R3's third clause (a mid-match direct-path cut) is proven by. `direct_ms` is how long the path lasted; `dead_ms` is the silence that ended it, printed rather than assumed so the line stays readable if the constant ever moves. The relay leg was up underneath the whole time, which is why the traffic simply continues -- there is no reconnect."
+    },
+    {
+      "id": "net.netind_shown",
+      "stream": "mh_net.log",
+      "emitter": "src/mh_dll/mh/seams/ui_net_indicator.cpp",
+      "emit": "; [netind] shown at %d,%d font=%d",
+      "tags": [
+        "netind"
+      ],
+      "needles": [
+        "; \\[netind\\] shown at (-?\\d+),(-?\\d+) font=(\\d+) peers=(\\d+) lat_supported=(\\d+)"
+      ],
+      "fields": [
+        "x",
+        "y",
+        "font",
+        "peers",
+        "lat_supported"
+      ],
+      "parsers": [
+        "tools/check_net_indicator.py:main"
+      ],
+      "since": "mp:L1 2026-09-18",
+      "status": "live",
+      "note": "Written from inside the FIRST FRAME the player-visible connection indicator is really drawn on, not at arm time, and the distinction is the whole value of the line: this seam installs no hook, so it has no place in the arm-log sequence tools/check_arm_order.py diffs, and an arm-time line could only claim the ini was read. `lat_supported=0` means the bound transport cannot measure its own link (the TCP module has no channel B), so the indicator is correctly showing `n/a` and an empty bar -- a different claim from a bad link."
+    },
+    {
+      "id": "net.netind_sample",
+      "stream": "mh_net.log",
+      "emitter": "src/mh_dll/mh/seams/ui_net_indicator.cpp",
+      "emit": "; [netind] peer%d name=%s srtt_ms=%d",
+      "tags": [
+        "netind"
+      ],
+      "needles": [
+        "; \\[netind\\] peer(\\d+) name=(.*?) srtt_ms=(-?\\d+) ipdv_ms=(-?\\d+) loss_pm=(-?\\d+) "
+      ],
+      "fields": [
+        "peer",
+        "name",
+        "srtt_ms",
+        "ipdv_ms",
+        "loss_pm",
+        "bar",
+        "cmd_ms",
+        "look_ms",
+        "step_ms"
+      ],
+      "parsers": [
+        "tools/check_net_indicator.py:main"
+      ],
+      "since": "mp:L1 2026-09-18",
+      "status": "live",
+      "note": "One line per peer per 2 s while a match is live: everything the player-visible indicator is showing, as numbers, so a bug report carries them without a screenshot. `srtt_ms=-1` is the log's spelling of the `n/a` the frame shows -- never 0, which would read as a perfect link. `bar` is the 4-level stability indicator, derived from ipdv+loss and deliberately NOT from srtt (a high but steady delay plays better than a lower one that varies); 0 = nothing measured. `cmd_ms` is command latency AS DISPLAYED and is exactly look_ms+step_ms, which is the arithmetic check_net_indicator asserts: the lookahead floor plus the sub-step quantisation, i.e. the TYPICAL value of the vocabulary's `lookahead + local queueing`, not its worst case."
+    },
+    {
+      "id": "net.netind_stall",
+      "stream": "mh_net.log",
+      "emitter": "src/mh_dll/mh/seams/ui_net_indicator.cpp",
+      "emit": "; [netind] stall waiting_for=%s peer=%d ms=%lu",
+      "tags": [
+        "netind"
+      ],
+      "needles": [
+        "; \\[netind\\] stall waiting_for=(.*?) peer=(-?\\d+) ms=(\\d+)"
+      ],
+      "fields": [
+        "name",
+        "peer",
+        "ms"
+      ],
+      "parsers": [
+        "tools/check_net_indicator.py:main"
+      ],
+      "since": "mp:L1 2026-09-18",
+      "status": "live",
+      "note": "One line per stall EPISODE (not per frame), naming the peer the sim is blocked on -- the same name the on-screen `WAITING FOR <name>` carries, taken from the strategic player table where the lobby slot names end up. `peer` is the PEER_HORIZON / strategic-player slot, read through net_lockstep.cpp's MH_Lockstep_StallBindingPeer rather than recomputed here. A matching `; [netind] stall_end peer=N` closes the episode. The block has to outlast 400 ms before either is written: shorter ones are ordinary lockstep beats, not something a player notices."
+    },
+    {
+      "id": "harness.snapshot_capture_row",
+      "stream": "mh_harness.log",
+      "emitter": "src/mh_dll/mh_harness/harness.cpp",
+      "emit": "\"SNAPCAP\"",
+      "tags": [],
+      "needles": [
+        "SNAPCAP"
+      ],
+      "fields": [
+        "step",
+        "per_region_hashes"
+      ],
+      "parsers": [
+        "tools/mp_analyze.py:parse_harness"
+      ],
+      "since": "mp:X1b",
+      "status": "live",
+      "note": "The SENDER's per-region hashes AT the capture step, same columns and same manifest order as the R row, taken from the same per[] the R row is written from. It exists rather than reusing the R row because the R row only lands every `region_hash_step` steps and a capture step need not be one of them."
+    },
+    {
+      "id": "harness.snapshot_import_row",
+      "stream": "mh_harness.log",
+      "emitter": "src/mh_dll/mh_harness/harness.cpp",
+      "emit": "\"SNAPIMP\"",
+      "tags": [],
+      "needles": [
+        "SNAPIMP"
+      ],
+      "fields": [
+        "step",
+        "per_region_hashes"
+      ],
+      "parsers": [
+        "tools/mp_analyze.py:parse_harness"
+      ],
+      "since": "mp:X1b",
+      "status": "live",
+      "note": "The RECEIVER's per-region hashes, RE-DERIVED from live memory immediately after libmh_import_world returns -- not echoed out of the blob. STAMPED WITH THE BLOB'S STEP, not the importing peer's own step, which is what lets mp_analyze.snapshot_compare match it to the SNAPCAP of the same step with no alignment argument."
+    },
+    {
+      "id": "harness.snapshot_send",
+      "stream": "mh_harness.log",
+      "emitter": "src/mh_dll/mh_harness/harness.cpp",
+      "emit": "; SNAPSHOT SEND step=",
+      "tags": [],
+      "needles": [
+        "; SNAPSHOT "
+      ],
+      "fields": [
+        "step",
+        "dst",
+        "bytes",
+        "rc",
+        "supported",
+        "state",
+        "err",
+        "lockstep",
+        "state_hash"
+      ],
+      "parsers": [
+        "tools/mp_analyze.py:parse_harness"
+      ],
+      "since": "mp:X1b",
+      "status": "live",
+      "note": "`[harness] snapshot_at=N` fired. The REFUSED variants (HeapAlloc / capture rc) share the prefix on purpose: one needle finds every outcome, and a run that armed the verb and produced no line at all is a verb that never reached the hash block."
+    },
+    {
+      "id": "harness.snapshot_import",
+      "stream": "mh_harness.log",
+      "emitter": "src/mh_dll/mh_harness/harness.cpp",
+      "emit": "; SNAPSHOT IMPORT step=",
+      "tags": [],
+      "needles": [
+        "; SNAPSHOT "
+      ],
+      "fields": [
+        "step",
+        "bytes",
+        "blobstep",
+        "refused",
+        "root"
+      ],
+      "parsers": [
+        "tools/mp_analyze.py:parse_harness"
+      ],
+      "since": "mp:X1b",
+      "status": "live",
+      "note": "OK or REFUSED. A REFUSED line also states that the world is UNTOUCHED, which is world::import()'s own guarantee (validation completes before the first write) rather than a hope. The companion `; SNAPSHOT IMPORT HASHES` line carries the blob's recorded lockstep pair against the pair re-folded from live memory after the import."
+    },
+    {
+      "id": "harness.snapshot_rx",
+      "stream": "mh_harness.log",
+      "emitter": "src/mh_dll/mh_harness/harness.cpp",
+      "emit": "; SNAPSHOT RX step=",
+      "tags": [],
+      "needles": [
+        "; SNAPSHOT "
+      ],
+      "fields": [
+        "step",
+        "state",
+        "verified",
+        "chunks",
+        "bytes",
+        "refused",
+        "err",
+        "root"
+      ],
+      "parsers": [
+        "tools/mp_analyze.py:parse_harness"
+      ],
+      "since": "mp:X1b",
+      "status": "live",
+      "note": "Progress, every `[harness] snapshot_log` steps and only while a transfer is actually in flight (state != IDLE). A 30-60 s transfer is otherwise silent, and a silent minute is indistinguishable from a stalled one."
+    },
+    {
+      "id": "net.snapshot_send_armed",
+      "stream": "mh_net.log",
+      "emitter": "src/mh_dll/mh_net_udp/udp_transport.cpp",
+      "emit": "net: snapshot SEND armed",
+      "tags": [],
+      "needles": [
+        "net: snapshot SEND armed"
+      ],
+      "fields": [
+        "bytes",
+        "body_chunks",
+        "manifest_chunks",
+        "dst_player",
+        "root"
+      ],
+      "parsers": [],
+      "since": "mp:X1b",
+      "status": "live",
+      "note": "The MODULE's side of the same event the harness logs, in the transport's own log: it names the manifest shape and the root, which the harness cannot see. No parser reads it; it is read by a person holding two peers' logs side by side."
+    },
+    {
+      "id": "net.snapshot_ready",
+      "stream": "mh_net.log",
+      "emitter": "src/mh_dll/mh_net_udp/udp_transport.cpp",
+      "emit": "net: snapshot READY",
+      "tags": [],
+      "needles": [
+        "net: snapshot READY"
+      ],
+      "fields": [
+        "bytes",
+        "chunks",
+        "root",
+        "rerequests"
+      ],
+      "parsers": [],
+      "since": "mp:X1b",
+      "status": "live",
+      "note": "The receiving module handed a whole, manifest-verified blob to its caller. Its root must equal the sender's; the re-request count is how many chunks the manifest refused and channel C re-sent."
+    },
+    {
+      "id": "net.snapshot_refused",
+      "stream": "mh_net.log",
+      "emitter": "src/mh_dll/mh_net_udp/udp_transport.cpp",
+      "emit": "net: snapshot send REFUSED",
+      "tags": [],
+      "needles": [
+        "net: snapshot send REFUSED"
+      ],
+      "fields": [
+        "reason"
+      ],
+      "parsers": [],
+      "since": "mp:X1b",
+      "status": "live",
+      "note": "Either the blob is past the pipeline's 32 MiB cap or the module could not allocate its own copy. A peer that is simply not admitted yet produces NO line: Send answers 0 and the caller retries, which is a normal state rather than a refusal."
+    },
+    {
+      "id": "harness.snapshot_import_hashes",
+      "stream": "mh_harness.log",
+      "emitter": "src/mh_dll/mh_harness/harness.cpp",
+      "emit": "; SNAPSHOT IMPORT HASHES",
+      "tags": [],
+      "needles": [
+        "; SNAPSHOT "
+      ],
+      "fields": [
+        "blob_combined",
+        "blob_state",
+        "live_combined",
+        "live_state",
+        "match"
+      ],
+      "parsers": [
+        "tools/mp_analyze.py:parse_harness"
+      ],
+      "since": "mp:X1b",
+      "status": "live",
+      "note": "The blob's RECORDED lockstep pair against the pair RE-FOLDED from live memory by world::lockstep_hash after the import. A second, independent witness to the SNAPIMP row: that row is a per-region comparison against the OTHER peer's log, this one is a whole-world comparison against a number the blob itself carries, so a run with only one peer's log still says whether the import landed."
+    },
+    {
+      "id": "harness.sim_hold",
+      "stream": "mh_harness.log",
+      "emitter": "src/mh_dll/mh_harness/harness.cpp",
+      "emit": "; SIM HOLD step=",
+      "tags": [],
+      "needles": [
+        "; SIM HOLD "
+      ],
+      "fields": [
+        "step",
+        "reason"
+      ],
+      "parsers": [
+        "tools/mp_analyze.py:parse_harness"
+      ],
+      "since": "mp:X3",
+      "status": "live",
+      "note": "`[harness] snapshot_hold=1` fired: a world blob imported successfully and the harness STOPPED the sim on the spot -- the importing step's own body is skipped and the clock is pinned, so no further sim step is funded. It is the diagnostic that separates mp:X1b's two candidate causes for the post-import 0xC000041D: a peer that survives a long hold has already run all seven of libmh_import_world's re-derives and is rendering the imported world every frame, so the fault belongs to the REWIND (the turn engine feeding live-step inputs to an older world) and not to the import."
+    },
+    {
+      "id": "libmh.import_preserved_handle",
+      "stream": "mh_net.log",
+      "emitter": "src/mh_dll/libmh/state/spine.cpp",
+      "emit": "; [import] preserved %s: blob %08X -> live %08X",
+      "tags": [
+        "import"
+      ],
+      "needles": [
+        "; [import] preserved "
+      ],
+      "fields": [
+        "region",
+        "blob_value",
+        "live_value"
+      ],
+      "parsers": [],
+      "since": "mp:X3",
+      "status": "live",
+      "note": "One line per PROCESS-LOCAL RESOURCE HANDLE that libmh_import_world refused to overwrite, written only when the blob's value actually differed from the live one. Six carried 4-byte regions are named as pointers by the registry and none of them backs a determinism-hash slice, so the preserve pass cannot move the step hash. The line exists because a silent preserve reads as a pass that never ran: naming the incoming value separates \"the blob carried another process's pointer\" (the case mp:X3 measured -- a read of the sender's .TLO buffer address inside llm_strat_render_ground_tile killed the importing peer on its next rendered frame) from \"the two agreed anyway\", which is the run that would make the pass look unnecessary."
+    },
+    {
+      "id": "harness.subdomain_map",
+      "stream": "mh_harness.log",
+      "emitter": "src/mh_dll/mh_harness/harness.cpp",
+      "emit": "; [subdomain] %s =",
+      "tags": [
+        "subdomain"
+      ],
+      "needles": [
+        "; [subdomain] "
+      ],
+      "fields": [
+        "domain",
+        "region_names"
+      ],
+      "parsers": [
+        "tools/mp_analyze.py:parse_harness"
+      ],
+      "since": "mp:X3",
+      "status": "live",
+      "note": "One line per sub-domain, once per run, listing the hash-manifest regions the DLL put in it (a trailing * marks a region excluded from the state-only verdict). It exists so the ANALYZER DOES NOT HOLD A COPY of the partition: region -> domain is classified in harness.cpp rd_classify, and a second table in Python would be a mirror with nothing keeping the two level -- the failure lint_region_mirror.py exists to watch for on the region list itself. A run whose DLL classified a region differently says so in its own file, and mp_analyze believes the log."
+    },
+    {
+      "id": "harness.subdomain_row",
+      "stream": "mh_harness.log",
+      "emitter": "src/mh_dll/mh_harness/harness.cpp",
+      "emit": "\"RD %lu\"",
+      "tags": [],
+      "needles": [
+        "RD"
+      ],
+      "fields": [
+        "step",
+        "per_domain_hashes"
+      ],
+      "parsers": [
+        "tools/mp_analyze.py:parse_harness"
+      ],
+      "since": "mp:X3",
+      "status": "live",
+      "note": "`RD <step> units=<16hex> buildings=... ` -- one FNV-1a-64 fold per sub-domain over its UNEXCLUDED member regions only, taken from the same per[] the R row and the desync sample are built from. The complement of the R row rather than a duplicate of it: R is 61 columns and over a kilobyte, so it is sampled every `region_hash_step` steps (fine in space, coarse in time); RD is nine folds and is meant to run at `domain_hash_step=1` (coarse in space, fine in time). Together they answer which subsystem and on exactly which step, which neither answers alone. A domain with no unexcluded member prints `-`."
+    },
+    {
+      "id": "net.rx_garbled",
+      "stream": "mh_net.log",
+      "emitter": "src/mh_dll/libmh/lockstep/rx_dispatch.cpp",
+      "emit": "; [rx] garbled: sender=%d tag=0x%02x at off=%u of len=%u head=%s",
+      "tags": [
+        "rx"
+      ],
+      "needles": [
+        "; [rx] garbled:"
+      ],
+      "fields": [
+        "sender",
+        "tag",
+        "off",
+        "len",
+        "head"
+      ],
+      "parsers": [
+        "tools/check_graceful_quit.py:check"
+      ],
+      "since": "mp:U19e",
+      "status": "live",
+      "note": "The unknown-outer-tag arm of the promoted dispatcher (handle_garbled) is the ONLY producer of outcome 7 (NETWORK_ERROR) in the lockstep closure, and a clean 2-player quit was seen raising it. The line names the offending tag byte, its offset in the datagram, the datagram length and the head bytes, so a survivor's log says WHICH record framing went wrong instead of leaving it to be inferred from the dialog text."
+    },
+    {
+      "id": "net.gone_peer_frame_guard_inert",
+      "stream": "mh_net.log",
+      "emitter": "src/mh_dll/mh/seams/net_lockstep.cpp",
+      "emit": "; gone_peer_frame_guard=1 but INERT",
+      "tags": [],
+      "needles": [
+        "gone_peer_frame_guard=1 but INERT"
+      ],
+      "fields": [],
+      "parsers": [],
+      "since": "mp:U19e",
+      "status": "live",
+      "note": "The U19e guard is a reimpl-only fix with no byte-patch carrier and an ini default of 1, so the case worth saying out loud is the one where it cannot act: a run with the lockstep promotion off executes retail's dispatch_packet and still lets a leader's drop re-broadcast overwrite the datagram it is dispatching."
+    },
+    {
+      "id": "net.u19d_outcome_correction",
+      "stream": "mh_net.log",
+      "emitter": "src/mh_dll/mh/seams/net_lockstep.cpp",
+      "emit": "; U19d: outcome-dialog said 'Connection to server lost' with no real transport ",
+      "tags": [],
+      "needles": [
+        "U19d: outcome-dialog said"
+      ],
+      "fields": [],
+      "parsers": [
+        "tools/check_graceful_quit.py:check"
+      ],
+      "since": "mp:U19d",
+      "status": "live",
+      "note": "U19d's safety net: the outcome dialog rendered code 7 (NETWORK_ERROR) with no recent fast-drop, so its message label was rewritten to 'you are the last player'. Since U19e removed the framing defect that raised 7 on a clean quit, this line firing in graceful_quit means the defect is back -- which is what check_graceful_quit now asserts against."
+    },
+    {
+      "id": "net.queue_rollup",
+      "stream": "mh_net.log",
+      "emitter": "src/mh_dll/mh_net/net_transport.cpp",
+      "emit": "net: inbound queue rollup (this match):",
+      "tags": [],
+      "needles": [
+        "net: inbound queue rollup (this match):"
+      ],
+      "fields": [
+        "depth",
+        "depth_h",
+        "depth_m",
+        "high_water",
+        "high_water_h",
+        "high_water_m",
+        "evicted",
+        "refused"
+      ],
+      "parsers": [],
+      "since": "mp:U41",
+      "status": "live",
+      "note": "The inbound queue's per-MATCH rollup: current depth per lane, the high-water each lane reached, how many superseded horizons lane H evicted and how many real inputs lane M refused. Emitted on the [desync] STATUS cadence (~50 s) and once more at net_reset, so a match shorter than that cadence still leaves exactly one line. Both counters and both high-waters are cleared with the lanes at net_reset, so a second match in the same process reports its own numbers."
+    },
+    {
+      "id": "net.queue_lane_m_refused",
+      "stream": "mh_net.log",
+      "emitter": "src/mh_dll/mh_net/net_transport.cpp",
+      "emit": "net: *** INBOUND QUEUE: lane M FULL",
+      "tags": [],
+      "needles": [
+        "INBOUND QUEUE: lane M FULL"
+      ],
+      "fields": [
+        "cap",
+        "peer",
+        "type",
+        "len",
+        "refused"
+      ],
+      "parsers": [],
+      "since": "mp:U41",
+      "status": "live",
+      "note": "The correctness event: a frame that is not a provably superseded horizon had nowhere to go, so it was REFUSED at arrival. U41's shape of D24's `-1` arm -- the lane that may lose a frame is the horizon lane and nothing else, so this line means a real lockstep input was lost and the peer will desync."
+    },
+    {
+      "id": "net.queue_lane_h_evicted",
+      "stream": "mh_net.log",
+      "emitter": "src/mh_dll/mh_net/net_transport.cpp",
+      "emit": "net: inbound queue: lane H full",
+      "tags": [],
+      "needles": [
+        "inbound queue: lane H full"
+      ],
+      "fields": [
+        "cap",
+        "peer",
+        "evicted"
+      ],
+      "parsers": [],
+      "since": "mp:U41",
+      "status": "live",
+      "note": "Bookkeeping, not a correctness event: lane H holds only bare horizon advertisements, each superseded by the next, so shedding its head is what the lane is for. First occurrence in full, then every 256th, because a badly-behind peer sheds thousands."
+    },
+    {
+      "id": "net.queue_depth_band",
+      "stream": "mh_net.log",
+      "emitter": "src/mh_dll/mh_net/net_transport.cpp",
+      "emit": "net: inbound queue depth high-water",
+      "tags": [],
+      "needles": [
+        "net: inbound queue depth high-water"
+      ],
+      "fields": [
+        "high_water",
+        "cap"
+      ],
+      "parsers": [],
+      "since": "mp:D24",
+      "status": "live",
+      "note": "The APPROACH to the cap, reported in 32-slot bands. This is the half of the instrument that can REFUTE an overflow hypothesis: a run whose backlog never leaves the low tens cannot have shed anything, and saying so needs no rare red run. Registered at U41 -- it has been emitted, unregistered, since D24."
+    },
+    {
+      "id": "net.relay_room_ignored",
+      "stream": "mh_net.log",
+      "emitter": "src/mh_dll/mh_net_udp/udp_transport.cpp",
+      "emit": "is IGNORED (mp:R1e)",
+      "tags": [],
+      "needles": [
+        "is IGNORED (mp:R1e)"
+      ],
+      "fields": [
+        "room"
+      ],
+      "parsers": [],
+      "since": "mp:R1e",
+      "status": "live",
+      "note": "The RETIREMENT NOTICE for `[net] relay_room`. R1 gave the knob a default of `[net] port`; R2 made the lobby mint the room, and what was left was a stale ini value silently out-voting the lobby the player just clicked -- diagnosable only as `no_host` in a log nobody re-reads. The key is now read ONLY so this line can say it is being ignored; deleting the read would have left an operator with a key that does nothing and no line anywhere admitting it. Once per transport init, and only when the key is present AND disagrees with the room actually used."
+    },
+    {
+      "id": "seam.r6_join_resent",
+      "stream": "mh_net.log",
+      "emitter": "src/mh_dll/mh/seams/net_discovery.cpp",
+      "emit": "re-sending the JOIN",
+      "tags": [],
+      "needles": [
+        "; S4 join: the link into the relay-listed lobby is up -> re-sending the JOIN"
+      ],
+      "fields": [],
+      "parsers": [],
+      "since": "mp:R6",
+      "status": "live",
+      "note": "CLIENT side. The player clicked Join on a RELAY-LISTED row before the link into that lobby's room was up (since R6 a host's room is minted, so the row arrives from the directory and the re-dial starts at that moment); the transport dropped the first JOIN, the retail lobby screen was already pushed, and this is the JOIN going again on the first tick with a connected peer. Its sibling `pending JOIN for <lobby> (room N) dropped -- the link came up somewhere else` is the refusal to join a lobby the player never chose. Paired with `; S3: record received with the browser not on screen -> no re-arm`, the line that says the lobby's async-callback slot was NOT overwritten by the browser rescan (the second half of the same window)."
+    },
+    {
+      "id": "seam.r6_hello_held",
+      "stream": "mh_net.log",
+      "emitter": "src/mh_dll/mh/seams/net_seams.cpp",
+      "emit": "0x17 hello",
+      "tags": [],
+      "needles": [
+        "'s 0x17 hello -- its JOIN is not admitted yet",
+        "'s early 0x17 hello replayed now that its JOIN is admitted"
+      ],
+      "fields": [
+        "player"
+      ],
+      "parsers": [],
+      "since": "mp:R6",
+      "status": "live",
+      "note": "HOST side, MH_Seam_PollRecv. A client's retail 0x17 lobby hello arrived before that client's S4 JOIN was admitted (the R6 window, one tick wide: the re-sent JOIN landed 2 ms after the hello on the measured run); retail answers a hello with the 0x09 slot snapshot only for a peer the S4 mirror has seated, so the hello is HELD per sender and handed to the retail dispatch again once the JOIN is admitted. Two lines, one per half."
+    },
+    {
+      "id": "seam.r7a_dial_mode",
+      "stream": "mh_net.log",
+      "emitter": "src/mh_dll/mh/seams/net_seams.cpp",
+      "emit": "R7a: ",
+      "tags": [],
+      "needles": [
+        "; R7a: client dial is DIRECT",
+        "dial is RELAYED via"
+      ],
+      "fields": [],
+      "parsers": [
+        "tools/check_direct_dial.py"
+      ],
+      "since": "mp:R7a",
+      "status": "live",
+      "note": "mh.dll's PER-DIAL relay-vs-direct decision, written by net_seams.cpp lazy_start once it has built MH_NetConfig (mp:R7a). Before R7a a peer with `[net] relay` set had no direct mode: mh_net_udp.dll read the key itself and tunnelled EVERY connection. Now mh.dll decides -- `<host|client> dial is RELAYED via <addr> (room <n>)` when the dial is a relay-discovery one (a HOST registering, the first browser, or a relay-directory row), and `client dial is DIRECT (Internet server + typed IP)` when the player used *Internet server* with a typed address (the relay stays configured but is not contacted). The decision reaches the module in MH_NetConfig.relay_addr (empty = direct). check_direct_dial reads the DIRECT line + the absence of any relay contact to prove direct_dial_with_relay_set went direct; check_relay_leg reads the relay's own leg-up / udp-path lines for the relayed twin."
+    },
+    {
+      "id": "net.relay_host_room",
+      "stream": "mh_net.log",
+      "emitter": "src/mh_dll/mh_net_udp/udp_relay.cpp",
+      "emit": "net: udp relay -- host room ",
+      "tags": [],
+      "needles": [
+        "net: udp relay -- host room "
+      ],
+      "fields": [
+        "room"
+      ],
+      "parsers": [
+        "tools/check_relay_rooms.py:read_rooms"
+      ],
+      "since": "mp:R6",
+      "status": "live",
+      "note": "HOST side: the relay room this host is registering under -- a random 30-bit code MINTED at this tunnel start (udp_room.h), never `[net] port`. Three shapes on one needle: `(minted for this lobby; mp:R6)` once per host start; `(re-minted: room_busy on <old>, retry k/4; mp:R6)` when the relay refused the previous code; `... is busy and 4 re-mints are spent; the refusal stands` when the bound is reached. The first two are what a two-host run reads to assert the rooms were distinct; the leg UP line then carries the same number."
+    },
+    {
+      "id": "net.relay_peer_released",
+      "stream": "mh_net.log",
+      "emitter": "src/mh_dll/mh_net_udp/udp_relay.cpp",
+      "emit": "released:",
+      "tags": [],
+      "needles": [
+        "released: the endpoint no longer holds it",
+        "released: a punch with no peer behind it",
+        "released: not this client's host"
+      ],
+      "fields": [
+        "peer"
+      ],
+      "parsers": [],
+      "since": "mp:R3e",
+      "status": "live",
+      "note": "The relay tunnel RELEASING one peer's slots -- its loopback socket (host side), punch state and pair keys, all in one step (udp_relay.cpp free_peer, via sweep_peers). Three reasons on one needle: `the endpoint no longer holds it` is the ordinary teardown (the endpoint dropped the peer on LEAVE / link timeout / a stream fault, or reclaimed a handshake that never finished; asked through Endpoint::knows_addr once a second, past a 5 s grace from the slot's birth); `a punch with no peer behind it` is the orphan rule (a CAND or PROBE created punch state for a handle no DATA ever announced); `not this client's host` is the client-side orphan rule. Until R3e nothing freed a slot, so the ninth distinct joiner of a lobby's life got `no loopback socket left`. Once per released handle; a quiet-but-held peer never produces one."
+    },
+    {
+      "id": "net.relay_trailing_comment",
+      "stream": "mh_net.log",
+      "emitter": "src/mh_dll/mh/seams/net_discovery.cpp",
+      "emit": "[net] relay carried a trailing `;` comment; using",
+      "tags": [],
+      "needles": [
+        "relay carried a trailing `;` comment"
+      ],
+      "fields": [
+        "relay"
+      ],
+      "parsers": [],
+      "since": "mp:R4",
+      "status": "live",
+      "note": "GetPrivateProfileString returns a trailing `; comment` AS PART OF THE VALUE, and mh_net.example.ini documents every key with one on the key's own line -- so the first rc3 player who uncommented `relay=HOST:PORT   ; UDP only: put a RELAY...` and filled in the VPS got `does not resolve` and a transport that refused to start (2026-09-19). The reader cuts the value at its first `;` (no host, address or port can contain one) and says so once, because the dialled value and the ini's text differ from then on. mp:R7a moved the `[net] relay` read (and this trim) out of the module and into mh.dll (net_discovery.cpp relay_addr_cached), so a peer with a relay configured has a direct mode again; the notice moved with it and is now a seam `; R7a:` line."
+    },
+    {
+      "id": "fonts.probe_text_trailing_comment",
+      "stream": "mh_video.log",
+      "emitter": "src/mh_dll/mh/seams/gfx_font_guard.cpp",
+      "emit": "[fonts] probe_text carried a trailing `;` comment; using",
+      "tags": [
+        "fonts"
+      ],
+      "needles": [
+        "probe_text carried a trailing `;` comment"
+      ],
+      "fields": [
+        "probe_text"
+      ],
+      "parsers": [],
+      "since": "2026-09-20",
+      "status": "live",
+      "note": "The sibling of net.relay_trailing_comment, one section over. mh_net.example.ini's own `[fonts] probe_text=` line carried `; TEST AFFORDANCE, empty = off ...` on the key's line, and GetPrivateProfileString returns a same-line comment AS THE VALUE -- so a STOCK ini (the ship zip's, verbatim) drew that comment text on every present through the game's own text path (2026-09-20). The reader now cuts the value at its first `;`, trims the whitespace before it, and says so once here, because the drawn probe and the ini's text differ from then on. The ini side is gated: tools/lint_ini_string_keys.py derives every GetPrivateProfileStringA key from the DLL sources and fails a same-line comment on any of them (user ruling 2026-09-20), so a stock ini never takes this branch again; the trim stays for hand-edited inis."
+    },
+    {
+      "id": "net.relay_leg_lost",
+      "stream": "mh_net.log",
+      "emitter": "src/mh_dll/mh_net_udp/udp_relay.cpp",
+      "emit": "net: udp relay leg LOST -- the relay does not know handle",
+      "tags": [],
+      "needles": [
+        "udp relay leg LOST"
+      ],
+      "fields": [
+        "handle"
+      ],
+      "parsers": [
+        "tools/check_relay_restart.py:check_peer"
+      ],
+      "since": "mp:R4b",
+      "status": "live",
+      "note": "The relay answered NOT_REGISTERED for the handle this peer holds -- it restarted (or evicted us). The handle is KEPT and re-HELLOed under the deployment key; the relayed DATA path is paused until the WELCOME (a promoted pair keeps flowing). Once per loss. The pair `udp relay leg RESTORED` closes it; a LOST with no RESTORED before `dropped -- no data from peer` is a relay that stayed down longer than the endpoint's 10 s link timeout."
+    },
+    {
+      "id": "net.relay_leg_restored",
+      "stream": "mh_net.log",
+      "emitter": "src/mh_dll/mh_net_udp/udp_relay.cpp",
+      "emit": "net: udp relay leg RESTORED after %u ms",
+      "tags": [],
+      "needles": [
+        "udp relay leg RESTORED"
+      ],
+      "fields": [
+        "gap_ms",
+        "handle"
+      ],
+      "parsers": [
+        "tools/check_relay_restart.py:check_peer"
+      ],
+      "since": "mp:R4b",
+      "status": "live",
+      "note": "The WELCOME that answers a re-HELLO after a LOST. `handle N kept` is the good case (a restarted relay grants the handle the HELLO named, so nothing the counterpart keys by it moves); `handle N is taken, we are M now` is the collision fallback. The gap is relay downtime + one HELLO round trip; the acceptance clause of mp:R4b is this line on both peers with no `dropped` between."
+    },
+    {
+      "id": "net.relay_host_rehandled",
+      "stream": "mh_net.log",
+      "emitter": "src/mh_dll/mh_net_udp/udp_relay.cpp",
+      "emit": "net: udp relay -- the host came back as handle %u (was %u)",
+      "tags": [],
+      "needles": [
+        "the host came back as handle"
+      ],
+      "fields": [
+        "handle",
+        "was"
+      ],
+      "parsers": [],
+      "since": "mp:R4b",
+      "status": "live",
+      "note": "Client side of the collision fallback: the WELCOME named a different host handle than the one this client's pair keys and punch state are keyed by, so those are dropped and rebuilt from the host's next datagram. Absent on a clean restart (the host keeps its handle)."
+    },
+    {
+      "id": "net.relay_directory_polling",
+      "stream": "mh_net.log",
+      "emitter": "src/mh_dll/mh_net_udp/udp_relay.cpp",
+      "emit": "net: udp relay directory polling ",
+      "tags": [],
+      "needles": [
+        "net: udp relay directory polling "
+      ],
+      "fields": [
+        "state"
+      ],
+      "parsers": [],
+      "since": "mp:R2a",
+      "status": "live",
+      "note": "PAUSED / RESUMED, on the transition only. A relayed client's 2 s directory poll runs only while mh.dll says the session browser is the active screen (MH_Seam_RelayBrowsing, resolved by name so its absence is simply R2's unconditional poll). R2 measured the cost of not having it: 321 LISTs over an 11-minute match, every one answered and none read, and a relay `list_requests` counter that therefore described browsing activity that was not happening."
+    },
+    {
+      "id": "net.relay_no_browser_predicate",
+      "stream": "mh_net.log",
+      "emitter": "src/mh_dll/mh_net_udp/udp_relay.cpp",
+      "emit": "mh.dll exports no browser predicate",
+      "tags": [],
+      "needles": [
+        "mh.dll exports no browser predicate"
+      ],
+      "fields": [],
+      "parsers": [],
+      "since": "mp:R2a",
+      "status": "live",
+      "note": "The optional link was not there: net_selftest.exe, a standalone module, or an mh.dll older than mp:R2a. Said ONCE, and the behaviour is R2's -- poll unconditionally. Registered because its ABSENCE is evidence in the other direction: a relayed client run whose log carries neither this nor a `directory polling` line never reached the gate at all."
+    },
+    {
+      "id": "net.dgram_ceiling_relayed",
+      "stream": "mh_net.log",
+      "emitter": "src/mh_dll/mh_net_udp/udp_endpoint.cpp",
+      "emit": "net: udp datagram ceiling ",
+      "tags": [],
+      "needles": [
+        "net: udp datagram ceiling "
+      ],
+      "fields": [
+        "bytes",
+        "leg_overhead",
+        "piece_max"
+      ],
+      "parsers": [],
+      "since": "mp:R1d",
+      "status": "live",
+      "note": "The endpoint was told something wraps its datagrams (34 bytes of relay leg) and lowered its own 1200-byte ceiling by that much, which it does by dropping channel C's piece stride -- the only path in this transport that can reach the ceiling. Once per start, on a relayed link only, so a relayed run whose log lacks this line is a run whose biggest datagrams are 1222 bytes on the wire."
+    },
+    {
+      "id": "net.dgram_over_ceiling",
+      "stream": "mh_net.log",
+      "emitter": "src/mh_dll/mh_net_udp/udp_endpoint.cpp",
+      "emit": "net: udp REFUSED a ",
+      "tags": [],
+      "needles": [
+        "net: udp REFUSED a "
+      ],
+      "fields": [
+        "bytes",
+        "leg_overhead",
+        "total"
+      ],
+      "parsers": [],
+      "since": "mp:R1d",
+      "status": "live",
+      "note": "MUST NEVER APPEAR. The backstop at the one place every datagram is sealed: a producer built something that would exceed 1200 bytes once the leg wraps it. Refused rather than sent, because sending it would put a datagram on a relayed path that the path may silently drop -- an intermittent black hole on exactly the networks least able to diagnose one. Said once per endpoint; the transfer then stalls, which is the loud failure this trades the quiet one for."
+    },
+    {
+      "id": "net.relay_leg_rekeyed",
+      "stream": "mh_net.log",
+      "emitter": "src/mh_dll/mh_net_udp/udp_relay.cpp",
+      "emit": "net: udp relay leg re-keyed",
+      "tags": [],
+      "needles": [
+        "net: udp relay leg re-keyed"
+      ],
+      "fields": [],
+      "parsers": [],
+      "since": "mp:R1c",
+      "status": "live",
+      "note": "The relay has been seen using this peer's per-session leg key, so the handover is complete in the relay->peer direction and the shared deployment key is refused from here on -- except for an ERR_NOT_REGISTERED, which is how a RESTARTED relay says 're-HELLO'. The relay's own side of the same event is its `leg_rekeyed` JSON line and the `peers_rekeyed` counter; read that one to tell 'R1c is live' from 'R1c compiled'."
+    },
+    {
+      "id": "net.relay_leg_key_installed",
+      "stream": "mh_net.log",
+      "emitter": "src/mh_dll/mh_net_udp/udp_relay.cpp",
+      "emit": "connect token keys this pair",
+      "tags": [],
+      "needles": [
+        "connect token keys this pair"
+      ],
+      "fields": [
+        "peer"
+      ],
+      "parsers": [],
+      "since": "mp:R1c",
+      "status": "live",
+      "note": "The tunnel opened a connect token out of a handshake datagram it was already carrying and derived this pair's leg keys from it. FIRST one only: a host installs one per client and only the first moves its relay-directed traffic off the deployment key. Emitted AFTER the datagram carrying the grant has gone, which is the ordering the whole handover rests on -- the far end cannot derive the new key until it has read that payload."
+    },
+    {
+      "id": "map.host_claim",
+      "stream": "mh_net.log",
+      "emitter": "src/mh_dll/mh/seams/map_transfer.cpp",
+      "emit": "; [map] host claim ",
+      "tags": [
+        "map"
+      ],
+      "needles": [
+        "; \\[map\\] host claim (.+?) sha=([0-9a-f]{16}) size=(\\d+)"
+      ],
+      "fields": [
+        "map",
+        "sha",
+        "size"
+      ],
+      "parsers": [
+        "tools/check_map_transfer.py:main"
+      ],
+      "since": "mp:X2",
+      "status": "live",
+      "note": "The host's MAP CONTENT CLAIM: the SHA-256 of its map file, truncated to eight bytes, as it goes into every SESSION_INFO advert. Written once per distinct map name (the name is the cache key, so the picker moving re-hashes and re-logs). Its ABSENCE is what makes every other map line vacuous, which is why the post_check fails on a missing claim before it reads anything else."
+    },
+    {
+      "id": "map.host_noclaim",
+      "stream": "mh_net.log",
+      "emitter": "src/mh_dll/mh/seams/map_transfer.cpp",
+      "emit": "; [map] host noclaim ",
+      "tags": [
+        "map"
+      ],
+      "needles": [
+        "; \\[map\\] host noclaim "
+      ],
+      "fields": [
+        "map"
+      ],
+      "parsers": [
+        "tools/check_map_transfer.py:main"
+      ],
+      "since": "mp:X2",
+      "status": "live",
+      "note": "The host advertises NO content hash for this map, with the reason in the tail: the resource packs answer for the name (a stock map, install-identical by construction), or there is no readable loose file. Joiners then fall back to their own copy, which is the pre-X2 behaviour -- so this line is what tells a silent run apart from a broken one."
+    },
+    {
+      "id": "map.peer",
+      "stream": "mh_net.log",
+      "emitter": "src/mh_dll/mh/seams/map_transfer.cpp",
+      "emit": "; [map] peer ",
+      "tags": [
+        "map"
+      ],
+      "needles": [
+        "; \\[map\\] peer (\\d+) '(.+?)' holds the map",
+        "; \\[map\\] peer (\\d+) '(.+?)' needs the map"
+      ],
+      "fields": [
+        "peer",
+        "name"
+      ],
+      "parsers": [
+        "tools/check_map_transfer.py:main"
+      ],
+      "since": "mp:X2",
+      "status": "live",
+      "note": "What an admitted JOIN reported about the map it holds -- `needs` when its hash disagrees with ours (the request) and `holds` when it agrees (which is both the already-had case and the completion report of a finished download, because they are the same statement). The host's Start gate is a predicate over these."
+    },
+    {
+      "id": "map.send",
+      "stream": "mh_net.log",
+      "emitter": "src/mh_dll/mh/seams/map_transfer.cpp",
+      "emit": "; [map] send ",
+      "tags": [
+        "map"
+      ],
+      "needles": [
+        "; \\[map\\] send armed to peer (\\d+) '(.+?)' \\((\\d+) B"
+      ],
+      "fields": [
+        "peer",
+        "name",
+        "bytes"
+      ],
+      "parsers": [
+        "tools/check_map_transfer.py:main"
+      ],
+      "since": "mp:X2",
+      "status": "live",
+      "note": "A map transfer armed over channel C (mp:X1's snapshot pipeline carrying a file instead of a world), plus the refusal and re-arm variants. One at a time per link. The `--expect-nothing` arm of the post_check asserts this line's ABSENCE, and only beside a positive `peer ... holds the map`, so that absence is never read alone."
+    },
+    {
+      "id": "map.start_gate",
+      "stream": "mh_net.log",
+      "emitter": "src/mh_dll/mh/seams/map_transfer.cpp",
+      "emit": "; [map] start REFUSED -- waiting for ",
+      "tags": [
+        "map"
+      ],
+      "needles": [
+        "; \\[map\\] start REFUSED -- waiting for '(.+?)'"
+      ],
+      "fields": [
+        "peer"
+      ],
+      "parsers": [
+        "tools/check_map_transfer.py:main"
+      ],
+      "since": "mp:X2",
+      "status": "live",
+      "note": "The Start gate CLOSING, logged on the edge rather than per lobby frame -- at frame rate the same fact sixty times a second is unreadable. Paired with `; [map] start OK` on the opening edge. The lobby's own status line carries the same sentence for the player; this is the machine-readable half."
+    },
+    {
+      "id": "map.client",
+      "stream": "mh_net.log",
+      "emitter": "src/mh_dll/mh/seams/map_transfer.cpp",
+      "emit": "; [map] client ",
+      "tags": [
+        "map"
+      ],
+      "needles": [
+        "; \\[map\\] client want (.+?) sha=([0-9a-f]{16}) size=(\\d+)",
+        "; \\[map\\] client resolve missing",
+        "; \\[map\\] client stored (.+?) \\((\\d+) B, sha=([0-9a-f]{16})\\)"
+      ],
+      "fields": [
+        "map",
+        "sha",
+        "size",
+        "stored"
+      ],
+      "parsers": [
+        "tools/check_map_transfer.py:main"
+      ],
+      "since": "mp:X2",
+      "status": "live",
+      "note": "The joiner's side, in order: `want` (what the advert requires), `resolve base|stored|missing` (decided by HASHING the candidates, never by their names), `stored` (the download written under its content-addressed name), and the `REFUSED`/`BLOCKED` variants. The stored NAME is asserted to be the `<stem>.<16 hex>.<ext>` form, because writing under the base name is the one failure every other line in a run would look identical through."
+    },
+    {
+      "id": "map.local_sample",
+      "stream": "mh_net.log",
+      "emitter": "src/mh_dll/mh/seams/map_transfer.cpp",
+      "emit": "; [map] local ",
+      "tags": [
+        "map"
+      ],
+      "needles": [
+        "; \\[map\\] local (before|after) (.+?) (?:sha=([0-9a-f]{16}) size=(\\d+)|absent)"
+      ],
+      "fields": [
+        "when",
+        "map",
+        "sha",
+        "size"
+      ],
+      "parsers": [
+        "tools/check_map_transfer.py:main"
+      ],
+      "since": "mp:X2",
+      "status": "live",
+      "note": "THE BYTE-UNCHANGED ASSERTION, as two samples of the player's OWN file under the advertised map name: `before` when the advert lands, `after` on the host's FLAG_START. They bracket the whole lobby including any download, and they must agree -- a map a player edited is work, and a multiplayer session that silently replaced it would be data loss caused by joining a game."
+    },
+    {
+      "id": "map.client_report",
+      "stream": "mh_net.log",
+      "emitter": "src/mh_dll/mh/seams/net_discovery.cpp",
+      "emit": "; [map] client reported the stored map to the host",
+      "tags": [
+        "map"
+      ],
+      "needles": [
+        "; \\[map\\] client reported the stored map to the host"
+      ],
+      "fields": [
+        "sha"
+      ],
+      "parsers": [],
+      "since": "mp:X2",
+      "status": "live",
+      "note": "The COMPLETION REPORT, which is a re-sent JOIN carrying the hash the joiner now holds rather than a new frame. It is why the host's 'this peer has the map' is an assertion at the RECEIVER: the gate opens because the peer said what it holds, never because the sender finished pushing."
+    },
+    {
+      "id": "map.uitest_stage",
+      "stream": "mh_net.log",
+      "emitter": "src/mh_dll/mh/seams/map_transfer.cpp",
+      "emit": "; [map] uitest ",
+      "tags": [
+        "map"
+      ],
+      "needles": [
+        "; \\[map\\] uitest "
+      ],
+      "fields": [],
+      "parsers": [],
+      "since": "mp:X2",
+      "status": "live",
+      "note": "The harness knob announcing itself ([net] map_test_pretend=none|other, client-only). X2's clauses each need the CLIENT to start holding something particular and the rig has no per-peer file staging, so the knob stages the DECISION -- what this peer reports holding, and whether its resolver considers the base-name file -- and moves, copies and deletes nothing. The file-moving first version broke the shared Maps symlink every local lane reads. A run cannot stage anything without this line, which is the point of it."
+    },
+    {
+      "id": "map.gate_widget",
+      "stream": "mh_net.log",
+      "emitter": "src/mh_dll/mh/seams/map_transfer.cpp",
+      "emit": "; [map] gate ",
+      "tags": [
+        "map"
+      ],
+      "needles": [
+        "; \\[map\\] gate "
+      ],
+      "fields": [],
+      "parsers": [],
+      "since": "mp:X2",
+      "status": "live",
+      "note": "THE START-GATE WIDGET IDENTIFICATION, said out loud once per process. The gate greys the lobby's Start button by setting its own flags&0x40 DISABLED bit, and the button is identified by INFERENCE -- the lobby child whose action_cb is llm_lobby_begin_map_load. The first rig run failed exactly there and silently: the refusal reached the log, the button stayed clickable, and the scenario's `disabled Start` waited out its whole budget with nothing anywhere saying why. So a hit logs which child it was, and a miss logs every child's callback, flags and display indices. A miss is the worst failure this item has -- a host that believes it is holding Start while a player can press it -- and it must never be quiet."
+    },
+    {
+      "id": "net.f3c_adopted",
+      "stream": "mh_net.log",
+      "emitter": "src/mh_dll/mh/seams/net_discovery.cpp",
+      "emit": "; F3c: adopted the host's input codepage %u for this session (ours is %u)",
+      "tags": [],
+      "needles": [
+        "; F3c: adopted the host's input codepage "
+      ],
+      "fields": [
+        "host_codepage",
+        "own_codepage"
+      ],
+      "parsers": [
+        "tools/check_codepage_adopt.py:verdict"
+      ],
+      "since": "mp:F3c",
+      "status": "live",
+      "note": "THE ADOPTION. Written by on_join_connect before the JOIN is built, so it lands in the run directory ABOVE the session directory the JOIN then opens -- the checker walks the lane, not one file."
+    },
+    {
+      "id": "net.f3c_declined",
+      "stream": "mh_net.log",
+      "emitter": "src/mh_dll/mh/seams/net_discovery.cpp",
+      "emit": "; F3c: host pins input codepage %u, ours is %u and this peer will not switch",
+      "tags": [],
+      "needles": [
+        "; F3c: host pins input codepage "
+      ],
+      "fields": [
+        "host_codepage",
+        "own_codepage"
+      ],
+      "parsers": [
+        "tools/check_codepage_adopt.py:verdict"
+      ],
+      "since": "mp:F3c",
+      "status": "live",
+      "note": "The joiner declared it will not (codepage_adopt=0) or cannot (not installed) switch; the host is expected to refuse."
+    },
+    {
+      "id": "net.f3c_sent_refused",
+      "stream": "mh_net.log",
+      "emitter": "src/mh_dll/mh/seams/net_discovery.cpp",
+      "emit": "; F3c: sent JOIN_REFUSED to player %d: %s",
+      "tags": [],
+      "needles": [
+        "; F3c: sent JOIN_REFUSED to player "
+      ],
+      "fields": [
+        "player_id",
+        "reason"
+      ],
+      "parsers": [
+        "tools/check_codepage_adopt.py:verdict"
+      ],
+      "since": "mp:F3c",
+      "status": "live",
+      "note": "HOST side: the ANNOUNCE_REFUSED reply went out (every connected peer receives it; only the named player acts). The reason is the <= 20-char screen form."
+    },
+    {
+      "id": "net.f3c_join_refused",
+      "stream": "mh_net.log",
+      "emitter": "src/mh_dll/mh/seams/net_discovery.cpp",
+      "emit": "; F3c: JOIN REFUSED by the host: %s -> leaving the lobby (the host never seated us)",
+      "tags": [],
+      "needles": [
+        "; F3c: JOIN REFUSED by the host: "
+      ],
+      "fields": [
+        "reason"
+      ],
+      "parsers": [
+        "tools/check_codepage_adopt.py:verdict"
+      ],
+      "since": "mp:F3c",
+      "status": "live",
+      "note": "CLIENT side: the refusal arrived. The bounce follows (synthesised 0x0e, session reason join_refused); the browser then reads `Refused: <reason>`."
+    },
+    {
+      "id": "net.s4_join_refused_codepage",
+      "stream": "mh_net.log",
+      "emitter": "src/mh_dll/mh/seams/net_discovery.cpp",
+      "emit": "REFUSED (%s; ours %u, theirs %u -- ",
+      "tags": [],
+      "needles": [
+        "REFUSED (input codepage mismatch; ours "
+      ],
+      "fields": [
+        "own_codepage",
+        "their_codepage"
+      ],
+      "parsers": [
+        "tools/check_codepage_adopt.py:verdict"
+      ],
+      "since": "mp:F3",
+      "status": "live",
+      "note": "HOST side: join_admit's RefusedCodepage verdict, both values named. Since F3c reaching it means the joiner declined to adopt."
+    }
+  ]
+}

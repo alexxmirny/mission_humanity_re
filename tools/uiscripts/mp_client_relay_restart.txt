@@ -1,0 +1,39 @@
+# mp:R4b RELAY-RESTART CLIENT walk: match_launch's client walk (browse, join, wait for Start, enter
+# the game), then `signal ingame` -- which the runner (ui_test --signal-touch -> test_ui's
+# RelayProc) turns into a kill + respawn of the relay process -- and keep playing through it.
+# See mp_host_relay_restart.txt for why the game clock is the proof and what the post-check adds.
+
+# 1. main menu (NETWORK GAME = value 110)
+settled value:110
+clickv 110
+
+# 2. player-name screen
+present Player name
+settled Ok
+clickl Ok
+
+# 3. Internet server -> connect to the host (through the relay's directory) -> join
+present Internet server
+settled Internet server
+clickl Internet server
+present Server address
+settled Connect
+clickl Connect
+sessions 1
+settled Join game
+clickl Join game
+present Network players
+signal lobby
+settled Cancel
+absent Network players
+
+# 4. in the game -> tell the runner, which restarts the relay
+gameclock 6000
+signal ingame
+log CLIENT entered the match and asked for the relay restart
+
+# 5. keep playing across the restart: 18 more game-seconds of simulated steps
+gameclock 24000
+capture r4_survived
+log CLIENT still in lockstep 18 game-seconds after the relay restart
+end

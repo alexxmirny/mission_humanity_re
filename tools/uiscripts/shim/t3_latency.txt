@@ -1,0 +1,36 @@
+# mp:T3: the three latency clauses in ONE run, because each one is a two-VM run and the rig is a
+# shared, one-per-machine resource. Drive net_shim in UDP mode (`--udp`), since T3's per-peer
+# measurement rides channel B of `[net] transport=udp`:
+#
+#   python tools/net_shim.py --udp --listen 0.0.0.0:6501 --target <hostvm>:6501 \
+#          --timeline tools/uiscripts/shim/t3_latency.txt
+#   python tools/ui_test.py --determinism --steps 3000 --ship-pacing --net-extra transport=udp \
+#          --host <hostvm>:mp_host_start.txt --client <clientvm>:mp_client_start.txt \
+#          --connect-ip <this box>
+#
+# Delays below are ONE WAY, so the round trip is twice each number.
+#
+# What each phase has to show, read from mh_lockstep.log's srtt0_ms / late_* columns and from the
+# `; [adaptive]` lines in mh_net.log (both carry their own timestamps -- the log's wall_ms column and
+# the line's own t=, which are the same GetTickCount):
+#
+#   phase 1  40 +/- 10 ms one way == 80 +/- 20 ms RTT. srtt0_ms must read within 10% of 80 and
+#            rttvar0_ms must be non-zero. This is the estimator clause; give it time, because pings
+#            go out on a ~1 s timer and RFC 6298's alpha = 1/8 needs a dozen or so samples.
+#   phase 2  100 ms one way == 200 ms RTT, applied in one step. The controller must RAISE the
+#            lookahead within 2 s of the step.
+#   phase 3  back to phase 1's link. The controller must LOWER it again, and must take more than
+#            10 s to do so -- since T3c a shrink gives back half the measured surplus per 2 s
+#            window (4% is the floor, 40% the cap) once the clean-window credit is banked, which
+#            still takes ~14 s from 200 ms down to the floor, so anything faster than 10 s would
+#            mean the asymmetry had been lost.
+#
+# The determinism verdict must stay ALL PAIRS IDENTICAL throughout: the lookahead is a per-peer
+# LOCAL decision and the two peers are expected to disagree about it.
+
+0       set delay 40
+0       set jitter 10
+60000   set delay 100
+60000   set jitter 0
+95000   set delay 40
+95000   set jitter 10

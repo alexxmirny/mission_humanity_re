@@ -1,0 +1,55 @@
+# mp:F3c CLIENT walk: JOIN a host whose codepage this peer REFUSES to adopt, and be TOLD.
+#
+# Same path as mp_client_join.txt up to the Join click (NETWORK GAME -> name -> Internet server ->
+# Connect -> Games available -> Join game). The lane ini pins [input] codepage=1251 with
+# codepage_adopt=0 (tools/uiscripts/ini/input_cp1251_noadopt.ini) against the 1252 host fixture, so
+# the JOIN carries 1251 and the host refuses it ("input codepage mismatch").
+#
+# WHAT IS ASSERTED. Before F3c the joiner's retail lobby seated it locally and nothing ever said
+# otherwise -- the measured shape of the first real internet lobby (2026-09-19, host CP1252, friend
+# CP1251, three refusals, the joiner never told). Since F3c the host's JOIN_REFUSED announce bounces
+# the joiner back to the browser through the same synthesised 0x0e a departed host uses, and the
+# browser's status line names the host's reason. So: the lobby is NOT the screen we settle on, the
+# browser is, and the notice is on it. The capture is read for the text; the post_check reads both
+# logs (host REFUSED + sent JOIN_REFUSED, client JOIN REFUSED + join_refused close).
+
+# 1. main menu (NETWORK GAME = value 110)
+settled value:110
+clickv 110
+
+# 2. player-name screen (accept the default name)
+present Player name
+settled Ok
+clickl Ok
+
+# 3. local-games browser -> "Internet server" (the direct-IP path)
+present Internet server
+settled Internet server
+clickl Internet server
+
+# 4. IP-join window -> Connect (discovers the host)
+present Server address
+settled Connect
+clickl Connect
+
+# 5. "Games available": the host session is listed -> Join it
+sessions 1
+settled Join game
+clickl Join game
+
+# 6. THE BOUNCE. The retail join path enters the lobby; the host's refusal arrives within one RTT
+# and the client leaves it again. Gate on the DESTINATION (the browser with Join game back on
+# screen) and on the notice text, which is the only thing that distinguishes "refused" from a
+# plain Cancel (mp_client_join.txt step 7 asserts the negative of exactly this line).
+absent Network players
+onscreen Join game
+present Refused: codepage 1252/1251
+# AND WAIT FOR THE BROWSER TO RENDER ITS RESULT -- the same gate as mp_client_join's c7 and
+# mp_client_linkdeath's c3: `onscreen Join game` is true before the rescan relabels the title from
+# "Searching for games..." to "Games available", and the first cut of this capture landed mid-slide
+# with the notice clipped by a panel still moving. The count + the rendered title pin the frame.
+sessions 1
+present Games available
+capture c6_refused_browser
+log CLIENT: JOIN refused by the host -> back on the browser, notice names the reason
+end

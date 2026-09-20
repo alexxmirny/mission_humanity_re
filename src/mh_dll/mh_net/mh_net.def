@@ -17,7 +17,7 @@
 ;      zero log directories). Absent-tolerance is the whole point of the item; making it impossible
 ;      to link against is cheap insurance.
 ;
-; ORDER MATCHES MH_NET_MODULE_SYMBOLS in mh_net_module.h (the 23 bound symbols), then the two
+; ORDER MATCHES MH_NET_MODULE_SYMBOLS in mh_net_module.h (the 26 bound symbols), then the two
 ; module-level entries that are not part of the transport API. Names are undecorated: everything
 ; here is `extern "C"` __cdecl, so the linker matches these against the leading-underscore forms.
 ;
@@ -50,5 +50,8 @@ EXPORTS
     MH_Net_SetHashHandler
     MH_Net_SendHash
     MH_Key_Load
+    MH_Net_SnapshotSend
+    MH_Net_SnapshotPoll
+    MH_Net_SnapshotStatus
     MH_NetModule_Init
     MH_NetModule_Probe

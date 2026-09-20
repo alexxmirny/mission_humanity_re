@@ -1,0 +1,244 @@
+# DEPLOY -- ship the deploy/ compose stack (relay + collector + Caddy, deploy/docker-compose.yml)
+# to the VPS and bring it up.
+#
+# tracker dist:RP4, plan D15(c) + section 6 answer 4 (a VPS is available, no domain yet).
+#
+# GATED BY A PROTECTED ENVIRONMENT; TRIGGERED BY A GREEN images.yml ON master OR BY HAND. The
+# `workflow_run` cascade is dist:RP5's redeploy rule (2026-09-19): a relay on the VPS older than the
+# shipped client is exactly dead-ends G241's silent failure (the wave-9 client's re-key op answered
+# `bad_op` by a pre-wave-9 relay), so a push to master that rebuilds the images now CREATES this
+# run by itself. It still does not APPROVE itself: the `vps` Environment referenced by the job
+# below is what enforces that -- GitHub pauses any job that references a protected Environment
+# with a required reviewer until someone with access approves that specific run, regardless of
+# who or what triggered it. Until RP5 the only trigger was `workflow_dispatch`. THIS WORKFLOW FILE CANNOT
+# CREATE THAT ENVIRONMENT OR ITS SECRETS -- see "ONE-TIME USER SETUP" below; until that exists,
+# every run of this workflow fails at the `environment:` gate with "Waiting for review" and no
+# runner is even allocated for it.
+#
+# WHAT "the VPS deploy dir" MEANS. The three secrets this job reads (VPS_HOST, VPS_USER,
+# VPS_SSH_KEY -- see the Environment setup below) name a host, a user and a key; they say nothing
+# about a path. `VPS_DEPLOY_DIR` is a plain (non-secret) Environment VARIABLE for exactly that
+# reason -- a directory path is not a secret, and keeping it out of `secrets.*` means it shows up
+# in the Environment's own settings page in plain text, where whoever approves a deploy run can
+# actually read it. Default assumed by this file if the variable is unset: `~/mh-deploy`.
+#
+# ONE-TIME USER SETUP (cannot be done from this workflow file -- GitHub Environments, their
+# secrets and their required reviewers are repository SETTINGS, not something `.github/workflows/`
+# can create):
+#   1. Repo Settings -> Environments -> New environment, name it exactly `vps` (this file's
+#      `environment: vps` below must match).
+#   2. On that Environment: "Required reviewers" -> add yourself (or whoever should approve a
+#      deploy). This is what makes the gate real; without it the Environment exists but approves
+#      itself instantly.
+#   3. Environment secrets (Settings -> Environments -> vps -> Add secret):
+#        VPS_HOST     the VPS's bare hostname or IP (tools/machine_config.py VPS_HOST is
+#                     "user@host" for the SSH-tunnel tooling; appleboy/ssh-action wants the host
+#                     and user as SEPARATE inputs, so split it: the host part goes here).
+#        VPS_USER     the SSH user on the VPS (the user part of the same VPS_HOST value).
+#        VPS_SSH_KEY  the PRIVATE key's CONTENTS (not a path -- a GitHub Actions runner has no
+#                     access to this machine's filesystem, so `tools/machine_config.py`'s
+#                     VPS_SSH_KEY, which names a local file path, is not what goes here; paste the
+#                     key file's contents, e.g. `cat` the file named by VPS_SSH_KEY and paste
+#                     that). Use a key that can run `docker compose` in VPS_DEPLOY_DIR -- the
+#                     admin key from machine.local.json is fine; it is NOT the read-only
+#                     `dist:RP3` drain key, which is deliberately restricted to `rrsync -ro` and
+#                     could not run this job's commands even if it were used here.
+#   4. Environment variable (same page, "Variables" tab, not "Secrets"):
+#        VPS_DEPLOY_DIR   the directory on the VPS holding (or that should hold)
+#                         deploy/docker-compose.yml, deploy/Caddyfile and the collector's
+#                         secrets/report_token.txt (RP2's README "Minting..." step, done once,
+#                         by hand, on the VPS -- this workflow never creates that secret).
+#   5. First run: Actions tab -> "deploy" -> "Run workflow". The job pauses for the required
+#      reviewer's approval (step 2) before anything touches the VPS.
+#
+# WHAT THIS WORKFLOW DOES, IN ORDER: (a) syncs deploy/docker-compose.yml + deploy/Caddyfile from
+# THIS COMMIT to VPS_DEPLOY_DIR over scp -- the compose file living in this repo (RP4's write set)
+# is the source of truth, not whatever a person last hand-edited on the box; (b) logs the VPS in to
+# GHCR with this run's own GITHUB_TOKEN (read-only, expires with the job) so `docker compose pull`
+# can fetch the (private-by-default) images images.yml just pushed; (c) `docker compose pull &&
+# docker compose up -d` in that directory, exactly RP4's scope line; (d) polls /healthz through
+# Caddy's self-signed cert (curl -k -- there is no public CA to verify against yet, plan D14/
+# section 6 answer 4) as the one automated signal that the stack actually came up, not merely that
+# the ssh commands returned 0.
+#
+# UNVERIFIED ON THIS MACHINE, STATED PLAINLY: there is no VPS access, no Environment and no
+# Docker on the machine this was authored on (2026-09-17) -- this workflow has never run.
+# `actionlint` ran clean against the file; that is the only automated check available before the
+# first real dispatch. docs/deploy.md "What is verified vs. not" has the full accounting.
+
+name: deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "image tag to deploy (must already exist in GHCR, e.g. from images.yml)"
+        required: false
+        default: "latest"
+  # dist:RP5. Fires when images.yml finishes on master; the job's `if:` keeps a red or cancelled
+  # build from deploying. A PR build of images.yml never pushes and never lands on master, so it
+  # never reaches here either.
+  workflow_run:
+    workflows: [images]
+    types: [completed]
+    branches: [master]
+
+permissions:
+  contents: read
+  # packages: read IS LOAD-BEARING (2026-09-18): the pull step logs the VPS into GHCR with this
+  # run's GITHUB_TOKEN, and both images are private packages. With contents-only permissions the
+  # login succeeds and `docker compose pull` answers `error from registry: denied` -- the first
+  # live run died exactly there. Read only; images.yml is the sole writer.
+  packages: read
+
+jobs:
+  deploy:
+    name: deploy relay + collector + Caddy to the VPS
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    if: ${{ github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success' }}
+    # THE GATE. Referencing a protected Environment here is what makes "required reviewers" (the
+    # ONE-TIME USER SETUP step 2 above) actually pause this run -- without this line the
+    # `vps: secrets.*` and `vars.*` references below would simply fail to resolve (undefined),
+    # they would not enforce approval on their own.
+    environment: vps
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: sync deploy/ to the VPS
+        uses: appleboy/scp-action@v1
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          source: "deploy/docker-compose.yml,deploy/Caddyfile"
+          target: ${{ vars.VPS_DEPLOY_DIR || '~/mh-deploy' }}
+          # scp-action's `source` globs are relative to the checkout root and it preserves the
+          # `deploy/` prefix in the target by default -- strip it so docker-compose.yml lands
+          # directly in VPS_DEPLOY_DIR, not VPS_DEPLOY_DIR/deploy/.
+          strip_components: 1
+
+      - name: docker compose pull && up -d
+        uses: appleboy/ssh-action@v1
+        env:
+          # Empty under workflow_run (no inputs there) -> `latest`, which is what a master build of
+          # images.yml just pushed.
+          IMAGE_TAG: ${{ github.event.inputs.tag || 'latest' }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_ACTOR: ${{ github.actor }}
+          # Lowercased the same way images.yml computes it -- GHCR requires an all-lowercase
+          # image path, and deploy/docker-compose.yml's `image:` lines read this via `${GHCR_OWNER}`
+          # rather than a literal org/user name (this repo's own machine-path/identity lint refuses
+          # a literal GitHub username in any tracked file, and a compose file is tracked).
+          GHCR_OWNER: ${{ github.repository_owner }}
+          # The address Caddy serves under (site address + default_sni, see deploy/Caddyfile):
+          # the same host this job ssh-es to. It lands in the VPS's .env -- the box's own
+          # address on the box, not a credential.
+          MH_SITE_ADDR: ${{ secrets.VPS_HOST }}
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          envs: IMAGE_TAG,GH_TOKEN,GH_ACTOR,GHCR_OWNER,MH_SITE_ADDR
+          script: |
+            set -euo pipefail
+            # A QUOTED "~" IS A LITERAL. The first live run (2026-09-18) died on
+            # `cd "~/mh-deploy": No such file or directory` -- bash expands ~ only unquoted, while
+            # the scp step above had already expanded it (drone-scp runs `mkdir -p` unquoted), so
+            # the files were in /root/mh-deploy and the cd looked for a directory named "~". The
+            # substitution below maps a leading ~ to $HOME and keeps the rest quoted.
+            DEPLOY_DIR='${{ vars.VPS_DEPLOY_DIR || '~/mh-deploy' }}'
+            cd "${DEPLOY_DIR/#\~/$HOME}"
+            # docker compose reads .env from the compose file's own directory automatically -- this
+            # is the ONE file this workflow writes directly on the VPS rather than syncing from the
+            # repo, because its two values are per-RUN (this dispatch's tag, this run's own actor's
+            # lowercased org) rather than repo content. Never holds a secret: GH_TOKEN is used
+            # directly below and never written to disk.
+            printf 'IMAGE_TAG=%s\nGHCR_OWNER=%s\nMH_SITE_ADDR=%s\n' "$IMAGE_TAG" "$(echo "$GHCR_OWNER" | tr '[:upper:]' '[:lower:]')" "$MH_SITE_ADDR" > .env
+            # Read-only, scoped to THIS run's own token -- it expires with the job, so it is never
+            # a standing credential sitting on the VPS. Needed because both images are private by
+            # default under GHCR (dist RP4 does not toggle package visibility -- that is a
+            # repository setting, not a workflow-file concern).
+            echo "$GH_TOKEN" | docker login ghcr.io -u "$GH_ACTOR" --password-stdin
+            docker compose pull
+            docker compose up -d
+            docker compose ps
+
+      - name: /healthz through the pinned self-signed cert
+        uses: appleboy/ssh-action@v1
+        env:
+          MH_SITE_ADDR: ${{ secrets.VPS_HOST }}
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          envs: MH_SITE_ADDR
+          script: |
+            set -euo pipefail
+            # DIAL THE SITE ADDRESS, NOT 127.0.0.1. Caddy routes by Host: a request for 127.0.0.1
+            # matches no site block and gets Caddy's empty 200 ("NOP" in its access log), which
+            # this grep rightly rejects -- the second live run (2026-09-18) failed exactly so with
+            # the stack healthy. The site is the IP/name in MH_SITE_ADDR (deploy/Caddyfile).
+            # -k: Caddy serves `tls internal`'s self-signed cert until a domain exists (plan D14 /
+            # section 6 answer 4) -- there is no public CA chain for curl to verify here, the same
+            # reason the launcher (dist RP1) pins the certificate's SPKI hash instead of trusting a
+            # CA. This step is a liveness check, not a security check -- MITM-immune verification
+            # is the launcher's job, not this deploy step's.
+            for i in 1 2 3 4 5 6; do
+              if curl -sk --max-time 5 "https://$MH_SITE_ADDR/healthz" | grep -q '"status":"ok"' \
+                || curl -sk --max-time 5 "https://$MH_SITE_ADDR/healthz" | grep -q '"status": "ok"'; then
+                echo "healthz OK"
+                exit 0
+              fi
+              echo "healthz not ready yet, retrying ($i/6)..."
+              sleep 5
+            done
+            echo "healthz never returned status ok" >&2
+            exit 1
+
+      # dist:RP5 -- THE RELAY'S OWN VERDICT, since /healthz only proves the collector + Caddy. Three
+      # reads, all off the box: (a) `docker compose ps` must say the relay is `healthy` -- that is the
+      # compose healthcheck (the binary's --health probe: a keyed PING answered by a PONG on the
+      # served socket); (b) the new container's `listening` line; (c) its `counters` line, which
+      # prints every 60 s and carries the fields only a current image has (`peers_rekeyed`,
+      # `health_pings`) -- the plan's "is the relay on the box the one we shipped" check, waited for
+      # rather than assumed. All three land in the run's step summary.
+      - name: relay healthy + listening + counters
+        uses: appleboy/ssh-action@v1
+        env:
+          DEPLOY_DIR_RAW: ${{ vars.VPS_DEPLOY_DIR || '~/mh-deploy' }}
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          envs: DEPLOY_DIR_RAW
+          script: |
+            set -euo pipefail
+            cd "${DEPLOY_DIR_RAW/#\~/$HOME}"
+            for i in $(seq 1 12); do
+              st=$(docker inspect --format '{{.State.Health.Status}}' mh-relay 2>/dev/null || echo none)
+              [ "$st" = healthy ] && break
+              echo "relay health: $st ($i/12)"; sleep 5
+            done
+            [ "$st" = healthy ] || { echo "relay never became healthy: $st" >&2; docker logs --tail 20 mh-relay >&2; exit 1; }
+            since=$(docker inspect --format '{{.State.StartedAt}}' mh-relay)
+            echo "relay healthy; started $since"
+            docker logs --since "$since" mh-relay 2>&1 | grep -F '"event":"listening"' | tail -1
+            for i in $(seq 1 15); do
+              line=$(docker logs --since "$since" mh-relay 2>&1 | grep -F '"event":"counters"' | tail -1 || true)
+              [ -n "$line" ] && break
+              sleep 5
+            done
+            [ -n "$line" ] || { echo "no counters line from the new relay within 75 s" >&2; exit 1; }
+            echo "$line"
+            echo "$line" | grep -q '"peers_rekeyed"' || { echo "counters line lacks peers_rekeyed -- this is an OLD relay image" >&2; exit 1; }
+            echo "$line" | grep -q '"health_pings"' || { echo "counters line lacks health_pings -- pre-RP5 image" >&2; exit 1; }
+
+      - name: step summary
+        if: always()
+        run: |
+          {
+            echo "## deploy ${{ github.event.inputs.tag || 'latest' }} (${{ github.event_name }})"
+            echo
+            echo "Relay verdict is the log of the step above: healthy / listening / counters."
+          } >> "$GITHUB_STEP_SUMMARY"

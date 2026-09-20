@@ -1,0 +1,50 @@
+# mp:R4b RELAY-RESTART HOST walk: match_launch's host walk (create, wait for the client, Start,
+# enter the game), then KEEP PLAYING through a relay restart the runner performs on the client's
+# `signal ingame`, and prove the link lived by waiting for the game clock to advance a further
+# ~18 s of sim after it.
+#
+# WHY THE CLOCK IS THE PROOF. `gameclock N` reads the sim's own game clock, which advances only
+# when steps are simulated; a pair whose link died stalls in lockstep, the clock freezes, and this
+# WAIT times out -- the correct failure. A wall-clock wait would pass on a dead link. What the clock cannot say is HOW the pair survived (re-HELLO, or the restart never
+# happened); that is check_relay_restart.py's job, on both peers' mh_net.log.
+#
+# RELAY PREREQUISITE: the test registry starts an mh_relay process for this scenario, pins the pair
+# to it (force_relay=1, so the restart is on the path) and restarts it on `ingame`.
+
+# 1. main menu (NETWORK GAME = value 110)
+settled value:110
+clickv 110
+
+# 2. player-name screen
+present Player name
+settled Ok
+clickl Ok
+
+# 3. create a game on the pre-selected map -> the host lobby
+settled Create
+clickl Create
+present Game name
+settled Ok
+clickl Ok
+present Available maps
+settled Ok
+clickl Ok
+present Network players
+
+# 4. the client is seated (transport peer count), and its UI has reached its lobby
+peers 1
+awaitsignal lobby
+enabled Start
+settled Start
+clickl Start
+absent Network players
+
+# 5. in the game. The client signals `ingame` once it is here too; the runner restarts the relay.
+gameclock 6000
+log HOST launched the match -- the relay restart lands after the client's signal
+
+# 6. keep playing across the restart: 18 more game-seconds of simulated steps
+gameclock 24000
+capture r4_survived
+log HOST still in lockstep 18 game-seconds after the relay restart
+end

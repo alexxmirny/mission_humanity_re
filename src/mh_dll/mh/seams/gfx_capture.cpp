@@ -39,13 +39,13 @@ bool          g_prev_f12   = false; // F12 rising-edge latch
 constexpr int CAP_MAX      = 60;    // hard cap on auto-captured files (runaway guard)
 
 char g_clog[MAX_PATH];
-bool g_clog_ready = false;
+// SES1: PROCESS-scoped. capture_*.bmp and this log are the RIG's channel -- tools/ui_test.py
+// discovers ONE run directory at launch and pulls the captures from it, so a capture that moved
+// into a session directory mid-scenario would simply not be found.
+unsigned long g_clog_gen = 0;
 
 void cap_log(const char *fmt, ...) {
-    if (!g_clog_ready) {
-        wsprintfA(g_clog, "%smh_capture.log", MH_RunDir());
-        g_clog_ready = true;
-    }
+    mh_proc_path(g_clog, MAX_PATH, "%smh_capture.log", &g_clog_gen);
     char    line[256];
     va_list ap;
     va_start(ap, fmt);
@@ -108,10 +108,12 @@ void capture_frame(const char *name) {
         }
     }
     char path[MAX_PATH];
+    // SES1: MH_ProcessDir, not MH_RunDir -- captures are pulled by the runner from the ONE directory
+    // it discovered at launch (tools/ui_test.py pull_local_captures), so they must not follow a session.
     if (name)
-        wsprintfA(path, "%scapture_%s.bmp", MH_RunDir(), name);
+        wsprintfA(path, "%scapture_%s.bmp", MH_ProcessDir(), name);
     else
-        wsprintfA(path, "%scapture_%03d.bmp", MH_RunDir(), g_seq);
+        wsprintfA(path, "%scapture_%03d.bmp", MH_ProcessDir(), g_seq);
     HANDLE hf = CreateFileA(path, GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
     if (hf != INVALID_HANDLE_VALUE) {
         DWORD wr = 0;

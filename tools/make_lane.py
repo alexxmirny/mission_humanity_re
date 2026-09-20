@@ -194,7 +194,14 @@ SATELLITE_SRC = os.path.join(REPO, "src", "mh_dll", "Release")
 # asks for. Note what this one's absence does NOT do: the game is bit-for-bit the game it always
 # was, because the harness only observes. That is exactly why a lane that quietly lost it would go
 # on passing every pixel test while `--determinism` had nothing to read.
-DEFAULT_SATELLITES = ["mh_net.dll", "libmh.dll", "mh_harness.dll"]
+# mp:T1 adds the fourth: mh_net_udp.dll, the UDP transport. It is deployed to EVERY lane even
+# though only a `[net] transport=udp` run binds it, and that is the same rule as the other
+# three rather than an exception to them -- which module mh.dll binds is CONFIGURATION, read
+# out of the lane's own ini at startup, so a lane that carries only one of the two cannot run
+# half the configurations the ini can express. Absence would not look like a missing file
+# either: mh.dll refuses the run (mh_config_refused.log) and the peer never starts, which on
+# a rig reads as a peer that failed to launch.
+DEFAULT_SATELLITES = ["mh_net.dll", "mh_net_udp.dll", "libmh.dll", "mh_harness.dll"]
 
 # The proxy shim: a stand-in msvfw32.dll that force-loads mh.dll out of the
 # application directory, so a lane can run a byte-for-byte STOCK mh.exe instead of the import-patched

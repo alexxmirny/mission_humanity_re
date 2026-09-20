@@ -77,8 +77,24 @@ void announce_drain();
 // cause: 1 = the host left, 2 = the link died, 0 = a deliberate Cancel (says nothing).
 void browser_notice_arm(int cause);
 
+// mp:F3c: the host REFUSED this peer's JOIN, and said why. Same carrier and dwell as the two causes
+// above; the line is "Refused: <reason>" with the host's ASCII reason text verbatim (it names both
+// codepages, or the format and the bound -- whatever the refusal was about; <= 20 chars by contract).
+void browser_notice_arm_refused(const char *reason);
+
+// mp:R4a: the relay this peer dialled is BEHIND this build (its WELCOME carried a lower protocol level,
+// or none -- a pre-R4a relay -- or it speaks a leg version this build cannot read). Same carrier and
+// dwell as the three above; `line` is the UDP module's ASCII text verbatim ("Relay outdated (protocol
+// 0 < 1)", "Incompatible relay (leg v2/v1)"), <= 32 characters so it fits the unwrapped status line. Unlike a lobby-exit cause it is
+// armed while the player is ALREADY on the browser (the first browser is where a relay is dialled,
+// mp:R7), so the dwell starts on the next frame.
+void browser_notice_arm_relay(const char *line);
+
 // F3F ruling Q2: with no network module the browsers can never list anything, so they carry a
-// standing line saying so. Armed once, at arm time.
+// standing line saying so. Armed once, at arm time. U42 (ruling Q8 -- ARM and explain, not gate):
+// the SAME line also paints on a hosted manual lobby, which on_host_advertise() (net_discovery.cpp)
+// arms unconditionally regardless of transport, so a module=none host reaches a real "Network
+// players" screen with no working Start -- see lobby_notice.cpp for how one widget covers both.
 void browser_notice_arm_no_module();
 
 // Both notices repaint from the present hook -- the status-line buffer is not ours and retail

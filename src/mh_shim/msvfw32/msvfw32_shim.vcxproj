@@ -49,6 +49,10 @@
     <CharacterSet>Unicode</CharacterSet>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <!-- THE BUILD STAMP (tracker TL-CI1). Brings in MhVersion / MhGitSha, the shared
+       VERSIONINFO resource, and the MH_VERSION_* defines. Imported by the five modules a
+       release ships and by no other project; see mh_version.props for why. -->
+  <Import Project="..\..\mh_dll\mh_version.props" />
   <PropertyGroup>
     <!-- The output file name IS the mechanism: it has to be exactly the system DLL we stand in for,
          so that mh.exe's static import resolves to us out of the application directory. -->

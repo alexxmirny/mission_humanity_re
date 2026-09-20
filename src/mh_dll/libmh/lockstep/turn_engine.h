@@ -579,6 +579,21 @@ struct reimpl_fixes {
     // through that hole would have silently compared ours-with-fix against original-without-fix.
     bool desync_icon_gate = false;
 
+    // [net] gone_peer_frame_guard -- MP U19e: keep the INCOMING datagram intact across the leader's
+    // re-broadcast of a peer drop (rx_dispatch.cpp's dispatch_packet head, 0x0049c311), whose emitter
+    // builds into _G_LLM_NET_SEND_BUF -- the very buffer the packet being dispatched lives in. Without
+    // it the re-broadcast overwrites the head of that datagram, the parse loop walks off the end of the
+    // record it just wrote, and an arbitrary payload byte is read as an outer tag -> handle_garbled ->
+    // outcome 7 (NETWORK_ERROR). Measured on the rig on a perfectly clean 2-player quit; the long
+    // comment at that site carries the dumped bytes.
+    //
+    // NOT A RETIRED BYTE PATCH either (same footing as desync_icon_gate above): the corruption exists
+    // in the original too -- the dead `cursor = len` store at 0x0049c335 is the author's own aborted
+    // handling of it -- so an unpromoted run has no carrier and no fix. The ini default is 1, like
+    // resync_order_horizon's, while the initialiser here stays the faithful-stock value a pure caller
+    // or a lockstest fixture gets.
+    bool gone_peer_frame_guard = false;
+
     // The three `defang_*` fields were HERE and were removed by C8-e (2026-07-30) as a scope
     // decision: all three were default-off and `resync_trigger_gate` supersedes them as the
     // root-cause fix for the freeze they suppressed. Their byte patches went with them; the

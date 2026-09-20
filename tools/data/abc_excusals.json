@@ -1,0 +1,31 @@
+{
+ "_what": "THE DECLARED EXCUSALS of the UI-REC A/B/C oracle (tools/test_ui.py run_ui_abc; tooling TL-GATE-D25FX). One row per KNOWN, NAMED, BOUNDED divergence between two arms that the verdict is allowed to look past -- and only on the leg the row names. An excusal is never silent: the verdict prints every row it applied, with the region's own mismatch count, and the leg's `state` channel is replaced by `state~excused` (the FNV fold over every non-excluded hash region EXCEPT the excused ones, derived offline from the arms' `R` columns, and refused unless the same fold over ALL columns reproduces each arm's own `state` at every step).",
+ "_why_region_not_bytes": "The arms carry one hash per region per step, so the smallest unit the offline verdict can drop is a REGION column; `bytes` documents the field the excusal is FOR and is what the byte-level evidence (tools/abc_region_diff.py -> abc_excusal_evidence.json) is checked against -- a differing byte outside `bytes` REFUTES the row even though the column would have hidden it. Re-run the evidence tool whenever the fixture or the arms change.",
+ "_legs": "A-vs-B is the promotion oracle (ship vs original) and takes the excusal; A-vs-C (ship vs the recording) takes it too, because C is an ALL-ORIGINAL recording and a ship-vs-C difference has the same cause -- the oracle carries a state~excused column cut under the declared A-vs-C set for it. B-vs-C (original vs the recording) takes NO excusal, ever: it is the replayer's own claim, and it stays full.",
+ "_lint": "tools/lint_fixture_currency.py (a lint_repo row): every row's region must exist in tools/data/hash_manifest.json and not be excluded there, every byte range must lie inside the region, `legs` must be a non-empty subset of {A-vs-B, A-vs-C}, and `since`/`reason`/`tracker` must be present. A region that stops existing fails the lint rather than silently excusing nothing.",
+ "excusals": [
+  {
+   "id": "D25-resource_spent",
+   "legs": [
+    "A-vs-B",
+    "A-vs-C"
+   ],
+   "region": "p0_ai_econ",
+   "bytes": [
+    {
+     "offset": 24,
+     "len": 16,
+     "field": "game::player_data[0].resource_spent[4] (int32 x4, record +0x10054; p0_ai_econ starts at record +0x1003c, so region +0x18..+0x28)"
+    }
+   ],
+   "reason": "D25: the ORIGINAL binary's HUD build-click probe (llm_strat_bldg_try_begin_placement @0x00448c0b) pays the cost and re-grants it, and game_UpdateResourceStats (gains-only) books the re-grant into resource_spent on the clicking player alone; libmh's promoted body probes with bldg_can_afford_build_cost and charges nothing (8a5afb58). So the ship and original arms differ in exactly this counter from the human's first build click, by design -- the fix IS the difference (dead-ends G246).",
+   "since": "2026-09-19",
+   "tracker": [
+    "mp:D25",
+    "tooling:TL-GATE-D25FX"
+   ],
+   "evidence": "tools/data/abc_excusal_evidence.json",
+   "scope_note": "p0 only: the human sits in slot 0 in both A/B/C fixtures (tutorial_solo, spcamp_solo) and the click is a HUD path no AI slot runs. The rest of p0_ai_econ (100528 of its 100544 bytes) is dropped from A-vs-B's state~excused with it -- that is the coverage this row costs, and the evidence file is what shows nothing else in the region moved."
+  }
+ ]
+}

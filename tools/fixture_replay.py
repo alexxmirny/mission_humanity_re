@@ -601,9 +601,18 @@ def cmd_replay(args):
             % r.returncode
         )
     after = set(os.listdir(os.path.join(args.lane, "logs")))
-    new = sorted(after - before)
+    # THE PROCESS DIRECTORY, not the session one. Since the per-SESSION log split a launch leaves
+    # two new directories -- `<ts>_menu_solo` (per process: the harness log, the recording halves)
+    # and `<ts>_<session>_0_solo` (per session: mh_net.log, session.json) -- and the session dir
+    # sorts LAST. Picking `new[-1]` handed `stream` a directory with no mh_harness.log
+    # (TL-GATE-D25FX re-record, 2026-09-20); the run dir this tool means is the one that holds it.
+    new = sorted(
+        d
+        for d in after - before
+        if os.path.isfile(os.path.join(args.lane, "logs", d, "mh_harness.log"))
+    )
     if not new:
-        sys.exit("fixture_replay replay: no new run directory")
+        sys.exit("fixture_replay replay: no new run directory carrying an mh_harness.log")
     rd = os.path.join(args.lane, "logs", new[-1])
     print("  run -> %s" % rd)
     return rd

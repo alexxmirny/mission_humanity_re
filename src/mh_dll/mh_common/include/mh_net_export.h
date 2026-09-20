@@ -53,6 +53,23 @@ typedef struct MH_NetConfig {
      * absence of the peer's. Both are milliseconds; 0 disables that half. */
     int ping_ms;       /* send a FLAG_PING on every idle conn this often (0 = never)         */
     int rx_timeout_ms; /* drop a conn with NO inbound bytes for this long (0 = never)        */
+    /* mp:R7a -- THE RELAY DIAL, DECIDED PER DIAL BY mh.dll, not by the module reading [net] relay.
+     * Before R7a a peer with `[net] relay` set had no direct mode at all: mh_net_udp.dll read the key
+     * itself and tunnelled EVERY connection, so a typed *Internet server* address was dead weight. Now
+     * mh.dll reads the ini once and decides, per dial, whether THIS connection is relayed -- and hands
+     * the answer here. `relay_addr` empty is a DIRECT dial (the module dials `host:port`, no tunnel),
+     * even when the ini still carries `relay=`; a non-empty `relay_addr` is a relayed dial through that
+     * relay in `relay_room`. A zero-initialised config is therefore a direct dial ("absent = no relay"),
+     * which is what every self-test and the force-entry path get for free.
+     *
+     * ABI-APPEND ONLY. These two fields are the last members on purpose: the TCP module (mh_net.dll,
+     * net_transport.cpp) has no relay and never reads them, and any reader compiled before R7a addresses
+     * the fields ABOVE at unchanged offsets -- so it ignores the trailing bytes rather than misreading a
+     * moved one. (MH_NET_MODULE_ABI is bumped in the same change so a mismatched pair is refused at bind,
+     * per this contract's shape-change rule, rather than left to depend on that append-safety.) */
+    char     relay_addr[80]; /* "host:port" of the relay to tunnel through, or "" for a DIRECT dial     */
+    unsigned relay_room;     /* the room to dial. host: 0 (the module mints one per tunnel, mp:R6);     */
+                             /* relayed client: the directory's pick (mp:R2). Unused on a direct dial.  */
 } MH_NetConfig;
 
 /* Start the transport with an explicit config (host: bind+listen+accept thread; client: connect +
@@ -104,6 +121,31 @@ int MH_Net_ActivePeerIds(int *out, int cap);
  * never a host death (which is a relay-topology problem, out of U17 scope). One-shot (Interlocked). */
 int MH_Net_TakeDeadPeer(void);
 
+/* ---- per-peer link latency (mp:T3) ---------------------------------------------------------------
+ * What a transport that MEASURES its link can say about each peer. Carried inside MH_NetStats rather
+ * than behind a 24th export because it is the same snapshot, read by the same caller, on the same
+ * frame -- and because `check_module_bind.py --net-surface` gates the SYMBOL list: a number that
+ * rides an existing symbol cannot drift away from the binder table.
+ *
+ * NOT EVERY TRANSPORT CAN FILL THIS IN, and the struct says which rather than answering zeros. The
+ * TCP module (mh_net.dll) has no channel B -- its FLAG_PING is an empty keepalive and TCP's own
+ * retransmits make RFC 7680 loss meaningless anyway (a drop shows up as added delay, never as a
+ * missing sequence number) -- so it reports
+ * `lat_supported = 0` and the lockstep log prints `n/a` in these columns. Zeros would read as "a
+ * perfect 0 ms link", which is the one answer worse than no answer.
+ *
+ * Units are integers on purpose: this crosses a DLL boundary and is printed by wsprintfA, which has
+ * no float conversion. Microseconds keep the RFC 6298 smoothing's sub-millisecond resolution intact
+ * across the ABI; the log rounds to ms on the way out. */
+typedef struct MH_NetPeerLatency {
+    int player_id; /* the peer's transport player id, or -1 when the transport has not learnt it  */
+    int samples;   /* RTT samples folded in; 0 = nothing measured on this peer yet                */
+    int srtt_us;   /* RFC 6298 smoothed RTT, microseconds                                          */
+    int rttvar_us; /* RFC 6298 smoothed deviation, microseconds                                    */
+    int ipdv_us;   /* smoothed consecutive-sample delay variation, microseconds (RFC 3393 shape)   */
+    int loss_pm;   /* RFC 7680 loss over a 256-packet sequence window, per mille; -1 = not yet     */
+} MH_NetPeerLatency;
+
 /* Transport diagnostics snapshot (for the lockstep timing log). tx = the local game's outbound game
  * frames (not host relays); rx = inbound DATA frames off the wire; last_rx_tick = GetTickCount() at
  * the last rx (0 if none). Counters are racy (no lock) -- fine for a timing trace. */
@@ -113,6 +155,13 @@ typedef struct MH_NetStats {
     unsigned last_rx_tick;
     long     dropped;
     int      peers;
+    /* mp:T3. `lat_supported` 0 means every `lat[]` entry is meaningless, not that the link is
+     * perfect. `lat_count` is how many entries were filled, in the transport's own peer-slot order
+     * (NOT the lockstep horizon-slot order that `peer0_ms`/`peer1_ms` use; on a 2-player game there
+     * is exactly one peer, so the distinction does not arise). */
+    int               lat_supported;
+    int               lat_count;
+    MH_NetPeerLatency lat[MH_NET_MAX_PEERS];
 } MH_NetStats;
 void MH_Net_GetStats(MH_NetStats *out);
 

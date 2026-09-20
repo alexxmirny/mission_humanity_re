@@ -1,0 +1,59 @@
+[package]
+name = "mh_relay"
+description = "Single-port UDP relay for Mission Humanity multiplayer"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "mh_relay"
+path = "src/main.rs"
+
+# THE WIRE CODEC'S DEPENDENCIES AND THE FORWARDER'S, AND NOTHING ELSE (mp:T0 + mp:R1).
+#
+# `src/wire.rs` is the Rust half of the UDP packet format, whose whole job is to read the same
+# fixture files `net_selftest.exe udpwiretest` reads. The three crypto crates below are exactly the
+# primitives the C++ side already uses (net_crypto.h): ChaCha20 (RFC 8439) and HMAC-SHA256. No new
+# cryptography enters the system through this crate -- if it did, the two implementations would be
+# agreeing on bytes neither of them had checked against a third party's test vectors.
+#
+# VERSIONS ARE PINNED TO A MINOR, not floated: a fixture set is a claim about exact bytes, and the
+# point of the pin is that the claim is reproducible on a machine that resolves the lockfile fresh.
+[dependencies]
+chacha20 = "0.9.1"
+hmac = "0.12.1"
+sha2 = "0.10.9"
+
+# The forwarder. ONE runtime thread (`flavor = "current_thread"`) driving ONE socket, which is the
+# whole shape of the process: every session's state lives in one `Relay` with no lock, because a
+# relay that forwards a datagram in microseconds has nothing to gain from a work-stealing pool and
+# a great deal to lose from making that state shared-mutable. `net` brings the UDP socket, `time`
+# the housekeeping interval, `macros` the select!, `rt` the runtime, and `signal` the Ctrl-C
+# shutdown that prints the final counters -- nothing else, so the container layer stays small.
+tokio = { version = "1", default-features = false, features = [
+    "rt",
+    "net",
+    "time",
+    "macros",
+    "signal",
+] }
+
+# Structured logs keyed by match_id (plan D8/D9). `tracing` is the event API and
+# `tracing-subscriber` the renderer; `flatten_event` puts the fields at the top level of the JSON
+# object, which is what makes one line both greppable for `match_id` and parseable whole.
+tracing = { version = "0.1", default-features = false, features = ["std", "attributes"] }
+tracing-subscriber = { version = "0.3", default-features = false, features = [
+    "fmt",
+    "json",
+    "ansi",
+] }
+
+clap = { version = "4", features = ["derive"] }
+
+# serde_json reads the fixture INDEX and is needed only by the tests. Nothing in `src/` calls it --
+# tracing-subscriber's JSON renderer pulls the same crate in for its own use, which is why this is
+# a statement about our code rather than about the dependency graph.
+[dev-dependencies]
+serde_json = "1.0"

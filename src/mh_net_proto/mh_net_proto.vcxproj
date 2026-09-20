@@ -1,4 +1,4 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?>
 <Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup Label="ProjectConfigurations">
     <ProjectConfiguration Include="Debug|Win32">
@@ -127,14 +127,18 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClInclude Include="include\mh_net_proto\net_crypto.h" />
+    <ClInclude Include="include\mh_net_proto\net_udp.h" />
     <ClInclude Include="include\mh_net_proto\net_wire.h" />
     <ClInclude Include="include\mh_net_proto\session_info.h" />
+    <ClInclude Include="include\mh_net_proto\uuid7.h" />
     <ClInclude Include="src\byteio.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="src\net_crypto.cpp" />
+    <ClCompile Include="src\net_udp.cpp" />
     <ClCompile Include="src\net_wire.cpp" />
     <ClCompile Include="src\session_info.cpp" />
+    <ClCompile Include="src\uuid7.cpp" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

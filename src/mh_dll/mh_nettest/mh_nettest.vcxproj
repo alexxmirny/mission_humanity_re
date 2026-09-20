@@ -1,7 +1,7 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?>
 <Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <!-- net_selftest: the MP-transport loopback self-test (2-node PING/PONG + 3-node broadcast relay).
-       Promoted into mh.sln in refactor Phase 5 (tasks/mh-lib-refactor.md) so the source list lives in
+       Promoted into mh.sln in refactor Phase 5 (docs/mh-lib-refactor-history.md) so the source list lives in
        ONE place; build_selftest.bat is now a thin msbuild wrapper preserving the %TEMP%\mh_nettest
        run contract. Compiles the REAL transport + seam sources directly (no mh.dll link: the test
        must run without the game and without DllMain/ini gating). -->
@@ -124,6 +124,22 @@
     <ClCompile Include="watchdog_selftest.cpp" />
     <ClCompile Include="desync_selftest.cpp" />
     <ClCompile Include="net_queue_selftest.cpp" />
+    <ClCompile Include="session_id_selftest.cpp" />
+    <ClCompile Include="session_dir_selftest.cpp" />
+    <ClCompile Include="log_rotate_selftest.cpp" />
+    <ClCompile Include="udp_wire_selftest.cpp" />
+    <ClCompile Include="udp_loopback_selftest.cpp" />
+    <ClCompile Include="..\mh_net_udp\udp_endpoint.cpp" />
+    <ClCompile Include="..\mh_net_udp\udp_channel_c.cpp" />
+    <ClCompile Include="..\mh_net_udp\udp_snapshot.cpp" />
+    <ClCompile Include="udp_bulk_selftest.cpp" />
+    <ClCompile Include="udp_snapshot_selftest.cpp" />
+    <ClCompile Include="map_transfer_selftest.cpp" />
+    <ClCompile Include="udp_punch_selftest.cpp" />
+    <ClCompile Include="udp_room_selftest.cpp" />
+    <ClCompile Include="udp_relay_selftest.cpp" />
+    <ClCompile Include="..\mh_net_udp\udp_punch.cpp" />
+    <ClCompile Include="..\mh_net_udp\udp_relay.cpp" />
     <ClCompile Include="..\mh\addr\mh_calls.gen.cpp" />
     <ClCompile Include="..\mh\addr\mh_hostapi_bind.gen.cpp" />
     <ClCompile Include="..\mh\seams\hostapi_io_bind.cpp" />
@@ -2416,11 +2432,15 @@
     <ClCompile Include="..\mh\seams\standalone.cpp" />
     <ClCompile Include="..\mh\seams\net_diag.cpp" />
     <ClCompile Include="..\mh\seams\net_discovery.cpp" />
+    <ClCompile Include="..\mh\seams\map_transfer.cpp" />
     <ClCompile Include="..\mh\seams\net_lockstep.cpp" />
     <ClCompile Include="..\mh\seams\mp_menu.cpp" />
     <ClCompile Include="..\mh\seams\gfx_capture.cpp" />
     <ClCompile Include="module_bind_compiled_in.cpp" />
     <ClCompile Include="..\mh\seams\gfx_overlay.cpp" />
+    <ClCompile Include="..\mh\seams\gfx_font_guard.cpp" />
+    <ClCompile Include="..\mh\seams\ui_chat_input.cpp" />
+    <ClCompile Include="..\mh\seams\ui_net_indicator.cpp" />
     <ClCompile Include="..\mh\seams\ui_drive.cpp" />
     <ClCompile Include="..\mh_harness\harness.cpp" />
     <!-- F4E: MH_Core_Arm_Early and the run paths left harness.cpp for mh.dll's side of the file
@@ -2434,8 +2454,10 @@
     <ClCompile Include="..\mh\seams\launch.cpp" />
     <ClCompile Include="..\mh\seams\video.cpp" />
     <ClCompile Include="..\..\mh_net_proto\src\session_info.cpp" />
+    <ClCompile Include="..\..\mh_net_proto\src\uuid7.cpp" />
     <ClCompile Include="..\..\mh_net_proto\src\net_wire.cpp" />
     <ClCompile Include="..\..\mh_net_proto\src\net_crypto.cpp" />
+    <ClCompile Include="..\..\mh_net_proto\src\net_udp.cpp" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

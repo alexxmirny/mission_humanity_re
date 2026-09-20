@@ -321,7 +321,7 @@ def md_links(src, line, tracked):
     DIRECTORY, and inside a link there is nothing to be conservative about: the renderer resolves it
     against the containing directory and so do we.
 
-    This exists because rule 8 deliberately REFUSES an ambiguous bare basename -- `gfx-sprites.md`
+    This exists because rule 8 deliberately REFUSES an ambiguous bare basename -- `strategic-sim.md`  # CITATION-OK
     names both docs/ and tasks/, so check_publishable.suffix_index records neither -- and a markdown  # CITATION-OK
     link is exactly where that conservatism is wrong. Measured when Q4 flipped the research docs to
     withhold: 55 lines in PUBLISHED documents linked into WITHHELD ones and no token rule could see

@@ -1,0 +1,57 @@
+# mp:L1 HOST walk for the PLAYER-VISIBLE connection indicator.
+#
+# The same host-and-launch walk as mp_host_start.txt, with two deliberate differences, and the
+# reason for BOTH is that this test's subject is a readout that only exists in a live match:
+#
+#   1. it captures ONCE, in the game, and nowhere else. The menu and lobby frames are match_launch's
+#      job; a second copy of them here would be two baselines for one screen and the pair would
+#      drift apart the first time a menu changed.
+#   2. it waits much longer in the match than match_launch does. The indicator's ping number comes
+#      from the transport's RFC 6298 estimator, which needs several round trips before it says
+#      anything at all -- capture too early and the frame shows `PING [....] n/a`, which is a true
+#      readout of "nothing measured yet" and a useless test of a readout that is supposed to carry
+#      numbers. `gameclock 20000` is ~20 game-seconds of match.
+#
+# THE SCENARIO RUNS transport=udp (registry `net_extra`), and that is not a detail: the SRTT/IPDV/
+# loss the indicator shows come from the UDP module's channel B. The TCP module has no channel B,
+# reports lat_supported=0, and the indicator would honestly print `n/a` and an empty bar -- a real
+# behaviour, but not the one under test here.
+#
+# Pair with mp_client_hud.txt. This peer's own script ENDS right after its capture, well before
+# mp:TL-UISTALL's stall event (tools/uiscripts/shim/net_hud_stall.txt fires ~300s after shim-arm) --
+# that is fine, not a race: ui_test.py's runner waits for EVERY peer to reach COMPLETE before tearing
+# either process down (the same pattern mp_host_chat_glyphs.txt's early `end` already relies on), so
+# the host keeps running -- and the shim keeps relaying its outbound traffic normally right up to the
+# blackhole -- while the client finishes its own longer script.
+
+# reach the host lobby (create a game named "test" on the pre-selected map)
+settled value:110
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+settled Create
+clickl Create
+present Game name
+settled Ok
+clickl Ok
+present Available maps
+settled Ok
+clickl Ok
+
+# host lobby: block until the client is really in ITS lobby, then Start.
+present Network players
+peers 1
+awaitsignal lobby
+enabled Start
+settled Start
+clickl Start
+
+# in the match. Gate the capture on the SIM, never on a frame count -- see mp_host_start.txt for the
+# fog-of-war-reveal measurement that made that rule. 20000 is past saturation AND past the point
+# where the estimator has folded in enough round trips to print a ping.
+absent Network players
+gameclock 20000
+capture n1_hud
+log HOST captured the net indicator in a live udp match
+end

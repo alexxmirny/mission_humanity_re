@@ -22,6 +22,8 @@
 
 #include "hook/detour.h"            // mh::hook::WATCOM_PROLOGUE + install_* (used across the seam TUs)
 #include "include/mh_seam_export.h" // MH_SeamAddrs (g_a below)
+#include "include/mh_run_context.h" // SES1: MH_RunDir/MH_ProcessDir + mh_run_path (the path tick below)
+#include "include/mh_session_dir.h" // SES1: MH_SessionRecord + the SESSION_BEGIN/END/json builders
 
 // Watcom frame prologue (55 89 e5 68) -- every hookable mh.exe entry opens with it; the install
 // guards compare *target against this before arming (wrong build / already-hooked = safe no-op).
@@ -100,7 +102,7 @@ enum { TEV_FRAME    = 0,
 
 // ---- shared state: MH_Seam_Init (net_seams.cpp) writes; net_diag.cpp reads --------------------
 inline char          g_ini[MAX_PATH];      // mh_net.ini path (next to the exe)
-inline char          g_log[MAX_PATH];      // mh_net.log path (per-run folder)
+inline char          g_log[MAX_PATH];      // mh_net.log path (per-SESSION folder -- seam_paths_tick)
 inline DWORD         g_main_tid = 0;       // main/frame thread id, captured in MH_Seam_Init
 inline LARGE_INTEGER g_qpc_freq = {0};     // QPC frequency (temporal trace)
 inline bool          g_temporal = false;   // [trace] temporal=1 armed
@@ -115,10 +117,43 @@ extern MH_SeamAddrs g_a;
 // thread (on_join_recv, net_discovery.cpp); read by net_seams' lobby dispatch (host work gate).
 inline volatile LONG g_host_join_seen = 0;
 
+// U40 RELINK LATCH: this peer's link belonged to a match that has ENDED, so the transport may be
+// dialled again. Set by mp_session_close (net_discovery.cpp) at the MATCH-end reasons only, on a
+// manual CLIENT; read by on_discover_poll (may I kick a connect?) and CONSUMED by lazy_start
+// (net_seams.cpp), which is the one place allowed to re-enter MH_Net_InitEx on a started transport.
+//
+// A LATCH RATHER THAN A DIRECT TEARDOWN, because the exit seams run on the GAME thread: closing
+// sockets and joining their threads at the game-over dialog would put a hitch (and a thread-join) on
+// the frame that draws the player's result. The re-dial instead happens where a re-dial belongs --
+// the discovery browser, main thread, on the connect thread we already spawn there -- so the boundary
+// is the TRIGGER and the browser is the ACTOR. It is also why "no reconnect storms mid-game" needs no
+// extra guard: on_discover_poll exists only on the browser screen.
+inline volatile LONG g_net_relink = 0;
+
 // [net] lockstep_log=1 -> mh_lockstep.log + the `;` DIAG lines. Written by net_lockstep.cpp's
 // config (lockstep_install_core); read as the DIAG gate across net_seams (lobby dispatch, recv
 // seams, finalize), the net_seams sbm logger, and the net_diag loggers.
 inline bool g_ls_log = false;
+
+// ---- SES1: the per-session directory, as the seam TUs see it ---------------------------------
+//
+// One generation token per cached path. Every seam log writer calls its tick FIRST, so the line it
+// is about to append lands in whichever directory is current -- the process ("menu") one before a
+// lobby, the session one during a match. The cost is an integer compare; the alternative (composing
+// the path at arm time, as this stack did until SES1) writes three matches into one folder.
+//
+// The DERIVED paths (mh_lockstep / mh_frametime / mh_temporal / mh_trace / mh_gamemode) each own
+// their generation in the TU that writes them, and the ones holding an OPEN HANDLE act on
+// mh_run_path's return value: a rebuilt path means close the handle and let the next write reopen.
+inline unsigned long g_log_gen = 0;
+
+inline void seam_paths_tick() { mh_run_path(g_log, MAX_PATH, "%smh_net.log", &g_log_gen); }
+
+// Open a session directory for `match_id_hex` and announce it, or close the open one with `reason`.
+// Defined in net_discovery.cpp (it owns the match_id); called from the lobby/lockstep exit seams in
+// net_seams.cpp and net_lockstep.cpp. Both are safe to call when nothing is open.
+void mp_session_open(const unsigned char *match_id, int slot);
+void mp_session_close(const char *reason);
 
 // Read a game double (ms). Shared sampler for every timing log/DIAG line across the seam TUs.
 inline long ms_of(uintptr_t a) {
@@ -187,8 +222,25 @@ void lockstep_install_present_gameover(); // present hook (frametime/eager/tempo
 void lockstep_transport_started();        // start the horizon-heartbeat thread (from lazy_start, off loader-lock)
 
 // ---- cross-TU surface of net_discovery.cpp (synth session / browser / S2-S4 discovery+join) --
-void mp_host_advertise_session();               // S2: build + broadcast the host's SESSION_INFO (~1 Hz)
+void mp_host_advertise_session(); // S2: build + broadcast the host's SESSION_INFO (~1 Hz)
+// mp:X2: the client's map-download COMPLETION report -- a re-sent JOIN carrying the hash it now
+// holds. Called from the lobby tick when maps::client_take_rejoin() says a download just landed;
+// it lives in net_discovery because that TU owns the stored host record and the player name.
+void mp_join_resend_map_report();
 bool mp_read_typed_join_ip(char *out, int cap); // U1c: the in-game typed join IP (client), if complete
+// mp:R2, the RELAY SESSION SOURCE. `[net] relay` makes the transport dial a relay instead of the
+// host directly, and the relay then carries a DIRECTORY of the lobbies registered on it -- which
+// is what a browsing client lists when it has no host to connect to yet. Two questions cross the
+// TU boundary into lazy_start (net_seams.cpp), because the room a relayed client dials is a LOBBY
+// choice and lazy_start is the one place that builds MH_NetConfig:
+bool     mp_relay_configured(); // `[net] relay` is set -- this peer reaches its games through one
+uint32_t mp_relay_dial_room();  // the room the client should dial: a listed lobby's, or 0 for none
+// mp:R7a -- the PER-DIAL relay-vs-direct decision, so `[net] relay` set no longer forces every
+// connection through the relay. lazy_start hands the answer to the module in MH_NetConfig.relay_addr
+// (empty = a direct dial). The relay address itself (already trimmed of any trailing `; comment`) is
+// read here rather than in the module, which stops reading `[net] relay` for the dial.
+bool mp_relay_addr(char *out, int cap); // the trimmed `[net] relay` value; false + out[0]='\0' if unset
+bool mp_dial_is_relayed();              // the kick site's latched decision for the current manual client dial (mp:R7a)
 // recv-thread control-frame handlers (net_seams' MH_Net_Arm registers them on the transport -- they
 // are net steps, so `[net] enable=0` skips them along with the four transport installs; F3B):
 void           on_session_info_recv(int sender, const unsigned char *buf, int len); // S3: store the host record
@@ -199,6 +251,7 @@ void           on_leave_recv(int sender);                                       
 // dead-stub detour bodies (net_seams' install_mp_bootstrap installs them; PROLOGUE-guarded there):
 void discover_poll_detour();  // client discovery poll -> synth/browser record
 void host_advertise_detour(); // host session-create/advertise -> mark role + ok
-void ret_zero_detour();       // connect-prep / disconnect / map-send no-op (return 0)
+void ret_zero_detour();       // connect-prep / map-send no-op (return 0)
+void net_disconnect_detour(); // disconnect no-op + R7: arm the first browser's directory probe
 void join_connect_detour();   // client join click -> send JOIN control frame, return ok
 void map_recv_step_detour();  // client map-recv step -> set the done flag (map pre-loaded)

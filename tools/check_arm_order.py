@@ -163,6 +163,17 @@ BULK_RES = [
     re.compile(r"^;\s*\[libmh_in\]\s+\S+\s+call #\d+$"),
     # `; [hostevt] first dispatch: channel 1, kind 14`
     re.compile(r"^;\s*\[hostevt\]\s+first dispatch:"),
+    # `; [build] mh 0.1.0-rc1+abc12345` -- the release stamp (tracker TL-CI1), written as the very
+    # first line of mh_net.log by mh/seams/module_bind.cpp. FOLDED OUT rather than baselined, and
+    # this is the one entry here that is folded for a reason other than volume: normalize() exists
+    # to make a template independent of the values in a line, and it CANNOT do that to this one.
+    # `0.1.0` masks to `<N>.<N>`, `0.1.0-rc1` to `<N>.<N>-rc<N>`, and a short sha that happens to be
+    # seven letters survives HEXRUN_RE's eight-character letters-only floor as itself -- so the
+    # normalized text of this step would change with the release number and with the commit. A
+    # baselined step like that reds the gate on every tagged build, i.e. exactly when the gate most
+    # needs to be readable. Its presence is gated where it can be: tools/release_package.py reads
+    # the stamp back out of the built DLLs' VERSIONINFO and refuses a mislabelled package.
+    re.compile(r"^;\s*\[build\]\s+mh\s"),
 ]
 
 

@@ -1,0 +1,45 @@
+# mp:D25 CLIENT fixture -- the IDLE peer of d25_buildclick. mp_client_start.txt's walk verbatim
+# (join the host's game, enter the match, capture once), under its OWN label so
+# --update-baselines on this scenario cannot clobber match_launch's client baseline (the
+# ui-testing rule: a script reused in another topology renders different text). It stays alive
+# until the host's script completes -- the runner tears both down together -- so the harness
+# keeps hashing on this side for the whole of the host's click sequence.
+
+settled value:110
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+present Internet server
+settled Internet server
+clickl Internet server
+present Server address
+settled Connect
+clickl Connect
+sessions 1
+settled Join game
+clickl Join game
+
+# joined lobby: wait for the host's Start -> the lobby screen goes away when the match launches
+present Network players
+# Tell the HOST we are really in our lobby. Its `peers 1` only means the TRANSPORT connected, which
+# happens about a second before this point -- clicking Start there left us ~2 frames of lobby, too few
+# to settle or capture (2026-07-28). The runner ferries this marker to the host's `awaitsignal lobby`.
+signal lobby
+settled Cancel
+capture m2_lobby
+absent Network players
+# Capturing on `absent` ALONE is frame-rate sensitive, and headless is what exposed it (2026-07-28):
+# the client enters on the host's FLAG_START, so its first in-game frame lands mid fog-of-war reveal,
+# and at ~8500 fps that frame is a different reveal stage than at 60 fps -> 3.776% vs a 60 fps baseline
+# (the diff is a clean annulus: the reveal ring). Gate on the SIM instead -- `gameclock` is the idiom the
+# other in-game captures already use (res_hud 3000, esc_menu 1500) and it is speed-independent by
+# construction. The host's capture is gated the same way and for the same reason -- it looked exempt
+# at 0.000% once, then came back 1.590%, so it was never deterministic, just lucky.
+# 1500 still left the reveal GROWING (host 0.539% of a 2% tol -- passing, but on luck).
+# 6000 is past saturation, the value res_picker needed for the same reason. Both peers use
+# the SAME number so a lockstep pair also captures the same sim moment.
+gameclock 6000
+capture m3_launched
+log CLIENT entered the match
+end

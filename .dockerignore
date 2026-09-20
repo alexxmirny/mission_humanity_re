@@ -1,0 +1,19 @@
+# .dockerignore -- scopes the Docker build context for src/relay/Dockerfile (dist RP4), whose
+# build context is the REPO ROOT (the relay crate is a workspace member; see that Dockerfile's own
+# header comment for why). Default-deny, then allow back exactly what a Rust image build needs.
+# Without this, `docker build -f src/relay/Dockerfile .` would tar the ~2.5k files of C++/Python/
+# RE-doc tree that make up the rest of this monorepo -- correct either way (BuildKit only actually
+# TRANSFERS what a COPY instruction references), but this makes the context-walk itself cheap and
+# is the belt to that suspenders.
+#
+# src/collector's own image builds with `context: src/collector` (its own directory is already
+# self-contained -- see src/collector/Dockerfile) and so is UNAFFECTED by this file: Docker only
+# honours a `.dockerignore` located at the build context's own root, not this repo-root one.
+*
+!Cargo.toml
+!Cargo.lock
+!rust-toolchain.toml
+!src/relay
+!src/relay/**
+!src/launcher
+!src/launcher/**

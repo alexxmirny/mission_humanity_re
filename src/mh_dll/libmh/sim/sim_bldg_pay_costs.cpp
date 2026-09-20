@@ -23,8 +23,7 @@ const pay_costs_calls &live_pay_costs_calls() {
 
 namespace detail {
 
-int32_t bldg_pay_build_cost(const sim_view &v, const pay_costs_calls &gc, uint32_t player,
-                            int32_t building_type_id) {
+int32_t bldg_can_afford_build_cost(const sim_view &v, uint32_t player, int32_t building_type_id) {
     // Truncated to the low 16 bits at EVERY use site in the original (0x00492edf/0x00492fd5); one
     // local here, matching the .c draft's own `player & 0xffff` at every site.
     const int32_t p = (int32_t)(player & 0xffffu);
@@ -54,7 +53,18 @@ int32_t bldg_pay_build_cost(const sim_view &v, const pay_costs_calls &gc, uint32
             error = (error == 0) ? (int32_t)(resource_id + 0x89u) : 0x89;
         }
     }
-    if (error != 0) return error; // 0x00492f86-0x00492f8e
+    return error; // 0x00492f86-0x00492f8e: nonzero is the reason code, 0 means every slot is covered
+}
+
+int32_t bldg_pay_build_cost(const sim_view &v, const pay_costs_calls &gc, uint32_t player,
+                            int32_t building_type_id) {
+    // ---- pass 1 (0x00492ecb-0x00492f8e): the gate + the shortage scan, split out as
+    // bldg_can_afford_build_cost for mp:D25 -- identical code, identical return.
+    const int32_t error = bldg_can_afford_build_cost(v, player, building_type_id);
+    if (error != 0) return error;
+
+    const int32_t       p  = (int32_t)(player & 0xffffu);
+    const cfg_building &cb = v.cfg_buildings[building_type_id];
 
     // ---- pass 2: everything affordable -- actually charge (0x00492f90-0x00492fe4).
     for (int32_t i = 0;; ++i) {
@@ -110,6 +120,11 @@ int32_t bldg_pay_cycle_inputs(const sim_view &v, const pay_costs_calls &gc, uint
 } // namespace detail
 
 // ---- the public wrappers ------------------------------------------------------------------------
+
+int32_t bldg_can_afford_build_cost(uint32_t player, int32_t building_type_id) {
+    const sim_view v = state().read;
+    return detail::bldg_can_afford_build_cost(v, player, building_type_id);
+}
 
 int32_t bldg_pay_build_cost(uint32_t player, int32_t building_type_id) {
     const sim_view v = state().read;

@@ -56,14 +56,11 @@ uint32_t g_key    = DEFAULT_KEY;
 void    *g_tramp  = nullptr;
 long     g_enters = 0;
 
-char g_log[MAX_PATH];
-bool g_log_ready = false;
+char          g_log[MAX_PATH];
+unsigned long g_log_gen = 0; // SES1: per-SESSION (shares mh_input.log with ui_keyrepeat)
 
 void pz_log(const char *fmt, ...) {
-    if (!g_log_ready) {
-        wsprintfA(g_log, "%smh_input.log", MH_RunDir());
-        g_log_ready = true;
-    }
+    mh_run_path(g_log, MAX_PATH, "%smh_input.log", &g_log_gen);
     char    line[256];
     va_list ap;
     va_start(ap, fmt);

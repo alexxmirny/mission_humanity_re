@@ -1,0 +1,60 @@
+// mh_version.rc -- ONE VERSIONINFO resource, compiled into each of the five shipping modules.
+//
+// It is a single shared file rather than one .rc per project because every field except the module
+// name is the same in all five, and five copies of the same resource is five places for a release
+// to be stamped inconsistently. The per-module fields come from the resource compiler's own
+// defines, pushed in by src/mh_dll/mh_version.props: MH_MODULE_NAME / MH_MODULE_FILE are
+// $(TargetName) / $(TargetFileName), so this file never names a module.
+//
+// This is the stamp Explorer's Details tab shows and the one tools/release_package.py reads back
+// out of the built DLLs to refuse a mislabelled release.
+
+#include <winver.h>
+#include "mh_version.h"
+
+#ifndef MH_VERSION_QUAD
+// Only reachable if this file is compiled without the property sheet; the numeric field must still
+// be four integers or rc.exe rejects the resource outright.
+#define MH_VERSION_QUAD 0, 0, 0, 0
+#endif
+
+#ifndef MH_MODULE_NAME
+#define MH_MODULE_NAME mh
+#endif
+
+#ifndef MH_MODULE_FILE
+#define MH_MODULE_FILE mh.dll
+#endif
+
+VS_VERSION_INFO VERSIONINFO
+ FILEVERSION MH_VERSION_QUAD
+ PRODUCTVERSION MH_VERSION_QUAD
+ FILEFLAGSMASK 0x3fL
+#ifdef _DEBUG
+ FILEFLAGS 0x1L
+#else
+ FILEFLAGS 0x0L
+#endif
+ FILEOS 0x40004L
+ FILETYPE 0x2L
+ FILESUBTYPE 0x0L
+BEGIN
+    BLOCK "StringFileInfo"
+    BEGIN
+        BLOCK "040904b0"
+        BEGIN
+            VALUE "CompanyName", "mission_humanity_re contributors"
+            VALUE "FileDescription", "mh -- re-implemented engine core for Exterminacja / Mission Humanity"
+            VALUE "FileVersion", MH_VERSION_FULL
+            VALUE "InternalName", MH_VERSION_STRINGIFY(MH_MODULE_NAME)
+            VALUE "LegalCopyright", "MIT licensed. Not affiliated with Techland. No game content."
+            VALUE "OriginalFilename", MH_VERSION_STRINGIFY(MH_MODULE_FILE)
+            VALUE "ProductName", "mission_humanity_re"
+            VALUE "ProductVersion", MH_VERSION_FULL
+        END
+    END
+    BLOCK "VarFileInfo"
+    BEGIN
+        VALUE "Translation", 0x409, 1200
+    END
+END

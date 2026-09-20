@@ -12578,7 +12578,8 @@
    "manifests": [
     "view",
     "shadow",
-    "save"
+    "save",
+    "hash"
    ],
    "size_claims": {
     "320": [
@@ -12599,7 +12600,8 @@
      "shadow",
      "shadow",
      "save",
-     "save"
+     "save",
+     "hash"
     ]
    },
    "id": "PLAYER_RESOURCES"

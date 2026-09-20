@@ -51,6 +51,7 @@ DLL = os.path.join(REPO, "src", "mh_dll", "Release", "mh.dll")
 SHIM = os.path.join(REPO, "src", "mh_dll", "Release", "msvfw32.dll")
 REG_FILE = os.path.join(HERE, "data", "mh_registry.reg")
 REG_KEY = r"HKLM\SOFTWARE\WOW6432Node\Techland\Mission Humanity"
+PROBE = os.path.join(HERE, "udp_rtt_probe.py")  # mp:T3b's independent RTT probe (TL-PROBEDEPLOY)
 
 # The rig's inbound port band. Every port the harness can hand a peer must be inside it:
 #   6501            ui_test/mp_run default ([net] port)
@@ -179,6 +180,55 @@ def apply_firewall(check_only, peers):
             _p(WARN, "peer %s: unreachable, firewall NOT checked (%s)" % (ip, mp_run._ssh_err(r)))
             continue
         ok &= _fw_report("peer %s" % ip, r.stdout or "", check_only)
+    return ok
+
+
+def deploy_probe(check_only, peers):
+    """Place tools/udp_rtt_probe.py (mp:T3b's independent RTT instrument) on each rig peer.
+
+    Unlike mh.dll/mh.focus.exe/the UI harness script, the probe is not redeployed per run -- it is
+    HAND-RUN when a link-condition claim needs re-verifying (`echo` on the host-slot peer, `probe`
+    on the client-slot peer; see the probe's own docstring), so it only needs to be PRESENT in the
+    peer's game dir (machine.VM_DIR), not launched. Before this it was scp'd by hand each time
+    (TL-PROBEDEPLOY). A peer we cannot reach is a WARN, same convention as the firewall pass above --
+    this script stays runnable with the VMs powered off.
+    """
+    ok = True
+    remote_dir = machine.VM_DIR
+    remote_fwd = remote_dir.replace("\\", "/")
+    for ip in peers:
+        r = mp_run.ssh(
+            machine.SSH_KEY,
+            machine.VM_USER,
+            ip,
+            'if exist "%s\\udp_rtt_probe.py" (echo PRESENT) else (echo ABSENT)' % remote_dir,
+        )
+        if r.returncode != 0:
+            _p(
+                WARN,
+                "peer %s: unreachable, udp_rtt_probe.py NOT checked (%s)"
+                % (ip, mp_run._ssh_err(r)),
+            )
+            continue
+        present = "PRESENT" in (r.stdout or "")
+        if check_only:
+            _p(
+                OK if present else FAIL,
+                "peer %s: udp_rtt_probe.py %s"
+                % (ip, "present" if present else "MISSING (python tools/provision_rig.py)"),
+            )
+            ok &= present
+            continue
+        if present:
+            _p(OK, "peer %s: udp_rtt_probe.py already present" % ip)
+            continue
+        dst = "%s@%s:%s/udp_rtt_probe.py" % (machine.VM_USER, ip, remote_fwd)
+        r2 = mp_run.scp(machine.SSH_KEY, PROBE, dst)
+        if r2.returncode != 0:
+            _p(FAIL, "peer %s: scp of udp_rtt_probe.py failed" % ip)
+            ok = False
+            continue
+        _p(OK, "peer %s: deployed udp_rtt_probe.py" % ip)
     return ok
 
 
@@ -312,9 +362,11 @@ def main():
     check_only = args.check
 
     print("=== rig provisioning (%s) ===" % ("CHECK" if check_only else "APPLY"))
+    peer_list = [x for x in args.peers.split(",") if x.strip()]
     ok = True
     ok &= bool(apply_registry(check_only))
-    ok &= bool(apply_firewall(check_only, [x for x in args.peers.split(",") if x.strip()]))
+    ok &= bool(apply_firewall(check_only, peer_list))
+    ok &= bool(deploy_probe(check_only, peer_list))
     for label, install, man, required in INSTALLS:
         if not required and not args.with_clean:
             continue

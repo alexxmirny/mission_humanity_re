@@ -1,0 +1,45 @@
+# src/collector/Caddyfile -- edge for the report collector (tracker dist:RP2, plan D14 / section 6 answer 4).
+#
+# No domain exists yet, so this serves a SELF-SIGNED certificate via Caddy's
+# `tls internal` directive (its own local CA, generated on first run) rather
+# than attempting public ACME issuance, which would fail with no DNS name to
+# validate. The launcher (RP1) is expected to pin this cert's SPKI hash rather
+# than trust a CA -- print it once the stack is up with:
+#   docker compose exec caddy caddy trust  # or: openssl s_client -connect <host>:443 </dev/null 2>/dev/null | openssl x509 -pubkey -noout | openssl pkey -pubin -outform der | openssl dgst -sha256 -binary | base64
+# Revisit once a domain exists: swap `tls internal` for a bare site address
+# and Caddy's automatic HTTPS (Let's Encrypt) takes over with no other change.
+
+# Site address + default_sni from MH_SITE_ADDR (default localhost): see deploy/Caddyfile's
+# header for why a bare `:443` leaves `tls internal` with no certificate to issue.
+{
+	default_sni {$MH_SITE_ADDR:localhost}
+}
+
+{$MH_SITE_ADDR:localhost} {
+	tls internal
+
+	# The edge body-size cap (plan D14): a request over 64 MB is rejected with
+	# 413 HERE, before Caddy even finishes proxying it to the collector process.
+	# The collector also enforces the same limit itself (middleware.py) so it
+	# is not solely dependent on this front door -- see RP2's done_when.
+	request_body {
+		max_size 64MB
+	}
+
+	reverse_proxy collector:8000 {
+		# Give large uploads (up to 64 MB) room to actually transfer.
+		transport http {
+			read_timeout 120s
+			write_timeout 120s
+		}
+	}
+
+	log {
+		output stdout
+		format json
+	}
+}
+
+:80 {
+	redir https://{host}{uri} permanent
+}

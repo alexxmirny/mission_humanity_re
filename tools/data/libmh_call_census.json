@@ -2,14 +2,14 @@
  "_generated_by": "tools/gen_libmh_calls.py -- do not hand-edit; regenerate instead",
  "_measures": "mh::call:: tokens in src/mh_dll/mh/** (comments stripped; addr/+attic/ excluded)",
  "summary": {
-  "distinct_callees": 116,
+  "distinct_callees": 124,
   "config_measures": {
    "hosted": {
-    "sites": 1563,
+    "sites": 1561,
     "distinct": 746
    },
    "hosted_gates_off": {
-    "sites": 1563,
+    "sites": 1561,
     "distinct": 746
    },
    "hosted_ship": {
@@ -22,7 +22,7 @@
     "distinct": 2
    },
    "config_dependent": {
-    "sites": 1440,
+    "sites": 1438,
     "distinct": 714
    },
    "vendored_crt": {
@@ -36,8 +36,8 @@
   },
   "by_status": {
    "dead": 2,
-   "original": 97,
-   "translated": 17
+   "original": 103,
+   "translated": 19
   },
   "modules": {
    "lockstep": {
@@ -47,10 +47,10 @@
     "outward_distinct": 0
    },
    "seams": {
-    "sites": 145,
-    "distinct": 115,
-    "outward_sites": 123,
-    "outward_distinct": 99
+    "sites": 156,
+    "distinct": 123,
+    "outward_sites": 132,
+    "outward_distinct": 105
    },
    "sim": {
     "sites": 1,
@@ -93,6 +93,18 @@
     "seams": 2
    },
    "adjudication": "host-callback:io"
+  },
+  {
+   "name": "_fsopen",
+   "status": "original",
+   "domain": null,
+   "tier": null,
+   "promoted": false,
+   "sites": 1,
+   "modules": {
+    "seams": 1
+   },
+   "adjudication": null
   },
   {
    "name": "cfg_final_planet_FillBankData",
@@ -213,6 +225,18 @@
    "adjudication": "event-channel:screen"
   },
   {
+   "name": "llm_gfx_draw_text_blend_clipped",
+   "status": "original",
+   "domain": null,
+   "tier": null,
+   "promoted": false,
+   "sites": 2,
+   "modules": {
+    "seams": 2
+   },
+   "adjudication": null
+  },
+  {
    "name": "llm_gfx_draw_text_rgb",
    "status": "original",
    "domain": null,
@@ -237,14 +261,38 @@
    "adjudication": "event-channel:screen"
   },
   {
+   "name": "llm_gfx_font_get_line_height",
+   "status": "original",
+   "domain": null,
+   "tier": null,
+   "promoted": false,
+   "sites": 1,
+   "modules": {
+    "seams": 1
+   },
+   "adjudication": null
+  },
+  {
+   "name": "llm_gfx_font_measure_text",
+   "status": "original",
+   "domain": null,
+   "tier": null,
+   "promoted": false,
+   "sites": 1,
+   "modules": {
+    "seams": 1
+   },
+   "adjudication": null
+  },
+  {
    "name": "llm_gfx_font_select",
    "status": "original",
    "domain": null,
    "tier": null,
    "promoted": false,
-   "sites": 2,
+   "sites": 4,
    "modules": {
-    "seams": 2
+    "seams": 4
    },
    "adjudication": "event-channel:invalidate"
   },
@@ -343,6 +391,18 @@
     "seams": 1
    },
    "adjudication": "event-channel:invalidate"
+  },
+  {
+   "name": "llm_input_key_dequeue",
+   "status": "original",
+   "domain": null,
+   "tier": null,
+   "promoted": false,
+   "sites": 1,
+   "modules": {
+    "seams": 1
+   },
+   "adjudication": "host-callback:input"
   },
   {
    "name": "llm_map_cam_mark_viewport_dirty",
@@ -1087,6 +1147,17 @@
    "adjudication": "event-channel:event"
   },
   {
+   "name": "llm_time_get_ticks_ms",
+   "status": "translated",
+   "domain": "(pre-ledger)",
+   "tier": null,
+   "promoted": false,
+   "sites": 1,
+   "modules": {
+    "seams": 1
+   }
+  },
+  {
    "name": "llm_tutorial_load_script",
    "status": "original",
    "domain": null,
@@ -1110,6 +1181,18 @@
     "seams": 1
    },
    "adjudication": "event-channel:screen"
+  },
+  {
+   "name": "llm_ui_chat_input_char_insert",
+   "status": "original",
+   "domain": null,
+   "tier": null,
+   "promoted": false,
+   "sites": 1,
+   "modules": {
+    "seams": 1
+   },
+   "adjudication": null
   },
   {
    "name": "llm_ui_dlg_build_from_table",
@@ -1338,6 +1421,18 @@
    }
   },
   {
+   "name": "rsr_GetFileEntry",
+   "status": "original",
+   "domain": null,
+   "tier": null,
+   "promoted": false,
+   "sites": 1,
+   "modules": {
+    "seams": 1
+   },
+   "adjudication": null
+  },
+  {
    "name": "rsr_GetFileRealSize",
    "status": "original",
    "domain": null,
@@ -1375,15 +1470,14 @@
   },
   {
    "name": "utils_open_file",
-   "status": "original",
-   "domain": null,
+   "status": "translated",
+   "domain": "(pre-ledger)",
    "tier": null,
    "promoted": false,
    "sites": 1,
    "modules": {
     "seams": 1
-   },
-   "adjudication": "host-callback:io"
+   }
   },
   {
    "name": "utils_read_from_file",

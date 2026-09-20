@@ -36,6 +36,7 @@ usage:
 """
 
 import os
+import tempfile
 import re
 import sys
 
@@ -175,6 +176,22 @@ def check(roots=(SRC, TOOLS), say=print):
     return 1 if fails else 0
 
 
+def _selftest_root(prefix):
+    """One root for every temp tree the selftest makes, removed at interpreter exit.
+
+    The selftest used to mkdtemp per synthetic tree and never remove any of them: measured
+    2026-09-18 at 21,462 leaked f2drop_* dirs in %TEMP% (with d8_*, d5hooks_*, inmem_selftest_*
+    and narration_selftest_* alongside) -- one lint run leaks a few, and the lint runs every
+    session. mkdtemp(dir=root) keeps every tree under one directory that atexit removes.
+    """
+    import atexit
+    import shutil
+
+    root = tempfile.mkdtemp(prefix=prefix)
+    atexit.register(shutil.rmtree, root, ignore_errors=True)
+    return root
+
+
 def selftest():
     import tempfile
 
@@ -199,8 +216,10 @@ def selftest():
     _, _, _, _, seen = scan((SRC, TOOLS))
     expect("the walker actually visits the real tree", seen > 100)
 
+    root = _selftest_root("d8_selftest_")
+
     def synth(rel, content):
-        d = tempfile.mkdtemp(prefix="d8_selftest_")
+        d = tempfile.mkdtemp(prefix="d8_", dir=root)
         p = os.path.join(d, rel.replace("/", os.sep))
         os.makedirs(os.path.dirname(p), exist_ok=True)
         with open(p, "w", encoding="utf-8") as fh:
@@ -211,7 +230,7 @@ def selftest():
 
     expect(
         "an empty synthetic tree is REFUSED, not passed",
-        check((tempfile.mkdtemp(prefix="d8_empty_"),), say=quiet) == 1,
+        check((tempfile.mkdtemp(prefix="d8_empty_", dir=root),), say=quiet) == 1,
     )
     expect(
         "a synthetic tree with an unrelated file passes",

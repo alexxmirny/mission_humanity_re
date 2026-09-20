@@ -1,0 +1,22 @@
+{
+  "schema": 1,
+  "version": "0.3.0",
+  "issued_at": "2026-09-17T12:00:00Z",
+  "launcher": {
+    "version": "0.3.0",
+    "url": "http://127.0.0.1:8099/mh_launcher.exe",
+    "sha256": "c8d0b2aa40099db5edf7d482a3e537bdd448fad6683c5ec55933d0e3ebda9bf3"
+  },
+  "game": {
+    "net": {
+      "url": "http://127.0.0.1:8099/mission_humanity_re-0.3.0-net.zip",
+      "sha256": "a0fb8bb01112bb21f74d9e3d40236c3f9d16571af0cc5db802a08b149d8c0d6e",
+      "size": 414
+    }
+  },
+  "relay": {
+    "addr": "192.0.2.10:7100",
+    "key": "4d487465737474656b65794d487465737474656b65794d487465737474656b65"
+  },
+  "notes_url": ""
+}

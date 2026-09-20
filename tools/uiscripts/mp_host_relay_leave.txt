@@ -1,0 +1,45 @@
+# mp:R2 RELAY HOST walk: create a game, hold the lobby until the CLIENT says it has seen us listed
+# through the relay, then LEAVE the lobby -- so the client can assert the row goes away.
+#
+# The pair is mp_client_relay_browse.txt, and the handshake between them is the runner's signal
+# ferry: a bare "wait N seconds" would make the vanish assertion depend on which peer's menu walk
+# happens to be faster, which is the kind of test that passes on a fast day.
+#
+# WHAT THE LEAVE DOES, so the assertion on the other side is readable: Cancel on the host lobby runs
+# the retail leave path, which the DLL hooks (U13) to reset this host's lobby identity -- and the
+# lobby screen going away stops the ~1 Hz SESSION_INFO advertisement. The transport module notices
+# the advert has stopped and withdraws the descriptor from the relay's directory, which is what
+# empties the client's browser.
+#
+# RELAY PREREQUISITE: the test registry starts an mh_relay process on the rig host and hands both
+# peers `[net] relay=<host>:7100`; there is nothing to configure in this script.
+
+# 1. main menu (NETWORK GAME = value 110)
+settled value:110
+clickv 110
+
+# 2. player-name screen (accept the default name)
+present Player name
+settled Ok
+clickl Ok
+
+# 3. create a game on the pre-selected map -> the host lobby
+settled Create
+clickl Create
+present Game name
+settled Ok
+clickl Ok
+present Available maps
+settled Ok
+clickl Ok
+present Network players
+settled Start
+capture h1_lobby
+
+# 4. HOLD until the client has the relay row on screen, then leave.
+awaitsignal listed
+settled Cancel
+clickl Cancel
+absent Network players
+log HOST left the lobby -- the relay directory row must now be withdrawn
+end

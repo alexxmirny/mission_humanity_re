@@ -305,6 +305,12 @@ DLL_FOOTER = """  </ItemGroup>
     <CharacterSet>Unicode</CharacterSet>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\\Microsoft.Cpp.props" />
+  <!-- THE BUILD STAMP (tracker TL-CI1). Brings in MhVersion / MhGitSha, the shared VERSIONINFO
+       resource, and the MH_VERSION_* defines. Imported by the five modules a release ships and by
+       no other project. Note that libmh_std, the STANDALONE libmh.dll beside this one, is
+       deliberately NOT stamped: no zip carries it. See src/mh_dll/mh_version.props.
+       (An XML comment may not contain a double hyphen, which is why this one has none.) -->
+  <Import Project="..\\mh_version.props" />
   <!-- The PROJECT is libmh_dll (a project may not share a name with the libmh static lib beside
        it); the FILE is libmh.dll, which is the name the .def declares and the name mh.dll composes
        beside itself at bind time. Pinned rather than left to default, so the two cannot drift. -->

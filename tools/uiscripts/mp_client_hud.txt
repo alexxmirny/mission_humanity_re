@@ -1,0 +1,43 @@
+# mp:L1 CLIENT walk for the player-visible connection indicator. See mp_host_hud.txt for why this
+# pair exists rather than reusing mp_client_start.txt, and why it waits so long in the match.
+#
+# The client's capture is the more interesting of the two: a client's single connection to the host
+# carries player_id -1 by the declared-id convention, so this is the peer that needs the L1c slot
+# resolution (live_peer_slot(), ui_net_indicator.cpp) to name "host" rather than falling back to
+# "PLAYER 0" -- and it still has to show a real ping, because the ESTIMATOR is per connection, not
+# per player id. This script also carries mp:TL-UISTALL's stall capture below, after n1_hud.
+
+# join the host by IP -> the joined lobby
+settled value:110
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+present Internet server
+settled Internet server
+clickl Internet server
+present Server address
+settled Connect
+clickl Connect
+sessions 1
+settled Join game
+clickl Join game
+
+present Network players
+signal lobby
+settled Cancel
+absent Network players
+gameclock 20000
+capture n1_hud
+log CLIENT captured the net indicator in a live udp match
+
+# mp:TL-UISTALL. The shim timeline (tools/uiscripts/shim/net_hud_stall.txt, this scenario's
+# "shim_timeline") blackholes host->client traffic well after the capture above; the client's sim
+# then stalls waiting for the host's next PEER_HORIZON advertisement. `stalled` gates the capture on
+# the SIM actually being frozen (>= 400 ms -- STALL_SHOW_MS, the same threshold the indicator itself
+# uses to decide the line is worth showing) instead of a wall-clock guess, which is what let a
+# capture fire here at all: `gameclock` cannot, because it freezes WITH the stall it would be gating.
+stalled 400
+capture n1_stall
+log CLIENT captured WAITING FOR host under a shim blackhole (TL-UISTALL)
+end

@@ -31,6 +31,10 @@
 //                                        branches a rig cannot stage on demand (an unterminated
 //                                        cost list, a bit index of 32, a zero-member group).
 //                                        the OVERFLOW branches that no rig scenario can reach.
+//   net_selftest.exe udpstatstest     -> mp:T3: the latency arithmetic (RFC 6298 SRTT/RTTVAR,
+//                                        IPDV, the 256-packet loss window, the arrival-lateness
+//                                        percentiles and the adaptive-lookahead decision). No
+//                                        socket, no rig -- see the suite for why it exists.
 //   net_selftest.exe host   <port>    -> listen as player 0, echo the first datagram back as PONG
 //   net_selftest.exe client <port>    -> connect to 127.0.0.1, send PING, expect PONG
 //
@@ -43,10 +47,13 @@
 #include <winsock2.h>                   // before windows.h: the authtest opens a raw socket
 #include <ws2tcpip.h>
 #include <windows.h>
+#include <new> // placement-new, for udprelinktest's endpoints
+#include <stdarg.h>
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
 
+#include "../mh_net_udp/udp_endpoint.h" // mp:T1b -- the UDP core, for udprelinktest (see there)
 #include "mh_net_export.h"
 #include "mh_seam_export.h"
 #include "selftest_dispatch.h"                // F5I: the suite table mechanism, shared with libmh_test
@@ -664,6 +671,448 @@ static int wait_exit(HANDLE h, DWORD ms) {
     return (int)code;
 }
 
+// ---- relinktest: RE-DIALLING AFTER A MATCH (mp:U40) ----------------------------------------------
+// THE PROPERTY, and it is the one the 2026-09-01 internet session did not have: a client whose link
+// has died must be able to make a NEW one in the SAME PROCESS. Before U40 it could not, and the
+// reason was one latched bool -- `g_started` stayed true for the life of the process (MH_Net_Shutdown
+// had been deleted at fork F4B for having no callers), so MH_Net_InitEx early-returned and the
+// discovery poll's connect kick, gated on `!MH_Net_IsStarted()`, never fired again. Measured in that
+// session's logs: `handshake OK` appears EXACTLY ONCE in 16 minutes, while the host re-advertised its
+// new lobby once a second to `peers=0`.
+//
+// WHY THIS CANNOT BE A RIG TEST AND THE RIG SCENARIO CANNOT BE THIS. `host_rematch` drives the whole
+// thing through the real UI and is the user-visible proof; what it cannot stage on demand is the
+// FAILED re-dial (step 4 below), because that needs a host that is not there at the moment of the
+// second dial. That arm is the one protecting the S8 retry path: a relink that fails must leave the
+// transport STOPPED and dialable, not wedged -- otherwise the fix's own failure mode is the bug it
+// fixes. MUTATION-CHECKED, not assumed: restoring MH_Net_InitEx's pre-U40 first line
+// (`if (g_started || !cfg) return g_started ? 1 : 0;`) fails it on both processes -- the client at
+// step 3 with "re-dial never connected -- peers=0 after 8000 ms" (exit 8) and the host with
+// "timed out with 1 connections, 1 drops, 0 PONGs" (exit 3), i.e. the second accept never happened.
+//
+// THE CLIENT IS SILENT BY CONFIGURATION (ping_ms = -1, "explicitly off"), which is linktest's mute
+// peer wearing a different hat: it is how a link dies here, deterministically, without either process
+// exiting. The HOST's 1.5 s watchdog is what kills it, so "the link is gone" is a fact both ends
+// agree on before the re-dial is attempted.
+static int relink_wait_peers(int want, DWORD ms, const char *what) {
+    DWORD t0 = GetTickCount();
+    while (GetTickCount() - t0 < ms) {
+        if (MH_Net_PeerCount() == want) return 1;
+        Sleep(10);
+    }
+    printf("[relinkc] FAIL: %s -- peers=%d after %lu ms (wanted %d)\n", what, MH_Net_PeerCount(),
+           (unsigned long)(GetTickCount() - t0), want);
+    return 0;
+}
+
+static void relink_client_cfg(MH_NetConfig &c, int port) {
+    memset(&c, 0, sizeof(c));
+    c.role = 1;
+    lstrcpyA(c.host, "127.0.0.1");
+    c.port          = port;
+    c.player_id     = 1;
+    c.log           = 1;
+    c.host_assign   = 1;  // so a SECOND WELCOME is what proves a SECOND connection
+    c.ping_ms       = -1; // say nothing: the host's watchdog is what ends the link
+    c.rx_timeout_ms = -1; // ...and only the host's verdict is under test
+}
+
+static int run_relink_client(int port) {
+    MH_NetConfig c;
+    relink_client_cfg(c, port);
+    if (!MH_Net_InitEx(&c)) {
+        printf("[relinkc] first dial failed\n");
+        return 2;
+    }
+    if (!relink_wait_peers(1, 5000, "first connect")) return 3;
+    DWORD t0 = GetTickCount();
+    while (!MH_Net_IdAssigned() && GetTickCount() - t0 < 5000) Sleep(10);
+    if (!MH_Net_IdAssigned()) {
+        printf("[relinkc] FAIL: no WELCOME on the first connection\n");
+        return 4;
+    }
+    printf("[relinkc] connected (#1) as player %d\n", MH_Net_LocalPlayerId());
+
+    // 2. go silent -> the host's watchdog retires us. THE PRECONDITION U40 IS ABOUT.
+    if (!relink_wait_peers(0, 8000, "host did not drop the silent peer")) return 5;
+    // ...and here is the latch that made it unfixable: the transport still calls itself STARTED.
+    if (!MH_Net_IsStarted()) {
+        printf("[relinkc] FAIL: transport un-started itself -- the test is not testing the U40 path\n");
+        return 6;
+    }
+    printf("[relinkc] link gone, transport still 'started' (peers=0) -- the pre-U40 dead end\n");
+
+    // 3. POSITIVE: re-init an ALREADY-STARTED transport. It must stop the old one and dial again.
+    relink_client_cfg(c, port);
+    if (!MH_Net_InitEx(&c)) {
+        printf("[relinkc] FAIL: re-dial refused\n");
+        return 7;
+    }
+    if (!relink_wait_peers(1, 8000, "re-dial never connected")) return 8;
+    t0 = GetTickCount();
+    while (!MH_Net_IdAssigned() && GetTickCount() - t0 < 8000) Sleep(10);
+    if (!MH_Net_IdAssigned()) {
+        printf("[relinkc] FAIL: no SECOND WELCOME -- the old connection was reused, not replaced\n");
+        return 9;
+    }
+    printf("[relinkc] re-connected (#2) as player %d -- a NEW connection, not the old one\n",
+           MH_Net_LocalPlayerId());
+    MH_Net_Send(0, "PING", 4);
+    t0 = GetTickCount();
+    for (;;) {
+        int  sender = -1;
+        char buf[64];
+        int  len = (int)sizeof(buf);
+        if (MH_Net_Recv(&sender, buf, &len)) {
+            if (len == 4 && memcmp(buf, "PONG", 4) == 0) break;
+            printf("[relinkc] FAIL: unexpected reply on the re-dialled link\n");
+            return 10;
+        }
+        if (GetTickCount() - t0 > 8000) {
+            printf("[relinkc] FAIL: no PONG over the re-dialled link\n");
+            return 11;
+        }
+        Sleep(10);
+    }
+    printf("[relinkc] round-trip OK over the RE-DIALLED link\n");
+
+    // 4. NEGATIVE: let it die again, then dial somewhere nothing is listening. The relink must FAIL
+    //    CLEANLY -- transport stopped, not wedged -- so the seam's S8 retry can try again.
+    if (!relink_wait_peers(0, 8000, "host did not drop the silent peer a second time")) return 12;
+    relink_client_cfg(c, port + 1); // nothing listens here
+    if (MH_Net_InitEx(&c)) {
+        printf("[relinkc] FAIL: a dial to a dead port reported success\n");
+        return 13;
+    }
+    if (MH_Net_IsStarted()) {
+        printf("[relinkc] FAIL: a failed relink left the transport 'started' -- wedged, not retryable\n");
+        return 14;
+    }
+    printf("[relinkc] failed relink leaves the transport STOPPED and dialable\n");
+    return 0;
+}
+
+// The host's own verdict: it must see the peer arrive, GO, and arrive AGAIN. Counting the transitions
+// here rather than trusting the client is the point -- "I reconnected" is only true if somebody
+// accepted a second connection.
+static int run_relink_host(int port) {
+    MH_NetConfig c;
+    memset(&c, 0, sizeof(c));
+    c.role          = 0;
+    c.port          = port;
+    c.player_id     = 0;
+    c.peers         = 1;
+    c.log           = 1;
+    c.host_assign   = 1;
+    c.ping_ms       = 250;
+    c.rx_timeout_ms = 1500;
+    if (!MH_Net_InitEx(&c)) {
+        printf("[relinkh] init failed\n");
+        return 2;
+    }
+    printf("[relinkh] listening on :%d, 1.5 s link timeout\n", port);
+
+    int   connects = 0, drops = 0, pongs = 0;
+    int   last = 0;
+    DWORD t0   = GetTickCount();
+    while (GetTickCount() - t0 < 30000) {
+        int now = MH_Net_PeerCount();
+        if (now > last) printf("[relinkh] connection #%d accepted\n", ++connects);
+        if (now < last) printf("[relinkh] connection dropped (#%d)\n", ++drops);
+        last = now;
+
+        int  sender = -1;
+        char buf[64];
+        int  len = (int)sizeof(buf);
+        if (MH_Net_Recv(&sender, buf, &len) && len == 4 && memcmp(buf, "PING", 4) == 0) {
+            MH_Net_Send(sender, "PONG", 4);
+            ++pongs;
+        }
+        if (connects >= 2 && drops >= 2 && pongs >= 1) {
+            Sleep(200); // let the last reply flush
+            printf("[relinkh] saw %d connections, %d drops, answered %d PING(s) -- OK\n", connects,
+                   drops, pongs);
+            return 0;
+        }
+        Sleep(10);
+    }
+    printf("[relinkh] FAIL: timed out with %d connections, %d drops, %d PONGs\n", connects, drops, pongs);
+    return 3;
+}
+
+static int run_relinktest(int port) {
+    char exe[MAX_PATH];
+    GetModuleFileNameA(nullptr, exe, MAX_PATH);
+    PROCESS_INFORMATION ph, pc;
+    printf("=== relinktest (U40: a client whose link died dials again in the same process) on port %d ===\n",
+           port);
+    if (!launch(exe, "relink_host", port, -1, &ph)) {
+        printf("launch relink_host failed\n");
+        return 10;
+    }
+    Sleep(400); // bind+listen
+    if (!launch(exe, "relink_client", port, -1, &pc)) {
+        printf("launch relink_client failed\n");
+        TerminateProcess(ph.hProcess, 99);
+        return 11;
+    }
+    int hc = wait_exit(ph.hProcess, 40000);
+    int cc = wait_exit(pc.hProcess, 40000);
+    CloseHandle(ph.hProcess);
+    CloseHandle(ph.hThread);
+    CloseHandle(pc.hProcess);
+    CloseHandle(pc.hThread);
+    printf("=== relink_host=%d  relink_client=%d ===\n", hc, cc);
+    if (hc == 0 && cc == 0) {
+        printf("=== PASS: the link died, the client re-dialled, the host accepted a SECOND connection, "
+               "and a failed relink stays retryable ===\n");
+        return 0;
+    }
+    printf("=== FAIL ===\n");
+    return 1;
+}
+
+// ---- udprelinktest: THE SAME RULE, ON THE OTHER MODULE (mp:T1b) ----------------------------------
+// U40's fix lived in mh_net.dll. `[net] transport=udp` is a whole second transport with its own
+// InitEx, and its `if (g_started ...) return` was still there -- so the defect U40 measured (a
+// client that finished a match can never dial the re-created lobby, because the transport calls
+// itself started for the life of the process) came straight back on a UDP lane. T1b is that rule
+// mirrored, and this suite is its oracle.
+//
+// WHY THIS IS NOT AN ARM OF `relinktest`, which tests the identical property. relinktest drives the
+// MH_Net_* EXPORTS, and in net_selftest.exe those are mh_net/net_transport.cpp's -- the TCP module's
+// -- because udp_transport.cpp defines the same 23 symbols and two definitions do not link. So the
+// UDP side is reached the way `udploopbacktest` reaches it: through mh::netudp::Endpoint, the object
+// udp_transport.cpp owns exactly one of. The restart therefore lives IN the endpoint (start() on a
+// started endpoint restarts it) and the module's InitEx is a thin g_started bookkeeper over it --
+// which is what makes the module's behaviour testable here at all, and is worth preserving if this
+// ever moves.
+//
+// HOW THE LINK IS KILLED, in one process and without either endpoint exiting. The same mute-peer
+// trick relinktest/linktest use, but the mute is harder to arrange over UDP than over TCP and the
+// configuration below is load-bearing in two non-obvious ways:
+//   * THE HOST'S PING IS OFF. A ping is answered by a PONG from inside the receive path, with no
+//     regard for whether the answering peer has pings of its own -- so a pinging host keeps its own
+//     victim alive and the watchdog never fires.
+//   * host_assign IS OFF. A host-assigned WELCOME travels on the reliable stream, and a peer that
+//     has received stream bytes publishes its acknowledgement frontier every ACK_MS forever. That
+//     traffic is the client speaking, so the host would never see silence. With no WELCOME the
+//     client's only transmission is its own FLAG_HELLO, which stops being retransmitted as soon as
+//     the host acks it -- and after that it is genuinely mute.
+// The observable for "a SECOND connection" is therefore the host's own `hs_done` counter rather than
+// a second WELCOME (relinktest's proof, unavailable here for the reason above): a completed
+// handshake is counted where it completes, and nothing else increments it.
+namespace {
+
+using mh::netudp::Config;
+using mh::netudp::Counters;
+using mh::netudp::Endpoint;
+
+// ~4 MB of stream rings apiece (8 peer slots x a 1024-segment reorder window x two directions), so
+// file scope and not a local, exactly as udp_loopback_selftest's three endpoints are.
+Endpoint g_ur_host, g_ur_client;
+
+int g_ur_checks = 0, g_ur_fails = 0;
+
+void ur_check(bool ok, const char *fmt, ...) {
+    ++g_ur_checks;
+    if (ok) return;
+    ++g_ur_fails;
+    char    b[400];
+    va_list ap;
+    va_start(ap, fmt);
+    vsnprintf(b, sizeof(b), fmt, ap);
+    va_end(ap);
+    printf("  FAIL: %s\n", b);
+}
+
+void ur_log(void * /*ctx*/, const char *line) {
+    if (getenv("MH_UDP_RELINK_VERBOSE")) printf("    | %s\n", line);
+}
+
+// The suite's own key, for udploopbacktest's reason: a suite must not depend on, or create, an
+// mh_key.txt beside whatever directory it happens to run in.
+const unsigned char UR_PSK[32] = {
+    0x4d,
+    0x48,
+    0x74,
+    0x65,
+    0x73,
+    0x74,
+    0x6b,
+    0x65,
+    0x79,
+    0x20,
+    0x75,
+    0x64,
+    0x70,
+    0x20,
+    0x72,
+    0x65,
+    0x6c,
+    0x69,
+    0x6e,
+    0x6b,
+    0x20,
+    0x54,
+    0x31,
+    0x62,
+    0x20,
+    0x66,
+    0x69,
+    0x78,
+    0x65,
+    0x64,
+    0x21,
+    0x21,
+};
+
+void ur_cfg(Config &c, int role, int port, unsigned short bind_port, int ping_ms, int rx_timeout_ms) {
+    memset(&c, 0, sizeof(c));
+    c.net.role = role;
+    lstrcpynA(c.net.host, "127.0.0.1", sizeof(c.net.host));
+    c.net.port          = port;
+    c.net.player_id     = (role == 0) ? 0 : 1;
+    c.net.log           = 1;
+    c.net.host_assign   = 0; // see the note above -- a WELCOME would make the client ack forever
+    c.net.ping_ms       = ping_ms;
+    c.net.rx_timeout_ms = rx_timeout_ms;
+    c.redundancy        = 3;
+    c.bind_port         = bind_port;
+}
+
+template <class Pred>
+bool ur_wait(Pred pred, DWORD budget_ms) {
+    const DWORD deadline = GetTickCount() + budget_ms;
+    for (;;) {
+        if (pred()) return true;
+        if ((long)(deadline - GetTickCount()) <= 0) return pred();
+        Sleep(5);
+    }
+}
+
+long ur_hs_done(Endpoint &ep) {
+    Counters k;
+    ep.counters(k);
+    return k.hs_done;
+}
+
+} // namespace
+
+static int run_udprelinktest(int port) {
+    // A base of its own: udploopbacktest holds 39560..39591 and the TCP suites take the argument
+    // itself, so a suite that binds four ports in one process takes the argument plus 100 rather
+    // than sharing a range with either.
+    const int base = port + 100;
+    printf("=== udprelinktest (T1b: U40's restart rule on mh_net_udp.dll) on ports %d.. ===\n", base);
+    WSADATA wsa;
+    WSAStartup(MAKEWORD(2, 2), &wsa);
+
+    Endpoint &host = g_ur_host, &cl = g_ur_client;
+    new (&host) Endpoint(); // placement-new: a zeroed endpoint, as the loopback suite does
+    new (&cl) Endpoint();
+    host.set_log(ur_log, nullptr);
+    cl.set_log(ur_log, nullptr);
+
+    Config ch, cc;
+    ur_cfg(ch, 0, base, (unsigned short)base, -1, 1500);     // no pings; a 1.5 s link timeout
+    ur_cfg(cc, 1, base, (unsigned short)(base + 1), -1, -1); // say nothing, and never give up
+
+    ur_check(host.start(ch, UR_PSK, true), "the host started");
+    ur_check(cl.start(cc, UR_PSK, true), "the client started (first dial)");
+
+    // ---- 1. the first connection -----------------------------------------------------------------
+    const bool up1 = ur_wait([&] { return host.peer_count() == 1; }, 8000);
+    ur_check(up1, "the host admitted the client (peers=%d)", host.peer_count());
+    ur_check(ur_hs_done(host) == 1, "exactly one completed handshake so far (%ld)", ur_hs_done(host));
+    if (!up1) {
+        host.stop();
+        cl.stop();
+        printf("=== udprelinktest: %d checks, %d failures ===\n", g_ur_checks, g_ur_fails);
+        return 1;
+    }
+
+    // ---- 2. the link dies, and the client does not notice -- the pre-T1b dead end -----------------
+    const bool gone = ur_wait([&] { return host.peer_count() == 0; }, 8000);
+    ur_check(gone, "the host's watchdog retired the silent peer (peers=%d)", host.peer_count());
+    ur_check(cl.started() && cl.peer_count() == 1,
+             "...while the client still calls itself started with a live peer -- the dead end U40 "
+             "measured (started=%d, peers=%d)",
+             (int)cl.started(), cl.peer_count());
+
+    // ---- 3. THE RULE: re-init on a started transport RESTARTS it ----------------------------------
+    ur_cfg(cc, 1, base, (unsigned short)(base + 1), -1, -1);
+    const bool re = cl.start(cc, UR_PSK, true);
+    ur_check(re, "the re-dial was accepted on an ALREADY-STARTED transport (the T1b rule)");
+    ur_check(cl.peer_count() == 0, "...and the restart dropped the old connection table (peers=%d)",
+             cl.peer_count());
+    const bool up2 = ur_wait([&] { return host.peer_count() == 1; }, 10000);
+    ur_check(up2, "the host accepted a SECOND connection from the same client (peers=%d)",
+             host.peer_count());
+    ur_check(ur_hs_done(host) == 2,
+             "...counted as a second completed handshake, not the old one resurrected (%ld)",
+             ur_hs_done(host));
+
+    // ---- 4. and it carries traffic ----------------------------------------------------------------
+    // The link is only re-established if it MOVES something: a re-dial that completes a handshake
+    // and then cannot deliver a byte would pass every count above.
+    bool pinged = false, ponged = false;
+    if (up2) {
+        cl.send(MH_NET_BROADCAST, "PING", 4);
+        const DWORD t0 = GetTickCount();
+        while (GetTickCount() - t0 < 8000 && !ponged) {
+            int           sender = -1;
+            unsigned char buf[64];
+            int           len = (int)sizeof(buf);
+            if (!pinged && host.recv(&sender, buf, &len) && len == 4 && memcmp(buf, "PING", 4) == 0) {
+                host.send(sender, "PONG", 4);
+                pinged = true;
+            }
+            len = (int)sizeof(buf);
+            if (pinged && cl.recv(&sender, buf, &len) && len == 4 && memcmp(buf, "PONG", 4) == 0)
+                ponged = true;
+            Sleep(5);
+        }
+    }
+    ur_check(pinged, "the host received game traffic over the RE-DIALLED link");
+    ur_check(ponged, "...and the client received the reply");
+
+    // ---- 5. NEGATIVE: a dial that finds nobody must leave the transport dialable -------------------
+    // The shape differs from the TCP suite's and the difference is the protocol's, not the test's:
+    // UDP has no connect(), so start() cannot report "nothing is listening" -- it binds a socket,
+    // sends a HELLO into the dark and gives up HS_BUDGET_MS later. What must hold is the same
+    // property the S8 retry path depends on: the failure is not a wedge. After the dead dial the
+    // endpoint has no peers, still calls itself started, and A THIRD DIAL AT THE REAL HOST WORKS.
+    ur_cfg(cc, 1, base + 7, (unsigned short)(base + 2), -1, -1); // nothing listens on base+7
+    ur_check(cl.start(cc, UR_PSK, true), "a dial into the dark is accepted (UDP cannot refuse it)");
+    // The restart also released the second connection, which the host notices on its own timer.
+    ur_check(ur_wait([&] { return host.peer_count() == 0; }, 8000),
+             "the restart tore the second connection down on the HOST side too (peers=%d)",
+             host.peer_count());
+    Sleep(4200); // > HS_BUDGET_MS: the handshake gives up
+    ur_check(cl.peer_count() == 0 && cl.started(),
+             "a dial that found nobody leaves the transport started and peerless, not wedged "
+             "(peers=%d, started=%d)",
+             cl.peer_count(), (int)cl.started());
+    ur_cfg(cc, 1, base, (unsigned short)(base + 1), -1, -1);
+    ur_check(cl.start(cc, UR_PSK, true), "...and a THIRD dial, at the real host, is accepted");
+    ur_check(ur_wait([&] { return host.peer_count() == 1; }, 10000),
+             "the host accepted the third connection (peers=%d)", host.peer_count());
+    ur_check(ur_hs_done(host) == 3, "three completed handshakes from one client process (%ld)",
+             ur_hs_done(host));
+
+    Counters kh;
+    host.counters(kh);
+    printf("     host: handshakes started %ld done %ld | mac-fail %ld malformed %ld wrong-conn %ld\n",
+           kh.hs_started, kh.hs_done, kh.mac_fail, kh.malformed, kh.wrong_conn);
+    ur_check(kh.mac_fail == 0, "no authentication failure across the three links (%ld)", kh.mac_fail);
+
+    host.stop();
+    cl.stop();
+    printf("=== udprelinktest: %d checks, %d failures ===\n", g_ur_checks, g_ur_fails);
+    return g_ur_fails ? 1 : 0;
+}
+
 static int run_selftest(int port) {
     char exe[MAX_PATH];
     GetModuleFileNameA(nullptr, exe, MAX_PATH);
@@ -704,6 +1153,573 @@ static int run_selftest(int port) {
     printf("=== FAIL ===\n");
     return 1;
 }
+
+
+// ---- netcfgtest: MH_NetConfig's relay fields (mp:R7a) --------------------------------------------
+//
+// WHAT R7a CHANGED, and what this suite pins. Before R7a a peer with `[net] relay` set had no direct
+// mode: mh_net_udp.dll read the key itself and tunnelled EVERY connection. R7a moved the decision to
+// mh.dll and made it travel in MH_NetConfig -- an appended `relay_addr` (empty = a direct dial) plus
+// `relay_room`. Two properties of that contract are testable with no rig, and both are the failure a
+// silent regression would be:
+//
+//   (1) THE CONFIG FIELD'S DEFAULT IS "NO RELAY". A zero-initialised MH_NetConfig -- what every
+//       self-test, the force-entry path and a caller that forgot the field all get -- must carry an
+//       EMPTY relay_addr, i.e. a direct dial. If the default ever became "relay", the whole point of
+//       R7a (a direct mode exists again) would be undone for every caller that does not set the field.
+//
+//   (2) THE TWO FIELDS ARE APPENDED. The TCP module (mh_net.dll) and any reader built before R7a must
+//       address every field ABOVE relay_addr at unchanged offsets and ignore the trailing bytes -- so
+//       relay_addr must sit after rx_timeout_ms and relay_room must be the last member. An insertion
+//       in the middle would move a field an older reader still reads by offset.
+//
+//   (3) THE TCP MODULE IS INDIFFERENT TO IT. net_selftest links the TCP transport (net_transport.cpp)
+//       as its MH_Net_*; it has no relay and never reads relay_addr. Proven at runtime: a TCP HOST
+//       init with relay_addr SET starts exactly as a plain direct host would (binds its port, no
+//       relay, no crash). A build that started reading the field would have to do SOMETHING with a
+//       relay address on a transport that cannot relay; doing nothing is the contract.
+static int run_netcfgtest(int port) {
+    int checks = 0, fails = 0;
+#define NC_CK(cond, msg)                 \
+    do {                                 \
+        ++checks;                        \
+        if (!(cond)) {                   \
+            ++fails;                     \
+            printf("  FAIL: %s\n", msg); \
+        }                                \
+    } while (0)
+
+    // (1) absent = no relay.
+    MH_NetConfig z;
+    memset(&z, 0, sizeof(z));
+    NC_CK(z.relay_addr[0] == '\0', "zero-init MH_NetConfig has an empty relay_addr (absent = no relay)");
+    NC_CK(z.relay_room == 0, "zero-init MH_NetConfig has relay_room 0");
+
+    // (2) ABI append: relay_addr after rx_timeout_ms, relay_room the last member.
+    NC_CK(offsetof(MH_NetConfig, relay_addr) > offsetof(MH_NetConfig, rx_timeout_ms),
+          "relay_addr is appended after rx_timeout_ms");
+    NC_CK(offsetof(MH_NetConfig, relay_room) > offsetof(MH_NetConfig, relay_addr),
+          "relay_room is appended after relay_addr");
+    NC_CK(offsetof(MH_NetConfig, relay_room) + sizeof(z.relay_room) == sizeof(MH_NetConfig),
+          "relay_room is the LAST member of MH_NetConfig (nothing trails it)");
+
+    // (3) TCP module indifference: a host init carrying a relay address starts as a plain TCP host.
+    MH_NetConfig h;
+    memset(&h, 0, sizeof(h));
+    h.role      = 0; // host
+    h.port      = port;
+    h.player_id = 0;
+    h.peers     = 1;
+    h.log       = 0;
+    lstrcpynA(h.relay_addr, "203.0.113.9:7100", (int)sizeof(h.relay_addr)); // TEST-NET-3, never dialled
+    h.relay_room      = 12345;
+    const int started = MH_Net_InitEx(&h);
+    NC_CK(started == 1, "TCP host init with relay_addr SET still starts (the TCP module ignores it)");
+    NC_CK(MH_Net_IsStarted() == 1, "TCP host is listening after a relay_addr-bearing init");
+    // The TCP module has no relay: PeerCount is 0 (no clients) and there is no tunnel concept at all.
+    // The single positive above is the whole claim -- it accepted a relay-shaped config and behaved
+    // like the direct host it is. (No MH_Net_Shutdown since fork F4B; the process exits here.)
+
+#undef NC_CK
+    printf("=== netcfgtest: %d checks, %d failures ===\n", checks, fails);
+    if (fails == 0) {
+        printf("=== PASS: MH_NetConfig relay fields -- default is no relay, appended, TCP-indifferent (mp:R7a) ===\n");
+        return 0;
+    }
+    printf("=== FAIL ===\n");
+    return 1;
+}
+
+
+// ---- udpstatstest: the latency ARITHMETIC (mp:T3) ------------------------------------------------
+//
+// WHY AN OFFLINE SUITE FOR THIS AT ALL. Everything mp:T3 adds is measured on a link, and a link is
+// the one thing this machine cannot stage: the rig clauses ("SRTT within 10% of 80 with the shim at
+// 80 +/- 20", "the controller raises the lookahead within 2 s at 200 ms") each need two VMs, a
+// middlebox and several minutes, and a run that comes back wrong cannot say WHICH of the estimator,
+// the sampler or the controller was wrong. So the arithmetic under all three is an I/O-free header
+// (mh_net_udp/udp_stats.h) and this suite asserts it against RFC 6298's own worked recurrence, a
+// synthetic 80 +/- 20 stream, and the controller's three decisions -- in milliseconds, with no
+// socket. The rig then proves the WIRING, which is the part only a rig can prove.
+//
+// The RFC 6298 vectors are computed by hand in the comments so a reader can check them against
+// §2 rules 2.2/2.3 without running anything.
+namespace {
+
+int g_us_checks = 0, g_us_fails = 0;
+
+void us_check(bool ok, const char *what, ...) {
+    char    b[256];
+    va_list ap;
+    va_start(ap, what);
+    vsnprintf(b, sizeof(b), what, ap);
+    va_end(ap);
+    ++g_us_checks;
+    if (!ok) {
+        ++g_us_fails;
+        printf("  FAIL: %s\n", b);
+    }
+}
+
+bool near_ms(double a, double b, double tol) {
+    double d = a - b;
+    if (d < 0.0) d = -d;
+    return d <= tol;
+}
+
+// A deterministic generator, so a failing run is replayable and a passing one is not a lucky seed.
+// (Numerical Recipes' LCG; the same shape udp_endpoint's synthetic loss uses.)
+uint32_t us_rand(uint32_t &st) {
+    st = st * 1664525u + 1013904223u;
+    return st;
+}
+
+} // namespace
+
+static int run_udpstatstest() {
+    using namespace mh::netstats;
+    printf("=== udpstatstest (T3: RFC 6298 / 3393 / 7680 + the lookahead decision) ===\n");
+    g_us_checks = g_us_fails = 0;
+
+    // ---- 1. RFC 6298 §2 rule 2.2 -- the FIRST measurement ----------------------------------------
+    //   SRTT = R, RTTVAR = R/2.
+    {
+        RttEstimator e;
+        e.reset();
+        e.sample(1000.0);
+        us_check(near_ms(e.srtt_ms, 1000.0, 1e-9), "rule 2.2: SRTT = R (%f)", e.srtt_ms);
+        us_check(near_ms(e.rttvar_ms, 500.0, 1e-9), "rule 2.2: RTTVAR = R/2 (%f)", e.rttvar_ms);
+        us_check(e.samples == 1, "one sample counted (%ld)", e.samples);
+    }
+
+    // ---- 2. RFC 6298 §2 rule 2.3 -- worked by hand, and the ORDER of the two assignments ---------
+    //   start R  = 100  -> SRTT 100, RTTVAR 50            (rule 2.2)
+    //   then  R' = 140:
+    //       RTTVAR = 3/4 * 50  + 1/4 * |100 - 140| = 37.5 + 10  = 47.5   <- uses the OLD SRTT
+    //       SRTT   = 7/8 * 100 + 1/8 * 140         = 87.5 + 17.5 = 105
+    //   Computing SRTT first would give RTTVAR = 37.5 + 1/4*|105-140| = 46.25, so this pair of
+    //   assertions is also the mutation check on the order: 47.5 passes, 46.25 does not.
+    {
+        RttEstimator e;
+        e.reset();
+        e.sample(100.0);
+        e.sample(140.0);
+        us_check(near_ms(e.rttvar_ms, 47.5, 1e-9),
+                 "rule 2.3: RTTVAR uses the OLD SRTT -> 47.5, not 46.25 (%f)", e.rttvar_ms);
+        us_check(near_ms(e.srtt_ms, 105.0, 1e-9), "rule 2.3: SRTT = 105 (%f)", e.srtt_ms);
+        //   then R'' = 105 (== SRTT): RTTVAR = 3/4 * 47.5 = 35.625, SRTT unchanged at 105.
+        e.sample(105.0);
+        us_check(near_ms(e.rttvar_ms, 35.625, 1e-9), "rule 2.3: a zero-deviation sample decays "
+                                                     "RTTVAR by 1/4 (%f)",
+                 e.rttvar_ms);
+        us_check(near_ms(e.srtt_ms, 105.0, 1e-9), "rule 2.3: SRTT stays at 105 (%f)", e.srtt_ms);
+    }
+
+    // ---- 3. THE RIG CLAUSE, OFFLINE: 80 ms +/- 20 ms -> SRTT within 10% of 80, RTTVAR non-zero ----
+    // This is the same assertion tools/net_shim.py's `--delay 40 --jitter 20` run has to produce on
+    // the rig; here the stream is synthetic so the claim is about the estimator alone.
+    {
+        RttEstimator e;
+        e.reset();
+        uint32_t st = 0x5EEDu;
+        for (int i = 0; i < 400; ++i) e.sample(60.0 + (double)(us_rand(st) % 41u)); // 60..100, mean 80
+        us_check(near_ms(e.srtt_ms, 80.0, 8.0), "80 +/- 20 stream: SRTT within 10%% of 80 (%f)",
+                 e.srtt_ms);
+        us_check(e.rttvar_ms > 1.0, "80 +/- 20 stream: RTTVAR is non-zero (%f)", e.rttvar_ms);
+        us_check(e.ipdv_ms > 1.0, "80 +/- 20 stream: IPDV is non-zero (%f)", e.ipdv_ms);
+    }
+
+    // ---- 4. a PERFECTLY steady link: SRTT exact, RTTVAR and IPDV collapse ------------------------
+    // The negative control for arm 3. If RTTVAR were, say, accumulating |R| instead of |SRTT - R|,
+    // arm 3 would still pass and this one would not.
+    {
+        RttEstimator e;
+        e.reset();
+        for (int i = 0; i < 200; ++i) e.sample(80.0);
+        us_check(near_ms(e.srtt_ms, 80.0, 1e-6), "steady link: SRTT == 80 (%f)", e.srtt_ms);
+        us_check(e.rttvar_ms < 0.001, "steady link: RTTVAR collapses to ~0 (%f)", e.rttvar_ms);
+        us_check(e.ipdv_ms < 0.001, "steady link: IPDV collapses to ~0 (%f)", e.ipdv_ms);
+    }
+
+    // ---- 5. IPDV is a PAIR statistic, RTTVAR is a deviation-from-mean one -------------------------
+    // A 60/100 alternation has a constant pair delta of 40 and a mean of 80, so IPDV -> 40 while
+    // RTTVAR -> 20. A single smoothed number could not tell those two links apart; the point of
+    // carrying both is that it can.
+    {
+        RttEstimator e;
+        e.reset();
+        for (int i = 0; i < 400; ++i) e.sample((i % 2) ? 100.0 : 60.0);
+        us_check(near_ms(e.ipdv_ms, 40.0, 1.0), "60/100 alternation: IPDV -> 40 (%f)", e.ipdv_ms);
+        us_check(near_ms(e.rttvar_ms, 20.0, 2.0), "60/100 alternation: RTTVAR -> 20 (%f)",
+                 e.rttvar_ms);
+    }
+
+    // ---- 6. the probe table: a matched echo measures, an unmatched one does NOT -------------------
+    {
+        PingTracker t;
+        t.reset();
+        const int64_t FREQ = 1000000; // a 1 MHz counter: 1 tick = 1 us
+        t.on_sent(1000u, 0);
+        us_check(near_ms(t.on_echo(1000u, 80000, FREQ), 80.0, 1e-9), "a matched echo measures 80 ms");
+        us_check(t.on_echo(1000u, 90000, FREQ) < 0.0, "the SAME echo a second time is not a sample");
+        us_check(t.on_echo(4242u, 90000, FREQ) < 0.0, "an echo we never sent is not a sample");
+        // ...and a probe that aged out of the table is unmatchable rather than wrong.
+        t.reset();
+        for (uint32_t i = 0; i < (uint32_t)PING_TRACK + 2u; ++i) t.on_sent(i, (int64_t)i * 1000);
+        us_check(t.on_echo(0u, 99999, FREQ) < 0.0, "a probe wrapped out of the table is not a sample");
+        us_check(t.on_echo((uint32_t)PING_TRACK + 1u, 99999, FREQ) >= 0.0,
+                 "...while the newest probe still matches");
+    }
+
+    // ---- 6b. the ECHO MATCH report (mp:T3b) -------------------------------------------------------
+    // `on_echo` can say WHICH table entry it matched and how many probes are still outstanding, and
+    // the endpoint prints both on every sample. That exists because the ~19 ms under-read was chased
+    // for a session on the theory that an echo could be matched against a LATER probe's stamp -- the
+    // only arithmetic by which a stopwatch started BEFORE a send can report less than the path
+    // delivers. It cannot: the origin key advances once per ping interval and the scan takes the
+    // first live entry carrying it. These checks are what makes that a tested property rather than a
+    // reading of the loop, so a future edit to the scan cannot quietly reintroduce the theory.
+    {
+        PingTracker   t;
+        EchoMatch     m;
+        const int64_t FREQ = 1000000;
+        t.reset();
+        t.on_sent(10u, 0);
+        t.on_sent(20u, 5000);
+        t.on_sent(30u, 9000);
+        us_check(near_ms(t.on_echo(20u, 45000, FREQ, &m), 40.0, 1e-9),
+                 "the MIDDLE probe is measured against ITS OWN stamp, not a neighbour's");
+        us_check(m.slot == 1, "...and the match reports slot 1 (%d)", m.slot);
+        us_check(m.outstanding == 2, "...with the other two still outstanding (%d)", m.outstanding);
+        us_check(t.on_echo(99u, 50000, FREQ, &m) < 0.0, "an unknown origin is not a sample");
+        us_check(m.slot == -1, "...and reports no slot (%d)", m.slot);
+        us_check(m.outstanding == 2, "...without consuming one (%d)", m.outstanding);
+        // The out-param is OPTIONAL and the arithmetic must not depend on it: same table, no report.
+        us_check(near_ms(t.on_echo(30u, 29000, FREQ), 20.0, 1e-9),
+                 "the measurement is the same with no EchoMatch asked for");
+    }
+
+    // ---- 7. RFC 7680 loss over the 256-packet sequence window --------------------------------------
+    {
+        LossWindow w;
+        w.reset();
+        for (uint64_t i = 1; i <= 400; ++i) w.on_rx(i);
+        us_check(w.loss_pm() == 0, "a complete sequence -> 0 pm (%d)", w.loss_pm());
+
+        w.reset();
+        for (uint64_t i = 1; i <= 400; ++i)
+            if (i % 20 != 0) w.on_rx(i); // drop every 20th: 5% == 50 pm
+        us_check(w.loss_pm() >= 40 && w.loss_pm() <= 60, "1-in-20 dropped -> ~50 pm (%d)",
+                 w.loss_pm());
+
+        // A REORDER IS NOT A LOSS. Deliver 1..40, then 45..50, then the missing 41..44 late: every
+        // datagram arrived, so the ratio must be 0 even though the window saw holes on the way.
+        w.reset();
+        for (uint64_t i = 1; i <= 40; ++i) w.on_rx(i);
+        for (uint64_t i = 45; i <= 120; ++i) w.on_rx(i);
+        for (uint64_t i = 41; i <= 44; ++i) w.on_rx(i);
+        us_check(w.loss_pm() == 0, "an in-window reorder is not loss (%d)", w.loss_pm());
+
+        // Too little settled to say -> REFUSE with -1 rather than answer 0 pm off three packets.
+        w.reset();
+        for (uint64_t i = 1; i <= 5; ++i) w.on_rx(i);
+        us_check(w.loss_pm() == -1, "too few packets -> -1, not a confident 0 (%d)", w.loss_pm());
+    }
+
+    // ---- 8. the lateness percentiles, and which end is the dangerous one ---------------------------
+    {
+        LatenessWindow lw;
+        lw.reset();
+        int p50 = 0, t95 = 0, t99 = 0;
+        us_check(!lw.percentiles(p50, t95, t99), "an empty window reduces to nothing, not to 0");
+        for (int i = 0; i < 100; ++i) lw.push(i); // 0..99 ms of margin
+        us_check(lw.percentiles(p50, t95, t99), "a populated window reduces");
+        us_check(p50 >= 48 && p50 <= 52, "p50 of 0..99 is ~50 (%d)", p50);
+        us_check(t95 >= 3 && t95 <= 7, "tail95 is the LOW end (~5), not the high one (%d)", t95);
+        us_check(t99 >= 0 && t99 <= 2, "tail99 is lower still (~1) (%d)", t99);
+        // The ring is bounded: the oldest samples fall out, so a link that RECOVERED stops being
+        // judged on the stall it had two minutes ago.
+        lw.reset();
+        for (int i = 0; i < LATE_WINDOW; ++i) lw.push(-500); // a stalled era
+        for (int i = 0; i < LATE_WINDOW; ++i) lw.push(120);  // ...entirely overwritten
+        us_check(lw.percentiles(p50, t95, t99) && t95 == 120,
+                 "the window is bounded: an overwritten stall no longer binds (%d)", t95);
+    }
+
+    // ---- 9. the controller decision, which is the whole of mp:T3's behaviour change ----------------
+    {
+        LookaheadIn in;
+        in.sim_ms   = 20.0; // the shipping sim_step_ms
+        in.floor_ms = 60.0; // == AD_SIM_FLOOR_MULT * sim_ms, the effective floor at sim_step 20
+        in.ceil_ms  = 400.0;
+        in.clean_in = 0;
+        // mp:T3c's two new inputs. The arms below (a)..(f) are T3's and are asserted UNCHANGED, which
+        // is the point of setting these to "join is over, our horizon is the binding one": the T3c
+        // behaviour has to be additional, not a retune of what the rig already accepted.
+        in.warm     = true;
+        in.slack_ms = 0.0;
+
+        // (a) NOTHING MEASURED -> hold. Not "assume the worst", not "assume the best".
+        in.cur_ms      = 100.0;
+        in.have        = false;
+        in.tail95_ms   = 0.0;
+        LookaheadOut d = lookahead_decide(in);
+        us_check(d.verdict == LA_NO_SAMPLES && near_ms(d.want_ms, 100.0, 1e-9),
+                 "no samples -> hold at 100 (%f, verdict %d)", d.want_ms, d.verdict);
+
+        // (b) THE 200 ms CLAUSE. The peer is arriving 200 ms past its deadline; the controller must
+        // move on the FIRST decision, and the per-window cap is a doubling.
+        in.cur_ms    = 100.0;
+        in.have      = true;
+        in.tail95_ms = -200.0;
+        d            = lookahead_decide(in);
+        us_check(d.verdict == LA_GROW && near_ms(d.want_ms, 200.0, 1e-9),
+                 "tail95 -200 -> grow, capped at one doubling (%f)", d.want_ms);
+        in.cur_ms = d.want_ms;
+        d         = lookahead_decide(in);
+        us_check(d.verdict == LA_GROW && near_ms(d.want_ms, 400.0, 1e-9),
+                 "...and again, to the configured ceiling (%f)", d.want_ms);
+        in.cur_ms = d.want_ms;
+        d         = lookahead_decide(in);
+        us_check(near_ms(d.want_ms, 400.0, 1e-9), "the ceiling holds (%f)", d.want_ms);
+
+        // (c) a mild deficit grows by the MISSING MARGIN, not by a flat step -- with the 25% floor
+        // still underneath it. grow_at = 0.5 * 20 = 10 ms; tail95 = 4 -> missing 6 ms, which is less
+        // than 25% of 100, so the floor wins: 125.
+        in.cur_ms    = 100.0;
+        in.tail95_ms = 4.0;
+        d            = lookahead_decide(in);
+        us_check(d.verdict == LA_GROW && near_ms(d.want_ms, 125.0, 1e-9),
+                 "a 6 ms deficit still gets the 25%% minimum step (%f)", d.want_ms);
+        //   ...and a 60 ms deficit gets 60 ms, not 25.
+        in.tail95_ms = -50.0;
+        d            = lookahead_decide(in);
+        us_check(d.verdict == LA_GROW && near_ms(d.want_ms, 160.0, 1e-9),
+                 "a 60 ms deficit gets 60 ms (%f)", d.want_ms);
+
+        // (d) THE HYSTERESIS BAND: between 0.5 and 1.5 sub-steps of margin -> hold, and bank no
+        // credit toward shrinking. mp:T3c made the credit DECAY here rather than reset (the band is
+        // one sub-step wide and the error term is on that grid, so a healthy link lands inside it
+        // about half the time); a GROW is what still wipes it, asserted below.
+        in.cur_ms    = 100.0;
+        in.tail95_ms = 20.0; // 1.0 sub-step: inside [10, 30]
+        in.clean_in  = 2;
+        d            = lookahead_decide(in);
+        us_check(d.verdict == LA_HOLD && near_ms(d.want_ms, 100.0, 1e-9) && d.clean_out == 1,
+                 "inside the band -> hold, and the shrink credit decays by one (%f, clean %d)",
+                 d.want_ms, d.clean_out);
+        in.clean_in = 0;
+        d           = lookahead_decide(in);
+        us_check(d.clean_out == 0, "...and does not go negative (%d)", d.clean_out);
+        in.clean_in  = 2; // a GROW, by contrast, still wipes it outright -- that is mp:P1's guard
+        in.tail95_ms = -40.0;
+        d            = lookahead_decide(in);
+        us_check(d.verdict == LA_GROW && d.clean_out == 0,
+                 "...but starvation still zeroes it outright (%d)", d.clean_out);
+
+        // (e) SHRINK SLOWLY: three consecutive comfortable windows before the first 4% step.
+        in.cur_ms    = 100.0;
+        in.tail95_ms = 80.0;
+        in.clean_in  = 0;
+        d            = lookahead_decide(in);
+        us_check(d.verdict == LA_HOLD && d.clean_out == 1, "comfortable window 1 -> hold");
+        in.clean_in = d.clean_out;
+        d           = lookahead_decide(in);
+        us_check(d.verdict == LA_HOLD && d.clean_out == 2, "comfortable window 2 -> hold");
+        in.clean_in = d.clean_out;
+        d           = lookahead_decide(in);
+        // mp:T3c changed the SIZE of that first step (50 ms of surplus buys back 25, not 4) but not
+        // the hysteresis this arm exists for: it is still the THIRD consecutive comfortable window
+        // that unlocks it, and the two before it moved nothing.
+        us_check(d.verdict == LA_SHRINK && near_ms(d.want_ms, 75.0, 1e-9),
+                 "comfortable window 3 -> the first step, half the surplus (%f)", d.want_ms);
+
+        // (f) THE 0 ms CLAUSE: a clean link walks down and SETTLES ON THE CONFIGURED MINIMUM rather
+        // than oscillating below it or stopping short of it -- and, since mp:T3c, arrives there in a
+        // handful of windows instead of fifty. Under T3's flat 4% this loop took 47 shrink steps to
+        // cross 400 -> 60 (0.96^47), i.e. ~98 s of real time at one 2 s window each; the whole point
+        // of T3c is that the same clean link is done inside the 30 s the rig clause allows.
+        in.cur_ms         = 400.0;
+        in.clean_in       = 0;
+        int    moves      = 0;
+        int    first_at   = -1;
+        int    settled_at = -1;
+        double worst_cut  = 0.0;
+        for (int w = 0; w < 500; ++w) {
+            // A zero-delay link: the peer's horizon is a whole lookahead ahead of the sim, so the
+            // margin IS the lookahead less the sub-step the deadline is measured at.
+            in.tail95_ms = in.cur_ms - in.sim_ms;
+            d            = lookahead_decide(in);
+            in.clean_in  = d.clean_out;
+            if (!near_ms(d.want_ms, in.cur_ms, 1e-9)) {
+                if (first_at < 0) first_at = w;
+                ++moves;
+                const double cut = 1.0 - d.want_ms / in.cur_ms;
+                if (cut > worst_cut) worst_cut = cut;
+            }
+            us_check(d.verdict != LA_GROW, "a clean link never grows (window %d)", w);
+            in.cur_ms = d.want_ms;
+            if (settled_at < 0 && near_ms(in.cur_ms, 60.0, 1e-9)) settled_at = w;
+        }
+        us_check(near_ms(in.cur_ms, 60.0, 1e-9),
+                 "a clean link settles exactly on the configured minimum, and STAYS there over 500 "
+                 "windows (%f)",
+                 in.cur_ms);
+        us_check(first_at >= AD_LATE_SHRINK_AFTER - 1,
+                 "...and could not start before AD_LATE_SHRINK_AFTER clean windows (first move at "
+                 "%d)",
+                 first_at);
+        us_check(settled_at >= 0 && settled_at <= 10,
+                 "mp:T3c -- and reaches it inside 10 windows from the 400 ms ceiling, not 49 (%d)",
+                 settled_at);
+        us_check(worst_cut <= 1.0 - AD_LATE_SHRINK_MAX + 1e-9,
+                 "...with no single window giving back more than the bound (worst %.3f vs %.3f)",
+                 worst_cut, 1.0 - AD_LATE_SHRINK_MAX);
+
+        // ---- (g) mp:T3c: THE JOIN WARM-UP -----------------------------------------------------
+        // The measured defect: a client is genuinely starved for its first half-second because the
+        // host has not advertised yet, so the samples are honest and the verdict off them (GROW) is
+        // correct -- about a regime that is over. While `warm` is false NOTHING moves, whatever the
+        // samples say, and no shrink credit is banked either.
+        in.cur_ms    = 100.0;
+        in.have      = true;
+        in.warm      = false;
+        in.clean_in  = 2;      // ...even with two comfortable windows already behind it
+        in.tail95_ms = -260.0; // the real join reading: tail99 -265 ms on the rig, 2026-09-18
+        d            = lookahead_decide(in);
+        us_check(d.verdict == LA_WARMUP && near_ms(d.want_ms, 100.0, 1e-9) && d.clean_out == 0,
+                 "inside the warm-up a -260 ms tail moves nothing and banks nothing (%f, %d, %d)",
+                 d.want_ms, d.verdict, d.clean_out);
+        in.tail95_ms = 400.0;                // ...and it is not a "hold high" either: a comfortable reading is
+        d            = lookahead_decide(in); // equally not acted on
+        us_check(d.verdict == LA_WARMUP && near_ms(d.want_ms, 100.0, 1e-9),
+                 "...and a comfortable one does not shrink inside it either (%f)", d.want_ms);
+        // The warm-up does NOT disable the floor/ceiling clamp: a value out of band is still illegal.
+        in.cur_ms = 10.0;
+        d         = lookahead_decide(in);
+        us_check(near_ms(d.want_ms, 60.0, 1e-9),
+                 "...but the floor still applies inside the warm-up (%f)", d.want_ms);
+        // Once warm, the SAME starved reading is acted on -- the warm-up delays the first decision,
+        // it does not suppress growth.
+        in.cur_ms    = 100.0;
+        in.warm      = true;
+        in.tail95_ms = -260.0;
+        d            = lookahead_decide(in);
+        us_check(d.verdict == LA_GROW && near_ms(d.want_ms, 200.0, 1e-9),
+                 "...and the moment it ends the same reading grows (%f)", d.want_ms);
+
+        // ---- (h) mp:T3c: THE PROPORTIONAL SHRINK, AND WHY IT CANNOT OVERSHOOT ------------------
+        // Half the surplus over the shrink threshold. The 4% step is the FLOOR, so a small surplus
+        // still behaves exactly as it did under T3 -- the two forms need no threshold between them.
+        in.clean_in  = AD_LATE_SHRINK_AFTER - 1; // credit already banked; this window shrinks
+        in.cur_ms    = 100.0;
+        in.tail95_ms = 105.0; // the rig's own reading at cur=100 on a clean LAN, 2026-09-18
+        d            = lookahead_decide(in);
+        us_check(d.verdict == LA_SHRINK && near_ms(d.want_ms, 62.5, 1e-9),
+                 "a 75 ms surplus gives back half of it in one window, not 4 ms (%f)", d.want_ms);
+        in.clean_in  = AD_LATE_SHRINK_AFTER - 1;
+        in.cur_ms    = 100.0;
+        in.tail95_ms = 33.0; // ...and a 3 ms surplus is still the flat 4%, unchanged from T3
+        d            = lookahead_decide(in);
+        us_check(d.verdict == LA_SHRINK && near_ms(d.want_ms, 96.0, 1e-9),
+                 "a 3 ms surplus is still the 4%% step -- the proportional form is self-gating (%f)",
+                 d.want_ms);
+        // THE NO-OVERSHOOT PROPERTY, asserted rather than argued, and asserted about the RIGHT term.
+        // The flat 4% step has never had this property (4% of a 400 ms lookahead is 16 ms, which is
+        // more than a 1 ms surplus) and T3c does not change it -- what T3c must not do is INTRODUCE
+        // an overshoot. So: for every surplus, the step taken is at most the larger of the two
+        // candidates, and whenever the proportional one is the larger, the worst case it can leave
+        // behind -- a margin that tracks the lookahead one for one -- is still above the band.
+        {
+            int bad = 0;
+            for (int t = 31; t <= 4000; ++t) {
+                in.clean_in        = AD_LATE_SHRINK_AFTER - 1;
+                in.cur_ms          = 400.0;
+                in.tail95_ms       = (double)t;
+                d                  = lookahead_decide(in);
+                const double moved = in.cur_ms - d.want_ms;
+                const double flat  = in.cur_ms * (1.0 - AD_LATE_SHRINK);
+                const double prop  = AD_LATE_SHRINK_FRAC * (in.tail95_ms - AD_LATE_SHRINK_MULT * in.sim_ms);
+                const double most  = (flat > prop) ? flat : prop;
+                if (moved > most + 1e-9) ++bad;
+                if (prop > flat && !(in.tail95_ms - moved > AD_LATE_SHRINK_MULT * in.sim_ms - 1e-9))
+                    ++bad;
+            }
+            us_check(bad == 0,
+                     "over surpluses 31..4000 ms the proportional term never overshoots the band "
+                     "and never exceeds half the surplus (%d violations)",
+                     bad);
+        }
+
+        // ---- (i) mp:T3c: UNUSED HORIZON, the surplus the lateness tail cannot see --------------
+        // The rig's client: its own horizon is 120 ms while the match runs on the host's, so it
+        // measures the HOST's margin (a quantised 20/40 ms, straddling the 30 ms shrink threshold)
+        // and reads its own 60 ms of waste as nothing at all.
+        in.warm      = true;
+        in.cur_ms    = 120.0;
+        in.tail95_ms = 20.0; // INSIDE the band -- under T3 this zeroed the shrink credit
+        in.slack_ms  = 0.0;
+        in.clean_in  = 2;
+        d            = lookahead_decide(in);
+        us_check(d.verdict == LA_HOLD && d.clean_out == 1,
+                 "with no slack an in-band tail is not evidence of surplus (%d)", d.clean_out);
+        in.slack_ms = 60.0; // ...and with 60 ms of our own horizon going unused, it does not
+        d           = lookahead_decide(in);
+        us_check(d.verdict == LA_SHRINK && near_ms(d.want_ms, 90.0, 1e-9),
+                 "unused horizon is its own evidence of surplus: shrink by half of it (%f, %d)",
+                 d.want_ms, d.verdict);
+        // Slack never outranks real starvation: a grow reading still grows, and still resets.
+        in.tail95_ms = -100.0;
+        in.clean_in  = 2;
+        d            = lookahead_decide(in);
+        us_check(d.verdict == LA_GROW && d.clean_out == 0,
+                 "...but starvation still outranks it (%d)", d.verdict);
+        // Below the AD_SLACK_MULT threshold a sliver of slack is not "we are not binding".
+        in.tail95_ms = 20.0;
+        in.slack_ms  = 5.0; // < 0.5 sub-step
+        in.clean_in  = 2;
+        d            = lookahead_decide(in);
+        us_check(d.verdict == LA_HOLD && d.clean_out == 1,
+                 "a sliver of slack is not evidence (%d, clean %d)", d.verdict, d.clean_out);
+
+        // ---- (j) mp:T3c: NO OSCILLATION ON A STEP-UP / STEP-DOWN SEQUENCE ----------------------
+        // The synthetic link the rig arm mirrors: clean, then 200 ms injected, then clean again. The
+        // properties that must hold across the whole sequence are (1) it ends on the floor, (2) it
+        // covers the bad era, and (3) it never reverses direction inside one era -- a shrink
+        // immediately followed by a grow (or the reverse) is the oscillation P1 measured and the
+        // bound exists to prevent.
+        in.warm       = true;
+        in.slack_ms   = 0.0;
+        in.cur_ms     = 100.0;
+        in.clean_in   = 0;
+        int    flips  = 0;
+        int    lastv  = LA_HOLD;
+        double peak   = 0.0;
+        double inject = 0.0;
+        for (int w = 0; w < 120; ++w) {
+            inject = (w >= 20 && w < 60) ? 200.0 : 0.0;
+            // margin = what this lookahead buys, less the injected one-way delay
+            in.tail95_ms = in.cur_ms - in.sim_ms - inject;
+            d            = lookahead_decide(in);
+            in.clean_in  = d.clean_out;
+            if ((d.verdict == LA_GROW && lastv == LA_SHRINK) ||
+                (d.verdict == LA_SHRINK && lastv == LA_GROW))
+                ++flips;
+            if (d.verdict == LA_GROW || d.verdict == LA_SHRINK) lastv = d.verdict;
+            in.cur_ms = d.want_ms;
+            if (w >= 20 && w < 60 && in.cur_ms > peak) peak = in.cur_ms;
+        }
+        us_check(flips <= 2,
+                 "a step up and a step down are two direction changes, not a wobble (%d)", flips);
+        us_check(peak >= 200.0, "...the injected era is actually covered (peak %f)", peak);
+        us_check(near_ms(in.cur_ms, 60.0, 1e-9),
+                 "...and the link is handed back to the floor afterwards (%f)", in.cur_ms);
+    }
+
+    printf("=== udpstatstest: %d checks, %d failures ===\n", g_us_checks, g_us_fails);
+    return g_us_fails ? 1 : 0;
+}
+
 
 // ---- authtest: the link-security gate ------------------------------------------------------------
 // The property that matters for a host published on the internet is NEGATIVE -- a peer WITHOUT the
@@ -826,6 +1842,81 @@ int run_watchdogtest();
 int run_desynctest();
 // net_queue_selftest.cpp -- D24: which inbound frame a FULL transport queue may destroy.
 int run_queuetest();
+// session_id_selftest.cpp -- SES0: the UUIDv7 match_id, the v3 SESSION_INFO/JOIN records, and the
+// host's admit decision. Carries the two acceptance clauses the rig cannot reach -- there is no
+// pre-SES0 client to run, so both refusals only exist offline.
+int run_sessionidtest();
+// session_dir_selftest.cpp -- SES1: the per-SESSION run directory. The NAME, the ROLLOVER state
+// machine and the session.json / SESSION_BEGIN / SESSION_END record. Three of SES1's five acceptance
+// clauses are claims about a name and a transition table, and on the rig each of them costs a
+// two-VM run per match; the other two (the directories really appear, every stream lands in them)
+// stay rig work because they are claims about CreateDirectory and about a dozen writers.
+int run_sessiondirtest();
+// log_rotate_selftest.cpp -- SES2: the log-stream SIZE CAP and its one-generation rotation. Its
+// centre is SES2's acceptance clause driven verbatim -- 70 MB emitted through the REAL seam_log()
+// into the REAL run directory at the REAL default cap, leaving a capped file plus exactly one
+// .prev -- which on the rig would be a two-VM session long enough to produce 70 MB of DIAG lines.
+// The surrounding arms are the refusals (a non-.log path, a too-small buffer, "0 means uncapped")
+// that a gameplay run reaches never.
+int run_logrottest();
+// udp_wire_selftest.cpp -- T0: the UDP packet format (plan D2). Its centre is a directory of
+// FIXTURE FILES that this suite and `cargo test -p relay` both read, because an encoder agreeing
+// with its own decoder is one implementation agreeing with itself; the claim worth making is that
+// two independent ones accept and refuse the same committed bytes. It takes argv because of the two
+// side modes -- `--emit <dir>` regenerates the fixtures from this encoder, and `--fuzz <seconds>`
+// runs the seeded decoder fuzz that the ASan build turns into the out-of-bounds proof.
+int run_udpwiretest(int argc, char **argv);
+// udp_loopback_selftest.cpp -- mp:T1: the UDP TRANSPORT above that format. A host and two clients
+// IN THIS PROCESS on 127.0.0.1 -- which the TCP suites cannot do, because their transport is a file
+// of globals and one process can only be one peer. The object form is what buys the two things this
+// item is judged on: a synthetic loss rate applied where the network would apply it, and counters
+// that say WHY a lossy run completed (redundancy covered N, the retransmit covered M, the
+// reassembler stalled K times) rather than only that it did.
+int run_udploopbacktest(int argc, char **argv);
+// udp_bulk_selftest.cpp -- mp:T2: CHANNEL C, the bulk reliable chunk transfer above that transport.
+// A mebibyte crossing hash-verified at 5% injected loss, a receiver KILLED mid-transfer resuming
+// from its last acknowledged chunk (mp:T1b's restart), and the never-evictable chunk lane refusing
+// rather than destroying when the application stops draining -- which is the D24 question asked of
+// the one queue whose contents are by definition not supersedable.
+int run_udpbulktest(int port);
+// udp_snapshot_selftest.cpp -- mp:X1: the CHUNKED SNAPSHOT PIPELINE above channel C. A real
+// mh::state::world::capture() blob -- 829 bound regions, the RNG channels among them -- manifested,
+// hashed, moved across two real endpoints at 5% loss, verified against the hash vector its sender
+// committed to BEFORE the transfer, and imported into a poisoned world that must then reproduce the
+// capturing peer's content and lockstep hashes. It lives here rather than in libmh_selftest because
+// it needs both halves in one process: the world spine AND a real socket with a loss dial.
+int run_udpsnaptest(int port);
+// udp_punch_selftest.cpp -- mp:R3: the HOLE-PUNCH promotion state machine, with no network at all.
+// Candidates in, probes out, an echo back, the peer's own probe seen, PROMOTED -- then the path goes
+// dark and the pair falls back to the relay. Every one of R3's acceptance clauses is a rig clause
+// (two VMs, a firewall rule over ssh, minutes per answer), and a red rig run cannot say whether the
+// codec, the cadence, the promotion rule or the demotion timer was wrong. So the decision half is a
+// pure function of (state, event, time) and this drives it as a table of milliseconds.
+int run_udppunchtest();
+// udp_room_selftest.cpp -- mp:R6: the HOST'S RELAY ROOM MINTER, with no relay and no RNG. A host's
+// room used to be its `[net] port`, so on a shared relay the second host at any moment was refused
+// `room_busy`; now it is a random 30-bit code minted per tunnel start and re-minted, a bounded
+// number of times, on `room_busy`. The rig cannot stage two hosts on one relay (one box, one
+// exclusive UDP port per lane), so the two-hosts clause, the retry bound and the "a relaunch after a
+// crash gets a fresh room" clause are all proved here, over an injected RNG that says exactly what a
+// rig run could only hope to observe.
+int run_udproomtest();
+// udp_relay_selftest.cpp -- mp:R3e: the HOST TUNNEL'S PER-PEER SLOTS ARE RELEASED. udp_relay.cpp
+// holds one loopback socket, one punch and one pair-key set per remote peer, eight of each, and
+// until R3e nothing ever freed one: the ninth distinct joiner of a lobby's life got no socket and
+// no punch. Nine sequential harness joins is nine lobby walks on a lane pool with no headroom, so
+// the real tunnel is driven here against a STAND-IN relay and a stand-in endpoint: eight join, a
+// ninth is refused (the cap), the eight leave, the ninth and tenth then get both, and a punch
+// nobody is behind is released by the orphan rule.
+int run_udprelaytest();
+// map_transfer_selftest.cpp -- mp:X2: the MAP DOWNLOAD. The content hash that makes a map name an
+// identity, the `<stem>.<hex>.<ext>` stored name, the resolver that answers by HASHING candidates
+// rather than by trusting their names, the open-redirect that serves a downloaded file under the
+// base name WITHOUT renaming the map in game memory, the host's Start gate, and one real map-sized
+// file across two real endpoints through X1's pipeline. Three of X2's clauses are things a rig can
+// only show by ABSENCE (nothing transferred, nothing overwritten, nothing accepted), and an absence
+// on a rig is equally consistent with a mechanism that never ran.
+int run_maptest(int port);
 int run_interlocktest();
 // inmem_patch_selftest.cpp -- F1E: the in-memory static-patch applier and, above all, its REFUSALS
 // (a moved guarded byte, an already-patched image, a site inside a promoted body, an unavailable
@@ -902,6 +1993,10 @@ static const suite_row SUITE_TABLE[] = {
     {"seamtest",    false, adapt_port<run_seamtest>},
     {"watch_host",  false, adapt_port<run_watch_host>},
     {"mute_peer",   false, adapt_port<run_mute_peer>},
+    // U40 relinktest's two children (spawned, never run by hand -- the client blocks on the host's
+    // watchdog and the host counts the client's connections).
+    {"relink_host",   false, adapt_port<run_relink_host>},
+    {"relink_client", false, adapt_port<run_relink_client>},
     {"probe",       false, adapt_port<run_mute_probe>},
     // RETIRED at tracker U18 (2026-07-24) -- the self-render splice it validated no longer exists,
     // and the replacement is a game-coupled restore verified live. The row stays so the name still
@@ -948,6 +2043,16 @@ static const suite_row SUITE_TABLE[] = {
     {"selftest3",      true, adapt_port<run_selftest3>},
     {"authtest",       true, adapt_port<run_authtest>},
     {"linktest",       true, adapt_port<run_linktest>},
+    // U40. Deliberately next to linktest: both stage a link DEATH with the same mute-peer trick,
+    // and where linktest asks "is the corpse noticed", this one asks "can the survivor dial again".
+    {"relinktest",     true, adapt_port<run_relinktest>},
+    // mp:T1b -- the same question asked of the OTHER transport module. It cannot be an arm of the
+    // row above: relinktest drives the MH_Net_* exports, which in this exe are the TCP module's, so
+    // the UDP side is reached through mh::netudp::Endpoint the way udploopbacktest reaches it.
+    {"udprelinktest",  true, adapt_port<run_udprelinktest>},
+    // mp:R7a. The MH_NetConfig relay fields: default = no relay, appended, TCP-indifferent. Binds a
+    // TCP host port for the indifference arm, so it takes the port argument.
+    {"netcfgtest",     true, adapt_port<run_netcfgtest>},
     {"callstest",      true, adapt_void<run_callstest>},
     {"exportstest",    true, adapt_void<run_exportstest>},
     {"launchtest",     true, adapt_void<run_launchtest>},
@@ -964,6 +2069,40 @@ static const suite_row SUITE_TABLE[] = {
     {"watchdogtest",   true, adapt_void<run_watchdogtest>},
     {"desynctest",     true, adapt_void<run_desynctest>},
     {"queuetest",      true, adapt_void<run_queuetest>},
+    {"sessionidtest",  true, adapt_void<run_sessionidtest>},
+    {"sessiondirtest", true, adapt_void<run_sessiondirtest>},
+    {"logrottest",     true, adapt_void<run_logrottest>},
+    {"udpwiretest",    true, adapt_argv<run_udpwiretest>},
+    {"udploopbacktest",true, adapt_argv<run_udploopbacktest>},
+    // mp:T2. Next to the loopback suite because it drives the same object on the same loopback with
+    // the same loss dial, one channel over: T1 owns the byte stream on channel A, this owns the
+    // chunk transfer on channel C. It takes the port argument plus 200, so the two never collide.
+    {"udpbulktest",    true, adapt_port<run_udpbulktest>},
+    // mp:X1. Directly after T2 because it is T2's first consumer: the transport proves bytes cross,
+    // this proves a WORLD crosses. Port argument plus 300.
+    {"udpsnaptest",    true, adapt_port<run_udpsnaptest>},
+    // mp:T3. The link-measurement ARITHMETIC, with no link: RFC 6298's own worked recurrence,
+    // a synthetic 80 +/- 20 stream standing in for the shim, the 256-packet loss window, the
+    // lateness percentiles, and the adaptive controller's decision function -- which is where
+    // this suite earns its place, because the three rig clauses in T3's done_when are each a
+    // claim about that function and a red rig run could not say which layer was wrong.
+    {"udpstatstest",   true, adapt_void<run_udpstatstest>},
+    // mp:R3. Beside udpstatstest and for the SAME reason, one layer over: both are the offline half
+    // of an item whose done_when is entirely rig clauses, and in both the thing under test is a
+    // decision function that a red rig run could not have named.
+    {"udppunchtest",   true, adapt_void<run_udppunchtest>},
+    // mp:R6. Beside udppunchtest for the same reason it sits beside udpstatstest: the offline half of
+    // a relay item whose done_when is entirely about a deployment (two hosts on the VPS relay at
+    // once), reduced to the decision function a red live run could not have named.
+    {"udproomtest",    true, adapt_void<run_udproomtest>},
+    // mp:R3e. Beside the two above: the third relay item proved offline, and the first to link the
+    // tunnel itself (udp_relay.cpp) -- the relay and the endpoint it talks to are both stand-ins
+    // the suite owns on loopback. Ephemeral ports throughout; no port argument.
+    {"udprelaytest",   true, adapt_void<run_udprelaytest>},
+    // mp:X2. After the snapshot suite because its wire arm is that pipeline carrying a different
+    // payload: X1 proves a WORLD crosses, this proves a MAP file does and that what lands is written
+    // under a content-addressed name the loader then resolves. Port argument plus 400.
+    {"maptest",        true, adapt_port<run_maptest>},
 };
 // clang-format on
 

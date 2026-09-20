@@ -1,0 +1,20 @@
+# The Rust toolchain this repo is built and linted with (dist DS1, plan decision D20).
+#
+# PINNED BY CHANNEL, NOT BY VERSION, ON PURPOSE. `channel = "stable"` is what `rustup` reads on any
+# cargo invocation inside this tree: it installs the components below if they are missing and then
+# uses them, so a fresh machine needs `rustup` and nothing else -- no "which toolchain did you
+# build with" question, and no per-machine `rustup default`. The CI action that reads this file
+# (dtolnay/rust-toolchain, plan decision D15) gets the same answer the dev box gets.
+#
+# THE COMPONENT LIST IS LOAD-BEARING, not decoration. `tools/lint_rust.py` runs `cargo fmt --check`
+# and `cargo clippy -- -D warnings` as lint_repo rows; with the minimal profile (what
+# `rustup-init -y --profile minimal` installs) NEITHER component is present, and `cargo fmt` fails
+# with "not installed for the toolchain" -- a red that reads like a formatting violation and is not
+# one. Naming them here makes rustup install them on first use instead.
+#
+# A concrete version would be pinned as e.g. channel = "1.98.1"; do that only when a compiler
+# regression forces it, and say here which one, because a pin nobody revisits is how a tree ends up
+# building on a toolchain nothing else in the world still uses.
+[toolchain]
+channel = "stable"
+components = ["rustfmt", "clippy"]

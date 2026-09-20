@@ -4,14 +4,14 @@
  "version": 1,
  "steps": 5000,
  "provenance": {
-  "commit": "a3324d3e716b178c31e42a6119cd6175218df647",
-  "recorded": "2026-09-11",
+  "commit": "5d5600404e101da81ba76eab6a65768f158ad0b6",
+  "recorded": "2026-09-20",
   "scenario_script": "sp_soak.txt",
   "synth_seed": 20260912,
-  "host": "local lane ui_soak (headless, isolated desktop mh_rig), single peer; run 20260911_230951_solo staged to tmp/libref_live1",
+  "host": "local lane ui_soak (headless, isolated desktop mh_rig; soak lane 82, port 6682), single peer; run 20260919T230052Z_menu_solo staged to tmp/libref_live_rec",
   "peers": "1 (8-way all-AI: every slot an AI, including the converted local slot; no rig VMs)",
-  "run_dir": "tmp/libref_live1",
-  "stream_from_run": "tmp/libref_live1"
+  "run_dir": "tmp/libref_live_rec",
+  "stream_from_run": "tmp/libref_live_rec"
  },
  "compare": {
   "channel": "state",
@@ -77,19 +77,20 @@
    "total_game_time",
    "sim_step_interval",
    "game_time_delta",
-   "game_speed"
+   "game_speed",
+   "player_resources"
   ]
  },
  "step0": {
-  "world_content_hash": "ADCD5D6381B3726F",
-  "lockstep_combined": "B97735A8BC9853B2",
-  "lockstep_state": "4A14D4704680FD25",
+  "world_content_hash": "F5651BB832FA4D24",
+  "lockstep_combined": "435585A1F860139D",
+  "lockstep_state": "ED2F04D98448A012",
   "game_clock": "3F9111276FB08000",
   "step": 1,
   "mask_flags": 7,
   "hash_sink_fp": "68AADCE3",
-  "hash_manifest_fp": "BD36D78E",
-  "hash_slice_count": 61
+  "hash_manifest_fp": "9221967E",
+  "hash_slice_count": 62
  },
  "artifacts": {
   "clock": {
@@ -101,20 +102,20 @@
   "world": {
    "file": "world.bin.zz",
    "raw_bytes": 8186488,
-   "zlib_bytes": 486246,
-   "sha256_raw": "70a727cb8f1e78b28bb3f47d3f8632608f7981dfec6e9fddddc392f064cb23bc"
+   "zlib_bytes": 506395,
+   "sha256_raw": "d00fc45353b6fde87c293102e986c394ea8ec841677df2368f29fc41e84401bc"
   },
   "hash_steps": {
    "file": "hash_steps.txt.zz",
    "raw_bytes": 278893,
-   "zlib_bytes": 152094,
-   "sha256_raw": "0b8ff94e2c30a455ff7468fa4eb4660cc429c6e7759a09a44637853e4e1729ff"
+   "zlib_bytes": 152095,
+   "sha256_raw": "8837807e4683b34693819e924e0d6f65cff133ed5c4237aa2d2baf8cbd2b1f11"
   },
   "hash_regions": {
    "file": "hash_regions.txt.zz",
-   "raw_bytes": 5218893,
-   "zlib_bytes": 787520,
-   "sha256_raw": "2f4dda25a26186f5b46c1d6bedd87ff3c8a7a0af52f7658c044f03bc9a54499a"
+   "raw_bytes": 5303893,
+   "zlib_bytes": 788361,
+   "sha256_raw": "f49800d5a5e17f74e72f1cfa5b8c03a0adc411ca2a5b8a163f4bd52b14078329"
   }
  },
  "live_contract": {

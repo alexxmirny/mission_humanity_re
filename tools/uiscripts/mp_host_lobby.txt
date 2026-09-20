@@ -2,6 +2,11 @@
 # unlike mp_host_start it does NOT launch the match, so a client can browse/join and be observed in the
 # lobby. Distinct baseline label (its own single lobby capture) so it never collides with mp_menu_walk
 # (the standalone solo menu-walk test) even though the walk is the same.
+#
+# U42 NEGATIVE ARM: this is a normal (module-present) lane, so the standing "No network module" line
+# (mh/ui/lobby_notice.cpp, also armed on this screen since U42) must NEVER paint here -- `absent`
+# rather than trusting the capture's tolerance, since the notice is one line of text far under the
+# default 2% pixel budget. See tools/uiscripts/no_net_lobby.txt for the positive (module=none) arm.
 settled value:110
 clickv 110
 present Player name
@@ -16,6 +21,7 @@ present Available maps
 settled Ok
 clickl Ok
 present Network players
+absent No network module
 settled Start
 capture h_lobby
 log fixture host in lobby -- listening, NOT launching the match

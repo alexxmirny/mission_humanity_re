@@ -1,13 +1,29 @@
-# Debug overlay P0: prove the overlay actually renders on a real composed frame.
+# Debug overlay P0: prove the overlay actually renders on a real composed frame -- and, since
+# 2026-09-20 (user ruling), that it starts HIDDEN and the Ctrl+Alt+D toggle works. The debug zips
+# ship `[debug] overlay=0`: installed but hidden, so a player sees nothing until they ask.
 #
-# Run with `--extra-ini tools/uiscripts/ini/debug_overlay.ini`, which enables [debug] with a page of
-# STABLE readouts only (mode/session/res) so the committed baseline does not flap.
+# Run with `--extra-ini tools/uiscripts/ini/debug_overlay.ini`, which enables [debug] with overlay=0
+# and a page of STABLE readouts only (mode/session/res) so the committed baseline does not flap.
 #
-# Two captures on two different screens, because the whole point of the DLL-native blitter (Route B) is
-# that it does not depend on the game's font/render state: the overlay must be present on the sprite main
-# menu AND on a dialog screen. `mode` should read differently from what the game is doing only if the gate
-# is wrong -- both these screens are menu mode, which is exactly where the game's own text stack would have
-# left us invisible.
+# Four captures, three states, two screens:
+#   ovl0_hidden      main menu, overlay installed but NOT drawn (the shipped debug shape)
+#   ovl1_menu        main menu after Ctrl+Alt+D -- the overlay is drawn (byte-identical to the
+#                    pre-2026-09-20 baseline, which started visible)
+#   ovl2_playername  a different screen, still overlaid (idem)
+#   ovl3_hidden      that screen after a second Ctrl+Alt+D -- hidden again: a rising edge, not a
+#                    held key
+# Two different screens, because the whole point of the DLL-native blitter (Route B) is that it does
+# not depend on the game's font/render state: the overlay must be present on the sprite main menu AND
+# on a dialog screen. `mode` should read differently from what the game is doing only if the gate is
+# wrong -- both these screens are menu mode, which is exactly where the game's own text stack would
+# have left us invisible.
+#
+# THE CHORD IS SYNTHESISED. The overlay polls GetAsyncKeyState, which reads 0 for a process on a
+# non-input desktop -- every headless lane -- so a real keypress cannot reach it here. `hotkey` holds
+# the chord in the DLL's own key-state table (ui_drive.cpp, MH_UIDrive_SynthKeyDown), which the
+# overlay ORs into its read: the binding parse, the modifier check and the rising-edge detector all
+# run for real; only the OS read is substituted. The verb holds for two presents and releases, so
+# the second chord is a fresh rising edge.
 
 # PARK THE CURSOR before every capture. This test runs at `tol 0.0` on purpose -- the overlay is only
 # ~0.8% of the frame, so any usable tolerance would hide it vanishing entirely -- and exact-match is
@@ -17,17 +33,27 @@
 # where a click above it happened to leave the pointer. Park it BOTTOM-RIGHT, not top-left: this ini
 # anchors the overlay at tl (8,8), so a cursor at (5,5) would sit ON the thing under test -- the exact
 # occlusion `tol 0.0` exists to catch.
-# 1. main menu (7-button sprite menu; NETWORK GAME = value 110)
+# 1. main menu (7-button sprite menu; NETWORK GAME = value 110) -- installed, hidden
 settled value:110
+cursor 600 450
+capture ovl0_hidden
+
+# 2. Ctrl+Alt+D -> drawn
+hotkey Ctrl+Alt+D
 cursor 600 450
 capture ovl1_menu
 clickv 110
 
-# 2. player-name screen -- a different screen, still overlaid
+# 3. player-name screen -- a different screen, still overlaid
 present Player name
 settled Ok
 cursor 600 450
 capture ovl2_playername
 
-log debug overlay COMPLETE -- captured the overlay on 2 screens
+# 4. Ctrl+Alt+D again -> hidden again
+hotkey Ctrl+Alt+D
+cursor 600 450
+capture ovl3_hidden
+
+log debug overlay COMPLETE -- hidden, shown on 2 screens after Ctrl+Alt+D, hidden after a second chord
 end

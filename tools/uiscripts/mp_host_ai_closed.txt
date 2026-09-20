@@ -6,6 +6,10 @@
 # Each state click triggers a widget REBUILD; a click fired mid-rebuild misses -- so gate between clicks on
 # a STATE PREDICATE: an AI slot's NAME column becomes the real label "Computer" (the state spinner text
 # itself is drawn, not a matchable label). `present Computer` waits the rebuild out (speed-independent).
+#
+# U42 NEGATIVE ARM: normal (module-present) lane -- the standing "No network module" line (also armed
+# on this screen since U42, mh/ui/lobby_notice.cpp) must NEVER paint here. `absent` rather than relying
+# on lobby_open's own pixel tolerance, since the notice is one line of text far under the 2% default.
 
 settled value:110
 clickv 110
@@ -21,6 +25,7 @@ present Available maps
 settled Ok
 clickl Ok
 present Network players
+absent No network module
 settled Start
 capture lobby_open
 

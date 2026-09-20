@@ -1,0 +1,80 @@
+# deny.toml -- `cargo deny check` over the Rust workspace (dist RP4, plan D15).
+#
+# RUN LOCALLY: `cargo install --locked cargo-deny` (user-level; no admin, ~2 min to compile) then
+# `cargo deny check` from the repo root. images.yml runs the same command on every PR that touches
+# Cargo.toml/Cargo.lock/src/launcher/**/src/relay/** (see that workflow's `paths:` filter).
+#
+# VERIFIED AT HEAD (2026-09-17, cargo-deny 0.20.2, cargo-audit 0.22.2, this repo's actual
+# Cargo.lock -- 364 crate dependencies across both workspace members, mh_launcher + mh_relay):
+# `cargo audit` is clean (0 advisories against 1247 loaded from RustSec) and `cargo deny check`
+# reports `advisories ok, bans ok, licenses ok, sources ok`, with two WARN-level (non-failing)
+# `multiple-versions` notices for windows_x86_64_{gnu,msvc} 0.52.6 vs 0.53.1 -- an artifact of
+# eframe's Windows backend stack (glutin/winit/self-replace resolving windows-targets at two
+# minor versions), not a security or licensing issue. Re-run after any dependency bump; this
+# comment records a point-in-time result, not a standing guarantee.
+#
+# WHY THREE TARGET TRIPLES. The workspace ships to two different runtimes: mh_launcher is
+# Windows-only (x86_64-pc-windows-msvc, dist LA1), mh_relay is the musl-static Linux container
+# this repo's src/relay/Dockerfile builds (dist RP4). x86_64-unknown-linux-gnu is included too so
+# a contributor running `cargo deny check` on a Linux dev machine (or gnu-target CI matrix cell,
+# should one ever exist) sees the same dependency graph as the musl target -- Rust's std does not
+# differ between the two libc choices in ways that change which crates get pulled in.
+
+[graph]
+targets = [
+    "x86_64-pc-windows-msvc",
+    "x86_64-unknown-linux-musl",
+    "x86_64-unknown-linux-gnu",
+]
+
+# advisories: defaults (RustSec db, nothing ignored) are exactly right -- a real advisory should
+# fail the PR, and this workspace has none to carve an exception for yet.
+[advisories]
+
+[licenses]
+# Every SPDX identifier actually present in the workspace's dependency tree at HEAD, plus the
+# handful of common permissive licenses a routine dependency bump is likely to introduce next
+# (0BSD, CC0-1.0) so a green run does not need a deny.toml edit in the same PR as an unrelated
+# version bump. NOT a blanket "everything OSI-approved" allow: copyleft (GPL/LGPL/AGPL) and
+# source-available-but-not-open licenses are deliberately absent, so a dependency that pulls one
+# in fails the check by omission rather than by an explicit deny list nobody maintains.
+allow = [
+    "MIT",
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
+    "Unicode-3.0",
+    "Zlib",
+    "MPL-2.0",
+    "0BSD",
+    "CC0-1.0",
+    # Boost Software License -- clipboard-win/error-code (via eframe's arboard clipboard backend).
+    "BSL-1.0",
+    # The two bundled-font licenses inside epaint_default_fonts (eframe's default_fonts feature,
+    # mh_launcher's egui text rendering) -- shipping the font BYTES, not this repo's own code,
+    # under these terms.
+    "OFL-1.1",
+    "Ubuntu-font-1.0",
+    # webpki-roots' compiled-in Mozilla root bundle (ureq's rustls-webpki-roots feature, LA2's
+    # update client) -- a data license on the root certificate list, not on any code.
+    "CDLA-Permissive-2.0",
+]
+
+[bans]
+# WARN, not DENY: this workspace's own duplicate-version case (windows_x86_64_{gnu,msvc} above) is
+# a normal consequence of a deep GUI dependency tree resolving two minor versions of a
+# `windows-*` sys crate family, not a bug this repo's Cargo.toml can fix by itself -- denying it
+# would fail every PR on a pre-existing, harmless condition. A NEW duplicate still shows up in the
+# PR's `cargo deny check` output for a human to look at; it just does not block merge on its own.
+multiple-versions = "warn"
+
+[sources]
+# DENY, not the cargo-deny default of "warn": every dependency in this workspace comes from
+# crates.io (see the allow-registry list below) or is a path dependency inside this workspace.
+# A crate from an unlisted registry or a git source is exactly the kind of supply-chain surprise
+# this row exists to fail loudly on, not merely warn about.
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]

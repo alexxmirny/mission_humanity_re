@@ -109,12 +109,36 @@ struct Conn {
     volatile LONG ping_rx;
 };
 
-// ---- inbound queue (fixed ring of fixed-size slots) --------------------------------------------
-constexpr int QUEUE_CAP = 256;
+// ---- inbound queue: the SEQUENCE-MERGED LANE PAIR (mp:U41; was one ring + a victim scan, D24) ----
+//
+// The policy header owns the decision (which lane, which position, what a full lane does); this file
+// owns the STORAGE, and splitting it that way is what lets the two lanes have different slot sizes.
+//
+// THE SIZES ARE A CONSEQUENCE OF THE DESIGN, NOT A NUMBER PICKED UP FRONT -- which is what U41 asked
+// for. A lane-H frame is exactly BARE_HORIZON_LEN (9) bytes BY CONSTRUCTION: `lane_of_game_frame`
+// admits nothing else into that lane. So lane H does not need the 2048-byte datagram slot the old
+// single ring handed every frame, and 4096 of its slots cost ~80 KB.
+//
+// WHAT THAT BUYS, against the measurement this whole thread is about (D24 run 18): the flood is
+// ~1570 frames/s and ~99.5% bare horizons, and the freeze that lost 15 orders was 1844 ms, i.e.
+// ~2900 frames. The old 256-slot single ring covered ~160 ms of it -- so it overflowed, and an order
+// happening to sit in the evicted prefix is what made the shape fail about 1 run in 30. Lane H at
+// 4096 slots covers ~2.6 s of that same flood in 80 KB. Lane M keeps the full-size slot and 256 of
+// them (514 KB, exactly the old ring's footprint) but now holds ONLY the ~0.5% that is not a bare
+// horizon: at the measured ~8 orders/s that is ~32 seconds of real input before it could refuse.
+// Total 594 KB against the old 514 KB, and the coverage goes from 160 ms to seconds.
+constexpr int QUEUE_CAP_H = 4096;                      // bare horizons -- the lane that floods
+constexpr int QUEUE_CAP_M = 256;                       // everything else -- the lane that must not lose
+constexpr int QUEUE_CAP   = QUEUE_CAP_H + QUEUE_CAP_M; // reported depth denominator
 struct Msg {
     int     src;
     int     len;
     uint8_t data[MH_NET_MAX_PAYLOAD];
+};
+// Lane H's slot: the classifier guarantees the length, so the slot is sized by the guarantee.
+struct HMsg {
+    int     src;
+    uint8_t data[mh::net::queue_policy::BARE_HORIZON_LEN];
 };
 
 // ---- module state -------------------------------------------------------------------------------
@@ -147,12 +171,22 @@ Conn             g_conns[MH_NET_MAX_PEERS];
 volatile LONG    g_dead_peer = -1; // U17: last-dropped peer's player_id (== side_id); one-shot, drained by MH_Net_TakeDeadPeer
 
 CRITICAL_SECTION g_q_cs;
-Msg              g_q[QUEUE_CAP];
-int              g_qhead = 0, g_qtail = 0, g_qcount = 0;
-long             g_dropped = 0;
-// D24 instrumentation: deepest backlog ever reached, and the 32-slot band already reported, so the
-// log carries the approach to the cap and not only the overflow.
-int g_qhigh = 0, g_qhigh_band = 0;
+// U41: two storages, one decision-maker. `g_lanes` is pure index+sequence bookkeeping; `g_qm` and
+// `g_qh` are the frames, indexed by the position the lane pair hands back.
+mh::net::queue_policy::lane_queue<QUEUE_CAP_H, QUEUE_CAP_M> g_lanes;
+Msg                                                         g_qm[QUEUE_CAP_M];
+HMsg                                                        g_qh[QUEUE_CAP_H];
+long                                                        g_dropped = 0;
+// D24 instrumentation: the 32-slot band already reported, so the log carries the APPROACH to the cap
+// and not only the overflow. The high-water itself now lives in the lane pair (per lane and total).
+int g_qhigh_band = 0;
+// U41: the periodic rollup. `[desync] STATUS` comes out roughly every 50 s (desync_watch.cpp's
+// SAMPLES_PER_STATUS_LINE at the shipped cadence), and this matches it -- often enough that a long
+// match carries the approach to the cap, rare enough that it does not bury anything. The counters it
+// reports are PER MATCH: net_reset() zeroes them, so a second match in the same process does not
+// inherit the first one's high-water or eviction count.
+constexpr DWORD QUEUE_ROLLUP_MS = 50000;
+DWORD           g_q_rollup_at   = 0;
 
 bool g_log_on = false;
 char g_log_path[MAX_PATH];
@@ -449,89 +483,115 @@ bool recv_frame(Conn &c, WireHdr &h, uint8_t *payload, uint32_t &out_len, RxFail
 // run (killed, never shut down) never reaches, so every artifact of every desynced run was silent
 // about the one silent loss path in the design.
 //
-// WHAT NOW HAPPENS: net_queue_policy::choose_victim picks the oldest frame we can PROVE is nothing
-// but a superseded horizon, and only that frame dies. Orders, control transitions, keepalives and
-// chat are protected, order is preserved (the older entries shift up into the gap), and a ring with
-// nothing safe to drop falls back to the old behaviour under a LOUDER line that says a real input
-// was destroyed. In the measured flood the head of the queue IS a horizon, so the common path shifts
-// nothing and costs exactly what it used to.
+// D24 FIXED WHAT WAS DESTROYED; U41 FIXED THE SHAPE OF THE ANSWER. D24 kept the single ring and, on
+// overflow, SEARCHED it head-first for a frame it could prove was nothing but a superseded horizon
+// (`choose_victim`). Correct, and mutation-tested, but you should not have to look through a buffer
+// for something you are allowed to throw away -- you should know by construction. So the
+// classification now happens ONCE, at arrival, and the frame joins the lane it belongs to:
+//
+//   lane H  one bare horizon advertisement. FULL -> evict its own head, O(1), no scan.
+//   lane M  everything else. FULL -> REFUSE the arrival and log the correctness event, which is the
+//           same statement the old `-1` arm made.
+//
+// AND DELIVERY ORDER IS UNCHANGED, which is the whole reason this variant was picked over coalescing
+// the horizon lane down to one slot per sender: every frame takes a monotonic arrival sequence
+// number and the drain always takes the lower of the two lane heads, so the merge cannot reorder.
+// (Why reordering would be dangerous at all -- `MSG_ORDER` carries a horizon in its `exec_time` and
+// `LS_HORIZON_PENDING` is read at DISPATCH time -- is argued in mh_net_queue_policy.h.)
 //
 // The log calls are made AFTER the lock is released -- file I/O under the queue's critical section
 // would put the recv thread's slowest operation inside the main thread's drain path.
+void queue_rollup_line(int depth, int depth_h, int depth_m, int high, int high_h, int high_m,
+                       long evicted, long refused) {
+    logf("net: inbound queue rollup (this match): depth %d (H %d / M %d), high-water %d / %d "
+         "(H %d / %d, M %d / %d), evicted %ld superseded horizon(s), REFUSED %ld real input(s)",
+         depth, depth_h, depth_m, high, QUEUE_CAP, high_h, QUEUE_CAP_H, high_m, QUEUE_CAP_M, evicted,
+         refused);
+}
+
 void enqueue(int src, const void *data, int len) {
     if (len < 0) len = 0;
     if (len > MH_NET_MAX_PAYLOAD) len = MH_NET_MAX_PAYLOAD;
-    bool          evicted = false, ev_unsafe = false;
-    int           ev_src = 0, ev_len = 0;
-    unsigned char ev_type  = 0;
-    long          ev_total = 0;
-    int           new_high = 0;
+    namespace qp = mh::net::queue_policy;
+
+    bool evicted = false, refused = false;
+    int  ev_src   = 0;
+    long ev_total = 0, ref_total = 0;
+    int  new_high = 0;
+    bool rollup   = false;
+    int  r_depth = 0, r_dh = 0, r_dm = 0, r_high = 0, r_hh = 0, r_hm = 0;
+    long r_ev = 0, r_ref = 0;
+
+    // CLASSIFY ONCE, HERE. This is the only call to the router predicate on the inbound path; nothing
+    // downstream re-derives it, which is the difference between this and the scan it replaces.
+    const qp::lane l = qp::lane_of_game_frame(static_cast<const uint8_t *>(data), len);
+
     EnterCriticalSection(&g_q_cs);
-    if (g_qcount >= QUEUE_CAP) {
-        namespace qp     = mh::net::queue_policy;
-        const int victim = qp::choose_victim(g_qhead, g_qcount, QUEUE_CAP, [](int slot) {
-            return qp::frame_view{g_q[slot].data, g_q[slot].len};
-        });
-        // -1 = the ring holds nothing provably superseded. Destroying a real input is then the only
-        // option left, and it is reported as the correctness event it is rather than as bookkeeping.
-        const int kill = (victim >= 0) ? victim : g_qhead;
-        ev_unsafe      = (victim < 0);
-        {
-            const Msg &v = g_q[kill];
-            evicted      = true;
-            ev_src       = v.src;
-            ev_len       = v.len;
-            ev_type      = v.len > 0 ? v.data[0] : 0;
+    const qp::push_result r = g_lanes.push(l);
+    if (r.accepted) {
+        if (r.evicted) {
+            evicted  = true;
+            ev_src   = g_qh[r.evicted_pos].src; // lane H only -- lane M never evicts
+            ev_total = ++g_dropped;
         }
-        // Close the gap by moving the OLDER entries up into it, so the surviving frames keep their
-        // arrival order; then the head slot is the free one. `p` is 0 whenever the victim is the head
-        // (the ordinary case under a horizon flood), and the loop does nothing at all.
-        const int p = (kill - g_qhead + QUEUE_CAP) % QUEUE_CAP;
-        for (int i = p; i > 0; --i) {
-            Msg       &dst = g_q[(g_qhead + i) % QUEUE_CAP];
-            const Msg &s   = g_q[(g_qhead + i - 1) % QUEUE_CAP];
-            dst.src        = s.src;
-            dst.len        = s.len;
-            if (s.len) memcpy(dst.data, s.data, (size_t)s.len);
+        if (r.which == qp::lane::supersedable) {
+            HMsg &m = g_qh[r.pos];
+            m.src   = src;
+            if (len) memcpy(m.data, data, (size_t)len); // len == BARE_HORIZON_LEN by construction
+        } else {
+            Msg &m = g_qm[r.pos];
+            m.src  = src;
+            m.len  = len;
+            if (len) memcpy(m.data, data, (size_t)len);
         }
-        g_qhead = (g_qhead + 1) % QUEUE_CAP;
-        g_qcount--;
-        ev_total = ++g_dropped;
+    } else {
+        refused   = true;
+        ref_total = g_lanes.refused();
     }
-    Msg &m = g_q[g_qtail];
-    m.src  = src;
-    m.len  = len;
-    if (len) memcpy(m.data, data, len);
-    g_qtail = (g_qtail + 1) % QUEUE_CAP;
-    g_qcount++;
     // Depth high-water, reported in 32-slot steps. This is the half of the instrument that can
     // REFUTE: if a clean run's backlog never leaves the low tens, an overflow cannot be the
     // explanation for anything, and no red run is needed to establish that.
-    if (g_qcount > g_qhigh) {
-        const int band = (g_qcount / 32) * 32;
-        g_qhigh        = g_qcount;
+    {
+        const int band = (g_lanes.high_water() / 32) * 32;
         if (band > g_qhigh_band) {
             g_qhigh_band = band;
-            new_high     = g_qcount;
+            new_high     = g_lanes.high_water();
+        }
+    }
+    {
+        const DWORD now = GetTickCount();
+        if (g_q_rollup_at == 0) g_q_rollup_at = now;
+        if (now - g_q_rollup_at >= QUEUE_ROLLUP_MS) {
+            g_q_rollup_at = now;
+            rollup        = true;
+            r_depth       = g_lanes.depth();
+            r_dh          = g_lanes.depth_h();
+            r_dm          = g_lanes.depth_m();
+            r_high        = g_lanes.high_water();
+            r_hh          = g_lanes.high_water_h();
+            r_hm          = g_lanes.high_water_m();
+            r_ev          = g_lanes.evicted();
+            r_ref         = g_lanes.refused();
         }
     }
     LeaveCriticalSection(&g_q_cs);
-    if (new_high)
-        logf("net: inbound queue depth high-water %d / %d", new_high, QUEUE_CAP);
-    // An UNSAFE eviction is a correctness event and is logged every time -- there is no rate at
-    // which losing a game input is routine. A safe one (a superseded horizon) is bookkeeping: first
-    // occurrence in full, then a rollup, because a badly-behind peer sheds thousands and a line each
-    // would bury the one that matters.
-    if (evicted && ev_unsafe)
-        logf("net: *** INBOUND QUEUE FULL (cap %d) and NOTHING IN IT WAS SAFE TO DROP -- destroyed a "
-             "REAL LOCKSTEP INPUT: peer=%d type=0x%02x len=%d (%ld evicted this run). type 0x01 is "
-             "an ORDER: this peer will never execute it and WILL desync (MP D24).",
-             QUEUE_CAP, ev_src, ev_type, ev_len, ev_total);
+
+    if (new_high) logf("net: inbound queue depth high-water %d / %d", new_high, QUEUE_CAP);
+    // A REFUSAL is a correctness event and is logged every time -- there is no rate at which losing a
+    // game input is routine. An EVICTION is bookkeeping: lane H only ever holds frames the next one
+    // supersedes, so a badly-behind peer sheds thousands and a line each would bury the one that
+    // matters. First occurrence in full, then a rollup.
+    if (refused)
+        logf("net: *** INBOUND QUEUE: lane M FULL (cap %d) -- REFUSED a real lockstep input from "
+             "peer=%d (type=0x%02x len=%d, %ld refused this run). type 0x01 is an ORDER: this peer "
+             "will never execute it and WILL desync (MP D24/U41).",
+             QUEUE_CAP_M, src, len > 0 ? ((const unsigned char *)data)[0] : 0, len, ref_total);
     else if (evicted && (ev_total == 1 || (ev_total % 256) == 0))
-        logf("net: inbound queue full (cap %d) -- evicted a superseded horizon advertisement from "
-             "peer=%d (type=0x%02x len=%d, %ld evicted this run). Orders and control frames were "
-             "preserved; this peer is behind enough to shed traffic (MP D24).",
-             QUEUE_CAP, ev_src, ev_type, ev_len, ev_total);
+        logf("net: inbound queue: lane H full (cap %d) -- evicted a superseded horizon advertisement "
+             "from peer=%d (%ld evicted this run). Orders and control frames are in the other lane "
+             "and cannot be reached from here (MP D24/U41).",
+             QUEUE_CAP_H, ev_src, ev_total);
+    if (rollup) queue_rollup_line(r_depth, r_dh, r_dm, r_high, r_hh, r_hm, r_ev, r_ref);
 }
 
 // ---- host relay: dispatch a DATA frame arriving from client `from_idx` --------------------------
@@ -1183,20 +1243,127 @@ bool start_client(const MH_NetConfig *cfg) {
     return true;
 }
 
+// ---- U40: returning the transport to the PRE-INIT state -----------------------------------------
+//
+// THIS IS THE ORDERLY STOP FORK F4B SAID WOULD ARRIVE WITH A CALLER AND A TEST, and it is the whole
+// transport half of U40. Until it existed `g_started` latched true for the life of the process --
+// MH_Net_Shutdown had been deleted for having no call sites -- so a CLIENT whose only connection was
+// retired at match teardown could never dial again: `MH_Net_IsStarted()` stayed 1, the discovery
+// poll's connect kick was gated behind `!MH_Net_IsStarted()`, and MH_Net_InitEx early-returned. The
+// host meanwhile re-advertised its new lobby once a second into `peers=0`. Measured end to end in the
+// 2026-09-01 internet session: `handshake OK` appears EXACTLY ONCE in a 16-minute client log.
+//
+// IT IS NOT EXPORTED, and that is deliberate rather than an omission: mh_net.dll's contract is the 23
+// symbols in mh_net_module.h, and adding a 24th to say "stop" would leave every caller of InitEx with
+// two ways to express one intent. The intent is instead carried by InitEx itself -- RE-INITIALISING
+// AN ALREADY-STARTED TRANSPORT RESTARTS IT -- so a re-dial is one call, the same call a first dial is,
+// and the UDP module mirrors a rule rather than an extra entry point.
+//
+// THE CALLER OWNS THE DECISION, not this function: there is no "is the link still in use?" guard here
+// on purpose. net_seams' lazy_start is latched by `g_tried_init`, which only the U40 relink path
+// clears, and that path is reachable only from the discovery browser on a manual client (see
+// net_discovery.cpp's `g_net_relink`). A guard keyed on PeerCount would ALSO refuse the case U40 is
+// about -- a match that ended with the socket still open -- so it would buy nothing and cost the fix.
+//
+// SHUT THE SOCKETS FIRST, THEN JOIN. Every thread below is blocked in a socket call (recv, accept, or
+// a send under SO_SNDTIMEO); closing the handle is what returns them. The critical sections are NOT
+// deleted -- they are initialised once per process (`g_cs_ready`) and outlive every reset -- because
+// MH_Net_Recv/Send read `g_started` without the lock, so a CS deleted under a concurrent caller is a
+// crash where a stale-but-valid one is an empty queue.
+//
+// A REFUSAL IS A RETURN TO TODAY'S BEHAVIOUR, not a corrupt transport: if a thread will not stop
+// inside the budget we log it and leave `g_started` true, so InitEx returns 0, the seam logs a failed
+// relink and the player is exactly where the pre-U40 build left them. Nothing is freed or zeroed
+// while a thread that can touch it is still alive.
+constexpr DWORD RESET_JOIN_MS = 3000;
+
+bool join_thread(HANDLE &h, const char *what) {
+    if (!h) return true;
+    if (WaitForSingleObject(h, RESET_JOIN_MS) != WAIT_OBJECT_0) {
+        logf("net: reset REFUSED -- the %s thread did not stop within %lu ms; keeping the old "
+             "transport (no relink this time)",
+             what, (unsigned long)RESET_JOIN_MS);
+        return false;
+    }
+    CloseHandle(h);
+    h = nullptr;
+    return true;
+}
+
+bool net_reset() {
+    logf("net: returning the transport to the pre-init state (relink)");
+    InterlockedExchange(&g_running, 0); // accept_thread + watch_thread run conditions
+
+    if (g_listen != INVALID_SOCKET) {
+        closesocket(g_listen); // unblocks accept()
+        g_listen = INVALID_SOCKET;
+    }
+    EnterCriticalSection(&g_conn_cs);
+    for (int i = 0; i < MH_NET_MAX_PEERS; ++i)
+        if (g_conns[i].active) {
+            InterlockedExchange(&g_conns[i].tx_dead, 1); // one-shot: no second "dropped" line
+            shutdown(g_conns[i].sock, SD_BOTH);          // unblocks conn_recv_thread's recv()
+        }
+    LeaveCriticalSection(&g_conn_cs);
+
+    bool ok = true;
+    for (int i = 0; i < MH_NET_MAX_PEERS; ++i) ok = join_thread(g_conns[i].thread, "connection") && ok;
+    ok = join_thread(g_accept_thread, "accept") && ok;
+    ok = join_thread(g_watch_thread, "link watchdog") && ok;
+    if (!ok) return false; // g_started stays true -- pre-U40 behaviour, loudly
+
+    memset(g_conns, 0, sizeof(g_conns));
+    // U41: the LAST rollup of the match goes out before the counters are cleared, so a match that
+    // never reached the periodic cadence still leaves one line saying how deep its queue got. Read
+    // under the lock, logged after it.
+    int  q_depth, q_dh, q_dm, q_high, q_hh, q_hm;
+    long q_ev, q_ref;
+    EnterCriticalSection(&g_q_cs);
+    q_depth = g_lanes.depth();
+    q_dh    = g_lanes.depth_h();
+    q_dm    = g_lanes.depth_m();
+    q_high  = g_lanes.high_water();
+    q_hh    = g_lanes.high_water_h();
+    q_hm    = g_lanes.high_water_m();
+    q_ev    = g_lanes.evicted();
+    q_ref   = g_lanes.refused();
+    // THE PER-MATCH RESET. Both counters and both high-waters go with the lanes, so the next match in
+    // this process reports its own numbers rather than inheriting these.
+    g_lanes.reset();
+    LeaveCriticalSection(&g_q_cs);
+    queue_rollup_line(q_depth, q_dh, q_dm, q_high, q_hh, q_hm, q_ev, q_ref);
+    g_qhigh_band  = 0;
+    g_q_rollup_at = 0;
+    InterlockedExchange(&g_dead_peer, -1); // U17: a latch from the old link is not the new one's news
+    g_started = false;
+    logf("net: transport stopped -- ready to dial again");
+    return true;
+}
+
+bool g_cs_ready = false; // the two critical sections are process-lifetime (see net_reset)
+
 } // namespace
 
 // =================================================================================================
 extern "C" int MH_Net_InitEx(const MH_NetConfig *cfg) {
-    if (g_started || !cfg) return g_started ? 1 : 0;
+    if (!cfg) return g_started ? 1 : 0;
+    // U40: re-initialising an already-started transport RESTARTS it. See net_reset above for why the
+    // decision belongs to the caller and why this is not a separate exported entry point.
+    if (g_started && !net_reset()) return 0;
     if (!ensure_wsa()) return 0;
 
-    InitializeCriticalSection(&g_conn_cs);
-    InitializeCriticalSection(&g_q_cs);
+    if (!g_cs_ready) {
+        InitializeCriticalSection(&g_conn_cs);
+        InitializeCriticalSection(&g_q_cs);
+        g_cs_ready = true;
+    }
     memset(g_conns, 0, sizeof(g_conns));
-    g_qhead = g_qtail = g_qcount = 0;
-    g_role                       = cfg->role;
-    g_my_id                      = cfg->player_id;
-    g_host_assign                = (cfg->host_assign != 0);
+    g_lanes.reset();
+    g_qhigh_band  = 0;
+    g_q_rollup_at = 0;
+    g_role        = cfg->role;
+    g_my_id       = cfg->player_id;
+    g_host_assign = (cfg->host_assign != 0);
     // N1: a client in host_assign mode must WAIT for the host's WELCOME before trusting its id (its
     // configured player_id is just a placeholder). Everyone else's id is settled at start.
     g_id_assigned = (g_role == ROLE_CLIENT && g_host_assign) ? 0 : 1;
@@ -1263,6 +1430,12 @@ extern "C" int MH_Net_InitEx(const MH_NetConfig *cfg) {
 //                feature, it is untested code with a plausible name. If a future item wants an
 //                orderly stop it gets one that something calls, and a test.
 //
+// THAT ITEM ARRIVED: mp:U40 (2026-09-17). The orderly stop is `net_reset()` above -- called by
+// MH_Net_InitEx itself when the transport is already started, tested by `net_selftest.exe relinktest`
+// and exercised on the rig by the `host_rematch` UI scenario. It is deliberately NOT a 24th export:
+// the F4B reasoning holds, so "stop" is not a symbol a caller can get wrong, it is what re-dialling
+// means.
+//
 // Keeping them would have cost the module two exports whose absent-value (mh_net_module.h) nobody
 // could derive, because nobody could say what the caller that does not exist would expect.
 
@@ -1300,6 +1473,14 @@ extern "C" void MH_Net_GetStats(MH_NetStats *out) {
     out->last_rx_tick = g_last_rx_tick;
     out->dropped      = g_dropped;
     out->peers        = MH_Net_PeerCount();
+    // mp:T3. THIS MODULE MEASURES NOTHING, and says so rather than answering zeros. FLAG_PING here
+    // is an empty keepalive (send_frame(i, FLAG_PING, ..., nullptr, 0) below) -- no timestamp is
+    // echoed, so no round trip is ever timed -- and RFC 7680 loss is not a meaningful quantity over
+    // a stream that retransmits invisibly -- a drop arrives as added delay, never as a hole in a
+    // sequence. A zero SRTT would render as a
+    // perfect link in the lockstep log; `lat_supported = 0` renders as `n/a`, which is the truth.
+    out->lat_supported = 0;
+    out->lat_count     = 0;
 }
 
 extern "C" int MH_Net_Recv(int *out_sender, void *buf, int *inout_len) {
@@ -1307,15 +1488,26 @@ extern "C" int MH_Net_Recv(int *out_sender, void *buf, int *inout_len) {
     int cap = *inout_len;
     int got = 0;
     EnterCriticalSection(&g_q_cs);
-    if (g_qcount > 0) {
-        Msg &m = g_q[g_qhead];
-        int  n = m.len < cap ? m.len : cap;
-        if (n > 0) memcpy(buf, m.data, n);
-        if (out_sender) *out_sender = m.src;
+    // U41: the MERGE. `pop()` returns whichever lane's head arrived first, so what comes out of here
+    // is the arrival order the single ring used to deliver, minus only what lane H explicitly evicted.
+    const mh::net::queue_policy::pop_result r = g_lanes.pop();
+    if (r.ok) {
+        const uint8_t *src_bytes;
+        int            src_len, src_from;
+        if (r.which == mh::net::queue_policy::lane::supersedable) {
+            src_bytes = g_qh[r.pos].data;
+            src_len   = mh::net::queue_policy::BARE_HORIZON_LEN;
+            src_from  = g_qh[r.pos].src;
+        } else {
+            src_bytes = g_qm[r.pos].data;
+            src_len   = g_qm[r.pos].len;
+            src_from  = g_qm[r.pos].src;
+        }
+        int n = src_len < cap ? src_len : cap;
+        if (n > 0) memcpy(buf, src_bytes, n);
+        if (out_sender) *out_sender = src_from;
         *inout_len = n;
-        g_qhead    = (g_qhead + 1) % QUEUE_CAP;
-        g_qcount--;
-        got = 1;
+        got        = 1;
     }
     LeaveCriticalSection(&g_q_cs);
     return got;
@@ -1444,6 +1636,62 @@ extern "C" int MH_Net_ActivePeerIds(int *out, int cap) {
     return n;
 }
 
+
+// ---- mp:X1b -- THE SNAPSHOT ROWS, ANSWERED "UNSUPPORTED" -----------------------------------------
+//
+// THIS IS THE HALF OF mp:T2'S RULING THAT MAKES THE OTHER HALF LEGAL. T2 refused a 24th module row
+// on the ground that mh_net.dll has no channel C and a contract half the implementations cannot
+// answer is not a contract. X1b keeps the ground and removes the objection: the rows exist for both
+// modules, and this one answers them with a NAMED status.
+//
+// UNSUPPORTED IS NOT A FAILURE CODE AND NOT A CRASH, and both halves of that matter:
+//
+//   NOT A CRASH, because these bodies are reachable. mh.dll's shims forward to whichever module is
+//   bound, and `[net] transport` picks that at boot; a lane running the shipped default with a build
+//   whose harness arms `snapshot_at` would land here. A stub that faulted would turn a configuration
+//   mistake into a game crash, which is the one thing the whole absent-tolerant surface exists to
+//   stop.
+//
+//   NOT A ZERO EITHER. Poll's *out_state is MH_SNAP_UNSUPPORTED rather than MH_SNAP_IDLE. IDLE says
+//   "no transfer is running YET", which is an invitation to keep polling; UNSUPPORTED says "no
+//   transfer can ever run on this link", which is terminal and is what the caller needs to log and
+//   stop. This is MH_NetStats.lat_supported's rule (mp:T3) applied one surface over: "this transport
+//   cannot do that" and "it did that and the answer was 0" are different claims and the surface says
+//   which one it is making.
+//
+// THE PARAMETERS ARE READ AND DISCARDED EXPLICITLY. `(void)x` rather than an unnamed parameter,
+// because an unnamed parameter is a decision the reader has to reconstruct from the signature and a
+// cast is a statement that this body saw the argument and had nothing to do with it.
+//
+// WHY NOT FORWARD TCP BULK OVER THE RELIABLE STREAM. It would work -- the star topology already has
+// an ordered byte stream per peer -- and it is still wrong here: the pipeline's manifest, chunk
+// indices and resume-by-frontier are channel C's objects (mh_net_udp/udp_snapshot.h), and a second
+// implementation over a second substrate would be a second thing to keep correct for a transport
+// that is the DETERMINISM GATE'S REFERENCE and is deliberately left as the build it was. If TCP ever
+// needs snapshots, the honest move is to lift the pipeline out of mh_net_udp, not to re-write it.
+extern "C" int MH_Net_SnapshotSend(int dst_player, const void *blob, int len) {
+    (void)dst_player;
+    (void)blob;
+    (void)len;
+    return 0;
+}
+
+extern "C" int MH_Net_SnapshotPoll(void *buf, int *inout_len, int *out_state) {
+    (void)buf;
+    if (inout_len) *inout_len = 0;
+    if (out_state) *out_state = MH_SNAP_UNSUPPORTED;
+    return 0;
+}
+
+extern "C" void MH_Net_SnapshotStatus(MH_NetSnapshotStatus *out) {
+    if (!out) return;
+    memset(out, 0, sizeof(*out));
+    out->size      = (unsigned)sizeof(MH_NetSnapshotStatus);
+    out->supported = 0;
+    out->state     = MH_SNAP_UNSUPPORTED;
+    // root_hex is zeroed by the memset above, which IS the empty string -- stated rather than left
+    // to the reader, because "" and "0000...0" are different answers and only one of them is true.
+}
 
 // ---- the module's one INTERNAL entry (fork F4B) --------------------------------------------------
 //

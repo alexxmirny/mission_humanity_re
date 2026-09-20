@@ -178,14 +178,11 @@ extern "C" void MH_Seam_SaveHostSlots(void);      // net_seams -- snapshot lobby
 extern "C" int  MH_Net_LocalPlayerId(void);       // net_transport -- this peer's own/assigned id (host-assign or declared)
 extern "C" int  MH_Net_IdAssigned(void);          // net_transport -- 1 once this client's id is settled (WELCOME arrived)
 
-char g_log[MAX_PATH];
-bool g_log_ready = false;
+char          g_log[MAX_PATH];
+unsigned long g_log_gen = 0; // SES1: per-SESSION -- U14 peer-table deltas are match telemetry
 
 void lg(const char *fmt, ...) {
-    if (!g_log_ready) {
-        wsprintfA(g_log, "%smh_launch.log", MH_RunDir());
-        g_log_ready = true;
-    }
+    mh_run_path(g_log, MAX_PATH, "%smh_launch.log", &g_log_gen);
     char    line[320];
     va_list ap;
     va_start(ap, fmt);

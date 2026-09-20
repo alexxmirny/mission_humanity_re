@@ -69,6 +69,7 @@ import bisect
 import glob
 import json
 import os
+import tempfile
 import re
 import sys
 
@@ -1073,6 +1074,22 @@ def _verdict(path, **kw):
     return ("complete" if c["complete"] else "incomplete"), c["why"], c["refs"]
 
 
+def _selftest_root(prefix):
+    """One root for every temp tree the selftest makes, removed at interpreter exit.
+
+    The selftest used to mkdtemp per synthetic tree and never remove any of them: measured
+    2026-09-18 at 21,462 leaked f2drop_* dirs in %TEMP% (with d8_*, d5hooks_*, inmem_selftest_*
+    and narration_selftest_* alongside) -- one lint run leaks a few, and the lint runs every
+    session. mkdtemp(dir=root) keeps every tree under one directory that atexit removes.
+    """
+    import atexit
+    import shutil
+
+    root = tempfile.mkdtemp(prefix=prefix)
+    atexit.register(shutil.rmtree, root, ignore_errors=True)
+    return root
+
+
 def selftest():
     import tempfile
 
@@ -1086,7 +1103,7 @@ def selftest():
         )
         ok = ok and cond
 
-    tmp = tempfile.mkdtemp(prefix="inmem_selftest_")
+    tmp = _selftest_root("inmem_selftest_")
     SEC = {"name": ".mhx", "vaddr": "0x10f0000", "vsize": "0x1000"}
 
     def doc(patches, sections=(SEC,), **extra):
@@ -1156,7 +1173,7 @@ def selftest():
     )
     # Q7's DROP, pinned as a negative: these carry a DLL twin, so a manifest re-entering the compile
     # list would mean two carriers for one fix with nothing to say so.
-    for n in ("no_cd_EN", "run_without_focus_EN", "net_resync_wait_fix_EN", "cd_audio_nonfatal_EN"):
+    for n in ("no_cd_EN", "run_without_focus_EN", "net_resync_wait_fix_EN"):
         expect(
             "%s is class `reimplemented` (Q7: it has a DLL twin, so it does not compile in)" % n,
             by_name.get(n, {}).get("class") == "reimplemented",

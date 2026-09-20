@@ -1,0 +1,18 @@
+{
+  "_why": "mp:L1. `_only` INVERTS the usual mask: instead of blanking a machine-specific region, it compares ONE rectangle and nothing else. The rectangle is the connection indicator's first line up to but NOT including its digits -- `PING [####]`, measured off the blessed frame at ink columns 740..794 on rows 8..17 -- which is everything about the element whose correct value is fixed: that it is drawn at all, right-aligned in the map viewport's top-right corner (L1d geometry -- WindowWidth/G_WIN_W at this 1024x768 resolution place the reserved column's left edge at x=740; a different resolution places it differently, which is why the position is computed, not hardcoded), in the game's own FONTY08 face, and that the stability bar reads FULL on a clean loopback link. The whole frame outside it is deliberately not compared; match_launch already owns the in-game frame as a whole. RE-CUT 2026-09-18 (L1d): the indicator moved from a fixed `8,44` top-left position (itself a stopgap after the ORIGINAL `8,8` default overprinted retail's own top-left chat/alert line) to this geometry-computed top-right one; the rect is keyed to the new position and is resolution-specific to this baseline's 1024x768 capture.",
+  "_why_not_the_digits": "They cannot be baselined and pretending otherwise would bless a lie. The ping differs on every run (it is an RFC 6298 estimate of a live path) and the command-latency number moves with the T3 adaptive lookahead. They are asserted instead by this scenario's post_check, tools/check_net_indicator.py, off the `; [netind]` lines -- a measured srtt, a bar level in range, and cmd_ms == look_ms + step_ms. The digits sit at x >= 802, clear of the rect, BECAUSE the seam puts the varying number last on the line and reserves a fixed-width column for the WHOLE line (measured from a worst-case template, ui_net_indicator.cpp's reserved_width()) rather than right-aligning the live string -- so the label+bar's start column does not drift with the digit count between runs, which is what keeps this rect meaningful across runs at all.",
+  "_why_ink_mode": "The text is drawn through llm_gfx_draw_text_blend_clipped, i.e. BLENDED with whatever is behind it. The rect sits on the black out-of-map corner and so is stable today, but an ink-threshold compare makes the assertion about the GLYPH SHAPES rather than about the exact blend -- shape still counts, so a missing line or a substituted box fails, while a background that shifts a few levels does not.",
+  "_only": {
+    "capture_n1_hud.png": {
+      "rect": [
+        738,
+        7,
+        60,
+        9
+      ],
+      "mode": "ink"
+    }
+  },
+  "_flake_watch": "The bar is the one compared element with a LIVE input: it reads [####] only while IPDV is <= 5 ms and loss <= 5 per mille. Measured ipdv_ms=0 on every sample of every clean local-lane run so far (2026-09-18), which is why tol 0 is honest here rather than hopeful -- but this runs on loopback beside up to eight other game processes under --jobs, so if this capture ever goes red with a bar of [###.] and the post_check green, read it as the BOX being loaded, not as a regression, and say so before reblessing.",
+  "_why_rect_height": "9 rows, not 11: the CMD line starts on the row right under the PING line (line height 10 at FONTY08), so an 11-row rect reaches the CMD digits' top row, and CMD grows from 2 to 3 digits under load (the adaptive lookahead) -- measured 0.455% red on a loaded box, 2026-09-18. The rect must stop above the second line."
+}

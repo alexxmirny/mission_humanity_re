@@ -1,0 +1,47 @@
+# mp:X2 CLIENT -- join a host whose map this peer does not hold, download it, and play.
+#
+# The walk is mp_client_start.txt's, unchanged: the client's half of X2 happens entirely off the
+# script's clock. The advert arrives while this peer is on the browser, the seam decides there and
+# then that it does not hold the advertised content, and the transfer runs across the JOIN and the
+# lobby wait. So there is nothing for this file to drive -- what it must do is get into the lobby and
+# then WAIT, exactly as it would for any host that is slow to press Start.
+#
+# THE ASSERTIONS ARE IN THE LOGS, not here, and they need BOTH peers' (tools/check_map_transfer.py
+# under `post_check_peers`): the host's carries the content claim and the transfer it armed, this
+# peer's carries what it held before, what it stored, and what its own file hashed to afterwards. A
+# checker handed one of them sees half a claim, which reads as a pass.
+#
+# The one thing this script does contribute is the `absent Network players` below: the client can
+# only enter on the host's FLAG_START, and the host cannot send one until this peer has reported the
+# right map hash. So reaching the match at all is the end-to-end statement, and a client that never
+# finished its download times this line out rather than launching into the wrong terrain.
+#
+# Pair with mp_host_map.txt.
+
+# join the host by IP -> the joined lobby (see mp_client_join.txt for the flow)
+settled value:110
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+present Internet server
+settled Internet server
+clickl Internet server
+present Server address
+settled Connect
+clickl Connect
+sessions 1
+settled Join game
+clickl Join game
+
+# joined lobby: wait out the download and the host's Start. There is no `signal` to the host any
+# more -- it now parks on `disabled Start` directly, because the handshake's latency was enough
+# to make it miss the few seconds the gate is actually shut (see mp_host_map.txt).
+present Network players
+settled Cancel
+capture x2_lobby
+absent Network players
+gameclock 6000
+capture x3_launched
+log CLIENT entered the match on a map it downloaded from the host
+end

@@ -6,8 +6,11 @@ How to build this project from a clean clone and run each of its three configura
 Everything here is Windows. The game is a 32-bit x86 executable and so is everything that loads
 into its process.
 
+- [Using the launcher — the way to play](#using-the-launcher--the-way-to-play)
+- [Download a release — no build needed](#download-a-release--no-build-needed)
 - [1. Prerequisites](#1-prerequisites)
 - [2. Build](#2-build)
+- [Building the launcher and relay (Rust)](#building-the-launcher-and-relay-rust)
 - [3. Verify offline — no game copy needed](#3-verify-offline--no-game-copy-needed)
 - [4. Run configuration (1) — all-original + net restoration](#4-run-configuration-1--all-original--net-restoration)
 - [5. Run configuration (2) — brokered](#5-run-configuration-2--brokered)
@@ -44,6 +47,122 @@ it either with a gitignored `tools/machine.local.json` holding `{"NAME": "value"
 `MH_<NAME>` environment variables, which win. `python tools\machine_config.py` prints every resolved
 value and where it came from. In practice a fresh clone needs at most one override,
 `MH_VS_INSTALL_ROOT`, and §2 derives even that.
+
+## Using the launcher — the way to play
+
+**Download `mh_launcher-<version>.exe` from the public repository's Releases page
+(`https://github.com/<owner>/<repo>/releases` — the repository this file is in), drop it into the
+folder that holds `mh.exe`, and run it.** That is the install. It needs no elevation, no VC++
+redistributable (the CRT is linked statically) and nothing else from the release page — it fetches
+the build for you.
+
+What happens on the first run:
+
+1. **It finds the game by itself.** Its own directory is checked first, then the directory it was
+   started from, then the directory it remembered last time; the first one holding `mh.exe` wins
+   and is remembered. It asks for a path only when none of those is a game directory (dist LA7).
+2. **Pick a configuration** — the picker under *Play* offers the three the release ships, one line
+   each on what it is for, with `net` preselected (dist LA8):
+
+   | pick | what you get | pick it when |
+   | --- | --- | --- |
+   | `net` | §4's file set: `msvfw32.dll`, `mh.dll`, `mh_net.dll`, `mh_net_udp.dll` | **you just want multiplayer.** The game runs its own simulation exactly as it shipped |
+   | `net-debug` | the above plus `mh_harness.dll`, and an `mh_net.ini` with the diagnostic logging keys on | **you are reporting a bug.** Same configuration, but the run writes down enough to diagnose |
+   | `brokered-debug` | the above plus `libmh.dll` | **you want the re-implemented spine** (§5's configuration (2)), with the diagnostics on |
+
+3. **Press Host or Join.** Whatever the chosen configuration is missing is downloaded from the
+   signed manifest, verified against its SHA-256, installed next to `mh.exe` (the original
+   `mh.dll` is kept as `mh.dll.mhbak`), the relay is provisioned, and the game starts — with the
+   progress shown in place, no visit to the Status tab. Switching the picker later swaps the
+   install (the receipt-driven uninstall of one zip, the install of the other).
+
+Both buttons start the game the same way; the difference is what you do in the game's own menu next
+— *Host*: NETWORK GAME → your name → **Create game**, and your lobby is listed on the relay under
+your name; *Join*: NETWORK GAME → your name → **Refresh list** shows the games on the relay, pick
+one, **Join**. Nobody types an address and nobody forwards a port. The player's page for this —
+what the relay does, going direct in the background, the direct dial by address, what the log lines
+mean — is [docs/mp-internet.md](docs/mp-internet.md). The launcher stays open while you play and
+reports one line when the game ends — `the game exited normally (code 0)`, or `the game CRASHED:
+0xC0000005 (STATUS_ACCESS_VIOLATION)`. Quote that line in a bug report next to `mh_net.log`'s build
+banner, or use the *Report* tab, which packs the session directory and sends it (after a consent
+screen) to the project's collector.
+
+**The relay is set up for you.** When the update manifest the launcher accepted names a relay, the
+launcher writes two lines into the game's `mh_net.ini` — `[net] transport=udp` and
+`[net] relay=<address>` — and the relay's key into `mh_key.txt`, on every install, update and
+launch. It edits *only* those two lines, in place (every other line, comment and setting in your
+`mh_net.ini` stays exactly as it was), and rewrites `mh_key.txt` only when the key changed. A
+manifest that names no relay leaves both files untouched, and *Host* / *Join* then start the game
+as it is configured (direct play by address, §7). The front page says which of the two it is:
+`Relay: <address> (from the signed manifest, …)` or `No relay`.
+
+**Updates** live on the Status view. *Check for updates* fetches one small file —
+`manifest.json` and its `manifest.json.minisig` — from the address in the box above the buttons, and
+**verifies the minisign signature against a key built into the launcher before reading a single
+field**. A manifest that is not signed by that key, that offers a version you already have or older,
+or that is more than 30 days old is refused with a reason, and nothing is downloaded. *Update the
+game* then fetches the zip for the configuration you have installed, checks its SHA-256 against the
+signed manifest, unpacks it to one side and only then swaps it in. **Your previous version stays on
+disk until the new one has started once**, so a bad update is one *Install* away from being undone.
+*Update the launcher* does the same for `mh_launcher.exe` itself — and runs the downloaded copy first
+to make it prove it starts, keeping the old one if it cannot.
+
+**It never contacts `api.github.com`.** Updates come from a static signed file and the release asset
+CDN, which is deliberate: GitHub's unauthenticated API allows 60 requests an hour *per address*, so a
+launcher that polled it would lock out everyone sharing a connection.
+
+Two more things worth knowing:
+
+- **It needs no elevation and asks for none.** Everything it writes of its own lives under
+  `%LOCALAPPDATA%\MissionHumanity\` (its config, the unpacked version sets, and `logs\launcher.log`).
+- **It records what it copied**, as `mh_launcher_installed.txt` in the game folder, so *Uninstall*
+  removes exactly that. This matters for one file: the game ships its **own** `mh.dll` and a release
+  replaces it, so the original is kept as `mh.dll.mhbak` and put back on uninstall. A file you have
+  changed yourself since is left alone rather than deleted. (Uninstalling by hand is still just
+  deleting `msvfw32.dll`, per section 4.)
+
+Building it yourself instead of downloading it is the cargo section below
+(`cargo build -p mh_launcher --release` → `target\release\mh_launcher.exe`); it then installs from
+a zip you point it at on the Status view (*Browse…*, choose the zip, *Install*), or from the same
+manifest if the build carries an update address. Everything about it — the two renderers, the
+exit-code rules, the command line that scripts all of the above — is
+[src/launcher/README.md](src/launcher/README.md).
+
+## Download a release — no build needed
+
+Sections 1–3 build this project from source. If you only want to **play**, the launcher above is
+the short path; this section is the **manual alternative** — the same Releases page carries the
+three drop-in zips the launcher would install, plus a `SHA256SUMS`. They contain no game data — §8
+still applies, you bring your own copy.
+
+| zip | what it is | pick it when |
+| --- | --- | --- |
+| `mission_humanity_re-<version>-net.zip` | §4's file set: `msvfw32.dll`, `mh.dll`, `mh_net.dll`, `mh_net_udp.dll`, `mh_net.ini` | **you just want multiplayer.** The game runs its own simulation exactly as it shipped |
+| `mission_humanity_re-<version>-net-debug.zip` | the above plus `mh_harness.dll`, and an `mh_net.ini` with the diagnostic logging keys on | **you are reporting a bug.** Same configuration, but the run writes down enough to diagnose |
+| `mission_humanity_re-<version>-brokered-debug.zip` | the above plus `libmh.dll` | **you want the re-implemented spine** (§5's configuration (2)), with the diagnostics on |
+
+Each zip also carries `LICENSE`, `THIRD_PARTY.md` and a `README.txt` naming its configuration.
+
+**Installing one is unzipping it.** Put every file **next to the game executable**, at that level —
+not in a subfolder. That is the whole install; §4 and §5 describe what each file does and how the
+boot log tells you which configuration you got. To uninstall, delete `msvfw32.dll`.
+
+**Verify the download** against `SHA256SUMS` on the release page:
+
+```powershell
+certutil -hashfile mission_humanity_re-<version>-net.zip SHA256
+```
+
+**Which build is it?** Every DLL in a release carries the version in its VERSIONINFO (Explorer →
+Properties → Details), and `mh.dll` prints the same string as the first line of `mh_net.log`:
+
+```
+; [build] mh 0.1.0+abc12345
+```
+
+Quote that line in a bug report. A DLL built from source with no release properties says
+`0.0.0-dev+<commit>`, so a development build never reads as a release. Cutting a release is
+[docs/release.md](docs/release.md).
 
 ## 2. Build
 
@@ -98,6 +217,42 @@ it; `Release\standalone\libmh.dll` carries a vendored runtime and reaches no gam
 Keep each in its own directory. If the standalone one is deployed as the hosted one, `mh.dll`
 refuses it by name and the game quietly runs configuration (1) instead.
 
+## Building the launcher and relay (Rust)
+
+Two small crates live beside the C++ in a cargo workspace rooted at the repo's `Cargo.toml`:
+`src/launcher` (the per-user launcher — see "Using the launcher" above) and `src/relay` (the
+multiplayer relay the launcher's manifest points players at; [src/relay/README.md](src/relay/README.md)
+is its page, including self-hosting one). Nothing in §2–§7 needs either, and §2's seven artifacts do
+not include them, so **skip this whole section unless you are working on those two crates.**
+
+They need [rustup](https://rustup.rs) and nothing else — the linker is the same MSVC toolchain §1
+already required, so there is no second toolchain to install:
+
+```powershell
+# one time; then open a NEW shell so %USERPROFILE%\.cargo\bin is on PATH
+curl.exe -sSfLo rustup-init.exe https://win.rustup.rs/x86_64
+.\rustup-init.exe -y --profile minimal --default-toolchain stable
+
+cargo build --workspace          # both crates, debug
+cargo build --workspace --release
+```
+
+`rust-toolchain.toml` at the repo root pins the channel (`stable`) and the two components the lint
+needs (`rustfmt`, `clippy`), so rustup installs them on the first cargo run inside this tree — a
+`--profile minimal` install does not carry them, and without the pin `cargo fmt` fails with a
+message that reads like a formatting violation. `Cargo.lock` is committed; the shared build tree is
+`target/` and is gitignored.
+
+**These crates are linted, not merely compiled.** `python tools\lint_repo.py` (§3) runs
+`cargo fmt --all --check` and `cargo clippy --workspace --all-targets -- -D warnings` over the
+workspace. On a machine with no cargo those two rows print `[SKIP]` with the reason and the remedy
+and do not fail the gate — they are never silently green. `python tools\bootstrap.py --check`
+reports the same thing under a **Rust toolchain** group.
+
+The relay is also meant to run on Linux in a container; that image build needs Docker, which
+`bootstrap.py --check` reports as an optional row (`OPT`) because nothing in the default build path
+uses it yet.
+
 ## 3. Verify offline — no game copy needed
 
 These four steps are the whole offline gate, and they are exactly what CI runs
@@ -140,7 +295,8 @@ installation folder, **next to the game executable**:
 | --- | --- |
 | `msvfw32.dll` | the loader shim — this is what makes the game load `mh.dll` at all |
 | `mh.dll` | the router and patch host |
-| `mh_net.dll` | the multiplayer transport |
+| `mh_net_udp.dll` | the multiplayer transport over UDP (`[net] transport=udp` — **the default** since 2026-09-20: what an absent key, an absent ini and the launcher all mean; the relay needs it) |
+| `mh_net.dll` | the multiplayer transport over TCP (`transport=tcp`, the explicit choice — direct dial only, no relay) |
 | `mh_harness.dll` | *optional*; without it the run is simply uninstrumented |
 
 **Do not copy `libmh.dll`.** Its absence *is* configuration (1).
@@ -264,12 +420,23 @@ declaration lied.
 
 ## 7. Multiplayer
 
-Configurations (1) and (2) both restore multiplayer; `mh_net.dll` must be present. There is no
-role configuration — the host clicks Create, a joiner clicks Join and types the host's address.
+Configurations (1) and (2) both restore multiplayer; a transport module must be present
+(`mh_net_udp.dll` for `[net] transport=udp`, the default; `mh_net.dll` for `transport=tcp`). There
+is no role configuration — the host clicks Create, a joiner clicks Join.
+
+**Over the internet, use the launcher** ("Using the launcher" above): it configures the UDP
+transport and the relay, the host's lobby is listed for joiners, and nobody forwards a port. The
+full player's page — the relay, going direct, the direct dial by address (the one path that needs
+the host's port forwarded), the legacy SSH tunnel for TCP, and what the log lines mean — is
+[docs/mp-internet.md](docs/mp-internet.md). A hand-unzipped release with an untouched `mh_net.ini`
+is the UDP transport with **no relay configured** (`[net] relay=` is empty until the launcher, or
+you, fill it in): joiners type the host's address, and the host's UDP 6501 must be reachable. Set
+`transport=tcp` explicitly for the TCP transport, which has no relay at all.
 
 **The link is authenticated by a file, not by a setting.** `mh_key.txt` appears next to the game
-executable on first run. The host shares that file with its players; every peer in a game must hold
-the same key, and a peer with the wrong one is refused rather than desynchronised.
+executable on first run (the launcher writes the relay's key into it instead). Every peer in a game
+must hold the same key, and a peer with the wrong one is refused rather than desynchronised; without
+the launcher, the host shares its file with its players.
 
 ## 8. What is bring-your-own-game
 

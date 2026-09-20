@@ -77,14 +77,11 @@ unsigned char g_net_widget[WIDGET_STRIDE]; // the NETWORK GAME widget (clone of 
 void         *g_u18_array[9];              // [7 buttons + NULL] container array we own
 bool          g_bg_redirected = false;
 
-char g_log[MAX_PATH];
-bool g_log_ready = false;
+char          g_log[MAX_PATH];
+unsigned long g_log_gen = 0; // SES1: per-SESSION -- same file as seam_log, same directory rule
 
 void menu_log(const char *fmt, ...) {
-    if (!g_log_ready) {
-        wsprintfA(g_log, "%smh_net.log", MH_RunDir());
-        g_log_ready = true;
-    }
+    mh_run_path(g_log, MAX_PATH, "%smh_net.log", &g_log_gen);
     char    line[256];
     va_list ap;
     va_start(ap, fmt);

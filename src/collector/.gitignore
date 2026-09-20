@@ -1,0 +1,14 @@
+# The actual shared report token (a Docker secret file, or the local-run
+# equivalent) must never be committed -- only its .example sibling is tracked.
+secrets/report_token.txt
+
+# Local data, never committed: on-disk reports + the SQLite index, and the
+# venv a developer might create to run this package's tests.
+data/
+*.db
+*.db-wal
+*.db-shm
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/

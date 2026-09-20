@@ -418,7 +418,7 @@ extern "C" {
          * core), and it does not need to: its ONE site stored the return into                      \
          * _G_LLM_VIEW_SIZE_MODE, which is RID_VIEW_SIZE_MODE, MF_VIEW-only and in NEITHER hash     \
          * table -- checked by address overlap against every HASH_REGIONS and TACT_HASH_REGIONS     \
-         * extent, not by citing a row. game-modes.md documents the cell as a persisted per-machine \
+         * extent, not by citing a row. The game-modes research doc records the cell as a per-machine  \
          * user preference (setup.dat), not sim state.                                              \
          *                                                                                         \
          * THE HOST STILL OWNS THE CELL. The hosted sink performs the original caller's assignment  \

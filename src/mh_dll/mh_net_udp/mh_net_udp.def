@@ -1,0 +1,56 @@
+; mh_net_udp.def -- mh_net_udp.dll's EXPORT LIST (tracker mp:T1).
+;
+; THE SAME LIST AS mh_net.def, AND THAT IS THE POINT. mh.dll binds ONE net module per run, chosen by
+; `[net] transport` (mh/seams/module_bind.cpp), and it resolves the same 26 contract symbols plus the
+; two module-level entries whichever file it opens. A transport that exported a different set would
+; not be a second implementation of the contract, it would be a second contract.
+;
+; So the three reasons mh_net.def is a .def rather than __declspec(dllexport) apply here unchanged:
+;
+;   1. The list is the CONTRACT, and a contract wants to be one readable file.
+;      tools/check_module_bind.py --net-surface asserts that THIS file and
+;      mh_common/include/mh_net_module.h's MH_NET_MODULE_SYMBOLS table agree in both directions --
+;      and since T1 it asserts the same of both .def files, so the two transports cannot drift apart
+;      from each other either. A symbol added to one and forgotten in another is a red rather than a
+;      null call at boot.
+;   2. It exports the transport WITHOUT touching udp_transport.cpp's declarations.
+;   3. No import library is produced for anyone to link by accident. A single mh_net_udp.lib on some
+;      future link line would put this file in that module's IMPORT TABLE, and a missing file would
+;      then fail PROCESS LOAD before one instruction of ours ran (measured at fork F4A: 0xC0000135,
+;      zero log directories). Absent-tolerance is the whole shape of the module split.
+;
+; ORDER MATCHES MH_NET_MODULE_SYMBOLS, then the two module-level entries. Names are undecorated:
+; everything here is `extern "C"` __cdecl.
+;
+; NOT HERE, for the same reasons as in mh_net.def: MH_Net_Init and MH_Net_Shutdown (deleted at fork
+; F4B, zero call sites) and MH_Key_Random (the transport's own CSPRNG entry, no caller outside).
+LIBRARY mh_net_udp
+EXPORTS
+    MH_Net_InitEx
+    MH_Net_Send
+    MH_Net_Recv
+    MH_Net_PeerCount
+    MH_Net_LocalPlayerId
+    MH_Net_IdAssigned
+    MH_Net_ActivePeerIds
+    MH_Net_TakeDeadPeer
+    MH_Net_IsStarted
+    MH_Net_GetStats
+    MH_Net_SetSessionInfoHandler
+    MH_Net_SendSessionInfo
+    MH_Net_SetJoinHandler
+    MH_Net_SendJoin
+    MH_Net_SetStartHandler
+    MH_Net_SendStart
+    MH_Net_SetLeaveHandler
+    MH_Net_SendLeave
+    MH_Net_SetAnnounceHandler
+    MH_Net_SendAnnounce
+    MH_Net_SetHashHandler
+    MH_Net_SendHash
+    MH_Key_Load
+    MH_Net_SnapshotSend
+    MH_Net_SnapshotPoll
+    MH_Net_SnapshotStatus
+    MH_NetModule_Init
+    MH_NetModule_Probe

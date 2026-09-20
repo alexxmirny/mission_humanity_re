@@ -84,6 +84,12 @@ constexpr int32_t TXT_STREAM_GARBLED = 781; // 0x00585040 -- the unknown-tag war
 // The outcome code the unknown-tag path hands the end-of-game dialog (`MOV EAX,0x7` at 0x0049d30f).
 constexpr uint8_t OUTCOME_NETWORK_ERROR = 7;
 
+// U19e: how much of the offending datagram the garbled-tag diagnostic prints. 24 bytes covers the
+// three record shapes that can precede an unknown tag in one datagram (a 9-byte horizon, a 14-byte
+// removal record, a 2-byte header-only control) with room to see where the cursor went wrong.
+constexpr uint32_t GARBLED_DUMP_BYTES = 24;
+constexpr char     HEX_DIGITS[]       = "0123456789abcdef";
+
 // ---- little readers ------------------------------------------------------------------------------
 //
 // Every field read in the original is `REP MOVSD/MOVSB` from _G_LLM_NET_SEND_BUF + cursor into a
@@ -266,7 +272,28 @@ detail::packet_result handle_chat(const engine_state &st, const dispatch_state &
 // drain -- it falls into the same "next message" jump every other handler uses, and the drain ends
 // only because the cursor has been walked to `len`.
 void handle_garbled(const engine_state &st, const dispatch_state &ds, const dispatch_calls &calls,
-                    uint32_t &cursor, uint32_t len) {
+                    uint32_t &cursor, uint32_t len, int32_t sender_side_id) {
+    // U19e DIAGNOSTIC. This arm is the ONLY producer of outcome 7 (NETWORK_ERROR) in the closure, and
+    // a clean 2-player quit was observed raising it (mp U19d), so the byte that gets here has to be
+    // NAMEABLE from a log rather than guessed from the disassembly. The offending tag byte is at
+    // cursor-1 (the outer loop has already stepped past it); `off` is that index, so a reader can
+    // line the dump up against the record layout. The dump is the HEAD of the datagram, not the
+    // remainder, because the question is always "what preceded this and how did the cursor land
+    // here", never "what is the garbage".
+    {
+        const uint32_t off = cursor - 1;
+        char           hex[3 * GARBLED_DUMP_BYTES + 1];
+        const uint32_t n = len < GARBLED_DUMP_BYTES ? len : GARBLED_DUMP_BYTES;
+        for (uint32_t i = 0; i < n; ++i) {
+            const uint8_t b = ds.packet.bytes[i];
+            hex[i * 3 + 0]  = HEX_DIGITS[b >> 4];
+            hex[i * 3 + 1]  = HEX_DIGITS[b & 0xf];
+            hex[i * 3 + 2]  = ' ';
+        }
+        hex[n * 3] = 0;
+        say("; [rx] garbled: sender=%d tag=0x%02x at off=%u of len=%u head=%s\n", sender_side_id,
+            static_cast<unsigned>(ds.packet.bytes[off]), off, len, hex);
+    }
     // The original walks the remaining bytes one at a time computing `n % 10` and DISCARDING it
     // (0x0049d252: DIV EBX / TEST EDX,EDX with no consumer) -- a debug remnant. The only effect is
     // that the cursor ends at `len`. It backs the cursor up over the tag byte first, so a
@@ -459,8 +486,54 @@ packet_result dispatch_packet(const engine_state &st, const dispatch_state &ds,
     // paths. The store is dead. That is almost certainly a bug in the original (the intent reads as
     // "ignore this packet"), but it is the original's behaviour, so the packet IS parsed. Recorded
     // here so the next reader does not "restore" the skip and change what the game does.
+    //
+    // ---- U19e: AND THE DEAD STORE WAS GUARDING SOMETHING REAL ------------------------------------
+    //
+    // `send_peer_timeout_drop` is llm_net_send_lockstep_kick, and every wire emitter builds its record
+    // into _G_LLM_NET_SEND_BUF -- which is THE SAME BUFFER THIS PACKET IS SITTING IN. The game hands
+    // that one global to llm_net_transport_recv as the receive buffer as well (net_seams.cpp's
+    // MH_Seam_GameRecv writes into it), so the re-broadcast above OVERWRITES the head of the datagram
+    // the loop below is about to parse. The `cursor = len` the original wrote and then threw away is
+    // exactly the handling that omission needed.
+    //
+    // MEASURED ON THE RIG, 2026-09-18, graceful_quit, on the survivor (mh_net.log):
+    //   ; GameRecv sender=1 len=14 type=0x04         the quitter's CTL_DROP_SYNCED removal
+    //   ; GameRecv sender=1 len=2  type=0x04         its CTL_PLAYER_LEFT  -- sender now PLAYER_GONE
+    //   ; [promote] wire/send_lockstep_kick: call #1     <- the re-broadcast fires HERE
+    //   ; GameRecv sender=1 len=9  type=0x02         a bare horizon, still from the gone peer
+    //   ; [rx] garbled: sender=1 tag=0x70 at off=6 of len=9 head=04 0a 01 00 00 00 70 0b 40
+    // The dumped head is the KICK's own six bytes (04 = MSG_CONTROL, 0a = CTL_KICK, side_id 1)
+    // followed by the last THREE bytes of the 9-byte horizon datagram that survived the overwrite --
+    // 70 0b 40 is the top half of a double ~3.43, the advertised horizon at a 3409 ms game clock. So
+    // the outer loop reads the kick's record (harmless: CTL_KICK does not name us), lands at offset 6
+    // with `len` still 9, and reads 0x70 as an outer tag. 0x70 - 1 > 4, so it is the DEFAULT arm:
+    // handle_garbled -> outcome_dialog(OUTCOME_NETWORK_ERROR). That is the whole of U19d's
+    // "Connection to server lost" on a perfectly clean quit, and it is not quit-specific -- ANY frame
+    // from an already-dropped peer, received by the leader, destroys itself the same way.
+    //
+    // THE FIX IS TO KEEP THE DATAGRAM, NOT TO SKIP IT. Restoring the original's evident intent (skip
+    // the packet) was tried on paper and is WRONG: with the head branch swallowing them, the quitter's
+    // CTL_PLAYER_LEFT never reaches its handler, so `last_peer_teardown -> presence_lost` never runs
+    // and the survivor sits at the barrier until the retail silence timeout -- the 56.7 s behaviour
+    // U19 removed. What the parse loop needs is the bytes that ARRIVED, so the guard snapshots the
+    // datagram across the emit and puts it back. Everything else -- what goes on the wire, in what
+    // order, and every handler's effect -- is unchanged.
     if (ds.players_w[sender_idx].status_flags & PLAYER_GONE) {
-        if (calls.is_local_leader_peer(sender_side_id)) calls.send_peer_timeout_drop(sender_side_id);
+        if (calls.is_local_leader_peer(sender_side_id)) {
+            if (fx.gone_peer_frame_guard) {
+                // Bounded by the recv capacity the wrapper passes (`len` can never exceed it), and
+                // only ever entered for a peer already written off -- never on the hot path.
+                uint8_t        saved[mh::net::packet_buffer::CAPACITY];
+                const uint32_t n = len < mh::net::packet_buffer::CAPACITY
+                                       ? len
+                                       : static_cast<uint32_t>(mh::net::packet_buffer::CAPACITY);
+                std::memcpy(saved, ds.packet.bytes, n);
+                calls.send_peer_timeout_drop(sender_side_id);
+                std::memcpy(ds.packet.bytes, saved, n);
+            } else {
+                calls.send_peer_timeout_drop(sender_side_id);
+            }
+        }
     }
 
     uint32_t cursor = 0;
@@ -469,7 +542,7 @@ packet_result dispatch_packet(const engine_state &st, const dispatch_state &ds,
     while (cursor < len) {
         const uint8_t sel = static_cast<uint8_t>(ds.packet.bytes[cursor++] - 1);
         if (sel > 4) {
-            handle_garbled(st, ds, calls, cursor, len);
+            handle_garbled(st, ds, calls, cursor, len, sender_side_id);
             continue;
         }
 

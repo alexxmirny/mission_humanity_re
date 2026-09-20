@@ -1,0 +1,70 @@
+# mp:X2 HOST -- host a game whose map the CLIENT does not have, and prove the Start gate holds.
+#
+# The walk is mp_host_start.txt's up to the lobby, because nothing about reaching the lobby is under
+# test. What this script adds is the one thing only a HOST can assert: that Start is REFUSED while a
+# joiner's map download is incomplete, and that it is refused in the way a player can see -- the
+# button greyed out, with the lobby's status line naming the peer.
+#
+# THE GATE IS THE `disabled Start` / `enabled Start` PAIR, and that is why mp:X2 shuts the gate with
+# the widget's own 0x40 DISABLED bit rather than by swapping its callback. The harness's hit-test
+# mirrors the game's -- a disabled widget is not clickable -- so `disabled Start` is a real
+# player-visible refusal and `enabled Start` BLOCKS until the download finishes. A swapped callback
+# would have been invisible to both this script and the player.
+#
+# `disabled Start` is therefore also the non-vacuity arm: if the gate never closed (a joiner that
+# quietly had the map, a claim the host never made), this line times out instead of the run going
+# green on a transfer that never happened.
+#
+# Pair with mp_client_map.txt. The ini staging that makes the client lack the map is
+# `[net] map_test_pretend=none|other` -- client-only by construction, and it stages a DECISION
+# rather than a file (a lane's Maps is a symlink to the shared image). See tools/test_ui.py.
+
+# reach the host lobby (create a game on the pre-selected map)
+settled value:110
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+settled Create
+clickl Create
+present Game name
+settled Ok
+clickl Ok
+present Available maps
+settled Ok
+clickl Ok
+
+# host lobby: the client connects and the gate shuts on its JOIN.
+#
+# NO `awaitsignal` HERE, AND THE REASON IS A MEASURED RACE. The gate is shut for exactly as long as
+# the transfer takes -- 4.3 s for the 462 KB stock map on a loopback lane -- and `disabled Start`
+# only sees it if the script is ALREADY PARKED on that step when the window opens. An earlier
+# version waited for the client's `lobby` signal first; under a loaded rig that handshake cost 6.8 s
+# and the predicate arrived 2 s after the gate had already reopened, so the run timed out on a
+# mechanism that had worked perfectly. `peers 1` is kept because it is free (it returns on the same
+# JOIN that shuts the gate) and it makes "no peer ever arrived" a different failure from "the gate
+# never closed".
+present Network players
+peers 1
+
+# THE REFUSAL, read off a real frame before anything is blessed: while the joiner is downloading,
+# Start carries the DISABLED bit and the status line names the peer.
+disabled Start
+capture x1_start_held
+log HOST: Start is HELD -- a joiner's map download is incomplete
+
+# ...and the release. `enabled Start` is a WAIT, so this line is where the run spends the transfer
+# (a 115-460 KB map over channel C's rate limit -- seconds, not the snapshot's minute).
+enabled Start
+settled Start
+capture x2_start_released
+clickl Start
+
+# the match launches on BOTH peers
+absent Network players
+# Same sim gate and the same number as match_launch, for the same reason: capturing on `absent`
+# alone lands mid fog-of-war reveal and which stage you get depends on the frame rate.
+gameclock 6000
+capture x3_launched
+log HOST launched the match after the client's map download completed
+end

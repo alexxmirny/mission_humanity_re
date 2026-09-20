@@ -1,0 +1,34 @@
+# mp:F3 -- the POLISH arm: the same seam, a different layout and a different codepage.
+#
+# It exists because type_cyrillic.txt alone cannot tell "F3 works" from "F3 works for Russian". Three
+# things differ here and each is a distinct way the codec could be wrong:
+#
+#   * THE LAYOUT IS AltGr-BASED. Polish (Programmers) 00000415 puts every accented letter behind
+#     AltGr, which VkKeyScanEx reports as ctrl+alt (shift state 6) and which the harness supplies
+#     through the OS key-state table. A codec that read only the SHIFT bit would type "lodz".
+#   * THE CODEPAGE IS 1250, not 1251. Both are 8-bit and both agree with ASCII below 0x80, so a seam
+#     that quietly fell back to the process ACP would still pass an ASCII test and still fail here.
+#   * THE THREE LETTERS LAND IN THREE DIFFERENT PLACES of the high half: L-stroke 0xA3, o-acute 0xF3,
+#     z-acute 0x9F. 0xF3 is o-acute in CP1252 as well, so it is the other two that discriminate.
+#
+# Expected buffer: "host" (pinned by the runner) + a3 f3 64 9f = the four characters of "Lodz"
+# written properly. 'd' is 0x64 -- an ordinary unshifted key in the middle of the word, there so the
+# test also says the AltGr state is released between characters rather than latched.
+#
+# Assertion is on the BUFFER for type_cyrillic's reason: the stock EN fonts have no L-stroke or
+# z-acute either, so a frame shows the F2 guard's substitute whether the bytes are right or wrong.
+
+settled value:110
+clickv 110
+present Player name
+settled Ok
+
+clickl Your name
+
+layout 00000415
+type Łódź
+field name hex:686f7374a3f3649f
+capture t_pol
+layout default
+log F3: typed 4 Polish characters on the PL layout -> CP1250 bytes a3 f3 64 9f
+end

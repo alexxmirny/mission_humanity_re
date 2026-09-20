@@ -1,0 +1,49 @@
+# mp:F3 -- TWO-PEER in-game chat, receiving half. Pair with mp_host_chat.txt.
+#
+# mp_client_start.txt's walk (join by IP -> lobby -> enter on the host's Start), then the assertion
+# this scenario exists for: the chat line the host typed arrives here as the RIGHT CHARACTERS.
+#
+# WHY `wmsg` AND NOT `field`. The received line does not survive as bytes anywhere: the lockstep
+# dispatch's chat arm (opcode 4) copies the payload to a stack buffer, widens it through
+# llm_str_ansi_to_wide -- the third hook F3 pins to the configured codepage -- formats "<player>:
+# <text>" and hands that to the floating-message queue. So the observable is a UTF-16 string, and
+# `field`'s NUL-terminated byte compare would stop at the first ASCII character's high byte. `wmsg`
+# reads MESSAGE_QUEUE slot 0 (the newest message) as UTF-16 and asks whether it CONTAINS the needle,
+# which is also right for a line that carries the sender's name in front of the text.
+#
+# THE NEEDLE IS CODE POINTS, NOT BYTES, and that is the whole claim: 1f04 4004 3804 3204 3504 4204 is
+# U+041F U+0440 U+0438 U+0432 U+0435 U+0442, "Privet". The host put cf f0 e8 e2 e5 f2 on the wire
+# under CP1251; if this peer widened them under its own CP1252 ACP instead, the same six bytes would
+# read U+00CF U+00F0 U+00E8 U+00E2 U+00E5 U+00F2 -- six Western accented letters, a perfectly
+# well-formed string that is not the message anybody typed. That is the silent corruption the pinned
+# codepage exists to stop, and this line is what tells the two apart.
+
+settled value:110
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+present Internet server
+settled Internet server
+clickl Internet server
+present Server address
+settled Connect
+clickl Connect
+sessions 1
+settled Join game
+clickl Join game
+
+present Network players
+signal lobby
+settled Cancel
+capture c_lobby
+absent Network players
+gamemode 2
+gameclock 6000
+
+# The host signals once the line is submitted; the wait after it is on the RECEIVED text, so a
+# transport that dropped the message times out here rather than passing on a stale queue entry.
+awaitsignal chatsent
+wmsg hex:1f0440043804320435044204
+log F3 CLIENT: received the Cyrillic chat line as U+041F U+0440 U+0438 U+0432 U+0435 U+0442
+end

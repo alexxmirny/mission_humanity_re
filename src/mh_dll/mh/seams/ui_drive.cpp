@@ -30,8 +30,10 @@
 #include "include/mh_net_export.h"     // MH_Net_PeerCount (the `peers` predicate: all peers connected)
 #include "include/mh_seam_export.h"    // MH_Seam_S8RetryArmed (the `retryready` predicate: S8 latch-clear fired)
 #include "include/mh_harness_export.h" // MH_Harness_StepFence (the `simstep` predicate: the SIM's own step)
+#include "seams/ui_net_indicator.h"    // MH_Lockstep_StallBindingPeer -- the `stalled` predicate (TL-UISTALL)
 #include "include/mh_run_context.h"    // MH_RunDir
 #include "addr/mh_addrs.gen.h"         // generated EN VAs
+#include "addr/mh_calls.gen.h"         // mh::call::llm_time_get_ticks_ms (the key ring's timestamp)
 #include "state/region_runtime.h"      // SB-HOSTFREE: live_base/ptr -- a movable region is read
                                        // where it IS, not where the binary put it
 #include "addr/mh_structs.gen.h"       // generated game struct mirrors (mh::game::mh_llm_*)
@@ -94,6 +96,51 @@ constexpr uintptr_t CURSOR_VISIBLE = mh::addr::_G_LLM_CURSOR_VISIBLE;
 constexpr uintptr_t CURSOR_XX      = mh::addr::_G_LLM_CURSOR_X;
 constexpr uintptr_t CURSOR_YY      = mh::addr::_G_LLM_CURSOR_Y;
 
+// ---- mp:SES3 -- the CAMERA half of the trace (the stuck-scroll hunt, SC2) ----------------------
+// The eight latches plus the camera position they drive. llm_strat_input_update (0x00441b88) is the
+// SOLE writer AND sole referrer of the whole 0x005d0bbc..0c2b block -- measured 2026-09-17 two ways
+// (Ghidra's 60 write references, and a byte scan of the whole image for the addresses as immediates:
+// 116 of 117 hits are inside that one function and the 117th is a coincidence in an unanalysed data
+// table at 0x004f5347). So a latch that is set while nothing should be setting it was set BY that
+// function on an earlier frame and never cleared -- which is the whole hypothesis space this trace
+// has to separate. Two gates sit over the set/clear block and NOT over the apply loops -- an
+// RMB/LMB gesture in state 1, and (for the RIGHT/DOWN pair only) an LMB drag-select -- so a
+// latched direction keeps scrolling for as long as either holds, wherever the cursor has gone.
+//
+// LITERAL ADDRESSES, NOT `mh::addr::` CONSTANTS, AND THAT IS MEASURED RATHER THAN LAZY. The
+// manifest is normally the single path from a VA to a constant, but a DATA entry there also
+// becomes a STATE REGION: the registry is rebuilt from the manifest, region ids are assigned in
+// address order, and nine new regions in the middle of that order renumber every later RID_* and
+// change the world-snapshot block table. The blob carries a fingerprint over (rid, len, name) of
+// every block precisely so a stale capture cannot be imported, so the whole cascade was tried and
+// measured on 2026-09-17: all three committed LIB-REF fixtures went `libmh_import_world refused
+// the fixture (rc=-3)`, i.e. re-recording them on the rig would be the price of registering these
+// nine read-only words. Registering them belongs with the next fixture re-record, not with a
+// telemetry line -- the trace only ever READS them, and nothing here binds or relocates them.
+constexpr uintptr_t CAM_EDGE_L  = 0x005d0bfcu;                  // _G_LLM_CAM_EDGE_LEFT_ACTIVE
+constexpr uintptr_t CAM_EDGE_R  = 0x005d0c00u;                  // _G_LLM_CAM_EDGE_RIGHT_ACTIVE
+constexpr uintptr_t CAM_EDGE_U  = 0x005d0c04u;                  // _G_LLM_CAM_EDGE_UP_ACTIVE
+constexpr uintptr_t CAM_EDGE_D  = 0x005d0c08u;                  // _G_LLM_CAM_EDGE_DOWN_ACTIVE
+constexpr uintptr_t CAM_HELD_L  = 0x005d0bbcu;                  // _G_LLM_CAM_SCROLL_LEFT_HELD  (scancode 0x4b)
+constexpr uintptr_t CAM_HELD_R  = 0x005d0bc0u;                  // _G_LLM_CAM_SCROLL_RIGHT_HELD (scancode 0x4d)
+constexpr uintptr_t CAM_HELD_U  = 0x005d0bc4u;                  // _G_LLM_CAM_SCROLL_UP_HELD    (scancode 0x48)
+constexpr uintptr_t CAM_HELD_D  = 0x005d0bc8u;                  // _G_LLM_CAM_SCROLL_DOWN_HELD  (scancode 0x50)
+constexpr uintptr_t MAP_CAM_COL = mh::addr::_G_LLM_MAP_CAM_COL; // already a registered region
+constexpr uintptr_t MAP_CAM_ROW = mh::addr::_G_LLM_MAP_CAM_ROW;
+// THE TWO GATE BYTES, and they are on the line because of what the Ghidra read found. The edge
+// set/clear block runs only `if (RMB_GESTURE_STATE != 1 && LMB_GESTURE_STATE != 1)`, while the
+// apply loops that MOVE the camera sit outside that guard -- so a gesture stranded in state 1
+// freezes the latches as they are and the camera keeps scrolling wherever the cursor goes. Without
+// these two bytes a log cannot tell that case from a cursor genuinely held at the edge, which is
+// the whole question SC2 has to answer from a player's file. 0 = none, 1 = drag begun (the gating
+// value), 2 = drag active.
+constexpr uintptr_t LMB_GESTURE_STATE = 0x00e589acu; // _G_LLM_LMB_GESTURE_STATE (byte)
+constexpr uintptr_t RMB_GESTURE_STATE = 0x00e589adu; // _G_LLM_RMB_GESTURE_STATE (byte)
+// U25 step 1: zero here means the DirectInput keyboard died silently at init and the raw-Win32
+// WM_KEYDOWN fallback is the producer -- the path that appends every OS auto-repeat. Same
+// literal-address reasoning as the block above.
+constexpr uintptr_t DI_KEYBOARD_DEVICE = 0x0066155cu; // _G_LLM_DI_KEYBOARD_DEVICE
+
 int  g_mouse_trace    = 0; // [input] mouse_trace=1 -> per-frame ring telemetry (diagnostic only)
 int  g_mouse_absolute = 0; // [input] mouse_absolute=1 -> force the wndproc absolute path
 int  g_mouse_div      = 0; // [input] mouse_div=N      -> override the DI divisor (0 = leave alone)
@@ -117,7 +164,9 @@ constexpr uintptr_t RESOLVE_POS = mh::addr::llm_ui_widget_layout_resolve_positio
 // llm_input_mouse_event.event_type bits (see mh_structs.gen.h)
 enum { EV_MOVE  = 1,
        EV_LDOWN = 2,
-       EV_LUP   = 4 };
+       EV_LUP   = 4,
+       EV_RDOWN = 8,
+       EV_RUP   = 0x10 };
 constexpr uint32_t WIDGET_HIDDEN   = 0x80; // llm_ui_widget.flags: skipped by list_draw
 constexpr uint32_t WIDGET_DISABLED = 0x40; // llm_ui_widget.flags: input_tick's hit-test skips it (greyed)
 // A widget the harness may target: not hidden and not disabled -- exactly what a real click can land on
@@ -138,8 +187,8 @@ int  g_seen           = 0;
 bool g_fired          = false;
 bool g_dumped         = false; // one-shot: log the first non-empty active list (labels for authoring)
 
-char g_log[MAX_PATH];
-bool g_log_ready = false;
+char          g_log[MAX_PATH];
+unsigned long g_log_gen = 0; // SES1: 0 = not yet composed (mh_proc_path pins it to the process dir)
 
 // Wall clock for the log, in ms since the first line. Every line carries it, because the frame counts
 // the script already reports answer "how many frames did this wait" and not "how long did this TAKE" --
@@ -148,11 +197,12 @@ bool g_log_ready = false;
 DWORD g_log_t0 = 0;
 
 void ui_log(const char *fmt, ...) {
-    if (!g_log_ready) {
-        wsprintfA(g_log, "%smh_uidrive.log", MH_RunDir());
-        g_log_ready = true;
-        g_log_t0    = GetTickCount();
-    }
+    // SES1: PROCESS-scoped, and this one is the hard case rather than a preference. The runner polls
+    // exactly ONE file for `; [script] COMPLETE` / `SIGNAL` / `TIMEOUT`, and it resolves that path
+    // once, from the directory that existed at launch (tools/ui_test.py local_new_run /
+    // remote_newest_run). A log that followed the session would strand the runner on an empty file
+    // the instant a lobby opened: every multi-peer scenario would time out instead of run.
+    if (mh_proc_path(g_log, MAX_PATH, "%smh_uidrive.log", &g_log_gen)) g_log_t0 = GetTickCount();
     const DWORD ms = GetTickCount() - g_log_t0;
     char        line[512];
     // Prefix, not suffix, so a column of times reads down the page -- and deliberately BEFORE the "; "
@@ -214,6 +264,53 @@ void apply_mouse_mode() {
 //
 // So MEASURE rather than pick. Sampled once per present, which is a frame boundary the pump has
 // already run at, and printed only when something changes so a still mouse costs one line.
+//
+// ---- ROUND 3 (mp:SES3, 2026-09-17): the CAMERA LATCHES ride the same line ----------------------
+//
+// The stuck-strategic-scroll report (SC2) does not reproduce here, so the fix has to come out of a
+// player's log -- which means the trace has to already carry the state that decides it. Three new
+// fields, all read from the block llm_strat_input_update owns:
+//
+//   edge=LRUD  the four _G_LLM_CAM_EDGE_*_ACTIVE flags (cursor at a screen edge)
+//   held=LRUD  the four _G_LLM_CAM_SCROLL_*_HELD latches (an arrow key is down)
+//   cam=col,row  _G_LLM_MAP_CAM_COL / _G_LLM_MAP_CAM_ROW -- what those latches MOVE
+//
+// A set flag prints its letter, a clear one prints '-', so `edge=-R--` reads at a glance and a
+// transition is a diff of two adjacent lines. WHY BOTH HALVES: the latch says what the game
+// BELIEVES the input is, the camera says what it DID with that belief -- a latch stuck on with the
+// camera moving is the bug, a latch stuck on with the camera pinned at a map edge is not.
+//
+// SAMPLING, and the cost clause it answers. The line is a diagnostic a player is asked to leave on,
+// so a frame where nothing changes must cost nothing and a stuck scroll must not cost one line per
+// frame for minutes. Three triggers, in order of how much they matter:
+//   1. a LATCH TRANSITION always prints -- that is the event the whole item exists to capture;
+//   2. the mouse-ring conditions print as before (produced / depth / a moving cursor);
+//   3. the camera moving with the latches UNCHANGED is coalesced to at most one line per
+//      CAM_HEARTBEAT_MS, carrying `camd=` (how many tiles it moved since the last printed line) so
+//      the coalescing loses the cadence but not the distance.
+// Everything else increments the quiet counter, which still prints one summary line when activity
+// resumes.
+constexpr DWORD CAM_HEARTBEAT_MS = 500; // rate cap for the "still scrolling, nothing changed" line
+
+// Pack the eight latches into one byte: bit0..3 = edge L,R,U,D; bit4..7 = held L,R,U,D.
+inline uint32_t cam_latch_mask() {
+    const uintptr_t edge[4] = {CAM_EDGE_L, CAM_EDGE_R, CAM_EDGE_U, CAM_EDGE_D};
+    const uintptr_t held[4] = {CAM_HELD_L, CAM_HELD_R, CAM_HELD_U, CAM_HELD_D};
+    uint32_t        m       = 0;
+    for (int i = 0; i < 4; ++i) {
+        if (*(volatile uint32_t *)edge[i]) m |= 1u << i;
+        if (*(volatile uint32_t *)held[i]) m |= 1u << (i + 4);
+    }
+    return m;
+}
+
+// "LRUD" with a '-' for each clear bit, from the low nibble of `bits`.
+inline void cam_latch_str(uint32_t bits, char out[5]) {
+    static const char L[4] = {'L', 'R', 'U', 'D'};
+    for (int i = 0; i < 4; ++i) out[i] = (bits & (1u << i)) ? L[i] : '-';
+    out[4] = 0;
+}
+
 void trace_mouse_ring() {
     static uint32_t s_prev_w  = 0xffffffffu;
     static uint32_t s_max_dep = 0;
@@ -235,7 +332,30 @@ void trace_mouse_ring() {
     const int  cx = *(volatile int *)CURSOR_XX, cy = *(volatile int *)CURSOR_YY;
     const bool moved = (lx != s_prev_lx) || (ly != s_prev_ly) || (cx != s_prev_cx) || (cy != s_prev_cy);
     s_prev_lx = lx, s_prev_ly = ly, s_prev_cx = cx, s_prev_cy = cy;
-    if (produced == 0 && depth == 0 && !moved) {
+
+    // SES3: the camera half. `s_first` exists so the very first sample prints rather than being
+    // diffed against a zero that means "not read yet" -- a run that starts with a latch already set
+    // would otherwise never show it.
+    static uint32_t s_prev_mask = 0;
+    static int      s_prev_col = 0, s_prev_row = 0;
+    static DWORD    s_last_cam_ms = 0;
+    static bool     s_first       = true;
+    static int      s_camd        = 0; // camera tiles moved since the last PRINTED line
+    // The two gate bytes ride in the high half of the same mask, so a GESTURE change is a
+    // transition the sampler must print: it is the other way a latch stops being cleared, and a
+    // log that shows the latch without the gate cannot tell the two apart.
+    const uint32_t mask = cam_latch_mask() | ((uint32_t)*(volatile uint8_t *)LMB_GESTURE_STATE << 8) |
+                          ((uint32_t)*(volatile uint8_t *)RMB_GESTURE_STATE << 16);
+    const int  col = *(volatile int *)MAP_CAM_COL, row = *(volatile int *)MAP_CAM_ROW;
+    const bool latched  = (mask != s_prev_mask) || s_first;
+    const bool cam_move = (col != s_prev_col) || (row != s_prev_row);
+    if (cam_move && !s_first) ++s_camd;
+    s_prev_mask = mask, s_prev_col = col, s_prev_row = row;
+    const DWORD now = GetTickCount();
+    // The camera-only heartbeat: rate-capped, so a scroll that never stops stays readable.
+    const bool cam_beat = cam_move && (now - s_last_cam_ms) >= CAM_HEARTBEAT_MS;
+
+    if (produced == 0 && depth == 0 && !moved && !latched && !cam_beat) {
         ++s_quiet;
         s_prev_w = w; // update on the quiet path too, or `produced` lies after a still period
         return;
@@ -248,12 +368,66 @@ void trace_mouse_ring() {
     // backlog and neither is the DI buffer -- and it also showed the sample point is blind, because
     // it is taken at present, AFTER the pump has drained. So trace the state that survives a frame:
     // the DI accumulator, the drawn cursor, and which pump arm is live.
-    ui_log("; [mtrace] f=%u produced=%u depth=%u max=%u di=%s last=%d,%d cur=%d,%d vis=%d",
+    char edge_s[5], held_s[5];
+    cam_latch_str(mask, edge_s);
+    cam_latch_str(mask >> 4, held_s);
+    ui_log("; [mtrace] f=%u produced=%u depth=%u max=%u di=%s last=%d,%d cur=%d,%d vis=%d "
+           "edge=%s held=%s cam=%d,%d camd=%d gest=%d%d",
            s_frame, produced, depth, s_max_dep, *(volatile uint32_t *)DI_MOUSE_DEVICE ? "on" : "off",
-           *(volatile int *)MOUSE_LAST_X, *(volatile int *)MOUSE_LAST_Y,
-           *(volatile int *)CURSOR_XX, *(volatile int *)CURSOR_YY,
-           (int)*(volatile uint32_t *)CURSOR_VISIBLE);
-    s_prev_w = w;
+           lx, ly, cx, cy, (int)*(volatile uint32_t *)CURSOR_VISIBLE, edge_s, held_s, col, row, s_camd,
+           (int)*(volatile uint8_t *)LMB_GESTURE_STATE, (int)*(volatile uint8_t *)RMB_GESTURE_STATE);
+    s_prev_w      = w;
+    s_camd        = 0;
+    s_first       = false;
+    s_last_cam_ms = now;
+}
+
+// One line into mh_net.log, the log a crash/bug report actually carries (mh_uidrive.log is the
+// harness's own file and a player has no reason to have one). Same shape as mp_menu.cpp's
+// menu_log -- session-scoped through mh_run_path, append-only, no rotation concern for a one-shot.
+void net_log_line(const char *text) {
+    static char          path[MAX_PATH];
+    static unsigned long gen = 0;
+    mh_run_path(path, MAX_PATH, "%smh_net.log", &gen);
+    char line[224];
+    lstrcpynA(line, text, (int)sizeof(line) - 2);
+    int n     = lstrlenA(line);
+    line[n++] = '\n';
+    line[n]   = 0;
+    HANDLE h  = CreateFileA(path, FILE_APPEND_DATA, FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr,
+                            OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
+    if (h == INVALID_HANDLE_VALUE) return;
+    SetFilePointer(h, 0, nullptr, FILE_END);
+    DWORD wr = 0;
+    WriteFile(h, line, lstrlenA(line), &wr, nullptr);
+    CloseHandle(h);
+}
+
+// ---- U25 step 1: say ONCE, in the log a player sends us, which keyboard path this machine ran ---
+//
+// llm_input_dinput_keyboard_init (0x004d0948) has five ways to fail (LoadLibraryA,
+// DirectInputCreateA, CreateDevice, SetDataFormat/SetProperty, SetCooperativeLevel); every one of
+// them Releases the device, NULLs _G_LLM_DI_KEYBOARD_DEVICE and returns with no error path and no
+// log line. On such a machine llm_input_wndproc_tap's raw WM_KEYDOWN arm is the producer, and that
+// arm never tests lParam bit 30 -- so every OS auto-repeat is appended as a fresh key-down (U25).
+// Nothing observed has hit it, which is exactly why a report from a machine in that state has to
+// diagnose itself instead of costing a session of guesswork.
+//
+// WHERE THE READ IS VALID, since the U25 note left it open: NOT at install time -- mh.dll binds
+// during the loader, long before the game builds its DirectInput devices. The first PRESENT is the
+// earliest point that is unambiguously after llm_game_init_subsystems, so the one-shot fires there.
+// It is NOT gated behind [input] mouse_trace: one line per run is what makes every future report
+// self-describing, and a knob nobody set would make it zero.
+void log_di_keyboard_once() {
+    static bool s_done = false;
+    if (s_done) return;
+    s_done             = true;
+    const uint32_t dev = *(volatile uint32_t *)DI_KEYBOARD_DEVICE;
+    char           line[192];
+    wsprintfA(line, "; [input] di_keyboard=%d dev=0x%08x -- %s", dev ? 1 : 0, dev,
+              dev ? "DirectInput keyboard live (no OS auto-repeat)"
+                  : "FALLBACK: raw WM_KEYDOWN path, OS auto-repeat UNFILTERED (U25)");
+    net_log_line(line);
 }
 
 mh_llm_ui_widget_list *active_list() {
@@ -267,8 +441,11 @@ bool enqueue(uint32_t type, int x, int y) {
     uint32_t w    = *(volatile uint32_t *)WRITEIDX;
     uint32_t next = (w + 1) & 0x7f;
     if (next == *(volatile uint32_t *)READIDX) return false; // ring full -> drop (never happens in practice)
-    auto *ev        = (mh_llm_input_mouse_event *)(EVENTS + (size_t)w * sizeof(mh_llm_input_mouse_event));
-    ev->buttons     = (type == EV_LDOWN) ? 1u : 0u; // left-button bit; only the in-game delta pump reads this
+    auto *ev = (mh_llm_input_mouse_event *)(EVENTS + (size_t)w * sizeof(mh_llm_input_mouse_event));
+    // The wndproc's own snapshot: bit 0 left / bit 1 right, held during DOWN, cleared by UP; only the
+    // in-game delta pump reads it.
+    ev->buttons     = (type == EV_LDOWN) ? 1u : (type == EV_RDOWN) ? 2u
+                                                                   : 0u;
     ev->event_type  = type;
     ev->dx          = 0;
     ev->dy          = 0;
@@ -290,6 +467,27 @@ bool enqueue(uint32_t type, int x, int y) {
 // The keystate ARRAY (_G_LLM_INPUT_KEYSTATE) is deliberately left alone: it is re-latched every frame
 // from the real device by the DI poll, so a synthetic write there would be stomped immediately and
 // would also make a held key look stuck. Every consumer we need reads the event ring.
+// ---- THE KEY-INJECTION JOURNAL (F4) ------------------------------------------------------------
+// Every key event this driver writes into the ring is recorded here exactly as it was written:
+// scancode + event_type, which ARE the injected input. The timestamp is deliberately NOT recorded --
+// it is a DLL-side monotonic counter that exists only to keep the poll from mis-reading a
+// double-click, so including it would make two identical keystrokes compare unequal.
+//
+// It exists so `type` is PROVABLE rather than merely plausible. `type host1` and the five `key`
+// lines that spell the same string must put a byte-identical event sequence into the ring, and that
+// is an assertion the harness can make about ITSELF -- no pixels, no second run to diff against, and
+// no reliance on the field rendering (the Cyrillic case has no glyphs at all). `keyjournal mark`
+// cuts a segment; `keyjournal same` asserts the last two are identical and ABORTS the script if not.
+struct KeyEvRec {
+    uint16_t scancode;
+    uint16_t event_type;
+};
+constexpr int KEYJ_MAX = 256, KEYJ_SEGS = 8;
+KeyEvRec      g_keyj[KEYJ_MAX];
+int           g_keyj_n = 0;
+int           g_keyj_seg[KEYJ_SEGS]; // start index of each segment
+int           g_keyj_nseg = 0;
+
 bool enqueue_key(uint32_t scancode, bool down) {
     uint32_t w    = *(volatile uint32_t *)KWRITEIDX;
     uint32_t next = (w + 1) & 0x7f;
@@ -297,9 +495,205 @@ bool enqueue_key(uint32_t scancode, bool down) {
     auto *ev       = (mh_llm_input_key_event *)(KEVENTS + (size_t)w * sizeof(mh_llm_input_key_event));
     ev->scancode   = scancode;
     ev->event_type = down ? 0x100u : 0x80u;
-    ev->timestamp  = g_ts;
-    g_ts += 0x4000;
+    // A KEY EVENT'S TIMESTAMP IS LOAD-BEARING, AND IT COST THIS ACTION A WHOLE SESSION (F4).
+    // The mouse ring's timestamp is only read for double-click timing, which is why the driver gives
+    // mouse events a private counter with big gaps. A KEY event's timestamp is a scheduling input:
+    // llm_input_key_dequeue_translate_ascii copies the WHOLE 0x38-byte event into KEYREC, and
+    // KEYREC+0x20 is the field named `_G_LLM_UI_MODAL_STEP_DEADLINE_MS` (0x006542ea) -- the two
+    // are the SAME ADDRESS (0x006542ea), so the pump's `publish when NEXT_MS >= DEADLINE_MS` really
+    // reads "publish this key once the 150 ms accumulator has caught up to WHEN IT WAS PRESSED".
+    // With the counter's value that meant ~164 SECONDS in the future: the first key after a screen
+    // settle published anyway (the settle parks NEXT_MS at 0xffffffff), and every key after it sat
+    // in the ring undelivered. `key` therefore only ever delivered ONE keystroke per screen
+    // transition -- invisible until now because no script had used two in a row.
+    // So: the game's own master ms clock, the same clock _G_LLM_UI_MENU_NOW_MS is sampled from and
+    // the same one a real producer stamps a keypress with.
+    ev->timestamp                   = mh::call::llm_time_get_ticks_ms();
     *(volatile uint32_t *)KWRITEIDX = next;
+    if (g_keyj_n < KEYJ_MAX) {
+        g_keyj[g_keyj_n].scancode   = (uint16_t)scancode;
+        g_keyj[g_keyj_n].event_type = (uint16_t)(down ? 0x100u : 0x80u);
+        ++g_keyj_n;
+    }
+    return true;
+}
+
+// The key ring is EMPTY -- i.e. every event we pushed has been dequeued, and dequeue IS translate
+// (llm_input_key_dequeue_translate_ascii pops and resolves in one call). That makes it the exact
+// "the previous character has been consumed" predicate `type` needs before it may change the
+// modifier state for the next one. A pure state test: no frame count, no sleep.
+bool key_ring_empty() { return *(volatile uint32_t *)KREADIDX == *(volatile uint32_t *)KWRITEIDX; }
+
+// One journal segment, verbatim, into the log -- the EVIDENCE behind `keyjournal same`. An assertion
+// that only prints its verdict is an assertion you have to take on trust; these two lines are what a
+// reader compares by eye when the verdict is questioned.
+void log_keyj(const char *tag, int from, int to) {
+    char line[480];
+    int  k = wsprintfA(line, "; [script] keyjournal %s [%d..%d) %d event(s):", tag, from, to, to - from);
+    for (int i = from; i < to && k < (int)sizeof(line) - 16; ++i)
+        k += wsprintfA(line + k, " %02x/%03x", g_keyj[i].scancode, g_keyj[i].event_type);
+    ui_log("%s", line);
+}
+
+// ---- KEYBOARD LAYOUT + TEXT TYPING (F4) --------------------------------------------------------
+// `type <utf8 text>` drives the game's OWN keyboard path -- it does not write the text field. Each
+// character is resolved to the (scancode, modifier) pair a player would physically press on the
+// ACTIVE layout, injected into the key ring, and translated by the game's own
+// llm_input_key_dequeue_translate_ascii (MapVirtualKeyA -> GetKeyboardState -> ToAscii).
+//
+// TWO HALVES OF A KEYSTROKE, AND ONLY ONE OF THEM FITS IN THE RING.
+//   * the KEY itself  -> the ring, as `key` already does.
+//   * the MODIFIERS   -> NOT the ring. The game's translate reads shift/ctrl/alt from
+//     GetKeyboardState, the OS's per-thread key-state table, never from the event it just popped --
+//     so a synthetic Shift event in the ring would change nothing about the translation. The
+//     faithful move is the one a real Shift press actually causes: put the modifier into that table
+//     (SetKeyboardState) for exactly as long as the character is in flight. It is also why we do NOT
+//     inject a 0x2a event: it would add ring traffic whose only effect is to exercise the game's
+//     ToAscii-failure fallback table, and it would break the byte-identity `type` owes `key`.
+//
+// The layout is loaded for the run by `layout <klid>` and restored when the script ends. Resolution
+// is VkKeyScanExW + MapVirtualKeyExW, so it is table-driven from the layout itself rather than a
+// hardcoded scancode map -- ASCII on 00000409, Cyrillic on 00000419 and Polish on 00000415 all fall
+// out of the same code, and a character the layout cannot produce is a reported script ERROR.
+struct TypeChar {
+    wchar_t wc;
+    uint8_t vk;
+    uint8_t sh;     // VkKeyScanEx shift state: 1 shift, 2 ctrl, 4 alt (6 = AltGr)
+    uint8_t sc;     // PC set-1 scancode
+    uint8_t native; // what the LAYOUT's own codepage says this key produces (ToAsciiEx)
+    uint8_t acp;    // what the GAME's ToAscii will store (CP_ACP) -- see the F3 note in do_action
+};
+constexpr int TYPE_MAX = 48;
+TypeChar      g_type[TYPE_MAX];
+int           g_type_n        = 0;
+int           g_type_i        = 0;
+bool          g_type_pushed   = false; // character g_type_i is in the ring and not yet consumed
+int           g_type_step     = -1;    // script step index this resolution belongs to
+DWORD         g_type_progress = 0;     // wall clock of the last character actually pushed
+DWORD         g_type_diag_ms  = 0;     // throttle for the pump-state diagnostic below
+int           g_type_stall_ms = 15000;
+
+HKL g_hkl_orig = nullptr; // whatever the process had before the script touched it
+HKL g_hkl_cur  = nullptr;
+
+bool g_kb_touched = false; // this script has used `type`/`layout` -- so there IS something to restore
+
+// Put the modifier keys into the OS key-state table the game's ToAscii will read. Everything else in
+// the table is preserved -- we are adding a held Shift, not inventing a keyboard.
+void apply_mod_state(uint8_t sh) {
+    g_kb_touched = true;
+    BYTE st[256];
+    if (!GetKeyboardState(st)) return;
+    const BYTE dn   = 0x80;
+    st[VK_SHIFT]    = (sh & 1) ? dn : 0;
+    st[VK_LSHIFT]   = (sh & 1) ? dn : 0;
+    st[VK_RSHIFT]   = 0;
+    st[VK_CONTROL]  = (sh & 2) ? dn : 0;
+    st[VK_LCONTROL] = (sh & 2) ? dn : 0;
+    st[VK_RCONTROL] = 0;
+    st[VK_MENU]     = (sh & 4) ? dn : 0;
+    st[VK_LMENU]    = 0;
+    st[VK_RMENU]    = (sh & 4) ? dn : 0; // AltGr is reported by VkKeyScanEx as ctrl+alt
+    SetKeyboardState(st);
+}
+
+// Restores BOTH halves of what typing touched, and does nothing at all for the scripts that never
+// typed -- the scenarios in this suite that only click must not have their key-state table rewritten
+// on the way out just because the exit path is shared.
+void restore_layout() {
+    if (!g_kb_touched) return;
+    if (g_hkl_orig && g_hkl_cur && g_hkl_cur != g_hkl_orig) {
+        ActivateKeyboardLayout(g_hkl_orig, KLF_SETFORPROCESS);
+        ActivateKeyboardLayout(g_hkl_orig, 0);
+        ui_log("; [script] layout restored to %08x", (unsigned)(uintptr_t)g_hkl_orig);
+    }
+    g_hkl_cur = g_hkl_orig;
+    apply_mod_state(0);
+}
+
+// `layout <klid>` / `layout default`. The ORIGINAL is recorded on the first call and restored on
+// `default`, at script end and on every abort path -- a run that leaves the box on a Russian layout
+// is a side effect nobody asked for.
+bool set_layout(const char *klid) {
+    if (!g_hkl_orig) g_hkl_orig = GetKeyboardLayout(0);
+    g_kb_touched = true;
+    if (!klid || !*klid || lstrcmpiA(klid, "default") == 0 || lstrcmpA(klid, "0") == 0) {
+        restore_layout();
+        return true;
+    }
+    HKL h = LoadKeyboardLayoutA(klid, KLF_ACTIVATE);
+    if (!h) {
+        ui_log("; [script] layout '%s' FAILED to load (GetLastError=%lu)", klid, GetLastError());
+        return false;
+    }
+    ActivateKeyboardLayout(h, KLF_SETFORPROCESS); // best effort: cover threads we are not on
+    ActivateKeyboardLayout(h, 0);
+    g_hkl_cur = h;
+    HKL live  = GetKeyboardLayout(0);
+    ui_log("; [script] layout '%s' -> HKL %08x (active on tid %lu: %08x)%s", klid,
+           (unsigned)(uintptr_t)h, GetCurrentThreadId(), (unsigned)(uintptr_t)live,
+           live == h ? "" : "  -- MISMATCH: the present thread is not the thread that translates");
+    return live == h;
+}
+
+// Resolve a whole UTF-8 string to per-character (scancode, modifiers) against the ACTIVE layout.
+// Resolved UP FRONT, so an unproducible character aborts before half the word has been typed.
+// Returns false and logs the offending character on any failure.
+bool type_resolve(const char *utf8) {
+    g_type_n = g_type_i = 0;
+    g_type_pushed       = false;
+    wchar_t wbuf[TYPE_MAX + 1];
+    int     n = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, utf8, -1, wbuf, TYPE_MAX + 1);
+    if (n <= 1) {
+        ui_log("; [script] type: '%s' is not valid UTF-8 or is empty (MultiByteToWideChar=%d, err=%lu)",
+               utf8, n, GetLastError());
+        return false;
+    }
+    n -= 1; // drop the NUL
+    HKL hkl = GetKeyboardLayout(0);
+    for (int i = 0; i < n; ++i) {
+        SHORT vks = VkKeyScanExW(wbuf[i], hkl);
+        if (vks == -1) {
+            ui_log("; [script] type: character U+%04X (#%d of '%s') is NOT PRODUCIBLE on the active "
+                   "keyboard layout %08x -- a script ERROR, not a character to drop",
+                   (unsigned)wbuf[i], i + 1, utf8, (unsigned)(uintptr_t)hkl);
+            return false;
+        }
+        TypeChar &t = g_type[i];
+        t.wc        = wbuf[i];
+        t.vk        = (uint8_t)(vks & 0xff);
+        t.sh        = (uint8_t)((vks >> 8) & 0xff);
+        UINT sc     = MapVirtualKeyExW(t.vk, MAPVK_VK_TO_VSC, hkl);
+        if (sc == 0 || sc > 0x7f) {
+            ui_log("; [script] type: U+%04X maps to VK %02x which has no set-1 scancode on layout "
+                   "%08x (MapVirtualKeyEx=%u)",
+                   (unsigned)wbuf[i], t.vk, (unsigned)(uintptr_t)hkl, sc);
+            return false;
+        }
+        t.sc = (uint8_t)sc;
+        // What this keystroke WILL become, measured on both codecs, because they disagree and the
+        // difference is a real defect this action is built to make visible (F3):
+        //   native = ToAsciiEx under the layout's own codepage   -- e.g. CP1251 0xCF for U+041F
+        //   acp    = ToAscii, which is what the GAME calls       -- the process ANSI codepage
+        // On a CP1252 box every Cyrillic character comes back 0x3F '?' from the game's codec while
+        // the layout resolves it perfectly. The scancode path is right; the CODEC is the gap.
+        BYTE st[256];
+        memset(st, 0, sizeof(st));
+        if (t.sh & 1) st[VK_SHIFT] = st[VK_LSHIFT] = 0x80;
+        if (t.sh & 2) st[VK_CONTROL] = st[VK_LCONTROL] = 0x80;
+        if (t.sh & 4) st[VK_MENU] = st[VK_RMENU] = 0x80;
+        BYTE out[8];
+        memset(out, 0, sizeof(out));
+        UINT gvk = MapVirtualKeyExA(t.sc, MAPVK_VSC_TO_VK, hkl); // the game's own first step
+        int  rn  = ToAsciiEx(gvk, 0, st, (LPWORD)out, 0, hkl);
+        if (rn < 0) ToAsciiEx(gvk, 0, st, (LPWORD)out, 0, hkl); // flush a dead key
+        t.native = (rn == 1) ? out[0] : 0;
+        memset(out, 0, sizeof(out));
+        rn = ToAscii(gvk, 0, st, (LPWORD)out, 0);
+        if (rn < 0) ToAscii(gvk, 0, st, (LPWORD)out, 0);
+        t.acp = (rn == 1) ? out[0] : 0;
+    }
+    g_type_n = n;
     return true;
 }
 
@@ -495,6 +889,15 @@ click_result try_click(Pred match, const char *why) {
 } // namespace
 
 extern "C" void MH_Seam_InjectStartReceived(void); // net_discovery -- U29 (b) test hook
+// 2026-09-20: the harness's synthesised key state (see the `hotkey` verb below). Pollers OR this
+// into their GetAsyncKeyState read; it is 0 for every key unless a running script holds a chord.
+namespace {
+uint8_t g_synth_vk[256] = {0};
+} // namespace
+extern "C" int MH_UIDrive_SynthKeyDown(int vk) {
+    return (vk > 0 && vk < 256 && g_synth_vk[vk] != 0) ? 1 : 0;
+}
+
 extern "C" void MH_UIDrive_CursorTo(int x, int y) { enqueue(EV_MOVE, x, y); }
 
 // UI-REC: the active screen's identity, for the input journal's barrier records. Same expression the
@@ -673,6 +1076,37 @@ extern "C" void MH_UIDrive_Click(int x, int y) {
 // wrong). press/release let a script spread a click across FRAMES (cursor -> a render settles the hover ->
 // press -> release), exactly as a physical click arrives, which the game selects reliably.
 extern "C" void MH_UIDrive_Press(int x, int y) { enqueue(EV_LDOWN, x, y); }
+
+// ---- mp:D25 (2026-09-19): the RIGHT button, optionally under a held Shift --------------------------
+//
+// Shift+right-click on the map is how a player LANDS the mothership (deploy: order 0x10 move + 0x18
+// deploy; states 0x18 DEPLOY_APPROACH -> 0x17 DEPLOY_TO_BUILDING), and a fresh MP human owns nothing else -- no landing, no
+// base, no build menu, so no scenario could reach llm_strat_bldg_try_begin_placement's affordability
+// probe until this existed. Two facts decide the shape, both measured before by the journal replay
+// (mh_harness/harness.cpp, "THE KEYSTATE ARRAY IS A SECOND INPUT CHANNEL"): the strategic input
+// reads Shift from _G_LLM_INPUT_KEYSTATE[0x2a] (bit 0), NOT from the key ring, and a DirectInput
+// keyboard re-latches that array from the real device every poll -- so the byte is asserted on
+// EVERY present the click is in flight, exactly the replay's re-assert convention, and cleared at
+// the end so a held key cannot stick. The button events are spread over presents like a physical
+// click (MOVE, then DOWN, then UP), for the same reason `press`/`release` exist.
+constexpr uint32_t SC_LSHIFT = 0x2a;
+void               keystate_shift(bool held) {
+    volatile uint8_t *ks = (volatile uint8_t *)mh::addr::_G_LLM_INPUT_KEYSTATE;
+    ks[SC_LSHIFT]        = held ? (uint8_t)(ks[SC_LSHIFT] | 5u) : (uint8_t)(ks[SC_LSHIFT] & 0xfeu);
+}
+// One frame of the sequence; returns true when it is complete. `frame` is the caller's per-step wait
+// counter (0 on the first present the step runs).
+bool rclick_frame(int frame, int x, int y, bool shift) {
+    if (shift) keystate_shift(true);
+    switch (frame) {
+        case 0: enqueue(EV_MOVE, x, y); return false;
+        case 1: enqueue(EV_RDOWN, x, y); return false;
+        case 2: enqueue(EV_RUP, x, y); return false;
+        default:
+            if (shift) keystate_shift(false);
+            return true;
+    }
+}
 extern "C" void MH_UIDrive_Release(int x, int y) { enqueue(EV_LUP, x, y); }
 
 extern "C" int MH_UIDrive_ClickWidget(int idx) {
@@ -900,6 +1334,16 @@ static int fire_auto_target() {
 //     retryready [N] = MH_Seam_S8RetryArmed() >= N (default 1): a client's FAILED connect (dead/typo'd IP)
 //                has cleared the connect latches, so a corrected-IP re-Connect will re-kick. The S8(b)
 //                round-trip test gates its 2nd Connect on this instead of a time wait for the ~4s fail.
+//     field <name|game|chat> <text|hex:..> = that text BUFFER holds exactly these bytes. `name` and
+//                `game` are the NET_SETUP menu fields; `chat` (mp:F3) is the in-game chat edit line,
+//                which must be read BEFORE the Enter that submits it (submitting clears the line).
+//     wmsg <text|hex:..> = the NEWEST on-screen floating message (MESSAGE_QUEUE slot 0, a UTF-16
+//                string) CONTAINS this UTF-16 sequence. The RECEIVING half of a chat assertion, and
+//                it has to be its own predicate for two reasons `field` cannot meet: the buffer is
+//                UTF-16 (every second byte of ASCII text is 0x00, which `field`'s NUL-terminated
+//                compare reads as end-of-buffer), and the line the game shows is "<player>: <text>",
+//                so the assertion is CONTAINS rather than equals. `hex:` bytes are the UTF-16LE code
+//                units; plain text is widened as Latin-1, which covers ASCII needles.
 //   ACTIONS clickv <N>  clickl <label>  clicki <idx>  cursor <x> <y>  click <x> <y>
 //           press <x> <y>  release <x> <y>  capture <name>  log <text>  dump (widget list)  end
 //     press/release are the two halves of a click (DOWN-only / UP-only) -- use them to spread a click over
@@ -946,6 +1390,36 @@ constexpr uintptr_t LOBBY_SLOTS_ADDR = mh::addr::_G_LLM_LOBBY_SLOTS;      // per
 constexpr uintptr_t MAP_PCOUNT_ADDR  = mh::addr::current_map_data + 0x08; // map's player-slot count (int)
 constexpr int       SLOT_STRIDE = 0x39, SLOT_STATUS_OFF = 0x0b, SLOT_HUMAN = 1, SLOT_AI = 2;
 constexpr int       SLOT_RACE_OFF = 0x05; // `race <slot> <v>`: 1=Human 2=Alien (the spinner's values)
+
+// `field <slot> <spec>` reads the MENU TEXT-FIELD BUFFERS the NET_SETUP screen edits in place (see
+// the NET_SETUP container 0x653ef3 is re-wired per use, each use pointing at a field record (stride
+// 0x18) whose +0 is one of these buffers). Asserting the BUFFER rather than the pixels is not a
+// shortcut -- it is the only assertion available for non-ASCII text, because the EN build's fonts
+// carry no Cyrillic glyphs at all, so a rendered frame cannot tell a correctly stored Cyrillic name
+// from a wrong one. It is also the stronger claim: it names the exact bytes the game stored.
+constexpr uintptr_t FIELD_NAME_ADDR = mh::addr::mp_player_name; // 0x005d0d88, 32-byte ASCII
+constexpr uintptr_t FIELD_GAME_ADDR = mh::addr::mp_game_name;   // 0x005d0da8, host-typed create name
+// mp:F3 added the third slot: the IN-GAME CHAT edit line, `_G_LLM_STRAT_CHAT_INPUT_LINE`
+// (0x0050a84c, char[81] = a 41-byte line followed by the 40-byte scancode queue at +0x29). It is the
+// same kind of assertion as the two above and for the same reason -- the chat is where F3's second
+// hook lives, and a Cyrillic chat line on stock EN fonts renders as substitutes, so the buffer is the
+// only thing that can tell a correct line from a wrong one. Read BEFORE the Enter that submits it:
+// llm_chat_history_push clears the line.
+constexpr uintptr_t FIELD_CHAT_ADDR = mh::addr::_G_LLM_STRAT_CHAT_INPUT_LINE; // 0x0050a84c
+enum { FIELD_NAME = 0,
+       FIELD_GAME = 1,
+       FIELD_CHAT = 2 };
+uintptr_t field_addr(int slot) {
+    if (slot == FIELD_GAME) return FIELD_GAME_ADDR;
+    if (slot == FIELD_CHAT) return FIELD_CHAT_ADDR;
+    return FIELD_NAME_ADDR;
+}
+// `wmsg`: the floating on-screen message queue's NEWEST entry. game_ui_AddTextToPrintQueue keeps 30
+// slots of 120 UTF-16 code units (0xf0 bytes each) and copies the new line into SLOT 0 after shifting
+// the rest down, so slot 0 is always the most recent message -- which for a received chat line is
+// "<sender>: <text>", built by llm_net_lockstep_dispatch's chat arm (opcode 4).
+constexpr uintptr_t MSGQ_ADDR       = mh::addr::MESSAGE_QUEUE; // 0x005ce484, slot 0
+constexpr int       MSGQ_SLOT_UNITS = 120;                     // 0xf0 bytes
 // WIDGET_DISABLED (0x40) + clickable() are defined in the top anon namespace (shared with the click helpers).
 
 enum {
@@ -970,16 +1444,25 @@ enum {
     OP_W_GAMECLOCK,
     OP_W_SIMSTEP,
     OP_W_AWAITSIGNAL,
-    OP_W_LAST = OP_W_AWAITSIGNAL,
+    OP_W_FIELD,
+    OP_W_WMSG,
+    OP_W_STALLED, // TL-UISTALL: true while the sim is lockstep-blocked, optionally for >= <ms>
+    OP_W_LAST = OP_W_STALLED,
     // actions (fire once, then advance)
     OP_A_CLICKV,
     OP_A_CLICKL,
     OP_A_CLICKI,
     OP_A_CURSOR,
+    OP_A_CURSORHOLD,
     OP_A_CLICK,
     OP_A_PRESS,
     OP_A_RELEASE,
+    OP_A_RCLICK, // mp:D25: `rclick <x> <y> [shift]`
     OP_A_KEY,
+    OP_A_HOTKEY, // `hotkey Ctrl+Alt+D` -- a GetAsyncKeyState-style chord, synthesised (2026-09-20)
+    OP_A_TYPE,
+    OP_A_LAYOUT,
+    OP_A_KEYJOURNAL,
     OP_A_CAPTURE,
     OP_A_LOG,
     OP_A_SIGNAL,
@@ -998,6 +1481,7 @@ struct Target {
 struct Step {
     int      op;
     int      a, b;     // numeric args (value / idx / gamemode / x ; y)
+    int      c;        // third numeric arg -- only `cursorhold`'s frame count uses it
     unsigned scr;      // screen container VA (OP_W_SCREEN)
     Target   tgt;      // target widget (present/absent/enabled/hovered/clickl)
     char     text[64]; // capture name / log message
@@ -1082,6 +1566,95 @@ void copy_trim(char *dst, int cap, const char *src) {
     }
     while (n > 0 && (dst[n - 1] == ' ' || dst[n - 1] == '\t' || dst[n - 1] == '\r')) --n;
     dst[n] = 0;
+}
+
+// ---- `hotkey`: a synthesised GetAsyncKeyState chord (2026-09-20) --------------------------------
+//
+// The DLL's own hotkeys ([debug] toggle_key, [hud] net_indicator_key, F12 capture) poll
+// GetAsyncKeyState, and GetAsyncKeyState answers 0 for a process whose desktop is not the input
+// desktop -- which is every headless lane (tools/ui_test.py resolve_desktop). So an in-game hotkey
+// could never be exercised by the suite. This table is the harness's view of "held": the pollers
+// OR it into their OS read through MH_UIDrive_SynthKeyDown, so the real binding parse, modifier
+// check and rising-edge logic run, and only the OS read is substituted. Nothing here touches the
+// game's own key ring (that is `key <scancode>`), and an unarmed run never sets a byte of it.
+// (The table itself is defined beside its export, above MH_UIDrive_CursorTo.)
+
+// `Ctrl+Alt+D` / `Alt+F9` / `Shift+PgDn` / `VK_F10` / `0x79` / `D` -> vk + a modifier mask
+// (1 ctrl, 2 alt, 4 shift). The same grammar gfx_overlay.cpp parse_key accepts, kept small.
+bool hotkey_parse(const char *spec, int *vk, int *mods) {
+    *vk           = 0;
+    *mods         = 0;
+    const char *s = spec;
+    for (;;) {
+        if (_strnicmp(s, "ctrl+", 5) == 0) {
+            *mods |= 1;
+            s += 5;
+        } else if (_strnicmp(s, "control+", 8) == 0) {
+            *mods |= 1;
+            s += 8;
+        } else if (_strnicmp(s, "alt+", 4) == 0) {
+            *mods |= 2;
+            s += 4;
+        } else if (_strnicmp(s, "shift+", 6) == 0) {
+            *mods |= 4;
+            s += 6;
+        } else {
+            break;
+        }
+    }
+    if ((s[0] == 'V' || s[0] == 'v') && (s[1] == 'K' || s[1] == 'k') && s[2] == '_') s += 3;
+    static const struct {
+        const char *name;
+        int         vk;
+    } NAMED[] = {
+        {"pgup", VK_PRIOR},
+        {"prior", VK_PRIOR},
+        {"pgdn", VK_NEXT},
+        {"next", VK_NEXT},
+        {"home", VK_HOME},
+        {"end", VK_END},
+        {"ins", VK_INSERT},
+        {"insert", VK_INSERT},
+        {"del", VK_DELETE},
+        {"delete", VK_DELETE},
+        {"up", VK_UP},
+        {"down", VK_DOWN},
+        {"left", VK_LEFT},
+        {"right", VK_RIGHT},
+        {"space", VK_SPACE},
+        {"tab", VK_TAB},
+    };
+    for (const auto &e : NAMED)
+        if (lstrcmpiA(e.name, s) == 0) {
+            *vk = e.vk;
+            return true;
+        }
+    if ((s[0] == 'F' || s[0] == 'f') && s[1] >= '0' && s[1] <= '9') {
+        const int f_n = (int)strtol(s + 1, nullptr, 10);
+        if (f_n >= 1 && f_n <= 24) {
+            *vk = VK_F1 + f_n - 1;
+            return true;
+        }
+    }
+    if (s[0] == '0' && (s[1] == 'x' || s[1] == 'X')) {
+        *vk = (int)strtol(s, nullptr, 16);
+        return *vk > 0 && *vk < 256;
+    }
+    if (s[0] && !s[1]) {
+        char c = s[0];
+        if (c >= 'a' && c <= 'z') c = (char)(c - 'a' + 'A');
+        *vk = (unsigned char)c;
+        return true;
+    }
+    return false;
+}
+
+void synth_chord_set(int vk, int mods, bool down) {
+    const uint8_t v = down ? 1u : 0u;
+    if (mods & 1) g_synth_vk[VK_CONTROL] = v;
+    if (mods & 2) g_synth_vk[VK_MENU] = v;
+    if (mods & 4) g_synth_vk[VK_SHIFT] = v;
+    if (vk > 0 && vk < 256) g_synth_vk[vk] = v;
 }
 
 void parse_target(const char *s, Target *t) {
@@ -1169,6 +1742,15 @@ void parse_line(const char *line) {
     } else if (strcmp(op, "gameclock") == 0) {
         s->op = OP_W_GAMECLOCK;
         s->a  = (int)strtol(arg, nullptr, 0);
+    } else if (strcmp(op, "stalled") == 0) {
+        // stalled [<ms>] -- TL-UISTALL. True while MH_Lockstep_StallBindingPeer() >= 0 (the sim is
+        // lockstep-blocked), optionally for at least <ms>. `gameclock` CANNOT gate a capture on a
+        // stall by construction (OP_W_GAMECLOCK's own comment: "stalls when the sim stalls" -- the
+        // clock it reads freezes with the sim), which is exactly why L1's "WAITING FOR <name>" frame
+        // was never captured: every timed blackhole landed after the message's 1 s hold had already
+        // expired. `<ms>` defaults to 0 (true the instant a block is observed at all).
+        s->op = OP_W_STALLED;
+        s->a  = (arg && *arg) ? (int)strtol(arg, nullptr, 0) : 0;
     } else if (strcmp(op, "simstep") == 0) {
         s->op = OP_W_SIMSTEP;
         s->a  = (int)strtol(arg, nullptr, 0);
@@ -1190,11 +1772,83 @@ void parse_line(const char *line) {
         char *end;
         s->a = (int)strtol(arg, &end, 0);
         s->b = (int)strtol(end, nullptr, 0);
+    } else if (strcmp(op, "rclick") == 0) {
+        // `rclick <x> <y> [shift]` -- a right-click spread over three presents, under a held Shift
+        // when the word is given. See rclick_frame.
+        s->op = OP_A_RCLICK;
+        char *end;
+        s->a = (int)strtol(arg, &end, 0);
+        s->b = (int)strtol(end, &end, 0);
+        while (*end == ' ' || *end == '	') ++end;
+        s->c = (strncmp(end, "shift", 5) == 0) ? 1 : 0;
+    } else if (strcmp(op, "cursorhold") == 0) {
+        // `cursorhold <x> <y> <frames>` -- SES3, and the harness could not express this before.
+        //
+        // `cursor` enqueues ONE move event, and in-game that does not hold: llm_input_mouse_delta_pump
+        // RESETS _G_LLM_CURSOR_X/Y to _G_LLM_CURSOR_MENU_X/Y at entry on every call and only an event
+        // in the ring overwrites them (0x00426645, the visible-cursor arm). So one event moves the
+        // cursor for exactly one frame. Re-injecting every present is what a DWELL is -- and it is
+        // also what a clamped VM pointer does for real: llm_input_di_mouse_poll integrates relative
+        // counts and clamps to the screen box, and a session measured 558 events arriving while the
+        // accumulator sat pinned at X=639 -- a pinned cursor is a stream of events that do not move
+        // it, not an absence of events.
+        //
+        // Budgeted in FRAMES under the ordinary action watchdog ([uitest] timeout_frames, default
+        // 1500), so a hold longer than that aborts the step rather than hanging the run.
+        s->op       = OP_A_CURSORHOLD;
+        char *after = nullptr;
+        s->a        = (int)strtol(arg, &after, 0);
+        s->b        = (int)strtol(after, &after, 0);
+        s->c        = (int)strtol(after, nullptr, 0);
+        if (s->c < 1) s->c = 1;
     } else if (strcmp(op, "key") == 0) {
         // key <scancode>  -- one down+up pair. Scancodes are PC set-1, the same values
         // llm_strat_input_update compares against (e.g. 0x01 ESC, 0x3f..0x41 F5/F6/F7, 0x1c Enter).
         s->op = OP_A_KEY;
         s->a  = (int)strtol(arg, nullptr, 0);
+    } else if (strcmp(op, "hotkey") == 0) {
+        // hotkey <spec>  -- `Ctrl+Alt+D`, `Alt+F9`, `0x79`, `D`: the DLL's OWN hotkey grammar (the
+        // [debug] overlay's toggle_key and the [hud] net_indicator_key read it), held for two
+        // presents and released. NOT the game's key ring: those hotkeys poll GetAsyncKeyState, which
+        // reads 0 on the isolated desktop every headless lane runs on, so no injected event can reach
+        // them. The chord is synthesised in the DLL's own key-state view instead (MH_UIDrive_-
+        // SynthKeyDown), which the pollers OR into their GetAsyncKeyState read -- the binding parse,
+        // the modifier check and the rising-edge detector all run for real; only the OS read is
+        // substituted. Built for the installed-hidden -> chord -> visible -> chord -> hidden proof
+        // of `[debug] overlay=0` (user ruling 2026-09-20; the debug_overlay scenario).
+        s->op = OP_A_HOTKEY;
+        copy_trim(s->text, sizeof(s->text), arg);
+        if (!hotkey_parse(s->text, &s->a, &s->b)) {
+            ui_log("; [script] IGNORED hotkey '%s' -- not a key spec (line: %s)", s->text, s->raw);
+            return;
+        }
+    } else if (strcmp(op, "type") == 0) {
+        // type <utf8 text> -- the rest of the line, UTF-8, trailing whitespace trimmed (so a literal
+        // trailing space is not expressible; nothing has wanted one). Resolved against the layout at
+        // RUN time, not here, because `layout` may not have run yet when the script is parsed.
+        s->op = OP_A_TYPE;
+        copy_trim(s->text, sizeof(s->text), arg);
+    } else if (strcmp(op, "layout") == 0) {
+        // layout <klid> | layout default  -- e.g. 00000409 US, 00000419 Russian, 00000415 Polish.
+        s->op = OP_A_LAYOUT;
+        copy_trim(s->text, sizeof(s->text), arg);
+    } else if (strcmp(op, "keyjournal") == 0) {
+        // keyjournal mark | keyjournal same
+        s->op = OP_A_KEYJOURNAL;
+        copy_trim(s->text, sizeof(s->text), arg);
+    } else if (strcmp(op, "field") == 0) {
+        // field <name|game|chat> <text | hex:xx..>  -- that text BUFFER equals this, exactly.
+        s->op         = OP_W_FIELD;
+        const char *q = skip_ws(arg);
+        s->a          = (strncmp(q, "game", 4) == 0)   ? FIELD_GAME
+                        : (strncmp(q, "chat", 4) == 0) ? FIELD_CHAT
+                                                       : FIELD_NAME;
+        while (*q && *q != ' ' && *q != '\t') ++q;
+        copy_trim(s->text, sizeof(s->text), skip_ws(q));
+    } else if (strcmp(op, "wmsg") == 0) {
+        // wmsg <text | hex:xx..> -- the newest floating message contains this UTF-16 sequence.
+        s->op = OP_W_WMSG;
+        copy_trim(s->text, sizeof(s->text), skip_ws(arg));
     } else if (strcmp(op, "capture") == 0) {
         s->op = OP_A_CAPTURE;
         copy_trim(s->text, sizeof(s->text), arg);
@@ -1244,6 +1898,79 @@ bool load_script(const char *path) {
 
 // s->b carries the `<` flag parsed by parse_count: default is ">= a", `<a` is strictly less.
 bool count_ok(const Step *s, int v) { return s->b ? (v < s->a) : (v >= s->a); }
+
+int hexval(char c) {
+    if (c >= '0' && c <= '9') return c - '0';
+    if (c >= 'a' && c <= 'f') return c - 'a' + 10;
+    if (c >= 'A' && c <= 'F') return c - 'A' + 10;
+    return -1;
+}
+
+// Decode a `field` spec into the exact bytes expected. `hex:cff0e8e2e5f2` states a BYTE-LEVEL claim,
+// which is the only readable form for text the fonts cannot draw; anything else is taken literally
+// as ASCII. Returns the length, or -1 on a malformed hex run.
+int field_expect(const char *spec, uint8_t *out, int cap) {
+    if (strncmp(spec, "hex:", 4) == 0) {
+        const char *p = spec + 4;
+        int         n = 0;
+        while (p[0] && n < cap) {
+            int hi = hexval(p[0]), lo = p[1] ? hexval(p[1]) : -1;
+            if (hi < 0 || lo < 0) return -1;
+            out[n++] = (uint8_t)((hi << 4) | lo);
+            p += 2;
+        }
+        return (*p == 0) ? n : -1;
+    }
+    int n = 0;
+    while (spec[n] && n < cap) {
+        out[n] = (uint8_t)spec[n];
+        ++n;
+    }
+    return n;
+}
+
+// The buffer AS BYTES, for the timeout diagnostic. Without this a `field` timeout says only "the
+// bytes are not what you asked for" and sends you to a debugger for the one thing the run knew.
+// The EVIDENCE behind a `wmsg` timeout: what the newest message actually holds, as UTF-16 hex plus
+// a printable rendering. Without it a red says only "the needle was not there", which is the one
+// thing the reader already knows.
+void log_wmsg() {
+    const uint8_t *q = (const uint8_t *)MSGQ_ADDR;
+    char           hx[3 * 40 + 1];
+    char           as[40 + 1];
+    int            u = 0, k = 0;
+    for (; u < 40 && (q[u * 2] || q[u * 2 + 1]); ++u) {
+        static const char H[] = "0123456789abcdef";
+        hx[k++]               = H[q[u * 2] >> 4];
+        hx[k++]               = H[q[u * 2] & 15];
+        hx[k++]               = ' ';
+        const unsigned cu     = (unsigned)q[u * 2] | ((unsigned)q[u * 2 + 1] << 8);
+        as[u]                 = (cu >= 0x20 && cu < 0x7f) ? (char)cu : '.';
+    }
+    hx[k] = 0;
+    as[u] = 0;
+    ui_log("; [script]   wmsg: %d code unit(s), low bytes = %s | \"%s\"", u, hx, as);
+}
+
+void log_field(int slot) {
+    const uint8_t *b = (const uint8_t *)field_addr(slot);
+    char           hx[3 * 34 + 1];
+    char           as[34 + 1];
+    int            n = 0, k = 0;
+    for (; n < 32 && b[n]; ++n) {
+        static const char H[] = "0123456789abcdef";
+        hx[k++]               = H[b[n] >> 4];
+        hx[k++]               = H[b[n] & 15];
+        hx[k++]               = ' ';
+        as[n]                 = (b[n] >= 0x20 && b[n] < 0x7f) ? (char)b[n] : '.';
+    }
+    hx[k] = 0;
+    as[n] = 0;
+    ui_log("; [script]   field %s: %d byte(s) = %s | \"%s\"",
+           slot == FIELD_GAME ? "game" : slot == FIELD_CHAT ? "chat"
+                                                            : "name",
+           n, hx, as);
+}
 
 bool wait_satisfied(const Step *s) {
     switch (s->op) {
@@ -1367,13 +2094,21 @@ bool wait_satisfied(const Step *s) {
             // measured 2026-07-28, and that gap is exactly the race that made match_launch flaky.
             // Deliberately NOT a time predicate: this is still a state the rig OBSERVES, not a sleep.
             char flag[MAX_PATH];
-            wsprintfA(flag, "%srig_%s.flag", MH_RunDir(), s->text);
+            // SES1: MH_ProcessDir -- the runner DROPS this file into the directory it discovered at
+            // launch. Reader and writer have to name the same folder, and only the process one is
+            // known to both sides before a lobby exists.
+            wsprintfA(flag, "%srig_%s.flag", MH_ProcessDir(), s->text);
             return GetFileAttributesA(flag) != INVALID_FILE_ATTRIBUTES;
         }
         case OP_W_GAMECLOCK: { // the SIM has advanced >= N ms (stalls when the sim stalls -- not a time wait)
             double clk;
             memcpy(&clk, (const void *)GAMECLOCK_ADDR, sizeof(clk));
             return clk * 1000.0 >= (double)s->a; // the global is game-SECONDS (cf. net_internal.h ms_of)
+        }
+        case OP_W_STALLED: { // TL-UISTALL: the sim IS lockstep-blocked right now, optionally >= s->a ms
+            unsigned long blocked_ms = 0;
+            const int     bind       = MH_Lockstep_StallBindingPeer(&blocked_ms);
+            return bind >= 0 && blocked_ms >= (unsigned long)(s->a > 0 ? s->a : 0);
         }
         case OP_W_SIMSTEP: { // F5J: the sim has reached step N -- and the harness is HOLDING it there
             // The call both ARMS the fence (idempotently -- we re-ask every present) and returns the
@@ -1428,6 +2163,43 @@ bool wait_satisfied(const Step *s) {
             return *(const unsigned char *)(LOBBY_SLOTS_ADDR + s->a * SLOT_STRIDE + SLOT_RACE_OFF) ==
                    (unsigned char)s->b;
         }
+        case OP_W_FIELD: { // the menu text-field BUFFER is exactly these bytes (NUL-terminated)
+            uint8_t want[34];
+            int     wn = field_expect(s->text, want, (int)sizeof(want));
+            if (wn < 0) return false; // malformed spec -- the timeout diagnostic names it
+            const uint8_t *b = (const uint8_t *)field_addr(s->a);
+            for (int i = 0; i < wn; ++i)
+                if (b[i] != want[i]) return false;
+            return b[wn] == 0; // and nothing after it: an exact buffer, not a prefix
+        }
+        case OP_W_WMSG: { // the newest floating message CONTAINS this UTF-16 sequence
+            uint8_t want[34];
+            int     wn = field_expect(s->text, want, (int)sizeof(want));
+            if (wn < 0) return false; // malformed spec -- the timeout diagnostic names it
+            // A `hex:` spec is already UTF-16LE bytes; a plain-text one is widened here (Latin-1), so
+            // an ASCII needle can be written readably and a non-ASCII one goes in as hex.
+            uint8_t needle[68];
+            int     nn = 0;
+            if (strncmp(s->text, "hex:", 4) == 0) {
+                for (int i = 0; i < wn; ++i) needle[nn++] = want[i];
+            } else {
+                for (int i = 0; i < wn && nn + 1 < (int)sizeof(needle); ++i) {
+                    needle[nn++] = want[i];
+                    needle[nn++] = 0;
+                }
+            }
+            if (nn < 2 || (nn & 1)) return false; // a UTF-16 needle is a whole number of units
+            const uint8_t *q     = (const uint8_t *)MSGQ_ADDR;
+            int            units = 0;
+            while (units < MSGQ_SLOT_UNITS && (q[units * 2] || q[units * 2 + 1])) ++units;
+            const int haystack = units * 2;
+            for (int off = 0; off + nn <= haystack; off += 2) {
+                int k = 0;
+                while (k < nn && q[off + k] == needle[k]) ++k;
+                if (k == nn) return true;
+            }
+            return false;
+        }
         case OP_W_RETRYREADY:                      // S8(b): the failed-connect latch-clear has fired -> a corrected-IP re-Connect
             return MH_Seam_S8RetryArmed() >= s->a; // will re-kick. Gates the round-trip test's 2nd Connect.
     }
@@ -1454,6 +2226,12 @@ click_result do_action(const Step *s) {
         case OP_A_CURSOR:
             MH_UIDrive_CursorTo(s->a, s->b);
             break;
+        case OP_A_CURSORHOLD:
+            // One event per present for `c` presents, then advance. CLICK_RETRY is the existing
+            // "stay on this step" contract and it is what increments g_wait, so the counter the
+            // watchdog already keeps is the same one that ends the dwell -- no second clock.
+            MH_UIDrive_CursorTo(s->a, s->b);
+            return (g_wait + 1 >= s->c) ? CLICK_OK : CLICK_RETRY;
         case OP_A_CLICK:
             MH_UIDrive_Click(s->a, s->b);
             break;
@@ -1463,11 +2241,135 @@ click_result do_action(const Step *s) {
         case OP_A_RELEASE:
             MH_UIDrive_Release(s->a, s->b);
             break;
+        case OP_A_RCLICK:
+            // Multi-present like cursorhold: g_wait is the frame index while the step retries.
+            return rclick_frame(g_wait, s->a, s->b, s->c != 0) ? CLICK_OK : CLICK_RETRY;
         case OP_A_KEY:
             enqueue_key((uint32_t)s->a, true);
             enqueue_key((uint32_t)s->a, false);
             ui_log("; key scancode 0x%02x (down+up)", s->a);
             break;
+        case OP_A_HOTKEY:
+            // Multi-present like cursorhold: presents 0 and 1 hold the chord, present 2 releases it
+            // and advances. Two held presents, not one, because MH_Overlay_OnPresent runs BEFORE
+            // this driver on the same present (net_lockstep on_present), so the poll that sees the
+            // chord down is the NEXT present's -- and the release must come after that poll.
+            if (g_wait < 2) {
+                synth_chord_set(s->a, s->b, true);
+                if (g_wait == 0) ui_log("; hotkey %s -- vk 0x%02x mods 0x%x held (synthesised)", s->text, s->a, s->b);
+                return CLICK_RETRY;
+            }
+            synth_chord_set(s->a, s->b, false);
+            ui_log("; hotkey %s released", s->text);
+            break;
+        case OP_A_TYPE: {
+            // ONE CHARACTER PER RING DRAIN. The modifier state is a single process-wide table, so it
+            // can only be correct for one character at a time -- pushing the whole string at once
+            // would type "Привет" with whatever shift state the LAST character wanted. The gate is
+            // the ring going empty, which (dequeue == translate) means "the previous character has
+            // been translated", so this is a state predicate, not a pace.
+            if (g_type_step != g_cur) {
+                if (!type_resolve(s->text)) {
+                    g_type_step = -1;
+                    return CLICK_ABSENT; // reported as a script ABORT, never silently dropped
+                }
+                g_type_step     = g_cur;
+                g_type_progress = GetTickCount();
+            }
+            if (!key_ring_empty()) {
+                // Character g_type_i is still in flight: hold its modifiers. Re-applied every tick
+                // rather than once, so a message the game pumps in between cannot quietly reset the
+                // key-state table under us.
+                if (g_type_i < g_type_n) apply_mod_state(g_type[g_type_i].sh);
+                // WHY THE RING IS NOT DRAINING, throttled, in the pump's own terms. A stall here is
+                // never "the harness lost an event": it is llm_ui_modal_key_pump declining to latch
+                // the next one, and the four numbers below are the whole state machine that decides
+                // that: NOW_MS is the menu clock, NEXT_MS the 150 ms accumulator, DEAD_MS the latched key's own
+                // timestamp, and dlgflags bit 0x80 means a key is latched but not yet published. Without them the
+                // only symptom is a 15 s silence.
+                const DWORD t = GetTickCount();
+                if (t - g_type_diag_ms > 2000) {
+                    g_type_diag_ms = t;
+                    ui_log("; [script]   type waiting: ring r=%u w=%u | pump now=%u next=%u dead=%u "
+                           "dlgflags=%02x/%02x published sc=%u ch=%u",
+                           *(volatile uint32_t *)KREADIDX, *(volatile uint32_t *)KWRITEIDX,
+                           *(volatile uint32_t *)mh::addr::_G_LLM_UI_MENU_NOW_MS,
+                           *(volatile uint32_t *)mh::addr::_G_LLM_UI_MODAL_STEP_NEXT_MS,
+                           *(volatile uint32_t *)mh::addr::_G_LLM_UI_MODAL_STEP_DEADLINE_MS,
+                           *(volatile uint8_t *)mh::addr::_G_LLM_DLG_STATE_FLAGS,
+                           *(volatile uint8_t *)(mh::addr::_G_LLM_DLG_STATE_FLAGS + 1),
+                           *(volatile uint32_t *)mh::addr::_G_LLM_UI_MODAL_KEY_SCANCODE,
+                           *(volatile uint16_t *)mh::addr::_G_LLM_UI_MODAL_KEY_ASCII);
+                }
+                return CLICK_RETRY;
+            }
+            if (g_type_pushed) { // the ring drained -> that character has been translated
+                ++g_type_i;
+                g_type_pushed   = false;
+                g_type_progress = GetTickCount();
+            }
+            if (g_type_i >= g_type_n) {
+                apply_mod_state(0);
+                ui_log("; [script] type '%s': %d character(s) delivered", s->text, g_type_n);
+                g_type_step = -1;
+                return CLICK_OK;
+            }
+            const TypeChar &t = g_type[g_type_i];
+            apply_mod_state(t.sh);
+            enqueue_key(t.sc, true);
+            enqueue_key(t.sc, false);
+            g_type_pushed = true;
+            ui_log("; [script] type #%d/%d U+%04X -> sc=0x%02x vk=0x%02x sh=%u | layout byte 0x%02x, "
+                   "game ToAscii byte 0x%02x%s",
+                   g_type_i + 1, g_type_n, (unsigned)t.wc, t.sc, t.vk, t.sh, t.native, t.acp,
+                   (t.native != t.acp)
+                       ? "  <-- CODEPAGE GAP: the layout resolves it, the game's ToAscii (CP_ACP) does "
+                         "not -- this is F3, not a harness fault"
+                       : "");
+            return CLICK_RETRY;
+        }
+        case OP_A_LAYOUT:
+            if (!set_layout(s->text)) return CLICK_ABSENT;
+            break;
+        case OP_A_KEYJOURNAL: {
+            if (lstrcmpiA(s->text, "mark") == 0) {
+                if (g_keyj_nseg >= KEYJ_SEGS) {
+                    ui_log("; [script] keyjournal: too many segments (max %d)", KEYJ_SEGS);
+                    return CLICK_ABSENT;
+                }
+                g_keyj_seg[g_keyj_nseg++] = g_keyj_n;
+                ui_log("; [script] keyjournal mark #%d at event %d", g_keyj_nseg, g_keyj_n);
+                break;
+            }
+            if (lstrcmpiA(s->text, "same") != 0) {
+                ui_log("; [script] keyjournal: unknown sub-verb '%s' (want `mark` or `same`)", s->text);
+                return CLICK_ABSENT;
+            }
+            if (g_keyj_nseg < 2) {
+                ui_log("; [script] keyjournal same: needs TWO `keyjournal mark` segments, have %d",
+                       g_keyj_nseg);
+                return CLICK_ABSENT;
+            }
+            const int a0 = g_keyj_seg[g_keyj_nseg - 2], a1 = g_keyj_seg[g_keyj_nseg - 1];
+            const int b0 = a1, b1 = g_keyj_n;
+            log_keyj("A", a0, a1);
+            log_keyj("B", b0, b1);
+            if (a1 - a0 != b1 - b0) {
+                ui_log("; [script] keyjournal same: LENGTHS DIFFER (%d vs %d)", a1 - a0, b1 - b0);
+                return CLICK_ABSENT;
+            }
+            for (int i = 0; i < a1 - a0; ++i) {
+                if (g_keyj[a0 + i].scancode == g_keyj[b0 + i].scancode &&
+                    g_keyj[a0 + i].event_type == g_keyj[b0 + i].event_type)
+                    continue;
+                ui_log("; [script] keyjournal same: MISMATCH at event %d -- A %02x/%03x vs B %02x/%03x", i,
+                       g_keyj[a0 + i].scancode, g_keyj[a0 + i].event_type, g_keyj[b0 + i].scancode,
+                       g_keyj[b0 + i].event_type);
+                return CLICK_ABSENT;
+            }
+            ui_log("; [script] keyjournal same: IDENTICAL (%d events, byte for byte)", a1 - a0);
+            break;
+        }
         case OP_A_CAPTURE:
             MH_Capture_Shot(s->text);
             break;
@@ -1563,6 +2465,11 @@ void script_tick() {
             // Dump the active screen on ANY wait timeout. A timeout that does not say what was on screen
             // sends you to a live debugger to answer a question the run already knew -- and by then the
             // frame is gone. This is the same dump `dump_screens=1` produces, spent only where it pays.
+            // A `field` timeout is answered by the bytes themselves -- "expected these, the buffer
+            // holds those" is the whole diagnosis, and for text the fonts cannot draw it is also the
+            // only one a capture could never give.
+            if (s->op == OP_W_FIELD) log_field(s->a);
+            if (s->op == OP_W_WMSG) log_wmsg();
             if (s->op == OP_W_SETTLED && g_settle_seen)
                 ui_log("; [script]   lobby geom at x=%d: frame_x=%d right_x=%d | at x=%d: frame_x=%d right_x=%d",
                        g_settle_minx, g_settle_fx_min, g_settle_rx_min, g_settle_maxx, g_settle_fx_max,
@@ -1588,10 +2495,29 @@ void script_tick() {
             // The target is on screen but still greyed -- a TIMING condition, so wait for it exactly
             // as a wait op would, under the same frame watchdog. This is the D15 fix: a ~400 ms
             // disabled window after a screen transition no longer kills the run.
-            if (++g_wait > g_timeout) {
-                ui_log("; [script] TIMEOUT at step %d after %d frames (%u.%03us) -- ABORT: %s "
-                       "(target present but never became clickable)",
-                       g_cur, g_wait, step_ms / 1000, step_ms % 1000, s->raw);
+            //
+            // `type` IS BUDGETED IN WALL CLOCK, NOT FRAMES, and that is deliberate. Its pace is set
+            // by llm_ui_modal_key_pump's 150 ms fixed-step accumulator -- a wall-clock quantity --
+            // while the frame budget is denominated in presents, which headless runs at a rate two
+            // orders of magnitude off a visible one. A frame budget would therefore mean a different
+            // number of characters on every lane. Measured FROM PROGRESS (the last character
+            // actually consumed), the same origin fix the `S` barrier's escape hatch needed: a
+            // string that is still being typed keeps its budget however slowly it types, and only a
+            // run where nothing is moving spends it.
+            ++g_wait;
+            const bool type_stalled = (s->op == OP_A_TYPE) &&
+                                      (int)(GetTickCount() - g_type_progress) > g_type_stall_ms;
+            if (s->op == OP_A_TYPE ? type_stalled : (g_wait > g_timeout)) {
+                ui_log("; [script] TIMEOUT at step %d after %d frames (%u.%03us) -- ABORT: %s (%s)",
+                       g_cur, g_wait, step_ms / 1000, step_ms % 1000, s->raw,
+                       s->op == OP_A_TYPE ? "the key ring stopped draining -- is the text field "
+                                            "focused? a menu field only accepts keys once clicked"
+                                          : "target present but never became clickable");
+                if (s->op == OP_A_TYPE)
+                    ui_log("; [script]   type stalled at character %d/%d (sc=0x%02x), ring read=%u "
+                           "write=%u",
+                           g_type_i + 1, g_type_n, g_type_i < g_type_n ? g_type[g_type_i].sc : 0,
+                           *(volatile uint32_t *)KREADIDX, *(volatile uint32_t *)KWRITEIDX);
                 ui_log("; [script]   active screen at timeout:");
                 MH_UIDrive_DumpWidgets();
                 g_script_done = true;
@@ -1620,6 +2546,9 @@ extern "C" void MH_UIDrive_OnPresent(void) {
     // UI-REC: before the g_enabled gate too. A journal replay has [uitest] OFF -- there is no script
     // -- and it is exactly the caller that needs this sampled every present.
     screen_settle_tick();
+    // U25 step 1, unconditional and one-shot: the first present is the earliest point that is
+    // provably after the game's own DirectInput init, so this is where the answer is readable.
+    log_di_keyboard_once();
     if (g_mouse_trace) trace_mouse_ring();
 
     // Hotkeys (interactive testing): F7 = dump active list, F8 = click the configured target.
@@ -1636,7 +2565,13 @@ extern "C" void MH_UIDrive_OnPresent(void) {
 
     // Script mode ([uitest] script=FILE) takes precedence over the single-target auto-click.
     if (g_script_on) {
+        const bool was_done = g_script_done;
         script_tick();
+        // RESTORE THE KEYBOARD LAYOUT ON EVERY EXIT PATH, not just a clean `end`. There are five
+        // ways a script finishes (end, running off the last step, a wait TIMEOUT, an action ABORT, a
+        // predicate's own refusal) and a `layout 00000419` left behind by any of them would be a
+        // side effect on the machine that outlives the run. One place, checked once per present.
+        if (g_script_done && !was_done) restore_layout();
         return;
     }
 
@@ -1692,6 +2627,9 @@ extern "C" int MH_UIDrive_Install(void) {
     if (g_settle_ms < 0) g_settle_ms = 0;
     g_dump_screens = GetPrivateProfileIntA("uitest", "dump_screens", 0, ini) != 0;
     g_timeout      = GetPrivateProfileIntA("uitest", "timeout_frames", 1500, ini);
+    // `type`'s stall budget, in MILLISECONDS since the last character was consumed -- see the
+    // script_tick comment for why this one op is not budgeted in frames.
+    g_type_stall_ms = GetPrivateProfileIntA("uitest", "type_stall_ms", 15000, ini);
 
     // Script mode: [uitest] script=<file> (relative to the exe dir). Loaded once here.
     char scriptname[64];

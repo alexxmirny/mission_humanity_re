@@ -16,6 +16,7 @@
 #include <stdlib.h> // strtoul ([trace] funcs= parse)
 
 #include "net_internal.h"
+#include "include/mh_log_rotate.h" // SES2: the shared size cap + one-generation ".prev.log" rotation
 #include "addr/mh_addrs.gen.h"
 #include "state/region_runtime.h" // SB-HOSTFREE: live_base/ptr -- a movable region is read
                                   // where it IS, not where the binary put it
@@ -95,11 +96,13 @@ struct TraceEnt {
     volatile LONG count;
     int           tev_id;
 };
-TraceEnt g_trace[TRACE_MAX];
-void    *g_ttramp[TRACE_MAX];
-char     g_trace_path[MAX_PATH];
+TraceEnt      g_trace[TRACE_MAX];
+void         *g_ttramp[TRACE_MAX];
+char          g_trace_path[MAX_PATH];
+unsigned long g_trace_gen = 0; // SES1: per-SESSION -- a traced call belongs to the match it fired in
 
 void trace_log(const char *s) {
+    mh_run_path(g_trace_path, MAX_PATH, "%smh_trace.log", &g_trace_gen);
     HANDLE h = CreateFileA(g_trace_path, FILE_APPEND_DATA, FILE_SHARE_READ | FILE_SHARE_WRITE,
                            nullptr, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
     if (h == INVALID_HANDLE_VALUE) return;
@@ -382,8 +385,20 @@ void temporal_capture(int id) {
     g_tev_n++;
 }
 
+unsigned long g_tev_gen = 0; // SES1: the run-directory generation g_tev_path was composed for
+
 void temporal_flush() {
     if (!g_temporal) return;
+    // SES1: a session boundary re-points the path; the OPEN handle must go with it. Closing here and
+    // letting the block below reopen also re-writes the column header into the new file, which is
+    // what makes a session directory's mh_temporal.log readable on its own. g_tev_bytes restarts, so
+    // the rotation cap applies per session rather than carrying a previous match's size across.
+    if (mh_run_path(g_tev_path, MAX_PATH, "%smh_temporal.log", &g_tev_gen) &&
+        g_tev_h != INVALID_HANDLE_VALUE) {
+        CloseHandle(g_tev_h);
+        g_tev_h     = INVALID_HANDLE_VALUE;
+        g_tev_bytes = 0;
+    }
     if (g_tev_h == INVALID_HANDLE_VALUE) {
         g_tev_h = CreateFileA(g_tev_path, FILE_APPEND_DATA, FILE_SHARE_READ | FILE_SHARE_WRITE,
                               nullptr, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
@@ -402,11 +417,10 @@ void temporal_flush() {
     if (g_tev_max_bytes > 0 && g_tev_bytes >= g_tev_max_bytes) {
         CloseHandle(g_tev_h);
         g_tev_h = INVALID_HANDLE_VALUE;
-        char prev[MAX_PATH];
-        lstrcpynA(prev, g_tev_path, MAX_PATH);
-        int n = lstrlenA(prev);
-        if (n > 4) lstrcpyA(prev + n - 4, ".prev.log"); // "...mh_temporal.log" -> "...mh_temporal.prev.log"
-        MoveFileExA(g_tev_path, prev, MOVEFILE_REPLACE_EXISTING);
+        // SES2: the ".log" -> ".prev.log" derivation is mh_log_rotate.h's, shared with mh_net.log's
+        // cap. It used to be four lines here and was the only copy; a second stream rotating meant a
+        // second spelling of a name the tools glob, so it moved rather than being duplicated.
+        mh_log_rotate(g_tev_path);
         g_tev_bytes = 0;
         return; // this batch lands in the fresh file on the next flush
     }
@@ -461,14 +475,11 @@ int temporal_configure() {
     // Report it, because "armed" and "recording" were indistinguishable before: with the mode gate
     // shut, the trace logged `temporal=1`, created the file and wrote its header, and emitted nothing.
     if (temporal && g_temporal_sp) seam_log("; [trace] temporal_sp=1 -- recording OUTSIDE SESSION_MODE 3\n");
-    g_tev_max_bytes = (long long)GetPrivateProfileIntA("trace", "temporal_max_mb", 64, g_ini) * 1024 * 1024;
+    // SES2: same MB->bytes derivation (and the same "0 = uncapped") as mh_net.log's [net] log_max_mb.
+    g_tev_max_bytes = mh_log_cap_bytes(g_ini, "trace", "temporal_max_mb", 64);
     if (temporal) {
         QueryPerformanceFrequency(&g_qpc_freq);
-        lstrcpynA(g_tev_path, g_log, MAX_PATH); // mh_temporal.log next to mh_net.log
-        char *slash = g_tev_path;
-        for (char *p = g_tev_path; *p; ++p)
-            if (*p == '\\' || *p == '/') slash = p;
-        lstrcpyA(slash + 1, "mh_temporal.log");
+        // The path itself is (re)composed by temporal_flush's mh_run_path -- SES1 made it per session.
     }
     return temporal;
 }
@@ -669,11 +680,14 @@ void install_exit_witness() {
 void gm_logger_configure() {
     g_gm_log = GetPrivateProfileIntA("net", "log_gamemode", 0, g_ini);
     if (g_gm_log) {
-        lstrcpynA(g_gm_path, g_log, MAX_PATH); // g_log = "...\mh_net.log" (run folder)
-        char *slash = g_gm_path;
-        for (char *p = g_gm_path; *p; ++p)
-            if (*p == '\\' || *p == '/') slash = p;
-        lstrcpyA(slash + 1, "mh_gamemode.log");
+        // SES1: PROCESS-scoped, and this is the one stream where that is a safety call rather than a
+        // classification. Its writer is a VECTORED EXCEPTION HANDLER on a DR0 data breakpoint -- it
+        // runs inside the trap, on the frame thread, with a handle opened once at arm. Swapping that
+        // handle at a session boundary would put a CreateFile/CloseHandle pair inside an exception
+        // path for a debug knob that ships OFF (`[net] log_gamemode=0`). The lines carry clk_ms, and
+        // the session's own logs carry the same clock, so correlating across the two costs nothing.
+        unsigned long gen = 0;
+        mh_proc_path(g_gm_path, MAX_PATH, "%smh_gamemode.log", &gen);
     }
 }
 
@@ -693,12 +707,7 @@ void install_trace_hooks() {
     char list[512];
     GetPrivateProfileStringA("trace", "funcs", "", list, sizeof(list), g_ini);
     if (!list[0]) return;
-    lstrcpynA(g_trace_path, g_log, MAX_PATH); // mh_trace.log next to mh_net.log
-    char *slash = g_trace_path;
-    for (char *p = g_trace_path; *p; ++p)
-        if (*p == '\\' || *p == '/') slash = p;
-    lstrcpyA(slash + 1, "mh_trace.log");
-    trace_log("; ==== function-entry trace armed ====\n");
+    trace_log("; ==== function-entry trace armed ====\n"); // composes g_trace_path (SES1: per session)
     char *ctx = nullptr;
     // [trace] funcs= VAs are authored EN-canonical (like every ADDR_* in this stack since the EN-only
     // refactor). The tev-id / known-name lookups key on the same EN VA.

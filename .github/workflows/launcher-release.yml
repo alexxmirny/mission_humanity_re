@@ -1,0 +1,358 @@
+# LAUNCHER RELEASE -- build the per-user launcher with a static CRT, and hand its exe to the same
+# tagged GitHub Release that .github/workflows/release.yml publishes the three game zips into.
+#
+# WHAT IT DOES. A pushed tag `vMAJOR.MINOR.PATCH[-rcN]` (the SAME tag convention release.yml reads --
+# see that file's header) builds `mh_launcher` for `x86_64-pc-windows-msvc` with
+# `RUSTFLAGS=-C target-feature=+crt-static` (dist LA1 finding #2: the default build imports
+# VCRUNTIME140.dll, which a per-user installer with no admin rights and no bundled redistributable
+# cannot rely on being present) and `MH_UPDATE_BASE_URL` baked in via `option_env!` (the Pages base
+# URL `manifest.json` will be published to -- see src/launcher/src/update.rs `DEFAULT_BASE_URL`),
+# runs `cargo fmt --check` / `cargo clippy -D warnings` / `cargo test` over the workspace, verifies
+# the static-CRT claim against the built binary's own import table (no VCRUNTIME*/MSVCP*/
+# api-ms-win-crt-* DLL), and -- on a tag push only -- uploads `mh_launcher-<version>.exe` to that
+# tag's GitHub Release. A `workflow_dispatch` run does everything except the upload, exactly the
+# dry-run shape release.yml uses.
+#
+# WHY A SECOND WORKFLOW FILE RATHER THAN A THIRD JOB IN release.yml. release.yml already explains
+# ("DUPLICATION WITH ci.yml IS DELIBERATE") why the game's own build+gate is copied rather than
+# shared: the two files are read by different people at different moments, and a change made for one
+# would otherwise silently change the other's gate. The same argument holds one level up between the
+# GAME pipeline (MSBuild, C++, ~20 minutes wall) and the LAUNCHER pipeline (cargo, Rust, a few
+# minutes) -- they have no build step in common, dist LA3's own tracker row still asks for this file
+# by name, and a Rust compile failure should not have to wait behind (or be reported inside) a
+# 35-minute Windows C++ job. What genuinely IS shared -- the manifest that ties the two together --
+# lives in release.yml instead (see that file's `publish` job): it is the one place that already
+# holds the game zips' SHA256SUMS, and it is where dist LA3's tracker row says the manifest step
+# belongs ("the manifest generation step added to release.yml").
+#
+# THE ORDERING PROBLEM, AND HOW THIS FILE ANSWERS IT. Both workflows trigger off the SAME tag push
+# and start at the same moment, but the launcher build finishes in minutes while the game's
+# build+gate+package takes tens of minutes -- so by the time release.yml's `publish` job is ready to
+# read this file's exe, that exe usually does not exist as a release asset yet. Two designs were
+# considered:
+#
+#   (a) CROSS-WORKFLOW ARTIFACT DOWNLOAD (release.yml pulls this workflow's `actions/upload-artifact`
+#       output by run id). Avoids any waiting here, but it moves the coordination problem into
+#       release.yml instead of solving it -- release.yml would have to locate the matching run
+#       (`gh run list --workflow=launcher-release.yml --commit <sha>`), and MIGHT be reading a run
+#       that has not started, is still building, or does not exist for this commit at all if this
+#       file's trigger conditions ever drift from release.yml's.
+#   (b) THIS FILE WAITS FOR THE RELEASE, THEN PUBLISHES ITS OWN ASSET (chosen). The dependency is
+#       stated where it is easiest to reason about: THIS job knows it is racing release.yml, so IT
+#       polls `gh release view <tag>` until the release exists (bounded at this job's own
+#       `timeout-minutes`, which is set comfortably above release.yml's 35-minute build-and-gate (+ its parallel selftests job)
+#       budget) and then uploads directly with `gh release upload`. release.yml's own new step
+#       (see its `publish` job) mirrors this with a short poll of its own for the launcher asset,
+#       so the two files do not have to agree on a shared clock -- each waits for the ONE thing it
+#       is missing and then proceeds. This is also what dist LA3's tracker row asks for verbatim:
+#       "`gh release upload` under `contents: write`" IN THIS FILE, not a passive artifact.
+#
+# NO THIRD-PARTY RELEASE ACTION, for the same reason release.yml gives: `gh` is preinstalled on the
+# runner and `GH_TOKEN` is the job's own token, so the one step in this file that can write to a
+# release runs code from the runner image and from here, and from nowhere else.
+#
+# THE TAG CONVENTION is release.yml's, not repeated here beyond what this file needs: a lightweight
+# tag or a missing MhVersion-shaped name is release.yml's problem to refuse (it does, loudly, before
+# `publish` runs) -- this file only strips the leading `v` the same way, for the version string that
+# reaches Cargo (`CARGO_PKG_VERSION` is `0.0.0` from the workspace default; the SHIPPED file name and
+# the manifest's `launcher.version` come from this workflow's own `stamp` step instead, exactly the
+# way release.yml stamps MhVersion into the C++ side rather than trusting a source-controlled number).
+
+name: launcher-release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  # The Pages base URL manifest.json is published to (release.yml's new `publish-pages` job). A
+  # REPOSITORY VARIABLE, not a literal here, for the same reason update.rs's own comment gives: this
+  # tree carries no publisher identity (lint_machine_paths), so the one place the Pages URL is
+  # spelled out is GitHub's own repository settings, not a tracked file. Read at BUILD time via
+  # `option_env!("MH_UPDATE_BASE_URL")` -- see src/launcher/src/update.rs.
+  MH_UPDATE_BASE_URL: ${{ vars.MH_UPDATE_BASE_URL }}
+
+  # ---- dist RP1: the report collector, baked the same way and for the same reason -------------
+  # Four values, read by `option_env!` in src/launcher/src/upload.rs. A build given NONE of them
+  # still builds and still works -- it can assemble a report zip and cannot send one, which is what
+  # a local `cargo build` should do; the Report view says so instead of offering a button.
+  #
+  # WHY EACH IS HERE RATHER THAN IN THE TREE, and why they are not one value:
+  #   * MH_REPORT_URL       the collector's base URL. A repository VARIABLE, not a secret: it is an
+  #                         address, and this tree may not carry one (lint_machine_paths).
+  #   * MH_REPORT_TOKEN     the WRITE-ONLY report token (a repository SECRET). It can submit a
+  #                         report and nothing else -- it cannot list, read or delete one -- which
+  #                         is what makes baking it into a public binary acceptable, in the
+  #                         Sentry-DSN sense plan decision D13 names. Rotating it is a new secret
+  #                         plus a new launcher release.
+  #   * MH_REPORT_CA_PEM    the collector's LOCAL ROOT CA certificate, PEM. There is no domain yet,
+  #                         so Caddy serves `tls internal` and no public CA vouches for it; the
+  #                         launcher therefore trusts exactly this one root and nothing else. It
+  #                         must be the ROOT, not the leaf: Caddy re-issues the leaf every ~12h and
+  #                         the intermediate every 7 days, each with a fresh key (measured on the
+  #                         live edge, 2026-09-18), while the root is good for ten years. Export it
+  #                         on the VPS with:
+  #                           docker exec mh-caddy cat /data/caddy/pki/authorities/local/root.crt
+  #                         A repository variable -- a public certificate is not a secret. Newlines
+  #                         survive either shape: upload.rs restores a value flattened to `\n`.
+  #   * MH_REPORT_SPKI_PIN  SHA-256 of that root's SubjectPublicKeyInfo, hex -- the REVIEWED
+  #                         constant. upload.rs hashes the baked certificate and refuses to open a
+  #                         socket unless the two agree, so a mis-fetched or silently re-keyed CA
+  #                         fails closed rather than being trusted. Compute it with:
+  #                           openssl x509 -in root.crt -pubkey -noout \
+  #                             | openssl pkey -pubin -outform der | openssl dgst -sha256
+  #
+  # NOT gated by a "must be set on a tag" step the way MH_UPDATE_BASE_URL is below: an update source
+  # is load-bearing for every player, while a launcher that cannot upload still builds the report
+  # and says where it is. Set these when released builds are meant to reach the collector.
+  MH_REPORT_URL: ${{ vars.MH_REPORT_URL }}
+  MH_REPORT_TOKEN: ${{ secrets.MH_REPORT_TOKEN }}
+  MH_REPORT_CA_PEM: ${{ vars.MH_REPORT_CA_PEM }}
+  MH_REPORT_SPKI_PIN: ${{ vars.MH_REPORT_SPKI_PIN }}
+
+jobs:
+  build-and-test:
+    name: build (release, static CRT) + fmt + clippy + test
+    # x86_64-pc-windows-msvc is the launcher's only target (dist LA1: a 64-bit process launches the
+    # 32-bit game; there is no reason to build an i686 launcher). windows-2022, matching release.yml
+    # and ci.yml's pin, so the MSVC linker this links against is the one the rest of the gate is
+    # measured on -- Rust's toolchain does not care which VS year is installed the way clang-format
+    # does, but there is no reason to diverge the runner image for one job.
+    runs-on: windows-2022
+    # 35, not 20: the first real run (2026-09-18) finished every step at 19.6 minutes and the
+    # budget then cancelled the rust-cache save, so the next run would have paid the cold build again.
+    timeout-minutes: 35
+    outputs:
+      version: ${{ steps.stamp.outputs.version }}
+      exe_name: ${{ steps.stamp.outputs.exe_name }}
+    steps:
+      - uses: actions/checkout@v6
+
+      # `@stable` + the two components, the same shape images.yml uses. The first tagged run
+      # (v0.1.0-rc1, 2026-09-18) proved the earlier `@master` form wrong: on the `master` branch
+      # the action REQUIRES a `toolchain:` input ("'toolchain' is a required input") and reads
+      # nothing from rust-toolchain.toml itself. The toolchain file still governs: rustup honours
+      # it on every cargo invocation inside this tree, and it names the same stable channel, so
+      # the dev box and this job resolve to one answer (dist plan decision D20). The components
+      # are repeated here because the action installs them, not rustup-on-first-use.
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      # Keyed on the lockfile + the toolchain, scoped to this crate's own target dir so a change to
+      # src/relay's dependencies cannot invalidate the launcher's cache (Swatinem/rust-cache reads
+      # workspaces natively; `workspaces: src/launcher -> target` pins the cache to this member).
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: "src/launcher -> target"
+
+      - name: derive the version and the shipped file name
+        id: stamp
+        shell: pwsh
+        run: |
+          # THE ONE PLACE THE LAUNCHER'S OWN VERSION IS DECIDED, mirroring release.yml's `stamp` step
+          # for the game: the workspace Cargo.toml pins version = "0.0.0" (dist LA2's own comment: "the
+          # launcher's real version will be the one the release manifest advertises"), so a tag push is
+          # what actually names a release, never a source-controlled number.
+          $ref = "${{ github.ref }}"
+          if ($ref.StartsWith("refs/tags/")) {
+            $tag = $ref.Substring("refs/tags/".Length)
+            $version = $tag -replace '^v', ''
+            if ($version -notmatch '^\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$') {
+              throw "tag '$tag' is not vMAJOR.MINOR.PATCH[-suffix]; see release.yml's header"
+            }
+          } else {
+            $tag = ""
+            $version = "0.0.0-dev"
+          }
+          "tag=$tag"                                  >> $env:GITHUB_OUTPUT
+          "version=$version"                           >> $env:GITHUB_OUTPUT
+          "exe_name=mh_launcher-$version.exe"          >> $env:GITHUB_OUTPUT
+          Write-Host "tag='$tag' version=$version"
+
+      - name: a tag release needs MH_UPDATE_BASE_URL, or the shipped exe has no update source
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
+        run: |
+          # NOT a build failure the compiler would catch: option_env!() with no value compiles to an
+          # EMPTY string, and update::check() then refuses every run with "NO UPDATE SOURCE" -- a
+          # launcher that quietly never checks for updates. A workflow_dispatch dry run is exempt
+          # (it publishes nothing and exists to prove the build itself, per this file's own header).
+          if ("${{ env.MH_UPDATE_BASE_URL }}" -eq "") {
+            throw "MH_UPDATE_BASE_URL repository variable is unset -- a tagged launcher build with " +
+                  "no update source is a release nobody can update. Set it (Settings -> Secrets and " +
+                  "variables -> Actions -> Variables) to the Pages base URL, e.g. " +
+                  "https://<owner>.github.io/<repo>, then re-run."
+          }
+
+      - name: cargo fmt --check
+        shell: pwsh
+        run: cargo fmt --all --check
+
+      - name: cargo clippy -D warnings
+        shell: pwsh
+        # --workspace, matching tools/lint_rust.py exactly (the same command lint_repo.py runs) --
+        # this also lints src/relay, which is deliberate: one Rust lint definition, not two that can
+        # drift. --all-targets so the mh_exit_probe fixture bin and the #[cfg(test)] modules are
+        # covered too.
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+      - name: build (release, static CRT)
+        shell: pwsh
+        env:
+          # dist LA1 finding #2. On the MSVC target this statically links the CRT (the /MT
+          # equivalent) instead of the default dynamic one, so the shipped exe imports no
+          # VCRUNTIME140.dll and no api-ms-win-crt-*.dll -- a per-user install with no admin rights
+          # cannot lean on the VC++ Redistributable being present, and this project ships none.
+          RUSTFLAGS: "-C target-feature=+crt-static"
+          # THE VERSION STAMP (src/launcher/src/version.rs): the tag, stripped of its `v`, read by
+          # option_env! at compile time. v0.1.0-rc2 shipped an exe that answered `mh_launcher 0.0.0
+          # ok` because nothing set this; the step after the import-table check now refuses that.
+          MH_LAUNCHER_VERSION: ${{ steps.stamp.outputs.version }}
+        run: cargo build --release -p mh_launcher --target x86_64-pc-windows-msvc --bin mh_launcher
+        # NOT --bin mh_exit_probe: that fixture is for the acceptance run (dist LA1), never a
+        # release asset, and building it under the same static-CRT RUSTFLAGS costs a few seconds for
+        # nothing this workflow reads.
+
+      - name: cargo test
+        shell: pwsh
+        # DEV PROFILE, DELIBERATELY -- neither --release nor a RUSTFLAGS override: the unit tests
+        # (dist LA2's update:: module in particular, which signs and verifies fixtures against the
+        # compiled-in PUBLIC_KEY) do not need the static CRT or the release job's `lto = true` /
+        # `codegen-units = 1` profile (measured locally: a dev-profile test compile is ~11s against
+        # several minutes for the release profile this crate's [profile.release] configures), and
+        # neither property is anything the test suite asserts.
+        run: cargo test -p mh_launcher --bin mh_launcher
+
+      - name: the static CRT claim, checked against the binary's own import table
+        shell: pwsh
+        run: |
+          python -m pip install --quiet --upgrade pip
+          python -m pip install --quiet -r tools/requirements.txt
+          $exe = "target\x86_64-pc-windows-msvc\release\mh_launcher.exe"
+          # A TEMP .py FILE, NOT `python -c` WITH AN INLINE HERE-STRING: PowerShell's `@"..."@`
+          # preserves this step's own YAML/script indentation verbatim, and Python raises
+          # `IndentationError: unexpected indent` the moment its FIRST top-level line is not at
+          # column 0 -- a trap easy to reintroduce if this check is ever inlined again.
+          $checkPy = @'
+          import lief, sys
+
+          exe = sys.argv[1]
+          b = lief.parse(exe)
+          if b is None:
+              sys.exit("lief could not parse %r as a PE" % exe)
+          imports = sorted(i.name for i in b.imports)
+          print("imported DLLs:", imports)
+          bad = [n for n in imports if n.upper().startswith(("VCRUNTIME", "MSVCP", "API-MS-WIN-CRT"))]
+          if bad:
+              sys.exit(
+                  "STATIC CRT CLAIM FAILED -- still imports %r (RUSTFLAGS did not take, or a "
+                  "dependency pulled in the dynamic CRT some other way)" % bad
+              )
+          print("static CRT confirmed: no VCRUNTIME*/MSVCP*/api-ms-win-crt-* import")
+          '@
+          # dedent(): the here-string above is indented to match this step's own YAML block, which
+          # would trip the SAME column-0 rule if written straight to disk.
+          $dedented = ($checkPy -split "`n" | ForEach-Object { $_ -replace '^          ', '' }) -join "`n"
+          Set-Content -Path tmp_crt_check.py -Value $dedented -Encoding utf8
+          python tmp_crt_check.py $exe
+          if ($LASTEXITCODE -ne 0) { throw "the static-CRT check failed (see above)" }
+          Remove-Item tmp_crt_check.py -Force
+
+      - name: the shipped exe reports the tag's version (the self-update comparison depends on it)
+        shell: pwsh
+        run: |
+          $want = "${{ steps.stamp.outputs.version }}"
+          # NOT `$said = & exe`: the launcher is a GUI-subsystem exe, PowerShell does not wait for one
+          # and closes the pipe under it (the first run of this step: 'failed printing to stdout: The
+          # pipe is being closed'). Start-Process -Wait with a redirected stdout is how the launcher's
+          # own health gate reads a candidate (update.rs health_gate: a piped Command, waited on).
+          $proc = Start-Process -FilePath target\x86_64-pc-windows-msvc\release\mh_launcher.exe -ArgumentList '--verify-binary' `
+            -Wait -NoNewWindow -PassThru -RedirectStandardOutput verify.txt
+          $said = (Get-Content verify.txt -Raw).Trim()
+          if ($proc.ExitCode -ne 0) { throw "--verify-binary exit $($proc.ExitCode): $said" }
+          Write-Host "exe says: $said"
+          if ($said -ne "mh_launcher $want ok") {
+            throw "the built exe reports '$said', not 'mh_launcher $want ok' -- the MH_LAUNCHER_VERSION " +
+                  "stamp did not reach the build (src/launcher/src/version.rs). Refusing to ship an exe " +
+                  "whose self-update comparison can never settle."
+          }
+
+      - name: rename to the shipped file name and stage it
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force dist | Out-Null
+          Copy-Item "target\x86_64-pc-windows-msvc\release\mh_launcher.exe" "dist\${{ steps.stamp.outputs.exe_name }}"
+          (Get-Item "dist\${{ steps.stamp.outputs.exe_name }}").Length | ForEach-Object { Write-Host "dist\${{ steps.stamp.outputs.exe_name }}: $_ B" }
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: launcher-${{ steps.stamp.outputs.version }}
+          path: dist/${{ steps.stamp.outputs.exe_name }}
+          if-no-files-found: error
+          retention-days: 14
+
+  publish:
+    name: publish the launcher exe to the tag's GitHub Release
+    needs: build-and-test
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: windows-2022
+    # Generous on purpose -- see this file's header, "THE ORDERING PROBLEM". release.yml's own
+    # build-and-gate job is timeout-minutes: 45 and its publish job 40 (the selftests run as two parallel
+    # jobs); 95 covers the two in series plus margin rather than racing them exactly (v0.1.0-rc1 measured
+    # the old 35 + 70 as too tight, 2026-09-18).
+    timeout-minutes: 95
+    permissions:
+      # THE ONLY WRITE SCOPE IN THIS FILE, on the job that does nothing but poll and call `gh`.
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: launcher-${{ needs.build-and-test.outputs.version }}
+          path: dist
+
+      - name: wait for release.yml to create this tag's Release, then upload the launcher exe
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          # THIS JOB HAS NO CHECKOUT (it needs only the artifact), so `gh` has no git remote to infer
+          # the repository from and every `gh release ...` call below fails before it reaches the
+          # network. v0.1.0-rc2 (2026-09-18) sat in this poll for the whole window with the Release
+          # already published; the exe was attached by hand from the run artifact. GH_REPO is how
+          # gh takes the repository without a checkout.
+          GH_REPO: ${{ github.repository }}
+        run: |
+          $tag = "${{ github.ref_name }}"
+          $exe = "dist\${{ needs.build-and-test.outputs.exe_name }}"
+          if (-not (Test-Path $exe)) { throw "no $exe in the downloaded artifact" }
+
+          # POLL, DO NOT RACE. release.yml's `publish` job needs its own ~20 minute build-and-gate and the parallel selftests job
+          # to finish first (this file's header explains why the two workflows are not made to
+          # depend on each other any more tightly than this). 5-minute-old failures are logged, not
+          # thrown, because "the release does not exist YET" and "the release will never exist" look
+          # identical from here until the deadline -- `timeout-minutes: 95` above is the actual
+          # refusal.
+          $deadline = (Get-Date).AddMinutes(90)
+          $found = $false
+          while ((Get-Date) -lt $deadline) {
+            & gh release view $tag --json name | Out-Null
+            if ($LASTEXITCODE -eq 0) { $found = $true; break }
+            Write-Host "release.yml has not published $tag yet -- waiting (checked $(Get-Date -Format o))"
+            Start-Sleep -Seconds 30
+          }
+          if (-not $found) {
+            throw "$tag never appeared as a GitHub Release within 90 minutes -- either release.yml " +
+                  "failed its own gate (nothing to attach the launcher to) or it is still running " +
+                  "past its own 45 + 40 minute budgets. Check the release workflow's run before re-running " +
+                  "this one; re-running this job alone will not create the release."
+          }
+
+          Write-Host "uploading $exe to $tag"
+          & gh release upload $tag $exe --clobber
+          if ($LASTEXITCODE -ne 0) { throw "gh release upload exit $LASTEXITCODE" }
+          Write-Host "published $exe to $tag"

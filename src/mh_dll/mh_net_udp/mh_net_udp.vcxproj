@@ -1,0 +1,124 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" ToolsVersion="15.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Debug|Win32">
+      <Configuration>Debug</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|Win32">
+      <Configuration>Release</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="udp_endpoint.cpp" />
+    <ClCompile Include="udp_channel_c.cpp" />
+    <ClCompile Include="udp_snapshot.cpp" />
+    <ClCompile Include="udp_transport.cpp" />
+    <ClCompile Include="udp_punch.cpp" />
+    <ClCompile Include="udp_relay.cpp" />
+    <ClCompile Include="mh_net_udp_dllmain.cpp" />
+    <!-- mh_key.txt is THE SAME FILE for both transports, so its loader is the same TU compiled into
+         both modules rather than a copy. Swapping `[net] transport` must not ask the players to
+         exchange a second secret, and two readers of one key file is how they would end up with
+         two. It is also already in mh_nettest.vcxproj, which is what gives the loopback suite a
+         CSPRNG without linking either transport's exported surface. -->
+    <ClCompile Include="..\mh_net\net_key.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="mh_net_udp.def" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="udp_endpoint.h" />
+    <ClInclude Include="udp_channel_c.h" />
+    <ClInclude Include="udp_snapshot.h" />
+    <ClInclude Include="udp_stats.h" />
+    <ClInclude Include="udp_punch.h" />
+    <ClInclude Include="udp_relay.h" />
+    <ClInclude Include="udp_room.h" />
+  </ItemGroup>
+  <PropertyGroup Label="Globals">
+    <VCProjectVersion>15.0</VCProjectVersion>
+    <ProjectGuid>{5C1D3B27-8E4A-4F60-93B1-7FA258D4E69C}</ProjectGuid>
+    <Keyword>Win32Proj</Keyword>
+    <RootNamespace>mh_net_udp</RootNamespace>
+    <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
+    <ProjectName>mh_net_udp</ProjectName>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">
+    <ConfigurationType>DynamicLibrary</ConfigurationType>
+    <UseDebugLibraries>true</UseDebugLibraries>
+    <PlatformToolset>v143</PlatformToolset>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" Label="Configuration">
+    <ConfigurationType>DynamicLibrary</ConfigurationType>
+    <UseDebugLibraries>false</UseDebugLibraries>
+    <PlatformToolset>v143</PlatformToolset>
+    <!-- WholeProgramOptimization OFF, matching mh_net.vcxproj: a socket-bound module buys nothing
+         measurable from /GL, and it costs a straightforward import table for the subset gate. -->
+    <WholeProgramOptimization>false</WholeProgramOptimization>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <!-- THE BUILD STAMP (tracker TL-CI1). Brings in MhVersion / MhGitSha, the shared VERSIONINFO
+       resource and the MH_VERSION_* defines, so a bug report quoting a log can name this module's
+       build the same way it names the other shipped ones. -->
+  <Import Project="..\mh_version.props" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <LinkIncremental>true</LinkIncremental>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <LinkIncremental>false</LinkIncremental>
+  </PropertyGroup>
+  <ItemDefinitionGroup>
+    <ClCompile>
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <MultiProcessorCompilation>true</MultiProcessorCompilation>
+      <WarningLevel>Level3</WarningLevel>
+      <ConformanceMode>true</ConformanceMode>
+      <LanguageStandard>stdcpp20</LanguageStandard>
+      <PreprocessorDefinitions>WIN32;_WINDOWS;_USRDLL;_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <!-- `include/...` resolves against mh_common exactly as it does in mh.dll, mh_net.dll and the
+           selftest. The CONTRACT headers stay in mh_common/include on purpose: both sides of the
+           boundary compile against them. -->
+      <AdditionalIncludeDirectories>$(ProjectDir)..\mh_common;$(ProjectDir)..\mh_common\include;$(ProjectDir)..\mh_net;$(SolutionDir)..\mh_net_proto\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ClCompile>
+    <Link>
+      <SubSystem>Windows</SubSystem>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <ModuleDefinitionFile>mh_net_udp.def</ModuleDefinitionFile>
+      <!-- mh_net_proto.lib carries T0's packet format, the channel codecs, the connect token and the
+           handshake crypto. It is a STATIC library, so only the objects this module uses come
+           across. Nothing of OURS is linked beyond it: there is no mh.lib here and there must not
+           be, because an import of mh.dll would make this module unloadable without it and the
+           reverse edge is deliberately empty. -->
+      <AdditionalDependencies>$(OutDir)mh_net_proto.lib;kernel32.lib;user32.lib;ws2_32.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <IgnoreAllDefaultLibraries>false</IgnoreAllDefaultLibraries>
+    </Link>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <ClCompile>
+      <Optimization>Disabled</Optimization>
+      <!-- NO RuntimeLibrary OVERRIDE, deliberately, and it mirrors mh_net.vcxproj: mh_net_proto.lib
+           is built /MT in BOTH configurations, and a /MTd link against it mixes two C runtimes. -->
+    </ClCompile>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <ClCompile>
+      <Optimization>MaxSpeed</Optimization>
+      <FunctionLevelLinking>true</FunctionLevelLinking>
+      <IntrinsicFunctions>true</IntrinsicFunctions>
+      <!-- STATIC CRT, matching mh.dll, mh_net.dll and the msvfw32 shim. Two reasons, and the second
+           is the subset rule: a satellite of a 2001 game must not add a redistributable dependency
+           of its own, and a module loaded from inside another module's DllMain must not drag a
+           second DLL in behind it. A dynamic CRT would put VCRUNTIME140/MSVCP140 in this module's
+           import table, which mh.dll does not import, and the loader would then be initialising a
+           fresh DLL under a lock we hold.
+           (An XML comment may not contain a double hyphen, which is why this one has none.) -->
+      <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
+    </ClCompile>
+  </ItemDefinitionGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+</Project>

@@ -256,6 +256,22 @@ GITIGNORE_ROWS = [
         "gitignore path component is exact rather than a prefix.",
     ),
     _keep("src/**/build/", "build", "Out-of-tree build directories."),  # CITATION-OK
+    _keep(
+        "dist/",
+        "build",
+        "The release packager's output tree. tools/release_package.py assembles the three "
+        "drop-in zips and a SHA256SUMS there by default, and release.yml uploads it as a "
+        "workflow artifact; it is regenerable from a built Release tree in one command.",
+    ),
+    _keep(
+        "/target/",
+        "build",
+        "The cargo workspace's build tree (dist DS1). KEPT rather than dropped because the "
+        "workspace itself publishes -- Cargo.toml, Cargo.lock, rust-toolchain.toml and both member "
+        "crates under src/ are in the publish set -- so a public clone that runs `cargo build`, "
+        "which INSTALL.md tells it how to do, creates this directory. Rooted (`/target/`) rather "
+        "than bare so it names the one workspace target dir and not any directory called target.",
+    ),
     _keep("src/**/x64/", "build", "The x64 platform's output tree."),  # CITATION-OK
     _keep("src/**/.vs/", "build", "Visual Studio's per-solution cache under src/."),  # CITATION-OK
     _keep("src/**/*.obj", "build", "MSVC object files."),  # CITATION-OK
@@ -624,6 +640,14 @@ def _write(path, text):
         fh.write(text)
 
 
+def _same(a, b):
+    """Byte-equal after newline normalisation. A hosted Windows runner with core.autocrlf checks
+    .gitignore/.gitattributes out as CRLF while the derivation and the snapshot are LF, and the
+    2026-09-16/18 CI runs failed this row with "differs (0 diff line(s))" -- the line diff was empty
+    because only the line ENDINGS differed. Content is what the gate is about."""
+    return (a or "").replace("\r\n", "\n") == (b or "").replace("\r\n", "\n")
+
+
 def _diff(a, b, label, say):
     import difflib
 
@@ -659,7 +683,7 @@ def check_config(say=print):
             if want is None:
                 say("  missing snapshot tools/data/public_repo_config/%s" % snap)
                 ok = False
-            elif want != have:
+            elif not _same(want, have):
                 ok = False
                 _diff(want, have, which, say)
             else:
@@ -672,7 +696,7 @@ def check_config(say=print):
             if want is None:
                 say("  missing snapshot %s" % os.path.relpath(snap, REPO).replace("\\", "/"))
                 ok = False
-            elif want != text:
+            elif not _same(want, text):
                 ok = False
                 _diff(text, want, which, say)
             else:

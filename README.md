@@ -102,6 +102,7 @@ than running it.
 | [docs/state-boundary.md](docs/state-boundary.md) | who owns which piece of game state, and how a re-implemented module reaches it |
 | [docs/save-format.md](docs/save-format.md) | the save-game format and the block contract |
 | [BNK_FORMAT.md](BNK_FORMAT.md) | the sprite-bank format (contributed — see [THIRD_PARTY.md](THIRD_PARTY.md)) |
+| [docs/release.md](docs/release.md) | how a release is cut: the tag convention, the three drop-in zips, and how the version stamp reaches the binaries |
 
 ## License
 

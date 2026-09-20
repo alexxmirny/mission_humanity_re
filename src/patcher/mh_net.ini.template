@@ -1,4 +1,4 @@
-; mh_net.ini -- MP transport config (Phase A0+, tasks/mp-restoration.md, docs/mp-lobby.md).
+; mh_net.ini -- MP transport config (Phase A0+, docs/mp-restoration-history.md, docs/mp-lobby.md).
 ; Copy this beside the patched exe as "mh_net.ini". Like the determinism harness, its mere PRESENCE
 ; would arm the transport IF a build wires MH_Net_Init to read it; the A0 self-test configures the
 ; transport directly (MH_Net_InitEx) and does not need this file. The in-game seam wiring (A1/A2)
@@ -37,7 +37,7 @@ log=1
 ; Good starting point on a LAN: 200-400. Tune per setup.
 lockstep_step_ms=300
 
-; Horizon heartbeat (perf-decouple, tasks/mp-perf-decouple.md). The retail game advertises its lockstep
+; Horizon heartbeat (perf-decouple, docs/mp-perf.md). The retail game advertises its lockstep
 ; horizon ONLY from the render/frame path, so a render hitch stops advertisement and starves the peer's
 ; sim -> the 2s SYNCHRONIZING overlay, and at a small lookahead a self-reinforcing freeze-storm (the
 ; input-latency cliff). Set this >0 to run a background thread that re-emits the horizon-EXTEND packet
@@ -47,7 +47,7 @@ lockstep_step_ms=300
 ; 0 = off (retail render-coupled behaviour).
 horizon_heartbeat_ms=50
 
-; Overlay de-fang (perf-decouple step 2, tasks/mp-perf-decouple.md). At a tight lookahead the sim catches
+; Overlay de-fang (perf-decouple step 2, docs/mp-perf.md). At a tight lookahead the sim catches
 ; the committed horizon nearly every step and the retail game pops the modal SYNCHRONIZING overlay
 ; (_G_LLM_GAME_MODE=3) to wait one round-trip -- but that overlay dismiss is gated by a ~1 s accumulator,
 ; so each ~100 ms of clock costs a ~2 s input-locked freeze even though packets arrive in <100 ms. Set
@@ -62,7 +62,7 @@ horizon_heartbeat_ms=50
 ; 1 = on (recommended, pairs with the heartbeat). 0 = retail 2 s modal.
 defang_overlay=1
 
-; Eager horizon advertisement (perf-decouple, tasks/mp-perf-latency.md). At a 1-step lookahead the sim
+; Eager horizon advertisement (perf-decouple, docs/mp-perf.md). At a 1-step lookahead the sim
 ; runs at only ~0.74x real-time even on a ~0 ms link -- NOT a network round-trip cost (the peer's horizon
 ; races ahead; RX is ~15 ms fresh). Root cause is LOCAL: the retail frame advertises the horizon in
 ; time_tick BEFORE sim_tick advances the clock, so the horizon reflecting a just-taken step isn't sent
@@ -77,7 +77,7 @@ defang_overlay=1
 ; -- committed is never the binding constraint at a 1-step buffer (it stays a full step ahead). The sim-rate
 ; loss is intrinsic frame-quantization in the lockstep TOTAL-clamp, not the horizon exchange; there is no
 ; free fix (a "preserve the overshoot" patch was tried and REVERTED -- it breaks lockstep -> desync). The
-; levers remain lookahead (lockstep_step_ms, trades input latency) and frame rate. See tasks/mp-perf-latency.md.
+; levers remain lookahead (lockstep_step_ms, trades input latency) and frame rate. See docs/mp-perf.md.
 eager_advertise=0
 
 ; Endgame game-over sync (2026-07-11). The retail win/loss resolver leaves lockstep (SESSION_MODE 3->2)

@@ -56,6 +56,7 @@ Exit 0 = clean. Exit 1 = a violation (or the walker found nothing, which is neve
 from __future__ import annotations
 
 import os
+import tempfile
 import re
 import sys
 
@@ -207,6 +208,22 @@ def check(root=SRC, hookpoint_h=None, say=print, require_points=True):
     return 1 if fails else 0
 
 
+def _selftest_root(prefix):
+    """One root for every temp tree the selftest makes, removed at interpreter exit.
+
+    The selftest used to mkdtemp per synthetic tree and never remove any of them: measured
+    2026-09-18 at 21,462 leaked f2drop_* dirs in %TEMP% (with d8_*, d5hooks_*, inmem_selftest_*
+    and narration_selftest_* alongside) -- one lint run leaks a few, and the lint runs every
+    session. mkdtemp(dir=root) keeps every tree under one directory that atexit removes.
+    """
+    import atexit
+    import shutil
+
+    root = tempfile.mkdtemp(prefix=prefix)
+    atexit.register(shutil.rmtree, root, ignore_errors=True)
+    return root
+
+
 def selftest():
     import shutil
     import tempfile
@@ -233,9 +250,11 @@ def selftest():
         "the point enum parses", (enum_points() or set()) and "sim_step" in (enum_points() or set())
     )
 
+    root = _selftest_root("d5hooks_selftest_")
+
     def synth(extra="", drop_arms=False, no_header=False):
         """A temp tree holding a copy of the real harness source, optionally mutated."""
-        d = tempfile.mkdtemp(prefix="d5hooks_")
+        d = tempfile.mkdtemp(prefix="d5hooks_", dir=root)
         dst = os.path.join(d, "mh_harness")
         os.makedirs(dst)
         body = open(os.path.join(SRC, HARNESS_OWNED[0]), encoding="utf-8", errors="replace").read()
@@ -278,7 +297,7 @@ def selftest():
 
     expect(
         "an empty tree is REFUSED, not passed",
-        check(tempfile.mkdtemp(prefix="d5hooks_empty_"), HOOKPOINT_H, say=quiet) == 1,
+        check(tempfile.mkdtemp(prefix="d5hooks_empty_", dir=root), HOOKPOINT_H, say=quiet) == 1,
     )
 
     print("check_fork_d5_hooks --selftest: %s" % ("PASS" if ok else "FAIL"))

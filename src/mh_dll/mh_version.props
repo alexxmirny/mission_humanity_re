@@ -1,0 +1,103 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  mh_version.props: THE BUILD STAMP, in one place, for the five modules that SHIP.
+  (An XML comment may not contain a double hyphen, which is why this file's comments have none.)
+
+  WHY THIS EXISTS (tracker TL-CI1). Until this file, nothing a user could hold in their hand said
+  which build it was. A bug report against a drop-in zip named a file name and a date, and the only
+  way to answer "which commit is that" was to ask. A release flow that publishes binaries without a
+  stamp publishes anonymous binaries.
+
+  WHO IMPORTS IT, AND WHO DELIBERATELY DOES NOT. Imported by the five modules a release ships:
+  mh, mh_net, mh_harness, libmh_dll (the HOSTED libmh.dll) and msvfw32_shim. NOT imported by
+  libmh (a static lib), libmh_std, libref_host, mh_nettest, libmh_test or mh_tools. A VERSIONINFO
+  resource on a .lib is meaningless, and the test and host binaries are in no zip, so stamping them
+  would claim a release identity for something no release carries.
+
+  THE TWO PROPERTIES.
+
+    MhVersion   the semver, WITHOUT a leading `v`.  Default `0.0.0-dev`.
+    MhGitSha    the short commit.  Default: derived from `git rev-parse` in the target below, and
+                `unknown` when git cannot answer (no git on PATH, an exported tarball, a source zip).
+
+  So a plain `msbuild mh.sln` stamps `0.0.0-dev+<sha>` and a release build stamps
+  `/p:MhVersion=0.1.0 /p:MhGitSha=<sha>`. A development build can never look like a release: the
+  version a dev build carries is not a number anyone will tag.
+
+  WHY THE DEFINES ARE APPLIED IN A TARGET AND NOT ONLY IN THE ItemDefinitionGroup. MhGitSha is not
+  knowable at EVALUATION time, because it takes a process. A property an Exec sets is set too late
+  for an ItemDefinitionGroup, which is evaluated before any target runs. So the stamp defines are
+  attached to the ClCompile and ResourceCompile items INSIDE the target, where every property has
+  its final value. That covers MhGitSha and also TargetName / TargetFileName, which msvfw32_shim
+  overrides AFTER importing this sheet. Putting a second /D for the same macro in the
+  ItemDefinitionGroup as well would buy nothing and cost a C4005 redefinition warning per TU.
+
+  WHY THE MACROS ARE PASSED UNQUOTED AND STRINGIFIED IN C. `/D MH_VERSION_STAMP="0.1.0"` is the
+  obvious spelling and it is the one that loses its quotes somewhere between MSBuild, the response
+  file and the compiler's own command line parser. The token is passed bare and turned into a
+  string literal by the two step stringify in mh_common/include/mh_version.h, which has no quoting
+  layer to get wrong and works identically for cl.exe and rc.exe. Measured both ways before
+  choosing.
+
+  THE NUMERIC QUAD. VERSIONINFO's FILEVERSION field is four 16 bit integers and cannot hold a
+  `-rc1`. MhVersionQuad drops any pre release suffix and appends a zero, so `0.1.0-rc1` becomes
+  `0,1,0,0` and the numeric field is always valid, while the STRING fields (FileVersion and
+  ProductVersion) carry the full `0.1.0-rc1+abc12345`. tools/release_package.py reads the STRING
+  field, which is the one that can tell an rc from its release.
+-->
+<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+
+  <PropertyGroup>
+    <MhVersion Condition="'$(MhVersion)'==''">0.0.0-dev</MhVersion>
+    <MhGitSha Condition="'$(MhGitSha)'==''">unknown</MhGitSha>
+
+    <!-- The semver core: everything before the first `-`. These are MSBuild property functions,
+         evaluated here rather than in a target because MhVersion IS known at evaluation time. -->
+    <MhVersionCore>$(MhVersion)</MhVersionCore>
+    <MhVersionCore Condition="$(MhVersionCore.Contains('-'))">$(MhVersionCore.Substring(0, $(MhVersionCore.IndexOf('-'))))</MhVersionCore>
+    <MhVersionQuad>$(MhVersionCore.Replace('.',',')),0</MhVersionQuad>
+  </PropertyGroup>
+
+  <ItemDefinitionGroup>
+    <ResourceCompile>
+      <!-- The one include the .rc needs: the stringify macros, shared with the C++ side so there is
+           exactly one definition of what the stamp looks like. -->
+      <AdditionalIncludeDirectories>$(MSBuildThisFileDirectory)mh_common\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ResourceCompile>
+  </ItemDefinitionGroup>
+
+  <ItemGroup>
+    <ResourceCompile Include="$(MSBuildThisFileDirectory)mh_version.rc" />
+  </ItemGroup>
+
+  <Target Name="MhResolveBuildStamp" BeforeTargets="ClCompile;ResourceCompile">
+    <!-- IgnoreExitCode plus ContinueOnError: a checkout with no git, or a source archive with no
+         .git directory, must still BUILD. It stamps `unknown` and says so in the message below
+         rather than failing a build over provenance it cannot have. -->
+    <Exec Command="git -C &quot;$(MSBuildThisFileDirectory).&quot; rev-parse --short=8 HEAD"
+          ConsoleToMSBuild="true"
+          StandardOutputImportance="low"
+          StandardErrorImportance="low"
+          IgnoreExitCode="true"
+          ContinueOnError="true">
+      <Output TaskParameter="ConsoleOutput" PropertyName="_MhShaOut" />
+    </Exec>
+    <PropertyGroup>
+      <!-- Accept the output ONLY if it looks like a short hash. git's failure text arrives on the
+           same captured stream, and a stamp reading `fatal: not a git repository` would be worse
+           than `unknown`, because it would look like a value. -->
+      <MhGitSha Condition="'$(MhGitSha)'=='unknown' and '$(_MhShaOut)'!='' and $([System.Text.RegularExpressions.Regex]::IsMatch($(_MhShaOut.Trim()), '^[0-9a-f]{7,40}$'))">$(_MhShaOut.Trim())</MhGitSha>
+      <MhVersionFull>$(MhVersion)+$(MhGitSha)</MhVersionFull>
+    </PropertyGroup>
+    <Message Importance="normal" Text="mh build stamp: $(MhVersionFull) (FILEVERSION $(MhVersionQuad)) into $(TargetFileName)" />
+    <ItemGroup>
+      <ClCompile>
+        <PreprocessorDefinitions>MH_VERSION_STAMP=$(MhVersion);MH_GIT_SHA_STAMP=$(MhGitSha);%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      </ClCompile>
+      <ResourceCompile>
+        <PreprocessorDefinitions>MH_VERSION_STAMP=$(MhVersion);MH_GIT_SHA_STAMP=$(MhGitSha);MH_VERSION_QUAD=$(MhVersionQuad);MH_MODULE_NAME=$(TargetName);MH_MODULE_FILE=$(TargetFileName);%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      </ResourceCompile>
+    </ItemGroup>
+  </Target>
+
+</Project>

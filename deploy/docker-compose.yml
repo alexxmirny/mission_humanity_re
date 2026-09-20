@@ -1,0 +1,163 @@
+# deploy/docker-compose.yml -- the VPS production stack: relay + collector + Caddy.
+# tracker dist:RP4, plan D15(c). Full narrative: docs/deploy.md.
+#
+# THIS FILE IS THE ONE deploy.yml SYNCS TO THE VPS (over scp, see that workflow's "sync deploy/ to
+# the VPS" step) -- the compose file living in the repo is the source of truth, never a hand-edit
+# on the box. `.env` alongside it on the VPS is written BY deploy.yml on every run (IMAGE_TAG,
+# GHCR_OWNER); it is never committed here (see deploy/.gitignore) because both values are per-run,
+# not repo content -- docker compose reads `.env` from this file's own directory automatically.
+#
+# WHY THIS IS A SEPARATE FILE FROM src/collector/docker-compose.yml, NOT AN EXTENSION OF IT.
+# src/collector/docker-compose.yml (dist RP2, already built) is a LOCAL DEV stack: `build: .`
+# against the collector's own Dockerfile, no relay, meant for `docker compose up --build` on a
+# workstation. This file is the OPPOSITE shape on every axis that matters for a production
+# deploy: it names PREBUILT GHCR images (never `build:` -- the VPS has no Rust/Python toolchain
+# and should not need one), and it adds the relay service, which src/collector's file has no
+# reason to know about (RP2 shipped before the relay crate existed). Folding the two together
+# would make the local-dev loop depend on GHCR credentials and make this file's `image:` lines
+# fight RP2's `build:` line for the same compose key. Same collector service DEFINITION otherwise
+# (env vars, secrets, healthcheck, no host networking) so the two never drift on how the collector
+# itself is configured -- only on where its image comes from.
+#
+# WHY relay GETS `network_mode: host` AND collector DOES NOT (RP4's own done_when clause: "the
+# relay container runs with host networking, asserted by the compose file lint"). Plan D4: the
+# relay demuxes UDP peers by an 8-byte connection id carried in every packet, keyed against the
+# packet's REAL source address -- Docker's default bridge network runs every container's traffic
+# through a userland proxy that REWRITES the apparent source address, which breaks that demux
+# outright (this is D4's own stated reason for `--network host`, not a guess made here). The
+# collector has no such requirement -- it is a plain HTTP service that only Caddy ever talks to --
+# so it stays on the default bridge, reachable by service name (`collector:8000`) and NOT exposed
+# on the host directly, exactly as src/collector/docker-compose.yml already has it. Giving it host
+# networking too would remove that isolation for no benefit, which is exactly what
+# tools/lint_compose.py's negative-case row checks for.
+#
+# UNVERIFIED ON THIS MACHINE: Docker is not installed here (2026-09-17) -- `docker compose config`
+# has not validated this file's runtime semantics, only `python -c "import yaml; yaml.safe_load"`
+# (parses) and `tools/lint_compose.py` (the two structural assertions above). See docs/deploy.md.
+
+services:
+  relay:
+    # RELAY_TAG is the direct-deploy override (tools/deploy_relay_direct.py builds the relay here
+    # and tags it dev-<sha> in the VPS's local image store); deploy.yml never writes it, so a CI
+    # redeploy falls back to IMAGE_TAG and puts the GHCR image back.
+    image: ghcr.io/${GHCR_OWNER}/mh-relay:${RELAY_TAG:-${IMAGE_TAG:-latest}}
+    container_name: mh-relay
+    restart: unless-stopped
+    # mp:R4b -- a restart or redeploy must keep the relay DOWN for less than the peers' 10 s link
+    # timeout, or every match it carries dies before the peers can re-HELLO. The relay exits on
+    # SIGTERM at once (measured 15 s per restart before it did: the whole default grace period,
+    # then SIGKILL); this bounds the worst case if it ever stops doing so.
+    stop_grace_period: 3s
+    # See the header comment: this is load-bearing for the connection-id demux (plan D4), not a
+    # convenience setting -- do not remove it to "simplify" the network topology.
+    network_mode: host
+    # dist:RP5 -- THE DEPLOYMENT KEY. Without --key-file the relay runs the all-zero OPEN key and
+    # says so in its first log line ("LAN/testing only"): any reachable peer can register and the
+    # leg is unauthenticated. The key is the SAME value the players' mh_key.txt holds (the relay's
+    # leg key derives from it), so it is not a secret against players -- it is what keeps random
+    # internet scanners off the relay and puts encryption on the wire. Minted once by hand on the
+    # VPS (docs/deploy.md "The relay key"); deploy.yml never syncs secrets/, so a redeploy cannot
+    # overwrite it. Players receive it via LA6's signed manifest (or by hand until then).
+    command: ["--key-file", "/run/secrets/relay_key"]
+    secrets:
+      - relay_key
+    # dist:RP5 -- the UDP healthcheck R4 asked for: the relay binary's own probe mode sends one
+    # keyed PING from no handle to its own socket and expects a PONG (distroless has no shell or
+    # curl, so the probe is the binary). Proves the socket is served AND the key file parsed --
+    # a relay started with a bad key file would exit, one with a wrong key would answer nothing.
+    healthcheck:
+      test: ["CMD", "/usr/local/bin/relay", "--health", "127.0.0.1:7100", "--key-file", "/run/secrets/relay_key"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+    environment:
+      # RUST_LOG rather than a bespoke var name -- the relay is a Rust binary (dist R1); this is
+      # the ecosystem-standard `tracing`/`env_logger` knob, not a project invention.
+      RUST_LOG: "mh_relay=info,warn"
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+
+  collector:
+    image: ghcr.io/${GHCR_OWNER}/mh-collector:${IMAGE_TAG:-latest}
+    container_name: mh-collector
+    restart: unless-stopped
+    # Identical to src/collector/docker-compose.yml's own collector service (RP2) -- same env
+    # vars, same secret, same healthcheck -- so the two files never disagree on how the collector
+    # ITSELF behaves, only on where its image is built vs. pulled from.
+    environment:
+      REPORTS_DIR: /data/reports
+      TOKEN_FILE: /run/secrets/report_token
+      MAX_BODY_MB: "64"
+      RATE_PER_MIN: "10"
+      TIMESTAMP_SKEW_SECONDS: "600"
+    secrets:
+      - report_token
+    volumes:
+      - reports:/data/reports
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/healthz', timeout=3).status == 200 else 1)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    expose:
+      - "8000"
+    # No host port mapping and NO network_mode: host -- only Caddy is reachable from outside the
+    # compose network (src/collector/docker-compose.yml's own comment, kept verbatim: the rule is
+    # the same here on purpose).
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+
+  caddy:
+    image: caddy:2-alpine
+    container_name: mh-caddy
+    restart: unless-stopped
+    depends_on:
+      collector:
+        condition: service_healthy
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      # The name or IP clients dial, for the Caddyfile's site address + default_sni (its header
+      # says why a bare :443 cannot work). deploy.yml writes MH_SITE_ADDR into .env on the VPS from
+      # the VPS_HOST secret; unset, Caddy serves `localhost` -- right for the local dev compose.
+      - MH_SITE_ADDR=${MH_SITE_ADDR:-localhost}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+
+secrets:
+  # Minted once, by hand, on the VPS -- RP2's README "Minting the drain key" section's sibling
+  # step for THIS secret (not the drain key): `mkdir -p secrets && python -c "import secrets;
+  # print(secrets.token_urlsafe(32))" > secrets/report_token.txt && chown 10001:10001
+  # secrets/report_token.txt && chmod 0400 secrets/report_token.txt` -- the chown matters: this is
+  # a bind mount, the collector runs as uid 10001, and a root-owned 0600 file leaves the container
+  # unhealthy on PermissionError (the first live deploy, 2026-09-18). deploy.yml's scp step never
+  # touches this file (its `source:` list names only docker-compose.yml and Caddyfile), so a
+  # redeploy can never overwrite a token already in production.
+  report_token:
+    file: ./secrets/report_token.txt
+  # dist:RP5. 64 hex digits (or the word `open` -- never in production). The relay runs as
+  # distroless's uid 65532, so the file must be readable by it: `chmod 0444` (it is the players'
+  # key, not a secret against them -- see the relay service's comment).
+  relay_key:
+    file: ./secrets/relay_key.txt
+
+volumes:
+  reports:
+  caddy_data:
+  caddy_config:

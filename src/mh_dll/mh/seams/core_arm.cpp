@@ -105,12 +105,20 @@ void build_paths() {
     // previous run's recording. INPUTS still resolve next to the exe: the run folder is timestamped,
     // so a prior run's folder is not addressable at load time. Both paths are logged at arm, so
     // replaying a recording is "copy mh_orders.bin from the run folder next to the exe", not a guess.
-    wsprintfA(g_log_path, "%smh_harness.log", MH_RunDir());
-    wsprintfA(g_seed_out, "%smh_harness_seed.bin", MH_RunDir());
-    wsprintfA(g_boot_snap_out, "%smh_boot_snapshot.bin", MH_RunDir());
-    wsprintfA(g_world_out, "%smh_world.bin", MH_RunDir());
-    wsprintfA(g_orders_out, "%smh_orders.bin", MH_RunDir());
-    wsprintfA(g_clock_out, "%smh_clock.bin", MH_RunDir());
+    // SES1: MH_ProcessDir(), which is what MH_RunDir() meant when these lines were written. The
+    // determinism harness is a PROCESS instrument -- it dumps the boot seed before any lobby exists,
+    // records orders and the world across whatever the process does, and mh_harness.dll copies these
+    // six strings once at MH_Harness_Init into its own arrays (mh_core_arm_paths.h's "borrowed
+    // pointers" note). Pointing them at a session directory would be wrong twice over: the paths
+    // could not follow a second match, and the boot-time outputs would name a folder that does not
+    // exist yet. tools/mp_analyze.py reads mh_harness.log out of the process directory named in the
+    // session's session.json.
+    wsprintfA(g_log_path, "%smh_harness.log", MH_ProcessDir());
+    wsprintfA(g_seed_out, "%smh_harness_seed.bin", MH_ProcessDir());
+    wsprintfA(g_boot_snap_out, "%smh_boot_snapshot.bin", MH_ProcessDir());
+    wsprintfA(g_world_out, "%smh_world.bin", MH_ProcessDir());
+    wsprintfA(g_orders_out, "%smh_orders.bin", MH_ProcessDir());
+    wsprintfA(g_clock_out, "%smh_clock.bin", MH_ProcessDir());
     wsprintfA(g_seed_path, "%smh_harness_seed.bin", g_dir); // seed INPUT (inject)
     wsprintfA(g_orders_path, "%smh_orders.bin", g_dir);     // order INPUT (replay)
     wsprintfA(g_clock_path, "%smh_clock.bin", g_dir);       // clock-track INPUT (replay)

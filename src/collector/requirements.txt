@@ -1,0 +1,22 @@
+# src/collector/requirements.txt -- pinned RUNTIME dependencies for the report
+# collector service (tracker dist:RP2). This is a DELIBERATELY SEPARATE file
+# from tools/requirements.txt: the collector ships as its own Docker image
+# (see ./Dockerfile), independent of this repo's RE tooling, and
+# tools/lint_requirements.py only walks tools/**.py -- it does not see or
+# derive this file. Keep it hand-maintained and minimal; this is what gets
+# `pip install`ed into the container image.
+#
+# Test-only dependencies (pytest, httpx) live in requirements-dev.txt instead,
+# so the shipped image does not carry them.
+#
+# Versions pinned to what was installed and verified working against this repo's
+# Python 3.12 on 2026-09-17 (`pip show <dist>` to re-derive after a deliberate
+# upgrade).
+
+# --- web framework / server ---
+fastapi==0.141.1
+starlette==1.6.0
+uvicorn[standard]==0.53.0
+
+# --- multipart form parsing (CVE-2024-24762 / CVE-2024-53981 fixed at >=0.0.18) ---
+python-multipart==0.0.32

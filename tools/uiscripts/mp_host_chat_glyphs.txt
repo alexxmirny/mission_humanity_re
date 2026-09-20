@@ -1,0 +1,61 @@
+# mp:F3b -- TWO-PEER in-game chat run against a MERGED font install: the host types a Cyrillic
+# line and SENDS it. Wire-level behaviour is identical to mp_host_chat.txt (mp:F3's own scenario,
+# which this pair does not duplicate the CLAIM of -- that scenario already proves the codepage
+# codec end to end); this pair exists so the CLIENT half can capture the received line as REAL
+# rendered Cyrillic glyphs, which needs a lane built from a merged font install (mp:F2b's opt-in
+# `lane_src` tier), not the shared polygon chat_relay runs against.
+#
+# Split into its own script rather than reusing mp_host_chat.txt as this test's host script --
+# per the ui-testing skill, the SAME script run as a different test's host renders a DIFFERENT
+# baseline (this lane is built from MH_FONT_MERGE_DIR, not the polygon) and would either collide
+# with or clobber chat_relay's own mp_host_chat baseline directory on the next
+# --update-baselines. Same walk, its own baseline directory.
+#
+# BOTH PEERS RUN WITH [input] codepage=1251 (same reason as mp_host_chat.txt: the value rides
+# SESSION_INFO/JOIN and a host refuses a joiner that pins something else) AND against a lane
+# sourced from MH_FONT_MERGE_DIR (mp:F2b) instead of the polygon, so the glyph the client widens
+# into actually resolves to a real glyph record instead of the guard's substitute box.
+#
+# Runner: ui_test.py --host mp_host_chat_glyphs.txt --client <ip>:mp_client_chat_glyphs.txt
+
+settled value:110
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+settled Create
+clickl Create
+present Game name
+settled Ok
+clickl Ok
+present Available maps
+settled Ok
+clickl Ok
+
+present Network players
+peers 1
+awaitsignal lobby
+enabled Start
+settled Start
+capture h_lobby
+clickl Start
+
+absent Network players
+gamemode 2
+# The same sim gate both halves of every other MP pair use, so the two peers are at one sim moment
+# before anything is typed.
+gameclock 6000
+
+# Enter opens the chat line; six Cyrillic scancodes go through the drain F3 owns; the buffer is read
+# BEFORE the submit, because submitting pushes the line to history and clears it.
+key 0x1c
+layout 00000419
+type Привет
+field chat hex:cff0e8e2e5f2
+key 0x1c
+layout default
+# Tell the client the line is on the wire, so its own wait is for a message that has actually been
+# sent rather than for a timeout.
+signal chatsent
+log F3b HOST: sent a CP1251 Cyrillic chat line (cf f0 e8 e2 e5 f2) into a merged-font lane
+end

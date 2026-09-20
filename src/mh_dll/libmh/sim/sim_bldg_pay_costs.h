@@ -92,6 +92,13 @@ const pay_costs_calls &live_pay_costs_calls();
 
 namespace detail {
 
+// mp:D25 (2026-09-19) -- PASS 1 of llm_bldg_pay_build_cost ALONE: the invention gate + the
+// 7-slot shortage scan, returning the SAME code pay_build_cost would (0 = affordable, 0x13 =
+// invention not researched, id+0x89 / bare 0x89 = short), and charging NOTHING. pay_build_cost is
+// this followed by the charge pass. It exists for the one caller that needs the verdict without the
+// payment: the HUD build-menu click (sim/resid/sim_bldg_try_begin_placement) -- see that header.
+int32_t bldg_can_afford_build_cost(const sim_view &v, uint32_t player, int32_t building_type_id);
+
 // llm_bldg_pay_build_cost @0x00492eb1. See the header banner for the full derivation.
 int32_t bldg_pay_build_cost(const sim_view &v, const pay_costs_calls &gc, uint32_t player,
                             int32_t building_type_id);
@@ -108,6 +115,8 @@ int32_t bldg_pay_cycle_inputs(const sim_view &v, const pay_costs_calls &gc, uint
 
 int32_t bldg_pay_build_cost(uint32_t player, int32_t building_type_id);
 int32_t bldg_pay_cycle_inputs(uint32_t player, uint32_t b_index);
+// Not an original: the side-effect-free half of bldg_pay_build_cost (mp:D25). Same return codes.
+int32_t bldg_can_afford_build_cost(uint32_t player, int32_t building_type_id);
 
 namespace detail {
 } // namespace detail

@@ -22,12 +22,27 @@ both sides need must be platform-neutral. The **MP-DISCOVERY** work (S0–S6) is
   players, map) + its (de)serialization, and the **lobby-id** (`name + tag`) equality/format helpers.
   Carries identity, NOT address (no host IP — see the design note in the header). This is the record a
   host advertises (S2) and a client lists in the browser (S3/S5); the relay demuxes by lobby-id.
+- `net_udp.{h,cpp}` — the **UDP packet format** (plan decision D2, tracker `mp:T0`): an 18-byte
+  plaintext-but-authenticated header (magic/version, type, `conn_id`, sequence), ChaCha20 with the
+  sequence as the nonce, a truncated HMAC-SHA256 tag over header‖ciphertext, a 64-entry replay
+  window, three channels muxed inside the sealed body (step inputs / latest-wins records / bulk
+  reliable), and the connect-token codec. 1200-byte ceiling. Modelled on netcode.io's framing,
+  reusing the crypto in `net_crypto.h` rather than adding any. Full layout:
+  [docs/mp-wire-udp.md](../../docs/mp-wire-udp.md).
 - `src/byteio.h` — private little-endian read/write helpers.
 - *(next: join-by-lobby-id (S4), player identity (S6).)*
 
 ## Tests
 `test/net_proto_test.cpp` — round-trips (wire header + SESSION_INFO), malformed-input rejection, and
 lobby-id dedup. Runs via CTest: `cmake -S . -B build && cmake --build build && ctest --test-dir build`.
+
+`test/fixtures/udp/` — the UDP format's **shared** test vectors: committed packet and token bytes
+with their expected verdicts, read by BOTH `net_selftest.exe udpwiretest` (C++) and
+`cargo test -p mh_relay` (Rust, `src/relay/src/wire.rs`). They are emitted by the C++ encoder
+(`net_selftest.exe udpwiretest --emit <dir>`) and only read by the Rust side. That asymmetry is the
+point: an encoder agreeing with its own decoder proves one program self-consistent, and it would be
+just as self-consistent over a format the relay cannot read — so what the fixtures gate is that two
+independent implementations accept and refuse the same bytes.
 
 ## Building
 - **Windows:** `mh_net_proto.vcxproj` (static lib) is part of `../mh_dll/mh.sln`; the `mh` DLL links it.

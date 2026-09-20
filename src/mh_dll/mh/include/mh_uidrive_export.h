@@ -31,6 +31,14 @@ void MH_UIDrive_CursorTo(int x, int y);
 // Full click at (x,y): MOVE + LBUTTONDOWN + LBUTTONUP injected into the mouse ring.
 void MH_UIDrive_Click(int x, int y);
 
+// 2026-09-20: the harness's SYNTHESISED key state, for the DLL's own GetAsyncKeyState-polled
+// hotkeys ([debug] toggle_key & co.). GetAsyncKeyState reads 0 on the isolated desktop a headless
+// lane runs on, so a poller ORs this into its read: `(GetAsyncKeyState(vk) & 0x8000) ||
+// MH_UIDrive_SynthKeyDown(vk)`. Non-zero only while a running UI script holds a chord with the
+// `hotkey <spec>` verb; an unarmed run never sets it. Only the OS read is substituted -- the
+// binding parse, modifier check and rising-edge logic of the poller run unchanged.
+int MH_UIDrive_SynthKeyDown(int vk);
+
 // UI-REC: the ACTIVE SCREEN's identity -- the active dialog's widget-list VA, or the menu list's when
 // no dialog is up. This is exactly what the `screen` WAIT predicate compares, exposed so the input
 // journal can record it and a replay can synchronise on it.

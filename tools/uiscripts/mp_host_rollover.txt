@@ -1,0 +1,78 @@
+# SES1b (HOST): three Create -> occ 2 -> Cancel rounds in ONE instance, no match played -- proving
+# the SES1 per-session run directory's ROLLOVER across more than one open/close pair. SES1's own
+# acceptance run proved this once from a scratchpad script (the mp tracker's SES1 progress note:
+# "3+3 directories with pairwise-identical ids"); this is that walk, registered. Pair with
+# mp_client_rollover.txt. Post-check: tools/check_session_rollover.py (3 session directories per
+# peer, pairwise-identical match_ids, session.json).
+#
+# THE SHAPE IS mp_host_recreate.txt's (leave a LOBBY, no match, the transport link untouched),
+# TRIPLED rather than mp_host_rematch.txt's (a MATCH runs between rounds): SES1's own proof never
+# played a match, and mp_session_close (src/mh_dll/mh/seams/*, the SES1 boundary) fires on a plain
+# lobby Cancel exactly as it does on a match's quit -- so the lobby-only walk already exercises the
+# SESSION_BEGIN-at-Create / SESSION_END-at-Cancel boundary the post-check reads, at a third of
+# host_rematch's wall clock (no ESC menu, no gameclock wait, no launch).
+#
+# SIGNALS, the same protocol host_recreate/mp_client_rejoin use: c<N>_shot says "I have captured
+# round N's lobby, you may Cancel"; c<N>_ready says "I am back on the empty browser, create round
+# N+1". Every round is symmetric bar its capture name -- see mp_client_rollover.txt for the
+# client's matching half and the reasoning behind each wait (the U26 `sessions <1` -before-`sessions
+# 1` race, the seat-render lag `occ 2` exists to close).
+settled value:110
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+
+# ---- round 1 ------------------------------------------------------------------------------------
+settled Create
+clickl Create
+present Game name
+settled Ok
+clickl Ok
+present Available maps
+settled Ok
+clickl Ok
+present Network players
+occ 2
+capture r1_lobby
+awaitsignal c1_shot
+clickl Cancel
+awaitsignal c1_ready
+
+# ---- round 2 ------------------------------------------------------------------------------------
+settled Create
+clickl Create
+present Game name
+settled Ok
+clickl Ok
+present Available maps
+settled Ok
+clickl Ok
+present Network players
+occ 2
+capture r2_lobby
+awaitsignal c2_shot
+clickl Cancel
+awaitsignal c2_ready
+
+# ---- round 3 ------------------------------------------------------------------------------------
+settled Create
+clickl Create
+present Game name
+settled Ok
+clickl Ok
+present Available maps
+settled Ok
+clickl Ok
+present Network players
+occ 2
+capture r3_lobby
+awaitsignal c3_shot
+# CLOSE round 3 too -- SES1's SESSION_END must fire on the last round as well, or this scenario
+# would only prove open x3 rather than open/close x3. session.json is rewritten whole at
+# SESSION_END, but it is already readable at SESSION_BEGIN (mh_session_dir.h), so the post-check
+# does not strictly need this click to read match_id -- it is here so the acceptance walk matches
+# SES1's own claim (every round closes cleanly) instead of leaving the third session dangling open.
+clickl Cancel
+log HOST completed three Create/Cancel rounds -- 3 session directories, one per round
+end

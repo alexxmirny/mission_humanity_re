@@ -1,0 +1,60 @@
+# F4 -- `type <text>` must be BYTE-IDENTICAL to the equivalent `key` sequence.
+#
+# The harness drives the game's own keyboard path: a character is resolved to the (scancode,
+# modifier) pair a player would physically press on the active layout, injected into
+# _G_LLM_INPUT_KEY_EVENTS, and translated by the game's own llm_input_key_dequeue_translate_ascii.
+# `type` is therefore not a new input path -- it is `key`, with the scancodes worked out from the
+# layout instead of written by hand. This scenario is what makes that claim checkable rather than
+# assertable: the driver journals every event it writes into the ring (scancode + event_type, the
+# two fields that ARE the input), and `keyjournal same` compares the two segments byte for byte.
+#
+# It asserts TWO things, and the second is not implied by the first:
+#   * the INJECTED EVENTS are identical    -- `keyjournal same`
+#   * the STORED TEXT is identical         -- `field name hostho1ho1`, i.e. "host" (pinned by
+#     ui_test.py --host-name) + "ho1" typed by `type` + "ho1" typed by three `key` lines.
+# A `type` that expanded correctly but delivered at the wrong moment would pass the first and fail
+# the second; a `type` that wrote the field directly would pass the second and fail the first.
+#
+# The layout is pinned to 00000409 (US) for the run and restored at the end, because the three
+# hardcoded `key` scancodes below are only 'h','o','1' on a US layout -- on the operator's German or
+# Dvorak box they would spell something else and the test would be measuring the machine.
+#
+# THE FIELD HOLDS 15 CHARACTERS AND THEN SILENTLY REFUSES (measured here: a 16th keystroke reaches
+# the game's translate step, publishes, and is simply not inserted). The text below is 13, with the
+# pinned "host" included. A script that overruns it does not fail loudly -- it just stops typing --
+# so count the characters when writing one.
+
+settled value:110
+clickv 110
+present Player name
+settled Ok
+
+# The edit field must be ACTIVATED before it accepts keystrokes (llm_ui_edit_field_modal_tick only
+# runs while it is the pending widget) -- same load-bearing click as key_repeat.txt.
+clickl Your name
+
+layout 00000409
+
+keyjournal mark
+type ho1
+keyjournal mark
+key 0x23
+key 0x18
+key 0x02
+keyjournal same
+
+field name hostho1ho1
+
+# AND THE OTHER HALF OF A KEYSTROKE. A capital letter needs SHIFT, and shift does not travel in the
+# ring: the game's translate step reads it from GetKeyboardState, so `type` supplies it the way a
+# real Shift press does -- in the OS key-state table, held for exactly as long as the character is in
+# flight. Nothing above tests that (every character so far is unshifted, and in the Cyrillic scenario
+# both cases collapse onto '?'), so three capitals are the assertion: they can only arrive as
+# capitals if the modifier reached ToAscii.
+type ABC
+field name hostho1ho1ABC
+
+capture t_ascii
+layout default
+log F4: `type ho1` == `key 0x23 0x18 0x02`, byte for byte, in the ring and in the field
+end

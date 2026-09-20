@@ -1,0 +1,61 @@
+# mp:F3 -- TWO-PEER in-game chat: the host types a Cyrillic line and SENDS it.
+#
+# mp_host_start.txt's walk (create -> wait for the client -> Start), then the part that is this
+# scenario's own: open the in-game chat with Enter, type six Cyrillic characters on the Russian
+# layout, assert the bytes the drain stored, and press Enter again to submit -- which is what pushes
+# the line into llm_net_chat_send_all and onto the wire.
+#
+# THE ASSERTION THAT MATTERS IS ON THE OTHER PEER. This half proves the host ENCODED the line
+# (cf f0 e8 e2 e5 f2, CP1251); mp_client_chat.txt proves the client received those bytes and widened
+# them back to the RIGHT CODE POINTS (U+041F U+0440 U+0438 U+0432 U+0435 U+0442) rather than to
+# whatever its own ACP would have said. Split across the two peers because that is where the claim
+# actually lives -- one process agreeing with itself about a codepage proves nothing.
+#
+# BOTH PEERS RUN WITH [input] codepage=1251. They must: the value rides SESSION_INFO and JOIN, and a
+# host refuses a joiner that pins something else ("input codepage mismatch"). That refusal is the
+# feature; net_selftest.exe sessionidtest is where it is asserted, since staging it on the rig would
+# take two differently-localised Windows installs.
+#
+# Runner: ui_test.py --host mp_host_chat.txt --client <ip>:mp_client_chat.txt
+
+settled value:110
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+settled Create
+clickl Create
+present Game name
+settled Ok
+clickl Ok
+present Available maps
+settled Ok
+clickl Ok
+
+present Network players
+peers 1
+awaitsignal lobby
+enabled Start
+settled Start
+capture h_lobby
+clickl Start
+
+absent Network players
+gamemode 2
+# The same sim gate both halves of every other MP pair use, so the two peers are at one sim moment
+# before anything is typed.
+gameclock 6000
+
+# Enter opens the chat line; six Cyrillic scancodes go through the drain F3 owns; the buffer is read
+# BEFORE the submit, because submitting pushes the line to history and clears it.
+key 0x1c
+layout 00000419
+type Привет
+field chat hex:cff0e8e2e5f2
+key 0x1c
+layout default
+# Tell the client the line is on the wire, so its own wait is for a message that has actually been
+# sent rather than for a timeout.
+signal chatsent
+log F3 HOST: sent a CP1251 Cyrillic chat line (cf f0 e8 e2 e5 f2)
+end

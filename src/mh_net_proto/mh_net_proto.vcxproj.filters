@@ -17,10 +17,16 @@
     <ClInclude Include="include\mh_net_proto\net_crypto.h">
       <Filter>include\mh_net_proto</Filter>
     </ClInclude>
+    <ClInclude Include="include\mh_net_proto\net_udp.h">
+      <Filter>include\mh_net_proto</Filter>
+    </ClInclude>
     <ClInclude Include="include\mh_net_proto\net_wire.h">
       <Filter>include\mh_net_proto</Filter>
     </ClInclude>
     <ClInclude Include="include\mh_net_proto\session_info.h">
+      <Filter>include\mh_net_proto</Filter>
+    </ClInclude>
+    <ClInclude Include="include\mh_net_proto\uuid7.h">
       <Filter>include\mh_net_proto</Filter>
     </ClInclude>
     <ClInclude Include="src\byteio.h">
@@ -31,10 +37,16 @@
     <ClCompile Include="src\net_crypto.cpp">
       <Filter>src</Filter>
     </ClCompile>
+    <ClCompile Include="src\net_udp.cpp">
+      <Filter>src</Filter>
+    </ClCompile>
     <ClCompile Include="src\net_wire.cpp">
       <Filter>src</Filter>
     </ClCompile>
     <ClCompile Include="src\session_info.cpp">
+      <Filter>src</Filter>
+    </ClCompile>
+    <ClCompile Include="src\uuid7.cpp">
       <Filter>src</Filter>
     </ClCompile>
   </ItemGroup>

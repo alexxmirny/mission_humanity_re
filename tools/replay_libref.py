@@ -77,6 +77,11 @@ LANE_FILES = {
 
 IDENTICAL_RE = re.compile(r"state-hash mismatches: 0 \(ALL STEPS IDENTICAL\)")
 REPLAYED_RE = re.compile(r"replayed (\d+) step\(s\) in ([\d.]+) s")
+# The host's own refusal line for a blob stamped with another manifest (libref_host/main.cpp). It was
+# always there; until TL-GATE-D25FX it sat one line deep in a 5000-line log under a "no ALL STEPS
+# IDENTICAL line" headline, and the first gate after D25 read three stale fixtures as three broken
+# replays. Now it is the headline, with both fingerprints.
+STALE_RE = re.compile(r"captured under a DIFFERENT hash (manifest|_?sink)")
 
 
 class Refusal(Exception):
@@ -227,6 +232,27 @@ def check_build():
 
 
 # ---------------------------------------------------------------------------------------------
+# the manifest stamp (TL-GATE-D25FX)
+# ---------------------------------------------------------------------------------------------
+def current_manifest_fp():
+    """The hash-manifest fingerprint the DLL is built with, from the generated header -- None if
+    the analyzer cannot compute it (then the host's own refusal line still decides)."""
+    try:
+        import mp_analyze as _m
+
+        return _m.hash_manifest_fingerprint()
+    except Exception:  # noqa: BLE001 -- a missing header must not turn into a crash here
+        return None
+
+
+def stale_fp(man):
+    """True when the fixture's stamped manifest fingerprint differs from the current build's."""
+    cur = current_manifest_fp()
+    fp = (man.get("step0") or {}).get("hash_manifest_fp")
+    return bool(cur and fp and fp.upper() != cur)
+
+
+# ---------------------------------------------------------------------------------------------
 # the run
 # ---------------------------------------------------------------------------------------------
 def run_one(name, absent_file, timeout):
@@ -258,6 +284,21 @@ def run_one(name, absent_file, timeout):
         problems.append("TIMEOUT after %ds" % timeout)
     elif rc != 0:
         problems.append("exit %d" % rc)
+    if STALE_RE.search(text) or stale_fp(man):
+        # STALE, NOT WRONG -- said first, because every number below it is incomparable rather than
+        # a divergence. The fixture's own stamp and the current build's fingerprint are both named
+        # so the reader sees which side moved.
+        problems.append(
+            "STALE FIXTURE: captured under hash manifest %s, current %s -- re-capture it (%s/README.md) "
+            "in the session that changed the manifest"
+            % (
+                (man.get("step0") or {}).get("hash_manifest_fp", "?"),
+                current_manifest_fp() or "?",
+                os.path.relpath(os.path.join(FIXTURE_ROOT, "libref-replay-v1"), REPO).replace(
+                    "\\", "/"
+                ),
+            )
+        )
     if not IDENTICAL_RE.search(text):
         problems.append("no ALL STEPS IDENTICAL line")
     m = REPLAYED_RE.search(text)
@@ -328,6 +369,22 @@ def selftest():
         bool(m) and int(m.group(1)) != 5000,
     )
     case("the identity line is recognised", bool(IDENTICAL_RE.search(text)))
+    case(
+        "the host's stale-manifest refusal is recognised as STALE",
+        bool(
+            STALE_RE.search(
+                "  FAIL: the blob was captured under a DIFFERENT hash manifest -- stale fixture"
+            )
+        ),
+    )
+    case(
+        "a fixture stamped with another fingerprint reads as stale",
+        stale_fp({"step0": {"hash_manifest_fp": "DEADBEEF"}}) is True,
+    )
+    case(
+        "a fixture stamped with the current fingerprint does not",
+        stale_fp({"step0": {"hash_manifest_fp": current_manifest_fp() or "DEADBEEF"}}) is False,
+    )
 
     case("every committed fixture is discoverable", len(fixtures()) >= 1)
     print("[replay_libref] selftest: %s" % ("PASS" if not bad else "%d FAILED" % bad))

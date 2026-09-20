@@ -42,7 +42,9 @@ int  MH_Seam_GameRecv(int *out_sender, unsigned char *buf, int *inout_len); // l
 void MH_Seam_StartTransport(void);
 
 // S8: clear the one-shot transport-init latch (g_tried_init) so lazy_start re-runs -- used after a FAILED
-// client connect (dead/typo'd IP) so a corrected IP re-attempts. MH_Net_InitEx is re-callable while stopped.
+// client connect (dead/typo'd IP) so a corrected IP re-attempts. MH_Net_InitEx is re-callable while stopped
+// AND, since U40/T1b, while STARTED -- re-initialising a started transport RESTARTS it (both modules), which
+// is what lets a client re-dial a lobby re-created after a match. Clearing the latch is still required.
 void MH_Seam_ResetTransportInit(void);
 
 // S8(b): non-zero once a FAILED client connect has cleared the connect latches (retry-ready). The ui_drive

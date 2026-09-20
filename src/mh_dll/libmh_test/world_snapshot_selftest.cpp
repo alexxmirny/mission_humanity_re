@@ -31,6 +31,12 @@
 //      never-written block: poison-vs-mutated is also a hash difference, so B stayed green over a
 //      block the importer had quietly stopped writing.
 //
+//   R. THE RNG CHANNELS (mp:R-rng-snapshot / refinement-plan X0, added 2026-09-17). The three arms
+//      above ask whether the blob CARRIES the world; this one asks whether an importer can CONTINUE
+//      it. R0 is a table gate -- every RNG channel region the sim reads is a named block. R1 is the
+//      stream: seed the channels, spend N draws, capture, poison, import, and require the next 16
+//      draws on channels 0/1/2 to be peer A's, bit for bit. See the ARM R banner further down.
+//
 // WHAT THIS FILE CANNOT DO. Without a `<blob>` argument there is no game and no recording, so the
 // fixture is SYNTHESISED here: that arm proves the format, the refusals, the round trip and the
 // coverage of all three comparisons. The clause that the imported world equals A REAL RECORDING
@@ -45,6 +51,14 @@
 #include "state/boot_snapshot.h"  // the SHARED session-begun latch -- see the ordering arm
 #include "state/region_runtime.h" // clear_region -- see empty_nav_pool() below
 #include "state/world_snapshot.h"
+
+// ARM R (the RNG channels, tracker mp:R-rng-snapshot / refinement-plan X0) draws through the
+// TRANSLATED PRNG bodies rather than re-deriving the recurrence here, for the same reason
+// sim_lt_rng_draws.h gives: one state, one implementation. A second copy of ROR16(state+0x9248,3)
+// living in a test would agree with itself forever while the shipped body drifted.
+#include "sim_test_support.h"                 // mh::sim::sim_fixture -- the offline store
+#include "sim/libtrans/sim_lt_rng_draws.h"    // rand_below (ch0), rand_below_fx (ch1)
+#include "sim/libtrans/sim_lt_rng_raw_step.h" // rand_below_ai (ch2), rand_state_advance
 
 namespace {
 
@@ -267,6 +281,343 @@ int arm_block_content(arena &a, const uint8_t *blob, size_t n) {
     return wrong;
 }
 
+// ---- the nav carriers, emptied before a synthetic capture ---------------------------------------
+//
+// FORMAT 2's capture serializes the live map-region pool, which it can only reach by WALKING it from
+// MAP_REGION_LIST_HEAD and MAP_REGION_POOL_FREE_HEAD. Those two are ordinary bound regions, so a
+// pattern-filled arena puts pseudo-random bytes in them -- a non-null pointer to nowhere,
+// dereferenced on the first hop. (Measured: rc=139, no output.) A synthetic arena has no pool, so
+// saying so explicitly is both the truth and the fix. BY_INDEX and the GRID are cleared for the same
+// reason: every non-null entry in them must be a pool node or the capture refuses.
+void empty_nav_pool() {
+    static const mh::state::region_id NAV_CARRIERS[] = {
+        mh::state::RID_MAP_REGION_LIST_HEAD, mh::state::RID_MAP_REGION_POOL_FREE_HEAD,
+        mh::state::RID_MAP_REGION_BY_INDEX, mh::state::RID_MAP_REGION_GRID};
+    for (size_t i = 0; i < sizeof(NAV_CARRIERS) / sizeof(NAV_CARRIERS[0]); ++i)
+        mh::state::clear_region(NAV_CARRIERS[i]);
+}
+
+// ================================================================================================
+// ARM R -- THE RNG CHANNELS (tracker mp:R-rng-snapshot, refinement-plan X0)
+// ================================================================================================
+//
+// WHAT THE ITEM ACTUALLY ASKS, AND WHY THE TWO HALVES ARE SEPARATE ARMS. "Add RNG channels to the
+// resync snapshot" is two claims wearing one sentence:
+//
+//   R0 -- MEMBERSHIP. Every RNG channel the strategic sim READS is a named member of the snapshot
+//         set. That is a statement about the generated tables, it is checkable without running a
+//         single draw, and it is the half that ROTS: the world block table is generated from
+//         tools/data/world_snapshot_schema.json + _dispositions.json, so a future exclusion could
+//         drop the divisor or the seed byte and every other arm here would stay green (the
+//         GENERATOR already refuses to exclude a region backing a determinism-hash slice, which
+//         covers rng_state and NOTHING ELSE -- the other two back no slice). This arm is the hard
+//         gate that makes such an exclusion a red test rather than a silent loss.
+//
+//   R1 -- THE STREAM. Carrying the bytes is not the claim anybody cares about; REPRODUCING THE
+//         DRAWS is. A second peer that imports a step-N capture and then draws must get peer A's
+//         numbers, in order, on every live channel. That is what join-in-progress and MP save/load
+//         rest on (X1/X3/X4), and it is provable offline -- no rig, no wire, no second process --
+//         because the PRNG's entire input is 16 bytes of bound region plus the divisor.
+//
+// WHY THIS IS NOT CIRCULAR. The draws are made through the SHIPPED translated bodies
+// (mh::sim::detail::rand_below / _fx / _ai / rand_state_advance), over the bytes that actually live
+// in the arena -- loaded from live_base(RID_STRAT_RNG_STATE) before each draw and stored back after
+// it, so the arena IS the channel state and the capture/import path is the only thing between peer
+// A's stream and peer B's. The poison fill is what makes it a claim: 0xCD agrees with nothing, so a
+// B that reproduces A's 16 draws did so out of the blob. And the arm is watched to go RED three
+// ways -- before the import, after a one-byte corruption of the carried rng_state, and against a
+// vacuity check that the 16 draws are not all the same number.
+//
+// WHAT IS DELIBERATELY *NOT* MASKED HERE. The determinism verdict masks slot 1 (the fx channel,
+// drawn per rendered FRAME -- D3, harness.cpp's rng_state banner). A SNAPSHOT is the opposite
+// problem: the importing peer must continue every channel, masked or not, or its fx stream forks
+// from the host's for the rest of the match. So R1 compares all sixteen bytes byte-for-byte and
+// draws ch1 alongside ch0 and ch2.
+
+// The RNG channels the strategic sim reads, and who reads them. Slot 3 of rng_state is unreachable
+// (no call site anywhere supplies it) but is carried anyway -- it is free and pinned at 0.
+// NOT here, on purpose: net_discovery's xorshift, which is a non-sim beacon nonce and touches no
+// hashed region; and the Watcom CRT rand() (llm_rand @0x004da48b), quarantined to cosmetic use.
+struct rng_channel_region {
+    mh::state::region_id rid;
+    const char          *role;
+};
+const rng_channel_region RNG_CHANNEL_REGIONS[] = {
+    {mh::state::RID_STRAT_RNG_STATE,
+     "uint[4]: slot 0 strategic (llm_rand_below), 1 fx (llm_rand_below_fx), 2 AI "
+     "(llm_rand_below_ai / llm_rand_state_advance), 3 unreachable"},
+    {mh::state::RID_STRAT_RNG_NORM_DIVISOR,
+     "the 65535.0 constant llm_rand_state_advance normalises through (fdiv qword [0x603f0c])"},
+    {mh::state::RID_STRAT_RNG_SEED_BYTE,
+     "the agreed ch0 seed session_begin_multi stamps from cfg_blob[0x14] and re-seeds from"},
+};
+
+// ---- R0: membership in the snapshot set and in the determinism manifest -------------------------
+int arm_rng_membership() {
+    int bad = 0;
+    for (size_t c = 0; c < sizeof(RNG_CHANNEL_REGIONS) / sizeof(RNG_CHANNEL_REGIONS[0]); ++c) {
+        const mh::state::region_id rid  = RNG_CHANNEL_REGIONS[c].rid;
+        const uint32_t             want = mh::state::REGIONS[rid].reach;
+        int                        at   = -1;
+        for (int i = 0; i < WORLD_SNAPSHOT_BLOCK_COUNT; ++i)
+            if (WORLD_SNAPSHOT_BLOCKS[i].rid == rid) {
+                at = i;
+                break;
+            }
+        if (at < 0) {
+            ++bad;
+            printf("  FAIL: RNG channel region %s is NOT carried by WORLD_SNAPSHOT_BLOCKS -- a "
+                   "snapshot that omits it cannot continue the stream (%s)\n",
+                   mh::state::REGIONS[rid].name, RNG_CHANNEL_REGIONS[c].role);
+            continue;
+        }
+        if (WORLD_SNAPSHOT_BLOCKS[at].len != want) {
+            ++bad;
+            printf("  FAIL: RNG channel region %s is carried SHORT: block %d is %u B, the region "
+                   "reaches %u B\n",
+                   mh::state::REGIONS[rid].name, at, WORLD_SNAPSHOT_BLOCKS[at].len, want);
+            continue;
+        }
+        printf("    %-32s block %3d  %5u B  %s\n", mh::state::REGIONS[rid].name, at,
+               WORLD_SNAPSHOT_BLOCKS[at].len, RNG_CHANNEL_REGIONS[c].role);
+    }
+
+    // rng_state must ALSO be in the determinism manifest, and cover every slot -- the 0x40-vs-16
+    // sizing bug (D3) is the precedent for checking the EXTENT rather than the presence.
+    uint32_t covered = 0;
+    for (int h = 0; h < mh::state::HASH_REGION_COUNT; ++h)
+        if (mh::state::HASH_REGIONS[h].rid == mh::state::RID_STRAT_RNG_STATE) {
+            const uint32_t end = mh::state::HASH_REGIONS[h].offset + mh::state::HASH_REGIONS[h].len;
+            if (end > covered) covered = end;
+        }
+    if (covered < mh::state::REGIONS[mh::state::RID_STRAT_RNG_STATE].reach) {
+        ++bad;
+        printf("  FAIL: the determinism manifest covers only %u of rng_state's %u bytes -- a slot "
+               "outside it can diverge without the verdict noticing\n",
+               covered, mh::state::REGIONS[mh::state::RID_STRAT_RNG_STATE].reach);
+    }
+    printf("  arm R0 (RNG channel membership): %d region(s) checked, %d missing/short; the "
+           "determinism manifest covers %u/%u bytes of rng_state\n",
+           (int)(sizeof(RNG_CHANNEL_REGIONS) / sizeof(RNG_CHANNEL_REGIONS[0])), bad, covered,
+           mh::state::REGIONS[mh::state::RID_STRAT_RNG_STATE].reach);
+    return bad;
+}
+
+// ---- the draw rig: the shipped PRNG bodies, over the bytes in the arena --------------------------
+struct arena_rng {
+    mh::sim::sim_fixture fx;
+    uint32_t            *state   = nullptr; // the arena's _G_LLM_STRAT_RNG_STATE[4]
+    double              *divisor = nullptr; // ... and its _G_LLM_STRAT_RNG_NORM_DIVISOR
+    uint8_t             *seed    = nullptr; // ... and its _G_LLM_STRAT_RNG_SEED_BYTE
+
+    bool attach() {
+        fx.reset();
+        state = reinterpret_cast<uint32_t *>(
+            static_cast<uintptr_t>(live_base(mh::state::RID_STRAT_RNG_STATE)));
+        divisor = reinterpret_cast<double *>(
+            static_cast<uintptr_t>(live_base(mh::state::RID_STRAT_RNG_NORM_DIVISOR)));
+        seed = reinterpret_cast<uint8_t *>(
+            static_cast<uintptr_t>(live_base(mh::state::RID_STRAT_RNG_SEED_BYTE)));
+        return state != nullptr && divisor != nullptr && seed != nullptr;
+    }
+
+    // ONE draw of the mixed stream. The kind rotates so all three LIVE channels are exercised and an
+    // importer that carried only the hashed ones would be caught: k%4 == 1 is the fx channel the
+    // determinism verdict masks.
+    uint32_t draw(int k) {
+        std::memcpy(fx.rng_state.data(), state, 16u);
+        fx.rng_norm_divisor         = *divisor;
+        mh::sim::sim_store      st  = fx.store();
+        const mh::sim::sim_view vw  = fx.view();
+        uint32_t                out = 0;
+        switch (k & 3) {
+            case 0: out = static_cast<uint32_t>(mh::sim::detail::rand_below(st, 1000)); break;
+            case 1: out = static_cast<uint32_t>(mh::sim::detail::rand_below_fx(st, 1000u)); break;
+            case 2: out = static_cast<uint32_t>(mh::sim::detail::rand_below_ai(st, 1000u)); break;
+            default: {
+                // The double is compared by its BITS, not by a tolerance: this is a bit-exact replay
+                // claim, and a near-miss here is a desync a fortnight later.
+                const double d = mh::sim::detail::rand_state_advance(vw, st, 2);
+                uint64_t     b = 0;
+                std::memcpy(&b, &d, sizeof(b));
+                out = static_cast<uint32_t>(b ^ (b >> 32));
+            } break;
+        }
+        std::memcpy(state, fx.rng_state.data(), 16u);
+        return out;
+    }
+
+    void draw_n(uint32_t *out, int n, int k0) {
+        for (int i = 0; i < n; ++i) out[i] = draw(k0 + i);
+    }
+};
+
+// ---- R1: capture at step N, import on a fresh peer, continue the stream --------------------------
+int arm_rng_stream(arena &a, uint32_t masks) {
+    const int WARMUP = 37; // "peer A has stepped to N": N draws already spent on all three channels
+    const int DRAWS  = 16; // the done_when's "next 16 RNG draws"
+    int       bad    = 0;
+
+    for (size_t i = 0; i < a.len; ++i) a.mem[i] = pattern(i);
+    empty_nav_pool();
+
+    arena_rng r;
+    if (!r.attach()) {
+        printf("  FAIL: arm R could not reach the RNG channel regions in the arena\n");
+        return 1;
+    }
+    // A session's agreed starting state, written where the game writes it. Distinct, non-symmetric
+    // per channel (sim_test_support.h's fixture rule): three equal seeds would let a body that
+    // ticked the WRONG slot pass.
+    r.state[0] = 0x1234u;
+    r.state[1] = 0xbeefu;
+    r.state[2] = 0x0777u;
+    r.state[3] = 0u;
+    *r.divisor = 65535.0;
+    *r.seed    = 0x5Au;
+
+    for (int i = 0; i < WARMUP; ++i) (void)r.draw(i);
+
+    // ---- the capture at step N ------------------------------------------------------------------
+    const size_t   need = capture_capacity();
+    uint8_t       *blob = static_cast<uint8_t *>(std::malloc(need));
+    size_t         got  = 0;
+    capture_params p;
+    p.step       = 1000u + static_cast<uint32_t>(WARMUP);
+    p.mask_flags = masks;
+    p.game_clock = 0x1112131415161718ULL;
+    lockstep_hash(p.mask_flags, &p.lockstep_combined, &p.lockstep_state);
+    const int crc = capture(blob, need, &got, p);
+    if (crc != WORLD_OK) {
+        printf("  FAIL: arm R capture at step N refused, rc=%d\n", crc);
+        std::free(blob);
+        return 1;
+    }
+    blob_header h;
+    std::memcpy(&h, blob, sizeof(h));
+
+    uint8_t rng_at_n[16];
+    std::memcpy(rng_at_n, r.state, 16u);
+    const uint8_t seed_at_n = *r.seed;
+    uint8_t       div_at_n[8];
+    std::memcpy(div_at_n, r.divisor, 8u);
+
+    // ---- peer A keeps drawing --------------------------------------------------------------------
+    uint32_t a_draws[16];
+    r.draw_n(a_draws, DRAWS, WARMUP);
+    uint8_t a_after[16];
+    std::memcpy(a_after, r.state, 16u);
+
+    bool all_same = true;
+    for (int i = 1; i < DRAWS; ++i)
+        if (a_draws[i] != a_draws[0]) all_same = false;
+    if (all_same) {
+        ++bad;
+        printf("  FAIL: arm R's 16 reference draws are all %lu -- a constant stream would be "
+               "reproduced by an importer that carried nothing\n",
+               (unsigned long)a_draws[0]);
+    }
+
+    // ---- the poisoned peer, BEFORE the import: it must NOT already agree -------------------------
+    a.fill(0xCD);
+    uint32_t poison_draws[16];
+    r.draw_n(poison_draws, DRAWS, WARMUP);
+    if (std::memcmp(poison_draws, a_draws, sizeof(a_draws)) == 0) {
+        ++bad;
+        printf("  FAIL: a 0xCD-poisoned peer already reproduces peer A's draws -- arm R would be "
+               "vacuous\n");
+    }
+
+    // ---- peer B: import the step-N capture and continue ------------------------------------------
+    a.fill(0xCD);
+    const int irc = import(blob, got);
+    if (irc != WORLD_OK) {
+        ++bad;
+        printf("  FAIL: arm R's step-N capture would not import, rc=%d\n", irc);
+        std::free(blob);
+        return bad;
+    }
+    if (std::memcmp(r.state, rng_at_n, 16u) != 0) {
+        ++bad;
+        printf("  FAIL: rng_state is not byte-identical after the import (all four slots, "
+               "UNMASKED -- the fx slot the determinism verdict masks is carried too)\n");
+    }
+    if (*r.seed != seed_at_n) {
+        ++bad;
+        printf("  FAIL: the RNG seed byte did not survive the import\n");
+    }
+    if (std::memcmp(r.divisor, div_at_n, 8u) != 0) {
+        ++bad;
+        printf("  FAIL: the RNG normalisation divisor did not survive the import\n");
+    }
+    {
+        uint64_t combined = 0, state_only = 0;
+        lockstep_hash(masks, &combined, &state_only);
+        if (combined != h.lockstep_combined || state_only != h.lockstep_state) {
+            ++bad;
+            printf("  FAIL: the imported peer does not reproduce the step-N lockstep hash pair\n");
+        }
+        if (canonical_hash() != h.base.content_hash) {
+            ++bad;
+            printf("  FAIL: the imported peer does not reproduce the step-N content hash\n");
+        }
+    }
+
+    uint32_t b_draws[16];
+    r.draw_n(b_draws, DRAWS, WARMUP);
+    if (std::memcmp(b_draws, a_draws, sizeof(a_draws)) != 0) {
+        ++bad;
+        printf("  FAIL: the imported peer's next %d draws differ from peer A's\n", DRAWS);
+        for (int i = 0; i < DRAWS; ++i)
+            if (a_draws[i] != b_draws[i])
+                printf("        draw %2d (channel %d): A=%lu B=%lu\n", i, (WARMUP + i) & 3,
+                       (unsigned long)a_draws[i], (unsigned long)b_draws[i]);
+    }
+    if (std::memcmp(r.state, a_after, 16u) != 0) {
+        ++bad;
+        printf("  FAIL: after the same 16 draws the imported peer's channel state is not peer A's\n");
+    }
+
+    // ---- the negative: the draws really come from the CARRIED bytes -------------------------------
+    {
+        int at = -1;
+        for (int i = 0; i < WORLD_SNAPSHOT_BLOCK_COUNT; ++i)
+            if (WORLD_SNAPSHOT_BLOCKS[i].rid == mh::state::RID_STRAT_RNG_STATE) {
+                at = i;
+                break;
+            }
+        size_t   off = 0;
+        uint32_t len = 0;
+        if (at < 0 || !block_span(blob, at, &off, &len) || len < 16u) {
+            ++bad;
+            printf("  FAIL: arm R could not find the carried rng_state payload to corrupt\n");
+        } else {
+            uint8_t *mut = dup_blob(blob, got);
+            mut[off] ^= 0x5Au; // slot 0, the strategic channel
+            a.fill(0xCD);
+            uint32_t c_draws[16];
+            if (import(mut, got) != WORLD_OK) {
+                ++bad;
+                printf("  FAIL: the rng-corrupted blob would not import (the arm needs it to)\n");
+            } else {
+                r.draw_n(c_draws, DRAWS, WARMUP);
+                if (std::memcmp(c_draws, a_draws, sizeof(a_draws)) == 0) {
+                    ++bad;
+                    printf("  FAIL: corrupting the carried rng_state did NOT change the replayed "
+                           "stream -- the draws are not coming from the blob\n");
+                }
+            }
+            std::free(mut);
+        }
+    }
+
+    printf("  arm R1 (RNG stream): capture at step %lu after %d draws; import reproduces the next "
+           "%d draws on channels 0/1/2 and the %d-region hash, %d failure(s)\n",
+           (unsigned long)p.step, WARMUP, DRAWS, mh::state::HASH_REGION_COUNT, bad);
+    std::free(blob);
+    return bad;
+}
+
 } // namespace
 
 int run_worldtest(int argc, char **argv);
@@ -440,11 +791,7 @@ int run_worldtest(int argc, char **argv) {
     // dereferenced on the first hop. (Measured: rc=139, no output.) A synthetic arena has no pool, so
     // saying so explicitly is both the truth and the fix. BY_INDEX and the GRID are cleared for the
     // same reason: every non-null entry in them must be a pool node or the capture refuses.
-    static const mh::state::region_id NAV_CARRIERS[] = {
-        mh::state::RID_MAP_REGION_LIST_HEAD, mh::state::RID_MAP_REGION_POOL_FREE_HEAD,
-        mh::state::RID_MAP_REGION_BY_INDEX, mh::state::RID_MAP_REGION_GRID};
-    for (size_t i = 0; i < sizeof(NAV_CARRIERS) / sizeof(NAV_CARRIERS[0]); ++i)
-        mh::state::clear_region(NAV_CARRIERS[i]);
+    empty_nav_pool();
 
     const size_t need = capture_capacity();
     uint8_t     *blob = static_cast<uint8_t *>(std::malloc(need));
@@ -611,6 +958,16 @@ int run_worldtest(int argc, char **argv) {
        "every block is inside the content comparison");
     ck(arm_block_content(a, blob, got) == 0,
        "every block's imported memory equals the blob payload byte-for-byte");
+
+    // ---- 6. ARM R: the RNG channels (mp:R-rng-snapshot / X0) --------------------------------------
+    //
+    // Last, and over its OWN fill + capture, so nothing above changes meaning: arms A-C are about the
+    // blob format and its coverage, this one is about whether an imported peer can keep drawing. It
+    // leaves the arena holding a deliberately corrupted import, which is why it runs after them.
+    ck(arm_rng_membership() == 0,
+       "every RNG channel the sim reads is a named member of the snapshot set");
+    ck(arm_rng_stream(a, h.mask_flags) == 0,
+       "a step-N capture imported on a fresh peer reproduces the RNG stream draw-for-draw");
 
     std::free(blob);
     printf("=== worldtest: %d checks, %d failures ===\n", g_checks, g_fails);

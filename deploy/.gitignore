@@ -1,0 +1,8 @@
+# The real shared report token (a Docker secret file) must never be committed -- only its
+# .example sibling is tracked. Mirrors src/collector/.gitignore's rule for the same secret.
+secrets/report_token.txt
+
+# Written on the VPS by .github/workflows/deploy.yml's ssh script on every run (IMAGE_TAG,
+# GHCR_OWNER) -- per-run values, never repo content, never committed.
+.env
+secrets/relay_key.txt

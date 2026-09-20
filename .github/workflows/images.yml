@@ -1,0 +1,199 @@
+# IMAGES -- build the two server-side container images (relay, collector), push to GHCR on
+# master, and gate every PR touching the Rust workspace with `cargo audit` + `cargo deny`.
+#
+# tracker dist:RP4, plan decisions D15(b)+(c). The relay image's own ACCEPTANCE (a real internet
+# match between two home connections) is mp:R4, tracked separately -- this workflow is the
+# pipeline that builds and ships it, not proof the relay works. See docs/deploy.md.
+#
+# TWO JOBS, AND THE ORDER IS DELIBERATE. `supply-chain` runs first and is cheap (prebuilt
+# cargo-audit/cargo-deny binaries via the tools' own GitHub Actions, no compile) -- a workspace
+# with a known-vulnerable or newly-copyleft dependency should fail in under a minute, before
+# either Dockerfile build even starts. `images` `needs: supply-chain`, so a red advisory blocks
+# the push exactly the way release.yml blocks an unsigned/unstamped publish.
+#
+# WHY BOTH DOCKERFILES SHARE ONE WORKFLOW rather than living in per-image files: they are pushed
+# together to answer the same question (RP4's done_when: "a push to master builds both images and
+# they appear in GHCR with the commit sha tag"), and the `matrix:` strategy below is what keeps
+# the per-image build/push steps from being duplicated text that drifts.
+#
+# WHY `push:` IS CONDITIONAL, NOT the trigger. Every PR that touches the Rust workspace still
+# BUILDS both images (catches a Dockerfile break before merge) but never pushes -- GHCR
+# `packages: write` is a privilege a fork-originated PR must never receive, and "build succeeds"
+# is a strictly weaker claim than "this became the tag GHCR now serves." Only a push to `master`
+# (or a manual `workflow_dispatch`, for a deliberate re-publish) sets `push: true`, and only a
+# `master` build additionally carries the `latest` tag -- see the "compute tags" step.
+#
+# AMD64 ONLY (RP4's scope line, plan D15). No `platforms:` matrix, no QEMU: the VPS this deploys
+# to (deploy.yml) is a single amd64 box, and cross-building for a platform nothing runs on is
+# cost with no acceptance test behind it.
+#
+# UNVERIFIED ON THIS MACHINE, STATED PLAINLY: Docker is not installed on the machine this
+# workflow was authored on (2026-09-17), so neither Dockerfile has actually been built here --
+# `hadolint` ran clean against both (docs/deploy.md has the exact commands) and `actionlint` ran
+# clean against this file, but a real `docker buildx build` has not happened. The first real
+# signal is this workflow's own first run.
+
+name: images
+
+on:
+  # THE PATHS LIST IS REPEATED, NOT SHARED VIA A YAML ANCHOR, ON PURPOSE: GitHub's own docs do
+  # not document (and this workflow has not been run to confirm) that its workflow-file parser
+  # honours standard YAML `&anchor`/`*alias` reuse across sibling trigger blocks, and the failure
+  # mode of guessing wrong here is silent -- a trigger that never fires, not a parse error. Keep
+  # both lists in sync by hand; six lines duplicated once is cheaper than a workflow that quietly
+  # never runs on PRs.
+  push:
+    branches: [master]
+    paths:
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "rust-toolchain.toml"
+      - "deny.toml"
+      - "src/relay/**"
+      - "src/launcher/**" # not imaged itself, but shares the workspace Cargo.lock the relay build resolves
+      - "src/collector/**"
+      - ".github/workflows/images.yml"
+  pull_request:
+    paths:
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "rust-toolchain.toml"
+      - "deny.toml"
+      - "src/relay/**"
+      - "src/launcher/**"
+      - "src/collector/**"
+      - ".github/workflows/images.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  # ---- the PR gate: cargo audit (RustSec advisories) + cargo deny (licenses/bans/sources) ----
+  supply-chain:
+    name: cargo audit + cargo deny
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      # rustsec/audit-check files a check-run annotation on the PR; it needs write to do that.
+      # Nothing else in this job touches anything beyond reading the checkout.
+      checks: write
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          # audit-check and cargo-deny-action both fetch their own prebuilt binaries (no compile),
+          # but they still shell out to `cargo` itself for `cargo metadata` -- rust-toolchain.toml
+          # already pins the channel; this action just makes sure `cargo` exists on the runner.
+          toolchain: stable
+
+      # RustSec's own action -- pulls a prebuilt cargo-audit, scans Cargo.lock against the
+      # advisory-db the tool ships with, and fails the job on any advisory affecting a crate this
+      # workspace's Cargo.lock actually resolves. Verified locally at HEAD (2026-09-17,
+      # cargo-audit 0.22.2): 0 advisories against 1247 loaded, over the real 364-dependency
+      # Cargo.lock (both mh_launcher and mh_relay). See deny.toml's header comment for the exact
+      # command and docs/deploy.md for the full local-verification note.
+      - name: cargo audit (RustSec advisories)
+        uses: rustsec/audit-check@v2
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      # EmbarkStudios' own action -- pulls a prebuilt cargo-deny and runs `cargo deny check`
+      # against deny.toml (repo root): advisories, licenses, bans (duplicate-version WARNs, never
+      # fails the job), and sources (crates.io only, everything else DENIED). Verified locally at
+      # HEAD: `advisories ok, bans ok, licenses ok, sources ok`.
+      - name: cargo deny (licenses, bans, sources)
+        uses: EmbarkStudios/cargo-deny-action@v2
+        with:
+          command: check
+
+  # ---- build (every trigger) and push (master / workflow_dispatch only) ----
+  images:
+    name: build + push (${{ matrix.image }})
+    needs: supply-chain
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      # THE ONLY WRITE SCOPE IN THIS FILE, on the one job that calls GHCR -- same per-job
+      # permission-boundary rule release.yml states for `contents: write`.
+      packages: write
+    strategy:
+      # fail-fast: false -- a broken collector Dockerfile should not hide a broken relay one (or
+      # the reverse), the same reasoning ci.yml gives for running `build` and `proto_linux`
+      # independently.
+      fail-fast: false
+      matrix:
+        include:
+          - image: relay
+            ghcr_name: mh-relay
+            # repo root: src/relay/Cargo.toml reads `version.workspace = true` etc. from the root
+            # Cargo.toml, so the workspace root IS the build context (see src/relay/Dockerfile's
+            # own header comment for the full reasoning + the .dockerignore allowlist that keeps
+            # this context small on a monorepo whose bulk is unrelated C++/RE tooling).
+            context: .
+            file: src/relay/Dockerfile
+          - image: collector
+            ghcr_name: mh-collector
+            # src/collector's own directory: a plain python:3.12-slim image with no workspace
+            # dependency, so its own directory is already a self-contained build context (see
+            # src/collector/Dockerfile).
+            context: src/collector
+            file: src/collector/Dockerfile
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: docker/setup-buildx-action@v4
+
+      - name: log in to GHCR
+        # Skip on a PR build: PRs build-only (see `push:` below) and never need registry
+        # credentials, so a fork-originated PR run does not even attempt to authenticate.
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: compute the image ref + tags
+        id: ref
+        shell: bash
+        run: |
+          # GHCR requires an all-lowercase path; github.repository_owner is not guaranteed to be
+          # (an org/user display name can carry uppercase even though most don't).
+          owner="$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')"
+          image="ghcr.io/${owner}/${{ matrix.ghcr_name }}"
+          sha="$(git rev-parse --short=8 HEAD)"
+          tags="${image}:${sha}"
+          # `latest` only on an actual master push (or a manual dispatch run FROM master) -- never
+          # on a PR build (which never pushes at all, per the `push:` step below) and never on a
+          # workflow_dispatch from some other branch, which would otherwise silently reassign
+          # `latest` to a ref nobody merged.
+          if [ "${{ github.ref }}" = "refs/heads/master" ]; then
+            tags="${tags},${image}:latest"
+          fi
+          echo "image=${image}" >> "$GITHUB_OUTPUT"
+          echo "tags=${tags}" >> "$GITHUB_OUTPUT"
+          echo "sha=${sha}" >> "$GITHUB_OUTPUT"
+          echo "computed tags: ${tags}"
+
+      - name: build${{ github.event_name != 'pull_request' && ' + push' || '' }}
+        uses: docker/build-push-action@v7
+        with:
+          context: ${{ matrix.context }}
+          file: ${{ matrix.file }}
+          platforms: linux/amd64
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.ref.outputs.tags }}
+          # PER-IMAGE cache scope (RP4's own scope line) -- without `scope:`, buildx's GitHub
+          # Actions cache backend is keyed by workflow+job by default, so the relay build (Rust,
+          # cargo-chef layers) and the collector build (Python, pip layers) would silently share
+          # one cache bucket and evict each other's layers on every alternating run.
+          cache-from: type=gha,scope=${{ matrix.image }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.image }}
+
+      - name: image ref
+        if: github.event_name != 'pull_request'
+        run: echo "pushed ${{ steps.ref.outputs.tags }}"

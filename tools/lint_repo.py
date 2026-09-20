@@ -56,6 +56,11 @@ Runs four checks (each independently reported; exit code 1 if ANY fails):
                     the checkable form is address-keyed (tools/resolve_doc_refs.py).
                     tools/lint_doc_symbols.py.
   5. ruff        -- ruff format --check tools (config: ruff.toml).
+  6. rust        -- tools/lint_rust.py: cargo fmt --all --check + cargo clippy --workspace
+                    --all-targets -- -D warnings, over the src/launcher + src/relay workspace. The
+                    ONLY rows in this file with a three-valued verdict: cargo is a per-machine
+                    toolchain (rustup), so on a machine without it they report SKIP with the remedy
+                    rather than passing vacuously. See rust_row().
 
 This is the per-session repo lint (refactor Phase 5); the Ghidra-side
 annotation lint stays separate (tools/lint_annotations.py, needs a live ReVA session).
@@ -435,6 +440,40 @@ def run_chunked(name, cmd_prefix, files, cwd=REPO):
         joined = "\n".join(outputs)
         print("      " + "\n      ".join(joined.splitlines()[:20]))
     return ok
+
+
+def rust_row(mode, label):
+    """A tools/lint_rust.py row, with its THREE-VALUED verdict preserved (dist DS1).
+
+    Every other row here is a boolean: a subprocess exits 0 or it does not. The Rust rows cannot be,
+    because cargo is OPTIONAL on a machine -- it arrives via rustup, which nothing else in this tree
+    needs -- and both boolean answers are wrong. Failing makes the gate permanently red on any
+    machine that does not build the launcher; passing makes "cargo fmt never ran" look exactly like
+    "cargo fmt found nothing", which is the VACUOUS PASS the --ci table above calls out by name.
+
+    So lint_rust exits 3 for "did not run", and this wrapper renders that as a `[SKIP]` line that
+    NAMES the reason and the remedy, without failing the gate. Nothing else in the roster gets to do
+    this: a row is allowed a skip state only when the absent thing is a per-machine toolchain rather
+    than a repo file, and when the skip line says so where a reader of the log will see it."""
+
+    def run():
+        r = subprocess.run(
+            [sys.executable, os.path.join(REPO, "tools", "lint_rust.py"), mode],
+            cwd=REPO,
+            capture_output=True,
+            text=True,
+        )
+        out = (r.stdout + r.stderr).strip()
+        if r.returncode == 3:
+            first = out.splitlines()[0] if out else "cargo not found"
+            print("[SKIP] %s -- DID NOT RUN: %s" % (label, first))
+            return True
+        print("[%s] %s" % ("ok" if r.returncode == 0 else "FAIL", label))
+        if r.returncode != 0 and out:
+            print("      " + "\n      ".join(out.splitlines()[:20]))
+        return r.returncode == 0
+
+    return run
 
 
 def declare_checks(args):
@@ -916,6 +955,70 @@ def declare_checks(args):
         "(check_tool_dispositions --ledger)",
         [sys.executable, os.path.join(REPO, "tools", "check_tool_dispositions.py"), "--ledger"],
     )
+    # TL-CI1. THE RELEASE PACKAGER's rules, which are the part of a release that goes wrong
+    # silently: a zip carrying the STANDALONE libmh.dll instead of the hosted one gives the user a
+    # configuration they did not ask for and cannot see, and a zip named after a tag whose binaries
+    # were never stamped with it is a release no bug report can be traced back to. The selftest is
+    # hermetic -- a temp tree, fake artifacts, no toolchain and no game -- so it runs here and on
+    # the CI runner, and it asserts the three zips' EXACT file lists, that the ship and debug inis
+    # differ only in the named diagnostic keys, that SHA256SUMS verifies and goes red on a tampered
+    # zip, and every refusal. It additionally exercises the VERSIONINFO reader and the
+    # hosted-vs-standalone discrimination against real PEs WHEN a Release tree happens to exist,
+    # and prints a note rather than passing quietly when it does not.
+    check(
+        "TL-CI1 release packaging: file lists, ini variants, sums and refusals "
+        "(release_package --selftest)",
+        [sys.executable, os.path.join(REPO, "tools", "release_package.py"), "--selftest"],
+    )
+    # 2026-09-20 (user ruling). THE ini's STRING KEYS CARRY NO SAME-LINE COMMENT. Win32
+    # GetPrivateProfileStringA returns the rest of the line as the value, so `probe_text=   ; empty
+    # = off` drew that comment on every present of a STOCK install and `relay=HOST:PORT   ; UDP
+    # only...` dialled the comment (2026-09-19). Prose warnings on three lines did not stop the
+    # fourth, so the rule is a gate: the string-key set is DERIVED from the DLL's own
+    # GetPrivateProfileStringA calls (a new string key is covered the moment its reader exists),
+    # and any live or commented-out line setting one of them with a `;` after the `=` is red.
+    # Integer keys keep their comments (atoi stops at the `;`).
+    check(
+        "ini: no string-valued key in mh_net.example.ini carries a same-line comment "
+        "(lint_ini_string_keys)",
+        [sys.executable, os.path.join(REPO, "tools", "lint_ini_string_keys.py")],
+    )
+    check(
+        "ini string-key lint -- a planted same-line comment (live and commented-out) goes RED",
+        [sys.executable, os.path.join(REPO, "tools", "lint_ini_string_keys.py"), "--selftest"],
+    )
+    # ---- dist RP3: the report drain (BEGIN) -------------------------------------------------
+    # RP3's drain tool pulls report directories off the VPS collector (dist:RP2) over a
+    # `restrict,command="rrsync -ro ..."` SSH key. The selftest is OFFLINE -- it rsyncs local
+    # directory to local directory (no VPS, no network) -- so it runs here and on the CI runner:
+    # a report tree drains in exactly once (a second consecutive drain transfers zero new files),
+    # an incomplete report directory (no meta.json yet, mid-atomic-write on the server) is never
+    # summarized, and every refusal (no VPS_HOST, no key, no rsync binary) fires with a clear
+    # message instead of a stack trace. The live VPS half (two real drains, the rrsync push
+    # refusal, crash_report.py naming a function from a drained report) is operator-run per
+    # src/collector/README.md's "Draining reports" section -- it needs a real VPS + a real key,
+    # neither of which a CI runner has.
+    check(
+        "dist RP3 report drain: pull-once, incomplete-report skip, refusals "
+        "(drain_reports --selftest)",
+        [sys.executable, os.path.join(REPO, "tools", "drain_reports.py"), "--selftest"],
+    )
+    # ---- dist RP3: the report drain (END) ---------------------------------------------------
+    # dist LA2. THE UPDATE MANIFEST's signer. The launcher verifies `manifest.json` against one
+    # compiled-in minisign key before it parses a byte of it, so the whole update path rests on this
+    # tool producing signatures that the `minisign-verify` crate accepts -- and on it refusing to
+    # publish a manifest whose digests do not match the zips the packager actually built. The
+    # selftest is hermetic (a temp tree, fake zips, no network and no key on disk) and its first
+    # assertions are RFC 8032's own published Ed25519 test vectors, which is what makes the
+    # stdlib-only curve arithmetic in that file checked against the standard rather than against
+    # itself. It then round-trips a generated key through the minisign key/signature formats, proves
+    # a flipped manifest byte, a rewritten trusted comment, a foreign key and a truncated signature
+    # are all caught, and proves every build refusal fires.
+    check(
+        "dist LA2 update manifest: RFC 8032 vectors, the minisign formats, the tampers and the "
+        "refusals (gen_update_manifest --selftest)",
+        [sys.executable, os.path.join(REPO, "tools", "gen_update_manifest.py"), "--selftest"],
+    )
     # F3C. D5's boundary: the determinism harness arms ONLY through the named hook points, never
     # through the raw inline-detour primitives (nor a hand-rolled VirtualProtect, which is how the
     # one site the 77-site measurement missed wrote its bytes). Two-sided on purpose -- zero
@@ -1034,6 +1137,165 @@ def declare_checks(args):
     check(
         "fork F4F wiring gate -- a deleted/duplicated/misdirected wiring and a stale contract row go RED",
         [sys.executable, os.path.join(REPO, "tools", "check_instrument_wiring.py"), "--selftest"],
+    )
+    # mp:SES2. The THIRD leg of the instrument story, and it is about CONTENT where the two rows above
+    # are about wiring and tools/data/arm_order/*.json is about ORDER. check_instrument_wiring pins
+    # WHICH IMAGE writes each channel; check_arm_order pins WHICH STEP REPORTED WHEN; neither has any
+    # opinion about what a line MEANS or who depends on it -- so a parser and an emitter could drift
+    # apart with every gate in the tree green, and two of them had:
+    #   * mp_pacing_report.read_frametimes still keys on a `qpc_freq=` header token D22 removed, so
+    #     every frame-time column in the pacing report has been silently nan/0 on every current log;
+    #   * mp_analyze's unplanned-end marker list still carries "kicked-off the game", which nothing in
+    #     src/mh_dll emits.
+    # Both were found BY building the registry, which is the argument for having one. The gate has
+    # three arms (stale entry / unregistered parse / stale emitter) and the lint's docstring states
+    # the matching rule and -- as load-bearingly -- its limit: arm B discovers only the `; [tag]`
+    # class, because that is the one with a syntactic marker, not because it is the whole population.
+    check(
+        "log line formats are registered, and parser/emitter still agree (lint_log_formats)",
+        [sys.executable, os.path.join(REPO, "tools", "lint_log_formats.py")],
+    )
+    check(
+        "log-format gate -- a planted unregistered parse, a stale needle and a stale emitter go RED",
+        [sys.executable, os.path.join(REPO, "tools", "lint_log_formats.py"), "--selftest"],
+    )
+    # tooling TL-GATE-D25FX. A hash-manifest change (D25 appended region 62) silently staled every
+    # recorded `state` artifact -- the three libref world blobs + streams and both UI-REC oracles --
+    # and the next full gate read them as "first mismatch at step 1", the shape of a broken replayer.
+    # The rule "a manifest change means a re-capture IN THE SAME SESSION" is now a gate: the
+    # fingerprint the DLL is built with (computed from the generated header, verified against the
+    # DLL's own stamp on the blobs) must match every fixture's and oracle's stamp, and every declared
+    # A/B/C excusal (tools/data/abc_excusals.json) must name a region the manifest still has, with
+    # PROVED byte-level evidence beside it. Offline, sub-second.
+    check(
+        "recorded hash fixtures + UI-REC oracles are CURRENT, A/B/C excusals real (lint_fixture_currency)",
+        [sys.executable, os.path.join(REPO, "tools", "lint_fixture_currency.py")],
+    )
+    check(
+        "fixture-currency gate -- a stale fixture, an unstamped/stale oracle and a bad excusal go RED",
+        [sys.executable, os.path.join(REPO, "tools", "lint_fixture_currency.py"), "--selftest"],
+    )
+    # dist RP4. Structural checks over every tracked docker-compose file: the relay service runs
+    # with `network_mode: host` (plan D4 -- the default bridge's userland proxy rewrites the
+    # source address the connection-id demux depends on), the collector service does not, and
+    # nothing references Watchtower (archived Dec 2025, not used -- images are pulled explicitly
+    # by .github/workflows/deploy.yml). Pure YAML parse, no Docker, no rig, sub-second.
+    check(
+        "compose files (lint_compose)",
+        [sys.executable, os.path.join(REPO, "tools", "lint_compose.py")],
+    )
+    check(
+        "compose files -- the negative cases still fire",
+        [sys.executable, os.path.join(REPO, "tools", "lint_compose.py"), "--selftest"],
+    )
+    # SES1b. The three-match session-rollover scenario's post_check (tools/test_ui.py's
+    # session_rollover entry) -- offline, planted-lane proof that the checker itself still catches
+    # a wrong session-directory count, a mismatched/repeated match_id, a directory-name/match_id
+    # mismatch, and (the negative arm this row exists for) a round whose session.json was never
+    # closed, which is the shape a missing close-on-leave seam call leaves behind.
+    check(
+        "SES1b session-rollover post-check -- the negative cases still fire (check_session_rollover --selftest)",
+        [sys.executable, os.path.join(REPO, "tools", "check_session_rollover.py"), "--selftest"],
+    )
+    # mp:L1. The player-visible connection indicator's post_check (tools/test_ui.py's net_hud entry)
+    # only runs when the rig does, so its own negatives are gated here off planted logs: an indicator
+    # that armed but never reached a drawn frame, one whose link was never measured, a command-latency
+    # number that has stopped being lookahead+step, a bar outside its own range, and an anonymous
+    # stall -- the very thing the item replaced -- must each go RED rather than read as a quiet pass.
+    check(
+        "mp:L1 net-indicator post-check -- the negative cases still fire (check_net_indicator --selftest)",
+        [sys.executable, os.path.join(REPO, "tools", "check_net_indicator.py"), "--selftest"],
+    )
+    # tooling:TL-SHIMUDP-C. The udp-shim srtt post_check (tools/test_ui.py's shim_udp entry) only
+    # runs when the rig does, so its own negatives are gated here off planted mh_lockstep.log
+    # corpora: a bypassed shim (srtt reads near-zero, the LAN's real round trip), a transport that
+    # measured nothing at all (every srtt0_ms is n/a), and a menu-session log with no rows must each
+    # go RED rather than read as a quiet pass.
+    check(
+        "tooling:TL-SHIMUDP-C shim-rtt post-check -- the negative cases still fire (check_shim_rtt --selftest)",
+        [sys.executable, os.path.join(REPO, "tools", "check_shim_rtt.py"), "--selftest"],
+    )
+    # mp:R3a. The relay-path post_check (tools/test_ui.py's relay_punch entry) only runs when the
+    # rig does, so its own negatives are gated here off planted mh_net.log corpora: a lane pinned to
+    # force_relay (never reaches "udp path DIRECT") and a log with no path-switch line at all must
+    # each go RED rather than read as a quiet pass.
+    check(
+        "mp:R3a relay-path post-check -- the negative cases still fire (check_relay_path --selftest)",
+        [sys.executable, os.path.join(REPO, "tools", "check_relay_path.py"), "--selftest"],
+    )
+    # mp:F3c. The codepage post_check (tools/test_ui.py's codepage_adopt / codepage_refused entries)
+    # runs only with the rig; its negatives -- a joiner that never adopted, a host that refused
+    # anyway, a refusal the client was never told of, a client that stayed seated (no join_refused
+    # close), a host that admitted a peer it should have refused -- are gated here off planted logs.
+    check(
+        "mp:F3c codepage post-check -- the negative cases still fire (check_codepage_adopt --selftest)",
+        [sys.executable, os.path.join(REPO, "tools", "check_codepage_adopt.py"), "--selftest"],
+    )
+    # mp:R4b. The relay-restart post_check (tools/test_ui.py's relay_restart entry) likewise runs
+    # only with the rig; its negatives -- a peer that never got NOT_REGISTERED, a LOST with no
+    # RESTORED, a restored leg whose link dropped anyway, a relay log with one `listening` line --
+    # are gated here off planted corpora.
+    check(
+        "mp:R4b relay-restart post-check -- the negative cases still fire (check_relay_restart --selftest)",
+        [sys.executable, os.path.join(REPO, "tools", "check_relay_restart.py"), "--selftest"],
+    )
+    # mp:R6. The relay-rooms post_check (relay_match / relay_browse) runs only with the rig; its
+    # negatives -- a host whose room IS its port, a host that never minted (a pre-R6 build), two
+    # hosts in one room, a client that only ever came up in the directory room, a relay log with a
+    # room_busy or a non-zero register_refused -- are gated here off planted corpora.
+    check(
+        "mp:R6 relay-rooms post-check -- the negative cases still fire (check_relay_rooms --selftest)",
+        [sys.executable, os.path.join(REPO, "tools", "check_relay_rooms.py"), "--selftest"],
+    )
+    # mp:R7a. The two dial-mode post-checks are mirror images: check_direct_dial fails when the client
+    # contacted the relay on an *Internet server* dial (direct_dial_with_relay_set), check_relay_leg
+    # fails when a first-browser join did NOT go through the relay (relay_browse_local). Both run only
+    # when the rig does, so their own negatives are gated here off planted logs.
+    check(
+        "mp:R7a direct-dial post-check -- the negative cases still fire (check_direct_dial --selftest)",
+        [sys.executable, os.path.join(REPO, "tools", "check_direct_dial.py"), "--selftest"],
+    )
+    check(
+        "mp:R7a relay-leg post-check -- the negative cases still fire (check_relay_leg --selftest)",
+        [sys.executable, os.path.join(REPO, "tools", "check_relay_leg.py"), "--selftest"],
+    )
+    # mp:R4a. The stale-relay post-check (relay_stale_notice) runs only with the rig; its negatives --
+    # the R4a line missing, the notice never reaching mh.dll's carrier, a relay that counted no
+    # mismatch, and a `relay protocol` line on a pair that should match -- are gated here off planted
+    # logs.
+    check(
+        "mp:R4a stale-relay post-check -- the negative cases still fire (check_relay_stale --selftest)",
+        [sys.executable, os.path.join(REPO, "tools", "check_relay_stale.py"), "--selftest"],
+    )
+    # mp:SES3. The camera-latch reader is the cam_edge_scroll scenario's post-check, i.e. it only
+    # runs when the rig does -- so its own negatives are gated here instead, off planted logs: a
+    # latch with no camera movement, a latch that never falls, a run over the lines/frame budget and
+    # a run with mouse_trace off must each go RED rather than read as a quiet pass.
+    check(
+        "cam-trace reader -- planted latch/cost/absence cases go RED (check_cam_trace --selftest)",
+        [sys.executable, os.path.join(REPO, "tools", "check_cam_trace.py"), "--selftest"],
+    )
+    # mp:U19. The clean-quit reader is the graceful_quit scenario's post-check, so like the two rows
+    # above it only runs when the rig does; its negatives are gated here off planted log pairs. The
+    # arm that earns the row is "the relink ran before the broadcast": that was the real defect U19
+    # found, every other clause stayed GREEN throughout it, and a reader that stopped noticing the
+    # ordering would hand back a pass for a departure announcement that closed its own socket.
+    check(
+        "clean-quit reader -- planted relink-ordering/B2/slow-drop cases go RED (check_graceful_quit --selftest)",
+        [sys.executable, os.path.join(REPO, "tools", "check_graceful_quit.py"), "--selftest"],
+    )
+    # mp:X2, the same shape one item along. The map-download reader's verdict is a statement about
+    # TWO peers' logs -- the host's claim and gate, the joiner's store and its own file before and
+    # after -- and three of its clauses are ABSENCES (nothing transferred, nothing overwritten,
+    # nothing written where the picker would list it). An absence-checker that had quietly stopped
+    # matching would hand back a pass for every one of them, so the row that earns its keep is the
+    # planted-negative sweep: a download under the base name, a download beside the player's maps,
+    # an own-file hash that moved, a gate that never closed, and a transfer armed to a peer that
+    # already had the map must each go RED.
+    check(
+        "map-download reader -- planted base-name/beside-maps/own-file-changed/no-gate cases go RED "
+        "(check_map_transfer --selftest)",
+        [sys.executable, os.path.join(REPO, "tools", "check_map_transfer.py"), "--selftest"],
     )
     # F1F. The interior-pointer screen stays reproducible from committed inputs (fixture blob +
     # generated registry header), and the TLO_REGISTRY sole-reader claim is a gate, not prose --
@@ -1617,6 +1879,25 @@ def declare_checks(args):
     check(
         "machine-path scan -- the negative cases still fire",
         [sys.executable, os.path.join(REPO, "tools", "lint_machine_paths.py"), "--selftest"],
+    )
+    # dist DS1. THE RUST HALF OF THE TREE. src/launcher and src/relay are Rust; clang-format and
+    # ruff cannot see them, so without these two rows the only two crates in the repo would be the
+    # only source in it under no formatter and no linter at all. `-D warnings` is what makes the
+    # clippy row a gate rather than a report. Both go through tools/lint_rust.py for its
+    # three-valued verdict (see rust_row above): on a machine with no cargo they SKIP, by name,
+    # with the remedy -- they never silently pass. Same lane, because both drive cargo against one
+    # shared target/ directory and cargo takes a lock on it.
+    check_fn(
+        "rust fmt (lint_rust --fmt)", rust_row("--fmt", "cargo fmt --all --check"), lane="cargo"
+    )
+    check_fn(
+        "rust clippy -D warnings (lint_rust --clippy)",
+        rust_row("--clippy", "cargo clippy --workspace --all-targets -- -D warnings"),
+        lane="cargo",
+    )
+    check(
+        "rust lint verdict -- the negative cases still fire",
+        [sys.executable, os.path.join(REPO, "tools", "lint_rust.py"), "--selftest"],
     )
     # F5D. THIS FILE'S OWN --ci SUBSET, armed. The dead-skip arm runs inline on every lint run (see
     # check_ci_skip_list), so what is left to prove is that the arm can FIRE and that a skipped row

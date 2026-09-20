@@ -78,25 +78,36 @@ itself), so the record-vs-replay comparison is part of the acceptance and is **f
 ## Re-recording it
 
 The fixture rots when the blob schema (`gen_world_snapshot.py`), the recording format, or the hash
-manifest moves. Every step below was executed end-to-end to produce the committed set.
+manifest moves. Every step below was executed end-to-end to produce the committed set (last: 2026-09-20,
+TL-GATE-D25FX, after D25 appended hash region 62 — the recording halves `orders.bin.zz`/`clock.bin.zz`
+came back BYTE-IDENTICAL to the 2026-09-11 set; only the blob header's stamps and the hash stream moved).
+
+**A hash-manifest change means THIS procedure, in the same session, for all three fixtures and both
+UI-REC oracles — then the full gate.** The blob carries `hash_manifest_fp`; `replay_libref.py` headlines
+`STALE FIXTURE: captured under manifest X, current Y` and `tools/lint_fixture_currency.py` (a lint_repo row)
+stays red until the stamps match the generated header (dead-ends G248). The first gate after D25 read the
+stale set as three broken replays because nothing said "stale" above the fold.
 
 ```
-# 0. a dedicated lane, headless
-python tools/make_lane.py --name ui_libref_rec --lane 33 --port 6633 --headless
+# 0. a dedicated lane, headless -- a SCRATCH lane (lane_alloc block `scratch` = 96..98); 33 is inside
+#    the suite block since the 2026-09 re-allocation
+python tools/make_lane.py --name ui_libref_rec --lane 96 --port 6696 --headless
 
 # 1. RECORD -- all three halves from ONE run. exit_on_stop=1 IS MANDATORY (see the traps).
 python tools/ui_test.py sp_det.txt --harness --steps 5000 \
   --harness-extra "pin_wallclock=1;fixed_step=0;region_hash_step=1;order_mode=1;world_capture=1;\
 synth_move=1;synth_seed=20260911;synth_at=60;synth_every=1;exit_on_stop=1;pin_fpu=1" \
-  --host-dir <lane> --timeout-frames 400000 --timeout 2400 --headless --port 6633
+  --host-dir <lane> --timeout-frames 400000 --timeout 2400 --headless --port 6696
 
 # 2. pack the three halves + provenance
 python tools/fixture_replay.py pack <run_dir> --seed 20260911 --commit $(git rev-parse HEAD) \
   --recorded <date> --script sp_det.txt --host "..." --peers "..." --record-flags '{...}'
 
 # 3. REPLAY #1 from the COMMITTED form -- its stream becomes the fixture's comparison target
-python tools/fixture_replay.py replay --lane <lane> --port 6633
+python tools/fixture_replay.py replay --lane <lane> --port 6696
 python tools/fixture_replay.py stream <replay1_run_dir>
+#    (`replay` returns the PROCESS run dir -- the `<ts>_menu_solo` one holding mh_harness.log -- not the
+#    per-session `<ts>_<sid>_0_solo` sibling; the same rule applies when picking a dir by hand)
 
 # 4. the 0 -> n guard: a RECORD run carrying an rdump of the order_queue_count slice over every
 #    step. Its recording must be byte-identical to the committed one; counts-guard refuses otherwise.
@@ -105,7 +116,7 @@ python tools/ui_test.py sp_det.txt --harness --steps 5000 \
 python tools/fixture_replay.py counts-guard <that_run_dir> --rid 42
 
 # 5. REPLAY #2 -- the self-consistency proof
-python tools/fixture_replay.py replay --lane <lane> --port 6633
+python tools/fixture_replay.py replay --lane <lane> --port 6696
 
 # 6. ACCEPT: integrity + the guard + replay-vs-replay bit-identity + the fail-closed fidelity table
 python tools/fixture_replay.py verify --replay-log <replay2>/mh_harness.log \

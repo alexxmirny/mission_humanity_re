@@ -1,0 +1,47 @@
+# mp:R2 RELAY CLIENT walk: reach the discovery browser through a RELAY, capture the listed game,
+# then assert the row DISAPPEARS when the host leaves its lobby.
+#
+# WHAT IS BEING TESTED, and what would still pass without it. The browser row itself is not new --
+# a LAN client has listed a host's real name/map/players since S3. What is new is the SOURCE: the
+# relay holds a directory of the lobbies registered on it and hands it to a browsing peer, so a
+# game is listed without the player knowing anything but the relay's address. The discriminating
+# assertion is the LAST one:
+#
+#   `sessions <1` after the host leaves can ONLY be satisfied by the relay's directory. When the
+#   host leaves, the client's connected-store record is withdrawn (U13) -- and the browser would
+#   then fall back to the relay row, which stands until the DIRECTORY drops it. So a build whose
+#   directory never withdrew anything would keep rendering a row for a lobby that no longer exists
+#   and this script would time out.
+#
+# Pair with mp_host_relay_leave.txt. The registry starts the relay process and hands both peers
+# `[net] relay=<host>:7100`.
+
+# 1. main menu (NETWORK GAME = value 110)
+settled value:110
+clickv 110
+
+# 2. player-name screen (accept the default name)
+present Player name
+settled Ok
+clickl Ok
+
+# 3. local-games browser -> "Internet server". The typed Server address is NOT load-bearing here:
+#    a relayed peer dials `[net] relay`, and Connect is what brings the transport (and with it the
+#    relay leg, and with it the session list) up.
+present Internet server
+settled Internet server
+clickl Internet server
+present Server address
+settled Connect
+clickl Connect
+
+# 4. the host's game is listed -> capture the row and tell the host it may leave.
+sessions 1
+settled Join game
+capture c1_relay_row
+signal listed
+
+# 5. the host left: the relay withdrew its descriptor, so the browser empties.
+sessions <1
+log CLIENT: the relay-listed row vanished after the host left the lobby
+end

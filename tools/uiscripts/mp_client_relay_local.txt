@@ -1,0 +1,37 @@
+# mp:R7 CLIENT walk: JOIN a RELAY-listed game from the FIRST browser -- no IP window, no typed address.
+#
+# Path: main menu -> NETWORK GAME -> player name -> the first browser (retail's LAN list). With
+# `[net] relay` set the DLL holds _G_LLM_MP_PROBE_SERVER_COUNT at 1, so this browser's own refresh
+# runs one probe through the discovery-poll detour: the relay is dialled, its directory is listed
+# here, and the shared Join button (llm_lobby_join_head) takes the row. "Internet server" is never
+# clicked. Contrast mp_client_relay_browse.txt (R2), which reaches the same directory only by
+# walking Internet server -> Server address -> Connect.
+#
+# HOST PREREQUISITE: mp_host_lobby.txt on a relay lane (test_ui.py relay_browse_local).
+
+# 1. main menu (NETWORK GAME = value 110)
+settled value:110
+clickv 110
+
+# 2. player-name screen (accept the default name)
+present Player name
+settled Ok
+clickl Ok
+
+# 3. THE FIRST BROWSER lists the relay-hosted game by itself. `sessions 1` is the count the probe
+# raised; the row + an enabled Join are what the refresh's success branch leaves behind. The
+# Internet-server button must be on screen (this IS the first browser, not the session browser)
+# and must stay unclicked.
+present Internet server
+sessions 1
+settled Join game
+capture c3_first_browser_lists_relay
+clickl Join game
+
+# 4. the joined lobby -- seated on both peers (occ 2 is the host's slot push having landed here)
+present Network players
+occ 2
+settled Cancel
+capture c4_joined_from_first_browser
+log CLIENT joined a relay-listed game from the FIRST browser -- never visited the IP window
+end

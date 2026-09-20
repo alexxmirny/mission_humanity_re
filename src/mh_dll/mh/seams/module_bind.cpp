@@ -2,14 +2,14 @@
 // mh/seams/module_bind.cpp -- THE SIBLING-DLL BIND, and mh.dll's whole surface onto mh_net.dll.
 //
 // Read mh/include/mh_module_bind.h first (the problem, the three mechanisms, F4A's ruling) and
-// mh_common/include/mh_net_module.h second (the contract: the 23 bound symbols and what each one
+// mh_common/include/mh_net_module.h second (the contract: the 26 bound symbols and what each one
 // answers when the module is not there). docs/dll-split.md carries the measurements.
 //
 // This file does three things and they are deliberately in one TU:
 //
 //   1. BINDS mh_net.dll from DLL_PROCESS_ATTACH -- LoadLibrary on an absolute path beside mh.dll,
 //      GetProcAddress per symbol, an ABI handshake, and one loud log line whatever happens.
-//   2. DEFINES all 23 MH_Net_* / MH_Key_* symbols INSIDE mh.dll as forwarding shims over the bound
+//   2. DEFINES all 26 MH_Net_* / MH_Key_* symbols INSIDE mh.dll as forwarding shims over the bound
 //      table. This is the part that makes the split cost the rest of the DLL nothing: 75 call sites
 //      across 8 files are unchanged, and the 18 that had no transport-present test in front
 //      (launch.cpp 12, ui_drive.cpp 1, gfx_overlay.cpp 1, harness.cpp 1, desync_watch 3 which ARE
@@ -60,13 +60,21 @@
 #include "config/config.h"  // exe_dir + refuse -- one composition rule, one refusal mechanism
 #include "mh_net_module.h"  // the contract: MH_NET_MODULE_SYMBOLS, the host/probe structs, the ABI
 #include "mh_run_context.h" // MH_RunDir + mh_log_stamp (mh_common; self-initialising)
+#include "mh_version.h"     // MH_VERSION_FULL -- the build stamp, from src/mh_dll/mh_version.props
 
 #pragma comment(lib, "ws2_32.lib")
 
 namespace {
 
-const char *const MODULE_FILE = "mh_net.dll";
-const char *const MODULE_TAG  = "mh_net"; // what the log lines call it
+// THE TAG IS THE ROLE, NOT THE FILE, and that distinction is load-bearing since mp:T1 gave the role
+// two candidate files. `mh_net` names THE NET MODULE -- the satellite this bind is about -- and
+// every outcome line, every baseline in check_arm_order and every `--module mh_net` invocation of
+// check_module_bind reads that word. Renaming it per transport would have made a UDP run's log
+// unreadable to the two gates that read this log, for no gain: which FILE was bound is stated by the
+// transport line below and by the path in the failure line.
+const char *const MODULE_TAG = "mh_net";
+const char *const FILE_TCP   = "mh_net.dll";
+const char *const FILE_UDP   = "mh_net_udp.dll";
 
 // THE HANDLE IS HELD FOR THE LIFE OF THE PROCESS AND DELIBERATELY NEVER READ AGAIN. It is released
 // only on the REFUSAL paths (missing export / ABI mismatch), where nothing has been bound yet and
@@ -159,7 +167,7 @@ bool module_declined(void) {
     wsprintfA(what, "`[net] module=%s` in %s is not a value this build implements.", v, ini);
     mh::config::detail::refuse(
         dir, what,
-        "The values are `auto` (the shipping default -- load mh_net.dll from beside mh.dll, and "
+        "The values are `auto` (the shipping default -- load the transport file from beside mh.dll, and "
         "degrade loudly if it is not there) and `none` (do not even attempt the load: the transport "
         "seams, the control-frame handler binds and the bootstrap protocol stubs are not installed, "
         "and the MP browser says why). It is NOT `[net] enable`, which is the operator's off switch "
@@ -167,6 +175,54 @@ bool module_declined(void) {
         "this key exists to be believed: a lane asking for the no-module configuration and silently "
         "getting the full transport would report a graceful degradation nobody exercised.");
     return false; // unreachable; refuse() terminated
+}
+
+// ---- `[net] transport`: WHICH net module this run binds (tracker mp:T1) --------------------------
+//
+// A THIRD AXIS beside `module` and `enable`, and a different question from both: `module` asks
+// whether this build has a transport at all, `enable` is the operator's off switch for one it has,
+// and this asks WHICH of the two implementations of the same 26-export contract answers. `udp` is
+// mh_net_udp.dll, T0's packet format over one socket per process, and THE SHIPPING DEFAULT since
+// 2026-09-20 (user ruling: it is the transport the relay needs, the one the launcher configures and
+// the one the determinism gate boots its peers with -- so an absent key and an absent ini both
+// mean udp). `tcp` is mh_net.dll, the original restoration and the reference the UDP transport was
+// measured against; it is direct dial only (no relay), so it is the explicit choice now.
+//
+// A TYPO IS REFUSED, NOT DEFAULTED, and that is this item's own acceptance clause as much as it is
+// F2E's standing rule. Silently falling back to the default on `transport=udo` would produce a run
+// that reports one configuration in every log line the operator reads and plays another -- the
+// failure shape where a knob is believed and does nothing. refuse() writes mh_config_refused.log
+// beside the exe, prints to stderr and OutputDebugString, and terminates: three channels, because
+// this happens before any logger exists and the refusal's whole job is to be found.
+//
+// Returns the file name to bind, or nullptr on `transport=udp` meaning "the default, say nothing
+// extra". The nullptr distinction exists so a DEFAULT run's arm window is byte-identical to what it
+// was before T1: check_arm_order baselines every structural line of the boot, and a new line emitted
+// unconditionally would red that gate on every lane for a knob nobody set. The 2026-09-20 flip kept
+// that invariant by moving WHICH value is silent, not by adding a line: a plain lane still emits
+// nothing here, and the explicit `transport=tcp` is the one that now names its file.
+const char *transport_file(void) {
+    char dir[MAX_PATH];
+    char ini[MAX_PATH];
+    mh::config::detail::exe_dir(dir);
+    wsprintfA(ini, "%smh_net.ini", dir);
+
+    char v[32] = {0};
+    GetPrivateProfileStringA("net", "transport", "udp", v, sizeof(v), ini);
+    if (lstrcmpiA(v, "udp") == 0) return nullptr;
+    if (lstrcmpiA(v, "tcp") == 0) return FILE_TCP;
+    char what[512];
+    wsprintfA(what, "`[net] transport=%s` in %s is not a transport this build implements.", v, ini);
+    mh::config::detail::refuse(
+        dir, what,
+        "The values are `udp` (the shipping default -- mh_net_udp.dll, the UDP transport: one socket "
+        "per process, T0's authenticated packet format, redundant step inputs, the relay) and `tcp` "
+        "(mh_net.dll, the TCP client-server star, direct dial only). Both answer the same 26-export "
+        "module contract, so the only thing this key changes is which file mh.dll binds. A "
+        "misspelling is refused rather than defaulted because this key exists to be believed: a run "
+        "asking for tcp and silently getting udp would report a transport it never used in every "
+        "log line an operator reads.");
+    return nullptr; // unreachable; refuse() terminated
 }
 
 // Compose "<dir of the module `self`>\<name>". `self` is mh.dll's own handle (see rule 1 above).
@@ -180,9 +236,9 @@ void sibling_path(HMODULE self, const char *name, char *out) {
     lstrcatA(out, name);
 }
 
-void bind(HMODULE self) {
+void bind(HMODULE self, const char *module_file) {
     char path[MAX_PATH];
-    sibling_path(self, MODULE_FILE, path);
+    sibling_path(self, module_file, path);
 
     HMODULE h = path[0] != '\0' ? LoadLibraryA(path) : nullptr;
     if (h == nullptr) {
@@ -313,6 +369,23 @@ extern "C" void MH_ModuleBind_Early(HMODULE self) {
     // earliest instant mh.dll can name about itself.
     LARGE_INTEGER t;
     if (QueryPerformanceCounter(&t)) g_self_qpc = (long long)t.QuadPart;
+    // THE BUILD STAMP, and it is the FIRST line of mh_net.log on purpose (tracker TL-CI1). A bug
+    // report quotes a log, and until this line a log could not say which build produced it. It is
+    // written AFTER the QPC capture above so the loader-order delta is not measured across a file
+    // write, and it is ONE line for the same reason the bind outcome below is one line.
+    //
+    // NOT AN ARM STEP. tools/check_arm_order.py FOLDS IT OUT rather than baselining it: its
+    // normalizer masks addresses and digit runs to make a template version-independent, and a
+    // banner whose text IS the release number cannot be masked to a constant (0.1.0 and 0.1.0-rc1
+    // normalize differently, and a short sha of pure letters survives the hex mask as itself). A
+    // baselined step that changes with every tag would red the gate on every release, which is the
+    // opposite of what that gate is for. The stamp's own gate is tools/release_package.py, which
+    // reads it back out of the built binaries.
+    {
+        char vb[192];
+        wsprintfA(vb, "; [build] mh %s\n", MH_VERSION_FULL);
+        mod_log(vb);
+    }
     ws2_anchor(); // the subset rule -- see its comment; do not delete
     if (module_declined()) {
         // NOT ATTEMPTED is its own outcome, distinct from NOT BOUND, because the two are different
@@ -323,7 +396,19 @@ extern "C" void MH_ModuleBind_Early(HMODULE self) {
                 "requested configuration, not a failure.\n");
         return;
     }
-    bind(self);
+    // WHICH transport, decided before the load and refused on a typo. A non-default choice gets one
+    // extra line naming the file, so a log can say which of the two implementations this run ran;
+    // the default (udp since 2026-09-20) emits nothing, which is what keeps every existing arm-order
+    // baseline valid.
+    const char *file = transport_file();
+    if (file != nullptr) {
+        char b[MAX_PATH + 200];
+        wsprintfA(b,
+                  "; [modules] %s: `[net] transport=tcp` -- binding %s instead of the default %s\n",
+                  MODULE_TAG, file, FILE_UDP);
+        mod_log(b);
+    }
+    bind(self, file != nullptr ? file : FILE_UDP);
 }
 
 extern "C" int MH_NetModule_IsBound(void) { return g_bound ? 1 : 0; }

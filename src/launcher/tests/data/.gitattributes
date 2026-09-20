@@ -1,0 +1,12 @@
+# SIGNED BYTES. `manifest.json` here is not a document, it is the exact input a minisign signature
+# covers, and `*.minisig` is that signature. Git's `*.json text eol=lf` rule in the repository root
+# would renormalise line endings on commit or checkout, and a single CRLF would make the signature
+# stop verifying on the machine that received it -- which would read as a broken verifier rather
+# than as a mangled fixture. `-text` turns normalisation off for this directory: these files travel
+# byte for byte or they are worthless.
+#
+# They were produced by:
+#   python tools/gen_update_manifest.py --genkey ...            (the key; secret half NOT in the tree)
+#   python tools/gen_update_manifest.py --version 0.2.0 ... --issued-at 2026-09-17T12:00:00Z
+# and the wrong-key signature by signing the SAME bytes with a second, unrelated key.
+* -text
