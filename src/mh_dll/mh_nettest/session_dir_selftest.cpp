@@ -197,6 +197,56 @@ int run_sessiondirtest() {
         check("SESSION_BEGIN carries the transport", has(line, "transport=tcp"));
         check("SESSION_BEGIN carries the slot and role", has(line, "slot=1") && has(line, "role=client"));
 
+        // mp:SES4: session.json/SESSION_BEGIN must name the module that actually BOUND, not
+        // whatever an ini said -- the 2026-09-20 shape ("every session says tcp while the wire ran
+        // udp") was net_discovery.cpp's session_transport() hardcoding "tcp" regardless of what
+        // module_bind.cpp loaded. This record/format layer cannot exercise module_bind.cpp itself
+        // (that needs a real LoadLibrary, i.e. the rig), but it is the layer SES4's own acceptance
+        // clauses are about, and it must render each of the three real values correctly: a udp
+        // run's field, a run with no transport bound at all, and a run whose configured value
+        // disagreed with what actually loaded.
+        {
+            MH_SessionRecord ru;
+            fill(&ru, ID_A, 1, "client");
+            mh_sd_copy(ru.transport, MH_SESSION_TEXT_CAP, "udp"); // the shipping default since 2026-09-20
+            char lu[MH_SESSION_LINE_CAP];
+            mh_session_begin_line(&ru, lu, sizeof(lu));
+            check("mp:SES4 a udp run's SESSION_BEGIN says transport=udp", has(lu, "transport=udp"));
+            char ju[2048];
+            mh_session_json(&ru, ju, sizeof(ju));
+            check("mp:SES4 a udp run's session.json says \"transport\": \"udp\"",
+                  has(ju, "\"transport\": \"udp\""));
+
+            MH_SessionRecord rn;
+            fill(&rn, ID_A, 1, "client");
+            mh_sd_copy(rn.transport, MH_SESSION_TEXT_CAP, "none"); // the transport file never bound
+            char ln[MH_SESSION_LINE_CAP];
+            mh_session_begin_line(&rn, ln, sizeof(ln));
+            check("mp:SES4 a run whose transport never bound says transport=none",
+                  has(ln, "transport=none"));
+            char jn[2048];
+            mh_session_json(&rn, jn, sizeof(jn));
+            check("mp:SES4 ...and session.json agrees", has(jn, "\"transport\": \"none\""));
+
+            // The disagreement case: configured tcp, nothing actually bound (its module failed to
+            // load). The second field must carry the mismatch; the ordinary (matching) fills above
+            // must NOT -- confirming the field is a differ signal, not a second copy of the first.
+            MH_SessionRecord rd;
+            fill(&rd, ID_A, 1, "client");
+            mh_sd_copy(rd.transport, MH_SESSION_TEXT_CAP, "none");
+            mh_sd_copy(rd.transport_configured, MH_SESSION_TEXT_CAP, "tcp");
+            char ld[MH_SESSION_LINE_CAP];
+            mh_session_begin_line(&rd, ld, sizeof(ld));
+            check("mp:SES4 configured!=bound shows transport_configured=tcp beside transport=none",
+                  has(ld, "transport=none") && has(ld, "transport_configured=tcp"));
+            char jd[2048];
+            mh_session_json(&rd, jd, sizeof(jd));
+            check("mp:SES4 ...and session.json carries both",
+                  has(jd, "\"transport\": \"none\"") && has(jd, "\"transport_configured\": \"tcp\""));
+            check("mp:SES4 an ordinary (matching) fill's transport_configured stays empty",
+                  has(line, "transport_configured= began="));
+        }
+
         // END before the fields exist: a session.json written at OPEN has no reason and no end stamp,
         // and must still be a well-formed record rather than a half-line.
         mh_session_end_line(&r, line, sizeof(line));

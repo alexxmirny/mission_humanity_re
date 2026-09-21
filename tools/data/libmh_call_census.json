@@ -2,7 +2,7 @@
  "_generated_by": "tools/gen_libmh_calls.py -- do not hand-edit; regenerate instead",
  "_measures": "mh::call:: tokens in src/mh_dll/mh/** (comments stripped; addr/+attic/ excluded)",
  "summary": {
-  "distinct_callees": 124,
+  "distinct_callees": 125,
   "config_measures": {
    "hosted": {
     "sites": 1561,
@@ -36,7 +36,7 @@
   },
   "by_status": {
    "dead": 2,
-   "original": 103,
+   "original": 104,
    "translated": 19
   },
   "modules": {
@@ -47,10 +47,10 @@
     "outward_distinct": 0
    },
    "seams": {
-    "sites": 156,
-    "distinct": 123,
-    "outward_sites": 132,
-    "outward_distinct": 105
+    "sites": 158,
+    "distinct": 124,
+    "outward_sites": 134,
+    "outward_distinct": 106
    },
    "sim": {
     "sites": 1,
@@ -619,6 +619,18 @@
     "seams": 2
    },
    "adjudication": "host-callback:string"
+  },
+  {
+   "name": "llm_str_to_upper_inplace",
+   "status": "original",
+   "domain": null,
+   "tier": null,
+   "promoted": false,
+   "sites": 1,
+   "modules": {
+    "seams": 1
+   },
+   "adjudication": null
   },
   {
    "name": "llm_strat_ai_count_unit_build_sources",
@@ -1284,9 +1296,9 @@
    "domain": null,
    "tier": null,
    "promoted": false,
-   "sites": 1,
+   "sites": 2,
    "modules": {
-    "seams": 1
+    "seams": 2
    },
    "adjudication": "event-channel:event"
   },

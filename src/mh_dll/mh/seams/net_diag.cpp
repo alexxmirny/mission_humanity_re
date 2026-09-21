@@ -466,11 +466,14 @@ extern "C" void MH_Temporal_Event(int id) { temporal_capture(id); }
 // read the flag + init QPC frequency and the mh_temporal.log path, and sets g_temporal only if the
 // hook actually arms. Verbatim from the pre-split MH_Seam_Init block.
 int temporal_configure() {
-    // Ship default ON (2026-07-25): the staging buffer is drained + recycled on every present, so run
-    // LENGTH is not a limit (only a >TEV_MAX burst between two presents drops events, and that is
-    // logged). What IS unbounded is the FILE -- ~40 KB/s, i.e. >100 MB/hour -- so the writer rotates
-    // at temporal_max_mb (below) and a session can never fill a disk.
-    int temporal  = GetPrivateProfileIntA("trace", "temporal", SHIP_LOG_LEVEL, g_ini);
+    // Ship default OFF (mp:SES5 decision 5, 2026-09-21; was ON 2026-07-25): this is the per-EVENT
+    // trace, a profiling instrument -- no player-report question has ever needed it, and it was
+    // 125 MB of a measured 43-minute match. Rig/lane inis set it back to 1 explicitly. When it IS
+    // on: the staging buffer is drained + recycled on every present, so run LENGTH is not a limit
+    // (only a >TEV_MAX burst between two presents drops events, and that is logged). What IS
+    // unbounded is the FILE -- ~40 KB/s, i.e. >100 MB/hour -- so the writer rotates at
+    // temporal_max_mb (below) and a session can never fill a disk.
+    int temporal  = GetPrivateProfileIntA("trace", "temporal", SHIP_TEMPORAL_LEVEL, g_ini);
     g_temporal_sp = GetPrivateProfileIntA("trace", "temporal_sp", 0, g_ini) != 0;
     // Report it, because "armed" and "recording" were indistinguishable before: with the mode gate
     // shut, the trace logged `temporal=1`, created the file and wrote its header, and emitted nothing.

@@ -40,6 +40,7 @@
 #include "include/mh_pause_export.h"       // MH_Pause_Install (ui_pause.cpp) -- D19 pause-screen (mode 5) hotkey
 #include "include/mh_fontguard_export.h"   // MH_FontGuard_Install (gfx_font_guard.cpp) -- F2 glyph-table bounds guard
 #include "include/mh_chatinput_export.h"   // MH_ChatInput_Install (ui_chat_input.cpp) -- F3 layout-aware typed input
+#include "include/mh_cheatgate_export.h"   // MH_CheatGate_Install (ui_cheat_gate.cpp) -- CH1 the SP cheat console refused in a network game
 #include "include/mh_uidrive_export.h"     // MH_UIDrive_Install (ui_drive.cpp) -- UI automation Phase 2
 #include "include/mh_video_export.h"       // MH_Video_Install (video.cpp) -- D13 display-mode selection
 #include "include/mh_standalone_export.h"  // MH_Standalone_Install (standalone.cpp) -- boot a stock exe
@@ -286,7 +287,12 @@ void on_lobby_dispatch() {
     // Both sides repaint the lobby's status line, which is where the refusal names the peer.
     mh::seams::maps::lobby_tick(is_host);
     if (!is_host && mh::seams::maps::client_take_rejoin()) mp_join_resend_map_report();
-    *(int *)ADDR_NET_PLAYERSIDE = is_host ? 0 : mp_client_slot(); // N1: own/assigned slot (was hardcoded 1)
+    // mp:GS1(b): retail PlayerSide wants our ARRAY INDEX, not our wire id -- mp_client_slot() (the old
+    // value here) is the wire id and is wrong the instant a reused/compacted slot puts them at
+    // different numbers (see mp_lobby_array_index's banner in net_internal.h). This write runs right
+    // before falling back into retail's own lobby dispatch, which is what actually consumes PlayerSide
+    // at the Start trigger (build_players_from_slots_finish's diagonal stamp, then session_begin_multi).
+    *(int *)ADDR_NET_PLAYERSIDE = mp_lobby_array_index(is_host != 0); // N1: own array slot (was hardcoded 1)
     // ---- N2 item 1: pin the client's own player-id + lobby slot index every frame (N>2 corruption root) -
     // At N>2 the interactive lobby corrupted a human slot to player_id=0/host-name + spawned a duplicate.
     // Two stale-state roots, both client-side: (a) _G_LLM_NET_LOCAL_PLAYER_INDEX (0x5d55ac) is written ONCE
@@ -378,7 +384,9 @@ void on_lobby_dispatch() {
         }
     }
     if (g_ls_log) { // DIAG: lobby dispatch + U3 render-state (both roles)
-        static int c = 0;
+        static int  c         = 0;
+        static char last[224] = {0}; // mp:SES5 decision (3): dedupe -- U3DIAG measured at 8 Hz with
+                                     // runs of identical lines; log only when the text actually changes.
         if ((c++ % 120) == 0) {
             // The three menu_frame draw gates (0x004b79a8): draws the lobby ONLY if GAME_MODE==3 &&
             // (DLG_FLAGS0 & 0x10); if SAVED_STATE==1 it draws widget_list+0x14 (the PARENT) not the lobby.
@@ -390,7 +398,10 @@ void on_lobby_dispatch() {
             char     b[224];
             wsprintfA(b, "; U3DIAG is_host=%d gm=%u menu_state=%u saved=%u dlg=%02X (draw=%d) widget_list=%08X (lobby=%d)\n",
                       is_host, gm, ms, sv, dlg, (dlg & 0x10) != 0 && gm == 3, (unsigned)wl, wl == (void *)mh::addr::lobby_widget_origin);
-            seam_log(b);
+            if (lstrcmpA(b, last) != 0) {
+                seam_log(b);
+                lstrcpynA(last, b, sizeof(last));
+            }
         }
     }
     if (g_trace_n > 0) { // periodic trace-count dump (both roles run this dispatch)
@@ -1154,6 +1165,41 @@ extern "C" void MH_MP_ClientPollMap(void) {
     }
 }
 
+// mp:GS1 (a): discard what the game queue holds at the moment the player clicks JOIN. Anything queued
+// BEFORE our JOIN cannot concern the lobby we are joining -- the host sends that lobby's traffic only
+// after admitting a JOIN it has not received yet -- so it is the residue of a lobby we were never in:
+// a browsing client holds a live link to the host (it dialled the room for SESSION_INFO) and does not
+// poll the game queue on the browser, so a host that cancels + re-creates under it leaves its retail
+// 0x0e (llm_lobby_host_start_game's broadcast, `len=5`: the type byte + 4 UNINITIALISED stack bytes --
+// MOV byte ptr [EBP-0x20],0xe / LEA EDX,[EBP-0x20] / MOV EBX,5 -- nothing identifies the lobby it was
+// for, and the client's case-6 handler takes no payload) queued on that link. The new lobby's first
+// PollRecv then drained it and U13 withdrew the seat the host had just granted: the ghost slot behind
+// the field's 9999 freeze (`0189fdb8`), reproduced by the `ghost_churn` scenario. The retail dispatch
+// never saw this shape because retail's transport delivered a leave notice only to a seated peer.
+// Discarded here rather than tagged in PollRecv because the packet carries nothing to tag on, and
+// MH_Net_Recv pops -- a type-selective drain would need a peek export on mh_net.dll's binder table for
+// a queue that, on the browser, holds nothing worth keeping. Never in a live match (the lockstep
+// stream owns the queue there; a JOIN click cannot happen in one, the guard says so structurally).
+void mp_drain_pre_join_queue() {
+    if (!MH_Net_IsStarted()) return;
+    if (*(const unsigned char *)ADDR_SESSION_MODE == 3) return;
+    static unsigned char buf[RX_SIZE];
+    int                  n = 0, n0e = 0, first = -1;
+    for (int guard = 0; guard < 1024; ++guard) { // the inbound ring is 256 deep; the bound is for a livelock
+        int sender = -1, len = RX_SIZE;
+        if (!MH_Net_Recv(&sender, buf, &len)) break;
+        ++n;
+        if (len >= 1 && buf[0] == 0x0e) ++n0e;
+        if (first < 0) first = len >= 1 ? buf[0] : 0;
+    }
+    if (n == 0) return;
+    char b[160];
+    wsprintfA(b, "; GS1: JOIN click -> %d stale datagram(s) queued before the JOIN discarded (first type=0x%02x, "
+                 "0x0e x%d) -- traffic of a lobby we never sat in\n",
+              n, first, n0e);
+    seam_log(b);
+}
+
 // R-live-ui: has this client's link to the host died while it sits in the lobby?
 //
 // Nothing else can notice. The retail lobby is purely reactive -- it acts on packets, and a dead link
@@ -1359,6 +1405,54 @@ extern "C" void MH_Seam_GameSend(unsigned char *buf, int len) {
 // next, so a leaked lobby packet never reaches the dispatch. (Confirmed by GameRecv logging 2026-07-11.)
 inline bool is_ingame_type(unsigned char t) { return t >= 1 && t <= 5; }
 
+// mp:SES5 decision (1) -- the 50 ms horizon-extend heartbeat (type=0x02, 9 B: [type][double horizon])
+// was 95.7 MB of a measured 96 MB mh_net.log (1.88M lines, ~700/s), rotating the [desync]/session
+// evidence off disk within a 43-minute match. It carries no per-packet information a reader needs
+// (every one just restates "still alive, horizon=X"), so roll it up to a 1 Hz line per sender:
+// count since the last flush + the last horizon seen. `GameRecv DROP` (below) and every other
+// in-game type keep logging per packet -- only the 0x02 heartbeat is diet-affected.
+struct GameRecv02Slot {
+    int    sender = -2; // -2 = free slot; -1 is a real "unknown sender" value elsewhere in this file
+    int    count  = 0;
+    double last_h = 0.0;
+};
+GameRecv02Slot g_gr02[8]; // 8 = LS_LATE_PEERS' width (net_lockstep.cpp) -- ample for any real sender id
+DWORD          g_gr02_flush_t = 0;
+
+void gamerecv02_rollup(int sender, double horizon) {
+    GameRecv02Slot *slot = nullptr;
+    for (auto &s : g_gr02) {
+        if (s.sender == sender) {
+            slot = &s;
+            break;
+        }
+    }
+    if (!slot) {
+        for (auto &s : g_gr02) {
+            if (s.sender == -2) {
+                slot         = &s;
+                slot->sender = sender;
+                break;
+            }
+        }
+    }
+    if (slot) {
+        ++slot->count;
+        slot->last_h = horizon;
+    }
+    DWORD now = GetTickCount();
+    if (now - g_gr02_flush_t < 1000) return; // 1 Hz rollup cadence
+    g_gr02_flush_t = now;
+    for (auto &s : g_gr02) {
+        if (s.sender == -2 || s.count == 0) continue;
+        char b[128];
+        wsprintfA(b, "; GameRecv sender=%d type=0x02 count=%d last_horizon_ms=%ld (1s)\n", s.sender,
+                  s.count, (long)(s.last_h * 1000.0));
+        seam_log(b);
+        s.count = 0;
+    }
+}
+
 extern "C" int MH_Seam_GameRecv(int *out_sender, unsigned char *buf, int *inout_len) {
     lazy_start();                                     // idempotent (g_tried_init); starts the transport on the first frame
     const int cap = inout_len ? *inout_len : RX_SIZE; // game preloads capacity (0x3f8) in *inout_len
@@ -1371,10 +1465,16 @@ extern "C" int MH_Seam_GameRecv(int *out_sender, unsigned char *buf, int *inout_
         if (len > 0 && is_ingame_type(buf[0])) { // a real in-game lockstep message
             if (inout_len) *inout_len = len;
             if (g_ls_log) {
-                char b[128];
-                wsprintfA(b, "; GameRecv sender=%d len=%d type=0x%02x\n",
-                          out_sender ? *out_sender : -1, len, buf[0]);
-                seam_log(b);
+                int sender = out_sender ? *out_sender : -1;
+                if (buf[0] == 2 && len >= 9) {
+                    double h;
+                    memcpy(&h, buf + 1, sizeof(double));
+                    gamerecv02_rollup(sender, h);
+                } else {
+                    char b[128];
+                    wsprintfA(b, "; GameRecv sender=%d len=%d type=0x%02x\n", sender, len, buf[0]);
+                    seam_log(b);
+                }
             }
             return len;
         }
@@ -1760,6 +1860,7 @@ static int MH_Core_Arm(void) {
     MH_Pause_Install();     // D19: [pause] key -> enter the orphaned mode-5 PAUSE screen from the strategic view (best-effort)
     MH_FontGuard_Install(); // F2: bounds-guard glyph_table[code_unit] in llm_gfx_font_layout_text + the [fonts] probe (best-effort)
     MH_ChatInput_Install(); // F3: layout-aware key translate + in-game chat codec + the pinned [input] codepage (best-effort)
+    MH_CheatGate_Install(); // CH1: the SP cheat console (Shift+Enter line) refused in a lockstep match + the redacted chat submit log (best-effort)
     MH_Overlay_Install();   // debug overlay: [debug] ini pages -> painted on present BEFORE capture reads (best-effort)
     MH_Capture_Install();   // UI capture harness: hook present-flip -> F12/[capture] frame dump (best-effort)
     MH_UIDrive_Install();   // UI automation harness (Phase 2): [uitest] click-driver via the mouse ring (best-effort)

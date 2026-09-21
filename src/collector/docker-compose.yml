@@ -20,8 +20,15 @@ services:
       TIMESTAMP_SKEW_SECONDS: "600"
     secrets:
       - report_token
+    # dist:RP7 -- a BIND mount of the drain root, same as deploy/docker-compose.yml (the two
+    # collector service blocks must agree; docs/deploy.md section 5). The VPS path is the literal
+    # `/srv/reports` the rrsync drain key is pinned to; a named volume here once hid six real
+    # uploads from the drain (dead-ends G250). MH_REPORTS_DIR exists ONLY for this dev
+    # stack -- a workstation (Docker Desktop on Windows) has no /srv, so `MH_REPORTS_DIR=./data/reports
+    # docker compose up --build` keeps the local loop working; the default stays the drain root so
+    # tools/lint_compose.py rule 4 reads the same source path out of both files.
     volumes:
-      - reports:/data/reports
+      - ${MH_REPORTS_DIR:-/srv/reports}:/data/reports
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/healthz', timeout=3).status == 200 else 1)"]
       interval: 30s
@@ -57,6 +64,6 @@ secrets:
     file: ./secrets/report_token.txt
 
 volumes:
-  reports:
+  # No `reports:` since RP7 -- /data/reports is the bind mount above.
   caddy_data:
   caddy_config:

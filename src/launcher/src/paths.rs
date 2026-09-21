@@ -187,7 +187,7 @@ impl ResolvedGameDir {
 /// the launcher was started from somewhere that is not a game folder. A saved directory that no
 /// longer holds `mh.exe` is reported by name (`stale_saved`) whether or not something else was
 /// found, because a path that silently stopped working is the kind of thing a player only
-/// discovers when Host does nothing.
+/// discovers when Play does nothing.
 ///
 /// `--game-dir` is not an input here: `main.rs` skips this function entirely when it is given,
 /// which is what "overrides everything" means.

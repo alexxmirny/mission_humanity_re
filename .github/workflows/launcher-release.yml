@@ -9,7 +9,7 @@
 # URL `manifest.json` will be published to -- see src/launcher/src/update.rs `DEFAULT_BASE_URL`),
 # runs `cargo fmt --check` / `cargo clippy -D warnings` / `cargo test` over the workspace, verifies
 # the static-CRT claim against the built binary's own import table (no VCRUNTIME*/MSVCP*/
-# api-ms-win-crt-* DLL), and -- on a tag push only -- uploads `mh_launcher-<version>.exe` to that
+# api-ms-win-crt-* DLL), and -- on a tag push only -- uploads `mh_launcher.exe` (unversioned since v0.1.1 -- the file stays the same name across releases so a player's folder never holds two; the version is inside, `--verify-binary`) to that
 # tag's GitHub Release. A `workflow_dispatch` run does everything except the upload, exactly the
 # dry-run shape release.yml uses.
 #
@@ -172,7 +172,7 @@ jobs:
           }
           "tag=$tag"                                  >> $env:GITHUB_OUTPUT
           "version=$version"                           >> $env:GITHUB_OUTPUT
-          "exe_name=mh_launcher-$version.exe"          >> $env:GITHUB_OUTPUT
+          "exe_name=mh_launcher.exe"                   >> $env:GITHUB_OUTPUT
           Write-Host "tag='$tag' version=$version"
 
       - name: a tag release needs MH_UPDATE_BASE_URL, or the shipped exe has no update source

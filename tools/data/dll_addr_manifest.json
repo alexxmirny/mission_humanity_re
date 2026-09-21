@@ -615,6 +615,11 @@
       "name": "llm_time_get_ticks_ms",
       "en": "0x004d056c",
       "note": "pin_menu_clock (2026-09-07). The binary's MASTER ms timer, uint __watcall(void) returning EAX. _G_LLM_UI_MENU_NOW_MS is sampled from it once per menu frame, and _G_LLM_UI_ANIM_FRAME_DELTA is its per-frame difference -- which is what drains _G_LLM_UI_MENU_INPUT_LOCK_TIMER. So menu input is gated on a WALL-CLOCK duration while a journal is indexed in PRESENTS, and raising the frame rate puts more replayed records inside the lock window where llm_ui_widget_input_tick's early return eats them."
+    },
+    {
+      "name": "llm_chat_history_push",
+      "en": "0x00415475",
+      "note": "mp:CH1 (2026-09-21). __watcall(void), plain RET. The one call every Enter in the in-game chat line makes BEFORE the mode split (llm_strat_input_update 0x00441c27; also llm_net_chat_input_process and the scancode drain's own 0x1c arm) -- the run-before site of the redacted `; [chat] submit` log line (seams/ui_cheat_gate.cpp). Entry `55 89 E5 68 24 00 00 00`."
     }
   ],
   "anchors": [

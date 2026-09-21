@@ -53,7 +53,7 @@ impl Config {
     /// whatever is installed, and `net` on a machine where neither says anything -- the plain
     /// multiplayer build is what a player who has expressed no preference wants (INSTALL.md's own
     /// table says so). The picker FOLLOWS this and this follows the picker: a pick is written to
-    /// `chosen_tag`, and a Host on a directory holding a different tag is a switch, not a launch.
+    /// `chosen_tag`, and a Play on a directory holding a different tag is a switch, not a launch.
     pub fn update_tag(&self) -> String {
         for t in [self.chosen_tag.trim(), self.installed_tag.trim()] {
             if !t.is_empty() {

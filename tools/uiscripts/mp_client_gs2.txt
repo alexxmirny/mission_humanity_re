@@ -1,0 +1,47 @@
+# mp:GS2 (FROZEN PEER): a CLIENT in a running lockstep match arms the harness SIM FENCE (`simstep`,
+# fork F5J) to hold its own sim at a step -- the rig's harness way to suspend a peer's sim thread while
+# its TRANSPORT keeps running (this script never touches the connection: no quit, no kill, nothing that
+# would make the link itself die, which is `link_death`'s class, not this one). `MH_Harness_StepFence`
+# writes TOTAL_GAME_TIME = GAME_CLOCK at the fenced step and re-applies it every later frame, so this
+# peer's own advertised lockstep horizon stops moving forward while the horizon-heartbeat thread keeps
+# answering keepalives with that same frozen value -- exactly GS1/RM1's field shape (`since_rx` stays
+# small, the DATA stops).
+#
+# Same walk as mp_client_gquit.txt up to entering the match; no ESC, no quit. `end` here does not kill
+# the process or the connection -- the game keeps running and rendering fenced, which is the point: the
+# survivor (mp_host_gs2.txt) is what proves the drop, this peer only has to sit still for it.
+#
+# Pair with mp_host_gs2.txt.
+
+settled value:110
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+present Internet server
+settled Internet server
+clickl Internet server
+present Server address
+settled Connect
+clickl Connect
+sessions 1
+settled Join game
+clickl Join game
+present Network players
+signal lobby
+settled Cancel
+
+# ---- in the match --------------------------------------------------------------------------------
+absent Network players
+gamemode 2
+# The same sim moment the host waits for before arming its own survivor clause.
+gameclock 500
+signal freezing
+
+# THE FENCE. simstep 100 at the rig's pinned sim_step_ms=10 is gameclock 1000 -- half a second past
+# the baseline above, so the freeze always starts from a genuinely-advancing match. Held there
+# (MH_Harness_StepFence never released): this peer's horizon never moves again this match.
+simstep 100
+capture g1_client_frozen
+log FROZEN PEER: sim fenced at step 100, transport left running -- data-silent, not link-silent
+end

@@ -1,0 +1,79 @@
+# mp:GS1 (a) HOST: the lobby CHURN a browsing client survives -- create game1, hold it until the client
+# has it listed on its FIRST browser (the relay directory, the R7 path), then Cancel and immediately
+# create game2; the client joins game2, this host starts it, and BOTH peers must run past 10 s of sim.
+# Pair with mp_client_churn.txt.
+#
+# WHY THIS EXISTS (2026-09-20, HFef + Rizzen). The host created and cancelled two lobbies within 20 s
+# (1914e957, 579c4739) and created a third (0189fdb8) while the other player sat on his browser with a
+# live link to the host (the browser dials the room to fetch SESSION_INFO; the link then persisted
+# through every re-create -- same relay room, punched DIRECT before any join). His JOIN into the third
+# lobby was admitted, and 0.35 s later his client drained a retail 0x0e (`PollRecv type=0x0e` ->
+# `U13: host left lobby -> client withdrew the session`) that no host had sent for THAT lobby -- the
+# previous lobby's Cancel, queued on the link the whole time, released by the lobby's first PollRecv.
+# The client then received START and entered the game on a withdrawn session, sent no frames, and the
+# host waited on that slot's 10000 ms initial horizon forever: `clock=9999 rx_pkts=1`. The code's own
+# assumption is written at net_discovery.cpp:771 -- "a browsing client never receives the host's leave
+# notice" -- true of retail's transport, false of ours.
+#
+# WHAT IS ASSERTED. Not that the churn is handled gracefully on the browser (relay_browse covers the
+# row vanishing); that a JOIN made AFTER the churn seats the client (`occ 2` on both peers), the client
+# is told nothing about a host leaving (`absent The host left the game.` on its side), and the match
+# the host then starts runs past `gameclock 12000` on BOTH peers -- 12 s is past the 10000 ms initial
+# horizon every slot advertises, so a slot pinned at 10000 (the 9999 freeze) cannot satisfy it. On the
+# pre-fix build the client's `occ 2` times out (it is bounced to the browser) or, if entry still
+# happens, this host's `gameclock 12000` does.
+#
+# RELAY PREREQUISITE: the registry starts an mh_relay on the rig host and hands both peers
+# `[net] relay=` + force_relay=1, so the client's browser is the relay directory as in the field.
+
+# ---- game1 ----------------------------------------------------------------------------------------
+settled value:110
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+settled Create
+clickl Create
+present Game name
+settled Ok
+clickl Ok
+present Available maps
+settled Ok
+clickl Ok
+present Network players
+settled Start
+capture h1_game1
+
+# the client has game1 on its browser and a link to us; now CHURN: Cancel (the retail 0x0e goes out on
+# that link) and re-create straight away, exactly the field's shape.
+awaitsignal listed
+settled Cancel
+clickl Cancel
+absent Network players
+
+# ---- game2 ----------------------------------------------------------------------------------------
+settled Create
+clickl Create
+present Game name
+settled Ok
+clickl Ok
+present Available maps
+settled Ok
+clickl Ok
+present Network players
+
+# the client joins game2 -- seated here (`occ 2`, the U13 gate) and Start un-greys on it
+occ 2
+enabled Start
+settled Start
+capture h2_game2_seated
+
+# the client has taken its own seated capture; launch
+awaitsignal seated
+clickl Start
+absent Network players
+# past the 10000 ms initial horizon: no slot in this match is a ghost pinned at 10000
+gameclock 12000
+capture h3_running
+log HOST churned game1 -> game2 under a browsing client; the client seated in game2 and the match ran past 10 s
+end

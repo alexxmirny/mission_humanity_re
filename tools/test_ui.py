@@ -30,6 +30,7 @@ import contextlib
 import glob
 import gzip
 import io as _io
+import queue
 import json
 import os
 import re
@@ -742,6 +743,15 @@ TESTS = [
         # regression that stops arming the notice, or that regresses the slot-build fix, times out or
         # reds here instead of being forgiven by a loose pixel tolerance.
         "net_extra": "module=none",
+        # THE CLOCK IS PINNED SINCE mp:RM1 (2026-09-21). Until RM1 the game clock carried the
+        # menu's run time into the match, so `gameclock 3000` was satisfied at entry and the in-game
+        # capture landed on the entry frame -- byte-identical by accident. RM1 zeroes the sim clocks
+        # at entry (the rematch fix), so the gate now fires 3 s of sim later and the frame carries the
+        # mothership's rotation phase + the HUD timer digit at the 3 s crossing: measured 0.956% vs
+        # the old baseline, a 1-pixel jitter at (34,469) (the timer) and a second phase cluster over 8
+        # runs. pin_wallclock makes the capture a function of the frame count since entry (the
+        # tutorial_enter row's instrument, same reasoning), which is what tol 0.0 needs.
+        "harness_extra": "pin_wallclock=1;pin_clock_dt_us=16667;pin_clock_base_s=1000;synth_move=0;region_hash_step=0",
         # tol 0.0: same reasoning as no_net_boot -- the notice is one line of text on a 640x480 frame,
         # far under the 2% default, and the lobby/HUD states this walk pins (a slot row, the Start
         # button's enabled border, the HUD after launch) are each a small fraction of the frame too --
@@ -1011,6 +1021,130 @@ TESTS = [
         ],
         "post_check_peers": True,
         "desc": "R7: a relay-listed game is discovered and joined from the FIRST browser -- no IP window",
+    },
+    {
+        "name": "ghost_churn",
+        "kind": "multi",
+        "host": "mp_host_churn.txt",
+        "clients": ["mp_client_churn.txt"],
+        "relay": True,
+        # TL-LANEPOOL: the suite block is at the mutex ceiling, so this row owns no lanes -- it
+        # borrows relay_browse's (the comparable 2-peer relay scenario: same host walk, same first
+        # browser) and the runner schedules the pair serially. Baselines are per script, so nothing
+        # rendered is shared.
+        "share_lanes": "relay_browse",
+        "net_extra": "transport=udp;force_relay=1",
+        "extra_ini": "tools/uiscripts/ini/video_1024.ini",
+        # 150 s: the green walk is ~43 s (measured with the fix, 2026-09-21; its sibling
+        # ghost_leave_rejoin runs in 43 s too); a regression is a timeout, so the budget is the price.
+        "timeout": 150,
+        "timeout_frames": frames_for_seconds(150, SOLO_HEADLESS_FPS_FLOOR),
+        # WHAT IT ASSERTS, and the mechanism behind it (mp:GS1 (a), opened from the 2026-09-20 player
+        # report `0189fdb8`; RED by design until 2026-09-21, when it carried `expect_red`): a host
+        # that cancels a lobby and re-creates one while a client sits on its browser with a live
+        # link leaves that link carrying the old lobby's retail 0x0e (5 bytes: the type + 4
+        # uninitialised stack bytes -- nothing names the lobby it was for); the client's NEXT join
+        # used to drain it in the new lobby's first PollRecv and U13 bounced the seat the host had
+        # just admitted (`The host left the game.`), the host keeping the seat as a ghost pinned at
+        # the 10000 ms initial horizon -- the 9999 freeze. The fix (net_discovery.cpp
+        # on_join_connect -> net_seams.cpp mp_drain_pre_join_queue) discards the game queue at the
+        # JOIN click, before the send: everything queued then predates the JOIN and so belongs to a
+        # lobby this client never sat in. The verdict is the client's `occ 2` + `absent The host
+        # left the game.` in game2, then `gameclock 12000` on BOTH peers -- past the 10000 ms
+        # initial horizon, so a slot pinned there cannot pass. The scripts carry the full history;
+        # the client's mh_net.log carries the `; GS1: JOIN click -> N stale datagram(s) ...` line.
+        "desc": "GS1a: host cancels + re-creates under a browsing client; the client's join seats and the match runs past 10 s",
+    },
+    {
+        "name": "ghost_leave_rejoin",
+        "kind": "multi",
+        "host": "mp_host_relay_rejoin.txt",
+        "clients": ["mp_client_relay_leave_rejoin.txt"],
+        "relay": True,
+        # TL-LANEPOOL: borrows relay_browse_local's lanes (same first-browser join, 2 peers), run
+        # serially with it -- see ghost_churn's note.
+        "share_lanes": "relay_browse_local",
+        "net_extra": "transport=udp;force_relay=1",
+        "extra_ini": "tools/uiscripts/ini/video_1024.ini",
+        "timeout": 300,
+        "timeout_frames": frames_for_seconds(300, SOLO_HEADLESS_FPS_FLOOR),
+        # mp:GS1 (b), from the same report (`a952c570`): a LEAVE that never freed the host's slot,
+        # a re-join into a SECOND slot, and a match frozen at 9999 on the ghost. leave_frees_slot
+        # proves the LEAVE on a direct tcp link; this is the same assertion over the relay path the
+        # field ran, plus the re-join (`occ 2` and `occ <3` on the host) and the launch past 10 s.
+        "desc": "GS1b: a client leaves and re-joins a relay-listed lobby -> one slot, then the match runs past 10 s",
+    },
+    {
+        "name": "ghost_exit_rejoin",
+        "kind": "multi",
+        "host": "mp_host_exit_rejoin.txt",
+        "clients": ["mp_client_exit_leave.txt", "mp_client_exit_rejoin.txt"],
+        "relay": True,
+        # mp:GS1(b), the PROCESS-EXIT arm: client1 leaves then genuinely QUITS TO DESKTOP; client2 is
+        # a brand-new process, launched only once client1's is confirmed gone (--client-after-exit),
+        # into client1's OWN lane (client_shares_lane) -- so this 3-role scenario costs the suite the
+        # SAME 2 lanes an ordinary host+1-client test does, which the 99-mutex `suite` block (already
+        # at its registry demand, TL-LANEPOOL) has no headroom to give a genuinely 3rd new lane.
+        "client_after_exit": {2: 1},
+        "client_shares_lane": {2: 1},
+        # TL-LANEPOOL: even at 2 lanes the suite block had no headroom (dead-ends G259), so this row
+        # borrows relay_browse_local's lanes like ghost_leave_rejoin / ghost_churn do (same 2-peer,
+        # first-browser relay shape), run serially with it.
+        "share_lanes": "relay_browse_local",
+        # client1's OWN script deliberately ends by quitting the process for real (ExitProcess), so
+        # it never reaches its own script COMPLETE marker -- accept its confirmed self-driven exit
+        # as the terminal state the overall verdict wants instead.
+        "client_expect_exit": [1],
+        "net_extra": "transport=udp;force_relay=1",
+        "extra_ini": "tools/uiscripts/ini/video_1024.ini",
+        # Generous: a real quit-to-desktop plus a SECOND full game boot (client2) on top of
+        # ghost_leave_rejoin's own 300 s same-process budget.
+        "timeout": 420,
+        "timeout_frames": frames_for_seconds(420, SOLO_HEADLESS_FPS_FLOOR),
+        # WHAT IT ASSERTS (mirrors ghost_leave_rejoin's, over a real process boundary instead of a
+        # same-process re-join): the slot is freed on client1's LEAVE (`occ <2`, Start greys on the
+        # host), client2's fresh-process join re-seats it (`occ 2` AND `occ <3` -- one slot, no ghost
+        # row), Start un-greys, and once launched BOTH peers pass `gameclock 12000` -- past the
+        # 10000 ms initial horizon, so a ghost pinned there cannot pass. check_ghost_slot.py's
+        # post_check reads the same claim off each peer's raw mh_lockstep.log committed/peer-horizon
+        # columns rather than the game's own reported clock.
+        "post_check": ["tools/check_ghost_slot.py"],
+        "post_check_peers": True,
+        # FIXED 2026-09-21 (mp:GS1(b)). ROOT CAUSE: every per-frame writer of retail's real
+        # `game::g::PlayerSide` (mh::addr::PlayerSide, 0xe58354) -- launch.cpp's `mp_lobby_entry_tick`,
+        # net_seams.cpp's `on_lobby_dispatch`, net_discovery.cpp's `on_discover_poll` -- fed it
+        # `mp_client_slot()`/`MH_Net_LocalPlayerId()`, the host-assigned WIRE id, on the unstated
+        # assumption that a peer's wire id always equals its lobby SLOT (== Players[] ARRAY INDEX).
+        # That holds for a slot's first occupant but not once the slot is REUSED: the host's own admin
+        # loop compacts (`slot_find_or_alloc`), so client2 (a fresh connection, wire id 2) landed in
+        # the LOWER slot client1 vacated (array index 1: PLAYERDUMP read `slot[1] pid=2`, `slot[2]
+        # status=0` empty) while PlayerSide kept being fed 2. Two independent, additive symptoms:
+        # (1) turn_engine.cpp's `participates()` self-exclusion (`*player_side != i`) failed to
+        # exclude our OWN real row (index 1 != PlayerSide 2), so `commit_horizon` capped our own
+        # committed horizon against our own never-written `_G_LLM_NET_PEER_HORIZON[1]` slot (stuck at
+        # its 10000 ms boot sentinel) forever -- the 10000/10030 ms freeze, ending in `on_gameover
+        # outcome=8` (below-quorum, forced). (2) retail's `llm_lobby_build_players_from_slots_finish`
+        # (the D18 diagonal write, `Players[PlayerSide].relation[k] = 2`) ran with the same stale
+        # PlayerSide=2 and stamped a spurious relation row into the EMPTY `Players[2]` instead of the
+        # real `Players[1]` -- a live `[desync] *** DESYNC ... first_region=55 players` mismatch from
+        # step 50 onward on every run, independent of and additive to (1). The same-process
+        # `ghost_leave_rejoin` (GREEN) never exposed either because a re-join over a link that was
+        # never closed keeps the SAME wire id, which still equals its (also unchanged) slot.
+        # Fix: a new `mp_lobby_array_index()` (net_internal.h, shared by net_seams.cpp /
+        # net_discovery.cpp; a `static` twin in launch.cpp for the force-entry family, which does not
+        # include net_internal.h) resolves the ARRAY INDEX by SCANNING the (already host-synced)
+        # `_G_LLM_LOBBY_SLOTS` for the one whose player_id matches our own wire id -- the same
+        # side_id -> array-index translation `player_by_side_id` does for every OTHER peer's messages
+        # -- falling back to the old wire-id guess only before the slots are populated. Every site that
+        # feeds retail's real PlayerSide now calls it; `_G_LLM_NET_LOCAL_PLAYER_INDEX` (compared
+        # against wire side_ids in rx_dispatch.cpp) and `_G_LLM_LOBBY_LOCAL_SLOT_INDEX` are UNCHANGED
+        # (still the wire id -- conflating the two was the trap: an earlier draft of this fix repointed
+        # LOCALIDX at the array index too and would have broken the KICK-addressee check).
+        # Verdict: check_ghost_slot.py PASS (committed 10000->~14700-15100 ms on both peers, no printed
+        # slot pinned at 10000; was capped at ~10000-10030 before the fix) AND the `[desync]`
+        # mismatch is GONE (`Players[2]` reads all-zero on both peers, matching before the fix landed
+        # only on the never-populated slot).
+        "desc": "GS1(b): a client LEAVEs, quits to desktop for real, and a fresh process re-joins -> one slot, match runs past 10 s",
     },
     {
         "name": "relay_punch",
@@ -1374,6 +1508,162 @@ TESTS = [
         # under it -- the cap it can hit is wall clock under suite contention, not frames.
         "timeout": 300,
         "desc": "U40: a match ENDS, the host re-creates in the same instance, the client re-discovers + re-joins",
+    },
+    {
+        "name": "rematch_play",
+        "kind": "multi",
+        "host": "mp_host_rematch2.txt",
+        "clients": ["mp_client_rematch2.txt"],
+        # mp:RM1. host_rematch's walk CONTINUED INTO THE SECOND MATCH: the host presses Start on the
+        # re-created game, both peers run it past the 10000 ms initial horizon. host_rematch proves the
+        # re-host SEATS the client; this row proves the match that follows is a real lockstep match.
+        # Opened from the 2026-09-20 player report (session report §11.2): every 2nd+ match in one
+        # process entered session_begin_multi with the previous match's residue -- stale gclk,
+        # P[1..] relations zeroed on the host, p54bc=0 on the joiner -- while every 1st-in-process
+        # match was clean; the step-50 desync `9806a28e` and the committed-6060 freezes `05acccbc` /
+        # `e758413a`. The writer: the manual-lobby entry prep ran ONCE PER PROCESS (launch.cpp
+        # on_begin_map_load's `host_done` + the client's `g_entry_started`), so the second lobby's
+        # Start never re-derived the relation rows / the peer count nor shipped FLAG_START, and the
+        # joiner entered on retail's bare 0x0a into a mode-2 solo game. Fixed by re-arming the prep at
+        # the U40 match-end boundary (mp_session_close) -- once per LOBBY, not per process.
+        #
+        # Same pins as host_rematch, for the same reasons: transport=tcp (the suite's TCP coverage),
+        # video_640 (the ESC menu renders at the gameplay resolution, a persisted preference).
+        "net_extra": "transport=tcp",
+        "extra_ini": "tools/uiscripts/ini/video_640.ini",
+        # TL-LANEPOOL: the suite block is at the mutex ceiling, so this row owns no lanes -- it
+        # borrows host_rematch's (same topology, same pins) and the runner schedules the pair
+        # serially. Baselines are per script, so nothing rendered is shared.
+        "share_lanes": "host_rematch",
+        # host_rematch's ~40 s walk plus a second launch and 12 s of game clock: ~60 s green. The
+        # budget is host_rematch's, because a regression here is the same shape -- a peer blocked on
+        # a signal or pinned at its horizon has no frame-rate floor under it, only wall clock.
+        "timeout": 300,
+        # THE ASSERTION IS THE post_check, NOT THE PIXELS (net_hud's reasoning): the residue is a
+        # memory fact at session_begin_multi and the determinism verdict is a [desync] rollup, and a
+        # frame shows neither. check_rematch_residue.py reads BOTH peers' two session directories:
+        # game 2's `session_begin_multi ENTER` must read gclk=0 p54bc=2, its P[0..2] rel rows must
+        # equal game 1's on each peer and each other across peers, no `*** DESYNC` anywhere, game 1's
+        # `[desync] match end:` rollup (written at the session boundary) 0 mismatching / >=1
+        # compared, and game 2's FIRST hashed sample present on both peers with the same state hash
+        # (game 2 never ends inside the walk, so its rollup is optional). The checker scopes itself to
+        # the sessions of the process the runner hands over (session.json `process_dir`), because a
+        # lane SHARER inherits the owner's session directories. The pixels (r4_game2_running /
+        # r3_game2_running) are the "both peers are in game 2" boot-sanity half.
+        "post_check": ["tools/check_rematch_residue.py"],
+        "post_check_peers": True,
+        "desc": "RM1: a SECOND match in the same host process enters as clean as the first and stays in lockstep past 12 s",
+    },
+    {
+        "name": "ch1_cheat",
+        "kind": "multi",
+        "host": "mp_host_cheat.txt",
+        "clients": ["mp_client_cheat.txt"],
+        # mp:CH1 (opened from the 2026-09-20 player report, session report §10.1; registered
+        # `expect_red` first, then the gate landed and the key was dropped, both 2026-09-21). The
+        # hidden SINGLE-PLAYER cheat console is reachable from a
+        # network game: Shift+Enter opens the same text line the chat uses with _G_LLM_CHAT_MODE = 3
+        # (llm_strat_input_update 0x00441c82 -- the Shift arm is NOT gated on the session mode; the
+        # plain-Enter chat arms are), and llm_debug_console_dispatch runs whatever matches its
+        # 47-slot table. `_NUCLEAR BOMB` (catalog idx 0x25) issues order 0xfa on the REPLICATED lane
+        # (llm_strat_order_dispatch -> stage_scheduled + broadcast), so every peer executes
+        # llm_combat_credit_planet_conquest_kills: all units (2000 dmg) and buildings (5000) of the
+        # first other player alive on the planet -- the host's whole base, from one chat line. The
+        # client types it the way the field player did, runs on to 12 s, then ESC-quits (the field
+        # crash came on the quit path).
+        #
+        # THE ASSERTION IS THE post_check, NOT THE PIXELS: check_cheat_gate.py reads both peers'
+        # logs for the redacted submit line (`; [chat] submit mode=3 ... cheat_idx=0x25`), the
+        # refusal (`; CH1: cheat '_NUCLEAR BOMB' (idx 0x25) refused in a network game`), no
+        # sim-path elimination before SESSION_END on either peer (the D20 `presence_lost ... mode=0
+        # gate=eliminated` an unrefused 0xfa produces on BOTH peers), no `*** DESYNC`, and a stable
+        # `[netind] peer0 name=` if the sampler ran. The reproduction arm is the same walk with
+        # ini/cheat_gate_off.ini appended (retail behaviour) -- archived under tmp/ch1_run1/.
+        #
+        # Same pins as graceful_quit, for the same reasons: transport=tcp (the suite's TCP
+        # coverage), graceful_leave=1 (the quit's own mechanism, passed explicitly), video_640 (the
+        # ESC menu renders at the gameplay resolution, a persisted preference).
+        "net_extra": "transport=tcp;graceful_leave=1",
+        "extra_ini": "tools/uiscripts/ini/video_640.ini",
+        # TL-LANEPOOL: the suite block is at the mutex ceiling, so this row owns no lanes -- it
+        # borrows match_launch's (same 2-peer host+client topology) and the runner schedules the
+        # pair serially. Baselines are per script, so nothing rendered is shared.
+        "share_lanes": "match_launch",
+        # The harness rides along for ONE line class: order_log=1 dumps every ORDER_PENDING /
+        # ORDER_QUEUE row as `;ord ... code=XX` in mh_harness.log, which is the only place the
+        # replicated 0xfa is VISIBLE -- a single blast does not kill the host's mothership, so the
+        # D20 elimination line never fires and the desync detector (rightly) reads IDENTICAL. The
+        # gate-off arm shows `code=FA` on BOTH peers; the gate must leave neither peer with one.
+        # region_hash_step=50 keeps the [desync] detector sampling off the harness's hash (d25's
+        # shape); synth_move=0 keeps the random workload out of the walk.
+        "harness_extra": "order_log=1;region_hash_step=50;synth_move=0",
+        # A signal-ordered walk with a match and a quit in it: the peers block on each other, so
+        # the cap that can bite is wall clock under suite contention, not frames (graceful_quit's
+        # note). ~40 s green.
+        "timeout": 300,
+        "post_check": ["tools/check_cheat_gate.py"],
+        "post_check_peers": True,
+        "desc": "CH1: a client types _NUCLEAR BOMB on the Shift+Enter console in a lockstep match -- "
+        "refused, logged, nobody eliminated, no desync; then it ESC-quits",
+    },
+    {
+        "name": "gs2_data_timeout",
+        "kind": "multi",
+        "host": "mp_host_gs2.txt",
+        "clients": ["mp_client_gs2.txt"],
+        # mp:GS2 -- the backstop for GS1/RM1's freeze class: a peer that keepalives but sends no
+        # lockstep DATA for [net] data_timeout_ms is dropped instead of hanging until someone quits.
+        # The CLIENT arms the harness SIM FENCE (`simstep 100`, fork F5J) mid-match -- the rig's way
+        # to suspend a peer's sim thread while its transport keeps answering keepalives with the
+        # frozen horizon, exactly the field's 22-35 s since_rx freezes (2026-09-20). `data_timeout_ms`
+        # is pinned to 3000 here (net_extra) so the scenario measures in seconds; the 15 s shipping
+        # default lives in mh_net.example.ini/net_internal.h's SHIP_DATA_TIMEOUT_MS.
+        #
+        # Same pins as ch1_cheat/graceful_quit, for the same reasons: transport=tcp (the suite's TCP
+        # coverage), video_640 (the end-of-match dialog renders at the gameplay resolution).
+        "net_extra": "transport=tcp;data_timeout_ms=3000",
+        "extra_ini": "tools/uiscripts/ini/video_640.ini",
+        # TL-LANEPOOL: the suite block is at the mutex ceiling, so this row owns no lanes -- it
+        # borrows match_launch's (same 2-peer host+client topology) and the runner schedules the
+        # pair serially. Baselines are per script, so nothing rendered is shared.
+        "share_lanes": "match_launch",
+        # simstep needs an armed harness ([harness] enable=1); synth_move=0/region_hash_step=0 keep
+        # the D6 random workload and the per-step hash lines out of a run nobody analyses (same
+        # knobs as pause_mp_gate, which uses the same fence).
+        "harness_extra": "synth_move=0;region_hash_step=0",
+        # gameclock 500 (both peers) + simstep 100 (client, = gameclock 1000 at the rig's pinned
+        # sim_step_ms=10) + data_timeout_ms=3000 -> the drop is expected around clock 4000; measured
+        # wall time was ~30-40 s end to end (lobby walk + the 3 s watchdog + the dialog transition).
+        "timeout": 120,
+        "timeout_frames": frames_for_seconds(120, SOLO_HEADLESS_FPS_FLOOR),
+        "post_check": ["tools/check_data_timeout.py", "--timeout-ms", "3000"],
+        "post_check_peers": True,
+        "desc": "GS2: a peer whose sim is fenced (transport alive) is dropped after data_timeout_ms and the survivor reaches the end-of-match dialog",
+    },
+    {
+        "name": "gs2_quit_frozen",
+        "kind": "multi",
+        "host": "mp_host_gs2_quit.txt",
+        "clients": ["mp_client_gs2.txt"],
+        # mp:CH1's AV clause, re-homed: the one captured field crash (a952c570_2) was an access
+        # violation a second after the player QUIT a match whose lockstep clock had frozen on a
+        # data-silent peer -- not the cheat (the cheat rides the replicated order lane; the clock had frozen before the text box opened).
+        # This row plays that shape on purpose: the client fences its sim as in gs2_data_timeout,
+        # the host waits until it has been lockstep-BLOCKED for >= 1.5 s (`stalled 1500`) and quits
+        # via ESC -> Quit -> Yes DURING the freeze (data_timeout_ms is left at the 15 s ship default
+        # so the GS2 drop cannot land first), and the post_check asserts the consequence that
+        # mattered: no crash marker from either peer's process. THE ASSERTION IS THE post_check,
+        # NOT THE PIXELS; the main-menu capture only proves the quit completed.
+        "net_extra": "transport=tcp",
+        "extra_ini": "tools/uiscripts/ini/video_640.ini",
+        # TL-LANEPOOL: borrows match_launch's lanes like gs2_data_timeout (same 2-peer topology).
+        "share_lanes": "match_launch",
+        "harness_extra": "synth_move=0;region_hash_step=0",
+        "timeout": 120,
+        "timeout_frames": frames_for_seconds(120, SOLO_HEADLESS_FPS_FLOOR),
+        "post_check": ["tools/check_no_crash_marker.py"],
+        "post_check_peers": True,
+        "desc": "CH1/GS2: the host quits a lockstep match while it is FROZEN on a data-silent peer -- no crash marker (the field AV shape)",
     },
     {
         "name": "graceful_quit",
@@ -9167,6 +9457,39 @@ LOCAL_TIMEOUT_FRAMES = frames_for_seconds(90, SOLO_HEADLESS_FPS_FLOOR)
 WARN_FRAC = 0.7
 
 
+def client_lane_slot(test, cidx):
+    """The 1-based CLIENT LANE SLOT client #cidx (1-based, in `clients` order) actually uses --
+    itself, unless `client_shares_lane` (mp:GS1(b)) remaps it onto an EARLIER client's slot.
+
+    That key exists for the PROCESS-EXIT relaunch shape (paired with ui_test.py's
+    `--client-after-exit`): client #2's process is a brand-new one launched only after client #1's
+    has actually exited, so it is safe -- and, on this tree's 99-mutex lane ceiling (lane_alloc.py
+    TL-LANEPOOL, the `suite` block already at its registry demand), NECESSARY -- for it to reuse
+    client #1's own lane folder rather than costing the suite a third lane it does not have.
+    """
+    reuse = test.get("client_shares_lane") or {}
+    seen = set()
+    while cidx in reuse:
+        if cidx in seen:
+            raise ValueError(
+                "test %r: client_shares_lane cycle at client %d" % (test["name"], cidx)
+            )
+        seen.add(cidx)
+        cidx = reuse[cidx]
+    return cidx
+
+
+def client_lane_slots(test):
+    """The DISTINCT client lane slots this test's `clients` resolve to, in first-use order (1-based).
+    Length < len(test["clients"]) exactly when `client_shares_lane` folds two or more onto one."""
+    slots = []
+    for i in range(len(test["clients"])):
+        s = client_lane_slot(test, i + 1)
+        if s not in slots:
+            slots.append(s)
+    return slots
+
+
 def lane_names(test):
     """Every lane a test needs, in peer order (host first).
 
@@ -9177,13 +9500,16 @@ def lane_names(test):
     be added at all; sharing is how direct_dial_with_relay_set joins the registry without one. The
     reuse is made safe by the runner scheduling a share pair SERIALLY (never both on the shared lane
     at once) and by every run redeploying its own script/ini into the lane folder before it launches.
+
+    mp:GS1(b) -- `client_shares_lane` (see client_lane_slots) folds a relaunched client onto an
+    earlier one's lane WITHIN one test, so the lane it needs is not counted twice either.
     """
     if test.get("share_lanes"):
         return []
     if test["kind"] == "solo":
         return ["ui_" + test["name"]]
     return ["ui_%s_host" % test["name"]] + [
-        "ui_%s_c%d" % (test["name"], i + 1) for i in range(len(test["clients"]))
+        "ui_%s_c%d" % (test["name"], s) for s in client_lane_slots(test)
     ]
 
 
@@ -9211,11 +9537,10 @@ def provision_lanes(tests, headless=True, port_base=None, lane_base=0, stock_exe
         if tg and tg in present:
             return []
         if tg:  # target absent from this run -> stand on our own lanes
-            if t["kind"] == "solo":
-                return ["ui_" + t["name"]]
-            return ["ui_%s_host" % t["name"]] + [
-                "ui_%s_c%d" % (t["name"], i + 1) for i in range(len(t["clients"]))
-            ]
+            # Same shape lane_names() computes for a non-sharer -- calling it directly here (rather
+            # than re-deriving it) is what keeps client_shares_lane (mp:GS1(b)) honoured in this
+            # fallback path too, without a second place to remember the rule.
+            return [n for n in lane_names(dict(t, share_lanes=None))]
         return lane_names(t)
 
     need = sum(len(_provision_names(t)) for t in tests)
@@ -9648,6 +9973,21 @@ def build_argv(test, vms, common, plan=None):
         tail += ["--no-client-ip"]
     if test.get("signal_touch"):  # mp:R4b -- set by the runner from relay_restart_on
         tail += ["--signal-touch", test["signal_touch"]]
+    # mp:GS1(b) -- the PROCESS-EXIT relaunch shape: {client_idx(1-based): peer_idx(0-based, 0=host)}.
+    # This client's launch waits for that EARLIER peer's process to have actually EXITED (ui_test's
+    # peer_liveness, not the script's own COMPLETE marker) before starting a brand-new one -- the
+    # ghost_exit_rejoin shape (a client quits to desktop, then a fresh process re-joins). Generic
+    # across --local and VM topologies because both branches below share this `tail`.
+    if test.get("client_after_exit"):
+        for _cidx, _pidx in test["client_after_exit"].items():
+            tail += ["--client-after-exit", "%d:%d" % (_cidx, _pidx)]
+    # mp:GS1(b) -- the companion half: a client named here is EXPECTED to end via a confirmed
+    # SELF-DRIVEN process exit (ui_test.py's exit_witness) rather than its script's own COMPLETE
+    # marker, which ExitProcess makes unreachable by design. Without this the overall verdict's
+    # COMPLETE-on-every-peer rule would fail a correct run of this shape forever.
+    if test.get("client_expect_exit"):
+        for _cidx in test["client_expect_exit"]:
+            tail += ["--client-expect-exit", str(_cidx)]
     if plan is not None:  # --local: every peer of every test is its own lane on this machine
         port, shim_port, names = plan[test["name"]]
         if test["kind"] == "solo":
@@ -9675,8 +10015,14 @@ def build_argv(test, vms, common, plan=None):
             str(port),  # peers of ONE match share the host's port; see LOCAL_PORT_BASE
             *extra,
         ]
+        # mp:GS1(b): `names[1:]` is already DEDUPLICATED by client_lane_slots (lane_names()'s own
+        # basis), so a reused client resolves to the SAME lane name as the peer it reuses -- no
+        # extra lane, and it is safe only because --client-after-exit (above) guarantees that
+        # earlier peer's process is gone before this one starts touching the folder.
+        slots = client_lane_slots(test)
         for i, cscript in enumerate(test["clients"]):
-            argv += ["--client", "lane=%s:%s" % (names[1 + i], cscript)]
+            lane_idx = 1 + slots.index(client_lane_slot(test, i + 1))
+            argv += ["--client", "lane=%s:%s" % (names[lane_idx], cscript)]
         if test.get("client_dead_ip"):
             argv += ["--client-dead-ip", test["client_dead_ip"]]
         # A link-condition test needs its shim LOCALLY too -- without it the link never dies, both
@@ -9693,8 +10039,13 @@ def build_argv(test, vms, common, plan=None):
         return ["--host", "%s:%s" % (vms[0], test["script"]), *extra, *common, *tail]
     host_ip = vms[0]
     argv = ["--host", "%s:%s" % (host_ip, test["host"]), "--connect-ip", host_ip, *extra]
+    # mp:GS1(b): a reused client (client_shares_lane) plays on the SAME VM as the peer it reuses --
+    # there is no lane concept on a VM (one game install per machine), so "the same lane" there
+    # means "the same machine", relaunched once --client-after-exit sees the earlier one exit.
+    vm_slots = client_lane_slots(test)
     for i, cscript in enumerate(test["clients"]):
-        argv += ["--client", "%s:%s" % (vms[1 + i], cscript)]
+        vm_idx = 1 + vm_slots.index(client_lane_slot(test, i + 1))
+        argv += ["--client", "%s:%s" % (vms[vm_idx], cscript)]
     if test.get(
         "client_dead_ip"
     ):  # S8(b): pre-fill the client's IP field to a dead addr, live host in MRU
@@ -9706,7 +10057,9 @@ def build_argv(test, vms, common, plan=None):
 def required_vms(test, vms):
     if test["kind"] == "solo":
         return [vms[0]]  # host-only on the first VM
-    return vms[: 1 + len(test["clients"])]
+    # mp:GS1(b): a reused client (client_shares_lane) does not cost an extra VM -- it relaunches on
+    # the machine an earlier client already used, same as it reuses that peer's LOCAL lane.
+    return vms[: 1 + len(client_lane_slots(test))]
 
 
 # ---- INSTALL-TIME REFUSALS: the shared cause behind a whole-suite failure ------------------------
@@ -11335,7 +11688,21 @@ def main():
                 tail += "\n" + ptext
             if not ok:
                 rc = 1
-        return t["name"], ("PASS" if rc == 0 else "FAIL"), head + "\n" + text + tail
+        verdict = "PASS" if rc == 0 else "FAIL"
+        # A row carrying `expect_red: "<tracker id>"` is a REPRODUCTION of an open bug, registered
+        # before its fix so the fix has a gate to turn green. Its red is the expected state (XFAIL,
+        # not a failure); its green is the fix landing (XPASS, reported as a FAILURE so the key gets
+        # removed the same session -- a scenario that passes while claiming to be red is a lie).
+        if t.get("expect_red"):
+            verdict = "XFAIL" if rc != 0 else "XPASS"
+            tail += "\n  expect_red=%s -> %s%s" % (
+                t["expect_red"],
+                verdict,
+                ""
+                if rc != 0
+                else " (the bug this row reproduces no longer reproduces: drop expect_red)",
+            )
+        return t["name"], verdict, head + "\n" + text + tail
 
     # Set by the first failure whose cause is install-wide; every later test then SKIPs instead of
     # re-proving it. A list rather than a flag so the abort can name WHICH test found it.
@@ -11413,12 +11780,16 @@ def main():
     print("UI TEST SUITE")
     print("-" * 78)
     npass = nfail = nskip = 0
-    nnear = 0
+    nnear = nxfail = 0
     for t in tests:
         r = results[t["name"]]
         npass += r == "PASS"
-        nfail += r == "FAIL"
+        nfail += r in (
+            "FAIL",
+            "XPASS",
+        )  # an XPASS is a stale expect_red key: a failure until it is dropped
         nskip += r == "SKIP"
+        nxfail += r == "XFAIL"
         # D15(b): the budget column lives in the SUMMARY, not only in the per-test block. Under --jobs
         # the per-test output is buffered and scrolls past; the summary is the part anyone actually
         # reads, so the near-miss has to be visible there or it is not visible at all.
@@ -11432,7 +11803,15 @@ def main():
                 nnear += 1
         print("  %-14s %-5s%s" % (t["name"], r, col))
     print("-" * 78)
-    print("  %d passed, %d failed, %d skipped" % (npass, nfail, nskip))
+    print(
+        "  %d passed, %d failed, %d skipped%s"
+        % (
+            npass,
+            nfail,
+            nskip,
+            ("  (%d expected-red, see expect_red rows)" % nxfail) if nxfail else "",
+        )
+    )
     if nnear:
         # Loud on purpose: a suite that is 12/12 with three tests at 90% of budget is one busy machine
         # away from being 9/12, and the 12/12 line alone actively hides that.
@@ -11462,6 +11841,7 @@ def main():
                     "passed": npass,
                     "failed": nfail,
                     "skipped": nskip,
+                    "expected_red": nxfail,
                 },
                 fh,
                 indent=1,
@@ -11502,10 +11882,20 @@ def main():
                 continue
             sub = argparse.Namespace(**vars(args))
             sub.tact_equiv = path
-            sub.tact_slot = i
             runnable.append((sc["name"], sub))
 
-        tail_jobs = 1 if jobs == 1 else min(4, len(runnable)) or 1
+        # THE POOL IS THE `tact` LANE BLOCK, NOT THE SCENARIO LIST. The tail used to hand journal i
+        # lane slot i and run four at once; the block was shrunk to two lanes on 2026-09-19 (the
+        # capture suite needed the numbers, lane_alloc.py) and from then on every full-suite run
+        # ended `IndexError: lane block 'tact' holds 2 lane(s) ... asked for index 3` on journals
+        # 3 and 4 -- two reds that read as tactical regressions and were a lane bookkeeping bug.
+        # Now a journal CLAIMS a slot from a pool as wide as the block when it starts and releases
+        # it when it ends, so the tail runs as wide as the block allows and never wider.
+        tact_width = lane_alloc.block("tact")[1]
+        tail_jobs = 1 if jobs == 1 else max(1, min(4, tact_width, len(runnable)))
+        tact_slots = queue.Queue()
+        for _slot in range(tail_jobs):
+            tact_slots.put(_slot)
 
         class _ThreadRouter:
             """stdout proxy routing write() by thread: registered threads write to their own
@@ -11534,6 +11924,8 @@ def main():
         def _one_journal(name, sub):
             buf = _io.StringIO()
             router.register(buf)
+            slot = tact_slots.get()  # a lane of the tact block, held for this journal's arms
+            sub.tact_slot = slot
             try:
                 rc = run_tact_equiv(sub)
             except Exception:
@@ -11542,6 +11934,7 @@ def main():
                 traceback.print_exc()
                 rc = 1
             finally:
+                tact_slots.put(slot)
                 router.unregister()
             return name, rc, buf.getvalue()
 
@@ -11549,6 +11942,7 @@ def main():
             for name, sub in runnable:
                 print("-" * 78)
                 print("  tactical journal: %s" % name)
+                sub.tact_slot = 0
                 if run_tact_equiv(sub):
                     nfail += 1
                 else:

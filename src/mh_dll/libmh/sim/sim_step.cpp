@@ -394,7 +394,27 @@ void sim_step(const sim_view &v, sim_store &own, const sim_step_calls &c) {
 
 // ---- the public wrapper --------------------------------------------------------------------------
 
+namespace promoted_arm {
+namespace {
+extern void (*g_pre_hook)(); // defined below, with the block comment that explains it
+}
+} // namespace promoted_arm
+
+// THE PRE-HOOK FIRES HERE, IN THE BODY, NOT IN THE ENTRY WRAPPER (mp:RM1, 2026-09-21). It used to sit
+// at the top of promoted_arm::sim_step (the __watcall entry the game VA jumps to), which is exactly
+// one of this function's TWO routes in. The other is the REBIND: with `[rebind] llm_strat_sim_step
+// -> OURS` armed -- the ship configuration -- mh::lockstep's promoted sim_tick calls THIS function
+// directly (turn_engine.cpp live_calls: MH_LIBMH_BIND resolves to &::mh::sim::sim_step), never
+// touching the entry wrapper. So in every rig run with libmh bound the D21 desync sampler was
+// "CHAINED onto the PROMOTED root", printed its ARMED + cost-probe lines, and sampled NOTHING for the
+// whole run -- no `first sample sent`, no rollup, no verdict -- while the field's configuration (1)
+// (no libmh.dll, the trampoline route) sampled every 50 steps. G68's shape a third time, and the
+// reason `[desync] step N reached the sampling cadence but NO sample was taken` now exists
+// (desync_watch.cpp). Firing at the top of the BODY makes the sampling point route-independent:
+// entry route -> wrapper -> body (once), rebind route -> body (once). The wrapper keeps its
+// served-count ladder, which is about the ENTRY being reached and stays true to that.
 void sim_step() {
+    if (promoted_arm::g_pre_hook) promoted_arm::g_pre_hook();
     sim_state st = state();
     detail::sim_step(st.read, st.own, live_sim_step_calls());
 }
@@ -474,7 +494,8 @@ const char *x87_precision_note() {
 }
 
 void sim_step() {
-    if (g_pre_hook) g_pre_hook();
+    // The D21 pre-hook used to fire here; it fires in mh::sim::sim_step (the body) since mp:RM1, so
+    // the rebind route -- which enters the body without passing this wrapper -- samples too.
     // NON-VACUITY (gates can pass vacuously): a golden that "stayed identical" proves
     // nothing unless our body actually ran. Log the first call + widening milestones so a run can state
     // in writing that the harness detour served real time-ticks through OUR domain root.

@@ -61,8 +61,15 @@ Once Docker exists:
 cd src/collector
 mkdir -p secrets
 python -c "import secrets; print(secrets.token_urlsafe(32))" > secrets/report_token.txt
-docker compose up --build
+MH_REPORTS_DIR=./data/reports docker compose up --build   # Windows/macOS: no /srv here
 ```
+
+`MH_REPORTS_DIR` is this dev stack's one knob (tracker `dist:RP7`): the
+collector's `/data/reports` is a **bind mount** of `${MH_REPORTS_DIR:-/srv/reports}`,
+the default being the VPS's drain root so the two compose files agree
+(`tools/lint_compose.py` rule 4 refuses anything else for `/data/reports`
+in either file). Whatever directory you point it at must be writable by uid
+10001, the container's fixed user.
 
 Then exercise the done_when clauses:
 
@@ -143,10 +150,17 @@ Then, on the VPS (as the admin, using the real `VPS_SSH_KEY` -- this step is
 NOT something `drain_reports.py` itself ever does):
 
 ```sh
-mkdir -p /srv/reports
+mkdir -p /srv/reports && chown -R 10001:10001 /srv/reports
 echo 'restrict,command="rrsync -ro /srv/reports" '"$(cat drain_key.pub)" \
     >> ~/.ssh/authorized_keys
 ```
+
+`/srv/reports` is BOTH the drain root and the collector's store: the compose
+files bind-mount it at `/data/reports`, and the `chown` matters because the
+container writes as uid 10001 (its Dockerfile). Until 2026-09-20 the deployed
+stack mounted a named docker volume there instead, so every real upload
+returned 201 into `/var/lib/docker/volumes/mh-deploy_reports/_data` and the
+drain printed `nothing new` (tracker `dist:RP7`, dead-ends G250).
 
 `rrsync` ships with `rsync` itself (`man rrsync`; if `/usr/bin/rrsync` is not
 already there, `dpkg -L rsync | grep rrsync` finds it, or install the
@@ -268,7 +282,7 @@ scripts/
   send_report.py      dependency-free manual test client (NOT the launcher's uploader)
 tests/                 pytest + httpx (FastAPI TestClient) -- one clause per done_when item
 Dockerfile             python:3.12-slim, non-root, HEALTHCHECK
-docker-compose.yml      collector + caddy, secrets via compose `secrets:`
+docker-compose.yml      collector + caddy, secrets via compose `secrets:`, /data/reports bound to ${MH_REPORTS_DIR:-/srv/reports}
 Caddyfile               tls internal, request_body max_size 64MB, reverse_proxy
 requirements.txt         runtime deps (installed into the image)
 requirements-dev.txt      + pytest/httpx, local test-running only

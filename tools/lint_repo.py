@@ -1231,6 +1231,49 @@ def declare_checks(args):
         "mp:F3c codepage post-check -- the negative cases still fire (check_codepage_adopt --selftest)",
         [sys.executable, os.path.join(REPO, "tools", "check_codepage_adopt.py"), "--selftest"],
     )
+    # mp:RM1. The rematch-residue post_check (tools/test_ui.py's rematch_play entry) runs only with
+    # the rig; its negatives -- a host game 2 entering with the previous match's residue + a step-50
+    # desync, a joiner that never entered lockstep (p54bc=0, no sample), first samples that disagree
+    # across the peers, a detector that sampled nothing (no game-1 rollup), a lane that never reached
+    # the rematch -- are gated here off planted lanes.
+    check(
+        "mp:RM1 rematch-residue post-check -- the negative cases still fire (check_rematch_residue --selftest)",
+        [sys.executable, os.path.join(REPO, "tools", "check_rematch_residue.py"), "--selftest"],
+    )
+    # mp:CH1. The cheat-gate post_check (tools/test_ui.py's ch1_cheat entry) runs only with the rig;
+    # its negatives -- the cheat RAN (gate off), the refusal line missing, order 0xfa staged in a
+    # peer's order buffers, a sim-path elimination, a desync sample, a netind name morph, nobody
+    # submitted the line, a lane without a session or a harness log -- are gated here off planted lanes.
+    check(
+        "mp:CH1 cheat-gate post-check -- the negative cases still fire (check_cheat_gate --selftest)",
+        [sys.executable, os.path.join(REPO, "tools", "check_cheat_gate.py"), "--selftest"],
+    )
+    # mp:GS1(b). The ghost-slot post_check (tools/test_ui.py's ghost_exit_rejoin entry) runs only
+    # with the rig; its negatives -- a committed horizon still pinned at the initial 10000 ms
+    # advertisement on either peer, the REMOTE peer's printed slot frozen exactly at 10000 once the
+    # match has run well past it (a side's own slot is never written by that side and sits there in
+    # every healthy match too, so it is excluded), a vacuous/missing lockstep log, a process that
+    # never launched a match at all -- are gated here off planted mh_lockstep.log fixtures.
+    check(
+        "mp:GS1(b) ghost-slot post-check -- the negative cases still fire (check_ghost_slot --selftest)",
+        [sys.executable, os.path.join(REPO, "tools", "check_ghost_slot.py"), "--selftest"],
+    )
+    # mp:GS2. The data-timeout post_check (tools/test_ui.py's gs2_data_timeout entry) runs only with
+    # the rig; its negatives -- nobody drops (the pre-fix hang), both peers drop each other, the
+    # frozen peer wrongly drops the healthy survivor, the watchdog fires early or late against its
+    # own T, a --timeout-ms mismatch -- are gated here off planted lanes.
+    check(
+        "mp:GS2 data-timeout post-check -- the negative cases still fire (check_data_timeout --selftest)",
+        [sys.executable, os.path.join(REPO, "tools", "check_data_timeout.py"), "--selftest"],
+    )
+    # mp:CH1 (the AV clause). The no-crash-marker post_check (tools/test_ui.py's gs2_quit_frozen
+    # entry) runs only with the rig; its negatives -- a marker from either peer during the run, a
+    # stale marker from an earlier run wrongly attributed, a run dir with no game evidence -- are
+    # gated here off planted lanes.
+    check(
+        "mp:CH1 no-crash-marker post-check -- the negative cases still fire (check_no_crash_marker --selftest)",
+        [sys.executable, os.path.join(REPO, "tools", "check_no_crash_marker.py"), "--selftest"],
+    )
     # mp:R4b. The relay-restart post_check (tools/test_ui.py's relay_restart entry) likewise runs
     # only with the rig; its negatives -- a peer that never got NOT_REGISTERED, a LOST with no
     # RESTORED, a restored leg whose link dropped anyway, a relay log with one `listening` line --

@@ -6,8 +6,8 @@
   "orphan_sites": 468,
   "promotable_bodies": 402,
   "verified_bodies": 953,
-  "detour_target_addrs": 60,
-  "detour_target_bodies": 60,
+  "detour_target_addrs": 61,
+  "detour_target_bodies": 61,
   "unresolved_install_sites": 15,
   "sites_in_promotable_body": 10127,
   "sites_in_detour_target": 4437,
@@ -670,6 +670,7 @@
   ],
   "detour_target_bodies_named": [
     "llm_cd_locate_and_open_audio",
+    "llm_chat_history_push",
     "llm_debug_console_dispatch",
     "llm_game_land_players_on_planet",
     "llm_game_return_to_main_menu_cb",

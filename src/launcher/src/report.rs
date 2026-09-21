@@ -1,23 +1,42 @@
-//! Building the report zip (dist LA4, plan decision D13).
+//! Building the report zip (dist LA4, plan decision D13; scope widened by dist LA9).
 //!
 //! A report is one deflate zip and one required sentence. What goes in it:
 //!
 //! ```text
 //! report.json            everything a triager needs before opening anything else
 //! description.txt        what the player typed. REQUIRED, and the build refuses without it
-//! session/...            the per-session log directory (mp SES1) -- mh_net.log, session.json, ...
+//! logs/<name>/...        EVERY process + session directory since the launcher started (dist LA9)
 //! config/mh_net.ini      the game's configuration, REDACTED
 //! launcher/launcher.log  the tail of this program's own log
-//! crash/<name>.marker    what mh.dll's handler wrote, when there was a crash
+//! crash/marker.txt       what THIS run's crash handler wrote, when there was a crash
+//! crash/<name>.marker    every `mh_crash_*.marker`(.ctx32) file swept from `logs\` (dist LA9) --
+//!                        stale ones from an earlier, undrained crash included, not just this run's
 //! minidump.dmp           only when the player ticked the box and a dump was written
 //! ```
+//!
+//! ## dist LA9: a session directory is not the report, the LOGS TREE is
+//!
+//! LA4 shipped one session directory. Two real 2026-09-20 uploads proved that was ~1 permille of
+//! what a freeze/desync analysis needs: the desync, the freezes, the relay/punch evidence and the
+//! crash all lived in OTHER directories under `logs\` -- an earlier session, the process directory's
+//! own `net:` lines, a `mh_crash_*.marker` nobody's report ever carried -- and the players had to
+//! send those by hand. `plan_logs` below now selects EVERY directory under `logs\` written since
+//! this launcher process started (a UTC stamp compared against each directory's own name, which is
+//! how `mh_common/run_context.cpp` and `mh_common/include/mh_session_dir.h` name them), falls back
+//! to the newest `LOGS_FALLBACK_N` when that start time is not known (`--report` from a script that
+//! never called `--launch` first, or a test), and drops the OLDEST of those first when the total
+//! would not fit -- except the two things a report is never allowed to lose: the match the
+//! description form names (`session_dir`, the player's pick or the newest by default) and its own
+//! process directory (found via that session's own `session.json` `process_dir` field), and every
+//! `mh_crash_*` file, which is swept from `logs\` directly and never subject to the drop.
 //!
 //! **`report.json` IS the `meta` object RP1 will POST**, byte for byte, not a cousin of it. The
 //! collector stores that object as `meta.json` beside the zip (`src/collector/README.md`), and
 //! `tools/crash_report.py --report` reads `match_id`, `version`, `exit_code` and the optional
 //! `crash` object out of it. Writing one object and sending the same one is what keeps the drained
 //! report and the zip's own copy from ever disagreeing -- and it means the uploader in RP1 has no
-//! field names of its own to get wrong.
+//! field names of its own to get wrong. dist LA9 adds `included` (every `logs\` directory the zip
+//! actually carries) and `dropped` (`{dir, bytes, why}` for every one the size budget refused).
 //!
 //! ## The description is required, and it is required HERE
 //!
@@ -83,14 +102,40 @@ const PER_FILE_MAX: u64 = 8 * 1024 * 1024;
 
 /// Whole-zip cap on UNCOMPRESSED input. Caddy rejects a body over 64 MB at the edge (plan D14) and
 /// a report that is refused on arrival is worse than a report missing its least interesting file.
+/// The margin below 64 MB is deliberate, not the whole story dist LA9 needs: this budget is counted
+/// against UNCOMPRESSED bytes while the upload is DEFLATED, so the real body is smaller than this in
+/// the overwhelming common case (mp:SES5's log diet made a match's text compress hard) -- the margin
+/// exists for what does NOT compress, chiefly the one entry (the minidump) let past `PER_FILE_MAX`.
 const TOTAL_MAX: u64 = 48 * 1024 * 1024;
+
+/// dist LA9. How many bytes of `TOTAL_MAX` are set aside for `report.json`, `description.txt`, the
+/// redacted ini and the launcher's own log tail BEFORE the `logs\` tree selection below runs its own
+/// budget -- sized to the launcher log's own `PER_FILE_MAX` (its only entry that can be large) plus
+/// slack for the other three, which are a few KB each. Without this reservation the tree selection
+/// would size itself against the WHOLE of `TOTAL_MAX` and could leave nothing for a large launcher
+/// log to fit into by the time its turn came.
+const RESERVED_FOR_FIXED_ENTRIES: u64 = PER_FILE_MAX + 2 * 1024 * 1024;
+
+/// dist LA9. How many of the newest `logs\` directories to package when the launcher's own start
+/// time is unknown (a `--report` invoked from a script that never called `--launch` in this same
+/// process, or a test). Large enough to cover "the whole afternoon" of a normal play session without
+/// degenerating into "every directory this game folder has ever produced".
+const LOGS_FALLBACK_N: usize = 20;
 
 /// What a report is built from. Everything is optional except the description, which is the point.
 pub struct Input<'a> {
     pub game_dir: Option<&'a Path>,
-    /// The session log directory to ship. `Input::describe` fills this from `newest_session_dir`
-    /// when the caller has not chosen one.
+    /// The session directory this report is ABOUT -- the match the description names. Newest by
+    /// default (`default_session_dir`) or the player's own pick (`app.rs`'s picker, dist LA9); it is
+    /// never dropped from the `logs\` selection below and its own process directory rides along with
+    /// it, whatever the size budget does to everything else.
     pub session_dir: Option<PathBuf>,
+    /// dist LA9. This launcher process's own UTC start stamp, in the same
+    /// `YYYYMMDDTHHMMSSZ` shape `mh_common/include/mh_session_dir.h` names directories with (see
+    /// `app.rs`'s `stamp_for_file`) -- every directory under `logs\` at or after this stamp is a
+    /// candidate for "since the launcher started". `None` (a `--report` from a script with no prior
+    /// `--launch` in this process, or a test) falls back to the newest `LOGS_FALLBACK_N`.
+    pub launcher_started_utc: Option<String>,
     pub description: &'a str,
     pub last_run: Option<&'a Finished>,
     pub crash: Option<&'a Marker>,
@@ -157,7 +202,29 @@ pub fn build(dest: &Path, input: &Input) -> Result<Built, String> {
         })
         .unwrap_or_default();
 
-    let meta = meta_json(input, &machine, installed.as_ref(), &build_stamp, &match_id);
+    // dist LA9: which `logs\` directories the zip will carry, decided BEFORE report.json is
+    // composed -- `included`/`dropped` are part of that object, byte for byte the same object RP1
+    // posts, so the decision has to exist first.
+    let logs_plan = input
+        .game_dir
+        .map(|gd| {
+            plan_logs(
+                gd,
+                session.as_deref(),
+                input.launcher_started_utc.as_deref(),
+                TOTAL_MAX.saturating_sub(RESERVED_FOR_FIXED_ENTRIES),
+            )
+        })
+        .unwrap_or_default();
+
+    let meta = meta_json(
+        input,
+        &machine,
+        installed.as_ref(),
+        &build_stamp,
+        &match_id,
+        &logs_plan,
+    );
 
     // dist LA6: the ini is read ONCE, here, both to be added (redacted) and to seed the literal
     // scrub every other text file goes through.
@@ -202,16 +269,19 @@ pub fn build(dest: &Path, input: &Input) -> Result<Built, String> {
         &mut budget,
     )?;
 
-    if let Some(dir) = session.as_deref() {
-        add_dir(
+    // dist LA9: the whole planned slice of `logs\`, not just the one chosen session directory --
+    // plus (dist LA10) anything that landed loose in `logs\` itself rather than in a subdirectory.
+    if let Some(gd) = input.game_dir {
+        add_logs_tree(
             &mut zip,
             opts,
-            dir,
-            "session",
+            gd,
+            &logs_plan,
             &mut entries,
             &mut budget,
             &scrub,
         )?;
+        add_loose_log_files(&mut zip, opts, gd, &mut entries, &mut budget, &scrub)?;
     }
 
     // The configuration, redacted three times over: by setting name, by the relay's own line,
@@ -253,6 +323,15 @@ pub fn build(dest: &Path, input: &Input) -> Result<Built, String> {
             &mut entries,
             &mut budget,
         )?;
+    }
+
+    // dist LA9: every `mh_crash_*` file sitting under `logs\`, not only the one THIS run's live
+    // channel caught -- a marker (or its `.ctx32` sidecar) left by an earlier, undrained crash is
+    // exactly the evidence a "something looked wrong later" report exists to carry, and it is never
+    // subject to the drop above. Uses a throwaway budget of its own: these files are a few hundred
+    // bytes each and must never be the thing a tight `budget` sacrifices.
+    if let Some(gd) = input.game_dir {
+        add_crash_marker_files(&mut zip, opts, gd, &mut entries, &scrub)?;
     }
 
     if let Some(dmp) = input.minidump {
@@ -301,6 +380,7 @@ fn meta_json(
     installed: Option<&install::Manifest>,
     build_stamp: &str,
     match_id: &str,
+    logs_plan: &LogsPlan,
 ) -> String {
     // `exit_code` is the SIGNED i32 Windows hands a parent, which is what the collector's own
     // example shows (`-1073741819`). The hex spelling is the one a human searches for, so both are
@@ -338,6 +418,15 @@ fn meta_json(
             .map(|n| n.to_string_lossy().to_string())
             .unwrap_or_default(),
         "created_at": crate::log::stamp(),
+        // dist LA9: what the `logs\` selection above decided, spelled the way a triager (or a
+        // future `crash_report.py`) reads it back -- every directory the zip actually carries, and
+        // every one the size budget refused, with its size and why.
+        "included": logs_plan.included,
+        "dropped": logs_plan
+            .dropped
+            .iter()
+            .map(|d| serde_json::json!({"dir": d.dir, "bytes": d.bytes, "why": d.why}))
+            .collect::<Vec<_>>(),
     });
 
     // OPTIONAL, and its absence is meaningful: `print_drained_report` treats a report with no
@@ -391,6 +480,366 @@ fn match_id_from_session(session: &Path) -> Option<String> {
     } else {
         Some(id)
     }
+}
+
+// ---- dist LA9: which `logs\` directories the report carries -----------------------------------
+
+/// One directory `report.json`'s `dropped` array names: which one, how big, why it did not fit.
+#[derive(Clone, Debug)]
+pub struct DroppedDir {
+    pub dir: String,
+    pub bytes: u64,
+    pub why: &'static str,
+}
+
+/// What `plan_logs` decided. `included` is every directory that will actually be zipped, in the
+/// order they are added (protected ones first, then newest-to-oldest); `dropped` is everything the
+/// size budget refused, oldest of the refused ones last (they were refused in that order).
+#[derive(Clone, Debug, Default)]
+pub struct LogsPlan {
+    pub included: Vec<String>,
+    pub dropped: Vec<DroppedDir>,
+}
+
+/// One directory found directly under `logs\`, named the way `mh_session_dir.h` names them --
+/// `<stamp>_menu_<role>` (a process directory) or `<stamp>_<mid8>_<slot>_<role>` (a session one).
+/// `stamp` is the leading 16-character UTC prefix, which sorts exactly like the moment it names
+/// (see `paths::newest_session_dir`'s note on why the name decides, not the mtime).
+struct LogDir {
+    name: String,
+    path: PathBuf,
+    stamp: String,
+    bytes: u64,
+}
+
+/// Is this a per-PROCESS ("menu") directory rather than a per-session one? The second underscore-
+/// separated field is `menu` for a process directory and the match's short hex id for a session one
+/// (`mh_session_dir_name` in `mh_common/include/mh_session_dir.h`).
+fn is_process_dir_name(name: &str) -> bool {
+    name.split('_').nth(1) == Some("menu")
+}
+
+/// The total size of every FILE under `dir`, at any depth. A session directory is flat and a process
+/// directory close to it, so this rarely recurses more than once, but sizing (unlike `add_dir`'s own
+/// one-level cap on what it WRITES) has no reason to under-count a directory shaped differently than
+/// expected -- the worst that happens is this directory looks bigger than `add_dir` will actually
+/// make it, which only ever makes the selection MORE conservative.
+fn dir_size(dir: &Path) -> u64 {
+    let mut total = 0u64;
+    let Ok(read) = std::fs::read_dir(dir) else {
+        return 0;
+    };
+    for e in read.flatten() {
+        let p = e.path();
+        match e.file_type() {
+            Ok(t) if t.is_dir() => total += dir_size(&p),
+            Ok(t) if t.is_file() => {
+                total += std::fs::metadata(&p).map(|m| m.len()).unwrap_or(0);
+            }
+            _ => {}
+        }
+    }
+    total
+}
+
+/// `20260917T164346Z` off the front of a directory name, or `None` if it does not start with one.
+/// The same shape-check `paths::newest_session_dir` uses (kept as its own small copy here rather
+/// than a cross-module dependency, the way `mh_common`'s OS-free headers accept some duplication
+/// for the same reason): the only thing that matters is that every real stamp is the same fixed
+/// width and character class, so string comparison between two of them IS a comparison of instants.
+fn utc_stamp_prefix(name: &str) -> Option<&str> {
+    let b = name.as_bytes();
+    if b.len() < 16 {
+        return None;
+    }
+    let digits = |r: std::ops::Range<usize>| b[r].iter().all(u8::is_ascii_digit);
+    if digits(0..8) && b[8] == b'T' && digits(9..15) && b[15] == b'Z' {
+        return Some(&name[..16]);
+    }
+    None
+}
+
+/// Every process/session directory directly under `<game_dir>\logs\`, newest first by name (a
+/// directory whose name is not a recognisable stamp -- stray litter, a future format -- is simply
+/// not a candidate; this function packages what SES1 writes, not "everything in the folder").
+fn list_log_dirs(logs_root: &Path) -> Vec<LogDir> {
+    let mut out = Vec::new();
+    let Ok(read) = std::fs::read_dir(logs_root) else {
+        return out;
+    };
+    for e in read.flatten() {
+        let path = e.path();
+        if !e.file_type().map(|t| t.is_dir()).unwrap_or(false) {
+            continue;
+        }
+        let name = e.file_name().to_string_lossy().to_string();
+        let Some(stamp) = utc_stamp_prefix(&name) else {
+            continue;
+        };
+        let stamp = stamp.to_string();
+        let bytes = dir_size(&path);
+        out.push(LogDir {
+            name,
+            path,
+            stamp,
+            bytes,
+        });
+    }
+    out.sort_by(|a, b| b.stamp.cmp(&a.stamp).then_with(|| b.name.cmp(&a.name)));
+    out
+}
+
+/// The process directory a session hangs off, from that session's OWN `session.json` (written by
+/// SES1; see `mh_common/include/mh_session_dir.h`'s `MH_SessionRecord::process_dir` and
+/// `MH_ProcessDirLeaf`). `None` for a directory with no `session.json` (a process/"menu" directory
+/// has none of its own) or one that does not name a process directory.
+fn process_dir_of_session(session_dir: &Path) -> Option<String> {
+    let text = std::fs::read_to_string(session_dir.join("session.json")).ok()?;
+    let v: serde_json::Value = serde_json::from_str(&text).ok()?;
+    let pd = v.get("process_dir")?.as_str()?.trim().to_string();
+    if pd.is_empty() {
+        None
+    } else {
+        Some(pd)
+    }
+}
+
+/// Every SESSION-shaped directory under a game's `logs\`, newest first -- what the Report view's
+/// picker (dist LA9) offers the player, and what `default_session_dir` would answer if it filtered
+/// out the process ("menu") directories the way this does. Exposed so the picker can list every
+/// candidate rather than only the newest.
+pub fn session_dirs(game_dir: &Path) -> Vec<PathBuf> {
+    list_log_dirs(&game_dir.join("logs"))
+        .into_iter()
+        .filter(|d| !is_process_dir_name(&d.name))
+        .map(|d| d.path)
+        .collect()
+}
+
+/// Decide which `logs\` directories a report carries (dist LA9).
+///
+/// `protected_session` is the match the report is ABOUT -- the player's pick, or the newest by
+/// default -- and it, together with the process directory its own `session.json` names, is never
+/// dropped, whatever the budget says. The NEWEST session directory overall is protected the same
+/// way even when it differs from `protected_session` (a player reporting an OLDER match should not
+/// lose the freshest evidence sitting right next to it). Everything else is a candidate only if its
+/// own stamp is at or after `since_utc` (the launcher's own start), or -- when that is unknown --
+/// among the newest `LOGS_FALLBACK_N` directories; from that pool, the newest fit first and the
+/// OLDEST are dropped once the running total would exceed `budget`.
+fn plan_logs(
+    game_dir: &Path,
+    protected_session: Option<&Path>,
+    since_utc: Option<&str>,
+    budget: u64,
+) -> LogsPlan {
+    let dirs = list_log_dirs(&game_dir.join("logs")); // newest first
+    if dirs.is_empty() {
+        return LogsPlan::default();
+    }
+    let by_name: std::collections::HashMap<&str, &LogDir> =
+        dirs.iter().map(|d| (d.name.as_str(), d)).collect();
+
+    let mut protected: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+    if let Some(name) = protected_session
+        .and_then(|p| p.file_name())
+        .map(|n| n.to_string_lossy().to_string())
+    {
+        if by_name.contains_key(name.as_str()) {
+            protected.insert(name);
+        }
+    }
+    if let Some(newest_session) = dirs.iter().find(|d| !is_process_dir_name(&d.name)) {
+        protected.insert(newest_session.name.clone());
+    }
+    // Each protected session's own process directory rides along -- done_when's "contains both
+    // session dirs, THE process dir": two matches hosted without a restart share one.
+    let mut process_dirs = Vec::new();
+    for name in &protected {
+        let Some(d) = by_name.get(name.as_str()) else {
+            continue;
+        };
+        if let Some(pd) = process_dir_of_session(&d.path) {
+            if by_name.contains_key(pd.as_str()) {
+                process_dirs.push(pd);
+            }
+        }
+    }
+    protected.extend(process_dirs);
+
+    // The candidate pool. Protected entries ride along regardless of the window: a report is about
+    // a SPECIFIC match, and it must never silently lose the thing it is about because that match
+    // happens to predate this launcher process (a `--report` built long after `--launch`) or fall
+    // outside the fallback's newest-N.
+    let mut pool: Vec<&LogDir> = match since_utc {
+        Some(since) => dirs
+            .iter()
+            .filter(|d| d.stamp.as_str() >= since || protected.contains(&d.name))
+            .collect(),
+        None => {
+            let mut v: Vec<&LogDir> = dirs.iter().take(LOGS_FALLBACK_N).collect();
+            for d in &dirs {
+                if protected.contains(&d.name) && !v.iter().any(|x| x.name == d.name) {
+                    v.push(d);
+                }
+            }
+            v
+        }
+    };
+    pool.sort_by(|a, b| b.stamp.cmp(&a.stamp).then_with(|| b.name.cmp(&a.name)));
+
+    let (protected_entries, optional_entries): (Vec<&LogDir>, Vec<&LogDir>) =
+        pool.into_iter().partition(|d| protected.contains(&d.name));
+
+    let mut included = Vec::new();
+    let mut dropped = Vec::new();
+    let mut total = 0u64;
+    for d in protected_entries {
+        total += d.bytes; // never dropped, even if this alone is over budget
+        included.push(d.name.clone());
+    }
+    // `optional_entries` is still newest-to-oldest (partition preserves relative order), so the
+    // first one that does not fit -- and everything after it, all older still -- is the OLDEST
+    // material being dropped, exactly the row's "drop the oldest dirs first".
+    let mut over_budget = false;
+    for d in optional_entries {
+        if !over_budget && total + d.bytes <= budget {
+            total += d.bytes;
+            included.push(d.name.clone());
+        } else {
+            over_budget = true;
+            dropped.push(DroppedDir {
+                dir: d.name.clone(),
+                bytes: d.bytes,
+                why: "over the report size budget",
+            });
+        }
+    }
+    LogsPlan { included, dropped }
+}
+
+/// Zip every directory `plan_logs` included, each under `logs/<name>/`.
+fn add_logs_tree(
+    zip: &mut zip::ZipWriter<std::fs::File>,
+    opts: zip::write::SimpleFileOptions,
+    game_dir: &Path,
+    plan: &LogsPlan,
+    entries: &mut Vec<String>,
+    budget: &mut u64,
+    scrub: &Scrub,
+) -> Result<(), String> {
+    let logs_root = game_dir.join("logs");
+    for name in &plan.included {
+        add_dir(
+            zip,
+            opts,
+            &logs_root.join(name),
+            &format!("logs/{name}"),
+            entries,
+            budget,
+            scrub,
+        )?;
+    }
+    Ok(())
+}
+
+/// Every plain FILE sitting directly under `<game_dir>\logs\` (not `mh_crash_*`, handled
+/// separately by `add_crash_marker_files`) -- dist LA10's degraded path. When a stamped
+/// process/session name does not fit `CreateDirectory`'s real ceiling, `run_context.cpp`'s
+/// `make_dir()` degrades to writing every stream loose into the bare `logs\` root instead of a
+/// subdirectory, which `list_log_dirs` above (a directory listing) cannot see at all. LA10's own
+/// done_when names this: "the report (LA9) finds it" -- so this sweep, under `logs/_root/`, is what
+/// finds it. Uses the real shared `budget` (unlike the crash-marker sweep): this can carry a whole
+/// run's logs, not a handful of bytes, so it competes for space like everything else rather than
+/// riding in free.
+fn add_loose_log_files(
+    zip: &mut zip::ZipWriter<std::fs::File>,
+    opts: zip::write::SimpleFileOptions,
+    game_dir: &Path,
+    entries: &mut Vec<String>,
+    budget: &mut u64,
+    scrub: &Scrub,
+) -> Result<(), String> {
+    let logs_root = game_dir.join("logs");
+    let Ok(read) = std::fs::read_dir(&logs_root) else {
+        return Ok(());
+    };
+    let mut files: Vec<PathBuf> = read
+        .flatten()
+        .map(|e| e.path())
+        .filter(|p| p.is_file())
+        .filter(|p| {
+            !p.file_name()
+                .map(|n| n.to_string_lossy().starts_with("mh_crash_"))
+                .unwrap_or(false)
+        })
+        .collect();
+    files.sort();
+    for p in files {
+        let leaf = p
+            .file_name()
+            .unwrap_or_default()
+            .to_string_lossy()
+            .to_string();
+        add_file(
+            zip,
+            opts,
+            &p,
+            &format!("logs/_root/{leaf}"),
+            entries,
+            budget,
+            scrub,
+        )?;
+    }
+    Ok(())
+}
+
+/// Every `mh_crash_*` file sitting directly under `<game_dir>\logs\` (the raw marker `crash.rs`'s
+/// `Channel::create` names, and its `.ctx32` sidecar) -- swept in whole and NEVER subject to the
+/// `logs\` drop above, on a throwaway budget of its own: these are a handful of hundred bytes each
+/// and must never be the entry a tight report budget sacrifices. Distinct from `crash/marker.txt`
+/// (this run's OWN crash, synthesised from `input.crash` above): this sweep also picks up a marker
+/// an EARLIER, undrained crash left behind, which is exactly the case a "something looked wrong"
+/// report -- built well after the fact, with no live crash channel -- exists to carry.
+fn add_crash_marker_files(
+    zip: &mut zip::ZipWriter<std::fs::File>,
+    opts: zip::write::SimpleFileOptions,
+    game_dir: &Path,
+    entries: &mut Vec<String>,
+    scrub: &Scrub,
+) -> Result<(), String> {
+    let logs_root = game_dir.join("logs");
+    let Ok(read) = std::fs::read_dir(&logs_root) else {
+        return Ok(());
+    };
+    let mut files: Vec<PathBuf> = read
+        .flatten()
+        .map(|e| e.path())
+        .filter(|p| p.is_file())
+        .filter(|p| {
+            p.file_name()
+                .map(|n| n.to_string_lossy().starts_with("mh_crash_"))
+                .unwrap_or(false)
+        })
+        .collect();
+    files.sort();
+    let mut unbounded = u64::MAX;
+    for p in files {
+        let leaf = p
+            .file_name()
+            .unwrap_or_default()
+            .to_string_lossy()
+            .to_string();
+        add_file(
+            zip,
+            opts,
+            &p,
+            &format!("crash/{leaf}"),
+            entries,
+            &mut unbounded,
+            scrub,
+        )?;
+    }
+    Ok(())
 }
 
 // ---- redaction -------------------------------------------------------------------------------
@@ -517,7 +966,10 @@ pub fn scrub_hex(line: &str) -> String {
 /// (a screen capture, a save) is added byte for byte.
 fn is_text(name: &str) -> bool {
     let lower = name.to_ascii_lowercase();
-    [".log", ".txt", ".json", ".ini", ".csv", ".md"]
+    // dist LA9: `.marker` (the raw DLL-written crash marker text, `mh_crash_marker.h`) goes through
+    // the same scrub as everything else on general principle, even though nothing it writes today
+    // is secret -- `.ctx32`, its binary sidecar, is deliberately NOT in this list.
+    [".log", ".txt", ".json", ".ini", ".csv", ".md", ".marker"]
         .iter()
         .any(|ext| lower.ends_with(ext))
 }
@@ -723,6 +1175,7 @@ mod tests {
             let input = Input {
                 game_dir: None,
                 session_dir: None,
+                launcher_started_utc: None,
                 description: desc,
                 last_run: None,
                 crash: None,
@@ -892,6 +1345,7 @@ mod tests {
         let input = Input {
             game_dir: Some(&dir),
             session_dir: default_session_dir(Some(&dir)),
+            launcher_started_utc: None,
             description: "the lobby froze when the second player joined",
             last_run: None,
             crash: None,
@@ -915,7 +1369,7 @@ mod tests {
         // And the redaction actually happened rather than the files being absent.
         let log = entries
             .iter()
-            .find(|(n, _)| n == "session/mh_net.log")
+            .find(|(n, _)| n == "logs/20260917T164346Z_dedd707c_1_client/mh_net.log")
             .expect("the session log is in the report");
         assert!(String::from_utf8_lossy(&log.1).contains("<redacted-64hex>"));
         let ini = entries
@@ -998,15 +1452,20 @@ mod tests {
         assert_eq!(red, "[net]\nRelay =<redacted>\n; was <redacted-relay>\n");
     }
 
-    /// LA4's done_when, fourth clause: a report with no crash behind it carries the MOST RECENT
-    /// session directory -- not the first one found, and not both.
+    /// LA4's done_when, fourth clause -- a report with no crash behind it names the MOST RECENT
+    /// session directory as its `session_dir` -- superseded in scope by dist LA9: the OLDER
+    /// directory is no longer excluded, it is packaged too (the whole point of LA9's "one session
+    /// dir is ~1 permille of what an analysis needs"). `report.json`'s `session_dir` still answers
+    /// "which match is this report about" with the newest, and `included` names every directory
+    /// the zip actually carries.
     #[test]
-    fn a_non_crash_report_carries_the_newest_session_directory() {
+    fn a_non_crash_report_carries_the_newest_session_directory_and_the_older_one_too() {
         let dir = fixture("report_session");
         let zip = dir.join("out").join("report.zip");
         let input = Input {
             game_dir: Some(&dir),
             session_dir: default_session_dir(Some(&dir)),
+            launcher_started_utc: None,
             description: "nothing crashed, it just looked wrong",
             last_run: None,
             crash: None,
@@ -1016,30 +1475,33 @@ mod tests {
         let built = build(&zip, &input).unwrap();
 
         let names: Vec<String> = entries_of(&zip).into_iter().map(|(n, _)| n).collect();
+        let newest = "logs/20260917T164346Z_dedd707c_1_client";
+        let older = "logs/20260916T101010Z_menu_solo";
+        assert!(names.contains(&format!("{newest}/mh_net.log")), "{names:?}");
         assert!(
-            names.contains(&"session/mh_net.log".to_string()),
+            names.contains(&format!("{newest}/session.json")),
             "{names:?}"
         );
         assert!(
-            names.contains(&"session/session.json".to_string()),
-            "{names:?}"
-        );
-        assert!(
-            names.contains(&"session/capture_k1.bmp".to_string()),
+            names.contains(&format!("{newest}/capture_k1.bmp")),
             "{names:?}"
         );
         assert!(names.contains(&"report.json".to_string()));
         assert!(names.contains(&"description.txt".to_string()));
 
-        // The older directory's contents must NOT be here. Its log line is the marker.
-        for (name, body) in entries_of(&zip) {
-            assert!(
-                !String::from_utf8_lossy(&body).contains("an older run nobody asked about"),
-                "the older session leaked in through {name}"
-            );
-        }
+        // dist LA9: the older directory is now IN the report, not excluded from it.
+        assert!(
+            names.contains(&format!("{older}/mh_net.log")),
+            "the older directory did not make it into the report: {names:?}"
+        );
+        let older_log = entries_of(&zip)
+            .into_iter()
+            .find(|(n, _)| n == &format!("{older}/mh_net.log"))
+            .unwrap()
+            .1;
+        assert!(String::from_utf8_lossy(&older_log).contains("an older run nobody asked about"));
 
-        // report.json names the session it shipped, and the fields tools/crash_report.py reads.
+        // report.json names the session it is ABOUT, and the fields tools/crash_report.py reads.
         let meta: serde_json::Value = serde_json::from_str(&built.meta).unwrap();
         assert_eq!(
             meta["session_dir"].as_str().unwrap(),
@@ -1052,6 +1514,28 @@ mod tests {
         assert_eq!(meta["build"].as_str().unwrap(), "0.1.0-rc1+abc12345");
         // No crash -> no `crash` key. print_drained_report treats that as an ordinary bug report.
         assert!(meta.get("crash").is_none(), "{}", built.meta);
+
+        // dist LA9: both directories are named as INCLUDED, and nothing was dropped -- this
+        // fixture is a handful of bytes, nowhere near the report budget.
+        let included: Vec<String> = meta["included"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|v| v.as_str().unwrap().to_string())
+            .collect();
+        assert!(
+            included.contains(&"20260917T164346Z_dedd707c_1_client".to_string()),
+            "{included:?}"
+        );
+        assert!(
+            included.contains(&"20260916T101010Z_menu_solo".to_string()),
+            "{included:?}"
+        );
+        assert!(
+            meta["dropped"].as_array().unwrap().is_empty(),
+            "{}",
+            built.meta
+        );
         std::fs::remove_dir_all(&dir).ok();
     }
 
@@ -1083,6 +1567,7 @@ mod tests {
         let input = Input {
             game_dir: Some(&dir),
             session_dir: default_session_dir(Some(&dir)),
+            launcher_started_utc: None,
             description: "crashed right after I ordered the third harvester",
             last_run: Some(&finished),
             crash: Some(&marker),
@@ -1104,6 +1589,296 @@ mod tests {
 
         let names: Vec<String> = entries_of(&zip).into_iter().map(|(n, _)| n).collect();
         assert!(names.contains(&"crash/marker.txt".to_string()), "{names:?}");
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    // ---- dist LA9: the whole logs tree, not one session dir -----------------------------------
+
+    /// LA9's done_when, first clause: a report built after TWO matches in one launcher run
+    /// contains both session directories, the process directory they hang off (found via each
+    /// session's own `session.json` `process_dir` field), and a crash marker sitting loose in
+    /// `logs\` -- planted rather than raised through the live crash channel, the shape a marker
+    /// from an EARLIER, undrained crash would take.
+    #[test]
+    fn two_matches_in_one_run_ship_both_sessions_the_process_dir_and_a_marker() {
+        let dir = std::env::temp_dir().join("mh_launcher_test_two_matches");
+        std::fs::remove_dir_all(&dir).ok();
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("mh.exe"), b"not really an exe").unwrap();
+
+        let proc_name = "20260918T090000Z_menu_host";
+        let proc_dir = dir.join("logs").join(proc_name);
+        std::fs::create_dir_all(&proc_dir).unwrap();
+        std::fs::write(proc_dir.join("mh_harness.log"), "; process-level lines\n").unwrap();
+
+        let s1_name = "20260918T090100Z_aaaaaaaa_1_host";
+        let s1 = dir.join("logs").join(s1_name);
+        std::fs::create_dir_all(&s1).unwrap();
+        std::fs::write(
+            s1.join("mh_net.log"),
+            "; [session] match_id=1111aaaa1111aaaa1111aaaa1111aaaa\n",
+        )
+        .unwrap();
+        std::fs::write(
+            s1.join("session.json"),
+            format!(
+                "{{\n  \"match_id\": \"1111aaaa1111aaaa1111aaaa1111aaaa\",\n  \
+                 \"process_dir\": \"{proc_name}\"\n}}\n"
+            ),
+        )
+        .unwrap();
+
+        let s2_name = "20260918T091500Z_bbbbbbbb_1_host";
+        let s2 = dir.join("logs").join(s2_name);
+        std::fs::create_dir_all(&s2).unwrap();
+        std::fs::write(
+            s2.join("mh_net.log"),
+            "; [session] match_id=2222bbbb2222bbbb2222bbbb2222bbbb\n",
+        )
+        .unwrap();
+        std::fs::write(
+            s2.join("session.json"),
+            format!(
+                "{{\n  \"match_id\": \"2222bbbb2222bbbb2222bbbb2222bbbb\",\n  \
+                 \"process_dir\": \"{proc_name}\"\n}}\n"
+            ),
+        )
+        .unwrap();
+
+        // A crash marker sitting directly under logs\, the shape crash.rs's Channel::create
+        // writes -- planted rather than raised, so this proves the SWEEP, not the live channel.
+        std::fs::write(
+            dir.join("logs").join("mh_crash_deadbeef12345678.marker"),
+            "mh_crash=1\ncode=0xc0000005\nmodule=mh.dll\noffset=0x000175b0\n\
+             match_id=2222bbbb2222bbbb2222bbbb2222bbbb\nbuild=0.1.0-rc1+abc12345\n\
+             when=20260918T091600Z\nctx=0\n",
+        )
+        .unwrap();
+
+        let zip = dir.join("out").join("report.zip");
+        let input = Input {
+            game_dir: Some(&dir),
+            session_dir: Some(s2.clone()), // the description form named the SECOND match
+            launcher_started_utc: Some("20260918T085900Z".to_string()),
+            description: "second match desynced right after the first one ended",
+            last_run: None,
+            crash: None,
+            minidump: None,
+            launcher_log: None,
+        };
+        let built = build(&zip, &input).unwrap();
+        let names: Vec<String> = entries_of(&zip).into_iter().map(|(n, _)| n).collect();
+
+        assert!(
+            names
+                .iter()
+                .any(|n| n.starts_with(&format!("logs/{s1_name}/"))),
+            "{names:?}"
+        );
+        assert!(
+            names
+                .iter()
+                .any(|n| n.starts_with(&format!("logs/{s2_name}/"))),
+            "{names:?}"
+        );
+        assert!(
+            names
+                .iter()
+                .any(|n| n.starts_with(&format!("logs/{proc_name}/"))),
+            "the process directory did not make it in: {names:?}"
+        );
+        assert!(
+            names.contains(&"crash/mh_crash_deadbeef12345678.marker".to_string()),
+            "{names:?}"
+        );
+
+        let meta: serde_json::Value = serde_json::from_str(&built.meta).unwrap();
+        let included: Vec<String> = meta["included"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|v| v.as_str().unwrap().to_string())
+            .collect();
+        assert!(included.contains(&s1_name.to_string()), "{included:?}");
+        assert!(included.contains(&s2_name.to_string()), "{included:?}");
+        assert!(included.contains(&proc_name.to_string()), "{included:?}");
+        assert_eq!(meta["session_dir"].as_str().unwrap(), s2_name);
+
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// LA9's done_when, second/third clauses: a `logs\` tree bigger than the budget drops the
+    /// OLDEST directories first, lists each in `dropped` with its size and a reason, keeps the
+    /// newest directory and a crash marker regardless, and the resulting zip itself lands under
+    /// the true 64 MB Caddy edge cap (plan D14) -- "a report over the cap is still accepted"
+    /// means the SELECTION keeps the report under it, not that an oversize upload is tolerated.
+    #[test]
+    fn an_oversize_logs_tree_drops_the_oldest_dirs_first_and_the_zip_stays_under_the_edge_cap() {
+        let dir = std::env::temp_dir().join("mh_launcher_test_oversize_logs");
+        std::fs::remove_dir_all(&dir).ok();
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("mh.exe"), b"not really an exe").unwrap();
+
+        // Ten session directories, 8 MB apiece (two ~4 MB files, so neither alone brushes
+        // PER_FILE_MAX) -- 80 MB total, comfortably over the report's logs-tree budget.
+        let chunk = "x".repeat(4 * 1024 * 1024);
+        let mut names = Vec::new();
+        for i in 0..10u32 {
+            let name = format!("202609{:02}T090000Z_{:08x}_1_host", 10 + i, i);
+            let s = dir.join("logs").join(&name);
+            std::fs::create_dir_all(&s).unwrap();
+            std::fs::write(s.join("a.log"), &chunk).unwrap();
+            std::fs::write(s.join("b.log"), &chunk).unwrap();
+            names.push(name);
+        }
+        // A tiny marker that must survive the cap regardless of everything above.
+        std::fs::write(
+            dir.join("logs").join("mh_crash_cafefeed00001111.marker"),
+            "mh_crash=1\ncode=0xc0000005\n",
+        )
+        .unwrap();
+
+        let newest = names.last().unwrap().clone();
+        let oldest = names.first().unwrap().clone();
+        let session_dir = dir.join("logs").join(&newest);
+
+        let zip = dir.join("out").join("report.zip");
+        let input = Input {
+            game_dir: Some(&dir),
+            session_dir: Some(session_dir),
+            launcher_started_utc: None, // exercises the fallback window too
+            description: "ran out of disk mid-afternoon, way too many matches",
+            last_run: None,
+            crash: None,
+            minidump: None,
+            launcher_log: None,
+        };
+        let built = build(&zip, &input).unwrap();
+
+        let meta: serde_json::Value = serde_json::from_str(&built.meta).unwrap();
+        let included: Vec<String> = meta["included"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|v| v.as_str().unwrap().to_string())
+            .collect();
+        let dropped: Vec<serde_json::Value> = meta["dropped"].as_array().unwrap().clone();
+
+        assert!(included.contains(&newest), "{included:?}");
+        assert!(!dropped.is_empty(), "{}", built.meta);
+        assert!(
+            dropped
+                .iter()
+                .any(|d| d["dir"].as_str() == Some(oldest.as_str())),
+            "the oldest directory was not among the dropped: {dropped:?}"
+        );
+        for d in &dropped {
+            assert!(d["bytes"].as_u64().unwrap() > 0, "{d:?}");
+            assert!(!d["why"].as_str().unwrap().is_empty(), "{d:?}");
+        }
+
+        let names_in_zip: Vec<String> = entries_of(&zip).into_iter().map(|(n, _)| n).collect();
+        assert!(
+            names_in_zip
+                .iter()
+                .any(|n| n.starts_with(&format!("logs/{newest}/"))),
+            "{names_in_zip:?}"
+        );
+        assert!(
+            !names_in_zip
+                .iter()
+                .any(|n| n.starts_with(&format!("logs/{oldest}/"))),
+            "the dropped directory leaked into the zip anyway: {names_in_zip:?}"
+        );
+        assert!(
+            names_in_zip.contains(&"crash/mh_crash_cafefeed00001111.marker".to_string()),
+            "the crash marker did not survive the cap: {names_in_zip:?}"
+        );
+
+        // The whole point of the cap: the ACTUAL zip stays under the real Caddy edge limit.
+        assert!(
+            built.bytes < 64 * 1024 * 1024,
+            "the zip itself is {} bytes -- over the 64 MB edge cap",
+            built.bytes
+        );
+
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// LA10's own done_when, third clause ("the report (LA9) finds it"): when a stamped directory
+    /// name did not fit `CreateDirectory`'s ceiling, `run_context.cpp`'s `make_dir()` degrades to
+    /// writing every stream loose into the bare `logs\` root instead of a subdirectory -- something
+    /// `list_log_dirs` (a directory listing) cannot see at all. The report still has to carry it.
+    #[test]
+    fn a_degraded_run_with_loose_files_directly_in_logs_is_still_found() {
+        let dir = std::env::temp_dir().join("mh_launcher_test_loose_logs");
+        std::fs::remove_dir_all(&dir).ok();
+        std::fs::create_dir_all(dir.join("logs")).unwrap();
+        std::fs::write(dir.join("mh.exe"), b"not really an exe").unwrap();
+
+        // The LA10 degraded path: streams sitting DIRECTLY in `logs\`, no subdirectory at all.
+        std::fs::write(
+            dir.join("logs").join("mh_net.log"),
+            "; [build] mh 0.1.0-rc1+abc12345\n; a run with no room for its own directory\n",
+        )
+        .unwrap();
+        std::fs::write(
+            dir.join("logs").join("mh_capture.log"),
+            "frame 1\nframe 2\n",
+        )
+        .unwrap();
+        // A crash marker in the same degraded run must still go through the OTHER sweep, not this
+        // one -- proving the two do not double-count or clash.
+        std::fs::write(
+            dir.join("logs").join("mh_crash_baadf00d00000001.marker"),
+            "mh_crash=1\ncode=0xc0000005\n",
+        )
+        .unwrap();
+
+        let zip = dir.join("out").join("report.zip");
+        let input = Input {
+            game_dir: Some(&dir),
+            session_dir: None, // no session ever opened -- the whole point of the degraded case
+            launcher_started_utc: None,
+            description: "logs folder looked empty but the game clearly ran",
+            last_run: None,
+            crash: None,
+            minidump: None,
+            launcher_log: None,
+        };
+        let built = build(&zip, &input).unwrap();
+        let names: Vec<String> = entries_of(&zip).into_iter().map(|(n, _)| n).collect();
+
+        // No session ever opened -> no `session_dir` for report.json to name.
+        let meta: serde_json::Value = serde_json::from_str(&built.meta).unwrap();
+        assert_eq!(meta["session_dir"].as_str().unwrap(), "");
+
+        assert!(
+            names.contains(&"logs/_root/mh_net.log".to_string()),
+            "{names:?}"
+        );
+        assert!(
+            names.contains(&"logs/_root/mh_capture.log".to_string()),
+            "{names:?}"
+        );
+        assert!(
+            names.contains(&"crash/mh_crash_baadf00d00000001.marker".to_string()),
+            "the marker went missing when it should ride the OTHER sweep: {names:?}"
+        );
+        // The loose marker file must not ALSO be duplicated under logs/_root/.
+        assert!(
+            !names.contains(&"logs/_root/mh_crash_baadf00d00000001.marker".to_string()),
+            "{names:?}"
+        );
+
+        let entries = entries_of(&zip);
+        let net_log = &entries
+            .iter()
+            .find(|(n, _)| n == "logs/_root/mh_net.log")
+            .unwrap()
+            .1;
+        assert!(String::from_utf8_lossy(net_log).contains("no room for its own directory"));
+
         std::fs::remove_dir_all(&dir).ok();
     }
 }

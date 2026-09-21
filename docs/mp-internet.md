@@ -25,20 +25,20 @@ packet format), [src/mh_dll/README.md](../src/mh_dll/README.md) (build + gate).
 
 ## 1. The way to play: the launcher and the relay
 
-**Run the launcher, press Host or Join, and use the game's own first list.** That is the whole
+**Run the launcher, press Play, and use the game's own first list.** That is the whole
 procedure; the rest of this section says what happened underneath so a log makes sense.
 
-1. **Get the launcher** — `mh_launcher-<version>.exe` from the public repository's Releases page,
+1. **Get the launcher** — `mh_launcher.exe` from the public repository's Releases page,
    dropped next to `mh.exe` ([INSTALL.md](../INSTALL.md) "Using the launcher"). It finds the game
    beside itself, and the first *Play* installs the build for the configuration you pick. Under the
-   two buttons it says which relay it will use: `Relay: <relay-host>:7100 (from the signed
+   button it says which relay it will use: `Relay: <relay-host>:7100 (from the signed
    manifest, …)`.
-2. **The host** presses **Host**. In the game: NETWORK GAME → type your name → the first list screen
+2. **The host** presses **Play**. In the game: NETWORK GAME → type your name → the first list screen
    (*Refresh list* / *Create game* / *Internet server*) → **Create game** → the lobby. The lobby is
    now registered on the relay's directory; `mh_net.log` says
    `net: udp relay -- lobby published to the relay's directory`. Tell your friends the name you are
    hosting under — there is no address and no code to send.
-3. **A joiner** presses **Join**. In the game: NETWORK GAME → type your name → the same first list
+3. **A joiner** presses **Play**. In the game: NETWORK GAME → type your name → the same first list
    screen. **Refresh list** shows the games on the relay (name, map, players); pick the host's and
    press **Join** → you are in the lobby. The *Internet server* button and its IP window are never
    visited (`mp:R7`).

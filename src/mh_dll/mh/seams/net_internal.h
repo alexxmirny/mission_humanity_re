@@ -24,6 +24,10 @@
 #include "include/mh_seam_export.h" // MH_SeamAddrs (g_a below)
 #include "include/mh_run_context.h" // SES1: MH_RunDir/MH_ProcessDir + mh_run_path (the path tick below)
 #include "include/mh_session_dir.h" // SES1: MH_SessionRecord + the SESSION_BEGIN/END/json builders
+#include "addr/mh_addrs.gen.h"      // mh::addr::_G_LLM_LOBBY_SLOTS -- mp_lobby_array_index below. Every
+                                    // including TU here also includes this on its own before or after
+                                    // net_internal.h; #pragma once makes the repeat free, and this
+                                    // header must not depend on that ordering to compile standalone.
 
 // Watcom frame prologue (55 89 e5 68) -- every hookable mh.exe entry opens with it; the install
 // guards compare *target against this before arming (wrong build / already-hooked = safe no-op).
@@ -53,7 +57,28 @@ inline constexpr int SHIP_RX_SPIN     = 1; // [net] rx_spin              -- off-
 inline constexpr int SHIP_QPC_CLOCK   = 1; // [net] qpc_clock            -- ~1 ms game-clock quantum
 inline constexpr int SHIP_HIRES_CLOCK = 1; // [net] hires_clock          -- timeBeginPeriod(1)
 inline constexpr int SHIP_EAGER_ADV   = 1; // [net] eager_advertise      -- advertise from present
-inline constexpr int SHIP_LOG_LEVEL   = 1; // [net] lockstep_log/frametime_log + [trace] temporal
+inline constexpr int SHIP_LOG_LEVEL   = 1; // [net] lockstep_log/frametime_log -- diet-reduced (mp:SES5), not off
+// mp:SES5 decision (5) -- temporal split off SHIP_LOG_LEVEL: the per-EVENT trace is a profiling
+// instrument (no player-report question has ever needed it), unlike lockstep_log/frametime_log
+// which stay on by default just written far less densely. Rig/lane inis set [trace] temporal=1
+// explicitly (tools/ui_test.py NET_BLOCK, tools/mp_run.py TRACE_TEMPORAL) so UI-REC/determinism/
+// pacing work is unaffected; only a SHIPPED install with no ini override goes quiet.
+inline constexpr int SHIP_TEMPORAL_LEVEL = 0; // [trace] temporal
+// mp:GS2. [net] data_timeout_ms -- drop a peer whose lockstep horizon has not moved (no DATA, keepalive
+// or not) in this many ms; <= 0 disables. 15000 (15 s) is deliberately BELOW the low end of the field's
+// observed 22-35 s freezes (2026-09-20), so it actually resolves them, and ABOVE the transport link
+// watchdog's own 10 s keepalive interval, so an ordinary keepalive-cadence hiccup never trips it on its
+// own. What does NOT starve the DATA path, so does not cost a false drop: a map download happens in the
+// LOBBY (SESSION_MODE != 3, this watchdog does not run yet); the injected in-match "big map" hotkey is
+// unconditionally refused whenever the session is a live lockstep match (it would skip the sim tick and
+// stall the peer that pressed it, so it is gated off there by construction) -- retail has no in-match MP
+// pause at all. What CAN legitimately starve it: the game's own WM_ACTIVATE handler pauses THIS peer's
+// local game clock on Windows focus loss, so a long alt-tab reads identically to a freeze from the OTHER
+// peer's point of view -- this is not special-cased (a backgrounded peer being eventually dropped is
+// ordinary MP behaviour, same as any other online game); 15 s is meant to clear a quick glance-away, not
+// an extended one. Manual saving mid-lockstep-match was not checked before choosing this default -- if
+// retail allows it and it blocks the sim thread near or past 15 s, that is an open follow-up.
+inline constexpr int SHIP_DATA_TIMEOUT_MS = 15000;
 
 // ---- WHICH BODIES RUN: NOT HERE ANY MORE (fork F2E, 2026-09-13) --------------------------------
 //
@@ -164,12 +189,55 @@ inline long ms_of(uintptr_t a) {
 
 // ---- cross-TU functions defined in net_seams.cpp (core transport/lobby glue) -----------------
 void seam_log(const char *s); // append one line to mh_net.log (arm banners + DIAG lines)
+// mp:GS1 (a): discard every datagram the game queue holds at the player's JOIN click -- all of it
+// predates the JOIN, so none of it is the lobby being joined (the previous lobby's retail 0x0e was).
+void mp_drain_pre_join_queue();
 // N1: the client's lobby slot -- the transport/host-assigned id if known (>=1), else 1 (the 2-player
 // default). In declared-id mode this equals the configured player_id, so the 2-player lobby is unchanged.
+//
+// THIS IS THE WIRE/CONNECTION IDENTITY, NOT necessarily our ARRAY POSITION in
+// _G_LLM_LOBBY_SLOTS/Players[] -- see mp_lobby_array_index below for that one, and mp:GS1(b) for why
+// the two are not interchangeable. _G_LLM_NET_LOCAL_PLAYER_INDEX (compared against wire side_ids
+// elsewhere in this file) wants exactly this value; retail's real `PlayerSide`
+// (mh::addr::PlayerSide) wants the array index instead.
 extern "C" int MH_Net_LocalPlayerId(void); // net_transport: this client's own/host-assigned id
 inline int     mp_client_slot() {
     int lp = MH_Net_LocalPlayerId();
     return (lp >= 1 && lp <= 7) ? lp : 1;
+}
+
+// mp:GS1(b) (2026-09-21): our own ARRAY POSITION in _G_LLM_LOBBY_SLOTS/Players[] -- what retail's
+// session_begin_multi (`PlayerSide = _G_LLM_NET_LOCAL_PLAYER_SLOT`, VA 0x0045438c-0x004543a9) and the
+// build_players_from_slots pipeline (`Players[PlayerSide].relation[k] = 2`, `.race_or_faction`, the D18
+// diagonal write) actually want when they consume `mh::addr::PlayerSide`. mp_client_slot() above
+// answers a DIFFERENT question (our wire/connection id), and every per-frame writer of retail
+// PlayerSide in this seam family used to feed it that wire id directly, on the unstated assumption
+// that a peer's wire id always equals its lobby SLOT index -- true for a slot's first occupant, false
+// the instant the host's slot allocator (slot_find_or_alloc) REUSES a vacated slot for a fresh,
+// higher-numbered connection (a process-exit + fresh re-join is exactly this). Two independent
+// symptoms were traced to it: the lockstep committed-horizon freeze at the 10000 ms boot sentinel
+// (turn_engine.cpp's participates()/commit_horizon self-exclusion, `*player_side != i`, failing to
+// exclude our own real row) and a stray D18-style relation stamp landing in the WRONG (empty) Players[]
+// row when build_players_from_slots_finish ran with the stale wire-id value still in PlayerSide.
+//
+// Resolve by SCANNING the lobby slots for the one whose player_id field (+0x01) matches our own wire
+// id -- the same side_id -> array-index translation player_by_side_id does for every OTHER peer's
+// messages, just applied to ourselves before Players[] exists to look it up in. The slots are kept in
+// sync with the host's allocation every lobby frame, so once populated the scan is authoritative; the
+// wire-id guess survives only as the pre-population fallback (right after our own JOIN, before the
+// host's first per-frame slot broadcast has arrived). Every per-frame writer of retail `PlayerSide`
+// (mh::addr::PlayerSide) in this TU family must use this, not mp_client_slot() -- writers of
+// _G_LLM_NET_LOCAL_PLAYER_INDEX / _G_LLM_LOBBY_LOCAL_SLOT_INDEX keep using mp_client_slot(), unchanged.
+inline int mp_lobby_array_index(bool is_host) {
+    if (is_host) return 0;
+    const int            lp          = mp_client_slot();
+    const unsigned char *slots       = (const unsigned char *)mh::addr::_G_LLM_LOBBY_SLOTS; // stride 0x39
+    constexpr int        SLOT_STRIDE = 0x39, SLOT_STATUS_OFF = 0x0b, SLOT_PID_OFF = 0x01;
+    for (int i = 0; i < 8; ++i) {
+        const unsigned char *s = slots + (size_t)i * SLOT_STRIDE;
+        if (s[SLOT_STATUS_OFF] != 0 && *(const int *)(s + SLOT_PID_OFF) == lp) return i;
+    }
+    return lp; // slots not populated with our id yet -- pre-sync fallback, corrected within a frame or two
 }
 
 // ---- cross-TU functions defined in net_diag.cpp (perf-trace + tracer instrumentation) --------

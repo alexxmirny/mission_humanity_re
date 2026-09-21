@@ -1,0 +1,65 @@
+# mp:GS1 (b) HOST, PROCESS-EXIT VARIANT: client1 joins the relay-listed lobby, Cancels (LEAVE) --
+# freeing the slot, same as ghost_leave_rejoin's host side -- then its PROCESS EXITS for real (main
+# menu Quit, mp_client_exit_leave.txt's tail). Only once that process is gone does client2, a BRAND
+# NEW process launched into the SAME lane by ui_test.py's --client-after-exit (test_ui.py's
+# client_after_exit / client_shares_lane keys), browse the relay and join. Pair with
+# mp_client_exit_leave.txt (client1) + mp_client_exit_rejoin.txt (client2).
+#
+# WHY THIS EXISTS (2026-09-20 field report, `a952c570`; tracker mp:GS1 scope clause (b)).
+# ghost_leave_rejoin (the SAME-PROCESS leave+rejoin) is GREEN: the joiner's own LEAVE frees the
+# slot and its re-join takes it straight back. Rizzen's own log wraps a REAL PROCESS EXIT around the
+# identical LEAVE: Cancel/LEAVE 09:52:01.987, `EXIT llm_wnd_on_destroy` 09:52:26 (quit to desktop),
+# relaunch 09:52:52, re-join 09:53:07 -- as slot 2, not the freed slot 1 -- and the host's committed
+# horizon pinned at the 10000 ms initial advertisement forever (peer0 climbing while peer1 stayed
+# == 10000 throughout): the 9999 freeze. This scenario reproduces that exact shape with a real
+# process boundary in the middle, which ghost_leave_rejoin's same-process re-join cannot.
+#
+# WHAT IS ASSERTED. The slot is freed on client1's LEAVE (`occ <2`, Start greys), a fresh client2
+# re-seats it (`occ 2` AND `occ <3` -- two humans, no third/ghost row), Start un-greys, and once
+# launched BOTH peers pass `gameclock 12000` -- 12 s past the 10000 ms initial horizon, so a ghost
+# pinned there cannot pass. `tools/check_ghost_slot.py`'s post_check reads the raw committed/peer
+# horizon columns from both peers' mh_lockstep.log for the same claim, off the wire rather than the
+# clock the game itself reports.
+
+settled value:110
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+settled Create
+clickl Create
+present Game name
+settled Ok
+clickl Ok
+present Available maps
+settled Ok
+clickl Ok
+
+# client1 joined and is seated here
+present Network players
+occ 2
+settled Start
+capture h1_seated
+
+# client1's Cancel -> LEAVE frees the slot; Start greys again. client1's PROCESS now exits for
+# real (its own script's tail) -- nothing here waits on that directly; the WAIT below simply blocks
+# however long it takes. ui_test.py's --client-after-exit gate is what makes client2's launch wait
+# for the exit; this script does not need to know about it.
+occ <2
+disabled Start
+capture h2_slot_freed
+
+# client2 -- a brand-new process -- joins. Seated again, in ONE slot (fewer than 3 occupied, so no
+# ghost row survives from client1), Start un-greys.
+occ 2
+occ <3
+enabled Start
+settled Start
+capture h3_reseated
+
+clickl Start
+absent Network players
+gameclock 12000
+capture h4_running
+log HOST: client1's LEAVE freed the slot; after its real PROCESS EXIT a fresh client2 re-joined into one slot and the match ran past 10 s
+end

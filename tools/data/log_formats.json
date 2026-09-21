@@ -109,7 +109,8 @@
       ],
       "parsers": [
         "tools/mp_analyze.py:discover",
-        "tools/check_graceful_quit.py:check"
+        "tools/check_graceful_quit.py:check",
+        "tools/check_cheat_gate.py:analyse"
       ],
       "since": "mp:SES1",
       "status": "live",
@@ -125,7 +126,8 @@
       ],
       "needles": [
         ";\\s*\\[desync\\]\\s*(.*)$",
-        "STATUS:"
+        "STATUS:",
+        "*** DESYNC step="
       ],
       "fields": [
         "armed",
@@ -139,7 +141,8 @@
       ],
       "parsers": [
         "tools/mp_analyze.py:parse_desync",
-        "tools/mp_analyze.py:desync_counts"
+        "tools/mp_analyze.py:desync_counts",
+        "tools/check_cheat_gate.py:analyse"
       ],
       "since": "mp:D21",
       "status": "live",
@@ -953,7 +956,8 @@
       ],
       "fields": [
         "qpc_us",
-        "game_mode"
+        "game_mode",
+        "interval_us"
       ],
       "parsers": [
         "tools/mp_analyze.py:parse_frametime",
@@ -961,7 +965,29 @@
       ],
       "since": "mp:D22",
       "status": "live",
-      "note": "Per-PRESENT row: microseconds and the game mode. SES2b (dead-ends G198): read_frametimes used to gate its ms conversion on a separate `qpc_freq=` header token D22 removed (recorded here as the now-deleted `frametime.qpc_freq_header` row), so every frame-time column in the pacing report printed nan/0 with exit 0 on every current log. Fixed to match parse_frametime's approach -- the `qpc_us` column has ALWAYS been already-microseconds (true before D22 too, confirmed at `git show 5be708e4`), so ms = us / 1000 needs no frequency at all; the header is used only to CONFIRM the `qpc_us` shape (present under both the old and current header text) before trusting it, and read_frametimes now REFUSES (raises) rather than silently emits nan/0 when it cannot."
+      "note": "Per-PRESENT row: microseconds and the game mode. SES2b (dead-ends G198): read_frametimes used to gate its ms conversion on a separate `qpc_freq=` header token D22 removed (recorded here as the now-deleted `frametime.qpc_freq_header` row), so every frame-time column in the pacing report printed nan/0 with exit 0 on every current log. Fixed to match parse_frametime's approach -- the `qpc_us` column has ALWAYS been already-microseconds (true before D22 too, confirmed at `git show 5be708e4`), so ms = us / 1000 needs no frequency at all; the header is used only to CONFIRM the `qpc_us` shape (present under both the old and current header text) before trusting it, and read_frametimes now REFUSES (raises) rather than silently emits nan/0 when it cannot. mp:SES5 decision (4), 2026-09-21: this file was ONE ROW PER PRESENT (23 MB/43-min match); now a row is written only when its interval exceeds 2x the previous 1 Hz window's median, PLUS an optional third `interval_us` field on that row (the exact hitch duration, since its neighbours are no longer logged so a delta can't be reconstructed from adjacent rows). A 2-column-only reader still parses fine and just ignores the extra field. See `frametime.summary` for the 1 Hz aggregate line that carries the full-window stats. Row 0 of a session is always logged (no interval yet to judge), which anchors find_lobby_clip_qpc's net.log join."
+    },
+    {
+      "id": "frametime.summary",
+      "stream": "mh_frametime.log",
+      "emitter": "src/mh_dll/mh/seams/net_lockstep.cpp",
+      "emit": "# 1s qpc_us=",
+      "tags": [],
+      "needles": [
+        "# 1s qpc_us="
+      ],
+      "fields": [
+        "qpc_us",
+        "n",
+        "min_ms",
+        "avg_ms",
+        "p95_ms",
+        "max_ms"
+      ],
+      "parsers": [],
+      "since": "mp:SES5",
+      "status": "live",
+      "note": "1 Hz aggregate over EVERY present in that window (outliers included), so the pacing shape survives even when nothing in the window individually tripped the outlier test on `frametime.row`. `#`-prefixed like the header, so mp_analyze.parse_frametime / mp_pacing_report.read_frametimes (neither updated for this row yet -- KNOWN GAP, mp:SES5) already skip it as a comment rather than misreading it, and simply compute their existing mean/p50/p95/max/hitch stats over whatever `frametime.row` rows survive the diet -- which, post-diet, are the OUTLIER rows only (plus row 0), so those specific aggregate numbers are no longer representative of the full frame population (hitch counts stay accurate: any interval big enough to count as a hitch is, by construction, well above the 2x-median outlier bar). A future update should read THIS line for accurate window stats instead."
     },
     {
       "id": "temporal.event_row",
@@ -2254,7 +2280,8 @@
         "netind"
       ],
       "needles": [
-        "; \\[netind\\] peer(\\d+) name=(.*?) srtt_ms=(-?\\d+) ipdv_ms=(-?\\d+) loss_pm=(-?\\d+) "
+        "; \\[netind\\] peer(\\d+) name=(.*?) srtt_ms=(-?\\d+) ipdv_ms=(-?\\d+) loss_pm=(-?\\d+) ",
+        "; [netind] peer0 name="
       ],
       "fields": [
         "peer",
@@ -2268,7 +2295,8 @@
         "step_ms"
       ],
       "parsers": [
-        "tools/check_net_indicator.py:main"
+        "tools/check_net_indicator.py:main",
+        "tools/check_cheat_gate.py:analyse"
       ],
       "since": "mp:L1 2026-09-18",
       "status": "live",
@@ -3329,6 +3357,112 @@
       "since": "mp:F3",
       "status": "live",
       "note": "HOST side: join_admit's RefusedCodepage verdict, both values named. Since F3c reaching it means the joiner declined to adopt."
+    },
+    {
+      "id": "net.gamerecv_horizon_rollup",
+      "stream": "mh_net.log",
+      "emitter": "src/mh_dll/mh/seams/net_seams.cpp",
+      "emit": "; GameRecv sender=%d type=0x02 count=%d last_horizon_ms=%ld (1s)",
+      "tags": [],
+      "needles": [
+        "; GameRecv sender=",
+        "type=0x02 count="
+      ],
+      "fields": [
+        "sender",
+        "count",
+        "last_horizon_ms"
+      ],
+      "parsers": [],
+      "since": "mp:SES5",
+      "status": "live",
+      "note": "mp:SES5 decision (1): the per-packet `; GameRecv sender=%d len=%d type=0x%02x` line (unregistered free-form, unchanged for every OTHER in-game type, and for `GameRecv DROP`) was 95.7 MB of a measured 96 MB / 43-minute match -- the 50 ms horizon-extend heartbeat (type=0x02), logged once per packet at ~700/s. Rolled up to one line per sender per second: count of type=0x02 packets since the last flush + the last horizon value seen (ms). `GameRecv DROP` and every other in-game type (0x01/0x03/0x04/0x05) are untouched -- tools/check_graceful_quit.py:409 greps `GameRecv ... type=0x04`, which still fires per packet."
+    },
+    {
+      "id": "net.ch1_chat_submit",
+      "stream": "mh_net.log",
+      "emitter": "src/mh_dll/mh/seams/ui_cheat_gate.cpp",
+      "emit": "; [chat] submit mode=%d sess=%d len=%d first='%c' cheat_idx=%s",
+      "tags": [
+        "chat"
+      ],
+      "needles": [
+        "; \\[chat\\] submit mode="
+      ],
+      "fields": [
+        "mode",
+        "sess",
+        "len",
+        "first",
+        "cheat_idx"
+      ],
+      "parsers": [
+        "tools/check_cheat_gate.py:analyse"
+      ],
+      "since": "mp:CH1",
+      "status": "live",
+      "note": "EVERY Enter on the in-game text line (chat modes 1/2 and the Shift+Enter console mode 3), REDACTED: length + first character + the cheat-catalog index the line matches (or -). What would have attributed the 2026-09-20 crash report's chat line on first read."
+    },
+    {
+      "id": "net.ch1_refused",
+      "stream": "mh_net.log",
+      "emitter": "src/mh_dll/mh/seams/ui_cheat_gate.cpp",
+      "emit": "; CH1: cheat '%s' (idx 0x%02x) refused in a network game",
+      "tags": [],
+      "needles": [
+        "refused in a network game"
+      ],
+      "fields": [
+        "cmd",
+        "idx"
+      ],
+      "parsers": [
+        "tools/check_cheat_gate.py:analyse"
+      ],
+      "since": "mp:CH1",
+      "status": "live",
+      "note": "The gate's refusal, on the typing peer only. Its gate-off twin `... RUNS in a network game ([input] cheat_gate=0)` is the reproduction arm's line and the checker names it when it sees it instead."
+    },
+    {
+      "id": "net.ch1_runs",
+      "stream": "mh_net.log",
+      "emitter": "src/mh_dll/mh/seams/ui_cheat_gate.cpp",
+      "emit": "RUNS in a network game ([input] cheat_gate=0)",
+      "tags": [],
+      "needles": [
+        "RUNS in a network game"
+      ],
+      "fields": [
+        "cmd",
+        "idx"
+      ],
+      "parsers": [
+        "tools/check_cheat_gate.py:analyse"
+      ],
+      "since": "mp:CH1",
+      "status": "live",
+      "note": "The reproduction arm only ([input] cheat_gate=0): retail is about to run the matched cheat."
+    },
+    {
+      "id": "net.gs2_drop",
+      "stream": "mh_net.log",
+      "emitter": "src/mh_dll/mh/seams/net_lockstep.cpp",
+      "emit": "; GS2: peer %d data-silent for %lu ms > %d -> dropped",
+      "tags": [],
+      "needles": [
+        "GS2: peer (\\d+) data-silent for (\\d+) ms > (\\d+) -> dropped"
+      ],
+      "fields": [
+        "side",
+        "since_ms",
+        "timeout_ms"
+      ],
+      "parsers": [
+        "tools/check_data_timeout.py:check"
+      ],
+      "since": "mp:GS2",
+      "status": "live",
+      "note": "The survivor's own line, written by data_timeout_tick (on_time_tick, CONFIGURATION (1) too) once a peer's g_late_last_move[] has not moved for [net] data_timeout_ms. Runs the same llm_net_player_remove removal U17(b)'s transport-death fast-drop uses."
     }
   ]
 }

@@ -1,0 +1,49 @@
+# mp:GS1 (a) CLIENT: sit on the FIRST browser (the relay directory, R7's path) while the host cancels
+# game1 and creates game2 -- the link this browser holds to the host carries the host's retail 0x0e for
+# game1 -- then JOIN game2 and be SEATED, told nothing, and run past 10 s of sim once the host starts.
+# Pair with mp_host_churn.txt, which carries the field history (2026-09-20, `0189fdb8`).
+#
+# THE EDGE IS THE GATE, not the count (mp_client_rejoin.txt's U26 lesson) -- and on THIS path the count
+# has no edge at all, measured on the first run (2026-09-20): the relay directory dropped game1's row
+# and listed game2's 2.0 s apart, the S3 store was withdrawn and re-filled 1.7 s apart, and the retail
+# session count `sessions` reads never moved -- `sessions <1` sat unsatisfied for the whole 300 s
+# budget. The row is replaced IN PLACE. So the gate is the store's GENERATION: `lobbygen 2` = the second
+# DISTINCT lobby id this client has stored since boot, i.e. game2 is what a Join will now name.
+
+settled value:110
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+
+# the FIRST browser lists the relay directory: game1 is there, and this browser has dialled the host
+# for its SESSION_INFO -- that link is the one the stale 0x0e will ride.
+present Internet server
+sessions 1
+settled Join game
+capture c1_game1_listed
+signal listed
+
+# the host cancels game1 and creates game2 (fresh tag): the SECOND distinct lobby this client has stored
+lobbygen 2
+sessions 1
+settled Join game
+capture c2_game2_listed
+clickl Join game
+
+# SEATED in game2. On the pre-fix build the lobby's first PollRecv drains game1's 0x0e and U13 bounces
+# this peer back to the browser with "The host left the game." -- so both predicates below are the
+# assertion, and the capture is gated on the seat, not on Cancel going stable.
+present Network players
+occ 2
+absent The host left the game.
+settled Cancel
+capture c3_game2_seated
+signal seated
+
+# the host starts game2: entry, then the sim must run past the 10000 ms initial horizon
+absent Network players
+gameclock 12000
+capture c4_running
+log CLIENT joined game2 after the host's churn, was seated, and the match ran past 10 s
+end

@@ -234,6 +234,40 @@ jobs:
             echo "$line" | grep -q '"peers_rekeyed"' || { echo "counters line lacks peers_rekeyed -- this is an OLD relay image" >&2; exit 1; }
             echo "$line" | grep -q '"health_pings"' || { echo "counters line lacks health_pings -- pre-RP5 image" >&2; exit 1; }
 
+      # dist:RP7 -- THE COLLECTOR WRITES WHERE THE DRAIN READS. /healthz is a 200 whether reports
+      # land in /srv/reports or in a named volume nobody can drain (the first live stack: six 201s
+      # into /var/lib/docker/volumes/mh-deploy_reports, `drain_reports.py` saying `nothing new`,
+      # dead-ends G250). tools/lint_compose.py rule 4 pins the compose FILE; this step
+      # inspects the RUNNING container's mount (a bind, source /srv/reports, target /data/reports)
+      # and then checks that the newest report directory on disk is the newest non-duplicate row of
+      # the collector's index.db -- the on-disk tree and the index moving together is what proves
+      # the bind is the one the collector actually writes through, not merely declared.
+      - name: collector writes the drain root
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          script: |
+            set -euo pipefail
+            mounts=$(docker inspect --format '{{range .Mounts}}{{.Type}} {{.Source}} {{.Destination}}{{"\n"}}{{end}}' mh-collector)
+            echo "$mounts"
+            echo "$mounts" | grep -qx 'bind /srv/reports /data/reports' \
+              || { echo "collector's /data/reports is not a bind of /srv/reports -- the drain cannot see uploads (RP7)" >&2; exit 1; }
+            python3 - <<'PY'
+            import os, sqlite3, sys
+            root = "/srv/reports"
+            newest_dir = max((d for m in os.listdir(root) if os.path.isdir(os.path.join(root, m))
+                              for d in os.listdir(os.path.join(root, m))), default=None)
+            row = sqlite3.connect(os.path.join(root, "index.db")).execute(
+                "SELECT ulid FROM reports WHERE dup_of IS NULL ORDER BY ulid DESC LIMIT 1").fetchone()
+            newest_row = row[0] if row else None
+            print(f"newest on disk: {newest_dir}  newest in index.db: {newest_row}")
+            if newest_dir != newest_row:
+                print("disk and index disagree on the newest report -- the collector is not writing this tree (RP7)", file=sys.stderr)
+                sys.exit(1)
+            PY
+
       - name: step summary
         if: always()
         run: |
@@ -241,4 +275,5 @@ jobs:
             echo "## deploy ${{ github.event.inputs.tag || 'latest' }} (${{ github.event_name }})"
             echo
             echo "Relay verdict is the log of the step above: healthy / listening / counters."
+            echo "Collector verdict: the 'collector writes the drain root' step (bind /srv/reports + disk/index agree)."
           } >> "$GITHUB_STEP_SUMMARY"

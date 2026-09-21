@@ -326,6 +326,9 @@ inline uintptr_t ADDR_NET_PLAYERSIDE() { // the injected
 constexpr uintptr_t ADDR_NET_LOCALIDX = mh::addr::_G_LLM_NET_LOCAL_PLAYER_INDEX;
 constexpr uintptr_t ADDR_NET_IS_HOST  = mh::addr::_G_LLM_NET_IS_HOST;
 constexpr uintptr_t ADDR_SESSION_MODE = mh::addr::_G_LLM_GAME_SESSION_MODE; // BYTE; 3=lockstep
+// mp:RM1 -- the two sim clocks (doubles, game-seconds) the rematch prep zeroes; see mp_zero_sim_clocks.
+constexpr uintptr_t ADDR_GAME_CLOCK = mh::addr::_G_LLM_STRAT_GAME_CLOCK;
+constexpr uintptr_t ADDR_TOTAL_TIME = mh::addr::TOTAL_GAME_TIME;
 
 constexpr int PLAYER_STRIDE = 0x34;
 constexpr int PLANET_STRIDE = 0x427;
@@ -617,11 +620,68 @@ int lobby_human_slots_occupied() {
 // N1: the client's own lobby slot. In host_assign mode this is the host-assigned id (MH_Net_LocalPlayerId
 // after the WELCOME); in declared-id mode it's the configured player_id -- either way MH_Net_LocalPlayerId
 // gives it. Falls back to 1 (the original 2-player default) before the transport is up. Host is always 0.
+//
+// THIS IS THE WIRE/CONNECTION IDENTITY, not necessarily our ARRAY POSITION in ADDR_LOBBY_SLOTS/
+// Players[] -- see mp_lobby_array_index below for that, and mp:GS1(b) for why the two are NOT always
+// the same number and must NOT be conflated (net_seams.cpp's own N2 comment documents
+// _G_LLM_NET_LOCAL_PLAYER_INDEX as needing exactly this wire value, compared against incoming wire
+// side_ids -- do not repoint it at the array index).
 int mp_lobby_slot(bool is_host) {
     if (is_host) return 0;
     int lp = MH_Net_LocalPlayerId();
     return (lp >= 1 && lp <= 7) ? lp : 1;
 }
+
+// mp:GS1(b) (2026-09-21): our own ARRAY POSITION in ADDR_LOBBY_SLOTS/Players[] -- what retail's
+// session_begin_multi actually wants when it seeds `PlayerSide = _G_LLM_NET_LOCAL_PLAYER_SLOT`
+// (sim_session_begin_multi.cpp, retail VA 0x0045438c-0x004543a9) and then indexes
+// `Players[PlayerSide].relation[k] = 2`/`.race_or_faction` by it. mp_lobby_slot() above answers a
+// DIFFERENT question (our wire/connection id) and the two used to be written from the same value on
+// the unstated assumption that a peer's wire id always equals its lobby SLOT index -- true for the
+// first join of a slot, but false the instant a slot is REUSED. The host's own lobby-slot allocator
+// (slot_find_or_alloc, retail's admin loop) COMPACTS: when an earlier peer's slot is vacated (a LEAVE),
+// the next joiner's *slot* is the freed (lower) index, while its *wire id* is a fresh, never-reused,
+// monotonically-increasing connection id (higher). A brand-new process re-joining after an earlier
+// peer's process-exit is exactly this: measured on the rig (ghost_exit_rejoin, client2) the ADOPTED
+// slots read `slot[1] pid=2` (client2's real seat is ARRAY INDEX 1) while the wire id is 2 -- an EMPTY
+// slot (`slot[2] status=0`). Feeding the wire id into `_G_LLM_NET_LOCAL_PLAYER_SLOT` made retail's own
+// PlayerSide seed wrong, so turn_engine.cpp's participates()/commit_horizon skip-self test
+// (`*player_side != i`) failed to exclude our OWN real row (index 1 != PlayerSide 2), and commit_horizon
+// capped our committed horizon against our own never-written _G_LLM_NET_PEER_HORIZON[1] slot (stuck at
+// its 10000 ms boot sentinel) forever -- the exact 10000/10030 ms freeze this row (mp:GS1) is about. The
+// same-process re-join (`ghost_leave_rejoin`, GREEN) never exposed this because a re-join over a link
+// that was never closed keeps the SAME wire id, which still happens to equal its (also unchanged) slot.
+//
+// Fix: resolve the ARRAY INDEX by SCANNING the lobby slots for the one whose player_id field (+0x01)
+// matches our own wire id -- the same side_id -> array-index translation player_by_side_id does for
+// every OTHER peer's messages, just applied to ourselves before Players[] exists to look it up in. The
+// lobby slots are kept in sync with the host's allocation every lobby frame (S6/U28), so once populated
+// the scan is authoritative; the wire-id guess survives only as the PRE-population fallback (right
+// after our own JOIN, before the host's first per-frame slot broadcast has arrived). Feeds ONLY
+// `ADDR_NET_PLAYERSIDE()` (`_G_LLM_NET_LOCAL_PLAYER_SLOT`) in mp_lobby_entry_tick below -- NOT
+// `ADDR_NET_LOCALIDX` (`_G_LLM_NET_LOCAL_PLAYER_INDEX`), which stays wire-id per mp_lobby_slot() above.
+// `static`: net_internal.h's seam family (net_seams.cpp/net_discovery.cpp) declares its OWN
+// `mp_lobby_array_index` doing the identical scan for the manual-join path -- this TU's copy must not
+// clash with that external symbol at link time (this file is force-entry/mp_lobby_entry_tick's own
+// family and does not include net_internal.h).
+static int mp_lobby_array_index(bool is_host) {
+    if (is_host) return 0;
+    int                  lp    = mp_lobby_slot(false);
+    const unsigned char *slots = (const unsigned char *)ADDR_LOBBY_SLOTS;
+    for (int i = 0; i < 8; ++i) {
+        const unsigned char *s = slots + i * SLOT_STRIDE;
+        if (s[SLOT_STATUS_OFF] != 0 && *(const int *)(s + 0x01) == lp) return i;
+    }
+    return lp; // slots not populated with our id yet -- pre-sync fallback, corrected within a frame or two
+}
+
+// The lobby-entry latches. `g_entry_started` disarms mp_lobby_entry_tick (client entry driver) and
+// MH_MP_HostEntryTick; `g_host_start_done` disarms on_begin_map_load's host prep. Both are PER LOBBY
+// since mp:RM1 -- cleared by MH_MP_RearmLobbyEntry at the match-end boundary (see it, below).
+bool g_entry_started   = false;
+int  g_entry_ticks     = 0;
+int  g_entry_hb        = 0;
+bool g_host_start_done = false;
 
 // N1: set the full N×N symmetric enemy matrix over the OCCUPIED lobby slots (replaces the 2 hand-written
 // slot0<->slot1 lines). Deterministic: every peer has the same host-synced slots, so build_players_from_slots
@@ -657,6 +717,47 @@ void mp_set_lobby_relations_nxn() {
             if (*(const uint8_t *)(s + j * SLOT_STRIDE + SLOT_STATUS_OFF) != 0)
                 s[i * SLOT_STRIDE + 0x0d + j] = 2; // slot i is enemy of occupied slot j (j == i included -- D18)
     }
+}
+
+// mp:RM1 -- zero the sim clocks at the entry prep, so a REMATCH enters session_begin_multi with the
+// clock a fresh process would have. The first match of a process reads gclk=0 there because nothing
+// has run yet; a rematch read the previous match's final clock (field: 56460 / 8430 / 6059 ms; rig:
+// 6390 / 3399) until session_state_reset zeroed it a few instructions into the body. Retail zeroes
+// both clocks itself inside llm_strat_session_state_reset (0x00453ee4, called first thing by
+// session_begin_multi), so this is NOT what fixes the desync -- the relation rows and the peer count
+// are -- but every seam that reads the clock between Start and that reset (the sbm entry logger,
+// the lockstep pacing's ms_of) otherwise sees the dead match, and the RM1 gate measures the entry
+// state a fresh process has, not the state after retail's own repair. Called in the lobby, with no
+// sim running (SESSION_MODE != 3 is the entry driver's own precondition), so nothing is mid-flight.
+void mp_zero_sim_clocks() {
+    *(double *)ADDR_GAME_CLOCK = 0.0;
+    *(double *)ADDR_TOTAL_TIME = 0.0;
+}
+
+// mp:RM1 -- THE MANUAL-LOBBY ENTRY PREP RUNS ONCE PER LOBBY, NOT ONCE PER PROCESS. Two latches made
+// it once-per-process, and that is the writer of the 2026-09-20 rematch residue (session report
+// §11.2): `g_entry_started` disarms the client's mp_lobby_entry_tick, and `g_host_start_done`
+// disarms the host's on_begin_map_load. Both are exactly right for the LIFE OF A MATCH -- the
+// client's driver must not re-fire into a live game (the 2026-07-26 crash in its own header), and
+// the host must not re-prep a Start it already sent -- and both were wrong for the life of the
+// PROCESS, which is what a `static bool` / a never-cleared global is. Every 2nd+ match in one
+// process therefore skipped the prep: the host never re-derived the N x N relation rows nor the
+// peer count, never re-snapshotted the slots and never sent FLAG_START (its P[1..] rel rows read 00,
+// the joiner got only retail's bare 0x0a handoff); the joiner's tick never re-set p54bc, PlayerSide
+// or the relations, so it built a mode-2 SOLO game from an un-adopted slot array and free-ran past
+// the host's horizon while the host waited for lockstep frames that never came (committed pinned at
+// the previous match's last clock: 6060 in the field, 3410 on the rig). Re-armed HERE, at the U40
+// match-end boundary (mp_session_close, net_discovery.cpp) -- the same seam that re-mints the
+// host's session identity and releases the client's link, because "this match is over" is the one
+// fact both latches were latched on. NOT at lobby creation: the host's latch guards the Start of a
+// lobby, and a lobby that was created but whose match has not ended is exactly the state the latch
+// must survive. Verified by tools/test_ui.py `rematch_play` (tools/check_rematch_residue.py).
+extern "C" void MH_MP_RearmLobbyEntry(void) {
+    g_entry_started   = false;
+    g_entry_ticks     = 0;
+    g_entry_hb        = 0;
+    g_host_start_done = false;
+    lg("; RM1: match over -> lobby entry prep RE-ARMED for the next lobby (client driver + host Start prep)");
 }
 
 // N2 (2026-07-22): the former mp_normalize_ai_slot_ids() is GONE. It gave every AI lobby slot a distinct
@@ -874,9 +975,7 @@ void log_lobby_state(bool is_host, const char *when) {
     }
 }
 
-bool          g_entry_started    = false;
-int           g_entry_ticks      = 0;
-int           g_entry_hb         = 0;
+// g_entry_started / g_entry_ticks / g_entry_hb: defined beside mp_set_lobby_relations_nxn (mp:RM1).
 constexpr int ENTRY_SETTLE_TICKS = 60; // ~1 s of lobby frames after 2 slots are synced (stabilize)
 void          mp_lobby_entry_tick(bool is_host) {
     if (g_entry_started) return;
@@ -905,9 +1004,11 @@ void          mp_lobby_entry_tick(bool is_host) {
         if ((++g_entry_hb % 60) == 0) lg("; --mp-join: waiting for host to assign our player id (WELCOME)");
         return;
     }
-    int slot = mp_lobby_slot(is_host); // N1: own/assigned slot (was hardcoded is_host?0:1)
+    int slot = mp_lobby_slot(is_host); // N1: own/assigned WIRE id (was hardcoded is_host?0:1)
     if (is_host) mp_sync_host_peer_table();
-    *(int *)ADDR_NET_PLAYERSIDE() = slot; // re-affirm each frame: build_players reads it at entry
+    // mp:GS1(b): PLAYERSIDE wants our ARRAY INDEX (mp_lobby_array_index), LOCALIDX wants our WIRE id
+    // (`slot`, unchanged) -- see both functions' banners for why these are NOT interchangeable.
+    *(int *)ADDR_NET_PLAYERSIDE() = mp_lobby_array_index(is_host); // re-affirm each frame: build_players reads it at entry
     *(int *)ADDR_NET_LOCALIDX     = slot;
     int occ                       = lobby_slots_occupied();
     int want                      = mp_players(); // N1: N from [net] mp_players (default 2)
@@ -996,7 +1097,15 @@ void          mp_lobby_entry_tick(bool is_host) {
             }
             memcpy((void *)ADDR_LOBBY_SLOTS, hs, sizeof(hs));
             occ = lobby_slots_occupied(); // recompute from the host's array, not ours
-            lg("; U28: adopted the host's authoritative lobby slots at Start (occ=%d)", occ);
+            // mp:GS1(b): re-resolve OUR OWN array index against the array we just adopted -- it was
+            // computed from our PRE-adoption copy above, and the one case a "U28 SLOT DIFF" line above
+            // can name is our own row moving (a slot edit in flight right at Start). Cheap and
+            // idempotent when nothing moved; the alternative is a PlayerSide that silently outlives its
+            // own array. LOCALIDX (the wire id, `slot`) does not depend on this array at all.
+            const int array_idx           = mp_lobby_array_index(is_host);
+            *(int *)ADDR_NET_PLAYERSIDE() = array_idx;
+            *(int *)ADDR_NET_LOCALIDX     = slot;
+            lg("; U28: adopted the host's authoritative lobby slots at Start (occ=%d, PlayerSide=%d)", occ, array_idx);
         } else {
             // Not fatal, and deliberately loud: the host sent the legacy bare signal, so we are back
             // to each peer building from its own copy -- the exact configuration that desynced on
@@ -1050,6 +1159,7 @@ void          mp_lobby_entry_tick(bool is_host) {
         return;
     }
     log_lobby_state(is_host, "at-entry");
+    mp_zero_sim_clocks(); // RM1: enter with a fresh process's clock (see the host prep)
     lg("; --mp-%s: TRIGGERING game entry via begin_map_load (slots_occupied=%d pcount=%d map_pcount->%d)",
        is_host ? "host" : "join", occ, *(int *)ADDR_NET_PCOUNT, occ);
     ((void (*)(void))ADDR_BEGIN_MAP_LOAD)();
@@ -1238,24 +1348,33 @@ void on_menu_tick() {
         // It prints the ACTIVE widget list plus the shared slide frame's geometry, because the whole
         // U22/U29 class of bug is "the container being drawn is not the one that was last centred".
         {
-            static int dc = 0;
+            static int  dc           = 0;
+            static char u29last[256] = {0}; // mp:SES5 decision (3): dedupe -- U29DIAG was 1105 of
+                                            // 1107 mh_launch.log lines in one measured run, almost
+                                            // all identical; log only when the text changes.
             if ((dc++ % 120) == 0) {
                 // menu_state/saved/gm/dlg are the DRAW GATES (0x004b79a8): the lobby draws only if
                 // gm==3 && (dlg&0x10), and when saved==1 the draw walks widget_list+0x14 -- the PARENT
                 // -- not the active list. That last one is the whole question here, so log it.
                 unsigned wl = *(unsigned *)mh::addr::_G_LLM_UI_MENU_WIDGET_LIST;
-                lg("; U29DIAG list=%08X (lobby=%d localbr=%d sessbr=%d mappick=%d) parent=%08X frame_x=%d right_x=%d ms=%u saved=%u gm=%u dlg=%02X occ=%d map=%d",
-                   wl, wl == mh::addr::lobby_widget_origin,
-                   wl == mh::addr::local_browser_widget_origin,
-                   wl == mh::addr::browser_widget_array_ptr,
-                   wl == mh::addr::map_picker_widget_origin,
-                   wl ? *(unsigned *)(wl + 0x14) : 0u,
-                   *(int *)mh::addr::lobby_frame_x, *(int *)mh::addr::lobby_right_panel_x,
-                   *(const unsigned char *)mh::addr::_G_LLM_UI_MENU_STATE,
-                   *(const unsigned char *)mh::addr::_G_LLM_UI_MENU_SAVED_STATE,
-                   *(const unsigned char *)mh::addr::_G_LLM_GAME_MODE,
-                   *(const unsigned char *)mh::addr::_G_LLM_DLG_STATE_FLAGS,
-                   lobby_slots_occupied(), MH_MP_MapReceived());
+                char     b[256];
+                wsprintfA(b,
+                          "; U29DIAG list=%08X (lobby=%d localbr=%d sessbr=%d mappick=%d) parent=%08X frame_x=%d right_x=%d ms=%u saved=%u gm=%u dlg=%02X occ=%d map=%d",
+                          wl, wl == mh::addr::lobby_widget_origin,
+                          wl == mh::addr::local_browser_widget_origin,
+                          wl == mh::addr::browser_widget_array_ptr,
+                          wl == mh::addr::map_picker_widget_origin,
+                          wl ? *(unsigned *)(wl + 0x14) : 0u,
+                          *(int *)mh::addr::lobby_frame_x, *(int *)mh::addr::lobby_right_panel_x,
+                          *(const unsigned char *)mh::addr::_G_LLM_UI_MENU_STATE,
+                          *(const unsigned char *)mh::addr::_G_LLM_UI_MENU_SAVED_STATE,
+                          *(const unsigned char *)mh::addr::_G_LLM_GAME_MODE,
+                          *(const unsigned char *)mh::addr::_G_LLM_DLG_STATE_FLAGS,
+                          lobby_slots_occupied(), MH_MP_MapReceived());
+                if (lstrcmpA(b, u29last) != 0) {
+                    lg("%s", b);
+                    lstrcpynA(u29last, b, sizeof(u29last));
+                }
             }
         }
         // U29 (a): TEAR THE LOBBY MODEL DOWN when the lobby stops being the active screen. The
@@ -1506,12 +1625,14 @@ void on_begin_map_load() {
     if (g_verb != VERB_NONE || !g_manual_mp) return; // pure manual menu only (force-entry untouched)
     if (*(int *)ADDR_NET_IS_HOST == 0) return;       // client: nothing to prep/send here
     if (MH_Net_PeerCount() < 1) return;              // skirmish-vs-AI (no network client): leave the proven path alone
-    static bool host_done = false;
-    if (host_done) return;
-    host_done                     = true;
+    // ONE-SHOT PER LOBBY, not per process: this used to be a function-static `host_done`, which is
+    // the mp:RM1 writer on the host side (see MH_MP_RearmLobbyEntry).
+    if (g_host_start_done) return;
+    g_host_start_done             = true;
     int occ                       = lobby_slots_occupied();
     *(int *)ADDR_NET_PLAYERSIDE() = 0; // host drives player 0
     *(int *)ADDR_NET_LOCALIDX     = 0;
+    mp_zero_sim_clocks();                                              // RM1: enter with a fresh process's clock
     mp_set_lobby_relations_nxn();                                      // N1: full N×N enemy matrix over occupied slots (was slot0<->slot1)
     *(int *)(ADDR_CUR_MAP + MD_PCOUNT) = occ;                          // N1: build exactly the occupied players (incl AI) -- the Players[] size
     *(int *)ADDR_NET_PCOUNT            = lobby_human_slots_occupied(); // N2: sim PEER count = HUMAN slots (not incl AI) -- unblocks finalize's wait

@@ -185,15 +185,18 @@ struct MH_SessionRecord {
     char          roster[MH_SESSION_ROSTER_CAP];
     int           sim_step_ms;
     int           lockstep_step_ms;
-    char          transport[MH_SESSION_TEXT_CAP];
-    char          began_utc[MH_SESSION_STAMP_CAP];
-    char          ended_utc[MH_SESSION_STAMP_CAP];
-    char          reason[MH_SESSION_TEXT_CAP]; // gameover|leave|host_left|link_lost|timeout|quit
-    long          final_clock_ms;
-    long          stall_count;
-    long          icon_calls;
-    long          icon_shown;
-    char          process_dir[MH_SESSION_DIRNAME_CAP]; // the menu directory this session hangs off
+    char          transport[MH_SESSION_TEXT_CAP];            // mp:SES4: the module that actually BOUND (udp/tcp/none)
+    char          transport_configured[MH_SESSION_TEXT_CAP]; // mp:SES4: `[net] transport`'s own value,
+        // left EMPTY when it matches `transport` above -- non-empty is the tell that the configured
+        // transport did not end up being the one that bound (e.g. its module failed to load).
+    char began_utc[MH_SESSION_STAMP_CAP];
+    char ended_utc[MH_SESSION_STAMP_CAP];
+    char reason[MH_SESSION_TEXT_CAP]; // gameover|leave|host_left|link_lost|timeout|quit
+    long final_clock_ms;
+    long stall_count;
+    long icon_calls;
+    long icon_shown;
+    char process_dir[MH_SESSION_DIRNAME_CAP]; // the menu directory this session hangs off
 };
 
 inline void mh_session_record_clear(MH_SessionRecord *r) {
@@ -241,9 +244,14 @@ inline int mh_session_begin_line(const MH_SessionRecord *r, char *dst, int cap) 
     at     = mh_sd_put_int(dst, cap, at, r->lockstep_step_ms);
     at     = mh_sd_put(dst, cap, at, " transport=");
     at     = mh_sd_put(dst, cap, at, r->transport);
-    at     = mh_sd_put(dst, cap, at, " began=");
-    at     = mh_sd_put(dst, cap, at, r->began_utc);
-    at     = mh_sd_put(dst, cap, at, "\n");
+    // mp:SES4: the KEY is always here (a fixed line shape, like every other field); the VALUE is
+    // only ever non-empty when the operator asked for something else than what bound -- an ordinary
+    // run (configured == bound) reads "transport_configured=" with nothing after it.
+    at = mh_sd_put(dst, cap, at, " transport_configured=");
+    at = mh_sd_put(dst, cap, at, r->transport_configured);
+    at = mh_sd_put(dst, cap, at, " began=");
+    at = mh_sd_put(dst, cap, at, r->began_utc);
+    at = mh_sd_put(dst, cap, at, "\n");
     return at;
 }
 
@@ -294,23 +302,26 @@ inline int mh_session_json(const MH_SessionRecord *r, char *dst, int cap) {
     at     = mh_sd_put_int(dst, cap, at, r->lockstep_step_ms);
     at     = mh_sd_put(dst, cap, at, ",\n  \"transport\": \"");
     at     = mh_sd_put_json(dst, cap, at, r->transport);
-    at     = mh_sd_put(dst, cap, at, "\",\n  \"began\": \"");
-    at     = mh_sd_put_json(dst, cap, at, r->began_utc);
-    at     = mh_sd_put(dst, cap, at, "\",\n  \"ended\": \"");
-    at     = mh_sd_put_json(dst, cap, at, r->ended_utc);
-    at     = mh_sd_put(dst, cap, at, "\",\n  \"reason\": \"");
-    at     = mh_sd_put_json(dst, cap, at, r->reason);
-    at     = mh_sd_put(dst, cap, at, "\",\n  \"final_clock_ms\": ");
-    at     = mh_sd_put_int(dst, cap, at, r->final_clock_ms);
-    at     = mh_sd_put(dst, cap, at, ",\n  \"stall\": ");
-    at     = mh_sd_put_int(dst, cap, at, r->stall_count);
-    at     = mh_sd_put(dst, cap, at, ",\n  \"icon_calls\": ");
-    at     = mh_sd_put_int(dst, cap, at, r->icon_calls);
-    at     = mh_sd_put(dst, cap, at, ",\n  \"icon_shown\": ");
-    at     = mh_sd_put_int(dst, cap, at, r->icon_shown);
-    at     = mh_sd_put(dst, cap, at, ",\n  \"process_dir\": \"");
-    at     = mh_sd_put_json(dst, cap, at, r->process_dir);
-    at     = mh_sd_put(dst, cap, at, "\"\n}\n");
+    // mp:SES4: empty unless the ini's configured transport differs from what actually bound.
+    at = mh_sd_put(dst, cap, at, "\",\n  \"transport_configured\": \"");
+    at = mh_sd_put_json(dst, cap, at, r->transport_configured);
+    at = mh_sd_put(dst, cap, at, "\",\n  \"began\": \"");
+    at = mh_sd_put_json(dst, cap, at, r->began_utc);
+    at = mh_sd_put(dst, cap, at, "\",\n  \"ended\": \"");
+    at = mh_sd_put_json(dst, cap, at, r->ended_utc);
+    at = mh_sd_put(dst, cap, at, "\",\n  \"reason\": \"");
+    at = mh_sd_put_json(dst, cap, at, r->reason);
+    at = mh_sd_put(dst, cap, at, "\",\n  \"final_clock_ms\": ");
+    at = mh_sd_put_int(dst, cap, at, r->final_clock_ms);
+    at = mh_sd_put(dst, cap, at, ",\n  \"stall\": ");
+    at = mh_sd_put_int(dst, cap, at, r->stall_count);
+    at = mh_sd_put(dst, cap, at, ",\n  \"icon_calls\": ");
+    at = mh_sd_put_int(dst, cap, at, r->icon_calls);
+    at = mh_sd_put(dst, cap, at, ",\n  \"icon_shown\": ");
+    at = mh_sd_put_int(dst, cap, at, r->icon_shown);
+    at = mh_sd_put(dst, cap, at, ",\n  \"process_dir\": \"");
+    at = mh_sd_put_json(dst, cap, at, r->process_dir);
+    at = mh_sd_put(dst, cap, at, "\"\n}\n");
     return at;
 }
 

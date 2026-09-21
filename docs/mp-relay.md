@@ -159,10 +159,24 @@ an ini key that does nothing and no line anywhere admitting it.
 
 A client that finds no host at the room it was given does not dead-end on `no_host` either: it
 re-registers in the **directory room** (below), lists what IS hosted, and re-dials the room of the
-lobby the player picks. So two peers whose `[net] port` disagrees find each other anyway — and since
-`mp:R6` a client's first dial (its own `[net] port`, the pre-directory guess) never lands on a host at
-all, so a relayed client's log always shows one `no_host` → directory browse → re-dial; that is the
-ordinary path, not a fault.
+lobby the player picks. So two peers whose `[net] port` disagrees find each other anyway.
+
+**Corrected by mp:R2c (2026-09-21).** Until then a client's FIRST dial guessed its own `[net] port`
+as the room — a port is never a plausible room code (mp:R6 mints one), so that guess never landed on
+a host and every relayed client's log showed one `no_host` → directory browse → re-dial, on every
+process start, whether or not the player had typed anything. That was read as "the ordinary path, not
+a fault" here, but it cost a real, measured price: a guaranteed relay refusal plus a guaranteed
+4-second peer-handshake timeout (`udp_endpoint.cpp`'s `HS_BUDGET_MS`, armed regardless of the guessed
+room) before the directory ever answered — four `no_host` refusals in one session on 2026-09-20, both
+in the client's log and the relay's own. mh.dll now hands `relay_default_room()` the directory room
+(0) itself whenever there is no typed address and no directory pick, so the common case never dials a
+guess at all — `Config::browse_only` (`udp_endpoint.h`) skips the peer handshake entirely, and the
+directory LIST still arrives over the same registration. A NON-zero guess that still turns out wrong
+(a stale `relay_room=` override, or a picked room that closed in flight) still falls back to
+`DIRECTORY_ROOM` exactly as this paragraph always described — R2c only removed the guess that was
+never anything but a port number. `tools/check_relay_leg.py` asserts the negative on the
+`relay_browse_local` scenario: no client-side `no_host` refusal or handshake-timeout text, and (with
+`--relay-log`) no relay-side `why="no_host"` event.
 
 **The Join-inside-the-handshake window (`mp:R6`, found by `relay_browse_local`).** Because the row
 now always arrives from the directory and the re-dial into its room starts at that same moment, a

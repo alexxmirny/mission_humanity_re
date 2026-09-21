@@ -1,0 +1,71 @@
+# mp:CH1 -- TWO-PEER in-game CHEAT CONSOLE: the client types `_NUCLEAR BOMB` on the Shift+Enter line.
+#
+# mp_client_start.txt's walk (join by IP -> lobby -> enter on the host's Start), then the part that
+# is this scenario's own: open the hidden console the way the field player did -- Shift+Enter, which
+# opens the SAME text line the chat uses but with _G_LLM_CHAT_MODE = 3 (llm_strat_input_update
+# 0x00441c82: the Shift arm is not gated on the session mode; plain Enter is the chat and is) --
+# type `_NUCLEAR BOMB` (cheat catalog idx 0x25, "credit conquest kills"), assert the buffer, and press Enter,
+# which hands the line to llm_debug_console_dispatch. Then run the match on to 12 s so whatever the
+# line did has had ~6 s of lockstep to show, and quit through ESC -> Quit -> Yes the way
+# mp_client_gquit.txt does, because the field crash came ON THE QUIT PATH after the cheat.
+#
+# THE ASSERTION IS THE post_check, NOT THE PIXELS (tools/check_cheat_gate.py): this peer's
+# mh_net.log must carry `; [chat] submit mode=3 ... cheat_idx=0x25` AND `; CH1: cheat '_NUCLEAR
+# BOMB' (idx 0x25) refused in a network game`, no `*** DESYNC` sample on either peer, and no peer
+# eliminated (`presence_lost ... gate=eliminated`) -- with the gate OFF ([input] cheat_gate=0,
+# ini/cheat_gate_off.ini) the order goes out on the lockstep stream and the host's base dies.
+#
+# Runner: ui_test.py --host mp_host_cheat.txt --client <ip>:mp_client_cheat.txt
+
+settled value:110
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+present Internet server
+settled Internet server
+clickl Internet server
+present Server address
+settled Connect
+clickl Connect
+sessions 1
+settled Join game
+clickl Join game
+
+present Network players
+signal lobby
+settled Cancel
+capture c_lobby
+absent Network players
+gamemode 2
+# Same sim gate as match_launch: both peers are at one sim moment before anything is typed.
+gameclock 6000
+
+# Shift+Enter opens the console line (the game's own Shift latch is held across the presents the
+# pair is in flight -- `key ... shift`); the command is typed on the US layout, read back BEFORE the
+# submit, and submitted with a plain Enter.
+layout 00000409
+key 0x1c shift
+type _NUCLEAR BOMB
+field chat _NUCLEAR BOMB
+key 0x1c
+layout default
+signal cheat
+log CH1 CLIENT: submitted _NUCLEAR BOMB on the Shift+Enter console line
+
+# Let the lockstep run on: an order cheat is staged at the horizon, so its effect (if any) lands a
+# few hundred ms after the submit; 12 s is well past that and past the host's horizon.
+gameclock 12000
+capture c_after_cheat
+# The field crash came on the quit path after the cheat: leave the way mp_client_gquit.txt does.
+signal quitting
+key 0x01
+settled value:113
+clickv 113
+settled value:121
+clickv 121
+settled value:110
+capture c_main_menu
+signal cliquit
+log CH1 CLIENT: quit the match via ESC->Quit->Yes and reached the main menu
+end

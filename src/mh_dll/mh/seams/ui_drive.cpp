@@ -28,7 +28,7 @@
 #include "include/mh_uidrive_export.h"
 #include "include/mh_capture_export.h" // MH_Capture_Shot (named per-screen captures for the interpreter)
 #include "include/mh_net_export.h"     // MH_Net_PeerCount (the `peers` predicate: all peers connected)
-#include "include/mh_seam_export.h"    // MH_Seam_S8RetryArmed (the `retryready` predicate: S8 latch-clear fired)
+#include "include/mh_seam_export.h"    // MH_Seam_S8RetryArmed (`retryready`), MH_Seam_S3LobbyGen (`lobbygen`)
 #include "include/mh_harness_export.h" // MH_Harness_StepFence (the `simstep` predicate: the SIM's own step)
 #include "seams/ui_net_indicator.h"    // MH_Lockstep_StallBindingPeer -- the `stalled` predicate (TL-UISTALL)
 #include "include/mh_run_context.h"    // MH_RunDir
@@ -1334,6 +1334,10 @@ static int fire_auto_target() {
 //     retryready [N] = MH_Seam_S8RetryArmed() >= N (default 1): a client's FAILED connect (dead/typo'd IP)
 //                has cleared the connect latches, so a corrected-IP re-Connect will re-kick. The S8(b)
 //                round-trip test gates its 2nd Connect on this instead of a time wait for the ~4s fail.
+//     lobbygen [N] = MH_Seam_S3LobbyGen() >= N (default 1): this client has stored SESSION_INFO for at
+//                least N DISTINCT lobbies (by lobby id) since boot. mp:GS1: a host that cancels and
+//                re-creates while the client browses replaces the row in place -- `sessions` never dips,
+//                so only the generation can say "the lobby listed now is the one made AFTER the churn".
 //     field <name|game|chat> <text|hex:..> = that text BUFFER holds exactly these bytes. `name` and
 //                `game` are the NET_SETUP menu fields; `chat` (mp:F3) is the in-game chat edit line,
 //                which must be read BEFORE the Enter that submits it (submitting clears the line).
@@ -1441,6 +1445,7 @@ enum {
     OP_W_OCC,
     OP_W_RACE,
     OP_W_RETRYREADY,
+    OP_W_LOBBYGEN,
     OP_W_GAMECLOCK,
     OP_W_SIMSTEP,
     OP_W_AWAITSIGNAL,
@@ -1488,17 +1493,28 @@ struct Step {
     char     raw[80];  // original line, for logging (Phase 4 pass/fail parsing)
 };
 
-constexpr int          MAX_STEPS = 64;
+// THE STEP AND FILE CAPS ARE LOUD (mp:RM1, 2026-09-21). Both used to be silent: parse_line dropped
+// every step past the 64th and load_script read 8 KB and stopped, so a script that outgrew either
+// simply ENDED EARLY and reported `COMPLETE (64/64 steps)` -- a green verdict on a walk that never
+// reached its assertion. The first script to cross the line (mp_host_rematch2.txt, 69 directives:
+// host_rematch's 61 plus a second Start) passed its truncated half and was caught only because the
+// post_check read the logs. A script the interpreter cannot hold is REFUSED at load with a
+// `; [script] ABORT at step 0` line, the terminal status ui_test.py already knows, so the runner
+// goes red at once instead of waiting out its budget. The caps themselves are just larger: a Step
+// is ~200 bytes, so 256 of them is ~50 KB of .bss, and the longest committed script is ~7.3 KB.
+constexpr int          MAX_STEPS     = 256;
+constexpr int          SCRIPT_MAX_KB = 32;
 Step                   g_steps[MAX_STEPS];
-int                    g_nstep        = 0;
-int                    g_cur          = 0;
-int                    g_wait         = 0;
-DWORD                  g_step_t0      = 0; // wall clock at the first tick of the current step
-bool                   g_script_on    = false;
-bool                   g_script_done  = false;
-int                    g_timeout      = 1500; // watchdog frames before a stuck WAIT aborts the run
-bool                   g_dump_screens = false;
-mh_llm_ui_widget_list *g_last_seen    = nullptr;
+int                    g_overflow_steps = 0; // directives parse_line had to drop (load_script refuses on > 0)
+int                    g_nstep          = 0;
+int                    g_cur            = 0;
+int                    g_wait           = 0;
+DWORD                  g_step_t0        = 0; // wall clock at the first tick of the current step
+bool                   g_script_on      = false;
+bool                   g_script_done    = false;
+int                    g_timeout        = 1500; // watchdog frames before a stuck WAIT aborts the run
+bool                   g_dump_screens   = false;
+mh_llm_ui_widget_list *g_last_seen      = nullptr;
 // OP_W_SETTLED state: the target's resolved center from the previous frame (motion-stopped detection)
 int  g_settle_cx = 0, g_settle_cy = 0;
 bool g_settle_primed = false;
@@ -1678,7 +1694,10 @@ void parse_line(const char *line) {
     while (*p && *p != ' ' && *p != '\t' && *p != '\r' && n < (int)sizeof(op) - 1) op[n++] = *p++;
     op[n]           = 0;
     const char *arg = skip_ws(p);
-    if (g_nstep >= MAX_STEPS) return;
+    if (g_nstep >= MAX_STEPS) {
+        ++g_overflow_steps; // counted, not dropped on the quiet -- load_script refuses the script
+        return;
+    }
     Step *s = &g_steps[g_nstep];
     memset(s, 0, sizeof(*s));
     copy_trim(s->raw, sizeof(s->raw), line);
@@ -1732,6 +1751,9 @@ void parse_line(const char *line) {
         s->b        = (after && *after) ? (int)strtol(after, nullptr, 0) : -1;
     } else if (strcmp(op, "retryready") == 0) {
         s->op = OP_W_RETRYREADY;
+        s->a  = (arg && *arg) ? (int)strtol(arg, nullptr, 0) : 1;
+    } else if (strcmp(op, "lobbygen") == 0) {
+        s->op = OP_W_LOBBYGEN;
         s->a  = (arg && *arg) ? (int)strtol(arg, nullptr, 0) : 1;
     } else if (strcmp(op, "awaitsignal") == 0) {
         s->op = OP_W_AWAITSIGNAL;
@@ -1802,10 +1824,16 @@ void parse_line(const char *line) {
         s->c        = (int)strtol(after, nullptr, 0);
         if (s->c < 1) s->c = 1;
     } else if (strcmp(op, "key") == 0) {
-        // key <scancode>  -- one down+up pair. Scancodes are PC set-1, the same values
+        // key <scancode> [shift]  -- one down+up pair. Scancodes are PC set-1, the same values
         // llm_strat_input_update compares against (e.g. 0x01 ESC, 0x3f..0x41 F5/F6/F7, 0x1c Enter).
-        s->op = OP_A_KEY;
-        s->a  = (int)strtol(arg, nullptr, 0);
+        // `shift` (mp:CH1) holds the game's OWN Shift latch (_G_LLM_INPUT_KEYSTATE[0x2a], the byte
+        // the strategic input reads -- NOT the OS table `type` uses) across the presents the pair
+        // is in flight, the way `rclick ... shift` does: Shift+Enter is how the strategic view opens
+        // the hidden debug console instead of the chat line (the branch at 0x00441c82).
+        s->op       = OP_A_KEY;
+        char *after = nullptr;
+        s->a        = (int)strtol(arg, &after, 0);
+        s->c        = (strncmp(skip_ws(after), "shift", 5) == 0) ? 1 : 0;
     } else if (strcmp(op, "hotkey") == 0) {
         // hotkey <spec>  -- `Ctrl+Alt+D`, `Alt+F9`, `0x79`, `D`: the DLL's OWN hotkey grammar (the
         // [debug] overlay's toggle_key and the [hud] net_indicator_key read it), held for two
@@ -1878,10 +1906,18 @@ bool load_script(const char *path) {
     HANDLE h = CreateFileA(path, GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING,
                            FILE_ATTRIBUTE_NORMAL, nullptr);
     if (h == INVALID_HANDLE_VALUE) return false;
-    static char buf[8192];
+    static char buf[SCRIPT_MAX_KB * 1024];
     DWORD       rd = 0;
     ReadFile(h, buf, sizeof(buf) - 1, &rd, nullptr);
     CloseHandle(h);
+    if (rd >= sizeof(buf) - 1) {
+        // The file did not fit: whatever follows would be parsed as if the script ended here.
+        ui_log("; [script] ABORT at step 0 -- REFUSED: '%s' is larger than the %d KB the loader holds "
+               "(raise SCRIPT_MAX_KB in ui_drive.cpp or split the walk)",
+               path, SCRIPT_MAX_KB);
+        g_nstep = 0;
+        return false;
+    }
     buf[rd]    = 0;
     char *line = buf;
     for (char *q = buf;; ++q) {
@@ -1892,6 +1928,13 @@ bool load_script(const char *path) {
             line = q + 1;
             if (end == 0) break;
         }
+    }
+    if (g_overflow_steps > 0) {
+        ui_log("; [script] ABORT at step 0 -- REFUSED: '%s' has %d directive(s) more than the %d the "
+               "interpreter holds (raise MAX_STEPS in ui_drive.cpp or split the walk)",
+               path, g_overflow_steps, MAX_STEPS);
+        g_nstep = 0;
+        return false;
     }
     return g_nstep > 0;
 }
@@ -2202,6 +2245,8 @@ bool wait_satisfied(const Step *s) {
         }
         case OP_W_RETRYREADY:                      // S8(b): the failed-connect latch-clear has fired -> a corrected-IP re-Connect
             return MH_Seam_S8RetryArmed() >= s->a; // will re-kick. Gates the round-trip test's 2nd Connect.
+        case OP_W_LOBBYGEN:                        // mp:GS1: the host's Nth distinct lobby is the one this client has stored now
+            return MH_Seam_S3LobbyGen() >= s->a;
     }
     return true;
 }
@@ -2245,9 +2290,24 @@ click_result do_action(const Step *s) {
             // Multi-present like cursorhold: g_wait is the frame index while the step retries.
             return rclick_frame(g_wait, s->a, s->b, s->c != 0) ? CLICK_OK : CLICK_RETRY;
         case OP_A_KEY:
-            enqueue_key((uint32_t)s->a, true);
-            enqueue_key((uint32_t)s->a, false);
-            ui_log("; key scancode 0x%02x (down+up)", s->a);
+            if (s->c == 0) {
+                enqueue_key((uint32_t)s->a, true);
+                enqueue_key((uint32_t)s->a, false);
+                ui_log("; key scancode 0x%02x (down+up)", s->a);
+                break;
+            }
+            // `key <sc> shift` (mp:CH1): multi-present like rclick. The pair goes into the ring on
+            // present 0; the latch is re-asserted on presents 0..2 (the consumer drains the ring on
+            // the frame AFTER the present that queued it, and the DI poll re-latches the byte every
+            // frame -- the D25 convention) and cleared on present 3 so a held Shift cannot stick.
+            keystate_shift(true);
+            if (g_wait == 0) {
+                enqueue_key((uint32_t)s->a, true);
+                enqueue_key((uint32_t)s->a, false);
+                ui_log("; key scancode 0x%02x (down+up) under a held Shift latch", s->a);
+            }
+            if (g_wait < 3) return CLICK_RETRY;
+            keystate_shift(false);
             break;
         case OP_A_HOTKEY:
             // Multi-present like cursorhold: presents 0 and 1 hold the chord, present 2 releases it

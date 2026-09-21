@@ -1,0 +1,4 @@
+{
+  "_why": "mp:CH1. capture_c_lobby.png renders the host's adapter address in the right-panel header (192.168.x.y here), which setup.dat pinning cannot reach -- it comes from the adapters, not from the saved MRU. Standard right-panel own-IP rect, kept tight to the band above the map-preview text (ui-testing skill).",
+  "capture_c_lobby.png": [[388, 46, 226, 48]]
+}

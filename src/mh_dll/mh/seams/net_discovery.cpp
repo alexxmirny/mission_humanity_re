@@ -24,11 +24,13 @@
 #include "mh_session_id.h"               // the OS half of the mint: unix-ms + CSPRNG bytes (SES0)
 #include "mh_version.h"                  // MH_VERSION_FULL -- the build stamp in SESSION_BEGIN (SES1)
 #include "include/mh_net_module.h"       // MH_NET_MODULE_ABI -- the module version in SESSION_BEGIN
+#include "include/mh_module_bind.h"      // mp:SES4 -- MH_NetModule_{Bound,Configured}Transport
 #include "addr/mh_addrs.gen.h"           // generated EN VAs (tools/gen_dll_addrs.py)
 #include "net_internal.h"                // shared spine: g_a, g_ini, g_host_join_seen, seam_log, mp_client_slot
 #include "seams/map_transfer.h"          // mp:X2 -- the map content claim, the request and the Start gate
 #include "hook/watcall.h"                // call_watcall1 (Watcom __watcall(EAX) bridge)
 #include "ui/lobby_ui.h"                 // mp:R4a -- browser_notice_arm_relay (the relay-level notice)
+#include "desync/desync_watch.h"         // mp:RM1 -- match_end(): the [desync] rollup into the match's own directory
 
 #pragma comment(lib, "user32.lib") // wsprintfA
 
@@ -37,6 +39,7 @@ using mh::hook::call_watcall1;
 extern "C" int         MH_MP_IsManual(void);        // launch.cpp -- 1 = pure manual session (gate manual-only work)
 extern "C" void        MH_MP_ResetHostMirror(void); // launch.cpp -- U13/U40 host: reset the peer-mirror one-shot edge
 extern "C" void        MH_MP_ArmManualLobby(void);  // launch.cpp -- run the proven lobby driver for the manual path
+extern "C" void        MH_MP_RearmLobbyEntry(void); // launch.cpp -- mp:RM1: the entry prep is per LOBBY; re-arm at match end
 extern "C" const char *MH_MP_PeerName(int i);       // defined below; the SES1 roster builder runs ahead of it
 
 namespace {
@@ -77,6 +80,7 @@ bool          g_synth_built = false;
 // the volatile flag AFTER the struct write (x86 TSO makes that ordering safe here).
 mh_net_proto::SessionInfo g_store_rec{};
 volatile LONG             g_store_valid    = 0; // 1 once a real SESSION_INFO has been received
+volatile LONG             g_store_gen      = 0; // mp:GS1: DISTINCT lobbies stored since boot (the `lobbygen` predicate)
 volatile LONG             g_host_left_seen = 0; // U13: client saw the host leave its lobby (retail 0x0e)
 // U23: WHY that lobby exit happened. g_host_left_seen answers "was this involuntary"; it cannot answer
 // "was the host gone or was the wire gone", because R-live-ui deliberately routes BOTH through one
@@ -347,9 +351,21 @@ namespace {
 
 MH_SessionRecord g_session_rec;
 
-// [net] transport name for the record. One transport today; T1 adds a second, and a report that does
-// not say which one carried the match is a report that cannot explain the loss pattern in it.
-const char *session_transport() { return "tcp"; }
+// mp:SES4: the module that actually BOUND, not the ini value -- this used to be a bare `return
+// "tcp"` regardless of what mh.dll loaded, so every 2026-09-20 session's session.json read
+// `transport=tcp` while the wire it actually ran was udp (the shipping default since that date;
+// T1 added the second transport, SES4 is what made this field tell the truth about which one a
+// given process bound). module_bind.cpp is the source of truth: "udp"/"tcp" once bind() has
+// committed, else "none" (declined / not found / wrong contract / ABI mismatch all read the same,
+// because none of them left a transport actually mapped).
+const char *session_transport() { return MH_NetModule_BoundTransport(); }
+
+// mp:SES4: the ini's OWN request, kept only for the rare disagreement -- an operator who configured
+// `transport=tcp` and whose mh_net.dll failed to load ends up on `session_transport()`'s "none",
+// and that gap is exactly the shape a report collector needs to see rather than infer. Returns ""
+// when the two already agree, which is what dst[0] stays if session_transport() already matches --
+// mp_session_open() is the only caller and it does the compare.
+const char *session_transport_configured() { return MH_NetModule_ConfiguredTransport(); }
 
 // The lobby roster as "<slot>:<kind><name>", comma-separated -- kind is H(uman)/A(I), and OPEN and
 // CLOSED slots are simply absent (a roster is who is IN the match). Names are only known host-side
@@ -438,6 +454,12 @@ void mp_session_open(const unsigned char *match_id, int slot) {
     MH_Seam_SessionPacing(nullptr, nullptr, nullptr, nullptr, &g_session_rec.lockstep_step_ms,
                           &g_session_rec.sim_step_ms);
     mh_sd_copy(g_session_rec.transport, MH_SESSION_TEXT_CAP, session_transport());
+    // mp:SES4: only surface the configured value when it disagrees with what actually bound.
+    {
+        const char *configured = session_transport_configured();
+        mh_sd_copy(g_session_rec.transport_configured, MH_SESSION_TEXT_CAP,
+                   (lstrcmpA(configured, g_session_rec.transport) == 0) ? "" : configured);
+    }
     MH_RunDir_UtcStamp(g_session_rec.began_utc, MH_SESSION_STAMP_CAP);
     mh_sd_copy(g_session_rec.process_dir, MH_SESSION_DIRNAME_CAP, MH_ProcessDirLeaf());
 
@@ -508,6 +530,12 @@ void mp_session_close(const char *reason) {
     session_roster(g_session_rec.roster, MH_SESSION_ROSTER_CAP);
     MH_Seam_SessionPacing(&g_session_rec.final_clock_ms, &g_session_rec.stall_count,
                           &g_session_rec.icon_calls, &g_session_rec.icon_shown, nullptr, nullptr);
+    // mp:RM1: the [desync] detector's rollup for THIS match, into THIS match's directory. It used to
+    // be written only at the next session_begin_multi (into the next match's folder, and never for
+    // a process's last match), so a gate on "game 2 compared >= 1 with 0 mismatching" had nothing
+    // to read. Before SESSION_END for the same reason the line below is: the directory switch is
+    // the next statement but two.
+    mh::desync::match_end();
     char line[MH_SESSION_LINE_CAP];
     mh_session_end_line(&g_session_rec, line, (int)sizeof(line));
     seam_log(line);       // still the SESSION directory -- the switch is the next statement
@@ -518,6 +546,14 @@ void mp_session_close(const char *reason) {
     // own log lines belong to the run folder the next match will use, not to the one just closed.
     // Manual path only: the force-entry/harness path owns its own transport and never re-hosts.
     if (!is_match_end(reason) || !MH_MP_IsManual() || !g_a.is_host) return;
+    // mp:RM1 -- BOTH ROLES, before the role split: the manual-lobby entry prep (launch.cpp) is
+    // one-shot per LOBBY, and this boundary is where the lobby whose Start it guarded is over. The
+    // host's on_begin_map_load re-derives the relation rows / peer count / slot snapshot and sends
+    // FLAG_START again for the next lobby; the client's mp_lobby_entry_tick re-arms p54bc /
+    // PlayerSide / the relations and adopts the host's slots again. Without this every 2nd match in
+    // one process entered session_begin_multi with the previous match's residue (session report
+    // 2026-09-20 §11.2: the step-50 desync and the committed-6060 freezes).
+    MH_MP_RearmLobbyEntry();
     if (*g_a.is_host) {
         // HOST. Its listener never went anywhere, so "pre-lobby" for a host is an IDENTITY question:
         // without this, a game re-created after a match reuses the finished match's tag AND its
@@ -677,8 +713,16 @@ void s3_kick_connect(const char *why) {
         const mh_net_proto::SessionInfo *pick = relay_picked_rec();
         g_relay_dialled                       = (pick != nullptr) ? g_relay_rows[g_relay_pick].room : relay_default_room();
         g_relay_room_set                      = true;
-        wsprintfA(b, "; R2: relayed connect to room %u -> async dial (%s%s)\n",
-                  (unsigned)g_relay_dialled, why, g_net_relink ? ", U40 relink" : "");
+        // mp:R2c -- room 0 is never a JOIN, it is the directory itself (RELAY_NO_ROOM ==
+        // DIRECTORY_ROOM): say so, rather than logging a "connect to room 0" that reads like a
+        // failed guess. A real pick (nonzero) still logs the room it is actually joining.
+        if (g_relay_dialled == RELAY_NO_ROOM)
+            wsprintfA(b, "; R2: no typed address and no directory pick -- browsing the relay's "
+                         "session directory (%s%s)\n",
+                      why, g_net_relink ? ", U40 relink" : "");
+        else
+            wsprintfA(b, "; R2: relayed connect to room %u -> async dial (%s%s)\n",
+                      (unsigned)g_relay_dialled, why, g_net_relink ? ", U40 relink" : "");
         InterlockedExchange(&g_r7_browse_dialled, 1); // R7: a Create after this dial re-inits as host
     } else {
         wsprintfA(b, "; S3: typed host '%s' -> async connect (%s%s)\n", ip, why,
@@ -752,15 +796,29 @@ bool dial_wants_relay() {
     return false;
 }
 
-// The room the FIRST dial asks for, before the directory has said anything: `[net] port`, which is
-// what the transport module defaults a client's room to. Keeping the two the same is what stops the
-// directory's first answer from tearing down a connection that already worked. Since mp:R6 a host's
-// room is minted, so this guess never lands on a host: the tunnel is refused `no_host`, parks on
-// the directory leg, and the listed row's room is what the re-dial below asks for -- the ordinary
-// path of every relayed client now, not a fault.
-uint32_t relay_default_room() {
-    return (uint32_t)GetPrivateProfileIntA("net", "port", 6501, g_ini);
-}
+// mp:R2c -- THE ROOM A DIAL WITH NO KNOWN TARGET ASKS FOR: the relay's own DIRECTORY_ROOM (0), not
+// `[net] port`. Before R2c this returned the ini port (6501 by every shipped default) as if a PORT
+// NUMBER were a plausible room GUESS -- it never is (a host's room is a minted 30-bit code, mp:R6),
+// so every such dial bought a guaranteed `no_host` refusal from the relay AND a guaranteed 4-second
+// `client_handshake_tick` timeout in the endpoint (mp:udp_endpoint.cpp), before the directory ever
+// got a chance to say anything. Four `no_host` refusals a session on 2026-09-20, always preceded by
+// `U1c join-by-IP: no typed IP found` -- i.e. always the case where there was never a real target to
+// guess.
+//
+// Returning DIRECTORY_ROOM here instead means the FIRST dial tells the truth about itself ("I am
+// browsing, not joining") from the moment it registers: the relay never sees a join attempt to
+// refuse, and udp_transport.cpp reads this same room back to set `Config::browse_only`, which stops
+// the endpoint from arming a peer handshake against a room nothing was ever dialled into. The
+// directory LIST still arrives (it rides the leg's registration, not the guess), and once the
+// directory names a REAL room the existing re-dial (mp:R2, below) replaces this one exactly as
+// before -- this function's return value is only ever the STARTING guess, never the room a listed
+// game is actually joined through.
+//
+// A stale/wrong non-zero guess (an operator's `[net] relay_room=` override, or a listed room that
+// closed between the pick and the dial) is a DIFFERENT case and is untouched: that still falls back
+// to DIRECTORY_ROOM reactively inside the tunnel (udp_relay.cpp's OP_ERROR handling), the way every
+// guess has since mp:R2 -- R2c only removes the guess that was never anything but a port number.
+uint32_t relay_default_room() { return 0; /* mh_net_udp's DIRECTORY_ROOM -- see udp_relay.h */ }
 
 // Main thread. Drain the inbox into the row table, expire what the directory stopped listing, and
 // pick the row the browser shows. Returns true if the VISIBLE set changed (so the caller can
@@ -768,10 +826,13 @@ uint32_t relay_default_room() {
 // Forget one row -- and, if the CONNECTED store holds that same lobby, forget that too.
 //
 // THAT SECOND HALF IS NOT TIDINESS, it is the vanish clause. A client that merely BROWSED a host
-// never receives the retail `0x0e` a host sends when it leaves (that arrives only to a peer sitting
-// in the lobby), so `g_store_valid` -- a snapshot of the last advert that came over the still-open
-// connection -- stood for the rest of the process, and the browser rendered a lobby that no longer
-// existed. Measured exactly that way on R2's first rig run: the relay had `sessions_unregistered=1`
+// never PROCESSES the retail `0x0e` a host sends when it leaves (the browser has no lobby dispatch
+// to poll the game queue), so `g_store_valid` -- a snapshot of the last advert that came over the
+// still-open connection -- stood for the rest of the process, and the browser rendered a lobby that
+// no longer existed. (It does RECEIVE it -- our persistent browse link queues it, where retail's
+// transport delivered a leave notice only to a seated peer -- and the next JOIN's first PollRecv
+// would drain it as a fresh host-left; mp:GS1 discards the queue at the click, on_join_connect.)
+// Measured exactly that way on R2's first rig run: the relay had `sessions_unregistered=1`
 // and was answering 141 LISTs with an empty directory while the client's browser still showed one
 // row. The relay IS the authority on "this lobby is still being advertised", so when it stops
 // carrying a lobby, a record of that same lobby is stale by definition.
@@ -784,6 +845,14 @@ void relay_row_forget(int i, const char *why) {
     seam_log(b);
     if (g_store_valid && mh_net_proto::session_same_lobby(g_store_rec, g_relay_rows[i].si)) {
         InterlockedExchange(&g_store_valid, 0);
+        // mp:GS1: ...and the S3 auto-list one-shot with it, exactly as MH_MP_ClientOnHostLeft
+        // withdraws. The link stays up, so the host's NEXT lobby refills the store over it; if that
+        // lands after the rescan this drop just re-armed has rebuilt (the first browser's probe is
+        // ~2 s, the host's cancel-to-create is about the same -- measured both ways, 1.7 s and
+        // 2.2 s), the rebuild saw an empty store, the row-drain re-arm is gated on !g_store_valid
+        // and the S3 one on !g_s3_listed: with the one-shot still spent from the previous lobby
+        // the browser sat on 0 rows with a valid store until the player clicked refresh.
+        InterlockedExchange(&g_s3_listed, 0);
         seam_log("; R2: ...and it is the lobby our stored advert names -- withdrawn too (a "
                  "browsing client never receives the host's leave notice)\n");
     }
@@ -1005,7 +1074,14 @@ void mp_host_advertise_session() {
     wsprintfA(b, "; S2 host session: %s map=%s players=%d/%d ver=%d proto=%d (%d B, peers=%d%s)\n",
               id, si.map, si.cur_players, si.max_players, si.host_version, si.protocol, n, peers,
               peer_joined ? ", NEW" : "");
-    seam_log(b);
+    // mp:SES5 decision (3): the broadcast above stays at its ~1 Hz / on-peer-joined cadence
+    // unconditionally -- only the LOG LINE is deduped, since a static lobby (nothing changed since
+    // the last line) was measured re-printing an identical row every second.
+    static char last_line[192] = {0};
+    if (lstrcmpA(b, last_line) != 0) {
+        seam_log(b);
+        lstrcpynA(last_line, b, sizeof(last_line));
+    }
     // mp:R2 -- UNCONDITIONAL, where it used to be `if (peers > 0)`. Broadcasting to nobody was
     // always a no-op (both transports loop over ACTIVE connections), so the guard bought nothing;
     // what it cost, once a relay existed, was the whole directory: the UDP module publishes the
@@ -1051,6 +1127,11 @@ void on_session_info_recv(int sender, const unsigned char *buf, int len) {
         seam_log("; S3 recv: malformed SESSION_INFO\n");
         return;
     }
+    // mp:GS1: count DISTINCT lobbies, not adverts. A host that cancels and re-creates while a client sits
+    // on its browser produces no observable edge on the retail session count (the row is replaced in
+    // place, ~1 Hz), so a script cannot tell "the lobby I saw" from "the lobby the host made after it" --
+    // exactly the field shape behind the 9999 freeze. The ui_drive `lobbygen N` predicate reads this.
+    if (!g_store_valid || !mh_net_proto::session_same_lobby(g_store_rec, si)) InterlockedIncrement(&g_store_gen);
     g_store_rec = si;
     InterlockedExchange(&g_store_valid, 1);
     // SES0: the CLIENT's side of "logged by every peer". The first advert carrying a given match_id
@@ -1104,6 +1185,13 @@ extern "C" void MH_MP_ResetJoinGate(void) { // all peers gone -> re-arm the S4 j
 // latch-clear (no time wait). Re-armed to 0 each time a fresh connect is kicked (on_discover_poll).
 extern "C" int MH_Seam_S8RetryArmed(void) {
     return g_s8_retry_armed;
+}
+
+// mp:GS1: the number of DISTINCT lobbies (by lobby id) this client has stored from SESSION_INFO since
+// boot -- the `lobbygen` predicate. Never reset: a host's re-create is the NEXT generation, which is the
+// edge the churn scenario gates on.
+extern "C" int MH_Seam_S3LobbyGen(void) {
+    return (int)g_store_gen;
 }
 
 // U13: the host left its lobby (its Cancel broadcast the retail 0x0e). CLIENT side (recv seam): withdraw the
@@ -1384,6 +1472,13 @@ void on_join_connect() {
     fill_my_player_name(jr); // S6: my player name (re-encoded under the adopted codepage, F3c)
     uint8_t buf[mh_net_proto::JOIN_REQUEST_MAX_ENCODED];
     int     n = (int)mh_net_proto::join_request_encode(jr, buf);
+    // mp:GS1 (a): the click is a lobby boundary. Whatever the game queue holds NOW predates this JOIN
+    // and so belongs to a lobby we never sat in -- on a persistent browse link that is the previous
+    // lobby's retail 0x0e, which the new lobby's first PollRecv would otherwise hand to U13 as "the
+    // host left" and un-seat the join the host just admitted (the ghost slot behind the 9999 freeze).
+    // Before the send, so nothing the host answers with can be caught in it; at the click only -- the
+    // R6 re-send rides a link that just came up over a re-initialised transport.
+    if (!g_join_resending) mp_drain_pre_join_queue();
     MH_Net_SendJoin(buf, n);
     // SES0: name the echoed match_id here too. The `; [session]` line above is the one tools parse;
     // this one is for a human reading the JOIN in sequence -- it says the echo carried the host's id
@@ -1510,10 +1605,13 @@ void on_start_recv(int sender, const unsigned char *buf, int len) {
 // builds the browser from the received-record store -- empty until it connects to the typed host + gets its
 // SESSION_INFO (S3). The connect + the re-arm that re-fires this poll are driven by MH_Seam_ClientDiscoveryTick.
 void on_discover_poll() {
-    int slot                    = mp_client_slot(); // N1: own/assigned slot (1 until the host WELCOMEs us / declared id)
-    *g_a.is_host                = 0;
-    *(int *)ADDR_NET_LOCALIDX   = slot;
-    *(int *)ADDR_NET_PLAYERSIDE = slot;
+    int slot                  = mp_client_slot(); // N1: own/assigned WIRE id (1 until the host WELCOMEs us / declared id)
+    *g_a.is_host              = 0;
+    *(int *)ADDR_NET_LOCALIDX = slot;
+    // mp:GS1(b): retail PlayerSide wants our ARRAY INDEX, not the wire id -- see mp_lobby_array_index's
+    // banner in net_internal.h. Pre-JOIN (slots not yet populated) this falls back to the wire-id
+    // guess, same as before; once the host's slot broadcast lands it resolves to the real seat.
+    *(int *)ADDR_NET_PLAYERSIDE = mp_lobby_array_index(false);
     MH_MP_ArmManualLobby();
     if (!MH_MP_IsManual()) {
         build_synth_session();

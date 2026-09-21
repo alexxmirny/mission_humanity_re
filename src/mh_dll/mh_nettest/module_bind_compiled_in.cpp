@@ -31,6 +31,18 @@
 // look for, and MH_ModuleBind_Early is never called here (mh.c is not part of this binary).
 extern "C" int MH_NetModule_IsBound(void) { return 1; }
 
+// mp:SES4 -- net_discovery.cpp's session_transport()/session_transport_configured() call these two,
+// so this image needs A definition to link, the same reason IsBound() needs one above. Neither is
+// EVER actually read here: no mh_nettest suite calls mp_session_open (grep session_dir_selftest.cpp
+// for why -- it exercises the record/format layer directly, with a hand-filled MH_SessionRecord, not
+// the live seam), and this image has no `[net] transport` selection at all -- net_transport.cpp
+// (TCP) and udp_endpoint.cpp/udp_relay.cpp (UDP) are BOTH compiled in directly for their own
+// suites, with no LoadLibrary decision between them the way module_bind.cpp makes one in mh.dll. So
+// there is no true "what got bound" to report; "tcp" is an inert placeholder, not a claim about
+// which transport a suite happens to be exercising.
+extern "C" const char *MH_NetModule_BoundTransport(void) { return "tcp"; }
+extern "C" const char *MH_NetModule_ConfiguredTransport(void) { return "tcp"; }
+
 // ---- and the same answer for the SPINE (fork F4D) ------------------------------------------------
 //
 // net_selftest.exe compiles the whole 627-TU roster directly, for exactly the reason it compiles

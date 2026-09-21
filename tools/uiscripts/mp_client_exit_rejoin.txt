@@ -1,0 +1,37 @@
+# mp:GS1 (b) CLIENT2, PROCESS-EXIT VARIANT: a BRAND-NEW process (ui_test.py's --client-after-exit
+# launches it only once client1's process, mp_client_exit_leave.txt, has actually exited) that
+# browses the relay-listed lobby fresh and joins. Pair with mp_host_exit_rejoin.txt (host) +
+# mp_client_exit_leave.txt (client1). Runs in client1's OWN lane (test_ui.py's
+# client_shares_lane) -- the same game install a relaunching player would reuse, and the reason
+# this scenario costs the suite no extra lane on the 99-mutex ceiling (lane_alloc.py, TL-LANEPOOL).
+#
+# Same first-browser join as mp_client_relay_local.txt (R7) / client1's own first half; this is
+# where Rizzen's field incident diverged from ghost_leave_rejoin's same-process re-join -- the
+# field's re-join landed as slot 2, not the freed slot 1, and froze the match at 9999. What the
+# host's `occ 2` / `occ <3` plus this client's own `gameclock 12000` assert is whether THIS PROCESS
+# BOUNDARY reproduces that, or whether (like the same-process case) the slot is cleanly freed.
+
+settled value:110
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+
+# join from the first browser (the relay directory) -- a fresh probe/list, since this process has
+# never seen this lobby before
+present Internet server
+sessions 1
+settled Join game
+clickl Join game
+present Network players
+occ 2
+absent The host left the game.
+settled Cancel
+capture c2_seated
+
+# the host starts: entry, then past the 10000 ms initial horizon
+absent Network players
+gameclock 12000
+capture c3_running
+log CLIENT2 (a fresh process, launched after client1's process exit) joined and the match ran past 10 s
+end

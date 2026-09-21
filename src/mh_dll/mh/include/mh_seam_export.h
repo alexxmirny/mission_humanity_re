@@ -52,6 +52,11 @@ void MH_Seam_ResetTransportInit(void);
 // wait for the ~4s connect-fail. 0 until the failure is detected; re-armed on each fresh connect kick.
 int MH_Seam_S8RetryArmed(void);
 
+// mp:GS1: DISTINCT lobbies (by lobby id) this client has stored from SESSION_INFO since boot. The ui_drive
+// `lobbygen N` predicate gates a browsing client on "the host's Nth lobby is the one advertised now", an
+// edge the retail session count cannot show when a host cancels and re-creates in place.
+int MH_Seam_S3LobbyGen(void);
+
 // S3/S5-core: per-menu-frame driver for a manual client's real discovery -- kick the connect to the typed
 // host, then re-arm the browser to list the host's received SESSION_INFO. Call every menu frame for a
 // manual (non-force-entry) session; no-ops unless the local peer is a client. See net_seams.cpp.

@@ -112,6 +112,23 @@ pub struct Finished {
     pub seconds: f64,
 }
 
+/// The game's own record of where it decided to put THIS run's logs: `run_context.cpp`'s
+/// breadcrumb, `mh_run.txt`, written in the game directory on every launch (and rewritten on every
+/// session rollover within it).
+///
+/// dist LA10: a game whose install sits at a long enough path can have Windows' `CreateDirectory`
+/// refuse the stamped `logs\<name>\` subdirectory the DLL asks for; the DLL degrades rather than
+/// losing the run, but the degraded location is not the one a player (or a report) would think to
+/// look under `logs\` for. Reading this file back after every run and logging it, unconditionally,
+/// is what would have turned that afternoon's two-day log-mining dig into reading one line: either
+/// it names a real `logs\...` directory, or it is missing/empty, which is itself the finding.
+pub fn resolved_log_root(game_dir: &Path) -> Option<String> {
+    std::fs::read_to_string(game_dir.join("mh_run.txt"))
+        .ok()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+}
+
 /// Start `mh.exe` in `game_dir`.
 ///
 /// CWD IS THE GAME DIRECTORY, and that is load-bearing rather than conventional: the game resolves
@@ -230,5 +247,37 @@ mod tests {
         assert_eq!(classify(1), Outcome::Nonzero(1));
         assert!(!classify(1).is_crash());
         assert!(classify(1).describe().contains("not a crash"));
+    }
+
+    // ---- dist LA10: the resolved log root, read back after every launch ------------------------
+
+    #[test]
+    fn resolved_log_root_reads_the_breadcrumb_and_trims_it() {
+        let dir = std::env::temp_dir().join("mh_launcher_test_log_root_present");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            dir.join("mh_run.txt"),
+            "C:\\Games\\MH\\logs\\20260101T000000Z_menu_solo\\\r\n",
+        )
+        .unwrap();
+        assert_eq!(
+            resolved_log_root(&dir).as_deref(),
+            Some("C:\\Games\\MH\\logs\\20260101T000000Z_menu_solo\\")
+        );
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// The done_when clause this test stands for: a launch whose game never wrote a breadcrumb (or
+    /// wrote an empty one) must not be silently confused with one that did -- `None` is itself the
+    /// signal LA10 needs, not a missing feature.
+    #[test]
+    fn resolved_log_root_is_none_when_the_breadcrumb_is_missing_or_blank() {
+        let dir = std::env::temp_dir().join("mh_launcher_test_log_root_missing");
+        std::fs::remove_dir_all(&dir).ok();
+        std::fs::create_dir_all(&dir).unwrap();
+        assert_eq!(resolved_log_root(&dir), None, "no mh_run.txt at all");
+        std::fs::write(dir.join("mh_run.txt"), "   \r\n").unwrap();
+        assert_eq!(resolved_log_root(&dir), None, "whitespace-only breadcrumb");
+        std::fs::remove_dir_all(&dir).ok();
     }
 }

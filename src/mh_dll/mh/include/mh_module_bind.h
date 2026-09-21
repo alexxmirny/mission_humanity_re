@@ -81,6 +81,20 @@ void MH_ModuleBind_Early(HMODULE self);
 // which matters because it is the value every forwarding shim in module_bind.cpp tests.
 int MH_NetModule_IsBound(void);
 
+// mp:SES4: which transport module actually got bound -- "udp" / "tcp", or "none" once every
+// no-transport path (declined, not found, wrong contract, ABI mismatch) has run. This is the value
+// session.json's `transport` field must record: before SES4 that field copied the CONFIGURED value
+// (what the ini asked for) even when the bind never happened or bound the other file, so every
+// 2026-09-20 session read "tcp" while the wire the peers actually played on was udp (the shipping
+// default since that date). Correct before the bind runs too (answering "none").
+const char *MH_NetModule_BoundTransport(void);
+
+// The `[net] transport` value this run's ini asked for ("udp"/"tcp"), independent of whether the
+// bind above then succeeded -- or "none" if `[net] module=none` meant no transport was ever
+// requested. Exists only so a caller that wants to show BOTH (session.json: the bound value plus
+// this one, when they differ) can.
+const char *MH_NetModule_ConfiguredTransport(void);
+
 // ---- libmh.dll, the SPINE (fork F4D) -------------------------------------------------------------
 //
 // The same mechanism, the same DllMain arm point, a different meaning for absence. Call it right

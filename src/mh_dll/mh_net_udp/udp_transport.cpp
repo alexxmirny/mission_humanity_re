@@ -328,6 +328,16 @@ extern "C" int MH_Net_InitEx(const MH_NetConfig *cfg) {
             }
         } else {
             rc.room = cfg->relay_room;
+            // mp:R2c -- mh.dll now hands DIRECTORY_ROOM (0) itself when it has no typed address and
+            // no directory pick yet (net_discovery.cpp relay_default_room()), rather than the ini
+            // port `[net] port` a HELLO would need to be REFUSED (`no_host`) before falling back to
+            // this same room. Recognising that here is what lets start() skip arming the endpoint's
+            // peer handshake below: a room this peer never asked to JOIN should never cost a
+            // HS_BUDGET_MS "handshake FAILED" wait. A stale `relay_room=` override or a genuine
+            // guess that turns out unhosted still falls back to DIRECTORY_ROOM reactively inside the
+            // tunnel (the OP_ERROR handling below) -- browse_only only short-circuits the COMMON
+            // case where mh.dll already knows there is nothing to dial.
+            c.browse_only = (rc.room == mh::udprelay::DIRECTORY_ROOM);
         }
         // mp:R1e CLAUSE 2 -- `relay_room` IS READ AND IGNORED, and the notice is the point.
         // R1 gave the knob a default of `[net] port` because two peers who agree on a port agree

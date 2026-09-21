@@ -415,21 +415,21 @@ jobs:
           $found = $false
           while ((Get-Date) -lt $deadline) {
             $assets = (gh release view $tag --json assets --jq '.assets[].name') 2>$null
-            if ($LASTEXITCODE -eq 0 -and ($assets -split "`n" | Where-Object { $_ -like 'mh_launcher-*.exe' })) {
+            if ($LASTEXITCODE -eq 0 -and ($assets -split "`n" | Where-Object { $_ -like 'mh_launcher*.exe' })) {
               $found = $true; break
             }
-            Write-Host "no mh_launcher-*.exe on $tag yet -- waiting (checked $(Get-Date -Format o))"
+            Write-Host "no mh_launcher*.exe on $tag yet -- waiting (checked $(Get-Date -Format o))"
             Start-Sleep -Seconds 20
           }
           if (-not $found) {
-            throw "no mh_launcher-*.exe appeared on $tag within 20 minutes -- check " +
+            throw "no mh_launcher*.exe appeared on $tag within 20 minutes -- check " +
                   "launcher-release.yml's run for this tag before re-running this job."
           }
           New-Item -ItemType Directory -Force dist | Out-Null
-          gh release download $tag --pattern "mh_launcher-*.exe" --dir dist --clobber
+          gh release download $tag --pattern "mh_launcher*.exe" --dir dist --clobber
           if ($LASTEXITCODE -ne 0) { throw "gh release download exit $LASTEXITCODE" }
-          $exe = Get-ChildItem dist -Filter "mh_launcher-*.exe" | Select-Object -First 1
-          if (-not $exe) { throw "downloaded nothing matching mh_launcher-*.exe" }
+          $exe = Get-ChildItem dist -Filter "mh_launcher*.exe" | Select-Object -First 1
+          if (-not $exe) { throw "downloaded nothing matching mh_launcher*.exe" }
           "exe_path=$($exe.FullName)" >> $env:GITHUB_ENV
           "exe_name=$($exe.Name)"     >> $env:GITHUB_ENV
           Write-Host "downloaded $($exe.Name) ($($exe.Length) B)"

@@ -350,6 +350,28 @@ unsigned long g_ft_gen = 0; // SES1: the run-directory generation g_ft_path was 
 // g_qpc_freq -> net_internal.h (shared: frametime log here + net_diag.cpp's temporal trace)
 void *g_ft_tramp = nullptr;
 
+// mp:SES5 decision (4) -- this log used to be ONE ROW PER PRESENT (measured 23 MB in a 43-minute
+// match). Diet: log a present's row only when its interval exceeds 2x the PREVIOUS 1-second
+// window's median (a hitch worth seeing), plus one aggregate line per second (min/avg/p95/max over
+// EVERY present in that window, hitches included) so the pacing shape survives even when no single
+// frame trips the outlier test. The header + per-present row FORMAT are unchanged (backward
+// compatible with any reader that only knows the 2-column "qpc_us game_mode" shape); the aggregate
+// line is its own new, `#`-prefixed format (see log_formats.json `frametime.summary`), which an
+// unaware reader already skips as a comment, same as the header.
+long long g_ft_prev_us = -1; // previous present's qpc_us (-1 = no previous present yet)
+// A headless solo lane has been measured at ~1876 fps, well above any small fixed array -- so the
+// array is a SAMPLE for the percentile estimate only, capped, while `g_ft_win_true_n`/
+// `g_ft_win_sum_ms` are UNCAPPED and drive `n`/`avg_ms` exactly regardless of how many presents
+// this window actually saw (a capped `n` would have understated `avg_ms` by dividing the TRUE sum
+// by a truncated count).
+double              g_ft_win_ms[512];
+int                 g_ft_win_n          = 0; // count of samples actually stored (<= array size)
+int                 g_ft_win_true_n     = 0; // TRUE present count this window (uncapped)
+double              g_ft_win_sum_ms     = 0.0;
+long long           g_ft_win_start_us   = -1;      // qpc_us this window opened at
+double              g_ft_last_median_ms = 0.0;     // previous COMPLETED window's median -- this window's outlier threshold
+constexpr long long FT_WINDOW_US        = 1000000; // 1 Hz
+
 // The per-EVENT temporal trace ([trace] temporal=1 -> mh_temporal.log) lives in net_diag.cpp; the
 // present/time_tick detours here call temporal_capture()/temporal_flush() (declared in net_internal.h).
 
@@ -463,15 +485,84 @@ void on_present() {
         int   hn = wsprintfA(h, "# qpc_us game_mode\n");
         DWORD w;
         WriteFile(g_ft_h, h, hn, &w, nullptr);
+        // SES5: a new file is a fresh window/outlier baseline -- don't carry the file that just
+        // closed's present timing forward into this one.
+        g_ft_prev_us        = -1;
+        g_ft_win_n          = 0;
+        g_ft_win_true_n     = 0;
+        g_ft_win_sum_ms     = 0.0;
+        g_ft_win_start_us   = -1;
+        g_ft_last_median_ms = 0.0;
     }
     LARGE_INTEGER t;
     QueryPerformanceCounter(&t);
     // microseconds since an arbitrary origin (analyzer only uses deltas)
     long long us = g_qpc_freq.QuadPart ? (t.QuadPart * 1000000LL) / g_qpc_freq.QuadPart : t.QuadPart;
-    char      line[64];
-    int       n = wsprintfA(line, "%I64d %d\n", us, (int)*(const uint8_t *)ADDR_GAME_MODE);
     DWORD     w;
-    WriteFile(g_ft_h, line, n, &w, nullptr);
+    if (g_ft_prev_us < 0) {
+        // First present of this file: no interval yet to judge or window. Log it unconditionally --
+        // it anchors find_lobby_clip_qpc's qpc_us/wall-clock join (mp_analyze.py), which needs row 0.
+        char line[64];
+        int  n = wsprintfA(line, "%I64d %d\n", us, (int)*(const uint8_t *)ADDR_GAME_MODE);
+        WriteFile(g_ft_h, line, n, &w, nullptr);
+        g_ft_prev_us      = us;
+        g_ft_win_start_us = us;
+        return;
+    }
+    double interval_ms = (double)(us - g_ft_prev_us) / 1000.0;
+    g_ft_prev_us       = us;
+    if (interval_ms >= 0.0 && interval_ms < 60000.0) { // guard a clock reset/QPC glitch, same bound read_frametimes uses
+        if (g_ft_win_n < (int)(sizeof(g_ft_win_ms) / sizeof(g_ft_win_ms[0]))) {
+            g_ft_win_ms[g_ft_win_n++] = interval_ms;
+        }
+        ++g_ft_win_true_n;
+        g_ft_win_sum_ms += interval_ms;
+        // Outlier row: this present's own interval is far more than the previous window's typical
+        // frame, i.e. a hitch worth naming on its own. Appended as a THIRD column (interval_us) so
+        // the hitch's duration survives even though its neighbours are no longer logged -- an old
+        // 2-column-only reader still parses qpc_us/game_mode fine and just ignores the extra field.
+        if (interval_ms > 2.0 * g_ft_last_median_ms) {
+            char line[80];
+            int  n = wsprintfA(line, "%I64d %d %I64d\n", us, (int)*(const uint8_t *)ADDR_GAME_MODE,
+                               (long long)(interval_ms * 1000.0 + 0.5));
+            WriteFile(g_ft_h, line, n, &w, nullptr);
+        }
+    }
+    if (us - g_ft_win_start_us >= FT_WINDOW_US && g_ft_win_true_n > 0) {
+        // 1 Hz aggregate: `n`/`avg_ms` are exact over the TRUE (uncapped) present count this window
+        // -- a headless solo lane has been measured at ~1876 fps, well past the fixed sample array
+        // below, and dividing the true sum by a truncated count would have understated avg_ms.
+        // min/p95/max come from the array, a SAMPLE (the first up-to-512 presents this window) --
+        // exact when true_n fits, a reasonable estimate otherwise.
+        double sorted[sizeof(g_ft_win_ms) / sizeof(g_ft_win_ms[0])];
+        memcpy(sorted, g_ft_win_ms, sizeof(double) * (size_t)g_ft_win_n);
+        for (int i = 1; i < g_ft_win_n; ++i) { // small sample (<=512) -- insertion sort is plenty
+            double v = sorted[i];
+            int    j = i - 1;
+            while (j >= 0 && sorted[j] > v) {
+                sorted[j + 1] = sorted[j];
+                --j;
+            }
+            sorted[j + 1] = v;
+        }
+        double min_ms = sorted[0], max_ms = sorted[g_ft_win_n - 1];
+        double avg_ms = g_ft_win_sum_ms / g_ft_win_true_n;
+        double median = sorted[g_ft_win_n / 2];
+        int    p95_i  = (int)(0.95 * (g_ft_win_n - 1));
+        double p95_ms = sorted[p95_i];
+        // wsprintfA has no float conversion -- round to whole milliseconds (the per-present outlier
+        // row above still carries the exact interval_us for anything needing sub-ms precision).
+        char agg[128];
+        int  an = wsprintfA(agg, "# 1s qpc_us=%I64d n=%d min_ms=%d avg_ms=%d p95_ms=%d max_ms=%d\n",
+                            us, g_ft_win_true_n, (int)(min_ms + 0.5), (int)(avg_ms + 0.5),
+                            (int)(p95_ms + 0.5), (int)(max_ms + 0.5));
+        WriteFile(g_ft_h, agg, an, &w, nullptr);
+        g_ft_last_median_ms = median;
+        g_ft_win_n          = 0;
+        g_ft_win_true_n     = 0;
+        g_ft_win_sum_ms     = 0.0;
+        g_ft_win_start_us   = us;
+    }
 }
 
 __declspec(naked) void present_detour() {
@@ -498,6 +589,25 @@ constexpr int LS_POST3_MAX = 1200; // ~20s@60fps cap so a legit mode-2 tail can'
 // 0 = starved/waiting peer horizon, N>1 = a CATCH-UP BURST (units jump N microsteps at once -> the
 // visible stutter). No extra hook -- pure delta of a value ls_log already reads.
 long g_ls_prev_clock_ms = -1;
+
+// mp:SES5 decision (2) -- ls_log_tick used to write one row per strategic frame (measured 215 MB /
+// 495 rows/s in a 43-minute match). Write on CHANGE of any non-counter column instead (the values
+// that carry the story: sess/game/flags/syncwait/countdn/pcount/p54bc/step), or every 500 ms
+// regardless -- so a genuine freeze (rx frozen, since_rx climbing, nothing else changing) still
+// produces a row every 500 ms (2 rows/s) rather than going silent. wall_ms/clock_ms/tx_pkts/rx_pkts/
+// since_rx_ms etc. are COUNTERS that move every frame by construction and are deliberately excluded
+// from the change test -- gating on them would defeat the diet entirely.
+DWORD           g_ls_last_write_t      = 0;
+bool            g_ls_have_last         = false;
+int             g_ls_last_sess         = -1;
+int             g_ls_last_game         = -1;
+unsigned        g_ls_last_flags        = 0;
+int             g_ls_last_syncwait     = -1;
+int             g_ls_last_countdn      = -1;
+int             g_ls_last_pcount       = -1;
+int             g_ls_last_p54bc        = -1;
+long            g_ls_last_step_ms      = -1;
+constexpr DWORD LS_ROW_MAX_INTERVAL_MS = 500;
 
 // ==== mp:T3 -- ARRIVAL LATENESS, AND THE COLUMNS THAT CARRY IT ===================================
 //
@@ -567,6 +677,17 @@ int  g_late_tail95 = 0;
 int  g_late_tail99 = 0;
 int  g_late_n      = 0;
 int  g_late_peer   = -1;
+
+// mp:GS2 -- game-level peer-data timeout. [net] data_timeout_ms; <= 0 disables. See data_timeout_tick
+// (below lateness_tick) for why g_late_last_move[] -- already maintained above for the lookahead
+// controller -- is the right signal: it is per-PEER (unlike MH_NetStats.last_rx_tick, one scalar for
+// the whole transport, mh_net_export.h:150), it needs no lockstep promotion (lateness_tick reads
+// ADDR_PEER_HORIZON directly, so this runs in CONFIGURATION (1) too -- exactly where
+// gone_peer_frame_guard is INERT, mp:GS1's scope), and it only moves when the peer's SIM actually
+// advances its horizon -- a keepalive-only link (the field's 22-35 s since_rx freezes, GS1/RM1)
+// leaves it frozen while the transport stays "up".
+int  g_data_timeout_ms            = SHIP_DATA_TIMEOUT_MS;
+bool g_gs2_dropped[LS_LATE_PEERS] = {false}; // latched per slot per match -- never re-fire on an already-dropped side
 
 // mp:T3c -- UNUSED HORIZON, the second surplus signal. Same window machinery, one sample per
 // strategic frame: local_h - COMMITTED, floored at zero. It is 0 for whichever peer's own horizon is
@@ -694,6 +815,7 @@ void lateness_tick() {
             g_late_blocked[i]   = 0;
             g_late_last_h[i]    = 0.0;
             g_late_last_move[i] = 0;
+            g_gs2_dropped[i]    = false; // mp:GS2 -- a new match is a new peer set, not a residue of the last one
         }
         g_late_have = false;
         g_late_peer = -1;
@@ -818,8 +940,38 @@ void ls_log_tick() {
                           "late_p50_ms late_tail95_ms late_tail99_ms late_n late_peer\n";
         DWORD w;
         WriteFile(g_ls_h, hdr, lstrlenA(hdr), &w, nullptr);
-        g_ls_prev_clock_ms = -1; // fresh file -> first row's burst is a baseline (0)
+        g_ls_prev_clock_ms = -1;    // fresh file -> first row's burst is a baseline (0)
+        g_ls_have_last     = false; // SES5: a new file starts a fresh change-detection baseline too
     }
+    // mp:SES5 decision (2) -- the row-gate: write only on a change of one of the 8 non-counter
+    // columns below, or every LS_ROW_MAX_INTERVAL_MS regardless (so a frozen match with nothing
+    // changing still produces a row every 500 ms -- 2 rows/s -- and the freeze shape (rx frozen,
+    // since_rx climbing) stays visible). wall_ms/clock_ms/tx_pkts/rx_pkts/since_rx_ms/sim_burst/
+    // icon_* are COUNTERS, deliberately excluded from the change test.
+    int      cur_game     = (int)*(const uint8_t *)ADDR_GAME_MODE;
+    unsigned cur_flags    = (unsigned)*(const uint8_t *)ADDR_STATUS_FLAGS;
+    int      cur_syncwait = *(const int *)ADDR_SYNC_WAIT();
+    int      cur_countdn  = *(const int *)ADDR_SYNC_COUNTDN;
+    int      cur_pcount   = *(const int *)ADDR_PLAYER_COUNT;
+    int      cur_p54bc    = *(const int *)ADDR_PLAYERCT_54BC;
+    long     cur_step_ms  = ms_of(ADDR_STEP_SIZE);
+    DWORD    gate_now     = GetTickCount();
+    bool     changed      = !g_ls_have_last || sess != g_ls_last_sess || cur_game != g_ls_last_game ||
+                   cur_flags != g_ls_last_flags || cur_syncwait != g_ls_last_syncwait ||
+                   cur_countdn != g_ls_last_countdn || cur_pcount != g_ls_last_pcount ||
+                   cur_p54bc != g_ls_last_p54bc || cur_step_ms != g_ls_last_step_ms;
+    bool due = !g_ls_have_last || (gate_now - g_ls_last_write_t) >= LS_ROW_MAX_INTERVAL_MS;
+    if (!changed && !due) return; // this frame's row is redundant with the last written one
+    g_ls_have_last     = true;
+    g_ls_last_write_t  = gate_now;
+    g_ls_last_sess     = sess;
+    g_ls_last_game     = cur_game;
+    g_ls_last_flags    = cur_flags;
+    g_ls_last_syncwait = cur_syncwait;
+    g_ls_last_countdn  = cur_countdn;
+    g_ls_last_pcount   = cur_pcount;
+    g_ls_last_p54bc    = cur_p54bc;
+    g_ls_last_step_ms  = cur_step_ms;
     // Sim-step burst this frame = round(ClockMs delta / SIM_STEP_INTERVAL). See g_ls_prev_clock_ms note.
     long clock_ms    = ms_of(ADDR_GAME_CLOCK);
     long interval_ms = ms_of(ADDR_SIM_STEP_INT());
@@ -851,12 +1003,12 @@ void ls_log_tick() {
                                 "%d %d 0x%02x %ld %d %d %d %ld %ld %ld %ld "
                                 "%s %s %s %s %s %s %s %s %s %s %s %d %d\n",
                         now, clock_ms, ms_of(ADDR_TOTAL_TIME), ms_of(ADDR_LOCAL_HORIZON), ms_of(ADDR_COMMITTED()),
-                        ms_of(ADDR_PEER_HORIZON() + 0 * 8), ms_of(ADDR_PEER_HORIZON() + 1 * 8), ms_of(ADDR_STEP_SIZE),
-                        *(const int *)ADDR_STALL_COUNT, *(const int *)ADDR_PLAYER_COUNT,
+                        ms_of(ADDR_PEER_HORIZON() + 0 * 8), ms_of(ADDR_PEER_HORIZON() + 1 * 8), cur_step_ms,
+                        *(const int *)ADDR_STALL_COUNT, cur_pcount,
                         s.tx_pkts, s.rx_pkts, s.last_rx_tick ? (unsigned)(now - s.last_rx_tick) : 0u,
-                        sess, (int)*(const uint8_t *)ADDR_GAME_MODE, (unsigned)*(const uint8_t *)ADDR_STATUS_FLAGS,
-                        ms_of(ADDR_GRACE_TIMER()), *(const int *)ADDR_SYNC_WAIT(), *(const int *)ADDR_SYNC_COUNTDN,
-                        *(const int *)ADDR_PLAYERCT_54BC, ms_of(ADDR_SYNC_ACCUM()), sim_burst,
+                        sess, cur_game, cur_flags,
+                        ms_of(ADDR_GRACE_TIMER()), cur_syncwait, cur_countdn,
+                        cur_p54bc, ms_of(ADDR_SYNC_ACCUM()), sim_burst,
                         g_icon_calls, g_icon_shown,
                         srtt[0], srtt[1], rttvar[0], rttvar[1], ipdv[0], ipdv[1], loss[0], loss[1],
                         late50, late95, late99, g_late_n, g_late_peer);
@@ -1289,9 +1441,61 @@ void adaptive_tick() {
     lateness_consume(); // the next decision is made on samples taken after this one -- see there
 }
 
+// mp:GS2 -- game-level peer-data timeout. Called from on_time_tick right after lateness_tick(), so
+// g_late_last_h[]/g_late_last_move[] are this frame's fresh values (same ones the lookahead's own
+// live/dead call used). A frozen peer's SIM stops moving its horizon forward while its TRANSPORT can
+// keep answering keepalives (mp:GS1/RM1's field freezes: since_rx 22-35 s, link never drops) -- this
+// runs the SAME direct removal U17(b)'s transport-death fast-drop uses (llm_net_player_remove by
+// side_id), so it works whether or not lockstep is promoted: CONFIGURATION (1) is exactly the mode
+// gone_peer_frame_guard cannot help, because that guard lives in the reimpl dispatch_packet libmh
+// never runs there, while this reads ADDR_PEER_HORIZON directly and calls a real game function.
+void data_timeout_tick() {
+    if (g_data_timeout_ms <= 0) return;                         // [net] data_timeout_ms <= 0 -- feature off
+    if (*(const uint8_t *)ADDR_SESSION_MODE != 3) return;       // only a live lockstep match has peers to time out
+    if (!MH_Net_IsStarted() || MH_Net_PeerCount() <= 0) return; // solo: nothing to watch
+    // BOUND THE SCAN TO REAL SLOTS ONLY -- measured trap, first two rig runs of `gs2_data_timeout`
+    // (2026-09-21): every UNUSED PEER_HORIZON slot in a 2-player match got "dropped" too.
+    // `net_seams.cpp`'s own PLAYERDUMP comment already names the cause -- an empty slot holds
+    // "retail's 10-second sentinel", a nonzero value indistinguishable in SHAPE from a real peer's
+    // very first sample (both simply differ from g_late_last_h[]'s zero-initialised default), so
+    // g_late_last_move[] latches a phantom slot's "first observation" exactly like a real one's --
+    // and a value that then never changes again ages past T identically to a genuinely frozen real
+    // peer. The FIRST fix tried `current_map_player_count` (lobby_widgets.cpp's A_MAP_PCOUNT) and
+    // measured WRONG on the client: that field is finalised by the HOST's build_players and reads
+    // correctly there, but on a CLIENT it still held the bare map file's declared capacity (8, not
+    // the lobby's real 2) -- an asymmetry between roles this seam cannot afford. `MH_Net_PeerCount()`
+    // (the TRANSPORT's own connected-peer count) is symmetric by construction -- every other gate in
+    // this file already reads it identically on both roles -- so `1 + MH_Net_PeerCount()` is the
+    // match's real size for as long as side ids stay contiguous from 0, which they are for any match
+    // nobody has left yet (this seam's whole subject). A peer who later leaves narrows PeerCount
+    // again, which only ever SHRINKS the scan -- never re-admits a slot this watchdog already dropped.
+    const int   n   = 1 + MH_Net_PeerCount() < LS_LATE_PEERS ? 1 + MH_Net_PeerCount() : LS_LATE_PEERS;
+    const DWORD now = GetTickCount();
+    const int   me  = MH_Net_LocalPlayerId();
+    for (int i = 0; i < n; ++i) {
+        if (i == me || g_gs2_dropped[i]) continue;
+        // A slot with h<=0 has never advertised at all yet (the join window GS1 already gates on) --
+        // nothing to time out until it has really been seen alive once.
+        if (g_late_last_h[i] <= 0.0 || g_late_last_move[i] == 0) continue;
+        const DWORD since = now - g_late_last_move[i];
+        if (since < (DWORD)g_data_timeout_ms) continue;
+        g_gs2_dropped[i] = true; // latch FIRST -- the removal call below must never re-enter this slot
+        mh::hook::call_watcall1(mh::addr::llm_net_player_remove, (void *)(intptr_t)i);
+        notify_player_dropped(i);
+        char b[176];
+        wsprintfA(b, "; GS2: peer %d data-silent for %lu ms > %d -> dropped\n", i, (unsigned long)since,
+                  g_data_timeout_ms);
+        seam_log(b);
+        // SES1: same "a kick that leaves nobody" guard as U17(b) -- a below-quorum drop closes our own
+        // session record even though the peer that just left never sends its own teardown seam.
+        if (MH_Net_PeerCount() <= 0) mp_session_close("timeout");
+    }
+}
+
 void on_time_tick() {
-    lateness_tick(); // mp:T3 -- sample first: the controller below reads the snapshot it publishes
-    adaptive_tick(); // may move g_lockstep_step; the pin below applies it the same frame
+    lateness_tick();     // mp:T3 -- sample first: the controller below reads the snapshot it publishes
+    data_timeout_tick(); // mp:GS2 -- act on this frame's fresh g_late_last_move[] before anything else touches it
+    adaptive_tick();     // may move g_lockstep_step; the pin below applies it the same frame
     if (g_lockstep_step > 0.0) memcpy((void *)ADDR_STEP_SIZE, &g_lockstep_step, sizeof(double));
     if (g_game_speed > 0.0) memcpy((void *)ADDR_GAME_SPEED, &g_game_speed, sizeof(double)); // pin before time_tick reads it
     if (g_sim_step > 0.0) memcpy((void *)ADDR_SIM_STEP_INT(), &g_sim_step, sizeof(double)); // pin sub-step granularity (both time_tick's arm-gate + sim_tick's loop read it)
@@ -2129,6 +2333,9 @@ void lockstep_install_core() {
     g_sync_gameover  = GetPrivateProfileIntA("net", "sync_gameover", 1, g_ini);  // default ON (endgame fix)
     g_graceful_leave = GetPrivateProfileIntA("net", "graceful_leave", 1, g_ini); // U17 (a) clean-quit self-removal; default ON since U19 (B2 does NOT catch a quit-to-menu -- see g_graceful_leave)
     g_graceful_drop  = GetPrivateProfileIntA("net", "graceful_drop", 1, g_ini);  // U17 (b) fast hard-drop on transport-death; default ON
+    // mp:GS2: game-level peer-data timeout -- drop a peer whose horizon has not moved in this many ms
+    // (data-silent, not merely link-silent). <= 0 disables. Default justified beside SHIP_DATA_TIMEOUT_MS.
+    g_data_timeout_ms = GetPrivateProfileIntA("net", "data_timeout_ms", SHIP_DATA_TIMEOUT_MS, g_ini);
     // Horizon heartbeat cadence (perf-decouple): >0 arms a thread that advertises the lockstep horizon
     // on real time, independent of render frames. Read here (DllMain, no thread); the thread starts in
     // lazy_start (off loader-lock). A good value is roughly lockstep_step_ms/4 .. /6 (e.g. 50 for 300).

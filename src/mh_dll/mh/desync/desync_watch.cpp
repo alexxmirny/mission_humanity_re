@@ -142,6 +142,7 @@ int  g_bad_frames     = 0;
 int  g_rx_while_inert = 0;     // samples received while WE have produced none -- see on_hash_frame_rx
 bool g_notified       = false; // D21 (f): ONE user-visible notice per match
 bool g_fp_reported    = false;
+bool g_gate_said      = false; // mp:RM1: ONE "why not sampling" line per match, at the first cadence step
 
 // Which hook is driving us, and how many samples it handed over already hashed. Reported rather than
 // assumed: the two hooks pay very different costs, so a COST line that did not say which one it was
@@ -605,18 +606,33 @@ int install(const char *ini_path) {
     return 1;
 }
 
-void session_reset() {
+// The outgoing match's rollup, ALWAYS -- including the all-clean case. A detector that only
+// speaks when it found something is indistinguishable from one that never ran, which is the
+// failure this ledger refuses elsewhere; "0 mismatching / 397 compared" is the evidence that a
+// clean run was actually looked at. Zeroes the reported counters so the caller that follows
+// (session_reset at the following session_begin_multi) cannot report the same match twice; a rollup with
+// nothing in it is not written (the lobby-level session closes -- leave / host_left -- reach the
+// same boundary with no match behind them).
+void match_end() {
     if (!g_armed) return;
-    // The outgoing match's rollup, ALWAYS -- including the all-clean case. A detector that only
-    // speaks when it found something is indistinguishable from one that never ran, which is the
-    // failure this ledger refuses elsewhere; "0 mismatching / 397 compared" is the evidence that a
-    // clean run was actually looked at.
     if (g_compared || g_mismatches || g_hash_samples || g_reused_samples) {
         emit_status_line();
         say("; [desync] match end: %d mismatching / %d compared sample(s), %d dropped as too old, "
             "%d bad frame(s), %lu steps seen\n",
             g_mismatches, g_compared, g_too_old, g_bad_frames, (unsigned long)g_step);
     }
+    g_mismatches     = 0;
+    g_compared       = 0;
+    g_too_old        = 0;
+    g_bad_frames     = 0;
+    g_hash_samples   = 0;
+    g_reused_samples = 0;
+    g_hash_ticks     = 0;
+}
+
+void session_reset() {
+    if (!g_armed) return;
+    match_end(); // the rollup, in case no session boundary reported it (a process with one match)
     g_step           = 0;
     g_mismatches     = 0;
     g_compared       = 0;
@@ -626,6 +642,7 @@ void session_reset() {
     g_rx_while_inert = 0;
     g_notified       = false;
     g_fp_reported    = false;
+    g_gate_said      = false;
     g_snap_armed     = false;
     g_snaps_done     = 0;
     g_hash_ticks     = 0;
@@ -703,11 +720,30 @@ bool sampling_now() {
 
 } // namespace
 
+// mp:RM1 -- WHY an armed detector is not sampling, said ONCE per match at the first cadence step.
+// "Armed and sampling nothing" is the shape this repo keeps mistaking for a clean verdict (G68/U30,
+// and the install_desync_watch branches name it explicitly), and until this line existed the only
+// evidence was an ABSENT `first sample sent` -- which is nothing, and nothing is what every log of a
+// run that never reached the sim also shows. Each gate of sampling_now() is printed by name.
+void say_gate_once() {
+    if (g_gate_said) return;
+    g_gate_said = true;
+    say("; [desync] step %lu reached the sampling cadence but NO sample was taken: transport_present=%d "
+        "session_mode=%d (want %d) net_started=%d peers=%d -- the detector is armed and sampling "
+        "nothing until these hold\n",
+        (unsigned long)g_step, mh::net::transport_present() ? 1 : 0,
+        (int)*mh::state::ptr<const uint8_t>(mh::state::RID_GAME_SESSION_MODE), (int)SESSION_MP_LOCKSTEP,
+        MH_Net_IsStarted() ? 1 : 0, MH_Net_PeerCount());
+}
+
 void on_sim_step() {
     if (!g_armed || !g_running) return;
     ++g_step;
     snapshot_tick();
-    if (!sampling_now()) return;
+    if (!sampling_now()) {
+        if ((g_step % (uint32_t)g_cfg.every) == 0) say_gate_once();
+        return;
+    }
     sample_and_judge(g_per, hash_own());
 }
 

@@ -31,6 +31,16 @@ RELAY_CONTENT = (LEG_UP, "net: udp RELAY mode -- ", "net: udp path ")
 ANSI_RE = re.compile(r"\x1b\[[0-9;]*m")
 COUNTERS_REG_RE = re.compile(r'event="counters".*?peers_registered=(\d+)')
 
+# mp:R2c -- the FIRST browser (this scenario's whole walk: "the IP window never visited") is the
+# no-typed-address case R2c fixed: before it, every such join guessed `[net] port` as a room, ate a
+# guaranteed `no_host` refusal, and a guaranteed 4-second peer-handshake timeout, all before the
+# directory ever got a chance to answer. None of that is specific to THIS scenario's own clause
+# above -- a regression could reintroduce the wasted round trip and this checker would still
+# eventually see a leg UP and a path line -- so it needs its own assertion.
+NO_HOST_REFUSED = "net: udp relay refused us -- no host has claimed this room"
+HANDSHAKE_TIMEOUT = "net: udp handshake FAILED"
+RELAY_NO_HOST_RE = re.compile(r'event="refused".*?why="no_host"')
+
 
 def _read(path):
     try:
@@ -67,6 +77,8 @@ def check(peer_dirs, relay_log=None):
     out, fails = [], []
     # At least one peer's log must show the relay leg + a udp path line (the client that joined).
     saw_leg = saw_path = False
+    no_host_hits = []
+    timeout_hits = []
     for d in peer_dirs:
         log = find_log(d)
         if not log:
@@ -78,6 +90,27 @@ def check(peer_dirs, relay_log=None):
         if PATH_RE.search(body):
             saw_path = True
             out.append("udp path line in %s: %s" % (log, PATH_RE.search(body).group(0)))
+        # mp:R2c -- this scenario has no typed address, so its first dial must go straight to the
+        # directory: no guessed-room refusal, no peer-handshake timeout against a room nobody named.
+        if NO_HOST_REFUSED in body:
+            no_host_hits.append(log)
+        if HANDSHAKE_TIMEOUT in body:
+            timeout_hits.append(log)
+    if no_host_hits:
+        fails.append(
+            "`%s` in %s -- the FIRST dial (no typed address) guessed a room and was refused; "
+            "mp:R2c: a dial with no typed address and no directory pick must register directly "
+            "under the directory room, never guess `[net] port` as a room"
+            % (NO_HOST_REFUSED, no_host_hits)
+        )
+    if timeout_hits:
+        fails.append(
+            "`%s` in %s -- the endpoint armed a peer handshake against a room nobody dialled; "
+            "mp:R2c: a browse-only dial must not arm the handshake at all (Config::browse_only)"
+            % (HANDSHAKE_TIMEOUT, timeout_hits)
+        )
+    if not no_host_hits and not timeout_hits:
+        out.append("mp:R2c: no room-guess refusal and no handshake timeout in any peer log")
     if not saw_leg:
         fails.append(
             "no `%s` in any peer log -- the first-browser join did NOT go through the relay (R7a "
@@ -100,6 +133,17 @@ def check(peer_dirs, relay_log=None):
             )
         else:
             out.append("relay carried the session: peers_registered=%s" % regs[-1])
+        # mp:R2c -- "also in the relay's own log as `refused why=no_host` from both players" (the
+        # 2026-09-20 field report). The relay is the other witness to the same claim: it must never
+        # have been ASKED to referee a room this peer had no reason to name.
+        no_host_events = RELAY_NO_HOST_RE.findall(body)
+        if no_host_events:
+            fails.append(
+                "relay log %s shows %d `no_host` refusal event(s) -- mp:R2c: a no-typed-address "
+                "dial must never ask the relay about a room" % (relay_log, len(no_host_events))
+            )
+        else:
+            out.append("relay log shows no `no_host` refusal")
     for f in fails:
         out.append("FAIL: %s" % f)
     return not fails, out
@@ -122,6 +166,27 @@ RELAY_IDLE = (
     '2026-09-19T00:00:10Z  INFO mh_relay counters event="counters" peers=0 peers_registered=0 '
     "\"counters\"\n"
 )
+# mp:R2c -- the pre-fix shape (the 2026-09-20 field report, and this checker's own docstring): a
+# guessed-room refusal followed by the fallback and then the real dial. Still has leg UP + a path
+# line (so the OLDER clauses above stayed green on it), which is exactly why it needs its own
+# assertion rather than relying on those.
+RELAYED_LOG_R2C_REGRESSION = (
+    "net: udp RELAY mode -- 127.0.0.1:7100 room=6501 as client\n"
+    "net: udp relay refused us -- no host has claimed this room -- the host must be on the relay "
+    "first\n"
+    "net: udp relay room 6501 is not hosted -- browsing the relay's session directory instead "
+    "(join a listed game to dial its room)\n"
+    "net: udp handshake FAILED -- no answer from the host within 4000 ms. Either nothing is "
+    "listening behind that address, the host is running transport=tcp while this peer is on udp, "
+    "or the two of you hold different mh_key.txt.\n"
+    "net: udp relay leg UP -- 127.0.0.1:7100 room=12345, handle 3\n"
+    "net: udp path RELAY (forced) -- [net] force_relay=1, so no candidates are published\n"
+)
+RELAY_BUSY_WITH_NO_HOST = (
+    RELAY_BUSY.rstrip("\n")
+    + '\n2026-09-20T00:00:00Z  WARN mh_relay datagram refused event="refused" addr=127.0.0.1:5 '
+    'why="no_host"\n'
+)
 
 
 def selftest():
@@ -134,6 +199,18 @@ def selftest():
         ("a direct dial (no relay contact)", DIRECT_DIAL_LOG, RELAY_IDLE, 1),
         ("relayed client but relay registered nobody", RELAYED_LOG, RELAY_IDLE, 1),
         ("relayed, no relay log given", RELAYED_LOG, None, 0),
+        (
+            "mp:R2c regression -- guessed-room refusal + handshake timeout before the real dial",
+            RELAYED_LOG_R2C_REGRESSION,
+            RELAY_BUSY,
+            1,
+        ),
+        (
+            "mp:R2c regression seen only in the relay's own log",
+            RELAYED_LOG,
+            RELAY_BUSY_WITH_NO_HOST,
+            1,
+        ),
     ]
     fails = []
     with tempfile.TemporaryDirectory() as tmp:

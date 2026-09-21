@@ -625,6 +625,62 @@ def session_match_ids_in_zip(zip_path):
     return ids
 
 
+# ─────────────────────────── raw crash markers swept into the zip (dist:LA9) ───────────────────────────────
+#
+# WHY THIS EXISTS. report.json's `crash` object is the PRIMARY path (below) -- it exists only when
+# THIS launcher run's own live crash channel caught the fault. dist:LA9 widened a report's scope from
+# one session directory to the whole `logs\` tree, and that sweep (report.rs's
+# `add_crash_marker_files`) picks up every `mh_crash_*.marker` file sitting loose under `logs\`,
+# including one an EARLIER, undrained crash left behind -- a report built well after the fact, with
+# no live channel to populate `crash`, can still carry the exact evidence a live one would have. This
+# reads that marker straight out of the zip and resolves it the same way `crash` is resolved, so
+# nobody has to unzip a report by hand to find and read a stray `.marker` file.
+MARKER_ENTRY_RE = re.compile(r"^crash/(mh_crash_[0-9a-f]+\.marker)$", re.I)
+
+
+def parse_marker_text(text):
+    """`key=value` marker text (`mh_crash_marker.h`'s `mh_crash_marker_text`) -> a dict. Blank lines
+    and any key it does not recognise are ignored, the same tolerance the format's own header
+    documents ("an unknown key is ignored by construction, which is the point of key=value")."""
+    facts = {}
+    for line in text.splitlines():
+        line = line.strip()
+        if not line or "=" not in line:
+            continue
+        key, _, value = line.partition("=")
+        facts[key.strip()] = value.strip()
+    return facts
+
+
+def marker_entries_in_zip(zip_path):
+    """Every `crash/mh_crash_*.marker` entry in a report zip (dist:LA9's sweep), in the zip's own
+    listing order."""
+    try:
+        with zipfile.ZipFile(zip_path) as z:
+            return [n for n in z.namelist() if MARKER_ENTRY_RE.match(n)]
+    except (OSError, zipfile.BadZipFile):
+        return []
+
+
+def resolve_marker_in_zip(zip_path, entry):
+    """Read one `crash/mh_crash_*.marker` entry out of a report zip and resolve it exactly like
+    `report.json`'s `crash` object does: `(va, rva, symbol, facts)`, or `None` if the entry cannot be
+    read or names no module/offset. `facts` is the marker's own parsed key=value dict (match_id, pid,
+    tid, build, when, ...) for anything beyond the location."""
+    try:
+        with zipfile.ZipFile(zip_path) as z:
+            text = z.read(entry).decode("utf-8", errors="replace")
+    except (OSError, KeyError, zipfile.BadZipFile):
+        return None
+    facts = parse_marker_text(text)
+    module = facts.get("module", "")
+    offset = facts.get("offset", "")
+    if not module or not offset:
+        return None
+    va, rva, symbol = resolve_module_fault(module, offset)
+    return va, rva, symbol, facts
+
+
 # ─────────────────────────────── the minidump's Exception stream (dist:LA5) ───────────────────────────────
 #
 # WHY THIS EXISTS. report.json's `crash` object (module/offset/thread_id/code, above) already names a
@@ -712,15 +768,19 @@ def read_description_head(report_dir, n=300):
 def print_drained_report(report_dir, say=print):
     """Read ONE drained report directory (`tools/drain_reports.py`'s layout: meta.json +
     description.txt + report.zip) and print its resolution. Returns True if it named a crashing
-    FUNCTION (the thing TL-GATE1's done_when asks for), False otherwise (no crash field, or an
-    offset this build's symbol tables cannot place).
+    FUNCTION (the thing TL-GATE1's done_when asks for), False otherwise (no crash field and no
+    resolvable marker, or an offset this build's symbol tables cannot place).
 
     THE `crash` FIELD CONTRACT (defined here for dist:LA4, the not-yet-built Rust launcher, to
     emit; documented in full in src/collector/README.md "Draining reports"): an OPTIONAL object in
     meta.json, `{"module": "mh.dll" | "mh.exe" | "mh.focus.exe", "offset": "0x...."}`. `offset`'s
     MEANING is module-dependent and is resolve_module_fault()'s job to know, not this function's:
     an exe offset is image-relative (+ IMAGE_BASE), an mh.dll offset is already an RVA. A report
-    with no `crash` key is a normal bug report (no fault to resolve) -- not an error.
+    with no `crash` key is a normal bug report (no fault to resolve) -- not an error, but (dist:LA9)
+    not necessarily the end of it either: `logs\\`'s own sweep may have carried a raw
+    `crash/mh_crash_*.marker` file into the zip regardless (an earlier crash's marker, or one this
+    run's launcher process never had a live channel open for), and this function resolves that too,
+    straight out of the zip -- see `resolve_marker_in_zip`.
     """
     with open(os.path.join(report_dir, "meta.json"), encoding="utf-8") as f:
         meta = json.load(f)
@@ -729,6 +789,7 @@ def print_drained_report(report_dir, say=print):
     module = crash.get("module", "")
     offset = crash.get("offset", "")
     resolved = False
+    zip_path = os.path.join(report_dir, "report.zip")
     if crash:
         va, rva, symbol = resolve_module_fault(module, offset)
         if symbol:
@@ -743,12 +804,38 @@ def print_drained_report(report_dir, say=print):
         say("[report] %s -- crashed in %s" % (report_dir, where))
     else:
         say("[report] %s -- no crash field (exit_code=%s)" % (report_dir, meta.get("exit_code")))
+        # dist:LA9. No live crash channel caught anything THIS run, but `logs\`'s own sweep may
+        # still have swept in a `mh_crash_*.marker` an EARLIER, undrained crash left behind --
+        # resolve it straight out of the zip rather than leaving it as a file someone has to find
+        # and hand-copy out to read.
+        if os.path.isfile(zip_path):
+            for entry in marker_entries_in_zip(zip_path):
+                found = resolve_marker_in_zip(zip_path, entry)
+                if found is None:
+                    continue
+                va, rva, symbol, facts = found
+                marker_module = facts.get("module", "?")
+                if symbol:
+                    where = symbol
+                    resolved = True
+                elif va:
+                    where = "0x%08x (va, unresolved)" % va
+                elif rva is not None:
+                    where = "%s+0x%x (rva, unresolved)" % (marker_module, rva)
+                else:
+                    where = "%s+%s (unresolved -- unknown module or offset)" % (
+                        marker_module,
+                        facts.get("offset", "?"),
+                    )
+                say(
+                    "   [report] %s -- crashed in %s (match_id=%s, no live crash channel -- found "
+                    "in the report's own logs\\ sweep)" % (entry, where, facts.get("match_id", "?"))
+                )
 
     # dist:LA5. If the report shipped a minidump AND it carries an Exception stream (both
     # optional -- the box has to be ticked, and the marker has to have named a `.ctx32` sidecar),
     # cross-check it against `crash`: two different pieces of the launcher wrote these, so agreement
     # is evidence neither is wrong, and a mismatch is worth a WARNING rather than a silent pick.
-    zip_path = os.path.join(report_dir, "report.zip")
     if crash and os.path.isfile(zip_path):
         exc = dmp_exception_stream_in_zip(zip_path)
         if exc is not None:
@@ -1210,6 +1297,54 @@ def selftest():
                     resolved3 is False,
                 )
                 shutil.rmtree(rtmp2, ignore_errors=True)
+
+                # ---- dist:LA9: a marker swept into the zip with no `crash` field to match ------
+                # `report.json` carries no `crash` key (no live channel this run), but `logs\`'s own
+                # sweep still put a raw `mh_crash_*.marker` into the zip -- resolve_marker_in_zip
+                # must find it and resolve it exactly like `crash` would have, WITHOUT anyone
+                # hand-copying the marker out of the zip first.
+                rtmp3 = tempfile.mkdtemp(prefix="crashsel_report3_")
+                try:
+                    marker_text = (
+                        "mh_crash=1\ncode=0xc0000005\nflags=0x00000000\npid=4242\ntid=1337\n"
+                        "address=0x1001a5b0\npointers=0x00000000\nmodule=mh.dll\n"
+                        "module_base=0x10000000\noffset=0x30\nmatch_id=%s\n"
+                        "build=0.1.0-rc1+fixture\nwhen=20260918T090000Z\nctx=0\n" % match_id
+                    )
+                    with zipfile.ZipFile(os.path.join(rtmp3, "report.zip"), "w") as z:
+                        z.writestr("crash/mh_crash_deadbeef12345678.marker", marker_text)
+                        z.writestr("logs/20260918T090000Z_x_1_host/mh_net.log", "no crash here\n")
+                    with open(os.path.join(rtmp3, "meta.json"), "w", encoding="utf-8") as f:
+                        json.dump(
+                            {
+                                "match_id": match_id,
+                                "version": "fixture",
+                                "exit_code": 0,
+                                # No "crash" key: this run's own launcher never caught a live fault.
+                            },
+                            f,
+                        )
+                    ck(
+                        "marker_entries_in_zip(): finds the swept-in marker by its zip path",
+                        marker_entries_in_zip(os.path.join(rtmp3, "report.zip"))
+                        == ["crash/mh_crash_deadbeef12345678.marker"],
+                    )
+                    printed4 = []
+                    resolved4 = print_drained_report(rtmp3, say=printed4.append)
+                    ck(
+                        "print_drained_report(): resolves a marker with no `crash` field to match",
+                        resolved4,
+                    )
+                    ck(
+                        "print_drained_report(): names the function from the swept-in marker",
+                        any("fn_beta" in ln for ln in printed4),
+                    )
+                    ck(
+                        "print_drained_report(): the marker line says it found no live channel",
+                        any("no live crash channel" in ln for ln in printed4),
+                    )
+                finally:
+                    shutil.rmtree(rtmp3, ignore_errors=True)
             finally:
                 shutil.rmtree(rtmp, ignore_errors=True)
         finally:

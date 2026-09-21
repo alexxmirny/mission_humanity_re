@@ -1,0 +1,52 @@
+# mp:GS1 (b) CLIENT: join a relay-listed game from the FIRST browser, LEAVE it with Cancel, RE-JOIN it,
+# and run past 10 s of sim once the host starts. Pair with mp_host_relay_rejoin.txt, which carries the
+# field history (2026-09-20, `a952c570`: a LEAVE that never freed the host's slot, a re-join into a
+# second slot, and a match frozen at 9999 on the ghost).
+#
+# Same first-browser join as mp_client_relay_local.txt (R7), the same voluntary Cancel as
+# mp_client_leave.txt (the only route that sends a LEAVE), then the join again. Every step is ordered
+# by the host's signals so the re-join cannot race the LEAVE it must follow.
+
+settled value:110
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+
+# join from the first browser (the relay directory)
+present Internet server
+sessions 1
+settled Join game
+clickl Join game
+present Network players
+occ 2
+settled Cancel
+capture c1_seated
+
+# leave once the host has captured the seated roster (its `occ 2` fires before our render settles)
+awaitsignal hseated
+clickl Cancel
+absent Network players
+# a VOLUNTARY exit explains nothing (U23's negative case), and the row is still listed: the host is
+# still in its lobby
+absent The host left the game.
+absent Connection to the host was lost.
+
+# re-join only after the host has seen the slot freed
+awaitsignal freed
+sessions 1
+settled Join game
+clickl Join game
+present Network players
+occ 2
+absent The host left the game.
+settled Cancel
+capture c2_reseated
+signal reseated
+
+# the host starts: entry, then past the 10000 ms initial horizon
+absent Network players
+gameclock 12000
+capture c3_running
+log CLIENT left and re-joined the same relay-listed game, was re-seated, and the match ran past 10 s
+end

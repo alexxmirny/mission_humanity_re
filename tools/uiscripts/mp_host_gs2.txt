@@ -1,0 +1,62 @@
+# mp:GS2 (SURVIVOR): host a 2-player match while the CLIENT's SIM is fenced mid-match (its own
+# `mp_client_gs2.txt` arms `simstep`, which holds the sim at a step but leaves the TRANSPORT running --
+# the horizon-heartbeat thread keeps answering keepalives with the frozen value, exactly the field's
+# shape: `since_rx` stays small while the peer's DATA stops moving). This is the backstop for GS1/RM1's
+# freeze class: [net] data_timeout_ms watches g_late_last_move[] (the per-peer horizon-movement clock
+# already used by the lookahead controller) and, once a peer's horizon has not moved for that many ms,
+# runs the SAME direct removal U17(b)'s transport-death fast-drop uses.
+#
+# THE SHAPE IS U19's, not a new one: two human peers, one below-quorum removal ends the match on the
+# engine's own words ("Continue game" is the end-of-match dialog's button, same as mp_host_gquit.txt's
+# survivor clause and for the same reason -- llm_net_player_remove below quorum ends a 2-peer game, it
+# does not just drop a slot). `data_timeout_ms` is pinned low (net_extra) so the scenario is measured in
+# seconds, not the 15 s shipping default; check_data_timeout.py reads the actual drop time off the log.
+#
+# Same menu->lobby->launch walk as mp_host_gquit.txt. Pair with mp_client_gs2.txt.
+
+settled value:110
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+settled Create
+clickl Create
+present Game name
+settled Ok
+clickl Ok
+present Available maps
+settled Ok
+clickl Ok
+
+present Network players
+peers 1
+awaitsignal lobby
+occ 2
+enabled Start
+settled Start
+capture g1_host_lobby
+clickl Start
+
+# ---- the match -----------------------------------------------------------------------------------
+absent Network players
+gamemode 2
+# Both peers reach the same sim moment before the client fences itself, so the freeze always starts
+# from a genuinely-running lockstep match, never from the join transient GS1 already gates around.
+gameclock 500
+
+# The client is about to arm its fence; from here this peer's horizon-heartbeat traffic (keepalives)
+# is all it will keep hearing from the other side.
+awaitsignal freezing
+
+# THE SURVIVOR CLAUSE (mp_host_gquit.txt's, verbatim): "Continue game" is a button on the engine's own
+# end-of-match dialog, so this predicate is false until data_timeout_ms's removal has actually been
+# applied here -- reached ONLY through the GS2 watchdog's llm_net_player_remove call, never through
+# anything this script does. DO NOT REPLACE THIS WITH A `gameclock` WAIT: once the match ends, the game
+# clock leaves the fixed lockstep quantum and jumps to TOTAL_GAME_TIME in one variable step (dead-ends
+# G158), so a clock target cannot tell "still running" from "finished".
+present Continue game
+settled Continue game
+dump
+
+log GS2: the survivor was dropped into the end-of-match dialog once the frozen peer's data-silence crossed data_timeout_ms
+end

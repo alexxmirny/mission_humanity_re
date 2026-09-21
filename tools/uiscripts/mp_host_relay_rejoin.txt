@@ -1,0 +1,61 @@
+# mp:GS1 (b) HOST: a client that LEAVES the lobby and RE-JOINS it through the relay takes ONE slot,
+# not a ghost plus a new one, and the match then runs past 10 s on both peers. Pair with
+# mp_client_relay_leave_rejoin.txt.
+#
+# WHY THIS EXISTS (2026-09-20, `a952c570`). The remote player joined the host's 4-slot lobby as slot 1,
+# left it at clock 0 (session `leave`, 14 s in), and re-joined 66 s later -- as slot 2, with slot 1
+# still holding his name: his LEAVE never freed the slot on the host. The host started the match with
+# that ghost in slot 1; the ghost's horizon never left the 10000 ms initial advertisement, so
+# `committed` pinned at 10000 and both peers froze at clock 9999 (his rows: peer0 100 -> 1780 -> 10460
+# while peer1 == 10000 throughout). leave_frees_slot already proves the LEAVE frees the slot on a
+# DIRECT tcp link; the field ran the relay + punch path, which this pair does too.
+#
+# WHAT IS ASSERTED. The slot is freed on the LEAVE (`occ <2`) and the re-join takes it back
+# (`occ 2` AND `occ <3` -- two humans, no third row), Start un-greys on the re-seated client, and
+# once launched BOTH peers pass `gameclock 12000` -- 12 s is past the 10000 ms initial horizon, so a
+# ghost slot cannot satisfy it. The two peers are strictly ordered by signals (client seated -> host
+# captured -> client leaves -> host sees the slot freed -> client re-joins), because an unordered
+# re-join can race the LEAVE it is supposed to follow.
+
+settled value:110
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+settled Create
+clickl Create
+present Game name
+settled Ok
+clickl Ok
+present Available maps
+settled Ok
+clickl Ok
+
+# the client joined and is seated here
+present Network players
+occ 2
+settled Start
+capture h1_seated
+signal hseated
+
+# the client clicked Cancel -> its LEAVE (over the relay leg) frees the slot here; Start greys again
+occ <2
+disabled Start
+capture h2_slot_freed
+signal freed
+
+# the client re-joins: seated again, in ONE slot (fewer than 3 occupied), Start un-greys
+occ 2
+occ <3
+enabled Start
+settled Start
+capture h3_reseated
+
+# launch once the client has its own re-seated capture; the sim must pass the 10000 ms initial horizon
+awaitsignal reseated
+clickl Start
+absent Network players
+gameclock 12000
+capture h4_running
+log HOST: the departed client's slot was freed, its re-join took one slot, the match ran past 10 s
+end

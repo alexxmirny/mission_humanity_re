@@ -17,16 +17,27 @@
 #      or `nickfedor/` (its 2025 fork) namespaces, or a `com.centurylinklabs.watchtower.*`
 #      label) -- RP4's scope line: "Watchtower is archived (Dec 2025) and is not used." Image
 #      updates are pulled explicitly by .github/workflows/deploy.yml, not auto-updated in place.
+#   4. (dist:RP7, 2026-09-20) the collector's REPORTS_DIR target (`/data/reports`) must be a BIND
+#      mount whose host source is the drain root `/srv/reports` -- either the literal, or the
+#      compose default-substitution form `${VAR:-/srv/reports}` (the dev stack's escape hatch for
+#      a workstation without /srv). A named volume (`reports:/data/reports`) is exactly what the
+#      first live stack had: uploads returned 201 into /var/lib/docker/volumes/..., the rrsync
+#      drain key can only read /srv/reports, and six real reports were invisible for two days
+#      (dead-ends G250). Both files are checked so the dev and prod collector blocks
+#      cannot drift apart on this, and a missing /data/reports mount is a finding too.
 #
 # WHAT IT DOES NOT DO: this is not `docker compose config` (Docker itself is not installed on the
 # machine this was authored on, 2026-09-17 -- see docs/deploy.md). It parses YAML and checks the
-# THREE structural facts above; it cannot tell you the compose file is otherwise runnable. Run
+# FOUR structural facts above; it cannot tell you the compose file is otherwise runnable. Run
 # `docker compose config` once Docker exists, as docs/deploy.md's verification section says.
+# Whether the RUNNING container on the VPS actually has that bind is deploy.yml's job (its
+# "collector writes the drain root" step inspects the live mount after every deploy).
 #
 # Run: python tools/lint_compose.py [--check] [--selftest]
 
 import argparse
 import os
+import re
 import sys
 
 import yaml
@@ -44,6 +55,12 @@ RELAY_IMAGE_HINTS = ("mh-relay", "mh_relay")
 COLLECTOR_IMAGE_HINTS = ("mh-collector", "mh_collector")
 WATCHTOWER_IMAGE_HINTS = ("containrrr/watchtower", "nickfedor/watchtower")
 WATCHTOWER_LABEL_PREFIX = "com.centurylinklabs.watchtower."
+
+# Rule 4: the collector's REPORTS_DIR inside the container, and the only host path allowed to back
+# it -- the literal the drain key's `rrsync -ro /srv/reports` is pinned to (tools/drain_reports.py).
+REPORTS_TARGET = "/data/reports"
+DRAIN_ROOT = "/srv/reports"
+_DEFAULT_SUBST = re.compile(r"^\$\{[A-Za-z_][A-Za-z0-9_]*:?-(?P<default>[^}]*)\}$")
 
 
 def find_compose_files():
@@ -68,6 +85,39 @@ def _is_collector(service_name, svc):
         return True
     image = str(svc.get("image", ""))
     return any(h in image for h in COLLECTOR_IMAGE_HINTS)
+
+
+def _reports_mount_source(svc):
+    """The host-side source of the service's `/data/reports` mount, or None if there is no such
+    mount. Understands both compose volume syntaxes: the short `src:dst[:opts]` string and the
+    long `{type, source, target}` mapping (a long-form `type: volume` is reported as its volume
+    name, so it fails rule 4 the same way a short-form name does)."""
+    for entry in svc.get("volumes") or []:
+        if isinstance(entry, str):
+            # `${VAR:-default}` carries its own colon: peel a leading substitution off whole
+            # before splitting `src:dst[:opts]`.
+            if entry.startswith("${") and "}" in entry:
+                src, _, rest = entry.partition("}")
+                src += "}"
+                rest = rest.removeprefix(":")
+            else:
+                src, _, rest = entry.partition(":")
+            if rest.split(":")[0] == REPORTS_TARGET:
+                return src
+        elif isinstance(entry, dict) and entry.get("target") == REPORTS_TARGET:
+            return str(entry.get("source", ""))
+    return None
+
+
+def _resolve_host_path(source):
+    """`/srv/reports` -> itself; `${MH_REPORTS_DIR:-/srv/reports}` -> `/srv/reports`; a bare
+    name (a named volume) or a `${VAR}` with no default -> None (nothing static to check)."""
+    m = _DEFAULT_SUBST.match(source)
+    if m:
+        source = m.group("default")
+    if source.startswith("/"):
+        return source
+    return None
 
 
 def _labels_list(svc):
@@ -120,6 +170,19 @@ def audit_compose(path, doc):
                     "default bridge, reachable only through Caddy (RP4 scope: \"the collector "
                     "does not\")" % (path, name)
                 )
+            source = _reports_mount_source(svc)
+            if source is None:
+                findings.append(
+                    "%s: collector service %r mounts nothing at %s -- reports would live inside "
+                    "the container and die with it (RP7)" % (path, name, REPORTS_TARGET)
+                )
+            elif _resolve_host_path(source) != DRAIN_ROOT:
+                findings.append(
+                    "%s: collector service %r backs %s with %r, want a bind of the drain root "
+                    "%s (or ${VAR:-%s}) -- anything else is invisible to the rrsync drain key "
+                    "(RP7; dead-ends G250)"
+                    % (path, name, REPORTS_TARGET, source, DRAIN_ROOT, DRAIN_ROOT)
+                )
 
     return findings
 
@@ -151,7 +214,10 @@ def _fixture():
     return {
         "services": {
             "relay": {"image": "ghcr.io/x/mh-relay:latest", "network_mode": "host"},
-            "collector": {"image": "ghcr.io/x/mh-collector:latest"},
+            "collector": {
+                "image": "ghcr.io/x/mh-collector:latest",
+                "volumes": ["/srv/reports:/data/reports"],
+            },
             "caddy": {"image": "caddy:2-alpine"},
         }
     }
@@ -177,12 +243,40 @@ def _arm_watchtower_label(doc):
     doc["services"]["relay"]["labels"] = {"com.centurylinklabs.watchtower.enable": "true"}
 
 
+def _arm_reports_named_volume(doc):
+    # The exact shape the first live stack shipped with (RP7).
+    doc["services"]["collector"]["volumes"] = ["reports:/data/reports"]
+
+
+def _arm_reports_wrong_bind(doc):
+    doc["services"]["collector"]["volumes"] = ["/var/lib/mh/reports:/data/reports"]
+
+
+def _arm_reports_wrong_default(doc):
+    doc["services"]["collector"]["volumes"] = ["${MH_REPORTS_DIR:-./data/reports}:/data/reports"]
+
+
+def _arm_reports_long_form_volume(doc):
+    doc["services"]["collector"]["volumes"] = [
+        {"type": "volume", "source": "reports", "target": "/data/reports"}
+    ]
+
+
+def _arm_reports_unmounted(doc):
+    del doc["services"]["collector"]["volumes"]
+
+
 ARMS = (
     ("relay missing network_mode: host", _arm_relay_missing_host),
     ("relay network_mode is not host", _arm_relay_wrong_mode),
     ("collector given network_mode: host", _arm_collector_gets_host),
     ("a Watchtower image", _arm_watchtower_image),
     ("a Watchtower label", _arm_watchtower_label),
+    ("collector reports on a named volume", _arm_reports_named_volume),
+    ("collector reports bound to a non-drain path", _arm_reports_wrong_bind),
+    ("collector reports ${VAR:-default} with a non-drain default", _arm_reports_wrong_default),
+    ("collector reports as a long-form named volume", _arm_reports_long_form_volume),
+    ("collector with no /data/reports mount", _arm_reports_unmounted),
 )
 
 
@@ -196,6 +290,20 @@ def selftest():
         for f in clean:
             print("    " + f)
         ok = False
+    # The dev stack's spelling of the same bind (rule 4's one permitted variant) must be clean too,
+    # and so must the long-form bind -- both are legitimate ways to say "/srv/reports".
+    for variant in (
+        ["${MH_REPORTS_DIR:-/srv/reports}:/data/reports"],
+        [{"type": "bind", "source": "/srv/reports", "target": "/data/reports"}],
+    ):
+        doc = copy.deepcopy(_fixture())
+        doc["services"]["collector"]["volumes"] = variant
+        got = audit_compose("fixture.yml", doc)
+        if got:
+            print("SELFTEST: the %r bind variant is refused -- the lint over-refuses." % (variant,))
+            for f in got:
+                print("    " + f)
+            ok = False
 
     for label, mutate in ARMS:
         doc = copy.deepcopy(_fixture())
@@ -219,7 +327,7 @@ def selftest():
 
 def main():
     ap = argparse.ArgumentParser(
-        description="structural checks over every tracked docker-compose file (dist RP4)"
+        description="structural checks over every tracked docker-compose file (dist RP4, RP7)"
     )
     ap.add_argument("--check", action="store_true", help="the default action; kept for symmetry")
     ap.add_argument("--selftest", action="store_true", help="prove every arm still fires")

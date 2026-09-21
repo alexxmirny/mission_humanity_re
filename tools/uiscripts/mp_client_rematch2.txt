@@ -1,0 +1,82 @@
+# mp:RM1 (CLIENT): mp_client_rematch.txt's walk (U40) CONTINUED INTO THE SECOND MATCH -- see
+# mp_host_rematch2.txt for what this pair proves. The walk up to the re-joined lobby is a verbatim copy
+# of mp_client_rematch.txt (its comments explain every step); the captures are renamed so this pair has
+# baselines of its own.
+
+# ---- join game 1 ---------------------------------------------------------------------------------
+settled value:110
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+present Internet server
+settled Internet server
+clickl Internet server
+present Server address
+settled Connect
+clickl Connect
+sessions 1
+settled Join game
+clickl Join game
+present Network players
+# tell the host we are really in our lobby (its `awaitsignal lobby`), not merely connected
+signal lobby
+settled Cancel
+capture r1_lobby_game1
+
+# ---- the match, then END it ----------------------------------------------------------------------
+absent Network players
+gamemode 2
+gameclock 3000
+# ESC -> Quit game -> confirm -> the main menu. This is llm_game_return_to_main_menu_cb, i.e.
+# mp_session_close("quit"): the SES1 session boundary, and on this role the moment the link to the
+# host is declared spent. We quit FIRST and tell the host, so the two departures are ordered.
+key 0x01
+# ESC-menu entries have no matchable labels -- target by VALUE (Quit game 113), and the confirm
+# behind it by &Yes 121. Both dumped 2026-08-27 by tools/uiscripts/d15_exit_witness.txt.
+# `clickl Quit game` lands on Diplomacy: the label matcher only ever sees '&'.
+settled value:113
+clickv 113
+settled value:121
+clickv 121
+settled value:110
+signal cliquit
+
+# ---- back to the browser, in the same instance ---------------------------------------------------
+# Wait for the host to be out of the match before dialling it again. Not politeness: a re-dial while
+# the host is still in lockstep makes it accept a peer mid-match, which is a different (and much
+# noisier) thing than the one under test.
+awaitsignal hostquit
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+present Internet server
+settled Internet server
+clickl Internet server
+present Server address
+settled Connect
+clickl Connect
+# THE ASSERTION. Pre-U40 this peer had no way to reach the host again -- its transport was latched
+# "started" for the life of the process, so nothing would ever dial -- and the host's re-created
+# lobby advertised into `peers=0` for as long as anyone cared to watch. Reaching `sessions 1` here
+# means the re-dial happened AND the host's NEW lobby arrived over it.
+sessions 1
+settled Join game
+# The host captures its no-ghost frame before we join (it must show occ 1 while we are merely
+# connected), so hold the click until it says it has.
+awaitsignal rehosted
+clickl Join game
+present Network players
+occ 2
+settled Cancel
+capture r2_rejoined_after_match
+# ---- game 2: the rematch itself --------------------------------------------------------------------
+# The host presses Start only after we have captured the lobby (`awaitsignal rejoined` on its side).
+signal rejoined
+absent Network players
+gamemode 2
+gameclock 12000
+capture r3_game2_running
+log CLIENT played a SECOND match in the same process after re-joining; game 2 ran past 12 s
+end

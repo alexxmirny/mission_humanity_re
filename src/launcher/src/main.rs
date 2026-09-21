@@ -4,7 +4,7 @@
 //! release zip you already have next to your `mh.exe`, starts the game, and tells you whether the
 //! process chose to stop or was stopped by a fault (LA1). The crash report is dist LA4 and still has
 //! its place in the window so that arriving does not move anything. Since dist LA6 the front page
-//! is **Host / Join**: the signed manifest may name a relay, and the launcher writes it into the
+//! is **Play**: the signed manifest may name a relay, and the launcher writes it into the
 //! game's `mh_net.ini` + `mh_key.txt` on install, on update and before every launch (`relay.rs`).
 //!
 //! THE ONLY NETWORK CODE IS `update.rs`, and it talks to two things: the manifest's base URL and the
@@ -53,12 +53,12 @@ usage: mh_launcher [options]
   --game-dir <path>     use this game directory (the folder holding mh.exe) and remember it
   --install <zip>       install this release zip into the game directory at startup
   --uninstall           undo the launcher's install in the game directory at startup
-  --launch              start the game at startup -- exactly what the Host and Join buttons do
+  --launch              start the game at startup -- exactly what the Play button does
                         (the picked configuration is installed first if it is missing, then the
                         relay from the accepted manifest is written into mh_net.ini +
                         mh_key.txt; the lobby is the game's own)
   --exit-after-launch   close the launcher once the game it started has exited
-  --view <name>         open on play | status | report (default: play, the Host / Join page)
+  --view <name>         open on play | status | report (default: play, the Play page)
   --size <W>x<H>        initial window size in points (default 1280x720)
   --app-dir <path>      keep launcher state here instead of %LOCALAPPDATA%\\MissionHumanity
 
@@ -170,7 +170,7 @@ fn parse_args() -> Result<Option<Args>, String> {
         app_dir: None,
         update_url: None,
         verify_binary: false,
-        // dist LA6: the front page is Host / Join.
+        // dist LA6: the front page is Play.
         view: View::Launch,
         size: [1280.0, 720.0],
         startup: Startup::default(),

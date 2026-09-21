@@ -2120,6 +2120,9 @@
     <ClCompile Include="..\mh\seams\ui_chat_input.cpp">
       <Filter>mh\seams</Filter>
     </ClCompile>
+    <ClCompile Include="..\mh\seams\ui_cheat_gate.cpp">
+      <Filter>mh\seams</Filter>
+    </ClCompile>
     <ClCompile Include="..\mh\seams\ui_net_indicator.cpp">
       <Filter>mh\seams</Filter>
     </ClCompile>

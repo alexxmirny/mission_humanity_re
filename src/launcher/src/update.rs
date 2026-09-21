@@ -1543,11 +1543,11 @@ mod tests {
         String::from_utf8_lossy(&std::fs::read(p).unwrap_or_default()).to_string()
     }
 
-    /// dist LA8 done_when (1): *on a game directory with nothing installed, Host with `net-debug`
+    /// dist LA8 done_when (1): *on a game directory with nothing installed, Play with `net-debug`
     /// selected ends with that zip's files installed (receipt names the tag) and the relay
     /// provisioned* -- the launch itself is `app.rs`'s, and it only starts once this returns.
     #[test]
-    fn host_on_an_empty_directory_installs_the_chosen_configuration_and_the_relay() {
+    fn play_on_an_empty_directory_installs_the_chosen_configuration_and_the_relay() {
         let root = std::env::temp_dir().join("mh_launcher_test_play_install");
         let _ = std::fs::remove_dir_all(&root);
         let layout = Layout::rooted(root.join("state"));
@@ -1608,7 +1608,7 @@ mod tests {
             steps.iter().any(|s| s.starts_with("installing")),
             "{steps:?}"
         );
-        // A second Host is a plain launch: the receipt says it is there.
+        // A second Play is a plain launch: the receipt says it is there.
         assert_eq!(readiness(&game, "net-debug"), Readiness::Ready);
         assert!(make_ready_with_key(
             &layout,
@@ -1624,7 +1624,7 @@ mod tests {
         let _ = std::fs::remove_dir_all(&root);
     }
 
-    /// dist LA8 done_when (2): *switching the picker to `net` and pressing Host again swaps the
+    /// dist LA8 done_when (2): *switching the picker to `net` and pressing Play again swaps the
     /// install (mh_harness.dll gone, receipt updated)* -- an uninstall of the old set, then the
     /// install of the new one, with the game's own dll still parked as `.mhbak`.
     #[test]

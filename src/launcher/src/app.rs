@@ -7,11 +7,12 @@
 //! so that arriving does not reshuffle a layout players have learned.
 //!
 //! **dist LA6 made the launch view the FRONT PAGE** -- the first tab, the one the window opens on,
-//! titled *Play* -- with two buttons, **Host** and **Join**. They do the same thing: write the
-//! relay the signed manifest names into the game's `mh_net.ini` + `mh_key.txt` (`relay.rs`) and
-//! start the game. The difference is what the player does next in the game's own menu (create a
-//! game, or browse the relay's list -- mp:R2/R7), and the two buttons exist so the front page says
-//! that in two words instead of a paragraph. Status (install, update) and Report keep their tabs.
+//! titled *Play* -- with one button, **Play**. It writes the relay the signed manifest names into
+//! the game's `mh_net.ini` + `mh_key.txt` (`relay.rs`) and starts the game. Hosting or joining is
+//! decided in the game's own menu afterwards (create a game, or browse the relay's list --
+//! mp:R2/R7). It was two buttons, Host and Join, until 2026-09-20: they ran identical code and
+//! differed only in the log line, so the user ruled them one. Status (install, update) and Report
+//! keep their tabs.
 //!
 //! Everything here is immediate-mode: there is no retained widget tree, so a view is a function of
 //! `self` and the frame draws whatever the state currently says. The only thing that has to be
@@ -19,7 +20,7 @@
 //! frame rather than waited on -- blocking the UI thread on `wait()` would freeze the window for
 //! the length of the game session and make the launcher look like the thing that hung.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::mpsc::{self, Receiver};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -73,7 +74,7 @@ pub enum UpdateAction {
     Apply,
     /// The above, but for the launcher executable itself.
     SelfUpdate,
-    /// dist LA8: Host / Join on a directory that does not hold the chosen configuration --
+    /// dist LA8: Play on a directory that does not hold the chosen configuration --
     /// install it (uninstalling another one first), provision the relay, then launch.
     MakeReady,
 }
@@ -113,7 +114,7 @@ struct Job {
     /// dist LA8: what the thread is doing right now ("downloading …"), for the Play page to show
     /// in place. Written by the thread through `update::Progress`, read every repaint.
     progress: Arc<Mutex<String>>,
-    /// Started from the Play page (Host / Join), so its progress and its verdict belong there.
+    /// Started from the Play page (the Play button), so its progress and its verdict belong there.
     from_play: bool,
 }
 
@@ -200,7 +201,7 @@ pub struct App {
     tag_pick: String,
     /// The picker is open. Forced open while nothing is installed; a button opens it otherwise.
     picker_open: bool,
-    /// Host / Join was pressed on a directory that first needed an install: the launch that is
+    /// Play was pressed on a directory that first needed an install: the launch that is
     /// waiting for the `MakeReady` job, holding the text the log will say the player pressed.
     pending_launch: Option<String>,
     /// The last finished job was started from the Play page, so its verdict is shown there.
@@ -247,6 +248,19 @@ pub struct App {
     outbox_pending: Vec<PathBuf>,
     upload_line: String,
     upload_is_error: bool,
+
+    // ---- dist LA9 -------------------------------------------------------------------------
+    /// This launcher process's own UTC start stamp (`stamp_for_file`'s shape), so a report can
+    /// tell `report::plan_logs` "everything since I started" instead of falling back to the
+    /// newest-N. Captured once, at construction -- it names WHEN, not where, so nothing about a
+    /// later game directory change invalidates it.
+    started_utc: String,
+    /// The session directory the player picked in the Report view's picker, by leaf name. `None`
+    /// means "use the newest", `report::default_session_dir`'s existing meaning -- a player who
+    /// never opens the picker gets exactly that.
+    session_pick: Option<String>,
+    /// The session picker is open (mirrors `picker_open`, the configuration picker's own flag).
+    session_picker_open: bool,
 }
 
 /// One upload, on its own thread.
@@ -295,6 +309,9 @@ impl App {
             outbox_pending: Vec::new(),
             upload_line: String::new(),
             upload_is_error: false,
+            started_utc: stamp_for_file(),
+            session_pick: None,
+            session_picker_open: false,
         }
         .with_startup_flags()
     }
@@ -377,6 +394,71 @@ impl App {
         self.game_dir().is_some_and(|d| paths::is_game_dir(&d))
     }
 
+    /// dist LA9: which match the report is about -- "let the description form name the match the
+    /// player means" (the row's scope). The player's pick from `session_picker_block`, if it still
+    /// exists; otherwise the newest, `report::default_session_dir`'s existing default.
+    fn chosen_session_dir(&self) -> Option<PathBuf> {
+        let game_dir = self.game_dir()?;
+        let dirs = report::session_dirs(&game_dir);
+        if let Some(name) = self.session_pick.as_deref() {
+            if let Some(p) = dirs
+                .iter()
+                .find(|p| p.file_name().is_some_and(|n| n == name))
+            {
+                return Some(p.clone());
+            }
+        }
+        dirs.into_iter()
+            .next()
+            .or_else(|| report::default_session_dir(Some(&game_dir)))
+    }
+
+    /// dist LA9: "Match: <name> [Change...]", or the open picker -- one radio line per session
+    /// directory, newest first, mirroring `configuration_block`'s own open/closed shape. Hidden
+    /// when there is nothing to pick between (zero or one match on disk).
+    fn session_picker_block(&mut self, ui: &mut egui::Ui) {
+        let Some(game_dir) = self.game_dir() else {
+            return;
+        };
+        let dirs = report::session_dirs(&game_dir);
+        if dirs.len() < 2 {
+            return;
+        }
+        let chosen_name = self
+            .chosen_session_dir()
+            .as_deref()
+            .and_then(Path::file_name)
+            .map(|n| n.to_string_lossy().to_string())
+            .unwrap_or_default();
+        if !self.session_picker_open {
+            ui.horizontal(|ui| {
+                ui.label("Match:");
+                ui.monospace(&chosen_name);
+                if ui.small_button("Change...").clicked() {
+                    self.session_picker_open = true;
+                }
+            });
+        } else {
+            egui::Frame::group(ui.style()).show(ui, |ui| {
+                ui.label(egui::RichText::new("Which match is this report about?").strong());
+                for dir in &dirs {
+                    let name = dir
+                        .file_name()
+                        .unwrap_or_default()
+                        .to_string_lossy()
+                        .to_string();
+                    if ui.radio(chosen_name == name, &name).clicked() {
+                        self.session_pick = Some(name);
+                        self.session_picker_open = false;
+                    }
+                }
+                if ui.small_button("Done").clicked() {
+                    self.session_picker_open = false;
+                }
+            });
+        }
+    }
+
     fn say(&mut self, msg: impl Into<String>, is_error: bool) {
         let msg = msg.into();
         log::line(format!("ui: {msg}"));
@@ -425,7 +507,7 @@ impl App {
         }
     }
 
-    /// Start the game. `how` is only what the log says the player pressed -- Host, Join and
+    /// Start the game. `how` is only what the log says the player pressed -- the Play button and
     /// `--launch` run identical code, because the relay lines are what make either work and the
     /// choice between hosting and joining is made in the game's own menu (dist LA6).
     fn do_launch(&mut self, how: &str) {
@@ -460,7 +542,7 @@ impl App {
         // dist LA6: the relay lines go in BEFORE the process exists, every time -- an ini the player
         // (or an older install) changed since is put right again, and one that already says it is
         // not rewritten. A failure here is a refusal to launch, not a warning: a player who pressed
-        // Host and got a game that quietly plays direct would blame the relay.
+        // Play and got a game that quietly plays direct would blame the relay.
         match relay::provision(&dir, self.relay.as_ref()) {
             Ok(done) if done != relay::Provisioned::NONE => {
                 log::line(format!("launch: {}", done.summary()))
@@ -553,8 +635,23 @@ impl App {
         match session.poll() {
             Ok(None) => false,
             Ok(Some(finished)) => {
+                // dist LA10: read back where the game itself said its logs went, BEFORE dropping
+                // the session (its `exe` path is game_dir\mh.exe, and this is the one place that
+                // still has it) -- see `launch::resolved_log_root`'s doc comment for why every
+                // launch gets this line rather than only a crashed one.
+                let game_dir = session.exe.parent().map(Path::to_path_buf);
                 self.session = None;
                 self.channel = None;
+                if let Some(dir) = game_dir.as_deref() {
+                    match launch::resolved_log_root(dir) {
+                        Some(root) => log::line(format!("launch: game's log root -> {root}")),
+                        None => log::line(
+                            "launch: game's log root -> mh_run.txt is missing or empty (LA10: \
+                             the game may have fallen back to writing logs into its own install \
+                             folder instead of a logs\\ subdirectory)",
+                        ),
+                    }
+                }
                 let text = finished.outcome.describe();
                 let is_err = finished.outcome.is_crash();
                 self.note_first_run(&finished);
@@ -573,7 +670,8 @@ impl App {
 
     /// Build a report from whatever the launcher currently knows. dist LA4.
     fn do_report(&mut self, dest: Option<PathBuf>) {
-        let session_dir = report::default_session_dir(self.game_dir().as_deref());
+        // dist LA9: the match the description form names -- the player's pick, or the newest.
+        let session_dir = self.chosen_session_dir();
         let dest = dest.unwrap_or_else(|| {
             self.reports_dir()
                 .join(format!("mh_report_{}.zip", stamp_for_file()))
@@ -587,6 +685,7 @@ impl App {
         let input = report::Input {
             game_dir: game_dir.as_deref(),
             session_dir,
+            launcher_started_utc: Some(self.started_utc.clone()),
             description: &self.description,
             last_run: self.last_run.as_ref(),
             crash: self.marker.as_ref(),
@@ -931,7 +1030,7 @@ impl App {
     }
 
     /// dist LA8: the player picked a configuration. Remembered at once; nothing is installed
-    /// until Host / Join.
+    /// until Play.
     fn pick_tag(&mut self, tag: &str) {
         if self.tag_pick == tag {
             return;
@@ -1349,7 +1448,7 @@ impl App {
 
     /// dist LA8: "Configuration: net -- …" with a *Change...* button, or the open picker: three
     /// radio lines, one per manifest tag, `net` preselected on a fresh machine. Picking writes
-    /// `launcher.toml`; nothing is installed until Host / Join, which installs (or switches to)
+    /// `launcher.toml`; nothing is installed until Play, which installs (or switches to)
     /// the picked one before starting the game.
     fn configuration_block(&mut self, ui: &mut egui::Ui, installed: Option<&install::Manifest>) {
         let picked = self.tag_pick.clone();
@@ -1381,15 +1480,15 @@ impl App {
                 ui.label(
                     egui::RichText::new(match installed {
                         None => format!(
-                            "Nothing is installed in this folder yet: Host or Join downloads \
+                            "Nothing is installed in this folder yet: Play downloads \
                              and installs the {picked} configuration first, then starts the game.",
                         ),
                         Some(m) if m.tag == picked => format!(
-                            "{} {} is installed here. Host or Join starts it.",
+                            "{} {} is installed here. Play starts it.",
                             m.tag, m.version
                         ),
                         Some(m) => format!(
-                            "{} {} is installed here: Host or Join removes it and installs \
+                            "{} {} is installed here: Play removes it and installs \
                              {picked} first (the game's own files are put back, then parked again).",
                             m.tag, m.version
                         ),
@@ -1416,7 +1515,7 @@ impl App {
         }
     }
 
-    /// The front page (dist LA6): Host and Join, the relay they will use, and the last run.
+    /// The front page (dist LA6): the Play button, the relay it will use, and the last run.
     fn launch_view(&mut self, ui: &mut egui::Ui) {
         ui.heading("Play");
         ui.add_space(6.0);
@@ -1453,37 +1552,22 @@ impl App {
             if ui
                 .add_enabled(
                     can,
-                    egui::Button::new(egui::RichText::new("Host").size(22.0)),
+                    egui::Button::new(egui::RichText::new("Play").size(22.0)),
                 )
                 .on_hover_text(
-                    "Starts the game. Then NETWORK GAME -> create a game: it is listed on the \
-                     relay under your name for the others to join.",
+                    "Starts the game. Then NETWORK GAME -> Create game to host (it is listed on \
+                     the relay under your name), or Refresh list to pick a game on the relay.",
                 )
                 .on_disabled_hover_text(why_not)
                 .clicked()
             {
-                self.do_launch("Host pressed");
-            }
-            ui.add_space(12.0);
-            if ui
-                .add_enabled(
-                    can,
-                    egui::Button::new(egui::RichText::new("Join").size(22.0)),
-                )
-                .on_hover_text(
-                    "Starts the game. Then NETWORK GAME -> Refresh list: the games on the relay \
-                     are listed, pick one.",
-                )
-                .on_disabled_hover_text(why_not)
-                .clicked()
-            {
-                self.do_launch("Join pressed");
+                self.do_launch("Play pressed");
             }
             if running {
                 ui.spinner();
             }
         });
-        // dist LA8: the install that Host / Join started, in place -- what the thread is doing
+        // dist LA8: the install that Play started, in place -- what the thread is doing
         // now, and, when it is over, what it said.
         if let Some(progress) = self.play_progress() {
             ui.add_space(6.0);
@@ -1512,7 +1596,7 @@ impl App {
                 ));
                 ui.label(
                     egui::RichText::new(format!(
-                        "Both buttons put [net] transport=udp and [net] relay= into {} and the \
+                        "Play puts [net] transport=udp and [net] relay= into {} and the \
                          relay's key into {} before the game starts; the lobby itself is the \
                          game's. Nothing else in the configuration is touched.",
                         relay::INI_NAME,
@@ -1525,7 +1609,7 @@ impl App {
             None => {
                 ui.label(
                     egui::RichText::new(
-                        "No relay: no accepted manifest names one. Host and Join start the game \
+                        "No relay: no accepted manifest names one. Play starts the game \
                          as it is configured -- direct play by address. Check for updates on the \
                          Status tab to pick one up.",
                     )
@@ -1641,12 +1725,16 @@ impl App {
         }
 
         ui.add_space(10.0);
+        // dist LA9: which match this report is about -- a picker when there is more than one.
+        self.session_picker_block(ui);
+
+        ui.add_space(10.0);
         ui.label("What goes in");
         match self.last_run.as_ref() {
             Some(f) => ui.monospace(format!("exit: {}", f.outcome.describe())),
             None => ui.monospace("exit: (no run in this launcher session)"),
         };
-        let session = report::default_session_dir(self.game_dir().as_deref());
+        let session = self.chosen_session_dir();
         match session.as_ref() {
             Some(dir) => {
                 ui.monospace(format!("session log directory: {}", dir.display()));
@@ -1663,6 +1751,14 @@ impl App {
                 ui.monospace("session log directory: none found under the game folder");
             }
         };
+        ui.label(
+            egui::RichText::new(
+                "every process and match directory written since this launcher started (or the \
+                 newest handful, whichever is known), plus any crash marker -- dist LA9",
+            )
+            .weak()
+            .small(),
+        );
         ui.monospace("config: mh_net.ini, with any key/token setting blanked");
         ui.label(
             egui::RichText::new(

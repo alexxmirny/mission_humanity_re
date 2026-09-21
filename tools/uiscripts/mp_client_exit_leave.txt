@@ -1,0 +1,53 @@
+# mp:GS1 (b) CLIENT1, PROCESS-EXIT VARIANT: join a relay-listed game from the FIRST browser, LEAVE
+# it with Cancel (same voluntary exit as mp_client_leave.txt / mp_client_relay_leave_rejoin.txt's
+# leave half), then QUIT THE PROCESS FOR REAL -- back to the main menu and out, the genuine
+# llm_wnd_on_destroy -> ExitProcess path (d15_exit_witness.txt's tail), not a harness kill. Pair
+# with mp_host_exit_rejoin.txt (host) + mp_client_exit_rejoin.txt (client2, launched by
+# ui_test.py's --client-after-exit only once THIS process is confirmed gone -- see test_ui.py's
+# ghost_exit_rejoin TESTS entry, client_after_exit + client_shares_lane).
+#
+# Reproduces Rizzen's own timeline (2026-09-20, `a952c570`): Cancel/LEAVE at 09:52:01.987, `EXIT
+# llm_wnd_on_destroy` at 09:52:26 (quit to desktop) -- this script is that half.
+
+settled value:110
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+
+# join from the first browser (the relay directory)
+present Internet server
+sessions 1
+settled Join game
+clickl Join game
+present Network players
+occ 2
+settled Cancel
+capture c1_seated
+
+clickl Cancel
+absent Network players
+# a VOLUNTARY exit explains nothing (U23's negative case), and the row is still listed: the host is
+# still in its lobby
+absent The host left the game.
+absent Connection to the host was lost.
+log CLIENT1 left the lobby with a plain Cancel (LEAVE sent); quitting the PROCESS for real now
+
+# back to the main menu via the local browser's own &Cancel (value 99; dumped 2026-09-21 -- the
+# widget survives every state of this screen, "Local games"/post-search alike, at the same
+# container 00653E5B), then QUIT (113) -> confirm (121): the genuine WM_DESTROY exit, the same
+# values d15_exit_witness.txt's tail uses (main menu container 00653A7F: INTRO 105, NEW GAME 103,
+# NETWORK GAME 110, TUTORIAL 116, LOAD 108, CREDITS 99, QUIT 113).
+settled value:99
+clickv 99
+settled value:113
+clickv 113
+settled value:121
+clickv 121
+
+# Deliberately unreachable if the quit works (d15_exit_witness.txt's same canary shape). Reaching
+# here means the exit path did not fire, and ui_test.py's --client-after-exit gate on this peer will
+# time out rather than see it as a process-exit relaunch.
+present value:110
+log CLIENT1 STILL ALIVE after Quit -- the exit path did not fire
+end

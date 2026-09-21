@@ -1,0 +1,50 @@
+# mp:CH1 -- TWO-PEER in-game CHEAT CONSOLE, the host's half. Pair with mp_client_cheat.txt.
+#
+# mp_host_start.txt's walk (create -> wait for the client -> Start), then wait for the client's
+# `cheat` signal (it has submitted `_NUCLEAR BOMB` on its console line), run the match on to 12 s so
+# a replicated order would have executed here too, capture, and outlive the client's quit: the
+# survivor sees the match end at once ("Continue game", mp_host_gquit.txt's shape).
+#
+# THE ASSERTION IS THE post_check (tools/check_cheat_gate.py) over BOTH peers' logs -- see
+# mp_client_cheat.txt. This peer contributes: no `*** DESYNC`, no `presence_lost ... eliminated`,
+# and (gate OFF) the `[netind]`-free evidence of what an unrefused idx-0x25 does to the host's base.
+
+settled value:110
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+settled Create
+clickl Create
+present Game name
+settled Ok
+clickl Ok
+present Available maps
+settled Ok
+clickl Ok
+
+present Network players
+peers 1
+awaitsignal lobby
+occ 2
+enabled Start
+settled Start
+capture h_lobby
+clickl Start
+
+absent Network players
+gamemode 2
+gameclock 6000
+
+awaitsignal cheat
+# No in-game capture here: the host's mothership sprite at 12 s varied 0.893% run to run (its
+# descent/hover animation is frame-paced, not sim-paced -- graceful_quit dropped its in-game frames
+# for the same reason), and the assertion is the post_check, not this frame. The CLIENT's
+# after-cheat frame is the visual proof (the red "cheats are single player" notice) and is stable.
+gameclock 12000
+awaitsignal quitting
+present Continue game
+settled Continue game
+dump
+log CH1 HOST: the client quit; the survivor saw the match end
+end

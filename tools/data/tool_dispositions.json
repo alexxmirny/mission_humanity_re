@@ -1153,6 +1153,31 @@
       "class": "keep",
       "why": "2026-09-20 (user ruling): no string-valued key in mh_net.example.ini may carry a same-line comment -- GetPrivateProfileStringA returns it as the value (probe_text drew its comment on every present of a stock install; relay= dialled its comment). The key set is derived from the DLL's readers, so the row cannot fall behind a new string key.",
       "evidence": "invoked by tools/lint_repo.py"
+    },
+    "check_rematch_residue.py": {
+      "class": "keep",
+      "why": "mp:RM1: the rematch_play UI scenario's cross-peer post_check -- a SECOND match in one process enters session_begin_multi as clean as the first (gclk=0, p54bc=2, relation rows equal to game 1's and across peers), game 1's [desync] rollup compared >= 1 with 0 mismatching, game 2's first hashed sample identical on both peers",
+      "evidence": "invoked by tools/test_ui.py's rematch_play TESTS entry (post_check, post_check_peers) and tools/lint_repo.py (--selftest)"
+    },
+    "check_cheat_gate.py": {
+      "class": "keep",
+      "why": "mp:CH1: the ch1_cheat UI scenario's cross-peer post_check -- a single-player cheat typed on the Shift+Enter console line in a lockstep match is refused (the CH1 seam's refusal line on the typing peer), order 0xfa never reaches either peer's order buffers (harness order_log), no sim-path elimination before SESSION_END, no *** DESYNC, and a stable [netind] name if the sampler ran",
+      "evidence": "invoked by tools/test_ui.py's ch1_cheat TESTS entry (post_check, post_check_peers) and tools/lint_repo.py (--selftest)"
+    },
+    "check_ghost_slot.py": {
+      "class": "keep",
+      "why": "mp:GS1(b): the ghost_exit_rejoin UI scenario's cross-peer post_check -- proves no lockstep slot is pinned at the 10000 ms initial horizon from each peer's own mh_lockstep.log: the committed horizon (and clock) reach past PASS_MS on both peers (a slot pinned ANYWHERE holds committed at its own value forever, so this cannot be fooled by a slot the log's two printed columns do not cover), and the REMOTE peer's printed slot (a side's own slot is never written by that side, by design, so it is excluded) is not still exactly the initial 10000 ms advertisement once the match has run well past it",
+      "evidence": "invoked by tools/test_ui.py's ghost_exit_rejoin TESTS entry (post_check, post_check_peers) and tools/lint_repo.py (--selftest)"
+    },
+    "check_data_timeout.py": {
+      "class": "keep",
+      "why": "mp:GS2: the gs2_data_timeout UI scenario's cross-peer post_check -- a peer whose sim is fenced (harness simstep, transport left running) is dropped by the game-level data-silence watchdog at data_timeout_ms: exactly one `; GS2: peer N data-silent for X ms > T -> dropped` line across both peers, the frozen peer never drops the healthy survivor, and the drop fires within a small margin of its own T",
+      "evidence": "invoked by tools/test_ui.py's gs2_data_timeout TESTS entry (post_check, post_check_peers) and tools/lint_repo.py (--selftest)"
+    },
+    "check_no_crash_marker.py": {
+      "class": "keep",
+      "why": "mp:CH1 (the AV clause): the gs2_quit_frozen UI scenario's cross-peer post_check -- the host quits a lockstep match frozen on a data-silent peer (the field a952c570_2 shape) and neither peer's process may write an mh_crash_*.marker",
+      "evidence": "invoked by tools/test_ui.py's gs2_quit_frozen TESTS entry (post_check, post_check_peers) and tools/lint_repo.py (--selftest)"
     }
   }
 }

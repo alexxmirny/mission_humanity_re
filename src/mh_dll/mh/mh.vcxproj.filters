@@ -103,6 +103,9 @@
     <ClCompile Include="seams\ui_chat_input.cpp">
       <Filter>seams</Filter>
     </ClCompile>
+    <ClCompile Include="seams\ui_cheat_gate.cpp">
+      <Filter>seams</Filter>
+    </ClCompile>
     <ClCompile Include="seams\ui_net_indicator.cpp">
       <Filter>seams</Filter>
     </ClCompile>

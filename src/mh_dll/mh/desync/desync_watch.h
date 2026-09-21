@@ -301,6 +301,16 @@ int install(const char *ini_path);
 // step key is only meaningful relative to a session both peers entered together.
 void session_reset();
 
+// The outgoing match's rollup, WITHOUT restarting sampling. Called from the session boundary
+// (mp_session_close, net_discovery.cpp) BEFORE the session directory closes, so a match's own
+// `; [desync] match end: N mismatching / M compared` line lands in ITS directory. Until mp:RM1 the
+// rollup was written only by session_reset(), i.e. at the NEXT session_begin_multi -- into the next
+// match's directory, and never at all for the last match of a process. A rematch gate that asserts
+// game 2's verdict needs game 2's rollup to exist (tools/check_rematch_residue.py). Clears the
+// counters it reported, so the reset that follows at the following session_begin_multi has nothing to repeat;
+// leaves g_running alone (a `Continue game` after an outcome keeps stepping and is not a new match).
+void match_end();
+
 // One sim step, at the step's PRE-BODY boundary. Counts the step and, on the cadence, hashes,
 // broadcasts and judges whatever has arrived. MAIN THREAD ONLY.
 //

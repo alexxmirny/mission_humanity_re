@@ -7,9 +7,10 @@ crashed process**, packs a report, shows you every file in it, and sends it only
 **dist LA1** (the skeleton, the launch, the exit classification), **dist LA2** (the signed-manifest
 update path), **dist LA4** (the report zip and the crash capture), **dist RP1** (the upload: a
 signed multipart POST over a pinned TLS connection, one retry, and an outbox for what still did not
-go), **dist LA6** (the relay from the signed manifest, and the Host / Join front page), **dist LA7**
-(it finds `mh.exe` by itself) and **dist LA8** (the configuration picker, and a Host / Join that
-installs what is missing before it starts the game).
+go), **dist LA6** (the relay from the signed manifest, and the Play front page), **dist LA7**
+(it finds `mh.exe` by itself) and **dist LA8** (the configuration picker, and a Play that
+installs what is missing before it starts the game). The front page's two buttons, *Host* and
+*Join*, became the one **Play** button on 2026-09-20 (user ruling): they ran the same code.
 
 How the crash capture works, what goes into a report and what is redacted out of it (and why the
 multiplayer key gets into a report by three routes rather than the two the tracker names) are in
@@ -29,7 +30,7 @@ D10).
 
 | view | |
 | --- | --- |
-| **Play** (the front page) | the **configuration** (`net` / `net-debug` / `brokered-debug`, one line each on what they are for; a *Change...* button, or the open picker when nothing is installed yet), then **Host** and **Join** — both make sure the picked configuration is installed (downloading, verifying and installing it first if it is not, with the progress shown in place), write the relay from the accepted manifest into the game's configuration, and start the game; the line under them says which relay, or that there is none. Then the launcher waits: `running — pid N` while the game runs, and one line when it ends. When the launcher could not find `mh.exe` by itself (below), the page opens with a *Where is mh.exe?* field instead |
+| **Play** (the front page) | the **configuration** (`net` / `net-debug` / `brokered-debug`, one line each on what they are for; a *Change...* button, or the open picker when nothing is installed yet), then **Play** — it makes sure the picked configuration is installed (downloading, verifying and installing it first if it is not, with the progress shown in place), writes the relay from the accepted manifest into the game's configuration, and starts the game; the line under it says which relay, or that there is none. Then the launcher waits: `running — pid N` while the game runs, and one line when it ends. When the launcher could not find `mh.exe` by itself (below), the page opens with a *Where is mh.exe?* field instead |
 | **Status** | the game directory (found, typed or picked), whether an `mh.exe` is there, what is installed in it, *Install* / *Uninstall* for a release zip you already have, and the **Updates** block: where the manifest comes from, *Check for updates*, *Update the game*, *Update the launcher* |
 | **Report** | a required description, the session log directory it will zip, the crash (if there was one), a checkbox for the memory snapshot, and *Build the report* — which writes `%LOCALAPPDATA%\MissionHumanity\reports\mh_report_<UTC>.zip` and lists what went into it; then *Send this report…*, which opens the **consent screen** and, if you agree there, uploads it. Reports an earlier session could not send are listed at the top of this view on every launch until they go |
 
@@ -66,7 +67,7 @@ folder that has it, without asking:
 3. the game directory saved in `launcher.toml` from an earlier run.
 
 What it finds is written back to `launcher.toml`, so the Status field is pre-filled and the Play
-page opens ready with Host / Join enabled. The *Where is mh.exe?* prompt appears only when none of
+page opens ready with Play enabled. The *Where is mh.exe?* prompt appears only when none of
 the three holds the game. A saved directory whose `mh.exe` has gone is **named** in the status line
 (`the saved game directory … no longer holds mh.exe`) rather than silently kept — with the folder
 that was used instead when one was found, or with the prompt when none was. `--game-dir` on the
@@ -128,7 +129,7 @@ the bytes are the bytes that were signed; only executing them proves they are a 
 *this* machine — the missing VC++ runtime, the wrong architecture, the antivirus quarantine. If the
 gate fails, the candidate is deleted and the old launcher carries on.
 
-## Play = pick a configuration, press Host or Join, and the rest is done for you
+## Play = pick a configuration, press Play, and the rest is done for you
 
 The front page carries a picker with the three configurations the signed manifest offers — the
 same three zips `tools/release_package.py` builds, in the words of the release page's table:
@@ -141,8 +142,8 @@ same three zips `tools/release_package.py` builds, in the words of the release p
 
 The picker is open when nothing is installed in the game folder yet, and behind a *Change...*
 button once something is. A pick is written to `launcher.toml` (`chosen_tag`) and installs
-nothing by itself: **Host and Join are what install** (dist LA8). Pressed on a folder that does
-not hold the picked configuration, they run the update path first — fetch the signed manifest,
+nothing by itself: **Play is what installs** (dist LA8). Pressed on a folder that does
+not hold the picked configuration, it runs the update path first — fetch the signed manifest,
 download the picked zip, check its digest, unpack and swap it in, copy it beside `mh.exe`,
 provision the relay — with each step shown on the page, and start the game when it is in. A
 folder that already holds the picked configuration just starts. `update::readiness` decides which,
@@ -162,12 +163,12 @@ command line: `mh_launcher --app-dir <state> --update-url <base> --launch --exit
 with `chosen_tag` set in `launcher.toml` (what clicking the picker writes). A refused install
 closes the launcher with exit code 1 when `--exit-after-launch` was given.
 
-## Host / Join = the relay from the signed manifest, then the game
+## Play = the relay from the signed manifest, then the game
 
-The front page is two buttons, and they do the same thing: **put the relay in place and start the
-game**. Hosting or joining is decided in the game's own menu afterwards (NETWORK GAME → create a
-game, or → *Refresh list* to browse the relay's directory — mp:R2/R7); the two buttons exist so the
-front page says that in two words.
+The front page is one button, and it does one thing: **put the relay in place and start the
+game**. Hosting or joining is decided in the game's own menu afterwards (NETWORK GAME → *Create
+game*, or → *Refresh list* to browse the relay's directory — mp:R2/R7). It was two buttons, *Host*
+and *Join*, until 2026-09-20; they ran identical code and differed only in the log line.
 
 **Where the relay comes from.** The signed `manifest.json` may carry
 `"relay": {"addr": "host:port", "key": "<64 hex>"}` beside the asset table (dist LA6;
@@ -192,7 +193,7 @@ path the ini is provisioned **before** its SHA-256 goes into `mh_launcher_instal
 receipt describes the file as the launcher left it and *Uninstall* still recognises it; `mh_key.txt`
 is not in the receipt (the game mints one itself when there is none, and an uninstall that deleted
 the key would cut the player off from every relay game they had been playing). A launch whose
-provisioning fails (a read-only ini, say) is **refused**, not started — a player who pressed *Host*
+provisioning fails (a read-only ini, say) is **refused**, not started — a player who pressed *Play*
 and got a game quietly playing direct would blame the relay.
 
 **What a report says about it.** The relay's host must not land in a report, so `report.rs` blanks
@@ -283,11 +284,11 @@ runs once.
 --game-dir <path>     use this game directory and remember it (skips the search above)
 --install <zip>       install this release zip at startup
 --uninstall           undo the launcher's install at startup
---launch              start the game at startup -- exactly what Host and Join do (the picked
+--launch              start the game at startup -- exactly what Play does (the picked
                       configuration is installed first if it is missing, then the relay from
                       the accepted manifest is written into mh_net.ini + mh_key.txt)
 --exit-after-launch   close the launcher once the game it started has exited
---view <name>         open on play | status | report (default: play, the Host / Join page)
+--view <name>         open on play | status | report (default: play, the Play page)
 --size <W>x<H>        initial window size in points (default 1280x720, minimum 800x600)
 --app-dir <path>      keep launcher state here instead of %LOCALAPPDATA%\MissionHumanity
 

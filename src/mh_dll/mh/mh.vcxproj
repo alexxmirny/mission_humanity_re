@@ -33,6 +33,7 @@
     <ClCompile Include="seams\gfx_overlay.cpp" />
     <ClCompile Include="seams\gfx_font_guard.cpp" />
     <ClCompile Include="seams\ui_chat_input.cpp" />
+    <ClCompile Include="seams\ui_cheat_gate.cpp" />
     <ClCompile Include="seams\ui_net_indicator.cpp" />
     <ClCompile Include="seams\save_triggers.cpp" />
     <ClCompile Include="seams\ui_drive.cpp" />

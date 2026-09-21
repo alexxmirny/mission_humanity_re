@@ -121,6 +121,16 @@ workflow file cannot create an Environment, its secrets, or its required reviewe
    `src/collector/README.md`'s "Minting the drain key" section for the sibling read-only-key step
    (a different secret, same VPS).
 
+6. On the VPS, **once**, by hand: the report store the collector writes and the drain reads —
+   `mkdir -p /srv/reports && chown -R 10001:10001 /srv/reports`. The compose file bind-mounts this
+   directory at the collector's `/data/reports` (`dist:RP7`, 2026-09-20), and the same `10001`
+   rule as step 5 applies: the container writes as that uid, so a root-owned directory makes every
+   upload a 500. It is the literal the drain key's `rrsync -ro /srv/reports` is pinned to — the
+   first live stack mounted a **named docker volume** here instead and every real upload (six, 2026-09-18..20)
+   returned 201 into `/var/lib/docker/volumes/mh-deploy_reports/_data` where the drain could not see
+   them (dead-ends G250). The old volume is left on the box as a frozen copy; `docker compose up`
+   never deletes a volume that is merely no longer declared.
+
 ## 4. Running a deploy
 
 **Actions tab → "deploy" → Run workflow.** Optionally set the `tag` input (default `latest`) to
@@ -192,6 +202,13 @@ is `healthy`, prints the new container's `listening` line, then waits up to 75 s
 `counters` line and fails unless it carries `peers_rekeyed` and `health_pings` — i.e. the box is
 running the current image, read off the log rather than assumed.
 
+**Collector verdict (`dist:RP7`).** A fifth ssh step, "collector writes the drain root": `docker
+inspect` of the running `mh-collector` must list `bind /srv/reports /data/reports`, and the newest
+report directory under `/srv/reports` must be the newest non-duplicate `ulid` in the collector's
+`index.db`. `/healthz` is 200 either way — it counts index rows and never asks where the files went —
+so this is the one step that ties "upload accepted" to "the drain can read it". Run by hand on the
+box on 2026-09-20, right after the migration: both lines printed, exit 0.
+
 **Healthcheck.** distroless has no shell, so the probe is the relay binary itself:
 `relay --health 127.0.0.1:7100 --key-file /run/secrets/relay_key` sends one PING from no handle
 under the deployment key and exits 0 on a PONG (30 s interval, 3 retries). The relay counts these
@@ -224,6 +241,7 @@ on purpose, not an oversight:
 | images | `build: .` against the collector's own Dockerfile | prebuilt `ghcr.io/.../mh-collector:${IMAGE_TAG}` |
 | services | collector + Caddy | **relay** + collector + Caddy |
 | needs GHCR credentials | no | yes (to pull) |
+| reports store (`/data/reports`) | bind of `${MH_REPORTS_DIR:-/srv/reports}` — override for a workstation without `/srv` | bind of `/srv/reports`, the literal the drain key is pinned to |
 
 Folding the relay into RP2's file would make the local `docker compose up --build` loop depend on
 GHCR credentials it has no reason to need, and put a `build:` and an `image:` line in conflict on
@@ -233,18 +251,21 @@ no host port mapping — is kept identical between the two files by hand (both p
 automatically, since a Caddyfile and a compose service block are not something `tools/lint_compose.py`
 can usefully cross-check — see that file's own header comment).
 
-**The one thing `tools/lint_compose.py` *does* assert, mechanically, on every `lint_repo.py` run,
-over every tracked compose file:** the relay service carries `network_mode: host` and the
-collector service does not. This is plan D4's own reasoning, not a house style choice: Docker's
-default bridge network runs a container's traffic through a userland proxy that rewrites the
-packet's apparent source address, which breaks the relay's connection-id demux outright. The lint
-also refuses any reference to Watchtower (image or `com.centurylinklabs.watchtower.*` label) —
+**What `tools/lint_compose.py` *does* assert, mechanically, on every `lint_repo.py` run, over
+every tracked compose file:** the relay service carries `network_mode: host` and the collector
+service does not. This is plan D4's own reasoning, not a house style choice: Docker's default
+bridge network runs a container's traffic through a userland proxy that rewrites the packet's
+apparent source address, which breaks the relay's connection-id demux outright. The lint also
+refuses any reference to Watchtower (image or `com.centurylinklabs.watchtower.*` label) —
 Watchtower was archived in December 2025 and RP4's scope explicitly does not use it; images are
-pulled explicitly by `deploy.yml`, on a human's approval, never auto-updated in place.
+pulled explicitly by `deploy.yml`, on a human's approval, never auto-updated in place. And since
+`dist:RP7` (2026-09-20) it asserts the collector's `/data/reports` is a **bind of `/srv/reports`**
+(the literal, or `${VAR:-/srv/reports}`) in BOTH files — a named volume there is the shape that hid
+six real uploads from the drain for two days; a missing mount is a finding too.
 
 ```sh
-python tools/lint_compose.py            # the two structural checks, over every tracked compose file
-python tools/lint_compose.py --selftest # proves each of the 5 arms (3 structural + 2 Watchtower) fires
+python tools/lint_compose.py            # the structural checks, over every tracked compose file
+python tools/lint_compose.py --selftest # proves each of the 10 arms (3 network + 2 Watchtower + 5 reports-mount) fires
 ```
 
 ## 6. Assumptions this work made about R1

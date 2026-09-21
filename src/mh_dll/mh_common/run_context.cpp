@@ -85,19 +85,54 @@ void write_breadcrumb() {
     CloseHandle(h);
 }
 
+// "<base><sep>?<leaf>" into dst if it (plus a NUL) fits in cap bytes; false (dst untouched)
+// otherwise. wsprintfA does not bounds-check its destination, so composing a path through it
+// against a fixed MAX_PATH buffer is silently unsafe once an install sits at a long enough path
+// (LA10: a real player's install did) -- every join in this file goes through this check first.
+bool safe_join(char *dst, int cap, const char *base, const char *leaf) {
+    int  blen           = lstrlenA(base);
+    int  llen           = lstrlenA(leaf);
+    bool base_has_slash = blen > 0 && (base[blen - 1] == '\\' || base[blen - 1] == '/');
+    int  need           = blen + (base_has_slash ? 0 : 1) + llen + 1; // + separator? + leaf + NUL
+    if (need > cap) return false;
+    wsprintfA(dst, base_has_slash ? "%s%s" : "%s\\%s", base, leaf);
+    return true;
+}
+
 // Create "<exedir>logs\<name>\" and write it (with the trailing backslash) into dst.
-// Returns false if the directory could not be made -- the caller then keeps whatever it had, which
-// is the fallback that has always guaranteed logs are never silently lost.
+//
+// Returns false only when even the BARE "logs\" root could not be made (e.g. permission denied) --
+// the caller then keeps whatever it had, the fallback that has always guaranteed logs are never
+// silently lost. A "logs\<name>" that does not fit MAX_PATH, or that Windows' CreateDirectory
+// refuses for its own tighter path-length reasons (its documented ceiling is nearer 248 chars than
+// MAX_PATH's 260), degrades to the bare "logs\" root INSTEAD of failing outright: a deep install
+// path used to make every stream for the whole process scatter loose into the game's own install
+// folder, indistinguishable from the DLLs sitting next to it, with nothing under logs\ at all and
+// no way to tell from outside the process that it had happened (LA10 -- reproduced on the rig by
+// copying a real install to a ~230-char path and driving it through the launcher: `logs\` stayed
+// completely empty while mh_net.log/mh_capture.log/mh_input.log/mh_video.log/mh_uidrive.log all
+// landed in the install root, and mh_run.txt kept naming an EARLIER, unrelated run's directory).
 bool make_dir(const char *name, char *dst) {
     char logs_root[MAX_PATH];
-    wsprintfA(logs_root, "%slogs", g_exe_dir);
-    CreateDirectoryA(logs_root, nullptr); // ok if it already exists
+    if (!safe_join(logs_root, sizeof(logs_root), g_exe_dir, "logs")) return false; // exe path itself absurd
+    CreateDirectoryA(logs_root, nullptr);                                          // ok if it already exists
+
     char mk[MAX_PATH];
-    wsprintfA(mk, "%s\\%s", logs_root, name);
-    BOOL  ok  = CreateDirectoryA(mk, nullptr);
-    DWORD err = GetLastError();
-    if (!ok && err != ERROR_ALREADY_EXISTS) return false;
-    wsprintfA(dst, "%s\\", mk);
+    if (safe_join(mk, sizeof(mk), logs_root, name)) {
+        BOOL  ok  = CreateDirectoryA(mk, nullptr);
+        DWORD err = GetLastError();
+        // The trailing "\\" this function promises its callers needs one more byte than mk alone.
+        if ((ok || err == ERROR_ALREADY_EXISTS) && lstrlenA(mk) < MAX_PATH - 2) {
+            wsprintfA(dst, "%s\\", mk);
+            return true;
+        }
+    }
+    lstrcpynA(dst, logs_root, MAX_PATH);
+    int n = lstrlenA(dst);
+    if (n > 0 && n < MAX_PATH - 1) {
+        dst[n]     = '\\';
+        dst[n + 1] = '\0';
+    }
     return true;
 }
 
@@ -112,10 +147,13 @@ void do_init() {
 
     if (!make_dir(name, g_proc_dir)) {
         lstrcpynA(g_proc_dir, g_exe_dir, MAX_PATH); // fallback: never lose logs
-        lstrcpynA(g_run_dir, g_proc_dir, MAX_PATH);
-        return; // no breadcrumb: it would name the exe dir, which says nothing
     }
     lstrcpynA(g_run_dir, g_proc_dir, MAX_PATH);
+    // ALWAYS write the breadcrumb, even in the exe-dir fallback above: a STALE one left over from an
+    // earlier process is actively misleading, not merely uninformative -- that is exactly what made
+    // LA10 look like "no directory was ever created" instead of "the fallback fired" (mh_run.txt sat
+    // there naming a prior, unrelated run's directory the whole time). An honest breadcrumb naming
+    // the exe dir at least says the truth.
     write_breadcrumb();
 }
 

@@ -117,6 +117,14 @@ qpc_clock=1
 lockstep_log=1
 bootstrap=1
 """
+# mp:SES5 decision (5): the DLL's compiled default for [trace] temporal flipped to 0 for the SHIPPED
+# ini (a profiling instrument nobody has needed to answer a player report) -- the rig/lane inis keep
+# it 1 explicitly, since UI-REC / determinism / pacing work still wants the per-event trace. Emitted
+# by make_ini AFTER the --net-extra lines, never inside NET_BLOCK: the extras are appended to the
+# [net] text, so a section header at NET_BLOCK's tail would put `module=none` / `transport=tcp` /
+# `force_relay=1` under [trace] and every network row would run with its override silently ignored
+# (the 2026-09-21 wave-1 suite: 34 reds, all of them this).
+TRACE_BLOCK = "\n[trace]\ntemporal=1\n"
 
 
 # Overridable via --defang (default 1 = shipping suppress). Set 0 to let the SYNCHRONIZING/de-sync
@@ -517,6 +525,7 @@ def make_ini(script_name, timeout_frames, harness_steps=0, is_host=False, ident=
     ini = (
         net.replace("defang_overlay=1", "defang_overlay=%d" % DEFANG_OVERLAY)
         + extra
+        + TRACE_BLOCK
         + "\n[capture]\nevery=0\n\n[uitest]\n"
         + "".join(ln + "\n" for ln in uitest)
     )
@@ -2932,6 +2941,41 @@ def main():
         "-- which is what makes the FIRST browser probe the relay (R7's no-saved-address case). Used by "
         "relay_punch (first-browser join); direct_dial keeps its pinned IP so the first browser stays quiet.",
     )
+    # mp:GS1(b) / LA10: the PROCESS-EXIT relaunch shape -- one lane's game process quits to desktop
+    # (the real llm_wnd_on_destroy -> ExitProcess exit, not a harness kill) and a LATER lane's process
+    # is a brand-new one, launched only once the first is actually gone. The ordinary client loop below
+    # launches every --client back-to-back right after the host is ready, which cannot express "wait
+    # for that OTHER peer's process to exit first" -- there is no protocol message for a process dying,
+    # and script-level `signal`/`awaitsignal` (peer_signals) only ferries a marker between processes
+    # that are BOTH still running to read each other's log. So this is a launch-time gate, checked with
+    # peer_liveness (the same PID-probe D15 built to tell a crash from a hang), not a script directive.
+    ap.add_argument(
+        "--client-after-exit",
+        action="append",
+        default=[],
+        metavar="CLIENTIDX:PEERIDX",
+        help="Delay launching --client #CLIENTIDX (1-based, in --client order) until peer #PEERIDX "
+        "(0=host, 1=first --client, 2=second, ...) has ACTUALLY EXITED -- its process gone (peer_liveness "
+        "alive=False), not merely its script reaching COMPLETE. Repeatable. The process-exit relaunch "
+        "shape (mp:GS1(b): a client leaves, quits to desktop, and a NEW process re-joins).",
+    )
+    # mp:GS1(b) -- the companion half of --client-after-exit's OTHER end: the peer that DOES the
+    # quitting never reaches its script's own COMPLETE marker (ExitProcess ends it first, by design),
+    # so the overall verdict's `results.get(key) == "COMPLETE"` check would fail this scenario
+    # FOREVER even on a perfect run. Naming a client here accepts a CONFIRMED SELF-DRIVEN exit
+    # (exit_witness finds the D15 `; EXIT ...` line) as an equally-valid terminal state -- a process
+    # that merely died some OTHER way (a crash, or a harness kill) still fails, because exit_witness
+    # only reads "SELF-DRIVEN" off a real llm_wnd_on_destroy/utils_abort witness line.
+    ap.add_argument(
+        "--client-expect-exit",
+        action="append",
+        default=[],
+        type=int,
+        metavar="CLIENTIDX",
+        help="--client #CLIENTIDX (1-based) is EXPECTED to end by quitting the process for real, not "
+        "by its script reaching COMPLETE. Its terminal PROCESS-GONE counts toward the overall PASS "
+        "only when exit_witness confirms a SELF-DRIVEN exit. Repeatable.",
+    )
     ap.add_argument(
         "--no-pin",
         action="store_true",
@@ -3187,6 +3231,27 @@ def main():
     # the opt-out, and the effective mode is derived once, here.
     args.stock_exe = not args.patched_exe
 
+    # mp:GS1(b) -- parsed once, here, into {client_idx(1-based): peer_idx(0-based)}. Validated eagerly
+    # (a bad index is an authoring mistake in a [uitest] registry row, not a runtime condition) so a
+    # typo aborts before any process launches rather than silently never gating anything.
+    args.client_after_exit_map = {}
+    for spec in args.client_after_exit:
+        try:
+            cidx_s, pidx_s = spec.split(":", 1)
+            cidx, pidx = int(cidx_s), int(pidx_s)
+        except ValueError:
+            ap.error("--client-after-exit wants CLIENTIDX:PEERIDX (both integers), got %r" % spec)
+        if cidx < 1:
+            ap.error(
+                "--client-after-exit: CLIENTIDX is 1-based (first --client is 1), got %d" % cidx
+            )
+        if pidx < 0 or pidx >= cidx:
+            ap.error(
+                "--client-after-exit %s: PEERIDX must be an EARLIER peer (0=host, < CLIENTIDX) -- "
+                "a client cannot wait on a peer that has not launched yet" % spec
+            )
+        args.client_after_exit_map[cidx] = pidx
+
     global \
         DEFANG_OVERLAY, \
         EXTRA_NET, \
@@ -3427,20 +3492,36 @@ def main():
                 "label": os.path.splitext(os.path.basename(hsrc))[0],
             }
         ]
-        for spec in args.client:
+        # mp:GS1(b): keys seen so far, so a SECOND --client resolving to the same key (client_shares_lane
+        # -- two --client entries pointed at the SAME lane=/ip, safe only because --client-after-exit
+        # already ordered them) gets disambiguated rather than colliding. Colliding keys would make
+        # `peers` (a list) and `pending` (a SET keyed by this string) disagree about how many peers
+        # exist: the unified wait below, and the periodic liveness check, both index by `p["key"]", so
+        # two peer dicts sharing one key take turns overwriting each other's `results` entry and can
+        # retire `pending` on the WRONG one's status -- observed as a live, still-running client
+        # reported "PROCESS IS GONE" (true of the peer it reused the key from) while the actual
+        # peer's own COMPLETE never got the chance to register. Every OTHER call site keeps its
+        # ordinary key unchanged; only a genuine collision is renumbered, and only from its 2nd use.
+        _seen_client_keys = {}
+        for ci, spec in enumerate(args.client):
             cip, cspec, cdir = parse_peer(spec)
             # A LOCAL client must name its own lane: peers sharing one folder would fight over
             # setup.dat / mh_net.ini / logs, which is a corrupted run rather than an error.
             if cip is None and not cdir:
                 ap.error("a local --client must be 'lane=<name>:script' (it needs its own folder)")
             csrc = resolve(cspec)
+            base_key = cip or os.path.basename(cdir)
+            n = _seen_client_keys.get(base_key, 0) + 1
+            _seen_client_keys[base_key] = n
+            key = base_key if n == 1 else "%s#%d" % (base_key, n)
             peers.append(
                 {
-                    "key": cip or os.path.basename(cdir),
+                    "key": key,
                     "ip": cip,
                     "dir": cdir,
                     "src": csrc,
                     "label": os.path.splitext(os.path.basename(csrc))[0],
+                    "expect_exit": (ci + 1) in args.client_expect_exit,
                 }
             )
 
@@ -3522,7 +3603,47 @@ def main():
                 % (host_ip or "local", connect_ip)
             )
         for ci, p in enumerate(peers[1:]):
+            client_idx = ci + 1  # 1-based, matches --client-after-exit's CLIENTIDX
             cname = args.client_name if ci == 0 else "%s%d" % (args.client_name, ci + 1)
+            # mp:GS1(b) -- the PROCESS-EXIT relaunch shape: this client's launch is gated on an
+            # EARLIER peer's process having actually exited (not merely finished its script), so a
+            # fresh process joins where the old one left off, exactly like the field's crash/relaunch.
+            # Checked here, in launch order, rather than folded into peer_launch: every other client
+            # is unconditional and this keeps that path untouched.
+            wait_pidx = args.client_after_exit_map.get(client_idx)
+            if wait_pidx is not None:
+                target = peers[wait_pidx]
+                print(
+                    "[client %s] waiting for peer #%d (%s) to EXIT (process gone) before launching ..."
+                    % (p["key"], wait_pidx, target["key"])
+                )
+                exit_deadline = time.time() + args.timeout
+                exited = False
+                while time.time() < exit_deadline:
+                    alive, _lines = peer_liveness(target.get("run"))
+                    if alive is False:
+                        exited = True
+                        break
+                    time.sleep(2)
+                if not exited:
+                    print(
+                        "[client %s] ABORT: peer #%d (%s) never exited within %ds -- this is not a "
+                        "process-exit relaunch if the earlier peer is still running"
+                        % (p["key"], wait_pidx, target["key"], args.timeout)
+                    )
+                    for pp in peers:
+                        if pp.get("run"):
+                            peer_kill(args, pp.get("ip"), pp.get("run"))
+                    return 1
+                # exit_witness reads the D15 instrument, so the wait is provably on the REAL
+                # llm_wnd_on_destroy -> ExitProcess path, not a process that merely died some other
+                # way (a crash would also read alive=False here, and that is a different finding).
+                for ln in exit_witness(target.get("run")):
+                    print(ln)
+                print(
+                    "[client %s] peer #%d (%s) has exited -- launching a NEW process now"
+                    % (p["key"], wait_pidx, target["key"])
+                )
             # S8(b): a dead-IP round-trip test wants the field to pre-fill to a DEAD address (entry 0) with
             # the live host selectable in the MRU dropdown (entry 1); else pin the single live connect IP.
             # mp:R7a: --no-client-ip CLEARS the server-address MRU (an empty list, not None -- None would
@@ -3582,9 +3703,16 @@ def main():
         for p in peers:
             if p.get("run"):
                 png = peer_captures(args, p["ip"], p["run"])
-                overall_ok &= (
-                    collect_and_check(p["label"], png, args) and results.get(p["key"]) == "COMPLETE"
+                # mp:GS1(b) -- a peer named by --client-expect-exit is DESIGNED to end via a real
+                # process exit rather than its script's own COMPLETE marker (ExitProcess ends it
+                # first); accept that terminal state ONLY when exit_witness confirms it was
+                # SELF-DRIVEN (the D15 `; EXIT ...` line), so a crash or a harness kill still fails.
+                status_ok = results.get(p["key"]) == "COMPLETE" or (
+                    p.get("expect_exit")
+                    and results.get(p["key"]) == "PROCESS-GONE"
+                    and any("SELF-DRIVEN" in ln for ln in exit_witness(p["run"]))
                 )
+                overall_ok &= collect_and_check(p["label"], png, args) and status_ok
             else:
                 print("  [%s] no run dir -- launch failed" % p["key"])
                 overall_ok = False

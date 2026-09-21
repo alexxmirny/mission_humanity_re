@@ -352,21 +352,33 @@ bool Endpoint::start(const Config &cfg, const uint8_t psk[KEY_LEN], bool secure)
         // had to acquire the hard way (a blocking connect froze the whole lobby for ~20 s).
         Pending &p = m_pend[0];
         memset(&p, 0, sizeof(p));
-        p.used = true;
-        memset(&p.addr, 0, sizeof(p.addr));
-        p.addr.sin_family      = AF_INET;
-        p.addr.sin_port        = htons((u_short)cfg.net.port);
-        p.addr.sin_addr.s_addr = inet_addr(cfg.net.host[0] ? cfg.net.host : "127.0.0.1");
-        p.first_ms             = GetTickCount();
-        if (!MH_Key_Random(p.cn, (unsigned)NONCE_LEN) ||
-            !MH_Key_Random((uint8_t *)&p.seq, (unsigned)sizeof(p.seq))) {
-            logf("net: no secure randomness available -- refusing to connect");
-            stop();
-            return false;
+        // mp:R2c -- BROWSE ONLY: mh.dll set cfg.browse_only because this dial has no target room at
+        // all (no typed address, no directory pick -- see udp_transport.cpp). Leaving `p.used`
+        // false means client_handshake_tick (below) never arms, so there is no peer to retry
+        // against and no HS_BUDGET_MS "handshake FAILED" line -- the relay leg still comes up
+        // (started below, both branches) and still delivers the directory LIST, which is all a
+        // browse-only dial is for.
+        if (!cfg.browse_only) {
+            p.used = true;
+            memset(&p.addr, 0, sizeof(p.addr));
+            p.addr.sin_family      = AF_INET;
+            p.addr.sin_port        = htons((u_short)cfg.net.port);
+            p.addr.sin_addr.s_addr = inet_addr(cfg.net.host[0] ? cfg.net.host : "127.0.0.1");
+            p.first_ms             = GetTickCount();
+            if (!MH_Key_Random(p.cn, (unsigned)NONCE_LEN) ||
+                !MH_Key_Random((uint8_t *)&p.seq, (unsigned)sizeof(p.seq))) {
+                logf("net: no secure randomness available -- refusing to connect");
+                stop();
+                return false;
+            }
+            logf("net: udp CLIENT -> %s:%d as player %d (K=%d) [key %s]",
+                 cfg.net.host[0] ? cfg.net.host : "127.0.0.1", cfg.net.port, m_my_id, m_K,
+                 m_secure ? "set" : "open");
+        } else {
+            logf("net: udp CLIENT (browse only -- no typed address and no directory pick yet, "
+                 "player %d) -- no handshake attempted; browsing the relay directory (mp:R2c)",
+                 m_my_id);
         }
-        logf("net: udp CLIENT -> %s:%d as player %d (K=%d) [key %s]",
-             cfg.net.host[0] ? cfg.net.host : "127.0.0.1", cfg.net.port, m_my_id, m_K,
-             m_secure ? "set" : "open");
     }
 
     m_recv_thread  = CreateThread(nullptr, 0, recv_thunk, this, 0, nullptr);

@@ -85,6 +85,16 @@ HMODULE g_module = nullptr;
 bool    g_done   = false;
 bool    g_bound  = false;
 
+// mp:SES4: WHICH transport actually ended up loaded, and what the ini ASKED for -- two different
+// facts, and session.json (net_discovery.cpp) needs both. `g_bound_name` starts "none" and is
+// overwritten only at the moment bind() commits (g_bound = true), so every refusal/absence path
+// -- declined, LoadLibrary failure, missing exports, ABI mismatch -- leaves it exactly "none"
+// without each of those paths having to set it themselves. `g_configured_name` is set as soon as
+// the ini is read (transport_file() / module_declined()), independent of whether the load then
+// succeeds, so a "configured tcp, bound none" run is expressible.
+const char *g_bound_name      = "none";
+const char *g_configured_name = "none";
+
 // mh.dll's OWN DLL_PROCESS_ATTACH timestamp, taken before anything else. The R2 measurement is the
 // SIGN of (module attach_qpc - this): negative means the module's DllMain ran FIRST, which is what a
 // static import produces and what every satellite's DllMain has to be inert against.
@@ -209,8 +219,14 @@ const char *transport_file(void) {
 
     char v[32] = {0};
     GetPrivateProfileStringA("net", "transport", "udp", v, sizeof(v), ini);
-    if (lstrcmpiA(v, "udp") == 0) return nullptr;
-    if (lstrcmpiA(v, "tcp") == 0) return FILE_TCP;
+    if (lstrcmpiA(v, "udp") == 0) {
+        g_configured_name = "udp";
+        return nullptr;
+    }
+    if (lstrcmpiA(v, "tcp") == 0) {
+        g_configured_name = "tcp";
+        return FILE_TCP;
+    }
     char what[512];
     wsprintfA(what, "`[net] transport=%s` in %s is not a transport this build implements.", v, ini);
     mh::config::detail::refuse(
@@ -324,6 +340,12 @@ void bind(HMODULE self, const char *module_file) {
     g_module = h;
     g_b      = t;
     g_bound  = true;
+    // mp:SES4: the WIRE, not the request -- module_file is the file bind() was actually handed
+    // (FILE_TCP on an explicit `transport=tcp`, FILE_UDP otherwise; see the call site below), and
+    // this only runs once GetProcAddress + the ABI probe have all agreed. A caller asking "what
+    // transport is this run on" from this point forward gets the file that is really mapped, not a
+    // string somebody typed into an ini that could still have failed to load.
+    g_bound_name = (lstrcmpA(module_file, FILE_TCP) == 0) ? "tcp" : "udp";
 
     // ONE LINE, FOUR FACTS, and the fact that it is ONE line is a deliberate constraint rather than
     // terseness. This bind lands at the very head of the arm window check_arm_order gates, so every
@@ -412,6 +434,15 @@ extern "C" void MH_ModuleBind_Early(HMODULE self) {
 }
 
 extern "C" int MH_NetModule_IsBound(void) { return g_bound ? 1 : 0; }
+
+// mp:SES4: "udp"/"tcp" once bind() has committed, else "none" -- declined, not-found, wrong-contract
+// and ABI-mismatch all read as "none" alike, because none of them left a transport actually mapped.
+extern "C" const char *MH_NetModule_BoundTransport(void) { return g_bound_name; }
+
+// mp:SES4: what the ini ASKED for ("udp"/"tcp"), independent of whether the load then succeeded, or
+// "none" if `[net] module=none` meant no transport was ever requested. session.json's own use of
+// this is: show it ONLY when it differs from MH_NetModule_BoundTransport() above (net_discovery.cpp).
+extern "C" const char *MH_NetModule_ConfiguredTransport(void) { return g_configured_name; }
 
 // ---- THE FORWARDING SHIMS ------------------------------------------------------------------------
 //

@@ -1,0 +1,43 @@
+# mp:CH1 / GS2: the host QUITS a lockstep match while it is frozen on a data-silent peer -- the field a952c570_2 shape.
+# Pair with mp_client_gs2.txt (the peer that fences its sim at step 100 and keeps its transport alive).
+settled value:110
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+settled Create
+clickl Create
+present Game name
+settled Ok
+clickl Ok
+present Available maps
+settled Ok
+clickl Ok
+present Network players
+peers 1
+awaitsignal lobby
+occ 2
+enabled Start
+settled Start
+capture g1_host_lobby
+clickl Start
+absent Network players
+gamemode 2
+gameclock 500
+awaitsignal freezing
+# mp:CH1 (the AV clause, re-homed on the freeze): the FIELD shape is a lockstep match frozen on a
+# data-silent peer and then QUIT by a human while it is frozen (a952c570_2: clock froze at
+# 09:54:27, the quit + AV came ~2 s after). `stalled 1500` = the sim has been lockstep-BLOCKED on
+# the frozen peer for at least 1.5 s -- well inside the 15 s ship data_timeout window, so this quit
+# happens DURING the freeze, not after the GS2 drop.
+stalled 1500
+capture q1_host_frozen
+key 0x01
+settled value:113
+clickv 113
+settled value:121
+clickv 121
+settled value:110
+capture q2_host_main_menu
+log HOST quit a FROZEN lockstep match via ESC->Quit->Yes and reached the main menu (no crash marker is the post_check)
+end

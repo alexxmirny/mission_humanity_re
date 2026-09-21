@@ -195,6 +195,19 @@ struct Config {
     // what that something is. A promoted (mp:R3) pair keeps the envelope precisely so this number
     // never changes mid-session.
     int leg_overhead;
+    // mp:R2c -- CLIENT ONLY: this dial has no target yet (the relay leg is registering under
+    // DIRECTORY_ROOM, not a real room -- udp_transport.cpp sets this from `rc.room ==
+    // mh::udprelay::DIRECTORY_ROOM`). A client that dials with no typed address and no directory
+    // pick used to arm the ordinary peer handshake anyway, against a "room" that was never more
+    // than `[net] port` -- a number nothing hosts, so client_handshake_tick's HS_BUDGET_MS wait
+    // was a guaranteed, silent 4-second "handshake FAILED" on every such dial (mp:R2c). With this
+    // set, start() does not arm the client's Pending handshake at all: the leg still comes up (so
+    // the relay's directory LIST still arrives), but nothing tries to reach a peer that was never
+    // named. The moment a real room IS known (a typed IP, or a picked directory row), the caller
+    // does a full relink -- a fresh start() with this false -- so the handshake still runs, just
+    // not against a guess. False for a direct (non-relayed) dial and for the host role, where it
+    // is never read.
+    bool browse_only;
 };
 
 // =================================================================================================

@@ -96,8 +96,16 @@ services:
       TIMESTAMP_SKEW_SECONDS: "600"
     secrets:
       - report_token
+    # dist:RP7 -- A BIND MOUNT OF THE DRAIN ROOT, NOT A NAMED VOLUME. The drain key
+    # (tools/drain_reports.py, RP3) is `rrsync -ro /srv/reports`: that literal is the only tree the
+    # key can read. The first live stack (2026-09-18 .. 20) mounted a named volume `reports:` here
+    # instead, so every real upload landed in /var/lib/docker/volumes/mh-deploy_reports/_data --
+    # 201 to the player, `nothing new` to the drain, six reports invisible for two days
+    # (dead-ends G250). The host directory is chown'd 10001:10001 once by hand (the
+    # container's fixed uid -- docs/deploy.md section 3 step 6); tools/lint_compose.py rule 4 refuses
+    # any other source for /data/reports, and deploy.yml re-checks the running container's mount.
     volumes:
-      - reports:/data/reports
+      - /srv/reports:/data/reports
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/healthz', timeout=3).status == 200 else 1)"]
       interval: 30s
@@ -158,6 +166,8 @@ secrets:
     file: ./secrets/relay_key.txt
 
 volumes:
-  reports:
+  # No `reports:` here since RP7 -- /data/reports is the bind mount above. The pre-RP7 named
+  # volume (mh-deploy_reports) is left in place on the VPS as a frozen copy of the 2026-09-18..20
+  # uploads; `docker compose up` never removes a volume that is merely no longer declared.
   caddy_data:
   caddy_config:

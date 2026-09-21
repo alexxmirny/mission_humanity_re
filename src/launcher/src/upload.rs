@@ -976,6 +976,7 @@ mod tests {
         let input = crate::report::Input {
             game_dir: None,
             session_dir: None,
+            launcher_started_utc: None,
             description,
             last_run: None,
             crash: None,

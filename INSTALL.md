@@ -50,7 +50,7 @@ value and where it came from. In practice a fresh clone needs at most one overri
 
 ## Using the launcher — the way to play
 
-**Download `mh_launcher-<version>.exe` from the public repository's Releases page
+**Download `mh_launcher.exe` from the public repository's Releases page
 (`https://github.com/<owner>/<repo>/releases` — the repository this file is in), drop it into the
 folder that holds `mh.exe`, and run it.** That is the install. It needs no elevation, no VC++
 redistributable (the CRT is linked statically) and nothing else from the release page — it fetches
@@ -70,16 +70,16 @@ What happens on the first run:
    | `net-debug` | the above plus `mh_harness.dll`, and an `mh_net.ini` with the diagnostic logging keys on | **you are reporting a bug.** Same configuration, but the run writes down enough to diagnose |
    | `brokered-debug` | the above plus `libmh.dll` | **you want the re-implemented spine** (§5's configuration (2)), with the diagnostics on |
 
-3. **Press Host or Join.** Whatever the chosen configuration is missing is downloaded from the
+3. **Press Play.** Whatever the chosen configuration is missing is downloaded from the
    signed manifest, verified against its SHA-256, installed next to `mh.exe` (the original
    `mh.dll` is kept as `mh.dll.mhbak`), the relay is provisioned, and the game starts — with the
    progress shown in place, no visit to the Status tab. Switching the picker later swaps the
    install (the receipt-driven uninstall of one zip, the install of the other).
 
-Both buttons start the game the same way; the difference is what you do in the game's own menu next
-— *Host*: NETWORK GAME → your name → **Create game**, and your lobby is listed on the relay under
-your name; *Join*: NETWORK GAME → your name → **Refresh list** shows the games on the relay, pick
-one, **Join**. Nobody types an address and nobody forwards a port. The player's page for this —
+Hosting and joining are both decided in the game's own menu next — to host: NETWORK GAME → your
+name → **Create game**, and your lobby is listed on the relay under your name; to join: NETWORK
+GAME → your name → **Refresh list** shows the games on the relay, pick one, **Join**. Nobody types
+an address and nobody forwards a port. The player's page for this —
 what the relay does, going direct in the background, the direct dial by address, what the log lines
 mean — is [docs/mp-internet.md](docs/mp-internet.md). The launcher stays open while you play and
 reports one line when the game ends — `the game exited normally (code 0)`, or `the game CRASHED:
@@ -92,7 +92,7 @@ launcher writes two lines into the game's `mh_net.ini` — `[net] transport=udp`
 `[net] relay=<address>` — and the relay's key into `mh_key.txt`, on every install, update and
 launch. It edits *only* those two lines, in place (every other line, comment and setting in your
 `mh_net.ini` stays exactly as it was), and rewrites `mh_key.txt` only when the key changed. A
-manifest that names no relay leaves both files untouched, and *Host* / *Join* then start the game
+manifest that names no relay leaves both files untouched, and *Play* then starts the game
 as it is configured (direct play by address, §7). The front page says which of the two it is:
 `Relay: <address> (from the signed manifest, …)` or `No relay`.
 

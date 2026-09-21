@@ -2440,6 +2440,7 @@
     <ClCompile Include="..\mh\seams\gfx_overlay.cpp" />
     <ClCompile Include="..\mh\seams\gfx_font_guard.cpp" />
     <ClCompile Include="..\mh\seams\ui_chat_input.cpp" />
+    <ClCompile Include="..\mh\seams\ui_cheat_gate.cpp" />
     <ClCompile Include="..\mh\seams\ui_net_indicator.cpp" />
     <ClCompile Include="..\mh\seams\ui_drive.cpp" />
     <ClCompile Include="..\mh_harness\harness.cpp" />
