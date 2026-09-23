@@ -14,6 +14,7 @@ the zips, section 2 onward for building from source.
 - [4. Packaging by hand](#4-packaging-by-hand)
 - [5. What a green release run does not prove](#5-what-a-green-release-run-does-not-prove)
 - [6. The launcher release](#6-the-launcher-release)
+- [7. Cutting a release BY HAND, when Actions cannot run](#7-cutting-a-release-by-hand-when-actions-cannot-run)
 
 ## 0. The routine — from a green tree to a public release
 
@@ -45,7 +46,13 @@ SETUP" in [`deploy.yml`](../.github/workflows/deploy.yml)'s header.
 
 Public repository only:
 
-- the variable `MH_PAGES_PUBLISH` = `true` and Settings → Pages → Source → **GitHub Actions**
+- **Pages, in ONE of two mutually exclusive modes** (section 7.3 has the detail, and which one
+  is live changes what else on this list applies): *Actions mode* — the variable
+  `MH_PAGES_PUBLISH` = `true` and Settings → Pages → Source → **GitHub Actions**; or *branch
+  mode* — Source → a dedicated orphan **`gh-pages`** branch (NEVER `main`: the publish tool
+  rewrites that tree wholesale and would delete the manifest on the next release), with
+  `MH_PAGES_PUBLISH` **unset**, because `actions/deploy-pages` fails against a branch source.
+  As of 2026-09-23 this repository is in BRANCH mode.
   ([Pages](#pages));
 - **the `github-pages` Environment must allow tags `v*`**: Settings → Environments →
   `github-pages` → *Deployment branches and tags* → add a **tag** rule `v*`. GitHub creates that
@@ -466,3 +473,88 @@ Same order as [section 2](#2-cutting-one)'s rehearsal, plus:
   that is on the release — `certutil -hashfile` or `Get-FileHash` should agree.
 - A launcher built against the OLD `PUBLIC_KEY` refuses the new manifest (`refuse SIGNATURE` in its
   log); a launcher built against the current one applies it, per dist LA2's own acceptance clauses.
+
+## 7. Cutting a release BY HAND, when Actions cannot run
+
+Written 2026-09-23, from doing it: `v0.2.0-rc2` was cut and published with GitHub Actions refusing
+every job (*"recent account payments have failed or your spending limit needs to be increased"* —
+all three jobs dead in ~5 s, both publish jobs skipped). Nothing in the pipeline is magic; every
+step below is a command you can run, and the only two things Actions holds that a workstation does
+not are the **secrets**.
+
+**What this path gives up, stated rather than hidden:** section 0.4's rehearsal on the private
+remote. A hand cut has no green workflow behind it, so the verification in step 6 is not optional
+paperwork — it IS the gate, and it is the only evidence the release is good.
+
+### 7.1 What you need that is not in the tree
+
+| | where it lives | note |
+| --- | --- | --- |
+| minisign secret key | a file on the maintainer's box (`MH_LAUNCHER_MINISIGN_KEY` is a copy of it) | **verify it is the right key before signing** — derive its public half and compare to `PUBLIC_KEY` in `src/launcher/src/update.rs`; a manifest signed by the wrong key is refused by every launcher in the field |
+| `MH_REPORT_TOKEN` | the VPS, `<VPS_DEPLOY_DIR>/secrets/report_token.txt` (`~/mh-deploy` by default) — the GitHub secret was read off that file, so the VPS is the source of truth | do not mint a new one to avoid the lookup: rotating strands every launcher already shipped with the old one |
+| `MH_RELAY_KEY` | `tools/machine.local.json`'s `RELAY_KEY` | reaches `gen_update_manifest.py` through the ENVIRONMENT, never a command line |
+| everything else | repository **variables**, readable with `gh variable get` | `MH_UPDATE_BASE_URL`, `MH_REPORT_URL`, `MH_REPORT_CA_PEM`, `MH_REPORT_SPKI_PIN`, `MH_RELAY_ADDR` |
+
+### 7.2 The steps
+
+1. **Gate the tree** exactly as 0.2 says — `run_gate.py` green, and **reproduce any CI-only lint in
+   a `git clone` of the repo** rather than reasoning about it (dead-ends G287: a fingerprint over
+   raw bytes hashes the CHECKOUT, so a row can be green on the maintainer's box and red on CI).
+2. **Build stamped.** The stamp does not come from the tag by itself:
+
+   ```powershell
+   msbuild src\mh_dll\mh.sln /t:Build /p:Configuration=Release /p:Platform=x86 `
+     /p:MhVersion=<X.Y.Z[-rcN]> /p:MhGitSha=$(git rev-parse --short=8 HEAD)
+   ```
+
+   Read `FileVersion` off every DLL afterwards; `release_package.py` refuses a mismatch, which is
+   what makes the zip's name evidence.
+3. **Package**: `python tools\release_package.py --version <X.Y.Z[-rcN]>` → three zips +
+   `SHA256SUMS` in `dist\`.
+4. **Build the launcher** with all five `option_env!` values exported — `MH_LAUNCHER_VERSION`
+   (separate from the tag; unset ships `0.0.0-dev` under a release file name), `MH_UPDATE_BASE_URL`,
+   `MH_REPORT_URL`, `MH_REPORT_TOKEN`, `MH_REPORT_CA_PEM`, `MH_REPORT_SPKI_PIN`. Two traps, both
+   dead-ends G289: `$env:X = (gh variable get ...)` FLATTENS the multi-line CA PEM into one
+   space-joined line that is not a certificate, so re-join it with newlines; and confirm the bake
+   landed by finding the strings in the built exe, not by trusting that cargo rebuilt.
+5. **Manifest**: `gen_update_manifest.py --secret-key <key> --dist dist --asset-base-url
+   https://github.com/<owner>/<repo>/releases/download/<tag> --launcher-exe … --launcher-version …
+   --launcher-url … --notes-url …`, with `MH_RELAY_ADDR`/`MH_RELAY_KEY` in the environment.
+   `--asset-base-url` is the RELEASE download URL, never the Pages URL.
+6. **Publish, assets FIRST and the manifest LAST** (G288 — a live manifest whose assets do not exist
+   yet points every launcher at 404s):
+   a. `build_public_seed.py --follow-up … --push` — the public squash commit.
+   b. `git tag -a <tag> <public main sha> -F <message file>` in that clone, and push it.
+   c. `gh release create <tag> -R <owner>/<repo> [--prerelease] --notes-file <message file>` with
+      the three zips, `SHA256SUMS`, `mh_launcher.exe`, `manifest.json`, `manifest.json.minisig`.
+      This is the REST API — it works with Actions dead.
+   d. Only now put `manifest.json` + `manifest.json.minisig` on the Pages branch (7.3).
+7. **Verify as a player, not as a maintainer.** This is the step that replaces the rehearsal:
+   - `curl` the SERVED manifest and check it is byte-identical to the one you signed;
+   - verify its signature against the key compiled into the launcher, extracted from
+     `update.rs` — not against the key you happen to have signed with;
+   - download EVERY url the manifest names and compare to the signed hashes;
+   - unzip the published `net` zip and read `mh.dll`'s `FileVersion`.
+
+   All four passed for `v0.2.0-rc2`, and the third is what proves a launcher gets what was signed.
+
+### 7.3 Pages: serve the manifest from a branch nothing rewrites
+
+Pages may be in **Actions** mode or **branch** (`legacy`) mode, and the two are mutually exclusive:
+
+- **Actions mode** — `release.yml`'s `publish-pages` job (`actions/deploy-pages`) does it, gated on
+  `MH_PAGES_PUBLISH = true`. Needs the `github-pages` Environment to allow tags `v*` (section 0.1).
+- **Branch mode** — the manifest is a committed file. **Use a dedicated orphan branch (`gh-pages`),
+  never `main`**: `build_public_seed.py` REPLACES `main`'s tree wholesale on every publish, so a
+  manifest committed there is deleted by the NEXT release — a break that arrives one release after
+  the change that caused it. The branch holds only `manifest.json`, `manifest.json.minisig`,
+  `.nojekyll` and a one-page `index.html`. A push may not trigger a build by itself; force one with
+  `gh api -X POST repos/<owner>/<repo>/pages/builds` and confirm with `…/pages/builds/latest` that
+  the built commit is the one you pushed.
+
+**`MH_PAGES_PUBLISH` must be unset while Pages is in branch mode** — `actions/deploy-pages` fails
+against a `legacy` source, so leaving it `true` reds the release the moment Actions come back.
+
+**Whichever mode, read the site back** (`curl` the manifest and its `.minisig`): nothing else in the
+release flow fetches Pages, so a 404 there is invisible to a green pipeline and breaks only the
+players already in the field.
