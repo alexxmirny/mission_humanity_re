@@ -1,0 +1,84 @@
+# mp:U19f -- IN-GAME transport death, the SURVIVOR (host) side.
+#
+# No registered scenario had ever killed a peer's TRANSPORT while a match was RUNNING: `link_death`
+# blackholes in the LOBBY (peers <1, never past Start), and `graceful_quit`/U19d are a DELIBERATE
+# quit.
+#
+# G270 (measured 2026-09-22, real rig runs; the finding is inlined here): the scenario originally expected
+# a real transport death to leave the retail "Connection to server lost" wording (outcome=7) in
+# place, on the theory that U19d's discriminator needed its negative arm exercised. MEASURED: outcome
+# 7 has exactly ONE producer in the whole closure -- the unknown-outer-tag/garbled-frame arm
+# (libmh/lockstep/rx_dispatch.cpp's handle_garbled) -- which a clean transport death never reaches.
+# Both a graceful quit (U17a) and a real transport death (U17b/fast-drop) retire through
+# llm_strat_player_presence_lost, which calls the outcome dialog with outcome=8 ("you are the last
+# player !") UNCONDITIONALLY, regardless of how the peer left. U19e's `gone_peer_frame_guard`
+# (default ON) fixed the one known way a clean departure used to misroute into outcome 7 (a
+# stale-buffer race in the re-broadcast), so in this build outcome 7 is not reachable from a normal
+# departure at all -- there is no live case where "Connection to server lost" is the correct wording,
+# and U19d's correction (gated on outcome==7) is consequently dead code here too. So this scenario's
+# real, provable claim is narrower: a transport death is retired through the SAME fast in-order
+# broadcast (fast-drop) a graceful quit uses, not the framing-bug arm and not the old below-quorum
+# silence-timeout stall -- confirmed by the log-based post_check (tools/check_transport_death.py).
+#
+# THE KILL: paired with a `[net] transport=tcp` link routed through `tools/net_shim.py` (this test's
+# `shim`/`shim_timeline`), which schedules a `cut` (real FIN close) well after both peers are
+# in-game. A `blackhole` (silent drop, socket stays OPEN) was tried FIRST and measured to NOT trigger
+# the fast-drop route at all -- net_transport.cpp's MH_Net_TakeDeadPeer()/g_dead_peer is armed only
+# by a real socket close (recv()==0/error), which a blackholed connection never produces; that run
+# instead fell out through a separate below-quorum/presence-loss detector with no fast-drop line
+# (also outcome=8). `cut` is the primitive that actually exercises U17(b).
+#
+# WHY GAMECLOCK IS ONLY THE SYNC POINT, NOT THE PROOF (dead-ends G158): once a match legitimately
+# ends the clock leaves the fixed lockstep quantum and jumps to TOTAL_GAME_TIME in one variable step,
+# so a small `gameclock` target is satisfied instantly by a sim that has already stopped. The actual
+# proof here is the WIDGET state: `present Continue game` (the end-of-match dialog's own button,
+# reached ONLY through the lockstep dispatch's below-quorum path) plus the log-based post_check.
+#
+# Pair with mp_client_txdeath.txt (the peer whose transport dies) and
+# tools/uiscripts/shim/txdeath_ingame.txt (the cut schedule).
+
+settled value:110
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+settled Create
+clickl Create
+present Game name
+settled Ok
+clickl Ok
+present Available maps
+settled Ok
+clickl Ok
+
+present Network players
+peers 1
+awaitsignal lobby
+enabled Start
+settled Start
+clickl Start
+
+# ---- in the match --------------------------------------------------------------------------------
+absent Network players
+gamemode 2
+# Reach a known sim moment well before the shim's scheduled blackhole (tools/uiscripts/shim/
+# txdeath_ingame.txt fires at t+50000 ms from the first connection) -- the same 3000 convention
+# graceful_quit uses, purely to get off the entry frame; the real wait is the widget predicate below.
+gameclock 3000
+
+# THE SURVIVOR CLAUSE. False until the below-quorum drop has actually been applied here, and reached
+# ONLY once the shim's blackhole has run long enough past the link watchdog (rx_timeout_ms, ship
+# default 10 s) for the fast-drop path (U17(b)) to fire. DO NOT replace this with a bigger `gameclock`
+# target -- see the header.
+present Continue game
+# G270: this is the SAME dialog/wording a graceful quit reaches (mp_host_gquit.txt) -- outcome=8,
+# "you are the last player !" -- because presence_lost is unconditional about how the peer left.
+# `absent` here is the negative control: the framing-bug wording must NOT appear (it would mean the
+# U19e frame guard regressed); the log-based post_check (check_transport_death.py) carries the real
+# positive proof (fast-drop line + outcome=8 + no outcome 7 + no garbled + no U19d correction).
+absent Connection to server lost
+settled Continue game
+dump
+capture ingame_txdeath_dialog
+log SURVIVOR watched the peer's transport die mid-match and reached the same below-quorum dialog a graceful quit uses, via the fast-drop route
+end

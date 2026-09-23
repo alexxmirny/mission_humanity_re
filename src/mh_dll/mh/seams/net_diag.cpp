@@ -708,6 +708,12 @@ void gm_logger_lazy_arm() {
 // Parse [trace] funcs=0xVA,0xVA,... and install a run-before hook on each (up to 16). PROLOGUE-guarded.
 void install_trace_hooks() {
     char list[512];
+    // TL-HARN4 EXCEPTION: not routed through mh::config::read_ini_string. `;` is one of this key's
+    // OWN token delimiters below (", \t;") alongside comma/space/tab, so a value is allowed to use
+    // it as an in-list separator on purpose -- stripping "first `;` onward" would silently truncate
+    // a `funcs=0x401000;0x402000` list rather than clean a comment off it. The documented (example
+    // ini) form is comma-separated, but the parser already tolerates `;` as an equivalent separator
+    // and this is the one key in the audited roster where that is deliberate, not an oversight.
     GetPrivateProfileStringA("trace", "funcs", "", list, sizeof(list), g_ini);
     if (!list[0]) return;
     trace_log("; ==== function-entry trace armed ====\n"); // composes g_trace_path (SES1: per session)

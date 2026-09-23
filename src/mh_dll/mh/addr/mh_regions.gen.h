@@ -1730,7 +1730,7 @@ inline constexpr region REGIONS[RID_COUNT] = {
     {"UNIT@00e5f638", MH_STOCK_BASE(0x00e5f638u), 3820u, 3820u, OWN_ISLAND, static_cast<uint8_t>(MF_VIEW), false, false, false},
     {"session_desc_candidate_b", MH_STOCK_BASE(0x00e60720u), 0u, 0u, OWN_UNKNOWN, static_cast<uint8_t>(MF_VIEW), false, false, false},
     {"session_desc_candidates", MH_STOCK_BASE(0x00e60760u), 0u, 0u, OWN_UNKNOWN, static_cast<uint8_t>(MF_VIEW), false, false, false},
-    {"browser_ui_rows", MH_STOCK_BASE(0x00e622a0u), 0u, 0u, OWN_UNKNOWN, static_cast<uint8_t>(MF_VIEW), false, false, false},
+    {"browser_ui_rows", MH_STOCK_BASE(0x00e622a0u), 8192u, 8192u, OWN_UNKNOWN, static_cast<uint8_t>(MF_VIEW), false, false, false},
     {"menu_newgame_race", MH_STOCK_BASE(0x00e642a4u), 4u, 4u, OWN_ISLAND, static_cast<uint8_t>(MF_VIEW), false, false, false},
     {"_G_LLM_STRAT_GROUP_MOVE_DIST_REF_X", MH_STOCK_BASE(0x00e654b4u), 4u, 4u, OWN_ISLAND, static_cast<uint8_t>(MF_VIEW | MF_MEASURED), false, false, true},
     {"_G_LLM_STRAT_GROUP_MOVE_DIST_REF_Y", MH_STOCK_BASE(0x00e654b8u), 4u, 4u, OWN_ISLAND, static_cast<uint8_t>(MF_VIEW | MF_MEASURED), false, false, true},
@@ -1827,7 +1827,7 @@ inline constexpr region REGIONS[RID_COUNT] = {
 constexpr int      RELOCATABLE_COUNT = 401;
 constexpr uint32_t RELOCATABLE_BYTES = 322832u;
 constexpr int      BLOCKED_COUNT     = 444; // a live original accessor still names them
-constexpr int      ZERO_SIZE_COUNT   = 16;
+constexpr int      ZERO_SIZE_COUNT   = 15;
 
 // Is region `r` free of live original accessors? The census's verdict, and only that.
 constexpr bool is_relocatable(region_id r) { return REGIONS[r].relocatable; }

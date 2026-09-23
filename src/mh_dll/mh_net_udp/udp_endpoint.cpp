@@ -128,7 +128,11 @@ Endpoint::Endpoint() {
 
 void Endpoint::logf(const char *fmt, ...) {
     if (!m_log) return;
-    char    line[512];
+    // mp:SES6 bumped this from 512 to 1024 -- the counters line below now appends one segment per
+    // active peer and can outgrow 512 with 3+ peers. 1024 is not an arbitrary round number: it is
+    // wsprintfA's OWN documented output ceiling (it silently truncates past it regardless of buffer
+    // size), so this is exactly as large as the buffer can ever usefully be.
+    char    line[1024];
     va_list ap;
     va_start(ap, fmt);
     wvsprintfA(line, fmt, ap);
@@ -732,9 +736,10 @@ void Endpoint::client_on_boot(const sockaddr_in &from, const uint8_t *body, size
     c.addr      = from;
     c.player_id = -1; // the host's id is unknown and irrelevant to a client (as on TCP)
     memcpy(c.conn_id, tok.conn_id, CONN_ID_BYTES);
-    c.keys    = tok.keys;
-    c.bound   = 1; // openable now; ADMITTED only when the token ack lands
-    c.last_rx = GetTickCount();
+    c.keys           = tok.keys;
+    c.bound          = 1; // openable now; ADMITTED only when the token ack lands
+    c.last_rx        = GetTickCount();
+    c.peer_horizon_ms = -1; // mp:SES6 -- nothing pushed yet; see the Conn field's own comment
     c.rx_win.reset();
     memcpy(p.token, grant, U::TOKEN_WIRE);
     memcpy(p.conn_id, tok.conn_id, CONN_ID_BYTES);
@@ -785,9 +790,10 @@ void Endpoint::host_on_token(const sockaddr_in &from, const U::Header &h, const 
         memset(&c, 0, sizeof(c));
         c.addr = from;
         memcpy(c.conn_id, p->conn_id, CONN_ID_BYTES);
-        c.keys    = p->keys;
-        c.bound   = 1;
-        c.last_rx = now;
+        c.keys            = p->keys;
+        c.bound           = 1;
+        c.last_rx         = now;
+        c.peer_horizon_ms = -1; // mp:SES6 -- nothing pushed yet; see the Conn field's own comment
         c.rx_win.reset();
         // N1: the host-assigned id is the first free 1..MAX, independent of what the client claims
         // in its later FLAG_HELLO -- hand-clicked clients all default to 1, and distinct slots are
@@ -1270,6 +1276,11 @@ void Endpoint::deliver_frame(int idx, const WireHdr &h, const uint8_t *payload, 
     ++m_rx_pkts;
     m_rx_bytes += (long)(WIRE_HDR_SIZE + len);
     m_last_rx_tick = GetTickCount();
+    // mp:SES6 -- the per-peer twin of the aggregate stamp just above, narrower than `last_rx` (which
+    // any accepted packet moves, keepalives included): this is FLAG_DATA only, so it is what "did the
+    // peer keep SENDING game data" actually reads on.
+    c.last_data_rx = m_last_rx_tick;
+    c.data_rx_bytes += (long)(WIRE_HDR_SIZE + len);
     if (m_role == 0) host_dispatch(idx, h, payload, (int)len);
     else enqueue(h.src, payload, (int)len);
 }
@@ -1645,12 +1656,42 @@ void Endpoint::timer_loop() {
             last_ctr = GetTickCount();
             if (memcmp(&prev, &m_c, sizeof(prev)) != 0) {
                 prev = m_c;
+                // mp:SES6 -- ONE PEER SEGMENT PER ACTIVE CONN, appended to the SAME line rather than
+                // a row each: report §8/§9.3's cross-matching need was answerable from one peer's log
+                // alone once it carries per-direction DATA age (unlike `last_rx`/the aggregate
+                // counters above, both moved by keepalives too -- see the Conn field comment), byte
+                // counts each way, and the peer's own advertised horizon (mh.dll's push via
+                // set_peer_horizon; -1 = nothing pushed, e.g. no lockstep seam bound). -1 also stands
+                // for "no DATA yet" on the age columns, the same sentinel style MH_NetPeerLatency's
+                // loss_pm already uses. Read outside the lock, same as m_c above: racy, fine for a
+                // timing trace (mh_net_export.h's own words for this file's counters).
+                char peers[600];
+                peers[0]         = '\0';
+                const DWORD pnow = GetTickCount();
+                for (int i = 0; i < MH_NET_MAX_PEERS; ++i) {
+                    const Conn &c = m_conns[i];
+                    if (!c.active) continue;
+                    const long rx_age = c.last_data_rx ? (long)(pnow - c.last_data_rx) : -1;
+                    const long tx_age = c.last_data_tx ? (long)(pnow - c.last_data_tx) : -1;
+                    // 200 comfortably covers the worst case: 6 fields, each up to 11 chars for a
+                    // signed 32-bit decimal (-2147483648), plus the fixed text around them (~35
+                    // chars) -- ~100 max in practice, doubled for headroom since these are COUNTERS
+                    // that grow over a match's lifetime, not bounded inputs.
+                    char seg[200];
+                    wsprintfA(seg,
+                              " | peer%d data_rx_age %ld data_tx_age %ld data_rx_bytes %ld "
+                              "data_tx_bytes %ld horizon_ms %ld",
+                              c.player_id, rx_age, tx_age, c.data_rx_bytes, c.data_tx_bytes,
+                              c.peer_horizon_ms);
+                    if (lstrlenA(peers) + lstrlenA(seg) < (int)sizeof(peers)) lstrcatA(peers, seg);
+                }
                 logf("net: udp counters dgram tx %ld rx %ld | seg tx %ld new %ld dup %ld | repaired "
                      "K %ld rto %ld (rto sent %ld) | gap stalls %ld (worst %ld ms) | mac-fail %ld "
-                     "replay %ld malformed %ld wrong-conn %ld",
+                     "replay %ld malformed %ld wrong-conn %ld%s",
                      m_c.dgram_tx, m_c.dgram_rx, m_c.seg_tx, m_c.seg_rx_new, m_c.seg_rx_dup,
                      m_c.repaired_by_k, m_c.repaired_by_rto, m_c.rto_sent, m_c.gap_stalls,
-                     m_c.gap_ms_worst, m_c.mac_fail, m_c.replay_drop, m_c.malformed, m_c.wrong_conn);
+                     m_c.gap_ms_worst, m_c.mac_fail, m_c.replay_drop, m_c.malformed, m_c.wrong_conn,
+                     peers);
             }
             // mp:T2's rollup, on the same cadence and the same rule: printed only when something
             // moved. `evicted` is in it because "no chunk was evicted" has to be a number a rig log
@@ -1667,20 +1708,30 @@ void Endpoint::timer_loop() {
 int Endpoint::send(int dst_player, const void *buf, int len) {
     if (!m_started || len < 0 || len > MH_NET_MAX_PAYLOAD) return 0;
     EnterCriticalSection(&m_conn_cs);
+    // mp:SES6 -- per-conn twins of the aggregate tx stamp below, one GetTickCount() for every conn a
+    // broadcast fans out to (a peer's OWN "did I send" answer, not a per-datagram timestamp).
+    const DWORD now = GetTickCount();
     if (m_role == 0) {
         if (dst_player == MH_NET_BROADCAST) {
             for (int i = 0; i < MH_NET_MAX_PEERS; ++i)
-                if (m_conns[i].active)
+                if (m_conns[i].active) {
                     send_frame(i, FLAG_DATA, (int16_t)m_my_id, BROADCAST, buf, len);
+                    m_conns[i].last_data_tx = now;
+                    m_conns[i].data_tx_bytes += (long)(WIRE_HDR_SIZE + len);
+                }
         } else {
             for (int i = 0; i < MH_NET_MAX_PEERS; ++i)
                 if (m_conns[i].active && m_conns[i].player_id == dst_player) {
                     send_frame(i, FLAG_DATA, (int16_t)m_my_id, (int16_t)dst_player, buf, len);
+                    m_conns[i].last_data_tx = now;
+                    m_conns[i].data_tx_bytes += (long)(WIRE_HDR_SIZE + len);
                     break;
                 }
         }
     } else if (m_conns[0].active) {
         send_frame(0, FLAG_DATA, (int16_t)m_my_id, (int16_t)dst_player, buf, len);
+        m_conns[0].last_data_tx = now;
+        m_conns[0].data_tx_bytes += (long)(WIRE_HDR_SIZE + len);
     }
     LeaveCriticalSection(&m_conn_cs);
     ++m_tx_pkts;
@@ -1844,6 +1895,43 @@ void Endpoint::get_stats(MH_NetStats *out) {
         L.rttvar_us          = (int)(c.stats.rtt.rttvar_ms * 1000.0);
         L.ipdv_us            = (int)(c.stats.rtt.ipdv_ms * 1000.0);
         L.loss_pm            = c.stats.loss.loss_pm();
+        // mp:L1f -- THE BRIDGE mp:L1e left open, and it needed no handle<->player_id table after
+        // all. L1e looked for the crossing in the wrong currency: the relay layer keys everything by
+        // its relay HANDLE and this file keys everything by `player_id`, and no table maps one to
+        // the other. But the two layers DO already share a key, and have since mp:R3 -- the
+        // per-remote LOOPBACK ADDRESS. udp_relay.cpp gives every remote peer its own loopback socket
+        // precisely so this Endpoint can tell two clients apart (udp_relay.h reason 2), so
+        // `c.addr` IS the relay's `Remote::self` for a tunnelled host, and the client's one conn
+        // address IS the tunnel's own dial port. That address is already the currency the reverse
+        // question travels in (`knows_addr`, mp:R3e's ownership predicate); this is the same edge
+        // asked the other way, and the relay answers from a latch it keeps on the LAST ACCEPTED DATA
+        // frame -- last, not first, because mp:R3's rendezvous can promote a pair from relayed to
+        // direct mid-session and the lobby must show that when it happens.
+        //
+        // Still -1 whenever nobody can honestly answer: no classifier wired (a selftest, an older
+        // transport), an address the tunnel does not recognise, or a remote that has not delivered
+        // a DATA frame yet. -1 renders as the bare number, never a guessed letter (mp:L1e's rule).
+        L.relayed = m_path_class ? m_path_class(m_path_class_ctx, c.addr) : -1;
+    }
+    LeaveCriticalSection(&m_conn_cs);
+}
+
+// mp:SES6 -- see the header's comment on this method and mh_net_export.h's note on
+// MH_Net_SetPeerHorizon for what `player_id` means and why. A CLIENT ALWAYS APPLIES IT TO m_conns[0]:
+// its one conn to the host carries player_id -1 (the declared-id convention host_on_token/
+// client_on_boot both set), so matching by player_id would silently drop every push a client ever
+// receives -- exactly the client-sees-an-empty-set trap net_lockstep.cpp already documents for
+// MH_Net_ActivePeerIds, one level up.
+void Endpoint::set_peer_horizon(int player_id, int horizon_ms) {
+    EnterCriticalSection(&m_conn_cs);
+    if (m_role == 1) {
+        if (m_conns[0].bound) m_conns[0].peer_horizon_ms = horizon_ms;
+    } else {
+        for (int i = 0; i < MH_NET_MAX_PEERS; ++i)
+            if (m_conns[i].active && m_conns[i].player_id == player_id) {
+                m_conns[i].peer_horizon_ms = horizon_ms;
+                break;
+            }
     }
     LeaveCriticalSection(&m_conn_cs);
 }

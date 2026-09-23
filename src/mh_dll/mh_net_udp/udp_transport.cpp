@@ -147,6 +147,13 @@ void relay_directory_row(void * /*ctx*/, uint32_t room, const uint8_t *si, int l
 // its own peer table under its own lock, and learns nothing about relays by being asked.
 bool relay_peer_known(void * /*ctx*/, const sockaddr_in &a) { return g_ep.knows_addr(a); }
 
+// mp:L1f -- the SAME edge asked the other way (udp_endpoint.h path_class_fn, udp_relay.h
+// path_class). This file is the one that knows both layers exist, so the crossing lives here and
+// neither side gains a header of the other's: the endpoint hands over an address it already holds
+// and gets back an opaque 1/0/-1 it copies into MH_NetPeerLatency.relayed; the relay answers from
+// its own published table. Asked on the GAME thread (get_stats), answered lock-free.
+int relay_path_class(void * /*ctx*/, const sockaddr_in &a) { return mh::udprelay::path_class(a); }
+
 // The endpoint's single control edge, fanned back out into the six the surface declares.
 void ctrl_dispatch(void * /*ctx*/, uint16_t flags, int sender, const unsigned char *buf, int len) {
     using namespace mh_net_proto;
@@ -397,6 +404,12 @@ extern "C" int MH_Net_InitEx(const MH_NetConfig *cfg) {
 
     g_ep.set_log(log_line, nullptr);
     g_ep.set_ctrl(ctrl_dispatch, nullptr);
+    // mp:L1f -- UNCONDITIONALLY, outside the `relay configured` branch above and for BOTH roles.
+    // The answer for a build with no relay at all is not "unknown", it is DIRECT (path_class returns
+    // 0 when the tunnel is not running), and that is exactly the answer an ordinary LAN lobby's
+    // ping cell should carry. Installing it only when a relay is configured would make the plain
+    // case the letterless one -- the opposite of the truth.
+    g_ep.set_path_class(relay_path_class, nullptr);
     const bool ok = g_ep.start(c, psk, secure); // restarts a started endpoint; it logs the relink
     // The refusal case, and the ONLY reason this is not a bare assignment: the endpoint could not
     // stop, so the OLD link is still up and still ours. Leaving g_started true keeps the module's
@@ -429,6 +442,9 @@ extern "C" void MH_Net_GetStats(MH_NetStats *out) {
         return;
     }
     g_ep.get_stats(out);
+}
+extern "C" void MH_Net_SetPeerHorizon(int player_id, int horizon_ms) {
+    if (g_started) g_ep.set_peer_horizon(player_id, horizon_ms);
 }
 
 extern "C" void MH_Net_SetSessionInfoHandler(MH_SessionInfoCb cb) { g_si_cb = cb; }

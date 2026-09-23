@@ -57,10 +57,11 @@
 #include <windows.h>
 
 #include "include/mh_module_bind.h"
-#include "config/config.h"  // exe_dir + refuse -- one composition rule, one refusal mechanism
-#include "mh_net_module.h"  // the contract: MH_NET_MODULE_SYMBOLS, the host/probe structs, the ABI
-#include "mh_run_context.h" // MH_RunDir + mh_log_stamp (mh_common; self-initialising)
-#include "mh_version.h"     // MH_VERSION_FULL -- the build stamp, from src/mh_dll/mh_version.props
+#include "config/config.h"   // exe_dir + refuse -- one composition rule, one refusal mechanism
+#include "config/ini_read.h" // TL-HARN4: read_ini_string -- strips a trailing `;comment`
+#include "mh_net_module.h"   // the contract: MH_NET_MODULE_SYMBOLS, the host/probe structs, the ABI
+#include "mh_run_context.h"  // MH_RunDir + mh_log_stamp (mh_common; self-initialising)
+#include "mh_version.h"      // MH_VERSION_FULL -- the build stamp, from src/mh_dll/mh_version.props
 
 #pragma comment(lib, "ws2_32.lib")
 
@@ -170,7 +171,7 @@ bool module_declined(void) {
     wsprintfA(ini, "%smh_net.ini", dir);
 
     char v[32] = {0};
-    GetPrivateProfileStringA("net", "module", "auto", v, sizeof(v), ini);
+    mh::config::read_ini_string("net", "module", "auto", v, sizeof(v), ini); // TL-HARN4
     if (lstrcmpiA(v, "auto") == 0) return false;
     if (lstrcmpiA(v, "none") == 0) return true;
     char what[512];
@@ -218,7 +219,7 @@ const char *transport_file(void) {
     wsprintfA(ini, "%smh_net.ini", dir);
 
     char v[32] = {0};
-    GetPrivateProfileStringA("net", "transport", "udp", v, sizeof(v), ini);
+    mh::config::read_ini_string("net", "transport", "udp", v, sizeof(v), ini); // TL-HARN4
     if (lstrcmpiA(v, "udp") == 0) {
         g_configured_name = "udp";
         return nullptr;

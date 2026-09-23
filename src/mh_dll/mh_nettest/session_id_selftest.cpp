@@ -617,6 +617,63 @@ int run_sessionidtest() {
         // guarantees is that [1] survives the round trip, checked above.
     }
 
+    // ---- mp:L1f -- the HOST'S PER-SLOT PING SUMMARY (ANNOUNCE kind 3) --------------------------
+    // The one thing a client can never measure for itself (the star topology), so the codec that
+    // carries it is worth an offline arm of its own: the rig can prove a number appeared, but only
+    // this can prove a truncated or over-long table is refused whole rather than half-applied.
+    {
+        AnnouncePingEntry in[ANNOUNCE_PING_MAX_ENTRIES];
+        in[0].player_id = 2;
+        in[0].srtt_ms   = 37;
+        in[0].relay     = ANNOUNCE_PING_RELAY_RELAYED;
+        in[1].player_id = 5;
+        in[1].srtt_ms   = 300;
+        in[1].relay     = ANNOUNCE_PING_RELAY_DIRECT;
+        in[2].player_id = 7;
+        in[2].srtt_ms   = 60000; // over the clamp on purpose
+        in[2].relay     = 99;    // ...and an out-of-range class on purpose
+        unsigned char pb[ANNOUNCE_PING_MAX_ENCODED];
+        size_t        pn = announce_ping_encode(in, 3, pb);
+        check("PING announce: kind byte, then the ENTRY COUNT (not a player id)",
+              pb[0] == ANNOUNCE_PING && pb[1] == 3);
+        check("PING announce: 2 header bytes + 4 per entry", pn == 2 + 3 * 4);
+
+        AnnouncePingEntry out[ANNOUNCE_PING_MAX_ENTRIES];
+        size_t            on = 0;
+        check("PING announce decodes to the same three entries",
+              announce_ping_decode(pb, pn, out, ANNOUNCE_PING_MAX_ENTRIES, &on) && on == 3 &&
+                  out[0].player_id == 2 && out[0].srtt_ms == 37 &&
+                  out[0].relay == ANNOUNCE_PING_RELAY_RELAYED && out[1].player_id == 5 &&
+                  out[1].srtt_ms == 300 && out[1].relay == ANNOUNCE_PING_RELAY_DIRECT);
+        check("PING announce: srtt over the clamp is clamped, not wrapped",
+              out[2].srtt_ms == ANNOUNCE_PING_SRTT_CLAMP);
+        check("PING announce: an out-of-range relay class encodes as UNKNOWN",
+              out[2].relay == ANNOUNCE_PING_RELAY_UNKNOWN);
+
+        // THE NEGATIVES. A truncated table is refused WHOLE: half-applying it would leave the rows
+        // it did not reach painting the previous table's numbers under a fresh header.
+        check("a PING frame shorter than its declared count is refused",
+              !announce_ping_decode(pb, pn - 1, out, ANNOUNCE_PING_MAX_ENTRIES, &on));
+        check("a 1-byte PING frame is refused",
+              !announce_ping_decode(pb, 1, out, ANNOUNCE_PING_MAX_ENTRIES, &on));
+        unsigned char refused[ANNOUNCE_MAX_ENCODED];
+        const size_t  rn = announce_refused_encode(3, "codepage 1252/1251", refused);
+        check("a REFUSED announce is not decoded as a ping table",
+              !announce_ping_decode(refused, rn, out, ANNOUNCE_PING_MAX_ENTRIES, &on));
+        unsigned char over[4] = {ANNOUNCE_PING, ANNOUNCE_PING_MAX_ENTRIES + 1, 0, 0};
+        check("a PING frame claiming more entries than the cap is refused",
+              !announce_ping_decode(over, sizeof(over), out, ANNOUNCE_PING_MAX_ENTRIES, &on));
+        // THE EMPTY TABLE IS LEGAL and means "nobody else measured" -- it is how a host tells its
+        // clients that the peer whose number they were showing has gone.
+        pn = announce_ping_encode(in, 0, pb);
+        check("an EMPTY ping table encodes to the 2-byte header and decodes to zero entries",
+              pn == 2 && announce_ping_decode(pb, pn, out, ANNOUNCE_PING_MAX_ENTRIES, &on) &&
+                  on == 0);
+        // The wire cannot overflow the ANNOUNCE frame the transports already carry.
+        check("a full ping table still fits an ANNOUNCE frame",
+              ANNOUNCE_PING_MAX_ENCODED <= ANNOUNCE_MAX_ENCODED);
+    }
+
     printf("=== sessionidtest: %d checks, %d failures ===\n", g_checks, g_fails);
     return g_fails ? 1 : 0;
 }

@@ -67,8 +67,8 @@
    "why": "CLOSED 2026-09-01. 2 measured writers, BOTH OWNED -- migration-ledger rows in tools/data/net_session_migration.json (state `verified`), not exceptions, which is what this item's acceptance demanded: an exception for either would have been a failure of the item. llm_net_session_globals_reset is T1 (all 22 stores asserted offline against the listing's values plus a LIVE 22/22 read-back in BOTH the promoted and the stock arm -- the stock arm is what proves the address table rather than our own pointers -- and a negative arm that made it report 21/22 naming the field). llm_wait_screen_frame is T2: every branch, both sides of the JBE boundary, the unsigned wrap and the act order are covered offline, and the leader path and the peer path are shown to reach ONE implementation (`resync_complete_local`, which rx_dispatch's CTL_RESYNC_END arm now calls), but no available scenario drives a real leader-side resync, so there is no live equivalence evidence for that body. THE SPLICE-VS-TRANSLATE QUESTION WAS ANSWERED, as the scope required: TRANSLATE. Splicing the transition into the already-promoted emitter send_lockstep_resync_resume (whose only caller this is) would have left the two inline writes at 0x0043ee7e/0x0043ee88 executing, so the census would go on naming the function -- the item would have closed while the thing it was opened for stayed true."
   },
   "U39": {
-   "checked": false,
-   "why": "THE ONE GENUINELY OPEN WRITER on the whole frontier, and it is a fix rather than a translation: llm_ui_diplomacy_apply_and_resume writes Players[PlayerSide].relation[j] directly (22 bytes at 0x004c8070..0x004c8085) AND issues order 0xf4, whose handler libmh already owns. tracker/mp.yaml U39 NOPs the direct write under a guarded byte patch so the order handler is the sole writer. NOT excepted -- an exception here would accept a double-write on a HASHED cell (PLAYERS is in the hash manifest) -- and not owned either, because nothing has retired it yet. `checked: false` is therefore the true state: the scope exists so the writer is routed and visible, and it flips to checked when U39 lands. Its region PLAYERS is consequently the ONE region libmh writes that keeps a writer with no exception; region_ownership.json records it as such."
+   "checked": true,
+   "why": "CLOSED 2026-09-21 -- the write is RETIRED, not excepted: seams/ui_diplomacy_echo.cpp NOPs the 22 bytes at 0x004c8070 under patch_bytes_guarded (expect string = the exact span; a mismatch or a promoted parent refuses and logs), so llm_diplomacy_set_relation, the 0xf4 handler every peer runs at commit, is the cell's only writer. Measured before the fix (u39_diplomacy, three rig runs): `players` differed for exactly 4 steps between Apply and commit; after: ALL PAIRS IDENTICAL over 3239 steps, and the negative arm u39_diplomacy_echo (retail bytes, [net] diplo_echo_nop=0) still shows the 4-step window, gated by check_u39_echo.py. The callee-arming residual of a promoted mh::sim::diplomacy_set_relation stays O4-P's. Original note: THE ONE GENUINELY OPEN WRITER on the whole frontier, and it is a fix rather than a translation: llm_ui_diplomacy_apply_and_resume writes Players[PlayerSide].relation[j] directly (22 bytes at 0x004c8070..0x004c8085) AND issues order 0xf4, whose handler libmh already owns. tracker/mp.yaml U39 NOPs the direct write under a guarded byte patch so the order handler is the sole writer. NOT excepted -- an exception here would accept a double-write on a HASHED cell (PLAYERS is in the hash manifest) -- and not owned either, because nothing has retired it yet. `checked: false` is therefore the true state: the scope exists so the writer is routed and visible, and it flips to checked when U39 lands. Its region PLAYERS is consequently the ONE region libmh writes that keeps a writer with no exception; region_ownership.json records it as such."
   }
  },
  "owned_elsewhere": {
@@ -187,6 +187,18 @@
     "relocated-bind"
    ],
    "why": "LIB-ABI stage E (2026-09-03): the function's LOAD-BEARING write is hoisted into libmh at every call site (latch-before / store-after, lockstep/overlay_hoist.cpp + the per-site hoists), so the classification 'presentation, not a determinism input' is RETIRED -- GAME_MODE became a libmh input when the promoted llm_strat_frame started gating the sim tick on it (sim_lt_frame.cpp:56/61/72, 2026-09-02). HOSTED: the original still executes and re-writes the identical value (double-write idempotent, verified per row in the stage-E spec). NO-OP HOST: the hoist is the sole writer and libmh keeps its input. RELOCATED-BIND: the original writes the stock base, the hoist writes the bound copy AFTER the call, so libmh's copy is authoritative -- the AFTER ordering is what makes this class hold where load-path breaks."
+  },
+  "patched-out": {
+   "holds_in": "in-process",
+   "holds_in_also": [
+    "relocated-bind",
+    "no-op-host"
+   ],
+   "fails_in": [
+    "standalone"
+   ],
+   "why": "The original's store is NOPed IN .TEXT at boot by a seam (mh::hook::patch_bytes_guarded over the exact expect bytes -- a mismatch, or a parent PROMOTED in this run, refuses and logs rather than patching a body that no longer matches), so the instruction that wrote the region no longer exists in the running image and the libmh-owned path is the region's only writer. Holds wherever mh.dll runs inside mh.exe (in-process, relocated-bind, no-op-host: the patch is to code, not to which .bss copy is bound). FAILS in standalone only vacuously -- there is no original there to patch. Distinct from `dead-code` (the function IS reached; only the store is gone) and from `split-hoisted` (nothing is re-written by us; the write is deleted, and the replicated order carries the value).",
+   "check": "The seam logs `; U39: ... NOPed at <site>` / `NOT patched` at boot; the negative arm (a registry row with the seam OFF) must still show the divergence the patch retires, and the ship arm must not -- both under tools/test_ui.py post_checks. A guard failure is visible in mh_net.log, never silent."
   }
  },
  "functions": {
@@ -2483,6 +2495,15 @@
     "WIDTH"
    ],
    "why": "Map-file header parse. Writes width/height once (0x004a3340/0x004a334b) then calls llm_map_setup_dimensions. Sole caller map_ReadMap_pre, whose callers are SwitchToPlanet, llm_strat_planet_session_begin and llm_strat_session_begin_multi -- reachable from NONE of the eight llm_frame_dispatch mode roots. Safe rather than merely tolerated: libmh's only strategic writer of these two, llm_strat_planet_distance @0x00493fb2, is a SAVE/RESTORE SCRATCH (sets 100000 at 0x00493fe3/0x00493fed, restores at 0x00494013/0x0049401b), so the loaders are the sole durable producers of a value eight libmh readers consume."
+  },
+  "llm_ui_diplomacy_apply_and_resume": {
+   "owner": "U39",
+   "verdict": "except",
+   "class": "patched-out",
+   "regions": [
+    "PLAYERS"
+   ],
+   "why": "mp:U39 (2026-09-21). The census still sees the 22-byte store at 0x004c8070..0x004c8085 (Players[PlayerSide].relation[j] = spinner value) because the census reads the binary, and at runtime seams/ui_diplomacy_echo.cpp has replaced those bytes with NOPs (guarded on the exact expect string; refused + logged if the bytes differ or the parent is promoted). The function's OTHER effect -- issuing order 0xf4 -- is what carries the value now, and the handler every peer runs at commit (llm_diplomacy_set_relation / mh::sim::diplomacy_set_relation) is the sole writer. Measured: before the NOP `players` (HASH_REGIONS[55]) differed between host and client for exactly 4 lockstep steps per Apply (u39_diplomacy, three rig runs); after, ALL PAIRS IDENTICAL over 3239 steps; the negative arm u39_diplomacy_echo ([net] diplo_echo_nop=0) still shows the 4-step window, gated by tools/check_u39_echo.py. Ship default: [net] diplo_echo_nop=1. The callee-arming residual of a promoted handler stays O4-P's (see owned_elsewhere)."
   }
  },
  "_retired_by_translation": {

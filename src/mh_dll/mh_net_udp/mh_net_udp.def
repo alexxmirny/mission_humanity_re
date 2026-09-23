@@ -36,6 +36,7 @@ EXPORTS
     MH_Net_TakeDeadPeer
     MH_Net_IsStarted
     MH_Net_GetStats
+    MH_Net_SetPeerHorizon
     MH_Net_SetSessionInfoHandler
     MH_Net_SendSessionInfo
     MH_Net_SetJoinHandler

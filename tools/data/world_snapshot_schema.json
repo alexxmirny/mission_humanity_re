@@ -6,7 +6,7 @@
  "carried_bytes": 7711960,
  "excluded": 16,
  "unaccounted": 0,
- "hash_backed_regions": 51,
+ "hash_backed_regions": 52,
  "overlapping_blocks": [
   {
    "a": "MESSAGE_TIME",
@@ -5087,8 +5087,8 @@
   {
    "id": "BROWSER_UI_ROWS",
    "name": "browser_ui_rows",
-   "verdict": "exclude:no-extent",
-   "why": ""
+   "verdict": "exclude:menu-ui",
+   "why": "The session browser's row table (llm_lobby_browser_row[1024], mp:R2b, 2026-09-21): written by the browser refresh / the DLL's build_browser_from_store and read only by the browser and llm_lobby_join_head, all before Start. Its extent (8192) entered the addr manifest on 2026-09-21 -- after libref-replay-v1 / libref-*-aisoak-v1 were recorded against the 829-block table -- and the first gate after it refused all three fixtures with rc=-3 (2026-09-22). Not hash-backed; the joiner's browser rows are meaningless to a replaying host."
   },
   {
    "id": "INPUT_KEYSTATE",

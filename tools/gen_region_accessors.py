@@ -142,7 +142,18 @@ def fingerprints(ours=None):
     """
     out = {}
     for key, path in (("en_functions", FUNCTIONS), ("state_regions", REGISTRY)):
-        out[key] = hashlib.sha256(path.read_bytes()).hexdigest()[:16]
+        # NORMALISE LINE ENDINGS BEFORE HASHING. These are `text`/`eol=lf` files: git stores
+        # LF, and any checkout that honours the attribute (CI, a fresh clone) has LF on disk --
+        # but the GENERATORS that write them run on Windows in text mode and leave CRLF in the
+        # maintainer's worktree until the next checkout rewrites them. Hashing raw bytes
+        # therefore fingerprints the CHECKOUT rather than the CONTENT: a census refreshed on
+        # Windows records the CRLF hash, CI computes the LF one, and `--check` reports
+        # `en_functions changed since the census was built` on a tree where nothing changed.
+        # That is not hypothetical -- it failed the v0.2.0-rc1 release run in TWO rows at once
+        # (this one, and the ST3 ownership interlock whose selftest asserts a green tree
+        # first), while `lint_repo.py` on the maintainer's box passed 170/170, because the
+        # recorded hash and the local file agreed with each other and with nothing else.
+        out[key] = hashlib.sha256(path.read_bytes().replace(b"\r\n", b"\n")).hexdigest()[:16]
     # Derived, not a file: `done` comes from the ledgers plus a source scan, so hash the SET rather
     # than any one input. This is the direction that moves most often -- every verified row changes
     # it -- which is exactly why its drift is classified separately below.
@@ -934,6 +945,29 @@ def selftest():
     """
     ok = True
     now = fingerprints()
+
+    # THE LINE-ENDING ARM. `fingerprints()` must fingerprint CONTENT, not the checkout. These inputs
+    # are `text`/`eol=lf`: git stores LF, a fresh clone and CI have LF on disk, and the Windows
+    # generators that write them leave CRLF in the maintainer's worktree until the next checkout.
+    # Hashing raw bytes made the two disagree, so a census refreshed on Windows was reported STALE
+    # by CI -- which failed the v0.2.0-rc1 release run in two rows at once while `lint_repo.py`
+    # passed 170/170 locally. Locally-green-CI-red is the worst shape a gate can have, so it is
+    # asserted here rather than left to the next release to rediscover.
+    for _key, _path in (("en_functions", FUNCTIONS), ("state_regions", REGISTRY)):
+        _raw = _path.read_bytes()
+        _lf = _raw.replace(b"\r\n", b"\n")
+        _crlf = _lf.replace(b"\n", b"\r\n")
+        _h_lf = hashlib.sha256(_lf.replace(b"\r\n", b"\n")).hexdigest()[:16]
+        _h_crlf = hashlib.sha256(_crlf.replace(b"\r\n", b"\n")).hexdigest()[:16]
+        if _h_lf != _h_crlf or _h_lf != now[_key]:
+            print(
+                "SELFTEST FAIL (line endings): %s fingerprints differently under LF (%s) and CRLF "
+                "(%s); live value %s. A census refreshed on one checkout will read STALE on the "
+                "other, and CI is the other." % (_path.name, _h_lf, _h_crlf, now[_key])
+            )
+            ok = False
+        else:
+            print("  ok: %s fingerprints identically under LF and CRLF" % _path.name)
 
     def arm(label, inputs, want_unsafe, want_conservative):
         nonlocal ok

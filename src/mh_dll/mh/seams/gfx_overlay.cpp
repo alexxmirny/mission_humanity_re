@@ -46,8 +46,10 @@
 #include "include/mh_uidrive_export.h" // MH_UIDrive_SynthKeyDown (the `hotkey` verb's chord, 2026-09-20)
 #include "include/mh_run_context.h"    // MH_RunDir
 #include "addr/mh_addrs.gen.h"         // generated EN VAs
+#include "config/ini_read.h"           // TL-HARN4: read_ini_string -- strips a trailing `;comment`
 #include "state/region_runtime.h"      // SB-HOSTFREE: live_base/ptr -- a movable region is read
                                        // where it IS, not where the binary put it
+#include "include/mh_tile_dirty.h"     // mp:GX1: mark_ground_tiles_dirty -- shared with ui_net_indicator.cpp
 #include "en_guard.h"                  // EN-only build gate
 #include "overlay_font.h"              // GENERATED 6x10 ASCII cells
 
@@ -128,6 +130,18 @@ int  g_npages = 0;
 int  g_page   = 0;
 
 KeyBind g_key_toggle, g_key_next, g_key_prev;
+
+// ---- mp:GX1: the ground-tile damage-map stamp -----------------------------------------------------
+//
+// This overlay writes RGB565 straight into the framebuffer (draw_text/dim_rect below) and stamps
+// nothing on its own -- unlike every retail primitive, which marks the ground layer's damage map
+// (_G_LLM_TILE_VIS_MAP) as it draws so the next ground pass repaints the tile. Without that mark,
+// whatever we last put in the box's rect sticks forever once nothing else has a reason to touch that
+// tile again. g_prev_r* is the LAST rect actually painted (box included), tracked so a frame whose
+// box is smaller/moved/gone can still release what an EARLIER frame covered -- the vacated strip is
+// not part of THIS frame's own rect and would otherwise never get marked at all.
+bool g_prev_painted = false;
+int  g_prev_rx = 0, g_prev_ry = 0, g_prev_rw = 0, g_prev_rh = 0;
 
 // fps is measured over presents, not sim steps -- it is what the player sees.
 long  g_frames     = 0;
@@ -398,6 +412,34 @@ void dim_rect(uint8_t *fb, int pitch, int W, int H, int x0, int y0, int w, int h
     }
 }
 
+// mp:GX1: a HARD (single-frame, not decaying) reset of an axis-aligned rect to black, clipped to the
+// surface. This is what paint() runs, once, over whatever the LAST painted frame covered that this
+// frame's box no longer does -- a page switch or a page whose items shrank the box. `dim_rect` above
+// only HALVES, which needs several more painted frames to converge to nothing, and a mode with no
+// ground pass at all (menu/pause/lobby -- this file's head comment) never gets those extra frames for
+// free the way a ground-pass mode's own repaint would give them; nothing there re-invokes this seam's
+// darken step for a rect that no longer intersects the current box. A solid reset is not the true
+// game background (this seam keeps no second copy of the frame to restore from), but it is
+// deterministic and immediate, which is what "repaint its own box's background" (mp:GX1's own choice
+// of words for this alternative) needs to mean without a framebuffer copy this seam does not have.
+void clear_rect(uint8_t *fb, int pitch, int W, int H, int x0, int y0, int w, int h) {
+    if (x0 < 0) {
+        w += x0;
+        x0 = 0;
+    }
+    if (y0 < 0) {
+        h += y0;
+        y0 = 0;
+    }
+    if (x0 + w > W) w = W - x0;
+    if (y0 + h > H) h = H - y0;
+    for (int y = 0; y < h; ++y) {
+        uint16_t *row = (uint16_t *)(fb + (size_t)(y0 + y) * pitch) + x0;
+        for (int x = 0; x < w; ++x)
+            row[x] = 0;
+    }
+}
+
 // One glyph, per-pixel clipped. Chars outside the table render as blanks rather than garbage.
 void draw_glyph(uint8_t *fb, int pitch, int W, int H, int px, int py, unsigned char ch, uint16_t col) {
     if (ch < FONT_FIRST || ch > FONT_LAST) return;
@@ -572,14 +614,14 @@ bool key_fired(KeyBind *k) {
 
 void load_key(const char *ini, const char *key, const char *def, KeyBind *out, const char *what) {
     char spec[64];
-    GetPrivateProfileStringA("debug", key, def, spec, sizeof(spec), ini);
-    if (!spec[0] || lstrcmpiA(spec, "none") == 0) return; // explicitly unbound
+    mh::config::read_ini_string("debug", key, def, spec, sizeof(spec), ini); // TL-HARN4
+    if (!spec[0] || lstrcmpiA(spec, "none") == 0) return;                    // explicitly unbound
     if (!parse_key(spec, out)) ovl_log("; [debug] %s='%s' not understood -- %s left unbound", key, spec, what);
 }
 
 void load_pages(const char *ini) {
     char list[256];
-    GetPrivateProfileStringA("debug", "pages", "", list, sizeof(list), ini);
+    mh::config::read_ini_string("debug", "pages", "", list, sizeof(list), ini); // TL-HARN4
     char *names[MAX_PAGES];
     int   n = split(list, ',', names, MAX_PAGES);
     if (n == 0) {
@@ -597,14 +639,14 @@ void load_pages(const char *ini) {
         lstrcpynA(name, names[i], MAX_NAME); // bound the name before it goes into a key buffer
         char key[MAX_NAME + 16];
         wsprintfA(key, "page.%s.title", name);
-        GetPrivateProfileStringA("debug", key, name, p.title, MAX_NAME, ini);
+        mh::config::read_ini_string("debug", key, name, p.title, MAX_NAME, ini); // TL-HARN4
         wsprintfA(key, "page.%s.modes", name);
         char modes[64];
-        GetPrivateProfileStringA("debug", key, "", modes, sizeof(modes), ini);
+        mh::config::read_ini_string("debug", key, "", modes, sizeof(modes), ini); // TL-HARN4
         p.mode_mask = parse_modes(modes);
         wsprintfA(key, "page.%s.items", name);
         char items[512];
-        GetPrivateProfileStringA("debug", key, "", items, sizeof(items), ini);
+        mh::config::read_ini_string("debug", key, "", items, sizeof(items), ini); // TL-HARN4
         char *f[MAX_ITEMS];
         int   ni = split(items, ',', f, MAX_ITEMS);
         for (int j = 0; j < ni; ++j) lstrcpynA(p.items[p.nitems++], f[j], MAX_NAME);
@@ -679,7 +721,44 @@ void paint() {
     int bx = (g_anchor == 1 || g_anchor == 3) ? W - g_rx - bw : g_rx;
     int by = (g_anchor == 2 || g_anchor == 3) ? H - g_ry - bh : g_ry;
 
+    // mp:GX1. Two independent steps, in order, and neither may be dropped:
+    //
+    // (1) If the last PAINTED frame's rect differs from this one -- a page switch, or a page whose
+    // item count/value width shrank bw/bh -- HARD-CLEAR that earlier rect to black, ONE frame, before
+    // touching the current box at all. The vacated strip sits OUTSIDE this frame's own (bx,by,bw,bh),
+    // so the existing per-current-rect dim_rect call below never reaches it; clear_rect's own comment
+    // has the reasoning for why this is a solid reset rather than another halve. This step alone is
+    // what keeps the overlay from smearing in a mode with no ground pass at all (menu/pause/lobby --
+    // this file's head comment), on the very frame the shrink happens, not after several more frames
+    // this seam is not guaranteed to get.
+    if (g_prev_painted &&
+        (g_prev_rx != bx || g_prev_ry != by || g_prev_rw != bw || g_prev_rh != bh))
+        clear_rect(fb, pitch, W, H, g_prev_rx, g_prev_ry, g_prev_rw, g_prev_rh);
+
+    // (2) Mark the ground layer's damage map over the UNION of the two rects (item 2's shared helper).
+    // A no-op write in a mode with no ground pass (step 1 already handled those); in strategic mode 2
+    // or tactical mode 6 it lets the NEXT ground-pass frame repaint real terrain over whatever step 1
+    // just reset to black, upgrading a one-frame black patch into the correct picture -- better than
+    // step 1 alone can do on its own, which is why both run rather than either replacing the other.
+    {
+        int ux0 = bx, uy0 = by, ux1 = bx + bw, uy1 = by + bh;
+        if (g_prev_painted) {
+            if (g_prev_rx < ux0) ux0 = g_prev_rx;
+            if (g_prev_ry < uy0) uy0 = g_prev_ry;
+            if (g_prev_rx + g_prev_rw > ux1) ux1 = g_prev_rx + g_prev_rw;
+            if (g_prev_ry + g_prev_rh > uy1) uy1 = g_prev_ry + g_prev_rh;
+        }
+        mh::gfx::mark_ground_tiles_dirty(ux0, uy0, ux1 - ux0, uy1 - uy0);
+    }
+
+    // Unchanged from before this item: halve the CURRENT box for legibility (this is the
+    // tested/baselined "halved terrain" look the committed debug_overlay UI-test captures show; step
+    // 1 above never touches this rect, so that look does not move). `box=0` skips this, as before --
+    // a page run with box=0 in a mode with no ground pass is not covered by this item.
     if (g_box) dim_rect(fb, pitch, W, H, bx, by, bw, bh);
+    g_prev_rx = bx, g_prev_ry = by, g_prev_rw = bw, g_prev_rh = bh;
+    g_prev_painted = true;
+
     for (int i = 0; i < nlines; ++i) {
         int ty = by + PAD + i * FONT_H;
         if (ty >= H) break;             // below the surface: nothing further can land
@@ -742,10 +821,34 @@ extern "C" void MH_Overlay_OnPresent(void) {
     if (key_fired(&g_key_prev)) g_page = next_visible_page(g_page, -1, mode);
     if (g_page < 0) g_page = 0;
 
-    if (!g_visible || g_npages <= 0) return;
-    if (!mode_allowed(g_modes, mode)) return; // global mode gate, evaluated before any drawing
-    const Page &p = g_pages[g_page];
-    if (p.mode_mask && !mode_allowed(p.mode_mask, mode)) return; // per-page gate
+    // mp:GX1: the three gates below decide whether paint() runs at all this frame -- collapsed into
+    // one `will_paint` (rather than three bare `return`s, as before) so the "nothing will draw"
+    // outcome has exactly one exit, which is where the release-stamp belongs: whatever the LAST
+    // painted frame covered needs a ground-pass repaint the moment this seam stops covering it,
+    // whether that is because the player hid the overlay, no pages are configured, or the mode gate
+    // (global or per-page) just closed.
+    bool will_paint = g_visible && g_npages > 0;
+    if (will_paint && !mode_allowed(g_modes, mode)) will_paint = false; // global mode gate
+    if (will_paint) {
+        const Page &p = g_pages[g_page];
+        if (p.mode_mask && !mode_allowed(p.mode_mask, mode)) will_paint = false; // per-page gate
+    }
+    if (!will_paint) {
+        if (g_prev_painted) {
+            // Same pair as paint()'s step (1)+(2): a hard clear now (this is the LAST frame anything
+            // here will touch these pixels, so there is no later frame to halve them away in), plus
+            // the ground-pass stamp for whichever mode actually has one.
+            uint8_t *fb    = *(uint8_t **)ADDR_FB;
+            int      pitch = *(const int *)ADDR_PITCH;
+            int      W     = *(const int *)ADDR_W;
+            int      H     = *(const int *)ADDR_H;
+            if (fb && W > 0 && H > 0 && W <= 4096 && H <= 4096 && pitch >= W * 2)
+                clear_rect(fb, pitch, W, H, g_prev_rx, g_prev_ry, g_prev_rw, g_prev_rh);
+            mh::gfx::mark_ground_tiles_dirty(g_prev_rx, g_prev_ry, g_prev_rw, g_prev_rh);
+            g_prev_painted = false;
+        }
+        return;
+    }
     paint();
 }
 
@@ -768,10 +871,10 @@ extern "C" int MH_Overlay_Install(void) {
     g_box     = GetPrivateProfileIntA("debug", "box", 1, ini) != 0;
 
     char buf[128];
-    GetPrivateProfileStringA("debug", "modes", "", buf, sizeof(buf), ini);
+    mh::config::read_ini_string("debug", "modes", "", buf, sizeof(buf), ini); // TL-HARN4
     g_modes = parse_modes(buf);
 
-    GetPrivateProfileStringA("debug", "rect", "8,8", buf, sizeof(buf), ini);
+    mh::config::read_ini_string("debug", "rect", "8,8", buf, sizeof(buf), ini); // TL-HARN4
     char *f[4];
     int   nf = split(buf, ',', f, 4);
     if (nf > 0) g_rx = parse_int(f[0]);
@@ -779,13 +882,13 @@ extern "C" int MH_Overlay_Install(void) {
     if (nf > 2) g_rw = parse_int(f[2]);
     if (nf > 3) g_rh = parse_int(f[3]);
 
-    GetPrivateProfileStringA("debug", "anchor", "tl", buf, sizeof(buf), ini);
+    mh::config::read_ini_string("debug", "anchor", "tl", buf, sizeof(buf), ini); // TL-HARN4
     if (lstrcmpiA(buf, "tr") == 0) g_anchor = 1;
     else if (lstrcmpiA(buf, "bl") == 0) g_anchor = 2;
     else if (lstrcmpiA(buf, "br") == 0) g_anchor = 3;
     else g_anchor = 0;
 
-    GetPrivateProfileStringA("debug", "color", "ffffff", buf, sizeof(buf), ini);
+    mh::config::read_ini_string("debug", "color", "ffffff", buf, sizeof(buf), ini); // TL-HARN4
     g_color = rgb565(parse_hex(buf));
 
     load_pages(ini);

@@ -89,6 +89,8 @@
     <ClCompile Include="session_id_selftest.cpp" />
     <ClCompile Include="session_dir_selftest.cpp" />
     <ClCompile Include="log_rotate_selftest.cpp" />
+    <ClCompile Include="ini_read_selftest.cpp" />
+    <ClCompile Include="run_context_selftest.cpp" />
     <ClCompile Include="udp_wire_selftest.cpp" />
     <ClCompile Include="udp_loopback_selftest.cpp" />
     <ClCompile Include="..\mh_net_udp\udp_endpoint.cpp">
@@ -2086,6 +2088,9 @@
     <ClCompile Include="..\mh\ui\lobby_widgets.cpp">
       <Filter>mh\ui</Filter>
     </ClCompile>
+    <ClCompile Include="..\mh\ui\lobby_ping.cpp">
+      <Filter>mh\ui</Filter>
+    </ClCompile>
     <ClCompile Include="..\mh\ui\lobby_announce.cpp">
       <Filter>mh\ui</Filter>
     </ClCompile>
@@ -2121,6 +2126,12 @@
       <Filter>mh\seams</Filter>
     </ClCompile>
     <ClCompile Include="..\mh\seams\ui_cheat_gate.cpp">
+      <Filter>mh\seams</Filter>
+    </ClCompile>
+    <ClCompile Include="..\mh\seams\ui_diplomacy_echo.cpp">
+      <Filter>mh\seams</Filter>
+    </ClCompile>
+    <ClCompile Include="..\mh\seams\ui_bldg_cancel_task.cpp">
       <Filter>mh\seams</Filter>
     </ClCompile>
     <ClCompile Include="..\mh\seams\ui_net_indicator.cpp">

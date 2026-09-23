@@ -441,6 +441,40 @@ int run_udprelaytest() {
     }
     check("A: eight distinct loopback sockets, one per handle", distinct(ports, 8));
     check("A: eight punches, one per handle", punched);
+
+    // ---- mp:L1f: THE PATH CLASSIFICATION, asked the way the ENDPOINT asks it ------------------
+    // udp_endpoint.cpp's get_stats() answers MH_NetPeerLatency.relayed from
+    // mh::udprelay::path_class(conn.addr) -- the reverse of the set_peer_known edge this suite
+    // already drives. THE RIG IS THE ONLY PLACE the `relayed = 1` answer can be produced on
+    // demand: every DATA above arrived on the relay leg by construction, so each of those eight
+    // loopback ports must classify as relayed, and a port the tunnel never minted must classify
+    // as UNKNOWN rather than as a default. The DIRECT answer (0) is proven two ways -- the
+    // no-tunnel arm at the end of this suite, and a live 3-peer lobby on the rig (tracker mp:L1f)
+    // -- because a pair PROMOTED to direct under a running tunnel needs a real punch to exist.
+    {
+        sockaddr_in a;
+        memset(&a, 0, sizeof(a));
+        a.sin_family      = AF_INET;
+        a.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+        bool all_relayed  = true;
+        for (int i = 0; i < 8; ++i) {
+            a.sin_port = htons(ports[i]);
+            if (mh::udprelay::path_class(a) != 1) all_relayed = false;
+        }
+        check("A/L1f: every joined peer classifies as RELAYED by its loopback address", all_relayed);
+        // A port nothing minted. ports[] are ephemeral, so pick one provably outside the set.
+        unsigned short spare = 1;
+        for (int i = 0; i < 8; ++i)
+            if (ports[i] >= spare) spare = (unsigned short)(ports[i] + 1);
+        a.sin_port = htons(spare);
+        check("A/L1f: an address the tunnel never minted is UNKNOWN, not a default",
+              mh::udprelay::path_class(a) == -1);
+        // ...and a non-loopback address is not ours to classify at all.
+        a.sin_addr.s_addr = htonl(0x08080808u);
+        a.sin_port        = htons(ports[0]);
+        check("A/L1f: a non-loopback address is UNKNOWN whatever its port",
+              mh::udprelay::path_class(a) == -1);
+    }
     {
         const Join j = join(9, false);
         check("A: a ninth while all eight are held gets no loopback socket", j.port == 0);
@@ -591,6 +625,20 @@ int run_udprelaytest() {
     mh::udprelay::set_peer_known(nullptr, nullptr);
     closesocket(g_rig.relay);
     closesocket(g_rig.ep);
+    // mp:L1f: WITH NO TUNNEL RUNNING every address is DIRECT, and that is a fact about the build's
+    // configuration rather than a default -- with no relay leg there is no path a datagram could
+    // have been relayed over. It is what makes an ordinary LAN lobby's ping cell read "D <n>"
+    // instead of a letterless number, so it is asserted rather than assumed. (`stop()` already ran
+    // in arm D; this is the state every non-relay build is in for the whole of its life.)
+    {
+        sockaddr_in a;
+        memset(&a, 0, sizeof(a));
+        a.sin_family      = AF_INET;
+        a.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+        a.sin_port        = htons(ports[0]);
+        check("L1f: with no tunnel running, every address classifies as DIRECT",
+              mh::udprelay::path_class(a) == 0);
+    }
     closesocket(g_rig.probe);
     DeleteCriticalSection(&g_rig.cs);
     printf("=== udprelaytest: %d checks, %d failures ===\n", g_checks, g_fails);

@@ -399,7 +399,7 @@
    "class": "FE"
   },
   {
-   "name": "llm_ui_building_finish_order_cb",
+   "name": "llm_ui_building_cancel_task_yes_cb",
    "class": "FE"
   },
   {

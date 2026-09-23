@@ -34,6 +34,8 @@
     <ClCompile Include="seams\gfx_font_guard.cpp" />
     <ClCompile Include="seams\ui_chat_input.cpp" />
     <ClCompile Include="seams\ui_cheat_gate.cpp" />
+    <ClCompile Include="seams\ui_diplomacy_echo.cpp" />
+    <ClCompile Include="seams\ui_bldg_cancel_task.cpp" />
     <ClCompile Include="seams\ui_net_indicator.cpp" />
     <ClCompile Include="seams\save_triggers.cpp" />
     <ClCompile Include="seams\ui_drive.cpp" />
@@ -52,6 +54,7 @@
     <ClCompile Include="ui\lobby_slide.cpp" />
     <ClCompile Include="ui\lobby_notice.cpp" />
     <ClCompile Include="ui\lobby_widgets.cpp" />
+    <ClCompile Include="ui\lobby_ping.cpp" />
     <ClCompile Include="ui\lobby_announce.cpp" />
     <ClCompile Include="hook\export.cpp" />
     <ClCompile Include="hook\hookpoint.cpp" />
@@ -95,6 +98,7 @@
     <ClInclude Include="include\projectile.h" />
     <ClInclude Include="seams\net_internal.h" />
     <ClInclude Include="ui\lobby_ui.h" />
+    <ClInclude Include="ui\lobby_ping.h" />
     <ClInclude Include="ui\ui_internal.h" />
   </ItemGroup>
   <PropertyGroup Label="Globals">

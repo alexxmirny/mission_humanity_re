@@ -2,7 +2,7 @@
  "_generated_by": "tools/gen_libmh_calls.py -- do not hand-edit; regenerate instead",
  "_measures": "mh::call:: tokens in src/mh_dll/mh/** (comments stripped; addr/+attic/ excluded)",
  "summary": {
-  "distinct_callees": 125,
+  "distinct_callees": 133,
   "config_measures": {
    "hosted": {
     "sites": 1561,
@@ -16,7 +16,7 @@
     "sites": 123,
     "distinct": 42
    },
-   "ship_rebind_arms": 1,
+   "ship_rebind_arms": null,
    "standalone": {
     "sites": 3,
     "distinct": 2
@@ -37,7 +37,7 @@
   "by_status": {
    "dead": 2,
    "original": 104,
-   "translated": 19
+   "translated": 27
   },
   "modules": {
    "lockstep": {
@@ -47,9 +47,9 @@
     "outward_distinct": 0
    },
    "seams": {
-    "sites": 158,
-    "distinct": 124,
-    "outward_sites": 134,
+    "sites": 167,
+    "distinct": 132,
+    "outward_sites": 135,
     "outward_distinct": 106
    },
    "sim": {
@@ -178,6 +178,17 @@
    "adjudication": "event-channel:invalidate"
   },
   {
+   "name": "llm_bldg_finish_current_order",
+   "status": "translated",
+   "domain": "sim",
+   "tier": "T1",
+   "promoted": true,
+   "sites": 1,
+   "modules": {
+    "seams": 1
+   }
+  },
+  {
    "name": "llm_cam_jump_queue_clear",
    "status": "original",
    "domain": null,
@@ -230,9 +241,9 @@
    "domain": null,
    "tier": null,
    "promoted": false,
-   "sites": 2,
+   "sites": 1,
    "modules": {
-    "seams": 2
+    "seams": 1
    },
    "adjudication": null
   },
@@ -242,9 +253,9 @@
    "domain": null,
    "tier": null,
    "promoted": false,
-   "sites": 1,
+   "sites": 2,
    "modules": {
-    "seams": 1
+    "seams": 2
    },
    "adjudication": "event-channel:event"
   },
@@ -489,6 +500,39 @@
    "adjudication": "event-channel:screen"
   },
   {
+   "name": "llm_net_lockstep_count_active_players",
+   "status": "translated",
+   "domain": "(pre-ledger)",
+   "tier": null,
+   "promoted": false,
+   "sites": 1,
+   "modules": {
+    "seams": 1
+   }
+  },
+  {
+   "name": "llm_net_lockstep_dispatch",
+   "status": "translated",
+   "domain": "(pre-ledger)",
+   "tier": null,
+   "promoted": false,
+   "sites": 1,
+   "modules": {
+    "seams": 1
+   }
+  },
+  {
+   "name": "llm_net_lockstep_is_local_leader_peer",
+   "status": "translated",
+   "domain": "(pre-ledger)",
+   "tier": null,
+   "promoted": false,
+   "sites": 1,
+   "modules": {
+    "seams": 1
+   }
+  },
+  {
    "name": "llm_net_lockstep_overlay_dismiss",
    "status": "original",
    "domain": null,
@@ -499,6 +543,17 @@
     "seams": 1
    },
    "adjudication": "event-channel:screen"
+  },
+  {
+   "name": "llm_net_lockstep_sync_busywait",
+   "status": "translated",
+   "domain": "(pre-ledger)",
+   "tier": null,
+   "promoted": false,
+   "sites": 1,
+   "modules": {
+    "seams": 1
+   }
   },
   {
    "name": "llm_net_lockstep_sync_overlay_show",
@@ -530,9 +585,9 @@
    "domain": null,
    "tier": null,
    "promoted": false,
-   "sites": 1,
+   "sites": 2,
    "modules": {
-    "seams": 1
+    "seams": 2
    },
    "adjudication": "event-channel:screen"
   },
@@ -702,6 +757,17 @@
    }
   },
   {
+   "name": "llm_strat_order_dispatch",
+   "status": "translated",
+   "domain": "sim",
+   "tier": "T1",
+   "promoted": true,
+   "sites": 1,
+   "modules": {
+    "seams": 1
+   }
+  },
+  {
    "name": "llm_strat_order_pending_enqueue",
    "status": "translated",
    "domain": "(pre-ledger)",
@@ -801,6 +867,17 @@
    "domain": "sim",
    "tier": "T2",
    "promoted": false,
+   "sites": 1,
+   "modules": {
+    "seams": 1
+   }
+  },
+  {
+   "name": "llm_strat_time_resync_and_tick",
+   "status": "translated",
+   "domain": "sim_resid",
+   "tier": "T2",
+   "promoted": true,
    "sites": 1,
    "modules": {
     "seams": 1
@@ -1409,6 +1486,17 @@
     "seams": 1
    },
    "adjudication": "event-channel:screen"
+  },
+  {
+   "name": "llm_wait_screen_frame",
+   "status": "translated",
+   "domain": "net_session",
+   "tier": "T2",
+   "promoted": true,
+   "sites": 1,
+   "modules": {
+    "seams": 1
+   }
   },
   {
    "name": "map_LoadPlanetFromDisk",

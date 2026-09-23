@@ -20,6 +20,7 @@
 #include "addr/mh_structs.gen.h"     // mh_llm_ui_widget / mh_llm_ui_widget_list (the Start button)
 #include "en_guard.h"                // mh::en_build_ok -- "is a real mh.exe under us at all"
 #include "net_internal.h"            // g_ini, seam_log
+#include "config/ini_read.h"         // TL-HARN4: read_ini_string -- strips a trailing `;comment`
 
 #pragma comment(lib, "user32.lib") // wsprintfA
 
@@ -790,7 +791,7 @@ const uint8_t *pretend_other_hash() {
 int pretend_mode() {
     if (g_pretend < 0) {
         char v[32];
-        GetPrivateProfileStringA("net", "map_test_pretend", "", v, sizeof(v), g_ini);
+        mh::config::read_ini_string("net", "map_test_pretend", "", v, sizeof(v), g_ini); // TL-HARN4
         if (lstrcmpiA(v, "none") == 0)
             g_pretend = PRETEND_NONE;
         else if (lstrcmpiA(v, "other") == 0)

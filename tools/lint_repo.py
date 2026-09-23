@@ -342,12 +342,47 @@ def check_chunked(name, cmd_prefix, files, cwd=REPO):
     )
 
 
+class _ThreadStdout:
+    """sys.stdout split BY THREAD: a lane thread that registered a buffer writes there, everyone else
+    writes to the real stream.
+
+    contextlib.redirect_stdout swaps the PROCESS-WIDE sys.stdout, so under parallel lanes the main
+    thread's result prints landed in whichever in-process check happened to hold the redirect and
+    vanished when its buffer was read back -- a parallel run printed 50 of 162 rows, no trailer, no
+    verdict line, and a red row could be among the missing (2026-09-22). The exit code was right the
+    whole time; the log was not. --jobs 1 never showed it (one lane, nothing to interleave)."""
+
+    def __init__(self, real):
+        self.real = real
+        self.bufs = {}
+
+    def _target(self):
+        return self.bufs.get(threading.get_ident(), self.real)
+
+    def write(self, s):
+        return self._target().write(s)
+
+    def flush(self):
+        return self._target().flush()
+
+    def __getattr__(self, name):  # encoding, isatty, fileno, ... -- the real stream's
+        return getattr(self.real, name)
+
+
 def _execute(c):
     if c.fn is not None:
         buf = io.StringIO()
+        out = sys.stdout
         try:
-            with contextlib.redirect_stdout(buf):
-                r = c.fn()
+            if isinstance(out, _ThreadStdout):
+                out.bufs[threading.get_ident()] = buf
+                try:
+                    r = c.fn()
+                finally:
+                    out.bufs.pop(threading.get_ident(), None)
+            else:
+                with contextlib.redirect_stdout(buf):
+                    r = c.fn()
             c.ok = r is not False
         except Exception as e:
             c.ok = c.advisory  # an advisory reporter must never break the gate; a check must
@@ -385,15 +420,20 @@ def run_queued(jobs=None):
                 c.done.set()
 
     ok = True
-    with ThreadPoolExecutor(max_workers=jobs or min(len(lanes), (os.cpu_count() or 4))) as ex:
-        for lane in lanes.values():
-            ex.submit(drive, lane)
-        for c in _QUEUE:
-            c.done.wait()
-            if c.text:
-                print(c.text, flush=True)
-            if not c.advisory:
-                ok &= c.ok
+    real = sys.stdout
+    sys.stdout = _ThreadStdout(real)
+    try:
+        with ThreadPoolExecutor(max_workers=jobs or min(len(lanes), (os.cpu_count() or 4))) as ex:
+            for lane in lanes.values():
+                ex.submit(drive, lane)
+            for c in _QUEUE:
+                c.done.wait()
+                if c.text:
+                    print(c.text, flush=True)
+                if not c.advisory:
+                    ok &= c.ok
+    finally:
+        sys.stdout = real
     return ok
 
 
@@ -1266,6 +1306,31 @@ def declare_checks(args):
         "mp:GS2 data-timeout post-check -- the negative cases still fire (check_data_timeout --selftest)",
         [sys.executable, os.path.join(REPO, "tools", "check_data_timeout.py"), "--selftest"],
     )
+    # mp:U39. The negative-arm post_check (tools/test_ui.py's u39_diplomacy_echo entry) runs only
+    # with the rig; its negatives -- no divergence at all, a real desync instead of the 4-step echo
+    # window, the wrong region, the arm that NOPed after all, a divergence that never heals -- are
+    # gated here off planted harness logs.
+    check(
+        "mp:U39 diplomacy-echo negative arm -- the negative cases still fire (check_u39_echo --selftest)",
+        [sys.executable, os.path.join(REPO, "tools", "check_u39_echo.py"), "--selftest"],
+    )
+    # mp:D28. The cancel-task post_check (tools/test_ui.py's d28_canceltask / d28_canceltask_local
+    # entries) runs only with the rig; its negatives -- the seam banner missing, the Yes click never
+    # routed, the routed arm still diverging, the reproduction arm identical or healing, the wrong
+    # region, routing on in the reproduction arm -- are gated here off planted logs.
+    check(
+        "mp:D28 cancel-task post-check -- the negative cases still fire (check_cancel_task --selftest)",
+        [sys.executable, os.path.join(REPO, "tools", "check_cancel_task.py"), "--selftest"],
+    )
+    # mp:P9. The resync-storm post_check (tools/test_ui.py's match_launch_net / resync_storm_repro
+    # entries) runs only with the rig; its negatives -- a configuration-(2) lane (libmh bound), an
+    # UNCARRIED FIX line, a missing or MISMATCHED gate-install line, a FIRED line with the gate
+    # carried, a too-short match, a desync, the verbose fragment lost, the storm arm with the gate
+    # still on or too few fires -- are gated here off planted logs.
+    check(
+        "mp:P9 resync-storm post-check -- the negative cases still fire (check_resync_storm --selftest)",
+        [sys.executable, os.path.join(REPO, "tools", "check_resync_storm.py"), "--selftest"],
+    )
     # mp:CH1 (the AV clause). The no-crash-marker post_check (tools/test_ui.py's gs2_quit_frozen
     # entry) runs only with the rig; its negatives -- a marker from either peer during the run, a
     # stale marker from an earlier run wrongly attributed, a run dir with no game evidence -- are
@@ -1273,6 +1338,60 @@ def declare_checks(args):
     check(
         "mp:CH1 no-crash-marker post-check -- the negative cases still fire (check_no_crash_marker --selftest)",
         [sys.executable, os.path.join(REPO, "tools", "check_no_crash_marker.py"), "--selftest"],
+    )
+    # mp:SES6. Reads ONE peer's mh_net.log for the "net: udp counters" line's per-peer segments
+    # (data_rx_age climbing, data_tx_age flat, horizon_ms frozen -- the outbound-delivery proof the
+    # gs2_data_timeout scenario's shape already produces) and runs only with the rig; its negatives --
+    # a horizon still moving (a slow link, not a stalled sim), both directions dead, rx_age that
+    # dropped (data recovered), a single sample, a -1 horizon (nothing ever pushed), no counters line
+    # at all -- are gated here off planted logs.
+    check(
+        "mp:SES6 outbound-delivery post-check -- the negative cases still fire (check_ses6_delivery --selftest)",
+        [sys.executable, os.path.join(REPO, "tools", "check_ses6_delivery.py"), "--selftest"],
+    )
+    # mp:EL2. The mother-deploy post_check (tools/test_ui.py's el2_mother_deploy entry) runs only
+    # with the rig; its negatives -- either landing missing on either peer or at different game
+    # clocks, the joiner landing before the host, a desync flagged or no agreeing sample past the
+    # joiner's landing, the quit line missing / with the deploy's caller / with retail flags, no
+    # outcome-4 dialog or U17 broadcast after it, the wrong session reasons, a survivor ended by
+    # the transport-death fast-drop -- are gated here off planted logs.
+    check(
+        "mp:EL2 mother-deploy post-check -- the negative cases still fire (check_el2_mother --selftest)",
+        [sys.executable, os.path.join(REPO, "tools", "check_el2_mother.py"), "--selftest"],
+    )
+    # mp:L1b. The lobby slot-row ping column's post_check (wired into tools/test_ui.py's
+    # match_launch_net entry) only runs when the rig does, so its own negatives are gated here off
+    # planted `; [lobbyping]` corpora: the tick never writing a line at all, and every written line
+    # permanently `n/a` (measured=0) -- must each go RED rather than read as a quiet pass.
+    check(
+        "mp:L1b lobby-ping post-check -- the negative cases still fire (check_lobby_ping --selftest)",
+        [sys.executable, os.path.join(REPO, "tools", "check_lobby_ping.py"), "--selftest"],
+    )
+    # mp:P9W. The receiver-deadline post_check only runs when the rig does, so its own negatives are
+    # gated here off planted `; [resync] receiver_deadline:` corpora: no line at all, a barrier that
+    # resolved normally (a RESUME landed, END with no deadline line), an elapsed_ms under the 2002 ms
+    # floor (broken deadline math), and side_id=-1 (leader not found) -- each must go RED, and
+    # `--expect absent` (the reproduction arm) must invert every one of those verdicts.
+    check(
+        "mp:P9W resync receiver-deadline post-check -- the negative cases still fire (check_resync_receiver_deadline --selftest)",
+        [
+            sys.executable,
+            os.path.join(REPO, "tools", "check_resync_receiver_deadline.py"),
+            "--selftest",
+        ],
+    )
+    # mp:GX1. The overlay-residue post_check (tools/test_ui.py's gx1_overlay_residue entry) only
+    # runs when the rig does, so its own negatives are gated here off synthetic BMP pairs: a planted
+    # no-stamp arm (the AFTER capture identical to BEFORE) must go RED; a BEFORE capture with no
+    # glyph at all, and a missing capture file, must each refuse rather than vacuously pass; and a
+    # bright but WRONG-coloured AFTER (live terrain, not the overlay's own text colour -- the false
+    # positive a plain luminance/"ink" threshold gave on the real rig: live strategic terrain
+    # crosses the same brightness bar as the overlay's yellow text, so the threshold reddened
+    # identically with the fix in and out -- it must match the CONFIGURED colour, with tolerance)
+    # must NOT read as residue.
+    check(
+        "mp:GX1 overlay-residue post-check -- the negative cases still fire (check_overlay_residue --selftest)",
+        [sys.executable, os.path.join(REPO, "tools", "check_overlay_residue.py"), "--selftest"],
     )
     # mp:R4b. The relay-restart post_check (tools/test_ui.py's relay_restart entry) likewise runs
     # only with the rig; its negatives -- a peer that never got NOT_REGISTERED, a LOST with no
@@ -1289,6 +1408,14 @@ def declare_checks(args):
     check(
         "mp:R6 relay-rooms post-check -- the negative cases still fire (check_relay_rooms --selftest)",
         [sys.executable, os.path.join(REPO, "tools", "check_relay_rooms.py"), "--selftest"],
+    )
+    # mp:R2b. The browser-rows post_check (browser_two_rows) runs only with the rig; its negatives --
+    # one row listed where two were hosted, a join that dialled the FIRST lobby's room (the pre-R2b
+    # shape), a join into a never-listed room, no `R2b join` line at all, one join where two were
+    # expected, a listed room no host minted -- are gated here off planted logs.
+    check(
+        "mp:R2b browser-rows post-check -- the negative cases still fire (check_browser_rows --selftest)",
+        [sys.executable, os.path.join(REPO, "tools", "check_browser_rows.py"), "--selftest"],
     )
     # mp:R7a. The two dial-mode post-checks are mirror images: check_direct_dial fails when the client
     # contacted the relay on an *Internet server* dial (direct_dial_with_relay_set), check_relay_leg
@@ -1326,6 +1453,29 @@ def declare_checks(args):
     check(
         "clean-quit reader -- planted relink-ordering/B2/slow-drop cases go RED (check_graceful_quit --selftest)",
         [sys.executable, os.path.join(REPO, "tools", "check_graceful_quit.py"), "--selftest"],
+    )
+    # mp:U19f. The transport-death reader is the txdeath_ingame scenario's post_check, so like the
+    # rows above it only runs when the rig does; its negatives -- no fast-drop line, no outcome-7
+    # on_gameover, the U19e garbled-stream arm instead of the fast-drop route, and U19d's correction
+    # firing on a REAL transport death (the wording must stay honest) -- are gated here off planted
+    # logs, including the 2-peer AND (one bad peer fails the pair).
+    check(
+        "transport-death reader -- planted fast-drop/outcome/wording cases go RED (check_transport_death --selftest)",
+        [sys.executable, os.path.join(REPO, "tools", "check_transport_death.py"), "--selftest"],
+    )
+    # mp:U19b. The 3-peer clean-quit reader is the `--u19b-quit3` determinism shape's post_check
+    # (run_u19b_quit3 in tools/test_ui.py), so like the row above it only runs when the rig does;
+    # its negatives -- no quitter broadcast, a survivor's match ending (the clause's own failure
+    # mode), a survivor learning it via the B2 fast-drop catch instead of the lockstep dispatch, a
+    # non-clean mp_analyze verdict, and too few overlapping hashed steps compared (a vacuous-looking
+    # green) -- are gated here off planted logs and a faked mp_analyze subprocess.
+    check(
+        "3-peer clean-quit reader -- planted broadcast/gameover/determinism cases go RED (check_quit_survivors_3peer --selftest)",
+        [
+            sys.executable,
+            os.path.join(REPO, "tools", "check_quit_survivors_3peer.py"),
+            "--selftest",
+        ],
     )
     # mp:X2, the same shape one item along. The map-download reader's verdict is a statement about
     # TWO peers' logs -- the host's claim and gate, the joiner's store and its own file before and

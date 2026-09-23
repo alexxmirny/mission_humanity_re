@@ -28,8 +28,17 @@
   "standalone replay is what enforces it -- a host that skips one reads a stock .bss address or an",
   "unbound mask and diverges loudly at step 0, which is the right failure mode."
  ],
- "exclusion_classes": {},
- "regions": {},
+ "exclusion_classes": {
+  "menu-ui": {
+   "why": "Menu/lobby-screen state the sim never reads and the importing host rebuilds from its own discovery before any step runs. Carrying it would only cost bytes -- EXCEPT that the block table is the fixture schema: a region that gains a measured extent after the fixtures were recorded turns every recorded world blob into ERR_SCHEMA (-3), which is a re-capture session, not a lint fix. So a menu-only region that becomes carryable late is excluded here with its reason rather than silently re-cutting the fixtures."
+  }
+ },
+ "regions": {
+  "BROWSER_UI_ROWS": {
+   "class": "menu-ui",
+   "why": "The session browser's row table (llm_lobby_browser_row[1024], mp:R2b, 2026-09-21): written by the browser refresh / the DLL's build_browser_from_store and read only by the browser and llm_lobby_join_head, all before Start. Its extent (8192) entered the addr manifest on 2026-09-21 -- after libref-replay-v1 / libref-*-aisoak-v1 were recorded against the 829-block table -- and the first gate after it refused all three fixtures with rc=-3 (2026-09-22). Not hash-backed; the joiner's browser rows are meaningless to a replaying host."
+  }
+ },
  "re_derive": {
   "general.{width_mask,height_mask,big_width,big_height,bw_mask,bh_mask}": {
    "why": "The torus masks. DERIVED from the width/height globals by llm_map_setup_dimensions @0x004989c2, a body libmh already owns translated and shadow-armed (sim/libtrans/sim_lt_map_setup_dimensions.cpp) and already re-invokes on the load path (save/save_live.cpp:466). The blob carries `width` and `height` (RID_WIDTH / RID_HEIGHT) and the host re-derives the rest -- carrying them instead would make the fixture the authority on a value libmh computes, which is the drift shape a single derivation exists to prevent.",

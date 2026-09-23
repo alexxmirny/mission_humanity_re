@@ -58455,7 +58455,7 @@
 "llm_ui_dlg_building_info_close_cb"
 ],
 "004c703b": [
-"llm_ui_building_finish_order_cb"
+"llm_ui_building_cancel_task_yes_cb"
 ],
 "004c707a": [
 "llm_ui_building_restart_construction_cb"
@@ -84926,13 +84926,13 @@
 "_G_LLM_UI_OUTCOME_DLG_PLAYER_SIDE_SNAPSHOT"
 ],
 "00644f93": [
-"DAT_00644f93"
+"_G_LLM_UI_MP_BROWSER_LIST_STATE"
 ],
 "00644fab": [
-"DAT_00644fab"
+"_G_LLM_UI_MP_BROWSER_LIST_STATE.count"
 ],
 "00644fb3": [
-"DAT_00644fb3"
+"_G_LLM_UI_MP_BROWSER_LIST_STATE.selected"
 ],
 "00644fb7": [
 "DAT_00644fb7"
@@ -87233,10 +87233,10 @@
 "llm_ui_dlg_table_00656d36.item_values[0]"
 ],
 "00656d6a": [
-"llm_ui_dlg_table_00656d6a"
+"_G_LLM_UI_DLG_TABLE_FORCE_RETURN_TO_MAIN"
 ],
 "00656d6e": [
-"llm_ui_dlg_table_00656d6a.item_labels[0]"
+"_G_LLM_UI_DLG_TABLE_FORCE_RETURN_TO_MAIN.item_labels[0]"
 ],
 "00656d9e": [
 "_G_LLM_UI_NETSETUP_FLD_IP"
@@ -95618,10 +95618,10 @@
 "_G_LLM_UI_ERROR_DIALOG_ARG_TEXT_B"
 ],
 "00e622a0": [
-"DAT_00e622a0"
+"_G_LLM_LOBBY_BROWSER_ROWS"
 ],
 "00e622a4": [
-"DAT_00e622a4"
+"_G_LLM_LOBBY_BROWSER_ROWS[0].server_idx"
 ],
 "00e642a0": [
 "_G_LLM_AVI_OPEN_STATUS"
@@ -106652,7 +106652,7 @@
 [
 "004c703b",
 "004c7079",
-"llm_ui_building_finish_order_cb"
+"llm_ui_building_cancel_task_yes_cb"
 ],
 [
 "004c707a",

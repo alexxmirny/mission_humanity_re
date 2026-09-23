@@ -74,6 +74,8 @@
 //                                SAME ANSWER mh_net.dll's real body gives, and that identity is
 //                                deliberate: "no module" and "a module with no channel C" are the
 //                                same claim to the caller -- this link cannot move a snapshot.
+//   MH_Net_SetPeerHorizon   -    no-op; a PUSH with nothing bound to receive it is exactly the shape
+//                                the Set*Handler rows above already have, mp:SES6.
 //
 #ifndef MH_NET_MODULE_H
 #define MH_NET_MODULE_H
@@ -97,7 +99,8 @@ extern "C" {
 // "this module is a different contract" instead of the symbol loop saying "this module is missing
 // three symbols", which is the same fact told as a version rather than as a diff. Both orders are
 // safe; the version is the one a player's bug report can quote.
-#define MH_NET_MODULE_ABI 0xF4B00004u // bumped at mp:R7a: MH_NetConfig gained relay_addr/relay_room (the per-dial relay decision)
+#define MH_NET_MODULE_ABI \
+    0xF4B00006u // bumped at mp:L1e: MH_NetPeerLatency (mh_net_export.h) grew a tail `relayed` field
 
 // What mh.dll hands the module at bind time. ONE FIELD TODAY, and it is the whole of Q1's residue:
 // run_context.cpp stays mh.dll-side (F4 ruling Q1 -- 11 of its 13 consumers are core/harness, and
@@ -227,6 +230,11 @@ void MH_Net_SnapshotStatus(MH_NetSnapshotStatus *out);
             out->lat_supported                                          = 0;                        \
             out->lat_count                                              = 0;                        \
         }                                                                                           \
+        return;                                                                                     \
+    })                                                                                              \
+    X(void, MH_Net_SetPeerHorizon, (int player_id, int horizon_ms), (player_id, horizon_ms), {      \
+        (void)player_id;                                                                            \
+        (void)horizon_ms;                                                                           \
         return;                                                                                     \
     })                                                                                              \
     X(void, MH_Net_SetSessionInfoHandler, (MH_SessionInfoCb cb), (cb), { return; })                 \

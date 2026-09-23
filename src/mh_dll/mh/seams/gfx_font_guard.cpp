@@ -20,6 +20,7 @@
 #include "include/mh_fontguard_export.h"
 #include "include/mh_run_context.h" // MH_RunDir / mh_run_path
 #include "addr/mh_calls.gen.h"      // mh::call::llm_gfx_font_select / llm_gfx_draw_text_blend_clipped
+#include "config/ini_read.h"        // TL-HARN4: read_ini_string -- strips a trailing `;comment`
 #include "hook/detour.h"            // install_jmp + WATCOM_PROLOGUE
 #include "en_guard.h"               // EN-only build gate
 
@@ -277,19 +278,16 @@ extern "C" int MH_FontGuard_Install(void) {
     // A TRAILING `; comment` IS PART OF THE VALUE to GetPrivateProfileString. Until 2026-09-20 the
     // example ini's own line was `probe_text=   ; TEST AFFORDANCE, empty = off ...`, so a STOCK ini
     // -- the ship zip's, verbatim -- drew that comment on every present. Same trim as `[net] relay`
-    // (net_discovery.cpp relay_addr_cached, the 2026-09-19 rc3 bug): cut at the first `;`, drop the
-    // whitespace before it, and say so once. `;` cannot be part of a probe on purpose: the probe is
-    // a test affordance and a code point is written as a `\uXXXX` escape, never as raw text with
-    // punctuation. The ini side is gated by tools/lint_ini_string_keys.py (user ruling 2026-09-20).
-    for (char *p = buf; *p != '\0'; ++p) {
-        if (*p == ';') {
-            *p = '\0';
-            while (p > buf && (p[-1] == ' ' || p[-1] == '\t')) *--p = '\0';
-            fg_log("; [fonts] probe_text carried a trailing `;` comment; using `%s` (the comment is "
-                   "not part of the probe -- remove it from the ini)",
-                   buf);
-            break;
-        }
+    // (net_discovery.cpp relay_addr_cached, the 2026-09-19 rc3 bug) -- now the SHARED helper
+    // (TL-HARN4, config/ini_read.h) rather than a second hand-rolled copy of the same loop: cut at
+    // the first `;`, drop the whitespace before it, and say so once. `;` cannot be part of a probe
+    // on purpose: the probe is a test affordance and a code point is written as a `\uXXXX` escape,
+    // never as raw text with punctuation. The ini side is gated by tools/lint_ini_string_keys.py
+    // (user ruling 2026-09-20).
+    if (mh::config::strip_ini_comment(buf)) {
+        fg_log("; [fonts] probe_text carried a trailing `;` comment; using `%s` (the comment is "
+               "not part of the probe -- remove it from the ini)",
+               buf);
     }
     if (buf[0]) {
         // The ini is read as bytes; the probe's whole point is arbitrary code points, so the value
@@ -318,7 +316,7 @@ extern "C" int MH_FontGuard_Install(void) {
                 fg_log("; [fonts] probe TRUNCATED: %d code units resolved, %d kept", n, cap);
         }
     }
-    GetPrivateProfileStringA("fonts", "probe_xy", "16,16", buf, sizeof(buf), ini);
+    mh::config::read_ini_string("fonts", "probe_xy", "16,16", buf, sizeof(buf), ini); // TL-HARN4
     {
         char *comma = buf;
         while (*comma && *comma != ',') ++comma;
@@ -328,8 +326,8 @@ extern "C" int MH_FontGuard_Install(void) {
         }
         g_probe_x = parse_int(buf);
     }
-    g_probe_slot = GetPrivateProfileIntA("fonts", "probe_font", 4, ini); // 4 = PFMENU2, the menu face
-    GetPrivateProfileStringA("fonts", "probe_color", "ffff", buf, sizeof(buf), ini);
+    g_probe_slot = GetPrivateProfileIntA("fonts", "probe_font", 4, ini);                // 4 = PFMENU2, the menu face
+    mh::config::read_ini_string("fonts", "probe_color", "ffff", buf, sizeof(buf), ini); // TL-HARN4
     g_probe_color = (uint16_t)parse_hex(buf);
 
     if (!install_jmp(ADDR_LAYOUT_TEXT, (const void *)layout_text_thunk,

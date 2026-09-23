@@ -1404,7 +1404,12 @@ inline constexpr mh::hook::patch_decl registered_patches[] = {
     {"video_res_options_table",  0x006450c7u, "", nullptr},
     {"run_without_focus",        0x004a04ceu, "llm_wnd_on_activate", nullptr},
     {"lt1c_c4_dead_store_probe", 0x004dc25fu, "llm_strat_bldg_recompute_cell_grid", "none:diagnostic"},
+    {"diplo_echo_nop",           0x004c8070u, "llm_ui_diplomacy_apply_and_resume", nullptr},
+    {"cancel_task_order",        0x004c7060u, "llm_ui_building_cancel_task_yes_cb", nullptr},
+    {"resync_trigger_gate",      0x0049c508u, "llm_net_lockstep_dispatch", "migrated:resync_trigger_gate"},
+    {"resync_trigger_gate_sent", 0x0049d8cbu, "llm_net_send_lockstep_keepalive", "migrated:resync_trigger_gate"},
+    {"resync_receiver_deadline", 0x004a0423u, "llm_frame_dispatch", nullptr},
 };
-inline constexpr int registered_patch_count = 11;
+inline constexpr int registered_patch_count = 16;
 
 } // namespace mh::addr

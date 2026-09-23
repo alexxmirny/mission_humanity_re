@@ -356,6 +356,47 @@ bool announce_refused_decode(const std::uint8_t* in, std::size_t len, std::uint8
     return true;
 }
 
+// ---- mp:L1f -- the host's per-slot ping summary (see session_info.h for the layout + the why) ----
+
+std::size_t announce_ping_encode(const AnnouncePingEntry* in, std::size_t n, std::uint8_t* out) noexcept {
+    if (!out) return 0;
+    if (!in) n = 0;
+    if (n > ANNOUNCE_PING_MAX_ENTRIES) n = ANNOUNCE_PING_MAX_ENTRIES;
+    out[0] = ANNOUNCE_PING;
+    out[1] = (std::uint8_t)n;
+    for (std::size_t i = 0; i < n; ++i) {
+        std::uint16_t ms = in[i].srtt_ms > ANNOUNCE_PING_SRTT_CLAMP ? ANNOUNCE_PING_SRTT_CLAMP : in[i].srtt_ms;
+        std::uint8_t  r  = in[i].relay;
+        if (r > ANNOUNCE_PING_RELAY_UNKNOWN) r = ANNOUNCE_PING_RELAY_UNKNOWN;
+        out[2 + i * 4] = in[i].player_id;
+        out[3 + i * 4] = (std::uint8_t)(ms & 0xff);
+        out[4 + i * 4] = (std::uint8_t)(ms >> 8);
+        out[5 + i * 4] = r;
+    }
+    return 2 + n * 4;
+}
+
+bool announce_ping_decode(const std::uint8_t* in, std::size_t len, AnnouncePingEntry* out,
+                          std::size_t cap, std::size_t* out_n) noexcept {
+    if (out_n) *out_n = 0;
+    if (!in || len < 2 || in[0] != ANNOUNCE_PING) return false;
+    const std::size_t n = in[1];
+    if (n > ANNOUNCE_PING_MAX_ENTRIES) return false;
+    // ALL OR NOTHING. `len` must hold every entry the count declares; a short frame is a truncated
+    // table, and reading the entries that did fit would leave the rest of the lobby showing the
+    // PREVIOUS table's numbers while the header says this one arrived.
+    if (len < 2 + n * 4) return false;
+    const std::size_t w = n < cap ? n : cap;
+    for (std::size_t i = 0; i < w && out; ++i) {
+        out[i].player_id = in[2 + i * 4];
+        out[i].srtt_ms   = (std::uint16_t)(in[3 + i * 4] | ((std::uint16_t)in[4 + i * 4] << 8));
+        std::uint8_t r   = in[5 + i * 4];
+        out[i].relay     = r > ANNOUNCE_PING_RELAY_UNKNOWN ? ANNOUNCE_PING_RELAY_UNKNOWN : r;
+    }
+    if (out_n) *out_n = out ? w : 0;
+    return true;
+}
+
 const char* join_refusal_text(JoinAdmit a, const SessionInfo& mine, const JoinRequest& theirs, char* out,
                               std::size_t cap) noexcept {
     if (cap == 0) return out;

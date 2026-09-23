@@ -14,6 +14,7 @@
 #include "include/mh_run_context.h" // mh_run_path
 #include "addr/mh_addrs.gen.h"      // mh::addr::_G_LLM_STRAT_CHAT_INPUT_LINE
 #include "addr/mh_calls.gen.h"      // mh::call::llm_input_key_dequeue / llm_ui_chat_input_char_insert
+#include "config/ini_read.h"        // TL-HARN4: read_ini_string -- strips a trailing `;comment`
 #include "hook/detour.h"            // install_jmp + install_trampoline
 #include "en_guard.h"               // EN-only build gate
 
@@ -355,7 +356,7 @@ extern "C" int MH_ChatInput_Install(void) {
     wsprintfA(ini, "%smh_net.ini", exe);
 
     char buf[64];
-    GetPrivateProfileStringA("input", "codepage", "acp", buf, sizeof(buf), ini);
+    mh::config::read_ini_string("input", "codepage", "acp", buf, sizeof(buf), ini);    // TL-HARN4
     g_cp_adopt        = GetPrivateProfileIntA("input", "codepage_adopt", 1, ini) != 0; // F3c
     bool       pinned = false;
     const UINT want   = parse_codepage(buf, &pinned);

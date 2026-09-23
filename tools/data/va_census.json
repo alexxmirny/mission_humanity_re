@@ -26,7 +26,7 @@
  "sites": [
   {
    "file": "lockstep/rx_dispatch.cpp",
-   "line": 655,
+   "line": 679,
    "callee": "llm_strat_order_pending_enqueue",
    "module": "lockstep",
    "shape": "binder",

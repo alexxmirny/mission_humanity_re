@@ -146,7 +146,13 @@ windows-sys = { version = "0.61.2", features = [
     "Win32_System_Diagnostics_Debug",
     "Win32_System_Registry",
     "Win32_System_SystemInformation",
+    "Win32_System_SystemServices",
     "Win32_System_Threading",
+    # dist LA13: ShellExecuteExW("runas") for the elevated install step (elevate.rs), and the
+    # desktop shell window's token for starting the game UN-elevated from an elevated launcher
+    # (launch.rs). Nothing else from either module is linked.
+    "Win32_UI_Shell",
+    "Win32_UI_WindowsAndMessaging",
 ] }
 
 [dev-dependencies]

@@ -1,0 +1,59 @@
+# mp:U19b -- 3-PEER clean quit, the QUITTER (client 2, the LOCAL LANE peer, det3_client2 shared).
+#
+# Pair with mp_host_quit3.txt (that file's header carries the full mechanism) and
+# mp_client_quit3_survivor.txt (the other survivor, on the first rig VM). This peer is the one U19's
+# 2-player scenarios could never seat: the third real network endpoint that lets the departure end
+# ONE roster slot instead of the whole match. The walk mirrors mp_client_gquit.txt's ESC -> Quit game
+# -> &Yes confirm exactly -- see that file for why the walk itself (not a captured frame) is the
+# flash-absence proof.
+#
+# G271: `signal seated2` after `settled Cancel` is the host's OWN barrier before it clicks Start --
+# see mp_host_quit3.txt's header. Without it the host can click Start (tearing down the lobby screen)
+# before this peer's `settled Cancel` has accumulated its dwell window -- measured on this exact peer
+# (det3_client2, the local lane): its script hung at `settled Cancel` for the whole run budget.
+
+settled value:110
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+present Internet server
+settled Internet server
+clickl Internet server
+present Server address
+settled Connect
+clickl Connect
+sessions 1
+settled Join game
+clickl Join game
+present Network players
+occ 3
+settled Cancel
+signal seated2
+absent Network players
+gamemode 2
+gameclock 3000
+
+# Tell both survivors we are about to leave, so their own pre-drop moment is a known sim state.
+signal quitting
+
+# ESC -> Quit game -> confirm. Target by VALUE (mp_client_gquit.txt's own trap note): the label
+# matcher only ever sees '&' on the confirm dialog and lands on Diplomacy. `dump` here is kept
+# permanently (mp_host_gquit.txt's own precedent) -- the ESC menu's widget list (6 widgets: Options
+# 111, Diplomacy 100, Quit game 113, Return to game 103, Abort game 97) is what a future menu change
+# would need diffed against, and it is what confirmed the 3-peer lobby's ESC menu is IDENTICAL to
+# the 2-peer one -- unlike mp_client_gquit.txt's plain match, a 3-peer lobby has an extra opponent,
+# which was the working hypothesis for a value collision this dump ruled out.
+key 0x01
+dump
+settled value:113
+clickv 113
+settled value:121
+clickv 121
+
+# THE MAIN MENU, settled -- value:110 is NETWORK GAME, a sprite menu with no labels. Reaching this at
+# all (no intervening modal) is the flash-absence proof, same as the 2-player scenario.
+settled value:110
+signal cliquit
+log QUITTER left a running 3-peer match via ESC->Quit->Yes and reached the main menu
+end

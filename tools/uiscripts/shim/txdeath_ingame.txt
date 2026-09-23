@@ -1,0 +1,24 @@
+# mp:U19f -- kill a match's transport IN-GAME, not in the lobby.
+#
+# Offset is from the FIRST CONNECTION (the client's discovery/dial connect), same convention as
+# tools/uiscripts/shim/rlive_link_death.txt. That scenario blackholes at t+60000 while both scripts
+# still sit in the LOBBY (`peers <1`); this one needs both peers PAST Start and past their `gameclock
+# 3000` sync point first. Measured budget for join+Start+gameclock-3000 on this rig is well inside
+# 40 s (graceful_quit's whole join-to-quit walk, itself including the sync point, runs ~40 s total --
+# see tools/uiscripts/mp_host_gquit.txt); 50 s leaves margin without pushing the scenario's own
+# `timeout` budget.
+#
+# No `stall` step here (unlike rlive_link_death's negative control) -- U19f's subject is the positive
+# arm only: a fast-drop DOES land, and the outcome-dialog wording must stay honest about it.
+#
+# G270 (measured 2026-09-22, real rig run): `blackhole on` does NOT exercise the U17(b) fast-drop
+# path at all. blackhole silently drops packets both ways but leaves the TCP socket itself OPEN --
+# and net_transport.cpp's MH_Net_TakeDeadPeer()/g_dead_peer is armed ONLY by a real socket CLOSE
+# (conn_recv_thread's `InterlockedExchange(&g_conns[idx].active, 0)` on recv()==0/error, logged
+# "net: conn %d closed"). A blackholed connection has no recv() failure -- it just goes quiet --
+# so g_dead_peer never latches, "; U17 fast-drop" never logs, and the peer instead falls out via a
+# SEPARATE below-quorum/presence-loss detector that yields on_gameover outcome=8 ("last player"),
+# not outcome=7/"Connection to server lost". `cut` (real FIN close, see net_shim.py's failure-shape
+# table) is the primitive that actually triggers a recv()==0 and therefore the fast-drop path.
+
+50000   cut      # real FIN close -- this is what actually arms g_dead_peer/MH_Net_TakeDeadPeer()

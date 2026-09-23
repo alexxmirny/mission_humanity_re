@@ -71,6 +71,7 @@
 #endif
 #include <cstdio> // the refusal's console channel -- it fires before any logger exists
 #include <windows.h>
+#include "config/ini_read.h" // TL-HARN4: read_ini_string -- strips a trailing `;comment` off `[config] mode`
 #endif
 
 namespace mh::config {
@@ -231,7 +232,7 @@ inline mode_t resolve() {
     // BROKERED IS THE DEFAULT, so an install with no ini at all runs what ships today. Same
     // reasoning C8-f used for promotion and the 2026-09-04 call used for the rebind gate: a
     // configuration that ships off is a mechanism exercised in no configuration anyone plays.
-    GetPrivateProfileStringA("config", "mode", "brokered", v, sizeof(v), ini);
+    read_ini_string("config", "mode", "brokered", v, sizeof(v), ini); // TL-HARN4: strips a trailing `;comment`
     if (lstrcmpiA(v, "original") == 0) return mode_t::original;
     if (lstrcmpiA(v, "brokered") == 0) return mode_t::brokered;
     // `standalone` is not selectable from an ini: it is a property of the BUILD, and a hosted

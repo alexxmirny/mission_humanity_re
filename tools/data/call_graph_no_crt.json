@@ -20494,7 +20494,6 @@
    "thunk": false,
    "inline": false,
    "tags": [
-    "conf:med",
     "sub:mp"
    ]
   },
@@ -20565,7 +20564,7 @@
    "thunk": false,
    "inline": false,
    "tags": [
-    "conf:med",
+    "rev:verified",
     "sub:mp"
    ]
   },
@@ -21954,12 +21953,14 @@
   },
   {
    "id": "004c703b",
-   "name": "llm_ui_building_finish_order_cb",
+   "name": "llm_ui_building_cancel_task_yes_cb",
    "namespace": "Global",
    "external": false,
    "thunk": false,
    "inline": false,
    "tags": [
+    "rev:verified",
+    "sub:ui",
     "todo:globals"
    ]
   },

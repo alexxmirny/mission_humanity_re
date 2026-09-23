@@ -269,4 +269,23 @@ def main():
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    # TL-STAGE1: the staging dirs (PLAIN_DIR/ASAN_DIR) are the documented run contract
+    # (%TEMP%\mh_nettest[_asan]) and are machine-global, not per-invocation -- so two concurrent
+    # `run_selftests.py` on one machine (e.g. two worktree gates) stage into the SAME directory and
+    # corrupt each other (seen live at mp:T1b, 2026-09-17, plus a same-class fixed-port collision on
+    # net_selftest's linktest/relinktest). Serialize with a host-global `selftest` lease -- same shape
+    # as the `rig` lease `test_ui.py`/`mp_run.py` take via hostlock.run_rig_tool -- so a second run
+    # WAITS for the first instead of racing it. No re-entrancy dance is needed here (unlike `rig`,
+    # nothing this script runs spawns a nested run_selftests.py), so a plain `lease()` suffices rather
+    # than the fuller run_rig_tool wrapper.
+    import hostlock
+
+    _holder = f"run_selftests:{os.getpid()}"
+    _cur = hostlock.held_by("selftest")
+    if _cur:
+        print(
+            f"[selftest] the 'selftest' lease is held by {_cur.get('holder')!r} -- waiting for it "
+            "to finish before staging (this run will not start until it is free)..."
+        )
+    with hostlock.lease("selftest", _holder):
+        sys.exit(main())

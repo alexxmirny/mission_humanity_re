@@ -1,0 +1,34 @@
+# mp:P9 -- match_launch's CLIENT walk, extended for the CONFIGURATION-(1) match row
+# (match_launch_net): the same join-by-IP walk and the SAME two captures at the same gates as
+# mp_client_start.txt (baselines byte-identical to match_launch's), then the match runs on to
+# gameclock 16000 instead of ending at 6000 -- see mp_host_start_net.txt for why. Pair with it.
+
+# join the host by IP -> the joined lobby (see mp_client_join.txt for the flow)
+settled value:110
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+present Internet server
+settled Internet server
+clickl Internet server
+present Server address
+settled Connect
+clickl Connect
+sessions 1
+settled Join game
+clickl Join game
+
+# joined lobby: tell the host we are really here, then wait for its Start
+present Network players
+signal lobby
+settled Cancel
+capture m2_lobby
+absent Network players
+# gated on the SIM exactly as mp_client_start.txt gates it (gameclock 6000, past the reveal)
+gameclock 6000
+capture m3_launched
+# ...and then the match keeps running, to the same gameclock the host ends at
+gameclock 16000
+log CLIENT ran the configuration-(1) match to gameclock 16000
+end

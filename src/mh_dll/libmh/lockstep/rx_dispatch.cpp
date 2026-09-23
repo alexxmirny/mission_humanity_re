@@ -154,14 +154,35 @@ detail::packet_result handle_peer_drop(const engine_state &st, const dispatch_st
     const int32_t side_id = take<int32_t>(ds, cursor);
     const double  horizon = take<double>(ds, cursor);
     const int32_t pidx    = calls.player_by_side_id(side_id);
+    // mp:U19h: sampled BEFORE the clear two lines down, because LS_HORIZON_PENDING is the reason a
+    // just-received advert can be sitting in peer_horizon_pending[] while the compare below reads a
+    // stale peer_horizon[] -- see the diagnostic.
+    const uint8_t flags_at_entry = *ds.status_flags;
 
     calls.format_player_line(TXT_PLAYER_DROPPED,
                              calls.ansi_to_wide_scratch(ds.players_w[pidx].name));
     calls.print_floating_msg_red(ds.text_scratch);
     *ds.status_flags &= static_cast<uint8_t>(~LS_HORIZON_PENDING);
 
+    // mp:U19h DIAGNOSTIC (2026-09-23). Two of this handler's three exits end the match for every
+    // remaining player -- `eliminate_other_humans` clears PLAYER_HUMAN on each participating slot and
+    // fires llm_strat_player_presence_lost(i, 1), which lands on `outcome = (mode == 0) ? 6 : 8` in
+    // sim_player_presence_lost.cpp and opens the end-of-game dialog on a peer nobody eliminated. That
+    // is a 3-peer clean quit ending the SURVIVORS' match, and it was observed ~1 run in 6 with no way
+    // to tell from a log WHICH exit ran, let alone by how much the two horizons disagreed. Same
+    // reasoning as U19e's garbled-tag dump one screen down: an arm that can end a match has to be
+    // nameable from the log rather than reconstructed from the disassembly afterwards. Printed BEFORE
+    // the branch so a run that takes the agree arm still records the margin it agreed by.
+    say("; [u19h] drop: side=%d local=%d pidx=%d wire_h=%.6f ours_h=%.6f delta_ms=%.1f active=%d "
+        "flags=0x%02x pending=%d pend_h=%.6f\n",
+        side_id, *ds.local_player_index, pidx, horizon, st.peer_horizon[pidx],
+        (horizon - st.peer_horizon[pidx]) * 1000.0, calls.count_active_players(),
+        static_cast<unsigned>(flags_at_entry),
+        (flags_at_entry & LS_HORIZON_PENDING) != 0 ? 1 : 0, st.peer_horizon_pending[pidx]);
+
     // The message names US. Nothing left to stay in step with: eliminate everyone and stop draining.
     if (side_id == *ds.local_player_index) {
+        say("; [u19h] drop arm=SELF-NAMED -- eliminating every other human, match over\n");
         eliminate_other_humans(st, ds, calls, /*notify=*/true);
         // (empty llm_teardown_hook_stub_b @0x0049bc66 here in the original -- not reproduced)
         return detail::packet_result::stop;
@@ -174,6 +195,7 @@ detail::packet_result handle_peer_drop(const engine_state &st, const dispatch_st
     // path instead -- and the disagree path tears the whole session down, so getting this backwards
     // turns one NaN into a dropped match.
     if (!detail::x87_equal_or_unordered(horizon, st.peer_horizon[pidx])) {
+        say("; [u19h] drop arm=HORIZON-DISAGREE -- eliminating every other human, match over\n");
         eliminate_other_humans(st, ds, calls, /*notify=*/true);
         // (empty llm_teardown_hook_stub_b @0x0049bc66 here in the original -- not reproduced)
         return detail::packet_result::stop;
@@ -181,6 +203,7 @@ detail::packet_result handle_peer_drop(const engine_state &st, const dispatch_st
 
     // Horizons agreed. If anyone else is still playing, carry on a peer lighter.
     if (calls.count_active_players() > 1) {
+        say("; [u19h] drop arm=AGREE -- a peer lighter, the match goes on\n");
         detail::commit_horizon(st);
         --*ds.lockstep_player_count;
         --*ds.lobby_scan_host_count;
@@ -188,6 +211,7 @@ detail::packet_result handle_peer_drop(const engine_state &st, const dispatch_st
         calls.time_resync_and_tick();
         return detail::packet_result::drain_again;
     }
+    say("; [u19h] drop arm=LAST-PEER-TEARDOWN -- we were the last one standing\n");
     last_peer_teardown(ds, calls, pidx);
     return detail::packet_result::stop;
 }

@@ -97,6 +97,23 @@ impl Layout {
         self.logs().join("launcher.log")
     }
 
+    /// dist LA13: THE LAUNCHER-OWNED LOGS ROOT for a game directory --
+    /// `logs\<game-dir-hash>\` under the launcher's own state, handed to the game by environment
+    /// (`launch::ENV_LOG_ROOT`) so its session directories, `mh_run.txt` and the crash marker
+    /// land somewhere the launcher can read back.
+    ///
+    /// WHY NOT `<game>\logs\`. Both 09-20 players run the game from `C:\Program Files (x86)\`.
+    /// Retail `mh.exe` carries no manifest, so a NON-elevated game process is UAC-virtualized:
+    /// its writes beside the exe silently go to `%LOCALAPPDATA%\VirtualStore\Program Files
+    /// (x86)\...`, while this 64-bit launcher (never virtualized) reads the real `<game>\logs\`
+    /// and finds nothing -- no session in the report, no crash marker, an exit-code-only verdict.
+    /// A root under the launcher's own per-user state is written by the game and read by the
+    /// launcher through the same, un-virtualized path. Per game directory (hashed, since a path
+    /// is not a directory name) so two installs do not interleave their sessions.
+    pub fn game_log_root(&self, game_dir: &Path) -> PathBuf {
+        self.logs().join(game_dir_hash(game_dir))
+    }
+
     /// `accepted\` -- the last manifest that passed every gate, kept WITH its signature so a
     /// later launch can re-verify it and read its relay (dist LA6, `update::load_accepted`).
     pub fn accepted_dir(&self) -> PathBuf {
@@ -110,6 +127,20 @@ impl Layout {
     pub fn accepted_signature(&self) -> PathBuf {
         self.accepted_dir().join(crate::update::SIGNATURE_NAME)
     }
+}
+
+/// The directory name `game_log_root` uses for a game directory: the first 16 hex digits of the
+/// SHA-256 of the path, lower-cased and with trailing separators trimmed, so `C:\Games\MH` and
+/// `c:\games\mh\` (the same folder to Windows) hash the same. A hash rather than a sanitised path
+/// because the path can be longer than a directory name may be (dist LA10 was a ~230-char install).
+pub fn game_dir_hash(game_dir: &Path) -> String {
+    use sha2::{Digest, Sha256};
+    let text = game_dir
+        .to_string_lossy()
+        .trim_end_matches(['\\', '/'])
+        .to_ascii_lowercase();
+    let digest = Sha256::digest(text.as_bytes());
+    digest.iter().take(8).map(|b| format!("{b:02x}")).collect()
 }
 
 /// Is this a game directory? The test is `mh.exe` beside it and nothing more.
@@ -215,7 +246,8 @@ pub fn resolve_game_dir(
     ResolvedGameDir { found, stale_saved }
 }
 
-/// The newest `logs\<UTC>_<mid8>_<slot>_<role>\` directory in a game folder, if any.
+/// The newest `<UTC>_<mid8>_<slot>_<role>\` directory under a logs root, if any -- the
+/// launcher-owned root (dist LA13, `Layout::game_log_root`) or a game's own `logs\`.
 ///
 /// The game creates one per SESSION (mp SES1); dist LA4's report is a zip of it.
 ///
@@ -228,8 +260,7 @@ pub fn resolve_game_dir(
 /// function's own test flaky), and copying a logs folder off a rig VM rewrites every mtime to the
 /// moment of the copy while leaving the names intact. Mtime remains the tie-breaker for a
 /// directory whose name is not a stamp, because something has to order those and nothing else can.
-pub fn newest_session_dir(game_dir: &Path) -> Option<PathBuf> {
-    let logs = game_dir.join("logs");
+pub fn newest_session_dir_in(logs: &Path) -> Option<PathBuf> {
     let mut best: Option<(String, std::time::SystemTime, PathBuf)> = None;
     for entry in std::fs::read_dir(logs).ok()?.flatten() {
         if !entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
@@ -273,6 +304,22 @@ fn utc_stamp_prefix(name: &str) -> Option<String> {
 mod tests {
     use super::*;
 
+    /// dist LA13: the same folder hashes the same however it is spelled, different folders differ,
+    /// and the root sits under the launcher's own logs directory.
+    #[test]
+    fn the_game_log_root_is_per_folder_and_spelling_blind() {
+        let a = game_dir_hash(Path::new(r"C:\Games\Mission Humanity"));
+        assert_eq!(a.len(), 16);
+        assert_eq!(a, game_dir_hash(Path::new(r"c:\games\mission humanity\")));
+        assert_ne!(
+            a,
+            game_dir_hash(Path::new(r"C:\Program Files (x86)\Mission Humanity"))
+        );
+        let l = Layout::rooted("state");
+        let root = l.game_log_root(Path::new(r"C:\Games\Mission Humanity"));
+        assert_eq!(root, Path::new("state").join("logs").join(&a));
+    }
+
     #[test]
     fn layout_is_a_pure_join() {
         let l = Layout::rooted("anywhere/at/all");
@@ -295,7 +342,7 @@ mod tests {
         ] {
             std::fs::create_dir_all(dir.join("logs").join(leaf)).unwrap();
         }
-        let got = newest_session_dir(&dir).unwrap();
+        let got = newest_session_dir_in(&dir.join("logs")).unwrap();
         assert_eq!(
             got.file_name().unwrap().to_string_lossy(),
             "20260917T164346Z_dedd707c_1_client"
@@ -416,7 +463,7 @@ mod tests {
         let dir = std::env::temp_dir().join("mh_launcher_test_not_a_game_dir");
         std::fs::create_dir_all(&dir).unwrap();
         assert!(!is_game_dir(&dir));
-        assert!(newest_session_dir(&dir).is_none());
+        assert!(newest_session_dir_in(&dir.join("logs")).is_none());
         std::fs::remove_dir_all(&dir).ok();
     }
 }

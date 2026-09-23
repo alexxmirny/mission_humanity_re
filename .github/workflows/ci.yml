@@ -41,8 +41,28 @@ name: ci
 
 # MANUAL ONLY (user ruling 2026-09-16): a run on every push is not needed. Trigger it from the
 # Actions tab (or `gh workflow run ci.yml --ref <branch>`) when a branch is worth the ~20 minutes wall (two Windows jobs in parallel).
+#
+# THE `selftests` INPUT (2026-09-22, a quota ruling). Windows minutes bill at 2x and the two selftest
+# halves are two thirds of this workflow's Windows spend, so they can be held back for a run that only
+# needs the compile + lint answer. Three things make that safe rather than a hole:
+#   * IT IS A PER-RUN INPUT, NOT A REPOSITORY VARIABLE OR AN ENV VAR. A sticky setting is invisible at
+#     dispatch time and would silently turn every later run into a weaker one that still reports
+#     green; an input is chosen per run, recorded in the run's own header, and defaults to ON.
+#   * THE RUN LABELS ITSELF. When the halves are held back the build job writes it into the run
+#     summary, so a green tick whose selftests did not run says so on its own page.
+#   * THE RELEASE PATH CANNOT TAKE IT. release.yml does NOT call this workflow -- it carries its own
+#     copy of the gate (`run_selftests.py --pass asan` / `--pass plain` + `lint_repo.py --ci`) against
+#     the stamped tag, so an rc or a release is unaffected by anything chosen here.
+# What this does NOT cover: `run_selftests.py` is also the pinned PRE-COMMIT gate on the dev box, and
+# that rule is untouched. Holding the halves back here trades a re-run of something already run
+# locally for minutes; it does not license committing without it.
 on:
   workflow_dispatch:
+    inputs:
+      selftests:
+        description: "Run the two selftest halves (ASan + plain). Off = build + lint only, ~2/3 fewer Windows minutes."
+        type: boolean
+        default: true
 
 permissions:
   contents: read
@@ -157,12 +177,33 @@ jobs:
         shell: pwsh
         run: python tools/lint_repo.py --ci
 
+      - name: say what this run did NOT cover
+        if: ${{ always() }}
+        shell: pwsh
+        # A weakened run has to label itself on its own page, or the next reader takes the green tick
+        # at face value -- the same reason lint_repo --ci names every row it holds back instead of
+        # dropping it silently.
+        run: |
+          if ("${{ inputs.selftests }}" -eq "false") {
+            $msg = ":warning: **Selftests were HELD BACK for this run** (``selftests: false``). " +
+                   "This run proves the sln compiles, every artifact is produced, the standalone " +
+                   "replay passes and ``lint_repo --ci`` is green. It proves NOTHING about " +
+                   "``run_selftests.py`` -- neither the ASan half nor the plain half ran. Release " +
+                   "and rc tags are unaffected: release.yml carries its own copy of the gate."
+          } else {
+            $msg = ":white_check_mark: Full offline gate: build + artifacts + standalone replay + " +
+                   "lint --ci, and both selftest halves."
+          }
+          $msg | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+          Write-Host $msg
+
   # TWO PARALLEL HALVES, not one job: on the 2-core hosted runner the ASan build alone measured
   # 936 s on the first tagged run (v0.1.0-rc1, 2026-09-18) and the serial gate was cancelled at its
   # 30-minute budget with the plain build still compiling. Each half is its own tree and its own
   # pass (run_selftests.py --pass); together they are exactly the local gate.
   selftests-asan:
     name: selftests (ASan half)
+    if: ${{ inputs.selftests }}
     runs-on: windows-2022  # same pin as `build`, same reason
     timeout-minutes: 40
     steps:
@@ -196,6 +237,7 @@ jobs:
 
   selftests-plain:
     name: selftests (plain half)
+    if: ${{ inputs.selftests }}
     runs-on: windows-2022  # same pin as `build`, same reason
     timeout-minutes: 40
     steps:

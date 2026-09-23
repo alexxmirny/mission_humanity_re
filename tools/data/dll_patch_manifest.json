@@ -512,6 +512,101 @@
    "knob": "[harness] tact_journal_rec / tact_journal_probe",
    "carrier": null,
    "note": "The TJ order-enqueue RECORDER. llm_tact_unit_enqueue_command is promotable and, unlike its siblings, had NO entry seam at all -- its only live route was its rebind row, which clause 6's derived yield disarms because this detour claims the entry. So arming the journal recorder ran the ORIGINAL body and silently un-promoted the very body it was recording: 80 -> 46 covered lines in poz1-combat and in all four journal scenarios, from 93a4b8da until the gate was next run (TACT-COV-YIELD). Now C6's protocol: the detour KEEPS the entry and reimpl_probe rebinds what it falls through to (MH_Harness_RebindTactEnqueue). The claim stays entry_claim::EXCLUSIVE on purpose, unlike detour_sim_tick's -- a recorder must remain the sole owner of this entry so a stray second patch is still refused, and the promotion arrives by rebind rather than by install, so nothing contends for it. The row STAYS yielded deliberately: a recorder must see every call. ---- FORK F2E (2026-09-13): THE CARRIER IS GONE BECAUSE THE PROMOTION IS. Tactical mode is demoted permanently -- the fork's selector has two hosted answers and the reimplemented spine brokered serves is the STRATEGIC one -- so libmh/tact/tact_promote.{h,cpp}, the 18 MH_EXPORT_REPLACE installs and both routes onto this entry were deleted. This detour still owns the entry and still does its job; what it falls through to is the ORIGINAL body, which is now the only body there is in a hosted process. `carrier` is therefore null: a carrier names how a promotion survives a detour, and there is no promotion to survive it. ---- FORK F3C (2026-09-13): THE SITE MOVED, THE FACTS DID NOT. Ruling D5 took the harness off the raw primitives, so this detour is now a ROW of the named hook-point table (mh/hook/hookpoint.cpp); harness.cpp names a `point` instead of a target, a steal width, a claim and a guard. lint_dll_patches reads that table as the call-site list, so the target still resolves and check 7 still asks the collision question -- the source key below is the row's own target expression."
+  },
+  {
+   "id": "diplo_echo_nop",
+   "sources": [
+    {
+     "file": "mh/seams/ui_diplomacy_echo.cpp",
+     "expr": "mh::addr::diplo_echo_write_site"
+    }
+   ],
+   "addrs": [
+    "0x004c8070"
+   ],
+   "kind": "code",
+   "owner": [
+    "llm_ui_diplomacy_apply_and_resume"
+   ],
+   "knob": "diplo_echo_nop",
+   "carrier": null,
+   "note": "mp:U39: NOP the 22-byte optimistic Players[PlayerSide].relation[j] store the diplomacy dialog's Apply makes ahead of its own 0xf4 order, so the order handler is the hashed cell's only writer (default ON; [net] diplo_echo_nop=0 keeps retail's echo)"
+  },
+  {
+   "id": "cancel_task_order",
+   "sources": [
+    {
+     "file": "mh/seams/ui_bldg_cancel_task.cpp",
+     "expr": "site"
+    }
+   ],
+   "addrs": [
+    "0x004c7060"
+   ],
+   "kind": "code",
+   "owner": [
+    "llm_ui_building_cancel_task_yes_cb"
+   ],
+   "knob": "cancel_task_order",
+   "carrier": null,
+   "note": "mp:D28: call-splice the building dialog's cancel-task Yes (CALL llm_bldg_finish_current_order) to a thunk that issues the equivalent replicated building order in a lockstep match; the local call stays for single player and for [net] cancel_task_order=0"
+  },
+  {
+   "id": "resync_trigger_gate",
+   "sources": [
+    {
+     "file": "mh/seams/net_lockstep.cpp",
+     "expr": "sites[k]"
+    }
+   ],
+   "addrs": [
+    "0x0049c508"
+   ],
+   "kind": "code",
+   "owner": [
+    "llm_net_lockstep_dispatch"
+   ],
+   "knob": "resync_trigger_gate",
+   "carrier": "migrated:resync_trigger_gate",
+   "note": "mp:P9 (2026-09-22) RE-INSTATED: call-splice the RECV-side INC [RESYNC_TRIGGER_COUNT] (inside llm_net_lockstep_dispatch) behind a SYNC_RETRY_COUNTDOWN<0x38 predicate. Retired by C8-e (the promoted rx_dispatch carries the same predicate behind the same key, lockstest both flag states) and brought back because the players' drop-in is configuration (1) -- nothing promoted -- where refuse_uncarried_fix had been announcing the fix's absence in every field process while the mode-8 barrier fired every ~2 s. Displaced by promotion (C1), so configuration (2) is unchanged."
+  },
+  {
+   "id": "resync_trigger_gate_sent",
+   "sources": [
+    {
+     "file": "mh/seams/net_lockstep.cpp",
+     "expr": "sites[k]"
+    }
+   ],
+   "addrs": [
+    "0x0049d8cb"
+   ],
+   "kind": "code",
+   "owner": [
+    "llm_net_send_lockstep_keepalive"
+   ],
+   "knob": "resync_trigger_gate",
+   "carrier": "migrated:resync_trigger_gate",
+   "note": "mp:P9 (2026-09-22) RE-INSTATED: call-splice the SENT-side INC dword [RESYNC_TRIGGER_COUNT] in the tail of llm_net_send_lockstep_keepalive, same predicate and key as the RECV half (the two halves were split 2026-07-29, RI-WIRE W4.5, because one carrier could not describe both; tx_emit.cpp's resync_trigger_tick is the promoted carrier). Same reason as resync_trigger_gate: configuration (1) has no body to carry it."
+  },
+  {
+   "id": "resync_receiver_deadline",
+   "sources": [
+    {
+     "file": "mh/seams/net_lockstep.cpp",
+     "expr": "ADDR_WAIT_SCREEN_CALL_SITE"
+    }
+   ],
+   "addrs": [
+    "0x004a0423"
+   ],
+   "kind": "code",
+   "owner": [
+    "llm_frame_dispatch"
+   ],
+   "knob": "resync_receiver_deadline",
+   "carrier": null,
+   "note": "mp:P9W (2026-09-22): call-splice llm_frame_dispatch's ONE call site to llm_wait_screen_frame (case 8, the GAME_MODE==8 frame). The thunk always calls the original llm_wait_screen_frame FIRST (so the leader's own 2002 ms exit and every peer's dispatch/RX-drain are unchanged), then on a non-leader still RESYNC_IN_PROGRESS after max(2002, data_timeout_ms) ms of this DLL's own clock, runs the leader's exit sequence minus the RESUME broadcast and removes the presumed-dead leader through llm_net_player_remove. `owner` is llm_frame_dispatch (the function whose body holds the patched bytes), not llm_wait_screen_frame (the call TARGET, left byte-for-byte original) -- carrier null like defang_xui's: llm_frame_dispatch is retail UI/render dispatch, not a reimpl-domain body, so there is no promoted alternative to carry the fix."
   }
  ]
 }

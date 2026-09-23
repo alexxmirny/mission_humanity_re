@@ -48,8 +48,17 @@ DEFAULT_SRC = os.path.join(REPO, "src", "mh_dll")
 # The reader call, with BOTH arguments literal. A reader that builds its key name at runtime
 # (gfx_overlay's `page.<name>.items`) is not a fixed key and cannot be listed in the example ini
 # anyway; the `pages=` list that names those pages is a literal read and IS covered.
+#
+# TWO SPELLINGS, because TL-HARN4 (2026-09-21) routed most STRING reads through the shared
+# `mh::config::read_ini_string` helper (config/ini_read.h), a same-signature drop-in for
+# GetPrivateProfileStringA -- and this regex derives its "string key" set by literally matching
+# the call token, so a site rewritten to the wrapper would silently drop out of the derived set
+# (the gate would stop protecting exactly the keys the durable fix just made safe) unless the
+# wrapper is matched too. `read_ini_string` alone also matches the one call site that invokes it
+# unqualified from inside the `mh::config` namespace itself (config/config.h's `[config] mode`).
 READER_RE = re.compile(
-    r'GetPrivateProfileStringA\s*\(\s*"([A-Za-z_0-9]+)"\s*,\s*"([A-Za-z_0-9.]+)"'
+    r'(?:GetPrivateProfileStringA|(?:mh::config::)?read_ini_string)'
+    r'\s*\(\s*"([A-Za-z_0-9]+)"\s*,\s*"([A-Za-z_0-9.]+)"'
 )
 SOURCE_EXT = (".cpp", ".c", ".h")
 # Build output and vendored trees under src/mh_dll; nothing in them reads an ini.

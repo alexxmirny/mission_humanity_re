@@ -106,6 +106,12 @@
     <ClCompile Include="seams\ui_cheat_gate.cpp">
       <Filter>seams</Filter>
     </ClCompile>
+    <ClCompile Include="seams\ui_diplomacy_echo.cpp">
+      <Filter>seams</Filter>
+    </ClCompile>
+    <ClCompile Include="seams\ui_bldg_cancel_task.cpp">
+      <Filter>seams</Filter>
+    </ClCompile>
     <ClCompile Include="seams\ui_net_indicator.cpp">
       <Filter>seams</Filter>
     </ClCompile>
@@ -158,6 +164,9 @@
       <Filter>ui</Filter>
     </ClCompile>
     <ClCompile Include="ui\lobby_widgets.cpp">
+      <Filter>ui</Filter>
+    </ClCompile>
+    <ClCompile Include="ui\lobby_ping.cpp">
       <Filter>ui</Filter>
     </ClCompile>
     <ClCompile Include="ui\lobby_announce.cpp">
@@ -257,6 +266,9 @@
       <Filter>seams</Filter>
     </ClInclude>
     <ClInclude Include="ui\lobby_ui.h">
+      <Filter>ui</Filter>
+    </ClInclude>
+    <ClInclude Include="ui\lobby_ping.h">
       <Filter>ui</Filter>
     </ClInclude>
     <ClInclude Include="ui\ui_internal.h">

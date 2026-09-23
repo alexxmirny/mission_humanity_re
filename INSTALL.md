@@ -72,9 +72,10 @@ What happens on the first run:
 
 3. **Press Play.** Whatever the chosen configuration is missing is downloaded from the
    signed manifest, verified against its SHA-256, installed next to `mh.exe` (the original
-   `mh.dll` is kept as `mh.dll.mhbak`), the relay is provisioned, and the game starts — with the
-   progress shown in place, no visit to the Status tab. Switching the picker later swaps the
-   install (the receipt-driven uninstall of one zip, the install of the other).
+   `mh.dll` — the one game file a release replaces — is kept as `mh.dll.mhbak`), the relay is
+   provisioned, and the game starts — with the progress shown in place, no visit to the Status
+   tab. Switching the picker later swaps the install (the receipt-driven uninstall of one zip,
+   the install of the other).
 
 Hosting and joining are both decided in the game's own menu next — to host: NETWORK GAME → your
 name → **Create game**, and your lobby is listed on the relay under your name; to join: NETWORK
@@ -96,16 +97,20 @@ manifest that names no relay leaves both files untouched, and *Play* then starts
 as it is configured (direct play by address, §7). The front page says which of the two it is:
 `Relay: <address> (from the signed manifest, …)` or `No relay`.
 
-**Updates** live on the Status view. *Check for updates* fetches one small file —
-`manifest.json` and its `manifest.json.minisig` — from the address in the box above the buttons, and
+**Updates: one button.** Every time the launcher starts it fetches one small file —
+`manifest.json` and its `manifest.json.minisig` — from the update address (Status view) and
 **verifies the minisign signature against a key built into the launcher before reading a single
-field**. A manifest that is not signed by that key, that offers a version you already have or older,
-or that is more than 30 days old is refused with a reason, and nothing is downloaded. *Update the
-game* then fetches the zip for the configuration you have installed, checks its SHA-256 against the
-signed manifest, unpacks it to one side and only then swaps it in. **Your previous version stays on
-disk until the new one has started once**, so a bad update is one *Install* away from being undone.
-*Update the launcher* does the same for `mh_launcher.exe` itself — and runs the downloaded copy first
-to make it prove it starts, keeping the old one if it cannot.
+field**. A manifest that is not signed by that key or that is more than 30 days old is refused with
+a reason. It installs nothing by itself: the Play page just says what is on offer — `0.1.2 is
+available — Update` — or `up to date`. Pressing **Update** (on the Play page next to that line, or
+on the Status view) does everything in one go, launcher first: if the manifest offers a newer
+`mh_launcher.exe` it is downloaded, made to prove it starts (`--verify-binary`), swapped in and
+restarted — and the restarted launcher carries on with the game, fetching the zip for your
+configuration, checking its SHA-256 against the signed manifest, unpacking it to one side and only
+then swapping it in. One press, one progress line, one verdict; no second click after the
+restart. A version that is not newer than the one installed is never installed (a rollback,
+whoever signed it). **Your previous version stays on disk until the new one has started once**, so
+a bad update is one *Install* away from being undone.
 
 **It never contacts `api.github.com`.** Updates come from a static signed file and the release asset
 CDN, which is deliberate: GitHub's unauthenticated API allows 60 requests an hour *per address*, so a
@@ -113,13 +118,25 @@ launcher that polled it would lock out everyone sharing a connection.
 
 Two more things worth knowing:
 
-- **It needs no elevation and asks for none.** Everything it writes of its own lives under
-  `%LOCALAPPDATA%\MissionHumanity\` (its config, the unpacked version sets, and `logs\launcher.log`).
+- **It runs as you, and so does the game.** Everything it writes of its own lives under
+  `%LOCALAPPDATA%\MissionHumanity\` (its config, the unpacked version sets, `logs\launcher.log`,
+  and — since v0.1.2 — the game's own session logs, under `logs\<hash>\`, where `game_dir.txt`
+  names the folder they belong to). **Do not run the launcher "as administrator."** If the game
+  sits somewhere a normal user cannot write — `C:\Program Files (x86)\` is the usual case — the
+  launcher asks for administrator rights **once per install, update or configuration switch**
+  (the standard Windows prompt), uses them only to copy the files next to `mh.exe`, and then
+  starts the game as you, never elevated. That is deliberate: a game started with administrator
+  rights writes its saves and `setup.dat` into the real Program Files folder, while the same game
+  started normally writes them into `%LOCALAPPDATA%\VirtualStore\...` — so saves "disappear"
+  depending on how it was started. Started the launcher's way, there is one consistent copy.
 - **It records what it copied**, as `mh_launcher_installed.txt` in the game folder, so *Uninstall*
   removes exactly that. This matters for one file: the game ships its **own** `mh.dll` and a release
-  replaces it, so the original is kept as `mh.dll.mhbak` and put back on uninstall. A file you have
-  changed yourself since is left alone rather than deleted. (Uninstalling by hand is still just
-  deleting `msvfw32.dll`, per section 4.)
+  replaces it, so the original is kept as `mh.dll.mhbak` and put back on uninstall. That is the only
+  `.mhbak` you will see: a later update overwrites the launcher's own previous files without
+  parking them (they are recognised by the install record and by the `mission_humanity_re` stamp
+  every shipped DLL carries); only a file that is neither — somebody else's file with one of our
+  names — is parked and named in the log. A file you have changed yourself since is left alone
+  rather than deleted. (Uninstalling by hand is still just deleting `msvfw32.dll`, per section 4.)
 
 Building it yourself instead of downloading it is the cargo section below
 (`cargo build -p mh_launcher --release` → `target\release\mh_launcher.exe`); it then installs from

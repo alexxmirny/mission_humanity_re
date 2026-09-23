@@ -1,0 +1,17 @@
+# mp:P9 (2/2) -- the 5-minute WALL CLOCK of the three P9 rows (resync_storm_repro,
+# resync_gate_proof, resync_countinit_proof in tools/test_ui.py). The 15-minute sibling
+# (p9_soak_15min.txt) is the original reproduction's; the storm shows inside the first minute (a
+# barrier every ~2 s once the match is parked at the horizon), so 5 minutes carries ~100 of them
+# and the two proof rows need the same window to say "0 in the time the storm shows ~100".
+#
+# Offset is from the shim's ARM point -- on the udp transport ui_test arms the shim itself when it
+# has confirmed the host LISTENING (`--manual-arm`, see ui_test.shim_start), so t=0 is "host lobby
+# up", and the client's own boot + menu walk + join + Start + gameclock 6000 sit inside the first
+# ~40 s (measured on match_launch's walk under suite load). 340 s therefore leaves ~5 minutes of
+# live match before the link dies.
+#
+# `blackhole on` (both directions): the sockets stay open and both peers' link watchdogs
+# (rx_timeout 10 s, GS2 data timeout 15 s) retire the other side, which raises the retail
+# below-quorum dialog the two scripts wait on (`present Continue game`). It never turns back off --
+# the scripts end on the dialog.
+340000  blackhole on

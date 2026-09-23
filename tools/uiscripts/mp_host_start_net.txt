@@ -1,0 +1,49 @@
+# mp:P9 -- match_launch's HOST walk, extended for the CONFIGURATION-(1) match row (match_launch_net):
+# the same menu -> create -> lobby -> Start walk and the SAME three captures at the same gates as
+# mp_host_start.txt (so the baselines are byte-identical to match_launch's -- verified at
+# registration, see the registry row), then the match runs on to gameclock 16000 (1600 sim steps at
+# the rig's sim_step_ms=10) instead of ending at 6000. The extra 10 s of match is what the row's
+# post_check needs: tools/check_resync_storm.py wants >= 1000 sim steps of agreeing D21 desync-watch
+# samples with ZERO `[resync] force_resync FIRED` lines, and 600 steps is too short to say anything
+# about a counter that fires on cumulative stall-nags. A separate copy rather than an edit of
+# mp_host_start.txt because that script is match_launch's, shim_udp's and the determinism path's --
+# and a 10 s longer match on every one of those is a suite cost nobody asked for.
+#
+# Pair with mp_client_start_net.txt.
+
+# reach the host lobby (create a game named "test" on the pre-selected map)
+settled value:110
+capture m1_menu
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+settled Create
+clickl Create
+present Game name
+settled Ok
+clickl Ok
+present Available maps
+settled Ok
+clickl Ok
+
+# host lobby: BLOCK until the match is startable, then click Start (see mp_host_start.txt for why
+# `peers 1` alone is a race the client always loses).
+present Network players
+peers 1
+awaitsignal lobby
+enabled Start
+settled Start
+capture m2_lobby_ready
+clickl Start
+
+# the match launches on BOTH peers; the in-game capture is gated on the SIM (gameclock 6000, past
+# the fog-of-war reveal's saturation) exactly as mp_host_start.txt gates it.
+absent Network players
+gameclock 6000
+capture m3_launched
+# ...and then the match keeps running: 1000+ more sim steps for the desync watch and the [resync]
+# watch to judge. Both peers use the SAME number so the pair ends together.
+gameclock 16000
+log HOST ran the configuration-(1) match to gameclock 16000
+end

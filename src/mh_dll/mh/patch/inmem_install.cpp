@@ -13,6 +13,7 @@
 
 #include <cstring>
 
+#include "config/ini_read.h" // TL-HARN4: read_ini_string -- strips a trailing `;comment`
 #include "hook/promoted.h"
 #include "include/mh_inmem_patch_export.h"
 #include "patch/inmem_patch.h"
@@ -36,7 +37,7 @@ const char *g_refusal;
 //     this corpus is the 7,770-site grand limit raise, the single largest change in the tree.
 const mh::patch::inmem_manifest *select(const char *ini_path) {
     char want[128] = {};
-    GetPrivateProfileStringA("patch", "manifest", "", want, sizeof(want), ini_path);
+    mh::config::read_ini_string("patch", "manifest", "", want, sizeof(want), ini_path); // TL-HARN4
 
     // BOUNDED, because the compile list is derived and therefore not a number this file controls:
     // a corpus reclassification could put twenty names here, and a refusal that overran its own
@@ -121,7 +122,7 @@ extern "C" int MH_InMemPatch_Install(const char *ini_path) {
     mh::hook::report_patched_bodies();
 
     char dump[MAX_PATH] = {};
-    GetPrivateProfileStringA("patch", "dump", "", dump, sizeof(dump), ini_path);
+    mh::config::read_ini_string("patch", "dump", "", dump, sizeof(dump), ini_path); // TL-HARN4
     if (dump[0]) {
         // The dump is written whether or not the apply succeeded: a refusal is a result the parity
         // run has to be able to read, and an absent file reads as "the DLL never ran", which is a

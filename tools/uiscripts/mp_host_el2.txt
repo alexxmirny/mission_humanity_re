@@ -1,0 +1,88 @@
+# mp:EL2 HOST walk -- the "joiner's mother never placed" report, reproduced as what it really is.
+#
+# THE FIELD EVIDENCE (eb1c9f9d, 2026-09-20, tmp/logs_20260920): the host's presence line read
+# `ua0=0 ba0=1` and the joiner's `ua1=1 ba1=0` at gclk 4159, and the joiner's match ended at
+# gclk 5999 on `presence_lost player=1 mode=1 gate=eliminated self(sf=0x1b ua=1 ba=0)
+# caller=0x0049ddad` -> `on_gameover outcome=4`. That was read as "the joiner started with no
+# building and was eliminated for it". It is not: a fresh MP human owns ONE AIRBORNE mothership
+# (llm_game_land_players_on_planet's HUMAN arm creates the starting UNIT, is_ship=2, and places no
+# building), and the building appears only when the PLAYER lands it (shift+right-click = order
+# 0x10 move + 0x18 deploy -> llm_strat_unit_state_deploy_to_building @0x00481a6b ->
+# llm_bldg_construct_finalize, then llm_strat_unit_teardown -> presence_lost(player, 0), which is
+# the `gate=alive ua=0 ba=1` line). `ua=1 ba=0` is an UNLANDED ship, and `mode=1` is the FORCED
+# removal arm that ignores both counts: caller 0x0049ddad is inside llm_net_player_remove, the
+# quitter's OWN self-removal from on_quit_to_menu (U17), and sf=0x1b is exactly that function's
+# flag rewrite (0x7 & ~0x4 | 0x10 | 0x8). The joiner ESC-quit at 6 s. His own session.json says
+# `reason=quit`.
+#
+# THIS SCENARIO REPLAYS THAT MATCH SHAPE ON THE RIG, in the shipped configuration (no libmh.dll,
+# udp, defang_overlay=0), and asserts every step of the mechanism from the logs (tools/check_el2_mother.py):
+#   1. the host lands its mother at gameclock 3000 -> BOTH peers log the deploy's presence line
+#      with `ua0=0 ba0=1` and `ua1=1 ba1=0` -- the eb1c9f9d snapshot, on both sides, with the
+#      joiner still ALIVE (gate=alive; nothing eliminates an unlanded ship);
+#   2. the JOINER lands its mother at gameclock 6000 -> BOTH peers log `ua1=0 ba1=1` -- the joiner's
+#      placement works and is the same sim event on both peers (the D21 in-band desync watch stays
+#      MATCH across it);
+#   3. the joiner then ESC-quits -> its log carries the eb1c9f9d line verbatim in shape
+#      (`mode=1 gate=eliminated ... caller=0x0049ddad` + `on_gameover ... outcome=4` + the U17
+#      graceful-leave broadcast), and the host ends the same match by the removal frame.
+# The pixels prove nothing here (in-game frames flap); the two captures are the lobby and the
+# survivor's post-match dialog gate, both deterministic. Pair with mp_client_el2.txt.
+#
+# Deploy coordinates: (480,330) at 1024x768 (ini/video_1024.ini), the D28 walk's gesture -- the
+# camera centres on the local player's own landing spot at entry, so the airborne mother is near
+# the screen centre on BOTH peers and the click lands on open map, not the HUD.
+
+# reach the host lobby (create the pre-pinned game on the pre-selected map)
+settled value:110
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+settled Create
+clickl Create
+present Game name
+settled Ok
+clickl Ok
+# pick LAST QUESTION (the field match's map, the only 2-start map: test_ui.py's CONQUEST_MAP) in
+# the "Available maps" list instead of the alphabetically-first default. The list is widget [1]
+# (origin 14,54; rows at y=98+14*i from a `dump`: Blue Monday, BlueMonday, Cold War, ColdWar,
+# Island Warfare, Last Question = row 5 -> y=168). A list row commits on the render-settled hover
+# at mouse-DOWN, so it is the split click (ui-testing skill), never a same-frame `click`; the
+# right panel's map-name label is the state predicate that says the selection really moved.
+present Available maps
+settled Ok
+cursor 80 168
+cursor 80 168
+press 80 168
+release 80 168
+present last question
+settled Ok
+clickl Ok
+
+# host lobby: capture it BEFORE the client joins (a seated peer's row carries L1b's live ping
+# cell, which is a measurement and would flap the pixels), then block until the client is really
+# in ITS lobby, and Start.
+present Network players
+settled Cancel
+capture el2_host_lobby
+peers 1
+awaitsignal lobby
+occ 2
+enabled Start
+settled Start
+clickl Start
+
+# in the match: land our own mother first (the eb1c9f9d host's timing -- it had landed by 4159).
+absent Network players
+gamemode 2
+gameclock 3000
+rclick 480 330 shift
+# the joiner lands ITS mother at 6000 and quits after 10000; nothing else for the host to do but
+# wait for the removal frame -- the match ends here the moment it lands (below quorum).
+awaitsignal quitting
+present Continue game
+settled Continue game
+dump
+log SURVIVOR: both mothers landed in lockstep, then the joiner's ESC-quit ended the match by its own removal frame
+end

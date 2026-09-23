@@ -1,0 +1,14 @@
+# mp:P9W -- a SHORT variant of p9_soak_5min.txt's shape, for resync_receiver_deadline_proof.
+#
+# Same mechanism (blackhole both directions, never turns back off), but timed much earlier: the
+# resync-storm reproduction shape (`resync_trigger_gate=0;resync_count_init=0`, shared with
+# resync_storm_repro) fires its first mode-8 barrier on the FIRST stall-nag and then re-enters one
+# every ~2.07 s for the rest of the match (mp:P9 (2/2) measured a 2.0 s barrier duty cycle), so the
+# client's own comment on mp_client_p9_soak.txt puts the odds of a blackhole landing INSIDE an
+# active barrier at ~97 %. p9_soak_5min.txt's own note times its (5-minute-soak) blackhole to leave
+# room for the client's boot + menu walk + join + Start + gameclock 6000 (~40 s measured under
+# suite load) -- this row needs the same margin, not the same wall clock: 50 s leaves 10 s past that
+# measurement and still lands comfortably inside the "shows inside the first minute" storm window,
+# so mp:P9W's own receiver-side deadline (>= 2002 ms) has every chance to be the thing that ends the
+# wedge, not a lucky miss between two barriers.
+50000  blackhole on

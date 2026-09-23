@@ -1,0 +1,4 @@
+{
+  "_why": "mp:EL2. capture_el2_client_lobby.png renders the host's adapter address in the right-panel header (the standard own-IP rect, ui-testing skill) and, on the seated host's row, L1b's lobby ping cell (mh/ui/lobby_ping.cpp: an SRTT MEASUREMENT drawn after the colour swatch of every occupied human row that has one -- digits that flap run to run and that lane L1b masks the same way). The second rect is that cell's column on the two seated rows only, nothing else on the panel.",
+  "capture_el2_client_lobby.png": [[388, 46, 226, 48], [322, 106, 44, 36]]
+}

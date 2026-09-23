@@ -1373,7 +1373,7 @@
    "site_count": 1
   },
   "0x004b845e": {
-   "name": "FUN_004b845e",
+   "name": "llm_menu_newgame_fade_done_cb",
    "sites": [
     "BEGTEXT:0x004b84de"
    ],
@@ -1408,7 +1408,7 @@
    "site_count": 1
   },
   "0x004b86a4": {
-   "name": "FUN_004b86a4",
+   "name": "llm_ui_options_menu_ok_action_cb",
    "sites": [
     "DGROUP:0x0065142f"
    ],
@@ -1451,14 +1451,14 @@
    "site_count": 2
   },
   "0x004b9313": {
-   "name": "FUN_004b9313",
+   "name": "llm_menu_racebck_exit_cb",
    "sites": [
     "DGROUP:0x006508c3"
    ],
    "site_count": 1
   },
   "0x004b935c": {
-   "name": "FUN_004b935c",
+   "name": "llm_menu_race_select_draw_cb",
    "sites": [
     "DGROUP:0x006507ff",
     "DGROUP:0x00650843",
@@ -1496,7 +1496,7 @@
    "site_count": 1
   },
   "0x004b975f": {
-   "name": "FUN_004b975f",
+   "name": "llm_ui_text_viewer_fade_tick_cb",
    "sites": [
     "BEGTEXT:0x004b9943"
    ],
@@ -1517,7 +1517,7 @@
    "site_count": 1
   },
   "0x004b9b68": {
-   "name": "FUN_004b9b68",
+   "name": "llm_ui_tutorial_hint_draw_cb",
    "sites": [
     "DGROUP:0x00650f6f"
    ],
@@ -1538,7 +1538,7 @@
    "site_count": 1
   },
   "0x004baf42": {
-   "name": "FUN_004baf42",
+   "name": "llm_ui_tutorial_step_enter_cb",
    "sites": [
     "DGROUP:0x00651033"
    ],
@@ -1580,7 +1580,7 @@
    "site_count": 1
   },
   "0x004bb78d": {
-   "name": "FUN_004bb78d",
+   "name": "llm_menu_loadgame_ok_action_cb",
    "sites": [
     "BEGTEXT:0x004bba83"
    ],
@@ -1644,7 +1644,7 @@
    "site_count": 2
   },
   "0x004bc08a": {
-   "name": "FUN_004bc08a",
+   "name": "llm_ui_list_widget_mouse_cb",
    "sites": [
     "BEGTEXT:0x004bb85a",
     "DGROUP:0x00650087",
@@ -1680,7 +1680,7 @@
    "site_count": 1
   },
   "0x004bd0a6": {
-   "name": "FUN_004bd0a6",
+   "name": "llm_lobby_network_setup_cancel_cb",
    "sites": [
     "BEGTEXT:0x004bcb61"
    ],
@@ -1793,7 +1793,7 @@
    "site_count": 1
   },
   "0x004be7b1": {
-   "name": "FUN_004be7b1",
+   "name": "llm_lobby_chat_send_cb",
    "sites": [
     "DGROUP:0x006503fb"
    ],
@@ -1980,7 +1980,7 @@
    "site_count": 4
   },
   "0x004c1f67": {
-   "name": "FUN_004c1f67",
+   "name": "llm_ui_widget_drag_modal_cb",
    "sites": [
     "DGROUP:0x0064fc8b",
     "DGROUP:0x0064fd13",
@@ -2004,14 +2004,14 @@
    "site_count": 1
   },
   "0x004c312e": {
-   "name": "FUN_004c312e",
+   "name": "llm_menu_fade_to_main_menu_cb",
    "sites": [
     "BEGTEXT:0x004c318b"
    ],
    "site_count": 1
   },
   "0x004c316d": {
-   "name": "FUN_004c316d",
+   "name": "llm_menu_intro_avi_done_cb",
    "sites": [
     "BEGTEXT:0x004c31ef"
    ],
@@ -2039,7 +2039,7 @@
    "site_count": 1
   },
   "0x004c4311": {
-   "name": "FUN_004c4311",
+   "name": "llm_ui_planet_select_cancel_cb",
    "sites": [
     "DGROUP:0x00656b16"
    ],
@@ -2187,7 +2187,7 @@
    "site_count": 1
   },
   "0x004c6bc5": {
-   "name": "FUN_004c6bc5",
+   "name": "llm_ui_outcome_dlg_note_icon_action_cb",
    "sites": [
     "DGROUP:0x00650c7b"
    ],
@@ -2208,7 +2208,7 @@
    "site_count": 1
   },
   "0x004c703b": {
-   "name": "llm_ui_building_finish_order_cb",
+   "name": "llm_ui_building_cancel_task_yes_cb",
    "sites": [
     "BEGTEXT:0x004c740a"
    ],
@@ -2248,7 +2248,7 @@
    "site_count": 6
   },
   "0x004c7b8a": {
-   "name": "FUN_004c7b8a",
+   "name": "llm_net_lockstep_sync_retry_rearm_cb",
    "sites": [
     "DGROUP:0x0065061b"
    ],

@@ -1,0 +1,14 @@
+# mp:P9 -- the resync-storm reproduction's WALL CLOCK (resync_storm_repro, tools/test_ui.py).
+#
+# The scenario's whole subject is a sim that may crawl, so nothing sim-side can bound it; this
+# timeline is the bound. Offset is from the shim's ARM point -- on the udp transport ui_test arms the
+# shim itself when it has confirmed the host LISTENING (`--manual-arm`, see ui_test.shim_start), so
+# t=0 is "host lobby up", and the client's own boot + menu walk + join + Start + gameclock 6000 sit
+# inside the first ~40 s (measured on match_launch's walk under suite load). 940 s therefore leaves
+# ~15 minutes of live match before the link dies.
+#
+# `blackhole on` (both directions; the udp shim supports it, unlike `stall` which it refuses): the
+# sockets stay open and both peers' link watchdogs (rx_timeout 10 s, GS2 data timeout 15 s) retire
+# the other side, which raises the retail below-quorum dialog the two scripts wait on
+# (`present Continue game`). It never turns back off -- the scripts end on the dialog.
+940000  blackhole on

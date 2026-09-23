@@ -110,11 +110,13 @@
       "parsers": [
         "tools/mp_analyze.py:discover",
         "tools/check_graceful_quit.py:check",
-        "tools/check_cheat_gate.py:analyse"
+        "tools/check_cheat_gate.py:analyse",
+        "tools/check_transport_death.py:check",
+        "tools/check_quit_survivors_3peer.py:check_needles"
       ],
       "since": "mp:SES1",
       "status": "live",
-      "note": "The closer. A crashed peer never writes one, which is why session.json is also written AT THE OPEN -- an empty `reason` in session.json IS the crashed-peer marker.  TAG ADDED AT U19: the line has always been written `; [session] SESSION_END ...`, but this row carried no `tags`, so lint_log_formats arm B could not connect a tool that reads it to this entry -- the first tool to hold the tagged literal (check_graceful_quit) went red against a registry that was simply incomplete here, not wrong about the format."
+      "note": "The closer. A crashed peer never writes one, which is why session.json is also written AT THE OPEN -- an empty `reason` in session.json IS the crashed-peer marker.  TAG ADDED AT U19: the line has always been written `; [session] SESSION_END ...`, but this row carried no `tags`, so lint_log_formats arm B could not connect a tool that reads it to this entry -- the first tool to hold the tagged literal (check_graceful_quit) went red against a registry that was simply incomplete here, not wrong about the format.  SECOND PARSER ADDED AT tooling:TL-QUIT3-FLAKE: check_quit_survivors_3peer reads `reason=quit` as the DISCRIMINATOR between a quitter that left and a seam that did not fire, and one that never quit at all -- the u19b_quit3 scenario fails the second way about one run in six and used to report it as the first, which named the DLL for a harness fault."
     },
     {
       "id": "net.desync_watch",
@@ -142,7 +144,9 @@
       "parsers": [
         "tools/mp_analyze.py:parse_desync",
         "tools/mp_analyze.py:desync_counts",
-        "tools/check_cheat_gate.py:analyse"
+        "tools/check_cheat_gate.py:analyse",
+        "tools/check_resync_storm.py:resync_lines",
+        "tools/check_el2_mother.py:check"
       ],
       "since": "mp:D21",
       "status": "live",
@@ -320,7 +324,8 @@
       "parsers": [
         "tools/check_arm_order.py:read_log",
         "tools/check_module_bind.py:classify",
-        "tools/test_ui.py:install_refusal_lines"
+        "tools/test_ui.py:install_refusal_lines",
+        "tools/check_resync_storm.py:config1_fails"
       ],
       "since": "fork F3A",
       "status": "live",
@@ -345,7 +350,8 @@
       ],
       "parsers": [
         "tools/check_module_bind.py:classify",
-        "tools/check_arm_order.py:detect_mode"
+        "tools/check_arm_order.py:detect_mode",
+        "tools/check_resync_storm.py:config1_fails"
       ],
       "since": "fork F4D",
       "status": "live",
@@ -369,7 +375,8 @@
         "configuration"
       ],
       "parsers": [
-        "tools/check_module_bind.py:check_libmh"
+        "tools/check_module_bind.py:check_libmh",
+        "tools/check_resync_storm.py:config1_fails"
       ],
       "since": "fork F4D",
       "status": "live",
@@ -550,11 +557,48 @@
         "gclk_ms"
       ],
       "parsers": [
-        "tools/mp_analyze.py:parse_match_end"
+        "tools/mp_analyze.py:parse_match_end",
+        "tools/check_transport_death.py:check",
+        "tools/check_quit_survivors_3peer.py:check_needles",
+        "tools/check_el2_mother.py:check"
       ],
       "since": "mp:D19",
       "status": "live",
       "note": "Only gclk is extracted; sess/outcome/downgrade are on the line and ignored."
+    },
+    {
+      "id": "net.presence_lost",
+      "stream": "mh_net.log",
+      "emitter": "src/mh_dll/mh/seams/net_diag.cpp",
+      "emit": "; presence_lost player=%u mode=%u gate=%s self(sf=0x%x ua=%d ba=%d planet=%u%s) ",
+      "tags": [],
+      "needles": [
+        "; presence_lost player="
+      ],
+      "fields": [
+        "player",
+        "mode",
+        "gate",
+        "sf",
+        "ua",
+        "ba",
+        "planet",
+        "caller",
+        "sess",
+        "gclk",
+        "sf0",
+        "ua0",
+        "ba0",
+        "sf1",
+        "ua1",
+        "ba1"
+      ],
+      "parsers": [
+        "tools/check_el2_mother.py:check"
+      ],
+      "since": "mp:D20 (2026-08-28); first parsed mp:EL2 (2026-09-22)",
+      "status": "live",
+      "note": "D20's entry-trampoline line on llm_strat_player_presence_lost (0x00498089): `gate=` is the early-out predicate re-evaluated read-only (alive = ALIVE flag && mode==0 && (ba>0 || ua>0)), `self(...)` the called player's own triple on the LIVE planet, `caller` the return address. TWO CALLERS CARRY THE MEANING, not the counts: 0x00487f41 (inside llm_strat_unit_teardown) is a unit being consumed -- the mothership DEPLOY reads ua->0 ba->1, mode 0, gate=alive; 0x0049ddad (inside llm_net_player_remove) is a FORCED removal, mode 1, gate=eliminated whatever the counts, and its sf reads 0x1b (that function's own flag rewrite) -- on the quitter it is the ESC-quit's self-removal (U17). `ua=1 ba=0` is an UNLANDED starting ship, not a missing building (mp:EL2). Lines before a session's SESSION_END land in the session dir; the removal line of a quit lands in the PROCESS dir (mp_session_close runs first)."
     },
     {
       "id": "net.time_tick_armed",
@@ -748,7 +792,10 @@
       ],
       "parsers": [
         "tools/mp_analyze.py:parse_match_end",
-        "tools/check_graceful_quit.py:check"
+        "tools/check_graceful_quit.py:check",
+        "tools/check_transport_death.py:check",
+        "tools/check_quit_survivors_3peer.py:check_needles",
+        "tools/check_el2_mother.py:check"
       ],
       "since": "mp:U17",
       "status": "live",
@@ -767,11 +814,38 @@
         "side"
       ],
       "parsers": [
-        "tools/check_graceful_quit.py:check"
+        "tools/check_graceful_quit.py:check",
+        "tools/check_quit_survivors_3peer.py:check_needles",
+        "tools/check_el2_mother.py:check"
       ],
       "since": "mp:U19 (2026-09-18)",
       "status": "live",
       "note": "The quitter's own CLEAN removal (subtype 8), written AFTER llm_net_player_remove returns, so the line's presence means the frame was handed to the transport -- not that it arrived. It lands in the MENU run directory, not the session one: SES1's mp_session_close(\"quit\") runs a few statements earlier in the same seam and has already switched the peer's log folder. Default ON since U19."
+    },
+    {
+      "id": "net.graceful_leave_park",
+      "stream": "mh_net.log",
+      "emitter": "src/mh_dll/mh/seams/net_lockstep.cpp",
+      "emit": "; U19b graceful-leave: survivors %s after %lu ms -- H_d=%ld ms P=%ld ms lookahead=%ld ms",
+      "tags": [],
+      "needles": [
+        "; U19b graceful-leave: survivors ",
+        "; U19b graceful-leave: survivors (\\S+) after (\\d+) ms -- H_d=(\\d+) ms P=(\\d+) ms"
+      ],
+      "fields": [
+        "verdict",
+        "waited_ms",
+        "hd_ms",
+        "p_ms",
+        "lookahead_ms",
+        "survivors"
+      ],
+      "parsers": [
+        "tools/check_quit_survivors_3peer.py:check_needles"
+      ],
+      "since": "mp:U19b (2026-09-22)",
+      "status": "live",
+      "note": "The quitter's own line, written by graceful_leave_park just BEFORE llm_net_player_remove: verdict PARKED = every other ALIVE&&HUMAN slot advertised a constant >= P for PARK_STABLE_MS (they are parked on the frozen horizon H_d, so the flip lands at the same sim clock everywhere); VALVE-UNPARKED = graceful_leave_park_ms ran out; UNWAITED = graceful_leave_park=0; SESSION-ENDED / NO-SURVIVORS = nothing left to wait for. Same MENU run directory as net.graceful_leave_broadcast (mp_session_close ran first)."
     },
     {
       "id": "net.graceful_leave_disabled",
@@ -961,7 +1035,8 @@
       ],
       "parsers": [
         "tools/mp_analyze.py:parse_frametime",
-        "tools/mp_pacing_report.py:read_frametimes"
+        "tools/mp_pacing_report.py:read_frametimes",
+        "tools/check_resync_storm.py:frametime_hitches"
       ],
       "since": "mp:D22",
       "status": "live",
@@ -1953,10 +2028,37 @@
         "players",
         "room"
       ],
-      "parsers": [],
+      "parsers": [
+        "tools/check_browser_rows.py:parse_peer"
+      ],
       "since": "mp:R2",
       "status": "live",
       "note": "CLIENT side, mh.dll's half: a lobby the relay listed entered (or left) the discovery browser's row set. The `-> listed` form carries the real name / map / occ / cap out of the host's own SESSION_INFO; the `stopped being listed` form is the row ageing out when the relay stops carrying it."
+    },
+    {
+      "id": "net.r2b_join_row",
+      "stream": "mh_net.log",
+      "emitter": "src/mh_dll/mh/seams/net_discovery.cpp",
+      "emit": "; R2b join: row ",
+      "tags": [
+        "R2b"
+      ],
+      "needles": [
+        "; R2b join: "
+      ],
+      "fields": [
+        "row",
+        "slot",
+        "lobby_id",
+        "room",
+        "verb"
+      ],
+      "parsers": [
+        "tools/check_browser_rows.py:parse_peer"
+      ],
+      "since": "mp:R2b",
+      "status": "live",
+      "note": "CLIENT side, the browser's JOIN resolved to a RELAY-LISTED row (on_join_connect): `row <r>` is the session-list index llm_lobby_join_head matched for the clicked row, `(slot <s>)` the relay directory slot it came from (handles are per slot), then the lobby id and the row's ROOM. Three verbs: `-> linked, JOIN sent now` (the link this peer holds is into that lobby), `-> dial in flight, JOIN re-sent when it lands` (mp:R6's pending join), `-> re-dialling (linked to room <n>), JOIN re-sent when it lands` (the link is into ANOTHER lobby or nowhere: torn down and the row's room dialled). check_browser_rows reads the room against the `-> listed` rows to prove the join followed the click, not the auto-dial."
     },
     {
       "id": "net.r2_relayed_dial",
@@ -2113,15 +2215,54 @@
         "late_n",
         "late_peer",
         "slack_ms",
+        "owd_ms",
         "starved_ms",
         "window_ms"
       ],
       "parsers": [
         "tools/mp_pacing_report.py:adaptive_moves"
       ],
-      "since": "mp:P1, re-signalled + re-tagged at mp:T3",
+      "since": "mp:P1, re-signalled + re-tagged at mp:T3, `owd` added at mp:P10",
       "status": "live",
-      "note": "THE ONLY RECORD OF WHY THE LOOKAHEAD MOVED. The step_ms column in mh_lockstep.log shows THAT it moved; this line carries the error term behind the move, so a run where the controller misbehaved can be read without re-running it. It carries its own `t=` GetTickCount stamp precisely so it can be lined up with mh_lockstep.log's wall_ms column -- mh_net.log lines are otherwise untimestamped. `slack N ms` (mp:T3c) is the window's median UNUSED horizon (local_h - COMMITTED): it is 0 for the peer whose own horizon binds the match and positive for the peer being clamped by the other side, which is the surplus the arrival-lateness tail is structurally blind to. `starved .. diag` is the PRE-T3 error term, kept on the line as a diagnostic so new runs stay comparable with every P1/P5 number in docs/mp-perf.md; it no longer drives anything. Written only when the value actually changes, so a controller sitting on the floor is silent."
+      "note": "THE ONLY RECORD OF WHY THE LOOKAHEAD MOVED. The step_ms column in mh_lockstep.log shows THAT it moved; this line carries the error term behind the move, so a run where the controller misbehaved can be read without re-running it. It carries its own `t=` GetTickCount stamp precisely so it can be lined up with mh_lockstep.log's wall_ms column -- mh_net.log lines are otherwise untimestamped. `slack N ms` (mp:T3c) is the window's median UNUSED horizon (local_h - COMMITTED): it is 0 for the peer whose own horizon binds the match and positive for the peer being clamped by the other side, which is the surplus the arrival-lateness tail is structurally blind to. `starved .. diag` is the PRE-T3 error term, kept on the line as a diagnostic so new runs stay comparable with every P1/P5 number in docs/mp-perf.md; it no longer drives anything. Written only when the value actually changes, so a controller sitting on the floor is silent. `owd N ms` (mp:P10) is the CONSERVATIVE one-way-delay estimate the slack is corrected by before either arm reads it -- (SRTT + 4*RTTVAR)/2 for the binding peer, or -1 when the transport cannot measure its link, in which case the grow gate stands down and the decision is the pre-P10 one. It is on the line because without it a `hold` on a starved window is unreadable after the fact: the raw slack alone does not say whether the gate fired."
+    },
+    {
+      "id": "net.udp_counters",
+      "stream": "mh_net.log",
+      "emitter": "src/mh_dll/mh_net_udp/udp_endpoint.cpp",
+      "emit": "net: udp counters dgram tx %ld rx %ld | seg tx %ld new %ld dup %ld | repaired ",
+      "tags": [],
+      "needles": [
+        "net: udp counters dgram tx "
+      ],
+      "fields": [
+        "dgram_tx",
+        "dgram_rx",
+        "seg_tx",
+        "seg_rx_new",
+        "seg_rx_dup",
+        "repaired_k",
+        "repaired_rto",
+        "rto_sent",
+        "gap_stalls",
+        "gap_ms_worst",
+        "mac_fail",
+        "replay_drop",
+        "malformed",
+        "wrong_conn",
+        "peer_id",
+        "data_rx_age_ms",
+        "data_tx_age_ms",
+        "data_rx_bytes",
+        "data_tx_bytes",
+        "horizon_ms"
+      ],
+      "parsers": [
+        "tools/check_ses6_delivery.py:parse_counters_line"
+      ],
+      "since": "mp:T1, per-peer fields at mp:SES6",
+      "status": "live",
+      "note": "The 10 s aggregate-counters line (timer_loop): printed only when a counter moved since the last tick (SES5's log-diet ruling -- an idle link stays silent). mp:SES6 appended ONE REPEATING SEGMENT PER ACTIVE CONN after the fixed fields above (built into a separate buffer and passed as the trailing `%s`): ` | peer<peer_id> data_rx_age <data_rx_age_ms|-1> data_tx_age <data_tx_age_ms|-1> data_rx_bytes <data_rx_bytes> data_tx_bytes <data_tx_bytes> horizon_ms <horizon_ms|-1>`, one such segment per active connection, so a 2-peer host's line carries at most one and a client's exactly one. -1 on an age column = no FLAG_DATA seen yet in that direction on that conn (a sentinel, not a real elapsed time); -1 on horizon_ms = mh.dll has never pushed one for this peer (no lockstep seam bound -- config (1) with no libmh, or a bare net_selftest.exe run -- see net_lockstep.cpp's MH_Net_SetPeerHorizon call site in lateness_tick). `data_rx_age`/`data_tx_age` are narrower than the aggregate `dgram tx/rx` fields above and the pre-existing per-conn `last_rx` (both move on ANY accepted packet, keepalives included) -- these two move ONLY on FLAG_DATA, which is the whole point: a peer whose sim stopped sending game data shows `data_rx_age` climbing while `data_tx_age` stays ~0 and `horizon_ms` frozen, readable off ONE side's mh_net.log alone (2026-09-20 report §8's instrument ask, §9.3's cross-matching need)."
     },
     {
       "id": "net.udp_rtt_sample",
@@ -2292,7 +2433,8 @@
         "bar",
         "cmd_ms",
         "look_ms",
-        "step_ms"
+        "step_ms",
+        "relayed"
       ],
       "parsers": [
         "tools/check_net_indicator.py:main",
@@ -2300,7 +2442,7 @@
       ],
       "since": "mp:L1 2026-09-18",
       "status": "live",
-      "note": "One line per peer per 2 s while a match is live: everything the player-visible indicator is showing, as numbers, so a bug report carries them without a screenshot. `srtt_ms=-1` is the log's spelling of the `n/a` the frame shows -- never 0, which would read as a perfect link. `bar` is the 4-level stability indicator, derived from ipdv+loss and deliberately NOT from srtt (a high but steady delay plays better than a lower one that varies); 0 = nothing measured. `cmd_ms` is command latency AS DISPLAYED and is exactly look_ms+step_ms, which is the arithmetic check_net_indicator asserts: the lookahead floor plus the sub-step quantisation, i.e. the TYPICAL value of the vocabulary's `lookahead + local queueing`, not its worst case."
+      "note": "One line per peer per 2 s while a match is live: everything the player-visible indicator is showing, as numbers, so a bug report carries them without a screenshot. `srtt_ms=-1` is the log's spelling of the `n/a` the frame shows -- never 0, which would read as a perfect link. `bar` is the 4-level stability indicator, derived from ipdv+loss and deliberately NOT from srtt (a high but steady delay plays better than a lower one that varies); 0 = nothing measured. `cmd_ms` is command latency AS DISPLAYED and is exactly look_ms+step_ms, which is the arithmetic check_net_indicator asserts: the lookahead floor plus the sub-step quantisation, i.e. the TYPICAL value of the vocabulary's `lookahead + local queueing`, not its worst case. `relayed` (mp:L1g, 2026-09-22) is the RAW tri-state from MH_NetPeerLatency -- 1 relay, 0 direct, -1 the transport cannot say -- NOT the rendered letter: the drawn line collapses 0 and -1 (both draw nothing, because painting -1 as `D` would tell a relayed player they are direct), and a checker has to be able to tell those two apart. Appended, so the existing needle still matches a pre-L1g log."
     },
     {
       "id": "net.netind_stall",
@@ -2324,6 +2466,55 @@
       "since": "mp:L1 2026-09-18",
       "status": "live",
       "note": "One line per stall EPISODE (not per frame), naming the peer the sim is blocked on -- the same name the on-screen `WAITING FOR <name>` carries, taken from the strategic player table where the lobby slot names end up. `peer` is the PEER_HORIZON / strategic-player slot, read through net_lockstep.cpp's MH_Lockstep_StallBindingPeer rather than recomputed here. A matching `; [netind] stall_end peer=N` closes the episode. The block has to outlast 400 ms before either is written: shorter ones are ordinary lockstep beats, not something a player notices."
+    },
+    {
+      "id": "net.lobbyping_sample",
+      "stream": "mh_net.log",
+      "emitter": "src/mh_dll/mh/ui/lobby_ping.cpp",
+      "emit": "; [lobbyping] slot=%d pid=%d measured=%d srtt_ms=%d relayed=%d src=%s",
+      "tags": [
+        "lobbyping"
+      ],
+      "needles": [
+        "; \\[lobbyping\\] slot=(-?\\d+) pid=(-?\\d+) measured=(\\d+) srtt_ms=(-?\\d+)(?: relayed=(-?\\d+))?(?: src=(\\w+))?"
+      ],
+      "fields": [
+        "slot",
+        "pid",
+        "measured",
+        "srtt_ms",
+        "relayed",
+        "src"
+      ],
+      "parsers": [
+        "tools/check_lobby_ping.py:main"
+      ],
+      "since": "mp:L1b 2026-09-22 (relayed field added mp:L1e; src field added mp:L1f)",
+      "status": "live",
+      "note": "One line per occupied HUMAN lobby slot (other than the local player's own row) per ~2 s while the lobby's own per-frame tick is running -- see mp:L1's net.netind_sample for the in-game counterpart. `measured=0`/`srtt_ms=-1` is the row's spelling of the empty cell. `relayed`: -2 not measured, -1 UNKNOWN, 0 direct, 1 relayed -- real on BOTH roles since mp:L1f wired the host side (udp_endpoint.cpp get_stats asks udp_relay.cpp's path_class about the conn's own loopback address; a tunnel that is not running answers 0 = direct). Drives the cell's `R <n>`/`D <n>`/bare-`<n>` text (mp:L1e). `src` (mp:L1f) is the PROVENANCE the cell deliberately does not show: `self` = this peer measured it on its own connection, `host` = the host PUBLISHED it because the client-server star leaves a client unable to measure another client at all (net.lobbypub is the host's send side), `none` = nothing measured. Written from the lobby's own tick (net_seams.cpp on_lobby_dispatch), not the shared present hook."
+    },
+    {
+      "id": "net.lobbypub",
+      "stream": "mh_net.log",
+      "emitter": "src/mh_dll/mh/seams/net_seams.cpp",
+      "emit": "; [lobbypub] entries=%d bytes=%d",
+      "tags": [
+        "lobbyping",
+        "lobbypub"
+      ],
+      "needles": [
+        "; \\[lobbypub\\] entries=(\\d+) bytes=(\\d+)"
+      ],
+      "fields": [
+        "entries",
+        "bytes"
+      ],
+      "parsers": [
+        "tools/check_lobby_ping.py:main"
+      ],
+      "since": "mp:L1f 2026-09-22",
+      "status": "live",
+      "note": "HOST ONLY, ~1 Hz, lobby only. The host broadcasts its per-slot SRTT measurements as a FLAG_ANNOUNCE of kind ANNOUNCE_PING (mh_net_proto/session_info.h) because the transport is a client-server STAR: a client holds exactly one connection, to the host, so it can never measure another client and every other occupied row would be blank on its screen forever. `entries` is how many peers the host had a measurement for (0 is legal and is how a client learns a peer left -- the receiver REPLACES its table on every summary); `bytes` is the encoded frame, 2 + 4*entries. DISPLAY ONLY: ANNOUNCE is routed to the client's announce handler and never to the game queue, and the receiver's only consumer is the lobby cell."
     },
     {
       "id": "harness.snapshot_capture_row",
@@ -2624,7 +2815,8 @@
         "head"
       ],
       "parsers": [
-        "tools/check_graceful_quit.py:check"
+        "tools/check_graceful_quit.py:check",
+        "tools/check_transport_death.py:check"
       ],
       "since": "mp:U19e",
       "status": "live",
@@ -2656,7 +2848,8 @@
       ],
       "fields": [],
       "parsers": [
-        "tools/check_graceful_quit.py:check"
+        "tools/check_graceful_quit.py:check",
+        "tools/check_transport_death.py:check"
       ],
       "since": "mp:U19d",
       "status": "live",
@@ -2825,7 +3018,8 @@
         "room"
       ],
       "parsers": [
-        "tools/check_relay_rooms.py:read_rooms"
+        "tools/check_relay_rooms.py:read_rooms",
+        "tools/check_browser_rows.py:parse_peer"
       ],
       "since": "mp:R6",
       "status": "live",
@@ -3402,6 +3596,277 @@
       "since": "mp:CH1",
       "status": "live",
       "note": "EVERY Enter on the in-game text line (chat modes 1/2 and the Shift+Enter console mode 3), REDACTED: length + first character + the cheat-catalog index the line matches (or -). What would have attributed the 2026-09-20 crash report's chat line on first read."
+    },
+    {
+      "id": "net.d28_splice",
+      "stream": "mh_net.log",
+      "emitter": "src/mh_dll/mh/seams/ui_bldg_cancel_task.cpp",
+      "emit": "; D28: cancel-task Yes spliced at %08X -- in a lockstep match the cancel is a replicated building order%s\\n",
+      "tags": [],
+      "needles": [
+        "D28: cancel-task Yes"
+      ],
+      "fields": [
+        "site"
+      ],
+      "parsers": [
+        "tools/check_cancel_task.py:net_log_lines"
+      ],
+      "since": "mp:D28",
+      "status": "live",
+      "note": "Boot-time banner: `spliced at <site>` (+ ` -- ROUTING OFF ([net] cancel_task_order=0)...` on the reproduction arm), `NOT spliced at <site>` (expect bytes differ), or `splice DISPLACED` (the callback is promoted this run)."
+    },
+    {
+      "id": "net.d28_routed",
+      "stream": "mh_net.log",
+      "emitter": "src/mh_dll/mh/seams/ui_bldg_cancel_task.cpp",
+      "emit": "; D28: cancel-task Yes routed as order (bldg %u state 0x%02X -> idle 0x%04X) instead of the local call\\n",
+      "tags": [],
+      "needles": [
+        "cancel-task Yes routed as order"
+      ],
+      "fields": [
+        "bldg",
+        "state",
+        "idle"
+      ],
+      "parsers": [
+        "tools/check_cancel_task.py:net_log_lines"
+      ],
+      "since": "mp:D28",
+      "status": "live",
+      "note": "One line per Yes click routed through the order pipeline (lockstep match, routing on). Absent on the reproduction arm and in single player, where the retail local call runs."
+    },
+    {
+      "id": "net.resync_watch",
+      "stream": "mh_net.log",
+      "emitter": "src/mh_dll/mh/seams/net_lockstep.cpp",
+      "emit": "; [resync] trigger_count=%u threshold=%u countdown=%d (+%u in 10s)\\n",
+      "tags": [
+        "resync"
+      ],
+      "needles": [
+        "[resync] trigger_count="
+      ],
+      "fields": [
+        "trigger_count",
+        "threshold",
+        "countdown",
+        "delta_10s"
+      ],
+      "parsers": [
+        "tools/check_resync_storm.py:resync_lines"
+      ],
+      "since": "mp:P9",
+      "status": "live",
+      "note": "Every 10 s while RESYNC_TRIGGER_COUNT moved: the leader's cumulative stall-nag counter, the force_resync threshold (ACTIVE_PLAYER_COUNT*100) and SYNC_RETRY_COUNTDOWN (the gate's predicate; < 0x38 = genuine silence). A client's count never moves, so a client's log has no such line."
+    },
+    {
+      "id": "net.resync_fired",
+      "stream": "mh_net.log",
+      "emitter": "src/mh_dll/mh/seams/net_lockstep.cpp",
+      "emit": "; [resync] force_resync FIRED #%u: count %u -> %u (threshold %u, countdown %d)\\n",
+      "tags": [
+        "resync"
+      ],
+      "needles": [
+        "[resync] force_resync FIRED"
+      ],
+      "fields": [
+        "fire_no",
+        "count_before",
+        "count_after",
+        "threshold",
+        "countdown"
+      ],
+      "parsers": [
+        "tools/check_resync_storm.py:resync_lines"
+      ],
+      "since": "mp:P9",
+      "status": "live",
+      "note": "Inferred from the counter DROPPING between two frames (force_resync is its only lowering writer). One line per mode-8 barrier the leader force-fired; the field's ~2 s storm reads as one of these every ~2 s."
+    },
+    {
+      "id": "net.resync_armed",
+      "stream": "mh_net.log",
+      "emitter": "src/mh_dll/mh/seams/net_lockstep.cpp",
+      "emit": "; [resync] armed: trigger_count=%u threshold=%u (ACTIVE_PLAYER_COUNT=%u) countdown=%d\\n",
+      "tags": [
+        "resync"
+      ],
+      "needles": [
+        "[resync] armed:"
+      ],
+      "fields": [
+        "trigger_count",
+        "threshold",
+        "active_player_count",
+        "countdown"
+      ],
+      "parsers": [
+        "tools/check_resync_storm.py:resync_lines"
+      ],
+      "since": "mp:P9 (2/2)",
+      "status": "live",
+      "note": "ONE line per match at the watch's first 10 s tick, written whether or not the counter moved -- the baseline the two silent lines (resync_watch / resync_fired) cannot give: a match whose RESYNC_TRIGGER_COUNT never moves (the first 15-minute rig reproduction: ~5700 stall-nags sent, 0 increments) still names the leader's threshold, i.e. ACTIVE_PLAYER_COUNT, which is the number mp:P8's field lead is about."
+    },
+    {
+      "id": "net.resync_barrier_begin",
+      "stream": "mh_net.log",
+      "emitter": "src/mh_dll/mh/seams/net_lockstep.cpp",
+      "emit": "; [resync] barrier #%u BEGIN (count was %u, threshold %u, countdown %d) flags=0x%02x\\n",
+      "tags": [
+        "resync"
+      ],
+      "needles": [
+        "[resync] barrier #",
+        "BEGIN (count was"
+      ],
+      "fields": [
+        "barrier_no",
+        "count_before",
+        "threshold",
+        "countdown",
+        "status_flags"
+      ],
+      "parsers": [
+        "tools/check_resync_storm.py:resync_lines"
+      ],
+      "since": "mp:P9 (2/2) watch v2",
+      "status": "live",
+      "note": "RESYNC_IN_PROGRESS (0x00e587ad) sampled 0 -> 1 between two frames: force_resync's one-shot fired, i.e. one mode-8 barrier BEGAN. THE PRIMARY barrier witness since watch v2 -- the counter-drop `resync_fired` line cannot see a threshold-0 fire (the count goes 0->1->0 inside one call). `count was` is the previous frame's RESYNC_TRIGGER_COUNT; `flags` is _G_LLM_NET_LOCKSTEP_STATUS_FLAGS (bit 0x40 rides with the barrier on every peer). Written on BOTH peers (the receiver's dispatch inner 0xd sets the same flag)."
+    },
+    {
+      "id": "net.resync_barrier_end",
+      "stream": "mh_net.log",
+      "emitter": "src/mh_dll/mh/seams/net_lockstep.cpp",
+      "emit": "; [resync] barrier #%u END after %lu ms flags=0x%02x\\n",
+      "tags": [
+        "resync"
+      ],
+      "needles": [
+        "[resync] barrier #",
+        "END after"
+      ],
+      "fields": [
+        "barrier_no",
+        "duration_ms",
+        "status_flags"
+      ],
+      "parsers": [
+        "tools/check_resync_storm.py:resync_lines"
+      ],
+      "since": "mp:P9 (2/2) watch v2",
+      "status": "live",
+      "note": "RESYNC_IN_PROGRESS 1 -> 0: the leader's llm_wait_screen_frame (the GAME_MODE==8 frame) passed the 2002 ms deadline and sent RESUME, or the receiver's dispatch inner 0xe landed. ~2000-2100 ms after its BEGIN in a healthy barrier. A BEGIN with NO END for the rest of the match is the `defang_overlay=1` signature (the mode-8 store at 0x004c85ed NOP'd -> the flag latches, every later force_resync is a silent no-op) -- the UI rig's default until mp:P9 (2/2); the ship is 0."
+    },
+    {
+      "id": "net.resync_count_init",
+      "stream": "mh_net.log",
+      "emitter": "src/mh_dll/mh/seams/net_lockstep.cpp",
+      "emit": "; [resync] count_init: ACTIVE_PLAYER_COUNT %d -> %d (threshold %u)\\n",
+      "tags": [
+        "resync"
+      ],
+      "needles": [
+        "[resync] count_init:"
+      ],
+      "fields": [
+        "count_before",
+        "count_after",
+        "threshold"
+      ],
+      "parsers": [
+        "tools/check_resync_storm.py:resync_lines"
+      ],
+      "since": "mp:P9 (2/2) root fix",
+      "status": "live",
+      "note": "`[net] resync_count_init=1` (default ON): the first on_time_tick of a SESSION_MODE==3 match called llm_net_lockstep_count_active_players, the ONLY writer of _G_LLM_NET_ACTIVE_PLAYER_COUNT, which retail never calls at session begin -- so the stock threshold ACTIVE*100 was 0 (the first stall-nag fired a barrier) and is now players*100 (200 for two). Absent with the knob at 0 (the resync_storm_repro row). On both peers."
+    },
+    {
+      "id": "net.resync_receiver_deadline",
+      "stream": "mh_net.log",
+      "emitter": "src/mh_dll/mh/seams/net_lockstep.cpp",
+      "emit": "; [resync] receiver_deadline: %lu ms in barrier with no RESUME -- leaving the wait screen and removing side_id=%d\\n",
+      "tags": [
+        "resync"
+      ],
+      "needles": [
+        "[resync] receiver_deadline:"
+      ],
+      "fields": [
+        "elapsed_ms",
+        "side_id"
+      ],
+      "parsers": [
+        "tools/check_resync_receiver_deadline.py:deadline_lines"
+      ],
+      "since": "mp:P9W",
+      "status": "live",
+      "note": "`[net] resync_receiver_deadline=1` (default ON): a NON-leader still RESYNC_IN_PROGRESS after max(2002, data_timeout_ms) ms of this DLL's own GetTickCount() clock with no RESUME -- the leader is presumed dead. Written once per episode, immediately before the receiver runs the leader's own exit sequence (minus the RESUME broadcast) and removes `side_id` (the leader, found the same way llm_net_lockstep_is_local_leader_peer elects one) through llm_net_player_remove. Never on the leader itself (its own 2002 ms deadline inside llm_wait_screen_frame exits first and needs no line here -- see net.resync_barrier_end)."
+    },
+    {
+      "id": "net.resync_gate_install",
+      "stream": "mh_net.log",
+      "emitter": "src/mh_dll/mh/seams/net_lockstep.cpp",
+      "emit": "; resync-trigger gate: %d/2 INC sites patched (gated on SYNC_RETRY_COUNTDOWN<0x38), %d displaced by promotion, %d MISMATCHED\\n",
+      "tags": [],
+      "needles": [
+        "resync-trigger gate:"
+      ],
+      "fields": [
+        "armed",
+        "displaced",
+        "mismatched"
+      ],
+      "parsers": [
+        "tools/check_resync_storm.py:resync_lines"
+      ],
+      "since": "mp:P9",
+      "status": "live",
+      "note": "Boot line of the re-instated carriers: configuration (1) reads 2/2 patched, configuration (2) reads 2 displaced; a MISMATCHED site also gets an UNCARRIED FIX line."
+    },
+    {
+      "id": "net.uncarried_fix",
+      "stream": "mh_net.log",
+      "emitter": "src/mh_dll/mh/seams/net_lockstep.cpp",
+      "emit": "; [net] UNCARRIED FIX: %s is set, but its byte-patch carrier at %08X was RETIRED (C8) ",
+      "tags": [
+        "net"
+      ],
+      "needles": [
+        "[net] UNCARRIED FIX"
+      ],
+      "fields": [
+        "knob",
+        "site",
+        "owner"
+      ],
+      "parsers": [
+        "tools/check_resync_storm.py:resync_lines"
+      ],
+      "since": "C8-e",
+      "status": "live",
+      "note": "refuse_uncarried_fix: a [net] fix knob is set but neither its byte-patch carrier nor a promoted owner is in this run. Since mp:P9 (2/2) the resync_trigger_gate installer refuses PER SITE (a site neither patched nor displaced), so in a healthy configuration (1) boot the line is ABSENT -- check_resync_storm.py's clause 1 -- and the 2026-09-20 field boot logs, which carried two of them, are the pre-P9 state."
+    },
+    {
+      "id": "net.u39_echo",
+      "stream": "mh_net.log",
+      "emitter": "src/mh_dll/mh/seams/ui_diplomacy_echo.cpp",
+      "emit": "; U39: diplomacy relation echo NOPed at %08X (22 bytes) -- the 0xf4 order handler is the cell's only writer",
+      "tags": [],
+      "needles": [
+        "U39: diplomacy relation echo"
+      ],
+      "fields": [
+        "site"
+      ],
+      "parsers": [
+        "tools/check_u39_echo.py:net_log_lines"
+      ],
+      "since": "mp:U39",
+      "status": "live",
+      "note": "Boot-time banner, one of three: `NOPed at <site>` (the ship arm), `KEPT ([net] diplo_echo_nop=0)` (the u39_diplomacy_echo reproduction arm -- check_u39_echo.py clause 2 requires it), `NOT patched at <site>` (expect bytes differ or the parent is promoted; retail echo kept)."
     },
     {
       "id": "net.ch1_refused",

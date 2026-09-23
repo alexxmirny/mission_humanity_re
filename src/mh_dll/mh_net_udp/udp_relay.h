@@ -213,6 +213,40 @@ void set_directory_sink(dir_fn fn, void *ctx);
 typedef bool (*known_fn)(void *ctx, const sockaddr_in &a);
 void set_peer_known(known_fn fn, void *ctx);
 
+// ---- mp:L1f, THE PATH CLASSIFICATION, ASKED BY THE ADDRESS THE ENDPOINT SEES -------------------
+//
+// 1 = the last DATA frame this peer delivered came over the RELAY LEG, 0 = it came DIRECT, -1 = we
+// cannot say. The lobby's per-slot ping cell (mh/ui/lobby_ping.cpp) paints "R <n>" / "D <n>" from
+// it, and a -1 paints the bare number: on this question a wrong letter is worse than no letter.
+//
+// WHY THE ADDRESS IS THE RIGHT KEY, and why mp:L1e concluded no bridge existed. L1e went looking
+// for a relay-handle <-> player_id table, found none, and stopped -- correctly, because none
+// exists. But the crossing does not need one: reason 2 at the top of this header already gives the
+// HOST one loopback socket per remote peer so the endpoint can tell its clients apart, and reason 1
+// keeps the endpoint pointed at 127.0.0.1 on a CLIENT. So on both roles the endpoint's per-conn
+// address is ALREADY a per-remote name this file minted and still holds (`Remote::self` / the
+// tunnel's own dial port). It is the same currency `set_peer_known` above travels in -- that is
+// the endpoint answering the relay about a loopback address; this is the relay answering the
+// endpoint about the same one.
+//
+// LAST DATA FRAME, NOT FIRST: mp:R3's rendezvous promotes a pair from relayed to direct in the
+// middle of a live session (and demotes it back when the direct path dies), so a first-frame latch
+// would go stale and keep claiming "R" on a pair that has been direct for ten minutes.
+//
+// WHAT THE THREE ANSWERS COST. A tunnel that is NOT RUNNING answers 0 (direct) for every address:
+// with no leg there is no path a datagram could have been relayed over, which is a fact rather than
+// a default -- it is what makes a plain LAN match show "D" instead of nothing. A running tunnel
+// answers -1 for an address it does not recognise (a direct conn on a host that also relays, a
+// slot freed under mp:R3e) and for a remote that has not delivered a DATA frame yet.
+//
+// ANSWERED FROM ANY THREAD, LOCK-FREE. get_stats() calls this from the GAME thread while the
+// tunnel's own tables are pump-thread-only, so the answer is not read out of those tables: the
+// pump PUBLISHES (port, class) into a small Interlocked-written side array and this reads it.
+// Both halves are LONG-wide, so a reader sees one value or the other and never a torn one. It is
+// display-only data -- nothing routes, gates, hashes or retransmits on it -- so a read that is one
+// pump tick stale is not merely tolerable, it is the correct cost.
+int path_class(const sockaddr_in &a);
+
 // The room this tunnel is currently homed in. Not always `Config::room`: a client refused
 // `no_host` for the room it was given falls back to DIRECTORY_ROOM so it can still LIST and learn
 // the codes that DO exist (`mp:R1e`'s footgun -- two peers disagreeing about `[net] port`), and a

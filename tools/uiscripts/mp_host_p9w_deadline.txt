@@ -1,0 +1,47 @@
+# mp:P9W (2026-09-22, wave-3 lane C) -- resync_receiver_deadline_proof, host side.
+#
+# Same host walk as mp_host_p9_soak.txt (match_launch's shape into a live match, configuration (1),
+# gate OFF + count_init OFF so the resync barrier storms from the FIRST stall-nag -- P9's own
+# threshold-0 finding), but the capture moves from `gameclock 6000` (p9_soak's gate) to RIGHT AFTER
+# `absent Network players` -- this row's blackhole (shim/p9w_deadline_repro.txt, t+50 s) sits well
+# inside the storm's own duty cycle (near-continuous ~2 s barriers from the start), so the sim's own
+# realtime rate under that storm (P9 measured ~0.087x) pushes gameclock 6000 well past the point
+# where THIS row's fix has already ended the match (measured 2026-09-22: a capture at gameclock 6000
+# showed the game-over dialog, not a launched-match frame). Capturing at the match's own FIRST
+# frame instead is a moment no fix or storm has had time to touch yet. Pair with
+# mp_client_p9w_deadline.txt.
+
+# reach the host lobby (create a game named "test" on the pre-selected map)
+settled value:110
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+settled Create
+clickl Create
+present Game name
+settled Ok
+clickl Ok
+present Available maps
+settled Ok
+clickl Ok
+
+# host lobby: BLOCK until the match is startable, then click Start (mp_host_start.txt's gates)
+present Network players
+peers 1
+awaitsignal lobby
+enabled Start
+settled Start
+clickl Start
+
+# in the match: ONE capture at the very first frame (before the storm or the blackhole has had any
+# chance to run), then nothing left to assert until the blackhole retires the client and the below-
+# quorum dialog appears (the leader's OWN 2002 ms mode-8 exit already resolves every barrier on
+# this side; this row is about the RECEIVER's side, proven from the client's own log).
+absent Network players
+capture m1_launched
+log HOST is in the configuration-(1) match; waiting for the shim timeline's early blackhole
+present Continue game
+settled Continue game
+log HOST reached the below-quorum dialog
+end

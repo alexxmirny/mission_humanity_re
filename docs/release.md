@@ -214,8 +214,7 @@ Known limits:
   relay: the host's TCP 6501 must be forwarded. Direct dial by address needs a forwarded port with
   either transport.
 - 8 players per game.
-- One map download at a time per session.
-- The in-game list shows one relay-hosted lobby at a time (mp:R2b)."
+- One map download at a time per session."
 ```
 
 ### The public release message
@@ -253,11 +252,13 @@ KNOWN LIMITS
 ```
 
 Keep the **Known limits** block current: it is the one place a downloader reads before filing a bug
-that is a limit. The four above are the state at v0.1.0 — TCP needs a forwarded port (only UDP has
-the relay; UDP is the shipped default since 2026-09-20, so a hand-unzipped install with an untouched
-`mh_net.ini` is already on the relay-capable transport), the 8-player cap, one channel-C map
-transfer at a time (`mp:T2a`), and the one-row browser (`mp:R2b`) — and each is retired from the
-template when its tracker row closes.
+that is a limit. Three at `v0.2.0` — TCP needs a forwarded port (only UDP has the relay; UDP is the
+shipped default since 2026-09-20, so a hand-unzipped install with an untouched `mh_net.ini` is
+already on the relay-capable transport), the 8-player cap, and one channel-C map transfer at a time
+(`mp:T2a`). Each is retired from the template when its tracker row closes, which is what happened to
+the fourth: **the one-row browser (`mp:R2b`) shipped fixed in v0.2.0** — the list now shows every
+relay-hosted game — so the line is gone from the block above rather than kept as history. The
+example message is the CURRENT template, not a transcript of `v0.1.0`.
 
 ## 2. Cutting one
 

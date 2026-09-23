@@ -109,6 +109,8 @@ inline constexpr uintptr_t ovl_sync_call_site                       = 0x0043f18d
 inline constexpr uintptr_t ovl_dismiss_tt1_site                     = 0x0043f072u; // in llm_strat_time_tick: call overlay_dismiss (recovery, else-if SYNC_WAIT==1)
 inline constexpr uintptr_t ovl_dismiss_tt2_site                     = 0x0043f286u; // in llm_strat_time_tick: call overlay_dismiss (countdown expiry)
 inline constexpr uintptr_t ovl_dismiss_tt3_site                     = 0x0043f2e1u; // in llm_strat_time_tick: call overlay_dismiss (horizon recovered)
+inline constexpr uintptr_t canceltask_finish_call_site              = 0x004c7060u; // in llm_ui_building_cancel_task_yes_cb: mp:D28: CALL llm_bldg_finish_current_order (E8 46 9C FA FF; EAX = PlayerSide, EDX = selected building index) -- spliced to a thunk that issues the equivalent building order in a lockstep match
+inline constexpr uintptr_t diplo_echo_write_site                    = 0x004c8070u; // in llm_ui_diplomacy_apply_and_resume: mp:U39: the 22-byte optimistic relation echo (movzx PlayerSide; imul 0x34; add j; mov al,rel; mov [edx+0xe587f1],al) -- NOPed so the 0xf4 order handler is the cell's only writer
 inline constexpr uintptr_t ovl_xui_wait_site                        = 0x004c85e8u; // in llm_net_lockstep_extend_ui_enter: call wait_player_overlay_show
 inline constexpr uintptr_t ovl_xui_mode8_site                       = 0x004c85edu; // in llm_net_lockstep_extend_ui_enter: mov byte [_G_LLM_GAME_MODE], 8
 inline constexpr uintptr_t removed_popup_call_site                  = 0x004bfe78u; // in llm_lobby_host_net_dispatch: NOPed spurious "you were removed" 0x2c1 popup CALL
@@ -880,7 +882,7 @@ inline constexpr uintptr_t _G_LLM_VIEW_TILES_H                      = 0x00825068
 inline constexpr uintptr_t _G_LLM_VIEW_TILES_W                      = 0x00825090u; // TACT-READY R8, SHARED VIEW/INPUT REGION written by tactical code. NOT tactical-only -- strategic and UI code write it too, so the tactical translation shares ownership rather than owning it. Ghidra type undefined4. Writers (measured, tmp/state_matrix.json): llm_tact_mission_start(1), llm_gfx_view_metrics_init(1); 124 read site(s).
 inline constexpr uintptr_t browser_refresh_fn_slot                  = 0x0065076fu; // Ghidra INT_0065076f (browser rescan fn)
 inline constexpr uintptr_t browser_row_count_fmt                    = 0x00503068u; // S7: wide fmt u'%s\t%d+%d/%d' (0x503068) used by BOTH browser-row renderers' normal branch (rescan/refresh); DLL patches it to '%s\t%d/%d' so the discovery row reads occ/cap
-inline constexpr uintptr_t browser_ui_rows                          = 0x00e622a0u; // Ghidra DAT_00e622a0; {void* handle, u32 idx}[]
+inline constexpr uintptr_t browser_ui_rows                          = 0x00e622a0u; // Ghidra _G_LLM_LOBBY_BROWSER_ROWS: llm_lobby_browser_row[1024] {void* session_handle; uint server_idx} -- bound 0x400 proven by CMP/JNC @0x004bce3f (mp:R2b, 2026-09-21); ends at _G_LLM_AVI_OPEN_STATUS
 inline constexpr uintptr_t browser_widget_array_ptr                 = 0x00653ea7u; // Ghidra PTR_PTR_00653ea7
 inline constexpr uintptr_t buildings                                = 0x00c3d2a0u; // Ghidra map::g::buildings -- map::object::building[8][100], strides 0x6aa4 / 0x111. The AI engage path reads energy / incoming_damage_tally / building_id through it; RID_BUILDINGS in the state registry
 inline constexpr uintptr_t cfg_G_TEXT_PTRS                          = 0x0058440cu; // Ghidra cfg::G_TEXT_PTRS[]; runtime-loaded UTF-16 pool

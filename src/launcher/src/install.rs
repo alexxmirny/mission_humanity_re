@@ -14,8 +14,20 @@
 //! (it exports `DecompressLZWData`, `GetSightAreaFromRadius`, `MH_HostedPoolBase`) and this
 //! project's `mh.dll` is a drop-in that re-exports those three and adds its own. So installing a
 //! release OVERWRITES a game file -- the only one it does -- and an uninstall that merely deleted
-//! what it copied would leave the game unable to start. Every displaced file is therefore parked as
-//! `<name>.mhbak` first and put back on uninstall.
+//! what it copied would leave the game unable to start.
+//!
+//! **OURS OR FOREIGN (dist LA12, user ruling 2026-09-21).** Until LA12 every displaced file was
+//! parked as `<name>.mhbak`, which on the second install and every install after it parked OUR OWN
+//! previous file -- junk beside the game, in the user's words. The rule now is a classification,
+//! `Ownership` below: a file already at the destination is **ours** when its SHA-256 is in the
+//! receipt, when its NAME is in the receipt (a hand-edited `mh_net.ini` is still the file the
+//! launcher put there), or when its VERSIONINFO says `ProductName` = `mission_humanity_re` (every
+//! shipped DLL carries that stamp -- `src/mh_dll/mh_version.rc`); ours is overwritten with no
+//! backup. Anything else is **foreign** -- retail's own `mh.dll` is the 100 % case for that one file,
+//! somebody's own proxy DLL the 0.1 % case for the others -- and a foreign file IS parked as
+//! `<name>.mhbak`, named in the log, and put back on uninstall. There is no code signature to ask
+//! (nothing is Authenticode-signed; the release's integrity is SHA256SUMS + the minisigned
+//! manifest), which is why the receipt and the resource stamp are the two witnesses.
 //!
 //! And the digests are what stop the uninstall from being destructive in the other direction: a
 //! file whose content no longer matches its row was replaced by someone else since, so it is left
@@ -81,23 +93,149 @@ pub struct InstallReport {
     pub game_dir: PathBuf,
     /// Files created in the game directory that were not there before.
     pub created: Vec<String>,
-    /// Files that displaced an existing one, which is now `<name>.mhbak`.
+    /// Files that displaced a FOREIGN one, which is now `<name>.mhbak` (dist LA12).
     pub replaced: Vec<String>,
+    /// Files that overwrote a previous install of OURS -- no backup was made (dist LA12).
+    pub overwritten: Vec<String>,
 }
 
 impl InstallReport {
     pub fn summary(&self) -> String {
-        format!(
-            "installed {} ({}) from {} into {} -- {} file(s) new, {} replaced (backed up as *{})",
+        let mut s = format!(
+            "installed {} ({}) from {} into {} -- {} file(s) new, {} of ours overwritten",
             self.version,
             self.tag,
             self.package,
             self.game_dir.display(),
             self.created.len(),
-            self.replaced.len(),
-            BACKUP_SUFFIX
-        )
+            self.overwritten.len(),
+        );
+        if !self.replaced.is_empty() {
+            s.push_str(&format!(
+                ", {} foreign file(s) parked as *{}: {}",
+                self.replaced.len(),
+                BACKUP_SUFFIX,
+                self.replaced.join(", ")
+            ));
+        }
+        s
     }
+}
+
+// --------------------------------------------------------------------------- dist LA12: ours?
+
+/// The `ProductName` every shipped module is stamped with (`src/mh_dll/mh_version.rc`).
+pub const OUR_PRODUCT_NAME: &str = "mission_humanity_re";
+
+/// The receipt's disposition for a file that overwrote a previous install of ours.
+const DISPOSITION_OURS: &str = "ours";
+/// ... for a file that parked a foreign one as `<name>.mhbak` (restored on uninstall).
+const DISPOSITION_REPLACED: &str = "replaced";
+/// ... for a file that was not there before.
+const DISPOSITION_CREATED: &str = "created";
+
+/// Why a file already at the destination counts as ours, or does not.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Ownership {
+    /// Its SHA-256 is one the receipt recorded.
+    OursByRecordHash,
+    /// Its name is one the receipt recorded (the content changed since -- a hand-edited ini).
+    OursByRecordName,
+    /// Its VERSIONINFO `ProductName` is `mission_humanity_re`.
+    OursByVersionInfo,
+    /// None of the above: somebody else's file with one of our names -- or retail's own `mh.dll`.
+    Foreign,
+}
+
+impl Ownership {
+    pub fn is_ours(&self) -> bool {
+        !matches!(self, Ownership::Foreign)
+    }
+
+    pub fn describe(&self) -> &'static str {
+        match self {
+            Ownership::OursByRecordHash => "ours (its hash is in the install record)",
+            Ownership::OursByRecordName => {
+                "ours (the install record names it; its content changed since)"
+            }
+            Ownership::OursByVersionInfo => "ours (VERSIONINFO ProductName mission_humanity_re)",
+            Ownership::Foreign => "FOREIGN (not in the install record, no ProductName stamp)",
+        }
+    }
+}
+
+/// Decide whether the file at `path` (named `file`) is a previous install of ours.
+///
+/// `record` is the receipt already in the game directory, if any. The three witnesses are asked in
+/// order of cost and certainty: the hash (exact), the name (the record says we put a file of that
+/// name there), then the resource stamp -- which is the only witness a release installed by HAND
+/// (unzipped, no receipt) can offer.
+pub fn classify(path: &Path, file: &str, record: Option<&Manifest>) -> Ownership {
+    if let Some(r) = record {
+        let hash = sha256_file(path).ok();
+        if r.files.iter().any(|(_, sha, _)| Some(sha) == hash.as_ref()) {
+            return Ownership::OursByRecordHash;
+        }
+        if r.files.iter().any(|(_, _, name)| name == file) {
+            return Ownership::OursByRecordName;
+        }
+    }
+    if versioninfo_product_name(path).as_deref() == Some(OUR_PRODUCT_NAME) {
+        return Ownership::OursByVersionInfo;
+    }
+    Ownership::Foreign
+}
+
+/// Read a PE's VERSIONINFO `ProductName`, if it carries one.
+///
+/// Read out of the raw bytes rather than through `GetFileVersionInfo`: that API needs a real,
+/// mapped PE, which makes the test fixture a build product rather than a byte string, and the
+/// value it returns comes from exactly the block scanned here. A `VS_VERSIONINFO` string entry is
+/// `wLength u16, wValueLength u16, wType u16 (1 = text), szKey UTF-16LE NUL-terminated, padding to
+/// a 4-byte boundary, value UTF-16LE NUL-terminated` (measured on the built mh.dll 2026-09-21:
+/// `48 00 14 00 01 00 P.r.o.d.u.c.t.N.a.m.e. 00 00  00 00  m.i.s.s.i.o.n._.h...`) -- so the scan
+/// looks for the UTF-16LE key `ProductName` preceded by a `wType` of 1, skips the padding and reads
+/// the value. A file with no version resource (retail's `mh.dll` and `mh.exe` both, measured the
+/// same day) yields `None`.
+pub fn versioninfo_product_name(path: &Path) -> Option<String> {
+    let bytes = std::fs::read(path).ok()?;
+    product_name_in(&bytes)
+}
+
+fn product_name_in(bytes: &[u8]) -> Option<String> {
+    let key: Vec<u8> = "ProductName\0"
+        .encode_utf16()
+        .flat_map(u16::to_le_bytes)
+        .collect();
+    let mut at = 0;
+    while at + key.len() <= bytes.len() {
+        let hit = bytes[at..].windows(key.len()).position(|w| w == key)?;
+        let start = at + hit;
+        at = start + 2;
+        // The 6-byte header before the key: wLength, wValueLength, wType. Text entries have type 1.
+        if start < 6 || bytes[start - 2..start] != [1, 0] {
+            continue;
+        }
+        let mut p = start + key.len();
+        // Padding: zero bytes up to the next 4-byte boundary (at most one UTF-16 unit of them).
+        if p + 1 < bytes.len() && bytes[p] == 0 && bytes[p + 1] == 0 {
+            p += 2;
+        }
+        let mut units = Vec::new();
+        while p + 1 < bytes.len() {
+            let u = u16::from_le_bytes([bytes[p], bytes[p + 1]]);
+            if u == 0 {
+                break;
+            }
+            units.push(u);
+            p += 2;
+        }
+        if units.is_empty() {
+            continue;
+        }
+        return String::from_utf16(&units).ok();
+    }
+    None
 }
 
 /// The canonical zip name for a version and a configuration.
@@ -204,16 +342,37 @@ pub fn install_from_version_dir(
         game_dir: game_dir.to_path_buf(),
         ..Default::default()
     };
+    // dist LA12: the receipt already there is the first witness to "is this file ours". Read once,
+    // before the loop overwrites the receipt's files.
+    let record = read_manifest(game_dir);
     let mut rows = Vec::new();
     for file in &files {
         let src = staged.join(file);
         let dst = game_dir.join(file);
-        let existed = dst.exists();
-        if existed {
-            // ONLY THE FIRST INSTALL MAKES A BACKUP. A second install would otherwise park OUR
-            // previous file over the pristine game one and the original would be gone for good.
+        let mut disposition = DISPOSITION_CREATED;
+        if dst.exists() {
             let backup = game_dir.join(format!("{file}{BACKUP_SUFFIX}"));
-            if !backup.exists() {
+            let owner = classify(&dst, file, record.as_ref());
+            if backup.exists() {
+                // AN EARLIER INSTALL ALREADY PARKED A FOREIGN FILE HERE (retail's mh.dll, on the
+                // first install). Whatever sits at the destination now -- ours, or something
+                // dropped over ours since -- the backup is the thing uninstall has to put back,
+                // so the row stays `replaced` and the backup is never parked over.
+                log::line(format!(
+                    "install: {file} overwritten ({}) -- {file}{BACKUP_SUFFIX} from an earlier \
+                     install is kept for uninstall",
+                    owner.describe()
+                ));
+                disposition = DISPOSITION_REPLACED;
+            } else if owner.is_ours() {
+                // OVERWRITTEN, NO BACKUP (dist LA12): parking our own previous file was the junk
+                // the user named, and the previous version set stays under versions\ anyway.
+                log::line(format!(
+                    "install: {file} overwritten -- {}",
+                    owner.describe()
+                ));
+                disposition = DISPOSITION_OURS;
+            } else {
                 std::fs::rename(&dst, &backup).map_err(|e| {
                     format!(
                         "cannot move {} aside to {}: {e}",
@@ -222,8 +381,10 @@ pub fn install_from_version_dir(
                     )
                 })?;
                 log::line(format!(
-                    "install: {file} displaced -> {file}{BACKUP_SUFFIX}"
+                    "install: {file} is {} -- parked as {file}{BACKUP_SUFFIX}",
+                    owner.describe()
                 ));
+                disposition = DISPOSITION_REPLACED;
             }
         }
         std::fs::copy(&src, &dst)
@@ -232,7 +393,8 @@ pub fn install_from_version_dir(
             if let Some(r) = relay {
                 let change = relay::provision_ini_file(&dst, &r.addr)?;
                 log::line(format!(
-                    "install: {file} {} with the manifest's relay ([net] transport=udp, relay=...)                      before its digest is recorded",
+                    "install: {file} {} with the manifest's relay ([net] transport=udp, relay=...) \
+                     before its digest is recorded",
                     match change {
                         relay::Change::Unchanged => "already carried",
                         _ => "provisioned",
@@ -241,13 +403,12 @@ pub fn install_from_version_dir(
             }
         }
         let digest = sha256_file(&dst)?;
-        if existed {
-            report.replaced.push(file.clone());
-            rows.push(format!("replaced\t{digest}\t{file}"));
-        } else {
-            report.created.push(file.clone());
-            rows.push(format!("created\t{digest}\t{file}"));
+        match disposition {
+            DISPOSITION_REPLACED => report.replaced.push(file.clone()),
+            DISPOSITION_OURS => report.overwritten.push(file.clone()),
+            _ => report.created.push(file.clone()),
         }
+        rows.push(format!("{disposition}\t{digest}\t{file}"));
     }
     write_manifest(game_dir, &pkg, &name, &rows)?;
     // The key file, and -- for a zip that somehow shipped no ini -- the ini itself. Neither goes in
@@ -270,20 +431,38 @@ pub fn install(
     game_dir: &Path,
     relay: Option<&Relay>,
 ) -> Result<InstallReport, String> {
-    let name = zip_path
-        .file_name()
-        .and_then(|s| s.to_str())
-        .ok_or_else(|| format!("{} has no usable file name", zip_path.display()))?
-        .to_string();
-    let pkg = parse_package_name(&name)?;
     if !game_dir.join(GAME_EXE).is_file() {
         return Err(format!(
             "{} is not a game directory: no {GAME_EXE} in it",
             game_dir.display()
         ));
     }
+    let staged = stage(layout, zip_path)?;
+    install_from_version_dir(
+        &staged.version_dir,
+        &staged.pkg,
+        &staged.package,
+        game_dir,
+        relay,
+    )
+}
+
+/// The per-user half of `install` on its own (dist LA13): parse the zip's name and unpack it into
+/// `versions\<ver>\`. What an elevated `--step install:<version>:<tag>` then copies beside `mh.exe`
+/// when the game directory is not this token's to write.
+pub fn stage(layout: &Layout, zip_path: &Path) -> Result<crate::update::Staged, String> {
+    let name = zip_path
+        .file_name()
+        .and_then(|s| s.to_str())
+        .ok_or_else(|| format!("{} has no usable file name", zip_path.display()))?
+        .to_string();
+    let pkg = parse_package_name(&name)?;
     let version_dir = stage_zip(layout, zip_path, &pkg.version)?;
-    install_from_version_dir(&version_dir, &pkg, &name, game_dir, relay)
+    Ok(crate::update::Staged {
+        version_dir,
+        pkg,
+        package: name,
+    })
 }
 
 /// Extract a zip into `dest`, returning the entry names in zip order.
@@ -348,12 +527,15 @@ fn write_manifest(
     text.push_str(
         "# Uninstalling reads this to remove exactly what the launcher added and to put\n",
     );
-    text.push_str("# back every game file it displaced (those are the *.mhbak files beside it).\n");
+    text.push_str(
+        "# back every FOREIGN file it displaced (a `replaced` row: the *.mhbak beside it).\n",
+    );
+    text.push_str("# An `ours` row overwrote a previous install of ours; nothing to put back.\n");
     text.push_str(&format!("version\t{}\n", pkg.version));
     text.push_str(&format!("tag\t{}\n", pkg.tag));
     text.push_str(&format!("package\t{package}\n"));
     text.push_str(&format!("installed_at\t{}\n", log::stamp()));
-    text.push_str("# <created|replaced>\t<sha256 as installed>\t<file>\n");
+    text.push_str("# <created|ours|replaced>\t<sha256 as installed>\t<file>\n");
     for row in rows {
         text.push_str(row);
         text.push('\n');
@@ -436,7 +618,10 @@ pub fn uninstall(game_dir: &Path) -> Result<UninstallReport, String> {
                 .map_err(|e| format!("cannot remove {}: {e}", path.display()))?;
             report.removed.push(file.clone());
         }
-        if disposition == "replaced" && backup.exists() {
+        // Only a FOREIGN file was parked (dist LA12); an `ours` row has nothing to put back. The
+        // one foreign file every retail install has is its own mh.dll, and this is what puts it
+        // back -- without it the game does not start.
+        if disposition == DISPOSITION_REPLACED && backup.exists() {
             std::fs::rename(&backup, &path)
                 .map_err(|e| format!("cannot restore {}: {e}", path.display()))?;
             report.restored.push(file.clone());
@@ -621,6 +806,262 @@ relay=192.0.2.10:7100
                 b"the game's own dll"
             );
         }
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    // ---- dist LA12: ours or foreign --------------------------------------------------------------
+
+    /// A release zip with a given version and given dll bytes, so two installs can differ.
+    fn fake_release_v(dir: &Path, version: &str, dll: &[u8]) -> PathBuf {
+        let zip_path = dir.join(format!("mission_humanity_re-{version}-net.zip"));
+        let f = std::fs::File::create(&zip_path).unwrap();
+        let mut w = zip::ZipWriter::new(f);
+        let opts: zip::write::SimpleFileOptions = zip::write::SimpleFileOptions::default()
+            .compression_method(zip::CompressionMethod::Deflated);
+        w.start_file("mh.dll", opts).unwrap();
+        std::io::Write::write_all(&mut w, dll).unwrap();
+        w.start_file("mh_net_udp.dll", opts).unwrap();
+        std::io::Write::write_all(&mut w, b"our udp dll").unwrap();
+        w.start_file(relay::INI_NAME, opts).unwrap();
+        std::io::Write::write_all(&mut w, SHIPPED_INI.as_bytes()).unwrap();
+        w.finish().unwrap();
+        zip_path
+    }
+
+    /// The bytes of a VS_VERSIONINFO string entry, exactly as rc.exe lays them out (measured on
+    /// the built mh.dll: `wLength wValueLength wType=1 "ProductName\0" pad "value\0"`), wrapped in
+    /// some junk so the scan has to find them.
+    fn stamped(product: &str) -> Vec<u8> {
+        let mut v = b"MZ\x90\x00 some pe bytes ".to_vec();
+        let key: Vec<u8> = "ProductName\0"
+            .encode_utf16()
+            .flat_map(u16::to_le_bytes)
+            .collect();
+        let val: Vec<u8> = format!("{product}\0")
+            .encode_utf16()
+            .flat_map(u16::to_le_bytes)
+            .collect();
+        let len = (6 + key.len() + 2 + val.len()) as u16;
+        v.extend_from_slice(&len.to_le_bytes());
+        v.extend_from_slice(&((product.len() + 1) as u16).to_le_bytes());
+        v.extend_from_slice(&1u16.to_le_bytes());
+        v.extend_from_slice(&key);
+        v.extend_from_slice(&[0, 0]); // padding to the 4-byte boundary
+        v.extend_from_slice(&val);
+        v.extend_from_slice(b" trailing bytes");
+        v
+    }
+
+    #[test]
+    fn the_versioninfo_product_name_is_read_off_the_raw_bytes() {
+        assert_eq!(
+            product_name_in(&stamped("mission_humanity_re")).as_deref(),
+            Some("mission_humanity_re")
+        );
+        assert_eq!(
+            product_name_in(&stamped("Somebody Else")).as_deref(),
+            Some("Somebody Else")
+        );
+        assert_eq!(product_name_in(b"the game's own dll"), None);
+        // The key alone, without a text-typed entry header before it, is not a stamp.
+        let bare: Vec<u8> = "ProductName\0x\0"
+            .encode_utf16()
+            .flat_map(u16::to_le_bytes)
+            .collect();
+        assert_eq!(product_name_in(&bare), None);
+    }
+
+    /// The done_when clause: an install over our own previous files writes no `*.mhbak` --
+    /// record-hash match for the unchanged dll, record-NAME match for the ini the player edited.
+    /// Retail's own mh.dll (foreign) is parked ONCE on the first install and put back on uninstall,
+    /// and uninstall deletes exactly the record's files.
+    #[test]
+    fn an_install_over_our_own_previous_files_writes_no_mhbak() {
+        let root = std::env::temp_dir().join("mh_launcher_test_la12_ours");
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).unwrap();
+        let layout = Layout::rooted(root.join("state"));
+        let game = root.join("game");
+        std::fs::create_dir_all(&game).unwrap();
+        std::fs::write(game.join(GAME_EXE), b"exe").unwrap();
+        std::fs::write(game.join("mh.dll"), b"the game's own dll").unwrap();
+        std::fs::write(game.join("unrelated.txt"), b"the player's own file").unwrap();
+
+        // First install: retail mh.dll is foreign -> parked; everything else is created.
+        let r1 = install(
+            &layout,
+            &fake_release_v(&root, "0.1.0", b"our dll v1"),
+            &game,
+            None,
+        )
+        .unwrap();
+        assert_eq!(r1.replaced, vec!["mh.dll".to_string()]);
+        assert!(r1.overwritten.is_empty());
+        assert!(game.join(format!("mh.dll{BACKUP_SUFFIX}")).is_file());
+        assert!(r1.summary().contains("parked"), "{}", r1.summary());
+        let receipt = read_manifest(&game).unwrap();
+        assert_eq!(
+            receipt
+                .files
+                .iter()
+                .find(|(_, _, f)| f == "mh.dll")
+                .unwrap()
+                .0,
+            "replaced"
+        );
+
+        // The player edits the ini by hand.
+        std::fs::write(game.join(relay::INI_NAME), b"[net]\nrole=host\n").unwrap();
+
+        // Second install (a newer release): our dll is ours by name/hash, the edited ini is ours
+        // by NAME, mh_net_udp.dll (unchanged bytes) is ours by hash. No new backup anywhere.
+        let r2 = install(
+            &layout,
+            &fake_release_v(&root, "0.1.1", b"our dll v2"),
+            &game,
+            None,
+        )
+        .unwrap();
+        // mh.dll: ours now, but the first install's backup (retail) stands behind it, so its row
+        // stays `replaced` -- that is what makes the uninstall below put retail back.
+        assert_eq!(r2.replaced, vec!["mh.dll".to_string()]);
+        assert_eq!(
+            r2.overwritten,
+            vec![relay::INI_NAME.to_string(), "mh_net_udp.dll".to_string()]
+        );
+        let backups: Vec<String> = std::fs::read_dir(&game)
+            .unwrap()
+            .flatten()
+            .map(|e| e.file_name().to_string_lossy().to_string())
+            .filter(|n| n.ends_with(BACKUP_SUFFIX))
+            .collect();
+        assert_eq!(
+            backups,
+            vec![format!("mh.dll{BACKUP_SUFFIX}")],
+            "only retail's mh.dll is parked, and only once"
+        );
+        assert_eq!(
+            std::fs::read(game.join(format!("mh.dll{BACKUP_SUFFIX}"))).unwrap(),
+            b"the game's own dll",
+            "the first install's backup is the one kept"
+        );
+        assert_eq!(std::fs::read(game.join("mh.dll")).unwrap(), b"our dll v2");
+        let receipt = read_manifest(&game).unwrap();
+        assert_eq!(receipt.version, "0.1.1");
+        assert_eq!(
+            receipt
+                .files
+                .iter()
+                .find(|(_, _, f)| f == "mh.dll")
+                .unwrap()
+                .0,
+            "replaced"
+        );
+        assert_eq!(
+            receipt
+                .files
+                .iter()
+                .find(|(_, _, f)| f == "mh_net_udp.dll")
+                .unwrap()
+                .0,
+            "ours"
+        );
+
+        // Uninstall: exactly the record's files go, retail's mh.dll comes back, the player's own
+        // file is untouched, and nothing *.mhbak is left behind.
+        let un = uninstall(&game).unwrap();
+        assert_eq!(un.restored, vec!["mh.dll".to_string()]);
+        assert_eq!(un.removed.len(), 3, "{un:?}");
+        assert_eq!(
+            std::fs::read(game.join("mh.dll")).unwrap(),
+            b"the game's own dll"
+        );
+        assert!(!game.join(format!("mh.dll{BACKUP_SUFFIX}")).exists());
+        assert!(!game.join("mh_net_udp.dll").exists());
+        assert!(!game.join(relay::INI_NAME).exists());
+        assert!(!game.join(INSTALL_MANIFEST).exists());
+        assert!(game.join("unrelated.txt").is_file());
+        assert!(game.join(GAME_EXE).is_file());
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// The VERSIONINFO witness: a release someone unzipped BY HAND (no receipt) is still ours when
+    /// its files carry the ProductName stamp -- overwritten, no backup. A file with somebody else's
+    /// stamp, or none, is foreign.
+    #[test]
+    fn a_stamped_file_with_no_record_is_ours_by_versioninfo_and_an_unstamped_one_is_foreign() {
+        let root = std::env::temp_dir().join("mh_launcher_test_la12_stamp");
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).unwrap();
+        let layout = Layout::rooted(root.join("state"));
+        let game = root.join("game");
+        std::fs::create_dir_all(&game).unwrap();
+        std::fs::write(game.join(GAME_EXE), b"exe").unwrap();
+        std::fs::write(game.join("mh.dll"), stamped(OUR_PRODUCT_NAME)).unwrap();
+        std::fs::write(game.join("mh_net_udp.dll"), stamped("Somebody Else")).unwrap();
+
+        assert_eq!(
+            classify(&game.join("mh.dll"), "mh.dll", None),
+            Ownership::OursByVersionInfo
+        );
+        assert_eq!(
+            classify(&game.join("mh_net_udp.dll"), "mh_net_udp.dll", None),
+            Ownership::Foreign
+        );
+
+        let r = install(
+            &layout,
+            &fake_release_v(&root, "0.1.0", b"our dll"),
+            &game,
+            None,
+        )
+        .unwrap();
+        assert_eq!(r.overwritten, vec!["mh.dll".to_string()]);
+        assert_eq!(r.replaced, vec!["mh_net_udp.dll".to_string()]);
+        assert!(!game.join(format!("mh.dll{BACKUP_SUFFIX}")).exists());
+        assert!(game
+            .join(format!("mh_net_udp.dll{BACKUP_SUFFIX}"))
+            .is_file());
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// The other half of the rule: a FOREIGN file with one of our names IS parked, the report and
+    /// the summary name it, and uninstall puts it back.
+    #[test]
+    fn a_foreign_same_name_file_is_parked_named_and_restored() {
+        let root = std::env::temp_dir().join("mh_launcher_test_la12_foreign");
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).unwrap();
+        let layout = Layout::rooted(root.join("state"));
+        let game = root.join("game");
+        std::fs::create_dir_all(&game).unwrap();
+        std::fs::write(game.join(GAME_EXE), b"exe").unwrap();
+        std::fs::write(game.join("mh_net_udp.dll"), b"somebody's own proxy").unwrap();
+
+        let r = install(
+            &layout,
+            &fake_release_v(&root, "0.1.0", b"our dll"),
+            &game,
+            None,
+        )
+        .unwrap();
+        assert_eq!(r.replaced, vec!["mh_net_udp.dll".to_string()]);
+        assert!(
+            r.summary().contains("mh_net_udp.dll"),
+            "the summary names the parked file: {}",
+            r.summary()
+        );
+        assert_eq!(
+            std::fs::read(game.join(format!("mh_net_udp.dll{BACKUP_SUFFIX}"))).unwrap(),
+            b"somebody's own proxy"
+        );
+        let un = uninstall(&game).unwrap();
+        assert_eq!(un.restored, vec!["mh_net_udp.dll".to_string()]);
+        assert_eq!(
+            std::fs::read(game.join("mh_net_udp.dll")).unwrap(),
+            b"somebody's own proxy"
+        );
+        assert!(!game.join(format!("mh_net_udp.dll{BACKUP_SUFFIX}")).exists());
         let _ = std::fs::remove_dir_all(&root);
     }
 }

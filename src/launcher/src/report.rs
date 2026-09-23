@@ -125,6 +125,10 @@ const LOGS_FALLBACK_N: usize = 20;
 /// What a report is built from. Everything is optional except the description, which is the point.
 pub struct Input<'a> {
     pub game_dir: Option<&'a Path>,
+    /// dist LA13: the directory the session directories live in -- the launcher-owned root
+    /// (`Layout::game_log_root`) for a game the launcher started. `None` falls back to the game's
+    /// own `<game_dir>\logs\`, which is where a hand-launched game writes.
+    pub logs_root: Option<PathBuf>,
     /// The session directory this report is ABOUT -- the match the description names. Newest by
     /// default (`default_session_dir`) or the player's own pick (`app.rs`'s picker, dist LA9); it is
     /// never dropped from the `logs\` selection below and its own process directory rides along with
@@ -142,6 +146,15 @@ pub struct Input<'a> {
     /// A dump already written by `crash::write_dump`, if the player asked for one.
     pub minidump: Option<&'a Path>,
     pub launcher_log: Option<PathBuf>,
+}
+
+impl Input<'_> {
+    /// Where the `logs\` tree this report packages is (dist LA13).
+    fn logs_root(&self) -> Option<PathBuf> {
+        self.logs_root
+            .clone()
+            .or_else(|| self.game_dir.map(|g| g.join("logs")))
+    }
 }
 
 /// What a finished report is.
@@ -205,11 +218,12 @@ pub fn build(dest: &Path, input: &Input) -> Result<Built, String> {
     // dist LA9: which `logs\` directories the zip will carry, decided BEFORE report.json is
     // composed -- `included`/`dropped` are part of that object, byte for byte the same object RP1
     // posts, so the decision has to exist first.
-    let logs_plan = input
-        .game_dir
-        .map(|gd| {
+    let logs_root = input.logs_root();
+    let logs_plan = logs_root
+        .as_deref()
+        .map(|lr| {
             plan_logs(
-                gd,
+                lr,
                 session.as_deref(),
                 input.launcher_started_utc.as_deref(),
                 TOTAL_MAX.saturating_sub(RESERVED_FOR_FIXED_ENTRIES),
@@ -271,17 +285,17 @@ pub fn build(dest: &Path, input: &Input) -> Result<Built, String> {
 
     // dist LA9: the whole planned slice of `logs\`, not just the one chosen session directory --
     // plus (dist LA10) anything that landed loose in `logs\` itself rather than in a subdirectory.
-    if let Some(gd) = input.game_dir {
+    if let Some(lr) = logs_root.as_deref() {
         add_logs_tree(
             &mut zip,
             opts,
-            gd,
+            lr,
             &logs_plan,
             &mut entries,
             &mut budget,
             &scrub,
         )?;
-        add_loose_log_files(&mut zip, opts, gd, &mut entries, &mut budget, &scrub)?;
+        add_loose_log_files(&mut zip, opts, lr, &mut entries, &mut budget, &scrub)?;
     }
 
     // The configuration, redacted three times over: by setting name, by the relay's own line,
@@ -330,8 +344,8 @@ pub fn build(dest: &Path, input: &Input) -> Result<Built, String> {
     // exactly the evidence a "something looked wrong later" report exists to carry, and it is never
     // subject to the drop above. Uses a throwaway budget of its own: these files are a few hundred
     // bytes each and must never be the thing a tight `budget` sacrifices.
-    if let Some(gd) = input.game_dir {
-        add_crash_marker_files(&mut zip, opts, gd, &mut entries, &scrub)?;
+    if let Some(lr) = logs_root.as_deref() {
+        add_crash_marker_files(&mut zip, opts, lr, &mut entries, &scrub)?;
     }
 
     if let Some(dmp) = input.minidump {
@@ -608,8 +622,8 @@ fn process_dir_of_session(session_dir: &Path) -> Option<String> {
 /// picker (dist LA9) offers the player, and what `default_session_dir` would answer if it filtered
 /// out the process ("menu") directories the way this does. Exposed so the picker can list every
 /// candidate rather than only the newest.
-pub fn session_dirs(game_dir: &Path) -> Vec<PathBuf> {
-    list_log_dirs(&game_dir.join("logs"))
+pub fn session_dirs(logs_root: &Path) -> Vec<PathBuf> {
+    list_log_dirs(logs_root)
         .into_iter()
         .filter(|d| !is_process_dir_name(&d.name))
         .map(|d| d.path)
@@ -627,12 +641,12 @@ pub fn session_dirs(game_dir: &Path) -> Vec<PathBuf> {
 /// among the newest `LOGS_FALLBACK_N` directories; from that pool, the newest fit first and the
 /// OLDEST are dropped once the running total would exceed `budget`.
 fn plan_logs(
-    game_dir: &Path,
+    logs_root: &Path,
     protected_session: Option<&Path>,
     since_utc: Option<&str>,
     budget: u64,
 ) -> LogsPlan {
-    let dirs = list_log_dirs(&game_dir.join("logs")); // newest first
+    let dirs = list_log_dirs(logs_root); // newest first
     if dirs.is_empty() {
         return LogsPlan::default();
     }
@@ -721,13 +735,12 @@ fn plan_logs(
 fn add_logs_tree(
     zip: &mut zip::ZipWriter<std::fs::File>,
     opts: zip::write::SimpleFileOptions,
-    game_dir: &Path,
+    logs_root: &Path,
     plan: &LogsPlan,
     entries: &mut Vec<String>,
     budget: &mut u64,
     scrub: &Scrub,
 ) -> Result<(), String> {
-    let logs_root = game_dir.join("logs");
     for name in &plan.included {
         add_dir(
             zip,
@@ -754,13 +767,12 @@ fn add_logs_tree(
 fn add_loose_log_files(
     zip: &mut zip::ZipWriter<std::fs::File>,
     opts: zip::write::SimpleFileOptions,
-    game_dir: &Path,
+    logs_root: &Path,
     entries: &mut Vec<String>,
     budget: &mut u64,
     scrub: &Scrub,
 ) -> Result<(), String> {
-    let logs_root = game_dir.join("logs");
-    let Ok(read) = std::fs::read_dir(&logs_root) else {
+    let Ok(read) = std::fs::read_dir(logs_root) else {
         return Ok(());
     };
     let mut files: Vec<PathBuf> = read
@@ -803,12 +815,11 @@ fn add_loose_log_files(
 fn add_crash_marker_files(
     zip: &mut zip::ZipWriter<std::fs::File>,
     opts: zip::write::SimpleFileOptions,
-    game_dir: &Path,
+    logs_root: &Path,
     entries: &mut Vec<String>,
     scrub: &Scrub,
 ) -> Result<(), String> {
-    let logs_root = game_dir.join("logs");
-    let Ok(read) = std::fs::read_dir(&logs_root) else {
+    let Ok(read) = std::fs::read_dir(logs_root) else {
         return Ok(());
     };
     let mut files: Vec<PathBuf> = read
@@ -1156,8 +1167,8 @@ fn add_dir(
 
 /// The session directory a report would ship, given a game directory: the newest one under
 /// `logs\`. Exposed so the Report view can SAY which it would take before anything is built.
-pub fn default_session_dir(game_dir: Option<&Path>) -> Option<PathBuf> {
-    game_dir.and_then(paths::newest_session_dir)
+pub fn default_session_dir(logs_root: Option<&Path>) -> Option<PathBuf> {
+    logs_root.and_then(paths::newest_session_dir_in)
 }
 
 #[cfg(test)]
@@ -1174,6 +1185,7 @@ mod tests {
         for desc in ["", "   ", "\n\t "] {
             let input = Input {
                 game_dir: None,
+                logs_root: None,
                 session_dir: None,
                 launcher_started_utc: None,
                 description: desc,
@@ -1344,7 +1356,8 @@ mod tests {
         let zip = dir.join("out").join("report.zip");
         let input = Input {
             game_dir: Some(&dir),
-            session_dir: default_session_dir(Some(&dir)),
+            logs_root: None,
+            session_dir: default_session_dir(Some(&dir.join("logs"))),
             launcher_started_utc: None,
             description: "the lobby froze when the second player joined",
             last_run: None,
@@ -1464,7 +1477,8 @@ mod tests {
         let zip = dir.join("out").join("report.zip");
         let input = Input {
             game_dir: Some(&dir),
-            session_dir: default_session_dir(Some(&dir)),
+            logs_root: None,
+            session_dir: default_session_dir(Some(&dir.join("logs"))),
             launcher_started_utc: None,
             description: "nothing crashed, it just looked wrong",
             last_run: None,
@@ -1566,7 +1580,8 @@ mod tests {
         };
         let input = Input {
             game_dir: Some(&dir),
-            session_dir: default_session_dir(Some(&dir)),
+            logs_root: None,
+            session_dir: default_session_dir(Some(&dir.join("logs"))),
             launcher_started_utc: None,
             description: "crashed right after I ordered the third harvester",
             last_run: Some(&finished),
@@ -1658,6 +1673,7 @@ mod tests {
         let zip = dir.join("out").join("report.zip");
         let input = Input {
             game_dir: Some(&dir),
+            logs_root: None,
             session_dir: Some(s2.clone()), // the description form named the SECOND match
             launcher_started_utc: Some("20260918T085900Z".to_string()),
             description: "second match desynced right after the first one ended",
@@ -1745,6 +1761,7 @@ mod tests {
         let zip = dir.join("out").join("report.zip");
         let input = Input {
             game_dir: Some(&dir),
+            logs_root: None,
             session_dir: Some(session_dir),
             launcher_started_utc: None, // exercises the fallback window too
             description: "ran out of disk mid-afternoon, way too many matches",
@@ -1838,6 +1855,7 @@ mod tests {
         let zip = dir.join("out").join("report.zip");
         let input = Input {
             game_dir: Some(&dir),
+            logs_root: None,
             session_dir: None, // no session ever opened -- the whole point of the degraded case
             launcher_started_utc: None,
             description: "logs folder looked empty but the game clearly ran",

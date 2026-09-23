@@ -2525,7 +2525,7 @@ MH_UNAVAILABLE__no_prototype_committed_in_Ghidra llm_ui_dlg_confirm_planet_trave
 MH_UNAVAILABLE__no_prototype_committed_in_Ghidra llm_menu_campaign_start_confirm_cb(...);  // 0x004c64b7 unknown
 MH_UNAVAILABLE__no_prototype_committed_in_Ghidra llm_ui_outcome_dlg_note_icon_action_cb(...);  // 0x004c6bc5 unknown
 MH_UNAVAILABLE__no_prototype_committed_in_Ghidra llm_ui_dlg_building_info_close_cb(...);  // 0x004c6fef unknown
-MH_UNAVAILABLE__no_prototype_committed_in_Ghidra llm_ui_building_finish_order_cb(...);  // 0x004c703b unknown
+MH_UNAVAILABLE__no_prototype_committed_in_Ghidra llm_ui_building_cancel_task_yes_cb(...);  // 0x004c703b unknown
 MH_UNAVAILABLE__no_prototype_committed_in_Ghidra llm_ui_building_restart_construction_cb(...);  // 0x004c707a unknown
 MH_UNAVAILABLE__no_prototype_committed_in_Ghidra llm_game_confirm_quit_to_desktop_cb(...);  // 0x004c78ce unknown
 MH_UNAVAILABLE__no_prototype_committed_in_Ghidra llm_net_lockstep_sync_retry_rearm_cb(...);  // 0x004c7b8a unknown

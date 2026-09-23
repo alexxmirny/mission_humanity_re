@@ -1,0 +1,88 @@
+# mp:U19b -- 3-PEER clean quit, the HOST side (one of the two SURVIVORS).
+#
+# U19's own scenarios (graceful_quit) are 2-peer, and an AI seat does not count toward the quorum
+# llm_net_player_remove tests (measured 2026-09-18, mp_host_gquit.txt's header): with `occ 3` and an
+# AI visibly seated, the client's removal still ended the host's match on "You are the last player!".
+# So U19's 3rd clause -- survivors that keep PLAYING past a departure -- needs a THIRD real peer, and
+# this is that scenario.
+#
+# TOPOLOGY, reused from the `--det-3peer` shape (tools/test_ui.py's run_det_3peer /
+# run_u19b_quit3): host on rig VM A, ONE survivor client on rig VM B (mp_client_quit3_survivor.txt),
+# the QUITTER as a LOCAL LANE on this box (mp_client_quit3_quitter.txt, sharing det3_client2 --
+# TL-LANEPOOL, no new lane allocation). Local 3-peer discovery does not seat a second 127.0.0.1
+# client (measured during mp:GS2's own 3-peer clause, 2026-09-21), so a genuine 3-peer scenario needs
+# this VM+VM+local-lane mix -- there is no all-local way to run it. `[net] peers=2` seats the third
+# slot, same as the U28 3-peer barrier and GS2's 3-peer clause.
+#
+# THE SURVIVOR CLAUSE is a WIDGET predicate, not a `gameclock` wait (dead-ends G158): once a match
+# legitimately ends the clock jumps to TOTAL_GAME_TIME in one variable step, so a small `gameclock`
+# target is satisfied instantly by a sim that has already stopped. `gamemode 2` + `absent Continue
+# game`, RE-SAMPLED after the quitter's departure, is the actual proof: still in the strategic UI
+# mode, no end-of-match dialog showing -- which is false the instant a below-quorum drop (wrongly)
+# ends this peer's match.
+#
+# Pair with mp_client_quit3_survivor.txt (the OTHER survivor) and mp_client_quit3_quitter.txt (the
+# one that leaves). No poke-race dance needed here (that is U28's own subject) -- just the ordinary
+# 3-peer lobby seat-and-launch (mp_host_inflight3.txt's family, without the poke).
+#
+# G271 (measured 2026-09-22, real rig run -- dead-ends G158-adjacent, its own row): clicking Start
+# the instant THIS peer's own `occ 3` resolves is a RACE against the two clients' own `settled
+# Cancel` (the lobby's own dwell-based animation-probe/click-target wait, ui_drive.cpp's `settled`).
+# Both clients gate `occ 3` on the SAME server-side fact (three seats occupied), so their own `occ 3`
+# resolves at close to the same wall-clock moment as the host's -- and if the host's next handful of
+# steps (enabled Start / settled Start / clickl Start) land fast enough, the lobby screen (and its
+# Cancel button) can vanish out from under a client's still-unsettled `settled Cancel` before that
+# predicate ever accumulates its dwell window, which then NEVER resolves (ui_drive.cpp's own "target
+# NEVER RESOLVED" shape) -- observed on det3_client2 (the local-lane quitter): its script hung at
+# `settled Cancel` for the whole run budget while the host + other survivor completed a full
+# determinism-clean 8000-step match. THE FIX, same shape as U28's own `pokenow` barrier
+# (mp_host_inflight3.txt): the host does not click Start until BOTH clients have confirmed their own
+# `settled Cancel` succeeded, closing the window entirely instead of hoping it is wide enough.
+
+settled value:110
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+settled Create
+clickl Create
+present Game name
+settled Ok
+clickl Ok
+present Available maps
+settled Ok
+clickl Ok
+
+present Network players
+peers 2
+occ 3
+enabled Start
+settled Start
+awaitsignal seated1
+awaitsignal seated2
+clickl Start
+
+# ---- in the match --------------------------------------------------------------------------------
+absent Network players
+gamemode 2
+# Sync point (graceful_quit's own convention) -- purely to get off the entry frame; the quitter waits
+# for the SAME target before walking its ESC menu, so all three peers are at a known sim moment.
+gameclock 3000
+
+# The quitter tells us it is about to leave, so our own pre-drop moment is a known sim state.
+awaitsignal quitting
+# ...and again once it has actually reached the main menu, so we do not race the drop's arrival.
+awaitsignal cliquit
+
+# Advance further -- a WAIT, not the proof (see header). The actual proof is the widget predicate
+# below, re-sampled at this LATER point.
+gameclock 6000
+
+# THE SURVIVOR CLAUSE. Both must hold: still in the strategic UI mode, and the end-of-match dialog is
+# NOT showing. A below-quorum drop that wrongly ended this peer's match would fail EITHER -- `gamemode
+# 2` would time out (a different screen is active) or, if the dialog somehow rendered without leaving
+# mode 2, `absent Continue game` would time out on its own.
+gamemode 2
+absent Continue game
+log HOST (survivor A) kept playing past the quitter's departure -- still in-game, no outcome dialog
+end

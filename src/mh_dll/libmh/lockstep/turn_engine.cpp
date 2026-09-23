@@ -35,6 +35,8 @@
 #include "crt/crt_select.h"        // LIB-CRT: MH_CRT() picks the vendored CRT in the standalone build
 #include "state/promoted_select.h" // LIB-REF-SPLIT: MH_PROMOTED
 #include "config/config.h"         // F2A: the D11 selector behind sim_tick's default
+#include "config/ini_read.h"       // TL-HARN4: read_ini_string -- strips a trailing `;comment` (unconditional
+                                   // -- unlike config.h's selector this needs no MH_LIBMH_BUILD split)
 
 namespace mh::lockstep {
 
@@ -913,7 +915,11 @@ int install_promotion(const char *ini_path, int default_on) {
     // was, a diagnostic, and moves into a section named for that. Same move, same reason, as
     // `[save] verify`.
     char want[256] = {0};
-    GetPrivateProfileStringA("bisect", "lockstep_seams", "", want, sizeof(want), ini_path);
+    // TL-HARN4: unlike [trace] funcs (net_diag.cpp), this key's own parser (parse_seam_subset,
+    // below) delimits on comma only -- `;` is never a valid in-value separator here, so stripping a
+    // trailing `;comment` is safe and fixes a real failure mode: a commented `lockstep_seams=pump,
+    // commit ; why` used to REFUSE the whole diagnostic run ("names an unknown seam 'why'").
+    mh::config::read_ini_string("bisect", "lockstep_seams", "", want, sizeof(want), ini_path);
 #if !MH_INTERNAL_EDGES_ENTRY_ROUTED
     if (want[0]) {
         say("; [promote] lockstep: REFUSED -- `lockstep_seams` needs the ENTRY-ROUTED build (C8-d). "

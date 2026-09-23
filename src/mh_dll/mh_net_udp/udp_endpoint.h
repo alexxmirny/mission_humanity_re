@@ -166,6 +166,18 @@ struct Counters {
 typedef void (*ctrl_fn)(void *ctx, uint16_t flags, int sender, const unsigned char *buf, int len);
 typedef void (*log_fn)(void *ctx, const char *line);
 
+// mp:L1f -- "which PATH did this peer's traffic last arrive on?", asked by ADDRESS. 1 = the relay
+// leg, 0 = direct, -1 = nobody can say.
+//
+// THE ENDPOINT DOES NOT LEARN ABOUT RELAYS BY HAVING THIS (udp_relay.h reason 1 stands). It is the
+// exact mirror of `knows_addr`, which the relay already asks the endpoint: there, the endpoint
+// answers a question about its OWN peer table and learns nothing about tunnels; here it asks a
+// question about an address it already holds and learns nothing about legs, handles or rooms. The
+// answer is an opaque 1/0/-1 it only ever copies into MH_NetPeerLatency.relayed -- it never routes,
+// paces, retransmits or drops on it, and nothing in the endpoint reads the field back. Wired by
+// udp_transport.cpp (the one file that knows both layers exist), exactly as relay_peer_known is.
+typedef int (*path_class_fn)(void *ctx, const sockaddr_in &a);
+
 // ---- configuration ------------------------------------------------------------------------------
 // MH_NetConfig plus the two things it cannot carry. MH_NetConfig is the mh.dll <-> module ABI
 // (mh_net_export.h) and this item does not change it: the TCP module must stay byte-for-byte the
@@ -251,6 +263,13 @@ public:
         m_ctrl     = fn;
         m_ctrl_ctx = ctx;
     }
+    // mp:L1f -- the path classifier (see path_class_fn above). Set once by udp_transport.cpp,
+    // before start(), for BOTH roles and whether or not a relay is configured: a build with no
+    // classifier installed answers -1 for every peer, which is what every pre-L1f reader saw.
+    void set_path_class(path_class_fn fn, void *ctx) {
+        m_path_class     = fn;
+        m_path_class_ctx = ctx;
+    }
 
     // ---- the transport surface (one method per MH_Net_* row that has a body) ---------------------
     int  send(int dst_player, const void *buf, int len);
@@ -262,6 +281,11 @@ public:
     int  active_peer_ids(int *out, int cap);
     int  take_dead_peer();
     void get_stats(MH_NetStats *out);
+    // mp:SES6 -- mh.dll pushes the peer's ADVERTISED LOCKSTEP HORIZON here (a game-level quantity the
+    // transport cannot measure itself; see mh_net_export.h's note on MH_Net_SetPeerHorizon), so the
+    // "net: udp counters" line can print it beside the delivery counters. `player_id` is the caller's
+    // strategic-player-slot space; see the .cpp for why a client applies it to its one conn regardless.
+    void set_peer_horizon(int player_id, int horizon_ms);
     // mp:R3e -- "is `a` a peer this endpoint still holds?" True for an admitted conn that has not
     // been dropped and for a handshake still inside HS_PEND_MS; false for everything else, which
     // includes a pending entry that timed out and simply has not been reclaimed yet (the table is
@@ -350,6 +374,23 @@ private:
         volatile LONG  ping_tx, ping_rx;
         DWORD          last_ack_ms;
         DWORD          last_keep_ms;
+
+        // mp:SES6 -- proving OUTBOUND DELIVERY needs a signal narrower than `last_rx` above: that one
+        // is stamped by ANY accepted packet (keepalives included, deliver_frame's FLAG_PING early-out
+        // says so), which is exactly why a data-silent-but-keepalive-alive peer reads as "alive" on it
+        // (the same R-live shape mh_net_export.h documents for the TCP module's last_rx_tick). These
+        // four are stamped ONLY on FLAG_DATA -- deliver_frame (rx) and send() (tx) -- so a peer whose
+        // sim has stopped sending shows a climbing data_rx age while data_tx stays ~0, on one side's
+        // log alone. 0 = never (not "at tick 0"; GetTickCount() can legally return 0, see emit_segment's
+        // own sentinel note, so age computation treats 0 as "no data yet" the same way that site does.
+        volatile DWORD last_data_rx;
+        volatile DWORD last_data_tx;
+        long           data_rx_bytes;
+        long           data_tx_bytes;
+        // The peer's own advertised lockstep horizon, in ms, pushed by mh.dll via set_peer_horizon;
+        // -1 = nothing pushed yet (this conn predates the first push, or the module isn't bound to
+        // libmh's lockstep seam at all -- a bare net_selftest.exe run, say).
+        long peer_horizon_ms;
     };
 
     // ---- a handshake in flight --------------------------------------------------------------------
@@ -456,6 +497,11 @@ private:
     void   *m_ctrl_ctx;
     log_fn  m_log;
     void   *m_log_ctx;
+    // mp:L1f -- DISPLAY ONLY. Read in get_stats() and nowhere else; null until udp_transport.cpp
+    // wires it, and null for every caller that links the endpoint without a transport (the
+    // selftests), which is why every read goes through the `? :` default of -1.
+    path_class_fn m_path_class;
+    void         *m_path_class_ctx;
 
     // mp:T2. NOT cleared by stop(): a transfer's chunk frontier is exactly what must survive the
     // T1b restart, so that a receiver that came back resumes from its last acknowledged chunk

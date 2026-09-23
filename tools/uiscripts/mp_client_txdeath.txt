@@ -1,0 +1,50 @@
+# mp:U19f -- IN-GAME transport death, the CLIENT side (the peer whose link the shim blackholes).
+#
+# Pair with mp_host_txdeath.txt (that file's header carries the full mechanism). This is a 2-PEER
+# match, so the shim's `blackhole on` kills the ONE shared link -- there is no third peer left
+# standing, and the client's own local `count_active_players` drops below quorum exactly as the
+# host's does, at (within measurement noise) the same lockstep step. So the client is not a passive
+# victim here: it independently reaches the SAME below-quorum outcome dialog with the SAME retail
+# wording, which this script asserts on its own side rather than assuming from the host's log.
+#
+# `shim: True` in the registry entry repoints THIS process's connect-ip at the shim, not at the real
+# host -- same as link_death's own client script -- so the join dance below dials the shim
+# transparently.
+
+settled value:110
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+present Internet server
+settled Internet server
+clickl Internet server
+present Server address
+settled Connect
+clickl Connect
+sessions 1
+settled Join game
+clickl Join game
+
+present Network players
+signal lobby
+settled Cancel
+absent Network players
+gamemode 2
+gameclock 3000
+
+# Same widget/state predicate as the host's, and for the same reason (dead-ends G158): the below-quorum
+# drop reached HERE, over the same wire event, once the shim's cut closed the link.
+#
+# G270: `absent Connection to server lost` is the negative control (see mp_host_txdeath.txt's header
+# for the full mechanism) -- a real transport death shows the SAME "you are the last player !"
+# wording a graceful quit does; the log-based post_check carries the positive fast-drop proof.
+present Continue game
+absent Connection to server lost
+settled Continue game
+# The row's client-side evidence frame (a client script with no capture fails the runner's
+# NO-CAPTURES rule -- the 2026-09-22 gate). Same wording as the host's: the link died, not the game.
+capture c_ingame_txdeath_dialog
+dump
+log CLIENT independently reached the same below-quorum dialog once its own link died
+end

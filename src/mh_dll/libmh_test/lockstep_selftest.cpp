@@ -115,15 +115,20 @@ const game_calls &recording_calls() {
 struct rx_log {
     std::vector<int32_t> acks, desyncs, status_resets, timeout_drops, removed, leader_asked;
     std::vector<double>  extends;
-    std::vector<int32_t> presence_lost; // player index per call; mode is always 1 in this function
-    std::vector<order>   enqueued, integrity_checked;
-    std::vector<int32_t> outcomes;
-    int                  busywaits = 0, time_resyncs = 0, force_resyncs = 0;
-    int                  chat_recalcs = 0, leave_resets = 0;
-    int                  prints_red = 0, prints_cyan = 0, concats = 0;
-    int                  player_lines = 0, chat_lines = 0, plain_lines = 0;
-    int32_t              last_text_id = -1;
-    int                  fills        = 0;
+    std::vector<int32_t> presence_lost; // player index per call
+    // ...and its SECOND argument, recorded rather than discarded (U19h). The comment this vector
+    // replaced asserted "mode is always 1 in this function" in prose; U19h's chain turns on that 1 --
+    // sim_player_presence_lost picks outcome 8 for mode != 0 and 6 for mode == 0 -- so the claim now
+    // has to be checkable from a test rather than trusted from a comment.
+    std::vector<uint32_t> presence_modes;
+    std::vector<order>    enqueued, integrity_checked;
+    std::vector<int32_t>  outcomes;
+    int                   busywaits = 0, time_resyncs = 0, force_resyncs = 0;
+    int                   chat_recalcs = 0, leave_resets = 0;
+    int                   prints_red = 0, prints_cyan = 0, concats = 0;
+    int                   player_lines = 0, chat_lines = 0, plain_lines = 0;
+    int32_t               last_text_id = -1;
+    int                   fills        = 0;
 
     // rigged answers
     int32_t leader_answer = 0; // what is_local_leader_peer returns
@@ -153,7 +158,11 @@ const dispatch_calls &recording_dispatch_calls() {
         [](int32_t s) { g_rx.desyncs.push_back(s); },
         [](int32_t s) { g_rx.status_resets.push_back(s); },
         [](int32_t s) { g_rx.timeout_drops.push_back(s); },
-        [](uint32_t p, uint32_t) -> uint32_t { g_rx.presence_lost.push_back(static_cast<int32_t>(p)); return 0; },
+        [](uint32_t p, uint32_t mode) -> uint32_t {
+            g_rx.presence_lost.push_back(static_cast<int32_t>(p));
+            g_rx.presence_modes.push_back(mode);
+            return 0;
+        },
         []() -> int32_t { return g_rx.active_answer; },
         [](int32_t s) { g_rx.removed.push_back(s); },
         []() -> int32_t { ++g_rx.busywaits; return 0; },
@@ -3003,6 +3012,207 @@ void test_dispatch_drop_synced_vs_unsynced() {
     }
 }
 
+// ==================================================================================================
+// mp:U19h -- THE GRACEFUL-LEAVE HORIZON RACE, reproduced offline.
+//
+// THE FAILURE. A 3-peer lockstep match; one peer quits cleanly; roughly one run in six BOTH survivors
+// wrongly end their match (`; on_gameover ENTER sess=2 outcome=8`) on a peer nobody eliminated. The
+// interleaving, measured on the rig 2026-09-22 (the quitter's mh_temporal.log shows LOCAL_HORIZON and
+// COMMITTED stepping 3260/3290 -> 3320/3320 across a 255 ms park gap with no frame in between; both
+// survivors' lockstep rows pin PEER_HORIZON[2] = 3320 five times while the record carried 3290):
+//
+//   1. graceful_leave_park (mh/seams/net_lockstep.cpp) freezes the quitter's horizon at
+//      H_d = GAME_CLOCK + lookahead, broadcasts it once, sets g_leave_frozen, and then SPINS waiting
+//      for the survivors to park -- calling llm_net_lockstep_dispatch() every iteration.
+//   2. Inside that drain the MSG_KEEPALIVE arm fires its emergency horizon bump on the FIFTH
+//      consecutive nag naming us: `horizon = step * EMERGENCY_STEP_MUL + clock`, EMERGENCY_STEP_MUL
+//      being 2.0 (/eng/mh.exe .rdata @0x005017b4). The quitter's clock is frozen by the park, so that
+//      is clk + 2*step -- one whole lookahead step ABOVE the H_d it just froze. This is libmh code and
+//      it knows nothing about g_leave_frozen; the freeze lives in the seam.
+//   3. Every survivor applies that advert, so PEER_HORIZON[quitter] = clk + 2*step, while the removal
+//      record send_removal_record (lockstep/tx_emit.cpp) builds next carries PEER_HORIZON[quitter]
+//      from the QUITTER's own table -- the H_d the park's step (3) stamped there.
+//   4. handle_peer_drop compares the two, they differ, and the DISAGREE arm runs
+//      eliminate_other_humans(notify=true): PLAYER_HUMAN cleared on every participating slot plus a
+//      presence_lost(i, 1) each. mode 1 is what makes sim_player_presence_lost select outcome 8
+//      rather than 6 (sim/sim_player_presence_lost.cpp, `outcome = (mode == 0) ? 6 : 8`) -- see
+//      MP-U19H in sim_player_presence_lost_selftest.cpp for that last link, driven over its own
+//      fixture with the exact roster this sweep leaves behind.
+//
+// WHY IT IS HERE RATHER THAN ON THE RIG. The bug is a RACE: it needs the fifth nag to land inside the
+// park window, which is why twenty green rig runs prove nothing and one red one proves only that the
+// dice came up. Every step of the chain above is pure translated logic over explicit state, so the
+// interleaving can simply be BUILT -- deterministically, in milliseconds, with the wire bytes emitted
+// by the real emitters rather than hand-assembled.
+//
+// WHAT EACH ARM IS WORTH. (B2) is the one that must stay green forever: it is the invariant "the record
+// agrees => the match goes on", i.e. the property any fix has to establish. (A) pins the producer that
+// breaks it and is expected to go RED the moment the bump's arithmetic changes.
+// ==================================================================================================
+
+namespace u19h {
+
+// The measured run's numbers. The frozen clock and the 30 ms step are the rig's; EMERGENCY_MUL is the
+// binary's own constant, spelled out rather than inherited from world's default so that a later change
+// to that default cannot silently make this arm assert something else.
+constexpr double FROZEN_CLOCK  = 3.260;
+constexpr double STEP          = 0.030;
+constexpr double EMERGENCY_MUL = 2.0;
+
+// H_d exactly as graceful_leave_park spells it (`clk + look`) and the bump exactly as the keepalive arm
+// spells it (`step * mul + clock`). Written as the two PRODUCTION expressions, not as `H_D + STEP`:
+// the association is the production one, and a re-associated expectation could agree by luck on values
+// where the real pair does not.
+constexpr double H_D  = FROZEN_CLOCK + STEP;
+constexpr double BUMP = STEP * EMERGENCY_MUL + FROZEN_CLOCK;
+
+constexpr int32_t QUITTER_SIDE = 102; // -> index 2 under the fixture's side_to_index
+constexpr int32_t QUITTER_IDX  = 2;
+constexpr int32_t SURVIVOR_B   = 1; // side 101, the human this bug eliminates for nothing
+
+// The two survivors' own horizons, both AHEAD of the quitter's H_d/bump -- which is the whole reason
+// the quitter is the one holding the barrier while it parks. Distinct values so the committed barrier
+// below identifies WHICH slot it came from instead of matching several at once.
+constexpr double LOCAL_HORIZON      = 3.400;
+constexpr double SURVIVOR_B_HORIZON = 3.500;
+
+// A 3-human match seen from SURVIVOR A: we are side 100 (index 0), survivor B is 101 (index 1), the
+// quitter is 102 (index 2). The same shape stands in for the quitter's own engine in arm (A) -- the
+// keepalive handler reads none of the roster.
+world three_peer_world() {
+    world w = mp_world();
+    w.human(2);
+    w.clock                    = FROZEN_CLOCK;
+    w.step_size                = STEP;
+    w.emergency_mul            = EMERGENCY_MUL;
+    w.horizon                  = LOCAL_HORIZON;
+    w.peer_horizon[SURVIVOR_B] = SURVIVOR_B_HORIZON;
+    return w;
+}
+
+// The quitter's extend advert, built by the REAL emitter so the bytes the survivor parses are the ones
+// production would have sent.
+void feed_extend_from_quitter(world &wo, double horizon) {
+    tx5::fixture f;
+    tx5::g_log.reset();
+    mh::lockstep::detail::send_lockstep_extend(f.st(), tx5::recording_calls(), horizon);
+    packet p;
+    p.blob(tx5::g_sent.data(), tx5::g_sent.size());
+    feed(wo, p, QUITTER_SIDE);
+}
+
+// The quitter's removal record, likewise built by the real emitter. `stamped` is what park step (3)
+// left in the quitter's PEER_HORIZON[own slot] -- the single value this whole bug turns on.
+bool feed_removal_from_quitter(world &wo, double stamped) {
+    tx5::fixture f;
+    f.peer_horizon[QUITTER_IDX] = stamped;
+    tx5::g_log.reset();
+    tx5::g_log.count_active_players_answer = 2;
+    mh::lockstep::detail::player_remove(f.st(), tx5::recording_calls(), QUITTER_SIDE);
+    packet p;
+    p.blob(tx5::g_sent.data(), tx5::g_sent.size());
+    return feed(wo, p, QUITTER_SIDE);
+}
+
+} // namespace u19h
+
+void test_u19h_leave_park_horizon_race() {
+    double bump_on_the_wire = 0.0;
+
+    // ---- (A) THE PRODUCER: the emergency bump climbs off the frozen H_d --------------------------
+    {
+        world w                   = u19h::three_peer_world();
+        w.horizon                 = u19h::H_D; // park step (1): the frozen advert, already broadcast
+        const double clock_before = w.clock;
+
+        for (int nag = 1; nag <= 4; ++nag) {
+            packet p;
+            p.u8(mh::lockstep::MSG_KEEPALIVE).i32(w.local_side); // the nag names US
+            feed(w, p, 101);
+        }
+        check("U19h(A): four nags inside the park leave the frozen horizon alone",
+              g_rx.extends.empty() && w.horizon == u19h::H_D);
+
+        packet fifth;
+        fifth.u8(mh::lockstep::MSG_KEEPALIVE).i32(w.local_side);
+        feed(w, fifth, 101);
+
+        check("U19h(A): the fifth nag fires exactly one emergency bump", g_rx.extends.size() == 1);
+        // THE VALUE, asserted as the production expression over the fixture's own state rather than
+        // against a literal -- a literal would still pass if the handler read the wrong globals.
+        check("U19h(A): the bump is step * EMERGENCY_STEP_MUL + clock",
+              g_rx.extends.size() == 1 &&
+                  g_rx.extends[0] == w.step_size * w.emergency_mul + w.clock);
+        check("U19h(A): and what went on the wire is what landed in LOCAL_HORIZON",
+              g_rx.extends.size() == 1 && w.horizon == g_rx.extends[0]);
+        // THE BUG, stated: with the clock frozen the bump is a whole step ABOVE the H_d the park froze
+        // and advertised. The seam's freeze flag is invisible from here, which is exactly why it fires.
+        check("U19h(A): the park did not move the clock", w.clock == clock_before);
+        check("U19h(A): so the bump lands one lookahead step ABOVE the frozen H_d",
+              g_rx.extends.size() == 1 && g_rx.extends[0] > u19h::H_D &&
+                  g_rx.extends[0] == u19h::BUMP);
+
+        bump_on_the_wire = g_rx.extends[0];
+    }
+
+    // ---- (B) THE CONSEQUENCE: the survivor's removal-record compare ------------------------------
+    //
+    // Both halves run the SAME two datagrams over the same world, in the order the survivor sees them:
+    // the quitter's advert, then its removal record. The only difference is which value park step (3)
+    // stamped -- the racing H_d or the value the survivors actually hold.
+    { // B1 -- the LOSING interleaving. The record carries H_d; we hold the bump.
+        world wo = u19h::three_peer_world();
+        u19h::feed_extend_from_quitter(wo, bump_on_the_wire);
+        check("U19h(B1): the survivor applied the quitter's bumped advert",
+              wo.peer_horizon[u19h::QUITTER_IDX] == bump_on_the_wire &&
+                  wo.peer_horizon[u19h::QUITTER_IDX] != u19h::H_D);
+        // ...and the quitter, lowest of the three, is what the barrier currently sits on -- the state
+        // the park is waiting for and the thing the removal is supposed to lift.
+        check("U19h(B1): the parked quitter holds the barrier", wo.committed == bump_on_the_wire);
+
+        const bool drained = u19h::feed_removal_from_quitter(wo, u19h::H_D);
+
+        check("U19h(B1): a record that disagrees with PEER_HORIZON abandons the drain", !drained);
+        // The quitter is marked gone BEFORE the compare, on both arms -- so it is not the discriminator
+        // and is asserted here only so a reader does not mistake it for one.
+        check("U19h(B1): the quitter is marked gone either way",
+              (wo.players[u19h::QUITTER_IDX].status_flags & HUMAN) == 0);
+        // THE DAMAGE: a survivor nobody eliminated loses PLAYER_HUMAN and gets a FORCED presence loss.
+        check("U19h(B1): the OTHER SURVIVOR's PLAYER_HUMAN is cleared by the sweep",
+              (wo.players[u19h::SURVIVOR_B].status_flags & HUMAN) == 0);
+        check("U19h(B1): eliminate_other_humans notified exactly that slot",
+              g_rx.presence_lost.size() == 1 && g_rx.presence_lost[0] == u19h::SURVIVOR_B);
+        // mode 1 == FORCED, which is the half that picks outcome 8 over 6 downstream.
+        check("U19h(B1): and it notified it as FORCED (mode 1), which selects outcome 8",
+              g_rx.presence_modes.size() == 1 && g_rx.presence_modes[0] == 1u);
+        check("U19h(B1): the torn-down session never reaches the carry-on tail",
+              g_rx.time_resyncs == 0 && wo.ls_players == 2);
+    }
+    { // B2 -- THE INVARIANT. Same two datagrams; park step (3) stamped the value the survivors hold.
+        // This is what any fix must make true, and it must stay green forever.
+        world wo = u19h::three_peer_world();
+        u19h::feed_extend_from_quitter(wo, bump_on_the_wire);
+
+        const bool drained = u19h::feed_removal_from_quitter(wo, bump_on_the_wire);
+
+        check("U19h(B2): an AGREEING record keeps the drain alive", drained);
+        check("U19h(B2): the other survivor keeps PLAYER_HUMAN",
+              (wo.players[u19h::SURVIVOR_B].status_flags & HUMAN) != 0);
+        check("U19h(B2): no presence callback fires at all", g_rx.presence_lost.empty());
+        // The carry-on tail, which is how "the match goes on" is observable: the barrier re-committed,
+        // a peer counted out of both counters, the clock resynced, and (tag 8) the busy-wait.
+        // The barrier was pinned to the quitter's bump before the record landed; afterwards the
+        // quitter no longer participates, so it is OUR horizon (the lower of the two survivors') that
+        // holds it. That transition is what "the match goes on" means in state terms.
+        check("U19h(B2): it re-commits the barrier without the departed peer",
+              wo.committed == u19h::LOCAL_HORIZON && wo.committed != bump_on_the_wire);
+        check("U19h(B2): it counts the quitter out of both peer counters",
+              wo.ls_players == 1 && wo.lobby_hosts == 1);
+        check("U19h(B2): and it takes CTL_DROP_SYNCED's resync tail",
+              g_rx.time_resyncs == 1 && g_rx.busywaits == 1);
+    }
+}
+
 void test_dispatch_kick_and_resets() {
     {
         world  w = mp_world();
@@ -4398,6 +4608,7 @@ int run_lockstest() {
     test_dispatch_control_basics();
     test_dispatch_departures();
     test_dispatch_drop_synced_vs_unsynced();
+    test_u19h_leave_park_horizon_race(); // mp:U19h -- the graceful-leave horizon race
     test_dispatch_kick_and_resets();
     test_dispatch_leave_consensus();
     test_dispatch_step_size_and_resync();

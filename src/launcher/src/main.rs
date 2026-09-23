@@ -27,6 +27,7 @@
 mod app;
 mod config;
 mod crash;
+mod elevate;
 mod install;
 mod launch;
 mod log;
@@ -63,12 +64,20 @@ usage: mh_launcher [options]
   --app-dir <path>      keep launcher state here instead of %LOCALAPPDATA%\\MissionHumanity
 
   --check-update        fetch the signed manifest, verify it, and say what it offers
-  --update              the above, then download and install that version
+  --update              the above, then download and install the game when the manifest is
+                        newer than what is installed (or the chosen configuration is missing)
   --self-update         the above, but for the launcher executable itself
+                        BOTH FLAGS TOGETHER = the Update button: the launcher first, then the
+                        game in the replacement launcher, in the same run (dist LA11/LA12)
   --exit-after-update   close the launcher once the startup update work has finished
   --update-url <url>    fetch the manifest from here instead, and remember it
   --verify-binary       print this build's version and exit 0 -- the health gate a NEW launcher
                         must pass before it is allowed to replace a running one
+  --step <what>         perform ONE install step into the game directory and exit, no window:
+                        install:<version>:<tag> (the staged set), uninstall, or provision.
+                        This is what the launcher re-runs ELEVATED when the game directory is
+                        not writable (Program Files) -- never the game itself (dist LA13)
+  --result <file>       where --step writes its verdict (first line ok|err, then the summary)
 
   --report <zip>        build a report zip here once any startup work has finished, then say where
   --description <text>  the report's description. REQUIRED for --report; an empty one is refused
@@ -108,6 +117,9 @@ struct Args {
     app_dir: Option<PathBuf>,
     update_url: Option<String>,
     verify_binary: bool,
+    /// dist LA13: the one elevated verb, and where it writes its verdict.
+    step: Option<elevate::StepSpec>,
+    result: Option<PathBuf>,
     view: View,
     size: [f32; 2],
     startup: Startup,
@@ -165,11 +177,41 @@ impl CollectorArgs {
 }
 
 fn parse_args() -> Result<Option<Args>, String> {
+    parse_args_from(std::env::args().skip(1))
+}
+
+/// dist LA11: which update flags were given. They used to overwrite one `Option<UpdateAction>` in
+/// parse order, so `--update --self-update` MEANT `--self-update` and the game half of the request
+/// was silently dropped before the restart ever happened. Now the set is collected and resolved
+/// once: both = the launcher first, then the game (`UpdateAction::Update`).
+#[derive(Default)]
+struct UpdateFlags {
+    check: bool,
+    game: bool,
+    launcher: bool,
+}
+
+impl UpdateFlags {
+    fn resolve(&self) -> Option<UpdateAction> {
+        match (self.launcher, self.game, self.check) {
+            (true, true, _) => Some(UpdateAction::Update),
+            (true, false, _) => Some(UpdateAction::SelfUpdate),
+            (false, true, _) => Some(UpdateAction::Apply),
+            (false, false, true) => Some(UpdateAction::Check),
+            (false, false, false) => None,
+        }
+    }
+}
+
+fn parse_args_from(argv: impl Iterator<Item = String>) -> Result<Option<Args>, String> {
+    let mut update_flags = UpdateFlags::default();
     let mut args = Args {
         game_dir: None,
         app_dir: None,
         update_url: None,
         verify_binary: false,
+        step: None,
+        result: None,
         // dist LA6: the front page is Play.
         view: View::Launch,
         size: [1280.0, 720.0],
@@ -180,7 +222,7 @@ fn parse_args() -> Result<Option<Args>, String> {
         list_outbox: false,
         collector: CollectorArgs::default(),
     };
-    let mut it = std::env::args().skip(1);
+    let mut it = argv;
     while let Some(arg) = it.next() {
         let mut value = |name: &str| {
             it.next()
@@ -194,12 +236,14 @@ fn parse_args() -> Result<Option<Args>, String> {
             "--uninstall" => args.startup.uninstall = true,
             "--launch" => args.startup.launch = true,
             "--exit-after-launch" => args.startup.exit_after_launch = true,
-            "--check-update" => args.startup.update = Some(UpdateAction::Check),
-            "--update" => args.startup.update = Some(UpdateAction::Apply),
-            "--self-update" => args.startup.update = Some(UpdateAction::SelfUpdate),
+            "--check-update" => update_flags.check = true,
+            "--update" => update_flags.game = true,
+            "--self-update" => update_flags.launcher = true,
             "--exit-after-update" => args.startup.exit_after_update = true,
             "--update-url" => args.update_url = Some(value("--update-url")?),
             "--verify-binary" => args.verify_binary = true,
+            "--step" => args.step = Some(elevate::StepSpec::parse(&value("--step")?)?),
+            "--result" => args.result = Some(PathBuf::from(value("--result")?)),
             "--report" => args.startup.report_to = Some(PathBuf::from(value("--report")?)),
             "--description" => args.startup.description = value("--description")?,
             "--with-minidump" => args.startup.with_minidump = true,
@@ -227,6 +271,7 @@ fn parse_args() -> Result<Option<Args>, String> {
         }
     }
     args.startup.requested_size = args.size;
+    args.startup.update = update_flags.resolve();
     Ok(Some(args))
 }
 
@@ -354,6 +399,32 @@ fn main() {
         cfg.installed_tag,
         cfg.update_base_url_or_default()
     ));
+    // dist LA13: which token this launcher runs with, on every start. An elevated launcher is the
+    // measured cause of elevated games (both 09-20 players); `launch::start` compensates, and this
+    // line is how a log says it happened.
+    let own_elevation = launch::current_process_elevation();
+    log::line(format!(
+        "launcher: token {}",
+        launch::describe_elevation(own_elevation)
+    ));
+
+    // dist LA13: `--step` -- the one verb an ELEVATED re-run of this launcher is given. Performed
+    // here, before any window, exactly like --verify-binary: it installs/uninstalls/provisions in
+    // the game directory, writes its verdict to --result, and exits. It cannot launch anything.
+    if let Some(step) = args.step.as_ref() {
+        let Some(result) = args.result.as_ref() else {
+            fail("--step needs --result <file>");
+            std::process::exit(1);
+        };
+        let game_dir = cfg.game_dir.trim().to_string();
+        if game_dir.is_empty() {
+            fail("--step needs --game-dir");
+            std::process::exit(1);
+        }
+        let code = elevate::perform_step(&layout, Path::new(&game_dir), step, result);
+        log::line(format!("---- mh_launcher exiting with code {code} (step)"));
+        std::process::exit(code);
+    }
 
     let mut startup = args.startup;
     startup.restart_args = restart_args(&std::env::args().skip(1).collect::<Vec<_>>());
@@ -565,11 +636,49 @@ fn restart_args(argv: &[String]) -> Vec<String> {
             | "--send-outbox"
             | "--consent"
             | "--outbox" => {}
-            "--install" | "--report" | "--description" | "--send" => {
+            "--install" | "--report" | "--description" | "--send" | "--step" | "--result" => {
                 it.next();
             }
             other => out.push(other.to_string()),
         }
+    }
+    out
+}
+
+/// The full argv a replacement launcher is started with (dist LA11): `restart_args`'s strip, plus
+/// the work the ORIGINAL request still owes.
+///
+/// THE STRIP ALONE WAS THE LA11 BUG. A scripted `--update --self-update --exit-after-update` on a
+/// v0.1.0 launcher installed the launcher, restarted it with `["--app-dir", .., "--exit-after-update"]`
+/// and the replacement said `update: no update work was requested` -- the game half of the request
+/// died with the process that received it. So the caller says what is still owed: `carry_game_update`
+/// appends `--update` (the game half, which the replacement runs at startup), and `view` names the
+/// page the player pressed Update on so the window they get back opens where they were.
+///
+/// `--update` is appended, never merely left in, because the replacement must not inherit
+/// `--self-update` (a restart loop against a manifest that still advertises the launcher just
+/// installed) -- and a plain `--self-update` request carries nothing, so a launcher-only script still
+/// ends with the replacement exiting at once.
+pub fn restart_argv(
+    stripped: &[String],
+    carry_game_update: bool,
+    view: Option<&str>,
+) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    let mut it = stripped.iter();
+    while let Some(arg) = it.next() {
+        if arg == "--view" && view.is_some() {
+            it.next();
+            continue;
+        }
+        out.push(arg.clone());
+    }
+    if carry_game_update {
+        out.push("--update".to_string());
+    }
+    if let Some(v) = view {
+        out.push("--view".to_string());
+        out.push(v.to_string());
     }
     out
 }
@@ -682,6 +791,8 @@ mod tests {
             "--exit-after-update",
             "--update-url",
             "--verify-binary",
+            "--step",
+            "--result",
             "--report",
             "--description",
             "--with-minidump",
@@ -730,5 +841,113 @@ mod tests {
         // Idempotent: feeding the result back in changes nothing, so a second self-update from the
         // replacement inherits the same arguments rather than eroding them.
         assert_eq!(restart_args(&out), out);
+    }
+
+    fn argv(list: &[&str]) -> Vec<String> {
+        list.iter().map(|s| s.to_string()).collect()
+    }
+
+    /// dist LA11, the parse: `--update --self-update` used to collapse to `--self-update` (the
+    /// last flag won). Both together are the one-button request -- the launcher first, then the
+    /// game -- and each alone still means what it always did.
+    #[test]
+    fn update_and_self_update_together_are_one_request_launcher_first() {
+        let parsed = |list: &[&str]| {
+            parse_args_from(argv(list).into_iter())
+                .unwrap()
+                .unwrap()
+                .startup
+                .update
+        };
+        assert_eq!(
+            parsed(&["--update", "--self-update", "--exit-after-update"]),
+            Some(UpdateAction::Update)
+        );
+        assert_eq!(
+            parsed(&["--self-update", "--update"]),
+            Some(UpdateAction::Update),
+            "order does not matter"
+        );
+        assert_eq!(parsed(&["--update"]), Some(UpdateAction::Apply));
+        assert_eq!(parsed(&["--self-update"]), Some(UpdateAction::SelfUpdate));
+        assert_eq!(parsed(&["--check-update"]), Some(UpdateAction::Check));
+        assert_eq!(
+            parsed(&["--check-update", "--update"]),
+            Some(UpdateAction::Apply)
+        );
+        assert_eq!(parsed(&["--view", "status"]), None);
+    }
+
+    /// dist LA11's done_when: the restart after a self-update CARRIES the original request. The
+    /// measured failure, replayed: `--update --self-update --exit-after-update` restarted as
+    /// `["--app-dir", .., "--exit-after-update"]` and the replacement had no work. Now the
+    /// replacement gets `--update` -- and never `--self-update`.
+    #[test]
+    fn the_replacement_launcher_is_told_to_finish_the_game_update() {
+        let original = argv(&[
+            "--app-dir",
+            "C:/state",
+            "--game-dir",
+            "C:/game",
+            "--update",
+            "--self-update",
+            "--exit-after-update",
+        ]);
+        let stripped = restart_args(&original);
+        assert_eq!(
+            stripped,
+            argv(&[
+                "--app-dir",
+                "C:/state",
+                "--game-dir",
+                "C:/game",
+                "--exit-after-update"
+            ])
+        );
+        let restart = restart_argv(&stripped, true, None);
+        assert_eq!(
+            restart,
+            argv(&[
+                "--app-dir",
+                "C:/state",
+                "--game-dir",
+                "C:/game",
+                "--exit-after-update",
+                "--update"
+            ])
+        );
+        assert!(!restart.iter().any(|a| a == "--self-update"));
+        // And the replacement parses that as the game half, scripted to exit when done.
+        let parsed = parse_args_from(restart.into_iter()).unwrap().unwrap();
+        assert_eq!(parsed.startup.update, Some(UpdateAction::Apply));
+        assert!(parsed.startup.exit_after_update);
+
+        // A launcher-only request carries nothing: the replacement exits at once, as before.
+        let only_self = restart_args(&argv(&["--self-update", "--exit-after-update"]));
+        assert_eq!(
+            restart_argv(&only_self, false, None),
+            argv(&["--exit-after-update"])
+        );
+    }
+
+    /// dist LA12: the one Update button pressed in the window. No flags to carry, so the restart
+    /// is `--update` plus the page the player was on; an inherited `--view` is replaced, not
+    /// doubled.
+    #[test]
+    fn the_button_restart_reopens_on_the_same_page_with_the_game_update_owed() {
+        assert_eq!(
+            restart_argv(&[], true, Some("status")),
+            argv(&["--update", "--view", "status"])
+        );
+        let inherited = argv(&["--view", "report", "--app-dir", "C:/state"]);
+        assert_eq!(
+            restart_argv(&inherited, true, Some("play")),
+            argv(&["--app-dir", "C:/state", "--update", "--view", "play"])
+        );
+        // Without a view to set, an inherited one is kept as it was.
+        assert_eq!(
+            restart_argv(&inherited, false, None),
+            argv(&["--view", "report", "--app-dir", "C:/state"])
+        );
     }
 }

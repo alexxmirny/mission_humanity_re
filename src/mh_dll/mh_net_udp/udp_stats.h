@@ -415,6 +415,61 @@ constexpr double AD_LATE_SHRINK_FRAC = 0.5;  // give back half the measured surp
 constexpr double AD_LATE_SHRINK_MAX  = 0.60; // ...but never more than 40% of the value in one window
 constexpr double AD_SLACK_MULT       = 0.5;  // unused horizon over this many sub-steps -> not binding
 
+// ---- mp:P10: the unused-horizon signal has to be measured against the LINK, not against zero ----
+//
+// T3c's (2) above is right that "the error term cannot see a lookahead that is not binding", and it
+// acted on that in the shrink half only. The grow half kept growing on a low lateness tail whatever
+// the slack said -- and the 2026-09-20 field corpus is what that costs: in all six 2-peer sessions
+// (c86c5b49, eb1c9f9d, bd8bffcf, 31f319ae, 4665a570, bf340f97) the pair walked to (host = 400 =
+// lockstep_max_ms, joiner = 60 = the effective floor) inside ~25 s, from an identical 100 on both
+// sides, every time. The mechanism is a two-peer ratchet: the host reads the joiner's horizon
+// arriving late, grows ITS OWN lookahead -- which cannot raise its own COMMITTED, because COMMITTED
+// is a min and the host is not the min -- and thereby hands the joiner margin, so the joiner reads a
+// comfortable tail and gives its own lookahead back, so its horizon reaches the host later still.
+// The host ends up paying ~420 ms of command latency (the net indicator's CMD is the LOCAL lookahead
+// plus one sub-step) for horizon that nobody could use.
+//
+// THE OBVIOUS ONE-LINE FIX -- `&& !slack` on the grow arm, with `slack` as T3c defined it -- IS
+// WRONG, and the field logs say so before any rig does. BOTH peers read `slack 100 ms` in their
+// FIRST window, while both were genuinely starved (`tail95 -31`) at 100 ms of lookahead on a 205 ms
+// link. That is not a measurement error: COMMITTED is computed against the peer's LAST ARRIVED
+// advertisement, which is one one-way delay old, so on any link with real latency BOTH sides see
+// their own horizon above their own COMMITTED at the same instant. There is no consistent global
+// min in a system with delay. Refusing to grow there deadlocks the pair at its start value: measured
+// in the offline two-peer arm (udpstatstest (l)), 0.452x realtime against 0.995x (the numbers the
+// arm prints for itself), because the pair's throughput needs the SUM of the two lookaheads to
+// cover the round trip and neither side will raise its half.
+//
+// SO THE SIGNAL IS CORRECTED RATHER THAN THE ARM. An advertisement in flight is not idle horizon --
+// it is news that has not landed yet. Subtract the link's own one-way delay and what is left is the
+// part of our horizon that is genuinely unused:
+//
+//     idle = slack - owd  ~=  (our lookahead) - (the peer's lookahead)
+//
+// (the algebra: with clocks c_us/c_peer and steps S_us/S_peer, slack = (c_us - c_peer) + S_us -
+// S_peer + owd, so subtracting owd leaves the step difference plus the clock offset). Read that way
+// the rule states itself: DO NOT GROW PAST YOUR PEER. If we are already advertising more lookahead
+// than our peer is, the pair's shortfall is on the peer's side, and more of our own horizon cannot
+// move COMMITTED on either side of the link. Equal peers on a slow link have idle ~= 0 and grow
+// together, which is the case the naive refusal broke.
+//
+// `link_owd_ms` IS DELIBERATELY A CONSERVATIVE (HIGH) ESTIMATE, because the two errors are not
+// symmetric and the offline arm measures the asymmetry: fed HALF the true one-way delay the pair
+// runs at 0.76x, fed a quarter of it 0.45x; fed 1.5x it runs at 0.997x and fed 3x at 0.997x -- an
+// over-estimate only gives back some of the latency win and degrades smoothly toward the old
+// behaviour, an under-estimate costs throughput. The caller therefore passes RFC 6298's own upper
+// bound halved, (SRTT + 4*RTTVAR)/2, which on the field's link (SRTT 205-230 ms, RTTVAR 1-4 ms) is
+// ~108 ms against a true one-way of ~104. A caller that cannot measure the link passes a NEGATIVE
+// value and the gate stands down entirely -- every decision is then bit-for-bit what it was before
+// this note, which is what the TCP module (lat_supported = 0) and every pre-P10 selftest arm get.
+//
+// AND THE PROBE THAT IS NOT THERE. The obvious belt-and-braces -- let the gate suppress at most N
+// starved windows, then grow anyway -- was built and measured and is NOT in the code: at N = 1 or 2
+// it restores the full (400, 60) ratchet even when the estimate is exact, and at N = 3 it is
+// non-monotonic in the estimate error (0.62x at f = 0, 0.92x at f = 0.5, 0.99x at f = 0.75). A gate
+// that periodically forgets its own reason is a slower ratchet, not a safer one; the protection is
+// the conservative estimate above, which cannot be wrong in the dangerous direction.
+
 enum LookaheadVerdict {
     LA_NO_SAMPLES = 0, // nothing measured this window -- HOLD, and say so
     LA_HOLD       = 1, // inside the hysteresis band, or still accruing shrink credit
@@ -437,6 +492,12 @@ struct LookaheadIn {
     // which is zero for the peer whose own horizon is binding.
     bool   warm;
     double slack_ms;
+    // mp:P10. The link's own one-way delay, in the same milliseconds as `slack_ms`, as a
+    // CONSERVATIVE (high) estimate -- the caller passes (SRTT + 4*RTTVAR)/2, RFC 6298's RTO shape
+    // halved. NEGATIVE means "this transport cannot measure its link": the grow gate then stands
+    // down and `slack_ms` is used raw, so the whole decision is bit-for-bit pre-P10. See the
+    // AD_SLACK_MULT note above for why the estimate is biased high rather than centred.
+    double link_owd_ms;
 };
 
 struct LookaheadOut {
@@ -465,8 +526,26 @@ inline LookaheadOut lookahead_decide(const LookaheadIn &in) {
         const double shrink_at = AD_LATE_SHRINK_MULT * in.sim_ms;
         // mp:T3c -- "our own horizon is not the one the match is running on". See the AD_SLACK_MULT
         // note above: while this holds, the lateness tail is a measurement of the OTHER side.
-        const bool slack = (in.slack_ms > AD_SLACK_MULT * in.sim_ms);
-        if (in.tail95_ms < grow_at) {
+        // mp:P10 -- and the measurement of it is corrected for the link, because an advertisement
+        // in flight is not idle horizon. With no link measurement (`link_owd_ms` negative) this is
+        // the raw T3c slack and the grow gate below is off, i.e. exactly the pre-P10 decision.
+        const bool   have_owd = (in.link_owd_ms >= 0.0);
+        double       idle_ms  = in.slack_ms;
+        if (have_owd) {
+            idle_ms = in.slack_ms - in.link_owd_ms;
+            if (idle_ms < 0.0) idle_ms = 0.0;
+        }
+        const bool slack = (idle_ms > AD_SLACK_MULT * in.sim_ms);
+        // mp:P10 -- THE GROW GATE, and `have_owd` is half of it: WITHOUT a link measurement
+        // `slack` is the raw T3c quantity, which is positive on both peers of any slow link, so
+        // gating on it would deadlock the pair -- the gate is only ever armed by a measured link.
+        // With one, `slack` means "we are already advertising more lookahead than our peer is", so
+        // the pair's shortfall is on the peer's side and nothing we add to our own horizon can move
+        // COMMITTED on either side. Falling THROUGH to the shrink arm rather
+        // than holding is load-bearing: the arm below qualifies on `slack` alone, so a lookahead
+        // carried in from a previous match (the field's 400) is given back instead of being
+        // stranded by its own gate -- measured, a `hold` here leaves 400/60 exactly where it was.
+        if (in.tail95_ms < grow_at && !(slack && have_owd)) {
             // Add exactly the margin that is missing, then clamp the STEP (not the target) so the
             // response is proportional to the error -- mp:P1 fix (d): a flat +25% took four windows
             // to climb from 100 ms to the 200 ms a 200 ms link needs, and the peer was starved for
@@ -489,7 +568,12 @@ inline LookaheadOut lookahead_decide(const LookaheadIn &in) {
                     if (in.cur_ms - give < want) want = in.cur_ms - give;
                 }
                 if (slack) {
-                    const double give = AD_LATE_SHRINK_FRAC * in.slack_ms;
+                    // mp:P10 -- half the IDLE horizon, not half the raw slack. Giving back the
+                    // flight-time part makes us the binding peer and starves us next window: with
+                    // the correction on the grow arm only, the offline two-peer arm measured the
+                    // joiner cycling 70 <-> 100 ms on a six-window period. One signal, corrected
+                    // once, read by both arms.
+                    const double give = AD_LATE_SHRINK_FRAC * idle_ms;
                     if (in.cur_ms - give < want) want = in.cur_ms - give;
                 }
                 // ...and the bound that makes "cannot oscillate" a property of the code rather than

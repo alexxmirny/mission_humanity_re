@@ -1,0 +1,15 @@
+# mp:P9 -- the reproduction's SECOND arm: the same 15-minute soak as p9_soak_15min.txt (read that
+# file for the mechanism and the zero point) with the link made LOSSY and JITTERY from the start.
+#
+# Why it exists: the first arm (plain 100 ms one-way, host 100 / joiner 60, gate OFF, configuration
+# (1)) ran ~15 min at 0.64x with ZERO movement of RESYNC_TRIGGER_COUNT -- the stall-nag path
+# (llm_strat_time_tick's at-horizon branch -> llm_net_send_lockstep_keepalive) never emitted a
+# single nag, so the storm has nothing to count. The field's nags come from something a constant
+# delay does not produce; this arm adds the two things the udp shim CAN inject that a LAN never
+# has (net_shim.py: `set jitter` reorders on udp by design, `set loss` destroys datagrams).
+#
+# Values: +/-40 ms of jitter on a 100 ms one-way delay (the field's SRTT variance is unmeasured;
+# 40 is the brief's number), 1 % loss per direction (each direction independently).
+0       set jitter 40
+0       set loss 1
+940000  blackhole on

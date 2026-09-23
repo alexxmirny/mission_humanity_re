@@ -1732,7 +1732,7 @@ def selftest():
             buf, keep = io.StringIO(), sys.stdout
             sys.stdout = buf
             try:
-                analyse(ns)
+                rc = analyse(ns)
             finally:
                 sys.stdout = keep
             printed = buf.getvalue()
@@ -1746,6 +1746,14 @@ def selftest():
                 "(no verdict printed)",
             )
             ok = got.startswith(want) and clean is want_clean
+            # G269: the EXIT CODE carries the same verdict -- 0 only for a clean run. Every
+            # `post_check: ["tools/mp_analyze.py"]` row gates on it, so a regression here would make
+            # those rows green on a DESYNC again.
+            if (rc == 0) is not want_clean:
+                ok, name = (
+                    False,
+                    name + " (+exit code %r disagrees with clean=%s)" % (rc, want_clean),
+                )
             # arm 7 rides on arm 3's fixture: the false detector-gap accusation must be suppressed,
             # and the noise-line check rides on arm 1: a healthy run must report no drop marker.
             if name.startswith("3") and "NOT evidence of a detector gap" not in printed:
@@ -2722,6 +2730,13 @@ def analyse(args):
     with open(json_path, "w") as f:
         json.dump(out, f, indent=2)
     print("\nJSON: %s" % json_path)
+    # THE EXIT CODE IS THE VERDICT (G269). Until 2026-09-22 this function fell off the end -- 0 on a
+    # DESYNC, 0 on NO COMPARABLE STEPS, 0 on FAIL: ENVIRONMENTAL -- and every
+    # `post_check: ["tools/mp_analyze.py"]` row in tools/test_ui.py (d25_buildclick, u39_diplomacy,
+    # ...) gated on `returncode == 0`, i.e. on nothing. ui_test.py / det_run_report read the JSON and
+    # are unaffected; mp_run.py ignores the code. A single-peer run (no pair compared) stays 0: it
+    # made no cross-peer claim.
+    return 1 if out.get("run_invalid") else 0
 
 
 if __name__ == "__main__":

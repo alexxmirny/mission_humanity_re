@@ -14594,13 +14594,17 @@
   {
    "name": "browser_ui_rows",
    "base": 15082144,
-   "size": 0,
-   "extent": 0,
+   "size": 8192,
+   "extent": 8192,
    "owner": "unknown",
    "manifests": [
     "view"
    ],
-   "size_claims": {},
+   "size_claims": {
+    "8192": [
+     "view"
+    ]
+   },
    "id": "BROWSER_UI_ROWS"
   },
   {

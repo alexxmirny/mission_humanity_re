@@ -654,6 +654,18 @@
       "note": "call overlay_dismiss (horizon recovered)"
     },
     {
+      "name": "canceltask_finish_call_site",
+      "en": "0x004c7060",
+      "parent": "llm_ui_building_cancel_task_yes_cb",
+      "note": "mp:D28: CALL llm_bldg_finish_current_order (E8 46 9C FA FF; EAX = PlayerSide, EDX = selected building index) -- spliced to a thunk that issues the equivalent building order in a lockstep match"
+    },
+    {
+      "name": "diplo_echo_write_site",
+      "en": "0x004c8070",
+      "parent": "llm_ui_diplomacy_apply_and_resume",
+      "note": "mp:U39: the 22-byte optimistic relation echo (movzx PlayerSide; imul 0x34; add j; mov al,rel; mov [edx+0xe587f1],al) -- NOPed so the 0xf4 order handler is the cell's only writer"
+    },
+    {
       "name": "ovl_xui_wait_site",
       "en": "0x004c85e8",
       "ru": "0x004c80e4",
@@ -4536,7 +4548,8 @@
     {
       "name": "browser_ui_rows",
       "en": "0x00e622a0",
-      "note": "Ghidra DAT_00e622a0; {void* handle, u32 idx}[]"
+      "size": 8192,
+      "note": "Ghidra _G_LLM_LOBBY_BROWSER_ROWS: llm_lobby_browser_row[1024] {void* session_handle; uint server_idx} -- bound 0x400 proven by CMP/JNC @0x004bce3f (mp:R2b, 2026-09-21); ends at _G_LLM_AVI_OPEN_STATUS"
     },
     {
       "name": "browser_widget_array_ptr",

@@ -1,0 +1,39 @@
+# mp:L1f -- CLIENT 2 of the three-peer lobby-ping row (lobby_ping_3peer). Pair with
+# mp_host_ping3.txt (the why) and mp_client_ping3.txt (client 1 -- an identical walk under its own
+# name, so the two peers' baselines are told apart by the slot list they render).
+#
+# THE CLAIM THIS SCREEN CARRIES. This peer holds exactly ONE transport connection, to the host. It
+# can measure the host's row and nothing else -- the other client's row is one it is physically
+# blind to. `lobbyping 2` therefore cannot be satisfied by anything this peer measures: the second
+# number can only be the host's PUBLISHED summary, decoded and rendered. That is the whole of
+# mp:L1f, asserted as a wait rather than read off a frame afterwards.
+
+# join the host by IP -> the joined lobby (see mp_client_join.txt for the flow)
+settled value:110
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+present Internet server
+settled Internet server
+clickl Internet server
+present Server address
+settled Connect
+clickl Connect
+sessions 1
+settled Join game
+clickl Join game
+
+# joined lobby: tell the host this screen is really up, then wait until BOTH other rows show a
+# number -- the host's (ours) and the other client's (the host's publication).
+present Network players
+signal c2
+occ 3
+lobbyping 2
+settled Cancel
+capture m2_lobby_3peer_c2
+log CLIENT2 lobby shows a ping for the host AND for the other client
+# Leave only once the host has its own frame: a client that ends drops a slot, and a slot that goes
+# away mid-capture would change what the host's picture is of.
+awaitsignal hostdone
+end

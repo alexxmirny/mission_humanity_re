@@ -46,6 +46,7 @@
 #include "tact/tact_group_issue_order.h"    // TACT1-P C4: the driver enters OUR body, not the original
 #include "seams/net_internal.h"             // SHIP_REBIND_DEFAULT -- the R11 gate policy load_gates takes
 #include "config/config.h"                  // F2A: the D11 selector that gate policy now derives from
+#include "config/ini_read.h"                // TL-HARN4: read_ini_string -- strips a trailing `;comment`
 #include "mh_net_export.h"                  // U30(b): MH_Net_Send -- the garbled-frame injector below
 #include "mh_net_module.h"                  // mp:X1b: the three snapshot rows + MH_NetSnapshotStatus
 #include "addr/mh_addrs.gen.h"              // generated EN VAs (tools/gen_dll_addrs.py)
@@ -1289,12 +1290,12 @@ void load_config() {
     g_cfg.tact_input_selftest = GetPrivateProfileIntA("harness", "tact_input_selftest", g_cfg.tact_input_selftest, g_ini_path);
     // A PATH, so it reads as a string -- the same shape as loadgame_name above, which is the only
     // other string knob in this file.
-    GetPrivateProfileStringA("harness", "tact_journal", g_cfg.tact_journal, g_cfg.tact_journal,
-                             sizeof(g_cfg.tact_journal), g_ini_path);
+    mh::config::read_ini_string("harness", "tact_journal", g_cfg.tact_journal, g_cfg.tact_journal, // TL-HARN4
+                                sizeof(g_cfg.tact_journal), g_ini_path);
     g_cfg.ui_journal_rec = GetPrivateProfileIntA("harness", "ui_journal_rec", g_cfg.ui_journal_rec, g_ini_path);
     g_cfg.skip_intro_avi = GetPrivateProfileIntA("harness", "skip_intro_avi", g_cfg.skip_intro_avi, g_ini_path);
-    GetPrivateProfileStringA("harness", "ui_journal", g_cfg.ui_journal, g_cfg.ui_journal,
-                             sizeof(g_cfg.ui_journal), g_ini_path);
+    mh::config::read_ini_string("harness", "ui_journal", g_cfg.ui_journal, g_cfg.ui_journal, // TL-HARN4
+                                sizeof(g_cfg.ui_journal), g_ini_path);
     g_cfg.tact_poke_at      = GetPrivateProfileIntA("harness", "tact_poke_at", g_cfg.tact_poke_at, g_ini_path);
     g_cfg.tact_poke_idx     = GetPrivateProfileIntA("harness", "tact_poke_idx", g_cfg.tact_poke_idx, g_ini_path);
     g_cfg.tact_synth        = GetPrivateProfileIntA("harness", "tact_synth", g_cfg.tact_synth, g_ini_path);
@@ -1320,8 +1321,8 @@ void load_config() {
     g_cfg.save_keep         = GetPrivateProfileIntA("harness", "save_keep", g_cfg.save_keep, g_ini_path);
     g_cfg.savegame_at       = GetPrivateProfileIntA("harness", "savegame_at", g_cfg.savegame_at, g_ini_path);
     g_cfg.loadgame_at       = GetPrivateProfileIntA("harness", "loadgame_at", g_cfg.loadgame_at, g_ini_path);
-    GetPrivateProfileStringA("harness", "loadgame_name", g_cfg.loadgame_name, g_cfg.loadgame_name,
-                             sizeof(g_cfg.loadgame_name), g_ini_path);
+    mh::config::read_ini_string("harness", "loadgame_name", g_cfg.loadgame_name, // TL-HARN4
+                                g_cfg.loadgame_name, sizeof(g_cfg.loadgame_name), g_ini_path);
     g_cfg.aistate_probe_at =
         GetPrivateProfileIntA("harness", "aistate_probe_at", g_cfg.aistate_probe_at, g_ini_path);
     g_cfg.load_at                 = GetPrivateProfileIntA("harness", "load_at", g_cfg.load_at, g_ini_path);
@@ -1355,7 +1356,7 @@ void load_config() {
     // reading 0 from "0x0066a334" would look exactly like "the knob is off".
     {
         char av[32] = {0};
-        GetPrivateProfileStringA("harness", "rdump_addr", "", av, sizeof(av), g_ini_path);
+        mh::config::read_ini_string("harness", "rdump_addr", "", av, sizeof(av), g_ini_path); // TL-HARN4
         if (av[0] != '\0') {
             const bool hex = (av[0] == '0' && (av[1] == 'x' || av[1] == 'X'));
             g_cfg.rdump_addr =

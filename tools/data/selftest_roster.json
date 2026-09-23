@@ -242,6 +242,18 @@
       "why": "ADDED 2026-09-17 (mp:SES2). The log-stream SIZE CAP and its one-generation rotation. Its centre is SES2's acceptance clause driven verbatim -- 70 MB emitted through the REAL seam_log() into the REAL run directory at the REAL default cap, leaving a capped mh_net.log plus exactly ONE mh_net.prev.log -- and it asserts the rotated generation is in [cap, cap+one line], which pins the DEFAULT 64 MB rather than passing for any cap at all. On the rig the same claim is a two-VM session long enough to emit 70 MB of DIAG lines. The surrounding arms are the cases a gameplay run reaches never: a non-.log path REFUSED instead of mangled (the pre-SES2 inline derivation overwrote the last four characters on the strength of `n > 4` alone), a destination buffer too small, `0 = uncapped`, and a second rotation REPLACING the one generation instead of starting a ladder. Not in FLAKY: no arena -- it writes files, in its own %TEMP% directory and in the run directory, and deletes them."
     },
     {
+      "suite": "inireadtest",
+      "exe": "net_selftest",
+      "checks": 21,
+      "why": "ADDED 2026-09-21 (TL-HARN4). The shared ini STRING-read comment-strip helper (config/ini_read.h, mh::config::read_ini_string / strip_ini_comment) that ~40 GetPrivateProfileStringA call sites across src/mh_dll now share. Win32's raw API returns a trailing same-line `;comment` as PART OF the string value, which used to TERMINATE the process on two strict-compare keys ([config] mode, [net] module) and silently corrupt two others ([net] relay dialled the comment text 2026-09-19, [fonts] probe_text drew it on every frame 2026-09-20) before each was hand-patched at its own call site. This suite proves the shared primitive against a fixture ini shaped exactly like the trap (mh_net.example.ini's own documented style): the strip in isolation (leading-space/no-space/tab/all-comment/bare-semicolon/first-byte cases), then the full read against fixture lines reproducing the fail-closed and fail-open shapes, an untouched bare value, an absent key/section still taking the default, and the return length matching the POST-strip string."
+    },
+    {
+      "suite": "runctxtest",
+      "exe": "net_selftest",
+      "checks": 18,
+      "why": "ADDED 2026-09-21 (dist:LA13). WHERE the run context puts a process's logs: <exedir>\\logs\\ by default, the launcher-owned MH_LOG_ROOT when that variable is set (a retail mh.exe under Program Files has no manifest, so a non-elevated game's writes beside it are UAC-virtualized into %LOCALAPPDATA%\\VirtualStore where the 64-bit launcher never looks -- both 09-20 player reports packaged nothing for exactly that reason). run_context decides once per process from the environment, so the variable-set arms spawn a copy of this exe (`runctxtest --child <file>`) and read its answer back: the root is created and the trailing separator stripped, the run dir and the mh_run.txt breadcrumb land INSIDE it, the exe-side breadcrumb is untouched; an unmakeable root and an empty variable both fall back to the hand-launch default. Not in FLAKY: files only, in its own %TEMP% directory, deleted after."
+    },
+    {
       "suite": "udpwiretest",
       "exe": "net_selftest",
       "checks": 226,

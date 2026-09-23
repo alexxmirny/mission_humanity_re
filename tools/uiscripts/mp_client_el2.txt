@@ -1,0 +1,58 @@
+# mp:EL2 CLIENT (the JOINER of eb1c9f9d, reproduced) -- see mp_host_el2.txt for the whole story.
+#
+# This peer is the one the field report called "eliminated with no building at 6 s". It joins,
+# enters the match on the host's Start, sits with its mother AIRBORNE while the host lands its own
+# (that is the eb1c9f9d snapshot: `ua1=1 ba1=0` next to `ua0=0 ba0=1`), then lands its own mother
+# at gameclock 6000 -- the same shift+right-click gesture the host used, which is the ONLY thing
+# that places a human's starting building -- and finally ESC-quits the running match exactly as the
+# field joiner did (mp_client_gquit.txt's walk: ESC -> Quit game (113='q') -> Yes (121='y')). The
+# quit is what wrote the field's `mode=1 gate=eliminated` line, and this walk makes the same line
+# appear for the same reason, with ba=1 this time -- proving the counts are not what that line is
+# about.
+#
+# THE ASSERTIONS ARE THE post_check (tools/check_el2_mother.py), over BOTH peers' logs. The two
+# captures here (joined lobby, main menu after the quit) are the deterministic frames; no in-game
+# capture (the reveal ring and the departure notice both flap).
+
+settled value:110
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+present Internet server
+settled Internet server
+clickl Internet server
+present Server address
+settled Connect
+clickl Connect
+sessions 1
+settled Join game
+clickl Join game
+
+# joined lobby: tell the host we are really here, then wait for its Start
+present Network players
+signal lobby
+settled Cancel
+capture el2_client_lobby
+absent Network players
+gamemode 2
+
+# the host lands at 3000; we stay airborne through that (the field snapshot), then land at 6000.
+gameclock 6000
+rclick 480 330 shift
+
+# past the landing, then quit like the field joiner did. The deploy is not instant: measured on
+# the rig, a click at 6000 landed at 9799 (approach + descent, ~3.8 s of sim), and the D21 watch
+# samples every 50 steps, so the quit waits until at least one sample on BOTH peers has hashed the
+# landed state (10000 was one sample short on the client -- its last MATCH was step 950).
+gameclock 12000
+signal quitting
+key 0x01
+settled value:113
+clickv 113
+settled value:121
+clickv 121
+settled value:110
+capture el2_quitter_main_menu
+log JOINER: mother landed in lockstep (ba=1 on both peers), then ESC-quit -- the eb1c9f9d line is the quit
+end

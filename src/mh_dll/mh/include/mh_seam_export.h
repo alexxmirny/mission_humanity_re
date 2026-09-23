@@ -76,6 +76,17 @@ int MH_Seam_ClientStartReceived(void);
  * keeps its own slots). Read once, on the main thread, immediately before begin_map_load. */
 int MH_Seam_TakeStartSlots(unsigned char *out, int cap);
 
+// mp:L1e: the lobby ping cell's R/D letter for a CLIENT's one measured row (the host's). Wraps
+// net_discovery.cpp's mp_dial_is_relayed (net_internal.h, the mp:R7a kick-site latch) -- a plain
+// mh.dll-internal fact, not a module-bound one, so it belongs beside the other MH_Seam_* wrappers
+// rather than in mh_net_export.h (whose every row is a forwarding shim over the LOADED TRANSPORT
+// MODULE; this has nothing to do with which module is bound). Exposed here so ui/lobby_ping.cpp --
+// outside the net-seam TU family that shares net_internal.h -- can read it without pulling that
+// internal header in (the same layering ui_net_indicator.cpp already keeps, via mh_net_export.h
+// alone). Returns 0 before any manual client dial has run, and always 0 on a host (which has no
+// "own dial" -- MH_NetPeerLatency.relayed is the host's answer instead, mp:L1e).
+int MH_Seam_ClientDialIsRelayed(void);
+
 // The mh.exe globals the seams touch. Defaults are the RU-retail VAs; override for tests via
 // MH_Seam_SetAddrs so MH_Seam_PollRecv writes into a local mock RX region instead of 0x0065d66e.
 typedef struct MH_SeamAddrs {

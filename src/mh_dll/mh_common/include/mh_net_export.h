@@ -144,6 +144,35 @@ typedef struct MH_NetPeerLatency {
     int rttvar_us; /* RFC 6298 smoothed deviation, microseconds                                    */
     int ipdv_us;   /* smoothed consecutive-sample delay variation, microseconds (RFC 3393 shape)   */
     int loss_pm;   /* RFC 7680 loss over a 256-packet sequence window, per mille; -1 = not yet     */
+    /* mp:L1e -- the HOST's per-peer relay classification (the lobby ping cell's R/D letter). A client
+     * has only one connection (to the host) and already knows whether ITS OWN dial is relayed
+     * (net_discovery.cpp's mp_dial_is_relayed, exposed as MH_Seam_ClientDialIsRelayed) -- this field
+     * is what a HOST needs instead, since a host's clients can be a MIX of direct and relayed
+     * (mp:R2b's multi-room work makes that reachable) and "my own tunnel is up" would misreport every
+     * direct peer as relayed the day it happens. 1 = the last accepted DATA frame from this peer
+     * arrived via the relay leg; 0 = it arrived direct; -1 = UNKNOWN.
+     *
+     * mp:L1f WIRED THE HOST SIDE (mh_net_udp.dll). L1e left it at -1 for want of a relay-handle <->
+     * player_id table -- which still does not exist and turned out not to be needed: the two layers
+     * already share a key, the per-remote LOOPBACK ADDRESS the relay mints so the endpoint can tell
+     * two clients apart (udp_relay.h reason 2). udp_endpoint.cpp's get_stats() now asks
+     * udp_relay.cpp's `path_class` about the conn's own address and copies back the 1/0/-1 it
+     * answers; nothing else in the transport reads this field. A tunnel that is not running answers
+     * 0 -- with no relay leg there is no path a datagram could have been relayed over -- so a plain
+     * direct match says DIRECT rather than saying nothing.
+     *
+     * -1 is still a real answer, not a placeholder: a module built before this field existed, a
+     * transport with no classifier wired (net_selftest), and a running tunnel that does not
+     * recognise a conn's address or has not carried a DATA frame for it yet, all report it. The
+     * lobby ping cell renders the bare number with no letter on -1 -- the same "no answer is better
+     * than a wrong one" contract lat_supported already uses above.
+     *
+     * ABI-APPEND ONLY, same discipline as MH_NetConfig's relay_addr/relay_room (mp:R7a): the last
+     * member on purpose, so a reader compiled before this field addresses everything ABOVE at
+     * unchanged offsets. MH_NET_MODULE_ABI is bumped in the same change regardless (mh_net_module.h),
+     * so a mismatched host/module pair is refused at bind rather than left to depend on that
+     * append-safety alone. */
+    int relayed;
 } MH_NetPeerLatency;
 
 /* Transport diagnostics snapshot (for the lockstep timing log). tx = the local game's outbound game
@@ -164,6 +193,24 @@ typedef struct MH_NetStats {
     MH_NetPeerLatency lat[MH_NET_MAX_PEERS];
 } MH_NetStats;
 void MH_Net_GetStats(MH_NetStats *out);
+
+/* ---- per-peer horizon push (mp:SES6) --------------------------------------------------------------
+ * The peer's ADVERTISED LOCKSTEP HORIZON is a game-level quantity -- net_lockstep.cpp reads it off the
+ * retail PEER_HORIZON array (mh/seams/net_lockstep.cpp), the transport never sees it on the wire as
+ * anything but opaque DATA bytes -- so unlike MH_NetPeerLatency above this is a PUSH, not something
+ * MH_Net_GetStats can fill in from the transport's own state. mh.dll calls it once per lockstep tick,
+ * reusing the SAME per-slot horizon value lateness_tick already computes for the adaptive controller
+ * (no new game-state read), so the transport's own periodic delivery-counters log line can print each
+ * peer's freshest advertised horizon beside the counters that line already carries.
+ *
+ * `player_id` is the caller's STRATEGIC PLAYER SLOT (net_lockstep.cpp's own convention: PEER_HORIZON[i]
+ * for every i except MH_Net_LocalPlayerId()'s own) -- this is NOT necessarily the transport's own
+ * player_id space. A client's single conn to the host carries player_id -1 there (the declared-id
+ * convention above), so a transport with exactly one conn applies the value to that conn regardless of
+ * `player_id`, the same asymmetry net_lockstep.cpp already documents for why it does not use
+ * MH_Net_ActivePeerIds for this. Best-effort; a no-op if the transport is not started, and a no-op on
+ * a transport with no per-peer counters line to plumb it into (the TCP module, mh_net.dll). */
+void MH_Net_SetPeerHorizon(int player_id, int horizon_ms);
 
 /* 1 if the transport has been started (Init/InitEx succeeded), else 0. */
 int MH_Net_IsStarted(void);

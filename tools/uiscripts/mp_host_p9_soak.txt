@@ -1,0 +1,63 @@
+# mp:P9 -- THE RESYNC-STORM REPRODUCTION, host side (resync_storm_repro in tools/test_ui.py).
+#
+# match_launch's host walk into a live match, one in-game capture at the same SIM gate as
+# mp_host_start.txt (gameclock 6000 -- the frame is sim-deterministic, so it must read identical to
+# match_launch's m3_launched whatever the link does), and then the match is simply LEFT RUNNING for
+# 5 minutes of wall clock while the DLL's `[resync]` watch (net_lockstep.cpp
+# resync_trigger_watch_tick) writes one `barrier #k BEGIN` / `END after M ms` pair per mode-8
+# barrier (watch v2, on RESYNC_IN_PROGRESS's edges) plus the leader's RESYNC_TRIGGER_COUNT /
+# threshold / countdown every 10 s. The row runs in the players' exact pre-fix state --
+# configuration (1) (libmh.dll omitted), `[net] resync_trigger_gate=0`, `resync_count_init=0`,
+# `defang_overlay=0` (the ship; the rig's `--defang` default 1 is what hid the storm), host 100 /
+# joiner 60 ms lookahead, a 100 ms one-way net_shim (the field's ~210 ms SRTT) -- and
+# tools/check_resync_storm.py --expect storm reads the lines afterwards. The same two scripts serve
+# resync_gate_proof and resync_countinit_proof with the knobs flipped one at a time.
+#
+# WHY THE WAIT IS `present Continue game` AND NOT A GAMECLOCK. The whole point of the arm is that
+# the sim may CRAWL (the field ran 9-21 % realtime), so a gameclock target is unbounded in wall
+# time: at 0.15x a 15-minute gameclock is 100 minutes. The grammar has no wall-clock wait by design
+# (the grammar's rule: state predicates only), and it must not grow one for a capture -- but a SOAK's end can ride the one
+# wall-clock the rig already owns: the shim timeline (tools/uiscripts/shim/p9_soak_5min.txt)
+# blackholes the link at t+340 s, this peer's link watchdog retires the client, and the retail
+# below-quorum outcome dialog ("you are the last player !", button `Continue game` -- G270: the same
+# dialog a graceful quit shows) is the observable that ends the script. The row's `timeout` (480 s)
+# is the honest cap on the whole thing. Only the HOST waits for the dialog: the leader's barrier
+# always ends on its own 2 s timer, so its time_tick (and the watchdogs) come back after the
+# blackhole; the client's does not -- see mp_client_p9_soak.txt.
+#
+# Pair with mp_client_p9_soak.txt.
+
+# reach the host lobby (create a game named "test" on the pre-selected map)
+settled value:110
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+settled Create
+clickl Create
+present Game name
+settled Ok
+clickl Ok
+present Available maps
+settled Ok
+clickl Ok
+
+# host lobby: BLOCK until the match is startable, then click Start (mp_host_start.txt's gates)
+present Network players
+peers 1
+awaitsignal lobby
+enabled Start
+settled Start
+clickl Start
+
+# in the match: the one capture, at match_launch's own gate
+absent Network players
+gameclock 6000
+capture m3_launched
+log HOST is in the configuration-(1) match; soaking until the shim timeline kills the link
+
+# ...and now NOTHING until the timeline's blackhole retires the client and the dialog appears.
+present Continue game
+settled Continue game
+log HOST reached the below-quorum dialog after the 5-minute soak
+end

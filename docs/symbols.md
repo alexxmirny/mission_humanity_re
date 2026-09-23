@@ -957,7 +957,7 @@ The `llm_` / `_G_LLM_` marker convention these names follow is in
 | `0x0048117c` | `llm_strat_unit_state_deploy_approach` | `void llm_strat_unit_state_deploy_approach(void)` |  |
 | `0x004813f1` | `llm_strat_unit_state_takeoff_landing` | `void llm_strat_unit_state_takeoff_landing(void)` |  |
 | `0x00481960` | `llm_strat_unit_state_climb_vertical` | `void llm_strat_unit_state_climb_vertical(void)` |  |
-| `0x00481a6b` | `llm_strat_unit_state_deploy_to_building` | `void llm_strat_unit_state_deploy_to_building(void)` |  |
+| `0x00481a6b` | `llm_strat_unit_state_deploy_to_building` | `void llm_strat_unit_state_deploy_to_building(void)` | rev:verified |
 | `0x00481f7c` | `llm_strat_unit_state_descend_cruise` | `void llm_strat_unit_state_descend_cruise(void)` |  |
 | `0x0048214d` | `llm_strat_unit_state_ascend_to_orbit` | `void llm_strat_unit_state_ascend_to_orbit(void)` |  |
 | `0x004822dc` | `llm_strat_unit_state_corpse_fow_decay` | `void llm_strat_unit_state_corpse_fow_decay(void)` |  |
@@ -1277,7 +1277,7 @@ The `llm_` / `_G_LLM_` marker convention these names follow is in
 | `0x0049d7ff` | `llm_net_send_buf_flush` | `int llm_net_send_buf_flush(void)` | conf:high |
 | `0x0049d84c` | `llm_net_send_lockstep_keepalive` | `void llm_net_send_lockstep_keepalive(int side_id)` | conf:med |
 | `0x0049d8ef` | `llm_net_lockstep_broadcast_resync_state` | `void llm_net_lockstep_broadcast_resync_state(double exec_time)` | conf:low |
-| `0x0049d9d6` | `llm_net_lockstep_force_resync` | `void llm_net_lockstep_force_resync(void)` | conf:med |
+| `0x0049d9d6` | `llm_net_lockstep_force_resync` | `void llm_net_lockstep_force_resync(void)` | conf:high conf:med |
 | `0x0049da72` | `llm_net_send_lockstep_step_size` | `void llm_net_send_lockstep_step_size(double step_size)` | conf:high todo:enum |
 | `0x0049dafe` | `llm_net_send_lockstep_rate_scale` | `void llm_net_send_lockstep_rate_scale(double scale, int side_id)` | conf:med todo:enum todo:globals |
 | `0x0049dbb4` | `llm_net_send_lockstep_resync_resume` | `void llm_net_send_lockstep_resync_resume(double unused_arg)` | conf:high todo:enum |
@@ -1296,7 +1296,7 @@ The `llm_` / `_G_LLM_` marker convention these names follow is in
 | `0x0049e462` | `llm_net_player_slot_from_id` | `int llm_net_player_slot_from_id(int player_id)` | conf:med todo:globals |
 | `0x0049e4c3` | `llm_net_session_globals_reset` | `void llm_net_session_globals_reset(void)` | conf:high |
 | `0x0049e5fd` | `llm_net_lockstep_status_debug_stub` | `void llm_net_lockstep_status_debug_stub(int status_arg)` |  |
-| `0x0049e653` | `llm_net_lockstep_is_local_leader_peer` | `int llm_net_lockstep_is_local_leader_peer(int exclude_side_id)` | conf:med |
+| `0x0049e653` | `llm_net_lockstep_is_local_leader_peer` | `int llm_net_lockstep_is_local_leader_peer(int exclude_side_id)` | conf:high conf:med |
 | `0x0049e6f5` | `llm_net_lockstep_sync_busywait` | `int llm_net_lockstep_sync_busywait(void)` | conf:high |
 | `0x0049e759` | `llm_game_player_set_human` | `void llm_game_player_set_human(byte player)` |  |
 | `0x0049e79c` | `llm_game_player_set_ai` | `void llm_game_player_set_ai(byte player)` |  |
@@ -1371,7 +1371,7 @@ The `llm_` / `_G_LLM_` marker convention these names follow is in
 | `0x004a4edf` | `llm_map_seek_region_table_loose` | `void llm_map_seek_region_table_loose(void)` | conf:med |
 | `0x004a4f48` | `llm_map_load_landing_spots_loose` | `undefined llm_map_load_landing_spots_loose(void)` |  |
 | `0x004a4ff4` | `llm_strat_render_view_metrics_refresh` | `void llm_strat_render_view_metrics_refresh(void)` |  |
-| `0x004a5167` | `llm_strat_render_ground_tile` | `void llm_strat_render_ground_tile(void)` | todo:globals |
+| `0x004a5167` | `llm_strat_render_ground_tile` | `void llm_strat_render_ground_tile(void)` | rev:verified todo:globals |
 | `0x004a5778` | `llm_gfx_draw_dashed_rect_outline_colored` | `void llm_gfx_draw_dashed_rect_outline_colored(void)` | conf:med todo:globals todo:struct |
 | `0x004a5a6b` | `llm_map_cam_mark_viewport_dirty` | `void llm_map_cam_mark_viewport_dirty(void)` |  |
 | `0x004a5ae8` | `llm_map_view_tilevis_fill_bottom_row` | `void llm_map_view_tilevis_fill_bottom_row(void)` | conf:med |
@@ -1565,13 +1565,13 @@ The `llm_` / `_G_LLM_` marker convention these names follow is in
 | `0x004bda06` | `llm_mp_local_browser_close_and_refresh_cb` | `undefined llm_mp_local_browser_close_and_refresh_cb(void)` | conf:high todo:globals |
 | `0x004bda50` | `llm_lobby_map_file_close` | `undefined llm_lobby_map_file_close(void)` | todo:globals |
 | `0x004bda92` | `llm_ui_dlg_savegame_io_error` | `undefined llm_ui_dlg_savegame_io_error(void)` | todo:globals |
-| `0x004bdb11` | `llm_mp_session_browser_rescan` | `undefined llm_mp_session_browser_rescan(void)` | conf:med |
+| `0x004bdb11` | `llm_mp_session_browser_rescan` | `undefined llm_mp_session_browser_rescan(void)` |  |
 | `0x004bdd7d` | `llm_lobby_map_send_tick` | `undefined llm_lobby_map_send_tick(void)` | todo:globals |
 | `0x004bdf41` | `llm_lobby_map_transfer_write_chunk` | `undefined4 llm_lobby_map_transfer_write_chunk(undefined4 param_1)` | todo:globals |
 | `0x004be081` | `llm_lobby_client_request_map` | `undefined llm_lobby_client_request_map(void)` |  |
 | `0x004be0bc` | `llm_cfg_map_verify_version` | `int llm_cfg_map_verify_version(void)` | conf:high todo:globals todo:struct |
 | `0x004be21d` | `llm_lobby_join_handler` | `undefined4 llm_lobby_join_handler(undefined4 param_1)` | conf:med |
-| `0x004be303` | `llm_lobby_join_head` | `undefined llm_lobby_join_head(void)` | conf:med |
+| `0x004be303` | `llm_lobby_join_head` | `undefined llm_lobby_join_head(void)` | rev:verified |
 | `0x004be468` | `llm_lobby_kick_player_confirm_cb` | `undefined llm_lobby_kick_player_confirm_cb(void)` | todo:globals |
 | `0x004be552` | `llm_ui_dlg_lobby_kick_confirm_trigger` | `undefined llm_ui_dlg_lobby_kick_confirm_trigger(void)` | todo:globals |
 | `0x004be5c0` | `llm_lobby_host_new_game_start` | `undefined llm_lobby_host_new_game_start(void)` | conf:high |
@@ -1687,7 +1687,7 @@ The `llm_` / `_G_LLM_` marker convention these names follow is in
 | `0x004c6bc5` | `llm_ui_outcome_dlg_note_icon_action_cb` | `undefined llm_ui_outcome_dlg_note_icon_action_cb(void)` | conf:high |
 | `0x004c6c4f` | `llm_ui_outcome_dialog` | `int llm_ui_outcome_dialog(byte outcome)` |  |
 | `0x004c6fef` | `llm_ui_dlg_building_info_close_cb` | `undefined llm_ui_dlg_building_info_close_cb(void)` | todo:globals |
-| `0x004c703b` | `llm_ui_building_finish_order_cb` | `undefined llm_ui_building_finish_order_cb(void)` | todo:globals |
+| `0x004c703b` | `llm_ui_building_cancel_task_yes_cb` | `undefined llm_ui_building_cancel_task_yes_cb(void)` | rev:verified todo:globals |
 | `0x004c707a` | `llm_ui_building_restart_construction_cb` | `undefined llm_ui_building_restart_construction_cb(void)` | todo:globals |
 | `0x004c70b9` | `llm_ui_dlg_building_construction_status` | `int llm_ui_dlg_building_construction_status(void)` |  |
 | `0x004c75d9` | `llm_ui_dlg_building_construction_status_open` | `void llm_ui_dlg_building_construction_status_open(int building_index)` | conf:high todo:globals |
@@ -3208,6 +3208,7 @@ The `llm_` / `_G_LLM_` marker convention these names follow is in
 | `0x00644873` | `_G_LLM_LOBBY_MAP_SUMMARY_LINE` | `wchar_t[256]` |
 | `0x00644a73` | `_G_LLM_LOBBY_MAP_STATUS_LINE` | `wchar_t[256]` |
 | `0x00644f8f` | `_G_LLM_UI_OUTCOME_DLG_PLAYER_SIDE_SNAPSHOT` | `int` |
+| `0x00644f93` | `_G_LLM_UI_MP_BROWSER_LIST_STATE` | `llm_ui_list_state` |
 | `0x00644fdb` | `_G_LLM_UI_MAPPICKER_LIST_ITEMS` | `void * *` |
 | `0x0064504b` | `_G_LLM_UI_OPT_SLIDER_MASTER_VOL_RANGE` | `int` |
 | `0x0064504f` | `_G_LLM_UI_OPT_SLIDER_MASTER_VOL_VALUE_PTR` | `void *` |
@@ -3403,6 +3404,7 @@ The `llm_` / `_G_LLM_` marker convention these names follow is in
 | `0x0065697e` | `_G_LLM_UI_DLG_MSG_TEXT_BUF` | `undefined` |
 | `0x006569fe` | `_G_LLM_UI_DLG_SHUTTLE_OTHER_PLANET_TABLE` | `llm_ui_dlg_table` |
 | `0x00656b36` | `_G_LLM_UI_BLDG_STATUS_MSG_BUF` | `wchar_t[256]` |
+| `0x00656d6a` | `_G_LLM_UI_DLG_TABLE_FORCE_RETURN_TO_MAIN` | `llm_ui_dlg_table` |
 | `0x00656d9e` | `_G_LLM_UI_NETSETUP_FLD_IP` | `pointer` |
 | `0x00656db6` | `_G_LLM_UI_NETSETUP_FLD_NAME` | `pointer` |
 | `0x00656dce` | `_G_LLM_UI_NETSETUP_FLD_GAME` | `pointer` |
@@ -3578,14 +3580,14 @@ The `llm_` / `_G_LLM_` marker convention these names follow is in
 | `0x0071009c` | `_G_LLM_GFX_DDRAW_AUX` | `?` |
 | `0x00712120` | `_G_LLM_TACT_VIEW_TILE_SURFACE_ROW_PTRS` | `undefined` |
 | `0x00712920` | `_G_LLM_TACT_VIEW_TILE_FB_ROW_PTRS` | `undefined` |
-| `0x00713920` | `_G_LLM_TILE_DRAWN_MAP` | `byte[300]` |
+| `0x00713920` | `_G_LLM_TILE_DRAWN_MAP` | `byte[1018]` |
 | `0x00713d1a` | `_G_LLM_TILE_VIS_MAP_M6` | `byte` |
 | `0x00713d1b` | `_G_LLM_TILE_VIS_MAP_M5` | `byte` |
 | `0x00713d1c` | `_G_LLM_TILE_VIS_MAP_M4` | `byte` |
 | `0x00713d1d` | `_G_LLM_TILE_VIS_MAP_M3` | `byte` |
 | `0x00713d1e` | `_G_LLM_TILE_VIS_MAP_M2` | `byte` |
 | `0x00713d1f` | `_G_LLM_TILE_VIS_MAP_M1` | `byte` |
-| `0x00713d20` | `_G_LLM_TILE_VIS_MAP` | `byte[300]` |
+| `0x00713d20` | `_G_LLM_TILE_VIS_MAP` | `byte[1024]` |
 | `0x00714120` | `_G_LLM_SPRITE_META` | `gfx_sprite_meta[22000]` |
 | `0x00824fa0` | `_G_LLM_STRAT_MINIMAP_VIEWPORT_BOX_W` | `int` |
 | `0x00824fa4` | `_G_LLM_GFX_BAR_SPRITE_FILL_COLOR` | `ushort` |
@@ -3846,6 +3848,7 @@ The `llm_` / `_G_LLM_` marker convention these names follow is in
 | `0x00e60760` | `_G_LLM_MP_CONNECT_IP_BUF` | `undefined` |
 | `0x00e61ca0` | `_G_LLM_UI_ERROR_DIALOG_ARG_TEXT_A` | `undefined` |
 | `0x00e620a0` | `_G_LLM_UI_ERROR_DIALOG_ARG_TEXT_B` | `undefined` |
+| `0x00e622a0` | `_G_LLM_LOBBY_BROWSER_ROWS` | `llm_lobby_browser_row[1024]` |
 | `0x00e642a0` | `_G_LLM_AVI_OPEN_STATUS` | `int` |
 | `0x00e642c4` | `_G_LLM_UI_OUTCOME_DLG_CODE` | `undefined1` |
 | `0x00e642c5` | `_G_LLM_UI_DIPLO_TITLE_STR` | `undefined` |

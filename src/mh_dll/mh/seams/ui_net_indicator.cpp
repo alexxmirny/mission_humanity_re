@@ -19,6 +19,18 @@
 //      calm-looking ping and feel terrible, and a blended single number would hide precisely the
 //      half that matters. So the bar is a separate element with separate inputs.
 //
+//   2b. R / D -- whether this peer's traffic is going through the RELAY or straight to the peer
+//      (mp:L1g). Added because of 3 below: CMD is the local lookahead, and a relayed path is
+//      exactly the case where a large CMD is legitimate rather than a bug. Without the letter the
+//      player reads a high command latency with no cause attached to it -- and "am I being
+//      relayed" is not otherwise answerable from inside the game. It is drawn ONLY when the
+//      transport actually knows (MH_NetPeerLatency::relayed 1 or 0); the honest -1 draws NOTHING
+//      rather than guessing a letter, so a transport that cannot classify looks exactly as it did
+//      before this item. The letter sits BEFORE the digits, which is a test affordance for the
+//      same reason the digits go last (see the loop): a committed capture masks from the digits to
+//      the right edge, so a letter placed after them would be inside the mask and the suite would
+//      be blind to the very feature the row added -- the mp:L1e lobby cell hit that trap first.
+//
 //   3. CMD -- command latency, in milliseconds: the wall time from the click to the order taking
 //      effect in the sim. This is the number the player actually feels, and it is usually DOMINATED
 //      BY THE LOOKAHEAD rather than by the ping, which is why a ping-only readout cannot answer
@@ -53,15 +65,29 @@
 //
 // ---- HOW IT DRAWS -------------------------------------------------------------------------------
 //
-// Through the GAME's own font path -- llm_gfx_font_select(slot) then llm_gfx_draw_text_blend_clipped
-// -- exactly as the `[fonts] probe_text` render probe does (gfx_font_guard.cpp, which is the working
-// precedent this reuses rather than a second mechanism). Two consequences worth stating:
+// Through the GAME's own font path -- llm_gfx_font_select(slot) then llm_gfx_draw_text_rgb -- exactly
+// as the `[fonts] probe_text` render probe does (gfx_font_guard.cpp, which is the working precedent
+// this reuses rather than a second mechanism). Two consequences worth stating:
 //
 //   * it looks like the game, because it IS the game's renderer with the game's font, so a player
 //     does not see a developer overlay bolted on; and
 //   * it inherits the font system's readiness rule: selecting a slot whose data pointer is still
 //     null dereferences it for the line height, so the draw waits on _G_LLM_GFX_FONT_DATA_PTRS[slot]
 //     being non-null rather than on a game mode. In a live match it always is.
+//
+// mp:GX1 (2026-09-22): this used to call llm_gfx_draw_text_blend_clipped, the ONE game text wrapper
+// that SKIPS the ground-layer damage-map stamp (its own Ghidra plate says so) -- every OTHER text
+// primitive, including its sibling llm_gfx_draw_text_rgb, does layout->mark->draw, so a changing
+// number here (ping/cmd/stall digits, every sample) left the previous digits' glyphs stuck on the
+// map forever once the tile they sat on stopped being marked dirty. Switched to llm_gfx_draw_text_rgb
+// (mh_calls.gen.h; it takes r/g/b, so g_color -- stored as RGB565 to match this file's own
+// [hud] net_indicator_color ini format -- is expanded per draw). That fixes the CURRENT line's own
+// glyphs, which is what the game's internal mark covers -- but not a SHORTER line than last frame's
+// (the trailing tail of a wider previous number is outside this frame's own mark). Rather than track
+// per-line widths, MH_NetIndicator_OnPresent additionally stamps a FIXED worst-case rect (g_x, g_y,
+// reserved_width(), NETIND_MAX_LINES line heights) through mh::gfx::mark_ground_tiles_dirty every
+// frame it draws at all -- reserved_width() is already the geometry anchor's own worst-case measure
+// (see its comment), so this is a superset of anything ever drawn here, not a new assumption.
 //
 // The alternative carriers were considered and rejected for reasons that are structural rather than
 // aesthetic. The floating-message queue (llm_ui_print_floating_msg_*) is an EVENT channel -- entries
@@ -95,8 +121,10 @@
 #include "seams/ui_net_indicator.h"
 #include "include/mh_net_export.h" // MH_Net_GetStats / IsStarted / PeerCount / LocalPlayerId
 #include "addr/mh_addrs.gen.h"     // generated EN VAs
-#include "addr/mh_calls.gen.h"     // mh::call::llm_gfx_font_select / llm_gfx_draw_text_blend_clipped
+#include "addr/mh_calls.gen.h"     // mh::call::llm_gfx_font_select / llm_gfx_draw_text_rgb
+#include "config/ini_read.h"       // TL-HARN4: read_ini_string -- strips a trailing `;comment`
 #include "state/region_runtime.h"  // SB-HOSTFREE: a movable region is read where it IS
+#include "include/mh_tile_dirty.h" // mp:GX1: mark_ground_tiles_dirty -- shared with gfx_overlay.cpp
 #include "en_guard.h"              // EN-only build gate
 
 #pragma comment(lib, "user32.lib") // wsprintfA
@@ -165,13 +193,35 @@ int  g_reserved_w     = 0;
 
 int reserved_width() {
     if (!g_reserved_ready) {
-        wchar_t   w[32];
-        const int n  = MultiByteToWideChar(CP_ACP, 0, "P2 PING [####] 9999 ms", -1, w, 32);
+        wchar_t w[32];
+        // mp:L1g widened this by "R " -- the worst case now carries a relay letter. The anchor is
+        // `view_w - MARGIN - reserved_width()`, so this MOVES THE WHOLE BLOCK LEFT by one letter and
+        // one space, which re-baselines every committed capture that shows the indicator. That is
+        // the honest cost of adding a field: the alternative (measure the letter only when one is
+        // drawn) would make the column jitter between relayed and direct peers, and this column is
+        // fixed per resolution on purpose.
+        const int n  = MultiByteToWideChar(CP_ACP, 0, "P2 PING [####] R 9999 ms", -1, w, 32);
         g_reserved_w = n > 0 ? (int)mh::call::llm_gfx_font_measure_text((uint16_t *)w) : 0;
         if (g_reserved_w <= 0) g_reserved_w = 160; // defensive: never anchor off a bogus measurement
         g_reserved_ready = true;
     }
     return g_reserved_w;
+}
+
+// ---- mp:L1g: the relay-vs-direct letter -----------------------------------------------------------
+//
+// `MH_NetPeerLatency::relayed` is 1 (this peer's last accepted data frame came over the relay leg),
+// 0 (direct), or -1 (the transport cannot say). The tri-state is the point: -1 is a real answer that
+// the TCP module and any pre-mp:L1e module give, and painting it as "D" would tell the player their
+// relayed game is direct. So -1 renders the empty string and the line is byte-identical to what it
+// was before this item.
+inline const char *relay_letter(const MH_NetStats &st, int i) {
+    if (!st.lat_supported || i >= st.lat_count) return "";
+    switch (st.lat[i].relayed) {
+        case 1: return "R ";
+        case 0: return "D ";
+        default: return "";
+    }
 }
 
 // ---- L1c: naming a peer whose TRANSPORT id the declared-id convention never learnt ----------------
@@ -232,6 +282,19 @@ bool     g_log_on      = true; // [hud] net_indicator_log
 int      g_key_vk      = 'N';  // [hud] net_indicator_key
 bool     g_key_ctrl = true, g_key_alt = true, g_key_shift = false;
 bool     g_key_prev = false;
+
+// ---- mp:GX1: the ground-tile damage-map stamp -----------------------------------------------------
+//
+// Up to 3 PING lines + 1 CMD line + 1 WAITING FOR line -- the true worst case this file ever draws
+// in one frame (see the loop over `npeer`, capped at 3, below). A FIXED superset, not the count
+// actually drawn THIS frame: `npeer`/`show_stall` both vary frame to frame (a stall clearing drops
+// the last line), and stamping only this frame's actual line count would leave a shrinking frame's
+// vacated line un-marked -- the exact residue this item exists to kill. Height, not width: width's
+// superset is reserved_width() itself (see its own comment -- it is ALREADY the worst-case measure
+// the geometry anchor is placed against, so nothing here can draw past g_x + reserved_width()).
+constexpr int NETIND_MAX_LINES = 5;
+bool          g_prev_stamped   = false; // a rect below is valid and awaiting a final release stamp
+int           g_prev_x = 0, g_prev_y = 0, g_prev_w = 0, g_prev_h = 0;
 
 // ---- counters + rate limits ---------------------------------------------------------------------
 long g_frames     = 0;
@@ -302,11 +365,20 @@ void peer_name(int idx, char *out, int cap) {
     wsprintfA(out, "PLAYER %d", idx < 0 ? 0 : idx);
 }
 
+// mp:GX1: g_color is RGB565 (this file's own ini convention, "ffff" not "ffffff" -- see Install);
+// llm_gfx_draw_text_rgb wants r/g/b bytes, so expand each channel by bit replication (the usual
+// lossless-looking 565->888 widen: top bits repeated into the newly-opened low bits).
 void draw_line(int y, const char *ascii) {
     wchar_t   w[96];
     const int n = MultiByteToWideChar(CP_ACP, 0, ascii, -1, w, 96);
     if (n <= 0) return;
-    mh::call::llm_gfx_draw_text_blend_clipped(g_x, y, (uint16_t *)w, (int16_t)g_color);
+    const unsigned r5 = (g_color >> 11) & 0x1fu;
+    const unsigned g6 = (g_color >> 5) & 0x3fu;
+    const unsigned b5 = g_color & 0x1fu;
+    const uint8_t  r  = (uint8_t)((r5 << 3) | (r5 >> 2));
+    const uint8_t  g  = (uint8_t)((g6 << 2) | (g6 >> 4));
+    const uint8_t  b  = (uint8_t)((b5 << 3) | (b5 >> 2));
+    mh::call::llm_gfx_draw_text_rgb(g_x, y, (uint16_t *)w, r, g, b);
 }
 
 // ---- ini parsing ---------------------------------------------------------------------------------
@@ -420,7 +492,7 @@ extern "C" int MH_NetIndicator_Install(void) {
     // (Keep `[hud] net_indicator_xy` as an explicit override). Absent, the position is computed by
     // geometry every drawn frame instead (see reserved_width()/ADDR_VIEW_W above); present, it wins
     // verbatim, exactly as before.
-    GetPrivateProfileStringA("hud", "net_indicator_xy", "", buf, sizeof(buf), ini);
+    mh::config::read_ini_string("hud", "net_indicator_xy", "", buf, sizeof(buf), ini); // TL-HARN4
     g_xy_override = buf[0] != 0;
     if (g_xy_override) {
         char *comma = buf;
@@ -433,10 +505,10 @@ extern "C" int MH_NetIndicator_Install(void) {
     }
     g_font = GetPrivateProfileIntA("hud", "net_indicator_font", 0, ini);
     if (g_font < 0 || g_font > 6) g_font = 0;
-    GetPrivateProfileStringA("hud", "net_indicator_color", "ffff", buf, sizeof(buf), ini);
+    mh::config::read_ini_string("hud", "net_indicator_color", "ffff", buf, sizeof(buf), ini); // TL-HARN4
     g_color  = (uint16_t)parse_hex(buf);
     g_log_on = GetPrivateProfileIntA("hud", "net_indicator_log", 1, ini) != 0;
-    GetPrivateProfileStringA("hud", "net_indicator_key", "Ctrl+Alt+N", buf, sizeof(buf), ini);
+    mh::config::read_ini_string("hud", "net_indicator_key", "Ctrl+Alt+N", buf, sizeof(buf), ini); // TL-HARN4
     parse_key(buf);
     g_visible          = true;
     g_next_sample_tick = GetTickCount();
@@ -463,6 +535,13 @@ extern "C" void MH_NetIndicator_OnPresent(void) {
     if (!in_live_match()) {
         g_stall_peer_said  = -1;
         g_stall_show_until = 0; // a match that ENDED is not a match that is waiting for anyone
+        // mp:GX1: the match ending is the last chance this seam gets to draw anything at all --
+        // release whatever tiles the last drawn frame covered so the ground pass (if this mode has
+        // one) repaints them instead of showing our stale glyphs into a screen we no longer touch.
+        if (g_prev_stamped) {
+            mh::gfx::mark_ground_tiles_dirty(g_prev_x, g_prev_y, g_prev_w, g_prev_h);
+            g_prev_stamped = false;
+        }
         return;
     }
     if (hotkey_edge()) g_visible = !g_visible;
@@ -528,6 +607,19 @@ extern "C" void MH_NetIndicator_OnPresent(void) {
             if (g_x < GEOM_MARGIN) g_x = GEOM_MARGIN; // defensive: a viewport too narrow to reserve for
             g_y = GEOM_MARGIN;
         }
+        // mp:GX1: stamp the FIXED worst-case rect (see NETIND_MAX_LINES's comment) BEFORE the lines
+        // below draw into it, and record it as the rect a future hide/end must release. Unconditional
+        // every drawn frame, not just on a rect CHANGE -- npeer/show_stall vary frame to frame and a
+        // narrower rect this frame must still cover last frame's wider one, which is exactly what a
+        // fixed superset already does without tracking a delta.
+        mh::gfx::mark_ground_tiles_dirty(g_x, g_y, reserved_width(), NETIND_MAX_LINES * line_h);
+        g_prev_x = g_x, g_prev_y = g_y, g_prev_w = reserved_width(), g_prev_h = NETIND_MAX_LINES * line_h;
+        g_prev_stamped = true;
+    } else if (g_prev_stamped) {
+        // Hidden (hotkey) or the font is not yet ready: nothing will draw this frame, so this is the
+        // last chance to release what the previous drawn frame covered.
+        mh::gfx::mark_ground_tiles_dirty(g_prev_x, g_prev_y, g_prev_w, g_prev_h);
+        g_prev_stamped = false;
     }
 
     const bool sample = g_log_on && (long)(GetTickCount() - g_next_sample_tick) >= 0;
@@ -556,9 +648,11 @@ extern "C" void MH_NetIndicator_OnPresent(void) {
         if (srtt_ms < 0) lstrcpyA(msrtt, "n/a");
         else wsprintfA(msrtt, "%d ms", srtt_ms > 9999 ? 9999 : srtt_ms);
 
+        const char *rel = relay_letter(st, i);
+
         char line[96];
-        if (npeer > 1) wsprintfA(line, "P%d PING %s %s", i, bar, msrtt);
-        else wsprintfA(line, "PING %s %s", bar, msrtt);
+        if (npeer > 1) wsprintfA(line, "P%d PING %s %s%s", i, bar, rel, msrtt);
+        else wsprintfA(line, "PING %s %s%s", bar, rel, msrtt);
         if (draw) draw_line(y, line);
         y += line_h;
 
@@ -572,9 +666,15 @@ extern "C" void MH_NetIndicator_OnPresent(void) {
             if (pid < 0 && npeer == 1) pid = live_peer_slot(0);
             char nm[40];
             peer_name(pid, nm, sizeof(nm));
+            // mp:L1g: `relayed` is the RAW tri-state, not the rendered letter -- a checker must be
+            // able to tell "the transport said direct" from "the transport could not say", which the
+            // drawn line deliberately collapses (both draw no letter in the -1 case).
+            const int relayed =
+                (st.lat_supported && i < st.lat_count) ? st.lat[i].relayed : -1;
             ind_log("; [netind] peer%d name=%s srtt_ms=%d ipdv_ms=%d loss_pm=%d bar=%d cmd_ms=%d "
-                    "look_ms=%d step_ms=%d",
-                    i, nm, srtt_ms, ipdv_ms, loss_pm, level, (int)cmd_ms, (int)look_ms, (int)step_ms);
+                    "look_ms=%d step_ms=%d relayed=%d",
+                    i, nm, srtt_ms, ipdv_ms, loss_pm, level, (int)cmd_ms, (int)look_ms, (int)step_ms,
+                    relayed);
         }
     }
 

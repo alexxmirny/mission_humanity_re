@@ -14,8 +14,8 @@
   "measured": 783,
   "unmeasured": 62,
   "inputs": {
-   "en_functions": "f0290d81b0836a09",
-   "state_regions": "5c5f17d61c7e8095",
+   "en_functions": "11424f8c4c2c4f75",
+   "state_regions": "6e607bd59392827a",
    "reimpl_done": "4beddffdb545eb3a"
   },
   "inputs_dirty_at_refresh": []
@@ -18265,7 +18265,7 @@
     "llm_unit_ctrl_group_flash_observer"
    ],
    "external_addr_takers": [],
-   "external_bytes": 63868,
+   "external_bytes": 63805,
    "subsystems": {
     "UI/menus": 50,
     "Strategic sim/economy": 36,
@@ -19719,7 +19719,7 @@
   "BROWSER_UI_ROWS": {
    "name": "browser_ui_rows",
    "base": 15082144,
-   "size": 0,
+   "size": 8192,
    "measured": false,
    "ours_writers": [],
    "ours_readers": [],

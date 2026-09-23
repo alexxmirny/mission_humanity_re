@@ -1483,6 +1483,13 @@ extern "C" void MH_Net_GetStats(MH_NetStats *out) {
     out->lat_count     = 0;
 }
 
+// mp:SES6 -- no-op: this module has no per-peer counters line to plumb a pushed horizon into (see
+// mh_net_export.h's note on the row).
+extern "C" void MH_Net_SetPeerHorizon(int player_id, int horizon_ms) {
+    (void)player_id;
+    (void)horizon_ms;
+}
+
 extern "C" int MH_Net_Recv(int *out_sender, void *buf, int *inout_len) {
     if (!g_started || !buf || !inout_len) return 0;
     int cap = *inout_len;

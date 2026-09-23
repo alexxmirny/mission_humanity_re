@@ -27,13 +27,14 @@ use std::time::Duration;
 
 use crate::config::Config;
 use crate::crash::{self, Marker};
+use crate::elevate;
 use crate::install;
 use crate::launch::{self, Finished};
 use crate::log;
 use crate::paths::{self, Layout};
 use crate::relay::{self, Relay};
 use crate::report;
-use crate::update::{self, Applied, Manifest, Readiness, SelfUpdate};
+use crate::update::{self, Applied, Manifest, Offer, Readiness, SelfUpdate};
 use crate::upload::{self, Outbox, Prepared};
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -68,12 +69,21 @@ impl View {
 /// What an update run is being asked to do (dist LA2).
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum UpdateAction {
-    /// Fetch and verify the manifest, and say what it offers. Downloads nothing else.
+    /// Fetch and verify the manifest, and say what it offers. Downloads nothing else. `--check-update`.
     Check,
-    /// The above, then download, verify and install the configuration that is installed here.
+    /// dist LA12: the same fetch, made by EVERY launcher start, whose answer is the Play page's
+    /// "<version> is available -- Update" line. Never an error line: "up to date" is an answer.
+    AutoCheck,
+    /// The above, then download, verify and install the chosen configuration when the manifest
+    /// is newer than the receipt (or the configuration is missing). `--update`, and the game half
+    /// of `Update` -- the half a replacement launcher runs after a self-update (dist LA11).
     Apply,
-    /// The above, but for the launcher executable itself.
+    /// The above, but for the launcher executable itself. `--self-update`.
     SelfUpdate,
+    /// dist LA12: THE ONE UPDATE BUTTON, and `--update --self-update`: the launcher first (health
+    /// gate, restart with `--update` owed), then the game -- one press, one progress line, one
+    /// verdict. When the launcher is current the game half runs in this process.
+    Update,
     /// dist LA8: Play on a directory that does not hold the chosen configuration --
     /// install it (uninstalling another one first), provision the relay, then launch.
     MakeReady,
@@ -83,8 +93,10 @@ impl UpdateAction {
     fn describe(self) -> &'static str {
         match self {
             UpdateAction::Check => "checking for an update",
+            UpdateAction::AutoCheck => "checking for an update (every start)",
             UpdateAction::Apply => "updating the game",
             UpdateAction::SelfUpdate => "updating the launcher",
+            UpdateAction::Update => "updating the launcher, then the game",
             UpdateAction::MakeReady => "getting the game ready to play",
         }
     }
@@ -99,6 +111,10 @@ enum Outcome {
     SelfUpdated(SelfUpdate),
     /// dist LA8: `MakeReady` found the chosen configuration already installed.
     Ready,
+    /// dist LA12: the automatic check's answer -- what the manifest offers over what is here.
+    Offered(Offer),
+    /// dist LA12: `Update`/`Apply` found the launcher AND the game current; nothing was touched.
+    UpToDate,
 }
 
 /// One update run, on its own thread.
@@ -114,7 +130,8 @@ struct Job {
     /// dist LA8: what the thread is doing right now ("downloading …"), for the Play page to show
     /// in place. Written by the thread through `update::Progress`, read every repaint.
     progress: Arc<Mutex<String>>,
-    /// Started from the Play page (the Play button), so its progress and its verdict belong there.
+    /// Started from the Play page (the Play button, or the Update button beside the offer), so
+    /// its progress and its verdict belong there.
     from_play: bool,
 }
 
@@ -206,6 +223,9 @@ pub struct App {
     pending_launch: Option<String>,
     /// The last finished job was started from the Play page, so its verdict is shown there.
     last_job_from_play: bool,
+    /// dist LA12: what the last accepted manifest offers this machine (`update::Offer`), from the
+    /// check every start makes or from any later job. `None` until a check has answered.
+    offer: Option<Offer>,
     /// Logged once, and again whenever the window is resized: the size clause of dist LA1 is about
     /// what the window ACTUALLY became, which is not always what was asked for.
     last_logged_size: Option<[u32; 2]>,
@@ -280,6 +300,7 @@ impl App {
             picker_open: false,
             pending_launch: None,
             last_job_from_play: false,
+            offer: None,
             layout,
             config,
             view,
@@ -394,12 +415,19 @@ impl App {
         self.game_dir().is_some_and(|d| paths::is_game_dir(&d))
     }
 
+    /// dist LA13: the launcher-owned logs root for the current game directory -- where the game
+    /// is told to write (`launch::ENV_LOG_ROOT`), where the crash marker goes, and where the
+    /// Report view and `report::build` read sessions from. `None` without a game directory.
+    fn log_root(&self) -> Option<PathBuf> {
+        self.game_dir().map(|d| self.layout.game_log_root(&d))
+    }
+
     /// dist LA9: which match the report is about -- "let the description form name the match the
     /// player means" (the row's scope). The player's pick from `session_picker_block`, if it still
     /// exists; otherwise the newest, `report::default_session_dir`'s existing default.
     fn chosen_session_dir(&self) -> Option<PathBuf> {
-        let game_dir = self.game_dir()?;
-        let dirs = report::session_dirs(&game_dir);
+        let log_root = self.log_root()?;
+        let dirs = report::session_dirs(&log_root);
         if let Some(name) = self.session_pick.as_deref() {
             if let Some(p) = dirs
                 .iter()
@@ -410,17 +438,17 @@ impl App {
         }
         dirs.into_iter()
             .next()
-            .or_else(|| report::default_session_dir(Some(&game_dir)))
+            .or_else(|| report::default_session_dir(Some(&log_root)))
     }
 
     /// dist LA9: "Match: <name> [Change...]", or the open picker -- one radio line per session
     /// directory, newest first, mirroring `configuration_block`'s own open/closed shape. Hidden
     /// when there is nothing to pick between (zero or one match on disk).
     fn session_picker_block(&mut self, ui: &mut egui::Ui) {
-        let Some(game_dir) = self.game_dir() else {
+        let Some(log_root) = self.log_root() else {
             return;
         };
-        let dirs = report::session_dirs(&game_dir);
+        let dirs = report::session_dirs(&log_root);
         if dirs.len() < 2 {
             return;
         }
@@ -478,12 +506,25 @@ impl App {
             self.say("pick the game directory first", true);
             return;
         };
-        match install::install(&self.layout, &zip, &dir, self.relay.as_ref()) {
-            Ok(r) => {
-                self.config.installed_version = r.version.clone();
-                self.config.installed_tag = r.tag.clone();
-                self.persist();
-                let summary = r.summary();
+        // dist LA13: a game directory this token cannot write (Program Files) gets the copy step
+        // done by an elevated re-run -- the zip is still unpacked per-user, here, first.
+        let result = if elevate::needs_elevation(&dir) {
+            install::stage(&self.layout, &zip).and_then(|staged| {
+                elevate::run_step_elevated(
+                    &self.layout,
+                    &dir,
+                    &elevate::StepSpec::Install {
+                        version: staged.pkg.version,
+                        tag: staged.pkg.tag,
+                    },
+                )
+            })
+        } else {
+            install::install(&self.layout, &zip, &dir, self.relay.as_ref()).map(|r| r.summary())
+        };
+        match result {
+            Ok(summary) => {
+                self.sync_installed_from_receipt();
                 self.say(summary, false);
             }
             Err(e) => self.say(format!("install failed: {e}"), true),
@@ -495,12 +536,14 @@ impl App {
             self.say("pick the game directory first", true);
             return;
         };
-        match install::uninstall(&dir) {
-            Ok(r) => {
-                self.config.installed_version.clear();
-                self.config.installed_tag.clear();
-                self.persist();
-                let summary = r.summary();
+        let result = if elevate::needs_elevation(&dir) {
+            elevate::run_step_elevated(&self.layout, &dir, &elevate::StepSpec::Uninstall)
+        } else {
+            install::uninstall(&dir).map(|r| r.summary())
+        };
+        match result {
+            Ok(summary) => {
+                self.sync_installed_from_receipt();
                 self.say(summary, false);
             }
             Err(e) => self.say(format!("uninstall failed: {e}"), true),
@@ -526,7 +569,18 @@ impl App {
         match update::readiness(&dir, &tag) {
             Readiness::Ready => {}
             need => {
-                if self.job.is_some() {
+                if let Some(job) = self.job.as_ref() {
+                    // dist LA12: the start-up check is in flight for the first second or two of
+                    // every launch. Play pressed inside that window waits for it (`poll_job`
+                    // starts the install when the check answers) rather than being refused.
+                    if job.action == UpdateAction::AutoCheck {
+                        log::line(format!(
+                            "launch: {how} -- {tag} is not installed ({need:?}); waiting for the \
+                             start-up check to finish, then installing"
+                        ));
+                        self.pending_launch = Some(how.to_string());
+                        return;
+                    }
                     self.say("an update is already running", true);
                     return;
                 }
@@ -548,6 +602,22 @@ impl App {
                 log::line(format!("launch: {}", done.summary()))
             }
             Ok(_) => {}
+            // dist LA13: the ini/key write was refused (Program Files, un-elevated) -- that ONE
+            // step runs elevated; the launch below stays with this token.
+            Err(e) if elevate::is_access_denied(&e) => {
+                log::line(format!("launch: {e} -- provisioning elevated"));
+                match elevate::run_step_elevated(&self.layout, &dir, &elevate::StepSpec::Provision)
+                {
+                    Ok(summary) => log::line(format!("launch: {summary}")),
+                    Err(e) => {
+                        self.say(
+                            format!("cannot set the relay up in {}: {e}", dir.display()),
+                            true,
+                        );
+                        return;
+                    }
+                }
+            }
             Err(e) => {
                 self.say(
                     format!("cannot set the relay up in {}: {e}", dir.display()),
@@ -556,16 +626,27 @@ impl App {
                 return;
             }
         }
+        // dist LA13: the launcher-owned logs root. The crash channel's marker goes there too, so a
+        // game under Program Files -- UAC-virtualized beside its exe -- still leaves a marker where
+        // this (never-virtualized, 64-bit) process can read it.
+        let log_root = self.layout.game_log_root(&dir);
+        if let Err(e) = std::fs::create_dir_all(&log_root) {
+            self.say(
+                format!("cannot create the logs root {}: {e}", log_root.display()),
+                true,
+            );
+            return;
+        }
         // dist LA4: arm the crash channel BEFORE the game starts. It has to exist by the time
         // mh.dll's DllMain reads the environment, which is the first instruction of the process.
-        self.channel = crash::Channel::create(&dir.join("logs"));
+        self.channel = crash::Channel::create(&log_root);
         let env: Vec<(&'static str, String)> = match self.channel.as_ref() {
             Some(c) => c.env().to_vec(),
             None => Vec::new(),
         };
         self.marker = None;
         self.dump = None;
-        match launch::start(&dir, &env) {
+        match launch::start(&dir, Some(&log_root), &env) {
             Ok(s) => {
                 let pid = s.pid();
                 self.session = Some(s);
@@ -643,13 +724,16 @@ impl App {
                 self.session = None;
                 self.channel = None;
                 if let Some(dir) = game_dir.as_deref() {
-                    match launch::resolved_log_root(dir) {
+                    // dist LA13: the breadcrumb is INSIDE the launcher-owned root now.
+                    let log_root = self.layout.game_log_root(dir);
+                    match launch::resolved_log_root(&log_root) {
                         Some(root) => log::line(format!("launch: game's log root -> {root}")),
-                        None => log::line(
-                            "launch: game's log root -> mh_run.txt is missing or empty (LA10: \
-                             the game may have fallen back to writing logs into its own install \
-                             folder instead of a logs\\ subdirectory)",
-                        ),
+                        None => log::line(format!(
+                            "launch: game's log root -> {}\\mh_run.txt is missing or empty (the \
+                             game did not honour MH_LOG_ROOT -- an mh.dll older than dist LA13, or \
+                             LA10: it fell back to writing beside its own exe)",
+                            log_root.display()
+                        )),
                     }
                 }
                 let text = finished.outcome.describe();
@@ -684,6 +768,7 @@ impl App {
         let game_dir = self.game_dir();
         let input = report::Input {
             game_dir: game_dir.as_deref(),
+            logs_root: self.log_root(),
             session_dir,
             launcher_started_utc: Some(self.started_utc.clone()),
             description: &self.description,
@@ -829,8 +914,16 @@ impl App {
         update::prune(&self.layout, &version);
     }
 
-    /// Start an update run on a background thread.
+    /// Start an update run on a background thread. Startup actions and Play come through here;
+    /// the Update BUTTON comes through `start_update_from`, which also remembers the page.
     fn start_update(&mut self, action: UpdateAction) {
+        self.start_update_from(action, None);
+    }
+
+    /// `pressed_on`: the page the player pressed Update on, carried across a self-update restart
+    /// so the window they get back opens where they were (dist LA12). `None` for a scripted run,
+    /// whose `--view` -- if any -- is already in the restart strip.
+    fn start_update_from(&mut self, action: UpdateAction, pressed_on: Option<View>) {
         if self.job.is_some() {
             self.update_say("an update is already running", true);
             return;
@@ -839,8 +932,21 @@ impl App {
         let tag = self.config.update_tag();
         let layout = self.layout.clone();
         let game_dir = self.game_dir();
-        let restart = self.startup.restart_args.clone();
-        let needs_dir = matches!(action, UpdateAction::Apply | UpdateAction::MakeReady);
+        // dist LA11: what a replacement launcher is started with. The strip (`restart_args`) plus
+        // what is still owed: the game half when this is the one-button request, and the page the
+        // player is on when they pressed it in the window (a scripted run has no page to return to
+        // -- its `--view`, if any, is already in the strip).
+        let restart = crate::restart_argv(
+            &self.startup.restart_args,
+            action == UpdateAction::Update,
+            pressed_on
+                .map(|v| v.title().to_ascii_lowercase())
+                .as_deref(),
+        );
+        let needs_dir = matches!(
+            action,
+            UpdateAction::Apply | UpdateAction::MakeReady | UpdateAction::Update
+        );
         if needs_dir && game_dir.is_none() {
             self.update_say("pick the game directory first", true);
             return;
@@ -848,16 +954,21 @@ impl App {
         // dist LA8: "is the offer newer" is asked against the RECEIPT's configuration. When the
         // directory holds a different one (or none), the chosen one is not installed at any
         // version, and an update to it is a switch, not a rollback.
+        // The RECEIPT's version, not launcher.toml's (dist LA12): a fresh state directory pointed
+        // at a game directory that already holds an install would otherwise offer the version
+        // that is already there.
         let installed = match game_dir.as_deref().and_then(install::read_manifest) {
-            Some(r) if r.tag == tag => self.config.installed_version.clone(),
+            Some(r) if r.tag == tag => r.version,
             _ => String::new(),
         };
-        let from_play = action == UpdateAction::MakeReady;
+        let from_play = action == UpdateAction::MakeReady || pressed_on == Some(View::Launch);
         log::line(format!(
             "update: {} from {base} (installed {installed:?}, configuration {tag})",
             action.describe()
         ));
-        self.update_say(format!("{}...", action.describe()), false);
+        if action != UpdateAction::AutoCheck {
+            self.update_say(format!("{}...", action.describe()), false);
+        }
         let progress = Arc::new(Mutex::new(String::new()));
         let progress_thread = Arc::clone(&progress);
         let (tx, rx) = mpsc::channel();
@@ -877,19 +988,54 @@ impl App {
                         None => Ok(Outcome::Ready),
                     };
                 }
-                let manifest = update::check(&fetch, &base, &installed, Some(&layout))?;
+                // `Check` keeps LA2's strict gate (NOT NEWER is a refusal, exit 1 -- the scripted
+                // "is there an update" question). Everything else accepts the manifest against
+                // nothing and decides what to do from it: an offer that is not newer is an answer
+                // ("up to date"), not a refusal, and the rollback rule is applied where the
+                // install would happen (`apply_if_needed`, `self_update`).
+                let gate = if action == UpdateAction::Check {
+                    installed.as_str()
+                } else {
+                    ""
+                };
+                let manifest = update::check(&fetch, &base, gate, Some(&layout))?;
                 match action {
                     UpdateAction::Check => Ok(Outcome::Checked(Box::new(manifest))),
+                    UpdateAction::AutoCheck => {
+                        Ok(Outcome::Offered(update::offer_for(&manifest, &installed)))
+                    }
                     UpdateAction::Apply => {
                         let dir = game_dir.expect("checked above");
-                        let applied =
-                            update::apply(&layout, &fetch, &manifest, &tag, &dir, &base, &report)?;
-                        Ok(Outcome::Applied(Box::new(applied)))
+                        match update::apply_if_needed(
+                            &layout, &fetch, &manifest, &tag, &dir, &base, &report,
+                        )? {
+                            Some(applied) => Ok(Outcome::Applied(Box::new(applied))),
+                            None => Ok(Outcome::UpToDate),
+                        }
                     }
                     UpdateAction::SelfUpdate => {
                         let done =
                             update::self_update(&layout, &fetch, &manifest, &base, &restart)?;
                         Ok(Outcome::SelfUpdated(done))
+                    }
+                    UpdateAction::Update => {
+                        // dist LA12: THE LAUNCHER FIRST. A newer launcher replaces this process
+                        // and restarts with `--update` owed (LA11), so the game half runs there;
+                        // a current launcher means the game half runs here, now.
+                        report("checking the launcher...");
+                        match update::self_update(&layout, &fetch, &manifest, &base, &restart)? {
+                            SelfUpdate::Restarted(v) => {
+                                return Ok(Outcome::SelfUpdated(SelfUpdate::Restarted(v)))
+                            }
+                            SelfUpdate::NotNeeded(msg) => report(&msg),
+                        }
+                        let dir = game_dir.expect("checked above");
+                        match update::apply_if_needed(
+                            &layout, &fetch, &manifest, &tag, &dir, &base, &report,
+                        )? {
+                            Some(applied) => Ok(Outcome::Applied(Box::new(applied))),
+                            None => Ok(Outcome::UpToDate),
+                        }
                     }
                     UpdateAction::MakeReady => unreachable!("handled above"),
                 }
@@ -946,10 +1092,13 @@ impl App {
             // Every successful run went through `check`, which remembered the manifest it accepted.
             self.refresh_relay();
         }
-        // dist LA8: the launch that was waiting for this install, or its refusal.
+        // dist LA8: the launch that was waiting for this install, or its refusal. A launch that
+        // was waiting for the start-up CHECK (dist LA12) is re-pressed whatever the check said:
+        // `do_launch` then starts the install itself.
         let pending = self.pending_launch.take();
         let launch_after = match &result {
-            Ok(Outcome::Applied(_)) | Ok(Outcome::Ready) => pending,
+            Ok(Outcome::Applied(_)) | Ok(Outcome::Ready) | Ok(Outcome::UpToDate) => pending,
+            _ if action == UpdateAction::AutoCheck => pending,
             _ => {
                 if let (Some(how), Err(e)) = (pending, &result) {
                     self.say(format!("{how}: not started -- {e}"), true);
@@ -979,6 +1128,9 @@ impl App {
                 self.config.installed_tag = a.tag.clone();
                 self.persist();
                 self.picker_open = false;
+                if let Some(o) = self.offer.as_mut() {
+                    o.game = None;
+                }
                 self.update_say(
                     format!(
                         "{} -- versions kept: {} (the previous one stays until {} has started once)",
@@ -990,6 +1142,20 @@ impl App {
                 );
             }
             Ok(Outcome::Ready) => self.update_say("already installed", false),
+            Ok(Outcome::UpToDate) => {
+                self.offer = Some(Offer::default());
+                self.update_say(
+                    "up to date -- the launcher and the game are both current",
+                    false,
+                )
+            }
+            Ok(Outcome::Offered(offer)) => {
+                log::line(format!(
+                    "update: start-up check -- {}",
+                    offer.line().unwrap_or_else(|| "up to date".to_string())
+                ));
+                self.offer = Some(offer);
+            }
             Ok(Outcome::SelfUpdated(SelfUpdate::NotNeeded(msg))) => self.update_say(msg, false),
             Ok(Outcome::SelfUpdated(SelfUpdate::Restarted(v))) => {
                 self.update_say(
@@ -1005,7 +1171,10 @@ impl App {
                 crate::set_exit_code(1);
             }
         }
-        if matches!(action, UpdateAction::Apply | UpdateAction::MakeReady) {
+        if matches!(
+            action,
+            UpdateAction::Apply | UpdateAction::MakeReady | UpdateAction::Update
+        ) {
             self.sync_installed_from_receipt();
         }
         log::line(format!("update: {} finished", action.describe()));
@@ -1058,6 +1227,13 @@ impl App {
         }
         if let Some(action) = self.startup.update.take() {
             self.start_update(action);
+        } else if !self.startup.launch && self.startup.report_to.is_none() && self.job.is_none() {
+            // dist LA12: EVERY launcher start checks the signed manifest and says what it offers
+            // (the Play page's "<version> is available -- Update" line). It installs nothing by
+            // itself. Skipped when the start is scripted work (`--launch` does its own manifest
+            // fetch when the configuration is missing, and would otherwise find the thread busy;
+            // a `--report` run is not the moment) -- those runs asked for something else.
+            self.start_update(UpdateAction::AutoCheck);
         }
         if self.startup.launch {
             self.startup.launch = false;
@@ -1330,29 +1506,12 @@ impl App {
 
         let busy = self.job.is_some();
         ui.add_space(4.0);
+        // dist LA12: ONE BUTTON. It was three (Check for updates / Update the game / Update the
+        // launcher) until 2026-09-21, and a player who pressed the middle one first was then on a
+        // launcher that could not update itself from the same page without a restart. The check
+        // is automatic now (every start); the button does the launcher first, then the game.
         ui.horizontal(|ui| {
-            if ui
-                .add_enabled(!busy, egui::Button::new("Check for updates"))
-                .clicked()
-            {
-                self.start_update(UpdateAction::Check);
-            }
-            if ui
-                .add_enabled(
-                    !busy && self.game_dir_ok(),
-                    egui::Button::new("Update the game"),
-                )
-                .on_disabled_hover_text("needs a game directory with mh.exe")
-                .clicked()
-            {
-                self.start_update(UpdateAction::Apply);
-            }
-            if ui
-                .add_enabled(!busy, egui::Button::new("Update the launcher"))
-                .clicked()
-            {
-                self.start_update(UpdateAction::SelfUpdate);
-            }
+            self.update_button(ui, busy);
             if busy {
                 ui.spinner();
             }
@@ -1374,6 +1533,46 @@ impl App {
                     .weak()
                     .small(),
             );
+        }
+    }
+
+    /// dist LA12: the one Update button, on both pages. Enabled whenever nothing is running and a
+    /// game directory is known; its label carries the offer when there is one.
+    fn update_button(&mut self, ui: &mut egui::Ui, busy: bool) {
+        let label = match self.offer.as_ref().and_then(Offer::line) {
+            Some(line) => format!("Update  ({line})"),
+            None => "Update".to_string(),
+        };
+        if ui
+            .add_enabled(!busy && self.game_dir_ok(), egui::Button::new(label))
+            .on_hover_text(
+                "The launcher first -- a newer one is downloaded, made to prove it starts, swapped \
+                 in and restarted -- then the game for the chosen configuration. One press.",
+            )
+            .on_disabled_hover_text(if busy {
+                "the launcher is busy"
+            } else {
+                "needs a game directory with mh.exe"
+            })
+            .clicked()
+        {
+            self.start_update_from(UpdateAction::Update, Some(self.view));
+        }
+    }
+
+    /// dist LA12: what the start-up check found, on the Play page. Silent until it has answered;
+    /// "up to date" is said once it has.
+    fn offer_line(&self) -> String {
+        match self.offer.as_ref() {
+            None if self
+                .job
+                .as_ref()
+                .is_some_and(|j| j.action == UpdateAction::AutoCheck) =>
+            {
+                "checking for updates...".to_string()
+            }
+            None => String::new(),
+            Some(o) => o.line().unwrap_or_else(|| "up to date".to_string()),
         }
     }
 
@@ -1567,6 +1766,17 @@ impl App {
                 ui.spinner();
             }
         });
+        // dist LA12: what the start-up check offers, and the one button that takes it.
+        let offer_line = self.offer_line();
+        if !offer_line.is_empty() {
+            ui.add_space(4.0);
+            ui.horizontal(|ui| {
+                ui.label(egui::RichText::new(&offer_line).weak());
+                if self.offer.as_ref().is_some_and(Offer::any) {
+                    self.update_button(ui, busy || running);
+                }
+            });
+        }
         // dist LA8: the install that Play started, in place -- what the thread is doing
         // now, and, when it is over, what it said.
         if let Some(progress) = self.play_progress() {
@@ -1610,8 +1820,8 @@ impl App {
                 ui.label(
                     egui::RichText::new(
                         "No relay: no accepted manifest names one. Play starts the game \
-                         as it is configured -- direct play by address. Check for updates on the \
-                         Status tab to pick one up.",
+                         as it is configured -- direct play by address. The next start-up check \
+                         (or Update) picks one up when the manifest names it.",
                     )
                     .weak()
                     .small(),
@@ -1622,9 +1832,10 @@ impl App {
         ui.add_space(10.0);
         if let Some(s) = self.session.as_ref() {
             ui.label(format!(
-                "running -- pid {}, {:.0}s so far",
+                "running -- pid {}, {:.0}s so far, token {}",
                 s.pid(),
-                s.started.elapsed().as_secs_f64()
+                s.started.elapsed().as_secs_f64(),
+                launch::describe_elevation(s.elevated)
             ));
             ui.label(
                 egui::RichText::new(

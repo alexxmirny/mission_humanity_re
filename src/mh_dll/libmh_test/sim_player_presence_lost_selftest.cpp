@@ -331,6 +331,48 @@ void run_player_presence_lost_tests() {
         ck_eq((uint32_t)g_snd_ids.size(), 0u, "MP-CONTINUE8: NO fanfare for code 8");
     }
 
+    // ---- mp:U19h -- THE EXACT ROSTER eliminate_other_humans LEAVES BEHIND ---------------------------
+    // The last link of the U19h chain (the first three are in lockstest's
+    // test_u19h_leave_park_horizon_race). On a survivor, handle_peer_drop's DISAGREE arm runs
+    // eliminate_other_humans(notify=true), whose mark_player_gone clears PLAYER_HUMAN and sets
+    // DEFEATED|GONE but LEAVES ALIVE SET (rx_dispatch.cpp: three disjoint read-modify-writes, none of
+    // them touching bit 1), then calls presence_lost(i, 1) per swept slot. So the roster here is NOT
+    // MP-CONTINUE8's above -- that one has a surviving AI and a dropped player with no ALIVE bit.
+    // This one is three HUMANS, all still ALIVE, two of them with HUMAN just stripped by the sweep.
+    // It matters because the outcome is chosen by walking exactly those flags: every other slot is
+    // ALIVE (so not last-man-standing) and none is HUMAN (so no_other_human), and mode 1 then picks 8.
+    // A peer nobody eliminated gets the end-of-game dialog.
+    fx.reset();
+    fx.session_mode             = MP_LOCKSTEP; // the drop arrives mid-lockstep-match
+    fx.player_side              = 0;           // survivor A -- us
+    fx.profiles[0].status_flags = STATUS_ALIVE | STATUS_HUMAN;
+    fx.profiles[1].status_flags = STATUS_ALIVE; // survivor B: swept, HUMAN cleared, still ALIVE
+    fx.profiles[2].status_flags = STATUS_ALIVE; // the quitter: marked gone before the compare
+    {
+        run(fx, 1, 1 /* forced -- eliminate_other_humans always passes mode 1 */);
+        ck_eq((uint32_t)g_dialog_last, 8u,
+              "MP-U19H: a swept co-survivor selects outcome 8 (the end-of-game dialog)");
+        ck_eq((uint32_t)g_dialog_calls, 1u, "MP-U19H: and the dialog really fires");
+        ck_eq((uint32_t)g_snd_ids.size(), 0u, "MP-U19H: no fanfare for code 8");
+        ck_eq((uint32_t)g_queue_text.size(), 0u,
+              "MP-U19H: no victory text either -- the sweep stripped HUMAN before the call, so "
+              "was_human is false");
+    }
+    // The SAME roster with mode 0 answers 6, not 8. This is the assertion that makes the `1` in
+    // presence_lost(i, 1) load-bearing rather than incidental: if a fix ever routed this sweep through
+    // the natural-loss path the code would change, and lockstest's U19h(B1) mode assertion is the
+    // other half of that pair.
+    fx.reset();
+    fx.session_mode             = MP_LOCKSTEP;
+    fx.player_side              = 0;
+    fx.profiles[0].status_flags = STATUS_ALIVE | STATUS_HUMAN;
+    fx.profiles[1].status_flags = STATUS_ALIVE | STATUS_HUMAN; // mode 0 clears ALIVE itself
+    fx.profiles[2].status_flags = STATUS_ALIVE;
+    {
+        run(fx, 1, 0);
+        ck_eq((uint32_t)g_dialog_last, 6u, "MP-U19H: mode 0 over the same roster answers 6, not 8");
+    }
+
     // ---- MP -- lockstep session downgrade to local when no human remains ---------------------------
     fx.reset();
     fx.session_mode             = MP_LOCKSTEP; // 3

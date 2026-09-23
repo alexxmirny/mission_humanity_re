@@ -41,12 +41,15 @@
 #include "include/mh_fontguard_export.h"   // MH_FontGuard_Install (gfx_font_guard.cpp) -- F2 glyph-table bounds guard
 #include "include/mh_chatinput_export.h"   // MH_ChatInput_Install (ui_chat_input.cpp) -- F3 layout-aware typed input
 #include "include/mh_cheatgate_export.h"   // MH_CheatGate_Install (ui_cheat_gate.cpp) -- CH1 the SP cheat console refused in a network game
+#include "include/mh_diploecho_export.h"   // MH_DiploEcho_Install (ui_diplomacy_echo.cpp) -- U39 the diplomacy dialog's relation echo NOPed
+#include "include/mh_canceltask_export.h"  // MH_CancelTask_Install (ui_bldg_cancel_task.cpp) -- D28 the building dialog's cancel-task Yes as a replicated order
 #include "include/mh_uidrive_export.h"     // MH_UIDrive_Install (ui_drive.cpp) -- UI automation Phase 2
 #include "include/mh_video_export.h"       // MH_Video_Install (video.cpp) -- D13 display-mode selection
 #include "include/mh_standalone_export.h"  // MH_Standalone_Install (standalone.cpp) -- boot a stock exe
 #include "include/mh_inmem_patch_export.h" // MH_InMemPatch_Install (patch/inmem_install.cpp) -- F1E, default OFF
 #include "include/mh_transport_present.h"  // F3F: is there a network transport at all -- NOT `[net] enable`
 #include "ui/lobby_ui.h"                   // D4: the UI-owned lobby/browser fixup module (mh/ui)
+#include "ui/lobby_ping.h"                 // mp:L1b: per-slot SRTT column, ticked from the lobby's own frame
 #include "mh_net_proto/session_info.h"     // F3c: the REFUSED announce kind + its decoder
 #include "include/mh_run_context.h"        // MH_RunDir (per-run log folder), MH_ExeDir (config inputs)
 #include "include/mh_log_rotate.h"         // SES2: the shared size cap + one-generation rotation
@@ -65,6 +68,7 @@
 #include "addr/mh_rebind.gen.h"            // LIB-REBIND R11: report_arming at the arm-time report
 #include "en_guard.h"                      // EN-only build gate
 #include "net_internal.h"                  // shared spine: PROLOGUE, TEV_*, init-written globals, net_diag decls
+#include "config/ini_read.h"               // TL-HARN4: read_ini_string -- strips a trailing `;comment`
 #include "seams/map_transfer.h"            // mp:X2: the map download, its Start gate and its resolve seam
 #include "hook/detour.h"                   // install_jmp / install_trampoline (shared toolkit)
 #include "hook/hookpoint.h"                // D5/R7: the named hook points -- the C10 session-begin observer
@@ -206,6 +210,7 @@ extern "C" int         MH_MP_ConsumeExitCause(void);                            
 extern "C" void        MH_MP_ClientOnJoinRefused(const char *reason);               // net_discovery -- F3c client (recv thread): the host refused our JOIN
 extern "C" int         MH_MP_TakeJoinRefused(void);                                 // net_discovery -- F3c: 1 once while a refusal is pending
 extern "C" int         MH_MP_HasJoined(int player_id);                              // net_discovery -- N2: 1 = this peer's own JOIN was admitted (mp:R6 hello replay)
+extern "C" int         MH_MP_JoinLinkPending(void);                                 // net_discovery -- mp:R2b: a clicked JOIN waits for the link into ITS room
 extern "C" void        MH_MP_MarkExitCauseJoinRefused(void);                        // net_discovery -- F3c: the exit cause the refusal bounce sets
 extern "C" const char *MH_MP_JoinRefusedReason(void);                               // net_discovery -- F3c: the host's reason text
 extern "C" void        MH_MP_HostResetSessionIdentity(void);                        // net_discovery -- U13 host: fresh tag + join gate on leave
@@ -257,11 +262,100 @@ void on_announce_recv(int /*sender*/, const unsigned char *buf, int len) {
         }
         return;
     }
+    // mp:L1f: the fourth kind is a TABLE, not a line of text -- the host's per-slot ping summary,
+    // which is the only way a client ever learns another client's ping (the transport is a
+    // client-server star; see session_info.h's ANNOUNCE_PING block). Byte [1] is an entry COUNT
+    // here rather than a player id, which is safe precisely because the kind is dispatched first.
+    if (buf[0] == mh_net_proto::ANNOUNCE_PING) {
+        mh::ui::lobby_ping_on_published(buf, len);
+        return;
+    }
+    // ...AND THE REFUSAL, which is the half mp:F3c left implicit. Everything past this point treats
+    // buf+2 as a NUL-terminated NAME and paints it in the lobby log, so a kind this build does not
+    // know would be rendered as garbage text once per frame it arrived -- exactly what a version
+    // gate is supposed to prevent. An unknown kind is therefore DROPPED, loudly enough to debug
+    // (once is not worth a rate limiter: a peer new enough to send one cannot join this lobby at
+    // all -- JOIN_REQUEST_MIN_FORMAT refuses it -- so this is a "cannot happen" that says so).
+    if (buf[0] > mh_net_proto::ANNOUNCE_PING) {
+        char b[96];
+        wsprintfA(b, "; announce: REFUSED unknown kind %u (%d bytes) -- newer peer?\n",
+                  (unsigned)buf[0], len);
+        seam_log(b);
+        return;
+    }
     // Skip an announce about OURSELVES: the joiner already gets its own "X joined" from the retail path,
     // so also rendering our broadcast would double the joiner's own line. Other peers keep it. (U16)
     if ((int)buf[1] == MH_Net_LocalPlayerId()) return;
     mh::ui::announce_post((const char *)(buf + 2), buf[0]); // recv thread -> the UI ring
 }
+
+// ---- mp:L1f -- THE HOST PUBLISHES ITS PER-SLOT PING MEASUREMENTS -------------------------------
+//
+// WHY THE HOST AND NOBODY ELSE. The restored transport is a client-server STAR (the user's
+// 2026-07-09 decision): every client holds exactly ONE connection, to the host, so its
+// MH_NetStats::lat[] can only ever hold one row and no client can measure another client. Only the
+// host holds them all. Without this, every occupied row but two is permanently blank on a client's
+// lobby screen -- not a renderer bug, a topology fact.
+//
+// WHY IT CANNOT TOUCH DETERMINISM, stated where it is written rather than only in a doc:
+//   * it rides FLAG_ANNOUNCE, which both transports route to the client's announce handler and
+//     NEVER to the game queue (mh_net/net_transport.cpp says so at MH_Net_SetAnnounceHandler:
+//     "clients' g_announce_cb, never the game queue -- determinism-safe, exactly like SESSION_INFO");
+//   * the receiver's only consumer is mh/ui/lobby_ping.cpp's display table, which nothing else in
+//     the DLL reads -- no order is issued from it, no gate consults it, no byte of it is hashed;
+//   * it is sent from the LOBBY tick only, so it does not exist during a match at all: there is no
+//     lockstep clock running when this writes, and nothing it can race.
+// The two oracles that would catch a mistake here anyway: the D21 in-band desync watch (the per-
+// sample MATCH lines every multi-peer row carries) and the determinism gate's lockstep-hash compare.
+//
+// CADENCE: ~1 s. A lobby ping cell that updates once a second is already smoother than a human
+// reads it, and the frame is ~34 bytes.
+namespace {
+DWORD           g_ping_pub_next = 0;
+constexpr DWORD PING_PUB_MS     = 1000;
+
+void mp_lobby_ping_publish() {
+    const DWORD now = GetTickCount();
+    if ((long)(now - g_ping_pub_next) < 0) return;
+    g_ping_pub_next = now + PING_PUB_MS;
+
+    MH_NetStats st;
+    MH_Net_GetStats(&st);
+    if (!st.lat_supported) return; // the TCP module measures nothing; there is nothing to publish
+
+    mh_net_proto::AnnouncePingEntry e[mh_net_proto::ANNOUNCE_PING_MAX_ENTRIES];
+    size_t                          n  = 0;
+    const int                       me = MH_Net_LocalPlayerId();
+    for (int i = 0; i < st.lat_count && i < MH_NET_MAX_PEERS &&
+                    n < mh_net_proto::ANNOUNCE_PING_MAX_ENTRIES;
+         ++i) {
+        const MH_NetPeerLatency &L = st.lat[i];
+        if (L.samples <= 0) continue;                     // nothing measured on this link yet
+        if (L.player_id < 0 || L.player_id > 7) continue; // no lobby row a client could match it to
+        if (L.player_id == me) continue;                  // our own row is never on the wire
+        int ms = (L.srtt_us + 500) / 1000;
+        if (ms < 0) ms = 0;
+        e[n].player_id = (uint8_t)L.player_id;
+        e[n].srtt_ms   = (uint16_t)(ms > (int)mh_net_proto::ANNOUNCE_PING_SRTT_CLAMP
+                                        ? mh_net_proto::ANNOUNCE_PING_SRTT_CLAMP
+                                        : ms);
+        e[n].relay     = L.relayed == 1   ? mh_net_proto::ANNOUNCE_PING_RELAY_RELAYED
+                         : L.relayed == 0 ? mh_net_proto::ANNOUNCE_PING_RELAY_DIRECT
+                                          : mh_net_proto::ANNOUNCE_PING_RELAY_UNKNOWN;
+        ++n;
+    }
+    // AN EMPTY TABLE IS STILL SENT, and that is deliberate: it is how a client learns that the peer
+    // whose number it was showing is gone (lobby_ping.cpp REPLACES its table on every summary). It
+    // is also what keeps the receiver's staleness clock ticking while a lobby genuinely has nobody
+    // else in it, instead of letting an idle host look like a dead one.
+    uint8_t   ab[mh_net_proto::ANNOUNCE_PING_MAX_ENCODED];
+    const int len = (int)mh_net_proto::announce_ping_encode(e, n, ab);
+    MH_Net_SendAnnounce(ab, len);
+    char b[96];
+    wsprintfA(b, "; [lobbypub] entries=%d bytes=%d\n", (int)n, len);
+    seam_log(b);
+}
+} // namespace
 
 // The slide take-over's gate, and the reason it is HERE: `mh::ui` may not read the transport, so the
 // one transport question its detour needs -- "am I a client with a live session?" -- is answered by
@@ -287,6 +381,13 @@ void on_lobby_dispatch() {
     // Both sides repaint the lobby's status line, which is where the refusal names the peer.
     mh::seams::maps::lobby_tick(is_host);
     if (!is_host && mh::seams::maps::client_take_rejoin()) mp_join_resend_map_report();
+    // mp:L1b: refresh the lobby slot-row panel's per-slot ping cells from THIS tick, both roles --
+    // see ui/lobby_ping.cpp for why this has to be lobby-tick-driven rather than present-hook-driven.
+    mh::ui::lobby_ping_tick();
+    // mp:L1f: ...and on the HOST, publish what only the host can measure, so every client can paint
+    // the rows its single star-topology connection makes it blind to. Lobby-only by construction
+    // (this is the lobby dispatch); see mp_lobby_ping_publish for why it cannot touch determinism.
+    if (is_host) mp_lobby_ping_publish();
     // mp:GS1(b): retail PlayerSide wants our ARRAY INDEX, not our wire id -- mp_client_slot() (the old
     // value here) is the wire id and is wrong the instant a reused/compacted slot puts them at
     // different numbers (see mp_lobby_array_index's banner in net_internal.h). This write runs right
@@ -618,7 +719,7 @@ void lazy_start() {
     memset(&cfg, 0, sizeof(cfg));
     cfg.role      = (*g_a.is_host != 0) ? 0 : 1; // 0 = host, 1 = client -- mirrors mh.exe
     cfg.player_id = *g_a.local_player_index;
-    GetPrivateProfileStringA("net", "host", "127.0.0.1", cfg.host, sizeof(cfg.host), g_ini);
+    mh::config::read_ini_string("net", "host", "127.0.0.1", cfg.host, sizeof(cfg.host), g_ini); // TL-HARN4
     // U1c (join-by-IP, option B): a manual-menu CLIENT prefers the IP the player typed in-game over the
     // ini host=. The in-game IP field is a runtime-wired widget, so its edit buffer isn't statically
     // knowable; we scan the .bss addresses the RE trace + marker-scan identified for the mp_join browser's
@@ -1106,7 +1207,7 @@ DWORD WINAPI marker_scan_thread(LPVOID) {
     }
 }
 void install_marker_scan() {
-    GetPrivateProfileStringA("menu", "findstr", "", g_findstr, sizeof(g_findstr), g_ini);
+    mh::config::read_ini_string("menu", "findstr", "", g_findstr, sizeof(g_findstr), g_ini); // TL-HARN4
     if (g_findstr[0]) CreateThread(nullptr, 0, marker_scan_thread, nullptr, 0, nullptr);
 }
 
@@ -1215,6 +1316,15 @@ bool link_lost_in_lobby() {
     if (*(const unsigned char *)mh::addr::_G_LLM_GAME_SESSION_MODE == 3) return false; // in a live match: not ours
     if (*(void **)mh::addr::_G_LLM_UI_MENU_WIDGET_LIST != (void *)mh::addr::lobby_widget_origin)
         return false; // only while the LOBBY is the active screen (the browser has its own retry path)
+    // mp:R2b -- a JOIN on a row whose room this peer is not linked to tears the old link down and
+    // dials the row's room WITH THE LOBBY ALREADY PUSHED (retail seats the client at the click).
+    // The peer count seen here then goes 1 (the old link, for a frame or two) -> 0 (the re-dial)
+    // -> 1 (the new room), and the 1 -> 0 edge is exactly what this test reads as a dead host.
+    // While that JOIN is still waiting for its link, the link is not one to be lost: stay disarmed.
+    if (MH_MP_JoinLinkPending()) {
+        armed = false;
+        return false;
+    }
     if (MH_Net_PeerCount() > 0) {
         armed = true;
         return false;
@@ -1386,9 +1496,34 @@ extern "C" int MH_Seam_PollRecv(void) {
 // --- Phase A2: in-game lockstep seam bodies (see mh_seam_export.h) --------------------------------
 // The lockstep model broadcasts every peer's orders (type1) + horizon extends (type2) to all others,
 // so the in-game send is unconditionally a broadcast (the seam has no dest arg, unlike the lobby one).
+extern "C" int MH_Seam_LeaveFrozenHorizon(double *out); // net_lockstep.cpp -- mp:U19h
+
 extern "C" void MH_Seam_GameSend(unsigned char *buf, int len) {
     lazy_start(); // force-entry skips the lobby poll -> the transport may start HERE
     if (len <= 0) return;
+    // mp:U19h -- THE HORIZON FREEZE, enforced at the wire rather than at each advert site. A peer
+    // that has frozen its horizon for a clean quit must not advertise a different one afterwards:
+    // llm_net_player_remove's record carries the frozen value, the receiver compares it against the
+    // last horizon it recorded for us (rx_dispatch.cpp's handle_peer_drop), and a disagreement ends
+    // the match for EVERY remaining player. net_lockstep.cpp froze the two advert paths it owns, and
+    // the one that broke it was libmh's -- the MSG_KEEPALIVE emergency bump, fired from inside the
+    // park's own dispatch drain. So the gate sits HERE, at the single funnel every GAME-side send
+    // passes through (llm_net_transport_send -> game_send_detour -> this), where an arm nobody has
+    // enumerated is covered too. Type 2 only: orders, keepalives and the removal record itself must
+    // still go out, and the seam's own deliberate adverts call MH_Net_Send directly, below this.
+    if (buf && buf[0] == 2 && MH_Seam_LeaveFrozenHorizon(nullptr)) {
+        static int said = 0;
+        if (said < 4) {
+            ++said;
+            double h = 0.0;
+            memcpy(&h, buf + 1, sizeof(double));
+            char w[128];
+            wsprintfA(w, "; [u19h] advert SUPPRESSED (%ld ms): our horizon is frozen for a clean quit\n",
+                      (long)(h * 1000.0 + 0.5));
+            seam_log(w);
+        }
+        return;
+    }
     MH_Net_Send(MH_NET_BROADCAST, buf, len);
 }
 
@@ -1856,15 +1991,17 @@ static int MH_Core_Arm(void) {
                   probe ? " -- probe armed, one malformed broadcast is coming" : "");
         seam_log(m);
     }
-    MH_KeyRepeat_Install(); // U24: modal key pump -> one dispatch per keystroke in menu/lobby text fields (best-effort)
-    MH_Pause_Install();     // D19: [pause] key -> enter the orphaned mode-5 PAUSE screen from the strategic view (best-effort)
-    MH_FontGuard_Install(); // F2: bounds-guard glyph_table[code_unit] in llm_gfx_font_layout_text + the [fonts] probe (best-effort)
-    MH_ChatInput_Install(); // F3: layout-aware key translate + in-game chat codec + the pinned [input] codepage (best-effort)
-    MH_CheatGate_Install(); // CH1: the SP cheat console (Shift+Enter line) refused in a lockstep match + the redacted chat submit log (best-effort)
-    MH_Overlay_Install();   // debug overlay: [debug] ini pages -> painted on present BEFORE capture reads (best-effort)
-    MH_Capture_Install();   // UI capture harness: hook present-flip -> F12/[capture] frame dump (best-effort)
-    MH_UIDrive_Install();   // UI automation harness (Phase 2): [uitest] click-driver via the mouse ring (best-effort)
-    install_marker_scan();  // U1c diag: [menu] findstr=<marker> -> locate the in-game IP-entry buffer
+    MH_KeyRepeat_Install();  // U24: modal key pump -> one dispatch per keystroke in menu/lobby text fields (best-effort)
+    MH_Pause_Install();      // D19: [pause] key -> enter the orphaned mode-5 PAUSE screen from the strategic view (best-effort)
+    MH_FontGuard_Install();  // F2: bounds-guard glyph_table[code_unit] in llm_gfx_font_layout_text + the [fonts] probe (best-effort)
+    MH_ChatInput_Install();  // F3: layout-aware key translate + in-game chat codec + the pinned [input] codepage (best-effort)
+    MH_CheatGate_Install();  // CH1: the SP cheat console (Shift+Enter line) refused in a lockstep match + the redacted chat submit log (best-effort)
+    MH_DiploEcho_Install();  // U39: the diplomacy dialog's optimistic relation write NOPed -- the 0xf4 commit is the hashed cell's only writer (best-effort)
+    MH_CancelTask_Install(); // D28: the building dialog's cancel-task Yes issues the equivalent building order in a lockstep match (best-effort)
+    MH_Overlay_Install();    // debug overlay: [debug] ini pages -> painted on present BEFORE capture reads (best-effort)
+    MH_Capture_Install();    // UI capture harness: hook present-flip -> F12/[capture] frame dump (best-effort)
+    MH_UIDrive_Install();    // UI automation harness (Phase 2): [uitest] click-driver via the mouse ring (best-effort)
+    install_marker_scan();   // U1c diag: [menu] findstr=<marker> -> locate the in-game IP-entry buffer
     // (the five MH_Net_Set*Handler binds stood here until F3B; they are net steps and moved into
     //  MH_Net_Arm above -- see the note there for why the move is order-free and log-invisible.)
     install_desync_watch(); // D21: runtime desync detector -- [desync] ini section,
@@ -1898,7 +2035,8 @@ static int MH_Core_Arm(void) {
         topt.arm_dead =
             topt.arm_promoted && GetPrivateProfileIntA("tombstone", "arm_dead", 0, g_ini) != 0;
         static char tomb_force[512];
-        GetPrivateProfileStringA("tombstone", "force_arm", "", tomb_force, sizeof(tomb_force), g_ini);
+        mh::config::read_ini_string("tombstone", "force_arm", "", tomb_force, sizeof(tomb_force), // TL-HARN4
+                                    g_ini);
         topt.force_arm = tomb_force[0] ? tomb_force : nullptr;
         // The same negative arm addressed BY DOMAIN ("sim,tact"). The by-name key above cannot
         // express a whole-domain sweep: its list is parsed through a bounded buffer and one domain's
@@ -1907,8 +2045,8 @@ static int MH_Core_Arm(void) {
         // domain that armed nothing is a failure there, and a global total cannot say which domain
         // that was.
         static char tomb_force_dom[256];
-        GetPrivateProfileStringA("tombstone", "force_arm_domain", "", tomb_force_dom,
-                                 sizeof(tomb_force_dom), g_ini);
+        mh::config::read_ini_string("tombstone", "force_arm_domain", "", tomb_force_dom, // TL-HARN4
+                                    sizeof(tomb_force_dom), g_ini);
         topt.force_arm_domain = tomb_force_dom[0] ? tomb_force_dom : nullptr;
         // Safe-end caps: never trap-fill bytes that are not exclusively the function's own (shared
         // epilogue tails, disjoint-body gaps -- the 2026-09-01 arm_dead false hit).

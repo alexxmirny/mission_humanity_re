@@ -1,0 +1,128 @@
+# mp:D28 HOST walk -- the building dialog's "cancel task -> Yes" applies llm_bldg_finish_current_order
+# LOCALLY (no order) -- the D25 root classification's latent sibling.
+#
+# Same host-and-launch + mother-landing walk as mp_host_buildclick.txt; then, in the live match, this
+# peer puts its OWN mothership (already complete/operational the instant it lands -- unlike a freshly
+# PLACED building, which needs a real construction-time wait before ANY other task can start on it:
+# measured, a repair order issued on a still-CONSTRUCTION building is silently absorbed, no state
+# change, no dialog change, even 6+ real seconds later) into a REPAIR task with the
+# single-player-only `_DESTROY` debug-console cheat (`[input] cheat_gate=1` refuses every cheat but
+# `_NETDELAY` in a lockstep match -- this run merges ini/cheat_gate_off.ini so the line is not
+# blanked; a STAGING device for the precondition, not a test of CH1's own gate, which is a separate
+# tracker item), then clicks the repair icon (red circle) in the selected-building HUD panel to start
+# the actual repair cycle. Then: open the building's construction/upgrade status dialog
+# (llm_ui_dlg_building_construction_status via the status icon, red X) -- RE'd: it raises "Are you
+# sure you want to cancel repair/task/upgrade?" only while the building's `state` is one of a handful
+# of active-task enum values (repair/charge, production, upgrade, research); NOT during the
+# building's own first construction, and NOT the default idle case, which instead offers "disassemble
+# it" (confirmed empirically -- a different dialog, different callback, same container) -- press
+# &Yes (text 0x265, llm_ui_building_cancel_task_yes_cb @0x004c7060, value 121='y'). Pair with
+# mp_client_idle.txt.
+#
+# THE ASSERTION IS THE post_check (tools/check_cancel_task.py), NOT THE PIXELS: the host's mh_net.log
+# must carry the seam's own banner (`; D28: cancel-task Yes spliced at ...`) plus a `routed as order`
+# line, and mp_analyze over both peers' harness logs must read ALL PAIRS IDENTICAL
+# (`d28_canceltask`) or, with `[net] cancel_task_order=0`, DIVERGE and stay diverged from the click
+# (`d28_canceltask_local`).
+#
+# The HUD selected-building panel's small icon column (RE'd via llm_strat_ui_hud_widgets_init's
+# range-defines + the four _G_LLM_UI_BLDG_*_PENDING_ROW globals each writes, screen-pixel-located
+# from a capture): worker +/- (top), `ON` toggle-active, a red CIRCLE (upgrade/repair), and a red X
+# at the bottom (status -- misleadingly named CONSTRUCTION_STATUS_PENDING_ROW; it is the SAME open
+# call the repair-cancel confirm goes through, just a different resulting text/button set for a
+# non-busy building). Column x~882; circle y~260, X y~271 (1024x768, this camera position).
+
+# reach the host lobby (create the pre-pinned game on the pre-selected map)
+settled value:110
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+settled Create
+clickl Create
+present Game name
+settled Ok
+clickl Ok
+present Available maps
+settled Ok
+clickl Ok
+
+# host lobby: block until the client is really in ITS lobby, then Start.
+present Network players
+peers 1
+awaitsignal lobby
+enabled Start
+settled Start
+clickl Start
+
+# in the match. A fresh MP human owns one AIRBORNE mothership and nothing else, so first LAND it:
+# shift+right-click on the map (the deploy gesture -- order 0x10 move, then 0x18 deploy). Gated on
+# the sim clock, never on frames; the mother is the "Pioneer" building well before 20000.
+absent Network players
+gameclock 3000
+rclick 480 330 shift
+gameclock 20000
+capture landed
+
+# select the mother (its footprint is centred close to the deploy point, (480,330) on this camera).
+cursor 500 330
+cursor 500 330
+press 500 330
+release 500 330
+gameclock 20200
+capture mother_selected
+dump
+
+# damage it via the single-player debug console (Shift+Enter opens the same text line the chat uses,
+# with no session-mode test -- mp:CH1's mp_client_cheat.txt pattern). `_DESTROY` (catalog idx 0x20)
+# damages the selected/group target -- order 0xf7, writes `.pending_damage` -- no `_TECHLAND RULEZ `
+# unlock needed (measured: `_DESTROY` ran and its order was issued without it).
+layout 00000409
+key 0x1c shift
+type _DESTROY
+field chat _DESTROY
+key 0x1c
+layout default
+gameclock 20600
+capture mother_damaged
+
+# the repair icon (red circle in the selected-panel's icon column): unconditionally compares energy
+# to max and orders upgrade (if available) or repair_cycle_start (if energy < max, which it now is).
+cursor 882 260
+cursor 882 260
+press 882 260
+release 882 260
+gameclock 21000
+capture after_repair_click
+
+# orders are STAGED, not instant (mp:CH1's own _NUCLEAR BOMB reference needed ~6400ms exec delay) --
+# give this one real headroom, then reselect (a click elsewhere may have cleared it) and open the
+# status dialog (red X). Measured: by here the dialog reads "Under repair NN % / Are you sure you
+# want to cancel repair ?" with `&Yes` (value 121) and `Ok` (value 0, the MOTHER close-button
+# variant) -- exactly D28's target.
+gameclock 27000
+cursor 500 330
+cursor 500 330
+press 500 330
+release 500 330
+gameclock 27200
+cursor 882 271
+cursor 882 271
+press 882 271
+release 882 271
+gameclock 27400
+capture status_dialog
+dump
+
+# THE TRIGGER: &Yes. The seam splices this callback so, in a lockstep match, it issues the
+# equivalent building order instead of the retail local call.
+settled value:121
+clickv 121
+absent Ok
+gameclock 28000
+capture after_yes
+log HOST cancelled the mother's repair task via the confirm dialog's &Yes
+
+# keep the match running so the analyzer has rows on both sides of the click
+gameclock 40000
+end

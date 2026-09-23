@@ -1,0 +1,38 @@
+# mp:P9W (2026-09-22, wave-3 lane C) -- resync_receiver_deadline_proof, client (joiner) side.
+#
+# Same join walk as mp_client_p9_soak.txt, but the capture moves from `gameclock 6000` to the
+# match's own FIRST frame (see mp_host_p9w_deadline.txt for why): this script ends right after
+# confirming it is in the match, and the runner holds the process alive until the host's script
+# completes (same shape mp_client_p9_soak.txt already relies on). What proves THIS row's fix fired
+# is not a script predicate at all -- it is the `; [resync] receiver_deadline: ...` line this peer's
+# own mh_net.log carries once it leaves a leaderless barrier on its own deadline, read by
+# tools/check_resync_receiver_deadline.py (post_check).
+
+# join the host by IP -> the joined lobby (see mp_client_join.txt for the flow)
+settled value:110
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+present Internet server
+settled Internet server
+clickl Internet server
+present Server address
+settled Connect
+clickl Connect
+sessions 1
+settled Join game
+clickl Join game
+
+# joined lobby: tell the host we are really here, then wait for its Start
+present Network players
+signal lobby
+settled Cancel
+absent Network players
+
+# in the match: ONE capture at the very first frame, then nothing left to assert -- stay alive
+# (held by the runner) until the shim's blackhole + this DLL's own receiver-side deadline resolve
+# the match and the host's script ends.
+capture m1_launched
+log CLIENT is in the configuration-(1) match; soaking until the shim timeline's early blackhole
+end

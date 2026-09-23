@@ -295,8 +295,68 @@ JoinAdmit join_admit(const std::uint8_t* in, std::size_t len, const SessionInfo&
 constexpr std::uint8_t ANNOUNCE_LEFT    = 0; // "<name> left the game"   (U16)
 constexpr std::uint8_t ANNOUNCE_JOINED  = 1; // "<name> joined the game" (U16)
 constexpr std::uint8_t ANNOUNCE_REFUSED = 2; // F3c: "your JOIN was refused: <reason>", for player [1] only
+constexpr std::uint8_t ANNOUNCE_PING    = 3; // L1f: the host's per-slot ping summary (see below)
 constexpr std::size_t  ANNOUNCE_TEXT_CAP    = 96;                       // reason text incl. NUL
 constexpr std::size_t  ANNOUNCE_MAX_ENCODED = 2 + ANNOUNCE_TEXT_CAP;    // kind + player id + text
+
+// ---- mp:L1f -- THE HOST'S PER-SLOT PING SUMMARY ---------------------------------------------------
+//
+// WHY IT HAS TO EXIST AT ALL. The transport is a client-server STAR -- a 2026-07-09 design decision,
+// taken because the retail lobby's own slot protocol is host-authoritative and a mesh would have
+// needed a second authority for the same table: a client holds exactly ONE connection, to the host,
+// so its MH_NetStats::lat[] has exactly one row and it can never measure another client. Every other
+// occupied row of its lobby is therefore blank on its screen, forever, by construction -- no bug to
+// fix in the renderer. The host is the one peer that measures them all, so the host publishes.
+//
+// WHY IT RIDES ANNOUNCE AND NOT A NEW FLAG -- the same three reasons mp:F3c gave, and one more.
+// FLAG_ANNOUNCE is already the host -> everybody control frame, already carries a KIND byte, and is
+// already answered by both transports; a new flag would be a new row in MH_NET_MODULE_SYMBOLS that
+// the TCP module must also answer, for a message it can never populate (lat_supported = 0). And it
+// is already documented determinism-safe: mh_net/net_transport.cpp routes ANNOUNCE to the client's
+// announce handler and NEVER to the game queue, exactly like SESSION_INFO -- so nothing here can
+// reach the order stream, the lockstep clock or a hashed byte.
+//
+// BYTE [1] IS AN ENTRY COUNT HERE, NOT A PLAYER ID, which is the one place this kind departs from
+// the frame's older shape -- a summary is about every player at once, so there is no single id it
+// could name. That is safe only because the KIND byte is read first and dispatched on, which is
+// what mh/seams/net_seams.cpp's on_announce_recv now does (and it REFUSES an unknown kind rather
+// than falling through into the text path, so the next kind after this one cannot be rendered as a
+// name by a peer that predates it).
+//
+//   [0]      ANNOUNCE_PING
+//   [1]      n, the number of entries (0..ANNOUNCE_PING_MAX_ENTRIES)
+//   [2+4i]   player_id of entry i
+//   [3+4i]   srtt_ms low byte    (little-endian u16, clamped to PING_SRTT_CLAMP)
+//   [4+4i]   srtt_ms high byte
+//   [5+4i]   relay class: 0 direct, 1 relayed, 2 unknown (MH_NetPeerLatency.relayed's -1)
+//
+// THE HOST'S OWN ROW IS NEVER IN IT: every client measures the host directly on its one connection,
+// and that measurement is the truthful one for that row (it is the client's own RTT, not a number
+// relayed through a third party). The wire carries only what the receiver cannot measure itself.
+constexpr std::size_t ANNOUNCE_PING_MAX_ENTRIES = 8;   // MH_NET_MAX_PEERS -- one per lobby slot
+constexpr std::uint16_t ANNOUNCE_PING_SRTT_CLAMP = 9999; // the lobby cell's own clamp (lobby_ping.cpp)
+constexpr std::uint8_t ANNOUNCE_PING_RELAY_DIRECT  = 0;
+constexpr std::uint8_t ANNOUNCE_PING_RELAY_RELAYED = 1;
+constexpr std::uint8_t ANNOUNCE_PING_RELAY_UNKNOWN = 2;
+constexpr std::size_t ANNOUNCE_PING_MAX_ENCODED = 2 + ANNOUNCE_PING_MAX_ENTRIES * 4; // 34
+
+struct AnnouncePingEntry {
+    std::uint8_t  player_id = 0;
+    std::uint16_t srtt_ms   = 0;
+    std::uint8_t  relay     = ANNOUNCE_PING_RELAY_UNKNOWN;
+};
+
+// Encode `n` entries into `out` (>= ANNOUNCE_PING_MAX_ENCODED). `n` over the cap is truncated to it;
+// srtt over the clamp is clamped; an out-of-range relay class is written as UNKNOWN rather than
+// passed through, so a decoder never has to defend against a fourth value. Returns bytes written.
+std::size_t announce_ping_encode(const AnnouncePingEntry* in, std::size_t n, std::uint8_t* out) noexcept;
+
+// Decode one. False unless `in` is a well-formed ANNOUNCE of kind PING whose declared entry count
+// matches the bytes actually present -- a truncated summary is refused whole rather than read up to
+// where it stops, because a half-read table would paint stale numbers on the rows it did not reach.
+// `out` receives up to `cap` entries; `*out_n` is how many were written.
+bool announce_ping_decode(const std::uint8_t* in, std::size_t len, AnnouncePingEntry* out,
+                          std::size_t cap, std::size_t* out_n) noexcept;
 
 // Encode a REFUSED announce for `target_player_id` into `out` (>= ANNOUNCE_MAX_ENCODED). The reason
 // is truncated to ANNOUNCE_TEXT_CAP-1 characters and always NUL-terminated. Returns bytes written.

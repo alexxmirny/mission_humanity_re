@@ -108,7 +108,7 @@ lockstep_step_eps_ms=0.01
 sim_step_ms=10
 rx_spin=0
 horizon_heartbeat_ms=50
-defang_overlay=1
+defang_overlay=0
 log_gamemode=0
 game_speed_pct=0
 eager_advertise=1
@@ -127,9 +127,16 @@ bootstrap=1
 TRACE_BLOCK = "\n[trace]\ntemporal=1\n"
 
 
-# Overridable via --defang (default 1 = shipping suppress). Set 0 to let the SYNCHRONIZING/de-sync
-# overlay RENDER (overlay-mapping trace). resync_wait_fix stays on so a defang-off run doesn't perma-hang.
-DEFANG_OVERLAY = 1
+# Overridable via --defang. THE DEFAULT IS 0 = THE SHIP (mh_net.example.ini), since
+# tooling:TL-RIG-DEFANG, 2026-09-22. It was 1 for two years and that was the rig lying to us: 1
+# NOPs the mode-8 store at 0x004c85ed (defang_xui) -- the wait-screen frame that ENDS a resync
+# barrier AND the leader's only clear of RESYNC_IN_PROGRESS -- so on a rig lane the one-shot
+# latched after the first force_resync and every later fire was a silent no-op. The instrument
+# (mode-8 frames) and the mechanism it watched were NOP'd by the same knob, which is how a barrier
+# storm firing once every 2 s in the field read as "0 mode-8 frames" on a green suite for two
+# months (dead-ends G274). Pass `--defang 1` only to reproduce that blindness deliberately.
+# resync_wait_fix stays on so a defang-off run does not perma-hang.
+DEFANG_OVERLAY = 0
 # Extra [net] lines (';'-separated k=v), e.g. the per-group overlay knobs "defang_xui=1;defang_tt_wait=2".
 EXTRA_NET = ""
 # mp:R7a -- extra [net] lines for the CLIENT peers ONLY (--net-extra-client). See make_ini.
@@ -487,7 +494,17 @@ def make_ini(script_name, timeout_frames, harness_steps=0, is_host=False, ident=
     # -- peers=0 -- is the assertion, not a relay that carries the host but not the dial). --extra-ini
     # cannot carry it (a fragment's [net] is refused), which is why this is a [net] channel like --net-extra.
     if (not is_host) and CLIENT_NET_EXTRA:
-        extra_kvs += [kv.strip() for kv in CLIENT_NET_EXTRA.split(";") if kv.strip()]
+        # ...and it must OVERRIDE --net-extra, not follow it: the same FIRST-match rule one level
+        # up. `--net-extra lockstep_step_ms=100 --net-extra-client lockstep_step_ms=60` used to write
+        # BOTH lines into the client ini in that order, so the client ran 100 while the command line
+        # said 60 -- mp:P8's host-100/joiner-60 arm was silently the both-100 arm (2026-09-22,
+        # caught from the generated ini before the run was read). Drop the --net-extra line whose
+        # key the client extra also sets.
+        client_kvs = [kv.strip() for kv in CLIENT_NET_EXTRA.split(";") if kv.strip()]
+        client_keys = {kv.split("=", 1)[0].strip() for kv in client_kvs if "=" in kv}
+        extra_kvs = [
+            kv for kv in extra_kvs if kv.split("=", 1)[0].strip() not in client_keys
+        ] + client_kvs
     extra = "".join(kv + "\n" for kv in extra_kvs)
     overridden = {kv.split("=", 1)[0].strip() for kv in extra_kvs if "=" in kv}
     # A lane's PORT must override NET_BLOCK's 6501, not be appended after it: Windows
@@ -523,7 +540,7 @@ def make_ini(script_name, timeout_frames, harness_steps=0, is_host=False, ident=
     if ident.get("lane"):
         uitest.append("lane=%d" % ident["lane"])
     ini = (
-        net.replace("defang_overlay=1", "defang_overlay=%d" % DEFANG_OVERLAY)
+        net.replace("defang_overlay=0", "defang_overlay=%d" % DEFANG_OVERLAY)
         + extra
         + TRACE_BLOCK
         + "\n[capture]\nevery=0\n\n[uitest]\n"
@@ -2807,7 +2824,18 @@ def run_determinism(args):
     dirs = []
     for key, ip, run in peers:
         if run:
-            dirs.append(pull_peer_logs(args, ip, run, os.path.join(det_dir, key)))
+            pulled = pull_peer_logs(args, ip, run, os.path.join(det_dir, key))
+            # mp:U19b -- a peer that LEAVES the match on purpose (the quitter of the 3-peer clean
+            # quit) has a legitimately short hash log. Its logs are still pulled -- the shape's
+            # post_check reads them -- but it takes no part in the all-pairs compare, which would
+            # otherwise read its ~300 steps as "a peer produced no state hashes" and fail a run
+            # whose two SURVIVORS compared every requested step.
+            if key in (args.det_exclude or []):
+                print(
+                    "[det] %s pulled but excluded from the pairwise compare (--det-exclude)" % key
+                )
+                continue
+            dirs.append(pulled)
     for key, ip, run in peers:
         peer_kill(args, ip, run)
     shim_stop(shim)
@@ -2927,6 +2955,16 @@ def main():
         "--client-name", default="client", help="client player name (client N -> name+N)"
     )
     ap.add_argument("--game-name", default="uitest", help="game name the host creates (pinned)")
+    # mp:R2b -- a CLIENT lane that itself HOSTS a lobby (the 3-peer browser_two_rows scenario: the
+    # runner's host and its first client each create a game, the second client browses both). Its
+    # created game name comes from ITS setup.dat, which pin_setup left at the lane template's saved
+    # value -- machine state on a frame the baseline pins -- so pin it like --client-name does.
+    ap.add_argument(
+        "--client-game-name",
+        default=None,
+        help="game name pinned into each CLIENT's setup.dat (client N -> name+N, as --client-name); "
+        "default: not pinned (a client that never creates a game does not read it)",
+    )
     ap.add_argument(
         "--client-dead-ip",
         default=None,
@@ -3055,6 +3093,15 @@ def main():
         help="--determinism: compare AT LEAST this many in-game steps (poll-bounded, may overshoot)",
     )
     ap.add_argument(
+        "--det-exclude",
+        action="append",
+        default=[],
+        metavar="PEER",
+        help="--determinism: pull this peer's logs (host, client1, ...) but leave it OUT of the "
+        "all-pairs hash compare -- for a peer that leaves the match on purpose (mp:U19b's quitter), "
+        "whose short hash log is not a vacuous run. Repeatable.",
+    )
+    ap.add_argument(
         "--harness",
         action="store_true",
         help="single-peer runs (--script): arm the in-game [harness] state logger for --steps steps "
@@ -3069,9 +3116,11 @@ def main():
     ap.add_argument(
         "--defang",
         type=int,
-        default=1,
-        help="[net] defang_overlay value (default 1 = shipping suppress). 0 = let the de-sync/SYNCHRONIZING "
-        "overlay RENDER for the overlay-mapping trace (resync_wait_fix stays on).",
+        default=0,
+        help="[net] defang_overlay value. DEFAULT 0 = THE SHIP (mh_net.example.ini): the resync "
+        "barrier's wait-screen frame runs and RESYNC_IN_PROGRESS clears. 1 NOPs that store -- the "
+        "rig's historical default until TL-RIG-DEFANG, and the reason a 2-second barrier storm read "
+        "as '0 mode-8 frames' for two months (G274); pass it only to reproduce that blindness.",
     )
     ap.add_argument(
         "--net-extra",
@@ -3132,6 +3181,15 @@ def main():
         help="harness order_mode: 1 = RECORD the dispatched order stream to mh_orders.bin (+ the "
         "mh_clock.bin clock track) in each peer's run folder, so an interactive session can be "
         "replayed later without a human. 2 = REPLAY a recording placed next to the exe.",
+    )
+    ap.add_argument(
+        "--pull-logs",
+        metavar="DIR",
+        help="after the run, copy every peer's logs (mh_net.log and siblings, the process directory "
+        "plus each session directory appended in stamp order) into DIR/<peer key>/ -- the same pull "
+        "the --determinism path already does. What a post-run checker needs when a peer is a VM: "
+        "its logs otherwise never leave the rig, which is why test_ui's own post_check_peers can "
+        "only read LOCAL lanes. mp:L1f.",
     )
     ap.add_argument(
         "--order-log",
@@ -3655,7 +3713,12 @@ def main():
                 ip_val = [args.client_dead_ip, connect_ip]
             else:
                 ip_val = connect_ip
-            pin_setup(args, p["ip"], ip_val=ip_val, name=cname, pdir=p.get("dir"))
+            cgame = None
+            if args.client_game_name:
+                cgame = (
+                    args.client_game_name if ci == 0 else "%s%d" % (args.client_game_name, ci + 1)
+                )
+            pin_setup(args, p["ip"], ip_val=ip_val, name=cname, game=cgame, pdir=p.get("dir"))
             print("[client %s] launching %s ..." % (p["key"], os.path.basename(p["src"])))
             p["run"] = peer_launch(args, p["ip"], p["src"], args.timeout_frames, pdir=p.get("dir"))
 
@@ -3702,15 +3765,35 @@ def main():
         # collect + diff every peer, then kill it
         for p in peers:
             if p.get("run"):
+                # mp:L1f -- PULL THE LOGS TOO, when asked. Until this flag the log pull-back existed
+                # only on the --determinism path, so a post-run CHECKER could read a LOCAL lane's
+                # mh_net.log (it is on this box) but never a VM peer's -- which is exactly why
+                # test_ui's own post_check_peers resolves lane directories and nothing else. A shape
+                # whose topology has to be host-on-a-VM + client-on-a-VM + a local lane (the DET3
+                # topology, because local 3-peer discovery cannot seat a second 127.0.0.1 client)
+                # therefore had no way to get two of its three peers' evidence off the rig.
+                if args.pull_logs:
+                    dest = os.path.join(args.pull_logs, p["key"])
+                    print(
+                        "  [pull] %s logs -> %s"
+                        % (p["key"], pull_peer_logs(args, p["ip"], p["run"], dest))
+                    )
                 png = peer_captures(args, p["ip"], p["run"])
                 # mp:GS1(b) -- a peer named by --client-expect-exit is DESIGNED to end via a real
                 # process exit rather than its script's own COMPLETE marker (ExitProcess ends it
                 # first); accept that terminal state ONLY when exit_witness confirms it was
                 # SELF-DRIVEN (the D15 `; EXIT ...` line), so a crash or a harness kill still fails.
-                status_ok = results.get(p["key"]) == "COMPLETE" or (
-                    p.get("expect_exit")
-                    and results.get(p["key"]) == "PROCESS-GONE"
-                    and any("SELF-DRIVEN" in ln for ln in exit_witness(p["run"]))
+                # bool(): a TIMED-OUT peer without expect_exit made this `True and None` -> None,
+                # and `overall_ok &= None` raised TypeError HERE -- before peer_kill ran for the
+                # remaining peers, so every timed-out --update-baselines run left its games alive
+                # holding their lane mutexes (mp:R2b, 2026-09-22).
+                status_ok = bool(
+                    results.get(p["key"]) == "COMPLETE"
+                    or (
+                        p.get("expect_exit")
+                        and results.get(p["key"]) == "PROCESS-GONE"
+                        and any("SELF-DRIVEN" in ln for ln in exit_witness(p["run"]))
+                    )
                 )
                 overall_ok &= collect_and_check(p["label"], png, args) and status_ok
             else:

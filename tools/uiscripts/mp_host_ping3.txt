@@ -1,0 +1,54 @@
+# mp:L1f -- THE HOST of the three-peer lobby-ping row (lobby_ping_3peer).
+#
+# WHY THREE PEERS AND NOT TWO. With two peers every row on every screen is one that peer measured
+# itself: the host measures its one client, the client measures the host. The claim mp:L1f makes --
+# "every player sees every OTHER player's ping" -- is vacuous at two and only becomes a claim at
+# three, where each client has exactly one row it physically cannot measure (the transport is a
+# client-server STAR: a client holds one connection, to the host). That row is the one the host
+# publishes, and this scenario is the only shape in the suite that can show it.
+#
+# WHY THE ROW STOPS IN THE LOBBY and never clicks Start: the ping cell and the publication are both
+# lobby-only by construction (net_seams.cpp drives them from on_lobby_dispatch), so a match would
+# add minutes of rig time and prove nothing this walk does not. Nothing simulates here, so there is
+# no determinism claim to carry either.
+#
+# THE GATE IS A CLAIM, NOT A TIMER. `lobbyping 2` waits until TWO slot rows on this screen carry a
+# real number -- see ui_drive.cpp's grammar note. Gating the capture on a frame budget would have
+# made the row pass or fail on the rig's frame rate; gating it on the mechanism means a capture that
+# exists at all is a capture of the thing being claimed.
+#
+# Pair with mp_client_ping3.txt (client 1) and mp_client_ping3b.txt (client 2).
+
+# reach the host lobby (create a game named "test" on the pre-selected map)
+settled value:110
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+settled Create
+clickl Create
+present Game name
+settled Ok
+clickl Ok
+present Available maps
+settled Ok
+clickl Ok
+
+# host lobby: BLOCK until BOTH clients are really seated -- `peers 2` is the transport's count and
+# the two signals are the clients saying their own lobby screen is up (see mp_host_start.txt for why
+# the peer count alone is a race the joiner always loses).
+present Network players
+peers 2
+awaitsignal c1
+awaitsignal c2
+# ...and until this screen is actually showing both of their pings. On the HOST both are its own
+# measurements; the clients' `lobbyping 2` is the half that needs the publication.
+lobbyping 2
+enabled Start
+settled Start
+capture m2_lobby_3peer
+log HOST lobby shows a ping for both clients
+# Tell the clients they may capture and leave. Sent AFTER this capture so the host's frame is taken
+# while the lobby is at its fullest, and so a client cannot end (and drop a slot) mid-capture.
+signal hostdone
+end

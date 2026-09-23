@@ -56,6 +56,7 @@ use chrono::{DateTime, Utc};
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
 
+use crate::elevate;
 use crate::install::{self, PackageName};
 use crate::log;
 use crate::paths::{Layout, FIRST_RUN_MARKER, GAME_EXE};
@@ -658,10 +659,15 @@ pub struct Staged {
 /// unpacked in place would have a window in which the version directory holds half of two releases,
 /// and the machine that finds that window is the one that lost power during an update.
 ///
-/// Two halves since dist LA8 (`fetch_and_stage`, `install_staged`), because a switch of
+/// Two halves since dist LA8 (`fetch_and_stage`, `install_staged_set`), because a switch of
 /// configuration has to UNINSTALL the old set between them -- after the new zip is verified and
 /// on disk, so a failed download never leaves a game directory with nothing in it. `progress`
 /// is what the Play page shows meanwhile.
+///
+/// dist LA13: the second half is the ONE step that may run elevated. When the game directory is
+/// not writable by this token (Program Files), it is performed by an elevated re-run of this
+/// launcher (`elevate::run_step_elevated`, `--step install:<version>:<tag>`) -- the download and
+/// the staging above stay per-user, and so does everything after, the game's launch included.
 pub fn apply(
     layout: &Layout,
     fetch: &dyn Fetch,
@@ -672,15 +678,71 @@ pub fn apply(
     progress: Progress,
 ) -> Result<Applied, String> {
     let staged = fetch_and_stage(layout, fetch, manifest, tag, base_url, progress)?;
-    // dist LA8: a different configuration in the receipt is uninstalled first -- receipt-driven,
-    // so `mh.dll.mhbak` (the game's own dll) is put back and then parked again by the install
-    // rather than overwritten by OUR previous dll.
+    progress(&format!(
+        "installing {} beside {GAME_EXE}...",
+        staged.package
+    ));
+    let summary = if elevate::needs_elevation(game_dir) {
+        elevated_install(layout, game_dir, &staged, progress)?
+    } else {
+        match install_staged_set(&staged, manifest.relay.as_ref(), game_dir) {
+            Ok(report) => report.summary(),
+            Err(e) if elevate::is_access_denied(&e) => {
+                log::line(format!("update: {e} -- retrying that step elevated"));
+                elevated_install(layout, game_dir, &staged, progress)?
+            }
+            Err(e) => return Err(e),
+        }
+    };
+    let kept = version_dirs(layout);
+    log::line(format!(
+        "update: {} installed; version directories now {:?}",
+        manifest.version, kept
+    ));
+    Ok(Applied {
+        version: manifest.version.clone(),
+        tag: staged.pkg.tag.clone(),
+        summary,
+        kept,
+    })
+}
+
+fn elevated_install(
+    layout: &Layout,
+    game_dir: &Path,
+    staged: &Staged,
+    progress: Progress,
+) -> Result<String, String> {
+    progress(&format!(
+        "installing {} beside {GAME_EXE} -- this needs administrator rights once (the game \
+         directory is not writable); answer the prompt...",
+        staged.package
+    ));
+    elevate::run_step_elevated(
+        layout,
+        game_dir,
+        &elevate::StepSpec::Install {
+            version: staged.pkg.version.clone(),
+            tag: staged.pkg.tag.clone(),
+        },
+    )
+}
+
+/// The second half of `apply`, and the whole of an elevated `--step install` (dist LA13): remove a
+/// DIFFERENT configuration's set first (receipt-driven, so retail's own `mh.dll` -- parked as
+/// `mh.dll.mhbak`, the one FOREIGN file every install displaces, dist LA12 -- is put back and then
+/// parked again), copy the staged set beside `mh.exe`, provision the relay, write the receipt.
+///
+/// `relay` is the accepted manifest's (dist LA6): the ini the zip just put beside mh.exe gets it
+/// before its digest goes in the receipt, and the key file is written -- the same call every
+/// launch makes.
+pub fn install_staged_set(
+    staged: &Staged,
+    relay: Option<&Relay>,
+    game_dir: &Path,
+) -> Result<install::InstallReport, String> {
     if let Some(receipt) = install::read_manifest(game_dir) {
-        if receipt.tag != tag {
-            progress(&format!(
-                "removing the {} configuration before installing {tag}...",
-                receipt.tag
-            ));
+        if receipt.tag != staged.pkg.tag {
             let un = install::uninstall(game_dir)?;
             log::line(format!(
                 "update: switched away from {} -- {}",
@@ -689,11 +751,13 @@ pub fn apply(
             ));
         }
     }
-    progress(&format!(
-        "installing {} beside {GAME_EXE}...",
-        staged.package
-    ));
-    install_staged(layout, &staged, manifest, game_dir)
+    install::install_from_version_dir(
+        &staged.version_dir,
+        &staged.pkg,
+        &staged.package,
+        game_dir,
+        relay,
+    )
 }
 
 /// The first half of `apply`: download, digest, unpack into staging, rename into place.
@@ -756,35 +820,6 @@ pub fn fetch_and_stage(
         version_dir,
         pkg,
         package,
-    })
-}
-
-/// The second half of `apply`: copy the staged set beside `mh.exe` and write the receipt.
-pub fn install_staged(
-    layout: &Layout,
-    staged: &Staged,
-    manifest: &Manifest,
-    game_dir: &Path,
-) -> Result<Applied, String> {
-    // dist LA6: the ini the zip just put beside mh.exe gets the manifest's relay before its digest
-    // goes in the receipt, and the key file is written -- the same call every launch makes.
-    let report = install::install_from_version_dir(
-        &staged.version_dir,
-        &staged.pkg,
-        &staged.package,
-        game_dir,
-        manifest.relay.as_ref(),
-    )?;
-    let kept = version_dirs(layout);
-    log::line(format!(
-        "update: {} installed; version directories now {:?}",
-        manifest.version, kept
-    ));
-    Ok(Applied {
-        version: manifest.version.clone(),
-        tag: staged.pkg.tag.clone(),
-        summary: report.summary(),
-        kept,
     })
 }
 
@@ -856,6 +891,86 @@ pub fn make_ready_with_key(
     let manifest = check_with_key(fetch, base_url, "", Some(layout), public_key)?;
     let applied = apply(layout, fetch, &manifest, tag, game_dir, base_url, progress)?;
     Ok(Some(applied))
+}
+
+// --------------------------------------------------------------------------- dist LA12: the offer
+
+/// What an accepted manifest offers THIS machine, relative to what it has (dist LA12).
+///
+/// Computed once per check and shown on the Play page ("0.1.2 is available -- Update"), so the
+/// automatic check every launcher start makes can SAY what it found without installing anything.
+/// `None` in both fields is "up to date".
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Offer {
+    /// The manifest's game version, when it is newer than the receipt's for the chosen
+    /// configuration -- or when that configuration is not installed at all (an install, not an
+    /// update, but the button does the same thing).
+    pub game: Option<String>,
+    /// The manifest's launcher version, when it is newer than this binary.
+    pub launcher: Option<String>,
+}
+
+impl Offer {
+    /// The one line the Play page shows, or `None` when nothing is offered.
+    pub fn line(&self) -> Option<String> {
+        match (&self.game, &self.launcher) {
+            (None, None) => None,
+            (Some(g), None) => Some(format!("{g} is available")),
+            (None, Some(l)) => Some(format!("launcher {l} is available")),
+            (Some(g), Some(l)) => Some(format!("{g} is available (with launcher {l})")),
+        }
+    }
+
+    pub fn any(&self) -> bool {
+        self.game.is_some() || self.launcher.is_some()
+    }
+}
+
+/// Decide what `manifest` offers over `installed` (the receipt's version for `tag`, empty when
+/// that configuration is not installed) and over this launcher's own version.
+pub fn offer_for(manifest: &Manifest, installed: &str) -> Offer {
+    offer_for_launcher(manifest, installed, crate::version::VERSION)
+}
+
+pub fn offer_for_launcher(manifest: &Manifest, installed: &str, mine: &str) -> Offer {
+    Offer {
+        game: check_newer(&manifest.version, installed)
+            .ok()
+            .map(|_| manifest.version.clone()),
+        launcher: check_newer(&manifest.launcher.version, mine)
+            .ok()
+            .map(|_| manifest.launcher.version.clone()),
+    }
+}
+
+/// The game half of the one Update button (dist LA12), and what `--update` does: install the
+/// chosen configuration when it is missing or a different one is there (the LA8 switch), update it
+/// when the manifest is newer than the receipt, and do NOTHING -- `Ok(None)` -- when it is current.
+///
+/// The rollback refusal lives on: an offer that is not newer than the receipt is never installed
+/// over it. It is simply not an ERROR here, because this is also what the replacement launcher runs
+/// after a self-update (LA11), and a player who pressed Update for a launcher whose game was already
+/// current must not be told the manifest was refused.
+pub fn apply_if_needed(
+    layout: &Layout,
+    fetch: &dyn Fetch,
+    manifest: &Manifest,
+    tag: &str,
+    game_dir: &Path,
+    base_url: &str,
+    progress: Progress,
+) -> Result<Option<Applied>, String> {
+    let installed = match install::read_manifest(game_dir) {
+        Some(r) if r.tag == tag => r.version,
+        _ => String::new(),
+    };
+    if readiness(game_dir, tag) == Readiness::Ready {
+        if let Err(e) = check_newer(&manifest.version, &installed) {
+            log::line(format!("update: the game stays at {installed} -- {e}"));
+            return Ok(None);
+        }
+    }
+    apply(layout, fetch, manifest, tag, game_dir, base_url, progress).map(Some)
 }
 
 // --------------------------------------------------------------------------- last known good
@@ -1074,7 +1189,10 @@ fn health_gate(exe: &Path, expect_version: &str) -> Result<String, String> {
 /// Replace this executable with the manifest's launcher and start the replacement.
 ///
 /// `restart_args` are what the new process is given; the caller strips the flags that asked for the
-/// update so the replacement does not immediately try to update again.
+/// update so the replacement does not immediately try to update again -- and, since dist LA11,
+/// APPENDS the work that is still owed (`--update` when the request was launcher-then-game), so the
+/// original request survives the restart. `crate::restart_argv` composes it and its test is the
+/// LA11 evidence.
 pub fn self_update(
     layout: &Layout,
     fetch: &dyn Fetch,
@@ -1785,6 +1903,116 @@ mod tests {
             .replace(RELAY_ADDR, "198.51.100.7:7100");
         std::fs::write(layout.accepted_manifest(), edited).unwrap();
         assert!(load_accepted_with_key(&layout, &key).is_none());
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    // ---- dist LA12: the offer every start makes, and the one button's game half ---------------
+
+    /// The start-up check's answer, computed off the fixture manifest (0.2.0, launcher 0.2.0):
+    /// what the Play page says depends only on the manifest and what is installed.
+    #[test]
+    fn the_offer_names_what_is_newer_and_says_nothing_when_current() {
+        let m = accept_with_key(GOOD_MANIFEST, GOOD_SIG, TEST_BASE, "", now(), PUBLIC_KEY).unwrap();
+        // Nothing installed, an older launcher: both halves are offered.
+        let o = offer_for_launcher(&m, "", "0.1.0");
+        assert_eq!(o.game.as_deref(), Some("0.2.0"));
+        assert_eq!(o.launcher.as_deref(), Some("0.2.0"));
+        assert_eq!(
+            o.line().as_deref(),
+            Some("0.2.0 is available (with launcher 0.2.0)")
+        );
+        // The game is current, the launcher is behind: only the launcher.
+        let o = offer_for_launcher(&m, "0.2.0", "0.1.1-rc1");
+        assert_eq!(o.game, None);
+        assert_eq!(o.line().as_deref(), Some("launcher 0.2.0 is available"));
+        // An older game behind a current launcher: only the game.
+        let o = offer_for_launcher(&m, "0.1.1", "0.2.0");
+        assert_eq!(o.line().as_deref(), Some("0.2.0 is available"));
+        // Both current -- or NEWER than the manifest (a rollback is never offered): nothing.
+        let o = offer_for_launcher(&m, "0.2.0", "0.2.0");
+        assert_eq!(o, Offer::default());
+        assert!(!o.any());
+        assert_eq!(o.line(), None);
+        assert!(!offer_for_launcher(&m, "0.3.0", "0.3.0").any());
+    }
+
+    /// The game half of Update / what `--update` does after the LA11 restart: install when the
+    /// configuration is missing, update when the manifest is newer, and touch NOTHING -- `None`,
+    /// no error -- when the receipt is current or newer (the rollback refusal, kept).
+    #[test]
+    fn apply_if_needed_installs_updates_or_leaves_a_current_game_alone() {
+        let root = std::env::temp_dir().join("mh_launcher_test_apply_if_needed");
+        let _ = std::fs::remove_dir_all(&root);
+        let layout = Layout::rooted(root.join("state"));
+        let game = play_game_dir(&root);
+        let server = play_server(PLAY_MANIFEST, PLAY_SIG);
+        let manifest = check_with_key(&server, TEST_BASE, "", Some(&layout), &play_key()).unwrap();
+        assert_eq!(manifest.version, "0.3.0");
+
+        // Missing: installed.
+        let done = apply_if_needed(
+            &layout,
+            &server,
+            &manifest,
+            "net",
+            &game,
+            TEST_BASE,
+            &no_progress,
+        )
+        .unwrap()
+        .expect("nothing was installed, so the manifest's version is");
+        assert_eq!(done.version, "0.3.0");
+        assert_eq!(install::read_manifest(&game).unwrap().version, "0.3.0");
+
+        // Current: left alone, and NOT an error.
+        let again = apply_if_needed(
+            &layout,
+            &server,
+            &manifest,
+            "net",
+            &game,
+            TEST_BASE,
+            &no_progress,
+        )
+        .unwrap();
+        assert!(again.is_none(), "0.3.0 over 0.3.0 is nothing to do");
+
+        // Older receipt (the file edited to say so): updated.
+        let receipt = game.join(crate::paths::INSTALL_MANIFEST);
+        let text = std::fs::read_to_string(&receipt)
+            .unwrap()
+            .replace("version\t0.3.0", "version\t0.2.9");
+        std::fs::write(&receipt, text).unwrap();
+        let done = apply_if_needed(
+            &layout,
+            &server,
+            &manifest,
+            "net",
+            &game,
+            TEST_BASE,
+            &no_progress,
+        )
+        .unwrap()
+        .expect("0.3.0 over 0.2.9 is an update");
+        assert_eq!(done.version, "0.3.0");
+
+        // Newer receipt than the manifest: a rollback, refused silently -- nothing touched.
+        let text = std::fs::read_to_string(&receipt)
+            .unwrap()
+            .replace("version\t0.3.0", "version\t0.9.0");
+        std::fs::write(&receipt, text).unwrap();
+        let none = apply_if_needed(
+            &layout,
+            &server,
+            &manifest,
+            "net",
+            &game,
+            TEST_BASE,
+            &no_progress,
+        )
+        .unwrap();
+        assert!(none.is_none());
+        assert_eq!(install::read_manifest(&game).unwrap().version, "0.9.0");
         let _ = std::fs::remove_dir_all(&root);
     }
 }

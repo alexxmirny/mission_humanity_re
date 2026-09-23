@@ -362,6 +362,51 @@ void  *g_dir_ctx = nullptr;
 known_fn g_known     = nullptr;
 void    *g_known_ctx = nullptr;
 
+// ---- mp:L1f -- THE PUBLISHED PATH CLASSIFICATION (udp_relay.h, `path_class`) --------------------
+//
+// One row per remote, PARALLEL TO `g.rem[]` and indexed the same way on a host; row MAX_REMOTE is
+// the client's single counterpart. Outside State for a second reason beyond g_dir's: State is
+// pump-thread-only by contract ("`pp` is read and written ONLY on the pump thread, like everything
+// else in this struct except the critical-section-guarded block above it"), and the READER here is
+// the GAME thread inside Endpoint::get_stats. Rather than widen that contract -- or take g.cs on
+// the datagram path, which is the one path in this file that must not grow a lock -- the pump
+// PUBLISHES two LONGs and the reader reads two LONGs.
+//
+//   g_pc_port[i]  the loopback port the ENDPOINT sees this remote under (host: Remote::self's port;
+//                 client: the tunnel's own dial port). 0 = the row is free.
+//   g_pc_cls[i]   -1 unknown (no DATA delivered yet) / 0 direct / 1 relayed.
+//
+// Aligned 32-bit scalars, so neither can tear; the port is written LAST when a row is claimed and
+// FIRST when it is released, so a reader that sees a port sees a class that was already written for
+// it. The worst a race can do is hand back the previous tick's letter for one frame of a lobby,
+// which is display-only by construction -- see the udp_relay.h banner.
+volatile LONG g_pc_port[MAX_REMOTE + 1];
+volatile LONG g_pc_cls[MAX_REMOTE + 1];
+constexpr int PC_CLIENT = MAX_REMOTE; // the client's one row
+
+void pc_clear_all() {
+    for (int i = 0; i <= MAX_REMOTE; ++i) {
+        InterlockedExchange(&g_pc_port[i], 0);
+        InterlockedExchange(&g_pc_cls[i], -1);
+    }
+}
+
+// Claim row `i` for a remote the endpoint will see on `port`. Class first, then the port.
+void pc_open(int i, unsigned short port) {
+    InterlockedExchange(&g_pc_cls[i], -1);
+    InterlockedExchange(&g_pc_port[i], (LONG)port);
+}
+
+void pc_close(int i) {
+    InterlockedExchange(&g_pc_port[i], 0);
+    InterlockedExchange(&g_pc_cls[i], -1);
+}
+
+// The latch itself: the LAST ACCEPTED DATA frame's path. Called from the pump thread only, once per
+// delivered OP_DATA, and deliberately not from anywhere else -- a PROBE or a WELCOME says nothing
+// about where this peer's GAME traffic is flowing.
+void pc_latch(int i, bool from_relay) { InterlockedExchange(&g_pc_cls[i], from_relay ? 1 : 0); }
+
 void logf(const char *fmt, ...) {
     if (!g.log) return;
     char    line[400];
@@ -1063,6 +1108,10 @@ Remote *remote_for(uint16_t handle, bool create) {
         int slen = (int)sizeof(g.rem[i].self);
         getsockname(s, (sockaddr *)&g.rem[i].self, &slen);
         g.rem[i].born = GetTickCount();
+        // mp:L1f -- publish the address the endpoint will key this remote by, class still UNKNOWN:
+        // the slot exists because a datagram is about to be delivered, but the delivery (and so the
+        // latch) happens at the bottom of on_leg_datagram, not here.
+        pc_open(i, ntohs(g.rem[i].self.sin_port));
         return &g.rem[i];
     }
     logf("net: udp relay has no loopback socket left for peer %u -- dropping its traffic",
@@ -1090,6 +1139,7 @@ void free_peer(uint16_t handle) {
             closesocket(g.rem[i].s);
             memset(&g.rem[i], 0, sizeof(g.rem[i]));
             g.rem[i].s = INVALID_SOCKET;
+            pc_close(i); // mp:L1f -- the published row goes with the socket that named it
         }
         if (g.pp[i].used && g.pp[i].handle == handle) memset(&g.pp[i], 0, sizeof(g.pp[i]));
         if (g.kk[i].used && g.kk[i].handle == handle) memset(&g.kk[i], 0, sizeof(g.kk[i]));
@@ -1357,6 +1407,10 @@ void on_leg_datagram(const uint8_t *pkt, int n, const sockaddr *from, bool from_
 
     if (g.cfg.role == 1) {
         if (!g.have_ep) return; // the endpoint has not spoken yet; nothing to answer
+        // mp:L1f -- a CLIENT has exactly one counterpart, so one published row. Latched on the
+        // delivery rather than on the decode, so what the cell reports is the path of a frame the
+        // endpoint actually received.
+        pc_latch(PC_CLIENT, from_relay);
         sendto(g.local, (const char *)payload, plen, 0, (const sockaddr *)&g.ep_addr,
                sizeof(g.ep_addr));
         // mp:R1c. AFTER the delivery: this is the datagram the client derives its key from, so it
@@ -1375,6 +1429,10 @@ void on_leg_datagram(const uint8_t *pkt, int n, const sockaddr *from, bool from_
     punch_for(src, true);
     Remote *r = remote_for(src, true);
     if (!r) return;
+    // mp:L1f -- this remote's row is `r`'s own index in g.rem[], which is also its index in the
+    // published table (pc_open above claims them together). Pointer arithmetic rather than a second
+    // search: remote_for just did the search, and a second one could disagree with the first.
+    pc_latch((int)(r - g.rem), from_relay);
     sockaddr_in to;
     memset(&to, 0, sizeof(to));
     to.sin_family      = AF_INET;
@@ -1640,6 +1698,7 @@ bool start(const Config &cfg, const uint8_t psk[KEY_LEN], log_fn log, void *log_
     if (!ensure_wsa()) return false;
 
     memset(&g, 0, sizeof(g));
+    pc_clear_all(); // mp:L1f -- a relink must not inherit the previous tunnel's published rows
     g.cfg         = cfg;
     g.log         = log;
     g.log_ctx     = log_ctx;
@@ -1764,6 +1823,10 @@ bool start(const Config &cfg, const uint8_t psk[KEY_LEN], log_fn log, void *log_
         int nlen = sizeof(a);
         getsockname(g.local, (sockaddr *)&a, &nlen);
         g.local_port = ntohs(a.sin_port);
+        // mp:L1f -- the client's one row: the endpoint dials THIS port (udp_transport.cpp rewrites
+        // MH_NetConfig.host/port to 127.0.0.1:client_dial_port), so it is the address its single
+        // conn carries and the key path_class is asked in.
+        pc_open(PC_CLIENT, g.local_port);
     }
 
     // mp:R6 -- the host's minter starts AT the room the caller minted (mint_host_room, via
@@ -1837,11 +1900,37 @@ void stop() {
     memset(g.my_key, 0, sizeof(g.my_key));
     memset(g.kk, 0, sizeof(g.kk));
     g.my_key_set = g.my_key_proved = false;
+    // mp:L1f -- published rows go with the sockets that named them. Cleared BEFORE g_started drops,
+    // so a reader that gets in between sees "tunnel up, nothing published" (-1) and never "tunnel
+    // down, so everything is direct" for an address whose peer was in fact relayed a moment ago.
+    pc_clear_all();
     if (g_started) DeleteCriticalSection(&g.cs);
     g_started = false;
 }
 
 bool active() { return g_started; }
+
+// mp:L1f -- see the banner in udp_relay.h. Reads only the published side table, never State, so it
+// is safe from the game thread while the pump runs.
+int path_class(const sockaddr_in &a) {
+    // NO TUNNEL, NO RELAY LEG, so no datagram this endpoint holds can have been relayed. A fact
+    // about the build's own configuration, not an assumption about the network -- and it is what
+    // makes an ordinary direct match render "D <n>" rather than a letterless number.
+    if (!g_started) return 0;
+    // Everything this file hands the endpoint is a LOOPBACK address it bound itself; an address
+    // that is not one belongs to a conn that never came through the tunnel, and we have no reading
+    // for it. (A host that relays one client and is dialled directly by another is exactly this
+    // case -- and -1 is the honest answer there, not 0: "not through our tunnel" does not prove
+    // "not through anything", and mp:R2b makes mixed hosts reachable.)
+    if (a.sin_family != AF_INET || a.sin_addr.s_addr != htonl(INADDR_LOOPBACK)) return -1;
+    const LONG port = (LONG)ntohs(a.sin_port);
+    if (port == 0) return -1;
+    for (int i = 0; i <= MAX_REMOTE; ++i) {
+        if (InterlockedCompareExchange(&g_pc_port[i], 0, 0) != port) continue;
+        return (int)InterlockedCompareExchange(&g_pc_cls[i], 0, 0);
+    }
+    return -1;
+}
 
 unsigned short client_dial_port() { return g_started ? g.local_port : 0; }
 

@@ -814,6 +814,117 @@ TESTS = [
         "desc": "D25: host clicks a build-menu icon mid-match, client idles -- mp_analyze must say ALL PAIRS IDENTICAL",
     },
     {
+        # mp:U39 -- the diplomacy dialog's optimistic relation echo. The host opens ESC -> Diplomacy in
+        # the live match, ticks "allied" for the client and presses Ok. llm_ui_diplomacy_apply_and_resume
+        # wrote Players[PlayerSide].relation[j] on the clicking peer BEFORE the 0xf4 order committed on
+        # both, so the analyzer named `players` (HASH_REGIONS[55]) for EXACTLY the 4 steps in between
+        # (measured 2026-09-21, three runs, before the fix). seams/ui_diplomacy_echo.cpp NOPs the
+        # 22-byte span; THE ASSERTION IS THE post_check: mp_analyze must read ALL PAIRS IDENTICAL.
+        # Registered as expect_red first, XPASS'd on the NOP, key dropped the same session. The
+        # captures (ingame / diplomacy_open / allied_ticked) are the UI-cost witness of done_when (d):
+        # a reopened dialog before the commit shows the OLD value. Same knobs as d25_buildclick; the
+        # idle client is d25's.
+        "name": "u39_diplomacy",
+        "kind": "multi",
+        "host": "mp_host_diplomacy.txt",
+        "clients": ["mp_client_idle.txt"],
+        "share_lanes": "match_launch",
+        "extra_ini": "tools/uiscripts/ini/video_1024.ini",
+        "harness_extra": "region_hash_step=50;synth_move=0",
+        "timeout": 420,  # the match runs to gameclock 30000+; 200 s overran under the gate's load (2026-09-22)
+        "post_check": ["tools/mp_analyze.py"],
+        "post_check_peers": True,
+        "desc": "U39: host ticks allied for the client in the diplomacy dialog mid-match, client idles -- mp_analyze must say ALL PAIRS IDENTICAL",
+    },
+    {
+        # mp:U39, THE NEGATIVE ARM (done_when (e)): the same walk with the retail bytes kept
+        # ([net] diplo_echo_nop=0). check_u39_echo.py asserts the divergence the fix exists for is
+        # STILL THERE -- `players` differs for a bounded window (1..16 steps; 4 measured) at the
+        # first mismatch and re-converges by the last common step -- so u39_diplomacy cannot be green
+        # for the wrong reason (a walk that never applies, a hash that stopped covering Players[]).
+        # region_hash_step=1 because the window is 4 steps wide and a 50-step cadence never lands on
+        # it; the host's harness log grows to ~3 MB for the 30 s of sim, which is fine for one row.
+        "name": "u39_diplomacy_echo",
+        "kind": "multi",
+        "host": "mp_host_diplomacy.txt",
+        "clients": ["mp_client_idle.txt"],
+        "share_lanes": "match_launch",
+        "net_extra": "diplo_echo_nop=0",
+        "extra_ini": "tools/uiscripts/ini/video_1024.ini",
+        "harness_extra": "region_hash_step=1;synth_move=0",
+        "timeout": 420,  # the match runs to gameclock 30000+; 200 s overran under the gate's load (2026-09-22)
+        "post_check": ["tools/check_u39_echo.py"],
+        "post_check_peers": True,
+        "desc": "U39 negative arm: retail echo kept -- `players` must still differ for a bounded window and heal",
+    },
+    {
+        # mp:D28 -- the building dialog's "cancel task -> Yes" applies llm_bldg_finish_current_order
+        # LOCALLY on the clicking peer (production completion / project resources / upgrade-type
+        # resources credited, buildings[].state flipped -- all outside the order pipeline). D25's
+        # root classification's latent sibling. seams/ui_bldg_cancel_task.cpp call-splices the
+        # callback (llm_ui_building_cancel_task_yes_cb @0x004c7060) so IN A LOCKSTEP MATCH it issues
+        # the equivalent building order instead (`[net] cancel_task_order` default 1). THE ASSERTION
+        # IS THE post_check: check_cancel_task.py reads the host's mh_net.log for the seam's own
+        # banner + a `routed as order` line (the click really reached the order pipeline) and
+        # mp_analyze's state hash for ALL PAIRS IDENTICAL. Host lands the mother, places an Academy
+        # (mp_host_buildclick's build-menu click, followed by the map click D25 never made), selects
+        # it, opens its construction/upgrade status dialog, presses the item that raises the cancel
+        # confirm, then &Yes. Same knobs as d25_buildclick/u39_diplomacy; the idle client is d25's.
+        "name": "d28_canceltask",
+        "kind": "multi",
+        "host": "mp_host_canceltask.txt",
+        "clients": ["mp_client_idle.txt"],
+        "share_lanes": "match_launch",
+        # ini/cheat_gate_off.ini is a STAGING device, not a test of CH1's own gate (a separate
+        # tracker item): the mother is complete the instant it lands, but nothing else in the walk
+        # can put it into a REPAIR task -- a freshly PLACED building's own first construction was
+        # tried first and measured to silently absorb a repair order with no state change, even 6+
+        # real seconds later, because a not-yet-built structure can't simultaneously be "under
+        # repair". `_DESTROY` (single-player-only debug console cheat) damages the mother so its
+        # own repair-icon click starts a real CHARGE task; the seam under test only cares that the
+        # dialog's &Yes routes the CANCEL of that task through the order pipeline.
+        "extra_ini": [
+            "tools/uiscripts/ini/video_1024.ini",
+            "tools/uiscripts/ini/cheat_gate_off.ini",
+        ],
+        "harness_extra": "region_hash_step=50;synth_move=0",
+        "timeout": 420,  # the match runs to gameclock 30000+; 200 s overran under the gate's load (2026-09-22)
+        "post_check": ["tools/check_cancel_task.py", "--expect", "identical"],
+        "post_check_peers": True,
+        # the `; D28: ... routed as order` line is match-time (written well after Start), so it
+        # lives in the SESSION directory's own mh_net.log, not the process ("menu") dir's copy --
+        # see sp_newest_session_run's comment.
+        "post_check_session": True,
+        "desc": "D28: host cancels a building's task through the confirm dialog mid-match -- mp_analyze must say ALL PAIRS IDENTICAL",
+    },
+    {
+        # mp:D28, THE RED/REPRODUCTION ARM. This seam has no `[config] mode=original` fork to select
+        # (the splice at 0x004c7060 has only one body) -- the seam's OWN knob, `[net]
+        # cancel_task_order=0`, IS the reproduction arm: it forces the thunk's original branch, the
+        # retail local call. check_cancel_task.py --expect diverge
+        # asserts the divergence the fix exists for is really there: the banner says ROUTING OFF, no
+        # `routed as order` line, and the state hash diverges from the click's step and STAYS
+        # diverged to the last common step (a peer-local write into hashed state never heals) with
+        # `buildings` among the diverging regions at the first mismatch (region_hash_step=1 so the
+        # analyzer has a row at the click itself).
+        "name": "d28_canceltask_local",
+        "kind": "multi",
+        "host": "mp_host_canceltask.txt",
+        "clients": ["mp_client_idle.txt"],
+        "share_lanes": "match_launch",
+        "net_extra": "cancel_task_order=0",
+        "extra_ini": [
+            "tools/uiscripts/ini/video_1024.ini",
+            "tools/uiscripts/ini/cheat_gate_off.ini",
+        ],
+        "harness_extra": "region_hash_step=1;synth_move=0",
+        "timeout": 900,  # region_hash_step=1 hashes every step: 424 s at the first gate (the ship arm takes 65 s)
+        "post_check": ["tools/check_cancel_task.py", "--expect", "diverge"],
+        "post_check_peers": True,
+        "post_check_session": True,  # see d28_canceltask's row -- same match-time log content
+        "desc": "D28 negative arm: `[net] cancel_task_order=0` (retail local call kept) -- `buildings` must diverge from the click and stay diverged",
+    },
+    {
         "name": "shim_udp",
         "kind": "multi",
         "host": "mp_host_start.txt",
@@ -839,6 +950,309 @@ TESTS = [
         # srtt0_ms out of mh_lockstep.log and FAILS when it reads near-zero -- the bypassed-shim case.
         "post_check": ["tools/check_shim_rtt.py"],
         "desc": "TL-SHIMUDP-C: match_launch's walk through the udp shim -- srtt0_ms must show the delay was measured, not bypassed",
+    },
+    {
+        # mp:P9 -- THE CONFIGURATION-(1) MATCH ROW. The players run the `-net.zip` drop-in (ruling
+        # Q10): NO libmh.dll, nothing promoted -- and every rig match since C8-e ran configuration
+        # (2), where the resync_trigger_gate fix lives in the promoted body. The 2026-09-20 field
+        # crawl is that fix's absence (mp:P8: a game_mode-8 frame before every ~1.4 s gap); P9 (1/2)
+        # re-instated its two byte-patch carriers and added the `[resync]` watch. This row is the
+        # first registered MATCH in the shipped configuration: match_launch's walk (the _net copies
+        # of its scripts run the match 10 s longer; the captures are at the same sim gates and their
+        # baselines are byte-identical to match_launch's -- verified at registration) on the shipped
+        # udp transport, both lanes built WITHOUT libmh.dll.
+        #
+        # THE ASSERTION IS THE post_check. check_resync_storm.py --expect carried: (0) both peers
+        # really are configuration (1) (libmh NOT BOUND, transport BOUND, crossings=0), (1) no
+        # `[net] UNCARRIED FIX` line, (2) the gate-install line reads `2/2 INC sites patched`,
+        # (3) zero `[resync] force_resync FIRED` lines over >= 1000 sim steps with the D21 desync
+        # watch agreeing on every sample and no `*** DESYNC`. NO harness_extra and no mp_analyze:
+        # the determinism harness REFUSES TO ARM without libmh (ruling Q4, `spine=0/33`), so the
+        # in-band desync watch -- live in every configuration -- is the determinism instrument here,
+        # made per-sample by ini/desync_verbose.ini. check_module_bind is NOT in the post_check list
+        # because it takes ONE run dir and post_check_peers hands over two (and it wants the process
+        # dir, not the session dir this checker needs); its `absent`/`bound` classifiers are what
+        # clause 0 calls.
+        #
+        # OWNS ITS OWN TWO LANES, deliberately not a share_lanes sharer (COMMON2 rule 7): a sharer
+        # inherits its target's lanes, and every existing 2-peer target's lanes CARRY libmh.dll
+        # (`omit_satellite` is a make_lane property of the lane, not of the run). The four lanes
+        # (this row's two and resync_storm_repro's two) were paid for by link_death and net_hud
+        # becoming sharers of shim_udp (all three are shim rows, which the scheduler already folds
+        # into ONE serial worker -- TL-SUITE-SHIM-SERIAL -- so nothing lost concurrency), keeping
+        # the suite block at 81. The two P9 (2/2) proof rows are sharers of resync_storm_repro.
+        "name": "match_launch_net",
+        "kind": "multi",
+        "host": "mp_host_start_net.txt",
+        "clients": ["mp_client_start_net.txt"],
+        "omit_satellite": ["libmh.dll"],
+        "net_extra": "transport=udp",
+        "extra_ini": [
+            "tools/uiscripts/ini/video_1024.ini",
+            "tools/uiscripts/ini/desync_verbose.ini",
+        ],
+        "timeout": 420,
+        # mp:L1b (wave-3 lane C, 2026-09-22): this is the UDP row match_launch_net's own lobby step
+        # (m2_lobby_ready / m2_lobby) seats a real second peer through the shipped transport, so it
+        # is the row that actually carries a lobby_ping.cpp measurement -- match_launch itself is
+        # TCP-pinned (net.lobbyping only ever fires with lat_supported, which the TCP module never
+        # sets), so a TCP row's cell renders nothing. check_lobby_ping.py reads the SAME session
+        # mh_net.log check_resync_storm.py already reads (post_check_session covers both).
+        "post_check": [
+            ["tools/check_resync_storm.py", "--expect", "carried"],
+            ["tools/check_lobby_ping.py"],
+        ],
+        "post_check_peers": True,
+        # the [resync] / [desync] lines are match-time (session dir); the checker follows
+        # session.json to the process dir for the boot-time half -- see d28_canceltask's row.
+        "post_check_session": True,
+        "desc": "P9: configuration (1) (no libmh.dll) on the shipped udp transport -- the resync gate is CARRIED by the byte patches, 0 FIRED over 1000+ steps, desync watch clean",
+    },
+    {
+        # mp:EL2 -- the field's "joiner eliminated with no building at 6 s" (eb1c9f9d), replayed
+        # in the shipped configuration and read for what it is. A fresh MP human owns ONE AIRBORNE
+        # mothership and no building (llm_game_land_players_on_planet's HUMAN arm creates the
+        # starting UNIT only); the building exists once the PLAYER lands it (shift+right-click ->
+        # order 0x10 move + 0x18 deploy -> llm_strat_unit_state_deploy_to_building @0x00481a6b ->
+        # llm_bldg_construct_finalize, then llm_strat_unit_teardown -> presence_lost(player, 0) =
+        # the `gate=alive ua=0 ba=1` line). The field joiner's `ua1=1 ba1=0` was an unlanded ship,
+        # and its `mode=1 gate=eliminated ... caller=0x0049ddad sf=0x1b` line is the self-removal
+        # llm_net_player_remove issues from on_quit_to_menu (U17): the joiner ESC-quit at 6 s
+        # (his own session.json: reason=quit). Nothing eliminates an unlanded ship (presence_lost's
+        # early-out counts units too, and mode 0 is the only arm that reads counts at all).
+        #
+        # THE WALK: host lands its mother at gameclock 3000 (the field snapshot: both peers log
+        # ua0=0 ba0=1 next to ua1=1 ba1=0), the JOINER lands its own at 6000 (both peers log
+        # ua1=0 ba1=1 at the same gclk -- the row's whole point: the joiner's placement works and is
+        # one lockstep sim event), then the joiner ESC-quits like the field joiner did, which writes
+        # the field's line shape again -- with ba=1 this time. THE ASSERTION IS THE post_check
+        # (tools/check_el2_mother.py, four clauses over both peers' logs); the two captures are
+        # deterministic frames only (joined lobby, main menu after the quit, host lobby).
+        #
+        # SHIP SHAPE (COMMON3 rule 6): a sharer of match_launch_net (its lanes carry no libmh.dll),
+        # transport=udp, defang_overlay=0 (redundant since TL-RIG-DEFANG made it the default --
+        # kept because this row's whole point is that it runs what a player runs), graceful_leave=1.
+        # Determinism through the D21 in-band watch (ini/desync_verbose.ini per-sample MATCH lines),
+        # because the harness cannot arm without libmh (ruling Q4). Deploy coordinates are the D28
+        # walk's (480,330) at 1024x768, hence video_1024.ini.
+        "name": "el2_mother_deploy",
+        "kind": "multi",
+        "host": "mp_host_el2.txt",
+        "clients": ["mp_client_el2.txt"],
+        "share_lanes": "match_launch_net",
+        "omit_satellite": ["libmh.dll"],
+        "net_extra": "transport=udp;defang_overlay=0;graceful_leave=1",
+        "extra_ini": [
+            "tools/uiscripts/ini/video_1024.ini",
+            "tools/uiscripts/ini/desync_verbose.ini",
+        ],
+        "timeout": 420,
+        "post_check": ["tools/check_el2_mother.py"],
+        "post_check_peers": True,
+        # the presence / desync lines are match-time (session dir); the quit-time lines land in
+        # the process dir, which the checker reaches through session.json -- see d28_canceltask.
+        "post_check_session": True,
+        "desc": "EL2: the joiner's mother is placed by its own deploy in lockstep on both peers; the field's 'eliminated at 6 s' line is the joiner's ESC-quit, reproduced",
+    },
+    {
+        # mp:P9, THE REPRODUCTION ARM -- the players' exact pre-fix state, for 5 minutes.
+        # Registered `expect_red: "mp:P9"` FIRST (COMMON2 rule 7): its red is the storm being seen,
+        # and it STAYS red on purpose: the row documents the stock behaviour; the two fixes are
+        # proven separately by resync_gate_proof and resync_countinit_proof below.
+        # The same configuration-(1) lane shape as match_launch_net (libmh.dll omitted) but on ITS
+        # OWN two lanes rather than as a sharer of that row: a sharer inherits the target's lanes,
+        # and a SHIM row's client lane must be provisioned on the shim's port (`[net] port` is the
+        # port a client dials -- provision_lanes' `lane_port = shim_port if i > 0`), while a non-shim
+        # target's client lane sits on the game port and would dial the host directly, bypassing
+        # the shim. (txdeath_ingame is a shim sharer of the non-shim match_launch; its shim listens
+        # on the game port -- worth a look, not this row's problem.)
+        # `[net] resync_trigger_gate=0` (the field's uncarried fix) + `resync_count_init=0` (the
+        # stock threshold-0 start -- the P9 (2/2) root fix, default ON, switched off here) +
+        # -- the shipped `defang_overlay=0` is no longer pinned here because it is now ui_test's
+        # DEFAULT (tooling:TL-RIG-DEFANG): 1 NOPs the mode-8 store at 0x004c85ed, the wait-screen
+        # frame that ENDS a barrier, so on the first fire RESYNC_IN_PROGRESS latches and every later
+        # fire is a silent no-op -- what hid this storm for two months (dead-ends G274). A run that
+        # passes `--defang 1` will therefore NOT reproduce it; that is the point of the flip.
+        # Host 100 / joiner 60 ms lookahead (the
+        # field's measured shape, G267 for why the joiner's key goes through net_extra_client),
+        # through net_shim at 100 ms one-way (the field's ~210 ms SRTT; shim rows run serially).
+        #
+        # The scripts leave the match RUNNING; the shim timeline (shim/p9_soak_5min.txt) blackholes
+        # the link at t+340 s and the retail below-quorum dialog ends both scripts -- a wall-clock
+        # bound the sim cannot stretch (a crawling sim is the subject, so a gameclock target could
+        # not bound the run; see mp_host_p9_soak.txt). check_resync_storm.py --expect storm: the
+        # boot is configuration (1), no UNCARRIED line, NO gate-install line and NO count_init line
+        # (both knobs really were off), and >= 5 `[resync] barrier #k BEGIN` lines on the leader
+        # (the storm is a barrier every ~2 s, so 5 min carries ~100). Its summary prints the
+        # `[resync]` watch either way -- barrier count + END durations, how fast the counter climbs,
+        # the threshold the leader computed, the lowest countdown seen, the mode-8 rows of
+        # mh_lockstep.log -- which is the measurement the field logs could not give (tracker mp:P9
+        # progress carries the numbers).
+        #
+        # COST: ~6-7 min wall, serialised with the other shim rows. It is registered because
+        # COMMON2 rule 7 says a reproduction is registered expect_red first; this one is KEPT red
+        # (the fixes have their own green rows), and a suite that cannot afford it should skip it
+        # by name, not drop the row.
+        "name": "resync_storm_repro",
+        "expect_red": "mp:P9",
+        "kind": "multi",
+        "host": "mp_host_p9_soak.txt",
+        "clients": ["mp_client_p9_soak.txt"],
+        "omit_satellite": ["libmh.dll"],
+        "net_extra": "transport=udp;resync_trigger_gate=0;resync_count_init=0;lockstep_step_ms=100",
+        "net_extra_client": "lockstep_step_ms=60",
+        "shim": True,
+        "shim_delay": 100,  # ONE-WAY -> ~200 ms rtt, the field link
+        "shim_timeline": "tools/uiscripts/shim/p9_soak_5min.txt",
+        "extra_ini": [
+            "tools/uiscripts/ini/video_1024.ini",
+            "tools/uiscripts/ini/desync_verbose.ini",
+        ],
+        # The `present Continue game` step waits ~5.7 min of wall clock; the DLL's per-step watchdog
+        # counts PRESENTS and multi lanes are capped at 60 fps (ini/fps60.ini), so 480 s x 60 fps
+        # x 2 (margin) -- the wall-clock `timeout` below is the honest cap (TL-HARN17).
+        "timeout_frames": 57600,
+        "timeout": 480,
+        "post_check": ["tools/check_resync_storm.py", "--expect", "storm"],
+        "post_check_peers": True,
+        "post_check_session": True,
+        "desc": "P9 reproduction (kept red): configuration (1), gate OFF, count_init OFF, defang 0, host 100 / joiner 60 through a 100 ms shim for 5 min -- the leader must BEGIN >= 5 barriers",
+    },
+    {
+        # mp:P9 (2/2) PROOF (b): the reproduction's exact shape with the GATE ON and the root fix
+        # OFF (`resync_count_init=0`) -- the resync_trigger_gate carriers alone must hold the barrier
+        # count at 0 for the same 5 minutes the row above storms in. Why the gate is a complete fix
+        # on its own: with the stock threshold 0 the first COUNTED nag fires, and the gate counts a
+        # nag only while SYNC_RETRY_COUNTDOWN < 0x38 (>= 4 s of genuine silence), which a live
+        # 100 ms link never reaches -- the 2026-09-22 15-min run under the gate saw the countdown
+        # never drop below 0x38, 0 increments, 0 fires. check_resync_storm --expect carried: boot
+        # configuration (1), 2/2 patched, 0 barrier BEGIN / 0 FIRED on either peer, the D21 in-band
+        # desync watch IDENTICAL over >= 1000 steps. A share_lanes sharer of resync_storm_repro
+        # (COMMON2 rule 7): that row's two lanes are the ONLY ones that are both libmh-omitted and
+        # provisioned on the shim's port (a sharer inherits its target's lanes as built; shim_udp's
+        # carry libmh.dll and would make this configuration (2), which clause 0 refuses).
+        # ENDS ON GAMECLOCK 150 s, NOT ON THE STORM ROW'S BLACKHOLE (mp_{host,client}_p9_proof.txt):
+        # a fixed pair does not crawl, and a blackhole would add the gate's own designed fire after
+        # 4 s of dead-link silence -- the first run of this row ended on exactly that one barrier
+        # (`countdown 55`, 6 s before SESSION_END), an honest gate fire the checker cannot tell from
+        # a storm. Measured 2026-09-22: 0 barriers from the armed line to the blackhole (5.4 min).
+        "name": "resync_gate_proof",
+        "kind": "multi",
+        "share_lanes": "resync_storm_repro",
+        "host": "mp_host_p9_proof.txt",
+        "clients": ["mp_client_p9_proof.txt"],
+        "omit_satellite": ["libmh.dll"],
+        "net_extra": "transport=udp;resync_count_init=0;lockstep_step_ms=100",
+        "net_extra_client": "lockstep_step_ms=60",
+        "shim": True,
+        "shim_delay": 100,
+        "extra_ini": [
+            "tools/uiscripts/ini/video_1024.ini",
+            "tools/uiscripts/ini/desync_verbose.ini",
+        ],
+        "timeout_frames": 57600,
+        "timeout": 480,
+        "post_check": ["tools/check_resync_storm.py", "--expect", "carried"],
+        "post_check_peers": True,
+        "post_check_session": True,
+        "desc": "P9 proof (b): the storm's shape with the gate ON and count_init OFF -- 0 barriers to gameclock 150 s, desync watch IDENTICAL",
+    },
+    {
+        # mp:P9 (2/2) PROOF (c): the reproduction's exact shape with the gate OFF and the COUNT
+        # fix on (`resync_count_init=1`, the DLL default): ACTIVE_PLAYER_COUNT is recomputed at
+        # match start, so the leader's threshold is 200 from step 0 instead of 0. WHAT THIS PROVES,
+        # measured 2026-09-22 (11:53): the threshold-0 fire is GONE -- every barrier now BEGINs with
+        # `count was 200, threshold 200`, i.e. where retail's author meant the trigger to sit -- and
+        # the storm's cadence goes from one barrier per ~2.07 s (160 in 5.5 min, the stock start)
+        # to one per ~14.5 s (19), because at this shape (100/60 lookahead, 200 ms RTT) the pair is
+        # parked on EVERY step and the ungated cumulative counter climbs ~15 nags/s (+135..+192 per
+        # 10 s in the watch lines). So count_init alone is a 8x reduction, NOT a zero: the zero is
+        # the gate's (resync_gate_proof), and the ship carries both. check_resync_storm --expect
+        # countinit: configuration (1), NO gate line, a `count_init: ACTIVE_PLAYER_COUNT 0 -> 2
+        # (threshold 200)` line on BOTH peers, every barrier BEGIN at count == threshold ==
+        # players*100 (no threshold-0 fire), 0 UNCARRIED, desync watch IDENTICAL; the cadence is in
+        # the summary. Sharer of resync_storm_repro for the reason resync_gate_proof gives; ends on
+        # gameclock 150 s like it.
+        "name": "resync_countinit_proof",
+        "kind": "multi",
+        "share_lanes": "resync_storm_repro",
+        "host": "mp_host_p9_proof.txt",
+        "clients": ["mp_client_p9_proof.txt"],
+        "omit_satellite": ["libmh.dll"],
+        "net_extra": "transport=udp;resync_trigger_gate=0;lockstep_step_ms=100",
+        "net_extra_client": "lockstep_step_ms=60",
+        "shim": True,
+        "shim_delay": 100,
+        "extra_ini": [
+            "tools/uiscripts/ini/video_1024.ini",
+            "tools/uiscripts/ini/desync_verbose.ini",
+        ],
+        "timeout_frames": 57600,
+        "timeout": 480,
+        "post_check": ["tools/check_resync_storm.py", "--expect", "countinit"],
+        "post_check_peers": True,
+        "post_check_session": True,
+        "desc": "P9 proof (c): the storm's shape with the gate OFF and count_init ON -- threshold 200 from step 0, every barrier fires AT 200 (one per ~15 s, not per 2 s), desync watch IDENTICAL",
+    },
+    {
+        # mp:P9W (2026-09-22, wave-3 lane C) -- the receiver-side deadline's own proof row. SAME
+        # shape as resync_storm_repro (gate OFF + count_init OFF so barriers are near-continuous
+        # from the first stall-nag -- P9's own threshold-0 finding; mp_client_p9_soak.txt's own
+        # comment measured a 2.0 s barrier every 2.07 s, ~97% odds any blackhole start lands inside
+        # one), but its own host/client scripts (mp_host_p9w_deadline.txt / mp_client_p9w_deadline.txt)
+        # DROP the `gameclock 6000 -> capture m3_launched` step p9_soak's pair has: the FIRST live
+        # run of this row (with that step still in) captured the GAME-OVER dialog instead of a
+        # launched-match frame and failed on pixel diff -- under the storm's own ~0.087x realtime
+        # rate (P9's measurement) gameclock 6000 is not reached until long after this row's early
+        # blackhole (t+50 s, vs. p9_soak_5min.txt's t+340 s) has already ended the match, so a
+        # capture there asserts nothing P9W needs and only adds a baseline this row does not have.
+        # The real assertion is the post_check: the CLIENT's own `; [resync] receiver_deadline:`
+        # log line (net_lockstep.cpp), proven live 2026-09-22 -- barrier #19 BEGIN at 27.905s wall,
+        # stuck 15000 ms (this box's `[net] data_timeout_ms` default, which is > the 2002 ms floor
+        # so max() picked it) with no RESUME, `receiver_deadline: 15000 ms ... removing side_id=0`,
+        # END at 43.019s -- while the HOST reached `present Continue game` through its OWN
+        # pre-existing path (independent of this fix; the leader never gets stuck). `[net]
+        # resync_receiver_deadline` is NOT set here -- it defaults to 1 (the ship default), so this
+        # row proves the ship configuration, the same shape every other P9 row's knob-under-test
+        # takes (resync_count_init never appears in match_launch_net's net_extra either).
+        "name": "resync_receiver_deadline_proof",
+        "kind": "multi",
+        "share_lanes": "resync_storm_repro",
+        "host": "mp_host_p9w_deadline.txt",
+        "clients": ["mp_client_p9w_deadline.txt"],
+        "omit_satellite": ["libmh.dll"],
+        # data_timeout_ms=60000 (shared) + the CLIENT override to 6000: GS2's OWN peer-data timeout
+        # (data_timeout_tick) is a DIFFERENT mechanism from this row's subject and races it on an
+        # unmodified box -- both are driven by [net] data_timeout_ms, and a live run (2026-09-22)
+        # measured the HOST's own GS2 resolving the match before the CLIENT's receiver-deadline got
+        # its full window, so the row read 0 lines on one run and 1 on another. A first attempt at
+        # asymmetry (client override 500) went the OTHER way: 500 ms is UNDER a single barrier's own
+        # ~2000-2100 ms duration, so GS2 (which can only run in the ~85 ms gap right after a barrier
+        # ENDS, never during one) read "since_last_move" from that just-finished barrier's own
+        # freeze as silence and spuriously removed the HOST after the very first barrier -- 47 s
+        # total, no blackhole ever fired. 6000 ms clears TWO full back-to-back barrier cycles
+        # (~4170 ms) with margin, so GS2 cannot misfire on ordinary storming, while
+        # `max(2002, data_timeout_ms)` still floors the CLIENT's OWN receiver-deadline at a fast
+        # 6000 ms once a barrier genuinely never ends (GS2 cannot preempt THAT case at any
+        # threshold: P9W's whole point is that on_time_tick, GS2's driver, does not run at all while
+        # GAME_MODE==8). The HOST'S copy stays at 60000 so its own GS2 cannot resolve the match, and
+        # therefore cannot tear this peer down, before the receiver-deadline line has had its window
+        # to appear.
+        "net_extra": "transport=udp;resync_trigger_gate=0;resync_count_init=0;lockstep_step_ms=100;data_timeout_ms=60000",
+        "net_extra_client": "lockstep_step_ms=60;data_timeout_ms=6000",
+        "shim": True,
+        "shim_delay": 100,
+        "shim_timeline": "tools/uiscripts/shim/p9w_deadline_repro.txt",
+        "extra_ini": [
+            "tools/uiscripts/ini/video_1024.ini",
+            "tools/uiscripts/ini/desync_verbose.ini",
+        ],
+        "timeout_frames": 21600,
+        "timeout": 180,
+        "post_check": ["tools/check_resync_receiver_deadline.py"],
+        "post_check_peers": True,
+        "post_check_session": True,
+        "desc": "P9W: a leaderless barrier (blackhole at t+50s, ~97% odds inside one) -- the CLIENT's own receiver-side deadline (not the leader's, not the transport watchdog) must have left the wait screen and removed the dead leader",
     },
     {
         "name": "chat_relay",
@@ -1073,6 +1487,40 @@ TESTS = [
         # proves the LEAVE on a direct tcp link; this is the same assertion over the relay path the
         # field ran, plus the re-join (`occ 2` and `occ <3` on the host) and the launch past 10 s.
         "desc": "GS1b: a client leaves and re-joins a relay-listed lobby -> one slot, then the match runs past 10 s",
+    },
+    {
+        "name": "browser_two_rows",
+        "kind": "multi",
+        "host": "mp_host_two_rows_a.txt",
+        # mp:R2b -- THREE peers: host A (the runner's host lane, game "uitest"), host B (a CLIENT lane
+        # that creates its own lobby on the same relay -- game "bravo" via client_game_name) and the
+        # browsing client, which lists BOTH as two rows of the first browser, joins the SECOND (B's
+        # lobby), leaves, and joins the FIRST (A's). Before R2b the browser built one session record
+        # and the second lobby was invisible; the join always went where the auto-dial had landed.
+        "clients": ["mp_host_two_rows_b.txt", "mp_client_two_rows.txt"],
+        "relay": True,
+        # TL-LANEPOOL: no registry row owns three lanes, so this one borrows from TWO comparable
+        # relay scenarios (share_targets): their host lanes carry the two hosts (a host lane is the
+        # only lane whose port is unique in the run -- two hosts on one port would refuse the second
+        # bind), relay_browse_local's client lane carries the browser. Scheduled serially with both.
+        "share_lanes": ["relay_browse_local", "relay_browse"],
+        "net_extra": "transport=udp;force_relay=1",
+        "client_game_name": "bravo",
+        "host_lanes": [1],  # client 1 hosts: its own port when the row stands on its own lanes
+        "extra_ini": "tools/uiscripts/ini/video_1024.ini",
+        # Four menu walks in sequence (A's, then B's gated on the client seeing A, then the client's
+        # two joins with a leave between) -- ghost_leave_rejoin's 300 s plus one more walk.
+        "timeout": 420,
+        "timeout_frames": frames_for_seconds(420, SOLO_HEADLESS_FPS_FLOOR),
+        # The claim a frame cannot show: WHICH ROOM each join dialled. check_browser_rows reads the
+        # client's `-> listed` rows (two distinct rooms, both minted by the run's hosts) and its two
+        # `; R2b join:` lines -- the first names listed lobby 2's room, the second lobby 1's.
+        "post_check": ["tools/check_browser_rows.py", "--rows", "2", "--joins", "2,1"],
+        "post_check_peers": True,
+        # Two consecutive runs diffed 0.000% on all nine captures with the own-IP header and the
+        # L1b ping cell masked; the feature (a second list row, a highlighted row) is far under 2%.
+        "tol": 0.0,
+        "desc": "R2b: two relay-hosted lobbies are two browser rows; the join dials the CLICKED row's room (second, then first)",
     },
     {
         "name": "ghost_exit_rejoin",
@@ -1429,6 +1877,13 @@ TESTS = [
         "shim": True,
         "shim_delay": 100,  # ONE-WAY -> 200 ms rtt, the conditions the bug was reported at
         "shim_timeline": "tools/uiscripts/shim/rlive_link_death.txt",
+        # mp:P9 (2026-09-22): borrows shim_udp's lanes. A SHIM row can only share a SHIM row's
+        # lanes (the client lane is provisioned on the shim's port, not the game port), and every
+        # shim row already runs back-to-back in ONE worker (TL-SUITE-SHIM-SERIAL), so the pair was
+        # serial before this key existed -- it frees two lanes at no concurrency cost. Those two
+        # (with net_hud's two) paid for match_launch_net / resync_storm_repro's configuration-(1)
+        # lanes, which cannot be borrowed from anything (every other lane carries libmh.dll).
+        "share_lanes": "shim_udp",
         # The scripts WAIT -- for a peer to join, then for the link to die. The budget is PER STEP and
         # global to both peers, so the host's `peers 1` step has to outlast the client's whole launch +
         # menu walk, which is the slowest and most variable thing in the run (20000 was not enough once).
@@ -1723,6 +2178,50 @@ TESTS = [
         "departure reaches the survivor over the wire, in order, at the same game clock",
     },
     {
+        "name": "txdeath_ingame",
+        # mp:U19f -- the NEGATIVE arm U19d's discriminator never had: a real IN-GAME transport death
+        # (not a quit, not a lobby-phase blackhole) must keep the retail "Connection to server lost"
+        # wording. `link_death` blackholes in the lobby (`peers <1`, never past Start); this scenario
+        # Starts the match first and kills the link once both peers are well past their `gameclock
+        # 3000` sync point -- see mp_host_txdeath.txt's header for the full mechanism and
+        # tools/uiscripts/shim/txdeath_ingame.txt for the timing.
+        "net_extra": "transport=tcp",
+        "kind": "multi",
+        "host": "mp_host_txdeath.txt",
+        "clients": ["mp_client_txdeath.txt"],
+        "shim": True,
+        "shim_delay": 0,  # not a latency scenario -- the shim is here only to schedule the blackhole
+        "shim_timeline": "tools/uiscripts/shim/txdeath_ingame.txt",
+        # BORROWS shim_udp's LANES, not match_launch's (fixed 2026-09-22, dead-ends G282). A SHIM row
+        # can only share a SHIM row's lanes: the client lane's `[net] port` IS the port the client
+        # dials, so provision_lanes puts a shim row's client lane on the SHIM port and a plain row's
+        # on the GAME port. Borrowing match_launch (a non-shim row) therefore handed this shim the
+        # game port to listen on -- `[shim] listening :6608 -> 127.0.0.1:6608`, the shim forwarding to
+        # ITSELF. The symptom is not a refusal but a CONNECTION STORM (37 conns in 38 ms, ports
+        # 60363..60399) and then both scripts TIMED-OUT with no marker and no captures, which reads
+        # like a slow walk needing a bigger budget -- it is not: at any budget it never reaches the
+        # game. The registry already knew (resync_storm_repro's comment flagged exactly this row as
+        # "worth a look"); link_death and net_hud were already doing it correctly.
+        "share_lanes": "shim_udp",
+        "extra_ini": "tools/uiscripts/ini/video_640.ini",
+        # A signal-free walk with a match, a 50 s wait for the scheduled blackhole and the ~10 s link
+        # watchdog on top: generous over graceful_quit's own "~40 s green" budget for the same reasons
+        # (wall clock under suite contention is the real cap, not frames). KEPT AT 300: the
+        # 2026-09-22 gate's 305 s timeout looked like a grazed budget and was briefly "fixed" by
+        # raising it, which was wrong -- the run never reached the game at all (the self-forwarding
+        # shim above), so the budget only decided how long it took to say so.
+        "timeout": 300,
+        # THE ASSERTION IS THE post_check, same reasoning as check_graceful_quit's: the frame cannot
+        # say WHICH ROUTE the outcome dialog took, only that some dialog is showing. check_transport_
+        # death.py reads both peers' logs for the fast-drop line, an outcome=7 on_gameover, the ABSENCE
+        # of the U19e garbled-stream arm, and the absence of U19d's correction (the wording must stay
+        # honest on a real transport death).
+        "post_check": ["tools/check_transport_death.py"],
+        "post_check_peers": True,
+        "desc": "U19f: a client's transport dies IN-GAME (net_shim blackhole, both directions) -- the "
+        "survivor fast-drops it and keeps the retail 'Connection to server lost' wording",
+    },
+    {
         "name": "session_rollover",
         # transport=tcp PINNED (user ruling 2026-09-20): `[net] transport` now defaults to udp, and
         # this row relied on the old tcp default. Pinned so the suite's TCP coverage stays TCP
@@ -1829,6 +2328,45 @@ TESTS = [
         # block is at its ceiling (tools/lane_alloc.py; a new solo row is one lane the pool lacks).
         "desc": "P0 debug overlay: installed-hidden, Ctrl+Alt+D shows it on 2 screens, hides it again "
         "(the ONLY test that enables [debug])",
+    },
+    {
+        "name": "gx1_overlay_residue",
+        "kind": "solo",
+        "script": "gx1_overlay_residue.txt",
+        "extra_ini": "tools/uiscripts/ini/gx1_overlay_residue.ini",
+        # mp:GX1: same main-menu framing as debug_overlay, so SHARE ITS LANE rather than grow the
+        # suite block past its registry-demand ceiling (COMMON3 rule 7 / tools/lane_alloc.py, at
+        # 81/81 -- see debug_overlay's own note on why it folded a sibling verification into itself
+        # instead of a new row; this one could not fold in the same way because it needs its OWN
+        # deliberately-mismatched two-page [debug] config, not debug_overlay's single stable page).
+        "share_lanes": "debug_overlay",
+        # tol 1.0 -- NOT a baselined pixel-diff row. The assertion is the post_check (below), which
+        # reads the actual pixels in the one rect that matters; the frame otherwise legitimately
+        # varies run to run in ways this row does not care about (page-cycle timing, cursor rendering
+        # detail), and a committed baseline here would be re-litigating debug_overlay's own baseline
+        # for no benefit -- this row's baselines exist only so a capture-diff crash on a missing file
+        # cannot happen, not so their pixels are asserted.
+        "tol": 1.0,
+        # THE ASSERTION IS THE post_check, NOT THE PIXELS (same shape as net_hud/mp_snapshot above).
+        # rect=52,10,55,9 sits inside the WIDE page's title row ("GX1 RESIDUE CHECK WIDE HEADER",
+        # computed box x:[8,186) y:[8,52) -- gfx_overlay.cpp's FONT_W=6/FONT_H=10/PAD=2 against the
+        # ini's page content, confirmed against a real capture's `; TEMP-GX1-DIAG` line) and entirely
+        # outside the NARROW page's own box (title "X" + one item, computed x:[8,48)). READ against
+        # real captures (not just computed): x=52..107 sits comfortably inside the title glyphs (139
+        # ink pixels in the `before` capture) and clear of a single unrelated 1x3px background pixel
+        # observed at x=112 (main-menu ambient art, present in BOTH runs regardless of this seam --
+        # unrelated to the fix, excluded by choice of rect rather than by loosening the threshold).
+        "post_check": [
+            "tools/check_overlay_residue.py",
+            "--before",
+            "gx1_wide",
+            "--after",
+            "gx1_narrow",
+            "--rect",
+            "52,10,55,9",
+        ],
+        "desc": "mp:GX1: gfx_overlay.cpp leaves no residue when its box shrinks (page switch, same "
+        "static screen)",
     },
     {
         "name": "pause_hotkey",
@@ -2172,6 +2710,9 @@ TESTS = [
         "kind": "multi",
         "host": "mp_host_hud.txt",
         "clients": ["mp_client_hud.txt"],
+        # mp:P9 (2026-09-22): borrows shim_udp's lanes -- same reasoning as link_death's key: a
+        # shim row sharing a shim row's lanes, already serialised with it by TL-SUITE-SHIM-SERIAL.
+        "share_lanes": "shim_udp",
         # transport=udp is LOAD-BEARING, not a variation. The indicator's ping, jitter and loss all
         # come from the UDP module's channel B; the TCP module reports lat_supported=0 and the
         # indicator honestly prints `n/a` with an empty bar. A tcp run of this test would pass while
@@ -2736,6 +3277,23 @@ def sp_newest_run(lane_dir):
     runs = sorted(glob.glob(os.path.join(lane_dir, "logs", "*")), key=os.path.getmtime)
     menu = [d for d in runs if "_menu_" in os.path.basename(d)]
     return (menu or runs)[-1] if runs else None
+
+
+def sp_newest_session_run(lane_dir):
+    """mp:D28: the INVERSE of sp_newest_run's menu-preference, for a checker whose evidence is
+    match-time-only content in the SESSION directory's own mh_net.log (not the process/"menu"
+    directory's copy, which is frozen at the lobby -- see check_cancel_task.py's net_log_lines: it
+    reads a given run dir's own mh_net.log PLUS the process dir session.json names, i.e. it needs
+    to be handed the SESSION dir to find both halves; handed the process dir instead (what every
+    other post_check consumer wants, since mh_harness.log/mh_lockstep.log live there and a boot-time
+    banner does too) it can only ever see the boot-time half. Existing checkers (mp_analyze.py,
+    check_u39_echo.py's KEPT_LINE) only need boot-time-or-harness content, so they were never
+    exposed to this gap; check_cancel_task.py's `; D28: ... routed as order` line is written well
+    after Start, into the session dir alone. Prefer a NON-`_menu_` dir (the newest one), falling
+    back to sp_newest_run's normal resolution when none exists (a solo/menu-only lane)."""
+    runs = sorted(glob.glob(os.path.join(lane_dir, "logs", "*")), key=os.path.getmtime)
+    session = [d for d in runs if "_menu_" not in os.path.basename(d)]
+    return session[-1] if session else sp_newest_run(lane_dir)
 
 
 def sp_arm_game_speed(log_dir):
@@ -9072,6 +9630,216 @@ def run_det_3peer(args):
     return (rc == 0 and ok and bok), lines + blines
 
 
+# mp:U19b -- 3-peer clean quit. `graceful_quit` (U19) is 2-peer, and an AI seat does not count
+# toward the quorum llm_net_player_remove tests (mp_host_gquit.txt's header: measured with occ 3 and
+# an AI visibly seated, the removal still ended the match). U19's own third clause -- survivors that
+# keep PLAYING past a departure -- needs a real third peer, and local 3-peer discovery does not seat
+# a second 127.0.0.1 client (measured during mp:GS2's own 3-peer clause, 2026-09-21). So this reuses
+# the SAME VM+VM+local-lane topology as the U28 3-peer barrier above (host vms[0], one survivor
+# client vms[1], the QUITTER as a local lane) -- literally the SAME lane (DET3_LANE/DET3_LANE_NO/
+# DET3_PORT), per the wave-2 brief's "share_lanes of an existing 3-peer row" (dead-ends G259: the
+# lane pool has no headroom for a new one). The two shapes therefore cannot run concurrently, which
+# is fine: both are manually-invoked CLI shapes, never part of the parallel default suite.
+def run_u19b_quit3(args):
+    """The U19b 3-peer clean-quit shape. Returns (ok, lines), same contract as run_det_3peer."""
+    det_dir = os.path.join(REPO, "tmp", "ui_test", "determinism")
+    down = [ip for ip in args.vms[:2] if not vm_reachable(ip)]
+    if down:
+        return None, ["      SKIP -- VM(s) unreachable: %s" % ", ".join(down)]
+    cmd = [
+        sys.executable,
+        os.path.join(REPO, "tools", "make_lane.py"),
+        "--name",
+        DET3_LANE,
+        "--lane",
+        str(DET3_LANE_NO),
+        "--port",
+        str(DET3_PORT),
+        "--headless",
+    ]
+    if not STOCK_EXE:
+        cmd.append("--patched-exe")
+    r = subprocess.run(cmd, capture_output=True, text=True)
+    if r.returncode != 0:
+        return False, [
+            "      FAIL: lane %s: %s" % (DET3_LANE, (r.stderr or r.stdout).strip()[:200])
+        ]
+    argv = [
+        "--determinism",
+        "--steps",
+        str(args.steps),
+        "--host",
+        "%s:mp_host_quit3.txt" % args.vms[0],
+        "--client",
+        "%s:mp_client_quit3_survivor.txt" % args.vms[1],
+        "--client",
+        "lane=%s:mp_client_quit3_quitter.txt" % DET3_LANE,
+        # The QUITTER leaves on purpose ~300 steps in, so its hash log is short by design: keep its
+        # logs (check_quit_survivors_3peer reads them) but compare only the two SURVIVORS. Without
+        # this the first mechanism-green run (2026-09-22: survivors 0 mismatches over 6000 steps)
+        # still read "NO COMPARABLE STEPS in 2 pair(s)" from the quitter's two pairs.
+        "--det-exclude",
+        "client2",
+        "--connect-ip",
+        args.vms[0],
+        "--timeout-frames",
+        str(LOCAL_TIMEOUT_FRAMES),
+        "--net-extra",
+        # peers=2 seats the third slot (same requirement as the U28 shape above); graceful_leave=1
+        # is passed EXPLICITLY even though U19 made it the default (graceful_quit's own reasoning:
+        # the scenario should still exercise the mechanism if the default is ever reconsidered).
+        # transport=tcp matches the suite's other U19-family rows.
+        ";".join(
+            ["peers=2", "transport=tcp", "graceful_leave=1"]
+            + ([args.net_extra] if args.net_extra else [])
+        ),
+        "--timeout",
+        str(max(args.timeout, 120 + args.steps)),
+        "--extra-ini",
+        PROMOTE_INI,
+        # region_hash_step gives mp_analyze rows to compare (d25_buildclick's own reasoning);
+        # synth_move=0 keeps the random workload out of the walk, same as graceful_quit's family.
+        "--harness-extra",
+        "region_hash_step=50;synth_move=0",
+    ]
+    det_clear(det_dir)
+    rc = run_ui_test(argv, max(args.per_test_timeout, 180 + args.steps))[0]
+    ok, lines = det_run_report(det_dir, {"host": True, "client1": True, "client2": True})
+    import check_quit_survivors_3peer as _q3
+
+    host_dir = os.path.join(det_dir, "host")
+    client1_dir = os.path.join(det_dir, "client1")
+    client2_dir = os.path.join(det_dir, "client2")
+    try:
+        qok, qlines = _q3.check(host_dir, client1_dir, client2_dir)
+    except _q3.Refusal as exc:
+        qok, qlines = False, ["      REFUSED: %s" % exc]
+    lines = lines + ["   check_quit_survivors_3peer:"] + ["      " + ln for ln in qlines]
+    return (rc == 0 and ok and qok), lines
+
+
+# mp:L1f -- THE 3-PEER LOBBY-PING SHAPE: every player sees every OTHER player's ping.
+#
+# WHY IT IS A CLI SHAPE AND NOT A REGISTRY ROW, stated because COMMON3 rule 7 says rows share lanes:
+#   * THREE PEERS ON THIS RIG MEANS host on vms[0], one client on vms[1], the third as a LOCAL LANE.
+#     Local 3-peer DISCOVERY does not seat a second 127.0.0.1 client (measured at mp:GS2's own
+#     3-peer clause, 2026-09-21), and the rig has two VMs, not three -- so the brokered topology the
+#     suite's `multi` rows use cannot carry this walk at all. The DET3 lane is the established
+#     answer (U28's barrier shape, then mp:U19b's clean quit), and this shape reuses it verbatim:
+#     same lane, same port, same "cannot run concurrently with the other two" caveat.
+#   * It is therefore the SAME class as those two -- a manually-invoked shape whose verdict is a
+#     checker's, not a pixel diff's -- and it costs the 81/81 suite lane block nothing.
+# SHIP CONFIGURATION (COMMON3 rule 6): transport=udp, defang_overlay=0 (redundant since
+# TL-RIG-DEFANG made it ui_test's default; spelled anyway, this shape is invoked by hand), no
+# harness knobs. The walk
+# never leaves the LOBBY, so there is no sim to be deterministic about and no libmh to arm: the
+# whole mechanism (the host's publication and the cell that renders it) is lobby-only by
+# construction (net_seams.cpp drives both from on_lobby_dispatch).
+L1F_HOST_SCRIPT = "mp_host_ping3.txt"
+L1F_CLIENT_SCRIPTS = ("mp_client_ping3.txt", "mp_client_ping3b.txt")
+
+
+def l1f_log_dir():
+    """Where this shape's three peers' logs are pulled to -- one directory per ui_test peer KEY
+    (`host`, `client1`, `client2`), the same naming the determinism path uses. Its own directory
+    and not the shared determinism one: that one is wiped by det_clear, and this is not a
+    determinism shape."""
+    return os.path.join(REPO, "tmp", "ui_test", "l1f_ping3")
+
+
+def run_l1f_ping3(args):
+    """mp:L1f's 3-peer lobby shape. Returns (ok, lines), same contract as run_u19b_quit3."""
+    down = [ip for ip in args.vms[:2] if not vm_reachable(ip)]
+    if down:
+        return None, ["      SKIP -- VM(s) unreachable: %s" % ", ".join(down)]
+    cmd = [
+        sys.executable,
+        os.path.join(REPO, "tools", "make_lane.py"),
+        "--name",
+        DET3_LANE,
+        "--lane",
+        str(DET3_LANE_NO),
+        "--port",
+        str(DET3_PORT),
+        "--headless",
+    ]
+    if not STOCK_EXE:
+        cmd.append("--patched-exe")
+    r = subprocess.run(cmd, capture_output=True, text=True)
+    if r.returncode != 0:
+        return False, [
+            "      FAIL: lane %s: %s" % (DET3_LANE, (r.stderr or r.stdout).strip()[:200])
+        ]
+    # NOT RELAYED. This shape is the DIRECT arm, and `--relay` is deliberately not honoured here:
+    # a relayed 3-peer lobby needs the relay's directory join walk rather than the IP-join these
+    # scripts use, and an arm that half-works would prove less than saying so. The relayed answer
+    # (`relayed = 1`) is proven OFFLINE instead, where a tunnel can be driven exactly --
+    # `net_selftest.exe udprelaytest`, the path_class arm. See tracker mp:L1f.
+    argv = [
+        "--host",
+        "%s:%s" % (args.vms[0], L1F_HOST_SCRIPT),
+        "--client",
+        "%s:%s" % (args.vms[1], L1F_CLIENT_SCRIPTS[0]),
+        "--client",
+        "lane=%s:%s" % (DET3_LANE, L1F_CLIENT_SCRIPTS[1]),
+        "--connect-ip",
+        args.vms[0],
+        "--port",
+        str(DET3_PORT),
+        # A headless lane runs at thousands of fps, so ui_test's default 1500-frame per-step
+        # watchdog expires before the menu exists -- the same three-line trap U28's shape records.
+        "--timeout-frames",
+        str(LOCAL_TIMEOUT_FRAMES),
+        "--net-extra",
+        # peers=2 seats the third slot (NET_BLOCK has no `[net] peers`); the rest is the SHIP shape.
+        ";".join(
+            ["peers=2", "transport=udp", "defang_overlay=0"]
+            + ([args.net_extra] if args.net_extra else [])
+        ),
+        "--extra-ini",
+        "tools/uiscripts/ini/video_1024.ini",
+        # TWO OF THE THREE PEERS ARE VMs, and their mh_net.log is the whole of the evidence --
+        # ui_test's log pull-back is otherwise a --determinism-only step, and test_ui's own
+        # post_check_peers resolves LANE directories, which two of these peers do not have.
+        "--pull-logs",
+        l1f_log_dir(),
+    ]
+    shutil.rmtree(l1f_log_dir(), ignore_errors=True)
+    rc = run_ui_test(argv, max(args.per_test_timeout, 420))[0]
+    # ui_test's PEER KEYS, not the determinism path's: a client's key is its IP (a VM) or its lane
+    # name (a local lane), and only the host is called "host". Naming them here rather than globbing
+    # keeps a peer that produced nothing an obvious absence instead of a two-peer pass.
+    dirs = [os.path.join(l1f_log_dir(), k) for k in ("host", args.vms[1], DET3_LANE)]
+    lines = ["   peer logs:"] + ["      %s" % d for d in dirs]
+    missing = [d for d in dirs if not os.path.isfile(os.path.join(d, "mh_net.log"))]
+    if missing:
+        return False, lines + [
+            "      FAIL: no mh_net.log pulled for %s"
+            % ", ".join(os.path.basename(d) for d in missing)
+        ]
+    chk = subprocess.run(
+        [
+            sys.executable,
+            os.path.join(REPO, "tools", "check_lobby_ping.py"),
+            *dirs,
+            "--published",
+            "--every-slot",
+            # 250 ms: a LAN rig's SRTT is single-digit ms, so this is wide enough that a scheduling
+            # hiccup on one peer cannot fail the row and narrow enough that a wrong slot, a stale
+            # table or a units slip still does. The window is the claim's tolerance, not its subject.
+            "--agree",
+            "250",
+        ],
+        capture_output=True,
+        text=True,
+        cwd=REPO,
+    )
+    lines += ["   check_lobby_ping:"] + [
+        "      " + ln for ln in (chk.stdout or chk.stderr).strip().splitlines()
+    ]
+    return (rc == 0 and chk.returncode == 0), lines
+
+
 def det_clear(det_dir):
     """Empty the shared determinism artifact dir before a shape runs.
 
@@ -9433,6 +10201,15 @@ LOCAL_PORT_BASE = 6600
 # exactly like a discovery bug (H3, 2026-07-28). The client dials the shim's port instead, and the shim
 # forwards to the host's. Its own band, well clear of LOCAL_PORT_BASE + len(TESTS).
 LOCAL_SHIM_PORT_BASE = 6700
+# mp:R2b -- a CLIENT lane that HOSTS a lobby of its own (`host_lanes` in a registry row: 1-based
+# client indices) cannot share the test's port: a UDP host binds `[net] port` with
+# SO_EXCLUSIVEADDRUSE, so the second host on one port is REFUSED at bind and its lobby, though
+# published to the relay, can never receive a JOIN (measured 2026-09-22, browser_two_rows' first
+# standalone run: `udp bind(:6600) REFUSED`, the client seated itself in an empty lobby). Its own
+# band, like the shim's. When such a row runs as a share_lanes sharer this is moot -- it borrows a
+# HOST lane from a second target, whose port is that target's own -- so this only decides the
+# standalone (target-absent) shape.
+LOCAL_HOST2_PORT_BASE = 6800
 # --det-local's own range. The lane numbers come from lane_alloc (fork F4H); the PORT does not,
 # because peers of one match must share one port. 6620 sits inside the capture suite's own band
 # (PORT_BASE + test index), which is tolerable only because --det-local is a by-hand diagnostic that
@@ -9490,6 +10267,21 @@ def client_lane_slots(test):
     return slots
 
 
+def share_targets(test):
+    """The scenarios a `share_lanes` row borrows lanes from, as a list. One name (the mp:R7a form) or
+    a LIST of names (mp:R2b): a row that needs MORE lanes than any one comparable scenario owns
+    borrows from several -- browser_two_rows needs three peers (two hosts + a browser) and no
+    registry row owns three lanes. The borrowed lane set is every target's HOST lane first, then
+    their client lanes, because a host lane is the only lane whose game port is unique in the run
+    (provision_lanes gives one port per test, shared by its peers): a sharer that hosts N lobbies
+    must put them on N host lanes, or the second host's UDP bind is refused against the first's.
+    The runner schedules a sharer serially with ALL of its targets (one worker), as it does a pair."""
+    tg = test.get("share_lanes")
+    if not tg:
+        return []
+    return [tg] if isinstance(tg, str) else list(tg)
+
+
 def lane_names(test):
     """Every lane a test needs, in peer order (host first).
 
@@ -9533,10 +10325,10 @@ def provision_lanes(tests, headless=True, port_base=None, lane_base=0, stock_exe
     present = {t["name"] for t in tests}
 
     def _provision_names(t):
-        tg = t.get("share_lanes")
-        if tg and tg in present:
+        tg = share_targets(t)
+        if tg and all(x in present for x in tg):
             return []
-        if tg:  # target absent from this run -> stand on our own lanes
+        if tg:  # a target absent from this run -> stand on our own lanes
             # Same shape lane_names() computes for a non-sharer -- calling it directly here (rather
             # than re-deriving it) is what keeps client_shares_lane (mp:GS1(b)) honoured in this
             # fallback path too, without a second place to remember the rule.
@@ -9563,8 +10355,11 @@ def provision_lanes(tests, headless=True, port_base=None, lane_base=0, stock_exe
         names = _provision_names(t)
         for i, nm in enumerate(names):
             lane_no += 1
-            # host lane (i == 0) keeps the game port; a shim test's CLIENTS dial the shim's port
+            # host lane (i == 0) keeps the game port; a shim test's CLIENTS dial the shim's port;
+            # a client lane that HOSTS (mp:R2b host_lanes) binds a port of its own
             lane_port = shim_port if (shim_port and i > 0) else port
+            if i > 0 and i in (t.get("host_lanes") or []):
+                lane_port = LOCAL_HOST2_PORT_BASE + ti
             cmd = [
                 sys.executable,
                 os.path.join(REPO, "tools", "make_lane.py"),
@@ -9618,12 +10413,21 @@ def provision_lanes(tests, headless=True, port_base=None, lane_base=0, stock_exe
     # the pair serially, so the borrowed lane is never in use by both at once. A sharer running WITHOUT
     # its target present provisioned its own lanes above and keeps them.
     for t in tests:
-        target = t.get("share_lanes")
-        if target and target in present:
-            plan[t["name"]] = plan[target]
+        targets = share_targets(t)
+        if targets and all(x in present for x in targets):
+            if len(targets) == 1:
+                plan[t["name"]] = plan[targets[0]]
+            else:
+                # mp:R2b -- several targets: their host lanes first, then their client lanes (see
+                # share_targets), on the FIRST target's port (the sharer's own host lane is that
+                # target's host lane, and --port is what the runner's readiness probe watches).
+                port, shim_port, _n = plan[targets[0]]
+                hosts = [plan[x][2][0] for x in targets if plan[x][2]]
+                rest = [n for x in targets for n in plan[x][2][1:]]
+                plan[t["name"]] = (port, shim_port, hosts + rest)
             print(
                 "  %-14s SHARES the lanes of %s (mp:R7a, TL-LANEPOOL headroom)"
-                % (t["name"], target)
+                % (t["name"], " + ".join(targets))
             )
     return plan
 
@@ -9971,6 +10775,8 @@ def build_argv(test, vms, common, plan=None):
         tail += ["--net-extra-client", test["net_extra_client"]]
     if test.get("no_client_ip"):  # mp:R7a -- no saved server, so the first browser probes the relay
         tail += ["--no-client-ip"]
+    if test.get("client_game_name"):  # mp:R2b -- a client lane that HOSTS: pin the game it creates
+        tail += ["--client-game-name", test["client_game_name"]]
     if test.get("signal_touch"):  # mp:R4b -- set by the runner from relay_restart_on
         tail += ["--signal-touch", test["signal_touch"]]
     # mp:GS1(b) -- the PROCESS-EXIT relaunch shape: {client_idx(1-based): peer_idx(0-based, 0=host)}.
@@ -10773,6 +11579,27 @@ def main():
         "survived to Start proves nothing. Included automatically in --det-standard.",
     )
     ap.add_argument(
+        "--u19b-quit3",
+        action="store_true",
+        help="--determinism: run ONLY mp:U19b's 3-PEER CLEAN QUIT shape (host on vms[0], one "
+        "survivor client on vms[1], the QUITTER as a LOCAL LANE on this box -- the same topology "
+        "and the same shared lane as --det-3peer, so the two cannot run concurrently). A client "
+        "ESC-quits a running 3-peer match; the two survivors must keep stepping (never seen in the "
+        "log at all, an on_gameover or a B2 fast-drop is a FAIL) and mp_analyze.py over both "
+        "survivors' logs must read ALL PAIRS IDENTICAL. NOT included in --det-standard.",
+    )
+    ap.add_argument(
+        "--l1f-ping3",
+        action="store_true",
+        help="mp:L1f: run ONLY the 3-PEER LOBBY-PING shape (host on vms[0], one client on vms[1], "
+        "the second client as a LOCAL LANE on this box -- the same topology and the same shared "
+        "lane as --det-3peer, so they cannot run concurrently). Three peers sit in ONE lobby in the "
+        "ship configuration; every peer's screen must show a real ping for every OTHER occupied "
+        "slot, which on a CLIENT is only reachable through the host's published summary (the "
+        "transport is a client-server star). Verdict from tools/check_lobby_ping.py --published "
+        "--every-slot --agree. NOT a --determinism shape: the walk never leaves the lobby.",
+    )
+    ap.add_argument(
         "--det-standard",
         action="store_true",
         help="--determinism: run the standard shapes and report them SEPARATELY, because a "
@@ -11214,6 +12041,26 @@ def main():
             print("  %-14s [%s]  %s" % (t["name"], "+".join(t["arms"]), t["desc"]))
         return 0
 
+    # mp:L1f -- a LOBBY shape, so it is dispatched before the determinism block rather than inside
+    # it: there is no sim in this walk to compare and no harness to arm.
+    if args.l1f_ping3:
+        ok, lines = run_l1f_ping3(args)
+        print("\n".join(lines))
+        if ok is None:
+            return 0  # VM down -> SKIP, not a failure
+        print("[l1f] 3-PEER LOBBY PING: %s" % ("PASS" if ok else "FAIL"))
+        return 0 if ok else 1
+
+    # The determinism SHAPE flags mean nothing outside --determinism, and a bare `--u19b-quit3`
+    # used to fall through to the WHOLE default suite (2026-09-22: 27 rows into a 70-row run before
+    # anyone noticed, holding the rig lease the while). Refuse rather than run the wrong thing.
+    if not args.determinism and (args.det_standard or args.det_3peer or args.u19b_quit3):
+        print(
+            "[det] --det-standard / --det-3peer / --u19b-quit3 are --determinism shapes: pass "
+            "--determinism with them (without it the default capture suite would run instead)"
+        )
+        return 2
+
     if args.determinism:
         # C7: promotion is TWO runs, not one. --det-standard runs both shapes and reports them apart.
         if args.det_standard:
@@ -11224,6 +12071,13 @@ def main():
             if ok is None:
                 return 0  # VM down -> SKIP, not a failure
             print("[det] U28 3-PEER BARRIER: %s" % ("PASS" if ok else "FAIL"))
+            return 0 if ok else 1
+        if args.u19b_quit3:
+            ok, lines = run_u19b_quit3(args)
+            print("\n".join(lines))
+            if ok is None:
+                return 0  # VM down -> SKIP, not a failure
+            print("[det] U19b 3-PEER CLEAN QUIT: %s" % ("PASS" if ok else "FAIL"))
             return 0 if ok else 1
         err = asymmetric_fix_config_error(args.extra_ini_host)
         if err:
@@ -11519,7 +12373,14 @@ def main():
         # which since SES1 is the newest SESSION directory the scenario opened: menu_walk creates a
         # game, so its newest folder holds the match's logs and no `[modules]` line at all, and the
         # check REFUSED (correctly -- it will not pass a log it cannot see the bind in).
-        target = sp_newest_run(lane_dir) or lane_dir
+        # mp:D28: a checker whose evidence is match-time-only mh_net.log content (not a boot-time
+        # banner, not mh_harness.log -- both live in the process dir regardless) needs the SESSION
+        # directory, the inverse of every checker above it. Opt in per-row with
+        # `post_check_session: True` rather than changing sp_newest_run's default for the ~50 rows
+        # that rely on it (see sp_newest_session_run's own comment for why check_cancel_task.py's
+        # `routed as order` line specifically cannot be found in the process dir).
+        newest = sp_newest_session_run if test.get("post_check_session") else sp_newest_run
+        target = newest(lane_dir) or lane_dir
         # mp:X1b. A CROSS-PEER post-check gets EVERY peer's run directory, not only the host's.
         # Every existing checker asks a question about one process (did this boot bind that module),
         # so one lane was the right argument and still is. "Did the world one peer captured arrive
@@ -11530,7 +12391,7 @@ def main():
             targets = []
             for nm in lane_names_:
                 d = os.path.join(make_lane.LANE_ROOT, nm)
-                targets.append(sp_newest_run(d) or d)
+                targets.append(newest(d) or d)
         else:
             targets = [target]
         argv = [sys.executable, os.path.join(REPO, *cmd[0].split("/"))] + list(cmd[1:]) + targets
@@ -11729,26 +12590,66 @@ def main():
         # untouched. --jobs 1 keeps the fully-serial order for debugging (no split).
         solos = [(i, t) for i, t in enumerate(tests, 1) if t.get("kind") != "multi"]
         multis = [(i, t) for i, t in enumerate(tests, 1) if t.get("kind") == "multi"]
-        # mp:R7a -- a share_lanes test borrows a comparable scenario's lanes, so the two must NEVER run
-        # at once. Fold each sharer into its target's work item and run the pair SERIALLY in one worker;
-        # a sharer whose target is not in this run (a subset) stands alone on its own provisioned lanes.
-        present = {t["name"] for _, t in multis}
-        sharers_of = {}
-        for i, t in multis:
-            tg = t.get("share_lanes")
-            if tg and tg in present:
-                sharers_of.setdefault(tg, []).append((i, t))
-        groups = []  # each is a list of (idx, test) run back-to-back in ONE worker
-        for i, t in multis:
-            tg = t.get("share_lanes")
-            if tg and tg in present:
-                continue  # runs with its target's group
-            groups.append([(i, t)] + sharers_of.get(t["name"], []))
+
+        def lane_groups(pool, fold_shims):
+            """Connected components of "borrows lanes from", within ONE scheduling pool.
+
+            mp:R7a -- a share_lanes test borrows a comparable scenario's lanes, so the two must
+            NEVER run at once: same lane folder, same mh.dll, same setup.dat. Fold each sharer into
+            its target's work item and run them SERIALLY in one worker; a sharer whose target is not
+            in this run (a subset) stands alone on its own provisioned lanes. mp:R2b -- a sharer may
+            borrow from SEVERAL targets (share_targets), hence components rather than pairs: targets
+            first within a group (they own the lanes), sharers after, in registry order.
+
+            THIS RUNS OVER BOTH POOLS since 2026-09-22 (tooling:TL-RIG-DEFANG's gate). It used to be
+            written inline over `multis` only, because every sharer WAS multi -- and the day the
+            first solo-to-solo sharer was registered (gx1_overlay_residue borrowing debug_overlay's
+            lane) the solo pool happily ran the pair concurrently at --jobs 4 and the second one died
+            copying mh.dll into a folder the first still had open: `PermissionError: [Errno 13]` at
+            1s of a 200s budget. It passed every time it was run alone, which is how it was
+            registered. A pool that cannot express "these two share a lane" must not be handed a
+            sharer -- so the grouping is the pool's, not the multi branch's.
+            """
+            present = {t["name"] for _, t in pool}
+            parent = {t["name"]: t["name"] for _, t in pool}
+
+            def _find(n):
+                while parent[n] != n:
+                    parent[n] = parent[parent[n]]
+                    n = parent[n]
+                return n
+
+            for i, t in pool:
+                tg = share_targets(t)
+                if tg and all(x in present for x in tg):
+                    for x in tg:
+                        parent[_find(x)] = _find(t["name"])
+            if fold_shims:
+                # The shim's control port (ui_test.SHIM_CONTROL_PORT, one per box) is a singleton the
+                # lane plan cannot fork: two `"shim": True` rows in flight at once and the second
+                # net_shim.py dies at bind ("[shim] failed to start (exit 1)" -- txdeath_ingame
+                # against net_hud's shim, 2026-09-22 gate, the first gate with four shim rows). Fold
+                # every shim row into ONE component so they run back-to-back in a single worker,
+                # whatever lanes they own.
+                shim_rows = [t["name"] for _, t in pool if t.get("shim")]
+                for x in shim_rows[1:]:
+                    parent[_find(x)] = _find(shim_rows[0])
+            out, by_root = [], {}
+            for i, t in pool:
+                by_root.setdefault(_find(t["name"]), []).append((i, t))
+            for members in by_root.values():
+                owners = [(i, t) for i, t in members if not share_targets(t)]
+                sharers = [(i, t) for i, t in members if share_targets(t)]
+                out.append(owners + sharers)
+            return out
+
+        groups = lane_groups(multis, fold_shims=True)
+        solo_groups = lane_groups(solos, fold_shims=False)
         net_jobs = max(1, min(args.net_jobs, len(groups) or 1))
         print(
-            "\nrunning %d tests: %d solo at --jobs %d + %d multi-peer in their own pool "
-            "(--net-jobs %d; capped peers wait more than they compute)"
-            % (len(tests), len(solos), jobs, len(multis), net_jobs)
+            "\nrunning %d tests: %d solo in %d lane group(s) at --jobs %d + %d multi-peer in "
+            "their own pool (--net-jobs %d; capped peers wait more than they compute)"
+            % (len(tests), len(solos), len(solo_groups), jobs, len(multis), net_jobs)
         )
         done = 0
 
@@ -11761,16 +12662,11 @@ def main():
             cf.ThreadPoolExecutor(max_workers=jobs) as ex_cpu,
             cf.ThreadPoolExecutor(max_workers=net_jobs) as ex_net,
         ):
-            solo_futs = {ex_cpu.submit(run_one, i, t): [t] for i, t in solos}
-            group_futs = {ex_net.submit(run_group, g): [t for _, t in g] for g in groups}
             futs = {}
-            futs.update(solo_futs)
-            futs.update(group_futs)
+            futs.update({ex_cpu.submit(run_group, g): [t for _, t in g] for g in solo_groups})
+            futs.update({ex_net.submit(run_group, g): [t for _, t in g] for g in groups})
             for f in cf.as_completed(futs):
-                res = f.result()
-                if f in solo_futs:  # run_one returns a single tuple
-                    res = [res]
-                for name, verdict, text in res:
+                for name, verdict, text in f.result():
                     results[name] = verdict
                     done += 1
                     print(text)

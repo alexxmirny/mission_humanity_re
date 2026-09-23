@@ -1,0 +1,42 @@
+# mp:R2b HOST B of the browser_two_rows scenario: a CLIENT LANE of the runner (player name "client",
+# game name "bravo" via --client-game-name) that HOSTS the second relay lobby. It reaches the first
+# browser and HOLDS there until the browsing client (mp_client_two_rows.txt) has seen host A's row
+# listed alone (`c2_sees_a`), then creates its game -- so the client's directory rows are in a known
+# order: A in slot 0, this lobby in slot 1. Without that gate the relay's directory (sorted by minted
+# room code) could list the two in either order on the client's first LIST and the "second row"
+# baseline would flap.
+#
+# Create after a browse is the R7 relink (this lane's first browser dialled the relay as a client;
+# clicking Create re-initialises the transport as host) -- the same path mp_host_lobby.txt takes.
+
+settled value:110
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+present Internet server
+settled Create
+awaitsignal c2_sees_a
+clickl Create
+present Game name
+settled Ok
+clickl Ok
+present Available maps
+settled Ok
+clickl Ok
+present Network players
+settled Start
+capture hb_lobby
+log HOST B in its lobby ("bravo"), listening -- the second directory row
+
+# the client's FIRST join lands here (row 2 of its browser): seated, then it leaves for A
+occ 2
+occ <3
+settled Start
+capture hb_client_seated_first
+signal hb_seen
+occ <2
+disabled Start
+capture hb_client_left
+log HOST B: the browsing client joined this lobby from the SECOND browser row, then left for A
+end

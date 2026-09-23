@@ -1,0 +1,76 @@
+# mp:R2b CLIENT walk: the first browser lists TWO relay-hosted lobbies (host A "uitest" on the
+# runner's host lane, host B "bravo" on a client lane); join the SECOND row and land in B's lobby,
+# leave, then join the FIRST row and land in A's. Pair with mp_host_two_rows_a.txt / _b.txt.
+#
+# WHAT IS BEING TESTED. Before R2b build_browser_from_store built ONE session record (the connected
+# host's advert, else the lowest directory row), so the second lobby on a relay was invisible, and a
+# join always went where the browser's auto-dial had landed. Now every live directory row is a
+# session record with its own handle (per relay slot), and the JOIN resolves the clicked row to ITS
+# room: both joins here are re-dials AWAY from a linked lobby (the auto-dial links this peer to A
+# before B is even created; after leaving B it is linked to B when it joins A). The two lobby
+# captures are told apart by slot 0's player name -- "client" is host B (a client lane of the
+# runner), "host" is host A -- since the lobby screen does not draw the game name.
+# tools/check_browser_rows.py reads the same claim off mh_net.log: two `-> listed` rooms, and each
+# `; R2b join:` line naming the room of the row the script clicked.
+#
+# ROW ORDER IS MADE DETERMINISTIC by the `c2_sees_a` signal: host B does not create its game until
+# this client has A listed alone, so A is slot 0 / row 1 and B is slot 1 / row 2.
+#
+# SELECTING A LIST ROW is the split click (ui-testing skill): `cursor` twice so the hover settles on
+# the row, then `press`/`release` -- a same-frame `click` commits the hover from BEFORE the move
+# rendered and picks the previous row. Row geometry: the list box starts at y=92 with 8 rows of the
+# font's line height (13 px), so row 1 is centred at y=98 and row 2 at y=111 (x anywhere in the row).
+
+# 1. main menu (NETWORK GAME = value 110) -> player name -> the first browser
+settled value:110
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+present Internet server
+
+# 2. host A is listed alone; tell B it may create its game now (row order: A first)
+sessions 1
+signal c2_sees_a
+
+# 3. both lobbies listed -> the capture this item exists for
+sessions 2
+settled Join game
+capture c1_two_rows
+
+# 4. select row 2 (B) and join it: the join re-dials B's room (this peer is linked to A)
+cursor 190 111
+cursor 190 111
+press 190 111
+release 190 111
+capture c2_second_row_selected
+clickl Join game
+present Network players
+occ 2
+occ <3
+settled Cancel
+capture c3_in_b_lobby
+signal seated2
+
+# 5. leave B (once B has captured the seated roster) -> back on the browser, both rows still listed
+awaitsignal hb_seen
+clickl Cancel
+absent Network players
+present Internet server
+sessions 2
+settled Join game
+
+# 6. select row 1 (A) and join it: the join re-dials A's room (this peer is linked to B)
+cursor 190 98
+cursor 190 98
+press 190 98
+release 190 98
+clickl Join game
+present Network players
+occ 2
+occ <3
+settled Cancel
+capture c4_in_a_lobby
+signal seated1
+log CLIENT: two relay lobbies listed as two rows; joined the SECOND (B), left, joined the FIRST (A)
+end

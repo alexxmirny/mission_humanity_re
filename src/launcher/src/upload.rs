@@ -975,6 +975,7 @@ mod tests {
         let zip_path = dir.join(name);
         let input = crate::report::Input {
             game_dir: None,
+            logs_root: None,
             session_dir: None,
             launcher_started_utc: None,
             description,

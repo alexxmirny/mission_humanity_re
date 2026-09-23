@@ -1843,6 +1843,13 @@ script after retyping anything.
 | `+0x20` | `timestamp` | `uint` | GetTickCount() - _G_LLM_INPUT_TIME_EPOCH |
 | `+0x24` | `reserved_0x24` | `undefined1[20]` | unused tail of the 0x38 stride |
 
+#### `llm_lobby_browser_row` (size 0x8, category `/llm`)
+
+| Offset | Field | Type | Comment |
+| --- | --- | --- | --- |
+| `+0x00` | `session_handle` | `void *` | Copied from _G_LLM_NET_SESSION_LIST[i].session_handle by llm_mp_discovery_browser_refresh (@0x004bce70). llm_lobby_join_head reads rows[selected].session_handle (@0x004be334) and joins the FIRST session in _G_LLM_NET_SESSION_LIST whose .session_handle == it (and whose protocol_version <= ceiling) -- so every listed session needs a DISTINCT handle for the row->session match to be unambiguous. The DLL writes the sentinel 1 here for its synthetic row. |
+| `+0x04` | `server_idx` | `uint` | Index of the typed-server / adapter that the discovery probe used when this row was found (the refresh loop's outer counter over _G_LLM_MP_PROBE_SERVER_COUNT, @0x004bce51). llm_lobby_join_head passes rows[selected].server_idx to llm_net_connect_prep_stub (@0x004be323) before joining when _G_LLM_MP_NET_MODE < 0. Dead in retail (probe count has no incrementer); the DLL writes 0. |
+
 #### `llm_map_object` (size 0x18, category `/llm`)
 
 | Offset | Field | Type | Comment |
@@ -2172,6 +2179,33 @@ script after retyping anything.
 | --- | --- | --- | --- |
 | `+0x00` | `heading` | `byte` | direction/heading step code |
 | `+0x01` | `run_length` | `byte` | consecutive-step count for this heading |
+
+#### `llm_strat_pathfind_route_ctx` (size 0x1a, category `/llm`)
+
+| Offset | Field | Type | Comment |
+| --- | --- | --- | --- |
+| `+0x00` | `unit_count` | `short` | Number of units this route covers. Every loop in every user is bounded by it; the callers' parallel stack arrays are [100], so 100 is the practical cap. |
+| `+0x02` | `start_row` | `short` | Route start ROW. Read as a byte in the compactors (path_list_compact 0x0043da7e local_1c); in dispatch_route_order's stack-built instances this slot receives llm_strat_pathfind_result_row's output. |
+| `+0x04` | `start_col` | `short` | Route start COLUMN -- the *0x100 (major) index into the occupancy grid. Paired with start_row at +0x02; in dispatch_route_order's stack instances it receives llm_strat_pathfind_result_col's output. |
+| `+0x06` | `occupancy_grid` | `byte *` | 256x256 occupancy grid, indexed [col*0x100 + row]. A cell reads 0 = FREE. path_list_compact tests it LIVE; path_list_compact_all memcpy's 0x10000 bytes of it into _G_LLM_STRAT_PATHFIND_OCCUPANCY_SNAPSHOT and works on the copy. NOTE the polarity is the INVERSE of the global `passable` grid. |
+| `+0x0a` | `unit_slots` | `void *` | Array of unit_count 8-byte slots. Slot layout measured: +0x00 byte* path_steps (a 0xff-terminated sequence of 3-byte {byte facing24_minus_1; ushort run_length} records), +0x06 ushort cur_colrow (packed col<<8\|row, written back as the unit's committed position). |
+| `+0x0e` | `field_0x0e` | `int` | Copied verbatim into every derived ctx dispatch_route_order builds on the stack (0x0043def7). No reader decoded in this batch -- carried, not interpreted. |
+| `+0x12` | `goal_or_flag_0x12` | `int` | Tested ==0 / !=0 by dispatch_route_order to choose the plain flood path vs the reserve/walk/restore path, and zeroed as TWO shorts (ctx[9]=0; ctx[10]=0) on the two reset arms. Meaning not decoded. |
+| `+0x16` | `coord_wrap_mask` | `byte` | AND-mask applied to every stepped col/row (`(pos + delta) & mask`) -- the torus wrap for this map. Same role as general.width_mask/height_mask but carried per-route. |
+| `+0x17` | `scatter_mode` | `byte` | 1 = the group/scatter-formation arm (dispatch_route_order generates per-unit scatter target points); 0 = the single-route arm. Also cleared to 0 at 0x0043def7 when unit_count==1. |
+| `+0x18` | `start_adjust_result` | `short` | Receives llm_strat_pathfind_route_start_adjust's return on the reserve/walk/restore arm only. |
+
+#### `llm_strat_pathfind_walk_state` (size 0x16, category `/llm`)
+
+| Offset | Field | Type | Comment |
+| --- | --- | --- | --- |
+| `+0x00` | `prev_pos` | `ushort` | Packed col<<8\|row of the tile one step BEFORE the match (current minus the step delta, re-masked). |
+| `+0x02` | `cur_pos` | `ushort` | Packed col<<8\|row of the matching tile itself. |
+| `+0x04` | `orig_pos` | `ushort` | Packed col<<8\|row of the position held at the top of the current route segment, before this segment's run was walked. |
+| `+0x06` | `step_dx` | `int` | Column delta of the segment's facing, from llm_strat_facing24_to_delta(facing+1). |
+| `+0x0a` | `step_dy` | `int` | Row delta of the segment's facing, paired with step_dx. |
+| `+0x0e` | `seg_index` | `int` | Index of the 3-byte route record the walk stopped in. ALSO an INPUT: the walk resumes at route_segments + seg_index*3. |
+| `+0x12` | `substep_index` | `int` | Index within that record's run_length. ALSO an INPUT: steps below it are skipped on resume (`if (substep_index <= i)` gate), which is what makes repeated calls advance instead of re-finding the same tile. |
 
 #### `llm_strat_pathfinder_params` (size 0x20, category `/llm`)
 
@@ -2618,6 +2652,20 @@ script after retyping anything.
 | --- | --- | --- | --- |
 | `+0x00` | `font_slot` | `int` | Passed as llm_ui_panel_text_draw's 5th argument (font_slot) for the row label; read at 0x00419528 (PUSH dword ptr [EAX] after EAX = base + mode*4). |
 | `+0x04` | `icon_id` | `int` | Index into G_ICON_PTRS for the row icon (read at 0x00419508, scaled at 0x0041950b, loaded from G_ICON_PTRS at 0x0041950e) and passed to llm_ui_icon_draw_vclipped at 0x0041951a. |
+
+#### `llm_ui_list_state` (size 0x24, category `/llm`)
+
+| Offset | Field | Type | Comment |
+| --- | --- | --- | --- |
+| `+0x00` | `entries` | `void * *` | Heap array of entry-record pointers (each 0x10: {wchar_t* text, int aux0, int aux1, int aux2/icon}); realloc'd to (count+1)*4 by llm_ui_list_widget_append_entry, freed by llm_ui_list_widget_clear. UNBOUNDED -- the list widget itself has no fixed row cap. |
+| `+0x04` | `field_0x4` | `int` | Unresolved; 0 in every static block seen (0x644f93 browser block). |
+| `+0x08` | `header_text` | `wchar_t *` | Column header drawn above the rows by llm_ui_list_widget_draw (@list_state[2]); the MP session browser points it at _G_LLM_STR_EMPTY. |
+| `+0x0c` | `visible_rows` | `int` | Rows drawn per page: llm_ui_list_widget_draw loops i < visible_rows && scroll_top+i < count; llm_ui_list_widget_clear sets widget.height = visible_rows * font line height; llm_ui_scrollbar_bind_range publishes span = count - visible_rows. MP session browser = 8. |
+| `+0x10` | `linked_label` | `llm_ui_widget *` | Optional widget whose text is set to the clicked entry's text by llm_ui_list_widget_mouse_cb (dropdown pattern); 0 for the browser. |
+| `+0x14` | `on_change_cb` | `pointer` | Called by llm_ui_list_widget_mouse_cb when `selected` changed; the MP session browser's is llm_lobby_apply_selected_session_map (0x004c08bb). |
+| `+0x18` | `count` | `int` | Number of entries (+1 per append_entry, 0 after clear). The MP session browser's is the old DAT_00644fab, which llm_mp_discovery_browser_refresh clamps `selected` against (@0x004bcef3). |
+| `+0x1c` | `scroll_top` | `int` | First visible entry index; the scrollbar stepper's current value (llm_ui_scrollbar_bind_range publishes &scroll_top to INT_0064506f). Reset to 0 by append_entry. |
+| `+0x20` | `selected` | `int` | Selected entry index, -1 = none. Written by llm_ui_list_widget_mouse_cb as row + scroll_top (through the widget's param_block pointer -- no static xref). The MP session browser's is the old DAT_00644fb3: llm_lobby_join_head indexes _G_LLM_LOBBY_BROWSER_ROWS[selected] with it (guarded `< 0x400` SIGNED @0x004be33d, so -1 slips through -- retail relies on the Join button being disabled when count==0), and llm_lobby_apply_selected_session_map indexes _G_LLM_NET_SESSION_LIST[selected] with it directly when _G_LLM_MP_NET_MODE >= 0. |
 
 #### `llm_ui_menu_list_item` (size 0x44, category `/llm`)
 

@@ -1274,6 +1274,144 @@ uint32_t us_rand(uint32_t &st) {
     return st;
 }
 
+// ---- mp:P10: the two-peer coupling, offline ------------------------------------------------------
+//
+// EVERY OTHER ARM IN THIS SUITE DRIVES ONE CONTROLLER. That is what let the ratchet ship: the defect
+// is not in any single decision -- each of them is locally correct -- it is in what two correct
+// controllers do TO EACH OTHER through `committed = min(own horizon, the peer's ARRIVED horizon)`.
+// So this drives two instances against each other with the coupling the field has, and the property
+// asserted is about the PAIR's endpoint, not about one verdict.
+//
+// THE MODEL, and each piece is a line of the real system rather than a knob:
+//   * each peer advertises `horizon = own clock + own lookahead` every frame
+//     (turn_engine.cpp:438-441, the pump);
+//   * an advertisement ARRIVES one one-way delay later, so what the receiver mins against is always
+//     stale -- this is the whole reason the raw slack overstates the idle horizon;
+//   * `committed = min(own horizon, the arrived peer horizon)` (turn_engine.cpp:205-213);
+//   * the sim advances toward `committed`, but no faster than the machine can run it (`rate`), and
+//     that per-peer rate asymmetry is what makes one peer sit ON its horizon while the other has
+//     margin -- the field's host/joiner split;
+//   * lateness and slack are sampled exactly as lateness_tick does (net_lockstep.cpp:860-915), into
+//     the same LatenessWindow, and reduced by the same percentiles;
+//   * a decision every AD_WINDOW_MS, through the real lookahead_decide.
+//
+// It is calibrated, not invented: at owd = 100 ms it reproduces the 2026-09-20 field corpus's own
+// numbers -- the opening `slack 100 ms` with a starved tail on BOTH peers, and the walk to
+// (400, 60) inside ~15 s.
+struct TwoPeerSim {
+    double cur_ms[2];   // the settled lookahead of each peer
+    double rate_eff[2]; // game ms advanced per wall ms over the whole run
+    int    n_grow[2];
+    int    n_shrink[2];
+};
+
+struct SimPeerState {
+    double                       c, S, rate, peer_h, t0, warm_t0;
+    bool                         warm_seen;
+    int                          clean;
+    mh::netstats::LatenessWindow late, slack;
+};
+
+// `owd_ms` is the LINK. `feed_owd_ms` is what the controller is TOLD about it -- negative means
+// "this transport cannot measure its link", which is bit-for-bit the pre-P10 decision, so the SAME
+// code drives both arms and the regression arm is not a tautology about a #ifdef. The two being
+// separate parameters is what lets an arm ask what a WRONG estimate costs.
+TwoPeerSim two_peer_run(double start_a, double start_b, double rate_a, double rate_b, double owd_ms,
+                        double feed_owd_ms, double secs = 120.0, double sim_ms = 20.0,
+                        double floor_ms = 60.0, double ceil_ms = 400.0) {
+    using namespace mh::netstats;
+    const double DT = 10.0, WINDOW = 2000.0, WARMUP = 1500.0;
+    enum { RING = 128 };
+    SimPeerState p[2];
+    double       q_at[2][RING], q_v[2][RING];
+    int          q_head[2], q_tail[2];
+    for (int i = 0; i < 2; ++i) {
+        p[i].c         = 0.0;
+        p[i].S         = i ? start_b : start_a;
+        p[i].rate      = i ? rate_b : rate_a;
+        p[i].peer_h    = 0.0;
+        p[i].t0        = 0.0;
+        p[i].warm_t0   = 0.0;
+        p[i].warm_seen = false;
+        p[i].clean     = 0;
+        p[i].late.reset();
+        p[i].slack.reset();
+        q_head[i] = q_tail[i] = 0;
+    }
+    TwoPeerSim out;
+    for (int i = 0; i < 2; ++i) {
+        out.n_grow[i]   = 0;
+        out.n_shrink[i] = 0;
+    }
+    for (double t = 0.0; t < secs * 1000.0; t += DT) {
+        for (int i = 0; i < 2; ++i) { // the pump: advertise toward the other side
+            const double h   = p[i].c + p[i].S;
+            const int    o   = 1 - i;
+            const int    nxt = (q_tail[o] + 1) % RING;
+            if (nxt != q_head[o]) {
+                q_at[o][q_tail[o]] = t + owd_ms;
+                q_v[o][q_tail[o]]  = h;
+                q_tail[o]          = nxt;
+            }
+        }
+        for (int i = 0; i < 2; ++i) {
+            while (q_head[i] != q_tail[i] && q_at[i][q_head[i]] <= t) {
+                p[i].peer_h = q_v[i][q_head[i]];
+                q_head[i]   = (q_head[i] + 1) % RING;
+            }
+            const double own_h     = p[i].c + p[i].S;
+            const double committed = (p[i].peer_h > 0.0 && p[i].peer_h < own_h) ? p[i].peer_h : own_h;
+            const double required  = p[i].c + sim_ms;
+            if (committed < required) {
+                p[i].late.push(-(int)sim_ms); // blocked this frame
+            } else {
+                p[i].late.push((int)(p[i].peer_h - required));
+                double adv = committed - p[i].c;
+                if (adv > p[i].rate * DT) adv = p[i].rate * DT;
+                if (adv > 0.0) p[i].c += adv;
+            }
+            const int sl = (int)(own_h - committed);
+            p[i].slack.push(sl > 0 ? sl : 0);
+            if (!p[i].warm_seen && p[i].peer_h > 0.0) {
+                p[i].warm_seen = true;
+                p[i].warm_t0   = t;
+            }
+        }
+        for (int i = 0; i < 2; ++i) {
+            if (t - p[i].t0 < WINDOW) continue;
+            int         lp50 = 0, lt95 = 0, lt99 = 0, sp50 = 0, s95 = 0, s99 = 0;
+            LookaheadIn in;
+            in.cur_ms   = p[i].S;
+            in.sim_ms   = sim_ms;
+            in.floor_ms = floor_ms;
+            in.ceil_ms  = ceil_ms;
+            in.have     = p[i].late.count() >= AD_LATE_MIN_SAMPLES &&
+                      p[i].late.percentiles(lp50, lt95, lt99);
+            in.tail95_ms         = (double)lt95;
+            in.clean_in          = p[i].clean;
+            in.warm              = p[i].warm_seen && (t - p[i].warm_t0) >= WARMUP;
+            in.slack_ms          = (p[i].slack.count() >= AD_LATE_MIN_SAMPLES &&
+                           p[i].slack.percentiles(sp50, s95, s99))
+                                       ? (double)sp50
+                                       : 0.0;
+            in.link_owd_ms       = feed_owd_ms;
+            const LookaheadOut d = lookahead_decide(in);
+            p[i].clean           = d.clean_out;
+            if (d.verdict == LA_GROW) ++out.n_grow[i];
+            if (d.verdict == LA_SHRINK) ++out.n_shrink[i];
+            p[i].S = d.want_ms;
+            p[i].late.reset();
+            p[i].slack.reset();
+            p[i].t0 = t;
+        }
+    }
+    for (int i = 0; i < 2; ++i) {
+        out.cur_ms[i]   = p[i].S;
+        out.rate_eff[i] = p[i].c / (secs * 1000.0);
+    }
+    return out;
+}
+
 } // namespace
 
 static int run_udpstatstest() {
@@ -1458,6 +1596,11 @@ static int run_udpstatstest() {
         // behaviour has to be additional, not a retune of what the rig already accepted.
         in.warm     = true;
         in.slack_ms = 0.0;
+        // mp:P10's new input, set to "this transport cannot measure its link" for every arm (a)..(j)
+        // below, which is exactly what makes them assertions about the UNCHANGED decision: with no
+        // one-way delay the grow gate stands down and `slack_ms` is read raw, i.e. the pre-P10 rule
+        // bit for bit. Arms (k) and (l) are the ones that supply a link.
+        in.link_owd_ms = -1.0;
 
         // (a) NOTHING MEASURED -> hold. Not "assume the worst", not "assume the best".
         in.cur_ms      = 100.0;
@@ -1714,6 +1857,140 @@ static int run_udpstatstest() {
         us_check(peak >= 200.0, "...the injected era is actually covered (peak %f)", peak);
         us_check(near_ms(in.cur_ms, 60.0, 1e-9),
                  "...and the link is handed back to the floor afterwards (%f)", in.cur_ms);
+
+        // ---- (k) mp:P10: THE GROW GATE, and that it reads a DELAY-CORRECTED slack ---------------
+        // The state the field's host sat in for every one of its 25 sessions: starved tail, and an
+        // own horizon far above the one the match is running on. Growing there cannot raise our own
+        // COMMITTED (it is a min and we are not the min), so the decision must not be a grow.
+        in.warm        = true;
+        in.clean_in    = 0;
+        in.cur_ms      = 344.0;
+        in.tail95_ms   = -20.0; // blocked: the pre-P10 rule grows on this, hard
+        in.slack_ms    = 320.0;
+        in.link_owd_ms = -1.0; // ...and with no link measurement it still does, unchanged
+        d              = lookahead_decide(in);
+        us_check(d.verdict == LA_GROW,
+                 "with no link measurement a starved window still grows -- pre-P10, bit for bit "
+                 "(%d)",
+                 d.verdict);
+        in.link_owd_ms = 104.0; // the field's link: SRTT ~208, RTTVAR ~1..4
+        d              = lookahead_decide(in);
+        us_check(d.verdict != LA_GROW,
+                 "mp:P10 -- 320 ms of slack against a 104 ms link is 216 ms of horizon nobody can "
+                 "use: not a grow (%d, %f)",
+                 d.verdict, d.want_ms);
+        us_check(d.want_ms <= in.cur_ms + 1e-9,
+                 "...and the gate falls THROUGH to the shrink arm rather than stranding the value "
+                 "(%f, was %f)",
+                 d.want_ms, in.cur_ms);
+        // THE CORRECTION IS THE WHOLE POINT, so assert the case it exists for: the pair's opening
+        // window on a slow link, where BOTH peers read a slack of a full one-way delay while both
+        // are genuinely starved. A `&& !slack` on the RAW slack refuses here and deadlocks the pair.
+        in.cur_ms      = 100.0;
+        in.tail95_ms   = -31.0; // the field's own first-window reading, both peers
+        in.slack_ms    = 100.0; // ...and its own first-window slack, both peers
+        in.link_owd_ms = 104.0;
+        d              = lookahead_decide(in);
+        us_check(d.verdict == LA_GROW,
+                 "mp:P10 -- a slack that is only the flight time is NOT idle horizon: the opening "
+                 "window on a 205 ms link still grows (%d, %f)",
+                 d.verdict, d.want_ms);
+        // The dead-band still applies, on the corrected quantity.
+        in.slack_ms = 104.0 + 0.4 * in.sim_ms; // under AD_SLACK_MULT of idle horizon
+        d           = lookahead_decide(in);
+        us_check(d.verdict == LA_GROW, "...and a sliver over the delay is still not evidence (%d)",
+                 d.verdict);
+        in.slack_ms = 104.0 + 0.6 * in.sim_ms; // over it
+        d           = lookahead_decide(in);
+        us_check(d.verdict != LA_GROW, "...while half a sub-step over it is (%d)", d.verdict);
+        // The SHRINK arm reads the same corrected quantity -- one signal, not two. 60 ms of idle
+        // horizon over a 104 ms link buys back half of the 60, not half of the 164.
+        in.cur_ms      = 200.0;
+        in.tail95_ms   = 20.0; // inside the band, so only the slack term can move this
+        in.slack_ms    = 164.0;
+        in.link_owd_ms = 104.0;
+        in.clean_in    = AD_LATE_SHRINK_AFTER - 1;
+        d              = lookahead_decide(in);
+        us_check(d.verdict == LA_SHRINK && near_ms(d.want_ms, 170.0, 1e-9),
+                 "mp:P10 -- the shrink gives back half the IDLE horizon, not half the raw slack "
+                 "(%f, expected 170)",
+                 d.want_ms);
+
+        // ---- (l) mp:P10: THE TWO-PEER RATCHET ---------------------------------------------------
+        // The regression arm proper. Two controllers, coupled, from the same start on the field's
+        // own link. Asserted BOTH ways so it cannot pass by accident: the pre-P10 decision must
+        // reach (ceiling, floor), and the corrected one must not. A mutation that removes the grow
+        // gate turns the second half red; a mutation that makes the gate unconditional turns the
+        // throughput clause red.
+        {
+            const double OWD  = 100.0;
+            TwoPeerSim   old_ = two_peer_run(100.0, 100.0, 1.25, 1.00, OWD, -1.0);
+            us_check(near_ms(old_.cur_ms[0], 400.0, 1e-9) && near_ms(old_.cur_ms[1], 60.0, 1e-9),
+                     "mp:P10 -- the PRE-P10 rule ratchets two equal peers to (ceiling, floor): "
+                     "%.0f / %.0f (expected 400 / 60)",
+                     old_.cur_ms[0], old_.cur_ms[1]);
+            TwoPeerSim fixed_ = two_peer_run(100.0, 100.0, 1.25, 1.00, OWD, OWD);
+            // The pair's endpoint is the whole finding, so it goes on stdout whether or not the
+            // arm passes -- a green run that cannot say WHAT it settled on is not evidence.
+            printf("  [P10] two-peer, owd %.0f ms, start 100/100: pre-P10 %.0f/%.0f (%.3f/%.3f x) "
+                   "-> corrected %.0f/%.0f (%.3f/%.3f x)\n",
+                   OWD, old_.cur_ms[0], old_.cur_ms[1], old_.rate_eff[0], old_.rate_eff[1],
+                   fixed_.cur_ms[0], fixed_.cur_ms[1], fixed_.rate_eff[0], fixed_.rate_eff[1]);
+            us_check(fixed_.cur_ms[0] < 400.0 - 1e-9 && fixed_.cur_ms[1] > 60.0 + 1e-9,
+                     "...and the corrected one does not: %.0f / %.0f", fixed_.cur_ms[0],
+                     fixed_.cur_ms[1]);
+            // "Within one shrink bound of each other" -- the row's own acceptance clause. One
+            // window may take at most (1 - AD_LATE_SHRINK_MAX) off a value, so two peers further
+            // apart than that are on different trajectories, not on one.
+            const double hi    = (fixed_.cur_ms[0] > fixed_.cur_ms[1]) ? fixed_.cur_ms[0] : fixed_.cur_ms[1];
+            const double lo    = (fixed_.cur_ms[0] > fixed_.cur_ms[1]) ? fixed_.cur_ms[1] : fixed_.cur_ms[0];
+            const double bound = hi * (1.0 - AD_LATE_SHRINK_MAX);
+            us_check(hi - lo <= bound + 1e-9,
+                     "...and they settle within one shrink bound of each other (%.0f - %.0f = %.0f, "
+                     "bound %.0f)",
+                     hi, lo, hi - lo, bound);
+            // AND IT COSTS NOTHING. This is the clause that stops the gate being made unconditional:
+            // a refusal on the RAW slack passes every assertion above and deadlocks the pair at its
+            // start value, which only a throughput clause can see.
+            us_check(fixed_.rate_eff[0] >= old_.rate_eff[0] - 0.01 &&
+                         fixed_.rate_eff[1] >= old_.rate_eff[1] - 0.01,
+                     "...at no cost in sim rate (%.3f / %.3f vs %.3f / %.3f)", fixed_.rate_eff[0],
+                     fixed_.rate_eff[1], old_.rate_eff[0], old_.rate_eff[1]);
+            // A VALUE CARRIED IN FROM A PREVIOUS MATCH IS GIVEN BACK. The per-match reset in
+            // lateness_tick clears the lateness windows but not g_lockstep_step, which is why the
+            // field's 60s and 400s only ever appear in a process's SECOND match. The gate must not
+            // strand one: this is the clause the `hold` version of the fix failed.
+            TwoPeerSim carried = two_peer_run(400.0, 60.0, 1.25, 1.00, OWD, OWD);
+            us_check(carried.cur_ms[0] < 400.0 - 1e-9 && carried.cur_ms[1] > 60.0 + 1e-9,
+                     "mp:P10 -- a carried (400, 60) is walked back, not stranded (%.0f / %.0f)",
+                     carried.cur_ms[0], carried.cur_ms[1]);
+            // A CLEAN LAN IS UNTOUCHED: the correction is a subtraction of a delay that is not
+            // there, so a 5 ms link still walks down to the floor.
+            TwoPeerSim lan = two_peer_run(100.0, 100.0, 1.25, 1.00, 5.0, 5.0);
+            us_check(near_ms(lan.cur_ms[0], 60.0, 1e-9) && near_ms(lan.cur_ms[1], 60.0, 1e-9),
+                     "...and a 5 ms link still settles both peers on the floor (%.0f / %.0f)",
+                     lan.cur_ms[0], lan.cur_ms[1]);
+            // THE ESTIMATE IS BIASED HIGH ON PURPOSE, and this is the arm that says why. The two
+            // ways of being wrong are not symmetric: told HALF the true delay the pair loses a
+            // quarter of its throughput (the correction then reads flight time as idle horizon and
+            // the gate fires on a link that genuinely needs the lookahead); told TWICE it simply
+            // returns some of the latency win and degrades toward the pre-P10 behaviour. That
+            // asymmetry is the entire reason the caller passes RFC 6298's upper bound halved,
+            // (SRTT + 4*RTTVAR)/2, rather than a centred estimate -- so assert it here, where a
+            // later "tidy the bias away" would have to red a check to land.
+            TwoPeerSim under = two_peer_run(100.0, 100.0, 1.25, 1.00, OWD, OWD * 0.5);
+            TwoPeerSim over  = two_peer_run(100.0, 100.0, 1.25, 1.00, OWD, OWD * 2.0);
+            us_check(under.rate_eff[0] < fixed_.rate_eff[0] - 0.05,
+                     "mp:P10 -- HALF the true delay costs real throughput (%.3f vs %.3f): the "
+                     "estimate must be biased high",
+                     under.rate_eff[0], fixed_.rate_eff[0]);
+            us_check(over.rate_eff[0] >= old_.rate_eff[0] - 0.01,
+                     "...while TWICE it costs none (%.3f vs %.3f) -- it only gives latency back",
+                     over.rate_eff[0], old_.rate_eff[0]);
+            us_check(over.cur_ms[0] > fixed_.cur_ms[0],
+                     "...and that is what 'gives latency back' means: %.0f vs %.0f ms of lookahead",
+                     over.cur_ms[0], fixed_.cur_ms[0]);
+        }
     }
 
     printf("=== udpstatstest: %d checks, %d failures ===\n", g_us_checks, g_us_fails);
@@ -1859,6 +2136,14 @@ int run_sessiondirtest();
 // The surrounding arms are the refusals (a non-.log path, a too-small buffer, "0 means uncapped")
 // that a gameplay run reaches never.
 int run_logrottest();
+// ini_read_selftest.cpp -- TL-HARN4: the shared ini STRING-read helper (config/ini_read.h) that
+// strips a trailing same-line `;comment` from a value -- GetPrivateProfileStringA's own return
+// includes it verbatim, which used to TERMINATE the process on two strict-compare keys ([config]
+// mode, [net] module) and silently corrupt two others ([net] relay, [fonts] probe_text) before each
+// was hand-patched at its own call site. This suite is the durable fix's own proof, against a
+// fixture ini shaped exactly like the trap (mh_net.example.ini's documented style).
+int run_inireadtest();
+int run_runctxtest(int argc, char **argv); // LA13: where the logs root is (spawns itself)
 // udp_wire_selftest.cpp -- T0: the UDP packet format (plan D2). Its centre is a directory of
 // FIXTURE FILES that this suite and `cargo test -p relay` both read, because an encoder agreeing
 // with its own decoder is one implementation agreeing with itself; the claim worth making is that
@@ -2072,6 +2357,12 @@ static const suite_row SUITE_TABLE[] = {
     {"sessionidtest",  true, adapt_void<run_sessionidtest>},
     {"sessiondirtest", true, adapt_void<run_sessiondirtest>},
     {"logrottest",     true, adapt_void<run_logrottest>},
+    {"inireadtest",    true, adapt_void<run_inireadtest>},
+    // dist LA13. Beside logrottest, its neighbour on the same object: that suite writes THROUGH the
+    // run directory, this one asks WHERE it is -- <exedir>\logs\ by default, MH_LOG_ROOT when the
+    // launcher sets it (a Program Files game is UAC-virtualized beside its exe). The variable-set
+    // arms run in a spawned copy of this exe, because run_context decides once per process.
+    {"runctxtest",     true, adapt_argv<run_runctxtest>},
     {"udpwiretest",    true, adapt_argv<run_udpwiretest>},
     {"udploopbacktest",true, adapt_argv<run_udploopbacktest>},
     // mp:T2. Next to the loopback suite because it drives the same object on the same loopback with

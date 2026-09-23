@@ -44,6 +44,7 @@
 #include "include/mh_video_export.h"
 #include "include/mh_run_context.h"    // MH_RunDir
 #include "addr/mh_addrs.gen.h"         // generated EN VAs
+#include "config/ini_read.h"           // TL-HARN4: read_ini_string -- strips a trailing `;comment`
 #include "include/mh_harness_export.h" // MH_Harness_OnMovieTick / _WantsMovieTick
 #include "en_guard.h"                  // EN-only build gate
 #include "hook/detour.h"               // install_trampoline / WATCOM_PROLOGUE
@@ -777,7 +778,7 @@ void build_mode_list(const char *ini) {
     // UI baseline (or a mod that wants a fixed menu) cannot rely on index N meaning the same size
     // everywhere; an explicit list can. Entries are still filtered by add_mode's rules.
     char list[256];
-    GetPrivateProfileStringA("video", "modes", "", list, sizeof(list), ini);
+    mh::config::read_ini_string("video", "modes", "", list, sizeof(list), ini); // TL-HARN4
     if (list[0]) {
         int w = 0, h = 0, *cur = &w;
         for (const char *p = list;; ++p) {

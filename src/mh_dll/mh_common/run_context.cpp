@@ -8,18 +8,30 @@
 // which is OS-free and proven by `net_selftest.exe sessiondirtest`; this file is the half that talks
 // to the filesystem and the clock.
 //
+// WHERE THE LOGS ROOT IS (dist LA13, 2026-09-21). `<exedir>\logs\` -- unless the process was started
+// with MH_LOG_ROOT in its environment, in which case THAT directory is the root and `<exedir>` is
+// never written to for logs. The launcher sets it (to a directory it owns under %LOCALAPPDATA%)
+// because a retail `mh.exe` under `C:\Program Files (x86)\` has no manifest and is UAC-virtualized:
+// a non-elevated game's writes beside the exe silently land in `%LOCALAPPDATA%\VirtualStore\...`,
+// where the 64-bit launcher (never virtualized) reads the real `<game>\logs\` and finds nothing --
+// no session for the report, no crash marker (both players' 09-20 reports had exactly that hole).
+// A hand launch (no launcher, no variable) behaves as it always has; `net_selftest.exe runctxtest`
+// proves both arms and the fallback.
+//
 #include <windows.h>
 #include "include/mh_run_context.h"
 #include "include/mh_session_dir.h"
 
 namespace {
 
-char          g_exe_dir[MAX_PATH]  = {0}; // "...\"
-char          g_proc_dir[MAX_PATH] = {0}; // "...\logs\<stamp>_menu_<role>\"  -- the process directory
-char          g_run_dir[MAX_PATH]  = {0}; // the CURRENT directory: g_proc_dir, or the open session's
-char          g_role[16]           = {0};
-volatile LONG g_state              = 0; // 0=uninit, 1=initialising, 2=ready
-volatile LONG g_generation         = 1; // bumped every time g_run_dir changes (see MH_RunDirGeneration)
+char          g_exe_dir[MAX_PATH]   = {0}; // "...\"
+char          g_logs_root[MAX_PATH] = {0}; // "<exedir>logs" or MH_LOG_ROOT, NO trailing slash (LA13)
+char          g_bc_dir[MAX_PATH]    = {0}; // where mh_run.txt goes: g_exe_dir, or MH_LOG_ROOT + "\"
+char          g_proc_dir[MAX_PATH]  = {0}; // "...\logs\<stamp>_menu_<role>\"  -- the process directory
+char          g_run_dir[MAX_PATH]   = {0}; // the CURRENT directory: g_proc_dir, or the open session's
+char          g_role[16]            = {0};
+volatile LONG g_state               = 0; // 0=uninit, 1=initialising, 2=ready
+volatile LONG g_generation          = 1; // bumped every time g_run_dir changes (see MH_RunDirGeneration)
 
 MH_SessionState g_session = {0, {0}, 0, 0};
 
@@ -70,21 +82,6 @@ void utc_stamp(char *dst) {
               st.wYear, st.wMonth, st.wDay, st.wHour, st.wMinute, st.wSecond);
 }
 
-// Point mh_run.txt at the newest directory. It is the breadcrumb a human (and tools/crash_report.py)
-// follows when nothing else says where the logs went, and SES1 keeps its meaning by rewriting it on
-// every switch rather than only at boot: "the newest directory" is what it always claimed to be.
-void write_breadcrumb() {
-    char bc[MAX_PATH];
-    wsprintfA(bc, "%smh_run.txt", g_exe_dir);
-    HANDLE h = CreateFileA(bc, GENERIC_WRITE, FILE_SHARE_READ, nullptr,
-                           CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
-    if (h == INVALID_HANDLE_VALUE) return;
-    DWORD w;
-    WriteFile(h, g_run_dir, lstrlenA(g_run_dir), &w, nullptr);
-    WriteFile(h, "\r\n", 2, &w, nullptr);
-    CloseHandle(h);
-}
-
 // "<base><sep>?<leaf>" into dst if it (plus a NUL) fits in cap bytes; false (dst untouched)
 // otherwise. wsprintfA does not bounds-check its destination, so composing a path through it
 // against a fixed MAX_PATH buffer is silently unsafe once an install sits at a long enough path
@@ -97,6 +94,24 @@ bool safe_join(char *dst, int cap, const char *base, const char *leaf) {
     if (need > cap) return false;
     wsprintfA(dst, base_has_slash ? "%s%s" : "%s\\%s", base, leaf);
     return true;
+}
+
+// Point mh_run.txt at the newest directory. It is the breadcrumb a human (and tools/crash_report.py)
+// follows when nothing else says where the logs went, and SES1 keeps its meaning by rewriting it on
+// every switch rather than only at boot: "the newest directory" is what it always claimed to be.
+//
+// It goes beside the exe -- or, under MH_LOG_ROOT (LA13), INTO that root: beside the exe it would be
+// virtualized away with everything else, and the launcher that set the root is the reader.
+void write_breadcrumb() {
+    char bc[MAX_PATH];
+    if (!safe_join(bc, sizeof(bc), g_bc_dir, "mh_run.txt")) return;
+    HANDLE h = CreateFileA(bc, GENERIC_WRITE, FILE_SHARE_READ, nullptr,
+                           CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
+    if (h == INVALID_HANDLE_VALUE) return;
+    DWORD w;
+    WriteFile(h, g_run_dir, lstrlenA(g_run_dir), &w, nullptr);
+    WriteFile(h, "\r\n", 2, &w, nullptr);
+    CloseHandle(h);
 }
 
 // Create "<exedir>logs\<name>\" and write it (with the trailing backslash) into dst.
@@ -113,9 +128,9 @@ bool safe_join(char *dst, int cap, const char *base, const char *leaf) {
 // completely empty while mh_net.log/mh_capture.log/mh_input.log/mh_video.log/mh_uidrive.log all
 // landed in the install root, and mh_run.txt kept naming an EARLIER, unrelated run's directory).
 bool make_dir(const char *name, char *dst) {
-    char logs_root[MAX_PATH];
-    if (!safe_join(logs_root, sizeof(logs_root), g_exe_dir, "logs")) return false; // exe path itself absurd
-    CreateDirectoryA(logs_root, nullptr);                                          // ok if it already exists
+    const char *logs_root = g_logs_root;
+    if (logs_root[0] == '\0') return false; // resolve_logs_root found nothing usable
+    CreateDirectoryA(logs_root, nullptr);   // ok if it already exists
 
     char mk[MAX_PATH];
     if (safe_join(mk, sizeof(mk), logs_root, name)) {
@@ -136,9 +151,39 @@ bool make_dir(const char *name, char *dst) {
     return true;
 }
 
+// Decide g_logs_root + g_bc_dir (LA13). MH_LOG_ROOT wins when it is set, non-empty, fits, and can
+// be created (or already exists); otherwise -- and always with no variable -- "<exedir>logs". A root
+// the launcher named but this process cannot create has nowhere to say so, so the fallback is the
+// same one a hand launch gets and the breadcrumb goes back beside the exe, which is at least where
+// a human looks. Returns false only when even "<exedir>logs" does not fit MAX_PATH.
+bool resolve_logs_root() {
+    char  env[MAX_PATH];
+    DWORD n = GetEnvironmentVariableA("MH_LOG_ROOT", env, MAX_PATH);
+    if (n > 0 && n < MAX_PATH) {
+        // Strip trailing separators so the root composes like "<exedir>logs" does (no slash).
+        while (n > 1 && (env[n - 1] == '\\' || env[n - 1] == '/')) env[--n] = '\0';
+        // One level is made here; the parent chain (...\MissionHumanity\logs\) is the launcher's
+        // own state directory, which it created before starting us.
+        BOOL  ok  = CreateDirectoryA(env, nullptr);
+        DWORD err = ok ? ERROR_SUCCESS : GetLastError();
+        if ((ok || err == ERROR_ALREADY_EXISTS) && safe_join(g_bc_dir, sizeof(g_bc_dir), env, "")) {
+            lstrcpynA(g_logs_root, env, MAX_PATH); // g_bc_dir is now "<root>\"
+            return true;
+        }
+        // else: fall through to the exe dir -- the honest breadcrumb there says where logs went.
+    }
+    if (!safe_join(g_logs_root, sizeof(g_logs_root), g_exe_dir, "logs")) return false;
+    lstrcpynA(g_bc_dir, g_exe_dir, MAX_PATH);
+    return true;
+}
+
 void do_init() {
     compute_exe_dir();
     lstrcpynA(g_role, detect_role(), sizeof(g_role));
+    if (!resolve_logs_root()) {
+        g_logs_root[0] = '\0';
+        lstrcpynA(g_bc_dir, g_exe_dir, MAX_PATH);
+    }
 
     char stamp[MH_SESSION_STAMP_CAP];
     utc_stamp(stamp);
@@ -180,6 +225,13 @@ extern "C" const char *MH_ProcessDir(void) {
 extern "C" const char *MH_ExeDir(void) {
     ensure_init();
     return g_exe_dir;
+}
+// "<exedir>logs" or the MH_LOG_ROOT this process honoured (no trailing separator); "" if neither
+// could be composed. LA13: what `net_selftest.exe runctxtest` asserts on. Declared by its callers
+// rather than in mh_run_context.h (the header is shared with the standalone libmh build).
+extern "C" const char *MH_LogsRoot(void) {
+    ensure_init();
+    return g_logs_root;
 }
 extern "C" const char *MH_RunRole(void) {
     ensure_init();

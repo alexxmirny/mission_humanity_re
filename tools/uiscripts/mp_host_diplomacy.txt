@@ -1,0 +1,80 @@
+# mp:U39 HOST walk -- the DIPLOMACY dialog's optimistic relation echo.
+#
+# Same host-and-launch walk as mp_host_buildclick.txt; then, in the live match, this peer opens the
+# in-game menu (ESC) and its Diplomacy entry (value 100, dumped 2026-08-27 by d15_exit_witness.txt),
+# ticks "allied" for the client and presses Ok. llm_ui_diplomacy_apply_and_resume (0x004c7fc6) both
+# ISSUES order 0xf4 and writes Players[PlayerSide].relation[j] DIRECTLY on the clicking peer -- so
+# with the original bytes this run's post_check (mp_analyze over both peers' harness logs) names
+# `players` (HASH_REGIONS[55]) for the steps between the local write and the order's commit; with
+# the guarded NOP it reads ALL PAIRS IDENTICAL. Pair with mp_client_idle.txt.
+
+# reach the host lobby (create the pre-pinned game on the pre-selected map)
+settled value:110
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+settled Create
+clickl Create
+present Game name
+settled Ok
+clickl Ok
+present Available maps
+settled Ok
+clickl Ok
+
+# host lobby: block until the client is really in ITS lobby, then Start.
+present Network players
+peers 1
+awaitsignal lobby
+enabled Start
+settled Start
+clickl Start
+
+# in the match; let the sim run a while so the analyzer has rows before the dialog
+absent Network players
+gameclock 3000
+capture ingame
+
+# the diplomacy dialog (MODAL: dlg_flags "mouse loop ARMED", so the host's sim stalls while it is
+# open -- the local write and the order both happen at Ok). The client's row is widget [2]
+# 'client' (the ALLIED checkbox at (483,289), dumped 2026-09-21), [3] vision, [4] msgs; Ok is [5].
+# ESC by keystroke was missed once in four runs (the down+up lands on one frame); the HUD "Menu"
+# button is a physical click spread over presents, like the build-menu clicks in mp_host_buildclick.
+cursor 972 150
+cursor 972 150
+press 972 150
+release 972 150
+settled value:100
+clickv 100
+absent value:113
+dump
+capture diplomacy_open
+
+# THE TRIGGER: tick "allied" for the client, then Ok. The echo writes
+# Players[PlayerSide].relation[client] here; the client's cell only changes when 0xf4 commits.
+clicki 2
+settled Ok
+capture allied_ticked
+clickl Ok
+absent Ok
+log HOST applied allied=1 for the client through the diplomacy dialog
+
+# THE UI COST (done_when (d)): with the echo NOPed, llm_ui_diplomacy_screen_build seeds the "allied"
+# box from the cell the 0xf4 commit writes, so a dialog reopened BEFORE the commit (4 lockstep steps)
+# would show the old value and re-issue the same order -- idempotent, and too narrow a window to gate
+# on. Reopened well AFTER the commit it must show the box TICKED: the value came back through the
+# order, on both peers. Then Cancel, and the match runs on for the analyzer.
+gameclock 8000
+cursor 972 150
+cursor 972 150
+press 972 150
+release 972 150
+settled value:100
+clickv 100
+absent value:113
+capture reopened_after_commit
+clickl Cancel
+absent Cancel
+gameclock 30000
+end

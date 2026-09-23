@@ -31,7 +31,7 @@ D10).
 | view | |
 | --- | --- |
 | **Play** (the front page) | the **configuration** (`net` / `net-debug` / `brokered-debug`, one line each on what they are for; a *Change...* button, or the open picker when nothing is installed yet), then **Play** — it makes sure the picked configuration is installed (downloading, verifying and installing it first if it is not, with the progress shown in place), writes the relay from the accepted manifest into the game's configuration, and starts the game; the line under it says which relay, or that there is none. Then the launcher waits: `running — pid N` while the game runs, and one line when it ends. When the launcher could not find `mh.exe` by itself (below), the page opens with a *Where is mh.exe?* field instead |
-| **Status** | the game directory (found, typed or picked), whether an `mh.exe` is there, what is installed in it, *Install* / *Uninstall* for a release zip you already have, and the **Updates** block: where the manifest comes from, *Check for updates*, *Update the game*, *Update the launcher* |
+| **Status** | the game directory (found, typed or picked), whether an `mh.exe` is there, what is installed in it, *Install* / *Uninstall* for a release zip you already have, and the **Updates** block: where the manifest comes from and ONE **Update** button (dist LA12) — the launcher first if the manifest offers a newer one (health-gated, then a restart that carries the rest of the job), then the game for the picked configuration; one press, one progress line, one verdict. The check itself is automatic: every launcher start fetches the signed manifest and the Play page says what it offers (`0.1.2 is available — Update`) without installing anything |
 | **Report** | a required description, the session log directory it will zip, the crash (if there was one), a checkbox for the memory snapshot, and *Build the report* — which writes `%LOCALAPPDATA%\MissionHumanity\reports\mh_report_<UTC>.zip` and lists what went into it; then *Send this report…*, which opens the **consent screen** and, if you agree there, uploads it. Reports an earlier session could not send are listed at the top of this view on every launch until they go |
 
 ## Where it keeps things
@@ -78,7 +78,8 @@ everything.
 
 The copy is the paragraph from [INSTALL.md](../../INSTALL.md): every file in the zip goes **next to
 the game executable**, flat, no subfolder. What the launcher adds is `mh_launcher_installed.txt` in
-the game directory — one row per file with its SHA-256 and whether it displaced something.
+the game directory — one row per file with its SHA-256 and whether it displaced something
+(`created` / `ours` / `replaced`).
 
 **The row that makes the receipt necessary is `mh.dll`.** The retail game ships its own `mh.dll`
 (exporting `DecompressLZWData`, `GetSightAreaFromRadius`, `MH_HostedPoolBase`) and this project's
@@ -87,6 +88,17 @@ file**, the only one it does. That file is parked as `mh.dll.mhbak` first and pu
 an uninstall that merely deleted what it copied would leave the game unable to start. The digests
 are the guard in the other direction: a file whose content no longer matches its row was changed by
 somebody else since, so it is left alone and named in the result instead of being deleted.
+
+**Ours or foreign (dist LA12).** Retail's `mh.dll` is the only file a first install ever displaces;
+every later install displaces OUR OWN previous files, and until LA12 each of those was parked as
+`*.mhbak` too — junk beside the game. The rule now: a file already at the destination is **ours**
+when its SHA-256 is in the receipt, when its name is in the receipt (a hand-edited `mh_net.ini` is
+still the file we put there), or when its VERSIONINFO `ProductName` is `mission_humanity_re` (every
+shipped DLL is stamped, `src/mh_dll/mh_version.rc`); ours is overwritten with no backup. Anything
+else is **foreign** — retail's `mh.dll`, or somebody's own proxy with one of our names — and IS
+parked, named in the log (`install: mh.dll is FOREIGN (...) -- parked as mh.dll.mhbak`) and put
+back on uninstall. A backup that already exists from an earlier install is kept, never parked over.
+`install::classify` + the four `install::tests::*la12*`-era tests are the proof.
 
 ## Updating = a signed manifest, then a rename
 
@@ -150,8 +162,8 @@ folder that already holds the picked configuration just starts. `update::readine
 from the receipt (`mh_launcher_installed.txt`), not from `launcher.toml`.
 
 **Switching is an uninstall followed by an install**, never a copy over the top: the old set is
-removed by its receipt (so `mh.dll.mhbak` — the game's own dll — is put back and then parked
-again by the new install, and stays the *game's* file rather than becoming our previous one), and
+removed by its receipt (so `mh.dll.mhbak` — retail's own dll, the one FOREIGN file — is put back
+and then parked again by the new install, and stays the *game's* file rather than becoming ours), and
 the new zip is copied in. The order is download → verify → stage → uninstall old → install new, so
 a download that fails leaves the old configuration in place, and a manifest that does not carry
 the picked tag is `refuse MALFORMED` before anything is removed. The "is this newer" gate is
@@ -302,18 +314,62 @@ runs once.
 --report-pin <hex>    SHA-256 of that root's SubjectPublicKeyInfo. Required with --report-ca
 
 --check-update        fetch the signed manifest, verify it, and say what it offers
---update              the above, then download and install that version
+--update              the above, then download and install the game when the manifest is newer
+                      than what is installed (or the picked configuration is missing)
 --self-update         the above, but for the launcher executable itself
+                      BOTH TOGETHER = the Update button: the launcher first, then the game in the
+                      replacement launcher, in the same run (dist LA11/LA12)
 --exit-after-update   close the launcher once the startup update work has finished
 --update-url <url>    fetch the manifest from here instead, and remember it
 --verify-binary       print this build's version and exit 0 — the health gate
+--step <what>         ONE install step into the game directory, no window, then exit:
+                      install:<version>:<tag> / uninstall / provision. What the launcher re-runs
+                      ELEVATED when the game directory is not writable — never the game (LA13)
+--result <file>       where --step writes its verdict (ok|err, then the summary)
 ```
 
 The exit code is 0 when the requested startup work succeeded and 1 when an update was refused or
-failed, so the whole of LA2's acceptance can be scripted. `--exit-after-update` is also what a
-replacement launcher inherits after a self-update: its arguments are the old process's minus the flag
-that asked for the update, so in the new process there is no update work left and it means "exit at
-once".
+failed, so the whole of LA2's acceptance can be scripted. **The restart after a self-update carries
+the rest of the request (dist LA11):** the replacement launcher gets the old process's arguments
+minus the flags that asked for work already done (`--self-update`, `--install …`, `--launch`, …),
+PLUS `--update` when the request was launcher-then-game — so `--update --self-update
+--exit-after-update` ends with the game installed in one run, and a bare `--self-update
+--exit-after-update` still ends with the replacement exiting at once. `main::restart_argv` is the
+function; its tests are the proof.
+
+## The game under Program Files (dist LA13)
+
+Both 09-20 players run the game from `C:\Program Files (x86)\Mission Humanity`, and two things
+happened there, both measured in their launcher logs:
+
+1. **Every install/switch/provision was refused** (`cannot move ...\LICENSE aside: Access is
+   denied`) until they re-ran the launcher *as administrator* — after which every game it started
+   ran elevated too.
+2. **A non-elevated game is UAC-virtualized.** Retail `mh.exe` has no manifest, so its writes
+   beside the exe go to `%LOCALAPPDATA%\VirtualStore\Program Files (x86)\...`; this 64-bit
+   launcher (never virtualized) read the real `<game>\logs\` and found nothing — the report
+   packaged no session and no crash marker was ever seen.
+
+The fix has two halves and one rule:
+
+- **A launcher-owned logs root, by environment.** The game is started with
+  `MH_LOG_ROOT=%LOCALAPPDATA%\MissionHumanity\logs\<game-dir-hash>\` (`paths::game_log_root`;
+  `game_dir.txt` inside names the folder for humans). `mh_common/run_context.cpp` puts its session
+  directories and `mh_run.txt` there when the variable is set, and under `<exe>\logs\` otherwise —
+  a hand launch is unchanged (`net_selftest.exe runctxtest` proves both arms and the fallback).
+  The crash marker (`MH_CRASH_MARKER`) is pointed at the same root, and the Report view, the
+  session picker and `report::build` read from it (`report::Input::logs_root`).
+- **Only the install step is ever elevated; the game never is.** `elevate::needs_elevation` probes
+  the game directory before an install/switch/uninstall/provision; when this token cannot write
+  there, the launcher re-runs ITSELF elevated (`ShellExecuteExW` `runas` — one UAC prompt) with
+  `--step install:<version>:<tag>` / `--step uninstall` / `--step provision` plus `--app-dir`,
+  `--game-dir` and `--result <file>`, waits, reads the verdict back, and launches the game from the
+  un-elevated instance. `elevate::step_argv` is the whole of what the child gets;
+  `the_elevated_step_cannot_launch_the_game` pins that it cannot express `--launch`.
+- **The child's token is logged on every launch** (`launch: pid N -- token: not elevated`), and the
+  launcher's own at start (`launcher: token ...`). A launcher that IS elevated (the player's old
+  habit) starts the game from the desktop shell's token instead of its own
+  (`launch::start_unelevated`), and says so.
 
 ## Publishing a manifest
 

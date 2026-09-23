@@ -1,0 +1,57 @@
+# mp:GX1: the debug overlay must not smear the STRATEGIC GROUND LAYER when its box shrinks.
+#
+# WHY IN-GAME, NOT THE MAIN MENU (this script's own history: the first draft parked on the main
+# menu, model debug_overlay.txt's framing -- it PASSED even with mark_ground_tiles_dirty/clear_rect
+# both disabled by a local knob, because the main menu's own widget compositing redraws its WHOLE
+# frame every present regardless of any dirty-tile bookkeeping -- there is no "ground pass" there in
+# the strategic sense, but there is nothing for a leftover pixel to survive INTO either. The bug
+# this row exists to catch is specifically about `_G_LLM_TILE_VIS_MAP`'s SELECTIVE per-tile repaint
+# (retail's per-tile ground-layer DAMAGE MAP), which only strategic mode 2 (and
+# tactical mode 6) actually run -- so this walks the real menu -> lobby -> launch path, model
+# res_hud.txt / cam_edge_scroll.txt (seat an AI in slot 1, Start alone, no client VM needed), and
+# does the page switch ONCE INSIDE A LIVE STRATEGIC VIEW instead.
+#
+# gx1_wide    in-game, WIDE page ("GX1 RESIDUE CHECK WIDE HEADER" + mode/session/res, a tall box) --
+#             the sanity half of the checker's assertion (real ink there).
+# gx1_narrow  same screen, moments later, after Ctrl+Alt+PgDn switches to the NARROW page (title "X"
+#             + one item, a small box) -- tools/check_overlay_residue.py's post_check must find ZERO
+#             ink left in the rect the wide title's tail occupied, which retail's own ground pass
+#             (llm_strat_render_ground_tile) only repaints because this seam now stamps the tiles it
+#             covered (mh/include/mh_tile_dirty.h).
+
+settled value:110
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+settled Create
+clickl Create
+present Game name
+settled Ok
+clickl Ok
+present Available maps
+settled Ok
+clickl Ok
+
+# host lobby: seat an AI opponent in slot 1 (OPEN -> AI), then launch alone.
+present Network players
+settled Start
+click 70 132
+present Computer
+enabled Start
+clickl Start
+
+# in-game: wait for the strategic HUD and let the sim advance a little so the ground pass has run
+# (repainted the viewport at least once) before the first capture.
+absent Network players
+gamemode 2
+gameclock 2000
+cursor 600 450
+capture gx1_wide
+
+hotkey Ctrl+Alt+PgDn
+cursor 600 450
+capture gx1_narrow
+
+log gx1 overlay residue COMPLETE
+end

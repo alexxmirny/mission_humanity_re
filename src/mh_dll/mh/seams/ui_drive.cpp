@@ -31,8 +31,10 @@
 #include "include/mh_seam_export.h"    // MH_Seam_S8RetryArmed (`retryready`), MH_Seam_S3LobbyGen (`lobbygen`)
 #include "include/mh_harness_export.h" // MH_Harness_StepFence (the `simstep` predicate: the SIM's own step)
 #include "seams/ui_net_indicator.h"    // MH_Lockstep_StallBindingPeer -- the `stalled` predicate (TL-UISTALL)
+#include "ui/lobby_ping.h"             // mp:L1f: lobby_ping_measured_rows -- the `lobbyping` predicate
 #include "include/mh_run_context.h"    // MH_RunDir
 #include "addr/mh_addrs.gen.h"         // generated EN VAs
+#include "config/ini_read.h"           // TL-HARN4: read_ini_string -- strips a trailing `;comment`
 #include "addr/mh_calls.gen.h"         // mh::call::llm_time_get_ticks_ms (the key ring's timestamp)
 #include "state/region_runtime.h"      // SB-HOSTFREE: live_base/ptr -- a movable region is read
                                        // where it IS, not where the binary put it
@@ -1334,6 +1336,14 @@ static int fire_auto_target() {
 //     retryready [N] = MH_Seam_S8RetryArmed() >= N (default 1): a client's FAILED connect (dead/typo'd IP)
 //                has cleared the connect latches, so a corrected-IP re-Connect will re-kick. The S8(b)
 //                round-trip test gates its 2nd Connect on this instead of a time wait for the ~4s fail.
+//     lobbyping [N] = N occupied lobby slot rows are showing a REAL ping number on THIS peer's screen
+//                (default 1; mh/ui/lobby_ping.cpp's own per-tick count, its own row never among them).
+//                mp:L1f's gate, and it is a claim rather than a timer: the transport is a
+//                client-server STAR, so a CLIENT can measure exactly one row itself (the host's) --
+//                `lobbyping 2` on a client is reachable only once the HOST'S PUBLISHED summary has
+//                arrived and been rendered. A 3-peer scenario therefore gates its lobby capture on
+//                the mechanism having run rather than on a frame budget, which is the difference
+//                between a row that proves something and one that usually does.
 //     lobbygen [N] = MH_Seam_S3LobbyGen() >= N (default 1): this client has stored SESSION_INFO for at
 //                least N DISTINCT lobbies (by lobby id) since boot. mp:GS1: a host that cancels and
 //                re-creates while the client browses replaces the row in place -- `sessions` never dips,
@@ -1446,6 +1456,7 @@ enum {
     OP_W_RACE,
     OP_W_RETRYREADY,
     OP_W_LOBBYGEN,
+    OP_W_LOBBYPING, // mp:L1f: N lobby slot rows are showing a real ping number on THIS screen
     OP_W_GAMECLOCK,
     OP_W_SIMSTEP,
     OP_W_AWAITSIGNAL,
@@ -1754,6 +1765,9 @@ void parse_line(const char *line) {
         s->a  = (arg && *arg) ? (int)strtol(arg, nullptr, 0) : 1;
     } else if (strcmp(op, "lobbygen") == 0) {
         s->op = OP_W_LOBBYGEN;
+        s->a  = (arg && *arg) ? (int)strtol(arg, nullptr, 0) : 1;
+    } else if (strcmp(op, "lobbyping") == 0) {
+        s->op = OP_W_LOBBYPING;
         s->a  = (arg && *arg) ? (int)strtol(arg, nullptr, 0) : 1;
     } else if (strcmp(op, "awaitsignal") == 0) {
         s->op = OP_W_AWAITSIGNAL;
@@ -2247,6 +2261,8 @@ bool wait_satisfied(const Step *s) {
             return MH_Seam_S8RetryArmed() >= s->a; // will re-kick. Gates the round-trip test's 2nd Connect.
         case OP_W_LOBBYGEN:                        // mp:GS1: the host's Nth distinct lobby is the one this client has stored now
             return MH_Seam_S3LobbyGen() >= s->a;
+        case OP_W_LOBBYPING: // mp:L1f: N slot rows carry a REAL ping number on this peer's screen
+            return mh::ui::lobby_ping_measured_rows() >= s->a;
     }
     return true;
 }
@@ -2291,9 +2307,38 @@ click_result do_action(const Step *s) {
             return rclick_frame(g_wait, s->a, s->b, s->c != 0) ? CLICK_OK : CLICK_RETRY;
         case OP_A_KEY:
             if (s->c == 0) {
-                enqueue_key((uint32_t)s->a, true);
-                enqueue_key((uint32_t)s->a, false);
-                ui_log("; key scancode 0x%02x (down+up)", s->a);
+                // The DOWN and the UP go into the ring on DIFFERENT presents, not back to back on
+                // one: the consumer drains the ring on the frame AFTER the present that queued it
+                // (the F4 note at enqueue_key), so a down and an up that arrive in ONE drain are a
+                // press the edge detector never sees. `key <sc> shift` already spread its pair for
+                // exactly this reason; the plain form did not, and nothing said why not. Now both
+                // do -- DOWN on present 0, UP on 1, advance on 2, the same CLICK_RETRY dwell
+                // contract cursorhold and rclick use, so the frame watchdog's counter stays the only
+                // clock involved. Measured working: `(down)` at 15.750 and `(up)` at 15.766 in a
+                // healthy run's mh_uidrive.log, one present apart.
+                //
+                // THIS DOES NOT FIX tooling:TL-QUIT3-FLAKE, and the first version of this comment
+                // claimed it did. It was written against the right symptom -- on a flaked run the
+                // key and the following `dump` carry IDENTICAL timestamps while a healthy run has
+                // them ~16 ms apart -- and an unproven cause. Re-measured AFTER the change, a flaked
+                // run still reads `(down)`, `(up)` and the next step all inside one millisecond, and
+                // the ESC menu is still absent 89 s later. Note what that does and does not say: the
+                // log stamps at millisecond resolution and these lanes are headless, so at the
+                // flaked run's ~887 fps those can be separate presents -- "no present in
+                // between" is NOT established. Left in place because the split is independently
+                // correct (it is what the shift variant already did, and it is measured working:
+                // `(down)` 15.750, `(up)` 15.766 on a healthy run), but it is not that flake's fix
+                // and a reader chasing it should not stop at this block.
+                if (g_wait == 0) {
+                    enqueue_key((uint32_t)s->a, true);
+                    ui_log("; key scancode 0x%02x (down)", s->a);
+                    return CLICK_RETRY;
+                }
+                if (g_wait == 1) {
+                    enqueue_key((uint32_t)s->a, false);
+                    ui_log("; key scancode 0x%02x (up)", s->a);
+                    return CLICK_RETRY;
+                }
                 break;
             }
             // `key <sc> shift` (mp:CH1): multi-present like rclick. The pair goes into the ring on
@@ -2677,7 +2722,8 @@ extern "C" int MH_UIDrive_Install(void) {
     g_mouse_accel    = GetPrivateProfileIntA("input", "mouse_accel", 0, ini);
 
     g_enabled = GetPrivateProfileIntA("uitest", "enable", 0, ini) != 0;
-    GetPrivateProfileStringA("uitest", "click_label", "", g_auto_label, sizeof(g_auto_label), ini);
+    mh::config::read_ini_string("uitest", "click_label", "", g_auto_label, sizeof(g_auto_label), // TL-HARN4
+                                ini);
     g_auto_value    = GetPrivateProfileIntA("uitest", "click_value", -1, ini); // sprite-menu id (-1 = unset)
     g_settle_frames = GetPrivateProfileIntA("uitest", "settle_frames", 2, ini);
     if (g_settle_frames < 1) g_settle_frames = 1;
@@ -2693,7 +2739,7 @@ extern "C" int MH_UIDrive_Install(void) {
 
     // Script mode: [uitest] script=<file> (relative to the exe dir). Loaded once here.
     char scriptname[64];
-    GetPrivateProfileStringA("uitest", "script", "", scriptname, sizeof(scriptname), ini);
+    mh::config::read_ini_string("uitest", "script", "", scriptname, sizeof(scriptname), ini); // TL-HARN4
     if (scriptname[0]) {
         char spath[MAX_PATH];
         wsprintfA(spath, "%s%s", exe, scriptname); // `exe` is the dir (trailing '\') after the loop above

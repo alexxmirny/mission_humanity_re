@@ -27,6 +27,7 @@
 #include "include/mh_module_bind.h"      // mp:SES4 -- MH_NetModule_{Bound,Configured}Transport
 #include "addr/mh_addrs.gen.h"           // generated EN VAs (tools/gen_dll_addrs.py)
 #include "net_internal.h"                // shared spine: g_a, g_ini, g_host_join_seen, seam_log, mp_client_slot
+#include "config/ini_read.h"             // TL-HARN4: read_ini_string / strip_ini_comment
 #include "seams/map_transfer.h"          // mp:X2 -- the map content claim, the request and the Start gate
 #include "hook/watcall.h"                // call_watcall1 (Watcom __watcall(EAX) bridge)
 #include "ui/lobby_ui.h"                 // mp:R4a -- browser_notice_arm_relay (the relay-level notice)
@@ -66,13 +67,49 @@ const char    MP_BOOT_MAP_NAME[] = "TUTORIAL.MP"; // fixed 2p PoC map (identical
 // game the synth record must carry the SAME >=N-start map the host loads, else the client lands on the 2p
 // boot map and desyncs. A .mpm loads loose from Maps\; a .MP campaign map from Dane\. Default = the boot map.
 void mp_configured_map(char *name, int cap, const char **path_out) {
-    GetPrivateProfileStringA("net", "mp_map", MP_BOOT_MAP_NAME, name, cap, g_ini);
+    mh::config::read_ini_string("net", "mp_map", MP_BOOT_MAP_NAME, name, cap, g_ini); // TL-HARN4
     int n     = lstrlenA(name);
     *path_out = (n >= 4 && lstrcmpiA(name + n - 4, ".mpm") == 0) ? "Maps\\" : MP_BOOT_MAP_PATH;
 }
 
-unsigned char g_synth_desc[0x400]; // one synthetic llm_net_session_desc (client-side)
+// llm_net_session_desc is 0x400 bytes (docs/structs.md, category /Manual) and _G_LLM_NET_SESSION_LIST
+// is walked as an ARRAY of them by the retail refresh / rescan / join (`_G_LLM_NET_SESSION_LIST[i]`,
+// stride 0x400) -- so the multi-row browser below is a static array at exactly that stride.
+constexpr int SD_SIZE = 0x400;
+unsigned char g_synth_desc[SD_SIZE]; // the FORCE-ENTRY synthetic llm_net_session_desc (build_synth_session)
 bool          g_synth_built = false;
+
+// mp:R2b -- THE MANUAL BROWSER'S SESSION LIST: one llm_net_session_desc per row, filled by
+// build_browser_from_store and pointed at by _G_LLM_NET_SESSION_LIST. The visible list, the retail
+// row table (_G_LLM_LOBBY_BROWSER_ROWS, 1024 x {handle, server_idx}) and this array are rebuilt
+// together on every discovery poll, in the same order, so index i means the same lobby in all three.
+//
+// THE CAP, and why it is 8 and not the retail table's 1024. Every row here comes from one of two
+// sources: the relay directory (at most RELAY_ROW_MAX = 8 live rows, the directory table's own
+// bound) or the connected host's advert (one record, and on a relayed dial it is one of those 8 --
+// the dial went to a listed row). So 8 + 1 is the most the sources can EVER produce, and 8 is also
+// _G_LLM_UI_MP_BROWSER_LIST_STATE.visible_rows: one page, no scrollbar dependence (the scrollbar draw
+// needed a guard of its own, lobby_widgets.cpp, and a scrolled list row is the split-click trap the
+// ui-testing skill documents). The retail row table's 1024 is nowhere near a constraint; the
+// 0x400-byte desc stride is (9 KB static, against 1 MB for the retail bound).
+constexpr int BROWSER_ROWS_CAP = 8; // static_assert'ed against RELAY_ROW_MAX where that is defined
+unsigned char g_browser_descs[BROWSER_ROWS_CAP][SD_SIZE];
+// WHICH ROW CAME FROM WHERE, so the JOIN can dial the room of the row the player picked rather
+// than the row the auto-dial happened to land on (llm_lobby_join_head hands us the matched
+// session INDEX -- see on_join_connect). Written by build_browser_from_store only.
+int           g_browser_src[BROWSER_ROWS_CAP]; // BROWSER_SRC_STORE, or the relay slot index (0..RELAY_ROW_MAX-1)
+int           g_browser_count   = 0;
+constexpr int BROWSER_SRC_STORE = -1; // the row built from g_store_rec, unlisted by the relay
+// SESSION HANDLES. llm_lobby_join_head resolves the clicked row through
+// _G_LLM_LOBBY_BROWSER_ROWS[selected].session_handle == desc.session_handle, so every listed desc
+// needs a DISTINCT handle, and a handle has to mean the same lobby across two refreshes (a row
+// that ages out between the render and the click must not make the click land on its
+// neighbour). So the handle is PER RELAY SLOT, not per position: slot i -> HANDLE_RELAY_BASE + i,
+// stable for as long as the slot holds that lobby. 1 stays the store/synth record's handle
+// (launch.cpp's force-entry mp_join_lobby writes SYNTH_HANDLE == 1 into row 0; keep matching it).
+constexpr uintptr_t HANDLE_STORE      = 1;
+constexpr uintptr_t HANDLE_RELAY_BASE = 2;
+inline void        *relay_slot_handle(int slot) { return (void *)(HANDLE_RELAY_BASE + (uintptr_t)slot); }
 
 // S3 / S5-core (client-side real discovery). LAN has ONE host (the typed IP), so the "session source"
 // store is a single received SESSION_INFO (relay's multi-record store = R-src). Fed by
@@ -134,8 +171,14 @@ struct RelayRow {
     DWORD                     last_seen;
     bool                      used;
 };
-RelayRow g_relay_rows[RELAY_ROW_MAX];      // main thread only
-int      g_relay_pick     = -1;            // the row the browser shows and a join would dial
+RelayRow g_relay_rows[RELAY_ROW_MAX]; // main thread only
+static_assert(RELAY_ROW_MAX <= BROWSER_ROWS_CAP, "the browser must be able to show every directory row");
+// mp:R2b -- THE ROW A DIAL TARGETS. Before R2b the browser showed one row and this was it (the
+// lowest live row, recomputed on every drain); now every live row is shown and this is the row
+// whose room the transport dials: the lowest live row until the player joins one, then THAT row
+// (on_join_connect latches it), and it STAYS while its row lives -- a lower slot filling in must
+// not silently re-target the peer (relay_rows_drain). -1 = nothing listed.
+int      g_relay_pick     = -1;
 uint32_t g_relay_dialled  = RELAY_NO_ROOM; // the room the last connect kick asked for
 bool     g_relay_room_set = false;         // ...and whether that latch has been initialised
 
@@ -746,22 +789,18 @@ const char *relay_addr_cached() {
         GetPrivateProfileStringA("net", "relay", "", addr, (DWORD)sizeof(addr), g_ini);
         // A TRAILING `; comment` IS PART OF THE VALUE to GetPrivateProfileString, and the example ini
         // documents every key with exactly such a comment. `;` cannot occur in a host name, a numeric
-        // address or a port, so cut at the first one and trim the whitespace before it. Say so once
-        // (the trim moved here from the module at mp:R7a, and the notice with it): the dialled value
-        // and the ini's text differ from now on, which is the 2026-09-19 `relay=HOST:PORT ; comment`
-        // rc3-player bug (log_formats id net.relay_trailing_comment).
-        for (char *p = addr; *p != '\0'; ++p) {
-            if (*p == ';') {
-                *p = '\0';
-                while (p > addr && (p[-1] == ' ' || p[-1] == '\t')) *--p = '\0';
-                char b[200];
-                wsprintfA(b,
-                          "; R7a: [net] relay carried a trailing `;` comment; using `%s` (the comment "
-                          "is not part of the address -- remove it from the ini)\n",
-                          addr);
-                seam_log(b);
-                break;
-            }
+        // address or a port, so cut at the first one and trim the whitespace before it -- TL-HARN4's
+        // shared primitive now (config/ini_read.h), not a hand-rolled copy of this same loop. Say so
+        // once (the trim moved here from the module at mp:R7a, and the notice with it): the dialled
+        // value and the ini's text differ from now on, which is the 2026-09-19 `relay=HOST:PORT ;
+        // comment` rc3-player bug (log_formats id net.relay_trailing_comment).
+        if (mh::config::strip_ini_comment(addr)) {
+            char b[200];
+            wsprintfA(b,
+                      "; R7a: [net] relay carried a trailing `;` comment; using `%s` (the comment "
+                      "is not part of the address -- remove it from the ini)\n",
+                      addr);
+            seam_log(b);
         }
         ready = 1;
     }
@@ -909,15 +948,19 @@ bool relay_rows_drain() {
         changed = true;
     }
 
-    // THE PICK is the lowest live row, deliberately: the browser renders ONE row (the retail
-    // handle array's bound is not known, and writing past it would be a memory bug in the game's
-    // own .bss), so the choice has to be stable rather than clever. With several lobbies on one
-    // relay (mp:R6 made that a real state: every host mints its own room), the pick is the one
-    // this peer dials -- a multi-row browser is mp:R2b's residue, not a room question.
+    // THE PICK is the row this peer dials, and it is STICKY (mp:R2b): a pick whose row is still
+    // live stays, whether the player chose it (on_join_connect) or the drain did; only when it
+    // has aged out does the lowest live row take over. Before R2b it was always the lowest live
+    // row -- the browser rendered ONE row (the retail handle table's bound was not known) so the
+    // pick was also what the player saw, and "lowest" was the stable choice. Now the browser
+    // shows every row (build_browser_from_store) and the pick is only the dial target, so a lower
+    // slot filling in behind a joined row must NOT re-target the peer.
     const int was = g_relay_pick;
-    g_relay_pick  = -1;
-    for (int i = 0; i < RELAY_ROW_MAX && g_relay_pick < 0; ++i)
-        if (g_relay_rows[i].used) g_relay_pick = i;
+    if (g_relay_pick < 0 || !g_relay_rows[g_relay_pick].used) {
+        g_relay_pick = -1;
+        for (int i = 0; i < RELAY_ROW_MAX && g_relay_pick < 0; ++i)
+            if (g_relay_rows[i].used) g_relay_pick = i;
+    }
     return changed || (was != g_relay_pick);
 }
 
@@ -926,53 +969,99 @@ const mh_net_proto::SessionInfo *relay_picked_rec() {
     return &g_relay_rows[g_relay_pick].si;
 }
 
+// One llm_net_session_desc out of one SessionInfo, the SD_* layout of build_synth_session. Map header
+// is the host's REAL one when the advert carried it (S9: the browser PREVIEW shows the actual
+// biome/size) and the local placeholder for a v1 host (corrected at join by the host's
+// current_map_data broadcast either way).
+void fill_browser_desc(unsigned char *d, const mh_net_proto::SessionInfo *rec, void *handle) {
+    memset(d, 0, SD_SIZE);
+    if (rec->has_map_header)
+        memcpy(d + SD_MAPHDR, rec->map_header, MAP_DATA1_SIZE); // REAL host map header (preview)
+    else
+        memcpy(d + SD_MAPHDR, g_map_hdr_placeholder, MAP_DATA1_SIZE); // placeholder (v1 host)
+    *(void **)(d + SD_HANDLE) = handle;                               // matched == by llm_lobby_join_head
+    bs_str_copy((char *)(d + SD_NAME), rec->name, 32);                // REAL host game name
+    // S7: render the count as exactly "occ/cap". install_mp_bootstrap patches the row format string
+    // (browser_row_count_fmt 0x503068) from u"%s\t%d+%d/%d" -> u"%s\t%d/%d", so the NORMAL-branch
+    // renderer emits "<first>/<second>" where first = total_slots - player_count, second = player_count.
+    //   second = cap  -> SD_PCOUNT = cap (= rec->max_players, the host's non-closed capacity)
+    //   first  = occ  -> SD_TOTAL - player_count = occ -> SD_TOTAL = occ + cap
+    // giving (SD_TOTAL - SD_PCOUNT)/SD_PCOUNT = occ/cap. occ = rec->cur_players (host+AI+humans);
+    // it climbs by 1 as a peer joins. These fields are display-only (read ONLY by the two row renderers).
+    int occ = rec->cur_players;                  // occupied incl AI
+    int cap = rec->max_players;                  // capacity after closed slots
+    if (cap < 1) cap = 1;                        // never divide-render "occ/0"
+    if (occ > cap) occ = cap;                    // clamp (a stale advert never reads "5/3")
+    *(int *)(d + SD_TOTAL) = occ + cap;          // first field = total - pc = occ
+    *(int *)(d + SD_MAX)   = cap;                // (unused by the patched 2-arg format; kept sane)
+    d[SD_STATE]            = 0;                  // joinable -> NORMAL format branch
+    d[SD_PCOUNT]           = (unsigned char)cap; // second field = pc = cap
+    *(int *)(d + SD_PROTO) = *(const int *)ADDR_PROTO_CEIL;
+}
+
 // S3: build the discovery browser from the received-record store instead of fabricating. Empty store ->
-// NO game listed (kills the "MH Host" fabrication). One record -> a real, joinable row carrying the host's
-// real name + player counts. Map header is a placeholder (not shown in the row; corrected at join by the
-// host's current_map_data broadcast). Reuses the g_synth_desc buffer + the SD_* layout of build_synth_session.
+// NO game listed (kills the "MH Host" fabrication). A record -> a real, joinable row carrying the host's
+// real name + player counts.
 //
-// mp:R2 -- TWO SOURCES, ONE ROW. A connected host's own advert wins (it is live, and it is what the
-// JOIN will name); with no connection, a lobby the RELAY listed is shown instead, which is what
-// lets a player see a relayed game before dialling anything. They are the same record type from
-// the same encoder, so only where it came from differs.
+// mp:R2b -- EVERY LIVE DIRECTORY ROW, in RELAY SLOT ORDER, plus the connected host's advert. Rows
+// are the relay's live slots 0..RELAY_ROW_MAX-1 in that order (slot order is what keeps a row's
+// POSITION stable across refreshes while its neighbours come and go -- a row never moves unless a
+// lower slot ages out); the connected host's advert (g_store_rec, live at ~1 Hz where the directory
+// is ~2 s stale) REPLACES the slot that names the same lobby, in place, so connecting to a listed
+// game changes the row's counts and nothing about the list; and only an advert the relay does NOT
+// list (a direct dial with `[net] relay` set; a lobby the relay has not listed yet) becomes a row of
+// its own, LAST, under HANDLE_STORE. Before R2b this function built one row -- the store's, else
+// the picked directory row -- so with two lobbies on one relay the second was invisible, and a join
+// always went where the auto-dial had gone (mp:R2b).
+//
+// The retail row table (_G_LLM_LOBBY_BROWSER_ROWS) is written here too, for ALL rows, although the
+// first browser's own refresh (llm_mp_discovery_browser_refresh) writes it from the list as well:
+// the SESSION browser's rescan (llm_mp_session_browser_rescan, the Internet-server path) does not
+// write it at all, and llm_lobby_join_head reads it on both -- so this is the only writer that
+// path has, not a workaround for count==1. The refresh writes the same values ({handle, probe
+// index 0}) so the two writers cannot disagree.
 void build_browser_from_store() {
-    const mh_net_proto::SessionInfo *rec = g_store_valid ? &g_store_rec : relay_picked_rec();
-    if (rec == nullptr) { // no host reachable -> empty browser
+    g_browser_count = 0;
+    if (g_store_valid || relay_picked_rec() != nullptr) ensure_placeholder_maphdr(); // a VALID header (not raw current_map_data)
+    bool store_listed = false;
+    for (int i = 0; i < RELAY_ROW_MAX && g_browser_count < BROWSER_ROWS_CAP; ++i) {
+        if (!g_relay_rows[i].used) continue;
+        const mh_net_proto::SessionInfo *rec = &g_relay_rows[i].si;
+        if (g_store_valid && mh_net_proto::session_same_lobby(g_store_rec, g_relay_rows[i].si)) {
+            rec          = &g_store_rec; // the live advert of the lobby we are linked to, in the slot's place
+            store_listed = true;
+        }
+        fill_browser_desc(g_browser_descs[g_browser_count], rec, relay_slot_handle(i));
+        g_browser_src[g_browser_count++] = i;
+    }
+    if (g_store_valid && !store_listed && g_browser_count < BROWSER_ROWS_CAP) {
+        fill_browser_desc(g_browser_descs[g_browser_count], &g_store_rec, (void *)HANDLE_STORE);
+        g_browser_src[g_browser_count++] = BROWSER_SRC_STORE;
+    }
+    if (g_browser_count == 0) { // no host reachable -> empty browser
         *(void **)ADDR_SESSION_LIST_PTR = nullptr;
         *(int *)ADDR_SESSION_COUNT      = 0;
         *(void **)ADDR_UI_ROW_ARRAY     = nullptr;
         return;
     }
-    ensure_placeholder_maphdr(); // a VALID header (not raw current_map_data)
-    memset(g_synth_desc, 0, sizeof(g_synth_desc));
-    // S9: prefer the host's REAL map header (shipped in the v2 SESSION_INFO) so the browser PREVIEW shows
-    // the actual biome/size; fall back to the placeholder for a v1 host (has_map_header == false).
-    if (rec->has_map_header)
-        memcpy(g_synth_desc + SD_MAPHDR, rec->map_header, MAP_DATA1_SIZE); // REAL host map header (preview)
-    else
-        memcpy(g_synth_desc + SD_MAPHDR, g_map_hdr_placeholder, MAP_DATA1_SIZE); // placeholder (v1 host)
-    *(void **)(g_synth_desc + SD_HANDLE) = (void *)1;                            // sentinel handle (join matches ==1)
-    bs_str_copy((char *)(g_synth_desc + SD_NAME), rec->name, 32);                // REAL host game name
-    // S7: render the count as exactly "occ/cap". install_mp_bootstrap patches the row format string
-    // (browser_row_count_fmt 0x503068) from u"%s\t%d+%d/%d" -> u"%s\t%d/%d", so the NORMAL-branch
-    // renderer emits "<first>/<second>" where first = total_slots - player_count, second = player_count.
-    //   second = cap  -> SD_PCOUNT = cap (= g_store_rec.max_players, the host's non-closed capacity)
-    //   first  = occ  -> SD_TOTAL - player_count = occ -> SD_TOTAL = occ + cap
-    // giving (SD_TOTAL - SD_PCOUNT)/SD_PCOUNT = occ/cap. occ = g_store_rec.cur_players (host+AI+humans);
-    // it climbs by 1 as a peer joins. These fields are display-only (read ONLY by the two row renderers).
-    int occ = rec->cur_players;                             // occupied incl AI
-    int cap = rec->max_players;                             // capacity after closed slots
-    if (cap < 1) cap = 1;                                   // never divide-render "occ/0"
-    if (occ > cap) occ = cap;                               // clamp (a stale advert never reads "5/3")
-    *(int *)(g_synth_desc + SD_TOTAL) = occ + cap;          // first field = total - pc = occ
-    *(int *)(g_synth_desc + SD_MAX)   = cap;                // (unused by the patched 2-arg format; kept sane)
-    g_synth_desc[SD_STATE]            = 0;                  // joinable -> NORMAL format branch
-    g_synth_desc[SD_PCOUNT]           = (unsigned char)cap; // second field = pc = cap
-    *(int *)(g_synth_desc + SD_PROTO) = *(const int *)ADDR_PROTO_CEIL;
-    *(void **)ADDR_SESSION_LIST_PTR   = g_synth_desc;
-    *(int *)ADDR_SESSION_COUNT        = 1;
-    *(void **)ADDR_UI_ROW_ARRAY       = (void *)1;
-    *(int *)(ADDR_UI_ROW_ARRAY + 4)   = 0;
+    for (int r = 0; r < g_browser_count; ++r) {
+        *(void **)(ADDR_UI_ROW_ARRAY + r * 8)   = *(void **)(g_browser_descs[r] + SD_HANDLE);
+        *(int *)(ADDR_UI_ROW_ARRAY + r * 8 + 4) = 0; // server_idx: the one probe (PROBE_SERVER_COUNT == 1)
+    }
+    *(void **)ADDR_SESSION_LIST_PTR = g_browser_descs;
+    *(int *)ADDR_SESSION_COUNT      = g_browser_count;
+}
+
+// mp:R2b -- which lobby is desc `idx` of the list we just built? Answers with the record the JOIN
+// names and, for a relay row, the slot it came from (-1 for the store row / out of range).
+const mh_net_proto::SessionInfo *browser_row_rec(int idx, int *slot_out) {
+    *slot_out = -1;
+    if (idx < 0 || idx >= g_browser_count) return nullptr;
+    const int src = g_browser_src[idx];
+    if (src == BROWSER_SRC_STORE) return g_store_valid ? &g_store_rec : nullptr;
+    if (src < 0 || src >= RELAY_ROW_MAX || !g_relay_rows[src].used) return nullptr;
+    *slot_out = src;
+    return &g_relay_rows[src].si;
 }
 
 } // namespace
@@ -994,6 +1083,10 @@ bool mp_relay_addr(char *out, int cap) {
 // mp:R7a -- lazy_start reads the kick site's latched relay-vs-direct decision for the current manual
 // client dial (g_dial_relayed lives in the anonymous namespace; this is its external accessor).
 bool mp_dial_is_relayed() { return InterlockedCompareExchange(&g_dial_relayed, 0, 0) == 1; }
+
+// mp:L1e -- MH_Seam export wrapper (mh_seam_export.h) so ui/lobby_ping.cpp, outside this TU's
+// net-seam family, can read the same latch without including net_internal.h.
+extern "C" int MH_Seam_ClientDialIsRelayed(void) { return mp_dial_is_relayed() ? 1 : 0; }
 
 // mp:R2a -- IS THE SESSION BROWSER THE ACTIVE SCREEN? The UDP transport module asks this from its
 // relay tunnel thread, and the answer decides whether that tunnel keeps polling the relay's session
@@ -1211,6 +1304,11 @@ extern "C" void MH_MP_ClientOnHostLeft(void) {
 // the host is already gone), 0 if it is our own Cancel button (U12 sends LEAVE as before).
 extern "C" int MH_MP_ConsumeHostLeft(void) { return InterlockedExchange(&g_host_left_seen, 0); }
 
+// mp:R2b: 1 while a clicked JOIN is waiting for the link into ITS lobby's room (mp:R6's g_join_pending),
+// i.e. the link this peer holds (if any) is being replaced, not lost. Read by net_seams.cpp
+// link_lost_in_lobby on the main thread; the flag is cleared by the re-send or by a host-left.
+extern "C" int MH_MP_JoinLinkPending(void) { return InterlockedCompareExchange(&g_join_pending, 0, 0) != 0; }
+
 // U23: called by the R-live-ui link-lost synthesis site ONLY, immediately after MH_MP_ClientOnHostLeft(),
 // to correct the default cause. A genuinely received 0x0e wants the default and never calls this.
 extern "C" void MH_MP_MarkExitCauseLinkLost(void) { InterlockedExchange(&g_exit_cause, 2); }
@@ -1413,21 +1511,102 @@ void fill_my_player_name(mh_net_proto::JoinRequest &jr) {
 // JOIN carrying the lobby-id of the received host session (g_store_rec) over the already-open browse
 // connection. This is the distinct join action -- a browse-connect alone must NOT admit us. Manual client
 // only; a no-op (return 0 = success) otherwise so the retail join handler proceeds into the lobby.
+// mp:R2b -- the session-list INDEX llm_lobby_join_handler passed to llm_net_join_connect_stub (its
+// one __watcall argument, EAX), captured by join_connect_detour before the register file is saved.
+// It is the index retail MATCHED through _G_LLM_LOBBY_BROWSER_ROWS[selected].session_handle, i.e.
+// the row the player clicked as of the poll join_head itself just ran -- the same poll that
+// rebuilt g_browser_descs, so it indexes the list we hold now. -1 = not a retail join (the R6
+// re-send, which names g_join_pending_rec instead).
+int g_join_sel_idx = -1;
+
+// mp:R2b -- the JOIN clicked a row whose room this peer is NOT linked to (a different lobby than
+// the auto-dial landed on, or a fresh row after leaving another): tear the link down and dial the
+// row's room, exactly as MH_Seam_ClientDiscoveryTick's directory re-dial does, with the JOIN
+// remembered (mp:R6) so the link coming up sends it. The pick is latched to the row FIRST -- it
+// is what s3_kick_connect reads for the room -- and the store is withdrawn, because it describes
+// the host on the link being torn down and the R6 re-send compares against it.
+void join_redial_row(int slot, const char *why) {
+    g_relay_pick = slot;
+    InterlockedExchange(&g_store_valid, 0);
+    InterlockedExchange(&g_s3_listed, 0);
+    InterlockedExchange(&g_net_relink, 1);
+    MH_Seam_ResetTransportInit();
+    InterlockedExchange(&g_s3_conn_done, 0);
+    InterlockedExchange(&g_s3_conn_kicked, 0);
+    s3_kick_connect(why);
+}
+
 void on_join_connect() {
     if (!MH_MP_IsManual()) return;            // force-entry: keep the pure no-op
     if (!g_a.is_host || *g_a.is_host) return; // client only
+    const int sel_idx = g_join_sel_idx;
+    g_join_sel_idx    = -1;
     // mp:R2 -- the record the JOIN names is the one the BROWSER ROW was built from, which is the
     // connected host's advert when there is one and a relay directory row otherwise. They are the
     // same encoder's output, so the JOIN is identical either way; what differs is that a relay
     // row may be named before the link into its room has finished coming up, in which case the
     // send is dropped by the transport and the player's next click carries it. Saying so beats
     // the old bare refusal, which read as "the game is unreachable".
-    const mh_net_proto::SessionInfo *rec = g_store_valid ? &g_store_rec : relay_picked_rec();
+    //
+    // mp:R2b -- WHICH row. Retail told us the session index it matched (g_join_sel_idx); resolve it
+    // through the list build_browser_from_store just made, so a multi-row browser joins the lobby
+    // the player CLICKED, not the one the auto-dial landed on. The pre-R2b fallback (store, else
+    // the pick) stays for a join that did not come through the retail head (index unknown).
+    const mh_net_proto::SessionInfo *rec  = nullptr;
+    int                              slot = -1;
+    if (g_join_resending) {
+        rec = g_store_valid ? &g_store_rec : &g_join_pending_rec; // the R6 re-send: the lobby that was clicked
+    } else if (sel_idx >= 0) {
+        rec = browser_row_rec(sel_idx, &slot);
+    } else {
+        rec = g_store_valid ? &g_store_rec : relay_picked_rec();
+        if (rec != nullptr && !g_store_valid) slot = g_relay_pick;
+    }
     if (rec == nullptr) {
         seam_log("; S4 join: no stored host record -> JOIN not sent\n");
         return;
     }
-    if (!g_store_valid && !g_join_resending) {
+    if (!g_join_resending && slot >= 0) {
+        // A relay-listed row. Three cases, and the log line names which (tools/check_browser_rows.py
+        // reads it): the link we hold is INTO this lobby (send now); the dial in flight is for its
+        // room (R6: remember, the link coming up sends it); or neither -- the link is into another
+        // lobby, or the dial went elsewhere -- and the room has to be dialled now (mp:R2b).
+        const uint32_t room   = g_relay_rows[slot].room;
+        const bool     linked = g_store_valid && mh_net_proto::session_same_lobby(g_store_rec, *rec);
+        char           id[64];
+        mh_net_proto::lobby_id_str(*rec, id, sizeof(id));
+        char b[224];
+        if (linked) {
+            InterlockedExchange(&g_join_pending, 0);
+            wsprintfA(b, "; R2b join: row %d (slot %d) %s room=%u -> linked, JOIN sent now\n", sel_idx,
+                      slot, id, (unsigned)room);
+            seam_log(b);
+            rec = &g_store_rec; // the live advert, same lobby
+        } else {
+            g_join_pending_rec  = *rec;
+            g_join_pending_room = room;
+            InterlockedExchange(&g_join_pending, 1);
+            // The dial in flight is for THIS room only if nothing else is linked (a valid store
+            // means the link is into some OTHER lobby -- the same-lobby case is `linked`), the
+            // latch names this room, and that dial has not already finished without landing
+            // (MH_Seam_ClientDiscoveryTick's idle_after_dial test, same 1.5 s grace).
+            const bool in_flight = !g_store_valid && g_relay_room_set && g_relay_dialled == room &&
+                                   !(g_s3_conn_done && MH_Net_PeerCount() == 0 &&
+                                     (GetTickCount() - (DWORD)g_s3_conn_done_at) > 1500);
+            if (in_flight) {
+                wsprintfA(b, "; R2b join: row %d (slot %d) %s room=%u -> dial in flight, JOIN re-sent when it lands\n",
+                          sel_idx, slot, id, (unsigned)room);
+                seam_log(b);
+            } else {
+                wsprintfA(b, "; R2b join: row %d (slot %d) %s room=%u -> re-dialling (linked to room %u), JOIN re-sent when it lands\n",
+                          sel_idx, slot, id, (unsigned)room,
+                          (unsigned)(g_relay_room_set ? g_relay_dialled : RELAY_NO_ROOM));
+                seam_log(b);
+                join_redial_row(slot, "join selected row");
+            }
+            return; // the R6 re-send carries the JOIN once the link into this room is up
+        }
+    } else if (!g_store_valid && !g_join_resending) {
         // mp:R6 -- remember it; the link coming up re-sends it (see g_join_pending).
         g_join_pending_rec  = *rec;
         g_join_pending_room = (g_relay_pick >= 0) ? g_relay_rows[g_relay_pick].room : 0;
@@ -1751,8 +1930,11 @@ __declspec(naked) void ret_zero_detour() { // connect-prep / disconnect / map-se
 // Client join-connect stub (llm_net_join_connect_stub, called from llm_lobby_join_handler on the explicit
 // "join selected session" click): send our JOIN control frame, then return 0 (>=0 = success) so the retail
 // handler proceeds into the lobby. Registers preserved across the send (the caller reads only EAX). (S4)
+// mp:R2b: EAX on entry is llm_lobby_join_handler's one __watcall argument -- the session-list index
+// llm_lobby_join_head matched for the clicked row -- and is stashed for on_join_connect first.
 __declspec(naked) void join_connect_detour() {
     __asm {
+        mov  g_join_sel_idx, eax
         pushad
         pushfd
         call on_join_connect
@@ -1811,7 +1993,13 @@ extern "C" void MH_Seam_ClientDiscoveryTick(void) {
     const bool     r2_browser =
         (r2_wl == mh::addr::browser_widget_array_ptr || r2_wl == mh::addr::local_browser_widget_origin);
     if (relay_configured() && r2_browser) {
-        if (relay_rows_drain() && !g_store_valid) {
+        // mp:R2b -- re-arm on ANY change of the visible set, linked or not. R2 gated this on
+        // `!g_store_valid` because the row it showed while linked WAS the store, so a directory
+        // change could not change the frame; now every directory row is a row, and a second
+        // lobby listed while this peer is linked to the first must appear without a click
+        // (measured 2026-09-22, browser_two_rows run 4: `bravo -> listed` with no re-arm, the
+        // browser sat on one row and `sessions 2` never came).
+        if (relay_rows_drain()) {
             void *fn = *(void **)ADDR_MENU_REFRESH_FN;
             if (fn) *(void **)ADDR_MENU_ONESHOT = fn;
             seam_log("; R2: relay directory changed -> re-arming the browser\n");

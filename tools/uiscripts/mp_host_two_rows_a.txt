@@ -1,0 +1,40 @@
+# mp:R2b HOST A of the browser_two_rows scenario (the runner's host lane, game "uitest"): create a
+# game through the first browser, hold the lobby, and stay LISTENING while HOST B (mp_host_two_rows_b.txt,
+# on a client lane, game "bravo") creates a second lobby on the same relay and the browsing client
+# (mp_client_two_rows.txt) joins B's lobby FIRST and this one SECOND.
+#
+# This lobby is the FIRST directory row on the client's browser (it registers with the relay before B
+# is even allowed to create -- B waits for the client's `c2_sees_a` signal), and the client's auto-dial
+# lands here, so the client's first join (row 2, B) is the re-dial away from a linked lobby and its
+# second join (row 1, here) is the re-dial back. `occ 2` here fires ONLY on that second join: a peer
+# that merely browse-dialled this room is never mirrored into a slot (N2: the mirror gates on the JOIN).
+#
+# Same walk as mp_host_lobby.txt (Create through the first browser -> the R7 host relink); its own
+# baseline label because the seated capture is this scenario's claim.
+
+settled value:110
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+settled Create
+clickl Create
+present Game name
+settled Ok
+clickl Ok
+present Available maps
+settled Ok
+clickl Ok
+present Network players
+settled Start
+capture ha_lobby
+log HOST A in its lobby ("uitest"), listening -- the client will join B first, then here
+
+# the client's SECOND join lands here (its first was B's lobby): one seated peer, no ghost
+awaitsignal seated1
+occ 2
+occ <3
+settled Start
+capture ha_client_seated_second
+log HOST A: the browsing client joined this lobby from the FIRST browser row (after B's)
+end

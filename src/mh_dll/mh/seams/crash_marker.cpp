@@ -235,14 +235,23 @@ extern "C" int MH_CrashMarker_Init(void) {
     // have to guess a path built from a pid it would then have to match). With no launcher the
     // default is `<exedir>\logs\mh_crash_<pid>.marker` -- under `logs\` because that is the
     // directory this project already treats as its output tree, and per-pid because the rig runs
-    // several lanes whose exes all have the same name.
+    // several lanes whose exes all have the same name. dist LA13: a process started with
+    // MH_LOG_ROOT (the launcher-owned logs root, see mh_common/run_context.cpp) and no marker path
+    // puts the default under THAT root instead -- beside the exe it would be UAC-virtualized away
+    // under Program Files, exactly the hole the root exists to close. Same root run_context uses,
+    // resolved here independently (same reason MH_ExeDir() is not called: boot ordering).
     if (GetEnvironmentVariableA(MH_CRASH_ENV_MARKER, g_marker, MAX_PATH) == 0) {
-        char logs[MAX_PATH];
-        wsprintfA(logs, "%slogs", exe);
+        char  logs[MAX_PATH];
+        DWORD n = GetEnvironmentVariableA("MH_LOG_ROOT", logs, MAX_PATH);
+        if (n == 0 || n >= MAX_PATH) {
+            wsprintfA(logs, "%slogs", exe);
+        } else {
+            while (n > 1 && (logs[n - 1] == '\\' || logs[n - 1] == '/')) logs[--n] = '\0';
+        }
         CreateDirectoryA(logs, nullptr); // idempotent; failure just means the path below will not open
         char leaf[64];
         wsprintfA(leaf, MH_CRASH_MARKER_LEAF, (unsigned long)GetCurrentProcessId());
-        wsprintfA(g_marker, "%s\\%s", logs, leaf);
+        if (lstrlenA(logs) + 1 + lstrlenA(leaf) < MAX_PATH) wsprintfA(g_marker, "%s\\%s", logs, leaf);
     }
 
     // The handshake, IF a launcher is listening. Both events are created rather than opened so the

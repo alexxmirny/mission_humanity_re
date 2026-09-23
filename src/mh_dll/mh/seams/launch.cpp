@@ -40,6 +40,7 @@
 #include "include/mh_run_context.h"  // MH_RunDir (per-run log folder)
 #include "include/lobby_session.h"   // llm_net_session_entry (retail lobby session-list record)
 #include "addr/mh_addrs.gen.h"       // generated EN VAs (tools/gen_dll_addrs.py)
+#include "config/ini_read.h"         // TL-HARN4: read_ini_string -- strips a trailing `;comment`
 #include "state/region_runtime.h"    // SB-HOSTFREE: live_base/ptr -- a movable region is read
                                      // where it IS, not where the binary put it
 #include "addr/mh_calls.gen.h"       // typed __watcall wrappers (map_SavePlanetToDisk, --tactical)
@@ -431,7 +432,7 @@ void net_ini_str(const char *key, const char *def, char *out, int cap) {
         if (*p == '\\' || *p == '/') slash = p;
     slash[1] = '\0';
     wsprintfA(ini, "%smh_net.ini", exe);
-    GetPrivateProfileStringA("net", key, def, out, cap, ini);
+    mh::config::read_ini_string("net", key, def, out, cap, ini); // TL-HARN4
 }
 // N = total players (clamped 2..8, the lobby-slot cap).
 int mp_players(void) {

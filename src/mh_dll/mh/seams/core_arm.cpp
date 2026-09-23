@@ -47,6 +47,7 @@
 #include "addr/mh_rebind.gen.h"         // LIB-REBIND R11: load_gates at the named init point
 #include "addr/mh_regions.gen.h"        // ST2M: the state region registry
 #include "config/config.h"              // F2A: the D11 selector gate policy derives from
+#include "config/ini_read.h"            // TL-HARN4: read_ini_string -- strips a trailing `;comment`
 #include "save/save_live.h"             // the four save-walker promotion predicates
 #include "seams/net_internal.h"         // SHIP_REBIND_DEFAULT -- the R11 gate policy load_gates takes
 
@@ -238,15 +239,15 @@ int bind_relocated_from_ini() {
     // "the relocation is broken" from "something still points at .bss"; it is not the acceptance.
     o.poison       = GetPrivateProfileIntA("harness", "relocate_poison", 1, g_ini_path) != 0;
     g_reloc_poison = o.poison;
-    GetPrivateProfileStringA("harness", "relocate_pin", "", g_reloc_pin, sizeof(g_reloc_pin),
-                             g_ini_path);
+    mh::config::read_ini_string("harness", "relocate_pin", "", g_reloc_pin, sizeof(g_reloc_pin),
+                                g_ini_path); // TL-HARN4
     if (g_reloc_pin[0]) o.pin_stock = g_reloc_pin;
     // `relocate_corrupt=<region>` is THE mutation -- it fills that region's ARENA copy with 0xCD,
     // so a run with it set must DIVERGE and the report must name the region. `relocate_pin` is not
     // a mutation and never was: measured, a pinned run matched the golden over 3000 steps, because
     // answering at the stock base is exactly what an unrelocated run does. See host_bind.h.
-    GetPrivateProfileStringA("harness", "relocate_corrupt", "", g_reloc_corrupt,
-                             sizeof(g_reloc_corrupt), g_ini_path);
+    mh::config::read_ini_string("harness", "relocate_corrupt", "", g_reloc_corrupt,
+                                sizeof(g_reloc_corrupt), g_ini_path); // TL-HARN4
     if (g_reloc_corrupt[0]) o.corrupt_arena = g_reloc_corrupt;
     o.armed_walkers = armed_save_walkers();
     const int n     = mh::state::bind_relocated(g_reloc_arena, sizeof(g_reloc_arena), o,

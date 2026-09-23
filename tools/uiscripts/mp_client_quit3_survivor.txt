@@ -1,0 +1,40 @@
+# mp:U19b -- 3-PEER clean quit, the OTHER SURVIVOR (client 1, on the second rig VM).
+#
+# Pair with mp_host_quit3.txt (that file's header carries the full mechanism) and
+# mp_client_quit3_quitter.txt (the one that leaves, on the local det3 lane).
+#
+# G271: `signal seated1` after `settled Cancel` is the host's OWN barrier before it clicks Start --
+# see mp_host_quit3.txt's header. Without it the host can click Start (tearing down the lobby screen)
+# before this peer's `settled Cancel` has accumulated its dwell window.
+
+settled value:110
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+present Internet server
+settled Internet server
+clickl Internet server
+present Server address
+settled Connect
+clickl Connect
+sessions 1
+settled Join game
+clickl Join game
+present Network players
+occ 3
+settled Cancel
+signal seated1
+absent Network players
+gamemode 2
+gameclock 3000
+
+awaitsignal quitting
+awaitsignal cliquit
+gameclock 6000
+
+# Same widget/state predicate as the host's, and for the same reason (dead-ends G158).
+gamemode 2
+absent Continue game
+log CLIENT1 (survivor B) kept playing past the quitter's departure -- still in-game, no outcome dialog
+end

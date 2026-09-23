@@ -1,0 +1,35 @@
+# mp:P9 (2/2) -- THE PROOF ROWS' client (joiner) side. See mp_host_p9_proof.txt: match_launch's
+# join walk, one in-game capture at match_launch's own SIM gate, then the match runs to gameclock
+# 150 s with one fix on (the row's [net] knobs), and both peers end on their own -- no blackhole,
+# no wedge. This is the joiner: `[net] lockstep_step_ms=60` (the row's net_extra_client, G267).
+
+# join the host by IP -> the joined lobby (see mp_client_join.txt for the flow)
+settled value:110
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+present Internet server
+settled Internet server
+clickl Internet server
+present Server address
+settled Connect
+clickl Connect
+sessions 1
+settled Join game
+clickl Join game
+
+# joined lobby: tell the host we are really here, then wait for its Start
+present Network players
+signal lobby
+settled Cancel
+absent Network players
+
+# in the match: the one capture, at match_launch's own gate
+gameclock 6000
+capture m3_launched
+log CLIENT is in the configuration-(1) match; running to gameclock 150 s under one fix
+
+gameclock 150000
+log CLIENT reached gameclock 150 s
+end

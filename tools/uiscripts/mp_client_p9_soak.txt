@@ -1,0 +1,49 @@
+# mp:P9 -- THE RESYNC-STORM REPRODUCTION, client (joiner) side. See mp_host_p9_soak.txt for the
+# mechanism: match_launch's join walk, one in-game capture at match_launch's own SIM gate, then the
+# match is left running until the shim timeline (tools/uiscripts/shim/p9_soak_5min.txt) blackholes
+# the link ~5 min in and the HOST's watchdog retires this peer -> the host's below-quorum dialog
+# ends the run. Shared by the three P9 rows (resync_storm_repro / resync_gate_proof /
+# resync_countinit_proof); only their [net] knobs differ.
+# This is the joiner: `[net] lockstep_step_ms=60` (the row's net_extra_client, G267) -- the field's
+# adaptive floor, pinned.
+#
+# WHY THIS SCRIPT ENDS RIGHT AFTER ITS CAPTURE (mp:P9 2/2, 2026-09-22). It used to wait for the
+# same `present Continue game` dialog the host waits for, and in the storming configuration it
+# never got there: the blackhole lands INSIDE a barrier ~97 % of the time (a 2.0 s barrier every
+# 2.07 s), and a RECEIVER that has entered the mode-8 barrier leaves it only on the leader's RESUME
+# frame (dispatch inner 0xe) -- the wait-screen frame runs nothing but dispatch, so no time_tick,
+# no GS2 data timeout, no graceful_drop, no presents even (the client's mh_frametime.log stops
+# dead at the last BEGIN), and the below-quorum dialog can never come. The runner keeps a
+# COMPLETE'd peer's game ALIVE until every peer has finished, so ending here keeps this peer in
+# the match for the whole soak (its `[resync]` lines run to the blackhole) and lets the host's
+# dialog end the run. The wedge itself is a stock bug worth its own row (tracker mp:P9 progress
+# names it), not something this script should paper over with a predicate.
+
+# join the host by IP -> the joined lobby (see mp_client_join.txt for the flow)
+settled value:110
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+present Internet server
+settled Internet server
+clickl Internet server
+present Server address
+settled Connect
+clickl Connect
+sessions 1
+settled Join game
+clickl Join game
+
+# joined lobby: tell the host we are really here, then wait for its Start
+present Network players
+signal lobby
+settled Cancel
+absent Network players
+
+# in the match: the one capture, at match_launch's own gate -- then stay in the match (the runner
+# holds this process until the host's script completes) with nothing left to wait for.
+gameclock 6000
+capture m3_launched
+log CLIENT is in the configuration-(1) match; soaking until the shim timeline kills the link
+end
