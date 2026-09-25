@@ -206,6 +206,20 @@ public:
     }
     size_t piece_max() const { return m_piece_max; }
 
+    // mp:T5 -- THE TWO TIMERS FOLLOW THE LINK. BULK_RTO_MS and FAST_RETX_MS are constants sized for
+    // a LAN, and on the rig's 500 ms round trip both fire before any acknowledgement could have
+    // mentioned a piece: T5's host logged 681 pieces sent and 591 of them repeats. The endpoint
+    // passes its measured values every tick (0 = nothing measured yet -> the constants, exactly as
+    // before); each is used only where it is LARGER than the constant, so a LAN link is unchanged.
+    //   rto_ms   the blind backstop -- the endpoint's channel-A RTO (srtt + max(4 rttvar, slack)).
+    //   fast_ms  how long after a piece left an acknowledgement must have been generated before its
+    //            silence about that piece means loss: one round trip plus FAST_RETX_MS's own slack
+    //            (so at a ~0 ms loopback round trip it IS FAST_RETX_MS).
+    void set_link_timing(DWORD rto_ms, DWORD fast_ms) {
+        m_link_rto_ms  = rto_ms;
+        m_link_fast_ms = fast_ms;
+    }
+
     // Begin a transfer to `conn_idx`. `blob` may be null, in which case `len` bytes of a
     // deterministic synthetic pattern are sent (see synth_byte) -- which is how the rig arm moves a
     // megabyte without the module allocating one. Refuses if a transfer is already running.
@@ -242,7 +256,7 @@ public:
     // Both return false when the payload is not a well-formed frame of their kind, which is what
     // the endpoint counts as `malformed` -- this file keeps no opinion about the endpoint's counters.
     bool on_piece(int conn_idx, const uint8_t *payload, size_t len, DWORD now);
-    bool on_ack(const uint8_t *payload, size_t len, DWORD now);
+    bool on_ack(int conn_idx, const uint8_t *payload, size_t len, DWORD now);
     // `player_id` is how a transfer survives the peer coming back on a different conn slot (mp:T1b):
     // the target is a PLAYER, and the conn index is re-bound here every tick.
     void tick(int conn_idx, int player_id, DWORD now);
@@ -338,6 +352,8 @@ private:
     void   *m_emit_ctx;
 
     size_t   m_piece_max; // mp:R1d -- PIECE_MAX, or PIECE_MAX_RELAYED on a relayed link
+    DWORD    m_link_rto_ms;  // mp:T5 -- see set_link_timing; 0 = use BULK_RTO_MS
+    DWORD    m_link_fast_ms; // mp:T5 -- 0 = use FAST_RETX_MS
     int      m_selftest_mb;
     uint32_t m_selftest_step;
     bool     m_selftest_armed; // a transfer was started by the step trigger; never twice

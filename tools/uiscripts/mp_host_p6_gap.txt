@@ -1,0 +1,69 @@
+# mp:P6 -- HOST side. The scenario the done_when needs: a real 2-peer UI-path (menu->lobby->Start,
+# no force-entry) match that plays to a REAL conquest game-over, with the CLIENT losing -- so its
+# own mh_frametime.log covers the endgame-sync grace (net_lockstep.cpp's HB_ENDGAME_GRACE_MS)
+# instead of being cut off at the deciding step the way mp_run's force-entry shape always was
+# (measured 2026-09-23: mp_run stops BOTH peers the instant the host reaches its stop step, so the
+# loser's log never has any frames past that step to measure a gap over).
+#
+# The conquest workload itself is the SAME harness mechanism mp_run's det_conquest shape used
+# (`--harness-extra-host conq=1;conq_seed=1;conq_probe_every=0`, wired by the TESTS row, not by this
+# script) -- it reads landing-site data per (side, planet) from the players' own profile array,
+# which is map-agnostic -- but the USER'S MAP for this row is Last Question (2026-09-23 decision; the
+# only 2-start map, test_ui.py's CONQUEST_MAP). Wave 7 lane B first ran it on the lobby-default Blue
+# Monday believing the map list could not be clicked; it can (mp_host_el2.txt's split press/release
+# on row 5). On Blue Monday the scripted attackers were still walking when the harness's 900-step
+# no-progress watchdog fired; on Last Question they reach the peer's base ~300 steps after the
+# order and the match ends in a real conquest (mp:D34).
+#
+# THE END-OF-SCRIPT GATE. `_G_LLM_UI_OUTCOME_DLG_WIDGET_LIST` (0x653dc3) is the
+# outcome dialog's own widget list -- `screen 0x00653dc3` becomes true the instant THIS peer's own
+# game-over dialog is the active menu, i.e. "my own outcome resolved", without needing a game-clock
+# wait (gameclock freezes once the local sim halts at the dialog, so it cannot gate on the very
+# freeze this row exists to measure). The host reaches this first (it is the winner); ending its own
+# script here does NOT tear the session down -- the process stays up and connected until ui_test.py
+# tears both peers down together, which is what lets the CLIENT keep running to ITS OWN outcome.
+
+# reach the host lobby (create a game named "test" on Last Question)
+settled value:110
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+settled Create
+clickl Create
+present Game name
+settled Ok
+clickl Ok
+# pick LAST QUESTION: row 5 of the "Available maps" list (y=98+14*5=168), the split click that
+# commits a list row on mouse-DOWN, and the right panel's map-name label as the state predicate --
+# exactly mp_host_el2.txt's gesture (see its comment for the row geometry).
+present Available maps
+settled Ok
+cursor 80 168
+cursor 80 168
+press 80 168
+release 80 168
+present last question
+settled Ok
+clickl Ok
+
+# host lobby: block until the client is in, then Start
+present Network players
+peers 1
+awaitsignal lobby
+enabled Start
+settled Start
+clickl Start
+
+# in the match: one capture at match_launch's own SIM gate, then run to the HOST's own outcome
+# (the win) -- the wall-clock moment this peer's own on_gameover fires is the post_check's anchor
+# for "the deciding step" (net_lockstep.cpp's grace-timer starts counting once THIS peer leaves
+# lockstep, roughly here).
+absent Network players
+gameclock 6000
+capture m3_launched
+log HOST is in the match (conquest workload armed via the row's harness config)
+screen 0x00653dc3
+capture host_won
+log HOST reached its own outcome dialog (the win) -- staying up for the client to catch up
+end

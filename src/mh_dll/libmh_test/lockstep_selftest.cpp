@@ -184,6 +184,33 @@ const dispatch_calls &recording_dispatch_calls() {
     return dc;
 }
 
+// ---- U19g: an offline arm for gone_peer_frame_guard --------------------------------------------
+//
+// The guard exists because send_peer_timeout_drop's real body (llm_net_send_lockstep_kick) builds
+// its wire record into _G_LLM_NET_SEND_BUF -- the SAME buffer the packet being dispatched lives in
+// (see rx_dispatch.cpp's dispatch_packet head comment). recording_dispatch_calls' stub is a pure
+// counter and cannot reproduce that aliasing, so this is a second, purpose-built emitter that
+// actually writes the shared buffer, standing in for the real one. Bound via a raw pointer rather
+// than a capture for the same reason every other dispatch_calls stub here is a bare function: the
+// struct holds plain function pointers.
+uint8_t *g_kick_overwrite_target = nullptr;
+void     fake_kick_emit(int32_t side_id) {
+    g_rx.timeout_drops.push_back(side_id);
+    if (g_kick_overwrite_target) {
+        // llm_net_send_lockstep_kick's own 6-byte record: MSG_CONTROL, CTL_KICK, then a side_id that
+        // never matches this fixture's local player (100) -- the exact width is what matters here,
+        // not the value, since it is the width that misaligns the parse.
+        const uint8_t kick[6] = {mh::lockstep::MSG_CONTROL, mh::lockstep::CTL_KICK, 0xE7, 0x03, 0, 0};
+        std::memcpy(g_kick_overwrite_target, kick, sizeof(kick));
+    }
+}
+
+const dispatch_calls &kick_emitting_dispatch_calls() {
+    static dispatch_calls dc  = recording_dispatch_calls();
+    dc.send_peer_timeout_drop = fake_kick_emit;
+    return dc;
+}
+
 // A whole turn engine on the heap. Deliberately NOT zero-initialised where the game would not be:
 // the horizon tables start at the -1.0 sentinel peer_timing_reset writes.
 struct world {
@@ -2935,6 +2962,88 @@ void test_dispatch_departures() {
     }
 }
 
+// mp:U19g -- the offline arm for gone_peer_frame_guard (U19e). The rig can only ever exercise ONE
+// binary's worth of behaviour per run; this feeds a recorded gone-peer datagram through
+// dispatch_packet with kick_emitting_dispatch_calls() (a fake emitter that actually writes the
+// shared buffer, unlike the pure-counter stub every other test here uses) so both the buggy and the
+// fixed code paths are provable from heap buffers alone. The datagram models the rig trace in
+// rx_dispatch.cpp's dispatch_packet head comment: a bare horizon the re-broadcast kick's 6-byte
+// record would clobber, followed by the sender's own CTL_PLAYER_LEFT -- so the test proves BOTH
+// halves of the U19e finding (reaches handle_garbled, and loses the trailing CTL_PLAYER_LEFT) from
+// the one crafted packet.
+void test_u19g_gone_peer_frame_guard_arm() {
+    using mh::lockstep::CTL_PLAYER_LEFT;
+    using mh::lockstep::MSG_HORIZON;
+    using mh::lockstep::PLAYER_GONE;
+
+    // byte[6] (survives the 6-byte kick overwrite either way) is 0xff on purpose: 0xff-1=0xfe > 4,
+    // so a corrupted parse is GUARANTEED to fall into handle_garbled rather than accidentally
+    // resembling a valid tag. The other seven payload bytes are arbitrary filler for the horizon's
+    // 8-byte double, never asserted on.
+    packet p;
+    p.u8(MSG_HORIZON).u8(0x11).u8(0x22).u8(0x33).u8(0x44).u8(0x55).u8(0xff).u8(0x77).u8(0x88);
+    p.ctl(CTL_PLAYER_LEFT);
+
+    auto arm = [&](bool guard, uint32_t len) {
+        world w = mp_world();                     // side 100/101, players 0 and 1 both human -- g_rx.reset() included
+        w.players[1].status_flags |= PLAYER_GONE; // sender already written off, as U19e's trace has it
+        g_rx.leader_answer = 1;                   // is_local_leader_peer(sender_side_id) -> true
+        g_rx.active_answer = 1;                   // count_active_players() -> 1: we are the last peer
+        std::memset(w.buf, 0xcd, sizeof(w.buf));  // poison past `len`, same discipline as feed()
+        std::memcpy(w.buf, p.b.data(), p.b.size());
+        g_kick_overwrite_target = w.buf; // ds.packet.bytes aliases w.buf; see world::ds()
+        mh::lockstep::reimpl_fixes fx;
+        fx.gone_peer_frame_guard = guard;
+        const auto r             = mh::lockstep::detail::dispatch_packet(w.st(), w.ds(), kick_emitting_dispatch_calls(),
+                                                                         fx, /*sender_side=*/101, len);
+        g_kick_overwrite_target  = nullptr;
+        return r;
+    };
+
+    { // guard OFF -- the real "no restore" branch (fx defaults to the faithful stock behaviour). The
+        // emitted kick's bytes survive uncontested into the parse.
+        const auto r = arm(/*guard=*/false, static_cast<uint32_t>(p.b.size()));
+        check("U19g guard off: the re-broadcast kick fires for the right sender",
+              g_rx.timeout_drops.size() == 1 && g_rx.timeout_drops[0] == 101);
+        check("U19g guard off: the parse reads the emitted kick's bytes and reaches handle_garbled",
+              g_rx.outcomes.size() == 1 && g_rx.outcomes[0] == 7); // OUTCOME_NETWORK_ERROR
+        check("U19g guard off: the following CTL_PLAYER_LEFT never reaches last_peer_teardown",
+              g_rx.presence_lost.empty());
+        check("U19g guard off: dispatch does not stop (the garbled arm always drains)",
+              r == mh::lockstep::detail::packet_result::drain_again);
+    }
+
+    { // guard ON (U19e's fix) -- the same emitted kick fires, but the save/restore around it keeps
+        // the datagram intact, so the SAME bytes parse cleanly through to CTL_PLAYER_LEFT.
+        const auto r = arm(/*guard=*/true, static_cast<uint32_t>(p.b.size()));
+        check("U19g guard on: the re-broadcast kick still fires",
+              g_rx.timeout_drops.size() == 1 && g_rx.timeout_drops[0] == 101);
+        check("U19g guard on: no garbled outcome", g_rx.outcomes.empty());
+        check("U19g guard on: CTL_PLAYER_LEFT reaches last_peer_teardown",
+              g_rx.presence_lost.size() == 1 && g_rx.presence_lost[0] == 1);
+        check("U19g guard on: dispatch stops (we were the last peer)",
+              r == mh::lockstep::detail::packet_result::stop);
+    }
+
+    { // MUTANT: "skip the packet" -- the OTHER fix the rx_dispatch.cpp comment says was tried on
+        // paper and rejected (restoring the dead `cursor = len` store's evident intent). An
+        // unconditional cursor=len on entry is EXACTLY what a zero-length datagram does to the very
+        // same while(cursor<len) loop, so handing this already-gone sender len=0 models it without a
+        // second production code path. Must red exactly like the guard-off arm above, on the
+        // CTL_PLAYER_LEFT claim -- proving the guard, not just "any restore-shaped code", is what the
+        // done_when needs.
+        const auto r = arm(/*guard=*/false, /*len=*/0);
+        check("U19g skip-mutant: leadership is still asked (the gone-peer branch ran)",
+              g_rx.leader_asked.size() == 1 && g_rx.leader_asked[0] == 101);
+        check("U19g skip-mutant: the following CTL_PLAYER_LEFT never reaches last_peer_teardown",
+              g_rx.presence_lost.empty());
+        check("U19g skip-mutant: no garbled outcome either -- nothing was parsed at all",
+              g_rx.outcomes.empty());
+        check("U19g skip-mutant: dispatch reports drain_again, not stop",
+              r == mh::lockstep::detail::packet_result::drain_again);
+    }
+}
+
 void test_dispatch_drop_synced_vs_unsynced() {
     // THE PAIR THE DRAFT FACTORED INTO ONE BODY. If the factoring lost the difference, the two tags
     // become indistinguishable -- so the test is precisely that they differ in exactly one call and
@@ -4607,6 +4716,7 @@ int run_lockstest() {
     test_dispatch_keepalive();
     test_dispatch_control_basics();
     test_dispatch_departures();
+    test_u19g_gone_peer_frame_guard_arm();
     test_dispatch_drop_synced_vs_unsynced();
     test_u19h_leave_park_horizon_race(); // mp:U19h -- the graceful-leave horizon race
     test_dispatch_kick_and_resets();

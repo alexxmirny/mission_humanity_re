@@ -48,6 +48,12 @@
 // mh/seams/harness_bind.cpp: the instrument installs nothing, so its absence cannot change which
 // bodies run, and every consumer of mh_harness.log reds on a log that is not there.
 //
+// AMENDED BY mp:D29 (2026-09-24): the refusal now applies only when the CONFIGURATION (1) FALLBACK
+// fails. Those three rows -- the region registry and the owner table, all the per-step hash reads --
+// DO have an honest zero-spine answer, and mh.dll already computes it (seams/libmh_bind.cpp). So
+// with no libmh.dll they are bound out of mh.dll and the instrument arms spine-free (config1.h);
+// the other spine rows stay null, and harness.cpp guards or refuses-by-key every path to them.
+//
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
 #endif
@@ -61,6 +67,9 @@
 // deliberately includes none of this module's plumbing -- it is compiled by net_selftest.exe too,
 // where there is no boundary and no module.
 extern "C" void MH_Harness_SetModuleRefused(int refused);
+// mp:D29: the second thing this module tells that file -- "configuration (1): the spine-free
+// fallback rows are bound and nothing else of the spine is". Same shape and same reason as above.
+extern "C" void MH_Harness_SetSpineAbsent(int absent);
 
 namespace {
 // ZERO-INITIALISED PODs, every one -- see the static-constructor note above.
@@ -165,8 +174,22 @@ extern "C" int MH_HarnessModule_Init(const MH_HarnessModuleHost *host) {
                          "reads (a mismatched libmh.dll / mh_harness.dll pair)",
                          g_spine_rows, MH_HARNESS_SPINE_COUNT);
     } else {
-        spine_refuse("there is no libmh.dll in this process -- CONFIGURATION (1)", 0,
-                     MH_HARNESS_SPINE_COUNT);
+        // mp:D29 -- CONFIGURATION (1) ARMS SPINE-FREE. The per-step hash reaches three spine rows
+        // (the region registry and the owner table), and mh.dll defines all three with the
+        // configuration (1) answer. Bind them out of mh.dll -- its REAL table, the function its own
+        // readers call, never a copy -- and tell the instrument there is no spine, so it guards the
+        // call sites that could reach any other slot and refuses the keys that need one by name.
+        // Short of all three (a mismatched mh.dll that predates D29's exports) it is today's whole
+        // refusal, unchanged.
+        g_spine_rows = mh_harness_bind_config1();
+        if (g_spine_rows == MH_HARNESS_CONFIG1_FALLBACK_COUNT)
+            MH_Harness_SetSpineAbsent(1);
+        else
+            spine_refuse("there is no libmh.dll in this process -- CONFIGURATION (1) -- and mh.dll "
+                         "does not export the mp:D29 fallback rows (the region registry and owner "
+                         "table) the spine-free hash reads through (an mh.dll older than this "
+                         "mh_harness.dll)",
+                         g_spine_rows, MH_HARNESS_CONFIG1_FALLBACK_COUNT);
     }
     return (int)MH_HARNESS_MODULE_ABI;
 }

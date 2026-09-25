@@ -1,0 +1,44 @@
+# mp:U19j -- the gone-peer frame guard's rig proof, the OTHER SURVIVOR (client 1, rig VM B).
+#
+# Pair with mp_host_gpfg3.txt (that file's header carries the mechanism) and
+# mp_client_gpfg3_frozen.txt (the fenced peer, on the local det3 lane). This peer is NOT the leader
+# for the fenced peer (the host's slot 0 is), so its dispatch never re-broadcasts the drop -- it is
+# here to keep count_active_players at 2 after the drop, which is what keeps the leader in session
+# mode 3 while the fenced peer's later frames arrive.
+#
+# G271: `signal seated1` after `settled Cancel` is the host's barrier before it clicks Start.
+
+settled value:110
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+present Internet server
+settled Internet server
+clickl Internet server
+present Server address
+settled Connect
+clickl Connect
+sessions 1
+settled Join game
+clickl Join game
+
+present Network players
+occ 3
+lobbyping 2
+settled Cancel
+capture u19j_c1_lobby
+signal seated1
+
+# ---- the match -----------------------------------------------------------------------------------
+absent Network players
+gamemode 2
+gameclock 500
+awaitsignal freezing
+gameclock 8000
+
+# Same survivor clause as the host's (dead-ends G158).
+gamemode 2
+absent Continue game
+log CLIENT1 (survivor B) kept playing past the fenced peer's drop -- no outcome dialog
+end

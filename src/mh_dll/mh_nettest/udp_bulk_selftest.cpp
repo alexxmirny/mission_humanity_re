@@ -12,7 +12,7 @@
 // one process, each with its own socket and its own seeded `set_rx_loss`, gives a loss dial applied
 // exactly where the network would apply it -- and the counters to say what repaired what.
 //
-// ---- THE NINE ARMS -------------------------------------------------------------------------------
+// ---- THE TEN ARMS --------------------------------------------------------------------------------
 //
 // The first two need no sockets at all and run in milliseconds.
 //
@@ -59,6 +59,16 @@
 //                   record while channel C is saturated. Precise because both peers share one
 //                   clock -- the sender stamps the record and the receiver subtracts. The budget is
 //                   ONE endpoint tick, which is exactly what BULK_BURST spends.
+//   8. two joiners  mp:T2a (user decision, path B, 2026-09-23): channel C stays ONE transfer per
+//                   endpoint, no transfer id on the wire -- two joiners wanting the SAME content are
+//                   served by SERIALISING through the one slot. THREE endpoints (a host, two
+//                   joiners): the second start_send is refused while the first is active, and
+//                   accepted the instant it finishes, delivering the SAME payload to both,
+//                   hash-verified on each. Its mutation-red half needs no source mutation to prove:
+//                   `Channel::start_send` only clears `m_tx.active` on the SENDER when the RECEIVER's
+//                   own ack says every chunk landed, so nothing retries on its own -- a caller that
+//                   tried once and never again leaves the second joiner with NOTHING, proven by not
+//                   retrying and finding it still empty after the first transfer is entirely done.
 //
 // WHAT WOULD MAKE ARM 2 VACUOUS is the same trap udploopbacktest names: a loss dial that never fired
 // makes the lossy arm the clean arm wearing a label. So it asserts `dgram_dropped_sim > 0` and
@@ -189,9 +199,11 @@ void sink_reset() {
     memset(g_sink_have, 0, sizeof(g_sink_have));
 }
 
-// Drain the receiver's never-evictable lane into the sink. Returns how many chunks it took, so a
-// caller can tell "nothing arrived" from "nothing was waiting".
-int sink_drain(Endpoint &ep, uint32_t blob_len) {
+// Drain the receiver's never-evictable lane into an explicit sink+have pair. Returns how many
+// chunks it took, so a caller can tell "nothing arrived" from "nothing was waiting". Generalised
+// (mp:T2a) so the two-joiners arm can drain TWO receivers into two independent sinks without the
+// single-receiver arms above having to share a buffer with them.
+int sink_drain_into(Endpoint &ep, uint32_t blob_len, unsigned char *sink, bool *have) {
     int got = 0;
     for (;;) {
         uint32_t      id  = 0;
@@ -200,8 +212,8 @@ int sink_drain(Endpoint &ep, uint32_t blob_len) {
         if (!ep.bulk_recv(&id, tmp, &len)) return got;
         const uint32_t off = id * CHUNK_BYTES;
         if (off < blob_len && (uint32_t)len <= blob_len - off) {
-            memcpy(g_sink + off, tmp, (size_t)len);
-            g_sink_have[id] = true;
+            memcpy(sink + off, tmp, (size_t)len);
+            have[id] = true;
         }
         ++got;
     }
@@ -211,11 +223,19 @@ uint32_t chunks_of(uint32_t len) {
     return (len + CHUNK_BYTES - 1u) / CHUNK_BYTES;
 }
 
-bool sink_complete(uint32_t len) {
+bool sink_complete_arr(const bool *have, uint32_t len) {
     const uint32_t n = chunks_of(len);
     for (uint32_t i = 0; i < n; ++i)
-        if (!g_sink_have[i]) return false;
+        if (!have[i]) return false;
     return true;
+}
+
+int sink_drain(Endpoint &ep, uint32_t blob_len) {
+    return sink_drain_into(ep, blob_len, g_sink, g_sink_have);
+}
+
+bool sink_complete(uint32_t len) {
+    return sink_complete_arr(g_sink_have, len);
 }
 
 void print_bulk(const char *who, const Bulk &b) {
@@ -832,6 +852,119 @@ void pacing_arm(int base) {
            p95a, p95b, p95a + (long)mh::netudp::TICK_MS);
 }
 
+// ---- arm 8: mp:T2a -- ONE TRANSFER PER ENDPOINT, TWO JOINERS WANTING IT --------------------------
+//
+// USER DECISION (path B, 2026-09-23): channel C stays single-transfer, no transfer id on the wire --
+// two joiners wanting the SAME content are served by SERIALISING through the one slot, not by
+// multiplexing it. This arm is that contract end to end: a host with TWO admitted peers, both
+// needing the same blob, gets there one at a time.
+//
+// THE MUTATION-RED CLASS IS PROVEN WITHOUT MUTATING ANY SOURCE. `Channel::start_send` only ever
+// clears `m_tx.active` on the SENDER side when the RECEIVER's own ack reports every chunk landed
+// (udp_channel_c.cpp's `on_ack`) -- nothing in the module retries on its own. So "the caller retries"
+// (map_transfer.cpp's `host_pump_transfer`, called every host tick; udp_transport.cpp's
+// `MH_Net_SnapshotSend`, "the caller retries") is load-bearing BY CONSTRUCTION: a caller that tried
+// `bulk_send` to B exactly once, while A was active, and never tried again would leave B with nothing
+// FOREVER, not merely "not yet" -- proven here by draining B's channel for the whole of A's transfer
+// AND NOT RETRYING, and finding it empty even after A is completely done.
+Endpoint      g_host2, g_clA, g_clB;
+unsigned char g_sinkA[BLOB_MAX], g_sinkB[BLOB_MAX];
+bool          g_sinkA_have[BLOB_MAX / CHUNK_BYTES + 2], g_sinkB_have[BLOB_MAX / CHUNK_BYTES + 2];
+
+void two_cfg(Config &c, int role, int port, int player_id, unsigned short bind_port) {
+    memset(&c, 0, sizeof(c));
+    c.net.role = role;
+    lstrcpynA(c.net.host, "127.0.0.1", sizeof(c.net.host));
+    c.net.port          = port;
+    c.net.player_id     = player_id;
+    c.net.log           = 1;
+    c.net.host_assign   = 0; // explicit ids -- two joiners, distinct ids, no auto-assign race
+    c.net.ping_ms       = 200;
+    c.net.rx_timeout_ms = -1;
+    c.redundancy        = 3;
+    c.bind_port         = bind_port;
+}
+
+void two_joiners_arm(int base) {
+    const uint32_t len = 256u * 1024u; // smaller than the 1 MiB arms -- three endpoints, one purpose
+    printf("  -- two joiners, one payload, serialised through ONE channel-C slot (%u KiB, mp:T2a)\n",
+           len / 1024u);
+    blob_fill(len);
+    memset(g_sinkA, 0, sizeof(g_sinkA));
+    memset(g_sinkA_have, 0, sizeof(g_sinkA_have));
+    memset(g_sinkB, 0, sizeof(g_sinkB));
+    memset(g_sinkB_have, 0, sizeof(g_sinkB_have));
+
+    new (&g_host2) Endpoint();
+    new (&g_clA) Endpoint();
+    new (&g_clB) Endpoint();
+    g_host2.set_log(ub_log, nullptr);
+    g_clA.set_log(ub_log, nullptr);
+    g_clB.set_log(ub_log, nullptr);
+
+    Config ch, ca, cb;
+    two_cfg(ch, 0, base, 0, (unsigned short)base);
+    two_cfg(ca, 1, base, 1, (unsigned short)(base + 1));
+    two_cfg(cb, 1, base, 2, (unsigned short)(base + 2));
+    const bool up = g_host2.start(ch, UB_PSK, true) && g_clA.start(ca, UB_PSK, true) &&
+                    g_clB.start(cb, UB_PSK, true) &&
+                    wait_for([&] { return g_host2.peer_count() == 2; }, 10000);
+    checkf(up, "two joiners: host admitted both joiners (peers=%d)", g_host2.peer_count());
+    if (!up) {
+        g_host2.stop();
+        g_clA.stop();
+        g_clB.stop();
+        return;
+    }
+
+    checkf(g_host2.bulk_send(1, g_blob, len), "two joiners: A's transfer arms");
+
+    // THE REFUSAL, deterministic: A cannot have drained anything yet (nothing has ticked for it), so
+    // the second start_send is refused on a channel that is unambiguously still busy.
+    checkf(!g_host2.bulk_send(2, g_blob, len),
+           "two joiners: a second start_send (to B) is REFUSED while A's transfer is active (mp:T2a)");
+
+    // mp:T2a clause 3, the mutation-red shape -- proven by NOT retrying, not by breaking any source.
+    // Drive A all the way to completion while calling bulk_send(2, ...) exactly ZERO more times.
+    const bool a_done = wait_for(
+        [&] {
+            sink_drain_into(g_clA, len, g_sinkA, g_sinkA_have);
+            return sink_complete_arr(g_sinkA_have, len);
+        },
+        15000);
+    checkf(a_done, "two joiners: A received the whole payload");
+    checkf(memcmp(g_sinkA, g_blob, len) == 0,
+           "two joiners: A's payload is byte-identical to the sender's");
+    sink_drain_into(g_clB, len, g_sinkB, g_sinkB_have); // whatever might have reached B -- nothing should have
+    checkf(!sink_complete_arr(g_sinkB_have, len),
+           "two joiners: MUTATION-RED CLASS -- without a RETRIED start_send, B got NOTHING even "
+           "after A's entire transfer finished (this is what dropping the caller's retry does)");
+
+    // ...and the other half: the SAME channel, retried, accepts the second transfer once A is done.
+    const bool b_armed = wait_for([&] { return g_host2.bulk_send(2, g_blob, len); }, 5000);
+    checkf(b_armed, "two joiners: the RETRIED start_send (to B) is ACCEPTED once A's transfer finished");
+    const bool b_done = wait_for(
+        [&] {
+            sink_drain_into(g_clB, len, g_sinkB, g_sinkB_have);
+            return sink_complete_arr(g_sinkB_have, len);
+        },
+        15000);
+    checkf(b_done, "two joiners: B received the whole payload, one after the other");
+    checkf(memcmp(g_sinkB, g_blob, len) == 0,
+           "two joiners: B's payload is byte-identical to the sender's");
+
+    Bulk bA, bB;
+    g_clA.bulk_stats(bA);
+    g_clB.bulk_stats(bB);
+    checkf(bA.rx_sha_fail == 0 && bB.rx_sha_fail == 0,
+           "two joiners: no chunk failed its own SHA-256 on either joiner (%ld, %ld)", bA.rx_sha_fail,
+           bB.rx_sha_fail);
+
+    g_host2.stop();
+    g_clA.stop();
+    g_clB.stop();
+}
+
 } // namespace
 
 int run_udpbulktest(int port) {
@@ -852,7 +985,8 @@ int run_udpbulktest(int port) {
     lane_arm(base + 40);
     transfer_arm("synthetic (the `[net] bulk_selftest_mb` path)", base + 50, 64u * 1024u, 0, true,
                  30000);
-    pacing_arm(base + 60);
+    pacing_arm(base + 60);      // spans base+60..+66 (two phases, host+client each)
+    two_joiners_arm(base + 80); // mp:T2a -- three endpoints, its own band
 
     printf("=== udpbulktest: %d checks, %d failures ===\n", g_checks, g_fails);
     return g_fails ? 1 : 0;

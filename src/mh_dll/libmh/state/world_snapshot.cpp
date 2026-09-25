@@ -147,31 +147,10 @@ uint32_t hash_sink_fingerprint() {
     return static_cast<uint32_t>(h ^ (h >> 32));
 }
 
-uint32_t hash_manifest_fingerprint() {
-    uint32_t h   = 2166136261u;
-    auto     mix = [&h](uint32_t v) {
-        for (int i = 0; i < 4; ++i) {
-            h ^= static_cast<uint8_t>(v >> (i * 8));
-            h *= 16777619u;
-        }
-    };
-    mix(static_cast<uint32_t>(HASH_REGION_COUNT));
-    for (int i = 0; i < HASH_REGION_COUNT; ++i) {
-        const hash_region &r = HASH_REGIONS[i];
-        mix(static_cast<uint32_t>(r.rid));
-        mix(r.offset);
-        mix(r.len);
-        mix(r.excluded ? 1u : 0u);
-        // The NAME too: the manifest ORDER is a wire contract (mp_analyze labels its columns
-        // positionally), so a rename or a reorder that preserved every number still has to move
-        // this. An index is a position; a name is what the position meant.
-        for (const char *c = r.name; *c; ++c) {
-            h ^= static_cast<uint8_t>(*c);
-            h *= 16777619u;
-        }
-    }
-    return h;
-}
+// mp:D29: the definition moved to state/region_view.h as a COMPILE-TIME constant, so mh_harness can
+// print the same number in configuration (1), where this function does not exist. One definition,
+// returned here unchanged -- every blob stamp this function ever wrote is the same value.
+uint32_t hash_manifest_fingerprint() { return HASH_MANIFEST_FP; }
 
 // ---- the lockstep hash, folded exactly as the harness folds it -----------------------------------
 

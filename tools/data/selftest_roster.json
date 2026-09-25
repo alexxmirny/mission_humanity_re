@@ -56,6 +56,12 @@
       "why": "mp:U40 (2026-09-17). A client whose link died could never make another one in the same process: g_started latched true for the life of the process (MH_Net_Shutdown had been deleted at F4B for having no callers), so MH_Net_InitEx early-returned and the discovery poll's connect kick -- gated on !MH_Net_IsStarted() -- never fired again. Measured in the 2026-09-01 internet session: `handshake OK` appears EXACTLY ONCE in a 16-minute client log while the host re-advertised its new lobby to peers=0. This suite stages the link death with linktest's mute-peer trick and then asserts the two halves the rig cannot: a re-dial makes a genuinely NEW connection (a SECOND host-assigned WELCOME, counted by the host as a second accept), and a re-dial that FAILS leaves the transport stopped and retryable rather than wedged -- which is the S8 retry path the seam depends on."
     },
     {
+      "suite": "qmatchtest",
+      "exe": "net_selftest",
+      "checks": null,
+      "why": "ADDED 2026-09-23 (mp:U41b). The inbound-queue rollup is per MATCH, but its counters restarted only at net_reset -- the TRANSPORT boundary, which a host_rematch never crosses -- so a second match over one live link reported the first match's high-water as its own. One TCP link, two 'matches' separated by MH_Net_QueueMatchBoundary (what mp_session_close now calls): match 1 queues 20 frames, the boundary lands with 3 still queued, match 2 queues 5. The host asserts, under the lane lock: match 1's high-water reaches 20; right after the boundary the counters read the carried depth 3 (not 20, not 0), the 3 frames are still deliverable and the link is still up; match 2's high-water is its own 5. A no-op boundary fails the second read; one that called reset() fails the carry-over."
+    },
+    {
       "suite": "callstest",
       "exe": "net_selftest",
       "checks": 1238,
@@ -96,6 +102,12 @@
       "exe": "net_selftest",
       "checks": 101,
       "why": "ADDED 2026-09-12 (F1E). The in-memory static-patch applier and its REFUSALS -- a moved guarded byte, an image that already carries the patch, a site inside a promoted body, a cave VA that is taken. Same argument as interlocktest: each is about a write that must NOT happen, so a green rig run cannot stand in for it, and the applier's host table is injected so it touches no real image. Milliseconds."
+    },
+    {
+      "suite": "gpfgtest",
+      "exe": "net_selftest",
+      "checks": 18,
+      "why": "ADDED 2026-09-23 (mp:U19i). gone_peer_frame_guard's byte-patch carrier -- the REAL naked thunk net_lockstep.cpp splices over `call llm_net_send_lockstep_kick` @0x0049c330, driven with a fake buffer, a fake emitter that writes the kick's record where the real one does, and a fake dispatch frame. Both ways: the unspliced call damages U19g's datagram, the thunk leaves it byte-identical (and restores exactly min(len, 0x3f8), the reimpl guard's n). Mutation-checked: dropping the restore reds 4, reading len from the wrong frame slot reds 5. A config-(1) rig quit only ever shows one binary's behaviour; this shows both. Milliseconds."
     },
     {
       "suite": "tombstonetest",
@@ -266,10 +278,16 @@
       "why": "ADDED 2026-09-17 (mp:T1). The UDP transport's own oracle, and the only place two of its acceptance clauses can be STATED: ordered gap-free delivery under a loss rate 127.0.0.1 cannot produce, and the attribution of what repaired each loss. It prints a per-arm counter line rather than a check total, because the number that matters is `gap stalls 0` beside a non-zero synthetic-loss count, not how many assertions ran."
     },
     {
+      "suite": "uqmatchtest",
+      "exe": "net_selftest",
+      "checks": 9,
+      "why": "ADDED 2026-09-24 (mp:U41e). The udp twin of qmatchtest, proving mh_net_udp.dll's inbound-queue rollup + match-boundary epoch -- which until this item was a bare no-op (mp:U41c/G305: udp's '0 refusals' was never actually measured). Two endpoints on 127.0.0.1: the client floods the host with bare horizon adverts the host never drains, genuinely overflowing lane H's 4096-slot cap (evicted > 0, non-vacuous), then asserts Endpoint::queue_match_boundary() rolls the rollup into the log and restarts ONLY the per-match counters -- the epoch (lane_queue::epoch_, mh_net_queue_policy.h) advances by exactly 1 across the boundary and evicted/refused read 0 after it, over two boundaries on the SAME live link. MUTATION-CHECKED: commenting out queue_match_boundary()'s `m_lanes.reset_counters()` call reds exactly the 3 checks that name the reset (evicted/refused not restarted, both epoch checks); reverted after."
+    },
+    {
       "suite": "udpstatstest",
       "exe": "net_selftest",
-      "checks": 543,
-      "why": "ADDED 2026-09-18 (mp:T3). The link-measurement ARITHMETIC, with no link. Everything T3 adds is measured on a path, and a path is the one thing this machine cannot stage: each of T3's three rig clauses needs two VMs, net_shim.py in front of them and several minutes, and a red run cannot say whether the estimator, the sampler or the controller was wrong. So the arithmetic lives in an I/O-free header (src/mh_dll/mh_net_udp/udp_stats.h) and this suite pins it: RFC 6298 §2 rules 2.2 and 2.3 against hand-computed vectors (the rule-2.3 pair is also the MUTATION CHECK on the assignment order -- RTTVAR must use the OLD SRTT, so 47.5 passes and the swapped-order 46.25 does not); a synthetic 80 +/- 20 stream standing in for the shim, asserting the same 'SRTT within 10% of 80, RTTVAR non-zero' the rig clause asks for; a steady-link negative control where RTTVAR and IPDV must collapse; a 60/100 alternation that separates IPDV (a pair statistic, -> 40) from RTTVAR (deviation from the mean, -> 20); the probe table refusing an echo it never sent; the 256-packet loss window (complete -> 0 pm, 1-in-20 -> ~50 pm, an in-window REORDER -> 0, too few packets -> -1 rather than a confident 0); the lateness percentiles, including that tail95 is the LOW end under L0's positive-is-margin sign; and the adaptive controller's decision function driven through all four verdicts -- the 200 ms clause (grows on the FIRST decision, capped at a doubling), the hysteresis band, the three clean windows before the first 4% step, and a clean link settling EXACTLY on the configured minimum and staying there over 500 windows. Milliseconds; no socket, no rig."
+      "checks": 644,
+      "why": "ADDED 2026-09-18 (mp:T3). The link-measurement ARITHMETIC, with no link. Everything T3 adds is measured on a path, and a path is the one thing this machine cannot stage: each of T3's three rig clauses needs two VMs, net_shim.py in front of them and several minutes, and a red run cannot say whether the estimator, the sampler or the controller was wrong. So the arithmetic lives in an I/O-free header (src/mh_dll/mh_net_udp/udp_stats.h) and this suite pins it: RFC 6298 §2 rules 2.2 and 2.3 against hand-computed vectors (the rule-2.3 pair is also the MUTATION CHECK on the assignment order -- RTTVAR must use the OLD SRTT, so 47.5 passes and the swapped-order 46.25 does not); a synthetic 80 +/- 20 stream standing in for the shim, asserting the same 'SRTT within 10% of 80, RTTVAR non-zero' the rig clause asks for; a steady-link negative control where RTTVAR and IPDV must collapse; a 60/100 alternation that separates IPDV (a pair statistic, -> 40) from RTTVAR (deviation from the mean, -> 20); the probe table refusing an echo it never sent; the 256-packet loss window (complete -> 0 pm, 1-in-20 -> ~50 pm, an in-window REORDER -> 0, too few packets -> -1 rather than a confident 0); the lateness percentiles, including that tail95 is the LOW end under L0's positive-is-margin sign; and the adaptive controller's decision function driven through all four verdicts -- the 200 ms clause (grows on the FIRST decision, capped at a doubling), the hysteresis band, the three clean windows before the first 4% step, and a clean link settling EXACTLY on the configured minimum and staying there over 500 windows. Milliseconds; no socket, no rig. Section (o), ADDED 2026-09-24 (mp:P15): the warm-up ping cadence's own precondition (>= 3 samples within 1 s of admission) driven through the SAME pure function (udp_ping_cadence.h's `ping_due`) timer_loop() calls, not a re-derivation -- MUTATION-CHECKED (forcing FAST_PING_WINDOW_MS to 0 reds exactly the one check naming the sample count; reverted after)."
     },
     {
       "suite": "udprelinktest",

@@ -190,6 +190,11 @@
       "why": "mp:P10: says from a pacing run's own mh_net.log WHICH mh.dll it ran -- re-evaluates the grow gate's condition (tail95 < 0.5*sim_step AND slack - owd > 0.5*sim_step AND owd >= 0) off the numbers the `; [adaptive]` line printed, and a window that grew under it is proof the gate was absent. Nothing else a run reports can tell the two builds apart: mp_pacing_report's `armed` line reads the INI, which is identical either way.",
       "evidence": "hand-run beside mp_pacing_report.py on a --determinism run dir. Written 2026-09-22 after a source restore without a rebuild silently ran two rig arms on the previous binary (docs/dead-ends.md G283); re-running it over the whole run set separated the builds cleanly (6 pre-fix dirs GATE ABSENT, every post-fix dir GATE PRESENT or NOT EXERCISED)."
     },
+    "check_map_redirect.py": {
+      "class": "keep",
+      "why": "mp:X2a -- the open-redirect witnessed for REAL on the two independent rig VMs: reuses check_map_transfer's --expect-gate wholesale for the claim/gate/download/unchanged-file clauses, then additionally reads the `; [map] client resolve stored mh_dl\\... -- redirecting ... to it` line, which a local lane's shared-Maps symlink can never make load-bearing (its base file IS the host's content) but X2a's genuinely mutated client copy does",
+      "evidence": "invoked by tools/test_ui.py's run_x2a_map_variant (--x2a-map-variant) and tools/lint_repo.py (--selftest)"
+    },
     "check_map_transfer.py": {
       "class": "keep",
       "why": "mp:X2 -- the two peers agreed about a map they disagreed about: the host claimed content, the joiner stored it under the content-addressed name outside the map directory, its own file is byte-unchanged, and the host held Start meanwhile. Needs BOTH peers logs, so a single-lane checker could only ever report half the claim",
@@ -230,10 +235,25 @@
       "why": "mp:GX1: our DLL-native overlays (mh/seams/gfx_overlay.cpp, mh/seams/ui_net_indicator.cpp) must not smear on the ground layer's damage map -- reads a `capture <name>` pair off a UI-suite run and asserts pixels matching the overlay's OWN configured text colour are present where a wider/taller earlier frame drew them and absent once a narrower/shorter later frame no longer does. Colour-match, not a luminance threshold (a threshold false-positived on live strategic-ground terrain art, which crosses the same brightness bar as the overlay's own text).",
       "evidence": "invoked by tools/test_ui.py's gx1_overlay_residue TESTS entry (post_check) and tools/lint_repo.py (--selftest, 6 synthetic arms incl. the colour-blindness regression)"
     },
+    "check_p6_gap.py": {
+      "class": "keep",
+      "why": "mp:P6: the p6_loser_gap UI scenario's post_check -- reads the host's and client's own `on_gameover ENTER` lines (winner/loser outcomes must differ), anchors each peer's own mh_frametime.log qpc_us to wall-clock the same way tools/mp_analyze.py's find_lobby_clip_qpc does (via that peer's own boot-session \"present hook armed\" line), and asserts (a) the host's own D21 in-band desync watch shows 0 mismatching over a non-vacuous compared-sample count (ALL PAIRS IDENTICAL) and (b) both the client's (loser's) and the host's (winner's) own longest present-to-present gap in the window [host's own outcome, client's own outcome] are under the bound -- the endgame-sync grace's (net_lockstep.cpp HB_ENDGAME_GRACE_MS) real, measured cost.",
+      "evidence": "invoked by tools/test_ui.py's p6_loser_gap TESTS entry (post_check, post_check_peers, post_check_session) and tools/lint_repo.py (--selftest, 10 synthetic arms)"
+    },
     "check_publishable.py": {
       "class": "keep",
       "why": "fork F5A: every tracked path carries exactly one publish disposition",
       "evidence": "invoked by tools/lint_repo.py"
+    },
+    "check_queue_rollups.py": {
+      "class": "keep",
+      "why": "mp:U41b -- two matches over one live link must write two per-match inbound-queue rollups, the second not inheriting the first's high-water or counters; reads each peer's process mh_net.log",
+      "evidence": "invoked by tools/lint_repo.py (--selftest, the planted negative cases) and by tools/test_ui.py (rematch_rollup post_check_peers)"
+    },
+    "check_gone_peer_guard.py": {
+      "class": "keep",
+      "why": "mp:U19j: the `--u19j-gpfg3` 3-peer shape's verdict -- in CONFIGURATION (1) the gone-peer frame guard's byte-patch carrier (the splice over llm_net_lockstep_dispatch's kick re-broadcast @0x0049c330) FIRED on the leader after a frame arrived from a peer the survivors had already dropped, and both survivors kept playing; its --expect-red twin passes (XFAIL) only when the gone_peer_frame_guard=0 arm went red on exactly that garbled frame (outcome 7 raised inside lockstep)",
+      "evidence": "invoked by tools/test_ui.py's run_u19j_gpfg3 (--u19j-gpfg3 / --u19j-gpfg3-unguarded) and tools/lint_repo.py (--selftest)"
     },
     "check_quit_survivors_3peer.py": {
       "class": "keep",
@@ -279,6 +299,11 @@
       "class": "keep",
       "why": "mp:P9: the match_launch_net / resync_storm_repro UI scenarios' cross-peer post_check -- a configuration-(1) pair (libmh.dll omitted) must carry resync_trigger_gate through the re-instated byte patches (`; resync-trigger gate: 2/2 INC sites patched`, no UNCARRIED FIX line, zero `[resync] force_resync FIRED` over >= 1000 steps with the D21 desync watch agreeing); the ungated reproduction arm must show the storm (>= 3 FIRED lines)",
       "evidence": "invoked by tools/test_ui.py's match_launch_net and resync_storm_repro TESTS entries (post_check, post_check_peers, post_check_session) and tools/lint_repo.py (--selftest)"
+    },
+    "check_sim_rate.py": {
+      "class": "keep",
+      "why": "mp:P13: the sim rate of every peer, read off mh_lockstep.log (d clock / d wall after a 5 s warm-up, the worst 30 s window, mode-8 barrier rows) -- P13's done_when asks for the rate to be read by a checker, not eyeballed; the tested successor of the ad-hoc tmp/wave2_rig/rate.py",
+      "evidence": "invoked by tools/lint_repo.py (--selftest, planted tables) and tools/test_ui.py's p13_rate_180 TESTS entry (post_check, post_check_peers, post_check_session); the selftest's (whole / window / mode-8 / too-short / missing-log negatives, each clause mutation-checked 2026-09-24)"
     },
     "check_roster_caps.py": {
       "class": "keep",
@@ -919,6 +944,11 @@
       "why": "builds a parallel rig test-lane install",
       "evidence": "used by check_inmem_patch_parity.py, gate_timeline.py, mp_run.py, test_ui.py, ui_test.py"
     },
+    "map_variant.py": {
+      "class": "keep",
+      "why": "mp:T5/X2a -- makes a map file's content differ from a base copy (same name, same length) so a rig lane can never already hold the map by the game's content-hash check; also a standalone --check offline arm",
+      "evidence": "imported by make_lane.py's --map-variant option"
+    },
     "materialize_fnptr_refs.py": {
       "class": "archive",
       "why": "Ghidra function-pointer reference materializer",
@@ -1118,8 +1148,7 @@
     "run_gate.py": {
       "class": "keep",
       "why": "overlapped DLL-gate driver (unit list needs pruning)",
-      "evidence": "no machine invoker -- run by a human -- this IS the gate driver, the root of everything below it; documented in .claude/skills/ui-testing/SKILL.md",
-      "hand_run": true
+      "evidence": "run by a human -- this IS the gate driver, the root of everything below it; documented in .claude/skills/ui-testing/SKILL.md -- and invoked by tools/lint_repo.py (--selftest, its cost red rules)"
     },
     "run_selftests.py": {
       "class": "keep",
@@ -1200,6 +1229,12 @@
       "class": "archive",
       "why": "AI-state save indexer for migration scenario coverage",
       "evidence": "F0 triage (docs/fork-inventory.md section 1): the migration / promotion / ledger machinery the fork drops"
+    },
+    "t3g_lookahead_replay.py": {
+      "class": "keep",
+      "why": "mp:T3g: alternate-history replay of lookahead_decide (the pre-T3c 9b0d758a era and the current one, hand-ported) against a run's mh_lockstep.log -- a negative result (best 40% off the 10% bar: the log's row cadence cannot reconstruct the per-frame median + binding-peer OWD) kept for the next controller comparison",
+      "evidence": "no machine invoker -- hand-run by an analyst comparing controller eras; cited by docs/mp-latency.md section 3.2c",
+      "hand_run": true
     },
     "tact_divergence_hunt.py": {
       "class": "keep",

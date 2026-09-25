@@ -32,6 +32,7 @@
 #include "hook/watcall.h"                // call_watcall1 (Watcom __watcall(EAX) bridge)
 #include "ui/lobby_ui.h"                 // mp:R4a -- browser_notice_arm_relay (the relay-level notice)
 #include "desync/desync_watch.h"         // mp:RM1 -- match_end(): the [desync] rollup into the match's own directory
+#include "seams/session_close_plan.h"    // TL-HARN-CLEANCLOSE -- the close's sequencing, shared with the harness stop
 
 #pragma comment(lib, "user32.lib") // wsprintfA
 
@@ -394,6 +395,10 @@ namespace {
 
 MH_SessionRecord g_session_rec;
 
+// TL-HARN-CLEANCLOSE: shared by mp_session_close and the harness's stop-step entry
+// (MH_Session_HarnessStop). The sequencing lives in seams/session_close_plan.h.
+mh::session_close::state g_close_state;
+
 // mp:SES4: the module that actually BOUND, not the ini value -- this used to be a bare `return
 // "tcp"` regardless of what mh.dll loaded, so every 2026-09-20 session's session.json read
 // `transport=tcp` while the wire it actually ran was udp (the shipping default since that date;
@@ -481,6 +486,7 @@ void mp_session_open(const unsigned char *match_id, int slot) {
                  "output stays in the process folder (no logs are lost)\n");
         return;
     }
+    mh::session_close::on_open(g_close_state); // TL-HARN-CLEANCLOSE: a new session has no record yet
     mh_session_record_clear(&g_session_rec);
     mh_sd_copy(g_session_rec.match_id, MH_SESSION_MATCH_HEX_CAP, hex);
     g_session_rec.slot = slot;
@@ -554,14 +560,44 @@ void host_reset_identity();
 
 } // namespace
 
-void mp_session_close(const char *reason) {
-    if (!MH_RunDir_SessionActive()) return; // idempotent: only the first exit seam does the work
+namespace {
+
+// ---- the close's four actions, bound into seams/session_close_plan.h (TL-HARN-CLEANCLOSE) ---------
+//
+// Split out of mp_session_close's body so a SECOND entry -- the harness's stop step -- can run the
+// record without the directory switch; the plan header carries why. Each is the pre-split code
+// verbatim, in the pre-split order.
+
+bool close_session_active() { return MH_RunDir_SessionActive() != 0; }
+bool close_net_started() { return MH_Net_IsStarted() != 0; }
+
+void close_resets() {
     // F3c: the session's codepage was the host's; ours comes back with the session's end. Idempotent
     // and a no-op on the host (which never adopts), so it sits on the one funnel every exit uses.
     MH_ChatInput_RestoreCodepage();
     // The per-peer download bookkeeping and the host's content claim belong to the lobby that just
     // ended. The OPEN REDIRECT deliberately survives it -- see session_reset().
     mh::seams::maps::session_reset();
+}
+
+// mp:RM1 + mp:U41b: the two end-of-match rollups. Shared by the record and by the harness stop's
+// no-session case, so the two cannot drift into different lines.
+void close_rollups() {
+    // mp:RM1: the [desync] detector's rollup for THIS match, into THIS match's directory. It used to
+    // be written only at the next session_begin_multi (into the next match's folder, and never for
+    // a process's last match), so a gate on "game 2 compared >= 1 with 0 mismatching" had nothing
+    // to read. Before SESSION_END for the same reason the line below is: the directory switch is
+    // the next statement but two.
+    mh::desync::match_end();
+    // mp:U41b/U41e: the inbound-queue rollup is per MATCH, and this is the match boundary -- not the
+    // transport's, which a host_rematch never crosses (the link stays up). The module logs this
+    // match's rollup and restarts its counters, keeping anything still queued -- on EITHER transport
+    // since mp:U41e (mh_net_udp.dll used to carry no lane counters at all, mp:U41c/G305). A no-op
+    // only with no module bound.
+    MH_Net_QueueMatchBoundary();
+}
+
+void close_record(const char *reason) {
     mh_sd_copy(g_session_rec.reason, MH_SESSION_TEXT_CAP, (reason && reason[0]) ? reason : "unknown");
     MH_RunDir_UtcStamp(g_session_rec.ended_utc, MH_SESSION_STAMP_CAP);
     // RE-SAMPLE THE ROSTER. At the OPEN it is usually empty and that is not a bug: the host mints its
@@ -573,18 +609,16 @@ void mp_session_close(const char *reason) {
     session_roster(g_session_rec.roster, MH_SESSION_ROSTER_CAP);
     MH_Seam_SessionPacing(&g_session_rec.final_clock_ms, &g_session_rec.stall_count,
                           &g_session_rec.icon_calls, &g_session_rec.icon_shown, nullptr, nullptr);
-    // mp:RM1: the [desync] detector's rollup for THIS match, into THIS match's directory. It used to
-    // be written only at the next session_begin_multi (into the next match's folder, and never for
-    // a process's last match), so a gate on "game 2 compared >= 1 with 0 mismatching" had nothing
-    // to read. Before SESSION_END for the same reason the line below is: the directory switch is
-    // the next statement but two.
-    mh::desync::match_end();
+    close_rollups();
     char line[MH_SESSION_LINE_CAP];
     mh_session_end_line(&g_session_rec, line, (int)sizeof(line));
-    seam_log(line);       // still the SESSION directory -- the switch is the next statement
+    seam_log(line);       // still the SESSION directory -- the switch (if any) comes after
     session_json_write(); // ...and so is this
-    MH_RunDir_SessionEnd();
+}
 
+void close_end_dir() { MH_RunDir_SessionEnd(); }
+
+void close_tail(const char *reason) {
     // U40: ...and now the transport/identity half of the same boundary. AFTER SESSION_END, so its
     // own log lines belong to the run folder the next match will use, not to the one just closed.
     // Manual path only: the force-entry/harness path owns its own transport and never re-hosts.
@@ -607,6 +641,45 @@ void mp_session_close(const char *reason) {
     } else {
         client_relink_arm();
     }
+}
+
+const mh::session_close::ops CLOSE_OPS = {
+    close_session_active,
+    close_net_started,
+    close_resets,
+    close_record,
+    close_end_dir,
+    close_tail,
+    close_rollups,
+    mh::desync::stop_sampling,
+};
+
+} // namespace
+
+void mp_session_close(const char *reason) {
+    // Idempotent: only the first exit seam on an open session does the work. A session the harness
+    // already closed IN PLACE (MH_Session_HarnessStop below) gets its directory switch, the resets
+    // and U40 here, but no second record.
+    mh::session_close::close(g_close_state, CLOSE_OPS, reason);
+}
+
+// TL-HARN-CLEANCLOSE: the determinism harness's end of a match (mh_harness.dll, harness.cpp's
+// stop-step block, AFTER the last hashed step and its flush). Closes the open session IN PLACE --
+// the same record, rollups and SESSION_END as a real exit seam, into the same directory, without
+// the directory switch -- because the runner, not the game, ends a determinism run: it kills the
+// process from outside, which no exit seam survives. The plan header says why the directory stays
+// and what the force-entry (no-session) case writes instead. Main thread only (the sim-step detour).
+// NOT from DllMain / DLL_PROCESS_DETACH: this writes files and takes the transport's queue lock,
+// which is exactly what mh.c's deliberately-empty detach arm forbids.
+extern "C" void MH_Session_HarnessStop(unsigned step) {
+    const mh::session_close::stop_result r =
+        mh::session_close::harness_stop(g_close_state, CLOSE_OPS, "harness_stop");
+    char b[256];
+    wsprintfA(b,
+              "; [session] HARNESS_STOP step=%u close=%s -- the harness stopped hashing; the match's "
+              "end-of-match lines are written now because the runner ends this process from outside\n",
+              step, mh::session_close::stop_result_name(r));
+    seam_log(b);
 }
 
 namespace {

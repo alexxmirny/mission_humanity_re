@@ -53,7 +53,10 @@
 #include <string.h>
 #include <stdlib.h>
 
-#include "../mh_net_udp/udp_endpoint.h" // mp:T1b -- the UDP core, for udprelinktest (see there)
+#include "../mh_net_udp/udp_endpoint.h"     // mp:T1b -- the UDP core, for udprelinktest (see there)
+#include "../mh_net_udp/lookahead_start.h"  // mp:P14 -- the seeded start, udpstatstest (n)
+#include "../mh_net_udp/udp_ping_cadence.h" // mp:P15 -- the warm-up cadence, udpstatstest (o)
+#include "../mh/seams/adaptive_window.h"    // mp:P15 wave 7 -- first-window start + post-spin starved, (p)
 #include "mh_net_export.h"
 #include "mh_seam_export.h"
 #include "selftest_dispatch.h"                // F5I: the suite table mechanism, shared with libmh_test
@@ -61,6 +64,7 @@
 #include "../libmh/state/host_api.h"          // LIB-ABI: libmh_set_host_api
 #include "../mh/include/mh_libmh_hook_bind.h" // F4D-PRE: MH_LibMH_BindHookApi
 #include "../mh/addr/mh_rebind.gen.h"         // LIB-REBIND R11: load_gates(nullptr) in main()
+#include "../mh/addr/mh_addrs.gen.h"          // TL-TEST1: the fixed VAs the seamtest tripwire watches
 #include "mh_mpmenu_export.h"
 #include "mh_launch_export.h"
 
@@ -200,6 +204,33 @@ static int run_launchtest() {
         printf("  [%s] cl='%s' -> verb=%d arg='%s' skip=%d (want verb=%d arg='%s' skip=%d)\n",
                pass ? "ok" : "FAIL", cases[i].cl, v, arg, skip, cases[i].verb, cases[i].arg, cases[i].skip);
         if (!pass) ok = 0;
+    }
+    // mp:U21 -- the --skip-intro teardown must not run while the LOGO.AVI audio thread can still be
+    // inside CreateSoundBuffer reading the format block the teardown frees. Row 0 is the state the
+    // rig measured on 45/45 boots of peer B at frame 2 (stream + dsound, no buffer yet, thread alive,
+    // 0 ms waited): it MUST wait -- the old hook tore down there and crashed dsound.dll+0x1f3a3.
+    struct Skip {
+        int         stream, ds, dsbuf, pcm, alive;
+        unsigned    waited;
+        int         want;
+        const char *why;
+    };
+    static const Skip skips[] = {
+        {1, 1, 0, 0, 1, 0, MH_INTRO_SKIP_WAIT, "frame 2: thread in CreateSoundBuffer (the U21 race)"},
+        {1, 1, 1, 0, 1, 5, MH_INTRO_SKIP_WAIT, "buffer made, PCM block not yet"},
+        {1, 1, 0, 1, 1, 5, MH_INTRO_SKIP_WAIT, "PCM without buffer: still not settled"},
+        {1, 1, 1, 1, 1, 20, MH_INTRO_SKIP_GO, "buffer + PCM: past the format read"},
+        {1, 1, 0, 0, 0, 0, MH_INTRO_SKIP_GO, "thread already gone (create failed)"},
+        {0, 1, 0, 0, 1, 0, MH_INTRO_SKIP_GO, "movie has no audio stream"},
+        {1, 0, 0, 0, 1, 0, MH_INTRO_SKIP_GO, "no IDirectSound: format never read"},
+        {1, 1, 0, 0, 1, 1999, MH_INTRO_SKIP_WAIT, "just under the cap"},
+        {1, 1, 0, 0, 1, 2000, MH_INTRO_SKIP_TIMEOUT, "cap hit: never hang the skip"},
+    };
+    for (int i = 0; i < (int)(sizeof(skips) / sizeof(skips[0])); ++i) {
+        const Skip &k   = skips[i];
+        int         got = MH_Launch_IntroSkipReady(k.stream, k.ds, k.dsbuf, k.pcm, k.alive, k.waited, 2000u);
+        printf("  [%s] intro-skip %s -> %d (want %d)\n", got == k.want ? "ok" : "FAIL", k.why, got, k.want);
+        if (got != k.want) ok = 0;
     }
     if (ok) {
         printf("=== PASS: launch CLI grammar decoded correctly ===\n");
@@ -416,7 +447,26 @@ static unsigned int  g_mock_crc_c  = 0xffffffff;
 static unsigned int  g_mock_len    = 0;
 static int           g_mock_ishost = 1, g_mock_lpi = 0;
 
-static void seam_point_at_mock() {
+// tooling:TL-TEST1 -- WHY THE CHILDREN CRASHED, and the two rules that keep them from doing it again.
+// Every address MH_Seam_Send / MH_Seam_PollRecv touches defaults to a FIXED mh.exe VA (net_seams.cpp
+// g_a; _G_LLM_LOBBY_SLOTS for the N2 guard). In this exe those VAs are whatever ASLR put there: inside
+// our own 122 MB .data when the image loads low (plain build, base 0x00290000 measured 2026-09-24 --
+// the read returns an unrelated global of ours), unmapped or ASan-reserved otherwise (the historical
+// "0xC0000005 in one of the two children, which one varies"). Measured 2026-09-24 at 7d2864d5:
+//   * the CLIENT never pointed g_a at a mock, so MH_Seam_Send read the real LOCAL_PLAYER_INDEX
+//     (0x005d55ac) -- ASan: `access-violation on unknown address 0x005d55ac ... run_seam_client`.
+//     RULE 1: BOTH children call seam_point_at_mock() before the first seam call.
+//   * the HOST's test packet was a 0x0c slot push, which since mp:N2 goes through the "is the sender
+//     seated" guard -- a read of mh::addr::_G_LLM_LOBBY_SLOTS that MH_SeamAddrs cannot redirect. Plain
+//     build: it read our own zeroed .data, found nobody seated, DROPPED the packet -> host TIMEOUT 8/8.
+//     RULE 2: the test packet is a type PollRecv does not intercept (0x0b/0x0c = N2, 0x0e = host-left,
+//     0x17 = R6 hello hold, 0x21 = map), so the path under test is exactly the framing + tagging one.
+//     The N2 drop itself is not covered here; it needs a redirectable slot table (see TL-TEST1).
+constexpr unsigned char SEAM_TEST_TYPE = 0x10; // not intercepted by MH_Seam_PollRecv
+
+static void seam_point_at_mock(int is_host, int local_player_index) {
+    g_mock_ishost = is_host;
+    g_mock_lpi    = local_player_index;
     memset(g_mock, 0xAA, sizeof(g_mock)); // poison, so we can see the zero-fill + copy
     MH_SeamAddrs a;
     a.rx_type            = g_mock;
@@ -427,6 +477,88 @@ static void seam_point_at_mock() {
     a.local_player_index = &g_mock_lpi;
     a.is_host            = &g_mock_ishost;
     MH_Seam_SetAddrs(&a);
+}
+
+// THE TRIPWIRE -- what makes RULES 1-2 checkable on every layout. Without it a stray fixed-VA access
+// is layout-dependent: an AV when the VA is unmapped, but a SILENT read of one of our own globals when
+// ASLR loads the 122 MB image over it (a mutation that dropped RULE 1 passed 3/3 under ASan that way).
+// Hardware data breakpoints fire on the ADDRESS whatever is (or is not) mapped there, so the four
+// fixed VAs the seam would touch unmocked are watched on the seam child's main thread -- the only
+// thread that calls the seam -- and any access fails the child with the VA named.
+// Positive control first: a watch that is not honoured (DRs unavailable) fails loudly, never passes.
+static volatile LONG  g_trip_hits = 0;
+static volatile DWORD g_trip_va   = 0;
+static volatile int   g_trip_control; // the positive-control target
+static LONG CALLBACK  seam_trip_veh(EXCEPTION_POINTERS *ep) {
+    if (ep->ExceptionRecord->ExceptionCode != EXCEPTION_SINGLE_STEP) return EXCEPTION_CONTINUE_SEARCH;
+    CONTEXT *c   = ep->ContextRecord;
+    DWORD    dr6 = c->Dr6;
+    if (!(dr6 & 0xF)) return EXCEPTION_CONTINUE_SEARCH;
+    DWORD va = (dr6 & 1) ? c->Dr0 : (dr6 & 2) ? c->Dr1
+                                 : (dr6 & 4)   ? c->Dr2
+                                               : c->Dr3;
+    if (InterlockedIncrement(&g_trip_hits) == 1) g_trip_va = va;
+    c->Dr6 = 0;
+    return EXCEPTION_CONTINUE_EXECUTION;
+}
+// DR7: local-enable bit 2i; R/W bits 16+4i = 11 (read or write); LEN bits 18+4i (00=1, 01=2, 11=4).
+static bool seam_trip_set(const DWORD va[4], const int len[4]) {
+    CONTEXT c;
+    memset(&c, 0, sizeof(c));
+    c.ContextFlags = CONTEXT_DEBUG_REGISTERS;
+    DWORD dr7      = 0;
+    for (int i = 0; i < 4; ++i) {
+        if (!va[i]) continue;
+        DWORD l = (len[i] == 4) ? 3u : (len[i] == 2) ? 1u
+                                                     : 0u;
+        dr7 |= (1u << (2 * i)) | (3u << (16 + 4 * i)) | (l << (18 + 4 * i));
+    }
+    c.Dr0 = va[0];
+    c.Dr1 = va[1];
+    c.Dr2 = va[2];
+    c.Dr3 = va[3];
+    c.Dr7 = dr7;
+    return SetThreadContext(GetCurrentThread(), &c) != 0;
+}
+static bool seam_trip_arm(const char *who) {
+    static PVOID veh = nullptr;
+    if (!veh) veh = AddVectoredExceptionHandler(1, seam_trip_veh);
+    const DWORD ctl_va[4]  = {(DWORD)(uintptr_t)&g_trip_control, 0, 0, 0};
+    const int   ctl_len[4] = {4, 0, 0, 0};
+    g_trip_hits            = 0;
+    if (!veh || !seam_trip_set(ctl_va, ctl_len)) {
+        printf("%s FAIL tripwire: could not set debug registers (err %lu)\n", who, GetLastError());
+        return false;
+    }
+    int v = g_trip_control; // must trip
+    (void)v;
+    if (g_trip_hits != 1) {
+        printf("%s FAIL tripwire positive control: %ld hits on a watched read (want 1)\n", who, g_trip_hits);
+        return false;
+    }
+    // The four fixed mh.exe VAs an UNMOCKED seam touches first (all naturally aligned for their LEN).
+    const DWORD va[4]  = {(DWORD)mh::addr::_G_LLM_NET_LOCAL_PLAYER_INDEX, // MH_Seam_Send's self index
+                          (DWORD)mh::addr::_G_LLM_NET_IS_HOST,            // PollRecv's role gates
+                          (DWORD)mh::addr::_G_LLM_LOBBY_SLOTS + 1,        // N2: slot 0's player_id
+                          (DWORD)mh::addr::lobby_rx_type};                // PollRecv's copy target
+    const int   len[4] = {4, 4, 4, 2};
+    g_trip_hits        = 0;
+    g_trip_va          = 0;
+    if (!seam_trip_set(va, len)) {
+        printf("%s FAIL tripwire: could not arm the fixed-VA watches (err %lu)\n", who, GetLastError());
+        return false;
+    }
+    return true;
+}
+// 0 = clean; otherwise the child's failure code, with the VA named.
+static int seam_trip_verdict(const char *who) {
+    const DWORD none[4] = {0, 0, 0, 0};
+    const int   nl[4]   = {0, 0, 0, 0};
+    seam_trip_set(none, nl);
+    if (g_trip_hits == 0) return 0;
+    printf("%s FAIL touched fixed mh.exe VA 0x%08lx (%ld hit(s)) -- a seam address the mock does not cover\n",
+           who, g_trip_va, g_trip_hits);
+    return 7;
 }
 
 static int run_seam_host(int port) {
@@ -440,13 +572,14 @@ static int run_seam_host(int port) {
         printf("[seamhost] init failed\n");
         return 2;
     }
-    seam_point_at_mock();
+    seam_point_at_mock(/*is_host=*/1, /*local_player_index=*/0);
+    if (!seam_trip_arm("[seamhost]")) return 6;
     printf("[seamhost] listening; polling seam...\n");
     for (int t = 0; t < 500; ++t) {
         int r = MH_Seam_PollRecv();
         if (r == SEAM_RX_SIZE) {
             int ok = 1;
-            if (g_mock[0] != 0x0c) {
+            if (g_mock[0] != SEAM_TEST_TYPE) {
                 printf("[seamhost] FAIL type=%02x\n", g_mock[0]);
                 ok = 0;
             }
@@ -472,10 +605,14 @@ static int run_seam_host(int port) {
             }
             printf("[seamhost] recv type=0x%02x sender=%d payload='%.8s' len=%u\n",
                    g_mock[0], g_mock_sender, g_mock + 5, g_mock_len);
+            int trip = seam_trip_verdict("[seamhost]");
+            if (trip) return trip;
             return ok ? 0 : 1;
         }
         Sleep(10);
     }
+    int trip = seam_trip_verdict("[seamhost]");
+    if (trip) return trip;
     printf("[seamhost] TIMEOUT\n");
     return 3;
 }
@@ -497,14 +634,17 @@ static int run_seam_client(int port) {
         printf("[seamcli]  never connected\n");
         return 3;
     }
+    seam_point_at_mock(/*is_host=*/0, /*local_player_index=*/1); // RULE 1 (see seam_point_at_mock)
+    if (!seam_trip_arm("[seamcli] ")) return 6;
     unsigned char pkt[16];
-    pkt[0] = 0x0c;                            // type: client slot-state push
+    pkt[0] = SEAM_TEST_TYPE;                  // RULE 2: a type PollRecv delivers without interception
     pkt[1] = pkt[2] = pkt[3] = pkt[4] = 0xEE; // garbage CRC field -- receiver ignores it
     memcpy(pkt + 5, "SLOTDATA", 8);
-    MH_Seam_Send(0, 0, pkt, 13); // mode 0 = unicast to dest player 0 (host)
-    printf("[seamcli]  sent slot-push (0x0c) to host\n");
+    MH_Seam_Send(0, 0, pkt, 13); // mode 0, dest 0 != our index 1 -> unicast to the host
+    int trip = seam_trip_verdict("[seamcli] ");
+    printf("[seamcli]  sent type 0x%02x to host\n", SEAM_TEST_TYPE);
     Sleep(400);
-    return 0;
+    return trip;
 }
 
 static int run_seamtest(int port) {
@@ -866,6 +1006,207 @@ static int run_relinktest(int port) {
     if (hc == 0 && cc == 0) {
         printf("=== PASS: the link died, the client re-dialled, the host accepted a SECOND connection, "
                "and a failed relink stays retryable ===\n");
+        return 0;
+    }
+    printf("=== FAIL ===\n");
+    return 1;
+}
+
+// ---- qmatchtest: TWO MATCHES OVER ONE LIVE LINK (mp:U41b) ----------------------------------------
+// The inbound-queue rollup is per MATCH, but until U41b the counters restarted only at net_reset --
+// the TRANSPORT boundary -- which a host_rematch never crosses. This suite keeps ONE TCP link up and
+// plays two "matches" over it, separated by MH_Net_QueueMatchBoundary (what mp_session_close calls):
+// match 1 queues 20 frames, the boundary lands with 3 still queued, match 2 queues 5. Asserted on
+// the host, reading the lanes under their lock: match 1's high-water reaches 20; right after the
+// boundary the counters read the carried-over depth (3), not 20 and not 0, the 3 frames are still
+// there and the link is still up; match 2's high-water is its own 5. A boundary that did nothing
+// fails the second read; one that called reset() (the transport boundary) fails the carry-over.
+//
+// mp:U41d -- THE EPOCH. `epoch` is a marker ONLY MH_Net_QueueMatchBoundary's call to
+// lane_queue::reset_counters() can move (mh_net_queue_policy.h). This suite asserts it strictly
+// increases across the two boundaries below AND that it is the reset -- not traffic, not luck --
+// that proves it: comment out the `g_lanes.reset_counters()` call in net_transport.cpp (or the
+// `++epoch_` inside it) and `epoch_after_b1 == epoch_after_b2`, redding the two QM_CHECKs that name
+// "epoch". That mutation is the row's required red arm.
+void mh_net_queue_counters_for_test(int *depth, int *high, long *evicted, long *refused,
+                                    unsigned *epoch_out); // net_transport.cpp
+
+static bool qm_wait_depth(int want, DWORD budget_ms) {
+    const DWORD t0 = GetTickCount();
+    for (;;) {
+        int  d = 0, h = 0;
+        long e = 0, r = 0;
+        mh_net_queue_counters_for_test(&d, &h, &e, &r, nullptr);
+        if (d >= want) return true;
+        if (GetTickCount() - t0 >= budget_ms) return false;
+        Sleep(5);
+    }
+}
+
+static int run_qmatch_host(int port) {
+    MH_NetConfig c;
+    memset(&c, 0, sizeof(c));
+    c.role      = 0;
+    c.port      = port;
+    c.player_id = 0;
+    c.peers     = 1;
+    c.log       = 1;
+    if (!MH_Net_InitEx(&c)) {
+        printf("[qmatchh] init failed\n");
+        return 2;
+    }
+    int fails = 0;
+#define QM_CHECK(cond, ...)                         \
+    do {                                            \
+        if (!(cond)) {                              \
+            ++fails;                                \
+            printf("[qmatchh] FAIL: " __VA_ARGS__); \
+            printf("\n");                           \
+        }                                           \
+    } while (0)
+    for (int t = 0; t < 500 && MH_Net_PeerCount() < 1; ++t) Sleep(10);
+    if (MH_Net_PeerCount() < 1) {
+        printf("[qmatchh] no peer\n");
+        return 3;
+    }
+    int      d = 0, h = 0, sender = 1;
+    long     e = 0, r = 0;
+    unsigned ep0 = 0, ep1 = 0, ep2 = 0;
+    char     buf[64];
+    int      len;
+
+    // mp:U41d -- the epoch BEFORE either boundary, so "did it move" has a real baseline (a process
+    // that somehow started at a non-zero epoch must not read as "advanced" on its first boundary).
+    mh_net_queue_counters_for_test(&d, &h, &e, &r, &ep0);
+
+    // MATCH 1: the client queues 20 frames and nobody drains until they are all there.
+    QM_CHECK(qm_wait_depth(20, 5000), "match 1's 20 frames never all arrived");
+    mh_net_queue_counters_for_test(&d, &h, &e, &r, nullptr);
+    printf("[qmatchh] match 1: depth %d high-water %d evicted %ld refused %ld\n", d, h, e, r);
+    QM_CHECK(h >= 20, "match 1's high-water %d < 20", h);
+    for (int i = 0; i < 17; ++i) {
+        len = (int)sizeof(buf);
+        QM_CHECK(MH_Net_Recv(&sender, buf, &len), "drain %d of 17 found nothing", i);
+    }
+
+    // THE BOUNDARY, with 3 frames still queued.
+    MH_Net_QueueMatchBoundary();
+    mh_net_queue_counters_for_test(&d, &h, &e, &r, &ep1);
+    printf("[qmatchh] after boundary: depth %d high-water %d evicted %ld refused %ld epoch %u\n", d, h,
+           e, r, ep1);
+    QM_CHECK(d == 3, "the boundary DROPPED queued frames (depth %d, want 3) -- that is reset(), the "
+                     "transport boundary",
+             d);
+    QM_CHECK(h == 3, "after the boundary the high-water reads %d, want the carried depth 3 (20 = "
+                     "inherited from match 1, 0 = below what is queued)",
+             h);
+    QM_CHECK(e == 0 && r == 0, "evicted/refused not restarted (%ld/%ld)", e, r);
+    // mp:U41d -- THE MUTATION TARGET. If MH_Net_QueueMatchBoundary's call to reset_counters() (or the
+    // ++epoch_ inside it) is skipped, ep1 stays at ep0 and this reds -- unlike the depth/high-water
+    // checks above, nothing about traffic timing or queue depth can make this pass by accident.
+    QM_CHECK(ep1 == ep0 + 1, "epoch did not advance across the first boundary (%u -> %u, want +1) -- "
+                             "reset_counters() did not run",
+             ep0, ep1);
+    QM_CHECK(MH_Net_PeerCount() == 1, "the link did not survive the match boundary");
+    for (int i = 0; i < 3; ++i) {
+        len = (int)sizeof(buf);
+        QM_CHECK(MH_Net_Recv(&sender, buf, &len), "the carried frame %d was not deliverable", i);
+    }
+
+    // MATCH 2 over the SAME link: 5 frames.
+    MH_Net_Send(sender, "NEXT", 4);
+    QM_CHECK(qm_wait_depth(5, 5000), "match 2's 5 frames never all arrived");
+    mh_net_queue_counters_for_test(&d, &h, &e, &r, nullptr);
+    printf("[qmatchh] match 2: depth %d high-water %d evicted %ld refused %ld\n", d, h, e, r);
+    QM_CHECK(h == 5, "match 2's rollup reports high-water %d -- it must be its OWN 5, not match 1's 20",
+             h);
+    MH_Net_QueueMatchBoundary(); // match 2's own rollup line, into mh_net.log
+    mh_net_queue_counters_for_test(&d, &h, &e, &r, &ep2);
+    QM_CHECK(ep2 == ep1 + 1, "epoch did not advance across the second boundary (%u -> %u, want +1)",
+             ep1, ep2);
+    MH_Net_Send(sender, "DONE", 4);
+    Sleep(300);
+#undef QM_CHECK
+    printf("[qmatchh] %s (%d failure(s))\n", fails ? "FAIL" : "OK", fails);
+    return fails ? 1 : 0;
+}
+
+static bool qm_wait_word(const char *word, DWORD budget_ms) {
+    const DWORD t0 = GetTickCount();
+    while (GetTickCount() - t0 < budget_ms) {
+        int  sender = -1;
+        char buf[64];
+        int  len = (int)sizeof(buf);
+        if (MH_Net_Recv(&sender, buf, &len) && len == 4 && memcmp(buf, word, 4) == 0) return true;
+        Sleep(5);
+    }
+    return false;
+}
+
+static int run_qmatch_client(int port) {
+    MH_NetConfig c;
+    memset(&c, 0, sizeof(c));
+    c.role = 1;
+    lstrcpynA(c.host, "127.0.0.1", sizeof(c.host));
+    c.port      = port;
+    c.player_id = 1;
+    c.log       = 1;
+    if (!MH_Net_InitEx(&c)) {
+        printf("[qmatchc] init failed\n");
+        return 2;
+    }
+    for (int t = 0; t < 500 && MH_Net_PeerCount() < 1; ++t) Sleep(10);
+    if (MH_Net_PeerCount() < 1) {
+        printf("[qmatchc] never connected\n");
+        return 3;
+    }
+    char f[4] = {'Q', '1', 0, 0};
+    for (int i = 0; i < 20; ++i) {
+        f[2] = (char)i;
+        MH_Net_Send(0, f, 4);
+    }
+    if (!qm_wait_word("NEXT", 10000)) {
+        printf("[qmatchc] never told to start match 2\n");
+        return 4;
+    }
+    f[1] = '2';
+    for (int i = 0; i < 5; ++i) {
+        f[2] = (char)i;
+        MH_Net_Send(0, f, 4);
+    }
+    if (!qm_wait_word("DONE", 10000)) {
+        printf("[qmatchc] host never finished\n");
+        return 5;
+    }
+    return 0;
+}
+
+static int run_qmatchtest(int port) {
+    char exe[MAX_PATH];
+    GetModuleFileNameA(nullptr, exe, MAX_PATH);
+    PROCESS_INFORMATION ph, pc;
+    printf("=== qmatchtest (U41b: two matches over one live link, separate queue rollups) on port %d ===\n",
+           port);
+    if (!launch(exe, "qmatch_host", port, -1, &ph)) {
+        printf("launch qmatch_host failed\n");
+        return 10;
+    }
+    Sleep(400);
+    if (!launch(exe, "qmatch_client", port, -1, &pc)) {
+        printf("launch qmatch_client failed\n");
+        TerminateProcess(ph.hProcess, 99);
+        return 11;
+    }
+    int hc = wait_exit(ph.hProcess, 30000);
+    int cc = wait_exit(pc.hProcess, 30000);
+    CloseHandle(ph.hProcess);
+    CloseHandle(ph.hThread);
+    CloseHandle(pc.hProcess);
+    CloseHandle(pc.hThread);
+    printf("=== qmatch_host=%d  qmatch_client=%d ===\n", hc, cc);
+    if (hc == 0 && cc == 0) {
+        printf("=== PASS: the second match's rollup did not inherit the first's, and the boundary kept "
+               "the link and the queued frames ===\n");
         return 0;
     }
     printf("=== FAIL ===\n");
@@ -1303,6 +1644,15 @@ struct TwoPeerSim {
     double rate_eff[2]; // game ms advanced per wall ms over the whole run
     int    n_grow[2];
     int    n_shrink[2];
+    // mp:P12 -- the opening, measured the way the rig's `[adaptive]` line reports it: the starved
+    // fraction of each of the first four DECIDED windows (window k is the one decision k was made on,
+    // so window 1 is measured entirely at the start value), the first decision itself, and the starved
+    // fraction of the first 10 s of wall time.
+    double starved_win[2][4];
+    int    first_verdict[2];
+    double first_want[2];
+    bool   first_full[2];
+    double starved_10s[2];
 };
 
 struct SimPeerState {
@@ -1310,6 +1660,7 @@ struct SimPeerState {
     bool                         warm_seen;
     int                          clean;
     mh::netstats::LatenessWindow late, slack;
+    int                          win_frames, win_starved, decided, frames_10s, starved_10s;
 };
 
 // `owd_ms` is the LINK. `feed_owd_ms` is what the controller is TOLD about it -- negative means
@@ -1318,7 +1669,7 @@ struct SimPeerState {
 // separate parameters is what lets an arm ask what a WRONG estimate costs.
 TwoPeerSim two_peer_run(double start_a, double start_b, double rate_a, double rate_b, double owd_ms,
                         double feed_owd_ms, double secs = 120.0, double sim_ms = 20.0,
-                        double floor_ms = 60.0, double ceil_ms = 400.0) {
+                        double floor_ms = 60.0, double ceil_ms = 400.0, bool p12 = false) {
     using namespace mh::netstats;
     const double DT = 10.0, WINDOW = 2000.0, WARMUP = 1500.0;
     enum { RING = 128 };
@@ -1336,12 +1687,17 @@ TwoPeerSim two_peer_run(double start_a, double start_b, double rate_a, double ra
         p[i].clean     = 0;
         p[i].late.reset();
         p[i].slack.reset();
+        p[i].win_frames = p[i].win_starved = p[i].decided = p[i].frames_10s = p[i].starved_10s = 0;
         q_head[i] = q_tail[i] = 0;
     }
     TwoPeerSim out;
     for (int i = 0; i < 2; ++i) {
-        out.n_grow[i]   = 0;
-        out.n_shrink[i] = 0;
+        out.n_grow[i]        = 0;
+        out.n_shrink[i]      = 0;
+        out.first_verdict[i] = -1;
+        out.first_want[i]    = 0.0;
+        out.first_full[i]    = false;
+        for (int k = 0; k < 4; ++k) out.starved_win[i][k] = -1.0;
     }
     for (double t = 0.0; t < secs * 1000.0; t += DT) {
         for (int i = 0; i < 2; ++i) { // the pump: advertise toward the other side
@@ -1362,7 +1718,11 @@ TwoPeerSim two_peer_run(double start_a, double start_b, double rate_a, double ra
             const double own_h     = p[i].c + p[i].S;
             const double committed = (p[i].peer_h > 0.0 && p[i].peer_h < own_h) ? p[i].peer_h : own_h;
             const double required  = p[i].c + sim_ms;
+            ++p[i].win_frames;
+            if (t < 10000.0) ++p[i].frames_10s;
             if (committed < required) {
+                ++p[i].win_starved;
+                if (t < 10000.0) ++p[i].starved_10s;
                 p[i].late.push(-(int)sim_ms); // blocked this frame
             } else {
                 p[i].late.push((int)(p[i].peer_h - required));
@@ -1387,27 +1747,43 @@ TwoPeerSim two_peer_run(double start_a, double start_b, double rate_a, double ra
             in.ceil_ms  = ceil_ms;
             in.have     = p[i].late.count() >= AD_LATE_MIN_SAMPLES &&
                       p[i].late.percentiles(lp50, lt95, lt99);
-            in.tail95_ms         = (double)lt95;
-            in.clean_in          = p[i].clean;
-            in.warm              = p[i].warm_seen && (t - p[i].warm_t0) >= WARMUP;
-            in.slack_ms          = (p[i].slack.count() >= AD_LATE_MIN_SAMPLES &&
+            in.tail95_ms   = (double)lt95;
+            in.clean_in    = p[i].clean;
+            in.warm        = p[i].warm_seen && (t - p[i].warm_t0) >= WARMUP;
+            in.slack_ms    = (p[i].slack.count() >= AD_LATE_MIN_SAMPLES &&
                            p[i].slack.percentiles(sp50, s95, s99))
-                                       ? (double)sp50
-                                       : 0.0;
-            in.link_owd_ms       = feed_owd_ms;
+                                 ? (double)sp50
+                                 : 0.0;
+            in.link_owd_ms = feed_owd_ms;
+            // mp:P12 -- off unless the arm asks, so every pre-P12 arm drives the unchanged decision.
+            in.samples           = p12 ? p[i].late.count() : 0;
+            in.first_warm        = p12 && in.warm && p[i].decided == 0;
             const LookaheadOut d = lookahead_decide(in);
             p[i].clean           = d.clean_out;
             if (d.verdict == LA_GROW) ++out.n_grow[i];
             if (d.verdict == LA_SHRINK) ++out.n_shrink[i];
-            p[i].S = d.want_ms;
+            if (in.warm && d.verdict != LA_NO_SAMPLES) {
+                if (p[i].decided == 0) {
+                    out.first_verdict[i] = d.verdict;
+                    out.first_want[i]    = d.want_ms;
+                    out.first_full[i]    = d.first_full;
+                }
+                if (p[i].decided < 4)
+                    out.starved_win[i][p[i].decided] =
+                        p[i].win_frames ? (double)p[i].win_starved / (double)p[i].win_frames : 0.0;
+                ++p[i].decided;
+            }
+            p[i].win_frames = p[i].win_starved = 0;
+            p[i].S                             = d.want_ms;
             p[i].late.reset();
             p[i].slack.reset();
             p[i].t0 = t;
         }
     }
     for (int i = 0; i < 2; ++i) {
-        out.cur_ms[i]   = p[i].S;
-        out.rate_eff[i] = p[i].c / (secs * 1000.0);
+        out.cur_ms[i]      = p[i].S;
+        out.rate_eff[i]    = p[i].c / (secs * 1000.0);
+        out.starved_10s[i] = p[i].frames_10s ? (double)p[i].starved_10s / (double)p[i].frames_10s : 0.0;
     }
     return out;
 }
@@ -1991,6 +2367,741 @@ static int run_udpstatstest() {
                      "...and that is what 'gives latency back' means: %.0f vs %.0f ms of lookahead",
                      over.cur_ms[0], fixed_.cur_ms[0]);
         }
+
+        // ---- (m) mp:P12: THE FIRST POST-WARM-UP DECISION MAY TAKE THE WHOLE PROPORTIONAL STEP -----
+        // The decision first, with the rig's own numbers (--shim-delay 200: tail95 -297 host / -359
+        // client, n 47+), then the two-peer opening it buys, then the LAN arm it must not touch.
+        {
+            LookaheadIn f;
+            f.cur_ms       = 100.0;
+            f.sim_ms       = 20.0;
+            f.floor_ms     = 60.0;
+            f.ceil_ms      = 400.0;
+            f.have         = true;
+            f.clean_in     = 0;
+            f.warm         = true;
+            f.slack_ms     = 0.0;
+            f.link_owd_ms  = -1.0;
+            f.samples      = 47;
+            f.first_warm   = true;
+            f.tail95_ms    = -200.0; // want = 100 + (10 + 200) = 310: over one doubling, under the ceiling
+            LookaheadOut m = lookahead_decide(f);
+            us_check(m.verdict == LA_GROW && near_ms(m.want_ms, 310.0, 1e-9) && m.first_full,
+                     "mp:P12 -- the first decision takes the whole proportional step (%f, full %d)",
+                     m.want_ms, (int)m.first_full);
+            f.tail95_ms = -297.0; // the rig's host: want 407, and the ceiling is what bounds it
+            m           = lookahead_decide(f);
+            us_check(m.verdict == LA_GROW && near_ms(m.want_ms, 400.0, 1e-9),
+                     "...the rig's tail95 -297 lands on the 400 ms ceiling, not on 200 (%f)", m.want_ms);
+            f.tail95_ms  = -200.0;
+            f.first_warm = false; // every later window keeps the doubling cap
+            m            = lookahead_decide(f);
+            us_check(m.verdict == LA_GROW && near_ms(m.want_ms, 200.0, 1e-9) && !m.first_full,
+                     "...a LATER window with the same tail is still capped at one doubling (%f)", m.want_ms);
+            f.first_warm = true;
+            f.samples    = AD_FIRST_GROW_MIN_SAMPLES - 1; // a thin tail keeps the cap
+            m            = lookahead_decide(f);
+            us_check(near_ms(m.want_ms, 200.0, 1e-9) && !m.first_full,
+                     "...and so is a first window with %d samples (%f)", f.samples, m.want_ms);
+            f.samples = AD_FIRST_GROW_MIN_SAMPLES;
+            m         = lookahead_decide(f);
+            us_check(near_ms(m.want_ms, 310.0, 1e-9), "...while %d samples is enough (%f)", f.samples,
+                     m.want_ms);
+            // INERT WHERE THE CAP DOES NOT BIND, i.e. on a LAN: a first window with a mild deficit, or
+            // with margin to spare, decides exactly what the pre-P12 rule decides.
+            const double lan_tails[] = {4.0, 20.0, 40.0, -40.0};
+            bool         same        = true;
+            for (double tl : lan_tails) {
+                f.tail95_ms          = tl;
+                f.first_warm         = true;
+                const LookaheadOut a = lookahead_decide(f);
+                f.first_warm         = false;
+                const LookaheadOut b = lookahead_decide(f);
+                if (a.verdict != b.verdict || a.want_ms != b.want_ms || a.clean_out != b.clean_out || a.first_full)
+                    same = false;
+            }
+            us_check(same, "...and where the doubling cap does not bind the first decision is the pre-P12 one "
+                           "bit for bit (tails 4 / 20 / 40 / -40)");
+
+            // THE OPENING, two coupled peers on the rig's link (one-way 200 ms), P10's gate armed as
+            // shipped. Window 1 is measured at the start value BEFORE any decision, so P12 cannot move
+            // it (asserted: identical) -- what it moves is every window after the first decision.
+            const double OWD = 200.0;
+            TwoPeerSim   off = two_peer_run(100.0, 100.0, 1.25, 1.00, OWD, OWD, 120.0, 20.0, 60.0, 400.0, false);
+            TwoPeerSim   on  = two_peer_run(100.0, 100.0, 1.25, 1.00, OWD, OWD, 120.0, 20.0, 60.0, 400.0, true);
+            for (int i = 0; i < 2; ++i) {
+                printf("  [P12] owd %.0f peer %d: first %.0f -> %.0f (full %d); starved win1..4 "
+                       "%.0f/%.0f/%.0f/%.0f%% -> %.0f/%.0f/%.0f/%.0f%%, first 10 s %.1f%% -> %.1f%%, "
+                       "settled %.0f -> %.0f, rate %.3f -> %.3f x\n",
+                       OWD, i, 100.0, on.first_want[i], (int)on.first_full[i], 100 * off.starved_win[i][0],
+                       100 * off.starved_win[i][1], 100 * off.starved_win[i][2], 100 * off.starved_win[i][3],
+                       100 * on.starved_win[i][0], 100 * on.starved_win[i][1], 100 * on.starved_win[i][2],
+                       100 * on.starved_win[i][3], 100 * off.starved_10s[i], 100 * on.starved_10s[i],
+                       off.cur_ms[i], on.cur_ms[i], off.rate_eff[i], on.rate_eff[i]);
+            }
+            const TwoPeerSim lan_off = two_peer_run(100.0, 100.0, 1.25, 1.00, 0.5, 0.5, 120.0, 20.0, 60.0, 400.0, false);
+            const TwoPeerSim lan_on  = two_peer_run(100.0, 100.0, 1.25, 1.00, 0.5, 0.5, 120.0, 20.0, 60.0, 400.0, true);
+            for (int i = 0; i < 2; ++i)
+                printf("  [P12] LAN peer %d: first verdict %d want %.0f (full %d); settled %.0f -> %.0f\n", i,
+                       lan_on.first_verdict[i], lan_on.first_want[i], (int)lan_on.first_full[i],
+                       lan_off.cur_ms[i], lan_on.cur_ms[i]);
+            // THE WINDOW THE ROW CALLS "THE FIRST" IS OUT OF P12'S REACH, and this says so in code:
+            // it is measured at the start value, before the decision this change touches.
+            us_check(off.starved_win[0][0] == on.starved_win[0][0] && off.starved_win[1][0] == on.starved_win[1][0],
+                     "mp:P12 -- window 1 (measured at the start value, BEFORE the first decision) is "
+                     "unchanged: %.3f/%.3f vs %.3f/%.3f",
+                     off.starved_win[0][0], off.starved_win[1][0], on.starved_win[0][0], on.starved_win[1][0]);
+            us_check(on.first_full[0] && on.first_full[1],
+                     "...the first decision on the 200 ms link took the uncapped step on both peers");
+            us_check(on.starved_win[0][1] <= off.starved_win[0][1] && on.starved_win[1][1] <= off.starved_win[1][1] &&
+                         (on.starved_win[0][1] < off.starved_win[0][1] || on.starved_win[1][1] < off.starved_win[1][1]),
+                     "...and the window AFTER it starves less (%.3f/%.3f vs %.3f/%.3f)", on.starved_win[0][1],
+                     on.starved_win[1][1], off.starved_win[0][1], off.starved_win[1][1]);
+            us_check(on.starved_10s[0] <= off.starved_10s[0] && on.starved_10s[1] <= off.starved_10s[1],
+                     "...so the first 10 s starve no more on either peer (%.3f/%.3f vs %.3f/%.3f)",
+                     on.starved_10s[0], on.starved_10s[1], off.starved_10s[0], off.starved_10s[1]);
+            us_check(on.rate_eff[0] >= off.rate_eff[0] - 0.005 && on.rate_eff[1] >= off.rate_eff[1] - 0.005,
+                     "...at no cost in sim rate (%.3f/%.3f vs %.3f/%.3f)", on.rate_eff[0], on.rate_eff[1],
+                     off.rate_eff[0], off.rate_eff[1]);
+            // The pair's SUM, not each peer: under P10's coupling WHICH peer ends up carrying the
+            // lookahead is path-dependent (the printout above shows the two swapping), and the latency
+            // the pair pays is the sum.
+            us_check(on.cur_ms[0] + on.cur_ms[1] <= 1.05 * (off.cur_ms[0] + off.cur_ms[1]),
+                     "...and the pair settles on no more total lookahead (%.0f vs %.0f ms, +5%% allowed)",
+                     on.cur_ms[0] + on.cur_ms[1], off.cur_ms[0] + off.cur_ms[1]);
+            // THE LAN ARM: the first decision there does not grow, and the whole run is bit-identical.
+            us_check(lan_on.first_verdict[0] != LA_GROW && lan_on.first_verdict[1] != LA_GROW,
+                     "mp:P12 LAN -- the first decision on a 0.5 ms link does not grow (verdicts %d / %d)",
+                     lan_on.first_verdict[0], lan_on.first_verdict[1]);
+            us_check(lan_on.cur_ms[0] == lan_off.cur_ms[0] && lan_on.cur_ms[1] == lan_off.cur_ms[1] &&
+                         lan_on.rate_eff[0] == lan_off.rate_eff[0] && lan_on.rate_eff[1] == lan_off.rate_eff[1] &&
+                         lan_on.n_grow[0] == lan_off.n_grow[0] && lan_on.n_grow[1] == lan_off.n_grow[1],
+                     "...and the whole LAN run is bit-identical with and without P12");
+        }
+
+        // ---- (n) mp:P14: THE START LOOKAHEAD, SEEDED FROM THE LOBBY RTT ----------------------------
+        // lookahead_start (mh_net_udp/lookahead_start.h) against the three links the row names, then
+        // the two-peer opening it buys at the rig's 200 ms one-way, then P12's guard re-checked under
+        // the seeded start. Floor 60 / ceiling 400 / fallback 100 are the shipping values.
+        {
+            const double FL = 60.0, CE = 400.0, FB = 100.0;
+            double       rtt[2];
+            int          smp[2];
+            // LAN: the rig's clean link reads SRTT ~1 ms -> the floor band (P11: both peers settle 60).
+            rtt[0]              = 1.0;
+            smp[0]              = 5;
+            LookaheadStartOut o = lookahead_start(rtt, smp, 1, true, FL, CE, FB);
+            us_check(o.reason == LS_START_SEEDED && o.start_ms >= FL && o.start_ms <= FL + 2.0,
+                     "mp:P14 -- a LAN RTT (1 ms) seeds the floor band, not 100 (%f)", o.start_ms);
+            // 400 ms RTT, the rig's --shim-delay 200 at 4 lobby pings (shim200 host log: srtt 405.6 ms
+            // at sample 4). Settled band there 223-313, the host's tail95 reaching the hold band at
+            // ~300-312 -- the start must land in the top of it, not at 100 and not at the ceiling.
+            rtt[0] = 405.6;
+            smp[0] = 4;
+            o      = lookahead_start(rtt, smp, 1, true, FL, CE, FB);
+            us_check(o.reason == LS_START_SEEDED && o.start_ms >= 280.0 && o.start_ms <= 320.0 &&
+                         near_ms(o.rtt_ms, 405.6, 1e-9) && o.samples == 4,
+                     "mp:P14 -- a 400 ms RTT seeds near the link's settled band [280, 320] (%f)", o.start_ms);
+            // No samples, too few, or a transport that cannot measure: the configured start, unclamped.
+            smp[0] = 0;
+            o      = lookahead_start(rtt, smp, 1, true, FL, CE, FB);
+            us_check(o.reason == LS_START_NO_RTT && o.start_ms == FB && o.peer == -1,
+                     "mp:P14 -- no RTT samples -> the 100 ms fallback (%f)", o.start_ms);
+            smp[0] = AD_START_MIN_RTT_SAMPLES - 1;
+            o      = lookahead_start(rtt, smp, 1, true, FL, CE, FB);
+            us_check(o.reason == LS_START_NO_RTT && o.start_ms == FB,
+                     "...and so does %d samples, under the floor of %d (%f)", smp[0], AD_START_MIN_RTT_SAMPLES,
+                     o.start_ms);
+            smp[0] = 30;
+            o      = lookahead_start(rtt, smp, 1, false, FL, CE, FB);
+            us_check(o.reason == LS_START_NO_RTT && o.start_ms == FB,
+                     "...and so does a transport that cannot measure (TCP, lat_supported 0) (%f)", o.start_ms);
+            o = lookahead_start(rtt, smp, 0, true, FL, CE, FB);
+            us_check(o.reason == LS_START_NO_RTT && o.start_ms == FB, "...and so does an empty peer list");
+            // The WORST link binds, not the first or the average.
+            rtt[0] = 50.0;
+            smp[0] = 10;
+            rtt[1] = 405.6;
+            smp[1] = 10;
+            o      = lookahead_start(rtt, smp, 2, true, FL, CE, FB);
+            us_check(o.peer == 1 && o.start_ms >= 280.0, "mp:P14 -- the slowest peer sets the start (%d, %f)",
+                     o.peer, o.start_ms);
+            // A partly measured peer set can only RAISE the fallback.
+            rtt[0] = 1.0;
+            smp[0] = 10;
+            smp[1] = 1;
+            o      = lookahead_start(rtt, smp, 2, true, FL, CE, FB);
+            us_check(o.reason == LS_START_PARTIAL && o.start_ms == FB,
+                     "mp:P14 -- a LAN peer beside an unmeasured one keeps the 100 fallback (%f)", o.start_ms);
+            rtt[0] = 405.6;
+            o      = lookahead_start(rtt, smp, 2, true, FL, CE, FB);
+            us_check(o.reason == LS_START_PARTIAL && o.start_ms >= 280.0,
+                     "...while a slow measured peer still raises it (%f)", o.start_ms);
+            // The ceiling bounds it (a 900 ms RTT seeds the ceiling, not 622).
+            rtt[0] = 900.0;
+            o      = lookahead_start(rtt, smp, 1, true, FL, CE, FB);
+            us_check(o.start_ms == CE, "mp:P14 -- the ceiling bounds the seed (%f)", o.start_ms);
+
+            // THE OPENING, two coupled peers at the rig's one-way 200 ms, P10 + P12 armed as shipped:
+            // the seeded start against the 100 ms start. Window 1 is the one the row's rig clause reads
+            // (<= 10% starved); in the model it is measured exactly as the `first-window` line reports it.
+            //
+            // TWO PAIRS, because the model's "starved" means two things. With EQUAL machine rates (`sym`,
+            // both 1.00 -- the game clock paces both peers at realtime) every starved frame is the LINK's:
+            // that is the pair the <= 10% clause is asserted on. P12's calibrated pair runs peer 0 at 1.25x,
+            // and a faster machine bound by a realtime peer waits on it ~20% of frames at ANY lookahead
+            // (measured while fitting this arm: settled windows 18-20% from starts 100 / 262 / 310 / 350 /
+            // 400) -- that is waiting on the peer, not on the link, so on that pair window 1 is asserted
+            // only against the peer's own settled windows.
+            const double OWD = 200.0;
+            rtt[0]           = 2.0 * OWD;
+            smp[0]           = 4;
+            const double S   = lookahead_start(rtt, smp, 1, true, FL, CE, FB).start_ms;
+            TwoPeerSim   old = two_peer_run(100.0, 100.0, 1.25, 1.00, OWD, OWD, 120.0, 20.0, FL, CE, true);
+            TwoPeerSim   sd  = two_peer_run(S, S, 1.25, 1.00, OWD, OWD, 120.0, 20.0, FL, CE, true);
+            TwoPeerSim   so  = two_peer_run(100.0, 100.0, 1.00, 1.00, OWD, OWD, 120.0, 20.0, FL, CE, true);
+            TwoPeerSim   sym = two_peer_run(S, S, 1.00, 1.00, OWD, OWD, 120.0, 20.0, FL, CE, true);
+            for (int i = 0; i < 2; ++i)
+                printf("  [P14] owd %.0f peer %d: start 100 -> %.0f; win1 %.0f%% -> %.0f%% (equal rates %.0f%% -> "
+                       "%.0f%%; first verdict %d -> %d, uncapped %d -> %d), first 10 s %.1f%% -> %.1f%%, settled "
+                       "%.0f -> %.0f, rate %.3f -> %.3f x\n",
+                       OWD, i, S, 100 * old.starved_win[i][0], 100 * sd.starved_win[i][0], 100 * so.starved_win[i][0],
+                       100 * sym.starved_win[i][0], old.first_verdict[i], sd.first_verdict[i], (int)old.first_full[i],
+                       (int)sd.first_full[i], 100 * old.starved_10s[i], 100 * sd.starved_10s[i], old.cur_ms[i],
+                       sd.cur_ms[i], old.rate_eff[i], sd.rate_eff[i]);
+            us_check(sym.starved_win[0][0] <= 0.10 && sym.starved_win[1][0] <= 0.10 && so.starved_win[0][0] > 0.10 &&
+                         so.starved_win[1][0] > 0.10,
+                     "mp:P14 -- seeded, the FIRST decided window starves <= 10%% on both peers (%.3f/%.3f; from "
+                     "the 100 start %.3f/%.3f)",
+                     sym.starved_win[0][0], sym.starved_win[1][0], so.starved_win[0][0], so.starved_win[1][0]);
+            us_check(sd.starved_win[0][0] <= sd.starved_win[0][3] + 0.01 &&
+                         sd.starved_win[1][0] <= sd.starved_win[1][3] + 0.01,
+                     "...and on the unequal-rate pair window 1 is no worse than the peer's own 4th window "
+                     "(%.3f/%.3f vs %.3f/%.3f; from 100: %.3f/%.3f)",
+                     sd.starved_win[0][0], sd.starved_win[1][0], sd.starved_win[0][3], sd.starved_win[1][3],
+                     old.starved_win[0][0], old.starved_win[1][0]);
+            us_check(sd.starved_10s[0] < old.starved_10s[0] && sd.starved_10s[1] < old.starved_10s[1],
+                     "...and the first 10 s starve less on both (%.3f/%.3f vs %.3f/%.3f)", sd.starved_10s[0],
+                     sd.starved_10s[1], old.starved_10s[0], old.starved_10s[1]);
+            us_check(sd.rate_eff[0] >= old.rate_eff[0] - 0.005 && sd.rate_eff[1] >= old.rate_eff[1] - 0.005,
+                     "...at no cost in sim rate (%.3f/%.3f vs %.3f/%.3f)", sd.rate_eff[0], sd.rate_eff[1],
+                     old.rate_eff[0], old.rate_eff[1]);
+            us_check(sd.cur_ms[0] + sd.cur_ms[1] <= 1.10 * (old.cur_ms[0] + old.cur_ms[1]),
+                     "...and the pair settles on no more total lookahead (%.0f vs %.0f ms, +10%% allowed)",
+                     sd.cur_ms[0] + sd.cur_ms[1], old.cur_ms[0] + old.cur_ms[1]);
+            // P12 RE-CHECKED UNDER THE SEED: its uncapped first grow binds only when the first window's
+            // deficit exceeds the value in force, and a seeded start removes that deficit -- so on the
+            // link that motivated P12 the guard is now a no-op (it still fires from the 100 fallback,
+            // which is (m) above and the `old` run here).
+            us_check(old.first_full[0] || old.first_full[1],
+                     "mp:P12 under P14 -- from the 100 fallback the uncapped first grow still fires");
+            us_check(!sd.first_full[0] && !sd.first_full[1],
+                     "mp:P12 under P14 -- from the seeded start it does not (the cap cannot bind)");
+
+            // THE LAN ARM: the seed is the floor band, so the pair starts where P11's 100-start run
+            // took 7-9 s to arrive, and never grows.
+            rtt[0]                = 1.0;
+            smp[0]                = 5;
+            const double     SL   = lookahead_start(rtt, smp, 1, true, FL, CE, FB).start_ms;
+            const TwoPeerSim lan0 = two_peer_run(100.0, 100.0, 1.25, 1.00, 0.5, 0.5, 120.0, 20.0, FL, CE, true);
+            const TwoPeerSim lanS = two_peer_run(SL, SL, 1.25, 1.00, 0.5, 0.5, 120.0, 20.0, FL, CE, true);
+            for (int i = 0; i < 2; ++i)
+                printf("  [P14] LAN peer %d: start 100 -> %.1f; first verdict %d -> %d, settled %.0f -> %.0f, "
+                       "grows %d -> %d, rate %.3f -> %.3f x\n",
+                       i, SL, lan0.first_verdict[i], lanS.first_verdict[i], lan0.cur_ms[i], lanS.cur_ms[i],
+                       lan0.n_grow[i], lanS.n_grow[i], lan0.rate_eff[i], lanS.rate_eff[i]);
+            us_check(lanS.cur_ms[0] <= lan0.cur_ms[0] && lanS.cur_ms[1] <= lan0.cur_ms[1] && lanS.n_grow[0] == 0 &&
+                         lanS.n_grow[1] == 0,
+                     "mp:P14 LAN -- seeded at the floor band, the pair settles no higher (%.0f/%.0f vs %.0f/%.0f) "
+                     "and never grows",
+                     lanS.cur_ms[0], lanS.cur_ms[1], lan0.cur_ms[0], lan0.cur_ms[1]);
+            us_check(lanS.rate_eff[0] >= lan0.rate_eff[0] - 0.005 && lanS.rate_eff[1] >= lan0.rate_eff[1] - 0.005,
+                     "...at no cost in sim rate (%.3f/%.3f vs %.3f/%.3f)", lanS.rate_eff[0], lanS.rate_eff[1],
+                     lan0.rate_eff[0], lan0.rate_eff[1]);
+        }
+    }
+
+    // ---- mp:T4 -- the eager advert's send rule (advert_should_send) -----------------------------
+    // A model of the frame loop the rule lives in, with the two properties it must keep at once:
+    //   RATE       one send per frame at an uncapped frame rate filled the UDP transport's 1024-segment
+    //              window at a 360 ms round trip (dead-ends G294). Measured as the busiest 400 ms
+    //              (the round trip + the 40 ms ack cadence) against that window.
+    //   INVARIANT  after the eager block, the last horizon on the wire equals HORIZON. The first
+    //              fix broke it: the order scheduler pulls HORIZON forward (the order itself
+    //              carries it), the eager write lowers it back, and a rule keyed on "the last value
+    //              this path sent" skipped the lowered value.
+    // Three policies run through the same loop: the REAL rule, the pre-T4 SEND-EVERY-FRAME code, and
+    // the first fix, LAST-SENT-BY-THIS-PATH. The two mutants must each red one property.
+    {
+        enum Policy { REAL,
+                      EVERY_FRAME,
+                      LAST_SENT };
+        struct Sim {
+            long sends;
+            long worst_window; // most eager sends inside any 400 ms span
+            long broken;       // frames that ended with wire != HORIZON
+        };
+        static long sent_at[20000]; // prefix count of eager sends, per frame
+        auto        run = [](Policy pol, double fps, double secs) {
+            Sim        r{0, 0, 0};
+            const long frames  = (long)(fps * secs);
+            const long win     = (long)(fps * 0.400);
+            double     horizon = -1.0, wire = -1.0, last_sent = -1.0;
+            bool       have_last = false;
+            long       n         = 0;
+            for (long f = 0; f < frames && f < 20000; ++f) {
+                const double t     = (double)f / fps;
+                const double clock = 0.020 * (double)(long)(t / 0.020); // whole 20 ms sim steps
+                // Every 97th frame an order is scheduled with an exec_time past the horizon: the
+                // scheduler PULLS HORIZON forward and sends the order, not an EXTEND -- and the
+                // receiver takes an order's exec_time as the sender's horizon (rx_dispatch.cpp
+                // MSG_ORDER), so the wire now says E.
+                if (f % 97 == 50 && clock + 0.300 > horizon) {
+                    horizon = clock + 0.300;
+                    wire    = horizon;
+                }
+                // Every 150th frame the heartbeat writes and SENDS clock + lookahead.
+                if (f % 150 == 7) {
+                    horizon = clock + 0.100;
+                    wire    = horizon;
+                }
+                // The eager block.
+                const double before = horizon;
+                horizon             = clock + 0.100;
+                bool send           = false;
+                if (pol == REAL) send = advert_should_send(before, horizon);
+                else if (pol == EVERY_FRAME) send = true;
+                else send = !(have_last && horizon == last_sent);
+                if (send) {
+                    wire      = horizon;
+                    last_sent = horizon;
+                    have_last = true;
+                    ++n;
+                }
+                if (!(wire == horizon)) ++r.broken;
+                sent_at[f] = n;
+                if (f >= win && n - sent_at[f - win] > r.worst_window) r.worst_window = n - sent_at[f - win];
+            }
+            r.sends = n;
+            return r;
+        };
+        const long SEG_WINDOW_T4 = 1024; // mh_net_udp/udp_endpoint.h SEG_WINDOW
+
+        // (1) ~3000 calls at an UNCHANGED horizon -> at most one send.
+        double h = -1.0;
+        long   n = 0;
+        for (int i = 0; i < 3000; ++i) {
+            const double before = h;
+            h                   = 0.1;
+            if (advert_should_send(before, h)) ++n;
+        }
+        us_check(n == 1, "mp:T4 -- 3000 frames at an unchanged horizon send it once (%ld)", n);
+        // (2) a LOWER horizon is a change (the adaptive shrink, and the eager write after an order
+        //     pulled HORIZON forward).
+        us_check(advert_should_send(0.3, 0.1), "mp:T4 -- a lowered horizon goes out");
+        us_check(advert_should_send(0.1, 0.12), "mp:T4 -- ...and so does a raised one");
+
+        // (3) the rig shape: 3000 fps for 2 s, orders and heartbeat interleaved.
+        const Sim real  = run(REAL, 3000.0, 2.0);
+        const Sim every = run(EVERY_FRAME, 3000.0, 2.0);
+        const Sim last  = run(LAST_SENT, 3000.0, 2.0);
+        printf("  mp:T4 3000 fps x 2 s: real %ld sends (worst 400 ms %ld, broken %ld) | every-frame %ld "
+               "(%ld, %ld) | last-sent %ld (%ld, %ld)\n",
+               real.sends, real.worst_window, real.broken, every.sends, every.worst_window, every.broken,
+               last.sends, last.worst_window, last.broken);
+        us_check(real.worst_window < SEG_WINDOW_T4 / 4,
+                 "mp:T4 -- RATE: the busiest 400 ms stays far under the 1024-segment window (%ld)",
+                 real.worst_window);
+        us_check(real.broken == 0, "mp:T4 -- INVARIANT: after every eager block the wire holds HORIZON "
+                                   "(%ld frames broke it)",
+                 real.broken);
+        // (4) THE MUTANTS MUST RED, each on the property it breaks, or the checks prove nothing.
+        us_check(every.worst_window >= SEG_WINDOW_T4,
+                 "mp:T4 mutant EVERY-FRAME (pre-T4) fills the window: %ld in 400 ms", every.worst_window);
+        us_check(last.broken > 0,
+                 "mp:T4 mutant LAST-SENT (the first fix) breaks the invariant: %ld frames", last.broken);
+    }
+
+    // ---- mp:D30 -- the advertised horizon never goes DOWN (monotone_step / monotone_horizon) ------
+    // (1) the helper's contract, over a sweep; (2) the TWO-PEER MODEL of the rig shape that desynced
+    // (tmp/o5_rig/D30/r1_DESYNC): A shrinks its lookahead 315 -> 253 ms at clock 10.439 s, B runs
+    // 100 ms ahead of A, 180 ms one-way delivery, A stamps an order every step. RED before (the
+    // target pinned as-is: B releases A's orders a step late), GREEN after; the helper mutants red;
+    // (3) PACING: with the fix the shrink still lands, within the size of the cut.
+    {
+        // (1) the contract
+        long bad_floor = 0, bad_target = 0, bad_idle = 0;
+        for (int i = 0; i < 20000; ++i) {
+            const double clk    = 0.02 * (double)(i % 5000) + 0.001 * (double)(i % 7);
+            const double target = 0.060 + 0.001 * (double)(i % 341);
+            const double sent   = clk + 0.001 * (double)((i * 37) % 700); // 0..0.7 s ahead
+            const double st     = monotone_step(target, clk, sent);
+            if (sent > 0.0 && clk + st < sent) ++bad_floor;
+            if (st < target) ++bad_target;
+            if (sent <= clk + target - 1e-9 && st != target) ++bad_idle;
+        }
+        us_check(bad_floor == 0, "mp:D30 -- clock + step never lands under the sent max (%ld of 20000)", bad_floor);
+        us_check(bad_target == 0, "mp:D30 -- the step never goes under the target (%ld)", bad_target);
+        us_check(bad_idle == 0, "mp:D30 -- with nothing sent above clock + target the target passes through (%ld)",
+                 bad_idle);
+        us_check(monotone_step(0.25, 10.0, 12.5) == 0.25, "mp:D30 -- a max > 2 s ahead is a restarted clock, ignored");
+        us_check(monotone_step(0.25, 10.0, 0.0) == 0.25, "mp:D30 -- no max yet -> the target");
+        us_check(monotone_horizon(10.0, 0.25, 10.4) == 10.4 && monotone_horizon(10.0, 0.25, 10.1) == 10.25,
+                 "mp:D30 -- monotone_horizon floors at the held horizon and otherwise adds the step");
+        us_check(order_is_late(10.713, 10.72) && order_is_late(10.72, 10.72) && !order_is_late(10.73, 10.72),
+                 "mp:D30 -- order_is_late is release_due's !(exec > clock)");
+        volatile double zero = 0.0;
+        const double    nan  = zero / zero;
+        us_check(order_is_late(nan, 10.0), "mp:D30 -- a NaN exec_time counts as late, as release_due releases it");
+
+        // (2) the two-peer model
+        enum Pol { FIXED,
+                   PREFIX,       // the target pinned as-is -- the shipped bug
+                   MUT_STEP,     // mutant: holds one sub-step short (max(target, need - SUB))
+                   MUT_NEEDONLY, // mutant: ignores the target (never adds new lookahead)
+                   MUT_FRAMEONLY // mutant: the time_tick pin without the per-step re-pin
+        };
+        struct Msg {
+            double arrive; // real seconds
+            int    kind;   // 1 = order, 2 = horizon
+            double v;      // exec_time or horizon
+            int    id;     // order id
+        };
+        struct R {
+            long   orders, late, mismatched, horizon_drops;
+            double a_clock_end, eff_min_after, released_at;
+        };
+        auto model = [](Pol pol) {
+            const double  SUB = 0.020, D = 0.180, T0 = 10.0, SHRINK_AT = 10.439, OLD = 0.315, NEW = 0.253;
+            static Msg    q_ab[40000], q_ba[40000]; // A->B, B->A (FIFO: one delay, send order)
+            static double rel_a[4000], rel_b[4000], pend_exec[4000], own_exec[4000];
+            static int    pend_id[4000], own_id[4000];
+            long          n_ab = 0, h_ab = 0, n_ba = 0, h_ba = 0, n_pend = 0, n_own = 0;
+            R             r{0, 0, 0, 0, 0.0, 1e9, -1.0};
+            // Both clocks start at T0 (one sim grid, as in a real match); B runs AHEAD in wall time,
+            // which is how the rig's host sat 100 ms ahead of the client that shrank.
+            double clk[2] = {T0, T0}, hz[2], heard[2], maxs[2], step[2] = {OLD, OLD};
+            hz[0]             = clk[0] + OLD;
+            hz[1]             = clk[1] + OLD;
+            heard[0]          = hz[1];
+            heard[1]          = hz[0];
+            maxs[0]           = hz[0];
+            maxs[1]           = hz[1];
+            int    next_id    = 0;
+            double last_adv_a = 0.0;
+            for (int i = 0; i < 4000; ++i) rel_a[i] = rel_b[i] = -1.0;
+            for (int ms = 0; ms < 3000; ++ms) {
+                const double t = 0.001 * (double)ms;
+                for (int p = 0; p < 2; ++p) {
+                    // deliveries due by now, processed before the sim (the pump's RX drain)
+                    if (p == 1) {
+                        while (h_ab < n_ab && q_ab[h_ab].arrive <= t) {
+                            const Msg &m = q_ab[h_ab++];
+                            heard[1]     = m.v; // MSG_HORIZON and MSG_ORDER's exec: a straight overwrite
+                            if (m.kind == 1) {
+                                if (order_is_late(m.v, clk[1])) ++r.late;
+                                pend_exec[n_pend] = m.v;
+                                pend_id[n_pend++] = m.id;
+                            }
+                        }
+                    } else {
+                        while (h_ba < n_ba && q_ba[h_ba].arrive <= t) heard[0] = q_ba[h_ba++].v;
+                    }
+                    // time_tick: the pin, then the advertise (clock + STEP_SIZE)
+                    const double target = (p == 0 && clk[0] >= SHRINK_AT) ? NEW : OLD;
+                    const double need   = maxs[p] - clk[p];
+                    double       st;
+                    if (pol == FIXED || pol == MUT_FRAMEONLY) st = monotone_step(target, clk[p], maxs[p]);
+                    else if (pol == PREFIX) st = target;
+                    else if (pol == MUT_STEP) st = need - SUB > target ? need - SUB : target;
+                    else st = need;
+                    step[p]         = st;
+                    const double hv = clk[p] + st;
+                    if (p == 0) {
+                        if (hv < last_adv_a - 1e-12) ++r.horizon_drops;
+                        last_adv_a = hv;
+                        if (clk[0] >= SHRINK_AT) {
+                            if (st < r.eff_min_after) r.eff_min_after = st;
+                            if (r.released_at < 0.0 && st <= NEW + 1e-6) r.released_at = clk[0];
+                        }
+                    }
+                    hz[p] = hv;
+                    if (hv > maxs[p]) maxs[p] = hv;
+                    if (p == 0) q_ab[n_ab++] = Msg{t + D, 2, hv, -1};
+                    else q_ba[n_ba++] = Msg{t + D, 2, hv, -1};
+                    // sim_tick: total = min(wall, committed)
+                    const double wall      = T0 + t + (p == 1 ? 0.100 : 0.0);
+                    const double committed = hz[p] < heard[p] ? hz[p] : heard[p];
+                    const double total     = wall < committed ? wall : committed;
+                    while (clk[p] + SUB <= total) {
+                        clk[p] += SUB;
+                        long o = 0;
+                        if (p == 0) {
+                            for (long k = 0; k < n_own; ++k) {
+                                if (!(own_exec[k] > clk[0])) {
+                                    rel_a[own_id[k]] = clk[0];
+                                } else {
+                                    own_exec[o] = own_exec[k];
+                                    own_id[o++] = own_id[k];
+                                }
+                            }
+                            n_own = o;
+                            // A stamps one order per step: max(clock + STEP_SIZE, HORIZON); schedule
+                            // raises HORIZON to it if it is past it.
+                            if (next_id < 4000 && clk[0] >= T0 + 0.2) {
+                                // the per-step re-pin (MH_Lockstep_StepPin) at this step's clock
+                                const double tg = clk[0] >= SHRINK_AT ? NEW : OLD;
+                                const double nd = maxs[0] - clk[0];
+                                if (pol == FIXED) step[0] = monotone_step(tg, clk[0], maxs[0]);
+                                else if (pol == PREFIX) step[0] = tg;
+                                else if (pol == MUT_STEP) step[0] = nd - SUB > tg ? nd - SUB : tg;
+                                else if (pol == MUT_NEEDONLY) step[0] = nd;
+                                // MUT_FRAMEONLY: keeps the frame-start pin
+                                double e = clk[0] + step[0];
+                                if (hz[0] > e) e = hz[0];
+                                if (!(hz[0] >= e)) hz[0] = e;
+                                if (e > maxs[0]) maxs[0] = e;
+                                own_exec[n_own] = e;
+                                own_id[n_own++] = next_id;
+                                q_ab[n_ab++]    = Msg{t + D, 1, e, next_id};
+                                ++next_id;
+                            }
+                        } else {
+                            for (long k = 0; k < n_pend; ++k) {
+                                if (!(pend_exec[k] > clk[1])) {
+                                    rel_b[pend_id[k]] = clk[1];
+                                } else {
+                                    pend_exec[o] = pend_exec[k];
+                                    pend_id[o++] = pend_id[k];
+                                }
+                            }
+                            n_pend = o;
+                        }
+                    }
+                }
+                if (n_ab > 39000 || n_ba > 39000) break;
+            }
+            r.orders = next_id;
+            for (int i = 0; i < next_id; ++i)
+                if (rel_a[i] >= 0.0 && rel_b[i] >= 0.0 && (long)((rel_a[i] - T0) / SUB + 0.5) != (long)((rel_b[i] - T0) / SUB + 0.5))
+                    ++r.mismatched;
+            r.a_clock_end = clk[0];
+            return r;
+        };
+        const R fixed = model(FIXED), prefix = model(PREFIX), mstep = model(MUT_STEP), mneed = model(MUT_NEEDONLY),
+                frameonly = model(MUT_FRAMEONLY);
+        printf("  mp:D30 model: fixed %ld orders, late %ld, mismatched %ld, drops %ld, end %.3f | pre-fix late %ld "
+               "mismatched %ld drops %ld | step-short late %ld | need-only end %.3f | frame-only landed %.3f | shrink "
+               "landed at clock %.3f (eff min %.3f)\n",
+               fixed.orders, fixed.late, fixed.mismatched, fixed.horizon_drops, fixed.a_clock_end, prefix.late,
+               prefix.mismatched, prefix.horizon_drops, mstep.late, mneed.a_clock_end, frameonly.released_at, fixed.released_at,
+               fixed.eff_min_after);
+        us_check(prefix.late > 0 && prefix.mismatched > 0 && prefix.horizon_drops > 0,
+                 "mp:D30 RED before: the pre-fix pin lowers A's horizon (%ld drops) and B releases %ld of A's "
+                 "orders a step late (%ld late at receipt)",
+                 prefix.horizon_drops, prefix.mismatched, prefix.late);
+        us_check(fixed.orders > 100 && fixed.late == 0 && fixed.mismatched == 0 && fixed.horizon_drops == 0,
+                 "mp:D30 GREEN after: %ld orders, 0 late (%ld), 0 released at different steps (%ld), horizon "
+                 "never lowered (%ld)",
+                 fixed.orders, fixed.late, fixed.mismatched, fixed.horizon_drops);
+        us_check(mstep.late > 0, "mp:D30 mutant step-short reds: %ld late", mstep.late);
+        // (3) pacing: the shrink lands, bounded by the size of the cut, and the sim keeps real time
+        us_check(fixed.released_at > 0.0 && fixed.released_at <= 10.439 + (0.315 - 0.253) + 3 * 0.020,
+                 "mp:D30 PACING: the shrink takes effect by clock %.3f (a 62 ms cut at 10.439)", fixed.released_at);
+        us_check(fixed.eff_min_after >= 0.253 - 1e-9, "mp:D30 PACING: never under the target (%.4f)",
+                 fixed.eff_min_after);
+        us_check(fixed.a_clock_end > 12.5, "mp:D30 PACING: A's sim keeps real time (clock %.3f after 3 s)",
+                 fixed.a_clock_end);
+        us_check(mneed.a_clock_end < 11.0, "mp:D30 mutant need-only reds the pacing arm: A stalls at %.3f",
+                 mneed.a_clock_end);
+        us_check(frameonly.late == 0 && (frameonly.released_at < 0.0 || frameonly.released_at > 10.7),
+                 "mp:D30 mutant frame-only (no per-step re-pin) is SAFE but reds PACING: the shrink lands at "
+                 "%.3f (-1 = never) against an order every step",
+                 frameonly.released_at);
+    }
+
+    // ---- 10. (o) mp:P15: THE WARM-UP PING CADENCE'S OWN PRECONDITION --------------------------------
+    // P14's seed (section n above) needs AD_START_MIN_RTT_SAMPLES (3) pings before it can fire at all.
+    // This drives the SAME pure function timer_loop() calls (udp_ping_cadence.h's `ping_due`) through
+    // a synthetic tick loop at TICK_MS (udp_endpoint.h, the real timer thread's period) from admission,
+    // and counts how many ticks it says to ping by the 1 s mark -- proving the WIRING (the real
+    // constants, the real per-conn clocks), not a re-derivation of the formula.
+    {
+        using namespace mh::netudp;
+        // (o1) the shipped cadence: >= 3 samples within 1 s of admission (mp:P15's done_when).
+        {
+            uint32_t admitted = 0, last_ping = 0;
+            int      samples = 0;
+            for (uint32_t now = TICK_MS; now <= 1000; now += TICK_MS) {
+                if (ping_due(PING_MS_DEFAULT, now - admitted, now - last_ping, FAST_PING_MS,
+                             FAST_PING_WINDOW_MS)) {
+                    ++samples;
+                    last_ping = now;
+                }
+            }
+            us_check(samples >= mh::netstats::AD_START_MIN_RTT_SAMPLES,
+                     "mp:P15 -- the warm-up cadence delivers >= %d ping(s) within 1 s of admission "
+                     "(got %d)",
+                     mh::netstats::AD_START_MIN_RTT_SAMPLES, samples);
+            // MUTATION-CHECKED (2026-09-24): with FAST_PING_WINDOW_MS forced to 0 -- the warm-up
+            // window collapsing to nothing, which is what a caller that forgot to pass it (or a
+            // constant regressed to 0) would look like -- this ticks at the steady PING_MS_DEFAULT
+            // (1000 ms) throughout and `samples` reads 1, redding this check; reverted after.
+        }
+        // (o2) NEVER FASTER than a configured `ping_ms` slower than FAST_PING_MS: the warm-up can
+        // only ADD samples early, never override a deliberately slow steady rate.
+        {
+            const int SLOW = 500; // < FAST_PING_MS's implicit 250, > the fast rate would be if unclamped
+            uint32_t  now = 100, admitted = 0, last_ping = 0;
+            us_check(!ping_due(SLOW, now - admitted, now - last_ping, FAST_PING_MS, FAST_PING_WINDOW_MS),
+                     "mp:P15 -- a configured ping_ms slower than FAST_PING_MS is not sped up at t=100 "
+                     "(cadence must stay >= %d)",
+                     SLOW);
+        }
+        // (o3) pings OFF (`ping_ms <= 0`) stays off during the warm-up window too -- the R-live
+        // three-state convention is not bypassed by admission.
+        us_check(!ping_due(0, 0, 1000000u, FAST_PING_MS, FAST_PING_WINDOW_MS),
+                 "mp:P15 -- ping_ms <= 0 never pings, warm-up window or not");
+        // (o4) past the warm-up window, the cadence is exactly the steady rate -- not stuck fast and
+        // not reset by every call (the SAME conn's last_ping_ms must carry across ticks).
+        {
+            const uint32_t past = FAST_PING_WINDOW_MS + 10;
+            us_check(!ping_due(PING_MS_DEFAULT, past, 1u, FAST_PING_MS, FAST_PING_WINDOW_MS),
+                     "mp:P15 -- 1 ms after the last ping, past the warm-up window, is not due yet "
+                     "(steady cadence is %d ms)",
+                     PING_MS_DEFAULT);
+            us_check(ping_due(PING_MS_DEFAULT, past, (uint32_t)PING_MS_DEFAULT, FAST_PING_MS,
+                              FAST_PING_WINDOW_MS),
+                     "mp:P15 -- a full steady interval past the warm-up window IS due");
+        }
+    }
+
+    // ---- 11. (p) mp:P15 wave 7: WHERE THE FIRST WINDOW STARTS AND WHAT ITS STARVED FIGURE COUNTS ------
+    // mh/seams/adaptive_window.h -- the same pure functions net_lockstep.cpp's lateness_tick /
+    // adaptive_tick / adaptive_post_spin_tick call. (p1) replays wave 6's P15 run-3 host shape frame by
+    // frame: every frame ENDS 16 ms of COMMITTED ahead of the clock (< one 20 ms sub-step, so the next
+    // frame OPENS blocked) and rx_spin lands the peer's EXTEND inside the frame (36 ms ahead after the
+    // spin). The pre-spin diag read that as 1015/1610 ms starved; the sim never missed a step.
+    {
+        using namespace mh::adwin;
+        // (p1) the phase-locked host: pre-spin blocked on every frame, post-spin never.
+        {
+            PostSpinWindow w;
+            uint32_t       pre_ms = 0;
+            double         clk    = 0.760;
+            for (int f = 0; f < 80; ++f) { // 80 x 20 ms = 1.6 s, the run-3 window
+                const double com_pre  = clk + 0.016;
+                const double com_post = clk + 0.036;
+                if (blocked(clk, com_pre, 0.020)) pre_ms += 20;
+                w.add(20, blocked(clk, com_post, 0.020));
+                clk += 0.020; // the sim funds exactly one sub-step per frame
+            }
+            us_check(pre_ms == 1600, "mp:P15 (p1) -- the pre-spin sample reads the phase-locked host as "
+                                     "starved every frame (got %u/1600 ms)",
+                     pre_ms);
+            us_check(w.time_ms == 1600 && w.starved_ms == 0,
+                     "mp:P15 (p1) -- post-spin, the phase-locked host is starved 0 ms (got %u/%u ms)",
+                     w.starved_ms, w.time_ms);
+            // MUTATION-CHECKED (2026-09-24, one build, reverted after): in adaptive_window.h, `blocked`
+            // with `<=` for `<` reds (p2b); all_live_latch latching on ANY live peer (the pre-wave-7
+            // start) reds (p3c) and (p3f); warm_anchor_ready ignoring all_live reds (p4). 4 FAIL.
+        }
+        // (p2) a genuinely silent peer: the spin times out and COMMITTED is still short -> counted.
+        {
+            PostSpinWindow w;
+            for (int f = 0; f < 10; ++f) w.add(40, blocked(5.000, 5.004, 0.020));
+            us_check(w.starved_ms == 400 && w.time_ms == 400,
+                     "mp:P15 (p2) -- a peer that never advertises is starved 100%% post-spin (got %u/%u)",
+                     w.starved_ms, w.time_ms);
+            // (p2b) exactly funded is NOT blocked (the sim can take the step).
+            // (binary-exact values: 4.5 + 0.25 == 4.75 with no rounding, so this pins `<`, not an ulp)
+            us_check(!blocked(4.5, 4.75, 0.25), "mp:P15 (p2b) -- COMMITTED == clock + sub-step is funded");
+            w.reset();
+            us_check(w.starved_ms == 0 && w.time_ms == 0, "mp:P15 (p2c) -- reset empties the window");
+        }
+        // (p3) the all-peers-live latch.
+        us_check(live_peers_expected(2) == 1 && live_peers_expected(3) == 2,
+                 "mp:P15 (p3a) -- expected peers = active humans minus ourselves");
+        us_check(live_peers_expected(0) == 1 && live_peers_expected(1) == 1,
+                 "mp:P15 (p3b) -- a roster that counts <= 1 still waits for one live peer");
+        us_check(all_live_latch(1, 2, true, 100, 5000) == AL_NOT_YET,
+                 "mp:P15 (p3c) -- 3-peer, one live: the first window does not start yet");
+        us_check(all_live_latch(2, 2, true, 100, 5000) == AL_ALL_LIVE,
+                 "mp:P15 (p3d) -- 3-peer, both live: latched");
+        us_check(all_live_latch(0, 1, false, 0, 5000) == AL_NOT_YET,
+                 "mp:P15 (p3e) -- nobody live yet: not latched, and no timeout without a first live peer");
+        us_check(all_live_latch(1, 2, true, 5000, 5000) == AL_TIMEOUT,
+                 "mp:P15 (p3f) -- a roster miscount cannot hold the controller off past the timeout");
+        // (p4) the warm-up anchor needs BOTH a tail and every peer live.
+        us_check(!warm_anchor_ready(true, false) && !warm_anchor_ready(false, true) && warm_anchor_ready(true, true),
+                 "mp:P15 (p4) -- T3c's warm-up is anchored only once a tail exists AND all peers are live");
+        // (p5) wave 7 rig run 1's bug: an 8-slot PEER_HORIZON table, slot 0 ours, slots 1-7 holding
+        // retail's 10 s sentinel from the first tick; slot 1 (the real peer) starts advertising at
+        // tick 50. Driven through the same horizon_observe / slot_live / all_live_latch lateness_tick
+        // calls. The latch must stay shut until slot 1 moves, then report 1/1.
+        {
+            bool     seen[8]    = {false};
+            double   last[8]    = {0.0};
+            uint32_t moved[8]   = {0};
+            int      fired_tick = -1, fired_live = -1;
+            for (int tick = 0; tick < 100 && fired_tick < 0; ++tick) {
+                const uint32_t now = 1000u + (uint32_t)tick * 20u;
+                int            n   = 0;
+                for (int i = 0; i < 8; ++i) {
+                    double h = 10.0;                                        // the sentinel
+                    if (i == 0) h = 0.1 + tick * 0.02;                      // our own slot moves
+                    if (i == 1 && tick >= 50) h = 0.3 + (tick - 50) * 0.02; // the peer starts advertising
+                    if (horizon_observe(seen[i], last[i], h)) moved[i] = now;
+                    if (slot_live(i == 0, h, moved[i], now, 5000)) ++n;
+                }
+                if (all_live_latch(n, live_peers_expected(2), false, 0, 5000) != AL_NOT_YET) {
+                    fired_tick = tick;
+                    fired_live = n;
+                }
+            }
+            us_check(fired_tick == 50 && fired_live == 1,
+                     "mp:P15 (p5) -- sentinel slots are not live: all-peers-live fires when the real peer "
+                     "first moves (tick 50) and reports 1/1 (got tick %d, %d live)",
+                     fired_tick, fired_live);
+            // (p6) the blocked EPISODE (adaptive_window.h (3)), through the same two functions
+            // lateness_tick and lateness_post_spin_tick call. (p6a) wave 6 run 3's host: 4 s of 20 ms
+            // frames, each OPENS blocked and rx_spin funds it 16 ms later -> 0 synthetic splits, one
+            // -16 per frame. (p6b) a genuinely unfunded block: the spin times out (40 ms) unfunded,
+            // frame after frame, for 2.5 s -> the split still fires, and nothing else is charged.
+            {
+                uint32_t since  = 0;
+                int      splits = 0, ends = 0, worst = 0, s = 0;
+                for (uint32_t t = 1000; t < 5000; t += 20) {
+                    if (episode_blocked_top(since, t, 2000, &s)) ++splits;
+                    if (episode_end_post_spin(since, true, t + 16, &s)) {
+                        ++ends;
+                        if (s < worst) worst = s;
+                    }
+                }
+                us_check(splits == 0 && ends == 200 && worst == -16,
+                         "mp:P15 (p6a) -- a phase-locked peer whose spin funds every frame yields 0 synthetic "
+                         "-2000 samples over 4 s and 200 real -16 ms ones (got %d splits, %d ends, worst %d)",
+                         splits, ends, worst);
+                since  = 0;
+                splits = ends = 0;
+                int split_s   = 0;
+                for (uint32_t t = 1000; t < 3500; t += 60) {
+                    if (episode_blocked_top(since, t, 2000, &s)) {
+                        ++splits;
+                        split_s = s;
+                    }
+                    if (episode_end_post_spin(since, false, t + 40, &s)) ++ends;
+                }
+                us_check(splits == 1 && split_s <= -2000 && ends == 0,
+                         "mp:P15 (p6b) -- a block the spin cannot fund still splits at 2 s and ends nowhere "
+                         "else (got %d splits, sample %d, %d ends)",
+                         splits, split_s, ends);
+                // MUTATION-CHECKED (2026-09-25, reverted after): episode_end_post_spin always false
+                // (the pre-fix behaviour) reds (p6a) with 1 split; ignoring `funded` reds (p6b) with 0.
+            }
+            // MUTATION-CHECKED (2026-09-25): horizon_observe returning true on the first read (the
+            // pre-fix "0.0 -> sentinel is a move") reds this with tick 0, 7 live. Reverted after.
+        }
     }
 
     printf("=== udpstatstest: %d checks, %d failures ===\n", g_us_checks, g_us_fails);
@@ -2158,6 +3269,7 @@ int run_udpwiretest(int argc, char **argv);
 // that say WHY a lossy run completed (redundancy covered N, the retransmit covered M, the
 // reassembler stalled K times) rather than only that it did.
 int run_udploopbacktest(int argc, char **argv);
+int run_uqmatchtest(); // mp:U41e, udp_loopback_selftest.cpp
 // udp_bulk_selftest.cpp -- mp:T2: CHANNEL C, the bulk reliable chunk transfer above that transport.
 // A mebibyte crossing hash-verified at 5% injected loss, a receiver KILLED mid-transfer resuming
 // from its last acknowledged chunk (mp:T1b's restart), and the never-evictable chunk lane refusing
@@ -2207,6 +3319,10 @@ int run_interlocktest();
 // (a moved guarded byte, an already-patched image, a site inside a promoted body, an unavailable
 // cave VA). Same argument as interlocktest: every one of them is about a write that must not happen.
 int run_patchtest();
+// gone_peer_guard_selftest.cpp -- mp:U19i: gone_peer_frame_guard's byte-patch carrier, the REAL naked
+// thunk driven against a fake buffer/emitter/frame. Its rig half (a config-(1) clean quit) cannot
+// show the damage the thunk prevents without a second, unguarded run; this arm shows both.
+int run_gpfgtest();
 // tombstone_selftest.cpp -- X-TOMB: the arming DECISION (which bodies, what extent, what skips).
 // A zero-hit rig run cannot demonstrate the decision, only the absence of a hit, so it is here.
 int run_tombstonetest();
@@ -2245,8 +3361,8 @@ int run_bindtest();
 // `gate` marks the suites the offline gate runs. The rest are the TRANSPORT and rig modes: they
 // take a port, expect a peer, spawn or are spawned, and several deliberately never return on their
 // own -- run_selftests.py cannot run them, which is why the flag exists rather than the roster
-// being "every row". `seamtest` is a third case: a self-contained suite that is a KNOWN failure on
-// the baseline commit, so it is not gate-flagged either.
+// being "every row". `seamtest` is a third case: self-contained, a known failure until 2026-09-24
+// (tooling:TL-TEST1), and not gate-flagged yet.
 
 // `suite_args`, `suite_fn`, `suite_row` and the three adapt_<shape> templates live in
 // selftest_dispatch.h, shared with libmh_test/libmh_selftest.cpp since F5I S2 -- two mains needing
@@ -2272,9 +3388,9 @@ static const suite_row SUITE_TABLE[] = {
     {"bcast",       false, adapt_bcast},
     {"seam_host",   false, adapt_port<run_seam_host>},
     {"seam_client", false, adapt_port<run_seam_client>},
-    // NOT gate-flagged: a KNOWN pre-existing failure that crashes on the baseline commit too
-    // (verified 2026-07-25 by stashing). Putting it in the gate would make the gate permanently red
-    // and train everyone to ignore it.
+    // NOT gate-flagged. It was a known failure from 2026-07-25 (children reading fixed mh.exe VAs;
+    // fixed 2026-09-24, tooling:TL-TEST1 -- see seam_point_at_mock). Gating it is a roster edit
+    // (tools/data/selftest_roster.json + `true` here) and costs ~1 s per mode; left to the conductor.
     {"seamtest",    false, adapt_port<run_seamtest>},
     {"watch_host",  false, adapt_port<run_watch_host>},
     {"mute_peer",   false, adapt_port<run_mute_peer>},
@@ -2282,6 +3398,9 @@ static const suite_row SUITE_TABLE[] = {
     // watchdog and the host counts the client's connections).
     {"relink_host",   false, adapt_port<run_relink_host>},
     {"relink_client", false, adapt_port<run_relink_client>},
+    // U41b qmatchtest's two children (spawned, never run by hand).
+    {"qmatch_host",   false, adapt_port<run_qmatch_host>},
+    {"qmatch_client", false, adapt_port<run_qmatch_client>},
     {"probe",       false, adapt_port<run_mute_probe>},
     // RETIRED at tracker U18 (2026-07-24) -- the self-render splice it validated no longer exists,
     // and the replacement is a game-coupled restore verified live. The row stays so the name still
@@ -2331,6 +3450,7 @@ static const suite_row SUITE_TABLE[] = {
     // U40. Deliberately next to linktest: both stage a link DEATH with the same mute-peer trick,
     // and where linktest asks "is the corpse noticed", this one asks "can the survivor dial again".
     {"relinktest",     true, adapt_port<run_relinktest>},
+    {"qmatchtest",     true, adapt_port<run_qmatchtest>},
     // mp:T1b -- the same question asked of the OTHER transport module. It cannot be an arm of the
     // row above: relinktest drives the MH_Net_* exports, which in this exe are the TCP module's, so
     // the UDP side is reached through mh::netudp::Endpoint the way udploopbacktest reaches it.
@@ -2343,6 +3463,7 @@ static const suite_row SUITE_TABLE[] = {
     {"launchtest",     true, adapt_void<run_launchtest>},
     {"interlocktest",  true, adapt_void<run_interlocktest>},
     {"patchtest",      true, adapt_void<run_patchtest>},
+    {"gpfgtest",       true, adapt_void<run_gpfgtest>},
     {"tombstonetest",  true, adapt_void<run_tombstonetest>},
     {"hostapitest",    true, adapt_void<run_hostapitest>},
     // It must run BEFORE anything binds the regions -- its first arm is the open being refused over
@@ -2365,6 +3486,11 @@ static const suite_row SUITE_TABLE[] = {
     {"runctxtest",     true, adapt_argv<run_runctxtest>},
     {"udpwiretest",    true, adapt_argv<run_udpwiretest>},
     {"udploopbacktest",true, adapt_argv<run_udploopbacktest>},
+    // mp:U41e. Beside udploopbacktest because it drives the same object the same way, one concern
+    // over: T1 proves the byte stream, this proves the inbound-queue rollup + match-boundary epoch
+    // mh_net.dll's TCP transport has carried since mp:U41/U41d. Fixed ports (39710..), clear of
+    // udploopbacktest's own 39560..39697 range and udprelinktest/udpbulktest/udpsnaptest's.
+    {"uqmatchtest",    true, adapt_void<run_uqmatchtest>},
     // mp:T2. Next to the loopback suite because it drives the same object on the same loopback with
     // the same loss dial, one channel over: T1 owns the byte stream on channel A, this owns the
     // chunk transfer on channel C. It takes the port argument plus 200, so the two never collide.

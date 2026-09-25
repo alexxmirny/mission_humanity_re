@@ -27,6 +27,7 @@
 #include <string.h>
 
 #include "mh_session_dir.h"
+#include "seams/session_close_plan.h" // TL-HARN-CLEANCLOSE -- section 6
 
 namespace {
 
@@ -65,6 +66,39 @@ void fill(MH_SessionRecord *r, const char *id, int slot, const char *role) {
     mh_sd_copy(r->began_utc, MH_SESSION_STAMP_CAP, "20260917T164346Z");
     mh_sd_copy(r->process_dir, MH_SESSION_DIRNAME_CAP, "20260917T164300Z_menu_host");
 }
+
+// ---- section 6's recorder: the close's actions, as a trace -------------------------------------
+// seams/session_close_plan.h takes its actions as function pointers; these append one letter each,
+// so a check can assert the ORDER as a string: R=resets, C=record(reason), D=end_dir, T=tail,
+// Q=rollups_only, S=detector_stop. The fake world is two flags the test sets.
+char g_trace[64];
+char g_last_reason[32];
+bool g_fake_active = false, g_fake_net = false;
+
+void tr(char c) {
+    size_t n = strlen(g_trace);
+    if (n + 1 < sizeof(g_trace)) {
+        g_trace[n]     = c;
+        g_trace[n + 1] = '\0';
+    }
+}
+bool fk_active() { return g_fake_active; }
+bool fk_net() { return g_fake_net; }
+void fk_resets() { tr('R'); }
+void fk_record(const char *r) {
+    tr('C');
+    snprintf(g_last_reason, sizeof(g_last_reason), "%s", r ? r : "");
+}
+void fk_end_dir() {
+    tr('D');
+    g_fake_active = false; // the directory switch IS the session ending
+}
+void                         fk_tail(const char *) { tr('T'); }
+void                         fk_rollups() { tr('Q'); }
+void                         fk_stop() { tr('S'); }
+const mh::session_close::ops FK = {fk_active, fk_net, fk_resets, fk_record,
+                                   fk_end_dir, fk_tail, fk_rollups, fk_stop};
+void                         trace_reset() { g_trace[0] = '\0'; }
 
 } // namespace
 
@@ -332,6 +366,94 @@ int run_sessiondirtest() {
         check("nil detection: a full non-zero id is real", !mh_sd_is_nil_hex(ID_A));
         check("same_hex compares the whole 32", !mh_sd_same_hex(ID_A, ID_B));
         check("same_hex is reflexive", mh_sd_same_hex(ID_A, ID_A));
+    }
+
+    // ---- 6. TL-HARN-CLEANCLOSE: the close's sequencing, and the harness stop's second entry --------
+    // The rig question -- "does a determinism run end its match through mp_session_close?" -- is two
+    // offline questions first: does the ordinary close still do exactly what it did (resets, record,
+    // directory, U40, once), and does the harness stop write the record WITHOUT the directory switch,
+    // without a second record when a real seam closes afterwards, and only rollups when no session
+    // was ever opened? net_discovery.cpp binds these same functions to the live actions.
+    {
+        using namespace mh::session_close;
+        // (a) the ordinary close, unchanged.
+        {
+            state s{};
+            g_fake_active = true;
+            on_open(s);
+            trace_reset();
+            check("close: an open session runs resets, record, directory, U40 -- in that order",
+                  close(s, FK, "gameover") && strcmp(g_trace, "RCDT") == 0);
+            check("close: ...with the seam's own reason", strcmp(g_last_reason, "gameover") == 0);
+            trace_reset();
+            check("close: a second close does nothing", !close(s, FK, "quit") && g_trace[0] == '\0');
+        }
+        // (b) the harness stop on an open session: record only, the directory stays.
+        {
+            state s{};
+            g_fake_active = true;
+            on_open(s);
+            trace_reset();
+            check("harness stop: an open session is closed IN PLACE",
+                  harness_stop(s, FK, "harness_stop") == stop_result::closed_in_place);
+            check("harness stop: ...record, then the detector stops -- no resets, no directory "
+                  "switch, no U40",
+                  strcmp(g_trace, "CS") == 0);
+            check("harness stop: ...under reason=harness_stop",
+                  strcmp(g_last_reason, "harness_stop") == 0);
+            check("harness stop: ...and the session is still open (the streams keep their folder)",
+                  g_fake_active);
+            trace_reset();
+            check("harness stop: a second stop is ignored and writes nothing",
+                  harness_stop(s, FK, "harness_stop") == stop_result::repeated && g_trace[0] == '\0');
+            // A long run that reaches a real exit seam afterwards: that close switches the directory
+            // and runs U40, but must NOT write a second record for the same match.
+            trace_reset();
+            check("a real close after the stop: resets, directory, U40 -- NO second record",
+                  close(s, FK, "gameover") && strcmp(g_trace, "RDT") == 0);
+            // A NEW session is a new match and gets its own record.
+            g_fake_active = true;
+            on_open(s);
+            trace_reset();
+            check("the NEXT session closes with its own record again",
+                  close(s, FK, "quit") && strcmp(g_trace, "RCDT") == 0);
+        }
+        // (c) force-entry: a transport, no session ever -- the two rollups alone.
+        {
+            state s{};
+            g_fake_active = false;
+            g_fake_net    = true;
+            trace_reset();
+            check("harness stop: no session ever opened, transport up -> rollups, detector stop",
+                  harness_stop(s, FK, "harness_stop") == stop_result::rollups_only &&
+                      strcmp(g_trace, "QS") == 0);
+        }
+        // (d) the negatives: nothing to close.
+        {
+            state s{};
+            g_fake_active = false;
+            g_fake_net    = false;
+            trace_reset();
+            check("harness stop: no session and no transport (single-player) writes nothing",
+                  harness_stop(s, FK, "harness_stop") == stop_result::nothing && g_trace[0] == '\0');
+        }
+        {
+            // The match already closed through a real seam (a 2-peer quit ends the survivor's match):
+            // its rollups exist, and a second pair would split one match's counters across two lines.
+            state s{};
+            g_fake_active = true;
+            g_fake_net    = true;
+            on_open(s);
+            close(s, FK, "gameover");
+            trace_reset();
+            check("harness stop after the match already closed writes nothing",
+                  harness_stop(s, FK, "harness_stop") == stop_result::nothing && g_trace[0] == '\0');
+        }
+        check("the result names are the HARNESS_STOP line's close= values",
+              strcmp(stop_result_name(stop_result::closed_in_place), "in_place") == 0 &&
+                  strcmp(stop_result_name(stop_result::rollups_only), "rollups_only") == 0 &&
+                  strcmp(stop_result_name(stop_result::nothing), "nothing") == 0 &&
+                  strcmp(stop_result_name(stop_result::repeated), "repeated") == 0);
     }
 
     printf("  %d checks, %d failures\n", g_checks, g_fails);

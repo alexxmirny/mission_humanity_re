@@ -38,13 +38,20 @@ import contextlib
 import json
 import os
 import sys
+import threading
 import time
 from pathlib import Path
 
 import machine_config as machine
 
 LOCK_DIR = Path(machine.SHARED_LOCK_DIR)
-LEASE_TTL = 600  # a live lease with a DEAD/unknown holder older than this is reaped (s)
+LEASE_TTL = 600  # a lease whose holder stopped HEARTBEATING this long ago is reaped (s)
+# A live `lease()` holder refreshes its entry's `at` every HEARTBEAT_S from a daemon thread. Without
+# it, `age > LEASE_TTL` reaped a LIVE holder 10 min in: run_gate's rig lease vanished mid-gate, the
+# next child test_ui took the lease for itself, and the later units queued on each other (2026-09-25
+# gate: det_c1 238 -> 461 s, abc_tutorial 184 -> 452 s, wall 22 min). The age rule stays for what it
+# is for -- a hung holder, or a dead one whose pid was reused and so still reads as alive.
+HEARTBEAT_S = 60
 STICKY_TTL = 1800  # a manual `hold` (no live process) older than this is reaped, with a warning (s)
 WANT_TTL = 30  # a `want` marker older than this is treated as gone (the waiter left) (s)
 POLL_S = 0.5
@@ -279,12 +286,38 @@ def lease(
     poll: float = POLL_S,
     polite: bool = False,
 ):
-    """`with lease("ghidra-write", "loop:s3"): ...` -- acquire, run the write, always release."""
+    """`with lease("ghidra-write", "loop:s3"): ...` -- acquire, run the write, always release.
+
+    HEARTBEATS while held (see HEARTBEAT_S): a daemon thread refreshes the entry's `at`, but only
+    while the entry is still OURS (same holder and pid) -- a lease that was reaped and retaken is
+    never overwritten."""
     acquire(name, holder, timeout=timeout, poll=poll, polite=polite)
+    stop = threading.Event()
+    beat = threading.Thread(
+        target=_heartbeat, args=(name, holder, os.getpid(), stop), daemon=True, name="hostlock-hb"
+    )
+    beat.start()
     try:
         yield
     finally:
+        stop.set()
+        beat.join(timeout=5)
         release(name, holder)
+
+
+def _heartbeat(name: str, holder: str, pid: int, stop, period: float | None = None) -> None:
+    while not stop.wait(HEARTBEAT_S if period is None else period):
+        _refresh(name, holder, pid)
+
+
+def _refresh(name: str, holder: str, pid: int) -> bool:
+    """Bump `at` on our own entry; False (and no write) if the entry is gone or someone else's."""
+    entry = _read_json(_lock_path(name))
+    if not entry or entry.get("holder") != holder or entry.get("pid") != pid:
+        return False
+    entry["at"] = _now()
+    _write_json(_lock_path(name), entry)
+    return True
 
 
 def held_by(name: str):
@@ -533,6 +566,41 @@ def _selftest() -> int:
         with lease("t", "ctx"):
             inside = held_by("t") is not None
         check("the lease() context holds then releases", inside and held_by("t") is None)
+        # HEARTBEAT: a live holder past LEASE_TTL must survive once it has refreshed; one that did
+        # not refresh is reaped (the pre-2026-09-25 behaviour for EVERY holder, live or not).
+        acquire("t", "hb")
+        e = _read_json(_lock_path("t"))
+        e["at"] = _now() - LEASE_TTL - 1
+        _write_json(_lock_path("t"), e)
+        check("a refresh keeps our aged entry", _refresh("t", "hb", os.getpid()))
+        check(
+            "a live holder that heartbeats is NOT reaped past LEASE_TTL", held_by("t") is not None
+        )
+        e = _read_json(_lock_path("t"))
+        e["at"] = _now() - LEASE_TTL - 1
+        _write_json(_lock_path("t"), e)
+        check("a holder that stopped heartbeating IS reaped past LEASE_TTL", held_by("t") is None)
+        check("a refresh never resurrects a reaped entry", not _refresh("t", "hb", os.getpid()))
+        acquire("t", "other")
+        check(
+            "a refresh never overwrites another holder's entry",
+            not _refresh("t", "hb", os.getpid()),
+        )
+        release("t", "other")
+        st = threading.Event()
+        acquire("t", "thr")
+        e = _read_json(_lock_path("t"))
+        e["at"] = _now() - LEASE_TTL - 1
+        _write_json(_lock_path("t"), e)
+        th = threading.Thread(
+            target=_heartbeat, args=("t", "thr", os.getpid(), st, 0.05), daemon=True
+        )
+        th.start()
+        time.sleep(0.3)
+        st.set()
+        th.join(2)
+        check("the heartbeat thread refreshes the entry", held_by("t") is not None)
+        release("t", "thr")
 
         # ---- TL-LOCKRACE: a Windows os.replace() refusal while another process has the target
         # open for read (e.g. a concurrent waiter's _wants() scan) must be RETRIED, not raised. ----

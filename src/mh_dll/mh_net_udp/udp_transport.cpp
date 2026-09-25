@@ -1,7 +1,7 @@
 //
 // udp_transport.cpp -- mh_net_udp.dll's EXPORTED SURFACE (tracker mp:T1).
 //
-// The 26 rows of MH_NET_MODULE_SYMBOLS (mh_common/include/mh_net_module.h) over ONE Endpoint
+// The 27 rows of MH_NET_MODULE_SYMBOLS (mh_common/include/mh_net_module.h) over ONE Endpoint
 // (udp_endpoint.cpp). Everything interesting is in the endpoint; this file exists to answer the
 // contract and to own the three things the endpoint deliberately does not know about:
 //
@@ -445,6 +445,12 @@ extern "C" void MH_Net_GetStats(MH_NetStats *out) {
 }
 extern "C" void MH_Net_SetPeerHorizon(int player_id, int horizon_ms) {
     if (g_started) g_ep.set_peer_horizon(player_id, horizon_ms);
+}
+// mp:U41e (was mp:U41b's no-op -- see mp:U41c/G305): this module's inbound ring is now the SAME
+// sequence-merged lane pair mh_net.dll's TCP transport uses (udp_endpoint.h/.cpp), so the match
+// boundary restarts the SAME per-match counters through the SAME entry point.
+extern "C" void MH_Net_QueueMatchBoundary(void) {
+    if (g_started) g_ep.queue_match_boundary();
 }
 
 extern "C" void MH_Net_SetSessionInfoHandler(MH_SessionInfoCb cb) { g_si_cb = cb; }

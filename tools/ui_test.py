@@ -155,9 +155,13 @@ CLIENT_NET_EXTRA = ""
 # printed. --extra-ini cannot carry it (a fragment's [net] is REFUSED in main), so --net-extra is
 # the whole channel and this is complete.
 RUN_TRANSPORT = "udp"
-# net_shim.py's control-port default (DEFAULT_CONTROL_PORT there). shim_start never forwards
-# `--control`, so a shim it launches always listens here; shim_arm dials it directly rather than
-# threading a --shim-control flag through for a port nothing here ever changes.
+# net_shim.py's control-port default (DEFAULT_CONTROL_PORT there) -- and --shim-control-port's.
+# The control port is a machine-wide TCP singleton, so two shims on one box need two of them:
+# test_ui.py hands every local shim row its OWN port (test_ui.shim_control_port, the 6900 band,
+# derived from the row's shim port like the game port is from its index; lane_alloc --check proves
+# no two rows collide). Until 2026-09-24 shim_start never forwarded `--control`, every shim listened
+# HERE, and the suite had to fold all shim rows into one serial worker (1536 s of a 1731 s suite).
+# A hand run / VM-topology run that passes nothing still gets this default.
 SHIM_CONTROL_PORT = 6699
 # Whole extra INI SECTIONS appended verbatim after the standard blocks (--extra-ini FILE). This is how a
 # test opts into a feature that ships OFF: the debug overlay's [debug] block (tools/uiscripts/ini/) is
@@ -226,8 +230,17 @@ def wants_harness(harness_steps, is_host):
     was silently dropped on a VM one -- an asymmetry nobody asked for in a runner whose whole job is
     to make two peers identical except where a flag says otherwise. With the file merged there is one
     ini and one decision; this is it.
+
+    HOST-ONLY EXTRAS ARM EVERY PEER (mp:D33, 2026-09-25). `--harness-extra-host` is meant to make the
+    peers' KNOBS differ, not whether the harness runs at all. It used to arm the host alone, so a
+    harness-armed host (whose order_queue_tail_clear(), since removed, zeroed the dead slots of llm_strat_order[300]
+    every step) was compared against a harness-less client keeping retail's stale residue there --
+    the D21 watch hashes the whole array, so it read `DESYNC step=100 first_region=41 order_queue`
+    (78/79 samples) while every world region stayed identical. The client now gets the base block
+    (and HARNESS_EXTRA) too; a row that arms a workload host-only must still pass synth_move=0 in
+    `harness_extra` or the client's default D6 mover runs.
     """
-    return bool(harness_steps > 0 or HARNESS_EXTRA or (is_host and HARNESS_EXTRA_HOST))
+    return bool(harness_steps > 0 or HARNESS_EXTRA or HARNESS_EXTRA_HOST)
 
 
 def harness_apply_extras(base, extras):
@@ -750,6 +763,73 @@ def refresh_satellites(host_dir):
             shutil.copy(src, dst)
 
 
+def _prior_launch_pidfile(host_dir):
+    return os.path.join(host_dir, ".ui_test_last_pid.json")
+
+
+def _record_launch_pid(host_dir, pid):
+    """TL-RIG7: remember which pid this local_launch() put into `host_dir`, so a LATER invocation
+    into the same lane folder (a separate ui_test.py process -- each arm of spdet's baseline/promoted
+    pair is its own process, so in-memory state like _LOCAL_PIDS does not survive between them) can
+    wait for it to actually be gone before redeploying mh.dll. Uses the TL-RIG6 process-identity
+    helper (_process_created_at) to record a creation-time fingerprint alongside the pid, so PID reuse
+    cannot be mistaken for "still our process" on the read side."""
+    try:
+        with open(_prior_launch_pidfile(host_dir), "w", encoding="utf-8") as fh:
+            json.dump({"pid": pid, "started": _process_created_at(pid)}, fh)
+    except OSError:
+        pass
+
+
+def _wait_for_prior_launch_exit(host_dir, budget=15.0):
+    """TL-RIG7: spdet's DLL redeploy races the previous arm's exiting process. `Stop-Process -Force`
+    (local_kill) returns as soon as TerminateProcess is issued, not once Windows has actually released
+    the process's mapped mh.dll -- so the NEXT arm's shutil.copy() here could land mid-teardown
+    (PermissionError), or -- observed -- land on a file Windows had already let go of NAME-wise but
+    whose old mapping the exiting process was still using, comparing a fresh build against a fresh
+    build under two different names ("ORIGINAL vs ORIGINAL"; the verdict logic's honest refusal was
+    the only thing that caught it). Waits up to `budget` seconds for the pid a PRIOR local_launch()
+    into this SAME host_dir recorded to be provably gone; a marker with no matching live process (or
+    none at all -- first use of this lane) returns immediately, and this never blocks on some OTHER
+    lane's process."""
+    try:
+        with open(_prior_launch_pidfile(host_dir), "r", encoding="utf-8") as fh:
+            rec = json.load(fh)
+    except (OSError, ValueError):
+        return
+    pid, started = rec.get("pid"), rec.get("started")
+    if not pid:
+        return
+    deadline = time.time() + budget
+    waited = False
+    while time.time() < deadline:
+        # _process_still_running, NOT _process_created_at: OpenProcess succeeding does not mean the
+        # process is still RUNNING -- retain_exit_handle() (this same file) deliberately keeps a
+        # handle open on every launched pid past its exit, which would otherwise make this loop spin
+        # its whole budget on an already-gone process. GetExitCodeProcess's STILL_ACTIVE is the real
+        # signal; the creation-time check stays as a defence against the pid having been RECYCLED onto
+        # an unrelated process in between (astronomically unlikely in this window, cheap to rule out).
+        running = _process_still_running(pid)
+        if running is True and started is not None:
+            now_started = _process_created_at(pid)
+            if now_started is not None and abs(now_started - started) >= 2.0:
+                running = False  # a different process now holds this pid number -- ours is gone
+        if running is not True:
+            if waited:
+                print(
+                    "  [launch] the prior arm's process (pid %d) has exited -- redeploying mh.dll"
+                    % pid
+                )
+            return
+        waited = True
+        time.sleep(0.25)
+    print(
+        "  [launch] WARN: pid %d (the prior arm in this lane) was still alive after %.0fs -- "
+        "redeploying mh.dll anyway (TL-RIG7 -- a redeploy PermissionError past this point is the "
+        "race, not a new bug)" % (pid, budget)
+    )
+
+
 def local_launch(host_dir, script_src, script_name, timeout_frames, harness_steps=0, is_host=False):
     # deploy current DLL + script + ini, then launch the run-without-focus exe at the menu.
     #
@@ -760,6 +840,7 @@ def local_launch(host_dir, script_src, script_name, timeout_frames, harness_step
     # 2026-09-08: the committed sim coverage baseline was recorded against /O2+LTCG, reporting 655
     # files / 40,797 instrumented lines where the Debug build reports 700 / 61,889 -- i.e. inlined
     # bodies counted as never executed, the precise reading coverage.py exists to refuse.
+    _wait_for_prior_launch_exit(host_dir)  # TL-RIG7 -- before we touch mh.dll in this lane
     shutil.copy(g_dll(), os.path.join(host_dir, "mh.dll"))
     _pdb = os.path.splitext(g_dll())[0] + ".pdb"
     if os.path.isfile(_pdb):
@@ -834,6 +915,9 @@ def local_launch(host_dir, script_src, script_name, timeout_frames, harness_step
         if pid:
             _LOCAL_PIDS.append(pid)
             retain_exit_handle(pid)
+            _record_launch_pid(
+                host_dir, pid
+            )  # TL-RIG7 -- for the NEXT local_launch() into this lane
         wait_past_pack_load(host_dir, before, pid=pid)
     return pid
 
@@ -1227,11 +1311,21 @@ def remote_launch(
     # happened to have, and the run reported on the WRONG build. Seen 2026-07-26 (a "Broken pipe" left
     # the host on a stale DLL while the client had the new one). A stale-build result is worse than no
     # result, so this is fatal: retry once, then refuse to launch.
+    #
+    # mp:T3g -- this scp'd the bare module-level `DLL` constant, not `g_dll()`, so `--dll <path>` had
+    # NO EFFECT on a VM-topology run (local_launch already calls g_dll(); this remote twin did not).
+    # The "[dll] deploying ... (overrides the Release build)" banner prints and the deploy "succeeds"
+    # regardless, so a wrong-build run looks identical to a correct one from this function's own
+    # output. The peer's own `mh_net.log` SESSION_BEGIN `build=` field is the only thing that actually
+    # proves which binary ran -- read that, not this banner, before trusting a `--dll`-overridden run
+    # (dead-ends G316).
     if not deploy_peer_exe(args, ip, d, fwd):
         return False
     for attempt in (1, 2):
         if (
-            mp_run.scp(args.ssh_key, DLL, "%s@%s:%s/mh.dll" % (args.vm_user, ip, fwd)).returncode
+            mp_run.scp(
+                args.ssh_key, g_dll(), "%s@%s:%s/mh.dll" % (args.vm_user, ip, fwd)
+            ).returncode
             == 0
         ):
             break
@@ -1250,8 +1344,29 @@ def remote_launch(
     # UNCONDITIONAL HERE, unlike the local refresh: a VM directory is not provisioned per test, so
     # there is no absent-arm lane to protect. The absent arm is a LOCAL lane (module_absent), which
     # is also why --local is the suite's default.
+    omit = set()
+    for spec in getattr(args, "omit_satellite", None) or []:
+        role, _, sat = spec.rpartition(":")
+        if role == "" or (role == "host") == bool(is_host):
+            omit.add(sat)
     for name in SATELLITES:
-        src = os.path.join(os.path.dirname(DLL), name)
+        if name in omit:
+            # mp:D29 (D3): the absent arm, on a VM. Delete, then PROVE it is gone -- a peer that kept
+            # a stale copy would run configuration (2) under a configuration (1) name, and its
+            # verdict would describe the wrong build (the failure det_run_report's `configs`
+            # check exists to catch one step later).
+            remote(args, ip, "del /q %s\\%s 2>nul" % (d, name), tries=3)
+            r = remote(args, ip, 'if exist "%s\\%s" (exit 1) else (exit 0)' % (d, name), tries=3)
+            if r.returncode != 0:
+                print(
+                    "    [%s] ABORT: --omit-satellite %s but the peer still has it (or the check "
+                    "could not run) -- refusing to run a configuration the run does not name"
+                    % (ip, name)
+                )
+                return False
+            print("    [%s] %s OMITTED: not deployed, and absent on the peer" % (ip, name))
+            continue
+        src = os.path.join(os.path.dirname(g_dll()), name)
         if not os.path.isfile(src):
             print("    [%s] ABORT: no %s to deploy (build the mh.sln first)" % (ip, name))
             return False
@@ -1964,6 +2079,278 @@ def shim_listen_port(args):
     return args.shim_listen_port or args.port
 
 
+def shim_lane_port_mismatch(args, client_dirs):
+    """mp:D30 O5 -- a LOCAL LANE client dials the port in its OWN lane.json, not the shim's.
+
+    A client lane provisioned at the HOST's port therefore bypasses the shim entirely, and the run is
+    a LAN run printed as a "180 ms" one: three promoted-build runs came back IDENTICAL at srtt 0 (the
+    lookahead on its 60 ms floor) before this was caught. Returns the refusal text, or "" when every
+    local client lane dials the shim."""
+    want = shim_listen_port(args)
+    for pdir in client_dirs:
+        if not pdir:
+            continue
+        try:
+            with open(os.path.join(pdir, "lane.json"), "r", encoding="utf-8") as fh:
+                lport = int(json.load(fh).get("port") or 0)
+        except (OSError, ValueError):
+            continue
+        if lport and lport != want:
+            return (
+                "REFUSED: client lane %s dials port %d (its lane.json) but the shim listens on %d -- "
+                "the client would bypass the shim and this would be a LAN run. Provision the client "
+                "lane with --port %d." % (pdir, lport, want, want)
+            )
+    return ""
+
+
+# ---- TL-RIG6: the shim must die with its runner --------------------------------------------------
+# net_shim.py is a separate process Popen'd below. Before this fix nothing reaped it except a clean
+# shim_stop() call, so a runner killed by the per-test timeout (test_ui.py's run_ui_test() ->
+# subprocess.run(..., timeout=...), which on TimeoutExpired kills ui_test.py directly via
+# Popen.kill()/TerminateProcess and never runs any of ui_test.py's own cleanup) orphaned the shim,
+# which then held its port forever ("[shim] port 6714 is already in use" on the next run -- the
+# 03:49 F5H gate leaked 6714, still held at 04:01). TWO independent mechanisms, because either one
+# alone leaves a gap:
+#  (1) a Windows Job Object with JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE, assigned to the shim right
+#      after Popen. Windows closes every handle a process owns when that process exits BY ANY
+#      MEANS (including TerminateProcess), so the job's kill-on-close fires the moment ui_test.py
+#      is gone, with no cooperation from ui_test.py's own exit path needed. This is the forward
+#      fix -- it makes future leaks not happen.
+#  (2) a pidfile-based stale-holder breaker (the boot_lock pattern in make_lane.py), for anything
+#      that leaked BEFORE this fix existed, or if job-object assignment itself fails (e.g. no
+#      permission): shim_start(), on a bind() refusal, checks whether the holder is OUR OWN shim
+#      from a runner that is now provably dead (its pid either doesn't exist any more, or has been
+#      recycled onto an unrelated process -- checked via GetProcessTimes creation-time, which a PID
+#      reuse cannot fake) and, only then, kills it and retries once. A holder whose runner is still
+#      alive is left strictly alone -- this must never kill a live runner's shim.
+def _filetime_to_epoch(ft):
+    t = (ft.dwHighDateTime << 32) | ft.dwLowDateTime
+    return t / 10_000_000.0 - 11644473600.0  # 100ns ticks since 1601-01-01 -> Unix epoch seconds
+
+
+def _process_still_running(pid):
+    """True iff `pid` is a process that is ACTUALLY STILL RUNNING; False if it can be opened but has
+    already exited; None if it cannot be opened at all (fully gone, or never existed).
+
+    OpenProcess succeeding is NOT "is it running" -- offline verification caught this the hard way
+    (TL-RIG6/TL-RIG7's own scratch repro): Windows keeps a process's kernel object alive, and
+    OpenProcess-able, for as long as ANY handle anywhere still references it, including one this
+    project's own retain_exit_handle() deliberately keeps open "for the process's whole lifetime and
+    PAST it" (see its docstring) -- so a wait loop that only checked "can I open it" would spin its
+    whole budget on an already-exited process. GetExitCodeProcess's STILL_ACTIVE sentinel is the only
+    thing that actually distinguishes the two, and it is correct regardless of WHICH handle answers
+    it (the exit status is a property of the kernel object, not of any one handle)."""
+    try:
+        import ctypes
+
+        k32 = ctypes.windll.kernel32
+        PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+        STILL_ACTIVE = 259
+        h = k32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, int(pid))
+        if not h:
+            return None
+        try:
+            code = ctypes.c_ulong(0)
+            if not k32.GetExitCodeProcess(h, ctypes.byref(code)):
+                return None
+            return code.value == STILL_ACTIVE
+        finally:
+            k32.CloseHandle(h)
+    except Exception:  # a diagnostic must never be the thing that fails a run
+        return None
+
+
+def _process_created_at(pid):
+    """The Unix-epoch creation time of `pid`'s CURRENT kernel object, or None if it cannot be opened.
+    Deliberately NOT a liveness check (see _process_still_running for that) -- this exists only to
+    catch PID REUSE: a dead runner's pid can be handed to an unrelated process later, and that
+    process opens fine but was created at a different time, so a caller that already knows the pid
+    is not running can still tell "reused" from "the same still-lingering object" if it needs to."""
+    try:
+        import ctypes
+        from ctypes import wintypes
+
+        class FILETIME(ctypes.Structure):
+            _fields_ = [("dwLowDateTime", wintypes.DWORD), ("dwHighDateTime", wintypes.DWORD)]
+
+        k32 = ctypes.windll.kernel32
+        PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+        h = k32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, int(pid))
+        if not h:
+            return None
+        try:
+            creation, exit_t, kernel_t, user_t = FILETIME(), FILETIME(), FILETIME(), FILETIME()
+            if not k32.GetProcessTimes(
+                h,
+                ctypes.byref(creation),
+                ctypes.byref(exit_t),
+                ctypes.byref(kernel_t),
+                ctypes.byref(user_t),
+            ):
+                return None
+            return _filetime_to_epoch(creation)
+        finally:
+            k32.CloseHandle(h)
+    except Exception:  # a diagnostic must never be the thing that fails a run
+        return None
+
+
+def _process_terminate(pid):
+    try:
+        import ctypes
+
+        k32 = ctypes.windll.kernel32
+        PROCESS_TERMINATE = 0x0001
+        h = k32.OpenProcess(PROCESS_TERMINATE, False, int(pid))
+        if not h:
+            return False
+        try:
+            return bool(k32.TerminateProcess(h, 1))
+        finally:
+            k32.CloseHandle(h)
+    except Exception:
+        return False
+
+
+def _shim_kill_on_close_job(pid):
+    """Assign `pid` (the shim we just spawned) to a fresh Job Object with kill-on-close (see the
+    banner above). Returns the job handle -- keep it alive on the Popen object so Python does not
+    garbage-collect the int away -- or None if the job could not be created/assigned, which is never
+    fatal: the shim just runs unprotected by mechanism (1), same as before this fix."""
+    try:
+        import ctypes
+        from ctypes import wintypes
+
+        class JOBOBJECT_BASIC_LIMIT_INFORMATION(ctypes.Structure):
+            _fields_ = [
+                ("PerProcessUserTimeLimit", ctypes.c_longlong),
+                ("PerJobUserTimeLimit", ctypes.c_longlong),
+                ("LimitFlags", wintypes.DWORD),
+                ("MinimumWorkingSetSize", ctypes.c_size_t),
+                ("MaximumWorkingSetSize", ctypes.c_size_t),
+                ("ActiveProcessLimit", wintypes.DWORD),
+                ("Affinity", ctypes.c_void_p),
+                ("PriorityClass", wintypes.DWORD),
+                ("SchedulingClass", wintypes.DWORD),
+            ]
+
+        class IO_COUNTERS(ctypes.Structure):
+            _fields_ = [
+                (n, ctypes.c_ulonglong)
+                for n in (
+                    "ReadOperationCount",
+                    "WriteOperationCount",
+                    "OtherOperationCount",
+                    "ReadTransferCount",
+                    "WriteTransferCount",
+                    "OtherTransferCount",
+                )
+            ]
+
+        class JOBOBJECT_EXTENDED_LIMIT_INFORMATION(ctypes.Structure):
+            _fields_ = [
+                ("BasicLimitInformation", JOBOBJECT_BASIC_LIMIT_INFORMATION),
+                ("IoInfo", IO_COUNTERS),
+                ("ProcessMemoryLimit", ctypes.c_size_t),
+                ("JobMemoryLimit", ctypes.c_size_t),
+                ("PeakProcessMemoryUsed", ctypes.c_size_t),
+                ("PeakJobMemoryUsed", ctypes.c_size_t),
+            ]
+
+        JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE = 0x2000
+        JobObjectExtendedLimitInformation = 9
+        PROCESS_SET_QUOTA, PROCESS_TERMINATE = 0x0100, 0x0001
+
+        k32 = ctypes.windll.kernel32
+        job = k32.CreateJobObjectW(None, None)
+        if not job:
+            return None
+        info = JOBOBJECT_EXTENDED_LIMIT_INFORMATION()
+        info.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE
+        if not k32.SetInformationJobObject(
+            job, JobObjectExtendedLimitInformation, ctypes.byref(info), ctypes.sizeof(info)
+        ):
+            k32.CloseHandle(job)
+            return None
+        h = k32.OpenProcess(PROCESS_SET_QUOTA | PROCESS_TERMINATE, False, int(pid))
+        if not h:
+            k32.CloseHandle(job)
+            return None
+        try:
+            if not k32.AssignProcessToJobObject(job, h):
+                k32.CloseHandle(job)
+                return None
+        finally:
+            k32.CloseHandle(h)
+        return job
+    except Exception:
+        return None
+
+
+def _shim_pidfile_path(listen_port):
+    return os.path.join(REPO, "tmp", "shim", "net_shim_%d.pid" % listen_port)
+
+
+def _shim_write_pidfile(listen_port, shim_pid):
+    os.makedirs(os.path.join(REPO, "tmp", "shim"), exist_ok=True)
+    runner_pid = os.getpid()
+    record = {
+        "shim_pid": shim_pid,
+        "runner_pid": runner_pid,
+        "runner_started": _process_created_at(runner_pid),
+        "port": listen_port,
+        "written": time.time(),
+    }
+    try:
+        with open(_shim_pidfile_path(listen_port), "w", encoding="utf-8") as fh:
+            json.dump(record, fh)
+    except OSError:
+        pass
+
+
+def _shim_reap_if_orphaned(listen_port):
+    """A bind() to our own shim's port just failed -- before refusing, check whether the holder is
+    OUR OWN shim (identified by the pidfile shim_start wrote for this port) from a runner that is
+    now DEAD. Returns True (and has already killed the stale shim) iff the caller should retry the
+    bind once; False means either there is no pidfile to go on, or the runner recorded in it is
+    still alive -- in both cases the holder is left untouched."""
+    try:
+        with open(_shim_pidfile_path(listen_port), "r", encoding="utf-8") as fh:
+            rec = json.load(fh)
+    except (OSError, ValueError):
+        return False
+    runner_pid, shim_pid = rec.get("runner_pid"), rec.get("shim_pid")
+    if not runner_pid or not shim_pid:
+        return False
+    # _process_still_running, NOT a bare OpenProcess/_process_created_at check: OpenProcess can
+    # succeed on an ALREADY-EXITED pid for as long as anyone, anywhere, still holds a handle to it --
+    # offline verification (TL-RIG7's scratch repro) caught this turning "is it running" into "does
+    # the object still exist", which is a different question and the wrong one here.
+    running = _process_still_running(runner_pid)
+    if running is True:
+        now_started = _process_created_at(runner_pid)
+        recorded_started = rec.get("runner_started")
+        if (
+            now_started is not None
+            and recorded_started is not None
+            and abs(now_started - recorded_started) < 2.0
+        ):
+            return False  # same process, still running: a LIVE runner's shim -- never touch it
+    print(
+        "[shim] port %d is held by an orphaned shim (pid %s) whose runner (pid %s) is no longer "
+        "the process that started it (TL-RIG6) -- reaping it and retrying once"
+        % (listen_port, shim_pid, runner_pid)
+    )
+    _process_terminate(shim_pid)
+    time.sleep(1.0)
+    try:
+        os.remove(_shim_pidfile_path(listen_port))
+    except OSError:
+        pass
+    return True
+
+
 def shim_start(args):
     if not args.shim:
         return None
@@ -1974,13 +2361,20 @@ def shim_start(args):
     # then dials it inherits a corpse with whatever delay/blackhole it last had -- silently invalid
     # rather than refused (the exact failure this probe exists to catch, one paragraph below).
     probe_kind = socket.SOCK_DGRAM if RUN_TRANSPORT == "udp" else socket.SOCK_STREAM
-    with socket.socket(
-        socket.AF_INET, probe_kind
-    ) as probe:  # fail LOUDLY, not inherit a stale shim
-        probe.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    # TL-RIG6: retry ONCE, and only if the holder can be positively identified as our own shim from
+    # a now-dead runner (_shim_reap_if_orphaned) -- never on the first bind failure, and never past
+    # one retry (a live runner's shim must come back False forever, not get killed on attempt N).
+    for attempt in range(2):
         try:
-            probe.bind(("0.0.0.0", listen_port))
+            with socket.socket(
+                socket.AF_INET, probe_kind
+            ) as probe:  # fail LOUDLY, not inherit a stale shim
+                probe.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+                probe.bind(("0.0.0.0", listen_port))
+            break
         except OSError:
+            if attempt == 0 and _shim_reap_if_orphaned(listen_port):
+                continue
             print(
                 "[shim] %s port %d is already in use -- a shim from an earlier run is probably still\n"
                 "       alive (and may have a blackhole latched on). Kill it and retry; a run through\n"
@@ -1988,8 +2382,23 @@ def shim_start(args):
                 % (RUN_TRANSPORT, listen_port)
             )
             return None
+    # The control port is TCP whatever the transport, and it is the singleton that used to force
+    # every shim row onto one worker -- probe it too, so a collision is a named refusal rather than
+    # the shim's own "[shim] failed to start (exit 1)".
+    control_port = getattr(args, "shim_control_port", None) or SHIM_CONTROL_PORT
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
+        try:
+            probe.bind(("127.0.0.1", control_port))
+        except OSError:
+            print(
+                "[shim] control port %d is already in use -- another shim (or a stale one) holds it.\n"
+                "       Two concurrent shims need distinct --shim-control-port values."
+                % control_port
+            )
+            return None
     os.makedirs(os.path.join(REPO, "tmp", "shim"), exist_ok=True)
-    log = os.path.join(REPO, "tmp", "shim", "ui_test_shim.log")
+    # Per LISTEN port: two concurrent shims used to write (and delete) the same log file.
+    log = os.path.join(REPO, "tmp", "shim", "ui_test_shim_%d.log" % listen_port)
     if os.path.exists(log):
         os.remove(log)
     cmd = [
@@ -2006,6 +2415,8 @@ def shim_start(args):
         str(args.shim_jitter),
         "--log",
         log,
+        "--control",
+        str(control_port),
     ]
     # mp:TL-SHIMUDP -- this used to be TCP unconditionally, so every `[net] transport=udp` run had to
     # be shimmed by hand (start net_shim.py --udp yourself, point ui_test at it): nothing here ever
@@ -2031,14 +2442,20 @@ def shim_start(args):
         print("[shim] failed to start (exit %s) -- see %s" % (proc.returncode, log))
         return None
     proc.manual_arm = manual_arm  # read by shim_arm() once the caller knows the host is ready
+    proc.control_port = control_port  # read by shim_arm()
+    proc.log_path = log  # read by shim_stop()
+    proc.listen_port = listen_port  # read by shim_stop() (TL-RIG6 pidfile cleanup)
+    _shim_write_pidfile(listen_port, proc.pid)  # TL-RIG6: so a future orphan can be identified
+    proc.rig6_job = _shim_kill_on_close_job(proc.pid)  # TL-RIG6: dies with THIS process, any exit
     print(
-        "[shim] listening :%s -> %s (%s)  delay=%sms one-way (%sms rtt)%s"
+        "[shim] listening :%s -> %s (%s)  delay=%sms one-way (%sms rtt)  control :%d%s"
         % (
             listen_port,
             args.shim if ":" in args.shim else "%s:%d" % (args.shim, args.port),
             RUN_TRANSPORT,
             args.shim_delay,
             args.shim_delay * 2,
+            control_port,
             ("  timeline=" + os.path.basename(args.shim_timeline)) if args.shim_timeline else "",
         )
     )
@@ -2056,7 +2473,8 @@ def shim_arm(proc):
     if not proc or not getattr(proc, "manual_arm", False):
         return
     try:
-        with socket.create_connection(("127.0.0.1", SHIM_CONTROL_PORT), timeout=5) as s:
+        port = getattr(proc, "control_port", SHIM_CONTROL_PORT)
+        with socket.create_connection(("127.0.0.1", port), timeout=5) as s:
             s.sendall(b"arm\n")
             s.settimeout(5)
             reply = s.recv(4096)
@@ -2069,6 +2487,126 @@ def shim_arm(proc):
         )
 
 
+def shim_ctl(proc, cmd):
+    """Send one control-channel command to a shim this runner started; returns the reply or None."""
+    port = getattr(proc, "control_port", SHIM_CONTROL_PORT)
+    try:
+        with socket.create_connection(("127.0.0.1", port), timeout=5) as s:
+            s.sendall((cmd.strip() + "\n").encode("utf-8"))
+            s.settimeout(5)
+            return s.recv(4096).decode("utf-8", "replace").strip()
+    except OSError as e:
+        print("[shim] WARN: control command %r failed (%s)" % (cmd, e))
+        return None
+
+
+# ---- EVIDENCE-BOUNDED shim actions (gate diet block 2, 2026-09-24) ------------------------------
+# A shim TIMELINE is a wall clock, so a scenario that must act "after the evidence exists" had to
+# guess the offset and add margin -- net_hud blackholed at t+300 s for a capture done at ~40 s,
+# resync_storm_repro soaked 340 s for a storm whose 5th barrier lands 10 s into the match. A
+# trigger is the state-gated form: `--shim-trigger JSON`, where JSON is
+#   {"cmd": "<net_shim control command>", "when": [[<peer>, <file>, <regex>], ...]}
+# <peer> is "host" or "c1".."cN" (launch order), <file> a log name the peer writes (mh_uidrive.log,
+# mh_net.log, ...) looked up in its process dir AND every later dir of the same lane's logs/ (the
+# session dirs), <regex> a Python regex searched in it. When EVERY condition holds the command is
+# sent once, on the runner's 3 s poll. A timeline stays valid beside a trigger -- as the FALLBACK
+# bound (the trigger's evidence never appearing is itself a finding the timeline then records).
+# LOCAL peers only: a VM peer's condition is never satisfied (said once), so the timeline decides.
+def parse_shim_triggers(raw):
+    out = []
+    for r in raw or []:
+        t = json.loads(r)
+        if not isinstance(t, dict) or not t.get("cmd") or not t.get("when"):
+            raise ValueError(
+                "--shim-trigger wants {\"cmd\": ..., \"when\": [[peer, file, regex], ...]}: %r" % r
+            )
+        conds = []
+        for c in t["when"]:
+            peer, fname, rx = c
+            conds.append((peer, fname, re.compile(rx)))
+        out.append({"cmd": t["cmd"], "when": conds, "fired": False})
+    return out
+
+
+def _peer_by_role(peers, role):
+    if role == "host":
+        return peers[0] if peers else None
+    if role.startswith("c") and role[1:].isdigit():
+        i = int(role[1:])
+        return peers[i] if 0 < i < len(peers) else None
+    return None
+
+
+def _local_peer_file_texts(run, fname):
+    """The texts of `fname` in the peer's process dir and every LATER dir of the same logs/ folder
+    (dir names are UTC-timestamp-prefixed, so a lexical >= is 'created at or after')."""
+    if not run or not os.path.isdir(run):
+        return []
+    logs = os.path.dirname(os.path.abspath(run).rstrip("\\/"))
+    base = os.path.basename(os.path.abspath(run).rstrip("\\/"))
+    out = []
+    for d in sorted(os.listdir(logs)):
+        if d < base:
+            continue
+        fp = os.path.join(logs, d, fname)
+        if os.path.isfile(fp):
+            try:
+                with open(fp, encoding="utf-8", errors="replace") as fh:
+                    out.append(fh.read())
+            except OSError:
+                pass
+    return out
+
+
+def pump_shim_triggers(proc, triggers, peers, t0):
+    if not proc or not triggers:
+        return
+    for trg in triggers:
+        if trg["fired"]:
+            continue
+        ok = True
+        for role, fname, rx in trg["when"]:
+            p = _peer_by_role(peers, role)
+            if not p or not p.get("run"):
+                ok = False
+                break
+            if p.get("ip") is not None:
+                if not trg.get("warned"):
+                    trg["warned"] = True
+                    print(
+                        "[shim] trigger %r: peer %s is not local -- cannot read its logs; the "
+                        "timeline (if any) is the only bound" % (trg["cmd"], role)
+                    )
+                ok = False
+                break
+            if not any(rx.search(t) for t in _local_peer_file_texts(p["run"], fname)):
+                ok = False
+                break
+        if ok:
+            trg["fired"] = True
+            if trg["cmd"].startswith("signal "):
+                # A script signal instead of a shim command: drop rig_<name>.flag for every LOCAL
+                # peer, the same file the signal ferry drops, so a script can `awaitsignal <name>`
+                # on an evidence line it has no op to read (resync_countinit_proof ends on its
+                # second barrier fire this way rather than on a game-clock window).
+                name = trg["cmd"].split(None, 1)[1].strip()
+                for p in peers:
+                    if p.get("run") and p.get("ip") is None:
+                        deliver_signal(None, p, name)
+                reply = "signal %r delivered" % name
+            else:
+                reply = shim_ctl(proc, trg["cmd"])
+            print(
+                "[shim] TRIGGER at +%.0fs: %r -> %s  (when %s)"
+                % (
+                    time.time() - t0,
+                    trg["cmd"],
+                    reply,
+                    "; ".join("%s:%s~/%s/" % (r, f, x.pattern) for r, f, x in trg["when"]),
+                )
+            )
+
+
 def shim_stop(proc):
     if not proc:
         return
@@ -2077,8 +2615,26 @@ def shim_stop(proc):
         proc.wait(timeout=5)
     except subprocess.TimeoutExpired:
         proc.kill()
-    log = os.path.join(REPO, "tmp", "shim", "ui_test_shim.log")
-    if os.path.exists(log):
+    # TL-RIG6: a clean stop means the pidfile is no longer current -- remove it so a LATER run does
+    # not read a stale (but now-harmless-looking) record and skip the reap check for a genuinely
+    # orphaned holder on the same port. The job handle can simply be closed: the process it protected
+    # is already gone (we just waited for it), so closing does not trigger a kill of anything.
+    lp = getattr(proc, "listen_port", None)
+    if lp is not None:
+        try:
+            os.remove(_shim_pidfile_path(lp))
+        except OSError:
+            pass
+    job = getattr(proc, "rig6_job", None)
+    if job:
+        try:
+            import ctypes
+
+            ctypes.windll.kernel32.CloseHandle(job)
+        except Exception:
+            pass
+    log = getattr(proc, "log_path", "")
+    if log and os.path.exists(log):
         print("[shim] stopped; event log:")
         with open(log, "r", encoding="utf-8", errors="replace") as fh:
             for line in fh:
@@ -2662,6 +3218,77 @@ def pull_peer_logs(args, ip, run, dest):
     return dest
 
 
+# ---- TL-HARN-CLEANCLOSE: the peers' own end of the match ---------------------------------------
+# The harness closes each peer's match IN PLACE at its stop step (MH_Session_HarnessStop,
+# net_discovery.cpp): the desync detector's rollup, the inbound-queue rollup + match boundary and
+# SESSION_END, then this line. The runner still ends the processes from outside afterwards -- that is
+# unchanged -- so what it must not do is PULL a peer before that peer reached its own stop step. The
+# host is the peer this loop waits on, so it is always there; a client a few lockstep steps behind
+# may not be, and a pull taken then would carry every hash but none of the end-of-match lines.
+# Registered as net.harness_stop in tools/data/log_formats.json.
+HARNESS_STOP = "; [session] HARNESS_STOP"
+HARNESS_STOP_RE = re.compile(r"; \[session\] HARNESS_STOP step=(\d+) close=(\w+)")
+# The wait is for the STRAGGLER only, and it is bounded well inside the +5 s a run may grow by: a
+# client that is still behind after this is not "slow to close", it is behind the host by more
+# than the lookahead, and the compared-step floor has its own word on that.
+CLOSE_WAIT_S = 8
+
+
+def harness_stop_of(peer_dir):
+    """(step, close) from a pulled peer's mh_net.log's LAST HARNESS_STOP line, or None."""
+    try:
+        with open(os.path.join(peer_dir, "mh_net.log"), encoding="utf-8", errors="replace") as f:
+            text = f.read()
+    except OSError:
+        return None
+    hits = HARNESS_STOP_RE.findall(text)
+    return (int(hits[-1][0]), hits[-1][1]) if hits else None
+
+
+def det_await_close(args, peers, det_dir, exclude):
+    """Re-pull any peer whose pulled log has no HARNESS_STOP line yet, for up to CLOSE_WAIT_S.
+
+    Returns {key: (step, close) or None}. Costs nothing when every peer already closed -- the
+    common case, since the host's pull alone takes longer than a client's lag.
+
+    ONLY A PEER STILL SHORT OF ITS STOP STEP IS WAITED FOR. The harness flushes its per-region
+    breakdown and closes the match in the same breath, and pull_peer_logs copies mh_harness.log
+    BEFORE mh_net.log -- so a pulled breakdown with no HARNESS_STOP beside it is a peer that will
+    never write one (close_on_stop=0, or an mh.dll from before TL-HARN-CLEANCLOSE), and waiting on
+    it would only spend the budget re-pulling a finished answer."""
+    want = [(k, ip, run) for k, ip, run in peers if run and k not in (exclude or [])]
+    got = {k: harness_stop_of(os.path.join(det_dir, k)) for k, _ip, _run in want}
+
+    def straggling(k):
+        return got[k] is None and not mp_run.steps_done(os.path.join(det_dir, k))[1]
+
+    deadline = time.time() + CLOSE_WAIT_S
+    while any(straggling(k) for k in got) and time.time() < deadline:
+        time.sleep(1)
+        for k, ip, run in want:
+            if straggling(k):
+                dest = os.path.join(det_dir, k)
+                # pull_peer_logs APPENDS the session folders' halves, so a re-pull starts clean.
+                shutil.rmtree(dest, ignore_errors=True)
+                pull_peer_logs(args, ip, run, dest)
+                got[k] = harness_stop_of(dest)
+    print(
+        "[det] clean close: %s"
+        % ", ".join(
+            "%s=%s" % (k, ("%s@%d" % (v[1], v[0])) if v else "ABSENT")
+            for k, v in sorted(got.items())
+        )
+    )
+    for k, v in sorted(got.items()):
+        if v is None:
+            print(
+                "[det] %s wrote no `%s` line within %ds of the pull -- its end-of-match lines "
+                "(desync rollup, queue rollup, SESSION_END) are not in this run's logs"
+                % (k, HARNESS_STOP, CLOSE_WAIT_S)
+            )
+    return got
+
+
 def run_determinism(args):
     """UI-PATH determinism: launch every peer through the REAL menu->lobby->Start (no force-entry), run
     `--steps` in-game with the [harness] region-hash logger active, then mp_analyze.py the peers' logs for
@@ -2697,6 +3324,11 @@ def run_determinism(args):
     if shim:
         connect_ip = local_lan_ip()
         print("[shim] clients will connect to %s" % connect_ip)
+        bad = shim_lane_port_mismatch(args, [cdir for _cip, _cs, cdir in clients])
+        if bad:
+            shim_stop(shim)
+            print(bad)
+            return 1
     peers = []  # (key, ip, run)
     pin_setup(args, host_ip, name=args.host_name, game=args.game_name, pdir=hdir)
     print(
@@ -2708,6 +3340,7 @@ def run_determinism(args):
     )
     if not hrun:
         peer_kill(args, host_ip)
+        shim_stop(shim)  # mp:D30 O5: an early abort left the shim holding its port for the next run
         return 1
     peers.append(("host", host_ip, hrun))
     ready_deadline = time.time() + min(max(args.timeout, 90), 90)
@@ -2720,6 +3353,9 @@ def run_determinism(args):
             % (args.port, RUN_TRANSPORT)
         )
         peer_kill(args, host_ip)
+        shim_stop(
+            shim
+        )  # mp:D30 O5: without this the next run is refused "udp port ... already in use"
         return 1
     shim_arm(
         shim
@@ -2836,6 +3472,9 @@ def run_determinism(args):
                 )
                 continue
             dirs.append(pulled)
+    if not stalled:
+        # TL-HARN-CLEANCLOSE: a straggling client's close lands a moment after the host's.
+        det_await_close(args, peers, det_dir, args.det_exclude)
     for key, ip, run in peers:
         peer_kill(args, ip, run)
     shim_stop(shim)
@@ -2895,7 +3534,13 @@ def run_determinism(args):
             print("        %-8s %s:%s/logs/%s" % (key, ip or "local", args.vm_dir, run))
     if not clean:
         # Keep the last three failures locally, so a red survives the next run's wipe.
-        keep = os.path.join(_scratch(), "determinism.red-%s" % (peers[0][2] or "run"))
+        # basename: a LOCAL lane's run is a full path (F:\...\logs\<stamp>), which made the old
+        # `determinism.red-F:\...` name invalid and lost every local red (mp:T4 O4, 2026-09-24).
+        keep = os.path.join(
+            _scratch(),
+            "determinism.red-%s"
+            % (os.path.basename(os.path.normpath(peers[0][2])) if peers[0][2] else "run"),
+        )
         shutil.rmtree(keep, ignore_errors=True)
         try:
             shutil.copytree(det_dir, keep)
@@ -3023,6 +3668,21 @@ def main():
     ap.add_argument("--vm-user", default=machine.VM_USER)
     ap.add_argument("--ssh-key", default=machine.SSH_KEY)
     ap.add_argument("--vm-dir", default=machine.VM_DIR)
+    # mp:D29 (D3). A VM peer's game directory PERSISTS between runs, and remote_launch pushes every
+    # satellite unconditionally -- so a VM could never run configuration (1): libmh.dll was always
+    # re-deployed, and a stale copy from an earlier run was never deleted either. This is the VM
+    # twin of make_lane's --omit-satellite: the named file is NOT pushed and is DELETED from the peer,
+    # and the launch aborts if it is still there afterwards. Local lanes ignore it (make_lane already
+    # built them without the file); test_ui passes it only on the VM topology.
+    ap.add_argument(
+        "--omit-satellite",
+        action="append",
+        default=[],
+        metavar="[host:|client:]DLL",
+        help="VM peers: do NOT deploy this satellite and DELETE any copy on the peer (repeatable). "
+        "A `host:` / `client:` prefix scopes it to that side -- the MIXED configuration (1) shape "
+        "omits libmh.dll on ONE peer only (mp:D29)",
+    )
     # DEFAULT since 2026-08-27 (I6b): peers run byte-for-byte RETAIL mh.exe and
     # get mh.dll from the msvfw32 proxy shim. The peer file keeps its name; only its bytes change,
     # and it is deployed per run, so switching modes back and forth is safe.
@@ -3079,7 +3739,23 @@ def main():
         "box -- they cannot share a port, and the shim binds first, so the game loses (see "
         "shim_listen_port()). The peers must dial this port.",
     )
+    ap.add_argument(
+        "--shim-control-port",
+        type=int,
+        default=SHIM_CONTROL_PORT,
+        help="the shim's localhost TCP control port (default %d). test_ui.py gives each local shim "
+        "row its own, so shim rows can run concurrently." % SHIM_CONTROL_PORT,
+    )
     ap.add_argument("--shim-timeline", help="shim timeline file (tools/uiscripts/shim/*.txt)")
+    ap.add_argument(
+        "--shim-trigger",
+        action="append",
+        default=[],
+        help='EVIDENCE-BOUNDED shim action (repeatable): JSON {"cmd": "blackhole on", "when": '
+        '[["host", "mh_net.log", "barrier #5 BEGIN"], ["c1", "mh_uidrive.log", "LOG: CLIENT"]]} -- '
+        "sent once, when every condition's regex is found in that LOCAL peer's log. See "
+        "parse_shim_triggers.",
+    )
     ap.add_argument(
         "--determinism",
         action="store_true",
@@ -3279,6 +3955,13 @@ def main():
         "this the per-launch copy in local_launch silently undoes make_lane's own --dll.",
     )
     args = ap.parse_args()
+    for spec in args.omit_satellite:
+        role, _, sat = spec.rpartition(":")
+        if role not in ("", "host", "client") or sat not in SATELLITES:
+            ap.error(
+                "--omit-satellite %s: want [host:|client:]DLL, DLL one of %s"
+                % (spec, ", ".join(SATELLITES))
+            )
     if args.dll:
         if not os.path.isfile(args.dll):
             sys.exit("--dll: no such file: %s" % args.dll)
@@ -3594,6 +4277,10 @@ def main():
             if host_ip is not None:
                 connect_ip = local_lan_ip()
             print("[shim] clients will connect to %s:%d" % (connect_ip, shim_listen_port(args)))
+            bad = shim_lane_port_mismatch(args, [p.get("dir") for p in peers[1:]])
+            if bad:
+                shim_stop(shim)
+                sys.exit(bad)
 
         deadline = time.time() + args.timeout
         host = peers[0]
@@ -3614,6 +4301,7 @@ def main():
         )
         if not host["run"]:
             peer_kill(args, host_ip, host.get("run"))
+            shim_stop(shim)  # TL-RIG6: this abort path used to leak the shim's port to the next run
             return 1
         # The readiness gate answers ONE question: may the clients launch yet? With no clients there is
         # nothing to gate, and running it anyway is actively wrong -- the host only starts listening when
@@ -3651,6 +4339,7 @@ def main():
                     % (args.port, args.timeout, args.port)
                 )
             peer_kill(args, host_ip)
+            shim_stop(shim)  # TL-RIG6: this abort path used to leak the shim's port to the next run
             return 1
         shim_arm(
             shim
@@ -3692,6 +4381,7 @@ def main():
                     for pp in peers:
                         if pp.get("run"):
                             peer_kill(args, pp.get("ip"), pp.get("run"))
+                    shim_stop(shim)  # TL-RIG6: this abort path used to leak the shim's port too
                     return 1
                 # exit_witness reads the D15 instrument, so the wait is provably on the REAL
                 # llm_wnd_on_destroy -> ExitProcess path, not a process that merely died some other
@@ -3727,6 +4417,8 @@ def main():
         pending = {p["key"] for p in peers if p.get("run")}
         delivered = set()  # (peer, signal) already ferried -- see pump_signals
         last_live = time.time()
+        shim_triggers = parse_shim_triggers(args.shim_trigger) if shim else []
+        trig_t0 = time.time()
         while pending and time.time() < deadline:
             time.sleep(3)
             if len(peers) > 1:
@@ -3755,6 +4447,7 @@ def main():
                     if report_dead_peer(p["key"], p["run"]):
                         results[p["key"]] = "PROCESS-GONE"
                         pending.discard(p["key"])
+            pump_shim_triggers(shim, shim_triggers, peers, trig_t0)
         for k in pending:
             results[k] = "TIMED-OUT"
             print("[%s] script TIMED-OUT (no marker)" % k)

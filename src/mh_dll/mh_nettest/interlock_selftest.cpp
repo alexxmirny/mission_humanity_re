@@ -192,6 +192,12 @@ bool fake_entry_untouched() { return untouched(g_fake_entry, sizeof(g_fake_entry
 void noop_observer() {}
 void noop_observer2() {}
 
+// mp:D32's counting arm: stands in for mh::desync's step++ without pulling in the whole live module
+// (install()/session_reset() need an ini, a manifest and an armed transport -- machinery unrelated to
+// the thing under test, which is a REGISTRATION decision, not the detector's own bookkeeping).
+int  g_pre_hook_calls = 0;
+void count_pre_hook_call() { ++g_pre_hook_calls; }
+
 } // namespace
 
 int run_interlocktest() {
@@ -868,10 +874,12 @@ int run_interlocktest() {
         ck(callback_of(point::sim_step) == nullptr, "D5: ...and records nothing");
 
         // THE ONE REGISTRATION AN OWNER CAN REFUSE. mh::sim::set_sim_step_pre_hook takes a single
-        // subscriber and only while the root is promoted; the registry must propagate BOTH refusals
-        // rather than reporting a subscription the body will never fire.
+        // subscriber, only while the root is promoted, and (mp:D32) only via the DIRECT-INSTALL
+        // route -- the registry must propagate ALL THREE refusals rather than reporting a
+        // subscription the body will never fire.
         {
             using mh::sim::register_promotion_sim_step_rebound;
+            using mh::sim::sim_step_promotion_force_direct_for_test;
             using mh::sim::sim_step_promotion_reset_for_test;
 
             sim_step_promotion_reset_for_test();
@@ -879,13 +887,81 @@ int run_interlocktest() {
                "D5: sim_step_pre is REFUSED while the root is unpromoted (there is no body to chain)");
             ck(callback_of(point::sim_step_pre) == nullptr,
                "D5: ...and a refused registration is not recorded");
+
+            // mp:D32. Promoted BY REBIND: the harness's own detour still owns the real entry and
+            // already calls mh::desync::on_sim_step_hashed unconditionally (harness.cpp on_sim_step,
+            // BEFORE the promoted/original branch), so this slot must stay REFUSED here too -- taking
+            // it fed the detector twice per step (measured: "2999 steps seen" for a 1500-step run).
             register_promotion_sim_step_rebound();
+            ck(!register_callback(point::sim_step_pre, &noop_observer),
+               "D32: sim_step_pre is REFUSED when the root is promoted BY REBIND -- the harness's own "
+               "detour is already the feeder, chaining here would double it");
+            ck(callback_of(point::sim_step_pre) == nullptr,
+               "D32: ...and a refused rebind-configuration registration is not recorded");
+            sim_step_promotion_reset_for_test();
+
+            // Promoted BY DIRECT INSTALL: no harness owns the entry, so this pre-hook is the ONLY
+            // feeder and the slot must accept it -- this is the case the slot exists for.
+            sim_step_promotion_force_direct_for_test();
             ck(register_callback(point::sim_step_pre, &noop_observer),
-               "D5: ...accepted once the root IS promoted");
+               "D5: ...accepted once the root is promoted BY DIRECT INSTALL");
             ck(!register_callback(point::sim_step_pre, &noop_observer2),
                "D5: ...and a SECOND subscriber is refused, not silently substituted");
             ck(callback_of(point::sim_step_pre) == &noop_observer,
                "D5: ...the first registration survives the refused second");
+            sim_step_promotion_reset_for_test();
+        }
+
+        // mp:D32. THE COUNTING ARM: with the registration contract above enforcing "one feeder", a
+        // simulated run of STEPS sim-steps must be counted exactly STEPS times in EITHER promoted
+        // configuration -- never STEPS*2. This is the offline stand-in for the rig clause (a promoted
+        // 2-peer determinism run's "steps seen" must equal steps run): it drives the SAME production
+        // decision (set_sim_step_pre_hook's accept/refuse) the real net_seams.cpp/harness.cpp call
+        // sites key off, with a counter standing in for mh::desync::on_sim_step[_hashed]'s step++.
+        //
+        // MUTATION RED (verified by hand, not committed as a toggle -- see the mp:D32 session note):
+        // with set_sim_step_pre_hook()'s `if (promoted_arm::g_promoted_via_rebind) return 0;` line
+        // removed, the REBIND arm below reads STEPS*2 instead of STEPS, because register_callback then
+        // ALSO wires the pre-hook that harness.cpp's unconditional feed already counted for. Restoring
+        // the line turns it back to STEPS. The DIRECT arm is unaffected either way (it never had a
+        // second feeder), which is exactly why only the rebind arm is the discriminating one.
+        {
+            using mh::sim::register_promotion_sim_step_rebound;
+            using mh::sim::set_sim_step_pre_hook;
+            using mh::sim::sim_step_promotion_force_direct_for_test;
+            using mh::sim::sim_step_promotion_reset_for_test;
+
+            const int STEPS = 1500;
+
+            // REBIND configuration: harness.cpp's on_sim_step feeds unconditionally every step
+            // (modelled here as `harness_feeds_unconditionally = true`); the pre-hook chain must add
+            // NOTHING on top of it.
+            sim_step_promotion_reset_for_test();
+            register_promotion_sim_step_rebound();
+            g_pre_hook_calls  = 0;
+            bool pre_wired    = set_sim_step_pre_hook(&count_pre_hook_call) != 0;
+            int  rebind_total = 0;
+            for (int i = 0; i < STEPS; ++i) {
+                ++rebind_total;                       // harness.cpp's on_sim_step -> mh::desync::on_sim_step_hashed, always
+                if (pre_wired) count_pre_hook_call(); // what would ALSO fire if D32 were unfixed
+            }
+            rebind_total += g_pre_hook_calls; // 0 when correctly refused above
+            ck(!pre_wired, "D32: the rebind configuration never wires the pre-hook (checked again)");
+            ck(rebind_total == STEPS,
+               "D32: the rebind configuration counts each sim step exactly once (not doubled)");
+            sim_step_promotion_reset_for_test();
+
+            // DIRECT configuration: no harness, so the pre-hook chain is the ONLY feeder.
+            sim_step_promotion_force_direct_for_test();
+            g_pre_hook_calls = 0;
+            pre_wired        = set_sim_step_pre_hook(&count_pre_hook_call) != 0;
+            int direct_total = 0;
+            for (int i = 0; i < STEPS; ++i)
+                if (pre_wired) count_pre_hook_call(); // the harness is NOT present, so no second term
+            direct_total = g_pre_hook_calls;
+            ck(pre_wired, "D32: the direct-install configuration wires the pre-hook");
+            ck(direct_total == STEPS,
+               "D32: the direct-install configuration counts each sim step exactly once");
             sim_step_promotion_reset_for_test();
         }
     }

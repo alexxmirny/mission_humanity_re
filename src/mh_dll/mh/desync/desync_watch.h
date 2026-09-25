@@ -40,6 +40,7 @@
 // a desync is the cry-wolf failure D21 clause (b) exists to prevent.
 //
 #pragma once
+#include <cstddef>
 #include <cstdint>
 #include <cstring>
 
@@ -56,6 +57,12 @@ inline constexpr uint16_t WIRE_VERSION = 1;
 // The on-wire sample. Sent as a FLAG_HASH control frame (never the game queue, never the game's own
 // lockstep wire -- see MH_Net_SendHash). Packed and fixed-width: the two peers are the same x86
 // build today, but this is a wire format and it is written like one.
+//
+// D31 clause C adds ONE optional field, the cumulative order digest -- but NOT as a member here.
+// See the WIRE COMPATIBILITY note above judge_order() for why: it rides `ORDER_DIGEST_BYTES` of
+// trailing bytes after `wire_size(region_count)`, detected by the receiver from frame length, so an
+// old (no-digest) build and a new one still agree on this struct's own layout and on region_count/
+// manifest_fp -- state comparison never has to know the feature exists.
 #pragma pack(push, 1)
 struct sample_wire {
     uint32_t magic;            // WIRE_MAGIC
@@ -73,6 +80,13 @@ struct sample_wire {
 inline int wire_size(int n) {
     return (int)(sizeof(sample_wire) - sizeof(uint64_t) * (MAX_REGIONS - (n < 0 ? 0 : n)));
 }
+
+// D31 clause C: the ONE optional trailing field, appended after `wire_size(region_count)` bytes --
+// see the WIRE COMPATIBILITY note above judge_order(). Not part of `sample_wire` itself (adding a
+// struct field ahead of `per[]` would shift every peer's `per[]` offset for a v1 sender; appending
+// one after the FULL `per[MAX_REGIONS]` would land past what a smaller `region_count` actually
+// transmits). A plain trailing byte count, detected by the receiver from frame LENGTH alone.
+inline constexpr int ORDER_DIGEST_BYTES = (int)sizeof(uint64_t);
 
 // ---- the state-only fold ------------------------------------------------------------------------
 // Byte-identical to the harness's (harness.cpp on_sim_step): FNV-1a-64 over the eight bytes of each
@@ -122,6 +136,12 @@ struct ring_entry {
     bool     used;
     uint64_t state;
     uint64_t per[MAX_REGIONS];
+    // D31 clause C: OUR OWN cumulative order digest AT THIS STEP (see order_digest_tick() in the
+    // .cpp). Unlike `state`/`per[]`, which are re-derived from a fresh walk every sample, this value
+    // is carried forward from every step since session start -- it is what makes an order
+    // disagreement that later re-converges still show up: the digest that folded the diverging step
+    // never un-folds it.
+    uint64_t order_digest;
 };
 
 struct ring {
@@ -132,13 +152,17 @@ struct ring {
 
     void clear() { memset(this, 0, sizeof(*this)); }
 
-    void put(uint32_t step, uint64_t state, const uint64_t *per, int n) {
+    // `order_digest` defaults to 0 so every EXISTING caller (desynctest's pure ring exercises,
+    // written before D31) keeps compiling unchanged; the live caller (sample_and_judge) always
+    // passes the real running value.
+    void put(uint32_t step, uint64_t state, const uint64_t *per, int n, uint64_t order_digest = 0) {
         ring_entry &s = e[head];
         s.step        = step;
         s.used        = true;
         s.state       = state;
         memcpy(s.per, per, sizeof(uint64_t) * (size_t)(n < 0 ? 0 : n));
-        head = (head + 1) % RING_CAP;
+        s.order_digest = order_digest;
+        head           = (head + 1) % RING_CAP;
         if (count < RING_CAP) ++count;
         if (step > newest) newest = step;
     }
@@ -212,6 +236,45 @@ inline verdict judge(const ring &r, const sample_wire &s, const bool *excluded, 
     return v;
 }
 
+// ---- D31 clause C: the cumulative order digest --------------------------------------------------
+// A SEPARATE, weaker channel from the state verdict above. The state hash re-converges when a short
+// order-region divergence heals on its own (D30: 7-18 steps, then agreement) -- which is exactly the
+// case the shipped detector was blind to, because it only ever compares the CURRENT state at a
+// sampled step. The order digest never re-converges by construction: it is an FNV-1a-64 fold, taken
+// EVERY sim step (not just on the sampling cadence), of what BOTH peers apply that step, carried
+// forward from session start. A past disagreement stays folded into it forever, so it shows at the
+// very next sample even after the state has healed.
+//
+// WIRE COMPATIBILITY. The digest rides the SAME sample_wire frame as an OPTIONAL trailing 8 bytes,
+// appended AFTER the existing `wire_size(region_count)` bytes -- it does NOT become a new struct
+// field or a new `region_count` entry, and WIRE_VERSION does not change. Two consequences, both
+// deliberate (mp:D31 R2 ruling):
+//   * region_count and manifest_fp are UNCHANGED, so an old (no-digest) build and a new build still
+//     agree on the STATE manifest and keep comparing state normally -- see judge() above, which never
+//     sees this feature exist.
+//   * an OLD peer receiving a NEW peer's longer frame sees a length that does not equal its own
+//     wire_size(region_count) and drops it as a bad_frame (counted, not crashed, not misread) --
+//     "old peer ignores". A NEW peer receiving an OLD peer's frame (no trailing bytes) parses the
+//     base fields exactly as today and simply has no digest to compare -- `judge_order` below
+//     returns `absent`, never `mismatch` -- "new peer compares only state when the digest is
+//     absent". Proven by the udpstatstest arm mixing a v1-shaped and a v2-shaped frame stream.
+enum class order_outcome : int {
+    absent = 0, // no digest on the incoming sample (an rc2 peer, or ours/theirs not sampled yet)
+    ok,         // both peers' cumulative digests agree at this step
+    mismatch,   // they disagree -- some order, at some step up to and including this one, differed
+};
+
+// `theirs_has` is false for an old-build sample (no trailing bytes) or one this build could not
+// parse a digest out of; `mine` is looked up in the SAME ring the state verdict already found an
+// entry in, so this is only meaningful when the caller already has a `judge()` verdict of `ok` or
+// `mismatch` for the same step.
+inline order_outcome judge_order(const ring &r, uint32_t step, uint64_t theirs_digest, bool theirs_has) {
+    if (!theirs_has) return order_outcome::absent;
+    const ring_entry *mine = r.find(step);
+    if (!mine) return order_outcome::absent; // defensive: the state verdict should already guarantee this
+    return (mine->order_digest == theirs_digest) ? order_outcome::ok : order_outcome::mismatch;
+}
+
 // ---- notice / log throttling --------------------------------------------------------------------
 // D21 (f): 21428 consecutive mismatching steps must produce ONE user-visible notice, not a storm.
 // The log is throttled separately and more generously -- the FIRST mismatch is written in full (it
@@ -219,7 +282,20 @@ inline verdict judge(const ring &r, const sample_wire &s, const bool *excluded, 
 inline constexpr int LOG_FIRST = 4;   // the first N mismatches are written in full
 inline constexpr int LOG_EVERY = 200; // after that, one rollup line every N
 
-inline bool should_notify(int mismatches_so_far) { return mismatches_so_far == 1; }
+// D31 R2 (user ruling, 2026-09-24): the on-screen notice is gated on PERSISTENCE, not on the first
+// mismatching sample. D30 showed order-region divergences that last 7-18 steps and then re-converge
+// on their own -- at the shipped every=50 cadence that is well under one sample interval, so the
+// FIRST mismatching sample is frequently one the very next sample will contradict. `n` here is
+// CONSECUTIVE mismatching samples (reset to 0 by an intervening `ok`), and the bar is the SECOND one
+// in a row: one interval of standing disagreement, not one sample of it. Still exactly ONE notice
+// per match (fires only at n==2, never again for the same unbroken run, and a fresh incident after a
+// reconvergence restarts its own count from 0) -- D21 clause (f)'s 21428-consecutive-mismatch case is
+// unaffected, it still produces exactly one notice, just on sample #2 instead of #1.
+inline bool should_notify(int consecutive_mismatches_so_far) { return consecutive_mismatches_so_far == 2; }
+
+// D31 clause C: the order-digest channel is ALWAYS log+rollup only (R2) -- it never reaches
+// `should_notify`, so it has no persistence gate of its own. It reuses the SAME full/rollup
+// throttle as the state channel (LOG_FIRST/LOG_EVERY), keyed by its own occurrence count.
 
 inline bool should_log_full(int mismatches_so_far) { return mismatches_so_far <= LOG_FIRST; }
 
@@ -259,32 +335,77 @@ inline constexpr int PENDING_CAP = 48;
 struct pending_queue {
     sample_wire q[PENDING_CAP];
     int         sender[PENDING_CAP];
-    int         head, count;
-    int         dropped;
+    // D31 clause C: the PEER's order digest (if the frame carried one) rides alongside its
+    // sample_wire rather than inside it -- see the WIRE COMPATIBILITY note above judge_order(). Kept
+    // as parallel arrays, not a new struct, so the queue's existing FIFO/overflow mechanics (and the
+    // selftest section that exercises them) do not have to change shape.
+    uint64_t order_digest[PENDING_CAP];
+    bool     has_order_digest[PENDING_CAP];
+    int      head, count;
+    int      dropped;
 
     void clear() { memset(this, 0, sizeof(*this)); }
 
-    void push(int from, const sample_wire &s) {
+    // `order_digest`/`has_order_digest` default (0 / false) so every EXISTING caller (desynctest's
+    // pure queue exercises) keeps compiling unchanged.
+    void push(int from, const sample_wire &s, uint64_t od = 0, bool has_od = false) {
         if (count == PENDING_CAP) {
             head = (head + 1) % PENDING_CAP;
             --count;
             ++dropped;
         }
-        const int t = (head + count) % PENDING_CAP;
-        q[t]        = s;
-        sender[t]   = from;
+        const int t         = (head + count) % PENDING_CAP;
+        q[t]                = s;
+        sender[t]           = from;
+        order_digest[t]     = od;
+        has_order_digest[t] = has_od;
         ++count;
     }
 
-    bool pop(int &from, sample_wire &out) {
+    bool pop(int &from, sample_wire &out, uint64_t *od = nullptr, bool *has_od = nullptr) {
         if (count == 0) return false;
         out  = q[head];
         from = sender[head];
+        if (od) *od = order_digest[head];
+        if (has_od) *has_od = has_order_digest[head];
         head = (head + 1) % PENDING_CAP;
         --count;
         return true;
     }
 };
+
+// ---- D31 clause A: STATUS-line proof-of-life cadence ---------------------------------------------
+// Deliberately a SEPARATE knob from the sampling cadence (`[desync] every`, in sim STEPS): this
+// decides how often "compared=N mismatching=0" gets WRITTEN, not how often a sample is taken.
+//
+// THE 2026-09-24 O4 RIG PROVED THE TWO MUST NOT SHARE A THRESHOLD. mp:D31 was opened because 5 of 6
+// configuration-(1) shim runs read "armed, no sample reached a comparison" in mp_analyze.py -- which
+// LOOKED like the detector had failed silently, but was a misdiagnosis of a REPORTING gap, not a
+// comparison one:
+//   * the 1 run that DID desync proved judge() was comparing correctly the entire time -- its
+//     `*** DESYNC` line is unthrottled at the first mismatch (should_log_full, LOG_FIRST=4) and fired
+//     at sample #11 (step 550), so a real mismatch was never missed;
+//   * the other 5 runs never diverged (mp_analyze's silence read as "never compared" was actually
+//     "compared cleanly, said nothing"), and the ONLY two channels that would have proven that are a
+//     MATCH log line (silent unless `[desync] verbose=1`, by design -- a clean 20-minute match would
+//     otherwise write ~3000 lines saying nothing happened) and this STATUS line;
+//   * the pre-D31 threshold was 50 SAMPLES. A 2000-STEP harness/rig run at the shipped every=50
+//     produces only 40 samples per peer -- below the threshold in every one of the 6 runs -- and the
+//     match never reached a CLEAN mp_session_close either (the harness stops the process at
+//     stop_step, which is not one of net_discovery.cpp's MATCH_END_REASONS), so match_end()'s own
+//     rollup never fired either. Two independent proof-of-life paths, both silent, for a reason that
+//     has nothing to do with whether the detector worked.
+// DLL_PROCESS_DETACH was considered and REJECTED as the other place to flush a final rollup: mh.c's
+// own detach arm is deliberately empty beyond the crash-handler unregister, on the record that
+// teardown added there is how a detach path acquires a deadlock (a process TERMINATING is the
+// common case, and EnterCriticalSection/WriteFile from under the loader lock is exactly that risk).
+// So the fix is entirely in this cadence, lowered so a run an order of magnitude shorter than a full
+// match still gets proof of life without depending on how the process exits.
+inline constexpr int64_t SAMPLES_PER_STATUS_LINE = 10; // was 50 -- see above
+
+inline bool status_line_due(int64_t samples_reported) {
+    return samples_reported > 0 && (samples_reported % SAMPLES_PER_STATUS_LINE) == 0;
+}
 
 // ---- the live module (desync_watch.cpp) ---------------------------------------------------------
 // Nothing above this line touches the game, a socket or Windows; everything below is the binding.
@@ -311,8 +432,18 @@ void session_reset();
 // leaves g_running alone (a `Continue game` after an outcome keeps stepping and is not a new match).
 void match_end();
 
-// One sim step, at the step's PRE-BODY boundary. Counts the step and, on the cadence, hashes,
-// broadcasts and judges whatever has arrived. MAIN THREAD ONLY.
+// TL-HARN-CLEANCLOSE: stop sampling for the rest of this match, WITHOUT a rollup (the caller has just
+// written one with match_end). Called only by the determinism harness's stop (MH_Session_HarnessStop):
+// the process plays on until the runner kills it, and every STATUS line after the rollup would describe
+// those post-match seconds -- with the counters match_end() zeroed -- while mp_analyze reads the LAST
+// STATUS line as the peer's verdict. session_reset() (the next session_begin_multi) re-arms sampling.
+void stop_sampling();
+
+// One sim step, at the step's PRE-BODY boundary. Counts the step, folds this step's due-now order
+// queue into the running order digest (D31 clause C -- UNCONDITIONALLY, every step, not gated by the
+// sampling cadence: that is what lets a short order divergence that later re-converges still show up
+// at the next sample) and, on the cadence, hashes, broadcasts and judges whatever has arrived. MAIN
+// THREAD ONLY.
 //
 // TWO CALLERS, because no single per-step hook is live in both configurations that matter:
 //   * a trampoline the seam layer installs on llm_strat_sim_step when the determinism harness did

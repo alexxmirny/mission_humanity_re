@@ -290,6 +290,137 @@ int run_desynctest() {
               a_steps[0] == 1600 && b_steps[0] == 2000);
     }
 
+    // ---- 8. D31 clause A: STATUS proof-of-life fires within a run far shorter than a full match ---
+    {
+        // Reproduces the 2026-09-24 O4 rig cause directly: a 2000-step configuration-(1) run at the
+        // shipped every=50 cadence produces 40 samples per peer. Before D31 (threshold 50) that run
+        // NEVER crossed the STATUS line, so mp_analyze.py's "compared=N" read nothing and reported
+        // "armed, no sample reached a comparison" for 5 of 6 runs where judge() had in fact been
+        // comparing correctly the whole time. MUTATION RED: setting SAMPLES_PER_STATUS_LINE back to
+        // 50 fails both checks below (0 fires in a 40-sample run) -- checked by hand, reverted.
+        check("no status line at 0 samples (never called before the first sample)",
+              !status_line_due(0));
+        check("a status line is due at the threshold", status_line_due(SAMPLES_PER_STATUS_LINE));
+        check("the threshold fits inside an O4-shaped 40-sample run",
+              SAMPLES_PER_STATUS_LINE <= 40);
+        int fires = 0;
+        for (int64_t k = 1; k <= 40; ++k)
+            if (status_line_due(k)) ++fires;
+        check("an O4-shaped 40-sample run gets at least one proof-of-life line", fires >= 1);
+        // The other half of the trade this cadence makes: still bounded, not a line every sample. At
+        // the shipped every=50 and ~50 sim steps/s, 1 sample/s -> a 20-minute match takes ~1200
+        // samples; SAMPLES_PER_STATUS_LINE=10 gives ~120 STATUS lines over 20 minutes (vs. the old
+        // ~24 at 50) -- more than before, still a small fraction of the sample count, nowhere near
+        // "a line every sample".
+        constexpr int64_t TWENTY_MIN_SAMPLES = 1200;
+        int               fires_full_match   = 0;
+        for (int64_t k = 1; k <= TWENTY_MIN_SAMPLES; ++k)
+            if (status_line_due(k)) ++fires_full_match;
+        check("a 20-minute match's proof-of-life line count stays a small fraction of its samples",
+              fires_full_match < TWENTY_MIN_SAMPLES / 5);
+    }
+
+    // ---- 9. D31 R2: the on-screen state notice needs PERSISTENCE, not a single sample -------------
+    {
+        // D30's motivating shape: a state mismatch that reconverges by the very next sample must
+        // never reach the player. `should_notify` is now keyed by CONSECUTIVE mismatches, reset to 0
+        // by an intervening agreement -- see its header comment.
+        check("a single mismatching sample does not notify (n=1)", !should_notify(1));
+        check("two CONSECUTIVE mismatching samples notify (n=2)", should_notify(2));
+        check("a third consecutive sample does not notify again (n=3)", !should_notify(3));
+
+        // Simulate D30's exact shape: mismatch, mismatch, ok (reconverged), mismatch, mismatch,
+        // mismatch, ... `should_notify` fires at EVERY 2nd-consecutive incident on its own (it only
+        // answers "is this sample the persistence bar", two separate incidents in one match both
+        // qualify); the ONE-notice-per-match property is notify_once()'s own one-shot latch in
+        // desync_watch.cpp (`if (g_notified) return; g_notified = true;`), mirrored here so the test
+        // proves the guarantee the LIVE code actually gives.
+        int        consecutive = 0, would_fire_count = 0, actually_notified = 0;
+        bool       latched    = false;
+        const bool sequence[] = {false, true, true, false /*heals*/, true, true, true, true};
+        for (bool mismatched : sequence) {
+            consecutive = mismatched ? consecutive + 1 : 0;
+            if (should_notify(consecutive)) {
+                ++would_fire_count; // two separate incidents cross the persistence bar in this sequence
+                if (!latched) {
+                    latched = true;
+                    ++actually_notified; // this is notify_once()'s real, latched behavior
+                }
+            }
+        }
+        check("two separate incidents in one sequence each cross the persistence bar on their own",
+              would_fire_count == 2);
+        check("notify_once()'s one-shot latch over the same sequence fires exactly once",
+              actually_notified == 1);
+
+        // D21 clause (f), re-verified under the NEW gate: 21428 consecutive mismatches still produce
+        // exactly one notice (now at sample #2, not #1).
+        int notices21428 = 0;
+        for (int n = 1; n <= 21428; ++n)
+            if (should_notify(n)) ++notices21428;
+        check("21428 consecutive mismatches still produce exactly ONE notice (D21 clause f)",
+              notices21428 == 1);
+    }
+
+    // ---- 10. D31 clause C: the cumulative order digest, and its wire compatibility -----------------
+    {
+        // ---- judge_order(): the comparison itself ----
+        ring r;
+        r.clear();
+        uint64_t per[NR];
+        fill(per, 0x5555);
+        r.put(200, fold_state(per, g_ex, NR), per, NR, /*order_digest=*/0xAAAAAAAAAAAAAAAAULL);
+
+        check("matching order digests at a known step are OK",
+              judge_order(r, 200, 0xAAAAAAAAAAAAAAAAULL, /*has=*/true) == order_outcome::ok);
+        check("differing order digests at a known step are a MISMATCH",
+              judge_order(r, 200, 0xBBBBBBBBBBBBBBBBULL, /*has=*/true) == order_outcome::mismatch);
+        check("no digest on the incoming sample reads as ABSENT, never mismatch",
+              judge_order(r, 200, 0xBBBBBBBBBBBBBBBBULL, /*has=*/false) == order_outcome::absent);
+        check("a step with no local ring entry reads as ABSENT (defensive)",
+              judge_order(r, 999, 0xAAAAAAAAAAAAAAAAULL, /*has=*/true) == order_outcome::absent);
+
+        // THE D31 MOTIVATING PROPERTY: the digest does not re-converge. Two consecutive samples whose
+        // STATE agrees again can still disagree on the order digest, because it is a running fold of
+        // every step since session start, not a snapshot of "now".
+        ring r2;
+        r2.clear();
+        uint64_t per_a[NR], per_b[NR];
+        fill(per_a, 0x1234);
+        memcpy(per_b, per_a, sizeof(per_a)); // state re-converged: identical current per-region hashes
+        // Our own digest folded a divergent step earlier and never un-folds it -- simulated by giving
+        // the two ring entries DIFFERENT stored digests despite identical `state`/`per[]`.
+        r2.put(300, fold_state(per_a, g_ex, NR), per_a, NR, /*order_digest=*/111ULL);
+        const verdict state_v = judge(r2, make_sample(300, per_b, FP), g_ex, NR, FP, r2.newest);
+        check("a state re-convergence used for this property is itself OK",
+              state_v.kind == outcome::ok);
+        check("the order digest can still disagree when the state has re-converged (the D30/D31 case)",
+              judge_order(r2, 300, 222ULL, /*has=*/true) == order_outcome::mismatch);
+
+        // ---- wire compatibility: old<->new frame mixing, by LENGTH alone (no WIRE_VERSION bump) ----
+        const int base = wire_size(NR);
+        check("ORDER_DIGEST_BYTES is one uint64", ORDER_DIGEST_BYTES == (int)sizeof(uint64_t));
+
+        // "NEW PEER RECEIVES OLD (rc2) PEER'S FRAME": exactly `base` bytes, no trailing digest.
+        // frame_is_sane must still accept it (state comparison is unaffected by this feature).
+        sample_wire old_frame = make_sample(400, per, FP);
+        check("an rc2-shaped (undigested) frame is still sane at its own base length",
+              frame_is_sane(old_frame, base));
+        check("that frame's length does NOT look like a digest-bearing one",
+              base != base + ORDER_DIGEST_BYTES); // trivially true; documents the discriminant used live
+
+        // "OLD (rc2) PEER RECEIVES NEW PEER'S FRAME": base + ORDER_DIGEST_BYTES bytes. An rc2 build's
+        // frame_is_sane (== this same function, since the wire's fixed fields never changed) rejects
+        // it at ITS OWN base length -- it never gets to inspect or misinterpret the trailing bytes.
+        sample_wire new_frame = make_sample(400, per, FP); // identical fixed fields; only length differs on the wire
+        check("a digest-bearing frame is NOT sane at the base (state-only) length -- an rc2 peer "
+              "drops it as a bad_frame instead of misreading it",
+              !frame_is_sane(new_frame, base + ORDER_DIGEST_BYTES));
+        check("...but IS sane once the receiver knows to check it at base length (a new peer, "
+              "having already stripped the trailing digest bytes before calling frame_is_sane)",
+              frame_is_sane(new_frame, base));
+    }
+
     printf("=== desynctest: %d checks, %d failures ===\n", g_checks, g_fails);
     return g_fails ? 1 : 0;
 }

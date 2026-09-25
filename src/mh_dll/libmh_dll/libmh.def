@@ -76,6 +76,7 @@ EXPORTS
     ?set_time_resync_instrument_hooks@sim@mh@@YAXP6AXXZ@Z
     ?sim_step_entry_thunk@sim@mh@@YAPAXXZ
     ?sim_step_promoted@sim@mh@@YA_NXZ
+    ?sim_step_promoted_via_rebind@sim@mh@@YA_NXZ
     ?sim_tick_entry_thunk@lockstep@mh@@YAPAXXZ
     ?sim_tick_requested@lockstep@mh@@YA_NXZ
     ?state@tact@mh@@YA?AUtact_state@12@XZ

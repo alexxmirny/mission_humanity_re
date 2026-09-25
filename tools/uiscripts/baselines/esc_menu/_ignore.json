@@ -1,0 +1,14 @@
+{
+  "_why": "tooling:TL-HARN8 (2026-09-25). The claim is that ESC opened the in-game menu, so the capture compares ONLY the menu panel (origin 45,87, size 390x306 from the dump). The match keeps simulating behind the menu, and under harness pacing the world around the panel differs run to run -- measured 0.81%/3.96%/6.40% full-frame, every differing pixel OUTSIDE the panel (top-left playfield and the bottom strip). A settle predicate on the panel's own widget (value:103) was tried and changed nothing: the panel is not what moves.",
+  "_only": {
+    "capture_k2_escmenu.png": {
+      "rect": [
+        45,
+        87,
+        390,
+        306
+      ],
+      "mode": "rgb"
+    }
+  }
+}

@@ -191,16 +191,42 @@ public:
         next_seq_                               = 0;
         high_water_ = high_h_ = high_m_ = 0;
         evicted_ = refused_ = 0;
+        // epoch_ is deliberately NOT touched here -- reset() is the transport boundary (a fresh dial
+        // or a torn-down link), not a match boundary, and the epoch counts match boundaries only. See
+        // reset_counters() below.
     }
 
-    int  depth() const { return count_h_ + count_m_; }
-    int  depth_h() const { return count_h_; }
-    int  depth_m() const { return count_m_; }
-    int  high_water() const { return high_water_; }
-    int  high_water_h() const { return high_h_; }
-    int  high_water_m() const { return high_m_; }
-    long evicted() const { return evicted_; }
-    long refused() const { return refused_; }
+    // THE MATCH-BOUNDARY RESET (mp:U41b). `reset()` is the TRANSPORT boundary: it empties the lanes,
+    // which is right when the link is torn down and wrong when it is not -- a host_rematch keeps the
+    // link up, and frames already queued belong to whoever reads them next. So this one keeps every
+    // queued frame, its sequence and its lane, and restarts only the PER-MATCH counters: evicted and
+    // refused go to zero, and each high-water restarts at the depth that is ACTUALLY there (not zero,
+    // which would be a high-water below the current depth -- a number that cannot have happened).
+    //
+    // mp:U41d -- THE EPOCH. rematch_rollup's magnitude proof (does match 2's high-water read lower
+    // than match 1's) is luck-dependent: whether it does depends on how deep either match happened to
+    // queue, which is exactly the kind of thing a real reset should NOT have to rely on. `epoch_` is
+    // a marker only THIS function can move -- incremented here and nowhere else, so its value is
+    // proof that reset_counters() itself ran, not evidence reconstructed from traffic that could have
+    // happened for other reasons. A build that skips the call (the mutation qmatchtest arms) leaves
+    // the epoch exactly where match 1 left it.
+    void reset_counters() {
+        high_h_     = count_h_;
+        high_m_     = count_m_;
+        high_water_ = count_h_ + count_m_;
+        evicted_ = refused_ = 0;
+        ++epoch_;
+    }
+
+    int      depth() const { return count_h_ + count_m_; }
+    int      depth_h() const { return count_h_; }
+    int      depth_m() const { return count_m_; }
+    int      high_water() const { return high_water_; }
+    int      high_water_h() const { return high_h_; }
+    int      high_water_m() const { return high_m_; }
+    long     evicted() const { return evicted_; }
+    long     refused() const { return refused_; }
+    unsigned epoch() const { return epoch_; } // mp:U41d -- bumps ONLY inside reset_counters()
 
     push_result push(lane l) {
         push_result r;
@@ -272,6 +298,7 @@ private:
     uint32_t next_seq_   = 0;
     int      high_water_ = 0, high_h_ = 0, high_m_ = 0;
     long     evicted_ = 0, refused_ = 0;
+    unsigned epoch_ = 0; // mp:U41d -- incremented ONLY by reset_counters(); never by reset()
 };
 
 } // namespace mh::net::queue_policy

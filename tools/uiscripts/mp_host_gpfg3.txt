@@ -1,0 +1,78 @@
+# mp:U19j -- the gone-peer frame guard's RIG PROOF, the HOST side (the LEADER, and a survivor).
+#
+# WHAT THIS SHAPE HAS TO PRODUCE, and why no 2-peer walk can (dead-ends G300). The carrier
+# (mp:U19i) splices the `call llm_net_send_lockstep_kick` at 0x0049c330 in the ORIGINAL
+# llm_net_lockstep_dispatch. That call runs only when ALL of these hold on one peer:
+#   (a) a datagram arrives from a sender whose roster slot is already flagged AI (written off),
+#   (b) this peer is the leader for it (llm_net_lockstep_is_local_leader_peer: the first
+#       ALIVE|HUMAN slot other than the sender is OURS -- slot 0, the host, here),
+#   (c) the dispatch loop is still running, i.e. this peer is still in session mode 3.
+# A 2-peer removal breaks (c): the frame that flags the peer also ends the survivor's match. So
+# this is a THREE-peer match, and the written-off peer is one whose SIM is fenced while its
+# transport stays up (mp:GS2's shape, measured 3-peer on 2026-09-21): the other two drop it after
+# [net] data_timeout_ms of horizon silence and play on (count_active_players == 2), while its
+# horizon-heartbeat thread keeps sending 9-byte type-0x02 adverts. The first one to reach the
+# host after the host's own removal satisfies (a)-(c).
+#
+# WHAT EACH ARM THEN DOES. Guarded (the ship default): the thunk snapshots the datagram across the
+# kick, logs `; [net] gone-peer frame guard FIRED #1: ...`, and the advert parses as the advert it
+# was -- this peer keeps playing. Unguarded (`gone_peer_frame_guard=0`): the kick's six bytes
+# overwrite the head of the 9-byte advert, the parse lands on a mantissa byte at offset 6 as an
+# outer tag, and the default arm raises outcome 7 (NETWORK_ERROR) -- this peer's match ends, and
+# the `absent Continue game` below never resolves. tools/check_gone_peer_guard.py reads which.
+#
+# TOPOLOGY: the DET3 one (host on rig VM A, the other survivor on rig VM B, the FENCED peer as the
+# local det3_client2 lane) -- local 3-peer discovery cannot seat a second 127.0.0.1 client. All
+# three peers run CONFIGURATION (1): no libmh.dll (ui_test --omit-satellite deletes it on the VMs,
+# make_lane builds the lane without it), transport=udp, defang_overlay=0.
+#
+# The lobby walk is mp_host_ping3.txt's (same topology, same frame -- `lobbyping 2` makes the ping
+# column settled before the capture, and the IP/ping regions are masked), with U19b's G271 barrier
+# before Start (both clients confirm their own `settled Cancel` first).
+#
+# Pair with mp_client_gpfg3_survivor.txt (VM B) and mp_client_gpfg3_frozen.txt (the local lane).
+
+settled value:110
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+settled Create
+clickl Create
+present Game name
+settled Ok
+clickl Ok
+present Available maps
+settled Ok
+clickl Ok
+
+present Network players
+peers 2
+occ 3
+awaitsignal seated1
+awaitsignal seated2
+lobbyping 2
+enabled Start
+settled Start
+capture u19j_host_lobby
+clickl Start
+
+# ---- the match -----------------------------------------------------------------------------------
+absent Network players
+gamemode 2
+# All three peers reach the same sim moment before the fenced peer arms its fence (gs2's convention).
+gameclock 500
+awaitsignal freezing
+
+# The drop: this peer parks on the fenced peer's frozen horizon (~1030 ms) until data_timeout_ms of
+# silence has passed, removes it (`; GS2: peer N data-silent ...`), and resumes. 8000 is ~7 s of
+# play PAST the drop -- a WAIT, not the proof: the fenced peer's heartbeats keep arriving the whole
+# time, and every one of them goes through the gone-peer branch.
+gameclock 8000
+
+# THE SURVIVOR CLAUSE (mp_host_quit3.txt's, and for the same reason -- dead-ends G158: a finished
+# match jumps its clock, so only a widget predicate can tell "still playing" from "ended").
+gamemode 2
+absent Continue game
+log HOST (leader) kept playing past the fenced peer's drop and its later frames -- no outcome dialog
+end

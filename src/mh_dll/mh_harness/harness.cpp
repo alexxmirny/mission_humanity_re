@@ -70,14 +70,31 @@
 #include "tact/tact_journal.h"    // TACT-REC: which seam calls are the PLAYER's
 #include "save/save_live.h"       // SV1-P: the in-game save trigger (save_at)
 #include "orders/order_queue.h"   // D18: set_suppress_enqueue -- the replay neuter's promoted path
+#include "config1.h"              // mp:D29: configuration (1) -- the spine-free arm's guards + refusals
 
 // Per-EVENT temporal trace (net_seams.cpp): sim_step is harness-hooked (not tracer-hookable), so mark
 // the step boundary here. No-op unless [trace] temporal=1 + SESSION_MODE==3. id 5 = TEV_SIMSTEP.
 extern "C" void MH_Temporal_Event(int id);
+// mp:D30: re-pin the lookahead at the step's clock BEFORE this step's workload stamps orders
+// (net_lockstep.cpp MH_Lockstep_StepPin). The ship path gets the same call from net_seams'
+// desync sim_step hook; this is the harness-armed half, since the harness owns that entry.
+extern "C" void MH_Lockstep_StepPin(void);
+// TL-HARN-CLEANCLOSE: close the open MP session IN PLACE at the stop step (net_discovery.cpp). A
+// determinism run is ended by its runner from outside, which no exit seam survives, so without this
+// no determinism run ever wrote the desync/queue rollups or SESSION_END. seams/session_close_plan.h.
+extern "C" void MH_Session_HarnessStop(unsigned step);
 
 #if defined(_M_IX86) // x86-only: inline naked trampolines + absolute exe VAs (mh.exe is 32-bit)
 
 namespace {
+
+// mp:D29 -- IS libmh.dll's SPINE IN THIS PROCESS? True unless the module told us otherwise
+// (MH_Harness_SetSpineAbsent), so net_selftest.exe -- which links the spine into its own image and
+// has no module to say anything -- keeps the behaviour it always had. False means CONFIGURATION (1):
+// only the three fallback rows are bound (the region registry and the owner table, out of mh.dll),
+// and every call site below that reaches another spine row is guarded on this flag or its key was
+// refused at arm (config1_refuse_spine_keys). A spine row reached with this false TRAPS by design.
+bool g_spine = true;
 
 // ---- target addresses in mh.exe (generated EN VAs; image base 0x00400000, no ASLR) --------------
 constexpr uintptr_t ADDR_SIM_TICK   = mh::addr::llm_strat_sim_tick;         // frame pump; entry 55 89 e5 68 30
@@ -242,6 +259,10 @@ struct Config {
     int seed_mode    = 0; // 0=dump, 1=inject, 2=off
     int stop_step    = 0; // step at which to write final report / exit (0 = run forever)
     int exit_on_stop = 0; // 1 = ExitProcess after the final report
+    // TL-HARN-CLEANCLOSE: 1 = at stop_step, after the final report is flushed, close the open MP
+    // session in place (MH_Session_HarnessStop) so the match's end-of-match lines exist. A no-op in
+    // a run with no session and no transport; 0 is the escape hatch, not a mode anything uses.
+    int close_on_stop = 1;
     int fixed_step   = 1; // pin TOTAL_GAME_TIME = GAME_CLOCK + interval each sim_tick (det. replay)
     int pin_fpu      = 1; // pin x87 control word (round-nearest, 53-bit) at init
     // ---- P0-SPDET: pin the WALL CLOCK, not the value derived from it ----------------------------
@@ -554,6 +575,29 @@ struct Config {
     int snapshot_to     = 1; // which player id to send it to (the host's client is 1)
     int snapshot_import = 0; // poll for an inbound snapshot every step and import it when whole
     int snapshot_log    = 0; // log a `; SNAPSHOT RX` progress line every N steps (0 = off)
+    // ---- mp:X6: the in-RAM capture benchmark -------------------------------------------------------
+    //
+    // X4's capture figure (34.0 ms) is world_snapshot_capture's ONE call, which includes the 8.2 MB
+    // WriteFile -- so it is a disk-inclusive number standing in for a RAM-only question. This verb
+    // answers that question directly: `w::capture()` into an already-allocated buffer, N times, no
+    // file I/O in the loop, min/median/max over QueryPerformanceCounter. Fires once, at g_step==1,
+    // same placement argument as world_capture immediately above (the same `combined`/`state`/
+    // `clock` this step just computed, so a mask mismatch cannot sneak in between them).
+    int snap_bench = 0; // [harness] snap_bench=N -- capture the world N times into RAM only (0 = off)
+    // ---- mp:X7: world-snapshot RESTORE timing, in-process --------------------------------------
+    //
+    // mp-restoration memo section 3.3's "restore charged at the save's cost" is an assumption, not a
+    // number -- nothing before this imported a world blob mid-run and timed it the way X6 times
+    // capture. This verb reads the SAME file `[harness] world_capture` wrote (g_world_out) back off
+    // disk and re-imports it via libmh_import_world at the configured step, `world_import_n` times,
+    // QPC around each import. It shares X1b's snapshot_poll_now hazard verbatim: importing over a
+    // LIVE session is refused by policy (mh::state::boot::session_begun()), so this verb lifts the
+    // same latch the same way (reset_session_latch_for_test) and carries the same X3 crash risk
+    // (0xC000041D within ~1 step, 3/3 on the network path) -- this is an INSTRUMENT override, not a
+    // policy change, and mp:X3 still owns the ruling on whether a live import should ever be allowed.
+    int world_import_at = 0; // [harness] world_import_at=N -- re-import g_world_out at step N (0=off)
+    int world_import_n  = 3; // [harness] world_import_n=N -- repeat the timed import >=3 times (X7's
+                             // done_when floor); each rep re-imports the same blob into live state.
     // ---- mp:X3 step one: IMPORT AND HOLD ------------------------------------------------------
     //
     // THIS KNOB EXISTS TO SPLIT ONE MEASUREMENT IN TWO, and it is a diagnostic instrument rather
@@ -1263,6 +1307,7 @@ void load_config() {
     g_cfg.world_capture       = GetPrivateProfileIntA("harness", "world_capture", g_cfg.world_capture, g_ini_path);
     g_cfg.stop_step           = GetPrivateProfileIntA("harness", "stop_step", g_cfg.stop_step, g_ini_path);
     g_cfg.exit_on_stop        = GetPrivateProfileIntA("harness", "exit_on_stop", g_cfg.exit_on_stop, g_ini_path);
+    g_cfg.close_on_stop       = GetPrivateProfileIntA("harness", "close_on_stop", g_cfg.close_on_stop, g_ini_path);
     g_cfg.fixed_step          = GetPrivateProfileIntA("harness", "fixed_step", g_cfg.fixed_step, g_ini_path);
     g_cfg.pin_fpu             = GetPrivateProfileIntA("harness", "pin_fpu", g_cfg.pin_fpu, g_ini_path);
     g_cfg.pin_wallclock       = GetPrivateProfileIntA("harness", "pin_wallclock", g_cfg.pin_wallclock, g_ini_path);
@@ -1333,6 +1378,9 @@ void load_config() {
     g_cfg.snapshot_import         = GetPrivateProfileIntA("harness", "snapshot_import", g_cfg.snapshot_import, g_ini_path);
     g_cfg.snapshot_log            = GetPrivateProfileIntA("harness", "snapshot_log", g_cfg.snapshot_log, g_ini_path);
     g_cfg.snapshot_hold           = GetPrivateProfileIntA("harness", "snapshot_hold", g_cfg.snapshot_hold, g_ini_path);
+    g_cfg.snap_bench              = GetPrivateProfileIntA("harness", "snap_bench", g_cfg.snap_bench, g_ini_path);
+    g_cfg.world_import_at         = GetPrivateProfileIntA("harness", "world_import_at", g_cfg.world_import_at, g_ini_path);
+    g_cfg.world_import_n          = GetPrivateProfileIntA("harness", "world_import_n", g_cfg.world_import_n, g_ini_path);
     g_cfg.region_hash_step        = GetPrivateProfileIntA("harness", "region_hash_step", g_cfg.region_hash_step, g_ini_path);
     g_cfg.domain_hash_step        = GetPrivateProfileIntA("harness", "domain_hash_step", g_cfg.domain_hash_step, g_ini_path);
     g_cfg.order_mode              = GetPrivateProfileIntA("harness", "order_mode", g_cfg.order_mode, g_ini_path);
@@ -1381,7 +1429,9 @@ void load_config() {
     // hole is closed by construction. It stays here anyway because THIS file is where the arm gate
     // lives: a `[harness]` key read from an un-armed run's ini would be a knob acting with no
     // instrument watching it, which is the same failure wearing a different coat.
-    if (GetPrivateProfileIntA("harness", "skip_pace_hook", 0, g_ini_path)) {
+    // mp:D29: the three knobs below are libmh rows (config1.h SPINE_ONLY_KEYS). In configuration (1)
+    // they are not executed -- config1_refuse_spine_keys() names each one that was set, after this.
+    if (g_spine && GetPrivateProfileIntA("harness", "skip_pace_hook", 0, g_ini_path)) {
         mh::sim::set_time_resync_pace_disabled(true);
         append_line(g_log_path,
                     "; [harness] skip_pace_hook=1 -- the C4 pacing prelude is DISABLED this run "
@@ -1389,9 +1439,9 @@ void load_config() {
     }
     // C-prime: arm the RNG draw-sequence trace over the SAME window the rdump uses, so a draw and
     // a byte in this log describe the same steps. Disarmed unless rng_trace=1 is asked for.
-    if (GetPrivateProfileIntA("harness", "rng_trace", 0, g_ini_path))
+    if (g_spine && GetPrivateProfileIntA("harness", "rng_trace", 0, g_ini_path))
         mh::sim::rng_trace_window((uint32_t)g_cfg.rdump_lo, (uint32_t)g_cfg.rdump_hi);
-    if (GetPrivateProfileIntA("harness", "skip_input_update", 0, g_ini_path)) {
+    if (g_spine && GetPrivateProfileIntA("harness", "skip_input_update", 0, g_ini_path)) {
         mh::sim::set_lt_frame_input_override(&harness_input_update_noop);
         append_line(g_log_path,
                     "; [harness] skip_input_update=1 -- the frame's input WALL is a NO-OP this run "
@@ -1434,6 +1484,80 @@ void load_config() {
     g_cfg.all_ai_observer    = GetPrivateProfileIntA("harness", "all_ai_observer", g_cfg.all_ai_observer, g_ini_path);
     g_cfg.gameover_step      = GetPrivateProfileIntA("harness", "gameover_step", g_cfg.gameover_step, g_ini_path);
     g_cfg.gameover_stop      = GetPrivateProfileIntA("harness", "gameover_stop", g_cfg.gameover_stop, g_ini_path);
+}
+
+// ---- mp:D29: configuration (1) -- refuse the spine-only keys BY NAME, keep hashing ---------------
+//
+// Ruling Q4 as amended by D29: a `[harness]` key whose feature needs a libmh row the fallback does
+// not bind is REFUSED -- named, with the row it needs, in mh_harness.log, OutputDebugString and
+// stderr -- and switched OFF. The instrument is NOT refused: the per-step region hash reads only the
+// three fallback rows. The list itself is config1.h's (SPINE_ONLY_KEYS), so bindtest can hold it.
+//
+// NOT mh_harness_refused.log, deliberately: that file's EXISTENCE means "this run is not
+// instrumented", and this run is.
+//
+// EVERY LISTED KEY MUST MAP HERE. A key the table names and this function cannot switch off would be
+// a knob that stays live over a null slot -- so an unmapped entry is reported as an INTERNAL error on
+// the same channels rather than skipped.
+void config1_refuse_spine_keys() {
+    struct field {
+        const char *key;
+        int        *value; // null = a raw-ini knob load_config already declined to execute
+    };
+    const field f[] = {
+        {"boot_snapshot", &g_cfg.boot_snapshot},
+        {"world_capture", &g_cfg.world_capture},
+        {"snap_bench", &g_cfg.snap_bench},
+        {"snapshot_at", &g_cfg.snapshot_at},
+        {"snapshot_import", &g_cfg.snapshot_import},
+        {"world_import_at", &g_cfg.world_import_at},
+        {"save_at", &g_cfg.save_at},
+        {"savegame_at", &g_cfg.savegame_at},
+        {"loadgame_at", &g_cfg.loadgame_at},
+        {"load_at", &g_cfg.load_at},
+        {"tact_synth", &g_cfg.tact_synth},
+        {"tact_journal", nullptr}, // a string -- handled below
+        {"skip_pace_hook", nullptr},
+        {"rng_trace", nullptr},
+        {"skip_input_update", nullptr},
+        {"pin_menu_clock", &g_cfg.pin_menu_clock},
+    };
+    auto shout = [](const char *line) {
+        append_line(g_log_path, line);
+        OutputDebugStringA(line);
+        HANDLE e = GetStdHandle(STD_ERROR_HANDLE);
+        if (e != nullptr && e != INVALID_HANDLE_VALUE) {
+            DWORD wrote = 0;
+            WriteFile(e, line, lstrlenA(line), &wrote, nullptr);
+        }
+    };
+    for (const mh::harness_cfg1::spine_key &k : mh::harness_cfg1::SPINE_ONLY_KEYS) {
+        const field *m = nullptr;
+        for (const field &x : f)
+            if (lstrcmpA(x.key, k.key) == 0) m = &x;
+        char line[512];
+        if (m == nullptr) {
+            wsprintfA(line,
+                      "; [harness] configuration (1): INTERNAL -- spine-only key `%s` has no switch in "
+                      "config1_refuse_spine_keys; it may still reach a null spine slot\n",
+                      k.key);
+            shout(line);
+            continue;
+        }
+        bool set = false;
+        if (m->value != nullptr) {
+            set       = *m->value != 0;
+            *m->value = 0;
+        } else if (lstrcmpA(k.key, "tact_journal") == 0) {
+            set                   = g_cfg.tact_journal[0] != '\0';
+            g_cfg.tact_journal[0] = '\0';
+        } else {
+            set = GetPrivateProfileIntA("harness", k.key, 0, g_ini_path) != 0;
+        }
+        if (!set) continue;
+        mh::harness_cfg1::format_key_refusal(line, sizeof(line), k);
+        shout(line);
+    }
 }
 
 // ---- seed blob (dump/inject) --------------------------------------------------------------------
@@ -1858,6 +1982,114 @@ void world_snapshot_capture(uint64_t combined, uint64_t state, uint64_t clock) {
     HeapFree(GetProcessHeap(), 0, blob);
 }
 
+// Ascending insertion sort over a small double array -- min/median/max is the whole use, and pulling
+// in <algorithm> for one std::sort call in a translation unit that has never needed it is a worse
+// trade than eight lines here.
+void sort_doubles_ascending(double *a, int n) {
+    for (int i = 1; i < n; ++i) {
+        const double v = a[i];
+        int          j = i - 1;
+        while (j >= 0 && a[j] > v) {
+            a[j + 1] = a[j];
+            --j;
+        }
+        a[j + 1] = v;
+    }
+}
+
+// ---- mp:X6: the in-RAM capture benchmark ---------------------------------------------------------
+//
+// X4's 34.0 ms capture figure is world_snapshot_capture's ONE call above, disk write included. This
+// times ONLY `w::capture()`, N times, into a SINGLE already-allocated buffer -- no HeapAlloc and no
+// disk I/O inside the timed loop, so the number this prints is memcpy/hash work alone, comparable
+// against X4's number as a lower bound rather than argued about as one.
+void snap_bench_run(uint64_t combined, uint64_t state, uint64_t clock) {
+    namespace w      = mh::state::world;
+    static bool done = false;
+    if (done) return;
+    done = true;
+    const int n = g_cfg.snap_bench;
+    if (n <= 0) return;
+
+    w::capture_params p;
+    p.lockstep_combined = combined;
+    p.lockstep_state    = state;
+    p.game_clock        = clock;
+    p.step              = g_step;
+    p.mask_flags        = (g_cfg.mask_ctrl_group ? w::MASK_CTRL_GROUP : 0u) |
+                    (g_cfg.mask_soldier_anim ? w::MASK_SOLDIER_ANIM : 0u) |
+                    (g_cfg.mask_planets_gfx ? w::MASK_PLANETS_GFX : 0u);
+
+    const size_t need = w::capture_capacity();
+    uint8_t     *blob = static_cast<uint8_t *>(HeapAlloc(GetProcessHeap(), 0, need));
+    char         line[300];
+    if (blob == nullptr) {
+        wsprintfA(line, "; SNAP BENCH: HeapAlloc failed for %lu bytes\n", (unsigned long)need);
+        append_line(g_log_path, line);
+        log_flush();
+        return;
+    }
+
+    // Heap, not a VLA/stack array: `n` is an ini-supplied int and this function must not be the one
+    // that turns a typo'd snap_bench=100000 into a stack overflow.
+    double *samples = static_cast<double *>(HeapAlloc(GetProcessHeap(), 0, sizeof(double) * (size_t)n));
+    if (samples == nullptr) {
+        HeapFree(GetProcessHeap(), 0, blob);
+        wsprintfA(line, "; SNAP BENCH: HeapAlloc failed for %d timing samples\n", n);
+        append_line(g_log_path, line);
+        log_flush();
+        return;
+    }
+
+    LARGE_INTEGER freq;
+    QueryPerformanceFrequency(&freq);
+
+    int    ok       = 0;
+    int    fails    = 0;
+    size_t last_got = 0;
+    for (int i = 0; i < n; ++i) {
+        size_t        got = 0;
+        LARGE_INTEGER t0, t1;
+        QueryPerformanceCounter(&t0);
+        const int rc = w::capture(blob, need, &got, p);
+        QueryPerformanceCounter(&t1);
+        if (rc != w::WORLD_OK) {
+            ++fails;
+            continue;
+        }
+        last_got            = got;
+        samples[ok] = 1000.0 * (double)(t1.QuadPart - t0.QuadPart) / (double)freq.QuadPart; // ms
+        ++ok;
+    }
+
+    HeapFree(GetProcessHeap(), 0, blob);
+
+    if (ok == 0) {
+        HeapFree(GetProcessHeap(), 0, samples);
+        wsprintfA(line, "; SNAP BENCH n=%d ok=0 fail=%d -- every capture() call failed (need %lu bytes)\n",
+                  n, fails, (unsigned long)need);
+        append_line(g_log_path, line);
+        log_flush();
+        return;
+    }
+
+    sort_doubles_ascending(samples, ok);
+    const double min_ms = samples[0];
+    const double max_ms = samples[ok - 1];
+    const double med_ms = samples[ok / 2];
+    HeapFree(GetProcessHeap(), 0, samples);
+
+    // *1000 -> whole microseconds: wsprintfA has no %f, and every other timed line in this file
+    // carries the same convention rather than reaching for snprintf just here.
+    wsprintfA(line,
+              "; SNAP BENCH step=%lu n=%d ok=%d fail=%d bytes=%lu min_us=%lu median_us=%lu max_us=%lu\n",
+              (unsigned long)g_step, n, ok, fails, (unsigned long)last_got,
+              (unsigned long)(min_ms * 1000.0), (unsigned long)(med_ms * 1000.0),
+              (unsigned long)(max_ms * 1000.0));
+    append_line(g_log_path, line);
+    log_flush();
+}
+
 // ---- mp:X1b: the LIVE snapshot verbs (capture -> send / poll -> import) -------------------------
 //
 // LIB-WORLD's world_snapshot_capture above writes the same blob to a FILE. These two do the thing a
@@ -2127,6 +2359,173 @@ void snapshot_poll_now(void) {
         sim_hold_now("mp:X3 step one: imported a world blob and STOPPED, to separate the rewind "
                      "(the turn engine feeding live inputs to an older world) from the re-derives "
                      "libmh_import_world just ran against a live session");
+}
+
+// ---- mp:X7: world-snapshot RESTORE timing, in-process --------------------------------------------
+//
+// The IN-PROCESS twin of snapshot_poll_now above: same refusal-is-LOUD discipline, same
+// reset_session_latch_for_test override, same seven-re-derive libmh_import_world call and the same
+// SNAPIMP / HASHES witnesses -- but the blob comes off DISK (g_world_out, the file `[harness]
+// world_capture` wrote earlier in THIS run) instead of off the wire, so there is no transport, no
+// admission wait and no chunking to pay for. That isolates the RESTORE cost mp-restoration memo
+// section 3.3 assumed rather than measured. Repeats the timed import `world_import_n` times
+// (>=3 by default) over the SAME blob so the number is a min/median/max, not a single sample.
+//
+// CARRIES X3's OPEN HAZARD UNCHANGED: a peer that imports a live world blob has died with
+// 0xC000041D within about one sim step on the network path (3 runs of 3, see snapshot_hold's
+// comment above) before the hold isolated cause (a) from cause (b). This verb does not import-and-
+// continue by default for exactly that reason -- see `world_import_hold` below.
+void world_import_at_run(void) {
+    namespace w      = mh::state::world;
+    static bool done = false;
+    if (done) return;
+    done = true;
+
+    char   line[420];
+    HANDLE f = CreateFileA(g_world_out, GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING,
+                           FILE_ATTRIBUTE_NORMAL, nullptr);
+    if (f == INVALID_HANDLE_VALUE) {
+        wsprintfA(line,
+                  "; WORLD IMPORT AT step=%lu REFUSED -- %s does not exist ([harness] world_capture "
+                  "must have written it earlier in this run)\n",
+                  (unsigned long)g_step, g_world_out);
+        append_line(g_log_path, line);
+        log_flush();
+        return;
+    }
+    const DWORD fsize = GetFileSize(f, nullptr);
+    uint8_t    *blob  = static_cast<uint8_t *>(HeapAlloc(GetProcessHeap(), 0, fsize));
+    if (blob == nullptr) {
+        CloseHandle(f);
+        wsprintfA(line, "; WORLD IMPORT AT step=%lu REFUSED -- no room for %lu bytes\n",
+                  (unsigned long)g_step, (unsigned long)fsize);
+        append_line(g_log_path, line);
+        log_flush();
+        return;
+    }
+    DWORD      got_read = 0;
+    const BOOL read_ok  = ReadFile(f, blob, fsize, &got_read, nullptr);
+    CloseHandle(f);
+    if (!read_ok || got_read != fsize) {
+        HeapFree(GetProcessHeap(), 0, blob);
+        wsprintfA(line, "; WORLD IMPORT AT step=%lu REFUSED -- short read (%lu of %lu bytes)\n",
+                  (unsigned long)g_step, (unsigned long)got_read, (unsigned long)fsize);
+        append_line(g_log_path, line);
+        log_flush();
+        return;
+    }
+
+    const w::blob_header *h         = reinterpret_cast<const w::blob_header *>(blob);
+    const unsigned long   blob_step = (unsigned long)h->step;
+    const uint64_t        b_comb    = h->lockstep_combined;
+    const uint64_t        b_state   = h->lockstep_state;
+
+    const int n = g_cfg.world_import_n > 0 ? g_cfg.world_import_n : 1;
+    double   *samples =
+        static_cast<double *>(HeapAlloc(GetProcessHeap(), 0, sizeof(double) * (size_t)n));
+    if (samples == nullptr) {
+        HeapFree(GetProcessHeap(), 0, blob);
+        wsprintfA(line, "; WORLD IMPORT AT step=%lu REFUSED -- no room for %d timing samples\n",
+                  (unsigned long)g_step, n);
+        append_line(g_log_path, line);
+        log_flush();
+        return;
+    }
+
+    append_line(g_log_path,
+               "; WORLD IMPORT AT LIFTING the session-begun latch (harness override; world::import "
+               "refuses a live session by policy -- mp:X3 owns the ruling, this verb only measures "
+               "what an import would do)\n");
+
+    LARGE_INTEGER freq;
+    QueryPerformanceFrequency(&freq);
+
+    int ok = 0, fails = 0;
+    int last_rc = 0;
+    for (int i = 0; i < n; ++i) {
+        // Re-cleared EVERY rep on purpose: nothing here claims the latch stays down between calls,
+        // and a re-derive that quietly re-armed it would otherwise turn rep 2 into a silent no-op
+        // that still counts a timing sample for an import that never happened.
+        mh::state::boot::reset_session_latch_for_test();
+        LARGE_INTEGER t0, t1;
+        QueryPerformanceCounter(&t0);
+        const int irc = libmh_import_world(blob, (size_t)fsize);
+        QueryPerformanceCounter(&t1);
+        last_rc = irc;
+        if (irc != w::WORLD_OK) {
+            ++fails;
+            wsprintfA(line, "; WORLD IMPORT AT step=%lu rep=%d REFUSED rc=%d bytes=%lu blobstep=%lu "
+                            "-- the world is UNTOUCHED (import validates completely before its "
+                            "first write)\n",
+                      (unsigned long)g_step, i, irc, (unsigned long)fsize, blob_step);
+            append_line(g_log_path, line);
+            continue;
+        }
+        const double ms = 1000.0 * (double)(t1.QuadPart - t0.QuadPart) / (double)freq.QuadPart;
+        samples[ok]      = ms;
+        ++ok;
+        wsprintfA(line, "; WORLD IMPORT AT step=%lu rep=%d OK bytes=%lu blobstep=%lu us=%lu\n",
+                  (unsigned long)g_step, i, (unsigned long)fsize, blob_step,
+                  (unsigned long)(ms * 1000.0));
+        append_line(g_log_path, line);
+    }
+    log_flush();
+
+    if (ok == 0) {
+        HeapFree(GetProcessHeap(), 0, samples);
+        HeapFree(GetProcessHeap(), 0, blob);
+        wsprintfA(line, "; WORLD IMPORT AT BENCH step=%lu n=%d ok=0 fail=%d last_rc=%d\n",
+                  (unsigned long)g_step, n, fails, last_rc);
+        append_line(g_log_path, line);
+        log_flush();
+        return;
+    }
+
+    sort_doubles_ascending(samples, ok);
+    const double min_ms = samples[0];
+    const double max_ms = samples[ok - 1];
+    const double med_ms = samples[ok / 2];
+    HeapFree(GetProcessHeap(), 0, samples);
+
+    wsprintfA(line,
+              "; WORLD IMPORT AT BENCH step=%lu n=%d ok=%d fail=%d bytes=%lu min_us=%lu "
+              "median_us=%lu max_us=%lu\n",
+              (unsigned long)g_step, n, ok, fails, (unsigned long)fsize,
+              (unsigned long)(min_ms * 1000.0), (unsigned long)(med_ms * 1000.0),
+              (unsigned long)(max_ms * 1000.0));
+    append_line(g_log_path, line);
+
+    // THE DETERMINISM WITNESS, ONCE, over the state the LAST rep left behind -- reusing the exact
+    // SNAPIMP row and the exact "; SNAPSHOT IMPORT HASHES" line snapshot_poll_now emits above (same
+    // literal text, same columns), so mp_analyze's existing snapshot_compare reads this verb's
+    // output with no new parser: a region-hash / lockstep-hash compare against the SOURCE run that
+    // captured g_world_out is what tells this import apart from one that merely returned WORLD_OK.
+    uint64_t per[N_REGIONS];
+    for (int i = 0; i < N_REGIONS; ++i)
+        per[i] = mh::state::hash_slice(i, g_cfg.mask_ctrl_group != 0, g_cfg.mask_soldier_anim != 0,
+                                       g_cfg.mask_planets_gfx != 0);
+    snapshot_region_line("SNAPIMP", blob_step, per);
+
+    uint64_t now_comb = 0, now_state = 0;
+    w::lockstep_hash(h->mask_flags, &now_comb, &now_state);
+    wsprintfA(line,
+              "; SNAPSHOT IMPORT HASHES blob=%08lX%08lX/%08lX%08lX live=%08lX%08lX/%08lX%08lX "
+              "match=%d\n",
+              (unsigned long)(b_comb >> 32), (unsigned long)(b_comb & 0xffffffffu),
+              (unsigned long)(b_state >> 32), (unsigned long)(b_state & 0xffffffffu),
+              (unsigned long)(now_comb >> 32), (unsigned long)(now_comb & 0xffffffffu),
+              (unsigned long)(now_state >> 32), (unsigned long)(now_state & 0xffffffffu),
+              (now_comb == b_comb && now_state == b_state) ? 1 : 0);
+    append_line(g_log_path, line);
+    log_flush();
+    HeapFree(GetProcessHeap(), 0, blob);
+
+    // mp:X3's hold, same reason as snapshot_poll_now's: if the re-derives or the frame/render path
+    // are going to fault against the imported world, they fault in the next sim step, so freezing
+    // here is what lets THIS run's log survive to report the bench numbers above at all.
+    if (g_cfg.snapshot_hold)
+        sim_hold_now("mp:X7: re-imported g_world_out in-process and STOPPED (same X3 hazard as "
+                     "snapshot_poll_now -- see its comment)");
 }
 
 // ---- order record/replay (Phase 2) --------------------------------------------------------------
@@ -2559,33 +2958,6 @@ void emit_aistate() {
 // Overwrite QUEUE with this step's recorded snapshot + set COUNT; sim_step's `if(COUNT!=0)` then fires
 // dispatch to execute them. The snapshot already contains deferred re-appearances, so a per-step
 // overwrite reproduces the recording exactly.
-// order_queue_tail_clear: zero the DEAD slots [count, 300) of the hashed order queue.
-//
-// THE TAIL-CLEAR (user ruling, 2026-09-11; moved to an UNCONDITIONAL step-level call
-// on the coordinator ruling of the same day -- see the call site). `order_queue` is hashed WHOLE -- all 300 slots of
-// 0x44 -- while only [0, count) is live, and this injector deliberately leaves the rest alone.
-// The residue is therefore process history, and two arms that agree on every live order can
-// still disagree on the hash the moment `count` dips below an earlier high-water mark: measured
-// between the hosted replay and the standalone at exactly the nine periodic instants, 0 bytes
-// differing inside the live prefix and 6 beyond it, re-converging the step the injector next
-// covered the stale slot. Zeroing the dead slots makes the hashed bytes a function of the LIVE
-// queue alone, which is what the determinism clause always meant.
-//
-// FROM THE EFFECTIVE COUNT, NOT FROM `n`, and that distinction is load-bearing: the count is set
-// ONLY when n > 0 (three lines up), so on a step that injects nothing the previous count -- and
-// the records dispatch still owes -- are live. Clearing from `n` would delete them.
-//
-// CLAMPED, because the count has been MEASURED climbing past the array: it reached >300 around
-// step 392 while the earlier append-at-the-count injector was in use (the dispatcher does not
-// zero it). An unclamped `QCAP - live` would be negative and the memset would run off the end.
-void order_queue_tail_clear() {
-    uint8_t *q    = reinterpret_cast<uint8_t *>(ADDR_ORDER_QUEUE());
-    int      live = *reinterpret_cast<int *>(ADDR_ORDER_QCOUNT());
-    if (live < 0) live = 0;
-    if (live > ORDER_QCAP) live = ORDER_QCAP;
-    memset(q + (size_t)live * ORDER_SIZE, 0, ((size_t)ORDER_QCAP - (size_t)live) * ORDER_SIZE);
-}
-
 // LIB-REF step-5000, count-ledger tag 16: how many records THIS step injected. A global rather than
 // a return value because the note is emitted after the UNCONDITIONAL tail-clear (which is not inside
 // this function and runs in both arms), so the two halves of the opening balance are read at the
@@ -5526,6 +5898,22 @@ void tj_replay_frame() {
             ++g_tj_skipped;
             continue;
         }
+        // mp:D29: the ORDER seams (E, G) enter libmh's tactical bodies -- spine rows. tact_journal
+        // and tact_synth are refused at arm in configuration (1), but a UI journal can carry order
+        // records too, and one reaching a null slot would kill the process. Skipped LOUDLY instead:
+        // the line says this replay is not the recorded session.
+        if (!g_spine && e.seam != 'D' && e.seam != 'M' && e.seam != 'K' && e.seam != 'C') {
+            ++g_tj_skipped;
+            static bool said = false;
+            if (!said) {
+                said = true;
+                append_line(g_log_path,
+                            "; TJ configuration (1): journal ORDER records (seam E/G) SKIPPED -- they "
+                            "enter libmh.dll's tactical bodies. This replay is NOT the recorded "
+                            "session; do not read its verdict as one.\n");
+            }
+            continue;
+        }
         if (e.seam == 'E')
             mh::tact::unit_enqueue_command((int32_t)e.a0, (int32_t)e.a1, e.iflag,
                                            (int32_t)e.a2, (uint16_t)e.a3,
@@ -6849,11 +7237,13 @@ void on_sim_step() {
     land_log_report(); // SPCAMP-SEED: one-shot, the first step after landing
     if (!g_active) return;
     MH_Temporal_Event(5 /*TEV_SIMSTEP*/); // step boundary (pre-body: GAME_CLOCK still = (n-1)*interval)
+    MH_Lockstep_StepPin(); // mp:D30 -- before synth/conquest stamp this step's orders
     ++g_step;
     // C-prime: the draws that follow belong to THIS step. Set unconditionally -- the trace gates
     // itself on its window, and a step counter that only advanced when armed would be a second,
     // divergent counter.
-    mh::sim::rng_trace_set_step(g_step);
+    // mp:D29: a spine row. In configuration (1) there is no trace to step (rng_trace is refused).
+    if (g_spine) mh::sim::rng_trace_set_step(g_step);
 
     // F5J: THE FENCE TRIPS HERE, at the ENTRY of the target step -- i.e. after sim_tick's loop has
     // already charged the clock for it and before its body runs. Freezing TOTAL at the clock now
@@ -7022,21 +7412,22 @@ void on_sim_step() {
     // dispatch (the hash below reads pre-execution state either way, so ordering vs the hash is moot).
     if (g_cfg.order_mode == 2 && g_replay) order_replay_inject();
 
-    // UNCONDITIONAL, both arms, every step -- and the "both arms" is the whole point. The clear
-    // began life inside order_replay_inject, which runs only under order_mode==2, so the RECORD arm
-    // kept its uncleared tails while the replay cleared them: record-vs-replay order_queue residue
-    // went broad, and fixture_replay's verify correctly refused to attribute it to the known
-    // instants mechanism. Symmetry is the fix. Dispatch reads only [0, count), so zeroing dead slots
-    // changes no live order in either arm -- measured, not argued: the recording's orders.bin and
-    // clock.bin are byte-identical across the re-records that introduced this.
-    order_queue_tail_clear();
+    // NO TAIL-CLEAR ANY MORE (mp:D33 follow-up, user 2026-09-25). From 2026-09-11 this zeroed
+    // order_queue's dead slots [count, 300) every step so the hash saw the live queue only. It wrote
+    // GAME MEMORY from an instrument that is meant only to observe, and it made a harness-armed peer
+    // hash differently from one without the harness (D33: 78/79 false DESYNCs, and a player on the
+    // brokered-debug build would see the notice). The hash itself now treats the dead slots as zeros
+    // (emit_order_queue / mh::orders::emit_region, via local()) -- the same byte stream -- so every
+    // arm and every build agree without touching the queue.
 
     // LIB-REF step-5000, count-ledger tag 16: the step's OPENING BALANCE for order_queue_count, read
     // at the same point in the step as the standalone host reads it (after inject + tail-clear,
     // before the hash). `g_replay_injected` is 0 in the RECORD arm, which is correct -- nothing was
     // injected there -- so the note describes both arms without a mode test.
-    mh::sim::rng_trace_add_note(16u, (uint32_t)g_replay_injected, 0u, 0u, 0u,
-                                (uint32_t)*reinterpret_cast<const int *>(ADDR_ORDER_QCOUNT()), 0u);
+    // mp:D29: a spine row -- the note lands in libmh's trace ring, which configuration (1) has not.
+    if (g_spine)
+        mh::sim::rng_trace_add_note(16u, (uint32_t)g_replay_injected, 0u, 0u, 0u,
+                                    (uint32_t)*reinterpret_cast<const int *>(ADDR_ORDER_QCOUNT()), 0u);
 
     // The save-state index probe: one "; AISTATE" line per player, once. See aistate_probe_at.
     if (g_cfg.aistate_probe_at > 0 && g_step == (uint32_t)g_cfg.aistate_probe_at) emit_aistate();
@@ -7223,10 +7614,38 @@ void on_sim_step() {
     // Once, at the first hashed step: the inbound refusal count since open. See the open site.
     if (g_step == 1) {
         {
-            char ib[160];
-            wsprintfA(ib, "; [libmh_in] inbound refusals since open: %d (first: %s)\n",
-                      mh::libmh_in::trap_count() - MH_Core_TrapsAtOpen(), mh::libmh_in::last_trap());
+            // mp:D29: the census PREFIX is check_arm_order's harness-channel end marker, so it is
+            // written in both configurations; only the body says "n/a" when there is no libmh.dll
+            // (trap_count/last_trap are spine rows, and a 0 would read as "counted, none").
+            char ib[320];
+            if (g_spine)
+                mh::harness_cfg1::format_census(ib, sizeof(ib), true,
+                                                mh::libmh_in::trap_count() - MH_Core_TrapsAtOpen(),
+                                                mh::libmh_in::last_trap());
+            else
+                mh::harness_cfg1::format_census(ib, sizeof(ib), false, 0, nullptr);
             append_line(g_log_path, ib);
+        }
+        {
+            // mp:D29: THE CONFIGURATION LINE -- which registry this hash reads, what in it moved, and
+            // the manifest fingerprint mp_analyze refuses to pair across. After the census on
+            // purpose: outside the arm window, so no recorded arm-order baseline moves.
+            //   rebased   = hash slices whose region is not at its stock address
+            //   owned     = hash slices a module serves (emit_slice's owner branch)
+            //   uncovered = hash slices whose region has NO address (live_base == 0) -- a slice the
+            //               hash could not read honestly. Named in the header rather than hashed as
+            //               zero; in configuration (1) every slice is a fixed mh.exe VA, so none.
+            int rebased = 0, owned = 0, uncovered = 0;
+            for (int i = 0; i < N_REGIONS; ++i) {
+                const mh::state::hash_region &r = REGIONS[i];
+                if (mh::state::is_rebased(r.rid)) ++rebased;
+                if (mh::state::owner_serves(r.rid, r.offset, r.len)) ++owned;
+                if (mh::state::live_base(r.rid) == 0) ++uncovered;
+            }
+            char cl[320];
+            mh::harness_cfg1::format_config_line(cl, sizeof(cl), g_spine, rebased, owned, uncovered,
+                                                 mh::state::HASH_MANIFEST_FP);
+            append_line(g_log_path, cl);
         }
     }
     mh::desync::on_sim_step_hashed(per, N_REGIONS, state);
@@ -7259,12 +7678,22 @@ void on_sim_step() {
     // size on both is a lockstep hiccup nobody needs.)
     if (g_cfg.world_capture && g_step == 1) world_snapshot_capture(combined, state, clock);
 
+    // mp:X6 -- same placement, same reason: the RAM-only capture benchmark reads the same
+    // `combined`/`state`/`clock` this step just computed, one-shot at g_step==1.
+    if (g_cfg.snap_bench > 0 && g_step == 1) snap_bench_run(combined, state, clock);
+
     // mp:X1b -- the live snapshot verbs, HERE for world_snapshot_capture's reason one line up: the
     // blob and the per-region hashes it must reproduce are taken from the same `per[]`/`combined`/
     // `state` this block just computed, so there is no window between them for state to move.
     if (g_cfg.snapshot_at > 0 && g_step >= (uint32_t)g_cfg.snapshot_at)
         snapshot_send_now(per, combined, state, clock);
     if (g_cfg.snapshot_import) snapshot_poll_now();
+
+    // mp:X7 -- the in-process restore-timing verb. Reads back the file world_capture wrote (at
+    // g_step==1, above) once the configured step is reached, so `world_import_at` must be set past 1
+    // in the same run that also sets `world_capture=1`.
+    if (g_cfg.world_import_at > 0 && g_step >= (uint32_t)g_cfg.world_import_at)
+        world_import_at_run();
 
     char line[160];
     wsprintfA(line, "%lu %08X%08X %08X%08X %08X%08X\n", g_step,
@@ -7316,7 +7745,16 @@ void on_sim_step() {
         // C-prime: flush the draws recorded SINCE THE LAST DUMP, so each line's `step` is the step
         // the draw belongs to and the file reads as one ordered sequence. Emitted at the same sample
         // point as everything else in this block.
-        {
+        // mp:D29: the trace lives in libmh -- configuration (1) has none, and the rdump's region
+        // bytes below still dump. Said once, so an absent RNGD stream is never read as "no draws".
+        if (!g_spine) {
+            static bool said = false;
+            if (!said) {
+                said = true;
+                append_line(g_log_path, "; [rdump] configuration (1): no RNGD/NOTE stream (the RNG "
+                                        "trace is a libmh.dll row); the region bytes still dump\n");
+            }
+        } else {
             static int flushed = 0;
             const int  n       = mh::sim::rng_trace_count();
             char       rb[128];
@@ -7453,6 +7891,20 @@ void on_sim_step() {
         // 800 steps while still printing ALL PAIRS IDENTICAL. One missing flush, three wrong
         // readings, none of which looked like a logging bug.
         log_flush();
+        // TL-HARN-CLEANCLOSE: END THE MATCH THROUGH ITS OWN CLOSE, here. Three constraints put it on
+        // this line and nowhere else:
+        //   * AFTER the last hashed step and the flush above -- the close writes mh_net.log lines and
+        //     session.json and touches no simulated byte, and every hash this run compares is already
+        //     on disk, so ALL PAIRS IDENTICAL cannot move because of it;
+        //   * BEFORE the process can end -- a determinism run (exit_on_stop=0) is killed by its runner
+        //     with taskkill /f, and a fixture run (exit_on_stop=1) leaves via ExitProcess one step
+        //     boundary later; neither runs an exit seam, and DLL_PROCESS_DETACH is deliberately empty
+        //     (loader lock), so there is no later place;
+        //   * WHILE EVERY PEER IS STILL UP -- each peer closes itself at its own stop step, which is
+        //     the same sim step on all of them, and nobody leaves the link: the close sends nothing
+        //     and waits for nothing, so the peer that gets here first cannot strand one still behind.
+        // The session stays open (the directory is not switched) -- see session_close_plan.h.
+        if (g_cfg.close_on_stop) MH_Session_HarnessStop(g_step);
         // LIB-REF-REC: THE EXIT STEP'S ORDERS (user ruling, 2026-09-11). This block runs from
         // on_sim_step, i.e. at llm_strat_sim_step's ENTRY -- so exiting HERE kills the process before
         // the stop step's BODY runs, and the recorder never sees that step: order_record() hangs off
@@ -7799,7 +8251,9 @@ static void late_arm_report(void) {
     // not redundant: the rebind rows are armed independently of `[promote] orders`, so in that
     // configuration the byte neuter below covers the original's entry and this covers the rebound
     // internal callers. Neither alone is the documented sentence.
-    mh::orders::set_suppress_enqueue(true);
+    // mp:D29: in configuration (1) there is no libmh sink and no rebound caller -- the byte neuter
+    // below is the whole suppression -- and the setter is a spine row, so it is skipped.
+    if (g_spine) mh::orders::set_suppress_enqueue(true);
 
     if (mh::hook::promoted_owner_of(ADDR_ORDER_ENQUEUE)) {
         append_line(g_log_path,
@@ -7863,6 +8317,11 @@ extern "C" int MH_Harness_RebindOrderDispatch(void *ours) {
 // module: nothing calls this, the flag stays 0, and the instrument behaves exactly as it always did.
 extern "C" void MH_Harness_SetModuleRefused(int refused) { g_module_refused = refused != 0; }
 
+// mp:D29: the module says CONFIGURATION (1) -- the fallback rows are bound and nothing else of the
+// spine is. A setter for MH_Harness_SetModuleRefused's reason: net_selftest.exe compiles this file
+// with the spine in its own image and never calls it, so g_spine stays true there.
+extern "C" void MH_Harness_SetSpineAbsent(int absent) { g_spine = absent == 0; }
+
 extern "C" int MH_Harness_Init(void) {
     // F4E: TAKE THE PATHS FIRST, because everything below reads one -- harness_enabled() itself
     // reads g_ini_path. mh.dll's build_paths() filled them inside MH_Core_Arm_Early, which DllMain
@@ -7889,6 +8348,9 @@ extern "C" int MH_Harness_Init(void) {
         return 0;
     }
     load_config();
+    // mp:D29: configuration (1) arms spine-free. Refuse the keys that need a spine row BEFORE any
+    // install reads them, so nothing below can act on one.
+    if (!g_spine) config1_refuse_spine_keys();
 
     // ST2M: the runtime manifest-index guard that stood here is GONE, and its absence is the point.
     // It checked at every arm that IDX_RNG/IDX_CLOCK and the nine exclusion indices still named the
@@ -8043,7 +8505,9 @@ extern "C" int MH_Harness_Init(void) {
             // mh::state::session_seed(), so a trampoline over the original function would leave the
             // promoted arm on the wall clock and the stock arm pinned -- an A/B whose two arms
             // disagree about the seed is worse than no pin at all.
-            libmh_set_session_seed((int32_t)g_cfg.strat_seed);
+            // mp:D29: in configuration (1) there is no promoted session_begin to reach -- the entry
+            // pin above IS the whole pin -- and the push is a spine row, so it is skipped.
+            if (g_spine) libmh_set_session_seed((int32_t)g_cfg.strat_seed);
             char m[160];
             wsprintfA(m, "; pin_strat_seed ARMED: llm_strat_rng_seed_wallclock_seconds -> %d "
                          "(the campaign landing roll stops depending on the clock second)\n",
@@ -8485,25 +8949,31 @@ extern "C" int MH_Harness_Init(void) {
     // matching no rebindable row is COUNTED and named in the summary, because otherwise "the derivation
     // found nothing to do" and "the derivation is broken" produce the same silence -- exactly the
     // failure this clause exists to remove.
-    if (g_yield_claimed_rebinds) {
-        int yielded = 0, matched = 0;
-        for (int i = 0; i < (int)mh::rebind::ROW_COUNT; ++i) {
-            const uintptr_t a = mh::rebind::row_addr[i];
-            if (!a) continue; // no exported address -> matches nothing; never yielded on a guess
-            const char *who = mh::hook::entry_claimant_of(a);
-            if (!who) continue;
-            ++matched;
-            if (mh::rebind::set_armed(mh::rebind::row_names[i], false)) {
-                ++yielded;
+    // mp:D29: CONFIGURATION (1) HAS NO REBIND TABLE. mh::rebind::set_armed is a libmh row, and with no
+    // libmh.dll the rows it flips do not exist -- nothing can rebind a caller past the harness's
+    // detours, so there is nothing to yield. Calling it would reach a null spine slot and TRAP, i.e.
+    // kill the very process the instrument is measuring (llm_strat_sim_step/sim_tick ARE rebind rows
+    // the harness claims). yield_claimed_rows returns -1 without calling anything; bindtest holds a
+    // counting set_armed to it.
+    if (g_yield_claimed_rebinds && !g_spine) {
+        append_line(g_log_path, "; [rebind] configuration (1): no libmh.dll, so no rebind row exists "
+                                "to yield -- clause-6 derivation skipped (set_armed is a spine row)\n");
+    } else if (g_yield_claimed_rebinds) {
+        int matched = 0;
+        const int yielded = mh::harness_cfg1::yield_claimed_rows(
+            g_spine, (int)mh::rebind::ROW_COUNT, mh::rebind::row_addr, mh::rebind::row_names,
+            [](uintptr_t a) { return mh::hook::entry_claimant_of(a); },
+            [](const char *name, bool on) { return mh::rebind::set_armed(name, on); },
+            [](const char *name, const char *who) {
                 char line[256];
                 wsprintfA(line,
                           "; [rebind] %s YIELDED to %s (that instrument owns the entry; a rebound "
                           "caller would bypass it)\n",
-                          mh::rebind::row_names[i],
+                          name,
                           who);
                 append_line(g_log_path, line);
-            }
-        }
+            },
+            &matched);
         int unmapped = 0;
         for (int i = 0; i < mh::hook::entry_claim_count(); ++i) {
             uintptr_t   e     = 0;
@@ -8645,6 +9115,7 @@ extern "C" int MH_Harness_WantsPresentTick(void) {
 // MH_Harness_SetModuleRefused gets a stub instead: it is the module's one way into this file,
 // and an inert harness that cannot be told anything is still inert.
 extern "C" void MH_Harness_SetModuleRefused(int) {}
+extern "C" void MH_Harness_SetSpineAbsent(int) {}
 extern "C" int  MH_Harness_Init(void) { return 0; }
 extern "C" int  MH_Harness_RebindSimTick(void *) { return 0; }
 extern "C" void MH_Harness_OnSimTick(void) {}

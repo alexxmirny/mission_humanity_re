@@ -658,10 +658,22 @@ void load_state(mh::state::state_source &src) { detail::load_state(state(), src)
 void emit_region(mh::state::region_id rid, mh::state::state_sink &s) {
     const container_state &st = state();
     if (rid == mh::state::RID_STRAT_ORDER_QUEUE) {
+        // THE DEAD SLOTS ARE local() (mp:D33 follow-up, user 2026-09-25). Only [0, count) is live --
+        // the dispatcher reads nothing past it -- so the stale records above it are process history:
+        // PERSIST still writes them (the original block-copies all 20400 bytes, so the save stays
+        // byte-identical), VERDICT hashes them as zeros. That is the same byte stream the harness's
+        // old per-step memset produced, so no recorded hash moves, and a peer running the harness no
+        // longer reads as desynced against one that is not. CLAMPED: the count has been measured > 300.
+        int32_t live = *st.queue_count;
+        if (live < 0) live = 0;
+        if (live > QUEUE_CAP) live = QUEUE_CAP;
         uint8_t rec[codec::RECORD_BYTES]; // ST5: one codec, shared with the wire
         for (int32_t i = 0; i < QUEUE_CAP; ++i) {
             codec::encode(st.queue[i], rec);
-            s.bytes(rec, codec::RECORD_BYTES);
+            if (i < live)
+                s.bytes(rec, codec::RECORD_BYTES);
+            else
+                s.local(rec, codec::RECORD_BYTES);
         }
     } else if (rid == mh::state::RID_STRAT_ORDER_QUEUE_COUNT)
         s.bytes(st.queue_count, (uint32_t)sizeof(int32_t));

@@ -422,6 +422,9 @@ int run_queuetest() {
         q.reset();
         check("after reset: depth, high-water, evicted and refused are ALL back to zero",
               q.depth() == 0 && q.high_water() == 0 && q.evicted() == 0 && q.refused() == 0);
+        // mp:U41d -- reset() is the TRANSPORT boundary and must NOT move the epoch; only
+        // reset_counters() (the MATCH boundary, checked in block 6 below) may.
+        check("reset() does not touch the epoch", q.epoch() == 0);
         // And the merge still works from a clean counter -- a reset that left `next_seq_` behind
         // would still order correctly, but one that left a LANE half-full would not.
         const push_result h = q.push(lane::supersedable);
@@ -430,6 +433,39 @@ int run_queuetest() {
         const pop_result first = q.pop();
         check("after reset: the merge still delivers the earlier arrival first",
               first.ok && first.which == lane::supersedable);
+    }
+
+    // ---- 6. the MATCH-BOUNDARY reset (mp:U41b): counters restart, queued frames survive ----------
+    // host_rematch keeps the link up, so the second match's rollup must not inherit the first's
+    // high-water or counts -- but nothing already queued may be dropped to get there.
+    {
+        mh::net::queue_policy::lane_queue<4, 2> q;
+        q.reset();
+        for (int i = 0; i < 8; ++i) q.push(lane::supersedable); // 4 evicted, H full
+        for (int i = 0; i < 4; ++i) q.push(lane::must_keep);    // 2 refused, M full
+        for (int i = 0; i < 5; ++i) q.pop();                    // drain to depth 1
+        check("match 1: high-water 6, evicted 4, refused 2, depth 1 left queued",
+              q.high_water() == 6 && q.evicted() == 4 && q.refused() == 2 && q.depth() == 1);
+        const unsigned epoch0 = q.epoch();
+        q.reset_counters();
+        check("boundary: evicted and refused restart at zero",
+              q.evicted() == 0 && q.refused() == 0);
+        check("boundary: the high-water restarts at the depth ACTUALLY queued (1), not 0 and not 6",
+              q.high_water() == 1 && q.high_water_h() + q.high_water_m() == 1);
+        check("boundary: the queued frame SURVIVES (a match boundary is not a link teardown)",
+              q.depth() == 1);
+        // mp:U41d -- THE MARKER. Only reset_counters() may move this; check_queue_rollups.py's
+        // verdict (and net_selftest.exe qmatchtest's mutation arm) both key off it.
+        check("boundary: the epoch advanced by exactly 1", q.epoch() == epoch0 + 1);
+        const pop_result left = q.pop();
+        check("boundary: ...and drains normally", left.ok && q.depth() == 0);
+        q.push(lane::supersedable);
+        q.push(lane::supersedable);
+        check("match 2: its rollup reports ITS OWN high-water (2), not match 1's 6",
+              q.high_water() == 2 && q.evicted() == 0 && q.refused() == 0);
+        const unsigned epoch1 = q.epoch();
+        q.reset_counters();
+        check("a second boundary advances the epoch again", q.epoch() == epoch1 + 1);
     }
 
     printf("=== queuetest: %d checks, %d failures ===\n", g_checks, g_fails);

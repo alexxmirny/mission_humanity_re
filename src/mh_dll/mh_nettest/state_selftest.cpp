@@ -68,6 +68,10 @@
 #include "lockstep/turn_engine.h"    // SB-BIND T4: the lockstep binders under test in arm K
 #include "state/host_bind.h"         // SB-BIND T1: the state ABI under test in run_bindtest()
 #include "state/roster_caps.h"       // SB-BIND T2: the derived per-player caps
+// mp:D29: the harness's configuration (1) path -- its fallback binder, its gates and its two report
+// lines are header-only precisely so these arms can drive the production code with planted inputs.
+#include "../mh_harness/config1.h"
+#include "../mh_harness/harness_contract.gen.h" // the fallback slot table the DLL binds through
 
 namespace {
 
@@ -1326,6 +1330,219 @@ int run_bindtest() {
            "H1: a region under _G_LLM_GAME_SESSION_MODE's overrunning window is MOVABLE again -- "
            "the block that reaches it is served run by run now, so moving it no longer writes 0xCD "
            "into a save");
+    }
+
+    // ---- D29. THE HARNESS IN CONFIGURATION (1): the spine-free hash reads mh.dll's REAL table ----
+    //
+    // With no libmh.dll the harness binds three spine slots -- live / owner_table / owner_count --
+    // out of mh.dll (the generated mh_harness_bind_config1, over config1.h's bind_fallback) and
+    // hashes through them. In THIS image the process's one registry stands in for mh.dll's table:
+    // the resolver hands the binder the addresses of functions returning it, exactly as
+    // GetProcAddress hands back mh.dll's exports. The hash definition is the same inline code
+    // either way (region_view.h), so what these arms pin is the BINDING: which table the slot
+    // reaches, whole-or-nothing adoption, and the gates that keep every other spine row unreached.
+    for (int i = 0; i < RID_COUNT; ++i) unrebase((region_id)i);
+    {
+        using namespace mh::harness_cfg1;
+        struct mhdll {
+            static live_table &live_real() { return live(); }
+            static owner_slot *owner_table_real() { return owner_table(); }
+            static int        &owner_count_real() { return owner_count(); }
+            // THE MUTANT: a harness-PRIVATE registry, seeded exactly like mh.dll's absent static.
+            // It would hash green forever on a build where mh.dll moved a region.
+            static live_table &live_private() {
+                static live_table t;
+                return t;
+            }
+        };
+        auto resolver = [](bool mutant, bool drop_count) {
+            return [mutant, drop_count](const char *n) -> void * {
+                if (strstr(n, "?live@state@") == n)
+                    return mutant ? (void *)&mhdll::live_private : (void *)&mhdll::live_real;
+                if (strstr(n, "?owner_table@state@") == n) return (void *)&mhdll::owner_table_real;
+                if (strstr(n, "?owner_count@state@") == n)
+                    return drop_count ? nullptr : (void *)&mhdll::owner_count_real;
+                return nullptr; // anything else is not a fallback row and must never be asked for
+            };
+        };
+        int live_slot = -1, tbl_slot = -1, cnt_slot = -1;
+        for (int k = 0; k < MH_HARNESS_CONFIG1_FALLBACK_COUNT; ++k) {
+            const char *n = mh_harness_config1_fallback_name[k];
+            if (strstr(n, "?live@state@") == n) live_slot = mh_harness_config1_fallback_slot[k];
+            if (strstr(n, "?owner_table@state@") == n) tbl_slot = mh_harness_config1_fallback_slot[k];
+            if (strstr(n, "?owner_count@state@") == n) cnt_slot = mh_harness_config1_fallback_slot[k];
+        }
+        ck(MH_HARNESS_CONFIG1_FALLBACK_COUNT == 3 && live_slot >= 0 && tbl_slot >= 0 && cnt_slot >= 0,
+           "D29: the generated fallback table names exactly the registry + the two owner rows");
+
+        // (a) the bind fills exactly the three fallback slots, and nothing else.
+        void     *slots[MH_HARNESS_SPINE_COUNT] = {};
+        const int got                           = bind_fallback(slots, MH_HARNESS_SPINE_COUNT, mh_harness_config1_fallback_slot,
+                                                                mh_harness_config1_fallback_name,
+                                                                MH_HARNESS_CONFIG1_FALLBACK_COUNT, resolver(false, false));
+        int       others                        = 0;
+        for (int i = 0; i < MH_HARNESS_SPINE_COUNT; ++i)
+            if (i != live_slot && i != tbl_slot && i != cnt_slot && slots[i] != nullptr) ++others;
+        ck(got == 3 && slots[live_slot] == (void *)&mhdll::live_real &&
+               slots[tbl_slot] == (void *)&mhdll::owner_table_real &&
+               slots[cnt_slot] == (void *)&mhdll::owner_count_real && others == 0,
+           "D29: the config-(1) bind fills EXACTLY the three fallback slots with mh.dll's own exports; "
+           "every other spine slot stays null (so an unguarded call site traps, loudly)");
+
+        // (b) ALL OR NOTHING: one row short adopts nothing.
+        void     *short_slots[MH_HARNESS_SPINE_COUNT] = {};
+        const int got2 =
+            bind_fallback(short_slots, MH_HARNESS_SPINE_COUNT, mh_harness_config1_fallback_slot,
+                          mh_harness_config1_fallback_name, MH_HARNESS_CONFIG1_FALLBACK_COUNT,
+                          resolver(false, true));
+        int written = 0;
+        for (void *p : short_slots) written += p != nullptr;
+        ck(got2 == 2 && written == 0,
+           "D29: an mh.dll missing one fallback export binds NOTHING (2 of 3 resolved, 0 slots "
+           "written) -- the module then refuses as ruling Q4 always did");
+
+        // (c) the spine-free hash over a fixture EQUALS the spine path's, THROUGH the bound slot.
+        auto via = [](void *slot, int hidx) {
+            live_table        &t = ((live_table & (*)()) slot)();
+            const hash_region &r = HASH_REGIONS[hidx];
+            hash_sink          s(sink_mode::VERDICT);
+            s.bytes(reinterpret_cast<const void *>(static_cast<uintptr_t>(t.base[r.rid] + r.offset)),
+                    r.len);
+            return s.finish();
+        };
+        const uint32_t len = size_of(FIX_RID);
+        static uint8_t d29_home[4096], d29_moved[4096];
+        ck(len <= sizeof(d29_home) && HASH_REGIONS[FIX_HIDX].offset == 0 &&
+               HASH_REGIONS[FIX_HIDX].len <= len,
+           "D29: fixture premise -- the peer_horizon slice is a raw, whole-region slice that fits");
+        for (uint32_t i = 0; i < len; ++i) {
+            d29_home[i]  = pattern(i);
+            d29_moved[i] = pattern(i + 11u);
+        }
+        rebase(FIX_RID, (uint32_t)(uintptr_t)d29_home, len);
+        const uint64_t spine_home = hash_slice(FIX_HIDX, true);
+        ck(via(slots[live_slot], FIX_HIDX) == spine_home,
+           "D29: the spine-free hash through the bound registry EQUALS the spine path's hash_slice "
+           "over the same fixture bytes");
+
+        // (d) a moved base in the BOUND table changes the hash -- and to the spine path's new value.
+        rebase(FIX_RID, (uint32_t)(uintptr_t)d29_moved, len);
+        const uint64_t spine_moved = hash_slice(FIX_HIDX, true);
+        ck(via(slots[live_slot], FIX_HIDX) != spine_home &&
+               via(slots[live_slot], FIX_HIDX) == spine_moved,
+           "D29: moving the region in mh.dll's table MOVES the bound hash with it, to exactly the "
+           "spine path's new value");
+
+        // (e) a poke changes it; undoing the poke restores it.
+        d29_moved[len / 2] ^= 0xA5;
+        ck(via(slots[live_slot], FIX_HIDX) != spine_moved, "D29: a poke CHANGES the bound hash");
+        d29_moved[len / 2] ^= 0xA5;
+        ck(via(slots[live_slot], FIX_HIDX) == spine_moved, "D29: ...and undoing it restores it");
+
+        // (f) THE PLANTED PRIVATE REGISTRY IS CAUGHT. A mutant binder that handed the harness its own
+        // copy of the table reads the STOCK base after mh.dll's table moved the region -- so it never
+        // sees the relocation. (Asserted on the base, not by hashing: the stock VA is unmapped in
+        // this exe, which is itself the point -- the private copy points at memory nothing owns.)
+        void *mut_slots[MH_HARNESS_SPINE_COUNT] = {};
+        bind_fallback(mut_slots, MH_HARNESS_SPINE_COUNT, mh_harness_config1_fallback_slot,
+                      mh_harness_config1_fallback_name, MH_HARNESS_CONFIG1_FALLBACK_COUNT,
+                      resolver(true, false));
+        live_table &bound_real = ((live_table & (*)()) slots[live_slot])();
+        live_table &bound_mut  = ((live_table & (*)()) mut_slots[live_slot])();
+        ck(&bound_real == &live() && bound_real.base[FIX_RID] == live_base(FIX_RID),
+           "D29: the real bind reaches mh.dll's OWN table -- same object, sees the move");
+        ck(&bound_mut != &live() && bound_mut.base[FIX_RID] != live_base(FIX_RID) &&
+               bound_mut.base[FIX_RID] == REGIONS[FIX_RID].base,
+           "D29: MUTANT CAUGHT -- a harness-private registry still points at the stock base after "
+           "mh.dll moved the region; it would hash abandoned memory and stay green");
+        ck(((owner_slot * (*)()) slots[tbl_slot])() == owner_table() &&
+               &((int &(*)())slots[cnt_slot])() == &owner_count(),
+           "D29: the owner rows reach mh.dll's own owner table and count, not copies");
+        unrebase(FIX_RID);
+
+        // (g) set_armed is NOT called without the spine -- and the control proves the stub would see it.
+        const uintptr_t row_addr[2]  = {0x00401000u, 0x00402000u};
+        const char     *row_names[2] = {"llm_strat_sim_step", "llm_strat_sim_tick"};
+        int             calls = 0, lines = 0, matched = -1;
+        auto            who = [](uintptr_t a) -> const char            *{
+            return a == 0x00401000u ? "the determinism harness sim_step detour" : nullptr;
+        };
+        auto set_armed = [&calls](const char *, bool) {
+            ++calls; // in the DLL this is a null spine slot in configuration (1): a call TRAPS
+            return true;
+        };
+        auto      on_yield = [&lines](const char *, const char *) { ++lines; };
+        const int y0       = yield_claimed_rows(false, 2, row_addr, row_names, who, set_armed, on_yield,
+                                                &matched);
+        ck(y0 == -1 && calls == 0 && lines == 0 && matched == 0,
+           "D29: with no spine the clause-6 yield calls set_armed ZERO times (it would trap)");
+        const int y1 = yield_claimed_rows(true, 2, row_addr, row_names, who, set_armed, on_yield,
+                                          &matched);
+        ck(y1 == 1 && calls == 1 && lines == 1 && matched == 1,
+           "D29: control -- with the spine the same claimed row IS yielded, so the zero above is "
+           "the gate and not a stub that never fires");
+
+        // (h) the two report lines. The census keeps check_arm_order's end-marker PREFIX in both
+        // configurations; the config line is the exact text mp_analyze parses.
+        char b[512];
+        format_census(b, sizeof(b), false, 0, nullptr);
+        const char *marker = "; [libmh_in] inbound refusals since open:";
+        ck(strncmp(b, marker, strlen(marker)) == 0 && strstr(b, "n/a, no libmh") != nullptr,
+           "D29: the config-(1) census keeps the arm-window end marker and says n/a, not 0");
+        format_census(b, sizeof(b), true, 3, "row_x");
+        ck(strcmp(b, "; [libmh_in] inbound refusals since open: 3 (first: row_x)\n") == 0,
+           "D29: the spine census line is byte-identical to the pre-D29 text (baselines hold)");
+        char want[256];
+        snprintf(want, sizeof(want),
+                 "; [harness] configuration (1): spine ABSENT, registry=mh.dll, rebased=0 owned=0, "
+                 "uncovered=none, manifest fp=%08X\n",
+                 (unsigned)HASH_MANIFEST_FP);
+        format_config_line(b, sizeof(b), false, 0, 0, 0, HASH_MANIFEST_FP);
+        ck(strcmp(b, want) == 0, "D29: the configuration (1) header line, exactly");
+        format_config_line(b, sizeof(b), true, 2, 1, 4, 0x0000BEEFu);
+        ck(strcmp(b, "; [harness] configuration (2): spine PRESENT, registry=libmh.dll, rebased=2 "
+                     "owned=1, uncovered=4, manifest fp=0000BEEF\n") == 0,
+           "D29: the configuration (2) line names the libmh registry and counts what moved");
+
+        // (i) the spine-only key table: the refusal must never reach the oracle's own keys.
+        int dup = 0;
+        for (int i = 0; i < SPINE_ONLY_KEY_COUNT; ++i)
+            for (int j = i + 1; j < SPINE_ONLY_KEY_COUNT; ++j)
+                if (strcmp(SPINE_ONLY_KEYS[i].key, SPINE_ONLY_KEYS[j].key) == 0) ++dup;
+        ck(dup == 0 && find_spine_key("rng_trace") && find_spine_key("world_capture") &&
+               find_spine_key("pin_menu_clock") && !find_spine_key("rng_trac"),
+           "D29: the spine-only key table is unique and exact-match");
+        ck(!find_spine_key("region_hash_step") && !find_spine_key("stop_step") &&
+               !find_spine_key("region_poke_at") && !find_spine_key("pin_wallclock") &&
+               !find_spine_key("rdump_lo") && !find_spine_key("pin_strat_seed"),
+           "D29: no HASHING or poke key is spine-only -- configuration (1) keeps the whole oracle "
+           "and its go-red arm");
+        format_key_refusal(b, sizeof(b), *find_spine_key("rng_trace"));
+        ck(strstr(b, "`rng_trace` REFUSED") != nullptr && strstr(b, "rng_trace_window") != nullptr,
+           "D29: a key refusal names the key AND the spine row it needs");
+
+        // (j) the manifest fingerprint: the compile-time constant equals an independent runtime
+        // recomputation of the historical definition (count, rid/offset/len/excluded, name bytes).
+        uint32_t h   = 2166136261u;
+        auto     mix = [&h](uint32_t v) {
+            for (int i = 0; i < 4; ++i) {
+                h ^= (uint8_t)(v >> (i * 8));
+                h *= 16777619u;
+            }
+        };
+        mix((uint32_t)HASH_REGION_COUNT);
+        for (int i = 0; i < HASH_REGION_COUNT; ++i) {
+            mix((uint32_t)HASH_REGIONS[i].rid);
+            mix(HASH_REGIONS[i].offset);
+            mix(HASH_REGIONS[i].len);
+            mix(HASH_REGIONS[i].excluded ? 1u : 0u);
+            for (const char *c = HASH_REGIONS[i].name; *c; ++c) {
+                h ^= (uint8_t)*c;
+                h *= 16777619u;
+            }
+        }
+        ck(h == HASH_MANIFEST_FP,
+           "D29: the compile-time manifest fingerprint equals the runtime definition it replaced");
     }
 
     // ---- H. leave the registry as we found it ------------------------------------------------

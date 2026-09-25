@@ -886,6 +886,10 @@ constexpr int      QUEUE_CAP_   = 300; // llm_strat_order[300] -- CMP [QUEUE_COU
 
 // THE TAIL-CLEAR, hoisted out of the injector for LIB-REF-LIVE (2026-09-11).
 //
+// NOW REDUNDANT (2026-09-25, mp:D33 follow-up): the hash treats the dead slots as zeros itself
+// (mh::orders::emit_region via local()), and harness.cpp's clear is gone. Kept only because this
+// host owns its own memory, not the game's, so it is harmless; the history below is why it existed.
+//
 // It is harness.cpp's `order_queue_tail_clear()`, and the reason it is a free function here is the
 // reason it is an UNCONDITIONAL step-level call there: the clear runs in BOTH arms of every harnessed
 // run, not only the ones that inject. `order_queue` is hashed whole -- 300 slots of 0x44 -- while only

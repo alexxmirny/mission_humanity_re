@@ -273,13 +273,25 @@ built, split by the ARM the suite's subject needs, not by file name:
 > `python tools/ui_test.py --host 192.168.0.37:<script>.txt`. Run the whole thing below before you
 > commit to `master` or wrap up the session.
 >
-> **What the steps actually cost (re-measured 2026-08-25).** The full UI suite is **~2 min wall** —
-> 11 registered scenarios run 2 at a time, longest single scenario 91 s. This paragraph has now been
-> wrong twice: it said "~20-30 min each" before parallel lanes + headless runs, then "~5 min / 12
-> scenarios" until the registry changed. Step 4, determinism, is the expensive one and needs both rig
-> peers. **The scenario count lives in `TESTS` in `tools/test_ui.py` and the elapsed time is printed
-> by the runner** — read both there. Any figure in prose is a snapshot of a lane count and a registry
-> that both move, which is exactly how this line went stale the last two times.
+> **COST IS A VERDICT (the gate-diet routine, 2026-09-24).** Prose figures for what the gate costs
+> went stale three times, so the gate now measures itself and goes RED on growth:
+>
+> * every `TESTS` row in `tools/test_ui.py` carries **`budget_s`** — its expected wall seconds under
+>   gate load (seed: a green run x ~1.3, rounded) — and a row over 120 s carries a **`long_why`**.
+>   `test_ui.py --check-budgets` is a `lint_repo` row that fails a row without them;
+> * `run_gate.py` writes every unit's seconds, its span, and every suite scenario's seconds to
+>   `tmp/gate/last_timings.json` (`_verdict`, `_reds`, `_units`, `_suite_scenarios`, `_suite_chains`), and
+>   goes **RED** when a scenario runs > 1.5x its `budget_s`, when the suite unit's wall exceeds 12 min,
+>   or when the whole gate exceeds 18 min (15 until 2026-09-25). Each red line names the offender and its growth against
+>   the last **green** run (`tmp/gate/last_green_timings.json`);
+> * `python tools/gate_timeline.py` labels every lane run with its gate unit and scenario and prints
+>   the critical path (the unit that ended last, and the suite's longest `share_lanes` chain).
+>
+> A cost red is fixed like any red: find what grew (the timeline, the scenario's own log), and either
+> make it cheaper or raise its `budget_s` with the measured number that justifies it — never just the
+> number. The suite's multi-peer pool is `run_gate.py --suite-net-jobs` (wait-bound, priced at
+> `NET_JOB_WEIGHT` of a core per job); `--suite-jobs` stays the CPU-bound solo pool. Read the current numbers from the
+> record, not from prose.
 
 > **THE BUILD PRODUCES FOUR SHIPPING DLLs SINCE FORK F4E** — `mh.dll` and its three satellites
 > `mh_net.dll` (the MP transport, F4B), `libmh.dll` (**the spine**, F4D) and `mh_harness.dll` (the
@@ -605,7 +617,11 @@ python $repo\tools\test_ui.py --determinism --ship-pacing --steps 3000   # expec
 #    (the C7 standard-shape rule):
 python $repo\tools\test_ui.py --determinism --det-standard --ship-pacing --steps 3000
 #      SYMMETRIC (ship config) promotion on both peers, fixes at shipping defaults -- what players run.
-#      ...plus the U28 3-peer start barrier and U32's conquest run.
+#      ...plus mp:D29's CONFIGURATION (1) shapes -- the build players run, no libmh.dll:
+#      SYMMETRIC (1) and MIXED ((1) vs mode=original), each clean + a go-red arm (a host-only
+#      players+0x10 poke must red the pair at exactly that step); alone: `--det-config1`
+#      (`--det-local` for two lanes of this box) -- and the U28 3-peer start barrier and U32's
+#      conquest run.
 #
 #    THE ASYMMETRIC SHAPE IS NO LONGER IN THAT SET (removed 2026-09-01, user's call), and the reason
 #    is that the question it asks is not a question about shipped behaviour. It gates OURS against

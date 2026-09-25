@@ -70,6 +70,8 @@ Channel::Channel() {
     m_emit           = nullptr;
     m_emit_ctx       = nullptr;
     m_piece_max      = U::PIECE_MAX; // mp:R1d -- the endpoint lowers it on a relayed link
+    m_link_rto_ms    = 0;            // mp:T5 -- the constants until the endpoint measures a link
+    m_link_fast_ms   = 0;
     m_selftest_mb    = 0;
     m_selftest_step  = 0;
     m_selftest_armed = false;
@@ -386,11 +388,26 @@ void Channel::send_ack(DWORD now) {
     m_rx.ack_due     = false;
 }
 
-bool Channel::on_ack(const uint8_t *payload, size_t len, DWORD now) {
+bool Channel::on_ack(int conn_idx, const uint8_t *payload, size_t len, DWORD now) {
     if (payload == nullptr || len != BULK_ACK_LEN || payload[0] != KIND_BULK_ACK) return false;
     const uint32_t ack_seq = get_u32(payload + 1);
     const uint32_t bits    = get_u32(payload + 5);
     if (!m_tx.active) return true;
+    // mp:T2a. THE MISSING CHECK a two-joiners-in-a-row scenario finds and a two-endpoint one never
+    // can: this Channel is ONE PER ENDPOINT, so `m_tx` addresses whichever peer is CURRENTLY being
+    // sent to, but an ack frame arrives on a SPECIFIC connection (`conn_idx`, from `on_bulk_frame`)
+    // that may not be it. A peer whose OWN transfer just finished keeps re-announcing its full
+    // frontier for up to ~2s after its last piece (the `tick()` heartbeat, `m_rx.last_piece_ms`
+    // window below) -- so its FINAL ack can still be in flight, or repeated, after the host has
+    // already re-armed a DIFFERENT transfer to a DIFFERENT peer. Applying it unfiltered clamps
+    // `rx_base` to `m_tx.chunks` (the clamp two lines down) and completes the NEW transfer on the
+    // strength of the OLD peer's ack -- silently, with `mismatch`/`sha_fail` still zero, because
+    // nothing about the bytes was wrong; the receiver just never got them. Measured 2026-09-23
+    // building mp:T2a's own selftest arm (three endpoints, one host, two joiners in a row): the
+    // host's tx reported the second transfer complete in one tick while the second joiner's rx sat
+    // at a handful of pieces. A two-endpoint arm cannot produce this ack at all, which is why nothing
+    // upstream of T2a's own multi-joiner arm ever exercised it.
+    if (m_tx.conn != conn_idx) return true;
     // The frontier is a chunk boundary by construction; anything else is not this module's ack.
     if (ack_seq < PIECES_PER_CHUNK || (ack_seq % PIECES_PER_CHUNK) != 0) return true;
 
@@ -432,7 +449,10 @@ void Channel::tick(int conn_idx, int player_id, DWORD now) {
         ++m_s.tx_resumes;
     }
     if (m_tx.active && m_tx.conn == conn_idx) {
-        int budget = BULK_BURST;
+        // mp:T5 -- the larger of the LAN constant and what the link measured (set_link_timing).
+        const DWORD rto  = m_link_rto_ms > BULK_RTO_MS ? m_link_rto_ms : BULK_RTO_MS;
+        const DWORD fast = m_link_fast_ms > FAST_RETX_MS ? m_link_fast_ms : FAST_RETX_MS;
+        int         budget = BULK_BURST;
         for (int w = 0; w < WINDOW_CHUNKS && budget > 0; ++w) {
             TxChunk &c = m_tx.win[w];
             if (!c.valid) continue;
@@ -442,8 +462,8 @@ void Channel::tick(int conn_idx, int player_id, DWORD now) {
                 if (sent != 0) {
                     // Gone, on the evidence of an acknowledgement that had time to mention it and
                     // did not -- or, failing that, simply overdue.
-                    const bool refuted = c.ack_ms != 0 && (long)(c.ack_ms - sent) >= (long)FAST_RETX_MS;
-                    if (!refuted && (now - sent) < BULK_RTO_MS) continue;
+                    const bool refuted = c.ack_ms != 0 && (long)(c.ack_ms - sent) >= (long)fast;
+                    if (!refuted && (now - sent) < rto) continue;
                 }
                 send_piece(w, i, now, sent != 0);
                 --budget;

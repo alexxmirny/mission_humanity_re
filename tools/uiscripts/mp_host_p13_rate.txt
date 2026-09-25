@@ -1,0 +1,40 @@
+# mp:P13 -- the RATE row's host side (p13_rate_180 in tools/test_ui.py). The walk is
+# mp_host_p9_proof.txt's (configuration (1), match_launch's lobby, one capture at the SIM gate);
+# the difference is the pacing and the length: the row runs --ship-pacing (adaptive lookahead,
+# 20 ms sim step, nothing pinned) through a 180 ms one-way shim, and the match runs to gameclock
+# 50 s = 2500 sim steps, so tools/check_sim_rate.py has >= 30 s after its 5 s warm-up for the
+# worst-30-s-window clause and check_resync_storm --min-steps 1500 has its step floor.
+# Pair with mp_client_p13_rate.txt.
+
+# reach the host lobby (create a game named "test" on the pre-selected map)
+settled value:110
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+settled Create
+clickl Create
+present Game name
+settled Ok
+clickl Ok
+present Available maps
+settled Ok
+clickl Ok
+
+# host lobby: BLOCK until the match is startable, then click Start (mp_host_start.txt's gates)
+present Network players
+peers 1
+awaitsignal lobby
+enabled Start
+settled Start
+clickl Start
+
+# in the match: the one capture, at match_launch's own gate
+absent Network players
+gameclock 6000
+capture m3_launched
+log HOST is in the configuration-(1) match; running to gameclock 50 s for the P13 rate
+
+gameclock 50000
+log HOST reached gameclock 50 s
+end

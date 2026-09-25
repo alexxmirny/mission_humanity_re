@@ -25,10 +25,10 @@ nested, so the difference between two of them is exactly one file plus the ini.
                               -> configuration (1): all-original game + the restored multiplayer.
 
   <base>-net-debug.zip        the above + mh_harness.dll, and an mh_net.ini with the diagnostic
-                              logging keys turned on (the harness itself cannot arm here -- Q4,
-                              below).
-                              -> still configuration (1), but it talks. This is what a bug report
-                                 should be produced with.
+                              logging keys turned on AND the harness armed (per-step hashes +
+                              the order record -- spine-free since mp:D29, see below).
+                              -> still configuration (1), but it talks and it hashes. This is
+                                 what a bug report should be produced with.
 
   <base>-brokered-debug.zip   the above + libmh.dll, THE HOSTED BUILD, AT THE ZIP ROOT, and an
                               mh_net.ini that ALSO arms the harness (per-step hashes + the order
@@ -96,15 +96,16 @@ buys the report with: one walk of the 56-region manifest per sim step (~4-5 ms o
 `[desync] COST PROBE` figure -- which a run with `[desync] enabled=1` was already paying every 50th
 step), plus mh_harness.log, mh_orders.bin and the seed blob on disk.
 
-WHERE THE HARNESS KEYS GO -- ONLY THE ZIP THAT CARRIES libmh.dll. Ruling Q4 (mh_harness/
-mh_harness_dllmain.cpp spine_refuse): the harness reads the sim's state regions THROUGH the spine,
-so in configuration (1) -- no libmh.dll in the process -- `[harness] enable=1` is REFUSED on three
-channels (mh_harness_refused.log beside the exe, OutputDebugString, stderr) and the run is
-uninstrumented. A net-debug ini that armed it would ship a refusal file on every launch and no
-hashes. So HARNESS_KEYS is applied to a debug zip IF AND ONLY IF that zip's module list carries
-libmh.dll (`brokered-debug` today); `net-debug` gets DEBUG_KEYS alone and its README says why. The
-condition is derived from the module list, not declared per zip, so a zip that gains libmh.dll
-gains the harness keys with it.
+WHERE THE HARNESS KEYS GO -- EVERY ZIP THAT CARRIES mh_harness.dll (mp:D29 + user decision O6,
+2026-09-24). Until D29 this was 'only the zip that carries libmh.dll': ruling Q4 refused the
+instrument in configuration (1), so a net-debug ini that armed it would have shipped a refusal
+file on every launch and no hashes. D29 made the harness arm SPINE-FREE there -- the per-step
+hash reads only the region registry and owner table, which mh.dll itself answers without libmh
+(mh_harness/config1.h) -- and the user ruled that player debug sessions should carry hashes. So
+HARNESS_KEYS follows the INSTRUMENT, not the spine: `net-debug` and `brokered-debug` both arm it.
+The condition is derived from the module list, not declared per zip, so a zip that gains or
+loses mh_harness.dll gains or loses the keys with it. (The spine-only [harness] keys -- none of
+which HARNESS_KEYS sets -- are refused by name in configuration (1); the hash keeps running.)
 
 WHAT IS STILL NOT IN EITHER LIST. `[debug] overlay` LEFT DEBUG_KEYS on 2026-09-20 (user ruling): the
 debug ini keeps `overlay=0`, i.e. installed-but-hidden, so the Ctrl+Alt+D toggle works and nothing
@@ -201,8 +202,9 @@ DEBUG_KEYS = (
 )
 
 # (section, key, value, why). The determinism/replay INSTRUMENT, armed in the debug ini of every zip
-# that carries libmh.dll (user ruling 2026-09-20; ruling Q4 is why it cannot go in the others -- see
-# the module docstring). Applied AFTER DEBUG_KEYS, same _flip, same selftest invariant.
+# that carries mh_harness.dll (user ruling 2026-09-20 for brokered-debug; mp:D29 + user decision O6,
+# 2026-09-24, for net-debug -- see the module docstring). Applied AFTER DEBUG_KEYS, same _flip, same
+# selftest invariant.
 HARNESS_KEYS = (
     (
         "harness",
@@ -229,9 +231,10 @@ HARNESS_KEYS = (
 
 
 def harness_keys_for(modules):
-    """HARNESS_KEYS if this zip can ARM the harness, else (). Ruling Q4: the instrument reads the sim
-    through libmh.dll's spine and refuses in configuration (1), so the keys follow the spine."""
-    return HARNESS_KEYS if "libmh.dll" in modules else ()
+    """HARNESS_KEYS if this zip can ARM the harness, else (). Since mp:D29 the instrument arms in
+    BOTH configurations (spine-free without libmh.dll), so the keys follow the INSTRUMENT: a zip
+    that carries mh_harness.dll arms it (user decision O6, 2026-09-24)."""
+    return HARNESS_KEYS if "mh_harness.dll" in modules else ()
 
 
 SHIP_HEADER = """\
@@ -267,14 +270,14 @@ HARNESS_NOTE_ARMED = """\
 ; hashed into mh_harness.log and every dispatched order is recorded to mh_orders.bin, with
 ; fixed_step=0 so the game clock is NOT pinned -- the same configuration the project's determinism
 ; gate runs, so what you play is the game, measured. The other keys only make the run REPORT more.
+; With no libmh.dll beside mh.dll (configuration (1)) the harness hashes SPINE-FREE, through
+; mh.dll's own region table; mh_harness.log says which configuration it hashed in.
 ; The debug overlay is installed but HIDDEN: Ctrl+Alt+D shows it, Ctrl+Alt+PgUp/PgDn page it.
 ;"""
 HARNESS_NOTE_UNARMED = """\
 ; Every one of them only makes the run REPORT more; none of them changes what the game does. The
-; determinism harness (mh_harness.dll, in this zip) is NOT armed here and CANNOT be in this
-; configuration: it reads the game's state through libmh.dll, which this zip deliberately does not
-; carry, so `[harness] enable=1` would be refused at startup (mh_harness_refused.log). The
-; brokered-debug zip is the one that records per-step hashes and orders.
+; determinism harness is NOT armed here: this zip does not carry mh_harness.dll. The debug zips
+; that do (net-debug, brokered-debug) record per-step hashes and orders.
 ; The debug overlay is installed but HIDDEN: Ctrl+Alt+D shows it, Ctrl+Alt+PgUp/PgDn page it.
 ;"""
 
@@ -361,14 +364,16 @@ CONFIG_TEXT = {
   mh_net.dll     the multiplayer transport over TCP (`[net] transport=tcp`, direct dial only).
                  BOTH transports ship, and mh_net.ini decides which one a run uses. Every peer
                  in a match must be set the same way.
-  mh_harness.dll the determinism/replay instrument. SHIPPED BUT NOT ARMED, and it cannot be in
-                 this configuration: it reads the game's state through libmh.dll, which this zip
-                 does not carry, so `[harness] enable=1` here is refused at startup
-                 (mh_harness_refused.log beside the game). The brokered-debug zip arms it.
+  mh_harness.dll the determinism/replay instrument, ARMED by this zip's ini: every sim step is
+                 hashed into mh_harness.log and every order recorded to mh_orders.bin, with the
+                 game clock NOT pinned (`fixed_step=0`). There is no libmh.dll here, so it hashes
+                 SPINE-FREE, through mh.dll's own region table -- the same per-step hash, and
+                 mh_harness.log's `configuration (1)` line says so. This is what a desync report
+                 from the build players run needs.
 
   The game runs its own simulation, as above. The difference from the plain `net` zip is the ini:
-  the diagnostic logging keys are on, so the run writes down enough to diagnose afterwards. The
-  debug overlay is installed but hidden -- Ctrl+Alt+D shows it.""",
+  the diagnostic logging keys are on and the harness is armed, so the run writes down enough to
+  diagnose afterwards. The debug overlay is installed but hidden -- Ctrl+Alt+D shows it.""",
     ),
     "brokered-debug": (
         "configuration (2), brokered + the diagnostics on",
@@ -461,7 +466,7 @@ def _flip(text, section, key, value):
 
 def debug_keys_for(modules):
     """The full flip list for a debug zip with this module list: the observers, plus the harness keys
-    where the harness can arm (ruling Q4 -- see harness_keys_for)."""
+    where the harness can arm (it ships -- mp:D29 / O6, see harness_keys_for)."""
     return DEBUG_KEYS + harness_keys_for(modules)
 
 
@@ -823,7 +828,7 @@ def selftest():
 
     example = read_example_ini()
 
-    # ---- the ini invariant, PER DEBUG ZIP (the harness keys follow libmh.dll) ---------------
+    # ---- the ini invariant, PER DEBUG ZIP (the harness keys follow mh_harness.dll -- D29/O6) --
     ship = make_ship_ini(example, "x.zip")
     ship_body = ship[len(SHIP_HEADER.format(zipname="x.zip")) :]
     expect("ship ini body IS the reference file, byte for byte", ship_body == example)
@@ -847,8 +852,8 @@ def selftest():
         debug = make_debug_ini(example, "x.zip", modules)
         debug_body = debug[debug_header_len("x.zip", modules) :]
         expect(
-            "%s: harness keys present IFF the zip carries libmh.dll (ruling Q4)" % tag,
-            (len(keys) > len(DEBUG_KEYS)) == ("libmh.dll" in modules),
+            "%s: harness keys present IFF the zip carries mh_harness.dll (mp:D29 / O6)" % tag,
+            (len(keys) > len(DEBUG_KEYS)) == ("mh_harness.dll" in modules),
         )
         diffs = ini_diff_lines(ship_body, debug_body)
         expect(

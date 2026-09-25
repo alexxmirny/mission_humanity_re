@@ -1,0 +1,115 @@
+# mp:U41b CLIENT -- rematch_play's walk (mp_client_rematch2.txt, copied verbatim below the marker) plus
+# the END of match 2, so the queue counters cross the SES1 match boundary TWICE in one process.
+# U41b's claim is that the second `net: inbound queue rollup (this match)` line carries match 2's
+# own numbers rather than inheriting match 1's high-water; rematch_play's match 2 never ends inside
+# its walk, so it never writes that second line. Assertion: tools/check_queue_rollups.py.
+# No capture after match 2: the main menu FADES IN from black after a match, so a frame there is a
+# race (the first baseline caught it mid-fade); the post-check, not a pixel, is the evidence.
+# mp:U41d (2026-09-24): a 2026-09-24 revision of this walk (wave 4 lane E) fired a 20-message
+# scripted chat burst here to force the HOST's match-1 queue deeper than its own match-2 baseline,
+# because the checker's PROOF at the time was a magnitude comparison (does match 2's high-water
+# read lower than match 1's), which was luck-dependent -- the host's own traffic sits flat
+# match-to-match (~3-5 total) while the client's match 2 is inflated by its own quit-drain (~60+),
+# so neither peer reliably showed a decrease on natural traffic alone
+# (tmp/wave2_rig/gatediet_b5/b5_rematch_2.log, tmp/wave2_rig/gatediet_b3/b3_suite_n2.log). THE
+# BURST IS REMOVED (wave 5 lane F): check_queue_rollups.py's verdict no longer rests on magnitude
+# at all -- MH_Net_QueueMatchBoundary now stamps an EPOCH (lane_queue::epoch_, incremented ONLY
+# inside reset_counters()) plus post-reset evicted/refused on the boundary line, and the checker
+# requires that marker to advance rather than requiring any particular traffic shape. The
+# magnitude comparison is still computed and printed, but only as an informational note -- see
+# that file's docstring for the full reasoning: a log line printed by the CALLER of a reset is not
+# proof the reset itself ran, so the marker has to live INSIDE reset_counters(), not in whatever
+# always executes around it.
+# ---- mp_client_rematch2.txt ----
+# mp:RM1 (CLIENT): mp_client_rematch.txt's walk (U40) CONTINUED INTO THE SECOND MATCH -- see
+# mp_host_rematch2.txt for what this pair proves. The walk up to the re-joined lobby is a verbatim copy
+# of mp_client_rematch.txt (its comments explain every step); the captures are renamed so this pair has
+# baselines of its own.
+
+# ---- join game 1 ---------------------------------------------------------------------------------
+settled value:110
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+present Internet server
+settled Internet server
+clickl Internet server
+present Server address
+settled Connect
+clickl Connect
+sessions 1
+settled Join game
+clickl Join game
+present Network players
+# tell the host we are really in our lobby (its `awaitsignal lobby`), not merely connected
+signal lobby
+settled Cancel
+capture r1_lobby_game1
+
+# ---- the match, then END it ----------------------------------------------------------------------
+absent Network players
+gamemode 2
+gameclock 3000
+# ESC -> Quit game -> confirm -> the main menu. This is llm_game_return_to_main_menu_cb, i.e.
+# mp_session_close("quit"): the SES1 session boundary, and on this role the moment the link to the
+# host is declared spent. We quit FIRST and tell the host, so the two departures are ordered.
+key 0x01
+# ESC-menu entries have no matchable labels -- target by VALUE (Quit game 113), and the confirm
+# behind it by &Yes 121. Both dumped 2026-08-27 by tools/uiscripts/d15_exit_witness.txt.
+# `clickl Quit game` lands on Diplomacy: the label matcher only ever sees '&'.
+settled value:113
+clickv 113
+settled value:121
+clickv 121
+settled value:110
+signal cliquit
+
+# ---- back to the browser, in the same instance ---------------------------------------------------
+# Wait for the host to be out of the match before dialling it again. Not politeness: a re-dial while
+# the host is still in lockstep makes it accept a peer mid-match, which is a different (and much
+# noisier) thing than the one under test.
+awaitsignal hostquit
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+present Internet server
+settled Internet server
+clickl Internet server
+present Server address
+settled Connect
+clickl Connect
+# THE ASSERTION. Pre-U40 this peer had no way to reach the host again -- its transport was latched
+# "started" for the life of the process, so nothing would ever dial -- and the host's re-created
+# lobby advertised into `peers=0` for as long as anyone cared to watch. Reaching `sessions 1` here
+# means the re-dial happened AND the host's NEW lobby arrived over it.
+sessions 1
+settled Join game
+# The host captures its no-ghost frame before we join (it must show occ 1 while we are merely
+# connected), so hold the click until it says it has.
+awaitsignal rehosted
+clickl Join game
+present Network players
+occ 2
+settled Cancel
+capture r2_rejoined_after_match
+# ---- game 2: the rematch itself --------------------------------------------------------------------
+# The host presses Start only after we have captured the lobby (`awaitsignal rejoined` on its side).
+signal rejoined
+absent Network players
+gamemode 2
+gameclock 12000
+capture r3_game2_running
+log CLIENT played a SECOND match in the same process after re-joining; game 2 ran past 12 s
+# ---- U41b: quit match 2 the way match 1 was quit ----
+awaitsignal game2up
+key 0x01
+settled value:113
+clickv 113
+settled value:121
+clickv 121
+settled value:110
+signal cliquit2
+log CLIENT: quit match 2 -- the second queue rollup is behind us
+end

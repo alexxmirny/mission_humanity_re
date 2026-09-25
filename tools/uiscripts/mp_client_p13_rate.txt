@@ -1,0 +1,42 @@
+# mp:P13 -- the RATE row's client side (p13_rate_180 in tools/test_ui.py). The walk is
+# mp_client_p9_proof.txt's (configuration (1), match_launch's lobby, one capture at the SIM gate);
+# the difference is the pacing and the length: the row runs --ship-pacing (adaptive lookahead,
+# 20 ms sim step, nothing pinned) through a 180 ms one-way shim, and the match runs to gameclock
+# 50 s = 2500 sim steps, so tools/check_sim_rate.py has >= 30 s after its 5 s warm-up for the
+# worst-30-s-window clause and check_resync_storm --min-steps 1500 has its step floor.
+# Pair with mp_host_p13_rate.txt.
+
+# join walk, one in-game capture at match_launch's own SIM gate, then the match runs to gameclock
+# 30 s with one fix on (the row's [net] knobs), and both peers end on their own -- no blackhole,
+# no wedge. This is the joiner: `[net] lockstep_step_ms=60` (the row's net_extra_client, G267).
+
+# join the host by IP -> the joined lobby (see mp_client_join.txt for the flow)
+settled value:110
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+present Internet server
+settled Internet server
+clickl Internet server
+present Server address
+settled Connect
+clickl Connect
+sessions 1
+settled Join game
+clickl Join game
+
+# joined lobby: tell the host we are really here, then wait for its Start
+present Network players
+signal lobby
+settled Cancel
+absent Network players
+
+# in the match: the one capture, at match_launch's own gate
+gameclock 6000
+capture m3_launched
+log CLIENT is in the configuration-(1) match; running to gameclock 50 s for the P13 rate
+
+gameclock 50000
+log CLIENT reached gameclock 50 s
+end

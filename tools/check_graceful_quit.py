@@ -69,12 +69,20 @@ A PEER'S LINES ARE SPREAD OVER TWO RUN DIRECTORIES and that is not incidental he
 match its own folder and closes it at the quit, so `SESSION_END` is the last line of the SESSION
 folder while `; U17 graceful-leave: broadcast self-removal` -- which happens a few statements later
 inside the same seam -- lands in the MENU folder the peer has already switched back to. Reading one
-folder would silently lose half the evidence, so every needle is searched across all of a lane's run
-directories, ordered by name (= by UTC stamp).
+folder would silently lose half the evidence, so every needle is searched across the run
+directories of ONE PROCESS, ordered by name (= by UTC stamp) -- and ONLY that process (mp:U19i,
+dead-ends G300): lanes are shared between scenarios, and a lane-wide read paired this match's end
+with another scenario's earlier broadcast. Each peer is scoped to the process that played THIS match
+(matched by the session dir's match-id hash); a quitter lane with no run of that match is a REFUSAL.
+
+CLAUSE 6 (`--expect-carrier`, mp:U19i) asks for the configuration-(1) carrier's FIRED line. A 2-peer
+clean quit CANNOT produce it: the removal frame that flags the quitter AI also takes the survivor
+out of session 3, and llm_net_lockstep_dispatch returns before any later frame reaches the gone-peer
+branch at 0x0049c330. When the survivor's on_gameover ran outside session 3 the clause says so ("NOT
+REACHED ... NOT a carrier failure"), still as a FAIL, because such a run cannot prove the carrier.
 """
 
 import argparse
-import glob
 import json
 import os
 import re
@@ -97,6 +105,12 @@ GAMEOVER_ENTER = "on_gameover ENTER"
 U19D_CORRECTION = "U19d: outcome-dialog said"
 OUTCOME_RE = re.compile(re.escape(GAMEOVER_ENTER) + r"[^\n]*?outcome=(\d+)")
 NETWORK_ERROR_OUTCOME = 7
+# mp:U19i clause 6's reachability read: the session mode on_gameover was entered in.
+GAMEOVER_SESS_RE = re.compile(re.escape(GAMEOVER_ENTER) + r" sess=(\d+)")
+SESSION_MP_LOCKSTEP = 3
+# mp:U19i. Registered as net.gone_peer_frame_guard_fired: the configuration-(1) byte-patch carrier's
+# thunk ran (the leader re-broadcast a drop for an already-gone sender and restored the datagram).
+CARRIER_FIRED = "gone-peer frame guard FIRED"
 # lockstep.columns: the per-frame CSV's own header token. Read POSITIONALLY below (step_ms is
 # column 8, index 7) the way mp_analyze does, but the header is checked first so a column inserted
 # ahead of step_ms turns into a refusal to measure rather than a bound computed from the wrong field.
@@ -157,11 +171,72 @@ def sibling_client_lane(host_lane):
     return cand
 
 
-def lane_net_lines(lane):
-    """Every mh_net.log line of a lane, run directories in UTC-stamp order.
+# A SESSION run directory is `<UTC>_<last 8 hex of match_id>_<side>_solo`; a PROCESS one `<UTC>_menu_solo`.
+SESSION_DIR_RE = re.compile(r"^\d{8}T\d{6}Z_([0-9a-f]{8})_\d+_")
+
+
+def _run_names(lane):
+    logs = os.path.join(lane, "logs")
+    return sorted(n for n in os.listdir(logs) if os.path.isdir(os.path.join(logs, n)))
+
+
+def process_window(names, idx):
+    """The run directories of ONE game process: the process ("menu") dir at or before names[idx]
+    up to the NEXT process's menu dir -- session dirs after the given one included (test_ui hands
+    over the MENU dir; the match lines are in the later session dir). No menu dir at or before it
+    (a hand-laid fixture): every run up to the NEXT menu dir."""
+    menus = [i for i, n in enumerate(names) if "_menu_" in n]
+    starts = [i for i in menus if i <= idx]
+    lo = starts[-1] if starts else 0
+    nxt = [i for i in menus if i > lo and i > idx] if starts else [i for i in menus if i > idx]
+    return names[lo : (nxt[0] if nxt else len(names))]
+
+
+def scoped_runs(run_dir, client_lane):
+    """mp:U19i (2026-09-24 gate): the two peers' run directories FOR THIS MATCH ONLY.
+
+    The gquit_net rows SHARE match_launch_net's lanes with other quitting scenarios, so a lane holds
+    several processes' runs. Reading the whole lane paired the survivor's SESSION_END with the
+    quitter's FIRST broadcast of the day -- another scenario's, 28 s / 55 s earlier -- and reported
+    the retail silence-timeout shape on two runs whose real gap was 14 ms. So: the survivor's
+    window is the process that owns `run_dir`; its match is the hash of the last session dir in
+    that window; the quitter's window is the process that owns ITS session dir for that same match.
+    Returns (survivor_names, quitter_names, match_hash-or-None); a lane with no session dirs at all
+    (legacy fixtures) keeps the whole-lane read and says so via match_hash None."""
+    host_lane = lane_of(run_dir)
+    s_names = _run_names(host_lane)
+    me = os.path.basename(os.path.normpath(run_dir))
+    if me not in s_names:
+        raise Refusal("%s is not a run directory of lane %s" % (me, host_lane))
+    s_win = process_window(s_names, s_names.index(me))
+    hashes = [m.group(1) for n in s_win for m in [SESSION_DIR_RE.match(n)] if m]
+    if not hashes:
+        if any(SESSION_DIR_RE.match(n) for n in s_names):
+            raise Refusal(
+                "the survivor process owning %s opened no match session (no session dir in %s)"
+                % (me, ", ".join(s_win))
+            )
+        return s_names, _run_names(client_lane), None
+    match = hashes[-1]
+    c_names = _run_names(client_lane)
+    c_hits = [
+        i for i, n in enumerate(c_names) if (SESSION_DIR_RE.match(n) or [None, None])[1] == match
+    ]
+    if not c_hits:
+        raise Refusal(
+            "the quitter lane %s has no session dir for match ..%s -- it is not the peer of this "
+            "survivor run" % (os.path.basename(client_lane), match)
+        )
+    return s_win, process_window(c_names, c_hits[-1]), match
+
+
+def lane_net_lines(lane, names=None):
+    """Every mh_net.log line of a lane (or of the given run directories), in UTC-stamp order.
 
     Returns [(run_dir_basename, line)]. Empty is a Refusal at the caller."""
-    runs = sorted(d for d in glob.glob(os.path.join(lane, "logs", "*")) if os.path.isdir(d))
+    if names is None:
+        names = _run_names(lane)
+    runs = [os.path.join(lane, "logs", n) for n in names]
     out = []
     for run in runs:
         fp = os.path.join(run, "mh_net.log")
@@ -194,11 +269,13 @@ def last_session_end(lines):
     return hit
 
 
-def lockstep_step_ms(lane):
+def lockstep_step_ms(lane, names=None):
     """The lockstep step length in ms, from the survivor's own mh_lockstep.log (column 8 of the
     per-frame CSV, `step_ms`). Returns (value, source) -- source says 'measured' or 'fallback', and
     the caller PRINTS it, because a bound computed from an assumed step is a bound nobody can check."""
-    for run in sorted(glob.glob(os.path.join(lane, "logs", "*")), reverse=True):
+    if names is None:
+        names = _run_names(lane)
+    for run in [os.path.join(lane, "logs", n) for n in reversed(names)]:
         fp = os.path.join(run, "mh_lockstep.log")
         if not os.path.isfile(fp):
             continue
@@ -238,18 +315,26 @@ def check(
     max_drop_wall_ms,
     expect_same_end_clock,
     expect_no_network_error=False,
+    expect_carrier=False,
 ):
     """(ok, [report lines]). Raises Refusal when the run cannot be judged at all."""
     host_lane = lane_of(run_dir)
     client_lane = sibling_client_lane(host_lane)
-    survivor = lane_net_lines(host_lane)
-    quitter = lane_net_lines(client_lane)
-    step_ms, step_src = lockstep_step_ms(host_lane)
+    s_names, q_names, match = scoped_runs(run_dir, client_lane)
+    survivor = lane_net_lines(host_lane, s_names)
+    quitter = lane_net_lines(client_lane, q_names)
+    step_ms, step_src = lockstep_step_ms(host_lane, s_names)
 
     out = []
     bad = []
     out.append("survivor lane: %s" % os.path.basename(host_lane))
     out.append("quitter  lane: %s" % os.path.basename(client_lane))
+    out.append(
+        "match: ..%s -- survivor runs %s | quitter runs %s"
+        % (match, ",".join(s_names), ",".join(q_names))
+        if match
+        else "match: no session dirs -- whole-lane read"
+    )
     out.append("lockstep step: %d ms -- %s" % (step_ms, step_src))
 
     # ---- clause 1: the quitter broadcast (or, in the off arm, did not) --------------------------
@@ -389,6 +474,44 @@ def check(
                 "no U19d correction)" % NETWORK_ERROR_OUTCOME
             )
 
+    # ---- clause 6: in configuration (1) it was the BYTE-PATCH CARRIER that kept the frame (U19i) ----
+    # Clause 5 green alone cannot tell a carried run from one where no frame from the gone peer ever
+    # reached the leader (a quit that raced nothing through the gone-peer branch). The carrier's own
+    # FIRED line is the positive evidence that the branch ran AND the thunk restored the datagram --
+    # the G283/G285 rule: the run must distinguish the binary with the fix from the one without.
+    if expect_carrier and arm == "on":
+        f_i, f_line = first_hit(survivor, CARRIER_FIRED)
+        left = [
+            line
+            for _run, line in survivor
+            if GAMEOVER_ENTER in line
+            for m in [GAMEOVER_SESS_RE.search(line)]
+            if m and int(m.group(1)) != SESSION_MP_LOCKSTEP
+        ]
+        if f_i is None and left:
+            # The 2026-09-24 reading (mp:U19i): llm_net_lockstep_dispatch loops only while
+            # session == 3 (its tail: `recv len == 0 || session != SESSION_MP_LOCKSTEP -> return`),
+            # and the kick re-broadcast at 0x0049c330 runs only for a sender ALREADY flagged AI.
+            # A 2-peer quit flags the quitter AI on its removal frame, and that same frame's
+            # presence_lost -> on_gameover takes the survivor to session 2 -- so the loop returns
+            # before any later frame from the quitter can reach the branch. Both binaries behave
+            # identically here; the run cannot prove OR disprove the carrier.
+            bad.append(
+                "the gone-peer branch was NOT REACHED on this run: the survivor's end-of-match "
+                "entry ran with lockstep already left (%s), so the dispatch loop returned before any "
+                "later frame from the departed peer could reach the kick re-broadcast @0x0049c330 "
+                "the carrier splices -- a carried and an uncarried binary are indistinguishable "
+                "here, NOT a carrier failure (MP U19i)" % left[0].strip()
+            )
+        elif f_i is None:
+            bad.append(
+                "the survivor never logged %r -- in configuration (1) the gone-peer frame guard is "
+                "the byte patch (MP U19i), and a clean quit with no FIRED line either never sent a "
+                "frame through the gone-peer branch or ran without the carrier" % CARRIER_FIRED
+            )
+        else:
+            out.append("carrier: %s" % f_line.strip())
+
     for b in bad:
         out.append("FAIL: " + b)
     return (not bad), out
@@ -426,6 +549,68 @@ def _plant(root, test, quitter_menu, quitter_session, survivor_session, csv=LOCK
     open(os.path.join(cli_run, "mh_net.log"), "w").write("\n".join(quitter_session) + "\n")
     open(os.path.join(cli_menu, "mh_net.log"), "w").write("\n".join(quitter_menu) + "\n")
     return host_run
+
+
+def _plant_shared(root, with_this_match=True):
+    """The 2026-09-24 gate layout: an EARLIER process (el2's quit, match ..c70ed5a5) and then THIS
+    one (gquit_net, match ..6a49eaa7) in the same pair of lanes. Returns {"menu", "sess"}: the
+    survivor run directories test_ui could hand over."""
+
+    def put(lane, run, lines):
+        d = os.path.join(root, lane, "logs", run)
+        os.makedirs(d)
+        with open(os.path.join(d, "mh_net.log"), "w") as fh:
+            fh.writelines(ln + os.linesep for ln in lines)
+        return d
+
+    h, c = "ui_match_launch_net_host", "ui_match_launch_net_c1"
+    put(h, "20260924T053202Z_menu_solo", ["[08:32:02.625] ; boot"])
+    put(
+        h,
+        "20260924T053209Z_c70ed5a5_0_solo",
+        [
+            "[08:32:32.908] ; " + GAMEOVER_ENTER + " sess=2 outcome=8 gclk=12489 (downgrade=0)",
+            "[08:32:32.908] ; [session] SESSION_END match_id=01a0c70ed5a5 reason=gameover "
+            "final_clock_ms=12489 stall=0",
+        ],
+    )
+    put(c, "20260924T053210Z_menu_solo", ["[08:32:32.899] " + BROADCAST + "1 before quit-to-menu"])
+    put(
+        c,
+        "20260924T053216Z_c70ed5a5_1_solo",
+        [
+            "[08:32:32.890] ; [session] SESSION_END match_id=01a0c70ed5a5 reason=quit "
+            "final_clock_ms=12459 stall=0"
+        ],
+    )
+    menu = put(h, "20260924T053239Z_menu_solo", ["[08:32:39.482] ; boot"])
+    sess = put(
+        h,
+        "20260924T053246Z_6a49eaa7_0_solo",
+        [
+            "[08:33:00.664] ; GameRecv sender=1 len=14 type=0x04",
+            "[08:33:00.664] ; " + GAMEOVER_ENTER + " sess=2 outcome=8 gclk=3479 (downgrade=0)",
+            "[08:33:00.664] ; [session] SESSION_END match_id=01a06a49eaa7 reason=gameover "
+            "final_clock_ms=3479 stall=0",
+        ],
+    )
+    with open(os.path.join(sess, "mh_lockstep.log"), "w") as fh:
+        fh.writelines(ln + os.linesep for ln in LOCKSTEP_CSV)
+    if with_this_match:
+        put(
+            c,
+            "20260924T053247Z_menu_solo",
+            ["[08:33:00.650] " + BROADCAST + "1 before quit-to-menu"],
+        )
+        put(
+            c,
+            "20260924T053253Z_6a49eaa7_1_solo",
+            [
+                "[08:33:00.640] ; [session] SESSION_END match_id=01a06a49eaa7 reason=quit "
+                "final_clock_ms=3449 stall=0"
+            ],
+        )
+    return {"menu": menu, "sess": sess}
 
 
 def selftest():
@@ -525,6 +710,45 @@ def selftest():
         + GREEN_SURVIVOR,
         True,
     )
+    # ---- U19i: clause 6, the configuration-(1) carrier's positive evidence ----------------------
+    arm(
+        "green (U19i): the carrier FIRED and the end route is clean",
+        GREEN_QUITTER,
+        GREEN_QUITTER_SESSION,
+        [
+            "[01:59:45.740] ; [net] " + CARRIER_FIRED + " #1: kick re-broadcast for side 1, "
+            "datagram (9 bytes) restored"
+        ]
+        + GREEN_SURVIVOR,
+        True,
+        {"expect_carrier": True},
+    )
+    arm(
+        "red (U19i): a clean end route but NO carrier line -- the carrier never ran",
+        GREEN_QUITTER,
+        GREEN_QUITTER_SESSION,
+        GREEN_SURVIVOR,
+        False,
+        {"expect_carrier": True},
+    )
+    arm(
+        "red (U19i): the carrier-off arm -- outcome 7 and no FIRED line",
+        GREEN_QUITTER,
+        GREEN_QUITTER_SESSION,
+        ["[01:59:45.751] ; " + GAMEOVER_ENTER + " sess=3 outcome=7 gclk=3409 (downgrade=1)"]
+        + GREEN_SURVIVOR,
+        False,
+        {"expect_carrier": True},
+    )
+    arm(
+        "red (U19i): NO FIRED line on a 2-peer quit that left lockstep -- named NOT REACHED",
+        GREEN_QUITTER,
+        GREEN_QUITTER_SESSION,
+        ["[01:59:45.731] ; " + GAMEOVER_ENTER + " sess=2 outcome=8 gclk=3259 (downgrade=0)"]
+        + GREEN_SURVIVOR,
+        False,
+        {"expect_carrier": True, "want_text": "NOT REACHED"},
+    )
     arm(
         "refusal: the survivor never ended its session",
         GREEN_QUITTER,
@@ -546,19 +770,60 @@ def selftest():
                     kw.get("max_drop_wall_ms", DEFAULT_MAX_DROP_WALL_MS),
                     True,
                     kw.get("expect_no_network_error", True),
+                    kw.get("expect_carrier", False),
                 )
             except Refusal as exc:
                 ok = False
                 _report = ["REFUSAL: %s" % exc]
+            if kw.get("want_text") and not any(kw["want_text"] in ln for ln in _report):
+                ok = not want_ok  # the verdict is right only if it names the reason it was asked to
             verdict = "PASS" if ok == want_ok else "SELFTEST FAILURE"
             if ok != want_ok:
                 failures += 1
             print("  [%s] %s (got ok=%s, wanted ok=%s)" % (verdict, name, ok, want_ok))
         finally:
             shutil.rmtree(root, ignore_errors=True)
+    # ---- mp:U19i 2026-09-24: a SHARED lane (gquit_net rides match_launch_net's lanes) -----------
+    # Two earlier quitting scenarios left their processes in the same lanes. The whole-lane read
+    # paired the survivor's SESSION_END with the quitter's FIRST broadcast -- the earlier process's,
+    # 28 s before -- and reported the retail silence-timeout shape on a 14 ms drop. The fixture is
+    # the gate's own layout and timestamps (tmp/gate_u19i_evidence, runs 0532xx).
+    n_shared = 0
+    for name, handed, cli_extra, want in (
+        ("green: shared lane, this process's broadcast is the one paired (14 ms)", "menu", True, 0),
+        (
+            "green: shared lane, the SESSION dir handed over instead of the menu dir",
+            "sess",
+            True,
+            0,
+        ),
+        ("refusal: the quitter lane holds no run of this survivor's match", "menu", False, 2),
+    ):
+        n_shared += 1
+        root = tempfile.mkdtemp(prefix="gquit_selftest_")
+        try:
+            host = _plant_shared(root, cli_extra)
+            rc = main(
+                [
+                    host[handed],
+                    "--expect-graceful",
+                    "--expect-same-end-clock",
+                    "--expect-no-network-error",
+                    "--max-drop-steps",
+                    "2",
+                ]
+            )
+            if rc != want:
+                failures += 1
+            print(
+                "  [%s] %s (rc=%s, wanted %s)"
+                % ("PASS" if rc == want else "SELFTEST FAILURE", name, rc, want)
+            )
+        finally:
+            shutil.rmtree(root, ignore_errors=True)
     print(
         "check_graceful_quit --selftest: %s -- %d arm(s)"
-        % ("FAIL" if failures else "PASS", len(arms))
+        % ("FAIL" if failures else "PASS", len(arms) + n_shared)
     )
     return 1 if failures else 0
 
@@ -585,6 +850,12 @@ def main(argv=None):
         help="assert the survivor did not end through the garbled-stream arm (U19e): no "
         "'; [rx] garbled:', no on_gameover outcome=7, no U19d correction line",
     )
+    ap.add_argument(
+        "--expect-carrier",
+        action="store_true",
+        help="configuration (1), MP U19i: assert the survivor logged the gone-peer frame guard "
+        "byte-patch carrier's FIRED line (the thunk ran and restored the datagram)",
+    )
     ap.add_argument("--max-drop-steps", type=int, default=DEFAULT_MAX_DROP_STEPS)
     ap.add_argument("--max-drop-wall-ms", type=int, default=DEFAULT_MAX_DROP_WALL_MS)
     ap.add_argument(
@@ -604,6 +875,7 @@ def main(argv=None):
             args.max_drop_wall_ms,
             args.expect_same_end_clock,
             args.expect_no_network_error,
+            args.expect_carrier,
         )
     except Refusal as exc:
         print("check_graceful_quit: REFUSED -- %s" % exc)

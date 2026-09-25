@@ -1490,6 +1490,67 @@ extern "C" void MH_Net_SetPeerHorizon(int player_id, int horizon_ms) {
     (void)horizon_ms;
 }
 
+// mp:U41b -- THE MATCH BOUNDARY, which is not the transport boundary. net_reset() rolls the queue up
+// and clears it when the LINK goes; a host_rematch keeps the link and starts a second match on it, so
+// until this entry existed the second match's rollup inherited the first's high-water and counts.
+// Called by mh.dll's mp_session_close (SES1's match end). Same shape as net_reset's half: read under
+// the lock, log after it -- but reset_counters(), not reset(): frames already queued are the next
+// match's inputs (or the lobby's), and a match ending is no reason to destroy them.
+extern "C" void MH_Net_QueueMatchBoundary(void) {
+    if (!g_cs_ready) return; // never initialised: no lanes, no counters, nothing to roll up
+    int  q_depth, q_dh, q_dm, q_high, q_hh, q_hm;
+    long q_ev, q_ref;
+    unsigned epoch;
+    long     post_ev, post_ref;
+    EnterCriticalSection(&g_q_cs);
+    q_depth = g_lanes.depth();
+    q_dh    = g_lanes.depth_h();
+    q_dm    = g_lanes.depth_m();
+    q_high  = g_lanes.high_water();
+    q_hh    = g_lanes.high_water_h();
+    q_hm    = g_lanes.high_water_m();
+    q_ev    = g_lanes.evicted();
+    q_ref   = g_lanes.refused();
+    g_lanes.reset_counters();
+    // mp:U41d -- read BACK OUT, under the same lock, what reset_counters() just did. `epoch` is a
+    // marker only that call can move (see mh_net_queue_policy.h); post_ev/post_ref are evicted/
+    // refused read AFTER the reset, which reset_counters() zeroes -- so they read 0 here iff the call
+    // above actually ran. A build that skips the call would leave epoch at match 1's value and
+    // post_ev/post_ref at whatever they had accumulated, not 0. Both are logged below rather than
+    // trusted silently, so a build with the reset skipped fails check_queue_rollups.py loudly instead
+    // of only failing the (luck-dependent) magnitude comparison.
+    epoch    = g_lanes.epoch();
+    post_ev  = g_lanes.evicted();
+    post_ref = g_lanes.refused();
+    g_qhigh_band  = 0;
+    g_q_rollup_at = 0;
+    LeaveCriticalSection(&g_q_cs);
+    queue_rollup_line(q_depth, q_dh, q_dm, q_high, q_hh, q_hm, q_ev, q_ref);
+    logf("net: match boundary -- inbound queue counters restarted (link kept; %d frame(s) still "
+         "queued carry over; epoch %u, post-reset evicted %ld / refused %ld)",
+         q_depth, epoch, post_ev, post_ref);
+}
+
+// qmatchtest's read of the lane counters (net_selftest.exe compiles this TU; nothing in a module
+// calls it). Under the same lock the writers take. `epoch_out` is mp:U41d's reset marker -- pass
+// nullptr from a call site that does not need it.
+void mh_net_queue_counters_for_test(int *depth, int *high, long *evicted, long *refused,
+                                     unsigned *epoch_out) {
+    if (!g_cs_ready) {
+        *depth = *high = 0;
+        *evicted = *refused = 0;
+        if (epoch_out) *epoch_out = 0;
+        return;
+    }
+    EnterCriticalSection(&g_q_cs);
+    *depth   = g_lanes.depth();
+    *high    = g_lanes.high_water();
+    *evicted = g_lanes.evicted();
+    *refused = g_lanes.refused();
+    if (epoch_out) *epoch_out = g_lanes.epoch();
+    LeaveCriticalSection(&g_q_cs);
+}
+
 extern "C" int MH_Net_Recv(int *out_sender, void *buf, int *inout_len) {
     if (!g_started || !buf || !inout_len) return 0;
     int cap = *inout_len;

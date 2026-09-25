@@ -66,6 +66,16 @@ RE_SEND_ARMED = re.compile(r"; \[map\] send armed to peer (\d+) '(.+?)' \((\d+) 
 RE_PEER_HOLDS = re.compile(r"; \[map\] peer (\d+) '(.+?)' holds the map")
 RE_PEER_NEEDS = re.compile(r"; \[map\] peer (\d+) '(.+?)' needs the map")
 RE_START_REFUSED = re.compile(r"; \[map\] start REFUSED -- waiting for '(.+?)'")
+# mp:X2b -- the transport-cannot-carry refusal (TCP): the host still CLAIMS, arms nothing, and
+# refuses Start naming the peer and the map.
+RE_HOST_NOCARRY = re.compile(r"; \[map\] host nocarry ")
+RE_START_REFUSED_NOCARRY = re.compile(
+    r"; \[map\] start REFUSED -- '(.+?)' holds a different (.+?) and this transport cannot carry"
+)
+RE_START_OK = re.compile(r"; \[map\] start OK ")
+# mp:X2/X2b enforcement (launch.cpp on_begin_map_load): a Start CLICK arrived while the gate was shut
+# and was swallowed before begin_map_load ran.
+RE_CLICK_REFUSED = re.compile(r"; \[map\] start CLICK REFUSED -- '(.+?)'")
 # The stored file is `mh_dl\<stem>.<16 hex>.<ext>`: the NAME is the content-addressed form the
 # tracker asks for, and the `mh_dl\` prefix says it landed OUTSIDE the map directory. Both halves
 # are asserted, and both were wrong once. A copy beside the player's maps would appear in their
@@ -107,18 +117,33 @@ def read(path):
     """
     if not os.path.isdir(path):
         return read_one(path)
+    # ONLY THIS PROCESS'S RUNS -- from its `*_menu_*` run (the process's first directory, written at
+    # boot) up to the given one. Reading every run in the lane was wrong on a SHARED lane: in the
+    # 2026-09-24 gate, map_refuse_tcp borrows match_launch's lanes, and the joiner's `local after`
+    # from match_launch's earlier (started) match read as "the refusal did not hold" (green alone,
+    # red in the suite). Run directory names start with a UTC stamp, so name order is time order.
     logs_dir = os.path.dirname(os.path.normpath(path))  # <lane>/logs
-    runs = []
-    for d in (logs_dir, path):
-        if os.path.isdir(d):
-            for name in os.listdir(d):
-                f = os.path.join(d, name, "mh_net.log")
-                if os.path.isfile(f):
-                    runs.append(f)
-            f = os.path.join(d, "mh_net.log")
-            if os.path.isfile(f):
-                runs.append(f)
-    runs = sorted(set(runs), key=lambda f: os.path.getmtime(f))
+    me = os.path.basename(os.path.normpath(path))
+    names = sorted(n for n in os.listdir(logs_dir) if os.path.isdir(os.path.join(logs_dir, n)))
+    # The process runs from its menu dir (the last one at or before `me`) up to the NEXT process's
+    # menu dir -- and that includes session dirs AFTER `me`: post_check_peers without
+    # post_check_session hands over the MENU dir, and the match-time lines (transfer, gate, `local
+    # after`) are in the later session dirs (2026-09-24: cutting at `me` read the menu dir alone and
+    # all five map rows went red with "the host never armed a transfer").
+    menu_idx = [i for i, n in enumerate(names) if "_menu_" in n]
+    starts = [i for i in menu_idx if names[i] <= me]
+    if starts:
+        nxt = [i for i in menu_idx if i > starts[-1]]
+        mine = names[starts[-1] : (nxt[0] if nxt else len(names))]
+    else:  # no menu dir (a hand-laid fixture): every run up to the given one
+        mine = [n for n in names if n <= me]
+    runs = [
+        os.path.join(logs_dir, n, "mh_net.log")
+        for n in mine
+        if os.path.isfile(os.path.join(logs_dir, n, "mh_net.log"))
+    ]
+    if os.path.isfile(os.path.join(path, "mh_net.log")) and not runs:
+        runs = [os.path.join(path, "mh_net.log")]
     return "\n".join(read_one(f) for f in runs)
 
 
@@ -252,6 +277,13 @@ def main(argv=None):
         action="store_true",
         help="assert the host's Start was HELD at least once (the refusal names the peer)",
     )
+    ap.add_argument(
+        "--expect-refused",
+        action="store_true",
+        help="mp:X2b: the transport cannot carry maps (TCP) and the joiner holds different "
+        "bytes -- assert the host claimed, logged `host nocarry`, armed NO transfer, refused Start "
+        "naming the peer and the map, and that neither peer reached Start",
+    )
     args = ap.parse_args(argv)
     if args.selftest:
         return selftest()
@@ -286,6 +318,9 @@ def main(argv=None):
         return 1
     claim_hash = claim.group(2)
     note("host claimed %s sha=%s size=%s" % (claim.group(1), claim_hash, claim.group(3)))
+
+    if args.expect_refused:
+        return check_refused(hpath, htext, clients, claim)
 
     armed = RE_SEND_ARMED.search(htext)
     if args.expect_nothing:
@@ -336,6 +371,67 @@ def main(argv=None):
     return 0
 
 
+def check_refused(hpath, htext, clients, claim):
+    """mp:X2b's rig clause: a refusal beats a desync. Every line is read beside a positive one."""
+    hl = peer_label(hpath)
+    if not RE_HOST_NOCARRY.search(htext):
+        fail(
+            "%s: no `; [map] host nocarry` line -- this run was not on a transport without a bulk "
+            "channel, so it cannot speak for the TCP refusal" % hl
+        )
+    armed = RE_SEND_ARMED.search(htext)
+    if armed:
+        fail("%s: the host ARMED a transfer on a no-carry transport (%s)" % (hl, armed.group(0)))
+    ref = RE_START_REFUSED_NOCARRY.search(htext)
+    if not ref:
+        fail(
+            "%s: the host never refused Start with the named no-carry notice (`start REFUSED -- "
+            "'<peer>' holds a different <map> ...`)" % hl
+        )
+    else:
+        if ref.group(2) != claim.group(1):
+            fail(
+                "%s: the refusal names map '%s', not the claimed '%s'"
+                % (hl, ref.group(2), claim.group(1))
+            )
+        note("host REFUSED Start: '%s' holds a different %s" % (ref.group(1), ref.group(2)))
+    if RE_START_OK.search(htext):
+        fail("%s: the host logged `start OK` -- the gate opened for a mismatching joiner" % hl)
+    click = RE_CLICK_REFUSED.search(htext)
+    if not click:
+        fail(
+            "%s: no `start CLICK REFUSED` line -- either nobody clicked Start (the refusal was never "
+            "tested) or the click went through" % hl
+        )
+    else:
+        note("host swallowed a Start click for '%s'" % click.group(1))
+    if not clients:
+        fail("no client log was given -- cannot show the joiner never started")
+    for p, t in clients:
+        name = peer_label(p)
+        if not RE_WANT.search(t):
+            fail("%s: no `; [map] client want` -- the joiner never learned the host's claim" % name)
+        if RE_STORED.search(t):
+            fail("%s: the joiner STORED a map over a no-carry transport" % name)
+        after = [b for b in RE_LOCAL.findall(t) if b[0] == "after"]
+        if after:
+            fail(
+                "%s: a `local after` sample exists -- the joiner saw the host's Start, so the "
+                "refusal did not hold" % name
+            )
+        else:
+            note("%s: never reached Start (no `local after`), stored nothing" % name)
+    for n in NOTES:
+        print("  %s" % n)
+    if FAILS:
+        print("check_map_transfer: FAIL")
+        for f in FAILS:
+            print("  - %s" % f)
+        return 1
+    print("check_map_transfer: OK")
+    return 0
+
+
 # ---- the reader's own negative cases -------------------------------------------------------------
 #
 # A POST-CHECK IS AN ORACLE, AND AN ORACLE THAT CANNOT GO RED IS DECORATION. Every clause above
@@ -368,12 +464,31 @@ CL_RUN = (
     "; [map] local after blue monday.mpm sha=%s size=462065\n" % (HASH_OK, HASH_OK, HASH_OK)
 )
 
+HOST_NOCARRY = "; [map] host nocarry -- this transport has no bulk channel\n"
+HOST_REFUSED_TCP = (
+    "; [map] peer 1 'client' needs the map (has=%s want=%s)\n"
+    "; [map] start REFUSED -- 'client' holds a different blue monday.mpm and this transport "
+    "cannot carry maps\n"
+    "; [map] start CLICK REFUSED -- 'client' holds a different map and this transport cannot "
+    "carry it; begin_map_load NOT run (mp:X2/X2b)\n" % (HASH_NO, HASH_OK)
+)
+CL_MENU_TCP = (
+    "; [map] client want blue monday.mpm sha=%s size=462065\n"
+    "; [map] local before blue monday.mpm sha=%s size=462065\n"
+    "; [map] client BLOCKED blue monday.mpm -- this transport has no bulk channel\n"
+    % (HASH_OK, HASH_OK)
+)
+
 
 def _plant(root, lane, runs):
     """Lay a peer out the way a lane is: <lane>/logs/<run>/mh_net.log, one file per run."""
     out = None
     for i, text in enumerate(runs):
-        d = os.path.join(root, lane, "logs", "run%d" % i)
+        # A ("MENU", text) entry is laid out as a process's first (`*_menu_*`) directory -- how the
+        # shared-lane case plants an EARLIER process's runs ahead of this one's.
+        tag = "menu" if isinstance(text, tuple) else "sess"
+        text = text[1] if isinstance(text, tuple) else text
+        d = os.path.join(root, lane, "logs", "20260101T0000%02dZ_%s_run%d" % (i, tag, i))
         os.makedirs(d, exist_ok=True)
         with open(os.path.join(d, "mh_net.log"), "w", encoding="utf-8") as fh:
             fh.write(text)
@@ -490,6 +605,64 @@ def selftest():
             ["--expect-nothing"],
             1,
         ),
+        # ---- mp:X2b --expect-refused (TCP, joiner holds different bytes) ----
+        (
+            "--expect-refused: the honest TCP refusal is GREEN",
+            [HOST_MENU + HOST_NOCARRY, HOST_REFUSED_TCP],
+            [CL_MENU_TCP, ""],
+            ["--expect-refused"],
+            0,
+        ),
+        (
+            "--expect-refused: no refusal line is red",
+            [HOST_MENU + HOST_NOCARRY, ""],
+            [CL_MENU_TCP, ""],
+            ["--expect-refused"],
+            1,
+        ),
+        (
+            "--expect-refused: a run NOT on a no-carry transport is red",
+            [HOST_MENU, HOST_REFUSED_TCP],
+            [CL_MENU_TCP, ""],
+            ["--expect-refused"],
+            1,
+        ),
+        (
+            "--expect-refused: a joiner that reached Start (local after) is red",
+            [HOST_MENU + HOST_NOCARRY, HOST_REFUSED_TCP],
+            [CL_MENU_TCP, "; [map] local after blue monday.mpm sha=%s size=462065\n" % HASH_OK],
+            ["--expect-refused"],
+            1,
+        ),
+        (
+            "--expect-refused: a refusal nobody clicked through (no CLICK REFUSED) is red",
+            [HOST_MENU + HOST_NOCARRY, HOST_REFUSED_TCP.split("; [map] start CLICK")[0]],
+            [CL_MENU_TCP, ""],
+            ["--expect-refused"],
+            1,
+        ),
+        (
+            "--expect-refused: a transfer armed on TCP is red",
+            [HOST_MENU + HOST_NOCARRY, HOST_REFUSED_TCP + HOST_RUN],
+            [CL_MENU_TCP, ""],
+            ["--expect-refused"],
+            1,
+        ),
+        (
+            # The 2026-09-24 gate red: map_refuse_tcp borrows match_launch's lanes, whose EARLIER
+            # process started a match (a `local after`). Only this process's runs -- from its own
+            # menu directory on -- may be read, so the honest refusal stays GREEN on a shared lane.
+            "--expect-refused: an EARLIER process's `local after` on a SHARED lane is not read",
+            [HOST_MENU + HOST_NOCARRY, HOST_REFUSED_TCP],
+            [
+                ("MENU", CL_MENU),
+                "; [map] local after blue monday.mpm sha=%s size=462065\n" % HASH_OK,
+                ("MENU", CL_MENU_TCP),
+                "",
+            ],
+            ["--expect-refused"],
+            0,
+        ),
     ]
 
     root = tempfile.mkdtemp(prefix="mh_maptransfer_selftest_")
@@ -504,6 +677,25 @@ def selftest():
             if not ok:
                 bad += 1
             print("  %-4s %s (rc=%s, wanted %s)" % ("ok" if ok else "FAIL", name, got, want))
+        # 2026-09-24: post_check_peers (no post_check_session) hands over the MENU dir, and the
+        # match lines are in the LATER session dirs -- which must be read too. Cutting the walk at
+        # the given dir made all five map rows red ("the host never armed a transfer").
+        case = os.path.join(root, "menu_handed")
+        _plant(case, "host", [("MENU", HOST_MENU), HOST_RUN])
+        _plant(case, "client", [("MENU", CL_MENU), CL_RUN])
+
+        def _menu(lane):
+            logs = os.path.join(case, lane, "logs")
+            return os.path.join(logs, sorted(n for n in os.listdir(logs) if "_menu_" in n)[0])
+
+        got = main(["--expect-gate", _menu("host"), _menu("client")])
+        ok = got == 0
+        bad += 0 if ok else 1
+        cases.append(None)
+        print(
+            "  %-4s --expect-gate: the MENU dir handed over, session dirs after it are read (rc=%s)"
+            % ("ok" if ok else "FAIL", got)
+        )
     finally:
         shutil.rmtree(root, ignore_errors=True)
     print(

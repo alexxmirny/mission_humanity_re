@@ -231,6 +231,21 @@ inline void emit_tile_objects_tactical(const uint8_t *p, uint32_t len, S &s) {
     }
 }
 
+// order_queue with no owner (configuration (1)): the live prefix [0, count) raw, the dead slots
+// local() -- the same rule mh::orders::emit_region applies when it owns the region, so both builds
+// hash the same stream. See that function for why (mp:D33 follow-up, 2026-09-25).
+inline constexpr uint32_t ORDER_QUEUE_CAP    = 300u;
+inline constexpr uint32_t ORDER_QUEUE_RECORD = 0x44u;
+inline void               emit_order_queue(const uint8_t *p, uint32_t len, state_sink &s) {
+    int32_t live = *reinterpret_cast<const int32_t *>(static_cast<uintptr_t>(hash_base(HIDX_ORDER_QUEUE_COUNT)));
+    if (live < 0) live = 0;
+    if (live > (int32_t)ORDER_QUEUE_CAP) live = (int32_t)ORDER_QUEUE_CAP;
+    uint32_t head = (uint32_t)live * ORDER_QUEUE_RECORD;
+    if (head > len) head = len;
+    s.bytes(p, head);
+    s.local(p + head, len - head);
+}
+
 inline void emit_rng_state(const uint8_t *p, uint32_t len, state_sink &s) {
     for (uint32_t i = 0; i * 4 + 4 <= len; ++i) {
         if (i == RNG_SLOT_FX)
@@ -264,6 +279,7 @@ inline void emit_slice(int i, state_sink &s) {
         case HIDX_RNG_STATE: emit_rng_state(p, r.len, s); return;
         case HIDX_SOLDIERS: emit_soldiers(p, r.len, s); return;
         case HIDX_PLANETS: emit_planets(p, r.len, s); return;
+        case HIDX_ORDER_QUEUE: emit_order_queue(p, r.len, s); return;
         default: s.bytes(p, r.len); return;
     }
 }
@@ -443,5 +459,45 @@ inline uint8_t *mutate_target(int i, uint32_t off = 0) {
     if (r.len && off >= r.len) off = r.len - 1;
     return reinterpret_cast<uint8_t *>(static_cast<uintptr_t>(hash_base(i))) + off;
 }
+
+// ---- the hash-manifest fingerprint (mp:D29) ---------------------------------------------------
+//
+// FNV-1a 32 over (count, then per slice: rid, offset, len, excluded as u32 LE, then the name's
+// bytes). It used to be a runtime function in libmh (world_snapshot.cpp), which is exactly why
+// mh_harness could not print it in configuration (1): no libmh, no function. It is COMPUTED AT
+// COMPILE TIME here from the same HASH_REGIONS[] every image already compiles, so the harness prints
+// it in BOTH configurations with no boundary crossing, and world::hash_manifest_fingerprint() now
+// returns this same constant -- one definition, not two that agree by care. tools/mp_analyze.py
+// hash_manifest_fingerprint() is the Python mirror (it reads the generated header), and mp_analyze
+// refuses to pair two peers whose `manifest fp=` differ: two peers hashing different manifests have
+// per-region columns that mean different things, so an IDENTICAL verdict between them is noise.
+constexpr uint32_t hash_manifest_fp_mix(uint32_t h, uint32_t v) {
+    for (int i = 0; i < 4; ++i) {
+        h ^= static_cast<uint8_t>(v >> (i * 8));
+        h *= 16777619u;
+    }
+    return h;
+}
+
+constexpr uint32_t hash_manifest_fp() {
+    uint32_t h = hash_manifest_fp_mix(2166136261u, static_cast<uint32_t>(HASH_REGION_COUNT));
+    for (int i = 0; i < HASH_REGION_COUNT; ++i) {
+        const hash_region &r = HASH_REGIONS[i];
+        h                    = hash_manifest_fp_mix(h, static_cast<uint32_t>(r.rid));
+        h                    = hash_manifest_fp_mix(h, r.offset);
+        h                    = hash_manifest_fp_mix(h, r.len);
+        h                    = hash_manifest_fp_mix(h, r.excluded ? 1u : 0u);
+        // The NAME too: the manifest ORDER is a wire contract (mp_analyze labels its columns
+        // positionally), so a rename or a reorder that preserved every number still has to move
+        // this. An index is a position; a name is what the position meant.
+        for (const char *c = r.name; *c; ++c) {
+            h ^= static_cast<uint8_t>(*c);
+            h *= 16777619u;
+        }
+    }
+    return h;
+}
+
+inline constexpr uint32_t HASH_MANIFEST_FP = hash_manifest_fp();
 
 } // namespace mh::state

@@ -38,6 +38,8 @@
 //                            one-time init + open the movie (so NO missing-file modal), then on the next
 //                            frame tears the movie down via the game's own teardown (FUN_004c2d12) so it
 //                            advances to boot instead of waiting. (INTRO.AVI is never shown on startup.)
+//                            mp:U21: "later" = once the movie's audio thread is past CreateSoundBuffer
+//                            (MH_Launch_IntroSkipReady), never on frame 2 -- see launch.cpp.
 //                            Standalone --skip-intro (no verb) just skips the movie and lands at the menu.
 //
 #ifdef __cplusplus
@@ -56,6 +58,16 @@ int MH_Launch_Init(void);
 // and (if skip_out != nullptr) writes 1/0 for whether --skip-intro was present. Used by mh_nettest
 // launchtest to prove the CLI grammar off-target.
 int MH_Launch_ParseCmdline(const char *cmdline, char *arg_out, int arg_cap, int *skip_out);
+
+// mp:U21 test seam: may --skip-intro tear LOGO.AVI down on this frame? Pure (no game state), so
+// launchtest proves the decision table off-target. WAIT = let the movie play one more frame; GO = the
+// movie's audio thread cannot be inside CreateSoundBuffer reading the format block the teardown frees;
+// TIMEOUT = waited cap_ms and it never settled, tear down anyway (logged). See launch.cpp on_intro_tick.
+enum { MH_INTRO_SKIP_WAIT    = 0,
+       MH_INTRO_SKIP_GO      = 1,
+       MH_INTRO_SKIP_TIMEOUT = 2 };
+int MH_Launch_IntroSkipReady(int has_audio_stream, int has_dsound, int has_dsbuf, int has_pcm,
+                             int thread_alive, unsigned waited_ms, unsigned cap_ms);
 
 #ifdef __cplusplus
 }

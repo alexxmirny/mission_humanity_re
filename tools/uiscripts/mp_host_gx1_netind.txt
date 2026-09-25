@@ -1,0 +1,47 @@
+# mp:GX1 HOST -- the NET INDICATOR half of the overlay-smear fix, in a live 2-peer match.
+#
+# ui_net_indicator.cpp draws PING/CMD text over the strategic ground in the top-right corner. When
+# it HIDES (the Ctrl+Alt+N hotkey), nothing draws there any more, so the only thing that gets those
+# pixels repainted is the release stamp into the ground layer's damage map (_G_LLM_TILE_VIS_MAP).
+# Without it the glyphs stay on screen until something else dirties the tile.
+#
+# WHY gameclock 20000 BEFORE THE PROBE (dead-ends G281): a freshly launched skirmish has fog
+# resolving near the start position for the first seconds, and a tile whose fog byte changed is
+# repainted by retail regardless of the dirty bit -- a probe inside that window reads clean with or
+# without the fix. The indicator sits in the top-right corner, away from the start-position fog.
+#
+# THE ASSERTION IS THE post_check (tools/check_overlay_residue.py): n1_shown has the indicator's
+# colour inside its rect, n2_hidden has none. The planted arm (gx1_netind_nostamp, [hud]
+# net_indicator_stamp=0) must go RED on the same frames.
+#
+# Pair with mp_client_gx1_netind.txt.
+
+settled value:110
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+settled Create
+clickl Create
+present Game name
+settled Ok
+clickl Ok
+present Available maps
+settled Ok
+clickl Ok
+present Network players
+peers 1
+awaitsignal lobby
+enabled Start
+settled Start
+clickl Start
+absent Network players
+gamemode 2
+gameclock 20000
+capture n1_shown
+hotkey Ctrl+Alt+N
+gameclock 20600
+capture n2_hidden
+log HOST: net indicator hidden at gameclock ~20000 -- n2_hidden must carry none of n1_shown's glyphs
+signal hostdone
+end

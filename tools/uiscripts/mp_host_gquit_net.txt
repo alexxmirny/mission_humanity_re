@@ -1,0 +1,104 @@
+# mp:U19i -- a verbatim copy of mp_host_gquit.txt for the CONFIGURATION (1) row gquit_net
+# (udp, no libmh.dll). Its own file ONLY so its captures get their own baseline
+# label: the udp lobby renders the ping cell, so graceful_quit's TCP lobby baseline cannot be shared.
+#
+# U19 (SURVIVOR): host a 2-player match and let the CLIENT quit out of it through the ESC menu with
+# `[net] graceful_leave=1`. The departure must arrive over the WIRE -- a lockstep control frame the
+# retail dispatch applies -- and end this peer's match at once, with the engine's own departure
+# notice on screen.
+#
+# WHY THERE IS NO AI SEAT HERE, measured 2026-09-18 rather than assumed. The first version of this
+# scenario seated an AI at slot 2 so the survivor would stay above the two-active-player quorum and
+# keep stepping, which would have made "resumes within ~1 lockstep step" a thing this script could
+# assert. It does not work: with `occ 3` and the AI visibly seated, the client's removal still ended
+# the host's match, on the engine's own words -- "Game over / You are the last player !". The quorum
+# llm_net_player_remove tests counts NETWORK players, so an AI is not a third player for this
+# purpose. What that leaves is the shape below, which is the honest one for a two-peer rig: the drop
+# ENDS the match, and the assertion is that it ends it at once and says why.
+#
+# WHAT THIS SCENARIO CANNOT COVER, so nobody reads more into a green than it holds: U19's third
+# clause is a 3-player game in which the survivors keep playing, and this pair has two peers. The AI
+# result above is the reason a third peer is really needed rather than nice to have.
+#
+# THE SPEED IS NOT IN THE PIXELS -- `present Continue game` is satisfied by a drop that took a
+# minute just as well as by one that took 200 ms, and the minute is precisely the pre-U19 behaviour.
+# tools/check_graceful_quit.py reads it off the two peers' logs: the wall gap between the quitter's
+# broadcast and this peer's SESSION_END, and the GAME CLOCK both peers ended on, which is the real
+# claim (an in-order drop ends the match at the same clock on both, not merely at a similar time).
+
+settled value:110
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+settled Create
+clickl Create
+present Game name
+settled Ok
+clickl Ok
+present Available maps
+settled Ok
+clickl Ok
+
+# host lobby: the client must be connected AND seated before Start un-greys
+present Network players
+peers 1
+# the client's own "I am really in my lobby" marker (mp_host_start.txt carries the same note)
+awaitsignal lobby
+occ 2
+enabled Start
+settled Start
+# THE ONLY BASELINED FRAME ON THIS PEER, and it is deliberately the boring one. Everything this
+# scenario is really about happens in a running match, where no frame repeats (see the notice
+# comment below); a lobby frame is stable, and a peer with no captures at all fails the runner.
+capture g1_host_lobby
+clickl Start
+
+# ---- the match -----------------------------------------------------------------------------------
+absent Network players
+gamemode 2
+# Both peers wait for the SAME sim moment, so the client's own pre-quit frame is a known sim state.
+# NEITHER PEER CAPTURES IN-GAME, and the reason is the one esc_menu.txt records for its own dropped
+# in-game shot: measured 0.739% run-to-run on this peer and 0.722% on the client under `--jobs 4`,
+# which passes a 2% tol on luck and asserts nothing this scenario is about.
+gameclock 3000
+
+# The client says it is about to walk the ESC menu; it has not clicked Quit yet, so we are still a
+# two-player match at this point.
+awaitsignal quitting
+
+# THE SURVIVOR CLAUSE. "Continue game" is a button on the engine's own end-of-match dialog, so this
+# predicate is false until the departure has actually been applied here -- and it is reached ONLY
+# through the lockstep dispatch, never through anything this script does.
+#
+# DO NOT REPLACE THIS WITH A `gameclock` WAIT. The first version of this script asserted the survivor
+# kept stepping with `gameclock 6000` and it passed in 0 frames: once the match ends, the game clock
+# leaves the fixed lockstep quantum and jumps to TOTAL_GAME_TIME in one variable step (the dead-ends
+# ledger's G158 trap), so any clock target below that jump is satisfied instantly by a
+# sim that has stopped. A clock predicate cannot tell "still running" from "finished".
+present Continue game
+settled Continue game
+# The widget list of the end-of-match dialog, so a future change to it is diagnosable from the log
+# rather than from a pixel diff (esc_menu.txt keeps a dump for the same reason).
+dump
+
+# THE DEPARTURE NOTICE IS NOT BASELINED, and that is a measured decision rather than an omission.
+# This frame carries the engine's own floating notice -- "Player has been kicked-off the game
+# (client)" in the top-left, printed by the retail dispatch receiver, which is U19's clause (3) --
+# but it CANNOT be a pixel baseline: the notice fades red->yellow on a wall clock and the landing
+# site behind the dialog is still revealing, and the drop lands at whatever real time the client's
+# ESC walk reaches, so the two are never at the same stage twice. Captured and diffed, it measured
+# 6.606% against its own baseline one run later. The notice was read by eye on three separate rig
+# runs (2026-09-18) and is written up on the lobby page; what this scenario GATES is that the
+# dialog it appears on was reached at all, and check_graceful_quit.py gates how it was reached.
+
+# THE WALK STOPS AT THE DIALOG, on purpose. The obvious next step -- `clickl Ok` and assert the main
+# menu -- was tried and does NOT hold: measured 2026-09-18, Ok is clicked (the click lands on widget
+# 'Ok' in the dump above) and `settled value:110` never arrives inside a 300 s budget, so wherever
+# the engine takes a survivor after an end-of-match dialog, it is not the main-menu sprite list.
+# That is a real open question and it belongs to the host_rematch follow-up, which has to walk this
+# path before it can run in the shipping configuration -- not to U19, whose subject is the departure
+# itself. Asserting a destination nobody has measured is how a scenario starts failing for reasons
+# that have nothing to do with what it tests.
+log SURVIVOR was told over the wire that the client left and its match ended at once
+end

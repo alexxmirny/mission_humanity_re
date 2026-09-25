@@ -294,6 +294,13 @@ void apply_mouse_mode() {
 // resumes.
 constexpr DWORD CAM_HEARTBEAT_MS = 500; // rate cap for the "still scrolling, nothing changed" line
 
+// mp:SES3c (Wave 2): true while a harness `keyhold` is holding its key down. A held key injects
+// nothing after its DOWN, so without this every hold frame is QUIET and a headless hold (hundreds of
+// presents in well under one CAM_HEARTBEAT_MS) prints ONE sample -- the rig run showed held=L---
+// latched f=84558..85157 with a single line inside it. `cursorhold` never had this problem because
+// it injects a move every present (produced>0). Harness-only: nothing sets it outside `keyhold`.
+static bool g_keyhold_trace = false;
+
 // Pack the eight latches into one byte: bit0..3 = edge L,R,U,D; bit4..7 = held L,R,U,D.
 inline uint32_t cam_latch_mask() {
     const uintptr_t edge[4] = {CAM_EDGE_L, CAM_EDGE_R, CAM_EDGE_U, CAM_EDGE_D};
@@ -357,7 +364,7 @@ void trace_mouse_ring() {
     // The camera-only heartbeat: rate-capped, so a scroll that never stops stays readable.
     const bool cam_beat = cam_move && (now - s_last_cam_ms) >= CAM_HEARTBEAT_MS;
 
-    if (produced == 0 && depth == 0 && !moved && !latched && !cam_beat) {
+    if (produced == 0 && depth == 0 && !moved && !latched && !cam_beat && !g_keyhold_trace) {
         ++s_quiet;
         s_prev_w = w; // update on the quiet path too, or `produced` lies after a still period
         return;
@@ -1475,7 +1482,8 @@ enum {
     OP_A_RELEASE,
     OP_A_RCLICK, // mp:D25: `rclick <x> <y> [shift]`
     OP_A_KEY,
-    OP_A_HOTKEY, // `hotkey Ctrl+Alt+D` -- a GetAsyncKeyState-style chord, synthesised (2026-09-20)
+    OP_A_KEYHOLD, // mp:SES3c: `keyhold <scancode> <frames>` -- the unpaired-DOWN sibling of `key`
+    OP_A_HOTKEY,  // `hotkey Ctrl+Alt+D` -- a GetAsyncKeyState-style chord, synthesised (2026-09-20)
     OP_A_TYPE,
     OP_A_LAYOUT,
     OP_A_KEYJOURNAL,
@@ -1497,7 +1505,7 @@ struct Target {
 struct Step {
     int      op;
     int      a, b;     // numeric args (value / idx / gamemode / x ; y)
-    int      c;        // third numeric arg -- only `cursorhold`'s frame count uses it
+    int      c;        // third numeric arg -- `cursorhold`/`keyhold`'s frame count, `key`/`rclick`'s shift flag
     unsigned scr;      // screen container VA (OP_W_SCREEN)
     Target   tgt;      // target widget (present/absent/enabled/hovered/clickl)
     char     text[64]; // capture name / log message
@@ -1848,6 +1856,22 @@ void parse_line(const char *line) {
         char *after = nullptr;
         s->a        = (int)strtol(arg, &after, 0);
         s->c        = (strncmp(skip_ws(after), "shift", 5) == 0) ? 1 : 0;
+    } else if (strcmp(op, "keyhold") == 0) {
+        // `keyhold <scancode> <frames>` -- mp:SES3c. `key` always sends a DOWN and an UP, so a
+        // held arrow key (the four CAM_SCROLL_*_HELD latches -- 0x4b/0x4d/0x48/0x50 LEFT/RIGHT/
+        // UP/DOWN) is not expressible with it. The fix is NOT a new producer, it is the ABSENCE of
+        // the paired UP: llm_strat_input_update reads the same key ring `key` does, latching the
+        // HELD bit on the scancode's DOWN event and clearing it on that scancode's own UP event
+        // (the ordinary key-state model `key`'s own down+up pair already relies on), so one
+        // unpaired DOWN held across presents IS the hold. Multi-present like `cursorhold`, whose
+        // `<frames>` contract this mirrors exactly: DOWN on present 0, held through `frames`
+        // presents (no event re-injected -- the latch does not need refreshing), UP on the last
+        // one, then advance.
+        s->op       = OP_A_KEYHOLD;
+        char *after = nullptr;
+        s->a        = (int)strtol(arg, &after, 0);
+        s->c        = (int)strtol(after, nullptr, 0);
+        if (s->c < 1) s->c = 1;
     } else if (strcmp(op, "hotkey") == 0) {
         // hotkey <spec>  -- `Ctrl+Alt+D`, `Alt+F9`, `0x79`, `D`: the DLL's OWN hotkey grammar (the
         // [debug] overlay's toggle_key and the [hud] net_indicator_key read it), held for two
@@ -1938,6 +1962,10 @@ bool load_script(const char *path) {
         if (*q == '\n' || *q == 0) {
             char end = *q;
             *q       = 0;
+            // CRLF scripts: drop the '\r' here, once, rather than in each op. Label and predicate ops
+            // happened to tolerate it, but `awaitsignal lobby\r` waited for rig_lobby\r.flag and hung
+            // until the row's timeout (dead-ends G306).
+            if (q > line && q[-1] == '\r') q[-1] = 0;
             parse_line(line);
             line = q + 1;
             if (end == 0) break;
@@ -2353,6 +2381,21 @@ click_result do_action(const Step *s) {
             }
             if (g_wait < 3) return CLICK_RETRY;
             keystate_shift(false);
+            break;
+        case OP_A_KEYHOLD:
+            // DOWN once, on present 0; presents 1..c-1 are the hold itself and inject nothing
+            // (the unpaired DOWN is what stays latched); UP on present c-1, mirroring
+            // cursorhold's `g_wait + 1 >= s->c` dwell-length contract exactly so `held=` reads
+            // set for presents 0..c-2 and clear again once the UP has been drained.
+            if (g_wait == 0) {
+                enqueue_key((uint32_t)s->a, true);
+                ui_log("; key scancode 0x%02x (down, held)", s->a);
+            }
+            g_keyhold_trace = true; // sample every hold frame (see its declaration)
+            if (g_wait + 1 < s->c) return CLICK_RETRY;
+            g_keyhold_trace = false;
+            enqueue_key((uint32_t)s->a, false);
+            ui_log("; key scancode 0x%02x (up, after %d held frame(s))", s->a, s->c);
             break;
         case OP_A_HOTKEY:
             // Multi-present like cursorhold: presents 0 and 1 hold the chord, present 2 releases it

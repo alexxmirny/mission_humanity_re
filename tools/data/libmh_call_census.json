@@ -47,9 +47,9 @@
     "outward_distinct": 0
    },
    "seams": {
-    "sites": 167,
+    "sites": 169,
     "distinct": 132,
-    "outward_sites": 135,
+    "outward_sites": 136,
     "outward_distinct": 106
    },
    "sim": {
@@ -241,9 +241,9 @@
    "domain": null,
    "tier": null,
    "promoted": false,
-   "sites": 1,
+   "sites": 2,
    "modules": {
-    "seams": 1
+    "seams": 2
    },
    "adjudication": null
   },
@@ -505,9 +505,9 @@
    "domain": "(pre-ledger)",
    "tier": null,
    "promoted": false,
-   "sites": 1,
+   "sites": 2,
    "modules": {
-    "seams": 1
+    "seams": 2
    }
   },
   {

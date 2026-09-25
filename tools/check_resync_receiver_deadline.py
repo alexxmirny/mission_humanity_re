@@ -75,7 +75,9 @@ def find_log(target):
 
 NL = chr(10)
 FIRED = (
-    "[00:05:00.000] ; [resync] barrier #1 BEGIN (count was 0, threshold 0, countdown 59) flags=0x00\n"
+    # mp:P9D's format (`live` beside `count was`); NEVER_FIRED below keeps the pre-P9D one, so the
+    # selftest reads both.
+    "[00:05:00.000] ; [resync] barrier #1 BEGIN (count was 0, live 0, threshold 0, countdown 59) flags=0x00\n"
     "[00:05:02.010] ; [resync] receiver_deadline: 2002 ms in barrier with no RESUME -- leaving the "
     "wait screen and removing side_id=0\n"
 )

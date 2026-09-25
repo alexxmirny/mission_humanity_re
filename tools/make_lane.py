@@ -33,6 +33,7 @@ import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import machine_config as machine  # noqa: E402
+import map_variant  # noqa: E402 -- mp:T5 forced-snapshot lane / mp:X2a own-Maps shape
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DLL = os.path.join(REPO, "src", "mh_dll", "Release", "mh.dll")
@@ -268,17 +269,80 @@ LINKED_DIRS = ["Res", "Maps"]
 PACK_EXT = (".rsr", ".nam")
 
 
+def provision_maps_with_variant(src_dir, dst_dir, variant_name):
+    """Build a REAL (not shared) `Maps` directory: every file is still LINKED individually to the
+    shared install (link_or_copy per-file, same ~0-copy cost as before) except `variant_name`,
+    whose bytes are a genuine, different-content copy (tools/map_variant.py) written into the
+    lane's own folder. mp:T5 / mp:X2a: the point is that THIS lane's copy of that one map differs
+    from every other lane's (and the host's) by the content hash the game actually compares
+    (map_transfer.cpp / mh_net_proto session_info.cpp -- see map_variant.py's docstring), so a
+    joiner using this lane can never already "hold" the host's map and the bulk snapshot fires
+    every run instead of ~1 run in 3 (D30's evidence for mp:T5).
+
+    A whole-directory symlink/junction (the LINKED_DIRS default) cannot express this: every lane
+    sharing that junction sees the SAME bytes for every file in it, including the one this lane
+    needs to differ. Per-file linking is what makes "one file different, the rest still ~free"
+    possible at all.
+    """
+    os.makedirs(dst_dir, exist_ok=True)
+    hit = False
+    for name in sorted(os.listdir(src_dir)):
+        s = os.path.join(src_dir, name)
+        if not os.path.isfile(s):
+            continue
+        d = os.path.join(dst_dir, name)
+        if name.lower() == variant_name.lower():
+            hit = True
+            with open(s, "rb") as f:
+                orig = f.read()
+            variant = map_variant.variant_bytes(orig)
+            with open(d, "wb") as f:
+                f.write(variant)
+            print(
+                "  MAP VARIANT: %s -- %d B, OWN copy (not linked); content hash %s -> %s "
+                "(mp:T5/X2a: this lane never already holds the map)"
+                % (
+                    name,
+                    len(variant),
+                    map_variant.content_hash8(orig),
+                    map_variant.content_hash8(variant),
+                )
+            )
+        else:
+            link_or_copy(s, d, False)
+    if not hit:
+        sys.exit(
+            "--map-variant %s: no such file in %s (case-insensitive match against the actual "
+            "listing; check the name the determinism scenario's host actually claims, e.g. from "
+            "a `; [map] host claim <name> sha=...` log line)" % (variant_name, src_dir)
+        )
+
+
 def link_or_copy(src, dst, is_dir):
+    """Share `src` into the lane without copying it: a symlink when the account may create one
+    (Developer Mode or an elevated shell), else the two NTFS links that need NO privilege -- a
+    JUNCTION for a directory and a HARDLINK for a file (same volume only). All three point at the one
+    physical copy, which is what the boot lock and the ~3 MB lane size rely on. Only if all fail is
+    the data copied, loudly: a copied lane is ~230 MB, and a suite of them filled a 40 GB drive on
+    2026-09-24 when symlinks stopped working (WinError 1314) after the lanes were rebuilt."""
     try:
         os.symlink(src, dst, target_is_directory=is_dir)
         return "link"
     except OSError as e:
-        shutil.copy2(src, dst) if not is_dir else shutil.copytree(src, dst)
-        print(
-            "    WARN: symlink failed (%s) -- COPIED %s instead"
-            % (e.strerror or e, os.path.basename(src))
-        )
-        return "copy"
+        why = e.strerror or e
+    try:
+        if is_dir:
+            import _winapi  # noqa: PLC0415 -- Windows-only, and only on this fallback path
+
+            _winapi.CreateJunction(os.path.abspath(src), os.path.abspath(dst))
+        else:
+            os.link(src, dst)
+        return "link"
+    except (OSError, ImportError, AttributeError) as e2:
+        why = "%s; %s also failed (%s)" % (why, "junction" if is_dir else "hardlink", e2)
+    shutil.copy2(src, dst) if not is_dir else shutil.copytree(src, dst)
+    print("    WARN: symlink failed (%s) -- COPIED %s instead" % (why, os.path.basename(src)))
+    return "copy"
 
 
 def write_ini(dst, lane, port, headless, extra):
@@ -461,6 +525,19 @@ def main():
         % (", ".join(DEFAULT_SATELLITES) or "none"),
     )
     ap.add_argument(
+        "--map-variant",
+        default="",
+        metavar="NAME",
+        help="mp:T5 forced-snapshot lane / mp:X2a: give this lane its OWN Maps directory (every "
+        "file still individually linked, except NAME) where NAME -- a filename under Maps, e.g. "
+        "'blue monday.mpm', matched case-insensitively -- is a same-size, DIFFERENT-CONTENT copy "
+        "of the shared install's file (tools/map_variant.py flips the last byte; see that file "
+        "for why). The game's peer-holds-the-map check is a content hash (mh_net_proto "
+        "map_hash_from_sha256, the first 8 bytes of SHA-256 of the whole file) -- not the name, "
+        "not the size -- so this lane can never already hold the map and the host must send the "
+        "full bulk snapshot every run instead of skipping it (~2/3 of D30's runs skipped it).",
+    )
+    ap.add_argument(
         "--omit-satellite",
         action="append",
         default=[],
@@ -594,7 +671,10 @@ def _provision(args):
     for name in LINKED_DIRS:
         s = os.path.join(args.src, name)
         if os.path.isdir(s):
-            link_or_copy(s, os.path.join(args.dst, name), True)
+            if name == "Maps" and args.map_variant:
+                provision_maps_with_variant(s, os.path.join(args.dst, name), args.map_variant)
+            else:
+                link_or_copy(s, os.path.join(args.dst, name), True)
 
     if args.headless:
         tame_dgvoodoo(os.path.join(args.dst, "dgVoodoo.conf"))
@@ -620,6 +700,8 @@ def _provision(args):
         for f in os.listdir(args.dst)
         if os.path.isfile(os.path.join(args.dst, f))
         and not os.path.islink(os.path.join(args.dst, f))
+        and os.stat(os.path.join(args.dst, f)).st_nlink
+        == 1  # a hardlinked pack is shared, not owned
     )
     print(
         "lane %d -> %s  (%d pack files linked, %.1f MB owned%s)"

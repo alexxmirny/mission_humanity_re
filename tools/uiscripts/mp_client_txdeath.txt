@@ -32,6 +32,14 @@ settled Cancel
 absent Network players
 gamemode 2
 gameclock 3000
+# Gate diet block 2 (2026-09-24): the link is cut by a shim TRIGGER on the log line below (the
+# registry row's shim_triggers), at a SIM moment -- not by the timeline's t+50 s, which is now only
+# the fallback. The dialog capture shows the world behind it and the host's mothership drifts
+# across that view with sim time, so a wall-clock cut made the frame load-dependent (measured: 5.7 %
+# off the baseline in a loaded run, 0.9 % alone; a cut at gameclock 3000 / 20000 read 16-20 % / 5-18 %).
+# 45000 is past where the t+50 s cut landed on an idle box (~gameclock 43 s), i.e. the baseline's frame.
+gameclock 45000
+log CLIENT past gameclock 45000 in the match -- the shim trigger may cut the link now
 
 # Same widget/state predicate as the host's, and for the same reason (dead-ends G158): the below-quorum
 # drop reached HERE, over the same wire event, once the shim's cut closed the link.

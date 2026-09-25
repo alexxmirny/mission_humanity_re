@@ -196,6 +196,7 @@
     <ClCompile Include="..\mh\patch\inmem_patch.cpp" />
     <ClCompile Include="..\mh\patch\inmem_install.cpp" />
     <ClCompile Include="inmem_patch_selftest.cpp" />
+    <ClCompile Include="gone_peer_guard_selftest.cpp" />
     <ClCompile Include="hostapi_c_compile.c" />
     <ClCompile Include="hostapi_selftest.cpp" />
     <ClCompile Include="hostapi_trap.cpp" />

@@ -6,7 +6,7 @@
 // boundary' a number instead of an inference. mh/seams/libmh_bind.cpp fills the table;
 // libmh_contract.gen.cpp defines it and the forwarding thunks over it.
 
-#define MH_LIBMH_CONTRACT_COUNT 81
+#define MH_LIBMH_CONTRACT_COUNT 82
 
 // Slot indices, in the committed order (= libmh.def's order). Only the hand-defined rows
 // name theirs in source; the rest are reached by the generated thunks.
@@ -72,26 +72,27 @@ enum mh_libmh_slot {
     MH_LIBMH_SLOT_mh_sim_set_time_resync_instrument_hooks = 58,
     MH_LIBMH_SLOT_mh_sim_sim_step_entry_thunk = 59,
     MH_LIBMH_SLOT_mh_sim_sim_step_promoted = 60,
-    MH_LIBMH_SLOT_mh_lockstep_sim_tick_entry_thunk = 61,
-    MH_LIBMH_SLOT_mh_lockstep_sim_tick_requested = 62,
-    MH_LIBMH_SLOT_mh_tact_state = 63,
-    MH_LIBMH_SLOT_mh_lockstep_time_tick_entry_thunk = 64,
-    MH_LIBMH_SLOT_mh_lockstep_time_tick_requested = 65,
-    MH_LIBMH_SLOT_mh_libmh_in_trap_count = 66,
-    MH_LIBMH_SLOT_libmh_bound_count = 67,
-    MH_LIBMH_SLOT_libmh_hook_api_unbound = 68,
-    MH_LIBMH_SLOT_libmh_host_api_unbound = 69,
-    MH_LIBMH_SLOT_libmh_in_is_open = 70,
-    MH_LIBMH_SLOT_libmh_in_open = 71,
-    MH_LIBMH_SLOT_libmh_in_unbound = 72,
-    MH_LIBMH_SLOT_libmh_region_count = 73,
-    MH_LIBMH_SLOT_libmh_set_event_sink = 74,
-    MH_LIBMH_SLOT_libmh_set_hook_api = 75,
-    MH_LIBMH_SLOT_libmh_set_host_api = 76,
-    MH_LIBMH_SLOT_libmh_set_session_seed = 77,
-    MH_LIBMH_SLOT_libmh_set_tact_host_api = 78,
-    MH_LIBMH_SLOT_libmh_set_text_sink = 79,
-    MH_LIBMH_SLOT_libmh_tact_host_api_unbound = 80,
+    MH_LIBMH_SLOT_mh_sim_sim_step_promoted_via_rebind = 61,
+    MH_LIBMH_SLOT_mh_lockstep_sim_tick_entry_thunk = 62,
+    MH_LIBMH_SLOT_mh_lockstep_sim_tick_requested = 63,
+    MH_LIBMH_SLOT_mh_tact_state = 64,
+    MH_LIBMH_SLOT_mh_lockstep_time_tick_entry_thunk = 65,
+    MH_LIBMH_SLOT_mh_lockstep_time_tick_requested = 66,
+    MH_LIBMH_SLOT_mh_libmh_in_trap_count = 67,
+    MH_LIBMH_SLOT_libmh_bound_count = 68,
+    MH_LIBMH_SLOT_libmh_hook_api_unbound = 69,
+    MH_LIBMH_SLOT_libmh_host_api_unbound = 70,
+    MH_LIBMH_SLOT_libmh_in_is_open = 71,
+    MH_LIBMH_SLOT_libmh_in_open = 72,
+    MH_LIBMH_SLOT_libmh_in_unbound = 73,
+    MH_LIBMH_SLOT_libmh_region_count = 74,
+    MH_LIBMH_SLOT_libmh_set_event_sink = 75,
+    MH_LIBMH_SLOT_libmh_set_hook_api = 76,
+    MH_LIBMH_SLOT_libmh_set_host_api = 77,
+    MH_LIBMH_SLOT_libmh_set_session_seed = 78,
+    MH_LIBMH_SLOT_libmh_set_tact_host_api = 79,
+    MH_LIBMH_SLOT_libmh_set_text_sink = 80,
+    MH_LIBMH_SLOT_libmh_tact_host_api_unbound = 81,
 };
 
 extern "C" {

@@ -1,0 +1,29 @@
+# mp:GX1 CLIENT -- join and stay in the match until the host has taken both indicator frames (the
+# host's indicator only draws while a live match is running; a client that left would end it).
+#
+# Pair with mp_host_gx1_netind.txt.
+
+settled value:110
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+present Internet server
+settled Internet server
+clickl Internet server
+present Server address
+settled Connect
+clickl Connect
+sessions 1
+settled Join game
+clickl Join game
+present Network players
+signal lobby
+settled Cancel
+absent Network players
+gamemode 2
+gameclock 6000
+capture c1_ingame
+awaitsignal hostdone
+log CLIENT stayed in the match until the host's indicator probe finished
+end

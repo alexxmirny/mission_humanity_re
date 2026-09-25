@@ -506,46 +506,79 @@ jobs:
           retention-days: 14
 
   publish-pages:
-    name: publish manifest.json to GitHub Pages
+    name: publish manifest.json to the Pages branch
     needs: publish
-    # GATED ON A REPOSITORY VARIABLE (2026-09-18): GitHub Pages is not available on a PRIVATE
-    # repository on the free plan, so on the private rehearsal remote this job can only fail, after
-    # `publish` has already produced the release and attached the manifest. Set MH_PAGES_PUBLISH to
-    # `true` (Settings -> Secrets and variables -> Actions -> Variables) on the PUBLIC repo only,
-    # where Pages exists and Source is set to GitHub Actions; unset, the job is SKIPPED (grey, not
-    # red) and the manifest still ships as a release asset.
-    if: startsWith(github.ref, 'refs/tags/v') && vars.MH_PAGES_PUBLISH == 'true'
+    # BRANCH MODE (dist V021, 2026-09-23; docs/release.md section 7.3). Pages serves a dedicated
+    # orphan branch (`gh-pages`) and this job COMMITS manifest.json + its .minisig to it. It replaced
+    # an actions/deploy-pages job: that action refuses a `legacy` (branch) Pages source, and branch
+    # mode is the better arrangement -- an orphan branch is rewritten by nothing, where `main` is
+    # replaced wholesale by build_public_seed.py on every publish (dead-ends G288).
+    # GATED ON A REPOSITORY VARIABLE naming the branch: set MH_PAGES_BRANCH = gh-pages on the
+    # PUBLIC repo only (Pages does not exist on a private free-plan repo); unset, the job is SKIPPED
+    # (grey, not red) and the manifest still ships as a release asset.
+    # ORDER: `publish` has already uploaded every asset the manifest names, so a launcher that reads
+    # this manifest the moment it is served finds its URLs live (assets first, manifest last).
+    if: startsWith(github.ref, 'refs/tags/v') && vars.MH_PAGES_BRANCH != ''
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     permissions:
-      # THE PAGES DEPLOYMENT SCOPES, and nothing else -- this job downloads an artifact and calls two
-      # first-party actions; it never touches the release or the repository contents.
+      # contents: push the Pages branch. pages: request a build (a push by GITHUB_TOKEN does not
+      # reliably trigger one) and read its status. Nothing else.
+      contents: write
       pages: write
-      id-token: write
-    environment:
-      name: github-pages
-      url: ${{ steps.deploy.outputs.page_url }}
+    env:
+      PAGES_BRANCH: ${{ vars.MH_PAGES_BRANCH }}
+      GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/download-artifact@v4
         with:
           name: manifest-${{ needs.publish.outputs.version }}
-          path: pages
+          path: new
 
-      # WHY actions/upload-pages-artifact + actions/deploy-pages OVER A gh-pages BRANCH (dist LA3's
-      # tracker row asks for a named choice here). Both are first-party GitHub actions -- the same
-      # trust tier as actions/checkout and actions/download-artifact already used throughout this
-      # repo's workflows, unlike the third-party actions (e.g. peaceiris/actions-gh-pages) a branch-
-      # based deploy would otherwise need. A branch additionally accumulates every past deploy's
-      # binary content in its git history forever unless something force-pushes it, and needs its own
-      # git identity/token configuration; the Pages deployment API instead keeps ONE current
-      # deployment with GitHub's own deployment history, and nothing here has to be a git commit.
-      # Neither choice changes what the SHIPPED launcher does or how it talks to the network: the
-      # constraint dist LA3 names ("no unauthenticated GitHub API use by the launcher") is about
-      # update.rs's runtime fetch, which is a plain HTTPS GET against whichever static host serves
-      # manifest.json either way -- it does not favour one CI publishing mechanism over the other.
-      - uses: actions/upload-pages-artifact@v3
-        with:
-          path: pages
+      - name: commit the manifest to the Pages branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone --depth 1 --branch "$PAGES_BRANCH" \
+            "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" site
+          cp new/manifest.json new/manifest.json.minisig site/
+          cd site
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add manifest.json manifest.json.minisig
+          if git diff --cached --quiet; then
+            echo "manifest on $PAGES_BRANCH is already this release's -- nothing to commit"
+          else
+            git commit -q -m "manifest ${{ needs.publish.outputs.version }} (${GITHUB_REF_NAME})"
+            git push -q origin "HEAD:$PAGES_BRANCH"
+          fi
+          echo "PUSHED_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
 
-      - id: deploy
-        uses: actions/deploy-pages@v4
+      - name: build Pages and read the served manifest back
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Request a build and wait for the one that built OUR commit, then read the site back:
+          # nothing else in the release flow fetches Pages, so a 404 or a stale manifest here is
+          # invisible to a green pipeline and breaks only the players already in the field.
+          gh api -X POST "repos/${GITHUB_REPOSITORY}/pages/builds" >/dev/null
+          url="$(gh api "repos/${GITHUB_REPOSITORY}/pages" --jq .html_url)"
+          for i in $(seq 1 60); do
+            read -r status commit < <(gh api "repos/${GITHUB_REPOSITORY}/pages/builds/latest" \
+              --jq '"\(.status) \(.commit)"')
+            if [ "$commit" = "$PUSHED_SHA" ] && [ "$status" = "built" ]; then break; fi
+            if [ "$commit" = "$PUSHED_SHA" ] && [ "$status" = "errored" ]; then
+              echo "Pages build of $PUSHED_SHA errored"; exit 1
+            fi
+            sleep 10
+          done
+          for f in manifest.json manifest.json.minisig; do
+            ok=0
+            for i in $(seq 1 30); do
+              curl -fsS -H 'Cache-Control: no-cache' "${url%/}/$f?run=${GITHUB_RUN_ID}" -o "served_$f" \
+                && cmp -s "served_$f" "new/$f" && { ok=1; break; }
+              sleep 10
+            done
+            [ "$ok" = 1 ] || { echo "served $f != the signed one after 5 min: ${url%/}/$f"; exit 1; }
+            echo "served $f is byte-identical to the signed one"
+          done

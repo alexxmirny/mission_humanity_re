@@ -100,6 +100,49 @@ uint32_t g_tx_bytes = 0;
 // simultaneous push would need. mp:T2a is the item that would change that, and it is not this one.
 constexpr DWORD TX_REARM_MS = 90000; // a transfer this old is presumed lost; re-arm it
 
+// ---- THE HOST LOCK (mp:T6) ----------------------------------------------------------------------
+//
+// THE RACE THIS CLOSES, named by its two threads. `host_on_join` runs on the TRANSPORT'S RECV THREAD
+// (net_discovery.cpp on_join_recv, for every admitted JOIN). `host_pump_transfer` runs on the MAIN
+// THREAD (the lobby tick). Both read and write `g_peer[]` and `g_tx_peer`. The first cut had no lock,
+// and host_on_join published a peer in TWO steps: `seated = true` at the top, `holds = now` at the
+// bottom, with a formatted line and a log-file write in between. A pump that ran inside that gap saw
+// "seated, does not hold", read the 462 KB map, and armed the snapshot. The recv thread then logged
+// "holds the map -- nothing to transfer" and set `holds`, too late. The rig showed it as
+// `snapshot SEND armed` ~4 ms AFTER the "holds the map" line, in about 1 run in 3 (wave-4 shim runs
+// r3/r6/r8 + c1_180_r2; 20 of the 67 D30 runs where the joiner held the map). The ordering was lost
+// at the torn publish, not in the pump, so a re-check in the pump alone would have narrowed the
+// window, not closed it.
+//
+// THE FIX, in two parts:
+//   1. A peer's whole report (seated + holds + blocked + had + name) is published under this lock in
+//      ONE step. A pump either sees nothing of a JOIN or all of it.
+//   2. The pump RESERVES the peer (`g_tx_peer = want`) under the lock when it chooses, does the slow
+//      file read outside it, and RE-CHECKS under the lock just before sending. A report that lands in
+//      between (a completion re-JOIN, a leave) clears the reservation, and the pump withdraws.
+//
+// A LEAF LOCK. Nothing is called under it: no log line (seam_log has its own lock), no transport call
+// (MH_Net_SnapshotSend / SnapshotStatus). The recv thread may hold transport locks when it calls in,
+// so a transport call made while holding this lock could deadlock against it. Lines are formatted
+// into locals under the lock and written after it is released.
+//
+// The one window left is between the final re-check and MH_Net_SnapshotSend. Only a peer whose own
+// JOIN said it LACKS the map can be in it, so it is a real transfer to a peer that reports the map
+// during a few microseconds. That is not the race above, which sent to a peer whose first and only
+// report said it held the map.
+SRWLOCK g_host_lock = SRWLOCK_INIT;
+
+struct HostLock {
+    HostLock() { AcquireSRWLockExclusive(&g_host_lock); }
+    ~HostLock() { ReleaseSRWLockExclusive(&g_host_lock); }
+    HostLock(const HostLock &)            = delete;
+    HostLock &operator=(const HostLock &) = delete;
+};
+
+// maptest's doors onto the two interleavings (see set_pump_hooks_for_test in the header). Null in
+// every game process.
+const PumpTestHooks *g_pump_hooks = nullptr;
+
 // ---- client state -------------------------------------------------------------------------------
 
 enum ClientState {
@@ -147,11 +190,13 @@ int enabled() {
 // a lobby notice naming a peer nobody could help. A feature that makes a working configuration
 // unplayable is worse than the problem it solves.
 //
-// So the whole mechanism is INERT on a transport without the channel: the host makes no content
-// claim, which is exactly the all-zero "no claim" a pre-X2 host sends, so every joiner falls back
-// to its own copy and the lobby behaves precisely as it did before this item. That is a real
-// residue and not a fix -- a TCP pair can still desync on a same-named different map -- and it is
-// stated in the log rather than left to be discovered.
+// So on a transport without the channel THE TRANSFER is inert -- never armed, never waited for --
+// but THE CLAIM IS NOT (mp:X2b, 2026-09-23). The first cut made no claim at all on TCP, which left
+// a TCP pair free to desync on a same-named different map. Now the host still advertises its hash on
+// every transport, every joiner still reports what it holds in its JOIN, and a joiner whose report
+// disagrees is a peer the host REFUSES TO START WITH, by name -- a refusal in the lobby beats a desync
+// 8000 steps into the match. What stays impossible on TCP is the rescue (the download); what is no
+// longer possible is playing the wrong map without being told.
 //
 // `supported` and not `state`: X1b drew that distinction deliberately. `supported` is a property of
 // the BUILD ("this module has channel C"), answered 1 even while the link is down; `state` is what
@@ -162,6 +207,13 @@ bool transport_can_carry() {
     MH_Net_SnapshotStatus(&st);
     return st.supported != 0;
 }
+
+// maptest's door onto the question above (-1 = ask the module, 0/1 = pretend). The offline suite
+// cannot swap transport modules mid-run, and "a TCP-shaped host refuses Start on a mismatch" is a
+// claim about the gate's logic, not about the module -- so the answer is staged here.
+int g_carry_test = -1;
+
+bool can_carry() { return g_carry_test >= 0 ? g_carry_test != 0 : transport_can_carry(); }
 
 // ---- small helpers ------------------------------------------------------------------------------
 
@@ -509,27 +561,29 @@ constexpr uintptr_t ADDR_MAP_NAME = ADDR_CUR_MAP + MD_MAPNAME;
 // a 300 KB file sixty times a second, so the name is the cache key.
 void host_refresh_claim() {
     if (!mh::en_build_ok()) return; // the claim comes out of current_map_data; offline there is none
-    // BEFORE THE NAME CACHE, deliberately: a `return` past the cache write below would record the
-    // name as decided, and a decision taken while the module was not yet bound would then never be
-    // revisited. This branch leaves the cache alone, so the question is asked again next frame.
-    if (!transport_can_carry()) {
+    // mp:X2b: NO EARLY RETURN ON A TRANSPORT WITHOUT CHANNEL C any more. The claim is made on every
+    // transport; only the transfer is gated on the channel (host_pump_transfer and
+    // host_next_peer_needing_map), and host_start_blocked turns a mismatch it cannot rescue into a
+    // named refusal. Told once, so a TCP log says which of the two behaviours it is running.
+    if (!can_carry()) {
         static bool said = false;
         if (!said) {
             said = true;
-            mlog("; [map] host noclaim -- this transport has no bulk channel, so a joiner could "
-                 "never fetch a map and the lobby must not wait for one. Peers fall back to their "
-                 "own copy of whatever the map is called, exactly as before X2 (and can still "
-                 "desync on a same-named different map -- that is the residue, not a fix)\n");
+            mlog("; [map] host nocarry -- this transport has no bulk channel: the map claim is still "
+                 "advertised, but a joiner holding different content (or none) cannot be sent it, so "
+                 "Start is REFUSED naming that joiner rather than risking a desync (mp:X2b)\n");
         }
-        return;
     }
     const char *live = (const char *)ADDR_MAP_NAME;
     if (live[0] == '\0') return;
     if (lstrcmpiA(live, g_host_map) == 0) return; // unchanged
-    lstrcpynA(g_host_map, live, sizeof(g_host_map));
-    g_host_claim = false;
-    g_host_size  = 0;
-    memset(g_host_hash, 0, HASH_N);
+    {
+        HostLock l; // mp:T6: the recv thread reads these three in host_on_join
+        lstrcpynA(g_host_map, live, sizeof(g_host_map));
+        g_host_claim = false;
+        g_host_size  = 0;
+        memset(g_host_hash, 0, HASH_N);
+    }
     char hex[np::MAP_HASH_HEX_CAP];
 
     if (in_resource_pack(g_host_map)) {
@@ -550,51 +604,120 @@ void host_refresh_claim() {
         mlog(g_line);
         return;
     }
-    g_host_claim = true;
+    {
+        HostLock l; // host_on_join reads the claim on the recv thread (mp:T6)
+        g_host_claim = true;
+        // A new map invalidates every peer's answer: they reported against the OLD content.
+        for (int i = 0; i < 8; ++i) {
+            if (!g_peer[i].seated) continue;
+            g_peer[i].holds   = false;
+            g_peer[i].blocked = false;
+        }
+        g_tx_peer = -1;
+    }
     wsprintfA(g_line, "; [map] host claim %s sha=%s size=%lu\n", g_host_map,
               hexof(g_host_hash, hex, sizeof(hex)), (unsigned long)g_host_size);
     mlog(g_line);
-    // A new map invalidates every peer's answer: they reported against the OLD content.
-    for (int i = 0; i < 8; ++i) {
-        if (!g_peer[i].seated) continue;
-        g_peer[i].holds   = false;
-        g_peer[i].blocked = false;
-    }
-    g_tx_peer = -1;
+}
+
+// The transfer target, or -1. Caller holds g_host_lock and has already asked can_carry() (a
+// transport call, so never made under the lock).
+int next_peer_locked() {
+    if (!g_host_claim) return -1;
+    for (int i = 0; i < 8; ++i)
+        if (g_peer[i].seated && !g_peer[i].holds && !g_peer[i].blocked) return i;
+    return -1;
+}
+
+int send_snapshot(int peer, const void *body, int len) {
+    if (g_pump_hooks != nullptr && g_pump_hooks->send != nullptr)
+        return g_pump_hooks->send(peer, body, len, g_pump_hooks->ctx);
+    return MH_Net_SnapshotSend(peer, body, len);
 }
 
 // Arm the transfer for the first seated peer that does not hold the map. One at a time; see
 // TX_REARM_MS for why a stuck one is re-armed rather than waited on forever.
+//
+// mp:T6: CHOOSE and RESERVE under the lock, read the file outside it, RE-CHECK under the lock, then
+// send. The lock's block comment (THE HOST LOCK) names the race; this function is its second half.
 void host_pump_transfer() {
     if (!g_host_claim) return;
-    if (g_tx_peer >= 0) {
-        if (GetTickCount() - g_tx_armed < TX_REARM_MS) return; // still believed to be running
-        wsprintfA(g_line, "; [map] send timed out for peer %d after %lu ms -- re-arming\n", g_tx_peer,
+    if (!can_carry()) return; // mp:X2b: never arm a transfer the link cannot carry
+    int timed_out = -1, want = -1;
+    {
+        HostLock l;
+        if (g_tx_peer >= 0) {
+            if (GetTickCount() - g_tx_armed < TX_REARM_MS) return; // still believed to be running
+            timed_out = g_tx_peer;
+            g_tx_peer = -1;
+        }
+        want = next_peer_locked();
+        if (want >= 0) {
+            g_tx_peer  = want; // the reservation: a report from this peer now clears it
+            g_tx_armed = GetTickCount();
+        }
+    }
+    if (timed_out >= 0) {
+        wsprintfA(g_line, "; [map] send timed out for peer %d after %lu ms -- re-arming\n", timed_out,
                   (unsigned long)TX_REARM_MS);
         mlog(g_line);
-        g_tx_peer = -1;
     }
-    const int want = host_next_peer_needing_map();
     if (want < 0) return;
 
-    uint32_t n    = 0;
-    uint8_t *body = read_file(dir_for(g_host_map), g_host_map, MAP_MAX_BYTES, &n);
-    if (body == nullptr) {
+    uint32_t       n    = 0;
+    uint8_t       *body = nullptr;
+    const uint8_t *src  = nullptr;
+    if (g_pump_hooks != nullptr && g_pump_hooks->body != nullptr) {
+        src = g_pump_hooks->body; // maptest: no Maps\ directory under the suite
+        n   = g_pump_hooks->len;
+    } else {
+        body = read_file(dir_for(g_host_map), g_host_map, MAP_MAX_BYTES, &n);
+        src  = body;
+    }
+    if (src == nullptr) {
+        {
+            HostLock l;
+            if (g_tx_peer == want) g_tx_peer = -1;
+            g_host_claim = false; // stop promising something we cannot deliver
+        }
         wsprintfA(g_line, "; [map] send REFUSED -- %s%s could not be read\n", dir_for(g_host_map),
                   g_host_map);
         mlog(g_line);
-        g_host_claim = false; // stop promising something we cannot deliver
+        return;
+    }
+    if (g_pump_hooks != nullptr && g_pump_hooks->between != nullptr)
+        g_pump_hooks->between(want, g_pump_hooks->ctx); // maptest: a JOIN lands HERE
+
+    // THE RE-CHECK. The reservation survives only if nothing this peer reported since the choice
+    // says it holds the map (host_on_join clears it) or that it left (host_on_leave clears it).
+    bool still = false;
+    char name[32];
+    {
+        HostLock l;
+        still = g_tx_peer == want && g_peer[want].seated && !g_peer[want].holds &&
+                !g_peer[want].blocked;
+        if (!still && g_tx_peer == want) g_tx_peer = -1;
+        lstrcpynA(name, g_peer[want].name, sizeof(name));
+    }
+    if (!still) {
+        free_bytes(body);
+        wsprintfA(g_line, "; [map] send WITHDRAWN for peer %d '%s' -- it reported the map (or left) "
+                          "while the transfer was being prepared (mp:T6)\n",
+                  want, name);
+        mlog(g_line);
         return;
     }
     // MH_Net_SnapshotSend COPIES (mh_net_module.h's ownership rule), so the buffer is ours to
     // release the instant it returns rather than for the length of the transfer.
-    const int armed = MH_Net_SnapshotSend(want, body, (int)n);
+    const int armed = send_snapshot(want, src, (int)n);
     free_bytes(body);
-    if (!armed) return; // not admitted yet, or a transfer is already running -- the next tick retries
-    g_tx_peer  = want;
-    g_tx_armed = GetTickCount();
+    if (!armed) { // not admitted yet, or a transfer is already running -- the next tick retries
+        HostLock l;
+        if (g_tx_peer == want) g_tx_peer = -1;
+        return;
+    }
     g_tx_bytes = n;
-    wsprintfA(g_line, "; [map] send armed to peer %d '%s' (%lu B of %s)\n", want, g_peer[want].name,
+    wsprintfA(g_line, "; [map] send armed to peer %d '%s' (%lu B of %s)\n", want, name,
               (unsigned long)n, g_host_map);
     mlog(g_line);
 }
@@ -604,22 +727,38 @@ void host_tick() {
     host_pump_transfer();
 
     char        peer[32];
-    static bool was_blocked = false;
-    if (host_start_blocked(peer, sizeof(peer))) {
-        wchar_t wname[32];
+    bool        unfetchable = false;
+    static bool was_blocked = false, was_unfetchable = false;
+    if (host_start_blocked(peer, sizeof(peer), &unfetchable)) {
+        wchar_t wname[32], wmap[MAP_NAME_CAP];
         MultiByteToWideChar(CP_ACP, 0, peer, -1, wname, 32);
-        wsprintfW(g_notice, L"Sending the map to %s -- Start is held until it arrives.", wname);
+        MultiByteToWideChar(CP_ACP, 0, g_host_map, -1, wmap, MAP_NAME_CAP);
+        // mp:X2b: the two refusals say different things to the player, because only one of them
+        // ends by itself. A download finishes; a mismatch on a link that cannot carry the map does
+        // not, and the notice must say what would fix it (the same file on both machines).
+        if (unfetchable)
+            wsprintfW(g_notice, L"%s has a different copy of %s -- this connection cannot send maps, "
+                                L"so Start is refused.",
+                      wname, wmap);
+        else
+            wsprintfW(g_notice, L"Sending the map to %s -- Start is held until it arrives.", wname);
         g_notice_on = true;
         gate_close();
         // LOGGED ON THE EDGE, not every lobby frame: this runs at frame rate, and a refusal that
         // wrote sixty lines a second would be the same fact told until it was unreadable. The edge
         // is also what an oracle wants -- "the gate closed, for this peer", once per closing.
-        if (!was_blocked) {
-            wsprintfA(g_line, "; [map] start REFUSED -- waiting for '%s' to finish downloading the "
-                              "map\n",
-                      peer);
+        if (!was_blocked || was_unfetchable != unfetchable) {
+            if (unfetchable)
+                wsprintfA(g_line, "; [map] start REFUSED -- '%s' holds a different %s and this "
+                                  "transport cannot carry maps (mp:X2b: a refusal, not a desync)\n",
+                          peer, g_host_map);
+            else
+                wsprintfA(g_line, "; [map] start REFUSED -- waiting for '%s' to finish downloading the "
+                                  "map\n",
+                          peer);
             mlog(g_line);
-            was_blocked = true;
+            was_blocked     = true;
+            was_unfetchable = unfetchable;
         }
     } else {
         if (was_blocked) {
@@ -653,64 +792,105 @@ void host_fill_advert(np::SessionInfo &si) {
     si.map_size = g_host_size;
 }
 
+// RECV THREAD. mp:T6: the whole report is built in a local and published under g_host_lock in one
+// step -- see THE HOST LOCK for the torn publish this replaced. The log line is written after the
+// lock is released.
 void host_on_join(int sender, const char *player_name, const uint8_t map_hash[HASH_N]) {
     if (!enabled()) return;
     if (sender < 0 || sender > 7) return;
-    PeerMap &p = g_peer[sender & 7];
-    p.seated   = true;
-    if (player_name != nullptr && player_name[0] != '\0') lstrcpynA(p.name, player_name, sizeof(p.name));
-    else if (p.name[0] == '\0') wsprintfA(p.name, "Player%d", sender + 1);
-    memcpy(p.had, map_hash, HASH_N);
+    const bool carry = can_carry(); // a transport call: asked before the lock, never under it
+    if (g_pump_hooks != nullptr && g_pump_hooks->join_prepublish != nullptr)
+        g_pump_hooks->join_prepublish(sender, g_pump_hooks->ctx); // maptest: a pump runs HERE
 
-    char hex[np::MAP_HASH_HEX_CAP], hex2[np::MAP_HASH_HEX_CAP];
-    if (!g_host_claim) {
-        p.holds = true; // nothing to hold: we make no claim, so nobody can fail it
-        return;
+    char line[400];
+    line[0] = '\0';
+    {
+        HostLock l;
+        PeerMap  p = g_peer[sender & 7];
+        p.seated   = true;
+        if (player_name != nullptr && player_name[0] != '\0') lstrcpynA(p.name, player_name, sizeof(p.name));
+        else if (p.name[0] == '\0') wsprintfA(p.name, "Player%d", sender + 1);
+        memcpy(p.had, map_hash, HASH_N);
+
+        char hex[np::MAP_HASH_HEX_CAP], hex2[np::MAP_HASH_HEX_CAP];
+        if (!g_host_claim) {
+            p.holds = true; // nothing to hold: we make no claim, so nobody can fail it
+        } else {
+            const bool now = np::map_hash_equal(p.had, g_host_hash);
+            if (now && !p.holds) {
+                wsprintfA(line, "; [map] peer %d '%s' holds the map (sha=%s) -- nothing to transfer\n",
+                          sender, p.name, hexof(g_host_hash, hex, sizeof(hex)));
+                // Its transfer is done (or, mid-pump, withdrawn); let the next peer have the link.
+                if (g_tx_peer == sender) g_tx_peer = -1;
+            } else if (!now && !p.blocked) {
+                wsprintfA(line, "; [map] peer %d '%s' needs the map (has=%s want=%s)%s\n", sender,
+                          p.name, np::map_hash_is_none(p.had) ? "none" : hexof(p.had, hex, sizeof(hex)),
+                          hexof(g_host_hash, hex2, sizeof(hex2)),
+                          carry ? "" : " -- this transport cannot send it; Start will be refused");
+            }
+            p.holds = now;
+        }
+        g_peer[sender & 7] = p; // THE publish: seated and holds become visible together
     }
-    const bool now = np::map_hash_equal(p.had, g_host_hash);
-    if (now && !p.holds) {
-        wsprintfA(g_line, "; [map] peer %d '%s' holds the map (sha=%s) -- nothing to transfer\n",
-                  sender, p.name, hexof(g_host_hash, hex, sizeof(hex)));
-        mlog(g_line);
-        if (g_tx_peer == sender) g_tx_peer = -1; // its transfer is done; let the next peer have the link
-    } else if (!now && !p.blocked) {
-        wsprintfA(g_line, "; [map] peer %d '%s' needs the map (has=%s want=%s)\n", sender, p.name,
-                  np::map_hash_is_none(p.had) ? "none" : hexof(p.had, hex, sizeof(hex)),
-                  hexof(g_host_hash, hex2, sizeof(hex2)));
-        mlog(g_line);
-    }
-    p.holds = now;
+    if (line[0] != '\0') mlog(line);
 }
 
 void host_on_leave(int sender) {
     if (sender < 0 || sender > 7) return;
+    HostLock l;
     g_peer[sender & 7] = PeerMap{};
     if (g_tx_peer == sender) g_tx_peer = -1;
 }
 
 int host_next_peer_needing_map() {
     if (!enabled() || !g_host_claim) return -1;
-    for (int i = 0; i < 8; ++i)
-        if (g_peer[i].seated && !g_peer[i].holds && !g_peer[i].blocked) return i;
-    return -1;
+    if (!can_carry()) return -1; // mp:X2b: nobody is a transfer target on a link without channel C
+    HostLock l;
+    return next_peer_locked();
 }
 
 void host_set_claim_for_test(const char *map_name, const uint8_t hash[HASH_N], uint32_t size) {
+    HostLock l;
     lstrcpynA(g_host_map, map_name, sizeof(g_host_map));
     memcpy(g_host_hash, hash, HASH_N);
     g_host_size  = size;
     g_host_claim = !np::map_hash_is_none(g_host_hash);
 }
 
-bool host_start_blocked(char *out_peer, int cap) {
+void set_can_carry_for_test(int v) { g_carry_test = v; }
+
+void set_pump_hooks_for_test(const PumpTestHooks *h) { g_pump_hooks = h; }
+
+void host_pump_for_test() { host_pump_transfer(); }
+
+bool host_start_blocked(char *out_peer, int cap, bool *out_unfetchable) {
+    if (out_unfetchable != nullptr) *out_unfetchable = false;
     if (!enabled() || !g_host_claim) return false;
+    const bool carry = can_carry();
+    HostLock   l;
     for (int i = 0; i < 8; ++i) {
         if (g_peer[i].seated && !g_peer[i].holds) {
             if (out_peer != nullptr && cap > 0) lstrcpynA(out_peer, g_peer[i].name, cap);
+            // mp:X2b: without channel C this is not a wait, it is a refusal -- nothing will arrive.
+            if (out_unfetchable != nullptr) *out_unfetchable = !carry;
             return true;
         }
     }
     return false;
+}
+
+bool host_refuse_start_click() {
+    char peer[32];
+    bool unfetchable = false;
+    if (!host_start_blocked(peer, sizeof(peer), &unfetchable)) return false;
+    wsprintfA(g_line,
+              "; [map] start CLICK REFUSED -- '%s' %s; begin_map_load NOT run (mp:X2/X2b: the "
+              "activation is refused, not only the widget greyed)\n",
+              peer,
+              unfetchable ? "holds a different map and this transport cannot carry it"
+                          : "is still downloading the map");
+    mlog(g_line);
+    return true;
 }
 
 // =================================================================================================
@@ -842,15 +1022,14 @@ void client_resolve_now() {
             memcpy(g_my_hash, pretend_other_hash(), HASH_N);
         else if (!file_hash(dir_for(g_want_map), g_want_map, g_my_hash, nullptr))
             memset(g_my_hash, 0, HASH_N);
-        if (!transport_can_carry()) {
-            // The mirror of the host's guard, and it should be unreachable: a host on this
-            // transport makes no claim, so there is nothing to be missing. It exists because
-            // "unreachable" is a claim about the OTHER peer's build, and the failure it would
-            // otherwise produce is this peer waiting for a transfer that can never begin.
+        if (!can_carry()) {
+            // mp:X2b: REACHABLE NOW, and expected -- the host claims on every transport. This peer
+            // cannot fetch the host's copy, so it does not wait for one: it reports what it holds
+            // (g_my_hash, above) and the HOST refuses Start naming it. Nothing here waits.
             g_cs = CS_BLOCKED;
             wsprintfA(g_line, "; [map] client BLOCKED %s -- this transport has no bulk channel, so "
-                              "the host's copy cannot be fetched (its advert should not have "
-                              "carried a claim: peer build mismatch?)\n",
+                              "the host's copy cannot be fetched; the host will refuse Start until "
+                              "both peers hold the same file\n",
                       g_want_map);
             mlog(g_line);
         } else if (in_resource_pack(g_want_map)) {
@@ -984,8 +1163,12 @@ void lobby_tick(int is_host) {
 }
 
 void session_reset() {
-    for (int i = 0; i < 8; ++i) g_peer[i] = PeerMap{};
-    g_tx_peer     = -1;
+    {
+        HostLock l;
+        for (int i = 0; i < 8; ++i) g_peer[i] = PeerMap{};
+        g_tx_peer    = -1;
+        g_host_claim = false;
+    }
     g_want_valid  = false;
     g_cs          = CS_IDLE;
     g_notice_on   = false;

@@ -229,6 +229,16 @@ RULINGS = {
         note="net_seams.cpp. Sim promotion state read from net code to decide WHICH hook the D21 "
         "sampler gets. Outside mh/lockstep, so never part of the D1 verdict. A self-test anchor.",
     ),
+    "mh::sim::sim_step_promoted_via_rebind": dict(
+        bucket=1,
+        scope="sim",
+        guard="unconditional, beside sim_step_promoted in install_desync_watch",
+        exec1=True,
+        note="net_seams.cpp, mp:D32. Which of the promoted root's two install routes ran: rebind "
+        "(the harness owns the entry and feeds the detector) or direct install (the pre-hook is "
+        "the only feeder). Same kind of read as sim_step_promoted: outside mh/lockstep, so never "
+        "part of the D1 verdict.",
+    ),
     # mh::sim::set_sim_step_pre_hook was HERE. RESOLVED by fork F3D: install_desync_watch registers
     # through the named point (mh::hook::register_callback(point::sim_step_pre, ...)) instead of
     # naming the sim installer across the fork boundary -- the conversion F3C scoped but deferred,

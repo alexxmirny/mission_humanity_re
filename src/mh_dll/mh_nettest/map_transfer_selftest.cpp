@@ -444,6 +444,7 @@ int run_maptest(int port) {
     // because a gate that is always shut and a gate that is always open both pass one of those.
     {
         maps::session_reset();
+        maps::set_can_carry_for_test(1); // arm F is the UDP shape (channel C present); arm G is TCP's
         maps::host_set_claim_for_test(BASE, host_h, MAPLEN);
         char who[32];
 
@@ -481,6 +482,163 @@ int run_maptest(int port) {
         maps::host_on_join(1, "Bob", zero);
         checkf(!maps::host_start_blocked(who, sizeof(who)),
                "F: a host that makes NO CLAIM never blocks anyone (a stock map is install-identical)");
+        maps::session_reset();
+    }
+
+    // ---- arm G: THE TCP SHAPE (mp:X2b) -----------------------------------------------------------
+    // A transport with no channel C can never deliver a map, so a mismatch there is a REFUSAL, not a
+    // wait -- and it must be one, because the first cut made no claim at all on TCP and a same-named
+    // different map then desynced 8000 steps in. Asserted both ways: a mismatch (the
+    // map_test_pretend=other shape) shuts the gate, names the peer, flags it unfetchable and arms no
+    // transfer; a matching joiner opens it. A gate that is always shut on TCP passes the first half
+    // and fails the second.
+    {
+        maps::session_reset();
+        maps::set_can_carry_for_test(0);
+        maps::host_set_claim_for_test(BASE, host_h, MAPLEN);
+        char who[32];
+        bool unf = false;
+
+        maps::host_on_join(1, "Bob", mine_h); // same name, different content, over TCP
+        checkf(maps::host_start_blocked(who, sizeof(who), &unf),
+               "G: over TCP a joiner holding DIFFERENT content shuts the gate (refusal, not desync)");
+        checkf(lstrcmpA(who, "Bob") == 0, "G: ...and names the peer ('%s')", who);
+        checkf(unf, "G: ...and marks it UNFETCHABLE (the notice must not promise a download)");
+        checkf(maps::host_next_peer_needing_map() == -1,
+               "G: ...and NO transfer is ever armed on a link without channel C");
+        // Wave 2 (G291): the widget's DISABLED bit is re-derived by retail every frame, so the
+        // enforcement is the Start ACTIVATION -- launch.cpp's begin_map_load hook asks this.
+        checkf(maps::host_refuse_start_click(),
+               "G: ...and a Start CLICK is refused (the activation, not only the greyed widget)");
+
+        uint8_t zero[MAP_HASH_BYTES] = {0};
+        maps::host_on_join(2, "Eve", zero); // holds nothing at all under that name
+        maps::host_on_join(1, "Bob", host_h);
+        checkf(maps::host_start_blocked(who, sizeof(who), &unf) && lstrcmpA(who, "Eve") == 0 && unf,
+               "G: a TCP joiner holding NOTHING is refused too, by name ('%s')", who);
+
+        maps::host_on_leave(2);
+        checkf(!maps::host_start_blocked(who, sizeof(who), &unf) && !unf,
+               "G: a TCP joiner holding the SAME content does not block Start");
+        checkf(!maps::host_refuse_start_click(), "G: ...and a Start CLICK goes through");
+
+        maps::set_can_carry_for_test(1);
+        maps::host_on_join(3, "Mallory", mine_h);
+        checkf(maps::host_start_blocked(who, sizeof(who), &unf) && !unf,
+               "G: the same mismatch over UDP is a WAIT (unfetchable stays false)");
+        checkf(maps::host_refuse_start_click(),
+               "G: ...and a Start CLICK during the UDP wait is refused too (the X2 gate had the same hole)");
+        maps::set_can_carry_for_test(-1);
+        maps::session_reset();
+    }
+
+    // ---- arm H: THE MAP-HAVE RACE (mp:T6) ---------------------------------------------------------
+    // Two threads meet here in a game process: host_on_join on the transport's recv thread (the
+    // joiner's map-have report) and the lobby tick's pump on the main thread (the snapshot sender).
+    // The rig caught the pump arming a 462 KB snapshot ~4 ms after the host logged that the joiner
+    // already held the map, about 1 run in 3. A rig run can only show that race by chance, so the
+    // suite DRIVES each interleaving through the two hooks, with a counting stub in place of
+    // MH_Net_SnapshotSend. Every "no snapshot" check has a "snapshot sent" twin: a pump that never
+    // sends passes the first kind and fails the second.
+    {
+        struct Rec {
+            int            sends;
+            int            last_peer;
+            int            join_sender; // who the hook reports as
+            const uint8_t *join_hash;
+            int            leave; // the between-hook sends a LEAVE instead of a JOIN
+        };
+        static Rec          r;
+        const uint8_t       none_h[MAP_HASH_BYTES] = {0};
+        auto                reset_rec              = [] { r = Rec{0, -1, 1, nullptr, 0}; };
+        maps::PumpTestHooks hk{};
+        hk.send = [](int peer, const void *, int, void *) {
+            ++r.sends;
+            r.last_peer = peer;
+            return 1;
+        };
+        hk.body    = g_host_map;
+        hk.len     = MAPLEN;
+        auto begin = [&] {
+            maps::session_reset();
+            maps::set_can_carry_for_test(1);
+            maps::host_set_claim_for_test(BASE, host_h, MAPLEN);
+            reset_rec();
+            hk.between         = nullptr;
+            hk.join_prepublish = nullptr;
+            maps::set_pump_hooks_for_test(&hk);
+        };
+
+        // H1/H2: the plain orders -- the report lands, THEN the pump runs.
+        begin();
+        maps::host_on_join(1, "Bob", host_h);
+        maps::host_pump_for_test();
+        checkf(r.sends == 0, "H1: report-then-pump, joiner HOLDS the map -> no snapshot (sends=%d)", r.sends);
+
+        begin();
+        maps::host_on_join(1, "Bob", mine_h); // the forced-snapshot shape: same name, other bytes
+        maps::host_pump_for_test();
+        checkf(r.sends == 1 && r.last_peer == 1,
+               "H2: report-then-pump, joiner has a DIFFERENT same-named map -> snapshot sent to it (sends=%d)",
+               r.sends);
+        maps::host_pump_for_test();
+        checkf(r.sends == 1, "H2: ...once: a second pump does not re-send while it runs (sends=%d)", r.sends);
+
+        // H3/H4: THE RIG'S ORDER -- the pump runs INSIDE host_on_join, before the report is
+        // published. The first cut had `seated` set and `holds` not yet set at exactly this point.
+        begin();
+        hk.join_prepublish = [](int, void *) { maps::host_pump_for_test(); };
+        maps::host_on_join(1, "Bob", host_h);
+        hk.join_prepublish = nullptr;
+        maps::host_pump_for_test();
+        checkf(r.sends == 0,
+               "H3: pump INSIDE the report, joiner HOLDS the map -> no snapshot, then or after (sends=%d)",
+               r.sends);
+
+        begin();
+        hk.join_prepublish = [](int, void *) { maps::host_pump_for_test(); };
+        maps::host_on_join(1, "Bob", mine_h);
+        hk.join_prepublish = nullptr;
+        checkf(r.sends == 0, "H4: pump INSIDE the report sends nothing before the report is known (sends=%d)",
+               r.sends);
+        maps::host_pump_for_test();
+        checkf(r.sends == 1 && r.last_peer == 1,
+               "H4: ...and once it is known, a joiner WITHOUT the map gets the snapshot (sends=%d)", r.sends);
+
+        // H5/H6/H7: the report lands INSIDE the pump, between its choice and its send (the re-check).
+        begin();
+        maps::host_on_join(1, "Bob", none_h); // first report: holds nothing -> chosen
+        r.join_hash = host_h;
+        hk.between  = [](int, void *) { maps::host_on_join(r.join_sender, "Bob", r.join_hash); };
+        maps::host_pump_for_test();
+        hk.between = nullptr;
+        checkf(r.sends == 0,
+               "H5: a report that the joiner HOLDS the map, landing mid-pump -> the send is withdrawn (sends=%d)",
+               r.sends);
+        char who[32];
+        checkf(!maps::host_start_blocked(who, sizeof(who)), "H5: ...and the Start gate is open");
+        maps::host_pump_for_test();
+        checkf(r.sends == 0, "H5: ...and no later pump sends it either (sends=%d)", r.sends);
+
+        begin();
+        maps::host_on_join(1, "Bob", mine_h);
+        r.join_hash = mine_h; // a re-sent JOIN that still LACKS it
+        hk.between  = [](int, void *) { maps::host_on_join(r.join_sender, "Bob", r.join_hash); };
+        maps::host_pump_for_test();
+        hk.between = nullptr;
+        checkf(r.sends == 1 && r.last_peer == 1,
+               "H6: a mid-pump report that still LACKS the map does not withdraw the send (sends=%d)",
+               r.sends);
+
+        begin();
+        maps::host_on_join(1, "Bob", mine_h);
+        hk.between = [](int, void *) { maps::host_on_leave(1); };
+        maps::host_pump_for_test();
+        hk.between = nullptr;
+        checkf(r.sends == 0, "H7: a joiner that LEAVES mid-pump is not sent the map (sends=%d)", r.sends);
+
+        maps::set_pump_hooks_for_test(nullptr);
+        maps::set_can_carry_for_test(-1);
         maps::session_reset();
     }
 

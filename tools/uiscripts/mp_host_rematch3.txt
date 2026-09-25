@@ -1,0 +1,162 @@
+# mp:U41b HOST -- rematch_play's walk (mp_host_rematch2.txt, copied verbatim below the marker) plus
+# the END of match 2, so the queue counters cross the SES1 match boundary TWICE in one process.
+# U41b's claim is that the second `net: inbound queue rollup (this match)` line carries match 2's
+# own numbers rather than inheriting match 1's high-water; rematch_play's match 2 never ends inside
+# its walk, so it never writes that second line. Assertion: tools/check_queue_rollups.py.
+# No capture after match 2: the main menu FADES IN from black after a match, so a frame there is a
+# race (the first baseline caught it mid-fade); the post-check, not a pixel, is the evidence.
+# ---- mp_host_rematch2.txt ----
+# mp:RM1 (HOST): host_rematch's walk (mp_host_rematch.txt, U40) CONTINUED INTO THE SECOND MATCH. That
+# scenario stops at the re-joined lobby and proves the re-host SEATS the client; this one presses Start
+# on game 2 and proves the match that follows is a real lockstep match -- the field's 2026-09-20 rematches
+# (9806a28e / 05acccbc / e758413a) were seated fine and then desynced at the first sample or froze at
+# committed 6060, because every 2nd match in one process entered session_begin_multi with the previous
+# match's residue (stale gclk, P[1..] relations zeroed on the host, p54bc=0 on the joiner). The walk up to
+# the re-joined lobby is a verbatim copy of mp_host_rematch.txt (its comments explain every step); the
+# captures are renamed so this pair has baselines of its own. Pair with mp_client_rematch2.txt.
+#
+# THE ASSERTION IS THE post_check (tools/check_rematch_residue.py), not the pixels: game 2's
+# PLAYERDUMP[sbm] must show gclk=0, p54bc=2 and the same rel bytes as game 1's on BOTH peers, and game 2's
+# [desync] rollup must read 0 mismatching / >=1 compared. `gameclock 12000` on both peers is the freeze
+# half: a joiner that never entered lockstep (p54bc=0) free-runs while the host sits pinned at its
+# horizon, and the host's clock never gets here.
+
+# ---- game 1 --------------------------------------------------------------------------------------
+settled value:110
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+settled Create
+clickl Create
+present Game name
+settled Ok
+clickl Ok
+present Available maps
+settled Ok
+clickl Ok
+present Network players
+peers 1
+# the client's own "I am really in my lobby" marker (mp_host_start.txt carries the same note)
+awaitsignal lobby
+enabled Start
+settled Start
+capture r1_lobby_game1
+clickl Start
+
+# ---- the match, then END it ----------------------------------------------------------------------
+absent Network players
+gamemode 2
+gameclock 3000
+# The CLIENT quits first and says so, so the host sees an ordinary peer departure rather than racing
+# it.
+awaitsignal cliquit
+# U19c (2026-09-18): UNPINNED, this walk runs in the SHIPPING configuration -- `[net]
+# graceful_leave=1` is the default since U19, so by the time the CLIENT's own ESC->Quit->Yes reaches
+# `signal cliquit` (which fires only after ITS main menu has settled, well after the wire frame was
+# already sent), the departure has already reached US over the wire and ended OUR match too. This
+# peer is no longer in a running 2-player game: it is sitting behind the engine's own end-of-match
+# dialog. RE'D via ReVA on /eng/mh.exe: the dialog's main button (label "Ok", per U19's own dump)
+# runs llm_ui_outcome_report_close_to_hud (0x004c6506), which fades back to the GAMEPLAY HUD, not
+# the main menu -- so dismissing it is a NECESSARY first step, not a substitute, for the ESC->Quit
+# ->Yes walk this scenario always needed to reach the menu and re-create.
+#
+# THE PREDICATE IS BORROWED FROM mp_host_gquit.txt (U19), which dumped this same dialog's widget
+# list on 2026-09-18: "Continue game" gates its presence exactly as it does there.
+present Continue game
+settled Continue game
+clickl Ok
+# MEASURED 2026-09-18 (conductor, four probe runs with `dump`): the first Ok does NOT return to
+# the HUD. It opens the OUTCOME REPORT -- the buildings/units stats table over the ending backdrop,
+# list 0x00653D77, titled with the end-of-match reason ("You are the last player !" here: U19d's
+# corrected wording, read off the frame) -- and that screen has its OWN Ok (widget [4], centre
+# (320,337)). Clicking it starts the menu slide (origin 47 -> 9 one frame later, input_lock still
+# 150) and the slide lands on the MAIN MENU (list 0x00653A7F: values 105/103/110/116/108/99/113),
+# NOT the HUD: the match is over, so retail never returns to gameplay. That is why the old
+# in-match ESC -> Quit game (113) -> Yes (121) walk cannot be used here -- on the main menu value
+# 113 is EXIT, and `gamemode 2` never holds again. Wait for the table's Ok to settle (the first
+# dialog is gone, so the only settled "Ok" is the table's), click it, then gate on the main menu.
+screensettled
+settled Ok
+clickl Ok
+# The table's Ok starts the slide but the OUTCOME REPORT stays the active list (dlg flag 0x33 held,
+# the main-menu widgets already exist behind it and `settled value:110` matches them -- yet a click
+# there is swallowed). ESC is what closes the report and makes the main-menu list (0x00653A7F) the
+# active one; measured with `dump` before and after on 2026-09-18.
+key 0x01
+screensettled
+settled value:110
+# The main menu is still SLIDING IN when value:110 first settles (measured: `clickv 110` sent 0.6 s
+# after the table's Ok landed on the entry and was swallowed -- the walk stalled on `present Player
+# name`). screensettled waits for the frame to stop changing, i.e. the slide to finish and the
+# input lock to lift, before the re-create walk clicks anything.
+screensettled
+settled value:110
+signal hostquit
+
+# ---- re-create, in the same instance -------------------------------------------------------------
+# THE MAIN MENU FADES IN FROM BLACK after a match (captured 2026-09-18: a black frame with the
+# seven entries already at their final centres, then a dim one). No geometry-based wait sees a
+# fade -- `settled`/`screensettled` pass instantly on static widgets -- and a click during it is
+# swallowed (three timed-out runs). `hovered` does gate on it: the mouse loop only reports the
+# entry as hovered once the menu is live (measured 0.58 s here), so park the cursor on the entry
+# and wait for the hover before clicking. The boot-time walk at the top of this script never
+# needed this because the menu SLIDES in there and `settled value:110` waits out the motion.
+cursor 112 192
+hovered value:110
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+settled Create
+clickl Create
+present Game name
+settled Ok
+clickl Ok
+present Available maps
+settled Ok
+clickl Ok
+present Network players
+# THE GHOST GATE, and it is the reason this capture is taken here rather than after the re-join:
+# `peers 1` says the client has a live link to us again -- which is the U40 re-dial, observed from
+# this side -- and `occ 1` says it is NOT seated in this lobby anyway. A peer that merely has a
+# socket is not a player; it must send a fresh JOIN, and it has not been told it may yet (see
+# `signal rehosted`). U40's negative clause -- a departed peer must not ghost the new lobby -- is
+# exactly this frame.
+peers 1
+occ 1
+settled Cancel
+capture r2_new_lobby_no_ghost
+signal rehosted
+# ...and now the real thing: the client joins the NEW lobby and is seated.
+occ 2
+settled Cancel
+capture r3_rejoined
+# ---- game 2: the rematch itself --------------------------------------------------------------------
+# The client is seated (`occ 2` above) and captures its lobby frame; wait for that before Start so
+# its capture is not raced by the launch.
+awaitsignal rejoined
+enabled Start
+settled Start
+clickl Start
+absent Network players
+gamemode 2
+# Past the 10000 ms initial horizon: a peer whose lockstep flag was never re-armed (the joiner's
+# p54bc=0) sends no frames, so the host pins at its horizon and this predicate is what times out.
+gameclock 12000
+capture r4_game2_running
+log HOST played a SECOND match in the same process after re-creating; game 2 ran past 12 s
+# ---- U41b: end match 2 exactly as match 1 ended (the client quits; graceful_leave ends ours) ----
+signal game2up
+awaitsignal cliquit2
+present Continue game
+settled Continue game
+clickl Ok
+screensettled
+settled Ok
+clickl Ok
+key 0x01
+screensettled
+settled value:110
+log HOST: match 2 ended -- the second queue rollup is behind us
+end

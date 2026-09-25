@@ -21,4 +21,7 @@
 # not outcome=7/"Connection to server lost". `cut` (real FIN close, see net_shim.py's failure-shape
 # table) is the primitive that actually triggers a recv()==0 and therefore the fast-drop path.
 
-50000   cut      # real FIN close -- this is what actually arms g_dead_peer/MH_Net_TakeDeadPeer()
+# Gate diet block 2 (2026-09-24): this line is now the FALLBACK. The row's shim_triggers cut the link
+# once both scripts log past `gameclock 45000` (a SIM moment -- the wall-clock 50 s made the host's
+# dialog frame load-dependent); 150 s only bounds a run whose trigger never fires.
+150000  cut      # real FIN close -- this is what actually arms g_dead_peer/MH_Net_TakeDeadPeer()

@@ -6,7 +6,7 @@
 // forwarding thunk per row, attached to the real symbol by a /alternatename linker directive
 // so not one of harness.cpp's call sites changes.
 
-#define MH_HARNESS_HOST_COUNT 30
+#define MH_HARNESS_HOST_COUNT 32
 #define MH_HARNESS_SPINE_COUNT 33
 
 extern "C" {
@@ -23,6 +23,23 @@ extern const char *const g_mh_harness_spine_name[MH_HARNESS_SPINE_COUNT];
 // number of rows resolved; the caller refuses unless it equals the count above.
 int mh_harness_bind_host(void);
 int mh_harness_bind_spine(void);
+
+// mp:D29 -- THE CONFIGURATION (1) FALLBACK ROWS: the spine slots the per-step region hash
+// reaches, bound out of mh.dll (its own configuration (1) answer) when libmh.dll is absent.
+// Every other spine slot stays null in that mode; the call sites that could reach one are
+// guarded in harness.cpp or refused by key at arm. Bound whole or not at all (config1.h).
+#define MH_HARNESS_CONFIG1_FALLBACK_COUNT 3
+static const int mh_harness_config1_fallback_slot[MH_HARNESS_CONFIG1_FALLBACK_COUNT] = {
+    10, // ?live@state@mh@@YAAAUlive_table@12@XZ
+    12, // ?owner_count@state@mh@@YAAAHXZ
+    13, // ?owner_table@state@mh@@YAPAUowner_slot@12@XZ
+};
+static const char *const mh_harness_config1_fallback_name[MH_HARNESS_CONFIG1_FALLBACK_COUNT] = {
+    "?live@state@mh@@YAAAUlive_table@12@XZ",
+    "?owner_count@state@mh@@YAAAHXZ",
+    "?owner_table@state@mh@@YAPAUowner_slot@12@XZ",
+};
+int mh_harness_bind_config1(void);
 
 // NO CROSSING COUNTERS, and their absence is a decision rather than an omission. F4D's
 // exist because mh.dll's absent path answers zero in silence, so only a number separates a

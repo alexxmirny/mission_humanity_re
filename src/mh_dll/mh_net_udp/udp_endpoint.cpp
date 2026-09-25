@@ -60,6 +60,11 @@ namespace U = mh_net_proto::udp;
 
 namespace {
 
+// mp:U41e -- the periodic inbound-queue rollup cadence, IDENTICAL to net_transport.cpp's
+// QUEUE_ROLLUP_MS: often enough that a long match carries the approach to the cap, rare enough that
+// it does not bury anything, and matched to `[desync] STATUS`'s own ~50 s cadence.
+constexpr DWORD QUEUE_ROLLUP_MS = 50000;
+
 // ---- the handshake channel ----------------------------------------------------------------------
 //
 // A channel id T0 does not define, which is deliberate and is the forward-compatibility rule T0
@@ -294,7 +299,7 @@ bool Endpoint::start(const Config &cfg, const uint8_t psk[KEY_LEN], bool secure)
     }
     memset(m_conns, 0, sizeof(m_conns));
     memset(m_pend, 0, sizeof(m_pend));
-    m_qhead = m_qtail = m_qcount = 0;
+    m_lanes.reset(); // mp:U41e -- the TRANSPORT boundary; see m_lanes' note in udp_endpoint.h
     // N1: a client in host_assign mode must WAIT for its id; everyone else's is settled at start.
     m_id_assigned = (m_role == 1 && m_host_assign) ? 0 : 1;
 
@@ -451,11 +456,26 @@ bool Endpoint::stop() {
     memset(m_boot_mac, 0, sizeof(m_boot_mac));
     memset(m_transport_id, 0, sizeof(m_transport_id));
     if (m_cs_ready) {
+        // mp:U41e -- THE LAST rollup of the match goes out before the lanes are cleared, so a match
+        // that never reached the periodic cadence still leaves one line saying how deep its queue
+        // got (mirrors net_transport.cpp's net_reset()). Read under the lock, logged after it.
+        int  q_depth, q_dh, q_dm, q_high, q_hh, q_hm;
+        long q_ev, q_ref;
         EnterCriticalSection(&m_q_cs);
-        m_qhead = m_qtail = m_qcount = 0;
+        q_depth = m_lanes.depth();
+        q_dh    = m_lanes.depth_h();
+        q_dm    = m_lanes.depth_m();
+        q_high  = m_lanes.high_water();
+        q_hh    = m_lanes.high_water_h();
+        q_hm    = m_lanes.high_water_m();
+        q_ev    = m_lanes.evicted();
+        q_ref   = m_lanes.refused();
+        m_lanes.reset(); // the TRANSPORT boundary: empties the lanes (see m_lanes' note in the header)
         LeaveCriticalSection(&m_q_cs);
+        log_queue_rollup(q_depth, q_dh, q_dm, q_high, q_hh, q_hm, q_ev, q_ref);
     }
-    m_qhigh = m_qhigh_band = 0;
+    m_qhigh_band  = 0;
+    m_q_rollup_at = 0;
     // U17: a dead-peer latch minted by the OLD link is not the new one's news, and `id_assigned` is
     // not gated on m_started -- left set, a relinking host-assign client would report "my id is
     // settled" before the new host had said anything, and the WELCOME check above it would be
@@ -736,9 +756,9 @@ void Endpoint::client_on_boot(const sockaddr_in &from, const uint8_t *body, size
     c.addr      = from;
     c.player_id = -1; // the host's id is unknown and irrelevant to a client (as on TCP)
     memcpy(c.conn_id, tok.conn_id, CONN_ID_BYTES);
-    c.keys           = tok.keys;
-    c.bound          = 1; // openable now; ADMITTED only when the token ack lands
-    c.last_rx        = GetTickCount();
+    c.keys            = tok.keys;
+    c.bound           = 1; // openable now; ADMITTED only when the token ack lands
+    c.last_rx         = GetTickCount();
     c.peer_horizon_ms = -1; // mp:SES6 -- nothing pushed yet; see the Conn field's own comment
     c.rx_win.reset();
     memcpy(p.token, grant, U::TOKEN_WIRE);
@@ -793,7 +813,8 @@ void Endpoint::host_on_token(const sockaddr_in &from, const U::Header &h, const 
         c.keys            = p->keys;
         c.bound           = 1;
         c.last_rx         = now;
-        c.peer_horizon_ms = -1; // mp:SES6 -- nothing pushed yet; see the Conn field's own comment
+        c.admitted_ms     = now; // mp:P15 -- the warm-up ping window starts here, once
+        c.peer_horizon_ms = -1;  // mp:SES6 -- nothing pushed yet; see the Conn field's own comment
         c.rx_win.reset();
         // N1: the host-assigned id is the first free 1..MAX, independent of what the client claims
         // in its later FLAG_HELLO -- hand-clicked clients all default to 1, and distinct slots are
@@ -854,7 +875,8 @@ void Endpoint::client_on_token_ack(const U::Header &h, DWORD now) {
     Conn &c = m_conns[0];
     if (!c.active) {
         InterlockedExchange(&c.active, 1);
-        c.last_rx = now;
+        c.last_rx     = now;
+        c.admitted_ms = now; // mp:P15 -- the warm-up ping window starts here, once
         ++m_c.hs_done;
         // Announce our player id so the host can route to us before any game data flows. First bytes
         // of the stream, so it cannot arrive after them.
@@ -925,28 +947,108 @@ void Endpoint::emit_segment(int idx, uint32_t seq, bool retx) {
     c.tx_sent_ms[seq & SEG_MASK] = now;
 }
 
-// Append `len` bytes to the peer's stream, one datagram per new segment. Caller holds m_conn_cs.
+// One new segment of `len` (<= SEG_PAYLOAD) bytes, sent now. Caller holds m_conn_cs and has checked
+// the window has room.
+void Endpoint::stream_new_segment(int idx, const uint8_t *bytes, size_t len, DWORD now) {
+    Conn          &c   = m_conns[idx];
+    const uint32_t seq = c.tx_next;
+    // The kept drop's clock starts when something becomes outstanding; while the frontier keeps
+    // moving, on_bulk_frame restarts it. See udp_endpoint.h's T4b note.
+    if (c.tx_next == c.tx_acked) c.tx_stall_since = now ? now : 1u;
+    Seg &g = c.tx_ring[seq & SEG_MASK];
+    g.len  = (uint16_t)len;
+    memcpy(g.data, bytes, len);
+    c.tx_sent_ms[seq & SEG_MASK] = 0; // the RTO scan's "never sent" sentinel
+    c.tx_next                    = seq + 1;
+    emit_segment(idx, seq, false);
+}
+
+// Append `len` bytes to the peer's stream. Caller holds m_conn_cs.
+//
+// mp:T4b -- two paths, and the first is the pre-T4b code exactly: while nothing is queued and the
+// window has room, each write goes out in this call, one datagram per new segment, so an open window
+// adds no latency at all. What does not fit waits in the backlog (bundled when it is sent, by
+// stream_pump) instead of dropping the link -- see udp_endpoint.h for the two runs that showed a full
+// window is a peer that is behind, not a dead one. Once anything is queued, every later byte queues
+// BEHIND it: a write that overtook the backlog would reorder the stream.
 void Endpoint::stream_write(int idx, const uint8_t *bytes, size_t len) {
-    Conn &c = m_conns[idx];
-    while (len > 0) {
-        const uint32_t seq = c.tx_next;
-        // The window is 1024 segments deep. Running that far past an unacknowledged frontier is not
-        // congestion, it is a peer that stopped answering entirely -- the watchdog's business, but
-        // reported here because this is where the evidence is.
-        if (seq - c.tx_acked >= (uint32_t)SEG_WINDOW) {
-            drop_conn(idx, "the outbound stream ran a full window ahead of the peer's acknowledgements");
-            return;
-        }
-        Seg &g = c.tx_ring[seq & SEG_MASK];
-        g.len  = (uint16_t)(len < (size_t)SEG_PAYLOAD ? len : (size_t)SEG_PAYLOAD);
-        memcpy(g.data, bytes, g.len);
-        c.tx_sent_ms[seq & SEG_MASK] = 0; // the RTO scan's "never sent" sentinel
-        c.tx_next                    = seq + 1;
-        bytes += g.len;
-        len -= g.len;
-        emit_segment(idx, seq, false);
+    Conn       &c   = m_conns[idx];
+    const DWORD now = GetTickCount();
+    while (len > 0 && c.tx_bl_len == 0 && c.tx_next - c.tx_acked < (uint32_t)SEG_WINDOW) {
+        const size_t n = len < (size_t)SEG_PAYLOAD ? len : (size_t)SEG_PAYLOAD;
+        stream_new_segment(idx, bytes, n, now);
         if (c.tx_dead) return;
+        bytes += n;
+        len -= n;
     }
+    if (len == 0) return;
+
+    // BACK-PRESSURE. Bounded, so a path that cannot carry the send rate is a named drop rather than
+    // a queue that grows until the process runs out of memory.
+    if (len > (size_t)(TX_BACKLOG_BYTES - c.tx_bl_len)) {
+        drop_conn(idx, "the outbound backlog overflowed -- a full window of unacknowledged segments "
+                       "AND 256 KiB queued behind it: the path cannot carry this send rate");
+        return;
+    }
+    if (c.tx_bp_since == 0) {
+        c.tx_bp_since   = now ? now : 1u;
+        c.tx_bp_peak    = 0;
+        c.tx_bp_bundled = 0;
+        ++m_c.bp_episodes;
+    }
+    uint32_t tail = (c.tx_bl_head + c.tx_bl_len) % TX_BACKLOG_BYTES;
+    size_t   left = len;
+    while (left > 0) {
+        const uint32_t room = TX_BACKLOG_BYTES - tail; // contiguous bytes before the ring wraps
+        const uint32_t n    = left < (size_t)room ? (uint32_t)left : room;
+        memcpy(c.tx_bl + tail, bytes, n);
+        bytes += n;
+        left -= n;
+        tail = (tail + n) % TX_BACKLOG_BYTES;
+    }
+    c.tx_bl_len += (uint32_t)len;
+    if (c.tx_bl_len > c.tx_bp_peak) c.tx_bp_peak = c.tx_bl_len;
+    if ((long)c.tx_bl_len > m_c.bp_peak_bytes) m_c.bp_peak_bytes = (long)c.tx_bl_len;
+}
+
+// Move queued bytes into the window as it opens, cut into FULL segments -- the bundling. Called
+// wherever the window can have opened: the acknowledgement that advanced the frontier, and every
+// timer tick as a backstop. Caller holds m_conn_cs.
+void Endpoint::stream_pump(int idx, DWORD now) {
+    Conn &c = m_conns[idx];
+    // PACED, like rto_pass: an acknowledgement that frees 600 slots would otherwise put 600 bundled
+    // datagrams on the wire in one go, and the far end's 256-slot inbound ring (MP D24) receives
+    // them faster than a lobby drains it. PUMP_BURST per call, and the ack path plus the 20 ms tick
+    // both call it, so a backlog still moves at >= 3200 segments/s (~800 KB/s).
+    int budget = PUMP_BURST;
+    while (c.tx_bl_len > 0 && c.tx_next - c.tx_acked < (uint32_t)SEG_WINDOW && !c.tx_dead &&
+           budget-- > 0) {
+        uint8_t        seg[SEG_PAYLOAD];
+        const uint32_t n = c.tx_bl_len < (uint32_t)SEG_PAYLOAD ? c.tx_bl_len : (uint32_t)SEG_PAYLOAD;
+        for (uint32_t i = 0; i < n; ++i) seg[i] = c.tx_bl[(c.tx_bl_head + i) % TX_BACKLOG_BYTES];
+        c.tx_bl_head = (c.tx_bl_head + n) % TX_BACKLOG_BYTES;
+        c.tx_bl_len -= n;
+        ++c.tx_bp_bundled;
+        ++m_c.bp_bundled_segs;
+        stream_new_segment(idx, seg, n, now);
+    }
+    if (c.tx_bl_len != 0 || c.tx_bp_since == 0 || c.tx_dead) return;
+    // The episode is over. One line per episode would be one line per round trip under a sustained
+    // flood, so the line is limited to one a second and says how many episodes it stands for.
+    ++m_bp_unlogged;
+    if (m_bp_last_log == 0 || now - m_bp_last_log >= 1000u) {
+        logf("net: udp conn %d back-pressure released after %u ms -- peak %u B queued behind a full "
+             "%d-segment window, sent as %ld bundled segment(s) (%ld episode(s) since the last line)",
+             idx, (unsigned)(now - c.tx_bp_since), (unsigned)c.tx_bp_peak, SEG_WINDOW,
+             c.tx_bp_bundled, m_bp_unlogged);
+        m_bp_last_log = now ? now : 1u;
+        m_bp_unlogged = 0;
+    }
+    c.tx_bp_since = 0;
+}
+
+DWORD Endpoint::conn_rto_ms(const Conn &c) const {
+    return rto_for(c.stats.rtt.srtt_ms, c.stats.rtt.rttvar_ms, c.stats.rtt.samples);
 }
 
 // Frame + queue one record, in the SAME 12-byte WireHdr the TCP module uses. Caller holds m_conn_cs.
@@ -1019,11 +1121,47 @@ void Endpoint::on_input_frame(int idx, const uint8_t *payload, size_t len) {
     stream_drain(idx);
 }
 
+// mp:T4b -- the RECEIVER's half of back-pressure. The reorder window holds up to 1024 segments and
+// the application's inbound ring 256 must-keep slots, so the repair of one gap can release far more
+// frames in one stream_drain than the ring can hold.
+//
+// mp:U41e CHANGED WHAT "ROOM" MEANS, without changing the guarantee. Before this item the ring was a
+// single FIFO and a burst that outran it could force D24's scan to evict a REAL, non-supersedable
+// frame when nothing evictable was left (the `ev_unsafe` case) -- which is exactly what this guard
+// existed to prevent (measured in the mp:T5 stall arm: a 3.4 s freeze, then a gap repaired with ~700
+// segments queued behind it). Now the ring is the SAME sequence-merged lane pair mh_net.dll's TCP
+// transport uses (mh_net_queue_policy.h): lane H (bare horizon adverts) NEVER blocks -- a full lane H
+// evicts its own head, by design, which is exactly what the lane exists for -- and lane M (everything
+// else) is the ONLY lane that can lose a frame, by REFUSING an arrival rather than destroying one
+// already queued. So the only capacity this guard needs to protect is lane M's: free slots plus the
+// horizons lane H's own auto-eviction is worth is `QUEUE_CAP_M - m_lanes.depth_m()` -- there is no
+// second term for evictable frames "in the way" any more, because a full lane H never blocks anything
+// downstream of it. Otherwise the stream PAUSES: the segments stay in the reorder window, the
+// published frontier stops, and the sender's window fills -- which is back-pressure all the way to
+// the writer, and which it now survives. The timer resumes a paused stream every tick. Caller holds
+// m_conn_cs (lock order conn -> q, as in enqueue).
+static const int INBOUND_HEADROOM = 32; // > the 22 frames one 254-byte segment can complete
+bool             Endpoint::inbound_has_room() {
+    EnterCriticalSection(&m_q_cs);
+    const int room = QUEUE_CAP_M - m_lanes.depth_m();
+    LeaveCriticalSection(&m_q_cs);
+    return room >= INBOUND_HEADROOM;
+}
+
 // Deliver every contiguous segment into the WireHdr reassembler. Caller holds m_conn_cs.
 void Endpoint::stream_drain(int idx) {
-    Conn       &c   = m_conns[idx];
-    const DWORD now = GetTickCount();
+    Conn         &c          = m_conns[idx];
+    const DWORD   now        = GetTickCount();
+    const uint8_t was_paused = c.rx_paused;
+    c.rx_paused              = 0;
     while (c.rx_have[c.rx_next & SEG_MASK]) {
+        if (!inbound_has_room()) {
+            // Not a gap: the next segment is HERE, the application is behind. The ledger below is
+            // for loss and must not read this as one.
+            if (!was_paused) ++m_c.rx_pauses;
+            c.rx_paused = 1;
+            return;
+        }
         Seg &g                          = c.rx_ring[c.rx_next & SEG_MASK];
         c.rx_have[c.rx_next & SEG_MASK] = 0;
         c.rx_next += 1;
@@ -1161,7 +1299,7 @@ void Endpoint::on_bulk_frame(int idx, const uint8_t *payload, size_t len) {
         return;
     }
     if (len >= 1 && payload[0] == bulk::KIND_BULK_ACK) {
-        if (!m_bulk.on_ack(payload, len, GetTickCount())) ++m_c.malformed;
+        if (!m_bulk.on_ack(idx, payload, len, GetTickCount())) ++m_c.malformed;
         return;
     }
     U::Ack a;
@@ -1170,7 +1308,16 @@ void Endpoint::on_bulk_frame(int idx, const uint8_t *payload, size_t len) {
         return;
     }
     Conn &c = m_conns[idx];
-    if ((int32_t)(a.ack_seq - c.tx_acked) > 0) c.tx_acked = a.ack_seq;
+    // mp:T4b -- a frontier past anything we SENT is not an acknowledgement (and would let the window
+    // arithmetic below run backwards); it is ignored, as a malformed ack always effectively was.
+    if ((int32_t)(a.ack_seq - c.tx_acked) > 0 && a.ack_seq - c.tx_acked <= c.tx_next - c.tx_acked) {
+        const DWORD now = GetTickCount();
+        c.tx_acked      = a.ack_seq;
+        c.rto_backoff   = 0; // mp:T5 -- the path is delivering again
+        // PROGRESS restarts the kept drop's clock; nothing outstanding stops it.
+        c.tx_stall_since = (c.tx_acked == c.tx_next) ? 0u : (now ? now : 1u);
+        stream_pump(idx, now); // the window just opened: send what was waiting for it
+    }
 }
 
 // mp:T2's one outbound edge. Caller holds m_conn_cs (every caller is on a path that already does).
@@ -1191,7 +1338,8 @@ bool Endpoint::bulk_emit_thunk(void *ctx, int idx, const uint8_t *payload, size_
 }
 
 void Endpoint::send_ack(int idx, DWORD now) {
-    Conn  &c = m_conns[idx];
+    Conn &c = m_conns[idx];
+    if (m_ack_mute) return; // mp:T4b's test hook: a peer that talks but never acknowledges
     U::Ack a;
     a.ack_seq = c.rx_next;
     // Faithful to T0's semantics: bit i acknowledges (ack_seq - 1 - i). Everything below the
@@ -1213,12 +1361,15 @@ void Endpoint::send_ack(int idx, DWORD now) {
 
 // The backstop the arithmetic in udp_endpoint.h demands. Caller holds m_conn_cs.
 void Endpoint::rto_pass(int idx, DWORD now) {
-    Conn &c = m_conns[idx];
-    int   n = 0;
+    Conn &c   = m_conns[idx];
+    DWORD rto = conn_rto_ms(c) << c.rto_backoff; // mp:T5 -- was the constant RTO_MS; udp_endpoint.h
+    if (rto > RTO_MAX_MS) rto = RTO_MAX_MS;
+    int n = 0;
     for (uint32_t s = c.tx_acked; s != c.tx_next && n < RTO_BURST; ++s) {
         const DWORD sent = c.tx_sent_ms[s & SEG_MASK];
         if (sent == 0) continue;
-        if (now - sent < RTO_MS) continue;
+        if (now - sent < rto) continue;
+        if (s == c.tx_acked && c.rto_backoff < RTO_BACKOFF_MAX) ++c.rto_backoff; // the head timed out
         emit_segment(idx, s, true);
         ++m_c.rto_sent;
         ++n;
@@ -1300,68 +1451,96 @@ void Endpoint::host_dispatch(int from_idx, const WireHdr &h, const void *payload
     }
 }
 
-// ---- the inbound ring, with D24's eviction policy verbatim ---------------------------------------
+// mp:U41e -- per-match rollup, over THIS endpoint's logf (see the declaration's note in the header).
+void Endpoint::log_queue_rollup(int depth, int depth_h, int depth_m, int high, int high_h, int high_m,
+                                long evicted, long refused) {
+    logf("net: inbound queue rollup (this match): depth %d (H %d / M %d), high-water %d / %d "
+         "(H %d / %d, M %d / %d), evicted %ld superseded horizon(s), REFUSED %ld real input(s)",
+         depth, depth_h, depth_m, high, QUEUE_CAP, high_h, QUEUE_CAP_H, high_m, QUEUE_CAP_M, evicted,
+         refused);
+}
+
+// ---- the inbound ring, mp:U41e -- the SAME sequence-merged lane pair as mh_net.dll's, not D24's
+// single-FIFO victim scan any more (see udp_endpoint.h's note on m_lanes and inbound_has_room above) --
 void Endpoint::enqueue(int src, const void *data, int len) {
     if (len < 0) len = 0;
     if (len > MH_NET_MAX_PAYLOAD) len = MH_NET_MAX_PAYLOAD;
-    bool          evicted = false, ev_unsafe = false;
-    int           ev_src = 0, ev_len = 0, new_high = 0;
-    unsigned char ev_type  = 0;
-    long          ev_total = 0;
+    namespace qp = mh::net::queue_policy;
+
+    bool evicted = false, refused = false;
+    int  ev_src   = 0;
+    long ev_total = 0, ref_total = 0;
+    int  new_high = 0;
+    bool rollup   = false;
+    int  r_depth = 0, r_dh = 0, r_dm = 0, r_high = 0, r_hh = 0, r_hm = 0;
+    long r_ev = 0, r_ref = 0;
+
+    // CLASSIFY ONCE, HERE -- the only call to the router predicate on the inbound path.
+    const qp::lane l = qp::lane_of_game_frame(static_cast<const uint8_t *>(data), len);
+
     EnterCriticalSection(&m_q_cs);
-    if (m_qcount >= QUEUE_CAP) {
-        namespace qp      = mh::net::queue_policy;
-        Msg *const base   = m_q;
-        const int  victim = qp::choose_victim(m_qhead, m_qcount, QUEUE_CAP, [base](int slot) {
-            return qp::frame_view{base[slot].data, base[slot].len};
-        });
-        const int  kill   = (victim >= 0) ? victim : m_qhead;
-        ev_unsafe         = (victim < 0);
-        {
-            const Msg &v = m_q[kill];
-            evicted      = true;
-            ev_src       = v.src;
-            ev_len       = v.len;
-            ev_type      = v.len > 0 ? v.data[0] : 0;
+    const qp::push_result r = m_lanes.push(l);
+    if (r.accepted) {
+        if (r.evicted) {
+            evicted  = true;
+            ev_src   = m_qh[r.evicted_pos].src; // lane H only -- lane M never evicts
+            ev_total = ++m_qdropped;
         }
-        const int p = (kill - m_qhead + QUEUE_CAP) % QUEUE_CAP;
-        for (int i = p; i > 0; --i) {
-            Msg       &dst = m_q[(m_qhead + i) % QUEUE_CAP];
-            const Msg &s   = m_q[(m_qhead + i - 1) % QUEUE_CAP];
-            dst.src        = s.src;
-            dst.len        = s.len;
-            if (s.len) memcpy(dst.data, s.data, (size_t)s.len);
+        if (r.which == qp::lane::supersedable) {
+            HMsg &m = m_qh[r.pos];
+            m.src   = src;
+            if (len) memcpy(m.data, data, (size_t)len); // len == BARE_HORIZON_LEN by construction
+        } else {
+            Msg &m = m_qm[r.pos];
+            m.src  = src;
+            m.len  = len;
+            if (len) memcpy(m.data, data, (size_t)len);
         }
-        m_qhead = (m_qhead + 1) % QUEUE_CAP;
-        m_qcount--;
-        ev_total = ++m_qdropped;
+    } else {
+        refused   = true;
+        ref_total = m_lanes.refused();
     }
-    Msg &m = m_q[m_qtail];
-    m.src  = src;
-    m.len  = len;
-    if (len) memcpy(m.data, data, (size_t)len);
-    m_qtail = (m_qtail + 1) % QUEUE_CAP;
-    m_qcount++;
-    if (m_qcount > m_qhigh) {
-        const int band = (m_qcount / 32) * 32;
-        m_qhigh        = m_qcount;
+    // Depth high-water, reported in 32-slot steps -- the half of the instrument that can REFUTE.
+    {
+        const int band = (m_lanes.high_water() / 32) * 32;
         if (band > m_qhigh_band) {
             m_qhigh_band = band;
-            new_high     = m_qcount;
+            new_high     = m_lanes.high_water();
+        }
+    }
+    {
+        const DWORD now = GetTickCount();
+        if (m_q_rollup_at == 0) m_q_rollup_at = now;
+        if (now - m_q_rollup_at >= QUEUE_ROLLUP_MS) {
+            m_q_rollup_at = now;
+            rollup        = true;
+            r_depth       = m_lanes.depth();
+            r_dh          = m_lanes.depth_h();
+            r_dm          = m_lanes.depth_m();
+            r_high        = m_lanes.high_water();
+            r_hh          = m_lanes.high_water_h();
+            r_hm          = m_lanes.high_water_m();
+            r_ev          = m_lanes.evicted();
+            r_ref         = m_lanes.refused();
         }
     }
     LeaveCriticalSection(&m_q_cs);
+
     if (new_high) logf("net: udp inbound queue depth high-water %d / %d", new_high, QUEUE_CAP);
-    if (evicted && ev_unsafe)
-        logf("net: udp *** INBOUND QUEUE FULL (cap %d) and NOTHING IN IT WAS SAFE TO DROP -- "
-             "destroyed a REAL LOCKSTEP INPUT: peer=%d type=0x%02x len=%d (%ld evicted this run). "
-             "type 0x01 is an ORDER: this peer will never execute it and WILL desync (MP D24).",
-             QUEUE_CAP, ev_src, ev_type, ev_len, ev_total);
+    // A REFUSAL is a correctness event and is logged every time. An EVICTION is bookkeeping: lane H
+    // only ever holds frames the next one supersedes, so a badly-behind peer sheds thousands and a
+    // line each would bury the one that matters. First occurrence in full, then a rollup.
+    if (refused)
+        logf("net: *** INBOUND QUEUE: lane M FULL (cap %d) -- REFUSED a real lockstep input from "
+             "peer=%d (type=0x%02x len=%d, %ld refused this run). type 0x01 is an ORDER: this peer "
+             "will never execute it and WILL desync (MP D24/U41).",
+             QUEUE_CAP_M, src, len > 0 ? ((const unsigned char *)data)[0] : 0, len, ref_total);
     else if (evicted && (ev_total == 1 || (ev_total % 256) == 0))
-        logf("net: udp inbound queue full (cap %d) -- evicted a superseded horizon advertisement "
-             "from peer=%d (type=0x%02x len=%d, %ld evicted this run). Orders and control frames "
-             "were preserved (MP D24).",
-             QUEUE_CAP, ev_src, ev_type, ev_len, ev_total);
+        logf("net: inbound queue: lane H full (cap %d) -- evicted a superseded horizon advertisement "
+             "from peer=%d (%ld evicted this run). Orders and control frames are in the other lane "
+             "and cannot be reached from here (MP D24/U41).",
+             QUEUE_CAP_H, ev_src, ev_total);
+    if (rollup) log_queue_rollup(r_depth, r_dh, r_dm, r_high, r_hh, r_hm, r_ev, r_ref);
 }
 
 // =================================================================================================
@@ -1561,7 +1740,6 @@ void Endpoint::on_datagram(uint8_t *pkt, int len, const sockaddr_in &from, DWORD
 // free.
 void Endpoint::timer_loop() {
     const DWORD LATE_MS   = (DWORD)(m_ping_ms > 0 ? m_ping_ms : 1000);
-    DWORD       last_ping = GetTickCount();
     DWORD       last_pass = GetTickCount();
     // The repair ledger, into mh_net.log. It exists because the acceptance clause for mp:T1 is a
     // claim about ATTRIBUTION -- "zero stalls attributed to loss, redundancy K covers it" -- and
@@ -1583,9 +1761,6 @@ void Endpoint::timer_loop() {
 
         if (m_role == 1) client_handshake_tick(now);
 
-        const bool do_ping = m_ping_ms > 0 && (now - last_ping) >= (DWORD)m_ping_ms;
-        if (do_ping) last_ping = now;
-
         EnterCriticalSection(&m_conn_cs);
         now = GetTickCount(); // re-sample INSIDE the lock (the 2026-08-30 false-drop race)
         if (stalled) {
@@ -1595,6 +1770,13 @@ void Endpoint::timer_loop() {
                     const bool  future   = mh_watchdog_silence_ms(now, credited) == 0u;
                     InterlockedExchange((volatile LONG *)&m_conns[i].last_rx,
                                         (LONG)(future ? now : credited));
+                    // mp:T4b -- the kept drop's clock gets the same credit, for the same reason: a
+                    // frontier cannot move while THIS process was not running to hear it move.
+                    if (m_conns[i].tx_stall_since != 0) {
+                        const DWORD cs = m_conns[i].tx_stall_since + stalled;
+                        m_conns[i].tx_stall_since =
+                            (mh_watchdog_silence_ms(now, cs) == 0u) ? (now ? now : 1u) : cs;
+                    }
                 }
             logf("net: udp link watchdog was blocked %u ms (a suspend, or a debugger) -- crediting "
                  "that to every peer rather than reading it as silence",
@@ -1609,13 +1791,50 @@ void Endpoint::timer_loop() {
                 drop_conn(i, "no data from peer within the link timeout");
                 continue;
             }
+            // mp:T4b -- THE KEPT DROP. A full window no longer drops the link (stream_write queues
+            // instead); a frontier that has not moved for the link timeout with data outstanding
+            // still does, and that covers the peer the silence watchdog above cannot see: one whose
+            // pings arrive and whose acknowledgements do not. Off with the watchdog (`rx_timeout_ms`
+            // < 0, the debugger setting), where only the backlog's size bound remains -- which is
+            // what the pre-T4b full-window rule was, too: a size, not a time.
+            if (m_rx_timeout_ms > 0 && c.tx_stall_since != 0 &&
+                now - c.tx_stall_since >= (DWORD)m_rx_timeout_ms) {
+                char why[200];
+                wsprintfA(why,
+                          "the peer acknowledged nothing for %u ms with %u segment(s) and %u B "
+                          "outstanding (the link timeout)",
+                          (unsigned)(now - c.tx_stall_since), (unsigned)(c.tx_next - c.tx_acked),
+                          (unsigned)c.tx_bl_len);
+                ++m_c.ack_stall_drops;
+                drop_conn(i, why);
+                continue;
+            }
             rto_pass(i, now);
             if (c.tx_dead) continue;
+            stream_pump(i, now); // mp:T4b backstop: the ack path pumps too, this catches the rest
+            if (c.tx_dead) continue;
+            if (c.rx_paused) stream_drain(i); // mp:T4b -- the application may have made room
+            if (c.tx_dead) continue;
+            // mp:T5 -- channel C's timers follow the same measured round trip as channel A's.
+            {
+                const DWORD rto  = conn_rto_ms(c);
+                const DWORD fast = c.stats.rtt.samples > 0
+                                       ? (DWORD)c.stats.rtt.srtt_ms + bulk::FAST_RETX_MS
+                                       : 0u;
+                m_bulk.set_link_timing(c.stats.rtt.samples > 0 ? rto : 0u, fast);
+            }
             m_bulk.tick(i, c.player_id, now); // mp:T2, rate-limited to BULK_BURST pieces per tick
             // An acknowledgement only when there is something to acknowledge or a gap is open: an
             // idle link then costs nothing, and a stalled one tells the sender where to resume.
             if ((c.rx_next != 0 || c.gap_since != 0) && now - c.last_ack_ms >= ACK_MS)
                 send_ack(i, now);
+            // mp:P15 -- PER-CONN cadence, via the SAME pure function udpstatstest drives offline
+            // (udp_ping_cadence.h): FAST_PING_MS for FAST_PING_WINDOW_MS after THIS peer's own
+            // admission, the steady m_ping_ms after. `last_ping_ms` is per-conn -- see the field's own
+            // note in udp_endpoint.h.
+            const bool do_ping = ping_due(m_ping_ms, now - c.admitted_ms, now - c.last_ping_ms,
+                                          FAST_PING_MS, FAST_PING_WINDOW_MS);
+            if (do_ping) c.last_ping_ms = now;
             if (do_ping) {
                 U::PingRecord p;
                 p.t_origin_ms = (uint32_t)now;
@@ -1754,18 +1973,85 @@ int Endpoint::recv(int *out_sender, void *buf, int *inout_len) {
     const int cap = *inout_len;
     int       got = 0;
     EnterCriticalSection(&m_q_cs);
-    if (m_qcount > 0) {
-        Msg      &m = m_q[m_qhead];
-        const int n = m.len < cap ? m.len : cap;
-        if (n > 0) memcpy(buf, m.data, (size_t)n);
-        if (out_sender) *out_sender = m.src;
+    // mp:U41e -- THE MERGE. `pop()` returns whichever lane's head arrived first, so what comes out of
+    // here is the arrival order the single ring used to deliver, minus only what lane H evicted.
+    const mh::net::queue_policy::pop_result r = m_lanes.pop();
+    if (r.ok) {
+        const uint8_t *src_bytes;
+        int            src_len, src_from;
+        if (r.which == mh::net::queue_policy::lane::supersedable) {
+            src_bytes = m_qh[r.pos].data;
+            src_len   = mh::net::queue_policy::BARE_HORIZON_LEN;
+            src_from  = m_qh[r.pos].src;
+        } else {
+            src_bytes = m_qm[r.pos].data;
+            src_len   = m_qm[r.pos].len;
+            src_from  = m_qm[r.pos].src;
+        }
+        const int n = src_len < cap ? src_len : cap;
+        if (n > 0) memcpy(buf, src_bytes, n);
+        if (out_sender) *out_sender = src_from;
         *inout_len = n;
-        m_qhead    = (m_qhead + 1) % QUEUE_CAP;
-        m_qcount--;
-        got = 1;
+        got        = 1;
     }
     LeaveCriticalSection(&m_q_cs);
     return got;
+}
+
+// mp:U41e -- the udp twin of net_transport.cpp's MH_Net_QueueMatchBoundary. Called from
+// udp_transport.cpp's export, which used to be a bare no-op (mp:U41c/G305: this module carried no
+// per-match rollup at all). Same shape as stop()'s half: read under the lock, log after it -- but
+// reset_counters(), not reset(): frames already queued are the next match's inputs, and a match
+// ending is no reason to destroy them.
+void Endpoint::queue_match_boundary() {
+    if (!m_cs_ready) return; // never started: no lanes, no counters, nothing to roll up
+    int      q_depth, q_dh, q_dm, q_high, q_hh, q_hm;
+    long     q_ev, q_ref;
+    unsigned epoch;
+    long     post_ev, post_ref;
+    EnterCriticalSection(&m_q_cs);
+    q_depth = m_lanes.depth();
+    q_dh    = m_lanes.depth_h();
+    q_dm    = m_lanes.depth_m();
+    q_high  = m_lanes.high_water();
+    q_hh    = m_lanes.high_water_h();
+    q_hm    = m_lanes.high_water_m();
+    q_ev    = m_lanes.evicted();
+    q_ref   = m_lanes.refused();
+    m_lanes.reset_counters();
+    // mp:U41d/U41e -- read BACK OUT, under the same lock, what reset_counters() just did. `epoch` is
+    // a marker only that call can move; post_ev/post_ref are evicted/refused read AFTER the reset,
+    // which reset_counters() zeroes -- so they read 0 here iff the call above actually ran.
+    epoch         = m_lanes.epoch();
+    post_ev       = m_lanes.evicted();
+    post_ref      = m_lanes.refused();
+    m_qhigh_band  = 0;
+    m_q_rollup_at = 0;
+    LeaveCriticalSection(&m_q_cs);
+    log_queue_rollup(q_depth, q_dh, q_dm, q_high, q_hh, q_hm, q_ev, q_ref);
+    logf("net: match boundary -- inbound queue counters restarted (link kept; %d frame(s) still "
+         "queued carry over; epoch %u, post-reset evicted %ld / refused %ld)",
+         q_depth, epoch, post_ev, post_ref);
+}
+
+// mp:U41e -- qmatchtest's read of the lane counters (net_selftest.exe compiles udp_endpoint.cpp
+// directly). Under the same lock the writers take. `epoch_out` is the reset marker; pass nullptr
+// from a call site that does not need it.
+void Endpoint::queue_counters_for_test(int *depth, int *high, long *evicted, long *refused,
+                                       unsigned *epoch_out) {
+    if (!m_cs_ready) {
+        *depth = *high = 0;
+        *evicted = *refused = 0;
+        if (epoch_out) *epoch_out = 0;
+        return;
+    }
+    EnterCriticalSection(&m_q_cs);
+    *depth   = m_lanes.depth();
+    *high    = m_lanes.high_water();
+    *evicted = m_lanes.evicted();
+    *refused = m_lanes.refused();
+    if (epoch_out) *epoch_out = m_lanes.epoch();
+    LeaveCriticalSection(&m_q_cs);
 }
 
 int Endpoint::peer_count() {

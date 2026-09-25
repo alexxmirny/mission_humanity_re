@@ -780,6 +780,43 @@ So `MH_HarnessModuleHost` carries `configured` (`[harness] enable=1`, read by mh
 `spine_bound`, and the refusal is RECORDED always, SHOUTED only when the two disagree with what the
 operator asked for.
 
+**AMENDED BY mp:D29 (2026-09-24): the refusal now applies only when the configuration (1) FALLBACK
+fails.** Q4 assumed every spine row the harness reads is one with no honest zero-spine answer. D29
+measured that the per-step region hash reaches exactly **three** of the 33 — `mh::state::live()`,
+`owner_table()`, `owner_count()` (`hash_slice` → `emit_slice` → `owner_serves`; `hash_base` →
+`live_base`) — and those three DO have one, which mh.dll already computes: its own region table
+seeded from `REGIONS[]` and an empty owner table (`seams/libmh_bind.cpp`, "not a fallback but the
+correct answer"). So:
+
+* **the fallback rows** are a third row class in `tools/gen_harness_contract.py` (`CONFIG1_FALLBACK`).
+  With the spine present they stay ordinary SPINE rows — the libmh build is unchanged and G179's
+  one-registry rule holds. With **no libmh.dll**, the generated `mh_harness_bind_config1` binds them
+  **out of mh.dll** (which now exports them through the generated `mh.def`) into their spine slots,
+  all or nothing, and the module arms the instrument **spine-free**. It binds mh.dll's REAL table —
+  the export IS the function mh.dll's own readers call — never a harness-private copy, which would
+  stay green the day mh.dll moved a region (net_selftest `bindtest`'s planted-copy arm).
+* **every other spine slot stays null**, and every harness path that could reach one is either
+  **guarded** (it has an honest spine-free answer: `rng_trace_set_step`, the order-count ledger note,
+  the step-1 inbound census — which keeps check_arm_order's end-marker prefix and says `n/a, no
+  libmh` —, the clause-6 rebind yield — `set_armed` would trap, and there are no rebind rows to
+  yield —, `pin_strat_seed`'s libmh seed push, `replay_suppress_enqueue`'s libmh sink gate, rdump's
+  RNGD/NOTE flush, a UI journal's order records) or its `[harness]` key is **refused by name**
+  (`mh_harness/config1.h` `SPINE_ONLY_KEYS`: the boot/world snapshot, save/load, tactical
+  synth/journal, `skip_pace_hook`, `rng_trace`, `skip_input_update` and `pin_menu_clock` keys) — in
+  mh_harness.log, OutputDebugString and stderr, and the key is switched off while the hash keeps
+  running. Not `mh_harness_refused.log`: that file's existence means "not instrumented".
+* **the refusal above survives, narrowed**: with no libmh.dll AND an mh.dll that does not export the
+  three rows (an older mh.dll beside a newer mh_harness.dll), the module refuses exactly as before.
+* **regions the spine-free hash cannot cover: none.** In configuration (1) nothing is relocated and
+  nothing is owned, so all 62 manifest slices sit at their fixed mh.exe VAs. The header states it
+  per run: `; [harness] configuration (1): spine ABSENT, registry=mh.dll, rebased=0 owned=0,
+  uncovered=none, manifest fp=XXXXXXXX` (written after the step-1 census, outside the arm window;
+  `uncovered` counts slices whose region has no address). The hash DEFINITION is the same inline
+  code as the spine path (`state/region_view.h`), so a MIXED pair — configuration (1) vs
+  `mode=original` — is comparable. The manifest fingerprint is now a compile-time constant
+  (`HASH_MANIFEST_FP`, region_view.h; libmh's `world::hash_manifest_fingerprint()` returns it), so
+  both configurations print it, and `tools/mp_analyze.py` REFUSES a pair whose fingerprints differ.
+
 The mirror case is mh.dll's: `[harness] enable=1` with **no mh_harness.dll at all**. That one is
 `seams/harness_bind.cpp`'s, same three channels, same non-fatal continue, and it exists because G178
 is the recorded cost of the opposite — a determinism run whose instrument silently never installed

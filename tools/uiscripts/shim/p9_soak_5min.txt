@@ -14,4 +14,9 @@
 # (rx_timeout 10 s, GS2 data timeout 15 s) retire the other side, which raises the retail
 # below-quorum dialog the two scripts wait on (`present Continue game`). It never turns back off --
 # the scripts end on the dialog.
+#
+# GATE DIET BLOCK 2 (2026-09-24): now resync_storm_repro's FALLBACK bound only (the two proof rows
+# stopped using it long ago -- they end on gameclock). The row's `shim_triggers` blackholes the link
+# once the leader has begun 5 barriers and both captures are logged; this step fires only when the
+# stock start does NOT storm, which is the XPASS the row exists to notice.
 340000  blackhole on

@@ -1,0 +1,47 @@
+# mp:U19j -- the gone-peer frame guard's rig proof, the FENCED peer (client 2, the local det3 lane).
+#
+# Pair with mp_host_gpfg3.txt (the mechanism) and mp_client_gpfg3_survivor.txt. This peer is the one
+# the other two write off. It arms the harness SIM FENCE (`simstep`, fork F5J -- mp_client_gs2.txt's
+# walk): its sim holds at step 100 while its TRANSPORT and its horizon-heartbeat thread keep running,
+# so after the survivors' data_timeout_ms removal it keeps sending 9-byte type-0x02 adverts to a
+# host that has already flagged it AI. Those adverts are the frames the gone-peer branch needs.
+#
+# `end` does not kill this process: ui_test collects peers only once EVERY script has finished, so
+# this peer keeps running (fenced, heartbeating) until the host's own script has played ~7 s past the
+# drop.
+#
+# G271: `signal seated2` after `settled Cancel` is the host's barrier before it clicks Start.
+
+settled value:110
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+present Internet server
+settled Internet server
+clickl Internet server
+present Server address
+settled Connect
+clickl Connect
+sessions 1
+settled Join game
+clickl Join game
+
+present Network players
+occ 3
+lobbyping 2
+settled Cancel
+capture u19j_c2_lobby
+signal seated2
+
+# ---- in the match --------------------------------------------------------------------------------
+absent Network players
+gamemode 2
+gameclock 500
+signal freezing
+
+# THE FENCE (mp_client_gs2.txt's): step 100 = gameclock 1000 at the rig's pinned sim_step_ms=10.
+# Never released -- this peer's horizon never moves again this match.
+simstep 100
+log FENCED PEER: sim fenced at step 100, transport + heartbeat left running
+end

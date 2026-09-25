@@ -1409,7 +1409,8 @@ inline constexpr mh::hook::patch_decl registered_patches[] = {
     {"resync_trigger_gate",      0x0049c508u, "llm_net_lockstep_dispatch", "migrated:resync_trigger_gate"},
     {"resync_trigger_gate_sent", 0x0049d8cbu, "llm_net_send_lockstep_keepalive", "migrated:resync_trigger_gate"},
     {"resync_receiver_deadline", 0x004a0423u, "llm_frame_dispatch", nullptr},
+    {"gone_peer_frame_guard",    0x0049c330u, "llm_net_lockstep_dispatch", "migrated:gone_peer_frame_guard"},
 };
-inline constexpr int registered_patch_count = 16;
+inline constexpr int registered_patch_count = 17;
 
 } // namespace mh::addr

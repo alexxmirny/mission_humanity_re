@@ -125,6 +125,18 @@ skipped — which is what the length byte is carried for.
 `loss_q16` is a fraction in Q16 (65536 = 100%). The names follow
 SRTT and RTTVAR are RFC 6298's smoothed estimators (alpha 1/8, beta 1/4), not raw samples.
 
+**Ping cadence (`mp:P15`).** Each peer is pinged at `FAST_PING_MS` (250 ms, 4 Hz) for
+`FAST_PING_WINDOW_MS` (3 s) after IT is admitted, then drops to the steady `[net] ping_ms` (1000 ms
+by default). This is per-conn, not per-endpoint: two peers admitted seconds apart each get their own
+warm-up window (`udp_endpoint.h`'s `Conn::admitted_ms` / `Conn::last_ping_ms`). It exists because
+`mp:P14`'s adaptive-lookahead start seed needs `AD_START_MIN_RTT_SAMPLES` (3) pings before it can
+fire, and at 1 Hz that is a 3 s floor on top of however long the lobby took — measured on the o4 rig
+lanes (a hand-clicked lobby, match starting ~1.4 s after connect) accruing only 2 samples and falling
+back to the 100 ms guess P14 exists to replace every run. Traffic cost: at most ~12 extra ~40-byte
+sealed pings per peer per side, once per connect (see `udp_endpoint.h`'s note on the constants for the
+exact accounting). The decision itself is a pure function (`udp_ping_cadence.h`'s `ping_due`), driven
+offline by `net_selftest.exe udpstatstest`'s section (o).
+
 ### C — bulk reliable (`id 3`)
 
 A chunk is at most **16 KiB** (plan D7) and is fragmented into pieces of at most **1100** bytes, so a
@@ -251,6 +263,70 @@ this rate**, which is a number join-in-progress has to design around rather than
 Implementation: [`udp_snapshot.h`](../src/mh_dll/mh_net_udp/udp_snapshot.h); oracle
 `net_selftest.exe udpsnaptest`.
 
+#### One transfer per endpoint (`mp:T2a`)
+
+**Channel C carries at most one transfer per endpoint at a time, and there is no transfer id on
+the wire.** `chunk_id` in the PIECE frame is the chunk INDEX inside the one running transfer, not a
+slot selector across several — so a second `start_send` while one is active is refused rather than
+multiplexed. This is a **decided contract** (path B, user decision, 2026-09-23; `mp:T2a`, opened as
+`mp:T2`'s residue): X1 (world snapshot) and X2 (map download) each want to reach more than one peer,
+or receive more than one blob, and they get there by **serialising through the SAME channel slot**,
+never by inventing a second one.
+
+- **The refusal.** `Channel::start_send`
+  ([`src/mh_dll/mh_net_udp/udp_channel_c.cpp:173`](../src/mh_dll/mh_net_udp/udp_channel_c.cpp)):
+  `if (m_tx.active) return false; // one transfer at a time -- see the header`. `start_send_src`
+  (the map/snapshot pipeline's entry) calls through the same gate.
+- **The caller retries.** `MH_Net_SnapshotSend`
+  ([`src/mh_dll/mh_net_udp/udp_transport.cpp:644-647`](../src/mh_dll/mh_net_udp/udp_transport.cpp)):
+  a `false` from `bulk_send_src` is "not an error and not a state: the peer is not admitted yet, or
+  a transfer is already running. The caller retries." — it tears the sender's copy down and returns
+  `0` rather than queuing anything.
+- **map_transfer.cpp's own re-arm loop is that caller.** `host_pump_transfer`
+  ([`src/mh_dll/mh/seams/map_transfer.cpp:97-101`](../src/mh_dll/mh/seams/map_transfer.cpp)) arms
+  one joiner's map transfer and, until that peer reports the map as held (`host_on_join`) or the
+  attempt times out (`TX_REARM_MS`, 90 s), does not attempt the next: "channel C carries one
+  transfer per link at a time... so serialising three joiners costs seconds rather than the
+  multiplexing machinery a simultaneous push would need." Two joiners who both need the map are
+  therefore delivered **one after the other**, off the SAME advertised host claim, never
+  concurrently.
+- **The sender decides only after the peer's report is whole (`mp:T6`, 2026-09-24).** Two threads
+  share the per-peer map state. `host_on_join` runs on the transport's RECV thread and records what
+  the joiner's JOIN says it holds. `host_pump_transfer` runs on the MAIN thread (the lobby tick) and
+  picks the peer to send to. The first cut published a report in two steps: `seated` at the top,
+  `holds` at the bottom, with a log write in between. A pump inside that gap armed the 462 KB
+  snapshot to a joiner that already held the map. It showed as `snapshot SEND armed` ~4 ms after
+  `peer 1 'client' holds the map`, in 4 of 13 wave-4 shim runs and in 20 of the 67 D30 runs where the joiner held the map. Now
+  `g_host_lock` (a leaf SRW lock) covers the peer table and `g_tx_peer`. A report is published in one
+  step. The pump reserves its chosen peer, reads the file outside the lock, and re-checks before it
+  sends. A report or leave that lands in between withdraws the send
+  (`; [map] send WITHDRAWN for peer <n>`). **Selftest**: `net_selftest.exe maptest` arm H drives
+  both interleavings through test hooks with a counting stub sender. Holds → no snapshot; lacks
+  (the forced-snapshot shape) → exactly one. Each of the three mutants turns it red: the early
+  `seated` publish, no re-check, and always withdraw.
+
+**A bug this contract's own selftest arm found, and fixed in the same change (2026-09-23).**
+`Channel` is one object PER ENDPOINT, so `m_tx` addresses whichever peer is CURRENTLY being sent
+to — but `Channel::on_ack` used to apply an incoming ack to `m_tx` unconditionally, without checking
+which CONNECTION it arrived on. A peer whose own transfer just finished keeps re-announcing its full
+frontier for up to ~2 s after its last piece (`tick()`'s receiver heartbeat), so its FINAL ack could
+still be in flight — or repeated — after the host had already re-armed a *different* transfer to a
+*different* peer; applying it unfiltered clamps `rx_base` to the new transfer's chunk count and
+completes it in one tick, with the second joiner having received almost nothing and no hash ever
+disagreeing (the bytes it DID get were correct — it just never got the rest). A two-endpoint arm can
+never produce this ack, which is why nothing before `mp:T2a`'s own multi-joiner arm exercised it.
+Fixed by giving `on_ack` the connection index (mirroring `on_piece`'s signature) and ignoring an ack
+whose connection does not match `m_tx.conn`.
+
+**Selftest**: `net_selftest.exe udpbulktest`'s "two joiners" arm — a host and TWO joiners, both
+needing the same payload: the second `start_send` is refused while the first transfer is active,
+both eventually receive the identical payload (hash-verified via each chunk's own SHA-256, `0`
+`rx_sha_fail` on either receiver), one after the other. Its mutation-red half needs no source
+mutation to prove: the arm drains the second joiner's channel for the ENTIRE duration of the first
+transfer while calling `start_send` to it exactly zero times, and confirms it received nothing —
+demonstrating that a caller who tried once and never retried would leave that joiner with nothing
+forever, not merely "not yet".
+
 ## The connect token
 
 netcode.io's central idea, kept: the host mints a token at lobby time and seals its private part
@@ -328,6 +404,110 @@ assertion: `p01`–`p06` and `p12` round-trip, `p08_tamper_body` and `p10_tamper
 bytes. `p12_max_size` is exactly 1200 and sits next to `p11` on purpose: together they pin the
 boundary from both sides, so an off-by-one reds one case or the other.
 
+## Flow control on the segment stream (`mp:T4b`, `mp:T5`)
+
+Channel A's reliable stream (`udp_endpoint.cpp`) sends at most **1024 segments** past the peer's
+acknowledgement frontier. Until T4b, reaching that limit **dropped the link** (`outbound stream ran a
+full window ahead of the peer's acknowledgements`), on the theory that a full window meant a dead
+peer. Two rig runs showed otherwise. In `mp:T4`, a per-frame horizon advert at 1100–3500 fps filled
+the window inside one 360 ms round trip. In `mp:T5`, a lobby at a 500 ms round trip dropped after a
+3.4 s machine-wide freeze while the peer was **still acknowledging** (451 segments delivered, 12
+keepalives answered). A full window means the peer is behind. It does not mean the peer is dead.
+
+**The design: back-pressure, with bundling only while back-pressured.**
+
+- **Open window: no change.** While nothing is queued and the window has room, a frame goes out in
+  the call that wrote it, in its own segment, exactly as before. **This path adds no latency.**
+- **Full window: the bytes queue.** Whatever does not fit waits in a per-peer backlog, a 256 KiB
+  ring. Every later write queues behind it, so the stream cannot reorder. Each frontier advance
+  sends the backlog, and so does every 20 ms timer tick as a backstop, at most 64 segments per call
+  (≥ 3200 segments/s). The backlog is cut into **full 254-byte segments**, so it is *bundled*: 21-byte
+  adverts that took a whole segment each while the window was open take 1/12 of one each once it
+  is full.
+- **The drop is kept, for a dead peer only, and stated as time.** A peer whose frontier has not moved
+  for the link timeout (`rx_timeout_ms`, default 10 s) while data is outstanding is dropped:
+  `dropped -- the peer acknowledged nothing for N ms ...`. That is the bound the silence watchdog has
+  always promised a dead peer. It also covers the one shape the watchdog cannot see: pings arrive,
+  acknowledgements do not. With the watchdog off (`rx_timeout_ms=-1`, the debugger setting), only
+  the size bound remains. That is a full window plus 256 KiB queued (`dropped -- the outbound
+  backlog overflowed`), which is still a size limit, as the old rule was.
+- **The receiver pauses instead of losing frames.** The reorder window holds 1024 segments. The
+  application's inbound ring (`mp:U41e`) is the SAME sequence-merged lane pair `mh_net.dll`'s TCP
+  transport uses: a 4096-slot lane for bare horizon adverts (evictable by construction, never
+  blocks) and a 256-slot lane for everything else, which is the only one that can lose a frame — and
+  it REFUSES an arrival rather than destroying one already queued. Before `mp:U41e` this was a
+  single 256-slot FIFO whose D24 scan could force-evict a real, non-supersedable input when nothing
+  evictable was left; the offline stall arm hit exactly that. So a segment is consumed only while the
+  must-keep lane has 32 free slots (the horizon lane's own capacity is irrelevant to this guard,
+  since it never blocks anything downstream). Otherwise delivery **pauses**: the published frontier
+  stops, the sender's window fills, and the timer resumes delivery each tick. The horizon lane keeps
+  evicting its own head as it always has — that is what it is for.
+
+**Retransmit timing follows the measured round trip (T5).** `RTO_MS` was a constant 200 ms. That is
+below every round trip the rig and the field run at: field SRTT is 205–230 ms, and the rig shims are
+360 and 500 ms. So every segment was re-sent before its acknowledgement could arrive. On every clean
+250 ms-one-way rig run the host logged about 2× as many re-sends as new segments. The RTO is now
+RFC 6298's `SRTT + max(4·RTTVAR, ACK_MS + 2·TICK_MS)`, with the old 200 ms as the floor and 2 s as
+the cap. It doubles each time the oldest segment times out, up to three times (RFC 6298 §5.5), and
+resets on the next frontier advance. Channel C's two timers follow the same measurement. The blind
+RTO is `max(250, link RTO)`, and the fast-retransmit guard is `max(30, SRTT + 30)`. The old 30 ms
+guard let the first acknowledgement after any piece "refute" it: T5's host sent 681 pieces, 591
+of them repeats. Offline at a 360 ms round trip, the old timers repeated 401 of 521 pieces and the
+new ones 0 of 120.
+
+**Latency cost.**
+
+| Situation | Before | After |
+| --- | --- | --- |
+| Window open (every normal frame) | sent at once | **unchanged**: sent at once, own segment |
+| Window full | link dropped | frame waits for the frontier to move: at least one round trip for the oldest outstanding segment, plus ≤ 20 ms for the pump tick |
+| Inbound ring full of non-evictable frames | a frame destroyed (desync) | delivery waits ≤ 20 ms per timer tick for the application to drain |
+| Loss the K=3 window did not cover, round trip < ~120 ms | repaired after 200 ms | **unchanged** (the floor) |
+| Same, at the field's ~220 ms round trip | 200 ms (and every other segment re-sent spuriously) | ~300 ms; no spurious re-sends |
+| Same, at a 500 ms round trip | 200 ms (≈ 2× re-send traffic) | ~580 ms; doubles while the oldest segment keeps timing out |
+
+The K-window already repairs almost every loss (at 5 % loss, K = 3 leaves 1.25·10⁻⁴ per segment),
+so the RTO rows are the rare case.
+
+**Wire compatibility: none needed, nothing negotiated.** Nothing new goes on the wire. The segment
+header, the acknowledgement and the channel mux are all unchanged. A bundled segment carries the tail
+of one frame and the head of the next, and the reassembler has always accepted that: `stream_drain`
+walks a segment frame by frame and carries a partial header across a boundary. That parsing code is
+unchanged since `v0.2.0-rc2`: before T4b, `git diff v0.2.0-rc2` had no hunk in `on_input_frame` or
+`stream_drain`, and T4b's only edit there is the pause check before a segment is consumed. So **an
+rc2 peer reads everything a T4b peer sends**. The reverse also holds, with
+one caveat. An rc2 *sender* still has its old rule, so it drops a link whose window fills. That is
+rc2's behavior with any peer, not something mixing builds causes.
+
+**Alternatives rejected.**
+
+- *Nagle-style bundling on the open-window path* (hold small frames until a segment fills, or until
+  a per-present flush). It halves the datagram count of a flood. But it adds up to one flush
+  interval of latency to **every** lockstep frame, which is exactly what the transport exists to
+  avoid. It also does not remove the class: a burst of large frames still fills the window. Here
+  bundling happens only when the window is already full, so it costs nothing.
+- *Refusing the write at the API* (`MH_Net_Send` returns 0 on a full window). mh.exe's lobby and
+  lockstep callers do not retry a failed send, so a refused order is a lost order: a desync with
+  extra steps.
+- *A bigger window.* It moves the cliff without removing it. T4's flood would have filled 4096
+  segments within about a second at 3500 fps.
+
+The oracle is `net_selftest.exe udploopbacktest`, with four arms through an in-process delay relay
+at a 10 Mbit/s link rate:
+
+- **burst**: a steady phase at 360 ms asserting no spurious re-sends, 128 KiB of channel C asserting
+  no repeated pieces, then 2548 small frames at once, all of which must survive, in order, through
+  the backlog.
+- **stall-then-bulk**: T5 rebuilt. A 500 ms round trip, a 462 KB transfer, and a 3.4 s freeze that
+  keeps 64 KiB per direction. The link must survive, every frame must arrive in order, and every
+  chunk must verify.
+- **stops acknowledging**: a mute peer dropped by the kept rule within the timeout and not early, a
+  silent peer dropped by the watchdog, and the size bound with the watchdog off.
+- **inbound ring full**: 700 non-evictable frames at a peer that is not draining. Nothing is
+  destroyed, and every frame arrives once the peer drains.
+
+Each fix has a mutation that turns an arm red.
+
 ## What T1 and R1 consume
 
 - **`mp:T1` (`mh_net_udp.dll`)** — `packet_encode`/`packet_decode`, `ReplayWindow`, the frame mux,
@@ -365,6 +545,7 @@ boundary from both sides, so an off-by-one reds one case or the other.
 
 ```
 net_selftest.exe udpwiretest                 # fixtures + the range properties
+net_selftest.exe udploopbacktest             # mp:T1 stream + mp:T4b/T5 flow control (~40 s)
 net_selftest.exe udpsnaptest                 # mp:X1 -- the snapshot pipeline end to end
 net_selftest.exe udppunchtest                # mp:R3 -- the hole-punch promotion state machine
 net_selftest.exe udpwiretest --fuzz 600      # the seeded decoder fuzz, under the ASan build

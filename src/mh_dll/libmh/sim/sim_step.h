@@ -176,6 +176,14 @@ void *sim_step_entry_thunk();
 int install_promotion_sim_step_direct();   // the fallback route; 1 if ours now owns the entry
 int register_promotion_sim_step_rebound(); // the rebind route's bookkeeping half; call only AFTER it took
 
+// TEST-ONLY (mp:D32). The direct-install route's bookkeeping half, WITHOUT the real E9 write
+// install_promotion_sim_step_direct() does over a game VA that does not exist off the rig
+// (interlock_selftest.cpp's own comment on that route: "already promoted -> 0" is testable here,
+// "not yet promoted -> installs" is not). Exercising set_sim_step_pre_hook()'s ACCEPTING arm still
+// needs the root to read as promoted-not-by-rebind, so this sets exactly the flags
+// install_promotion_sim_step_direct() would have, and nothing else. Never called in production.
+void sim_step_promotion_force_direct_for_test();
+
 // Non-vacuity accessors. `sim_step_served_calls()` is the served count the run reports: a ship-config
 // run has no harness stop step, so the count is emitted as a milestone ladder from the promoted body
 // itself (#1/#100/#1000/#10000/#100000) and read back here by the arming report. A promoted root at 0
@@ -186,6 +194,16 @@ bool sim_step_promoted();
 long sim_step_served_calls();
 void sim_step_promotion_reset_for_test(); // TEST-ONLY; the guard has no un-promote in production
 
+// mp:D32. WHICH of the two routes promoted the root -- true only for the REBIND route
+// (register_promotion_sim_step_rebound), false for DIRECT ENTRY INSTALL and false when not promoted at
+// all. The two routes are fed differently: rebind means the determinism harness's own detour still owns
+// llm_strat_sim_step's real entry and its handler (harness.cpp's on_sim_step) calls
+// mh::desync::on_sim_step_hashed UNCONDITIONALLY, before the promoted/original branch -- so that
+// configuration already has a feeder with no help from this file. Direct install means nothing else
+// touches this entry, so it is the one case set_sim_step_pre_hook's caller may actually need to chain
+// onto. See set_sim_step_pre_hook below, which enforces this rather than trusting callers to ask first.
+bool sim_step_promoted_via_rebind();
+
 // Chain an instrument onto the promoted root: `fn` runs at the top of every served call, before the
 // body. PROMOTING THIS ROOT TOOK A HOOK AWAY FROM AN INSTRUMENT THAT SHIPS ON, and this gives it back
 // -- the D21 desync sampler's only sampling point in a no-harness run is llm_strat_sim_step's entry
@@ -193,7 +211,11 @@ void sim_step_promotion_reset_for_test(); // TEST-ONLY; the guard has no un-prom
 // exclusive trampoline is refused. Measured 2026-09-04 before this existed: the detector armed,
 // printed its cost probe, then sampled nothing all run while blaming a harness that was not present.
 // Returns 0 -- and installs nothing -- when the root is not promoted this run (install a trampoline
-// instead) or when a hook is already set (two instruments in one slot is not a thing this permits).
+// instead), when a hook is already set (two instruments in one slot is not a thing this permits), OR
+// (mp:D32) when the root was promoted BY REBIND: the harness's own detour already feeds
+// on_sim_step_hashed unconditionally for every call through the real entry, so chaining this pre-hook
+// too would feed the detector TWICE per step -- measured as "2999 steps seen" for a 1500-step run. Only
+// sim_step_promoted_via_rebind() == false (i.e. the direct-install route) may take this slot.
 int set_sim_step_pre_hook(void (*fn)());
 
 namespace detail {

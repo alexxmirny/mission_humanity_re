@@ -186,10 +186,40 @@ void host_on_join(int sender, const char *player_name,
 // departed peer can never hold the Start gate shut.
 void host_on_leave(int sender);
 
-// THE START GATE. True while some admitted joiner's download is incomplete; `out_peer` receives that
-// peer's name. Read by the lobby tick (which closes the button) and by nothing else -- a second
-// caller would be a second answer.
-bool host_start_blocked(char *out_peer, int cap);
+// THE START GATE. True while some admitted joiner does not report our map; `out_peer` receives that
+// peer's name. `out_unfetchable` (mp:X2b) is set when the transport has no channel C, i.e. the
+// joiner can never be sent the map and this is a REFUSAL rather than a wait. Read by the lobby tick
+// (which closes the button) and by nothing else -- a second caller would be a second answer.
+bool host_start_blocked(char *out_peer, int cap, bool *out_unfetchable = nullptr);
+
+// mp:X2/X2b -- asked by launch.cpp's begin_map_load hook when the host's Start is ACTIVATED. True =
+// swallow the activation: the gate is shut (a joiner is still downloading, or holds a different map
+// on a transport that cannot carry it). Logs `; [map] start CLICK REFUSED -- '<peer>' ...` each time.
+// This, not the widget's DISABLED bit, is the enforcement -- retail re-derives that bit every frame.
+bool host_refuse_start_click();
+
+// maptest only (mp:X2b): pretend the transport can (1) or cannot (0) carry a map; -1 = ask the
+// module. The offline suite has one module and needs to assert the TCP-shaped gate.
+void set_can_carry_for_test(int v);
+
+// mp:T6 -- maptest's doors onto the two thread interleavings of the map-have report (recv thread,
+// host_on_join) and the snapshot sender (main thread, the lobby tick's pump). The race and the fix are
+// in map_transfer.cpp's THE HOST LOCK block. Every field is optional; null hooks = production.
+//   send            replaces MH_Net_SnapshotSend (returns "armed"); the suite counts calls
+//   between         runs inside the pump AFTER it chose + reserved `peer`, BEFORE its re-check
+//   join_prepublish runs inside host_on_join BEFORE it publishes the report (where the first cut
+//                   had already set `seated` but not yet `holds`)
+//   body/len        replace the pump's `Maps\` file read (the suite has no game directory)
+struct PumpTestHooks {
+    int (*send)(int peer, const void *body, int len, void *ctx);
+    void (*between)(int peer, void *ctx);
+    void (*join_prepublish)(int sender, void *ctx);
+    const uint8_t *body;
+    uint32_t       len;
+    void          *ctx;
+};
+void set_pump_hooks_for_test(const PumpTestHooks *h); // null restores production
+void host_pump_for_test();                            // one pump step, as the lobby tick runs it
 
 // WHICH peer the next transfer is for, or -1 for nobody. Split out of the pump so the CHOICE is a
 // function the offline suite can drive: "a joiner already holding the content transfers nothing" is

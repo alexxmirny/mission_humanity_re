@@ -212,6 +212,14 @@ void MH_Net_GetStats(MH_NetStats *out);
  * a transport with no per-peer counters line to plumb it into (the TCP module, mh_net.dll). */
 void MH_Net_SetPeerHorizon(int player_id, int horizon_ms);
 
+/* ---- the MATCH boundary for the inbound-queue counters (mp:U41b) -----------------------------------
+ * The queue's per-match rollup (high-water, evicted, refused) used to restart only when the TRANSPORT
+ * restarted, so a host_rematch -- a second match over the SAME live link -- reported the first match's
+ * high-water as its own. mh.dll calls this at SES1's match end (mp_session_close): the module logs the
+ * finished match's rollup and restarts the counters, KEEPING every frame still queued (the link is not
+ * going anywhere). A no-op on a module with no lane counters (mh_net_udp.dll's ring has none). */
+void MH_Net_QueueMatchBoundary(void);
+
 /* 1 if the transport has been started (Init/InitEx succeeded), else 0. */
 int MH_Net_IsStarted(void);
 

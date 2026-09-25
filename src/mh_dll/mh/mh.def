@@ -31,11 +31,13 @@ EXPORTS
     ?savegame_now@save@mh@@YAIPAD@Z
     MH_Core_ArmPaths
     MH_Core_TrapsAtOpen
+    MH_Lockstep_StepPin
     MH_Net_Send
     MH_Net_SnapshotPoll
     MH_Net_SnapshotSend
     MH_Net_SnapshotStatus
     MH_RunDir
+    MH_Session_HarnessStop
     MH_Temporal_Event
     MH_UIDrive_ActiveScreen
     MH_UIDrive_DumpWidgets
@@ -44,4 +46,12 @@ EXPORTS
     MH_UIDrive_ScreenSettled
     MH_UIDrive_ScreenSig
     MH_UIDrive_SetSettleClock
+
+; mp:D29 -- the CONFIGURATION (1) FALLBACK rows. These are SPINE rows (libmh.dll answers them
+; when it is present, and the harness binds them there), exported here so that with NO
+; libmh.dll the harness can bind mh.dll's own answer -- its region table seeded from REGIONS[]
+; and its empty owner table (seams/libmh_bind.cpp) -- and hash spine-free.
+    ?live@state@mh@@YAAAUlive_table@12@XZ
+    ?owner_count@state@mh@@YAAAHXZ
+    ?owner_table@state@mh@@YAPAUowner_slot@12@XZ
 

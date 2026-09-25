@@ -22,6 +22,21 @@
 // Exactly one of the two is live in any run: the harness takes the entry in DllMain, before
 // MH_Seam_Init runs, and the seam install is conditional on that entry still being free.
 //
+// mp:D32 -- A THIRD ROUTE ONTO THE SAME PRE-BODY POINT, AND WHY IT MUST NOT ADD A THIRD FEEDER.
+// ROOTS-LIVE (2026-09-04) gave llm_strat_sim_step a promoted body (mh::sim::sim_step), reached either
+// by DIRECT ENTRY INSTALL (no harness owns the entry -- the trampoline above is free, so this file's
+// on_sim_step chains onto the promoted body via mh::sim::set_sim_step_pre_hook instead of a
+// trampoline: same single feeder, different plumbing) or by HARNESS REBIND (the harness's own detour
+// keeps the entry and falls through to the promoted body instead of the original -- see
+// sim_step.cpp's promoted_arm namespace). The rebind case is the trap: the harness's detour still
+// calls on_sim_step_hashed UNCONDITIONALLY, before ever reaching the promoted body, so if
+// net_seams.cpp also chained on_sim_step onto the promoted body (as it did before D32), BOTH fired
+// every step -- measured as "2999 steps seen" for a 1500-step run. The fix lives on the mh::sim side
+// (sim_step.h/.cpp: sim_step_promoted_via_rebind(), and set_sim_step_pre_hook() itself refuses the
+// rebind case) and on the seam side (net_seams.cpp install_desync_watch() only chains the pre-hook
+// when NOT promoted-via-rebind), so the invariant below is restored: exactly one feeder, named per
+// configuration, never two.
+//
 // THE SAMPLE RIDES A TRANSPORT CONTROL FRAME (FLAG_HASH), not the game's lockstep wire. The retail
 // dispatcher bounds-checks the outer tag and treats anything outside 1..5 as a GARBLED STREAM,
 // setting LS_SESSION_ENDED (turn_engine.h) -- so a detector carried on the game wire would end the
@@ -124,6 +139,23 @@ bool g_running = false; // ...and we are in a live multi-peer lockstep session
 uint32_t g_step = 0; // sim steps since session_reset(); the sample key
 ring     g_ring;
 
+// ---- D31 clause C: the cumulative order digest ---------------------------------------------------
+// Folded EVERY sim step (order_digest_tick(), called from on_sim_step()/on_sim_step_hashed() before
+// the sampling-cadence gate) over the "due-now" order queue -- llm_strat_order_queue_dispatch's own
+// input, the closest thing to "what the sim applies this step" a PRE-BODY hook can read without a
+// new hook: on_sim_step already fires every step (see the file header's SAMPLING POINT note), so
+// this rides it rather than needing a second one. Resolved to region-table indices at install() time
+// so a rename/reindex of the manifest cannot silently start hashing the wrong bytes; -1 means "not
+// found in this build" and the digest stays inert (0, never sent -- see sample_and_judge()).
+uint64_t g_order_digest          = FNV_OFFSET;
+int      g_order_queue_idx       = -1;
+int      g_order_queue_count_idx = -1;
+int      g_order_mismatches      = 0; // R2: log + rollup only, never on-screen
+int      g_order_absent_peer     = 0; // compared samples where the peer's frame carried no digest
+// R2: the on-screen state notice fires on the SECOND CONSECUTIVE mismatching sample, not the first
+// (should_notify's new meaning) -- reset to 0 by an intervening agreeing sample.
+int g_consecutive_state_mismatches = 0;
+
 CRITICAL_SECTION g_cs;
 bool             g_cs_init = false;
 pending_queue    g_pending; // guarded by g_cs
@@ -156,11 +188,9 @@ int64_t g_reused_samples      = 0;
 int64_t g_hash_ticks   = 0;
 int64_t g_hash_samples = 0;
 int64_t g_qpc_freq     = 0;
-// One STATUS line per this many samples. At the shipped cadence (every=50) and ~50 sim steps/s that
-// is a line roughly every 50 s -- often enough that a clean run is visibly clean and that a run
-// killed by the rig still has recent evidence in it, rare enough that a 20-minute match adds ~24
-// lines to mh_net.log.
-constexpr int64_t SAMPLES_PER_STATUS_LINE = 50;
+// D31 clause A: the STATUS-line proof-of-life cadence (SAMPLES_PER_STATUS_LINE / status_line_due())
+// now lives in desync_watch.h, as a pure function desynctest can exercise -- see its comment there
+// for why it moved and was lowered from 50.
 
 // Scratch, reused: 96 uint64 + a wire record are ~1.6 KB together and a sim step is not the place to
 // touch the heap.
@@ -335,18 +365,32 @@ void snapshot_tick() {
 void on_hash_frame_rx(int sender, const unsigned char *buf, int len) {
     if (!g_running || !g_cs_init) return;
     // Materialise into a zeroed record FIRST: frame_is_sane reads header fields, and a short frame
-    // must not be read through as a sample_wire. Anything that does not fit is a bad frame.
-    if (len < wire_size(0) || len > (int)sizeof(sample_wire)) {
+    // must not be read through as a sample_wire. Anything that does not fit is a bad frame. The upper
+    // bound is widened by ORDER_DIGEST_BYTES: a D31 order-digest frame is exactly that many bytes
+    // longer than the base (state-only) frame the same region_count would produce.
+    if (len < wire_size(0) || len > (int)sizeof(sample_wire) + ORDER_DIGEST_BYTES) {
         InterlockedIncrement((volatile LONG *)&g_bad_frames);
         return;
     }
     sample_wire s;
     memset(&s, 0, sizeof(s));
-    memcpy(&s, buf, (size_t)len);
-    if (!frame_is_sane(s, len)) {
+    const int base_copy = (len > (int)sizeof(sample_wire)) ? (int)sizeof(sample_wire) : len;
+    memcpy(&s, buf, (size_t)base_copy);
+
+    // D31 clause C / WIRE COMPATIBILITY (see desync_watch.h above judge_order()): the digest, if any,
+    // is the trailing ORDER_DIGEST_BYTES the base frame does not account for. An rc2 peer's frame is
+    // never this length for its own region_count, so it reads as `has_digest=false` here -- "new
+    // peer compares only state when the digest is absent" falls straight out of this check, no
+    // separate rc2-detection path needed. frame_is_sane is asked about the BASE length either way;
+    // the trailing bytes (if present) are not part of what it validates.
+    const int  base_len   = wire_size((int)s.region_count);
+    const bool has_digest = (len == base_len + ORDER_DIGEST_BYTES);
+    if (!frame_is_sane(s, has_digest ? base_len : len)) {
         InterlockedIncrement((volatile LONG *)&g_bad_frames);
         return;
     }
+    uint64_t order_digest = 0;
+    if (has_digest) memcpy(&order_digest, buf + base_len, ORDER_DIGEST_BYTES);
     // A peer that RECEIVES samples while producing none is not desynced -- it is not RUNNING the
     // sampler, because the only per-step hook this has is the turn engine's live sim_step edge and
     // `[promote] lockstep` is off here, so on_sim_step never executes and nothing below the recv
@@ -362,15 +406,20 @@ void on_hash_frame_rx(int sender, const unsigned char *buf, int len) {
         return;
     }
     EnterCriticalSection(&g_cs);
-    g_pending.push(sender, s);
+    g_pending.push(sender, s, order_digest, has_digest);
     LeaveCriticalSection(&g_cs);
 }
 
 // ---- report one judged sample (main thread) ----------------------------------------------------
-void report(int sender, const verdict &v) {
+// `theirs_order_digest`/`theirs_has_order_digest` are the D31 clause C payload that rode alongside
+// this sample (see on_hash_frame_rx) -- independent of which STATE outcome `v` carries, because an
+// order disagreement can hide behind a re-converged state (the whole point of the digest: it never
+// re-converges, so it still shows at the next sample after the state healed).
+void report(int sender, const verdict &v, uint64_t theirs_order_digest, bool theirs_has_order_digest) {
     switch (v.kind) {
         case outcome::ok:
             ++g_compared;
+            g_consecutive_state_mismatches = 0; // R2: an agreeing sample breaks a mismatch run
             if (g_cfg.verbose)
                 say("; [desync] step=%lu peer=%d MATCH state=%08X%08X\n", (unsigned long)v.step, sender,
                     (unsigned)(v.mine >> 32), (unsigned)v.mine);
@@ -379,6 +428,7 @@ void report(int sender, const verdict &v) {
         case outcome::mismatch: {
             ++g_compared;
             ++g_mismatches;
+            ++g_consecutive_state_mismatches;
             const char *rname = (v.first_region >= 0 && v.first_region < N)
                                     ? mh::state::HASH_REGIONS[v.first_region].name
                                     : "(none -- state hashes differ but every compared region agrees)";
@@ -391,7 +441,10 @@ void report(int sender, const verdict &v) {
                 say("; [desync] *** DESYNC continues: %d mismatching samples, latest step=%lu peer=%d "
                     "first_region=%d %s\n",
                     g_mismatches, (unsigned long)v.step, sender, v.first_region, rname);
-            if (should_notify(g_mismatches)) notify_once(v.step);
+            // R2 (user ruling, 2026-09-24): the on-screen notice needs PERSISTENCE, not just a first
+            // mismatching sample -- see should_notify's header comment. A state mismatch that
+            // reconverges at the very next sample never reaches g_consecutive_state_mismatches==2.
+            if (should_notify(g_consecutive_state_mismatches)) notify_once(v.step);
             // D25: arm the full-state dump. Arming is a latch, not a schedule -- the dump steps come
             // from the absolute grid so that peers which noticed at different moments still write
             // files for the SAME step, which is the only thing that makes them diffable.
@@ -427,7 +480,28 @@ void report(int sender, const verdict &v) {
 
         case outcome::bad_frame:
         case outcome::not_yet:
-        default: break;
+        default: return; // no ring entry was judged against -- nothing for the order channel below either
+    }
+
+    // D31 clause C, R2: the order-digest channel. LOG + ROLLUP ONLY, never on-screen -- it is a
+    // strictly weaker signal (the order stream disagreed at or before this step; state itself may
+    // already be back in agreement) and, unlike the state channel, it never re-converges once it has
+    // fired, so an on-screen notice for it would be permanent for the rest of the match.
+    const order_outcome oo = judge_order(g_ring, v.step, theirs_order_digest, theirs_has_order_digest);
+    if (oo == order_outcome::mismatch) {
+        ++g_order_mismatches;
+        if (should_log_full(g_order_mismatches))
+            say("; [desync] ORDER-DIGEST mismatch step=%lu peer=%d (mismatch #%d) -- the order stream "
+                "disagreed at or before this step (state here is %s). LOG+ROLLUP ONLY (D31 R2): never "
+                "an on-screen notice.\n",
+                (unsigned long)v.step, sender, g_order_mismatches,
+                v.kind == outcome::ok ? "back in agreement" : "ALSO mismatching");
+        else if (should_log_rollup(g_order_mismatches))
+            say("; [desync] ORDER-DIGEST mismatch continues: %d mismatching sample(s), latest step=%lu "
+                "peer=%d\n",
+                g_order_mismatches, (unsigned long)v.step, sender);
+    } else if (oo == order_outcome::absent) {
+        ++g_order_absent_peer; // an rc2 peer, or a build with no order_queue region resolved
     }
 }
 
@@ -436,21 +510,23 @@ void drain_pending() {
     // Bounded by PENDING_CAP: pop everything, judge, and re-push only the future ones. Doing it in
     // one pass under the lock would hold the recv thread off for the whole judgement.
     sample_wire s;
-    int         from  = 0;
-    int         guard = PENDING_CAP + 1;
+    int         from   = 0;
+    uint64_t    od     = 0;
+    bool        has_od = false;
+    int         guard  = PENDING_CAP + 1;
     while (guard-- > 0) {
         EnterCriticalSection(&g_cs);
-        const bool got = g_pending.pop(from, s);
+        const bool got = g_pending.pop(from, s, &od, &has_od);
         LeaveCriticalSection(&g_cs);
         if (!got) break;
         const verdict v = judge(g_ring, s, g_excluded, N, g_manifest_fp, g_ring.newest);
         if (v.kind == outcome::not_yet) {
             EnterCriticalSection(&g_cs);
-            g_pending.push(from, s); // still ahead of us; look again next sample
+            g_pending.push(from, s, od, has_od); // still ahead of us; look again next sample
             LeaveCriticalSection(&g_cs);
             break; // the queue is in arrival order, so everything behind it is at least as new
         }
-        report(from, v);
+        report(from, v, od, has_od);
         if (!g_running) break; // manifest mismatch shut us down
     }
 }
@@ -479,10 +555,11 @@ void emit_status_line() {
         wsprintfA(cost, "no hash timed yet");
     }
     say("; [desync] STATUS: samples=%d (own %d / reused %d) compared=%d mismatching=%d too_old=%d "
-        "bad_frames=%d step=%lu | COST %s (every=%d, %d regions, %d wire bytes/sample)\n",
+        "bad_frames=%d order_mismatching=%d order_absent=%d step=%lu | COST %s (every=%d, %d "
+        "regions, %d wire bytes/sample)\n",
         (int)(g_hash_samples + g_reused_samples), (int)g_hash_samples, (int)g_reused_samples,
-        g_compared, g_mismatches, g_too_old, g_bad_frames, (unsigned long)g_step, cost, g_cfg.every,
-        N, wire_size(N));
+        g_compared, g_mismatches, g_too_old, g_bad_frames, g_order_mismatches, g_order_absent_peer,
+        (unsigned long)g_step, cost, g_cfg.every, N, wire_size(N));
 }
 
 // D21 clause (d): the cost has to be MEASURED and the cadence chosen from that number rather than
@@ -561,6 +638,21 @@ int install(const char *ini_path) {
         g_excluded[i] = mh::state::HASH_REGIONS[i].excluded;
         if (g_excluded[i]) ++n_excluded;
     }
+    // D31 clause C: resolve the order-digest observation point by NAME, not by a hardcoded index --
+    // the manifest is regenerated from the Ghidra DB and indices shift. "order_queue" is the due-now
+    // queue (llm_strat_order[300], what llm_strat_order_queue_dispatch is about to apply THIS step);
+    // "order_queue_count" is its 4-byte length. order_staging ("proposed this frame") and
+    // order_pending/order_pending_arr ("scheduled", not yet due) are deliberately NOT folded in --
+    // they describe orders that have not been applied yet.
+    for (int i = 0; i < N; ++i) {
+        if (lstrcmpA(mh::state::HASH_REGIONS[i].name, "order_queue") == 0) g_order_queue_idx = i;
+        else if (lstrcmpA(mh::state::HASH_REGIONS[i].name, "order_queue_count") == 0)
+            g_order_queue_count_idx = i;
+    }
+    if (g_order_queue_idx < 0)
+        say("; [desync] D31: 'order_queue' region not found in this build's manifest -- the "
+            "cumulative order digest stays inert (0, never appended to the wire); state-only "
+            "comparison is unaffected\n");
     {
         // The fingerprint wants three parallel arrays; the manifest is an array of structs. Build the
         // views on the stack -- this runs once.
@@ -615,19 +707,31 @@ int install(const char *ini_path) {
 // same boundary with no match behind them).
 void match_end() {
     if (!g_armed) return;
-    if (g_compared || g_mismatches || g_hash_samples || g_reused_samples) {
+    if (g_compared || g_mismatches || g_hash_samples || g_reused_samples || g_order_mismatches) {
         emit_status_line();
         say("; [desync] match end: %d mismatching / %d compared sample(s), %d dropped as too old, "
-            "%d bad frame(s), %lu steps seen\n",
-            g_mismatches, g_compared, g_too_old, g_bad_frames, (unsigned long)g_step);
+            "%d bad frame(s), %d order-digest mismatching (R2: log+rollup only, never shown), %lu "
+            "steps seen\n",
+            g_mismatches, g_compared, g_too_old, g_bad_frames, g_order_mismatches,
+            (unsigned long)g_step);
     }
-    g_mismatches     = 0;
-    g_compared       = 0;
-    g_too_old        = 0;
-    g_bad_frames     = 0;
-    g_hash_samples   = 0;
-    g_reused_samples = 0;
-    g_hash_ticks     = 0;
+    g_mismatches        = 0;
+    g_compared          = 0;
+    g_too_old           = 0;
+    g_bad_frames        = 0;
+    g_hash_samples      = 0;
+    g_reused_samples    = 0;
+    g_hash_ticks        = 0;
+    g_order_mismatches  = 0;
+    g_order_absent_peer = 0;
+}
+
+void stop_sampling() {
+    if (!g_armed || !g_running) return;
+    g_running = false;
+    say("; [desync] sampling STOPPED at the harness stop (step %lu) -- the match end line above is this "
+        "match's final verdict; session_begin_multi re-arms sampling\n",
+        (unsigned long)g_step);
 }
 
 void session_reset() {
@@ -648,6 +752,12 @@ void session_reset() {
     g_hash_ticks     = 0;
     g_hash_samples   = 0;
     g_reused_samples = 0;
+    // D31 clause C: the order digest is "since session start" (this module's session == one match --
+    // see match_end()'s own comment), so it resets here alongside g_step, not in match_end().
+    g_order_digest                 = FNV_OFFSET;
+    g_order_mismatches             = 0;
+    g_order_absent_peer            = 0;
+    g_consecutive_state_mismatches = 0;
     g_ring.clear();
     if (g_cs_init) {
         EnterCriticalSection(&g_cs);
@@ -663,7 +773,7 @@ namespace {
 // Everything a sample does once the hashes exist. `per` is in manifest order; `state` is the
 // state-only fold of it.
 void sample_and_judge(const uint64_t *per, uint64_t state) {
-    g_ring.put(g_step, state, per, N);
+    g_ring.put(g_step, state, per, N, g_order_digest);
 
     memset(&g_out, 0, sizeof(g_out));
     g_out.magic        = WIRE_MAGIC;
@@ -674,7 +784,14 @@ void sample_and_judge(const uint64_t *per, uint64_t state) {
     g_out.reserved     = 0;
     g_out.state_hash   = state;
     memcpy(g_out.per, per, sizeof(uint64_t) * N);
-    MH_Net_SendHash(reinterpret_cast<const unsigned char *>(&g_out), wire_size(N));
+    // D31 clause C / WIRE COMPATIBILITY (desync_watch.h, above judge_order()): the order digest is
+    // NOT a field of `g_out` -- it rides ORDER_DIGEST_BYTES of trailing bytes appended after the
+    // base (state-only) frame, so an rc2 peer's own wire_size(N) math never has to see it exist.
+    const int base_len = wire_size(N);
+    uint8_t   send_buf[sizeof(sample_wire) + ORDER_DIGEST_BYTES];
+    memcpy(send_buf, &g_out, (size_t)base_len);
+    memcpy(send_buf + base_len, &g_order_digest, ORDER_DIGEST_BYTES);
+    MH_Net_SendHash(send_buf, base_len + ORDER_DIGEST_BYTES);
 
     if (!g_fp_reported) {
         g_fp_reported = true;
@@ -683,7 +800,7 @@ void sample_and_judge(const uint64_t *per, uint64_t state) {
             g_reuse_source ? "the harness's, reused" : "our own walk");
     }
     drain_pending();
-    if (((g_hash_samples + g_reused_samples) % SAMPLES_PER_STATUS_LINE) == 0) emit_status_line();
+    if (status_line_due(g_hash_samples + g_reused_samples)) emit_status_line();
 }
 
 // Hash the whole manifest ourselves, timed. Returns the state-only fold; leaves the per-region
@@ -701,6 +818,28 @@ uint64_t hash_own() {
     g_hash_ticks += (t1.QuadPart - t0.QuadPart);
     ++g_hash_samples;
     return state;
+}
+
+// D31 clause C: fold THIS step's due-now order queue into the running digest. Called from
+// on_sim_step()/on_sim_step_hashed() UNCONDITIONALLY, i.e. on every sim step this hook fires for
+// (armed+running), NOT gated by sampling_now() -- that is the whole point: the state hash only ever
+// re-derives the CURRENT state at a sampled step, so a short order-region divergence that heals
+// before the next sample is invisible to it (mp:D30, mp:D31's motivating case). A cumulative fold
+// carries a divergent step's contribution forward forever, so it still shows at the next sample even
+// after the queue itself has drained back to agreement.
+//
+// COST. Reuses the SAME hash_slice() machinery the full manifest walk uses, but over ONLY the
+// order_queue (20400 bytes) + order_queue_count (4 bytes) regions -- roughly 0.7% of the 2.79 MB
+// manifest the COST PROBE measured at ~4 ms, i.e. low tens of microseconds. That is what makes EVERY
+// STEP viable here where the config comment above rejects every=1 for the FULL manifest (~25% of a
+// sim step's budget): this is two small regions, not sixty-two.
+void order_digest_tick() {
+    if (g_order_queue_idx < 0) return; // resolved at install(); -1 means the digest stays inert
+    const uint64_t h1 = mh::state::hash_slice(g_order_queue_idx, true, true);
+    const uint64_t h2 =
+        (g_order_queue_count_idx >= 0) ? mh::state::hash_slice(g_order_queue_count_idx, true, true) : 0;
+    const uint64_t buf[3] = {(uint64_t)g_step, h1, h2};
+    g_order_digest        = fnv1a(buf, sizeof(buf), g_order_digest);
 }
 
 // The gate every sample passes: armed, on the cadence, and in a live multi-peer lockstep session.
@@ -739,6 +878,7 @@ void say_gate_once() {
 void on_sim_step() {
     if (!g_armed || !g_running) return;
     ++g_step;
+    order_digest_tick(); // D31 clause C: every step, unconditionally -- see the function's own comment
     snapshot_tick();
     if (!sampling_now()) {
         if ((g_step % (uint32_t)g_cfg.every) == 0) say_gate_once();
@@ -750,6 +890,7 @@ void on_sim_step() {
 void on_sim_step_hashed(const uint64_t *per, int n, uint64_t state) {
     if (!g_armed || !g_running) return;
     ++g_step;
+    order_digest_tick(); // D31 clause C: every step, unconditionally -- see the function's own comment
     snapshot_tick();
     if (!sampling_now()) return;
     // A caller offering a DIFFERENT manifest than ours cannot be reused -- its region order is not

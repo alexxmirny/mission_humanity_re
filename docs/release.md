@@ -46,15 +46,14 @@ SETUP" in [`deploy.yml`](../.github/workflows/deploy.yml)'s header.
 
 Public repository only:
 
-- **Pages, in ONE of two mutually exclusive modes** (section 7.3 has the detail, and which one
-  is live changes what else on this list applies): *Actions mode* — the variable
-  `MH_PAGES_PUBLISH` = `true` and Settings → Pages → Source → **GitHub Actions**; or *branch
-  mode* — Source → a dedicated orphan **`gh-pages`** branch (NEVER `main`: the publish tool
-  rewrites that tree wholesale and would delete the manifest on the next release), with
-  `MH_PAGES_PUBLISH` **unset**, because `actions/deploy-pages` fails against a branch source.
-  As of 2026-09-23 this repository is in BRANCH mode.
+- **Pages, BRANCH mode** (decided 2026-09-23, dist V021; section 7.3 has the detail): Settings →
+  Pages → Source → the dedicated orphan **`gh-pages`** branch (NEVER `main`: the publish tool
+  rewrites that tree wholesale and would delete the manifest on the next release), the repository
+  variable **`MH_PAGES_BRANCH` = `gh-pages`**, and `MH_PAGES_PUBLISH` **unset** (it gated the retired
+  `actions/deploy-pages` job, which fails against a branch source).
   ([Pages](#pages));
-- **the `github-pages` Environment must allow tags `v*`**: Settings → Environments →
+- **(Actions mode only — not needed in branch mode, whose job declares no Environment)** **the
+  `github-pages` Environment must allow tags `v*`**: Settings → Environments →
   `github-pages` → *Deployment branches and tags* → add a **tag** rule `v*`. GitHub creates that
   Environment by itself on the first Pages deploy, allowing only `main`, and a tag-triggered
   `publish manifest.json to GitHub Pages` job is then rejected with *"Tag v… is not allowed to
@@ -339,7 +338,7 @@ It reads `src\mh_dll\Release` (override with `--release-dir`) and writes `dist\`
 | zip | contents | configuration |
 | --- | --- | --- |
 | `mission_humanity_re-<V>-net.zip` | `msvfw32.dll` `mh.dll` `mh_net.dll` `mh_net_udp.dll` `mh_net.ini` `LICENSE` `THIRD_PARTY.md` `README.txt` — `[net] transport=udp` is the default, `mh_net.dll` is the explicit `transport=tcp` | (1) all-original + restored multiplayer |
-| `mission_humanity_re-<V>-net-debug.zip` | the above **+ `mh_harness.dll`**, and an `mh_net.ini` with the diagnostic logging keys on (the harness itself cannot arm without `libmh.dll` — ruling Q4 — so it is carried, not armed) | (1), verbose |
+| `mission_humanity_re-<V>-net-debug.zip` | the above **+ `mh_harness.dll`**, and an `mh_net.ini` with the diagnostic logging keys on AND the harness armed — it hashes spine-free without `libmh.dll` since mp:D29 (user decision O6, 2026-09-24) | (1), verbose, instrumented |
 | `mission_humanity_re-<V>-brokered-debug.zip` | the above **+ `libmh.dll`** (the hosted build) at the zip root, and an `mh_net.ini` that ALSO arms the harness: per-step hashes + the order record, clock not pinned | (2) brokered, instrumented |
 
 No selftest executable, no standalone binary, no byte of the game.
@@ -349,14 +348,16 @@ verbatim**, with a provenance header. That file already documents every key with
 so a copy of it *is* the shipping configuration and cannot drift from it; a hand-authored minimal
 ini would be a second statement of the same defaults with nothing comparing the two. The debug
 variant is the same file with four observer keys flipped — `[net] sp_clock_log`,
-`[trace] temporal_sp`, `[desync] verbose`, `[input] mouse_trace` — plus, in the zip that carries
-`libmh.dll`, three `[harness]` keys: `enable=1` (every sim step hashed into `mh_harness.log`),
+`[trace] temporal_sp`, `[desync] verbose`, `[input] mouse_trace` — plus, in every zip that carries
+`mh_harness.dll`, three `[harness]` keys: `enable=1` (every sim step hashed into `mh_harness.log`),
 `fixed_step=0` (the game clock is NOT pinned — the harness's compiled default would make the sim run
 one step per present, a different game; `0` is what `test_ui.py --determinism` runs) and
 `order_mode=1` (every dispatched order recorded to `mh_orders.bin`). User ruling 2026-09-20: the
 debug ini records orders and per-step hashes, because a bug report without them is one the desync
-tooling cannot read. The harness keys follow `libmh.dll` because the instrument reads the sim
-through the spine and refuses in configuration (1) (ruling Q4). `[debug] overlay` left the list the
+tooling cannot read. The harness keys follow `mh_harness.dll` (mp:D29 + user decision O6,
+2026-09-24): until D29 they followed `libmh.dll`, because ruling Q4 refused the instrument in
+configuration (1); D29 made it arm spine-free there (the per-step hash reads only the region
+registry and owner table, which `mh.dll` answers itself), so `net-debug` now records hashes too. `[debug] overlay` left the list the
 same day: the debug ini keeps `overlay=0` — installed but hidden, Ctrl+Alt+D shows it. The tool's
 selftest asserts each debug ini differs from the ship ini in exactly its listed lines.
 
@@ -449,17 +450,19 @@ trusts the key it was built with.
 
 ### Pages
 
-`manifest.json` + `manifest.json.minisig` are the *entire* Pages site — nothing else is hosted
-there. `release.yml`'s `publish-pages` job deploys them with `actions/upload-pages-artifact` +
-`actions/deploy-pages` (first-party GitHub actions, the same trust tier as `actions/checkout`)
-rather than a `gh-pages` branch: a branch would need a third-party action or hand-rolled git-push
-scripting, and accumulates every past deploy's binary content in its history forever unless
-something force-pushes it, where the Pages deployment API keeps one current deployment with
-GitHub's own deployment history and no git commit at all. **One-time repo setup this needs, that no
-workflow run can do for itself:** Settings → Pages → Source → *GitHub Actions*, and the repository
-variable `MH_PAGES_PUBLISH` = `true`. The job is skipped without that variable — GitHub Pages does
-not exist on a private repository on the free plan, so the private rehearsal leaves it unset (the
-release and its attached `manifest.json` + `.minisig` are unaffected) and only the public repo sets it.
+`manifest.json` + `manifest.json.minisig` are what the Pages site serves (the `gh-pages` branch
+also holds `.nojekyll` and a one-page `index.html`). `release.yml`'s `publish-pages` job, after
+`publish` has uploaded every asset, clones `gh-pages`, commits the two files, pushes, requests a
+Pages build (`POST …/pages/builds`), waits for the build of ITS commit, and then `curl`s both files
+back and requires them byte-identical to the signed ones — a stale or 404 manifest reds the run
+instead of breaking only the players in the field. It needs `contents: write` + `pages: write` and
+no third-party action. **One-time repo setup:** Pages source = the `gh-pages` branch and the
+variable `MH_PAGES_BRANCH` = `gh-pages`. Unset, the job is skipped — Pages does not exist on a
+private free-plan repo, so the private rehearsal leaves it unset (the release and its attached
+`manifest.json` + `.minisig` are unaffected) and only the public repo sets it.
+The earlier Actions-mode job (`actions/upload-pages-artifact` + `actions/deploy-pages`, gated on
+`MH_PAGES_PUBLISH`) was retired by dist V021: the hand-cut v0.2.0-rc2 moved Pages to branch mode,
+where `deploy-pages` cannot deploy, and the branch is the better home (G288).
 
 ### Verifying it worked
 
@@ -540,20 +543,22 @@ paperwork — it IS the gate, and it is the only evidence the release is good.
 
 ### 7.3 Pages: serve the manifest from a branch nothing rewrites
 
-Pages may be in **Actions** mode or **branch** (`legacy`) mode, and the two are mutually exclusive:
+Pages is in **branch** (`legacy`) mode, decided 2026-09-23 (dist V021). The manifest is a
+committed file on a **dedicated orphan branch (`gh-pages`), never `main`**: `build_public_seed.py`
+REPLACES `main`'s tree wholesale on every publish, so a manifest committed there is deleted by the
+NEXT release — a break that arrives one release after the change that caused it. The branch holds
+only `manifest.json`, `manifest.json.minisig`, `.nojekyll` and a one-page `index.html`.
 
-- **Actions mode** — `release.yml`'s `publish-pages` job (`actions/deploy-pages`) does it, gated on
-  `MH_PAGES_PUBLISH = true`. Needs the `github-pages` Environment to allow tags `v*` (section 0.1).
-- **Branch mode** — the manifest is a committed file. **Use a dedicated orphan branch (`gh-pages`),
-  never `main`**: `build_public_seed.py` REPLACES `main`'s tree wholesale on every publish, so a
-  manifest committed there is deleted by the NEXT release — a break that arrives one release after
-  the change that caused it. The branch holds only `manifest.json`, `manifest.json.minisig`,
-  `.nojekyll` and a one-page `index.html`. A push may not trigger a build by itself; force one with
-  `gh api -X POST repos/<owner>/<repo>/pages/builds` and confirm with `…/pages/builds/latest` that
-  the built commit is the one you pushed.
+- **With Actions**, `release.yml`'s `publish-pages` job does the commit + build + read-back (the
+  [Pages](#pages) section), gated on `MH_PAGES_BRANCH`.
+- **By hand**, commit the two files to `gh-pages` yourself. A push may not trigger a build by
+  itself; force one with `gh api -X POST repos/<owner>/<repo>/pages/builds` and confirm with
+  `…/pages/builds/latest` that the built commit is the one you pushed.
 
-**`MH_PAGES_PUBLISH` must be unset while Pages is in branch mode** — `actions/deploy-pages` fails
-against a `legacy` source, so leaving it `true` reds the release the moment Actions come back.
+**`MH_PAGES_PUBLISH` stays unset.** It gated the retired `actions/deploy-pages` job, which fails
+against a `legacy` source; switching back to Actions mode would mean restoring that job, setting
+Source → GitHub Actions, re-checking the `github-pages` Environment's `v*` tag rule (0.1), and
+deleting `gh-pages` so nothing serves a stale manifest.
 
 **Whichever mode, read the site back** (`curl` the manifest and its `.minisig`): nothing else in the
 release flow fetches Pages, so a 404 there is invisible to a green pipeline and breaks only the

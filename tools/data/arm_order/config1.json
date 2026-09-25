@@ -1,7 +1,7 @@
 {
   "mode": "config1",
   "note": "fork F4D -- THE FIFTH BASELINE: CONFIGURATION (1), the shipped configuration in which libmh.dll is NOT beside mh.dll and the 627-TU spine is therefore not in the process at all (ruling Q10, ratified). RECORDED FROM THE FIRST CONFIG-(1) BOOT THAT HAS EVER HAPPENED -- before F4D the spine could not be absent, because it was compiled in. THIS IS NOT A VARIANT OF `original`, and reading it as one would be the mistake worth naming: `[config] mode=original` is a run that HAS the spine and declines to promote from it, so its arm still emits the [rebind] block and the [promote] domain reports (which is why that baseline is 44 steps and this one is 40). Configuration (1) has no spine to ask. IT IS ALSO KEYED DIFFERENTLY, by necessity: `[config mode=...]` is printed by mh::rebind::report_arming, a LIBMH row, so the line that names the mode is one of the lines the missing module takes with it. check_arm_order's CONFIG1_RE anchors on the bind's own outcome line instead -- a statement about what the arm DID, emitted by mh.dll, which is the same move F4B made when it re-pointed NOMODULE_RE onto the banner. ONE REFUSAL OUTCOME IS TEMPLATED HERE AND TWO DELIBERATELY ARE NOT -- see step #2's `why`. `NOT BOUND` (the file is simply not there) is the SHIPPED configuration and is templated. `LOADED BUT REFUSED` and `ABI MISMATCH` are broken deployments, and their lines name the symbols or the numbers that disagreed -- a build-specific list no template can mask into a stable string. They are gated by tools/check_module_bind.py --libmh, which classifies all three outcomes by name and is the tool that owns the bind verdict; this file owns ORDER. Edit ONLY with a --compare verdict in the same commit saying which steps moved and why.",
-  "recipe": "python tools/make_lane.py --name f4e_config1 --lane NN --port 65NN --headless --stock-exe && (cd workdir/mh_lanes/f4e_config1 && mh.focus.exe --skip-intro) -- fork F4E re-recorded from a PLAIN lane (all THREE satellites deployed; make_lane puts mh_net.dll, libmh.dll AND mh_harness.dll in every lane now, and the absent arms are --omit-satellite).",
+  "recipe": "python tools/make_lane.py --name f4e_config1 --lane NN --port 65NN --headless --stock-exe && (cd workdir/mh_lanes/f4e_config1 && mh.focus.exe --skip-intro) -- fork F4E re-recorded from a PLAIN lane (all THREE satellites deployed; make_lane puts mh_net.dll, libmh.dll AND mh_harness.dll in every lane now, and the absent arms are --omit-satellite). | HARNESS channel + the harness-armed net alts (mp:D29 O3, 2026-09-24): python tools/test_ui.py --determinism --det-config1 --det-local --ship-pacing --steps 3000 -> the SYMMETRIC clean arm's host lane (configuration (1), [harness] enable=1); recorded with check_arm_order.py --update <dir holding only that run's mh_harness.log> --mode config1, so the net channel was kept.",
   "channels": {
     "net": {
       "log": "mh_net.log",
@@ -20,9 +20,10 @@
         {"t": "; P<N> icon counters armed: wait-overlay call COUNTED, not gated (pass-through)"},
         {"t": "; overlay patches (xui=<N> icon_count=<N>): xui_call=ok xui_mov=ok"},
         {"t": "; resync-wait fix armed: sync_delay_stub -> return <N> (kills the busy-wait garbage-spin hang)"},
-        {"t": "; [net] UNCARRIED FIX: resync_trigger_gate is set, but its byte-patch carrier at <X> was RETIRED (C<N>) and its owner llm_net_lockstep_dispatch is NOT promoted this run -- so THIS RUN DOES NOT HAVE THAT FIX. Enable the matching [promote] key, or accept stock behaviour knowingly."},
-        {"t": "; [net] UNCARRIED FIX: resync_trigger_gate is set, but its byte-patch carrier at <X> was RETIRED (C<N>) and its owner llm_net_send_lockstep_keepalive is NOT promoted this run -- so THIS RUN DOES NOT HAVE THAT FIX. Enable the matching [promote] key, or accept stock behaviour knowingly."},
+        {"t": "; resync-trigger gate: <N>/<N> INC sites patched (gated on SYNC_RETRY_COUNTDOWN<<X>), <N> displaced by promotion, <N> MISMATCHED"},
+        {"t": "; gone-peer frame guard: PATCHED -- the kick re-broadcast @<X> now snapshots the datagram across the emit (MP U<N>i)"},
         {"t": "; resync-order horizon armed: CTL_RESYNC_BEGIN exec_time clamped to LOCKSTEP_HORIZON (MP D<N>)"},
+        {"t": "; resync_receiver_deadline armed: a non-leader leaves the mode-<N> wait screen after max(<N>, data_timeout_ms) ms with no RESUME"},
         {"t": "; hires_clock: timeBeginPeriod(<N>) armed (finer Sleep/scheduler; does NOT affect GetTickCount)"},
         {"t": "; qpc_clock: GetTickCount IAT slot <X> -> QPC ms (~<N> ms game-clock quantum)"},
         {"t": "; time_tick hook armed: lockstep_step=<N>(+<N> eps) ms, adaptive=<N> [<N>..<N> ms], sim_step=<N> ms, rx_spin=<N>, lockstep_log=<N>, sp_clock_log=<N>, game_speed=<N>%"},
@@ -39,16 +40,34 @@
         {"t": "; MP menu restore armed (U<N>: <N>-button MENUBCK<N> menu)"},
         {"t": "; standalone: no-CD fallback=armed run-without-focus=armed"},
         {"t": "; compat: WM_DEVICECHANGE NULL-lParam guard=armed"},
+        {"t": "; CH<N>: cheat console gate armed -- in a network game only _NETDELAY (idx <X>) passes"},
+        {"t": "; U<N>: diplomacy relation echo NOPed at <X> (<N> bytes) -- the <X> order handler is the cell's only writer"},
+        {"t": "; D<N>: cancel-task Yes spliced at <X> -- in a lockstep match the cancel is a replicated building order"},
         {"t": "; [desync] ARMED: every=<N> steps, <N> regions (<N> excluded from the verdict), manifest fp=<X>, <N> wire bytes/sample, action=<N>, snapshot=<N> (max <N>)"},
         {"t": "; [desync] COST PROBE: <N> walks of the <N>-region manifest, mean <N> us each -> <N> us amortised per SIM STEP at every=<N> (fingerprint <X>). This is what the SHIPPED path pays; a run with the determinism harness reuses its hash and adds nothing."},
-        {"t": "; [desync] sim_step hook INSTALLED -- no determinism harness this run, so this is the sampling point"},
+        {"optional": true, "t": "; [interlock] install_trampoline at <X> REFUSED -- entry bytes <X> are not the <X> this site was generated against, and NOTHING in this run claims that entry: a wrong mh.exe build, or a hook nobody registered. the D<N> desync sampler's sim_step hook is NOT armed.", "why": "mp:D29 O3: emitted ONLY when the determinism harness is armed in configuration (1) -- the harness took llm_strat_sim_step's entry first, so the sampler's trampoline finds foreign bytes. A plain configuration (1) boot does not emit it; hence optional."},
+        {"alt": ["; [desync] sim_step hook not installed -- the determinism harness owns that entry this run and feeds the detector its own per-step hash instead (expected; the reason is named in the [interlock] summary if it is anything else)"], "t": "; [desync] sim_step hook INSTALLED -- no determinism harness this run, so this is the sampling point", "why": "mp:D29 O3: the alt is the HARNESS-ARMED spelling. In configuration (1) with [harness] enable=1 the harness owns llm_strat_sim_step's entry, so the D-desync sampler's trampoline is refused (the optional step before this one) and the detector is fed the harness's own per-step hash instead. Recorded from tmp/o3_rig/local/symmetric_configuration_1_local (test_ui.py --determinism --det-config1 --det-local)."},
         {"t": "; [tombstone] <N> bodies armed (<N> promoted-fill, <N> ledger-dead, <N> force-armed), <N> skipped, <N> hits so far"},
         {"t": "; [statebind] regions bound: <N>/<N>, moved at bind: before=<N> after=<N>, relocated now <N> (HOST RELOCATION + AI island)"},
         {"t": "; [hostapi] host-callback tables bound: sim rc=<N> <N> entries unbound <N>, tact rc=<N> <N> entries unbound <N>"},
         {"t": "; [libmh_in] inbound surface: open=<N>, version <X>, <N> entries + <N> order ids, unbound <N>  <-- FAILED"},
         {"t": "; [hookapi] hook-service table bound: rc=<N>, <N> entries, unbound <N>, spine=absent (configuration <N>)"},
         {"t": "; [hostevt] sink bound: rc=<N>, version <X>, dispatched <N>, unknown <N>"},
-        {"t": "; [interlock] <N> detour install(s) refused -- every install_jmp/install_trampoline site that asked for an entry in this run got it"}
+        {"alt": ["; [interlock] <N> detour install(s) REFUSED -- whatever fix each carried IS NOT IN THIS RUN: [the D<N> desync sampler's sim_step hook @<X>: prologue MISMATCH]"], "t": "; [interlock] <N> detour install(s) refused -- every install_jmp/install_trampoline site that asked for an entry in this run got it", "why": "mp:D29 O3: the alt is the harness-armed summary -- it names the one refused install, the D-desync sampler's sim_step hook, which the harness displaced (see the optional step above)."}
+      ]
+    },
+    "harness": {
+      "log": "mh_harness.log",
+      "required": false,
+      "end_marker": "^;\\s*\\[libmh_in\\]\\s+inbound refusals since open:",
+      "lines": [
+        {"t": "; HASH FINGERPRINT <X> split=ok"},
+        {"t": "; ==== mh replay harness armed: seed_step=<N> seed_mode=<N> stop_step=<N> fixed_step=<N> pin_fpu=<N> region_hash_step=<N> order_mode=<N> replay_ai_off=<N> suppress_enqueue=<N> ===="},
+        {"t": "; all_ai=<N> observer=-<N> gameover_step=<N> gameover_stop=<N>"},
+        {"t": "; synth_move=<N> armed=<N> seed=<N> at=<N> every=<N> (D<N> moving-unit workload)"},
+        {"t": "; conq=<N> armed=<N> seed=<N> at=<N> peerland=<N> selfland=<N> academy=<N> barracks=<N> soldier=<N> n=<N> forcekill=<N> (U<N> conquest workload)"},
+        {"t": "; [rebind] configuration (<N>): no libmh.dll, so no rebind row exists to yield -- clause-<N> derivation skipped (set_armed is a spine row)"},
+        {"t": "; [libmh_in] inbound refusals since open: n/a, no libmh (configuration (<N>) -- there is no inbound surface to count)"}
       ]
     }
   }

@@ -1,0 +1,68 @@
+# resync_countinit_proof's own copy of mp_host_p9_proof.txt (2026-09-24): identical up to the match, then it ends
+# on the runner's `signal countinit_done` (a shim_trigger on the host's `force_resync FIRED #2`
+# line) instead of `gameclock 30000`. The count climbs per stall-nag, i.e. per rendered frame at
+# the horizon, so a fixed game-clock window held 3 fires alone but 1 under gate load. The row's
+# `timeout` is the bound when the second fire never comes.
+# mp:P9 (2/2) -- THE PROOF ROWS' host side (resync_gate_proof / resync_countinit_proof in
+# tools/test_ui.py): the storm row's exact lane shape and walk (mp_host_p9_soak.txt -- configuration
+# (1), host 100 / joiner 60 ms lookahead, a 100 ms one-way net_shim), one capture at match_launch's
+# own SIM gate, and then the match runs to gameclock 30 s with ONE fix on at a time, while the
+# DLL's `[resync]` watch v2 writes a `barrier #k BEGIN/END` pair per mode-8 barrier.
+#
+# WHY THIS ENDS ON A GAMECLOCK AND THE STORM ROW DOES NOT. The storm row's subject is a sim that
+# crawls (measured 0.087x: 28.6 s of gameclock in 331 s of wall), so it is bounded by the shim
+# timeline's blackhole. A blackhole is the wrong bound for a row that asserts "0 barriers": the
+# gate's designed reaction to a DEAD link is one force_resync after four seconds of genuine silence
+# (SYNC_RETRY_COUNTDOWN < 0x38), and the first gate-proof run (2026-09-22 11:53) ended on exactly
+# that -- `barrier #1 BEGIN (... countdown 55)` 6 s before SESSION_END, an honest gate fire that the
+# checker cannot tell from the storm. A fixed run does not crawl (0.68-0.75x at this shape), so
+# 30 s of gameclock is ~45-55 s of wall, no link death, both peers reach `end` on their own.
+#
+# WHY 30 s AND NOT 150 s (gate diet block 2, 2026-09-24 -- it was 150 s until then). The window is
+# the proof's DURATION, so it is set by what it has to contrast, not trimmed to taste:
+#   - resync_gate_proof asserts 0 barriers where the UNGATED start storms. Measured on the stock
+#     shape (resync_storm_repro, 2026-09-24): barrier #1 at +0.6 s after the session reset and #5 at
+#     +10.1 s, one per ~2.07 s. 30 s of gameclock is ~44 s of wall here (step 3000 at +43.7 s), about
+#     four times the time the stock start needs to reach the checker's own 5-barrier storm line.
+#   - resync_countinit_proof asserts every fire sits AT the initialised threshold 200. Measured:
+#     fire #1 at +19.7 s, then one per ~14.5 s -- so 30 s of gameclock (~52 s of wall, step 3000 at
+#     +51.7 s) holds ~3 fires, and the row passes --min-fires 2 so a run too short to show a fire,
+#     a reset and a second climb to 200 REDS instead of passing on zero.
+#   - both: the checker's >= 1000-step desync-watch floor is 10 s of gameclock.
+# A 150 s window adds more of the same samples; the one rare event it could add (a >= 2 s machine
+# freeze -> a single gate-CONFORMANT fire, countdown < 0x38) is allowed by the checker anyway.
+#
+# Pair with mp_client_p9_countinit.txt.
+
+# reach the host lobby (create a game named "test" on the pre-selected map)
+settled value:110
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+settled Create
+clickl Create
+present Game name
+settled Ok
+clickl Ok
+present Available maps
+settled Ok
+clickl Ok
+
+# host lobby: BLOCK until the match is startable, then click Start (mp_host_start.txt's gates)
+present Network players
+peers 1
+awaitsignal lobby
+enabled Start
+settled Start
+clickl Start
+
+# in the match: the one capture, at match_launch's own gate
+absent Network players
+gameclock 6000
+capture m3_launched
+log HOST is in the configuration-(1) match; running until the leader's second barrier fire
+
+awaitsignal countinit_done
+log HOST saw the countinit_done signal (leader FIRED #2)
+end

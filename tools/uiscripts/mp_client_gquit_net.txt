@@ -1,0 +1,75 @@
+# mp:U19i -- a verbatim copy of mp_client_gquit.txt for the CONFIGURATION (1) row gquit_net
+# (udp, no libmh.dll). Its own file ONLY so its captures get their own baseline
+# label: the udp lobby renders the ping cell, so graceful_quit's TCP lobby baseline cannot be shared.
+#
+# U19 (QUITTER): a CLIENT walks ESC -> Quit game -> Yes out of a RUNNING lockstep match while
+# `[net] graceful_leave=1`, and must land on the main menu with nothing else on the way.
+#
+# WHAT IS UNDER TEST HERE is the quitter's own experience, not the survivor's: with the knob set,
+# llm_game_return_to_main_menu_cb's detour calls llm_net_player_remove(our own side) BEFORE the
+# retail teardown (net_lockstep.cpp on_quit_to_menu). That is a SELF-removal, and in a two-player
+# match it drops our own roster below the quorum the engine ends a match at -- the "possible
+# 2-player game-over flash" U19 was opened to settle. This is that shape: two humans, no AI seat.
+#
+# THE FLASH CLAUSE IS THE WALK, NOT THE FRAME, and that distinction is the point. A capture can only
+# say what one frame held, so it cannot prove nothing appeared in between. What CAN: every step
+# below from `clickv 121` to `settled value:110` is a state predicate with no click in it, so the
+# script reaching the settled main menu at all means the confirm went straight there -- an outcome
+# dialog that actually appeared would be a modal nobody dismissed, and the run would TIME OUT here
+# rather than pass. Measured: the quitter DOES enter the outcome-dialog function (its log carries
+# `; on_gameover ENTER` from the below-quorum self-removal), and the retail quit teardown that runs
+# immediately after takes the screen away before it is ever presented -- which is why the absence
+# clause had to be the walk and could not be `on_gameover` being absent from the log.
+#
+# Pair with mp_host_gquit.txt.
+
+settled value:110
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+present Internet server
+settled Internet server
+clickl Internet server
+present Server address
+settled Connect
+clickl Connect
+sessions 1
+settled Join game
+clickl Join game
+present Network players
+# the host's `awaitsignal lobby`: its `peers 1` only means the TRANSPORT connected, about a second
+# before we are really seated here (mp_client_start.txt carries the measurement)
+signal lobby
+settled Cancel
+
+# ---- in the match --------------------------------------------------------------------------------
+absent Network players
+gamemode 2
+# Quit from a sim moment both peers can name, rather than from "as soon as we are in".
+#
+# NOT CAPTURED, and the 0.722% that settled it is worth recording: an in-game frame here read
+# 0.000% twice in an isolated run and then 0.722% in the same commit under `--jobs 4`, because the
+# render/sim interleave moves with machine load while the state predicate does not. Nothing in this
+# scenario is ABOUT the in-game frame -- res_hud and match_launch own that -- so the honest fix is
+# to stop baselining it rather than to buy a tolerance that hides the next real change too.
+gameclock 3000
+# Tell the survivor we are about to leave, so its own pre-drop capture is taken while we are still in.
+signal quitting
+
+# ESC -> Quit game -> confirm. ESC-menu entries have no matchable labels (they render from a hotkey
+# list) -- target by VALUE: Quit game 113, then &Yes 121 on the confirm. Dumped 2026-08-27 by
+# tools/uiscripts/d15_exit_witness.txt. `clickl Quit game` is the trap: the label matcher only ever
+# sees '&' and lands on Diplomacy.
+key 0x01
+settled value:113
+clickv 113
+settled value:121
+clickv 121
+
+# THE MAIN MENU, settled. value:110 is NETWORK GAME -- the main menu is a sprite menu with no labels.
+settled value:110
+capture g2_quitter_main_menu
+signal cliquit
+log QUITTER left a running match via ESC->Quit->Yes and reached the main menu
+end

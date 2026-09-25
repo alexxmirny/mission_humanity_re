@@ -59,8 +59,9 @@ SOURCES = {
 # (relinktest); +1 at mp:T1b (udprelinktest); +1 at mp:T2 (udpbulktest); +1 at mp:T3 (udpstatstest);
 # +1 at mp:X1 (udpsnaptest); +1 at mp:R3 (udppunchtest); +1 at mp:X2 (maptest); +1 at mp:R6
 # (udproomtest); +1 at mp:R3e (udprelaytest); +1 at mp:R7a (netcfgtest); +1 at TL-HARN4
-# (inireadtest); +1 at dist:LA13 (runctxtest). A change here is a deliberate edit, not a drift
-EXPECT_COUNT = 49
+# (inireadtest); +1 at dist:LA13 (runctxtest); +1 at mp:U41b (qmatchtest); +1 at mp:U19i (gpfgtest).
+# A change here is a deliberate edit, not a drift
+EXPECT_COUNT = 52  # mp:U41e, 2026-09-24: uqmatchtest added (was 51)
 
 # A table row: {"name", <gate>, <adapter>},  -- clang-format pads the name column, so the whitespace
 # is free-form. Comment lines never match, because a `//` line has no leading `{"`.

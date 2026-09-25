@@ -32,7 +32,9 @@ unit's log tail, and the final table. Exit 0 only if every unit passed."""
 
 import argparse
 import json
+import math
 import os
+import shutil
 import subprocess
 import sys
 import threading
@@ -81,7 +83,72 @@ def units(args):
             # the remaining budget at t0, so they run in the slot det leaves ~200 s later.
             "weight": 2,
             "first": True,
+            # THE VM SLOT (gate diet block 5b): det is the roster's original VM-driving row -- see
+            # the scheduler's `free_vm` note below for why this is now a marker other rows share
+            # rather than an unstated assumption.
+            "vm": True,
             "timeout": 2400,
+        },
+        {
+            "name": "det_c1",
+            "why": "step 4e -- the build PLAYERS run (configuration (1), no libmh.dll) against itself, "
+            "hashed (mp:D29)",
+            "cmd": [
+                PY,
+                os.path.join(REPO, "tools", "test_ui.py"),
+                "--determinism",
+                "--det-config1-gate",
+                # LOCAL LANES, not the VM pair: `det` holds the VMs for the whole of its run, and the
+                # gate's point here is that configuration (1) is HASHED every gate at all -- until
+                # 2026-09-24 no gate shape ran it. The VM form of both D29 shapes is in --det-standard.
+                "--det-local",
+                "--ship-pacing",
+                "--steps",
+                str(args.steps),
+            ],
+            "weight": 2,
+            "timeout": 1200,
+        },
+        {
+            # mp:U19j into the gate (user 2026-09-24). Wave 6 lane D proved the shape on the rig by
+            # hand (`--u19j-gpfg3` / `--u19j-gpfg3-unguarded`, 3/3 + 3/3) but left it OUT of any gate
+            # unit -- a 3-peer topology (host vms[0], survivor vms[1], a SIM-FENCED peer as a local
+            # DET3 lane) that no `multi` TESTS row can carry, same class as --u19b-quit3/--l1f-ping3.
+            # BOTH ARMS in one unit, sequentially inside the child (test_ui.py's own dispatch already
+            # runs guarded then unguarded and ORs the verdicts) -- a red on EITHER arm reds this row.
+            "name": "u19j_gpfg3",
+            "why": "step 4f -- mp:U19j's 3-peer gone-peer frame guard: the carrier FIRES (guarded) "
+            "and the unguarded twin goes red on exactly the garbled frame (XFAIL)",
+            "cmd": [
+                PY,
+                os.path.join(REPO, "tools", "test_ui.py"),
+                "--u19j-gpfg3",
+                "--u19j-gpfg3-unguarded",
+            ],
+            # weight 3, not det's 2: this shape ALSO provisions a THIRD peer as a local DET3 lane
+            # (the sim-fenced side) beside the two VM vCPUs.
+            "weight": 3,
+            "vm": True,
+            "timeout": 1200,
+        },
+        {
+            # mp:X2a into the gate: the open-redirect witnessed on the two INDEPENDENT rig VMs (not a
+            # local lane -- make_lane.py symlinks Maps to one shared image, so a local lane's client
+            # base file IS the host's content and a broken redirect would still open matching bytes;
+            # see run_x2a_map_variant's docstring in tools/test_ui.py). The client's own map is
+            # mutated (tools/map_variant.py) and RESTORED in a `finally` regardless of verdict.
+            "name": "x2a_map_variant",
+            "why": "step 4g -- mp:X2a's open-redirect: the client's OWN, genuinely different "
+            "blue monday.mpm is redirected to the downloaded mh_dl\\ copy, not opened directly",
+            "cmd": [
+                PY,
+                os.path.join(REPO, "tools", "test_ui.py"),
+                "--x2a-map-variant",
+            ],
+            # weight 2, matching det: two VM vCPUs, no local lane.
+            "weight": 2,
+            "vm": True,
+            "timeout": 900,
         },
         {
             "name": "suite",
@@ -99,8 +166,15 @@ def units(args):
                 # statement. The suite is not the gate's long pole (abc_spcamp is, and the dropped
                 # promoted-vs-original unit was), so what this costs in suite wall is mostly
                 # absorbed by the overlap.
+                #
+                # GATE DIET BLOCK 3 (2026-09-24): the multi-peer pool is now its OWN knob
+                # (--suite-net-jobs) and is PRICED as what it is -- wait-bound. A capped multi-peer
+                # lane sleeps between frames (gate_timeline measured avg 0.11 CPU-busy games across
+                # the suite), so one net job costs NET_JOB_WEIGHT of a core, not two. Pinning it to
+                # --suite-jobs (2) had the suite's 60-odd multi rows queue behind a CPU budget they
+                # barely use.
                 "--net-jobs",
-                str(args.suite_jobs),
+                str(args.suite_net_jobs),
             ],
             # = jobs (2), down from jobs+1: since the [pacing] fps_cap every multi-peer lane
             # SLEEPS between frames instead of spinning a core, so the suite's real footprint is
@@ -109,7 +183,7 @@ def units(args):
             # behind the suite -- the run-3 late-start defect. That unit is gone (F5M S4b), so the
             # budget it was competing for is slacker, not tighter; the figure stands unchanged
             # because it is a statement about the SUITE's own footprint, not about the field.
-            "weight": args.suite_jobs,
+            "weight": args.suite_jobs + int(math.ceil(args.suite_net_jobs * NET_JOB_WEIGHT)),
             "timeout": 2400,
         },
         # ---- THE `ab` UNIT DROPPED AT FORK F5M S4b (the archive-tool cut) ---------------------
@@ -260,6 +334,14 @@ DUR_HINTS = {
     "abc_spcamp": 200,
     "selftests": 180,
     "det": 150,
+    "det_c1": 150,
+    # Measured STANDALONE (wave 7 lane D, not yet inside a real gate run -- this self-corrects from
+    # tmp/gate/last_timings.json the first time the gate actually runs them): u19j_gpfg3's guarded
+    # arm ran inside a combined 388 s run whose unguarded half hit a crashy VM (G315); a clean
+    # unguarded-alone retry took 294 s, so ~480 s covers both arms with margin. x2a_map_variant ran
+    # 71 s alone (host+client VM match plus the scp backup/push/restore).
+    "u19j_gpfg3": 480,
+    "x2a_map_variant": 90,
     "abc_tutorial": 120,
     "spdet": 100,
     "libref": 75,
@@ -267,6 +349,105 @@ DUR_HINTS = {
     "inmem": 10,
 }
 TIMINGS = os.path.join(LOG_DIR, "last_timings.json")
+# The comparison base for the growth figures on a red line: the last run that was GREEN on every
+# unit AND every rule below. Copied from TIMINGS only by a fully green run.
+GREEN_TIMINGS = os.path.join(LOG_DIR, "last_green_timings.json")
+# test_ui.py's own record (per-scenario seconds, budget_s, lane-group chains) -- read after the
+# suite unit finishes. Written by every suite run, so it is only trusted when newer than the unit.
+SUITE_RECORD = os.path.join(REPO, "tmp", "ui_test", "last_suite_timing.json")
+
+# ---- THE ROUTINE (gate diet block 4, user-approved 2026-09-24) ---------------------------------
+# A gate that only says PASS/FAIL lets its cost grow unseen: the suite went from "a couple of
+# minutes" to 29 min with every run green. So cost is a verdict too. The gate goes RED when:
+#   * a suite scenario runs longer than SCENARIO_OVER x its registry `budget_s`;
+#   * the suite unit's wall (the gate's critical path since 2026-09) exceeds SUITE_WALL_MAX;
+#   * the whole gate's wall exceeds GATE_WALL_MAX.
+# Each red line names the offender and its growth against the last GREEN run. To raise a budget,
+# edit the row's budget_s in tools/test_ui.py (and its long_why if > 120 s) with the measured
+# number that justifies it -- the ui-testing skill's "Growing the regression suite" says how.
+SCENARIO_OVER = 1.5
+SUITE_WALL_MAX = 12 * 60
+# 18 min since 2026-09-25 (user): wave 7 added the U19j 3-peer VM unit and x2a_map_variant plus two
+# suite rows; the measured gate was 1168 s with a scheduling miss (selftests queued behind u19j_gpfg3).
+GATE_WALL_MAX = 18 * 60
+# What one --suite-net-jobs slot costs the core budget (block 3): two capped game processes that
+# sleep most of every frame. Measured: avg 0.11 CPU-busy games per game, i.e. ~0.22 of a core per
+# job; 1/3 keeps ~50 % headroom. It was 0.5 for the first diet gate (2026-09-24), which priced the
+# suite at 5 of 7 cores: with det's 2 nothing else fit at t0, selftests (w3, 312 s) could only start
+# when the suite ended at 556 s, and the gate wall was 867 s against the 900 s cap. At 1/3 the suite
+# is 4, so selftests starts when det frees its 2 cores.
+NET_JOB_WEIGHT = 1.0 / 3.0
+
+
+def _load_json(path):
+    try:
+        with open(path, encoding="utf-8") as fh:
+            return json.load(fh)
+    except (OSError, ValueError):
+        return {}
+
+
+def _growth(now, then):
+    if not then:
+        return "no green base"
+    return "last green %.0fs, %+.0f%%" % (then, (now - then) * 100.0 / then)
+
+
+def diet_reds(unit_secs, gate_wall, suite_rec, green):
+    """The routine's red lines (block 4b). unit_secs = {unit: seconds}; suite_rec = test_ui's
+    record ({"per_test": {name: {"secs", "budget_s", "verdict"}}, ...}) or {}; green = the last
+    green run's timings. Returns a list of strings, empty when every rule holds."""
+    reds = []
+    green = green or {}
+    g_sc = green.get("_suite_scenarios", {})
+    for name, r in sorted((suite_rec or {}).get("per_test", {}).items()):
+        b = r.get("budget_s")
+        secs = r.get("secs") or 0.0
+        if r.get("verdict") == "SKIP" or not b:
+            continue
+        if secs > SCENARIO_OVER * b:
+            reds.append(
+                "scenario %s ran %.0fs > %.1fx its budget_s %ds (%s)"
+                % (name, secs, SCENARIO_OVER, b, _growth(secs, g_sc.get(name)))
+            )
+    if unit_secs.get("suite", 0) > SUITE_WALL_MAX:
+        reds.append(
+            "suite wall %.0fs > %ds critical-path cap (%s)"
+            % (unit_secs["suite"], SUITE_WALL_MAX, _growth(unit_secs["suite"], green.get("suite")))
+        )
+    if gate_wall > GATE_WALL_MAX:
+        reds.append(
+            "gate wall %.0fs > %ds (%s)"
+            % (gate_wall, GATE_WALL_MAX, _growth(gate_wall, green.get("_gate_wall")))
+        )
+    return reds
+
+
+def selftest():
+    """The routine's negative cases (`run_gate.py --selftest`, a lint_repo row)."""
+    ok = True
+    green = {"suite": 500.0, "_gate_wall": 800.0, "_suite_scenarios": {"a": 40.0}}
+    within = {"per_test": {"a": {"secs": 50, "budget_s": 60}}}
+    over = {"per_test": {"a": {"secs": 97, "budget_s": 60}}}
+    skipped = {"per_test": {"a": {"secs": 999, "budget_s": 1, "verdict": "SKIP"}}}
+    cases = [
+        ("all within", {"suite": 600}, 850, within, 0),
+        ("scenario 1.6x its budget", {"suite": 600}, 850, over, 1),
+        ("a SKIP is not timed", {}, 10, skipped, 0),
+        ("suite over 12 min", {"suite": 721}, 850, {}, 1),
+        ("gate over 18 min", {"suite": 600}, 1081, {}, 1),
+        ("all three", {"suite": 800}, 1100, over, 3),
+    ]
+    for label, units_, wall, rec, want in cases:
+        got = diet_reds(units_, wall, rec, green)
+        hit = len(got) == want
+        ok = ok and hit
+        print("  %-26s %s  %s" % (label, "ok" if hit else "XX", "; ".join(got)[:150]))
+    growth = diet_reds({}, 0, over, green)
+    hit = bool(growth) and "last green 40s" in growth[0]
+    print("  %-26s %s" % ("a red names its growth", "ok" if hit else "XX"))
+    print("run_gate selftest: %s" % ("PASS" if ok and hit else "FAIL"))
+    return 0 if ok and hit else 1
 
 
 def load_durations(rows):
@@ -276,7 +457,8 @@ def load_durations(rows):
     except (OSError, ValueError):
         pass
     for r in rows:
-        r["dur"] = float(rec.get(r["name"], DUR_HINTS.get(r["name"], 300)))
+        v = rec.get(r["name"], DUR_HINTS.get(r["name"], 300))
+        r["dur"] = float(v) if isinstance(v, (int, float)) else 300.0
     return rows
 
 
@@ -484,6 +666,14 @@ def main():
         "default on this box; it shares the budget with every other unit)",
     )
     ap.add_argument(
+        "--suite-net-jobs",
+        type=int,
+        default=6,
+        help="--net-jobs handed to the UI suite: the WAIT-BOUND multi-peer pool (default "
+        "%(default)d; priced at NET_JOB_WEIGHT cores each -- gate diet block 3)",
+    )
+    ap.add_argument("--selftest", action="store_true", help="the cost rules' negative cases")
+    ap.add_argument(
         "--skip",
         default="",
         help="comma-separated unit names to skip (e.g. 'det,ab' on a box without the rig)",
@@ -492,6 +682,8 @@ def main():
     ap.add_argument("--list", action="store_true", help="print the unit roster and exit")
     args = ap.parse_args()
     args.skip = {s.strip() for s in args.skip.split(",") if s.strip()}
+    if args.selftest:
+        return selftest()
 
     rows = units(args)
     if args.list:
@@ -524,11 +716,25 @@ def main():
     # own record, so the order corrects itself as the units' costs drift.
     sched = threading.Condition()
     free = [args.cores]
+    # THE VM SLOT (gate diet block 5b, mp:U19j/X2a into the gate): a SECOND, disjoint budget beside
+    # `free`. `free` prices THIS box's cores; it says nothing about the two rig VMs, and until now
+    # that was safe because exactly one roster row ever touched them (`det`) -- `det_c1` deliberately
+    # runs on LOCAL lanes only ("`det` holds the VMs for the whole of its run", its own comment) so
+    # the roster never had two VM-driving units in flight together. mp:U19j's rig proof and mp:X2a's
+    # both need the REAL vms[0]/vms[1] pair (independent installs / a 3rd peer past a drop -- neither
+    # is expressible on a local lane, see their rows), so the roster now has three. Two rig tools
+    # deploying to the SAME VM directory at once (remote_launch's fixed `args.vm_dir`, one scheduled
+    # task name) is not a load number -- it is file-copy and schtasks corruption -- so this is a
+    # second free-slot count (capacity 1: the VMs are ONE shared pair), not a bigger weight. A row
+    # opts in with `"vm": True`; everything else is unaffected (free_vm starts at 1 and no non-VM
+    # row ever touches it).
+    free_vm = [1]
     # `first` before longest-first (fork F4H): a unit whose peers are not on this box's scheduler
     # cannot be ordered by its local core cost, and det is the one that has to hold its vCPUs while
     # the box is least busy -- see its row for why. Everything else keeps the longest-first rule.
     pending = sorted(rows, key=lambda r: (not r.get("first"), -r["dur"]))
     running = set()
+    spans = {}  # unit -> (start, end) seconds from gate t0, for gate_timeline's critical path
 
     def run_unit(r, w):
         name = r["name"]
@@ -550,6 +756,7 @@ def main():
             print("[gate] %-12s could not launch: %s" % (name, e))
         secs = time.time() - t1
         results[name] = (verdict, secs, log)
+        spans[name] = (t1 - t0, time.time() - t0)
         print("[gate] %-12s %s  (%.0fs)" % (name, verdict, secs))
         if verdict != "PASS":
             print("  ---- tail of %s ----" % os.path.relpath(log, REPO))
@@ -560,6 +767,8 @@ def main():
                 pass
         with sched:
             free[0] += w
+            if r.get("vm"):
+                free_vm[0] += 1
             running.discard(name)
             sched.notify_all()
 
@@ -579,8 +788,12 @@ def main():
                         started = False
                         for r in list(pending):
                             w = min(r["weight"], args.cores)
+                            if r.get("vm") and free_vm[0] < 1:
+                                continue  # the VM slot is taken -- wait, never skip to a backfill
                             if w <= free[0]:
                                 free[0] -= w
+                                if r.get("vm"):
+                                    free_vm[0] -= 1
                                 pending.remove(r)
                                 running.add(r["name"])
                                 threading.Thread(target=run_unit, args=(r, w), daemon=True).start()
@@ -590,13 +803,36 @@ def main():
         finally:
             os.environ.pop(hostlock.RIG_LEASE_ENV, None)
 
-    # The measured record the NEXT run schedules by.
+    gate_wall = time.time() - t0
+    suite_rec = {}
+    if "suite" in spans:
+        try:
+            if os.path.getmtime(SUITE_RECORD) >= t0 + spans["suite"][0]:
+                suite_rec = _load_json(SUITE_RECORD)
+        except OSError:
+            pass
+    green = _load_json(GREEN_TIMINGS)
+    reds = diet_reds({n: v[1] for n, v in results.items()}, gate_wall, suite_rec, green)
+    all_pass = len(results) == len(rows) and all(v[0] == "PASS" for v in results.values())
+
+    # The measured record the NEXT run schedules by (unit keys: every unit that ran to a verdict --
+    # a red SUITE still ran its full length, and dropping it made the next run schedule the gate's
+    # longest unit by a 280 s hint behind shorter ones; a TIMEOUT is left out), plus the routine's own
+    # fields (underscore keys): per-scenario suite seconds, unit spans, the gate wall and verdict.
+    rec = {n: round(v[1], 1) for n, v in results.items() if v[0] in ("PASS", "FAIL")}
+    rec["_gate_wall"] = round(gate_wall, 1)
+    rec["_units"] = {n: [round(a, 1), round(b, 1), results[n][0]] for n, (a, b) in spans.items()}
+    rec["_suite_scenarios"] = {
+        n: r.get("secs") for n, r in (suite_rec.get("per_test") or {}).items()
+    }
+    rec["_suite_chains"] = suite_rec.get("chains") or []
+    rec["_reds"] = reds
+    rec["_verdict"] = "PASS" if all_pass and not reds else "FAIL"
     try:
-        json.dump(
-            {n: round(v[1], 1) for n, v in results.items() if v[0] == "PASS"},
-            open(TIMINGS, "w", encoding="utf-8"),
-            indent=1,
-        )
+        with open(TIMINGS, "w", encoding="utf-8") as fh:
+            json.dump(rec, fh, indent=1)
+        if rec["_verdict"] == "PASS":
+            shutil.copyfile(TIMINGS, GREEN_TIMINGS)
     except OSError:
         pass
 
@@ -609,15 +845,19 @@ def main():
         bad += verdict != "PASS"
         print("  %-12s %-8s %6.0fs   %s" % (r["name"], verdict, secs, os.path.relpath(log, REPO)))
     print("-" * 78)
+    for r in reds:
+        print("  RED (cost): %s" % r)
     print(
         "  %s in %.1f min wall (%d-core budget; serial estimate is the sum of the seconds above)"
         % (
-            "PASS" if not bad else "%d unit(s) NOT PASSED" % bad,
-            (time.time() - t0) / 60,
+            "PASS"
+            if not bad and not reds
+            else "%d unit(s) NOT PASSED, %d cost red(s)" % (bad, len(reds)),
+            gate_wall / 60,
             args.cores,
         )
     )
-    return 1 if bad else 0
+    return 1 if bad or reds else 0
 
 
 if __name__ == "__main__":

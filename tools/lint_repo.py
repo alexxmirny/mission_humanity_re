@@ -880,6 +880,20 @@ def declare_checks(args):
         "fork F4H lane allocation -- the negative cases still fire",
         [sys.executable, os.path.join(REPO, "tools", "lane_alloc.py"), "--selftest"],
     )
+    # GATE DIET (2026-09-24). COST IS A VERDICT: every capture-suite row carries `budget_s` (its
+    # expected seconds under gate load) and a row over 120 s says why in `long_why`, because
+    # run_gate.py reds a scenario that runs past 1.5x its budget and a row with no budget cannot be
+    # judged. Here, in lint, for the lane row's reason: the failure is a REGISTRY EDIT (a new row
+    # with no budget), and lint is what runs on an edit. The second row keeps run_gate's own red
+    # rules honest (a planted over-budget scenario, suite and gate each go red; a SKIP does not).
+    check(
+        "gate diet: every TESTS row has budget_s, long rows a long_why (test_ui --check-budgets)",
+        [sys.executable, os.path.join(REPO, "tools", "test_ui.py"), "--check-budgets"],
+    )
+    check(
+        "gate diet: run_gate's cost red rules -- the negative cases still fire",
+        [sys.executable, os.path.join(REPO, "tools", "run_gate.py"), "--selftest"],
+    )
     # F5A. THE PUBLISHABILITY LEDGER. `tools/data/publish_ledger.json` gives every path git tracks
     # exactly one disposition, so the public cut is a DERIVED set rather than a judgement call made
     # per file on the day. This row is here, in lint, for the same reason the lane row is: the
@@ -1314,6 +1328,14 @@ def declare_checks(args):
         "mp:U39 diplomacy-echo negative arm -- the negative cases still fire (check_u39_echo --selftest)",
         [sys.executable, os.path.join(REPO, "tools", "check_u39_echo.py"), "--selftest"],
     )
+    # mp:P6. The loser-gap post_check (tools/test_ui.py's p6_loser_gap entry) runs only with the
+    # rig; its negatives -- a real freeze over the bound passing anyway, the same outcome on both
+    # peers (the conquest workload never split winner/loser), a missing on_gameover line, baseline
+    # mode wrongly asserting -- are gated here off planted mh_net.log/mh_frametime.log fixtures.
+    check(
+        "mp:P6 loser-gap post-check -- the negative cases still fire (check_p6_gap --selftest)",
+        [sys.executable, os.path.join(REPO, "tools", "check_p6_gap.py"), "--selftest"],
+    )
     # mp:D28. The cancel-task post_check (tools/test_ui.py's d28_canceltask / d28_canceltask_local
     # entries) runs only with the rig; its negatives -- the seam banner missing, the Yes click never
     # routed, the routed arm still diverging, the reproduction arm identical or healing, the wrong
@@ -1330,6 +1352,13 @@ def declare_checks(args):
     check(
         "mp:P9 resync-storm post-check -- the negative cases still fire (check_resync_storm --selftest)",
         [sys.executable, os.path.join(REPO, "tools", "check_resync_storm.py"), "--selftest"],
+    )
+    # mp:P13. The sim-rate post_check (tools/test_ui.py's p13_rate_180 entry) runs only with the
+    # rig; its negatives -- a slow whole match, a stall that only the worst-30-s window sees, a
+    # mode-8 barrier row, a match too short for the window, a missing log -- are gated here.
+    check(
+        "mp:P13 sim-rate post-check -- the negative cases still fire (check_sim_rate --selftest)",
+        [sys.executable, os.path.join(REPO, "tools", "check_sim_rate.py"), "--selftest"],
     )
     # mp:CH1 (the AV clause). The no-crash-marker post_check (tools/test_ui.py's gs2_quit_frozen
     # entry) runs only with the rig; its negatives -- a marker from either peer during the run, a
@@ -1477,6 +1506,16 @@ def declare_checks(args):
             "--selftest",
         ],
     )
+    # mp:U19j -- the --u19j-gpfg3 shape's reader: the carrier FIRED on the leader after a gone
+    # peer's frame, or (unguarded twin) the run went red on exactly that garbled frame.
+    check(
+        "gone-peer frame guard reader -- planted not-reached/no-FIRED/XPASS cases go RED (check_gone_peer_guard --selftest)",
+        [
+            sys.executable,
+            os.path.join(REPO, "tools", "check_gone_peer_guard.py"),
+            "--selftest",
+        ],
+    )
     # mp:X2, the same shape one item along. The map-download reader's verdict is a statement about
     # TWO peers' logs -- the host's claim and gate, the joiner's store and its own file before and
     # after -- and three of its clauses are ABSENCES (nothing transferred, nothing overwritten,
@@ -1489,6 +1528,23 @@ def declare_checks(args):
         "map-download reader -- planted base-name/beside-maps/own-file-changed/no-gate cases go RED "
         "(check_map_transfer --selftest)",
         [sys.executable, os.path.join(REPO, "tools", "check_map_transfer.py"), "--selftest"],
+    )
+    # mp:X2a -- the open-redirect reader: on the two independent rig VMs the client's OWN map
+    # genuinely differs, so the `resolve stored ... -- redirecting ... to it` line is the one clause
+    # that would go missing if the redirect were broken (on a local lane the base file IS the host's
+    # content, so check_map_transfer's other clauses would still pass). A missing redirect line and a
+    # redirect naming a path outside `mh_dl\` must each go RED.
+    check(
+        "map open-redirect reader -- planted no-redirect/outside-mh_dl cases go RED "
+        "(check_map_redirect --selftest)",
+        [sys.executable, os.path.join(REPO, "tools", "check_map_redirect.py"), "--selftest"],
+    )
+    # mp:U41b. The two-match rollup reader: one match only, an inherited (equal) high-water, a
+    # periodic rollup with no boundary line, and a carried non-zero counter must each go RED.
+    check(
+        "queue-rollup reader -- planted one-match/inherited/periodic/carried cases go RED "
+        "(check_queue_rollups --selftest)",
+        [sys.executable, os.path.join(REPO, "tools", "check_queue_rollups.py"), "--selftest"],
     )
     # F1F. The interior-pointer screen stays reproducible from committed inputs (fixture blob +
     # generated registry header), and the TLO_REGISTRY sole-reader claim is a gate, not prose --

@@ -168,6 +168,39 @@ EXPORT_ANCHORS = [
     ("_MH_Harness_OnPresent", "the per-present tick net_lockstep calls unconditionally"),
 ]
 
+# ---- mp:D29 -- THE CONFIGURATION (1) FALLBACK ROWS ------------------------------------------------
+#
+# A THIRD ROW CLASS, and the only spine rows with a spine-free answer that is not a lie. The per-step
+# region hash (hash_slice -> emit_slice -> owner_serves; hash_base -> live_base) reaches exactly these
+# three spine symbols and no other. mh.dll ALREADY DEFINES all three with the configuration (1)
+# answer (mh/seams/libmh_bind.cpp: its own table seeded from REGIONS[] and an empty owner table --
+# "not a fallback but the correct answer": with no spine nothing can rebase or claim a region). So
+# when libmh.dll is absent the harness binds these three OUT OF mh.dll, into the same spine slots,
+# and arms "spine-free"; every other spine slot stays null and every call site that could reach one
+# is guarded in harness.cpp (or its key is refused by name at arm -- ruling Q4 as amended by D29).
+#
+# BOUND FROM mh.dll ONLY WHEN libmh IS ABSENT. With the spine present they stay ordinary SPINE rows,
+# so the libmh build is byte-for-byte what it was and G179's one-registry rule holds: the harness
+# reads the table mh::ai::island_move() rebases. And it is mh.dll's REAL table -- the export IS the
+# function mh.dll's own readers call -- never a harness-private copy, which would stay green the day
+# mh.dll moved a region (the planted-copy arm in bindtest is what catches that).
+#
+# RE-PICK RULE, as for the anchors: a row leaves this list only in the commit that removes the need.
+CONFIG1_FALLBACK = [
+    (
+        "?live@state@mh@@YAAAUlive_table@12@XZ",
+        "the region registry: hash_base -> live_base -> live().base[rid]",
+    ),
+    (
+        "?owner_count@state@mh@@YAAAHXZ",
+        "the owner table's length: emit_slice -> owner_serves -> owner_of",
+    ),
+    (
+        "?owner_table@state@mh@@YAPAUowner_slot@12@XZ",
+        "the owner table: emit_slice -> owner_serves -> owner_of",
+    ),
+]
+
 
 class Refusal(Exception):
     """Exit 2: this run cannot be trusted."""
@@ -377,11 +410,18 @@ def derive(dumpbin, undname):
             )
         return out
 
+    # mp:D29: a fallback row is recorded only when BOTH sides hold it -- a spine row (so it has a
+    # slot) that mh.dll's objects DEFINE (so mh.def can export it). validate() refuses a short list
+    # by name, which is how "mh.dll stopped defining live()" arrives as a red rather than as a
+    # configuration (1) run that refuses to arm on the rig.
+    fallback = [n for n, _why in CONFIG1_FALLBACK if n in set(spine) and n in set(mdef)]
+
     return {
         "host": rows(host),
         "spine": rows(spine),
         "exports": [{"name": n.lstrip("_")} for n in exports],
         "unresolved": unresolved,
+        "config1_fallback": fallback,
     }
 
 
@@ -413,6 +453,24 @@ def validate(data):
     for name, why in EXPORT_ANCHORS:
         if name.lstrip("_") not in exports:
             errs.append("positive control MISSING from the export list: %s (%s)" % (name, why))
+    # mp:D29: the configuration (1) fallback rows. Each must be a SPINE row (it binds into a spine
+    # slot) and the recorded list must be exactly CONFIG1_FALLBACK -- a missing one means mh.dll no
+    # longer defines it (derive() dropped it), so configuration (1) would refuse to arm on the rig.
+    spine_names = {r["mangled"] for r in data["spine"]}
+    want_fb = [n for n, _why in CONFIG1_FALLBACK]
+    for n, why in CONFIG1_FALLBACK:
+        if n not in spine_names:
+            errs.append(
+                "configuration (1) fallback row %s (%s) is not a SPINE row -- it has no slot to "
+                "bind into, so the spine-free harness mode has nothing to read the regions through"
+                % (n, why)
+            )
+    if list(data.get("config1_fallback", [])) != want_fb:
+        errs.append(
+            "configuration (1) fallback list %s != %s. A row missing here is one mh.dll's objects "
+            "no longer DEFINE, so mh.def cannot export it and the harness cannot arm in "
+            "configuration (1)." % (data.get("config1_fallback"), want_fb)
+        )
     if data.get("unresolved"):
         errs.append(
             "%d project symbol(s) mh_harness.dll references resolve in NEITHER image nor in itself: "
@@ -466,6 +524,30 @@ def render_h(data):
         "// number of rows resolved; the caller refuses unless it equals the count above.",
         "int mh_harness_bind_host(void);",
         "int mh_harness_bind_spine(void);",
+        "",
+    ]
+    fb_slot = {r["mangled"]: i for i, r in enumerate(data["spine"])}
+    fb = list(data.get("config1_fallback", []))
+    out += [
+        "// mp:D29 -- THE CONFIGURATION (1) FALLBACK ROWS: the spine slots the per-step region hash",
+        "// reaches, bound out of mh.dll (its own configuration (1) answer) when libmh.dll is absent.",
+        "// Every other spine slot stays null in that mode; the call sites that could reach one are",
+        "// guarded in harness.cpp or refused by key at arm. Bound whole or not at all (config1.h).",
+        "#define MH_HARNESS_CONFIG1_FALLBACK_COUNT %d" % len(fb),
+        "static const int mh_harness_config1_fallback_slot[MH_HARNESS_CONFIG1_FALLBACK_COUNT] = {",
+    ]
+    for n in fb:
+        out.append("    %d, // %s" % (fb_slot.get(n, -1), n))
+    out += [
+        "};",
+        "static const char *const "
+        "mh_harness_config1_fallback_name[MH_HARNESS_CONFIG1_FALLBACK_COUNT] = {",
+    ]
+    for n in fb:
+        out.append('    "%s",' % export_name(n))
+    out += [
+        "};",
+        "int mh_harness_bind_config1(void);",
         "",
         "// NO CROSSING COUNTERS, and their absence is a decision rather than an omission. F4D's",
         "// exist because mh.dll's absent path answers zero in silence, so only a number separates a",
@@ -524,6 +606,8 @@ def render_cpp(data):
         "#endif",
         "#include <windows.h>",
         "",
+        '#include "config1.h" // mp:D29 -- the all-or-nothing fallback binder',
+        "",
         'extern "C" {',
         "void *g_mh_harness_host_fn[MH_HARNESS_HOST_COUNT]   = {0};",
         "void *g_mh_harness_spine_fn[MH_HARNESS_SPINE_COUNT] = {0};",
@@ -555,7 +639,9 @@ def render_cpp(data):
         "    wsprintfA(line,",
         '              "mh_harness.dll CALLED AN UNBOUND CONTRACT ROW: %s slot %d of %s.\\r\\n"',
         '              "The instrument armed with an incomplete table, which the bind is supposed to "',
-        '              "make impossible -- it resolves every row before adopting any. Every number this "',
+        '              "make impossible -- it resolves every row before adopting any. (In configuration "',
+        '              "(1) only the mp:D29 fallback rows are bound, so a spine row reached there is a "',
+        '              "harness.cpp call site the D29 guards missed.) Every number this "',
         '              "run would have reported is therefore untrustworthy, so the process is being "',
         '              "terminated rather than left to write a well-formed log of nothing.\\r\\n",',
         "              nm, i, tbl);",
@@ -619,6 +705,19 @@ def render_cpp(data):
         "    if (got != MH_HARNESS_SPINE_COUNT) return got;",
         "    for (int i = 0; i < MH_HARNESS_SPINE_COUNT; ++i) g_mh_harness_spine_fn[i] = t[i];",
         "    return got;",
+        "}",
+        "",
+        "// mp:D29 -- CONFIGURATION (1): the fallback rows, out of mh.dll, into their SPINE slots. Called",
+        "// only when libmh.dll is absent. The binder is config1.h's, so the selftest drives the same",
+        "// code with a planted resolver. mh.dll's export IS the function its own readers call, so the",
+        "// harness reads mh.dll's REAL table -- never a copy of it.",
+        'extern "C" int mh_harness_bind_config1(void) {',
+        '    HMODULE h = GetModuleHandleA("mh.dll");',
+        "    if (h == nullptr) return 0;",
+        "    return mh::harness_cfg1::bind_fallback(",
+        "        g_mh_harness_spine_fn, MH_HARNESS_SPINE_COUNT, mh_harness_config1_fallback_slot,",
+        "        mh_harness_config1_fallback_name, MH_HARNESS_CONFIG1_FALLBACK_COUNT,",
+        "        [h](const char *n) { return (void *)GetProcAddress(h, n); });",
         "}",
         "",
         'extern "C" {',
@@ -706,6 +805,17 @@ def render_mh_def(data):
     ]
     for r in data["host"]:
         out.append("    %s" % r["export"])
+    fb = list(data.get("config1_fallback", []))
+    if fb:
+        out += [
+            "",
+            "; mp:D29 -- the CONFIGURATION (1) FALLBACK rows. These are SPINE rows (libmh.dll answers them",
+            "; when it is present, and the harness binds them there), exported here so that with NO",
+            "; libmh.dll the harness can bind mh.dll's own answer -- its region table seeded from REGIONS[]",
+            "; and its empty owner table (seams/libmh_bind.cpp) -- and hash spine-free.",
+        ]
+        for n in fb:
+            out.append("    %s" % export_name(n))
     out.append("")
     return "\n".join(out) + "\n"
 
@@ -736,7 +846,9 @@ def load_committed():
 
 
 def strip_meta(d):
-    return {k: d[k] for k in ("host", "spine", "exports", "unresolved") if k in d}
+    return {
+        k: d[k] for k in ("host", "spine", "exports", "unresolved", "config1_fallback") if k in d
+    }
 
 
 def main(argv=None):
@@ -1002,6 +1114,33 @@ def selftest():
         d["spine"][0]["mangled"] = "?whatever@sim@mh@@YGHXZ"
         d["spine"][0]["slot"] = "mh_sim_whatever_stdcall"
         expect("a non-__cdecl row", d, "is not __cdecl")
+
+    # mp:D29 -- the configuration (1) fallback class.
+    d = copy.deepcopy(base)
+    d["config1_fallback"] = [n for n in d["config1_fallback"] if "live@state" not in n]
+    expect("a fallback row mh.dll stopped defining", d, "configuration (1) fallback list")
+
+    d = copy.deepcopy(base)
+    d["spine"] = [r for r in d["spine"] if "owner_table@state" not in r["mangled"]]
+    expect("a fallback row that is not a spine row", d, "is not a SPINE row")
+
+    d = copy.deepcopy(base)
+    d["config1_fallback"] = d["config1_fallback"] + ["?rng_trace_count@sim@mh@@YAHXZ"]
+    expect("an extra fallback row (no spine-free answer)", d, "configuration (1) fallback list")
+
+    rendered = render_all(base)
+    fb_exports = [export_name(n) for n, _why in CONFIG1_FALLBACK]
+    ok = all(("    %s\n" % e) in rendered[MH_DEF_PATH] for e in fb_exports)
+    print(
+        "  %-46s %s"
+        % ("mh.def exports every fallback row", "ok" if ok else "FAIL -- mh.def lacks one")
+    )
+    bad += 0 if ok else 1
+    ok = "mh_harness_bind_config1" in rendered[GEN_CPP_PATH] and (
+        "MH_HARNESS_CONFIG1_FALLBACK_COUNT %d" % len(CONFIG1_FALLBACK) in rendered[GEN_H_PATH]
+    )
+    print("  %-46s %s" % ("the binder + slot table are emitted", "ok" if ok else "FAIL"))
+    bad += 0 if ok else 1
 
     bad += roster_selftest()
 

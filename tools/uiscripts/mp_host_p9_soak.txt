@@ -26,6 +26,13 @@
 # blackhole; the client's does not -- see mp_client_p9_soak.txt.
 #
 # Pair with mp_client_p9_soak.txt.
+#
+# GATE DIET BLOCK 2 (2026-09-24): the blackhole that ends this script no longer waits for t+340 s.
+# resync_storm_repro's `shim_triggers` (tools/test_ui.py) fires it as soon as the leader's mh_net.log
+# carries `barrier #5 BEGIN` (the checker's --min-barriers) AND both peers have logged their m3
+# capture -- ~65 s after the host is up instead of 340 s. The 340 s timeline step stays as the
+# FALLBACK: a stock start that stopped storming never fires the trigger, soaks the full 5 minutes,
+# and the checker reports that XPASS over a real match exactly as before.
 
 # reach the host lobby (create a game named "test" on the pre-selected map)
 settled value:110

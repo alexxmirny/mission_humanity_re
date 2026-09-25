@@ -1,0 +1,43 @@
+# mp:X2b HOST -- over TCP (no channel C) a joiner holding DIFFERENT bytes of the map is REFUSED.
+#
+# X2's download needs mh_net_udp.dll's bulk channel. On transport=tcp there is none, so the host
+# cannot fix the mismatch -- and a refusal beats a desync 8000 steps later. This script reaches the
+# lobby, waits for the joiner to be SEATED (`occ 2`), then CLICKS Start -- the forbidden act -- and
+# captures the lobby, still up, with the named notice on the status line.
+#
+# WHY A CLICK AND NOT `disabled Start` (dead-ends G291): retail re-derives Start's 0x40 bit every
+# lobby frame, so the greyed look never holds long enough for a predicate -- and, before the fix, a
+# click on the "refused" Start launched the mismatched match. The refusal is now enforced in the
+# Start ACTIVATION (launch.cpp on_begin_map_load), and the click is how this run proves it: an
+# absolute `click` (not `clickl`, which skips a widget whose bit happens to be set that frame).
+#
+# THE ASSERTION IS THE POST-CHECK (tools/check_map_transfer.py --expect-refused over both peers):
+# `host nocarry`, no `send armed`, `start REFUSED -- '<peer>' holds a different <map> and this
+# transport cannot carry maps`, `start CLICK REFUSED` (the click happened and was swallowed), no
+# `start OK`, and no `local after` on the joiner.
+#
+# Pair with mp_client_map_refuse.txt; the registry row sets transport=tcp;map_test_pretend=other.
+
+settled value:110
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+settled Create
+clickl Create
+present Game name
+settled Ok
+clickl Ok
+present Available maps
+settled Ok
+clickl Ok
+present Network players
+peers 1
+occ 2
+settled Start
+click 501 294
+cursorhold 10 10 120
+present Network players
+capture x1_start_refused
+log HOST: Start REFUSED -- the joiner holds a different copy of the map and TCP cannot carry it
+end

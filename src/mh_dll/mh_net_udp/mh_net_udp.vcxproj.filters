@@ -24,6 +24,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="udp_endpoint.h" />
+    <ClInclude Include="udp_ping_cadence.h" />
     <ClInclude Include="udp_channel_c.h" />
     <ClInclude Include="udp_snapshot.h" />
     <ClInclude Include="udp_stats.h" />

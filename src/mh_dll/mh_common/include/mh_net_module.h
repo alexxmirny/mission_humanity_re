@@ -76,6 +76,8 @@
 //                                same claim to the caller -- this link cannot move a snapshot.
 //   MH_Net_SetPeerHorizon   -    no-op; a PUSH with nothing bound to receive it is exactly the shape
 //                                the Set*Handler rows above already have, mp:SES6.
+//   MH_Net_QueueMatchBoundary -  no-op; no module means no inbound queue and no counters to restart.
+//                                mp:U41b.
 //
 #ifndef MH_NET_MODULE_H
 #define MH_NET_MODULE_H
@@ -100,7 +102,7 @@ extern "C" {
 // three symbols", which is the same fact told as a version rather than as a diff. Both orders are
 // safe; the version is the one a player's bug report can quote.
 #define MH_NET_MODULE_ABI \
-    0xF4B00006u // bumped at mp:L1e: MH_NetPeerLatency (mh_net_export.h) grew a tail `relayed` field
+    0xF4B00007u // bumped at mp:U41b: MH_Net_QueueMatchBoundary added (the 27th row)
 
 // What mh.dll hands the module at bind time. ONE FIELD TODAY, and it is the whole of Q1's residue:
 // run_context.cpp stays mh.dll-side (F4 ruling Q1 -- 11 of its 13 consumers are core/harness, and
@@ -237,6 +239,7 @@ void MH_Net_SnapshotStatus(MH_NetSnapshotStatus *out);
         (void)horizon_ms;                                                                           \
         return;                                                                                     \
     })                                                                                              \
+    X(void, MH_Net_QueueMatchBoundary, (void), (), { return; })                                     \
     X(void, MH_Net_SetSessionInfoHandler, (MH_SessionInfoCb cb), (cb), { return; })                 \
     X(void, MH_Net_SendSessionInfo, (const unsigned char *buf, int len), (buf, len), { return; })   \
     X(void, MH_Net_SetJoinHandler, (MH_JoinCb cb), (cb), { return; })                               \

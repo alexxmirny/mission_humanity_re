@@ -119,13 +119,14 @@
 #include <cstring>
 
 #include "seams/ui_net_indicator.h"
-#include "include/mh_net_export.h" // MH_Net_GetStats / IsStarted / PeerCount / LocalPlayerId
-#include "addr/mh_addrs.gen.h"     // generated EN VAs
-#include "addr/mh_calls.gen.h"     // mh::call::llm_gfx_font_select / llm_gfx_draw_text_rgb
-#include "config/ini_read.h"       // TL-HARN4: read_ini_string -- strips a trailing `;comment`
-#include "state/region_runtime.h"  // SB-HOSTFREE: a movable region is read where it IS
-#include "include/mh_tile_dirty.h" // mp:GX1: mark_ground_tiles_dirty -- shared with gfx_overlay.cpp
-#include "en_guard.h"              // EN-only build gate
+#include "include/mh_net_export.h"     // MH_Net_GetStats / IsStarted / PeerCount / LocalPlayerId
+#include "addr/mh_addrs.gen.h"         // generated EN VAs
+#include "addr/mh_calls.gen.h"         // mh::call::llm_gfx_font_select / llm_gfx_draw_text_rgb
+#include "config/ini_read.h"           // TL-HARN4: read_ini_string -- strips a trailing `;comment`
+#include "state/region_runtime.h"      // SB-HOSTFREE: a movable region is read where it IS
+#include "include/mh_tile_dirty.h"     // mp:GX1: mark_ground_tiles_dirty -- shared with gfx_overlay.cpp
+#include "include/mh_uidrive_export.h" // MH_UIDrive_SynthKeyDown -- the `hotkey` verb's chord (mp:GX1)
+#include "en_guard.h"                  // EN-only build gate
 
 #pragma comment(lib, "user32.lib") // wsprintfA
 
@@ -294,7 +295,12 @@ bool     g_key_prev = false;
 // the geometry anchor is placed against, so nothing here can draw past g_x + reserved_width()).
 constexpr int NETIND_MAX_LINES = 5;
 bool          g_prev_stamped   = false; // a rect below is valid and awaiting a final release stamp
-int           g_prev_x = 0, g_prev_y = 0, g_prev_w = 0, g_prev_h = 0;
+// [hud] net_indicator_stamp (default 1). THE PLANTED NEGATIVE ARM for mp:GX1's rig row, not a player
+// knob: 0 restores the pre-fix path -- this file's three damage-map stamps skipped AND the text drawn
+// through the non-stamping wrapper (draw_line) -- so `gx1_netind_nostamp` can show the row's checker
+// going RED on a build where the fix is absent (the run must tell the two apart).
+bool g_stamp  = true;
+int  g_prev_x = 0, g_prev_y = 0, g_prev_w = 0, g_prev_h = 0;
 
 // ---- counters + rate limits ---------------------------------------------------------------------
 long g_frames     = 0;
@@ -372,6 +378,13 @@ void draw_line(int y, const char *ascii) {
     wchar_t   w[96];
     const int n = MultiByteToWideChar(CP_ACP, 0, ascii, -1, w, 96);
     if (n <= 0) return;
+    if (!g_stamp) {
+        // mp:GX1 PLANTED NEGATIVE ARM ([hud] net_indicator_stamp=0): the PRE-FIX draw -- the one text
+        // wrapper that skips the damage-map stamp. draw_text_rgb marks the tiles it draws on, so
+        // knobbing out only our explicit stamps still left the bug fixed (measured Wave 2).
+        mh::call::llm_gfx_draw_text_blend_clipped(g_x, y, (uint16_t *)w, (int16_t)g_color);
+        return;
+    }
     const unsigned r5 = (g_color >> 11) & 0x1fu;
     const unsigned g6 = (g_color >> 5) & 0x3fu;
     const unsigned b5 = g_color & 0x1fu;
@@ -437,12 +450,17 @@ void parse_key(const char *s) {
     else if ((s[0] >= 'A' && s[0] <= 'Z') || (s[0] >= '0' && s[0] <= '9')) g_key_vk = s[0];
 }
 
+// HELD = the OS says so OR the UI harness is synthesising it -- gfx_overlay.cpp's vk_held, for the
+// same reason: GetAsyncKeyState reads 0 on a headless lane's isolated desktop, so without the second
+// arm the suite could never toggle this readout (found by mp:GX1's rig row, Wave 2 2026-09-23).
+bool vk_held(int vk) {
+    return (GetAsyncKeyState(vk) & 0x8000) != 0 || MH_UIDrive_SynthKeyDown(vk) != 0;
+}
+
 bool hotkey_edge() {
     if (!g_key_vk) return false;
-    const bool down = (GetAsyncKeyState(g_key_vk) & 0x8000) != 0 &&
-                      (!g_key_ctrl || (GetAsyncKeyState(VK_CONTROL) & 0x8000)) &&
-                      (!g_key_alt || (GetAsyncKeyState(VK_MENU) & 0x8000)) &&
-                      (!g_key_shift || (GetAsyncKeyState(VK_SHIFT) & 0x8000));
+    const bool down = vk_held(g_key_vk) && (!g_key_ctrl || vk_held(VK_CONTROL)) &&
+                      (!g_key_alt || vk_held(VK_MENU)) && (!g_key_shift || vk_held(VK_SHIFT));
     const bool edge = down && !g_key_prev;
     g_key_prev      = down;
     return edge;
@@ -508,6 +526,7 @@ extern "C" int MH_NetIndicator_Install(void) {
     mh::config::read_ini_string("hud", "net_indicator_color", "ffff", buf, sizeof(buf), ini); // TL-HARN4
     g_color  = (uint16_t)parse_hex(buf);
     g_log_on = GetPrivateProfileIntA("hud", "net_indicator_log", 1, ini) != 0;
+    g_stamp  = GetPrivateProfileIntA("hud", "net_indicator_stamp", 1, ini) != 0;                  // mp:GX1 negative arm
     mh::config::read_ini_string("hud", "net_indicator_key", "Ctrl+Alt+N", buf, sizeof(buf), ini); // TL-HARN4
     parse_key(buf);
     g_visible          = true;
@@ -539,7 +558,7 @@ extern "C" void MH_NetIndicator_OnPresent(void) {
         // release whatever tiles the last drawn frame covered so the ground pass (if this mode has
         // one) repaints them instead of showing our stale glyphs into a screen we no longer touch.
         if (g_prev_stamped) {
-            mh::gfx::mark_ground_tiles_dirty(g_prev_x, g_prev_y, g_prev_w, g_prev_h);
+            if (g_stamp) mh::gfx::mark_ground_tiles_dirty(g_prev_x, g_prev_y, g_prev_w, g_prev_h);
             g_prev_stamped = false;
         }
         return;
@@ -612,13 +631,13 @@ extern "C" void MH_NetIndicator_OnPresent(void) {
         // every drawn frame, not just on a rect CHANGE -- npeer/show_stall vary frame to frame and a
         // narrower rect this frame must still cover last frame's wider one, which is exactly what a
         // fixed superset already does without tracking a delta.
-        mh::gfx::mark_ground_tiles_dirty(g_x, g_y, reserved_width(), NETIND_MAX_LINES * line_h);
+        if (g_stamp) mh::gfx::mark_ground_tiles_dirty(g_x, g_y, reserved_width(), NETIND_MAX_LINES * line_h);
         g_prev_x = g_x, g_prev_y = g_y, g_prev_w = reserved_width(), g_prev_h = NETIND_MAX_LINES * line_h;
         g_prev_stamped = true;
     } else if (g_prev_stamped) {
         // Hidden (hotkey) or the font is not yet ready: nothing will draw this frame, so this is the
         // last chance to release what the previous drawn frame covered.
-        mh::gfx::mark_ground_tiles_dirty(g_prev_x, g_prev_y, g_prev_w, g_prev_h);
+        if (g_stamp) mh::gfx::mark_ground_tiles_dirty(g_prev_x, g_prev_y, g_prev_w, g_prev_h);
         g_prev_stamped = false;
     }
 

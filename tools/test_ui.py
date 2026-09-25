@@ -47,6 +47,8 @@ import lane_alloc  # noqa: E402  fork F4H: the ONE place a lane NUMBER comes fro
 import ui_test  # noqa: E402  boot_lock + wait_past_pack_load, shared with the UI suite
 import machine_config as machine  # noqa: E402
 import make_lane  # noqa: E402  LANE_ROOT + the lane builder used by --local
+import map_variant  # noqa: E402  mp:X2a -- the one-bit flip pushed to the client VM's own Maps\
+import mp_run  # noqa: E402  mp:X2a -- scp the variant to/from the two independent rig VMs
 
 # Where the community saves live -- the same directory the save-sweep tool indexes into
 # tools/data/save_index.json, so a name printed by the session driver's `--start` resolves here.
@@ -508,9 +510,25 @@ def frames_for_seconds(seconds, floor_fps):
     return max(1, round(seconds * floor_fps))
 
 
+# mp:GX1 -- the net indicator's residue probe, shared by its positive row and its planted negative.
+# The rect is the indicator's PING/CMD text block at 640x480 (read off a real n1_shown capture); the
+# colour is its default `[hud] net_indicator_color=ffff` (RGB565 white).
+GX1_NETIND_CHECK = [
+    "tools/check_overlay_residue.py",
+    "--before",
+    "n1_shown",
+    "--after",
+    "n2_hidden",
+    "--rect",
+    "340,6,60,22",
+    "--color",
+    "ffffff",
+]
+
 TESTS = [
     {
         "name": "tutorial_enter",
+        "budget_s": 30,  # gate diet: max measured (gate 16s, n2 8s, n6 14s) x 1.3 = 25, FLOORED at 30 (BUDGET_FLOOR_S), 2026-09-24
         "kind": "solo",
         "script": "tutorial_enter.txt",
         # PINNED: t3 is an IN-GAME capture, so its size follows the persisted setup.dat resolution.
@@ -565,6 +583,7 @@ TESTS = [
     },
     {
         "name": "menu_walk",
+        "budget_s": 30,  # gate diet: max measured (gate 12s, n2 15s, n6 16s) x 1.3 = 25, FLOORED at 30 (BUDGET_FLOOR_S), 2026-09-24
         "kind": "solo",
         "script": "mp_menu_walk.txt",
         # THE SPINE-CROSSING ARM (fork F4D), carried by this scenario because it is the plainest
@@ -596,6 +615,7 @@ TESTS = [
     },
     {
         "name": "libmh_absent",
+        "budget_s": 30,  # gate diet: max measured (gate 6s, n2 5s, n6 5s) x 1.3 = 10, FLOORED at 30 (BUDGET_FLOOR_S), 2026-09-24
         "kind": "solo",
         "script": "libmh_absent.txt",
         # CONFIGURATION (1) AS A REGISTERED SCENARIO (fork F4D). The sibling of module_absent one
@@ -621,6 +641,7 @@ TESTS = [
     },
     {
         "name": "harness_absent",
+        "budget_s": 30,  # gate diet: max measured (gate 7s, n2 5s, n6 5s) x 1.3 = 10, FLOORED at 30 (BUDGET_FLOOR_S), 2026-09-24
         "kind": "solo",
         "script": "harness_absent.txt",
         # THE UNINSTRUMENTED BOOT AS A REGISTERED SCENARIO (fork F4E). The third and quietest of the
@@ -647,6 +668,7 @@ TESTS = [
     },
     {
         "name": "module_absent",
+        "budget_s": 30,  # gate diet: max measured (gate 7s, n2 5s, n6 6s) x 1.3 = 10, FLOORED at 30 (BUDGET_FLOOR_S), 2026-09-24
         "kind": "solo",
         "script": "module_absent.txt",
         # THE MISSING-SATELLITE BOOT. Registered at F4A against the spike satellite; RETARGETED at
@@ -691,6 +713,7 @@ TESTS = [
     },
     {
         "name": "no_net_boot",
+        "budget_s": 30,  # gate diet: max measured (gate 11s, n2 8s, n6 8s) x 1.3 = 15, FLOORED at 30 (BUDGET_FLOOR_S), 2026-09-24
         "kind": "solo",
         "script": "no_net_boot.txt",
         # fork F3F. `module=none` is the OTHER axis from `[net] enable`: enable=0 declines a
@@ -718,6 +741,7 @@ TESTS = [
     },
     {
         "name": "no_net_lobby",
+        "budget_s": 30,  # gate diet: max measured (gate 17s, n2 11s, n6 11s) x 1.3 = 25, FLOORED at 30 (BUDGET_FLOOR_S), 2026-09-24
         "kind": "solo",
         "script": "no_net_lobby.txt",
         # fork F4 / U42/U43, F4's Q8 ruling ("ARM and explain, not gate" a Create with no module). This
@@ -769,12 +793,14 @@ TESTS = [
     },
     {
         "name": "ip_cancel",
+        "budget_s": 30,  # gate diet: max measured (gate 14s, n2 8s, n6 11s) x 1.3 = 20, FLOORED at 30 (BUDGET_FLOOR_S), 2026-09-24
         "kind": "solo",
         "script": "mp_ip_cancel.txt",
         "desc": "U38: browser -> Internet server -> Cancel comes back to a LIVE local browser (the de-duplicated slide-in)",
     },
     {
         "name": "match_launch",
+        "budget_s": 55,  # gate diet: max measured (gate 36s, n2 32s, n6 39s) x 1.3, 2026-09-24
         # transport=tcp PINNED (user ruling 2026-09-20): `[net] transport` now defaults to udp, and
         # this row relied on the old tcp default. Pinned so the suite's TCP coverage stays TCP
         # rather than silently becoming a second UDP run.
@@ -800,6 +826,7 @@ TESTS = [
         # fix. region_hash_step=50 gives the analyzer rows to compare; synth_move=0 keeps the random
         # workload out of the capture.
         "name": "d25_buildclick",
+        "budget_s": 95,  # gate diet: max measured (gate 71s, n2 55s, n6 54s) x 1.3, 2026-09-24
         # transport=tcp PINNED (user ruling 2026-09-20): `[net] transport` now defaults to udp, and
         # this row relied on the old tcp default. Pinned so the suite's TCP coverage stays TCP
         # rather than silently becoming a second UDP run.
@@ -825,6 +852,7 @@ TESTS = [
         # a reopened dialog before the commit shows the OLD value. Same knobs as d25_buildclick; the
         # idle client is d25's.
         "name": "u39_diplomacy",
+        "budget_s": 100,  # gate diet: max measured (gate 74s, n2 52s, n6 55s) x 1.3, 2026-09-24
         "kind": "multi",
         "host": "mp_host_diplomacy.txt",
         "clients": ["mp_client_idle.txt"],
@@ -845,6 +873,7 @@ TESTS = [
         # region_hash_step=1 because the window is 4 steps wide and a 50-step cadence never lands on
         # it; the host's harness log grows to ~3 MB for the 30 s of sim, which is fine for one row.
         "name": "u39_diplomacy_echo",
+        "budget_s": 80,  # gate diet: max measured (gate 59s, n2 52s, n6 55s) x 1.3, 2026-09-24
         "kind": "multi",
         "host": "mp_host_diplomacy.txt",
         "clients": ["mp_client_idle.txt"],
@@ -871,6 +900,7 @@ TESTS = [
         # it, opens its construction/upgrade status dialog, presses the item that raises the cancel
         # confirm, then &Yes. Same knobs as d25_buildclick/u39_diplomacy; the idle client is d25's.
         "name": "d28_canceltask",
+        "budget_s": 85,  # gate diet: max measured (gate 64s, n2 63s, n6 65s) x 1.3, 2026-09-24
         "kind": "multi",
         "host": "mp_host_canceltask.txt",
         "clients": ["mp_client_idle.txt"],
@@ -908,6 +938,7 @@ TESTS = [
         # `buildings` among the diverging regions at the first mismatch (region_hash_step=1 so the
         # analyzer has a row at the click itself).
         "name": "d28_canceltask_local",
+        "budget_s": 85,  # gate diet: max measured (gate 65s, n2 63s, n6 64s) x 1.3, 2026-09-24
         "kind": "multi",
         "host": "mp_host_canceltask.txt",
         "clients": ["mp_client_idle.txt"],
@@ -926,6 +957,9 @@ TESTS = [
     },
     {
         "name": "shim_udp",
+        # 2026-09-25 pacing audit: 32 / 32 / 32 s under ship_pacing (was 33-44 s on the pinned 30 ms
+        # lookahead) x 1.3 -> 42, rounded to 45.
+        "budget_s": 45,
         "kind": "multi",
         "host": "mp_host_start.txt",
         "clients": ["mp_client_start.txt"],
@@ -943,6 +977,11 @@ TESTS = [
         # link_death's 100 ms, chosen for an outage), and comfortably clear on both sides of
         # check_shim_rtt.py's 20 ms floor: near-zero if the shim were bypassed, ~80 ms if it ran.
         "shim_delay": 40,
+        # SHIP PACING (2026-09-25 pacing audit). The row's subject is the shim's plain-delay path
+        # (check_shim_rtt reads srtt0_ms), not the rig's pinned 30 ms lookahead, which made every step
+        # wait ~one 80 ms RTT: 0.41-0.47x game/wall in the last gate. Under ship pacing, 3/3 PASS at
+        # 0.99-1.00x, captures still against match_launch's baselines (m3 <= 0.78%).
+        "ship_pacing": True,
         "extra_ini": "tools/uiscripts/ini/video_1024.ini",
         # THE ASSERTION IS THE post_check, NOT THE PIXELS -- same reasoning as net_hud/mp_snapshot:
         # the captures prove the walk still reaches a live match under the added delay; they cannot
@@ -967,7 +1006,9 @@ TESTS = [
         # `[net] UNCARRIED FIX` line, (2) the gate-install line reads `2/2 INC sites patched`,
         # (3) zero `[resync] force_resync FIRED` lines over >= 1000 sim steps with the D21 desync
         # watch agreeing on every sample and no `*** DESYNC`. NO harness_extra and no mp_analyze:
-        # the determinism harness REFUSES TO ARM without libmh (ruling Q4, `spine=0/33`), so the
+        # the determinism harness REFUSED TO ARM without libmh when this row was written (ruling Q4,
+        # `spine=0/33`; mp:D29 lifted that -- it arms spine-free now, and the configuration (1)
+        # determinism shapes are D29's, not this row's), so the
         # in-band desync watch -- live in every configuration -- is the determinism instrument here,
         # made per-sample by ini/desync_verbose.ini. check_module_bind is NOT in the post_check list
         # because it takes ONE run dir and post_check_peers hands over two (and it wants the process
@@ -982,6 +1023,7 @@ TESTS = [
         # into ONE serial worker -- TL-SUITE-SHIM-SERIAL -- so nothing lost concurrency), keeping
         # the suite block at 81. The two P9 (2/2) proof rows are sharers of resync_storm_repro.
         "name": "match_launch_net",
+        "budget_s": 65,  # gate diet: max measured (gate 46s, n2 37s, n6 50s) x 1.3, 2026-09-24
         "kind": "multi",
         "host": "mp_host_start_net.txt",
         "clients": ["mp_client_start_net.txt"],
@@ -1036,6 +1078,7 @@ TESTS = [
         # because the harness cannot arm without libmh (ruling Q4). Deploy coordinates are the D28
         # walk's (480,330) at 1024x768, hence video_1024.ini.
         "name": "el2_mother_deploy",
+        "budget_s": 60,  # gate diet: max measured (gate 37s, n2 40s, n6 43s) x 1.3, 2026-09-24
         "kind": "multi",
         "host": "mp_host_el2.txt",
         "clients": ["mp_client_el2.txt"],
@@ -1094,6 +1137,7 @@ TESTS = [
         # (the fixes have their own green rows), and a suite that cannot afford it should skip it
         # by name, not drop the row.
         "name": "resync_storm_repro",
+        "budget_s": 120,  # gate diet: max measured (b2 87s, n2 88s, n6 90s) x 1.3, 2026-09-24
         "expect_red": "mp:P9",
         "kind": "multi",
         "host": "mp_host_p9_soak.txt",
@@ -1104,6 +1148,23 @@ TESTS = [
         "shim": True,
         "shim_delay": 100,  # ONE-WAY -> ~200 ms rtt, the field link
         "shim_timeline": "tools/uiscripts/shim/p9_soak_5min.txt",
+        # Gate diet block 2 (2026-09-24): EVIDENCE-BOUNDED. The storm's 5th leader BEGIN lands ~10 s
+        # into the match (barrier #1 at +0.6 s, then one per ~2.07 s -- measured on the 2026-09-24
+        # run) and both m3 captures are done ~53 s in, so the blackhole that ends the row fires once
+        # BOTH captures are logged AND the leader has begun >= 5 barriers (the checker's own
+        # --min-barriers). The timeline's 340 s blackhole stays as the FALLBACK bound: if the stock
+        # start ever stops storming the trigger never fires, the run soaks the full 5 minutes, and the
+        # checker reports the XPASS over a real match exactly as before.
+        "shim_triggers": [
+            {
+                "cmd": "blackhole on",
+                "when": [
+                    ["host", "mh_net.log", r"\[resync\] barrier #5 BEGIN"],
+                    ["host", "mh_uidrive.log", r"LOG: HOST is in the configuration-\(1\) match"],
+                    ["c1", "mh_uidrive.log", r"LOG: CLIENT is in the configuration-\(1\) match"],
+                ],
+            }
+        ],
         "extra_ini": [
             "tools/uiscripts/ini/video_1024.ini",
             "tools/uiscripts/ini/desync_verbose.ini",
@@ -1116,7 +1177,7 @@ TESTS = [
         "post_check": ["tools/check_resync_storm.py", "--expect", "storm"],
         "post_check_peers": True,
         "post_check_session": True,
-        "desc": "P9 reproduction (kept red): configuration (1), gate OFF, count_init OFF, defang 0, host 100 / joiner 60 through a 100 ms shim for 5 min -- the leader must BEGIN >= 5 barriers",
+        "desc": "P9 reproduction (kept red): configuration (1), gate OFF, count_init OFF, defang 0, host 100 / joiner 60 through a 100 ms shim until the leader has BEGUN >= 5 barriers (a shim trigger ends it then; the 5-min timeline is the fallback)",
     },
     {
         # mp:P9 (2/2) PROOF (b): the reproduction's exact shape with the GATE ON and the root fix
@@ -1137,6 +1198,7 @@ TESTS = [
         # (`countdown 55`, 6 s before SESSION_END), an honest gate fire the checker cannot tell from
         # a storm. Measured 2026-09-22: 0 barriers from the armed line to the blackhole (5.4 min).
         "name": "resync_gate_proof",
+        "budget_s": 90,  # gate diet: max measured (b2 64s, n2 67s, n6 69s) x 1.3, 2026-09-24
         "kind": "multi",
         "share_lanes": "resync_storm_repro",
         "host": "mp_host_p9_proof.txt",
@@ -1155,7 +1217,7 @@ TESTS = [
         "post_check": ["tools/check_resync_storm.py", "--expect", "carried"],
         "post_check_peers": True,
         "post_check_session": True,
-        "desc": "P9 proof (b): the storm's shape with the gate ON and count_init OFF -- 0 barriers to gameclock 150 s, desync watch IDENTICAL",
+        "desc": "P9 proof (b): the storm's shape with the gate ON and count_init OFF -- 0 barriers to gameclock 30 s (the stock start begins its 5th by ~+10 s), desync watch IDENTICAL",
     },
     {
         # mp:P9 (2/2) PROOF (c): the reproduction's exact shape with the gate OFF and the COUNT
@@ -1174,10 +1236,23 @@ TESTS = [
         # the summary. Sharer of resync_storm_repro for the reason resync_gate_proof gives; ends on
         # gameclock 150 s like it.
         "name": "resync_countinit_proof",
+        "budget_s": 100,  # gate diet: max measured (b2 72s, n2 69s, n6 75s) x 1.3, 2026-09-24
         "kind": "multi",
         "share_lanes": "resync_storm_repro",
-        "host": "mp_host_p9_proof.txt",
-        "clients": ["mp_client_p9_proof.txt"],
+        # 2026-09-24 (user): OWN scripts that end on the leader's SECOND fire, not on gameclock 30 s.
+        # The count climbs per stall-nag -- per rendered frame parked at the horizon -- so a fixed
+        # game-clock window is frame-rate dependent: alone the watch read up to +163 per 10 s and 3
+        # fires by 30 s, under the session-end gate's load +65..+97 and 1 fire (count 158/200 at the
+        # cut). The runner signals `countinit_done` to both scripts when the host logs FIRED #2; the
+        # `timeout` below is the bound if it never comes.
+        "host": "mp_host_p9_countinit.txt",
+        "clients": ["mp_client_p9_countinit.txt"],
+        "shim_triggers": [
+            {
+                "cmd": "signal countinit_done",
+                "when": [["host", "mh_net.log", r"\[resync\] force_resync FIRED #2:"]],
+            }
+        ],
         "omit_satellite": ["libmh.dll"],
         "net_extra": "transport=udp;resync_trigger_gate=0;lockstep_step_ms=100",
         "net_extra_client": "lockstep_step_ms=60",
@@ -1189,10 +1264,10 @@ TESTS = [
         ],
         "timeout_frames": 57600,
         "timeout": 480,
-        "post_check": ["tools/check_resync_storm.py", "--expect", "countinit"],
+        "post_check": ["tools/check_resync_storm.py", "--expect", "countinit", "--min-fires", "2"],
         "post_check_peers": True,
         "post_check_session": True,
-        "desc": "P9 proof (c): the storm's shape with the gate OFF and count_init ON -- threshold 200 from step 0, every barrier fires AT 200 (one per ~15 s, not per 2 s), desync watch IDENTICAL",
+        "desc": "P9 proof (c): the storm's shape with the gate OFF and count_init ON -- threshold 200 from step 0, every barrier fires AT 200 (one per ~15 s, not per 2 s; the row ends on the second fire), desync watch IDENTICAL",
     },
     {
         # mp:P9W (2026-09-22, wave-3 lane C) -- the receiver-side deadline's own proof row. SAME
@@ -1216,6 +1291,7 @@ TESTS = [
         # row proves the ship configuration, the same shape every other P9 row's knob-under-test
         # takes (resync_count_init never appears in match_launch_net's net_extra either).
         "name": "resync_receiver_deadline_proof",
+        "budget_s": 95,  # gate diet: max measured (b2 71s, gate 73s, n2 72s, n6 73s) x 1.3, 2026-09-24
         "kind": "multi",
         "share_lanes": "resync_storm_repro",
         "host": "mp_host_p9w_deadline.txt",
@@ -1255,7 +1331,55 @@ TESTS = [
         "desc": "P9W: a leaderless barrier (blackhole at t+50s, ~97% odds inside one) -- the CLIENT's own receiver-side deadline (not the leader's, not the transport watchdog) must have left the wait screen and removed the dead leader",
     },
     {
+        # mp:P13 -- THE RATE ROW: configuration (1) (libmh.dll omitted), the SHIPPED pacing
+        # (`ship_pacing`: adaptive lookahead + seeded start, 20 ms sim step, nothing pinned),
+        # defang_overlay=0 (ui_test's default), udp, through a 180 ms ONE-WAY shim (RTT ~360, above
+        # the field's 205-230 ms SRTT). The match runs to gameclock 50 s = 2500 sim steps.
+        # tools/check_sim_rate.py reads BOTH peers' mh_lockstep.log: whole-match rate after a 5 s
+        # warm-up >= 0.95x, worst 30 s window >= 0.85x, 0 mode-8 rows; check_resync_storm --expect
+        # carried adds configuration (1) on both peers, 0 barriers and the in-band desync watch
+        # IDENTICAL to step >= 1500. Sharer of resync_storm_repro: its two lanes are the libmh-less,
+        # shim-port-provisioned pair (resync_gate_proof's comment says why a sharer must borrow them).
+        # NO expect_red: the baseline taken for this row (2026-09-24, wave 7 lane A) already met the
+        # rate on both peers, so there was never a red to carry -- see mp:P13's progress record.
+        # COST (measured 2026-09-24): 75 / 76 / 95 s on a quiet box; 177 / 188 s while other
+        # worktrees' msbuild held the CPU at 100% (11-12 s boot-lock waits per peer, the lanes
+        # presenting ~14 fps). Serialised with the other shim rows. The budget is the quiet figure
+        # x 1.3 -- a loaded box reads OVER-BUDGET here, which is the truth about that box.
+        "name": "p13_rate_180",
+        "budget_s": 120,
+        "kind": "multi",
+        "share_lanes": "resync_storm_repro",
+        "host": "mp_host_p13_rate.txt",
+        "clients": ["mp_client_p13_rate.txt"],
+        "omit_satellite": ["libmh.dll"],
+        "net_extra": "transport=udp",
+        "ship_pacing": True,
+        "shim": True,
+        "shim_delay": 180,
+        "extra_ini": [
+            "tools/uiscripts/ini/video_1024.ini",
+            "tools/uiscripts/ini/desync_verbose.ini",
+        ],
+        "timeout_frames": 57600,
+        "timeout": 300,
+        # The one capture (m3_launched, seeded from mp_*_p9_proof's baselines) only proves the peers
+        # are IN the match; its assertion is the post_checks. Under ship pacing the frame at gameclock
+        # 6000 differs run to run by 3.4-3.6% (measured 2026-09-24, 2 of 3 runs), above the 2%
+        # default -- the 20 ms sim step lands the render on a different sub-step than the pinned 10 ms
+        # the baseline was taken at. 6% keeps "a match frame, not a menu or a dialog".
+        "tol": 0.06,
+        "post_check": [
+            ["tools/check_sim_rate.py"],
+            ["tools/check_resync_storm.py", "--expect", "carried", "--min-steps", "1500"],
+        ],
+        "post_check_peers": True,
+        "post_check_session": True,
+        "desc": "P13: configuration (1), shipped adaptive pacing, 180 ms one-way shim, 2500 steps -- sim rate >= 0.95x whole / >= 0.85x worst 30 s on BOTH peers, 0 barriers, desync watch IDENTICAL",
+    },
+    {
         "name": "chat_relay",
+        "budget_s": 50,  # gate diet: max measured (gate 31s, n2 32s, n6 36s) x 1.3, 2026-09-24
         # transport=tcp PINNED (user ruling 2026-09-20): `[net] transport` now defaults to udp, and
         # this row relied on the old tcp default. Pinned so the suite's TCP coverage stays TCP
         # rather than silently becoming a second UDP run.
@@ -1291,6 +1415,7 @@ TESTS = [
     },
     {
         "name": "mixed_race",
+        "budget_s": 45,  # gate diet: max measured (gate 29s, n2 31s, n6 31s) x 1.3, 2026-09-24
         # transport=tcp PINNED (user ruling 2026-09-20): `[net] transport` now defaults to udp, and
         # this row relied on the old tcp default. Pinned so the suite's TCP coverage stays TCP
         # rather than silently becoming a second UDP run.
@@ -1310,6 +1435,7 @@ TESTS = [
     },
     {
         "name": "race_inflight",
+        "budget_s": 45,  # gate diet: max measured (gate 28s, n2 28s, n6 31s) x 1.3, 2026-09-24
         # transport=tcp PINNED (user ruling 2026-09-20): `[net] transport` now defaults to udp, and
         # this row relied on the old tcp default. Pinned so the suite's TCP coverage stays TCP
         # rather than silently becoming a second UDP run.
@@ -1328,6 +1454,7 @@ TESTS = [
     },
     {
         "name": "relay_match",
+        "budget_s": 50,  # gate diet: max measured (gate 32s, n2 31s, n6 37s) x 1.3, 2026-09-24
         "kind": "multi",
         "host": "mp_host_start.txt",
         "clients": ["mp_client_start.txt"],
@@ -1372,6 +1499,7 @@ TESTS = [
     },
     {
         "name": "relay_browse",
+        "budget_s": 50,  # gate diet: max measured (gate 27s, n2 28s, n6 35s) x 1.3, 2026-09-24
         "kind": "multi",
         "host": "mp_host_relay_leave.txt",
         "clients": ["mp_client_relay_browse.txt"],
@@ -1405,6 +1533,7 @@ TESTS = [
     },
     {
         "name": "relay_browse_local",
+        "budget_s": 35,  # gate diet: max measured (gate 22s, n2 22s, n6 24s) x 1.3, 2026-09-24
         "kind": "multi",
         "host": "mp_host_lobby.txt",
         "clients": ["mp_client_relay_local.txt"],
@@ -1438,6 +1567,7 @@ TESTS = [
     },
     {
         "name": "ghost_churn",
+        "budget_s": 60,  # gate diet: max measured (gate 44s, n2 44s, n6 46s) x 1.3, 2026-09-24
         "kind": "multi",
         "host": "mp_host_churn.txt",
         "clients": ["mp_client_churn.txt"],
@@ -1471,6 +1601,7 @@ TESTS = [
     },
     {
         "name": "ghost_leave_rejoin",
+        "budget_s": 60,  # gate diet: max measured (gate 44s, n2 44s, n6 46s) x 1.3, 2026-09-24
         "kind": "multi",
         "host": "mp_host_relay_rejoin.txt",
         "clients": ["mp_client_relay_leave_rejoin.txt"],
@@ -1490,6 +1621,7 @@ TESTS = [
     },
     {
         "name": "browser_two_rows",
+        "budget_s": 50,  # gate diet: max measured (gate 33s, n2 32s, n6 35s) x 1.3, 2026-09-24
         "kind": "multi",
         "host": "mp_host_two_rows_a.txt",
         # mp:R2b -- THREE peers: host A (the runner's host lane, game "uitest"), host B (a CLIENT lane
@@ -1524,6 +1656,7 @@ TESTS = [
     },
     {
         "name": "ghost_exit_rejoin",
+        "budget_s": 65,  # gate diet: max measured (gate 47s, n2 47s, n6 50s) x 1.3, 2026-09-24
         "kind": "multi",
         "host": "mp_host_exit_rejoin.txt",
         "clients": ["mp_client_exit_leave.txt", "mp_client_exit_rejoin.txt"],
@@ -1596,6 +1729,7 @@ TESTS = [
     },
     {
         "name": "relay_punch",
+        "budget_s": 45,  # gate diet: max measured (gate 29s, n2 29s, n6 31s) x 1.3, 2026-09-24
         "kind": "multi",
         "host": "mp_host_start.txt",
         "clients": ["mp_client_relay_punch.txt"],
@@ -1637,6 +1771,7 @@ TESTS = [
     },
     {
         "name": "relay_restart",
+        "budget_s": 70,  # gate diet: max measured (gate 50s, n2 51s, n6 52s) x 1.3, 2026-09-24
         "kind": "multi",
         "host": "mp_host_relay_restart.txt",
         "clients": ["mp_client_relay_restart.txt"],
@@ -1665,6 +1800,7 @@ TESTS = [
     },
     {
         "name": "s7_occ_cap",
+        "budget_s": 30,  # gate diet: max measured (gate 22s, n2 19s, n6 21s) x 1.3, 2026-09-24
         # transport=tcp PINNED (user ruling 2026-09-20): `[net] transport` now defaults to udp, and
         # this row relied on the old tcp default. Pinned so the suite's TCP coverage stays TCP
         # rather than silently becoming a second UDP run.
@@ -1676,6 +1812,7 @@ TESTS = [
     },
     {
         "name": "ai_closed_start",
+        "budget_s": 30,  # gate diet: max measured (gate 14s, n2 12s, n6 12s) x 1.3 = 20, FLOORED at 30 (BUDGET_FLOOR_S), 2026-09-24
         "kind": "solo",
         "script": "mp_ai_closed_start.txt",
         # F3E-COV. Clicking Start out of a lobby that has BOTH an AI slot and a CLOSED one -- the
@@ -1705,6 +1842,7 @@ TESTS = [
     },
     {
         "name": "client_join",
+        "budget_s": 30,  # gate diet: max measured (gate 19s, n2 20s, n6 21s) x 1.3, 2026-09-24
         # transport=tcp PINNED (user ruling 2026-09-20): `[net] transport` now defaults to udp, and
         # this row relied on the old tcp default. Pinned so the suite's TCP coverage stays TCP
         # rather than silently becoming a second UDP run.
@@ -1716,6 +1854,7 @@ TESTS = [
     },
     {
         "name": "direct_dial_with_relay_set",
+        "budget_s": 30,  # gate diet: max measured (gate 18s, n2 19s, n6 20s) x 1.3, 2026-09-24
         "kind": "multi",
         "host": "mp_host_lobby.txt",
         "clients": ["mp_client_direct_dial.txt"],
@@ -1751,6 +1890,7 @@ TESTS = [
     },
     {
         "name": "relay_stale_notice",
+        "budget_s": 35,  # gate diet: max measured (gate 21s, n2 24s, n6 23s) x 1.3, 2026-09-24
         "kind": "multi",
         "host": "mp_host_lobby.txt",
         "clients": ["mp_client_relay_stale.txt"],
@@ -1786,6 +1926,7 @@ TESTS = [
     },
     {
         "name": "codepage_adopt",
+        "budget_s": 30,  # gate diet: max measured (gate 19s, n2 21s, n6 22s) x 1.3, 2026-09-24
         # transport=tcp PINNED (user ruling 2026-09-20): `[net] transport` now defaults to udp, and
         # this row relied on the old tcp default. Pinned so the suite's TCP coverage stays TCP
         # rather than silently becoming a second UDP run.
@@ -1809,6 +1950,7 @@ TESTS = [
     },
     {
         "name": "codepage_refused",
+        "budget_s": 30,  # gate diet: max measured (gate 18s, n2 19s, n6 20s) x 1.3, 2026-09-24
         # transport=tcp PINNED (user ruling 2026-09-20): `[net] transport` now defaults to udp, and
         # this row relied on the old tcp default. Pinned so the suite's TCP coverage stays TCP
         # rather than silently becoming a second UDP run.
@@ -1833,6 +1975,7 @@ TESTS = [
     },
     {
         "name": "leave_frees_slot",
+        "budget_s": 35,  # gate diet: max measured (gate 25s, n2 25s, n6 26s) x 1.3, 2026-09-24
         # transport=tcp PINNED (user ruling 2026-09-20): `[net] transport` now defaults to udp, and
         # this row relied on the old tcp default. Pinned so the suite's TCP coverage stays TCP
         # rather than silently becoming a second UDP run.
@@ -1867,6 +2010,8 @@ TESTS = [
     },
     {
         "name": "link_death",
+        "budget_s": 125,  # gate diet: max measured (b2 91s, gate 91s, n2 94s, n6 94s) x 1.3, 2026-09-24
+        "long_why": "the R-live timeline IS the proof: an 8 s stall that must NOT drop the link, then a blackhole that must, each followed by the ~10 s watchdog -- measured 91-94 s (2026-09-24)",
         # transport=tcp PINNED (user ruling 2026-09-20): `[net] transport` now defaults to udp, and
         # this row relied on the old tcp default. Pinned so the suite's TCP coverage stays TCP
         # rather than silently becoming a second UDP run.
@@ -1905,6 +2050,7 @@ TESTS = [
     },
     {
         "name": "host_recreate",
+        "budget_s": 40,  # gate diet: max measured (gate 29s, n2 29s, n6 27s) x 1.3, 2026-09-24
         # transport=tcp PINNED (user ruling 2026-09-20): `[net] transport` now defaults to udp, and
         # this row relied on the old tcp default. Pinned so the suite's TCP coverage stays TCP
         # rather than silently becoming a second UDP run.
@@ -1916,6 +2062,7 @@ TESTS = [
     },
     {
         "name": "host_rematch",
+        "budget_s": 55,  # gate diet: max measured (gate 39s, n2 38s, n6 39s) x 1.3, 2026-09-24
         # transport=tcp PINNED (user ruling 2026-09-20): `[net] transport` now defaults to udp, and
         # this row relied on the old tcp default. Pinned so the suite's TCP coverage stays TCP
         # rather than silently becoming a second UDP run.
@@ -1966,6 +2113,7 @@ TESTS = [
     },
     {
         "name": "rematch_play",
+        "budget_s": 75,  # gate diet: max measured (gate 54s, n2 54s, n6 55s) x 1.3, 2026-09-24
         "kind": "multi",
         "host": "mp_host_rematch2.txt",
         "clients": ["mp_client_rematch2.txt"],
@@ -2010,7 +2158,33 @@ TESTS = [
         "desc": "RM1: a SECOND match in the same host process enters as clean as the first and stays in lockstep past 12 s",
     },
     {
+        "name": "rematch_rollup",
+        "budget_s": 80,  # gate diet: max measured (gate 59s, n2 59s, n6 58s, rerun 60s) x 1.3, 2026-09-24
+        # mp:U41d (2026-09-24, wave 5 lane F): the 20-message scripted chat burst wave 4 lane E
+        # added to mp_client_rematch3.txt's match-1 leg is REMOVED -- check_queue_rollups.py no
+        # longer needs a forced magnitude decrease to prove the reset (MH_Net_QueueMatchBoundary
+        # now stamps an epoch marker on the boundary line that only reset_counters() can move; see
+        # that file's docstring). budget_s LEFT UNCHANGED: removing the burst can only shorten the
+        # walk relative to the max-measured figure above, which already predates the burst.
+        "kind": "multi",
+        # mp:U41b. rematch_play's walk plus the END of match 2 (the client quits it the way it quit
+        # match 1), so each process crosses the SES1 match boundary TWICE and writes TWO
+        # `inbound queue rollup (this match)` lines. rematch_play cannot show this: its match 2 is
+        # still running when the walk ends, so the second rollup is never written.
+        "host": "mp_host_rematch3.txt",
+        "clients": ["mp_client_rematch3.txt"],
+        "net_extra": "transport=tcp",
+        "extra_ini": "tools/uiscripts/ini/video_640.ini",
+        "share_lanes": "host_rematch",
+        "timeout": 300,
+        "post_check": ["tools/check_queue_rollups.py"],
+        "post_check_peers": True,
+        "desc": "U41b: two matches over one TCP link in one process -> two queue rollups, the second "
+        "with its own high-water",
+    },
+    {
         "name": "ch1_cheat",
+        "budget_s": 55,  # gate diet: max measured (gate 39s, n2 38s, n6 36s) x 1.3, 2026-09-24
         "kind": "multi",
         "host": "mp_host_cheat.txt",
         "clients": ["mp_client_cheat.txt"],
@@ -2063,6 +2237,7 @@ TESTS = [
     },
     {
         "name": "gs2_data_timeout",
+        "budget_s": 35,  # gate diet: max measured (gate 25s, n2 25s, n6 26s) x 1.3, 2026-09-24
         "kind": "multi",
         "host": "mp_host_gs2.txt",
         "clients": ["mp_client_gs2.txt"],
@@ -2097,6 +2272,7 @@ TESTS = [
     },
     {
         "name": "gs2_quit_frozen",
+        "budget_s": 50,  # gate diet: max measured (gate 36s, n2 31s, n6 32s) x 1.3, 2026-09-24
         "kind": "multi",
         "host": "mp_host_gs2_quit.txt",
         "clients": ["mp_client_gs2.txt"],
@@ -2122,6 +2298,7 @@ TESTS = [
     },
     {
         "name": "graceful_quit",
+        "budget_s": 40,  # gate diet: max measured (gate 29s, n2 29s, n6 30s) x 1.3, 2026-09-24
         "kind": "multi",
         "host": "mp_host_gquit.txt",
         "clients": ["mp_client_gquit.txt"],
@@ -2177,8 +2354,47 @@ TESTS = [
         "desc": "U19: a client ESC-quits a running match -- it lands on the main menu, and the "
         "departure reaches the survivor over the wire, in order, at the same game clock",
     },
+    # ---- mp:U19i -- the same clean quit in CONFIGURATION (1): udp, NO libmh.dll -------------------
+    #
+    # The row shares match_launch_net's lanes (no libmh.dll) and the _net copies of the gquit scripts
+    # (own baseline label: the udp lobby renders the ping cell). check_graceful_quit reads only THIS
+    # match's runs on each shared lane (G300).
+    {
+        "name": "gquit_net",
+        "budget_s": 45,  # gate diet: max measured (gate 28s, n2 27s, n6 32s) x 1.3, 2026-09-24
+        # 2026-09-24 (user decision on mp:U19i): the carrier's call is UNREACHABLE on a 2-player quit --
+        # the quitter's removal frame ends the survivor's match (outcome 8) before any later frame can
+        # reach the gone-peer branch -- so this row asserts the configuration-(1) clean-quit route only
+        # (clauses 1-5) and no longer demands the FIRED line. The carrier's proof is gpfgtest's offline
+        # mutants; a rig proof needs a 3+ peer shape (mp:U19j). The unguarded twin was retired: both
+        # arms behave identically on this path (dead-ends G300).
+        "kind": "multi",
+        "host": "mp_host_gquit_net.txt",
+        "clients": ["mp_client_gquit_net.txt"],
+        "share_lanes": "match_launch_net",
+        "omit_satellite": ["libmh.dll"],
+        "net_extra": "transport=udp;defang_overlay=0;graceful_leave=1",
+        # 0.1 %: the host lobby capture read 0.000 % in every run until the 2026-09-24 session-end
+        # gate, where it drifted 0.022 % under suite load (mp:U19i). 0.1 % is ~5x that drift and
+        # still ~300 px on this 640x480 frame, so a layout change still reds.
+        "tol": 0.001,
+        "extra_ini": "tools/uiscripts/ini/video_640.ini",
+        "timeout": 300,
+        "post_check": [
+            "tools/check_graceful_quit.py",
+            "--expect-graceful",
+            "--expect-same-end-clock",
+            "--expect-no-network-error",
+            "--max-drop-steps",
+            "2",
+        ],
+        "desc": "U19i: configuration (1) clean quit -- the survivor ends below quorum (outcome 8) "
+        "within ms of the quitter's broadcast, no NETWORK_ERROR",
+    },
     {
         "name": "txdeath_ingame",
+        "budget_s": 170,  # gate diet: max measured (b2 129s, n2 123s, n6 125s, rerun 130s) x 1.3, 2026-09-24
+        "long_why": "the in-game transport death needs a live match to reach gameclock 45000 (the baseline's frame) before the cut, plus the fast-drop and dialog: measured 123-130 s (2026-09-24, 4 runs)",
         # mp:U19f -- the NEGATIVE arm U19d's discriminator never had: a real IN-GAME transport death
         # (not a quit, not a lobby-phase blackhole) must keep the retail "Connection to server lost"
         # wording. `link_death` blackholes in the lobby (`peers <1`, never past Start); this scenario
@@ -2192,6 +2408,20 @@ TESTS = [
         "shim": True,
         "shim_delay": 0,  # not a latency scenario -- the shim is here only to schedule the blackhole
         "shim_timeline": "tools/uiscripts/shim/txdeath_ingame.txt",
+        # Gate diet block 2 (2026-09-24): cut on a SIM moment, not the timeline's wall-clock t+50 s
+        # (kept as the fallback). The host's dialog capture shows its mothership drifting with sim time,
+        # so the wall-clock cut made the frame LOAD-dependent: 5.7 % off the baseline in a loaded run,
+        # 0.9 % alone (tmp/wave2_rig/gatediet_b2/). Both scripts log past `gameclock 45000` -- just past
+        # where the idle-box t+50 s cut landed (~43 s), i.e. the baseline's own frame.
+        "shim_triggers": [
+            {
+                "cmd": "cut",
+                "when": [
+                    ["host", "mh_uidrive.log", r"LOG: HOST past gameclock 45000"],
+                    ["c1", "mh_uidrive.log", r"LOG: CLIENT past gameclock 45000"],
+                ],
+            }
+        ],
         # BORROWS shim_udp's LANES, not match_launch's (fixed 2026-09-22, dead-ends G282). A SHIM row
         # can only share a SHIM row's lanes: the client lane's `[net] port` IS the port the client
         # dials, so provision_lanes puts a shim row's client lane on the SHIM port and a plain row's
@@ -2223,6 +2453,7 @@ TESTS = [
     },
     {
         "name": "session_rollover",
+        "budget_s": 55,  # gate diet: max measured (gate 41s, n2 38s, n6 39s) x 1.3, 2026-09-24
         # transport=tcp PINNED (user ruling 2026-09-20): `[net] transport` now defaults to udp, and
         # this row relied on the old tcp default. Pinned so the suite's TCP coverage stays TCP
         # rather than silently becoming a second UDP run.
@@ -2248,6 +2479,7 @@ TESTS = [
     },
     {
         "name": "ip_retry",
+        "budget_s": 35,  # gate diet: max measured (gate 25s, n2 25s, n6 26s) x 1.3, 2026-09-24
         # transport=tcp PINNED (user ruling 2026-09-20): `[net] transport` now defaults to udp, and
         # this row relied on the old tcp default. Pinned so the suite's TCP coverage stays TCP
         # rather than silently becoming a second UDP run.
@@ -2260,6 +2492,7 @@ TESTS = [
     },
     {
         "name": "res_hud",
+        "budget_s": 30,  # gate diet: max measured (gate 19s, n2 14s, n6 15s) x 1.3 = 25, FLOORED at 30 (BUDGET_FLOOR_S), 2026-09-24
         "kind": "solo",
         "script": "res_hud.txt",
         "extra_ini": "tools/uiscripts/ini/video_1024.ini",
@@ -2272,6 +2505,7 @@ TESTS = [
     },
     {
         "name": "esc_menu",
+        "budget_s": 30,  # gate diet: max measured (gate 17s, n2 11s, n6 12s) x 1.3 = 25, FLOORED at 30 (BUDGET_FLOOR_S), 2026-09-24
         "kind": "solo",
         "script": "esc_menu.txt",
         # Proves the [uitest] `key` action: the ESC/in-game menu is opened from a scancode branch in
@@ -2285,6 +2519,7 @@ TESTS = [
     },
     {
         "name": "devchange_guard",
+        "budget_s": 30,  # gate diet: max measured (gate 17s, n2 11s, n6 11s) x 1.3 = 25, FLOORED at 30 (BUDGET_FLOOR_S), 2026-09-24
         "kind": "solo",
         "script": "esc_menu.txt",
         # U21. Same walk as esc_menu, plus ONE malformed WM_DEVICECHANGE (wParam=DBT_DEVNODES_CHANGED,
@@ -2311,6 +2546,7 @@ TESTS = [
     # `tools/ui_test.py` run if that path needs re-checking.
     {
         "name": "debug_overlay",
+        "budget_s": 30,  # gate diet: max measured (gate 13s, n2 5s, n6 8s) x 1.3 = 20, FLOORED at 30 (BUDGET_FLOOR_S), 2026-09-24
         "kind": "solo",
         "script": "debug_overlay.txt",
         "extra_ini": "tools/uiscripts/ini/debug_overlay.ini",
@@ -2331,6 +2567,7 @@ TESTS = [
     },
     {
         "name": "gx1_overlay_residue",
+        "budget_s": 30,  # gate diet: max measured (gate 19s, n2 12s, n6 15s) x 1.3 = 25, FLOORED at 30 (BUDGET_FLOOR_S), 2026-09-24
         "kind": "solo",
         "script": "gx1_overlay_residue.txt",
         "extra_ini": "tools/uiscripts/ini/gx1_overlay_residue.ini",
@@ -2370,6 +2607,7 @@ TESTS = [
     },
     {
         "name": "pause_hotkey",
+        "budget_s": 30,  # gate diet: max measured (gate 14s, n2 11s, n6 11s) x 1.3 = 20, FLOORED at 30 (BUDGET_FLOOR_S), 2026-09-24
         "kind": "solo",
         "script": "pause_hotkey.txt",
         # Pins BOTH the display mode (the capture is in-game, so its size follows the persisted
@@ -2398,8 +2636,48 @@ TESTS = [
         "tol": 0.0,
         "desc": "D19: Tab enters the orphaned mode-5 big map from the strategic view, any key returns (2 -> 5 -> 2)",
     },
+    # ---- mp:GX1 -- the NET INDICATOR half: hide it in a live match, the pixels must go -------------
+    #
+    # gx1_overlay_residue proves gfx_overlay.cpp; this pair proves ui_net_indicator.cpp, which only
+    # draws in a live MP match. Both share pause_mp_gate's lanes (same topology, tcp, in-game
+    # frames); the suite block is at its lane ceiling. tol 1.0 because the pixels are not the
+    # assertion -- check_overlay_residue.py's colour match inside the indicator's rect is.
+    {
+        "name": "gx1_netind_residue",
+        "budget_s": 60,  # gate diet: max measured (gate 44s, n2 43s, n6 44s) x 1.3, 2026-09-24
+        "kind": "multi",
+        "host": "mp_host_gx1_netind.txt",
+        "clients": ["mp_client_gx1_netind.txt"],
+        "share_lanes": "pause_mp_gate",
+        "net_extra": "transport=tcp",
+        "extra_ini": "tools/uiscripts/ini/video_640.ini",
+        "tol": 1.0,
+        "timeout": 300,
+        "post_check": GX1_NETIND_CHECK,
+        "desc": "mp:GX1: hiding the net indicator in a live match leaves no glyph behind (the "
+        "release stamp repaints the ground under it)",
+    },
+    {
+        "name": "gx1_netind_nostamp",
+        "budget_s": 60,  # gate diet: max measured (gate 43s, n2 44s, n6 45s) x 1.3, 2026-09-24
+        "kind": "multi",
+        "host": "mp_host_gx1_netind.txt",
+        "clients": ["mp_client_gx1_netind.txt"],
+        "share_lanes": "pause_mp_gate",
+        # THE PLANTED NEGATIVE ARM, KEPT RED: [hud] net_indicator_stamp=0 skips the indicator's
+        # damage-map stamps, so the same frames must show the residue and the checker must fail.
+        "expect_red": "mp:GX1",
+        "net_extra": "transport=tcp",
+        "extra_ini": ["tools/uiscripts/ini/video_640.ini", "tools/uiscripts/ini/gx1_nostamp.ini"],
+        "tol": 1.0,
+        "timeout": 300,
+        "post_check": GX1_NETIND_CHECK,
+        "desc": "mp:GX1 NEGATIVE: the same probe with the indicator's stamps knobbed off must show "
+        "the residue",
+    },
     {
         "name": "pause_mp_gate",
+        "budget_s": 40,  # gate diet: max measured (gate 29s, n2 28s, n6 29s) x 1.3, 2026-09-24
         # transport=tcp PINNED (user ruling 2026-09-20): `[net] transport` now defaults to udp, and
         # this row relied on the old tcp default. Pinned so the suite's TCP coverage stays TCP
         # rather than silently becoming a second UDP run.
@@ -2466,6 +2744,7 @@ TESTS = [
     },
     {
         "name": "key_repeat",
+        "budget_s": 30,  # gate diet: max measured (gate 11s, n2 5s, n6 5s) x 1.3 = 15, FLOORED at 30 (BUDGET_FLOOR_S), 2026-09-24
         "kind": "solo",
         "script": "key_repeat.txt",
         # tol 0 = exact match. One typed glyph is ~0.02% of the frame, so ANY non-zero tol large
@@ -2477,6 +2756,7 @@ TESTS = [
     },
     {
         "name": "cam_edge_scroll",
+        "budget_s": 30,  # gate diet: max measured (gate 17s, n2 14s, n6 14s) x 1.3 = 25, FLOORED at 30 (BUDGET_FLOOR_S), 2026-09-24
         "kind": "solo",
         "script": "cam_edge_scroll.txt",
         # mp:SES3. The only registered run with `[input] mouse_trace=1`, because it is the only one
@@ -2504,7 +2784,40 @@ TESTS = [
         "scrolls while the cursor does not move; releasing it clears the latch",
     },
     {
+        "name": "cam_key_hold",
+        "budget_s": 30,  # gate diet: max measured (gate 16s, n2 15s, n6 14s) x 1.3 = 25, FLOORED at 30 (BUDGET_FLOOR_S), 2026-09-24
+        "kind": "solo",
+        "script": "cam_key_hold.txt",
+        # mp:SES3c: same main-menu framing as cam_edge_scroll (single AI-seated peer, [input]
+        # mouse_trace=1), so SHARE ITS LANE rather than grow the suite past its
+        # tools/lane_alloc.py ceiling (81/81 -- see debug_overlay/gx1_overlay_residue's own note
+        # on why a new solo row folds into a sibling's lane instead of taking one of its own).
+        "share_lanes": "cam_edge_scroll",
+        "extra_ini": "tools/uiscripts/ini/cam_trace.ini",
+        # --expect-held L 3   the CAM_SCROLL_LEFT_HELD keyboard latch held over >= 3 consecutive
+        #                     [mtrace] samples, later cleared -- the keyboard-hold counterpart of
+        #                     cam_edge_scroll's --expect-pinned/--expect-rise-fall pair, which read
+        #                     the MOUSE-edge latches only and cannot see this one.
+        # --max-lines-per-frame / --expect-di   same cost + U25 clauses as cam_edge_scroll.
+        "post_check": [
+            "tools/check_cam_trace.py",
+            "--expect-held",
+            "L",
+            "--expect-held-min",
+            "3",
+            "--max-lines-per-frame",
+            "1.0",
+            "--expect-di",
+        ],
+        # Baselined + joined the default suite in Wave 2 (2026-09-23): 3 green runs, the held run
+        # 599 samples with camd>0 once keyhold forced per-frame sampling (ui_drive.cpp
+        # g_keyhold_trace -- before that a headless hold printed ONE sample inside the latch).
+        "desc": "SES3c: LEFT arrow held via `keyhold` -- CAM_SCROLL_LEFT_HELD latches and the camera "
+        "scrolls while the key is down; releasing it clears the latch",
+    },
+    {
         "name": "type_ascii",
+        "budget_s": 30,  # gate diet: max measured (gate 11s, n2 5s, n6 9s) x 1.3 = 15, FLOORED at 30 (BUDGET_FLOOR_S), 2026-09-24
         "kind": "solo",
         "script": "type_ascii.txt",
         # F4: `type <text>` must be the SAME INPUT as the `key` sequence that spells it, not a second
@@ -2520,6 +2833,7 @@ TESTS = [
     },
     {
         "name": "type_cyrillic",
+        "budget_s": 30,  # gate diet: max measured (gate 10s, n2 5s, n6 5s) x 1.3 = 15, FLOORED at 30 (BUDGET_FLOOR_S), 2026-09-24
         "kind": "solo",
         "script": "type_cyrillic.txt",
         # mp:F3. THE ONLY REASON THIS NEEDS AN INI is that the ship default is `acp` -- the ambient
@@ -2544,6 +2858,7 @@ TESTS = [
     },
     {
         "name": "type_polish",
+        "budget_s": 30,  # gate diet: max measured (gate 6s, n2 5s, n6 12s) x 1.3 = 20, FLOORED at 30 (BUDGET_FLOOR_S), 2026-09-24
         "kind": "solo",
         "script": "type_polish.txt",
         "extra_ini": "tools/uiscripts/ini/input_cp1250.ini",
@@ -2562,6 +2877,7 @@ TESTS = [
     },
     {
         "name": "font_guard",
+        "budget_s": 30,  # gate diet: max measured (gate 5s, n2 5s, n6 5s) x 1.3 = 10, FLOORED at 30 (BUDGET_FLOOR_S), 2026-09-24
         "kind": "solo",
         "script": "font_guard.txt",
         "extra_ini": "tools/uiscripts/ini/font_guard.ini",
@@ -2582,6 +2898,7 @@ TESTS = [
     },
     {
         "name": "font_merged",
+        "budget_s": 30,  # gate diet: max measured (gate 5s, n2 5s, n6 5s) x 1.3 = 10, FLOORED at 30 (BUDGET_FLOOR_S), 2026-09-24
         "kind": "solo",
         "script": "font_merged.txt",
         "extra_ini": "tools/uiscripts/ini/font_merged.ini",
@@ -2601,6 +2918,7 @@ TESTS = [
     },
     {
         "name": "chat_glyphs",
+        "budget_s": 45,  # gate diet: max measured (gate 32s, n2 32s, n6 32s) x 1.3, 2026-09-24
         # transport=tcp PINNED (user ruling 2026-09-20): `[net] transport` now defaults to udp, and
         # this row relied on the old tcp default. Pinned so the suite's TCP coverage stays TCP
         # rather than silently becoming a second UDP run.
@@ -2635,6 +2953,7 @@ TESTS = [
     },
     {
         "name": "tact_panel",
+        "budget_s": 30,  # gate diet: max measured (gate 5s, n2 5s, n6 5s) x 1.3 = 10, FLOORED at 30 (BUDGET_FLOOR_S), 2026-09-24
         "kind": "solo",
         "script": "tact_panel.txt",
         # The ONLY scenario that renders a tactical frame. Every other entry is menu, lobby or
@@ -2680,6 +2999,7 @@ TESTS = [
     },
     {
         "name": "boot_snapshot",
+        "budget_s": 30,  # gate diet: max measured (gate 5s, n2 6s, n6 5s) x 1.3 = 10, FLOORED at 30 (BUDGET_FLOOR_S), 2026-09-24
         "kind": "solo",
         "script": "boot_snapshot_capture.txt",
         # LIB-BOOT's capture path, kept from rotting. `boot_snapshot=1` is what ARMS it: the capture
@@ -2707,6 +3027,7 @@ TESTS = [
     },
     {
         "name": "net_hud",
+        "budget_s": 65,  # gate diet: max measured (b2 46s, n2 46s, n6 47s) x 1.3, 2026-09-24
         "kind": "multi",
         "host": "mp_host_hud.txt",
         "clients": ["mp_client_hud.txt"],
@@ -2728,6 +3049,18 @@ TESTS = [
         "shim": True,
         "shim_delay": 0,
         "shim_timeline": "tools/uiscripts/shim/net_hud_stall.txt",
+        # Gate diet block 2: blackhole s2c as soon as BOTH n1_hud captures are logged -- the state the
+        # timeline's t+300 s guessed with ~75 s of margin (the host completes ~40 s in; the client then
+        # idled ~250 s for the blackhole). The timeline stays as the fallback.
+        "shim_triggers": [
+            {
+                "cmd": "blackhole s2c",
+                "when": [
+                    ["host", "mh_uidrive.log", r"LOG: HOST captured the net indicator"],
+                    ["c1", "mh_uidrive.log", r"LOG: CLIENT captured the net indicator"],
+                ],
+            }
+        ],
         # THE PIXELS AND THE post_check PROVE DIFFERENT HALVES, and neither is redundant.
         #
         # `_only` (baselines/mp_*_hud/_ignore.json) compares ONE rectangle: the indicator's first
@@ -2769,6 +3102,8 @@ TESTS = [
     },
     {
         "name": "mp_snapshot",
+        "budget_s": 140,  # gate diet: max measured (rerun 107s) x 1.3, 2026-09-24
+        "long_why": "opt-in X1b row: a live match captured at a sim step, moved over channel C and imported -- measured 107 s alone (2026-09-24)",
         "kind": "multi",
         "host": "mp_host_snapshot.txt",
         "clients": ["mp_client_snapshot.txt"],
@@ -2871,6 +3206,7 @@ TESTS = [
     # on the "Available maps" screen accepts in every host script here.
     {
         "name": "map_absent",
+        "budget_s": 35,  # gate diet: max measured (gate 25s, n2 26s, n6 26s) x 1.3, 2026-09-24
         "kind": "multi",
         "host": "mp_host_map.txt",
         "clients": ["mp_client_map.txt"],
@@ -2890,6 +3226,7 @@ TESTS = [
     },
     {
         "name": "map_conflict",
+        "budget_s": 35,  # gate diet: max measured (gate 26s, n2 26s, n6 26s) x 1.3, 2026-09-24
         "kind": "multi",
         "host": "mp_host_map.txt",
         "clients": ["mp_client_map.txt"],
@@ -2908,6 +3245,7 @@ TESTS = [
     },
     {
         "name": "map_have",
+        "budget_s": 40,  # gate diet: max measured (gate 29s, n2 28s, n6 29s) x 1.3, 2026-09-24
         "kind": "multi",
         # The ORDINARY scripts, deliberately: this scenario's whole claim is that a peer which
         # already holds the content plays exactly as it did before X2 -- no gate, no transfer, no
@@ -2924,6 +3262,154 @@ TESTS = [
         "post_check_peers": True,
         "desc": "X2: a joiner that already holds the map content transfers NOTHING and the host's "
         "Start is never held",
+    },
+    # ---- mp:X2b -- the same decision over TCP, where there is NO channel C to carry a map ---------
+    #
+    # Both rows SHARE a sibling's lanes: the suite block is at its tools/lane_alloc.py ceiling
+    # (81/81), and each is the TCP twin of that sibling, never scheduled beside it.
+    {
+        "name": "map_refuse_tcp",
+        "budget_s": 60,  # gate diet: max measured (gate 43s, n2 19s, n6 19s) x 1.3, 2026-09-24
+        "kind": "multi",
+        "host": "mp_host_map_refuse.txt",
+        "clients": ["mp_client_map_refuse.txt"],
+        # NOT map_conflict's lanes (as first registered): map_conflict's client STORES the host's map
+        # in its lane's mh_dl\, and a later pretend=other run on that lane resolves the stored copy,
+        # reports holding the map, and the "refusal" run plays a normal match (measured Wave 2,
+        # 2026-09-23). match_launch's lanes never download a map.
+        "share_lanes": "match_launch",
+        # The host CLICKS Start with the gate shut and must stay in the lobby: the refusal is enforced
+        # in the Start activation (launch.cpp on_begin_map_load), because retail re-derives the
+        # widget's DISABLED bit every frame and the greyed look alone let a click launch a
+        # mismatched match (Wave 2, 2026-09-23, dead-ends G291). The checker requires the
+        # `start CLICK REFUSED` line, so a run where nobody clicked cannot pass.
+        # The case X2b exists for: a same-named DIFFERENT map on a transport that cannot carry it.
+        # The host still claims, arms nothing, and REFUSES Start naming the peer and the map.
+        "net_extra": "transport=tcp;map_test_pretend=other",
+        "extra_ini": "tools/uiscripts/ini/video_1024.ini",
+        "post_check": ["tools/check_map_transfer.py", "--expect-refused"],
+        "post_check_peers": True,
+        "desc": "X2b: over TCP a joiner holding a DIFFERENT copy of the map is refused at Start, "
+        "by name -- a refusal instead of a desync",
+    },
+    {
+        "name": "map_have_tcp",
+        "budget_s": 40,  # gate diet: max measured (gate 29s, n2 28s, n6 29s) x 1.3, 2026-09-24
+        "kind": "multi",
+        # The NEGATIVE: X2b made the host claim on every transport, so a TCP pair that DOES hold the
+        # same map must still start exactly as before -- no refusal, nothing armed.
+        # NEVER --update-baselines THIS ROW: it runs match_launch's scripts, so their baselines are
+        # match_launch's (same tcp + video_1024 frames). The first run did and overwrote them.
+        "host": "mp_host_start.txt",
+        "clients": ["mp_client_start.txt"],
+        "share_lanes": "map_have",
+        "net_extra": "transport=tcp",
+        "extra_ini": "tools/uiscripts/ini/video_1024.ini",
+        "post_check": ["tools/check_map_transfer.py", "--expect-nothing"],
+        "post_check_peers": True,
+        "desc": "X2b: a TCP pair holding the same map starts normally -- the TCP claim refuses "
+        "nobody and arms nothing",
+    },
+    # ---- mp:P6 -- the loser's endgame-sync freeze, measured for real (wave 7 lane B) -------------
+    #
+    # Wave 2 (2026-09-23) tried this with mp_run's force-entry det_conquest shape and found it
+    # UNMEASURABLE: mp_run stops BOTH peers the instant the host reaches its own stop step, so the
+    # loser's logs end 0-7ms after the deciding step -- no frames past it to measure a gap over. User
+    # decision (2026-09-23): a UI-path scenario instead, ending on each peer's OWN outcome dialog
+    # (`screen 0x00653dc3`, `_G_LLM_UI_OUTCOME_DLG_WIDGET_LIST`) rather than a force-entry stop step,
+    # so the CLIENT (the loser -- conquest is armed host-only, host's side eliminates the client's)
+    # keeps running frames for real until it reaches its own lose screen.
+    {
+        "name": "p6_loser_gap",
+        # COST re-measured 2026-09-25 (pacing audit, ship pacing + Last Question + the real conquest):
+        # 54 / 55 / 54 s wall on a quiet box, x 1.3 -> 72, kept at 75. It was 31-32 s with the
+        # force-kill, so the real game-over costs the gate ~+23 s.
+        "budget_s": 75,
+        "kind": "multi",
+        "host": "mp_host_p6_gap.txt",
+        "clients": ["mp_client_p6_gap.txt"],
+        # fork F4H lane allocation: the capture suite's block is at its registry-demand ceiling (81)
+        # and every hand-run block is already at its own floor (tools/lane_alloc.py's own header), so
+        # a genuinely NEW 2-lane row overflows it. A SHIM row can only share a SHIM row's lanes (the
+        # client lane is provisioned on the shim's port, not the game port) -- same reasoning
+        # link_death's own share_lanes comment gives. shim_udp is the natural donor: it is a ROOT shim
+        # lane (not itself a sharer), runs default (non-omitted) satellites like this row wants, and
+        # every shim row already runs back-to-back in one worker, so sharing costs no concurrency.
+        "share_lanes": "shim_udp",
+        # synth_move=0 is REQUIRED: the runner's own base [harness] block rides the D6 moving-unit
+        # workload by default (module-level SYNTH_MOVE=1 in ui_test.py, folded in by
+        # harness_extra_lines()) and conq=1 REFUSES to arm under it ("CONQ FAIL: conq=1 with
+        # synth_move=1 -- synth_move re-orders the SAME mothership every step and overwrites the
+        # deploy"), same as mp_run's own det_conquest command line's `--synth-move 0` -- caught by
+        # this row's own first run logging exactly that FAIL line and never reaching game-over.
+        #
+        # A REAL CONQUEST, NO FORCE-KILL (mp:D34, 2026-09-25 pacing audit). The workload's own
+        # defaults: the host lands the peer's mother (0x10 move, 0x18 deploy, landed ~step 290),
+        # builds an academy + barracks, spawns 5 attackers and sends 0x1d/reposition at the mother
+        # BUILDING, which they grind 5000 -> 0 (the ENERGY stat, HP-like) to a real host-win/client-
+        # loss at step ~1385-1395. The stall this row used to work around with conq_force_kill_at=20
+        # was TIMING on the lobby-default Blue Monday: the attackers were still WALKING when the
+        # 900-step phase-6 watchdog fired (mp:D33 arm A's host mh_harness.log: soldiers still moving,
+        # order 0x1c, at step 1500; target energy 5000 throughout). On Last Question
+        # (the map the script now picks) first damage lands ~300 steps after the order, and the
+        # watchdog resets on every energy drop. conq_probe_every=50 keeps that census in the host's
+        # mh_harness.log, so a future stall reads as "never arrived" vs "arrived, no damage" at once.
+        # The step-100 order_queue DESYNC this row first hit was NOT order 0x1e: the runner armed the
+        # harness on the host only (mp:D33, G318). ui_test.wants_harness now arms every peer, and
+        # synth_move=0 below goes to every peer so the client does not run the D6 mover.
+        "harness_extra": "synth_move=0",
+        "harness_extra_host": "conq=1;conq_seed=1;conq_probe_every=50;synth_move=0",
+        # A SHIM IS REQUIRED TO SEE THE FREEZE AT ALL. Measured 2026-09-25 (this row's own first
+        # green run, unshimmed VM-to-VM): host and client logged the IDENTICAL wall-clock stamp
+        # (00:20:32.509) on their own on_gameover ENTER lines -- the two Hyper-V peers are close
+        # enough on the rig's virtual switch that the client is never meaningfully behind, so the
+        # grace mechanism (net_lockstep.cpp HB_ENDGAME_GRACE_MS) never actually gets exercised and
+        # the "gap" reads 0 ms regardless of the grace's length. The real bug report (a player on
+        # real internet latency, 2026-07-11/12) needs a one-way shim to put the client genuinely one
+        # lookahead behind to reproduce at all.
+        # 180 ms one-way (2026-09-25, up from this row's original 90 ms): mp:T4's eager-advertise
+        # link-drop at 120-180 ms one-way is now CLOSED (wave 7 lane A's p13_rate_180 row: 180 ms
+        # one-way, 0 drops, 3/3 IDENTICAL) -- the earlier 90 ms choice was only ever working around
+        # that then-open bug, so this row now matches the rest of the suite's validated shim delay
+        # instead of carrying its own lower one.
+        "shim": True,
+        "shim_delay": 180,
+        # SHIP PACING (2026-09-25 pacing audit): without it the row ran on the rig's pinned 30 ms
+        # lookahead, so every step waited ~one RTT through the 180 ms shim -- 0.16x game/wall. The
+        # freeze P6 asks about is a player's, so the pacing is a player's too (p13_rate_180's shape).
+        "ship_pacing": True,
+        # PINNED resolution: shares shim_udp's lanes with net_hud, which runs immediately before this
+        # row on the same lane and pins video_1024.ini -- without its own pin this row inherits
+        # whatever mode the previous occupant left the lane in. Measured 2026-09-25 (tmp/gate/suite.log
+        # ~line 2976): all 4 captures came back 1024x768 against 640x480 baselines. Baselined at 640x480.
+        "extra_ini": "tools/uiscripts/ini/video_640.ini",
+        # The two outcome-dialog captures mask the playfield AROUND the dialog (baselines/
+        # mp_{host,client}_p6_gap/_ignore.json): the world behind it depends on which step the match
+        # ended (gclk 27699 or 27879 across 4 runs -- the order exec step follows the live horizon),
+        # the host's idle mothership drifts and the toast blinks. Unmasked, host_won read 6.07% in 2
+        # of 4 runs. The dialog, the sidebar and the HUD stay strict.
+        "timeout": 300,
+        "timeout_frames": 200000,
+        # MEASURED 2026-09-25 (this lane's own runs -- 1 unshimmed VM-to-VM + several at a shimmed
+        # one-way delay, tools/check_p6_gap.py's own printed numbers): host and client log their own
+        # on_gameover ENTER within 0-49 ms of REAL wall-clock time of each other in every run, so the
+        # client's longest present-to-present gap in the window is 0 ms every time -- comfortably
+        # under the 500 ms bound on THESE conditions, with no code change. `--expect fixed` asserts
+        # that as a floor so this row is a real regression gate, not just a report. check_p6_gap.py
+        # also asserts the two clauses the user's 2026-09-25 P6 decision needs: (a) the D21 in-band
+        # desync watch shows 0 mismatching over a non-vacuous (>0) compared-sample count on the
+        # HOST's own mh_net.log ("ALL PAIRS IDENTICAL" up to match end), and (b) the HOST's (winner's)
+        # own longest frame gap in the same window is also < 500 ms (the winner is no worse). NOT the
+        # same claim as "the grace mechanism's worst case is fine" -- a genuinely delayed loser (the
+        # historical bug report, a player on real internet latency, 2026-07-11/12) needs a deliberate
+        # stall/blackhole arm this row does not attempt (mp:P6's own progress record has the full
+        # account); the user's 2026-09-25 decision drops that arm from P6's scope.
+        "post_check": ["tools/check_p6_gap.py", "--expect", "fixed"],
+        "post_check_peers": True,
+        "post_check_session": True,
+        "desc": "P6: the conquest workload plays a real host-win/client-loss match; post_check "
+        "asserts the client's (loser's) longest present-to-present gap between the host's own "
+        "outcome and its own is < 500 ms -- measured 0 ms on this rig's own conditions",
     },
 ]
 
@@ -3140,7 +3626,29 @@ def peer_promotion(det_dir, peer):
     return cfg, [ln.strip() for ln in text.splitlines() if "(OURS is live)" in ln]
 
 
-def det_run_report(det_dir, want):
+def peer_harness_config(det_dir, peer):
+    """mp:D29 -- (configuration, manifest fp) from one peer's mh_harness.log: ("1"|"2", "XXXXXXXX"),
+    or (None, None) when the harness never wrote its configuration line (not armed, refused, or a
+    pre-D29 build). Read with mp_analyze's own regex so the two readers cannot drift."""
+    path = os.path.join(det_dir, peer, "mh_harness.log")
+    if not os.path.isfile(path):
+        return None, None
+    import mp_analyze as _ma
+
+    # The needle, spelled here too because lint_log_formats reads it off each registered parser --
+    # and asserted equal to mp_analyze's, so the two readers still cannot drift.
+    rx = re.compile(r"^; \[harness\] configuration \(([12])\):.*\bmanifest fp=([0-9A-Fa-f]{8})\b")
+    assert rx.pattern == _ma.HARNESS_CONFIG_RE.pattern, "D29 config-line regex drifted"
+    cfg = fp = None
+    with open(path, encoding="utf-8", errors="replace") as f:
+        for ln in f:
+            m = rx.match(ln.rstrip())
+            if m:
+                cfg, fp = m.group(1), m.group(2).upper()
+    return cfg, fp
+
+
+def det_run_report(det_dir, want, configs=None):
     """Read a finished determinism run's artifacts. Returns (ok, lines).
 
     `want` maps peer dir -> whether that peer is supposed to be running OUR engine. It is checked in
@@ -3166,8 +3674,28 @@ def det_run_report(det_dir, want):
          value a ship verdict may be read from (DIAGNOSTIC/INVALID/REFUSED are all "not this").
       -> the liveness lines still answer the OTHER direction, which RUN-CONFIG cannot: the seams
          installed but nothing ever CALLED them. That is O3's original failure and it is kept.
+
+    `configs` (mp:D29, optional) maps peer dir -> the harness CONFIGURATION that peer must report:
+    "1" (no libmh.dll -- the spine-free harness) or "2". A configuration (1) shape passes
+    want={peer: False} (nothing promoted -- there is nothing to promote) AND configs={peer: "1"},
+    because the first alone would also pass a mode=original lane that still had libmh.dll beside it
+    -- a configuration (1) verdict read off a configuration (2) run. Absent (no line) fails too: a
+    peer whose harness never said which registry it hashed is not evidence for either.
     """
     lines, ok = [], True
+    for peer, expect_cfg in (configs or {}).items():
+        cfg, fp = peer_harness_config(det_dir, peer)
+        lines.append(
+            "      %-8s harness configuration: %s  manifest fp=%s"
+            % (peer, "(%s)" % cfg if cfg else "(no line)", fp or "-")
+        )
+        if cfg != expect_cfg:
+            ok = False
+            lines.append(
+                "      FAIL: %s was supposed to hash in configuration (%s) and reports %s -- this "
+                "shape's verdict would describe the wrong build."
+                % (peer, expect_cfg, "configuration (%s)" % cfg if cfg else "no configuration line")
+            )
     for peer, expect in want.items():
         cfg, live = peer_promotion(det_dir, peer)
         promoted = bool(cfg) and cfg.startswith("SHIP")
@@ -9062,6 +9590,119 @@ def det_standard_selftest():
             not det_run_report(d, {"host": True, "client1": True})[0],
         )
 
+        # mp:D29 -- THE CONFIGURATION (1) SHAPE. Nothing is promoted on either peer, and each
+        # harness must SAY configuration (1): a mode=original lane that still carries libmh.dll
+        # passes want={..: False} just as well, and its verdict would be a configuration (2) one.
+        def hpeer(name, cfg):
+            os.makedirs(os.path.join(d, name), exist_ok=True)
+            with open(os.path.join(d, name, "mh_net.log"), "w", encoding="utf-8") as f:
+                f.write("; nothing promoted here\n")
+            with open(os.path.join(d, name, "mh_harness.log"), "w", encoding="utf-8") as f:
+                f.write("; ==== mh replay harness armed: seed_step=1 ====\n")
+                if cfg:
+                    f.write(
+                        "; [harness] configuration (%s): spine %s, registry=%s, rebased=0 owned=0, "
+                        "uncovered=none, manifest fp=5A11D00D\n"
+                        % (
+                            cfg,
+                            "ABSENT" if cfg == "1" else "PRESENT",
+                            "mh.dll" if cfg == "1" else "libmh.dll",
+                        )
+                    )
+
+        c1 = {"host": False, "client1": False}
+        hpeer("host", "1")
+        hpeer("client1", "1")
+        check(
+            "D29: a SYMMETRIC configuration (1) shape passes when both harnesses say (1)",
+            det_run_report(d, c1, configs={"host": "1", "client1": "1"})[0],
+        )
+        hpeer("client1", "2")
+        check(
+            "D29: ...and FAILS when one peer hashed in configuration (2) (libmh.dll was present)",
+            not det_run_report(d, c1, configs={"host": "1", "client1": "1"})[0],
+        )
+        check(
+            "D29: a MIXED shape (host (1), client (2)) passes when asked for exactly that",
+            det_run_report(d, c1, configs={"host": "1", "client1": "2"})[0],
+        )
+        hpeer("client1", None)
+        check(
+            "D29: a peer whose harness wrote NO configuration line fails the shape",
+            not det_run_report(d, c1, configs={"host": "1", "client1": "1"})[0],
+        )
+
+        # mp:D29 O3 -- THE GO-RED ARM'S VERDICT. Each negative is a way the poked run could "fail"
+        # (rc != 0) without proving the oracle saw the poke: no poke, NO DATA, red too early (the
+        # clean arm was already red), red too late, or a widened region set (the poke changed
+        # behaviour -- what the first O3 run's buildings-byte-0 poke did).
+        def gored(poke_line, pairs):
+            with open(os.path.join(d, "host", "mh_harness.log"), "a", encoding="utf-8") as f:
+                if poke_line:
+                    f.write(poke_line + "\n")
+            with open(os.path.join(d, "host", "mp_analyze.json"), "w", encoding="utf-8") as f:
+                json.dump({"desync_pairs": pairs}, f)
+            return det_gored_verdict(d, 1500)[0]
+
+        def pair(n, step, only):
+            return {
+                "pair": ["host", "client1"],
+                "mismatch_count": n,
+                "first_mismatch": {"step": step, "state_only_regions": only} if n else None,
+            }
+
+        poke = (
+            "; REGION POKE step=1500 idx=55 players        @00E587E9+16 -> CD (D11 negative test)"
+        )
+        hpeer("host", "1")
+        check(
+            "D29 go-red: red at the poke step, players alone -> PASS",
+            gored(poke, [pair(1501, 1500, ["players"])]),
+        )
+        hpeer("host", "1")
+        check(
+            "D29 go-red: the host never logged the poke -> FAIL",
+            not gored(None, [pair(1501, 1500, ["players"])]),
+        )
+        hpeer("host", "1")
+        check("D29 go-red: no compared pair (NO DATA) -> FAIL", not gored(poke, []))
+        hpeer("host", "1")
+        check(
+            "D29 go-red: poked run IDENTICAL -> FAIL",
+            not gored(poke, [pair(0, None, None)]),
+        )
+        hpeer("host", "1")
+        check(
+            "D29 go-red: first mismatch BEFORE the poke (already red) -> FAIL",
+            not gored(poke, [pair(1800, 1200, ["players"])]),
+        )
+        hpeer("host", "1")
+        check(
+            "D29 go-red: first mismatch AFTER the poke -> FAIL",
+            not gored(poke, [pair(10, 1600, ["players"])]),
+        )
+        hpeer("host", "1")
+        check(
+            "D29 go-red: the poke widened the diverging set (behaviour changed) -> FAIL",
+            not gored(poke, [pair(1501, 1500, ["players", "buildings"])]),
+        )
+        hpeer("host", "1")
+        check(
+            "D29 go-red: the poke landed in a different region -> FAIL",
+            not gored(poke.replace("players", "units"), [pair(1501, 1500, ["players"])]),
+        )
+        check(
+            "D29 go-red: the poke region's index is players' in mp_analyze.REGION_NAMES",
+            config1_poke_extra(1500)
+            == "region_poke_at=1500;region_poke_only=%d;region_poke_off=16"
+            % __import__("mp_analyze").REGION_NAMES.index("players"),
+        )
+        check(
+            "D29: MIXED omits libmh on the HOST only; SYMMETRIC on both",
+            [s[2] for s in CONFIG1_SHAPES] == [["libmh.dll"], ["host:libmh.dll"]]
+            and CONFIG1_SHAPES[1][3] == UNPROMOTE_INI,
+        )
+
         # FOURTH RULE, added 2026-07-29 after it cost a C6 acceptance run: composing the host ini from
         # two fragments that share a SECTION must not produce a duplicate block. `--extra-ini` and
         # `--extra-ini-host` used to be concatenated, so two fragments each carrying `[promote]` gave
@@ -9473,6 +10114,68 @@ def det_standard_selftest():
         )
     finally:
         shutil.rmtree(d, ignore_errors=True)
+
+    # TL-HARN-CLEANCLOSE: the runner's straggler wait. Silent when it works (every peer closed) and
+    # silent when it is wrong in the other direction too (a pull taken before a client's stop reads as
+    # "no rollups" -- the exact misreading D31/U41c made), so both directions are pinned here, with
+    # the pull stubbed: `later` is what a peer's folder holds once it has reached its stop step.
+    import ui_test as _uc
+
+    d = tempfile.mkdtemp(prefix="det_close_")
+    real_pull = _uc.pull_peer_logs
+    try:
+        stop_ln = "[1] ; [session] HARNESS_STOP step=1500 close=in_place -- x\n"
+        later = {}
+
+        def put(key, harness, net):
+            os.makedirs(os.path.join(d, key), exist_ok=True)
+            with open(os.path.join(d, key, "mh_harness.log"), "w") as f:
+                f.write(harness)
+            with open(os.path.join(d, key, "mh_net.log"), "w") as f:
+                f.write(net)
+
+        pulls = []
+
+        def fake_pull(args, ip, run, dest):
+            key = os.path.basename(dest)
+            pulls.append(key)
+            put(key, *later[key])
+            return dest
+
+        _uc.pull_peer_logs = fake_pull
+        _uc.CLOSE_WAIT_S, saved_wait = 3, _uc.CLOSE_WAIT_S
+        done_h = "1 x\n; per-region breakdown at stop step 1500:\n"
+        peers = [("host", "h", "r0"), ("client1", "c", "r1"), ("client2", "q", "r2")]
+        # host closed; client1 was pulled one step short and closes a moment later; client2 is the
+        # excluded quitter and must never be waited on.
+        put("host", done_h, stop_ln)
+        put("client1", "1 x\n", "")
+        put("client2", "1 x\n", "")
+        later["client1"] = (done_h, stop_ln)
+        got = _uc.det_await_close(None, peers, d, ["client2"])
+        check(
+            "CLOSE: a client pulled before its stop step is re-pulled and its close found",
+            got.get("client1") == (1500, "in_place") and pulls == ["client1"],
+        )
+        check("CLOSE: the host that already closed is not re-pulled", "host" not in pulls)
+        check("CLOSE: an excluded peer (the quitter) is never waited on", "client2" not in got)
+        # a peer that reached its stop step but wrote no close line (close_on_stop=0, an older mh.dll)
+        # is reported ABSENT at once -- not waited on for the whole budget.
+        del pulls[:]
+        put("client1", done_h, "")
+        got = _uc.det_await_close(None, peers[:2], d, [])
+        check(
+            "CLOSE: a finished peer with no close line reads ABSENT without a re-pull",
+            got.get("client1") is None and pulls == [],
+        )
+        check(
+            "CLOSE: the line's step and close= are what the runner reports",
+            _uc.harness_stop_of(os.path.join(d, "host")) == (1500, "in_place"),
+        )
+    finally:
+        _uc.pull_peer_logs = real_pull
+        _uc.CLOSE_WAIT_S = saved_wait
+        shutil.rmtree(d, ignore_errors=True)
     print("det_standard_selftest:", "PASS" if not fails else "FAIL (%d)" % len(fails))
     return 0 if not fails else 1
 
@@ -9840,6 +10543,291 @@ def run_l1f_ping3(args):
     return (rc == 0 and chk.returncode == 0), lines
 
 
+# mp:U19j -- THE GONE-PEER FRAME GUARD'S RIG PROOF: a configuration-(1) run in which the byte-patch
+# carrier (mp:U19i, the splice over llm_net_lockstep_dispatch's kick re-broadcast @0x0049c330) FIRES.
+#
+# WHY IT IS A 3-PEER CLI SHAPE AND NOT A REGISTRY ROW. The call runs only when a frame arrives from a
+# sender the leader has ALREADY written off while the leader is still in lockstep (session mode 3).
+# A 2-peer removal ends the survivor's match on the removal frame itself, so no later frame is ever
+# dispatched (dead-ends G300: 184 survivor logs PATCHED, 0 FIRED). It takes a third peer to keep the
+# match alive past a drop, and three peers on this rig means the DET3 topology (host vms[0], client
+# vms[1], the third as the local det3_client2 lane) -- local 3-peer discovery cannot seat a second
+# 127.0.0.1 client, so no `multi` row can carry it (--u19b-quit3 / --l1f-ping3's reason, same lane).
+#
+# THE SHAPE, measured once before it was a test (mp:GS2's 3-peer clause, 2026-09-21, promoted: the
+# host logged `[promote] wire/send_lockstep_kick: call #1` 2 ms after its GS2 drop, with the fenced
+# peer's heartbeats still arriving at ~20/s): the LOCAL lane fences its sim (`simstep`) with its
+# transport up; the host and vms[1] drop it after data_timeout_ms=3000 of horizon silence and play on
+# (count_active_players == 2, so session 3 persists); the fenced peer's horizon-heartbeat thread keeps
+# sending 9-byte type-0x02 adverts, and each one reaching the host (the leader: slot 0) goes through
+# the gone-peer branch. Guarded, the carrier logs FIRED and the host keeps playing; unguarded
+# (`gone_peer_frame_guard=0`), the kick's six bytes overwrite the advert's head, offset 6 is read as
+# an outer tag, and the host's own dispatch raises outcome 7 inside session 3 -- the garbled frame.
+#
+# CONFIGURATION (1) ON ALL THREE: --omit-satellite libmh.dll (deleted on the VMs, mp:D29) + a lane
+# built without it; transport=udp; defang_overlay=0. The harness is armed only for `simstep` (the
+# fence lives in mh_harness.dll, not in libmh). Verdict: tools/check_gone_peer_guard.py over the
+# three peers' pulled logs; the unguarded arm is EXPECT-RED (XFAIL only when it went red on the
+# garbled frame -- an unguarded arm that stays clean is a failure, G283/G285).
+U19J_HOST_SCRIPT = "mp_host_gpfg3.txt"
+U19J_SURVIVOR_SCRIPT = "mp_client_gpfg3_survivor.txt"
+U19J_FENCED_SCRIPT = "mp_client_gpfg3_frozen.txt"
+
+
+def u19j_log_dir(guarded):
+    return os.path.join(REPO, "tmp", "ui_test", "u19j_gpfg3" + ("" if guarded else "_unguarded"))
+
+
+def run_u19j_gpfg3(args, guarded=True):
+    """mp:U19j's 3-peer carrier-FIRES shape. Returns (ok, lines); `ok` for the unguarded arm is the
+    EXPECT-RED verdict (True = XFAIL on the garbled frame)."""
+    down = [ip for ip in args.vms[:2] if not vm_reachable(ip)]
+    if down:
+        return None, ["      SKIP -- VM(s) unreachable: %s" % ", ".join(down)]
+    cmd = [
+        sys.executable,
+        os.path.join(REPO, "tools", "make_lane.py"),
+        "--name",
+        DET3_LANE,
+        "--lane",
+        str(DET3_LANE_NO),
+        "--port",
+        str(DET3_PORT),
+        "--headless",
+        # configuration (1) on the local peer: the lane is BUILT without libmh.dll (the other DET3
+        # shapes re-provision it with every satellite, so this does not leak into them).
+        "--omit-satellite",
+        "libmh.dll",
+    ]
+    if not STOCK_EXE:
+        cmd.append("--patched-exe")
+    r = subprocess.run(cmd, capture_output=True, text=True)
+    if r.returncode != 0:
+        return False, [
+            "      FAIL: lane %s: %s" % (DET3_LANE, (r.stderr or r.stdout).strip()[:200])
+        ]
+    net = ["peers=2", "transport=udp", "defang_overlay=0", "data_timeout_ms=3000"]
+    if not guarded:
+        net.append("gone_peer_frame_guard=0")
+    if args.net_extra:
+        net.append(args.net_extra)
+    log_dir = u19j_log_dir(guarded)
+    argv = [
+        "--host",
+        "%s:%s" % (args.vms[0], U19J_HOST_SCRIPT),
+        "--client",
+        "%s:%s" % (args.vms[1], U19J_SURVIVOR_SCRIPT),
+        "--client",
+        "lane=%s:%s" % (DET3_LANE, U19J_FENCED_SCRIPT),
+        "--connect-ip",
+        args.vms[0],
+        "--port",
+        str(DET3_PORT),
+        "--timeout-frames",
+        str(LOCAL_TIMEOUT_FRAMES),
+        # Wall budget for the whole walk: two VM deploys + a 3-peer lobby + the match (~20 s to
+        # launch, 3 s to the drop, ~7 s past it). ui_test's 90 s default expired mid-match on the
+        # first run -- every script TIMED-OUT with the carrier already FIRED (2026-09-24).
+        "--timeout",
+        "300",
+        "--omit-satellite",
+        "libmh.dll",
+        "--net-extra",
+        ";".join(net),
+        # simstep needs an armed harness; synth_move=0/region_hash_step=0 keep the D6 workload and
+        # the per-step hash lines out of a run nobody hashes (gs2_data_timeout's knobs).
+        "--harness-extra",
+        "synth_move=0;region_hash_step=0",
+        # video_1024: the lobby frame is mp_host_ping3's, whose IP/ping masks are 1024-wide.
+        "--extra-ini",
+        "tools/uiscripts/ini/video_1024.ini",
+        "--pull-logs",
+        log_dir,
+    ]
+    if args.update_baselines:
+        argv.append("--update-baselines")
+    shutil.rmtree(log_dir, ignore_errors=True)
+    rc = run_ui_test(argv, max(args.per_test_timeout, 420))[0]
+    dirs = [os.path.join(log_dir, k) for k in ("host", args.vms[1], DET3_LANE)]
+    lines = ["   ui_test rc=%d%s" % (rc, "" if guarded else " (a red here is the expected half)")]
+    lines += ["   peer logs:"] + ["      %s" % d for d in dirs]
+    chk_argv = [sys.executable, os.path.join(REPO, "tools", "check_gone_peer_guard.py"), *dirs]
+    chk_argv += ["--arm", "on"] if guarded else ["--arm", "off", "--expect-red"]
+    chk = subprocess.run(chk_argv, capture_output=True, text=True, cwd=REPO)
+    lines += ["   check_gone_peer_guard:"] + [
+        "      " + ln for ln in (chk.stdout or chk.stderr).strip().splitlines()
+    ]
+    if guarded:
+        return (rc == 0 and chk.returncode == 0), lines
+    # EXPECT-RED: the checker's own XFAIL is the verdict. ui_test's rc is not consulted -- the host's
+    # `absent Continue game` is SUPPOSED to fail when the frame garbles.
+    return chk.returncode == 0, lines
+
+
+# mp:X2a -- THE OPEN-REDIRECT, WITNESSED FOR REAL, on the two independent rig VMs.
+#
+# WHY THE EXISTING X2 SCENARIOS (map_absent/map_conflict, TESTS registry) DO NOT CLOSE THIS. Every
+# local lane's `Maps` is a SYMLINK to the one shared game image (make_lane.py), so those scenarios
+# stage the client's starting state with a net-only knob (`[net] map_test_pretend=none|other`) that
+# "moves no file" -- the client's OWN base file IS the host's real content the whole time. A broken
+# open-redirect (map_transfer.cpp's `utils_open_file` replacement) would therefore still open
+# matching bytes and those scenarios would still read green; see check_map_transfer.py's own
+# docstring. The redirect's only proof until now was `net_selftest.exe maptest` arms E/W, offline.
+#
+# WHY IT NEEDS THE TWO REAL VMs AND NOT ANOTHER LOCAL LANE. `resolve()` (map_transfer.cpp) with the
+# pretend knob OFF hashes the client's ACTUAL local file and compares it against the host's claim --
+# the genuine production path. That only diverges from the host's content if the client's file
+# genuinely differs, and a local lane cannot do that without either breaking the symlink (X2's own
+# dead end: the first `pretend` version tried exactly this and took the map away from the HOST too)
+# or copying a whole second game image. The two rig VMs (.37/.38) are independent installs already,
+# so pushing tools/map_variant.py's one-bit flip into ONLY the client's `Maps\blue monday.mpm` makes
+# the divergence real without touching anything shared.
+#
+# THE MUTATION IS BACKED UP AND RESTORED, because a VM has no per-lane folder (unlike a local lane,
+# whose own copy make_lane.py's `--map-variant` mutates) -- its Maps\ is the ONE persistent install
+# every other VM-based run also uses. The backup is PULLED (the peer's actual current bytes), not
+# assumed equal to this box's copy, and the restore runs in a `finally` so a timeout or a checker
+# crash never leaves the shared install mutated.
+#
+# NO net_extra KNOB IS NEEDED: with map_test_pretend unset (PRETEND_OFF), resolve()'s base-file
+# compare is the real one, so mp_host_map.txt / mp_client_map.txt (X2's own scripts) are reused
+# unchanged -- their walk does not care whether the mismatch is staged or genuine.
+X2A_MAP_NAME = "blue monday.mpm"  # the map picker's pre-selected entry; both scripts build on it
+
+
+def x2a_log_dir():
+    return os.path.join(REPO, "tmp", "ui_test", "x2a_map_variant")
+
+
+def run_x2a_map_variant(args):
+    """mp:X2a's rig proof. Returns (ok, lines); `ok` is None for a VM-unreachable SKIP."""
+    down = [ip for ip in args.vms[:2] if not vm_reachable(ip)]
+    if down:
+        return None, ["      SKIP -- VM(s) unreachable: %s" % ", ".join(down)]
+    host_ip, client_ip = args.vms[0], args.vms[1]
+    fwd = machine.VM_DIR.replace("\\", "/")
+    remote_map = "%s/Maps/%s" % (fwd, X2A_MAP_NAME)
+    scratch = os.path.join(REPO, "tmp", "x2a_map_variant")
+    os.makedirs(scratch, exist_ok=True)
+    backup_local = os.path.join(scratch, "backup.mpm")
+    variant_local = os.path.join(scratch, "variant.mpm")
+
+    lines = []
+    pull = mp_run.scp(
+        machine.SSH_KEY, "%s@%s:%s" % (machine.VM_USER, client_ip, remote_map), backup_local
+    )
+    if pull.returncode != 0 or not os.path.isfile(backup_local):
+        return False, [
+            "      FAIL: could not pull the client's own %s to back it up first -- refusing to "
+            "mutate a persistent VM install this run could not restore" % X2A_MAP_NAME
+        ]
+    with open(backup_local, "rb") as f:
+        orig = f.read()
+    variant = map_variant.variant_bytes(orig)
+    with open(variant_local, "wb") as f:
+        f.write(variant)
+    lines.append(
+        "      %s backed up (%d B): base hash=%s variant hash=%s"
+        % (
+            X2A_MAP_NAME,
+            len(orig),
+            map_variant.content_hash8(orig),
+            map_variant.content_hash8(variant),
+        )
+    )
+
+    restored = [False]
+
+    def restore():
+        if restored[0]:
+            return
+        rr = mp_run.scp(
+            machine.SSH_KEY, backup_local, "%s@%s:%s" % (machine.VM_USER, client_ip, remote_map)
+        )
+        restored[0] = rr.returncode == 0
+        lines.append(
+            "      restore %s: %s"
+            % (
+                X2A_MAP_NAME,
+                "ok"
+                if restored[0]
+                else "FAILED -- the client VM's own map is left mutated, fix by hand (%s)"
+                % client_ip,
+            )
+        )
+
+    try:
+        push = mp_run.scp(
+            machine.SSH_KEY, variant_local, "%s@%s:%s" % (machine.VM_USER, client_ip, remote_map)
+        )
+        if push.returncode != 0:
+            return False, lines + ["      FAIL: could not push the variant to the client VM"]
+
+        # THE VM'S mh_dl\ IS PERSISTENT (unlike a local lane, which is fresh per test), so an
+        # earlier run's download of this exact content (map_absent/map_conflict/a previous X2a run
+        # -- the real host content is the same file every time) leaves `resolve()` a Resolve::Stored
+        # candidate it can satisfy WITHOUT a transfer -- measured first run: host never armed a
+        # transfer, Start never gated, and the redirect fired off a STALE cache instead of THIS
+        # run's download (mp:T5/T6's same trap, one level up: a cache that makes the mechanism look
+        # exercised when it was not). Clearing first is what makes "redirect armed" mean "THIS run's
+        # download landed", not "something armed it once, on some earlier occasion".
+        mp_run.ssh(  # a leftover process could hold a handle under mh_dl\ (TL-RIGKILL's reason)
+            machine.SSH_KEY,
+            machine.VM_USER,
+            client_ip,
+            "taskkill /im mh.focus.exe /f 2>nul & schtasks /delete /tn uitest /f 2>nul",
+        )
+        clear = mp_run.ssh(
+            machine.SSH_KEY,
+            machine.VM_USER,
+            client_ip,
+            'rmdir /s /q "%s\\mh_dl" 2>nul' % machine.VM_DIR,
+        )
+        lines.append(
+            "      client mh_dl\\ cleared: %s"
+            % ("ok" if clear.returncode == 0 else "already absent")
+        )
+
+        log_dir = x2a_log_dir()
+        shutil.rmtree(log_dir, ignore_errors=True)
+        argv = [
+            "--host",
+            "%s:mp_host_map.txt" % host_ip,
+            "--client",
+            "%s:mp_client_map.txt" % client_ip,
+            "--connect-ip",
+            host_ip,
+            "--timeout-frames",
+            str(LOCAL_TIMEOUT_FRAMES),
+            "--timeout",
+            "300",
+            "--net-extra",
+            "transport=udp",
+            "--extra-ini",
+            "tools/uiscripts/ini/video_1024.ini",
+            "--pull-logs",
+            log_dir,
+        ]
+        if args.update_baselines:
+            argv.append("--update-baselines")
+        rc = run_ui_test(argv, max(args.per_test_timeout, 420))[0]
+        dirs = [os.path.join(log_dir, k) for k in ("host", client_ip)]
+        lines.append("   ui_test rc=%d" % rc)
+        lines += ["   peer logs:"] + ["      %s" % d for d in dirs]
+        chk = subprocess.run(
+            [sys.executable, os.path.join(REPO, "tools", "check_map_redirect.py"), *dirs],
+            capture_output=True,
+            text=True,
+            cwd=REPO,
+        )
+        lines += ["   check_map_redirect:"] + [
+            "      " + ln for ln in (chk.stdout or chk.stderr).strip().splitlines()
+        ]
+        return (rc == 0 and chk.returncode == 0), lines
+    finally:
+        restore()
+
+
 def det_clear(det_dir):
     """Empty the shared determinism artifact dir before a shape runs.
 
@@ -9999,6 +10987,273 @@ def run_det_conquest(args):
     return ok, lines
 
 
+# ---- mp:D29 O3: the CONFIGURATION (1) determinism shapes ----------------------------------------
+# Configuration (1) is the build players run: mh.dll WITHOUT libmh.dll. Until D29 the harness refused
+# to arm there (ruling Q4), so every IDENTICAL verdict came from a libmh-present peer. Two shapes:
+#   SYMMETRIC (1)  -- both peers without libmh.dll: players' build against itself.
+#   MIXED          -- (1) on the host vs mode=original WITH libmh on the client: the only shape that
+#                     tests the assumption "configuration (1) behaves like mode=original" directly.
+# Each runs TWICE: clean (must be ALL PAIRS IDENTICAL, with both harnesses naming the configuration
+# asked for) and a GO-RED arm (a host-only poke must turn the pair red at exactly the poke step, in
+# exactly the poked region) -- so neither shape can pass by hashing nothing.
+#
+# THE POKE IS players+0x10 (name[32]), NOT A LIVE REGION. The first O3 go-red run poked
+# `buildings` byte 0 (region_poke_only=0, the O2 lane's suggestion): that is live state, it changed
+# behaviour, the client was eliminated at ~1504 and the match ended (on_gameover, outcome 8) -- the
+# host's harness log then stopped at 1450 and mp_analyze had too few common steps to compare at all
+# (NO DATA, "RUN VALID: NO"). name[32] is read by nothing, so the match keeps running and the pair
+# stays red from the poke to the end (D23 proved the same recipe; mp_analyze's `players` note).
+CONFIG1_POKE_REGION = "players"
+CONFIG1_POKE_OFF = 16
+CONFIG1_SHAPES = [
+    # (label, why, omit_satellite specs (ui_test syntax), extra_ini_client, configs)
+    (
+        "SYMMETRIC CONFIGURATION (1)",
+        "both peers WITHOUT libmh.dll -- the build players run, against itself",
+        ["libmh.dll"],
+        None,
+        {"host": "1", "client1": "1"},
+    ),
+    (
+        "MIXED (1) vs mode=original",
+        "host WITHOUT libmh.dll vs client mode=original WITH it -- does players' build step like "
+        "the original? A red here is the first measured difference: file it, never wave it through",
+        ["host:libmh.dll"],
+        UNPROMOTE_INI,
+        {"host": "1", "client1": "2"},
+    ),
+]
+
+
+def config1_poke_step(steps):
+    """The go-red arm's poke step: mid-run, so both an identical prefix and a red tail are compared."""
+    return max(100, min(1500, steps // 2))
+
+
+def config1_poke_extra(poke_step):
+    import mp_analyze as _ma
+
+    return "region_poke_at=%d;region_poke_only=%d;region_poke_off=%d" % (
+        poke_step,
+        _ma.REGION_NAMES.index(CONFIG1_POKE_REGION),
+        CONFIG1_POKE_OFF,
+    )
+
+
+def det_gored_verdict(det_dir, poke_step, region=CONFIG1_POKE_REGION):
+    """mp:D29 -- did a host-only poke turn the pair red EXACTLY where it was placed? (ok, lines).
+
+    All four must hold, because each failure mode is a way for the go-red arm to "pass" while proving
+    nothing about the oracle:
+      * the host logged `REGION POKE step=<poke_step>` for `region` (the poke really happened there);
+      * mp_analyze compared the pair and found a state mismatch (not NO DATA -- a run that ended
+        early reads as "not clean" too, and would pass a bare rc!=0 check);
+      * the FIRST state mismatch is AT the poke step -- earlier means the pair was already red
+        (the clean arm's verdict is then suspect), later means the poke was not seen;
+      * the state-only diverging set at that step is exactly [region] -- a wider set means the poke
+        changed behaviour, and localization is lost.
+    """
+    lines, ok = [], True
+    hl = os.path.join(det_dir, "host", "mh_harness.log")
+    rx = re.compile(r"^; REGION POKE step=(\d+) idx=\d+ (\S+)")
+    pokes = []
+    if os.path.isfile(hl):
+        with open(hl, encoding="utf-8", errors="replace") as f:
+            for ln in f:
+                m = rx.match(ln)
+                if m:
+                    pokes.append((int(m.group(1)), m.group(2)))
+    if (poke_step, region) not in pokes:
+        ok = False
+        lines.append(
+            "      FAIL: the host logged no REGION POKE step=%d %s (saw %s)"
+            % (poke_step, region, pokes or "none")
+        )
+    try:
+        with open(os.path.join(det_dir, "host", "mp_analyze.json"), encoding="utf-8") as f:
+            pairs = json.load(f).get("desync_pairs") or []
+    except Exception:
+        pairs = []
+    if not pairs:
+        lines.append("      FAIL: mp_analyze.json has no compared pair")
+        return False, lines
+    for p in pairs:
+        fm = p.get("first_mismatch") or {}
+        step, only = fm.get("step"), fm.get("state_only_regions")
+        lines.append(
+            "      go-red %s: state-mismatch steps=%s first=%s state-only regions=%s"
+            % ("/".join(p.get("pair") or []), p.get("mismatch_count"), step, only)
+        )
+        if not p.get("mismatch_count"):
+            ok = False
+            lines.append(
+                "      FAIL: the poked run is IDENTICAL -- the oracle did not see the poke"
+            )
+        elif step != poke_step:
+            ok = False
+            lines.append("      FAIL: first mismatch at %s, poke at %d" % (step, poke_step))
+        elif only != [region]:
+            ok = False
+            lines.append(
+                "      FAIL: diverging state set %s is not exactly [%s] -- localization lost"
+                % (only, region)
+            )
+    return ok, lines
+
+
+def det_orders_verdict(det_dir, peers=("host", "client1")):
+    """dist:V022 -- did every peer RECORD its order stream, and do the streams agree? (ok, lines).
+
+    The -net-debug.zip ini ships `[harness] order_mode=1` in configuration (1) (user decision O6);
+    this is the evidence that the setting produces a recording there, not only that it is written.
+    Each peer must have an mh_orders.bin with at least one record, and mp_order_diff must find the
+    streams identical on every common step -- a recorder that ran on one peer only, or recorded an
+    empty file, reads as a FAIL rather than as nothing to compare."""
+    import mp_order_diff as _od
+
+    lines, ok, streams = [], True, {}
+    for p in peers:
+        path = os.path.join(det_dir, p, "mh_orders.bin")
+        if not os.path.isfile(path):
+            lines.append("      FAIL: %s has no mh_orders.bin (order_mode=1 recorded nothing)" % p)
+            ok = False
+            continue
+        recs = _od.load(path)
+        steps = _od.by_step(recs)
+        lines.append(
+            "      orders %s: %d records over %d steps (%d bytes)"
+            % (p, len(recs), len(steps), os.path.getsize(path))
+        )
+        if not recs:
+            lines.append("      FAIL: %s recorded an EMPTY order stream" % p)
+            ok = False
+        streams[p] = steps
+    if ok and len(streams) == 2:
+        a, b = (streams[p] for p in peers)
+        common = sorted(set(a) & set(b))
+        diffs = [s for s in common if [o.raw for o in a[s]] != [o.raw for o in b[s]]]
+        lines.append("      orders: %d common steps, %d differ" % (len(common), len(diffs)))
+        if not common:
+            lines.append("      FAIL: the two recordings share no step")
+            ok = False
+        elif diffs:
+            lines.append("      FAIL: order streams differ, first at step %d" % diffs[0])
+            ok = False
+    return ok, lines
+
+
+def run_det_config1(args, local=False, gate=False):
+    """mp:D29 O3 -- both configuration (1) shapes, clean + go-red each. Returns [(label, ok, lines)],
+    or None when the VM pair is unreachable (SKIP). `local` runs them on two lanes of this box
+    (make_lane --omit-satellite, since a lane's satellites are a property of the folder)."""
+    if not local:
+        down = [ip for ip in args.vms[:2] if not vm_reachable(ip)]
+        if down:
+            print("[det] configuration (1) SKIP -- VM(s) unreachable: %s" % ", ".join(down))
+            return None
+    det_dir = os.path.join(REPO, "tmp", "ui_test", "determinism")
+    poke = config1_poke_step(args.steps)
+    results = []
+    # `gate` (--det-config1-gate, run_gate's det_c1 unit): the SYMMETRIC shape's clean arm only --
+    # the build players run, against itself, every gate. MIXED and both go-red arms stay in
+    # --det-standard / --det-config1 (user, 2026-09-24: ~2.5 min per gate, not ~10).
+    shapes = CONFIG1_SHAPES[:1] if gate else CONFIG1_SHAPES
+    for label, why, omit, extra_client, configs in shapes:
+        for gored in (False,) if gate else (False, True):
+            tag = "%s%s%s" % (
+                label,
+                " [go-red @%d]" % poke if gored else "",
+                " (local)" if local else "",
+            )
+            print("\n" + "=" * 78)
+            print("[det] SHAPE: %s\n      %s" % (tag, why))
+            print("=" * 78)
+            if local:
+                det_test = {
+                    "name": "determinism",
+                    "kind": "multi",
+                    "host": "mp_host_start.txt",
+                    "clients": ["mp_client_start.txt"],
+                    "omit_satellite": omit,
+                }
+                plan = provision_lanes(
+                    [det_test],
+                    headless=False,
+                    port_base=DET_LOCAL_PORT,
+                    lane_base=DET_LOCAL_LANE_BASE,
+                    stock_exe=STOCK_EXE,
+                )
+                if not plan:
+                    results.append((tag, False, ["      FAIL: lane provisioning failed"]))
+                    continue
+                port, _, names = plan["determinism"]
+                argv = [
+                    "--host",
+                    "lane=%s:mp_host_start.txt" % names[0],
+                    "--client",
+                    "lane=%s:mp_client_start.txt" % names[1],
+                    "--connect-ip",
+                    "127.0.0.1",
+                    "--port",
+                    str(port),
+                ]
+            else:
+                argv = [
+                    "--host",
+                    "%s:mp_host_start.txt" % args.vms[0],
+                    "--client",
+                    "%s:mp_client_start.txt" % args.vms[1],
+                    "--connect-ip",
+                    args.vms[0],
+                    "--timeout-frames",
+                    str(frames_for_seconds(240, BLIT_LOCAL_FPS_FLOOR)),
+                ]
+                for o in omit:
+                    argv += ["--omit-satellite", o]
+            argv = [
+                "--determinism",
+                "--steps",
+                str(args.steps),
+                "--timeout",
+                str(max(args.timeout, 120 + args.steps)),
+                *argv,
+            ]
+            if extra_client:
+                argv += ["--extra-ini-client", extra_client]
+            if args.ship_pacing:
+                argv.append("--ship-pacing")
+            if gored:
+                argv += ["--harness-extra-host", config1_poke_extra(poke)]
+            # dist:V022: the clean arm RECORDS orders on both peers, as the -net-debug.zip ini does
+            # (order_mode=1), and asserts the recordings exist and agree. The go-red arm does not
+            # need them.
+            record = not gored
+            if record:
+                argv += ["--record", "1"]
+            det_clear(det_dir)
+            rc = run_ui_test(argv, max(args.per_test_timeout, 180 + args.steps))[0]
+            ok, lines = det_run_report(det_dir, {"host": False, "client1": False}, configs=configs)
+            if gored:
+                gok, glines = det_gored_verdict(det_dir, poke)
+                ok, lines = ok and gok and rc != 0, lines + glines
+            else:
+                ook, olines = det_orders_verdict(det_dir)
+                ok, lines = ok and ook and rc == 0, lines + olines
+            results.append((tag, ok, lines))
+            # keep each arm's evidence: the next arm det_clear()s the shared dir
+            keep = os.path.join(
+                REPO,
+                "tmp",
+                "ui_test",
+                "det_config1",
+                re.sub(r"[^A-Za-z0-9]+", "_", tag).strip("_").lower(),
+            )
+            shutil.rmtree(keep, ignore_errors=True)
+            shutil.copytree(det_dir, keep)
+            lines.append("      artifacts: %s" % keep)
+    return results
+
+
 def run_det_standard(args):
     """C7: run the standard determinism shapes and report them separately.
 
@@ -10080,6 +11335,10 @@ def run_det_standard(args):
         rc = run_ui_test(argv, max(args.per_test_timeout, 180 + args.steps))[0]
         ok, lines = det_run_report(det_dir, want)
         results.append((label, rc == 0 and ok, lines))
+
+    # mp:D29 O3 -- the CONFIGURATION (1) shapes (players' build: no libmh.dll), SYMMETRIC and MIXED,
+    # each with its go-red arm. See run_det_config1.
+    results += run_det_config1(args) or []
 
     # THIRD SHAPE: the U28 start barrier at three peers. It is here rather than in the loop above
     # because it is not a promotion shape -- different scripts, a third peer, and a pass condition
@@ -10210,6 +11469,33 @@ LOCAL_SHIM_PORT_BASE = 6700
 # HOST lane from a second target, whose port is that target's own -- so this only decides the
 # standalone (target-absent) shape.
 LOCAL_HOST2_PORT_BASE = 6800
+# The shim's localhost TCP CONTROL port, per shim row (2026-09-24, tooling gate diet block 1). It
+# was ui_test.SHIM_CONTROL_PORT = 6699 for every shim on the box -- a machine-wide singleton -- so
+# two shim rows in flight at once and the second net_shim.py died at bind, and the suite folded
+# every `"shim": True` row into ONE serial worker (1536 s of a 1731 s suite wall, 2026-09-23 gate).
+# Derived from the row's shim port exactly as that is derived from its index (base + ti), in its own
+# band; lane_alloc.py --check proves no two registry rows can land on one port across all four bands.
+LOCAL_SHIM_CTL_PORT_BASE = 6900
+
+
+def shim_control_port(shim_port):
+    """The control port that goes with a local shim listen port (0 -> 0: no shim, no control)."""
+    return (LOCAL_SHIM_CTL_PORT_BASE + (shim_port - LOCAL_SHIM_PORT_BASE)) if shim_port else 0
+
+
+def row_ports(ti, test):
+    """Every local port registry row #ti (0-based, in the run's `tests` order) can bind or dial --
+    {role: port}. provision_lanes + shim_argv derive theirs from these same formulas; lane_alloc's
+    --check calls this over the whole registry to prove rows are pairwise disjoint."""
+    out = {"game": LOCAL_PORT_BASE + ti}
+    if test.get("shim"):
+        out["shim"] = LOCAL_SHIM_PORT_BASE + ti
+        out["shim_ctl"] = shim_control_port(out["shim"])
+    if test.get("host_lanes"):
+        out["host2"] = LOCAL_HOST2_PORT_BASE + ti
+    return out
+
+
 # --det-local's own range. The lane numbers come from lane_alloc (fork F4H); the PORT does not,
 # because peers of one match must share one port. 6620 sits inside the capture suite's own band
 # (PORT_BASE + test index), which is tolerable only because --det-local is a by-hand diagnostic that
@@ -10232,6 +11518,80 @@ LOCAL_TIMEOUT_FRAMES = frames_for_seconds(90, SOLO_HEADLESS_FPS_FLOOR)
 # near their budget while the suite reported them as ordinary passes, so the warning has to fire
 # while there is still headroom to act on.
 WARN_FRAC = 0.7
+
+
+# ---- THE ROUTINE: every row carries its expected cost (gate diet block 4a, 2026-09-24) ----------
+# `budget_s` is the scenario's EXPECTED wall seconds under gate load -- seeded from a green run's
+# measured time x ~1.3, rounded -- NOT its kill bound (that is `timeout`). run_gate.py goes RED when
+# a scenario runs longer than SCENARIO_OVER (1.5) x its budget_s, naming the growth against the last
+# green run. A row over BUDGET_LONG_S must say why in `long_why`: a long row is a decision, not a
+# default. Enforced by `test_ui.py --check-budgets` (a lint_repo row) -- see the ui-testing skill's
+# "Growing the regression suite" for how to set or raise one.
+BUDGET_LONG_S = 120
+# The seed floor: a row that measured a few seconds gets 30, not 10 -- under a loaded gate a boot alone
+# can cost 15 s, and 1.5x a 10 s budget would red on machine noise rather than on a row that grew.
+BUDGET_FLOOR_S = 30
+
+
+def budget_problems(tests):
+    """Problem strings for the registry's budget discipline; empty = sound."""
+    bad = []
+    for t in tests:
+        b = t.get("budget_s")
+        if b is None:
+            bad.append("%s: no budget_s (expected seconds; seed = a green run x ~1.3)" % t["name"])
+            continue
+        if not isinstance(b, int) or b <= 0:
+            bad.append("%s: budget_s must be a positive int, got %r" % (t["name"], b))
+            continue
+        if b > BUDGET_LONG_S and not (t.get("long_why") or "").strip():
+            bad.append(
+                "%s: budget_s %d > %d with no long_why -- say why this row needs it"
+                % (t["name"], b, BUDGET_LONG_S)
+            )
+        if t.get("timeout") and b > t["timeout"]:
+            bad.append(
+                "%s: budget_s %d exceeds its own kill bound timeout %d"
+                % (t["name"], b, t["timeout"])
+            )
+    return bad
+
+
+def check_budgets():
+    """`--check-budgets`: the lint row. Runs its own negative cases first, then the live registry."""
+    cases = [
+        ("a row with no budget_s", [{"name": "a"}], "no budget_s"),
+        ("budget_s > 120 without long_why", [{"name": "a", "budget_s": 200}], "no long_why"),
+        ("a non-int budget", [{"name": "a", "budget_s": "60"}], "positive int"),
+        (
+            "budget over its own timeout",
+            [{"name": "a", "budget_s": 90, "timeout": 60}],
+            "kill bound",
+        ),
+    ]
+    ok = True
+    for label, rows, needle in cases:
+        hit = any(needle in b for b in budget_problems(rows))
+        ok = ok and hit
+        print("  %-36s %s" % (label, "CAUGHT" if hit else "MISSED"))
+    clean = budget_problems([{"name": "a", "budget_s": 200, "long_why": "measured 150 s"}])
+    print("  %-36s %s" % ("a justified long row passes", "ok" if not clean else "XX"))
+    ok = ok and not clean
+    live = budget_problems(TESTS)
+    for b in live:
+        print("  " + b)
+    n_long = sum(1 for t in TESTS if (t.get("budget_s") or 0) > BUDGET_LONG_S)
+    print(
+        "check-budgets: %s -- %d rows, %d over %d s (each with a long_why), sum %d s"
+        % (
+            "PASS" if ok and not live else "FAIL",
+            len(TESTS),
+            n_long,
+            BUDGET_LONG_S,
+            sum(t.get("budget_s") or 0 for t in TESTS),
+        )
+    )
+    return 0 if ok and not live else 1
 
 
 def client_lane_slot(test, cidx):
@@ -10386,8 +11746,13 @@ def provision_lanes(tests, headless=True, port_base=None, lane_base=0, stock_exe
             # `module_absent` makes mh_net.dll's absence REAL instead of simulating it with a key.
             # Per-test rather than global: every OTHER lane must carry the transport, or the nine MP
             # scenarios would silently be measuring the degraded configuration.
-            for sat in t.get("omit_satellite", []) or []:
-                cmd += ["--omit-satellite", sat]
+            # mp:D29: a `host:` / `client:` prefix (ui_test's --omit-satellite syntax) scopes the
+            # omission to that side -- the MIXED configuration (1) shape omits libmh.dll on the
+            # host lane only.
+            for spec in t.get("omit_satellite", []) or []:
+                role, _, sat = spec.rpartition(":")
+                if role == "" or (role == "host") == (i == 0):
+                    cmd += ["--omit-satellite", sat]
             # mp:F2b: a scenario may point its OWN lane at a non-polygon install (font_merged's
             # merged mh_ex pack). Additive -- every other test omits this key and keeps the default
             # machine.POLYGON source make_lane.py already falls back to.
@@ -10443,8 +11808,15 @@ def shim_argv(test, forward_to, shim_port=0):
     argv = ["--shim", forward_to, "--shim-delay", str(test.get("shim_delay", 0))]
     if shim_port:  # local: the shim needs its OWN port, the host lane keeps the game port (H3)
         argv += ["--shim-listen-port", str(shim_port)]
+        # ...and its own CONTROL port, so shim rows can run concurrently (see LOCAL_SHIM_CTL_PORT_BASE).
+        argv += ["--shim-control-port", str(shim_control_port(shim_port))]
     if test.get("shim_timeline"):
         argv += ["--shim-timeline", test["shim_timeline"]]
+    # Gate diet block 2: EVIDENCE-BOUNDED shim actions -- sent when the named log lines exist
+    # (ui_test.parse_shim_triggers), not at a guessed wall-clock offset. A timeline beside them is
+    # the fallback bound.
+    for trg in test.get("shim_triggers") or []:
+        argv += ["--shim-trigger", json.dumps(trg)]
     return argv
 
 
@@ -10694,6 +12066,100 @@ class RelayProc:
         return self.proc is not None and self.proc.poll() is None and self.port > 0
 
 
+class RelayShimProc:
+    """mp:P14 clause (5): tools/net_shim.py sat between ONE peer and a --relay relay, so that peer's
+    LEG to the relay carries a real one-way delay while the other peer's leg does not -- the
+    discriminator clause (5) needs (a local relay otherwise makes every peer's hop to it ~1 ms, so
+    the adaptive start's `rtt` line cannot be told apart from the true end-to-end figure).
+
+    Deliberately the simplest possible shape next to RelayProc, not a reuse of ui_test.shim_start:
+    that function is written around a CHILD ui_test.py process's own args (`.shim`/`.port`/
+    `.shim_listen_port`) and its job is shimming the peer-to-peer DIRECT dial, not a leg of a THIRD
+    process (the relay) this PARENT process (test_ui.py) already owns the lifetime of via RelayProc.
+    Same PARENT-owned, whole-run lifetime as RelayProc, so the two start and stop together.
+
+    net_shim.py has no "listening" line to await (unlike mh_relay.exe, which RelayProc's
+    _await_listening reads), so this waits a fixed beat and then trusts the port probe that already
+    ran: if the bind failed, net_shim.py would have exited by the time that beat elapses.
+    """
+
+    def __init__(self, listen_port, control_port, target, delay_ms, jitter_ms, udp, log_path):
+        self.listen_port = listen_port
+        self.control_port = control_port
+        self.target = target
+        self.delay_ms = delay_ms
+        self.jitter_ms = jitter_ms
+        self.udp = udp
+        self.log_path = log_path
+        self.proc = None
+        self.fh = None
+        self.note = ""
+
+    def __enter__(self):
+        os.makedirs(os.path.dirname(self.log_path), exist_ok=True)
+        probe_kind = socket.SOCK_DGRAM if self.udp else socket.SOCK_STREAM
+        with socket.socket(socket.AF_INET, probe_kind) as probe:
+            probe.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            try:
+                probe.bind(("0.0.0.0", self.listen_port))
+            except OSError:
+                self.note = (
+                    "%s port %d is already in use -- a relay-shim from an earlier run is "
+                    "probably still alive; kill it, or pass a different --relay-shim-listen-port"
+                    % ("udp" if self.udp else "tcp", self.listen_port)
+                )
+                return self
+        self.fh = open(self.log_path, "w", encoding="utf-8", errors="replace")
+        cmd = [
+            sys.executable,
+            "-u",
+            os.path.join(REPO, "tools", "net_shim.py"),
+            "--listen",
+            "0.0.0.0:%d" % self.listen_port,
+            "--target",
+            self.target,
+            "--delay",
+            str(self.delay_ms),
+            "--jitter",
+            str(self.jitter_ms),
+            "--control",
+            str(self.control_port),
+            "--log",
+            self.log_path,
+        ]
+        if self.udp:
+            cmd.append("--udp")
+        self.proc = subprocess.Popen(cmd, cwd=REPO, stdout=self.fh, stderr=subprocess.STDOUT)
+        time.sleep(
+            0.3
+        )  # no "listening" line to await -- the port probe above already proved the bind
+        if self.proc.poll() is not None:
+            self.note = "exited at once -- see %s" % self.log_path
+            return self
+        self.note = "listening on :%d -> %s, %.0f ms one-way (rtt %.0f ms)" % (
+            self.listen_port,
+            self.target,
+            self.delay_ms,
+            2 * self.delay_ms,
+        )
+        return self
+
+    def __exit__(self, *_exc):
+        if self.proc is not None:
+            try:
+                self.proc.terminate()
+                self.proc.wait(timeout=10)
+            except Exception:
+                self.proc.kill()
+        if self.fh is not None:
+            self.fh.close()
+        return False
+
+    @property
+    def ok(self):
+        return self.proc is not None and self.proc.poll() is None
+
+
 def relay_addr_for_peers(local):
     """Where the PEERS reach this box. Lanes on this machine use loopback; VM peers need the LAN
     address, which is the one machine_config already calls HOST_IP for exactly this purpose."""
@@ -10773,6 +12239,17 @@ def build_argv(test, vms, common, plan=None):
         tail += ["--net-extra", test["net_extra"]]
     if test.get("net_extra_client"):  # mp:R7a -- [net] keys on the CLIENT peers only
         tail += ["--net-extra-client", test["net_extra_client"]]
+    # mp:P13 -- the pacing a PLAYER runs (adaptive lookahead, 20 ms sim step, rx_spin on): ui_test
+    # drops its pinned 30/10/rx_spin=0 lines. Without this a registry row can only measure the
+    # rig's pinned pacing, which says nothing about a rate target. --force-headless: ui_test refuses
+    # headless + ship pacing because an UNCAPPED headless lane spins at ~8500 fps (no vsync); every
+    # multi row carries fps60.ini (above), whose Sleep cap stands in for the vsync a player's blit
+    # waits on, so the refusal's premise does not hold here. A row that opts out of the cap cannot
+    # take this key.
+    if test.get("ship_pacing"):
+        if test.get("kind") != "multi" or not test.get("fps_cap", True):
+            raise SystemExit("%s: ship_pacing needs a capped multi row" % test["name"])
+        tail += ["--ship-pacing", "--force-headless"]
     if test.get("no_client_ip"):  # mp:R7a -- no saved server, so the first browser probes the relay
         tail += ["--no-client-ip"]
     if test.get("client_game_name"):  # mp:R2b -- a client lane that HOSTS: pin the game it creates
@@ -10839,6 +12316,11 @@ def build_argv(test, vms, common, plan=None):
         # while it listens on its own (shim_port).
         argv += shim_argv(test, "127.0.0.1:%d" % port, shim_port)
         return argv + common + tail
+    # mp:D29 (D3): the VM twin of make_lane's --omit-satellite. A VM's game directory persists and
+    # ui_test pushes every satellite by default, so without this an `omit_satellite` scenario run on
+    # the VM topology silently had the file (and a stale copy was never removed).
+    for sat in test.get("omit_satellite", []) or []:
+        tail = tail + ["--omit-satellite", sat]
     if test["kind"] == "solo":
         # single-peer (no-networking) walk -- run HOST-ONLY on the first VM (ui_test's multi path with no
         # --client), so it runs in the same environment as the multi tests and keeps the dev box free.
@@ -10947,6 +12429,12 @@ def selftest_refusals():
 def main():
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("only", nargs="*", help="run only these test names (default: all)")
+    ap.add_argument(
+        "--check-budgets",
+        action="store_true",
+        help="lint: every TESTS row has budget_s, and one over %d s has a long_why (gate diet)"
+        % BUDGET_LONG_S,
+    )
     ap.add_argument(
         "--only", dest="only_flag", action="append", default=[], help="alias for a positional name"
     )
@@ -11579,6 +13067,23 @@ def main():
         "survived to Start proves nothing. Included automatically in --det-standard.",
     )
     ap.add_argument(
+        "--det-config1-gate",
+        action="store_true",
+        help="--determinism: run_gate's det_c1 unit -- ONLY the SYMMETRIC CONFIGURATION (1) clean "
+        "arm (both peers without libmh.dll, ALL PAIRS IDENTICAL). The MIXED shape and the go-red "
+        "arms stay in --det-config1 / --det-standard.",
+    )
+    ap.add_argument(
+        "--det-config1",
+        action="store_true",
+        help="--determinism: run ONLY mp:D29's CONFIGURATION (1) shapes -- SYMMETRIC (both peers "
+        "without libmh.dll) and MIXED ((1) on the host vs mode=original with libmh on the client) "
+        "-- each clean (ALL PAIRS IDENTICAL, both harnesses naming the configuration asked for) and "
+        "with a GO-RED arm (a host-only players+0x10 poke at steps/2, capped 1500, must red the pair "
+        "at exactly that step in exactly that region). VM pair by default; --det-local runs them on "
+        "two lanes of this box. Included automatically in --det-standard.",
+    )
+    ap.add_argument(
         "--u19b-quit3",
         action="store_true",
         help="--determinism: run ONLY mp:U19b's 3-PEER CLEAN QUIT shape (host on vms[0], one "
@@ -11600,11 +13105,38 @@ def main():
         "--every-slot --agree. NOT a --determinism shape: the walk never leaves the lobby.",
     )
     ap.add_argument(
+        "--u19j-gpfg3",
+        action="store_true",
+        help="mp:U19j: run ONLY the 3-PEER GONE-PEER FRAME GUARD shape in CONFIGURATION (1) (host "
+        "on vms[0], a survivor on vms[1], a sim-FENCED peer as the local det3 lane -- same lane as "
+        "--det-3peer, so they cannot run concurrently). The survivors drop the fenced peer after "
+        "data_timeout_ms and play on; its later heartbeats reach the host's gone-peer branch, where "
+        "the byte-patch carrier must log FIRED and the host must keep playing. Verdict from "
+        "tools/check_gone_peer_guard.py.",
+    )
+    ap.add_argument(
+        "--u19j-gpfg3-unguarded",
+        action="store_true",
+        help="mp:U19j's NEGATIVE twin: the same shape with [net] gone_peer_frame_guard=0, EXPECT "
+        "RED -- XFAIL (exit 0) only when the host went red on the garbled frame (outcome 7 raised "
+        "inside lockstep after the gone side's frame); a clean run is XPASS and fails.",
+    )
+    ap.add_argument(
+        "--x2a-map-variant",
+        action="store_true",
+        help="mp:X2a: run ONLY the open-redirect rig proof on the two independent VMs (host on "
+        "vms[0], client on vms[1]) -- the client's OWN blue monday.mpm is genuinely mutated "
+        "(tools/map_variant.py's one-bit flip, backed up and restored around the run), so the "
+        "download + open-redirect run for real instead of through the local-lane "
+        "map_test_pretend knob. Verdict from tools/check_map_redirect.py.",
+    )
+    ap.add_argument(
         "--det-standard",
         action="store_true",
         help="--determinism: run the standard shapes and report them SEPARATELY, because a "
         "merged verdict hides WHICH shape failed -- SYMMETRIC at ship config (promotion on both "
-        "peers), the U28 "
+        "peers), mp:D29's two CONFIGURATION (1) shapes (SYMMETRIC without libmh.dll, and MIXED (1) "
+        "vs mode=original -- each with a go-red arm; see --det-config1), the U28 "
         "3-peer start barrier and U32's conquest. The ASYMMETRIC shape (ours vs the ORIGINAL) was "
         "REMOVED from this set on 2026-09-01: the original netcode is dead in retail and live only "
         "under the byte patches, so it is a COMPAT question, not this gate's. Run it by hand -- see "
@@ -11741,6 +13273,15 @@ def main():
         "rig's pinned pacing). Forwarded to --determinism runs AND to every registry scenario.",
     )
     ap.add_argument(
+        "--net-extra-client",
+        default="",
+        help="mp:R7a's CLIENT-only twin of --net-extra, at the top level: ';'-separated k=v that "
+        "OVERRIDES --net-extra's same key on the CLIENT peer only (ui_test.py's make_ini rule), "
+        "leaving the HOST on --net-extra's value. Forwarded to --determinism runs the same way "
+        "--net-extra is. mp:P14 clause (5) is the first --determinism-level caller: it appends its "
+        "own `relay=` override here rather than replacing whatever the operator already passed.",
+    )
+    ap.add_argument(
         "--transport",
         choices=("tcp", "udp"),
         default="udp",
@@ -11761,6 +13302,40 @@ def main():
         "with; the two relay_* scenarios start one for themselves and do not need it. Use it to "
         "run the ordinary determinism gate over the relayed path -- the relay's own log lands in "
         "tmp/relay_run.log.",
+    )
+    ap.add_argument(
+        "--relay-shim-delay",
+        type=float,
+        default=0.0,
+        metavar="MS",
+        help="mp:P14 clause (5) -- needs --relay. On a rig where the relay is local to both peers "
+        "(the usual case here), --relay alone gives every peer the SAME near-zero hop to it, so "
+        "the net.adaptive_start log line (tools/data/log_formats.json) reads the relay-LEG rtt "
+        "(~1 ms) rather than the end-to-end rtt clause (5) needs measured -- the two are "
+        "indistinguishable on this rig without a real delay somewhere on the path. This puts "
+        "tools/net_shim.py between ONE peer (the CLIENT) and the relay this box just started, "
+        "delaying only that leg by MS ms one-way (rtt = 2x); the HOST still dials the relay "
+        "directly. This is a SEPARATE leg from --shim-delay, which shims the peer-to-peer DIRECT "
+        "dial (client to host) and has nothing to do with the relay leg -- the two are not wired "
+        "together in this tree and compose independently if both are given (neither refuses the "
+        "other's knob). The relay-shim's own log is tmp/relay_shim_run.log.",
+    )
+    ap.add_argument(
+        "--relay-shim-jitter",
+        type=float,
+        default=0.0,
+        metavar="MS",
+        help="+/- uniform ms around --relay-shim-delay; meaningless without it.",
+    )
+    ap.add_argument(
+        "--relay-shim-listen-port",
+        type=int,
+        default=6698,
+        metavar="PORT",
+        help="where the --relay-shim-delay shim listens for the delayed (client) peer's traffic to "
+        "the relay. Default 6698 (one below net_shim's own default control port 6699, which this "
+        "shim's OWN control channel also avoids by using PORT+1). Override if it collides with "
+        "something else already using it.",
     )
     ap.add_argument(
         "--shim-delay",
@@ -11928,6 +13503,11 @@ def main():
             "transport=%s" % args.transport
         )
 
+    # mp:P14 clause (5) -- checked before the relay is even started: a shim with nothing to shim a
+    # leg of is a flag that silently does nothing, which is a worse failure than refusing outright.
+    if getattr(args, "relay_shim_delay", 0.0) and not getattr(args, "relay", False):
+        ap.error("--relay-shim-delay needs --relay (there is no relay leg to delay without one)")
+
     # mp:R2 -- `--relay` folds in the same way and for the same reason: one channel the child reads,
     # one thing the replay command shows. The process lives for the whole run (atexit, so it is
     # stopped on every exit path including a KeyboardInterrupt), because the peers of a --determinism
@@ -11953,6 +13533,40 @@ def main():
         args.net_extra = (args.net_extra + ";" if args.net_extra else "") + _knob
         print("[relay] %s -- every peer dials %s (log: tmp/relay_run.log)" % (_rp.note, _knob))
 
+        # mp:P14 clause (5) -- a LOCAL relay otherwise gives every peer the same ~1 ms hop to it, so
+        # the adaptive start's rtt line cannot be told apart from a genuine end-to-end figure. Put
+        # net_shim.py between the CLIENT and the relay ONLY: the host keeps the direct `_knob` above
+        # (unshimmed), the client's own relay= is overridden (via --net-extra-client, which OVERRIDES
+        # --net-extra's same key on the client -- make_ini's mp:R7a rule) to dial the shim instead,
+        # and each side's own `net: udp conn N rtt ... srtt` line then reflects only ITS leg: the
+        # host's stays ~1 ms (its leg is unshimmed), the client's carries the injected delay -- and
+        # since P14's adaptive-start formula seeds from EACH peer's OWN measured srtt (not a shared
+        # one), the client's start line is the one clause (5) reads.
+        if getattr(args, "relay_shim_delay", 0.0):
+            _rs_listen = args.relay_shim_listen_port
+            _rs = _relay_stack.enter_context(
+                RelayShimProc(
+                    _rs_listen,
+                    _rs_listen + 1,
+                    "%s:%d" % (relay_addr_for_peers(_local), _rp.port),
+                    args.relay_shim_delay,
+                    args.relay_shim_jitter,
+                    args.transport == "udp",
+                    os.path.join(REPO, "tmp", "relay_shim_run.log"),
+                )
+            )
+            if not _rs.ok:
+                print("[relay-shim] could not start: %s" % _rs.note)
+                return 2
+            _rs_knob = "relay=%s:%d" % (relay_addr_for_peers(_local), _rs_listen)
+            args.net_extra_client = (
+                args.net_extra_client + ";" if args.net_extra_client else ""
+            ) + _rs_knob
+            print(
+                "[relay-shim] %s -- the CLIENT dials %s instead of the relay directly (log: "
+                "tmp/relay_shim_run.log); the HOST is unaffected" % (_rs.note, _rs_knob)
+            )
+
     global DESKTOP, NO_DESKTOP, STOCK_EXE
     NO_DESKTOP = bool(args.no_desktop)
     STOCK_EXE = not args.patched_exe
@@ -11966,6 +13580,8 @@ def main():
 
     if args.det_selftest:
         return det_standard_selftest()
+    if args.check_budgets:
+        return check_budgets()
 
     if args.sp_determinism:
         return run_sp_determinism(args)
@@ -12051,10 +13667,44 @@ def main():
         print("[l1f] 3-PEER LOBBY PING: %s" % ("PASS" if ok else "FAIL"))
         return 0 if ok else 1
 
+    # mp:U19j -- a match shape outside --determinism (nothing is hashed; the verdict is the checker's).
+    if args.u19j_gpfg3 or args.u19j_gpfg3_unguarded:
+        rc_all = 0
+        for guarded, on in ((True, args.u19j_gpfg3), (False, args.u19j_gpfg3_unguarded)):
+            if not on:
+                continue
+            ok, lines = run_u19j_gpfg3(args, guarded)
+            print("\n".join(lines))
+            name = "GUARDED" if guarded else "UNGUARDED (expect red)"
+            if ok is None:
+                print("[u19j] %s: SKIP" % name)
+                continue
+            verdict = ("PASS" if ok else "FAIL") if guarded else ("XFAIL" if ok else "XPASS/FAIL")
+            print("[u19j] 3-PEER GONE-PEER FRAME GUARD %s: %s" % (name, verdict))
+            rc_all |= 0 if ok else 1
+        return rc_all
+
+    # mp:X2a -- a match shape on the two independent VMs, outside --determinism (nothing is hashed;
+    # the verdict is check_map_redirect.py's).
+    if args.x2a_map_variant:
+        ok, lines = run_x2a_map_variant(args)
+        print("\n".join(lines))
+        if ok is None:
+            print("[x2a] SKIP")
+            return 0
+        print("[x2a] OPEN-REDIRECT ON INDEPENDENT VMS: %s" % ("PASS" if ok else "FAIL"))
+        return 0 if ok else 1
+
     # The determinism SHAPE flags mean nothing outside --determinism, and a bare `--u19b-quit3`
     # used to fall through to the WHOLE default suite (2026-09-22: 27 rows into a 70-row run before
     # anyone noticed, holding the rig lease the while). Refuse rather than run the wrong thing.
-    if not args.determinism and (args.det_standard or args.det_3peer or args.u19b_quit3):
+    if not args.determinism and (
+        args.det_standard
+        or args.det_3peer
+        or args.u19b_quit3
+        or args.det_config1
+        or args.det_config1_gate
+    ):
         print(
             "[det] --det-standard / --det-3peer / --u19b-quit3 are --determinism shapes: pass "
             "--determinism with them (without it the default capture suite would run instead)"
@@ -12065,6 +13715,18 @@ def main():
         # C7: promotion is TWO runs, not one. --det-standard runs both shapes and reports them apart.
         if args.det_standard:
             return run_det_standard(args)
+        if args.det_config1 or args.det_config1_gate:
+            res = run_det_config1(args, local=args.det_local, gate=args.det_config1_gate)
+            if res is None:
+                return 0  # VM down -> SKIP, not a failure
+            print("\n" + "=" * 78)
+            print("[det] CONFIGURATION (1) SHAPES -- one verdict each")
+            print("=" * 78)
+            for label, ok, lines in res:
+                print("  %-44s %s" % (label, "PASS" if ok else "FAIL"))
+                for ln in lines:
+                    print(ln)
+            return 0 if all(ok for _, ok, _ in res) else 1
         if args.det_3peer:
             ok, lines = run_det_3peer(args)
             print("\n".join(lines))
@@ -12211,6 +13873,11 @@ def main():
             # rx_spin A/B: the rig pins rx_spin=0 while SHIP_RX_SPIN is 1, so the gate cannot see the
             # cost of a knob every shipped run has on.
             argv += ["--net-extra", args.net_extra]
+        if args.net_extra_client:
+            # mp:P14 clause (5) -- --relay-shim-delay appends its `relay=` override here; forwarded
+            # the same way --net-extra is, and by the same make_ini rule (mp:R7a) OVERRIDES, not
+            # appends to, --net-extra's same key on the CLIENT peer only.
+            argv += ["--net-extra-client", args.net_extra_client]
         if args.ai:
             # The probe is not optional decoration on an AI run: D10 exists because a green verdict was
             # taken as covering the AI when the AI had never drawn a random number. An AI-active run
@@ -12569,6 +14236,7 @@ def main():
     # re-proving it. A list rather than a flag so the abort can name WHICH test found it.
     abort = []
     results = {}
+    chains = []  # the serial share_lanes groups, recorded for run_gate / gate_timeline
     timings = {}  # name -> (elapsed_s, budget_s); feeds the summary table's budget column
     suite_t0 = time.time()
     if jobs == 1:
@@ -12591,7 +14259,7 @@ def main():
         solos = [(i, t) for i, t in enumerate(tests, 1) if t.get("kind") != "multi"]
         multis = [(i, t) for i, t in enumerate(tests, 1) if t.get("kind") == "multi"]
 
-        def lane_groups(pool, fold_shims):
+        def lane_groups(pool):
             """Connected components of "borrows lanes from", within ONE scheduling pool.
 
             mp:R7a -- a share_lanes test borrows a comparable scenario's lanes, so the two must
@@ -12624,16 +14292,11 @@ def main():
                 if tg and all(x in present for x in tg):
                     for x in tg:
                         parent[_find(x)] = _find(t["name"])
-            if fold_shims:
-                # The shim's control port (ui_test.SHIM_CONTROL_PORT, one per box) is a singleton the
-                # lane plan cannot fork: two `"shim": True` rows in flight at once and the second
-                # net_shim.py dies at bind ("[shim] failed to start (exit 1)" -- txdeath_ingame
-                # against net_hud's shim, 2026-09-22 gate, the first gate with four shim rows). Fold
-                # every shim row into ONE component so they run back-to-back in a single worker,
-                # whatever lanes they own.
-                shim_rows = [t["name"] for _, t in pool if t.get("shim")]
-                for x in shim_rows[1:]:
-                    parent[_find(x)] = _find(shim_rows[0])
+            # NO SHIM FOLDING since 2026-09-24. Shim rows used to be folded into ONE component
+            # because every shim listened on the same control port (a machine-wide singleton:
+            # txdeath_ingame died at bind against net_hud's shim, 2026-09-22 gate). Each local shim
+            # row now carries its own control port (shim_control_port), so they run concurrently
+            # like any other multi row; lane_alloc --check keeps the ports disjoint.
             out, by_root = [], {}
             for i, t in pool:
                 by_root.setdefault(_find(t["name"]), []).append((i, t))
@@ -12643,8 +14306,9 @@ def main():
                 out.append(owners + sharers)
             return out
 
-        groups = lane_groups(multis, fold_shims=True)
-        solo_groups = lane_groups(solos, fold_shims=False)
+        groups = lane_groups(multis)
+        solo_groups = lane_groups(solos)
+        chains = [[t["name"] for _i, t in g] for g in groups + solo_groups if len(g) > 1]
         net_jobs = max(1, min(args.net_jobs, len(groups) or 1))
         print(
             "\nrunning %d tests: %d solo in %d lane group(s) at --jobs %d + %d multi-peer in "
@@ -12697,6 +14361,11 @@ def main():
             if frac >= WARN_FRAC and r != "SKIP":
                 col += "  NEAR-MISS"
                 nnear += 1
+        # The routine's column (block 4b): expected cost, and the flag run_gate reds on.
+        if t.get("budget_s") and r != "SKIP":
+            col += "  exp %ds" % t["budget_s"]
+            if secs > 1.5 * t["budget_s"]:
+                col += "  OVER-BUDGET (>1.5x)"
         print("  %-14s %-5s%s" % (t["name"], r, col))
     print("-" * 78)
     print(
@@ -12738,6 +14407,23 @@ def main():
                     "failed": nfail,
                     "skipped": nskip,
                     "expected_red": nxfail,
+                    # gate diet block 4b: what run_gate's cost rules read
+                    "net_jobs": getattr(args, "net_jobs", None),
+                    "per_test": {
+                        t["name"]: {
+                            "secs": round(timings.get(t["name"], (0.0, 0))[0], 1),
+                            "budget_s": t.get("budget_s"),
+                            "verdict": results.get(t["name"]),
+                        }
+                        for t in tests
+                    },
+                    "chains": [
+                        {
+                            "tests": c,
+                            "secs": round(sum(timings.get(n, (0.0, 0))[0] for n in c), 1),
+                        }
+                        for c in chains
+                    ],
                 },
                 fh,
                 indent=1,
@@ -12873,4 +14559,6 @@ def main():
 if __name__ == "__main__":
     import hostlock
 
+    if "--check-budgets" in sys.argv[1:]:  # a registry lint: touches no rig, must not wait for it
+        raise SystemExit(main())
     raise SystemExit(hostlock.run_rig_tool(main, "test_ui"))

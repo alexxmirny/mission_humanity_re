@@ -443,6 +443,13 @@ volatile long g_step_calls = 0;
 // a root that silently ran through a refusal is exactly the G106 shape this item exists to end.
 bool g_promoted = false;
 
+// mp:D32. WHICH route set g_promoted, kept separately because the two routes are fed differently: the
+// rebind route leaves the harness's own detour owning the real entry (it calls
+// mh::desync::on_sim_step_hashed unconditionally before ever branching to us), while the direct-install
+// route leaves this entry with no other feeder at all. set_sim_step_pre_hook() below reads this to
+// refuse the rebind case -- see the D32 comment there for the failure this prevents.
+bool g_promoted_via_rebind = false;
+
 // The PRE-HOOK, and it exists because promoting this root took an instrument's hook away.
 //
 // llm_strat_sim_step's entry is the D21 desync sampler's only sampling point in a no-harness run
@@ -588,7 +595,8 @@ int install_promotion_sim_step_direct() {
 // reason (a listed-but-unarmed root turns a mismatch into a silent zero).
 int register_promotion_sim_step_rebound() {
     if (promoted_arm::g_promoted) return 0;
-    promoted_arm::g_promoted = true;
+    promoted_arm::g_promoted            = true;
+    promoted_arm::g_promoted_via_rebind = true; // mp:D32 -- the harness's detour already feeds the detector
     mh::ai::ai_say("; [promote] sim_step: is LIVE by HARNESS REBIND (the determinism detour falls "
                    "through to OURS; on_sim_step still runs first) -- ours IS the function, there is "
                    "no original arm in this run\n");
@@ -596,15 +604,23 @@ int register_promotion_sim_step_rebound() {
 }
 
 bool sim_step_promoted() { return promoted_arm::g_promoted; }
+bool sim_step_promoted_via_rebind() { return promoted_arm::g_promoted_via_rebind; }
 long sim_step_served_calls() { return promoted_arm::g_step_calls; }
+
+// TEST-ONLY (mp:D32) -- see the header comment. Bookkeeping only, no entry write.
+void sim_step_promotion_force_direct_for_test() {
+    promoted_arm::g_promoted            = true;
+    promoted_arm::g_promoted_via_rebind = false;
+}
 
 // TEST-ONLY. The flag is process-global and production has no un-promote (a promotion lasts the life
 // of the process), so a selftest driving both routes in one process must clear it between scenarios
 // or the second scenario inherits the first's owner. Never called in the game.
 void sim_step_promotion_reset_for_test() {
-    promoted_arm::g_promoted   = false;
-    promoted_arm::g_step_calls = 0;
-    promoted_arm::g_pre_hook   = nullptr;
+    promoted_arm::g_promoted            = false;
+    promoted_arm::g_promoted_via_rebind = false;
+    promoted_arm::g_step_calls          = 0;
+    promoted_arm::g_pre_hook            = nullptr;
 }
 
 // Install the per-call pre-hook the promoted body runs BEFORE its own work. See the block comment at
@@ -612,9 +628,15 @@ void sim_step_promotion_reset_for_test() {
 // root's entry belongs to us. Refuses (returns 0) when the root is NOT promoted this run -- there is
 // no body to chain onto, and the caller must install its own entry trampoline instead. Refuses a
 // SECOND hook rather than overwriting: two instruments silently sharing one slot is the failure this
-// whole file is otherwise built to prevent.
+// whole file is otherwise built to prevent. mp:D32: ALSO refuses when the root was promoted BY REBIND
+// -- that route leaves the harness's own detour owning the real entry, and its handler
+// (harness.cpp's on_sim_step) already calls mh::desync::on_sim_step_hashed unconditionally, before
+// ever reaching this promoted body. Accepting the hook there too would feed the detector from BOTH
+// paths every step (measured: "2999 steps seen" for a 1500-step run). Only the direct-install route
+// has no other feeder and may take this slot.
 int set_sim_step_pre_hook(void (*fn)()) {
     if (!fn || !promoted_arm::g_promoted || promoted_arm::g_pre_hook) return 0;
+    if (promoted_arm::g_promoted_via_rebind) return 0;
     promoted_arm::g_pre_hook = fn;
     return 1;
 }

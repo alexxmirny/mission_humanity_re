@@ -118,6 +118,37 @@ BLOCKS = {
 # contain every one of them is tools/provision_rig.py's FW_LO..FW_HI.
 PORT_BASE = 6600  # test_ui.LOCAL_PORT_BASE -- the capture suite's band is PORT_BASE + test index
 SHIM_PORT_BASE = 6700  # test_ui.LOCAL_SHIM_PORT_BASE
+HOST2_PORT_BASE = 6800  # test_ui.LOCAL_HOST2_PORT_BASE
+SHIM_CTL_PORT_BASE = 6900  # test_ui.LOCAL_SHIM_CTL_PORT_BASE -- per-row shim control port
+# ui_test.SHIM_CONTROL_PORT: the control port a HAND run (or the VM topology) still gets by default.
+# No registry row may derive it, or a suite row and a hand-run shim would fight over it.
+DEFAULT_SHIM_CTL_PORT = 6699
+PORT_BAND = 100  # each base above owns base .. base+99; a registry longer than this overlaps bands
+
+
+def row_port_collisions(rows):
+    """rows = [(name, {role: port})] -- the per-row local ports (test_ui.row_ports). Returns problem
+    strings: any port two rows (or two roles of one row) share, any row port equal to the hand-run
+    default shim control port. This is the "two shim rows cannot collide" half of the gate: since
+    2026-09-24 shim rows run CONCURRENTLY, so a shared control port is a bind failure again."""
+    bad, seen = [], {}
+    for name, ports in rows:
+        for role, port in ports.items():
+            if port == DEFAULT_SHIM_CTL_PORT:
+                bad.append(
+                    "row %r %s port %d is the default shim control port (ui_test.SHIM_CONTROL_PORT)"
+                    % (name, role, port)
+                )
+            if port in seen:
+                bad.append(
+                    "port %d is both row %r %s and row %r %s"
+                    % (port, seen[port][0], seen[port][1], name, role)
+                )
+            else:
+                seen[port] = (name, role)
+    return bad
+
+
 # The blocks whose lane number IS a port offset. (det_local and det3 pin their own ports instead:
 # peers of one match must share a port, so those two cannot derive theirs per-lane.)
 PORT_DERIVED = ("soak", "tact", "ui_play", "sp_det", "sweep")
@@ -378,12 +409,27 @@ def check(demand=None, blocks=None, verbose=True):
         # the demand came from the live registry -- the selftest's synthetic blocks have no test_ui.
         import test_ui  # noqa: PLC0415
 
+        import ui_test  # noqa: PLC0415
+
         for ours, theirs, what in (
             (PORT_BASE, test_ui.LOCAL_PORT_BASE, "PORT_BASE"),
             (SHIM_PORT_BASE, test_ui.LOCAL_SHIM_PORT_BASE, "SHIM_PORT_BASE"),
+            (HOST2_PORT_BASE, test_ui.LOCAL_HOST2_PORT_BASE, "HOST2_PORT_BASE"),
+            (SHIM_CTL_PORT_BASE, test_ui.LOCAL_SHIM_CTL_PORT_BASE, "SHIM_CTL_PORT_BASE"),
+            (DEFAULT_SHIM_CTL_PORT, ui_test.SHIM_CONTROL_PORT, "DEFAULT_SHIM_CTL_PORT"),
         ):
             if ours != theirs:
                 bad.append("%s is %d here and %d in test_ui.py" % (what, ours, theirs))
+        # Per-ROW ports over the whole registry, in registry order (a subset run's indices are a
+        # prefix-compatible renumbering, always < len(TESTS), so the full registry is the worst case).
+        if len(test_ui.TESTS) > PORT_BAND:
+            bad.append(
+                "the registry has %d rows but each port band holds %d -- row ports would cross into "
+                "the next band" % (len(test_ui.TESTS), PORT_BAND)
+            )
+        bad += row_port_collisions(
+            [(t["name"], test_ui.row_ports(ti, t)) for ti, t in enumerate(test_ui.TESTS)]
+        )
     _base, cap = blocks["suite"]
     # THE PORT BAND MOVES WITH THE LANE BLOCK, so it is checked here rather than left to be
     # discovered. A derived port landing in the capture suite's band is the port-shaped version of
@@ -449,6 +495,19 @@ def selftest():
             ok = False
     # ...and the live allocation must be CLEAN, or the three cases above prove only that the checker
     # complains about everything.
+    rp = row_port_collisions(
+        [
+            ("a", {"game": 6600, "shim": 6700, "shim_ctl": 6900}),
+            ("b", {"game": 6601, "shim_ctl": 6900}),
+        ]
+    )
+    hit = any("port 6900 is both" in b for b in rp)
+    print("  %-34s %s" % ("two shim rows on one control port", "CAUGHT" if hit else "MISSED"))
+    ok = ok and hit
+    rp = row_port_collisions([("a", {"shim_ctl": DEFAULT_SHIM_CTL_PORT})])
+    hit = any("default shim control port" in b for b in rp)
+    print("  %-34s %s" % ("a row on the hand-run control port", "CAUGHT" if hit else "MISSED"))
+    ok = ok and hit
     live = check(verbose=False)
     print("  %-34s %s" % ("the live allocation", "clean" if not live else "DIRTY"))
     for b in live:

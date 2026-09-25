@@ -587,9 +587,10 @@ struct reimpl_fixes {
     // outcome 7 (NETWORK_ERROR). Measured on the rig on a perfectly clean 2-player quit; the long
     // comment at that site carries the dumped bytes.
     //
-    // NOT A RETIRED BYTE PATCH either (same footing as desync_icon_gate above): the corruption exists
-    // in the original too -- the dead `cursor = len` store at 0x0049c335 is the author's own aborted
-    // handling of it -- so an unpromoted run has no carrier and no fix. The ini default is 1, like
+    // Born reimpl-only (the corruption exists in the original too -- the dead `cursor = len` store at
+    // 0x0049c335 is the author's own aborted handling of it). Since mp:U19i an UNPROMOTED run carries
+    // the same fix as a byte patch (mh/seams/gone_peer_guard.h, splice at 0x0049c330), so
+    // configuration (1) has it too; this member is the promoted body's half. The ini default is 1, like
     // resync_order_horizon's, while the initialiser here stays the faithful-stock value a pure caller
     // or a lockstest fixture gets.
     bool gone_peer_frame_guard = false;

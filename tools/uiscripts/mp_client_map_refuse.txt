@@ -1,0 +1,28 @@
+# mp:X2b CLIENT -- join a TCP host while pretending to hold a DIFFERENT copy of its map.
+#
+# `[net] map_test_pretend=other` makes this peer report a hash that is not the host's; on TCP the
+# resolver goes straight to CS_BLOCKED (no bulk channel to wait on). The client's job is only to be
+# SEATED in the host's lobby so the host's refusal names it; it never sees Start.
+#
+# Pair with mp_host_map_refuse.txt. Assertions are check_map_transfer.py --expect-refused.
+
+settled value:110
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+present Internet server
+settled Internet server
+clickl Internet server
+present Server address
+settled Connect
+clickl Connect
+sessions 1
+settled Join game
+clickl Join game
+present Network players
+occ 2
+settled Cancel
+capture x2_lobby
+log CLIENT: seated in the host's lobby holding a different copy of the map (TCP)
+end

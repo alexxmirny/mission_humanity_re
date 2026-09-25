@@ -52,18 +52,20 @@
       ],
       "needles": [
         "\\[session\\]\\s*match_id=([0-9a-f]{32})",
-        "^; \\[session\\] match_id=([0-9a-fA-F]+)\\s*$"
+        "^; \\[session\\] match_id=([0-9a-fA-F]+)\\s*$",
+        "\\[session\\] match_id=([0-9a-f]+)"
       ],
       "fields": [
         "match_id"
       ],
       "parsers": [
         "tools/mp_analyze.py:parse_match_ids",
-        "tools/crash_report.py:session_match_ids_in_zip"
+        "tools/crash_report.py:session_match_ids_in_zip",
+        "tools/check_queue_rollups.py:check_peer"
       ],
       "since": "mp:SES0",
       "status": "live",
-      "note": "The UUIDv7 match id. Read as a LIST (de-duplicated by consecutive-equal), not a scalar: a peer that re-hosts without restarting logs a second one, and mp_analyze REFUSES to pair two peers whose ids differ."
+      "note": "The UUIDv7 match id. Read as a LIST (de-duplicated by consecutive-equal), not a scalar: a peer that re-hosts without restarting logs a second one, and mp_analyze REFUSES to pair two peers whose ids differ. mp:U41d -- check_queue_rollups.py also reads this line (the last one logged before a match-boundary rollup) to confirm two boundary events are tied to genuinely distinct matches, not just distinct epochs."
     },
     {
       "id": "net.session_begin",
@@ -119,6 +121,29 @@
       "note": "The closer. A crashed peer never writes one, which is why session.json is also written AT THE OPEN -- an empty `reason` in session.json IS the crashed-peer marker.  TAG ADDED AT U19: the line has always been written `; [session] SESSION_END ...`, but this row carried no `tags`, so lint_log_formats arm B could not connect a tool that reads it to this entry -- the first tool to hold the tagged literal (check_graceful_quit) went red against a registry that was simply incomplete here, not wrong about the format.  SECOND PARSER ADDED AT tooling:TL-QUIT3-FLAKE: check_quit_survivors_3peer reads `reason=quit` as the DISCRIMINATOR between a quitter that left and a seam that did not fire, and one that never quit at all -- the u19b_quit3 scenario fails the second way about one run in six and used to report it as the first, which named the DLL for a harness fault."
     },
     {
+      "id": "net.harness_stop",
+      "stream": "mh_net.log",
+      "emitter": "src/mh_dll/mh/seams/net_discovery.cpp",
+      "emit": "HARNESS_STOP step=%u close=%s",
+      "tags": [
+        "session"
+      ],
+      "needles": [
+        "; [session] HARNESS_STOP"
+      ],
+      "fields": [
+        "step",
+        "close"
+      ],
+      "parsers": [
+        "tools/ui_test.py:harness_stop_of",
+        "tools/test_ui.py:det_standard_selftest"
+      ],
+      "since": "tooling:TL-HARN-CLEANCLOSE",
+      "status": "live",
+      "note": "The determinism harness's end of a match: written at [harness] stop_step (after the last hashed step and its flush) by MH_Session_HarnessStop. close= says what the stop did: `in_place` = the open session got its full record -- the desync detector's rollup, the inbound-queue rollup + match boundary (mp:U41e -- BOTH transports now carry a real inbound-queue rollup + match boundary; mh_net_udp.dll's used to be a no-op, mp:U41c/G305) and SESSION_END reason=harness_stop -- WITHOUT the directory switch (the process plays on until the runner kills it, and a switched tail would be read ahead of the match; seams/session_close_plan.h); `rollups_only` = force-entry, no session ever opened, the two rollups alone; `nothing` = no transport, or the match already closed through a real seam; `repeated` = a second stop. After an in_place or rollups_only stop the desync detector stops sampling (`; [desync] sampling STOPPED`), so the peer's LAST STATUS line -- mp_analyze's verdict -- is the match's, not the post-stop seconds'. ui_test's determinism runner re-pulls a peer whose log lacks this line (a straggling client) for up to 8 s before the kill."
+    },
+    {
       "id": "net.desync_watch",
       "stream": "mh_net.log",
       "emitter": "src/mh_dll/mh/desync/desync_watch.cpp",
@@ -129,7 +154,8 @@
       "needles": [
         ";\\s*\\[desync\\]\\s*(.*)$",
         "STATUS:",
-        "*** DESYNC step="
+        "*** DESYNC step=",
+        "ORDER-DIGEST mismatch"
       ],
       "fields": [
         "armed",
@@ -139,7 +165,9 @@
         "samples",
         "compared",
         "mismatching",
-        "too_old"
+        "too_old",
+        "order_mismatching",
+        "order_absent"
       ],
       "parsers": [
         "tools/mp_analyze.py:parse_desync",
@@ -150,7 +178,7 @@
       ],
       "since": "mp:D21",
       "status": "live",
-      "note": "ONE tag with seven dispatched bodies (ARMED / COST PROBE / NOTICE SHOWN / *** DESYNC / STATUS / INERT / DISABLED). The *** DESYNC lines are THROTTLED, so their count is a floor -- the STATUS line carries the real tally and is what a verdict must read."
+      "note": "ONE tag with dispatched bodies (ARMED / COST PROBE / NOTICE SHOWN / *** DESYNC / STATUS / INERT / DISABLED / D31: order_queue not found / ORDER-DIGEST mismatch / ORDER-DIGEST mismatch continues). The *** DESYNC and ORDER-DIGEST mismatch lines are THROTTLED (should_log_full/should_log_rollup), so their counts are a floor -- the STATUS line (now also carrying order_mismatching/order_absent, mp:D31) carries the real tally and is what a verdict must read. mp:D31 (2026-09-24): the STATUS-line cadence is SAMPLES_PER_STATUS_LINE in desync_watch.h (10, was 50) -- a run far shorter than a full match still gets at least one; an ORDER-DIGEST mismatch is LOG+ROLLUP ONLY, never the on-screen NOTICE (that now needs 2 CONSECUTIVE state mismatches, not 1 -- see should_notify in desync_watch.h)."
     },
     {
       "id": "net.tombstone_armed_names",
@@ -351,7 +379,8 @@
       "parsers": [
         "tools/check_module_bind.py:classify",
         "tools/check_arm_order.py:detect_mode",
-        "tools/check_resync_storm.py:config1_fails"
+        "tools/check_resync_storm.py:config1_fails",
+        "tools/check_gone_peer_guard.py:check"
       ],
       "since": "fork F4D",
       "status": "live",
@@ -560,7 +589,8 @@
         "tools/mp_analyze.py:parse_match_end",
         "tools/check_transport_death.py:check",
         "tools/check_quit_survivors_3peer.py:check_needles",
-        "tools/check_el2_mother.py:check"
+        "tools/check_el2_mother.py:check",
+        "tools/check_gone_peer_guard.py:check"
       ],
       "since": "mp:D19",
       "status": "live",
@@ -1012,7 +1042,8 @@
         "tools/mp_pacing_report.py:read_lockstep",
         "tools/mp_analyze.py:parse_lockstep",
         "tools/check_graceful_quit.py:lockstep_step_ms",
-        "tools/check_shim_rtt.py:main"
+        "tools/check_shim_rtt.py:main",
+        "tools/check_sim_rate.py:read_table"
       ],
       "since": "mp:D9",
       "status": "live",
@@ -2227,6 +2258,139 @@
       "note": "THE ONLY RECORD OF WHY THE LOOKAHEAD MOVED. The step_ms column in mh_lockstep.log shows THAT it moved; this line carries the error term behind the move, so a run where the controller misbehaved can be read without re-running it. It carries its own `t=` GetTickCount stamp precisely so it can be lined up with mh_lockstep.log's wall_ms column -- mh_net.log lines are otherwise untimestamped. `slack N ms` (mp:T3c) is the window's median UNUSED horizon (local_h - COMMITTED): it is 0 for the peer whose own horizon binds the match and positive for the peer being clamped by the other side, which is the surplus the arrival-lateness tail is structurally blind to. `starved .. diag` is the PRE-T3 error term, kept on the line as a diagnostic so new runs stay comparable with every P1/P5 number in docs/mp-perf.md; it no longer drives anything. Written only when the value actually changes, so a controller sitting on the floor is silent. `owd N ms` (mp:P10) is the CONSERVATIVE one-way-delay estimate the slack is corrected by before either arm reads it -- (SRTT + 4*RTTVAR)/2 for the binding peer, or -1 when the transport cannot measure its link, in which case the grow gate stands down and the decision is the pre-P10 one. It is on the line because without it a `hold` on a starved window is unreadable after the fact: the raw slack alone does not say whether the gate fired."
     },
     {
+      "id": "net.adaptive_start",
+      "stream": "mh_net.log",
+      "emitter": "src/mh_dll/mh/seams/net_lockstep.cpp",
+      "emit": "; [adaptive] start %ld ms from rtt %ld ms",
+      "tags": [
+        "adaptive"
+      ],
+      "needles": [
+        "; [adaptive] start "
+      ],
+      "fields": [
+        "start_ms",
+        "rtt_ms",
+        "peer_slot",
+        "samples",
+        "reason",
+        "floor_ms",
+        "ceiling_ms",
+        "was_ms"
+      ],
+      "parsers": [],
+      "since": "mp:P14 (2026-09-24)",
+      "status": "live",
+      "note": "Once per PROCESS, at the first live-lockstep frame of its first match, when the adaptive controller is on and lockstep_step_ms was NOT pinned: the START lookahead seeded from the lobby-measured RTT (mh_net_udp/lookahead_start.h: floor + 0.625 x the worst peer's SRTT, clamped to [floor, ceiling], needing AD_START_MIN_RTT_SAMPLES = 3 pings per peer). `rtt` is the SRTT it used, i.e. the transport's own end-to-end RFC 6298 estimate (on the relayed path too: the probe is sealed peer-to-peer). `seeded` = every peer measured; `partial` = some were, so the seed could only raise the fallback. The FALLBACK form, `; [adaptive] start N ms fallback -- no lobby RTT (reason, K peer(s), need 3 samples)`, means the configured start (SHIP 100) stands: the TCP transport (`transport cannot measure`) or too few lobby pings. Absent entirely = adaptive off, a pinned lookahead, or not the process's first match (the carried value is deliberately kept, mp:P11)."
+    },
+    {
+      "id": "net.adaptive_first_window",
+      "stream": "mh_net.log",
+      "emitter": "src/mh_dll/mh/seams/net_lockstep.cpp",
+      "emit": "; [adaptive] first-window t=%lu at %ld ms -> %ld ms",
+      "tags": [
+        "adaptive"
+      ],
+      "needles": [
+        "; [adaptive] first-window "
+      ],
+      "fields": [
+        "t_ms",
+        "at_ms",
+        "want_ms",
+        "verdict",
+        "uncapped",
+        "late_tail95",
+        "late_n",
+        "late_peer",
+        "starved_ms",
+        "window_ms",
+        "post_spin_starved_ms",
+        "post_spin_window_ms",
+        "from_all_live_ms"
+      ],
+      "parsers": [],
+      "since": "mp:P14 (2026-09-24)",
+      "status": "live",
+      "note": "The FIRST decided window after T3c's warm-up, once per match, WHATEVER it decided -- the regular `lookahead A -> B ms` line is written only on a change, so with a correct start it would stay silent exactly on the window the opening stall lives in. `starved X/Y ms diag` is that window's PRE-rx_spin starved time (sampled at on_time_tick's top, before rx_spin drains RX; kept for comparability with every P1/P5 measurement). mp:P15 wave 7 added `post-spin A/B ms` -- time in frames whose sim could not fund its next sub-step even AFTER rx_spin (mh/seams/adaptive_window.h (2)); a phase-locked peer reads ~100% pre-spin and 0 post-spin while its clock runs at 1.00x -- and `window from all-live +W ms`, where the window opened relative to this peer's `[adaptive] all-peers-live` line (never negative: the window is restarted on that frame and the warm-up anchored on it). mp:P15's rig clause reads the POST-spin figure (<= 10% on both peers). `uncapped` marks mp:P12's full proportional first grow. Deliberately not in the `lookahead A -> B ms` shape, so mp_pacing_report's move count does not read it."
+    },
+    {
+      "id": "net.adaptive_all_peers_live",
+      "stream": "mh_net.log",
+      "emitter": "src/mh_dll/mh/seams/net_lockstep.cpp",
+      "emit": "; [adaptive] all-peers-live t=%lu peers=%d/%d (first live +%lu ms)%s",
+      "tags": [
+        "adaptive"
+      ],
+      "needles": [
+        "; [adaptive] all-peers-live "
+      ],
+      "fields": [
+        "t_ms",
+        "live_peers",
+        "expected_peers",
+        "since_first_live_ms",
+        "timeout"
+      ],
+      "parsers": [],
+      "since": "mp:P15 wave 7 (2026-09-24)",
+      "status": "live",
+      "note": "Once per match on EVERY peer (lockstep_log=1): the GetTickCount tick at which every other ALIVE && HUMAN player (llm_net_lockstep_count_active_players minus ourselves) has a PEER_HORIZON slot that has MOVED this match -- lateness_tick's own live test, so retail's unused 10 s sentinel slots never count. mp:P15's first window is measured from here: the adaptive window restarts on this frame and T3c's 1.5 s warm-up cannot start before it. The ` TIMEOUT -- roster count never reached, latched anyway` suffix means the count was not met within 5 s of the first live peer (a roster miscount must not switch the controller off); a TIMEOUT line voids a first-window reading."
+    },
+    {
+      "id": "net.late_order",
+      "stream": "mh_net.log",
+      "emitter": "src/mh_dll/mh/seams/net_seams.cpp",
+      "emit": "; [late-order] sender=%d exec=%s clock=%s committed=%s ms step=%ld",
+      "tags": [
+        "late-order"
+      ],
+      "needles": [
+        "; [late-order] "
+      ],
+      "fields": [
+        "sender",
+        "exec_ms",
+        "clock_ms",
+        "committed_ms",
+        "step",
+        "sub_ms",
+        "own",
+        "unit",
+        "code",
+        "n"
+      ],
+      "parsers": [],
+      "since": "mp:D30 (2026-09-24)",
+      "status": "live",
+      "note": "An order that reached this peer AFTER its sim had already run the step that should have released it: `!(exec > clock)` at receipt, release_due's own comparison, checked in MH_Seam_GameRecv before the game's dispatch enqueues it -- the one receive point both configurations share. Such an order runs one or more steps later here than on its sender, which is a desync unless the order happens to be a no-op repeat (D30's synth workload re-converged for exactly that reason). A CORRECT RUN PRINTS NONE, which is why the line is not gated on lockstep_log: its absence is the evidence. `committed` is this peer's committed limit at receipt -- a value above `exec` means the sender advertised a higher horizon earlier and stamped this order below it (G297). Capped at 200 lines per process; `n` keeps counting and the 200th line says the cap was reached."
+    },
+    {
+      "id": "net.monotone_hold",
+      "stream": "mh_net.log",
+      "emitter": "src/mh_dll/mh/seams/net_lockstep.cpp",
+      "emit": "; [monotone] HOLD target=%ld ms sent=%ld ms clock=%ld ms step=%ld ms",
+      "tags": [
+        "monotone"
+      ],
+      "needles": [
+        "; [monotone] HOLD",
+        "; [monotone] RELEASE",
+        "; [monotone] OFF"
+      ],
+      "fields": [
+        "target_ms",
+        "sent_ms",
+        "clock_ms",
+        "step_ms",
+        "holds"
+      ],
+      "parsers": [],
+      "since": "mp:D30 (2026-09-24)",
+      "status": "live",
+      "note": "The monotone pin (mh::netstats::monotone_step) holding STEP_SIZE above the adaptive controller's target because a larger horizon is already on the wire: HOLD when it starts, RELEASE when the clock has caught up and STEP_SIZE is back on the target (`holds` = pins spent holding so far this process). Every controller SHRINK should produce one HOLD/RELEASE pair; a HOLD with no RELEASE for seconds means something keeps stamping at the held value (the per-step re-pin MH_Lockstep_StepPin is not running). `OFF` is printed once at arm time when `[net] horizon_monotone=0` -- the pre-D30 control arm, never a shipped setting."
+    },
+    {
       "id": "net.udp_counters",
       "stream": "mh_net.log",
       "emitter": "src/mh_dll/mh_net_udp/udp_endpoint.cpp",
@@ -2263,6 +2427,28 @@
       "since": "mp:T1, per-peer fields at mp:SES6",
       "status": "live",
       "note": "The 10 s aggregate-counters line (timer_loop): printed only when a counter moved since the last tick (SES5's log-diet ruling -- an idle link stays silent). mp:SES6 appended ONE REPEATING SEGMENT PER ACTIVE CONN after the fixed fields above (built into a separate buffer and passed as the trailing `%s`): ` | peer<peer_id> data_rx_age <data_rx_age_ms|-1> data_tx_age <data_tx_age_ms|-1> data_rx_bytes <data_rx_bytes> data_tx_bytes <data_tx_bytes> horizon_ms <horizon_ms|-1>`, one such segment per active connection, so a 2-peer host's line carries at most one and a client's exactly one. -1 on an age column = no FLAG_DATA seen yet in that direction on that conn (a sentinel, not a real elapsed time); -1 on horizon_ms = mh.dll has never pushed one for this peer (no lockstep seam bound -- config (1) with no libmh, or a bare net_selftest.exe run -- see net_lockstep.cpp's MH_Net_SetPeerHorizon call site in lateness_tick). `data_rx_age`/`data_tx_age` are narrower than the aggregate `dgram tx/rx` fields above and the pre-existing per-conn `last_rx` (both move on ANY accepted packet, keepalives included) -- these two move ONLY on FLAG_DATA, which is the whole point: a peer whose sim stopped sending game data shows `data_rx_age` climbing while `data_tx_age` stays ~0 and `horizon_ms` frozen, readable off ONE side's mh_net.log alone (2026-09-20 report §8's instrument ask, §9.3's cross-matching need)."
+    },
+    {
+      "id": "net.udp_backpressure",
+      "stream": "mh_net.log",
+      "emitter": "src/mh_dll/mh_net_udp/udp_endpoint.cpp",
+      "emit": "net: udp conn %d back-pressure released after %u ms -- peak %u B queued behind a full ",
+      "tags": [],
+      "needles": [
+        "back-pressure released after "
+      ],
+      "fields": [
+        "conn",
+        "duration_ms",
+        "peak_bytes",
+        "window_segments",
+        "bundled_segments",
+        "episodes"
+      ],
+      "parsers": [],
+      "since": "mp:T4b (2026-09-24)",
+      "status": "live",
+      "note": "One back-pressure EPISODE ended on this conn: a write found the 1024-segment send window full (the peer's acknowledgements behind), the bytes waited in the per-peer backlog (bounded at 256 KiB) instead of the pre-T4b link drop (`outbound stream ran a full window ahead`, gone), and the backlog has now drained. `duration_ms` is how long bytes waited, `peak_bytes` the most queued, `bundled_segments` how many full 254-byte segments the backlog was cut into (many small frames each). Rate-limited to one line a second per endpoint; `episodes` is how many episodes the line stands for (1 = just this one). A run that never prints it never filled the window. The two drops T4b kept are separate lines (`udp conn N dropped -- ...`): `the peer acknowledged nothing for N ms` (the frontier stopped for the link timeout while data was outstanding) and `the outbound backlog overflowed` (the size bound)."
     },
     {
       "id": "net.udp_rtt_sample",
@@ -2633,6 +2819,75 @@
       "note": "Progress, every `[harness] snapshot_log` steps and only while a transfer is actually in flight (state != IDLE). A 30-60 s transfer is otherwise silent, and a silent minute is indistinguishable from a stalled one."
     },
     {
+      "id": "harness.snap_bench",
+      "stream": "mh_harness.log",
+      "emitter": "src/mh_dll/mh_harness/harness.cpp",
+      "emit": "; SNAP BENCH step=",
+      "tags": [],
+      "needles": [
+        "; SNAP BENCH"
+      ],
+      "fields": [
+        "step",
+        "n",
+        "ok",
+        "fail",
+        "bytes",
+        "min_us",
+        "median_us",
+        "max_us"
+      ],
+      "parsers": [],
+      "since": "mp:X6",
+      "status": "live",
+      "note": "`[harness] snap_bench=N` -- N calls to `w::capture()` into ONE already-allocated buffer, no disk I/O and no HeapAlloc inside the timed loop, min/median/max in whole microseconds (wsprintfA has no %f). Separates the RAM-only capture cost from world_snapshot_capture's disk-inclusive figure (X4). No parser reads it yet; it is read by a person, same footing as net.snapshot_send_armed below."
+    },
+    {
+      "id": "harness.world_import_at_rep",
+      "stream": "mh_harness.log",
+      "emitter": "src/mh_dll/mh_harness/harness.cpp",
+      "emit": "; WORLD IMPORT AT step=",
+      "tags": [],
+      "needles": [
+        "; WORLD IMPORT AT "
+      ],
+      "fields": [
+        "step",
+        "rep",
+        "bytes",
+        "blobstep",
+        "us"
+      ],
+      "parsers": [],
+      "since": "mp:X7",
+      "status": "live",
+      "note": "`[harness] world_import_at=N` -- one row per repeat (>= `world_import_n`, default 3) of re-importing g_world_out IN-PROCESS via libmh_import_world, QPC-timed. The REFUSED variant (rc!=WORLD_OK) shares the prefix on purpose, same reason harness.snapshot_send documents. Followed by one `; WORLD IMPORT AT BENCH` summary row (min/median/max) and, on the last successful rep, the EXISTING SNAPIMP row + `; SNAPSHOT IMPORT HASHES` line (reused verbatim from snapshot_poll_now -- see harness.snapshot_import_row / harness.snapshot_import_hashes) as the determinism witness."
+    },
+    {
+      "id": "harness.world_import_at_bench",
+      "stream": "mh_harness.log",
+      "emitter": "src/mh_dll/mh_harness/harness.cpp",
+      "emit": "; WORLD IMPORT AT BENCH step=",
+      "tags": [],
+      "needles": [
+        "; WORLD IMPORT AT BENCH"
+      ],
+      "fields": [
+        "step",
+        "n",
+        "ok",
+        "fail",
+        "bytes",
+        "min_us",
+        "median_us",
+        "max_us"
+      ],
+      "parsers": [],
+      "since": "mp:X7",
+      "status": "live",
+      "note": "The X7 summary row over the `; WORLD IMPORT AT step=... rep=...` rows above -- the number mp-restoration memo section 3.3's 'restore charged at the save's cost' assumption gets replaced by, once a rig run has produced one."
+    },
+    {
       "id": "net.snapshot_send_armed",
       "stream": "mh_net.log",
       "emitter": "src/mh_dll/mh_net_udp/udp_transport.cpp",
@@ -2797,6 +3052,29 @@
       "note": "`RD <step> units=<16hex> buildings=... ` -- one FNV-1a-64 fold per sub-domain over its UNEXCLUDED member regions only, taken from the same per[] the R row and the desync sample are built from. The complement of the R row rather than a duplicate of it: R is 61 columns and over a kilobyte, so it is sampled every `region_hash_step` steps (fine in space, coarse in time); RD is nine folds and is meant to run at `domain_hash_step=1` (coarse in space, fine in time). Together they answer which subsystem and on exactly which step, which neither answers alone. A domain with no unexcluded member prints `-`."
     },
     {
+      "id": "harness.config_line",
+      "stream": "mh_harness.log",
+      "emitter": "src/mh_dll/mh_harness/config1.h",
+      "emit": "; [harness] configuration ",
+      "tags": [
+        "harness"
+      ],
+      "needles": [
+        "^; \\[harness\\] configuration \\(([12])\\):.*\\bmanifest fp=([0-9A-Fa-f]{8})\\b"
+      ],
+      "fields": [
+        "configuration",
+        "manifest_fp"
+      ],
+      "parsers": [
+        "tools/mp_analyze.py:parse_harness",
+        "tools/test_ui.py:peer_harness_config"
+      ],
+      "since": "mp:D29",
+      "status": "live",
+      "note": "Written once per run right after the step-1 inbound census (i.e. OUTSIDE check_arm_order's arm window), in BOTH configurations: which registry the per-step hash read through (configuration (1) = no libmh.dll, mh.dll's own table, spine-free; (2) = libmh.dll's), how many hash slices were rebased / owned / uncovered, and the hash-manifest fingerprint (HASH_MANIFEST_FP, region_view.h). mp_analyze REFUSES a pair whose fingerprints differ; det_run_report's `configs` requires each peer's configuration. mp_analyze reads it with HARNESS_CONFIG_RE, and test_ui imports that regex, so the two readers cannot drift."
+    },
+    {
       "id": "net.rx_garbled",
       "stream": "mh_net.log",
       "emitter": "src/mh_dll/libmh/lockstep/rx_dispatch.cpp",
@@ -2816,26 +3094,57 @@
       ],
       "parsers": [
         "tools/check_graceful_quit.py:check",
-        "tools/check_transport_death.py:check"
+        "tools/check_transport_death.py:check",
+        "tools/check_gone_peer_guard.py:check"
       ],
       "since": "mp:U19e",
       "status": "live",
       "note": "The unknown-outer-tag arm of the promoted dispatcher (handle_garbled) is the ONLY producer of outcome 7 (NETWORK_ERROR) in the lockstep closure, and a clean 2-player quit was seen raising it. The line names the offending tag byte, its offset in the datagram, the datagram length and the head bytes, so a survivor's log says WHICH record framing went wrong instead of leaving it to be inferred from the dialog text."
     },
     {
-      "id": "net.gone_peer_frame_guard_inert",
+      "id": "net.gone_peer_frame_guard_install",
       "stream": "mh_net.log",
       "emitter": "src/mh_dll/mh/seams/net_lockstep.cpp",
-      "emit": "; gone_peer_frame_guard=1 but INERT",
+      "emit": "; gone-peer frame guard: %s (MP U19i)\\n",
       "tags": [],
       "needles": [
-        "gone_peer_frame_guard=1 but INERT"
+        "gone-peer frame guard: PATCHED",
+        "gone-peer frame guard: DISPLACED",
+        "gone-peer frame guard: MISMATCHED"
       ],
-      "fields": [],
-      "parsers": [],
-      "since": "mp:U19e",
+      "fields": [
+        "outcome"
+      ],
+      "parsers": [
+        "tools/check_gone_peer_guard.py:check"
+      ],
+      "since": "mp:U19i",
       "status": "live",
-      "note": "The U19e guard is a reimpl-only fix with no byte-patch carrier and an ini default of 1, so the case worth saying out loud is the one where it cannot act: a run with the lockstep promotion off executes retail's dispatch_packet and still lets a leader's drop re-broadcast overwrite the datagram it is dispatching."
+      "note": "Boot line of gone_peer_frame_guard's byte-patch carrier (the splice over llm_net_lockstep_dispatch's kick re-broadcast @0x0049c330). Configuration (1) reads PATCHED; a promoted dispatch reads DISPLACED (the body carries the guard); MISMATCHED is a wrong image and also writes an UNCARRIED FIX line. Absent when [net] gone_peer_frame_guard=0. Replaces U19e's `gone_peer_frame_guard=1 but INERT` line, which the carrier made false."
+    },
+    {
+      "id": "net.gone_peer_frame_guard_fired",
+      "stream": "mh_net.log",
+      "emitter": "src/mh_dll/mh/seams/net_lockstep.cpp",
+      "emit": "; [net] gone-peer frame guard FIRED #%u: kick re-broadcast for side %d, datagram (%u bytes) restored\\n",
+      "tags": [
+        "net"
+      ],
+      "needles": [
+        "gone-peer frame guard FIRED"
+      ],
+      "fields": [
+        "fire_no",
+        "side_id",
+        "restored_bytes"
+      ],
+      "parsers": [
+        "tools/check_graceful_quit.py:check",
+        "tools/check_gone_peer_guard.py:check"
+      ],
+      "since": "mp:U19i",
+      "status": "live",
+      "note": "The carrier's thunk ran: the leader received a frame from a peer it had already written off, re-broadcast the drop, and put the datagram back. Capped at the first 4 per process. The positive evidence that a configuration-(1) clean quit went through the carrier rather than never reaching it; a promoted run never prints it (its guard is the body's)."
     },
     {
       "id": "net.u19d_outcome_correction",
@@ -2849,7 +3158,8 @@
       "fields": [],
       "parsers": [
         "tools/check_graceful_quit.py:check",
-        "tools/check_transport_death.py:check"
+        "tools/check_transport_death.py:check",
+        "tools/check_gone_peer_guard.py:check"
       ],
       "since": "mp:U19d",
       "status": "live",
@@ -2878,6 +3188,28 @@
       "since": "mp:U41",
       "status": "live",
       "note": "The inbound queue's per-MATCH rollup: current depth per lane, the high-water each lane reached, how many superseded horizons lane H evicted and how many real inputs lane M refused. Emitted on the [desync] STATUS cadence (~50 s) and once more at net_reset, so a match shorter than that cadence still leaves exactly one line. Both counters and both high-waters are cleared with the lanes at net_reset, so a second match in the same process reports its own numbers."
+    },
+    {
+      "id": "net.queue_match_boundary",
+      "stream": "mh_net.log",
+      "emitter": "src/mh_dll/mh_net/net_transport.cpp",
+      "emit": "net: match boundary -- inbound queue counters restarted",
+      "tags": [],
+      "needles": [
+        "net: match boundary -- inbound queue counters restarted"
+      ],
+      "fields": [
+        "frames_carried_over",
+        "epoch",
+        "post_reset_evicted",
+        "post_reset_refused"
+      ],
+      "parsers": [
+        "tools/check_queue_rollups.py:check_peer"
+      ],
+      "since": "mp:U41b",
+      "status": "live",
+      "note": "MH_Net_QueueMatchBoundary's own line, immediately after the finished match's net.queue_rollup line: the queue keeps its frames (this is the match boundary, not net_reset's transport boundary) and restarts its per-match counters. mp:U41d ADDED the trailing epoch/post-reset fields to a line that already existed -- `; epoch %u, post-reset evicted %ld / refused %ld` -- so an OLDER captured log (before 2026-09-24) still matches this format with those three fields absent (check_queue_rollups.py's RE_BOUNDARY makes the group optional and reads such a peer by the old magnitude rule). `epoch` is `lane_queue::epoch_` (mh_net_queue_policy.h), incremented ONLY inside `reset_counters()` -- nothing else can move it -- so it is proof the reset call itself ran, not merely that this line printed (the two had diverged: the line prints unconditionally once MH_Net_QueueMatchBoundary is reached, regardless of whether reset_counters() was reachable). post_reset_evicted/post_reset_refused are evicted()/refused() read back out AFTER reset_counters() zeroes them, under the same lock -- a second, independent proof the call ran."
     },
     {
       "id": "net.queue_lane_m_refused",
@@ -3281,7 +3613,24 @@
       ],
       "since": "mp:X2",
       "status": "live",
-      "note": "The host advertises NO content hash for this map, with the reason in the tail: the resource packs answer for the name (a stock map, install-identical by construction), or there is no readable loose file. Joiners then fall back to their own copy, which is the pre-X2 behaviour -- so this line is what tells a silent run apart from a broken one."
+      "note": "The host advertises NO content hash for this map, with the reason in the tail: the resource packs answer for the name (a stock map, install-identical by construction), or there is no readable loose file. Joiners then fall back to their own copy, which is the pre-X2 behaviour -- so this line is what tells a silent run apart from a broken one. Since mp:X2b the no-channel-C transport is NOT one of the reasons any more: TCP now claims too, and announces itself with `; [map] host nocarry` instead."
+    },
+    {
+      "id": "map.host_nocarry",
+      "stream": "mh_net.log",
+      "emitter": "src/mh_dll/mh/seams/map_transfer.cpp",
+      "emit": "; [map] host nocarry -- ",
+      "tags": [
+        "map"
+      ],
+      "needles": [
+        "; \\[map\\] host nocarry -- "
+      ],
+      "fields": [],
+      "parsers": [],
+      "since": "mp:X2b",
+      "status": "live",
+      "note": "Once per process, on a host whose transport has no channel C (TCP). The map claim is still advertised and joiners still report what they hold, but no transfer is ever armed; a joiner whose report disagrees makes the Start gate REFUSE by name. Replaces the X2-era `host noclaim -- this transport has no bulk channel` line, whose no-claim behaviour let a TCP pair desync on a same-named different map."
     },
     {
       "id": "map.peer",
@@ -3315,7 +3664,8 @@
         "map"
       ],
       "needles": [
-        "; \\[map\\] send armed to peer (\\d+) '(.+?)' \\((\\d+) B"
+        "; \\[map\\] send armed to peer (\\d+) '(.+?)' \\((\\d+) B",
+        "; \\[map\\] send WITHDRAWN for peer (\\d+) '(.+?)'"
       ],
       "fields": [
         "peer",
@@ -3327,7 +3677,7 @@
       ],
       "since": "mp:X2",
       "status": "live",
-      "note": "A map transfer armed over channel C (mp:X1's snapshot pipeline carrying a file instead of a world), plus the refusal and re-arm variants. One at a time per link. The `--expect-nothing` arm of the post_check asserts this line's ABSENCE, and only beside a positive `peer ... holds the map`, so that absence is never read alone."
+      "note": "A map transfer armed over channel C (mp:X1's snapshot pipeline carrying a file instead of a world), plus the refusal and re-arm variants. One at a time per link. mp:T6 adds `send WITHDRAWN for peer <n> '<name>'`: the pump chose and reserved that peer, then before sending saw that the peer had reported the map (or left), so it sent nothing. The `--expect-nothing` arm of the post_check asserts this line's ABSENCE, and only beside a positive `peer ... holds the map`, so that absence is never read alone."
     },
     {
       "id": "map.start_gate",
@@ -3338,7 +3688,8 @@
         "map"
       ],
       "needles": [
-        "; \\[map\\] start REFUSED -- waiting for '(.+?)'"
+        "; \\[map\\] start REFUSED -- waiting for '(.+?)'",
+        "; \\[map\\] start REFUSED -- '(.+?)' holds a different (.+?) and this transport cannot carry maps"
       ],
       "fields": [
         "peer"
@@ -3348,7 +3699,28 @@
       ],
       "since": "mp:X2",
       "status": "live",
-      "note": "The Start gate CLOSING, logged on the edge rather than per lobby frame -- at frame rate the same fact sixty times a second is unreadable. Paired with `; [map] start OK` on the opening edge. The lobby's own status line carries the same sentence for the player; this is the machine-readable half."
+      "note": "The Start gate CLOSING, logged on the edge rather than per lobby frame -- at frame rate the same fact sixty times a second is unreadable. Paired with `; [map] start OK` on the opening edge. The lobby's own status line carries the same sentence for the player; this is the machine-readable half. mp:X2b adds the TCP variant (`start REFUSED -- '<peer>' holds a different <map> and this transport cannot carry maps`): on a link without channel C a mismatch is a REFUSAL rather than a wait, because nothing will ever arrive; the lobby notice says so instead of promising a download."
+    },
+    {
+      "id": "map.start_click_refused",
+      "stream": "mh_net.log",
+      "emitter": "src/mh_dll/mh/seams/map_transfer.cpp",
+      "emit": "; [map] start CLICK REFUSED -- ",
+      "tags": [
+        "map"
+      ],
+      "needles": [
+        "; \\[map\\] start CLICK REFUSED -- '(.+?)'"
+      ],
+      "fields": [
+        "peer"
+      ],
+      "parsers": [
+        "tools/check_map_transfer.py:main"
+      ],
+      "since": "mp:X2b",
+      "status": "live",
+      "note": "The ENFORCEMENT half of the Start gate (Wave 2, 2026-09-23): the host's Start was ACTIVATED while the gate was shut and launch.cpp's begin_map_load hook swallowed it. Needed because retail re-derives the Start widget's DISABLED bit every lobby frame, so the greyed look alone let a click through (dead-ends G291). One line per refused click; check_map_transfer --expect-refused requires it, so a run where nobody clicked cannot pass as a refusal."
     },
     {
       "id": "map.client",
@@ -3361,7 +3733,8 @@
       "needles": [
         "; \\[map\\] client want (.+?) sha=([0-9a-f]{16}) size=(\\d+)",
         "; \\[map\\] client resolve missing",
-        "; \\[map\\] client stored (.+?) \\((\\d+) B, sha=([0-9a-f]{16})\\)"
+        "; \\[map\\] client stored (.+?) \\((\\d+) B, sha=([0-9a-f]{16})\\)",
+        "; \\[map\\] client resolve stored (mh_dl\\\\.+?) -- redirecting (.+?) to it"
       ],
       "fields": [
         "map",
@@ -3370,11 +3743,12 @@
         "stored"
       ],
       "parsers": [
-        "tools/check_map_transfer.py:main"
+        "tools/check_map_transfer.py:main",
+        "tools/check_map_redirect.py:main"
       ],
       "since": "mp:X2",
       "status": "live",
-      "note": "The joiner's side, in order: `want` (what the advert requires), `resolve base|stored|missing` (decided by HASHING the candidates, never by their names), `stored` (the download written under its content-addressed name), and the `REFUSED`/`BLOCKED` variants. The stored NAME is asserted to be the `<stem>.<16 hex>.<ext>` form, because writing under the base name is the one failure every other line in a run would look identical through."
+      "note": "The joiner's side, in order: `want` (what the advert requires), `resolve base|stored|missing` (decided by HASHING the candidates, never by their names), `stored` (the download written under its content-addressed name), and the `REFUSED`/`BLOCKED` variants. The stored NAME is asserted to be the `<stem>.<16 hex>.<ext>` form, because writing under the base name is the one failure every other line in a run would look identical through. The `resolve stored ... -- redirecting` line (the redirect actually being ARMED, mp:X2a) is only READ by check_map_redirect.py -- on a local lane the client's base file IS the host's content (Maps is a symlink), so a broken redirect would still open matching bytes and check_map_transfer's other clauses would still pass; X2a's two independent VMs make this line the one that would go missing."
     },
     {
       "id": "map.local_sample",
@@ -3567,7 +3941,9 @@
         "count",
         "last_horizon_ms"
       ],
-      "parsers": [],
+      "parsers": [
+        "tools/check_gone_peer_guard.py:check"
+      ],
       "since": "mp:SES5",
       "status": "live",
       "note": "mp:SES5 decision (1): the per-packet `; GameRecv sender=%d len=%d type=0x%02x` line (unregistered free-form, unchanged for every OTHER in-game type, and for `GameRecv DROP`) was 95.7 MB of a measured 96 MB / 43-minute match -- the 50 ms horizon-extend heartbeat (type=0x02), logged once per packet at ~700/s. Rolled up to one line per sender per second: count of type=0x02 packets since the last flush + the last horizon value seen (ms). `GameRecv DROP` and every other in-game type (0x01/0x03/0x04/0x05) are untouched -- tools/check_graceful_quit.py:409 greps `GameRecv ... type=0x04`, which still fires per packet."
@@ -3714,7 +4090,7 @@
       "id": "net.resync_barrier_begin",
       "stream": "mh_net.log",
       "emitter": "src/mh_dll/mh/seams/net_lockstep.cpp",
-      "emit": "; [resync] barrier #%u BEGIN (count was %u, threshold %u, countdown %d) flags=0x%02x\\n",
+      "emit": "; [resync] barrier #%u BEGIN (count was %u, live %u, threshold %u, countdown %d) ",
       "tags": [
         "resync"
       ],
@@ -3725,6 +4101,7 @@
       "fields": [
         "barrier_no",
         "count_before",
+        "count_live",
         "threshold",
         "countdown",
         "status_flags"
@@ -3734,7 +4111,7 @@
       ],
       "since": "mp:P9 (2/2) watch v2",
       "status": "live",
-      "note": "RESYNC_IN_PROGRESS (0x00e587ad) sampled 0 -> 1 between two frames: force_resync's one-shot fired, i.e. one mode-8 barrier BEGAN. THE PRIMARY barrier witness since watch v2 -- the counter-drop `resync_fired` line cannot see a threshold-0 fire (the count goes 0->1->0 inside one call). `count was` is the previous frame's RESYNC_TRIGGER_COUNT; `flags` is _G_LLM_NET_LOCKSTEP_STATUS_FLAGS (bit 0x40 rides with the barrier on every peer). Written on BOTH peers (the receiver's dispatch inner 0xd sets the same flag)."
+      "note": "RESYNC_IN_PROGRESS (0x00e587ad) sampled 0 -> 1 between two frames: force_resync's one-shot fired, i.e. one mode-8 barrier BEGAN. THE PRIMARY barrier witness since watch v2 -- the counter-drop `resync_fired` line cannot see a threshold-0 fire (the count goes 0->1->0 inside one call). `count was` is the previous frame's RESYNC_TRIGGER_COUNT; `flags` is _G_LLM_NET_LOCKSTEP_STATUS_FLAGS (bit 0x40 rides with the barrier on every peer). Written on BOTH peers (the receiver's dispatch inner 0xd sets the same flag). mp:P9D (2026-09-23) added `live %u` after `count was`: the counter read on the BEGIN frame itself. force_resync zeroes the count as its first act, so a genuine fire reads `count was 199, live 0` -- a sampler straddle, not a low fire -- on one line. check_resync_storm takes `live` as an OPTIONAL group, so pre-P9D archives (no `live`) still parse."
     },
     {
       "id": "net.resync_barrier_end",
@@ -3923,7 +4300,8 @@
         "timeout_ms"
       ],
       "parsers": [
-        "tools/check_data_timeout.py:check"
+        "tools/check_data_timeout.py:check",
+        "tools/check_gone_peer_guard.py:check"
       ],
       "since": "mp:GS2",
       "status": "live",

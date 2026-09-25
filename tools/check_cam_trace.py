@@ -181,6 +181,46 @@ def analyse(samples, quiet_lines):
     }
 
 
+def held_run(samples, letter):
+    """mp:SES3c -- the KEYBOARD counterpart of `analyse()`'s pinned-edge run, for `--expect-held`.
+
+    The mouse-edge clause (`--expect-pinned`) also requires the camera to be MOVING and the cursor
+    to sit at one fixed position -- neither applies to a keyboard hold, whose only claim is "the
+    HELD bit for this letter stayed set across >= N consecutive samples, and later cleared". So this
+    does not reuse `analyse()`'s `pinned` run at all; it is its own, narrower measurement over the
+    `held=` column alone.
+
+    The done_when's "with cam moving" clause IS checked (Wave 2 fix): `cam` sums the run's camd
+    column, and the caller requires it > 0 -- a latch that is held but scrolls nothing is the
+    latch-with-no-effect shape the mouse-edge arm already refuses.
+
+    Returns (best_run, cleared): `best_run` is {"n", "from", "to", "cam"} for the longest consecutive
+    stretch of samples with `letter` in the held set (n=0 if it was never set at all); `cleared` is
+    True iff some sample AFTER that stretch ends has `letter` absent from the held set (the release).
+    """
+    best = {"n": 0, "from": 0, "to": 0, "cam": 0}
+    run = None
+    end_i = None
+    for i, s in enumerate(samples):
+        is_set = letter in set_letters(s["held"])
+        if run and is_set:
+            run["n"] += 1
+            run["to"] = s["f"]
+            run["to_i"] = i
+            run["cam"] += s["camd"]
+        elif is_set:
+            run = {"n": 1, "from": s["f"], "to": s["f"], "to_i": i, "cam": s["camd"]}
+        else:
+            run = None
+        if run and run["n"] > best["n"]:
+            best = {"n": run["n"], "from": run["from"], "to": run["to"], "cam": run["cam"]}
+            end_i = run["to_i"]
+    cleared = False
+    if end_i is not None:
+        cleared = any(letter not in set_letters(s["held"]) for s in samples[end_i + 1 :])
+    return best, cleared
+
+
 def report(a, di):
     out = []
     out.append(
@@ -257,6 +297,30 @@ def check(run_dir, args):
         fails.append(
             "expected exactly one `; [input] di_keyboard=` line per run, found %d" % len(di)
         )
+    if getattr(args, "expect_held", None):
+        letter = args.expect_held
+        held_min = getattr(args, "expect_held_min", 3) or 3
+        run, cleared = held_run(samples, letter)
+        lines.append(
+            "  longest %s-HELD run: %d samples, f=%d..%d, camd sum %d, cleared after: %s"
+            % (letter, run["n"], run["from"], run["to"], run["cam"], cleared)
+        )
+        if run["n"] < held_min:
+            fails.append(
+                "expected the %s held latch set over >= %d consecutive samples; longest was %d"
+                % (letter, held_min, run["n"])
+            )
+        elif run["cam"] <= 0:
+            fails.append(
+                "the %s held latch was set for %d samples but the camera never moved (camd sum 0)"
+                % (letter, run["n"])
+            )
+        elif not cleared:
+            fails.append(
+                "the %s held latch was set for %d samples (f=%d..%d) and never observed clearing "
+                "afterwards -- keyhold's UP either did not fire or did not reach the latch"
+                % (letter, run["n"], run["from"], run["to"])
+            )
     for ln in lines:
         print(ln)
     for f in fails:
@@ -291,11 +355,35 @@ def _rows(seq):
     return out
 
 
+def _rows_held(seq):
+    """seq of (f, cur, held, camd) -> log rows, edge fixed clear -- exercises held= alone (SES3c)."""
+    out = []
+    for f, cur, held, camd in seq:
+        out.append(
+            SAMPLE_FMT % (f, 0, cur[0], cur[1], cur[0], cur[1], "----", held, 40 + camd, 10, camd)
+        )
+    return out
+
+
 class _A(object):
     expect_pinned = 3
     expect_rise_fall = True
     max_lines_per_frame = 1.0
     expect_di = True
+    expect_held = None
+    expect_held_min = 3
+
+
+class _K(object):
+    """mp:SES3c -- the `--expect-held L --expect-held-min 3` arm, isolated from the mouse-edge
+    clauses (which a held-only log, all edge=----, would otherwise fail vacuously)."""
+
+    expect_pinned = 0
+    expect_rise_fall = False
+    max_lines_per_frame = None
+    expect_di = False
+    expect_held = "L"
+    expect_held_min = 3
 
 
 def selftest():
@@ -369,6 +457,33 @@ def selftest():
             "  selftest %-58s want=1 got=%d %s"
             % ("missing di_keyboard line", got, "ok" if ok else "MISMATCH")
         )
+        # mp:SES3c -- `--expect-held`, the keyhold scenario's own clause, isolated from every
+        # mouse-edge one (di=on is still asserted by SAMPLE_FMT/parse(); di_lines() is only
+        # consulted when --expect-di is set, which _K leaves off).
+        held_cases = [
+            ("L held exactly 3 samples then clears", [("L", 3, True)], 0),
+            ("L held only 2 samples then clears -- under the min", [("L", 2, True)], 1),
+            ("L held 3 samples and never clears", [("L", 3, False)], 1),
+            ("L never held at all", [("L", 0, False)], 1),
+            ("L held 3 samples, clears, camera never moves", [("L", 3, True, 0)], 1),
+        ]
+        for hi, (label, spec, want) in enumerate(held_cases):
+            letter, n, clears = spec[0][:3]
+            camd = spec[0][3] if len(spec[0]) > 3 else 1
+            seq = [(i + 1, (320, 240), letter + "---", camd) for i in range(n)]
+            if clears:
+                seq.append((n + 1, (320, 240), "----", 0))
+            if not seq:
+                seq = [(1, (320, 240), "----", 0)]
+            d = os.path.join(td, "held_%d" % hi)
+            _write(d, _rows_held(seq))
+            got = check(d, _K())
+            ok = got == want
+            rc |= 0 if ok else 1
+            print(
+                "  selftest %-58s want=%d got=%d %s"
+                % (label, want, got, "ok" if ok else "MISMATCH")
+            )
     print("check_cam_trace --selftest: %s" % ("PASS" if rc == 0 else "FAIL"))
     return rc
 
@@ -403,6 +518,20 @@ def main():
         "--expect-di",
         action="store_true",
         help="require exactly one `; [input] di_keyboard=` line in this run's mh_net.log (U25)",
+    )
+    ap.add_argument(
+        "--expect-held",
+        default=None,
+        metavar="L|R|U|D",
+        help="mp:SES3c: require the keyboard HELD latch for this letter set over >= "
+        "--expect-held-min consecutive samples with the camera moving, then cleared",
+    )
+    ap.add_argument(
+        "--expect-held-min",
+        type=int,
+        default=3,
+        metavar="N",
+        help="--expect-held: minimum consecutive samples (default 3)",
     )
     ap.add_argument("--selftest", action="store_true", help="planted logs: every negative goes RED")
     args = ap.parse_args()

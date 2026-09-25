@@ -19,4 +19,8 @@
 # leaves ~75s of margin past that measurement before the blackhole starts, so it cannot race either
 # n1_hud capture even under load; it never turns back off, because the script ends shortly after the
 # stall frame is captured.
+#
+# GATE DIET BLOCK 2 (2026-09-24): now the FALLBACK. net_hud's `shim_triggers` (tools/test_ui.py) sends
+# the same `blackhole s2c` as soon as both peers have logged their n1_hud capture (~31 s after the
+# host is up, measured), so the client no longer idles ~250 s waiting for this line.
 300000  blackhole s2c

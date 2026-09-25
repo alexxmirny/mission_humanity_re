@@ -54,6 +54,7 @@
 #include "include/mh_run_context.h"        // MH_RunDir (per-run log folder), MH_ExeDir (config inputs)
 #include "include/mh_log_rotate.h"         // SES2: the shared size cap + one-generation rotation
 #include "addr/mh_addrs.gen.h"             // generated EN VAs (tools/gen_dll_addrs.py)
+#include "../../mh_net_udp/udp_stats.h"    // mp:D30: mh::netstats::order_is_late
 #include "addr/mh_patches.gen.h"           // promotable-function extents (the C1 interlock table)
 #include "addr/mh_tombstones.gen.h"        // ledger-dead body extents (the X-TOMB dead table)
 #include "include/mh_hostapi_bind.h"       // LIB-ABI: the thunk-backed host-callback table (mh.dll's host half)
@@ -625,9 +626,15 @@ __declspec(naked) void session_begin_multi_detour() {
 // `calls.sim_step` edge is dead there, because llm_strat_sim_tick is not in the default
 // `[promote] lockstep` closure. Same 8-byte prologue steal + naked shape as the harness's own
 // detour; the CMP-free tail means the flags POPFD restored are the ones the prologue sees.
-constexpr uintptr_t    ADDR_DESYNC_SIM_STEP = mh::addr::llm_strat_sim_step;
-void                  *g_desync_tramp       = nullptr;
-void                   on_desync_sim_step() { mh::desync::on_sim_step(); }
+constexpr uintptr_t ADDR_DESYNC_SIM_STEP = mh::addr::llm_strat_sim_step;
+void               *g_desync_tramp       = nullptr;
+} // namespace
+extern "C" void MH_Lockstep_StepPin(void); // net_lockstep.cpp, mp:D30
+namespace {
+void on_desync_sim_step() {
+    MH_Lockstep_StepPin(); // mp:D30 -- re-pin the lookahead at this step's clock (ship path)
+    mh::desync::on_sim_step();
+}
 __declspec(naked) void desync_sim_step_detour() {
     __asm {
         pushad
@@ -669,20 +676,37 @@ void install_desync_watch() {
     // conversion lands here. `point::sim_step_pre` forwards into mh::sim::set_sim_step_pre_hook
     // inside mh.dll and returns exactly what it returned -- including FALSE when the single-subscriber
     // slot is already taken, which is the branch the second log line below reports.
-    if (mh::sim::sim_step_promoted()) {
+    //
+    // mp:D32. `sim_step_promoted()` is true for EITHER of the root's two install routes, and only ONE
+    // of them leaves this entry with no feeder. `sim_step_promoted_via_rebind()` tells them apart:
+    // rebind means the determinism harness still owns llm_strat_sim_step's real entry and its own
+    // detour (harness.cpp on_sim_step) already calls mh::desync::on_sim_step_hashed unconditionally,
+    // before ever branching to the promoted body -- so chaining the pre-hook here too fed the detector
+    // TWICE per step (measured: "2999 steps seen" for a 1500-step run). Direct-install is the opposite:
+    // nothing else touches this entry, so the pre-hook is the ONLY feeder and must be chained. Checking
+    // the route here (rather than only relying on set_sim_step_pre_hook's own D32 refusal) is what lets
+    // this function log the TRUE reason instead of the generic "slot already taken" line, which would
+    // otherwise misreport a correctly-fed rebind run as "SAMPLING NOTHING".
+    if (mh::sim::sim_step_promoted() && !mh::sim::sim_step_promoted_via_rebind()) {
         if (mh::hook::register_callback(mh::hook::point::sim_step_pre, &on_desync_sim_step))
-            seam_log("; [desync] sim_step hook CHAINED onto the PROMOTED root -- llm_strat_sim_step's "
-                     "entry is ours this run ([promote] sim_step), so the sampler runs at the top of "
-                     "our body instead of from a trampoline. Same sampling point, same cadence.\n");
+            seam_log("; [desync] sim_step hook CHAINED onto the PROMOTED root (DIRECT ENTRY INSTALL) "
+                     "-- llm_strat_sim_step's entry is ours this run ([promote] sim_step) with no "
+                     "harness owning it, so the sampler runs at the top of our body instead of from a "
+                     "trampoline. Same sampling point, same cadence.\n");
         else
-            seam_log("; [desync] sim_step hook NOT installed -- the root is promoted but the pre-hook "
-                     "slot is already taken. THE DETECTOR IS ARMED AND SAMPLING NOTHING: treat a "
-                     "clean verdict from this run as no verdict at all.\n");
+            seam_log("; [desync] sim_step hook NOT installed -- the root is promoted (direct install) "
+                     "but the pre-hook slot is already taken. THE DETECTOR IS ARMED AND SAMPLING "
+                     "NOTHING: treat a clean verdict from this run as no verdict at all.\n");
         return;
     }
-    seam_log("; [desync] sim_step hook not installed -- the determinism harness owns that entry "
-             "this run and feeds the detector its own per-step hash instead (expected; the "
-             "reason is named in the [interlock] summary if it is anything else)\n");
+    seam_log(mh::sim::sim_step_promoted_via_rebind()
+                 ? "; [desync] sim_step hook not installed -- the root is promoted BY HARNESS REBIND, "
+                   "so the determinism harness's own detour still owns that entry and feeds the "
+                   "detector its own per-step hash before ever reaching our body (mp:D32: this is the "
+                   "ONLY feeder in this configuration, deliberately not doubled by the pre-hook above)\n"
+                 : "; [desync] sim_step hook not installed -- the determinism harness owns that entry "
+                   "this run and feeds the detector its own per-step hash instead (expected; the "
+                   "reason is named in the [interlock] summary if it is anything else)\n");
 }
 
 void build_paths() {
@@ -1588,6 +1612,76 @@ void gamerecv02_rollup(int sender, double horizon) {
     }
 }
 
+// ---- mp:D30 / mp:D31 -- the LATE ORDER line -----------------------------------------------------
+// An order is late when this peer's sim has already run the step that should have released it: the
+// sender released it at its first step with !(exec > clock), and so will we -- but one or more steps
+// later, because that step is behind us. That is a desync the moment the order does anything a step
+// later does differently (D30: the shrink that lowered the sender's horizon, dead-ends G297). The check
+// is here, at the ONE receive point both configurations share (the game's lockstep dispatch drains
+// every in-game datagram through this seam, retail's in configuration (1) and libmh's rx_dispatch in
+// the promoted build), BEFORE the dispatch hands the order to pending_enqueue. It walks the
+// datagram's leading MSG_ORDER (1 + 68 B) / MSG_HORIZON (1 + 8 B) records and stops at anything
+// else, because only those two have a fixed size.
+//   ; [late-order] sender=S exec=E.EEE clock=C.CCC committed=K.KKK ms step=N sub=M ms own=XXXX unit=U code=CC (mp:D30)
+// Logged unconditionally (not gated on lockstep_log): a correct run prints NONE, so the absence is the
+// evidence and must not depend on a diagnostic switch. Capped per process; the cap is on the line.
+constexpr int LATE_ORDER_LOG_CAP = 200;
+long          g_late_orders      = 0;
+
+static void fmt_ms3(char *out, double s) { // seconds -> "ms.uuu" without the CRT's %f
+    const double ms = s * 1000.0;
+    long         w  = (long)ms;
+    long         f  = (long)((ms - (double)w) * 1000.0 + 0.5);
+    if (f >= 1000) {
+        ++w;
+        f -= 1000;
+    }
+    if (f < 0) f = 0;
+    wsprintfA(out, "%ld.%03ld", w, f);
+}
+
+static void late_order_scan(int sender, const unsigned char *buf, int len) {
+    if (*(const uint8_t *)ADDR_SESSION_MODE != 3) return;
+    const double clock = *(const double *)ADDR_GAME_CLOCK;
+    int          off   = 0;
+    while (off < len) {
+        const unsigned char t = buf[off];
+        if (t == 1 && off + 1 + 68 <= len) {
+            double exec;
+            memcpy(&exec, buf + off + 1, sizeof(double));
+            if (mh::netstats::order_is_late(exec, clock)) {
+                ++g_late_orders;
+                if (g_late_orders <= LATE_ORDER_LOG_CAP) {
+                    const double committed =
+                        *(const double *)mh::state::live_base(mh::state::RID_STRAT_LOCKSTEP_COMMITTED_HORIZON);
+                    const double sub =
+                        *(const double *)mh::state::live_base(mh::state::RID_STRAT_SIM_STEP_INTERVAL);
+                    uint16_t unit, own, code;
+                    memcpy(&unit, buf + off + 1 + 0x08, 2);
+                    memcpy(&own, buf + off + 1 + 0x0a, 2);
+                    memcpy(&code, buf + off + 1 + 0x0e, 2);
+                    char e[24], c[24], k[24], b[256];
+                    fmt_ms3(e, exec);
+                    fmt_ms3(c, clock);
+                    fmt_ms3(k, committed);
+                    wsprintfA(b,
+                              "; [late-order] sender=%d exec=%s clock=%s committed=%s ms step=%ld sub=%ld ms "
+                              "own=%04X unit=%u code=%02X n=%ld%s (mp:D30)\n",
+                              sender, e, c, k, sub > 0.0 ? (long)(clock / sub + 0.5) : -1L,
+                              (long)(sub * 1000.0 + 0.5), (unsigned)own, (unsigned)unit, (unsigned)(code & 0xff),
+                              g_late_orders, g_late_orders == LATE_ORDER_LOG_CAP ? " -- cap reached, later ones counted only" : "");
+                    seam_log(b);
+                }
+            }
+            off += 1 + 68;
+        } else if (t == 2 && off + 1 + 8 <= len) {
+            off += 1 + 8;
+        } else {
+            break;
+        }
+    }
+}
+
 extern "C" int MH_Seam_GameRecv(int *out_sender, unsigned char *buf, int *inout_len) {
     lazy_start();                                     // idempotent (g_tried_init); starts the transport on the first frame
     const int cap = inout_len ? *inout_len : RX_SIZE; // game preloads capacity (0x3f8) in *inout_len
@@ -1599,6 +1693,7 @@ extern "C" int MH_Seam_GameRecv(int *out_sender, unsigned char *buf, int *inout_
         }
         if (len > 0 && is_ingame_type(buf[0])) { // a real in-game lockstep message
             if (inout_len) *inout_len = len;
+            late_order_scan(out_sender ? *out_sender : -1, buf, len); // mp:D30 -- both configurations
             if (g_ls_log) {
                 int sender = out_sender ? *out_sender : -1;
                 if (buf[0] == 2 && len >= 9) {

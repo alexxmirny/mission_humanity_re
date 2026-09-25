@@ -48,6 +48,7 @@
 #include "hook/detour.h"             // install_trampoline (shared inline-detour toolkit)
 #include "hook/watcall.h"            // call_watcall1 (Watcom __watcall(EAX) bridge)
 #include "tact/tact_mission_start.h" // mh::tact::mission_start -- the --tactical verb enters OURS
+#include "seams/map_transfer.h"      // mp:X2/X2b -- maps::host_start_blocked, the Start refusal
 
 using mh::hook::call_watcall1;
 using mh::hook::entry_claim; // U30: every install below names its claim and itself
@@ -1514,16 +1515,128 @@ void on_menu_tick() {
 
 // --skip-intro: end the mode-7 LOGO.AVI early. Runs at the top of each llm_intro_frame. On the FIRST
 // intro frame (DAT_00644633==0) we do nothing -- let the original run its one-time init (CD audio etc.)
-// AND open/start the movie (so no missing-file modal). On the NEXT frame (gate>0 = movie playing) we
-// call the game's own movie teardown (FUN_004c2d12: releases the AVI + runs any continuation) and clear
-// the pump pointer, so llm_intro_frame's else-branch advances to boot (mode 1) instead of waiting ~10s.
+// AND open/start the movie (so no missing-file modal). On a LATER frame (gate>0 = movie playing) we
+// call the game's own movie teardown (llm_ui_avi_close_return_to_menu: releases the AVI + runs any
+// continuation) and clear the pump pointer, so llm_intro_frame's else-branch advances to boot (mode 1)
+// instead of waiting ~10s.
+//
+// ---- mp:U21: WHICH later frame -- not before the movie's audio thread owns its sound buffer ------
+// The movie's first frame ends by starting llm_ui_avi_audio_playback_loop on its own thread
+// (llm_game_boot_async_thread_pump). That thread's FIRST act is
+//     IDirectSound::CreateSoundBuffer({..., lpwfxFormat = _G_LLM_AVI_PLAYER_CTX.fmt_header})
+// and fmt_header is the utils_malloc'd WAVEFORMAT that llm_ui_avi_stream_end utils_free's. Tearing
+// down on frame 2 -- which is what this hook did until 2026-09-24 -- lands 2 ms after that thread is
+// created: measured on 45/45 boots of rig peer B, CreateSoundBuffer returned 2-22 ms AFTER the teardown
+// had freed the format block it was reading. When the Watcom heap had already rewritten the freed
+// block's first bytes, wFormatTag stopped reading as PCM, DirectSound believed the cbSize word behind
+// it (0xA001) and memcpy'd sizeof(WAVEFORMATEX)+cbSize = 0xA013 bytes off the end of the heap region:
+// dsound.dll+0x1f3a3, the U21 crash (22 Application-log records 2026-07-25..09-24, all 1.0-2.75 s
+// after process start, all on the peer whose frame 2 comes soonest; EBX=0xA013 in all 5 captured
+// contexts). A human pressing Space cannot land inside that window, which is why retail never shows it.
+// The fix: tear down only once the thread is past the format read -- its buffer AND its PCM block
+// exist (the state a human skip meets), or it has already gone, or it never had anything to read.
+// See MH_Launch_IntroSkipReady for the decision table; the frame cap keeps a dead audio path from
+// turning --skip-intro into a hang.
+constexpr uintptr_t ADDR_AVI_AUDIO_STREAM = 0x0064463fu; // _G_LLM_AVI_PLAYER_CTX+0x04 (active_flag = PAVISTREAM)
+constexpr uintptr_t ADDR_DSOUND           = 0x006572b2u; // the game's IDirectSound*
+constexpr uintptr_t ADDR_AVI_DSBUF        = 0x006572ceu; // the movie audio IDirectSoundBuffer* (thread-written)
+constexpr uintptr_t ADDR_AVI_PCMBUF       = 0x0065f70fu; // the audio thread's 2-chunk PCM block (thread-written)
+constexpr uintptr_t ADDR_BOOT_TASK        = 0x0064485bu; // _G_LLM_BOOT_ASYNC_PUMP_FN: task, +0xc = thread id
+constexpr unsigned  INTRO_SKIP_CAP_MS     = 2000u;
+
+DWORD g_intro_wait_t0 = 0; // GetTickCount at the first frame we could have skipped on
+
+// The audio thread by id: the pump closes its own handle as soon as the thread exists (seen on every
+// rig boot), so the task's handle slot cannot say whether it is still running.
+int intro_audio_thread_alive() {
+    const DWORD tid = *(volatile const DWORD *)(ADDR_BOOT_TASK + 0xc);
+    if (tid == 0) return 0;
+    HANDLE h = OpenThread(SYNCHRONIZE, FALSE, tid);
+    if (h == nullptr) return 0;
+    const int alive = WaitForSingleObject(h, 0) == WAIT_TIMEOUT;
+    CloseHandle(h);
+    return alive;
+}
+
+// `[debug] u21_repro=N` -- the U21 REPRODUCTION arms, off by default; diagnostic only, never set in
+// a shipped ini. Both restore the pre-fix frame-2 teardown.
+//   1 = OBSERVE: read the audio format block's wFormatTag and the cbSize word behind it (a
+//       PCMWAVEFORMAT is 16 bytes, so DirectSound's cbSize read at +16 lands on whatever the heap put
+//       there) before the teardown, and the tag again after the teardown has utils_free'd the block.
+//       The crash needs a non-PCM tag; this shows what the free itself writes there.
+//   2 = FORCE: right after frame 1 has started the audio thread, suspend it, overwrite ONLY the tag
+//       with 0x0020 -- the word utils_free leaves there, per REPRO=1 -- and resume it -- the state a free landing before
+//       CreateSoundBuffer's format read produces. If the mechanism is right this turns the ~1% crash
+//       into a reliable one at dsound.dll+0x1f3a3 with EBX=0xA013 (18 + that cbSize), and the crash
+//       marker's stack sidecar names the audio thread and its CreateSoundBuffer call.
+constexpr uintptr_t ADDR_AVI_FMT_PTR = 0x006446d7u; // _G_LLM_AVI_PLAYER_CTX.fmt_header (audio WAVEFORMAT*)
+
+int g_u21_repro = -1; // [debug] u21_repro, read once
+
+int u21_repro() {
+    if (g_u21_repro < 0) g_u21_repro = ini_int("debug", "u21_repro", 0);
+    return g_u21_repro;
+}
+
+// Runs AFTER the original llm_intro_frame (intro_detour_repro only). Frame 1 is the one that starts
+// the audio thread, so this is the earliest point the thread id and the format pointer both exist.
+bool g_u21_forced = false;
+void on_intro_post() {
+    if (u21_repro() != 2 || g_u21_forced) return;
+    uint8_t    *fmt = *(uint8_t *volatile *)ADDR_AVI_FMT_PTR;
+    const DWORD tid = *(volatile const DWORD *)(ADDR_BOOT_TASK + 0xc);
+    if (fmt == nullptr || tid == 0) return;
+    g_u21_forced              = true;
+    HANDLE              h     = OpenThread(THREAD_SUSPEND_RESUME, FALSE, tid);
+    const DWORD         prev  = h ? SuspendThread(h) : (DWORD)-1;
+    const unsigned      tag   = *(volatile uint16_t *)fmt;
+    const unsigned      cb    = *(volatile uint16_t *)(fmt + 16);
+    const unsigned long dsb   = *(volatile const unsigned long *)ADDR_AVI_DSBUF;
+    *(volatile uint16_t *)fmt = 0x0020u; // wFormatTag: the value utils_free leaves there (REPRO=1)
+    if (h) {
+        ResumeThread(h);
+        CloseHandle(h);
+    }
+    lg("; --skip-intro: U21 REPRO=2 -- audio thread %lu %s, format %08lX tag %04X -> 0020, cbSize word "
+       "behind it %04X, dsbuf %s",
+       (unsigned long)tid, prev == (DWORD)-1 ? "NOT suspended" : "suspended", (unsigned long)(uintptr_t)fmt,
+       tag, cb, dsb ? "ALREADY made (too late)" : "not yet made");
+}
+
 void on_intro_tick() {
     if (!g_skip_intro || g_intro_done) return;
     if (*(const uint8_t *)ADDR_INTRO_GATE == 0) return; // first frame: let init + movie-open run
-    ((void (*)(void))ADDR_MOVIE_TEARDOWN)();            // FUN_004c2d12: teardown + continuation
-    *(void **)ADDR_ASYNC_CB = nullptr;                  // pump cleared -> else-branch advances to mode 1
+    if (u21_repro() != 0) {
+        uint8_t       *fmt = *(uint8_t *volatile *)ADDR_AVI_FMT_PTR;
+        const unsigned tag = fmt ? (unsigned)*(volatile uint16_t *)fmt : 0u;
+        const unsigned cb  = fmt ? (unsigned)*(volatile uint16_t *)(fmt + 16) : 0u;
+        ((void (*)(void))ADDR_MOVIE_TEARDOWN)(); // the pre-fix frame-2 teardown
+        *(void **)ADDR_ASYNC_CB = nullptr;
+        g_intro_done            = true;
+        lg("; --skip-intro: U21 REPRO=%d -- frame-2 teardown; format %08lX tag %04X cbSize-word %04X "
+           "before the free, tag %04X after it",
+           u21_repro(), (unsigned long)(uintptr_t)fmt, tag, cb, fmt ? (unsigned)*(volatile uint16_t *)fmt : 0u);
+        return;
+    }
+    const DWORD now = GetTickCount();
+    if (g_intro_wait_t0 == 0) g_intro_wait_t0 = now ? now : 1;
+    const unsigned      waited = (unsigned)(now - g_intro_wait_t0);
+    const unsigned long stream = *(volatile const unsigned long *)ADDR_AVI_AUDIO_STREAM;
+    const unsigned long ds     = *(volatile const unsigned long *)ADDR_DSOUND;
+    const unsigned long dsbuf  = *(volatile const unsigned long *)ADDR_AVI_DSBUF;
+    const unsigned long pcm    = *(volatile const unsigned long *)ADDR_AVI_PCMBUF;
+    const int           alive  = intro_audio_thread_alive();
+    const int           go     = MH_Launch_IntroSkipReady(stream != 0, ds != 0, dsbuf != 0, pcm != 0, alive, waited,
+                                                          INTRO_SKIP_CAP_MS);
+    if (go == MH_INTRO_SKIP_WAIT) return;    // the movie plays on for another frame
+    ((void (*)(void))ADDR_MOVIE_TEARDOWN)(); // llm_ui_avi_close_return_to_menu: teardown + continuation
+    *(void **)ADDR_ASYNC_CB = nullptr;       // pump cleared -> else-branch advances to mode 1
     g_intro_done            = true;
     lg("; --skip-intro: LOGO.AVI ended early (movie teardown)");
+    lg("; --skip-intro: U21 teardown after %u ms -- %s (audio stream=%d dsound=%d dsbuf=%d pcm=%d "
+       "thread=%s)",
+       waited, go == MH_INTRO_SKIP_TIMEOUT ? "CAP HIT, audio thread never settled" : "audio thread settled",
+       stream != 0, ds != 0, dsbuf != 0, pcm != 0, alive ? "running" : "gone");
 }
 
 // ---- run-before-original inline hooks (steal 8-byte prologue; jmp back to target+8) --------------
@@ -1549,6 +1662,25 @@ __declspec(naked) void intro_detour() {
         popfd
         popad
         jmp  dword ptr [g_intro_tramp] // stolen prologue + jmp back to llm_intro_frame+8
+    }
+}
+
+// U21 repro=2 only: run the original llm_intro_frame as a SUBROUTINE so on_intro_post sees what frame 1
+// just did. The normal hook above stays a plain run-before; this shape is installed only on request.
+__declspec(naked) void intro_detour_repro() {
+    __asm {
+        pushad
+        pushfd
+        call on_intro_tick
+        popfd
+        popad
+        call dword ptr [g_intro_tramp] // the original, returning here
+        pushad
+        pushfd
+        call on_intro_post
+        popfd
+        popad
+        ret
     }
 }
 
@@ -1622,10 +1754,26 @@ extern "C" void MH_MP_HostEntryTick(void) {
 // is the real host-entry choke point, so it's where U2 does the host prep + tells the client to enter. Fires
 // for EVERY begin_map_load (host retail-Start, client, force-entry); gated to the PURE MANUAL HOST, one-shot.
 // Client's own begin_map_load skips (its prep is in mp_lobby_entry_tick); force-entry skips (verb != NONE).
+//
+// mp:X2 / X2b -- THE START REFUSAL IS ENFORCED HERE, not by the widget. map_transfer.cpp greys the
+// Start widget (its 0x40 DISABLED bit) while a joiner's map is missing or different, but retail
+// re-derives that bit every lobby frame, so by the time the input tick hit-tests a click the bit is
+// clear again and the click activates Start (measured on the rig 2026-09-23: a click on the
+// "refused" Start launched a TCP match with two different maps -- dead-ends G291). The greyed look
+// and the status-line notice stay as they are; THIS is what makes the refusal hold: while the host's
+// map gate is shut, the Start activation is swallowed before retail's begin_map_load runs.
+// g_bml_refuse is the detour's verdict (read after popad, so it cannot ride in EAX).
+volatile int g_bml_refuse = 0;
+
 void on_begin_map_load() {
-    if (g_verb != VERB_NONE || !g_manual_mp) return; // pure manual menu only (force-entry untouched)
-    if (*(int *)ADDR_NET_IS_HOST == 0) return;       // client: nothing to prep/send here
-    if (MH_Net_PeerCount() < 1) return;              // skirmish-vs-AI (no network client): leave the proven path alone
+    g_bml_refuse = 0;
+    if (g_verb != VERB_NONE || !g_manual_mp) return;  // pure manual menu only (force-entry untouched)
+    if (*(int *)ADDR_NET_IS_HOST == 0) return;        // client: nothing to prep/send here
+    if (mh::seams::maps::host_refuse_start_click()) { // logs `start CLICK REFUSED` to mh_net.log
+        g_bml_refuse = 1;
+        return;
+    }
+    if (MH_Net_PeerCount() < 1) return; // skirmish-vs-AI (no network client): leave the proven path alone
     // ONE-SHOT PER LOBBY, not per process: this used to be a function-static `host_done`, which is
     // the mp:RM1 writer on the host side (see MH_MP_RearmLobbyEntry).
     if (g_host_start_done) return;
@@ -1665,6 +1813,8 @@ void on_begin_map_load() {
 }
 
 // Run-before detour on llm_lobby_begin_map_load (steal 8-byte prologue, jmp back to +8).
+// mp:X2/X2b: when on_begin_map_load refused the Start, return to the caller WITHOUT running the
+// original -- begin_map_load is a void, argument-less callback, so a bare `ret` is its whole contract.
 void                  *g_bml_tramp = nullptr;
 __declspec(naked) void begin_map_load_detour() {
     __asm {
@@ -1673,7 +1823,11 @@ __declspec(naked) void begin_map_load_detour() {
         call on_begin_map_load
         popfd
         popad
+        cmp  dword ptr [g_bml_refuse], 0
+        jne  refused
         jmp  dword ptr [g_bml_tramp] // stolen 8-byte prologue + jmp back to begin_map_load+8
+    refused:
+        ret
     }
 }
 
@@ -1733,7 +1887,9 @@ extern "C" int MH_Launch_Init(void) {
     if (g_skip_intro) {
         // U30: the prologue branch is gone -- the primitive distinguishes a wrong build from a taken
         // entry, which this site could not.
-        bool sok = install_trampoline(ADDR_INTRO_FRAME, (void *)intro_detour, &g_intro_tramp, 8,
+        bool sok = install_trampoline(ADDR_INTRO_FRAME,
+                                      u21_repro() == 2 ? (void *)intro_detour_repro : (void *)intro_detour,
+                                      &g_intro_tramp, 8,
                                       entry_claim::exclusive, "the --skip-intro LOGO.AVI hook");
         lg(sok ? "; --skip-intro armed (hooked llm_intro_frame; LOGO.AVI will end early)"
                : "; --skip-intro NOT armed (see the [interlock] line for the reason)");
@@ -1759,3 +1915,20 @@ extern "C" int MH_Launch_Init(void) {
 extern "C" int MH_Launch_Init(void) { return 0; }
 
 #endif
+
+// mp:U21 -- when may --skip-intro tear the LOGO.AVI down? Pure, so launchtest proves the table with no
+// game running. The hazard is the audio thread's CreateSoundBuffer reading the format block the
+// teardown frees (see on_intro_tick). It is safe once that read cannot be in flight:
+//   * no audio stream in the movie, or no IDirectSound  -> the thread never dereferences the format;
+//   * the thread's sound buffer AND PCM block exist      -> it is past CreateSoundBuffer, in the same
+//                                                           state a human's Space press meets;
+//   * the thread is gone                                 -> nothing left to race (e.g. the create failed).
+// Otherwise wait, but never past cap_ms: a skip that can hang is worse than the race it avoids.
+extern "C" int MH_Launch_IntroSkipReady(int has_audio_stream, int has_dsound, int has_dsbuf, int has_pcm,
+                                        int thread_alive, unsigned waited_ms, unsigned cap_ms) {
+    if (!has_audio_stream || !has_dsound) return MH_INTRO_SKIP_GO;
+    if (has_dsbuf && has_pcm) return MH_INTRO_SKIP_GO;
+    if (!thread_alive) return MH_INTRO_SKIP_GO;
+    if (waited_ms >= cap_ms) return MH_INTRO_SKIP_TIMEOUT;
+    return MH_INTRO_SKIP_WAIT;
+}

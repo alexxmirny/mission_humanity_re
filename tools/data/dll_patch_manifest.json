@@ -607,6 +607,25 @@
    "knob": "resync_receiver_deadline",
    "carrier": null,
    "note": "mp:P9W (2026-09-22): call-splice llm_frame_dispatch's ONE call site to llm_wait_screen_frame (case 8, the GAME_MODE==8 frame). The thunk always calls the original llm_wait_screen_frame FIRST (so the leader's own 2002 ms exit and every peer's dispatch/RX-drain are unchanged), then on a non-leader still RESYNC_IN_PROGRESS after max(2002, data_timeout_ms) ms of this DLL's own clock, runs the leader's exit sequence minus the RESUME broadcast and removes the presumed-dead leader through llm_net_player_remove. `owner` is llm_frame_dispatch (the function whose body holds the patched bytes), not llm_wait_screen_frame (the call TARGET, left byte-for-byte original) -- carrier null like defang_xui's: llm_frame_dispatch is retail UI/render dispatch, not a reimpl-domain body, so there is no promoted alternative to carry the fix."
+  },
+  {
+   "id": "gone_peer_frame_guard",
+   "sources": [
+    {
+     "file": "mh/seams/net_lockstep.cpp",
+     "expr": "ADDR_GPFG_KICK_CALL"
+    }
+   ],
+   "addrs": [
+    "0x0049c330"
+   ],
+   "kind": "code",
+   "owner": [
+    "llm_net_lockstep_dispatch"
+   ],
+   "knob": "gone_peer_frame_guard",
+   "carrier": "migrated:gone_peer_frame_guard",
+   "note": "mp:U19i (2026-09-23): call-splice the leader's kick re-broadcast for an already-GONE sender (`call llm_net_send_lockstep_kick` @0x0049c330, guarded with the following `mov eax,[ebp-0x38]` so the thunk's read of `len` is proven) into mh::gone_peer_guard::thunk, which snapshots min(len, 0x3f8) bytes of _G_LLM_NET_SEND_BUF across the emit and restores them -- U19e's reimpl-only guard (rx_dispatch.cpp dispatch_packet), carried for configuration (1), where no libmh.dll means the body never runs. Displaced by promotion (C1), so configuration (2) is unchanged. Offline oracle: net_selftest.exe gpfgtest (the real thunk, fake buffer/emitter/frame)."
   }
  ]
 }

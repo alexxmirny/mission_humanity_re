@@ -1,4 +1,9 @@
 {
+ "config1_fallback": [
+  "?live@state@mh@@YAAAUlive_table@12@XZ",
+  "?owner_count@state@mh@@YAAAHXZ",
+  "?owner_table@state@mh@@YAPAUowner_slot@12@XZ"
+ ],
  "exports": [
   {
    "name": "MH_Harness_Init"
@@ -195,6 +200,15 @@
    ]
   },
   {
+   "export": "MH_Lockstep_StepPin",
+   "mangled": "_MH_Lockstep_StepPin",
+   "pretty": "_MH_Lockstep_StepPin",
+   "slot": "MH_Lockstep_StepPin",
+   "used_by": [
+    "harness.obj"
+   ]
+  },
+  {
    "export": "MH_Net_Send",
    "mangled": "_MH_Net_Send",
    "pretty": "_MH_Net_Send",
@@ -235,6 +249,15 @@
    "mangled": "_MH_RunDir",
    "pretty": "_MH_RunDir",
    "slot": "MH_RunDir",
+   "used_by": [
+    "harness.obj"
+   ]
+  },
+  {
+   "export": "MH_Session_HarnessStop",
+   "mangled": "_MH_Session_HarnessStop",
+   "pretty": "_MH_Session_HarnessStop",
+   "slot": "MH_Session_HarnessStop",
    "used_by": [
     "harness.obj"
    ]

@@ -470,6 +470,36 @@ constexpr double AD_SLACK_MULT       = 0.5;  // unused horizon over this many su
 // that periodically forgets its own reason is a slower ratchet, not a safer one; the protection is
 // the conservative estimate above, which cannot be wrong in the dangerous direction.
 
+// ---- mp:P12: the FIRST decision after the warm-up may take the whole proportional step --------------
+//
+// AD_LATE_GROW_MAX (one doubling per window) is right in general: it is what stops a noisy tail from
+// launching the lookahead. But it is a cap on noise, and the first decision after T3c's warm-up is
+// the one window whose measurement is not noisy. Measured on the rig at --shim-delay 200 (RTT ~400,
+// 2026-09-22): the first decision read tail95 -297 (host) / -359 (client), so `want` was 407 / 469 --
+// within a few ms of what the link turned out to need -- and the cap cut it to 200. The second window
+// is NOT capped (200 -> 273 is the proportional step landing under 2x), so exactly one clamped decision
+// cost the whole visible stall: the first window 73-74% starved, ~2 s of the game stalling three frames
+// in four, and essentially all of the run's 4.7% / 6.1% starvation.
+//
+// So the first decided window after the warm-up drops the cap when its tail has the weight the
+// controller already demands before it will act EARLY: AD_FIRST_GROW_MIN_SAMPLES, which is
+// net_lockstep.cpp's AD_FAST_MIN_SAMPLES (32, static_assert'd equal there). The rig's first windows
+// carried 47+; a thinner tail keeps the doubling cap. The step is then `cur + (grow_at - tail95)` with
+// only the ceiling above it. Every later window keeps the cap, including a later FIRST grow: the claim
+// is about the post-warm-up measurement, not about growing for the first time.
+//
+// WHY THERE IS NO SECOND, "TAIL DEFICIT OVER ONE SUB-STEP" GUARD, although it was the obvious other
+// candidate (a tail within one sub-step of zero can be where the grid fell -- the T3c (3) note). It is
+// implied, so it would be a guard that no input can trip: the cap only BINDS when the proportional step
+// exceeds a doubling, i.e. when grow_at - tail95 > cur_ms, and cur_ms >= floor_ms >= AD_SIM_FLOOR_MULT
+// (3) sub-steps. So every window this changes already has a deficit of more than three sub-steps and a
+// tail below -2.5 of them; the grid argument is settled by the floor before this code runs.
+// THE SAME ARITHMETIC IS WHY A LAN IS INERT: a first decision whose deficit is under cur_ms -- a LAN's
+// first tail sits at or near zero margin -- is not capped in the first place, so it is bit-for-bit the
+// pre-P12 decision (udpstatstest (m) asserts that equality; the rig's LAN arm measures that the first
+// decision there does not grow at all).
+constexpr int AD_FIRST_GROW_MIN_SAMPLES = 32;
+
 enum LookaheadVerdict {
     LA_NO_SAMPLES = 0, // nothing measured this window -- HOLD, and say so
     LA_HOLD       = 1, // inside the hysteresis band, or still accruing shrink credit
@@ -498,12 +528,19 @@ struct LookaheadIn {
     // down and `slack_ms` is used raw, so the whole decision is bit-for-bit pre-P10. See the
     // AD_SLACK_MULT note above for why the estimate is biased high rather than centred.
     double link_owd_ms;
+    // mp:P12. `samples` is the binding peer's sample count behind `tail95_ms`; `first_warm` is true
+    // for the first window the caller judges after the warm-up (it stays true across LA_NO_SAMPLES
+    // windows -- nothing was decided on those). Both default to "off", so a caller that does not set
+    // them gets the pre-P12 decision bit for bit.
+    int  samples    = 0;
+    bool first_warm = false;
 };
 
 struct LookaheadOut {
     double want_ms;
     int    clean_out;
-    int    verdict; // LookaheadVerdict
+    int    verdict;            // LookaheadVerdict
+    bool   first_full = false; // mp:P12 -- this GROW took the uncapped first-decision step
 };
 
 inline LookaheadOut lookahead_decide(const LookaheadIn &in) {
@@ -529,8 +566,8 @@ inline LookaheadOut lookahead_decide(const LookaheadIn &in) {
         // mp:P10 -- and the measurement of it is corrected for the link, because an advertisement
         // in flight is not idle horizon. With no link measurement (`link_owd_ms` negative) this is
         // the raw T3c slack and the grow gate below is off, i.e. exactly the pre-P10 decision.
-        const bool   have_owd = (in.link_owd_ms >= 0.0);
-        double       idle_ms  = in.slack_ms;
+        const bool have_owd = (in.link_owd_ms >= 0.0);
+        double     idle_ms  = in.slack_ms;
         if (have_owd) {
             idle_ms = in.slack_ms - in.link_owd_ms;
             if (idle_ms < 0.0) idle_ms = 0.0;
@@ -552,7 +589,11 @@ inline LookaheadOut lookahead_decide(const LookaheadIn &in) {
             // all eight of those seconds.
             double want = in.cur_ms + (grow_at - in.tail95_ms);
             if (want < in.cur_ms * AD_LATE_GROW_STEP) want = in.cur_ms * AD_LATE_GROW_STEP;
-            if (want > in.cur_ms * AD_LATE_GROW_MAX) want = in.cur_ms * AD_LATE_GROW_MAX;
+            // mp:P12 -- the first post-warm-up decision, on a tail with AD_FIRST_GROW_MIN_SAMPLES behind
+            // it, keeps the whole proportional step (the ceiling below still bounds it). See the note.
+            const bool full = in.first_warm && in.samples >= AD_FIRST_GROW_MIN_SAMPLES;
+            out.first_full  = full && want > in.cur_ms * AD_LATE_GROW_MAX;
+            if (!full && want > in.cur_ms * AD_LATE_GROW_MAX) want = in.cur_ms * AD_LATE_GROW_MAX;
             out.want_ms   = want;
             out.clean_out = 0; // any starvation resets the patience counter
             out.verdict   = LA_GROW;
@@ -596,6 +637,89 @@ inline LookaheadOut lookahead_decide(const LookaheadIn &in) {
     if (out.want_ms > in.ceil_ms) out.want_ms = in.ceil_ms;
     return out;
 }
+
+// ---- mp:T4: the per-frame horizon advert's dedup --------------------------------------------------
+// The present hook's eager advert (net_lockstep.cpp, [net] eager_advertise, a SHIP default) runs once
+// per PRESENT. It writes HORIZON = GAME_CLOCK + lookahead and, before T4, also sent that value as a
+// type-2 EXTEND on every frame. Each send takes its own segment in the UDP transport's 1024-slot send
+// window, and a frame rate with no cap (1100-3500 fps on a headless rig lane) filled the window at a
+// 360 ms round trip. The link then dropped with `the outbound stream ran a full window ahead of the
+// peer's acknowledgements` (dead-ends G294).
+//
+// THE RULE: send when this frame's write CHANGES the global HORIZON. Skip when HORIZON already held
+// exactly that value before the write.
+//
+// WHY NOT "SKIP WHEN IT EQUALS THE LAST VALUE THIS PATH SENT". That was the first version, and it
+// can skip a send the protocol needs. The eager write can LOWER the horizon. The order scheduler
+// (libmh orders/order_queue.cpp `schedule`) PULLS HORIZON forward to an order's exec_time, and the
+// order carries it to the peer. The next eager write sets HORIZON back to clock + lookahead. Before
+// T4 that lowered value went straight onto the wire. Keyed on "last value this path sent", it matched
+// the eager path's own previous send and was skipped. The peer would keep the higher value while our
+// next order was stamped with the lower one. (A determinism run of the first version did desync, but
+// runs with eager_advertise=0 desync in the same shape too -- tracked separately under mp:T4 -- so
+// that run does not prove this mechanism. The argument here is from the code.)
+//
+// What the rule keeps is the pre-T4 invariant: after the eager block, the last horizon this peer put
+// on the wire is the value in HORIZON. Every other writer of HORIZON puts what it writes on the wire:
+// the pump, the heartbeat, the keepalive/emergency bumps, resync and the U19b repair send an EXTEND.
+// The order scheduler's pull-forward goes out inside the order itself, because the receiver takes
+// an order's exec_time as the sender's horizon (rx_dispatch.cpp MSG_ORDER). So when this frame's
+// write leaves HORIZON unchanged, the value on the wire is already that value, and the skipped send
+// carried no information. The 50 ms heartbeat still sends for liveness.
+inline bool advert_should_send(double horizon_before, double horizon_now) {
+    return !(horizon_before == horizon_now);
+}
+
+// ---- mp:D30: the advertised horizon never goes DOWN -----------------------------------------------
+// THE LOCKSTEP GUARANTEE: an order's exec_time must be >= every horizon this peer has already
+// advertised. A peer that holds our horizon H as its committed limit may simulate every step up to
+// H. So an order we stamp below H can arrive after that peer has stepped past its exec_time, and the
+// peer then releases it a step late (release_due's `!(exec > now)`) -- a desync.
+//
+// Orders are stamped from the horizon: order_dispatch uses max(GAME_CLOCK + STEP_SIZE, HORIZON) and
+// schedule only raises that to HORIZON. Every horizon writer computes GAME_CLOCK + STEP_SIZE: retail
+// time_tick's advertise_horizon (libmh timekeeper.cpp), the pump keepalive, the eager present hook and
+// the heartbeat. So when the adaptive controller cuts the lookahead in one jump (315 -> 253 ms
+// measured), every writer LOWERS the horizon by ~62 ms, and the next orders go out below a value the
+// peer already holds. That is D30 (dead-ends G297, runs tmp/o5_rig/D30/).
+//
+// THE RULE: the lookahead actually pinned into STEP_SIZE is
+//     max(controller target, max_horizon_sent - GAME_CLOCK)
+// so a shrink takes effect as the clock catches up to the horizon already sent, instead of by
+// lowering it. The delay is bounded by the size of the cut (at most AD ceiling - floor of game time)
+// and costs nothing else: the controller still owns the target, and a grow is immediate.
+//
+// `clock + step` is nudged up if rounding would leave it one ulp under `max_sent`: a horizon that
+// reads back a hair below the value on the wire is exactly the bug, only smaller.
+constexpr double HZ_RESTART_S = 2.0; // a sent max more than this ahead of the clock = a restarted clock
+
+inline bool horizon_max_is_stale(double clock_s, double max_sent_s) {
+    return clock_s + HZ_RESTART_S < max_sent_s; // the same rule on_time_tick's g_hz_max_seen uses
+}
+
+inline double monotone_step(double target_s, double clock_s, double max_sent_s) {
+    if (!(max_sent_s > 0.0) || horizon_max_is_stale(clock_s, max_sent_s)) return target_s;
+    const double need = max_sent_s - clock_s;
+    if (!(need > target_s)) return target_s;
+    double step = need;
+    for (int i = 0; i < 3 && clock_s + step < max_sent_s; ++i) step += 1e-9;
+    return step;
+}
+
+// The horizon a writer that does its OWN arithmetic (the eager hook, the heartbeat) may put on the
+// wire: clock + step, never below the maximum already sent (or held -- `floor_s` is the HORIZON
+// global's current value where the caller can read it safely).
+inline double monotone_horizon(double clock_s, double step_s, double floor_s) {
+    const double h = clock_s + step_s;
+    if (floor_s > 0.0 && !horizon_max_is_stale(clock_s, floor_s) && h < floor_s) return floor_s;
+    return h;
+}
+
+// mp:D30 / D31 -- an order is LATE at the receiver when its sim has already run the step that should
+// have released it: release_due releases at the first step whose clock satisfies !(exec > clock), so
+// a receiver whose GAME_CLOCK already satisfies it will release the order one step (or more) later
+// than the sender did. Same comparison shape as release_due, so the NaN case agrees with it.
+inline bool order_is_late(double exec_s, double receiver_clock_s) { return !(exec_s > receiver_clock_s); }
 
 } // namespace netstats
 } // namespace mh

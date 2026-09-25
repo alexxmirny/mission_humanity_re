@@ -43,6 +43,7 @@
 #endif
 #include <windows.h>
 
+#include <intrin.h> // __readfsdword -- write_stack()
 #include <string.h> // memcpy -- write_context()'s two raw-struct copies
 
 #include "include/mh_crash_export.h"
@@ -145,6 +146,102 @@ int write_context(const EXCEPTION_RECORD *rec, const CONTEXT *ctx) {
     return wrote == (DWORD)sizeof(buf) ? 1 : 0;
 }
 
+// ---- the stack sidecar (mp:U21) ----------------------------------------------------------------
+//
+// WHY: the .ctx32 sidecar names the faulting instruction and its registers, and for a fault inside
+// a SYSTEM dll that is not enough. U21's dsound.dll+0x1f3a3 is dsound's private memcpy; five
+// captured contexts (2026-09-18..24) agreed on every register -- a 0xa013-byte copy whose source
+// runs off the end of a mapping -- and still could not say WHICH dsound call, from WHICH thread,
+// asked for it, because a register context holds no call chain. This writes one: every dword
+// between ESP and the thread's stack base (capped at 4 KB) that points into an executable image,
+// as `module+rva`, plus the thread's start address. Symbol-free on purpose -- the reader resolves
+// mh.focus.exe VAs against docs/symbols.md and system dlls against their own exports.
+//
+// Text, written with ONE WriteFile of a static buffer: a fault on a thread created with a 4 KB
+// stack (the game's AVI audio thread is one) has no room for a large frame here.
+struct ModName {
+    unsigned long base;
+    char          leaf[40];
+};
+ModName g_mods[16];
+int     g_nmods = 0;
+char    g_stack_text[16384];
+
+const char *mod_leaf(unsigned long base) {
+    for (int i = 0; i < g_nmods; ++i)
+        if (g_mods[i].base == base) return g_mods[i].leaf;
+    if (g_nmods >= (int)(sizeof(g_mods) / sizeof(g_mods[0]))) return "?";
+    ModName &m = g_mods[g_nmods++];
+    m.base     = base;
+    char path[MAX_PATH];
+    path[0] = '\0';
+    GetModuleFileNameA((HMODULE)(ULONG_PTR)base, path, MAX_PATH);
+    const char *leaf = path;
+    for (const char *p = path; *p; ++p)
+        if (*p == '\\' || *p == '/') leaf = p + 1;
+    mh_sd_copy(m.leaf, (int)sizeof(m.leaf), *leaf ? leaf : "?");
+    return m.leaf;
+}
+
+// Executable image page? Then return its allocation base, else 0.
+unsigned long code_base(unsigned long v) {
+    if (v < 0x10000u) return 0;
+    MEMORY_BASIC_INFORMATION mbi;
+    if (VirtualQuery((LPCVOID)(ULONG_PTR)v, &mbi, sizeof(mbi)) != sizeof(mbi)) return 0;
+    if (mbi.State != MEM_COMMIT || mbi.Type != MEM_IMAGE) return 0;
+    const DWORD x = PAGE_EXECUTE | PAGE_EXECUTE_READ | PAGE_EXECUTE_READWRITE | PAGE_EXECUTE_WRITECOPY;
+    if ((mbi.Protect & x) == 0) return 0;
+    return (unsigned long)(ULONG_PTR)mbi.AllocationBase;
+}
+
+typedef LONG(NTAPI *NtQueryInformationThread_t)(HANDLE, int, PVOID, ULONG, PULONG);
+
+void write_stack(const CONTEXT *ctx) {
+    if (g_marker[0] == '\0' || ctx == nullptr) return;
+#if defined(_M_IX86)
+    const unsigned long esp  = ctx->Esp;
+    const unsigned long base = (unsigned long)__readfsdword(4); // NT_TIB.StackBase
+    unsigned long       end  = esp + 0x1000u;
+    if (base > esp && base < end) end = base;
+
+    unsigned long start = 0;
+    HMODULE       ntdll = GetModuleHandleA("ntdll.dll");
+    if (ntdll) {
+        NtQueryInformationThread_t q =
+            (NtQueryInformationThread_t)GetProcAddress(ntdll, "NtQueryInformationThread");
+        if (q) q(GetCurrentThread(), 9 /* ThreadQuerySetWin32StartAddress */, &start, sizeof(start), nullptr);
+    }
+
+    char *o   = g_stack_text;
+    char *lim = g_stack_text + sizeof(g_stack_text) - 96;
+    o += wsprintfA(o, "tid=%lu esp=%08lX ebp=%08lX stack_base=%08lX\r\n", GetCurrentThreadId(), esp,
+                   (unsigned long)ctx->Ebp, base);
+    unsigned long sb = code_base(start);
+    o += wsprintfA(o, "start=%08lX %s+%08lX\r\n", start, sb ? mod_leaf(sb) : "?", start - sb);
+    for (unsigned long a = esp; a + 4 <= end && o < lim; a += 4) {
+        unsigned long            v = 0;
+        MEMORY_BASIC_INFORMATION mbi;
+        if (VirtualQuery((LPCVOID)(ULONG_PTR)a, &mbi, sizeof(mbi)) != sizeof(mbi) ||
+            mbi.State != MEM_COMMIT)
+            break;
+        v                = *(const unsigned long *)(ULONG_PTR)a;
+        unsigned long mb = code_base(v);
+        if (mb == 0) continue;
+        o += wsprintfA(o, "esp+%03lX %08lX %s+%08lX\r\n", a - esp, v, mod_leaf(mb), v - mb);
+    }
+
+    char path[MAX_PATH + 16];
+    wsprintfA(path, "%s%s", g_marker, ".stack.txt");
+    HANDLE h = CreateFileA(path, GENERIC_WRITE, FILE_SHARE_READ, nullptr, CREATE_ALWAYS,
+                           FILE_ATTRIBUTE_NORMAL, nullptr);
+    if (h == INVALID_HANDLE_VALUE) return;
+    DWORD wrote = 0;
+    WriteFile(h, g_stack_text, (DWORD)(o - g_stack_text), &wrote, nullptr);
+    FlushFileBuffers(h);
+    CloseHandle(h);
+#endif
+}
+
 LONG CALLBACK crash_veh(EXCEPTION_POINTERS *ep) {
     if (ep == nullptr || ep->ExceptionRecord == nullptr) return EXCEPTION_CONTINUE_SEARCH;
     if (!mh_crash_is_fatal(ep->ExceptionRecord->ExceptionCode)) return EXCEPTION_CONTINUE_SEARCH;
@@ -171,6 +268,7 @@ LONG CALLBACK crash_veh(EXCEPTION_POINTERS *ep) {
     // dist LA5. Before the marker, so `ctx=` in the text below reflects whether the sidecar really
     // landed -- a launcher must never go looking for a file that was never written.
     f.has_context = write_context(ep->ExceptionRecord, ep->ContextRecord);
+    write_stack(ep->ContextRecord); // mp:U21 -- the call chain the context cannot carry
 
     write_marker(&f);
 

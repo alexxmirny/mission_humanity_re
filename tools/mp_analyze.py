@@ -381,6 +381,14 @@ def hash_manifest_rows(header_text=None):
     return [(n, rid[r], int(o), int(ln), ex == "true") for n, r, o, ln, ex in rows]
 
 
+# mp:D29 -- the harness's configuration line (mh_harness/config1.h format_config_line):
+#   ; [harness] configuration (1): spine ABSENT, registry=mh.dll, rebased=0 owned=0,
+#     uncovered=none, manifest fp=XXXXXXXX
+HARNESS_CONFIG_RE = re.compile(
+    r"^; \[harness\] configuration \(([12])\):.*\bmanifest fp=([0-9A-Fa-f]{8})\b"
+)
+
+
 def hash_manifest_fingerprint(header_text=None):
     """mh::state::world::hash_manifest_fingerprint(), in Python: FNV-1a 32 over (count, then per
     region rid/offset/len/excluded as u32 LE + the name's bytes). It is what every world blob and
@@ -489,6 +497,10 @@ def parse_harness(path):
         # producing step rows on purpose, and a verdict that read that as a peer dying or lagging
         # would be describing the instrument rather than the run.
         "hold_step": None,
+        # mp:D29. The harness's configuration line: '1' (no libmh.dll, spine-free) or '2', and the
+        # hash-manifest fingerprint it hashed under. analyse() refuses a pair whose fp differ.
+        "config": None,
+        "manifest_fp": None,
     }
     with open(path, "r", errors="replace") as f:
         for line in f:
@@ -510,6 +522,8 @@ def parse_harness(path):
                     "domains": {},
                     "rd": {},
                     "hold_step": None,
+                    "config": None,
+                    "manifest_fp": None,
                 }
                 continue
             if line.startswith("; all_ai="):
@@ -519,6 +533,15 @@ def parse_harness(path):
                 # before this the flag was invisible to it (the banner reset above drops every other
                 # comment line).
                 seg["arming"] = line
+                continue
+            if line.startswith("; [harness] configuration ("):
+                # mp:D29. Written once, after the step-1 census, in BOTH configurations -- so a
+                # MIXED pair (configuration (1) vs mode=original) states on each side which registry
+                # it hashed through and under which manifest.
+                m = HARNESS_CONFIG_RE.match(line)
+                if m:
+                    seg["config"] = m.group(1)
+                    seg["manifest_fp"] = m.group(2).upper()
                 continue
             if line.startswith("; SIM HOLD "):
                 # mp:X3. The peer FROZE its sim here, deliberately. Recorded as a step so the
@@ -1028,12 +1051,32 @@ def analyze_lockstep(rows, freeze_ms):
     }
 
 
-def diff_peers(a, b, name_a, name_b):
-    """Cross-peer state-hash diff. Returns first-diverging step (+ region if per-region present)."""
+def diff_peers(a, b, name_a, name_b, truncate_at=None):
+    """Cross-peer state-hash diff. Returns first-diverging step (+ region if per-region present).
+
+    mp:D26. `truncate_at`, when given, is a step number: only steps STRICTLY BEFORE it are
+    compared. This is the user's 2026-09-23 ruling -- an EXPECTED match end (a deliberate
+    gameover_step arm, or a real game-over reached by every peer) legitimately makes the two
+    peers' state hashes diverge from the elimination step on (presence_lost clears the loser's
+    ALIVE bit and downgrades SESSION on one side only), and that divergence is not the sim
+    disagreeing -- it is the two peers correctly recording that the match ended differently for
+    each of them. Comparing past it would either manufacture a DESYNC out of a correct run, or
+    (worse) hide a REAL divergence that happens to start before the boundary, which is why
+    everything before `truncate_at` is still compared at full strictness."""
     sa, sb = a["steps"], b["steps"]
     common = sorted(set(sa) & set(sb))
+    truncated_overlap = None
+    if truncate_at is not None:
+        kept = [s for s in common if s < truncate_at]
+        if len(kept) != len(common):
+            truncated_overlap = len(common)
+        common = kept
     if not common:
-        return {"overlap": 0, "note": "no overlapping steps between the two peers"}
+        return {
+            "overlap": 0,
+            "note": "no overlapping steps between the two peers",
+            "truncated_at": truncate_at if truncated_overlap is not None else None,
+        }
     mismatches = [s for s in common if sa[s]["state"] != sb[s]["state"]]
     res = {
         "overlap": len(common),
@@ -1042,9 +1085,18 @@ def diff_peers(a, b, name_a, name_b):
         "mismatch_count": len(mismatches),
         "first_mismatch": None,
         "combined_mismatch_count": sum(1 for s in common if sa[s]["combined"] != sb[s]["combined"]),
+        "truncated_at": truncate_at if truncated_overlap is not None else None,
+        "untruncated_overlap": truncated_overlap,
     }
     if not mismatches:
-        res["verdict"] = "IDENTICAL state-hash across all %d overlapping steps" % len(common)
+        if truncated_overlap is not None:
+            res["verdict"] = (
+                "IDENTICAL state-hash across all %d overlapping steps BEFORE the truncation "
+                "boundary (step %d; %d step(s) after it were not compared -- mp:D26)"
+                % (len(common), truncate_at, truncated_overlap - len(common))
+            )
+        else:
+            res["verdict"] = "IDENTICAL state-hash across all %d overlapping steps" % len(common)
         return res
     s0 = mismatches[0]
     res["first_mismatch"] = {"step": s0, "state_a": sa[s0]["state"], "state_b": sb[s0]["state"]}
@@ -1563,9 +1615,21 @@ def _fx_peer(
     stall_at=None,
     gameover_step=None,
     deliberate=False,
+    real_gameover_step=None,
 ):
     """One synthetic peer. `end_at` makes the clock LEAVE the fixed quantum from that step, which is
-    what a real match end does (turn_engine.cpp:379-386 takes one variable step to TOTAL_GAME_TIME)."""
+    what a real match end does (turn_engine.cpp:379-386 takes one variable step to TOTAL_GAME_TIME).
+
+    `gameover_step` models net_lockstep.cpp's U17 fast-drop cascade: a TRANSPORT failure that forces
+    a game-over, so it writes BOTH the `; U17 fast-drop` marker and the `on_gameover` line together --
+    this is the UNPLANNED-death shape DET-FLAKE's environmental guard owns.
+
+    `real_gameover_step` (mp:D26) models the OTHER kind: a genuine elimination-driven game-over with
+    NO transport failure anywhere in the log (outcome=4, `on_gameover_pre`'s presence_lost-loser code
+    -- net_lockstep.cpp ~286) -- the shape `expected_match_end`'s real-game-over branch is FOR. Kept
+    as a separate knob from `gameover_step` rather than a flag on it, because the two must be able to
+    combine (a fixture that wants "an unplanned drop AND a coincidentally-clean gameover line on the
+    OTHER peer" needs both bits addressable independently)."""
     os.makedirs(d, exist_ok=True)
     banner = (
         "; ==== mh replay harness armed: seed_step=0 seed_mode=2 stop_step=%d fixed_step=0 "
@@ -1633,6 +1697,12 @@ def _fx_peer(
                 "[00:00:02.001] ; on_gameover ENTER sess=2 outcome=8 gclk=%d (downgrade=0)\n"
                 % int(round(gameover_step * interval * 1000))
             )
+        if real_gameover_step is not None:
+            # mp:D26. NO fast-drop marker here -- that absence is the whole point of this knob.
+            f.write(
+                "[00:00:02.001] ; on_gameover ENTER sess=2 outcome=4 gclk=%d (downgrade=0)\n"
+                % int(round(real_gameover_step * interval * 1000))
+            )
 
 
 def selftest():
@@ -1678,10 +1748,10 @@ def selftest():
             {},
         ),
         (
-            "6 DELIBERATE gameover_step arm -- out of scope, verdict unchanged",
+            "6 DELIBERATE gameover_step arm, divergence AFTER it -- mp:D26 truncates -> IDENTICAL",
             dict(mismatch_at=120, end_at=120, gameover_step=120, deliberate=True, **dead, **base),
-            "DESYNC in >=1 pair",
-            False,
+            "ALL PAIRS IDENTICAL",
+            True,
             {},
         ),
         # The widening (user's ruling, 2026-09-11). The peer that goes SILENT is not the peer that
@@ -1710,6 +1780,31 @@ def selftest():
                 "host": dict(stall_ms=20000, stall_at=20, silence_ms=12000),
                 "client1": dict(stall_ms=0, silence_ms=12000),
             },
+        ),
+        # mp:D26 (user decision, 2026-09-23). Real game-over, no deliberate arm, reached by BOTH
+        # peers -- the other half of "expected end": no harness banner tells this run to end, but
+        # every peer independently logs on_gameover at the SAME game-clock (600 ms = step 60 on this
+        # peer's own axis), which is what a genuine mutual elimination looks like. The divergence
+        # starts exactly there, so truncation must exclude it -- proving the clock-mapped branch of
+        # `expected_match_end`, not just the arming-line branch arm 6 exercises.
+        (
+            "9 REAL game-over on BOTH peers, divergence AT it -- mp:D26 truncates -> IDENTICAL",
+            dict(mismatch_at=60, real_gameover_step=60, **base),
+            "ALL PAIRS IDENTICAL",
+            True,
+            {},
+        ),
+        # ...and the negative of arm 9: the SAME real-game-over marker, but on only ONE peer -- the
+        # other never corroborates it (a crash / a one-sided log, not a mutual elimination). This is
+        # the "one peer ends, the other does not" case the user's ruling names explicitly, and it must
+        # stay DESYNC: a one-sided game-over is not distinguishable from the unplanned-death shape, so
+        # `expected_match_end` must refuse to call it expected.
+        (
+            "10 UNEXPECTED end: only ONE peer logs a game-over -- MUST stay DESYNC",
+            dict(mismatch_at=60, **base),
+            "DESYNC in >=1 pair",
+            False,
+            {"host": dict(real_gameover_step=60)},
         ),
     ]
     bad = 0
@@ -1756,10 +1851,20 @@ def selftest():
                 )
             # arm 7 rides on arm 3's fixture: the false detector-gap accusation must be suppressed,
             # and the noise-line check rides on arm 1: a healthy run must report no drop marker.
-            if name.startswith("3") and "NOT evidence of a detector gap" not in printed:
+            # NOTE: match the leading tag EXACTLY (not startswith) -- "10" also startswith "1", which
+            # would silently fold arm 10 into arm 1's check the moment a double-digit arm existed.
+            tag = name.split(" ", 1)[0]
+            if tag == "3" and "NOT evidence of a detector gap" not in printed:
                 ok, name = False, name + " (+arm 7: in-band suppression)"
-            if name.startswith("1") and "peer-removal marker" in printed:
+            if tag == "1" and "peer-removal marker" in printed:
                 ok, name = False, name + " (+marker false positive on a GREEN run)"
+            # mp:D26 (user decision, 2026-09-23): arms 6 and 9 are the two EXPECTED-end shapes and
+            # must both print the truncation line; arm 10 is the UNEXPECTED (one-sided) shape and
+            # must NOT -- proving the guard doesn't fire on evidence it shouldn't accept.
+            if tag in ("6", "9") and "D26: EXPECTED match end" not in printed:
+                ok, name = False, name + " (+mp:D26: no truncation line printed)"
+            if tag == "10" and "D26: EXPECTED match end" in printed:
+                ok, name = False, name + " (+mp:D26: truncated an end that was NOT expected)"
             print("   %-64s %s" % (name, "ok" if ok else "FAIL -- got %r clean=%s" % (got, clean)))
             bad += 0 if ok else 1
         # ---- SES1: pairing by match_id, and the REFUSAL ------------------------------------------
@@ -1828,6 +1933,77 @@ def selftest():
             False,
             0,
             "NOT COMPARED",
+        )
+
+        # ---- mp:D29: the manifest-fingerprint refusal ---------------------------------------------
+        # Two clean peers with identical hashes; only the harness's configuration line varies. The
+        # MIXED arm (configuration (1) on one side, (2) on the other, SAME fp) is the shape D29's
+        # rig gate runs, so it must PASS; a fp mismatch must be REFUSED even though every hash agrees.
+        def _fp_arm(slug, name, host_line, client_line, want_rc, want_text, absent_text=None):
+            nonlocal bad
+            d = os.path.join(root, "fp_" + slug)
+            dirs = []
+            for role, ln in (("host", host_line), ("client1", client_line)):
+                p = os.path.join(d, role)
+                _fx_peer(p, role=role, steps=50, interval=0.01)
+                if ln:
+                    with open(os.path.join(p, "mh_harness.log"), "a") as f:
+                        f.write(ln + "\n")
+                dirs.append(p)
+            ns = argparse.Namespace(
+                paths=dirs,
+                freeze_ms=200,
+                min_common=1,
+                json=os.path.join(d, "out.json"),
+                selftest=False,
+                allow_mismatch=False,
+            )
+            buf, keep = io.StringIO(), sys.stdout
+            sys.stdout = buf
+            try:
+                rc = analyse(ns)
+            finally:
+                sys.stdout = keep
+            printed = buf.getvalue()
+            ok = (rc or 0) == want_rc and want_text in printed
+            if absent_text and absent_text in printed:
+                ok = False
+            print("   %-64s %s" % (name, "ok" if ok else "FAIL -- rc=%s" % (rc,)))
+            bad += 0 if ok else 1
+
+        c1 = (
+            "; [harness] configuration (1): spine ABSENT, registry=mh.dll, rebased=0 owned=0, "
+            "uncovered=none, manifest fp=%s"
+        )
+        c2 = (
+            "; [harness] configuration (2): spine PRESENT, registry=libmh.dll, rebased=0 owned=2, "
+            "uncovered=none, manifest fp=%s"
+        )
+        _fp_arm(
+            "mixed",
+            "D29 MIXED pair (config 1 vs 2), same manifest fp -> compared",
+            c1 % "5A11D00D",
+            c2 % "5A11D00D",
+            0,
+            "ALL PAIRS IDENTICAL",
+            absent_text="HASH MANIFEST (D29)",
+        )
+        _fp_arm(
+            "diff",
+            "D29 different manifest fps -> REFUSED although hashes agree",
+            c1 % "5A11D00D",
+            c1 % "0BADF00D",
+            2,
+            "REFUSED: the peers hashed under 2 DIFFERENT hash manifests",
+        )
+        _fp_arm(
+            "one",
+            "D29 only one peer states a fp (pre-D29 build) -> not refused",
+            c1 % "5A11D00D",
+            None,
+            0,
+            "ALL PAIRS IDENTICAL",
+            absent_text="HASH MANIFEST (D29)",
         )
     finally:
         shutil.rmtree(root, ignore_errors=True)
@@ -1902,6 +2078,22 @@ def step_clock_seconds(seg, step):
         return struct.unpack(">d", bytes.fromhex(seg["steps"][step]["clock"]))[0]
     except (KeyError, ValueError, struct.error):
         return None
+
+
+def step_for_clock(seg, clock_s, tol=0.5):
+    """mp:D26. The inverse of `step_clock_seconds`: this peer's own step whose game-clock is
+    nearest `clock_s`, or None if nothing is within `tol` seconds. Used to turn a `mh_net.log`
+    on_gameover line's `gclk` (wall-independent game-clock, ms) into a STEP NUMBER so it can be
+    compared against the hashed-step axis `diff_peers` truncates on."""
+    best, best_d = None, None
+    for s in seg.get("steps", {}):
+        c = step_clock_seconds(seg, s)
+        if c is None:
+            continue
+        d = abs(c - clock_s)
+        if best_d is None or d < best_d:
+            best, best_d = s, d
+    return best if best_d is not None and best_d <= tol else None
 
 
 def grid_departure(seg, probe=20, tol=1e-4):
@@ -2083,6 +2275,73 @@ def environmental_verdict(peers, first_mismatch_step, first_mismatch_clock_s):
     return "ended_explains", reasons
 
 
+# ---------------------------------------------------------------- mp:D26: the EXPECTED-end truncation
+#
+# USER DECISION (2026-09-23): mp_analyze TRUNCATES the comparison at match end, but ONLY when the end
+# was EXPECTED -- a deliberate/declared end (a `gameover_step` harness arm) or a real game-over that
+# EVERY peer independently reaches. An UNEXPECTED end (one peer ends, the other does not -- a crash, a
+# dropped link, anything the OTHER peer never corroborates) is NOT expected-end evidence and must
+# still report DESYNC: that class is exactly what a real bug or a real dead link looks like, and this
+# function's job is to tell the two apart, not to excuse either.
+#
+# WHY "every peer" for the real-game-over branch. A elimination-triggered game-over is client code
+# running on BOTH sides from the SAME deterministic order, so a genuine one is logged by every peer
+# that is still in the match. A game-over logged by only SOME peers is indistinguishable from one peer
+# silently dying mid-match and never reaching the line at all -- i.e. it is not evidence the end was
+# expected, it is the unexpected-end shape by another name, so this deliberately does NOT relax to "at
+# least one peer".
+#
+# WHY THE DELIBERATE ARM NEEDS NO CLOCK MAPPING. `gameover_step=N` in the harness arming banner is the
+# step the run was TOLD to force a game-over at (harness.cpp) -- it names a step directly, so it is
+# authoritative on its own and is checked first.
+def expected_match_end(peers):
+    """Is this match's end EXPECTED, and if so, at what step should the comparison truncate?
+
+    Returns (step, reason) when expected-end evidence exists (`step` is the first step to EXCLUDE --
+    `diff_peers(truncate_at=step)` compares steps < step only), or (None, reason) when there is none --
+    including the one-sided case, which the caller must still let read as DESYNC.
+    """
+    for p in peers:
+        arming = (p.get("harness") or {}).get("arming") or ""
+        m = re.search(r"gameover_step=([1-9]\d*)", arming)
+        if m:
+            step = int(m.group(1))
+            return step, "deliberate gameover_step=%d harness arm" % step
+
+    ends = [(p, parse_match_end(p.get("net"))) for p in peers]
+    gos = [(p, e["gameover_gclk_ms"]) for p, e in ends if e["gameover_gclk_ms"] is not None]
+    if not peers or len(gos) < len(peers):
+        return None, (
+            "no deliberate gameover_step arm, and not every peer logged a real on_gameover "
+            "(%d of %d) -- an unexpected/one-sided end is not expected-end evidence"
+            % (len(gos), len(peers))
+        )
+    # An UNPLANNED-drop marker (net_lockstep.cpp's U17 fast-drop -- a transport failure) anywhere in
+    # the match, alongside a game-over every peer reached, is exactly DET-FLAKE's environmental class
+    # (a link death that cascades into a forced game-over on both sides), not the clean-elimination
+    # shape this branch is for -- leave it to `environmental_verdict`'s own 4-condition guard instead
+    # of taking it here on weaker evidence.
+    if any(e["drop_markers"] for _, e in ends):
+        return None, (
+            "every peer logged a real on_gameover, but an unplanned transport-drop marker is also "
+            "present -- this is DET-FLAKE's environmental class, not a clean elimination"
+        )
+    steps = []
+    for p, gclk in gos:
+        s = step_for_clock(p.get("harness") or {}, gclk / 1000.0)
+        if s is None:
+            return None, (
+                "every peer logged a real on_gameover, but %s's gclk=%dms maps to no hashed "
+                "step -- cannot place the truncation boundary" % (p.get("role"), gclk)
+            )
+        steps.append((p.get("role"), s))
+    step = min(s for _, s in steps)
+    return step, "real on_gameover reached by all %d peer(s) at step(s) %s" % (
+        len(peers),
+        ", ".join("%s@%d" % (r, s) for r, s in steps),
+    )
+
+
 def main():
     ap = argparse.ArgumentParser(description="MP run analyzer")
     ap.add_argument("paths", nargs="*")
@@ -2196,7 +2455,14 @@ def analyse(args):
                 "steps": nsteps,
                 "per_region_steps": len(h["regions"]),
                 "has_breakdown": bool(h["breakdown"]),
+                "config": h.get("config"),
+                "manifest_fp": h.get("manifest_fp"),
             }
+            if h.get("config"):
+                print(
+                    "   harness: configuration (%s), manifest fp=%s"
+                    % (h["config"], h.get("manifest_fp") or "?")
+                )
             if h["banner"]:
                 print("   harness: %s" % h["banner"].strip("; ="))
             print(
@@ -2445,19 +2711,67 @@ def analyse(args):
                 print("\nJSON -> %s" % args.json)
             return 2
 
+    # ---- mp:D29: do the peers hash the SAME MANIFEST? --------------------------------------------
+    # Each harness states its manifest fingerprint (the ordered slice list: rid/offset/len/excluded
+    # and the name). Two peers under different manifests have per-region columns that MEAN
+    # different things, so an IDENTICAL verdict between them would be noise with a rig's authority --
+    # the same reason a match_id mismatch is refused above. Peers that carry no line (a pre-D29
+    # build) are listed and not compared; a MIXED pair (configuration (1) vs (2)) is fine as long as
+    # the fingerprints agree, which is the whole point of that shape.
+    fps = [
+        (
+            p["role"],
+            (p.get("harness") or {}).get("manifest_fp"),
+            (p.get("harness") or {}).get("config"),
+        )
+        for p in out["peers"]
+    ]
+    stated = {fp for _r, fp, _c in fps if fp}
+    out["manifest_fp_by_peer"] = {r: fp for r, fp, _c in fps}
+    out["harness_config_by_peer"] = {r: c for r, _fp, c in fps}
+    if len([1 for _r, fp, _c in fps if fp]) >= 2 and len(stated) > 1:
+        out["refused"] = "manifest_fp_mismatch"
+        print("\n" + "-" * 72)
+        print("HASH MANIFEST (D29)")
+        print("-" * 72)
+        for r, fp, c in fps:
+            print("   %-10s configuration (%s)  manifest fp=%s" % (r, c or "?", fp or "(none)"))
+        print(
+            "   -> REFUSED: the peers hashed under %d DIFFERENT hash manifests -- their per-region "
+            "columns do not describe the same regions, so no verdict between them means anything. "
+            "Rebuild both peers from one tree." % len(stated)
+        )
+        if args.json:
+            with open(args.json, "w", encoding="utf-8") as fh:
+                json.dump(out, fh, indent=2)
+            print("\nJSON -> %s" % args.json)
+        return 2
+
     # cross-peer diff -- ALL pairwise combinations (N1: a 3-peer game must be identical across all 3 pairs,
     # not just host-vs-first-client). With 2 peers this is the single pair as before.
     import itertools
 
     harness_peers = [p for p in peers if "harness" in p]
     if len(harness_peers) >= 2:
+        # mp:D26 (user decision, 2026-09-23): decide BEFORE the pairwise loop, since the truncation
+        # boundary is a property of the MATCH (all peers), not of one pair, and every pair's diff
+        # must be truncated at the same step or the pairwise rollup would disagree with itself.
+        d26_step, d26_reason = expected_match_end(harness_peers)
+        if d26_step is not None:
+            print(
+                "\nD26: EXPECTED match end at step %d (%s) -- the comparison below is TRUNCATED "
+                "to steps < %d; a divergence at or after it is the match ending, not the sim "
+                "disagreeing" % (d26_step, d26_reason, d26_step)
+            )
+        out["d26_expected_end_step"] = d26_step
+        out["d26_expected_end_reason"] = d26_reason
         out["desync_pairs"] = []
         pair_verdicts = []
         for a, b in itertools.combinations(harness_peers, 2):
             print("\n" + "-" * 72)
             print("CROSS-PEER DESYNC DIFF  [%s] vs [%s]" % (a["role"].upper(), b["role"].upper()))
             print("-" * 72)
-            d = diff_peers(a["harness"], b["harness"], a["role"], b["role"])
+            d = diff_peers(a["harness"], b["harness"], a["role"], b["role"], truncate_at=d26_step)
             d["pair"] = [a["role"], b["role"]]
             out["desync_pairs"].append(d)
             print("   overlap: %d steps" % d.get("overlap", 0))
@@ -2628,15 +2942,13 @@ def analyse(args):
         out["environmental"] = env_kind in ("ended", "ended_explains")
         out["environmental_kind"] = env_kind
         out["environmental_reasons"] = env_reasons
-        # mp:X3 / D26. MACHINE-READABLE, and the VERDICT IS DELIBERATELY UNTOUCHED. A run whose
-        # harness banner arms `gameover_step` was TOLD to end, and the elimination that ends it
-        # legitimately desyncs the peers (presence_lost clears the loser's ALIVE bit and downgrades
-        # SESSION 3->2 on one side only) -- so the DESYNC this file reports on such a run is true of
-        # the hashes and misleading about the run. Whether the verdict should be truncated at match
-        # end for every shape is D26's open ruling and a USER DECISION, not something a sibling item
-        # flips on its way past; X3 needs only to be able to ASK the question, so that a resync
-        # trigger can exclude the class without re-deriving the arming line. The printed
-        # `LINK/MATCH:` reason above already says it in prose; this is the same fact as a key.
+        # mp:X3 / D26. MACHINE-READABLE key, kept for existing consumers (a resync trigger that wants
+        # ONLY the deliberate-arm case without re-deriving the arming line). D26 ITSELF is resolved
+        # (user decision, 2026-09-23): the truncation this implies is now actually APPLIED, above the
+        # pairwise loop, via `expected_match_end()` / `out["d26_expected_end_step"]` -- that is the
+        # authoritative D26 signal and covers BOTH expected-end shapes (this deliberate arm, and a
+        # real game-over every peer reaches); this narrower flag is the deliberate-arm-only subset of
+        # it, retained because X3 already publishes it and a consumer may want exactly that distinction.
         out["deliberate_match_end"] = any(
             re.search(r"gameover_step=([1-9]\d*)", ((p.get("harness") or {}).get("arming") or ""))
             for p in harness_peers

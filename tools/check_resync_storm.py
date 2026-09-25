@@ -18,13 +18,14 @@ THREE ARMS, one checker (the check_cancel_task.py shape):
                      both lanes) on the shipped udp transport. The gate must be CARRIED by the
                      byte patches and the match must stay clean. Also `resync_gate_proof` (mp:P9
                      2/2): the reproduction's exact shape with the gate ON and `resync_count_init=0`
-                     -- the gate alone must hold the barrier count at 0 for 5 min.
+                     -- the gate alone must hold the barrier count at 0 to gameclock 30 s.
   --expect storm     the `resync_storm_repro` row (registered `expect_red: "mp:P9"` and KEPT red):
                      the same pair with `[net] resync_trigger_gate=0` + `resync_count_init=0` (the
                      field's pre-fix state) and `defang_overlay=0` (the SHIPPED value -- see WATCH
                      v2 below), host 100 / joiner 60 ms lookahead through a 100 ms one-way shim (the
-                     field link), for 5 min in-game. THE ARM IS THE ROW'S ASSERTION, "the stock
-                     start does not storm", WHICH IS KNOWN FALSE: it goes RED naming the count when
+                     field link), until the leader has begun 5 barriers (a shim trigger ends it
+                     then; the 5-min timeline is the fallback). THE ARM IS THE ROW'S ASSERTION,
+                     "the stock start does not storm", WHICH IS KNOWN FALSE: it goes RED naming the count when
                      >= --min-barriers (5) barrier BEGIN lines are seen, so the row's XFAIL carries
                      the storm's numbers, and an XPASS (fewer than 5 over a real match) is the
                      finding that the stock configuration stopped storming -- rule 7's "turned
@@ -153,8 +154,11 @@ ARMED_RE = re.compile(
 # margin on that and still two orders of magnitude clear of the threshold-0 fire this file hunts.
 SAMPLE_SLACK = 10
 
+# mp:P9D: `live` (the counter read on the BEGIN frame, beside the previous frame's `count was`) is an
+# OPTIONAL group -- logs written before P9D carry no `live` field and must still parse.
 BARRIER_BEGIN_RE = re.compile(
-    r"\[resync\] barrier #(\d+) BEGIN \(count was (\d+), threshold (\d+), countdown (-?\d+)\) flags=0x([0-9a-f]+)"
+    r"\[resync\] barrier #(\d+) BEGIN \(count was (\d+)(?:, live (\d+))?, threshold (\d+), "
+    r"countdown (-?\d+)\) flags=0x([0-9a-f]+)"
 )
 BARRIER_END_RE = re.compile(r"\[resync\] barrier #(\d+) END after (\d+) ms flags=0x([0-9a-f]+)")
 COUNT_INIT_RE = re.compile(
@@ -192,7 +196,8 @@ def net_log_lines(run_dir):
 def resync_lines(run_dir):
     """The mp:P9 evidence of one peer's run, parsed:
     {watch: [(count, threshold, countdown, delta10)], fired: [(no, before, after, threshold,
-    countdown)], barriers: [(no, count_before, threshold, countdown, flags)] (BEGIN edges),
+    countdown)], barriers: [(no, count_before, threshold, countdown, flags, live)] (BEGIN edges;
+    live is None on a pre-P9D line),
     barrier_ends: [(no, duration_ms, flags)], count_init: [(before, after, threshold)],
     gate: [(armed, displaced, mismatched)], uncarried: [line], desync_match_steps: [int],
     desync_bad: [line], mode8_rows / mode8_runs: the mh_lockstep.log `game` column's 8s (rows and
@@ -221,8 +226,17 @@ def resync_lines(run_dir):
             continue
         m = BARRIER_BEGIN_RE.search(ln)
         if m:
-            g = m.groups()
-            d["barriers"].append(tuple(int(x) for x in g[:4]) + (int(g[4], 16),))
+            no, cnt, live, thr, cd, fl = m.groups()
+            d["barriers"].append(
+                (
+                    int(no),
+                    int(cnt),
+                    int(thr),
+                    int(cd),
+                    int(fl, 16),
+                    None if live is None else int(live),
+                )
+            )
             continue
         m = BARRIER_END_RE.search(ln)
         if m:
@@ -442,7 +456,7 @@ def config1_fails(label, lines):
     return fails
 
 
-def check(host_dir, client_dir, expect, min_steps=1000, min_barriers=5):
+def check(host_dir, client_dir, expect, min_steps=1000, min_barriers=5, min_fires=0):
     fails = []
     peers = [("host", resync_lines(host_dir)), ("client", resync_lines(client_dir))]
     for label, ev in peers:
@@ -526,6 +540,16 @@ def check(host_dir, client_dir, expect, min_steps=1000, min_barriers=5):
         # threshold-1 for a fire that happened at threshold+1 (mp:P9C, 2026-09-23). Tolerating that
         # is not loosening the assertion: a threshold-0 fire -- the thing resync_count_init exists
         # to abolish -- reads 0 against 200 and is still caught by a mile.
+        # Gate diet block 2 (2026-09-24): the row now runs to gameclock 30 s, not 150 s, so it
+        # must PROVE it still saw the fix at work rather than pass on zero fires. --min-fires N (the
+        # row passes 2) requires the leader to have fired at least N barriers -- two is the count
+        # climbing to the threshold, firing, resetting and climbing again, i.e. the ~14.5 s period.
+        if len(host_ev["barriers"]) < min_fires:
+            fails.append(
+                "clause 3: the leader began %d barrier(s) < --min-fires %d -- the match was too "
+                "short to show the initialised threshold being reached and re-armed"
+                % (len(host_ev["barriers"]), min_fires)
+            )
         low = [b for b in host_ev["barriers"] if b[2] != want or b[1] < want - SAMPLE_SLACK]
         if low:
             fails.append(
@@ -657,6 +681,7 @@ def plant(
     barrier_count=0,
     barrier_thr=0,
     barrier_countdown=59,
+    barrier_live=None,
 ):
     proc = os.path.join(root, name, "logs", "20260922T000000Z_menu_solo")
     sess = os.path.join(root, name, "logs", "20260922T000001Z_deadbeef_0_solo")
@@ -716,10 +741,11 @@ def plant(
             )
         # watch v2: one BEGIN per barrier, an END ~2 s later unless the rig's defang latched it
         n_ends = len(range(barriers)) if barrier_ends is None else barrier_ends
+        live = "" if barrier_live is None else ", live %d" % barrier_live  # P9D's field, optional
         for i in range(barriers):
             fh.write(
-                "[00:02:%02d.000] ; [resync] barrier #%d BEGIN (count was %d, threshold %d, countdown %d) flags=0x00\n"
-                % ((2 * i) % 60, i + 1, barrier_count, barrier_thr, barrier_countdown)
+                "[00:02:%02d.000] ; [resync] barrier #%d BEGIN (count was %d%s, threshold %d, countdown %d) flags=0x00\n"
+                % ((2 * i) % 60, i + 1, barrier_count, live, barrier_thr, barrier_countdown)
             )
             if i < n_ends:
                 fh.write(
@@ -845,6 +871,22 @@ def selftest():
             "countinit: a barrier whose SAMPLED count landed one short (199 of 200) is still a fire",
             "countinit",
             dict(gate=None, count_init=(0, 2, 200), barriers=1, barrier_count=199, barrier_thr=200),
+            dict(gate=None, count_init=(0, 2, 200)),
+            True,
+        ),
+        (
+            # mp:P9D: the same fire in the NEW line format (`count was 199, live 0`) -- the optional
+            # `live` group must not break the parse or the classification.
+            "countinit: P9D format `count was 199, live 0` parses and is still a fire",
+            "countinit",
+            dict(
+                gate=None,
+                count_init=(0, 2, 200),
+                barriers=1,
+                barrier_count=199,
+                barrier_thr=200,
+                barrier_live=0,
+            ),
             dict(gate=None, count_init=(0, 2, 200)),
             True,
         ),
@@ -980,7 +1022,45 @@ def selftest():
         bad += 0 if ok else 1
     finally:
         shutil.rmtree(root, ignore_errors=True)
-    n = len(cases) + 1
+    # mp:P9D: the regex itself, both formats -- `live` is captured when present and None when not.
+    old_ln = "; [resync] barrier #4 BEGIN (count was 199, threshold 200, countdown 12) flags=0x40"
+    new_ln = "; [resync] barrier #4 BEGIN (count was 199, live 0, threshold 200, countdown 12) flags=0x40"
+    mo, mn = BARRIER_BEGIN_RE.search(old_ln), BARRIER_BEGIN_RE.search(new_ln)
+    ok = bool(
+        mo
+        and mn
+        and mo.groups() == ("4", "199", None, "200", "12", "40")
+        and mn.groups() == ("4", "199", "0", "200", "12", "40")
+    )
+    print(
+        "  %s  BEGIN regex: pre-P9D line parses (live None), P9D line captures live 0"
+        % ("ok " if ok else "BAD")
+    )
+    bad += 0 if ok else 1
+    # Gate diet block 2: --min-fires on the countinit arm (the shortened proof row passes 2).
+    for label, nb, want in (
+        ("countinit --min-fires 2: 2 fires at 200 pass", 2, True),
+        ("countinit NEG --min-fires 2: 1 fire is too short a match", 1, False),
+    ):
+        root = tempfile.mkdtemp(prefix="p9chk_")
+        try:
+            h = plant(
+                root,
+                "host",
+                gate=None,
+                count_init=(0, 2, 200),
+                barriers=nb,
+                barrier_count=200,
+                barrier_thr=200,
+            )
+            c = plant(root, "client", gate=None, count_init=(0, 2, 200), fires=0, watch=False)
+            fails, _ = check(h, c, "countinit", min_fires=2)
+            ok = (not fails) == want
+            print("  %s  %s" % ("ok " if ok else "BAD", label))
+            bad += 0 if ok else 1
+        finally:
+            shutil.rmtree(root, ignore_errors=True)
+    n = len(cases) + 4
     print("check_resync_storm selftest: %d/%d" % (n - bad, n))
     return 0 if bad == 0 else 1
 
@@ -1000,6 +1080,13 @@ def main():
         default=5,
         help="storm: the leader must have BEGUN at least this many mode-8 barriers (watch v2)",
     )
+    ap.add_argument(
+        "--min-fires",
+        type=int,
+        default=0,
+        help="countinit: the leader must have fired at least this many barriers (the shortened "
+        "proof row passes 2 -- a fire, a re-arm, a second fire)",
+    )
     ap.add_argument("--selftest", action="store_true")
     ap.add_argument("dirs", nargs="*")
     args = ap.parse_args()
@@ -1011,7 +1098,7 @@ def main():
         )
         return 2
     fails, summary = check(
-        args.dirs[0], args.dirs[1], args.expect, args.min_steps, args.min_barriers
+        args.dirs[0], args.dirs[1], args.expect, args.min_steps, args.min_barriers, args.min_fires
     )
     if fails:
         print("check_resync_storm: FAIL (%s)" % summary)

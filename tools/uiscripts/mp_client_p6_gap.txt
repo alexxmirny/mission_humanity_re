@@ -1,0 +1,46 @@
+# mp:P6 -- CLIENT (loser) side. Pair with mp_host_p6_gap.txt -- see its header for the scenario, the
+# map choice (Last Question), and the `screen 0x00653dc3` end-gate (the outcome dialog's own widget
+# list, `_G_LLM_UI_OUTCOME_DLG_WIDGET_LIST`).
+#
+# THIS is the peer the post_check reads: the conquest workload (armed host-only per the row's
+# `harness_extra_host`) makes the HOST win and the CLIENT lose (host's side issues the eliminating
+# orders against the enemy=client slot), matching wave 2's mp_run finding (outcome=5 host / outcome=4
+# client on the same gclk). This peer's own `mh_net.log` carries its own `on_gameover ENTER ...
+# outcome=4 gclk=N` line at the moment `screen 0x00653dc3` below fires, and its own
+# `mh_frametime.log` is what the done_when means by "the LOSING peer's own mh_frametime.log" --
+# pulled from THIS lane/VM, not the host's. check_p6_gap.py reads the window from the HOST's own
+# outcome wall-time (the grace-timer's start) to THIS peer's own outcome wall-time (here) and finds
+# the longest single present-to-present gap inside it.
+
+# join the host by IP -> the joined lobby (see mp_client_join.txt for the flow)
+settled value:110
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+present Internet server
+settled Internet server
+clickl Internet server
+present Server address
+settled Connect
+clickl Connect
+sessions 1
+settled Join game
+clickl Join game
+
+# joined lobby: tell the host we are really here, then wait for its Start
+present Network players
+signal lobby
+settled Cancel
+absent Network players
+
+# in the match: same gate as the host, then run to THIS peer's own outcome (the loss) -- the grace
+# window under test is exactly what keeps this peer able to reach this line at all once the host has
+# already left lockstep.
+gameclock 6000
+capture m3_launched
+log CLIENT is in the match
+screen 0x00653dc3
+capture client_lost
+log CLIENT reached its own outcome dialog (the loss)
+end

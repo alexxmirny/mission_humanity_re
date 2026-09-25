@@ -83,7 +83,9 @@
 #include "mh_net_proto/net_crypto.h"
 #include "mh_net_proto/net_udp.h"
 #include "mh_net_proto/net_wire.h" // the 12-byte framing the stream carries -- see the note above
+#include "mh_net_queue_policy.h"   // mp:U41e -- the SAME lane pair mh_net.dll's TCP transport uses
 #include "udp_channel_c.h"         // mp:T2 -- channel C's bulk transfer and its chunk lane
+#include "udp_ping_cadence.h"      // mp:P15 -- the warm-up ping cadence's decision function
 #include "udp_stats.h"             // mp:T3 -- the RFC 6298 / 3393 / 7680 arithmetic, I/O-free
 
 namespace mh {
@@ -99,12 +101,27 @@ namespace netudp {
 constexpr int SEG_PAYLOAD = 254;
 // The reorder / retransmit windows. Both are powers of two so the modulo is a mask, and both are
 // far larger than any burst the game produces: a lockstep frame is a segment or two, so 1024 is
-// about sixteen seconds of traffic at frame rate. A sequence outside the window is not a reorder,
-// it is a broken stream, and it drops the connection rather than corrupting it.
+// about sixteen seconds of traffic at frame rate. On RECEIVE a sequence outside the window is not a
+// reorder, it is a broken stream, and it drops the connection rather than corrupting it. On SEND a
+// full window is back-pressure since mp:T4b (see TX_BACKLOG_BYTES below), not a drop.
 constexpr int SEG_WINDOW = 1024;
 constexpr int SEG_MASK   = SEG_WINDOW - 1;
 
-constexpr int QUEUE_CAP = 256; // the inbound ring, same cap and same D24 policy as the TCP module
+// mp:U41e -- THE SAME SEQUENCE-MERGED LANE PAIR mh_net.dll's TCP transport uses (mp:U41,
+// mh_net_queue_policy.h), sized identically for the identical reason: lane H (bare horizon
+// adverts, evictable by construction) never blocks and covers a multi-second flood in a few tens
+// of KB; lane M (orders, control frames, anything else) is the ONLY lane that may REFUSE an
+// arrival, and it keeps the ring's original 256-slot capacity so every existing capacity-sensitive
+// arm (udploopbacktest's burst/stall/ring-full arms, all of which send non-horizon-tagged frames)
+// is unaffected byte for byte. Before this item the ring was a single 256-slot FIFO with D24's
+// victim-scan eviction (still compiled below as `choose_victim`, used nowhere on this path any
+// more) -- which, unlike the TCP module since mp:U41, could force-evict a REAL, non-supersedable
+// frame when nothing evictable was left (the `ev_unsafe` case udploopbacktest's `g_evict_unsafe`
+// witness existed to catch). The lane pair removes that case by construction: a full lane M
+// REFUSES the new arrival instead, exactly as mh_net.dll's has since U41.
+constexpr int QUEUE_CAP_H = 4096;                      // bare horizons -- the lane that floods
+constexpr int QUEUE_CAP_M = 256;                       // everything else -- the lane that must not lose
+constexpr int QUEUE_CAP   = QUEUE_CAP_H + QUEUE_CAP_M; // reported depth denominator
 
 constexpr int K_MIN     = (int)mh_net_proto::udp::INPUT_K_MIN;
 constexpr int K_MAX     = 4; // see SEG_PAYLOAD above -- the MTU, not T0's INPUT_K_MAX of 8
@@ -115,7 +132,7 @@ constexpr DWORD HS_RETRY_MS  = 300;   // handshake datagram retransmit interval
 constexpr DWORD HS_BUDGET_MS = 4000;  // total handshake budget, matching the TCP connect budget
 constexpr DWORD HS_PEND_MS   = 8000;  // how long a host keeps an unfinished handshake
 constexpr DWORD ACK_MS       = 40;    // how often a receiver publishes its stream frontier
-constexpr DWORD RTO_MS       = 200;   // a segment unacked this long is re-sent
+constexpr DWORD RTO_MS       = 200;   // the retransmit timeout's FLOOR (and its value before any RTT)
 constexpr int   RTO_BURST    = 16;    // ... at most this many per pass, so a stall cannot flood
 constexpr DWORD NAT_KEEP_MS  = 20000; // PKT_KEEPALIVE when pings are off (plan D4's NAT floor)
 constexpr DWORD TOKEN_TTL_MS = 60000; // a minted connect token is presentable for this long
@@ -132,6 +149,91 @@ constexpr DWORD RESET_JOIN_MS = 3000;
 // these"; a negative value is the explicit off.
 constexpr int PING_MS_DEFAULT       = 1000;
 constexpr int RX_TIMEOUT_MS_DEFAULT = 10000;
+
+// ---- mp:P15 -- a WARM-UP ping burst for the first seconds after a peer is admitted ----------------
+//
+// P14 seeds the adaptive lookahead's start value from the SRTT already measured in the lobby, but the
+// seed needs AD_START_MIN_RTT_SAMPLES (3, lookahead_start.h) pings, and at the shipped 1 Hz cadence
+// that is a 3 s FLOOR on top of however long the lobby actually took: the o4 rig lanes (a hand-clicked
+// lobby, match starting ~1.4 s after connect) only ever accrued 2 samples, so every run fell back to
+// the 100 ms guess P14 exists to replace. A real lobby usually sits open far longer than 3 s, but a
+// quick rematch or an auto-start flow does not, and there is no reason a seed that is cheap (three
+// ~200-byte round trips) should be gated on how long a human happens to leave a menu open.
+//
+// So each peer is pinged at FAST_PING_MS for FAST_PING_WINDOW_MS after admission -- 3 samples inside
+// 750 ms even at a LAN's ~1 ms RTT, and inside the window at any RTT this transport's own ceiling
+// (RTO_MAX_MS, 2 s) allows -- then drops back to the steady m_ping_ms (1000 ms) cadence for the rest
+// of the match. TRAFFIC COST: at most 12 extra ~40-byte sealed pings per peer per side (4 Hz - 1 Hz
+// for 3 s = 9 extra ticks, rounded up for the boundary tick) -- ~480 B one-shot, once per connect, on
+// a link whose steady state already spends far more than that on lockstep orders. Never faster than
+// the CONFIGURED cadence: a `[net] ping_ms` set below FAST_PING_MS is left alone (see timer_loop's
+// `warm_ms` clamp), so this can only ADD samples early, never replace a deliberately fast steady rate.
+constexpr DWORD FAST_PING_MS        = 250;  // 4 Hz
+constexpr DWORD FAST_PING_WINDOW_MS = 3000; // ...for this long after admission
+
+// ---- mp:T4b / mp:T5 -- the send window is BACK-PRESSURE, not a tripwire ---------------------------
+//
+// Until T4b a sender that ran SEG_WINDOW segments past the peer's acknowledgement frontier DROPPED
+// THE LINK. That rule assumed a full window meant "the peer stopped answering", and two rig runs
+// showed it does not: mp:T4 (a per-frame advert at thousands of fps filling 1024 segments inside a
+// 360 ms round trip) and mp:T5 (a lobby at a 500 ms round trip, after a 3.4 s machine-wide freeze,
+// dropped while the peer was STILL acknowledging -- 451 segments delivered, 12 keepalives answered).
+// A full window is a peer that is BEHIND, and a peer that is behind is not a dead one.
+//
+// So bytes that do not fit the window wait in a per-peer BACKLOG and go out as the frontier moves.
+// They go out BUNDLED: the backlog is a byte stream like the one it feeds, so it is cut into full
+// SEG_PAYLOAD segments however many frames that spans -- a burst of 21-byte adverts that took one
+// segment each while the window was open takes 1/12 of a slot each once it is not. The OPEN-window
+// path is untouched: a frame written while the window has room leaves in that same call, in its own
+// segment, exactly as before, so back-pressure costs nothing until the window is actually full.
+//
+// WIRE: unchanged. A segment carrying the tail of one frame and the head of the next is something
+// the receiver's reassembler has always accepted (stream_drain walks a segment frame by frame and
+// carries a partial header across a boundary); v0.2.0-rc2's on_input_frame/stream_drain are
+// byte-identical to this build's, so an rc2 peer reads a bundled segment exactly as this one does.
+// Nothing is negotiated because nothing new is on the wire.
+//
+// THE DROP IS KEPT for what it was always meant to catch, stated as TIME rather than as a byte
+// count: a peer whose acknowledgement frontier has not moved for the link timeout (rx_timeout_ms,
+// 10 s by default -- the bound the silence watchdog has always promised for a dead peer) while this
+// side has data outstanding is dropped, even if its pings still arrive. The backlog is also bounded:
+// TX_BACKLOG_BYTES waiting behind a closed window is a sustained send rate the path cannot carry,
+// and that drops the link by name rather than growing without limit.
+constexpr uint32_t TX_BACKLOG_BYTES = 256u * 1024u;
+constexpr int      PUMP_BURST       = 64; // backlog segments sent per pump call (see stream_pump)
+
+// ---- mp:T5 -- the retransmit timeout follows the measured round trip -----------------------------
+//
+// RTO_MS was a CONSTANT 200 ms, which is below every round trip the field and the rig run at (field
+// SRTT 205-230 ms; rig shims 360 and 500 ms). Every segment was therefore re-sent before its
+// acknowledgement could possibly have arrived: on every clean 250 ms-one-way rig run the host logged
+// `rto sent` at ~2x its new segments (e.g. 1862 re-sends for 896 new ones in 10 s), each re-send a
+// K-redundant datagram. That is a retransmit STORM on a loss-free path, and after T5's 3.4 s freeze
+// it was what turned a backlog into ~1000 datagrams/s through the shim.
+//
+// RFC 6298's shape, with the acknowledgement cadence as the variance floor: an ack is published at
+// most every ACK_MS by the peer's 20 ms timer, so a segment's ack can lag its round trip by
+// ACK_MS + 2 * TICK_MS on a path with no variance at all. RTO_MS stays the floor, so a LAN or any
+// path under ~120 ms round trip retransmits exactly as before; RTO_MAX_MS caps a wild estimate.
+constexpr DWORD RTO_MAX_MS       = 2000;
+constexpr DWORD RTO_ACK_SLACK_MS = ACK_MS + 2 * TICK_MS;
+// ...and it BACKS OFF (RFC 6298 5.5): each time the OLDEST outstanding segment has to be re-sent the
+// timeout doubles, up to 2^RTO_BACKOFF_MAX, and the next frontier advance resets it. A round-trip
+// estimate taken from pings on an idle path is short of the queueing a burst adds, and without the
+// backoff every re-send joins that queue and lengthens it -- the congestion-collapse shape (seen
+// offline when a starved relay fell behind: 7616 re-sends for 1150 new segments).
+constexpr int RTO_BACKOFF_MAX = 3;
+
+// `samples == 0` (no pong yet) keeps the old constant: there is nothing to follow.
+inline DWORD rto_for(double srtt_ms, double rttvar_ms, long samples) {
+    if (samples <= 0) return RTO_MS;
+    double var = 4.0 * rttvar_ms;
+    if (var < (double)RTO_ACK_SLACK_MS) var = (double)RTO_ACK_SLACK_MS;
+    double r = srtt_ms + var;
+    if (r < (double)RTO_MS) r = (double)RTO_MS;
+    if (r > (double)RTO_MAX_MS) r = (double)RTO_MAX_MS;
+    return (DWORD)r;
+}
 
 // ---- the channel-A segment header ---------------------------------------------------------------
 // One byte in front of every segment's bytes. It exists for exactly one reason: a byte stream that
@@ -156,6 +258,13 @@ struct Counters {
     long gap_ms_worst; // the longest such block
     long mac_fail, replay_drop, malformed, wrong_conn;
     long hs_started, hs_done, hs_retries;
+    // mp:T4b -- the back-pressure half. `bp_episodes` counts times a write found the window full and
+    // had to queue; `bp_bundled_segs` the segments cut from the backlog (each may carry many frames);
+    // `bp_peak_bytes` the most ever queued on one peer. A burst arm that never touched the backlog
+    // proved nothing about it, so the suite asserts these are non-zero before believing a survival.
+    long bp_episodes, bp_bundled_segs, bp_peak_bytes;
+    long ack_stall_drops; // links dropped because the peer's frontier stopped moving (the kept drop)
+    long rx_pauses;       // times delivery paused on a full inbound ring instead of destroying a frame
 };
 
 // ---- the control-frame callback -----------------------------------------------------------------
@@ -286,6 +395,19 @@ public:
     // "net: udp counters" line can print it beside the delivery counters. `player_id` is the caller's
     // strategic-player-slot space; see the .cpp for why a client applies it to its one conn regardless.
     void set_peer_horizon(int player_id, int horizon_ms);
+    // mp:U41e -- THE MATCH BOUNDARY, mirroring mh_net.dll's MH_Net_QueueMatchBoundary exactly (see
+    // net_transport.cpp's note on the row): rolls the finished match's inbound-queue rollup into the
+    // log, then restarts ONLY the per-match counters (mh::net::queue_policy::lane_queue::
+    // reset_counters(), which bumps `epoch_` and zeroes evicted/refused) -- NOT the lanes themselves,
+    // which is `stop()`'s transport-boundary job. Called by udp_transport.cpp's
+    // MH_Net_QueueMatchBoundary export, which used to be a no-op (this module carried no per-match
+    // rollup at all -- mp:U41c/G305).
+    void queue_match_boundary();
+    // mp:U41e -- qmatchtest's read of the lane counters, the udp twin of net_transport.cpp's
+    // free-function `mh_net_queue_counters_for_test`. Under the same lock the writers take.
+    // `epoch_out` is the reset marker (mh_net_queue_policy.h); pass nullptr where it is not needed.
+    void queue_counters_for_test(int *depth, int *high, long *evicted, long *refused,
+                                 unsigned *epoch_out);
     // mp:R3e -- "is `a` a peer this endpoint still holds?" True for an admitted conn that has not
     // been dropped and for a handshake still inside HS_PEND_MS; false for everything else, which
     // includes a pending entry that timed out and simply has not been reclaimed yet (the table is
@@ -302,6 +424,9 @@ public:
     // makes it a model of the network rather than of a decode failure.
     void set_rx_loss(unsigned per_mille, uint32_t seed);
     void counters(Counters &out) const { out = m_c; }
+    // mp:T4b -- a peer that keeps talking (pings, data) but stops ACKNOWLEDGING the stream. The one
+    // shape only the kept drop can catch: the silence watchdog sees a live peer. Test-only.
+    void set_ack_mute(bool on) { InterlockedExchange(&m_ack_mute, on ? 1 : 0); }
 
     // ---- mp:T2, channel C ------------------------------------------------------------------------
     // Push `len` bytes to `dst_player` as a sequence of SHA-verified chunks. `blob` must stay alive
@@ -351,10 +476,20 @@ private:
         uint32_t tx_acked; // the peer's published frontier: everything below is safely delivered
         DWORD    tx_sent_ms[SEG_WINDOW];
         Seg      tx_ring[SEG_WINDOW];
-        uint32_t rx_next;     // next segment sequence to deliver
-        uint32_t rx_top;      // highest sequence seen so far
-        uint8_t  rx_seen_any; // ...and whether ANY has been, since sequence 0 is a legal rx_top
-                              // and "nothing received" must not read as "segment 0 is missing"
+        // mp:T4b -- bytes waiting for the window (a ring; see TX_BACKLOG_BYTES), the episode they
+        // belong to, and the kept drop's clock.
+        uint8_t  tx_bl[TX_BACKLOG_BYTES];
+        uint32_t tx_bl_head, tx_bl_len;
+        DWORD    tx_bp_since;    // when this back-pressure episode began, 0 = the window is open
+        uint32_t tx_bp_peak;     // ...and its most bytes queued
+        long     tx_bp_bundled;  // ...and the segments cut from its backlog
+        DWORD    tx_stall_since; // since when the frontier has not moved with data outstanding (0 = none)
+        uint8_t  rto_backoff;    // mp:T5 -- RFC 6298 5.5: doublings since the frontier last moved
+        uint8_t  rx_paused;      // mp:T4b -- the inbound ring had no room; the timer resumes delivery
+        uint32_t rx_next;        // next segment sequence to deliver
+        uint32_t rx_top;         // highest sequence seen so far
+        uint8_t  rx_seen_any;    // ...and whether ANY has been, since sequence 0 is a legal rx_top
+                                 // and "nothing received" must not read as "segment 0 is missing"
         uint8_t rx_have[SEG_WINDOW];
         Seg     rx_ring[SEG_WINDOW];
         DWORD   gap_since; // when rx_next first blocked, 0 when not blocked
@@ -374,6 +509,13 @@ private:
         volatile LONG  ping_tx, ping_rx;
         DWORD          last_ack_ms;
         DWORD          last_keep_ms;
+        // mp:P15 -- WHEN this conn was admitted (set once, at admission, unlike `last_rx` which every
+        // inbound packet moves) and the timer's own per-peer ping clock. Together they decide the
+        // warm-up cadence in timer_loop: FAST_PING_MS while `now - admitted_ms < FAST_PING_WINDOW_MS`,
+        // the steady m_ping_ms after. `last_ping_ms` is PER-CONN (not one endpoint-wide clock) because
+        // two peers can be admitted seconds apart and each needs its own warm-up window.
+        DWORD admitted_ms;
+        DWORD last_ping_ms;
 
         // mp:SES6 -- proving OUTBOUND DELIVERY needs a signal narrower than `last_rx` above: that one
         // is stamped by ANY accepted packet (keepalives included, deliver_frame's FLAG_PING early-out
@@ -415,6 +557,13 @@ private:
         int     len;
         uint8_t data[MH_NET_MAX_PAYLOAD];
     };
+    // mp:U41e -- lane H's slot, sized by the classifier's own guarantee (mh_net_queue_policy.h:
+    // `is_evictable` admits nothing but a BARE_HORIZON_LEN frame into this lane), exactly as
+    // net_transport.cpp's HMsg is.
+    struct HMsg {
+        int     src;
+        uint8_t data[mh::net::queue_policy::BARE_HORIZON_LEN];
+    };
 
     // ---- plumbing ---------------------------------------------------------------------------------
     void logf(const char *fmt, ...);
@@ -433,20 +582,30 @@ private:
     int  alloc_conn_slot();
 
     // stream
-    void stream_write(int idx, const uint8_t *bytes, size_t len);
-    void emit_segment(int idx, uint32_t seq, bool retx);
-    void on_input_frame(int idx, const uint8_t *payload, size_t len);
-    void on_state_frame(int idx, const uint8_t *payload, size_t len, DWORD now);
-    void on_bulk_frame(int idx, const uint8_t *payload, size_t len);
-    void stream_drain(int idx);
-    void deliver_frame(int idx, const mh_net_proto::WireHdr &h, const uint8_t *payload, uint32_t len);
-    void send_ack(int idx, DWORD now);
-    void rto_pass(int idx, DWORD now);
+    void  stream_write(int idx, const uint8_t *bytes, size_t len);
+    void  stream_new_segment(int idx, const uint8_t *bytes, size_t len, DWORD now); // mp:T4b
+    void  stream_pump(int idx, DWORD now);                                          // mp:T4b -- backlog -> window, bundled
+    void  emit_segment(int idx, uint32_t seq, bool retx);
+    DWORD conn_rto_ms(const Conn &c) const; // mp:T5 -- rto_for over the conn's measured RTT
+    void  on_input_frame(int idx, const uint8_t *payload, size_t len);
+    void  on_state_frame(int idx, const uint8_t *payload, size_t len, DWORD now);
+    void  on_bulk_frame(int idx, const uint8_t *payload, size_t len);
+    void  stream_drain(int idx);
+    bool  inbound_has_room(); // mp:T4b -- the receiver's half of back-pressure (see stream_drain)
+    void  deliver_frame(int idx, const mh_net_proto::WireHdr &h, const uint8_t *payload, uint32_t len);
+    void  send_ack(int idx, DWORD now);
+    void  rto_pass(int idx, DWORD now);
     // mp:T2's one outbound edge: a CH_BULK frame on conn `idx`. Caller holds m_conn_cs.
     bool        send_bulk_payload(int idx, const uint8_t *payload, size_t len);
     static bool bulk_emit_thunk(void *ctx, int idx, const uint8_t *payload, size_t len);
 
     void enqueue(int src, const void *data, int len);
+    // mp:U41e -- the per-match rollup line, the same wording (and the same log_formats.json entry,
+    // `net.queue_rollup`) as net_transport.cpp's free function `queue_rollup_line`, over THIS
+    // endpoint's `logf` rather than a module-global one. Called with the lock already released (file
+    // I/O under m_q_cs would put the recv thread's slowest operation inside the drain path).
+    void log_queue_rollup(int depth, int depth_h, int depth_m, int high, int high_h, int high_m,
+                          long evicted, long refused);
     void host_dispatch(int from_idx, const mh_net_proto::WireHdr &h, const void *payload, int len);
     void send_frame(int idx, uint16_t flags, int16_t src, int16_t dst, const void *payload, int len);
     void drop_conn(int idx, const char *why);
@@ -488,10 +647,19 @@ private:
     volatile LONG    m_dead_peer;
     volatile LONG    m_id_assigned;
 
-    CRITICAL_SECTION m_q_cs;
-    Msg              m_q[QUEUE_CAP];
-    int              m_qhead, m_qtail, m_qcount, m_qhigh, m_qhigh_band;
-    long             m_qdropped;
+    // mp:U41e -- the SAME sequence-merged lane pair as mh_net.dll's `g_lanes`/`g_qh`/`g_qm`
+    // (net_transport.cpp): `m_lanes` is pure index+sequence bookkeeping, `m_qm`/`m_qh` are the
+    // frames, indexed by the position the lane pair hands back.
+    CRITICAL_SECTION                                            m_q_cs;
+    mh::net::queue_policy::lane_queue<QUEUE_CAP_H, QUEUE_CAP_M> m_lanes;
+    Msg                                                         m_qm[QUEUE_CAP_M];
+    HMsg                                                        m_qh[QUEUE_CAP_H];
+    long                                                        m_qdropped; // LIFETIME lane-H evictions (MH_NetStats::dropped); the PER-MATCH counters live in m_lanes
+    // D24 instrumentation, unchanged: the 32-slot band already reported, so the log carries the
+    // APPROACH to the cap and not only the overflow.
+    int m_qhigh_band;
+    // mp:U41e -- the periodic rollup, matching net_transport.cpp's QUEUE_ROLLUP_MS cadence exactly.
+    DWORD m_q_rollup_at;
 
     ctrl_fn m_ctrl;
     void   *m_ctrl_ctx;
@@ -514,6 +682,9 @@ private:
     int64_t        m_qpc_freq; // mp:T3 -- QueryPerformanceFrequency, 0 until start() reads it
     unsigned       m_loss_pm;
     uint32_t       m_loss_state;
+    volatile LONG  m_ack_mute;    // mp:T4b test hook -- see set_ack_mute
+    DWORD          m_bp_last_log; // mp:T4b -- the back-pressure line is rate-limited to one a second
+    long           m_bp_unlogged; // ...and says how many episodes the limit folded into it
     volatile DWORD m_last_rx_tick;
     volatile long  m_tx_pkts, m_tx_bytes, m_rx_pkts, m_rx_bytes;
 };

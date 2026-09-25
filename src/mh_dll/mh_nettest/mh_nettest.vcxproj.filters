@@ -272,6 +272,7 @@
       <Filter>mh\patch</Filter>
     </ClCompile>
     <ClCompile Include="inmem_patch_selftest.cpp" />
+    <ClCompile Include="gone_peer_guard_selftest.cpp" />
     <ClCompile Include="hostapi_c_compile.c" />
     <ClCompile Include="hostapi_selftest.cpp" />
     <ClCompile Include="hostapi_trap.cpp" />
