@@ -86,6 +86,12 @@ import machine_config  # noqa: E402
 DEFAULT_OUT = os.path.join(REPO, "tmp", "drained_reports")
 MANIFEST_NAME = ".drain_manifest.json"
 REMOTE_ROOT_SPEC = "/"  # bare slash = the rrsync-configured root itself (see module docstring)
+# With the ADMIN-key fallback there is no rrsync forced command, so "/" is the VPS's filesystem
+# root -- a 2026-09-20 drain pulled the whole VPS (etc/shadow, the swapfile, 814 MB) that way.
+ADMIN_ROOT_SPEC = "/srv/reports/"
+# Only `<YYYY-MM>/...` trees are reports; everything else at the source root (the collector's
+# index.db, or a whole filesystem when the root is wrong) is never pulled, whatever the key.
+REPORT_FILTER = ("--include=/[0-9][0-9][0-9][0-9]-[0-9][0-9]/***", "--exclude=*")
 
 
 class Refusal(Exception):
@@ -152,7 +158,10 @@ def find_compatible_ssh(rsync_path):
 
 
 def drain_key_path():
-    key = os.environ.get("MH_DRAIN_KEY") or machine_config.VPS_SSH_KEY
+    """Returns (key_path, is_admin_fallback)."""
+    key = os.environ.get("MH_DRAIN_KEY")
+    is_admin = not key
+    key = key or machine_config.VPS_SSH_KEY
     if not key:
         raise Refusal(
             "no drain key configured. Set MH_DRAIN_KEY to the dedicated read-only key's path "
@@ -162,7 +171,7 @@ def drain_key_path():
         )
     if not os.path.isfile(key):
         raise Refusal("drain key does not exist on disk: %s" % key)
-    return key
+    return key, is_admin
 
 
 def vps_host():
@@ -219,6 +228,7 @@ def rsync_pull(rsync_exe, source_spec, local_dir, rsh=None, dry_run=False, extra
     argv = [rsync_exe, "-a", "--itemize-changes", "--stats", "--timeout=60"]
     if dry_run:
         argv.append("-n")
+    argv.extend(REPORT_FILTER)
     argv.extend(extra_args)
     if rsh is not None:
         argv.extend(["-e", rsh])
@@ -355,10 +365,18 @@ def drain(
         rsh = None
     else:
         host = host or vps_host()
-        key = key or drain_key_path()
+        is_admin = False
+        if not key:
+            key, is_admin = drain_key_path()
+        if is_admin:
+            print(
+                "drain_reports: WARNING -- MH_DRAIN_KEY unset, using the ADMIN key; draining %s"
+                % ADMIN_ROOT_SPEC,
+                file=sys.stderr,
+            )
         ssh_exe = find_compatible_ssh(rsync_exe)
         rsh = _rsh_command(ssh_exe, key)
-        source_spec = "%s:%s" % (host, REMOTE_ROOT_SPEC)
+        source_spec = "%s:%s" % (host, ADMIN_ROOT_SPEC if is_admin else REMOTE_ROOT_SPEC)
 
     rc, out, err, files_transferred = rsync_pull(
         rsync_exe, source_spec, out_dir, rsh=rsh, dry_run=dry_run
@@ -527,6 +545,13 @@ def selftest():
             os.makedirs(incomplete, exist_ok=True)
             with open(os.path.join(incomplete, "report.zip"), "wb") as f:
                 f.write(b"not-a-real-zip-yet")
+            # Non-report entries at the source root -- the collector's index.db, or a whole
+            # filesystem when the root is wrong (the 2026-09-20 admin-key drain). Never pulled.
+            os.makedirs(os.path.join(remote, "etc"), exist_ok=True)
+            with open(os.path.join(remote, "etc", "shadow"), "w") as f:
+                f.write("root:x")
+            with open(os.path.join(remote, "index.db"), "wb") as f:
+                f.write(b"db")
 
             printed1 = []
             result1 = drain(local, local_source=remote, say=printed1.append)
@@ -547,6 +572,10 @@ def selftest():
                 (result1["rsync_files_transferred"] or 0) > 0,
             )
             ck("run 1: printed one summary line per new report", len(printed1) == 2)
+            ck(
+                "run 1: nothing outside <YYYY-MM>/ is pulled",
+                sorted(os.listdir(local)) == [MANIFEST_NAME, "2026-09"],
+            )
             ck(
                 "run 1: the crash report's summary carries match_id and the fault field",
                 any("match_id=m2" in ln and "fault=mh.dll+0x175b0" in ln for ln in printed1),
@@ -614,6 +643,13 @@ def main():
     ap.add_argument("--json", action="store_true")
     ap.add_argument("--selftest", action="store_true", help="hermetic; no VPS, no network")
     a = ap.parse_args()
+    # A player's description is arbitrary text (Cyrillic, emoji); on a cp1252 console a strict
+    # print of it raised mid-summarize, before save_manifest -- so every later drain died too.
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(errors="replace")
+        except (AttributeError, ValueError):
+            pass
 
     if a.selftest:
         return selftest()

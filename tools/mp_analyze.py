@@ -416,6 +416,118 @@ def hash_manifest_fingerprint(header_text=None):
     return "%08X" % h
 
 
+# ---- the world-blob SCHEMA fingerprint (tooling TL-FIXTURE-SCHEMA) ------------------------------
+# mh::state::blob::schema_fingerprint<world_policy>(), in Python: FNV-1a 32 over (FORMAT, block
+# count, then per carried block rid/canonical_len as u32 LE + the name's bytes), in the committed
+# tools/data/world_snapshot_schema.json's block order -- which is WORLD_SNAPSHOT_BLOCKS' order by
+# construction (gen_world_snapshot.py's emit_header() walks schema["blocks"] in file order and that
+# is the only place the array is written). world_policy's canonical_len(b) is plain b.len (no
+# derived length, unlike LIB-BOOT's TLO registry), so `len` here is exactly the committed field.
+#
+# VERIFIED AGAINST THE DLL, MUTATION-PROVEN (2026-09-26, Release|Win32 build in-worktree): the
+# unmutated schema gives 30CADE6A, which is the exact `schema=` value `libmh_selftest.exe worldtest`
+# printed for all three committed fixtures' world.bin (and which their capture already carries at
+# common_header offset 12 -- verified independently by unpacking "<I" at offset 12 of each
+# decompressed world.bin.zz). Planting the 2026-09-22 shape -- un-excluding BROWSER_UI_ROWS in a
+# scratch copy of world_snapshot_dispositions.json, regenerating the schema (829 -> 830 blocks) and
+# rebuilding -- moved BOTH the live DLL's schema_fingerprint() (worldtest's "this build" value) and
+# this mirror to the identical 12C35C0D. FORMAT is parsed from world_snapshot.h rather than
+# hardcoded so a future FORMAT bump (as the nav trailer's did, 1 -> 2) does not silently desync it.
+_TOOLS_REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+WORLD_SNAPSHOT_SCHEMA = os.path.join(_TOOLS_REPO, "tools", "data", "world_snapshot_schema.json")
+WORLD_SNAPSHOT_H = os.path.join(_TOOLS_REPO, "src", "mh_dll", "libmh", "state", "world_snapshot.h")
+WORLD_FORMAT_RE = re.compile(r"inline constexpr uint32_t FORMAT\s*=\s*(\d+)u?\s*;")
+
+
+def world_format(header_text=None):
+    """world::FORMAT, parsed from world_snapshot.h -- the value schema_fingerprint() mixes in first."""
+    text = (
+        header_text if header_text is not None else open(WORLD_SNAPSHOT_H, encoding="utf-8").read()
+    )
+    m = WORLD_FORMAT_RE.search(text)
+    if not m:
+        raise ValueError("world_snapshot.h: world::FORMAT not found")
+    return int(m.group(1))
+
+
+def world_schema_fingerprint(schema=None, fmt=None):
+    """mh::state::blob::schema_fingerprint<world_policy>(), in Python -- see the module note above."""
+    schema = (
+        schema if schema is not None else json.load(open(WORLD_SNAPSHOT_SCHEMA, encoding="utf-8"))
+    )
+    fmt = fmt if fmt is not None else world_format()
+    blocks = schema["blocks"]
+    h = FNV32_OFFSET
+
+    def mix(v):
+        nonlocal h
+        for i in range(4):
+            h ^= (v >> (8 * i)) & 0xFF
+            h = (h * FNV32_PRIME) & 0xFFFFFFFF
+
+    mix(fmt)
+    mix(len(blocks))
+    for b in blocks:
+        mix(b["rid"])
+        mix(b["len"])
+        for c in b["name"].encode("ascii"):
+            h ^= c
+            h = (h * FNV32_PRIME) & 0xFFFFFFFF
+    return "%08X" % h
+
+
+# ---- the hash-INPUT epoch (tooling TL-GATE8) ----------------------------------------------------
+# region_view.h's hand-bumped HASH_INPUT_EPOCH. Every stored hash-embedding artifact is stamped with
+# it; every consumer refuses a mismatch with epoch_mismatch() rather than comparing.
+REGION_VIEW_H = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+    "src",
+    "mh_dll",
+    "libmh",
+    "state",
+    "region_view.h",
+)
+HASH_INPUT_EPOCH_RE = re.compile(r"inline constexpr uint32_t HASH_INPUT_EPOCH\s*=\s*(\d+)u?\s*;")
+# The harness log's `; HASH FINGERPRINT <fp> split=ok input_epoch=<E> build=<ver+sha>` line.
+HARNESS_EPOCH_RE = re.compile(r"^; HASH FINGERPRINT \S+ .*\binput_epoch=(\d+)(?:\s+build=(\S+))?")
+
+
+def hash_input_epoch(header_text=None):
+    """The HASH_INPUT_EPOCH the DLL is built with, parsed from region_view.h (None if absent)."""
+    try:
+        text = (
+            header_text if header_text is not None else open(REGION_VIEW_H, encoding="utf-8").read()
+        )
+    except OSError:
+        return None
+    m = HASH_INPUT_EPOCH_RE.search(text)
+    return int(m.group(1)) if m else None
+
+
+def harness_input_epoch(harness_log):
+    """(epoch, build) from a run's mh_harness.log -- (None, None) for a pre-epoch build."""
+    try:
+        f = open(harness_log, encoding="utf-8", errors="replace")
+    except (OSError, TypeError):
+        return None, None
+    with f:
+        for ln in f:
+            m = HARNESS_EPOCH_RE.match(ln)
+            if m:
+                return int(m.group(1)), m.group(2)
+    return None, None
+
+
+def epoch_mismatch(artifact, build):
+    """The ONE refusal wording every consumer prints, or None when the two agree."""
+    if artifact is not None and build is not None and int(artifact) == int(build):
+        return None
+    return "hash-input epoch mismatch: artifact E=%s, build E=%s" % (
+        "unstamped" if artifact is None else artifact,
+        "unstamped" if build is None else build,
+    )
+
+
 LOCKSTEP_COLS = [
     "wall_ms",
     "clock_ms",
@@ -1647,9 +1759,8 @@ def _fx_peer(
             if mismatch_at is not None and s >= mismatch_at and role != "host":
                 state ^= 0xF0F0
             # The COMBINED hash differs on every step of every real run (peer_horizon, the clock
-            # family and the order pipeline are peer-local by construction), and the NO-DATA floor
-            # counts combined-hash differences as its "did we compare anything" proxy -- so a
-            # fixture with identical combined hashes reads as a peer that produced nothing.
+            # family and the order pipeline are peer-local by construction). The NO-DATA floor
+            # counts overlapping steps since TL-SUITE-HASHDEF, not these differences.
             combined = 0xBBBB0000 + s + (0 if role == "host" else 1)
             f.write(
                 "%d %016X %016X %016X\n"
@@ -2896,8 +3007,15 @@ def analyse(args):
                     "   stop-breakdown regions differing: %s"
                     % (", ".join(diff) if diff else "NONE (all match)")
                 )
+            # (pair, state mismatches, combined mismatches, compared steps) -- the NO DATA floor counts OVERLAP, not
+            # combined-hash differences (TL-SUITE-HASHDEF: an all-equal combined read as NO DATA).
             pair_verdicts.append(
-                (d["pair"], d.get("mismatch_count", 0), d.get("combined_mismatch_count", 0))
+                (
+                    d["pair"],
+                    d.get("mismatch_count", 0),
+                    d.get("combined_mismatch_count", 0),
+                    d.get("overlap", 0),
+                )
             )
         # keep the legacy single-pair key for existing consumers (first pair)
         out["desync"] = out["desync_pairs"][0]
@@ -2914,16 +3032,16 @@ def analyse(args):
         # red.
         worst = 0
         nodata = 0
-        for pair, mm, cmb in pair_verdicts:
+        for pair, mm, cmb, ovl in pair_verdicts:
             worst = max(worst, mm)
-            if cmb < args.min_common:
+            if ovl < args.min_common:
                 nodata += 1
-                status = "NO DATA (%d compared steps < --min-common %d)" % (cmb, args.min_common)
+                status = "NO DATA (%d compared steps < --min-common %d)" % (ovl, args.min_common)
             else:
                 status = "OK" if mm == 0 else "DESYNC"
             print(
-                "   [%s vs %s]  state-mismatch steps=%d  combined-hash=%d  %s"
-                % (pair[0], pair[1], mm, cmb, status)
+                "   [%s vs %s]  state-mismatch steps=%d  combined-hash=%d  compared=%d  %s"
+                % (pair[0], pair[1], mm, cmb, ovl, status)
             )
         # DET-FLAKE: did the MATCH survive long enough for any of this to mean anything? Computed
         # before the verdict is chosen, because it can both add a failure and rename one.

@@ -1,0 +1,46 @@
+# The strategic STATS panel (the E hotkey): BUILDINGS / lost / destroyed, UNITS / lost / destroyed,
+# each with a right-aligned value.
+#
+# WHY THIS ROW EXISTS (2026-09-26). The values drew as `?????0`. llm_ui_hud_label_value_row_draw pads
+# each number to 6 cells with U+0087 (llm_str_itoa_pad_left(v, 6, 0x87)), a code unit no font maps,
+# so retail draws a blank one-em cell for each pad. mp:F2's glyph guard (gfx_font_guard.cpp) read
+# every unmapped code unit above U+0020 as a missing glyph and drew its '?' substitute; it now leaves
+# C1 controls blank too. The capture is compared only inside the right-hand panel, so the map's idle
+# animation does not count.
+#
+# Single-peer, through the real menu (an AI in slot 1, host clicks Start alone) -- pause_hotkey.txt's
+# walk.
+
+settled value:110
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+settled Create
+clickl Create
+present Game name
+settled Ok
+clickl Ok
+present Available maps
+settled Ok
+clickl Ok
+
+# host lobby: seat an AI opponent in slot 1, then launch alone.
+present Network players
+settled Start
+click 70 132
+present Computer
+enabled Start
+clickl Start
+
+absent Network players
+gamemode 2
+gameclock 1500
+
+# Scancode 0x12 = E (PC set-1): the stock hotkey that opens the stats panel.
+key 0x12
+gameclock 2000
+cursor 600 450
+capture s1_stats
+log stats panel: captured after E
+end

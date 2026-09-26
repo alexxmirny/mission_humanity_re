@@ -82,6 +82,8 @@ REPLAYED_RE = re.compile(r"replayed (\d+) step\(s\) in ([\d.]+) s")
 # IDENTICAL line" headline, and the first gate after D25 read three stale fixtures as three broken
 # replays. Now it is the headline, with both fingerprints.
 STALE_RE = re.compile(r"captured under a DIFFERENT hash (manifest|_?sink)")
+# TL-GATE8: the host's hash-input epoch refusal (libref_host/main.cpp, --input-epoch).
+EPOCH_RE = re.compile(r"hash-input epoch mismatch: artifact E=\S+, build E=\S+")
 
 
 class Refusal(Exception):
@@ -245,6 +247,16 @@ def current_manifest_fp():
         return None
 
 
+def epoch_refusal(man):
+    """TL-GATE8: the named refusal when the fixture's stamped hash-input epoch differs from the one
+    the DLL is built with (region_view.h), else None. Checked BEFORE the host runs."""
+    import mp_analyze as _m
+
+    return _m.epoch_mismatch(
+        (man.get("step0") or {}).get("hash_input_epoch"), _m.hash_input_epoch()
+    )
+
+
 def stale_fp(man):
     """True when the fixture's stamped manifest fingerprint differs from the current build's."""
     cur = current_manifest_fp()
@@ -259,7 +271,28 @@ def run_one(name, absent_file, timeout):
     lane = os.path.join(WORK, name)
     man, live = materialise(name, lane)
     steps = int(man["steps"])
-    argv = [HOST_EXE, "--fixture", lane, "--assets-absent", absent_file]
+    bad = epoch_refusal(man)
+    if bad:
+        # REFUSED, not compared: the stream was hashed under other input semantics.
+        return {
+            "name": name,
+            "live": live,
+            "steps": steps,
+            "secs": 0.0,
+            "log": os.path.join(WORK, name + ".log"),
+            "problems": ["REFUSED: %s -- re-capture the fixture under the current epoch" % bad],
+            "tail": [],
+        }
+    epoch = (man.get("step0") or {}).get("hash_input_epoch")
+    argv = [
+        HOST_EXE,
+        "--fixture",
+        lane,
+        "--assets-absent",
+        absent_file,
+        "--input-epoch",
+        str(epoch),
+    ]
     if live:
         argv.append("--live")
     log = os.path.join(WORK, name + ".log")
@@ -299,6 +332,9 @@ def run_one(name, absent_file, timeout):
                 ),
             )
         )
+    m_ep = EPOCH_RE.search(text)
+    if m_ep:
+        problems.append("REFUSED by the host: %s" % m_ep.group(0))
     if not IDENTICAL_RE.search(text):
         problems.append("no ALL STEPS IDENTICAL line")
     m = REPLAYED_RE.search(text)
@@ -386,6 +422,26 @@ def selftest():
         stale_fp({"step0": {"hash_manifest_fp": current_manifest_fp() or "DEADBEEF"}}) is False,
     )
 
+    import mp_analyze as _m
+
+    cur_ep = _m.hash_input_epoch()
+    case(
+        "a fixture of another hash-input epoch is REFUSED with both epochs named",
+        (epoch_refusal({"step0": {"hash_input_epoch": (cur_ep or 0) + 1}}) or "").startswith(
+            "hash-input epoch mismatch: artifact E=%d, build E=%s" % ((cur_ep or 0) + 1, cur_ep)
+        ),
+    )
+    case("an UNSTAMPED fixture is refused", epoch_refusal({"step0": {}}) is not None)
+    case(
+        "a fixture of the current epoch is not",
+        epoch_refusal({"step0": {"hash_input_epoch": cur_ep}}) is None,
+    )
+    case(
+        "the host's epoch refusal line is recognised",
+        bool(
+            EPOCH_RE.search("  FAIL: hash-input epoch mismatch: artifact E=1, build E=2 -- stale")
+        ),
+    )
     case("every committed fixture is discoverable", len(fixtures()) >= 1)
     print("[replay_libref] selftest: %s" % ("PASS" if not bad else "%d FAILED" % bad))
     return 1 if bad else 0

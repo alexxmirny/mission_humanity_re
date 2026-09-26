@@ -116,6 +116,7 @@
  },
  "step0": {
   "world_content_hash": "E0BDF84535A4090C",
+  "world_schema_fp": "30CADE6A",
   "lockstep_combined": "435585A1F860139D",
   "lockstep_state": "ED2F04D98448A012",
   "game_clock": "3F9111276FB08000",
@@ -123,7 +124,8 @@
   "mask_flags": 7,
   "hash_sink_fp": "68AADCE3",
   "hash_manifest_fp": "9221967E",
-  "hash_slice_count": 62
+  "hash_slice_count": 62,
+  "hash_input_epoch": 1
  },
  "artifacts": {
   "clock": {

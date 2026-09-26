@@ -48,6 +48,7 @@ import machine_config as machine  # LAN/game/VM defaults (bootstrap E2)
 import make_lane  # LANE_ROOT, for the 'lane=<name>' / 'solo=<name>' peer specs
 import mp_run  # reuse ssh/scp/ps/sh (the proven VM plumbing)
 import setup_dat  # edit a client's setup.dat server IP (point it at the host without typing)
+import win_job  # TL-SUITE-TEARDOWN: kill-on-close job assignment, shared with desktop.py/test_ui.py
 from PIL import Image
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -444,6 +445,32 @@ def ini_merge_fragment(text, fragment):
     return text
 
 
+def _refuse_net_fragment(text, path, flag):
+    """sys.exit if `text` (an ini fragment read from `path`) carries a [net] section.
+
+    Shared by --extra-ini, --extra-ini-host and --extra-ini-client (tooling:TL-SUITE-INIMERGE):
+    make_ini always builds [net] itself from NET_BLOCK/--net-extra/--net-extra-client, so a
+    fragment's own [net] can only ever become a shadowed second section -- dead-ends G69/G181. The
+    general fragment refused this since 2026-08-27; the host/client ones did not, until this closed
+    the gap (tools/uiscripts/ini/u28_off.ini is an existing fragment that would have hit it).
+    """
+    for ln in text.splitlines():
+        if ln.split(";", 1)[0].strip().lower() == "[net]":
+            sys.exit(
+                "REFUSED: %s carries a [net] section. make_ini builds [net] itself and appends this\n"
+                "fragment afterwards, and GetPrivateProfile* reads only the FIRST section of a given\n"
+                "name -- so those keys would be read by nothing and the run would report success\n"
+                "about a config it never had.\n"
+                'Use %s "key=value;key=value" through the matching --net-extra channel instead.'
+                % (
+                    path,
+                    "--net-extra"
+                    if flag == "--extra-ini"
+                    else ("--net-extra-client" if flag == "--extra-ini-client" else "--net-extra"),
+                )
+            )
+
+
 def ini_effective(text, section, key):
     """What GetPrivateProfile* would read: FIRST section with that name, FIRST key in it. None if absent.
 
@@ -493,157 +520,262 @@ def resolve_transport(net_extra):
     return got
 
 
+class IniLayers:
+    """Accumulate an ini by (section, key), one precedence step at a time (tooling:TL-SUITE-INIMERGE).
+
+    Each `add`/`add_lines`/`add_fragment`/`unset` call is a HIGHER-precedence step than every call
+    before it on the same instance: a later call's value for an already-seen (section, key) simply
+    replaces the earlier one. POSITION -- both which section comes first and which key comes first
+    within a section -- is fixed by FIRST mention instead, so a later step overriding an earlier
+    key's value does not relocate it; this is what keeps the rendered file close to the shape it had
+    before a value changed under it. `unset` records a real "no value" (the key is dropped from the
+    render entirely, e.g. so a compiled DLL default applies) rather than merely not mentioning it --
+    a later step CAN still re-add it, exactly like a real override would.
+
+    This is the single place make_ini's composition happens now, replacing the scattered
+    append-then-strip-the-shadowed-line logic that used to decide precedence ad hoc at each call
+    site (one instance of the bug per call site: dead-ends G69, G96, G178, G181, G249, G266, G267).
+    """
+
+    def __init__(self):
+        self._order = []  # [section_lower, ...] first-seen order
+        self._case = {}  # section_lower -> original-case header text
+        self._keys = {}  # section_lower -> [key_lower, ...] first-seen order
+        self._kcase = {}  # (section_lower, key_lower) -> original-case key text
+        self._vals = {}  # (section_lower, key_lower) -> value, or None if unset
+
+    def add(self, section, key, value):
+        sl, kl = section.strip().lower(), key.strip().lower()
+        if sl not in self._case:
+            self._order.append(sl)
+            self._case[sl] = section.strip()
+            self._keys[sl] = []
+        if kl not in self._keys[sl]:
+            self._keys[sl].append(kl)
+            self._kcase[(sl, kl)] = key.strip()
+        self._vals[(sl, kl)] = None if value is None else str(value)
+
+    def add_lines(self, section, lines):
+        """`lines`: an iterable of 'key=value' strings (no section header, no bare comments)."""
+        for ln in lines:
+            ln = ln.strip()
+            if not ln or ln.startswith((";", "#")) or "=" not in ln:
+                continue
+            k, v = ln.split("=", 1)
+            self.add(section, k, v.strip())
+
+    def add_fragment(self, text):
+        """A whole ini fragment (one or more `[section]` blocks) as ONE precedence step."""
+        for section, lines in ini_split_sections(text):
+            self.add_lines(section, lines)
+
+    def unset(self, section, key):
+        self.add(section, key, None)
+
+    def pairs(self):
+        """Every (section_lower, key_lower, value) ever added, value None if unset -- what a caller
+        asked this composition for, used by make_ini's round-trip self-check."""
+        for sl in self._order:
+            for kl in self._keys[sl]:
+                yield sl, kl, self._vals[(sl, kl)]
+
+    def render(self):
+        out = []
+        for sl in self._order:
+            body = [
+                "%s=%s" % (self._kcase[(sl, kl)], self._vals[(sl, kl)])
+                for kl in self._keys[sl]
+                if self._vals[(sl, kl)] is not None
+            ]
+            if not body:
+                continue  # every key this section ever had was unset -- nothing to emit
+            out.append("[%s]" % self._case[sl])
+            out.extend(body)
+            out.append("")
+        return "\n".join(out) + "\n"
+
+
+def _ini_kv_pairs(extra):
+    """[(key, value), ...] from a ';'-separated `k=v;k=v` string (--net-extra's own syntax)."""
+    out = []
+    for kv in (extra or "").split(";"):
+        kv = kv.strip()
+        if kv and "=" in kv:
+            k, v = kv.split("=", 1)
+            out.append((k.strip(), v.strip()))
+    return out
+
+
 def make_ini(script_name, timeout_frames, harness_steps=0, is_host=False, ident=None):
-    # --net-extra must OVERRIDE, not merely append. Windows GetPrivateProfile* returns the FIRST match
-    # for a key in a section, so appending `lockstep_step_ms=60` after NET_BLOCK's own
-    # `lockstep_step_ms=30` silently changes nothing: the run uses 30 and the log says 30 while the
-    # command line says 60. That cost a whole P4 comparison on 2026-07-26 -- two runs "pinned" to
-    # different lookaheads were the same config, and their matching numbers read as a real result.
-    # So drop any NET_BLOCK line whose key an extra also sets.
-    extra_kvs = [kv.strip() for kv in EXTRA_NET.split(";") if kv.strip()]
-    # mp:R7a -- --net-extra-client adds [net] keys to the CLIENT lanes ONLY. It is the client-only twin
-    # of --net-extra, needed so `direct_dial_with_relay_set` can put `relay=` in the CLIENT ini while
-    # the HOST stays off the relay entirely (the relay then registers NOBODY, so a truly untouched relay
-    # -- peers=0 -- is the assertion, not a relay that carries the host but not the dial). --extra-ini
-    # cannot carry it (a fragment's [net] is refused), which is why this is a [net] channel like --net-extra.
-    if (not is_host) and CLIENT_NET_EXTRA:
-        # ...and it must OVERRIDE --net-extra, not follow it: the same FIRST-match rule one level
-        # up. `--net-extra lockstep_step_ms=100 --net-extra-client lockstep_step_ms=60` used to write
-        # BOTH lines into the client ini in that order, so the client ran 100 while the command line
-        # said 60 -- mp:P8's host-100/joiner-60 arm was silently the both-100 arm (2026-09-22,
-        # caught from the generated ini before the run was read). Drop the --net-extra line whose
-        # key the client extra also sets.
-        client_kvs = [kv.strip() for kv in CLIENT_NET_EXTRA.split(";") if kv.strip()]
-        client_keys = {kv.split("=", 1)[0].strip() for kv in client_kvs if "=" in kv}
-        extra_kvs = [
-            kv for kv in extra_kvs if kv.split("=", 1)[0].strip() not in client_keys
-        ] + client_kvs
-    extra = "".join(kv + "\n" for kv in extra_kvs)
-    overridden = {kv.split("=", 1)[0].strip() for kv in extra_kvs if "=" in kv}
-    # A lane's PORT must override NET_BLOCK's 6501, not be appended after it: Windows
-    # GetPrivateProfile* returns the FIRST match for a key, the same trap --net-extra already guards.
-    lane_port = (ident or {}).get("port") or 0
-    if lane_port:
-        overridden.add("port")
-    net = "".join(
-        ln
-        for ln in NET_BLOCK.splitlines(keepends=True)
-        if ln.split("=", 1)[0].strip() not in overridden
-    )
-    if lane_port:
-        net += "port=%d\n" % lane_port
-    if SHIP_PACING:
-        for line in PINNED_PACING:
-            net = net.replace(line, "")
-    # Lane identity + headless, re-emitted from lane.json (see local_launch). Without this the
-    # runner's wholesale ini rewrite drops them and every lane silently reverts to the stock
-    # "MHMutex" and the visible present path.
-    #
-    # `lane` LIVES IN [uitest] SINCE FORK F2G -- it had its own one-key `[test]` section, which the
-    # DLL now refuses. Emitted INSIDE the [uitest] block rather than appended after it, because a
-    # second [uitest] section would be unreachable and the lane would fall back to the stock mutex:
-    # the same trap, and the merge is one file wider now.
+    """Compose this peer's mh_net.ini through ONE explicit, ascending precedence order (a LATER
+    layer wins a (section, key) collision -- see IniLayers), lowest to highest:
+
+      1. defaults    -- NET_BLOCK, with DEFANG_OVERLAY baked in as [net] defang_overlay's default and
+                        (if SHIP_PACING) the three PINNED_PACING keys unset so the DLL's own shipping
+                        default applies; plus TRACE_BLOCK, [capture] every=0, and the [uitest]
+                        identity block (enable/script/dump_screens/timeout_frames/lane).
+      2. net_extra   -- --net-extra, [net] only.
+      3. client_net_extra -- --net-extra-client, CLIENT PEER ONLY: overrides #2 on the client
+                        (mp:R7a; dead-ends G267).
+      4. lane_port   -- the lane allocator's [net] port. Wins even over an explicit --net-extra
+                        port=, because two peers landing on one port is a rig fault no flag should be
+                        able to cause.
+      5. headless    -- --headless/--desktop's [video] no_present=1 + no_window=1.
+      6. extra_ini   -- --extra-ini fragment(s) (main() already merges more than one together, in
+                        the order given). [net] is REFUSED before this ever runs (main()).
+      7. extra_ini_peer -- --extra-ini-host or --extra-ini-client, whichever matches THIS peer: the
+                        more specific fragment, so it wins over the general one (dead-ends G178's
+                        "the fragment is the more specific section" carried one level further out).
+                        [net] is refused here too now, same as #6.
+      8. harness     -- [harness], only if wants_harness(): the dedicated arming channel (--harness/
+                        --harness-extra/--harness-extra-host, all already resolved by
+                        make_harness_ini/harness_apply_extras), so it wins over anything upstream
+                        that also happens to poke [harness]. This used to be merged in last through
+                        ini_merge_fragment's fill-only semantics, which actually means the FIRST
+                        writer of a key wins -- so despite this exact comment, the harness block
+                        could previously LOSE to an earlier [harness] fragment (see this lane's
+                        report for the one committed fragment that could have hit it).
+
+    Every (section, key) any layer above actually set (or unset) is re-read back out of the
+    rendered text with ini_effective() -- the GetPrivateProfile first-match model -- before
+    returning; a mismatch raises naming the key, so a future change to this function that
+    reintroduces a shadowed section fails loudly here instead of downstream on a rig run.
+    """
     ident = ident or {}
-    uitest = [
-        "enable=1",
-        "script=%s" % script_name,
-        "dump_screens=0",
-        "timeout_frames=%d" % timeout_frames,
-    ]
+    L = IniLayers()
+
+    # ---- 1. defaults ------------------------------------------------------------------------------
+    for section, lines in ini_split_sections(NET_BLOCK):
+        for ln in lines:
+            k, _, v = ln.partition("=")
+            k = k.strip()
+            v = str(DEFANG_OVERLAY) if k == "defang_overlay" else v.strip()
+            L.add(section, k, v)
+    if SHIP_PACING:
+        for ln in PINNED_PACING:
+            L.unset("net", ln.split("=", 1)[0].strip())
+    for section, lines in ini_split_sections(TRACE_BLOCK):
+        L.add_lines(section, lines)
+    L.add("capture", "every", "0")
+    L.add("uitest", "enable", "1")
+    L.add("uitest", "script", script_name)
+    L.add("uitest", "dump_screens", "0")
+    L.add("uitest", "timeout_frames", timeout_frames)
     if ident.get("lane"):
-        uitest.append("lane=%d" % ident["lane"])
-    ini = (
-        net.replace("defang_overlay=0", "defang_overlay=%d" % DEFANG_OVERLAY)
-        + extra
-        + TRACE_BLOCK
-        + "\n[capture]\nevery=0\n\n[uitest]\n"
-        + "".join(ln + "\n" for ln in uitest)
-    )
-    # THE PER-ROW REBIND ROLLBACK USED TO BE EMITTED HERE, as a `[rebind]` section written into
-    # mh_net.ini SPECIFICALLY (harness.cpp read that file beside the exe and nothing else, so the
-    # same rollback in --extra-ini was never read and a run came back clean for the wrong reason).
-    # Fork F2E deleted the section -- which rows bind ours is `[config] mode` and nothing else -- and
-    # the DLL now REFUSES a run whose ini still carries one, so emitting it would kill every lane
-    # rather than bisect anything. The per-row bisect has no successor here; see the promoted-vs-original A/B driver's
-    # derive_control_ini for the same ruling on the promotion side.
-    # The [video] keys have to be MERGED into whatever [video] section --extra-ini already carries,
-    # not emitted as a second one. Windows' GetPrivateProfile* reads only the FIRST section with a
-    # given name, so a later duplicate [video] is dead text -- and headless emitted its block first,
-    # which silently shadowed every size_mode/width/height pin a test relies on. Measured 2026-07-28:
-    # res_hud's in-game capture came back 640x480 against its 1024x768 baseline and res_picker's came
-    # back 640x480 against 1280x800, i.e. the pin the whole test exists to prove was never applied.
-    # Same family as the --net-extra "first match wins" trap already guarded above, one level up.
-    tail = EXTRA_INI.rstrip("\n") + "\n" if EXTRA_INI else ""
-    if (not is_host) and EXTRA_INI_CLIENT:
-        # Merged by section for the same reason the host fragment is: a second `[promote]` block is
-        # dead text to GetPrivateProfile*, and this fragment's whole job is to override a key the
-        # DLL otherwise defaults to 1.
-        tail = ini_merge_fragment(tail, EXTRA_INI_CLIENT)
-    if is_host and EXTRA_INI_HOST:
-        # MERGE BY SECTION, never concatenate: the two fragments routinely share a section (both
-        # two fragments can carry the same section), and a second block of the
-        # same name is dead text to GetPrivateProfile*. See ini_merge_fragment.
-        tail = ini_merge_fragment(tail, EXTRA_INI_HOST)
-    # `HEADLESS` MUST BE IN main()'s `global` LIST, and it was not until 2026-08-01. Without it,
-    # `HEADLESS = resolve_headless(args, ap)` bound a LOCAL and the module global stayed False, so
-    # the headless default never reached this line: every direct `ui_test.py <script>` run against
-    # the default polygon showed a window, `--headless` did nothing, and only LANE runs were quiet
-    # (they come in through ident, which reads lane.json). It survived because the suite runs in
-    # lanes and nothing in the suite looks at windows -- the same blind spot the comment below
-    # already records for no_present-without-no_window. Noticed by the user watching a rig run.
+        L.add("uitest", "lane", ident["lane"])
+
+    # ---- 2. net_extra -------------------------------------------------------------------------------
+    for k, v in _ini_kv_pairs(EXTRA_NET):
+        L.add("net", k, v)
+
+    # ---- 3. client_net_extra (client peer only; mp:R7a, G267) --------------------------------------
+    if (not is_host) and CLIENT_NET_EXTRA:
+        for k, v in _ini_kv_pairs(CLIENT_NET_EXTRA):
+            L.add("net", k, v)
+
+    # ---- 4. lane_port ---------------------------------------------------------------------------
+    lane_port = ident.get("port") or 0
+    if lane_port:
+        L.add("net", "port", lane_port)
+
+    # ---- 5. headless (see main()'s HEADLESS `global` note for why both keys ride together) --------
     if HEADLESS or ident.get("headless"):
-        # BOTH, always together. no_window's offscreen keeper is armed by re-pointing the very call
-        # site that no_present frees, so emitting no_present alone leaves the window on screen --
-        # which is exactly what happened the first time this block was written, and it passed a test
-        # while doing it (the suite does not look at windows).
-        tail = ini_merge_section(tail, "video", ["no_present=1", "no_window=1"])
-    if tail:
-        ini += "\n" + tail
-    # THE [harness] BLOCK IS PART OF THIS FILE NOW (fork F2G, D12). Merged LAST and BY SECTION, so it
-    # wins over an --extra-ini fragment that also names [harness] the way the host/client fragments
-    # already merge over each other -- and so a fragment carrying its own [harness] keys cannot push
-    # the block into a second, unreachable section. `enable=1` comes from make_harness_ini.
+        L.add("video", "no_present", "1")
+        L.add("video", "no_window", "1")
+
+    # ---- 6. extra_ini -------------------------------------------------------------------------------
+    if EXTRA_INI:
+        L.add_fragment(EXTRA_INI)
+
+    # ---- 7. extra_ini_peer: whichever of --extra-ini-host / --extra-ini-client matches this peer ---
+    peer_extra = EXTRA_INI_HOST if is_host else EXTRA_INI_CLIENT
+    if peer_extra:
+        L.add_fragment(peer_extra)
+
+    # ---- 8. harness -----------------------------------------------------------------------------
     if wants_harness(harness_steps, is_host):
-        ini = ini_merge_fragment(ini, make_harness_ini(harness_steps, is_host))
-    if is_host and EXTRA_INI_HOST:
-        # SELF-CHECK, and it is here because this exact append was once silently missing: the flag
-        # parsed, the "[cfg] HOST-ONLY" line printed, the fragment never reached the ini, and the run
-        # came back ALL PAIRS IDENTICAL -- a green verdict over a test that had quietly become
-        # symmetric. An asymmetric run whose asymmetry evaporates does not fail; it passes, which is
-        # the worst possible direction. Cheap assertion, un-forgettable.
-        #
-        # AND IT CHECKS READABILITY, NOT PRESENCE (strengthened 2026-07-29). The first version asked
-        # only whether the literal line appeared anywhere in the file. It did -- inside a DUPLICATE
-        # `[promote]` section that GetPrivateProfile* never reaches -- so the guard passed on a run
-        # whose asymmetry was already dead, and the C6 acceptance run came back green with sim_tick
-        # never promoted. A text search cannot answer an ini question; model the reader.
-        for section, lines in ini_split_sections(EXTRA_INI_HOST):
-            for ln in lines:
-                key, _, val = ln.partition("=")
-                got = ini_effective(ini, section, key)
-                if got != val.strip():
-                    raise SystemExit(
-                        "--extra-ini-host: [%s] %s is not READABLE in the host ini (effective value "
-                        "%r, wanted %r) -- refusing to run a test whose asymmetry has silently "
-                        "vanished. A duplicate [%s] section earlier in the file shadows it."
-                        % (section, key.strip(), got, val.strip(), section)
-                    )
-    if (not is_host) and EXTRA_INI_CLIENT:
-        # The same readability self-check, for the same reason: the client fragment is the half that
-        # carries the asymmetry now, so a shadowed or dropped key here is exactly the "asymmetry
-        # evaporated" failure the host check above was written for, only one peer over.
-        for section, lines in ini_split_sections(EXTRA_INI_CLIENT):
-            for ln in lines:
-                key, _, val = ln.partition("=")
-                got = ini_effective(ini, section, key)
-                if got != val.strip():
-                    raise SystemExit(
-                        "--extra-ini-client: [%s] %s is not READABLE in the client ini (effective "
-                        "value %r, wanted %r) -- refusing to run a test whose asymmetry has silently "
-                        "vanished. A duplicate [%s] section earlier in the file shadows it."
-                        % (section, key.strip(), got, val.strip(), section)
-                    )
+        L.add_fragment(make_harness_ini(harness_steps, is_host))
+
+    ini = L.render()
+
+    # ---- round-trip self-check: every (section, key) any layer above touched reads back exactly
+    # as asked, through the same first-match model the game itself uses. By construction this
+    # class never emits a duplicate section, so this should never fire for a caller of THIS
+    # function -- it exists so a future edit that breaks that invariant fails here, loudly, with
+    # the key name, rather than as a green run over the wrong configuration two layers downstream.
+    for sl, kl, v in L.pairs():
+        got = ini_effective(ini, sl, kl)
+        if got != v:
+            raise SystemExit(
+                "make_ini: [%s] %s did not round-trip -- composed %r, GetPrivateProfile-style read "
+                "back %r. A duplicate section shadowed it; see tooling:TL-SUITE-INIMERGE."
+                % (sl, kl, v, got)
+            )
     return ini
+
+
+def effective_config_dict(ini_text):
+    """{section: {key: value}} exactly as GetPrivateProfile* would read `ini_text` -- first section
+    wins, first key within it wins. Reuses ini_split_sections' own parse so this can never disagree
+    with what make_ini's round-trip check (or ini_effective itself) already proved about the file."""
+    out = {}
+    for section, lines in ini_split_sections(ini_text):
+        sec_l = section.lower()
+        if sec_l in out:
+            continue  # a later duplicate section is unreachable -- ini_effective's own rule
+        d = {}
+        for ln in lines:
+            k, _, v = ln.partition("=")
+            k = k.strip().lower()
+            if k not in d:
+                d[k] = v.strip()
+        out[sec_l] = d
+    return out
+
+
+def _sha256_file(path):
+    try:
+        h = hashlib.sha256()
+        with open(path, "rb") as fh:
+            for chunk in iter(lambda: fh.read(1 << 20), b""):
+                h.update(chunk)
+        return h.hexdigest()
+    except OSError:
+        return None
+
+
+def write_effective_config(out_path, ini_text, dll_dir=None, extra=None):
+    """Write `out_path` (tooling:TL-SUITE-INIMERGE): the merged ini AS PARSED (effective_config_dict,
+    not the raw text -- a shadowed duplicate section must print as absent, the way the game reads
+    it), the desktop size if known, and the deployed mh.dll/satellite sha256 if `dll_dir` is given
+    and the files are on disk (a few MB, milliseconds to hash -- cheap).
+
+    BEST-EFFORT BY DESIGN: this is a diagnostic artifact, and a run must never fail because writing
+    it failed (a full disk, a locked file, a VM path that does not exist yet) -- every step is
+    wrapped and a failure here only prints, it never raises.
+    """
+    doc = {"config": effective_config_dict(ini_text)}
+    try:
+        doc["desktop_size"] = primary_desktop_size()
+    except Exception:
+        doc["desktop_size"] = None
+    hashes = {}
+    if dll_dir:
+        for name in ["mh.dll"] + list(SATELLITES):
+            p = os.path.join(dll_dir, name)
+            if os.path.isfile(p):
+                h = _sha256_file(p)
+                if h:
+                    hashes[name] = h
+    doc["dll_sha256"] = hashes
+    if extra:
+        doc.update(extra)
+    try:
+        os.makedirs(os.path.dirname(out_path) or ".", exist_ok=True)
+        with open(out_path, "w", encoding="utf-8") as fh:
+            json.dump(doc, fh, indent=2, sort_keys=True)
+    except OSError as e:
+        print("  [cfg] effective_config.json: could not write %s: %s" % (out_path, e))
 
 
 def bmp_to_png(bmp, png):
@@ -841,7 +973,13 @@ def local_launch(host_dir, script_src, script_name, timeout_frames, harness_step
     # files / 40,797 instrumented lines where the Debug build reports 700 / 61,889 -- i.e. inlined
     # bodies counted as never executed, the precise reading coverage.py exists to refuse.
     _wait_for_prior_launch_exit(host_dir)  # TL-RIG7 -- before we touch mh.dll in this lane
-    shutil.copy(g_dll(), os.path.join(host_dir, "mh.dll"))
+    # tooling:TL-SUITE-TEARDOWN -- _wait_for_prior_launch_exit only knows about a prior arm THIS
+    # lane's own pidfile recorded; a share_lanes row whose lane-mate outlived its own verdict (the
+    # peer teardown gap this item exists for) is a DIFFERENT holder this copy has never heard of, and
+    # used to surface as a bare "PermissionError: [WinError 32] ..." three frames from anything that
+    # says whose peer it was. copy_or_refuse names it instead (by pidfile-independent process
+    # location -- see win_job.find_process_under) and REFUSES rather than raising blind.
+    win_job.copy_or_refuse(g_dll(), os.path.join(host_dir, "mh.dll"), host_dir)
     _pdb = os.path.splitext(g_dll())[0] + ".pdb"
     if os.path.isfile(_pdb):
         # The collector attributes lines through the PDB; without it the report has no source at all.
@@ -915,6 +1053,15 @@ def local_launch(host_dir, script_src, script_name, timeout_frames, harness_step
         if pid:
             _LOCAL_PIDS.append(pid)
             retain_exit_handle(pid)
+            # tooling:TL-SUITE-TEARDOWN -- the SAME kill-on-close job TL-RIG6 gave the shim, now on
+            # the game peer itself: a runner killed by --jobs' per-test timeout (or anything else
+            # that tears down ui_test.py without running peer_kill) no longer orphans mh.focus.exe
+            # to pin the lane's mh.dll for the next row that shares it (share_lanes). Never fatal if
+            # it fails (no permission, etc.) -- the peer just runs unprotected by this mechanism,
+            # same as before it existed.
+            job = win_job.assign_kill_on_close(pid)
+            if job:
+                _LOCAL_JOBS.append(job)
             _record_launch_pid(
                 host_dir, pid
             )  # TL-RIG7 -- for the NEXT local_launch() into this lane
@@ -1067,6 +1214,7 @@ def local_script_status(run_dir):
 
 
 _LOCAL_PIDS = []
+_LOCAL_JOBS = []  # win_job handles, TL-SUITE-TEARDOWN -- kept alive so kill-on-close stays armed
 
 # ---- D15: what a dead peer's EXIT CODE says -----------------------------------------------------
 # A pid tells you the process is gone. The exit code tells you WHICH WAY it went, and that is the
@@ -1174,11 +1322,19 @@ def describe_exit(code):
 
 
 def local_kill(pid=None):
-    """Kill ONE local peer by pid, or every peer this process started.
+    """Kill ONE local peer by pid, or every peer this process started -- and DO NOT RETURN until
+    each one is actually gone (tooling:TL-SUITE-TEARDOWN).
 
     Deliberately NOT `Get-Process mh.focus | Stop-Process`: with per-test lanes or concurrent
     determinism runs there are several instances on this machine, and killing by image name would
     take down somebody else's run -- a cross-test failure that would look like a flaky test.
+
+    `Stop-Process -Force` returns as soon as PowerShell has ISSUED the kill, not once Windows has
+    actually torn the process down -- this is the same race TL-RIG7's _wait_for_prior_launch_exit
+    already had to work around for a REDEPLOY, generalised here for the caller that must not report
+    a verdict (or hand the lane back to share_lanes) while a peer might still be exiting. Waits a
+    bounded few seconds, then falls back to a direct TerminateProcess by pid (win_job's own
+    primitive) for anything Stop-Process missed.
     """
     pids = [pid] if pid else list(_LOCAL_PIDS)
     if not pids:
@@ -1188,6 +1344,9 @@ def local_kill(pid=None):
         % ",".join(str(p) for p in pids)
     )
     for p in pids:
+        if not win_job.wait_gone(p, timeout=5):
+            win_job.process_terminate(p)
+            win_job.wait_gone(p, timeout=5)
         if p in _LOCAL_PIDS:
             _LOCAL_PIDS.remove(p)
 
@@ -1297,6 +1456,17 @@ def remote_launch(
 ):
     d = args.vm_dir
     fwd = d.replace("\\", "/")
+    # tooling:TL-SUITE-VMSESSION, and FIRST -- before anything else touches this VM. A session that
+    # is Disc (or Active on something other than the console) never presents a frame no matter what
+    # gets deployed to it, so every other VM unit that reds through this function ("host never
+    # opened 6501") was really this. Refuse (or reattach) here, once, rather than let each caller
+    # discover it 90s later as a listening-port timeout that names the wrong layer.
+    if not mp_run.ensure_vm_console_session(args.ssh_key, args.vm_user, ip):
+        print(
+            "    [%s] ABORT: VM SESSION REFUSED -- not Active on its console; refusing to launch "
+            "rather than waiting out a 90s 'never opened' timeout" % ip
+        )
+        return False
     # TL-RIGKILL (2026-09-18): kill any leftover peer process BEFORE the first upload, not just at
     # teardown. An aborted/killed prior run (this process crashed, was Ctrl+C'd, or the whole rig
     # tool was killed externally) skips peer_kill()'s normal end-of-run remote_kill(), so the VM keeps
@@ -1389,8 +1559,21 @@ def remote_launch(
     mp_run.scp(args.ssh_key, script_src, "%s@%s:%s/%s" % (args.vm_user, ip, fwd, script_name))
     ini_local = os.path.join(_scratch(), "ui_test_vm_%s.ini" % ip.replace(".", "_"))
     with open(ini_local, "w", newline="\r\n") as f:
-        f.write(make_ini(script_name, timeout_frames, harness_steps, is_host))
+        _ini_text = make_ini(script_name, timeout_frames, harness_steps, is_host)
+        f.write(_ini_text)
     mp_run.scp(args.ssh_key, ini_local, "%s@%s:%s/mh_net.ini" % (args.vm_user, ip, fwd))
+    # effective_config.json (tooling:TL-SUITE-INIMERGE): staged at the VM's root here, next to
+    # mh_net.ini, because this is the one place that already has the exact text just deployed.
+    # peer_launch copies it into the actual run's log directory once that directory exists (it does
+    # not yet -- the game has not even been scheduled below).
+    cfg_local = os.path.join(
+        _scratch(), "ui_test_vm_%s_effective_config.json" % ip.replace(".", "_")
+    )
+    write_effective_config(cfg_local, _ini_text, dll_dir=os.path.dirname(g_dll()))
+    if os.path.isfile(cfg_local):
+        mp_run.scp(
+            args.ssh_key, cfg_local, "%s@%s:%s/effective_config.json" % (args.vm_user, ip, fwd)
+        )
     key_local = write_rig_key(_scratch())  # same PSK as the host peer, or the join is refused
     mp_run.scp(args.ssh_key, key_local, "%s@%s:%s/mh_key.txt" % (args.vm_user, ip, fwd))
     # ONE FILE (fork F2G): the [harness] block rode in the mh_net.ini above, so there is no second
@@ -1694,6 +1877,7 @@ def _solo_lane_dir(name):
             stock_exe=True,
             satellite=[],
             omit_satellite=[],
+            map_variant=None,  # make_lane._provision reads it (mp:X2a); a solo lane keeps stock Maps
         )
         with make_lane.boot_lock("solo:%s" % name):
             make_lane._provision(args)
@@ -1763,6 +1947,17 @@ def peer_launch(args, ip, script_src, tf, harness_steps=0, is_host=False, pdir=N
         if run:
             _RUN_PID[run] = pid
             _RUN_META[run] = (d, t0)
+            # effective_config.json (tooling:TL-SUITE-INIMERGE), next to this run's own logs. Read
+            # back the ini local_launch just wrote rather than threading its text through the return
+            # value -- it is the same tiny file, already flushed to disk. Best-effort: never fails
+            # the run (write_effective_config swallows its own write errors; this swallows the read).
+            try:
+                with open(os.path.join(d, "mh_net.ini"), "r", encoding="utf-8") as fh:
+                    write_effective_config(
+                        os.path.join(run, "effective_config.json"), fh.read(), dll_dir=d
+                    )
+            except OSError:
+                pass
         return run
     before = remote_newest_run(args, ip)
     # Same reason as the local branch: the crash window must open BEFORE the process does, or a
@@ -1781,6 +1976,17 @@ def peer_launch(args, ip, script_src, tf, harness_steps=0, is_host=False, pdir=N
         if run and run != before:
             _RUN_META[run] = (args.vm_dir, t0)
             _RUN_REMOTE[run] = (args, ip)
+            # The VM twin of the local write above: remote_launch already staged
+            # effective_config.json at the VM's game-dir root (it could not know `run` yet); now
+            # that the run directory exists, copy it in beside the logs it describes. Best-effort --
+            # `remote()` already tolerates/reports its own failures, and a missing artifact here must
+            # never fail a scenario the game itself completed.
+            remote(
+                args,
+                ip,
+                'copy /y "%s\\effective_config.json" "%s\\logs\\%s\\" >nul 2>nul'
+                % (args.vm_dir, args.vm_dir, run),
+            )
             return run
     # SAY SO. This used to `return None` mutely and the caller's `if not hrun: return 1` printed
     # nothing either, so a peer that never started looked identical to a crash in the runner -- the
@@ -2124,168 +2330,15 @@ def shim_lane_port_mismatch(args, client_dirs):
 #      recycled onto an unrelated process -- checked via GetProcessTimes creation-time, which a PID
 #      reuse cannot fake) and, only then, kills it and retries once. A holder whose runner is still
 #      alive is left strictly alone -- this must never kill a live runner's shim.
-def _filetime_to_epoch(ft):
-    t = (ft.dwHighDateTime << 32) | ft.dwLowDateTime
-    return t / 10_000_000.0 - 11644473600.0  # 100ns ticks since 1601-01-01 -> Unix epoch seconds
-
-
-def _process_still_running(pid):
-    """True iff `pid` is a process that is ACTUALLY STILL RUNNING; False if it can be opened but has
-    already exited; None if it cannot be opened at all (fully gone, or never existed).
-
-    OpenProcess succeeding is NOT "is it running" -- offline verification caught this the hard way
-    (TL-RIG6/TL-RIG7's own scratch repro): Windows keeps a process's kernel object alive, and
-    OpenProcess-able, for as long as ANY handle anywhere still references it, including one this
-    project's own retain_exit_handle() deliberately keeps open "for the process's whole lifetime and
-    PAST it" (see its docstring) -- so a wait loop that only checked "can I open it" would spin its
-    whole budget on an already-exited process. GetExitCodeProcess's STILL_ACTIVE sentinel is the only
-    thing that actually distinguishes the two, and it is correct regardless of WHICH handle answers
-    it (the exit status is a property of the kernel object, not of any one handle)."""
-    try:
-        import ctypes
-
-        k32 = ctypes.windll.kernel32
-        PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
-        STILL_ACTIVE = 259
-        h = k32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, int(pid))
-        if not h:
-            return None
-        try:
-            code = ctypes.c_ulong(0)
-            if not k32.GetExitCodeProcess(h, ctypes.byref(code)):
-                return None
-            return code.value == STILL_ACTIVE
-        finally:
-            k32.CloseHandle(h)
-    except Exception:  # a diagnostic must never be the thing that fails a run
-        return None
-
-
-def _process_created_at(pid):
-    """The Unix-epoch creation time of `pid`'s CURRENT kernel object, or None if it cannot be opened.
-    Deliberately NOT a liveness check (see _process_still_running for that) -- this exists only to
-    catch PID REUSE: a dead runner's pid can be handed to an unrelated process later, and that
-    process opens fine but was created at a different time, so a caller that already knows the pid
-    is not running can still tell "reused" from "the same still-lingering object" if it needs to."""
-    try:
-        import ctypes
-        from ctypes import wintypes
-
-        class FILETIME(ctypes.Structure):
-            _fields_ = [("dwLowDateTime", wintypes.DWORD), ("dwHighDateTime", wintypes.DWORD)]
-
-        k32 = ctypes.windll.kernel32
-        PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
-        h = k32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, int(pid))
-        if not h:
-            return None
-        try:
-            creation, exit_t, kernel_t, user_t = FILETIME(), FILETIME(), FILETIME(), FILETIME()
-            if not k32.GetProcessTimes(
-                h,
-                ctypes.byref(creation),
-                ctypes.byref(exit_t),
-                ctypes.byref(kernel_t),
-                ctypes.byref(user_t),
-            ):
-                return None
-            return _filetime_to_epoch(creation)
-        finally:
-            k32.CloseHandle(h)
-    except Exception:  # a diagnostic must never be the thing that fails a run
-        return None
-
-
-def _process_terminate(pid):
-    try:
-        import ctypes
-
-        k32 = ctypes.windll.kernel32
-        PROCESS_TERMINATE = 0x0001
-        h = k32.OpenProcess(PROCESS_TERMINATE, False, int(pid))
-        if not h:
-            return False
-        try:
-            return bool(k32.TerminateProcess(h, 1))
-        finally:
-            k32.CloseHandle(h)
-    except Exception:
-        return False
-
-
-def _shim_kill_on_close_job(pid):
-    """Assign `pid` (the shim we just spawned) to a fresh Job Object with kill-on-close (see the
-    banner above). Returns the job handle -- keep it alive on the Popen object so Python does not
-    garbage-collect the int away -- or None if the job could not be created/assigned, which is never
-    fatal: the shim just runs unprotected by mechanism (1), same as before this fix."""
-    try:
-        import ctypes
-        from ctypes import wintypes
-
-        class JOBOBJECT_BASIC_LIMIT_INFORMATION(ctypes.Structure):
-            _fields_ = [
-                ("PerProcessUserTimeLimit", ctypes.c_longlong),
-                ("PerJobUserTimeLimit", ctypes.c_longlong),
-                ("LimitFlags", wintypes.DWORD),
-                ("MinimumWorkingSetSize", ctypes.c_size_t),
-                ("MaximumWorkingSetSize", ctypes.c_size_t),
-                ("ActiveProcessLimit", wintypes.DWORD),
-                ("Affinity", ctypes.c_void_p),
-                ("PriorityClass", wintypes.DWORD),
-                ("SchedulingClass", wintypes.DWORD),
-            ]
-
-        class IO_COUNTERS(ctypes.Structure):
-            _fields_ = [
-                (n, ctypes.c_ulonglong)
-                for n in (
-                    "ReadOperationCount",
-                    "WriteOperationCount",
-                    "OtherOperationCount",
-                    "ReadTransferCount",
-                    "WriteTransferCount",
-                    "OtherTransferCount",
-                )
-            ]
-
-        class JOBOBJECT_EXTENDED_LIMIT_INFORMATION(ctypes.Structure):
-            _fields_ = [
-                ("BasicLimitInformation", JOBOBJECT_BASIC_LIMIT_INFORMATION),
-                ("IoInfo", IO_COUNTERS),
-                ("ProcessMemoryLimit", ctypes.c_size_t),
-                ("JobMemoryLimit", ctypes.c_size_t),
-                ("PeakProcessMemoryUsed", ctypes.c_size_t),
-                ("PeakJobMemoryUsed", ctypes.c_size_t),
-            ]
-
-        JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE = 0x2000
-        JobObjectExtendedLimitInformation = 9
-        PROCESS_SET_QUOTA, PROCESS_TERMINATE = 0x0100, 0x0001
-
-        k32 = ctypes.windll.kernel32
-        job = k32.CreateJobObjectW(None, None)
-        if not job:
-            return None
-        info = JOBOBJECT_EXTENDED_LIMIT_INFORMATION()
-        info.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE
-        if not k32.SetInformationJobObject(
-            job, JobObjectExtendedLimitInformation, ctypes.byref(info), ctypes.sizeof(info)
-        ):
-            k32.CloseHandle(job)
-            return None
-        h = k32.OpenProcess(PROCESS_SET_QUOTA | PROCESS_TERMINATE, False, int(pid))
-        if not h:
-            k32.CloseHandle(job)
-            return None
-        try:
-            if not k32.AssignProcessToJobObject(job, h):
-                k32.CloseHandle(job)
-                return None
-        finally:
-            k32.CloseHandle(h)
-        return job
-    except Exception:
-        return None
+#
+# tooling:TL-SUITE-TEARDOWN generalised this mechanism to every other local child the rig owns (the
+# game peers below, tools/desktop.py's isolated-desktop path, test_ui.py's relay/shim) -- the
+# process-liveness primitives and the job-object code itself now live in tools/win_job.py so there
+# is exactly one copy; these names stay as the local vocabulary this file's comments already use.
+_process_still_running = win_job.process_still_running
+_process_created_at = win_job.process_created_at
+_process_terminate = win_job.process_terminate
+_shim_kill_on_close_job = win_job.assign_kill_on_close
 
 
 def _shim_pidfile_path(listen_port):
@@ -2625,14 +2678,7 @@ def shim_stop(proc):
             os.remove(_shim_pidfile_path(lp))
         except OSError:
             pass
-    job = getattr(proc, "rig6_job", None)
-    if job:
-        try:
-            import ctypes
-
-            ctypes.windll.kernel32.CloseHandle(job)
-        except Exception:
-            pass
+    win_job.close_job(getattr(proc, "rig6_job", None))
     log = getattr(proc, "log_path", "")
     if log and os.path.exists(log):
         print("[shim] stopped; event log:")
@@ -3552,6 +3598,80 @@ def run_determinism(args):
     return 0 if clean else 1
 
 
+def ini_compose_selftest():
+    """`python tools/ui_test.py --selftest` -- pure-Python checks of make_ini's composition
+    (tooling:TL-SUITE-INIMERGE), no rig, no game. Exercises the two properties this item exists for:
+    a fragment overriding an already-present section's key actually wins (ONE section, not a
+    shadowed second one), and a shadowed override -- the shape every one of dead-ends
+    G69/G96/G178/G181/G249/G266/G267 shares -- is CAUGHT rather than silently read back as the wrong
+    value. Part of the same "checked without a rig" family as test_ui.det_standard_selftest.
+    """
+    fails = []
+
+    def check(name, cond):
+        print("   %-70s %s" % (name, "ok" if cond else "FAIL"))
+        if not cond:
+            fails.append(name)
+
+    # ---- IniLayers itself: a later fragment overriding a key in an already-present section wins,
+    # and the section is emitted ONCE (never a shadowed duplicate for GetPrivateProfile* to lose the
+    # override in).
+    L = IniLayers()
+    L.add_fragment("[net]\nlockstep_step_ms=30\nrx_spin=0\n")
+    L.add_fragment("[net]\nlockstep_step_ms=60\n")  # a later, higher-precedence layer
+    out = L.render()
+    check(
+        "a fragment overriding a key in an already-present section wins, in ONE [net] block",
+        ini_effective(out, "net", "lockstep_step_ms") == "60"
+        and ini_effective(out, "net", "rx_spin") == "0"
+        and out.lower().count("[net]") == 1,
+    )
+
+    # ---- make_ini end to end: --net-extra overrides NET_BLOCK's own compiled-in default and the
+    # result round-trips (make_ini's own internal assert would already have raised if it did not --
+    # this just confirms the VALUE, not merely the absence of a raise).
+    global EXTRA_NET
+    saved_net_extra = EXTRA_NET
+    EXTRA_NET = "lockstep_step_ms=60"
+    try:
+        ini = make_ini("walk.txt", 1500, is_host=True, ident={"port": 6601})
+    finally:
+        EXTRA_NET = saved_net_extra
+    check(
+        "make_ini: --net-extra overrides NET_BLOCK's default and reads back",
+        ini_effective(ini, "net", "lockstep_step_ms") == "60",
+    )
+
+    # ---- THE PLANTED SHADOWED OVERRIDE. Before this rewrite, make_ini's --extra-ini-host/-client
+    # tail was CONCATENATED after the ini it had already built (`ini += "\n" + tail`), so a fragment
+    # naming a section make_ini itself already emits became a shadowed, dead SECOND section --
+    # dead-ends G69/G181/G266/G267's exact shape (tools/uiscripts/ini/u28_off.ini, a real committed
+    # fragment, is written in it). IniLayers cannot produce that shape any more, so reconstruct it
+    # directly and confirm the reader model make_ini's round-trip assert uses would have refused it
+    # -- i.e. that the assert is a real net, not a no-op.
+    planted = "[net]\nstart_slots=1\n\n[net]\nstart_slots=0\n"  # a later dup section: dead text
+    requested_value = "0"  # what the shadowed (second) [net] fragment asked for
+    got = ini_effective(planted, "net", "start_slots")
+    check(
+        "a planted shadowed override (the pre-fix concatenation shape) is CAUGHT, not silently 1",
+        got != requested_value,
+    )
+
+    # ---- And the channel that shape came in through is refused outright now, before it can ever
+    # reach a shadowed section (closes the gap --extra-ini-host/-client left open; --extra-ini
+    # itself was already refused).
+    raised = False
+    try:
+        _refuse_net_fragment("[net]\nstart_slots=0\n", "planted.ini", "--extra-ini-host")
+    except SystemExit:
+        raised = True
+    check("--extra-ini-host carrying [net] is REFUSED before it can shadow anything", raised)
+
+    ok = not fails
+    print("ini_compose_selftest: %s" % ("PASS" if ok else ("FAIL: " + ", ".join(fails))))
+    return 0 if ok else 1
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument(
@@ -3580,6 +3700,11 @@ def main():
     )
     ap.add_argument(
         "--update-baselines", action="store_true", help="(re)generate baselines instead of diffing"
+    )
+    ap.add_argument(
+        "--selftest",
+        action="store_true",
+        help="pure-Python ini composition checks (no rig, no game); see tooling:TL-SUITE-INIMERGE",
     )
     # Deterministic identity: pin each peer's setup.dat (player name / game name / server IP) before launch
     # so the captured text is machine-independent (not the machine's saved history). --no-pin disables it.
@@ -3955,6 +4080,8 @@ def main():
         "this the per-launch copy in local_launch silently undoes make_lane's own --dll.",
     )
     args = ap.parse_args()
+    if args.selftest:
+        return ini_compose_selftest()
     for spec in args.omit_satellite:
         role, _, sat = spec.rpartition(":")
         if role not in ("", "host", "client") or sat not in SATELLITES:
@@ -4079,16 +4206,7 @@ def main():
         # Refused rather than merged on purpose: [net] has a dedicated channel that writes into the
         # base section, so a fragment reaching for it is a mistake with an obvious right answer, and
         # silently doing what was meant would leave the next author with the same wrong mental model.
-        for ln in text.splitlines():
-            if ln.split(";", 1)[0].strip().lower() == "[net]":
-                sys.exit(
-                    "REFUSED: %s carries a [net] section. --extra-ini is appended AFTER the base\n"
-                    "ini, which already has [net], and GetPrivateProfile* reads only the FIRST\n"
-                    "section of a given name -- so those keys would be read by nothing and the run\n"
-                    "would report success about a config it never had.\n"
-                    'Use --net-extra "key=value;key=value" instead: it writes into the base [net].'
-                    % one
-                )
+        _refuse_net_fragment(text, one, "--extra-ini")
         EXTRA_INI = ini_merge_fragment(EXTRA_INI, text)
         print("[cfg] ini fragment: %s" % one)
     if args.extra_ini_host:
@@ -4097,6 +4215,12 @@ def main():
             path = os.path.join(REPO, path)
         with open(path, "r", encoding="utf-8") as fh:
             EXTRA_INI_HOST = fh.read()
+        # TL-SUITE-INIMERGE: this refusal used to exist only for the general --extra-ini above, not
+        # for its host/client twins -- so a [net] section here (tools/uiscripts/ini/u28_off.ini is a
+        # real, if unregistered, example) was silently shadowed by the base [net] block and caught
+        # only downstream, if at all, by make_ini's own round-trip assert with a far less specific
+        # message. Same refusal, same reason, one channel closer to the mistake.
+        _refuse_net_fragment(EXTRA_INI_HOST, args.extra_ini_host, "--extra-ini-host")
         print("[cfg] HOST-ONLY ini fragment: %s" % args.extra_ini_host)
     if args.extra_ini_client:
         path = args.extra_ini_client
@@ -4104,6 +4228,7 @@ def main():
             path = os.path.join(REPO, path)
         with open(path, "r", encoding="utf-8") as fh:
             EXTRA_INI_CLIENT = fh.read()
+        _refuse_net_fragment(EXTRA_INI_CLIENT, args.extra_ini_client, "--extra-ini-client")
         print("[cfg] CLIENT-ONLY ini fragment: %s" % args.extra_ini_client)
 
     # PREFLIGHT: does the pinned view even fit the desktop? Refuse LOUDLY rather than let the run

@@ -141,7 +141,7 @@ built, split by the ARM the suite's subject needs, not by file name:
   the function was *measured* to write, then handed the game back the original's effects -- so a
   wrong reimplementation was reported, never applied. It did its job: the translations it was built
   to prove are proven and promoted. The correctness instruments now are the config-level oracles
-  (`test_ui.py --sp-determinism`, the recorded-session A/B/C arms, the determinism gate) plus
+  (`det_arms.py --sp-determinism`, the recorded-session A/B/C arms, the determinism gate) plus
   the offline suites.
   Its two committed inputs went with it; `tools/data/state_regions_measured.json` freezes the region
   claims `gen_state_registry.py` still consumes (see that file's note). History: git.
@@ -530,7 +530,7 @@ python $repo\tools\test_ui.py --jobs 4   # expect: N passed, 0 failed
 #     sim baseline was recorded at soak_saved=600 and the registry now says 1500 -- re-record before
 #     trusting it again.
 # 3c. THE SINGLE-PLAYER CAMPAIGN A/B/C -- one recorded human session, three arms (added 2026-09-07).
-python $repo\tools\test_ui.py --ui-abc spcamp_solo   # expect: ui-abc: PASS
+python $repo\tools\ui_abc.py --ui-abc spcamp_solo   # expect: ui-abc: PASS
 #     WHAT IT ADDS OVER A SCRIPTED FIXTURE, which is the whole reason it is a separate step. The
 #     scripted sim fixtures (step 3b until it was removed, and the scenarios 4b still drives) start
 #     from a lobby-created skirmish and produce both arms with the SAME replayer -- so they cover
@@ -576,7 +576,7 @@ python $repo\tools\test_ui.py --ui-abc spcamp_solo   # expect: ui-abc: PASS
 #     the end and burned the whole 900 s budget presenting menu frames. If this step ever runs long
 #     again, read the `; TJ STUCK` line before touching --ui-timeout: 180 s is the real cost.
 # 3d. THE TUTORIAL A/B/C -- the second recorded human session, three arms (added 2026-09-09).
-python $repo\tools\test_ui.py --ui-abc tutorial_solo   # expect: ui-abc: PASS
+python $repo\tools\ui_abc.py --ui-abc tutorial_solo   # expect: ui-abc: PASS
 #     WHAT IT ADDS OVER 3c, which is why it is a separate fixture and not a second rung of that one.
 #     Every spcamp journal lands SESSION_MODE=1 (CAMPAIGN) at planet 0. This one lands
 #     SESSION_MODE=2 (single-player skirmish) at planet 31 -- the injected slot llm_game_start_tutorial
@@ -601,7 +601,7 @@ python $repo\tools\test_ui.py --ui-abc tutorial_solo   # expect: ui-abc: PASS
 # 4. the real behavioral gate: 2-machine lockstep determinism (both VMs up).
 #    PREFERRED = the UI-PATH run: drive both peers into the game through the REAL menu->lobby->Start
 #    (no force-entry), run N in-game steps, mp_analyze -> ALL PAIRS IDENTICAL:
-python $repo\tools\test_ui.py --determinism --ship-pacing --steps 3000   # expect: ALL PAIRS IDENTICAL
+python $repo\tools\det_arms.py --determinism --ship-pacing --steps 3000   # expect: ALL PAIRS IDENTICAL
 #    --ship-pacing is LOAD-BEARING: without it the rig pins lockstep_step_ms=30/sim_step_ms=10 in its
 #    own ini, so a green run says nothing about the pacing players actually get. That gap hid a
 #    client freeze (adaptive floor vs sim_step, 2026-07-25) through a fully green 800-step gate.
@@ -615,7 +615,7 @@ python $repo\tools\test_ui.py --determinism --ship-pacing --steps 3000   # expec
 #
 #    WHEN THE CHANGE TOUCHES A PROMOTED SEAM, run the standard shapes instead of the one above
 #    (the C7 standard-shape rule):
-python $repo\tools\test_ui.py --determinism --det-standard --ship-pacing --steps 3000
+python $repo\tools\det_arms.py --determinism --det-standard --ship-pacing --steps 3000
 #      SYMMETRIC (ship config) promotion on both peers, fixes at shipping defaults -- what players run.
 #      ...plus mp:D29's CONFIGURATION (1) shapes -- the build players run, no libmh.dll:
 #      SYMMETRIC (1) and MIXED ((1) vs mode=original), each clean + a go-red arm (a host-only
@@ -647,7 +647,7 @@ python $repo\tools\test_ui.py --determinism --det-standard --ship-pacing --steps
 #    WHEN THE CHANGE TOUCHES TACTICAL MODE, the two shapes above cannot see it at all: mode 6 never
 #    calls llm_strat_sim_step, so the strategic cadence hook never fires and the run emits zero hash
 #    lines for the whole excursion. Its own oracle is single-machine and takes ~2 min:
-python $repo\tools\test_ui.py --tact-determinism --tact-selftest  # expect: tact-determinism: PASS
+python $repo\tools\tact_test.py --tact-determinism --tact-selftest  # expect: tact-determinism: PASS
 #    Two arms through the same `--tactical <save>` entry, compared on the per-frame T/TR lines the
 #    llm_tact_frame cadence emits, plus a THIRD arm that pokes one tactical region mid-run.
 #    --tact-selftest IS NOT OPTIONAL: a hash over bytes nothing writes is identical across two runs

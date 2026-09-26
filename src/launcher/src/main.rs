@@ -338,6 +338,10 @@ fn main() {
         std::process::exit(send_from_command_line(&layout, &args));
     }
 
+    // After the print-and-exit verbs: --verify-binary is the health gate's probe of an update
+    // candidate, and must not touch files while the parent is mid-update.
+    update::sweep_self_replace_leftovers_at_start();
+
     let (mut cfg, note) = Config::load(&layout.config());
     if let Some(note) = note {
         log::line(format!("config: {note}"));

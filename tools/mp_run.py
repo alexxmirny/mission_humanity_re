@@ -225,6 +225,142 @@ def ps(script):
     return sh(["powershell", "-NoProfile", "-Command", script])
 
 
+# ---- VM console-session preflight (tooling:TL-SUITE-VMSESSION) ------------------------------------
+#
+# 2026-09-25: every VM unit reds "host never opened 6501" when the VM's logged-on session is
+# DISCONNECTED from the console (LogonUI on the console; `query user` shows state Disc) -- the game
+# boots, loads its script, and never presents a frame. A Hyper-V VM presents DirectDraw frames
+# headless only while the logged-on session still OWNS the console; once it goes Disc, presenting
+# stops. `tscon <id> /dest:console` over ssh reattaches it. This preflight runs before ANY game
+# launch on a VM so a bad session is named and fixed (or refused) up front, instead of costing a
+# 90s "never opened" timeout that names the wrong layer.
+#
+# `query user`'s own exit code is NOT a signal: it returned 1 on a live, fully-Active console
+# session on both rig VMs (measured 2026-09-25) -- so ok/refuse is decided from stdout text alone.
+_VM_SESSION_OK = {}  # ip -> bool, so one process probes/fixes each VM once regardless of peer count
+
+
+def parse_query_user(output, want_user):
+    """Pure: find `want_user`'s row in `query user`'s stdout text (case-insensitive username).
+
+    Returns {"sessionname": str|None, "id": int, "state": str}, or None if that user has no
+    session at all (logged off entirely, or the text is only a header / an error line).
+
+    `query user` right-justifies SESSIONNAME and blanks it for a session that owns none (the
+    disconnected shape) -- every OTHER column (ID/STATE/IDLE TIME/LOGON DATE/LOGON TIME) is always
+    present and non-empty, so a blank SESSIONNAME simply removes one whitespace-split token rather
+    than shifting the rest out of alignment. Some builds prepend ">" to mark the caller's own
+    session; stripped like leading whitespace.
+    """
+    for line in (output or "").splitlines():
+        parts = line.lstrip(">").split()
+        if (
+            len(parts) < 6
+        ):  # shorter than "USER [SESSION] ID STATE IDLE DATE TIME" -- not a data row
+            continue
+        if parts[0].lower() != want_user.lower():
+            continue
+        if len(parts) >= 7:
+            sessionname, idx = parts[1], 2
+        else:
+            sessionname, idx = None, 1
+        try:
+            sess_id = int(parts[idx])
+        except ValueError:
+            continue  # e.g. the header row -- "ID" the column label isn't an int
+        return {"sessionname": sessionname, "id": sess_id, "state": parts[idx + 1]}
+    return None
+
+
+def ensure_vm_console_session(key, user, ip, timeout=25):
+    """Make sure `user` owns VM `ip`'s console before a game is launched there.
+
+    Active on console -> True. Disc, or Active on something other than console -> reattach with
+    `tscon <id> /dest:console` and re-query; True if that lands it on console. Not logged on at
+    all, or a tscon that did not stick -> False, having printed the state so the caller's refusal
+    names the cause instead of a launch that can never present a frame.
+
+    Cached per ip for this process: a 3-peer run (host + 2 VM clients, or a det arm that reuses one
+    VM in two roles) must probe/fix each VM once, not once per peer.
+    """
+    if ip in _VM_SESSION_OK:
+        return _VM_SESSION_OK[ip]
+    sess = parse_query_user(ssh(key, user, ip, "query user", timeout=timeout).stdout, user)
+    if sess is None:
+        print("    [%s] REFUSE: %s has no session (query user found no matching row)" % (ip, user))
+        _VM_SESSION_OK[ip] = False
+        return False
+    if sess["state"] == "Active" and sess["sessionname"] == "console":
+        _VM_SESSION_OK[ip] = True
+        return True
+    print(
+        "    [%s] session %d is %s (sessionname=%r), not Active on console -- running tscon"
+        % (ip, sess["id"], sess["state"], sess["sessionname"])
+    )
+    ssh(key, user, ip, "tscon %d /dest:console" % sess["id"], timeout=timeout)
+    sess2 = parse_query_user(ssh(key, user, ip, "query user", timeout=timeout).stdout, user)
+    ok = bool(sess2) and sess2["state"] == "Active" and sess2["sessionname"] == "console"
+    if ok:
+        print("    [%s] reattached session %d to the console" % (ip, sess2["id"]))
+    else:
+        got = (
+            "no session"
+            if sess2 is None
+            else "state=%s sessionname=%r" % (sess2["state"], sess2["sessionname"])
+        )
+        print(
+            "    [%s] REFUSE: tscon did not reattach %s to the console (now: %s)" % (ip, user, got)
+        )
+    _VM_SESSION_OK[ip] = ok
+    return ok
+
+
+# The four shapes TL-SUITE-VMSESSION was filed over, plus the two boundary cases a live capture
+# can't safely produce (no ssh into a VM with nobody logged on is worth doing for a selftest).
+_QUERY_USER_SAMPLES = {
+    "disc": (
+        " vmadmin                                   2  Disc         5:35  25/09/2026 18:00",
+        {"sessionname": None, "id": 2, "state": "Disc"},
+    ),
+    "active_console": (
+        " vmadmin               console             2  Active          .  25/09/2026 18:00",
+        {"sessionname": "console", "id": 2, "state": "Active"},
+    ),
+    "no_session": ("No User exists for *\n", None),
+    "header_only": (
+        " USERNAME              SESSIONNAME        ID  STATE   IDLE TIME  LOGON TIME\n",
+        None,
+    ),
+}
+
+
+def vm_session_selftest():
+    """`--vm-session-selftest`: parse_query_user over real+synthetic `query user` shapes, no ssh/rig.
+
+    "disc" and "active_console" are VERBATIM captures (tonight's red, and both VMs afterward);
+    "no_session" and "header_only" are the two shapes a live capture can't safely produce here.
+    """
+    ok = True
+    for name, (text, want) in _QUERY_USER_SAMPLES.items():
+        got = parse_query_user(text, "vmadmin")
+        hit = got == want
+        ok = ok and hit
+        print("  %-20s %s (%r)" % (name, "ok" if hit else "XX", got))
+    # case-insensitive username match, and an unrelated user's row is ignored
+    hit = parse_query_user(_QUERY_USER_SAMPLES["active_console"][0], "VMADMIN") == {
+        "sessionname": "console",
+        "id": 2,
+        "state": "Active",
+    }
+    ok = ok and hit
+    print("  %-20s %s" % ("case-insensitive", "ok" if hit else "XX"))
+    hit = parse_query_user(_QUERY_USER_SAMPLES["disc"][0], "someoneelse") is None
+    ok = ok and hit
+    print("  %-20s %s" % ("wrong user ignored", "ok" if hit else "XX"))
+    print("vm-session-selftest: %s" % ("PASS" if ok else "FAIL"))
+    return 0 if ok else 1
+
+
 def newest_run(logs_dir, role):
     """This peer's PROCESS ("menu") run directory.
 
@@ -352,6 +488,11 @@ def build_focus(src_exe, out_exe):
 
 def main():
     ap = argparse.ArgumentParser()
+    ap.add_argument(
+        "--vm-session-selftest",
+        action="store_true",
+        help="tooling:TL-SUITE-VMSESSION: parse_query_user's own shapes, no ssh/rig",
+    )
     ap.add_argument("--steps", type=int, default=800)
     ap.add_argument(
         "--step-ms", type=float, default=30
@@ -570,6 +711,8 @@ def main():
         "host emits a 'U14 ... DROPPED' delta in mh_launch.log (implies --lobby). No determinism analyze.",
     )
     args = ap.parse_args()
+    if args.vm_session_selftest:
+        return vm_session_selftest()
     # D6: draw ONE seed per run and give it to every peer, so all peers pick the same
     # destination (the test must not desync itself) while the value stays fresh per run.
     if args.synth_move and not args.synth_seed:
@@ -615,6 +758,11 @@ def main():
     for ip in clients:
         if "ok" not in ssh(key, args.vm_user, ip, "echo ok").stdout:
             print("ERROR: client %s SSH failed" % ip)
+            return 2
+        # tooling:TL-SUITE-VMSESSION: reachable over ssh is not the same as owning the console --
+        # a Disc session still answers `echo ok` and then never presents a frame.
+        if not ensure_vm_console_session(key, args.vm_user, ip):
+            print("ERROR: client %s is not on its console (see REFUSE line above)" % ip)
             return 2
 
     # always (re)build the focus-patched host exe -- the run MUST use it (else a focus loss stalls it)

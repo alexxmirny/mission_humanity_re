@@ -384,7 +384,7 @@ def main():
         cmd = [
             sys.executable,
             "-u",
-            os.path.join(HERE, "test_ui.py"),
+            os.path.join(HERE, "soak_test.py"),
             "--soak",
             "--steps",
             "300",

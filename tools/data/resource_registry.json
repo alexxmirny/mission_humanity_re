@@ -1,0 +1,200 @@
+{
+  "_meta": "tooling:TL-SUITE-RESREG. One entry per machine-global resource (TCP/UDP port, %TEMP%-rooted path, lock file, mutex, lane path) that tools/*.py or tools/*.bat binds/creates by a LITERAL. tools/lint_resources.py scans tools/*.py and tools/*.bat for such literals and refuses any that is not accounted for here. `scope` says how collisions across concurrent trees/agents/lanes are prevented today: `hostlock:<lease>` (tools/hostlock.py named lease), `lane_alloc` (per-lane derivation, tools/lane_alloc.py BLOCKS), `per-tree` (a persistent claim keyed by the git tree, under hostlock's SHARED_LOCK_DIR), `single-instance-by-design` (the resource only ever has one real binder on a machine, e.g. the one Ghidra process), or `unscoped` (no scoping exists yet -- a genuine collision risk). `status: \"unscoped\"` rows carry a `tracker_note` one-liner instead of a fix; this lane fixed only the selftest staging dir's item IF it was not already closed by TL-SELFTEST-STAGE/TL-STAGE1 (it was -- see that row's note).",
+  "resources": [
+    {
+      "name": "net_game_port_default",
+      "kind": "udp_port",
+      "value": 6501,
+      "owners": ["tools/ui_test.py", "tools/mp_run.py", "tools/mp_prep_manual.py", "tools/net_shim.py", "tools/test_ui.py", "tools/det_arms.py", "tools/oneoff/2026-07-16-u12-disconnect-test.py"],
+      "scope": "lane_alloc (suite rows) / single-instance-by-design (hand run, VM rig)",
+      "reason": "the game's [net] port default (mh.dll config). A suite row that needs its own port derives one from lane_alloc's PORT_BASE bands instead of writing 6501 into its ini; a hand run or the 2-peer VM rig topology binds 6501 directly because there is only one such run on that box/VM pair at a time.",
+      "status": "scoped"
+    },
+    {
+      "name": "local_port_base",
+      "kind": "udp_port_band",
+      "value": "6600 + test_index (LOCAL_PORT_BASE, tools/ui_suite_common.py; PORT_BASE, tools/lane_alloc.py:119)",
+      "owners": ["tools/ui_suite_common.py", "tools/lane_alloc.py"],
+      "scope": "lane_alloc",
+      "reason": "the local capture suite's own game-port band, one port per concurrently-running row. lane_alloc.BLOCKS assigns the underlying lane numbers (and TL-LANECOLLIDE gave lane_alloc a per-tree `scratch` claim via tree_slot(), so two worktrees no longer pick the same lane for a `solo=` row).",
+      "status": "scoped"
+    },
+    {
+      "name": "local_shim_port_base",
+      "kind": "udp_port_band",
+      "value": "6700 + n (SHIM_PORT_BASE, tools/lane_alloc.py:120; ui_suite_common.LOCAL_SHIM_PORT_BASE)",
+      "owners": ["tools/ui_suite_common.py", "tools/lane_alloc.py"],
+      "scope": "lane_alloc",
+      "reason": "per-row shim forwarding port, mirrored between the two files (lane_alloc.py:117-121 comment: 'a copy that drifts is the failure this whole file is about').",
+      "status": "scoped"
+    },
+    {
+      "name": "local_host2_port_base",
+      "kind": "udp_port_band",
+      "value": "6800 + n (HOST2_PORT_BASE, tools/lane_alloc.py:121; ui_suite_common.LOCAL_HOST2_PORT_BASE)",
+      "owners": ["tools/ui_suite_common.py", "tools/lane_alloc.py"],
+      "scope": "lane_alloc",
+      "reason": "per-row second-host port for 3+ peer local rows.",
+      "status": "scoped"
+    },
+    {
+      "name": "local_shim_ctl_port_base",
+      "kind": "tcp_port_band",
+      "value": "6900 + n (SHIM_CTL_PORT_BASE, tools/lane_alloc.py:122; test_ui.LOCAL_SHIM_CTL_PORT_BASE)",
+      "owners": ["tools/test_ui.py", "tools/lane_alloc.py"],
+      "scope": "lane_alloc",
+      "reason": "per-row shim control port -- the fix that let shim rows run CONCURRENTLY (test_ui.py:11473 comment); each row gets its own control port instead of sharing net_shim's default.",
+      "status": "scoped"
+    },
+    {
+      "name": "shim_control_port_default",
+      "kind": "tcp_port",
+      "value": 6699,
+      "owners": ["tools/net_shim.py (DEFAULT_CONTROL_PORT, line 90)", "tools/ui_test.py (SHIM_CONTROL_PORT, line 165)", "tools/lane_alloc.py (DEFAULT_SHIM_CTL_PORT, line 125)"],
+      "scope": "unscoped",
+      "reason": "the control port a HAND run (or the VM topology) gets by default when it does not go through test_ui's per-row registry. lane_alloc.py:123-124 says explicitly no registry row may derive this port, so a suite row and a hand-run shim never collide with EACH OTHER -- but two independent hand runs (or a hand run racing a suite row that also happens to omit --control) still fight over it.",
+      "status": "unscoped",
+      "tracker_note": "TL-SHIMCTL (open): net_shim.py's control port 6699 is a machine-wide singleton for any caller that does not pass --control; derive it from the listen port/lane or refuse naming the holder instead of a bare exit 1."
+    },
+    {
+      "name": "det_local_port",
+      "kind": "udp_port",
+      "value": 6620,
+      "owners": ["tools/det_arms.py (DET_LOCAL_PORT)"],
+      "scope": "hostlock:rig",
+      "reason": "the determinism gate's own fixed local port, picked to sit inside the capture suite's band but outside every row's LOCAL_PORT_BASE allocation (test_ui.py:11500-11503 comment). Safe because only one determinism pass runs at a time on a box -- serialized by the host-global `rig` lease (tools/hostlock.py) that test_ui.py/mp_run.py take via run_rig_tool().",
+      "status": "scoped"
+    },
+    {
+      "name": "provision_rig_firewall_range",
+      "kind": "udp_port_band",
+      "value": "6500-6799 (FW_LO, FW_HI; tools/provision_rig.py:64)",
+      "owners": ["tools/provision_rig.py"],
+      "scope": "derived (must be kept a superset of the bands above by hand)",
+      "reason": "the one firewall rule that has to contain every band above (provision_rig.py:57-64 comment enumerates them). Not itself a bind -- listed because it is a literal a human must remember to widen if a band above moves; lint_resources.py treats it as an accounted-for range, not a violation.",
+      "status": "scoped"
+    },
+    {
+      "name": "reva_mcp_port",
+      "kind": "tcp_port",
+      "value": 8080,
+      "owners": ["tools/ensure_reva.py", "tools/reva_service.py", "tools/reva_call.py", "tools/migration_loop.py (REVA_ENDPOINT)", "tools/migration_session.py (reva_up)", "tools/loop_worktree.py"],
+      "scope": "single-instance-by-design",
+      "reason": "ReVA's MCP endpoint. Not lane/tree-scoped because the thing it fronts -- the one shared Ghidra project -- is itself one-per-machine (CLAUDE.md: 'the single Ghidra DB' is one of the three things a worktree cannot fork); there is never more than one real binder to collide with. Writes through it additionally serialize via the `ghidra-write` hostlock lease (see below), which is a DB-write guard, not a port guard.",
+      "status": "scoped"
+    },
+    {
+      "name": "net_shim_selftest_ports",
+      "kind": "tcp_port",
+      "value": "TCP arm: 39610 (ECHO), 39611 (LISTEN), 39699 (CTL) -- tools/net_shim.py:526 (do_selftest); UDP arm: 39710 (ECHO), 39711 (LISTEN), 39799 (CTL) -- tools/net_shim.py:911 (do_selftest_udp)",
+      "owners": ["tools/net_shim.py (do_selftest, do_selftest_udp)"],
+      "scope": "unscoped",
+      "reason": "fixed loopback ports used only inside `net_shim.py --selftest`'s own two echo-server arms (TCP and UDP), never by a production shim run. Two concurrent `net_shim.py --selftest` invocations on one box would collide.",
+      "status": "unscoped",
+      "tracker_note": "net_shim.py --selftest's ECHO/LISTEN/CTL ports (39610/39611/39699 TCP, 39710/39711/39799 UDP) are fixed and unleased; low-risk (selftest-only, not spawned by the parallel gate today) but would collide under two concurrent `--selftest` runs -- pick ephemeral ports or take a short-lived hostlock lease named after the module."
+    },
+    {
+      "name": "udp_rtt_probe_selftest_port",
+      "kind": "udp_port",
+      "value": "39720 -- tools/udp_rtt_probe.py:287",
+      "owners": ["tools/udp_rtt_probe.py (do_selftest)"],
+      "scope": "unscoped",
+      "reason": "same shape as the net_shim selftest ports above: fixed loopback port used only inside `udp_rtt_probe.py`'s own --selftest arm.",
+      "status": "unscoped",
+      "tracker_note": "udp_rtt_probe.py --selftest's fixed port 39720 would collide under two concurrent --selftest runs; same fix shape as net_shim's selftest ports."
+    },
+    {
+      "name": "udp_rtt_probe_default_bind",
+      "kind": "udp_port",
+      "value": "6502 -- tools/udp_rtt_probe.py (--bind/--target defaults, parse_hostport fallback)",
+      "owners": ["tools/udp_rtt_probe.py"],
+      "scope": "single-instance-by-design",
+      "reason": "a hand-run diagnostic (RTT probe between two boxes); one operator runs one probe at a time by convention, not enforced in code.",
+      "status": "scoped"
+    },
+    {
+      "name": "fixture_replay_port_default",
+      "kind": "tcp_port",
+      "value": "6633 -- tools/fixture_replay.py:1225 (`replay` subcommand --port default)",
+      "owners": ["tools/fixture_replay.py"],
+      "scope": "unscoped",
+      "reason": "the `replay` subcommand takes `--lane` (required) but the port default is a bare constant, not derived from the lane. A hand-run tool today (not spawned by the parallel suite), so the exposure is real but low-traffic.",
+      "status": "unscoped",
+      "tracker_note": "fixture_replay.py replay's --port default (6633) is not derived from --lane; two concurrent replays on different lanes would still share it unless the caller overrides --port by hand."
+    },
+    {
+      "name": "mh_tunnel_default_port",
+      "kind": "tcp_port",
+      "value": "6501 -- tools/mh_tunnel.bat:14 (default when the 2nd arg is omitted)",
+      "owners": ["tools/mh_tunnel.bat", "tools/mh_tunnel.ps1"],
+      "scope": "single-instance-by-design",
+      "reason": "an operator's manual SSH tunnel helper; one operator, one tunnel at a time.",
+      "status": "scoped"
+    },
+    {
+      "name": "selftest_staging_dir",
+      "kind": "temp_dir",
+      "value": "%TEMP%\\mh_nettest (PLAIN_DIR) / %TEMP%\\mh_nettest_asan (ASAN_DIR) -- tools/run_selftests.py:76-77",
+      "owners": ["tools/run_selftests.py", "src/mh_dll/mh_nettest/build_selftest.bat"],
+      "scope": "hostlock:selftest",
+      "reason": "one fixed, machine-global staging directory (the documented run_selftests.py/build_selftest.bat contract) plus fixed loopback ports inside net_selftest.exe (39500 linktest/relinktest per TL-STAGE1's filing). DONE 2026-09-21 as TL-STAGE1/TL-SELFTEST-STAGE: run_selftests.py now takes the host-global `selftest` hostlock lease around main(), so two concurrent `run_selftests.py` invocations SERIALIZE instead of corrupting each other's staged exes -- proven by two --no-asan runs 5s apart (run 2 printed the wait message, then PASS). NOTE (gap against this item's own done_when, which asks for the dir 'scoped per tree/pid'): the fix is serialization of ACCESS to one shared path, not a per-tree/per-pid path split -- the directory itself is still the single literal above. That is a narrower fix than 'scoped per tree/pid' reads as; left as-is per this lane's brief (fix only if not already done), flagged here rather than silently treated as satisfying a stronger claim.",
+      "status": "scoped"
+    },
+    {
+      "name": "lane_root",
+      "kind": "temp_dir",
+      "value": "F:/games/mh_lanes (machine_config.LANE_ROOT)",
+      "owners": ["tools/make_lane.py", "tools/lane_alloc.py", "tools/ui_test.py", "tools/ui_suite_common.py", "tools/tact_test.py", "tools/ui_abc.py", "tools/soak_test.py", "tools/det_arms.py"],
+      "scope": "per-tree",
+      "reason": "the parallel-lane install root. DONE (TL-LANECOLLIDE, 2026-09-18): lane_alloc gained tree_slot()/tree_claims()/release_tree_slot(), a persistent per-tree claim on the `scratch` lane block stored under hostlock's SHARED_LOCK_DIR/lane_trees/, so a `solo=NAME` peer auto-provisions a tree-scoped lane instead of colliding with another worktree's.",
+      "status": "scoped"
+    },
+    {
+      "name": "boot_lock",
+      "kind": "lock_file",
+      "value": "<LANE_ROOT>/.boot.lock (tools/make_lane.py:57)",
+      "owners": ["tools/make_lane.py"],
+      "scope": "unscoped (intentionally machine-wide; race is in the acquire path, not the scope)",
+      "reason": "a single machine-wide O_CREAT|O_EXCL lock serializing lane provisioning/boots under one LANE_ROOT -- global-by-design, not a collision to fix. TL-RIG8 (open, not touched by this lane): the __enter__ open only catches FileExistsError, so a concurrent remove/create race that surfaces as PermissionError on Windows propagates uncaught instead of being treated as 'still held, keep waiting'.",
+      "status": "unscoped",
+      "tracker_note": "TL-RIG8 (already filed, open): make_lane.py's BOOT_LOCK acquire only catches FileExistsError; a Windows remove-vs-create race can raise PermissionError instead and propagate uncaught."
+    },
+    {
+      "name": "lane_scenario_number",
+      "kind": "mutex_name",
+      "value": "MHMut%02d (lane_no %% 100) -- tools/lane_alloc.py:185, patched into net_seams.cpp over retail's fixed \"MHMutex\" string",
+      "owners": ["tools/lane_alloc.py", "tools/make_lane.py", "tools/ui_suite_common.py", "src/mh_dll/mh/seams/net_seams.cpp"],
+      "scope": "lane_alloc (per-lane) for `solo=`/scratch rows; unscoped for a NAMED registry scenario's fixed lane",
+      "reason": "the game's single-instance mutex, renamed per lane so several lanes can run concurrently on one box. Two gaps, both already tracked and NOT touched by this lane: (1) lane numbers wrap at 100 (lane_alloc.py:49, documented, not fixed -- lane 132 aliases lane 32); (2) a NAMED scenario's lane number is DETERMINISTIC (fixed by its position in test_ui.TESTS via lane_names()/client_lane_slots()), not tree-scoped the way `solo=` rows are since TL-LANECOLLIDE -- two worktrees both running e.g. `match_launch` still fight over the same lane/mutex (docs/dead-ends.md G268, 2026-09-22, over an hour of refusals; no tracker id filed for it separately from this row's own scope list).",
+      "status": "unscoped",
+      "tracker_note": "G268 (docs/dead-ends.md, filed but not itself a tracker row): a NAMED test_ui.py scenario's lane number is fixed by TESTS-list position, not tree-scoped -- TL-LANECOLLIDE's tree_slot() only covers `solo=` rows. Two worktrees running the same named scenario still collide on one MHMut<N> mutex."
+    },
+    {
+      "name": "hostlock_leases",
+      "kind": "lock_file",
+      "value": "<SHARED_LOCK_DIR>/{ghidra-write,rig,selftest}.lock (+ matching .want dirs) -- tools/hostlock.py",
+      "owners": ["tools/hostlock.py", "tools/ghidra_write.py", "tools/run_gate.py", "tools/run_selftests.py", "tools/test_ui.py", "tools/det_arms.py", "tools/tact_test.py", "tools/ui_abc.py", "tools/soak_test.py", "tools/mp_run.py"],
+      "scope": "hostlock (named lease, PID + heartbeat reaping)",
+      "reason": "the three host-global advisory leases. Each is intentionally one file, one name, host-global by design (that is the point -- one Ghidra DB, one rig, one selftest staging dir). Reaping a lease whose holder is genuinely still alive was fixed for THIS module 2026-09-25 (LEASE_TTL comment, hostlock.py:48-53): a live `lease()` holder now heartbeats every HEARTBEAT_S=60s from a daemon thread, and `_reap_if_stale` only reaps a holder that is dead OR has stopped heartbeating past LEASE_TTL=600s. The existing `--selftest` already has this arm (see hostlock.py report section below).",
+      "status": "scoped"
+    },
+    {
+      "name": "migration_loop_lock",
+      "kind": "lock_file",
+      "value": "loop.lock -- tools/migration_loop.py:80, tools/loop_worktree.py:83",
+      "owners": ["tools/migration_loop.py", "tools/loop_worktree.py"],
+      "scope": "per-tree",
+      "reason": "guards against running two loop DRIVERS in the same tree; lives inside that tree's own state dir, so it is per-tree by construction (CLAUDE.md: 'loop.lock is per-tree, but the singleton leases are host-global -- the design is ONE loop ... coordinating with your ONE interactive session'). Not a machine-global resource -- listed for lint_resources.py coverage, not because it needs a fix.",
+      "status": "scoped"
+    },
+    {
+      "name": "ghidra_write_lease_jython_side",
+      "kind": "lock_file",
+      "value": "<SHARED_LOCK_DIR>/ghidra-write.lock (same file as above, written from Jython by tools/_ghidra_lease.py)",
+      "owners": ["tools/_ghidra_lease.py", "tools/save_checkin.py", "tools/apply_annotations.py", "tools/commit_prototypes.py"],
+      "scope": "FIXED THIS LANE (was unscoped/buggy)",
+      "reason": "the same ghidra-write lockfile as `hostlock_leases`, but written by the Jython-side module the three durable Ghidra writers use (they run inside Ghidra's Jython 2.7 and cannot import tools/hostlock.py). THIS WAS THE 'hostlock reaping a live holder (3 tools)' INSTANCE named in this item's scope: _ghidra_lease.py's `_reap_if_stale` was pure TTL-age reaping with NO heartbeat and NO live-PID check at all (its own docstring: 'no ctypes in Jython to test PID liveness') -- so any of the three writers running longer than LEASE_TTL=600s (a large apply_annotations batch, a slow save+checkin) had its OWN, still-writing lease reaped by a concurrent waiter, which would then also start writing the same Ghidra DB. Fixed in this lane: acquire() now starts a daemon heartbeat thread that refreshes `at` every HEARTBEAT_S=60s while held (mirroring hostlock.py's fix byte-for-byte in the Py2/3 overlap), and release() stops it before dropping the lockfile. See tools/_ghidra_lease.py and its extended --selftest.",
+      "status": "scoped"
+    }
+  ]
+}

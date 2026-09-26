@@ -45,6 +45,12 @@ the content-addressed write and a match that plays.
 must store NOTHING and the host must arm NO transfer, asserted as the absence of `; [map] send armed`
 together with the presence of `; [map] peer ... holds the map`, so the absence is read beside a
 positive line rather than on its own.
+
+`--expect-early-join` (mp:X2d, with --expect-nothing) is the relay-join RACE: the client's first
+advert is held by `[net] map_test_advert_hold_ms` until its JOIN has gone out, which is the order the
+rc3 field match lost in. The client log must show the hold AND its release after a JOIN (else the
+race was not staged and a green says nothing), and the host must never have said `needs the map` --
+the JOIN itself carried the hash, rather than a later re-report correcting it.
 """
 
 import argparse
@@ -65,6 +71,11 @@ RE_LOCAL = re.compile(
 RE_SEND_ARMED = re.compile(r"; \[map\] send armed to peer (\d+) '(.+?)' \((\d+) B")
 RE_PEER_HOLDS = re.compile(r"; \[map\] peer (\d+) '(.+?)' holds the map")
 RE_PEER_NEEDS = re.compile(r"; \[map\] peer (\d+) '(.+?)' needs the map")
+# mp:X2d -- the advert-hold knob: the held line, and a release that says a JOIN went out first.
+RE_ADVERT_HELD = re.compile(r"; \[map\] uitest advert_hold: first SESSION_INFO from (\d+) HELD")
+RE_ADVERT_RELEASED = re.compile(
+    r"; \[map\] uitest advert_hold: released after (\d+) ms \(a JOIN went out first\)"
+)
 RE_START_REFUSED = re.compile(r"; \[map\] start REFUSED -- waiting for '(.+?)'")
 # mp:X2b -- the transport-cannot-carry refusal (TCP): the host still CLAIMS, arms nothing, and
 # refuses Start naming the peer and the map.
@@ -119,9 +130,10 @@ def read(path):
         return read_one(path)
     # ONLY THIS PROCESS'S RUNS -- from its `*_menu_*` run (the process's first directory, written at
     # boot) up to the given one. Reading every run in the lane was wrong on a SHARED lane: in the
-    # 2026-09-24 gate, map_refuse_tcp borrows match_launch's lanes, and the joiner's `local after`
-    # from match_launch's earlier (started) match read as "the refusal did not hold" (green alone,
-    # red in the suite). Run directory names start with a UTC stamp, so name order is time order.
+    # 2026-09-24 gate, map_refuse_tcp borrowed match_launch's lanes (since TL-SUITE-FOLD-ML,
+    # d28_canceltask's), and the joiner's `local after` from the anchor's earlier (started) match
+    # read as "the refusal did not hold" (green alone, red in the suite). Run directory names start
+    # with a UTC stamp, so name order is time order.
     logs_dir = os.path.dirname(os.path.normpath(path))  # <lane>/logs
     me = os.path.basename(os.path.normpath(path))
     names = sorted(n for n in os.listdir(logs_dir) if os.path.isdir(os.path.join(logs_dir, n)))
@@ -278,6 +290,13 @@ def main(argv=None):
         help="assert the host's Start was HELD at least once (the refusal names the peer)",
     )
     ap.add_argument(
+        "--expect-early-join",
+        action="store_true",
+        help="mp:X2d (with --expect-nothing): the client's JOIN preceded the host's first advert "
+        "(the advert-hold knob announced the hold and a release after a JOIN), and the host never "
+        "logged `needs the map` -- the JOIN itself carried the hash",
+    )
+    ap.add_argument(
         "--expect-refused",
         action="store_true",
         help="mp:X2b: the transport cannot carry maps (TCP) and the joiner holds different "
@@ -345,6 +364,9 @@ def main(argv=None):
                 % (armed.group(3), armed.group(1), armed.group(2))
             )
 
+    if args.expect_early_join:
+        check_early_join(hpath, htext, clients)
+
     if args.expect_gate:
         held = RE_START_REFUSED.search(htext)
         if not held:
@@ -369,6 +391,30 @@ def main(argv=None):
         return 1
     print("check_map_transfer: OK")
     return 0
+
+
+def check_early_join(hpath, htext, clients):
+    """mp:X2d: the JOIN went out before the advert, and still carried the map hash."""
+    needs = RE_PEER_NEEDS.search(htext)
+    if needs:
+        fail(
+            "%s: the host logged `%s` -- the JOIN reached it without the map hash (the X2d race)"
+            % (peer_label(hpath), needs.group(0).strip())
+        )
+    for p, t in clients:
+        name = peer_label(p)
+        if not RE_ADVERT_HELD.search(t):
+            fail(
+                "%s: no `advert_hold ... HELD` line -- [net] map_test_advert_hold_ms was not in "
+                "effect, so the JOIN-before-advert race was not staged" % name
+            )
+        elif not RE_ADVERT_RELEASED.search(t):
+            fail(
+                "%s: the held advert was not released after a JOIN -- the JOIN never went out "
+                "ahead of it, so the race was not staged" % name
+            )
+        else:
+            note("%s: advert held until the JOIN went out (race staged)" % name)
 
 
 def check_refused(hpath, htext, clients, claim):
@@ -477,6 +523,26 @@ CL_MENU_TCP = (
     "; [map] local before blue monday.mpm sha=%s size=462065\n"
     "; [map] client BLOCKED blue monday.mpm -- this transport has no bulk channel\n"
     % (HASH_OK, HASH_OK)
+)
+
+
+# mp:X2d fixtures: the field shape (JOIN before advert) with and without the fix.
+CL_HAVE = (
+    "; [map] client want blue monday.mpm sha=%s size=462065\n"
+    "; [map] local before blue monday.mpm sha=%s size=462065\n"
+    "; [map] client resolve base -- the local file already IS the host's content\n"
+    % (HASH_OK, HASH_OK)
+)
+EJ_CL_MENU = (
+    "; [map] uitest advert_hold: first SESSION_INFO from 0 HELD until a JOIN has gone out "
+    "(+250 ms)\n" + CL_HAVE + "; [map] uitest advert_hold: released after 612 ms (a JOIN went "
+    "out first)\n"
+)
+EJ_CL_RUN = "; [map] local after blue monday.mpm sha=%s size=462065\n" % HASH_OK
+EJ_HOST_OK = "; [map] peer 1 'client' holds the map (sha=%s) -- nothing to transfer\n" % HASH_OK
+EJ_HOST_BUG = (
+    "; [map] peer 1 'client' needs the map (has=none want=%s)\n"
+    "; [map] send armed to peer 1 'client' (462065 B of blue monday.mpm)\n" % HASH_OK
 )
 
 
@@ -605,6 +671,43 @@ def selftest():
             ["--expect-nothing"],
             1,
         ),
+        # ---- mp:X2d --expect-early-join (the JOIN raced ahead of the advert) ----
+        (
+            "--expect-early-join: the JOIN carried the hash though it beat the advert -- GREEN",
+            [HOST_MENU, EJ_HOST_OK],
+            [EJ_CL_MENU, EJ_CL_RUN],
+            ["--expect-nothing", "--expect-early-join"],
+            0,
+        ),
+        (
+            "--expect-early-join: the field bug (has=none, a transfer armed) is red",
+            [HOST_MENU, EJ_HOST_BUG],
+            [EJ_CL_MENU, EJ_CL_RUN],
+            ["--expect-nothing", "--expect-early-join"],
+            1,
+        ),
+        (
+            "--expect-early-join: `needs` corrected by a re-report (no send) is still red -- the "
+            "JOIN itself must carry the hash",
+            [HOST_MENU, EJ_HOST_BUG.split("; [map] send armed")[0] + EJ_HOST_OK],
+            [EJ_CL_MENU, EJ_CL_RUN],
+            ["--expect-nothing", "--expect-early-join"],
+            1,
+        ),
+        (
+            "--expect-early-join: no hold line (knob not in effect) is red -- the race was not staged",
+            [HOST_MENU, EJ_HOST_OK],
+            [CL_HAVE, EJ_CL_RUN],
+            ["--expect-nothing", "--expect-early-join"],
+            1,
+        ),
+        (
+            "--expect-early-join: a hold released by the cap (no JOIN first) is red",
+            [HOST_MENU, EJ_HOST_OK],
+            [EJ_CL_MENU.replace("a JOIN went out first", "no JOIN within the cap"), EJ_CL_RUN],
+            ["--expect-nothing", "--expect-early-join"],
+            1,
+        ),
         # ---- mp:X2b --expect-refused (TCP, joiner holds different bytes) ----
         (
             "--expect-refused: the honest TCP refusal is GREEN",
@@ -649,9 +752,10 @@ def selftest():
             1,
         ),
         (
-            # The 2026-09-24 gate red: map_refuse_tcp borrows match_launch's lanes, whose EARLIER
-            # process started a match (a `local after`). Only this process's runs -- from its own
-            # menu directory on -- may be read, so the honest refusal stays GREEN on a shared lane.
+            # The 2026-09-24 gate red: map_refuse_tcp borrowed match_launch's lanes (since
+            # TL-SUITE-FOLD-ML, d28_canceltask's), whose EARLIER process started a match (a `local
+            # after`). Only this process's runs -- from its own menu directory on -- may be read, so
+            # the honest refusal stays GREEN on a shared lane.
             "--expect-refused: an EARLIER process's `local after` on a SHARED lane is not read",
             [HOST_MENU + HOST_NOCARRY, HOST_REFUSED_TCP],
             [

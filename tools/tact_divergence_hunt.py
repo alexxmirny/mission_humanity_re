@@ -37,7 +37,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.dirname(HERE)  # this file sits directly in the tools tree, one level below the root
 sys.path.insert(0, os.path.join(REPO, "tools"))
 
-import test_ui  # noqa: E402
+import tact_test  # noqa: E402
 
 
 def unit_hashes(run_dir):
@@ -264,8 +264,8 @@ def compare(a_dir, b_dir, which="full"):
     names = []
     if f0 in ap and f0 in bp:
         names = [
-            test_ui.TACT_REGION_NAMES[i]
-            for i in range(min(len(ap[f0]), len(bp[f0]), len(test_ui.TACT_REGION_NAMES)))
+            tact_test.TACT_REGION_NAMES[i]
+            for i in range(min(len(ap[f0]), len(bp[f0]), len(tact_test.TACT_REGION_NAMES)))
             if ap[f0][i] != bp[f0][i]
         ]
     return f0, names, len(common), len(diff)
@@ -339,7 +339,7 @@ def main():
     flo, fhi = 0, 0
     if args.fields:
         flo, fhi = (int(x) for x in args.fields.split("-", 1))
-    lane_dir = test_ui.tact_provision_lane(A, visible=False)
+    lane_dir = tact_test.tact_provision_lane(A, visible=False)
     if lane_dir is None:
         return 1
     print("dt=%d  frames=%d  runs=%d\n" % (args.dt, args.frames, args.runs))
@@ -348,7 +348,7 @@ def main():
     for i in range(1, args.runs + 1):
         dirs = []
         for _arm in ("a", "b"):
-            test_ui.tact_write_config(
+            tact_test.tact_write_config(
                 lane_dir,
                 args.frames,
                 0,
@@ -367,7 +367,7 @@ def main():
                 field_lo=flo,
                 field_hi=fhi,
             )
-            d = test_ui.tact_run_arm(lane_dir, args.save, args.wall)
+            d = tact_test.tact_run_arm(lane_dir, args.save, args.wall)
             if not d:
                 print("run %d: arm produced no run folder" % i)
                 break

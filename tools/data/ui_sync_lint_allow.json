@@ -1,0 +1,7 @@
+[
+  {
+    "row": "link_death",
+    "reason": "the timeline's stall/blackhole land in a static, idle lobby wait (peers <1>, nothing else scheduled in that window) rather than against a transient peer state -- VERIFIED 2026-07-26 at the recorded offsets with ~20-40s connect margin either side, so there is no barrier/mode to race. Not peer-dependent in the TL-P9W-TRIGGER sense; a shim_trigger would gate on the same static condition the timeline already hits reliably.",
+    "tracker_id": "docs/ui-input.md \"A UDP shim, orchestrated\""
+  }
+]

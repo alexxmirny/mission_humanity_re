@@ -5,10 +5,11 @@
 # browser and its Connect goes THROUGH the relay, because the game it wants is a relay-directory row.
 # Here the host is NOT on the relay (relay_client_only in test_ui.py), so there is no directory row --
 # and since R7a the session browser's *Internet server* + typed IP is a genuine direct dial: the
-# client dials the host's LAN address itself, and the relay (which exists, to be NOT contacted) sees
-# no HELLO, no leg, and stays at peers=0. The post_check (check_direct_dial.py) reads the client's
-# mh_net.log for the absence of any relay contact and the relay's log for peers=0; the script's own
-# `occ 2` is what proves the pair still reached the lobby DIRECTLY.
+# client dials the host's LAN address itself. Since mp:R7b the first browser still probes the relay
+# (a directory-only leg), and the Connect releases that leg before dialling direct. The post_check
+# (check_direct_dial.py) reads the client's mh_net.log for no relay contact AFTER the DIRECT decision
+# and the relay's log for forwarded=0; the script's own `occ 2` is what proves the pair still reached
+# the lobby DIRECTLY.
 #
 # HOST: mp_host_lobby.txt (a plain UDP host, off the relay), test_ui.py direct_dial_with_relay_set.
 

@@ -166,6 +166,22 @@ def _read_z(path: str) -> bytes:
     return zlib.decompress(_read(path))
 
 
+def _epoch_of_log(log_path):
+    """(epoch, build) the run's DLL printed on its HASH FINGERPRINT line (TL-GATE8)."""
+    import mp_analyze as _m
+
+    return _m.harness_input_epoch(log_path)
+
+
+def epoch_refusal(man, log_path):
+    """The named refusal when `log_path`'s build epoch differs from the fixture's stamp, else None."""
+    import mp_analyze as _m
+
+    return _m.epoch_mismatch(
+        (man.get("step0") or {}).get("hash_input_epoch"), _epoch_of_log(log_path)[0]
+    )
+
+
 def manifest_path(fixture: str) -> str:
     return os.path.join(fixture, "manifest.json")
 
@@ -271,6 +287,12 @@ def cmd_pack(args):
         )
 
     log = _read(os.path.join(run, "mh_harness.log"))
+    epoch, build = _epoch_of_log(os.path.join(run, "mh_harness.log"))
+    if epoch is None:
+        sys.exit(
+            "fixture_replay pack: %s/mh_harness.log carries no `input_epoch=` on its HASH "
+            "FINGERPRINT line -- a pre-TL-GATE8 build; the fixture could not be stamped" % run
+        )
     artifacts = {}
     for name, path in halves.items():
         raw = _read(path)
@@ -287,6 +309,7 @@ def cmd_pack(args):
     wraw = _read(halves["world"])
     import struct
 
+    (schema,) = struct.unpack_from("<I", wraw, 12)  # common_header.schema (TL-FIXTURE-SCHEMA)
     (content_hash,) = struct.unpack_from("<Q", wraw, 24)
     lk_comb, lk_state, gclock = struct.unpack_from("<QQQ", wraw, 32)
     step, masks, sinkfp, manfp, slices = struct.unpack_from("<IIIII", wraw, 56)
@@ -325,6 +348,7 @@ def cmd_pack(args):
             # ordinary thing (a staged copy, a scratch lane). Fall back to the absolute path rather
             # than failing the pack over a cosmetic provenance string.
             "run_dir": _relpath_or_abs(run),
+            "build": build,
         },
         # THE CONTRACT (see the module banner). LIB-REF's standalone replayer must reproduce these
         # SEMANTICS, not merely read the same bytes.
@@ -366,6 +390,7 @@ def cmd_pack(args):
         },
         "step0": {
             "world_content_hash": "%016X" % content_hash,
+            "world_schema_fp": "%08X" % schema,
             "lockstep_combined": "%016X" % lk_comb,
             "lockstep_state": "%016X" % lk_state,
             "game_clock": "%016X" % gclock,
@@ -374,6 +399,7 @@ def cmd_pack(args):
             "hash_sink_fp": "%08X" % sinkfp,
             "hash_manifest_fp": "%08X" % manfp,
             "hash_slice_count": slices,
+            "hash_input_epoch": epoch,
         },
         "artifacts": artifacts,
     }
@@ -472,6 +498,9 @@ def cmd_stream(args):
     fixture = args.fixture or DEFAULT_FIXTURE
     man = load_manifest(fixture)
     log = _read(os.path.join(args.run_dir, "mh_harness.log"))
+    bad = epoch_refusal(man, os.path.join(args.run_dir, "mh_harness.log"))
+    if bad:
+        sys.exit("fixture_replay stream: REFUSED -- %s" % bad)
     steps_lines, region_lines = split_stream(log)
     if not steps_lines or not region_lines:
         sys.exit("fixture_replay stream: that run produced no hash stream (region_hash_step=0?)")
@@ -827,6 +856,20 @@ def cmd_verify(args):
             "  ok: %d artifact(s), every one decompresses to its manifest sha256"
             % len(man["artifacts"])
         )
+
+    # TL-GATE8: every run this verify would compare must be of the fixture's hash-input epoch.
+    runs = list(getattr(args, "live_log", None) or [])
+    if getattr(args, "replay_log", None):
+        runs.append(args.replay_log)
+    if getattr(args, "against", None):
+        runs.append(os.path.join(args.against, "mh_harness.log"))
+    refusals = [(p, epoch_refusal(man, p)) for p in runs]
+    refusals = [(p, r) for p, r in refusals if r]
+    if refusals:
+        for p, r in refusals:
+            print("  !! REFUSED %s: %s" % (p, r))
+        print("\nfixture_replay verify: REFUSED (nothing compared)")
+        return 2
 
     committed_step_bytes = _read_z(os.path.join(fixture, man["artifacts"]["hash_steps"]["file"]))
     committed_region_bytes = _read_z(

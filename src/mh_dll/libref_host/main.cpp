@@ -902,6 +902,7 @@ constexpr int      QUEUE_CAP_   = 300; // llm_strat_order[300] -- CMP [QUEUE_COU
 // FROM THE EFFECTIVE COUNT, not from `injected`: the injector sets the count only when it wrote
 // something, so a step that injects nothing still owes dispatch the previous records. CLAMPED,
 // because the count has been MEASURED above 300 and an unclamped length would be negative.
+// HASH-INPUT BEGIN libref_prehash_writes (tools/data/hash_input_epoch.json)
 void order_queue_tail_clear(int injected) {
     uint8_t *const q = mh::state::ptr<uint8_t>(mh::state::RID_STRAT_ORDER_QUEUE);
     int32_t *const c = mh::state::ptr<int32_t>(mh::state::RID_STRAT_ORDER_QUEUE_COUNT);
@@ -992,6 +993,7 @@ struct recording {
         return k;
     }
 };
+// HASH-INPUT END libref_prehash_writes
 
 // The committed hash stream: "<step> <clock> <combined> <state>" lines, and "R <step> <h0..hN>".
 // Parsed into flat arrays indexed by step-1.
@@ -1370,6 +1372,7 @@ int main(int argc, char **argv) {
     const char *nav_report   = nullptr;
     const char *rng_trace_to = nullptr;
     const char *absent_list  = nullptr;
+    const char *input_epoch  = nullptr; // TL-GATE8: the fixture's stamped hash-input epoch
     uint32_t    rng_lo = 1u, rng_hi = 0u;
     // Default ON: the fixture's replay_contract says replay_suppress_enqueue=1, and reproducing the
     // contract is this host's job. See the arming site for the negative arm's purpose.
@@ -1418,6 +1421,8 @@ int main(int argc, char **argv) {
             g_assets_dir = argv[++i];
         else if (std::strcmp(argv[i], "--assets-absent") == 0 && i + 1 < argc)
             absent_list = argv[++i];
+        else if (std::strcmp(argv[i], "--input-epoch") == 0 && i + 1 < argc)
+            input_epoch = argv[++i];
         else if (std::strcmp(argv[i], "--arena-pad") == 0 && i + 1 < argc)
             g_arena_pad = (uint32_t)std::strtoul(argv[++i], nullptr, 0);
         else if (std::strcmp(argv[i], "--rng-trace") == 0 && i + 3 < argc) {
@@ -1427,7 +1432,7 @@ int main(int argc, char **argv) {
         }
     }
     if (dir == nullptr) {
-        std::printf("usage: libref_host --fixture <unpacked dir> [--steps N]\n"
+        std::printf("usage: libref_host --fixture <unpacked dir> --input-epoch <E> [--steps N]\n"
                     "                   [--poke-step N --poke-region <name>]\n"
                     "                   [--dump-rid N | --dump-region <name>] [--dump-step N]\n"
                     "                   [--dump-to <file>] [--nav-report <file>]\n"
@@ -1444,6 +1449,8 @@ int main(int argc, char **argv) {
                     "                 it, because a fixup nobody can switch off is a fixup nobody\n"
                     "                 can show is doing anything.\n"
                     "\n"
+                    "  --input-epoch  the fixture's step0.hash_input_epoch (manifest.json). REQUIRED:\n"
+                    "                 a fixture cut under another epoch is refused, never compared.\n"
                     "  --live         THE LIVE-LOOP MODE (LIB-REF-LIVE): no order injection and no\n"
                     "                 enqueue suppression, so the in-sim AI is the sole order source\n"
                     "                 and the enqueue/issue/dispatch loop runs for real. Needs a lane\n"
@@ -1485,6 +1492,19 @@ int main(int argc, char **argv) {
     AddVectoredExceptionHandler(1, fault_report);
 
     std::printf("=== libref_host: the standalone libmh reference replay ===\n");
+    // TL-GATE8: refuse, before anything is compared, a fixture cut under another hash-input epoch.
+    std::printf("  build hash-input epoch %lu\n", (unsigned long)mh::state::HASH_INPUT_EPOCH);
+    if (input_epoch == nullptr) {
+        fail("hash-input epoch mismatch: artifact E=unstamped, build E=%lu -- pass --input-epoch "
+             "<step0.hash_input_epoch>",
+             (unsigned long)mh::state::HASH_INPUT_EPOCH);
+        return 2;
+    }
+    if (std::strtoul(input_epoch, nullptr, 10) != mh::state::HASH_INPUT_EPOCH) {
+        fail("hash-input epoch mismatch: artifact E=%s, build E=%lu -- stale fixture, re-capture it",
+             input_epoch, (unsigned long)mh::state::HASH_INPUT_EPOCH);
+        return 2;
+    }
     // A GIVEN-BUT-UNREADABLE LIST IS A REFUSAL, NOT A WARNING: silently proceeding with zero
     // declarations turns every declared miss back into a trap, and the run would then fail for a
     // reason that has nothing to do with the replay.

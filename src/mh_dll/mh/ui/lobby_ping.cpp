@@ -293,10 +293,15 @@ void lobby_ping_tick() {
                 // (mh_net_export.h) -- so this is the only slot a client can ever measure, matched
                 // positionally, the same fallback ui_net_indicator.cpp uses for its own npeer==1 case.
                 srtt_ms = (st.lat[0].srtt_us + 500) / 1000;
-                // mp:L1e: a client already knows ITS OWN dial (the one connection this row IS), so it
-                // does not read the (currently-unknown) transport field for this -- MH_Seam_
-                // ClientDialIsRelayed is the mp:R7a kick-site latch, always a real 0/1 here.
-                relay    = MH_Seam_ClientDialIsRelayed() ? 1 : 0;
+                // mp:L1h (2026-09-26) -- THE LIVE PATH FIRST, the dial only as a fallback. L1e read
+                // the mp:R7a kick-site latch here because the transport field was still unwired; L1f
+                // wired it (the tunnel's per-remote class, keyed by the loopback port a client's one
+                // conn also uses) but this arm kept the latch. The latch says how we DIALLED, and a
+                // relay-directory join that the punch then promotes to direct kept showing "R" while
+                // the host's screen showed "D" for the same link (rc3 field lobby: client
+                // `relayed=1` for the whole lobby, `udp path DIRECT` 12 s before its first sample).
+                relay = st.lat[0].relayed;
+                if (relay < 0) relay = MH_Seam_ClientDialIsRelayed() ? 1 : 0;
                 measured = true;
             }
         }

@@ -1,0 +1,59 @@
+{
+  "_why": "Same masks as mp_host_diplomacy (U39, 2026-09-24): the three dialog captures follow UI clicks, not a gameclock wait, and the match keeps simulating behind the dialog, so under load they land on a later game step (here the mothership is also in flight to its landing spot). The claim is WHICH diplomacy boxes are ticked, so they compare ONLY the client row's three checkboxes, in colour. Every other capture keeps its full-frame diff. The three D25-era HUD captures (landed, build_menu, academy_armed) compare ONLY the HUD region showing the state the step asserts -- the selected-unit panel ('Pioneer operational'), the build list, and the status line 'Choose a location for your building (Academy)'. On a loaded gate the map behind them differed 25% (mothership position/fog at a gameclock-gated frame; 0.04% alone) while the HUD state did not; the HUD has no widget list, so no script predicate can gate on it (wave-3 gate, TL-SUITE-SPLICE-HOSTCLICK).",
+  "_only": {
+    "capture_diplomacy_open.png": {
+      "rect": [
+        475,
+        275,
+        120,
+        26
+      ],
+      "mode": "rgb"
+    },
+    "capture_allied_ticked.png": {
+      "rect": [
+        475,
+        275,
+        120,
+        26
+      ],
+      "mode": "rgb"
+    },
+    "capture_reopened_after_commit.png": {
+      "rect": [
+        475,
+        275,
+        120,
+        26
+      ],
+      "mode": "rgb"
+    },
+    "capture_landed.png": {
+      "rect": [
+        865,
+        245,
+        158,
+        55
+      ],
+      "mode": "rgb"
+    },
+    "capture_build_menu.png": {
+      "rect": [
+        865,
+        245,
+        158,
+        262
+      ],
+      "mode": "rgb"
+    },
+    "capture_academy_armed.png": {
+      "rect": [
+        95,
+        735,
+        380,
+        14
+      ],
+      "mode": "rgb"
+    }
+  }
+}

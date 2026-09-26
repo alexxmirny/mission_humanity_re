@@ -1,0 +1,76 @@
+# tooling:TL-SUITE-SPLICE-CAM -- cam_edge_scroll.txt (mp:SES3, mouse-edge pin) and cam_key_hold.txt
+# (mp:SES3c, keyboard hold) shared this exact menu->lobby->launch walk and lane; this script runs
+# both probes in the ONE boot instead of two. `tools/check_cam_trace.py` reads the shared
+# `; [mtrace]` trace and judges each probe from its own segment: the `log` line below is the
+# boundary its `--segment 1/2 --boundary` args split on, so probe 2's residue (cursor centred, no
+# key down) cannot confuse probe 1's verdict, or vice versa.
+#
+# THE ASSERTION IS THE post_check, NOT THE PIXELS -- same shape as module_absent. `s0_menu` is a
+# boot-sanity frame taken before the walk; every claim lives in check_cam_trace.py.
+#
+# Single-peer: seat an AI in slot 1 and Start alone, so the real menu -> lobby -> launch path runs
+# with no client VM (same walk both retired scripts used).
+
+settled value:110
+capture s0_menu
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+settled Create
+clickl Create
+present Game name
+settled Ok
+clickl Ok
+present Available maps
+settled Ok
+clickl Ok
+
+# host lobby: OPEN -> AI on slot 1, gated on the "Computer" name label because the per-slot spinner
+# rebuilds the widget list (a click fired mid-rebuild misses).
+present Network players
+settled Start
+click 70 132
+present Computer
+enabled Start
+clickl Start
+
+# In-game. `gameclock` rather than a frame count: the edge scroll is paced by CURRENT_GAME_TIME
+# against _G_LLM_CAM_EDGE_LEFT_INTERVAL, so the thing the hold has to outlast is game time.
+absent Network players
+gamemode 2
+gameclock 2000
+
+# ---- PROBE 1 (mp:SES3): mouse pinned at the left screen edge -------------------------------------
+# 1. CENTRE -- the control. All eight latches clear, camera still.
+cursorhold 320 240 60
+# 2. PINNED AT THE LEFT EDGE. EDGE_LEFT_ACTIVE latches on the first frame and stays latched while
+#    the cursor does not move; the camera scrolls the whole time -- the "edge-latched while pinned"
+#    shape --expect-pinned requires.
+cursorhold 0 240 600
+# 3. RELEASED, back to centre. The else-branch in llm_strat_input_update clears the flag on the
+#    first frame the cursor is off the edge -- the FALL half of --expect-rise-fall, and it leaves
+#    the cursor centred for probe 2 below.
+cursorhold 320 240 120
+
+# ---- boundary: check_cam_trace.py's --segment 1/2 split on the first `; [script] LOG:` line
+# containing this text. Everything above is probe 1's segment; everything below is probe 2's.
+# (log text is truncated at 63 chars by the harness's `s->text[64]` -- keep this line short.)
+log cam_latch: probe2 start -- edge latch done, cursor centred
+
+# ---- PROBE 2 (mp:SES3c): LEFT arrow held via `keyhold` --------------------------------------------
+# Cursor is already centred at 320,240 from probe 1's release above, so no CAM_EDGE_* latch can
+# muddy the held= column this probe checks.
+# 1. CONTROL: no key held, all eight latches clear, camera still.
+cursorhold 320 240 60
+# 2. HOLD LEFT (scancode 0x4b) for 600 presents -- matched to probe 1's own 600-present hold, since
+#    both need >= 3 [mtrace] samples at the 500 ms camera heartbeat. CAM_SCROLL_LEFT_HELD latches on
+#    the DOWN event and stays latched with no paired UP -- the unpaired hold `keyhold` exists to
+#    express -- and the camera scrolls left the whole time.
+keyhold 0x4b 600
+# 3. RELEASED. The UP event `keyhold` sends on its last present clears the latch -- the fall half
+#    check_cam_trace's --expect-held requires, same as --expect-rise-fall does for probe 1.
+cursorhold 320 240 120
+
+log cam_latch: done -- edge+key latch both released
+end

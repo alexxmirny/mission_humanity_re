@@ -1193,6 +1193,94 @@ fn health_gate(exe: &Path, expect_version: &str) -> Result<String, String> {
 /// APPENDS the work that is still owed (`--update` when the request was launcher-then-game), so the
 /// original request survives the restart. `crate::restart_argv` composes it and its test is the
 /// LA11 evidence.
+/// The three names `self_replace` (1.5, Windows) gives its scratch copies of the launcher:
+/// `.<stem>.<32 random a-z>.__selfdelete__.exe` (the helper that deletes the old binary, then itself),
+/// `__relocated__` (the old binary, moved aside) and `__temp__` (the new one mid-copy). They land next
+/// to the launcher or in %TEMP% (the crate tries a rename there first).
+const SELF_REPLACE_SUFFIXES: [&str; 3] =
+    [".__selfdelete__.exe", ".__relocated__.exe", ".__temp__.exe"];
+
+/// True for a file name `self_replace` made for the executable whose stem is `stem`.
+fn is_self_replace_leftover(name: &str, stem: &str) -> bool {
+    let Some(rest) = name.strip_prefix('.').and_then(|r| r.strip_prefix(stem)) else {
+        return false;
+    };
+    let Some(rest) = rest.strip_prefix('.') else {
+        return false;
+    };
+    SELF_REPLACE_SUFFIXES.iter().any(|sfx| {
+        rest.strip_suffix(sfx)
+            .is_some_and(|r| r.len() == 32 && r.bytes().all(|b| b.is_ascii_lowercase()))
+    })
+}
+
+/// Deletes what a previous self-update left behind in `dirs` (2026-09-26: players found
+/// `*.__selfdelete__.exe` beside the launcher after an update). The crate's helper deletes the old
+/// binary and then ITSELF through a DELETE_ON_CLOSE handle handed to a `cmd.exe /c exit` it spawns;
+/// if any step of that fails it simply exits, and nothing reports it. So every start sweeps. A helper
+/// that is still running cannot be deleted (Windows refuses on a mapped image), so the sweep can never
+/// pull a file out from under an update in progress -- it just finds it again next start.
+/// Returns the paths removed.
+pub fn sweep_self_replace_leftovers(dirs: &[PathBuf], stem: &str) -> Vec<PathBuf> {
+    // HELPERS FIRST, and a live one freezes its directory. The restarted launcher runs this while the
+    // helper may still be waiting to delete `__relocated__`; taking that file first would make the
+    // helper's own DeleteFileW fail, and a failing helper exits WITHOUT deleting itself -- the very
+    // leftover this sweep exists for. A helper we cannot delete is a helper still running.
+    let mut removed = Vec::new();
+    for dir in dirs {
+        let Ok(entries) = std::fs::read_dir(dir) else {
+            continue;
+        };
+        let mut rest = Vec::new();
+        let mut helper_alive = false;
+        for e in entries.flatten() {
+            let name = e.file_name();
+            let Some(name) = name.to_str() else { continue };
+            if !is_self_replace_leftover(name, stem) {
+                continue;
+            }
+            if name.ends_with(SELF_REPLACE_SUFFIXES[0]) {
+                if std::fs::remove_file(e.path()).is_ok() {
+                    removed.push(e.path());
+                } else {
+                    helper_alive = true;
+                }
+            } else {
+                rest.push(e.path());
+            }
+        }
+        if helper_alive {
+            continue;
+        }
+        for p in rest {
+            if std::fs::remove_file(&p).is_ok() {
+                removed.push(p);
+            }
+        }
+    }
+    removed
+}
+
+/// The startup call: the launcher's own directory and %TEMP%, for the running executable's stem.
+pub fn sweep_self_replace_leftovers_at_start() {
+    let Ok(exe) = std::env::current_exe() else {
+        return;
+    };
+    let Some(stem) = exe.file_stem().and_then(|s| s.to_str()).map(str::to_owned) else {
+        return;
+    };
+    let mut dirs = vec![std::env::temp_dir()];
+    if let Some(d) = exe.parent() {
+        dirs.push(d.to_path_buf());
+    }
+    for p in sweep_self_replace_leftovers(&dirs, &stem) {
+        log::line(format!(
+            "update: removed a self-update leftover {}",
+            p.display()
+        ));
+    }
+}
+
 pub fn self_update(
     layout: &Layout,
     fetch: &dyn Fetch,
@@ -2014,5 +2102,89 @@ mod tests {
         assert!(none.is_none());
         assert_eq!(install::read_manifest(&game).unwrap().version, "0.9.0");
         let _ = std::fs::remove_dir_all(&root);
+    }
+
+    const R32: &str = "abcdefghijklmnopqrstuvwxyzabcdef";
+
+    #[test]
+    fn self_replace_leftover_names() {
+        let stem = "mh_launcher";
+        for sfx in SELF_REPLACE_SUFFIXES {
+            assert!(is_self_replace_leftover(
+                &format!(".{stem}.{R32}{sfx}"),
+                stem
+            ));
+        }
+        // The launcher itself, another program's leftovers, a short or non-lowercase tag.
+        assert!(!is_self_replace_leftover("mh_launcher.exe", stem));
+        assert!(!is_self_replace_leftover(
+            &format!(".other.{R32}.__selfdelete__.exe"),
+            stem
+        ));
+        assert!(!is_self_replace_leftover(
+            ".mh_launcher.abc.__selfdelete__.exe",
+            stem
+        ));
+        assert!(!is_self_replace_leftover(
+            &format!(".mh_launcher.{}.__temp__.exe", R32.to_uppercase()),
+            stem
+        ));
+    }
+
+    fn sweep_dir(name: &str) -> PathBuf {
+        let d = std::env::temp_dir().join(name);
+        let _ = std::fs::remove_dir_all(&d);
+        std::fs::create_dir_all(&d).unwrap();
+        d
+    }
+
+    #[test]
+    fn sweep_removes_leftovers_and_keeps_the_rest() {
+        let d = sweep_dir("mh_launcher_test_sweep");
+        let names = [
+            format!(".mh_launcher.{R32}.__selfdelete__.exe"),
+            format!(".mh_launcher.{R32}.__relocated__.exe"),
+            format!(".mh_launcher.{R32}.__temp__.exe"),
+        ];
+        for n in &names {
+            std::fs::write(d.join(n), b"x").unwrap();
+        }
+        std::fs::write(d.join("mh_launcher.exe"), b"x").unwrap();
+        std::fs::write(d.join(format!(".other.{R32}.__selfdelete__.exe")), b"x").unwrap();
+        let removed = sweep_self_replace_leftovers(std::slice::from_ref(&d), "mh_launcher");
+        assert_eq!(removed.len(), 3, "{removed:?}");
+        for n in &names {
+            assert!(!d.join(n).exists(), "{n} survived");
+        }
+        assert!(d.join("mh_launcher.exe").exists());
+        assert!(d.join(format!(".other.{R32}.__selfdelete__.exe")).exists());
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn a_live_helper_freezes_its_directory() {
+        use std::os::windows::fs::OpenOptionsExt;
+        let d = sweep_dir("mh_launcher_test_sweep_live");
+        let helper = d.join(format!(".mh_launcher.{R32}.__selfdelete__.exe"));
+        let relocated = d.join(format!(".mh_launcher.{R32}.__relocated__.exe"));
+        std::fs::write(&helper, b"x").unwrap();
+        std::fs::write(&relocated, b"x").unwrap();
+        // Share mode 0 = no FILE_SHARE_DELETE: stands in for the running helper's mapped image.
+        let hold = std::fs::OpenOptions::new()
+            .read(true)
+            .share_mode(0)
+            .open(&helper)
+            .unwrap();
+        let removed = sweep_self_replace_leftovers(std::slice::from_ref(&d), "mh_launcher");
+        assert!(removed.is_empty(), "{removed:?}");
+        assert!(
+            relocated.exists(),
+            "the helper's file to delete was taken from under it"
+        );
+        drop(hold);
+        let removed = sweep_self_replace_leftovers(std::slice::from_ref(&d), "mh_launcher");
+        assert_eq!(removed.len(), 2, "{removed:?}");
+        let _ = std::fs::remove_dir_all(&d);
     }
 }

@@ -215,7 +215,25 @@ volatile LONG             g_join_pending      = 0;
 uint32_t                  g_join_pending_room = 0; // the row's room -- what the re-dial is asking for
 mh_net_proto::SessionInfo g_join_pending_rec;
 bool                      g_join_resending = false; // the re-send must not re-arm itself
-volatile LONG             g_s3_conn_kicked = 0;     // 1 once we've kicked the connect to the typed host
+// mp:X2d -- when this process last sent a JOIN (GetTickCount; 0 = never). Read by the advert-hold
+// knob below, which releases the held advert only once a JOIN has gone out.
+volatile LONG g_join_sent_at = 0;
+// mp:X2d -- UI-HARNESS ONLY: `[net] map_test_advert_hold_ms=N` (client). THE RACE IT STAGES is the
+// one the rc3 field match lost (host report 01M3EBKGCXFJC20KNW8QW52TT0): the R6 re-send fires on the
+// FIRST tick with a peer, deliberately before the host's first advert (see the R6 block in
+// MH_Seam_ClientDiscoveryTick), so the JOIN is built with no advert stored -- and the map module,
+// which learns the host's claim FROM that advert, had nothing to report. On the rig the advert
+// usually wins by a few ms; in the field it lost by 42 ms. So the first SESSION_INFO from a
+// connected host is HELD (on the recv thread) until a JOIN has gone out, plus N ms, and then
+// replayed through the same handler on the main thread. Per-process one-shot; 0 (the default) = off.
+// 0 = not yet read / idle, 1 = holding, 2 = released (never hold again in this process).
+volatile LONG g_hold_state  = 0;
+int           g_hold_ms     = -1; // the knob, read once
+DWORD         g_hold_at     = 0;
+int           g_hold_sender = 0;
+int           g_hold_len    = 0;
+unsigned char g_hold_buf[mh_net_proto::SESSION_INFO_MAX_ENCODED];
+volatile LONG g_s3_conn_kicked = 0; // 1 once we've kicked the connect to the typed host
 // mp:R7 -- 1 while the transport was started by a RELAY BROWSE dial (a client-role dial the first
 // browser makes to list the directory). Consumed by on_host_advertise: a player who clicks Create
 // game after browsing needs a HOST transport, not the client one the browse left running.
@@ -805,8 +823,26 @@ DWORD WINAPI s3_connect_thread(LPVOID) {
 // 2026-09-01 capture had both conns reset at teardown, but a rig run's sockets survive the match
 // intact, and a fix that only repaired the DEAD case would leave two different post-match states.
 void s3_kick_connect(const char *why) {
-    char ip[64];
-    if (MH_Net_IsStarted() && !g_net_relink) return;
+    char       ip[64];
+    const bool relay = dial_wants_relay();
+    if (MH_Net_IsStarted() && !g_net_relink) {
+        // mp:R7b -- A DIRECT DIAL AFTER A RELAY BROWSE. Since R7b the first browser probes the relay
+        // for every peer with one configured (saved servers or not), so a player who then takes
+        // *Internet server* + a typed IP arrives here with the BROWSE leg still up -- a started
+        // transport that would refuse the direct dial for good. Only that shape relinks: the live
+        // link came from a relayed dial, this one is direct, and there is an address to dial.
+        if (relay || InterlockedCompareExchange(&g_dial_relayed, 0, 0) != 1 ||
+            !mp_read_typed_join_ip(ip, sizeof(ip)))
+            return;
+        InterlockedExchange(&g_store_valid, 0);
+        InterlockedExchange(&g_s3_listed, 0);
+        InterlockedExchange(&g_net_relink, 1);
+        MH_Seam_ResetTransportInit();
+        InterlockedExchange(&g_s3_conn_done, 0);
+        InterlockedExchange(&g_s3_conn_kicked, 0);
+        seam_log("; R7b: direct dial after a relay browse -> the browse leg is released and the "
+                 "transport re-initialises DIRECT\n");
+    }
     if (g_s3_conn_kicked) return;
     // mp:R2/R7a -- IS THIS DIAL RELAYED OR DIRECT? A relayed dial needs no typed address (WHICH GAME
     // it wants is a room code the directory names, not an IP); a DIRECT dial (`[net] relay` set but the
@@ -815,7 +851,6 @@ void s3_kick_connect(const char *why) {
     // decides per dial (first browser / a relay-directory row -> relay; *Internet server* + typed IP ->
     // direct), and the answer is LATCHED so lazy_start builds the matching MH_NetConfig and the log
     // names the mode this connection actually used.
-    const bool relay = dial_wants_relay();
     if (!relay && !mp_read_typed_join_ip(ip, sizeof(ip))) return;
     InterlockedExchange(&g_s3_conn_kicked, 1);
     InterlockedExchange(&g_s8_retry_armed, 0);           // fresh attempt -- re-arm the retry-ready gate
@@ -1257,6 +1292,51 @@ void mp_host_advertise_session() {
     MH_Net_SendSessionInfo(buf, n);
 }
 
+// mp:X2d -- the advert-hold knob's two halves (see g_hold_state). RECV THREAD: take the first
+// connected-host advert into the one-slot stash and say "held"; while holding, later repeats (~1 Hz,
+// same content) are dropped, since processing one would end the staged race early. Relay directory
+// rows never reach here (on_session_info_recv routes them first) -- they are what the JOIN names.
+static bool advert_hold_take(int sender, const unsigned char *buf, int len) {
+    if (g_hold_ms < 0) g_hold_ms = (int)GetPrivateProfileIntA("net", "map_test_advert_hold_ms", 0, g_ini);
+    if (g_hold_ms <= 0) return false;
+    const LONG st = InterlockedCompareExchange(&g_hold_state, 0, 0);
+    if (st == 2) return false;
+    if (st == 1) return true;
+    if (len <= 0 || len > (int)sizeof(g_hold_buf)) return false;
+    memcpy(g_hold_buf, buf, (size_t)len);
+    g_hold_len    = len;
+    g_hold_sender = sender;
+    g_hold_at     = GetTickCount();
+    InterlockedExchange(&g_hold_state, 1); // publish AFTER the stash is written (x86 TSO)
+    char b[200];
+    wsprintfA(b, "; [map] uitest advert_hold: first SESSION_INFO from %d HELD until a JOIN has gone "
+                 "out (+%d ms) -- the JOIN is built with no advert stored (mp:X2d)\n",
+              sender, g_hold_ms);
+    seam_log(b);
+    return true;
+}
+
+// MAIN THREAD (MH_Seam_ClientDiscoveryTick): release the held advert once a JOIN has gone out and
+// g_hold_ms more have passed -- or after HOLD_CAP_MS regardless, so a client that never clicks still
+// lists its host. Replayed through the ordinary handler; state 2 first, so the replay is not re-held.
+static void advert_hold_pump() {
+    if (InterlockedCompareExchange(&g_hold_state, 0, 0) != 1) return;
+    constexpr DWORD HOLD_CAP_MS = 20000;
+    const DWORD     now         = GetTickCount();
+    const DWORD     sent        = (DWORD)g_join_sent_at;
+    // Signed: `sent` is stamped `| 1` (never 0), so it can lead `now` by 1 ms -- unsigned, that read
+    // as ~49 days elapsed and released at once (first green run: 6 ms after the JOIN, not 250).
+    const bool joined = sent != 0 && (LONG)(now - sent) >= (LONG)g_hold_ms;
+    if (!joined && now - g_hold_at < HOLD_CAP_MS) return;
+    InterlockedExchange(&g_hold_state, 2);
+    char b[200];
+    wsprintfA(b, "; [map] uitest advert_hold: released after %lu ms (%s)\n",
+              (unsigned long)(now - g_hold_at),
+              joined ? "a JOIN went out first" : "no JOIN within the cap");
+    seam_log(b);
+    on_session_info_recv(g_hold_sender, g_hold_buf, g_hold_len);
+}
+
 // Client side (recv thread): store each received SESSION_INFO. The main-thread MH_Seam_ClientDiscoveryTick
 // then re-arms the browser to list it (S3). Write the record BEFORE publishing g_store_valid (x86 TSO).
 void on_session_info_recv(int sender, const unsigned char *buf, int len) {
@@ -1288,6 +1368,7 @@ void on_session_info_recv(int sender, const unsigned char *buf, int len) {
         InterlockedExchange(&g_relay_in_head, next); // publish AFTER the record is written
         return;
     }
+    if (advert_hold_take(sender, buf, len)) return; // mp:X2d harness knob; off unless configured
     mh_net_proto::SessionInfo si;
     if (!mh_net_proto::session_info_decode(buf, len, si)) {
         seam_log("; S3 recv: malformed SESSION_INFO\n");
@@ -1717,6 +1798,17 @@ void on_join_connect() {
             seam_log(cb);
         }
     }
+    // mp:X2d -- TELL THE MAP MODULE WHICH LOBBY THIS JOIN NAMES, before asking what we hold of its
+    // map. The module otherwise learns the host's claim only from the connected host's advert, and
+    // the R6 re-send (the ordinary relay-join shape) fires BEFORE that advert by design -- so the
+    // JOIN reported "nothing", the host armed a transfer to a peer that already had the file, and
+    // the advert that landed 42 ms later resolved "have" with nobody telling the host (rc3 field
+    // match, 2026-09-26: Start refused for good). `rec` is the relay directory row here, which IS
+    // the host's own encoded SESSION_INFO (udp_transport.cpp relay_directory_row: registered
+    // verbatim, stored unread), map name + hash + size included. Idempotent against the live
+    // advert: the same claim is a compare. A row older than a map change reports the old hash; the
+    // advert then re-resolves and client_resolve_now re-JOINs (the backstop, map_transfer.cpp).
+    mh::seams::maps::client_on_advert(*rec);
     uint8_t                   mine[mh_net_proto::MAP_HASH_BYTES] = {0};
     const bool                have_map                           = mh::seams::maps::client_my_hash(mine);
     mh_net_proto::JoinRequest jr                                 = mh_net_proto::join_request_for(
@@ -1732,6 +1824,7 @@ void on_join_connect() {
     // R6 re-send rides a link that just came up over a re-initialised transport.
     if (!g_join_resending) mp_drain_pre_join_queue();
     MH_Net_SendJoin(buf, n);
+    InterlockedExchange(&g_join_sent_at, (LONG)(GetTickCount() | 1u)); // mp:X2d: never 0 once sent
     // SES0: name the echoed match_id here too. The `; [session]` line above is the one tools parse;
     // this one is for a human reading the JOIN in sequence -- it says the echo carried the host's id
     // rather than a nil placeholder, which is the failure a correlated pair would otherwise hide.
@@ -1934,28 +2027,16 @@ void on_host_advertise() {
 // llm_net_disconnect_stub, the first statement of llm_mp_local_browser_setup, and it was already
 // ours (a return-0 no-op since U10). So the no-op grew one write. It is also called from the
 // row-select path and the session browser, where re-writing 1 changes nothing.
-// mp:R7a -- the SAVED-SERVER count: the `+0xc` MRU-entry-count field of the connect-IP field record
-// _G_LLM_UI_NETSETUP_FLD_IP (0x656d9e; llm_mp_netsetup_field_build_mru reads param[3] at +0xc, record
-// stride 0x18). Loaded at boot from setup.dat by llm_cfg_setup_dat_read_mru_lists, so it is readable
-// on the first browser before any field is shown. Non-zero = the player has a server to dial directly.
-constexpr uintptr_t ADDR_IP_MRU_COUNT = 0x00656daau;
-
+//
+// mp:R7b (2026-09-26) -- EVERY peer with a relay configured probes, saved servers or not. R7a skipped
+// the probe when setup.dat held a saved server (the connect-IP MRU count), on the theory that such a
+// player meant to dial directly; in practice it left an rc3 player who had once typed an IP with a
+// first browser that never listed their friend's relayed lobby ("the lobby did not appear",
+// 2026-09-26). A later *Internet server* dial still goes direct -- s3_kick_connect releases the browse
+// leg for it (mp:R7b there).
 void on_net_disconnect_stub() {
     if (!relay_configured()) return;
     if (*(int *)mh::addr::_G_LLM_MP_PROBE_SERVER_COUNT == 1) return;
-    // mp:R7a -- THE FIRST BROWSER PROBES THE RELAY ONLY WHEN THE PLAYER HAS NO DIRECT TARGET. R7's own
-    // done_when scopes the first-browser relay-discovery to "NO saved/typed server address": a player
-    // WITH a saved server means to reach it by *Internet server* + a direct dial, and auto-probing the
-    // relay would put a directory leg on the wire (a relay HELLO, a `leg UP`) for a connection that is
-    // meant never to touch the relay. So probe only when the relay is FORCED (force_relay pins the
-    // relayed path regardless) or there is no saved server -- otherwise leave the first browser dead
-    // and let the player take the direct path. Without this, direct_dial_with_relay_set could not have
-    // a truly untouched relay.
-    if (!relay_force() && *(const int *)ADDR_IP_MRU_COUNT > 0) {
-        seam_log("; R7a: a saved server exists -> the first browser does NOT probe the relay (the "
-                 "direct path via Internet server is available; PROBE_SERVER_COUNT left 0)\n");
-        return;
-    }
     *(int *)mh::addr::_G_LLM_MP_PROBE_SERVER_COUNT = 1;
     seam_log("; R7: relay configured -> the first browser probes the directory (PROBE_SERVER_COUNT=1)\n");
 }
@@ -2180,6 +2261,7 @@ extern "C" void MH_Seam_ClientDiscoveryTick(void) {
             seam_log(b);
         }
     }
+    advert_hold_pump(); // mp:X2d harness knob: after the R6 block, so a JOIN sent this tick counts
     // S8: the kicked connect FINISHED but the transport never started (dead/typo'd IP -> start_client's
     // connect() failed -> g_started stays false, MH_Net_InitEx is re-callable). Clear the one-shot latches so
     // the NEXT Connect -- after the player corrects the IP (re-selects a saved MRU entry / retypes) -- re-kicks

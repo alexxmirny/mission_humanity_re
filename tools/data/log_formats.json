@@ -9,8 +9,10 @@
     "mh_lockstep.log": "per-frame lockstep pacing columns. Per SESSION. `#`-header + whitespace fields.",
     "mh_frametime.log": "per-PRESENT qpc_us + game mode -- what the player FEELS. Per SESSION.",
     "mh_temporal.log": "the per-EVENT temporal trace ([trace] temporal=1). Per SESSION; rotates at [trace] temporal_max_mb.",
-    "mh_harness.log": "the determinism/replay instrument's channel, held open and buffered by mh_harness.dll. Per PROCESS -- mh.dll composes the path once and the harness copies the string at init.",
-    "mh_uidrive.log": "the UI-automation channel the rig polls. Per PROCESS, necessarily: the runner discovers ONE directory at launch.",
+    "mh_harness.log": "the determinism/replay instrument's channel, held open and buffered by mh_harness.dll. Per PROCESS -- mh.dll composes the path once and the harness copies the string at init. Since mp:SES7 each MATCH also gets its own slice of it -- see mh_match_harness.log.",
+    "mh_match_harness.log": "mp:SES7: the harness's per-MATCH mirror of mh_harness.log -- every line written while a session is open, plus a `; [match] segment OPEN/CLOSE` header stating the step mapping. Per SESSION, composed inside mh_harness.dll from MH_RunDir(); not size-capped (each match file is written whole; the report packager budgets the compressed zip). Its siblings mh_match_orders.bin / mh_match_clock.bin / mh_match_seed.bin are the replay inputs on the match's own step axis. No tool parses it yet (mp_analyze reads mh_harness.log by exact name).",
+    "mh_uidrive.log": "the UI-automation channel the rig polls. Per PROCESS, necessarily: the runner discovers ONE directory at launch. Since mp:SES7 it carries `[mtrace]` rows ONLY when [uitest] enable=1 (check_cam_trace reads them here, interleaved with the script's LOG markers).",
+    "mh_mtrace.log": "mp:SES7: the [input] mouse_trace rows (`; [mtrace] ...`, same text as the uidrive copy) plus `; [mtrace-ctx]` lines (an OPEN header with the input config, focus / DI-keyboard transitions), each line prefixed with the absolute mh_log_stamp. Per SESSION -- follows MH_RunDir, so a match's rows land in the match folder; not size-capped (each match file is written whole). No tool parses it yet.",
     "mh_launch.log": "launch-verb and start-barrier events. Per SESSION.",
     "session.json": "the session record, structured. Per SESSION, written at the open AND at the close.",
     "relay.log": "the mh_relay binary's OWN structured log (`src/relay`, tracker mp:R1) -- one JSON object per line by default (`--local` gives human-readable text instead). Per PROCESS: one relay serves every room/session it forwards for, not one per game session.",
@@ -137,7 +139,7 @@
       ],
       "parsers": [
         "tools/ui_test.py:harness_stop_of",
-        "tools/test_ui.py:det_standard_selftest"
+        "tools/det_arms.py:det_standard_selftest"
       ],
       "since": "tooling:TL-HARN-CLEANCLOSE",
       "status": "live",
@@ -174,7 +176,8 @@
         "tools/mp_analyze.py:desync_counts",
         "tools/check_cheat_gate.py:analyse",
         "tools/check_resync_storm.py:resync_lines",
-        "tools/check_el2_mother.py:check"
+        "tools/check_el2_mother.py:check",
+        "tools/check_build_probe.py:check"
       ],
       "since": "mp:D21",
       "status": "live",
@@ -261,7 +264,7 @@
         "call_count"
       ],
       "parsers": [
-        "tools/test_ui.py:peer_promotion",
+        "tools/det_arms.py:peer_promotion",
         "tools/check_arm_order.py:is_bulk"
       ],
       "since": "fork F3A",
@@ -285,7 +288,7 @@
         "total"
       ],
       "parsers": [
-        "tools/test_ui.py:soak_report"
+        "tools/soak_test.py:soak_report"
       ],
       "since": "2026-09-05",
       "status": "live",
@@ -300,7 +303,8 @@
         "rebind"
       ],
       "needles": [
-        "[rebind]"
+        "[rebind]",
+        "\\[rebind\\]"
       ],
       "fields": [
         "armed",
@@ -309,7 +313,7 @@
       ],
       "parsers": [
         "tools/check_arm_order.py:is_bulk",
-        "tools/test_ui.py:soak_report"
+        "tools/soak_test.py:soak_report"
       ],
       "since": "fork LIB-REBIND",
       "status": "live",
@@ -448,7 +452,7 @@
         "first_drop_addr"
       ],
       "parsers": [
-        "tools/test_ui.py:soak_report"
+        "tools/soak_test.py:soak_report"
       ],
       "since": "2026-09-05",
       "status": "live",
@@ -467,8 +471,8 @@
         "verdict"
       ],
       "parsers": [
-        "tools/test_ui.py:peer_promotion",
-        "tools/test_ui.py:det_run_report"
+        "tools/det_arms.py:peer_promotion",
+        "tools/det_arms.py:det_run_report"
       ],
       "since": "2026-09-05",
       "status": "live",
@@ -666,7 +670,7 @@
         "percent"
       ],
       "parsers": [
-        "tools/test_ui.py:sp_arm_game_speed"
+        "tools/det_arms.py:sp_arm_game_speed"
       ],
       "since": "2026-09-05",
       "status": "live",
@@ -976,7 +980,8 @@
         "save"
       ],
       "needles": [
-        "; [save] LOADGAME"
+        "; [save] LOADGAME",
+        "; \\[save\\] LOADGAME"
       ],
       "fields": [
         "step",
@@ -984,7 +989,9 @@
         "rc"
       ],
       "parsers": [
-        "tools/test_ui.py:soak_ai_premise"
+        "tools/ui_suite_common.py:soak_ai_premise",
+        "tools/soak_test.py:run_soak",
+        "tools/det_arms.py:det_standard_selftest"
       ],
       "since": "2026-09-05",
       "status": "live",
@@ -1169,11 +1176,12 @@
       "fields": [],
       "parsers": [
         "tools/ui_test.py:local_script_status",
-        "tools/ui_test.py:remote_script_status"
+        "tools/ui_test.py:remote_script_status",
+        "tools/test_ui.py:run_artifacts"
       ],
       "since": "mp:D15",
       "status": "live",
-      "note": "The terminal PASS verdict of a [uitest] script, and the line ui_test polls a peer's run directory for. This is why mh_uidrive.log is PROCESS-scoped and not per-session: a log that followed the session would strand the runner on an empty file and time out every multi-peer scenario."
+      "note": "The terminal PASS verdict of a [uitest] script, and the line ui_test polls a peer's run directory for. This is why mh_uidrive.log is PROCESS-scoped and not per-session: a log that followed the session would strand the runner on an empty file and time out every multi-peer scenario. tooling:TL-SUITE-TIMEOUT-CLASS (2026-09-25): test_ui.py's run_artifacts() reads the SAME needle off the SAME file to answer \"did the walk reach its end marker\" for timeout classification, reusing this literal rather than reinventing it."
     },
     {
       "id": "uidrive.script_timeout",
@@ -1241,6 +1249,74 @@
       "since": "mp:D15",
       "status": "live",
       "note": "The rig-ferried rendezvous: one peer's `signal <name>` becomes rig_<name>.flag in every other peer's run directory. Those flags are PROCESS-scoped for the same reason the log is."
+    },
+    {
+      "id": "uidrive.script_log_marker",
+      "stream": "mh_uidrive.log",
+      "emitter": "src/mh_dll/mh/seams/ui_drive.cpp",
+      "emit": "; [script] LOG: %s",
+      "tags": [
+        "script"
+      ],
+      "needles": [
+        "; \\[script\\] LOG: (?P<msg>.*)"
+      ],
+      "fields": [
+        "msg"
+      ],
+      "parsers": [
+        "tools/check_cam_trace.py:parse",
+        "tools/check_host_clicks.py:parse_uidrive"
+      ],
+      "since": "tooling:TL-SUITE-SPLICE-CAM",
+      "status": "live",
+      "note": "The scenario's own `log <text>` op (OP_A_LOG). cam_latch.txt emits one between its two probes as the boundary `check_cam_trace.py --segment 1/2 --boundary` splits samples on -- one boot judged as two independent segments instead of two boots. check_host_clicks.py reads `hc <segment> begin|end` markers the same way (TL-SUITE-SPLICE-HOSTCLICK)."
+    },
+    {
+      "id": "uidrive.script_step",
+      "stream": "mh_uidrive.log",
+      "emitter": "src/mh_dll/mh/seams/ui_drive.cpp",
+      "emit": "; [script] %d ok (waited %d fr, %u.%03us): %s",
+      "tags": [
+        "script"
+      ],
+      "needles": [
+        "; \\[script\\] (\\d+) ok \\(waited [^)]*\\): (.*)",
+        "; \\[script\\] (\\d+) do: (.*)"
+      ],
+      "fields": [
+        "step",
+        "raw"
+      ],
+      "parsers": [
+        "tools/check_host_clicks.py:parse_uidrive"
+      ],
+      "since": "tooling:TL-SUITE-SPLICE-HOSTCLICK",
+      "status": "live",
+      "note": "A wait that held (`N ok (...): <line>`) and an action fired (`N do: <line>`). check_host_clicks.py reads the `gameclock <ms>` wait directly before/after a segment marker as that segment's sim-window fence."
+    },
+    {
+      "id": "uidrive.script_retry",
+      "stream": "mh_uidrive.log",
+      "emitter": "src/mh_dll/mh/seams/ui_drive.cpp",
+      "emit": "; [script] RETRY %d/%d at step %d after %d game-ms",
+      "tags": [
+        "script"
+      ],
+      "needles": [
+        "; \\[script\\] RETRY (\\d+)/(\\d+) at step (\\d+)"
+      ],
+      "fields": [
+        "attempt",
+        "tries",
+        "step"
+      ],
+      "parsers": [
+        "tools/check_host_clicks.py:parse_uidrive"
+      ],
+      "since": "tooling:TL-SUITE-SPLICE-HOSTCLICK",
+      "status": "live",
+      "note": "A `retry <game-ms> <back> <tries> <wait>` step whose wait did not hold after <game-ms> of sim time rewound <back> steps to re-send its click (TL-GATE-LOADFLAKE-0925). Exhausted retries end in `; [script] ABORT at step N: retry exhausted`, which uidrive.script_abort already covers. The checker prints the count per segment as a note."
     },
     {
       "id": "harness.armed_banner",
@@ -1321,7 +1397,7 @@
       ],
       "parsers": [
         "tools/mp_analyze.py:parse_harness",
-        "tools/test_ui.py:ui_orders_after_last_landing"
+        "tools/ui_abc.py:ui_orders_after_last_landing"
       ],
       "since": "mp:D6",
       "status": "live",
@@ -1360,14 +1436,17 @@
         "; HASH FINGERPRINT "
       ],
       "fields": [
-        "fingerprint"
+        "fingerprint",
+        "input_epoch",
+        "build"
       ],
       "parsers": [
-        "tools/test_ui.py:hash_fingerprint"
+        "tools/soak_test.py:hash_fingerprint",
+        "tools/mp_analyze.py:harness_input_epoch"
       ],
       "since": "2026-08-30",
       "status": "live",
-      "note": "Stamps a golden with the hash implementation that produced it. Without it a golden compared across a hash change diverges in EVERY region at once and is misread as catastrophic breakage rather than a stale file."
+      "note": "Stamps a golden with the hash implementation that produced it. Without it a golden compared across a hash change diverges in EVERY region at once and is misread as catastrophic breakage rather than a stale file. Since TL-GATE8 it also carries input_epoch= (region_view.h HASH_INPUT_EPOCH -- what every stored state artifact is stamped with and refused on) and build= (MH_VERSION_FULL, the producing commit)."
     },
     {
       "id": "harness.gameover",
@@ -1376,7 +1455,8 @@
       "emit": "; GAMEOVER survivor=",
       "tags": [],
       "needles": [
-        "; GAMEOVER survivor=(\\d+) units=(-?\\d+) buildings=(-?\\d+)"
+        "; GAMEOVER survivor=(\\d+) units=(-?\\d+) buildings=(-?\\d+)",
+        "; GAMEOVER survivor=(\\d+) units=(\\d+) buildings=(\\d+)"
       ],
       "fields": [
         "survivor",
@@ -1384,8 +1464,8 @@
         "buildings"
       ],
       "parsers": [
-        "tools/test_ui.py:soak_report",
-        "tools/test_ui.py:run_det_conquest"
+        "tools/soak_test.py:soak_report",
+        "tools/det_arms.py:run_det_conquest"
       ],
       "since": "2026-09-05",
       "status": "live",
@@ -1406,8 +1486,8 @@
         "was"
       ],
       "parsers": [
-        "tools/test_ui.py:soak_report",
-        "tools/test_ui.py:run_det_conquest"
+        "tools/soak_test.py:soak_report",
+        "tools/det_arms.py:run_det_conquest"
       ],
       "since": "2026-09-05",
       "status": "live",
@@ -1426,7 +1506,7 @@
         "n_converted"
       ],
       "parsers": [
-        "tools/test_ui.py:soak_report"
+        "tools/soak_test.py:soak_report"
       ],
       "since": "2026-09-05",
       "status": "live",
@@ -1505,8 +1585,8 @@
         "combined_hash"
       ],
       "parsers": [
-        "tools/test_ui.py:tact_last_frame",
-        "tools/test_ui.py:tact_read"
+        "tools/tact_test.py:tact_last_frame",
+        "tools/tact_test.py:tact_read"
       ],
       "since": "TACT-DOMAIN",
       "status": "live",
@@ -1530,7 +1610,7 @@
         "state_hash"
       ],
       "parsers": [
-        "tools/test_ui.py:tact_rand_series"
+        "tools/tact_test.py:tact_rand_series"
       ],
       "since": "TACT-DOMAIN",
       "status": "live",
@@ -1550,8 +1630,8 @@
         "loaded"
       ],
       "parsers": [
-        "tools/test_ui.py:tact_journal_verdict",
-        "tools/test_ui.py:ui_replay_report"
+        "tools/tact_test.py:tact_journal_verdict",
+        "tools/ui_abc.py:ui_replay_report"
       ],
       "since": "2026-09-07",
       "status": "live",
@@ -1570,7 +1650,7 @@
         "n_loaded"
       ],
       "parsers": [
-        "tools/test_ui.py:tact_journal_armed"
+        "tools/tact_test.py:tact_journal_armed"
       ],
       "since": "2026-09-07",
       "status": "live",
@@ -1589,7 +1669,7 @@
         "n_dropped"
       ],
       "parsers": [
-        "tools/test_ui.py:tact_journal_dropped"
+        "tools/tact_test.py:tact_journal_dropped"
       ],
       "since": "G53",
       "status": "live",
@@ -1606,7 +1686,7 @@
       ],
       "fields": [],
       "parsers": [
-        "tools/test_ui.py:ui_replay_report"
+        "tools/ui_abc.py:ui_replay_report"
       ],
       "since": "2026-09-04",
       "status": "live",
@@ -1628,7 +1708,7 @@
         "stage"
       ],
       "parsers": [
-        "tools/test_ui.py:ui_orders_after_last_landing"
+        "tools/ui_abc.py:ui_orders_after_last_landing"
       ],
       "since": "2026-08-15",
       "status": "live",
@@ -1651,8 +1731,8 @@
         "exec_ms"
       ],
       "parsers": [
-        "tools/test_ui.py:ui_order_histogram",
-        "tools/test_ui.py:ui_orders_after_last_landing"
+        "tools/ui_abc.py:ui_order_histogram",
+        "tools/ui_abc.py:ui_orders_after_last_landing"
       ],
       "since": "2026-08-15",
       "status": "live",
@@ -1671,7 +1751,7 @@
         "mode"
       ],
       "parsers": [
-        "tools/test_ui.py:ui_land_modes"
+        "tools/ui_abc.py:ui_land_modes"
       ],
       "since": "2026-08-20",
       "status": "live",
@@ -1692,7 +1772,7 @@
         "slices_moved"
       ],
       "parsers": [
-        "tools/test_ui.py:tact_reloc_line"
+        "tools/tact_test.py:tact_reloc_line"
       ],
       "since": "SB-HOSTFREE",
       "status": "live",
@@ -1709,7 +1789,7 @@
       ],
       "fields": [],
       "parsers": [
-        "tools/test_ui.py:sp_arm_report"
+        "tools/det_arms.py:sp_arm_report"
       ],
       "since": "2026-09-04",
       "status": "live",
@@ -1728,7 +1808,7 @@
         "reason"
       ],
       "parsers": [
-        "tools/test_ui.py:run_det_conquest"
+        "tools/det_arms.py:run_det_conquest"
       ],
       "since": "2026-09-05",
       "status": "live",
@@ -1770,7 +1850,7 @@
         "differing_bytes"
       ],
       "parsers": [
-        "tools/test_ui.py:det3_barrier_report"
+        "tools/det_arms.py:det3_barrier_report"
       ],
       "since": "mp:U28",
       "status": "live",
@@ -1789,7 +1869,7 @@
         "occupancy"
       ],
       "parsers": [
-        "tools/test_ui.py:det3_barrier_report"
+        "tools/det_arms.py:det3_barrier_report"
       ],
       "since": "mp:U28",
       "status": "live",
@@ -1808,7 +1888,7 @@
         "verdict"
       ],
       "parsers": [
-        "tools/test_ui.py:tact_entered"
+        "tools/tact_test.py:tact_entered"
       ],
       "since": "TACT-PREP",
       "status": "live",
@@ -2146,7 +2226,7 @@
       ],
       "since": "mp:SES3 (camera half; the mouse half is TACT-REC 2026-08-24)",
       "status": "live",
-      "note": "[input] mouse_trace=1, one sample per present. The mouse half measured the VM clamp (docs/vm-input.md 9c-9d); SES3 added the camera half -- edge=LRUD are the four _G_LLM_CAM_EDGE_*_ACTIVE flags, held=LRUD the four _G_LLM_CAM_SCROLL_*_HELD latches, cam= is _G_LLM_MAP_CAM_COL/ROW and camd= counts camera moves since the last PRINTED line. A set flag prints its letter, a clear one '-'. Printed on a latch transition, on the mouse-ring conditions, or at most once per 500 ms while the camera moves with the latches unchanged -- so a still frame costs nothing and a stuck scroll is bounded. gest=<lmb><rmb> carries the two gesture bytes the set/clear block is gated on (0 none / 1 begun / 2 active): the edge flags are neither set nor cleared while either is 1, while the apply loops that move the camera run anyway, so a latch held with gest=10 or gest=01 is a different failure from one held with gest=00."
+      "note": "[input] mouse_trace=1, one sample per present. The mouse half measured the VM clamp (docs/vm-input.md 9c-9d); SES3 added the camera half -- edge=LRUD are the four _G_LLM_CAM_EDGE_*_ACTIVE flags, held=LRUD the four _G_LLM_CAM_SCROLL_*_HELD latches, cam= is _G_LLM_MAP_CAM_COL/ROW and camd= counts camera moves since the last PRINTED line. A set flag prints its letter, a clear one '-'. Printed on a latch transition, on the mouse-ring conditions, or at most once per 500 ms while the camera moves with the latches unchanged -- so a still frame costs nothing and a stuck scroll is bounded. gest=<lmb><rmb> carries the two gesture bytes the set/clear block is gated on (0 none / 1 begun / 2 active): the edge flags are neither set nor cleared while either is 1, while the apply loops that move the camera run anyway, so a latch held with gest=10 or gest=01 is a different failure from one held with gest=00. mp:SES7: this entry is the RIG's copy -- mh_uidrive.log gets the rows only under [uitest] enable=1; the player-facing copy is the per-session mh_mtrace.log (same row text, absolute-stamp prefix)."
     },
     {
       "id": "uidrive.mtrace_quiet",
@@ -3068,7 +3148,7 @@
       ],
       "parsers": [
         "tools/mp_analyze.py:parse_harness",
-        "tools/test_ui.py:peer_harness_config"
+        "tools/det_arms.py:peer_harness_config"
       ],
       "since": "mp:D29",
       "status": "live",
@@ -3811,6 +3891,29 @@
       "note": "The harness knob announcing itself ([net] map_test_pretend=none|other, client-only). X2's clauses each need the CLIENT to start holding something particular and the rig has no per-peer file staging, so the knob stages the DECISION -- what this peer reports holding, and whether its resolver considers the base-name file -- and moves, copies and deletes nothing. The file-moving first version broke the shared Maps symlink every local lane reads. A run cannot stage anything without this line, which is the point of it."
     },
     {
+      "id": "map.advert_hold",
+      "stream": "mh_net.log",
+      "emitter": "src/mh_dll/mh/seams/net_discovery.cpp",
+      "emit": "; [map] uitest advert_hold: ",
+      "tags": [
+        "map"
+      ],
+      "needles": [
+        "; \\[map\\] uitest advert_hold: first SESSION_INFO from (\\d+) HELD",
+        "; \\[map\\] uitest advert_hold: released after (\\d+) ms \\(a JOIN went out first\\)"
+      ],
+      "fields": [
+        "sender",
+        "held_ms"
+      ],
+      "parsers": [
+        "tools/check_map_transfer.py:check_early_join"
+      ],
+      "since": "mp:X2d",
+      "status": "live",
+      "note": "The relay-join race knob ([net] map_test_advert_hold_ms, client-only): the first SESSION_INFO from a connected host is held on the recv thread until a JOIN has gone out (+N ms), then replayed on the main thread. The held line says the knob was in effect; the release line says a JOIN went out FIRST -- together they are the non-vacuity of the map_join_race row (a release by the 20 s cap reads differently and is red)."
+    },
+    {
       "id": "map.gate_widget",
       "stream": "mh_net.log",
       "emitter": "src/mh_dll/mh/seams/map_transfer.cpp",
@@ -3991,6 +4094,47 @@
       "since": "mp:D28",
       "status": "live",
       "note": "Boot-time banner: `spliced at <site>` (+ ` -- ROUTING OFF ([net] cancel_task_order=0)...` on the reproduction arm), `NOT spliced at <site>` (expect bytes differ), or `splice DISPLACED` (the callback is promoted this run)."
+    },
+    {
+      "id": "net.d35_banner",
+      "stream": "mh_net.log",
+      "emitter": "src/mh_dll/mh/seams/ui_bldg_build_probe.cpp",
+      "emit": "; D35: build-click probe charge-free at %08X (pay -> can_afford) + %08X (re-grant NOPed) -- the HUD click books nothing into resource_spent\\n",
+      "tags": [],
+      "needles": [
+        "D35: build-click probe"
+      ],
+      "fields": [
+        "pay_site",
+        "grant_site"
+      ],
+      "parsers": [
+        "tools/check_build_probe.py:banner_of"
+      ],
+      "since": "mp:D35",
+      "status": "live",
+      "note": "Boot-time banner: `charge-free at <pay>/<grant>` (armed), `KEPT ([net] build_probe_free=0)` (the reproduction arm), `KEPT ([config] mode=original)`, `DISPLACED` (libmh promotes llm_strat_bldg_try_begin_placement -- configuration (2)), or `NOT patched` (bytes differ / a write refused)."
+    },
+    {
+      "id": "net.d35_probe",
+      "stream": "mh_net.log",
+      "emitter": "src/mh_dll/mh/seams/ui_bldg_build_probe.cpp",
+      "emit": "; D35: build-click probe player %u building %d -> verdict 0x%X, nothing charged\\n",
+      "tags": [],
+      "needles": [
+        "D35: build-click probe player"
+      ],
+      "fields": [
+        "player",
+        "building",
+        "verdict"
+      ],
+      "parsers": [
+        "tools/check_build_probe.py:check"
+      ],
+      "since": "mp:D35",
+      "status": "live",
+      "note": "One line per HUD build-menu click that reached the charge-free probe (seam armed). Absent on the reproduction arm and in configuration (2), where libmh's promoted body runs instead."
     },
     {
       "id": "net.d28_routed",

@@ -484,6 +484,7 @@
         "net_diag.obj",
         "net_lockstep.obj",
         "net_seams.obj",
+        "ui_bldg_build_probe.obj",
         "ui_bldg_cancel_task.obj",
         "ui_drive.obj",
         "ui_net_indicator.obj"

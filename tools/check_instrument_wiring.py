@@ -155,6 +155,12 @@ CHANNEL_OWNERS = {
     "mh_trace.log": ("telemetry", {"mh.dll"}),
     "mh_gamemode.log": ("telemetry", {"mh.dll"}),
     "mh_launch.log": ("telemetry", {"mh.dll"}),
+    # mp:SES7: the per-SESSION streams split out of two process-scoped channels. mh_mtrace.log is the
+    # `[input] mouse_trace` rows (mh_uidrive.log keeps a copy only under [uitest], for the rig);
+    # mh_match_harness.log is the harness's per-match mirror of mh_harness.log -- composed INSIDE
+    # mh_harness.dll from MH_RunDir(), unlike mh_harness.log, whose path mh.dll hands it.
+    "mh_mtrace.log": ("telemetry", {"mh.dll"}),
+    "mh_match_harness.log": ("telemetry", {"mh_harness.dll"}),
 }
 
 CHANNEL_RE = re.compile(r'"[^"\n]*?(mh_\w+\.log)"')

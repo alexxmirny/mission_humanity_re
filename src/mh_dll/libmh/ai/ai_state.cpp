@@ -657,10 +657,12 @@ constexpr uint8_t POISON = 0xCD;
 // The L1 provider (ST4): serve the region's bytes from wherever live_base says they are. One
 // generic pair for the whole island -- these are raw scratch/knob bytes with no codec, so the
 // canonical stream IS the memory image at its moved location.
+// HASH-INPUT BEGIN ai_island_emit (tools/data/hash_input_epoch.json)
 void island_emit(mh::state::region_id rid, mh::state::state_sink &s) {
     s.raw(reinterpret_cast<const void *>(static_cast<uintptr_t>(mh::state::live_base(rid))),
           mh::state::REGIONS[rid].size);
 }
+// HASH-INPUT END ai_island_emit
 void island_load(mh::state::region_id rid, mh::state::state_source &src) {
     src.raw(reinterpret_cast<void *>(static_cast<uintptr_t>(mh::state::live_base(rid))),
             mh::state::REGIONS[rid].size);

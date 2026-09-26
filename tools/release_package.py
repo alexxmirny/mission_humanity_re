@@ -196,8 +196,8 @@ DEBUG_KEYS = (
         "input",
         "mouse_trace",
         "1",
-        "per-present mouse ring telemetry into mh_uidrive.log. The input path is where "
-        "'it feels wrong' reports come from, and it is unreconstructable after the fact.",
+        "per-present mouse ring + camera-latch telemetry into mh_mtrace.log, per match. The input "
+        "path is where 'it feels wrong' reports come from, and it is unreconstructable after the fact.",
     ),
 )
 

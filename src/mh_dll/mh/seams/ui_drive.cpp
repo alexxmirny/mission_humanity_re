@@ -229,6 +229,54 @@ void ui_log(const char *fmt, ...) {
     CloseHandle(h);
 }
 
+// ---- mp:SES7: the mouse/camera trace FOLLOWS THE MATCH (mh_mtrace.log) ---------------------------
+//
+// WHY A SECOND FILE. Until SES7 every `[mtrace]` row went through ui_log into mh_uidrive.log, which
+// is PROCESS-scoped for the rig's sake (see ui_log). A real rc3 report (2026-09-26, a 35-minute
+// online match, "the map scroll got stuck") then could not answer its own question: the process file
+// held the menu and the lobby as well as the match, passed the launcher's 8 MB per-file cap, and the
+// tail-keeping packager cut the first 11.5 minutes of the match. So the trace now has its own stream
+// that follows the SESSION through mh_run_path -- a match's rows land in the match's folder, the menu
+// phase stays in the process folder. It is NOT size-capped (user decision 2026-09-26): SES7 first
+// rotated it at 7 MB to fit the packager's old per-file cap, which again kept only the newest part
+// of a long match. The packager now budgets the compressed zip and trims least-important folders
+// first (the launcher's report.rs), so each match's file is written whole.
+//
+// mh_uidrive.log STILL GETS THE ROWS WHEN [uitest] IS ON, and only then. tools/check_cam_trace.py
+// reads `[mtrace]` samples out of mh_uidrive.log INTERLEAVED with the script's own `; [script] LOG:`
+// markers (its --segment split), so the rig's copy has to stay exactly where it was. A player has
+// [uitest] off: nothing reads their mh_uidrive.log for mtrace, and dropping the rows there is what
+// keeps that file small in a report.
+//
+// Every line carries the absolute wall-clock stamp mh_net.log uses (mh_log_stamp), not ui_log's
+// relative one: the questions this file answers are "what was the input state when THAT net/chat
+// line happened", so it must interleave with the session's other logs by eye.
+char          g_mt_path[MAX_PATH];
+unsigned long g_mt_gen = 0;
+
+void mt_write_header(HANDLE h); // below the trace state it reads
+
+// One line into mh_mtrace.log (`text` without a newline). Open-append-close per line like ui_log --
+// a line is emitted only on a state change or a rate-capped heartbeat, so the cost is per event.
+void mt_write(const char *text) {
+    const bool rebuilt = mh_run_path(g_mt_path, MAX_PATH, "%smh_mtrace.log", &g_mt_gen);
+    if (g_mt_path[0] == '\0') return;
+    HANDLE h = CreateFileA(g_mt_path, FILE_APPEND_DATA, FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, OPEN_ALWAYS,
+                           FILE_ATTRIBUTE_NORMAL, nullptr);
+    if (h == INVALID_HANDLE_VALUE) return;
+    SetFilePointer(h, 0, nullptr, FILE_END);
+    if (rebuilt) mt_write_header(h); // a session's file is readable on its own
+    char line[600];
+    int  n = mh_log_stamp(line);
+    lstrcpynA(line + n, text, (int)sizeof(line) - n - 2);
+    n         = lstrlenA(line);
+    line[n++] = '\n';
+    line[n]   = 0;
+    DWORD w   = 0;
+    WriteFile(h, line, (DWORD)n, &w, nullptr);
+    CloseHandle(h);
+}
+
 // Applied per frame from MH_UIDrive_OnPresent, BEFORE the [uitest] enable gate: a human playing the
 // game interactively has uitest disabled, and they are exactly who needs this.
 void apply_mouse_mode() {
@@ -320,6 +368,48 @@ inline void cam_latch_str(uint32_t bits, char out[5]) {
     out[4] = 0;
 }
 
+// mp:SES7: the two context facts a stuck latch is most often explained by, sampled per traced
+// present and printed ONLY on a transition (into mh_mtrace.log alone -- mh_uidrive.log's format is
+// the rig's and does not grow). FOCUS: the game losing the foreground while an arrow key is down is
+// the classic way a key-UP never arrives and a HELD latch stays set. DI KEYBOARD: the device pointer
+// going null mid-run means the raw WM_KEYDOWN fallback took over (U25). Both are one cheap read.
+int g_mt_focus = -1; // -1 = not sampled yet
+int g_mt_dikbd = -1;
+
+int mt_focus_now() {
+    HWND  fg  = GetForegroundWindow();
+    DWORD pid = 0;
+    if (fg) GetWindowThreadProcessId(fg, &pid);
+    return pid == GetCurrentProcessId() ? 1 : 0;
+}
+
+void mt_write_header(HANDLE h) {
+    char line[512];
+    int  n = mh_log_stamp(line);
+    wsprintfA(line + n,
+              "; [mtrace-ctx] OPEN %s (session=%d) mouse_absolute=%d mouse_div=%d mouse_accel=%d "
+              "di_mouse=%s di_keyboard=%d focus=%d -- row: f=present# produced/depth/max=mouse "
+              "ring, last=DI accumulator, cur=drawn cursor, edge/held=camera latches LRUD, cam=col,row, "
+              "camd=tiles since last row, gest=LMB/RMB gesture state\n",
+              MH_RunDir(), MH_RunDir_SessionActive(), g_mouse_absolute, g_mouse_div, g_mouse_accel,
+              *(volatile uint32_t *)DI_MOUSE_DEVICE ? "on" : "off",
+              *(volatile uint32_t *)DI_KEYBOARD_DEVICE ? 1 : 0, mt_focus_now());
+    DWORD w = 0;
+    WriteFile(h, line, (DWORD)lstrlenA(line), &w, nullptr);
+}
+
+// One `[mtrace]` row: always into the session-following mh_mtrace.log, and into mh_uidrive.log
+// exactly when [uitest] is on (check_cam_trace's reader -- see mt_write's banner).
+void mt_line(const char *fmt, ...) {
+    char    buf[480];
+    va_list ap;
+    va_start(ap, fmt);
+    wvsprintfA(buf, fmt, ap);
+    va_end(ap);
+    mt_write(buf);
+    if (g_enabled) ui_log("%s", buf);
+}
+
 void trace_mouse_ring() {
     static uint32_t s_prev_w  = 0xffffffffu;
     static uint32_t s_max_dep = 0;
@@ -364,14 +454,34 @@ void trace_mouse_ring() {
     // The camera-only heartbeat: rate-capped, so a scroll that never stops stays readable.
     const bool cam_beat = cam_move && (now - s_last_cam_ms) >= CAM_HEARTBEAT_MS;
 
-    if (produced == 0 && depth == 0 && !moved && !latched && !cam_beat && !g_keyhold_trace) {
+    // mp:SES7: a SESSION BOUNDARY forces a full sample, so every match's mh_mtrace.log opens on the
+    // complete state (latches, gesture bytes, camera) rather than on whatever changes next -- a latch
+    // already stuck when the match's folder opened would otherwise never appear in that folder.
+    static unsigned long s_gen  = 0;
+    const unsigned long  gen    = MH_RunDirGeneration();
+    const bool           newdir = gen != s_gen;
+    s_gen                       = gen;
+    const int  focus            = mt_focus_now();
+    const int  dikbd            = *(volatile uint32_t *)DI_KEYBOARD_DEVICE ? 1 : 0;
+    const bool ctx              = focus != g_mt_focus || dikbd != g_mt_dikbd;
+
+    if (produced == 0 && depth == 0 && !moved && !latched && !cam_beat && !g_keyhold_trace && !newdir &&
+        !ctx) {
         ++s_quiet;
         s_prev_w = w; // update on the quiet path too, or `produced` lies after a still period
         return;
     }
     if (s_quiet) {
-        ui_log("; [mtrace] %u quiet frame(s)", s_quiet);
+        mt_line("; [mtrace] %u quiet frame(s)", s_quiet);
         s_quiet = 0;
+    }
+    if (ctx) {
+        char cl[128];
+        wsprintfA(cl, "; [mtrace-ctx] focus=%d di_keyboard=%d (was %d/%d)", focus, dikbd, g_mt_focus,
+                  g_mt_dikbd);
+        mt_write(cl); // mh_mtrace.log only: mh_uidrive.log's rows are the rig's format
+        g_mt_focus = focus;
+        g_mt_dikbd = dikbd;
     }
     // ROUND 2 (2026-08-24): round 1 showed depth=0/max=0 and produced=2..6, i.e. the RING is not the
     // backlog and neither is the DI buffer -- and it also showed the sample point is blind, because
@@ -380,11 +490,11 @@ void trace_mouse_ring() {
     char edge_s[5], held_s[5];
     cam_latch_str(mask, edge_s);
     cam_latch_str(mask >> 4, held_s);
-    ui_log("; [mtrace] f=%u produced=%u depth=%u max=%u di=%s last=%d,%d cur=%d,%d vis=%d "
-           "edge=%s held=%s cam=%d,%d camd=%d gest=%d%d",
-           s_frame, produced, depth, s_max_dep, *(volatile uint32_t *)DI_MOUSE_DEVICE ? "on" : "off",
-           lx, ly, cx, cy, (int)*(volatile uint32_t *)CURSOR_VISIBLE, edge_s, held_s, col, row, s_camd,
-           (int)*(volatile uint8_t *)LMB_GESTURE_STATE, (int)*(volatile uint8_t *)RMB_GESTURE_STATE);
+    mt_line("; [mtrace] f=%u produced=%u depth=%u max=%u di=%s last=%d,%d cur=%d,%d vis=%d "
+            "edge=%s held=%s cam=%d,%d camd=%d gest=%d%d",
+            s_frame, produced, depth, s_max_dep, *(volatile uint32_t *)DI_MOUSE_DEVICE ? "on" : "off",
+            lx, ly, cx, cy, (int)*(volatile uint32_t *)CURSOR_VISIBLE, edge_s, held_s, col, row, s_camd,
+            (int)*(volatile uint8_t *)LMB_GESTURE_STATE, (int)*(volatile uint8_t *)RMB_GESTURE_STATE);
     s_prev_w      = w;
     s_camd        = 0;
     s_first       = false;
@@ -1118,6 +1228,50 @@ bool rclick_frame(int frame, int x, int y, bool shift) {
 }
 extern "C" void MH_UIDrive_Release(int x, int y) { enqueue(EV_LUP, x, y); }
 
+// `simclick <x> <y>` (tooling:TL-SUITE-SPLICE-HOSTCLICK). An in-game press/release one present apart
+// was lost under suite load (TL-GATE-LOADFLAKE-0925: HUD Menu, status X, the mother's select click)
+// while the same pair passes alone. This holds the button like a hand does: MOVE, DOWN, then the
+// cursor re-asserted every present until the SIM has advanced SIMCLICK_HOLD_MS and at least two
+// presents passed, UP, and the same again after it -- so whatever consumes the button, per present
+// or per sim step, sees it down and then up. Bounded: a stalled sim (a modal that opened on the
+// DOWN) releases after SIMCLICK_MAX_FRAMES presents instead of waiting.
+constexpr int SIMCLICK_HOLD_MS    = 30; // three 10 ms sim steps
+constexpr int SIMCLICK_MAX_FRAMES = 30; // a modal that opens on the DOWN stalls the sim
+static double g_simclick_clk0     = 0.0;
+static int    g_simclick_phase = 0, g_simclick_f0 = 0;
+static double simclick_clock_ms() { // the `gameclock` global, game-SECONDS
+    double clk;
+    memcpy(&clk, (const void *)mh::addr::_G_LLM_STRAT_GAME_CLOCK, sizeof(clk));
+    return clk * 1000.0;
+}
+static bool simclick_frame(int frame, int x, int y) {
+    if (frame == 0) {
+        g_simclick_phase = 0;
+        enqueue(EV_MOVE, x, y);
+        return false;
+    }
+    enqueue(EV_MOVE, x, y); // the in-game cursor resets every pump unless an event re-asserts it
+    const bool held = frame - g_simclick_f0 >= 2 &&
+                      simclick_clock_ms() - g_simclick_clk0 >= (double)SIMCLICK_HOLD_MS;
+    const bool cap = frame - g_simclick_f0 >= SIMCLICK_MAX_FRAMES;
+    switch (g_simclick_phase) {
+        case 0:
+            enqueue(EV_LDOWN, x, y);
+            g_simclick_phase = 1;
+            break;
+        case 1:
+            if (!held && !cap) return false;
+            enqueue(EV_LUP, x, y);
+            g_simclick_phase = 2;
+            break;
+        default:
+            return held || cap;
+    }
+    g_simclick_clk0 = simclick_clock_ms();
+    g_simclick_f0   = frame;
+    return false;
+}
+
 extern "C" int MH_UIDrive_ClickWidget(int idx) {
     mh_llm_ui_widget_list *list = active_list();
     if (!list) return 0;
@@ -1480,7 +1634,8 @@ enum {
     OP_A_CLICK,
     OP_A_PRESS,
     OP_A_RELEASE,
-    OP_A_RCLICK, // mp:D25: `rclick <x> <y> [shift]`
+    OP_A_RCLICK,   // mp:D25: `rclick <x> <y> [shift]`
+    OP_A_SIMCLICK, // TL-SUITE-SPLICE-HOSTCLICK: `simclick <x> <y>` -- a left click held across sim steps
     OP_A_KEY,
     OP_A_KEYHOLD, // mp:SES3c: `keyhold <scancode> <frames>` -- the unpaired-DOWN sibling of `key`
     OP_A_HOTKEY,  // `hotkey Ctrl+Alt+D` -- a GetAsyncKeyState-style chord, synthesised (2026-09-20)
@@ -1510,6 +1665,9 @@ struct Step {
     Target   tgt;      // target widget (present/absent/enabled/hovered/clickl)
     char     text[64]; // capture name / log message
     char     raw[80];  // original line, for logging (Phase 4 pass/fail parsing)
+    // `retry <game-ms> <back> <tries> <wait>` (tooling:TL-SUITE-SPLICE-HOSTCLICK): see script_tick.
+    int    retry_ms, retry_back, retry_tries, retry_used;
+    double retry_clk0; // game clock (ms) at this attempt's first tick
 };
 
 // THE STEP AND FILE CAPS ARE LOUD (mp:RM1, 2026-09-21). Both used to be silent: parse_line dropped
@@ -1798,6 +1956,32 @@ void parse_line(const char *line) {
     } else if (strcmp(op, "simstep") == 0) {
         s->op = OP_W_SIMSTEP;
         s->a  = (int)strtol(arg, nullptr, 0);
+    } else if (strcmp(op, "retry") == 0) {
+        // `retry <game-ms> <back> <tries> <wait directive>` -- a WAIT that, when it has not held after
+        // <game-ms> of SIM time, rewinds <back> steps (the click meant to cause it) and tries again, at
+        // most <tries> times, then ABORTs. Sim time, not frames or wall clock: a lost click is one the
+        // game had steps to act on, and a modal dialog that did open stalls the sim, so it never
+        // retries over an open dialog (tooling:TL-SUITE-SPLICE-HOSTCLICK, TL-GATE-LOADFLAKE-0925).
+        char       *after = nullptr;
+        const int   ms    = (int)strtol(arg, &after, 0);
+        const int   back  = (int)strtol(after, &after, 0);
+        const int   tries = (int)strtol(after, &after, 0);
+        const char *rest  = skip_ws(after);
+        const int   idx   = g_nstep;
+        const bool  ok    = ms > 0 && back >= 1 && back <= idx && tries >= 1 && strncmp(rest, "retry", 5) != 0;
+        parse_line(rest);               // the wait itself, parsed as an ordinary line -- kept even if the prefix is bad
+        if (g_nstep != idx + 1) return; // inner line ignored or overflowed; already logged
+        Step *w = &g_steps[idx];
+        if (!ok || !is_wait_op(w->op)) {
+            ui_log("; [script] IGNORED retry prefix (need ms>0, back 1..%d, tries>0, then a WAIT): %s",
+                   idx, line);
+            return;
+        }
+        w->retry_ms    = ms;
+        w->retry_back  = back;
+        w->retry_tries = tries;
+        copy_trim(w->raw, sizeof(w->raw), line);
+        return;
     } else if (strcmp(op, "clickv") == 0) {
         s->op = OP_A_CLICKV;
         s->a  = (int)strtol(arg, nullptr, 0);
@@ -1813,6 +1997,12 @@ void parse_line(const char *line) {
                 : strcmp(op, "click") == 0 ? OP_A_CLICK
                 : strcmp(op, "press") == 0 ? OP_A_PRESS
                                            : OP_A_RELEASE;
+        char *end;
+        s->a = (int)strtol(arg, &end, 0);
+        s->b = (int)strtol(end, nullptr, 0);
+    } else if (strcmp(op, "simclick") == 0) {
+        // `simclick <x> <y>` -- see simclick_frame.
+        s->op = OP_A_SIMCLICK;
         char *end;
         s->a = (int)strtol(arg, &end, 0);
         s->b = (int)strtol(end, nullptr, 0);
@@ -2055,6 +2245,12 @@ void log_field(int slot) {
            slot == FIELD_GAME ? "game" : slot == FIELD_CHAT ? "chat"
                                                             : "name",
            n, hx, as);
+}
+
+double game_clock_ms() {
+    double clk;
+    memcpy(&clk, (const void *)GAMECLOCK_ADDR, sizeof(clk));
+    return clk * 1000.0; // the global is game-SECONDS (see OP_W_GAMECLOCK)
 }
 
 bool wait_satisfied(const Step *s) {
@@ -2330,6 +2526,8 @@ click_result do_action(const Step *s) {
         case OP_A_RELEASE:
             MH_UIDrive_Release(s->a, s->b);
             break;
+        case OP_A_SIMCLICK:
+            return simclick_frame(g_wait, s->a, s->b) ? CLICK_OK : CLICK_RETRY;
         case OP_A_RCLICK:
             // Multi-present like cursorhold: g_wait is the frame index while the step retries.
             return rclick_frame(g_wait, s->a, s->b, s->c != 0) ? CLICK_OK : CLICK_RETRY;
@@ -2587,7 +2785,10 @@ void script_tick() {
         return;
     }
     Step *s = &g_steps[g_cur];
-    if (g_wait == 0) g_step_t0 = GetTickCount(); // first tick on this step -- start its clock
+    if (g_wait == 0) {
+        g_step_t0 = GetTickCount(); // first tick on this step -- start its clock
+        if (s->retry_ms) s->retry_clk0 = game_clock_ms();
+    }
     const DWORD step_ms = GetTickCount() - g_step_t0;
     if (is_wait_op(s->op)) {
         if (wait_satisfied(s)) {
@@ -2601,6 +2802,23 @@ void script_tick() {
             // It has already logged the reason by name; falling through would add a watchdog line for
             // a wait that is not waiting on anything, which is the misleading half of the two.
             return;
+        } else if (s->retry_ms > 0 && game_clock_ms() - s->retry_clk0 >= (double)s->retry_ms) {
+            // `retry`: the sim ran <ms> without the wait holding -- the click that should have caused
+            // it was lost. Rewind to it, bounded; exhausted is a terminal ABORT naming the step.
+            if (s->retry_used >= s->retry_tries) {
+                ui_log("; [script] ABORT at step %d: retry exhausted -- %d re-attempt(s), the wait never held: %s",
+                       g_cur, s->retry_used, s->raw);
+                ui_log("; [script]   active screen at abort:");
+                MH_UIDrive_DumpWidgets();
+                MH_Capture_Shot("script_timeout");
+                g_script_done = true;
+                return;
+            }
+            ++s->retry_used;
+            ui_log("; [script] RETRY %d/%d at step %d after %d game-ms: rewinding %d step(s) to: %s", s->retry_used,
+                   s->retry_tries, g_cur, s->retry_ms, s->retry_back, g_steps[g_cur - s->retry_back].raw);
+            g_cur -= s->retry_back;
+            g_wait = 0;
         } else if (++g_wait > g_timeout) {
             ui_log("; [script] TIMEOUT at step %d after %d frames (%u.%03us) -- ABORT: %s", g_cur, g_wait,
                    step_ms / 1000, step_ms % 1000, s->raw);

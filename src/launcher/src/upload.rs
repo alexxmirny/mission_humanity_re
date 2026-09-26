@@ -121,7 +121,8 @@ pub const ATTEMPTS: usize = 2;
 /// long enough to clear a momentary reconnect.
 pub const RETRY_DELAY: Duration = Duration::from_secs(2);
 
-/// Whole-request timeout. A 48 MB report on a domestic uplink is minutes, not seconds.
+/// Whole-request timeout. A report near the ~62 MB body budget (`report::BODY_BUDGET`) on a
+/// domestic uplink is minutes, not seconds.
 const TIMEOUT: Duration = Duration::from_secs(300);
 
 /// Refusal prefixes, one vocabulary shared by the log, the UI and the tests -- the same discipline

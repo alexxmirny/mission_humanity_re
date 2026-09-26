@@ -43,6 +43,7 @@
 #include "include/mh_cheatgate_export.h"   // MH_CheatGate_Install (ui_cheat_gate.cpp) -- CH1 the SP cheat console refused in a network game
 #include "include/mh_diploecho_export.h"   // MH_DiploEcho_Install (ui_diplomacy_echo.cpp) -- U39 the diplomacy dialog's relation echo NOPed
 #include "include/mh_canceltask_export.h"  // MH_CancelTask_Install (ui_bldg_cancel_task.cpp) -- D28 the building dialog's cancel-task Yes as a replicated order
+#include "include/mh_buildprobe_export.h"  // MH_BuildProbe_Install (ui_bldg_build_probe.cpp) -- D35 the HUD build-click probe charges nothing (D25 in configuration (1))
 #include "include/mh_uidrive_export.h"     // MH_UIDrive_Install (ui_drive.cpp) -- UI automation Phase 2
 #include "include/mh_video_export.h"       // MH_Video_Install (video.cpp) -- D13 display-mode selection
 #include "include/mh_standalone_export.h"  // MH_Standalone_Install (standalone.cpp) -- boot a stock exe
@@ -2093,6 +2094,7 @@ static int MH_Core_Arm(void) {
     MH_CheatGate_Install();  // CH1: the SP cheat console (Shift+Enter line) refused in a lockstep match + the redacted chat submit log (best-effort)
     MH_DiploEcho_Install();  // U39: the diplomacy dialog's optimistic relation write NOPed -- the 0xf4 commit is the hashed cell's only writer (best-effort)
     MH_CancelTask_Install(); // D28: the building dialog's cancel-task Yes issues the equivalent building order in a lockstep match (best-effort)
+    MH_BuildProbe_Install(); // D35: the HUD build-click affordability probe charges nothing -- D25's fix where libmh is not bound (best-effort)
     MH_Overlay_Install();    // debug overlay: [debug] ini pages -> painted on present BEFORE capture reads (best-effort)
     MH_Capture_Install();    // UI capture harness: hook present-flip -> F12/[capture] frame dump (best-effort)
     MH_UIDrive_Install();    // UI automation harness (Phase 2): [uitest] click-driver via the mouse ring (best-effort)

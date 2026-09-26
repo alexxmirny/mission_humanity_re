@@ -3227,6 +3227,9 @@ int run_callstest();
 // mh_export_selftest.gen.cpp -- generated with the entry thunks it verifies (gen_dll_exports.py)
 int run_exportstest();
 int run_watchdogtest();
+// diag_counter_selftest.cpp -- tooling:TL-SUITE-COUNTERS: mh_diag_counter.h's first-hit + rollup
+// state machine (G101: a counter reported only at graceful shutdown is invisible under a KILL).
+int run_diagtest();
 int run_desynctest();
 // net_queue_selftest.cpp -- D24: which inbound frame a FULL transport queue may destroy.
 int run_queuetest();
@@ -3473,6 +3476,7 @@ static const suite_row SUITE_TABLE[] = {
     {"statetest",      true, adapt_void<run_statetest>},
     {"bindtest",       true, adapt_void<run_bindtest>},
     {"watchdogtest",   true, adapt_void<run_watchdogtest>},
+    {"diagtest",       true, adapt_void<run_diagtest>},
     {"desynctest",     true, adapt_void<run_desynctest>},
     {"queuetest",      true, adapt_void<run_queuetest>},
     {"sessionidtest",  true, adapt_void<run_sessionidtest>},

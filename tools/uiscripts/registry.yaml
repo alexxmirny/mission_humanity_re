@@ -1,0 +1,1585 @@
+# The UI-suite scenario registries, loaded + schema-checked by tools/ui_registry.py (TL-SUITE-REGDATA).
+# Unknown keys, wrong types and missing required keys refuse the load by row name; the schema is
+# SCHEMA in ui_registry.py. `!ref NAME` / `!frames [SECONDS, FLOOR]` resolve against names
+# test_ui.py passes in. Comments here are one-line whys; the rows' dated history (formerly
+# test_ui.py comments) is archived verbatim in the private session notes of 2026-09-25.
+# Every multi row runs the lockstep hash compare (ui_registry.hash_plan + mp_analyze) unless it
+# declares `no_hash_why: '<reason>'`; the load refuses a row whose config would void the compare.
+
+anchors:
+  # mp:GX1 net-indicator residue probe, shared by its positive row and its planted negative. The
+  # rect is the PING/CMD text block at 640x480; colour is the default net_indicator_color (white).
+  gx1_netind_check: &gx1_netind_check [tools/check_overlay_residue.py, --before, n1_shown, --after, n2_hidden, --rect, '340,6,60,22', --color, ffffff]
+
+# Strategic-sim fixtures (SIM1-P clause 9): what the sim gate runs; coverage.py --domain sim
+# reports their union. A floor, not a target -- add a row only after a run proves it reaches
+# something the others do not. test_ui.SIM_RESID_SCENARIOS is an alias of this list.
+sim_scenarios:
+  - name: soak_default
+    desc: '8-way all-AI soak from the default start -- the broad strategic sweep, and the one scenario
+      that rewards DEPTH: 185 rows at 600 steps, 281 at 3000, 388 at 10000'
+    # steps=10000: coverage curve flattens here (30000 costs 3x for +8 rows);
+    # re-derive with coverage.py before changing.
+    steps: 10000
+    speed: 1000
+  - name: soak_saved
+    desc: 'developed save loaded at step 120 -- reaches the economy/production/research branches an empty
+      default start cannot, and reaches them AT ONCE: 294 rows at 600 steps and 296 at 30000, so depth
+      buys it nothing'
+    # load_at=120: a budget below ~300 never loads the save (silently re-measures
+    # the default start twice).
+    steps: 1500
+    speed: 1000
+    save: ayy30
+    load_at: 120
+    # Not all-AI after step 120: LOADGAME replaces the world with the save's own 2-player/1-AI roster.
+
+# UI-REC game-start journals (SPCAMP-AB); `--ui-replay` / `--ui-equiv` take a name from here.
+# Not in the default suite: an arm costs minutes of rig time.
+uirec_scenarios:
+  - name: spcamp_newgame
+    journal: tools/uiscripts/journals/spcamp-newgame.journal
+    desc: 'human session: menu -> NEW GAME -> race -> campaign start -> play -> planet transition -> second
+      planet (36,068 records / 33,819 steps)'
+    # 10000 rung fails from a present-vs-sim-step cadence drift, not a real bug;
+    # needs re-recording (SPCAMP-REC).
+    rungs: [200, 2000, 10000]
+    proven_rung: 2000
+  - name: spcamp_mission
+    journal: tools/uiscripts/journals/spcamp-mission.journal
+    desc: 'human session: menu -> NEW GAME -> race -> campaign start -> enemy eliminated -> planet transition
+      -> second planet (28,574 records / 24,873 steps)'
+    rungs: [200, 2000, 10000, 24000]
+    proven_rung: 0
+  - name: spcamp_solo
+    # Only fixture coverage.py walks: the other two predate TJ P barriers and
+    # don't replay to the end (measures a prefix).
+    coverage: true
+    journal: tools/uiscripts/journals/spcamp-solo.journal
+    oracle: tools/uiscripts/journals/spcamp-solo.oracle.gz
+    desc: 'human session recorded ALL-ORIGINAL: menu -> NEW GAME -> race -> campaign start -> play (incl.
+      3 squad merges by shift+click) -> planet transition -> second planet (37,383 records / 30,043 steps)'
+    # Recorded on the UNPROMOTED build deliberately -- a ship recording would
+    # bake promotion bugs into the reference.
+    orders: {0A: 4954, 0B: 363, 1A: 19, 1C: 506, '33': 11, '34': 139, '35': 126, '36': 32, 6D: 15, 7E: 3,
+      7F: 3, D4: 1, DB: 1, DD: 9, E6: 11, EA: 10, EC: 2}
+    # Tracked separately: pre-transition steps dominate the full histogram
+    # (~98%), hiding a dead second planet.
+    orders_post: {0B: 351, '35': 1}
+  - name: tutorial_solo
+    journal: tools/uiscripts/journals/tutorial-solo.journal
+    oracle: tools/uiscripts/journals/tutorial-solo.oracle.gz
+    # Tutorial lands SESSION_MODE=2 once (LOCAL branch); verdict clauses must
+    # not hardcode spcamp's SESSION_MODE=1-twice shape.
+    land_mode: '2'
+    landings: 1
+    desc: 'human session recorded ALL-ORIGINAL: menu -> TUTORIAL -> the full scripted tutorial played
+      to the end (13,053 records / 18,317 steps)'
+    # Recorded on the UNPROMOTED build: the two bodies under test are already
+    # promoted, so a ship recording would compare them against themselves.
+    orders: {0A: 498, 0B: 59, '20': 1, '33': 49, '34': 19, '35': 12, '36': 13, 6D: 10, 7E: 48, E6: 4,
+      EA: 5}
+
+# Tactical journal scenarios: replay a recorded human session and compare the simulation, not
+# frames. Their `equiv` arm runs in the default suite; verify/replay stay behind --tact-suite.
+tact_scenarios:
+  - name: poz_stand_exit
+    journal: tools/uiscripts/journals/poz-stand-exit.journal
+    desc: POZ11, 5,335-frame human session -- STAND/KNEEL + 88 attacks, exits by the building route
+    # Only fixture covering STAND: poz1_combat has zero STANDs and passed with
+    # the G115 stand_tick inversion live.
+    arms: [verify, replay]
+  - name: poz1_combat
+    journal: tools/uiscripts/journals/poz1-combat.journal
+    desc: POZ1L, 4.4 min human session -- 14,106 input records, 211 orders, 10 units lost
+    # equiv is the gate arm (runs by default); verify/replay are diagnostics only, under --tact-suite.
+    arms: [verify, replay]
+  - name: poz1_quiet
+    journal: tools/uiscripts/journals/poz1-quiet-patrol.journal
+    desc: POZ1L, 3,518-frame human session -- patrol only, no shot fired, ZERO casualties
+    # Quiet arm required by the equiv clause: a body diverging only after damage is invisible
+    # otherwise; the scripted --tact-determinism arm alone supplies no input (dead-ends G117).
+    arms: [replay]
+  - name: poz3_teleport
+    journal: tools/uiscripts/journals/poz3-teleport.journal
+    desc: POZ3L, 8,882-frame human session -- the ONLY mission with teleports; 59-unit roster
+    # --tact-equiv used to ignore the journal's own roster and replay against CLI defaults (24 vs 59
+    # units), passing wrongly on both arms -- now guarded by tact_journal_roster_guard.
+    arms: [replay]
+
+# The capture suite (test_ui.TESTS). Script names resolve under tools/uiscripts/; the baseline
+# label is the script basename, so every script needs tools/uiscripts/baselines/<label>/.
+# budget_s is a gate verdict (TL gate diet): raise it only on measured evidence; >120 s needs long_why.
+tests:
+  - name: tutorial_enter
+    # gate diet: max measured (gate 16s, n2 8s, n6 14s) x 1.3 = 25, FLOORED at 30 (BUDGET_FLOOR_S)
+    budget_s: 30
+    kind: solo
+    script: tutorial_enter.txt
+    # PINNED: t3 is an IN-GAME capture, so its size follows the persisted setup.dat resolution.
+    extra_ini: tools/uiscripts/ini/video_1024.ini
+    # tol 0.0 + pin_wallclock=1 pinned after run-to-run drift hit 2.7% under concurrent gate load;
+    # do not raise tol -- pin what varies instead.
+    harness_extra: pin_wallclock=1;pin_clock_dt_us=16667;pin_clock_base_s=1000;synth_move=0;region_hash_step=0
+    tol: 0.0
+    desc: TUTORIAL from the main menu -> welcome dialog -> Start -> the step driver ticking
+  - name: menu_walk
+    # gate diet: max measured (gate 12s, n2 15s, n6 16s) x 1.3 = 25, FLOORED at 30 (BUDGET_FLOOR_S)
+    budget_s: 30
+    kind: solo
+    script: mp_menu_walk.txt
+    # Asserts crossings>0 & absent-calls=0: pixels alone can't tell a bound-but-uncalled lane
+    # from a working one (closed miss: LIB-SPINE-API).
+    post_check:
+    - [tools/check_module_bind.py, --libmh, --expect, bound]
+    - [tools/check_module_bind.py, --module, mh_harness, --expect, bound]
+    desc: main menu -> NETWORK GAME -> ... -> host lobby (single-peer, host-only on the first VM)
+  - name: libmh_absent
+    budget_s: 30  # gate diet: max measured (gate 6s, n2 5s, n6 5s) x 1.3 = 10, FLOORED at 30 (BUDGET_FLOOR_S)
+    kind: solo
+    script: libmh_absent.txt
+    # Configuration (1): missing libmh.dll is a legitimate shipped config invisible to the
+    # player (ruling Q10), unlike a missing mh_net.dll (a visible degradation).
+    omit_satellite: [libmh.dll]
+    # Both satellite checks required: without the second this could silently pass module_absent's
+    # lane instead, so configuration (1) itself never gets tested.
+    post_check:
+    - [tools/check_module_bind.py, --libmh, --expect, absent]
+    - [tools/check_module_bind.py, --expect, bound]
+    # tol 0.0: stock menu drawn by original code in every configuration -- the 2% default
+    # would pass a different menu.
+    tol: 0.0
+    desc: 'F4D: boot with libmh.dll MISSING -- configuration (1), the menu renders, nothing crosses'
+  - name: harness_absent
+    budget_s: 30  # gate diet: max measured (gate 7s, n2 5s, n6 5s) x 1.3 = 10, FLOORED at 30 (BUDGET_FLOOR_S)
+    kind: solo
+    script: harness_absent.txt
+    # Missing mh_harness.dll is invisible to any pixel; needed so such a lane can't pass every
+    # other scenario while --determinism has no log to read.
+    omit_satellite: [mh_harness.dll]
+    # All three satellite checks required: without them this could pass on a lane that lost
+    # the transport or spine instead, re-running the other absent scenarios.
+    post_check:
+    - [tools/check_module_bind.py, --module, mh_harness, --expect, absent]
+    - [tools/check_module_bind.py, --expect, bound]
+    - [tools/check_module_bind.py, --module, libmh, --expect, bound]
+    # tol 0.0: stock menu drawn by original code in every configuration -- the 2% default
+    # would pass a different menu.
+    tol: 0.0
+    desc: 'F4E: boot with mh_harness.dll MISSING -- uninstrumented, the menu renders unchanged'
+  - name: module_absent
+    budget_s: 30  # gate diet: max measured (gate 7s, n2 5s, n6 6s) x 1.3 = 10, FLOORED at 30 (BUDGET_FLOOR_S)
+    kind: solo
+    script: module_absent.txt
+    # Must omit mh_net_udp.dll specifically (default transport since the ruling); omitting
+    # mh_net.dll instead leaves the bind intact and the lane quietly reads bound.
+    omit_satellite: [mh_net_udp.dll]
+    # check_module_bind requires 'absent' specifically, not 'declined' (which a lane that
+    # stopped deploying satellites would also produce).
+    post_check: [tools/check_module_bind.py, --expect, absent]
+    tol: 0.0  # tol 0.0: stock main menu, nothing in this config draws differently -- any diff is real.
+    desc: 'F4B: boot with mh_net.dll MISSING -- menu renders, the bind refuses loudly, the arm finishes'
+  - name: no_net_boot
+    # gate diet: max measured (gate 11s, n2 8s, n6 8s) x 1.3 = 15, FLOORED at 30 (BUDGET_FLOOR_S)
+    budget_s: 30
+    kind: solo
+    script: no_net_boot.txt
+    # module=none is a separate axis from [net] enable (enable=0 declines a present transport;
+    # module=none means none exists) -- first boot of this configuration.
+    net_extra: module=none
+    # tol 0.0: notice is one line of text on a 640x480 frame -- at the 2% default it could
+    # render the wrong sentence and still pass.
+    tol: 0.0
+    desc: 'F3F: boot with NO network module -- menu reached, NETWORK GAME armed, browser explains its
+      empty list'
+  - name: no_net_lobby
+    # gate diet: max measured (gate 17s, n2 11s, n6 11s) x 1.3 = 25, FLOORED at 30 (BUDGET_FLOOR_S)
+    budget_s: 30
+    kind: solo
+    script: no_net_lobby.txt
+    # U43 fix: on_host_advertise() must install unconditionally (was wrongly grouped with
+    # wire-touching stubs), or the host silently takes the CLIENT branch on module=none.
+    net_extra: module=none
+    # Pinned since mp:RM1 (rematch zeros sim clocks at entry): old byte-identity was accidental;
+    # pin_wallclock is now required for tol 0.0 to hold.
+    harness_extra: pin_wallclock=1;pin_clock_dt_us=16667;pin_clock_base_s=1000;synth_move=0;region_hash_step=0
+    # tol 0.0: the notice and lobby/HUD states pinned here are each a small fraction of a
+    # 640x480 frame, far under the 2% default.
+    tol: 0.0
+    desc: 'U42/U43/Q8: module=none HOST reaches Network players, seats an AI, and Start launches the match
+      with no transport'
+  - name: ip_cancel
+    # gate diet: max measured (gate 14s, n2 8s, n6 11s) x 1.3 = 20, FLOORED at 30 (BUDGET_FLOOR_S)
+    budget_s: 30
+    kind: solo
+    script: mp_ip_cancel.txt
+    desc: 'U38: browser -> Internet server -> Cancel comes back to a LIVE local browser (the de-duplicated
+      slide-in)'
+  # tooling:TL-SUITE-SPLICE-HOSTCLICK -- replaces d25_buildclick, u39_diplomacy and d28_canceltask
+  # (one boot each) with one match: diplomacy (mp:U39), canceltask (mp:D28), buildclick (mp:D25),
+  # three named verdicts. Each segment's pre-splice fix history is in its negative row / tracker item.
+  - name: host_clicks
+    budget_s: 80
+    budget_evidence: "the three rows measured 82.7 + 95.5 + 66.9 = 245.1 s (last_green _suite_scenarios); host_clicks measured 60-64 s over 11 standalone rig runs 2026-09-26 (72 s with --update-baselines) -> 61 x 1.3 = 80"
+    kind: multi
+    # transport=tcp kept from d25_buildclick (its TCP coverage); the two negative rows stay on udp.
+    net_extra: transport=tcp
+    host: mp_host_clicks.txt
+    clients: [mp_client_idle.txt]
+    # cheat_gate_off.ini: staging for the canceltask segment's `_DESTROY` (not a test of CH1's gate).
+    extra_ini: [tools/uiscripts/ini/video_1024.ini, tools/uiscripts/ini/cheat_gate_off.ini]
+    timeout: 420
+    # One verdict per segment (sim window between the script's `log hc <seg>` fences); the default
+    # whole-match hash compare stays the determinism verdict. Session dir: D28's `routed as order`
+    # line is match-time mh_net.log content.
+    post_check: [
+      [tools/check_host_clicks.py, --segment, diplomacy, --label, 'U39 diplomacy'],
+      [tools/check_host_clicks.py, --segment, canceltask, --label, 'D28 cancel task'],
+      [tools/check_host_clicks.py, --segment, buildclick, --label, 'D25 build click'],
+    ]
+    post_check_peers: true
+    post_check_session: true
+    desc: 'U39+D28+D25 in one match: host ticks allied in the diplomacy dialog, cancels the mother''s
+      repair through the status dialog''s &Yes, then clicks the Academy build icon; client idles --
+      each segment''s hash window must stay IDENTICAL'
+  # region_hash_step=1 required: the divergence window is only ~4 steps wide, so a 50-step
+  # cadence would miss it entirely (mp:U39).
+  - name: u39_diplomacy_echo
+    budget_s: 80  # gate diet: max measured (gate 59s, n2 52s, n6 55s) x 1.3
+    kind: multi
+    no_hash_why: 'negative arm: the local echo diverges by design (check_u39_echo reads the mismatch)'
+    host: mp_host_diplomacy.txt
+    clients: [mp_client_idle.txt]
+    # tooling:TL-SUITE-FOLD-ML: was match_launch; re-anchored to host_clicks (see u39_diplomacy).
+    share_lanes: host_clicks
+    net_extra: diplo_echo_nop=0
+    extra_ini: tools/uiscripts/ini/video_1024.ini
+    harness_extra: region_hash_step=1;synth_move=0
+    timeout: 420  # the match runs to gameclock 30000+; 200 s overran under the gate's load
+    post_check: [tools/check_u39_echo.py]
+    post_check_peers: true
+    desc: 'U39 negative arm: retail echo kept -- `players` must still differ for a bounded window and
+      heal'
+  # Reproduction arm: [net] cancel_task_order=0 IS the repro knob (this seam has no
+  # mode=original fork); hash diverges at the click and never heals.
+  - name: d28_canceltask_local
+    budget_s: 85  # gate diet: max measured (gate 65s, n2 63s, n6 64s) x 1.3
+    kind: multi
+    no_hash_why: 'negative arm: the local cancel diverges by design (check_cancel_task --expect diverge)'
+    host: mp_host_canceltask.txt
+    clients: [mp_client_idle.txt]
+    # tooling:TL-SUITE-FOLD-ML: was match_launch; re-anchored to host_clicks
+    # (same host/client scripts already -- this was always the more natural pair).
+    share_lanes: host_clicks
+    net_extra: cancel_task_order=0
+    extra_ini: [tools/uiscripts/ini/video_1024.ini, tools/uiscripts/ini/cheat_gate_off.ini]
+    harness_extra: region_hash_step=1;synth_move=0
+    timeout: 900  # region_hash_step=1 hashes every step: 424 s at the first gate (the ship arm takes 65 s)
+    post_check: [tools/check_cancel_task.py, --expect, diverge]
+    post_check_peers: true
+    post_check_session: true  # see host_clicks' row -- same match-time log content
+    desc: 'D28 negative arm: `[net] cancel_task_order=0` (retail local call kept) -- `buildings` must
+      diverge from the click and stay diverged'
+  # mp:D35: D25's build click in CONFIGURATION (1) -- no libmh.dll, as the player zips ship -- where
+  # the fix is the mh.dll seam (seams/ui_bldg_build_probe.cpp), not libmh's promoted body. host_clicks'
+  # buildclick segment is the same click in configuration (2).
+  - name: d35_buildclick_c1
+    budget_s: 70
+    budget_evidence: "standalone 54 s (2026-09-26, beside the retail arm) x 1.3 = 70; the first gate run read 98 s while the whole gate ran +39% under memory pressure (gx1 +171%, map_have_tcp +161%)"
+    kind: multi
+    host: mp_host_buildclick.txt
+    clients: [mp_client_idle.txt]
+    omit_satellite: [libmh.dll]
+    net_extra: transport=udp
+    extra_ini: tools/uiscripts/ini/video_1024.ini
+    timeout: 420
+    post_check: [tools/check_build_probe.py, --expect, identical]
+    post_check_peers: true
+    post_check_session: true  # the probe + [desync] lines are match-time (session dir)
+    desc: 'D35: configuration (1) host lands, opens the build tab and clicks the Academy; client idles --
+      the mh.dll seam probes charge-free, the pair stays IDENTICAL and the in-band desync watch is clean'
+  # Reproduction arm: [net] build_probe_free=0 IS the repro knob (the retail pay + re-grant); the
+  # hash diverges in p0_ai_econ at the click and never heals -- the rc3 match's symptom.
+  - name: d35_buildclick_c1_retail
+    budget_s: 65
+    budget_evidence: "standalone 50 s (2026-09-26) x 1.3 = 65"
+    kind: multi
+    no_hash_why: 'negative arm: the retail probe diverges by design (check_build_probe --expect diverge)'
+    host: mp_host_buildclick.txt
+    clients: [mp_client_idle.txt]
+    share_lanes: d35_buildclick_c1
+    omit_satellite: [libmh.dll]
+    net_extra: transport=udp;build_probe_free=0
+    extra_ini: tools/uiscripts/ini/video_1024.ini
+    harness_extra: region_hash_step=50;synth_move=0
+    timeout: 420
+    post_check: [tools/check_build_probe.py, --expect, diverge]
+    post_check_peers: true
+    post_check_session: true
+    desc: 'D35 negative arm: `[net] build_probe_free=0` (retail pay + re-grant kept) -- p0_ai_econ must
+      diverge from the click, stay diverged, and the in-band watch must say DESYNC'
+  - name: shim_udp
+    # Measured 32s under ship_pacing (was 33-44s under the pinned 30ms lookahead);
+    # x1.3 margin rounds to 45.
+    budget_s: 45
+    kind: multi
+    host: mp_host_start.txt
+    clients: [mp_client_start.txt]
+    # tooling:TL-SHIMUDP-C: needed because link_death's shim arms 'stall' (blackhole), which
+    # the udp shim refuses -- nothing else covers the plain-delay path.
+    net_extra: transport=udp
+    shim: true
+    # One-way delay (round-trip ~80ms): a plain latency value, comfortably clear of near-zero
+    # (bypass) and check_shim_rtt.py's 20ms floor.
+    shim_delay: 40
+    # Subject is the shim's plain-delay path, not the rig's pinned 30ms lookahead (which made
+    # every step wait ~1 RTT, 0.41-0.47x game/wall).
+    ship_pacing: true
+    extra_ini: tools/uiscripts/ini/video_1024.ini
+    # Assertion is the post_check, not the pixels: a bypassed shim renders an identical frame;
+    # check_shim_rtt fails when srtt0_ms reads near-zero.
+    post_check: [tools/check_shim_rtt.py]
+    # tooling:TL-SUITE-FOLD-ML: match_launch (mp_host_start/mp_client_start, no shim) is gone from
+    # TESTS -- this row is now the only one exercising that reachability walk, plus the shim + hash.
+    desc: 'TL-SHIMUDP-C: the mp_host_start/mp_client_start walk through the udp shim -- srtt0_ms must
+      show the delay was measured, not bypassed'
+  # mp:P9: determinism harness can't arm without libmh (ruling Q4) -- uses the in-band
+  # desync watch instead; the fix lives only in the promoted body.
+  - name: match_launch_net
+    budget_s: 65  # gate diet: max measured (gate 46s, n2 37s, n6 50s) x 1.3
+    kind: multi
+    host: mp_host_start_net.txt
+    clients: [mp_client_start_net.txt]
+    omit_satellite: [libmh.dll]
+    net_extra: transport=udp
+    extra_ini: [tools/uiscripts/ini/video_1024.ini, tools/uiscripts/ini/desync_verbose.ini]
+    # dist:V022 folded in (TL-SUITE-FOLD-DETC1): record orders; synthetic moves start at step 700,
+    # after the m3 capture at gameclock 6000, so the frames stay baseline-clean.
+    harness_extra: order_mode=1;synth_move=1;synth_at=700
+    timeout: 420
+    # mp:L1b: only row exercising lobby_ping.cpp -- match_launch is TCP-pinned and
+    # net.lobbyping only fires with lat_supported, which TCP never sets.
+    post_check:
+    - [tools/check_resync_storm.py, --expect, carried]
+    - [tools/check_lobby_ping.py]
+    - [tools/check_orders_agree.py]
+    post_check_peers: true
+    # [resync]/[desync] lines are match-time (session dir); the checker follows session.json
+    # to the process dir for the boot-time half.
+    post_check_session: true
+    desc: 'P9: configuration (1) (no libmh.dll) on the shipped udp transport -- the resync gate is CARRIED
+      by the byte patches, 0 FIRED over 1000+ steps, desync watch clean; dist:V022: both peers RECORD
+      their order stream and agree on every common step (tooling:TL-SUITE-FOLD-DETC1, folded from
+      run_gate.py''s retired det_c1 unit)'
+  # mp:EL2: an unlanded ship's 'eliminated' log was actually self-removal from an ESC-quit
+  # (on_quit_to_menu, U17), not the real elimination path.
+  - name: el2_mother_deploy
+    budget_s: 60  # gate diet: max measured (gate 37s, n2 40s, n6 43s) x 1.3
+    kind: multi
+    no_hash_why: 'a peer quits/drops mid-match: the survivor applies a removal the leaver never hashes (D26 covers game-over, not a leave)'
+    host: mp_host_el2.txt
+    clients: [mp_client_el2.txt]
+    share_lanes: match_launch_net
+    omit_satellite: [libmh.dll]
+    net_extra: transport=udp;defang_overlay=0;graceful_leave=1
+    extra_ini: [tools/uiscripts/ini/video_1024.ini, tools/uiscripts/ini/desync_verbose.ini]
+    timeout: 420
+    post_check: [tools/check_el2_mother.py]
+    post_check_peers: true
+    # Presence/desync lines are match-time (session dir); quit-time lines land in the process
+    # dir, reached via session.json.
+    post_check_session: true
+    desc: 'EL2: the joiner''s mother is placed by its own deploy in lockstep on both peers; the field''s
+      ''eliminated at 6 s'' line is the joiner''s ESC-quit, reproduced'
+  # Requires defang_overlay=0: defang=1 NOPs the mode-8 store that hid this storm for 2
+  # months (dead-ends G274) -- a --defang 1 run will not reproduce it.
+  - name: resync_storm_repro
+    budget_s: 120  # gate diet: max measured (b2 87s, n2 88s, n6 90s) x 1.3
+    expect_red: mp:P9
+    kind: multi
+    no_hash_why: 'expect_red reproduction (mp:P9) under forced resync barriers; its XFAIL would absorb a hash red'
+    host: mp_host_p9_soak.txt
+    clients: [mp_client_p9_soak.txt]
+    omit_satellite: [libmh.dll]
+    net_extra: transport=udp;resync_trigger_gate=0;resync_count_init=0;lockstep_step_ms=100
+    net_extra_client: lockstep_step_ms=60
+    shim: true
+    shim_delay: 100  # ONE-WAY -> ~200 ms rtt, the field link
+    shim_timeline: tools/uiscripts/shim/p9_soak_5min.txt
+    # Evidence-bounded: blackhole fires once both captures are logged and the leader began
+    # >=5 barriers; the 340s timeline stays as a fallback bound.
+    shim_triggers:
+    - cmd: blackhole on
+      when:
+      - [host, mh_net.log, '\[resync\] barrier #5 BEGIN']
+      - [host, mh_uidrive.log, 'LOG: HOST is in the configuration-\(1\) match']
+      - [c1, mh_uidrive.log, 'LOG: CLIENT is in the configuration-\(1\) match']
+    extra_ini: [tools/uiscripts/ini/video_1024.ini, tools/uiscripts/ini/desync_verbose.ini]
+    # 480s x 60fps x 2 margin: the DLL's watchdog counts PRESENTS (capped at 60fps for multi
+    # lanes), so this is the honest cap, not a wall-clock timeout (TL-HARN17).
+    timeout_frames: 57600
+    timeout: 480
+    post_check: [tools/check_resync_storm.py, --expect, storm]
+    post_check_peers: true
+    post_check_session: true
+    desc: 'P9 reproduction (kept red): configuration (1), gate OFF, count_init OFF, defang 0, host 100
+      / joiner 60 through a 100 ms shim until the leader has BEGUN >= 5 barriers (a shim trigger ends
+      it then; the 5-min timeline is the fallback)'
+  # Gate alone zeroes barriers: a nag counts only past 4s of silence, unreachable at 100ms RTT.
+  # (mp:P9)
+  - name: resync_gate_proof
+    budget_s: 90  # gate diet: max measured (b2 64s, n2 67s, n6 69s) x 1.3
+    kind: multi
+    no_hash_why: 'P9 resync family: forced resyncs re-import the world; harness step numbering is not realigned'
+    share_lanes: resync_storm_repro
+    host: mp_host_p9_proof.txt
+    clients: [mp_client_p9_proof.txt]
+    omit_satellite: [libmh.dll]
+    net_extra: transport=udp;resync_count_init=0;lockstep_step_ms=100
+    net_extra_client: lockstep_step_ms=60
+    shim: true
+    shim_delay: 100
+    extra_ini: [tools/uiscripts/ini/video_1024.ini, tools/uiscripts/ini/desync_verbose.ini]
+    timeout_frames: 57600
+    timeout: 480
+    post_check: [tools/check_resync_storm.py, --expect, carried]
+    post_check_peers: true
+    post_check_session: true
+    desc: 'P9 proof (b): the storm''s shape with the gate ON and count_init OFF -- 0 barriers to gameclock
+      30 s (the stock start begins its 5th by ~+10 s), desync watch IDENTICAL'
+  # count_init=1 sets threshold=200 from step 0, killing the threshold-0 fire -- an 8x cut alone,
+  # not zero; the gate is what zeroes it. (mp:P9)
+  - name: resync_countinit_proof
+    budget_s: 100  # gate diet: max measured (b2 72s, n2 69s, n6 75s) x 1.3
+    kind: multi
+    no_hash_why: 'P9 resync family: forced resyncs re-import the world; harness step numbering is not realigned'
+    share_lanes: resync_storm_repro
+    # Ends on the leader's 2nd FIRED signal, not a fixed gameclock: nag rate is frame-rate dependent,
+    # so a fixed window isn't a stable bound.
+    host: mp_host_p9_countinit.txt
+    clients: [mp_client_p9_countinit.txt]
+    shim_triggers:
+    - cmd: signal countinit_done
+      when:
+      - [host, mh_net.log, '\[resync\] force_resync FIRED #2:']
+    omit_satellite: [libmh.dll]
+    net_extra: transport=udp;resync_trigger_gate=0;lockstep_step_ms=100
+    net_extra_client: lockstep_step_ms=60
+    shim: true
+    shim_delay: 100
+    extra_ini: [tools/uiscripts/ini/video_1024.ini, tools/uiscripts/ini/desync_verbose.ini]
+    timeout_frames: 57600
+    timeout: 480
+    post_check: [tools/check_resync_storm.py, --expect, countinit, --min-fires, '2']
+    post_check_peers: true
+    post_check_session: true
+    desc: 'P9 proof (c): the storm''s shape with the gate OFF and count_init ON -- threshold 200 from
+      step 0, every barrier fires AT 200 (one per ~15 s, not per 2 s; the row ends on the second fire),
+      desync watch IDENTICAL'
+  # Drops the gameclock-6000 capture: under this storm's slow rate it's reached only after the match
+  # ends. Real check is the receiver_deadline log line. (mp:P9W)
+  - name: resync_receiver_deadline_proof
+    budget_s: 95  # gate diet: max measured (b2 71s, gate 73s, n2 72s, n6 73s) x 1.3
+    kind: multi
+    no_hash_why: 'P9 resync family: forced resyncs re-import the world; harness step numbering is not realigned'
+    share_lanes: resync_storm_repro
+    host: mp_host_p9w_deadline.txt
+    clients: [mp_client_p9w_deadline.txt]
+    omit_satellite: [libmh.dll]
+    # Client override 6000ms (host stays 60000) clears 2 barrier cycles so GS2 can't misfire on a
+    # barrier's freeze; a tried 500ms did misfire.
+    net_extra: transport=udp;resync_trigger_gate=0;resync_count_init=0;lockstep_step_ms=100;data_timeout_ms=60000
+    net_extra_client: lockstep_step_ms=60;data_timeout_ms=6000
+    shim: true
+    shim_delay: 100
+    # TL-P9W-TRIGGER: cut the link the instant the CLIENT itself samples RESYNC_IN_PROGRESS 0->1
+    # (net.resync_barrier_begin is written on BOTH peers -- see log_formats.json), instead of
+    # guessing a wall-clock offset that lands inside one ~97% of the time. The client is the
+    # non-leader/receiver here (short data_timeout_ms override below), so this is the exact
+    # leaderless-barrier condition the checker proves. p9w_deadline_repro.txt stays as the
+    # fallback bound (its own never-firing is itself a finding).
+    shim_triggers:
+    - cmd: blackhole on
+      when:
+      - [c1, mh_net.log, '\[resync\] barrier #\d+ BEGIN']
+    shim_timeline: tools/uiscripts/shim/p9w_deadline_repro.txt
+    extra_ini: [tools/uiscripts/ini/video_1024.ini, tools/uiscripts/ini/desync_verbose.ini]
+    timeout_frames: 21600
+    timeout: 180
+    post_check: [tools/check_resync_receiver_deadline.py]
+    post_check_peers: true
+    post_check_session: true
+    desc: 'P9W: a leaderless barrier (blackhole gated on the CLIENT''s own barrier BEGIN, by
+      construction) -- the CLIENT''s own receiver-side deadline (not the leader''s, not the
+      transport watchdog) must have left the wait screen and removed the dead leader'
+  # Budget = quiet-box measured time x1.3; a loaded box reading over-budget reflects real CPU
+  # contention, not a regression. (mp:P13)
+  - name: p13_rate_180
+    budget_s: 120
+    kind: multi
+    no_hash_why: 'measures the sim rate (check_sim_rate): the harness''s every-step manifest walk is load on that quantity'
+    share_lanes: resync_storm_repro
+    host: mp_host_p13_rate.txt
+    clients: [mp_client_p13_rate.txt]
+    omit_satellite: [libmh.dll]
+    net_extra: transport=udp
+    ship_pacing: true
+    shim: true
+    shim_delay: 180
+    extra_ini: [tools/uiscripts/ini/video_1024.ini, tools/uiscripts/ini/desync_verbose.ini]
+    timeout_frames: 57600
+    timeout: 300
+    # 6% tol, not 2%: ship pacing's 20ms sim step lands the frame on a different sub-step run to run
+    # (~3.5% variance) vs the pinned baseline.
+    tol: 0.06
+    post_check:
+    - [tools/check_sim_rate.py]
+    - [tools/check_resync_storm.py, --expect, carried, --min-steps, '1500']
+    post_check_peers: true
+    post_check_session: true
+    desc: 'P13: configuration (1), shipped adaptive pacing, 180 ms one-way shim, 2500 steps -- sim rate
+      >= 0.95x whole / >= 0.85x worst 30 s on BOTH peers, 0 barriers, desync watch IDENTICAL'
+  - name: chat_relay
+    budget_s: 50  # gate diet: max measured (gate 31s, n2 32s, n6 36s) x 1.3
+    # transport=tcp pinned: [net] transport now defaults to udp; keeps this row's TCP coverage
+    # TCP instead of becoming a second UDP run.
+    net_extra: transport=tcp
+    kind: multi
+    host: mp_host_chat.txt
+    clients: [mp_client_chat.txt]
+    # Both peers must pin the same codepage: it rides SESSION_INFO/JOIN -- a mismatch is refused at
+    # join before chat is ever reachable.
+    extra_ini: [tools/uiscripts/ini/video_1024.ini, tools/uiscripts/ini/input_cp1251.ini]
+    # Chat opens only in SESSION_MP_LOCKSTEP (mode!=3) -- a solo game never opens it. Assert on CODE
+    # POINTS, not bytes. (mp:F3)
+    desc: 'F3 2-peer: host types a Cyrillic chat line, the client receives the same code points'
+  - name: mixed_race
+    budget_s: 45  # gate diet: max measured (gate 29s, n2 31s, n6 31s) x 1.3
+    # transport=tcp pinned: [net] transport now defaults to udp; keeps this row's TCP coverage
+    # TCP instead of becoming a second UDP run.
+    net_extra: transport=tcp
+    kind: multi
+    host: mp_host_race.txt
+    clients: [mp_client_race.txt]
+    # Pinned like shim_udp: an in-game capture's size follows the persisted setup.dat resolution.
+    extra_ini: tools/uiscripts/ini/video_1024.ini
+    # Only scenario with different races -- others leave both Human, so the race push/apply/FLAG_START
+    # path was otherwise unexercised. (U28/D19)
+    desc: 'U28: client picks Alien, host stays Human -- the race reaches the host before Start'
+  - name: race_inflight
+    budget_s: 45  # gate diet: max measured (gate 28s, n2 28s, n6 31s) x 1.3
+    # transport=tcp pinned: [net] transport now defaults to udp; keeps this row's TCP coverage
+    # TCP instead of becoming a second UDP run.
+    net_extra: transport=tcp
+    kind: multi
+    host: mp_host_inflight.txt
+    clients: [mp_client_inflight.txt]
+    extra_ini: tools/uiscripts/ini/video_1024.ini
+    # Client's slot is poked to Alien WITHOUT a push (host still Human) -- reproduces the lost in-
+    # flight-edit desync deterministically. (U28)
+    desc: 'U28: client''s local slot disagrees with the host at Start -- the host''s array wins'
+  - name: relay_match
+    budget_s: 50  # gate diet: max measured (gate 32s, n2 31s, n6 37s) x 1.3
+    kind: multi
+    host: mp_host_start.txt
+    clients: [mp_client_start.txt]
+    relay: true
+    # force_relay=1 pinned: without it the pair goes DIRECT in ~300ms before T0 completes, so the
+    # relay would forward zero datagrams. (mp:R3)
+    net_extra: transport=udp;force_relay=1
+    # Shares shim_udp's (mp_host_start/mp_client_start) scripts/baselines: a differing frame is a
+    # real failure, not an uncompared second baseline.
+    extra_ini: tools/uiscripts/ini/video_1024.ini
+    # Relay adds a loopback hop + 34-byte envelope per datagram, so the handshake settles slower than
+    # on LAN.
+    timeout: 300
+    # Pinned to 300s like --timeout so --timeout stays the real cap, not the shared per-step frame
+    # watchdog. (TL-HARN17)
+    timeout_frames: !frames [300, SOLO_HEADLESS_FPS_FLOOR]
+    # Log-based, not pixel: room is MINTED (not the shared port). Distinct-rooms clause is vacuous on
+    # one box; covered elsewhere. (mp:R6)
+    post_check: [tools/check_relay_rooms.py, --relay-log, tmp/relay_relay_match.log]
+    post_check_peers: true
+    desc: 'R2: the shipped host/client boot walk (shim_udp''s scripts) end to end THROUGH a relay
+      process -- both peers enter the live game'
+  - name: relay_browse
+    budget_s: 50  # gate diet: max measured (gate 27s, n2 28s, n6 35s) x 1.3
+    kind: multi
+    no_hash_why: 'lobby-only: no match starts, so no sim step is hashed'
+    host: mp_host_relay_leave.txt
+    clients: [mp_client_relay_browse.txt]
+    relay: true
+    # Pinned to the relay: subject is the directory itself -- promoting to direct would test it via an
+    # unrelated peer, a narrower test.
+    net_extra: transport=udp;force_relay=1
+    # Only way to satisfy the vanish-on-leave clause: client lists a game via the relay, row
+    # disappears when host leaves. (mp:R2)
+    extra_ini: tools/uiscripts/ini/video_1024.ini
+    # Timer-driven withdrawal (advert stale 3s, re-LIST every 2s); budget = that sequence + room for a
+    # lost datagram.
+    timeout: 300
+    # TL-HARN17: see relay_match above -- same reasoning, same 300 s so --timeout is the real cap.
+    timeout_frames: !frames [300, SOLO_HEADLESS_FPS_FLOOR]
+    post_check: [tools/check_relay_rooms.py, --relay-log, tmp/relay_relay_browse.log]
+    post_check_peers: true
+    desc: 'R2: the browser lists a RELAY-hosted game, and the row vanishes when the host leaves'
+  - name: relay_browse_local
+    budget_s: 35  # gate diet: max measured (gate 22s, n2 22s, n6 24s) x 1.3
+    kind: multi
+    no_hash_why: 'lobby-only: no match starts, so no sim step is hashed'
+    host: mp_host_lobby.txt
+    clients: [mp_client_relay_local.txt]
+    relay: true
+    # PROBE_SERVER_COUNT held at 1 while a relay is configured, so retail's dead LAN refresh loop
+    # lists it via the first browser. (mp:R7)
+    net_extra: transport=udp;force_relay=1
+    extra_ini: tools/uiscripts/ini/video_1024.ini
+    timeout: 300
+    timeout_frames: !frames [300, SOLO_HEADLESS_FPS_FLOOR]
+    # Positive control: asserts PRESENCE of the relay leg lines that check_direct_dial asserts ABSENT
+    # on the direct twin. (mp:R7a)
+    post_check: [tools/check_relay_leg.py, --relay-log, tmp/relay_relay_browse_local.log]
+    post_check_peers: true
+    desc: 'R7: a relay-listed game is discovered and joined from the FIRST browser -- no IP window'
+  - name: ghost_churn
+    budget_s: 60  # gate diet: max measured (gate 44s, n2 44s, n6 46s) x 1.3
+    kind: multi
+    host: mp_host_churn.txt
+    clients: [mp_client_churn.txt]
+    relay: true
+    # Suite is at the mutex ceiling: this row owns no lanes, borrows relay_browse's, run serially with
+    # it. (TL-LANEPOOL)
+    share_lanes: relay_browse
+    net_extra: transport=udp;force_relay=1
+    extra_ini: tools/uiscripts/ini/video_1024.ini
+    # 150s: green walk measured ~43s; a regression shows as a timeout, so the budget is the price of
+    # that.
+    timeout: 150
+    timeout_frames: !frames [150, SOLO_HEADLESS_FPS_FLOOR]
+    # Host cancel+recreate leaves a stale queued packet the next join drains, bouncing the seat just
+    # admitted; fix drains it at JOIN. (mp:GS1a)
+    desc: 'GS1a: host cancels + re-creates under a browsing client; the client''s join seats and the match
+      runs past 10 s'
+  - name: ghost_leave_rejoin
+    budget_s: 60  # gate diet: max measured (gate 44s, n2 44s, n6 46s) x 1.3
+    kind: multi
+    host: mp_host_relay_rejoin.txt
+    clients: [mp_client_relay_leave_rejoin.txt]
+    relay: true
+    share_lanes: relay_browse_local  # Borrows relay_browse_local's lanes, run serially with it. (TL-LANEPOOL)
+    net_extra: transport=udp;force_relay=1
+    extra_ini: tools/uiscripts/ini/video_1024.ini
+    timeout: 300
+    timeout_frames: !frames [300, SOLO_HEADLESS_FPS_FLOOR]
+    # Same GS1 bug as leave_frees_slot, but over the relay path the field hit, plus a re-join and
+    # launch past 10s. (mp:GS1b)
+    desc: 'GS1b: a client leaves and re-joins a relay-listed lobby -> one slot, then the match runs past
+      10 s'
+  - name: browser_two_rows
+    budget_s: 50  # gate diet: max measured (gate 33s, n2 32s, n6 35s) x 1.3
+    kind: multi
+    no_hash_why: 'lobby-only: no match starts, so no sim step is hashed'
+    host: mp_host_two_rows_a.txt
+    # Before the fix, one session record hid a second lobby; join always landed on whichever auto-dial
+    # reached first. (mp:R2b)
+    clients: [mp_host_two_rows_b.txt, mp_client_two_rows.txt]
+    relay: true
+    # No row owns three lanes: a host lane's port is unique (two hosts can't share one), so this
+    # borrows two hosts' lanes + a browser lane. (TL-LANEPOOL)
+    share_lanes: [relay_browse_local, relay_browse]
+    net_extra: transport=udp;force_relay=1
+    client_game_name: bravo
+    host_lanes: [1]  # client 1 hosts: its own port when the row stands on its own lanes
+    extra_ini: tools/uiscripts/ini/video_1024.ini
+    timeout: 420  # Four sequential menu walks: ghost_leave_rejoin's 300s plus one more walk.
+    timeout_frames: !frames [420, SOLO_HEADLESS_FPS_FLOOR]
+    # Asserts WHICH room each join dialled (not visible on a frame), via log lines against the two
+    # minted rooms.
+    post_check: [tools/check_browser_rows.py, --rows, '2', --joins, '2,1']
+    post_check_peers: true
+    # 0.000% measured with the IP header + ping cell masked; the feature is far under the 2% default.
+    tol: 0.0
+    desc: 'R2b: two relay-hosted lobbies are two browser rows; the join dials the CLICKED row''s room
+      (second, then first)'
+  - name: ghost_exit_rejoin
+    budget_s: 65  # gate diet: max measured (gate 47s, n2 47s, n6 50s) x 1.3
+    kind: multi
+    no_hash_why: 'client2 reuses client1''s lane after client1''s process exits; the per-lane newest run cannot pair the peers'
+    host: mp_host_exit_rejoin.txt
+    clients: [mp_client_exit_leave.txt, mp_client_exit_rejoin.txt]
+    relay: true
+    # Costs only the usual 2 lanes (client2 launches into client1's own lane): no headroom for a
+    # genuine 3rd lane. (TL-LANEPOOL)
+    client_after_exit: {2: 1}
+    client_shares_lane: {2: 1}
+    # No headroom even at 2 lanes (dead-ends G259); borrows relay_browse_local's lanes like its
+    # siblings. (TL-LANEPOOL)
+    share_lanes: relay_browse_local
+    # client1 deliberately ExitProcess()s and never hits its own COMPLETE marker -- treat the
+    # confirmed exit as the terminal state.
+    client_expect_exit: [1]
+    net_extra: transport=udp;force_relay=1
+    extra_ini: tools/uiscripts/ini/video_1024.ini
+    # Generous: a real quit-to-desktop plus a second full game boot (client2) on ghost_leave_rejoin's
+    # 300s.
+    timeout: 420
+    timeout_frames: !frames [420, SOLO_HEADLESS_FPS_FLOOR]
+    # Reads raw mh_lockstep.log committed/peer-horizon columns, not the game's own reported clock.
+    post_check: [tools/check_ghost_slot.py]
+    post_check_peers: true
+    # Root cause: writers of PlayerSide assumed wire id == lobby slot, true only for a slot's first
+    # occupant. Fix scans slots for our own wire id. (mp:GS1b)
+    desc: 'GS1(b): a client LEAVEs, quits to desktop for real, and a fresh process re-joins -> one slot,
+      match runs past 10 s'
+  - name: relay_punch
+    budget_s: 45  # gate diet: max measured (gate 29s, n2 29s, n6 31s) x 1.3
+    kind: multi
+    host: mp_host_start.txt
+    clients: [mp_client_relay_punch.txt]
+    relay: true
+    # No saved server: the first browser probes the relay -- without force_relay this is what makes
+    # the dial relayed at all. (mp:R7a)
+    no_client_ip: true
+    # Since R7a, an Internet-server dial from the plain client script is itself direct -- must start
+    # from the first browser instead. (mp:R3, R7a)
+    net_extra: transport=udp
+    extra_ini: tools/uiscripts/ini/video_1024.ini
+    # Narrow claim: NOT that NAT traversal works (same-box = loopback). Only that switching send path
+    # mid-stream doesn't break the link.
+    timeout: 300
+    # Assertion is the post_check: a relayed-whole-time pair renders an identical frame, so
+    # check_relay_path reads the log line instead. (mp:R3a) mp:L1h adds the lobby cell: the client
+    # dialled through the relay, so after the punch its R/D letter must follow the live path to D
+    # (the rc3 field lobby showed R on the client, D on the host, for one direct link). Both checks
+    # need every peer's log.
+    post_check_peers: true
+    post_check: [[tools/check_relay_path.py], [tools/check_lobby_ping.py, --path-follows]]
+    desc: 'R3: a relayed match that PUNCHES -- the path switches mid-handshake and both peers still enter
+      the live game'
+  - name: map_join_race
+    budget_s: 45  # measured 30-33s (solo x2, shared with relay_punch x1) x 1.3 -> 43, rounded up
+    kind: multi
+    host: mp_host_start.txt
+    clients: [mp_client_relay_punch.txt]
+    relay: true
+    # Same topology as relay_punch (first-browser relay join, host Starts), so it borrows its lanes.
+    share_lanes: relay_punch
+    no_client_ip: true
+    net_extra: transport=udp;force_relay=1
+    # The staged race: the client's first host advert is held until its JOIN has gone out (+250 ms),
+    # the order the rc3 field match lost in (the R6 re-send JOINs on the first tick with a peer).
+    net_extra_client: map_test_advert_hold_ms=250
+    extra_ini: tools/uiscripts/ini/video_1024.ini
+    timeout: 300
+    timeout_frames: !frames [300, SOLO_HEADLESS_FPS_FLOOR]
+    # Unfixed: host logs `needs the map (has=none` + `send armed`, Start refused forever. (mp:X2d)
+    post_check: [tools/check_map_transfer.py, --expect-nothing, --expect-early-join]
+    post_check_peers: true
+    desc: 'X2d: a relay-directory JOIN that beats the host''s first advert still carries the map hash --
+      the host transfers nothing and the match starts'
+  - name: relay_restart
+    budget_s: 70  # gate diet: max measured (gate 50s, n2 51s, n6 52s) x 1.3
+    kind: multi
+    host: mp_host_relay_restart.txt
+    clients: [mp_client_relay_restart.txt]
+    relay: true
+    # A dead link can't advance the clock (lockstep stalls); pinned to the relay so the restart is
+    # actually on the path. (mp:R4b)
+    net_extra: transport=udp;force_relay=1
+    relay_restart_on: ingame
+    extra_ini: tools/uiscripts/ini/video_1024.ini
+    timeout: 300
+    timeout_frames: !frames [300, SOLO_HEADLESS_FPS_FLOOR]
+    # Post_check, not pixels: requires `leg LOST`+`leg RESTORED` and refuses `dropped -- no data from
+    # peer`.
+    post_check: [tools/check_relay_restart.py, --relay-log, tmp/relay_relay_restart.log]
+    post_check_peers: true
+    desc: 'R4b: the relay restarts mid-match and both peers re-HELLO and keep playing'
+  - name: s7_occ_cap
+    budget_s: 30  # gate diet: max measured (gate 22s, n2 19s, n6 21s) x 1.3
+    # transport=tcp pinned: [net] transport now defaults to udp; keeps this row's TCP coverage
+    # TCP instead of becoming a second UDP run.
+    net_extra: transport=tcp
+    kind: multi
+    no_hash_why: 'lobby-only: no match starts, so no sim step is hashed'
+    host: mp_host_ai_closed.txt
+    clients: [mp_client_browse_s7.txt]
+    desc: 'S7: host = 1 human + 1 AI + 1 closed slot -> client browser row reads ''2/7'''
+  - name: ai_closed_start
+    # gate diet: max measured (gate 14s, n2 12s, n6 12s) x 1.3 = 20, FLOORED at 30 (BUDGET_FLOOR_S)
+    budget_s: 30
+    kind: solo
+    script: mp_ai_closed_start.txt
+    # Does NOT hit the N2 guard's refusal branch -- only pins the observable it protects (`occ 1`
+    # after close). tol 0: pinned states are tiny. (F3E-COV)
+    tol: 0.0
+    desc: 'F3E-COV: AI + CLOSED slot then Start -- the peer_clear hang fix (and the N2 guard''s install)'
+  - name: client_join
+    budget_s: 30  # gate diet: max measured (gate 19s, n2 20s, n6 21s) x 1.3
+    # transport=tcp pinned: [net] transport now defaults to udp; keeps this row's TCP coverage
+    # TCP instead of becoming a second UDP run.
+    net_extra: transport=tcp
+    kind: multi
+    no_hash_why: 'lobby-only: no match starts, so no sim step is hashed'
+    host: mp_host_lobby.txt
+    clients: [mp_client_join.txt]
+    desc: client discovers a host by IP and joins through to the shared lobby
+  - name: direct_dial_with_relay_set
+    budget_s: 30  # gate diet: max measured (gate 18s, n2 19s, n6 20s) x 1.3
+    kind: multi
+    no_hash_why: 'lobby-only: no match starts, so no sim step is hashed'
+    host: mp_host_lobby.txt
+    clients: [mp_client_direct_dial.txt]
+    relay: true
+    # Started only to prove the relay is NOT contacted (relay_client_only keeps it off the host too);
+    # both peers must be UDP. (mp:R7a)
+    net_extra: transport=udp
+    relay_client_only: true
+    # Borrows client_join's lanes (the scenario it varies), scheduled serially so the lane is never
+    # shared in time. (TL-LANEPOOL)
+    share_lanes: client_join
+    timeout: 300
+    timeout_frames: !frames [300, SOLO_HEADLESS_FPS_FLOOR]
+    post_check: [tools/check_direct_dial.py, --relay-log, tmp/relay_direct_dial_with_relay_set.log]
+    post_check_peers: true
+    desc: 'R7a: Internet server + a typed IP connects DIRECT with a relay configured -- the relay is never
+      contacted'
+  - name: relay_stale_notice
+    budget_s: 35  # gate diet: max measured (gate 21s, n2 24s, n6 23s) x 1.3
+    kind: multi
+    no_hash_why: 'lobby-only: no match starts, so no sim step is hashed'
+    host: mp_host_lobby.txt
+    clients: [mp_client_relay_stale.txt]
+    relay: true
+    # --advertise-level 0 replays the byte-identical pre-R4a WELCOME so both peers log a level
+    # mismatch; staleness is VISIBLE, not broken.
+    relay_args: [--advertise-level, '0']
+    net_extra: transport=udp;force_relay=1
+    extra_ini: tools/uiscripts/ini/video_1024.ini
+    # Borrows relay_browse_local's lanes (the scenario it varies), scheduled serially with it. (TL-
+    # LANEPOOL)
+    share_lanes: relay_browse_local
+    timeout: 300
+    timeout_frames: !frames [300, SOLO_HEADLESS_FPS_FLOOR]
+    tol: 0.0  # tol 0: the notice is one line of text, far under the default 2% budget.
+    post_check: [tools/check_relay_stale.py, --relay-log, tmp/relay_relay_stale_notice.log]
+    post_check_peers: true
+    desc: 'R4a: a relay BEHIND this build''s protocol level is reported -- the R4a line in both logs and
+      `Relay outdated` on the client''s browser'
+  - name: codepage_adopt
+    budget_s: 30  # gate diet: max measured (gate 19s, n2 21s, n6 22s) x 1.3
+    # transport=tcp pinned: [net] transport now defaults to udp; keeps this row's TCP coverage
+    # TCP instead of becoming a second UDP run.
+    net_extra: transport=tcp
+    kind: multi
+    no_hash_why: 'lobby-only: no match starts, so no sim step is hashed'
+    host: mp_host_lobby.txt
+    clients: [mp_client_join.txt]
+    # Both codepages pinned explicit (not `acp`) so the scenario means the same thing regardless of
+    # the rig's own ACP. (mp:F3c)
+    extra_ini_host: tools/uiscripts/ini/input_cp1252.ini
+    extra_ini_client: tools/uiscripts/ini/input_cp1251.ini
+    post_check: [tools/check_codepage_adopt.py, --expect, adopt]
+    post_check_peers: true
+    desc: 'F3c: host 1252 + client 1251 join one lobby -- the joiner adopts the host''s codepage (both
+      logs)'
+  - name: codepage_refused
+    budget_s: 30  # gate diet: max measured (gate 18s, n2 19s, n6 20s) x 1.3
+    # transport=tcp pinned: [net] transport now defaults to udp; keeps this row's TCP coverage
+    # TCP instead of becoming a second UDP run.
+    net_extra: transport=tcp
+    kind: multi
+    no_hash_why: 'lobby-only: no match starts, so no sim step is hashed'
+    host: mp_host_lobby.txt
+    clients: [mp_client_join_refused.txt]
+    # tol 0: the notice is one line of text, far under the default 2% budget. (mp:F3c)
+    extra_ini_host: tools/uiscripts/ini/input_cp1252.ini
+    extra_ini_client: tools/uiscripts/ini/input_cp1251_noadopt.ini
+    post_check: [tools/check_codepage_adopt.py, --expect, refused]
+    post_check_peers: true
+    tol: 0.0
+    desc: 'F3c: a client that will not adopt is refused AND told -- bounced to the browser, notice names
+      the reason'
+  - name: leave_frees_slot
+    budget_s: 35  # gate diet: max measured (gate 25s, n2 25s, n6 26s) x 1.3
+    # transport=tcp pinned: [net] transport now defaults to udp; keeps this row's TCP coverage
+    # TCP instead of becoming a second UDP run.
+    net_extra: transport=tcp
+    kind: multi
+    no_hash_why: 'lobby-only: no match starts, so no sim step is hashed'
+    host: mp_host_watch_leave.txt
+    clients: [mp_client_leave.txt]
+    tol: 0.0  # tol 0: freed-slot evidence is <1% of the frame; default 2% tol would miss it.
+    desc: 'U12: a client''s plain lobby Cancel sends LEAVE -- the host frees its slot with the peer still
+      connected'
+  - name: link_death
+    budget_s: 125  # gate diet: max measured (b2 91s, gate 91s, n2 94s, n6 94s) x 1.3
+    long_why: 'the R-live timeline IS the proof: an 8 s stall that must NOT drop the link, then a blackhole
+      that must, each followed by the ~10 s watchdog -- measured 91-94 s (2026-09-24)'
+    # transport=tcp pinned: [net] transport now defaults to udp; keeps this row's TCP coverage
+    # TCP instead of becoming a second UDP run.
+    net_extra: transport=tcp
+    kind: multi
+    no_hash_why: 'lobby-only: no match starts, so no sim step is hashed'
+    host: mp_host_linkdeath.txt
+    clients: [mp_client_linkdeath.txt]
+    shim: true
+    shim_delay: 100  # ONE-WAY -> 200 ms rtt, the conditions the bug was reported at
+    shim_timeline: tools/uiscripts/shim/rlive_link_death.txt
+    # SHIM rows can only share another SHIM row's lanes (client lane sits on the shim port). (mp:P9)
+    share_lanes: shim_udp
+    # Frame budget can't bound wall time (shim blackholes at 60s); set clear of it so --timeout is the
+    # real cap.
+    timeout_frames: 1200000
+    # Wall clock: launch+menu+join, then 60s to blackhole + ~10s watchdog; suite default 200s cuts it
+    # short.
+    timeout: 900
+    desc: 'R-live: an 8s stall must NOT drop the link, a blackhole must -- client leaves the lobby, host
+      frees the slot and can still Start'
+  - name: host_recreate
+    budget_s: 40  # gate diet: max measured (gate 29s, n2 29s, n6 27s) x 1.3
+    # transport=tcp pinned: [net] transport now defaults to udp; keeps this row's TCP coverage
+    # TCP instead of becoming a second UDP run.
+    net_extra: transport=tcp
+    kind: multi
+    no_hash_why: 'lobby-only: no match starts, so no sim step is hashed'
+    host: mp_host_recreate.txt
+    clients: [mp_client_rejoin.txt]
+    desc: 'U13: host leaves + re-creates a game; client re-discovers + re-joins -> fresh lobby (occ 2)'
+  - name: host_rematch
+    budget_s: 55  # gate diet: max measured (gate 39s, n2 38s, n6 39s) x 1.3
+    # transport=tcp pinned: [net] transport now defaults to udp; keeps this row's TCP coverage
+    # TCP instead of becoming a second UDP run.
+    net_extra: transport=tcp
+    kind: multi
+    no_hash_why: 'two matches in one process: the harness step counter is not reset per match, and match 1 ends by a quit'
+    host: mp_host_rematch.txt
+    clients: [mp_client_rematch.txt]
+    # Pins video mode: ESC menu renders at gameplay resolution, a persisted setup.dat pref. (mp:U40)
+    extra_ini: tools/uiscripts/ini/video_640.ini
+    # A signal-blocked peer has no frame-rate floor; the unordered walk once spent up to 426s on
+    # races.
+    timeout: 300
+    desc: 'U40: a match ENDS, the host re-creates in the same instance, the client re-discovers + re-joins'
+  - name: rematch_play
+    budget_s: 75  # gate diet: max measured (gate 54s, n2 54s, n6 55s) x 1.3
+    kind: multi
+    no_hash_why: 'two matches in one process: the harness step counter is not reset per match, and match 1 ends by a quit'
+    host: mp_host_rematch2.txt
+    clients: [mp_client_rematch2.txt]
+    # Guards a real residue bug: 2nd+ matches in one process reused stale state
+    # until entry-prep was re-armed once per LOBBY, not process. (mp:RM1)
+    net_extra: transport=tcp
+    extra_ini: tools/uiscripts/ini/video_640.ini
+    # TL-LANEPOOL: suite at lane ceiling; borrows host_rematch's lanes (same topology/pins).
+    share_lanes: host_rematch
+    # Uses host_rematch's budget shape: a signal-blocked peer has no frame-rate floor, only wall
+    # clock.
+    timeout: 300
+    # post_check is the assertion: residue is a memory fact, determinism a [desync] rollup; no frame
+    # shows either.
+    post_check: [tools/check_rematch_residue.py]
+    post_check_peers: true
+    desc: 'RM1: a SECOND match in the same host process enters as clean as the first and stays in lockstep
+      past 12 s'
+  - name: rematch_rollup
+    budget_s: 80  # gate diet: max measured (gate 59s, n2 59s, n6 58s, rerun 60s) x 1.3
+    # Epoch marker (MH_Net_QueueMatchBoundary) now proves the reset directly; the chat burst is no
+    # longer needed. (mp:U41d)
+    kind: multi
+    no_hash_why: 'two matches in one process: the harness step counter is not reset per match, and match 1 ends by a quit'
+    # Ends match 2 too, crossing the boundary twice (rematch_play's own walk never finishes match 2).
+    # (mp:U41b)
+    host: mp_host_rematch3.txt
+    clients: [mp_client_rematch3.txt]
+    net_extra: transport=tcp
+    extra_ini: tools/uiscripts/ini/video_640.ini
+    share_lanes: host_rematch
+    timeout: 300
+    post_check: [tools/check_queue_rollups.py]
+    post_check_peers: true
+    desc: 'U41b: two matches over one TCP link in one process -> two queue rollups, the second with its
+      own high-water'
+  - name: ch1_cheat
+    budget_s: 55  # gate diet: max measured (gate 39s, n2 38s, n6 36s) x 1.3
+    kind: multi
+    no_hash_why: 'a peer quits/drops mid-match: the survivor applies a removal the leaver never hashes (D26 covers game-over, not a leave)'
+    host: mp_host_cheat.txt
+    clients: [mp_client_cheat.txt]
+    # mp:CH1: the single-player cheat console reaches network games via Shift+Enter (ungated) and can
+    # wipe the host's base.
+    net_extra: transport=tcp;graceful_leave=1
+    extra_ini: tools/uiscripts/ini/video_640.ini
+    # TL-LANEPOOL: suite at lane ceiling; borrows host_clicks's lanes (same 2-peer topology).
+    # tooling:TL-SUITE-FOLD-ML: was match_launch, folded into shim_udp (removed from TESTS).
+    share_lanes: host_clicks
+    # order_log=1 is the only place the replicated 0xfa cheat order is visible (too small to trip
+    # elimination/desync).
+    harness_extra: order_log=1;region_hash_step=50;synth_move=0
+    timeout: 300  # Peers block on each other; wall clock under suite contention is the real cap, not frames.
+    post_check: [tools/check_cheat_gate.py]
+    post_check_peers: true
+    desc: 'CH1: a client types _NUCLEAR BOMB on the Shift+Enter console in a lockstep match -- refused,
+      logged, nobody eliminated, no desync; then it ESC-quits'
+  - name: gs2_data_timeout
+    budget_s: 35  # gate diet: max measured (gate 25s, n2 25s, n6 26s) x 1.3
+    kind: multi
+    no_hash_why: 'the client''s sim is fenced (frozen) on purpose and the host drops it'
+    host: mp_host_gs2.txt
+    clients: [mp_client_gs2.txt]
+    # mp:GS2: drops a peer that keepalives but sends no data; data_timeout_ms=3000 here vs the 15000
+    # ship default.
+    net_extra: transport=tcp;data_timeout_ms=3000
+    extra_ini: tools/uiscripts/ini/video_640.ini
+    # TL-LANEPOOL: suite at lane ceiling; borrows host_clicks's lanes (same 2-peer topology).
+    # tooling:TL-SUITE-FOLD-ML: was match_launch, folded into shim_udp (removed from TESTS).
+    share_lanes: host_clicks
+    # simstep requires [harness] enable=1; synth_move=0/region_hash_step=0 keep noise out.
+    harness_extra: synth_move=0;region_hash_step=0
+    timeout: 120  # Drop expected ~clock 4000 (500+100 steps @ sim_step_ms=10, plus data_timeout_ms=3000).
+    timeout_frames: !frames [120, SOLO_HEADLESS_FPS_FLOOR]
+    post_check: [tools/check_data_timeout.py, --timeout-ms, '3000']
+    post_check_peers: true
+    desc: 'GS2: a peer whose sim is fenced (transport alive) is dropped after data_timeout_ms and the
+      survivor reaches the end-of-match dialog'
+  - name: gs2_quit_frozen
+    budget_s: 50  # gate diet: max measured (gate 36s, n2 31s, n6 32s) x 1.3
+    kind: multi
+    no_hash_why: 'the client''s sim is fenced (frozen) on purpose and the host quits the frozen match'
+    host: mp_host_gs2_quit.txt
+    clients: [mp_client_gs2.txt]
+    # Reproduces a real field crash: an access violation after quitting a match frozen on a data-
+    # silent peer.
+    net_extra: transport=tcp
+    extra_ini: tools/uiscripts/ini/video_640.ini
+    # TL-LANEPOOL: borrows host_clicks's lanes like gs2_data_timeout (same 2-peer topology).
+    # tooling:TL-SUITE-FOLD-ML: was match_launch, folded into shim_udp (removed from TESTS).
+    share_lanes: host_clicks
+    harness_extra: synth_move=0;region_hash_step=0
+    timeout: 120
+    timeout_frames: !frames [120, SOLO_HEADLESS_FPS_FLOOR]
+    post_check: [tools/check_no_crash_marker.py]
+    post_check_peers: true
+    desc: 'CH1/GS2: the host quits a lockstep match while it is FROZEN on a data-silent peer -- no crash
+      marker (the field AV shape)'
+  - name: graceful_quit
+    budget_s: 40  # gate diet: max measured (gate 29s, n2 29s, n6 30s) x 1.3
+    kind: multi
+    no_hash_why: 'a peer quits/drops mid-match: the survivor applies a removal the leaver never hashes (D26 covers game-over, not a leave)'
+    host: mp_host_gquit.txt
+    clients: [mp_client_gquit.txt]
+    # transport=tcp pinned: default is now udp; keeps the suite's TCP coverage as TCP, not silently
+    # UDP.
+    net_extra: transport=tcp;graceful_leave=1
+    # tol 0 works only because every in-game frame (variable 0.7-6.6%) was removed from the baseline
+    # set.
+    tol: 0.0
+    # Pins video mode: ESC menu renders at gameplay resolution, a persisted setup.dat pref.
+    extra_ini: tools/uiscripts/ini/video_640.ini
+    # Peers block on each other in this signal-ordered walk; wall clock under contention is the real
+    # cap.
+    timeout: 300
+    # post_check, not pixels: a frame can't tell whether the peer learned of the departure via a
+    # control frame or a dying socket.
+    post_check: [tools/check_graceful_quit.py, --expect-graceful, --expect-same-end-clock, --expect-no-network-error,
+      --max-drop-steps, '2']
+    desc: 'U19: a client ESC-quits a running match -- it lands on the main menu, and the departure reaches
+      the survivor over the wire, in order, at the same game clock'
+  # mp:U19i: same clean-quit test under configuration (1) -- udp transport, no libmh.dll. (G300)
+  - name: gquit_net
+    budget_s: 45  # gate diet: max measured (gate 28s, n2 27s, n6 32s) x 1.3
+    # On a 2-player quit the carrier's call is unreachable, so this asserts only the clean-quit route,
+    # not FIRED. (mp:U19i)
+    kind: multi
+    no_hash_why: 'a peer quits/drops mid-match: the survivor applies a removal the leaver never hashes (D26 covers game-over, not a leave)'
+    host: mp_host_gquit_net.txt
+    clients: [mp_client_gquit_net.txt]
+    share_lanes: match_launch_net
+    omit_satellite: [libmh.dll]
+    net_extra: transport=udp;defang_overlay=0;graceful_leave=1
+    # 0.1%: ~5x the largest observed drift (0.022% under suite load), still tight enough to catch a
+    # layout change. (mp:U19i)
+    tol: 0.001
+    extra_ini: tools/uiscripts/ini/video_640.ini
+    timeout: 300
+    post_check: [tools/check_graceful_quit.py, --expect-graceful, --expect-same-end-clock, --expect-no-network-error,
+      --max-drop-steps, '2']
+    desc: 'U19i: configuration (1) clean quit -- the survivor ends below quorum (outcome 8) within ms
+      of the quitter''s broadcast, no NETWORK_ERROR'
+  - name: txdeath_ingame
+    budget_s: 170  # gate diet: max measured (b2 129s, n2 123s, n6 125s, rerun 130s) x 1.3
+    long_why: 'the in-game transport death needs a live match to reach gameclock 45000 (the baseline''s
+      frame) before the cut, plus the fast-drop and dialog: measured 123-130 s (2026-09-24, 4 runs)'
+    # mp:U19f: a real in-game transport death (not a lobby blackhole) must keep the retail 'Connection
+    # lost' wording.
+    net_extra: transport=tcp
+    kind: multi
+    no_hash_why: 'the shim cuts the link mid-match on purpose (transport death under test)'
+    host: mp_host_txdeath.txt
+    clients: [mp_client_txdeath.txt]
+    shim: true
+    shim_delay: 0  # not a latency scenario -- the shim is here only to schedule the blackhole
+    shim_timeline: tools/uiscripts/shim/txdeath_ingame.txt
+    # Cuts on a SIM moment, not wall-clock t+50s: the dialog frame drifts with sim time, so a wall-
+    # clock cut is load-dependent.
+    shim_triggers:
+    - cmd: cut
+      when:
+      - [host, mh_uidrive.log, 'LOG: HOST past gameclock 45000']
+      - [c1, mh_uidrive.log, 'LOG: CLIENT past gameclock 45000']
+    # A SHIM row can only share another SHIM row's lanes (client lane = the port it dials).
+    # Borrowing a non-shim row here made this shim loop back to itself. (dead-ends G282)
+    share_lanes: shim_udp
+    extra_ini: tools/uiscripts/ini/video_640.ini
+    # Kept at 300: a 305s timeout once looked grazed, but the run never reached the game at all (self-
+    # forwarding shim).
+    timeout: 300
+    # post_check, not pixels: a frame can't say which route the outcome dialog took, only that one is
+    # showing.
+    post_check: [tools/check_transport_death.py]
+    post_check_peers: true
+    desc: 'U19f: a client''s transport dies IN-GAME (net_shim blackhole, both directions) -- the survivor
+      fast-drops it and keeps the retail ''Connection to server lost'' wording'
+  - name: session_rollover
+    budget_s: 55  # gate diet: max measured (gate 41s, n2 38s, n6 39s) x 1.3
+    # transport=tcp pinned: [net] transport now defaults to udp; keeps this row's TCP coverage
+    # TCP instead of becoming a second UDP run.
+    net_extra: transport=tcp
+    kind: multi
+    no_hash_why: 'lobby-only: no match starts, so no sim step is hashed'
+    host: mp_host_rollover.txt
+    clients: [mp_client_rollover.txt]
+    # post_check, not pixels: 'three session dirs, pairwise-identical match_ids' has no pixel
+    # signature. (SES1b)
+    post_check: [tools/check_session_rollover.py]
+    desc: 'SES1b: three Create/Join/Cancel rounds in one instance -- 3 session directories per peer, pairwise-identical
+      match_ids'
+  - name: ip_retry
+    budget_s: 35  # gate diet: max measured (gate 25s, n2 25s, n6 26s) x 1.3
+    # transport=tcp pinned: [net] transport now defaults to udp; keeps this row's TCP coverage
+    # TCP instead of becoming a second UDP run.
+    net_extra: transport=tcp
+    kind: multi
+    no_hash_why: 'lobby-only: no match starts, so no sim step is hashed'
+    host: mp_host_lobby.txt
+    clients: [mp_client_ipretry.txt]
+    client_dead_ip: !ref machine.DEAD_PEER_IP
+    desc: 'S8: client types a dead IP -> empty browser -> corrects the IP via the MRU in-session -> joins'
+  - name: res_hud
+    # gate diet: max measured (gate 19s, n2 14s, n6 15s) x 1.3 = 25, FLOORED at 30 (BUDGET_FLOOR_S)
+    budget_s: 30
+    kind: solo
+    script: res_hud.txt
+    extra_ini: tools/uiscripts/ini/video_1024.ini
+    # Pinned explicitly via [video], not inherited: it's a persisted setup.dat pref, so an unpinned
+    # baseline depends on whatever ran last. (D13)
+    desc: 'D13: menu -> lobby -> launch, strategic HUD rendered at 1024x768 (mode 2)'
+  - name: esc_menu
+    # gate diet: max measured (gate 17s, n2 11s, n6 12s) x 1.3 = 25, FLOORED at 30 (BUDGET_FLOOR_S)
+    budget_s: 30
+    kind: solo
+    script: esc_menu.txt
+    # Proves the [uitest] 'key' action is required: ESC menu opens via a scancode branch, unreachable
+    # by a mouse-only driver.
+    extra_ini: tools/uiscripts/ini/video_640.ini
+    desc: 'keyboard injection: reach the ESC/in-game menu, which no mouse-only walk can open'
+  - name: devchange_guard
+    # gate diet: max measured (gate 17s, n2 11s, n6 11s) x 1.3 = 25, FLOORED at 30 (BUDGET_FLOOR_S)
+    budget_s: 30
+    kind: solo
+    script: esc_menu.txt
+    # Posts one malformed WM_DEVICECHANGE that a missing NULL check can wedge the game on; this row is
+    # the guarded (ON) arm. (U21)
+    extra_ini: [tools/uiscripts/ini/video_640.ini, tools/uiscripts/ini/devchange_probe_on.ini]
+    desc: 'U21: a malformed WM_DEVICECHANGE (lParam=0) must not wedge the game'
+  - name: debug_overlay
+    # gate diet: max measured (gate 13s, n2 5s, n6 8s) x 1.3 = 20, FLOORED at 30 (BUDGET_FLOOR_S)
+    budget_s: 30
+    kind: solo
+    script: debug_overlay.txt
+    extra_ini: tools/uiscripts/ini/debug_overlay.ini
+    # tol 0: the overlay is only ~0.8% of the frame, so the default 2% tol wouldn't catch it
+    # disappearing.
+    tol: 0.0
+    # Debug builds ship the overlay hidden ([debug] overlay=0); the chord is synthesised since
+    # GetAsyncKeyState reads 0 headless.
+    desc: 'P0 debug overlay: installed-hidden, Ctrl+Alt+D shows it on 2 screens, hides it again (the ONLY
+      test that enables [debug])'
+  - name: gx1_overlay_residue
+    # gate diet: max measured (gate 19s, n2 12s, n6 15s) x 1.3 = 25, FLOORED at 30 (BUDGET_FLOOR_S)
+    budget_s: 30
+    kind: solo
+    script: gx1_overlay_residue.txt
+    extra_ini: tools/uiscripts/ini/gx1_overlay_residue.ini
+    # mp:GX1: shares debug_overlay's lane -- the suite's lane pool is at its ceiling (81/81).
+    share_lanes: debug_overlay
+    # tol 1.0: not a real pixel-diff gate -- the frame legitimately varies; the real assertion is
+    # post_check.
+    tol: 1.0
+    # Rect verified against real captures to sit inside the WIDE page's title row and
+    # outside the NARROW page's box, excluding an unrelated background pixel.
+    post_check: [tools/check_overlay_residue.py, --before, gx1_wide, --after, gx1_narrow, --rect, '52,10,55,9']
+    desc: 'mp:GX1: gfx_overlay.cpp leaves no residue when its box shrinks (page switch, same static screen)'
+  - name: stats_panel
+    budget_s: 30
+    kind: solo
+    script: stats_panel.txt
+    # Borrows pause_hotkey's lane (same solo walk, run serially): the suite's lane block is full
+    # (lane_alloc, TL-LANEPOOL).
+    share_lanes: pause_hotkey
+    # Same pins as pause_hotkey: the video mode, and the wall clock so the in-game frame is a
+    # function of the frame count rather than of load.
+    extra_ini: tools/uiscripts/ini/pause.ini
+    harness_extra: pin_wallclock=1;pin_clock_dt_us=16667;pin_clock_base_s=1000;synth_move=0;region_hash_step=0
+    tol: 0.0
+    desc: 'The E stats panel draws its padded values as blanks + digits, not `?????0` (mp:F2 glyph guard vs the U+0087 pad)'
+  - name: pause_hotkey
+    # gate diet: max measured (gate 14s, n2 11s, n6 11s) x 1.3 = 20, FLOORED at 30 (BUDGET_FLOOR_S)
+    budget_s: 30
+    kind: solo
+    script: pause_hotkey.txt
+    # Pins both the video mode and the [pause] scancode, so the test exercises the feature, not that
+    # week's default.
+    extra_ini: tools/uiscripts/ini/pause.ini
+    # pin_wallclock=1: without it, the sim step reached at a given gameclock follows frame rate, so
+    # captures flake under load.
+    harness_extra: pin_wallclock=1;pin_clock_dt_us=16667;pin_clock_base_s=1000;synth_move=0;region_hash_step=0
+    tol: 0.0
+    desc: 'D19: Tab enters the orphaned mode-5 big map from the strategic view, any key returns (2 ->
+      5 -> 2)'
+  # mp:GX1: net-indicator half (draws only in a live MP match); tol 1.0 since the colour-match
+  # post_check is the assertion.
+  - name: gx1_netind_residue
+    budget_s: 60  # gate diet: max measured (gate 44s, n2 43s, n6 44s) x 1.3
+    kind: multi
+    host: mp_host_gx1_netind.txt
+    clients: [mp_client_gx1_netind.txt]
+    share_lanes: pause_mp_gate
+    net_extra: transport=tcp
+    extra_ini: tools/uiscripts/ini/video_640.ini
+    tol: 1.0
+    timeout: 300
+    post_check: *gx1_netind_check
+    desc: 'mp:GX1: hiding the net indicator in a live match leaves no glyph behind (the release stamp
+      repaints the ground under it)'
+  - name: gx1_netind_nostamp
+    budget_s: 60  # gate diet: max measured (gate 43s, n2 44s, n6 45s) x 1.3
+    kind: multi
+    no_hash_why: 'expect_red reproduction (mp:GX1); its XFAIL would absorb a hash red'
+    host: mp_host_gx1_netind.txt
+    clients: [mp_client_gx1_netind.txt]
+    share_lanes: pause_mp_gate
+    # Planted negative arm, kept red on purpose: net_indicator_stamp=0 must leave the residue visible
+    # so the checker fails.
+    expect_red: mp:GX1
+    net_extra: transport=tcp
+    extra_ini: [tools/uiscripts/ini/video_640.ini, tools/uiscripts/ini/gx1_nostamp.ini]
+    tol: 1.0
+    timeout: 300
+    post_check: *gx1_netind_check
+    desc: 'mp:GX1 NEGATIVE: the same probe with the indicator''s stamps knobbed off must show the residue'
+  - name: pause_mp_gate
+    budget_s: 40  # gate diet: max measured (gate 29s, n2 28s, n6 29s) x 1.3
+    # transport=tcp pinned: [net] transport now defaults to udp; keeps this row's TCP coverage
+    # TCP instead of becoming a second UDP run.
+    net_extra: transport=tcp
+    kind: multi
+    host: mp_host_pause_gate.txt
+    clients: [mp_client_pause_gate.txt]
+    # In-game captures need the video mode pinned (persisted setup.dat pref); also pins the [pause]
+    # scancode.
+    extra_ini: tools/uiscripts/ini/pause.ini
+    # Gates capture on simstep 600 (SIM FENCE): a lockstep client's step count is wire-driven, so
+    # wall-clock pinning can't fix it. (D19)
+    harness_extra: synth_move=0;region_hash_step=0
+    # tol 0.0: measured byte-identical. Red proof (PRNG-desync arm) shows the predicate waits for the
+    # step, not agreement.
+    tol: 0.0
+    desc: 'D19: the big-map hotkey is inert in a lockstep match (host presses it, the sim keeps ticking)'
+  - name: key_repeat
+    # gate diet: max measured (gate 11s, n2 5s, n6 5s) x 1.3 = 15, FLOORED at 30 (BUDGET_FLOOR_S)
+    budget_s: 30
+    kind: solo
+    script: key_repeat.txt
+    # tol 0: one glyph is ~0.02% of the frame; any tol big enough for jitter would also hide a missing
+    # character (U24 regression).
+    tol: 0.0
+    desc: 'U24: one keypress in the player-name field types exactly ONE character'
+  - name: cam_latch
+    # tooling:TL-SUITE-SPLICE-CAM -- replaces cam_edge_scroll + cam_key_hold (one boot, two probes).
+    # budget_evidence: last-green suite times were 17.5s (cam_edge_scroll) + 15.0s (cam_key_hold) =
+    # 32.5s; both scripts ran the SAME menu->lobby->launch walk plus near-identical unthrottled
+    # in-game probe work (780 presents + a 2000ms gameclock wait each), so almost the whole measured
+    # time was that one walk, paid twice. Subtracting one boot (~15s, the smaller of the two totals,
+    # since probe time itself is a small unthrottled fraction) leaves ~17.5s; x1.3 margin ~= 23s,
+    # FLOORED at 30 (BUDGET_FLOOR_S) -- so the floor decides regardless of the exact boot estimate.
+    budget_s: 30
+    budget_evidence: "sum 17.5s+15.0s minus one shared boot (~15s) x1.3 margin ~=23s, floored at 30"
+    kind: solo
+    script: cam_latch.txt
+    # mp:SES3/SES3c: the only row with [input] mouse_trace=1 -- the only rows that assert anything
+    # about the trace.
+    extra_ini: tools/uiscripts/ini/cam_trace.ini
+    # TWO named verdicts off the one run, split by the script's `log` boundary line (SPLICE-CAM):
+    # segment 1 is the mouse-edge probe, segment 2 the keyboard-hold probe. --expect-pinned needs
+    # --expect-rise-fall too, else a latch that's never cleared would pass.
+    post_check: [
+      [tools/check_cam_trace.py, --segment, '1', --boundary, 'cam_latch: probe2', --label,
+        'edge latch', --expect-pinned, '3', --expect-rise-fall, --max-lines-per-frame, '1.0',
+        --expect-di],
+      [tools/check_cam_trace.py, --segment, '2', --boundary, 'cam_latch: probe2', --label,
+        'key latch', --expect-held, L, --expect-held-min, '3', --max-lines-per-frame, '1.0'],
+    ]
+    desc: 'SES3+SES3c in one boot: mouse pinned at the left screen edge (edge latch: holds while the
+      camera scrolls and the cursor does not move, clears on release), then LEFT arrow held via
+      `keyhold` (key latch: CAM_SCROLL_LEFT_HELD tracks it the same way, clears on release)'
+  - name: type_ascii
+    # gate diet: max measured (gate 11s, n2 5s, n6 9s) x 1.3 = 15, FLOORED at 30 (BUDGET_FLOOR_S)
+    budget_s: 30
+    kind: solo
+    script: type_ascii.txt
+    tol: 0.0  # tol 0: text is ~0.1% of frame; a looser tol would hide the whole regression. (mp:F4)
+    desc: 'F4: `type ho1` == `key 0x23 0x18 0x02` byte for byte; and shifted `type ABC`'
+  - name: type_cyrillic
+    # gate diet: max measured (gate 10s, n2 5s, n6 5s) x 1.3 = 15, FLOORED at 30 (BUDGET_FLOOR_S)
+    budget_s: 30
+    kind: solo
+    script: type_cyrillic.txt
+    # Pins codepage (acp/CP1252 has no Cyrillic bytes): the pin is the feature under test. (mp:F3)
+    extra_ini: tools/uiscripts/ini/input_cp1251.ini
+    tol: 0.0  # Asserts the field buffer, not pixels: stock EN fonts have no Cyrillic glyphs to diff. (mp:F3)
+    # desc omits literal Cyrillic: it prints to the console in the operator's own encoding.
+    desc: 'F3/F4: `type` 6 Cyrillic chars on a Russian layout -- 6 scancodes, 6 CP1251 bytes stored'
+  - name: type_polish
+    # gate diet: max measured (gate 6s, n2 5s, n6 12s) x 1.3 = 20, FLOORED at 30 (BUDGET_FLOOR_S)
+    budget_s: 30
+    kind: solo
+    script: type_polish.txt
+    extra_ini: tools/uiscripts/ini/input_cp1250.ini
+    tol: 0.0  # Pins codepage 1250 (differs above 0x80): catches a silent ACP fallback. (mp:F3)
+    desc: 'F3: `type` 4 Polish chars on the PL layout (AltGr) -- 4 CP1250 bytes stored'
+  - name: font_guard
+    budget_s: 30  # gate diet: max measured (gate 5s, n2 5s, n6 5s) x 1.3 = 10, FLOORED at 30 (BUDGET_FLOOR_S)
+    kind: solo
+    script: font_guard.txt
+    extra_ini: tools/uiscripts/ini/font_guard.ini
+    # Only test that arms [fonts]. Guards the OOB bug: unmapped code points used to read past
+    # the 257-entry charmap as a glyph-pointer index. (mp:F2)
+    tol: 0.0
+    desc: 'F2: unmappable code points render a substitute glyph and do not crash the layout pass'
+  - name: font_merged
+    budget_s: 30  # gate diet: max measured (gate 5s, n2 5s, n6 5s) x 1.3 = 10, FLOORED at 30 (BUDGET_FLOOR_S)
+    kind: solo
+    script: font_merged.txt
+    extra_ini: tools/uiscripts/ini/font_merged.ini
+    # requires runs before provisioning; no merged install SKIPS by name, not fail/abort. (mp:F2b)
+    requires: !ref font_merge_precondition
+    # Lane uses its own font pack, not the shared polygon: font_guard's baseline needs it stock.
+    lane_src: !ref FONT_MERGE_DIR
+    tol: 0.0
+    desc: 'F2b: with a merged install, Cyrillic + Polish probe text renders real glyphs (SKIPS by name
+      without one)'
+  - name: chat_glyphs
+    budget_s: 45  # gate diet: max measured (gate 32s, n2 32s, n6 32s) x 1.3
+    # transport=tcp pinned: [net] transport now defaults to udp; keeps this row's TCP coverage
+    # TCP instead of becoming a second UDP run.
+    net_extra: transport=tcp
+    kind: multi
+    host: mp_host_chat_glyphs.txt
+    clients: [mp_client_chat_glyphs.txt]
+    # End-to-end of F3 (codec) + F2b (font): neither alone proves a chat line draws Cyrillic. (mp:F3b)
+    extra_ini: [tools/uiscripts/ini/video_1024.ini, tools/uiscripts/ini/input_cp1251.ini]
+    # Reuses font_merge_precondition() -- same opt-in tier as font_merged, not a second precondition.
+    requires: !ref font_merge_precondition
+    # Lane uses its own font pack, not the shared polygon: font_guard's baseline needs it stock.
+    lane_src: !ref FONT_MERGE_DIR
+    tol: 0.0
+    desc: 'F3b: with a merged install, a 2-peer Cyrillic chat line the host types renders as real glyphs
+      on the client that receives it (SKIPS by name without one)'
+  - name: tact_panel
+    budget_s: 30  # gate diet: max measured (gate 5s, n2 5s, n6 5s) x 1.3 = 10, FLOORED at 30 (BUDGET_FLOOR_S)
+    kind: solo
+    script: tact_panel.txt
+    # Only scenario rendering tactical: the HUD could stop drawing and the suite stay green.
+    extra_ini: tools/uiscripts/ini/tact_panel.ini
+    # Mission entry isn't reachable from a menu; driven via the DLL's --tactical verb over save 11.
+    launch_args: --tactical 11
+    deploy_save: '11'
+    # tact_hash_step pins the tactical wall clock; without it the clock freezes in the wrong mode,
+    # not jitters, so no tol would rescue an unpinned run either. Pinned gate only (ROOTS-LIVE).
+    harness_extra: tact_hash_step=1;pin_wallclock=1;pin_clock_dt_us=16667;pin_clock_base_s=1000;pin_rand=1;rand_seed=12345
+    tol: 0.0  # tol 0: the readout is ~0.1% of frame; the default 2% tol would let it vanish and still pass.
+    desc: 'LIFT-TACT: tactical mission running -- selection panel + active-count HUD on a real frame'
+  - name: boot_snapshot
+    budget_s: 30  # gate diet: max measured (gate 5s, n2 6s, n6 5s) x 1.3 = 10, FLOORED at 30 (BUDGET_FLOOR_S)
+    kind: solo
+    script: boot_snapshot_capture.txt
+    # Only catches the capture faulting/aborting (as a timeout); a silently wrong blob is caught
+    # offline instead, by gen_boot_snapshot.py --check/--selftest.
+    harness_extra: boot_snapshot=1
+    desc: 'LIB-BOOT: the post-cfg snapshot capture path is armed and the process still reaches the menu'
+  - name: net_hud
+    budget_s: 65  # gate diet: max measured (b2 46s, n2 46s, n6 47s) x 1.3
+    kind: multi
+    no_hash_why: 'a deliberate s2c blackhole stalls the client (the stall under test); a link drop would read FAIL: ENVIRONMENTAL'
+    host: mp_host_hud.txt
+    clients: [mp_client_hud.txt]
+    share_lanes: shim_udp  # Borrows shim_udp's lanes: a shim row can only share a shim row's lanes. (mp:P9)
+    # transport=udp is load-bearing: TCP reports lat_supported=0, so a tcp run passes showing nothing.
+    net_extra: transport=udp
+    # Pins resolution: in-game frame size follows the persisted setup.dat preference.
+    extra_ini: tools/uiscripts/ini/video_1024.ini
+    # Runs through the shim on the clean-link half too (needed later for n1_stall); shim_delay:0 keeps
+    # it a plain relay. (mp:TL-UISTALL)
+    shim: true
+    shim_delay: 0
+    shim_timeline: tools/uiscripts/shim/net_hud_stall.txt
+    # Blackholes s2c right after both captures log, instead of the timeline's looser t+300s guess.
+    shim_triggers:
+    - cmd: blackhole s2c
+      when:
+      - [host, mh_uidrive.log, 'LOG: HOST captured the net indicator']
+      - [c1, mh_uidrive.log, 'LOG: CLIENT captured the net indicator']
+    # _only rect covers the fixed label+bar at tol 0 (vanishing = FAIL). Digits are excluded (vary
+    # every run) and asserted via post_check instead. Rect moved by L1d (right-aligned).
+    tol: 0.0
+    # post_check_peers checks both logs: only the client ever gets a -1 placeholder id. (mp:L1c)
+    post_check: [tools/check_net_indicator.py, --reject-placeholder-name, --expect-stall]
+    post_check_peers: true
+    # Needs ~20s for the RFC 6298 estimator to print a ping; then waits the shim's 300s blackhole.
+    timeout: 900
+    desc: 'L1/L1c/L1d/TL-UISTALL: the player-visible connection indicator on a live 2-peer udp match --
+      ping, stability bar, command latency, peer naming, and the WAITING FOR frame under a blackhole'
+  - name: mp_snapshot
+    budget_s: 140  # gate diet: max measured (rerun 107s) x 1.3
+    long_why: 'opt-in X1b row: a live match captured at a sim step, moved over channel C and imported
+      -- measured 107 s alone (2026-09-24)'
+    kind: multi
+    no_hash_why: 'its own post_check runs mp_analyze --snapshot-verify; snapshot_hold freezes the importer''s sim on purpose'
+    host: mp_host_snapshot.txt
+    clients: [mp_client_snapshot.txt]
+    # udp is load-bearing: TCP answers snapshot rows 'unsupported', so a tcp run proves nothing.
+    net_extra: transport=udp
+    # In-game captures -> the display mode must be pinned (it is a persisted setup.dat setting).
+    extra_ini: tools/uiscripts/ini/video_1024.ini
+    # Both peers arm the receiver (cheap, avoids an asymmetric knob). snapshot_hold=1 stops the
+    # client's sim at import time -- without it the client crashes within ~1 step. (mp:X3)
+    harness_extra: snapshot_import=1;snapshot_log=200;region_hash_step=200;synth_move=0;snapshot_hold=1;domain_hash_step=1
+    # Only the host captures/sends; both peers pushing 8MB at each other would test nothing.
+    harness_extra_host: snapshot_at=120;snapshot_to=1
+    # post_check needs both peers' logs (capture in one, import in the other, not either alone).
+    post_check: [tools/mp_analyze.py, --snapshot-verify]
+    post_check_peers: true
+    # Opt-in: importer crashes ~1 step after import (rewinds world while turn engine feeds live
+    # inputs). Tracked as mp:X3 (needs a resync, not a rewind). Delete optin when X3 lands.
+    optin: true
+    timeout: 420  # Transfer takes 30-60s at channel C's rate limit, so timeout must outlast it. (mp:X1)
+    timeout_frames: 200000
+    desc: 'mp:X1b: the host captures a live world at a sim step, channel C moves it to the client, and
+      the client imports it -- every per-region hash identical, rng_state included'
+  # Three starting states (no map / wrong-named file / already has it) need three scenarios.
+  # transport=udp is load-bearing (channel C); TCP would prove nothing. Knob lives in the DLL,
+  # not a real file move: peers share one Maps symlink. (mp:X2)
+  - name: map_absent
+    budget_s: 35  # gate diet: max measured (gate 25s, n2 26s, n6 26s) x 1.3
+    kind: multi
+    host: mp_host_map.txt
+    clients: [mp_client_map.txt]
+    net_extra: transport=udp;map_test_pretend=none
+    extra_ini: tools/uiscripts/ini/video_1024.ini
+    # expect-gate is the non-vacuity check: a host that never claimed/downloaded/refused still passes.
+    post_check: [tools/check_map_transfer.py, --expect-gate]
+    post_check_peers: true
+    timeout: 300  # Transfer is seconds, but timeout must also cover the host's wait on enabled Start.
+    desc: 'X2: the client does NOT have the host''s map -- Start is HELD, the map crosses channel C, and
+      both peers enter the match'
+  - name: map_conflict
+    budget_s: 35  # gate diet: max measured (gate 26s, n2 26s, n6 26s) x 1.3
+    kind: multi
+    host: mp_host_map.txt
+    clients: [mp_client_map.txt]
+    # Same-name-wrong-bytes case: before X2 this silently desynced with nothing naming the cause.
+    net_extra: transport=udp;map_test_pretend=other
+    extra_ini: tools/uiscripts/ini/video_1024.ini
+    post_check: [tools/check_map_transfer.py, --expect-gate]
+    post_check_peers: true
+    timeout: 300
+    desc: 'X2: the client holds a DIFFERENT file of the same name -- it receives the host''s content,
+      plays, and its own file is byte-unchanged afterwards'
+  - name: map_have
+    budget_s: 40  # gate diet: max measured (gate 29s, n2 28s, n6 29s) x 1.3
+    kind: multi
+    # Uses the ordinary scripts on purpose: a peer already holding the map plays exactly as before X2.
+    host: mp_host_start.txt
+    clients: [mp_client_start.txt]
+    net_extra: transport=udp
+    extra_ini: tools/uiscripts/ini/video_1024.ini
+    # expect-nothing is only accepted alongside the positive 'holds the map' line, never alone.
+    post_check: [tools/check_map_transfer.py, --expect-nothing]
+    post_check_peers: true
+    desc: 'X2: a joiner that already holds the map content transfers NOTHING and the host''s Start is
+      never held'
+  # mp:X2b: same decision over TCP (no channel C). Shares a sibling's lanes at the 81/81 ceiling.
+  - name: map_refuse_tcp
+    budget_s: 60  # gate diet: max measured (gate 43s, n2 19s, n6 19s) x 1.3
+    kind: multi
+    no_hash_why: 'lobby-only: Start is refused (map mismatch over TCP), no match runs'
+    host: mp_host_map_refuse.txt
+    clients: [mp_client_map_refuse.txt]
+    # Not map_conflict's lanes: its client stores the map in mh_dl\, resolving and passing wrongly.
+    # tooling:TL-SUITE-FOLD-ML: was match_launch, folded into shim_udp (removed from TESTS);
+    # re-anchored to host_clicks (same 2-peer topology).
+    share_lanes: host_clicks
+    # Refusal is enforced in on_begin_map_load, not the greyed-out look alone (dead-ends G291).
+    net_extra: transport=tcp;map_test_pretend=other
+    extra_ini: tools/uiscripts/ini/video_1024.ini
+    post_check: [tools/check_map_transfer.py, --expect-refused]
+    post_check_peers: true
+    desc: 'X2b: over TCP a joiner holding a DIFFERENT copy of the map is refused at Start, by name --
+      a refusal instead of a desync'
+  - name: map_have_tcp
+    budget_s: 40  # gate diet: max measured (gate 29s, n2 28s, n6 29s) x 1.3
+    kind: multi
+    # Negative case: a TCP pair with the matching map must start unchanged, no refusal.
+    # NEVER --update-baselines this row: it shares shim_udp's (mp_host_start/mp_client_start) baselines.
+    host: mp_host_start.txt
+    clients: [mp_client_start.txt]
+    share_lanes: map_have
+    net_extra: transport=tcp
+    extra_ini: tools/uiscripts/ini/video_1024.ini
+    post_check: [tools/check_map_transfer.py, --expect-nothing]
+    post_check_peers: true
+    desc: 'X2b: a TCP pair holding the same map starts normally -- the TCP claim refuses nobody and arms
+      nothing'
+  # Needs a UI-path scenario: mp_run's force-entry stops both peers at the host's step, leaving
+  # the loser no frames past it to measure a gap over.
+  - name: p6_loser_gap
+    budget_s: 75  # budget_s 75 = ~54s measured wall x1.3 margin.
+    kind: multi
+    no_hash_why: 'ends by elimination under a host-only conquest workload; D26 truncation on this row is unproven (follow-up)'
+    host: mp_host_p6_gap.txt
+    clients: [mp_client_p6_gap.txt]
+    # Lane pool is at its ceiling (81); a shim row can only share another shim row's lanes. (fork F4H)
+    share_lanes: shim_udp
+    # synth_move=0 required on every peer: the default D6 workload reorders the mothership and
+    # overwrites the deploy, so conq=1 refuses to arm under synth_move=1.
+    harness_extra: synth_move=0
+    harness_extra_host: conq=1;conq_seed=1;conq_probe_every=50;synth_move=0
+    # Shim required to see the freeze: unshimmed VM-to-VM peers are too close in wall-clock for
+    # HB_ENDGAME_GRACE_MS to ever get exercised. 180ms matches the suite's validated shim delay.
+    shim: true
+    shim_delay: 180
+    # Without ship_pacing, the rig's 30ms lookahead makes every step wait ~1 RTT through the shim.
+    ship_pacing: true
+    # Pins resolution: lane is shared with net_hud, which runs first and pins video_1024.
+    extra_ini: tools/uiscripts/ini/video_640.ini
+    # Captures mask the area around the outcome dialog: end step and mothership drift vary by run.
+    timeout: 300
+    timeout_frames: 200000
+    # expect fixed asserts the measured ~0ms gap as a floor, well under the 500ms bound. (mp:P6)
+    post_check: [tools/check_p6_gap.py, --expect, fixed]
+    post_check_peers: true
+    post_check_session: true
+    desc: 'P6: the conquest workload plays a real host-win/client-loss match; post_check asserts the client''s
+      (loser''s) longest present-to-present gap between the host''s own outcome and its own is < 500 ms
+      -- measured 0 ms on this rig''s own conditions'

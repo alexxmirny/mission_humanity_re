@@ -1,0 +1,81 @@
+{
+ "_what": "tooling TL-GATE8: the code that decides which BYTES reach the per-step state hash for an unchanged world, and the sha256 of each piece at the last HASH_INPUT_EPOCH decision. tools/lint_hash_epoch.py reds when a piece changes without a decision (bump, or --neutral). Spans are `// HASH-INPUT BEGIN/END <id>` markers in the source; `span: null` watches the whole file.",
+ "epoch": 1,
+ "header": "src/mh_dll/libmh/state/region_view.h",
+ "watched": [
+  {
+   "id": "region_view",
+   "path": "src/mh_dll/libmh/state/region_view.h",
+   "span": null,
+   "reason": "the per-slice emit views (units/tile_objects/rng/soldiers/planets/order_queue masks and reorders), the emit_slice dispatch and hash_slice's mask arms -- and the epoch constant itself",
+   "sha256": "0e9d6b9dc9c2c046503acbdd82debbddb098aaf6eef66fdc87481096d181f955"
+  },
+  {
+   "id": "state_sink",
+   "path": "src/mh_dll/libmh/state/state_sink.h",
+   "span": null,
+   "reason": "what bytes()/local()/masked() feed the VERDICT sink; local() semantics are invisible to HASH FINGERPRINT's raw-only vector",
+   "sha256": "199721904bfc811b1e6a076f26650b48bbe57338d3872e13859adba1eba58c79"
+  },
+  {
+   "id": "orders_emit_region",
+   "path": "src/mh_dll/libmh/orders/order_queue.cpp",
+   "span": "orders_emit_region",
+   "reason": "the owned order_queue region's canonical stream (live prefix raw, dead slots local()) -- configuration (2) and the standalone host hash this, not region_view.h's view",
+   "sha256": "9972465bd1b89d7485e920744054a9fe583bc78ce4d63c0cb241c19a2db7b4a2"
+  },
+  {
+   "id": "ai_island_emit",
+   "path": "src/mh_dll/libmh/ai/ai_state.cpp",
+   "span": "ai_island_emit",
+   "reason": "the AI island provider's emit for the 48 moved AI regions",
+   "sha256": "ca47056a022fe04a9466bfc840a4c3fafacb6376efb729f1493b22bbaa2c2409"
+  },
+  {
+   "id": "world_lockstep_hash",
+   "path": "src/mh_dll/libmh/state/world_snapshot.cpp",
+   "span": "world_lockstep_hash",
+   "reason": "the standalone fold (libmh_state_hash / libref_host) -- per-slice hash order, the state_excluded drop",
+   "sha256": "d016d79d7a1a543ee25ec2f4c6e5e5573c803f2c86b4e6e6208b067a15f9c7a5"
+  },
+  {
+   "id": "harness_on_sim_step_prehash",
+   "path": "src/mh_dll/mh_harness/harness.cpp",
+   "span": "harness_on_sim_step_prehash",
+   "reason": "everything the harness runs on the step boundary before the hash, through the fold -- the G177 class (the 2026-09-11 order_queue tail-clear memset lived here)",
+   "sha256": "72bf8c69f08f55fa5c44dc1013a51bef4788b4438a74a0000d58950dd618142c"
+  },
+  {
+   "id": "harness_order_replay_inject",
+   "path": "src/mh_dll/mh_harness/harness.cpp",
+   "span": "harness_order_replay_inject",
+   "reason": "the replay injector writes QUEUE + COUNT into hashed regions before the hash",
+   "sha256": "c8974d38742ab6a86084d194dcab29d05039a2ff9bb2c2b5caa94d4c8ea06956"
+  },
+  {
+   "id": "libref_prehash_writes",
+   "path": "src/mh_dll/libref_host/main.cpp",
+   "span": "libref_prehash_writes",
+   "reason": "the standalone host's pre-hash writes (tail-clear + injector), mirrored statement-for-statement from the harness",
+   "sha256": "9547afd8ed16ef11e8c1445799423a8ee546adbff3a1f79425e05a8724f0495c"
+  }
+ ],
+ "history": [
+  {
+   "epoch": 1,
+   "kind": "init",
+   "date": "2026-09-25",
+   "changed": [],
+   "reason": "TL-GATE8 introduced at epoch 1. The committed state artifacts (3 libref fixtures, 2 UI-REC oracles) were stamped E=1 without re-capture: all five passed the 2026-09-25 15:33 full gate (libref 3/3 PASS, both --ui-abc PASS), which ran after df6d0af7 -- the last hashed-input change -- with no src/mh_dll change since."
+  },
+  {
+   "epoch": 1,
+   "kind": "neutral",
+   "date": "2026-09-26",
+   "changed": [
+    "harness_on_sim_step_prehash"
+   ],
+   "reason": "mp:SES7: on_sim_step gains seg_tick() -- the per-match recording segment (opens/closes session-folder files, dumps a seed copy, mirrors log lines). It reads game state and writes only files; the bytes fed to the hash for an unchanged world are unchanged: relay_match hash IDENTICAL/898 and --determinism --det-local ALL PAIRS IDENTICAL (8000 and 1500 steps) on this build."
+  }
+ ]
+}

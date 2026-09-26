@@ -8,13 +8,13 @@ a datagram did NOT cross the relay (a direct lobby and a relayed lobby render th
 only in the logs, so this reads the lines that ARE the claim:
 
   * the CLIENT's mh_net.log carries `; R7a: client dial is DIRECT` (net_seams.cpp lazy_start, the
-    decision mh.dll made) and carries NO relay contact at all -- no `net: udp RELAY mode`, no
-    `net: udp relay leg UP`, no relay HELLO. A build that regressed to always-relay would show a
-    `leg UP` here; a build that mis-decided would show `client dial is RELAYED`.
-  * with --relay-log: the relay's final `counters` line reads `peers=0` and `peers_registered=0` --
-    the relay existed for the whole run (the scenario started it, to prove it was NOT used) and
-    registered nobody, so it carried nothing. `direct_dial_with_relay_set` puts `relay=` on the
-    CLIENT only (relay_client_only), so the host never registers either; the relay is untouched.
+    decision mh.dll made) and NO relay contact AFTER it -- no `net: udp RELAY mode`, no
+    `net: udp relay leg UP`. Contact before it is the first browser's directory probe, which since
+    mp:R7b runs for every peer with a relay configured. A build that regressed to always-relay would
+    show a `leg UP` after the decision; a build that mis-decided would show `client dial is RELAYED`.
+  * with --relay-log: the relay's final `counters` line reads `forwarded=0` -- it carried no peer
+    traffic. `direct_dial_with_relay_set` puts `relay=` on the CLIENT only (relay_client_only), so
+    the host never registers; the only registration is the client's directory-only browse leg.
 
     python tools/check_direct_dial.py [--relay-log <relay log>] <run dir> [<run dir> ...]
     python tools/check_direct_dial.py --selftest
@@ -46,6 +46,7 @@ ANSI_RE = re.compile(r"\x1b\[[0-9;]*m")
 # The relay's live peer count and cumulative registrations on its final counters line.
 COUNTERS_PEERS_RE = re.compile(r'event="counters".*?(?<![a-z_])peers=(\d+)')
 COUNTERS_REG_RE = re.compile(r'event="counters".*?peers_registered=(\d+)')
+COUNTERS_FWD_RE = re.compile(r'event="counters".*?(?<![a-z_])forwarded=(\d+)')
 
 
 def _read(path):
@@ -122,16 +123,23 @@ def check(peer_dirs, relay_log=None):
     else:
         out.append("  the client chose DIRECT (`%s`)" % DIRECT_NEEDLE)
 
-    contacted = [m for m in RELAY_CONTACT_MARKERS if m in client_body]
+    # mp:R7b -- the first browser probes the relay for every peer with one configured, so relay
+    # contact BEFORE the direct decision is the browse and is expected. What must not happen is relay
+    # contact for the direct connection itself: nothing after the LAST DIRECT decision line.
+    after = client_body[client_body.rfind(DIRECT_NEEDLE) :] if DIRECT_NEEDLE in client_body else ""
+    contacted = [m for m in RELAY_CONTACT_MARKERS if m in after]
     if contacted:
         fails.append(
-            "the client CONTACTED the relay on a direct dial -- found %s in its log. A direct dial "
-            "must not bring up a relay leg." % ", ".join("`%s`" % m for m in contacted)
+            "the client CONTACTED the relay on a direct dial -- found %s after its DIRECT decision. "
+            "A direct dial must not bring up a relay leg."
+            % ", ".join("`%s`" % m for m in contacted)
         )
     else:
-        out.append("  no relay contact in the client's log (no RELAY mode, no leg UP)")
+        out.append("  no relay contact after the DIRECT decision (no RELAY mode, no leg UP)")
 
-    # 2. The relay itself, if its log was given: it registered nobody.
+    # 2. The relay itself, if its log was given: it carried no peer traffic. The client's browse
+    # registers a directory-only leg (mp:R7b), so peers_registered may be nonzero; `forwarded` counts
+    # datagrams relayed between peers, and a direct connection puts none through it.
     if relay_log:
         body = ANSI_RE.sub("", _read(relay_log))
         if not body:
@@ -139,23 +147,21 @@ def check(peer_dirs, relay_log=None):
                 "relay log %s is empty/absent -- cannot confirm the relay was idle" % relay_log
             )
         else:
+            fwd = COUNTERS_FWD_RE.findall(body)
             regs = COUNTERS_REG_RE.findall(body)
-            peers = COUNTERS_PEERS_RE.findall(body)
-            if not regs:
+            if not fwd:
                 fails.append(
                     "relay log %s has no `counters` line (the relay never reported)" % relay_log
                 )
-            elif int(regs[-1]) != 0:
+            elif int(fwd[-1]) != 0:
                 fails.append(
-                    "relay registered %s peer(s) (peers_registered on its final counters line) -- "
-                    "the relay was contacted; a direct dial with relay_client_only must leave it at 0"
-                    % regs[-1]
+                    "relay forwarded %s datagram(s) (final counters line) -- the connection went "
+                    "through the relay; a direct dial must leave it at 0" % fwd[-1]
                 )
             else:
-                tail_peers = peers[-1] if peers else "?"
                 out.append(
-                    "  relay untouched: peers_registered=0 (final peers=%s) over %d counters line(s)"
-                    % (tail_peers, len(regs))
+                    "  relay carried nothing: forwarded=0 (peers_registered=%s -- the browse leg) "
+                    "over %d counters line(s)" % (regs[-1] if regs else "?", len(fwd))
                 )
 
     for f in fails:
@@ -181,7 +187,18 @@ RELAY_IDLE = (
     "forwarded=0 peers_registered=0 register_refused=0 \"counters\"\n"
 )
 RELAY_BUSY = (
-    '2026-09-19T00:00:10Z  INFO mh_relay counters event="counters" peers=1 rooms=1 leg_rx=8 '
+    '2026-09-19T00:00:10Z  INFO mh_relay counters event="counters" peers=2 rooms=1 leg_rx=8 '
+    "forwarded=6 peers_registered=2 register_refused=0 \"counters\"\n"
+)
+# mp:R7b -- the first browser's directory probe, then the direct dial: relay contact BEFORE the
+# decision, a directory-only registration on the relay, nothing forwarded.
+BROWSE_THEN_DIRECT_LOG = (
+    "net: udp RELAY mode -- 127.0.0.1:7100 room=0 as client\n"
+    "net: udp relay leg UP -- 127.0.0.1:7100 room=0, handle 3\n" + DIRECT_LOG
+)
+DIRECT_THEN_RELAY_LOG = DIRECT_LOG + "net: udp relay leg UP -- 127.0.0.1:7100 room=5, handle 4\n"
+RELAY_BROWSED = (
+    '2026-09-19T00:00:10Z  INFO mh_relay counters event="counters" peers=0 rooms=0 leg_rx=4 '
     "forwarded=0 peers_registered=1 register_refused=0 \"counters\"\n"
 )
 
@@ -194,7 +211,9 @@ def selftest():
         ("a real direct dial, relay idle", DIRECT_LOG, RELAY_IDLE, 0),
         ("the client dialled RELAYED (regression)", RELAYED_LOG, RELAY_IDLE, 1),
         ("no R7a decision at all (pre-R7a build)", NO_DECISION_LOG, RELAY_IDLE, 1),
-        ("direct dial but the relay registered a peer", DIRECT_LOG, RELAY_BUSY, 1),
+        ("direct dial but the relay forwarded traffic", DIRECT_LOG, RELAY_BUSY, 1),
+        ("browse leg first, then a direct dial (R7b)", BROWSE_THEN_DIRECT_LOG, RELAY_BROWSED, 0),
+        ("a relay leg AFTER the direct decision", DIRECT_THEN_RELAY_LOG, RELAY_BROWSED, 1),
         ("direct dial, no relay log given", DIRECT_LOG, None, 0),
     ]
     fails = []

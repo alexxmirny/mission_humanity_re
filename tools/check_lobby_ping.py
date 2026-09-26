@@ -106,6 +106,27 @@ def find_log(target):
     return cands[0]
 
 
+def run_timeline(target):
+    """The target's own mh_net.log followed by those of its later-stamped sibling directories."""
+    target = os.path.abspath(target)
+    if os.path.isfile(target):
+        paths = [target]
+    elif os.path.isfile(os.path.join(target, "mh_net.log")):
+        parent, stamp = os.path.dirname(target), os.path.basename(target)
+        paths = [
+            os.path.join(parent, d, "mh_net.log")
+            for d in sorted(os.listdir(parent))
+            if d >= stamp and os.path.isfile(os.path.join(parent, d, "mh_net.log"))
+        ]
+    else:
+        paths = []
+    parts = []
+    for p in paths:
+        with open(p, "r", encoding="utf-8", errors="replace") as fh:
+            parts.append(fh.read())
+    return NL.join(parts)
+
+
 NL = chr(10)
 GOOD = (
     "[00:00:10.000] ; [lobbyping] slot=1 pid=0 measured=1 srtt_ms=4"
@@ -286,6 +307,30 @@ def selftest():
             ["--agree", "250"],
             1,
         ),
+        (
+            "L1h: the client's cell follows the punch to D",
+            [L1H_CLIENT_FIXED, L1F_HOST],
+            ["--path-follows"],
+            0,
+        ),
+        (
+            "L1h: the client's cell stuck on its relayed dial is caught",
+            [L1H_CLIENT_STALE, L1F_HOST],
+            ["--path-follows"],
+            1,
+        ),
+        (
+            "L1h: a later demotion makes R the truth -- not a failure",
+            [L1H_CLIENT_DEMOTED, L1H_CLIENT_FIXED],
+            ["--path-follows"],
+            0,
+        ),
+        (
+            "L1h: no promotion anywhere -> --path-follows refuses",
+            [L1F_HOST, L1F_CLIENT1],
+            ["--path-follows"],
+            1,
+        ),
     ]
     fails = []
     # ONE ISOLATED TemporaryDirectory PER CASE, not siblings sharing a parent -- find_log() widens a
@@ -375,6 +420,27 @@ def selftest():
     return 0 if not fails else 1
 
 
+# ---- mp:L1h fixtures: a relay-directory join the punch promotes to DIRECT -----------------------
+L1H_CLIENT_FIXED = (
+    "[00:00:09.000] ; [lobbyping] slot=0 pid=0 measured=1 srtt_ms=40 relayed=1 src=self"
+    + NL
+    + "[00:00:09.500] net: udp path DIRECT -- peer 2 via 10.0.0.2:5 after 0 ms of punching (promotion 1)"
+    + NL
+    + "[00:00:10.000] ; [lobbyping] slot=0 pid=0 measured=1 srtt_ms=4 relayed=0 src=self"
+    + NL
+    + "[00:00:12.000] ; [lobbyping] slot=0 pid=0 measured=1 srtt_ms=5 relayed=0 src=self"
+    + NL
+)
+# THE rc3 FIELD SHAPE: the client keeps showing its DIAL (relayed) after the promotion.
+L1H_CLIENT_STALE = L1H_CLIENT_FIXED.replace("relayed=0", "relayed=1")
+# A demotion back to the relay after the promotion: R is then the truth, and the clause stands aside.
+L1H_CLIENT_DEMOTED = (
+    L1H_CLIENT_STALE
+    + "[00:00:13.000] net: udp path RELAY -- peer 2 demoted after 3500 ms direct (demotion 1)"
+    + NL
+)
+
+
 def main():
     if "--selftest" in sys.argv[1:]:
         return selftest()
@@ -410,6 +476,13 @@ def main():
         metavar="MS",
         help="mp:L1f: a published value (src=host) for player P must sit within MS of what the "
         "peer that measured P itself (src=self) reported for it",
+    )
+    ap.add_argument(
+        "--path-follows",
+        action="store_true",
+        help="mp:L1h: in each log that promoted (`net: udp path DIRECT`) with no later demotion, the "
+        "LAST own-measured (src=self) sample after the promotion reads relayed=0 -- the cell follows "
+        "the live path, not the dial; at least one log must have promoted",
     )
     a = ap.parse_args()
 
@@ -584,6 +657,41 @@ def main():
                     max(int(s[3]) for s in measured),
                 )
             )
+
+    if a.path_follows:
+        # mp:L1h -- the rc3 field lobby: the client dialled through the relay directory, the punch
+        # promoted the link to direct 12 s before its first sample, and its cell said "R" for the
+        # whole lobby while the host's said "D". Read each log in order; only a log whose LAST path
+        # event is a promotion has a claim to make.
+        # ONE TIMELINE PER TARGET: the promotion is logged in the process ("menu") dir's mh_net.log
+        # and the lobby samples can land in the match SESSION dir beside it, so read the target's
+        # own log plus its later-stamped siblings, in stamp order (check_browser_rows.run_logs).
+        promoted_logs = 0
+        for p, t in ((tg, run_timeline(tg)) for tg in a.targets):
+            last_direct = t.rfind("net: udp path DIRECT")
+            if last_direct < 0 or t.rfind("net: udp path RELAY") > last_direct:
+                continue
+            promoted_logs += 1
+            after = [s for s in SAMPLE_RE.findall(t[last_direct:]) if s[5] == "self" and s[4] != ""]
+            after = [s for s in after if int(s[2]) != 0]
+            if not after:
+                fails.append(
+                    "--path-follows: %s promoted to DIRECT but wrote no own-measured sample after it"
+                    % p
+                )
+            elif int(after[-1][4]) != 0:
+                fails.append(
+                    "--path-follows: %s promoted to DIRECT and its last own sample after that still "
+                    "says relayed=%s -- the cell shows the DIAL, not the live path"
+                    % (p, after[-1][4])
+                )
+            else:
+                print(
+                    "  path-follows: %s reads D after its promotion (%d sample(s))"
+                    % (p, len(after))
+                )
+        if promoted_logs == 0:
+            fails.append("--path-follows: no log shows a standing `net: udp path DIRECT` promotion")
 
     for f in fails:
         print("FAIL: %s" % f)

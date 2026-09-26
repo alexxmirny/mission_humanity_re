@@ -1,7 +1,7 @@
 # mp:D28 HOST walk -- the building dialog's "cancel task -> Yes" applies llm_bldg_finish_current_order
 # LOCALLY (no order) -- the D25 root classification's latent sibling.
 #
-# Same host-and-launch + mother-landing walk as mp_host_buildclick.txt; then, in the live match, this
+# Same host-and-launch + mother-landing walk as mp_host_clicks.txt; then, in the live match, this
 # peer puts its OWN mothership (already complete/operational the instant it lands -- unlike a freshly
 # PLACED building, which needs a real construction-time wait before ANY other task can start on it:
 # measured, a repair order issued on a still-CONSTRUCTION building is silently absorbed, no state
@@ -65,10 +65,7 @@ gameclock 20000
 capture landed
 
 # select the mother (its footprint is centred close to the deploy point, (480,330) on this camera).
-cursor 500 330
-cursor 500 330
-press 500 330
-release 500 330
+simclick 500 330
 gameclock 20200
 capture mother_selected
 dump
@@ -88,10 +85,7 @@ capture mother_damaged
 
 # the repair icon (red circle in the selected-panel's icon column): unconditionally compares energy
 # to max and orders upgrade (if available) or repair_cycle_start (if energy < max, which it now is).
-cursor 882 260
-cursor 882 260
-press 882 260
-release 882 260
+simclick 882 260
 gameclock 21000
 capture after_repair_click
 
@@ -101,24 +95,26 @@ capture after_repair_click
 # want to cancel repair ?" with `&Yes` (value 121) and `Ok` (value 0, the MOTHER close-button
 # variant) -- exactly D28's target.
 gameclock 27000
-cursor 500 330
-cursor 500 330
-press 500 330
-release 500 330
+simclick 500 330
 gameclock 27200
-cursor 882 271
-cursor 882 271
-press 882 271
-release 882 271
+simclick 882 271
+# a lost click here left `settled value:121` waiting out the kill (wave-3 gate): the clicks are
+# `simclick`s now, and `retry` re-sends the reselect + status clicks if the sim runs 1.5 s without
+# the dialog (TL-GATE-LOADFLAKE-0925).
+retry 1500 3 3 settled value:121
+# the dialog's list goes active a frame or more before it is drawn (a capture right after
+# `settled` once showed the bare map): let the sim and the screen move on first.
 gameclock 27400
+screensettled
 capture status_dialog
 dump
 
 # THE TRIGGER: &Yes. The seam splices this callback so, in a lockstep match, it issues the
 # equivalent building order instead of the retail local call.
-settled value:121
 clickv 121
-absent Ok
+# 2 of 9 rig runs: the dialog's list went active but the dialog was never drawn and ignored Yes
+# (a capture showed the bare map); re-open it from the reselect if `Ok` has not gone.
+retry 1500 9 3 absent Ok
 gameclock 28000
 capture after_yes
 log HOST cancelled the mother's repair task via the confirm dialog's &Yes

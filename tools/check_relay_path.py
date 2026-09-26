@@ -132,41 +132,47 @@ def main():
     if "--selftest" in sys.argv[1:]:
         return selftest()
     ap = argparse.ArgumentParser()
-    ap.add_argument("target", help="a session run dir (or a lane dir above one), or an mh_net.log")
+    # mp:L1h -- one or MORE targets (relay_punch hands over every peer's dir since it also runs the
+    # lobby-ping path clause); the claim is asserted on EACH, and both ends of a punch log it.
+    ap.add_argument(
+        "targets", nargs="+", help="session run dir(s) (or lane dirs above one), or mh_net.log(s)"
+    )
     a = ap.parse_args()
 
-    log = find_log(a.target)
-    if not log:
-        print("REFUSED: no mh_net.log at or under %s" % a.target)
-        return 2
-    with open(log, "r", encoding="utf-8", errors="replace") as f:
-        text = f.read()
-
-    promotions = DIRECT_RE.findall(text)
-    demotions = DEMOTED_RE.findall(text)
-    forced = FORCED_NEEDLE in text
-    print(
-        "read %s: %d DIRECT promotion(s), %d demotion(s), forced=%s"
-        % (log, len(promotions), len(demotions), forced)
-    )
-
     fails = []
-    if not promotions:
-        if forced:
-            fails.append(
-                "no `net: udp path DIRECT` line, and the log shows `%s` -- this lane is PINNED to "
-                "the relay (force_relay=1) and never even attempts to promote. That is the correct "
-                "behaviour for a force_relay lane, and the wrong one for relay_punch."
-                % FORCED_NEEDLE
-            )
+    for target in a.targets:
+        log = find_log(target)
+        if not log:
+            print("REFUSED: no mh_net.log at or under %s" % target)
+            return 2
+        with open(log, "r", encoding="utf-8", errors="replace") as f:
+            text = f.read()
+
+        promotions = DIRECT_RE.findall(text)
+        demotions = DEMOTED_RE.findall(text)
+        forced = FORCED_NEEDLE in text
+        print(
+            "read %s: %d DIRECT promotion(s), %d demotion(s), forced=%s"
+            % (log, len(promotions), len(demotions), forced)
+        )
+        if not promotions:
+            if forced:
+                fails.append(
+                    "%s: no `net: udp path DIRECT` line, and the log shows `%s` -- this lane is "
+                    "PINNED to the relay (force_relay=1) and never even attempts to promote. That is "
+                    "the correct behaviour for a force_relay lane, and the wrong one for relay_punch."
+                    % (log, FORCED_NEEDLE)
+                )
+            else:
+                fails.append(
+                    "%s: no `net: udp path DIRECT` line -- the pair never promoted off the relay (no "
+                    "force_relay marker either, so this is not the pinned case: the punch simply did "
+                    "not complete)" % log
+                )
         else:
-            fails.append(
-                "no `net: udp path DIRECT` line -- the pair never promoted off the relay (no "
-                "force_relay marker either, so this is not the pinned case: the punch simply did "
-                "not complete)"
+            print(
+                "  promoted: peer %s via %s after %s ms of punching (promotion %s)" % promotions[0]
             )
-    else:
-        print("  promoted: peer %s via %s after %s ms of punching (promotion %s)" % promotions[0])
 
     for f in fails:
         print("FAIL: %s" % f)

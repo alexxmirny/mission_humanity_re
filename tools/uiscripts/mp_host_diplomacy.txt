@@ -1,6 +1,6 @@
 # mp:U39 HOST walk -- the DIPLOMACY dialog's optimistic relation echo.
 #
-# Same host-and-launch walk as mp_host_buildclick.txt; then, in the live match, this peer opens the
+# Same host-and-launch walk as mp_host_clicks.txt; then, in the live match, this peer opens the
 # in-game menu (ESC) and its Diplomacy entry (value 100, dumped 2026-08-27 by d15_exit_witness.txt),
 # ticks "allied" for the client and presses Ok. llm_ui_diplomacy_apply_and_resume (0x004c7fc6) both
 # ISSUES order 0xf4 and writes Players[PlayerSide].relation[j] DIRECTLY on the clicking peer -- so
@@ -40,12 +40,10 @@ capture ingame
 # open -- the local write and the order both happen at Ok). The client's row is widget [2]
 # 'client' (the ALLIED checkbox at (483,289), dumped 2026-09-21), [3] vision, [4] msgs; Ok is [5].
 # ESC by keystroke was missed once in four runs (the down+up lands on one frame); the HUD "Menu"
-# button is a physical click spread over presents, like the build-menu clicks in mp_host_buildclick.
-cursor 972 150
-cursor 972 150
-press 972 150
-release 972 150
-settled value:100
+# button is a `simclick` (held across sim steps); `retry` re-sends it if the sim runs 1.5 s without
+# the menu (TL-GATE-LOADFLAKE-0925: an unretried press/release was lost under suite load).
+simclick 972 150
+retry 1500 1 3 settled value:100
 clickv 100
 absent value:113
 dump
@@ -66,11 +64,8 @@ log HOST applied allied=1 for the client through the diplomacy dialog
 # on. Reopened well AFTER the commit it must show the box TICKED: the value came back through the
 # order, on both peers. Then Cancel, and the match runs on for the analyzer.
 gameclock 8000
-cursor 972 150
-cursor 972 150
-press 972 150
-release 972 150
-settled value:100
+simclick 972 150
+retry 1500 1 3 settled value:100
 clickv 100
 absent value:113
 capture reopened_after_commit

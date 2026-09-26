@@ -655,6 +655,7 @@ void load_state(mh::state::state_source &src) { detail::load_state(state(), src)
 // byte-identical. Anything else this module touches (PENDING, STAGING, the scratch args, the
 // horizon) is deliberately NOT claimed: they are absent from the save format, and claiming a region
 // means promising a canonical stream for it -- a promise worth making only where a consumer asks.
+// HASH-INPUT BEGIN orders_emit_region (tools/data/hash_input_epoch.json)
 void emit_region(mh::state::region_id rid, mh::state::state_sink &s) {
     const container_state &st = state();
     if (rid == mh::state::RID_STRAT_ORDER_QUEUE) {
@@ -678,6 +679,7 @@ void emit_region(mh::state::region_id rid, mh::state::state_sink &s) {
     } else if (rid == mh::state::RID_STRAT_ORDER_QUEUE_COUNT)
         s.bytes(st.queue_count, (uint32_t)sizeof(int32_t));
 }
+// HASH-INPUT END orders_emit_region
 
 void load_region(mh::state::region_id rid, mh::state::state_source &src) {
     const container_state &st = state();

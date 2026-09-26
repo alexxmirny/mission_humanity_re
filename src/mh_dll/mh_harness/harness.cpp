@@ -49,6 +49,7 @@
 #include "config/ini_read.h"                // TL-HARN4: read_ini_string -- strips a trailing `;comment`
 #include "mh_net_export.h"                  // U30(b): MH_Net_Send -- the garbled-frame injector below
 #include "mh_net_module.h"                  // mp:X1b: the three snapshot rows + MH_NetSnapshotStatus
+#include "mh_version.h"                     // TL-GATE8: MH_VERSION_FULL on the HASH FINGERPRINT line
 #include "addr/mh_addrs.gen.h"              // generated EN VAs (tools/gen_dll_addrs.py)
 #include "addr/mh_structs.gen.h"            // generated struct mirrors (llm_strat_player_profile -- D6)
 #include "addr/mh_calls.gen.h"              // generated typed callables + __watcall thunks (P0-CALLS)
@@ -662,6 +663,21 @@ struct Config {
     // key writes the same clock it always did. Proven rather than asserted -- a 300-step sp_det record
     // before and after the split produced byte-identical mh_clock.bin AND mh_orders.bin.
     int clock_record = 0;
+    // [harness] match_segment -- mp:SES7: while a MATCH session is open, ALSO write that match's own
+    // recording into its session folder (mh_match_harness.log / _orders.bin / _clock.bin / _seed.bin;
+    // see seg_tick). Default ON: it is the half of the recording a bug report's match folder is read
+    // for. 0 = the process files only, exactly as before SES7.
+    int match_segment = 1;
+    // [harness] verdict_snap_every / verdict_snap_max -- mp:SES7b: write the desync watch's full-state
+    // snapshot (mh_desync_snap_<step>.bin, the MHSN VERDICT stream tools/mp_desync_snap_diff.py
+    // reads) at every harness step divisible by `verdict_snap_every`, at most `verdict_snap_max`
+    // times. A match's desync snapshots are taken on the lockstep step axis at multiples of 400; a
+    // REPLAY of that match (tools/replay_match_segment.py) arms this with the same cadence, so the
+    // replay's dump and the recording's can be byte-diffed region by region -- the only way to NAME
+    // the region a replay diverges in when the recording's log has no `R` lines (a player's
+    // region_hash_step=0). Observe-only: written after the step's hash, never read back. 0 = off.
+    int verdict_snap_every = 0;
+    int verdict_snap_max   = 8;
     // [harness] replay_isolate_input -- while a journal replay is armed, suppress the GAME's own
     // input-ring producer (llm_input_wndproc_tap) so the journal is the only writer. Default ON,
     // because a replay with two producers is not a replay of the recorded input; `=0` is the
@@ -1222,6 +1238,52 @@ char  *g_log_buf        = nullptr;
 DWORD  g_log_used       = 0;
 DWORD  g_log_last_flush = 0;
 
+// ---- mp:SES7: the MATCH MIRROR of this log (mh_match_harness.log) -----------------------------
+//
+// While a match session is open (seg_tick, below), every line written to g_log_path is ALSO written
+// to the session folder's mh_match_harness.log, so a report's match folder carries the match's own
+// per-step hashes instead of pointing at a process-wide file that the launcher's 8 MB tail cap cuts
+// from the front on a long process. A SECOND buffer and a SECOND held handle, not a path swap on the
+// one writer: constraint 4 above would flush-and-reopen on every alternating line.
+//
+// Only lines addressed to g_log_path ITSELF are mirrored (a pointer compare -- every hash/report call
+// site passes the array), so a line some caller sends to another file never lands in the match log.
+// mh.dll's own handful of unbuffered lines (core_arm.cpp append_line_once) are not mirrored: they are
+// arm-time facts written before any match exists.
+//
+// SIZE: UNCAPPED, deliberately (user decision 2026-09-26). The match's file is written whole. SES7
+// first rotated it at 7 MB (one ".prev" generation) to fit the launcher report's old 8 MB per-file
+// cap, which kept only the newest part of a long match. The report packager now budgets the
+// COMPRESSED zip instead (the launcher's report.rs) and trims least-important folders first, so the writer
+// no longer pre-cuts what a report may need. A match's file is bounded by the match's own length.
+HANDLE g_seg_log_h = INVALID_HANDLE_VALUE;
+char   g_seg_log[MAX_PATH];
+char  *g_seg_buf  = nullptr;
+DWORD  g_seg_used = 0;
+
+void seg_write_through(const char *p, DWORD n) {
+    if (g_seg_log_h == INVALID_HANDLE_VALUE || n == 0) return;
+    DWORD wrote = 0;
+    WriteFile(g_seg_log_h, p, n, &wrote, nullptr);
+}
+
+void seg_log_flush() {
+    if (g_seg_used) seg_write_through(g_seg_buf, g_seg_used);
+    g_seg_used = 0;
+}
+
+void seg_mirror(const char *s, DWORD n) {
+    if (g_seg_log_h == INVALID_HANDLE_VALUE) return;
+    if (!g_seg_buf || n >= LOG_BUF) { // no buffer, or a line larger than it: straight through, in order
+        seg_log_flush();
+        seg_write_through(s, n);
+        return;
+    }
+    if (g_seg_used + n > LOG_BUF) seg_log_flush();
+    for (DWORD i = 0; i < n; ++i) g_seg_buf[g_seg_used + i] = s[i];
+    g_seg_used += n;
+}
+
 void log_flush() {
     if (g_log_h != INVALID_HANDLE_VALUE && g_log_used) {
         DWORD wrote = 0;
@@ -1229,6 +1291,7 @@ void log_flush() {
     }
     g_log_used       = 0;
     g_log_last_flush = GetTickCount();
+    seg_log_flush(); // mp:SES7: the match mirror shares the timer and every explicit flush point
 }
 
 // Constraint 1's other half (fork F4G): flush IF the timer says so, called from somewhere that runs
@@ -1264,6 +1327,7 @@ void append_line(const char *path, const char *s) {
         lstrcpynA(g_log_path_open, path, MAX_PATH);
     }
     const DWORD n = (DWORD)lstrlenA(s);
+    if (path == g_log_path) seg_mirror(s, n); // mp:SES7: no-op unless a match segment is open
     if (n >= LOG_BUF) { // a line larger than the buffer: write it straight through, in order
         log_flush();
         DWORD wrote = 0;
@@ -1387,6 +1451,9 @@ void load_config() {
     g_cfg.replay_ai_off           = GetPrivateProfileIntA("harness", "replay_ai_off", g_cfg.replay_ai_off, g_ini_path);
     g_cfg.replay_suppress_enqueue = GetPrivateProfileIntA("harness", "replay_suppress_enqueue", g_cfg.replay_suppress_enqueue, g_ini_path);
     g_cfg.clock_record            = GetPrivateProfileIntA("harness", "clock_record", g_cfg.clock_record, g_ini_path);
+    g_cfg.match_segment           = GetPrivateProfileIntA("harness", "match_segment", g_cfg.match_segment, g_ini_path);
+    g_cfg.verdict_snap_every      = GetPrivateProfileIntA("harness", "verdict_snap_every", g_cfg.verdict_snap_every, g_ini_path);
+    g_cfg.verdict_snap_max        = GetPrivateProfileIntA("harness", "verdict_snap_max", g_cfg.verdict_snap_max, g_ini_path);
     g_cfg.replay_isolate_input    = GetPrivateProfileIntA("harness", "replay_isolate_input", g_cfg.replay_isolate_input, g_ini_path);
     g_cfg.order_log               = GetPrivateProfileIntA("harness", "order_log", g_cfg.order_log, g_ini_path);
     g_cfg.rng_perturb_slot        = GetPrivateProfileIntA("harness", "rng_perturb_slot", g_cfg.rng_perturb_slot, g_ini_path);
@@ -1563,8 +1630,8 @@ void config1_refuse_spine_keys() {
 // ---- seed blob (dump/inject) --------------------------------------------------------------------
 // Format: raw concatenation of every region in manifest order. Fixed layout, so dump and inject
 // agree by construction as long as the manifest is identical (it is -- same binary).
-void seed_dump() {
-    HANDLE h = CreateFileA(g_seed_out, GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS,
+void seed_dump_to(const char *path) { // mp:SES7: the match segment dumps the same blob elsewhere
+    HANDLE h = CreateFileA(path, GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS,
                            FILE_ATTRIBUTE_NORMAL, nullptr);
     if (h == INVALID_HANDLE_VALUE) return;
     // ST6 phase 1: through the sink, in PERSIST mode -- everything, nothing masked. Identical bytes
@@ -1580,6 +1647,7 @@ void seed_dump() {
     for (int i = 0; i < N_REGIONS; ++i) mh::state::emit_slice(i, sink);
     CloseHandle(h);
 }
+void seed_dump() { seed_dump_to(g_seed_out); }
 
 void seed_inject() {
     HANDLE h = CreateFileA(g_seed_path, GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING,
@@ -2528,6 +2596,213 @@ void world_import_at_run(void) {
                      "snapshot_poll_now -- see its comment)");
 }
 
+// ---- mp:SES7: the per-MATCH recording segment --------------------------------------------------
+//
+// THE PROBLEM. Every harness output is PROCESS-scoped (core_arm.cpp build_paths; the paths are
+// copied once at MH_Harness_Init). A player who plays several matches without restarting, or one long
+// one after a long menu phase, therefore has ONE mh_harness.log / mh_orders.bin / mh_clock.bin in the
+// process ("menu") folder, and the match folder a bug report is about carries no recording of its
+// own -- and a text log past 8 MB is tail-cut by the launcher's packager.
+//
+// THE SHAPE. The process files are UNCHANGED (every existing consumer -- the determinism gate,
+// mp_analyze's session-then-process discover, UI-REC, mp_run, the fixture tools -- reads them where
+// it always did). IN ADDITION, while MH_RunDir() names a session folder, the harness writes that
+// match's own copy there, under names no existing tool reads (so nothing downstream can mistake a
+// segment for the process stream or double-count it):
+//
+//   mh_match_harness.log  every g_log_path line written while the session is open (the per-step
+//                         hashes), plus an OPEN/CLOSE header that states the step mapping. Step
+//                         numbers in it are the PROCESS's -- it is a slice of mh_harness.log.
+//   mh_match_orders.bin   order_mode=1 only. The mh_orders.bin format (MHOR v1), steps RENUMBERED to
+//                         the match's own axis (match step 1 = the first step the session was open).
+//   mh_match_clock.bin   order_mode=1 or clock_record. The mh_clock.bin format (raw doubles,
+//                         track[0] = match step 1).
+//   mh_match_seed.bin     order_mode=1 with seed_mode=0. The mh_harness_seed.bin blob, dumped at the
+//                         match's first step at exactly the point the process dumps its own at
+//                         seed_step -- pre-body, after ++g_step.
+//
+// So the three .bin files are the replay path's three INPUTS in their own formats on the match's own
+// step axis (match step k = process step step_base + k): copied next to mh.exe as mh_orders.bin /
+// mh_clock.bin / mh_harness_seed.bin they are what `seed_mode=1 order_mode=2` loads. mp:SES7b
+// PROVED it: a rematch's segment (match 2 of its process) replays in a fresh single process,
+// in configuration (1) and (2), with every recorded step's state hash IDENTICAL --
+// tools/replay_match_segment.py does the staging, the walk and the compare.
+//
+// DETECTION. One MH_RunDir() read per sim step (an existing host row -- no contract change) compared
+// against the process folder derived from g_log_path. The directory string is rewritten by the
+// session transition in mh.dll; reading it twice and requiring agreement keeps a torn read from ever
+// becoming a path. NOTHING is written into the process mh_harness.log by the open: the match's first
+// step is inside check_arm_order's gated window (its end marker is emitted later in that same step),
+// and an extra structural line there would red every harness-armed arm-order baseline.
+char     g_proc_dir_h[MAX_PATH]; // the process folder, from g_log_path (lazily)
+char     g_seg_dir[MAX_PATH];    // the session folder the open segment lives in; "" = no segment
+char     g_seg_orders[MAX_PATH], g_seg_clock[MAX_PATH], g_seg_seed[MAX_PATH];
+HANDLE   g_seg_rec_h    = INVALID_HANDLE_VALUE;
+HANDLE   g_seg_clock_h  = INVALID_HANDLE_VALUE;
+uint32_t g_seg_base     = 0; // process step before the match's first step
+uint32_t g_seg_orders_n = 0;
+
+void seg_leaf(const char *dir, char *out, int cap) { // "...\<leaf>\" -> "<leaf>"
+    int n = lstrlenA(dir);
+    if (n > 0 && (dir[n - 1] == '\\' || dir[n - 1] == '/')) --n;
+    int s = n;
+    while (s > 0 && dir[s - 1] != '\\' && dir[s - 1] != '/') --s;
+    int len = n - s;
+    if (len >= cap) len = cap - 1;
+    for (int i = 0; i < len; ++i) out[i] = dir[s + i];
+    out[len < 0 ? 0 : len] = '\0';
+}
+
+void seg_close(const char *why) {
+    if (!g_seg_dir[0]) return;
+    char line[320];
+    wsprintfA(line,
+              "; [match] segment CLOSE at process step %lu -- %lu match step(s), %lu order record(s); %s\n",
+              g_step, g_step > g_seg_base ? g_step - g_seg_base : 0ul, g_seg_orders_n, why);
+    seg_mirror(line, (DWORD)lstrlenA(line));
+    seg_log_flush();
+    if (g_seg_log_h != INVALID_HANDLE_VALUE) CloseHandle(g_seg_log_h);
+    if (g_seg_rec_h != INVALID_HANDLE_VALUE) CloseHandle(g_seg_rec_h);
+    if (g_seg_clock_h != INVALID_HANDLE_VALUE) CloseHandle(g_seg_clock_h);
+    g_seg_log_h = g_seg_rec_h = g_seg_clock_h = INVALID_HANDLE_VALUE;
+    g_seg_dir[0]                              = '\0';
+}
+
+void seg_open(const char *dir) {
+    lstrcpynA(g_seg_dir, dir, MAX_PATH);
+    g_seg_base      = g_step - 1; // called after ++g_step: THIS step is match step 1
+    g_seg_orders_n  = 0;
+    wsprintfA(g_seg_log, "%smh_match_harness.log", dir);
+    wsprintfA(g_seg_orders, "%smh_match_orders.bin", dir);
+    wsprintfA(g_seg_clock, "%smh_match_clock.bin", dir);
+    wsprintfA(g_seg_seed, "%smh_match_seed.bin", dir);
+    if (!g_seg_buf) g_seg_buf = (char *)VirtualAlloc(nullptr, LOG_BUF, MEM_COMMIT, PAGE_READWRITE);
+    g_seg_log_h = CreateFileA(g_seg_log, FILE_APPEND_DATA, FILE_SHARE_READ, nullptr, OPEN_ALWAYS,
+                              FILE_ATTRIBUTE_NORMAL, nullptr);
+    if (g_seg_log_h != INVALID_HANDLE_VALUE) SetFilePointer(g_seg_log_h, 0, nullptr, FILE_END);
+    const bool rec   = g_cfg.order_mode == 1;
+    const bool clock = rec || g_cfg.clock_record;
+    const bool seed  = rec && g_cfg.seed_mode == 0;
+    if (rec) {
+        g_seg_rec_h = CreateFileA(g_seg_orders, GENERIC_WRITE, FILE_SHARE_READ, nullptr, CREATE_ALWAYS,
+                                  FILE_ATTRIBUTE_NORMAL, nullptr);
+        if (g_seg_rec_h != INVALID_HANDLE_VALUE) {
+            struct {
+                uint32_t magic, ver;
+            } hdr = {ORDERS_MAGIC, 1};
+            DWORD w;
+            WriteFile(g_seg_rec_h, &hdr, sizeof(hdr), &w, nullptr);
+        }
+    }
+    if (clock)
+        g_seg_clock_h = CreateFileA(g_seg_clock, GENERIC_WRITE, FILE_SHARE_READ, nullptr, CREATE_ALWAYS,
+                                    FILE_ATTRIBUTE_NORMAL, nullptr);
+    if (seed) seed_dump_to(g_seg_seed);
+    char proc_leaf[96], seg_leaf_s[96];
+    seg_leaf(g_proc_dir_h, proc_leaf, sizeof(proc_leaf));
+    seg_leaf(dir, seg_leaf_s, sizeof(seg_leaf_s));
+    char line[900];
+    wsprintfA(line,
+              "; [match] segment OPEN %s at process step %lu: match step k = process step %lu+k "
+              "(step_base=%lu). Hash lines below carry PROCESS step numbers; mh_match_orders.bin=%s "
+              "mh_match_clock.bin=%s mh_match_seed.bin=%s carry MATCH step numbers (replay inputs: "
+              "copy them next to mh.exe as mh_orders.bin / mh_clock.bin / mh_harness_seed.bin). "
+              "Arm-time lines are in ..\\%s\\mh_harness.log\n",
+              seg_leaf_s, g_step, g_seg_base, g_seg_base, rec ? "yes" : "no", clock ? "yes" : "no",
+              seed ? "yes" : "no", proc_leaf);
+    seg_mirror(line, (DWORD)lstrlenA(line));
+}
+
+// Once per sim step, from on_sim_step right after the process's own seed_step block.
+void seg_tick() {
+    if (!g_cfg.match_segment) return;
+    if (!g_proc_dir_h[0]) {
+        if (!g_log_path[0]) return;
+        lstrcpynA(g_proc_dir_h, g_log_path, MAX_PATH);
+        char *slash = nullptr;
+        for (char *p = g_proc_dir_h; *p; ++p)
+            if (*p == '\\' || *p == '/') slash = p;
+        if (!slash) {
+            g_proc_dir_h[0] = '\0';
+            return;
+        }
+        slash[1] = '\0';
+    }
+    const char *d = MH_RunDir();
+    if (d == nullptr) return;
+    char cur[MAX_PATH];
+    lstrcpynA(cur, d, MAX_PATH);
+    if (lstrcmpiA(cur, d) != 0) return; // the folder is being switched this instant: next step decides
+    const bool in_session = lstrcmpiA(cur, g_proc_dir_h) != 0;
+    if (g_seg_dir[0] && (!in_session || lstrcmpiA(cur, g_seg_dir) != 0))
+        seg_close(in_session ? "a new session opened" : "the session closed");
+    if (in_session && !g_seg_dir[0]) seg_open(cur);
+}
+
+// ---- mp:SES7b: the desync watch's snapshot, on demand -------------------------------------------
+// The MHSN format of desync_watch.cpp do_snapshot, written here from the harness's own step counter
+// so a single-process REPLAY (no session, no desync detector) can dump the same bytes at the same
+// match step the recording's peers did. Header {magic 'MHSN', ver 1, step, region_count,
+// manifest_fp}, then per hash slice {u32 len, VERDICT stream}. The fingerprint is computed exactly as
+// the detector's (desync_watch.h manifest_fingerprint over names/lens/excluded), so
+// mp_desync_snap_diff.py pairs a replay's file with a recorded one.
+int g_verdict_snaps = 0;
+
+void verdict_snap_tick() {
+    if (g_cfg.verdict_snap_every <= 0 || g_verdict_snaps >= g_cfg.verdict_snap_max) return;
+    if (g_step == 0 || (g_step % (uint32_t)g_cfg.verdict_snap_every) != 0) return;
+    ++g_verdict_snaps;
+    const char *dir = MH_RunDir();
+    char        path[MAX_PATH];
+    wsprintfA(path, "%smh_desync_snap_%lu.bin", dir ? dir : "", g_step);
+    HANDLE h = CreateFileA(path, GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
+    if (h == INVALID_HANDLE_VALUE) return;
+    const char *names[N_REGIONS];
+    uint32_t    lens[N_REGIONS];
+    bool        excl[N_REGIONS];
+    for (int i = 0; i < N_REGIONS; ++i) {
+        names[i] = REGIONS[i].name;
+        lens[i]  = REGIONS[i].len;
+        excl[i]  = REGIONS[i].excluded;
+    }
+    struct {
+        uint32_t magic, ver, step, region_count;
+        uint64_t manifest_fp;
+    } hdr = {0x4e53484du, 1, g_step, (uint32_t)N_REGIONS,
+             mh::desync::manifest_fingerprint(names, lens, excl, N_REGIONS)};
+    DWORD w = 0;
+    WriteFile(h, &hdr, sizeof(hdr), &w, nullptr);
+    struct ctx_t {
+        HANDLE   h;
+        uint32_t n;
+    };
+    for (int i = 0; i < N_REGIONS; ++i) {
+        // the length prefix first (patched after), then the region's VERDICT stream
+        const DWORD at = SetFilePointer(h, 0, nullptr, FILE_CURRENT);
+        uint32_t    zero = 0;
+        WriteFile(h, &zero, sizeof(zero), &w, nullptr);
+        ctx_t              c = {h, 0};
+        mh::state::fn_sink out(
+            mh::state::sink_mode::VERDICT,
+            [](void *ctx, const void *p, uint32_t n) {
+                ctx_t *k = static_cast<ctx_t *>(ctx);
+                DWORD  ww = 0;
+                WriteFile(k->h, p, n, &ww, nullptr);
+                k->n += n;
+            },
+            &c);
+        mh::state::emit_slice(i, out);
+        const DWORD end = SetFilePointer(h, 0, nullptr, FILE_CURRENT);
+        SetFilePointer(h, (LONG)at, nullptr, FILE_BEGIN);
+        WriteFile(h, &c.n, sizeof(c.n), &w, nullptr);
+        SetFilePointer(h, (LONG)end, nullptr, FILE_BEGIN);
+    }
+    CloseHandle(h);
+    char line[MAX_PATH + 96];
+    wsprintfA(line, "; [verdict-snap] step=%lu -> %s\n", g_step, path);
+    append_line(g_log_path, line);
+}
+
 // ---- order record/replay (Phase 2) --------------------------------------------------------------
 // Record: at order_queue_dispatch entry the QUEUE holds exactly the orders about to execute this
 // step (post release_due, pre compaction). Snapshot QUEUE[0..COUNT], tag with g_step, append.
@@ -2554,6 +2829,11 @@ void order_record() {
         memcpy(r.order, q + (size_t)i * ORDER_SIZE, ORDER_SIZE);
         DWORD w;
         WriteFile(g_rec_h, &r, sizeof(r), &w, nullptr);
+        if (g_seg_rec_h != INVALID_HANDLE_VALUE) { // mp:SES7: the match's copy, on the match's step axis
+            r.step = g_step - g_seg_base;
+            WriteFile(g_seg_rec_h, &r, sizeof(r), &w, nullptr);
+            ++g_seg_orders_n;
+        }
     }
 }
 
@@ -2599,6 +2879,8 @@ void clock_record(uint64_t clock_bits) {
     }
     DWORD w;
     WriteFile(g_clock_h, &clock_bits, sizeof(clock_bits), &w, nullptr);
+    if (g_seg_clock_h != INVALID_HANDLE_VALUE) // mp:SES7: track[0] = match step 1
+        WriteFile(g_seg_clock_h, &clock_bits, sizeof(clock_bits), &w, nullptr);
 }
 
 void clock_load() {
@@ -2982,6 +3264,7 @@ int g_inject_arrivals = 0; // steps that injected at least one record
 int g_inject_set_ok   = 0; // ... of those, where the count read back as the number injected
 int g_inject_no_set   = 0; // ... and where it did not: the append-without-set shape, the real class
 
+// HASH-INPUT BEGIN harness_order_replay_inject (tools/data/hash_input_epoch.json)
 void order_replay_inject() {
     if (g_cfg.replay_ai_off && !g_ai_zeroed) {
         zero_ai_enabled_all();
@@ -3008,6 +3291,7 @@ void order_replay_inject() {
     }
     g_replay_injected = n;
 }
+// HASH-INPUT END harness_order_replay_inject
 
 // ---- P0-SPDET: the deterministic wall clock ------------------------------------------------------
 // Advanced once per sim_tick (one per frame -- llm_strat_frame calls time_tick and sim_tick as
@@ -4855,10 +5139,12 @@ void hash_fingerprint_report() {
     b.raw(VEC, 3);
     b.raw(VEC + 3, 8);
     b.raw(VEC + 11, 10);
-    char m[160];
-    wsprintfA(m, "; HASH FINGERPRINT %08X%08X split=%s\n", (uint32_t)(a.finish() >> 32),
-              (uint32_t)(a.finish() & 0xffffffffu),
-              a.finish() == b.finish() ? "ok" : "BROKEN");
+    // input_epoch + build: what stored artifacts stamp and consumers refuse on (TL-GATE8).
+    char m[224];
+    wsprintfA(m, "; HASH FINGERPRINT %08X%08X split=%s input_epoch=%lu build=%s\n",
+              (uint32_t)(a.finish() >> 32), (uint32_t)(a.finish() & 0xffffffffu),
+              a.finish() == b.finish() ? "ok" : "BROKEN",
+              (unsigned long)mh::state::HASH_INPUT_EPOCH, MH_VERSION_FULL);
     append_line(g_log_path, m);
 }
 
@@ -7223,6 +7509,7 @@ void exit_after_body_if_latched() {
     ExitProcess(0);
 }
 
+// HASH-INPUT BEGIN harness_on_sim_step_prehash (tools/data/hash_input_epoch.json)
 void on_sim_step() {
     exit_after_body_if_latched();        // LIB-REF-REC: the stop step's body has now run
     g_tj_last_step_ms = GetTickCount();  // UI-REC idle watchdog -- see ui_journal_present
@@ -7312,6 +7599,10 @@ void on_sim_step() {
         else seed_inject();
         g_seed_done = true;
     }
+    // mp:SES7: open/close the per-match segment. HERE, after the process's own seed block, so a
+    // match's mh_match_seed.bin is taken at the same point in its first step as mh_harness_seed.bin
+    // is in the process's -- and before anything below stages an order or records the clock.
+    seg_tick();
 
     // D6: synthetic moving-unit workload (see the block above). Issued BEFORE the hash so the order
     // is staged on the same step on every peer; it takes effect later via the scheduled lockstep lane.
@@ -7605,6 +7896,7 @@ void on_sim_step() {
         combined = fnv1a(&per[i], sizeof(per[i]), combined); // fold region hashes in order
         if (!state_excluded(i)) state = fnv1a(&per[i], sizeof(per[i]), state);
     }
+    // HASH-INPUT END harness_on_sim_step_prehash
 
     // D21: hand the runtime desync detector THIS hash rather than making it walk the same 2.79 MB a
     // second time. It is the same boundary and the same manifest order, so the number it puts on the
@@ -7649,6 +7941,7 @@ void on_sim_step() {
         }
     }
     mh::desync::on_sim_step_hashed(per, N_REGIONS, state);
+    verdict_snap_tick(); // mp:SES7b -- after the hash, at the instant the desync watch snapshots
 
     const uint64_t clock = *reinterpret_cast<const uint64_t *>(mh::state::hash_base(IDX_CLOCK)); // game_clock bits
     // The clock track. `order_mode == 1` IMPLIES clock_record, so every recording path that predates

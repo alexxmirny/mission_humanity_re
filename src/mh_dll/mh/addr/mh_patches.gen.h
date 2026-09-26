@@ -1406,11 +1406,13 @@ inline constexpr mh::hook::patch_decl registered_patches[] = {
     {"lt1c_c4_dead_store_probe", 0x004dc25fu, "llm_strat_bldg_recompute_cell_grid", "none:diagnostic"},
     {"diplo_echo_nop",           0x004c8070u, "llm_ui_diplomacy_apply_and_resume", nullptr},
     {"cancel_task_order",        0x004c7060u, "llm_ui_building_cancel_task_yes_cb", nullptr},
+    {"build_probe_free",         0x00448c56u, "llm_strat_bldg_try_begin_placement", "migrated:D25 (libmh's promoted bldg_try_begin_placement probes with bldg_can_afford_build_cost unconditionally)"},
+    {"build_probe_free",         0x00448c90u, "llm_strat_bldg_try_begin_placement", "migrated:D25 (libmh's promoted bldg_try_begin_placement probes with bldg_can_afford_build_cost unconditionally)"},
     {"resync_trigger_gate",      0x0049c508u, "llm_net_lockstep_dispatch", "migrated:resync_trigger_gate"},
     {"resync_trigger_gate_sent", 0x0049d8cbu, "llm_net_send_lockstep_keepalive", "migrated:resync_trigger_gate"},
     {"resync_receiver_deadline", 0x004a0423u, "llm_frame_dispatch", nullptr},
     {"gone_peer_frame_guard",    0x0049c330u, "llm_net_lockstep_dispatch", "migrated:gone_peer_frame_guard"},
 };
-inline constexpr int registered_patch_count = 17;
+inline constexpr int registered_patch_count = 19;
 
 } // namespace mh::addr

@@ -192,6 +192,10 @@ The host comes from `machine_config.VPS_HOST` (same source `tools/mh_tunnel.ps1`
 uses); the key from `MH_DRAIN_KEY`, falling back to `machine_config.VPS_SSH_KEY`
 (the ADMIN key) only as a quick smoke-test convenience before a dedicated
 drain key exists -- a real deployment should always set `MH_DRAIN_KEY`.
+With the admin key there is no rrsync forced command, so the tool drains
+`host:/srv/reports/` instead of `host:/` and warns on stderr. Every pull also
+carries a filter that admits only `<YYYY-MM>/` trees, so a wrong root copies
+nothing rather than the whole filesystem (dead-ends G320).
 `machine_config.py` itself is not touched by this tool (the drain key is
 deliberately NOT a `machine_config` constant, so a config file typo can never
 substitute the admin key for the read-only one without an explicit

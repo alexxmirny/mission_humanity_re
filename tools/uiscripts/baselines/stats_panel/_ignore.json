@@ -1,0 +1,8 @@
+{
+  "_why": "The E stats panel's value column is the claim (U+0087 pads drawn blank, not '?'). The map view behind it animates, so only the panel's text block is compared.",
+  "_only": {
+    "capture_s1_stats.png": {
+      "rect": [482, 276, 156, 92]
+    }
+  }
+}

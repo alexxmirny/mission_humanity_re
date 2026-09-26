@@ -24,7 +24,8 @@ import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-import test_ui  # noqa: E402
+import tact_test  # noqa: E402
+import ui_suite_common  # noqa: E402
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 JOURNAL = os.path.join(REPO, "tools", "uiscripts", "journals", "poz1-combat.journal")
@@ -60,9 +61,9 @@ def log_bytes(run_dir):
         return 0
 
 
-def one(lane_dir, label, frames, save, **cfg):
+def one(runner, lane_dir, label, frames, save, **cfg):
     """Run one configuration and return its measured throughput."""
-    test_ui.tact_write_config(
+    tact_test.tact_write_config(
         lane_dir,
         cfg.pop("stop", frames),
         0,
@@ -75,7 +76,7 @@ def one(lane_dir, label, frames, save, **cfg):
         **cfg,
     )
     t0 = time.time()
-    run_dir = test_ui.tact_run_arm(lane_dir, save, 900)
+    run_dir = tact_test.tact_run_arm(lane_dir, save, 900, runner)
     wall = time.time() - t0
     if not run_dir:
         return {"label": label, "err": "no run folder"}
@@ -120,11 +121,11 @@ def main():
     ap.add_argument("--no-desktop", action="store_true")
     a = ap.parse_args()
 
-    test_ui.DESKTOP = "" if a.no_desktop else a.desktop
-    if test_ui.DESKTOP:
-        print("[rig] isolated desktop: %s" % test_ui.DESKTOP)
+    runner = ui_suite_common.RunnerConfig(desktop="" if a.no_desktop else a.desktop)
+    if runner.desktop:
+        print("[rig] isolated desktop: %s" % runner.desktop)
 
-    lane_dir = test_ui.tact_provision_lane(a)
+    lane_dir = tact_test.tact_provision_lane(a)
     if lane_dir is None:
         return 1
 
@@ -140,6 +141,7 @@ def main():
         # ADDRESS. Running the sampler across all four rows would just repeat the same answer at
         # four different amplitudes.
         r = one(
+            runner,
             lane_dir,
             "sampled: hashing EVERY frame",
             a.frames,
@@ -160,15 +162,32 @@ def main():
         return 0
 
     rows.append(
-        one(lane_dir, "sim + frame hook, no logging", a.frames, a.tact_save, hash_step=100000)
+        one(
+            runner,
+            lane_dir,
+            "sim + frame hook, no logging",
+            a.frames,
+            a.tact_save,
+            hash_step=100000,
+        )
     )
     rows.append(
-        one(lane_dir, "+ hashing, logged every 16th frame", a.frames, a.tact_save, hash_step=16)
+        one(
+            runner,
+            lane_dir,
+            "+ hashing, logged every 16th frame",
+            a.frames,
+            a.tact_save,
+            hash_step=16,
+        )
     )
-    rows.append(one(lane_dir, "+ hashing, logged EVERY frame", a.frames, a.tact_save, hash_step=1))
+    rows.append(
+        one(runner, lane_dir, "+ hashing, logged EVERY frame", a.frames, a.tact_save, hash_step=1)
+    )
     if os.path.isfile(JOURNAL):
         rows.append(
             one(
+                runner,
                 lane_dir,
                 "+ journal replay (input injection)",
                 a.frames,

@@ -200,12 +200,12 @@ def build_debug(suite="tacttest"):
 def _rig_cmd(args):
     """Provision a tactical lane for `args.journal` and return the game command line."""
     sys.path.insert(0, os.path.join(REPO, "tools"))
-    import test_ui
+    import tact_test
 
     jpath = args.journal if os.path.isabs(args.journal) else os.path.join(REPO, args.journal)
     if not os.path.isfile(jpath):
         raise SystemExit("FAIL: no such journal: %s" % jpath)
-    ev = test_ui.tact_journal_read(jpath)
+    ev = tact_test.tact_journal_read(jpath)
     frames = args.frames or (max(f for f, _k, _p in ev) + 200)
 
     # THE JOURNAL PICKS THE MISSION, exactly as it does for --tact-equiv. This block used to
@@ -214,7 +214,7 @@ def _rig_cmd(args):
     # coverage report then said the scenario never entered bodies it drives constantly. Measured on
     # the POZ3 journal -- `tact_unit_teleport.cpp 0/97 0%` on a session carrying 118 teleport
     # orders, because the run was not POZ3 at all.
-    meta = test_ui.tact_journal_meta(jpath)
+    meta = tact_test.tact_journal_meta(jpath)
 
     def _int(key, dflt):
         raw = str(meta.get(key, "")).strip()
@@ -237,10 +237,10 @@ def _rig_cmd(args):
         tact_system = system
         tact_save = save
 
-    lane = test_ui.tact_provision_lane(LaneArgs, visible=False)
+    lane = tact_test.tact_provision_lane(LaneArgs, visible=False)
     if lane is None:
         raise SystemExit("FAIL: could not provision a lane")
-    test_ui.tact_write_config(
+    tact_test.tact_write_config(
         lane,
         frames,
         0,
@@ -258,7 +258,7 @@ def _rig_cmd(args):
         % (system or "from save", save, squad, owner)
     )
     for frag in getattr(args, "extra_ini", None) or []:
-        test_ui.tact_merge_ini(lane, [frag])
+        tact_test.tact_merge_ini(lane, [frag])
         print("  extra-ini %s" % frag)
     lane = lane.replace("/", os.sep)
     if getattr(args, "debug_dll", False):
@@ -616,7 +616,7 @@ def _uirec_cmd(args):
     input is still pending, and the coverage figure then describes a prefix of the session with no
     line anywhere saying so."""
     sys.path.insert(0, os.path.join(REPO, "tools"))
-    import test_ui
+    import ui_abc
 
     jpath = args.journal if os.path.isabs(args.journal) else os.path.join(REPO, args.journal)
     if not os.path.isfile(jpath):
@@ -633,13 +633,13 @@ def _uirec_cmd(args):
         fps_limit = None
         ui_steps = 0
 
-    lane = test_ui.ui_provision_lane(LaneArgs, visible=False, slot=0)
+    lane = ui_abc.ui_provision_lane(LaneArgs, visible=False, slot=0)
     if lane is None:
         raise SystemExit("FAIL: could not provision a game-start lane")
-    test_ui.ui_write_config(
+    ui_abc.ui_write_config(
         lane,
         journal=jpath,
-        stop_step=test_ui.ui_budget(LaneArgs, jpath),
+        stop_step=ui_abc.ui_budget(LaneArgs, jpath),
         visible=False,
     )
     # THE LANE GETS THE RELEASE DLL UNLESS TOLD OTHERWISE -- make_lane.deploy_dll's source is
@@ -802,10 +802,10 @@ def core_and_flaky_lines(per_run_lines):
 
 
 def registered_journals():
-    """The journals the tactical gate runs, DERIVED from test_ui.py's TACT_SCENARIOS."""
-    src = open(os.path.join(REPO, "tools", "test_ui.py"), encoding="utf-8", errors="replace").read()
-    m = re.search(r"TACT_SCENARIOS\s*=\s*\[(.*?)\n\]", src, re.S)
-    return re.findall(r'"journal":\s*"([^"]+)"', m.group(1)) if m else []
+    """The journals the tactical gate runs, DERIVED from the tact_scenarios registry."""
+    import ui_registry  # TL-SUITE-REGDATA: the registry is data now, not test_ui.py source
+
+    return [sc["journal"] for sc in ui_registry.load()["tact_scenarios"]]
 
 
 BANNER = """\
@@ -1459,7 +1459,7 @@ def measure_sim_one(sc, occ, args):
     steps = int(getattr(args, "steps", 0) or sc.get("steps", 600))
     inner = [
         sys.executable,
-        os.path.join(REPO, "tools", "test_ui.py"),
+        os.path.join(REPO, "tools", "soak_test.py"),
         "--soak",
         "--steps",
         str(steps),
@@ -1593,12 +1593,12 @@ def run_milestones(args, occ):
     saturation.
     """
     sys.path.insert(0, os.path.join(REPO, "tools"))
-    import test_ui
+    import ui_suite_common
 
     domain = getattr(args, "domain", "sim")
-    scens = getattr(test_ui, "%s_SCENARIOS" % domain.upper(), None)
+    scens = getattr(ui_suite_common, "%s_SCENARIOS" % domain.upper(), None)
     if not scens:
-        print("FAIL: no %s_SCENARIOS registry in test_ui.py" % domain.upper())
+        print("FAIL: no %s_SCENARIOS registry in ui_suite_common" % domain.upper())
         return 1
     rungs = [int(x) for x in str(args.milestones).replace(" ", "").split(",") if x]
     args.debug_dll = True
@@ -1844,7 +1844,7 @@ def run_baseline(args, occ):
         targets = [(os.path.basename(r).replace(".journal", ""), r) for r in journals]
     elif domain == "uirec":
         sys.path.insert(0, os.path.join(REPO, "tools"))
-        import test_ui
+        import ui_suite_common
 
         # THE PER-ROW HALF DOES NOT APPLY HERE, and its output says so in a way that reads like a
         # defect: `rows run 1: 0 RAN, 0 cold, 1 unattributed`. That is correct, not a miss. Row
@@ -1855,18 +1855,18 @@ def run_baseline(args, occ):
         # for it; run --domain sim/tact if the question is which rows a session reached.
         #
         # Only what the registry marks measurable -- see UIREC_SCENARIOS' `coverage` key.
-        scens = [sc for sc in test_ui.UIREC_SCENARIOS if sc.get("coverage")]
+        scens = [sc for sc in ui_suite_common.UIREC_SCENARIOS if sc.get("coverage")]
         if not scens:
             print("FAIL: no UIREC_SCENARIOS entry carries `coverage: True`")
             return 1
         targets = [(sc["name"], sc["journal"]) for sc in scens]
     else:
         sys.path.insert(0, os.path.join(REPO, "tools"))
-        import test_ui
+        import ui_suite_common
 
-        scens = getattr(test_ui, "%s_SCENARIOS" % domain.upper(), None)
+        scens = getattr(ui_suite_common, "%s_SCENARIOS" % domain.upper(), None)
         if not scens:
-            print("FAIL: no %s_SCENARIOS registry in test_ui.py" % domain.upper())
+            print("FAIL: no %s_SCENARIOS registry in ui_suite_common" % domain.upper())
             return 1
         targets = [(sc["name"], sc) for sc in scens]
 

@@ -44,6 +44,8 @@ import ctypes
 import os
 from ctypes import wintypes
 
+import win_job  # TL-SUITE-TEARDOWN: the same kill-on-close job TL-RIG6 gave the shim
+
 user32 = ctypes.WinDLL("user32", use_last_error=True)
 kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
 
@@ -131,6 +133,9 @@ def desktop_session(name: str = DEFAULT_DESKTOP):
 
 
 _HELD: list[int] = []
+_JOBS: list[
+    int
+] = []  # win_job handles, TL-SUITE-TEARDOWN -- kept alive so kill-on-close stays armed
 
 
 def hold(name: str = DEFAULT_DESKTOP) -> str:
@@ -185,6 +190,16 @@ def spawn(exe: str, args: str = "", cwd: str | None = None, desktop: str = DEFAU
             ctypes.get_last_error(), f"CreateProcessW({exe!r}) on desktop {desktop!r} failed"
         )
     kernel32.CloseHandle(pi.hThread)
+    # tooling:TL-SUITE-TEARDOWN -- assign kill-on-close BEFORE closing hProcess: this is the SAME
+    # mechanism TL-RIG6 gave the shim, applied to the one other raw-CreateProcessW launch path this
+    # rig has (a caller killed without running its own cleanup -- --jobs' per-test timeout -- used
+    # to orphan this peer exactly the way it orphaned the shim). Passing the handle we already hold,
+    # rather than reopening by pid, avoids a PID-reuse race that a fresh OpenProcess(pid) has no way
+    # to close. The job handle is kept alive in _JOBS (same shape as _HELD above) for the life of
+    # THIS process; closing pi.hProcess afterwards does not remove the child from the job.
+    job = win_job.assign_kill_on_close(handle=pi.hProcess)
+    if job:
+        _JOBS.append(job)
     kernel32.CloseHandle(pi.hProcess)
     return int(pi.dwProcessId)
 

@@ -25,9 +25,17 @@ ABSENCE IS A FAILURE, the same rule check_module_bind.py carries: no run directo
 `[mtrace]` lines (the knob was off, so the run proves nothing), or a `--expect-di` count that is not
 exactly one, all REFUSE rather than pass quietly.
 
+TL-SUITE-SPLICE-CAM: `cam_latch.txt` runs the mouse-edge probe (SES3) and the keyboard-hold probe
+(SES3c) in ONE boot, separated by a `log <marker>` line. `--segment {1,2}` + `--boundary TEXT` judge
+only the samples before/after the first `; [script] LOG:` line containing TEXT, so probe 2's residue
+(cursor already centred, no key down) cannot confuse probe 1's verdict or vice versa. `--label` names
+the printed PASS/FAIL line, since one run now carries two independent verdicts.
+
   python tools/check_cam_trace.py <run-dir|lane-dir>                    the report
   python tools/check_cam_trace.py <lane> --expect-pinned 3 --expect-rise-fall \
                                          --max-lines-per-frame 1.0 --expect-di
+  python tools/check_cam_trace.py <lane> --segment 1 --boundary 'cam_latch: probe2' \
+                                         --label 'edge latch' --expect-pinned 3 --expect-rise-fall
   python tools/check_cam_trace.py --selftest                            planted logs, every negative RED
 """
 
@@ -51,6 +59,9 @@ SAMPLE = re.compile(
 )
 QUIET = re.compile(r"; \[mtrace\] (?P<n>\d+) quiet frame\(s\)")
 DI_KEYBOARD = re.compile(r"; \[input\] di_keyboard=(?P<live>\d+) dev=0x(?P<dev>[0-9a-f]{8})")
+# TL-SUITE-SPLICE-CAM: a `log <text>` script op writes this line (ui_drive.cpp OP_A_LOG); cam_latch.txt
+# emits one between its two probes as the --segment 1/2 boundary.
+SCRIPT_LOG = re.compile(r"; \[script\] LOG: (?P<msg>.*)")
 
 
 class Refusal(Exception):
@@ -68,17 +79,21 @@ def newest_run(path):
 
 
 def parse(run_dir):
+    """Returns (samples, quiet_line_indices, markers). `samples` carry a "line" (0-based line number
+    in mh_uidrive.log) so a segment split (TL-SUITE-SPLICE-CAM) can select by position; `markers` is
+    every `; [script] LOG: <text>` line as (line_index, text), the boundary candidates."""
     p = os.path.join(run_dir, UIDRIVE_LOG)
     if not os.path.isfile(p):
         raise Refusal("no %s in %s" % (UIDRIVE_LOG, run_dir))
-    samples, quiet = [], 0
+    samples, quiet_idx, markers = [], [], []
     with open(p, encoding="utf-8", errors="replace") as fh:
-        for line in fh:
+        for i, line in enumerate(fh):
             m = SAMPLE.search(line)
             if m:
                 d = m.groupdict()
                 samples.append(
                     {
+                        "line": i,
                         "f": int(d["f"]),
                         "produced": int(d["produced"]),
                         "cur": (int(d["cx"]), int(d["cy"])),
@@ -93,13 +108,43 @@ def parse(run_dir):
                 continue
             m = QUIET.search(line)
             if m:
-                quiet += 1
+                quiet_idx.append(i)
+                continue
+            m = SCRIPT_LOG.search(line)
+            if m:
+                markers.append((i, m.group("msg").rstrip()))
     if not samples:
         raise Refusal(
             "zero [mtrace] sample lines in %s -- [input] mouse_trace was off, so this run says "
             "nothing about the camera latches" % p
         )
-    return samples, quiet
+    return samples, quiet_idx, markers
+
+
+def select_segment(samples, quiet_idx, markers, boundary_text, which):
+    """TL-SUITE-SPLICE-CAM: narrow `samples`/quiet-count to one side of the first `; [script] LOG:`
+    line containing `boundary_text` -- which="1" keeps lines BEFORE it (probe 1), "2" keeps lines
+    AFTER it (probe 2). Absence of the marker, or a segment left with zero samples, REFUSES (same
+    absence-is-a-failure rule as `parse`) rather than silently judging the whole run as one segment."""
+    hits = [ln for ln, msg in markers if boundary_text in msg]
+    if not hits:
+        raise Refusal(
+            "no `; [script] LOG:` line containing %r -- the probe boundary marker is missing, so "
+            "segment %s cannot be isolated from the other probe's samples" % (boundary_text, which)
+        )
+    boundary_line = hits[0]
+    if which == "1":
+        seg_samples = [s for s in samples if s["line"] < boundary_line]
+        seg_quiet = sum(1 for ln in quiet_idx if ln < boundary_line)
+    else:
+        seg_samples = [s for s in samples if s["line"] > boundary_line]
+        seg_quiet = sum(1 for ln in quiet_idx if ln > boundary_line)
+    if not seg_samples:
+        raise Refusal(
+            "segment %s (%s the %r marker) has zero [mtrace] samples"
+            % (which, "before" if which == "1" else "after", boundary_text)
+        )
+    return seg_samples, seg_quiet
 
 
 def di_lines(run_dir):
@@ -121,8 +166,15 @@ def set_letters(mask):
 
 
 def analyse(samples, quiet_lines):
-    """Derive the three answers. Returns a dict of measured facts; no judgment here."""
-    frames = max(s["f"] for s in samples)
+    """Derive the three answers. Returns a dict of measured facts; no judgment here.
+
+    `frames` is the SPAN (max - min + 1) of observed frame numbers, not the bare max: a segment
+    (TL-SUITE-SPLICE-CAM) starts partway through the run's own frame count, so "how many frames does
+    this segment cover" has to be measured from its own first sample, not from frame 0."""
+    fs = [s["f"] for s in samples]
+    # A quiet-summary line stands for >= 1 unsampled frame outside the sampled span, so it adds a
+    # frame as well as a line: the budget then reads "at most one line per frame", not span-bound.
+    frames = max(fs) - min(fs) + 1 + quiet_lines
     lines = len(samples) + quiet_lines
     transitions = []
     prev = None
@@ -266,7 +318,17 @@ def report(a, di):
 
 
 def check(run_dir, args):
-    samples, quiet = parse(run_dir)
+    samples, quiet_idx, markers = parse(run_dir)
+    segment = getattr(args, "segment", None)
+    if segment:
+        boundary = getattr(args, "boundary", None)
+        if not boundary:
+            raise Refusal(
+                "--segment requires --boundary TEXT (the `log` marker between the probes)"
+            )
+        samples, quiet = select_segment(samples, quiet_idx, markers, boundary, segment)
+    else:
+        quiet = len(quiet_idx)
     a = analyse(samples, quiet)
     di = di_lines(run_dir) if args.expect_di else None
     lines = report(a, di)
@@ -325,7 +387,11 @@ def check(run_dir, args):
         print(ln)
     for f in fails:
         print("  cam-trace FAILED: %s" % f)
-    print("check_cam_trace: %s" % ("PASS" if not fails else "FAIL"))
+    label = getattr(args, "label", None)
+    print(
+        "check_cam_trace%s: %s"
+        % (" [%s]" % label if label else "", "PASS" if not fails else "FAIL")
+    )
     return 0 if not fails else 1
 
 
@@ -484,6 +550,71 @@ def selftest():
                 "  selftest %-58s want=%d got=%d %s"
                 % (label, want, got, "ok" if ok else "MISMATCH")
             )
+        # TL-SUITE-SPLICE-CAM -- one mh_uidrive.log carrying BOTH probes, split by a `log <marker>`
+        # line the same way cam_latch.txt's boundary works. Each planted negative must red ONLY its
+        # own segment: the other probe's clean samples must not be dragged down by it.
+        marker = "cam_latch: probe2 start"
+        edge_never_clears = [(i + 1, (639, 240), "-R--", 1) for i in range(6)]
+        held_clears = [
+            (1, (320, 240), "L---", 1),
+            (2, (320, 240), "L---", 1),
+            (3, (320, 240), "L---", 1),
+        ]
+        held_clears.append((4, (320, 240), "----", 0))
+        held_never_latches = [(1, (320, 240), "----", 0)]
+
+        def _write_spliced(dirpath, seg1_edge_seq, seg2_held_seq):
+            os.makedirs(dirpath, exist_ok=True)
+            rows = _rows(seg1_edge_seq)
+            rows.append("[ 20.000] ; [script] LOG: %s\n" % marker)
+            rows += _rows_held(seg2_held_seq)
+            with open(os.path.join(dirpath, UIDRIVE_LOG), "w", encoding="utf-8") as fh:
+                fh.write("".join(rows))
+            with open(os.path.join(dirpath, NET_LOG), "w", encoding="utf-8") as fh:
+                fh.write("; [input] di_keyboard=1 dev=0x0066155c -- DirectInput keyboard live\n")
+
+        class _A_SEG(_A):
+            segment = "1"
+            boundary = marker
+            expect_di = False  # U25 is a whole-run fact; exercised separately above
+
+        class _K_SEG(_K):
+            segment = "2"
+            boundary = marker
+
+        splice_cases = [
+            ("both probes clean -- seg1 pass, seg2 pass", good, held_clears, 0, 0),
+            (
+                "seg1 edge latch never clears -- reds seg1 ONLY",
+                edge_never_clears,
+                held_clears,
+                1,
+                0,
+            ),
+            ("seg2 key latch never sets -- reds seg2 ONLY", good, held_never_latches, 0, 1),
+        ]
+        for label, seg1_seq, seg2_seq, want1, want2 in splice_cases:
+            d = os.path.join(td, "splice_%s" % label[:12].replace(" ", "_"))
+            _write_spliced(d, seg1_seq, seg2_seq)
+            got1 = check(d, _A_SEG())
+            got2 = check(d, _K_SEG())
+            ok = got1 == want1 and got2 == want2
+            rc |= 0 if ok else 1
+            print(
+                "  selftest %-58s want=(%d,%d) got=(%d,%d) %s"
+                % (label, want1, want2, got1, got2, "ok" if ok else "MISMATCH")
+            )
+        # the boundary marker itself is mandatory: --segment without a matching `log` line REFUSES
+        d = os.path.join(td, "no_marker")
+        _write(d, _rows(good))
+        try:
+            check(d, _A_SEG())
+            print(
+                "  selftest %-58s MISMATCH (no refusal)" % "segment requested, no boundary marker"
+            )
+            rc |= 1
+        except Refusal:
+            print("  selftest %-58s ok" % "segment requested, no boundary marker refuses")
     print("check_cam_trace --selftest: %s" % ("PASS" if rc == 0 else "FAIL"))
     return rc
 
@@ -532,6 +663,27 @@ def main():
         default=3,
         metavar="N",
         help="--expect-held: minimum consecutive samples (default 3)",
+    )
+    ap.add_argument(
+        "--segment",
+        choices=["1", "2"],
+        default=None,
+        metavar="1|2",
+        help="TL-SUITE-SPLICE-CAM: judge only samples before (1) or after (2) the --boundary marker "
+        "line, for a run that spliced two probes into one boot",
+    )
+    ap.add_argument(
+        "--boundary",
+        default=None,
+        metavar="TEXT",
+        help="--segment: the substring of the `log <text>` line that separates the two probes",
+    )
+    ap.add_argument(
+        "--label",
+        default=None,
+        metavar="NAME",
+        help="name this verdict in the printed PASS/FAIL line -- distinguishes two --segment "
+        "verdicts read off the same run",
     )
     ap.add_argument("--selftest", action="store_true", help="planted logs: every negative goes RED")
     args = ap.parse_args()

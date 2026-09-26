@@ -36,6 +36,7 @@
     <ClCompile Include="seams\ui_cheat_gate.cpp" />
     <ClCompile Include="seams\ui_diplomacy_echo.cpp" />
     <ClCompile Include="seams\ui_bldg_cancel_task.cpp" />
+    <ClCompile Include="seams\ui_bldg_build_probe.cpp" />
     <ClCompile Include="seams\ui_net_indicator.cpp" />
     <ClCompile Include="seams\save_triggers.cpp" />
     <ClCompile Include="seams\ui_drive.cpp" />

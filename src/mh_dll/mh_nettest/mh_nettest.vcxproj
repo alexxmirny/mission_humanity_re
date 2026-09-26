@@ -122,6 +122,7 @@
     <ClCompile Include="mh_calls_selftest.gen.cpp" />
     <ClCompile Include="mh_export_selftest.gen.cpp" />
     <ClCompile Include="watchdog_selftest.cpp" />
+    <ClCompile Include="diag_counter_selftest.cpp" />
     <ClCompile Include="desync_selftest.cpp" />
     <ClCompile Include="net_queue_selftest.cpp" />
     <ClCompile Include="session_id_selftest.cpp" />
@@ -2447,6 +2448,7 @@
     <ClCompile Include="..\mh\seams\ui_cheat_gate.cpp" />
     <ClCompile Include="..\mh\seams\ui_diplomacy_echo.cpp" />
     <ClCompile Include="..\mh\seams\ui_bldg_cancel_task.cpp" />
+    <ClCompile Include="..\mh\seams\ui_bldg_build_probe.cpp" />
     <ClCompile Include="..\mh\seams\ui_net_indicator.cpp" />
     <ClCompile Include="..\mh\seams\ui_drive.cpp" />
     <ClCompile Include="..\mh_harness\harness.cpp" />

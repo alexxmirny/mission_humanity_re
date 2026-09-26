@@ -154,6 +154,7 @@ uint32_t hash_manifest_fingerprint() { return HASH_MANIFEST_FP; }
 
 // ---- the lockstep hash, folded exactly as the harness folds it -----------------------------------
 
+// HASH-INPUT BEGIN world_lockstep_hash (tools/data/hash_input_epoch.json)
 void lockstep_hash(uint32_t mask_flags, uint64_t *out_combined, uint64_t *out_state) {
     uint64_t combined = 1469598103934665603ULL;
     uint64_t state    = 1469598103934665603ULL;
@@ -175,6 +176,7 @@ void lockstep_hash(uint32_t mask_flags, uint64_t *out_combined, uint64_t *out_st
     if (out_combined) *out_combined = combined;
     if (out_state) *out_state = state;
 }
+// HASH-INPUT END world_lockstep_hash
 
 // ---- the public face: the SHARED engine, over the policy above -----------------------------------
 

@@ -163,6 +163,36 @@ DWORD    g_need_since = 0;
 
 uint8_t *g_rx_buf     = nullptr; // the client's delivery buffer (MAP_MAX_BYTES, on first need)
 bool     g_rejoin_due = false;   // a stored download owes the host a re-JOIN (see client_tick)
+// mp:X2d -- what the LAST JOIN told the host we hold (client_my_hash is only ever asked by a JOIN
+// builder). client_resolve_now compares against it: a resolve that changes the answer after the host
+// was told owes it a re-JOIN, download or not. Without it a JOIN that raced ahead of the advert
+// ("nothing") and an advert that then resolved "have" left the host transferring forever.
+uint8_t g_reported[HASH_N];
+bool    g_reported_valid = false;
+
+// ---- THE CLIENT LOCK (mp:X2d) --------------------------------------------------------------------
+//
+// The client state above had ONE writer thread until X2d: client_on_advert ran on the recv thread
+// (the advert) and client_tick read on the main one. X2d adds a MAIN-thread client_on_advert (the
+// JOIN names its lobby's claim before the advert lands), so two resolves can now overlap -- and with
+// a stale directory row and a changed map they would tear g_want_* between two claims. Unlike THE
+// HOST LOCK this one is NOT a leaf: a resolve logs and asks can_carry() (a transport call) under it.
+// That is safe because of WHO WAITS: the main thread blocks for it, the recv thread only TRIES (it
+// may hold transport locks, so it must never wait) and drops an advert it cannot take -- the host
+// re-advertises ~1 Hz and the next one is a compare or a fresh resolve.
+SRWLOCK g_client_lock = SRWLOCK_INIT;
+
+struct ClientLock {
+    bool held;
+    explicit ClientLock(bool try_only)
+        : held(try_only ? TryAcquireSRWLockExclusive(&g_client_lock) != FALSE
+                        : (AcquireSRWLockExclusive(&g_client_lock), true)) {}
+    ~ClientLock() {
+        if (held) ReleaseSRWLockExclusive(&g_client_lock);
+    }
+    ClientLock(const ClientLock &)            = delete;
+    ClientLock &operator=(const ClientLock &) = delete;
+};
 
 // ---- the redirect -------------------------------------------------------------------------------
 
@@ -1044,10 +1074,51 @@ void client_resolve_now() {
             mlog("; [map] client resolve missing -- waiting for the host's copy over channel C\n");
         }
     }
+    // mp:X2d -- THE BACKSTOP. The host's verdict is whatever our last JOIN said; if this resolve
+    // changed the answer, say it again through the same re-JOIN a finished download uses (the host's
+    // admit path recomputes from the field, and "holds the map" there clears the transfer).
+    if (g_reported_valid && !np::map_hash_equal(g_reported, g_my_hash)) {
+        g_rejoin_due = true;
+        char hex[np::MAP_HASH_HEX_CAP], hex2[np::MAP_HASH_HEX_CAP];
+        wsprintfA(g_line, "; [map] client re-report due -- the JOIN said has=%s, the resolve now says "
+                          "has=%s (mp:X2d)\n",
+                  np::map_hash_is_none(g_reported) ? "none" : hexof(g_reported, hex, sizeof(hex)),
+                  np::map_hash_is_none(g_my_hash) ? "none" : hexof(g_my_hash, hex2, sizeof(hex2)));
+        mlog(g_line);
+    }
+}
+
+// mp:X2d -- THE HARDENING: a peer that holds the map still DRAINS channel C. A transfer the host
+// armed before it learned we hold the file (a JOIN that raced the advert, or a stale directory row)
+// is otherwise never taken: only MH_Net_SnapshotPoll moves chunks out of the lane, the lane refuses
+// at 4 (udp_channel_c.cpp rx_try_admit, backpressure), and the host re-sends chunks 0-3 until its
+// 90 s re-arm -- a link held busy for nothing, and one a real transfer to another peer then waits on.
+// So the delivery is taken and discarded; its content is, by the host's own claim, what we hold.
+void client_drain_unwanted() {
+    int len   = g_rx_buf != nullptr ? (int)MAP_MAX_BYTES : 0;
+    int state = 0;
+    if (!MH_Net_SnapshotPoll(g_rx_buf, &len, &state)) {
+        if ((state == MH_SNAP_RECEIVING || state == MH_SNAP_REFUSED) && g_rx_buf == nullptr) {
+            g_rx_buf = (uint8_t *)VirtualAlloc(nullptr, MAP_MAX_BYTES, MEM_RESERVE | MEM_COMMIT,
+                                               PAGE_READWRITE);
+            mlog("; [map] client draining an unwanted map transfer -- this peer already holds the "
+                 "content (mp:X2d)\n");
+        }
+        return;
+    }
+    wsprintfA(g_line, "; [map] client discarded an unwanted delivery (%d B) -- this peer already "
+                      "holds %s (mp:X2d)\n",
+              len, g_want_map);
+    mlog(g_line);
 }
 
 void client_tick() {
-    if (!g_want_valid || g_cs != CS_NEED) return;
+    if (!g_want_valid) return;
+    if (g_cs == CS_HAVE) { // mp:X2d: holding the map is no reason to leave channel C undrained
+        client_drain_unwanted();
+        return;
+    }
+    if (g_cs != CS_NEED) return;
     if (g_rx_buf == nullptr) {
         g_rx_buf = (uint8_t *)VirtualAlloc(nullptr, MAP_MAX_BYTES, MEM_RESERVE | MEM_COMMIT,
                                            PAGE_READWRITE);
@@ -1088,7 +1159,10 @@ void client_tick() {
     wsprintfA(g_line, "; [map] client stored %s (%d B, sha=%s) -- the local %s is untouched\n",
               stored, len, hexof(g_want_hash, hex, sizeof(hex)), g_want_map);
     mlog(g_line);
-    client_resolve_now(); // -> CS_HAVE + the redirect, from the file we just wrote
+    {
+        ClientLock l(false);  // mp:X2d: main thread -- waits
+        client_resolve_now(); // -> CS_HAVE + the redirect, from the file we just wrote
+    }
     g_notice_on                      = false;
     *(wchar_t *)ADDR_MAP_STATUS_LINE = L'\0';
     // TELL THE HOST, and tell it by RE-JOINING rather than through a new frame: the JOIN already
@@ -1108,6 +1182,12 @@ void client_on_advert(const np::SessionInfo &rec) {
         // the Start gate on either side: this is exactly the behaviour that shipped before X2.
         return;
     }
+    // mp:X2d: the recv thread only TRIES (THE CLIENT LOCK) -- a dropped advert is re-sent in ~1 s.
+    ClientLock l(GetCurrentThreadId() != g_main_tid);
+    if (!l.held) {
+        mlog("; [map] client advert deferred -- a resolve is running on the main thread (mp:X2d)\n");
+        return;
+    }
     if (g_want_valid && lstrcmpiA(g_want_map, rec.map) == 0 &&
         np::map_hash_equal(g_want_hash, rec.map_hash))
         return; // the same claim we already acted on -- the advert repeats ~1 Hz
@@ -1125,7 +1205,14 @@ void client_on_advert(const np::SessionInfo &rec) {
 }
 
 bool client_my_hash(uint8_t out[HASH_N]) {
-    if (!enabled() || !g_want_valid) return false;
+    if (!enabled()) return false;
+    ClientLock l(false); // main thread (the JOIN builders) -- waits
+    // mp:X2d: every caller is a JOIN builder, so this IS "what the host was told" -- the backstop
+    // in client_resolve_now compares against it. No claim known = the no-claim zero was reported.
+    if (g_want_valid) memcpy(g_reported, g_my_hash, HASH_N);
+    else memset(g_reported, 0, HASH_N);
+    g_reported_valid = true;
+    if (!g_want_valid) return false;
     memcpy(out, g_my_hash, HASH_N);
     return !np::map_hash_is_none(out);
 }
@@ -1169,12 +1256,14 @@ void session_reset() {
         g_tx_peer    = -1;
         g_host_claim = false;
     }
-    g_want_valid  = false;
-    g_cs          = CS_IDLE;
-    g_notice_on   = false;
-    g_host_map[0] = '\0';
-    g_host_claim  = false;
-    g_rejoin_due  = false;
+    ClientLock cl(false); // mp:X2d
+    g_want_valid     = false;
+    g_reported_valid = false;
+    g_cs             = CS_IDLE;
+    g_notice_on      = false;
+    g_host_map[0]    = '\0';
+    g_host_claim     = false;
+    g_rejoin_due     = false;
     memset(g_host_hash, 0, HASH_N);
     memset(g_my_hash, 0, HASH_N);
     gate_open(); // hands the DISABLED bit back to retail if we were the ones holding it

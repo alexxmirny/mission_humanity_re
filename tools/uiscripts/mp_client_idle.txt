@@ -1,4 +1,4 @@
-# mp:D25 CLIENT fixture -- the IDLE peer of d25_buildclick. mp_client_start.txt's walk verbatim
+# mp:D25 CLIENT fixture -- the IDLE peer of host_clicks (and the U39/D28 negative rows). mp_client_start.txt's walk verbatim
 # (join the host's game, enter the match, capture once), under its OWN label so
 # --update-baselines on this scenario cannot clobber match_launch's client baseline (the
 # ui-testing rule: a script reused in another topology renders different text). It stays alive

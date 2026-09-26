@@ -1,0 +1,143 @@
+# tooling:TL-SUITE-SPLICE-HOSTCLICK HOST walk -- three mid-match host clicks in ONE match, judged as
+# three segments (replaces mp_host_diplomacy / mp_host_canceltask / mp_host_buildclick as rows;
+# the first two scripts stay for the negative-arm rows). Pair with mp_client_idle.txt.
+#
+# Order is chosen so no segment disturbs a later one:
+#   1. diplomacy (mp:U39) while the mother is still flying to its landing spot -- a relation change
+#      and a dialog, nothing on the map.
+#   2. canceltask (mp:D28) once landed: select the mother, `_DESTROY` it, start a repair, cancel the
+#      repair through the status dialog's &Yes. Leaves the mother selected, idle, damaged; the repair
+#      spent ~5% of each resource, the Academy (800/450) stays affordable.
+#   3. buildclick (mp:D25) LAST: open the place-building tab (the tab strip at y~215 is the same with
+#      or without a selection) and click the Academy icon. That arms placement mode and nothing is
+#      placed, so it must come last -- a later map click would place the building.
+#
+# Segment boundaries are `log hc <name> begin|end` lines, each directly after (begin) / before (end)
+# a `gameclock` fence; tools/check_host_clicks.py turns the fences into the sim-step window each
+# segment's verdict reads. Keep the fences adjacent to the markers or the checker refuses.
+#
+# In-game clicks are `simclick` (the button held across sim steps -- a press/release one present
+# apart was lost under suite load, TL-GATE-LOADFLAKE-0925), and every click that opens a dialog is
+# followed by `retry <game-ms> <back> <tries>` on its wait, which re-sends it if the sim ran that
+# long without the dialog.
+
+# reach the host lobby (create the pre-pinned game on the pre-selected map)
+settled value:110
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+settled Create
+clickl Create
+present Game name
+settled Ok
+clickl Ok
+present Available maps
+settled Ok
+clickl Ok
+
+# host lobby: block until the client is really in ITS lobby, then Start.
+present Network players
+peers 1
+awaitsignal lobby
+enabled Start
+settled Start
+clickl Start
+
+# in the match: order the airborne mothership to land (shift+right-click; order 0x10 move + 0x18
+# deploy). It flies until well before gameclock 20000.
+absent Network players
+gameclock 3000
+rclick 480 330 shift
+gameclock 3200
+
+# ---- segment 1: diplomacy (mp:U39) -------------------------------------------------------------
+log hc diplomacy begin
+# the HUD "Menu" button (not a widget -- the in-game active list is the stale main menu), then the
+# in-game menu's Diplomacy entry (value 100).
+simclick 972 150
+retry 1500 1 3 settled value:100
+clickv 100
+absent value:113
+capture diplomacy_open
+# THE TRIGGER: tick "allied" for the client (widget [2]), then Ok -- order 0xf4.
+clicki 2
+settled Ok
+capture allied_ticked
+clickl Ok
+absent Ok
+# reopened well after the 0xf4 commit (4 steps), the box must show TICKED on this peer.
+gameclock 5500
+simclick 972 150
+retry 1500 1 3 settled value:100
+clickv 100
+absent value:113
+capture reopened_after_commit
+clickl Cancel
+absent Cancel
+# Cancel (unlike Ok) returns to the in-game menu, which stays open while the sim runs and eats the
+# next map clicks. Leave it by LABEL ('Return to &game'): the map's stale main-menu list also has a 103.
+settled Return to
+clickl Return to
+absent Return to
+log hc diplomacy end
+gameclock 20000
+
+# ---- segment 2: canceltask (mp:D28) ------------------------------------------------------------
+log hc canceltask begin
+capture landed
+# select the mother (footprint centred near the deploy point on this camera)
+simclick 500 330
+gameclock 20200
+capture mother_selected
+# damage it: Shift+Enter opens the debug console line; `_DESTROY` needs ini/cheat_gate_off.ini.
+layout 00000409
+key 0x1c shift
+type _DESTROY
+field chat _DESTROY
+key 0x1c
+layout default
+gameclock 20600
+capture mother_damaged
+# the repair icon (red circle, icon column x~882): energy < max now, so it orders a repair cycle.
+simclick 882 260
+gameclock 21000
+capture after_repair_click
+# orders are staged (~6.4 s exec delay): wait, reselect, open the status dialog (red X). The retry
+# rewinds to the reselect, so a lost selection click is re-sent too.
+gameclock 27000
+simclick 500 330
+gameclock 27200
+simclick 882 271
+retry 1500 3 3 settled value:121
+# the dialog's list goes active a frame or more before it is drawn (a capture right after
+# `settled` once showed the bare map): let the sim and the screen move on first.
+gameclock 27400
+screensettled
+capture status_dialog
+dump
+# THE TRIGGER: &Yes -- the seam routes it as a building order instead of the retail local call.
+clickv 121
+# 2 of 9 rig runs: the dialog's list went active but the dialog was never drawn and ignored Yes
+# (a capture showed the bare map); re-open it from the reselect if `Ok` has not gone.
+retry 1500 9 3 absent Ok
+gameclock 28000
+capture after_yes
+log hc canceltask end
+gameclock 29000
+
+# ---- segment 3: buildclick (mp:D25) ------------------------------------------------------------
+log hc buildclick begin
+# the "place building" tab (HUD, absolute coordinates) -- Power Plant, Colony, Mine, Relay, Academy
+simclick 890 215
+gameclock 30000
+capture build_menu
+# THE TRIGGER: the Academy icon. Arms placement and never places; the original afford-probe
+# credited 800/450 to resource_spent on this peer alone.
+simclick 905 480
+gameclock 31000
+capture academy_armed
+log hc buildclick end
+# rows on both sides of the click for the analyzer (the original ran 8 s past it)
+gameclock 39000
+end

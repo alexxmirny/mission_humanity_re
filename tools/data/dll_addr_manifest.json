@@ -660,6 +660,18 @@
       "note": "mp:D28: CALL llm_bldg_finish_current_order (E8 46 9C FA FF; EAX = PlayerSide, EDX = selected building index) -- spliced to a thunk that issues the equivalent building order in a lockstep match"
     },
     {
+      "name": "buildprobe_pay_call_site",
+      "en": "0x00448c56",
+      "parent": "llm_strat_bldg_try_begin_placement",
+      "note": "mp:D35 (the mh.dll port of mp:D25): CALL llm_bldg_pay_build_cost (E8 56 A2 04 00; EAX = player (movzx), EDX = building type) -- the HUD build-click's affordability probe that PAYS; spliced to a charge-free probe (pay_build_cost's pass 1 only, same return codes)"
+    },
+    {
+      "name": "buildprobe_grant_call_site",
+      "en": "0x00448c90",
+      "parent": "llm_strat_bldg_try_begin_placement",
+      "note": "mp:D35: CALL llm_strat_bldg_grant_type_resources (E8 2A AB 04 00) -- the re-grant that undid the probe's payment and booked +cost into the gains-only resource_spent counter on the clicking peer alone; NOPed together with the pay splice (both or neither)"
+    },
+    {
       "name": "diplo_echo_write_site",
       "en": "0x004c8070",
       "parent": "llm_ui_diplomacy_apply_and_resume",

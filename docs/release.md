@@ -528,6 +528,10 @@ paperwork — it IS the gate, and it is the only evidence the release is good.
    yet points every launcher at 404s):
    a. `build_public_seed.py --follow-up … --push` — the public squash commit.
    b. `git tag -a <tag> <public main sha> -F <message file>` in that clone, and push it.
+      **The push starts `release` and `launcher-release` if Actions can run.** On `v0.2.0-rc3`
+      (2026-09-25) they did. Cancel both (`gh run cancel <id>`) before their publish jobs: those
+      jobs would replace the hand-built assets with CI builds whose hashes the manifest you
+      signed does not carry.
    c. `gh release create <tag> -R <owner>/<repo> [--prerelease] --notes-file <message file>` with
       the three zips, `SHA256SUMS`, `mh_launcher.exe`, `manifest.json`, `manifest.json.minisig`.
       This is the REST API — it works with Actions dead.

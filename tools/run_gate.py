@@ -60,7 +60,7 @@ def units(args):
             "why": "step 4 -- 2-VM lockstep determinism through the real menu->lobby->Start",
             "cmd": [
                 PY,
-                os.path.join(REPO, "tools", "test_ui.py"),
+                os.path.join(REPO, "tools", "det_arms.py"),
                 "--determinism",
                 "--ship-pacing",
                 "--steps",
@@ -90,38 +90,18 @@ def units(args):
             "timeout": 2400,
         },
         {
-            "name": "det_c1",
-            "why": "step 4e -- the build PLAYERS run (configuration (1), no libmh.dll) against itself, "
-            "hashed (mp:D29)",
-            "cmd": [
-                PY,
-                os.path.join(REPO, "tools", "test_ui.py"),
-                "--determinism",
-                "--det-config1-gate",
-                # LOCAL LANES, not the VM pair: `det` holds the VMs for the whole of its run, and the
-                # gate's point here is that configuration (1) is HASHED every gate at all -- until
-                # 2026-09-24 no gate shape ran it. The VM form of both D29 shapes is in --det-standard.
-                "--det-local",
-                "--ship-pacing",
-                "--steps",
-                str(args.steps),
-            ],
-            "weight": 2,
-            "timeout": 1200,
-        },
-        {
             # mp:U19j into the gate (user 2026-09-24). Wave 6 lane D proved the shape on the rig by
             # hand (`--u19j-gpfg3` / `--u19j-gpfg3-unguarded`, 3/3 + 3/3) but left it OUT of any gate
             # unit -- a 3-peer topology (host vms[0], survivor vms[1], a SIM-FENCED peer as a local
             # DET3 lane) that no `multi` TESTS row can carry, same class as --u19b-quit3/--l1f-ping3.
-            # BOTH ARMS in one unit, sequentially inside the child (test_ui.py's own dispatch already
+            # BOTH ARMS in one unit, sequentially inside the child (det_arms.py's own dispatch already
             # runs guarded then unguarded and ORs the verdicts) -- a red on EITHER arm reds this row.
             "name": "u19j_gpfg3",
             "why": "step 4f -- mp:U19j's 3-peer gone-peer frame guard: the carrier FIRES (guarded) "
             "and the unguarded twin goes red on exactly the garbled frame (XFAIL)",
             "cmd": [
                 PY,
-                os.path.join(REPO, "tools", "test_ui.py"),
+                os.path.join(REPO, "tools", "det_arms.py"),
                 "--u19j-gpfg3",
                 "--u19j-gpfg3-unguarded",
             ],
@@ -135,14 +115,14 @@ def units(args):
             # mp:X2a into the gate: the open-redirect witnessed on the two INDEPENDENT rig VMs (not a
             # local lane -- make_lane.py symlinks Maps to one shared image, so a local lane's client
             # base file IS the host's content and a broken redirect would still open matching bytes;
-            # see run_x2a_map_variant's docstring in tools/test_ui.py). The client's own map is
+            # see run_x2a_map_variant's docstring in tools/det_arms.py). The client's own map is
             # mutated (tools/map_variant.py) and RESTORED in a `finally` regardless of verdict.
             "name": "x2a_map_variant",
             "why": "step 4g -- mp:X2a's open-redirect: the client's OWN, genuinely different "
             "blue monday.mpm is redirected to the downloaded mh_dl\\ copy, not opened directly",
             "cmd": [
                 PY,
-                os.path.join(REPO, "tools", "test_ui.py"),
+                os.path.join(REPO, "tools", "det_arms.py"),
                 "--x2a-map-variant",
             ],
             # weight 2, matching det: two VM vCPUs, no local lane.
@@ -223,7 +203,7 @@ def units(args):
         {
             "name": "abc_spcamp",
             "why": "step 3c -- the campaign session, three arms (A/B parallel since 2026-09-10)",
-            "cmd": [PY, os.path.join(REPO, "tools", "test_ui.py"), "--ui-abc", "spcamp_solo"],
+            "cmd": [PY, os.path.join(REPO, "tools", "ui_abc.py"), "--ui-abc", "spcamp_solo"],
             "weight": 2,
             "timeout": 1800,
         },
@@ -235,7 +215,7 @@ def units(args):
             "why": "step 3d -- the tutorial session, three arms",
             "cmd": [
                 PY,
-                os.path.join(REPO, "tools", "test_ui.py"),
+                os.path.join(REPO, "tools", "ui_abc.py"),
                 "--ui-abc",
                 "tutorial_solo",
                 "--ui-slot",
@@ -262,7 +242,7 @@ def units(args):
             "why": "step 4b -- the single-player oracle: unpromoted vs promoted, all 61 region channels",
             "cmd": [
                 PY,
-                os.path.join(REPO, "tools", "test_ui.py"),
+                os.path.join(REPO, "tools", "det_arms.py"),
                 "--sp-determinism",
                 "--steps",
                 "800",
@@ -334,7 +314,6 @@ DUR_HINTS = {
     "abc_spcamp": 200,
     "selftests": 180,
     "det": 150,
-    "det_c1": 150,
     # Measured STANDALONE (wave 7 lane D, not yet inside a real gate run -- this self-corrects from
     # tmp/gate/last_timings.json the first time the gate actually runs them): u19j_gpfg3's guarded
     # arm ran inside a combined 388 s run whose unguarded half hit a crashy VM (G315); a clean
@@ -403,7 +382,29 @@ def diet_reds(unit_secs, gate_wall, suite_rec, green):
     for name, r in sorted((suite_rec or {}).get("per_test", {}).items()):
         b = r.get("budget_s")
         secs = r.get("secs") or 0.0
-        if r.get("verdict") == "SKIP" or not b:
+        verdict = r.get("verdict")
+        if verdict == "SKIP" or not b:
+            continue
+        # tooling:TL-SUITE-TIMEOUT-CLASS -- a timeout names ITS OWN class here, never the generic
+        # "ran Xs > budget" wording: that phrasing reads as slowness, which is the one thing a
+        # NEVER-STARTED or ASSERTION-NOT-RUN row did NOT do (TL-HARN19: a budget red and a
+        # determinism red must never again be the same word in the gate's own output).
+        if verdict in ("NEVER-STARTED", "WALK-STALLED", "ASSERTION-NOT-RUN"):
+            reds.append(
+                "scenario %s %s (killed at %.0fs against budget_s %ds) -- see the suite log, not a "
+                "slow run" % (name, verdict, secs, b)
+            )
+            continue
+        # tooling:TL-SUITE-LOADRED -- a red that only reproduces under suite contention gets its OWN
+        # name too, the same reason the two verdicts above do: LOAD-RED (passed alone, not on
+        # load_red_allow's allow-list) and RED-NOT-RERUN (over the suite's own rerun cap) must never
+        # read as a bare cost overrun -- the suite's own solo-rerun summary is the evidence, not a
+        # budget number. LOAD-RED-ALLOW is a real pass (falls through to the ordinary budget check).
+        if verdict in ("LOAD-RED", "RED-NOT-RERUN"):
+            reds.append(
+                "scenario %s %s -- see the suite log's solo rerun summary, not a cost regression"
+                % (name, verdict)
+            )
             continue
         if secs > SCENARIO_OVER * b:
             reds.append(
@@ -430,6 +431,20 @@ def selftest():
     within = {"per_test": {"a": {"secs": 50, "budget_s": 60}}}
     over = {"per_test": {"a": {"secs": 97, "budget_s": 60}}}
     skipped = {"per_test": {"a": {"secs": 999, "budget_s": 1, "verdict": "SKIP"}}}
+    # tooling:TL-SUITE-TIMEOUT-CLASS -- a NEVER-STARTED/ASSERTION-NOT-RUN row must still red (it
+    # never passed), but its red must not use the "ran Xs > budget" wording that a real cost-growth
+    # row (`over`, above) gets -- see the wording assertion below the main case loop.
+    never_started = {"per_test": {"a": {"secs": 420, "budget_s": 66, "verdict": "NEVER-STARTED"}}}
+    assertion_not_run = {
+        "per_test": {"a": {"secs": 420, "budget_s": 66, "verdict": "ASSERTION-NOT-RUN"}}
+    }
+    # tooling:TL-SUITE-LOADRED -- LOAD-RED/RED-NOT-RERUN must red (same reason as the two above:
+    # a real red is a real red), and LOAD-RED-ALLOW must NOT (the allow-list is what makes it a pass).
+    load_red = {"per_test": {"a": {"secs": 55, "budget_s": 60, "verdict": "LOAD-RED"}}}
+    red_not_rerun = {"per_test": {"a": {"secs": 55, "budget_s": 60, "verdict": "RED-NOT-RERUN"}}}
+    load_red_allowed = {
+        "per_test": {"a": {"secs": 55, "budget_s": 60, "verdict": "LOAD-RED-ALLOW"}}
+    }
     cases = [
         ("all within", {"suite": 600}, 850, within, 0),
         ("scenario 1.6x its budget", {"suite": 600}, 850, over, 1),
@@ -437,6 +452,11 @@ def selftest():
         ("suite over 12 min", {"suite": 721}, 850, {}, 1),
         ("gate over 18 min", {"suite": 600}, 1081, {}, 1),
         ("all three", {"suite": 800}, 1100, over, 3),
+        ("a NEVER-STARTED scenario still reds", {"suite": 600}, 850, never_started, 1),
+        ("an ASSERTION-NOT-RUN scenario still reds", {"suite": 600}, 850, assertion_not_run, 1),
+        ("a LOAD-RED scenario still reds", {"suite": 600}, 850, load_red, 1),
+        ("a RED-NOT-RERUN scenario still reds", {"suite": 600}, 850, red_not_rerun, 1),
+        ("a LOAD-RED-ALLOW scenario does NOT red", {"suite": 600}, 850, load_red_allowed, 0),
     ]
     for label, units_, wall, rec, want in cases:
         got = diet_reds(units_, wall, rec, green)
@@ -446,8 +466,25 @@ def selftest():
     growth = diet_reds({}, 0, over, green)
     hit = bool(growth) and "last green 40s" in growth[0]
     print("  %-26s %s" % ("a red names its growth", "ok" if hit else "XX"))
-    print("run_gate selftest: %s" % ("PASS" if ok and hit else "FAIL"))
-    return 0 if ok and hit else 1
+    ok = ok and hit
+    timeout_wording = diet_reds({}, 0, never_started, green)
+    hit = (
+        bool(timeout_wording)
+        and "NEVER-STARTED" in timeout_wording[0]
+        and " ran " not in timeout_wording[0]
+    )
+    print("  %-26s %s" % ("a timeout names its class, not FAIL", "ok" if hit else "XX"))
+    ok = ok and hit
+    loadred_wording = diet_reds({}, 0, load_red, green)
+    hit = (
+        bool(loadred_wording)
+        and "LOAD-RED" in loadred_wording[0]
+        and " ran " not in loadred_wording[0]
+    )
+    print("  %-26s %s" % ("a LOAD-RED names its class, not a cost line", "ok" if hit else "XX"))
+    ok = ok and hit
+    print("run_gate selftest: %s" % ("PASS" if ok else "FAIL"))
+    return 0 if ok else 1
 
 
 def load_durations(rows):
@@ -718,9 +755,10 @@ def main():
     free = [args.cores]
     # THE VM SLOT (gate diet block 5b, mp:U19j/X2a into the gate): a SECOND, disjoint budget beside
     # `free`. `free` prices THIS box's cores; it says nothing about the two rig VMs, and until now
-    # that was safe because exactly one roster row ever touched them (`det`) -- `det_c1` deliberately
-    # runs on LOCAL lanes only ("`det` holds the VMs for the whole of its run", its own comment) so
-    # the roster never had two VM-driving units in flight together. mp:U19j's rig proof and mp:X2a's
+    # that was safe because exactly one roster row ever touched them (`det`; the roster's other
+    # configuration-(1) row, `det_c1`, ran on LOCAL lanes only and was folded into match_launch_net's
+    # own post_check, tooling:TL-SUITE-FOLD-DETC1) so the roster never had two VM-driving units in
+    # flight together. mp:U19j's rig proof and mp:X2a's
     # both need the REAL vms[0]/vms[1] pair (independent installs / a 3rd peer past a drop -- neither
     # is expressible on a local lane, see their rows), so the roster now has three. Two rig tools
     # deploying to the SAME VM directory at once (remote_launch's fixed `args.vm_dir`, one scheduled
@@ -824,6 +862,13 @@ def main():
     rec["_units"] = {n: [round(a, 1), round(b, 1), results[n][0]] for n, (a, b) in spans.items()}
     rec["_suite_scenarios"] = {
         n: r.get("secs") for n, r in (suite_rec.get("per_test") or {}).items()
+    }
+    # tooling:TL-SUITE-TIMEOUT-CLASS -- the per-scenario CLASS (PASS/SLOW/FAIL/NEVER-STARTED/
+    # ASSERTION-NOT-RUN), kept as its own key rather than folded into `_suite_scenarios` above so
+    # every existing reader of that {name: seconds} shape (this file's own `_growth`, gate_timeline)
+    # is untouched.
+    rec["_suite_classes"] = {
+        n: r.get("verdict") for n, r in (suite_rec.get("per_test") or {}).items()
     }
     rec["_suite_chains"] = suite_rec.get("chains") or []
     rec["_reds"] = reds

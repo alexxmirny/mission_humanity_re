@@ -769,6 +769,16 @@ def declare_checks(args):
         "host-global lease acquire / reap / want (hostlock --selftest)",
         [sys.executable, os.path.join(REPO, "tools", "hostlock.py"), "--selftest"],
     )
+    # tooling:TL-SUITE-TEARDOWN -- the shared kill-on-close job-object helper every local child this
+    # rig launches now goes through. Offline, no rig, no game (~2.5 s measured): an ARM child dies
+    # within seconds of its job-assigned parent's ABRUPT os._exit(0) (no cooperation, exactly what a
+    # per-test timeout does to a runner) while a MUTATION control with no job assigned survives,
+    # proving the ARM result is not vacuous; and a file held open by a real child process is named
+    # in copy_or_refuse's REFUSAL rather than raised as a bare PermissionError.
+    check(
+        "kill-on-close job assignment + copy-refusal fallback (win_job --selftest)",
+        [sys.executable, os.path.join(REPO, "tools", "win_job.py"), "--selftest"],
+    )
     # ---- THE GHIDRA-SIDE WRITE-LEASE ROW DROPPED AT FORK F5M S4b (the archive-tool cut) ---------
     # It exercised the Jython/PyGhidra half of the ghidra-write lease (acquire / timeout / reap) in
     # the Py2/3 subset the in-Ghidra write scripts are limited to. The host-global lease row above
@@ -889,6 +899,11 @@ def declare_checks(args):
     check(
         "gate diet: every TESTS row has budget_s, long rows a long_why (test_ui --check-budgets)",
         [sys.executable, os.path.join(REPO, "tools", "test_ui.py"), "--check-budgets"],
+    )
+    # TL-SUITE-REGDATA: registry.yaml is schema-checked on every load; this keeps the refusals honest.
+    check(
+        "scenario registry schema -- unknown key / wrong type / missing key refused (ui_registry)",
+        [sys.executable, os.path.join(REPO, "tools", "ui_registry.py"), "--selftest"],
     )
     check(
         "gate diet: run_gate's cost red rules -- the negative cases still fire",
@@ -1229,6 +1244,16 @@ def declare_checks(args):
         "fixture-currency gate -- a stale fixture, an unstamped/stale oracle and a bad excusal go RED",
         [sys.executable, os.path.join(REPO, "tools", "lint_fixture_currency.py"), "--selftest"],
     )
+    # tooling TL-GATE8. The code that decides which bytes reach the state hash (the watched files /
+    # spans in tools/data/hash_input_epoch.json) may not change without a HASH_INPUT_EPOCH decision.
+    check(
+        "hashed-input code changes carry a HASH_INPUT_EPOCH decision (lint_hash_epoch)",
+        [sys.executable, os.path.join(REPO, "tools", "lint_hash_epoch.py")],
+    )
+    check(
+        "hash-epoch gate -- a watched edit, an unrebaselined bump and a bad span go RED",
+        [sys.executable, os.path.join(REPO, "tools", "lint_hash_epoch.py"), "--selftest"],
+    )
     # dist RP4. Structural checks over every tracked docker-compose file: the relay service runs
     # with `network_mode: host` (plan D4 -- the default bridge's userland proxy rewrites the
     # source address the connection-id demux depends on), the collector service does not, and
@@ -1294,6 +1319,14 @@ def declare_checks(args):
         "mp:RM1 rematch-residue post-check -- the negative cases still fire (check_rematch_residue --selftest)",
         [sys.executable, os.path.join(REPO, "tools", "check_rematch_residue.py"), "--selftest"],
     )
+    # mp:SES7b. The match-replay tool's verdict and input resolution over planted logs and folders --
+    # no rig: an excluded-region-only difference must not read as a divergence, too few common steps
+    # must be REFUSED rather than IDENTICAL, and a process recording whose first played match is not
+    # this one (its seed is process step 1) must be refused by name.
+    check(
+        "mp:SES7b match replay -- the negative cases still fire (replay_match_segment --selftest)",
+        [sys.executable, os.path.join(REPO, "tools", "replay_match_segment.py"), "--selftest"],
+    )
     # mp:CH1. The cheat-gate post_check (tools/test_ui.py's ch1_cheat entry) runs only with the rig;
     # its negatives -- the cheat RAN (gate off), the refusal line missing, order 0xfa staged in a
     # peer's order buffers, a sim-path elimination, a desync sample, a netind name morph, nobody
@@ -1336,13 +1369,26 @@ def declare_checks(args):
         "mp:P6 loser-gap post-check -- the negative cases still fire (check_p6_gap --selftest)",
         [sys.executable, os.path.join(REPO, "tools", "check_p6_gap.py"), "--selftest"],
     )
-    # mp:D28. The cancel-task post_check (tools/test_ui.py's d28_canceltask / d28_canceltask_local
-    # entries) runs only with the rig; its negatives -- the seam banner missing, the Yes click never
+    # mp:D28. The cancel-task post_check (tools/test_ui.py's d28_canceltask_local entry) runs only
+    # with the rig; its negatives -- the seam banner missing, the Yes click never
     # routed, the routed arm still diverging, the reproduction arm identical or healing, the wrong
     # region, routing on in the reproduction arm -- are gated here off planted logs.
     check(
         "mp:D28 cancel-task post-check -- the negative cases still fire (check_cancel_task --selftest)",
         [sys.executable, os.path.join(REPO, "tools", "check_cancel_task.py"), "--selftest"],
+    )
+    # mp:D35. The configuration-(1) build-click rows run only with the rig; their clauses -- the
+    # seam armed/kept banner, the per-click probe line, hash identical/diverged-and-stayed in
+    # pK_ai_econ, and the in-band desync watch clean/fired -- are gated here off planted logs.
+    check(
+        "mp:D35 build-click post-check -- the negative cases still fire (check_build_probe --selftest)",
+        [sys.executable, os.path.join(REPO, "tools", "check_build_probe.py"), "--selftest"],
+    )
+    # tooling:TL-SUITE-SPLICE-HOSTCLICK. host_clicks' three per-segment verdicts run only with the
+    # rig; each segment going red ALONE (and an inherited divergence reading NOT JUDGED) is gated here.
+    check(
+        "host_clicks per-segment post-check -- each segment reds alone (check_host_clicks --selftest)",
+        [sys.executable, os.path.join(REPO, "tools", "check_host_clicks.py"), "--selftest"],
     )
     # mp:P9. The resync-storm post_check (tools/test_ui.py's match_launch_net / resync_storm_repro
     # entries) runs only with the rig; its negatives -- a configuration-(2) lane (libmh bound), an
@@ -1352,6 +1398,14 @@ def declare_checks(args):
     check(
         "mp:P9 resync-storm post-check -- the negative cases still fire (check_resync_storm --selftest)",
         [sys.executable, os.path.join(REPO, "tools", "check_resync_storm.py"), "--selftest"],
+    )
+    # tooling:TL-SUITE-FOLD-DETC1 / dist:V022. The orders-agree post_check (match_launch_net's third
+    # post_check entry, folded from run_gate.py's retired det_c1 unit) runs only with the rig; its
+    # negatives -- a missing mh_orders.bin, an empty recording, a common-step disagreement -- are
+    # gated here off planted files, including the process/session-dir resolution both call shapes need.
+    check(
+        "dist:V022 orders-agree post-check -- the negative cases still fire (check_orders_agree --selftest)",
+        [sys.executable, os.path.join(REPO, "tools", "check_orders_agree.py"), "--selftest"],
     )
     # mp:P13. The sim-rate post_check (tools/test_ui.py's p13_rate_180 entry) runs only with the
     # rig; its negatives -- a slow whole match, a stall that only the worst-30-s window sees, a
@@ -1466,10 +1520,11 @@ def declare_checks(args):
         "mp:R4a stale-relay post-check -- the negative cases still fire (check_relay_stale --selftest)",
         [sys.executable, os.path.join(REPO, "tools", "check_relay_stale.py"), "--selftest"],
     )
-    # mp:SES3. The camera-latch reader is the cam_edge_scroll scenario's post-check, i.e. it only
-    # runs when the rig does -- so its own negatives are gated here instead, off planted logs: a
-    # latch with no camera movement, a latch that never falls, a run over the lines/frame budget and
-    # a run with mouse_trace off must each go RED rather than read as a quiet pass.
+    # mp:SES3/SES3c (tooling:TL-SUITE-SPLICE-CAM). The camera-latch reader is the cam_latch
+    # scenario's post-check, i.e. it only runs when the rig does -- so its own negatives are gated
+    # here instead, off planted logs: a latch with no camera movement, a latch that never falls, a
+    # run over the lines/frame budget, a run with mouse_trace off, and a --segment verdict confused
+    # by the other probe's samples must each go RED rather than read as a quiet pass.
     check(
         "cam-trace reader -- planted latch/cost/absence cases go RED (check_cam_trace --selftest)",
         [sys.executable, os.path.join(REPO, "tools", "check_cam_trace.py"), "--selftest"],
@@ -1958,8 +2013,8 @@ def declare_checks(args):
     # one of them is SILENT when it is working -- exactly the shape that rots unnoticed between rig
     # runs. Rig-free, so it belongs in the fast gate rather than the 30-minute one.
     check(
-        "determinism run-shape rules (test_ui --det-selftest)",
-        [sys.executable, os.path.join(REPO, "tools", "test_ui.py"), "--det-selftest"],
+        "determinism run-shape rules (det_arms --det-selftest)",
+        [sys.executable, os.path.join(REPO, "tools", "det_arms.py"), "--det-selftest"],
     )
     # C9. Markdown tables that do not render. Found 2026-08-03 with 58% of the failure ledger -- the
     # ledger consulted before every "dead/unwired" claim -- rendering as prose, and four of its rows
@@ -2114,6 +2169,70 @@ def declare_checks(args):
     check(
         "python deps pinned (lint_requirements)",
         [sys.executable, os.path.join(REPO, "tools", "lint_requirements.py")],
+    )
+    # tooling:TL-SUITE-RESREG. 12+ separate incidents (TL-RIG6/7/8/11, TL-LOCKRACE, TL-POLITELOCK,
+    # TL-LANECOLLIDE, TL-SHIMCTL, TL-SELFTEST-STAGE, TL-TMPLEAK, G268, hostlock reaping a live
+    # holder) were all one shape: a literal port/%TEMP% dir/lock/mutex name that two forms of
+    # parallelism both bind, fixed one at a time. tools/data/resource_registry.json names every
+    # such literal tools/*.py and *.bat actually uses and how it is scoped; this refuses any literal
+    # the registry does not account for. Rig-free, sub-second.
+    check(
+        "every machine-global resource literal is registered (lint_resources)",
+        [sys.executable, os.path.join(REPO, "tools", "lint_resources.py")],
+    )
+    check(
+        "resource-literal scan -- the negative cases still fire",
+        [sys.executable, os.path.join(REPO, "tools", "lint_resources.py"), "--selftest"],
+    )
+    # TL-SUITE-INIMERGE: the rig's [net] defaults must match the shipped example ini unless declared
+    # (tools/data/rig_ini_default_exceptions.json) -- the TL-RIG-DEFANG shape.
+    check(
+        "rig [net] defaults match the shipped ini (lint_rig_ini_defaults)",
+        [sys.executable, os.path.join(REPO, "tools", "lint_rig_ini_defaults.py")],
+    )
+    check(
+        "rig-defaults lint -- the negative cases still fire",
+        [sys.executable, os.path.join(REPO, "tools", "lint_rig_ini_defaults.py"), "--selftest"],
+    )
+    # tooling:TL-SUITE-LOADRED. A suite red under contention (TL-HARN19: 51s alone vs 424s killed in
+    # the full suite) is auto-rerun alone once; the allow-list that can accept a proven load flake
+    # instead of failing the gate forever needs its own dates checked, or it silently accepts one
+    # nobody re-dates (the TL-HARN19/TL-GATE-LOADFLAKE-0925 shape, one level up).
+    check(
+        "the solo-rerun allow-list has no expired/malformed entry (load_red_allow)",
+        [sys.executable, os.path.join(REPO, "tools", "load_red_allow.py"), "--check"],
+    )
+    check(
+        "solo-rerun allow-list -- the negative cases still fire",
+        [sys.executable, os.path.join(REPO, "tools", "load_red_allow.py"), "--selftest"],
+    )
+    check(
+        "solo rerun of red suite rows -- the negative cases still fire (test_ui --loadred-selftest)",
+        [sys.executable, os.path.join(REPO, "tools", "test_ui.py"), "--loadred-selftest"],
+    )
+    # tooling:TL-SUITE-LOADRED (b). A capture/assertion step or a peer-dependent shim trigger whose
+    # only synchronization is a wall/game-clock offset (TL-P9W-TRIGGER's fixed t+50s blackhole,
+    # ~97% odds of landing inside a barrier and usually missing) is refused; state predicates,
+    # shim_triggers log-line gates and simstep fences are the allowed alternatives.
+    check(
+        "no clock-only sync in a uiscript or a shim_timeline row (lint_ui_sync)",
+        [sys.executable, os.path.join(REPO, "tools", "lint_ui_sync.py")],
+    )
+    check(
+        "clock-only-sync lint -- the negative cases still fire",
+        [sys.executable, os.path.join(REPO, "tools", "lint_ui_sync.py"), "--selftest"],
+    )
+    # tooling:TL-SUITE-COUNTERS. Dead-end G101: a counter reported only at graceful shutdown is
+    # invisible to a rig run, which is always KILLED. Refuses a NEW `g_*` counter whose only print is
+    # inside a shutdown-path function/message; the shared first-hit + periodic-rollup helper is the
+    # fix (mh_diag_counter.h, mh_common's headers). Rig-free, sub-second.
+    check(
+        "no counter reported only at teardown (lint_shutdown_counters)",
+        [sys.executable, os.path.join(REPO, "tools", "lint_shutdown_counters.py")],
+    )
+    check(
+        "shutdown-only-counter lint -- the planted positives/negatives still fire",
+        [sys.executable, os.path.join(REPO, "tools", "lint_shutdown_counters.py"), "--selftest"],
     )
     # BS-ENV E2b. E2 lifted machine constants out of tools/*.py; E2b did the same for src/formats +
     # a plain REPO-hardcoding tool, and made the DLL build config portable. This fails if a bare

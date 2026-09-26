@@ -242,21 +242,14 @@ UNREACHABLE_OPS = {0x1D: "never queued -- see OP_NAMES", 0x1F: "never queued -- 
 
 
 def registered_journals():
-    """The journals the tactical suite actually gates on, DERIVED from test_ui.py's registry.
+    """The journals the tactical suite actually gates on, DERIVED from the tact_scenarios registry.
 
     Derived rather than globbed: `tools/uiscripts/journals/` also holds trimmed variants and
     experiments, and a coverage claim about "the fixture set" has to be about the set the gate
     runs."""
-    path = os.path.join(REPO, "tools", "test_ui.py")
-    try:
-        with open(path, encoding="utf-8", errors="replace") as f:
-            src = f.read()
-    except OSError:
-        return []
-    m = re.search(r"TACT_SCENARIOS\s*=\s*\[(.*?)\n\]", src, re.S)
-    if not m:
-        return []
-    return [os.path.join(REPO, p) for p in re.findall(r'"journal":\s*"([^"]+)"', m.group(1))]
+    import ui_registry  # TL-SUITE-REGDATA: the registry is data now, not test_ui.py source
+
+    return [os.path.join(REPO, sc["journal"]) for sc in ui_registry.load()["tact_scenarios"]]
 
 
 def report_union(paths, vocab):

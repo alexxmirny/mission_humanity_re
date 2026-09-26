@@ -123,7 +123,7 @@ def read_lines(folder):
 def peer_lines(run_dir):
     """All mh_net.log lines of one peer: the process directory's, then each of its SESSION
     directories' (check_data_timeout.py's / check_cheat_gate.py's pattern) -- needed because
-    `txdeath_ingame` is a lane SHARER (share_lanes: match_launch), so a peer's `logs/` can hold more
+    `txdeath_ingame` is a lane SHARER (share_lanes: shim_udp), so a peer's `logs/` can hold more
     than this process's own session. Refuses when nothing is readable."""
     run_dir = os.path.abspath(run_dir)
     if not os.path.isdir(run_dir):

@@ -500,4 +500,14 @@ constexpr uint32_t hash_manifest_fp() {
 
 inline constexpr uint32_t HASH_MANIFEST_FP = hash_manifest_fp();
 
+// ---- the hash-INPUT epoch (tooling TL-GATE8) ---------------------------------------------------
+//
+// HAND-BUMPED when the BYTES fed to the hash change for an unchanged world -- an emit view, a mask,
+// a sink rule, a harness write into a hashed region before the hash. Neither fingerprint above sees
+// that class (dead-ends G177). Every stored hash-embedding artifact carries the epoch it was cut
+// under and every consumer refuses a mismatch. tools/lint_hash_epoch.py ties the value to the
+// watched files in tools/data/hash_input_epoch.json; tools/mp_analyze.py hash_input_epoch() is the
+// Python mirror (it parses this line).
+inline constexpr uint32_t HASH_INPUT_EPOCH = 1u;
+
 } // namespace mh::state

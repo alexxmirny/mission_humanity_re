@@ -84,15 +84,25 @@
       "why": "mp:R2b: the browser_two_rows scenario's claim that a browsing client LISTED every relay-hosted lobby as its own row and that each JOIN dialled the room of the row it CLICKED (second, then first) -- read off the client's `; R2 relay directory: ... -> listed` rows and its `; R2b join: row ... room=` lines against the hosts' minted rooms, since a frame cannot show which room a join dialled.",
       "evidence": "invoked by tools/lint_repo.py (--selftest, the planted-log negatives) and as the browser_two_rows scenario's post_check in tools/test_ui.py"
     },
+    "check_build_probe.py": {
+      "class": "keep",
+      "why": "mp:D35: the configuration-(1) (no libmh.dll) build-click rows' cross-peer post_check -- with the mh.dll seam's charge-free probe (ship default) the host logs the probe line and the pair stays IDENTICAL with the in-band desync watch clean; with [net] build_probe_free=0 (the reproduction arm) the retail pay + re-grant diverges pK_ai_econ, never heals, and the watch logs *** DESYNC",
+      "evidence": "invoked by tools/test_ui.py's d35_buildclick_c1 / d35_buildclick_c1_retail TESTS entries (post_check, post_check_peers, post_check_session) and tools/lint_repo.py (--selftest)"
+    },
     "check_cam_trace.py": {
       "class": "keep",
-      "why": "mp:SES3 -- reads the camera latches on the [input] mouse_trace line; the cam_edge_scroll scenario's post-check and the reader a player's stuck-scroll log is judged with",
-      "evidence": "invoked by tools/test_ui.py (TESTS post_check, cam_edge_scroll); its own --selftest plants a log per outcome"
+      "why": "mp:SES3/SES3c (tooling:TL-SUITE-SPLICE-CAM) -- reads the camera latches on the [input] mouse_trace line; the cam_latch scenario's post-check (two --segment verdicts off one boot) and the reader a player's stuck-scroll log is judged with",
+      "evidence": "invoked by tools/test_ui.py (TESTS post_check, cam_latch); its own --selftest plants a log per outcome"
     },
     "check_cancel_task.py": {
       "class": "keep",
-      "why": "mp:D28: the d28_canceltask / d28_canceltask_local UI scenarios' cross-peer post_check -- with the cancel-task Yes routed as a building order (ship default) the host's log carries the routed line and the pair stays IDENTICAL; with [net] cancel_task_order=0 (the reproduction arm) the retail local call diverges `buildings` and never heals",
-      "evidence": "invoked by tools/test_ui.py's d28_canceltask and d28_canceltask_local TESTS entries (post_check, post_check_peers; registered by wave-2 lane G) and tools/lint_repo.py (--selftest)"
+      "why": "mp:D28: the d28_canceltask_local UI scenario's cross-peer post_check (the ship arm is host_clicks' canceltask segment) -- with the cancel-task Yes routed as a building order (ship default) the host's log carries the routed line and the pair stays IDENTICAL; with [net] cancel_task_order=0 (the reproduction arm) the retail local call diverges `buildings` and never heals",
+      "evidence": "invoked by tools/test_ui.py's d28_canceltask_local TESTS entry (post_check, post_check_peers) and tools/lint_repo.py (--selftest); its net-log reader + needles are reused by check_host_clicks.py"
+    },
+    "check_host_clicks.py": {
+      "class": "keep",
+      "why": "tooling:TL-SUITE-SPLICE-HOSTCLICK -- the host_clicks UI scenario's per-segment post_check: one match runs the U39 diplomacy, D28 cancel-task and D25 build-click host clicks, and each segment is judged on its own sim window (the `log hc <seg>` gameclock fences) -- a fresh state-hash divergence inside it, a peer missing rows, and for D28 the seam banner + routed line -- so one red segment cannot hide the other two",
+      "evidence": "invoked by tools/test_ui.py's host_clicks TESTS entry (three post_check commands, post_check_peers, post_check_session) and tools/lint_repo.py (--selftest)"
     },
     "check_cheat_gate.py": {
       "class": "keep",
@@ -229,6 +239,11 @@
       "class": "keep",
       "why": "mp:CH1 (the AV clause): the gs2_quit_frozen UI scenario's cross-peer post_check -- the host quits a lockstep match frozen on a data-silent peer (the field a952c570_2 shape) and neither peer's process may write an mh_crash_*.marker",
       "evidence": "invoked by tools/test_ui.py's gs2_quit_frozen TESTS entry (post_check, post_check_peers) and tools/lint_repo.py (--selftest)"
+    },
+    "check_orders_agree.py": {
+      "class": "keep",
+      "why": "tooling:TL-SUITE-FOLD-DETC1 / dist:V022: match_launch_net's cross-peer post_check -- decodes each peer's mh_orders.bin (order_mode=1, via tools/mp_order_diff.py) and fails on a missing file, an empty recording, or a common-step disagreement; also run_det_config1's det_orders_verdict (det_dir/{peer} layout), folded here from the retired run_gate.py det_c1 unit",
+      "evidence": "invoked by tools/uiscripts/registry.yaml's match_launch_net row (post_check, post_check_peers) and its own --selftest (planted mh_orders.bin files, including the process/session-dir indirection)"
     },
     "check_overlay_residue.py": {
       "class": "keep",
@@ -391,6 +406,11 @@
       "class": "keep",
       "why": "launches a process on its own Windows desktop (headless rig)",
       "evidence": "used by mp_run.py, test_ui.py, ui_test.py"
+    },
+    "det_arms.py": {
+      "class": "keep",
+      "why": "tooling:TL-SUITE-SPLIT: the determinism arms split out of test_ui.py -- the 2-peer UI-path lockstep gate and its shapes (--det-standard, --det-config1, --det-3peer, --u19b-quit3), the single-player oracle (--sp-determinism) and the 3-peer / VM-only proofs (--l1f-ping3, --u19j-gpfg3, --x2a-map-variant)",
+      "evidence": "invoked by tools/run_gate.py (det, det_c1, u19j_gpfg3, x2a_map_variant, spdet units) and tools/lint_repo.py (--det-selftest); test_ui.py forwards its old --determinism/--sp-determinism/... flags here"
     },
     "drain_reports.py": {
       "class": "keep",
@@ -834,6 +854,11 @@
       "why": "mh/fp/ helper state-declaration check",
       "evidence": "invoked by tools/lint_repo.py"
     },
+    "lint_hash_epoch.py": {
+      "class": "keep",
+      "why": "tooling TL-GATE8: the code that decides which bytes reach the state hash (tools/data/hash_input_epoch.json's watched files and HASH-INPUT spans) may not change without a HASH_INPUT_EPOCH decision (bump, or --neutral)",
+      "evidence": "invoked by tools/lint_repo.py"
+    },
     "lint_ini_string_keys.py": {
       "class": "keep",
       "why": "2026-09-20 (user ruling): no string-valued key in mh_net.example.ini may carry a same-line comment -- GetPrivateProfileStringA returns it as the value (probe_text drew its comment on every present of a stock install; relay= dialled its comment). The key set is derived from the DLL's readers, so the row cannot fall behind a new string key.",
@@ -892,6 +917,11 @@
     "lint_requirements.py": {
       "class": "keep",
       "why": "tools/requirements.txt completeness guard",
+      "evidence": "invoked by tools/lint_repo.py"
+    },
+    "lint_resources.py": {
+      "class": "keep",
+      "why": "tooling:TL-SUITE-RESREG: no literal machine-global port/%TEMP% dir/lock/mutex in tools/*.py or *.bat that tools/data/resource_registry.json does not name -- the recurring parallel-agent collision shape (TL-RIG6/7/8, TL-LOCKRACE, TL-LANECOLLIDE, ...) fixed one incident at a time",
       "evidence": "invoked by tools/lint_repo.py"
     },
     "lint_rust.py": {
@@ -1103,6 +1133,11 @@
       "why": "the libref replay driver (a gate unit)",
       "evidence": "invoked by tools/lint_repo.py, tools/run_gate.py"
     },
+    "replay_match_segment.py": {
+      "class": "keep",
+      "why": "mp:SES7b: replays a bug report's recorded match (the SES7 segment, or a first-match process recording) offline in a fresh process and names the first diverging step and region",
+      "evidence": "invoked by tools/lint_repo.py"
+    },
     "report_inbound_liveness.py": {
       "class": "keep",
       "why": "which libmh inbound entries a run actually entered. KEEP as a hand-run report: the run-side complement to gen_libmh_inbound's static gate (LIB-SPINE-API)",
@@ -1225,6 +1260,11 @@
       "why": ".asm slicer for migration-translation lint pairing",
       "evidence": "F0 triage (docs/fork-inventory.md section 1): the migration / promotion / ledger machinery the fork drops"
     },
+    "soak_test.py": {
+      "class": "keep",
+      "why": "tooling:TL-SUITE-SPLIT: the all-AI soak split out of test_ui.py -- an N-way AI match through the real menu with run-shape rules and the per-step golden hash trajectory",
+      "evidence": "invoked by tools/coverage.py (the collector's inner soak) and tools/provision_rig.py (--validate); test_ui.py forwards its old --soak flag here"
+    },
     "sweep_saves.py": {
       "class": "archive",
       "why": "AI-state save indexer for migration scenario coverage",
@@ -1248,6 +1288,11 @@
       "evidence": "no machine invoker -- run by a human profiling a differential rig run",
       "hand_run": true
     },
+    "tact_test.py": {
+      "class": "keep",
+      "why": "tooling:TL-SUITE-SPLIT: the tactical-mode harness split out of test_ui.py -- journal equiv / verify / replay / one arm / determinism / play / trim / suite",
+      "evidence": "imported by tools/test_ui.py (the pooled tactical-journal tail runs run_tact_equiv), tools/coverage.py, tools/tact_profile.py and tools/tact_divergence_hunt.py; test_ui.py forwards its old --tact-* flags here"
+    },
     "temporal_unify.py": {
       "class": "keep",
       "why": "MP per-event temporal-trace unifier",
@@ -1256,7 +1301,7 @@
     },
     "test_ui.py": {
       "class": "keep",
-      "why": "UI regression suite driver",
+      "why": "UI regression suite driver: the registry (TESTS) runner + its offline lints; forwards the old mode flags to det_arms.py / tact_test.py / ui_abc.py / soak_test.py for one cycle (tooling:TL-SUITE-SPLIT)",
       "evidence": "invoked by tools/lint_repo.py, tools/run_gate.py"
     },
     "track.py": {
@@ -1270,10 +1315,50 @@
       "evidence": "no machine invoker -- an operator deploys the echo half to a rig peer and runs the probe half through net_shim when a latency number has to be checked against the wire. Added at mp:T3b, which is the failure it exists to stop: the shim had been 'cleared' on a LOOPBACK echo while the DLL was measured on a two-VM path, so the two numbers were never compared on ONE path. `selftest` proves the instrument itself.",
       "hand_run": true
     },
+    "ui_abc.py": {
+      "class": "keep",
+      "why": "tooling:TL-SUITE-SPLIT: the recorded-UI-session (UI-REC) modes split out of test_ui.py -- the A/B/C campaign oracle, equiv, replay, selftest, oracle cut, record",
+      "evidence": "invoked by tools/run_gate.py (abc_spcamp, abc_tutorial units); imported by tools/coverage.py; test_ui.py forwards its old --ui-* flags here"
+    },
+    "ui_registry.py": {
+      "class": "keep",
+      "why": "TL-SUITE-REGDATA: loads + schema-checks tools/uiscripts/registry.yaml (the TESTS / sim / uirec / tact scenario registries); an unknown key, wrong type or missing key refuses the load by row name",
+      "evidence": "imported by tools/test_ui.py (binds TESTS etc. at import), tools/coverage.py and tools/journal_coverage.py (registered_journals); its --selftest is a tools/lint_repo.py row"
+    },
+    "ui_suite_common.py": {
+      "class": "keep",
+      "why": "tooling:TL-SUITE-SPLIT: shared machinery of the UI-suite entry points -- scenario registries, the ONE ui_test.py argv builder (build_scenario_argv, TL-SUITE-ARGV), RunnerConfig (TL-SUITE-CONFIG), lane provisioning, the relay process, the shared flags",
+      "evidence": "imported by tools/test_ui.py, tools/det_arms.py, tools/tact_test.py, tools/ui_abc.py, tools/soak_test.py, tools/coverage.py and tools/tact_profile.py"
+    },
     "ui_test.py": {
       "class": "keep",
       "why": "UI regression runner (single- and multi-peer)",
       "evidence": "used by fixture_replay.py, rig_batch.py, test_ui.py"
+    },
+    "lint_rig_ini_defaults.py": {
+      "class": "keep",
+      "why": "tooling:TL-SUITE-INIMERGE: diffs ui_test.py's NET_BLOCK [net] defaults against the shipped src/mh_dll/mh_net.example.ini (same trap as TL-RIG-DEFANG/G274, where the rig silently ran defang_overlay=1 for two years against a shipped 0) and reds on an undeclared mismatch; declared ones live in tools/data/rig_ini_default_exceptions.json.",
+      "evidence": "invoked by tools/lint_repo.py"
+    },
+    "win_job.py": {
+      "class": "keep",
+      "why": "tooling:TL-SUITE-TEARDOWN: the shared Windows Job-Object kill-on-close helper (JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE) + process-liveness primitives, generalised from TL-RIG6's shim-only mechanism so every local child this rig owns (game peers, the isolated-desktop CreateProcessW path, the relay/relay-shim) dies with its launching Python process by ONE code path.",
+      "evidence": "imported by tools/ui_test.py (peer launches, shim_start/shim_stop), tools/desktop.py (spawn), tools/test_ui.py (RelayProc, the relay-shim leg); its --selftest is a tools/lint_repo.py row"
+    },
+    "load_red_allow.py": {
+      "class": "keep",
+      "why": "tooling:TL-SUITE-LOADRED: validates tools/data/load_red_allow.json (the solo-rerun allow-list) -- refuses a malformed entry or one whose expiry has passed, so an accepted load-flaky row cannot silently stay accepted forever",
+      "evidence": "invoked by tools/test_ui.py (apply_load_rerun's allow_check) and tools/lint_repo.py"
+    },
+    "lint_ui_sync.py": {
+      "class": "keep",
+      "why": "tooling:TL-SUITE-LOADRED (b): refuses a uiscript step or a registry shim_timeline row whose only synchronization is a clock offset/sleep instead of a state predicate, a shim_triggers log-line gate, or a simstep fence (TL-P9W-TRIGGER's fixed t+50s blackhole is the motivating, still-open offender)",
+      "evidence": "invoked by tools/lint_repo.py"
+    },
+    "lint_shutdown_counters.py": {
+      "class": "keep",
+      "why": "tooling:TL-SUITE-COUNTERS (docs/dead-ends.md G101): refuses a g_* counter whose only log print is inside a shutdown-path function or message -- a rig run is always KILLED, so that print never runs. Validates tools/data/shutdown_counter_allow.json's own shape too.",
+      "evidence": "invoked by tools/lint_repo.py"
     }
   }
 }

@@ -112,6 +112,9 @@
     <ClCompile Include="seams\ui_bldg_cancel_task.cpp">
       <Filter>seams</Filter>
     </ClCompile>
+    <ClCompile Include="seams\ui_bldg_build_probe.cpp">
+      <Filter>seams</Filter>
+    </ClCompile>
     <ClCompile Include="seams\ui_net_indicator.cpp">
       <Filter>seams</Filter>
     </ClCompile>

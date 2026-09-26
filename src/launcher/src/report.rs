@@ -7,7 +7,7 @@
 //! description.txt        what the player typed. REQUIRED, and the build refuses without it
 //! logs/<name>/...        EVERY process + session directory since the launcher started (dist LA9)
 //! config/mh_net.ini      the game's configuration, REDACTED
-//! launcher/launcher.log  the tail of this program's own log
+//! launcher/launcher.log  this program's own log (its newest part, if the budget must cut it)
 //! crash/marker.txt       what THIS run's crash handler wrote, when there was a crash
 //! crash/<name>.marker    every `mh_crash_*.marker`(.ctx32) file swept from `logs\` (dist LA9) --
 //!                        stale ones from an earlier, undrained crash included, not just this run's
@@ -30,13 +30,29 @@
 //! process directory (found via that session's own `session.json` `process_dir` field), and every
 //! `mh_crash_*` file, which is swept from `logs\` directly and never subject to the drop.
 //!
+//! ## dist LA14: the budget is the COMPRESSED upload body, not the input
+//!
+//! Until LA14 every file was capped at 8 MB (text tailed, a larger binary left out) and the whole
+//! report at 48 MB of UNCOMPRESSED input. A long match's logs deflate ~20:1, so that threw away
+//! most of what would have fit -- and the game had started rotating its per-match files to fit the
+//! per-file cap. Now no single file is capped. Every entry is deflated once into a staging zip,
+//! and the real upload body (the zip plus `description` and `meta` sent again as multipart fields)
+//! must fit `BODY_BUDGET` = the 64,000,000-byte Caddy edge cap minus a 2 MiB margin. When it does
+//! not, the packer gives up the least important material first (`collect` has the order): optional
+//! folders oldest first (whole), then the other protected folders, the loose root files and the
+//! launcher log (cut file by file), then the minidump (whole), and last the reported match itself.
+//! Inside a cut folder: plain binaries go first (whole), text logs keep their NEWEST part down to a
+//! floor, replay inputs go next -- whole, never cut -- and only then the text below the floor.
+//! Every folder, file and cut log given up is named in `report.json`'s `dropped`.
+//!
 //! **`report.json` IS the `meta` object RP1 will POST**, byte for byte, not a cousin of it. The
 //! collector stores that object as `meta.json` beside the zip (`src/collector/README.md`), and
 //! `tools/crash_report.py --report` reads `match_id`, `version`, `exit_code` and the optional
 //! `crash` object out of it. Writing one object and sending the same one is what keeps the drained
 //! report and the zip's own copy from ever disagreeing -- and it means the uploader in RP1 has no
 //! field names of its own to get wrong. dist LA9 adds `included` (every `logs\` directory the zip
-//! actually carries) and `dropped` (`{dir, bytes, why}` for every one the size budget refused).
+//! actually carries) and `dropped` (`{dir, bytes, why}` for every one the size budget refused;
+//! dist LA14 adds `{dir, file, bytes, why}` rows for single files, with `kept_bytes` on a cut log).
 //!
 //! ## The description is required, and it is required HERE
 //!
@@ -96,25 +112,65 @@ use crate::relay;
 /// Files that never enter a report, whatever directory they turn up in.
 const DENY: [&str; 1] = ["mh_key.txt"];
 
-/// Per-file cap. A single log bigger than this is tailed, not dropped: the end of a log is the part
-/// next to the crash.
-const PER_FILE_MAX: u64 = 8 * 1024 * 1024;
+/// dist LA14. The edge cap on the upload BODY. Caddy's `request_body max_size 64MB` (plan D14,
+/// `src/collector/Caddyfile`) is parsed by go-humanize, where `MB` is 10^6 -- 64,000,000 bytes.
+/// The collector's own `MAX_BODY_MB=64` is 64 MiB, the larger reading, so the edge is the limit
+/// that bites. A report refused on arrival (413) is worse than one missing its oldest folder.
+const EDGE_CAP_BYTES: u64 = 64_000_000;
 
-/// Whole-zip cap on UNCOMPRESSED input. Caddy rejects a body over 64 MB at the edge (plan D14) and
-/// a report that is refused on arrival is worse than a report missing its least interesting file.
-/// The margin below 64 MB is deliberate, not the whole story dist LA9 needs: this budget is counted
-/// against UNCOMPRESSED bytes while the upload is DEFLATED, so the real body is smaller than this in
-/// the overwhelming common case (mp:SES5's log diet made a match's text compress hard) -- the margin
-/// exists for what does NOT compress, chiefly the one entry (the minidump) let past `PER_FILE_MAX`.
-const TOTAL_MAX: u64 = 48 * 1024 * 1024;
+/// dist LA14. Headroom kept under `EDGE_CAP_BYTES`, for what the estimate below cannot see: a
+/// proxy's own framing, a future field in the POST.
+const SAFETY_MARGIN: u64 = 2 * 1024 * 1024;
 
-/// dist LA9. How many bytes of `TOTAL_MAX` are set aside for `report.json`, `description.txt`, the
-/// redacted ini and the launcher's own log tail BEFORE the `logs\` tree selection below runs its own
-/// budget -- sized to the launcher log's own `PER_FILE_MAX` (its only entry that can be large) plus
-/// slack for the other three, which are a few KB each. Without this reservation the tree selection
-/// would size itself against the WHOLE of `TOTAL_MAX` and could leave nothing for a large launcher
-/// log to fit into by the time its turn came.
-const RESERVED_FOR_FIXED_ENTRIES: u64 = PER_FILE_MAX + 2 * 1024 * 1024;
+/// dist LA14. What the whole upload body may weigh: the zip, plus `description` and `meta` sent a
+/// second time as their own multipart fields (`upload.rs`'s `multipart`), plus that framing. The
+/// budget is checked against the ACTUAL zip bytes after it is written, not against uncompressed
+/// input -- an hour of text logs deflates ~20:1, so a cap on input threw away most of what fits.
+pub const BODY_BUDGET: u64 = EDGE_CAP_BYTES - SAFETY_MARGIN;
+
+/// Upper bound for `upload.rs`'s multipart framing: three boundaries, three part headers, the
+/// closing boundary. About 400 bytes today.
+const MULTIPART_FRAMING: u64 = 2048;
+
+/// Per-entry zip structure (local header + central-directory record + data descriptor + extra
+/// fields), excluding the entry name, which is counted twice on top.
+const ENTRY_OVERHEAD: u64 = 160;
+
+/// Slack for `report.json` growing between the estimate and the write (more `dropped` rows).
+const META_SLACK: u64 = 64 * 1024;
+
+/// dist LA14. When a text log has to be cut, it first keeps at least this many COMPRESSED bytes of
+/// its tail (~5 MB of log text) while replay inputs and other binaries in the same folder are still
+/// there to give up. Only below that do the replay inputs go, and then the text itself.
+const TEXT_TAIL_FLOOR: u64 = 256 * 1024;
+
+/// A cut tail shorter than this is not evidence, it is noise: drop the file instead.
+const TEXT_TAIL_MIN: u64 = 4 * 1024;
+
+/// dist LA14. Optional (not protected) folders are compressed into the staging zip newest first
+/// only while their UNCOMPRESSED total stays under this. It bounds the build time on a `logs\`
+/// tree full of old runs: past it, what would be dropped anyway is not compressed first.
+const STAGE_UNCOMPRESSED_MAX: u64 = 512 * 1024 * 1024;
+
+/// How many times the zip is rewritten to converge on `BODY_BUDGET`. Each rewrite copies the
+/// already-compressed entries raw; only cut tails are compressed again.
+const FIT_ATTEMPTS: usize = 6;
+
+/// The replay inputs (`mp:SES7` match segment + the process recording). A cut replay input is
+/// not replayable, so these are kept whole or left out whole -- never tailed.
+const REPLAY_INPUTS: [&str; 6] = [
+    "mh_match_orders.bin",
+    "mh_match_clock.bin",
+    "mh_match_seed.bin",
+    "mh_orders.bin",
+    "mh_clock.bin",
+    "mh_harness_seed.bin",
+];
+
+const WHY_OVER_BUDGET: &str = "over the report upload budget (oldest folders go first)";
+const WHY_NOT_STAGED: &str = "past the report's staging limit (older than what could fit)";
+const WHY_FILE_DROPPED: &str = "left out whole to fit the report upload budget";
+const WHY_FILE_TAILED: &str = "only the newest part kept to fit the report upload budget";
 
 /// dist LA9. How many of the newest `logs\` directories to package when the launcher's own start
 /// time is unknown (a `--report` invoked from a script that never called `--launch` in this same
@@ -186,8 +242,14 @@ pub fn description_ok(text: &str) -> bool {
     !text.trim().is_empty()
 }
 
-/// Build the zip at `dest`.
+/// Build the zip at `dest`, fitted to `BODY_BUDGET`.
 pub fn build(dest: &Path, input: &Input) -> Result<Built, String> {
+    build_with_budget(dest, input, BODY_BUDGET)
+}
+
+/// `build` with the body budget spelled out, so a test can exercise the trimming order on a few
+/// megabytes instead of generating 70 MB of incompressible data for every case.
+fn build_with_budget(dest: &Path, input: &Input, body_budget: u64) -> Result<Built, String> {
     if !description_ok(input.description) {
         return Err(NO_DESCRIPTION.to_string());
     }
@@ -215,30 +277,20 @@ pub fn build(dest: &Path, input: &Input) -> Result<Built, String> {
         })
         .unwrap_or_default();
 
-    // dist LA9: which `logs\` directories the zip will carry, decided BEFORE report.json is
-    // composed -- `included`/`dropped` are part of that object, byte for byte the same object RP1
-    // posts, so the decision has to exist first.
+    // dist LA9: which `logs\` directories are candidates. Since dist LA14 this decides SCOPE only
+    // (the launcher-start window, what is protected); what the size budget costs is decided below,
+    // on compressed bytes, after everything is staged.
     let logs_root = input.logs_root();
-    let logs_plan = logs_root
+    let pool = logs_root
         .as_deref()
         .map(|lr| {
             plan_logs(
                 lr,
                 session.as_deref(),
                 input.launcher_started_utc.as_deref(),
-                TOTAL_MAX.saturating_sub(RESERVED_FOR_FIXED_ENTRIES),
             )
         })
         .unwrap_or_default();
-
-    let meta = meta_json(
-        input,
-        &machine,
-        installed.as_ref(),
-        &build_stamp,
-        &match_id,
-        &logs_plan,
-    );
 
     // dist LA6: the ini is read ONCE, here, both to be added (redacted) and to seed the literal
     // scrub every other text file goes through.
@@ -256,130 +308,83 @@ pub fn build(dest: &Path, input: &Input) -> Result<Built, String> {
         }
     });
     let scrub = Scrub::for_ini(ini_text.as_deref());
+    let description = input.description.trim().to_string();
 
-    let file = std::fs::File::create(dest)
-        .map_err(|e| format!("cannot create {}: {e}", dest.display()))?;
-    let mut zip = zip::ZipWriter::new(file);
+    let mut set = collect(
+        input,
+        logs_root.as_deref(),
+        &pool,
+        ini_text.as_deref(),
+        &scrub,
+    );
+
     let opts: zip::write::SimpleFileOptions = zip::write::SimpleFileOptions::default()
         .compression_method(zip::CompressionMethod::Deflated);
-
-    let mut entries: Vec<String> = Vec::new();
-    let mut budget = TOTAL_MAX;
-
-    add_text(
-        &mut zip,
-        opts,
-        "report.json",
-        &meta,
-        &mut entries,
-        &mut budget,
-    )?;
-    add_text(
-        &mut zip,
-        opts,
-        "description.txt",
-        input.description.trim(),
-        &mut entries,
-        &mut budget,
-    )?;
-
-    // dist LA9: the whole planned slice of `logs\`, not just the one chosen session directory --
-    // plus (dist LA10) anything that landed loose in `logs\` itself rather than in a subdirectory.
-    if let Some(lr) = logs_root.as_deref() {
-        add_logs_tree(
-            &mut zip,
-            opts,
-            lr,
-            &logs_plan,
-            &mut entries,
-            &mut budget,
-            &scrub,
-        )?;
-        add_loose_log_files(&mut zip, opts, lr, &mut entries, &mut budget, &scrub)?;
-    }
-
-    // The configuration, redacted three times over: by setting name, by the relay's own line,
-    // and by the scrub.
-    if let Some(text) = ini_text.as_deref() {
-        add_text(
-            &mut zip,
-            opts,
-            "config/mh_net.ini",
-            &redact_ini_with(text, &scrub),
-            &mut entries,
-            &mut budget,
-        )?;
-    }
-
-    if let Some(p) = input.launcher_log.as_deref() {
-        if p.is_file() {
-            add_file(
-                &mut zip,
-                opts,
-                p,
-                "launcher/launcher.log",
-                &mut entries,
-                &mut budget,
-                &scrub,
-            )?;
+    let staging = dest.with_extension("staging");
+    let result = (|| -> Result<Built, String> {
+        stage(&mut set, &staging, opts, &scrub)?;
+        let meta_for = |set: &Set| {
+            meta_json(
+                input,
+                &machine,
+                installed.as_ref(),
+                &build_stamp,
+                &match_id,
+                &set.included(),
+                &set.dropped_records(),
+            )
+        };
+        let desc_len = description.len() as u64;
+        let mut correction = 0u64;
+        let mut meta = String::new();
+        let mut entries = Vec::new();
+        let mut bytes = 0u64;
+        for attempt in 0..FIT_ATTEMPTS {
+            let meta_now = meta_for(&set);
+            let estimate = set.estimate_zip(meta_now.len() as u64 + META_SLACK)
+                + meta_now.len() as u64
+                + desc_len
+                + MULTIPART_FRAMING
+                + correction;
+            if estimate > body_budget {
+                let left = set.shed(estimate - body_budget);
+                if left > 0 {
+                    log::line(format!(
+                        "report: {left} bytes over the upload budget with nothing left to trim"
+                    ));
+                }
+            }
+            set.materialize_tails(opts, &scrub)?;
+            meta = meta_for(&set);
+            entries = write_final(dest, &staging, &set, &meta, opts)?;
+            bytes = std::fs::metadata(dest).map(|m| m.len()).unwrap_or(0);
+            let body = bytes + meta.len() as u64 + desc_len + MULTIPART_FRAMING;
+            if body <= body_budget {
+                break;
+            }
+            log::line(format!(
+                "report: attempt {} came to {body} bytes of upload body, over {body_budget}; \
+                 trimming again",
+                attempt + 1
+            ));
+            correction += body - body_budget + 64 * 1024;
         }
-    }
-
-    if let Some(m) = input.crash {
-        add_text(
-            &mut zip,
-            opts,
-            "crash/marker.txt",
-            &format!(
-                "module={}\noffset=0x{:08x}\ncode=0x{:08x}\npid={}\ntid={}\nbuild={}\nwhen={}\n",
-                m.module, m.offset, m.code, m.pid, m.tid, m.build, m.when
-            ),
-            &mut entries,
-            &mut budget,
-        )?;
-    }
-
-    // dist LA9: every `mh_crash_*` file sitting under `logs\`, not only the one THIS run's live
-    // channel caught -- a marker (or its `.ctx32` sidecar) left by an earlier, undrained crash is
-    // exactly the evidence a "something looked wrong later" report exists to carry, and it is never
-    // subject to the drop above. Uses a throwaway budget of its own: these files are a few hundred
-    // bytes each and must never be the thing a tight `budget` sacrifices.
-    if let Some(lr) = logs_root.as_deref() {
-        add_crash_marker_files(&mut zip, opts, lr, &mut entries, &scrub)?;
-    }
-
-    if let Some(dmp) = input.minidump {
-        if dmp.is_file() {
-            // The dump is the one entry allowed past the PER-FILE cap, and only that one: a
-            // truncated minidump is not a smaller minidump, it is a file no debugger will open. It
-            // still respects the total budget, so it can be left out whole.
-            add_capped(
-                &mut zip,
-                opts,
-                dmp,
-                "minidump.dmp",
-                &mut entries,
-                &mut budget,
-                TOTAL_MAX,
-                &scrub,
-            )?;
-        }
-    }
-
-    zip.finish()
-        .map_err(|e| format!("cannot finish {}: {e}", dest.display()))?;
-    let bytes = std::fs::metadata(dest).map(|m| m.len()).unwrap_or(0);
+        Ok(Built {
+            zip: dest.to_path_buf(),
+            entries,
+            bytes,
+            meta: std::mem::take(&mut meta),
+        })
+    })();
+    std::fs::remove_file(&staging).ok();
+    let built = result?;
     log::line(format!(
-        "report: {} -- {} entries, {bytes} bytes",
+        "report: {} -- {} entries, {} bytes",
         dest.display(),
-        entries.len()
+        built.entries.len(),
+        built.bytes
     ));
-    Ok(Built {
-        zip: dest.to_path_buf(),
-        entries,
-        bytes,
-        meta,
-    })
+    Ok(built)
 }
 
 // ---- report.json ---------------------------------------------------------------------------------
@@ -394,7 +399,8 @@ fn meta_json(
     installed: Option<&install::Manifest>,
     build_stamp: &str,
     match_id: &str,
-    logs_plan: &LogsPlan,
+    included: &[String],
+    dropped: &[serde_json::Value],
 ) -> String {
     // `exit_code` is the SIGNED i32 Windows hands a parent, which is what the collector's own
     // example shows (`-1073741819`). The hex spelling is the one a human searches for, so both are
@@ -434,13 +440,11 @@ fn meta_json(
         "created_at": crate::log::stamp(),
         // dist LA9: what the `logs\` selection above decided, spelled the way a triager (or a
         // future `crash_report.py`) reads it back -- every directory the zip actually carries, and
-        // every one the size budget refused, with its size and why.
-        "included": logs_plan.included,
-        "dropped": logs_plan
-            .dropped
-            .iter()
-            .map(|d| serde_json::json!({"dir": d.dir, "bytes": d.bytes, "why": d.why}))
-            .collect::<Vec<_>>(),
+        // every one the size budget refused, with its size and why. dist LA14: `dropped` also
+        // names single FILES -- `{dir, file, bytes, why}` for one left out whole, plus
+        // `kept_bytes` for a log whose newest part only was kept.
+        "included": included,
+        "dropped": dropped,
     });
 
     // OPTIONAL, and its absence is meaningful: `print_drained_report` treats a report with no
@@ -498,21 +502,181 @@ fn match_id_from_session(session: &Path) -> Option<String> {
 
 // ---- dist LA9: which `logs\` directories the report carries -----------------------------------
 
-/// One directory `report.json`'s `dropped` array names: which one, how big, why it did not fit.
-#[derive(Clone, Debug)]
-pub struct DroppedDir {
-    pub dir: String,
-    pub bytes: u64,
-    pub why: &'static str,
+/// How much a `logs\` directory matters to this report -- the order the budget gives them up in.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum DirRole {
+    /// The match the description form names. Given up last, and never whole.
+    Reported,
+    /// The newest session and each protected session's own process directory (LA9). Trimmed file
+    /// by file after every optional directory is gone, never dropped whole.
+    Protected,
+    /// Everything else in the window. Dropped whole, OLDEST first.
+    Optional,
 }
 
-/// What `plan_logs` decided. `included` is every directory that will actually be zipped, in the
-/// order they are added (protected ones first, then newest-to-oldest); `dropped` is everything the
-/// size budget refused, oldest of the refused ones last (they were refused in that order).
-#[derive(Clone, Debug, Default)]
-pub struct LogsPlan {
-    pub included: Vec<String>,
-    pub dropped: Vec<DroppedDir>,
+/// One candidate directory: its name, its on-disk size, and its role.
+#[derive(Clone, Debug)]
+struct PoolDir {
+    name: String,
+    bytes: u64,
+    role: DirRole,
+}
+
+/// Decide which `logs\` directories are CANDIDATES for a report (dist LA9), newest first.
+///
+/// `protected_session` is the match the report is ABOUT -- the player's pick, or the newest by
+/// default. It, the process directory its own `session.json` names, and the NEWEST session overall
+/// (a player reporting an OLDER match should not lose the freshest evidence next to it) are never
+/// dropped whole. Everything else is a candidate only if its own stamp is at or after `since_utc`
+/// (the launcher's own start), or -- when that is unknown -- among the newest `LOGS_FALLBACK_N`
+/// directories. What the size budget costs is NOT decided here any more (dist LA14): it is decided
+/// on compressed bytes once everything is staged -- see `Set::shed`.
+fn plan_logs(
+    logs_root: &Path,
+    protected_session: Option<&Path>,
+    since_utc: Option<&str>,
+) -> Vec<PoolDir> {
+    let dirs = list_log_dirs(logs_root); // newest first
+    if dirs.is_empty() {
+        return Vec::new();
+    }
+    let by_name: std::collections::HashMap<&str, &LogDir> =
+        dirs.iter().map(|d| (d.name.as_str(), d)).collect();
+
+    let reported: Option<String> = protected_session
+        .and_then(|p| p.file_name())
+        .map(|n| n.to_string_lossy().to_string())
+        .filter(|n| by_name.contains_key(n.as_str()));
+
+    let mut protected: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+    if let Some(r) = &reported {
+        protected.insert(r.clone());
+    }
+    if let Some(newest_session) = dirs.iter().find(|d| !is_process_dir_name(&d.name)) {
+        protected.insert(newest_session.name.clone());
+    }
+    // Each protected session's own process directory rides along -- LA9's done_when "contains both
+    // session dirs, THE process dir": two matches hosted without a restart share one.
+    let mut process_dirs = Vec::new();
+    for name in &protected {
+        let Some(d) = by_name.get(name.as_str()) else {
+            continue;
+        };
+        if let Some(pd) = process_dir_of_session(&d.path) {
+            if by_name.contains_key(pd.as_str()) {
+                process_dirs.push(pd);
+            }
+        }
+    }
+    protected.extend(process_dirs);
+
+    // The candidate pool. Protected entries ride along regardless of the window: a report is about
+    // a SPECIFIC match, and it must never silently lose the thing it is about because that match
+    // happens to predate this launcher process (a `--report` built long after `--launch`) or fall
+    // outside the fallback's newest-N.
+    let in_window: Vec<&LogDir> = match since_utc {
+        Some(since) => dirs
+            .iter()
+            .filter(|d| d.stamp.as_str() >= since || protected.contains(&d.name))
+            .collect(),
+        None => {
+            let mut v: Vec<&LogDir> = dirs.iter().take(LOGS_FALLBACK_N).collect();
+            for d in &dirs {
+                if protected.contains(&d.name) && !v.iter().any(|x| x.name == d.name) {
+                    v.push(d);
+                }
+            }
+            v
+        }
+    };
+    let mut pool: Vec<PoolDir> = in_window
+        .into_iter()
+        .map(|d| PoolDir {
+            name: d.name.clone(),
+            bytes: d.bytes,
+            role: if reported.as_deref() == Some(d.name.as_str()) {
+                DirRole::Reported
+            } else if protected.contains(&d.name) {
+                DirRole::Protected
+            } else {
+                DirRole::Optional
+            },
+        })
+        .collect();
+    pool.sort_by(|a, b| b.name.cmp(&a.name));
+    pool
+}
+
+/// Every file `dir` holds, one level of subdirectories included (a session directory is flat
+/// today, and a recursion that went arbitrarily deep would be a way to ship a whole game folder by
+/// accident), as `(path, name relative to dir with '/' separators)` in a stable order.
+fn dir_files(dir: &Path) -> Vec<(PathBuf, String)> {
+    let mut out = Vec::new();
+    let Ok(read) = std::fs::read_dir(dir) else {
+        log::line(format!("report: cannot list {}", dir.display()));
+        return out;
+    };
+    let mut files: Vec<PathBuf> = Vec::new();
+    let mut subdirs: Vec<PathBuf> = Vec::new();
+    for e in read.flatten() {
+        let p = e.path();
+        match e.file_type() {
+            Ok(t) if t.is_dir() => subdirs.push(p),
+            Ok(t) if t.is_file() => files.push(p),
+            _ => {}
+        }
+    }
+    files.sort();
+    subdirs.sort();
+    let leaf = |p: &Path| {
+        p.file_name()
+            .unwrap_or_default()
+            .to_string_lossy()
+            .to_string()
+    };
+    for p in files {
+        let n = leaf(&p);
+        out.push((p, n));
+    }
+    for d in subdirs {
+        let Ok(read) = std::fs::read_dir(&d) else {
+            continue;
+        };
+        let mut inner: Vec<PathBuf> = read
+            .flatten()
+            .map(|e| e.path())
+            .filter(|p| p.is_file())
+            .collect();
+        inner.sort();
+        let dn = leaf(&d);
+        for p in inner {
+            let n = format!("{dn}/{}", leaf(&p));
+            out.push((p, n));
+        }
+    }
+    out
+}
+
+/// Plain files directly under `logs\`, split into `(loose, crash)`: `mh_crash_*` markers (and
+/// their `.ctx32` sidecars) on one side, everything else on the other. The loose ones are dist
+/// LA10's degraded path -- when a stamped directory name does not fit `CreateDirectory`'s real
+/// ceiling, `run_context.cpp`'s `make_dir()` writes every stream loose into the bare `logs\` root,
+/// which `list_log_dirs` (a directory listing) cannot see at all.
+fn root_files(logs_root: &Path) -> (Vec<PathBuf>, Vec<PathBuf>) {
+    let Ok(read) = std::fs::read_dir(logs_root) else {
+        return (Vec::new(), Vec::new());
+    };
+    let mut files: Vec<PathBuf> = read
+        .flatten()
+        .map(|e| e.path())
+        .filter(|p| p.is_file())
+        .collect();
+    files.sort();
+    files.into_iter().partition(|p| {
+        !p.file_name()
+            .map(|n| n.to_string_lossy().starts_with("mh_crash_"))
+            .unwrap_or(false)
+    })
 }
 
 /// One directory found directly under `logs\`, named the way `mh_session_dir.h` names them --
@@ -534,9 +698,9 @@ fn is_process_dir_name(name: &str) -> bool {
 }
 
 /// The total size of every FILE under `dir`, at any depth. A session directory is flat and a process
-/// directory close to it, so this rarely recurses more than once, but sizing (unlike `add_dir`'s own
+/// directory close to it, so this rarely recurses more than once, but sizing (unlike `dir_files`'s own
 /// one-level cap on what it WRITES) has no reason to under-count a directory shaped differently than
-/// expected -- the worst that happens is this directory looks bigger than `add_dir` will actually
+/// expected -- the worst that happens is this directory looks bigger than `dir_files` will actually
 /// make it, which only ever makes the selection MORE conservative.
 fn dir_size(dir: &Path) -> u64 {
     let mut total = 0u64;
@@ -630,227 +794,668 @@ pub fn session_dirs(logs_root: &Path) -> Vec<PathBuf> {
         .collect()
 }
 
-/// Decide which `logs\` directories a report carries (dist LA9).
-///
-/// `protected_session` is the match the report is ABOUT -- the player's pick, or the newest by
-/// default -- and it, together with the process directory its own `session.json` names, is never
-/// dropped, whatever the budget says. The NEWEST session directory overall is protected the same
-/// way even when it differs from `protected_session` (a player reporting an OLDER match should not
-/// lose the freshest evidence sitting right next to it). Everything else is a candidate only if its
-/// own stamp is at or after `since_utc` (the launcher's own start), or -- when that is unknown --
-/// among the newest `LOGS_FALLBACK_N` directories; from that pool, the newest fit first and the
-/// OLDEST are dropped once the running total would exceed `budget`.
-fn plan_logs(
-    logs_root: &Path,
-    protected_session: Option<&Path>,
-    since_utc: Option<&str>,
-    budget: u64,
-) -> LogsPlan {
-    let dirs = list_log_dirs(logs_root); // newest first
-    if dirs.is_empty() {
-        return LogsPlan::default();
-    }
-    let by_name: std::collections::HashMap<&str, &LogDir> =
-        dirs.iter().map(|d| (d.name.as_str(), d)).collect();
+// ---- dist LA14: packing against the COMPRESSED upload body -------------------------------------
+//
+// The pipeline, once per report:
+//
+//   1. `collect` lists every entry the report could carry, each in a GROUP (a `logs\` folder, the
+//      loose root files, the launcher log, the minidump, the fixed entries). No size limit on any
+//      single file; `DENY` still applies.
+//   2. `stage` deflates every entry ONCE into a staging zip beside `dest` and reads back each
+//      entry's compressed size.
+//   3. `Set::shed` takes the bytes the estimate is over budget by and gives them up in the groups'
+//      shed order, least important first (see `collect`). A folder that is Optional goes whole;
+//      a protected one is trimmed file by file (`shrink_group`).
+//   4. `write_final` writes `report.json` and then copies every kept entry RAW out of the staging
+//      zip -- no second compression -- plus the few cut tails, compressed once each.
+//   5. The real zip size decides. Over budget: shed the overshoot and rewrite (`FIT_ATTEMPTS`).
 
-    let mut protected: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
-    if let Some(name) = protected_session
-        .and_then(|p| p.file_name())
-        .map(|n| n.to_string_lossy().to_string())
-    {
-        if by_name.contains_key(name.as_str()) {
-            protected.insert(name);
+/// What an entry is, for the purpose of cutting it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Kind {
+    /// A log or other text file: scrubbed, and cut from the FRONT when it must shrink.
+    Text,
+    /// Any other binary: whole or absent.
+    Binary,
+    /// A replay input (`REPLAY_INPUTS`): whole or absent, and given up after the text is cut.
+    Replay,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Fate {
+    Whole,
+    /// Keep the newest part, at most this many compressed bytes.
+    Tail(u64),
+    Dropped,
+}
+
+enum Source {
+    File(PathBuf),
+    Text(String),
+}
+
+/// A cut tail, compressed: a one-entry zip whose entry is copied raw into the report.
+struct TailBuf {
+    target: u64,
+    zip: Vec<u8>,
+    kept: u64,
+}
+
+struct Item {
+    name: String,
+    source: Source,
+    kind: Kind,
+    group: usize,
+    /// Uncompressed bytes as staged (after the scrub).
+    raw: u64,
+    /// Compressed bytes in the staging zip.
+    comp: u64,
+    /// Index in the staging zip; `None` if it could not be read and is not in the report at all.
+    staged: Option<usize>,
+    fate: Fate,
+    tail: Option<TailBuf>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Mode {
+    /// Never given up: report.json's companions, the ini, the crash markers.
+    Fixed,
+    /// Given up whole (an Optional folder, the minidump).
+    DropWhole,
+    /// Given up file by file (`shrink_group`).
+    Shrink,
+}
+
+struct Group {
+    /// The `logs\` folder name, for a folder group.
+    dir: Option<String>,
+    mode: Mode,
+    /// On-disk bytes of the folder (for `dropped`).
+    bytes: u64,
+    /// Set when the whole group went; the reason `dropped` gives.
+    dropped_why: Option<&'static str>,
+}
+
+#[derive(Default)]
+struct Set {
+    items: Vec<Item>,
+    groups: Vec<Group>,
+    /// Group indices, least important first: the order `shed` gives them up in.
+    shed_order: Vec<usize>,
+    /// The `logs\` folders in the order they are written (for `included`).
+    folders: Vec<usize>,
+}
+
+fn entry_cost(it: &Item) -> u64 {
+    let size = match it.fate {
+        Fate::Whole => it.comp,
+        Fate::Tail(t) => t,
+        Fate::Dropped => return 0,
+    };
+    size + ENTRY_OVERHEAD + 2 * it.name.len() as u64
+}
+
+fn live_size(it: &Item) -> u64 {
+    match it.fate {
+        Fate::Whole => it.comp,
+        Fate::Tail(t) => t,
+        Fate::Dropped => 0,
+    }
+}
+
+impl Set {
+    fn group(&mut self, dir: Option<String>, mode: Mode, bytes: u64) -> usize {
+        self.groups.push(Group {
+            dir,
+            mode,
+            bytes,
+            dropped_why: None,
+        });
+        self.groups.len() - 1
+    }
+
+    fn push(&mut self, group: usize, name: String, source: Source, kind: Kind) {
+        self.items.push(Item {
+            name,
+            source,
+            kind,
+            group,
+            raw: 0,
+            comp: 0,
+            staged: None,
+            fate: Fate::Whole,
+            tail: None,
+        });
+    }
+
+    fn text(&mut self, group: usize, name: &str, text: String) {
+        self.push(group, name.to_string(), Source::Text(text), Kind::Text);
+    }
+
+    /// Add a file, unless `DENY` names it or it is not a file.
+    fn file(&mut self, group: usize, src: &Path, name: String) {
+        let leaf = src
+            .file_name()
+            .map(|n| n.to_string_lossy().to_ascii_lowercase())
+            .unwrap_or_default();
+        if DENY.iter().any(|d| *d == leaf) {
+            log::line(format!("report: {leaf} is never included in a report"));
+            return;
         }
-    }
-    if let Some(newest_session) = dirs.iter().find(|d| !is_process_dir_name(&d.name)) {
-        protected.insert(newest_session.name.clone());
-    }
-    // Each protected session's own process directory rides along -- done_when's "contains both
-    // session dirs, THE process dir": two matches hosted without a restart share one.
-    let mut process_dirs = Vec::new();
-    for name in &protected {
-        let Some(d) = by_name.get(name.as_str()) else {
-            continue;
+        if !src.is_file() {
+            return;
+        }
+        let kind = if is_text(&name) {
+            Kind::Text
+        } else if REPLAY_INPUTS.contains(&leaf.as_str()) {
+            Kind::Replay
+        } else {
+            Kind::Binary
         };
-        if let Some(pd) = process_dir_of_session(&d.path) {
-            if by_name.contains_key(pd.as_str()) {
-                process_dirs.push(pd);
+        self.push(group, name, Source::File(src.to_path_buf()), kind);
+    }
+
+    /// The zip's size if written now: every live entry plus `report.json` at `meta_upper` bytes
+    /// (stored uncompressed as an upper bound) plus the end-of-central-directory records.
+    fn estimate_zip(&self, meta_upper: u64) -> u64 {
+        let entries: u64 = self.items.iter().map(entry_cost).sum();
+        entries + meta_upper + ENTRY_OVERHEAD + 2 * "report.json".len() as u64 + 128
+    }
+
+    /// Give up `excess` bytes, least important group first. Returns what could NOT be freed.
+    fn shed(&mut self, mut excess: u64) -> u64 {
+        for gi in self.shed_order.clone() {
+            if excess == 0 {
+                break;
+            }
+            match self.groups[gi].mode {
+                Mode::Fixed => {}
+                Mode::DropWhole => {
+                    let freed: u64 = self
+                        .items
+                        .iter()
+                        .filter(|i| i.group == gi)
+                        .map(entry_cost)
+                        .sum();
+                    if freed == 0 {
+                        continue;
+                    }
+                    for it in self.items.iter_mut().filter(|i| i.group == gi) {
+                        it.fate = Fate::Dropped;
+                    }
+                    self.groups[gi].dropped_why.get_or_insert(WHY_OVER_BUDGET);
+                    excess = excess.saturating_sub(freed);
+                }
+                Mode::Shrink => excess = shrink_group(&mut self.items, gi, excess),
             }
         }
+        excess
     }
-    protected.extend(process_dirs);
 
-    // The candidate pool. Protected entries ride along regardless of the window: a report is about
-    // a SPECIFIC match, and it must never silently lose the thing it is about because that match
-    // happens to predate this launcher process (a `--report` built long after `--launch`) or fall
-    // outside the fallback's newest-N.
-    let mut pool: Vec<&LogDir> = match since_utc {
-        Some(since) => dirs
+    /// Compress every cut tail whose target changed since it was last compressed.
+    fn materialize_tails(
+        &mut self,
+        opts: zip::write::SimpleFileOptions,
+        scrub: &Scrub,
+    ) -> Result<(), String> {
+        for it in self.items.iter_mut() {
+            let Fate::Tail(target) = it.fate else {
+                it.tail = None;
+                continue;
+            };
+            if it.tail.as_ref().map(|t| t.target) == Some(target) {
+                continue;
+            }
+            it.tail = None;
+            let Source::File(p) = &it.source else {
+                continue; // only file text is ever in a Shrink group; nothing to cut
+            };
+            let text = read_scrubbed(p, scrub);
+            let total = text.len() as u64;
+            let ratio = target as f64 / it.comp.max(1) as f64;
+            let mut keep = (total as f64 * ratio * 0.97) as u64;
+            for _ in 0..6 {
+                keep = keep.min(total);
+                let (body, kept) = tail_of(&text, keep);
+                let (zip, comp) = compress_one(&it.name, body.as_bytes(), opts)?;
+                if comp <= target {
+                    it.tail = Some(TailBuf { target, zip, kept });
+                    break;
+                }
+                keep = (keep as f64 * (target as f64 / comp as f64) * 0.95) as u64;
+            }
+            if it.tail.is_none() {
+                it.fate = Fate::Dropped; // could not get under the target: whole, never garbage
+            }
+        }
+        Ok(())
+    }
+
+    /// The `logs\` folders the zip carries (not given up whole), in write order.
+    fn included(&self) -> Vec<String> {
+        self.folders
             .iter()
-            .filter(|d| d.stamp.as_str() >= since || protected.contains(&d.name))
-            .collect(),
-        None => {
-            let mut v: Vec<&LogDir> = dirs.iter().take(LOGS_FALLBACK_N).collect();
-            for d in &dirs {
-                if protected.contains(&d.name) && !v.iter().any(|x| x.name == d.name) {
-                    v.push(d);
+            .filter(|&&g| self.groups[g].dropped_why.is_none())
+            .filter_map(|&g| self.groups[g].dir.clone())
+            .collect()
+    }
+
+    /// `report.json`'s `dropped`: every folder given up whole, every single file left out, and
+    /// every log cut to its newest part -- so the recipient knows what the report does NOT hold.
+    fn dropped_records(&self) -> Vec<serde_json::Value> {
+        let mut out = Vec::new();
+        for &gi in &self.shed_order {
+            let g = &self.groups[gi];
+            if let (Some(why), Some(dir)) = (g.dropped_why, g.dir.as_ref()) {
+                out.push(serde_json::json!({"dir": dir, "bytes": g.bytes, "why": why}));
+                continue;
+            }
+            for it in self.items.iter().filter(|i| i.group == gi) {
+                if it.staged.is_none() {
+                    continue;
+                }
+                let dir = g.dir.clone().unwrap_or_default();
+                match it.fate {
+                    Fate::Whole => {}
+                    Fate::Dropped => out.push(serde_json::json!({
+                        "dir": dir, "file": it.name, "bytes": it.raw, "why": WHY_FILE_DROPPED,
+                    })),
+                    Fate::Tail(_) => out.push(serde_json::json!({
+                        "dir": dir,
+                        "file": it.name,
+                        "bytes": it.raw,
+                        "kept_bytes": it.tail.as_ref().map(|t| t.kept).unwrap_or(0),
+                        "why": WHY_FILE_TAILED,
+                    })),
                 }
             }
-            v
         }
-    };
-    pool.sort_by(|a, b| b.stamp.cmp(&a.stamp).then_with(|| b.name.cmp(&a.name)));
-
-    let (protected_entries, optional_entries): (Vec<&LogDir>, Vec<&LogDir>) =
-        pool.into_iter().partition(|d| protected.contains(&d.name));
-
-    let mut included = Vec::new();
-    let mut dropped = Vec::new();
-    let mut total = 0u64;
-    for d in protected_entries {
-        total += d.bytes; // never dropped, even if this alone is over budget
-        included.push(d.name.clone());
+        out
     }
-    // `optional_entries` is still newest-to-oldest (partition preserves relative order), so the
-    // first one that does not fit -- and everything after it, all older still -- is the OLDEST
-    // material being dropped, exactly the row's "drop the oldest dirs first".
-    let mut over_budget = false;
-    for d in optional_entries {
-        if !over_budget && total + d.bytes <= budget {
-            total += d.bytes;
-            included.push(d.name.clone());
+}
+
+/// Shrink one protected group by `excess` bytes, in this order: (a) plain binaries, largest
+/// first, whole; (b) text logs cut from the front, largest first, down to `TEXT_TAIL_FLOOR` each
+/// (a water level -- small logs stay whole); (c) replay inputs, whole; (d) text below the floor,
+/// down to nothing. Returns what is still over.
+fn shrink_group(items: &mut [Item], gi: usize, excess: u64) -> u64 {
+    let excess = drop_largest(items, gi, Kind::Binary, excess);
+    let excess = water_fill(items, gi, TEXT_TAIL_FLOOR, excess);
+    let excess = drop_largest(items, gi, Kind::Replay, excess);
+    water_fill(items, gi, 0, excess)
+}
+
+fn drop_largest(items: &mut [Item], gi: usize, kind: Kind, mut excess: u64) -> u64 {
+    let mut idx: Vec<usize> = (0..items.len())
+        .filter(|&i| {
+            items[i].group == gi && items[i].kind == kind && items[i].fate != Fate::Dropped
+        })
+        .collect();
+    idx.sort_by_key(|&i| std::cmp::Reverse(items[i].comp));
+    for i in idx {
+        if excess == 0 {
+            break;
+        }
+        let c = entry_cost(&items[i]);
+        items[i].fate = Fate::Dropped;
+        excess = excess.saturating_sub(c);
+    }
+    excess
+}
+
+/// Lower every text entry of group `gi` above a common level L (L >= `floor`) to L, choosing the
+/// highest L that frees `excess` -- or as much as the floor allows. An entry cut to under
+/// `TEXT_TAIL_MIN` is dropped instead.
+fn water_fill(items: &mut [Item], gi: usize, floor: u64, excess: u64) -> u64 {
+    if excess == 0 {
+        return 0;
+    }
+    let idx: Vec<usize> = (0..items.len())
+        .filter(|&i| {
+            items[i].group == gi && items[i].kind == Kind::Text && items[i].fate != Fate::Dropped
+        })
+        .collect();
+    let sizes: Vec<u64> = idx.iter().map(|&i| live_size(&items[i])).collect();
+    let over = |level: u64| -> u64 { sizes.iter().map(|s| s.saturating_sub(level)).sum() };
+    let reducible = over(floor);
+    if reducible == 0 {
+        return excess;
+    }
+    let want = excess.min(reducible);
+    // The highest level whose cut still frees `want`: over(lo) >= want always, over(hi) < want.
+    let (mut lo, mut hi) = (floor, sizes.iter().copied().max().unwrap_or(0));
+    while hi - lo > 1 {
+        let mid = lo + (hi - lo) / 2;
+        if over(mid) >= want {
+            lo = mid;
         } else {
-            over_budget = true;
-            dropped.push(DroppedDir {
-                dir: d.name.clone(),
-                bytes: d.bytes,
-                why: "over the report size budget",
-            });
+            hi = mid;
         }
     }
-    LogsPlan { included, dropped }
-}
-
-/// Zip every directory `plan_logs` included, each under `logs/<name>/`.
-fn add_logs_tree(
-    zip: &mut zip::ZipWriter<std::fs::File>,
-    opts: zip::write::SimpleFileOptions,
-    logs_root: &Path,
-    plan: &LogsPlan,
-    entries: &mut Vec<String>,
-    budget: &mut u64,
-    scrub: &Scrub,
-) -> Result<(), String> {
-    for name in &plan.included {
-        add_dir(
-            zip,
-            opts,
-            &logs_root.join(name),
-            &format!("logs/{name}"),
-            entries,
-            budget,
-            scrub,
-        )?;
+    let level = lo;
+    let mut freed = 0u64;
+    for (k, &i) in idx.iter().enumerate() {
+        if sizes[k] <= level {
+            continue;
+        }
+        if level < TEXT_TAIL_MIN {
+            freed += entry_cost(&items[i]);
+            items[i].fate = Fate::Dropped;
+        } else {
+            freed += sizes[k] - level;
+            items[i].fate = Fate::Tail(level);
+        }
     }
-    Ok(())
+    excess.saturating_sub(freed)
 }
 
-/// Every plain FILE sitting directly under `<game_dir>\logs\` (not `mh_crash_*`, handled
-/// separately by `add_crash_marker_files`) -- dist LA10's degraded path. When a stamped
-/// process/session name does not fit `CreateDirectory`'s real ceiling, `run_context.cpp`'s
-/// `make_dir()` degrades to writing every stream loose into the bare `logs\` root instead of a
-/// subdirectory, which `list_log_dirs` above (a directory listing) cannot see at all. LA10's own
-/// done_when names this: "the report (LA9) finds it" -- so this sweep, under `logs/_root/`, is what
-/// finds it. Uses the real shared `budget` (unlike the crash-marker sweep): this can carry a whole
-/// run's logs, not a handful of bytes, so it competes for space like everything else rather than
-/// riding in free.
-fn add_loose_log_files(
-    zip: &mut zip::ZipWriter<std::fs::File>,
+/// A text file's content as it enters the report: lossily decoded and scrubbed line by line.
+fn read_scrubbed(p: &Path, scrub: &Scrub) -> String {
+    let raw = std::fs::read(p).unwrap_or_default();
+    let text = String::from_utf8_lossy(&raw);
+    let mut out = String::with_capacity(text.len() + 64);
+    for l in text.lines() {
+        out.push_str(&scrub.line(l));
+        out.push('\n');
+    }
+    out
+}
+
+/// The newest `keep` bytes of `text`, started at a line boundary, behind a one-line notice saying
+/// how much was left out. Returns the body and how many bytes of the original it kept.
+fn tail_of(text: &str, keep: u64) -> (String, u64) {
+    let len = text.len();
+    let mut start = len - (keep as usize).min(len);
+    while !text.is_char_boundary(start) {
+        start += 1;
+    }
+    if start > 0 {
+        if let Some(nl) = text[start..].find('\n') {
+            if start + nl + 1 < len {
+                start += nl + 1;
+            }
+        }
+    }
+    let kept = &text[start..];
+    let body = format!(
+        "; [report] the first {start} of {len} bytes of this log were left out to fit the report \
+         upload budget -- the newest part is kept\n{kept}"
+    );
+    (body, kept.len() as u64)
+}
+
+/// Deflate one entry into a one-entry in-memory zip; returns the zip and the entry's compressed size.
+fn compress_one(
+    name: &str,
+    data: &[u8],
     opts: zip::write::SimpleFileOptions,
-    logs_root: &Path,
-    entries: &mut Vec<String>,
-    budget: &mut u64,
+) -> Result<(Vec<u8>, u64), String> {
+    let mut w = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
+    w.start_file(name, opts)
+        .map_err(|e| format!("cannot start {name}: {e}"))?;
+    w.write_all(data)
+        .map_err(|e| format!("cannot write {name}: {e}"))?;
+    let bytes = w
+        .finish()
+        .map_err(|e| format!("cannot finish {name}: {e}"))?
+        .into_inner();
+    let mut a = zip::ZipArchive::new(std::io::Cursor::new(&bytes[..]))
+        .map_err(|e| format!("cannot reread {name}: {e}"))?;
+    let comp = a
+        .by_index_raw(0)
+        .map_err(|e| format!("cannot reread {name}: {e}"))?
+        .compressed_size();
+    Ok((bytes, comp))
+}
+
+/// Everything a report could carry, grouped, with the shed order decided (dist LA14):
+///
+///   1. Optional `logs\` folders, OLDEST first, each dropped whole.
+///   2. Protected folders other than the reported match (the newest session when the player picked
+///      an older one, the process folders), OLDEST first, trimmed file by file.
+///   3. The loose files of LA10's degraded path (`logs/_root/`), trimmed.
+///   4. The launcher's own log, trimmed.
+///   5. The minidump, dropped whole (a cut dump opens in no debugger).
+///   6. The reported match's own folder, trimmed -- the last thing given up.
+///
+/// Never given up: `report.json`, `description.txt`, the redacted ini, `crash/marker.txt` and every
+/// swept `mh_crash_*` file (a few hundred bytes each).
+fn collect(
+    input: &Input,
+    logs_root: Option<&Path>,
+    pool: &[PoolDir],
+    ini_text: Option<&str>,
     scrub: &Scrub,
-) -> Result<(), String> {
-    let Ok(read) = std::fs::read_dir(logs_root) else {
-        return Ok(());
-    };
-    let mut files: Vec<PathBuf> = read
-        .flatten()
-        .map(|e| e.path())
-        .filter(|p| p.is_file())
-        .filter(|p| {
-            !p.file_name()
-                .map(|n| n.to_string_lossy().starts_with("mh_crash_"))
-                .unwrap_or(false)
-        })
-        .collect();
-    files.sort();
-    for p in files {
+) -> Set {
+    let mut set = Set::default();
+    let fixed = set.group(None, Mode::Fixed, 0);
+    set.text(
+        fixed,
+        "description.txt",
+        input.description.trim().to_string(),
+    );
+
+    // The folders, written reported first, then protected, then optional -- each newest first.
+    let mut ordered: Vec<&PoolDir> = pool.iter().collect();
+    ordered.sort_by_key(|d| match d.role {
+        DirRole::Reported => 0,
+        DirRole::Protected => 1,
+        DirRole::Optional => 2,
+    });
+    let mut optional_staged = 0u64;
+    let mut optional_groups = Vec::new(); // newest first
+    let mut protected_groups = Vec::new(); // newest first
+    let mut reported_group = None;
+    if let Some(lr) = logs_root {
+        for d in ordered {
+            let mode = if d.role == DirRole::Optional {
+                Mode::DropWhole
+            } else {
+                Mode::Shrink
+            };
+            let g = set.group(Some(d.name.clone()), mode, d.bytes);
+            set.folders.push(g);
+            match d.role {
+                DirRole::Reported => reported_group = Some(g),
+                DirRole::Protected => protected_groups.push(g),
+                DirRole::Optional => {
+                    optional_groups.push(g);
+                    optional_staged += d.bytes;
+                    if optional_staged > STAGE_UNCOMPRESSED_MAX {
+                        set.groups[g].dropped_why = Some(WHY_NOT_STAGED);
+                        continue;
+                    }
+                }
+            }
+            for (p, rel) in dir_files(&lr.join(&d.name)) {
+                set.file(g, &p, format!("logs/{}/{rel}", d.name));
+            }
+        }
+    }
+
+    let loose = set.group(None, Mode::Shrink, 0);
+    let mut crash_files = Vec::new();
+    if let Some(lr) = logs_root {
+        let (loose_files, crash) = root_files(lr);
+        for p in loose_files {
+            let leaf = p
+                .file_name()
+                .unwrap_or_default()
+                .to_string_lossy()
+                .to_string();
+            set.file(loose, &p, format!("logs/_root/{leaf}"));
+        }
+        crash_files = crash;
+    }
+
+    // The configuration, redacted three times over: by setting name, by the relay's own line,
+    // and by the scrub.
+    if let Some(text) = ini_text {
+        set.text(fixed, "config/mh_net.ini", redact_ini_with(text, scrub));
+    }
+
+    let launcher = set.group(None, Mode::Shrink, 0);
+    if let Some(p) = input.launcher_log.as_deref() {
+        set.file(launcher, p, "launcher/launcher.log".to_string());
+    }
+
+    if let Some(m) = input.crash {
+        set.text(
+            fixed,
+            "crash/marker.txt",
+            format!(
+                "module={}\noffset=0x{:08x}\ncode=0x{:08x}\npid={}\ntid={}\nbuild={}\nwhen={}\n",
+                m.module, m.offset, m.code, m.pid, m.tid, m.build, m.when
+            ),
+        );
+    }
+
+    // dist LA9: every `mh_crash_*` file sitting under `logs\`, not only the one THIS run's live
+    // channel caught -- a marker (or its `.ctx32` sidecar) left by an earlier, undrained crash is
+    // exactly the evidence a "something looked wrong later" report exists to carry. Fixed: never
+    // the thing the budget sacrifices.
+    for p in crash_files {
         let leaf = p
             .file_name()
             .unwrap_or_default()
             .to_string_lossy()
             .to_string();
-        add_file(
-            zip,
-            opts,
-            &p,
-            &format!("logs/_root/{leaf}"),
-            entries,
-            budget,
-            scrub,
-        )?;
+        set.file(fixed, &p, format!("crash/{leaf}"));
+    }
+
+    let dump = set.group(None, Mode::DropWhole, 0);
+    if let Some(dmp) = input.minidump {
+        set.file(dump, dmp, "minidump.dmp".to_string());
+    }
+
+    set.shed_order.extend(optional_groups.iter().rev());
+    set.shed_order.extend(protected_groups.iter().rev());
+    set.shed_order.extend([loose, launcher, dump]);
+    set.shed_order.extend(reported_group);
+    set
+}
+
+/// Deflate every collected entry once into `staging`, then read back each one's compressed size.
+fn stage(
+    set: &mut Set,
+    staging: &Path,
+    opts: zip::write::SimpleFileOptions,
+    scrub: &Scrub,
+) -> Result<(), String> {
+    let file = std::fs::File::create(staging)
+        .map_err(|e| format!("cannot create {}: {e}", staging.display()))?;
+    let mut zip = zip::ZipWriter::new(file);
+    let mut n = 0usize;
+    for it in set.items.iter_mut() {
+        if set.groups[it.group].dropped_why.is_some() {
+            it.fate = Fate::Dropped;
+            continue;
+        }
+        let raw = match (&it.source, it.kind) {
+            (Source::Text(t), _) => {
+                zip.start_file(it.name.as_str(), opts)
+                    .map_err(|e| format!("cannot start {} in the report: {e}", it.name))?;
+                zip.write_all(t.as_bytes())
+                    .map_err(|e| format!("cannot write {} into the report: {e}", it.name))?;
+                t.len() as u64
+            }
+            (Source::File(p), Kind::Text) => {
+                let text = read_scrubbed(p, scrub);
+                zip.start_file(it.name.as_str(), opts)
+                    .map_err(|e| format!("cannot start {} in the report: {e}", it.name))?;
+                zip.write_all(text.as_bytes())
+                    .map_err(|e| format!("cannot write {} into the report: {e}", it.name))?;
+                text.len() as u64
+            }
+            (Source::File(p), _) => {
+                let mut f = match std::fs::File::open(p) {
+                    Ok(f) => f,
+                    Err(e) => {
+                        log::line(format!("report: cannot read {}: {e}", p.display()));
+                        it.fate = Fate::Dropped;
+                        continue;
+                    }
+                };
+                zip.start_file(it.name.as_str(), opts)
+                    .map_err(|e| format!("cannot start {} in the report: {e}", it.name))?;
+                std::io::copy(&mut f, &mut zip)
+                    .map_err(|e| format!("cannot write {} into the report: {e}", it.name))?
+            }
+        };
+        it.raw = raw;
+        it.staged = Some(n);
+        n += 1;
+    }
+    zip.finish()
+        .map_err(|e| format!("cannot finish {}: {e}", staging.display()))?;
+
+    let f = std::fs::File::open(staging)
+        .map_err(|e| format!("cannot reopen {}: {e}", staging.display()))?;
+    let mut a = zip::ZipArchive::new(f)
+        .map_err(|e| format!("cannot read back {}: {e}", staging.display()))?;
+    for it in set.items.iter_mut() {
+        if let Some(i) = it.staged {
+            it.comp = a
+                .by_index_raw(i)
+                .map_err(|e| format!("cannot read back {}: {e}", it.name))?
+                .compressed_size();
+        }
     }
     Ok(())
 }
 
-/// Every `mh_crash_*` file sitting directly under `<game_dir>\logs\` (the raw marker `crash.rs`'s
-/// `Channel::create` names, and its `.ctx32` sidecar) -- swept in whole and NEVER subject to the
-/// `logs\` drop above, on a throwaway budget of its own: these are a handful of hundred bytes each
-/// and must never be the entry a tight report budget sacrifices. Distinct from `crash/marker.txt`
-/// (this run's OWN crash, synthesised from `input.crash` above): this sweep also picks up a marker
-/// an EARLIER, undrained crash left behind, which is exactly the case a "something looked wrong"
-/// report -- built well after the fact, with no live crash channel -- exists to carry.
-fn add_crash_marker_files(
-    zip: &mut zip::ZipWriter<std::fs::File>,
+/// Write the report: `report.json` first, then every kept entry copied raw out of the staging zip
+/// (or out of its cut tail's own one-entry zip). Returns the entry names in order.
+fn write_final(
+    dest: &Path,
+    staging: &Path,
+    set: &Set,
+    meta: &str,
     opts: zip::write::SimpleFileOptions,
-    logs_root: &Path,
-    entries: &mut Vec<String>,
-    scrub: &Scrub,
-) -> Result<(), String> {
-    let Ok(read) = std::fs::read_dir(logs_root) else {
-        return Ok(());
-    };
-    let mut files: Vec<PathBuf> = read
-        .flatten()
-        .map(|e| e.path())
-        .filter(|p| p.is_file())
-        .filter(|p| {
-            p.file_name()
-                .map(|n| n.to_string_lossy().starts_with("mh_crash_"))
-                .unwrap_or(false)
-        })
-        .collect();
-    files.sort();
-    let mut unbounded = u64::MAX;
-    for p in files {
-        let leaf = p
-            .file_name()
-            .unwrap_or_default()
-            .to_string_lossy()
-            .to_string();
-        add_file(
-            zip,
-            opts,
-            &p,
-            &format!("crash/{leaf}"),
-            entries,
-            &mut unbounded,
-            scrub,
-        )?;
+) -> Result<Vec<String>, String> {
+    let sf = std::fs::File::open(staging)
+        .map_err(|e| format!("cannot reopen {}: {e}", staging.display()))?;
+    let mut stage = zip::ZipArchive::new(sf)
+        .map_err(|e| format!("cannot read back {}: {e}", staging.display()))?;
+    let file = std::fs::File::create(dest)
+        .map_err(|e| format!("cannot create {}: {e}", dest.display()))?;
+    let mut zip = zip::ZipWriter::new(file);
+    zip.start_file("report.json", opts)
+        .map_err(|e| format!("cannot start report.json in the report: {e}"))?;
+    zip.write_all(meta.as_bytes())
+        .map_err(|e| format!("cannot write report.json into the report: {e}"))?;
+    let mut entries = vec!["report.json".to_string()];
+    for it in &set.items {
+        let Some(si) = it.staged else {
+            continue;
+        };
+        match it.fate {
+            Fate::Dropped => continue,
+            Fate::Whole => {
+                let f = stage
+                    .by_index_raw(si)
+                    .map_err(|e| format!("cannot read back {}: {e}", it.name))?;
+                zip.raw_copy_file(f)
+                    .map_err(|e| format!("cannot copy {} into the report: {e}", it.name))?;
+            }
+            Fate::Tail(_) => {
+                let Some(t) = it.tail.as_ref() else {
+                    continue;
+                };
+                let mut a = zip::ZipArchive::new(std::io::Cursor::new(&t.zip[..]))
+                    .map_err(|e| format!("cannot reread the tail of {}: {e}", it.name))?;
+                let f = a
+                    .by_index_raw(0)
+                    .map_err(|e| format!("cannot reread the tail of {}: {e}", it.name))?;
+                zip.raw_copy_file(f)
+                    .map_err(|e| format!("cannot copy {} into the report: {e}", it.name))?;
+            }
+        }
+        entries.push(it.name.clone());
     }
-    Ok(())
+    zip.finish()
+        .map_err(|e| format!("cannot finish {}: {e}", dest.display()))?;
+    Ok(entries)
 }
 
 // ---- redaction -------------------------------------------------------------------------------
@@ -983,186 +1588,6 @@ fn is_text(name: &str) -> bool {
     [".log", ".txt", ".json", ".ini", ".csv", ".md", ".marker"]
         .iter()
         .any(|ext| lower.ends_with(ext))
-}
-
-// ---- zip plumbing ------------------------------------------------------------------------------
-
-fn add_text(
-    zip: &mut zip::ZipWriter<std::fs::File>,
-    opts: zip::write::SimpleFileOptions,
-    name: &str,
-    text: &str,
-    entries: &mut Vec<String>,
-    budget: &mut u64,
-) -> Result<(), String> {
-    let bytes = text.as_bytes();
-    if bytes.len() as u64 > *budget {
-        log::line(format!(
-            "report: {name} would not fit the report budget; left out"
-        ));
-        return Ok(());
-    }
-    zip.start_file(name, opts)
-        .map_err(|e| format!("cannot start {name} in the report: {e}"))?;
-    zip.write_all(bytes)
-        .map_err(|e| format!("cannot write {name} into the report: {e}"))?;
-    *budget = budget.saturating_sub(bytes.len() as u64);
-    entries.push(name.to_string());
-    Ok(())
-}
-
-fn add_file(
-    zip: &mut zip::ZipWriter<std::fs::File>,
-    opts: zip::write::SimpleFileOptions,
-    src: &Path,
-    name: &str,
-    entries: &mut Vec<String>,
-    budget: &mut u64,
-    scrub: &Scrub,
-) -> Result<(), String> {
-    add_capped(zip, opts, src, name, entries, budget, PER_FILE_MAX, scrub)
-}
-
-/// `add_file` with the per-file cap spelled out, because exactly one entry -- the minidump -- must
-/// be either whole or absent, never tailed.
-#[allow(clippy::too_many_arguments)]
-fn add_capped(
-    zip: &mut zip::ZipWriter<std::fs::File>,
-    opts: zip::write::SimpleFileOptions,
-    src: &Path,
-    name: &str,
-    entries: &mut Vec<String>,
-    budget: &mut u64,
-    per_file_max: u64,
-    scrub: &Scrub,
-) -> Result<(), String> {
-    let leaf = src
-        .file_name()
-        .map(|n| n.to_string_lossy().to_ascii_lowercase())
-        .unwrap_or_default();
-    if DENY.iter().any(|d| *d == leaf) {
-        log::line(format!("report: {leaf} is never included in a report"));
-        return Ok(());
-    }
-    let Ok(md) = std::fs::metadata(src) else {
-        return Ok(());
-    };
-    if !md.is_file() {
-        return Ok(());
-    }
-
-    if is_text(name) {
-        let raw = std::fs::read(src).unwrap_or_default();
-        let text = String::from_utf8_lossy(&raw);
-        // TAIL, NOT HEAD, when a log is too big: the interesting end of a log is the end.
-        let text: &str = if text.len() as u64 > per_file_max {
-            let cut = text.len() - per_file_max as usize;
-            let cut = text
-                .char_indices()
-                .map(|(i, _)| i)
-                .find(|i| *i >= cut)
-                .unwrap_or(0);
-            &text[cut..]
-        } else {
-            &text
-        };
-        let scrubbed: String = text.lines().map(|l| scrub.line(l) + "\n").collect();
-        return add_text(zip, opts, name, &scrubbed, entries, budget);
-    }
-
-    if md.len() > *budget || md.len() > per_file_max {
-        log::line(format!(
-            "report: {name} is {} bytes and does not fit the report budget; left out",
-            md.len()
-        ));
-        return Ok(());
-    }
-    let data = std::fs::read(src).map_err(|e| format!("cannot read {}: {e}", src.display()))?;
-    zip.start_file(name, opts)
-        .map_err(|e| format!("cannot start {name} in the report: {e}"))?;
-    zip.write_all(&data)
-        .map_err(|e| format!("cannot write {name} into the report: {e}"))?;
-    *budget = budget.saturating_sub(data.len() as u64);
-    entries.push(name.to_string());
-    Ok(())
-}
-
-/// Every file under `dir`, one level of subdirectories included (a session directory is flat today,
-/// and a recursion that went arbitrarily deep would be a way to ship a whole game folder by
-/// accident).
-fn add_dir(
-    zip: &mut zip::ZipWriter<std::fs::File>,
-    opts: zip::write::SimpleFileOptions,
-    dir: &Path,
-    prefix: &str,
-    entries: &mut Vec<String>,
-    budget: &mut u64,
-    scrub: &Scrub,
-) -> Result<(), String> {
-    let Ok(read) = std::fs::read_dir(dir) else {
-        log::line(format!("report: cannot list {}", dir.display()));
-        return Ok(());
-    };
-    let mut files: Vec<PathBuf> = Vec::new();
-    let mut subdirs: Vec<PathBuf> = Vec::new();
-    for e in read.flatten() {
-        let p = e.path();
-        match e.file_type() {
-            Ok(t) if t.is_dir() => subdirs.push(p),
-            Ok(t) if t.is_file() => files.push(p),
-            _ => {}
-        }
-    }
-    files.sort();
-    subdirs.sort();
-    for p in files {
-        let leaf = p
-            .file_name()
-            .unwrap_or_default()
-            .to_string_lossy()
-            .to_string();
-        add_file(
-            zip,
-            opts,
-            &p,
-            &format!("{prefix}/{leaf}"),
-            entries,
-            budget,
-            scrub,
-        )?;
-    }
-    for d in subdirs {
-        let leaf = d
-            .file_name()
-            .unwrap_or_default()
-            .to_string_lossy()
-            .to_string();
-        let Ok(read) = std::fs::read_dir(&d) else {
-            continue;
-        };
-        let mut inner: Vec<PathBuf> = read.flatten().map(|e| e.path()).collect();
-        inner.sort();
-        for p in inner {
-            if !p.is_file() {
-                continue;
-            }
-            let name = p
-                .file_name()
-                .unwrap_or_default()
-                .to_string_lossy()
-                .to_string();
-            add_file(
-                zip,
-                opts,
-                &p,
-                &format!("{prefix}/{leaf}/{name}"),
-                entries,
-                budget,
-                scrub,
-            )?;
-        }
-    }
-    Ok(())
 }
 
 /// The session directory a report would ship, given a game directory: the newest one under
@@ -1723,54 +2148,144 @@ mod tests {
         std::fs::remove_dir_all(&dir).ok();
     }
 
-    /// LA9's done_when, second/third clauses: a `logs\` tree bigger than the budget drops the
-    /// OLDEST directories first, lists each in `dropped` with its size and a reason, keeps the
-    /// newest directory and a crash marker regardless, and the resulting zip itself lands under
-    /// the true 64 MB Caddy edge cap (plan D14) -- "a report over the cap is still accepted"
-    /// means the SELECTION keeps the report under it, not that an oversize upload is tolerated.
-    #[test]
-    fn an_oversize_logs_tree_drops_the_oldest_dirs_first_and_the_zip_stays_under_the_edge_cap() {
-        let dir = std::env::temp_dir().join("mh_launcher_test_oversize_logs");
-        std::fs::remove_dir_all(&dir).ok();
-        std::fs::create_dir_all(&dir).unwrap();
-        std::fs::write(dir.join("mh.exe"), b"not really an exe").unwrap();
+    // ---- dist LA14: the budget is the COMPRESSED upload body ------------------------------------
 
-        // Ten session directories, 8 MB apiece (two ~4 MB files, so neither alone brushes
-        // PER_FILE_MAX) -- 80 MB total, comfortably over the report's logs-tree budget.
-        let chunk = "x".repeat(4 * 1024 * 1024);
+    /// Incompressible bytes, deterministic (xorshift64): what a deflate cannot shrink.
+    fn noise(len: usize, seed: u64) -> Vec<u8> {
+        let mut x = seed | 1;
+        let mut out = Vec::with_capacity(len + 8);
+        while out.len() < len {
+            x ^= x << 13;
+            x ^= x >> 7;
+            x ^= x << 17;
+            out.extend_from_slice(&x.to_le_bytes());
+        }
+        out.truncate(len);
+        out
+    }
+
+    /// Log text that deflates poorly (random hex), `len` bytes of whole lines.
+    fn noisy_log(len: usize, seed: u64) -> String {
+        let n = noise(len / 2, seed);
+        let mut s = String::with_capacity(len + 64);
+        for (i, chunk) in n.chunks(30).enumerate() {
+            s.push_str(&format!("[{i:08}] "));
+            for b in chunk {
+                s.push_str(&format!("{b:02x}"));
+            }
+            s.push('\n');
+            if s.len() >= len {
+                break;
+            }
+        }
+        s
+    }
+
+    fn input_for<'a>(dir: &'a Path, session: PathBuf, description: &'a str) -> Input<'a> {
+        Input {
+            game_dir: Some(dir),
+            logs_root: None,
+            session_dir: Some(session),
+            launcher_started_utc: None,
+            description,
+            last_run: None,
+            crash: None,
+            minidump: None,
+            launcher_log: None,
+        }
+    }
+
+    fn fresh(name: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!("mh_launcher_test_{name}"));
+        std::fs::remove_dir_all(&dir).ok();
+        std::fs::create_dir_all(dir.join("logs")).unwrap();
+        std::fs::write(dir.join("mh.exe"), b"not really an exe").unwrap();
+        dir
+    }
+
+    fn body_of(built: &Built) -> u64 {
+        // What upload.rs's multipart() sends: the zip, plus description and meta again, plus framing.
+        let desc = entries_of(&built.zip)
+            .into_iter()
+            .find(|(n, _)| n == "description.txt")
+            .map(|(_, b)| b.len() as u64)
+            .unwrap_or(0);
+        built.bytes + built.meta.len() as u64 + desc + MULTIPART_FRAMING
+    }
+
+    /// LA14 (1): a 30 MB log that compresses well is carried WHOLE -- the old 8 MB per-file cap
+    /// would have kept its last 8 MB only -- and nothing is reported dropped.
+    #[test]
+    fn a_30_mb_compressible_log_goes_in_whole() {
+        let dir = fresh("big_compressible");
+        let name = "20260926T120000Z_abcdef01_1_host";
+        let s = dir.join("logs").join(name);
+        std::fs::create_dir_all(&s).unwrap();
+        let line = "; [mtrace] f=1 produced=0 depth=0 max=0 di=on last=0,0 cur=512,384 vis=1 \
+                    edge=---- held=---- cam=40,40 camd=0 gest=00\n";
+        let mut log = String::with_capacity(31 * 1024 * 1024);
+        let mut i = 0u64;
+        while log.len() < 30 * 1024 * 1024 {
+            log.push_str(&format!("[{i:010}] {line}"));
+            i += 1;
+        }
+        std::fs::write(s.join("mh_mtrace.log"), &log).unwrap();
+
+        let zip = dir.join("out").join("report.zip");
+        let built = build(
+            &zip,
+            &input_for(&dir, s.clone(), "the map scroll got stuck"),
+        )
+        .unwrap();
+        let entry = entries_of(&zip)
+            .into_iter()
+            .find(|(n, _)| n == &format!("logs/{name}/mh_mtrace.log"))
+            .expect("the 30 MB log is in the report");
+        assert_eq!(entry.1.len(), log.len(), "the log was cut");
+        assert!(entry.1 == log.as_bytes(), "the log changed on the way in");
+
+        let meta: serde_json::Value = serde_json::from_str(&built.meta).unwrap();
+        assert!(
+            meta["dropped"].as_array().unwrap().is_empty(),
+            "{}",
+            built.meta
+        );
+        assert!(body_of(&built) < BODY_BUDGET, "{}", body_of(&built));
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// LA9's done_when (2)/(3), re-proved for LA14's compressed budget: an INCOMPRESSIBLE `logs\`
+    /// tree over the cap drops the OLDEST optional folders first -- every dropped folder is older
+    /// than every optional folder kept -- lists each in `dropped`, keeps the reported match and a
+    /// crash marker, and the real upload body lands under the 64 MB edge cap.
+    #[test]
+    fn an_incompressible_oversize_tree_drops_the_oldest_folders_first_and_fits_the_cap() {
+        let dir = fresh("oversize_noise");
+        // Ten session folders of 8 MB of noise each: 80 MB that deflate cannot shrink.
         let mut names = Vec::new();
         for i in 0..10u32 {
             let name = format!("202609{:02}T090000Z_{:08x}_1_host", 10 + i, i);
             let s = dir.join("logs").join(&name);
             std::fs::create_dir_all(&s).unwrap();
-            std::fs::write(s.join("a.log"), &chunk).unwrap();
-            std::fs::write(s.join("b.log"), &chunk).unwrap();
+            std::fs::write(
+                s.join("capture.bin"),
+                noise(8 * 1024 * 1024, u64::from(i) + 7),
+            )
+            .unwrap();
+            std::fs::write(s.join("mh_net.log"), format!("; folder {i}\n")).unwrap();
             names.push(name);
         }
-        // A tiny marker that must survive the cap regardless of everything above.
         std::fs::write(
             dir.join("logs").join("mh_crash_cafefeed00001111.marker"),
             "mh_crash=1\ncode=0xc0000005\n",
         )
         .unwrap();
-
         let newest = names.last().unwrap().clone();
         let oldest = names.first().unwrap().clone();
-        let session_dir = dir.join("logs").join(&newest);
 
         let zip = dir.join("out").join("report.zip");
-        let input = Input {
-            game_dir: Some(&dir),
-            logs_root: None,
-            session_dir: Some(session_dir),
-            launcher_started_utc: None, // exercises the fallback window too
-            description: "ran out of disk mid-afternoon, way too many matches",
-            last_run: None,
-            crash: None,
-            minidump: None,
-            launcher_log: None,
-        };
-        let built = build(&zip, &input).unwrap();
+        let session = dir.join("logs").join(&newest);
+        let built = build(&zip, &input_for(&dir, session, "too many matches")).unwrap();
 
         let meta: serde_json::Value = serde_json::from_str(&built.meta).unwrap();
         let included: Vec<String> = meta["included"]
@@ -1779,46 +2294,157 @@ mod tests {
             .iter()
             .map(|v| v.as_str().unwrap().to_string())
             .collect();
-        let dropped: Vec<serde_json::Value> = meta["dropped"].as_array().unwrap().clone();
-
+        let dropped_dirs: Vec<String> = meta["dropped"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|d| d.get("file").is_none())
+            .map(|d| {
+                assert!(d["bytes"].as_u64().unwrap() > 0, "{d:?}");
+                assert!(!d["why"].as_str().unwrap().is_empty(), "{d:?}");
+                d["dir"].as_str().unwrap().to_string()
+            })
+            .collect();
         assert!(included.contains(&newest), "{included:?}");
-        assert!(!dropped.is_empty(), "{}", built.meta);
-        assert!(
-            dropped
-                .iter()
-                .any(|d| d["dir"].as_str() == Some(oldest.as_str())),
-            "the oldest directory was not among the dropped: {dropped:?}"
-        );
-        for d in &dropped {
-            assert!(d["bytes"].as_u64().unwrap() > 0, "{d:?}");
-            assert!(!d["why"].as_str().unwrap().is_empty(), "{d:?}");
+        assert!(dropped_dirs.contains(&oldest), "{dropped_dirs:?}");
+        let oldest_kept = included.iter().min().unwrap();
+        for d in &dropped_dirs {
+            assert!(
+                d < oldest_kept,
+                "{d} was dropped while older {oldest_kept} was kept"
+            );
         }
+        // Seven 8 MB folders fit under 62 MB; the budget must not throw away more than it needs.
+        assert!(included.len() >= 6, "{included:?}");
 
         let names_in_zip: Vec<String> = entries_of(&zip).into_iter().map(|(n, _)| n).collect();
-        assert!(
-            names_in_zip
-                .iter()
-                .any(|n| n.starts_with(&format!("logs/{newest}/"))),
-            "{names_in_zip:?}"
-        );
         assert!(
             !names_in_zip
                 .iter()
                 .any(|n| n.starts_with(&format!("logs/{oldest}/"))),
             "the dropped directory leaked into the zip anyway: {names_in_zip:?}"
         );
-        assert!(
-            names_in_zip.contains(&"crash/mh_crash_cafefeed00001111.marker".to_string()),
-            "the crash marker did not survive the cap: {names_in_zip:?}"
-        );
+        assert!(names_in_zip.contains(&format!("logs/{newest}/capture.bin")));
+        assert!(names_in_zip.contains(&"crash/mh_crash_cafefeed00001111.marker".to_string()));
 
-        // The whole point of the cap: the ACTUAL zip stays under the real Caddy edge limit.
+        let body = body_of(&built);
+        assert!(body <= BODY_BUDGET, "upload body {body} over the budget");
         assert!(
-            built.bytes < 64 * 1024 * 1024,
-            "the zip itself is {} bytes -- over the 64 MB edge cap",
-            built.bytes
+            body < EDGE_CAP_BYTES,
+            "upload body {body} over the edge cap"
         );
+        std::fs::remove_dir_all(&dir).ok();
+    }
 
+    /// LA14 (3): inside the reported match, a text log is cut to its NEWEST part before the replay
+    /// input goes, and the replay input is either byte-identical to the file or absent -- never a
+    /// prefix. Two budgets on the same folder: one that cuts only the log, one too tight for the
+    /// replay input at all.
+    #[test]
+    fn a_replay_input_is_whole_or_absent_and_the_log_keeps_its_tail() {
+        let dir = fresh("replay_whole");
+        let name = "20260926T130000Z_0badc0de_1_host";
+        let s = dir.join("logs").join(name);
+        std::fs::create_dir_all(&s).unwrap();
+        let orders = noise(1024 * 1024, 99);
+        std::fs::write(s.join("mh_match_orders.bin"), &orders).unwrap();
+        let log = noisy_log(6 * 1024 * 1024, 5);
+        std::fs::write(s.join("mh_match_harness.log"), &log).unwrap();
+        let last_line = log.lines().last().unwrap().to_string();
+
+        for (budget, replay_kept) in [(3 * 1024 * 1024u64, true), (600 * 1024, false)] {
+            let zip = dir.join("out").join(format!("report_{budget}.zip"));
+            let built = build_with_budget(
+                &zip,
+                &input_for(&dir, s.clone(), "desync near the end"),
+                budget,
+            )
+            .unwrap();
+            assert!(body_of(&built) <= budget, "{} > {budget}", body_of(&built));
+            let entries = entries_of(&zip);
+
+            let replay = entries
+                .iter()
+                .find(|(n, _)| n == &format!("logs/{name}/mh_match_orders.bin"));
+            match replay {
+                Some((_, b)) => assert!(b == &orders, "a replay input went in partially"),
+                None => assert!(
+                    !replay_kept,
+                    "budget {budget}: the replay input was dropped"
+                ),
+            }
+            if replay_kept {
+                assert!(
+                    replay.is_some(),
+                    "budget {budget}: the replay input was dropped"
+                );
+            }
+
+            let meta: serde_json::Value = serde_json::from_str(&built.meta).unwrap();
+            let dropped = meta["dropped"].as_array().unwrap();
+            let log_entry = entries
+                .iter()
+                .find(|(n, _)| n == &format!("logs/{name}/mh_match_harness.log"));
+            if let Some((_, b)) = log_entry {
+                let text = String::from_utf8_lossy(b);
+                assert!(text.starts_with("; [report] the first "), "{}", &text[..80]);
+                assert!(
+                    text.trim_end().ends_with(&last_line),
+                    "the newest line was lost"
+                );
+                let rec = dropped
+                    .iter()
+                    .find(|d| {
+                        d["file"]
+                            .as_str()
+                            .is_some_and(|f| f.ends_with("mh_match_harness.log"))
+                    })
+                    .expect("the cut log is named in dropped");
+                assert!(rec["kept_bytes"].as_u64().unwrap() > 0, "{rec:?}");
+                assert!(
+                    rec["kept_bytes"].as_u64().unwrap() < log.len() as u64,
+                    "{rec:?}"
+                );
+            }
+            if !replay_kept {
+                assert!(
+                    dropped.iter().any(|d| d["file"]
+                        .as_str()
+                        .is_some_and(|f| f.ends_with("mh_match_orders.bin"))),
+                    "{}",
+                    built.meta
+                );
+            }
+        }
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// LA14's shed order: an optional older folder goes whole before anything in the reported
+    /// match is touched.
+    #[test]
+    fn older_folders_go_before_the_reported_match_is_cut() {
+        let dir = fresh("shed_order");
+        let old = "20260926T080000Z_menu_host";
+        let o = dir.join("logs").join(old);
+        std::fs::create_dir_all(&o).unwrap();
+        std::fs::write(o.join("mh_net.log"), noisy_log(2 * 1024 * 1024, 11)).unwrap();
+        let name = "20260926T090000Z_12345678_1_host";
+        let s = dir.join("logs").join(name);
+        std::fs::create_dir_all(&s).unwrap();
+        let log = noisy_log(1024 * 1024, 12);
+        std::fs::write(s.join("mh_net.log"), &log).unwrap();
+
+        let zip = dir.join("out").join("report.zip");
+        let built = build_with_budget(&zip, &input_for(&dir, s, "lagged"), 1536 * 1024).unwrap();
+        let meta: serde_json::Value = serde_json::from_str(&built.meta).unwrap();
+        let dropped = meta["dropped"].as_array().unwrap();
+        assert_eq!(dropped.len(), 1, "{}", built.meta);
+        assert_eq!(dropped[0]["dir"].as_str().unwrap(), old);
+        let e = entries_of(&zip)
+            .into_iter()
+            .find(|(n, _)| n == &format!("logs/{name}/mh_net.log"))
+            .unwrap();
+        assert!(e.1 == log.as_bytes(), "the reported match was cut");
         std::fs::remove_dir_all(&dir).ok();
     }
 

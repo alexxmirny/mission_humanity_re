@@ -218,6 +218,12 @@
       "why": null
     },
     {
+      "suite": "diagtest",
+      "exe": "net_selftest",
+      "checks": 26,
+      "why": "tooling:TL-SUITE-COUNTERS (2026-09-26). mh_diag_counter.h's first-hit + rollup state machine, the shared fix for G101 (a counter reported only at graceful shutdown is invisible to a rig run, which is always KILLED). Pure state, asserted the same way watchdogtest is."
+    },
+    {
       "suite": "desynctest",
       "exe": "net_selftest",
       "checks": 53,

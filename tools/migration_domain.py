@@ -346,7 +346,7 @@ class Domain:
         Declare `oracle.determinism_gate` to override.
         """
         o = self.raw.get("oracle") or {}
-        return o.get("determinism_gate") or "python tools/test_ui.py --determinism"
+        return o.get("determinism_gate") or "python tools/det_arms.py --determinism"
 
     @property
     def determinism_gate_why(self):

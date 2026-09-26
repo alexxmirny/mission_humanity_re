@@ -1,13 +1,13 @@
-# mp:D25 HOST walk -- the BUILD-MENU CLICK that desynced every real internet match.
+# mp:D35 HOST walk -- the D25 build click ALONE, for the configuration-(1) rows (d35_buildclick_c1 and
+# its reproduction arm d35_buildclick_c1_retail). host_clicks' buildclick segment is the same click in
+# configuration (2); this walk exists because D25's fix there is libmh's promoted body, and the player
+# zips run WITHOUT libmh.dll, where only the mh.dll seam (seams/ui_bldg_build_probe.cpp) carries it.
+# Pair with mp_client_idle.txt.
 #
-# The same host-and-launch walk as mp_host_start.txt; then, in the live match, this peer clicks a
-# building icon in the HUD build menu and does NOT place it. The original
-# llm_strat_bldg_try_begin_placement PAYS the cost and RE-GRANTS it as its affordability probe, and
-# the re-grant lands in the gains-only resource_spent counter (hashed as p0_ai_econ) on the CLICKING
-# peer alone -- so with the original body this run's post_check (mp_analyze over both peers'
-# harness logs) names p0_ai_econ, and with libmh's side-effect-free probe it reads ALL PAIRS
-# IDENTICAL. Pair with mp_client_idle.txt (the idle peer, its own fixture so this run's captures never touch match_launch's baseline). The registry row carries the harness
-# knobs and the analyzer post_check.
+# Land the mother, open the place-building tab, click the Academy icon. That arms placement mode and
+# nothing is placed: the ONLY state the click can touch is what the affordability probe writes, which
+# is the whole point -- the retail probe pays and re-grants, booking +800/+450 into resource_spent
+# (p0_ai_econ) on this peer alone.
 
 # reach the host lobby (create the pre-pinned game on the pre-selected map)
 settled value:110
@@ -32,35 +32,23 @@ enabled Start
 settled Start
 clickl Start
 
-# in the match. A fresh MP human owns one AIRBORNE mothership and nothing else, so first LAND it:
-# shift+right-click on the map (the deploy gesture -- order 0x10 move, then 0x18 deploy). Gated on
-# the sim clock, never on frames; the mother is the "Pioneer" building well before 20000.
+# in the match: order the airborne mothership to land (shift+right-click; order 0x10 move + 0x18
+# deploy). It flies until well before gameclock 20000.
 absent Network players
 gameclock 3000
 rclick 480 330 shift
 gameclock 20000
 capture landed
 
-# open the "place building" tab (the HUD is not a menu widget list, so absolute coordinates;
-# split over presents like a physical click) -- the build menu lists Power Plant, Colony, Mine,
-# Relay, Academy (800/450, the 2026-09-19 diff's exact bytes).
-cursor 890 215
-cursor 890 215
-press 890 215
-release 890 215
+# the "place building" tab (HUD, absolute coordinates) -- Power Plant, Colony, Mine, Relay, Academy
+simclick 890 215
 gameclock 21000
 capture build_menu
-
-# THE TRIGGER: click the Academy icon. This arms placement mode and NEVER places (no map click
-# follows), which is exactly the local action that credited 800/450 on the clicking peer alone.
-cursor 905 480
-cursor 905 480
-press 905 480
-release 905 480
+# THE TRIGGER: the Academy icon. Arms placement and never places.
+log bp click
+simclick 905 480
 gameclock 22000
 capture academy_armed
-log HOST clicked the Academy build icon; placement armed, nothing placed
-
-# keep the match running so the analyzer has rows on both sides of the click
+# rows on both sides of the click for the analyzer (the original ran 8 s past it)
 gameclock 30000
 end

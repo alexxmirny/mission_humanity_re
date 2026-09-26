@@ -143,7 +143,15 @@ void layout_text_guarded(uint16_t *text) {
         // So the substitution is keyed on the CODE UNIT, not on the ordinal: at or below U+0020
         // (space and the C0 controls) ordinal 0 is left exactly as retail leaves it; above it, a
         // character with no glyph is a genuinely missing one and gets the box.
-        if (ix == 0 && u > 0x20u) {
+        //
+        // THE C1 CONTROLS (U+007F..U+009F) ARE BLANKS TOO (2026-09-26). The HUD's label:value rows
+        // pad their numbers with U+0087 (llm_ui_hud_label_value_row_draw -> llm_str_itoa_pad_left(v,
+        // 6, 0x87)) precisely BECAUSE no font maps it: the pad draws retail's blank one-em cell, and
+        // the row's right-alignment subtracts that cell's width three times. Substituting it drew the
+        // stats panel (E) as `?????0`. No codepage widens a printable character into this range --
+        // it is controls in Unicode -- so leaving it blank cannot hide real text.
+        const bool control = (u <= 0x20u) || (u >= 0x7Fu && u <= 0x9Fu);
+        if (ix == 0 && !control) {
             if (ob) ++g_oob;
             if (g_guard_on) {
                 ix = fallback_ordinal(charmap, limit);

@@ -36,7 +36,8 @@ is a refusal; more than one line is a fail, never a pass.
 
 `<run-dir>` is what test_ui.py's `post_check` machinery (with `post_check_peers`) hands a checker for
 every peer: that lane's newest run directory. gs2_data_timeout is a lane SHARER (TL-LANEPOOL, borrows
-match_launch's lanes), so each peer's `logs/` may hold more than this process's own session -- each
+d28_canceltask's lanes since TL-SUITE-FOLD-ML folded match_launch into shim_udp), so each peer's
+`logs/` may hold more than this process's own session -- each
 run directory is resolved to its lane's `logs/` and the SESSION directories whose `session.json`
 `process_dir` names this run (check_rematch_residue.py's pattern), plus the process directory's own
 mh_net.log (the GS2 line is written by the main-thread `on_time_tick` seam, which runs inside the

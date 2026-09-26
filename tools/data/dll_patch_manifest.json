@@ -552,6 +552,30 @@
    "note": "mp:D28: call-splice the building dialog's cancel-task Yes (CALL llm_bldg_finish_current_order) to a thunk that issues the equivalent replicated building order in a lockstep match; the local call stays for single player and for [net] cancel_task_order=0"
   },
   {
+   "id": "build_probe_free",
+   "sources": [
+    {
+     "file": "mh/seams/ui_bldg_build_probe.cpp",
+     "expr": "pay"
+    },
+    {
+     "file": "mh/seams/ui_bldg_build_probe.cpp",
+     "expr": "grant"
+    }
+   ],
+   "addrs": [
+    "0x00448c56",
+    "0x00448c90"
+   ],
+   "kind": "code",
+   "owner": [
+    "llm_strat_bldg_try_begin_placement"
+   ],
+   "knob": "build_probe_free",
+   "carrier": "migrated:D25 (libmh's promoted bldg_try_begin_placement probes with bldg_can_afford_build_cost unconditionally)",
+   "note": "mp:D35: the mh.dll port of mp:D25 for configuration (1). Call-splice the HUD build-click's CALL llm_bldg_pay_build_cost to a charge-free probe (pay_build_cost's pass 1: same return codes, no writes) and NOP the CALL llm_strat_bldg_grant_type_resources that undid the payment -- both or neither. The re-grant booked +cost into the gains-only resource_spent (hashed pK_ai_econ) on the clicking peer alone. Not under [config] mode=original (the A/B/C oracle's B arm and its D25 excusal rely on retail's probe); [net] build_probe_free=0 is the reproduction arm."
+  },
+  {
    "id": "resync_trigger_gate",
    "sources": [
     {
