@@ -1,32 +1,32 @@
 {
   "schema": 1,
-  "version": "0.2.0-rc4",
-  "issued_at": "2026-09-26T13:57:49Z",
+  "version": "0.2.0-rc5",
+  "issued_at": "2026-09-27T12:03:01Z",
   "launcher": {
-    "version": "0.2.0-rc4",
-    "url": "https://github.com/alexxmirny/mission_humanity_re/releases/download/v0.2.0-rc4/mh_launcher.exe",
-    "sha256": "373466aebc730b52ee4f0b13f5c090c50ca69453141be9ef7c1830087ab1d3e9"
+    "version": "0.2.0-rc5",
+    "url": "https://github.com/alexxmirny/mission_humanity_re/releases/download/v0.2.0-rc5/mh_launcher.exe",
+    "sha256": "b65adef758319b099c7e687e820346b201068c69a76280d2f6e3543490937084"
   },
   "game": {
     "net": {
-      "url": "https://github.com/alexxmirny/mission_humanity_re/releases/download/v0.2.0-rc4/mission_humanity_re-0.2.0-rc4-net.zip",
-      "sha256": "6eee8ec227b9cc220ee99bde88d1682fbbc5e7fdfd01d38bd85b7d189984d8e5",
-      "size": 1003992
+      "url": "https://github.com/alexxmirny/mission_humanity_re/releases/download/v0.2.0-rc5/mission_humanity_re-0.2.0-rc5-net.zip",
+      "sha256": "c6a21ef397179c27d9b01565598c79bc40c9c07edd7e636c376f86c3eb3f9188",
+      "size": 1012770
     },
     "net-debug": {
-      "url": "https://github.com/alexxmirny/mission_humanity_re/releases/download/v0.2.0-rc4/mission_humanity_re-0.2.0-rc4-net-debug.zip",
-      "sha256": "9b1a1f24256b16c39a47aa22ae21540feec3262a4daaa09f016b85e60263dca2",
-      "size": 1150180
+      "url": "https://github.com/alexxmirny/mission_humanity_re/releases/download/v0.2.0-rc5/mission_humanity_re-0.2.0-rc5-net-debug.zip",
+      "sha256": "7fcff480527cfbfefb3bd2f103379ca55c2912df30475cf9bc1208f391a55d1e",
+      "size": 1163150
     },
     "brokered-debug": {
-      "url": "https://github.com/alexxmirny/mission_humanity_re/releases/download/v0.2.0-rc4/mission_humanity_re-0.2.0-rc4-brokered-debug.zip",
-      "sha256": "08b413b623eff44e0ee20a304356732f7bfac5ed3824855b5f876ca9f1935e54",
-      "size": 1785776
+      "url": "https://github.com/alexxmirny/mission_humanity_re/releases/download/v0.2.0-rc5/mission_humanity_re-0.2.0-rc5-brokered-debug.zip",
+      "sha256": "e099d90f3a38d03b90b21f9462d03a7682aafc0400aba8833057f784e6a7dbe1",
+      "size": 1799124
     }
   },
   "relay": {
     "addr": "45.9.15.236:7100",
     "key": "d3dfaa5aee86d27f1a3a7868e9bf9af84f10b5057a6ad299055a6f7756ea49b9"
   },
-  "notes_url": "https://github.com/alexxmirny/mission_humanity_re/releases/tag/v0.2.0-rc4"
+  "notes_url": "https://github.com/alexxmirny/mission_humanity_re/releases/tag/v0.2.0-rc5"
 }
