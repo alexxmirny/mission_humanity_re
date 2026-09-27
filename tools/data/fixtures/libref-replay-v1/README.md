@@ -6,7 +6,7 @@ Three halves that MUST come from **one run**, because separately they describe d
 | --- | --- | --- |
 | the recording | `orders.bin.zz` + `clock.bin.zz` | every order sitting in `order_queue` per step, tagged with its step (`mh_orders.bin`), and the per-step game clock as raw doubles (`mh_clock.bin`) so a real-time recording replays with its own deltas |
 | the step-0 world | `world.bin.zz` | every bound region at the instant before the first sim step (LIB-WORLD), so a standalone host starts without a cfg parser or a map reader |
-| the hash stream | `hash_steps.txt.zz` + `hash_regions.txt.zz` | LIB-REF's comparison target: the per-step `<step> <clock> <combined> <state>` lines and the per-region `R <step> <h0..h60>` lines |
+| the hash stream | `hash_steps.txt.zz` + `hash_regions.txt.zz` | LIB-REF's comparison target: the per-step `<step> <clock> <combined> <state>` lines and the per-region `R <step> <h0..h62>` lines |
 
 `manifest.json` carries the provenance, the replay contract, and the fidelity measurements.
 `FIDELITY.md` is generated, not written — see below.
@@ -50,7 +50,7 @@ the `state_excluded()` wall-clock/pacing regions. `combined` folds them in and i
 property of the **run**, not of the world. LIB-REF compares `state` and the per-region `R` columns.
 
 **And it compares them over the FULL region set: this fixture declares no exclusions.**
-Replay-vs-replay is bit-identical on all 61 regions at every step, so LIB-REF's oracle needs none.
+Replay-vs-replay is bit-identical on all 63 regions at every step, so LIB-REF's oracle needs none.
 `FIDELITY.md` describes a *different* pair of runs (record vs replay) and its residue must not be
 carried into LIB-REF's comparison as an exclusion.
 
@@ -78,9 +78,11 @@ itself), so the record-vs-replay comparison is part of the acceptance and is **f
 ## Re-recording it
 
 The fixture rots when the blob schema (`gen_world_snapshot.py`), the recording format, or the hash
-manifest moves. Every step below was executed end-to-end to produce the committed set (last: 2026-09-20,
-TL-GATE-D25FX, after D25 appended hash region 62 — the recording halves `orders.bin.zz`/`clock.bin.zz`
-came back BYTE-IDENTICAL to the 2026-09-11 set; only the blob header's stamps and the hash stream moved).
+manifest moves. Every step below was executed end-to-end to produce the committed set (last: 2026-09-27,
+after mp:D38 row 10 appended hash region 63, `progress`; before that 2026-09-20, TL-GATE-D25FX, region 62.
+Both times the recording halves `orders.bin.zz`/`clock.bin.zz` came back BYTE-IDENTICAL to the 2026-09-11
+set; only the blob header's stamps and the hash stream moved). Step 1 must carry the committed
+`record_flags` verbatim -- this fixture's include `seed_mode=2`, which the command below omits.
 
 **A hash-manifest change means THIS procedure, in the same session, for all three fixtures and both
 UI-REC oracles — then the full gate.** The blob carries `hash_manifest_fp`; `replay_libref.py` headlines

@@ -94,6 +94,9 @@ enum class point {
     lt_frame_pace_time_tick,   // R7 / LT1F: the pacing chain hook the frame pair calls
     lt_frame_harness_sim_tick, // R7 / LT1F: the harness chain hook the frame pair calls
 
+    // ---- OBSERVE, appended (mp:D37b) -- at the END so no earlier point is renumbered ------------
+    order_issue, // llm_strat_order_dispatch -- the field replay's lockstep-lane emulation
+
     count_
 };
 

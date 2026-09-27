@@ -160,6 +160,15 @@ inline volatile LONG g_net_relink = 0;
 // seams, finalize), the net_seams sbm logger, and the net_diag loggers.
 inline bool g_ls_log = false;
 
+// mp:X2h -- the savegame_io_error dlg CALLER logger (net_diag.cpp on_savegame_err) only ever WROTE
+// its caller to the log line; nothing kept the value. The lobby-tick stall watch (net_seams.cpp)
+// wants it as one of the stall line's identifying fields ("which modal is this"), so it is latched
+// here on every dlg entry the logger's trampoline sees. Same install gate as the line itself
+// (install_savegame_err_logger runs only under [net] lockstep_log=1, on by default in the shipped
+// ini) -- with the trampoline never armed this simply stays 0, which the stall line prints as "no
+// dlg observed", a true statement rather than a stale one.
+inline volatile LONG g_last_dlg_caller = 0;
+
 // ---- SES1: the per-session directory, as the seam TUs see it ---------------------------------
 //
 // One generation token per cached path. Every seam log writer calls its tick FIRST, so the line it
@@ -192,6 +201,10 @@ void seam_log(const char *s); // append one line to mh_net.log (arm banners + DI
 // mp:GS1 (a): discard every datagram the game queue holds at the player's JOIN click -- all of it
 // predates the JOIN, so none of it is the lobby being joined (the previous lobby's retail 0x0e was).
 void mp_drain_pre_join_queue();
+// mp:X2h -- diagnostic: log once when on_lobby_dispatch has gone quiet >= 1000 ms with a live manual
+// link outside a match (a modal stopped the drain), and once when it resumes. Called from
+// net_lockstep.cpp's on_present -- the per-frame path proven to keep running under a retail modal.
+void mp_lobby_stall_watch();
 // N1: the client's lobby slot -- the transport/host-assigned id if known (>=1), else 1 (the 2-player
 // default). In declared-id mode this equals the configured player_id, so the 2-player lobby is unchanged.
 //

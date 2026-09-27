@@ -91,6 +91,7 @@
     <ClCompile Include="session_dir_selftest.cpp" />
     <ClCompile Include="log_rotate_selftest.cpp" />
     <ClCompile Include="ini_read_selftest.cpp" />
+    <ClCompile Include="info_avi_selftest.cpp" />
     <ClCompile Include="run_context_selftest.cpp" />
     <ClCompile Include="udp_wire_selftest.cpp" />
     <ClCompile Include="udp_loopback_selftest.cpp" />
@@ -2137,6 +2138,18 @@
       <Filter>mh\seams</Filter>
     </ClCompile>
     <ClCompile Include="..\mh\seams\ui_bldg_build_probe.cpp">
+      <Filter>mh\seams</Filter>
+    </ClCompile>
+    <ClCompile Include="..\mh\seams\sim_pioneer_refill.cpp">
+      <Filter>mh\seams</Filter>
+    </ClCompile>
+    <ClCompile Include="..\mh\seams\ui_bldg_netcrit_pure.cpp">
+      <Filter>mh\seams</Filter>
+    </ClCompile>
+    <ClCompile Include="..\mh\seams\ui_storage_panel_purge.cpp">
+      <Filter>mh\seams</Filter>
+    </ClCompile>
+    <ClCompile Include="..\mh\seams\ui_info_avi.cpp">
       <Filter>mh\seams</Filter>
     </ClCompile>
     <ClCompile Include="..\mh\seams\ui_net_indicator.cpp">

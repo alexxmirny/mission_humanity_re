@@ -533,6 +533,7 @@ void on_present() {
     MH_Libmh_OnPresent();          // F4D's standing arm: report the spine-boundary crossing counters
     ensure_key_once();             // first frame: make sure the host has a key it can share
     MH_MP_DrainRelayNotice();      // mp:R4a: a relay-level notice the UDP module queued -> arm it (main thread)
+    mp_lobby_stall_watch();        // mp:X2h: has a modal stopped the lobby-tick drain? (see net_seams.cpp)
     mh::ui::browser_notice_tick(); // U23: keep the involuntary-exit notice on the browser status line
     mh::ui::slide_geom_watch();    // U37 diag ([net] slide_diag): log any change to the menu frame geometry
     MH_FontGuard_OnPresent();      // F2: [fonts] probe_text through the game's own font path, before overlay+capture

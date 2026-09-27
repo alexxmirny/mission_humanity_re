@@ -115,6 +115,18 @@
     <ClCompile Include="seams\ui_bldg_build_probe.cpp">
       <Filter>seams</Filter>
     </ClCompile>
+    <ClCompile Include="seams\sim_pioneer_refill.cpp">
+      <Filter>seams</Filter>
+    </ClCompile>
+    <ClCompile Include="seams\ui_bldg_netcrit_pure.cpp">
+      <Filter>seams</Filter>
+    </ClCompile>
+    <ClCompile Include="seams\ui_storage_panel_purge.cpp">
+      <Filter>seams</Filter>
+    </ClCompile>
+    <ClCompile Include="seams\ui_info_avi.cpp">
+      <Filter>seams</Filter>
+    </ClCompile>
     <ClCompile Include="seams\ui_net_indicator.cpp">
       <Filter>seams</Filter>
     </ClCompile>

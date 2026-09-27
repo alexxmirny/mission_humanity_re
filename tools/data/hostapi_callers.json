@@ -283,6 +283,35 @@
    }
   },
   {
+   "name": "cfg_ReadMapFile",
+   "category": "map-io",
+   "notify": false,
+   "n_direct": 3,
+   "n_transitive": 5,
+   "direct_by_domain": {
+    "lib_trans": [
+     "cfg_final_planet_Construct"
+    ],
+    "pre:seams": [
+     "llm_cfg_map_verify_version"
+    ],
+    "sim_resid": [
+     "llm_game_start_tutorial"
+    ]
+   },
+   "transitive_by_domain": {
+    "lib_trans": 1,
+    "pre:seams": 1,
+    "sim_resid": 3
+   },
+   "site_modules": {
+    "sim": [
+     "sim/libtrans/sim_lt_cfg_planet.cpp",
+     "sim/resid/sim_start_tutorial.cpp"
+    ]
+   }
+  },
+  {
    "name": "map_ReadMap_pre",
    "category": "map-io",
    "notify": false,
@@ -355,31 +384,6 @@
     ],
     "sim": [
      "sim/resid/sim_scenario_planet_clone.cpp"
-    ]
-   }
-  },
-  {
-   "name": "cfg_ReadMapFile",
-   "category": "map-io",
-   "notify": false,
-   "n_direct": 2,
-   "n_transitive": 4,
-   "direct_by_domain": {
-    "lib_trans": [
-     "cfg_final_planet_Construct"
-    ],
-    "sim_resid": [
-     "llm_game_start_tutorial"
-    ]
-   },
-   "transitive_by_domain": {
-    "lib_trans": 1,
-    "sim_resid": 3
-   },
-   "site_modules": {
-    "sim": [
-     "sim/libtrans/sim_lt_cfg_planet.cpp",
-     "sim/resid/sim_start_tutorial.cpp"
     ]
    }
   },
@@ -1064,6 +1068,16 @@
     "vfs_write"
    ]
   },
+  "pre:seams": {
+   "n_direct": 1,
+   "n_transitive": 1,
+   "direct": [
+    "cfg_ReadMapFile"
+   ],
+   "transitive": [
+    "cfg_ReadMapFile"
+   ]
+  },
   "sim": {
    "n_direct": 5,
    "n_transitive": 13,
@@ -1198,7 +1212,7 @@
   },
   "map-io": {
    "n_callbacks": 6,
-   "n_distinct_direct_callers": 7
+   "n_distinct_direct_callers": 8
   },
   "net": {
    "n_callbacks": 2,

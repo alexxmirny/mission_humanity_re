@@ -1,0 +1,106 @@
+# mp:D37 HOST walk -- select an own network building while the sim's connectivity flags are STALE.
+# Pair with mp_client_idle.txt. Rows: d37_relay_chain (seam on) / d37_relay_chain_retail
+# ([net] netcrit_ui_pure=0, the reproduction arm).
+#
+# The HUD panel for a selected power-network building (llm_ui_hud_bldg_network_status_panel_draw,
+# 0x00418909) calls llm_strat_bldg_is_network_critical every frame, and that runs
+# llm_strat_bldg_power_network_recompute three times on the LOCAL player's buildings row: it rewrites
+# every building's built_flags bit 0 (connected) and may re-elect the primary mother. In the sim that
+# recompute only runs when a building's footprint is unmapped, so while the flags are stale the
+# selecting peer alone refreshes them -- the rc4 Nortus desync (step 10534, seven steps after the host
+# drag-selected its relays).
+#
+# Stale window used here: land the mother, place relay R1 inside the mother's window and relay R2
+# reachable only through R1, order R1 dismantled (it stops conducting at once; the sim recomputes only
+# at dismantle_finish), then select R2 and hold. Retail: `buildings` diverges at the next sample.
+#
+# One capture (the landing): the assertion is the post_check (tools/check_netcrit_pure.py), and later
+# map pixels would carry a wandering unit / a lost-and-redundant placement click -- flake, not signal.
+
+# reach the host lobby (create the pre-pinned game on the pre-selected map)
+settled value:110
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+settled Create
+clickl Create
+present Game name
+settled Ok
+clickl Ok
+present Available maps
+settled Ok
+clickl Ok
+
+# host lobby: block until the client is really in ITS lobby, then Start.
+present Network players
+peers 1
+awaitsignal lobby
+enabled Start
+settled Start
+clickl Start
+
+# in the match: order the airborne mothership to land (shift+right-click; order 0x10 move + 0x18
+# deploy).
+absent Network players
+gameclock 3000
+# simrclick (the hand-like hold), not the three-present rclick: the latter was lost under suite load
+simrclick 480 330 shift
+# the start position varies with the match: from the far one the approach + descent takes >17 s of
+# game time (measured: still airborne at 20000, and an R1 placement at 33600 was refused), so wait to 45000
+gameclock 45000
+capture landed
+
+# R1: a relay 11 tiles south of the mother (inside the mother's +-15-tile network window)
+simclick 890 215
+gameclock 46000
+simclick 905 428
+gameclock 46600
+log d37 place R1
+simclick 495 700
+gameclock 48000
+# let R1 finish and go online (~18 s build)
+gameclock 70000
+# camera 10 tiles south (minimap), so R1 sits mid-screen and its sight shows what lies past it
+simclick 932 88
+gameclock 71000
+# R2 / R2b: ~17-18 tiles south of the mother -- OUTSIDE the mother's window, reachable only through R1.
+# Two of them because an in-game placement click is occasionally lost under load (the row needs only
+# one; a second relay fed through R1 is the same shape).
+simclick 890 215
+gameclock 72000
+simclick 905 428
+gameclock 72600
+log d37 place R2
+simclick 575 610
+gameclock 74000
+simclick 890 215
+gameclock 75000
+simclick 905 428
+gameclock 75600
+log d37 place R2b
+simclick 470 640
+gameclock 77000
+# select R1 and DISMANTLE it (status icon -> "disassemble building?" -> Sell it = order 0x6b). R1 is
+# R2's only link to power. A dismantling building stops conducting at once, but the sim recomputes
+# the network only when the footprint is unmapped at dismantle_finish -- until then R2 stays marked
+# connected. `disassemble` is the dialog text's own label ("No" and value:110 also match other lists).
+log d37 select R1
+simclick 530 385
+gameclock 78000
+simclick 882 271
+retry 1500 2 3 settled disassemble
+# Sell it (widget [1], center 434,421); a lost click leaves the dialog up -- retry it
+click 433 421
+retry 1500 1 3 absent disassemble
+gameclock 79500
+# THE TRIGGER: select R2, then R2b (the HUD network panel recomputes the power network every frame)
+log d37 select R2
+simclick 560 615
+gameclock 80500
+gameclock 84000
+log d37 select R2b
+simclick 455 650
+gameclock 85000
+gameclock 88000
+end

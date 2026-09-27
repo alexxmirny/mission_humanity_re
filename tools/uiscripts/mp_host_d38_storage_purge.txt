@@ -1,0 +1,58 @@
+# mp:D38 row 5 HOST walk -- the storage panel is up when a docked unit dies.
+# Pair with mp_client_idle.txt. Rows: d38_storage_purge (seam on) / d38_storage_purge_retail
+# ([net] storage_panel_purge_fix=0, the reproduction arm).
+#
+# The HUD panel of a selected storage building (llm_strat_ui_storage_bldg_panel, 0x00417409) calls
+# llm_strat_storage_purge_dead_docked on every panel refresh -- on the selecting peer only. The sim
+# purges dead docked units on every peer once per sub-tick A (5 game-s), so a peer that has the
+# building selected when a docked unit dies drops the row ahead of the others.
+#
+# The docked unit and its death are the harness fixture's (`d38_*` harness knobs, identical on both
+# peers): the host's harness orders a barracks beside the landed mother (order 0xf2, replicated), both
+# peers dock one soldier into it at the same step, and both kill it at the same later step, when the
+# sim's own purge is >= 1.5 s away, with the game's own storage-change notification. This walk only
+# lands the mother and holds the barracks SELECTED across the kill.
+#
+# One capture (the selection): the assertion is the post_check (tools/check_storage_purge.py).
+
+# reach the host lobby (create the pre-pinned game on the pre-selected map)
+settled value:110
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+settled Create
+clickl Create
+present Game name
+settled Ok
+clickl Ok
+present Available maps
+settled Ok
+clickl Ok
+
+# host lobby: block until the client is really in ITS lobby, then Start.
+present Network players
+peers 1
+awaitsignal lobby
+enabled Start
+settled Start
+clickl Start
+
+# in the match: order the airborne mothership to land (shift+right-click; order 0x10 move + 0x18
+# deploy). Same gesture and timing as mp_host_d37_relay_chain.txt.
+absent Network players
+gameclock 3000
+simrclick 480 330 shift
+# The fixture orders the barracks once the mother has landed (~step 520) and docks the soldier once
+# the barracks is operational (~step 820 = game 8.2 s; 10 ms per step). Select it before the kill (d38_kill_at,
+# step 2500 = game 25 s): the barracks stands 6 tiles west of the mother, at 305,345 on this view.
+gameclock 22000
+log d38 select barracks
+simclick 305 345
+retry 1500 1 3 bldgsel any
+gameclock 24000
+capture selected
+# hold the selection across the kill and the sim's own purge (<= 5 s after it), then a margin
+gameclock 45000
+log d38 done
+end

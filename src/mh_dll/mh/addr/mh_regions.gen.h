@@ -1605,7 +1605,7 @@ inline constexpr region REGIONS[RID_COUNT] = {
     {"_G_LLM_STRAT_UNIT_HOUSING_STATS", MH_STOCK_BASE(0x00c38530u), 512u, 512u, OWN_ISLAND, static_cast<uint8_t>(MF_VIEW | MF_MEASURED | MF_SAVE), false, false, false},
     {"_G_LLM_BLDG_PIP_ANIM_BASE_FRAME", MH_STOCK_BASE(0x00c38730u), 16u, 16u, OWN_READONLY, static_cast<uint8_t>(MF_SAVE), false, false, true},
     {"A_OGIEN", MH_STOCK_BASE(0x00c38740u), 16u, 16u, OWN_ISLAND, static_cast<uint8_t>(MF_VIEW), false, false, false},
-    {"progress", MH_STOCK_BASE(0x00c38750u), 7200u, 7200u, OWN_SHARED, static_cast<uint8_t>(MF_VIEW | MF_MEASURED | MF_SAVE), false, false, false},
+    {"progress", MH_STOCK_BASE(0x00c38750u), 7200u, 7200u, OWN_SHARED, static_cast<uint8_t>(MF_VIEW | MF_MEASURED | MF_SAVE | MF_HASH), false, false, false},
     {"_G_LLM_STRAT_POP_STATS", MH_STOCK_BASE(0x00c3a370u), 416u, 416u, OWN_SHARED, static_cast<uint8_t>(MF_VIEW | MF_MEASURED | MF_SAVE), false, false, false},
     {"A_DYM_POJAZD", MH_STOCK_BASE(0x00c3a510u), 16u, 16u, OWN_ISLAND, static_cast<uint8_t>(MF_VIEW), false, false, false},
     {"Weapon", MH_STOCK_BASE(0x00c3a520u), 11648u, 11648u, OWN_SHARED, static_cast<uint8_t>(MF_VIEW | MF_MEASURED | MF_SAVE), false, false, false},
@@ -2983,7 +2983,7 @@ constexpr const region *covering(uint32_t addr, uint32_t size) {
 // order is a wire contract: anything but an APPEND silently re-labels every existing region,
 // and every desync report after it names the wrong one while looking well-formed.
 //
-// These are SLICES, not regions: 62 entries over 39 registry regions, because `p0_local` and
+// These are SLICES, not regions: 63 entries over 40 registry regions, because `p0_local` and
 // its siblings are interior windows into the single `player_data` region. Carrying (region,
 // offset, length) rather than a bare address is what lets a moved region take its slices with
 // it.
@@ -3194,8 +3194,11 @@ inline constexpr hash_region HASH_REGIONS[] = {
     {"player_resources", RID_PLAYER_RESOURCES, 0u, MH_STOCK_BASE(0x00e0e468u), 320u, false}, // player_resources int[8][10] -- the stock every affordability check reads (D25)
     // (2026-09-19): was never hashed; the first real internet match diverged here alongside
     // resource_spent and the verdict could not see it. Appended (the contract), state-only.
+    {"progress", RID_PROGRESS, 0u, MH_STOCK_BASE(0x00c38750u), 7200u, false}, // game_progress[8][300] {available, acquired, f3} -- the research/invention table (D38 row 10)
+    // (2026-09-27): sim-read (ai_plan_unit_training, building eligibility) and never hashed. Every
+    // writer is sim or session setup; no per-peer byte, so no mask. Appended (the contract).
 };
-constexpr int HASH_REGION_COUNT = 62;
+constexpr int HASH_REGION_COUNT = 63;
 
 // Named indices. Generated, so they cannot drift out of step with the table the way the
 // hand-written IDX_* constants could -- that drift is what the `APPENDED, not inserted`
@@ -3263,6 +3266,7 @@ enum hash_region_index : int {
     HIDX_GAME_TIME_DELTA      = 59,
     HIDX_GAME_SPEED           = 60,
     HIDX_PLAYER_RESOURCES     = 61,
+    HIDX_PROGRESS             = 62,
 };
 
 // Each slice really is inside the region it claims, and really is at the address the manifest
@@ -3330,6 +3334,7 @@ static_assert(HASH_REGIONS[58].base == REGIONS[RID_STRAT_SIM_STEP_INTERVAL].base
 static_assert(HASH_REGIONS[59].base == REGIONS[RID_GAME_TIME_DELTA].base + 0u);
 static_assert(HASH_REGIONS[60].base == REGIONS[RID_GAME_SPEED].base + 0u);
 static_assert(HASH_REGIONS[61].base == REGIONS[RID_PLAYER_RESOURCES].base + 0u);
+static_assert(HASH_REGIONS[62].base == REGIONS[RID_PROGRESS].base + 0u);
 #endif // !MH_LIBMH_BUILD
 static_assert(0u + HASH_REGIONS[0].len <= REGIONS[RID_BUILDINGS].reach);
 static_assert(0u + HASH_REGIONS[1].len <= REGIONS[RID_PRODUCTIONS].reach);
@@ -3393,6 +3398,7 @@ static_assert(0u + HASH_REGIONS[58].len <= REGIONS[RID_STRAT_SIM_STEP_INTERVAL].
 static_assert(0u + HASH_REGIONS[59].len <= REGIONS[RID_GAME_TIME_DELTA].reach);
 static_assert(0u + HASH_REGIONS[60].len <= REGIONS[RID_GAME_SPEED].reach);
 static_assert(0u + HASH_REGIONS[61].len <= REGIONS[RID_PLAYER_RESOURCES].reach);
+static_assert(0u + HASH_REGIONS[62].len <= REGIONS[RID_PROGRESS].reach);
 
 // Where slice `i` is RIGHT NOW: its region's live base plus the slice's offset. Not
 // constexpr, and not HASH_REGIONS[i].base -- that one is frozen at the stock address on

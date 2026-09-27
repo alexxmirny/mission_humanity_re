@@ -318,6 +318,237 @@ tests:
     post_check_session: true
     desc: 'D35 negative arm: `[net] build_probe_free=0` (retail pay + re-grant kept) -- p0_ai_econ must
       diverge from the click, stay diverged, and the in-band watch must say DESYNC'
+  # mp:D37a: a pioneer RE-landing (host lands, lifts off, lands again) -- llm_strat_bldg_completion_
+  # dispatch's mothership arm refilled the template stock on every NON-owner peer (`player !=
+  # PlayerSide`). CONFIGURATION (1) (no libmh.dll): the fix is the mh.dll seam seams/sim_pioneer_refill.cpp.
+  - name: d37a_relanding_c1
+    budget_s: 145
+    budget_evidence: "measured 107-110 s (2026-09-27, the four D37a rows two at a time) x 1.3 = 145"
+    long_why: "a whole land -> lift off -> fly -> re-land cycle: the match runs to gameclock 80000 (~8200 lockstep steps), 107-110 s measured"
+    kind: multi
+    host: mp_host_pioneer_relanding.txt
+    clients: [mp_client_idle.txt]
+    share_lanes: d35_buildclick_c1
+    omit_satellite: [libmh.dll]
+    net_extra: transport=udp
+    extra_ini: tools/uiscripts/ini/video_1024.ini
+    harness_extra: region_hash_step=50;synth_move=0
+    timeout: 480
+    post_check: [tools/check_pioneer_refill.py, --expect, identical]
+    post_check_peers: true
+    post_check_session: true  # the re-landing + [desync] lines are match-time (session dir)
+    desc: 'D37a: configuration (1) host lands its pioneer, lifts it off EMPTY and re-lands; client
+      idles -- neither peer refills the starting stock, the pair stays IDENTICAL, watch clean'
+  # Reproduction arm: [net] pioneer_refill_fix=0 IS the repro knob (the retail per-peer compare); the
+  # client refills the host's pioneer at the re-landing and the hash never heals -- the rc4 symptom.
+  - name: d37a_relanding_c1_retail
+    budget_s: 145
+    budget_evidence: "measured 107-110 s (2026-09-27, the four D37a rows two at a time) x 1.3 = 145"
+    long_why: "a whole land -> lift off -> fly -> re-land cycle: the match runs to gameclock 80000 (~8200 lockstep steps), 107-110 s measured"
+    kind: multi
+    no_hash_why: 'negative arm: the retail refill diverges by design (check_pioneer_refill --expect diverge)'
+    host: mp_host_pioneer_relanding.txt
+    clients: [mp_client_idle.txt]
+    share_lanes: d35_buildclick_c1
+    omit_satellite: [libmh.dll]
+    net_extra: transport=udp;pioneer_refill_fix=0
+    extra_ini: tools/uiscripts/ini/video_1024.ini
+    harness_extra: region_hash_step=50;synth_move=0
+    timeout: 480
+    post_check: [tools/check_pioneer_refill.py, --expect, diverge]
+    post_check_peers: true
+    post_check_session: true
+    desc: 'D37a negative arm: `[net] pioneer_refill_fix=0` (retail compare) -- the client refills the
+      host''s re-landed pioneer; p0_ai_econ/player_resources diverge, never heal, the watch says DESYNC'
+  # CONFIGURATION (2) (libmh.dll bound, llm_strat_sim_step promoted): the fix is libmh's
+  # sim_bldg_completion_dispatch body (detail::mother_relanding_credits), which logs the same
+  # re-landing line tagged [libmh].
+  - name: d37a_relanding_c2
+    budget_s: 145
+    budget_evidence: "measured 107-110 s (2026-09-27, the four D37a rows two at a time) x 1.3 = 145"
+    long_why: "a whole land -> lift off -> fly -> re-land cycle: the match runs to gameclock 80000 (~8200 lockstep steps), 107-110 s measured"
+    kind: multi
+    host: mp_host_pioneer_relanding.txt
+    clients: [mp_client_idle.txt]
+    share_lanes: d35_buildclick_c1
+    net_extra: transport=udp
+    extra_ini: tools/uiscripts/ini/video_1024.ini
+    harness_extra: region_hash_step=50;synth_move=0
+    timeout: 480
+    post_check: [tools/check_pioneer_refill.py, --expect, identical]
+    post_check_peers: true
+    post_check_session: true
+    desc: 'D37a: configuration (2) (promoted libmh body) host lifts its pioneer off empty and re-lands
+      -- no refill on either peer, IDENTICAL'
+  # Its reproduction arm: [config] mode=original -- nothing promoted and the seam KEPT, i.e. the
+  # retail body on both peers (the configuration-(2) spelling of "unfixed").
+  - name: d37a_relanding_c2_original
+    budget_s: 145
+    budget_evidence: "measured 107-110 s (2026-09-27, the four D37a rows two at a time) x 1.3 = 145"
+    long_why: "a whole land -> lift off -> fly -> re-land cycle: the match runs to gameclock 80000 (~8200 lockstep steps), 107-110 s measured"
+    kind: multi
+    no_hash_why: 'negative arm: the retail refill diverges by design (check_pioneer_refill --expect diverge)'
+    host: mp_host_pioneer_relanding.txt
+    clients: [mp_client_idle.txt]
+    share_lanes: d35_buildclick_c1
+    net_extra: transport=udp
+    extra_ini: [tools/uiscripts/ini/video_1024.ini, tools/uiscripts/ini/rollback_original.ini]
+    harness_extra: region_hash_step=50;synth_move=0
+    timeout: 480
+    post_check: [tools/check_pioneer_refill.py, --expect, diverge]
+    post_check_peers: true
+    post_check_session: true
+    desc: 'D37a negative arm, configuration (2) spelling: `[config] mode=original` (retail body, seam
+      KEPT) -- the client refills the host''s re-landed pioneer and the watch says DESYNC'
+  # mp:D37: the rc4 Nortus shape -- the host SELECTS its own network building while the sim's
+  # connectivity flags are stale; the HUD network panel's per-frame llm_strat_bldg_is_network_critical
+  # re-floods built_flags bit 0 over the host's buildings row on that peer alone. The walk places two
+  # relays, orders R1 dismantled (order 0x6b: DISMANTLING, flags stale until dismantle_finish's unmap),
+  # then selects R2 (fed through R1). Configuration (1) (no libmh.dll) -- the seam is mh.dll's.
+  - name: d37_relay_chain
+    budget_s: 145
+    budget_evidence: "standalone 109-112 s (2026-09-27, rig otherwise idle) x 1.3 = 145"
+    long_why: "the walk waits to game 45000 for the landing (a far start was still airborne at 20000), then an R1 build (~22 s game) and a dismantle window before the trigger"
+    kind: multi
+    host: mp_host_d37_relay_chain.txt
+    clients: [mp_client_idle.txt]
+    share_lanes: d35_buildclick_c1  # same configuration-(1) pair; the lane ceiling (99) has no free pair
+    omit_satellite: [libmh.dll]
+    net_extra: transport=udp
+    extra_ini: tools/uiscripts/ini/video_1024.ini
+    harness_extra: region_hash_step=50;synth_move=0
+    timeout: 420
+    post_check: [tools/check_netcrit_pure.py, --expect, identical]
+    post_check_peers: true
+    post_check_session: true  # the probe + [desync] lines are match-time (session dir)
+    desc: 'D37: configuration (1) host places two relays, dismantles R1 and selects R2 with the HUD
+      network panel up; client idles -- the seam restores the probe''s writes, the pair stays IDENTICAL'
+  # Reproduction arm: [net] netcrit_ui_pure=0 keeps the retail call; `buildings` diverges at the
+  # first sample after R2 is selected and never heals -- the rc4 Nortus symptom.
+  - name: d37_relay_chain_retail
+    budget_s: 145
+    budget_evidence: "standalone 109-112 s (2026-09-27, rig otherwise idle) x 1.3 = 145"
+    long_why: "the walk waits to game 45000 for the landing (a far start was still airborne at 20000), then an R1 build (~22 s game) and a dismantle window before the trigger"
+    kind: multi
+    no_hash_why: 'negative arm: the retail probe diverges by design (check_netcrit_pure --expect diverge)'
+    host: mp_host_d37_relay_chain.txt
+    clients: [mp_client_idle.txt]
+    share_lanes: d35_buildclick_c1  # same configuration-(1) pair; the lane ceiling (99) has no free pair
+    omit_satellite: [libmh.dll]
+    net_extra: transport=udp;netcrit_ui_pure=0
+    extra_ini: tools/uiscripts/ini/video_1024.ini
+    harness_extra: region_hash_step=50;synth_move=0
+    timeout: 420
+    post_check: [tools/check_netcrit_pure.py, --expect, diverge]
+    post_check_peers: true
+    post_check_session: true
+    desc: 'D37 negative arm: `[net] netcrit_ui_pure=0` (retail probe kept) -- `buildings` must diverge
+      once R2 is selected, stay diverged, and the in-band watch must say DESYNC'
+  # mp:D38 row 5: the storage panel's refresh-time purge of dead docked units ran on the SELECTING
+  # peer only. The harness fixture (d38_* knobs, both peers) builds a barracks beside the host's
+  # landed mother, docks one soldier and kills it at the same step on both peers while the host holds
+  # the barracks selected. Configuration (1) (no libmh.dll) -- the seam is mh.dll's.
+  - name: d38_storage_purge
+    budget_s: 95
+    budget_evidence: "standalone 72-74 s (2026-09-27, both arms side by side) x 1.3 = 95"
+    kind: multi
+    host: mp_host_d38_storage_purge.txt
+    clients: [mp_client_idle.txt]
+    share_lanes: d35_buildclick_c1  # same configuration-(1) pair; the lane ceiling (99) has no free pair
+    omit_satellite: [libmh.dll]
+    net_extra: transport=udp
+    extra_ini: tools/uiscripts/ini/video_1024.ini
+    harness_extra: region_hash_step=50;synth_move=0;d38_player=0;d38_bldg_at=100;d38_dock_at=100;d38_kill_at=2500
+    timeout: 420
+    post_check: [tools/check_storage_purge.py, --expect, identical]
+    post_check_peers: true
+    post_check_session: true  # the skip + [desync] lines are match-time (session dir)
+    desc: 'D38 row 5: configuration (1) host holds its barracks selected while the fixture kills the
+      soldier docked in it (both peers, same step) -- the seam leaves the purge to the sim, the pair stays IDENTICAL'
+  # Reproduction arm: [net] storage_panel_purge_fix=0 keeps the retail call; the host's panel purges
+  # the dead soldier at the kill step and `unit_storage` differs until the sim's own purge.
+  - name: d38_storage_purge_retail
+    budget_s: 95
+    budget_evidence: "standalone 72-74 s (2026-09-27, both arms side by side) x 1.3 = 95"
+    kind: multi
+    no_hash_why: 'negative arm: the retail panel purge diverges by design (check_storage_purge --expect diverge)'
+    host: mp_host_d38_storage_purge.txt
+    clients: [mp_client_idle.txt]
+    share_lanes: d35_buildclick_c1
+    omit_satellite: [libmh.dll]
+    net_extra: transport=udp;storage_panel_purge_fix=0
+    extra_ini: tools/uiscripts/ini/video_1024.ini
+    harness_extra: region_hash_step=50;synth_move=0;d38_player=0;d38_bldg_at=100;d38_dock_at=100;d38_kill_at=2500
+    timeout: 420
+    post_check: [tools/check_storage_purge.py, --expect, diverge]
+    post_check_peers: true
+    post_check_session: true
+    desc: 'D38 row 5 negative arm: `[net] storage_panel_purge_fix=0` (retail panel purge kept) -- `unit_storage`
+      must diverge at the kill while the host holds the barracks selected'
+  # mp:D36: the rc4 rematch shape -- the host LANDS in match 1 (the landing grant goes into the
+  # gains-only resource_spent), then rematches a FRESH client process on a shorter-named map.
+  # rematch_play cannot see this: its joiner is the same process and nobody lands.
+  - name: d36_rematch_seed
+    budget_s: 105
+    budget_evidence: "standalone 79 s (2026-09-26, two matches + client2's fresh boot; the retail arm 72 s) x 1.3 = 105"
+    kind: multi
+    no_hash_why: 'two matches in one host process (the harness step counter is not reset per match) and client2 reuses client1''s lane; the verdict is the seed diff + [desync] watch'
+    host: mp_host_d36_rematch.txt
+    clients: [mp_client_d36_match1.txt, mp_client_d36_fresh.txt]
+    client_after_exit: {2: 1}
+    client_shares_lane: {2: 1}
+    client_expect_exit: [1]
+    share_lanes: d35_buildclick_c1
+    omit_satellite: [libmh.dll]
+    net_extra: transport=tcp
+    # order_mode=1 + seed_mode=0 make the harness write each match's mh_match_seed.bin at its first step
+    # (mp:SES7) -- the evidence the post_check diffs
+    harness_extra: order_mode=1;seed_mode=0;seed_step=1;synth_move=0
+    extra_ini: tools/uiscripts/ini/video_1024.ini
+    timeout: 480
+    post_check: [tools/check_d36_rematch_seed.py, --expect, identical]
+    post_check_peers: true
+    desc: 'D36: configuration (1) host lands in match 1, then rematches a FRESH client on a shorter-named
+      map -- the match-2 step-1 seeds are equal and the in-band desync watch is clean'
+  # Reproduction arm: [net] d36_clear_residue=0 IS the repro knob (the rc4 build's entry prep); the
+  # host enters match 2 with match 1's landing grant and the watch says DESYNC at step 50.
+  - name: d36_rematch_seed_retail
+    budget_s: 95
+    budget_evidence: "standalone 72 s (2026-09-26) x 1.3 = 95"
+    kind: multi
+    no_hash_why: 'negative arm: the rematch diverges by design (check_d36_rematch_seed --expect diverge)'
+    host: mp_host_d36_rematch.txt
+    clients: [mp_client_d36_match1.txt, mp_client_d36_fresh.txt]
+    client_after_exit: {2: 1}
+    client_shares_lane: {2: 1}
+    client_expect_exit: [1]
+    share_lanes: d35_buildclick_c1
+    omit_satellite: [libmh.dll]
+    net_extra: transport=tcp;d36_clear_residue=0
+    harness_extra: order_mode=1;seed_mode=0;seed_step=1;synth_move=0
+    extra_ini: tools/uiscripts/ini/video_1024.ini
+    timeout: 480
+    post_check: [tools/check_d36_rematch_seed.py, --expect, diverge]
+    post_check_peers: true
+    desc: 'D36 negative arm: `[net] d36_clear_residue=0` (the rc4 entry prep) -- the rematch seed carries
+      match 1''s resource_spent and the in-band watch must say DESYNC'
+  # mp:X2g: an info screen whose AVI will not open (rc4 client crash, IDIV by zero at 0x004cab52).
+  # info_avi_test_absent=* redirects the info screen's clip opens to res\NOT.AVI (nothing on disk moves).
+  - name: info_avi_absent
+    budget_s: 72
+    budget_evidence: "measured 54 s and 55 s alone (2026-09-26, two green runs); 55 x 1.3 = 72"
+    kind: multi
+    host: mp_host_info_avi.txt
+    clients: [mp_client_idle.txt]
+    share_lanes: d35_buildclick_c1
+    net_extra: transport=udp;info_avi_test_absent=*
+    extra_ini: tools/uiscripts/ini/video_1024.ini
+    timeout: 420
+    post_check: [tools/check_info_avi.py]
+    post_check_peers: true
+    post_check_session: true  # the missing line + lockstep rows are match-time (session dir)
+    desc: 'X2g: the host right-clicks the Academy with its clip made absent -- the info screen opens
+      WITHOUT video (no insert-CD dialog, no error box, no IDIV), closes, and the pair stays IDENTICAL'
   - name: shim_udp
     # Measured 32s under ship_pacing (was 33-44s under the pinned 30ms lookahead);
     # x1.3 margin rounds to 45.
@@ -1493,6 +1724,25 @@ tests:
     timeout: 300  # Transfer is seconds, but timeout must also cover the host's wait on enabled Start.
     desc: 'X2: the client does NOT have the host''s map -- Start is HELD, the map crosses channel C, and
       both peers enter the match'
+  # mp:X2e: map_absent with the file REALLY absent to the client's game opens (pretend=absent), so
+  # retail's lobby-entry map check (llm_cfg_map_verify_version) misses -- the rc4 field freeze.
+  # Unfixed ([net] map_entry_check=retail): the 'can't create map file' box tears the lobby down.
+  - name: map_absent_entry
+    budget_s: 62
+    budget_evidence: "measured 27s / 30s alone, 48s in a 5-row map run at 2 lanes (2026-09-26); 48 x 1.3 = 62"
+    kind: multi
+    host: mp_host_map.txt
+    clients: [mp_client_map.txt]
+    # Not map_absent's lanes: the mh_dl\ copy this row stores would make map_absent's pretend=none
+    # client resolve 'stored' and skip its download. map_have's client resolves the BASE file first.
+    share_lanes: map_have
+    net_extra: transport=udp;map_test_pretend=absent
+    extra_ini: tools/uiscripts/ini/video_1024.ini
+    post_check: [tools/check_map_transfer.py, --expect-gate, --expect-entry-deferred]
+    post_check_peers: true
+    timeout: 300
+    desc: 'X2e: the joiner''s game cannot open the map at lobby entry -- no error box, the 462 KB
+      download completes in ONE join, both peers enter the match'
   - name: map_conflict
     budget_s: 35  # gate diet: max measured (gate 26s, n2 26s, n6 26s) x 1.3
     kind: multi
@@ -1519,6 +1769,36 @@ tests:
     post_check_peers: true
     desc: 'X2: a joiner that already holds the map content transfers NOTHING and the host''s Start is
       never held'
+  # mp:X2f clause (3), PROCESS-EXIT VARIANT: a joiner leaves mid-download (Cancel/LEAVE) and its
+  # PROCESS exits for real; a fresh process (client2, GS1(b)'s own client_after_exit/client_shares_
+  # lane shape) re-joins and finishes the download. A same-process re-join via a genuine transport-
+  # level link death (a shim blackhole) was tried first and abandoned: the landed discovery browser
+  # takes real clicks (confirmed in mh_uidrive.log) but sends no further network traffic at all
+  # (Join game / Refresh list / &Cancel are all dead ends there) -- see mp_host_map_leaverejoin.txt's
+  # header. client2 launching into client1's own lane costs no extra lane (GS1(b)'s own reasoning).
+  - name: map_leave_rejoin
+    budget_s: 55  # max measured 42 s (7 green local runs 2026-09-27: 39-42 s) x 1.3
+    budget_evidence: '7 local runs 2026-09-27 (worktree agent, mp:X2f(3)): 39, 40, 41, 41, 41, 41, 42 s'
+    kind: multi
+    # A real quit-to-desktop plus a second full game boot -- ghost_exit_rejoin's own generous bound.
+    no_hash_why: 'client2 reuses client1''s lane after client1''s process exits; the per-lane newest run cannot pair the peers'
+    host: mp_host_map_leaverejoin.txt
+    clients: [mp_client_map_leaverejoin.txt, mp_client_map.txt]
+    client_after_exit: {2: 1}
+    client_shares_lane: {2: 1}
+    client_expect_exit: [1]
+    # No headroom for a genuine 3rd lane at the 81/81 ceiling (client2 reuses client1's, same as
+    # ghost_exit_rejoin); client_join is a plain non-shim 2-lane row with no map staging of its own,
+    # so its mh_dl\ directory is never touched by a sibling's download.
+    share_lanes: client_join
+    net_extra: transport=udp;map_test_pretend=absent
+    extra_ini: tools/uiscripts/ini/video_1024.ini
+    timeout: 420
+    timeout_frames: !frames [420, SOLO_HEADLESS_FPS_FLOOR]
+    post_check: [tools/check_map_transfer.py, --expect-leave-rejoin]
+    post_check_peers: true
+    desc: 'X2f(3): a joiner leaves mid-download and its process exits; a fresh process re-joins and
+      finishes the download, the match launches, and the host does not crash'
   # mp:X2b: same decision over TCP (no channel C). Shares a sibling's lanes at the 81/81 ceiling.
   - name: map_refuse_tcp
     budget_s: 60  # gate diet: max measured (gate 43s, n2 19s, n6 19s) x 1.3

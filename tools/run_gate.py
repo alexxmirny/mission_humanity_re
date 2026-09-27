@@ -196,8 +196,14 @@ def units(args):
         {
             "name": "selftests",
             "why": "step 2 -- ASan + plain, flaky suites repeated (the commit gate)",
-            "cmd": [PY, os.path.join(REPO, "tools", "run_selftests.py")],
-            "weight": 3,  # the ASan msbuild is the heavy half
+            # --no-build: step 1 compiled + staged both modes (`--build-only`) before any game
+            # started, so this unit only RUNS suites. It used to compile the ASan and plain
+            # selftest exes here, overlapped with the suite's live games -- cl.exe competing with
+            # mh.exe for the same cores (user, 2026-09-27: build first, then play).
+            # Under run_gate --no-build there was no step 1, so the unit builds its own exes as before.
+            "cmd": [PY, os.path.join(REPO, "tools", "run_selftests.py")]
+            + ([] if args.no_build else ["--no-build"]),
+            "weight": 3 if args.no_build else 1,  # without step 1 the ASan msbuild is back in here
             "timeout": 1200,
         },
         {
@@ -541,6 +547,28 @@ def build():
             print("    " + ln.rstrip())
         return False
     print("[gate] build ok (%.0fs)" % secs)
+    # THE SELFTEST EXES ARE STEP 1 TOO (2026-09-27). The `selftests` unit used to compile them (ASan +
+    # plain, the heavy half of its old weight 3) while the suite, det and the A/B/C units were
+    # already running games -- the compiler and the games fought for the same cores and the suite's
+    # timing-sensitive rows paid for it. A compile saturates every core on its own, so serialising it
+    # costs no wall time: it only stops it from being contended.
+    t1 = time.time()
+    slog = os.path.join(LOG_DIR, "selftests_build.log")
+    print("[gate] selftest exes (ASan + plain) ...")
+    with open(slog, "w", encoding="utf-8") as fh:
+        src = subprocess.run(
+            [PY, os.path.join(REPO, "tools", "run_selftests.py"), "--build-only"],
+            stdout=fh,
+            stderr=subprocess.STDOUT,
+        ).returncode
+    if src != 0:
+        print(
+            "[gate] selftest build FAILED (%.0fs) -- aborting; log: %s" % (time.time() - t1, slog)
+        )
+        for ln in open(slog, encoding="utf-8", errors="replace").readlines()[-15:]:
+            print("    " + ln.rstrip())
+        return False
+    print("[gate] selftest exes ok (%.0fs)" % (time.time() - t1))
     # THE THREE CONFIGURATIONS, NAMED (fork F4G). One msbuild produces all of them -- there is no
     # separate per-configuration build and there must not be, because configurations (1) and (2)
     # differ only in which files a deployment has beside mh.dll (ruling Q10) and (3) is its own

@@ -51,6 +51,20 @@ advert is held by `[net] map_test_advert_hold_ms` until its JOIN has gone out, w
 rc3 field match lost in. The client log must show the hold AND its release after a JOIN (else the
 race was not staged and a green says nothing), and the host must never have said `needs the map` --
 the JOIN itself carried the hash, rather than a later re-report correcting it.
+
+`--expect-leave-rejoin` (mp:X2f clause (3)) is a joiner (client1) that leaves mid-download
+(Cancel/LEAVE) and whose PROCESS then exits for real; a FRESH process (client2) re-joins and
+finishes the download -- two client logs, not one. Asserts TWO `; [map] send armed` lines (client1,
+then client2's fresh join), the fix's own release evidence for client1's in-flight transfer --
+EITHER map_transfer.cpp's `; [map] peer ... is gone at the transport (its link dropped)` OR the
+transport layer's `channel-C transfer cancelled with it (mp:X2f)`, whichever this shape's timing
+reaches, or udp_transport.cpp's `net: snapshot SEND to player N superseded the UNFINISHED transfer
+to player M` (client2's arm replaced client1's still-running transfer before client1's link timed
+out -- the fast-lane timing, measured 2026-09-27) -- and exactly ONE `; [map] client stored ...` across
+BOTH client logs combined (client1
+never finishes; client2 does). The base clauses (host claim, `client resolve missing`, the stored
+hash/form, the player's own file unchanged) apply to client2 alone -- client1 is expected to show
+none of them, and is identified as "the one that didn't finish" rather than checked against them.
 """
 
 import argparse
@@ -77,6 +91,14 @@ RE_ADVERT_RELEASED = re.compile(
     r"; \[map\] uitest advert_hold: released after (\d+) ms \(a JOIN went out first\)"
 )
 RE_START_REFUSED = re.compile(r"; \[map\] start REFUSED -- waiting for '(.+?)'")
+# mp:X2e -- the lobby-entry map check. The staging (pretend=absent + a refused open) and the fix's
+# own line; the retail error box is named by the DLG logger's caller (the return address inside
+# llm_cfg_map_verify_version, EN 0x004be151).
+RE_PRETEND_ABSENT = re.compile(r"; \[map\] uitest pretend=absent ")
+RE_ABSENT_HID = re.compile(r"; \[map\] uitest absent: refused the game's open of (.+?) -- staged")
+RE_ENTRY_DEFERRED = re.compile(r"; \[map\] entry check (.+?): (not readable here|checksum differs)")
+RE_ENTRY_RETAIL = re.compile(r"; \[map\] entry check retail ")
+RE_ENTRY_DLG = re.compile(r"; DLG savegame_io_error caller=0x004be151")
 # mp:X2b -- the transport-cannot-carry refusal (TCP): the host still CLAIMS, arms nothing, and
 # refuses Start naming the peer and the map.
 RE_HOST_NOCARRY = re.compile(r"; \[map\] host nocarry ")
@@ -95,6 +117,30 @@ RE_CLICK_REFUSED = re.compile(r"; \[map\] start CLICK REFUSED -- '(.+?)'")
 # scans that directory for SUB-FOLDERS before it scans for `*.mpm`, so the download folder became
 # the picker's pre-selected first row and a rig host never reached its lobby.
 RE_STORED_FORM = re.compile(r"^mh_dl\\(.*)\.([0-9a-f]{16})(\.[^.]*)?$")
+
+# mp:X2f clause (3) -- a joiner leaves mid-download and re-joins the same host (as a fresh process:
+# see mp_host_map_leaverejoin.txt). TWO lines the fix can write for a peer whose transfer the
+# transport released without a stale re-arm -- map_transfer.cpp's own (a peer the pump finds gone
+# while STILL SEATED, reap_gone_locked's path -- only reachable if the peer never sent a graceful
+# LEAVE first) and udp_endpoint.cpp's transport-layer one (any dropped connection that still had a
+# channel-C transfer targeting it, regardless of lobby-seat state -- reached when client1's link
+# drops BEFORE client2 arms). Either is "not a stale re-arm into a freed Sender" -- the crash the
+# field hit. The third path, RE_SUPERSEDED below, is the one the rig row measured.
+RE_PEER_GONE = re.compile(
+    r"; \[map\] peer (\d+) '(.+?)' is gone at the transport \(its link dropped\)"
+)
+RE_CHANNELC_CANCELLED = re.compile(
+    r"net: udp conn (\d+)'s channel-C transfer cancelled with it -- its destination is gone"
+)
+# The THIRD release path, and the one this row's process-exit shape reaches on a fast lane (measured
+# 2026-09-27): a LEAVE clears the lobby seat but cancels nothing on channel C, so client1's transfer
+# keeps running while client1 sits linked on the browser; client2 is admitted on a NEW conn before
+# client1's link times out, and its arm REPLACES the unfinished transfer (snap::Outbox detaches it
+# first) -- the exact re-arm-into-a-running-transfer sequence the rc4 host died in. By the time
+# conn 0 drops there is nothing left on it to cancel, so neither line above is written.
+RE_SUPERSEDED = re.compile(
+    r"net: snapshot SEND to player (\d+) superseded the UNFINISHED transfer to player (\d+)"
+)
 
 FAILS = []
 NOTES = []
@@ -297,11 +343,26 @@ def main(argv=None):
         "logged `needs the map` -- the JOIN itself carried the hash",
     )
     ap.add_argument(
+        "--expect-entry-deferred",
+        action="store_true",
+        help="mp:X2e: the joiner's game could NOT open the map at lobby entry (pretend=absent, a "
+        "refused open logged), the entry check deferred to the transfer instead of raising retail's "
+        "error box, and the download finished in ONE join (a single `client want`)",
+    )
+    ap.add_argument(
         "--expect-refused",
         action="store_true",
         help="mp:X2b: the transport cannot carry maps (TCP) and the joiner holds different "
         "bytes -- assert the host claimed, logged `host nocarry`, armed NO transfer, refused Start "
         "naming the peer and the map, and that neither peer reached Start",
+    )
+    ap.add_argument(
+        "--expect-leave-rejoin",
+        action="store_true",
+        help="mp:X2f clause (3): a joiner leaves mid-download and its process exits; a fresh process "
+        "re-joins the same host -- assert TWO `send armed` lines, one of the fix's three release "
+        "lines (gone at the transport / channel-C cancelled at the drop / superseded by the next "
+        "arm), and exactly ONE `client stored` (the interrupted attempt never landed bytes)",
     )
     args = ap.parse_args(argv)
     if args.selftest:
@@ -367,6 +428,12 @@ def main(argv=None):
     if args.expect_early_join:
         check_early_join(hpath, htext, clients)
 
+    if args.expect_entry_deferred:
+        check_entry_deferred(clients)
+
+    if args.expect_leave_rejoin:
+        check_leave_rejoin(hpath, htext, clients, claim_hash, args.expect_nothing)
+
     if args.expect_gate:
         held = RE_START_REFUSED.search(htext)
         if not held:
@@ -379,8 +446,11 @@ def main(argv=None):
 
     if not clients:
         fail("no client log was given -- the receiver-side half of every clause is unread")
-    for p, t in clients:
-        check_client(p, t, claim_hash, args.expect_nothing)
+    if not args.expect_leave_rejoin:
+        # clause (3)'s two clients play asymmetric roles (one exits mid-download, one finishes it) --
+        # check_leave_rejoin does its OWN per-client work above, on the SURVIVOR only.
+        for p, t in clients:
+            check_client(p, t, claim_hash, args.expect_nothing)
 
     for n in NOTES:
         print("  %s" % n)
@@ -415,6 +485,132 @@ def check_early_join(hpath, htext, clients):
             )
         else:
             note("%s: advert held until the JOIN went out (race staged)" % name)
+
+
+def check_entry_deferred(clients):
+    """mp:X2e: a joiner whose game cannot open the map enters the lobby and downloads it in ONE join.
+
+    Every clause is read beside a positive line: the staging line and a refused open say the lobby
+    entry really met an absent file (without them the retail check would have passed on the shared
+    image's copy and a green would say nothing -- the pre-X2e map_absent shape); the deferral line
+    says the fix saw it; and a single `client want` says no leave-and-rejoin was needed.
+    """
+    for p, t in clients:
+        name = peer_label(p)
+        if not RE_PRETEND_ABSENT.search(t):
+            fail(
+                "%s: no `uitest pretend=absent` line -- the map was not staged absent, so the "
+                "lobby-entry check was not exercised" % name
+            )
+            continue
+        if not RE_ABSENT_HID.search(t):
+            fail(
+                "%s: no `uitest absent: refused the game's open` line -- nothing ever tried to open "
+                "the map while it was absent, so the entry check was not exercised" % name
+            )
+        if RE_ENTRY_RETAIL.search(t):
+            fail("%s: [net] map_entry_check=retail -- the fix was disarmed (the red arm)" % name)
+        if RE_ENTRY_DLG.search(t):
+            fail(
+                "%s: retail's 'can't create map file' box was raised at lobby entry (DLG caller "
+                "0x004be151)" % name
+            )
+        ent = RE_ENTRY_DEFERRED.search(t)
+        if not ent:
+            fail(
+                "%s: no `; [map] entry check <map>: not readable here` line -- the lobby-entry "
+                "check never deferred to the transfer" % name
+            )
+        else:
+            note("%s: lobby-entry check deferred (%s: %s)" % (name, ent.group(1), ent.group(2)))
+        wants = len(RE_WANT.findall(t))
+        if wants != 1:
+            fail(
+                "%s: %d `client want` lines -- the download took %d joins, not one"
+                % (name, wants, wants)
+            )
+
+
+def check_leave_rejoin(hpath, htext, clients, claim_hash, expect_nothing):
+    """mp:X2f clause (3): a joiner leaves mid-download (Cancel/LEAVE) and its PROCESS exits for real;
+    a FRESH process re-joins and finishes the download (mp_host_map_leaverejoin.txt's process-exit
+    shape -- GS1(b)'s own client_after_exit/client_shares_lane topology, TWO client logs: client1
+    exits early and never finishes, client2 is an ordinary fresh join that does).
+
+    Every clause here exists to rule out a specific vacuous green. TWO `send armed` lines (not one)
+    say the download was really re-initiated for client2, not merely inherited from client1's
+    never-released transfer; the fix's own release evidence -- EITHER map_transfer.cpp's `peer ...
+    is gone at the transport` (a peer the pump found gone while still seated) OR the transport-layer
+    `channel-C transfer cancelled with it (mp:X2f)` (any dropped connection that still had a transfer
+    targeting it, reached when client1's link drops before client2 arms) OR udp_transport.cpp's
+    `snapshot SEND ... superseded the UNFINISHED transfer` (client2's arm replaced the transfer
+    client1's LEAVE left running -- the timing the rig row measured) -- says client1's in-flight transfer
+    was safely detached, not a stale re-arm into a freed Sender (the crash the field hit); and exactly
+    ONE `client stored` across BOTH client logs (client1 must show zero: it left before finishing;
+    client2 exactly one) says the download completed once, on the fresh process, not twice and not
+    never.
+    """
+    hl = peer_label(hpath)
+    armed = RE_SEND_ARMED.findall(htext)
+    if len(armed) < 2:
+        fail(
+            "%s: only %d `send armed` line(s) -- clause (3) needs one for client1 and a SECOND for "
+            "client2's fresh join" % (hl, len(armed))
+        )
+    else:
+        note("%s: armed %d transfers (client1, then client2's fresh join)" % (hl, len(armed)))
+
+    gone = RE_PEER_GONE.search(htext)
+    cancelled = RE_CHANNELC_CANCELLED.search(htext)
+    superseded = RE_SUPERSEDED.search(htext)
+    if not gone and not cancelled and not superseded:
+        fail(
+            "%s: no `peer ... is gone at the transport`, no `channel-C transfer cancelled with "
+            "it (mp:X2f)` and no `snapshot SEND ... superseded the UNFINISHED transfer` line -- "
+            "client1's in-flight transfer was released by none of the mp:X2f paths" % hl
+        )
+    elif superseded:
+        note(
+            "%s: client2's arm (player %s) superseded client1's unfinished transfer (player %s) -- "
+            "detached before its copy was freed" % (hl, superseded.group(1), superseded.group(2))
+        )
+    elif gone:
+        note(
+            "%s: peer %s '%s' released at the transport, not re-armed"
+            % (hl, gone.group(1), gone.group(2))
+        )
+    else:
+        note(
+            "%s: conn %s's channel-C transfer cancelled at the drop, not inherited by client2"
+            % (hl, cancelled.group(1))
+        )
+
+    total_stored = sum(len(RE_STORED.findall(t)) for _, t in clients)
+    if total_stored != 1:
+        fail(
+            "%d `client stored` line(s) across both client logs -- clause (3) wants exactly one "
+            "(client1's interrupted attempt must never land a complete file, client2's must)"
+            % total_stored
+        )
+    else:
+        note("exactly one `client stored` across both client logs (client2's completed download)")
+
+    # client2 is whichever log actually finished (stored the map, or at least reached the host's
+    # Start) -- the base clauses (host claim already read, `resolve missing`, the stored hash/form,
+    # the player's own file unchanged) apply to IT alone. client1 is expected to show none of that:
+    # calling the generic per-client check on it would fail on assertions it was never meant to meet.
+    survivor = None
+    for p, t in clients:
+        if RE_STORED.search(t) or any(b[0] == "after" for b in RE_LOCAL.findall(t)):
+            survivor = (p, t)
+            break
+    if survivor is None:
+        fail(
+            "neither client log shows a `client stored` or a `local after` sample -- no client ever "
+            "finished the download and reached the host's Start"
+        )
+        return
+    check_client(survivor[0], survivor[1], claim_hash, expect_nothing)
 
 
 def check_refused(hpath, htext, clients, claim):
@@ -510,6 +706,26 @@ CL_RUN = (
     "; [map] local after blue monday.mpm sha=%s size=462065\n" % (HASH_OK, HASH_OK, HASH_OK)
 )
 
+# mp:X2e -- the absent-at-lobby-entry stage: the menu-run lines of a fixed client, and the retail
+# (unfixed) client's, which raises the error box and never stores.
+EN_CL_MENU = (
+    "; [map] uitest pretend=absent -- this client behaves as though it holds nothing\n"
+    + CL_MENU
+    + "; [map] uitest absent: armed at the JOIN -- the game's opens of blue monday.mpm now fail\n"
+    "; [map] uitest absent: refused the game's open of Maps\\blue monday.mpm -- staged as not "
+    "on this disk (mp:X2e)\n"
+    "; [map] entry check blue monday.mpm: not readable here -- retail's 'can't create map file' "
+    "box (text 0x30f) and the lobby teardown it runs are NOT raised\n"
+)
+EN_CL_RETAIL = (
+    "; [map] entry check retail -- the lobby-entry map read raises retail's error box\n"
+    "; [map] uitest pretend=absent -- this client behaves as though it holds nothing\n"
+    + CL_MENU
+    + "; [map] uitest absent: refused the game's open of Maps\\blue monday.mpm -- staged as not "
+    "on this disk (mp:X2e)\n"
+    "; DLG savegame_io_error caller=0x004be151 sess=2 gclk=0\n"
+)
+
 HOST_NOCARRY = "; [map] host nocarry -- this transport has no bulk channel\n"
 HOST_REFUSED_TCP = (
     "; [map] peer 1 'client' needs the map (has=%s want=%s)\n"
@@ -543,6 +759,54 @@ EJ_HOST_OK = "; [map] peer 1 'client' holds the map (sha=%s) -- nothing to trans
 EJ_HOST_BUG = (
     "; [map] peer 1 'client' needs the map (has=none want=%s)\n"
     "; [map] send armed to peer 1 'client' (462065 B of blue monday.mpm)\n" % HASH_OK
+)
+
+
+# mp:X2f clause (3) fixtures: client1 joins and downloads (armed once), leaves + its process exits
+# mid-transfer -- the transport-layer release evidence (client1's link drops before client2 arms;
+# LR_HOST_RUN_SUPERSEDED below is the other order, the one the rig measured) -- and
+# client2's fresh join arms a SECOND transfer that completes (one `client stored`, on client2's log).
+LR_HOST_RUN = (
+    "; [map] peer 1 'client' needs the map (has=none want=%s)\n"
+    "; [map] send armed to peer 1 'client' (462065 B of blue monday.mpm)\n"
+    "; [map] start REFUSED -- waiting for 'client' to finish downloading the map\n"
+    "net: udp conn 0 dropped -- no data from peer within the link timeout (keepalives: sent 2, "
+    "received 1)\n"
+    "net: udp conn 0's channel-C transfer cancelled with it -- its destination is gone, and the "
+    "next peer on this index must not inherit it (mp:X2f)\n"
+    "; [map] peer 1 'client' needs the map (has=none want=%s)\n"
+    "; [map] send armed to peer 1 'client' (462065 B of blue monday.mpm)\n"
+    "; [map] peer 1 'client' holds the map (sha=%s) -- nothing to transfer\n"
+    "; [map] start OK -- every joiner reports the map we advertised\n" % (HASH_OK, HASH_OK, HASH_OK)
+)
+# The order the rig row measured (2026-09-27): client2 is admitted on conn 1 while client1 still sits
+# linked on its browser, so client2's arm SUPERSEDES client1's unfinished transfer; conn 0 drops later
+# with nothing left on it to cancel.
+LR_HOST_RUN_SUPERSEDED = (
+    "; [map] peer 1 'client' needs the map (has=none want=%s)\n"
+    "; [map] send armed to peer 1 'client' (462065 B of blue monday.mpm)\n"
+    "; [map] start REFUSED -- waiting for 'client' to finish downloading the map\n"
+    "; [map] start OK -- every joiner reports the map we advertised\n"
+    "; [map] peer 2 'client2' needs the map (has=none want=%s)\n"
+    "net: snapshot SEND armed -- 462065 B in 29 body + 1 manifest chunk(s) to player 2, root 5059f1a8\n"
+    "net: snapshot SEND to player 2 superseded the UNFINISHED transfer to player 1 -- channel C "
+    "detached from it before its copy was freed (mp:X2f)\n"
+    "; [map] send armed to peer 2 'client2' (462065 B of blue monday.mpm)\n"
+    "; [map] peer 2 'client2' holds the map (sha=%s) -- nothing to transfer\n"
+    "net: udp conn 0 dropped -- no data from peer within the link timeout (keepalives: sent 24, "
+    "received 28)\n"
+    "; [map] start OK -- every joiner reports the map we advertised\n" % (HASH_OK, HASH_OK, HASH_OK)
+)
+# The field bug's shape: only ONE armed line, and the host times out and re-arms into the SAME
+# (never-released) seat instead of logging either release line -- the crash this rig row exists to
+# rule out. Kept as the checker's own negative case; the pre-fix DLL never reaches this rig row.
+LR_HOST_RUN_NO_GONE = (
+    "; [map] peer 1 'client' needs the map (has=none want=%s)\n"
+    "; [map] send armed to peer 1 'client' (462065 B of blue monday.mpm)\n"
+    "; [map] start REFUSED -- waiting for 'client' to finish downloading the map\n"
+    "; [map] send timed out for peer 1 after 90000 ms -- re-arming\n"
+    "; [map] peer 1 'client' holds the map (sha=%s) -- nothing to transfer\n"
+    "; [map] start OK -- every joiner reports the map we advertised\n" % (HASH_OK, HASH_OK)
 )
 
 
@@ -708,6 +972,42 @@ def selftest():
             ["--expect-nothing", "--expect-early-join"],
             1,
         ),
+        # ---- mp:X2e --expect-entry-deferred (the map absent to the game at lobby entry) ----
+        (
+            "--expect-entry-deferred: the check deferred and ONE join downloaded it -- GREEN",
+            [HOST_MENU, HOST_RUN],
+            [EN_CL_MENU, CL_RUN],
+            ["--expect-gate", "--expect-entry-deferred"],
+            0,
+        ),
+        (
+            "--expect-entry-deferred: the rc4 field shape (retail box, no store) is red",
+            [HOST_MENU, HOST_RUN],
+            [EN_CL_RETAIL, ""],
+            ["--expect-gate", "--expect-entry-deferred"],
+            1,
+        ),
+        (
+            "--expect-entry-deferred: no refused open (the stage never met an absent file) is red",
+            [HOST_MENU, HOST_RUN],
+            [EN_CL_MENU.replace("refused the game's open", "(none)"), CL_RUN],
+            ["--expect-gate", "--expect-entry-deferred"],
+            1,
+        ),
+        (
+            "--expect-entry-deferred: a download that took a second join (two `client want`) is red",
+            [HOST_MENU, HOST_RUN],
+            [EN_CL_MENU + CL_MENU, CL_RUN],
+            ["--expect-gate", "--expect-entry-deferred"],
+            1,
+        ),
+        (
+            "--expect-entry-deferred: a pretend=none run (not staged absent) is red",
+            [HOST_MENU, HOST_RUN],
+            [CL_MENU, CL_RUN],
+            ["--expect-gate", "--expect-entry-deferred"],
+            1,
+        ),
         # ---- mp:X2b --expect-refused (TCP, joiner holds different bytes) ----
         (
             "--expect-refused: the honest TCP refusal is GREEN",
@@ -767,16 +1067,92 @@ def selftest():
             ["--expect-refused"],
             0,
         ),
+        # ---- mp:X2f clause (3) --expect-leave-rejoin (client1 leaves mid-download + exits its
+        # process; a fresh client2 re-joins and finishes it) ----
+        (
+            "--expect-leave-rejoin: two armed transfers, the fix's release evidence, ONE stored "
+            "across both client logs -- GREEN",
+            [HOST_MENU, LR_HOST_RUN],
+            [CL_MENU, ""],  # client1: joined, never finished, never stored
+            [CL_MENU, CL_RUN],  # client2: fresh join, completed
+            ["--expect-leave-rejoin"],
+            0,
+        ),
+        (
+            "--expect-leave-rejoin: client2's arm superseded client1's unfinished transfer (the rig's "
+            "measured order) -- GREEN",
+            [HOST_MENU, LR_HOST_RUN_SUPERSEDED],
+            [CL_MENU, ""],
+            [CL_MENU, CL_RUN],
+            ["--expect-leave-rejoin"],
+            0,
+        ),
+        (
+            "--expect-leave-rejoin: only ONE armed line is red -- client2's fresh join never got "
+            "its own send",
+            [
+                HOST_MENU,
+                "; [map] peer 1 'client' needs the map (has=none want=%s)\n"
+                "; [map] send armed to peer 1 'client' (462065 B of blue monday.mpm)\n"
+                "; [map] start REFUSED -- waiting for 'client' to finish downloading the map\n"
+                "net: udp conn 0's channel-C transfer cancelled with it -- its destination is gone, "
+                "and the next peer on this index must not inherit it (mp:X2f)\n"
+                "; [map] peer 1 'client' holds the map (sha=%s) -- nothing to transfer\n"
+                "; [map] start OK -- every joiner reports the map we advertised\n"
+                % (HASH_OK, HASH_OK),
+            ],
+            [CL_MENU, ""],
+            [CL_MENU, CL_RUN],
+            ["--expect-leave-rejoin"],
+            1,
+        ),
+        (
+            "--expect-leave-rejoin: no release-evidence line at all is red -- the field bug's own "
+            "shape (a stale re-arm instead of a safely detached transfer)",
+            [HOST_MENU, LR_HOST_RUN_NO_GONE],
+            [CL_MENU, ""],
+            [CL_MENU, CL_RUN],
+            ["--expect-leave-rejoin"],
+            1,
+        ),
+        (
+            "--expect-leave-rejoin: TWO `client stored` lines (across both logs) is red -- client1's "
+            "interrupted attempt must never have landed a complete file",
+            [HOST_MENU, LR_HOST_RUN],
+            [CL_MENU, CL_RUN],  # client1 ALSO stored -- the drop never really interrupted it
+            [CL_MENU, CL_RUN],
+            ["--expect-leave-rejoin"],
+            1,
+        ),
+        (
+            "--expect-leave-rejoin: ZERO `client stored` lines (across both logs) is red -- neither "
+            "client ever finished the download",
+            [HOST_MENU, LR_HOST_RUN],
+            [CL_MENU, ""],
+            [CL_MENU, ""],
+            ["--expect-leave-rejoin"],
+            1,
+        ),
     ]
 
     root = tempfile.mkdtemp(prefix="mh_maptransfer_selftest_")
     bad = 0
     try:
-        for i, (name, host_runs, cl_runs, flags, want) in enumerate(cases):
+        for i, case_tuple in enumerate(cases):
+            # A 6th element is a SECOND client's runs (mp:X2f clause (3): client1 + client2, two
+            # separate peer logs) -- absent for every other flag's single-client cases.
+            if len(case_tuple) == 6:
+                name, host_runs, cl_runs, cl2_runs, flags, want = case_tuple
+            else:
+                name, host_runs, cl_runs, flags, want = case_tuple
+                cl2_runs = None
             case = os.path.join(root, "c%d" % i)
             h = _plant(case, "host", host_runs)
             c = _plant(case, "client", cl_runs)
-            got = main(flags + [h, c])
+            argv = flags + [h, c]
+            if cl2_runs is not None:
+                argv.append(_plant(case, "client2", cl2_runs))
+            got = main(argv)
             ok = got == want
             if not ok:
                 bad += 1

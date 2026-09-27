@@ -1,0 +1,71 @@
+# mp:X2f clause (3) CLIENT1, PROCESS-EXIT VARIANT -- join a host whose map this peer's OWN GAME
+# cannot open at all ([net] map_test_pretend=absent, mp:X2e's staging), Cancel (LEAVE) while the
+# download is still in flight, then QUIT THE PROCESS FOR REAL -- back to the main menu and out, the
+# genuine llm_wnd_on_destroy -> ExitProcess path (mp_client_exit_leave.txt's own tail; d15_exit_
+# witness.txt's canary shape), not a harness kill. Pair with mp_host_map_leaverejoin.txt (host) +
+# mp_client_map.txt (client2, launched by ui_test.py's --client-after-exit only once THIS process is
+# confirmed gone -- see the row's client_after_exit/client_shares_lane in registry.yaml).
+#
+# Reproduces Rizzen's own field timeline (2026-09-20, `a952c570`): Cancel/LEAVE, then a real quit to
+# desktop and relaunch -- this script is that half, staged over an in-flight map download instead of
+# an empty one.
+
+settled value:110
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+present Internet server
+settled Internet server
+clickl Internet server
+present Server address
+settled Connect
+clickl Connect
+sessions 1
+settled Join game
+clickl Join game
+
+# joined lobby: the download is armed (the host's `send armed`) and still running -- leave now,
+# mid-transfer, rather than waiting it out.
+present Network players
+settled Cancel
+# no capture here: the notice reads "Downloading the map from the host (N%)" and N is whatever
+# the loopback delivered in the ~0.6 s before this frame -- a pixel diff of a progress figure.
+log CLIENT1: joined and downloading -- leaving now, mid-transfer
+
+clickl Cancel
+absent Network players
+# a VOLUNTARY exit explains nothing (U23's negative case), and the row is still listed: the host is
+# still in its lobby
+absent The host left the game.
+absent Connection to the host was lost.
+# the host's `awaitsignal c1left`: the LEAVE is out, and the host may now wait for client2
+signal c1left
+log CLIENT1: left the lobby with a plain Cancel (LEAVE sent) mid-download; quitting the PROCESS now
+
+# back to the main menu -- TWO Cancels, not one: this peer joined through Internet server -> Connect,
+# so the lobby's Cancel lands on the INTERNET browser (list 00653EA7, "Games available"), whose
+# &Cancel (value 99) returns to the LOCAL browser (list 00653E5B, "Local games" -- the screen
+# mp_client_exit_leave.txt starts from), and only THAT one's &Cancel reaches the main menu. Both
+# lists hold a "Join game" and a value-99 &Cancel, so the step between them gates on the local
+# browser's own title (measured with `dump` 2026-09-27). Then QUIT (113) -> confirm (121): the genuine
+# WM_DESTROY exit, mp_client_exit_leave.txt's own recipe.
+screensettled
+settled value:99
+clickv 99
+present Local games
+screensettled
+settled value:99
+clickv 99
+settled value:113
+# the one deterministic frame this peer owns: the main menu it quits from (no host state on it)
+screensettled
+capture clr1_main_menu
+clickv 113
+settled value:121
+clickv 121
+
+# Deliberately unreachable if the quit works (mp_client_exit_leave.txt's same canary shape).
+present value:110
+log CLIENT1 STILL ALIVE after Quit -- the exit path did not fire
+end

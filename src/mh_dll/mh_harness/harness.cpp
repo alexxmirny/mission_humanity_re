@@ -647,6 +647,28 @@ struct Config {
                                      // game's entry AND every rebound libmh-internal caller are
                                      // covered, plus a byte neuter of the original entry when the
                                      // container is not promoted. See MH_Harness_LateArm.
+    // mp:D37b. replay only: at order_queue_dispatch ENTRY -- the exact point the recorder snapshots --
+    // make the queue equal the recorded snapshot for this step (records copied, count = n, 0 included).
+    // Meant WITH replay_suppress_enqueue=0: every enqueue then runs for real (the AI and the sim get
+    // their true return values), orders a handler appends DURING the pass extend it as in the
+    // recording, and whatever the replay put in the queue before dispatch is replaced by what the
+    // recorded peer actually dispatched. The suppression cannot do that: a handler's same-pass
+    // enqueue never reaches the recorder's snapshot, so under the neuter it is simply lost. See
+    // order_replay_dispatch_replace.
+    int replay_dispatch_inject = 0;
+    // mp:D37b. replay only: the local player slot (PlayerSide) the replay plays as, written right
+    // after the step-1 seed inject. -1 = leave whatever the replay's own lobby walk seated (slot 0).
+    // PlayerSide is not in any hash region, so the seed cannot carry it: a recording made on slot 1
+    // replays as slot 0 without this, and every `player == PlayerSide` branch in the sim takes the
+    // other arm (D37a's pioneer refill is exactly such a branch).
+    int replay_seat = -1;
+    // mp:D37b. replay only: _G_LLM_GAME_SESSION_MODE after the step-1 seed inject (-1 = leave the
+    // walk's own: a one-human hosted game runs 2, single-player). A lockstep recording ran 3, and the
+    // sim branches on it (the order-issue route, D35's charge seam, D37a's refill gate).
+    int replay_session_mode = -1;
+    // mp:D37b. replay only: drop llm_strat_order_dispatch calls for network-controlled players (the
+    // lockstep lane's orders come from the recording) -- see issue_detour.
+    int replay_drop_net_issue = 0;
     // [harness] clock_record -- write mh_clock.bin (the per-step game clock, raw doubles) INDEPENDENTLY
     // of the order recorder (LIB-REF-LIVE, 2026-09-11).
     //
@@ -678,6 +700,7 @@ struct Config {
     // region_hash_step=0). Observe-only: written after the step's hash, never read back. 0 = off.
     int verdict_snap_every = 0;
     int verdict_snap_max   = 8;
+    int verdict_snap_from  = 0; // mp:D37b: no snapshot before this step (a window, not a cadence)
     // [harness] replay_isolate_input -- while a journal replay is armed, suppress the GAME's own
     // input-ring producer (llm_input_wndproc_tap) so the journal is the only writer. Default ON,
     // because a replay with two producers is not a replay of the recorded input; `=0` is the
@@ -1016,6 +1039,36 @@ struct Config {
                                   // land, did the soldiers never spawn, did they never arrive, or did
                                   // they arrive and fail to do damage? It also MEASURES the walk, whose
                                   // duration the schedule can only estimate.
+    // ---- mp:D38 row 5: THE DEAD-DOCKED-UNIT FIXTURE (2026-09-27) -----------------------------------
+    // The storage panel (llm_strat_ui_storage_bldg_panel 0x00417409) purges dead docked units on the
+    // SELECTING peer on every panel refresh; the sim purges them on every peer each sub-tick A. The
+    // reproducer needs a docked unit that dies while its storage is selected on one peer -- and how a
+    // docked unit dies in MP is not established, so the fixture manufactures it. Three phases, all
+    // step-keyed off OBSERVED state and all identical on every peer except the one replicated order:
+    //   (1) at >= d38_bldg_at, once player d38_player's mothership has landed (primary_mother_bldg),
+    //       the OWNER peer (PlayerSide == d38_player) issues order 0xf2 (construction_debug, the
+    //       replicated lane -- the U32 conquest workload's barracks) at the mother + (dx,dy);
+    //   (2) at >= d38_dock_at, once that player owns an operational housing storage (built_flags 3,
+    //       online), EVERY peer calls llm_strat_unit_add_docked(proto) directly, at the same step --
+    //       production completion's own effect, a symmetric sim write (proto = the first infantry
+    //       type of the player's race the storage takes; d38_dock_proto > 0 forces one);
+    //   (3) at >= d38_kill_at, once the sim's next sub-tick-A purge is more than d38_kill_margin_ms
+    //       away, EVERY peer zeroes that unit's energy and calls llm_strat_bldg_notify_ui for its
+    //       building -- the game's own notification for a storage change; on the peer that has the
+    //       building selected it raises the panel refresh latch, i.e. that peer purges next frame.
+    // Symmetric by construction (same step, same state, same write on every peer): with the D38 seam
+    // the pair stays IDENTICAL; with [net] storage_panel_purge_fix=0 the selecting peer drops the row
+    // ahead of the sim and `unit_storage` differs until the sim's purge. All 0/-1 = off.
+    int d38_player         = -1;  // player index whose storage is used (-1 = off)
+    int d38_bldg_at        = 0;   // step: owner peer orders the housing building (0 = skip phase 1)
+    int d38_bldg           = 36;  // Building table index -- N_human_Koszary_Zolnierzy (conq_barracks)
+    int d38_bldg_dx        = -6;  // tile offset from the landed mother's origin
+    int d38_bldg_dy        = 0;
+    int d38_dock_at        = 0;   // step: dock a unit (every peer)
+    int d38_dock_proto     = 0;   // 0 = the first infantry proto the storage accepts
+    int d38_kill_at        = 0;   // step: kill it (every peer)
+    int d38_kill_margin_ms = 1500; // the sim's own purge must be at least this far off
+    int d38_timeout        = 3000; // steps a phase may wait for its precondition before FAIL
     // ---- THE ALL-AI SOAK (2026-08-05) -------------------------------------------------------------
     // Convert every HUMAN player slot to an AI-controlled one, so a solo run is an N-way AI match and
     // the LOCAL slot gets a real AI base too. The coverage lever that `loadgame_at` is for start
@@ -1450,10 +1503,15 @@ void load_config() {
     g_cfg.order_mode              = GetPrivateProfileIntA("harness", "order_mode", g_cfg.order_mode, g_ini_path);
     g_cfg.replay_ai_off           = GetPrivateProfileIntA("harness", "replay_ai_off", g_cfg.replay_ai_off, g_ini_path);
     g_cfg.replay_suppress_enqueue = GetPrivateProfileIntA("harness", "replay_suppress_enqueue", g_cfg.replay_suppress_enqueue, g_ini_path);
+    g_cfg.replay_dispatch_inject  = GetPrivateProfileIntA("harness", "replay_dispatch_inject", g_cfg.replay_dispatch_inject, g_ini_path);
+    g_cfg.replay_seat             = GetPrivateProfileIntA("harness", "replay_seat", g_cfg.replay_seat, g_ini_path);
+    g_cfg.replay_session_mode     = GetPrivateProfileIntA("harness", "replay_session_mode", g_cfg.replay_session_mode, g_ini_path);
+    g_cfg.replay_drop_net_issue   = GetPrivateProfileIntA("harness", "replay_drop_net_issue", g_cfg.replay_drop_net_issue, g_ini_path);
     g_cfg.clock_record            = GetPrivateProfileIntA("harness", "clock_record", g_cfg.clock_record, g_ini_path);
     g_cfg.match_segment           = GetPrivateProfileIntA("harness", "match_segment", g_cfg.match_segment, g_ini_path);
     g_cfg.verdict_snap_every      = GetPrivateProfileIntA("harness", "verdict_snap_every", g_cfg.verdict_snap_every, g_ini_path);
     g_cfg.verdict_snap_max        = GetPrivateProfileIntA("harness", "verdict_snap_max", g_cfg.verdict_snap_max, g_ini_path);
+    g_cfg.verdict_snap_from       = GetPrivateProfileIntA("harness", "verdict_snap_from", g_cfg.verdict_snap_from, g_ini_path);
     g_cfg.replay_isolate_input    = GetPrivateProfileIntA("harness", "replay_isolate_input", g_cfg.replay_isolate_input, g_ini_path);
     g_cfg.order_log               = GetPrivateProfileIntA("harness", "order_log", g_cfg.order_log, g_ini_path);
     g_cfg.rng_perturb_slot        = GetPrivateProfileIntA("harness", "rng_perturb_slot", g_cfg.rng_perturb_slot, g_ini_path);
@@ -1545,6 +1603,16 @@ void load_config() {
     g_cfg.conq_use_groupmove = GetPrivateProfileIntA("harness", "conq_use_groupmove", g_cfg.conq_use_groupmove, g_ini_path);
     g_cfg.conq_force_kill_at = GetPrivateProfileIntA("harness", "conq_force_kill_at", g_cfg.conq_force_kill_at, g_ini_path);
     g_cfg.conq_probe_every   = GetPrivateProfileIntA("harness", "conq_probe_every", g_cfg.conq_probe_every, g_ini_path);
+    g_cfg.d38_player         = GetPrivateProfileIntA("harness", "d38_player", g_cfg.d38_player, g_ini_path);
+    g_cfg.d38_bldg_at        = GetPrivateProfileIntA("harness", "d38_bldg_at", g_cfg.d38_bldg_at, g_ini_path);
+    g_cfg.d38_bldg           = GetPrivateProfileIntA("harness", "d38_bldg", g_cfg.d38_bldg, g_ini_path);
+    g_cfg.d38_bldg_dx        = GetPrivateProfileIntA("harness", "d38_bldg_dx", g_cfg.d38_bldg_dx, g_ini_path);
+    g_cfg.d38_bldg_dy        = GetPrivateProfileIntA("harness", "d38_bldg_dy", g_cfg.d38_bldg_dy, g_ini_path);
+    g_cfg.d38_dock_at        = GetPrivateProfileIntA("harness", "d38_dock_at", g_cfg.d38_dock_at, g_ini_path);
+    g_cfg.d38_dock_proto     = GetPrivateProfileIntA("harness", "d38_dock_proto", g_cfg.d38_dock_proto, g_ini_path);
+    g_cfg.d38_kill_at        = GetPrivateProfileIntA("harness", "d38_kill_at", g_cfg.d38_kill_at, g_ini_path);
+    g_cfg.d38_kill_margin_ms = GetPrivateProfileIntA("harness", "d38_kill_margin_ms", g_cfg.d38_kill_margin_ms, g_ini_path);
+    g_cfg.d38_timeout        = GetPrivateProfileIntA("harness", "d38_timeout", g_cfg.d38_timeout, g_ini_path);
     g_cfg.conq_weapon        = GetPrivateProfileIntA("harness", "conq_weapon", g_cfg.conq_weapon, g_ini_path);
     g_cfg.conq_phase_timeout = GetPrivateProfileIntA("harness", "conq_phase_timeout", g_cfg.conq_phase_timeout, g_ini_path);
     g_cfg.all_ai             = GetPrivateProfileIntA("harness", "all_ai", g_cfg.all_ai, g_ini_path);
@@ -1649,6 +1717,9 @@ void seed_dump_to(const char *path) { // mp:SES7: the match segment dumps the sa
 }
 void seed_dump() { seed_dump_to(g_seed_out); }
 
+// mp:D37b: the scoped body mode. -1 = off (the shipped path: sim_step_detour tail-jumps as always).
+long g_body_mode      = -1;
+long g_body_mode_save = 0;
 void seed_inject() {
     HANDLE h = CreateFileA(g_seed_path, GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING,
                            FILE_ATTRIBUTE_NORMAL, nullptr);
@@ -1666,6 +1737,35 @@ void seed_inject() {
         &h);
     for (int i = 0; i < N_REGIONS; ++i) mh::state::fill_slice(i, src);
     CloseHandle(h);
+
+    // mp:D37b: the replay's seat. Written HERE, straight after the regions, so the step the seed lands
+    // on already runs as the recorded peer did. The line is unconditional in a seed-inject run: which
+    // side a replay played as, and in which session mode, is part of what its hashes mean.
+    auto       *side = reinterpret_cast<uint16_t *>(mh::addr::PlayerSide);
+    const int   was  = (int)*side;
+    if (g_cfg.replay_seat >= 0 && g_cfg.replay_seat < PLAYER_PROF_COUNT) *side = (uint16_t)g_cfg.replay_seat;
+    const unsigned mode = *reinterpret_cast<const uint8_t *>(mh::addr::_G_LLM_GAME_SESSION_MODE);
+    // The recorded session mode is applied to the sim BODY only (sim_step_detour's scoped arm): the
+    // frame around it -- time_tick's pacing, sim_tick's catch-up, the UI -- stays in the replay's own
+    // mode, because a peerless process running the lockstep pacing never steps like the recording
+    // did (MEASURED: a whole-process mode 3 diverged in the clock column from step 2).
+    if (g_cfg.replay_session_mode >= 0) g_body_mode = g_cfg.replay_session_mode;
+    char line[240];
+    wsprintfA(line, "; [replay] seat: PlayerSide %d -> %d (replay_seat=%d); session_mode %u, the sim body "
+                    "runs in %d\n",
+              was, (int)*side, g_cfg.replay_seat, mode, g_body_mode >= 0 ? g_body_mode : (int)mode);
+    append_line(g_log_path, line);
+}
+
+void on_sim_step_body_enter() {
+    auto *m          = reinterpret_cast<uint8_t *>(mh::addr::_G_LLM_GAME_SESSION_MODE);
+    g_body_mode_save = *m;
+    *m               = (uint8_t)g_body_mode;
+}
+void on_sim_step_body_exit() {
+    auto *m = reinterpret_cast<uint8_t *>(mh::addr::_G_LLM_GAME_SESSION_MODE);
+    // The body itself may END the session (presence_lost writes the mode at game over); keep its word.
+    if (*m == (uint8_t)g_body_mode) *m = (uint8_t)g_body_mode_save;
 }
 
 // ---- LIB-BOOT: the post-cfg prototype snapshot ---------------------------------------------------
@@ -2750,7 +2850,7 @@ int g_verdict_snaps = 0;
 
 void verdict_snap_tick() {
     if (g_cfg.verdict_snap_every <= 0 || g_verdict_snaps >= g_cfg.verdict_snap_max) return;
-    if (g_step == 0 || (g_step % (uint32_t)g_cfg.verdict_snap_every) != 0) return;
+    if (g_step == 0 || g_step < (uint32_t)g_cfg.verdict_snap_from || (g_step % (uint32_t)g_cfg.verdict_snap_every) != 0) return;
     ++g_verdict_snaps;
     const char *dir = MH_RunDir();
     char        path[MAX_PATH];
@@ -3292,6 +3392,139 @@ void order_replay_inject() {
     g_replay_injected = n;
 }
 // HASH-INPUT END harness_order_replay_inject
+
+// ---- mp:D37b: the dispatch-entry replace ([harness] replay_dispatch_inject=1) ------------------
+//
+// THE GAP IT CLOSES. The recorder snapshots the queue at dispatch ENTRY. A handler that enqueues while
+// dispatch walks the queue extends that SAME pass (sim_order_dispatch.cpp: the loop re-reads the
+// count), so its order is executed -- and possibly consumed -- without ever sitting in an entry
+// snapshot. Under replay_suppress_enqueue such an order is simply lost: the neuter drops it and the
+// recording has no copy to inject. MEASURED on the rc4 Last Question host recording: the replay left
+// its own recording at match step 6357, and at 10400 the only judged difference was `units` +0xd8 on
+// three units (1 byte each, the ctrl-group status bit order 0x34/0x35 RMWs).
+//
+// So the replay stops suppressing and instead makes the dispatch ENTRY exact: every enqueue runs for
+// real, and here, at the recorder's own point, the queue is set to what the recorded peer dispatched
+// (count = n, and n = 0 for a step with no record, which is what the recorder's `n <= 0` skip means).
+// Whatever the replay queued beforehand -- the AI tick's orders again, on top of the top-of-step
+// inject's copy of them -- is replaced; whatever the pass appends is the replay's own, as it was the
+// recorder's. The top-of-step inject stays: it is what opens sim_step's count gate on a step whose
+// only orders came from the wire, and what the step's hash has always read.
+//
+// Evidence, not trust: every entry is compared with the snapshot before it is overwritten, and the
+// stop line reports how many entries differed (a doubled AI order is the expected, benign shape;
+// the first few are logged with their counts).
+uint32_t g_dinj_entries = 0; // dispatch entries seen in a dispatch-inject replay
+uint32_t g_dinj_differ  = 0; // ... where the live queue was not already the snapshot
+uint32_t g_dinj_logged  = 0;
+uint32_t g_dinj_last_step = 0; // the last step whose dispatch entry this replay saw
+uint32_t g_dinj_missed    = 0; // steps with a recorded snapshot whose dispatch never ran here
+uint32_t g_dinj_top_t     = 0; // records held back from the top-of-step queue as the AI tick's (T)
+// mp:D37b issue_detour state (defined here, above the stop report that reads the counters)
+void    *g_issue_tramp   = nullptr;
+int      g_issue_drop    = 0; // the detour's per-call verdict (the sim is single-threaded)
+uint32_t g_issue_dropped = 0;
+uint32_t g_issue_passed  = 0;
+
+void order_replay_dispatch_replace() {
+    uint32_t i = g_replay_i;
+    while (i < g_replay_n && g_replay[i].step < g_step) ++i;
+    uint8_t  *q    = reinterpret_cast<uint8_t *>(ADDR_ORDER_QUEUE());
+    int      *cnt  = reinterpret_cast<int *>(ADDR_ORDER_QCOUNT());
+    const int live = *cnt;
+    int       n    = 0;
+    bool      same = true;
+    for (uint32_t j = i; j < g_replay_n && g_replay[j].step == g_step && n < ORDER_QCAP; ++j, ++n) {
+        uint8_t *slot = q + (size_t)n * ORDER_SIZE;
+        if (n >= live || memcmp(slot, g_replay[j].order, ORDER_SIZE) != 0) {
+            same = false;
+            memcpy(slot, g_replay[j].order, ORDER_SIZE);
+        }
+    }
+    if (live != n) same = false;
+    *cnt = n;
+    ++g_dinj_entries;
+    g_dinj_last_step = g_step;
+    if (!same) {
+        ++g_dinj_differ;
+        if (g_dinj_logged < 16) {
+            ++g_dinj_logged;
+            char b[128];
+            wsprintfA(b, "; [dispatch_inject] step=%lu live_count=%d recorded=%d -> replaced\n", g_step,
+                      live, n);
+            append_line(g_log_path, b);
+        }
+    }
+}
+
+// The TOP-OF-STEP half of the dispatch-inject contract: what the recorded peer's queue held at its
+// HASH point, which is where this runs (on_sim_step, before the hash).
+//
+// The recording holds the queue at dispatch ENTRY, S(N). llm_strat_sim_step runs the AI tick BETWEEN
+// the hash and dispatch, and its direct enqueues (T, e.g. the state-30 re-issues every 50 steps with
+// a stale exec_time) are the TAIL of S(N). So the hash point saw H(N) = S(N) minus that tail: the
+// queue this replay already holds (the kept orders + the previous step's post-dispatch enqueues,
+// generated here as they were there) plus what the lockstep lane released before sim_step. The old
+// inject wrote all of S(N) -- measured on the Last Question host recording, a one-step hash blip at
+// every step with a T tail (6357, 7307, 7701, 7751, ...), and the replay's own AI then appended T a
+// second time.
+//
+// Which S(N) records past the replay's own count are RELEASED rather than T: release_due moved them
+// at clock(N), and they were not due at clock(N-1) -- so clock(N-1) < exec_time <= clock(N), read
+// off the clock track. A direct enqueue does not set exec_time (it is whatever the caller's record
+// held -- an earlier order's time), and the AI tick copies no order released this step. Released
+// records are contiguous after the kept prefix and before T, so the first record that fails the
+// test starts T. release_due may also REPLACE a queued record in place, so the prefix is written
+// from S(N), not trusted from the live queue. A misread only moves a hash blip: the dispatch-entry
+// replace still makes the executed queue exact, and says so in its counter.
+void order_replay_inject_prefix() {
+    if (g_cfg.replay_ai_off && !g_ai_zeroed) {
+        zero_ai_enabled_all();
+        g_ai_zeroed = true;
+    }
+    while (g_replay_i < g_replay_n && g_replay[g_replay_i].step < g_step) ++g_replay_i;
+    if (g_step > 1 && g_dinj_last_step != g_step - 1) {
+        // The previous step had a snapshot but its dispatch never ran here (sim_step's count gate
+        // stayed shut): its orders were NOT executed. Counted; the first few are named.
+        uint32_t j = g_replay_i;
+        while (j > 0 && g_replay[j - 1].step == g_step - 1) --j;
+        if (j < g_replay_i && g_replay[j].step == g_step - 1) {
+            ++g_dinj_missed;
+            if (g_dinj_missed <= 8) {
+                char b[128];
+                wsprintfA(b, "; [dispatch_inject] MISSED step=%lu: a recorded snapshot whose dispatch "
+                             "never ran\n", g_step - 1);
+                append_line(g_log_path, b);
+            }
+        }
+    }
+    uint8_t *q    = reinterpret_cast<uint8_t *>(ADDR_ORDER_QUEUE());
+    int     *cnt  = reinterpret_cast<int *>(ADDR_ORDER_QCOUNT());
+    const int live = *cnt;
+    int       n    = 0; // records of S(N)
+    while (g_replay_i + n < g_replay_n && g_replay[g_replay_i + n].step == g_step && n < ORDER_QCAP) ++n;
+    int keep = live < n ? live : n; // the kept prefix
+    if (n > keep && g_clock_trk && g_step >= 2 && g_step <= g_clock_n) {
+        const double lo = g_clock_trk[g_step - 2], hi = g_clock_trk[g_step - 1];
+        while (keep < n) {
+            double t;
+            memcpy(&t, g_replay[g_replay_i + keep].order, sizeof(t)); // exec_time, +0x00
+            if (!(t > lo && t <= hi)) break;
+            ++keep;
+        }
+    } else if (n > keep) {
+        keep = n; // no clock track: the old whole-snapshot inject
+    }
+    for (int k = 0; k < keep; ++k)
+        memcpy(q + (size_t)k * ORDER_SIZE, g_replay[g_replay_i + k].order, ORDER_SIZE);
+    *cnt = keep;
+    g_dinj_top_t += (uint32_t)(n - keep);
+    g_replay_injected = keep;
+    if (n > 0) {
+        ++g_inject_arrivals;
+        ++g_inject_set_ok; // the count is written unconditionally here, so the readback is moot
+    }
+}
 
 // ---- P0-SPDET: the deterministic wall clock ------------------------------------------------------
 // Advanced once per sim_tick (one per frame -- llm_strat_frame calls time_tick and sim_tick as
@@ -7510,6 +7743,144 @@ void exit_after_body_if_latched() {
 }
 
 // HASH-INPUT BEGIN harness_on_sim_step_prehash (tools/data/hash_input_epoch.json)
+// ---- mp:D38 row 5: the dead-docked-unit fixture (see the config block) ---------------------------
+enum { D38_BLDG = 0, D38_DOCK, D38_KILL, D38_DONE, D38_FAILED };
+int      g_d38_phase      = D38_BLDG;
+uint32_t g_d38_wait_from  = 0;  // step the current phase started waiting (0 = not yet)
+bool     g_d38_issued     = false;
+int      g_d38_unit       = 0;  // the docked unit's roster index
+int      g_d38_slot       = 0;  // its storage slot (unit_storage[p][slot], == building sub_id)
+
+constexpr unsigned D38_UNIT_TYPE_MAX_INFANTRY = 0x0au; // cfg_enum_E_UNIT_TYPE: 1..5 A_INFANTRY, 6..0xa H_INFANTRY
+constexpr unsigned D38_UNIT_PROTOS            = 100u;  // cfg::final::struct::Unit[100]
+
+void d38_fail(const char *why) {
+    char m[224];
+    wsprintfA(m, "; D38FIX FAIL step=%lu phase=%d: %s\n", g_step, g_d38_phase, why);
+    append_line(g_log_path, m);
+    g_d38_phase = D38_FAILED;
+}
+
+// The player's first operational housing storage slot (1..24) with room, or 0.
+int d38_find_storage(unsigned p) {
+    const auto *st = reinterpret_cast<const mh::game::mh_map_object_unit_storage *>(
+                         mh::state::hash_base(mh::state::HIDX_UNIT_STORAGE)) + p * 25u;
+    const auto *b  = reinterpret_cast<const mh::game::mh_map_object_building *>(mh::state::hash_base(g_idx_bldgs)) +
+                     p * 100u;
+    for (int s = 1; s < 25; ++s) {
+        const int bi = st[s].b_index;
+        if (bi <= 0 || bi >= 100) continue;
+        if (b[bi].building_id != 0 && b[bi].built_flags == 3 && b[bi].online_state != 0 && st[s].occupancy < 50)
+            return s;
+    }
+    return 0;
+}
+
+void d38_fixture_tick() {
+    if (g_d38_phase >= D38_DONE) return;
+    char           m[256];
+    const unsigned p      = (unsigned)g_cfg.d38_player;
+    const unsigned side   = *reinterpret_cast<const uint16_t *>(ADDR_SIDE);
+    const unsigned planet = *reinterpret_cast<const uint32_t *>(ADDR_PLANET_IDX);
+    if (p >= 8 || planet >= 32) return d38_fail("player/planet out of range");
+    const auto *prof = reinterpret_cast<const mh::game::mh_llm_strat_player_profile *>(ADDR_PLAYERS_PROF);
+    auto *const st   = reinterpret_cast<mh::game::mh_map_object_unit_storage *>(
+                         mh::state::hash_base(mh::state::HIDX_UNIT_STORAGE)) + p * 25u;
+    auto *const un   = reinterpret_cast<mh::game::mh_map_object_unit *>(mh::state::hash_base(g_idx_units)) + p * 100u;
+    auto *const bl   = reinterpret_cast<mh::game::mh_map_object_building *>(mh::state::hash_base(g_idx_bldgs)) +
+                     p * 100u;
+    const uint32_t at = g_d38_phase == D38_BLDG ? (uint32_t)g_cfg.d38_bldg_at
+                      : g_d38_phase == D38_DOCK ? (uint32_t)g_cfg.d38_dock_at
+                                                : (uint32_t)g_cfg.d38_kill_at;
+    if (g_d38_phase == D38_BLDG && g_cfg.d38_bldg_at <= 0) {
+        g_d38_phase = D38_DOCK;
+        return;
+    }
+    if (at == 0 || g_step < at) return;
+    if (g_d38_wait_from == 0) g_d38_wait_from = g_step;
+    if ((int)(g_step - g_d38_wait_from) > g_cfg.d38_timeout) {
+        wsprintfA(m, "precondition never arrived in %d steps (mother_bldg=%d storage=%d)", g_cfg.d38_timeout,
+                  (int)prof[p].primary_mother_bldg[planet], d38_find_storage(p));
+        return d38_fail(m);
+    }
+    switch (g_d38_phase) {
+        case D38_BLDG: {
+            const int mb = prof[p].primary_mother_bldg[planet];
+            if (mb <= 0 || mb >= 100) return; // not landed yet
+            if (d38_find_storage(p) != 0) {    // one already stands
+                g_d38_phase     = D38_DOCK;
+                g_d38_wait_from = 0;
+                return;
+            }
+            if (!g_d38_issued) {
+                g_d38_issued  = true;
+                const int bx  = (int)bl[mb].x + g_cfg.d38_bldg_dx;
+                const int by  = (int)bl[mb].y + g_cfg.d38_bldg_dy;
+                const bool me = (side == p);
+                if (me)
+                    mh::call::llm_strat_order_queue_construction_debug((uint32_t)bx, (uint32_t)by,
+                                                                       (uint32_t)g_cfg.d38_bldg, p);
+                wsprintfA(m, "; D38FIX step=%lu order 0xf2 Building[%d] at (%d,%d) for player %u -- %s\n", g_step,
+                          g_cfg.d38_bldg, bx, by, p, me ? "issued here (owner)" : "the owner peer issues it");
+                append_line(g_log_path, m);
+            }
+            return;
+        }
+        case D38_DOCK: {
+            const int s = d38_find_storage(p);
+            if (s == 0) return;
+            int u = 0, proto = 0;
+            if (g_cfg.d38_dock_proto > 0) {
+                proto = g_cfg.d38_dock_proto;
+                u     = mh::call::llm_strat_unit_add_docked((uint32_t)proto, (uint16_t)p, (uint32_t)s);
+            } else {
+                // The player's own race's infantry (race 2 = alien: types 1..5; else human: 6..0xa).
+                const auto    *U   = reinterpret_cast<const mh::game::mh_cfg_final_struct_Unit *>(mh::state::live_base(mh::state::RID_UNIT));
+                const unsigned tlo = prof[p].race == 2u ? 1u : 6u;
+                for (unsigned k = 1; k < D38_UNIT_PROTOS && u == 0; ++k) {
+                    const unsigned t = U[k].type;
+                    if (t < tlo || t > tlo + 4u || t > D38_UNIT_TYPE_MAX_INFANTRY) continue;
+                    proto = (int)k;
+                    u     = mh::call::llm_strat_unit_add_docked(k, (uint16_t)p, (uint32_t)s);
+                }
+            }
+            if (u <= 0 || u >= 100) return; // retried next step (no home yet); the timeout bounds it
+            g_d38_unit      = u;
+            g_d38_slot      = un[u].home_storage_slot;
+            g_d38_phase     = D38_KILL;
+            g_d38_wait_from = 0;
+            wsprintfA(m, "; D38FIX step=%lu DOCKED unit %d (proto %d) of player %u in storage %d (building %d), "
+                         "docked_count=%d\n",
+                      g_step, u, proto, p, g_d38_slot, st[g_d38_slot].b_index, st[g_d38_slot].docked_count);
+            append_line(g_log_path, m);
+            return;
+        }
+        case D38_KILL: {
+            const int u = g_d38_unit, s = g_d38_slot;
+            if (s <= 0 || s >= 25) return d38_fail("storage slot out of range");
+            bool docked = false;
+            for (int i = 0; i < st[s].docked_count && i < 50; ++i) docked |= (st[s].docked_units[i] == u);
+            if (!docked || !(un[u].energy > 0.0)) return d38_fail("the docked unit left its storage before the kill");
+            // Far enough from the sim's own purge (sub-tick A) that the selecting peer's panel runs first.
+            const auto *ps  = reinterpret_cast<const mh::game::mh_llm_strat_pop_stats *>(mh::state::live_base(mh::state::RID_STRAT_POP_STATS));
+            double      clk = 0.0, per = 0.0;
+            memcpy(&clk, reinterpret_cast<const void *>(ADDR_GAME_CLOCK), sizeof(clk));
+            memcpy(&per, reinterpret_cast<const void *>(mh::state::live_base(mh::state::RID_STRAT_SUBTICK_A_PERIOD)), sizeof(per));
+            const double left_s = per - (clk - ps[p].subtick_a_clock);
+            if (left_s * 1000.0 < (double)g_cfg.d38_kill_margin_ms) return;
+            un[u].energy = 0.0;
+            mh::call::llm_strat_bldg_notify_ui((uint16_t)p, (uint32_t)st[s].b_index);
+            g_d38_phase = D38_DONE;
+            wsprintfA(m, "; D38FIX step=%lu KILLED docked unit %d of player %u in storage %d (building %d), "
+                         "docked_count=%d; the sim's purge is due in %d ms\n",
+                      g_step, u, p, s, st[s].b_index, st[s].docked_count, (int)(left_s * 1000.0));
+            append_line(g_log_path, m);
+            return;
+        }
+        default: return;
+    }
+}
+
 void on_sim_step() {
     exit_after_body_if_latched();        // LIB-REF-REC: the stop step's body has now run
     g_tj_last_step_ms = GetTickCount();  // UI-REC idle watchdog -- see ui_journal_present
@@ -7699,9 +8070,19 @@ void on_sim_step() {
     if (g_conq_armed && g_cfg.conq_probe_every > 0 && (g_step % (uint32_t)g_cfg.conq_probe_every) == 0)
         conq_probe();
 
+    // mp:D38 row 5: the dead-docked-unit fixture. BEFORE the hash, like the workloads above: phase 1's
+    // order is staged on the owner peer only and replicated; phases 2 and 3 write the same bytes on
+    // every peer at this same step.
+    if (g_cfg.d38_player >= 0) d38_fixture_tick();
+
     // Phase 2 replay: inject this step's recorded orders into the queue BEFORE the sim body runs
     // dispatch (the hash below reads pre-execution state either way, so ordering vs the hash is moot).
-    if (g_cfg.order_mode == 2 && g_replay) order_replay_inject();
+    // mp:D37b: under replay_dispatch_inject the top of the step gets the recorded HASH-point queue
+    // (the snapshot less the AI tick's tail) and dispatch entry gets the whole snapshot.
+    if (g_cfg.order_mode == 2 && g_replay) {
+        if (g_cfg.replay_dispatch_inject) order_replay_inject_prefix();
+        else order_replay_inject();
+    }
 
     // NO TAIL-CLEAR ANY MORE (mp:D33 follow-up, user 2026-09-25). From 2026-09-11 this zeroed
     // order_queue's dead slots [count, 300) every step so the hash saw the live queue only. It wrote
@@ -8166,10 +8547,22 @@ void on_sim_step() {
         // benign shape (a sparse order stream over an idle queue) or the refused one (an injector
         // that appends without setting the count). Absent line == no evidence == still refused.
         if (g_cfg.order_mode == 2 && g_replay) {
-            char ib[160];
+            char ib[256];
             wsprintfA(ib, "; injector: count SET at %d of %d arrival step(s), %d append-without-set\n",
                       g_inject_set_ok, g_inject_arrivals, g_inject_no_set);
             append_line(g_log_path, ib);
+            if (g_cfg.replay_dispatch_inject) {
+                wsprintfA(ib, "; [dispatch_inject] %lu dispatch entr(ies), %lu replaced a queue that "
+                              "differed from the recorded snapshot; %lu record(s) held back at the "
+                              "top of a step as the AI tick's; %lu MISSED dispatch(es)\n",
+                          g_dinj_entries, g_dinj_differ, g_dinj_top_t, g_dinj_missed);
+                append_line(g_log_path, ib);
+            }
+            if (g_cfg.replay_drop_net_issue) {
+                wsprintfA(ib, "; [issue_drop] %lu net-player issue(s) dropped, %lu passed through\n",
+                          g_issue_dropped, g_issue_passed);
+                append_line(g_log_path, ib);
+            }
         }
         g_active = false;
         // FLUSH UNCONDITIONALLY, and the NON-exiting path is the one that needs it. append_line only
@@ -8308,6 +8701,43 @@ void *g_disp_promoted = nullptr;
 // order_queue_dispatch entry hook -- record mode snapshots the queue about to execute.
 void on_dispatch() {
     if (g_cfg.order_mode == 1) order_record();
+    else if (g_cfg.order_mode == 2 && g_cfg.replay_dispatch_inject && g_replay)
+        order_replay_dispatch_replace(); // mp:D37b
+}
+
+// ---- mp:D37b: the lockstep issue route, emulated in a single-process replay ---------------------
+// llm_strat_order_dispatch (0x00465fdf) STAGES an order when SESSION_MODE == 3 and its player is
+// network-controlled (Players[p].flags +0x06 bit 2 -- a hashed, seeded region, so the replay has the
+// recording's flags); otherwise it enqueues at once. The recording ran 3: every such order went out
+// on the wire, came back through release_due, and sits in the recording at the step it was really
+// dispatched. The replay runs 2, where the same call enqueues immediately -- a step early and a
+// second time. So for a network-controlled player the call is dropped and reports what staging
+// reports on success (the new staging count, >= 1; 1 is returned). AI players, and every direct
+// llm_strat_order_enqueue caller, are untouched: those orders are generated identically by the replay.
+
+extern "C" int __cdecl issue_should_drop(uint32_t player) {
+    const uint8_t *players = reinterpret_cast<const uint8_t *>(mh::addr::Players);
+    const bool     net     = (players[(player & 0xfu) * 0x34u + 0x06u] & 0x04u) != 0;
+    if (net) ++g_issue_dropped;
+    else ++g_issue_passed;
+    return net ? 1 : 0;
+}
+
+__declspec(naked) void issue_detour() {
+    __asm {
+        pushad
+        push edx                    // player (__watcall: EAX unit_id, EDX player, EBX op, ECX arg)
+        call issue_should_drop
+        add  esp, 4
+        mov  dword ptr [g_issue_drop], eax
+        popad
+        cmp  dword ptr [g_issue_drop], 0 // a FUNCTION ENTRY: nothing reads the incoming flags
+        jne  drop
+        jmp  dword ptr [g_issue_tramp]
+    drop:
+        mov  eax, 1                 // what stage_scheduled returns: the new staging count
+        ret                         // no stack arguments -- plain RET
+    }
 }
 
 __declspec(naked) void dispatch_detour() {
@@ -8395,6 +8825,12 @@ __declspec(naked) void sim_step_detour() {
                             // own return would have. Do not copy this to a mid-function splice.
         cmp  dword ptr [g_sim_hold], 0
         jne  sim_step_held
+                            // mp:D37b: the replay's SCOPED body mode. CALL (not JMP) the body so the recorded session
+                            // mode can be put back after it: `void (void)`, no stack arguments, so a call through the
+                            // stolen-prologue trampoline (or the promoted thunk) returns here exactly as it would have
+                            // returned to our caller. Off (-1) in every run but a field replay.
+        cmp  dword ptr [g_body_mode], -1
+        jne  sim_step_scoped
             // RI-SIM / SIM1F domain-root PROMOTED-GOLDEN (C6 rebind, mirroring sim_tick_detour above): with
             // [promote] sim_step=1 the detour falls through to OUR entry thunk instead of the original body,
             // AFTER on_sim_step hashed the pre-body state, so the per-step golden trajectory measures our
@@ -8410,6 +8846,21 @@ __declspec(naked) void sim_step_detour() {
         jmp  dword ptr [g_sim_step_promoted] // the generated entry thunk -> mh::sim::sim_step
     sim_step_held:
         ret // mp:X3: the body does not run this step, nor any later one
+    sim_step_scoped:
+        pushad
+        call on_sim_step_body_enter
+        popad
+        cmp  dword ptr [g_sim_step_promoted], 0
+        jne  sim_step_scoped_promoted
+        call dword ptr [g_sim_tramp]
+        jmp  sim_step_scoped_done
+    sim_step_scoped_promoted:
+        call dword ptr [g_sim_step_promoted]
+    sim_step_scoped_done:
+        pushad
+        call on_sim_step_body_exit
+        popad
+        ret
     }
 }
 
@@ -8532,7 +8983,33 @@ extern "C" int MH_Harness_RebindLandPlayers(void *ours) {
 // F4G: the body is a static so the export can FLUSH after it whichever of its three exits it takes.
 // Same reason MH_Harness_Init flushes at its end -- this is the last of the arm report, it runs
 // before any frame, and a run killed at the menu never appends again.
+// mp:D37b: the issue drop, armed here for the reason the neuter is (D18): at harness init nothing is
+// promoted yet, so taking the entry there made `[promote] orders` refuse it -- MEASURED, "entry is OWNED
+// by the field replay's net-player issue drop" and "orders: 8/9 seams installed -- PARTIAL". When the
+// entry is ours (configuration (2)) the drop is not needed as a hook: the promoted router takes the
+// lockstep branch itself, because the replay runs the sim body in the recorded SESSION_MODE 3 -- the
+// order is STAGED (excluded state) and never reaches the queue, as in the recording.
+static void late_arm_issue_drop(void) {
+    if (g_cfg.order_mode != 2 || !g_cfg.replay_drop_net_issue) return;
+    if (mh::hook::promoted_owner_of(mh::exp::addr_llm_strat_order_dispatch)) {
+        append_line(g_log_path, "; [issue_drop] llm_strat_order_dispatch is PROMOTED -- not hooked; the promoted "
+                                "router stages net players' orders under the sim body's SESSION_MODE 3\n");
+        g_cfg.replay_drop_net_issue = 0;
+        return;
+    }
+    const bool ok = mh::hook::arm_observer(mh::hook::point::order_issue,
+                                           reinterpret_cast<void *>(issue_detour), &g_issue_tramp);
+    append_line(g_log_path,
+                ok ? "; [issue_drop] armed: llm_strat_order_dispatch drops network-controlled "
+                     "players' orders (the recording holds their lockstep copies)\n"
+                   : "; [issue_drop] llm_strat_order_dispatch entry unavailable -- NOT armed (the entry "
+                     "bytes differ or another detour owns it; see the [interlock] summary in mh_net.log). "
+                     "The replay enqueues net players' orders at once, a step early.\n");
+    if (!ok) g_cfg.replay_drop_net_issue = 0;
+}
+
 static void late_arm_report(void) {
+    late_arm_issue_drop();
     if (g_cfg.order_mode != 2 || !g_cfg.replay_suppress_enqueue) return;
 
     // THE SINK GATE IS SET UNCONDITIONALLY (user ruling, 2026-09-11), promoted or not. It lives in
@@ -9117,6 +9594,34 @@ extern "C" int MH_Harness_Init(void) {
         clock_load(); // optional mh_clock.bin -> reproduce a real-time recording's per-step deltas
         // The enqueue neuter is DEFERRED to MH_Harness_LateArm -- see it for why. Doing it here is
         // what made `replay_suppress_enqueue=1` invalidate the whole orders promotion.
+        //
+        // mp:D37b: the dispatch-entry replace takes the recorder's entry, by the recorder's two
+        // mechanisms (trampoline, or the promoted body's observer) -- one run is never both.
+        if (g_cfg.replay_dispatch_inject) {
+            const char *how = nullptr;
+            if (mh::hook::arm_observer(mh::hook::point::order_dispatch,
+                                       reinterpret_cast<void *>(dispatch_detour), &g_disp_tramp)) {
+                how = "trampoline on the dispatch entry";
+            } else if (mh::hook::promoted_owner_of(ADDR_ORDER_DISPATCH)) {
+                mh::hook::register_callback(mh::hook::point::dispatch_observer, &on_dispatch);
+                how = "the promoted body's observer (D18)";
+            }
+            char b[200];
+            if (how) {
+                wsprintfA(b, "; [dispatch_inject] armed via %s -- the queue is set to the recorded "
+                             "snapshot at every dispatch entry%s\n",
+                          how,
+                          g_cfg.replay_suppress_enqueue
+                              ? " (WARNING: replay_suppress_enqueue=1 still drops same-pass enqueues)"
+                              : "");
+            } else {
+                wsprintfA(b, "; [dispatch_inject] dispatch entry unavailable -- NOT armed (the reason "
+                             "is in the [interlock] summary in mh_net.log)\n");
+                g_cfg.replay_dispatch_inject = 0;
+            }
+            append_line(g_log_path, b);
+        }
+        // mp:D37b: replay_drop_net_issue arms in MH_Harness_LateArm (after the promotions), for D18's reason.
     }
 
     // ---- D6: arm the synthetic moving-unit workload -------------------------------------------
@@ -9202,6 +9707,13 @@ extern "C" int MH_Harness_Init(void) {
               g_cfg.conq_land_self_at, g_cfg.conq_academy, g_cfg.conq_barracks, g_cfg.conq_soldier,
               g_cfg.conq_n_soldiers, g_cfg.conq_force_kill_at);
     append_line(g_log_path, banner);
+    if (g_cfg.d38_player >= 0) {
+        wsprintfA(banner, "; d38 player=%d bldg_at=%d bldg=%d at mother dx=%d dy=%d dock_at=%d proto=%d kill_at=%d"
+                          " margin_ms=%d (mp:D38 row 5 dead-docked-unit fixture)\n",
+                  g_cfg.d38_player, g_cfg.d38_bldg_at, g_cfg.d38_bldg, g_cfg.d38_bldg_dx, g_cfg.d38_bldg_dy,
+                  g_cfg.d38_dock_at, g_cfg.d38_dock_proto, g_cfg.d38_kill_at, g_cfg.d38_kill_margin_ms);
+        append_line(g_log_path, banner);
+    }
     // Name both sides of the input/output split explicitly -- a recorded run writes into the run
     // folder, a replay reads next to the exe, and "why is my replay reading nothing" is otherwise a
     // silent guess.

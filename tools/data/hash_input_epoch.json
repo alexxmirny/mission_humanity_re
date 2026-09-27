@@ -43,7 +43,7 @@
    "path": "src/mh_dll/mh_harness/harness.cpp",
    "span": "harness_on_sim_step_prehash",
    "reason": "everything the harness runs on the step boundary before the hash, through the fold -- the G177 class (the 2026-09-11 order_queue tail-clear memset lived here)",
-   "sha256": "72bf8c69f08f55fa5c44dc1013a51bef4788b4438a74a0000d58950dd618142c"
+   "sha256": "74df2fc80db8578b23325d8c2bbb80de201f5a0c663408f8bf85cf22e32e2fdc"
   },
   {
    "id": "harness_order_replay_inject",
@@ -76,6 +76,24 @@
     "harness_on_sim_step_prehash"
    ],
    "reason": "mp:SES7: on_sim_step gains seg_tick() -- the per-match recording segment (opens/closes session-folder files, dumps a seed copy, mirrors log lines). It reads game state and writes only files; the bytes fed to the hash for an unchanged world are unchanged: relay_match hash IDENTICAL/898 and --determinism --det-local ALL PAIRS IDENTICAL (8000 and 1500 steps) on this build."
+  },
+  {
+   "epoch": 1,
+   "kind": "neutral",
+   "date": "2026-09-27",
+   "changed": [
+    "harness_on_sim_step_prehash"
+   ],
+   "reason": "mp:D37b: on_sim_step's order-replay inject now picks order_replay_inject_prefix under the NEW opt-in [harness] replay_dispatch_inject knob; with the knob off (every existing config and artifact) the same order_replay_inject runs, so the bytes fed to the hash for an unchanged world do not change"
+  },
+  {
+   "epoch": 1,
+   "kind": "neutral",
+   "date": "2026-09-27",
+   "changed": [
+    "harness_on_sim_step_prehash"
+   ],
+   "reason": "mp:D38 row 5: harness on_sim_step gains the d38_* dead-docked-unit fixture (default off: d38_player=-1) -- no byte fed to the hash changes for an unchanged world"
   }
  ]
 }

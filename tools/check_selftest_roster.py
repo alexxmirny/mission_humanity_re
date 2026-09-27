@@ -61,7 +61,7 @@ SOURCES = {
 # (udproomtest); +1 at mp:R3e (udprelaytest); +1 at mp:R7a (netcfgtest); +1 at TL-HARN4
 # (inireadtest); +1 at dist:LA13 (runctxtest); +1 at mp:U41b (qmatchtest); +1 at mp:U19i (gpfgtest).
 # A change here is a deliberate edit, not a drift
-EXPECT_COUNT = 53  # tooling:TL-SUITE-COUNTERS, 2026-09-26: diagtest added (was 52)
+EXPECT_COUNT = 54  # mp:X2g, 2026-09-26: infoavitest added (was 53; diagtest at TL-SUITE-COUNTERS)
 
 # A table row: {"name", <gate>, <adapter>},  -- clang-format pads the name column, so the whitespace
 # is free-form. Comment lines never match, because a `//` line has no leading `{"`.

@@ -3,6 +3,7 @@
 // udp_snapshot.h; this file is the arithmetic.
 //
 #include "udp_snapshot.h"
+#include "udp_endpoint.h" // mp:X2f -- the Outbox detaches channel C before it frees
 
 #include <string.h>
 
@@ -337,6 +338,61 @@ void Receiver::stats(Stats &out) const {
     out.body_chunks     = m_body_chunks;
     out.manifest_ready  = m_man_ready;
     out.complete        = m_complete;
+}
+
+// =================================================================================================
+// THE OUTBOX (mp:X2f) -- the WHY is in the header
+// =================================================================================================
+Outbox::Outbox() : m_copy(nullptr), m_len(0), m_on(false), m_dst(-1), m_superseded(-1) {}
+
+bool Outbox::release(Endpoint &ep) {
+    // THE ORDER IS THE FIX. Detach first, under the endpoint's lock; only then is nothing on the
+    // recv or timer thread able to be inside Sender::source, and only then may the bytes it reads
+    // go away. The pre-X2f path freed first and never detached at all.
+    const bool was = ep.bulk_cancel_src(&m_tx);
+    if (m_copy != nullptr) VirtualFree(m_copy, 0, MEM_RELEASE);
+    m_copy = nullptr;
+    m_len  = 0;
+    m_on   = false;
+    m_dst  = -1;
+    m_tx.reset();
+    return was;
+}
+
+int Outbox::arm(Endpoint &ep, int dst_player, const void *blob, uint32_t len, int &out_err) {
+    out_err = OK;
+    if (blob == nullptr || len == 0 || len > MAX_BODY_BYTES) {
+        out_err = ERR_ARG;
+        return 0;
+    }
+    // A previous transfer of ours is superseded, never interleaved. Read the destination BEFORE the
+    // release clears it.
+    const int prev = m_dst;
+    m_superseded   = release(ep) ? prev : -1;
+    m_copy = (uint8_t *)VirtualAlloc(nullptr, (SIZE_T)len, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
+    if (m_copy == nullptr) {
+        out_err = ERR_CAPACITY;
+        return 0;
+    }
+    memcpy(m_copy, blob, (size_t)len);
+    m_len = len;
+
+    const int rc = m_tx.begin(m_copy, m_len);
+    if (rc != OK) {
+        out_err = rc;
+        release(ep);
+        return 0;
+    }
+    if (!ep.bulk_send_src(dst_player, &Sender::source, &m_tx, m_tx.image_len(), true)) {
+        // Not an error and not a state: the peer is not admitted yet, or somebody else's transfer
+        // (the `[net] bulk_selftest_mb` knob) holds the one slot. The channel never saw this Sender,
+        // so the release below detaches nothing -- it is here for the copy.
+        release(ep);
+        return 0;
+    }
+    m_on  = true;
+    m_dst = dst_player;
+    return 1;
 }
 
 } // namespace snapshot

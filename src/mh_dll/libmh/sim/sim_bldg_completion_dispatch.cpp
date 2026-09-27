@@ -88,6 +88,22 @@ inline constexpr uint32_t RACE_ALIEN = 2u;
 // _G_LLM_GAME_SESSION_MODE == 1 is single-player (sim_order_dispatch_bldg.cpp's own comment: "3 is MP
 // lockstep").
 inline constexpr int32_t SESSION_MODE_SINGLE_PLAYER = 1;
+inline constexpr int32_t SESSION_MODE_MP_LOCKSTEP   = 3; // sim_event_codes.h's SESSION_MP_LOCKSTEP
+
+} // namespace
+
+namespace detail {
+
+// mp:D37a -- see the header. RETAIL (0x004798ee-0x004798f8) credits a re-landing when
+// `player != PlayerSide`; in lockstep the rule is "the player is AI" (status_flags bit 3).
+bool mother_relanding_credits(int32_t session_mode, uint32_t status_flags, bool is_local_player) {
+    if (session_mode == SESSION_MODE_MP_LOCKSTEP) return (status_flags & STRAT_PLAYER_STATUS_AI_CONTROLLED) != 0;
+    return !is_local_player;
+}
+
+} // namespace detail
+
+namespace {
 
 // The shared "%s: %s" / "%s: %s (%s)" message formats -- SAME literal addresses (0x005012ec /
 // 0x0050133a) sim_bldg_state_charge.cpp's TEXT_FMT_NAME_REASON / sim_bldg_state_prod.cpp's
@@ -220,7 +236,19 @@ void bldg_completion_dispatch(const sim_view &v, sim_store &own, const bldg_comp
                 case BLDG_TYPE_A_MOTHER:
                 case BLDG_TYPE_H_MOTHER: {
                     player_profile &prof = own.profile_at(player);
-                    if (prof.mother_established == 0 || !is_local_player) {
+                    if (prof.mother_established != 0 && *v.session_mode == SESSION_MODE_MP_LOCKSTEP) {
+                        // mp:D37a evidence line (a re-landing in a lockstep match; the mh.dll seam
+                        // logs the same shape in configuration (1)). Read by check_pioneer_refill.py.
+                        const bool credit = mother_relanding_credits(*v.session_mode, prof.status_flags, is_local_player);
+                        mh::ai::ai_say("; D37a: pioneer re-landing player %u (local %u) status 0x%X -> %s (retail: %s) "
+                                       "[libmh]\n",
+                                       (unsigned)player, (unsigned)*v.player_side, (unsigned)prof.status_flags,
+                                       credit ? "refill (AI)" : "no refill", is_local_player ? "no refill" : "refill");
+                    }
+                    // mp:D37a: retail's `|| player != PlayerSide` is per-peer; in lockstep the
+                    // re-landing refill goes to AI players only (mother_relanding_credits).
+                    if (prof.mother_established == 0 ||
+                        mother_relanding_credits(*v.session_mode, prof.status_flags, is_local_player)) {
                         if (prof.status_flags & STRAT_PLAYER_STATUS_AI_CONTROLLED) {
                             const char *race_str = (prof.race == RACE_ALIEN) ? "A" : "H";
                             // DECLARED NEED 7 (dmp_path_scratch) + DECLARED NEED 8 (utils_sprintf__vssii).

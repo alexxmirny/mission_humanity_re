@@ -48,7 +48,7 @@ static_assert(::mh::state::reach_of(::mh::state::RID_PROD_SHUTTLE_SLOTS) > (PROD
 static_assert(::mh::state::reach_of(::mh::state::RID_PROGRESS) > (PROGRESS_ROW_COUNT) * sizeof(const player_progress),
               "progress is claimed at ONE ROW or less of the stride it is indexed by: only row 0 is in the region. The stride and the index site are named in the comment above. Widen the claim -- a `size` on its view entry in tools/data/dll_addr_manifest.json is the Tree/MOVE_MICROSTEPS precedent.");
 
-// resources -- resources, indexed [row * 64 + i] at src/mh_dll/libmh/sim/sim_bldg_completion_dispatch.cpp:362
+// resources -- resources, indexed [row * 64 + i] at src/mh_dll/libmh/sim/sim_bldg_completion_dispatch.cpp:390
 static_assert(::mh::state::reach_of(::mh::state::RID_RESOURCES) > (64) * sizeof(const map_resources),
               "resources is claimed at ONE ROW or less of the stride it is indexed by: only row 0 is in the region. The stride and the index site are named in the comment above. Widen the claim -- a `size` on its view entry in tools/data/dll_addr_manifest.json is the Tree/MOVE_MICROSTEPS precedent.");
 

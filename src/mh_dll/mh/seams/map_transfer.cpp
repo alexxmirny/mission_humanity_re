@@ -77,14 +77,16 @@ bool in_resource_pack(const char *name) {
 // ---- host state ---------------------------------------------------------------------------------
 
 struct PeerMap {
-    bool    seated;      // an admitted JOIN has been seen from this peer id
-    bool    holds;       // ...and its last report matched our claim
-    bool    blocked;     // ...and it CANNOT hold it (its packs shadow the name)
-    uint8_t had[HASH_N]; // what it last reported (all-zero = nothing)
-    char    name[32];    // its player name, for the notice
+    bool     seated;      // an admitted JOIN has been seen from this peer id
+    bool     holds;       // ...and its last report matched our claim
+    bool     blocked;     // ...and it CANNOT hold it (its packs shadow the name)
+    uint8_t  had[HASH_N]; // what it last reported (all-zero = nothing)
+    char     name[32];    // its player name, for the notice
+    uint32_t seq;         // mp:X2f -- g_join_seq at this report's publish (see reap_gone_locked)
 };
 
 PeerMap  g_peer[8];
+uint32_t g_join_seq = 0;           // mp:X2f -- bumped under g_host_lock by every published JOIN report
 char     g_host_map[MAP_NAME_CAP]; // the map name our claim is FOR (so a picker change re-hashes)
 uint8_t  g_host_hash[HASH_N];
 uint32_t g_host_size  = 0;
@@ -334,7 +336,7 @@ bool file_hash(const char *dir, const char *name, uint8_t out[HASH_N], uint32_t 
 }
 
 Resolve resolve(const char *dir, const char *base, const uint8_t want[HASH_N], char *out_path,
-                size_t cap, bool skip_base) {
+                size_t cap, bool skip_base, bool skip_stored) {
     uint8_t h[HASH_N];
     // THE BASE NAME FIRST, and by HASH. A local file called `Cold War.mpm` is a candidate exactly
     // when its bytes are the wanted ones -- never because it has the right name, which is the whole
@@ -347,6 +349,7 @@ Resolve resolve(const char *dir, const char *base, const uint8_t want[HASH_N], c
     // directory scan: the stored name is a FUNCTION of (base, hash), so the one candidate is
     // computable and enumerating would only find files whose names we would then have to re-derive
     // anyway.
+    if (skip_stored) return Resolve::Missing;
     char stored[np::MAP_STORED_NAME_CAP];
     if (np::map_stored_name(base, want, stored, sizeof(stored)) == 0) return Resolve::Missing;
     char path[STORED_PATH_CAP];
@@ -446,7 +449,10 @@ const char *redirect_apply(const char *in, char *scratch, size_t cap) {
 
 namespace {
 
+bool absent_hides(const char *filename); // mp:X2e harness staging -- see `map_test_pretend=absent`
+
 int32_t __cdecl open_file_replacement(char *filename, char *mode) {
+    if (absent_hides(filename)) return 0; // NULL FILE*: what a machine without the file answers
     char        scratch[MAX_PATH];
     const char *use = redirect_apply(filename, scratch, sizeof(scratch));
     return (int32_t)(uintptr_t)mh::call::_fsopen((char *)use, mode, 0);
@@ -665,6 +671,50 @@ int send_snapshot(int peer, const void *body, int len) {
     return MH_Net_SnapshotSend(peer, body, len);
 }
 
+// ---- mp:X2f -- A PEER THE TRANSPORT DROPPED IS NOT A PEER ----------------------------------------
+//
+// THE GAP. A seat is cleared by exactly two things: host_on_leave (a FLAG_LEAVE, i.e. the joiner
+// pressed Cancel) and session_reset. A joiner whose LINK died sends neither -- the host's link
+// timeout drops the conn and latches the id for the in-match fast-drop (U17), which the lobby never
+// consumes. So the seat stayed, the Start gate kept "waiting for 'Rizzen'", and 90 s later the pump
+// re-armed a transfer to a player id nobody held: rc4 host, "[map] send timed out for peer 1 after
+// 90000 ms -- re-arming" at 19:50:02, 80 s after "udp conn 0 dropped" at 19:48:42. The re-arm is
+// the path that crashed the module (mp:X2f's module half); this half makes it unreachable for a
+// peer that is gone.
+//
+// Asked of the transport (MH_Net_ActivePeerIds), not inferred from time, because the transport is
+// the only party that knows. A transport that is not started has NO opinion -- every peer is "alive"
+// -- which is also what keeps maptest's offline arms, which seat peers with no transport at all,
+// exactly as they were.
+bool peer_alive(int peer) {
+    if (g_pump_hooks != nullptr && g_pump_hooks->alive != nullptr)
+        return g_pump_hooks->alive(peer, g_pump_hooks->ctx) != 0;
+    if (!MH_Net_IsStarted()) return true;
+    int       ids[MH_NET_MAX_PEERS];
+    const int n = MH_Net_ActivePeerIds(ids, MH_NET_MAX_PEERS);
+    for (int i = 0; i < n; ++i)
+        if (ids[i] == peer) return true;
+    return false;
+}
+
+// Release every seated peer the probe found gone -- but ONLY a seat published BEFORE the probe. The
+// probe ran outside the lock, so a joiner can be admitted by the transport, send its JOIN and be
+// seated by host_on_join in between; its fresh seat is newer than `probe_seq` and is left alone
+// (the next frame's probe sees it alive). Without the sequence this would be a new torn-publish race
+// of exactly T6's shape: a real joiner un-seated by a stale "not connected". Caller holds the lock.
+int reap_gone_locked(const bool alive[8], uint32_t probe_seq, int out_peer[8], char out_name[8][32]) {
+    int n = 0;
+    for (int i = 0; i < 8; ++i) {
+        if (!g_peer[i].seated || alive[i] || g_peer[i].seq > probe_seq) continue;
+        out_peer[n] = i;
+        lstrcpynA(out_name[n], g_peer[i].name, 32);
+        ++n;
+        g_peer[i] = PeerMap{};
+        if (g_tx_peer == i) g_tx_peer = -1; // released, not timed out: nothing to re-arm
+    }
+    return n;
+}
+
 // Arm the transfer for the first seated peer that does not hold the map. One at a time; see
 // TX_REARM_MS for why a stuck one is re-armed rather than waited on forever.
 //
@@ -673,9 +723,21 @@ int send_snapshot(int peer, const void *body, int len) {
 void host_pump_transfer() {
     if (!g_host_claim) return;
     if (!can_carry()) return; // mp:X2b: never arm a transfer the link cannot carry
-    int timed_out = -1, want = -1;
+    // mp:X2f -- the transport's view first, OUTSIDE the lock (a transport call), stamped with the
+    // report sequence it is older than. See reap_gone_locked.
+    uint32_t probe_seq = 0;
     {
         HostLock l;
+        probe_seq = g_join_seq;
+    }
+    bool alive[8];
+    for (int i = 0; i < 8; ++i) alive[i] = peer_alive(i);
+    int  timed_out = -1, want = -1;
+    int  gone[8], n_gone      = 0;
+    char gone_name[8][32];
+    {
+        HostLock l;
+        n_gone = reap_gone_locked(alive, probe_seq, gone, gone_name);
         if (g_tx_peer >= 0) {
             if (GetTickCount() - g_tx_armed < TX_REARM_MS) return; // still believed to be running
             timed_out = g_tx_peer;
@@ -686,6 +748,12 @@ void host_pump_transfer() {
             g_tx_peer  = want; // the reservation: a report from this peer now clears it
             g_tx_armed = GetTickCount();
         }
+    }
+    for (int k = 0; k < n_gone; ++k) {
+        wsprintfA(g_line, "; [map] peer %d '%s' is gone at the transport (its link dropped) -- seat "
+                          "and transfer released, NOT re-armed (mp:X2f); a rejoin's JOIN re-seats it\n",
+                  gone[k], gone_name[k]);
+        mlog(g_line);
     }
     if (timed_out >= 0) {
         wsprintfA(g_line, "; [map] send timed out for peer %d after %lu ms -- re-arming\n", timed_out,
@@ -860,7 +928,8 @@ void host_on_join(int sender, const char *player_name, const uint8_t map_hash[HA
             }
             p.holds = now;
         }
-        g_peer[sender & 7] = p; // THE publish: seated and holds become visible together
+        p.seq              = ++g_join_seq; // mp:X2f: newer than any liveness probe already taken
+        g_peer[sender & 7] = p;            // THE publish: seated and holds become visible together
     }
     if (line[0] != '\0') mlog(line);
 }
@@ -978,9 +1047,25 @@ void client_sample_local(const char *when) {
 // map and the scenario would still pass. The redirect's own proof is `maptest` arm E and the
 // two-endpoint arm W, where the local file is genuinely different bytes. The rig proves the
 // integration -- claim, gate, transfer, content-addressed write, and a match that plays IDENTICAL.
-enum { PRETEND_OFF   = 0,
-       PRETEND_NONE  = 1,
-       PRETEND_OTHER = 2 };
+//   * `map_test_pretend=absent` (mp:X2e) -- `none`, PLUS, from the JOIN on, the game's OWN opens of
+//     the advertised name fail while no download is registered: the replaced `utils_open_file`
+//     answers NULL for that basename, which is what it answers on a machine that has no such file.
+//     `none` alone could not reproduce the rc4 field freeze: retail's lobby-entry map check
+//     (llm_cfg_map_verify_version, see THE LOBBY-ENTRY MAP CHECK below) reads the base file, found
+//     the shared image's copy, and never raised its error box. Still nothing is moved -- the refusal
+//     is in this process's open wrapper, and the file on disk is what every other lane keeps reading.
+//     WHY FROM THE JOIN AND NOT FROM THE ADVERT, measured: the first cut hid from the moment the
+//     advert named the map, and that moment is on the RECV thread. The browser's preview was reading
+//     the same map on the main thread, and llm_map_readfile_loose_fallback (EN 0x004a4177) OPENS THE
+//     FILE TWICE -- a header peek, then the real read. The first open got the file, the advert landed,
+//     the second got NULL, and the unchecked utils_read_from_file on it faulted (AV at 0x004cfd62, two
+//     crash markers in the shared lane). A real absent file fails both opens. So the stage is armed on
+//     the main thread by the JOIN builder (client_my_hash), where no map read is in flight, and the
+//     browser before it reads the real file.
+enum { PRETEND_OFF    = 0,
+       PRETEND_NONE   = 1,
+       PRETEND_OTHER  = 2,
+       PRETEND_ABSENT = 3 };
 int g_pretend = -1; // -1 = not yet read from the ini
 
 // A hash no real map will have: it is the truncation of SHA-256("mh:X2 uitest pretend other"),
@@ -1004,6 +1089,8 @@ int pretend_mode() {
         mh::config::read_ini_string("net", "map_test_pretend", "", v, sizeof(v), g_ini); // TL-HARN4
         if (lstrcmpiA(v, "none") == 0)
             g_pretend = PRETEND_NONE;
+        else if (lstrcmpiA(v, "absent") == 0)
+            g_pretend = PRETEND_ABSENT;
         else if (lstrcmpiA(v, "other") == 0)
             g_pretend = PRETEND_OTHER;
         else
@@ -1012,22 +1099,47 @@ int pretend_mode() {
             wsprintfA(g_line,
                       "; [map] uitest pretend=%s -- this client behaves as though it holds %s for "
                       "the advertised map; no file is moved, copied or deleted\n",
-                      g_pretend == PRETEND_NONE ? "none" : "other",
-                      g_pretend == PRETEND_NONE ? "nothing"
-                                                : "a different file of the same name");
+                      g_pretend == PRETEND_NONE     ? "none"
+                      : g_pretend == PRETEND_ABSENT ? "absent"
+                                                    : "other",
+                      g_pretend == PRETEND_NONE     ? "nothing"
+                      : g_pretend == PRETEND_ABSENT ? "nothing, and the game's own opens of it fail"
+                                                    : "a different file of the same name");
             mlog(g_line);
         }
     }
     return g_pretend;
 }
 
+// The `absent` knob's open refusal (called from open_file_replacement). Only once the JOIN builder
+// armed it (g_absent_live, main thread -- see the knob's note for why not earlier) and while NO
+// download is registered: once the redirect is set the open goes to the stored copy, exactly as on a
+// machine that never had the file. A redirect that arrives between a read's two opens makes the
+// first one fail and the read return early, so that transition is safe; the unsafe one (visible,
+// then hidden) can no longer happen inside a read.
+bool g_absent_live       = false;
+bool g_absent_downloaded = false; // this session stored its own copy (skip_stored no longer applies)
+
+bool absent_hides(const char *filename) {
+    if (!g_absent_live || filename == nullptr || g_redir_on) return false;
+    if (lstrcmpiA(basename_of(filename), g_want_map) != 0) return false;
+    char line[MAX_PATH + 128];
+    wsprintfA(line, "; [map] uitest absent: refused the game's open of %.200s -- staged as not on this "
+                    "disk (mp:X2e)\n",
+              filename);
+    mlog(line);
+    return true;
+}
+
 // Re-decide where the wanted content lives and set the redirect accordingly. Called when the advert
 // lands and again after a download is stored.
 void client_resolve_now() {
-    char          name[STORED_PATH_CAP];
-    const int     pm = pretend_mode();
-    const Resolve r =
-        resolve(dir_for(g_want_map), g_want_map, g_want_hash, name, sizeof(name), pm != PRETEND_OFF);
+    char      name[STORED_PATH_CAP];
+    const int pm = pretend_mode();
+    // mp:X2e: `absent` ignores an EARLIER download too, until the current lobby stores its own.
+    const bool    skip_stored = pm == PRETEND_ABSENT && !g_absent_downloaded;
+    const Resolve r           = resolve(dir_for(g_want_map), g_want_map, g_want_hash, name, sizeof(name),
+                                        pm != PRETEND_OFF, skip_stored);
     if (r == Resolve::Base) {
         redirect_clear();
         g_cs = CS_HAVE;
@@ -1046,7 +1158,7 @@ void client_resolve_now() {
         // there is one, and the no-claim zero if there is not. Reporting the WANTED hash here would
         // make every mismatch look like agreement, which is the failure the JOIN field is shaped to
         // prevent (see join_request_for's three-argument form).
-        if (pm == PRETEND_NONE)
+        if (pm == PRETEND_NONE || pm == PRETEND_ABSENT)
             memset(g_my_hash, 0, HASH_N);
         else if (pm == PRETEND_OTHER)
             memcpy(g_my_hash, pretend_other_hash(), HASH_N);
@@ -1160,8 +1272,9 @@ void client_tick() {
               stored, len, hexof(g_want_hash, hex, sizeof(hex)), g_want_map);
     mlog(g_line);
     {
-        ClientLock l(false);  // mp:X2d: main thread -- waits
-        client_resolve_now(); // -> CS_HAVE + the redirect, from the file we just wrote
+        ClientLock l(false);        // mp:X2d: main thread -- waits
+        g_absent_downloaded = true; // mp:X2e: the stored copy is now this session's own
+        client_resolve_now();       // -> CS_HAVE + the redirect, from the file we just wrote
     }
     g_notice_on                      = false;
     *(wchar_t *)ADDR_MAP_STATUS_LINE = L'\0';
@@ -1212,6 +1325,14 @@ bool client_my_hash(uint8_t out[HASH_N]) {
     if (g_want_valid) memcpy(g_reported, g_my_hash, HASH_N);
     else memset(g_reported, 0, HASH_N);
     g_reported_valid = true;
+    // mp:X2e harness stage: armed HERE, on the main thread between map reads (see the knob's note).
+    if (g_want_valid && g_pretend == PRETEND_ABSENT && !g_absent_live) {
+        g_absent_live = true;
+        wsprintfA(g_line, "; [map] uitest absent: armed at the JOIN -- the game's opens of %s now "
+                          "fail until a download is registered (mp:X2e)\n",
+                  g_want_map);
+        mlog(g_line);
+    }
     if (!g_want_valid) return false;
     memcpy(out, g_my_hash, HASH_N);
     return !np::map_hash_is_none(out);
@@ -1229,12 +1350,99 @@ bool client_take_rejoin() {
 }
 
 // =================================================================================================
+// THE LOBBY-ENTRY MAP CHECK (mp:X2e)
+//
+// WHAT RETAIL DOES. llm_lobby_join_handler (EN 0x004be21d) -- the client's Join -- pushes the lobby,
+// runs llm_lobby_screen_open, and then calls llm_cfg_map_verify_version (EN 0x004be0bc). That copies
+// current_map_data (which the join just filled from the session record's map header), re-reads the
+// map from disk with cfg_ReadMapFile, and compares the checksum. On a match it returns 1. On a miss
+// it raises llm_ui_dlg_savegame_io_error(G_TEXT_PTRS[0x30f]) -- K_MENU_ErrorMap, "can't create map
+// file" -- and on a checksum MISMATCH it first MoveFileA's the player's own map aside to a numbered
+// backup. Retail meant the dead map-chunk protocol (types 0x0f/0x10/0x11) to fetch it afterwards.
+//
+// WHY THAT FREEZES A DOWNLOAD. The "error box" is not a message box: it runs
+// llm_lobby_peer_table_clear, llm_teardown_hook_stub, llm_net_disconnect_stub and
+// llm_lobby_map_file_close, then swaps the menu to a one-button dialog whose OK goes to the local
+// browser. The link survives (our disconnect stub is a no-op) but the lobby screen is gone, so
+// on_lobby_dispatch -- the only caller of lobby_tick, hence of MH_Net_SnapshotPoll -- stops, and so
+// does retail's inbound drain. Lane M fills to its 224-slot headroom in ~3 s, the stream pauses, the
+// host's window fills, and the host drops the peer ("acknowledged nothing for 10016 ms with 1024
+// segment(s)"). The rc4 field client logged `DLG savegame_io_error caller=0x004be151` -- the return
+// address inside this function -- at its lobby entry. A map of <= 4 chunks finishes inside channel
+// C's lane before any of that bites, which is why Last Question (29 KB) never showed it.
+//
+// WHAT THIS DOES INSTEAD. The same read and the same compare, and on a match the same 1. On a miss
+// it says so in the log and returns 0 (the one caller discards the value) WITHOUT the box, the
+// teardown or the rename. X2 owns a missing or different map: the client reports what it holds in
+// the JOIN, the host refuses Start by name until the peer holds its bytes, and the download is stored
+// under a content-addressed name, never over the player's file (rule 1). The retail rename was the
+// opposite of rule 1. Armed only when the map transfer is (`[net] map_transfer`); with it off the
+// retail body runs untouched. `[net] map_entry_check=retail` leaves it unarmed on purpose -- the
+// repro knob for the rig's red arm.
+// =================================================================================================
+
+namespace {
+
+const char *cs_name(int cs) {
+    switch (cs) {
+        case CS_IDLE: return "idle (no claim known yet)";
+        case CS_HAVE: return "have";
+        case CS_NEED: return "need -- the download is pending";
+        case CS_BLOCKED: return "blocked";
+        case CS_REFUSED: return "refused";
+        default: return "?";
+    }
+}
+
+int32_t __cdecl entry_check_replacement() {
+    using hdr_t      = mh::game::mh_cfg_struct_map_header;
+    const hdr_t *cur = (const hdr_t *)mh::addr::current_map_data;
+    // Retail's local is 0x230 bytes; the buffer is larger because cfg_ReadMapFile writes past the
+    // struct's 0x17c for maps carrying a mission tail (sim_lt_cfg_planet.cpp says how far).
+    alignas(8) unsigned char buf[0x400] = {};
+    memcpy(buf, cur, 0x230);
+    hdr_t        *h = (hdr_t *)buf;
+    const int32_t r = (int32_t)mh::call::cfg_ReadMapFile(h);
+    if (r >= 0 && h->checksum == cur->checksum) return 1;
+    char name[sizeof(cur->map_name) + 1];
+    lstrcpynA(name, cur->map_name, sizeof(name));
+    char line[400];
+    wsprintfA(line,
+              "; [map] entry check %s: %s -- retail's 'can't create map file' box (text 0x30f) and "
+              "the lobby teardown it runs are NOT raised; the map transfer owns this (client %s) "
+              "(mp:X2e)\n",
+              name,
+              r < 0 ? "not readable here"
+                    : "checksum differs (the player's file stays where it is; retail renamed it aside)",
+              cs_name(g_cs));
+    mlog(line);
+    return 0;
+}
+
+} // namespace
+
+MH_EXPORT_REPLACE(llm_cfg_map_verify_version, entry_check_replacement)
+
+// =================================================================================================
 // THE SEAM
 // =================================================================================================
 
 void install() {
     if (g_installed || !enabled()) return;
     g_installed = true;
+    {
+        char v[32];
+        mh::config::read_ini_string("net", "map_entry_check", "defer", v, sizeof(v), g_ini);
+        if (lstrcmpiA(v, "retail") == 0)
+            mlog("; [map] entry check retail -- the lobby-entry map read raises retail's error box "
+                 "([net] map_entry_check=retail, the mp:X2e repro knob)\n");
+        else if (!mh_export_install_llm_cfg_map_verify_version())
+            mlog("; [map] entry check NOT armed -- a joiner without the map gets retail's error box "
+                 "at lobby entry and its download stalls (mp:X2e)\n");
+        else
+            mlog("; [map] entry check armed -- a map missing or different at lobby entry is left to "
+                 "the transfer (mp:X2e)\n");
+    }
     // The replacement is armed even on a peer that never joins anything: `g_redir_on` is what
     // decides whether it does anything, and arming once at MH_Core_Arm keeps the install out of the
     // lobby's frame path. install_export_ok checks the entry bytes and logs its own refusal.
@@ -1257,13 +1465,15 @@ void session_reset() {
         g_host_claim = false;
     }
     ClientLock cl(false); // mp:X2d
-    g_want_valid     = false;
-    g_reported_valid = false;
-    g_cs             = CS_IDLE;
-    g_notice_on      = false;
-    g_host_map[0]    = '\0';
-    g_host_claim     = false;
-    g_rejoin_due     = false;
+    g_want_valid        = false;
+    g_reported_valid    = false;
+    g_absent_live       = false; // mp:X2e: the next lobby re-arms it at its own JOIN
+    g_absent_downloaded = false;
+    g_cs                = CS_IDLE;
+    g_notice_on         = false;
+    g_host_map[0]       = '\0';
+    g_host_claim        = false;
+    g_rejoin_due        = false;
     memset(g_host_hash, 0, HASH_N);
     memset(g_my_hash, 0, HASH_N);
     gate_open(); // hands the DISABLED bit back to retail if we were the ones holding it

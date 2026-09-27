@@ -294,6 +294,9 @@ REGION_NAMES = [
     "player_resources",  # player_resources int[8][10] -- the stock every affordability check reads (D25)
     # (2026-09-19): was never hashed; the first real internet match diverged here alongside
     # resource_spent and the verdict could not see it. Appended (the contract), state-only.
+    "progress",  # game_progress[8][300] {available, acquired, f3} -- the research/invention table (D38 row 10)
+    # (2026-09-27): sim-read (ai_plan_unit_training, building eligibility) and never hashed. Every
+    # writer is sim or session setup; no per-peer byte, so no mask. Appended (the contract).
 ]
 # Mirrors the DLL's hash_region::excluded flag. NOTE the frame-rate-dependent regions (the
 # six clock doubles, frame_ring, fps_estimate) ARE in this set: the harness has always

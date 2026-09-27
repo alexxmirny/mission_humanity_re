@@ -262,6 +262,77 @@ private:
 void hex32(const uint8_t *h, char *out);
 
 } // namespace snapshot
+
+class Endpoint; // udp_endpoint.h -- the Outbox below drives it, nothing above does
+
+namespace snapshot {
+
+// =================================================================================================
+// THE OUTBOX (mp:X2f) -- the SENDING application's half, which used to be four globals and a free
+// function in udp_transport.cpp. It is here, beside the Sender it owns, for one reason: it is where
+// the rc4 host crash lived, and a sequence that lives only in the module's export TU is a sequence
+// no suite can run (net_selftest links the TCP module's MH_Net_* bodies, never udp_transport.cpp's).
+//
+// THE CRASH, in the order it happened (rc4 field report, host, 2026-09-26 19:48-19:50):
+//   1. A map transfer to player 1 on conn 0 is running: channel C holds `src = Sender::source`,
+//      `ctx = &<this Sender>`, and pulls a chunk through it on every window load.
+//   2. Player 1's link times out and the conn is dropped. The transfer is NOT -- T2 keeps a
+//      transfer addressed to a PLAYER across a drop, by design.
+//   3. 90 s later map_transfer re-arms. The old Send path FREED the copy and reset the Sender first,
+//      with no endpoint lock, then asked channel C to start -- which refused, because the stale
+//      transfer was still active -- and freed/reset again. Every lobby frame, from then on.
+//   4. The rejoiner was handed conn 0 and player 1, so the stale transfer resumed towards it. Its
+//      acknowledgements drove on_ack -> tx_seek -> tx_load -> Sender::source on the RECV thread,
+//      and one of them landed between a VirtualFree and the reset that follows it: memcpy from
+//      released pages, 0xc0000005 at mh_net_udp.dll+0x15aae.
+//
+// THE RULE THIS OBJECT ENFORCES: the channel is detached from the Sender (Endpoint::bulk_cancel_src,
+// under m_conn_cs) BEFORE the copy is released or the Sender rewritten. That makes re-arming a
+// REPLACEMENT -- the caller's new blob supersedes whatever this outbox was pushing -- which is also
+// the only meaning map_transfer's re-arm ever had: the old path could not re-arm at all while the
+// stale transfer was active. The transfer is started with `drop_cancels`, so a destination the link
+// retires takes its transfer with it and a new peer on the same index starts clean.
+//
+// ONE THREAD. arm() and release() are the application's (the game's main thread); the only thing
+// another thread ever does with this object is read the Sender through channel C under m_conn_cs,
+// and that is exactly the access the detach step fences off.
+// =================================================================================================
+class Outbox {
+public:
+    Outbox();
+
+    // Copy `blob`, manifest it, and start channel C pushing it to `dst_player`. Returns 1 when the
+    // transfer is running. 0 otherwise, with `out_err` = OK when the endpoint simply did not take it
+    // (the player is not admitted yet, or a transfer this outbox does not own is running -- the
+    // caller retries), or a snapshot::err when it is a refusal (ERR_ARG, ERR_CAPACITY for no room
+    // for the copy, or whatever Sender::begin said).
+    int arm(Endpoint &ep, int dst_player, const void *blob, uint32_t len, int &out_err);
+    // Detach channel C from this outbox, THEN free the copy and reset the Sender. Idempotent.
+    // Returns true when the detach stopped a transfer that was still RUNNING (not one that had
+    // already finished, and not one channel C never took).
+    bool release(Endpoint &ep);
+
+    // The destination player of the transfer the last arm() SUPERSEDED while it was still running,
+    // or -1. mp:X2f clause (3): a joiner that leaves the lobby but stays linked keeps its transfer
+    // (nothing on a LEAVE cancels channel C), and the next joiner's arm replaces it -- the exact
+    // sequence the rc4 host died in. The export TU logs it, so a rig run can say which path
+    // released the old transfer instead of inferring it from silence.
+    int superseded() const { return m_superseded; }
+
+    bool          on() const { return m_on; }
+    uint32_t      len() const { return m_len; }
+    const Sender &sender() const { return m_tx; }
+
+private:
+    Sender   m_tx;
+    uint8_t *m_copy; // VirtualAlloc'd; see udp_transport.cpp's ownership note for why a copy
+    uint32_t m_len;
+    bool     m_on;
+    int      m_dst;        // the player the running transfer is addressed to, or -1
+    int      m_superseded; // see superseded()
+};
+
+} // namespace snapshot
 } // namespace netudp
 } // namespace mh
 

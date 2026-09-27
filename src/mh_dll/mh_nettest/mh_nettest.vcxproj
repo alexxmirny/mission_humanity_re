@@ -129,6 +129,7 @@
     <ClCompile Include="session_dir_selftest.cpp" />
     <ClCompile Include="log_rotate_selftest.cpp" />
     <ClCompile Include="ini_read_selftest.cpp" />
+    <ClCompile Include="info_avi_selftest.cpp" />
     <ClCompile Include="run_context_selftest.cpp" />
     <ClCompile Include="udp_wire_selftest.cpp" />
     <ClCompile Include="udp_loopback_selftest.cpp" />
@@ -2449,6 +2450,10 @@
     <ClCompile Include="..\mh\seams\ui_diplomacy_echo.cpp" />
     <ClCompile Include="..\mh\seams\ui_bldg_cancel_task.cpp" />
     <ClCompile Include="..\mh\seams\ui_bldg_build_probe.cpp" />
+    <ClCompile Include="..\mh\seams\sim_pioneer_refill.cpp" />
+    <ClCompile Include="..\mh\seams\ui_bldg_netcrit_pure.cpp" />
+    <ClCompile Include="..\mh\seams\ui_storage_panel_purge.cpp" />
+    <ClCompile Include="..\mh\seams\ui_info_avi.cpp" />
     <ClCompile Include="..\mh\seams\ui_net_indicator.cpp" />
     <ClCompile Include="..\mh\seams\ui_drive.cpp" />
     <ClCompile Include="..\mh_harness\harness.cpp" />

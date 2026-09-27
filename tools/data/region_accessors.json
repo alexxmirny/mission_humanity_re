@@ -8,15 +8,15 @@
   "matrix_cells": 10982,
   "matrix_regions": 2716,
   "matrix_regions_unhosted": 1886,
-  "reimpl_done": 999,
+  "reimpl_done": 1000,
   "reimpl_dead": 107,
   "registry_regions": 845,
   "measured": 783,
   "unmeasured": 62,
   "inputs": {
    "en_functions": "11424f8c4c2c4f75",
-   "state_regions": "6e607bd59392827a",
-   "reimpl_done": "4beddffdb545eb3a"
+   "state_regions": "c7f566ee69127362",
+   "reimpl_done": "f1486606577a0dd4"
   },
   "inputs_dirty_at_refresh": []
  },
@@ -5634,6 +5634,7 @@
     "game_AddPlanetToAvailable",
     "game_HandleInvasion",
     "game_HandleUpgrade",
+    "llm_cfg_map_verify_version",
     "llm_game_notify_system_available",
     "llm_game_start_tutorial",
     "llm_net_lockstep_dispatch",
@@ -5670,7 +5671,6 @@
     "game_ui_AddTextToPrintQueue",
     "llm_bldg_get_name_text",
     "llm_bldg_get_unit_name_text",
-    "llm_cfg_map_verify_version",
     "llm_debug_console_dispatch",
     "llm_lobby_begin_map_load",
     "llm_lobby_build_players_tail_copy",
@@ -5749,12 +5749,12 @@
     "llm_ui_unit_unassigned_list_draw_row"
    ],
    "external_addr_takers": [],
-   "external_bytes": 54116,
+   "external_bytes": 53763,
    "subsystems": {
     "UI/menus": 56,
     "Game/boot/misc": 10,
     "Strategic sim/economy": 9,
-    "Config/formats": 4,
+    "Config/formats": 3,
     "Tactical mode": 3,
     "Other named": 1,
     "Netcode": 1
@@ -9142,7 +9142,9 @@
    "ours_writers": [
     "llm_game_start_tutorial"
    ],
-   "ours_readers": [],
+   "ours_readers": [
+    "llm_cfg_map_verify_version"
+   ],
    "external_writers": [
     "llm_lobby_apply_selected_session_map",
     "llm_lobby_join_handler",
@@ -9151,7 +9153,6 @@
    ],
    "external_writers_dead": [],
    "external_readers": [
-    "llm_cfg_map_verify_version",
     "llm_lobby_build_players_finish",
     "llm_lobby_build_players_from_slots",
     "llm_lobby_build_slot_widgets",
@@ -9169,11 +9170,10 @@
    "external_addr_takers": [
     "llm_lobby_map_load_async_step"
    ],
-   "external_bytes": 8897,
+   "external_bytes": 8544,
    "subsystems": {
     "UI/menus": 16,
-    "Game/boot/misc": 1,
-    "Config/formats": 1
+    "Game/boot/misc": 1
    }
   },
   "LOBBY_SELECTED_SESSION_STATE": {

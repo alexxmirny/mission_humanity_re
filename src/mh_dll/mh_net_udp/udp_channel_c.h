@@ -138,6 +138,7 @@ struct Stats {
     uint32_t tx_chunks_total; // 0 when no transfer is running
     long     tx_resumes;      // times a peer's ack moved the base BACKWARD is impossible; this
                               // counts restarts-from-an-ack after a link came back
+    long tx_cancelled;        // mp:X2f -- transfers aborted by their owner or by a dropped destination
     // receiver
     long     rx_pieces;
     long     rx_dup;           // a piece for a chunk already delivered, or one already held
@@ -227,8 +228,30 @@ public:
     // The same transfer, pulled from a composer rather than a buffer (mp:X1). `src` is read under
     // the endpoint's m_conn_cs, once per chunk as the window loads it -- never per piece, so a
     // retransmit costs nothing extra.
-    bool start_send_src(int conn_idx, int player_id, source_fn src, void *ctx, uint32_t len);
+    //
+    // `drop_cancels` (mp:X2f) says what a DROPPED destination means for this transfer. False is T2's
+    // rule and the default: the target is a PLAYER, the transfer survives the conn and resumes when
+    // that player dials again (udpbulktest's resume and cold arms are exactly that). True is the
+    // application's rule for a snapshot: a destination the link timeout retired is GONE, and the
+    // next peer to be handed its player id -- possibly on the same conn index -- is somebody else
+    // who must not inherit a half-sent transfer pulled through a composer the application is about
+    // to tear down. See on_conn_dropped.
+    bool start_send_src(int conn_idx, int player_id, source_fn src, void *ctx, uint32_t len,
+                        bool drop_cancels = false);
+    // Stop the transfer AND forget where its bytes come from. Clearing `src`/`ctx`/`blob` is not
+    // tidiness: after this returns (under m_conn_cs) no code path in this file can reach the
+    // caller's composer or buffer again, which is the whole contract a caller about to free them
+    // needs (mp:X2f).
     void abort_send();
+    // mp:X2f -- abort only if the running (or finished) transfer pulls through `ctx`. The owner of a
+    // composer calls this before releasing it; a transfer somebody ELSE armed is left alone, and the
+    // owner's own start_send_src will then be refused as it always was.
+    bool abort_src(void *ctx);
+    // mp:X2f -- the endpoint dropped `conn_idx`. A `drop_cancels` transfer bound to it is aborted,
+    // and the receiver stops acknowledging towards it (the index can be re-issued to a new peer
+    // within seconds; the frontier itself is KEPT -- it is what mp:X1's resume restores). Returns
+    // true when a transfer was cancelled, so the endpoint can say so in the drop's own log line.
+    bool on_conn_dropped(int conn_idx);
     bool sending() const { return m_tx.active; }
 
     // ---- the receiver's frontier, as an APPLICATION control (mp:X1) ------------------------------
@@ -312,6 +335,7 @@ private:
         const uint8_t *blob; // null = synthetic, unless `src` is set
         source_fn      src;  // non-null = pull from the composer (mp:X1); wins over `blob`
         void          *src_ctx;
+        bool           drop_cancels; // mp:X2f -- see start_send_src
         uint32_t       blob_len;
         uint32_t       chunks;
         uint32_t       base;
@@ -351,7 +375,7 @@ private:
     emit_fn m_emit;
     void   *m_emit_ctx;
 
-    size_t   m_piece_max; // mp:R1d -- PIECE_MAX, or PIECE_MAX_RELAYED on a relayed link
+    size_t   m_piece_max;    // mp:R1d -- PIECE_MAX, or PIECE_MAX_RELAYED on a relayed link
     DWORD    m_link_rto_ms;  // mp:T5 -- see set_link_timing; 0 = use BULK_RTO_MS
     DWORD    m_link_fast_ms; // mp:T5 -- 0 = use FAST_RETX_MS
     int      m_selftest_mb;

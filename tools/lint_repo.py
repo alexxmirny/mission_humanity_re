@@ -1319,6 +1319,12 @@ def declare_checks(args):
         "mp:RM1 rematch-residue post-check -- the negative cases still fire (check_rematch_residue --selftest)",
         [sys.executable, os.path.join(REPO, "tools", "check_rematch_residue.py"), "--selftest"],
     )
+    # mp:D36. The rematch-vs-fresh-peer seed diff off planted lanes: the rc4 resource_spent residue and
+    # a planets-tail-only residue must go red, a host that never landed must be REFUSED (not pass).
+    check(
+        "mp:D36 rematch seed post-check -- the negative cases still fire (check_d36_rematch_seed --selftest)",
+        [sys.executable, os.path.join(REPO, "tools", "check_d36_rematch_seed.py"), "--selftest"],
+    )
     # mp:SES7b. The match-replay tool's verdict and input resolution over planted logs and folders --
     # no rig: an excluded-region-only difference must not read as a divergence, too few common steps
     # must be REFUSED rather than IDENTICAL, and a process recording whose first played match is not
@@ -1383,6 +1389,35 @@ def declare_checks(args):
     check(
         "mp:D35 build-click post-check -- the negative cases still fire (check_build_probe --selftest)",
         [sys.executable, os.path.join(REPO, "tools", "check_build_probe.py"), "--selftest"],
+    )
+    # mp:D37. The relay-chain rows run only with the rig; their clauses -- the seam armed/kept
+    # banner, a probe line that restored sim bytes, hash identical/diverged-and-stayed in
+    # `buildings`, and the in-band desync watch clean/fired -- are gated here off planted logs.
+    check(
+        "mp:D37 network-panel post-check -- the negative cases still fire (check_netcrit_pure --selftest)",
+        [sys.executable, os.path.join(REPO, "tools", "check_netcrit_pure.py"), "--selftest"],
+    )
+    # mp:D38 row 5. The storage-panel rows run only with the rig; their clauses -- the seam armed/kept
+    # banner, a skip line that left a dead row to the sim, the fixture's kill on the same step on both
+    # peers, hash identical/diverged-after-the-kill in `unit_storage`, and the in-band watch
+    # clean/fired -- are gated here off planted logs.
+    check(
+        "mp:D38 storage-panel post-check -- the negative cases still fire (check_storage_purge --selftest)",
+        [sys.executable, os.path.join(REPO, "tools", "check_storage_purge.py"), "--selftest"],
+    )
+    # mp:X2g. The info-screen AVI row runs only with the rig; its clauses -- the seam armed with the
+    # test knob, the per-screen `clip missing` line, the walk closing the screen, hash identical and
+    # no lockstep clock freeze over 1 s -- are gated here off planted logs.
+    check(
+        "mp:X2g info-screen AVI post-check -- the negative cases still fire (check_info_avi --selftest)",
+        [sys.executable, os.path.join(REPO, "tools", "check_info_avi.py"), "--selftest"],
+    )
+    # mp:D37a. The pioneer re-landing rows run only with the rig; their clauses -- the seam banner, the
+    # non-owner re-landing line, hash identical/diverged-and-stayed in p0_ai_econ/player_resources, and
+    # the in-band watch clean/fired -- are gated here off planted logs.
+    check(
+        "mp:D37a pioneer re-landing post-check -- the negative cases still fire (check_pioneer_refill --selftest)",
+        [sys.executable, os.path.join(REPO, "tools", "check_pioneer_refill.py"), "--selftest"],
     )
     # tooling:TL-SUITE-SPLICE-HOSTCLICK. host_clicks' three per-segment verdicts run only with the
     # rig; each segment going red ALONE (and an inherited divergence reading NOT JUDGED) is gated here.

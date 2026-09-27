@@ -135,6 +135,25 @@ def assert_roster(exe):
     return True
 
 
+def staged(asan):
+    """The already-staged exes of one mode (`--no-build`), or None if any is missing.
+
+    THE CALLER OWNS FRESHNESS. `run_gate.py` builds both modes in its serial step 1 (`--build-only`)
+    and then runs the suites with `--no-build`, so nothing here can tell a fresh stage from a stale
+    one -- which is why this flag is for that pairing and not for a hand run after an edit.
+    """
+    label = "ASan" if asan else "plain"
+    out = {}
+    for name in EXES:
+        exe = os.path.join(ASAN_DIR if asan else PLAIN_DIR, name + ".exe")
+        if not os.path.exists(exe):
+            print(f"[FAIL] --no-build: no staged {label} {exe} -- build it first (--build-only)")
+            return None
+        out[name] = exe
+    print(f"[ok] staged ({label}) -- {len(out)} exe(s), not rebuilt (--no-build)")
+    return out
+
+
 def build(asan):
     """Build one mode. Returns {exe name: path}, or None if the build or the staging failed.
 
@@ -220,13 +239,27 @@ def main():
         default=3,
         help="plain-pass repeats for the crash-prone suites (default 3)",
     )
+    ap.add_argument(
+        "--build-only",
+        action="store_true",
+        help="build + stage + verify the exes (instrumented, roster), run no suite. run_gate.py's "
+        "serial step 1, so no compiler competes with a running game for CPU (2026-09-27).",
+    )
+    ap.add_argument(
+        "--no-build",
+        action="store_true",
+        help="run the suites against the exes a previous --build-only staged; never rebuilds",
+    )
     args = ap.parse_args()
+    if args.build_only and args.no_build:
+        ap.error("--build-only and --no-build are exclusive")
+    get = staged if args.no_build else build
 
     ok = True
     t0 = time.time()
 
     if not args.no_asan and args.which != "plain":
-        exes = build(asan=True)
+        exes = get(asan=True)
         if exes is None:
             return 1
         # EVERY exe is checked, not just the first: an uninstrumented binary reports no memory
@@ -239,20 +272,24 @@ def main():
                 return 1
             if not assert_roster(exe):
                 return 1
-        for suite in SUITES:
-            ok &= run_suite(exes[SUITE_EXE[suite]], suite, "asan")
-        print(f"[{'ok' if ok else 'FAIL'}] ASan pass ({len(SUITES)} suites, {len(exes)} exes)")
+        if not args.build_only:
+            for suite in SUITES:
+                ok &= run_suite(exes[SUITE_EXE[suite]], suite, "asan")
+            print(f"[{'ok' if ok else 'FAIL'}] ASan pass ({len(SUITES)} suites, {len(exes)} exes)")
 
     # The plain pass is a pass in its own right, not cleanup: it is where the flaky-crash repeats
     # run, since a crash is the only symptom corruption produces in an uninstrumented build. (Before
     # 2026-08-23 it was also cleanup -- the modes shared a staging path -- which is no longer true.)
     if args.which != "asan":
-        exes = build(asan=False)
+        exes = get(asan=False)
         if exes is None:
             return 1
         for exe in exes.values():
             if not assert_roster(exe):
                 return 1
+        if args.build_only:
+            print(f"run_selftests: BUILT in {time.time() - t0:.0f}s (--build-only; no suite ran)")
+            return 0
         for suite in SUITES:
             reps = args.repeats if suite in FLAKY else 1
             for i in range(reps):

@@ -159,11 +159,13 @@ void Channel::tx_seek(uint32_t new_base) {
     m_s.tx_base_chunk = m_tx.base;
 }
 
-bool Channel::start_send_src(int conn_idx, int player_id, source_fn src, void *ctx, uint32_t len) {
+bool Channel::start_send_src(int conn_idx, int player_id, source_fn src, void *ctx, uint32_t len,
+                             bool drop_cancels) {
     if (src == nullptr) return false;
     if (!start_send(conn_idx, player_id, nullptr, len)) return false;
-    m_tx.src     = src;
-    m_tx.src_ctx = ctx;
+    m_tx.src          = src;
+    m_tx.src_ctx      = ctx;
+    m_tx.drop_cancels = drop_cancels;
     // The window was loaded from the SYNTHETIC generator a statement ago -- start_send does not know
     // a composer is coming. Re-load it now rather than reordering start_send, so the two entries
     // keep one arming path and a future edit to it cannot apply to only one of them.
@@ -195,10 +197,47 @@ bool Channel::start_send(int conn_idx, int player_id, const uint8_t *blob, uint3
     return true;
 }
 
+// mp:X2f. THE FIELD CRASH THIS CLOSES (rc4 host, 2026-09-26): the application freed the composer's
+// blob while this transfer still pointed at it, and the next acknowledgement's tx_seek -> tx_load
+// pulled a chunk through it -- a memcpy from released pages on the recv thread. `active = false`
+// alone already stops on_ack and tick from loading; the pointers are cleared as well so that "the
+// channel cannot reach the caller's bytes" is a property of the state, not of which branch happens
+// to test `active` first. The window is invalidated for the same reason: its chunks were copied
+// from the source and describe a transfer that no longer exists.
 void Channel::abort_send() {
-    m_tx.active         = false;
+    m_tx.active       = false;
+    m_tx.src          = nullptr;
+    m_tx.src_ctx      = nullptr;
+    m_tx.blob         = nullptr;
+    m_tx.drop_cancels = false;
+    for (int w = 0; w < WINDOW_CHUNKS; ++w) m_tx.win[w].valid = false;
     m_s.tx_active       = false;
     m_s.tx_chunks_total = 0;
+}
+
+bool Channel::abort_src(void *ctx) {
+    if (ctx == nullptr || m_tx.src_ctx != ctx) return false;
+    const bool was = m_tx.active;
+    abort_send();
+    if (was) ++m_s.tx_cancelled;
+    return was;
+}
+
+// A dropped conn is where "the target is a player" (mp:T1b) and "the target is a person" (mp:X2f)
+// part ways, and the transfer's own flag says which one its owner meant. The receiver half is
+// unconditional and smaller than it looks: it only stops the frontier heartbeat from being addressed
+// to an index the endpoint is about to hand to somebody else. The frontier stays -- clearing it is
+// the mutation udpbulktest's resume arm names, and a new transfer re-learns it from the first ack.
+bool Channel::on_conn_dropped(int conn_idx) {
+    if (m_rx.conn == conn_idx) {
+        m_rx.conn          = -1;
+        m_rx.last_piece_ms = 0;
+        m_rx.ack_due       = false;
+    }
+    if (!m_tx.active || m_tx.conn != conn_idx || !m_tx.drop_cancels) return false;
+    abort_send();
+    ++m_s.tx_cancelled;
+    return true;
 }
 
 void Channel::send_piece(int w, uint16_t piece, DWORD now, bool retx) {
@@ -450,8 +489,8 @@ void Channel::tick(int conn_idx, int player_id, DWORD now) {
     }
     if (m_tx.active && m_tx.conn == conn_idx) {
         // mp:T5 -- the larger of the LAN constant and what the link measured (set_link_timing).
-        const DWORD rto  = m_link_rto_ms > BULK_RTO_MS ? m_link_rto_ms : BULK_RTO_MS;
-        const DWORD fast = m_link_fast_ms > FAST_RETX_MS ? m_link_fast_ms : FAST_RETX_MS;
+        const DWORD rto    = m_link_rto_ms > BULK_RTO_MS ? m_link_rto_ms : BULK_RTO_MS;
+        const DWORD fast   = m_link_fast_ms > FAST_RETX_MS ? m_link_fast_ms : FAST_RETX_MS;
         int         budget = BULK_BURST;
         for (int w = 0; w < WINDOW_CHUNKS && budget > 0; ++w) {
             TxChunk &c = m_tx.win[w];

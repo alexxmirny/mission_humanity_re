@@ -220,6 +220,13 @@ void MH_Net_SetPeerHorizon(int player_id, int horizon_ms);
  * going anywhere). A no-op on a module with no lane counters (mh_net_udp.dll's ring has none). */
 void MH_Net_QueueMatchBoundary(void);
 
+/* mp:X2h -- a bare, lock-protected READ of the inbound queue's lane M (must_keep: orders, control
+ * transitions, keepalives, chat) depth RIGHT NOW -- no rollup, no reset, no log line, unlike
+ * QueueMatchBoundary above. For the lobby-tick stall watch (net_seams.cpp): "is the modal-stalled
+ * peer's inbound queue actually backing up" wants a live number, not a per-match summary. 0 on a
+ * transport with no lane counters or not started (same shape as every other live-state getter here). */
+int MH_Net_QueueDepthM(void);
+
 /* 1 if the transport has been started (Init/InitEx succeeded), else 0. */
 int MH_Net_IsStarted(void);
 

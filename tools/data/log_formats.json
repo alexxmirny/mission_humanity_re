@@ -177,7 +177,9 @@
         "tools/check_cheat_gate.py:analyse",
         "tools/check_resync_storm.py:resync_lines",
         "tools/check_el2_mother.py:check",
-        "tools/check_build_probe.py:check"
+        "tools/check_build_probe.py:check",
+        "tools/check_pioneer_refill.py:check",
+        "tools/check_storage_purge.py:check"
       ],
       "since": "mp:D21",
       "status": "live",
@@ -1266,7 +1268,8 @@
       ],
       "parsers": [
         "tools/check_cam_trace.py:parse",
-        "tools/check_host_clicks.py:parse_uidrive"
+        "tools/check_host_clicks.py:parse_uidrive",
+        "tools/check_info_avi.py:uidrive_lines"
       ],
       "since": "tooling:TL-SUITE-SPLICE-CAM",
       "status": "live",
@@ -3888,7 +3891,7 @@
       "parsers": [],
       "since": "mp:X2",
       "status": "live",
-      "note": "The harness knob announcing itself ([net] map_test_pretend=none|other, client-only). X2's clauses each need the CLIENT to start holding something particular and the rig has no per-peer file staging, so the knob stages the DECISION -- what this peer reports holding, and whether its resolver considers the base-name file -- and moves, copies and deletes nothing. The file-moving first version broke the shared Maps symlink every local lane reads. A run cannot stage anything without this line, which is the point of it."
+      "note": "The harness knob announcing itself ([net] map_test_pretend=none|other|absent, client-only; `absent` also refuses the game's own opens of the map from the JOIN on, mp:X2e). X2's clauses each need the CLIENT to start holding something particular and the rig has no per-peer file staging, so the knob stages the DECISION -- what this peer reports holding, and whether its resolver considers the base-name file -- and moves, copies and deletes nothing. The file-moving first version broke the shared Maps symlink every local lane reads. A run cannot stage anything without this line, which is the point of it."
     },
     {
       "id": "map.advert_hold",
@@ -3929,6 +3932,116 @@
       "since": "mp:X2",
       "status": "live",
       "note": "THE START-GATE WIDGET IDENTIFICATION, said out loud once per process. The gate greys the lobby's Start button by setting its own flags&0x40 DISABLED bit, and the button is identified by INFERENCE -- the lobby child whose action_cb is llm_lobby_begin_map_load. The first rig run failed exactly there and silently: the refusal reached the log, the button stayed clickable, and the scenario's `disabled Start` waited out its whole budget with nothing anywhere saying why. So a hit logs which child it was, and a miss logs every child's callback, flags and display indices. A miss is the worst failure this item has -- a host that believes it is holding Start while a player can press it -- and it must never be quiet."
+    },
+    {
+      "id": "map.entry_check",
+      "stream": "mh_net.log",
+      "emitter": "src/mh_dll/mh/seams/map_transfer.cpp",
+      "emit": "; [map] entry check ",
+      "tags": [
+        "map"
+      ],
+      "needles": [
+        "; \\[map\\] entry check (.+?): (not readable here|checksum differs)",
+        "; \\[map\\] entry check retail "
+      ],
+      "fields": [
+        "map",
+        "why"
+      ],
+      "parsers": [
+        "tools/check_map_transfer.py:check_entry_deferred"
+      ],
+      "since": "mp:X2e",
+      "status": "live",
+      "note": "THE LOBBY-ENTRY MAP CHECK. Retail's llm_cfg_map_verify_version (EN 0x004be0bc, called by the client's join handler right after the lobby opens) re-reads the joined map and, when it is missing or its checksum differs, raises the shared error box with text 0x30f ('can't create map file') -- which tears the lobby down and stops the per-lobby-frame tick that drains channel C, so a >4-chunk download freezes and the host drops the link (rc4 field report). mh.dll replaces it while the map transfer is armed: `armed` once per process, then one `<map>: not readable here|checksum differs` line per deferral, and no box, teardown or rename. `retail` is the repro knob ([net] map_entry_check=retail) leaving the original body in place."
+    },
+    {
+      "id": "lobby.tick_stalled",
+      "stream": "mh_net.log",
+      "emitter": "src/mh_dll/mh/seams/net_seams.cpp",
+      "emit": "; [lobby] tick STALLED ",
+      "tags": [
+        "lobby"
+      ],
+      "needles": [
+        "; \\[lobby\\] tick STALLED "
+      ],
+      "fields": [
+        "stall_ms",
+        "lane_m_depth",
+        "peers",
+        "game_mode",
+        "last_dlg_caller"
+      ],
+      "parsers": [],
+      "since": "mp:X2h",
+      "status": "live",
+      "note": "THE LOBBY-TICK STALL WATCH. X2e proved the shape: a modal on either peer (host or client) can swap the widget list away from the lobby (llm_ui_dlg_savegame_io_error's teardown is the one found so far) while the transport link survives, so on_lobby_dispatch -- the only drain of lane M / channel C -- simply stops being called; lane M fills in ~2-3 s and the far peer's host drops the link after ~10 s. Rather than chase every future modal, mp_lobby_stall_watch (net_seams.cpp, called from net_lockstep.cpp's on_present -- the per-frame path X2g's own crash proved keeps running from INSIDE a retail modal's loop) logs this ONCE per stall when on_lobby_dispatch has gone quiet >= 1000 ms with a live manual-MP link outside a match, and a matching lobby.tick_resumed line when it demonstrably catches back up. `lane_m_depth` reads MH_Net_QueueDepthM (mp:X2h's cross-module export, 0 if the bound transport has no lane counters); `last_dlg_caller` is 0 if no savegame_io_error dialog has fired yet this process (net_diag.cpp's on_savegame_err latches it independently of whether that logger's own line is armed). No parser yet -- read by grep; a rig row can extend check_map_transfer.py to assert it later."
+    },
+    {
+      "id": "lobby.tick_resumed",
+      "stream": "mh_net.log",
+      "emitter": "src/mh_dll/mh/seams/net_seams.cpp",
+      "emit": "; [lobby] tick resumed after ",
+      "tags": [
+        "lobby"
+      ],
+      "needles": [
+        "; \\[lobby\\] tick resumed after "
+      ],
+      "fields": [
+        "stall_total_ms"
+      ],
+      "parsers": [],
+      "since": "mp:X2h",
+      "status": "live",
+      "note": "The recovery half of lobby.tick_stalled: on_lobby_dispatch ticking again while the link is still live and outside a match. NOT emitted when the link ends while stalled -- X2e's own failure mode (the host's 10 s drop) is the STALLED line completing, not a resume, so mp_lobby_stall_watch stays silent on that path rather than printing a misleading recovery."
+    },
+    {
+      "id": "ui.info_avi_guard",
+      "stream": "mh_net.log",
+      "emitter": "src/mh_dll/mh/seams/ui_info_avi.cpp",
+      "emit": "; [ui] info screen AVI guard: ",
+      "tags": [
+        "ui"
+      ],
+      "needles": [
+        "; \\[ui\\] info screen AVI guard:"
+      ],
+      "fields": [
+        "tick",
+        "open_failure",
+        "test_knob"
+      ],
+      "parsers": [
+        "tools/check_info_avi.py:banner_of"
+      ],
+      "since": "mp:X2g",
+      "status": "live",
+      "note": "THE INFO-SCREEN AVI GUARD's arm line, once per process: whether llm_ui_info_media_frame_tick (EN 0x004caa46) is replaced by the divisor-guarded body, whether the AVI-open failure branch of llm_ui_entity_info_screen_open (0x004cb1fa) is spliced to the no-video handler, and whether the rig's [net] info_avi_test_absent knob is armed. `RETAIL` on both halves is [net] info_avi_fallback=0, the repro arm. The rc4 field crash (IDIV by zero at 0x004cab52) is what a RETAIL line leaves reachable."
+    },
+    {
+      "id": "ui.info_avi_missing",
+      "stream": "mh_net.log",
+      "emitter": "src/mh_dll/mh/seams/ui_info_avi.cpp",
+      "emit": "; [ui] info screen clip missing: ",
+      "tags": [
+        "ui"
+      ],
+      "needles": [
+        "; \\[ui\\] info screen clip missing: "
+      ],
+      "fields": [
+        "first_path",
+        "cd_path"
+      ],
+      "parsers": [
+        "tools/check_info_avi.py:check"
+      ],
+      "since": "mp:X2g",
+      "status": "live",
+      "note": "ONE LINE PER INFO SCREEN OPENED WITHOUT VIDEO: the clip named by the entity's INFO_FLC did not open from res\\ or from G_CD_DATA_PATH, and instead of retail's insert-CD dialog + error box (which in a match froze lockstep ~4 s, and then divided by zero) the screen opened with its text pages and no clip. Names both paths tried. A player's report carrying this line is a missing/unshipped clip (retail's own NOT.AVI entries always produce it), not a crash."
     },
     {
       "id": "net.f3c_adopted",
@@ -4114,6 +4227,113 @@
       "since": "mp:D35",
       "status": "live",
       "note": "Boot-time banner: `charge-free at <pay>/<grant>` (armed), `KEPT ([net] build_probe_free=0)` (the reproduction arm), `KEPT ([config] mode=original)`, `DISPLACED` (libmh promotes llm_strat_bldg_try_begin_placement -- configuration (2)), or `NOT patched` (bytes differ / a write refused)."
+    },
+    {
+      "id": "net.d37a_banner",
+      "stream": "mh_net.log",
+      "emitter": "src/mh_dll/mh/seams/sim_pioneer_refill.cpp",
+      "emit": "; D37a: pioneer re-landing refill gated at %08X -- in a lockstep match a re-landing refills AI players only\\n",
+      "tags": [],
+      "needles": [
+        "D37a: pioneer re-landing refill"
+      ],
+      "fields": [
+        "site"
+      ],
+      "parsers": [
+        "tools/check_pioneer_refill.py:banner_of"
+      ],
+      "since": "mp:D37a",
+      "status": "live",
+      "note": "Boot-time banner: `gated at <site>` (armed), `KEPT ([net] pioneer_refill_fix=0)` (the reproduction arm), `KEPT ([config] mode=original)`, `DISPLACED` (a promoted parent), or `NOT patched` (bytes differ / the write refused)."
+    },
+    {
+      "id": "net.d37a_relanding",
+      "stream": "mh_net.log",
+      "emitter": "src/mh_dll/mh/seams/sim_pioneer_refill.cpp",
+      "emit": "; D37a: pioneer re-landing player %u (local %u) status 0x%X -> %s (retail: %s)\\n",
+      "tags": [],
+      "needles": [
+        "D37a: pioneer re-landing player"
+      ],
+      "fields": [
+        "player",
+        "local",
+        "status_flags",
+        "verdict",
+        "retail_verdict"
+      ],
+      "parsers": [
+        "tools/check_pioneer_refill.py:relandings"
+      ],
+      "since": "mp:D37a",
+      "status": "live",
+      "note": "One line per mothership/pioneer RE-landing (mother_established already 1) in a lockstep match, on every peer; the verdict is the fix's, `retail:` what the per-peer retail compare would have done. libmh's sim_bldg_completion_dispatch body (configuration (2)) logs the same line through ai_say with a trailing ` [libmh]`."
+    },
+    {
+      "id": "net.d38_banner",
+      "stream": "mh_net.log",
+      "emitter": "src/mh_dll/mh/seams/ui_storage_panel_purge.cpp",
+      "emit": "; D38: storage-panel purge sim-owned at %08X",
+      "tags": [],
+      "needles": [
+        "D38: storage-panel purge"
+      ],
+      "fields": [
+        "site"
+      ],
+      "parsers": [
+        "tools/check_storage_purge.py:banner_of"
+      ],
+      "since": "mp:D38",
+      "status": "live",
+      "note": "Boot-time banner: `sim-owned at <site>` (armed), `KEPT ([net] storage_panel_purge_fix=0)` (the reproduction arm), `KEPT ([config] mode=original)`, `DISPLACED` (the storage panel promoted), or `NOT patched` (bytes differ / the write refused)."
+    },
+    {
+      "id": "net.d38_skipped",
+      "stream": "mh_net.log",
+      "emitter": "src/mh_dll/mh/seams/ui_storage_panel_purge.cpp",
+      "emit": "; D38: storage-panel purge SKIPPED in lockstep: player %u storage %u, %u dead docked unit(s) ",
+      "tags": [],
+      "needles": [
+        "D38: storage-panel purge SKIPPED"
+      ],
+      "fields": [
+        "player",
+        "storage_slot",
+        "dead_docked"
+      ],
+      "parsers": [
+        "tools/check_storage_purge.py:check"
+      ],
+      "since": "mp:D38",
+      "status": "live",
+      "note": "One line per storage-panel refresh in a lockstep match whose purge the seam skipped -- the first one, then (bounded, 8 total) only those that left N > 0 dead docked units for the sim's sub-tick-A purge. N > 0 is the evidence the panel refreshed on a dead row."
+    },
+    {
+      "id": "harness.d38fix_killed",
+      "stream": "mh_harness.log",
+      "emitter": "src/mh_dll/mh_harness/harness.cpp",
+      "emit": "; D38FIX step=%lu KILLED docked unit %d of player %u in storage %d (building %d), ",
+      "tags": [],
+      "needles": [
+        "; D38FIX step="
+      ],
+      "fields": [
+        "step",
+        "unit",
+        "player",
+        "storage_slot",
+        "building",
+        "docked_count",
+        "purge_due_ms"
+      ],
+      "parsers": [
+        "tools/check_storage_purge.py:kill_steps"
+      ],
+      "since": "mp:D38",
+      "status": "live",
+      "note": "The d38_* fixture's kill (every peer, same step): the docked unit's energy zeroed + llm_strat_bldg_notify_ui for its building. The checker requires one KILLED step, equal on both peers. Siblings `order 0xf2`, `DOCKED` and `FAIL` lines share the `; D38FIX step=` prefix and are not parsed."
     },
     {
       "id": "net.d35_probe",

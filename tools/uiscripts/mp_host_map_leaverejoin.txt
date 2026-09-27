@@ -1,0 +1,76 @@
+# mp:X2f clause (3) HOST -- a joiner leaves mid-download (Cancel/LEAVE) and its PROCESS THEN EXITS
+# for real; a FRESH process re-joins and completes the download. Proves the field crash (an AV in
+# mh_net_udp.dll on exactly this re-join -- a stale snapshot send re-armed into a freed buffer while
+# a reused connection index still sourced its chunks) cannot happen any more, and that the download
+# still finishes correctly for the new process.
+#
+# The walk to the lobby is mp_host_map.txt's (host a game the client's OWN GAME cannot open at all --
+# `[net] map_test_pretend=absent`, mp:X2e's staging, so this is a REAL download, not a same-image
+# resolve). What follows is GS1(b)'s own proven process-exit shape (mp_host_exit_rejoin.txt): client1
+# Cancels (frees the seat) and its process genuinely exits, closing the socket for real -- the
+# transport's own drop-detection is the evidence the in-flight transfer was safely detached, not
+# silently corrupted (`net: udp conn N dropped ...` + `... channel-C transfer cancelled with it ...
+# (mp:X2f)` when the drop lands mid-transfer). Only once that process is confirmed gone does client2
+# -- a BRAND NEW process launched by ui_test.py's `--client-after-exit` (test_ui.py's
+# `client_after_exit`/`client_shares_lane` keys) -- join fresh and finish the download. Pair with
+# mp_client_map_leaverejoin.txt (client1) + mp_client_map.txt (client2, unmodified: an ordinary fresh
+# join+play is exactly what a relaunching player does).
+#
+# A SAME-PROCESS re-join (link death -> discovery browser -> Join) was tried first and looked dead: the
+# browser's clicks produced no second `S3:`/`S4 join` line. UNVERIFIED -- that reading may be the same
+# one-Cancel-short walk mistake this row's client script fixes (the internet browser's &Cancel lands on
+# the LOCAL browser, not the main menu). This process-exit shape sidesteps it: client2 is an ordinary
+# FIRST join, like the field timeline (Cancel/LEAVE, then quit to desktop and relaunch).
+
+settled value:110
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+settled Create
+clickl Create
+present Game name
+settled Ok
+clickl Ok
+present Available maps
+settled Ok
+clickl Ok
+
+# client1 joined; its map_test_pretend=absent staging means it cannot open the map at all, so the
+# Start gate shuts on a REAL download. NO CAPTURE while client1 is seated: client1 Cancels on its own
+# schedule ~0.6 s after its lobby settles, so any frame taken here races that Cancel (measured
+# 2026-09-27: the first cut's `occ <2` / `occ 2` gates all passed within 0.2 s of the join, BEFORE the
+# LEAVE -- occ counts rendered HUMAN/AI rows, which lag the seat -- and its "client1 gone" and
+# "client2 joined" frames both showed client1 still seated).
+present Network players
+peers 1
+disabled Start
+log HOST: Start held -- client1's map download is in flight
+
+# client1's Cancel -> LEAVE frees the slot; its own script says so with `signal c1left` once its
+# lobby is gone. It then walks out to the main menu and QUITS, but its link survives until then, and
+# its transfer is NOT cancelled by the LEAVE -- channel C keeps pushing to a peer that sits on its
+# browser (measured: tx chunk 15/30 frozen, the peer no longer drains). What releases it is the
+# evidence the post_check reads: client2's arm SUPERSEDES it (`net: snapshot SEND to player 2
+# superseded the UNFINISHED transfer to player 1`, snap::Outbox detaching it first -- the exact
+# re-arm-into-a-running-transfer sequence the rc4 host died in), or, if client1's link drops first,
+# the transport's `channel-C transfer cancelled with it (mp:X2f)`.
+awaitsignal c1left
+log HOST: client1 left the lobby (LEAVE) and is quitting its process
+
+# client2 -- a brand-new process launched only once client1's process is GONE (client_after_exit) --
+# joins fresh under its own name and downloads the map from scratch. Gated on its NAME, the one
+# predicate client1's row can never satisfy.
+present client2
+log HOST: client2 (a fresh process) joined -- its download is armed
+
+enabled Start
+settled Start
+capture xlr4_start_released
+clickl Start
+
+absent Network players
+gameclock 6000
+capture xlr5_launched
+log HOST: client2's map download completed and the match launched -- host did not crash
+end

@@ -1,0 +1,49 @@
+# mp:D36 CLIENT1 -- plays match 1 against mp_host_d36_rematch.txt, waits until the host has landed its
+# mother ship (the landing grant is booked on both peers by then), quits the match, then quits the
+# PROCESS for real so client2 (mp_client_d36_fresh.txt) boots fresh into this lane -- the rc4 joiner
+# was a first-match-in-process peer, which is what makes the host's residue a desync at all.
+
+settled value:110
+# a static frame for the suite's capture rule (the verdict is the post_check, not pixels)
+screensettled
+capture d36_c1_menu
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+present Internet server
+settled Internet server
+clickl Internet server
+present Server address
+settled Connect
+clickl Connect
+sessions 1
+settled Join game
+clickl Join game
+present Network players
+signal lobby
+
+absent Network players
+gamemode 2
+awaitsignal landed
+# ESC -> Quit game (113) -> &Yes (121) -> the main menu (mp_client_rematch2.txt's walk)
+key 0x01
+settled value:113
+clickv 113
+settled value:121
+clickv 121
+settled value:110
+signal cliquit
+
+# main menu QUIT (113) -> &Yes (121): the real WM_DESTROY exit (d15_exit_witness.txt's tail)
+screensettled
+settled value:113
+clickv 113
+settled value:121
+clickv 121
+
+# Deliberately unreachable if the quit works; test_ui.py's client_after_exit gate would then time
+# out instead of launching client2.
+present value:105
+log CLIENT1 STILL ALIVE after Quit -- the exit path did not fire
+end

@@ -2,7 +2,7 @@
  "_generated_by": "tools/gen_libmh_calls.py -- do not hand-edit; regenerate instead",
  "_measures": "mh::call:: tokens in src/mh_dll/mh/** (comments stripped; addr/+attic/ excluded)",
  "summary": {
-  "distinct_callees": 133,
+  "distinct_callees": 143,
   "config_measures": {
    "hosted": {
     "sites": 1561,
@@ -36,8 +36,8 @@
   },
   "by_status": {
    "dead": 2,
-   "original": 104,
-   "translated": 27
+   "original": 110,
+   "translated": 31
   },
   "modules": {
    "lockstep": {
@@ -47,10 +47,10 @@
     "outward_distinct": 0
    },
    "seams": {
-    "sites": 169,
-    "distinct": 132,
-    "outward_sites": 136,
-    "outward_distinct": 106
+    "sites": 187,
+    "distinct": 142,
+    "outward_sites": 145,
+    "outward_distinct": 112
    },
    "sim": {
     "sites": 1,
@@ -105,6 +105,18 @@
     "seams": 1
    },
    "adjudication": null
+  },
+  {
+   "name": "cfg_ReadMapFile",
+   "status": "original",
+   "domain": null,
+   "tier": null,
+   "promoted": false,
+   "sites": 1,
+   "modules": {
+    "seams": 1
+   },
+   "adjudication": "host-callback:map-io"
   },
   {
    "name": "cfg_final_planet_FillBankData",
@@ -229,9 +241,9 @@
    "domain": null,
    "tier": null,
    "promoted": false,
-   "sites": 1,
+   "sites": 2,
    "modules": {
-    "seams": 1
+    "seams": 2
    },
    "adjudication": "event-channel:screen"
   },
@@ -349,9 +361,9 @@
    "domain": null,
    "tier": null,
    "promoted": false,
-   "sites": 1,
+   "sites": 2,
    "modules": {
-    "seams": 1
+    "seams": 2
    },
    "adjudication": "event-channel:screen"
   },
@@ -378,6 +390,30 @@
     "seams": 1
    },
    "adjudication": "event-channel:screen"
+  },
+  {
+   "name": "llm_gfx_surface_lock",
+   "status": "original",
+   "domain": null,
+   "tier": null,
+   "promoted": false,
+   "sites": 1,
+   "modules": {
+    "seams": 1
+   },
+   "adjudication": null
+  },
+  {
+   "name": "llm_gfx_surface_unlock",
+   "status": "original",
+   "domain": null,
+   "tier": null,
+   "promoted": false,
+   "sites": 1,
+   "modules": {
+    "seams": 1
+   },
+   "adjudication": null
   },
   {
    "name": "llm_gfx_ui_sprite_get_header_field2",
@@ -640,6 +676,18 @@
    "adjudication": "event-channel:event"
   },
   {
+   "name": "llm_snd_cd_stop",
+   "status": "original",
+   "domain": null,
+   "tier": null,
+   "promoted": false,
+   "sites": 1,
+   "modules": {
+    "seams": 1
+   },
+   "adjudication": null
+  },
+  {
    "name": "llm_snd_play",
    "status": "original",
    "domain": null,
@@ -693,6 +741,28 @@
    "domain": "ai",
    "tier": "T3",
    "promoted": true,
+   "sites": 1,
+   "modules": {
+    "seams": 1
+   }
+  },
+  {
+   "name": "llm_strat_bldg_is_network_critical",
+   "status": "translated",
+   "domain": "sim_resid",
+   "tier": "T2",
+   "promoted": true,
+   "sites": 2,
+   "modules": {
+    "seams": 2
+   }
+  },
+  {
+   "name": "llm_strat_bldg_notify_ui",
+   "status": "translated",
+   "domain": "sim",
+   "tier": "T1",
+   "promoted": false,
    "sites": 1,
    "modules": {
     "seams": 1
@@ -784,9 +854,9 @@
    "domain": "orders_issue",
    "tier": "T1",
    "promoted": true,
-   "sites": 1,
+   "sites": 2,
    "modules": {
-    "seams": 1
+    "seams": 2
    }
   },
   {
@@ -873,6 +943,17 @@
    }
   },
   {
+   "name": "llm_strat_storage_purge_dead_docked",
+   "status": "translated",
+   "domain": "sim",
+   "tier": "T1",
+   "promoted": true,
+   "sites": 1,
+   "modules": {
+    "seams": 1
+   }
+  },
+  {
    "name": "llm_strat_time_resync_and_tick",
    "status": "translated",
    "domain": "sim_resid",
@@ -881,6 +962,17 @@
    "sites": 1,
    "modules": {
     "seams": 1
+   }
+  },
+  {
+   "name": "llm_strat_unit_add_docked",
+   "status": "translated",
+   "domain": "sim",
+   "tier": "T2",
+   "promoted": false,
+   "sites": 2,
+   "modules": {
+    "seams": 2
    }
   },
   {
@@ -1241,9 +1333,9 @@
    "domain": "(pre-ledger)",
    "tier": null,
    "promoted": false,
-   "sites": 1,
+   "sites": 3,
    "modules": {
-    "seams": 1
+    "seams": 3
    }
   },
   {
@@ -1258,6 +1350,30 @@
     "sim": 1
    },
    "adjudication": "cfg-snapshot"
+  },
+  {
+   "name": "llm_ui_avi_decode_frame",
+   "status": "original",
+   "domain": null,
+   "tier": null,
+   "promoted": false,
+   "sites": 1,
+   "modules": {
+    "seams": 1
+   },
+   "adjudication": null
+  },
+  {
+   "name": "llm_ui_avi_open",
+   "status": "original",
+   "domain": null,
+   "tier": null,
+   "promoted": false,
+   "sites": 2,
+   "modules": {
+    "seams": 2
+   },
+   "adjudication": null
   },
   {
    "name": "llm_ui_bldg_panel_open",

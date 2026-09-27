@@ -627,6 +627,48 @@ void run_bldg_completion_dispatch_tests() {
     ck_eq((uint32_t)g_population_add.size(), 0u, "MOTHER: human_transport==0 -> no population_add");
     ck_eq((uint32_t)fx.b(5, 7).x, 0u, "MOTHER: other-player arrival never stamps the UI marker (checked below too)");
 
+    // ---- mp:D37a: the pioneer RE-landing (mother_established==1) in a LOCKSTEP session (mode 3). The
+    // retail `player != PlayerSide` is per-peer; the lockstep rule is "the player is AI". Five cases.
+    {
+        struct d37a_case {
+            int32_t     session_mode;
+            uint32_t    established;
+            uint32_t    status_flags;
+            uint16_t    player; // PlayerSide is 1 throughout
+            uint32_t    expect_adds;
+            const char *what;
+        };
+        const d37a_case cases[] = {
+            {3, 1, 0x4u, 5, 0u, "D37a lockstep: human non-owner re-landing -> NO credit (retail credited)"},
+            {3, 1, 0x4u, 1, 0u, "D37a lockstep: human owner re-landing -> no credit (unchanged)"},
+            {3, 1, STATUS_AI_CONTROLLED, 5, 9u, "D37a lockstep: AI re-landing -> credit (retail refill kept)"},
+            {3, 1, STATUS_AI_CONTROLLED, 1, 9u, "D37a lockstep: AI re-landing on PlayerSide's slot -> credit"},
+            {3, 0, 0x4u, 1, 9u, "D37a lockstep: first landing (established==0) -> credit"},
+            {SESSION_MODE_SP, 1, 0x4u, 5, 9u, "D37a SP: non-local re-landing -> credit (retail verbatim)"},
+            {SESSION_MODE_SP, 1, STATUS_AI_CONTROLLED, 1, 0u, "D37a SP: local re-landing -> no credit (retail verbatim)"},
+            {2, 1, 0x4u, 5, 9u, "D37a mode 2 (tutorial / post-game-over): retail verbatim"},
+        };
+        for (const d37a_case &k : cases) {
+            fx.reset();
+            reset_all();
+            fx.session_mode                      = k.session_mode;
+            fx.player_side                       = 1;
+            fx.planet_index                      = 4;
+            building &bq                         = fx.b(k.player, 7);
+            bq.state                             = ST_CONSTRUCTION;
+            bq.building_id                       = 30;
+            fx.cfg_buildings[30].type            = TY_H_MOTHER;
+            fx.cfg_buildings[30].human_transport = 3;
+            for (int32_t i = 1; i < 10; ++i) fx.cfg_buildings[30].capacity[i] = 1000 * i;
+            fx.profiles[k.player].mother_established = k.established;
+            fx.profiles[k.player].status_flags       = k.status_flags;
+            run(fx, k.player, 7);
+            ck_eq((uint32_t)g_resource_add.size(), k.expect_adds, k.what);
+            ck_eq((uint32_t)g_population_add.size(), k.expect_adds ? 1u : 0u, k.what);
+            ck_eq((uint32_t)fx.profiles[k.player].mother_established, 1u, "D37a: established is 1 afterwards");
+        }
+    }
+
     // ---- type-switch A_MOTHER, primary_mother_bldg already claimed: NOT overwritten -------------------
     fx.reset();
     reset_all();

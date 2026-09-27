@@ -3257,6 +3257,7 @@ int run_logrottest();
 // was hand-patched at its own call site. This suite is the durable fix's own proof, against a
 // fixture ini shaped exactly like the trap (mh_net.example.ini's documented style).
 int run_inireadtest();
+int run_infoavitest();                     // info_avi_selftest.cpp -- mp:X2g
 int run_runctxtest(int argc, char **argv); // LA13: where the logs root is (spawns itself)
 // udp_wire_selftest.cpp -- T0: the UDP packet format (plan D2). Its centre is a directory of
 // FIXTURE FILES that this suite and `cargo test -p relay` both read, because an encoder agreeing
@@ -3483,6 +3484,10 @@ static const suite_row SUITE_TABLE[] = {
     {"sessiondirtest", true, adapt_void<run_sessiondirtest>},
     {"logrottest",     true, adapt_void<run_logrottest>},
     {"inireadtest",    true, adapt_void<run_inireadtest>},
+    // mp:X2g. The info-screen media tick's divisor guard (seams/ui_info_avi.h): the arithmetic the
+    // replaced llm_ui_info_media_frame_tick runs, driven with the zero-filled context a failed AVI
+    // open leaves (the rc4 IDIV-by-zero), plus the live-clip wrap it must not change. Pure; no arena.
+    {"infoavitest",    true, adapt_void<run_infoavitest>},
     // dist LA13. Beside logrottest, its neighbour on the same object: that suite writes THROUGH the
     // run directory, this one asks WHERE it is -- <exedir>\logs\ by default, MH_LOG_ROOT when the
     // launcher sets it (a Program Files game is UAC-virtualized beside its exe). The variable-set

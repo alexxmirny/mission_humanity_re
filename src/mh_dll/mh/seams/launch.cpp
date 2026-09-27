@@ -30,6 +30,7 @@
 #define WIN32_LEAN_AND_MEAN
 #endif
 #include <windows.h>
+#include <stddef.h> // offsetof (mp:D36)
 #include <stdint.h>
 #include <string.h>
 #include <stdarg.h>
@@ -40,6 +41,7 @@
 #include "include/mh_run_context.h"  // MH_RunDir (per-run log folder)
 #include "include/lobby_session.h"   // llm_net_session_entry (retail lobby session-list record)
 #include "addr/mh_addrs.gen.h"       // generated EN VAs (tools/gen_dll_addrs.py)
+#include "addr/mh_structs.gen.h"     // mp:D36 -- mh_cfg_final_struct_Planet (Planets[31]'s string slots)
 #include "config/ini_read.h"         // TL-HARN4: read_ini_string -- strips a trailing `;comment`
 #include "state/region_runtime.h"    // SB-HOSTFREE: live_base/ptr -- a movable region is read
                                      // where it IS, not where the binary put it
@@ -684,6 +686,9 @@ bool g_entry_started   = false;
 int  g_entry_ticks     = 0;
 int  g_entry_hb        = 0;
 bool g_host_start_done = false;
+} // namespace
+bool bml_hook_armed(); // mp:D36: is the begin_map_load run-before hook installed?
+namespace {
 
 // N1: set the full N×N symmetric enemy matrix over the OCCUPIED lobby slots (replaces the 2 hand-written
 // slot0<->slot1 lines). Deterministic: every peer has the same host-synced slots, so build_players_from_slots
@@ -734,6 +739,62 @@ void mp_set_lobby_relations_nxn() {
 void mp_zero_sim_clocks() {
     *(double *)ADDR_GAME_CLOCK = 0.0;
     *(double *)ADDR_TOTAL_TIME = 0.0;
+}
+
+// mp:D36 -- the rematch residue RM1 did not reach: SIM STATE retail never re-initialises between two
+// matches of one process, because a fresh process gets it from zeroed .bss.
+//
+// (1) game::player_data[8] (RID_PLAYER_DATA, 8 x 0x288fc). The human initialiser
+//     llm_strat_init_human_player_data (0x004dd91d, called from llm_game_land_players_on_planet inside
+//     session_begin_multi) resets a dozen AI scalars and the relation row and nothing else; the only
+//     wider zeroing (0x004dcf23 / 0x004dd646) is in the AI spawn paths. So every accumulator a human
+//     record carries survives into the next match: resource_spent[4] (+0x10054, gains-only, fed by
+//     game_UpdateResourceStats -- the mother-ship landing books +5400/4000/3000/2000), and on the same
+//     grounds resource_spend_total[8], the spend rings, ai_intel_*, ai_tile_flags_grid. The rc4
+//     field match (01a0deb9) entered its 2nd match with match 1's landing grant in p0/p1 while the
+//     fresh-process joiner had zeros: `DESYNC step=50 first_region=8 p0_ai_econ`.
+// (2) Planets[31] -- the reserved MP/skirmish scenario planet. llm_strat_scenario_planet_clone
+//     (0x0045ba25) rebuilds it every session through cfg_final_planet_Construct, whose string copies
+//     write the new name up to its NUL and leave the rest of each 255-byte slot alone -- so a shorter
+//     map name than the last match's keeps the old name's tail past the NUL (rc4: the 'm' of
+//     "magnetic fields.mpm" at planets +0x81da). `planets` is hashed as raw bytes.
+//
+// THE REPAIR IS "WHAT A FRESH PROCESS HAS": zero the whole player_data array and the three string
+// slots (path_unc / map_name / tlo_file, +0x10..+0x30d) of Planets[31]. Whole records rather than a
+// field list, because the field list is exactly what failed -- the residue is every field nobody
+// remembered, and the next one would be found the same way, by a player. WHY THIS IS SAFE: at this
+// point (the lobby, SESSION_MODE != 3, before begin_map_load) a first-in-process match reads all of
+// it as zero, which the line below MEASURES on every entry (`nonzero` counts BEFORE the clear -- the
+// rig's d36 row asserts 0/0 on every fresh entry and >0 on the rematching host), and everything that
+// legitimately fills it runs later, inside session_begin_multi (scenario_planet_clone, then
+// land_players_on_planet -> init_human_player_data / spawn_ai_base). Called from on_begin_map_load
+// (the run-before hook every manual-lobby entry passes through, host AND client) or, on a force-entry
+// verb run where that hook is not installed, from mp_lobby_entry_tick -- once per entry, identically
+// on every peer, so all of them enter from one state.
+void mp_clear_match_residue() {
+    using mh::game::mh_cfg_final_struct_Planet;
+    constexpr int  PLANET_SCENARIO_SLOT = 0x1f; // G_PLANET_INDEX session_begin_multi assigns
+    uint8_t       *pd                   = mh::state::ptr<uint8_t>(mh::state::RID_PLAYER_DATA);
+    const uint32_t pd_len               = mh::state::live_size(mh::state::RID_PLAYER_DATA);
+    uint8_t       *pl                   = mh::state::ptr<uint8_t>(mh::state::RID_PLANETS);
+    const uint32_t str_lo               = (uint32_t)offsetof(mh_cfg_final_struct_Planet, path_unc);
+    const uint32_t str_hi               = (uint32_t)offsetof(mh_cfg_final_struct_Planet, info_txt);
+    const uint32_t p31                  = PLANET_SCENARIO_SLOT * (uint32_t)sizeof(mh_cfg_final_struct_Planet);
+    // [net] d36_clear_residue=0 is the REPRODUCTION knob (the d36_rematch_seed_retail row): measure,
+    // log, and leave the residue in place -- the rc4 configuration. Default 1; never ship 0.
+    const bool    clear = net_ini_int("d36_clear_residue", 1) != 0;
+    unsigned long pd_nz = 0, pl_nz = 0;
+    if (pd != nullptr) {
+        for (uint32_t i = 0; i < pd_len; ++i) pd_nz += pd[i] != 0;
+        if (clear) memset(pd, 0, pd_len);
+    }
+    if (pl != nullptr && p31 + str_hi <= mh::state::live_size(mh::state::RID_PLANETS)) {
+        for (uint32_t i = str_lo; i < str_hi; ++i) pl_nz += pl[p31 + i] != 0;
+        if (clear) memset(pl + p31 + str_lo, 0, str_hi - str_lo);
+    }
+    lg("; D36: match-entry residue %s: player_data nonzero=%lu of %lu B, Planets[31] strings nonzero=%lu of %lu B",
+       clear ? "cleared" : "KEPT ([net] d36_clear_residue=0 -- the rc4 configuration)", pd_nz,
+       (unsigned long)pd_len, pl_nz, (unsigned long)(str_hi - str_lo));
 }
 
 // mp:RM1 -- THE MANUAL-LOBBY ENTRY PREP RUNS ONCE PER LOBBY, NOT ONCE PER PROCESS. Two latches made
@@ -1162,6 +1223,12 @@ void          mp_lobby_entry_tick(bool is_host) {
     }
     log_lobby_state(is_host, "at-entry");
     mp_zero_sim_clocks(); // RM1: enter with a fresh process's clock (see the host prep)
+    // D36: the match-entry residue clear lives in on_begin_map_load, which the call below reaches
+    // through the run-before hook -- on EVERY begin_map_load, including the client entries this tick
+    // never sees (measured: a joiner entered via retail's START handler with "session already live -- lobby
+    // entry driver disarmed" and no prep). A force-entry verb run leaves begin_map_load unhooked, so it
+    // clears here instead; exactly one of the two runs per entry.
+    if (!bml_hook_armed()) mp_clear_match_residue();
     lg("; --mp-%s: TRIGGERING game entry via begin_map_load (slots_occupied=%d pcount=%d map_pcount->%d)",
        is_host ? "host" : "join", occ, *(int *)ADDR_NET_PCOUNT, occ);
     ((void (*)(void))ADDR_BEGIN_MAP_LOAD)();
@@ -1767,12 +1834,19 @@ volatile int g_bml_refuse = 0;
 
 void on_begin_map_load() {
     g_bml_refuse = 0;
-    if (g_verb != VERB_NONE || !g_manual_mp) return;  // pure manual menu only (force-entry untouched)
-    if (*(int *)ADDR_NET_IS_HOST == 0) return;        // client: nothing to prep/send here
-    if (mh::seams::maps::host_refuse_start_click()) { // logs `start CLICK REFUSED` to mh_net.log
+    if (g_verb != VERB_NONE || !g_manual_mp) return; // pure manual menu only (force-entry untouched)
+    const bool is_host = *(int *)ADDR_NET_IS_HOST != 0;
+    if (is_host && mh::seams::maps::host_refuse_start_click()) { // logs `start CLICK REFUSED` to mh_net.log
         g_bml_refuse = 1;
         return;
     }
+    // mp:D36 -- EVERY peer's entry into a manual-lobby match passes here (host Start, the client's
+    // own driver, and retail's START handler on a joiner whose driver never ran), before
+    // session_begin_multi rebuilds Planets[31] and lands the players. See mp_clear_match_residue.
+    // Placed before the client/skirmish early-outs below on purpose: they decide the HOST's prep,
+    // and the residue is every peer's. A REFUSED Start (above) enters nothing, so clears nothing.
+    mp_clear_match_residue();
+    if (!is_host) return;               // client: nothing else to prep/send here
     if (MH_Net_PeerCount() < 1) return; // skirmish-vs-AI (no network client): leave the proven path alone
     // ONE-SHOT PER LOBBY, not per process: this used to be a function-static `host_done`, which is
     // the mp:RM1 writer on the host side (see MH_MP_RearmLobbyEntry).
@@ -1816,6 +1890,7 @@ void on_begin_map_load() {
 // mp:X2/X2b: when on_begin_map_load refused the Start, return to the caller WITHOUT running the
 // original -- begin_map_load is a void, argument-less callback, so a bare `ret` is its whole contract.
 void                  *g_bml_tramp = nullptr;
+bool                   bml_hook_armed() { return g_bml_tramp != nullptr; }
 __declspec(naked) void begin_map_load_detour() {
     __asm {
         pushad

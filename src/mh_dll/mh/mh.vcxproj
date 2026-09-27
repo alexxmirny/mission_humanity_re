@@ -37,6 +37,10 @@
     <ClCompile Include="seams\ui_diplomacy_echo.cpp" />
     <ClCompile Include="seams\ui_bldg_cancel_task.cpp" />
     <ClCompile Include="seams\ui_bldg_build_probe.cpp" />
+    <ClCompile Include="seams\sim_pioneer_refill.cpp" />
+    <ClCompile Include="seams\ui_bldg_netcrit_pure.cpp" />
+    <ClCompile Include="seams\ui_storage_panel_purge.cpp" />
+    <ClCompile Include="seams\ui_info_avi.cpp" />
     <ClCompile Include="seams\ui_net_indicator.cpp" />
     <ClCompile Include="seams\save_triggers.cpp" />
     <ClCompile Include="seams\ui_drive.cpp" />

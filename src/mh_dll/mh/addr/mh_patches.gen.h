@@ -255,6 +255,7 @@ inline constexpr mh::hook::owner_range promotable_ranges[] = {
     {"llm_strat_ai_start_hq_attack_scenario",               0x004ba7e8u, 0x004ba8aeu, "ai"      }, // libmh/ai/ai_promote.cpp
     {"llm_tutorial_step_driver",                            0x004ba8afu, 0x004baf10u, "sim"     }, // libmh/sim/resid/resid_promote.cpp
     {"llm_game_start_tutorial",                             0x004bafb1u, 0x004bb2f9u, "sim"     }, // libmh/sim/resid/resid_promote.cpp
+    {"llm_cfg_map_verify_version",                          0x004be0bcu, 0x004be21cu, "seams"   }, // mh/seams/map_transfer.cpp
     {"llm_menu_force_return_to_main",                       0x004c862fu, 0x004c86e2u, "sim"     }, // libmh/sim/libtrans/sim_lt_promote.cpp
     {"utils_open_file",                                     0x004cf6c4u, 0x004cf6cdu, "seams"   }, // mh/seams/map_transfer.cpp
     {"llm_time_get_ticks_ms",                               0x004d056cu, 0x004d0581u, ""        }, // mh_harness/harness.cpp
@@ -424,7 +425,7 @@ inline constexpr mh::hook::owner_range promotable_ranges[] = {
     {"llm_strat_ai_engage_filter_and_commit_target",        0x004ede8bu, 0x004ee05bu, "ai"      }, // libmh/ai/ai_promote.cpp
     {"llm_strat_ai_active_unit_tick",                       0x004ee30bu, 0x004ee364u, "ai"      }, // libmh/ai/ai_promote.cpp
 };
-inline constexpr int promotable_range_count = 402;
+inline constexpr int promotable_range_count = 403;
 
 // EVERY migration-ledger row at state `verified`, with its LEDGER domain -- the set X-TOMB's
 // per-domain force-arm has to sweep. The table above holds only what carries an
@@ -1406,13 +1407,19 @@ inline constexpr mh::hook::patch_decl registered_patches[] = {
     {"lt1c_c4_dead_store_probe", 0x004dc25fu, "llm_strat_bldg_recompute_cell_grid", "none:diagnostic"},
     {"diplo_echo_nop",           0x004c8070u, "llm_ui_diplomacy_apply_and_resume", nullptr},
     {"cancel_task_order",        0x004c7060u, "llm_ui_building_cancel_task_yes_cb", nullptr},
+    {"info_avi_fallback",        0x004cb1edu, "llm_ui_entity_info_screen_open", nullptr},
+    {"info_avi_fallback",        0x004cb1fau, "llm_ui_entity_info_screen_open", nullptr},
+    {"info_avi_fallback",        0x004cb229u, "llm_ui_entity_info_screen_open", nullptr},
     {"build_probe_free",         0x00448c56u, "llm_strat_bldg_try_begin_placement", "migrated:D25 (libmh's promoted bldg_try_begin_placement probes with bldg_can_afford_build_cost unconditionally)"},
     {"build_probe_free",         0x00448c90u, "llm_strat_bldg_try_begin_placement", "migrated:D25 (libmh's promoted bldg_try_begin_placement probes with bldg_can_afford_build_cost unconditionally)"},
+    {"netcrit_ui_pure",          0x00418967u, "llm_ui_hud_bldg_network_status_panel_draw", nullptr},
+    {"storage_panel_purge_fix",  0x0041748au, "llm_strat_ui_storage_bldg_panel", nullptr},
+    {"pioneer_refill_fix",       0x004798f1u, "llm_strat_bldg_completion_dispatch", nullptr},
     {"resync_trigger_gate",      0x0049c508u, "llm_net_lockstep_dispatch", "migrated:resync_trigger_gate"},
     {"resync_trigger_gate_sent", 0x0049d8cbu, "llm_net_send_lockstep_keepalive", "migrated:resync_trigger_gate"},
     {"resync_receiver_deadline", 0x004a0423u, "llm_frame_dispatch", nullptr},
     {"gone_peer_frame_guard",    0x0049c330u, "llm_net_lockstep_dispatch", "migrated:gone_peer_frame_guard"},
 };
-inline constexpr int registered_patch_count = 19;
+inline constexpr int registered_patch_count = 25;
 
 } // namespace mh::addr

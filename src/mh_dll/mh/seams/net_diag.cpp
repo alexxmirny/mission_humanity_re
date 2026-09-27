@@ -266,6 +266,10 @@ __declspec(naked) void presence_lost_detour() {
 // exactly which one fires on the client at entry -> then NOP just that site. Gated by lockstep_log.
 void *g_se_tramp = nullptr;
 void  on_savegame_err(unsigned caller) {
+    // mp:X2h -- latch the caller for the lobby-tick stall watch (net_seams.cpp) BEFORE the g_ls_log
+    // gate below: that gate is for the LINE, not for whether the value exists, and a stall watch that
+    // wants "which modal" is a separate consumer of the same fact this logger already observes.
+    InterlockedExchange(&g_last_dlg_caller, (LONG)caller);
     if (!g_ls_log) return;
     char b[112];
     wsprintfA(b, "; DLG savegame_io_error caller=0x%08x sess=%d gclk=%ld\n",

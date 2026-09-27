@@ -672,6 +672,24 @@
       "note": "mp:D35: CALL llm_strat_bldg_grant_type_resources (E8 2A AB 04 00) -- the re-grant that undid the probe's payment and booked +cost into the gains-only resource_spent counter on the clicking peer alone; NOPed together with the pay splice (both or neither)"
     },
     {
+      "name": "netcrit_ui_call_site",
+      "en": "0x00418967",
+      "parent": "llm_ui_hud_bldg_network_status_panel_draw",
+      "note": "mp:D37: CALL llm_strat_bldg_is_network_critical (E8 99 EA 07 00; EAX = PlayerSide, EDX = selected building) -- the HUD network panel's per-frame probe that re-floods the selecting peer's power network; spliced to a thunk that restores that player's buildings row + strat_players record around the call in a lockstep match"
+    },
+    {
+      "name": "storage_panel_purge_call_site",
+      "en": "0x0041748a",
+      "parent": "llm_strat_ui_storage_bldg_panel",
+      "note": "mp:D38 row 5: CALL llm_strat_storage_purge_dead_docked (E8 66 44 08 00; EAX = PlayerSide, EDX = the selected storage building's sub_id) -- the storage panel's refresh-time purge of dead docked units, run on the selecting peer only; spliced to a thunk that skips it in a lockstep match (the sim's sub-tick A purge removes the rows on every peer)"
+    },
+    {
+      "name": "pioneer_refill_cmp_site",
+      "en": "0x004798f1",
+      "parent": "llm_strat_bldg_completion_dispatch",
+      "note": "mp:D37a: CMP AX,[PlayerSide]; JZ 0x00479a3e (66 3B 05 54 83 E5 00 0F 84 40 01 00 00) -- the mothership arm's re-landing test (mother_established != 0 already): retail credits the template stock when player != PlayerSide, a per-peer predicate. Spliced to CALL thunk; JZ 0x00479a3e; NOP NOP -- in a lockstep session the thunk sets ZF (skip) unless the player is AI (status_flags bit 3)"
+    },
+    {
       "name": "diplo_echo_write_site",
       "en": "0x004c8070",
       "parent": "llm_ui_diplomacy_apply_and_resume",

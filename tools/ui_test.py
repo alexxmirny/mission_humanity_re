@@ -4474,6 +4474,12 @@ def main():
                 "[host %s] ready -- launching clients (they connect to %s)"
                 % (host_ip or "local", connect_ip)
             )
+        # (peer, signal) already ferried -- see pump_signals. Created BEFORE the client launches (mp:D36):
+        # a client_after_exit wait below is a phase in which the peers already running are WALKING,
+        # and a walk that rendezvouses by `signal`/`awaitsignal` before the earlier peer exits (the
+        # d36_rematch_seed host waits on client1's `lobby`) deadlocked when the ferry only started in
+        # the unified wait loop -- measured: host parked on `awaitsignal lobby`, client1 never exited.
+        delivered = set()
         for ci, p in enumerate(peers[1:]):
             client_idx = ci + 1  # 1-based, matches --client-after-exit's CLIENTIDX
             cname = args.client_name if ci == 0 else "%s%d" % (args.client_name, ci + 1)
@@ -4492,6 +4498,7 @@ def main():
                 exit_deadline = time.time() + args.timeout
                 exited = False
                 while time.time() < exit_deadline:
+                    pump_signals(args, [pp for pp in peers if pp.get("run")], delivered)
                     alive, _lines = peer_liveness(target.get("run"))
                     if alive is False:
                         exited = True
@@ -4540,7 +4547,6 @@ def main():
         # unified wait: every peer to reach COMPLETE / TIMEOUT
         results = {}
         pending = {p["key"] for p in peers if p.get("run")}
-        delivered = set()  # (peer, signal) already ferried -- see pump_signals
         last_live = time.time()
         shim_triggers = parse_shim_triggers(args.shim_trigger) if shim else []
         trig_t0 = time.time()

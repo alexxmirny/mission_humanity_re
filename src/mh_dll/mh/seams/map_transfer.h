@@ -144,9 +144,12 @@ enum class Resolve {
 // Stored, untouched for Missing. `skip_base` suppresses the base-name candidate: the UI harness
 // needs a client that behaves as though it does not hold the content, and making that a DECISION
 // rather than a file move is what lets the scenario run against a shared `Maps` directory.
+// `skip_stored` (mp:X2e, `map_test_pretend=absent`) suppresses the stored candidate the same way: a
+// machine that never had the file has no earlier download either, and a lane shared with a
+// download scenario would otherwise hand the stage a copy left behind by the previous row.
 Resolve resolve(const char *dir, const char *base,
                 const uint8_t want[mh_net_proto::MAP_HASH_BYTES], char *out_path, size_t cap,
-                bool skip_base = false);
+                bool skip_base = false, bool skip_stored = false);
 
 // Write `bytes` as the stored name for (base, hash) into `dl_dir()`, and REFUSE to write anything
 // whose content does not hash to `hash` -- a delivered blob is checked here, at the last moment
@@ -210,6 +213,9 @@ void set_can_carry_for_test(int v);
 //   join_prepublish runs inside host_on_join BEFORE it publishes the report (where the first cut
 //                   had already set `seated` but not yet `holds`)
 //   body/len        replace the pump's `Maps\` file read (the suite has no game directory)
+//   alive           mp:X2f -- replaces the transport-liveness probe (MH_Net_ActivePeerIds): 0 =
+//                   "this peer's link was dropped". Null = ask the transport (which, un-started,
+//                   answers "alive" for everybody -- the offline arms' behaviour before X2f).
 struct PumpTestHooks {
     int (*send)(int peer, const void *body, int len, void *ctx);
     void (*between)(int peer, void *ctx);
@@ -217,6 +223,7 @@ struct PumpTestHooks {
     const uint8_t *body;
     uint32_t       len;
     void          *ctx;
+    int (*alive)(int peer, void *ctx);
 };
 void set_pump_hooks_for_test(const PumpTestHooks *h); // null restores production
 void host_pump_for_test();                            // one pump step, as the lobby tick runs it

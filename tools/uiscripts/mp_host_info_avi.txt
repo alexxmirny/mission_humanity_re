@@ -1,0 +1,72 @@
+# mp:X2g HOST walk -- an entity info screen whose AVI will not open (the rc4 client crash: Res\H_INV.AVI
+# missing -> "insert CD" -> "can't find .avi" -> IDIV by zero at 0x004cab52).
+#
+# The clip is made unavailable by the TEST KNOB `[net] info_avi_test_absent=*` (the row's net_extra):
+# the info screen's opens are redirected to res\NOT.AVI -- the never-shipped file retail INIT.CFG
+# itself names for Chatka1-8 / Baza / Rakieta -- so nothing in the shared Res directory is touched and
+# the failure is the very one those entities hit on every install.
+#
+# Land the mother, open the place-building tab, RIGHT-click the Academy row's text (HUD widget 0x5b+,
+# x 80..160 in the panel -- the icon itself is the left-click select widget) (`simrclick`): that
+# raises the building's info screen (llm_ui_bldg_available_projects_tab_process_events -> _open, BUILDING).
+# Fixed: the screen opens WITHOUT video (game mode 4, text pages; the clip panel shows the map behind
+# it), no modal appears, and Esc closes it; the match keeps running. Retail ([net]
+# info_avi_fallback=0): the insert-CD dialog blocks the walk at `gamemode 4` (the game never enters
+# mode 4 on that path) and freezes the pair's lockstep clock, which is the red.
+# Pair with mp_client_idle.txt.
+
+# reach the host lobby (create the pre-pinned game on the pre-selected map)
+settled value:110
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+settled Create
+clickl Create
+present Game name
+settled Ok
+clickl Ok
+present Available maps
+settled Ok
+clickl Ok
+
+# host lobby: block until the client is really in ITS lobby, then Start.
+present Network players
+peers 1
+awaitsignal lobby
+enabled Start
+settled Start
+clickl Start
+
+# in the match: land the airborne mothership (shift+right-click; order 0x10 move + 0x18 deploy).
+absent Network players
+gameclock 3000
+rclick 480 330 shift
+gameclock 20000
+capture landed
+
+# the "place building" tab (HUD, absolute coordinates) -- Power Plant, Colony, Mine, Relay, Academy
+simclick 890 215
+gameclock 21000
+capture build_menu
+
+# THE TRIGGER: right-click the Academy row -> its info screen, whose clip the knob makes absent.
+log X2G open info
+simrclick 975 478
+retry 1500 1 3 gamemode 4
+screensettled
+capture info_novideo
+dump
+log X2G info screen up without video
+
+# rows on both sides while the screen is up, then leave it the way its status line says: Esc
+gameclock 26000
+capture info_novideo_later
+key 0x01
+retry 1500 1 3 gamemode 2
+screensettled
+capture back_on_map
+log X2G info screen closed
+
+gameclock 32000
+end

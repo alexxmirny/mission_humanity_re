@@ -18,10 +18,17 @@ opponent, Start -- sp_det.txt's walk with the map row added. The harness then ru
 contract (the LIB-REF one, tools/fixture_replay.py REPLAY_FLAGS, plus the seed inject):
 
     seed_step=1 seed_mode=1      the match's step-1 state over every hash region, pre-body
-    order_mode=2                 the recorded queue is injected at the top of each step
-    replay_suppress_enqueue=1    the replay's own immediate-lane enqueues append nothing
-    replay_ai_off=0              the AI runs (its orders are suppressed; the rest of what it does
-                                 is sim state the recording does not hold)
+    order_mode=2                 the recorded queue drives dispatch
+    replay_dispatch_inject=1     (mp:D37b) the queue is set to the recorded snapshot at dispatch
+                                 ENTRY (the recorder's point); at the top of the step (the hash
+                                 point) to that snapshot less its AI-tick tail
+    replay_suppress_enqueue=0    every enqueue runs for real (the suppression lost same-pass orders)
+    replay_drop_net_issue=1      (mp:D37b) llm_strat_order_dispatch drops network-controlled
+                                 players' orders: the recording holds their lockstep copies
+    replay_session_mode=3        (mp:D37b, a lockstep recording) the sim BODY runs in the recorded
+                                 SESSION_MODE; the frame around it stays single-process
+    replay_seat=<slot>           (mp:D37b) PlayerSide = the recording's session.json slot (--seat)
+    replay_ai_off=0              the AI runs
     synth_move=0                 no workload: the recording is the only order source
     clock track                  mh_clock.bin pins TOTAL_GAME_TIME per step (the recorded deltas)
     stop_step=N exit_on_stop=1   N = the last recorded step, on the match axis
@@ -41,6 +48,8 @@ first step is all the tool can name). Exit 0 = IDENTICAL over >= --min-steps com
 Usage:
     python tools/replay_match_segment.py <match_or_process_dir> [--config auto|1|2] [--steps N]
     python tools/replay_match_segment.py <dir> --compare <replay_run_dir>    # no run, compare only
+    python tools/replay_match_segment.py <client dir> --seat 1 --against <host dir>   # D37b oracle
+        [--net-extra "pioneer_refill_fix=0"] [--map-file X.mpm] [--legacy-suppress] [--extra k=v]
     python tools/replay_match_segment.py --selftest                          # offline, no rig
 """
 
@@ -79,7 +88,17 @@ REPLAY_FLAGS = {
     "seed_step": 1,
     "seed_mode": 1,
     "order_mode": 2,
-    "replay_suppress_enqueue": 1,
+    # mp:D37b: NOT the LIB-REF suppression. Every enqueue runs for real, and the queue is set to the
+    # recorded snapshot at dispatch ENTRY (the recorder's own point). The suppression lost every order
+    # a handler appends during the dispatch pass -- it never reaches an entry snapshot -- which left
+    # the rc4 field recordings at match step 5857 (Nortus) / 6357 (Last Question). --legacy-suppress
+    # restores the old pair for comparison.
+    "replay_suppress_enqueue": 0,
+    "replay_dispatch_inject": 1,
+    # mp:D37b: a lockstep recording STAGED every order issued for a network-controlled player; the
+    # released copy is in the recording. The single-process replay (SESSION_MODE 2) would enqueue it
+    # at once, a step early and twice -- so those issue calls are dropped (harness issue_detour).
+    "replay_drop_net_issue": 1,
     "replay_ai_off": 0,
     "synth_move": 0,
     "fixed_step": 0,
@@ -195,6 +214,8 @@ def resolve(path):
             files=files,
             base=base,
             map=(sj or {}).get("map"),
+            slot=(sj or {}).get("slot"),
+            lockstep=bool((sj or {}).get("lockstep_step_ms")),
             config=config_of(arm),
             arm=arm_flags(arm),
             ref=log,
@@ -233,6 +254,8 @@ def resolve(path):
         files=files,
         base=0,
         map=played[0][1].get("map"),
+        slot=played[0][1].get("slot"),
+        lockstep=bool(played[0][1].get("lockstep_step_ms")),
         config=config_of(ref),
         arm=arm,
         ref=ref,
@@ -387,29 +410,96 @@ def provision_lane(config):
     return lane
 
 
-def run_replay(rec, config, steps, timeout):
+def lane_add_map(lane, map_file):
+    """Put `map_file` into the lane's Maps\\ WITHOUT touching the shared install: a lane whose Maps is
+    still the shared link gets its own directory first (every shared map linked in individually,
+    make_lane's link_or_copy), then the extra map is copied in. For a map a player downloaded (X2),
+    which the install does not ship -- the rc4 Nortus match's nortus.mpm."""
+    import make_lane
+
+    maps = os.path.join(lane, "Maps")
+    if os.path.islink(maps) or (os.path.isdir(maps) and _is_junction(maps)):
+        shared = os.path.realpath(maps)
+        _unlink_dir_link(maps)
+        os.makedirs(maps)
+        for f in sorted(os.listdir(shared)):
+            if os.path.isfile(os.path.join(shared, f)):
+                make_lane.link_or_copy(os.path.join(shared, f), os.path.join(maps, f), False)
+    os.makedirs(maps, exist_ok=True)
+    shutil.copyfile(map_file, os.path.join(maps, os.path.basename(map_file)))
+
+
+def _is_junction(p):
+    fn = getattr(os.path, "isjunction", None)
+    if fn is not None:
+        return fn(p)
+    try:
+        return bool(os.lstat(p).st_file_attributes & 0x400)  # FILE_ATTRIBUTE_REPARSE_POINT
+    except (OSError, AttributeError):
+        return False
+
+
+def _unlink_dir_link(p):
+    try:
+        os.unlink(p)
+    except OSError:
+        os.rmdir(p)  # a junction is removed as an (empty-looking) directory, never recursively
+
+
+def replay_flags(rec, steps, seat=-1, legacy_suppress=False, extra=None, session_mode=-1):
+    """The harness knobs of one replay run (REPLAY_FLAGS + the per-recording ones)."""
+    flags = dict(REPLAY_FLAGS)
+    if legacy_suppress:
+        flags["replay_suppress_enqueue"] = 1
+        flags["replay_dispatch_inject"] = 0
+        flags["replay_drop_net_issue"] = 0
+    if session_mode is not None and session_mode >= 0:
+        flags["replay_session_mode"] = session_mode
+    flags["pin_fpu"] = rec.get("arm", {}).get("pin_fpu", "1")
+    flags["stop_step"] = steps
+    if seat is not None and seat >= 0:
+        flags["replay_seat"] = seat
+    every, nmax = snap_cadence([k for k in snap_steps(rec.get("snap_dir")) if k <= steps])
+    if every:
+        flags["verdict_snap_every"] = every
+        flags["verdict_snap_max"] = nmax
+    for kv in extra or ():
+        k, _, v = kv.partition("=")
+        flags[k.strip()] = v.strip()
+    return flags
+
+
+def run_replay(
+    rec,
+    config,
+    steps,
+    timeout,
+    seat=-1,
+    legacy_suppress=False,
+    extra=None,
+    net_extra="",
+    map_file=None,
+    session_mode=-1,
+):
     import make_lane
 
     lane = provision_lane(config)
     for k, dst in LANE_NAME.items():
         shutil.copyfile(rec["files"][k], os.path.join(lane, dst))
+    if map_file:
+        lane_add_map(lane, map_file)
     row, label = map_row(os.path.join(lane, "Maps"), rec.get("map"))
     if row is None:
         raise Refusal(
-            "map %r is not in this lane's Maps\\ -- cannot load the recorded map" % rec["map"]
+            "map %r is not in this lane's Maps\\ -- cannot load the recorded map (a downloaded "
+            "map: pass it with --map-file)" % rec["map"]
         )
     tmpd = os.path.join(REPO, "tmp", "replay_match")
     os.makedirs(tmpd, exist_ok=True)
     script = os.path.join(tmpd, "replay_walk.txt")
     with open(script, "w", encoding="ascii", newline="\n") as fh:
         fh.write(walk_script(row, label))
-    flags = dict(REPLAY_FLAGS)
-    flags["pin_fpu"] = rec["arm"].get("pin_fpu", "1")
-    flags["stop_step"] = steps
-    every, nmax = snap_cadence([k for k in snap_steps(rec.get("snap_dir")) if k <= steps])
-    if every:
-        flags["verdict_snap_every"] = every
-        flags["verdict_snap_max"] = nmax
+    flags = replay_flags(rec, steps, seat, legacy_suppress, extra, session_mode)
     ident = make_lane.read_identity(lane)
     argv = [
         sys.executable,
@@ -432,6 +522,8 @@ def run_replay(rec, config, steps, timeout):
         "120",
         "--headless",
     ]
+    if net_extra:
+        argv += ["--net-extra", net_extra]
     before = (
         set(os.listdir(os.path.join(lane, "logs")))
         if os.path.isdir(os.path.join(lane, "logs"))
@@ -468,6 +560,35 @@ def main(argv=None):
     ap.add_argument("--compare", help="compare against an existing replay run folder; do not run")
     ap.add_argument("--min-steps", type=int, default=50)
     ap.add_argument("--timeout", type=int, default=3600)
+    ap.add_argument(
+        "--seat",
+        default="auto",
+        help="the local player slot (PlayerSide) the replay plays as: auto = the recording's "
+        "session.json `slot`, -1 = leave the lobby walk's seat (slot 0), N = slot N",
+    )
+    ap.add_argument(
+        "--session-mode",
+        default="auto",
+        help="the SESSION_MODE the sim body runs in (harness replay_session_mode): auto = 3 for a "
+        "lockstep match (session.json lockstep_step_ms), else leave the replay's own; -1 = leave",
+    )
+    ap.add_argument(
+        "--legacy-suppress",
+        action="store_true",
+        help="the pre-D37b contract (replay_suppress_enqueue=1, no dispatch-entry inject)",
+    )
+    ap.add_argument(
+        "--extra", action="append", default=[], help="an extra [harness] key=value (repeatable)"
+    )
+    ap.add_argument("--net-extra", default="", help='extra [net] lines, "k=v;k=v" (ui_test)')
+    ap.add_argument(
+        "--map-file", help="an .mpm the install does not ship, added to the lane's Maps"
+    )
+    ap.add_argument(
+        "--against",
+        help="judge the replay against ANOTHER recording's per-step stream (a folder resolve() "
+        "accepts, e.g. the other peer's match folder) instead of its own",
+    )
     ap.add_argument("--selftest", action="store_true")
     a = ap.parse_args(argv)
     if a.selftest:
@@ -486,6 +607,12 @@ def main(argv=None):
     if a.steps:
         last = min(last, a.steps)
     config = (rec["config"] or 1) if a.config == "auto" else int(a.config)
+    seat = (
+        (rec.get("slot") if rec.get("slot") is not None else -1)
+        if a.seat == "auto"
+        else int(a.seat)
+    )
+    smode = (3 if rec.get("lockstep") else -1) if a.session_mode == "auto" else int(a.session_mode)
     print(
         "recording: %s (%s), base=%d, %d hashed step(s), %d clock step(s), %d order record(s), "
         "map=%r, recorded in configuration (%s)"
@@ -504,16 +631,37 @@ def main(argv=None):
         print("replay_match_segment: REFUSED -- no recorded step to replay")
         return 2
     try:
-        run = a.compare or run_replay(rec, config, last, a.timeout)
+        run = a.compare or run_replay(
+            rec,
+            config,
+            last,
+            a.timeout,
+            seat=seat,
+            legacy_suppress=a.legacy_suppress,
+            extra=a.extra,
+            net_extra=a.net_extra,
+            map_file=a.map_file,
+            session_mode=smode,
+        )
     except Refusal as e:
         print("replay_match_segment: REFUSED -- %s" % e)
         return 2
     rep_steps, rep_regs = parse_stream(_read_text(os.path.join(run, "mh_harness.log")))
+    if a.against:
+        try:
+            other = resolve(a.against)
+        except Refusal as e:
+            print("replay_match_segment: REFUSED -- --against: %s" % e)
+            return 2
+        ref_steps, ref_regs = parse_stream(other["ref"], other["base"])
+        ref_steps = {s: v for s, v in ref_steps.items() if s >= 1}
+        rec = dict(rec, snap_dir=other.get("snap_dir"))
+        print("  judged AGAINST %s (%d hashed step(s))" % (other["dir"], len(ref_steps)))
     ref_steps = {s: v for s, v in ref_steps.items() if s <= last}
     names, excluded = excluded_columns()
     res = compare(ref_steps, ref_regs, rep_steps, rep_regs, names, excluded)
     ok, text = verdict_text(rec, res, min(a.min_steps, last))
-    print("  replay run: %s" % run)
+    print("  replay run: %s (seat %s, body session mode %s)" % (run, seat, smode))
     print("  %s (recorded steps 1..%d, replayed %d)" % (text, last, len(rep_steps)))
     # the recording's desync snapshots (a desynced lockstep match writes them) vs the replay's own
     # dumps at the same match steps: the region names a region-less (player) log cannot give
@@ -705,6 +853,66 @@ def selftest():
         check(
             "an unknown map is None (refused by the runner)",
             map_row(maps, "nowhere.mpm")[0] is None,
+        )
+        # mp:D37b: the replay contract. Every enqueue live + the dispatch-entry inject + the net-player
+        # issue drop, NOT the LIB-REF suppression (which lost same-pass orders: the rc4 field
+        # recordings left their own stream at 5857 / 6357); the seat and body session mode follow
+        # the recording's session.json.
+        f = replay_flags({"arm": {}}, 100, seat=1, session_mode=3)
+        check(
+            "D37b contract: suppress 0, dispatch inject 1, net issue drop 1, seat + body mode passed",
+            f["replay_suppress_enqueue"] == 0
+            and f["replay_dispatch_inject"] == 1
+            and f["replay_drop_net_issue"] == 1
+            and f["replay_seat"] == 1
+            and f["replay_session_mode"] == 3
+            and f["stop_step"] == 100,
+        )
+        f = replay_flags({"arm": {}}, 100, legacy_suppress=True, extra=["verdict_snap_from=90"])
+        check(
+            "--legacy-suppress restores the SES7b pair; no seat/mode knob when not asked; --extra wins",
+            f["replay_suppress_enqueue"] == 1
+            and f["replay_dispatch_inject"] == 0
+            and f["replay_drop_net_issue"] == 0
+            and "replay_seat" not in f
+            and "replay_session_mode" not in f
+            and f["verdict_snap_from"] == "90",
+        )
+        put(
+            s2,
+            "session.json",
+            json.dumps(
+                {
+                    "process_dir": os.path.basename(proc),
+                    "map": "x.mpm",
+                    "final_clock_ms": 9000,
+                    "slot": 1,
+                    "lockstep_step_ms": 100,
+                }
+            ),
+        )
+        put(
+            s2,
+            SEG["log"],
+            "; [match] segment OPEN %s at process step 1: (step_base=0).\n" % os.path.basename(s2)
+            + ref,
+        )
+        for k in ("orders", "clock", "seed"):
+            put(s2, SEG[k], b"\0" * 16)
+        r = resolve(s2)
+        check(
+            "a lockstep segment carries its seat (slot) and lockstep flag",
+            r["slot"] == 1 and r["lockstep"] is True,
+        )
+        # the lane gets a downloaded map WITHOUT the shared install being touched
+        lane = os.path.join(tmp, "lane")
+        os.makedirs(os.path.join(lane, "Maps"))
+        extra_map = os.path.join(tmp, "nortus.mpm")
+        put(tmp, "nortus.mpm", b"MAP")
+        lane_add_map(lane, extra_map)
+        check(
+            "--map-file lands in the lane's own Maps",
+            map_row(os.path.join(lane, "Maps"), "nortus.mpm")[0] == 0,
         )
     finally:
         shutil.rmtree(tmp, ignore_errors=True)

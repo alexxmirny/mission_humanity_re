@@ -352,6 +352,22 @@
    "note": "The order-RECORD harness hook, armed only when [test] order_mode=1. CORRECTION 2026-08-27: an earlier note here said its target is promoted by default by [promote] orders -- WRONG. llm_strat_order_queue_dispatch is NOT one of mh::orders' 9 seams; it is promoted by [promote] sim_dispatch, whose ship default is SHIP_PROMOTE_SIM_DISPATCH = 0. So recording was never broken in the ship config, and the collision runs the OTHER WAY: with the recorder on, the DETOUR wins the entry and the promotion is refused. Measured -- `[promote] sim_dispatch=1` plus --record printed \"[export] llm_strat_order_queue_dispatch NOT armed -- entry bytes 90909070837229E9 != expected 0000008468E58955 (wrong build, or already hooked)\", a build diagnosis from a good build, and the two facilities were silently exclusive. RESOLVED BY REBIND (D18), the C4/C6 protocol: the detour keeps the entry so recording still runs first, and reimpl_probe moves only its fall-through (MH_Harness_RebindOrderDispatch). Verified in one run: '[promote] sim_dispatch REBOUND', 337 KB of mh_orders.bin, and '[promote] ai_work order_queue_dispatch calls=200' proving OUR body served them. ---- FORK F3C (2026-09-13): THE SITE MOVED, THE FACTS DID NOT. Ruling D5 took the harness off the raw primitives, so this detour is now a ROW of the named hook-point table (mh/hook/hookpoint.cpp); harness.cpp names a `point` instead of a target, a steal width, a claim and a guard. lint_dll_patches reads that table as the call-site list, so the target still resolves and check 7 still asks the collision question -- the source key below is the row's own target expression."
   },
   {
+   "id": "detour_order_issue",
+   "kind": "detour",
+   "sources": [
+    {
+     "file": "mh/hook/hookpoint.cpp",
+     "expr": "mh::exp::addr_llm_strat_order_dispatch"
+    }
+   ],
+   "owner": [
+    "llm_strat_order_dispatch"
+   ],
+   "knob": null,
+   "carrier": "migrated:replay_session_mode",
+   "note": "mp:D37b. The field replay's net-player issue drop ([harness] replay_drop_net_issue=1, a replay-only knob that tools/replay_match_segment.py sets). A lockstep recording STAGED every order issued for a network-controlled player, and the released copy is in the recording; a peerless replay runs SESSION_MODE 2, where the same call enqueues at once -- a step early and a second time. The detour drops those calls and returns 1. It is armed in MH_Harness_LateArm, AFTER the promotions, and only when the entry is still the original's: when [promote] orders owns it (configuration (2)) the harness does NOT hook it (MEASURED at init time: '[export] llm_strat_order_dispatch NOT armed -- entry is OWNED by the field replay's net-player issue drop' and '[promote] orders: 8/9 seams installed -- PARTIAL'). There the promoted router carries the behaviour itself: the replay runs the sim body in the recorded SESSION_MODE 3 (replay_session_mode, scoped by sim_step_detour), so mh::orders::detail::dispatch takes its own stage_scheduled branch and the order never reaches the queue -- hence the carrier."
+  },
+  {
    "id": "detour_resync_order_horizon",
    "kind": "detour",
    "sources": [
@@ -552,6 +568,27 @@
    "note": "mp:D28: call-splice the building dialog's cancel-task Yes (CALL llm_bldg_finish_current_order) to a thunk that issues the equivalent replicated building order in a lockstep match; the local call stays for single player and for [net] cancel_task_order=0"
   },
   {
+   "id": "info_avi_fallback",
+   "sources": [
+    {
+     "file": "mh/seams/ui_info_avi.cpp",
+     "expr": "site"
+    }
+   ],
+   "addrs": [
+    "0x004cb1ed",
+    "0x004cb1fa",
+    "0x004cb229"
+   ],
+   "kind": "code",
+   "owner": [
+    "llm_ui_entity_info_screen_open"
+   ],
+   "knob": "info_avi_fallback",
+   "carrier": null,
+   "note": "mp:X2g: the info screen's AVI-open FAILURE branch (0x004cb1fa, CALL llm_snd_cd_stop) becomes a JMP to a handler that tries the CD path once and otherwise opens the screen WITHOUT video -- no insert-CD dialog, no error box, and (with the tick guard) no IDIV by the zeroed stream length. 0x004cb1ed / 0x004cb229 (the two CALL llm_ui_avi_open) are spliced ONLY under the rig's [net] info_avi_test_absent knob, which redirects the listed clips to res\\NOT.AVI. [net] info_avi_fallback=0 makes neither write (retail, the repro arm)."
+  },
+  {
    "id": "build_probe_free",
    "sources": [
     {
@@ -574,6 +611,63 @@
    "knob": "build_probe_free",
    "carrier": "migrated:D25 (libmh's promoted bldg_try_begin_placement probes with bldg_can_afford_build_cost unconditionally)",
    "note": "mp:D35: the mh.dll port of mp:D25 for configuration (1). Call-splice the HUD build-click's CALL llm_bldg_pay_build_cost to a charge-free probe (pay_build_cost's pass 1: same return codes, no writes) and NOP the CALL llm_strat_bldg_grant_type_resources that undid the payment -- both or neither. The re-grant booked +cost into the gains-only resource_spent (hashed pK_ai_econ) on the clicking peer alone. Not under [config] mode=original (the A/B/C oracle's B arm and its D25 excusal rely on retail's probe); [net] build_probe_free=0 is the reproduction arm."
+  },
+  {
+   "id": "netcrit_ui_pure",
+   "sources": [
+    {
+     "file": "mh/seams/ui_bldg_netcrit_pure.cpp",
+     "expr": "site"
+    }
+   ],
+   "addrs": [
+    "0x00418967"
+   ],
+   "kind": "code",
+   "owner": [
+    "llm_ui_hud_bldg_network_status_panel_draw"
+   ],
+   "knob": "netcrit_ui_pure",
+   "carrier": null,
+   "note": "mp:D37: call-splice the HUD network panel's CALL llm_strat_bldg_is_network_critical to a thunk that, in a lockstep match only, byte-snapshots the calling player's buildings row (0x6aa4) + _G_LLM_STRAT_PLAYERS record (0x740) and restores them after the call -- the probe's three power_network_recomputes otherwise re-flood bit 0 of built_flags (and re-elect the primary mother) on the selecting peer alone. Outside lockstep the original runs untouched. Not under [config] mode=original; [net] netcrit_ui_pure=0 is the reproduction arm."
+  },
+  {
+   "id": "storage_panel_purge_fix",
+   "sources": [
+    {
+     "file": "mh/seams/ui_storage_panel_purge.cpp",
+     "expr": "site"
+    }
+   ],
+   "addrs": [
+    "0x0041748a"
+   ],
+   "kind": "code",
+   "owner": [
+    "llm_strat_ui_storage_bldg_panel"
+   ],
+   "knob": "storage_panel_purge_fix",
+   "carrier": null,
+   "note": "mp:D38 row 5: call-splice the storage building panel's CALL llm_strat_storage_purge_dead_docked to a thunk that, in a lockstep match only, skips it -- the panel's refresh-time purge removes dead docked units from unit_storage on the selecting peer alone, ahead of the sim's own sub-tick A purge, and llm_strat_hangar_recharge_pulse can revive the dead row on the other peers. Outside lockstep the original runs untouched. Not under [config] mode=original; [net] storage_panel_purge_fix=0 is the reproduction arm."
+  },
+  {
+   "id": "pioneer_refill_fix",
+   "sources": [
+    {
+     "file": "mh/seams/sim_pioneer_refill.cpp",
+     "expr": "site"
+    }
+   ],
+   "addrs": [
+    "0x004798f1"
+   ],
+   "kind": "code",
+   "owner": [
+    "llm_strat_bldg_completion_dispatch"
+   ],
+   "knob": "pioneer_refill_fix",
+   "carrier": null,
+   "note": "mp:D37a: the mothership arm's re-landing test CMP AX,[PlayerSide]; JZ 0x00479a3e -> CALL thunk; JZ 0x00479a3e; NOP NOP. In a lockstep session (_G_LLM_GAME_SESSION_MODE == 3) the template-stock refill (Building.capacity[1..9] + human_transport) on a re-landing goes to AI players only (status_flags bit 3) instead of to every player but the local side -- the retail per-peer predicate refilled a human's pioneer on every NON-owner peer. Other session modes run retail's compare. The owner is not promotable itself; under a promoted llm_strat_sim_step (configuration (2)) libmh's sim_bldg_completion_dispatch body carries the same rule (detail::mother_relanding_credits). Not under [config] mode=original; [net] pioneer_refill_fix=0 is the reproduction arm."
   },
   {
    "id": "resync_trigger_gate",

@@ -351,6 +351,14 @@ int run_maptest(int port) {
         checkf(maps::resolve(g_dir, BASE, host_h, out, sizeof(out)) == maps::Resolve::Stored,
                "C: ...and now resolves to the STORED name");
         checkf(lstrcmpA(out, stored) == 0, "C: ...which is the file that was written");
+        // mp:X2e: the `absent` stage ignores an EARLIER download (a lane shared with a download row
+        // keeps one) -- and ignores nothing else: the same call without the flag still finds it.
+        checkf(maps::resolve(g_dir, BASE, host_h, out, sizeof(out), true, true) ==
+                   maps::Resolve::Missing,
+               "C: skip_base + skip_stored -> Missing, though a stored copy exists (mp:X2e)");
+        checkf(maps::resolve(g_dir, BASE, host_h, out, sizeof(out), true, false) ==
+                   maps::Resolve::Stored,
+               "C: skip_base alone still resolves the stored copy");
 
         // AND IT WENT ONE DIRECTORY DOWN. Both halves matter and they are different claims: the
         // NAME must be the content-addressed form (that is the tracker's wording and what makes a
@@ -546,7 +554,9 @@ int run_maptest(int port) {
             int            last_peer;
             int            join_sender; // who the hook reports as
             const uint8_t *join_hash;
-            int            leave; // the between-hook sends a LEAVE instead of a JOIN
+            int            leave;         // the between-hook sends a LEAVE instead of a JOIN
+            unsigned       dead;          // mp:X2f: bit p = the transport dropped peer p's link
+            int            join_in_probe; // mp:X2f: the liveness probe publishes a JOIN mid-probe
         };
         static Rec          r;
         const uint8_t       none_h[MAP_HASH_BYTES] = {0};
@@ -566,6 +576,7 @@ int run_maptest(int port) {
             reset_rec();
             hk.between         = nullptr;
             hk.join_prepublish = nullptr;
+            hk.alive           = nullptr;
             maps::set_pump_hooks_for_test(&hk);
         };
 
@@ -636,6 +647,51 @@ int run_maptest(int port) {
         maps::host_pump_for_test();
         hk.between = nullptr;
         checkf(r.sends == 0, "H7: a joiner that LEAVES mid-pump is not sent the map (sends=%d)", r.sends);
+
+        // H8-H10 (mp:X2f): a joiner whose LINK died sends no LEAVE. The rc4 host kept its seat, held
+        // Start shut "waiting for 'Rizzen'", and re-armed a transfer to the vanished id 90 s later --
+        // the re-arm that crashed the module. The pump now asks the transport who is still there.
+        auto alive_hook = [](int peer, void *) -> int {
+            if (peer == 1 && r.join_in_probe) {
+                r.join_in_probe = 0;
+                maps::host_on_join(1, "Bob", r.join_hash); // admitted + seated DURING the probe
+                return 0;                                  // ...which answered from before it
+            }
+            return ((r.dead >> peer) & 1u) ? 0 : 1;
+        };
+        begin();
+        hk.alive = alive_hook;
+        maps::host_on_join(1, "Bob", mine_h);
+        maps::host_pump_for_test();
+        checkf(r.sends == 1 && r.last_peer == 1, "H8: a live joiner lacking the map is sent it (sends=%d)",
+               r.sends);
+        r.dead = 1u << 1; // conn dropped by the link timeout; no LEAVE was ever received
+        maps::host_pump_for_test();
+        checkf(r.sends == 1, "H8: ...and once its link is gone the pump does NOT re-arm to it (sends=%d)",
+               r.sends);
+        checkf(maps::host_next_peer_needing_map() == -1,
+               "H8: ...its seat is released, so it is nobody's transfer target (next=%d)",
+               maps::host_next_peer_needing_map());
+        checkf(!maps::host_start_blocked(who, sizeof(who)),
+               "H8: ...and it no longer holds the Start gate shut");
+
+        r.dead = 0; // the same player dials again and re-JOINs, still lacking the map
+        maps::host_on_join(1, "Bob", none_h);
+        maps::host_pump_for_test();
+        checkf(r.sends == 2 && r.last_peer == 1,
+               "H9: the REJOIN's own JOIN re-seats it and it is sent the map afresh (sends=%d)", r.sends);
+
+        // H10: the probe runs outside the lock, so a joiner can be seated between the probe and the
+        // reap. A seat newer than the probe must survive it -- the twin of H8, and the check that
+        // fails if the reap trusts a stale "not connected".
+        begin();
+        hk.alive        = alive_hook;
+        r.join_hash     = mine_h;
+        r.join_in_probe = 1;
+        maps::host_pump_for_test();
+        checkf(r.sends == 1 && r.last_peer == 1,
+               "H10: a JOIN published DURING the liveness probe is not reaped by it (sends=%d)",
+               r.sends);
 
         maps::set_pump_hooks_for_test(nullptr);
         maps::set_can_carry_for_test(-1);

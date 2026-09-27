@@ -1531,6 +1531,16 @@ extern "C" void MH_Net_QueueMatchBoundary(void) {
          q_depth, epoch, post_ev, post_ref);
 }
 
+// mp:X2h -- a bare read of lane M's CURRENT depth, no rollup and no log line (see mh_net_export.h's
+// note on the row). Under the same lock the writers take -- the lane pair is not lock-free.
+extern "C" int MH_Net_QueueDepthM(void) {
+    if (!g_cs_ready) return 0; // never initialised: no lanes
+    EnterCriticalSection(&g_q_cs);
+    int dm = g_lanes.depth_m();
+    LeaveCriticalSection(&g_q_cs);
+    return dm;
+}
+
 // qmatchtest's read of the lane counters (net_selftest.exe compiles this TU; nothing in a module
 // calls it). Under the same lock the writers take. `epoch_out` is mp:U41d's reset marker -- pass
 // nullptr from a call site that does not need it.

@@ -266,6 +266,12 @@
       "why": "ADDED 2026-09-21 (TL-HARN4). The shared ini STRING-read comment-strip helper (config/ini_read.h, mh::config::read_ini_string / strip_ini_comment) that ~40 GetPrivateProfileStringA call sites across src/mh_dll now share. Win32's raw API returns a trailing same-line `;comment` as PART OF the string value, which used to TERMINATE the process on two strict-compare keys ([config] mode, [net] module) and silently corrupt two others ([net] relay dialled the comment text 2026-09-19, [fonts] probe_text drew it on every frame 2026-09-20) before each was hand-patched at its own call site. This suite proves the shared primitive against a fixture ini shaped exactly like the trap (mh_net.example.ini's own documented style): the strip in isolation (leading-space/no-space/tab/all-comment/bare-semicolon/first-byte cases), then the full read against fixture lines reproducing the fail-closed and fail-open shapes, an untouched bare value, an absent key/section still taking the default, and the return length matching the POST-strip string."
     },
     {
+      "suite": "infoavitest",
+      "exe": "net_selftest",
+      "checks": 22,
+      "why": "ADDED 2026-09-26 (mp:X2g). The info-screen media tick's guard: mh.dll replaces llm_ui_info_media_frame_tick (EN 0x004caa46) because after a FAILED llm_ui_avi_open the media context is zero-filled and retail wrapped `playback_pos %= stream_length_time` -- IDIV by zero at 0x004cab52, the rc4 field crash (Res\\H_INV.AVI missing; retail's own NOT.AVI entries hit it on any install). The suite drives the tick's arithmetic (seams/ui_info_avi.h plan_tick / video_on) with exactly the field state (len 0, surface NULL or stale; 10000 no-video frames; the 2^32 tick wrap), proves a live clip's wrap is bit-identical to retail's over a grid of lengths/positions/deltas, and pins the `[net] info_avi_test_absent` matcher the rig row uses. Pure: no arena, no files, no ports."
+    },
+    {
       "suite": "runctxtest",
       "exe": "net_selftest",
       "checks": 18,

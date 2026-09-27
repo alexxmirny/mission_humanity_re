@@ -1,0 +1,31 @@
+# mp:D36 CLIENT2 -- a BRAND-NEW process (launched into client1's lane after client1's process exit):
+# its player_data and Planets[31] are the zeroed .bss a first-in-process match reads. It joins the
+# host's SECOND match (mp_host_d36_rematch.txt) -- the rc4 fresh joiner.
+
+settled value:110
+# a static frame for the suite's capture rule (the verdict is the post_check, not pixels)
+screensettled
+capture d36_c2_menu
+awaitsignal rehosted
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+present Internet server
+settled Internet server
+clickl Internet server
+present Server address
+settled Connect
+clickl Connect
+sessions 1
+settled Join game
+clickl Join game
+present Network players
+occ 2
+signal lobby2
+
+absent Network players
+gamemode 2
+gameclock 12000
+log CLIENT2 (fresh process) joined the host's rematch; match 2 ran past 12 s
+end

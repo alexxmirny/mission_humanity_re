@@ -1,0 +1,107 @@
+# mp:D36 HOST -- the rc4 field match's shape: this process plays a match on map A in which it LANDS
+# its mother ship, the match ends, and the SAME process hosts a second match on a map with a SHORTER
+# name against a FRESH client process. Pair with mp_client_d36_match1.txt (client1, plays match 1 and
+# quits to desktop) and mp_client_d36_fresh.txt (client2, a brand-new process launched into client1's
+# lane after that exit -- test_ui.py's client_after_exit / client_shares_lane).
+#
+# WHY THIS SHAPE AND NOT rematch_play's. rematch_play (mp:RM1) rematches the SAME joiner process and
+# neither peer lands, so both carry identical (zero) residue and it could never see D36. The rc4 host
+# (01a0deb9) had landed in its 28 s Magnetic Fields match; the landing grant books +5400/4000/3000/2000
+# into player_data.resource_spent (gains-only, never cleared for a human -- mp:D36), so its second
+# match entered with that grant while the fresh joiner entered with zeros: `DESYNC step=50
+# first_region=8 p0_ai_econ`. The shorter second map name is the second residue: Planets[31]'s string
+# slots keep the old name's tail past the new NUL (`planets` +0x81da in rc4).
+#
+# THE ASSERTION IS THE post_check (tools/check_d36_rematch_seed.py): the host's match-2 step-1 seed
+# (mh_match_seed.bin) equals the fresh client's over player_data + planets + players +
+# player_resources, the in-band [desync] watch says nothing, both first samples agree -- and the
+# mh.dll clear logged `nonzero=0` on every first-in-process entry and >0 on the host's rematch entry
+# (so a run where match 1 never landed cannot pass vacuously).
+
+# ---- game 1: map A (Blue Monday, the list's pre-selected first row) -------------------------------
+settled value:110
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+settled Create
+clickl Create
+present Game name
+settled Ok
+clickl Ok
+present Available maps
+settled Ok
+present blue monday
+capture d36_maps_game1
+clickl Ok
+
+present Network players
+peers 1
+awaitsignal lobby
+enabled Start
+settled Start
+clickl Start
+
+# land the mother (D35's gesture at 1024x768: shift+right-click = move + deploy); it is down well
+# before gameclock 20000, and the deploy books the landing grant into resource_spent on BOTH peers.
+absent Network players
+gamemode 2
+gameclock 3000
+rclick 480 330 shift
+gameclock 20000
+signal landed
+
+# ---- client1 quits; end match 1 (mp_host_rematch2.txt's measured walk, comments there) ----------
+awaitsignal cliquit
+present Continue game
+settled Continue game
+clickl Ok
+screensettled
+settled Ok
+clickl Ok
+key 0x01
+screensettled
+settled value:110
+screensettled
+settled value:110
+
+# ---- game 2, same process: map B (Cold War -- a SHORTER name than "blue monday") -----------------
+cursor 112 192
+hovered value:110
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+settled Create
+clickl Create
+present Game name
+settled Ok
+clickl Ok
+# "Available maps" rows at y=98+14*i (mp_host_el2.txt's dump): Blue Monday, BlueMonday, Cold War =
+# row 2 -> y=126. A list row commits on the render-settled hover at mouse-DOWN: the split click.
+present Available maps
+settled Ok
+cursor 80 126
+cursor 80 126
+press 80 126
+release 80 126
+present cold war
+settled Ok
+capture d36_maps_game2
+clickl Ok
+present Network players
+settled Cancel
+signal rehosted
+
+# client2 -- a fresh process -- joins; Start.
+occ 2
+awaitsignal lobby2
+enabled Start
+settled Start
+clickl Start
+absent Network players
+gamemode 2
+# past several [desync] samples (cadence 50 steps = 5 s of game time): step 50 is where rc4 split
+gameclock 12000
+log HOST: landed in match 1, rematched a fresh client on a shorter-named map; match 2 ran past 12 s
+end

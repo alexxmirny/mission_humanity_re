@@ -31,55 +31,59 @@
 #include "state/region_runtime.h" // SB-HOSTFREE: live_base/ptr -- a movable region is read
                                   // where it IS, not where the binary put it
 #include "include/mh_seam_export.h"
-#include "include/mh_harness_export.h"     // D18: MH_Harness_LateArm -- the harness work that needs to
-                                           // know which implementation owns an entry, so it runs here
-#include "include/mh_mpmenu_export.h"      // MH_Menu_Install (mp_menu.cpp) -- restore the MP menu button
-#include "include/mh_capture_export.h"     // MH_Capture_Install (gfx_capture.cpp) -- UI frame capture
-#include "include/mh_overlay_export.h"     // MH_Overlay_Install (gfx_overlay.cpp) -- debug overlay
-#include "include/mh_keyrepeat_export.h"   // MH_KeyRepeat_Install (ui_keyrepeat.cpp) -- U24 modal key-repeat fix
-#include "include/mh_pause_export.h"       // MH_Pause_Install (ui_pause.cpp) -- D19 pause-screen (mode 5) hotkey
-#include "include/mh_fontguard_export.h"   // MH_FontGuard_Install (gfx_font_guard.cpp) -- F2 glyph-table bounds guard
-#include "include/mh_chatinput_export.h"   // MH_ChatInput_Install (ui_chat_input.cpp) -- F3 layout-aware typed input
-#include "include/mh_cheatgate_export.h"   // MH_CheatGate_Install (ui_cheat_gate.cpp) -- CH1 the SP cheat console refused in a network game
-#include "include/mh_diploecho_export.h"   // MH_DiploEcho_Install (ui_diplomacy_echo.cpp) -- U39 the diplomacy dialog's relation echo NOPed
-#include "include/mh_canceltask_export.h"  // MH_CancelTask_Install (ui_bldg_cancel_task.cpp) -- D28 the building dialog's cancel-task Yes as a replicated order
-#include "include/mh_buildprobe_export.h"  // MH_BuildProbe_Install (ui_bldg_build_probe.cpp) -- D35 the HUD build-click probe charges nothing (D25 in configuration (1))
-#include "include/mh_uidrive_export.h"     // MH_UIDrive_Install (ui_drive.cpp) -- UI automation Phase 2
-#include "include/mh_video_export.h"       // MH_Video_Install (video.cpp) -- D13 display-mode selection
-#include "include/mh_standalone_export.h"  // MH_Standalone_Install (standalone.cpp) -- boot a stock exe
-#include "include/mh_inmem_patch_export.h" // MH_InMemPatch_Install (patch/inmem_install.cpp) -- F1E, default OFF
-#include "include/mh_transport_present.h"  // F3F: is there a network transport at all -- NOT `[net] enable`
-#include "ui/lobby_ui.h"                   // D4: the UI-owned lobby/browser fixup module (mh/ui)
-#include "ui/lobby_ping.h"                 // mp:L1b: per-slot SRTT column, ticked from the lobby's own frame
-#include "mh_net_proto/session_info.h"     // F3c: the REFUSED announce kind + its decoder
-#include "include/mh_run_context.h"        // MH_RunDir (per-run log folder), MH_ExeDir (config inputs)
-#include "include/mh_log_rotate.h"         // SES2: the shared size cap + one-generation rotation
-#include "addr/mh_addrs.gen.h"             // generated EN VAs (tools/gen_dll_addrs.py)
-#include "../../mh_net_udp/udp_stats.h"    // mp:D30: mh::netstats::order_is_late
-#include "addr/mh_patches.gen.h"           // promotable-function extents (the C1 interlock table)
-#include "addr/mh_tombstones.gen.h"        // ledger-dead body extents (the X-TOMB dead table)
-#include "include/mh_hostapi_bind.h"       // LIB-ABI: the thunk-backed host-callback table (mh.dll's host half)
-#include "state/host_api.h"                // LIB-ABI: libmh_set_host_api + the unbound-walk (libmh's half)
-#include "state/host_bind.h"               // SB-BIND: the state ABI (region count / bound count)
-#include "state/host_events.h"             // LIFT-EVQ: event_sink_dispatch_count (the [hostevt] line)
-#include "state/host_in.h"                 // LIB-REF-IN: the inbound surface's arm-time report
-#include "include/mh_libmh_hook_bind.h"    // F4D: MH_LibMH_BindHookApi -- the hook table's rc
-#include "include/mh_module_bind.h"        // F4D: MH_LibmhModule_IsBound -- which configuration
-#include "state/hook_api.h"                // F4D: libmh_hook_api_unbound -- and its unbound walk
-#include "hook/host_event_sink.h"          // LIFT-EVQ: bind_host_event_sink + unknown count
-#include "addr/mh_rebind.gen.h"            // LIB-REBIND R11: report_arming at the arm-time report
-#include "en_guard.h"                      // EN-only build gate
-#include "net_internal.h"                  // shared spine: PROLOGUE, TEV_*, init-written globals, net_diag decls
-#include "config/ini_read.h"               // TL-HARN4: read_ini_string -- strips a trailing `;comment`
-#include "seams/map_transfer.h"            // mp:X2: the map download, its Start gate and its resolve seam
-#include "hook/detour.h"                   // install_jmp / install_trampoline (shared toolkit)
-#include "hook/hookpoint.h"                // D5/R7: the named hook points -- the C10 session-begin observer
-#include "hook/tombstone.h"                // X-TOMB: trap-fill every body we claim dead
-#include "hook/export.h"                   // set_export_logger (P0-EXPORT arm reporting)
-#include "desync/desync_watch.h"           // D21: runtime desync detector (install / session_reset)
-#include "sim/sim_step.h"                  // ROOTS-LIVE: the promoted root D21 must chain onto
-#include "hook/patch.h"                    // patch_bytes_guarded (S7 browser-row format string)
-#include "hook/watcall.h"                  // call_watcall1 (Watcom __watcall(EAX) bridge)
+#include "include/mh_harness_export.h"      // D18: MH_Harness_LateArm -- the harness work that needs to
+                                            // know which implementation owns an entry, so it runs here
+#include "include/mh_mpmenu_export.h"       // MH_Menu_Install (mp_menu.cpp) -- restore the MP menu button
+#include "include/mh_capture_export.h"      // MH_Capture_Install (gfx_capture.cpp) -- UI frame capture
+#include "include/mh_overlay_export.h"      // MH_Overlay_Install (gfx_overlay.cpp) -- debug overlay
+#include "include/mh_keyrepeat_export.h"    // MH_KeyRepeat_Install (ui_keyrepeat.cpp) -- U24 modal key-repeat fix
+#include "include/mh_pause_export.h"        // MH_Pause_Install (ui_pause.cpp) -- D19 pause-screen (mode 5) hotkey
+#include "include/mh_fontguard_export.h"    // MH_FontGuard_Install (gfx_font_guard.cpp) -- F2 glyph-table bounds guard
+#include "include/mh_chatinput_export.h"    // MH_ChatInput_Install (ui_chat_input.cpp) -- F3 layout-aware typed input
+#include "include/mh_cheatgate_export.h"    // MH_CheatGate_Install (ui_cheat_gate.cpp) -- CH1 the SP cheat console refused in a network game
+#include "include/mh_diploecho_export.h"    // MH_DiploEcho_Install (ui_diplomacy_echo.cpp) -- U39 the diplomacy dialog's relation echo NOPed
+#include "include/mh_canceltask_export.h"   // MH_CancelTask_Install (ui_bldg_cancel_task.cpp) -- D28 the building dialog's cancel-task Yes as a replicated order
+#include "include/mh_netcrit_export.h"      // MH_NetCrit_Install (ui_bldg_netcrit_pure.cpp) -- D37 the HUD network panel probe leaves the sim untouched in lockstep
+#include "include/mh_storagepurge_export.h" // MH_StoragePurge_Install (ui_storage_panel_purge.cpp) -- D38 row 5 the storage panel leaves dead docked units to the sim in lockstep
+#include "include/mh_buildprobe_export.h"   // MH_BuildProbe_Install (ui_bldg_build_probe.cpp) -- D35 the HUD build-click probe charges nothing (D25 in configuration (1))
+#include "include/mh_relanding_export.h"    // MH_Relanding_Install (sim_pioneer_refill.cpp) -- D37a a lockstep pioneer re-landing refills AI players only
+#include "include/mh_infoavi_export.h"      // MH_InfoAvi_Install (ui_info_avi.cpp) -- X2g an info screen whose AVI will not open shows without video, never IDIVs by 0
+#include "include/mh_uidrive_export.h"      // MH_UIDrive_Install (ui_drive.cpp) -- UI automation Phase 2
+#include "include/mh_video_export.h"        // MH_Video_Install (video.cpp) -- D13 display-mode selection
+#include "include/mh_standalone_export.h"   // MH_Standalone_Install (standalone.cpp) -- boot a stock exe
+#include "include/mh_inmem_patch_export.h"  // MH_InMemPatch_Install (patch/inmem_install.cpp) -- F1E, default OFF
+#include "include/mh_transport_present.h"   // F3F: is there a network transport at all -- NOT `[net] enable`
+#include "ui/lobby_ui.h"                    // D4: the UI-owned lobby/browser fixup module (mh/ui)
+#include "ui/lobby_ping.h"                  // mp:L1b: per-slot SRTT column, ticked from the lobby's own frame
+#include "mh_net_proto/session_info.h"      // F3c: the REFUSED announce kind + its decoder
+#include "include/mh_run_context.h"         // MH_RunDir (per-run log folder), MH_ExeDir (config inputs)
+#include "include/mh_log_rotate.h"          // SES2: the shared size cap + one-generation rotation
+#include "addr/mh_addrs.gen.h"              // generated EN VAs (tools/gen_dll_addrs.py)
+#include "../../mh_net_udp/udp_stats.h"     // mp:D30: mh::netstats::order_is_late
+#include "addr/mh_patches.gen.h"            // promotable-function extents (the C1 interlock table)
+#include "addr/mh_tombstones.gen.h"         // ledger-dead body extents (the X-TOMB dead table)
+#include "include/mh_hostapi_bind.h"        // LIB-ABI: the thunk-backed host-callback table (mh.dll's host half)
+#include "state/host_api.h"                 // LIB-ABI: libmh_set_host_api + the unbound-walk (libmh's half)
+#include "state/host_bind.h"                // SB-BIND: the state ABI (region count / bound count)
+#include "state/host_events.h"              // LIFT-EVQ: event_sink_dispatch_count (the [hostevt] line)
+#include "state/host_in.h"                  // LIB-REF-IN: the inbound surface's arm-time report
+#include "include/mh_libmh_hook_bind.h"     // F4D: MH_LibMH_BindHookApi -- the hook table's rc
+#include "include/mh_module_bind.h"         // F4D: MH_LibmhModule_IsBound -- which configuration
+#include "state/hook_api.h"                 // F4D: libmh_hook_api_unbound -- and its unbound walk
+#include "hook/host_event_sink.h"           // LIFT-EVQ: bind_host_event_sink + unknown count
+#include "addr/mh_rebind.gen.h"             // LIB-REBIND R11: report_arming at the arm-time report
+#include "en_guard.h"                       // EN-only build gate
+#include "net_internal.h"                   // shared spine: PROLOGUE, TEV_*, init-written globals, net_diag decls
+#include "config/ini_read.h"                // TL-HARN4: read_ini_string -- strips a trailing `;comment`
+#include "seams/map_transfer.h"             // mp:X2: the map download, its Start gate and its resolve seam
+#include "hook/detour.h"                    // install_jmp / install_trampoline (shared toolkit)
+#include "hook/hookpoint.h"                 // D5/R7: the named hook points -- the C10 session-begin observer
+#include "hook/tombstone.h"                 // X-TOMB: trap-fill every body we claim dead
+#include "hook/export.h"                    // set_export_logger (P0-EXPORT arm reporting)
+#include "desync/desync_watch.h"            // D21: runtime desync detector (install / session_reset)
+#include "sim/sim_step.h"                   // ROOTS-LIVE: the promoted root D21 must chain onto
+#include "hook/patch.h"                     // patch_bytes_guarded (S7 browser-row format string)
+#include "hook/watcall.h"                   // call_watcall1 (Watcom __watcall(EAX) bridge)
 
 #pragma comment(lib, "user32.lib") // wsprintfA
 
@@ -374,8 +378,31 @@ int ui_client_session_gate(void) {
 // The only thing that stayed on this side is ui_client_session_gate above -- the take-over's one
 // transport question, answered here and injected there.
 
+// ---- mp:X2h -- lobby-tick stall diagnostic ------------------------------------------------------
+// X2e's RE proved the shape: a modal on EITHER peer (host or client) can swap the widget list AWAY
+// from the lobby (llm_ui_dlg_savegame_io_error's teardown -- "swaps the menu to a one-button dialog
+// whose OK goes to the local browser", map_transfer.cpp) while the TRANSPORT LINK survives, so
+// on_lobby_dispatch -- the only drain of lane M / channel C -- simply stops being called. Lane M
+// fills in ~2-3 s and the far peer's host times the link out after ~10 s. X2e/X2g removed the two
+// modals found so far; the user chose (2026-09-27) to log the SHAPE instead of hunting every future
+// one, so the next field modal is diagnosed from the report rather than reproduced from scratch.
+namespace {
+unsigned g_x2h_last_dispatch_ms = 0;     // GetTickCount() at on_lobby_dispatch's last run; 0 = never yet
+bool     g_x2h_entered_lobby    = false; // sticky: has the lobby been ticked at least once THIS link
+bool     g_x2h_stalled          = false; // log-once latch for the STALLED/resumed pair
+unsigned g_x2h_gap_start_ms     = 0;     // last-good-dispatch tick, captured when STALLED first fires
+} // namespace
+// mp_lobby_stall_watch (the function that reads the state above) is defined AFTER this file's outer
+// anonymous namespace closes, below -- it is called from net_lockstep.cpp and a definition inside an
+// unnamed namespace would give it internal linkage, an unresolved-external at link time. The state
+// itself stays right here: an unnamed-namespace name is visible for the rest of the translation unit
+// regardless of where its enclosing namespace's brace closes (same reason ADDR_SESSION_MODE, declared
+// inside THIS file's outer anonymous namespace, is still usable past its close).
+
 void on_lobby_dispatch() {
-    mh::ui::announce_drain(); // U16: render any host-broadcast join/left lines (main thread)
+    g_x2h_last_dispatch_ms = GetTickCount();          // mp:X2h -- the pulse mp_lobby_stall_watch reads
+    if (MH_MP_IsManual()) g_x2h_entered_lobby = true; // mp:X2h -- sticky "this link has really seen the lobby"
+    mh::ui::announce_drain();                         // U16: render any host-broadcast join/left lines (main thread)
     int is_host = *g_a.is_host;
     // ---- mp:X2: the map download, driven from the one per-lobby-frame tick both roles run -------
     // HOST: refresh the content claim if the picker moved, arm the next peer's transfer, and open or
@@ -630,6 +657,51 @@ __declspec(naked) void session_begin_multi_detour() {
 constexpr uintptr_t ADDR_DESYNC_SIM_STEP = mh::addr::llm_strat_sim_step;
 void               *g_desync_tramp       = nullptr;
 } // namespace
+
+// mp:X2h -- called from net_lockstep.cpp's on_present, which is proven (by X2g's own crash) to be a
+// per-frame path that keeps running from INSIDE a retail modal's own loop, unlike on_lobby_dispatch,
+// which is exactly the thing that stops. Logs once when the lobby tick has gone quiet >= 1000 ms with
+// a live manual-MP link outside a match, and once when it demonstrably catches back up. Needs EXTERNAL
+// linkage (net_internal.h declares it for that cross-TU call), hence living here rather than beside
+// the state it reads, which is a few screens up inside this file's outer anonymous namespace.
+void mp_lobby_stall_watch() {
+    if (!MH_MP_IsManual() || !MH_Net_IsStarted() || MH_Net_PeerCount() <= 0 ||
+        *(const unsigned char *)ADDR_SESSION_MODE == 3) {
+        // Not our concern any more (or not yet): SP/force-entry, the server browser / name entry /
+        // handoff before any peer is admitted, the link just ended, or a match is running. Reset
+        // silently -- a link that ends WHILE stalled is X2e's failure completing (the host's 10 s
+        // drop), not a resume, so it gets no line of its own; the STALLED line already said it.
+        g_x2h_entered_lobby = false;
+        g_x2h_stalled       = false;
+        return;
+    }
+    if (!g_x2h_entered_lobby) return;                               // this link's lobby has not been ticked even once yet
+    const unsigned since = GetTickCount() - g_x2h_last_dispatch_ms; // unsigned: wrap-safe
+    if (since >= 1000) {
+        if (!g_x2h_stalled) {
+            g_x2h_stalled         = true;
+            g_x2h_gap_start_ms    = g_x2h_last_dispatch_ms;
+            const int      dm     = MH_Net_QueueDepthM(); // mp:X2h export -- 0 if the transport has none
+            const int      peers  = MH_Net_PeerCount();
+            const int      gm     = (int)*(const unsigned char *)mh::addr::_G_LLM_GAME_MODE;
+            const unsigned caller = (unsigned)g_last_dlg_caller; // 0 = no savegame_io_error dlg observed
+            char           b[224];
+            wsprintfA(b,
+                      "; [lobby] tick STALLED %u ms -- lane M depth %d, peers %d, game_mode %d, last "
+                      "DLG caller %08x (a modal in the lobby stops the drain; the host drops the link "
+                      "after 10 s) (mp:X2h)\n",
+                      since, dm, peers, gm, caller);
+            seam_log(b);
+        }
+    } else if (g_x2h_stalled) {
+        g_x2h_stalled           = false;
+        const unsigned total_ms = g_x2h_last_dispatch_ms - g_x2h_gap_start_ms;
+        char           b[80];
+        wsprintfA(b, "; [lobby] tick resumed after %u ms (mp:X2h)\n", total_ms);
+        seam_log(b);
+    }
+}
+
 extern "C" void MH_Lockstep_StepPin(void); // net_lockstep.cpp, mp:D30
 namespace {
 void on_desync_sim_step() {
@@ -2087,18 +2159,22 @@ static int MH_Core_Arm(void) {
                   probe ? " -- probe armed, one malformed broadcast is coming" : "");
         seam_log(m);
     }
-    MH_KeyRepeat_Install();  // U24: modal key pump -> one dispatch per keystroke in menu/lobby text fields (best-effort)
-    MH_Pause_Install();      // D19: [pause] key -> enter the orphaned mode-5 PAUSE screen from the strategic view (best-effort)
-    MH_FontGuard_Install();  // F2: bounds-guard glyph_table[code_unit] in llm_gfx_font_layout_text + the [fonts] probe (best-effort)
-    MH_ChatInput_Install();  // F3: layout-aware key translate + in-game chat codec + the pinned [input] codepage (best-effort)
-    MH_CheatGate_Install();  // CH1: the SP cheat console (Shift+Enter line) refused in a lockstep match + the redacted chat submit log (best-effort)
-    MH_DiploEcho_Install();  // U39: the diplomacy dialog's optimistic relation write NOPed -- the 0xf4 commit is the hashed cell's only writer (best-effort)
-    MH_CancelTask_Install(); // D28: the building dialog's cancel-task Yes issues the equivalent building order in a lockstep match (best-effort)
-    MH_BuildProbe_Install(); // D35: the HUD build-click affordability probe charges nothing -- D25's fix where libmh is not bound (best-effort)
-    MH_Overlay_Install();    // debug overlay: [debug] ini pages -> painted on present BEFORE capture reads (best-effort)
-    MH_Capture_Install();    // UI capture harness: hook present-flip -> F12/[capture] frame dump (best-effort)
-    MH_UIDrive_Install();    // UI automation harness (Phase 2): [uitest] click-driver via the mouse ring (best-effort)
-    install_marker_scan();   // U1c diag: [menu] findstr=<marker> -> locate the in-game IP-entry buffer
+    MH_KeyRepeat_Install();    // U24: modal key pump -> one dispatch per keystroke in menu/lobby text fields (best-effort)
+    MH_Pause_Install();        // D19: [pause] key -> enter the orphaned mode-5 PAUSE screen from the strategic view (best-effort)
+    MH_FontGuard_Install();    // F2: bounds-guard glyph_table[code_unit] in llm_gfx_font_layout_text + the [fonts] probe (best-effort)
+    MH_ChatInput_Install();    // F3: layout-aware key translate + in-game chat codec + the pinned [input] codepage (best-effort)
+    MH_CheatGate_Install();    // CH1: the SP cheat console (Shift+Enter line) refused in a lockstep match + the redacted chat submit log (best-effort)
+    MH_DiploEcho_Install();    // U39: the diplomacy dialog's optimistic relation write NOPed -- the 0xf4 commit is the hashed cell's only writer (best-effort)
+    MH_CancelTask_Install();   // D28: the building dialog's cancel-task Yes issues the equivalent building order in a lockstep match (best-effort)
+    MH_NetCrit_Install();      // D37: the HUD network panel's is_network_critical probe restores the sim bytes it touches in a lockstep match (best-effort)
+    MH_StoragePurge_Install(); // D38 row 5: the storage panel's dead-docked purge is skipped in a lockstep match -- the sim purges on every peer (best-effort)
+    MH_BuildProbe_Install();   // D35: the HUD build-click affordability probe charges nothing -- D25's fix where libmh is not bound (best-effort)
+    MH_Relanding_Install();    // D37a: in a lockstep match a pioneer re-landing refills the starting stock for AI players only (best-effort)
+    MH_InfoAvi_Install();      // X2g: info-screen AVI open failure -> no-video screen, no CD prompt/box; the media tick never divides by a zero clip length (best-effort)
+    MH_Overlay_Install();      // debug overlay: [debug] ini pages -> painted on present BEFORE capture reads (best-effort)
+    MH_Capture_Install();      // UI capture harness: hook present-flip -> F12/[capture] frame dump (best-effort)
+    MH_UIDrive_Install();      // UI automation harness (Phase 2): [uitest] click-driver via the mouse ring (best-effort)
+    install_marker_scan();     // U1c diag: [menu] findstr=<marker> -> locate the in-game IP-entry buffer
     // (the five MH_Net_Set*Handler binds stood here until F3B; they are net steps and moved into
     //  MH_Net_Arm above -- see the note there for why the move is order-free and log-invisible.)
     install_desync_watch(); // D21: runtime desync detector -- [desync] ini section,

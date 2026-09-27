@@ -516,6 +516,15 @@ void Endpoint::drop_conn(int idx, const char *why) {
     InterlockedExchange(&m_dead_peer, m_conns[idx].player_id);
     logf("net: udp conn %d dropped -- %s (keepalives: sent %ld, received %ld)", idx, why,
          (long)m_conns[idx].ping_tx, (long)m_conns[idx].ping_rx);
+    // mp:X2f -- every caller holds m_conn_cs (the watchdog pass, the recv path, send/send_ctrl), so
+    // the channel is touched under the same lock as every other channel-C call. The rc4 host crash
+    // was a snapshot transfer outliving its destination here: the index was re-issued to a rejoiner
+    // 88 s later, which inherited the stale transfer and drove it into a composer the application
+    // was tearing down.
+    if (m_bulk.on_conn_dropped(idx))
+        logf("net: udp conn %d's channel-C transfer cancelled with it -- its destination is gone, "
+             "and the next peer on this index must not inherit it (mp:X2f)",
+             idx);
 }
 
 // =================================================================================================
@@ -2054,6 +2063,16 @@ void Endpoint::queue_counters_for_test(int *depth, int *high, long *evicted, lon
     LeaveCriticalSection(&m_q_cs);
 }
 
+// mp:X2h -- a bare read of lane M's CURRENT depth, no rollup and no log line (see udp_endpoint.h's
+// note on the row). Under the same lock the writers take.
+int Endpoint::queue_depth_m() {
+    if (!m_cs_ready) return 0;
+    EnterCriticalSection(&m_q_cs);
+    int dm = m_lanes.depth_m();
+    LeaveCriticalSection(&m_q_cs);
+    return dm;
+}
+
 int Endpoint::peer_count() {
     if (!m_started) return 0;
     int n = 0;
@@ -2118,17 +2137,37 @@ bool Endpoint::bulk_send(int dst_player, const void *blob, uint32_t len) {
     return ok;
 }
 
-bool Endpoint::bulk_send_src(int dst_player, bulk::source_fn src, void *ctx, uint32_t len) {
+bool Endpoint::bulk_send_src(int dst_player, bulk::source_fn src, void *ctx, uint32_t len,
+                             bool drop_cancels) {
     if (!m_started) return false;
     bool ok = false;
     EnterCriticalSection(&m_conn_cs);
     for (int i = 0; i < MH_NET_MAX_PEERS; ++i) {
         if (!m_conns[i].active || m_conns[i].player_id != dst_player) continue;
-        ok = m_bulk.start_send_src(i, dst_player, src, ctx, len);
+        ok = m_bulk.start_send_src(i, dst_player, src, ctx, len, drop_cancels);
         break;
     }
     LeaveCriticalSection(&m_conn_cs);
     return ok;
+}
+
+// mp:X2f. THE LOCK IS THE WHOLE POINT. Every read of a composer happens inside a channel call made
+// under m_conn_cs (on_ack -> tx_seek -> tx_load on the recv thread; tick on the timer thread;
+// start_send_src here), so taking the same lock to clear the pointer is what makes "after this
+// returns, nobody is inside the composer and nobody will enter it again" true. Not gated on
+// m_started: a stopped endpoint keeps its channel (T1b), and an owner tearing down after a stop must
+// still be able to detach. m_cs_ready is the only precondition, exactly as for bulk_recv.
+//
+// DEADLOCK REVIEW, since this adds a lock acquisition on the main thread: it takes ONLY m_conn_cs,
+// holds it across two field writes and no callback, and its caller (MH_Net_SnapshotSend) holds no
+// endpoint lock and is documented as reached with map_transfer's leaf lock already released. The
+// recv thread re-entering through a handler is a recursive acquire of a CRITICAL_SECTION it owns.
+bool Endpoint::bulk_cancel_src(void *ctx) {
+    if (!m_cs_ready) return m_bulk.abort_src(ctx);
+    EnterCriticalSection(&m_conn_cs);
+    const bool was = m_bulk.abort_src(ctx);
+    LeaveCriticalSection(&m_conn_cs);
+    return was;
 }
 
 void Endpoint::bulk_resume_at(uint32_t chunk_index) {

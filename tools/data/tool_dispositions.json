@@ -89,6 +89,26 @@
       "why": "mp:D35: the configuration-(1) (no libmh.dll) build-click rows' cross-peer post_check -- with the mh.dll seam's charge-free probe (ship default) the host logs the probe line and the pair stays IDENTICAL with the in-band desync watch clean; with [net] build_probe_free=0 (the reproduction arm) the retail pay + re-grant diverges pK_ai_econ, never heals, and the watch logs *** DESYNC",
       "evidence": "invoked by tools/test_ui.py's d35_buildclick_c1 / d35_buildclick_c1_retail TESTS entries (post_check, post_check_peers, post_check_session) and tools/lint_repo.py (--selftest)"
     },
+    "check_netcrit_pure.py": {
+      "class": "keep",
+      "why": "mp:D37: the configuration-(1) relay-chain rows' cross-peer post_check -- with the mh.dll seam (ship default) the host logs the network-panel probe restoring sim bytes it moved and the pair stays IDENTICAL with the in-band desync watch clean; with [net] netcrit_ui_pure=0 (the reproduction arm) the HUD panel's is_network_critical recompute diverges `buildings`, never heals, and the watch logs *** DESYNC",
+      "evidence": "invoked by tools/test_ui.py's d37_relay_chain / d37_relay_chain_retail TESTS entries (post_check, post_check_peers, post_check_session) and tools/lint_repo.py (--selftest)"
+    },
+    "check_storage_purge.py": {
+      "class": "keep",
+      "why": "mp:D38 row 5: the configuration-(1) storage-panel rows' cross-peer post_check -- with the mh.dll seam (ship default) the host logs the panel's purge skipped with a dead docked unit left to the sim, the fixture killed on the same step on both peers, and the pair stays IDENTICAL with the in-band desync watch clean; with [net] storage_panel_purge_fix=0 (the reproduction arm) the host's panel purges the dead row ahead of the sim, `unit_storage` diverges right after the kill, and the watch logs *** DESYNC",
+      "evidence": "invoked by tools/test_ui.py's d38_storage_purge / d38_storage_purge_retail TESTS entries (post_check, post_check_peers, post_check_session) and tools/lint_repo.py (--selftest)"
+    },
+    "check_info_avi.py": {
+      "class": "keep",
+      "why": "mp:X2g: the info_avi_absent row's cross-peer post_check -- with the clip made absent ([net] info_avi_test_absent=*) the host logs the seam armed and one `clip missing` line, its walk opens the no-video info screen and closes it with Esc (a modal would stop the walk), the pair stays IDENTICAL, and neither peer's lockstep clock stands still over 1 s (the rc4 CD prompt froze it ~4 s)",
+      "evidence": "invoked by tools/test_ui.py's info_avi_absent TESTS entry (post_check, post_check_peers, post_check_session) and tools/lint_repo.py (--selftest)"
+    },
+    "check_pioneer_refill.py": {
+      "class": "keep",
+      "why": "mp:D37a: the pioneer re-landing rows' cross-peer post_check -- with the fix (the mh.dll seam in configuration (1), libmh's completion_dispatch body in (2)) both peers log a re-landing line with no refill, the client's showing retail would have refilled, and the pair stays IDENTICAL with the in-band watch clean; with [net] pioneer_refill_fix=0 / [config] mode=original the client refills the host's pioneer, p0_ai_econ/player_resources diverge and never heal, and the watch logs *** DESYNC",
+      "evidence": "invoked by tools/test_ui.py's d37a_relanding_c1 / _c1_retail / _c2 / _c2_original TESTS entries (post_check, post_check_peers, post_check_session) and tools/lint_repo.py (--selftest)"
+    },
     "check_cam_trace.py": {
       "class": "keep",
       "why": "mp:SES3/SES3c (tooling:TL-SUITE-SPLICE-CAM) -- reads the camera latches on the [input] mouse_trace line; the cam_latch scenario's post-check (two --segment verdicts off one boot) and the reader a player's stuck-scroll log is judged with",
@@ -299,6 +319,11 @@
       "class": "keep",
       "why": "mp:R4a: the relay_stale_notice scenario's claim -- a peer that dialled a relay BEHIND its protocol level says so -- read off the logs the pixels cannot show: the one named `relay protocol <theirs> < <ours>` line in a peer's mh_net.log, the `; R4a: relay notice queued` line that proves the text reached mh.dll's browser carrier, and the relay's own protocol_level / hello_level_mismatch on its log. `--expect matching` is the negative every other relay scenario's pair must satisfy.",
       "evidence": "invoked by tools/lint_repo.py (--selftest, the planted-log negatives) and as the relay_stale_notice scenario's post_check in tools/test_ui.py"
+    },
+    "check_d36_rematch_seed.py": {
+      "class": "keep",
+      "why": "mp:D36: the d36_rematch_seed UI scenarios' cross-peer post_check -- a host that landed in match 1 rematches a FRESH client process on a shorter-named map; the match-2 step-1 seeds (mh_match_seed.bin) must be equal over player_data/planets/players/player_resources/strat_players with a clean [desync] watch (or, --expect diverge, carry the resource_spent residue + DESYNC), and the mh.dll entry clear must measure zero on every first-in-process entry",
+      "evidence": "invoked by tools/uiscripts/registry.yaml's d36_rematch_seed + d36_rematch_seed_retail rows (post_check, post_check_peers) and tools/lint_repo.py (--selftest)"
     },
     "check_rematch_residue.py": {
       "class": "keep",

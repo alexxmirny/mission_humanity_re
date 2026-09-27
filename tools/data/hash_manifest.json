@@ -693,6 +693,18 @@
         "resource_spent and the verdict could not see it. Appended (the contract), state-only."
       ],
       "excluded": false
+    },
+    {
+      "name": "progress",
+      "addr": "0x00c38750",
+      "size": 7200,
+      "pre": [],
+      "inline": "game_progress[8][300] {available, acquired, f3} -- the research/invention table (D38 row 10)",
+      "cont": [
+        "(2026-09-27): sim-read (ai_plan_unit_training, building eligibility) and never hashed. Every",
+        "writer is sim or session setup; no per-peer byte, so no mask. Appended (the contract)."
+      ],
+      "excluded": false
     }
   ],
   "tact_regions": [

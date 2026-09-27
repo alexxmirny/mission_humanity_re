@@ -53,6 +53,9 @@
 //   N.  ALL-OR-NOTHING, at both layers. The pipeline's gate never opens with a chunk missing, and
 //       `world::import()` handed a truncated blob refuses and leaves the poisoned arena byte-for-
 //       byte poisoned.
+//   X.  RE-ARM WHILE SOURCING (mp:X2f) -- the send copy's lifetime against the recv thread.
+//   Y.  DROP + INDEX REUSE (mp:X2f) -- a dropped destination's transfer is cancelled, and the next
+//       peer on the same conn index inherits nothing. Both are described at their definitions.
 //
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
@@ -712,6 +715,216 @@ int arm_truncation(int base) {
     return 0;
 }
 
+// =================================================================================================
+// ARMS X AND Y -- THE OUTBOX'S LIFETIME (mp:X2f)
+//
+// The rc4 host died with 0xc0000005 in memcpy <- Sender::source <- Channel::fill_chunk <- tx_load <-
+// tx_seek <- on_ack, on the RECV thread: MH_Net_SnapshotSend had freed the send copy while channel C
+// still pulled chunks through it. These arms drive snap::Outbox -- the object MH_Net_SnapshotSend is
+// now a wrapper over -- across two real endpoints, so the sequence that crashed is a sequence this
+// suite runs (net_selftest links the TCP module's MH_Net_* bodies, never udp_transport.cpp's).
+//
+//   X.  RE-ARM WHILE SOURCING. A transfer is mid-flight and the receiver's acknowledgements are
+//       driving tx_seek on the recv thread; the application re-arms 200 times, the field's
+//       once-per-lobby-frame cadence compressed. Every re-arm must REPLACE the transfer (the old path
+//       was refused behind the stale one and freed the copy anyway), release() must leave channel C
+//       detached, and the final transfer must still land byte-identical.
+//   Y.  THE DESTINATION DROPS AND ITS INDEX IS RE-ISSUED. The receiver dies with a transfer in
+//       flight (a fresh Endpoint = a restarted process); the host's link timeout retires conn 0; a
+//       new peer is admitted on conn 0 with the same player id -- the field's exact shape. The drop
+//       must cancel the transfer, the new peer must inherit NOTHING, and the application's re-arm
+//       must deliver to it whole.
+//
+// MUTATIONS, all measured red on 2026-09-26: (M1) drop `ep.bulk_cancel_src` from Outbox::release --
+// the pre-X2f free-first order -- and X fails 5 checks deterministically (0 of 200 re-arms taken,
+// channel C still attached after release, the final transfer never lands); (M2) make
+// Channel::on_conn_dropped leave the transfer running and Y's new peer inherits the dead peer's
+// transfer (13 chunks, 208 pieces); (M1+M2 = the rc4 build's behaviour) under ASan, X dies on its
+// first run with the FIELD'S OWN STACK: access-violation in memcpy <- Sender::source <-
+// Channel::fill_chunk on the endpoint's recv thread. The AV itself is a timing window; the M1
+// checks above are what make the arm red every time.
+snap::Outbox g_out;
+
+int arm_rearm(int base) {
+    const uint32_t len = 1024u * 1024u; // 64 body chunks: still mid-flight when the re-arms end
+    printf("  -- X: re-arm the outbox 200x while the recv thread is sourcing chunks (%lu B)\n",
+           (unsigned long)len);
+    uint8_t *blob = (uint8_t *)malloc(len);
+    uint8_t *dst  = (uint8_t *)malloc(len);
+    for (uint32_t i = 0; i < len; ++i) blob[i] = pattern(i * 13u + 5u);
+    snap::Receiver &rx = g_rx_a;
+    rx.reset(dst, len);
+    memset(dst, 0xA5, len);
+    long rer = 0;
+    int  err = 0;
+    if (!link_up(base, -1, 0)) {
+        checkf(false, "X: the link came up");
+        g_host.stop();
+        g_cl.stop();
+        free(blob);
+        free(dst);
+        return 1;
+    }
+    checkf(wait_for([&] { return g_out.arm(g_host, 1, blob, len, err) == 1; }, 5000),
+           "X: the first transfer armed (err=%d)", err);
+    checkf(wait_for(
+               [&] {
+                   drive_rx(g_cl, rx, &rer);
+                   return rx.verified_prefix() >= 4;
+               },
+               30000),
+           "X: a prefix crossed before the re-arms (%lu)", (unsigned long)rx.verified_prefix());
+
+    int armed = 0;
+    for (int i = 0; i < 200; ++i) {
+        if (g_out.arm(g_host, 1, blob, len, err) == 1) ++armed;
+        // mp:X2f clause (3): the FIRST re-arm lands on a transfer that is provably mid-flight (the
+        // prefix gate above, 64 chunks, a handful delivered), so it must be reported as superseded
+        // -- the evidence line the rig row reads. Later ones may find the previous already done.
+        if (i == 0)
+            checkf(g_out.superseded() == 1,
+                   "X: the first re-arm reports it superseded the running transfer to player 1 "
+                   "(superseded=%d)",
+                   g_out.superseded());
+        drive_rx(g_cl, rx, &rer); // keep the acknowledgements -- and so tx_seek -- coming
+        Sleep(1);
+    }
+    checkf(armed == 200, "X: every re-arm REPLACED the running transfer (%d of 200; err=%d)", armed,
+           err);
+
+    // THE INVARIANT ITSELF, not only its consequence: once release() returns, channel C holds no
+    // transfer that could reach the outbox's bytes.
+    g_out.release(g_host);
+    Bulk b;
+    g_host.bulk_stats(b);
+    printf("     re-arms taken %d/200, running transfers cancelled %ld, receiver prefix %lu\n", armed,
+           b.tx_cancelled, (unsigned long)rx.verified_prefix());
+    checkf(!b.tx_active, "X: release() leaves channel C detached from the outbox (tx_active=%d)",
+           (int)b.tx_active);
+    // "> 0", not "== 200": a replacement that lands after the previous transfer already finished has
+    // nothing to cancel, and how many do is a question of loopback speed, not of correctness.
+    checkf(b.tx_cancelled > 0, "X: ...and a superseded running transfer was cancelled, not orphaned "
+                               "(%ld)",
+           b.tx_cancelled);
+
+    checkf(wait_for([&] { return g_out.arm(g_host, 1, blob, len, err) == 1; }, 5000),
+           "X: the final transfer armed");
+    // ...and the negative: release() already detached everything, so this arm replaced nothing.
+    checkf(g_out.superseded() == -1,
+           "X: an arm after release() reports nothing superseded (superseded=%d)",
+           g_out.superseded());
+    const bool done = wait_for(
+        [&] {
+            drive_rx(g_cl, rx, &rer);
+            return rx.complete();
+        },
+        60000);
+    snap::Receiver::Stats s;
+    rx.stats(s);
+    print_rx("client", s);
+    checkf(done && rx.body() != nullptr && memcmp(rx.body(), blob, len) == 0,
+           "X: the transfer that survived 200 replacements landed byte-identical");
+    g_out.release(g_host);
+    g_host.stop();
+    g_cl.stop();
+    free(blob);
+    free(dst);
+    return 0;
+}
+
+int arm_drop_reuse(int base) {
+    const uint32_t len = 512u * 1024u;
+    printf("  -- Y: the destination drops mid-transfer and its conn index is re-issued (%lu B)\n",
+           (unsigned long)len);
+    uint8_t *blob = (uint8_t *)malloc(len);
+    uint8_t *dst  = (uint8_t *)malloc(len);
+    for (uint32_t i = 0; i < len; ++i) blob[i] = pattern(i * 29u + 17u);
+    snap::Receiver &rx = g_rx_a;
+    rx.reset(dst, len);
+    long rer = 0;
+    int  err = 0;
+    // 1.5 s host link timeout, as arm T and udpbulktest's resume arm use: the host must RETIRE the
+    // dead link (drop_conn) before the new peer dials, so the index really is re-issued.
+    if (!link_up(base, 1500, 0)) {
+        checkf(false, "Y: the link came up");
+        g_host.stop();
+        g_cl.stop();
+        free(blob);
+        free(dst);
+        return 1;
+    }
+    checkf(wait_for([&] { return g_out.arm(g_host, 1, blob, len, err) == 1; }, 5000),
+           "Y: the transfer armed");
+    wait_for(
+        [&] {
+            drive_rx(g_cl, rx, &rer);
+            return rx.verified_prefix() >= 4;
+        },
+        30000);
+    checkf(rx.verified_prefix() >= 4, "Y: a prefix crossed before the kill (%lu)",
+           (unsigned long)rx.verified_prefix());
+
+    // The receiver's PROCESS dies: a fresh Endpoint remembers no frontier, exactly like the rc4
+    // rejoiner, which came back as a new game session on the same player id.
+    g_cl.stop();
+    new (&g_cl) Endpoint();
+    g_cl.set_log(us_log, nullptr);
+    checkf(wait_for([&] { return g_host.peer_count() == 0; }, 5000),
+           "Y: the host's link timeout retired the dead destination");
+    Bulk b;
+    g_host.bulk_stats(b);
+    checkf(!b.tx_active && b.tx_cancelled >= 1,
+           "Y: the drop CANCELLED the transfer bound to it (tx_active=%d cancelled=%ld)",
+           (int)b.tx_active, b.tx_cancelled);
+
+    Config cc;
+    us_cfg(cc, 1, base, (unsigned short)(base + 1), -1);
+    checkf(g_cl.start(cc, US_PSK, true), "Y: a new peer dialled");
+    checkf(wait_for([&] { return g_host.peer_count() == 1; }, 10000),
+           "Y: ...and was admitted on the re-issued conn, as player 1 again");
+
+    // THE INHERITANCE CHECK. Before X2f the stale transfer re-bound to the new peer by player id
+    // (T1b) and pushed the dead peer's half-sent image at it, sourced from a composer the
+    // application was about to free.
+    snap::Receiver &rx2  = g_rx_b;
+    uint8_t        *dst2 = (uint8_t *)malloc(len);
+    rx2.reset(dst2, len);
+    memset(dst2, 0xA5, len);
+    const DWORD t_quiet = GetTickCount();
+    int         leaked  = 0;
+    while (GetTickCount() - t_quiet < 800) {
+        leaked += drive_rx(g_cl, rx2, &rer);
+        Sleep(5);
+    }
+    Bulk bc;
+    g_cl.bulk_stats(bc);
+    checkf(leaked == 0 && bc.rx_pieces == 0,
+           "Y: the new peer on the re-issued index inherited NOTHING (%d chunks, %ld pieces)", leaked,
+           bc.rx_pieces);
+
+    // map_transfer's move on the rejoiner's JOIN: arm again. It must be taken, and land whole.
+    checkf(wait_for([&] { return g_out.arm(g_host, 1, blob, len, err) == 1; }, 5000),
+           "Y: the application's re-arm was taken");
+    const bool done = wait_for(
+        [&] {
+            drive_rx(g_cl, rx2, &rer);
+            return rx2.complete();
+        },
+        60000);
+    snap::Receiver::Stats s;
+    rx2.stats(s);
+    print_rx("new peer", s);
+    checkf(done && rx2.body() != nullptr && memcmp(rx2.body(), blob, len) == 0,
+           "Y: the re-armed transfer reached the new peer byte-identical");
+    g_out.release(g_host);
+    g_host.stop();
+    g_cl.stop();
+    free(blob);
+    free(dst);
+    free(dst2);
+    return 0;
+}
+
 } // namespace
 
 // =================================================================================================
@@ -721,6 +934,10 @@ int run_udpsnaptest(int port) {
     // udploopbacktest holds the argument's own band, udprelinktest takes +100 and udpbulktest +200,
     // so this suite takes +300 and spaces its arms ten apart.
     const int base = port + 300;
+    // mp:X2f: UNBUFFERED, so a suite that dies with an access violation (arm X/Y's failure mode on
+    // a regression is the rc4 crash itself) still prints the arm it died in. Piped stdout is fully
+    // buffered by default and a fault discards the buffer -- the first mutation run printed nothing.
+    setvbuf(stdout, nullptr, _IONBF, 0);
     printf("=== udpsnaptest (mp:X1: the chunked snapshot pipeline) on ports %d.. ===\n", base);
     WSADATA wsa;
     WSAStartup(MAKEWORD(2, 2), &wsa);
@@ -856,6 +1073,10 @@ int run_udpsnaptest(int port) {
 
     // ---- arm T: truncation and resume ------------------------------------------------------------
     arm_truncation(base + 30);
+
+    // ---- arms X and Y: the outbox's lifetime (mp:X2f) -------------------------------------------
+    arm_rearm(base + 40);
+    arm_drop_reuse(base + 50);
 
     printf("  measured: world snapshot %lu B in %lu chunks crossed at 5%% loss in %lu ms (%ld "
            "datagrams destroyed, %ld piece retransmits); the clean 512 KiB reference took %lu ms\n",

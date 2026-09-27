@@ -78,6 +78,7 @@
 //                                the Set*Handler rows above already have, mp:SES6.
 //   MH_Net_QueueMatchBoundary -  no-op; no module means no inbound queue and no counters to restart.
 //                                mp:U41b.
+//   MH_Net_QueueDepthM       0    no module means no lane M to have anything queued in. mp:X2h.
 //
 #ifndef MH_NET_MODULE_H
 #define MH_NET_MODULE_H
@@ -102,7 +103,7 @@ extern "C" {
 // three symbols", which is the same fact told as a version rather than as a diff. Both orders are
 // safe; the version is the one a player's bug report can quote.
 #define MH_NET_MODULE_ABI \
-    0xF4B00007u // bumped at mp:U41b: MH_Net_QueueMatchBoundary added (the 27th row)
+    0xF4B00008u // bumped at mp:X2h: MH_Net_QueueDepthM added (the 28th row)
 
 // What mh.dll hands the module at bind time. ONE FIELD TODAY, and it is the whole of Q1's residue:
 // run_context.cpp stays mh.dll-side (F4 ruling Q1 -- 11 of its 13 consumers are core/harness, and
@@ -240,6 +241,7 @@ void MH_Net_SnapshotStatus(MH_NetSnapshotStatus *out);
         return;                                                                                     \
     })                                                                                              \
     X(void, MH_Net_QueueMatchBoundary, (void), (), { return; })                                     \
+    X(int, MH_Net_QueueDepthM, (void), (), { return 0; })                                           \
     X(void, MH_Net_SetSessionInfoHandler, (MH_SessionInfoCb cb), (cb), { return; })                 \
     X(void, MH_Net_SendSessionInfo, (const unsigned char *buf, int len), (buf, len), { return; })   \
     X(void, MH_Net_SetJoinHandler, (MH_JoinCb cb), (cb), { return; })                               \

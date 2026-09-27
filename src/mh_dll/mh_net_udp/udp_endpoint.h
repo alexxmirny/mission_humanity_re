@@ -408,6 +408,9 @@ public:
     // `epoch_out` is the reset marker (mh_net_queue_policy.h); pass nullptr where it is not needed.
     void queue_counters_for_test(int *depth, int *high, long *evicted, long *refused,
                                  unsigned *epoch_out);
+    // mp:X2h -- a bare, lock-protected read of lane M's CURRENT depth (no rollup, no log line, unlike
+    // queue_match_boundary above). The udp twin of net_transport.cpp's MH_Net_QueueDepthM.
+    int queue_depth_m();
     // mp:R3e -- "is `a` a peer this endpoint still holds?" True for an admitted conn that has not
     // been dropped and for a handshake still inside HS_PEND_MS; false for everything else, which
     // includes a pending entry that timed out and simply has not been reclaimed yet (the table is
@@ -436,7 +439,14 @@ public:
     bool bulk_send(int dst_player, const void *blob, uint32_t len);
     // The same transfer pulled from a composer rather than a buffer (mp:X1's `manifest || blob`
     // image, which is never materialised contiguously). `src`/`ctx` must outlive the transfer.
-    bool bulk_send_src(int dst_player, bulk::source_fn src, void *ctx, uint32_t len);
+    // `drop_cancels` (mp:X2f): a destination the link drops takes the transfer with it -- see
+    // bulk::Channel::start_send_src. The snapshot outbox sets it; T2's own callers keep the default.
+    bool bulk_send_src(int dst_player, bulk::source_fn src, void *ctx, uint32_t len,
+                       bool drop_cancels = false);
+    // mp:X2f -- abort a transfer that pulls through `ctx`, UNDER m_conn_cs. When this returns, the
+    // recv and timer threads can no longer reach `ctx`, so its owner may free or re-arm it. True if
+    // a running transfer was stopped.
+    bool bulk_cancel_src(void *ctx);
     // Pop one completed chunk from the never-evictable lane. 1 on success, 0 when empty.
     int bulk_recv(uint32_t *out_chunk_id, void *buf, int *inout_len);
     // Move the RECEIVER'S frontier (mp:X1). Two callers, one primitive: re-request a chunk the

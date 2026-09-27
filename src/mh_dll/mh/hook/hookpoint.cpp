@@ -145,6 +145,14 @@ constexpr row TABLE[] = {
      entry_claim::exclusive, 0, 0},
     {"lt_frame_harness_sim_tick", "the LT1F frame pair's harness chain hook", 0, shape::register_only,
      0, entry_claim::exclusive, 0, 0},
+
+    // ---- OBSERVE, appended (mp:D37b) -------------------------------------------------------------
+    // The replay's issue-route emulation ([harness] replay_drop_net_issue): a lockstep recording
+    // STAGED every order issued for a network-controlled player, and its released copy is in the
+    // recording; a single-process replay runs SESSION_MODE 2, where the same call enqueues at once.
+    // Guarded on the generated entry8 (strictly stronger than the prologue), like land_players.
+    {"order_issue", "the field replay's net-player issue drop", mh::exp::addr_llm_strat_order_dispatch,
+     shape::observe, 8, entry_claim::exclusive, 0, mh::exp::entry_llm_strat_order_dispatch},
 };
 
 // The table and the enum are ONE list. A point added to the enum without a row would otherwise read

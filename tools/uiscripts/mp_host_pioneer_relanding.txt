@@ -1,0 +1,65 @@
+# mp:D37a HOST walk -- the pioneer lifts off EMPTY and re-lands. Pair with mp_client_idle.txt.
+#
+# llm_strat_bldg_completion_dispatch's mothership arm credits the TEMPLATE stock
+# (Building.capacity[1..9] + human_transport: 5400/4000/3000/2000 + 150 for the human pioneer) on a
+# re-landing when `player != PlayerSide` -- a per-peer predicate: the idle client refills the host's
+# pioneer, the host does not. With the fix (mh.dll seam in configuration (1), libmh's body in (2))
+# a lockstep re-landing refills AI players only, so neither peer refills. While the pioneer is
+# airborne the stock drains ("Losing resources, not enough space"), so the refill is a large,
+# unmistakable resource difference on the client.
+
+# reach the host lobby (create the pre-pinned game on the pre-selected map)
+settled value:110
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+settled Create
+clickl Create
+present Game name
+settled Ok
+clickl Ok
+present Available maps
+settled Ok
+clickl Ok
+
+# host lobby: block until the client is really in ITS lobby, then Start.
+present Network players
+peers 1
+awaitsignal lobby
+enabled Start
+settled Start
+clickl Start
+
+# in the match: land the airborne pioneer (shift+right-click: move + deploy) -- the FIRST landing
+# (mother_established 0 -> 1, both peers credit the template, retail and fixed alike).
+absent Network players
+gameclock 3000
+rclick 480 330 shift
+gameclock 20000
+capture landed
+
+# select the landed pioneer building; its panel's middle tab button is TAKE OFF (status "folding").
+# Both HUD clicks are gated with `retry` on `bldgsel` (a HUD click can be lost under suite load):
+# the select must leave a building selected, the take-off must take it off the map (the unmap
+# clears the selection once the fold finishes).
+simclick 490 345
+retry 1500 1 3 bldgsel any
+gameclock 23000
+simclick 945 284
+retry 9000 1 3 bldgsel none
+
+# the airborne pioneer drifts while it climbs; click its sprite to select it, then land it on the
+# same spot -- the RE-landing (mother_established already 1).
+gameclock 33500
+simclick 545 390
+gameclock 34000
+rclick 480 330 shift
+gameclock 70000
+capture relanded
+# prove it is really back on the ground: the landing spot selects a building again
+simclick 490 345
+retry 1500 1 3 bldgsel any
+# rows past the re-landing for the analyzer and the in-band watch (samples every 50 steps)
+gameclock 80000
+end

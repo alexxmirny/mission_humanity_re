@@ -452,6 +452,10 @@ extern "C" void MH_Net_SetPeerHorizon(int player_id, int horizon_ms) {
 extern "C" void MH_Net_QueueMatchBoundary(void) {
     if (g_started) g_ep.queue_match_boundary();
 }
+// mp:X2h -- a bare, non-rolling read of lane M's current depth for the lobby-tick stall watch.
+extern "C" int MH_Net_QueueDepthM(void) {
+    return g_started ? g_ep.queue_depth_m() : 0;
+}
 
 extern "C" void MH_Net_SetSessionInfoHandler(MH_SessionInfoCb cb) { g_si_cb = cb; }
 extern "C" void MH_Net_SendSessionInfo(const unsigned char *buf, int len) {
@@ -502,7 +506,7 @@ extern "C" void MH_Net_SendHash(const unsigned char *buf, int len) {
 // This block is the APPLICATION on this side of the module boundary -- it IS the caller the header
 // is talking about -- so the two buffers are its job:
 //
-//   g_snap_tx_copy   OUR COPY of the blob handed to Send. Sender::begin() hashes now and reads the
+//   the send copy    OUR COPY of the blob handed to Send (snap::Outbox, mp:X2f). Sender::begin() hashes now and reads the
 //                    bytes later -- for tens of seconds at channel C's rate limit -- so the blob must
 //                    not move. It belongs to mh.dll's harness, off the process heap, and asking
 //                    another module to keep 8 MB alive and UNCHANGED across an unknown number of
@@ -527,12 +531,11 @@ namespace {
 
 namespace snap = mh::netudp::snapshot;
 
-snap::Sender   g_snap_tx;
+// mp:X2f: the send half is an OBJECT now (snap::Outbox, udp_snapshot.h), not three globals and a
+// free function -- the teardown order it enforces is the rc4 host crash's fix, and udpsnaptest drives
+// the same object across two real endpoints.
+snap::Outbox   g_snap_out;
 snap::Receiver g_snap_rx;
-
-uint8_t *g_snap_tx_copy = nullptr; // our copy of the caller's blob; owned until the next Send
-uint32_t g_snap_tx_len  = 0;
-bool     g_snap_tx_on   = false;
 
 uint8_t *g_snap_rx_arena = nullptr;
 bool     g_snap_rx_open  = false;
@@ -562,14 +565,6 @@ uint32_t g_snap_last_len      = 0;
 // The chunk staging buffer. FILE SCOPE, not a local: CHUNK_BYTES is 16 KiB and this is reached from
 // the game's frame thread, whose stack is not ours to spend.
 uint8_t g_snap_chunk[mh::netudp::bulk::CHUNK_BYTES];
-
-void snap_free_tx(void) {
-    if (g_snap_tx_copy != nullptr) VirtualFree(g_snap_tx_copy, 0, MEM_RELEASE);
-    g_snap_tx_copy = nullptr;
-    g_snap_tx_len  = 0;
-    g_snap_tx_on   = false;
-    g_snap_tx.reset();
-}
 
 // Drain every completed chunk the lane holds into the receiver. THE REFUSAL EDGE IS THE RE-REQUEST
 // PROTOCOL -- there is no NAK frame: a chunk whose bytes disagree with the manifest rewinds the
@@ -627,40 +622,37 @@ extern "C" int MH_Net_SnapshotSend(int dst_player, const void *blob, int len) {
         log_line(nullptr, "net: snapshot send REFUSED -- the blob is past the pipeline's cap");
         return 0;
     }
-    snap_free_tx(); // a previous transfer's copy; see snap_free_tx and the ownership note above
-    g_snap_tx_copy =
-        (uint8_t *)VirtualAlloc(nullptr, (SIZE_T)len, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
-    if (g_snap_tx_copy == nullptr) {
-        g_snap_err = snap::ERR_CAPACITY;
-        log_line(nullptr, "net: snapshot send REFUSED -- no room for the module's own copy");
+    // mp:X2f -- the Outbox detaches channel C from the previous transfer UNDER THE ENDPOINT'S LOCK
+    // before it frees that transfer's copy, and a new Send REPLACES the old transfer rather than
+    // being refused behind it. The pre-X2f body freed the copy first, unlocked, and never detached:
+    // the rc4 host's recv thread then pulled a chunk through the freed copy (0xc0000005 in memcpy).
+    int       why   = snap::OK;
+    const int armed = g_snap_out.arm(g_ep, dst_player, blob, (uint32_t)len, why);
+    if (!armed) {
+        if (why != snap::OK) g_snap_err = why;
+        if (why == snap::ERR_CAPACITY)
+            log_line(nullptr, "net: snapshot send REFUSED -- no room for the module's own copy");
+        // why == OK: not an error and not a state -- the peer is not admitted yet, or a transfer this
+        // module did not arm holds channel C. The caller retries.
         return 0;
     }
-    memcpy(g_snap_tx_copy, blob, (size_t)len);
-    g_snap_tx_len = (uint32_t)len;
-
-    const int rc = g_snap_tx.begin(g_snap_tx_copy, g_snap_tx_len);
-    if (rc != snap::OK) {
-        g_snap_err = rc;
-        snap_free_tx();
-        return 0;
-    }
-    if (!g_ep.bulk_send_src(dst_player, &snap::Sender::source, &g_snap_tx, g_snap_tx.image_len())) {
-        // Not an error and not a state: the peer is not admitted yet, or a transfer is already
-        // running. The caller retries. The sender is torn down so a later call re-hashes rather than
-        // half-arming over a manifest nothing is pushing.
-        snap_free_tx();
-        return 0;
-    }
-    g_snap_tx_on = true;
-    char root[65];
-    snap::hex32(g_snap_tx.root(), root);
+    const snap::Sender &tx = g_snap_out.sender();
+    char                root[65];
+    snap::hex32(tx.root(), root);
     char b[260];
     wsprintfA(b,
               "net: snapshot SEND armed -- %lu B in %lu body + %lu manifest chunk(s) to player %d, "
               "root %.16s",
-              (unsigned long)g_snap_tx_len, (unsigned long)g_snap_tx.body_chunks(),
-              (unsigned long)g_snap_tx.manifest_chunks(), dst_player, root);
+              (unsigned long)g_snap_out.len(), (unsigned long)tx.body_chunks(),
+              (unsigned long)tx.manifest_chunks(), dst_player, root);
     log_line(nullptr, b);
+    if (g_snap_out.superseded() >= 0) {
+        wsprintfA(b,
+                  "net: snapshot SEND to player %d superseded the UNFINISHED transfer to player %d "
+                  "-- channel C detached from it before its copy was freed (mp:X2f)",
+                  dst_player, g_snap_out.superseded());
+        log_line(nullptr, b);
+    }
     return 1;
 }
 
@@ -679,7 +671,7 @@ extern "C" int MH_Net_SnapshotPoll(void *buf, int *inout_len, int *out_state) {
 
     snap_drain();
     if (!g_snap_rx_open) {
-        if (out_state) *out_state = g_snap_tx_on ? MH_SNAP_SENDING : MH_SNAP_IDLE;
+        if (out_state) *out_state = g_snap_out.on() ? MH_SNAP_SENDING : MH_SNAP_IDLE;
         return 0;
     }
     if (!g_snap_rx.complete()) {
@@ -729,8 +721,8 @@ extern "C" void MH_Net_SnapshotStatus(MH_NetSnapshotStatus *out) {
     // reads this, and conflating them is what MH_NetStats.lat_supported had to unpick.
     out->supported = 1;
     out->last_err  = g_snap_err;
-    out->tx_len    = g_snap_tx_on ? g_snap_tx_len : 0u;
-    out->tx_chunks = g_snap_tx_on ? g_snap_tx.body_chunks() : 0u;
+    out->tx_len    = g_snap_out.on() ? g_snap_out.len() : 0u;
+    out->tx_chunks = g_snap_out.on() ? g_snap_out.sender().body_chunks() : 0u;
 
     snap::Receiver::Stats s;
     g_snap_rx.stats(s);
@@ -751,7 +743,7 @@ extern "C" void MH_Net_SnapshotStatus(MH_NetSnapshotStatus *out) {
     if (!g_started) out->state = MH_SNAP_IDLE;
     else if (s.complete) out->state = MH_SNAP_READY;
     else if (g_snap_rx_open) out->state = MH_SNAP_RECEIVING;
-    else if (g_snap_tx_on) out->state = MH_SNAP_SENDING;
+    else if (g_snap_out.on()) out->state = MH_SNAP_SENDING;
     else out->state = MH_SNAP_IDLE;
 }
 

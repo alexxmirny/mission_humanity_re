@@ -1244,7 +1244,16 @@ static double simclick_clock_ms() { // the `gameclock` global, game-SECONDS
     memcpy(&clk, (const void *)mh::addr::_G_LLM_STRAT_GAME_CLOCK, sizeof(clk));
     return clk * 1000.0;
 }
-static bool simclick_frame(int frame, int x, int y) {
+// `simrclick <x> <y>` (mp:X2g) is the same hold with the RIGHT button. The HUD's row widgets open an
+// entity's info screen on a right-click only when BOTH llm_ui_hud_slot_rmb_click_gate's latches
+// (press and release, 0x00413251) saw the button inside the rect; the three-present `rclick` was not
+// seen by them at all (measured: four tries on the build tab's Academy row, no info screen), the
+// hand-like hold is.
+// `simrclick <x> <y> shift` (mp:D37) holds the game's Shift latch for the whole hold, the way `rclick
+// ... shift` does -- the mothership's landing order (shift+right-click) was lost under suite load with
+// the three-present `rclick`.
+static bool simclick_frame(int frame, int x, int y, bool right = false, bool shift = false) {
+    if (shift) keystate_shift(true);
     if (frame == 0) {
         g_simclick_phase = 0;
         enqueue(EV_MOVE, x, y);
@@ -1256,15 +1265,16 @@ static bool simclick_frame(int frame, int x, int y) {
     const bool cap = frame - g_simclick_f0 >= SIMCLICK_MAX_FRAMES;
     switch (g_simclick_phase) {
         case 0:
-            enqueue(EV_LDOWN, x, y);
+            enqueue(right ? EV_RDOWN : EV_LDOWN, x, y);
             g_simclick_phase = 1;
             break;
         case 1:
             if (!held && !cap) return false;
-            enqueue(EV_LUP, x, y);
+            enqueue(right ? EV_RUP : EV_LUP, x, y);
             g_simclick_phase = 2;
             break;
         default:
+            if ((held || cap) && shift) keystate_shift(false);
             return held || cap;
     }
     g_simclick_clk0 = simclick_clock_ms();
@@ -1411,7 +1421,7 @@ static int fire_auto_target() {
 // predicates -- a step fires on a screen-state transition, so a menu walk replays identically on a fast
 // host and a slow VM. Grammar (first token = opcode; '#' or ';' line = comment):
 //   WAITS   screen <hex>   present <target>   absent <target>   onscreen <target>   settled <target>
-//           enabled <target>   hovered <target>   gamemode <N>   tactsel <N>
+//           enabled <target>   hovered <target>   gamemode <N>   tactsel <N>   bldgsel <N|any|none>
 //     hovered  = THE GAME'S OWN HIT TEST says the cursor is over <target>. It re-injects the move
 //                itself, so it is the "this screen is really LIVE" gate: every other predicate reads
 //                the active widget LIST, which a menu activation swaps to the new screen instantly
@@ -1423,6 +1433,11 @@ static int fire_auto_target() {
 //                and the only one that makes a tactical capture non-vacuous: the counter is written
 //                by llm_tact_active_unit_count_hud_draw alone, so waiting on it is waiting for the
 //                panel-refresh path to have RUN, not merely for a frame to have been drawn.
+//     bldgsel <N|any|none> = the strategic HUD's selected building (_G_LLM_STRAT_UI_SELECTED_BLDG_INDEX,
+//                0 = none) is N / any nonzero / none. mp:D37a: the HUD's building panel is not a widget
+//                list either, so this is what says "the select click took" (any) and "the selected
+//                building left the map" (none: llm_strat_bldg_unmap_footprint clears it, e.g. a
+//                pioneer's take-off) -- the `retry` gates for the lift-off walk.
 //     settled  = present AND that center is UNCHANGED since last frame -- i.e. the slide-in animation
 //                has stopped. This is the robust "ready to click an animated panel" predicate (a click
 //                mid-slide lands where the widget WAS, and misses); state-based, so speed-independent.
@@ -1556,6 +1571,12 @@ constexpr uintptr_t GAMECLOCK_ADDR  = mh::addr::_G_LLM_STRAT_GAME_CLOCK;  // dou
 inline uintptr_t TACTSELCNT_ADDR() {
     return mh::state::live_base(mh::state::RID_TACT_ACTIVE_UNIT_COUNT_CACHED);
 }
+// `bldgsel` predicate (mp:D37a): the strategic HUD's selected building index, uint16, 0 = none. Read
+// through the region registry for the same SB-HOSTFREE reason as TACTSELCNT_ADDR.
+inline uintptr_t BLDGSEL_ADDR() {
+    return mh::state::live_base(mh::state::RID_STRAT_UI_SELECTED_BLDG_INDEX);
+}
+constexpr int BLDGSEL_ANY = -1; // `bldgsel any` -- nonzero; `bldgsel none` is a == 0
 // `occ <N>` predicate: count OCCUPIED lobby slots (a player is really seated on THIS peer's view). Reads the
 // live lobby slot table directly -- the same _G_LLM_LOBBY_SLOTS the S7 occ/cap math uses. slot_status @ +0x0b:
 // OPEN=0 HUMAN=1 AI=2 CLOSED=3; occupied = HUMAN|AI. Bound by the map's player-slot count (current_map_data+8).
@@ -1611,6 +1632,7 @@ enum {
     OP_W_HOVERED,
     OP_W_GAMEMODE,
     OP_W_TACTSEL,
+    OP_W_BLDGSEL, // mp:D37a: `bldgsel <N|any|none>` -- the strategic HUD's selected building
     OP_W_SESSIONS,
     OP_W_PEERS,
     OP_W_OCC,
@@ -1634,8 +1656,9 @@ enum {
     OP_A_CLICK,
     OP_A_PRESS,
     OP_A_RELEASE,
-    OP_A_RCLICK,   // mp:D25: `rclick <x> <y> [shift]`
-    OP_A_SIMCLICK, // TL-SUITE-SPLICE-HOSTCLICK: `simclick <x> <y>` -- a left click held across sim steps
+    OP_A_RCLICK,    // mp:D25: `rclick <x> <y> [shift]`
+    OP_A_SIMCLICK,  // TL-SUITE-SPLICE-HOSTCLICK: `simclick <x> <y>` -- a left click held across sim steps
+    OP_A_SIMRCLICK, // mp:X2g: `simrclick <x> <y>` -- the same hold with the right button
     OP_A_KEY,
     OP_A_KEYHOLD, // mp:SES3c: `keyhold <scancode> <frames>` -- the unpaired-DOWN sibling of `key`
     OP_A_HOTKEY,  // `hotkey Ctrl+Alt+D` -- a GetAsyncKeyState-style chord, synthesised (2026-09-20)
@@ -1911,6 +1934,10 @@ void parse_line(const char *line) {
     } else if (strcmp(op, "tactsel") == 0) {
         s->op = OP_W_TACTSEL;
         s->a  = (int)strtol(arg, nullptr, 0);
+    } else if (strcmp(op, "bldgsel") == 0) {
+        s->op = OP_W_BLDGSEL;
+        s->a  = strcmp(arg, "any") == 0 ? BLDGSEL_ANY : strcmp(arg, "none") == 0 ? 0
+                                                                                 : (int)strtol(arg, nullptr, 0);
     } else if (strcmp(op, "sessions") == 0) {
         s->op = OP_W_SESSIONS;
         s->a  = parse_count(arg, &s->b);
@@ -2000,12 +2027,14 @@ void parse_line(const char *line) {
         char *end;
         s->a = (int)strtol(arg, &end, 0);
         s->b = (int)strtol(end, nullptr, 0);
-    } else if (strcmp(op, "simclick") == 0) {
-        // `simclick <x> <y>` -- see simclick_frame.
-        s->op = OP_A_SIMCLICK;
+    } else if (strcmp(op, "simclick") == 0 || strcmp(op, "simrclick") == 0) {
+        // `simclick <x> <y>` / `simrclick <x> <y>` -- see simclick_frame.
+        s->op = strcmp(op, "simclick") == 0 ? OP_A_SIMCLICK : OP_A_SIMRCLICK;
         char *end;
         s->a = (int)strtol(arg, &end, 0);
-        s->b = (int)strtol(end, nullptr, 0);
+        s->b = (int)strtol(end, &end, 0);
+        while (*end == ' ' || *end == '	') ++end;
+        s->c = (s->op == OP_A_SIMRCLICK && strncmp(end, "shift", 5) == 0) ? 1 : 0;
     } else if (strcmp(op, "rclick") == 0) {
         // `rclick <x> <y> [shift]` -- a right-click spread over three presents, under a held Shift
         // when the word is given. See rclick_frame.
@@ -2365,6 +2394,10 @@ bool wait_satisfied(const Step *s) {
         case OP_W_GAMEMODE:
             return *(unsigned char *)GAMEMODE_ADDR == (unsigned char)s->a;
         case OP_W_TACTSEL: return *(const int *)TACTSELCNT_ADDR() == s->a;
+        case OP_W_BLDGSEL: {
+            const int sel = *(const uint16_t *)BLDGSEL_ADDR();
+            return s->a == BLDGSEL_ANY ? sel != 0 : sel == s->a;
+        }
         case OP_W_AWAITSIGNAL: {
             // A PEER rendezvous, ferried by the runner: the other peer's script ran `signal <name>`,
             // ui_test saw the marker in its log and dropped rig_<name>.flag next to our exe.
@@ -2528,6 +2561,8 @@ click_result do_action(const Step *s) {
             break;
         case OP_A_SIMCLICK:
             return simclick_frame(g_wait, s->a, s->b) ? CLICK_OK : CLICK_RETRY;
+        case OP_A_SIMRCLICK:
+            return simclick_frame(g_wait, s->a, s->b, true, s->c != 0) ? CLICK_OK : CLICK_RETRY;
         case OP_A_RCLICK:
             // Multi-present like cursorhold: g_wait is the frame index while the step retries.
             return rclick_frame(g_wait, s->a, s->b, s->c != 0) ? CLICK_OK : CLICK_RETRY;

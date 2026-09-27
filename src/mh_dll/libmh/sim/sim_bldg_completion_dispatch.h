@@ -55,6 +55,24 @@ void bldg_completion_dispatch(const sim_view &v, sim_store &own, const bldg_comp
                               uint32_t param_1, uint32_t param_2, uint32_t param_3, uint32_t param_4,
                               double param_5);
 
+// mp:D37a -- the MOTHERSHIP arm's "credit the template stock" predicate on a RE-landing
+// (mother_established already nonzero: the pioneer lifted off and came down again).
+//
+// RETAIL (0x004798ee-0x004798f8) credits Building[type].capacity[1..9] + human_transport (the
+// starting stock -- 5400/4000/3000/2000 for the human pioneer) when `player != PlayerSide`.
+// PlayerSide is PER-PEER, so in a lockstep match every NON-owner peer refilled a human's pioneer on
+// each re-landing and the owner did not: a desync (rc4 Last Question match, first diff 10179). Real
+// cargo is credited by order 0x16, not here. In single player the non-local players are all AI, so
+// the retail predicate meant "refill the AI" and nobody noticed.
+//
+// DELIBERATE DIVERGENCE, lockstep only (_G_LLM_GAME_SESSION_MODE == 3): credit iff the player is
+// AI-controlled (status_flags bit 3 -- net-owned, written in lockstep order on every peer, hashed in
+// strat_players; the same bit gates the AI .DMP injection in the same arm). Identical on all peers,
+// and the AI keeps retail's refill. Every other session mode (SP 1, tutorial / post-game-over 2) is
+// retail verbatim. The mh.dll seam seams/sim_pioneer_refill.cpp applies the same rule to the
+// original body for configuration (1); [config] mode=original runs neither.
+bool mother_relanding_credits(int32_t session_mode, uint32_t status_flags, bool is_local_player);
+
 } // namespace detail
 
 // Live wrapper: the logic applied to state() and live_bldg_completion_dispatch_calls(). Matches the
