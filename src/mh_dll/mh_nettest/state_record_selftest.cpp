@@ -37,6 +37,7 @@
 #include <vector>
 
 #include "addr/mh_regions.gen.h"
+#include "desync/state_compress.h"
 #include "desync/state_record.h"
 #include "desync/state_recorder.h"
 #include "desync/state_ring.h"
@@ -45,8 +46,14 @@
 #include "state/inc_state.h"
 #include "state/region_view.h"
 
+#include "desync/state_miniz_config.h"
+#pragma warning(push, 0)
+#include "../include/miniz/miniz.h"
+#pragma warning(pop)
+
 using namespace mh::state;
-namespace srec = mh::desync::srec;
+namespace srec  = mh::desync::srec;
+namespace gzmod = mh::desync::gz;
 
 namespace {
 
@@ -467,6 +474,8 @@ void live_mutate(uint32_t step) {
 
 std::vector<std::string> g_log_paths; // every "STATE RECORD -> <path>:" the recorder logged
 int                      g_log_lines = 0;
+const char              *g_write_gz  = nullptr; // --write-gz <file>: copy match 3's .gz out for the Python cross-check
+char                     g_gz_line[1024];       // the last "STATE RECORD compressed" / "compress FAILED" line (mp:D46)
 
 void test_log(const char *fmt, ...) {
     char    line[1024];
@@ -476,6 +485,7 @@ void test_log(const char *fmt, ...) {
     va_end(ap);
     ++g_log_lines;
     fputs(line, stdout);
+    if (strstr(line, "STATE RECORD compress")) memcpy(g_gz_line, line, sizeof(g_gz_line));
     for (const char *tag : {"STATE RECORD -> ", "STATE RING -> "}) {
         const char *k = strstr(line, tag);
         if (k) {
@@ -486,7 +496,7 @@ void test_log(const char *fmt, ...) {
     }
 }
 
-std::vector<uint8_t> read_file(const std::string &path) {
+std::vector<uint8_t> read_raw(const std::string &path) {
     std::vector<uint8_t> v;
     FILE                *fp = nullptr;
     if (fopen_s(&fp, path.c_str(), "rb") != 0 || !fp) return v;
@@ -496,6 +506,28 @@ std::vector<uint8_t> read_file(const std::string &path) {
     v.resize(n > 0 ? (size_t)n : 0);
     if (n > 0) fread(v.data(), 1, (size_t)n, fp);
     fclose(fp);
+    return v;
+}
+
+// mp:D46: gunzip a whole gzip member (RFC 1952, no optional header fields, as the recorder writes it) with
+// miniz's INFLATER -- a different code path from the deflate that wrote it. Empty on any malformation: bad
+// magic, a trailer whose length or CRC-32 (bitwise, below) disagrees with the bytes that came out.
+std::vector<uint8_t> gunzip(const std::vector<uint8_t> &z) {
+    std::vector<uint8_t> out;
+    if (z.size() < 18 || z[0] != 0x1f || z[1] != 0x8b || z[2] != 8 || z[3] != 0) return out;
+    const uint8_t *t    = z.data() + z.size() - 8;
+    const uint32_t crc  = t[0] | (t[1] << 8) | (t[2] << 16) | ((uint32_t)t[3] << 24);
+    const uint32_t size = t[4] | (t[5] << 8) | (t[6] << 16) | ((uint32_t)t[7] << 24);
+    out.resize(size);
+    const size_t got = tinfl_decompress_mem_to_mem(out.data(), out.size(), z.data() + 10, z.size() - 18, 0);
+    if (got != size || crc_bitwise(out.data(), out.size()) != crc) out.clear();
+    return out;
+}
+
+// Every reader below takes a path that may be a `.gz` (the recorder's compressed form) or a raw file.
+std::vector<uint8_t> read_file(const std::string &path) {
+    std::vector<uint8_t> v = read_raw(path);
+    if (path.size() > 3 && path.compare(path.size() - 3, 3, ".gz") == 0) return gunzip(v);
     return v;
 }
 
@@ -598,6 +630,7 @@ void test_live(const char *write_to) {
     namespace rec = mh::desync::recorder;
     bind_synthetic();
     const uint32_t EVERY = 25;
+    rec::set_compress(false); // matches 1 and 2 are read back RAW; match 3 below turns it on (mp:D46)
     check("recorder configure(state_record=1) says on", rec::configure(1, EVERY, 0xabcdef0123456789ULL, &test_log));
     check("the shared tracker allocates for it", hub::enable("staterectest", &test_log));
     hub::add_listener(rec::listener());
@@ -717,7 +750,213 @@ void test_live(const char *write_to) {
                        write_to, write_to, write_to);
         }
     }
+
+    // ---- mp:D46: match 3 with compression ON: only the .gz is left, and it decodes ----------------------
+    {
+        const uint32_t        STEPS = 60;
+        std::vector<uint64_t> truth;
+        hub::reset();
+        rec::set_compress(true);
+        g_gz_line[0] = 0;
+        rec::session_start(rec::axis_info{false, 0});
+        for (uint32_t s = 1; s <= STEPS; ++s) {
+            if (s > 1) live_mutate(s);
+            hub::step(s);
+            truth.push_back(live_hash());
+        }
+        const size_t n_paths = g_log_paths.size();
+        rec::match_end();
+        check("match 3: the recorder logged its file", g_log_paths.size() == 3);
+        check("match 3: the background compression finished", gzmod::wait_idle(60000));
+        if (n_paths == 3 || g_log_paths.size() == 3) {
+            const std::string raw = g_log_paths.back();
+            const std::string gz  = raw + ".gz";
+            check("match 3: the raw file is gone and only the .gz is left",
+                  GetFileAttributesA(raw.c_str()) == INVALID_FILE_ATTRIBUTES &&
+                      GetFileAttributesA(gz.c_str()) != INVALID_FILE_ATTRIBUTES &&
+                      GetFileAttributesA((gz + ".tmp").c_str()) == INVALID_FILE_ATTRIBUTES);
+            check("match 3: the log line reports raw bytes, gzip bytes and ms",
+                  strstr(g_gz_line, "compressed ") && strstr(g_gz_line, " raw bytes -> ") && strstr(g_gz_line, " ms ") &&
+                      strstr(g_gz_line, "removed"));
+            if (g_write_gz && CopyFileA(gz.c_str(), g_write_gz, FALSE))
+                printf("  wrote %s -- cross-check: python tools/state_record.py info %s\n", g_write_gz, g_write_gz);
+            live_ctx ctx;
+            ctx.truth       = &truth;
+            const decoded d = decode(read_file(gz), false, on_live_step, &ctx);
+            check("match 3: the gunzipped file decodes, every step equals the live memory, END exact",
+                  strcmp(d.stop, "eof") == 0 && ctx.seen == (int)STEPS && ctx.bad == 0 && d.has_end &&
+                      d.end_last == STEPS);
+        }
+        // A finished match leaves only <name>.gz; the next match in the folder must not reuse <name>.
+        rec::set_compress(false);
+        if (g_log_paths.size() >= 2) {
+            DeleteFileA(g_log_paths[0].c_str()); // match 1's raw file (mh_match_state.bin)
+            DeleteFileA(g_log_paths[1].c_str()); // match 2's raw file (mh_match_state_2.bin)
+            // Stands in for match 1's finished .gz.
+            HANDLE d1 = CreateFileA((g_log_paths[0] + ".gz").c_str(), GENERIC_WRITE, 0, nullptr, CREATE_NEW,
+                                    FILE_ATTRIBUTE_NORMAL, nullptr);
+            if (d1 != INVALID_HANDLE_VALUE) CloseHandle(d1);
+        }
+        hub::reset();
+        rec::session_start(rec::axis_info{false, 0});
+        for (uint32_t s = 1; s <= 3; ++s) {
+            if (s > 1) live_mutate(s);
+            hub::step(s);
+        }
+        rec::match_end();
+        check("match 4: a name whose .gz exists is taken (mh_match_state.bin skipped -> _2)",
+              g_log_paths.size() == 4 && g_log_paths.back().find("mh_match_state_2.bin") != std::string::npos);
+    }
     unbind_synthetic();
+}
+
+// ---- mp:D46: the compress step itself ---------------------------------------------------------------
+std::string tmp_dir() {
+    char tmp[MAX_PATH];
+    GetTempPathA(MAX_PATH, tmp);
+    char d[MAX_PATH];
+    _snprintf_s(d, sizeof(d), _TRUNCATE, "%smh_staterec_gz_%lu", tmp, (unsigned long)GetCurrentProcessId());
+    CreateDirectoryA(d, nullptr);
+    return d;
+}
+
+bool write_file(const std::string &path, const std::vector<uint8_t> &v) {
+    HANDLE h = CreateFileA(path.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
+    if (h == INVALID_HANDLE_VALUE) return false;
+    size_t at = 0;
+    bool   ok = true;
+    while (ok && at < v.size()) {
+        const DWORD k = (DWORD)((v.size() - at) > (1u << 24) ? (1u << 24) : (v.size() - at));
+        DWORD       w = 0;
+        ok            = WriteFile(h, v.data() + at, k, &w, nullptr) && w == k;
+        at += k;
+    }
+    CloseHandle(h);
+    return ok;
+}
+
+bool exists(const std::string &p) { return GetFileAttributesA(p.c_str()) != INVALID_FILE_ATTRIBUTES; }
+
+uint64_t file_size(const std::string &p) {
+    WIN32_FILE_ATTRIBUTE_DATA a;
+    if (!GetFileAttributesExA(p.c_str(), GetFileExInfoStandard, &a)) return 0;
+    return ((uint64_t)a.nFileSizeHigh << 32) | a.nFileSizeLow;
+}
+
+// Half structured (what a recording looks like), half noise (what deflate cannot shrink), `n` bytes.
+std::vector<uint8_t> mixed_bytes(size_t n) {
+    std::vector<uint8_t> v(n);
+    for (size_t i = 0; i < n; ++i) v[i] = (i / 4096) % 2 ? (uint8_t)rnd() : (uint8_t)((i * 7) >> 3);
+    return v;
+}
+
+// `staterectest --compress-child <raw>`: the process the interrupted-compress test kills.
+int compress_child(const char *raw) {
+    gzmod::result r;
+    gzmod::compress_file(raw, &r);
+    return r.ok ? 0 : 1;
+}
+
+void test_compress() {
+    printf("--- mp:D46: gzip of a finished recording (state_compress) ---\n");
+    const std::string dir = tmp_dir();
+
+    // 1. Round trip over sizes that straddle the 1 MiB read chunk and the 256 KiB write buffer.
+    for (size_t n : {(size_t)1, (size_t)4096, (size_t)(1u << 20), (size_t)(1u << 20) + 1, (size_t)(5u << 20) + 12345}) {
+        const std::string          raw  = dir + "\\rt_" + std::to_string(n) + ".bin";
+        const std::vector<uint8_t> data = mixed_bytes(n);
+        char                       what[200];
+        _snprintf_s(what, sizeof(what), _TRUNCATE, "round trip %zu bytes: .gz gunzips to the original", n);
+        check("test file written", write_file(raw, data));
+        gzmod::result r;
+        gzmod::compress_file(raw.c_str(), &r);
+        check(what, r.ok && r.raw == n && r.comp == file_size(raw + ".gz") && read_file(raw + ".gz") == data);
+        check("  the raw file is deleted, no .tmp is left", !exists(raw) && !exists(raw + ".gz.tmp"));
+        DeleteFileA((raw + ".gz").c_str());
+    }
+
+    // 2. A compressible file shrinks.
+    {
+        const std::string    raw = dir + "\\structured.bin";
+        std::vector<uint8_t> data(3u << 20);
+        for (size_t i = 0; i < data.size(); ++i) data[i] = (uint8_t)((i % 977) < 40 ? i : 0);
+        check("structured file written", write_file(raw, data));
+        gzmod::result r;
+        gzmod::compress_file(raw.c_str(), &r);
+        check("a compressible file shrinks by 10x or more and round-trips",
+              r.ok && r.comp * 10 < r.raw && read_file(raw + ".gz") == data);
+        DeleteFileA((raw + ".gz").c_str());
+    }
+
+    // 3. Failure leaves nothing behind; a stale .gz.tmp from a killed run is replaced.
+    {
+        gzmod::result r;
+        gzmod::compress_file((dir + "\\missing.bin").c_str(), &r);
+        check("missing raw file -> not ok, no .gz and no .tmp made",
+              !r.ok && !exists(dir + "\\missing.bin.gz") && !exists(dir + "\\missing.bin.gz.tmp"));
+        const std::string raw  = dir + "\\stale.bin";
+        const auto        data = mixed_bytes(300000);
+        write_file(raw, data);
+        write_file(raw + ".gz.tmp", std::vector<uint8_t>(777, 0xEE)); // what a kill leaves
+        gzmod::compress_file(raw.c_str(), &r);
+        check("a stale .gz.tmp is overwritten and the result is the right file",
+              r.ok && !exists(raw + ".gz.tmp") && read_file(raw + ".gz") == data);
+        DeleteFileA((raw + ".gz").c_str());
+    }
+
+    // 4. mp:D46 done_when (b): a process killed MID-compress leaves the raw file whole and no final .gz.
+    {
+        const std::string raw = dir + "\\kill.bin";
+        // 48 MB, not more: the rerun check below holds the gzip AND the inflated copy in memory, and the
+        // 32-bit ASan pass ran out of address space at 192 MB (light gate 2026-10-04). Noise at level 6
+        // still takes long enough for the 4 MB .tmp probe to catch the child mid-compress.
+        const size_t         N = 48u << 20;
+        std::vector<uint8_t> data(N);
+        for (auto &b : data) b = (uint8_t)rnd(); // noise: deflate cannot shrink it and runs at its slowest
+        check("48 MB raw file written", write_file(raw, data));
+        const uint32_t want = crc_bitwise(data.data(), data.size());
+        data.clear();
+        data.shrink_to_fit();
+
+        char self[MAX_PATH];
+        GetModuleFileNameA(nullptr, self, MAX_PATH);
+        char cmd[2 * MAX_PATH + 64];
+        _snprintf_s(cmd, sizeof(cmd), _TRUNCATE, "\"%s\" staterectest --compress-child \"%s\"", self, raw.c_str());
+        STARTUPINFOA        si = {sizeof(si)};
+        PROCESS_INFORMATION pi = {};
+        const bool          up = CreateProcessA(nullptr, cmd, nullptr, nullptr, FALSE, CREATE_NO_WINDOW, nullptr, nullptr, &si,
+                                                &pi) != 0;
+        check("compress child started", up);
+        if (up) {
+            bool        mid = false;
+            const DWORD t0  = GetTickCount();
+            while (GetTickCount() - t0 < 60000) {
+                if (file_size(raw + ".gz.tmp") >= (4u << 20)) {
+                    mid = WaitForSingleObject(pi.hProcess, 0) == WAIT_TIMEOUT;
+                    break;
+                }
+                if (WaitForSingleObject(pi.hProcess, 0) != WAIT_TIMEOUT) break;
+                Sleep(2);
+            }
+            TerminateProcess(pi.hProcess, 99); // the exit: no cleanup runs
+            WaitForSingleObject(pi.hProcess, 10000);
+            CloseHandle(pi.hThread);
+            CloseHandle(pi.hProcess);
+            check("the child was killed while the .gz.tmp was growing (still compressing)", mid);
+            const std::vector<uint8_t> after = read_raw(raw);
+            check("after the kill: the raw file is whole (size and CRC-32 unchanged)",
+                  after.size() == N && crc_bitwise(after.data(), after.size()) == want);
+            check("after the kill: no final .gz exists (a truncated .tmp is not a recording)", !exists(raw + ".gz"));
+            // The next run recovers: it overwrites the stale temp, finishes, and removes the raw file.
+            gzmod::result r;
+            gzmod::compress_file(raw.c_str(), &r);
+            const std::vector<uint8_t> back = read_file(raw + ".gz");
+            check("a rerun after the kill completes: .gz decodes to the original, raw removed, no .tmp",
+                  r.ok && !exists(raw) && !exists(raw + ".gz.tmp") && back.size() == N &&
+                      crc_bitwise(back.data(), back.size()) == want);
+        }
+    }
+    rm_tree(dir);
 }
 
 // ---- 4: the mp:D41 ring, pure core (desync/state_ring_core.h) --------------------------------------
@@ -1049,12 +1288,15 @@ int run_staterectest(int argc, char **argv) {
     for (int i = 2; i < argc; ++i) {
         if (strcmp(argv[i], "--write") == 0 && i + 1 < argc) write_to = argv[++i];
         else if (strcmp(argv[i], "--write-ring") == 0 && i + 1 < argc) write_ring = argv[++i];
+        else if (strcmp(argv[i], "--write-gz") == 0 && i + 1 < argc) g_write_gz = argv[++i];
         else if (strcmp(argv[i], "--hash") == 0 && i + 1 < argc) hash_file = argv[++i];
         else if (strcmp(argv[i], "--from") == 0 && i + 1 < argc) from = (uint32_t)strtoul(argv[++i], nullptr, 10);
         else if (strcmp(argv[i], "--to") == 0 && i + 1 < argc) to = (uint32_t)strtoul(argv[++i], nullptr, 10);
         else if (strcmp(argv[i], "--regions") == 0) regions = true;
         else if (strcmp(argv[i], "--kind") == 0 && i + 1 < argc) g_hash_kind = atoi(argv[++i]) == 2 ? 2 : 1;
     }
+    for (int i = 2; i + 1 < argc; ++i)
+        if (strcmp(argv[i], "--compress-child") == 0) return compress_child(argv[i + 1]);
     if (hash_file) return hash_mode(hash_file, from, to, regions);
     printf("=== staterectest (mp:D40 whole-match recording + mp:D41 ring round-trip) ===\n");
     // The recorder writes into MH_RunDir(); point the logs root at a private temp folder so the suite
@@ -1066,6 +1308,7 @@ int run_staterectest(int argc, char **argv) {
 
     test_encoder();
     test_live(write_to);
+    test_compress();
     test_ring_core();
     test_ring_live(write_ring);
 

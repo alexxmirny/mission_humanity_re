@@ -63,7 +63,7 @@ SOURCES = {
 # +1 at mp:D40 (staterectest); +1 at PT-GFX4 (imguibindtest); +1 at PT-GFX6 (scalefiltertest);
 # +1 at PT-INPUT1 (dinputconvtest).
 # A change here is a deliberate edit, not a drift
-EXPECT_COUNT = 61  # mp:U61 (HM-M3), 2026-10-03: meshtest added (60: wstest); mp:X3c slice 2, 2026-09-30: wstest added (59: dinputconvtest); PT-INPUT1, 2026-09-29: dinputconvtest added (58: scalefiltertest at PT-GFX6)
+EXPECT_COUNT = 63  # mp:U73, 2026-10-04: infoguardtest added (62: logsinktest at mp:LOG1); mp:LOG1, 2026-10-04: logsinktest added (61: meshtest); mp:U61 (HM-M3), 2026-10-03: meshtest added (60: wstest); mp:X3c slice 2, 2026-09-30: wstest added (59: dinputconvtest); PT-INPUT1, 2026-09-29: dinputconvtest added (58: scalefiltertest at PT-GFX6)
 
 # A table row: {"name", <gate>, <adapter>},  -- clang-format pads the name column, so the whitespace
 # is free-form. Comment lines never match, because a `//` line has no leading `{"`.

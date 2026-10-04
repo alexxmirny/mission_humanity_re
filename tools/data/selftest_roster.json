@@ -244,8 +244,8 @@
     {
       "suite": "staterectest",
       "exe": "net_selftest",
-      "checks": 91,
-      "why": "ADDED 2026-09-27 (mp:D40). The whole-match state recording (mh_match_state.bin, docs/state-record.md v1): the encoder mh.dll runs round-trips a synthetic multi-region step sequence through a decoder that shares no code with it (every step byte-equal, keyframes on the cadence, END exact, runs coalesced and split at a u16); a file cut inside any chunk decodes to exactly its last complete step, a corrupted chunk stops at its CRC, and the KEYF tail cut decodes on its own; and the LIVE path -- shared tracker, recorder, writer thread -- writes files whose every step rebuilds the synthetic memory, across a mid-match rebase, two matches in one process and a post-match 'Continue game' that must not be recorded. EXTENDED 2026-09-27 (mp:D41): the ship RING (mh_desync_state.bin, flags RING) -- the pure core over 20000 synthetic steps holds its byte budget on every step (run-up budget while rolling, the whole cap in the tail), re-keys on a step larger than the budget, and serialises a file the independent decoder rebuilds exactly (window = trigger - keep .. trigger + tail); and the LIVE path (shared tracker, state_ring, background writer) records only while the session is live, re-keys across a live gap, dumps ONCE at the first mismatch after the tail (a second mismatch writes nothing), writes nothing for a clean match, and dumps a tail cut short by match end."
+      "checks": 121,
+      "why": "ADDED 2026-09-27 (mp:D40). The whole-match state recording (mh_match_state.bin, docs/state-record.md v1): the encoder mh.dll runs round-trips a synthetic multi-region step sequence through a decoder that shares no code with it (every step byte-equal, keyframes on the cadence, END exact, runs coalesced and split at a u16); a file cut inside any chunk decodes to exactly its last complete step, a corrupted chunk stops at its CRC, and the KEYF tail cut decodes on its own; and the LIVE path -- shared tracker, recorder, writer thread -- writes files whose every step rebuilds the synthetic memory, across a mid-match rebase, two matches in one process and a post-match 'Continue game' that must not be recorded. EXTENDED 2026-09-27 (mp:D41): the ship RING (mh_desync_state.bin, flags RING) -- the pure core over 20000 synthetic steps holds its byte budget on every step (run-up budget while rolling, the whole cap in the tail), re-keys on a step larger than the budget, and serialises a file the independent decoder rebuilds exactly (window = trigger - keep .. trigger + tail); and the LIVE path (shared tracker, state_ring, background writer) records only while the session is live, re-keys across a live gap, dumps ONCE at the first mismatch after the tail (a second mismatch writes nothing), writes nothing for a clean match, and dumps a tail cut short by match end. EXTENDED 2026-10-04 (mp:D46): the post-match gzip (state_compress) -- round trips through miniz's inflater (independent of its deflater) over sizes straddling the read/write chunks, leaves only the .gz after a live match, reports raw/gzip bytes and ms, makes a name with a .gz count as taken, and a child process TERMINATED mid-compress (192 MB, .gz.tmp growing) leaves the raw file byte-identical and no final .gz, then a rerun recovers."
     },
     {
       "suite": "queuetest",
@@ -274,8 +274,14 @@
     {
       "suite": "logrottest",
       "exe": "net_selftest",
-      "checks": 50,
+      "checks": 51,
       "why": "ADDED 2026-09-17 (mp:SES2). The log-stream SIZE CAP and its one-generation rotation. Its centre is SES2's acceptance clause driven verbatim -- 70 MB emitted through the REAL seam_log() into the REAL run directory at the REAL default cap, leaving a capped mh_net.log plus exactly ONE mh_net.prev.log -- and it asserts the rotated generation is in [cap, cap+one line], which pins the DEFAULT 64 MB rather than passing for any cap at all. On the rig the same claim is a two-VM session long enough to emit 70 MB of DIAG lines. The surrounding arms are the cases a gameplay run reaches never: a non-.log path REFUSED instead of mangled (the pre-SES2 inline derivation overwrote the last four characters on the strength of `n > 4` alone), a destination buffer too small, `0 = uncapped`, and a second rotation REPLACING the one generation instead of starting a ladder. Not in FLAKY: no arena -- it writes files, in its own %TEMP% directory and in the run directory, and deletes them."
+    },
+    {
+      "suite": "logsinktest",
+      "exe": "net_selftest",
+      "checks": 28,
+      "why": "ADDED 2026-10-04 (mp:LOG1). The process-wide ASYNC LOG SINK (mh_common/mh_log_sink.{h,cpp}) that every mh.dll / mh_net / mh_harness / mh_net_udp log line is now enqueued to -- no log I/O on a game thread. Eight threads x 4000 lines into three files (every line present exactly once, each producer's order kept), two-part stamp+line records staying contiguous under contention, the QUEUE-FULL path (writer parked, 8 MB bound exceeded: overflow dropped and counted, memory bounded, survivors ordered, the writer then emitting the counted-drop line into mh_net.log with the real count), a SIMULATED CRASH (writer parked; the crash drain from the dying thread flushes everything enqueued before it, once, and a later writer wake-up does not duplicate), THE DEADLOCK ARM (writer wedged HOLDING the consumer flag: the crash drain returns within its bound instead of hanging, and the line is written once the writer is released), writer-side rotation at a cap plus an in-order rotate-now record, and exit (shutdown drains inline; a line after it is written synchronously). Not covered: the writer's own `slow op > 50 ms` line, which needs a genuinely slow file operation -- read off rig/field logs. Not in FLAKY: no arena; it writes files in its own %TEMP% directory and deletes them."
     },
     {
       "suite": "inireadtest",
@@ -288,6 +294,12 @@
       "exe": "net_selftest",
       "checks": 22,
       "why": "ADDED 2026-09-26 (mp:X2g). The info-screen media tick's guard: mh.dll replaces llm_ui_info_media_frame_tick (EN 0x004caa46) because after a FAILED llm_ui_avi_open the media context is zero-filled and retail wrapped `playback_pos %= stream_length_time` -- IDIV by zero at 0x004cab52, the rc4 field crash (Res\\H_INV.AVI missing; retail's own NOT.AVI entries hit it on any install). The suite drives the tick's arithmetic (seams/ui_info_avi.h plan_tick / video_on) with exactly the field state (len 0, surface NULL or stale; 10000 no-video frames; the 2^32 tick wrap), proves a live clip's wrap is bit-identical to retail's over a grid of lengths/positions/deltas, and pins the `[net] info_avi_test_absent` matcher the rig row uses. Pure: no arena, no files, no ports."
+    },
+    {
+      "suite": "infoguardtest",
+      "exe": "net_selftest",
+      "checks": 32,
+      "why": "ADDED 2026-10-04 (mp:U73). The entity info screen guard's decision (seams/ui_info_guard.h): llm_ui_entity_info_screen_open raised \"Error: Cannot find info text:\" with an EMPTY key when a list row turned into a blank slot (id 0, whose INFO_TXT is \"\"). The suite pins the key shape (blank / configured / 64 bytes unterminated / 63 + NUL), the 100-deep cfg id range (and the advisory total), the storage panel's stale docked-row request against the list as it is NOW (the field case: the click named row 3, the list is 2 long; scroll folded in; the 50-entry clamp; a docked slot past the roster, incl. a raised roster; a blank unit proto), the rig knob's n-th-call-once counter and the verdict names the log needles read. Pure: no arena, no files, no ports. The hook, the splice and the live reads are proven by the registry row info_guard_u73 (tools/check_info_guard.py)."
     },
     {
       "suite": "imguibindtest",

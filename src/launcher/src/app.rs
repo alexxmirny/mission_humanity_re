@@ -281,6 +281,13 @@ pub struct App {
     session_pick: Option<String>,
     /// The session picker is open (mirrors `picker_open`, the configuration picker's own flag).
     session_picker_open: bool,
+
+    // ---- dist LA17 ------------------------------------------------------------------------
+    /// The report build in flight, on its own thread (a state recording is 100-250 MB to deflate;
+    /// on the UI thread that was a window "Not responding"). `None` when idle.
+    report_job: Option<report::Job>,
+    /// `--report <zip> --exit-after-report`: close once the build that was started for it finishes.
+    exit_after_report_job: bool,
 }
 
 /// One upload, on its own thread.
@@ -333,6 +340,8 @@ impl App {
             started_utc: stamp_for_file(),
             session_pick: None,
             session_picker_open: false,
+            report_job: None,
+            exit_after_report_job: false,
         }
         .with_startup_flags()
     }
@@ -752,8 +761,13 @@ impl App {
         }
     }
 
-    /// Build a report from whatever the launcher currently knows. dist LA4.
+    /// Start building a report from whatever the launcher currently knows. dist LA4; since dist LA17
+    /// the build runs on a worker thread and `poll_report` takes its result.
     fn do_report(&mut self, dest: Option<PathBuf>) {
+        if self.report_job.is_some() {
+            self.say("a report is already being built", true);
+            return;
+        }
         // dist LA9: the match the description form names -- the player's pick, or the newest.
         let session_dir = self.chosen_session_dir();
         let dest = dest.unwrap_or_else(|| {
@@ -765,19 +779,34 @@ impl App {
         } else {
             None
         };
-        let game_dir = self.game_dir();
-        let input = report::Input {
-            game_dir: game_dir.as_deref(),
+        let input = report::OwnedInput {
+            game_dir: self.game_dir(),
             logs_root: self.log_root(),
             session_dir,
             launcher_started_utc: Some(self.started_utc.clone()),
-            description: &self.description,
-            last_run: self.last_run.as_ref(),
-            crash: self.marker.as_ref(),
-            minidump: dump.as_deref(),
+            description: self.description.clone(),
+            last_run: self.last_run.clone(),
+            crash: self.marker.clone(),
+            minidump: dump,
             launcher_log: log::path(),
         };
-        match report::build(&dest, &input) {
+        log::line(format!("ui: building the report {}", dest.display()));
+        self.say("building the report...", false);
+        self.report_job = Some(report::Job::start(dest, input));
+    }
+
+    /// One poll of the report thread. Returns true when the launcher should close itself
+    /// (`--report ... --exit-after-report`, once that build has finished).
+    fn poll_report(&mut self) -> bool {
+        let Some(job) = self.report_job.as_mut() else {
+            return false;
+        };
+        let result = match job.poll() {
+            report::Poll::Running => return false,
+            report::Poll::Done(r) => r,
+        };
+        self.report_job = None;
+        match result {
             Ok(b) => {
                 let summary = b.summary();
                 self.built = Some(b);
@@ -789,6 +818,7 @@ impl App {
                 crate::set_exit_code(1);
             }
         }
+        std::mem::take(&mut self.exit_after_report_job)
     }
 
     // ---- dist RP1: consent, then send ---------------------------------------------------------
@@ -1254,14 +1284,16 @@ impl App {
     /// still running would ship a session directory the game has not finished writing -- and,
     /// worse, would miss the crash that is the reason the flag was passed.
     fn poll_startup_report(&mut self) -> bool {
-        if self.session.is_some() || self.job.is_some() {
+        if self.session.is_some() || self.job.is_some() || self.report_job.is_some() {
             return false;
         }
         let Some(dest) = self.startup.report_to.take() else {
             return false;
         };
         self.do_report(Some(dest));
-        self.startup.exit_after_report
+        // Closing waits for the build (`poll_report`): the thread is still working here.
+        self.exit_after_report_job = self.startup.exit_after_report;
+        false
     }
 
     fn log_size_once(&mut self, ctx: &egui::Context) {
@@ -1294,8 +1326,17 @@ impl eframe::App for App {
             self.run_startup_actions();
         }
         self.poll_upload();
-        if self.poll_session() || self.poll_job() || self.poll_startup_report() {
+        if self.poll_session()
+            || self.poll_job()
+            || self.poll_startup_report()
+            || self.poll_report()
+        {
             ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+        }
+        if self.report_job.is_some() {
+            // dist LA17: the build is on a thread; keep painting so the progress line moves and the
+            // result is noticed, and so Windows never sees a window that has stopped pumping.
+            ctx.request_repaint_after(Duration::from_millis(100));
         }
         if self.upload_job.is_some() {
             ctx.request_repaint_after(Duration::from_millis(100));
@@ -2021,13 +2062,25 @@ impl App {
         }
 
         ui.add_space(10.0);
+        let building = self.report_job.is_some();
         ui.horizontal(|ui| {
             if ui
-                .add_enabled(have_description, egui::Button::new("Build the report"))
-                .on_disabled_hover_text(report::NO_DESCRIPTION)
+                .add_enabled(
+                    have_description && !building,
+                    egui::Button::new("Build the report"),
+                )
+                .on_disabled_hover_text(if building {
+                    "a report is being built"
+                } else {
+                    report::NO_DESCRIPTION
+                })
                 .clicked()
             {
                 self.do_report(None);
+            }
+            if let Some(job) = self.report_job.as_ref() {
+                ui.spinner();
+                ui.label(job.progress().text());
             }
             if self.built.is_some() && ui.button("Show me the file").clicked() {
                 if let Some(b) = self.built.as_ref() {
@@ -2151,6 +2204,60 @@ fn stamp_for_file() -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// dist LA17: the `App`-level poll cycle for the report job -- the build is running on a thread
+    /// that is not this one, `do_report` refuses a second start while it runs, and `poll_report`
+    /// (what `ui()` calls each frame) takes the result without ever blocking.
+    #[test]
+    fn the_report_builds_off_the_ui_thread_and_a_second_start_is_refused() {
+        let dir = std::env::temp_dir().join("mh_launcher_test_app_report_job");
+        std::fs::remove_dir_all(&dir).ok();
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("mh.exe"), b"x").unwrap();
+        let layout = Layout::rooted(dir.join("app"));
+        let cfg = Config {
+            game_dir: dir.display().to_string(),
+            ..Config::default()
+        };
+        let mut app = App::new(layout, cfg, View::Report, Startup::default());
+        let sess = app
+            .log_root()
+            .unwrap()
+            .join("20260927T090000Z_a1b2c3d4_1_host");
+        std::fs::create_dir_all(&sess).unwrap();
+        std::fs::write(
+            sess.join("mh_net.log"),
+            "hello
+"
+            .repeat(1000),
+        )
+        .unwrap();
+        app.description = "it froze".to_string();
+        let zip = dir.join("out").join("r.zip");
+        app.do_report(Some(zip.clone()));
+        let job = app.report_job.as_ref().expect("the job started");
+        assert_ne!(
+            job.worker_thread(),
+            std::thread::current().id(),
+            "the report is being built on the calling (UI) thread"
+        );
+        app.do_report(Some(dir.join("out").join("second.zip")));
+        assert!(app.status_is_error, "a second start must be refused");
+        assert!(app.status_line.contains("already"), "{}", app.status_line);
+
+        let t0 = std::time::Instant::now();
+        while app.report_job.is_some() {
+            assert!(t0.elapsed().as_secs() < 60, "the report job never finished");
+            assert!(!app.poll_report(), "no --exit-after-report was asked for");
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        let built = app.built.as_ref().expect("the finished report is kept");
+        assert_eq!(built.zip, zip);
+        assert!(zip.is_file());
+        assert!(!dir.join("out").join("second.zip").exists());
+        assert!(!app.status_is_error, "{}", app.status_line);
+        std::fs::remove_dir_all(&dir).ok();
+    }
 
     #[test]
     fn every_view_has_a_name_that_parses_back() {

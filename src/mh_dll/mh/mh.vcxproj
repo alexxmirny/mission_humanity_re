@@ -41,6 +41,7 @@
     <ClCompile Include="seams\ui_bldg_netcrit_pure.cpp" />
     <ClCompile Include="seams\ui_storage_panel_purge.cpp" />
     <ClCompile Include="seams\ui_info_avi.cpp" />
+    <ClCompile Include="seams\ui_info_guard.cpp" />
     <ClCompile Include="seams\ui_net_indicator.cpp" />
     <ClCompile Include="seams\save_triggers.cpp" />
     <ClCompile Include="seams\ui_drive.cpp" />
@@ -71,6 +72,8 @@
     <ClCompile Include="desync\desync_watch.cpp" />
     <ClCompile Include="desync\state_tracker.cpp" />
     <ClCompile Include="desync\state_recorder.cpp" />
+    <ClCompile Include="desync\state_compress.cpp" />
+    <ClCompile Include="desync\state_miniz.c" />
     <ClCompile Include="desync\state_ring.cpp" />
     <ClCompile Include="desync\world_sync.cpp" />
     <!-- THE x87 FLAG POLICY LEFT THIS PROJECT AT FORK F4D and the roster's files left it at F5O.
@@ -131,6 +134,8 @@
     <ClInclude Include="desync\state_record.h" />
     <ClInclude Include="desync\state_tracker.h" />
     <ClInclude Include="desync\state_recorder.h" />
+    <ClInclude Include="desync\state_compress.h" />
+    <ClInclude Include="desync\state_miniz_config.h" />
     <ClInclude Include="desync\state_ring.h" />
     <ClInclude Include="desync\state_ring_core.h" />
     <ClInclude Include="desync\world_sync.h" />

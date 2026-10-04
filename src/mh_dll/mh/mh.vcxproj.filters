@@ -139,6 +139,9 @@
     <ClCompile Include="seams\ui_info_avi.cpp">
       <Filter>seams</Filter>
     </ClCompile>
+    <ClCompile Include="seams\ui_info_guard.cpp">
+      <Filter>seams</Filter>
+    </ClCompile>
     <ClCompile Include="seams\ui_net_indicator.cpp">
       <Filter>seams</Filter>
     </ClCompile>
@@ -227,6 +230,12 @@
       <Filter>desync</Filter>
     </ClCompile>
     <ClCompile Include="desync\state_recorder.cpp">
+      <Filter>desync</Filter>
+    </ClCompile>
+    <ClCompile Include="desync\state_compress.cpp">
+      <Filter>desync</Filter>
+    </ClCompile>
+    <ClCompile Include="desync\state_miniz.c">
       <Filter>desync</Filter>
     </ClCompile>
     <ClCompile Include="desync\state_ring.cpp">
@@ -377,6 +386,12 @@
       <Filter>desync</Filter>
     </ClInclude>
     <ClInclude Include="desync\state_recorder.h">
+      <Filter>desync</Filter>
+    </ClInclude>
+    <ClInclude Include="desync\state_compress.h">
+      <Filter>desync</Filter>
+    </ClInclude>
+    <ClInclude Include="desync\state_miniz_config.h">
       <Filter>desync</Filter>
     </ClInclude>
     <ClInclude Include="desync\state_ring.h">

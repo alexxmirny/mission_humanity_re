@@ -51,6 +51,7 @@
 #include "include/mh_net_queue_policy.h" // D24: WHICH inbound frame a full queue may destroy
 #include "include/mh_net_watchdog.h"     // D16: the watchdog's timing decisions, as pure testable fns
 #include "include/mh_run_context.h"      // mh_log_stamp ONLY -- see module_run_dir() below
+#include "include/mh_log_sink.h"         // LOG1: the async log sink client (header-only)
 #include "mh_net_proto/net_crypto.h"     // handshake + record encryption (portable, shared with the relay)
 #include "mh_net_proto/net_wire.h"       // portable wire framing shared with the relay (S0)
 
@@ -280,13 +281,8 @@ void logf(const char *fmt, ...) {
         line[n++] = '\n';
         line[n]   = '\0';
     }
-    HANDLE h = CreateFileA(g_log_path, FILE_APPEND_DATA, FILE_SHARE_READ | FILE_SHARE_WRITE,
-                           nullptr, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
-    if (h == INVALID_HANDLE_VALUE) return;
-    SetFilePointer(h, 0, nullptr, FILE_END);
-    DWORD wrote = 0;
-    WriteFile(h, line, lstrlenA(line), &wrote, nullptr);
-    CloseHandle(h);
+    // mp:LOG1: enqueued to the process-wide async sink (header-only client; mh.dll owns the writer).
+    mh_logq_write(g_log_path, line, lstrlenA(line));
 }
 
 // ---- why a receive stopped ----------------------------------------------------------------------

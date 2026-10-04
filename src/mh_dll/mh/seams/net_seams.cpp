@@ -48,6 +48,7 @@
 #include "include/mh_storagepurge_export.h" // MH_StoragePurge_Install (ui_storage_panel_purge.cpp) -- D38 row 5 the storage panel leaves dead docked units to the sim in lockstep
 #include "include/mh_buildprobe_export.h"   // MH_BuildProbe_Install (ui_bldg_build_probe.cpp) -- D35 the HUD build-click probe charges nothing (D25 in configuration (1))
 #include "include/mh_relanding_export.h"    // MH_Relanding_Install (sim_pioneer_refill.cpp) -- D37a a lockstep pioneer re-landing refills AI players only
+#include "include/mh_infoguard_export.h"    // MH_InfoGuard_Install (ui_info_guard.cpp) -- U73 an info screen is never opened for a blank/stale entity (no "Cannot find info text" modal)
 #include "include/mh_infoavi_export.h"      // MH_InfoAvi_Install (ui_info_avi.cpp) -- X2g an info screen whose AVI will not open shows without video, never IDIVs by 0
 #include "include/mh_uidrive_export.h"      // MH_UIDrive_Install (ui_drive.cpp) -- UI automation Phase 2
 #include "include/mh_video_export.h"        // MH_Video_Install (video.cpp) -- D13 display-mode selection
@@ -60,6 +61,7 @@
 #include "mh_net_proto/session_info.h"      // F3c: the REFUSED announce kind + its decoder
 #include "include/mh_run_context.h"         // MH_RunDir (per-run log folder), MH_ExeDir (config inputs)
 #include "include/mh_log_rotate.h"          // SES2: the shared size cap + one-generation rotation
+#include "include/mh_log_sink.h"            // LOG1: the async log sink every log line goes through
 #include "addr/mh_addrs.gen.h"              // generated EN VAs (tools/gen_dll_addrs.py)
 #include "../../mh_net_udp/udp_stats.h"     // mp:D30: mh::netstats::order_is_late
 #include "addr/mh_patches.gen.h"            // promotable-function extents (the C1 interlock table)
@@ -149,31 +151,17 @@ void seam_log(const char *s) {
     // the new folder without any writer here knowing a session exists. One integer compare per line
     // (the generation), against a file this function already opens and closes per line anyway.
     seam_paths_tick();
-    HANDLE h = CreateFileA(g_log, FILE_APPEND_DATA, FILE_SHARE_READ | FILE_SHARE_WRITE,
-                           nullptr, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
-    if (h == INVALID_HANDLE_VALUE) return;
-    // SES2: rotate at the cap. seam_paths_tick() has already re-pointed g_log at the CURRENT
-    // session's directory, so this acts inside the open match's folder -- a rotation never reaches
-    // back into an earlier match's, and each new folder starts at zero bytes. A failed rename leaves
-    // the handle usable and this line still lands (see mh_log_rotate.h); we simply try again next
-    // line rather than dropping the line that might say why the session died.
-    if (mh_log_rotate_open_handle(&h, g_log, seam_log_cap())) {
-        h = CreateFileA(g_log, FILE_APPEND_DATA, FILE_SHARE_READ | FILE_SHARE_WRITE,
-                        nullptr, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
-        if (h == INVALID_HANDLE_VALUE) return;
-    }
-    SetFilePointer(h, 0, nullptr, FILE_END);
-    DWORD wrote = 0;
+    // mp:LOG1: the line is ENQUEUED to the async sink (mh_log_sink.h) -- no file I/O on this thread.
+    // SES2's size cap now rides along with the record: the WRITER rotates at the cap, inside the
+    // folder `g_log` named at ENQUEUE time (a failed rename keeps appending, see mh_log_rotate.h).
+    //
     // Same local wall-clock stamp the transport's logf() writes, so the "; " seam lines and the
-    // "net: " transport lines interleave into ONE readable timeline (2026-08-06). Written as a
-    // separate WriteFile rather than composed into a buffer because seam_log takes an
-    // already-formatted string of unbounded length -- and both writes are inside the same
-    // FILE_APPEND_DATA handle, which is atomic per write at the end of the file.
+    // "net: " transport lines interleave into ONE readable timeline (2026-08-06). Stamp and line
+    // are ONE record (write2) because seam_log takes an already-formatted string of unbounded
+    // length and another thread's line must not land between them.
     char stamp[24];
     int  sn = mh_log_stamp(stamp);
-    WriteFile(h, stamp, sn, &wrote, nullptr);
-    WriteFile(h, s, lstrlenA(s), &wrote, nullptr);
-    CloseHandle(h);
+    mh_logq_write2(g_log, stamp, sn, s, lstrlenA(s), seam_log_cap());
 }
 
 namespace {
@@ -2345,6 +2333,7 @@ static int MH_Core_Arm(void) {
     MH_BuildProbe_Install();   // D35: the HUD build-click affordability probe charges nothing -- D25's fix where libmh is not bound (best-effort)
     MH_Relanding_Install();    // D37a: in a lockstep match a pioneer re-landing refills the starting stock for AI players only (best-effort)
     MH_InfoAvi_Install();      // X2g: info-screen AVI open failure -> no-video screen, no CD prompt/box; the media tick never divides by a zero clip length (best-effort)
+    MH_InfoGuard_Install();    // U73: entity info screen entry guard + the storage panel's stale info-request consume (best-effort)
     MH_Overlay_Install();      // debug overlay: [debug] ini pages -> painted on present BEFORE capture reads (best-effort)
     MH_Capture_Install();      // UI capture harness: hook present-flip -> F12/[capture] frame dump (best-effort)
     MH_UIDrive_Install();      // UI automation harness (Phase 2): [uitest] click-driver via the mouse ring (best-effort)

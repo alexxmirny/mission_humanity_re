@@ -11,6 +11,7 @@
 
 #include "seams/map_transfer.h"
 
+#include "include/mh_log_sink.h"     // mp:LOG2: the stored map is written by the log sink's writer
 #include "include/mh_net_export.h"   // MH_Net_PeerCount -- "is anyone even here"
 #include "include/mh_net_module.h"   // MH_Net_Snapshot{Send,Poll,Status} + MH_SNAP_*
 #include "mh_net_proto/net_crypto.h" // sha256
@@ -396,16 +397,14 @@ bool store(const char *base, const uint8_t hash[HASH_N], const void *bytes, uint
     // CREATE_ALWAYS is correct HERE and only here: the target is content-addressed, so an existing
     // file of this name is either the identical content or a truncated earlier attempt, and either
     // way the right answer is these bytes.
-    HANDLE h = CreateFileA(path, GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL,
-                           nullptr);
-    if (h == INVALID_HANDLE_VALUE) return false;
-    DWORD      wrote = 0;
-    const BOOL ok    = WriteFile(h, bytes, len, &wrote, nullptr);
-    CloseHandle(h);
-    if (!ok || wrote != len) {
-        DeleteFileA(path); // leave no half-map behind for resolve() to hash next time
-        return false;
-    }
+    // mp:LOG2: the WRITE is the log sink's writer thread's (a create/truncate record carrying the whole
+    // blob -- <= MAP_MAX_BYTES, one reliable binary record), so this returns once the bytes are
+    // QUEUED, not once they are on disk; a caller that reads the file back next must wait on
+    // mh_logq_ticket_done() (client_tick does). With no sink published (the offline selftests) the
+    // helper falls back to the old synchronous CREATE_ALWAYS write, so a caller there sees the file
+    // at once. Failure to write can no longer be reported here; the game-side caller checks the
+    // file's length once the writer is done and deletes + refuses a short one.
+    mh_logq_create_bin(path, bytes, (int)len);
     lstrcpynA(out_path, path, (int)cap);
     return true;
 }
@@ -1256,8 +1255,38 @@ void client_drain_unwanted() {
     mlog(g_line);
 }
 
+// mp:LOG2 -- a delivered map that has been ENQUEUED to the log sink's writer but is not yet confirmed
+// on disk. See client_tick, where the delivery is stored.
+bool     g_storing = false;
+char     g_store_path[STORED_PATH_CAP];
+uint32_t g_store_len    = 0;
+long     g_store_ticket = 0;
+
+void client_store_finish();
+
+void client_store_finish_if_done() {
+    if (!mh_logq_ticket_done(g_store_ticket)) return;
+    client_store_finish();
+}
+
+void client_refuse_delivery(int len) {
+    char hex[np::MAP_HASH_HEX_CAP];
+    g_cs = CS_REFUSED;
+    wsprintfA(g_line, "; [map] client REFUSED the delivered map (%d B; it does not hash to the "
+                      "advertised %s, or it could not be written)\n",
+              len, hexof(g_want_hash, hex, sizeof(hex)));
+    mlog(g_line);
+    lstrcpynW(g_notice, mh::ui::tr(mh::ui::Str::MAP_MISMATCH), 256);
+    g_notice_on = true;
+    paint_notice();
+}
+
 void client_tick() {
     if (!g_want_valid) return;
+    if (g_storing) { // mp:LOG2: waiting for the writer to finish the stored map
+        client_store_finish_if_done();
+        return;
+    }
     if (g_cs == CS_HAVE) { // mp:X2d: holding the map is no reason to leave channel C undrained
         client_drain_unwanted();
         return;
@@ -1287,17 +1316,38 @@ void client_tick() {
     }
 
     char stored[STORED_PATH_CAP];
-    char hex[np::MAP_HASH_HEX_CAP];
     if (!store(g_want_map, g_want_hash, g_rx_buf, (uint32_t)len, stored,
                sizeof(stored))) {
-        g_cs = CS_REFUSED;
-        wsprintfA(g_line, "; [map] client REFUSED the delivered map (%d B; it does not hash to the "
-                          "advertised %s, or it could not be written)\n",
-                  len, hexof(g_want_hash, hex, sizeof(hex)));
-        mlog(g_line);
-        lstrcpynW(g_notice, mh::ui::tr(mh::ui::Str::MAP_MISMATCH), 256);
-        g_notice_on = true;
-        paint_notice();
+        client_refuse_delivery(len);
+        return;
+    }
+    // mp:LOG2: store() has only ENQUEUED the file to the log sink's writer (no disk I/O on this
+    // thread). The rest of the completion -- the size check, the resolve that hashes the file back,
+    // the redirect, the re-JOIN -- waits for the writer, polled one frame at a time at the top of
+    // client_tick (g_cs stays CS_NEED, so nothing else moves meanwhile). With no sink published
+    // (the selftests) the write was synchronous and the ticket is already done.
+    lstrcpynA(g_store_path, stored, sizeof(g_store_path));
+    g_store_len    = (uint32_t)len;
+    g_store_ticket = mh_logq_ticket();
+    g_storing      = true;
+    client_store_finish_if_done();
+}
+
+// The tail of a delivery, once the stored file is on disk. Split out of client_tick for mp:LOG2.
+void client_store_finish() {
+    const int len = (int)g_store_len;
+    char      hex[np::MAP_HASH_HEX_CAP];
+    char      stored[STORED_PATH_CAP];
+    lstrcpynA(stored, g_store_path, sizeof(stored));
+    g_storing = false;
+    // The write is the sink's now and cannot report a failure, so the check store() used to get from
+    // WriteFile's result is made here: the file must exist at exactly the delivered length. Anything
+    // else is a half-map -- delete it (resolve() must not hash it next time) and refuse, as before.
+    WIN32_FILE_ATTRIBUTE_DATA fa;
+    if (!GetFileAttributesExA(stored, GetFileExInfoStandard, &fa) || fa.nFileSizeHigh != 0 ||
+        fa.nFileSizeLow != g_store_len) {
+        DeleteFileA(stored);
+        client_refuse_delivery(len);
         return;
     }
     wsprintfA(g_line, "; [map] client stored %s (%d B, sha=%s) -- the local %s is untouched\n",
@@ -1503,6 +1553,7 @@ void session_reset() {
     g_absent_live       = false; // mp:X2e: the next lobby re-arms it at its own JOIN
     g_absent_downloaded = false;
     g_cs                = CS_IDLE;
+    g_storing           = false; // mp:LOG2
     g_notice_on         = false;
     g_host_map[0]       = '\0';
     g_host_claim        = false;

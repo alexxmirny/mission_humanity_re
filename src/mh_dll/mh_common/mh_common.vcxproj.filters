@@ -30,6 +30,9 @@
     <ClInclude Include="include\mh_net_module.h">
       <Filter>include</Filter>
     </ClInclude>
+    <ClInclude Include="include\mh_log_sink.h">
+      <Filter>include</Filter>
+    </ClInclude>
     <ClInclude Include="include\mh_run_context.h">
       <Filter>include</Filter>
     </ClInclude>
@@ -38,6 +41,7 @@
     <ClCompile Include="bmp_io.cpp" />
     <ClCompile Include="bnk.cpp" />
     <ClCompile Include="lzw.cpp" />
+    <ClCompile Include="mh_log_sink.cpp" />
     <ClCompile Include="misc.cpp" />
     <ClCompile Include="run_context.cpp" />
   </ItemGroup>

@@ -90,12 +90,14 @@
     <ClInclude Include="include\mh_net_export.h" />
     <ClInclude Include="include\mh_net_key.h" />
     <ClInclude Include="include\mh_net_module.h" />
+    <ClInclude Include="include\mh_log_sink.h" />
     <ClInclude Include="include\mh_run_context.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="bmp_io.cpp" />
     <ClCompile Include="bnk.cpp" />
     <ClCompile Include="lzw.cpp" />
+    <ClCompile Include="mh_log_sink.cpp" />
     <ClCompile Include="misc.cpp" />
     <ClCompile Include="run_context.cpp" />
   </ItemGroup>

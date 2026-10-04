@@ -9,6 +9,7 @@
 
 #include "ui/player_strings.h"
 #include "include/mh_run_context.h" // mh_run_path -- mh_video.log, the lang pack's advisory channel
+#include "include/mh_log_sink.h"    // LOG1: async log sink
 #include "mh_net_proto/text_utf8.h" // utf8_to_utf16: the pack file is UTF-8
 
 #pragma comment(lib, "user32.lib") // wsprintfW / wvsprintfA
@@ -50,13 +51,7 @@ void ps_log(const char *fmt, ...) {
         line[n++] = '\n';
         line[n]   = 0;
     }
-    HANDLE h = CreateFileA(g_log, FILE_APPEND_DATA, FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, OPEN_ALWAYS,
-                           FILE_ATTRIBUTE_NORMAL, nullptr);
-    if (h == INVALID_HANDLE_VALUE) return;
-    SetFilePointer(h, 0, nullptr, FILE_END);
-    DWORD wrote = 0;
-    WriteFile(h, line, lstrlenA(line), &wrote, nullptr);
-    CloseHandle(h);
+    mh_logq_write(g_log, line, lstrlenA(line));
 }
 
 int find_key(const char *k, size_t n) {

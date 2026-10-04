@@ -670,6 +670,25 @@
    "note": "mp:D38 row 5: call-splice the storage building panel's CALL llm_strat_storage_purge_dead_docked to a thunk that, in a lockstep match only, skips it -- the panel's refresh-time purge removes dead docked units from unit_storage on the selecting peer alone, ahead of the sim's own sub-tick A purge, and llm_strat_hangar_recharge_pulse can revive the dead row on the other peers. Outside lockstep the original runs untouched. Not under [config] mode=original; [net] storage_panel_purge_fix=0 is the reproduction arm."
   },
   {
+   "id": "info_guard_storage_consume",
+   "sources": [
+    {
+     "file": "mh/seams/ui_info_guard.cpp",
+     "expr": "ADDR_STORAGE_REQ_TEST"
+    }
+   ],
+   "addrs": [
+    "0x00417902"
+   ],
+   "kind": "code",
+   "owner": [
+    "llm_strat_ui_storage_bldg_panel"
+   ],
+   "knob": "info_guard",
+   "carrier": null,
+   "note": "mp:U73: the 7-byte `CMP dword ptr [_G_LLM_UI_STORAGE_PANEL_SHOW_INFO_SLOT_REQUEST],0` guarding the docked-unit info open becomes CALL thunk + 2 NOPs (the JZ after it is kept). The thunk validates the latched right-click row against the docked list AS IT IS NOW (row inside docked_count, docked slot inside the roster, the unit's prototype non-zero) and clears the latch when it does not, then redoes the compare -- retail indexed docked_units[row + scroll - 1] with a row captured at click time, and a unit that launched/died/was purged by the sim in between left a blank slot -> Unit[0].info_txt == \"\" -> the empty-key `Cannot find info text:` modal. One `; [info] guard: storage-panel info request DROPPED` line names the reason. The entry of llm_ui_entity_info_screen_open carries the backstop as a trampoline (not a patch site). Not under [config] mode=original; [net] info_guard=0 is the reproduction arm."
+  },
+  {
    "id": "pioneer_refill_fix",
    "sources": [
     {

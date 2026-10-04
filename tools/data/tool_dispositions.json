@@ -109,6 +109,11 @@
       "why": "mp:X2g: the info_avi_absent row's cross-peer post_check -- with the clip made absent ([net] info_avi_test_absent=*) the host logs the seam armed and one `clip missing` line, its walk opens the no-video info screen and closes it with Esc (a modal would stop the walk), the pair stays IDENTICAL, and neither peer's lockstep clock stands still over 1 s (the rc4 CD prompt froze it ~4 s)",
       "evidence": "invoked by tools/test_ui.py's info_avi_absent TESTS entry (post_check, post_check_peers, post_check_session) and tools/lint_repo.py (--selftest)"
     },
+    "check_info_guard.py": {
+      "class": "keep",
+      "why": "mp:U73: the info_guard_u73 row's cross-peer post_check -- the host's seam is armed with both rig knobs; its right-clicks on a docked soldier's row open the unit info screen (valid), a stale request injected at the storage panel's consume site is DROPPED with one `; [info]` line, a blank entity injected at the entry of llm_ui_entity_info_screen_open is REFUSED naming the storage panel as caller, no un-injected refusal appears, and the pair stays IDENTICAL (the guard is UI only)",
+      "evidence": "invoked by tools/uiscripts/registry.yaml's info_guard_u73 row (post_check, post_check_peers, post_check_session) and tools/lint_repo.py (--selftest)"
+    },
     "check_u47_info_joiner.py": {
       "class": "keep",
       "why": "mp:U47: the u47_info_joiner row's cross-peer post_check -- the JOINER holds the info panel (game mode 4) >= 10 s; the joiner keeps advancing and receiving, the host logs no new stall episode / wait icon over the window, and the client driver never ticks after match entry (rc5 41db0de4 drained and discarded lockstep packets there, G327)",
@@ -980,6 +985,11 @@
       "why": "mp:SES2: the log line format registry gate -- a parser's needle, the registry entry and the C++ emitter must still agree",
       "evidence": "invoked by tools/lint_repo.py"
     },
+    "lint_log_sink.py": {
+      "class": "keep",
+      "why": "mp:LOG1: no per-line log writer (FILE_APPEND_DATA / OPEN_ALWAYS / append fopen) outside the async log sink -- the hard gate for 'no log I/O on a game thread'",
+      "evidence": "invoked by tools/lint_repo.py"
+    },
     "lint_machine_paths.py": {
       "class": "keep",
       "why": "guards against reintroduced machine-specific paths",
@@ -1456,6 +1466,12 @@
       "class": "keep",
       "why": "tooling:TL-SUITE-INIMERGE: diffs ui_test.py's NET_BLOCK [net] defaults against the shipped src/mh_dll/mh_net.example.ini (same trap as TL-RIG-DEFANG/G274, where the rig silently ran defang_overlay=1 for two years against a shipped 0) and reds on an undeclared mismatch; declared ones live in tools/data/rig_ini_default_exceptions.json.",
       "evidence": "invoked by tools/lint_repo.py"
+    },
+    "win_probe.py": {
+      "class": "keep",
+      "why": "patching:PT-GFX8: prints (or watches) the facts that decide whether Windows lists the game window on the taskbar / in Alt-Tab -- visible, iconic, style + ex-style bits, owner, DWM cloaking, and the documented eligibility verdict -- and can activate it the way the launcher's single-instance path does; the outside-the-process twin of the harness's `winswitchable`",
+      "evidence": "no machine invoker -- run by an operator reproducing a player's lost-taskbar-entry report against a live game (python tools/win_probe.py --watch 0.25)",
+      "hand_run": true
     },
     "win_job.py": {
       "class": "keep",

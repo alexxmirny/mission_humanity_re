@@ -39,6 +39,7 @@
 #include "include/mh_net_export.h"   // MH_Net_PeerCount / MH_Net_IsStarted (F-gate peer wait)
 #include "include/mh_seam_export.h"  // MH_Seam_StartTransport (bring the transport up at the menu)
 #include "include/mh_run_context.h"  // MH_RunDir (per-run log folder)
+#include "include/mh_log_sink.h"     // LOG1: async log sink
 #include "include/lobby_session.h"   // llm_net_session_entry (retail lobby session-list record)
 #include "addr/mh_addrs.gen.h"       // generated EN VAs (tools/gen_dll_addrs.py)
 #include "addr/mh_structs.gen.h"     // mp:D36 -- mh_cfg_final_struct_Planet (Planets[31]'s string slots)
@@ -198,13 +199,7 @@ void lg(const char *fmt, ...) {
         line[n++] = '\n';
         line[n]   = 0;
     }
-    HANDLE h = CreateFileA(g_log, FILE_APPEND_DATA, FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr,
-                           OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
-    if (h == INVALID_HANDLE_VALUE) return;
-    SetFilePointer(h, 0, nullptr, FILE_END);
-    DWORD w = 0;
-    WriteFile(h, line, lstrlenA(line), &w, nullptr);
-    CloseHandle(h);
+    mh_logq_write(g_log, line, lstrlenA(line));
 }
 
 // ---- command-line tokenizer (space-delimited, honours "double quotes") ---------------------------

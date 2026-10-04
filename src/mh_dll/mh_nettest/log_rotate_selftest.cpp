@@ -36,6 +36,7 @@
 #include <string.h>
 
 #include "mh_log_rotate.h"
+#include "mh_log_sink.h"
 #include "mh_run_context.h"
 
 // The real mh_net.log writer (mh/seams/net_seams.cpp, compiled into this exe). Declared rather than
@@ -101,6 +102,7 @@ void tmp_path(char *dst, const char *leaf) { wsprintfA(dst, "%s%s", g_tmp, leaf)
 
 int run_logrottest() {
     printf("=== logrottest (SES2: the log size cap + one-generation rotation) ===\n");
+    mh_logq_init(); // LOG1: arm 5 drives the SHIPPING path, which is now seam_log -> the async sink
 
     // ---- 1. the ".log" -> ".prev.log" derivation, and what it REFUSES -----------------------------
     {
@@ -284,12 +286,21 @@ int run_logrottest() {
         line[LINE - 1] = '\n';
         line[LINE]     = '\0';
 
+        // mp:LOG1: seam_log ENQUEUES to the async sink now, and a producer that outruns the writer by more
+        // than the sink's memory bound is DROPPED (counted) -- correct for the game, wrong for a test that
+        // asserts every byte. So the loop paces itself: drain every 1 MB. The writer does the rotation.
         const DWORD t0    = GetTickCount();
         long long   wrote = 0;
+        int         since = 0;
         while (wrote < TOTAL) {
             seam_log(line);
             wrote += LINE; // plus the stamp seam_log prepends; counted below off the real sizes
+            if (++since == 128) {
+                mh_logq_flush(60000);
+                since = 0;
+            }
         }
+        mh_logq_flush(60000);
         const DWORD ms = GetTickCount() - t0;
 
         const long long cur_sz  = file_size(cur);
@@ -303,12 +314,15 @@ int run_logrottest() {
         // The teeth: the rotated generation lands in [cap, cap + one line + one stamp]. This pins the
         // DEFAULT as well as the mechanism -- a cap of 1 byte would satisfy "a .prev appeared".
         check("the rotated generation is exactly one cap's worth (the DEFAULT 64 MB, not merely 'some cap')",
-              prev_sz >= CAP && prev_sz <= CAP + LINE + 64);
+              prev_sz >= CAP && prev_sz <= CAP + 65536 + LINE + 64); // LOG1: the writer's coalescing batch is <= 64 KB
         // Nothing was dropped: the two files together hold everything that was written (each line
         // also carries seam_log's wall-clock stamp, so the total is slightly over the raw byte count).
         check("every written byte is still on disk across the two generations",
               cur_sz + prev_sz >= wrote);
-        check("...and disk is bounded at 2x the cap", cur_sz + prev_sz < 2 * CAP + LINE + 64);
+        check("...and disk is bounded at 2x the cap", cur_sz + prev_sz < 2 * CAP + 65536 + LINE + 64);
+        MH_LogQStats st;
+        mh_logq_stats(&st);
+        check("the sink dropped nothing (the loop paced itself)", st.dropped == 0);
 
         DeleteFileA(cur);
         DeleteFileA(prev);

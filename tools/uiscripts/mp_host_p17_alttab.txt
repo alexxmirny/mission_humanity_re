@@ -34,6 +34,9 @@ log HOST p17: in match
 log HOST p17: minimise 5000 ms
 winmin 5000
 gameclock 16000
+# PT-GFX8: the window that was minimised and restored is still a taskbar / Alt-Tab eligible window
+winswitchable
+winprobe
 capture h1_after_restore
 log HOST p17: done
 signal hostdone

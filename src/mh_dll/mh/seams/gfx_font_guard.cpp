@@ -19,6 +19,7 @@
 
 #include "include/mh_fontguard_export.h"
 #include "include/mh_run_context.h" // MH_RunDir / mh_run_path
+#include "include/mh_log_sink.h"    // LOG1: async log sink
 #include "addr/mh_calls.gen.h"      // mh::call::llm_gfx_font_select / llm_gfx_draw_text_blend_clipped
 #include "config/ini_read.h"        // TL-HARN4: read_ini_string -- strips a trailing `;comment`
 #include "hook/detour.h"            // install_jmp + WATCOM_PROLOGUE
@@ -87,13 +88,7 @@ void fg_log(const char *fmt, ...) {
         line[n++] = '\n';
         line[n]   = 0;
     }
-    HANDLE h = CreateFileA(g_log, FILE_APPEND_DATA, FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr,
-                           OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
-    if (h == INVALID_HANDLE_VALUE) return;
-    SetFilePointer(h, 0, nullptr, FILE_END);
-    DWORD wrote = 0;
-    WriteFile(h, line, lstrlenA(line), &wrote, nullptr);
-    CloseHandle(h);
+    mh_logq_write(g_log, line, lstrlenA(line));
 }
 
 // Ordinal for the substitute glyph in the CURRENT font, or 0 if this font has none of them.

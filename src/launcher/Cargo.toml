@@ -59,6 +59,12 @@ rfd = { version = "0.17.2", default-features = false }
 # archives this project cannot produce.
 zip = { version = "8.6.0", default-features = false, features = ["deflate"] }
 
+# mp:D46. The state recording arrives as `mh_match_state.bin.gz` (a gzip member written by mh.dll). When
+# it must be tailed at a keyframe the report packer has to read it, so this is the gzip READER only --
+# the very flate2 + zlib-rs build `zip` above already compiles, named here so it is a direct dependency
+# rather than a transitive one this crate silently relies on.
+flate2 = { version = "1.1", default-features = false, features = ["zlib-rs"] }
+
 # launcher.toml.
 serde = { version = "1.0.229", features = ["derive"] }
 toml = "1.1.6"

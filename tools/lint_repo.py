@@ -1228,6 +1228,17 @@ def declare_checks(args):
         "log-format gate -- a planted unregistered parse, a stale needle and a stale emitter go RED",
         [sys.executable, os.path.join(REPO, "tools", "lint_log_formats.py"), "--selftest"],
     )
+    # mp:LOG1 (done_when (a)). Every log line in the game process goes through the async sink in
+    # src/mh_dll/mh_common/mh_log_sink.cpp (client: include/mh_log_sink.h); a new per-line append writer (FILE_APPEND_DATA, an
+    # OPEN_ALWAYS CreateFile, an append-mode fopen) anywhere else puts file I/O back on a game thread.
+    check(
+        "no per-line log writer outside the async log sink (lint_log_sink)",
+        [sys.executable, os.path.join(REPO, "tools", "lint_log_sink.py")],
+    )
+    check(
+        "log-sink gate -- a planted FILE_APPEND_DATA / OPEN_ALWAYS / append-fopen writer goes RED",
+        [sys.executable, os.path.join(REPO, "tools", "lint_log_sink.py"), "--selftest"],
+    )
     # tooling TL-GATE-D25FX. A hash-manifest change (D25 appended region 62) silently staled every
     # recorded `state` artifact -- the three libref world blobs + streams and both UI-REC oracles --
     # and the next full gate read them as "first mismatch at step 1", the shape of a broken replayer.
@@ -1428,6 +1439,13 @@ def declare_checks(args):
     check(
         "mp:X2g info-screen AVI post-check -- the negative cases still fire (check_info_avi --selftest)",
         [sys.executable, os.path.join(REPO, "tools", "check_info_avi.py"), "--selftest"],
+    )
+    # mp:U73. The info-guard row runs only with the rig; its clauses -- the seam armed with both test
+    # knobs, one dropped stale request, one refused blank entity naming the storage panel as caller, no
+    # stray refusal, the walk's valid opens, hash identical -- are gated here off planted logs.
+    check(
+        "mp:U73 info-guard post-check -- the negative cases still fire (check_info_guard --selftest)",
+        [sys.executable, os.path.join(REPO, "tools", "check_info_guard.py"), "--selftest"],
     )
     # mp:U47. The joiner-info-panel row runs only with the rig; its clauses -- a >= 10 s mode-4 window on
     # the joiner, the joiner still advancing/receiving, no new host stall episode, no in-match client

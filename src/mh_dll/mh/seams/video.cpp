@@ -43,6 +43,7 @@
 
 #include "include/mh_video_export.h"
 #include "include/mh_run_context.h"    // MH_RunDir
+#include "include/mh_log_sink.h"       // LOG1: async log sink
 #include "addr/mh_addrs.gen.h"         // generated EN VAs
 #include "config/ini_read.h"           // TL-HARN4: read_ini_string -- strips a trailing `;comment`
 #include "include/mh_harness_export.h" // MH_Harness_OnMovieTick / _WantsMovieTick
@@ -86,13 +87,7 @@ void vid_log(const char *fmt, ...) {
         line[n++] = '\n';
         line[n]   = 0;
     }
-    HANDLE h = CreateFileA(g_log_path, FILE_APPEND_DATA, FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, OPEN_ALWAYS,
-                           FILE_ATTRIBUTE_NORMAL, nullptr);
-    if (h != INVALID_HANDLE_VALUE) {
-        DWORD w = 0;
-        WriteFile(h, line, (DWORD)lstrlenA(line), &w, nullptr);
-        CloseHandle(h);
-    }
+    mh_logq_write(g_log_path, line, lstrlenA(line));
 }
 
 // Run-before the main-menu loader: seed the persisted preference so the loader's own

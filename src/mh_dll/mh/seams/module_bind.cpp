@@ -61,6 +61,7 @@
 #include "config/ini_read.h" // TL-HARN4: read_ini_string -- strips a trailing `;comment`
 #include "mh_net_module.h"   // the contract: MH_NET_MODULE_SYMBOLS, the host/probe structs, the ABI
 #include "mh_run_context.h"  // MH_RunDir + mh_log_stamp (mh_common; self-initialising)
+#include "mh_log_sink.h"     // LOG1: async log sink
 #include "mh_version.h"      // MH_VERSION_FULL -- the build stamp, from src/mh_dll/mh_version.props
 
 #pragma comment(lib, "ws2_32.lib")
@@ -117,16 +118,9 @@ bound_t g_b = {};
 void mod_log(const char *s) {
     char path[MAX_PATH];
     wsprintfA(path, "%smh_net.log", MH_RunDir());
-    HANDLE h = CreateFileA(path, FILE_APPEND_DATA, FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr,
-                           OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
-    if (h == INVALID_HANDLE_VALUE) return;
-    SetFilePointer(h, 0, nullptr, FILE_END);
-    DWORD wrote = 0;
-    char  stamp[24];
-    int   sn = mh_log_stamp(stamp);
-    WriteFile(h, stamp, sn, &wrote, nullptr);
-    WriteFile(h, s, lstrlenA(s), &wrote, nullptr);
-    CloseHandle(h);
+    char stamp[24];
+    int  sn = mh_log_stamp(stamp);
+    mh_logq_write2(path, stamp, sn, s, lstrlenA(s));
 }
 
 // ---- THE WS2_32 ANCHOR ---------------------------------------------------------------------------

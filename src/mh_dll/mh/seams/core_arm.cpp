@@ -40,6 +40,7 @@
 #include "include/mh_hostapi_bind.h"    // LIB-ABI: the thunk-backed host-callback table
 #include "include/mh_libmh_hook_bind.h" // F4D-PRE: the hook-service table -- libmh's outbound edge
 #include "include/mh_run_context.h"     // MH_RunDir (per-run log folder)
+#include "include/mh_log_sink.h"        // LOG1: async log sink
 #include "state/host_api.h"             // LIB-ABI: libmh_set_host_api
 #include "state/host_bind.h"            // SB-BIND: the state ABI (bind_stock / bind_relocated)
 #include "state/host_in.h"              // LIB-REF-IN: libmh_in_open
@@ -84,13 +85,7 @@ int g_in_traps_at_open = 0;
 // whichever ran second. Open-write-close is what that costs us: three syscalls on a path taken a
 // handful of times per boot, against a class of failure that shows up as a silently missing log.
 void append_line_once(const char *path, const char *s) {
-    HANDLE h = CreateFileA(path, FILE_APPEND_DATA, FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr,
-                           OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
-    if (h == INVALID_HANDLE_VALUE) return;
-    SetFilePointer(h, 0, nullptr, FILE_END);
-    DWORD wrote = 0;
-    WriteFile(h, s, (DWORD)lstrlenA(s), &wrote, nullptr);
-    CloseHandle(h);
+    mh_logq_write(path, s, lstrlenA(s));
 }
 #define append_line append_line_once
 

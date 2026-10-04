@@ -1277,7 +1277,8 @@
       "parsers": [
         "tools/check_cam_trace.py:parse",
         "tools/check_host_clicks.py:parse_uidrive",
-        "tools/check_info_avi.py:uidrive_lines"
+        "tools/check_info_avi.py:uidrive_lines",
+        "tools/check_info_guard.py:uidrive_lines"
       ],
       "since": "tooling:TL-SUITE-SPLICE-CAM",
       "status": "live",
@@ -4054,6 +4055,85 @@
       "since": "mp:X2g",
       "status": "live",
       "note": "THE INFO-SCREEN AVI GUARD's arm line, once per process: whether llm_ui_info_media_frame_tick (EN 0x004caa46) is replaced by the divisor-guarded body, whether the AVI-open failure branch of llm_ui_entity_info_screen_open (0x004cb1fa) is spliced to the no-video handler, and whether the rig's [net] info_avi_test_absent knob is armed. `RETAIL` on both halves is [net] info_avi_fallback=0, the repro arm. The rc4 field crash (IDIV by zero at 0x004cab52) is what a RETAIL line leaves reachable."
+    },
+    {
+      "id": "info.guard_banner",
+      "stream": "mh_net.log",
+      "emitter": "src/mh_dll/mh/seams/ui_info_guard.cpp",
+      "emit": "; [info] guard: entry ",
+      "tags": [
+        "info"
+      ],
+      "needles": [
+        "; \\[info\\] guard: entry "
+      ],
+      "fields": [
+        "entry",
+        "consume",
+        "test_knobs"
+      ],
+      "parsers": [
+        "tools/check_info_guard.py:banner_of"
+      ],
+      "since": "mp:U73",
+      "status": "live",
+      "note": "THE ENTITY-INFO GUARD's arm line, once per process: whether the trampoline on llm_ui_entity_info_screen_open (EN 0x004cad31) is installed, whether the storage panel's info-request consume (0x00417902) is spliced, and which rig-only knobs ([net] info_guard_test_entry / info_guard_test_row) are armed. `NOT guarded` is a refused install (see the [interlock] line) or changed bytes; the reproduction arm ([net] info_guard=0 / [config] mode=original) logs a `; [info] guard KEPT` line instead of this one."
+    },
+    {
+      "id": "info.guard_refused",
+      "stream": "mh_net.log",
+      "emitter": "src/mh_dll/mh/seams/ui_info_guard.cpp",
+      "emit": "; [info] guard: entity info open REFUSED",
+      "tags": [
+        "info"
+      ],
+      "needles": [
+        "; \\[info\\] guard: entity info open REFUSED (?P<rest>.*)"
+      ],
+      "fields": [
+        "kind",
+        "id",
+        "reason",
+        "key",
+        "caller",
+        "side",
+        "cfg_total",
+        "lists"
+      ],
+      "parsers": [
+        "tools/check_info_guard.py:refused_lines"
+      ],
+      "since": "mp:U73",
+      "status": "live",
+      "note": "ONE LINE PER REFUSED ENTITY-INFO OPEN: the (kind, id) reaching llm_ui_entity_info_screen_open could only have produced the `Error: Cannot find info text:` modal (reason: kind-out-of-range / id-out-of-range / key-empty / key-unterminated / key-not-in-info-txt). `caller` is the return address (0x00417971 = the storage panel's docked-unit info; 0x00416d61 / 0x004164de / 0x00416727 / 0x004170c4 / 0x00418172 / 0x004197b0 are the other six callers); `lists` is each panel list's scroll offset / item count (units, stor, proj, ctrl, avail, owned) and sel_bldg the selected building index. A report carrying this line was the field's empty-key modal, now refused: no screen, no dialog, the game continues. Capped at 48 lines per process; ` TEST-INJECTED` marks the rig's knob."
+    },
+    {
+      "id": "info.guard_dropped",
+      "stream": "mh_net.log",
+      "emitter": "src/mh_dll/mh/seams/ui_info_guard.cpp",
+      "emit": "; [info] guard: storage-panel info request DROPPED",
+      "tags": [
+        "info"
+      ],
+      "needles": [
+        "; \\[info\\] guard: storage-panel info request DROPPED (?P<rest>.*)"
+      ],
+      "fields": [
+        "reason",
+        "request",
+        "scroll",
+        "docked",
+        "slot",
+        "docked_unit",
+        "proto",
+        "side"
+      ],
+      "parsers": [
+        "tools/check_info_guard.py:dropped_lines"
+      ],
+      "since": "mp:U73",
+      "status": "live",
+      "note": "ONE LINE PER DROPPED STORAGE-PANEL INFO REQUEST: the right-clicked docked row (`request` = row + 1) no longer names a live docked unit as the panel consumes it (reason: row-past-docked-list / docked-slot-out-of-range / docked-unit-proto-blank) -- a unit launched, died or was purged by the sim between the click and the panel tick. The request is cleared before retail indexes docked_units[] with it. This is the root-cause arm of mp:U73; the entry guard (info.guard_refused) is the backstop for every caller. ` TEST-INJECTED` marks the rig's knob."
     },
     {
       "id": "ui.info_avi_missing",

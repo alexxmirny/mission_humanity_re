@@ -137,6 +137,8 @@ struct Config {
     int state_record = 0;
     // Steps between keyframes in that file (the first recorded step is always one).
     int state_keyframe_every = 3000;
+    // mp:D46: gzip the finished file on a background thread (desync/state_compress.h); 0 keeps the raw file.
+    int state_compress = 1;
     // mp:D41: the ship ring (desync/state_ring.h) -- the last state_ring_s seconds of state in RAM,
     // dumped with state_ring_tail_s more to mh_desync_state.bin at the first mismatch. ON by default;
     // off by itself when state_record=1 (that file already holds the run-up).
@@ -1162,6 +1164,7 @@ int install(const char *ini_path) {
     g_cfg.state_record = GetPrivateProfileIntA("desync", "state_record", g_cfg.state_record, ini_path);
     g_cfg.state_keyframe_every =
         GetPrivateProfileIntA("desync", "state_keyframe_every", g_cfg.state_keyframe_every, ini_path);
+    g_cfg.state_compress = GetPrivateProfileIntA("desync", "state_compress", g_cfg.state_compress, ini_path);
     g_cfg.ring.enabled   = GetPrivateProfileIntA("desync", "state_ring", g_cfg.ring.enabled, ini_path);
     g_cfg.ring.seconds   = GetPrivateProfileIntA("desync", "state_ring_s", g_cfg.ring.seconds, ini_path);
     g_cfg.ring.tail_s    = GetPrivateProfileIntA("desync", "state_ring_tail_s", g_cfg.ring.tail_s, ini_path);
@@ -1271,6 +1274,7 @@ int install(const char *ini_path) {
         dirty_probe_arm();
         if (g_dp_on) mh::desync::state_hub::add_listener(&g_dp_listener);
     }
+    mh::desync::recorder::set_compress(g_cfg.state_compress != 0);
     if (mh::desync::recorder::configure(g_cfg.state_record, g_cfg.state_keyframe_every, g_manifest_fp, &say)) {
         if (mh::desync::state_hub::enable("the state recorder (mp:D40, mh_match_state.bin)", &say))
             mh::desync::state_hub::add_listener(mh::desync::recorder::listener());

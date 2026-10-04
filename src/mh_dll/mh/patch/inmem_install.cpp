@@ -15,6 +15,7 @@
 
 #include "config/ini_read.h" // TL-HARN4: read_ini_string -- strips a trailing `;comment`
 #include "hook/promoted.h"
+#include "include/mh_log_sink.h" // LOG1: mh_logq_flush before TerminateProcess
 #include "include/mh_inmem_patch_export.h"
 #include "patch/inmem_patch.h"
 #include "patch/manifests.gen.h"
@@ -91,6 +92,7 @@ void maybe_exit(const char *ini_path) {
     // own image one instruction after the apply. Leaving it to boot would mean a window, a rig
     // lease and a kill, for evidence that is already on disk.
     seam_log("; [inmem] [patch] dump_exit=1 -- terminating after the dump\n");
+    mh_logq_flush(1000); // mp:LOG1: seam_log queues; TerminateProcess would discard the line
     TerminateProcess(GetCurrentProcess(), 0);
 }
 } // namespace

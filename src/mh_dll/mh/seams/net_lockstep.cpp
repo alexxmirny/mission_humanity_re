@@ -35,6 +35,7 @@
 #include "seams/gone_peer_guard.h"     // mp:U19i gone_peer_frame_guard's byte-patch carrier
 #include "include/mh_uidrive_export.h" // MH_UIDrive_OnPresent (ui_drive.cpp) -- UI automation Phase 2
 #include "include/mh_harness_export.h" // MH_Harness_RebindSimTick -- C6 sim_tick promotion by rebind
+#include "include/mh_log_sink.h"       // LOG1: the async log sink (frametime + lockstep logs)
 #include "include/mh_module_bind.h"    // MH_Libmh_OnPresent -- F4D's spine-crossing report
 #include "config/config.h"             // F2A: the D11 selector behind the frame pair's promotion default
 #include "config/ini_read.h"           // TL-HARN4: read_ini_string -- strips a trailing `;comment`
@@ -454,7 +455,7 @@ DWORD g_last_fastdrop_tick = 0;
 // line per strategic frame while in mode-3, so freezes show up as large wall-time gaps between rows
 // and we can see WHETHER the sim is starved by the peer horizon, the pump cadence, or rx delivery.
 // (The g_ls_log gate itself lives in net_internal.h -- net_seams + net_diag read it for DIAG gating.)
-HANDLE        g_ls_h = INVALID_HANDLE_VALUE;
+bool          g_ls_hdr_done = false; // LOG1: header is in the CURRENT file (was: an open handle)
 char          g_ls_path[MAX_PATH];
 unsigned long g_ls_gen = 0; // SES1: the run-directory generation g_ls_path was composed for
 
@@ -470,8 +471,8 @@ bool g_ls_log_sp = false;
 // player FEELS -- distinct from the sim/net cadence the lockstep log samples. One line per presented
 // frame: high-res QPC microseconds + the game mode (2=strategic, 3=sync overlay, 6=tactical) so the
 // analyzer can isolate strategic-gameplay frame times and catch the ~2s overlay hitches.
-bool          g_ft_log = false;
-HANDLE        g_ft_h   = INVALID_HANDLE_VALUE;
+bool          g_ft_log      = false;
+bool          g_ft_hdr_done = false; // LOG1: header is in the CURRENT file (was: an open handle)
 char          g_ft_path[MAX_PATH];
 unsigned long g_ft_gen = 0; // SES1: the run-directory generation g_ft_path was composed for
 // g_qpc_freq -> net_internal.h (shared: frametime log here + net_diag.cpp's temporal trace)
@@ -634,26 +635,23 @@ void on_present() {
 eager_done:
     if (!g_ft_log) return;
     // SES1: per-SESSION, handle swapped on a boundary so the header lands in each file (see ls_log_tick).
-    if (mh_run_path(g_ft_path, MAX_PATH, "%smh_frametime.log", &g_ft_gen) && g_ft_h != INVALID_HANDLE_VALUE) {
-        CloseHandle(g_ft_h);
-        g_ft_h = INVALID_HANDLE_VALUE;
-    }
-    if (g_ft_h == INVALID_HANDLE_VALUE) {
-        g_ft_h = CreateFileA(g_ft_path, FILE_APPEND_DATA, FILE_SHARE_READ | FILE_SHARE_WRITE,
-                             nullptr, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
-        if (g_ft_h == INVALID_HANDLE_VALUE) {
+    // LOG1: no handle is held here any more -- rows are ENQUEUED to the async sink. "Handle swapped on
+    // a boundary" became "header re-emitted on a boundary" (g_ft_hdr_done).
+    if (mh_run_path(g_ft_path, MAX_PATH, "%smh_frametime.log", &g_ft_gen)) g_ft_hdr_done = false;
+    if (!g_ft_hdr_done) {
+        if (g_ft_path[0] == '\0') {
             g_ft_log = false;
             return;
         }
+        g_ft_hdr_done = true;
         QueryPerformanceFrequency(&g_qpc_freq);
         char h[96];
         // D22: no qpc_freq field here -- this column is ALREADY converted to microseconds below
         // (t.QuadPart * 1e6 / g_qpc_freq), so the raw tick rate is not a divisor for it and a
         // reader who printed it and divided qpc_us by it would get a timeline ~10x too short.
         // The column name states the actual unit; that is the whole contract.
-        int   hn = wsprintfA(h, "# qpc_us game_mode\n");
-        DWORD w;
-        WriteFile(g_ft_h, h, hn, &w, nullptr);
+        int hn = wsprintfA(h, "# qpc_us game_mode\n");
+        mh_logq_write(g_ft_path, h, hn);
         // SES5: a new file is a fresh window/outlier baseline -- don't carry the file that just
         // closed's present timing forward into this one.
         g_ft_prev_us        = -1;
@@ -667,13 +665,12 @@ eager_done:
     QueryPerformanceCounter(&t);
     // microseconds since an arbitrary origin (analyzer only uses deltas)
     long long us = g_qpc_freq.QuadPart ? (t.QuadPart * 1000000LL) / g_qpc_freq.QuadPart : t.QuadPart;
-    DWORD     w;
     if (g_ft_prev_us < 0) {
         // First present of this file: no interval yet to judge or window. Log it unconditionally --
         // it anchors find_lobby_clip_qpc's qpc_us/wall-clock join (mp_analyze.py), which needs row 0.
         char line[64];
         int  n = wsprintfA(line, "%I64d %d\n", us, (int)*(const uint8_t *)ADDR_GAME_MODE);
-        WriteFile(g_ft_h, line, n, &w, nullptr);
+        mh_logq_write(g_ft_path, line, n);
         g_ft_prev_us      = us;
         g_ft_win_start_us = us;
         return;
@@ -694,7 +691,7 @@ eager_done:
             char line[80];
             int  n = wsprintfA(line, "%I64d %d %I64d\n", us, (int)*(const uint8_t *)ADDR_GAME_MODE,
                                (long long)(interval_ms * 1000.0 + 0.5));
-            WriteFile(g_ft_h, line, n, &w, nullptr);
+            mh_logq_write(g_ft_path, line, n);
         }
     }
     if (us - g_ft_win_start_us >= FT_WINDOW_US && g_ft_win_true_n > 0) {
@@ -725,7 +722,7 @@ eager_done:
         int  an = wsprintfA(agg, "# 1s qpc_us=%I64d n=%d min_ms=%d avg_ms=%d p95_ms=%d max_ms=%d\n",
                             us, g_ft_win_true_n, (int)(min_ms + 0.5), (int)(avg_ms + 0.5),
                             (int)(p95_ms + 0.5), (int)(max_ms + 0.5));
-        WriteFile(g_ft_h, agg, an, &w, nullptr);
+        mh_logq_write(g_ft_path, agg, an);
         g_ft_last_median_ms = median;
         g_ft_win_n          = 0;
         g_ft_win_true_n     = 0;
@@ -1129,18 +1126,14 @@ void ls_log_tick() {
     // SES1: per-SESSION. The path is re-resolved here rather than at arm time, and a rebuild closes
     // the open handle so the header is rewritten into the new file -- a session's mh_lockstep.log is
     // then self-describing, which is what tools/mp_analyze.py's column parse needs.
-    if (mh_run_path(g_ls_path, MAX_PATH, "%smh_lockstep.log", &g_ls_gen) &&
-        g_ls_h != INVALID_HANDLE_VALUE) {
-        CloseHandle(g_ls_h);
-        g_ls_h = INVALID_HANDLE_VALUE;
-    }
-    if (g_ls_h == INVALID_HANDLE_VALUE) {
-        g_ls_h = CreateFileA(g_ls_path, FILE_APPEND_DATA, FILE_SHARE_READ | FILE_SHARE_WRITE,
-                             nullptr, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
-        if (g_ls_h == INVALID_HANDLE_VALUE) {
+    // LOG1: ENQUEUED to the async sink; "a rebuild closes the handle" is now "a rebuild re-emits the header".
+    if (mh_run_path(g_ls_path, MAX_PATH, "%smh_lockstep.log", &g_ls_gen)) g_ls_hdr_done = false;
+    if (!g_ls_hdr_done) {
+        if (g_ls_path[0] == '\0') {
             g_ls_log = false;
             return;
         }
+        g_ls_hdr_done = true;
         // mp:T3 APPENDED 13 COLUMNS AFTER icon_shown, and the append is the contract: this file's
         // two readers are header-driven (mp_pacing_report.read_lockstep) and
         // positional-with-an-optional-tail (mp_analyze.parse_lockstep), so a column added at the END
@@ -1164,8 +1157,7 @@ void ls_log_tick() {
                           "srtt0_ms srtt1_ms rttvar0_ms rttvar1_ms ipdv0_ms ipdv1_ms "
                           "loss0_pm loss1_pm "
                           "late_p50_ms late_tail95_ms late_tail99_ms late_n late_peer\n";
-        DWORD w;
-        WriteFile(g_ls_h, hdr, lstrlenA(hdr), &w, nullptr);
+        mh_logq_puts(g_ls_path, hdr);
         g_ls_prev_clock_ms = -1;    // fresh file -> first row's burst is a baseline (0)
         g_ls_have_last     = false; // SES5: a new file starts a fresh change-detection baseline too
     }
@@ -1224,22 +1216,21 @@ void ls_log_tick() {
     lat_int_col(late50, g_late_have, g_late_p50);
     lat_int_col(late95, g_late_have, g_late_tail95);
     lat_int_col(late99, g_late_have, g_late_tail99);
-    char  line[560];
-    int   n = wsprintfA(line, "%lu %ld %ld %ld %ld %ld %ld %ld %d %d %ld %ld %lu "
-                                "%d %d 0x%02x %ld %d %d %d %ld %ld %ld %ld "
-                                "%s %s %s %s %s %s %s %s %s %s %s %d %d\n",
-                        now, clock_ms, ms_of(ADDR_TOTAL_TIME), ms_of(ADDR_LOCAL_HORIZON), ms_of(ADDR_COMMITTED()),
-                        ms_of(ADDR_PEER_HORIZON() + 0 * 8), ms_of(ADDR_PEER_HORIZON() + 1 * 8), cur_step_ms,
-                        *(const int *)ADDR_STALL_COUNT, cur_pcount,
-                        s.tx_pkts, s.rx_pkts, s.last_rx_tick ? (unsigned)(now - s.last_rx_tick) : 0u,
-                        sess, cur_game, cur_flags,
-                        ms_of(ADDR_GRACE_TIMER()), cur_syncwait, cur_countdn,
-                        cur_p54bc, ms_of(ADDR_SYNC_ACCUM()), sim_burst,
-                        g_icon_calls, g_icon_shown,
-                        srtt[0], srtt[1], rttvar[0], rttvar[1], ipdv[0], ipdv[1], loss[0], loss[1],
-                        late50, late95, late99, g_late_n, g_late_peer);
-    DWORD w;
-    WriteFile(g_ls_h, line, n, &w, nullptr);
+    char line[560];
+    int  n = wsprintfA(line, "%lu %ld %ld %ld %ld %ld %ld %ld %d %d %ld %ld %lu "
+                              "%d %d 0x%02x %ld %d %d %d %ld %ld %ld %ld "
+                              "%s %s %s %s %s %s %s %s %s %s %s %d %d\n",
+                       now, clock_ms, ms_of(ADDR_TOTAL_TIME), ms_of(ADDR_LOCAL_HORIZON), ms_of(ADDR_COMMITTED()),
+                       ms_of(ADDR_PEER_HORIZON() + 0 * 8), ms_of(ADDR_PEER_HORIZON() + 1 * 8), cur_step_ms,
+                       *(const int *)ADDR_STALL_COUNT, cur_pcount,
+                       s.tx_pkts, s.rx_pkts, s.last_rx_tick ? (unsigned)(now - s.last_rx_tick) : 0u,
+                       sess, cur_game, cur_flags,
+                       ms_of(ADDR_GRACE_TIMER()), cur_syncwait, cur_countdn,
+                       cur_p54bc, ms_of(ADDR_SYNC_ACCUM()), sim_burst,
+                       g_icon_calls, g_icon_shown,
+                       srtt[0], srtt[1], rttvar[0], rttvar[1], ipdv[0], ipdv[1], loss[0], loss[1],
+                       late50, late95, late99, g_late_n, g_late_peer);
+    mh_logq_write(g_ls_path, line, n);
 }
 
 // R5 (fork F3D, ruling Q3): the `[net] fix_audit` SAMPLER IS DELETED -- the knob, its two counters,

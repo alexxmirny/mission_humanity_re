@@ -45,6 +45,7 @@
 #include "include/mh_net_export.h"     // MH_Net_LocalPlayerId (sim.power's per-player index)
 #include "include/mh_uidrive_export.h" // MH_UIDrive_SynthKeyDown (the `hotkey` verb's chord, 2026-09-20)
 #include "include/mh_run_context.h"    // MH_RunDir
+#include "include/mh_log_sink.h"       // LOG1: async log sink
 #include "addr/mh_addrs.gen.h"         // generated EN VAs
 #include "config/ini_read.h"           // TL-HARN4: read_ini_string -- strips a trailing `;comment`
 #include "state/region_runtime.h"      // SB-HOSTFREE: live_base/ptr -- a movable region is read
@@ -189,13 +190,7 @@ void ovl_log(const char *fmt, ...) {
         line[n++] = '\n';
         line[n]   = 0;
     }
-    HANDLE h = CreateFileA(g_log, FILE_APPEND_DATA, FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, OPEN_ALWAYS,
-                           FILE_ATTRIBUTE_NORMAL, nullptr);
-    if (h == INVALID_HANDLE_VALUE) return;
-    SetFilePointer(h, 0, nullptr, FILE_END);
-    DWORD w = 0;
-    WriteFile(h, line, lstrlenA(line), &w, nullptr);
-    CloseHandle(h);
+    mh_logq_write(g_log, line, lstrlenA(line));
 }
 
 // ---------------------------------------------------------------------------------------------

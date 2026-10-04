@@ -54,6 +54,7 @@
 #include "seams/libmh_contract.gen.h"
 #include "../../libmh/include/libmh_module.h"
 #include "mh_run_context.h" // MH_RunDir + mh_log_stamp (mh_common; self-initialising)
+#include "mh_log_sink.h"    // LOG1: async log sink
 
 // The headers whose declarations the eight hand rows must match EXACTLY. Including them is the
 // point: the compiler checks each signature against the real one, so a hand-written forwarder
@@ -91,16 +92,9 @@ void mod_log(const char *s) {
     // the spine exists would say nothing. (Q9: mh_net.log keeps its name and is the CORE-ARM log.)
     char path[MAX_PATH];
     wsprintfA(path, "%smh_net.log", MH_RunDir());
-    HANDLE h = CreateFileA(path, FILE_APPEND_DATA, FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr,
-                           OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
-    if (h == INVALID_HANDLE_VALUE) return;
-    SetFilePointer(h, 0, nullptr, FILE_END);
-    DWORD wrote = 0;
-    char  stamp[24];
-    int   sn = mh_log_stamp(stamp);
-    WriteFile(h, stamp, sn, &wrote, nullptr);
-    WriteFile(h, s, lstrlenA(s), &wrote, nullptr);
-    CloseHandle(h);
+    char stamp[24];
+    int  sn = mh_log_stamp(stamp);
+    mh_logq_write2(path, stamp, sn, s, lstrlenA(s));
 }
 
 // Compose "<dir of the module `self`>\<name>". NEXT TO MH.DLL rather than next to the exe, and the

@@ -36,6 +36,7 @@
 #include "gfx/ddraw_own.h"             // PT-GFX3: `winsize` logs the image rect the mouse is mapped through
 #include "input/dinput_own.h"          // PT-INPUT1: the `raw*` verbs feed the owned DirectInput
 #include "include/mh_run_context.h"    // MH_RunDir
+#include "include/mh_log_sink.h"       // LOG1: the async log sink
 #include "addr/mh_addrs.gen.h"         // generated EN VAs
 #include "config/ini_read.h"           // TL-HARN4: read_ini_string -- strips a trailing `;comment`
 #include "addr/mh_calls.gen.h"         // mh::call::llm_time_get_ticks_ms (the key ring's timestamp)
@@ -196,6 +197,99 @@ bool g_dumped         = false; // one-shot: log the first non-empty active list 
 char          g_log[MAX_PATH];
 unsigned long g_log_gen = 0; // SES1: 0 = not yet composed (mh_proc_path pins it to the process dir)
 
+// ---- PT-GFX8: `winaway` / `winreturn` -- Alt-Tab away from, and back to, the game window ------------------
+//
+// A helper THREAD owns a small top-level window of its own. `winaway` makes it the foreground (the game
+// gets WM_ACTIVATE(inactive), is NOT minimised -- an Alt-Tab away from a borderless window); `winreturn`
+// activates the game from that thread, which holds the foreground and so is allowed to: the switcher's
+// path (SW_RESTORE if iconic, then SetForegroundWindow) or, with `launcher`, the retail single-instance
+// path (WinMain: FindWindowA + SetForegroundWindow, nothing else). The calls are made on the helper
+// thread because the real switcher is another process: nothing here may run on the game's own thread.
+struct away_t {
+    HANDLE thread = nullptr;
+    HWND   win    = nullptr;
+    HANDLE ready  = nullptr;
+};
+away_t g_away;
+bool   g_away_synth = false; // the foreground was refused, so the deactivation was delivered as messages
+
+LRESULT CALLBACK away_proc(HWND h, UINT m, WPARAM w, LPARAM l) {
+    if (m == WM_APP + 1) { // l = the game window, w = 1: the launcher path
+        HWND game = (HWND)l;
+        if (w == 1) { // WinMain's single-instance path: FindWindowA(class, title) then SetForegroundWindow
+            char cls[64] = {0}, title[128] = {0};
+            GetClassNameA(game, cls, sizeof(cls));
+            GetWindowTextA(game, title, sizeof(title));
+            if (HWND found = FindWindowA(cls, title[0] ? title : nullptr)) game = found;
+        }
+        if (w == 0 && IsIconic(game)) ShowWindow(game, SW_RESTORE);
+        SetForegroundWindow(game);
+        DestroyWindow(h);
+        return 0;
+    }
+    if (m == WM_DESTROY) {
+        PostQuitMessage(0);
+        return 0;
+    }
+    return DefWindowProcA(h, m, w, l);
+}
+
+DWORD WINAPI away_thread(LPVOID) {
+    WNDCLASSA wc     = {};
+    wc.lpfnWndProc   = &away_proc;
+    wc.hInstance     = GetModuleHandleA(nullptr);
+    wc.lpszClassName = "mh_uitest_away";
+    wc.hbrBackground = (HBRUSH)(COLOR_WINDOW + 1);
+    RegisterClassA(&wc);
+    g_away.win = CreateWindowExA(0, wc.lpszClassName, "mh uitest away", WS_OVERLAPPEDWINDOW | WS_VISIBLE, 40, 40, 300, 160, nullptr,
+                                 nullptr, wc.hInstance, nullptr);
+    if (g_away.win) SetForegroundWindow(g_away.win);
+    SetEvent(g_away.ready);
+    MSG msg;
+    while (GetMessageA(&msg, nullptr, 0, 0) > 0) {
+        TranslateMessage(&msg);
+        DispatchMessageA(&msg);
+    }
+    g_away.win = nullptr;
+    return 0;
+}
+
+void away_start(HWND game) {
+    if (g_away.thread) return;
+    g_away.ready  = CreateEventA(nullptr, TRUE, FALSE, nullptr);
+    g_away.thread = CreateThread(nullptr, 0, &away_thread, nullptr, 0, nullptr);
+    if (g_away.thread) WaitForSingleObject(g_away.ready, 3000);
+    for (int i = 0; i < 50 && GetForegroundWindow() != g_away.win; ++i) Sleep(10); // let the deactivation land
+    // A lane on the rig's ISOLATED desktop is not the input desktop: the shell refuses every foreground
+    // request there ("foreground REFUSED"), so there is no real deactivation to be had. Deliver what Alt-Tab
+    // would -- WM_ACTIVATE(inactive) + WM_ACTIVATEAPP(0) -- so the window's own handlers (the clip release,
+    // the shell refresh) run; the style-level eligibility rule is then asserted on the same window.
+    g_away_synth = GetForegroundWindow() != g_away.win;
+    if (g_away_synth) {
+        SendMessageA(game, WM_ACTIVATE, WA_INACTIVE, 0);
+        SendMessageA(game, WM_ACTIVATEAPP, 0, 0);
+    }
+}
+
+void away_return(HWND game, bool launcher) {
+    if (!g_away.thread) { // no helper (never went away): the plain activation
+        SetForegroundWindow(game);
+        return;
+    }
+    if (g_away_synth) {
+        SendMessageA(game, WM_ACTIVATEAPP, 1, 0);
+        SendMessageA(game, WM_ACTIVATE, WA_ACTIVE, 0);
+    }
+    if (g_away.win) SendMessageA(g_away.win, WM_APP + 1, launcher ? 1 : 0, (LPARAM)game);
+    WaitForSingleObject(g_away.thread, 3000);
+    CloseHandle(g_away.thread);
+    CloseHandle(g_away.ready);
+    g_away.thread = nullptr;
+    g_away.ready  = nullptr;
+    // No wait for the foreground here: it lands once the GAME thread (this one) pumps again, so the script's
+    // next step is `winactive`, a predicate that polls it.
+}
+
 // Wall clock for the log, in ms since the first line. Every line carries it, because the frame counts
 // the script already reports answer "how many frames did this wait" and not "how long did this TAKE" --
 // and headless changes the frame rate, so the two are not convertible. A step that reads `waited 13422`
@@ -224,13 +318,8 @@ void ui_log(const char *fmt, ...) {
         line[n++] = '\n';
         line[n]   = 0;
     }
-    HANDLE h = CreateFileA(g_log, FILE_APPEND_DATA, FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, OPEN_ALWAYS,
-                           FILE_ATTRIBUTE_NORMAL, nullptr);
-    if (h == INVALID_HANDLE_VALUE) return;
-    SetFilePointer(h, 0, nullptr, FILE_END);
-    DWORD w = 0;
-    WriteFile(h, line, lstrlenA(line), &w, nullptr);
-    CloseHandle(h);
+    // LOG1: ENQUEUED (the runner polls this file live; the writer flushes within a scheduler wake-up).
+    mh_logq_write(g_log, line, lstrlenA(line));
 }
 
 // ---- mp:SES7: the mouse/camera trace FOLLOWS THE MATCH (mh_mtrace.log) ---------------------------
@@ -258,27 +347,22 @@ void ui_log(const char *fmt, ...) {
 char          g_mt_path[MAX_PATH];
 unsigned long g_mt_gen = 0;
 
-void mt_write_header(HANDLE h); // below the trace state it reads
+void mt_write_header(const char *path); // below the trace state it reads
 
-// One line into mh_mtrace.log (`text` without a newline). Open-append-close per line like ui_log --
-// a line is emitted only on a state change or a rate-capped heartbeat, so the cost is per event.
+// One line into mh_mtrace.log (`text` without a newline). LOG1: enqueued to the async sink -- this
+// runs on the present thread and used to open/append/close the file per line (the 638fc214 hitches
+// sat between two consecutive lines of this very file).
 void mt_write(const char *text) {
     const bool rebuilt = mh_run_path(g_mt_path, MAX_PATH, "%smh_mtrace.log", &g_mt_gen);
     if (g_mt_path[0] == '\0') return;
-    HANDLE h = CreateFileA(g_mt_path, FILE_APPEND_DATA, FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, OPEN_ALWAYS,
-                           FILE_ATTRIBUTE_NORMAL, nullptr);
-    if (h == INVALID_HANDLE_VALUE) return;
-    SetFilePointer(h, 0, nullptr, FILE_END);
-    if (rebuilt) mt_write_header(h); // a session's file is readable on its own
+    if (rebuilt) mt_write_header(g_mt_path); // a session's file is readable on its own
     char line[600];
     int  n = mh_log_stamp(line);
     lstrcpynA(line + n, text, (int)sizeof(line) - n - 2);
     n         = lstrlenA(line);
     line[n++] = '\n';
     line[n]   = 0;
-    DWORD w   = 0;
-    WriteFile(h, line, (DWORD)n, &w, nullptr);
-    CloseHandle(h);
+    mh_logq_write(g_mt_path, line, n);
 }
 
 // Applied per frame from MH_UIDrive_OnPresent, BEFORE the [uitest] enable gate: a human playing the
@@ -387,7 +471,7 @@ int mt_focus_now() {
     return pid == GetCurrentProcessId() ? 1 : 0;
 }
 
-void mt_write_header(HANDLE h) {
+void mt_write_header(const char *path) {
     char line[512];
     int  n = mh_log_stamp(line);
     wsprintfA(line + n,
@@ -398,8 +482,7 @@ void mt_write_header(HANDLE h) {
               MH_RunDir(), MH_RunDir_SessionActive(), g_mouse_absolute, g_mouse_div, g_mouse_accel,
               *(volatile uint32_t *)DI_MOUSE_DEVICE ? "on" : "off",
               *(volatile uint32_t *)DI_KEYBOARD_DEVICE ? 1 : 0, mt_focus_now());
-    DWORD w = 0;
-    WriteFile(h, line, (DWORD)lstrlenA(line), &w, nullptr);
+    mh_logq_write(path, line, lstrlenA(line));
 }
 
 // One `[mtrace]` row: always into the session-following mh_mtrace.log, and into mh_uidrive.log
@@ -517,13 +600,7 @@ void net_log_line(const char *text) {
     int n     = lstrlenA(line);
     line[n++] = '\n';
     line[n]   = 0;
-    HANDLE h  = CreateFileA(path, FILE_APPEND_DATA, FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr,
-                            OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
-    if (h == INVALID_HANDLE_VALUE) return;
-    SetFilePointer(h, 0, nullptr, FILE_END);
-    DWORD wr = 0;
-    WriteFile(h, line, lstrlenA(line), &wr, nullptr);
-    CloseHandle(h);
+    mh_logq_write(path, line, n);
 }
 
 // ---- U25 step 1: say ONCE, in the log a player sends us, which keyboard path this machine ran ---
@@ -1696,12 +1773,14 @@ enum {
     OP_W_FIELD,
     OP_W_WMSG,
     OP_W_WLOBBY,
-    OP_W_STALLED,   // TL-UISTALL: true while the sim is lockstep-blocked, optionally for >= <ms>
-    OP_W_IMGUI,     // PT-GFX4: `imgui open|closed|swallowed <N>` -- the ImGui overlay's own state
-    OP_W_WINCLIENT, // PT-GFX3: `winclient <w> <h>` -- the game window's client area is exactly w x h
-    OP_W_DIMOUSE,   // PT-INPUT1: `dimouse <x> <y>` -- the DI accumulator (_G_LLM_INPUT_MOUSE_LAST_X/Y) is exactly x,y
-    OP_W_KEYSTATE,  // PT-INPUT1: `keystate <dik> <0|1>` -- the game's keystate says that key is up / down
-    OP_W_LAST = OP_W_KEYSTATE,
+    OP_W_STALLED,       // TL-UISTALL: true while the sim is lockstep-blocked, optionally for >= <ms>
+    OP_W_IMGUI,         // PT-GFX4: `imgui open|closed|swallowed <N>` -- the ImGui overlay's own state
+    OP_W_WINCLIENT,     // PT-GFX3: `winclient <w> <h>` -- the game window's client area is exactly w x h
+    OP_W_DIMOUSE,       // PT-INPUT1: `dimouse <x> <y>` -- the DI accumulator (_G_LLM_INPUT_MOUSE_LAST_X/Y) is exactly x,y
+    OP_W_KEYSTATE,      // PT-INPUT1: `keystate <dik> <0|1>` -- the game's keystate says that key is up / down
+    OP_W_WINSWITCHABLE, // PT-GFX8: `winswitchable` -- the game window passes the taskbar / Alt-Tab eligibility rule
+    OP_W_WINACTIVE,     // PT-GFX8: `winactive` -- the game window is the foreground window
+    OP_W_LAST = OP_W_WINACTIVE,
     // actions (fire once, then advance)
     OP_A_CLICKV,
     OP_A_CLICKL,
@@ -1717,6 +1796,10 @@ enum {
     OP_A_WMCLICK,   // PT-GFX4: `wmclick <x> <y>` -- a left click POSTED to the game window as messages
     OP_A_WINSIZE,   // PT-GFX3: `winsize <w> <h>` -- resize the game window's client as a player's drag would
     OP_A_WINMIN,    // mp:P17: `winmin <ms>` -- minimise the game window now, a helper thread restores it after <ms>
+    OP_A_WINAWAY,   // PT-GFX8: `winaway` -- another top-level window takes the foreground (what Alt-Tab does)
+    OP_A_WINRETURN, // PT-GFX8: `winreturn [launcher]` -- bring the game back the way the switcher / the launcher does
+    OP_A_WINPROBE,  // PT-GFX8: `winprobe` -- log the window facts the eligibility rule rests on
+    OP_A_WINEX,     // PT-GFX8: `winex <set-hex> <clear-hex>` -- change the ex-style (the negative arm's injected fault)
     OP_A_RAWFOCUS,  // PT-INPUT1: `rawfocus -1|0|1` -- the foreground the owned DirectInput sees
     OP_A_RAWMOUSE,  // PT-INPUT1: `rawmouse abs|rel|down|up ...` -- a Raw Input packet into the owned mouse
     OP_A_RAWKEY,    // PT-INPUT1: `rawkey <make> [e0] [down|up]` -- a Raw Input packet into the owned keyboard
@@ -2231,6 +2314,28 @@ void parse_line(const char *line) {
         // because a minimised window that stops presenting would never reach the next script op itself.
         s->op = OP_A_WINMIN;
         s->a  = (int)strtol(arg, nullptr, 0);
+    } else if (strcmp(op, "winswitchable") == 0) {
+        s->op = OP_W_WINSWITCHABLE;
+    } else if (strcmp(op, "winactive") == 0) {
+        s->op = OP_W_WINACTIVE;
+    } else if (strcmp(op, "winaway") == 0) {
+        // PT-GFX8: a second top-level window (a tiny one, on its own thread) is created and made the
+        // foreground, so the game gets WM_ACTIVATE(inactive) without being minimised -- the Alt-Tab
+        // away from a borderless window. `winreturn` brings the game back.
+        s->op = OP_A_WINAWAY;
+    } else if (strcmp(op, "winreturn") == 0) {
+        // `winreturn` = the Alt-Tab switcher's activation (SW_RESTORE if iconic, then SetForegroundWindow from
+        // the process that owns the foreground); `winreturn launcher` = the retail single-instance path
+        // (FindWindowA + SetForegroundWindow, nothing else).
+        s->op = OP_A_WINRETURN;
+        s->a  = strstr(arg, "launcher") ? 1 : 0;
+    } else if (strcmp(op, "winprobe") == 0) {
+        s->op = OP_A_WINPROBE;
+    } else if (strcmp(op, "winex") == 0) {
+        s->op = OP_A_WINEX;
+        char *end;
+        s->a = (int)strtoul(arg, &end, 16);
+        s->b = (int)strtoul(end, nullptr, 16);
     } else if (strcmp(op, "rawfocus") == 0) {
         // `rawfocus -1|0|1` -- PT-INPUT1. The foreground the owned DirectInput ([input] backend=own)
         // acquires against: -1 the real one, 1 focused (a headless lane's window never is, so a script
@@ -2674,6 +2779,14 @@ bool wait_satisfied(const Step *s) {
             RECT cr;
             return hw && GetClientRect(hw, &cr) && cr.right == s->a && cr.bottom == s->b;
         }
+        case OP_W_WINSWITCHABLE: {
+            HWND hw = *(HWND *)mh::addr::hWnd_main;
+            return hw && mh::gfx::window_switchable(hw, nullptr, 0);
+        }
+        case OP_W_WINACTIVE: {
+            HWND hw = *(HWND *)mh::addr::hWnd_main;
+            return hw && GetForegroundWindow() == hw;
+        }
         case OP_W_DIMOUSE:
             return *(volatile int *)MOUSE_LAST_X == s->a && *(volatile int *)MOUSE_LAST_Y == s->b;
         case OP_W_KEYSTATE: {
@@ -2932,6 +3045,37 @@ click_result do_action(const Step *s) {
             if (t) CloseHandle(t);
             ShowWindow(hw, SW_MINIMIZE);
             ui_log("; winmin: window minimised, restore in %d ms (iconic=%d)", s->a, (int)IsIconic(hw));
+            break;
+        }
+        case OP_A_WINAWAY: {
+            HWND hw = *(HWND *)mh::addr::hWnd_main;
+            if (!hw) return CLICK_ABSENT;
+            away_start(hw);
+            ui_log("; winaway: helper window up, %s", g_away_synth ? "foreground REFUSED (isolated desktop): deactivation delivered as messages"
+                                                                   : "the foreground moved to it (real deactivation)");
+            break;
+        }
+        case OP_A_WINRETURN: {
+            HWND hw = *(HWND *)mh::addr::hWnd_main;
+            if (!hw) return CLICK_ABSENT;
+            away_return(hw, s->a != 0);
+            ui_log("; winreturn%s: activation requested (iconic=%d)", s->a ? " (launcher path)" : "", (int)IsIconic(hw));
+            break;
+        }
+        case OP_A_WINPROBE: {
+            HWND hw = *(HWND *)mh::addr::hWnd_main;
+            if (!hw) return CLICK_ABSENT;
+            char       facts[160];
+            const bool ok = mh::gfx::window_switchable(hw, facts, sizeof(facts));
+            ui_log("; winprobe: switchable=%d fg=%d %s", (int)ok, (int)(GetForegroundWindow() == hw), facts);
+            break;
+        }
+        case OP_A_WINEX: {
+            HWND hw = *(HWND *)mh::addr::hWnd_main;
+            if (!hw) return CLICK_ABSENT;
+            const LONG ex = GetWindowLongA(hw, GWL_EXSTYLE);
+            SetWindowLongA(hw, GWL_EXSTYLE, (ex | (LONG)s->a) & ~(LONG)s->b);
+            ui_log("; winex: ex-style %08lx -> %08lx", (unsigned long)ex, (unsigned long)GetWindowLongA(hw, GWL_EXSTYLE));
             break;
         }
         case OP_A_RCLICK:

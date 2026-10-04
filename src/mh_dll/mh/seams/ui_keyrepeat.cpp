@@ -18,6 +18,7 @@
 
 #include "include/mh_keyrepeat_export.h"
 #include "include/mh_run_context.h" // MH_RunDir
+#include "include/mh_log_sink.h"    // LOG1: async log sink
 #include "addr/mh_addrs.gen.h"      // generated EN VAs
 #include "hook/detour.h"            // install_trampoline + WATCOM_PROLOGUE
 #include "en_guard.h"               // EN-only build gate
@@ -67,13 +68,7 @@ void kr_log(const char *fmt, ...) {
         line[n++] = '\n';
         line[n]   = 0;
     }
-    HANDLE h = CreateFileA(g_log, FILE_APPEND_DATA, FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr,
-                           OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
-    if (h == INVALID_HANDLE_VALUE) return;
-    SetFilePointer(h, 0, nullptr, FILE_END);
-    DWORD wrote = 0;
-    WriteFile(h, line, lstrlenA(line), &wrote, nullptr);
-    CloseHandle(h);
+    mh_logq_write(g_log, line, lstrlenA(line));
 }
 
 // How many events the pump is about to report for the payload standing at entry, i.e. how many times

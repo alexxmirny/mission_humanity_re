@@ -3391,6 +3391,11 @@ int run_sessiondirtest();
 // The surrounding arms are the refusals (a non-.log path, a too-small buffer, "0 means uncapped")
 // that a gameplay run reaches never.
 int run_logrottest();
+// log_sink_selftest.cpp -- mp:LOG1: the process-wide async log sink (mh_common/mh_log_sink.cpp) that
+// every log line in the game process now goes through. N threads x M lines into several files (all
+// present, per-producer order kept), the queue-full counted-drop path, a simulated crash drain, the
+// wedged-writer arm (the drain is bounded, not a lock), writer-side rotation, and exit.
+int run_logsinktest();
 // ini_read_selftest.cpp -- TL-HARN4: the shared ini STRING-read helper (config/ini_read.h) that
 // strips a trailing same-line `;comment` from a value -- GetPrivateProfileStringA's own return
 // includes it verbatim, which used to TERMINATE the process on two strict-compare keys ([config]
@@ -3399,6 +3404,7 @@ int run_logrottest();
 // fixture ini shaped exactly like the trap (mh_net.example.ini's documented style).
 int run_inireadtest();
 int run_infoavitest();                          // info_avi_selftest.cpp -- mp:X2g
+int run_infoguardtest();                        // info_guard_selftest.cpp -- mp:U73
 int run_imguibindtest();                        // imgui_bind_selftest.cpp -- PT-GFX4
 int run_scalefiltertest(int argc, char **argv); // scale_filter_selftest.cpp -- PT-GFX6
 int run_dinputconvtest();                       // dinput_convert_selftest.cpp -- PT-INPUT1
@@ -3632,11 +3638,15 @@ static const suite_row SUITE_TABLE[] = {
     {"sessionidtest",  true, adapt_void<run_sessionidtest>},
     {"sessiondirtest", true, adapt_void<run_sessiondirtest>},
     {"logrottest",     true, adapt_void<run_logrottest>},
+    {"logsinktest",    true, adapt_void<run_logsinktest>}, // mp:LOG1
     {"inireadtest",    true, adapt_void<run_inireadtest>},
     // mp:X2g. The info-screen media tick's divisor guard (seams/ui_info_avi.h): the arithmetic the
     // replaced llm_ui_info_media_frame_tick runs, driven with the zero-filled context a failed AVI
     // open leaves (the rc4 IDIV-by-zero), plus the live-clip wrap it must not change. Pure; no arena.
     {"infoavitest",    true, adapt_void<run_infoavitest>},
+    // mp:U73. The entity info screen guard's decision (seams/ui_info_guard.h): the blank-slot key, the id
+    // range, and the storage panel's stale docked-row request. Pure; no arena.
+    {"infoguardtest",  true, adapt_void<run_infoguardtest>},
     // PT-GFX4. The ImGui overlay's window binding (gfx/overlay_imgui.cpp): the subclass follows a
     // rebind to another HWND, detach unlinks it, a window subclassed over ours keeps forwarding, and
     // WM_NCDESTROY drops the row. The shipped game never exercises any of it (one window, never

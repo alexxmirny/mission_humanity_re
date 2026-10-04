@@ -30,6 +30,9 @@ bool owned_client_to_game(POINT *p);
 bool owned_game_to_client(POINT *p);
 // Windowed: the player resized (or maximised) the window, so its size no longer follows the mode.
 bool owned_user_sized();
+// PT-GFX8: would Windows list `h` on the taskbar / in Alt-Tab (visible, not cloaked, unowned without
+// WS_EX_TOOLWINDOW or WS_EX_APPWINDOW)? `facts` (optional) receives the bits the verdict rests on.
+bool window_switchable(HWND h, char *facts, int n);
 // The game's current display mode (the frame size every presenter scales), false before SetDisplayMode.
 bool owned_mode_size(int *w, int *h);
 

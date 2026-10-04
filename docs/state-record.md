@@ -1,4 +1,4 @@
-# State recording file format (`mh_match_state.bin`, `mh_desync_state.bin`)
+# State recording file format (`mh_match_state.bin[.gz]`, `mh_desync_state.bin`)
 
 Spec for mp:D40 (whole-match recording, `net-debug`), mp:D41 (the ship `net` ring, flushed on a
 detected desync), mp:D42 (`tools/state_record.py`) and mp:D43 (launcher report carriage). Written
@@ -92,6 +92,40 @@ and steps after that ("Continue game") are not recorded. `mh_net.log` carries:
   segment, and the line says so.
 - `; [desync] STATE RECORD match end: ...` gives steps, keyframes, file bytes and the sim-thread
   cost per step. Then `; [desync] STATE RECORD writer ...` gives the writer thread's stats.
+
+### The compressed file (mp:D46)
+
+The v1 stream is not changed by compression: **the file mh.dll leaves after a normal match end is the
+same bytes inside a gzip member**, `mh_match_state.bin.gz` (`mh_match_state_<n>.bin.gz`). A whole
+36-minute match was 242 MB raw and 38.7 MB at deflate level 6 (measured on field match 638fc214).
+
+- **When.** After the writer thread has closed the raw file (END written), a separate
+  below-normal-priority thread streams it through deflate level 6 (RFC 1951 inside an RFC 1952 gzip
+  header and trailer; no optional header fields, mtime 0). The sim and render threads never wait for
+  it, and neither does `match_end`'s bounded wait, which covers only the raw writer. Library: miniz
+  3.0.2 (MIT, `src/mh_dll/include/miniz/`, compiled by `desync/state_miniz.c`; see `THIRD_PARTY.md`).
+  `[desync] state_compress=0` skips it and keeps the raw file. A recording that STOPPED early (writer
+  fell behind, allocation failed) is a valid prefix and is compressed the same way; one whose write
+  failed is left raw.
+- **The order of events is the safety rule.** raw -> `<raw>.gz.tmp` -> **verify** (re-inflate the temp
+  file; CRC-32 and length must equal what was read from the raw file) -> flush -> rename to
+  `<raw>.gz` -> only then delete the raw file. At every instant at least one complete file exists:
+  a process that exits during the compress leaves the raw file whole (no join at shutdown; the exit
+  kills the thread) and a `.gz.tmp` that no reader or glob looks at; a process that dies between the
+  rename and the delete leaves two complete copies. The accepted cost, by user ruling, is that a quit
+  right after a match, or a crash, leaves the recording **raw**. A failed compress logs why and keeps the
+  raw file.
+- **Naming.** A recording is `<stem>.bin` or `<stem>.bin.gz`; a name whose `.gz` exists counts as
+  taken when mh.dll picks the next `mh_match_state_<n>.bin`.
+- **Readers.** `tools/state_record.py` (`load`, so `info`/`at`/`diff`) reads either form, by the gzip
+  magic, and naming the raw path reads the `.gz` sibling when only that exists (the raw file wins when
+  both do); a gzip stream cut short reads as `truncated` at the cut. `tools/replay_match_segment.py`
+  finds either. The launcher report carries the `.gz` whole and stored, or unpacks it to cut at a keyframe
+  when over budget (`src/launcher/src/report.rs`, `Kind::State`).
+- **Log.** One line in `mh_net.log` at completion: `; [desync] STATE RECORD compressed <path>: <raw>
+  raw bytes -> <gzip> gzip bytes (<pct>%), <ms> ms (deflate level 6, verified by re-inflating; the raw
+  file is removed)`, or `compress FAILED ... the raw file is kept as it is`.
+- **Out of scope.** The D41 ring dump `mh_desync_state.bin` (~4 MB) is not compressed.
 
 ### Cutting a tail (mp:D43)
 

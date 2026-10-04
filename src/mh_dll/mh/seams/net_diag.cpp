@@ -17,6 +17,7 @@
 
 #include "net_internal.h"
 #include "include/mh_log_rotate.h" // SES2: the shared size cap + one-generation ".prev.log" rotation
+#include "include/mh_log_sink.h"   // LOG1: the async log sink
 #include "addr/mh_addrs.gen.h"
 #include "state/region_runtime.h" // SB-HOSTFREE: live_base/ptr -- a movable region is read
                                   // where it IS, not where the binary put it
@@ -74,7 +75,7 @@ int           g_tev_n               = 0;     // events captured since the last d
 int           g_tev_flushed         = 0;     // events written to file since the last drain
 bool          g_tev_overflow        = false; // buffer filled between drains -> events WERE dropped
 bool          g_tev_overflow_logged = false; // one-shot marker so truncation is never silent again
-HANDLE        g_tev_h               = INVALID_HANDLE_VALUE;
+bool          g_tev_hdr_done        = false; // LOG1: the column header is in the CURRENT file (was: handle open)
 // File-size cap ([trace] temporal_max_mb). At the cap the log ROTATES to mh_temporal.prev.log rather
 // than stopping: for a post-mortem it is the tail (what happened just before the freeze/desync) that
 // matters, and rotation bounds disk at 2x the cap however long the session runs.
@@ -103,13 +104,7 @@ unsigned long g_trace_gen = 0; // SES1: per-SESSION -- a traced call belongs to 
 
 void trace_log(const char *s) {
     mh_run_path(g_trace_path, MAX_PATH, "%smh_trace.log", &g_trace_gen);
-    HANDLE h = CreateFileA(g_trace_path, FILE_APPEND_DATA, FILE_SHARE_READ | FILE_SHARE_WRITE,
-                           nullptr, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
-    if (h == INVALID_HANDLE_VALUE) return;
-    SetFilePointer(h, 0, nullptr, FILE_END);
-    DWORD w;
-    WriteFile(h, s, lstrlenA(s), &w, nullptr);
-    CloseHandle(h);
+    mh_logq_write(g_trace_path, s, lstrlenA(s));
 }
 
 // Called run-before each traced function (idx = pool slot). Logs the FIRST appearance immediately (the
@@ -294,10 +289,10 @@ __declspec(naked) void savegame_err_detour() {
 // a vectored exception handler that logs the writing instruction (EIP) + new value + clock every time
 // the game changes the frame mode. Finds the pump-path mode-flip that enters the 2 s freeze without
 // reading the 774-line dispatch. Observe-only -> determinism-safe. Gated by mh_net.ini log_gamemode.
-int    g_gm_log = 0; // 1 = arm the GAME_MODE write logger
-HANDLE g_gm_h   = INVALID_HANDLE_VALUE;
-char   g_gm_path[MAX_PATH];
-PVOID  g_gm_veh = nullptr;
+int   g_gm_log   = 0;     // 1 = arm the GAME_MODE write logger
+bool  g_gm_armed = false; // LOG1: was an open handle; the sink owns the file now
+char  g_gm_path[MAX_PATH];
+PVOID g_gm_veh = nullptr;
 
 // Vectored handler for the DR0 write-breakpoint on _G_LLM_GAME_MODE. A data breakpoint traps AFTER the
 // store, so *ADDR_GAME_MODE already holds the new value and ContextRecord->Eip is the instruction just
@@ -308,13 +303,12 @@ LONG CALLBACK gamemode_veh(EXCEPTION_POINTERS *ep) {
     CONTEXT *c = ep->ContextRecord;
     if ((c->Dr6 & 0x1) == 0) return EXCEPTION_CONTINUE_SEARCH; // not our DR0 hit
     c->Dr6 = 0;                                                // acknowledge
-    if (g_gm_h != INVALID_HANDLE_VALUE && *(volatile uint8_t *)ADDR_SESSION_MODE == 3) {
-        char  line[128];
-        int   n = wsprintfA(line, "%lu mode=%d eip=%08X clk_ms=%ld\n",
-                            GetTickCount(), (int)*(volatile uint8_t *)ADDR_GAME_MODE,
-                            (unsigned)c->Eip, ms_of(ADDR_GAME_CLOCK));
-        DWORD w;
-        WriteFile(g_gm_h, line, n, &w, nullptr);
+    if (g_gm_armed && *(volatile uint8_t *)ADDR_SESSION_MODE == 3) {
+        char line[128];
+        int  n = wsprintfA(line, "%lu mode=%d eip=%08X clk_ms=%ld\n",
+                           GetTickCount(), (int)*(volatile uint8_t *)ADDR_GAME_MODE,
+                           (unsigned)c->Eip, ms_of(ADDR_GAME_CLOCK));
+        mh_logq_write(g_gm_path, line, n); // LOG1: enqueue only -- this runs in a vectored handler
     }
     return EXCEPTION_CONTINUE_EXECUTION;
 }
@@ -323,17 +317,15 @@ LONG CALLBACK gamemode_veh(EXCEPTION_POINTERS *ep) {
 // DR0 = &_G_LLM_GAME_MODE with DR7 = slot-0 1-byte write breakpoint (0x00010001). Runs off the main
 // thread so we can SetThreadContext on it. One-shot.
 DWORD WINAPI gamemode_arm_thread(LPVOID) {
-    g_gm_h = CreateFileA(g_gm_path, FILE_APPEND_DATA, FILE_SHARE_READ | FILE_SHARE_WRITE,
-                         nullptr, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
-    if (g_gm_h == INVALID_HANDLE_VALUE) {
+    if (g_gm_path[0] == '\0') {
         seam_log("; gamemode logger: cannot open log\n");
         return 0;
     }
     const char *hdr = "# wall_ms mode eip clk_ms  (writer instr is just BEFORE eip)\n";
-    DWORD       w;
-    WriteFile(g_gm_h, hdr, lstrlenA(hdr), &w, nullptr);
-    g_gm_veh  = AddVectoredExceptionHandler(1, gamemode_veh);
-    HANDLE th = OpenThread(THREAD_GET_CONTEXT | THREAD_SET_CONTEXT | THREAD_SUSPEND_RESUME, FALSE, g_main_tid);
+    mh_logq_puts(g_gm_path, hdr);
+    g_gm_armed = true;
+    g_gm_veh   = AddVectoredExceptionHandler(1, gamemode_veh);
+    HANDLE th  = OpenThread(THREAD_GET_CONTEXT | THREAD_SET_CONTEXT | THREAD_SUSPEND_RESUME, FALSE, g_main_tid);
     if (!th) {
         seam_log("; gamemode logger FAILED (OpenThread)\n");
         return 0;
@@ -397,49 +389,46 @@ void temporal_flush() {
     // letting the block below reopen also re-writes the column header into the new file, which is
     // what makes a session directory's mh_temporal.log readable on its own. g_tev_bytes restarts, so
     // the rotation cap applies per session rather than carrying a previous match's size across.
-    if (mh_run_path(g_tev_path, MAX_PATH, "%smh_temporal.log", &g_tev_gen) &&
-        g_tev_h != INVALID_HANDLE_VALUE) {
-        CloseHandle(g_tev_h);
-        g_tev_h     = INVALID_HANDLE_VALUE;
-        g_tev_bytes = 0;
+    //
+    // LOG1: the file is no longer held open here -- the batch is ENQUEUED to the async sink. What
+    // used to be "close the handle" is now "the next flush writes the header again" (g_tev_hdr_done),
+    // and the rotation is an in-order rotate-now record the WRITER executes, so the header that
+    // follows it lands at the top of the fresh file exactly as before.
+    if (mh_run_path(g_tev_path, MAX_PATH, "%smh_temporal.log", &g_tev_gen)) {
+        g_tev_hdr_done = false;
+        g_tev_bytes    = 0;
     }
-    if (g_tev_h == INVALID_HANDLE_VALUE) {
-        g_tev_h = CreateFileA(g_tev_path, FILE_APPEND_DATA, FILE_SHARE_READ | FILE_SHARE_WRITE,
-                              nullptr, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
-        if (g_tev_h == INVALID_HANDLE_VALUE) {
-            g_temporal = false;
-            return;
-        }
+    if (g_tev_path[0] == '\0') {
+        g_temporal = false;
+        return;
+    }
+    if (!g_tev_hdr_done) {
         const char *hdr = "# qpc_us id clk_ms tot_ms com_ms loc_ms | id 0=frame 1=pump 2=commit "
                           "3=time_tick 4=sim_tick 5=sim_step 6=send_ext 7=present\n";
-        DWORD       w;
-        WriteFile(g_tev_h, hdr, lstrlenA(hdr), &w, nullptr);
-        g_tev_bytes = lstrlenA(hdr);
+        mh_logq_puts(g_tev_path, hdr);
+        g_tev_hdr_done = true;
+        g_tev_bytes    = lstrlenA(hdr);
     }
-    // Rotate at the cap: close, replace mh_temporal.prev.log, reopen empty (the header is rewritten
-    // by the block above on the next flush). Keeps the most recent <=2x cap of trace, bounded.
+    // Rotate at the cap: replace mh_temporal.prev.log, start empty (the header is rewritten by the
+    // block above on the next flush). Keeps the most recent <=2x cap of trace, bounded.
     if (g_tev_max_bytes > 0 && g_tev_bytes >= g_tev_max_bytes) {
-        CloseHandle(g_tev_h);
-        g_tev_h = INVALID_HANDLE_VALUE;
         // SES2: the ".log" -> ".prev.log" derivation is mh_log_rotate.h's, shared with mh_net.log's
-        // cap. It used to be four lines here and was the only copy; a second stream rotating meant a
-        // second spelling of a name the tools glob, so it moved rather than being duplicated.
-        mh_log_rotate(g_tev_path);
-        g_tev_bytes = 0;
+        // cap. The writer thread performs it (mh_logq_rotate_now) at this point in the line order.
+        mh_logq_rotate_now(g_tev_path);
+        g_tev_hdr_done = false;
+        g_tev_bytes    = 0;
         return; // this batch lands in the fresh file on the next flush
     }
     if (g_tev_overflow && !g_tev_overflow_logged) { // surface dropped events IN the log
         g_tev_overflow_logged = true;
         const char *w1        = "# WARNING: temporal buffer hit TEV_MAX between drains -- EVENTS WERE DROPPED\n";
-        DWORD       w;
-        WriteFile(g_tev_h, w1, lstrlenA(w1), &w, nullptr);
+        mh_logq_puts(g_tev_path, w1);
     }
     char buf[4096];
     int  off = 0;
     while (g_tev_flushed < g_tev_n) {
         if (off > (int)sizeof(buf) - 96) {
-            DWORD w;
-            WriteFile(g_tev_h, buf, off, &w, nullptr);
+            mh_logq_write(g_tev_path, buf, off);
             g_tev_bytes += off;
             off = 0;
         }
@@ -447,8 +436,7 @@ void temporal_flush() {
         off += wsprintfA(buf + off, "%I64d %d %ld %ld %ld %ld\n", e->qpc, e->id, e->clk, e->tot, e->com, e->loc);
     }
     if (off) {
-        DWORD w;
-        WriteFile(g_tev_h, buf, off, &w, nullptr);
+        mh_logq_write(g_tev_path, buf, off);
         g_tev_bytes += off;
     }
     // Fully drained -> recycle the staging buffer. Capture and flush are BOTH main-thread-only
@@ -568,6 +556,7 @@ void on_utils_abort(unsigned status, unsigned caller) {
               status, caller, (int)*(const uint8_t *)ADDR_GAME_MODE,
               (int)*(const uint8_t *)ADDR_SESSION_MODE, ms_of(ADDR_GAME_CLOCK));
     seam_log(b);
+    mh_logq_flush(1000); // mp:LOG1: the process dies right after this; the witness line must be on disk
 }
 __declspec(naked) void utils_abort_detour() {
     __asm {
@@ -593,6 +582,7 @@ void on_wnd_destroy(unsigned caller) {
               caller, (int)*(const uint8_t *)ADDR_GAME_MODE,
               (int)*(const uint8_t *)ADDR_SESSION_MODE, ms_of(ADDR_GAME_CLOCK));
     seam_log(b);
+    mh_logq_flush(1000); // mp:LOG1: ExitProcess follows; the witness line must be on disk first
     // mp:U62 (HM-M4): a hub leaving by closing the window hands the transport over first (clean quit, then
     // MH_Net_HubLeave). The witness line above is already out, so a death in here is not silent.
     mp_leave_for_exit();

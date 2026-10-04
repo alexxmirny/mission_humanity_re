@@ -16,6 +16,7 @@
 #include <stdint.h>
 #include <string.h>
 
+#include "include/mh_log_sink.h" // mp:LOG2: session.json goes through the log sink's writer
 #include "include/mh_net_export.h"
 #include "include/mh_seam_export.h"      // MH_Seam_StartTransport (async connect kick)
 #include "include/mh_chatinput_export.h" // MH_ChatInput_Codepage -- the pinned input codepage (F3)
@@ -475,14 +476,11 @@ void session_roster(char *dst, int cap) {
 void session_json_write() {
     char path[MAX_PATH];
     wsprintfA(path, "%ssession.json", MH_RunDir());
-    char   text[2048];
-    int    n = mh_session_json(&g_session_rec, text, (int)sizeof(text));
-    HANDLE h = CreateFileA(path, GENERIC_WRITE, FILE_SHARE_READ, nullptr, CREATE_ALWAYS,
-                           FILE_ATTRIBUTE_NORMAL, nullptr);
-    if (h == INVALID_HANDLE_VALUE) return;
-    DWORD w = 0;
-    WriteFile(h, text, (DWORD)n, &w, nullptr);
-    CloseHandle(h);
+    char text[2048];
+    int  n = mh_session_json(&g_session_rec, text, (int)sizeof(text));
+    // mp:LOG2: the log sink's writer does the CREATE_ALWAYS + write (create/truncate record), so the
+    // game thread that opens/closes a session never touches the disk for it.
+    mh_logq_create_bin(path, text, n);
 }
 
 } // namespace

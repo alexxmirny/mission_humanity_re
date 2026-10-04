@@ -733,6 +733,28 @@ tests:
       WITHOUT video (no insert-CD dialog, no error box, no IDIV), closes, and the pair stays IDENTICAL'
   # mp:U47: the JOINER holds the info panel (GAME_MODE 4) open >= 12 s of sim; the host must not stall on it and
   # the joiner must not discard in-game datagrams (rc5 G327 drain, fixed by 52352bd1).
+  # mp:U73: "Error: Cannot find info text:" with an empty key. A storage-panel info request names a docked row the
+  # list no longer has; the guard drops it at the consume site, and refuses any blank entity at the entry of
+  # llm_ui_entity_info_screen_open. The fixture (d38_* knobs, both peers) docks one soldier in a barracks beside
+  # the landed mother (no kill); the walk right-clicks its row three times (valid / consume-site knob / entry knob).
+  # Configuration (1) (no libmh.dll) -- the seam is mh.dll's.
+  - name: info_guard_u73
+    budget_s: 73
+    budget_evidence: "measured 56 s twice alone on the local rig (2026-10-04, both green with the post-check) x 1.3 = 73"
+    kind: multi
+    host: mp_host_u73_info_guard.txt
+    clients: [mp_client_idle.txt]
+    share_lanes: d35_buildclick_c1
+    omit_satellite: [libmh.dll]
+    net_extra: transport=udp;info_guard_test_row=2;info_guard_test_entry=2
+    extra_ini: tools/uiscripts/ini/video_1024.ini
+    harness_extra: region_hash_step=50;synth_move=0;d38_player=0;d38_bldg_at=100;d38_dock_at=100
+    timeout: 420
+    post_check: [tools/check_info_guard.py]
+    post_check_peers: true
+    post_check_session: true
+    desc: 'U73: right-clicking the docked row of a selected barracks opens the unit info screen; a stale row (consume-site
+      knob) and a blank entity (entry knob) are refused with a `; [info]` line and no modal; the pair stays IDENTICAL'
   - name: u47_info_joiner
     budget_s: 82
     budget_evidence: "measured 63 s x3 alone (2026-10-01, solo on the rig); 63 x 1.3 = 82"
@@ -1972,6 +1994,40 @@ tests:
     post_check_peers: true
     post_check: [tools/check_freeze_watchdog.py, --alttab, --expect-no-freeze, --max-client-stall-ms, '800']
     desc: 'P17: host window minimised 5 s on the owned d3d11 backend -- the focus tap logs the minimise/restore, the frame watchdog records whether frames stopped, the client reports its stall'
+  - name: alttab_borderless_d3d11
+    tier: release  # same valve as alttab_d3d11 (the rows below are 8 s walks, but they belong with it)
+    # patching:PT-GFX8. The player-report configuration (d3d11 + borderless, mapped, presenting): after the
+    # game window is deactivated it must still pass the taskbar / Alt-Tab eligibility rule, and it must
+    # take the foreground back through the switcher path and the launcher (WinMain single-instance) path.
+    # The rig's isolated desktop refuses foreground requests, so `winaway` delivers WM_ACTIVATE there; the
+    # real-foreground twin is alttab_borderless_fg.txt (--visible --no-desktop, run by hand).
+    # Negative arm, run by hand: --extra-ini tools/uiscripts/ini/alttab_borderless_off.ini times out at
+    # step 4 (`winswitchable` after the injected TOOLWINDOW fault).
+    budget_s: 30
+    budget_evidence: "measured 2026-10-04: 8 s walk, floored at 30 (BUDGET_FLOOR_S)"
+    kind: solo
+    script: alttab_borderless.txt
+    extra_ini: [tools/uiscripts/ini/video_640.ini, tools/uiscripts/ini/win_borderless_d3d11.ini]
+    share_lanes: debug_overlay
+    desc: 'PT-GFX8: borderless d3d11 window stays taskbar/Alt-Tab eligible across a deactivation and returns via the switcher and launcher paths'
+  - name: alttab_borderless_gdi
+    tier: release
+    budget_s: 30
+    budget_evidence: "measured 2026-10-04: 8 s walk, floored at 30 (BUDGET_FLOOR_S)"
+    kind: solo
+    script: alttab_borderless.txt
+    extra_ini: [tools/uiscripts/ini/video_640.ini, tools/uiscripts/ini/win_borderless_gdi.ini]
+    share_lanes: debug_overlay
+    desc: 'PT-GFX8: the same deactivation walk on the own/gdi presenter, borderless'
+  - name: alttab_windowed_d3d11
+    tier: release
+    budget_s: 30
+    budget_evidence: "measured 2026-10-04: 8 s walk, floored at 30 (BUDGET_FLOOR_S)"
+    kind: solo
+    script: alttab_borderless.txt
+    extra_ini: [tools/uiscripts/ini/video_640.ini, tools/uiscripts/ini/p17_alttab_d3d11.ini]
+    share_lanes: debug_overlay
+    desc: 'PT-GFX8: the same deactivation walk on d3d11 in a normal (windowed) window'
   - name: dialog_stall
     # mp:U44 -- the building dialog vs the lockstep stall overlay: (a) short stall keeps the dialog, (b) a long
     # stall shows the kick modal with the dialog stashed, then restores it, (c) a second long stall with no

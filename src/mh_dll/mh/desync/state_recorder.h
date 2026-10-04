@@ -27,7 +27,11 @@
 // next session_begin_multi) finishes it. Steps after match_end -- a "Continue game" after an outcome
 // -- are not recorded: that is no longer the match the file describes, and the next
 // session_begin_multi starts the next file. A second match writing into a folder that already holds
-// mh_match_state.bin (a force-entry run with no session folder) gets mh_match_state_2.bin, and so on.
+// mh_match_state.bin (a force-entry run with no session folder) gets mh_match_state_2.bin, and so on. A name whose `.gz` exists counts as taken (mp:D46).
+//
+// COMPRESSION (mp:D46). When the writer thread has closed the file, it starts state_compress.h's thread:
+// raw -> `.gz.tmp` -> verify -> `.gz` -> delete raw. Nothing on the sim or render thread waits for it, and
+// match_end()'s bounded wait covers only the raw writer.
 //
 #pragma once
 #include <cstdint>
@@ -47,8 +51,12 @@ using log_fn = void (*)(const char *fmt, ...);
 // (a value < 1 is refused: the default is used and the log says so).
 // Returns true if the recorder is on (the caller then enables the shared tracker and registers
 // listener()).
-bool                 configure(int enabled, int keyframe_every, uint64_t manifest_fp, log_fn log);
-bool                 enabled();
+bool configure(int enabled, int keyframe_every, uint64_t manifest_fp, log_fn log);
+bool enabled();
+
+// mp:D46: gzip each finished file on a background thread (state_compress.h). On by default; `[desync]
+// state_compress=0` turns it off (the raw file stays), as does a test that wants to read the raw bytes.
+void                 set_compress(bool on);
 state_hub::listener *listener();
 
 // The step-axis facts the open line reports (desync_watch.cpp measures them; see session_start).

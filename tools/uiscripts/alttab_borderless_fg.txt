@@ -1,0 +1,39 @@
+# PT-GFX8 (INTERACTIVE-DESKTOP variant, not registered -- it takes the real foreground): after the game window loses the foreground (Alt-Tab to another window -- NOT a minimise) it must
+# still be a switchable top-level window (taskbar button + Alt-Tab entry), and it must come back to the
+# foreground through BOTH real paths: the switcher's activation and the retail single-instance path the
+# launcher's Play button triggers (WinMain: FindWindowA + SetForegroundWindow, nothing else).
+#
+# Run with `--extra-ini tools/uiscripts/ini/win_borderless_d3d11.ini` (the player-report configuration:
+# d3d11, borderless, mapped, presenting). `winswitchable` is the documented Alt-Tab rule (visible, not
+# DWM-cloaked, unowned without WS_EX_TOOLWINDOW or WS_EX_APPWINDOW); a failing predicate times the step out.
+#
+# 1. In the main menu the window is the foreground and switchable.
+# 2. `winex` injects the fault class the report is consistent with (TOOLWINDOW on, APPWINDOW off): the guard
+#    heals it on the next geometry pass, so `winswitchable` re-passes. With [video] taskbar_guard=0 it does
+#    not -- that is the "before" arm (alttab_borderless_off.ini).
+# 3. `winaway`: a second top-level window takes the foreground -> the game gets WM_ACTIVATE(inactive).
+#    Still switchable; `winreturn` (the switcher path) gives the foreground back.
+# 4. Again, back through the launcher path.
+settled value:110
+winactive
+winswitchable
+winprobe
+winex 80 40000
+winswitchable
+winprobe
+winaway
+winswitchable
+winprobe
+winreturn
+winactive
+winswitchable
+capture ab1_back_switcher
+winaway
+winswitchable
+winreturn launcher
+winactive
+winswitchable
+winprobe
+capture ab2_back_launcher
+log alttab_borderless COMPLETE -- switchable before/after deactivation, back via the switcher and launcher paths
+end

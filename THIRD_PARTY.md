@@ -38,6 +38,13 @@ promise:
 | **CLI11** 2.6.1 | `src/mh_dll/include/CLI11.hpp` | 3-clause BSD | vendored, at the head of the header |
 | **stb_image** v2.30 | `src/mh_dll/include/stb_image.h` | dual: MIT **or** public domain (Unlicense) — we take the MIT alternative | vendored, at the foot of the header |
 | **Dear ImGui** v1.92.9 | `src/mh_dll/include/imgui/` (core + `backends/imgui_impl_win32`, `backends/imgui_impl_dx11`) | MIT | vendored, `src/mh_dll/include/imgui/LICENSE.txt` |
+| **miniz** 3.0.2 | `src/mh_dll/include/miniz/` (`miniz.c`, `miniz.h`) | MIT | vendored, `src/mh_dll/include/miniz/LICENSE.txt` and the head of `miniz.c` |
+
+**miniz** — Copyright 2013-2014 RAD Game Tools and Valve Software, 2010-2014 Rich Geldreich and
+Tenacious Software LLC. Upstream: <https://github.com/richgel999/miniz>, release `3.0.2`. The two
+files are unmodified upstream copies; the build's configuration (no stdio, no time, no archive or
+zlib-style APIs) lives in `src/mh_dll/mh/desync/state_compress.cpp`, which includes `miniz.c`. Used
+to gzip `mh_match_state.bin` after a match (mp:D46).
 
 **CLI11** — Copyright (c) 2017-2025 University of Cincinnati, developed by Henry Schreiner under
 NSF AWARD 1414736. All rights reserved. Upstream: <https://github.com/CLIUtils/CLI11>. The full

@@ -95,6 +95,7 @@
 #include "addr/mh_addrs.gen.h"         // _G_LLM_DI_MOUSE_DEVICE, _G_LLM_INPUT_KEYSTATE
 #include "config/ini_read.h"           // read_ini_string -- strips a trailing `;comment`
 #include "include/mh_run_context.h"    // mh_proc_path
+#include "include/mh_log_sink.h"       // LOG1: async log sink
 #include "include/mh_overlay_export.h" // MH_Overlay_Provider* -- the debug overlay's readouts
 #include "include/mh_uidrive_export.h" // MH_UIDrive_SynthKeyDown -- the harness `hotkey` action
 
@@ -148,13 +149,7 @@ void log(const char *fmt, ...) {
         line[n++] = '\n';
         line[n]   = 0;
     }
-    HANDLE h = CreateFileA(g_log_path, FILE_APPEND_DATA, FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, OPEN_ALWAYS,
-                           FILE_ATTRIBUTE_NORMAL, nullptr);
-    if (h != INVALID_HANDLE_VALUE) {
-        DWORD w = 0;
-        WriteFile(h, line, (DWORD)lstrlenA(line), &w, nullptr);
-        CloseHandle(h);
-    }
+    mh_logq_write(g_log_path, line, lstrlenA(line));
 }
 
 // ---- config + state -----------------------------------------------------------------------------

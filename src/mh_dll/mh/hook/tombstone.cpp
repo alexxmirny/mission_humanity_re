@@ -6,6 +6,7 @@
 #include <string.h>
 
 #include "hook/tombstone.h"
+#include "include/mh_log_sink.h" // LOG1: mh_logq_flush before TerminateProcess
 
 namespace mh::hook {
 namespace {
@@ -45,6 +46,7 @@ const tomb_mem_ops *g_mem_ops = nullptr;
 
 void default_fail(const char *line) {
     promotion_log(line);
+    mh_logq_flush(1000); // mp:LOG1: the line above is queued; TerminateProcess would discard it
     // Fail FAST and distinctively. The body is trap-filled; there is nothing to resume into, and a
     // run that entered a tombstoned body has already executed code we claim never executes.
     TerminateProcess(GetCurrentProcess(), 0xDEAD70B5u);

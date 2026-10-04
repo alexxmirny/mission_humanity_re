@@ -35,6 +35,7 @@
 
 #include "include/mh_mpmenu_export.h"
 #include "include/mh_run_context.h"      // MH_RunDir (per-run log folder)
+#include "include/mh_log_sink.h"         // LOG1: async log sink
 #include "include/mh_langpack_export.h"  // mods:LANG2: does the loaded mh_ex carry 7-button art?
 #include "include/mh_chatinput_export.h" // MP-LANG: MH_ChatInput_NormalizeLocalNames
 #include "ui/player_strings.h"           // mods:LANG4: the fallback label is a table row
@@ -110,13 +111,7 @@ void menu_log(const char *fmt, ...) {
         line[n++] = '\n';
         line[n]   = 0;
     }
-    HANDLE h = CreateFileA(g_log, FILE_APPEND_DATA, FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr,
-                           OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
-    if (h == INVALID_HANDLE_VALUE) return;
-    SetFilePointer(h, 0, nullptr, FILE_END);
-    DWORD w = 0;
-    WriteFile(h, line, lstrlenA(line), &w, nullptr);
-    CloseHandle(h);
+    mh_logq_write(g_log, line, lstrlenA(line));
 }
 
 // ---- U18 network-button hover draw (Route B): a DLL-owned draw_cb that blits NETGAMEH when the

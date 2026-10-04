@@ -118,6 +118,9 @@
 
 use std::io::Write;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
+use std::sync::mpsc::{self, Receiver};
+use std::sync::{Arc, Mutex};
 
 use crate::crash::Marker;
 use crate::install;
@@ -168,6 +171,60 @@ const TEXT_TAIL_MIN: u64 = 4 * 1024;
 /// dist LA14. Optional (not protected) folders are compressed into the staging zip newest first
 /// only while their UNCOMPRESSED total stays under this. It bounds the build time on a `logs\`
 /// tree full of old runs: past it, what would be dropped anyway is not compressed first.
+/// Bytes a staging zip has been given so far (high-water mark of the write position), readable
+/// while the `ZipWriter` owns the file.
+struct Counting<W> {
+    inner: W,
+    pos: u64,
+    high: Arc<AtomicU64>,
+}
+
+impl<W> Counting<W> {
+    fn new(inner: W, high: Arc<AtomicU64>) -> Self {
+        Self {
+            inner,
+            pos: 0,
+            high,
+        }
+    }
+}
+
+impl<W: Write> Write for Counting<W> {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        let n = self.inner.write(buf)?;
+        self.pos += n as u64;
+        self.high.fetch_max(self.pos, Ordering::Relaxed);
+        Ok(n)
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        self.inner.flush()
+    }
+}
+
+impl<W: std::io::Seek> std::io::Seek for Counting<W> {
+    fn seek(&mut self, to: std::io::SeekFrom) -> std::io::Result<u64> {
+        self.pos = self.inner.seek(to)?;
+        Ok(self.pos)
+    }
+}
+
+/// Test hook (dist LA17): bytes handed to a DEFLATE encoder for a state recording, on this thread.
+/// A thread-local so parallel tests do not see each other's counts.
+#[cfg(test)]
+mod hook {
+    use std::cell::Cell;
+    thread_local! {
+        static DEFLATED: Cell<u64> = const { Cell::new(0) };
+    }
+    pub fn deflated(n: u64) {
+        DEFLATED.with(|c| c.set(c.get() + n));
+    }
+    pub fn take() -> u64 {
+        DEFLATED.with(|c| c.replace(0))
+    }
+}
+
 const STAGE_UNCOMPRESSED_MAX: u64 = 512 * 1024 * 1024;
 
 /// How many times the zip is rewritten to converge on `BODY_BUDGET`. Each rewrite copies the
@@ -189,7 +246,25 @@ const REPLAY_INPUTS: [&str; 6] = [
 /// one of these STAYS decodable, because the format is built to be tailed at a `KEYF` chunk
 /// boundary. So they get their own `Kind` and their own shed step (`shed_state_files`), ranked below
 /// the replay inputs -- see the module doc's "mp:D43" section.
-const STATE_FILES: [&str; 2] = ["mh_match_state.bin", "mh_desync_state.bin"];
+///
+/// mp:D46: mh.dll gzips `mh_match_state.bin` after the match and deletes the raw file, so a state
+/// recording is `mh_match_state[_<n>].bin`, `mh_match_state[_<n>].bin.gz` or the `mh_desync_state`
+/// pair. An unfinished compress (`*.bin.gz.tmp`) is never a recording and never enters a report.
+fn is_state_name(leaf: &str) -> bool {
+    let stem = leaf.strip_suffix(".gz").unwrap_or(leaf);
+    (stem.starts_with("mh_match_state") || stem.starts_with("mh_desync_state"))
+        && stem.ends_with(".bin")
+}
+
+/// mp:D46. The state file is a gzip member (`.gz`), not the raw v1 byte stream.
+fn is_gz_path(p: &Path) -> bool {
+    p.extension().is_some_and(|e| e.eq_ignore_ascii_case("gz"))
+}
+
+/// mp:D46. The most a gzip state recording may unpack to before the packer refuses it. The raw
+/// file of a 36-minute match was 242 MB; this leaves ~4x headroom and bounds the memory the keyframe
+/// walk holds (it needs the whole raw stream in RAM, exactly as it always did for a raw file).
+const STATE_GZ_MAX_RAW: u64 = 1024 * 1024 * 1024;
 
 const WHY_OVER_BUDGET: &str = "over the report upload budget (oldest folders go first)";
 const WHY_NOT_STAGED: &str = "past the report's staging limit (older than what could fit)";
@@ -206,6 +281,10 @@ const WHY_STATE_MALFORMED: &str =
 /// mp:D43. The chunk walk was fine, but even the file's own LAST keyframe does not compress under
 /// what the budget has left for it.
 const WHY_STATE_NO_ROOM: &str = "even its newest keyframe does not fit the report upload budget";
+/// mp:D46. A gzip state recording that cannot be unpacked (damaged stream with nothing salvageable,
+/// or past `STATE_GZ_MAX_RAW`) and so cannot be tailed -- left out rather than cut at a guess.
+const WHY_STATE_GZ_BAD: &str =
+    "gzip state recording could not be unpacked to cut at a keyframe (damaged, or over the unpack limit)";
 
 /// dist LA9. How many of the newest `logs\` directories to package when the launcher's own start
 /// time is unknown (a `--report` invoked from a script that never called `--launch` in this same
@@ -277,14 +356,155 @@ pub fn description_ok(text: &str) -> bool {
     !text.trim().is_empty()
 }
 
-/// Build the zip at `dest`, fitted to `BODY_BUDGET`.
+/// dist LA17. What the build is doing right now, for a window that must keep repainting while it
+/// runs. Written by the build (any thread), read by the UI every frame.
+#[derive(Default)]
+pub struct Progress {
+    text: Mutex<String>,
+    updates: AtomicUsize,
+}
+
+impl Progress {
+    pub fn set(&self, text: impl Into<String>) {
+        if let Ok(mut t) = self.text.lock() {
+            *t = text.into();
+        }
+        self.updates.fetch_add(1, Ordering::Relaxed);
+    }
+
+    pub fn text(&self) -> String {
+        self.text.lock().map(|t| t.clone()).unwrap_or_default()
+    }
+
+    #[cfg(test)]
+    /// How many times `set` has been called: lets a test tell "the build reported" from "nothing yet".
+    pub fn updates(&self) -> usize {
+        self.updates.load(Ordering::Relaxed)
+    }
+}
+
+/// `Input` with everything owned, so it can move to a worker thread (dist LA17).
+pub struct OwnedInput {
+    pub game_dir: Option<PathBuf>,
+    pub logs_root: Option<PathBuf>,
+    pub session_dir: Option<PathBuf>,
+    pub launcher_started_utc: Option<String>,
+    pub description: String,
+    pub last_run: Option<Finished>,
+    pub crash: Option<Marker>,
+    pub minidump: Option<PathBuf>,
+    pub launcher_log: Option<PathBuf>,
+}
+
+impl OwnedInput {
+    fn borrow(&self) -> Input<'_> {
+        Input {
+            game_dir: self.game_dir.as_deref(),
+            logs_root: self.logs_root.clone(),
+            session_dir: self.session_dir.clone(),
+            launcher_started_utc: self.launcher_started_utc.clone(),
+            description: &self.description,
+            last_run: self.last_run.as_ref(),
+            crash: self.crash.as_ref(),
+            minidump: self.minidump.as_deref(),
+            launcher_log: self.launcher_log.clone(),
+        }
+    }
+}
+
+/// dist LA17. One report build on its own thread. `report::build` deflates 100-250 MB state
+/// recordings; run inside a frame callback it is a window that has stopped painting ("Not
+/// responding"), which a player reads as a crash. The UI starts one of these, repaints while
+/// `poll` says `Running`, and takes the result when it says `Done`.
+pub struct Job {
+    progress: Arc<Progress>,
+    rx: Receiver<Result<Built, String>>,
+    #[cfg(test)]
+    worker: std::thread::ThreadId,
+    finished: bool,
+}
+
+pub enum Poll {
+    Running,
+    Done(Result<Built, String>),
+}
+
+impl Job {
+    pub fn start(dest: PathBuf, input: OwnedInput) -> Self {
+        Self::start_with(dest, input, BODY_BUDGET)
+    }
+
+    fn start_with(dest: PathBuf, input: OwnedInput, body_budget: u64) -> Self {
+        let progress = Arc::new(Progress::default());
+        progress.set("starting");
+        let (tx, rx) = mpsc::channel();
+        let p = Arc::clone(&progress);
+        let d = dest.clone();
+        let _handle = std::thread::spawn(move || {
+            let result = build_with_progress(&d, &input.borrow(), body_budget, &p);
+            let _ = tx.send(result);
+        });
+        Self {
+            progress,
+            rx,
+            #[cfg(test)]
+            worker: _handle.thread().id(),
+            finished: false,
+        }
+    }
+
+    /// The id of the thread doing the work (a test asserts it is not the caller's).
+    #[cfg(test)]
+    pub fn worker_thread(&self) -> std::thread::ThreadId {
+        self.worker
+    }
+
+    pub fn progress(&self) -> &Progress {
+        &self.progress
+    }
+
+    /// Never blocks. After `Done` was returned once, later polls say `Done(Err(..))`.
+    pub fn poll(&mut self) -> Poll {
+        match self.rx.try_recv() {
+            Ok(r) => {
+                self.finished = true;
+                Poll::Done(r)
+            }
+            Err(mpsc::TryRecvError::Empty) => Poll::Running,
+            Err(mpsc::TryRecvError::Disconnected) => {
+                let why = if self.finished {
+                    "the report result was already taken"
+                } else {
+                    "the report thread stopped without answering"
+                };
+                self.finished = true;
+                Poll::Done(Err(why.to_string()))
+            }
+        }
+    }
+}
+
+/// Build the zip at `dest`, fitted to `BODY_BUDGET`, on the calling thread. The app goes through
+/// `Job` (dist LA17); this is the same build for tests.
+#[cfg(test)]
 pub fn build(dest: &Path, input: &Input) -> Result<Built, String> {
-    build_with_budget(dest, input, BODY_BUDGET)
+    build_with_progress(dest, input, BODY_BUDGET, &Progress::default())
 }
 
 /// `build` with the body budget spelled out, so a test can exercise the trimming order on a few
 /// megabytes instead of generating 70 MB of incompressible data for every case.
+#[cfg(test)]
 fn build_with_budget(dest: &Path, input: &Input, body_budget: u64) -> Result<Built, String> {
+    build_with_progress(dest, input, body_budget, &Progress::default())
+}
+
+/// The build itself: `body_budget` is the upload-body cap, `progress` says what it is doing.
+fn build_with_progress(
+    dest: &Path,
+    input: &Input,
+    body_budget: u64,
+    progress: &Progress,
+) -> Result<Built, String> {
     if !description_ok(input.description) {
         return Err(NO_DESCRIPTION.to_string());
     }
@@ -293,6 +513,7 @@ fn build_with_budget(dest: &Path, input: &Input, body_budget: u64) -> Result<Bui
             .map_err(|e| format!("cannot create {}: {e}", parent.display()))?;
     }
 
+    progress.set("looking through the log folders");
     let machine = Machine::detect();
     let installed = input.game_dir.and_then(install::read_manifest);
     let session = input.session_dir.clone();
@@ -357,7 +578,7 @@ fn build_with_budget(dest: &Path, input: &Input, body_budget: u64) -> Result<Bui
         .compression_method(zip::CompressionMethod::Deflated);
     let staging = dest.with_extension("staging");
     let result = (|| -> Result<Built, String> {
-        stage(&mut set, &staging, opts, &scrub)?;
+        stage(&mut set, &staging, opts, &scrub, body_budget, progress)?;
         let meta_for = |set: &Set| {
             meta_json(
                 input,
@@ -389,7 +610,8 @@ fn build_with_budget(dest: &Path, input: &Input, body_budget: u64) -> Result<Bui
                     ));
                 }
             }
-            set.materialize_tails(opts, &scrub)?;
+            set.materialize_tails(opts, &scrub, progress)?;
+            progress.set("writing the report");
             meta = meta_for(&set);
             entries = write_final(dest, &staging, &set, &meta, opts)?;
             bytes = std::fs::metadata(dest).map(|m| m.len()).unwrap_or(0);
@@ -918,6 +1140,9 @@ struct Item {
     /// mp:D43. Overrides the generic `WHY_FILE_DROPPED` reason when this item was dropped for a
     /// `Kind::State`-specific cause (malformed, or no keyframe fits). `None` uses the generic one.
     drop_reason: Option<&'static str>,
+    /// mp:D46. The entry name the CUT copy is written under, when it differs from `name`: a `.gz`
+    /// state recording is unpacked to cut it, so the tail is a plain v1 file (`...bin`), not gzip.
+    tail_name: Option<String>,
     /// Uncompressed bytes as staged (after the scrub).
     raw: u64,
     /// Compressed bytes in the staging zip.
@@ -993,6 +1218,7 @@ impl Set {
             kind,
             group,
             drop_reason: None,
+            tail_name: None,
             raw: 0,
             comp: 0,
             staged: None,
@@ -1018,11 +1244,28 @@ impl Set {
         if !src.is_file() {
             return;
         }
+        // mp:D46: an unfinished compress is not a recording; a raw file whose finished `.gz` sits
+        // beside it (a kill between the rename and the delete) is the same bytes, so only the smaller
+        // copy goes in.
+        if leaf.ends_with(".bin.gz.tmp") {
+            log::line(format!(
+                "report: {leaf} is an unfinished compress, left out"
+            ));
+            return;
+        }
+        if is_state_name(&leaf) && !leaf.ends_with(".gz") {
+            let mut twin = src.as_os_str().to_os_string();
+            twin.push(".gz");
+            if Path::new(&twin).is_file() {
+                log::line(format!("report: {leaf} left out, its .gz twin is carried"));
+                return;
+            }
+        }
         let kind = if is_text(&name) {
             Kind::Text
         } else if REPLAY_INPUTS.contains(&leaf.as_str()) {
             Kind::Replay
-        } else if STATE_FILES.contains(&leaf.as_str()) {
+        } else if is_state_name(&leaf) {
             Kind::State
         } else {
             Kind::Binary
@@ -1072,6 +1315,7 @@ impl Set {
         &mut self,
         opts: zip::write::SimpleFileOptions,
         scrub: &Scrub,
+        progress: &Progress,
     ) -> Result<(), String> {
         for it in self.items.iter_mut() {
             let Fate::Tail(target) = it.fate else {
@@ -1085,22 +1329,45 @@ impl Set {
             let Source::File(p) = &it.source else {
                 continue; // only file source is ever in a Shrink group; nothing to cut
             };
+            progress.set(format!("cutting {} to fit", it.name));
             if it.kind == Kind::State {
                 // mp:D43. Never decode a payload -- only the header (which carries its own
                 // `header_len`) and the chunk tags/lengths are read. `state_layout` returning
                 // `None` means the chunk walk failed (bad magic/version, or a first chunk that is
                 // not the `KEYF` the format guarantees): left out whole rather than tailed at a
-                // guess. Otherwise `state_tail` picks the EARLIEST `KEYF` whose header+tail still
-                // fits `target`; `None` there means even the file's own newest keyframe does not.
-                let raw = std::fs::read(p).unwrap_or_default();
+                // guess. Otherwise `state_tail` picks the EARLIEST `KEYF` whose header+tail it
+                // estimates still fits `target` (dist LA17: from the ratio staging measured, at most
+                // one extra pass over the file); `None` means even the file's own newest keyframe
+                // does not.
+                let raw = match read_state_bytes(p) {
+                    Ok(raw) => raw,
+                    Err(why) => {
+                        it.fate = Fate::Dropped;
+                        it.drop_reason = Some(why);
+                        continue;
+                    }
+                };
+                // A `.gz` recording was unpacked to be cut, so its tail is the plain v1 stream.
+                let out_name = if is_gz_path(p) {
+                    it.name.strip_suffix(".gz").unwrap_or(&it.name).to_string()
+                } else {
+                    it.name.clone()
+                };
                 match state_layout(&raw) {
                     None => {
                         it.fate = Fate::Dropped;
                         it.drop_reason = Some(WHY_STATE_MALFORMED);
                     }
                     Some((header_len, keyframes)) => {
-                        match state_tail(&raw, header_len, &keyframes, &it.name, target, opts)? {
+                        // The ratio staging measured: compressed bytes per raw byte of THIS file (for a
+                        // `.gz` that is the stored gzip size over the unpacked length).
+                        let ratio = it.comp as f64 / raw.len().max(1) as f64;
+                        let tail = state_tail(
+                            &raw, header_len, &keyframes, &out_name, target, ratio, opts,
+                        )?;
+                        match tail {
                             Some((zip, kept, step)) => {
+                                it.tail_name = (out_name != it.name).then_some(out_name);
                                 it.tail = Some(TailBuf {
                                     target,
                                     zip,
@@ -1191,6 +1458,10 @@ impl Set {
                         // mp:D43: the KEYF's own step, when the tail is a state recording's.
                         if let Some(step) = it.tail.as_ref().and_then(|t| t.kept_from_step) {
                             rec["kept_from_step"] = serde_json::json!(step);
+                        }
+                        // mp:D46: a gzip recording is unpacked to be cut; the tail is a plain v1 file.
+                        if let Some(n) = it.tail_name.as_ref() {
+                            rec["kept_as"] = serde_json::json!(n);
                         }
                         out.push(rec);
                     }
@@ -1346,11 +1617,28 @@ fn compress_one(
     data: &[u8],
     opts: zip::write::SimpleFileOptions,
 ) -> Result<(Vec<u8>, u64), String> {
+    compress_parts(name, &[data], opts)
+}
+
+/// `compress_one` over the concatenation of `parts`, without ever building the concatenation (dist
+/// LA17: a state tail is the file header plus a slice of a 250 MB buffer; copying that per probe was
+/// a second 250 MB allocation each time).
+fn compress_parts(
+    name: &str,
+    parts: &[&[u8]],
+    opts: zip::write::SimpleFileOptions,
+) -> Result<(Vec<u8>, u64), String> {
     let mut w = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
     w.start_file(name, opts)
         .map_err(|e| format!("cannot start {name}: {e}"))?;
-    w.write_all(data)
-        .map_err(|e| format!("cannot write {name}: {e}"))?;
+    for data in parts {
+        w.write_all(data)
+            .map_err(|e| format!("cannot write {name}: {e}"))?;
+        #[cfg(test)]
+        if !is_text(name) {
+            hook::deflated(data.len() as u64);
+        }
+    }
     let bytes = w
         .finish()
         .map_err(|e| format!("cannot finish {name}: {e}"))?
@@ -1444,30 +1732,126 @@ fn state_layout(buf: &[u8]) -> Option<(u64, Vec<(u64, u32)>)> {
     Some((header_len, keyframes))
 }
 
-/// mp:D43. Tail a state recording to the EARLIEST `KEYF` chunk whose header+tail still compresses
-/// under `target` -- the cut that throws away the least of the file. `keyframes` is oldest first
-/// (from `state_layout`), so the first candidate that fits is the answer; no need to try the ones
-/// after it, since they only keep less. `Ok(None)` means even the LAST (newest, smallest) keyframe
-/// does not fit -- the file is left out whole, never tailed past its own newest keyframe.
+/// mp:D46. A state recording's raw v1 bytes: the file itself, or a `.gz` one unpacked (bounded by
+/// `STATE_GZ_MAX_RAW`). A gzip stream that ends early or is damaged still yields the bytes decoded
+/// before the fault -- the format is built to be read up to its last complete chunk -- unless there are
+/// none. `Err` carries the `dropped` reason.
+fn read_state_bytes(p: &Path) -> Result<Vec<u8>, &'static str> {
+    if !is_gz_path(p) {
+        return Ok(std::fs::read(p).unwrap_or_default());
+    }
+    // dist LA17: stream the gzip from the file (it is up to ~40-60 MB; holding it AND the unpacked
+    // bytes was needless), and size the output from the gzip trailer's ISIZE (the unpacked length
+    // mod 2^32, a hint only) so `read_to_end` does not double a 250 MB buffer on the way up.
+    let Ok(mut file) = std::fs::File::open(p) else {
+        return Err(WHY_STATE_GZ_BAD);
+    };
+    let hint = {
+        use std::io::{Read, Seek, SeekFrom};
+        let mut isize_le = [0u8; 4];
+        let ok = file.seek(SeekFrom::End(-4)).is_ok() && file.read_exact(&mut isize_le).is_ok();
+        file.seek(SeekFrom::Start(0)).ok();
+        if ok {
+            u64::from(u32::from_le_bytes(isize_le)).min(STATE_GZ_MAX_RAW)
+        } else {
+            0
+        }
+    };
+    let mut out = Vec::with_capacity(usize::try_from(hint).unwrap_or(0));
+    let mut dec = std::io::Read::take(
+        flate2::read::GzDecoder::new(std::io::BufReader::with_capacity(1 << 20, file)),
+        STATE_GZ_MAX_RAW + 1,
+    );
+    let res = std::io::Read::read_to_end(&mut dec, &mut out);
+    if out.len() as u64 > STATE_GZ_MAX_RAW {
+        return Err(WHY_STATE_GZ_BAD);
+    }
+    if let Err(e) = res {
+        log::line(format!(
+            "report: {} is damaged after {} unpacked bytes: {e}",
+            p.display(),
+            out.len()
+        ));
+    }
+    if out.is_empty() {
+        return Err(WHY_STATE_GZ_BAD);
+    }
+    Ok(out)
+}
+
+/// First guess's safety factor: aim a little under the target so a tail whose ratio is a touch worse
+/// than the whole file's still fits on the first probe.
+const TAIL_FIRST_SAFETY: f64 = 0.92;
+/// Later guesses use a ratio measured on a tail of the same file, so they need less margin.
+const TAIL_RETRY_SAFETY: f64 = 0.97;
+
+/// mp:D43. Tail a state recording to a `KEYF` chunk whose header+tail compresses under `target`.
+/// `keyframes` is oldest first (from `state_layout`). `Ok(None)` means even the LAST (newest,
+/// smallest) keyframe does not fit -- the file is left out whole, never tailed past its own newest
+/// keyframe.
+///
+/// dist LA17: bounded work. Staging already deflated the whole file once, so `ratio_hint`
+/// (compressed bytes per raw byte, measured there) says how many raw bytes `target` buys: pick the
+/// earliest keyframe whose header+tail is at most `target / ratio * TAIL_FIRST_SAFETY` and deflate
+/// that ONE tail. If it misses, the probe measured a better ratio for this very region; step to the
+/// next keyframe that ratio says fits. Every probe is strictly later (smaller) than the one before,
+/// and the bytes deflated across all probes are capped at one pass over the file, so staging plus
+/// this is at most two passes however the ratio behaves -- where mp:D46's bisection deflated up to
+/// `log2(K)` near-whole tails (250 MB each) and D43's scan one per keyframe. The price is that the
+/// kept tail can be a few percent shorter than the true optimum (the safety factor); the first probe
+/// is almost always the only one. The bodies are never concatenated: `compress_parts` is fed the
+/// header and the slice.
 fn state_tail(
     raw: &[u8],
     header_len: u64,
     keyframes: &[(u64, u32)],
     name: &str,
     target: u64,
+    ratio_hint: f64,
     opts: zip::write::SimpleFileOptions,
 ) -> Result<Option<(Vec<u8>, u64, u32)>, String> {
+    let Some(last) = keyframes.len().checked_sub(1) else {
+        return Ok(None);
+    };
     let header = &raw[..header_len as usize];
-    for &(off, step) in keyframes {
-        let mut body = Vec::with_capacity(header.len() + raw.len() - off as usize);
-        body.extend_from_slice(header);
-        body.extend_from_slice(&raw[off as usize..]);
-        let (zip, comp) = compress_one(name, &body, opts)?;
-        if comp <= target {
-            return Ok(Some((zip, body.len() as u64, step)));
+    // Header + tail bytes if the cut is at keyframe `i`. Strictly decreasing in `i`.
+    let size_at = |i: usize| header.len() as u64 + raw.len() as u64 - keyframes[i].0;
+    // The earliest keyframe at index >= `from` that is at most `want` bytes, else the newest.
+    let pick = |from: usize, want: f64| -> usize {
+        let n = keyframes[from..].partition_point(|&(off, _)| {
+            (header.len() as u64 + raw.len() as u64 - off) as f64 > want
+        });
+        (from + n).min(last)
+    };
+    let mut ratio = if ratio_hint.is_finite() && ratio_hint > 0.0 {
+        ratio_hint
+    } else {
+        1.0
+    };
+    let mut safety = TAIL_FIRST_SAFETY;
+    let mut from = 0usize;
+    // The extra-pass allowance: all probes together deflate at most one whole file's worth.
+    let mut allowance = raw.len() as u64;
+    loop {
+        let want = (target as f64 / ratio * safety).min(allowance as f64);
+        let i = pick(from, want);
+        let size = size_at(i);
+        if size > allowance {
+            return Ok(None); // not even the newest keyframe fits the allowance: leave it out whole
         }
+        let (off, step) = keyframes[i];
+        let (zip, comp) = compress_parts(name, &[header, &raw[off as usize..]], opts)?;
+        allowance -= size;
+        if comp <= target {
+            return Ok(Some((zip, size, step)));
+        }
+        if i == last {
+            return Ok(None);
+        }
+        ratio = comp as f64 / size as f64;
+        safety = TAIL_RETRY_SAFETY;
+        from = i + 1;
     }
-    Ok(None)
 }
 
 /// Everything a report could carry, grouped, with the shed order decided (dist LA14):
@@ -1598,21 +1982,50 @@ fn collect(
 }
 
 /// Deflate every collected entry once into `staging`, then read back each one's compressed size.
+///
+/// dist LA17: an Optional folder that comes AFTER enough staged material to fill the budget is not
+/// staged at all. Optional folders are shed first and oldest first, and items are staged reported,
+/// protected, then optional newest first -- so when the compressed bytes already written reach
+/// `body_budget`, every later Optional folder is certain to be given up whole by `Set::shed`
+/// (the same drop it would get after being deflated for nothing: a raw state recording costs seconds
+/// per 250 MB). Such a folder is marked dropped here with `WHY_OVER_BUDGET`.
 fn stage(
     set: &mut Set,
     staging: &Path,
     opts: zip::write::SimpleFileOptions,
     scrub: &Scrub,
+    body_budget: u64,
+    progress: &Progress,
 ) -> Result<(), String> {
     let file = std::fs::File::create(staging)
         .map_err(|e| format!("cannot create {}: {e}", staging.display()))?;
-    let mut zip = zip::ZipWriter::new(file);
+    let written = Arc::new(AtomicU64::new(0));
+    let mut zip = zip::ZipWriter::new(Counting::new(file, Arc::clone(&written)));
     let mut n = 0usize;
-    for it in set.items.iter_mut() {
+    let total = set.items.len();
+    for (idx, it) in set.items.iter_mut().enumerate() {
+        let g = it.group;
+        if set.groups[g].dropped_why.is_none()
+            && set.groups[g].mode == Mode::DropWhole
+            && set.groups[g].dir.is_some()
+            && written.load(Ordering::Relaxed) >= body_budget
+        {
+            log::line(format!(
+                "report: {} not staged, the newer material already fills the upload budget",
+                set.groups[g].dir.as_deref().unwrap_or_default()
+            ));
+            set.groups[g].dropped_why = Some(WHY_OVER_BUDGET);
+        }
         if set.groups[it.group].dropped_why.is_some() {
             it.fate = Fate::Dropped;
             continue;
         }
+        progress.set(format!(
+            "compressing {} ({} of {})",
+            it.name,
+            idx + 1,
+            total
+        ));
         let raw = match (&it.source, it.kind) {
             (Source::Text(t), _) => {
                 zip.start_file(it.name.as_str(), opts)
@@ -1638,10 +2051,22 @@ fn stage(
                         continue;
                     }
                 };
-                zip.start_file(it.name.as_str(), opts)
+                // mp:D46: a gzip state recording is already deflated; deflating it again costs seconds and
+                // saves nothing, so it is stored (the staged size IS its cost in the report).
+                let o = if it.kind == Kind::State && is_gz_path(p) {
+                    opts.compression_method(zip::CompressionMethod::Stored)
+                } else {
+                    opts
+                };
+                zip.start_file(it.name.as_str(), o)
                     .map_err(|e| format!("cannot start {} in the report: {e}", it.name))?;
-                std::io::copy(&mut f, &mut zip)
-                    .map_err(|e| format!("cannot write {} into the report: {e}", it.name))?
+                let n = std::io::copy(&mut f, &mut zip)
+                    .map_err(|e| format!("cannot write {} into the report: {e}", it.name))?;
+                #[cfg(test)]
+                if it.kind == Kind::State && !is_gz_path(p) {
+                    hook::deflated(n);
+                }
+                n
             }
         };
         it.raw = raw;
@@ -1713,7 +2138,10 @@ fn write_final(
                     .map_err(|e| format!("cannot copy {} into the report: {e}", it.name))?;
             }
         }
-        entries.push(it.name.clone());
+        entries.push(match (&it.fate, &it.tail_name) {
+            (Fate::Tail(_), Some(n)) => n.clone(),
+            _ => it.name.clone(),
+        });
     }
     zip.finish()
         .map_err(|e| format!("cannot finish {}: {e}", dest.display()))?;
@@ -3057,6 +3485,524 @@ mod tests {
             })
             .expect("the oversize single-keyframe file is named in dropped");
         assert_eq!(rec["why"].as_str().unwrap(), WHY_STATE_NO_ROOM, "{rec:?}");
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    // ---- mp:D46: the state recording arrives gzip-compressed (`mh_match_state.bin.gz`) ----------
+
+    fn gzip(bytes: &[u8]) -> Vec<u8> {
+        let mut e = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::fast());
+        e.write_all(bytes).unwrap();
+        e.finish().unwrap()
+    }
+
+    fn compression_of(zip: &Path, entry: &str) -> zip::CompressionMethod {
+        let f = std::fs::File::open(zip).unwrap();
+        let mut a = zip::ZipArchive::new(f).unwrap();
+        let e = a.by_name(entry).unwrap();
+        e.compression()
+    }
+
+    /// A compressed recording of the size a real 36-minute match leaves (~39 MB) rides in whole under
+    /// the REAL `BODY_BUDGET`, byte for byte, STORED (it is already deflated: deflating it again would
+    /// only cost time). A leftover `.gz.tmp` is no recording and stays out; a raw file whose finished
+    /// `.gz` twin sits beside it (a kill between the rename and the delete) is left out too.
+    #[test]
+    fn a_gzip_state_recording_of_field_size_is_carried_whole_within_the_body_budget() {
+        let dir = fresh("state_gz_whole");
+        let name = "20261004T090000Z_a1b2c3d4_1_host";
+        let s = dir.join("logs").join(name);
+        std::fs::create_dir_all(&s).unwrap();
+        // ~39 MB of gzip: a valid gzip member whose payload deflate cannot shrink.
+        let payload = noise(39 * 1024 * 1024, 4242);
+        let gz = gzip(&payload);
+        assert!(gz.len() as u64 > 38_000_000, "{}", gz.len());
+        std::fs::write(s.join("mh_match_state.bin.gz"), &gz).unwrap();
+        std::fs::write(s.join("mh_match_state.bin.gz.tmp"), b"unfinished").unwrap();
+        std::fs::write(s.join("mh_desync_state.bin"), state_file(2, 4 * 1024, 3)).unwrap();
+        // The twin rule: a raw file beside its finished .gz is the same recording.
+        std::fs::write(s.join("mh_match_state_2.bin"), b"raw twin").unwrap();
+        std::fs::write(s.join("mh_match_state_2.bin.gz"), gzip(b"raw twin")).unwrap();
+
+        let zip = dir.join("out").join("report.zip");
+        let built = build(&zip, &input_for(&dir, s.clone(), "a long match")).unwrap();
+        assert!(body_of(&built) <= BODY_BUDGET, "{}", body_of(&built));
+        let entries = entries_of(&zip);
+        let entry = entries
+            .iter()
+            .find(|(n, _)| n == &format!("logs/{name}/mh_match_state.bin.gz"))
+            .expect("the compressed recording is in the report");
+        assert!(entry.1 == gz, "the compressed recording was changed");
+        assert_eq!(
+            compression_of(&zip, &format!("logs/{name}/mh_match_state.bin.gz")),
+            zip::CompressionMethod::Stored
+        );
+        let names: Vec<&str> = entries.iter().map(|(n, _)| n.as_str()).collect();
+        assert!(
+            !names.iter().any(|n| n.ends_with(".gz.tmp")),
+            "an unfinished compress went into the report: {names:?}"
+        );
+        assert!(
+            !names.iter().any(|n| n.ends_with("mh_match_state_2.bin")),
+            "the raw twin of a finished .gz went in as well: {names:?}"
+        );
+        assert!(
+            names.iter().any(|n| n.ends_with("mh_match_state_2.bin.gz")),
+            "{names:?}"
+        );
+        let meta: serde_json::Value = serde_json::from_str(&built.meta).unwrap();
+        assert!(
+            meta["dropped"].as_array().unwrap().is_empty(),
+            "{}",
+            meta["dropped"]
+        );
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// Over budget, a gzip recording is unpacked, cut at a keyframe, and carried as a PLAIN v1 file
+    /// (`...bin`, not `.gz`): same header, first chunk a `KEYF`, a suffix of the original stream. The
+    /// replay inputs stay whole, and `dropped` names the cut with the entry it became (`kept_as`).
+    #[test]
+    fn an_over_budget_report_tails_a_gzip_state_recording_at_a_keyframe() {
+        let dir = fresh("state_gz_tail");
+        let name = "20261004T091000Z_deadbeef_1_host";
+        let s = dir.join("logs").join(name);
+        std::fs::create_dir_all(&s).unwrap();
+        let orders = noise(256 * 1024, 5);
+        std::fs::write(s.join("mh_match_orders.bin"), &orders).unwrap();
+        let state = state_file(6, 700 * 1024, 77);
+        std::fs::write(s.join("mh_match_state.bin.gz"), gzip(&state)).unwrap();
+
+        let zip = dir.join("out").join("report.zip");
+        let budget = 2 * 1024 * 1024u64;
+        let built = build_with_budget(
+            &zip,
+            &input_for(&dir, s.clone(), "desync near the end"),
+            budget,
+        )
+        .unwrap();
+        assert!(body_of(&built) <= budget, "{} > {budget}", body_of(&built));
+
+        let entries = entries_of(&zip);
+        let names: Vec<&str> = entries.iter().map(|(n, _)| n.as_str()).collect();
+        assert!(
+            !names.contains(&format!("logs/{name}/mh_match_state.bin.gz").as_str()),
+            "the over-budget gzip file was carried whole: {names:?}"
+        );
+        assert!(
+            entries
+                .iter()
+                .find(|(n, _)| n == &format!("logs/{name}/mh_match_orders.bin"))
+                .is_some_and(|(_, b)| *b == orders),
+            "the replay input was not kept whole"
+        );
+        assert!(built
+            .entries
+            .contains(&format!("logs/{name}/mh_match_state.bin")));
+        let kept = &entries
+            .iter()
+            .find(|(n, _)| n == &format!("logs/{name}/mh_match_state.bin"))
+            .expect("the tail is carried as the plain .bin")
+            .1;
+        let (orig_header_len, _) = state_layout(&state).unwrap();
+        assert!(kept.len() < state.len());
+        assert_eq!(
+            &kept[..orig_header_len as usize],
+            &state[..orig_header_len as usize]
+        );
+        let (_, kept_keyframes) = state_layout(kept).expect("the tail is not a valid v1 file");
+        assert_eq!(kept_keyframes[0].0, orig_header_len);
+        assert!(state.ends_with(&kept[orig_header_len as usize..]));
+
+        let meta: serde_json::Value = serde_json::from_str(&built.meta).unwrap();
+        let rec = meta["dropped"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|d| {
+                d["file"]
+                    .as_str()
+                    .is_some_and(|f| f.ends_with("mh_match_state.bin.gz"))
+            })
+            .expect("the cut is named in dropped under its on-disk (.gz) name");
+        assert_eq!(rec["why"].as_str().unwrap(), WHY_STATE_TAILED, "{rec:?}");
+        assert_eq!(
+            rec["kept_as"].as_str().unwrap(),
+            format!("logs/{name}/mh_match_state.bin"),
+            "{rec:?}"
+        );
+        assert_eq!(
+            rec["kept_from_step"].as_u64().unwrap(),
+            kept_keyframes[0].1 as u64
+        );
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// The defined behaviour when even the compressed recording cannot be used: a `.gz` that does not
+    /// unpack is left out whole with its own reason (never cut at a guess), and a valid one whose
+    /// newest keyframe still does not fit is left out with the same "no room" reason as a raw file.
+    #[test]
+    fn a_gzip_state_recording_that_cannot_be_cut_is_dropped_with_a_reason() {
+        let dir = fresh("state_gz_drop");
+        let name = "20261004T092000Z_baadf00d_1_host";
+        let s = dir.join("logs").join(name);
+        std::fs::create_dir_all(&s).unwrap();
+        std::fs::write(s.join("mh_desync_state.bin.gz"), noise(2 * 1024 * 1024, 9)).unwrap();
+        let state = state_file(1, 2 * 1024 * 1024, 13);
+        std::fs::write(s.join("mh_match_state.bin.gz"), gzip(&state)).unwrap();
+
+        let zip = dir.join("out").join("report.zip");
+        let built = build_with_budget(&zip, &input_for(&dir, s.clone(), "nothing fits"), 64 * 1024)
+            .unwrap();
+        let names: Vec<String> = entries_of(&zip).into_iter().map(|(n, _)| n).collect();
+        assert!(
+            !names.iter().any(|n| n.contains("_state.bin")),
+            "an unusable state file went in: {names:?}"
+        );
+        let meta: serde_json::Value = serde_json::from_str(&built.meta).unwrap();
+        let why_of = |f: &str| {
+            meta["dropped"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|d| d["file"].as_str().is_some_and(|x| x.ends_with(f)))
+                .unwrap_or_else(|| panic!("{f} is not named in dropped"))["why"]
+                .as_str()
+                .unwrap()
+                .to_string()
+        };
+        assert_eq!(why_of("mh_desync_state.bin.gz"), WHY_STATE_GZ_BAD);
+        assert_eq!(why_of("mh_match_state.bin.gz"), WHY_STATE_NO_ROOM);
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// dist LA17: `state_tail` always lands under the target, never keeps a longer tail than the
+    /// optimum a full scan would, and stays near that optimum. (The scan is the oracle; the search
+    /// under test is an estimate, so "the same cut" is no longer the contract -- "fits, and not much
+    /// shorter than it had to be" is.)
+    #[test]
+    fn the_keyframe_search_fits_and_stays_near_the_optimum() {
+        let state = state_file(24, 96 * 1024, 31);
+        let (header_len, keyframes) = state_layout(&state).unwrap();
+        let opts = zip::write::SimpleFileOptions::default()
+            .compression_method(zip::CompressionMethod::Deflated);
+        let sizes: Vec<u64> = keyframes
+            .iter()
+            .map(|&(off, _)| {
+                let mut body = state[..header_len as usize].to_vec();
+                body.extend_from_slice(&state[off as usize..]);
+                compress_one("x", &body, opts).unwrap().1
+            })
+            .collect();
+        let whole = sizes[0] as f64 / state.len() as f64;
+        for target in [
+            sizes[0] + 1,
+            sizes[0],
+            sizes[7] + 100,
+            sizes[7],
+            sizes[7] - 1,
+            sizes[23] + 1,
+            sizes[23],
+            sizes[23] - 1,
+            0,
+        ] {
+            let want = sizes.iter().position(|&c| c <= target);
+            let got = state_tail(&state, header_len, &keyframes, "x", target, whole, opts).unwrap();
+            let Some((zip, _, step)) = got else {
+                // Nothing fits only when the newest keyframe's own tail is over the target.
+                assert!(
+                    target < sizes[23],
+                    "target {target}: gave up although the newest fits"
+                );
+                assert!(want.is_none());
+                continue;
+            };
+            let idx = step as usize; // the fixture's steps count 0.. per keyframe
+            let comp = zip::ZipArchive::new(std::io::Cursor::new(&zip[..]))
+                .unwrap()
+                .by_index_raw(0)
+                .unwrap()
+                .compressed_size();
+            assert!(comp <= target, "target {target}: kept tail is {comp}");
+            let best = want.expect("a fit exists");
+            assert!(
+                idx >= best,
+                "target {target}: cut at {idx}, before the optimum {best}"
+            );
+            // Within ~15% of the file's keyframes of the optimum (the first guess aims 8% low).
+            assert!(
+                idx <= best + 4,
+                "target {target}: cut at {idx}, optimum {best} -- too much thrown away"
+            );
+        }
+    }
+
+    /// dist LA17: a miss on the first estimate steps to a later keyframe by the ratio it measured,
+    /// and the bytes deflated across all probes stay within one pass over the file.
+    #[test]
+    fn a_wrong_ratio_hint_costs_at_most_one_extra_pass() {
+        let state = state_file(24, 96 * 1024, 53);
+        let (header_len, keyframes) = state_layout(&state).unwrap();
+        let opts = zip::write::SimpleFileOptions::default()
+            .compression_method(zip::CompressionMethod::Deflated);
+        // Noise: the true ratio is ~1.0. Claim 0.65 -- the estimate is 1.5x too generous.
+        let target = state.len() as u64 / 2;
+        hook::take();
+        let got = state_tail(&state, header_len, &keyframes, "x", target, 0.65, opts)
+            .unwrap()
+            .expect("half the file's bytes buys a tail");
+        let deflated = hook::take();
+        let comp = zip::ZipArchive::new(std::io::Cursor::new(&got.0[..]))
+            .unwrap()
+            .by_index_raw(0)
+            .unwrap()
+            .compressed_size();
+        assert!(comp <= target, "{comp} > {target}");
+        assert!(
+            deflated <= state.len() as u64,
+            "{deflated} bytes deflated for a {} byte file",
+            state.len()
+        );
+    }
+
+    /// Does `entry`'s uncompressed stream equal `header + state[off..]`? Streamed, so a ~250 MB check
+    /// does not hold a second copy.
+    fn entry_is_header_plus_tail(zip: &Path, entry: &str, header: &[u8], tail: &[u8]) -> bool {
+        let f = std::fs::File::open(zip).unwrap();
+        let mut a = zip::ZipArchive::new(f).unwrap();
+        let mut e = a.by_name(entry).unwrap();
+        let mut want = header.iter().chain(tail.iter());
+        let mut buf = vec![0u8; 1 << 20];
+        loop {
+            let n = std::io::Read::read(&mut e, &mut buf).unwrap();
+            if n == 0 {
+                break;
+            }
+            for b in &buf[..n] {
+                if want.next() != Some(b) {
+                    return false;
+                }
+            }
+        }
+        want.next().is_none()
+    }
+
+    /// A state recording of `keyframes` x `kf_len` bytes where `noise_len` of each keyframe is
+    /// incompressible and the rest is zeros (a ratio of about `kf_len / noise_len`), written to `path`
+    /// chunk by chunk. Returns (file length, header_len, keyframe offsets).
+    fn write_big_state(
+        path: &Path,
+        keyframes: u32,
+        kf_len: usize,
+        noise_len: usize,
+    ) -> (u64, u64, Vec<(u64, u32)>) {
+        let header = state_header(kf_len as u32, 3000);
+        let mut f = std::io::BufWriter::new(std::fs::File::create(path).unwrap());
+        f.write_all(&header).unwrap();
+        let mut pos = header.len() as u64;
+        let blocks: Vec<Vec<u8>> = (0..4).map(|i| noise(noise_len, 1000 + i)).collect();
+        let mut offs = Vec::new();
+        for k in 0..keyframes {
+            let mut payload = vec![0u8; kf_len];
+            payload[..4].copy_from_slice(&k.to_le_bytes());
+            let b = &blocks[k as usize % blocks.len()];
+            payload[4..4 + b.len() - 4].copy_from_slice(&b[4..]);
+            offs.push((pos, k));
+            let mut chunk = Vec::new();
+            push_chunk(&mut chunk, STATE_TAG_KEYF, &payload);
+            f.write_all(&chunk).unwrap();
+            pos += chunk.len() as u64;
+        }
+        let mut end = Vec::new();
+        push_chunk(&mut end, u32::from_le_bytes(*b"END "), &[0u8; 16]);
+        f.write_all(&end).unwrap();
+        pos += end.len() as u64;
+        f.flush().unwrap();
+        (pos, header.len() as u64, offs)
+    }
+
+    /// dist LA17 done_when (b): a synthetic ~250 MB RAW state recording whose whole deflate is over
+    /// the real `BODY_BUDGET` is staged once and tailed with at most one more pass -- two deflate passes
+    /// over the file, counted by the hook -- the report fits `BODY_BUDGET`, and the kept bytes are the
+    /// header plus an exact suffix of the original starting at a `KEYF` chunk.
+    #[test]
+    fn a_250_mb_raw_state_recording_over_budget_takes_at_most_two_deflate_passes() {
+        let dir = fresh("state_250mb");
+        let name = "20260927T095000Z_f00dfeed_1_host";
+        let s = dir.join("logs").join(name);
+        std::fs::create_dir_all(&s).unwrap();
+        let state_path = s.join("mh_match_state.bin");
+        // 40 keyframes x 6.25 MB = 250 MB; 2.5 MB of each is noise, so ~100 MB deflated: well over 62 MB.
+        let (len, header_len, offs) = write_big_state(&state_path, 40, 6_250_000, 2_500_000);
+        assert!(len > 250_000_000, "{len}");
+
+        let zip = dir.join("out").join("report.zip");
+        hook::take();
+        let built = build(&zip, &input_for(&dir, s.clone(), "desync near the end")).unwrap();
+        let deflated = hook::take();
+        eprintln!(
+            "deflate passes over the {len} byte state file: {:.2}",
+            deflated as f64 / len as f64
+        );
+        assert!(
+            deflated <= 2 * len,
+            "{deflated} bytes deflated for a {len} byte file: more than two passes"
+        );
+        assert!(
+            body_of(&built) <= BODY_BUDGET,
+            "{} > {BODY_BUDGET}",
+            body_of(&built)
+        );
+
+        let meta: serde_json::Value = serde_json::from_str(&built.meta).unwrap();
+        let rec = meta["dropped"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|d| d["file"] == format!("logs/{name}/mh_match_state.bin").as_str())
+            .unwrap_or_else(|| panic!("the cut is not in dropped: {}", built.meta))
+            .clone();
+        let step = rec["kept_from_step"].as_u64().expect("kept_from_step") as usize;
+        assert!(step > 0 && step < 40, "{rec}");
+        // The estimate should keep most of what the budget buys: the kept tail is ~60% of the file
+        // at this ratio (62 MB of ~100 MB); allow a wide band, the point is "not nothing, not all".
+        let kept_bytes = rec["kept_bytes"].as_u64().unwrap();
+        assert!(kept_bytes > len / 4 && kept_bytes < len, "{rec}");
+
+        let raw = std::fs::read(&state_path).unwrap();
+        let entry = format!("logs/{name}/mh_match_state.bin");
+        assert!(
+            entry_is_header_plus_tail(
+                &zip,
+                &entry,
+                &raw[..header_len as usize],
+                &raw[offs[step].0 as usize..]
+            ),
+            "the kept bytes are not the header plus the suffix from keyframe {step}"
+        );
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// dist LA17: a raw state recording in an OPTIONAL folder that the budget is certain to shed is
+    /// not deflated at all -- it is marked dropped (the shed order is unchanged: that folder was the
+    /// first thing `shed` would give up anyway).
+    #[test]
+    fn an_optional_folder_behind_a_full_budget_is_not_staged() {
+        let dir = fresh("opt_not_staged");
+        let logs = dir.join("logs");
+        let mk = |stamp: &str| {
+            let d = logs.join(format!("{stamp}_aaaa{stamp}_1_host"));
+            std::fs::create_dir_all(&d).unwrap();
+            d
+        };
+        let new = mk("20260927T100000Z");
+        let old = mk("20260927T090000Z");
+        // The reported folder alone is over the (small) budget with noise; the older folder holds
+        // a raw state recording that must never be deflated.
+        std::fs::write(new.join("mh_net.log"), noisy_log(900 * 1024, 5)).unwrap();
+        let state = state_file(8, 512 * 1024, 7);
+        std::fs::write(old.join("mh_match_state.bin"), &state).unwrap();
+
+        let zip = dir.join("out").join("report.zip");
+        hook::take();
+        let built =
+            build_with_budget(&zip, &input_for(&dir, new.clone(), "newest"), 256 * 1024).unwrap();
+        assert_eq!(hook::take(), 0, "the shed folder's state file was deflated");
+        let meta: serde_json::Value = serde_json::from_str(&built.meta).unwrap();
+        let old_name = old.file_name().unwrap().to_string_lossy().to_string();
+        assert!(
+            meta["dropped"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|d| d["dir"] == old_name.as_str() && d["why"] == WHY_OVER_BUDGET),
+            "{}",
+            built.meta
+        );
+        assert!(!meta["included"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|v| v == old_name.as_str()));
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// dist LA17: the job is a state machine -- `Running` with a progress line until the thread
+    /// answers, then `Done` once; the build ran on another thread; the result is what `build` returns.
+    #[test]
+    fn the_report_job_runs_off_the_caller_and_reports_progress() {
+        let dir = fresh("job");
+        let s = dir.join("logs").join("20260927T110000Z_1234abcd_1_host");
+        std::fs::create_dir_all(&s).unwrap();
+        std::fs::write(s.join("mh_net.log"), noisy_log(300 * 1024, 6)).unwrap();
+        std::fs::write(s.join("mh_match_state.bin"), state_file(4, 256 * 1024, 3)).unwrap();
+        let zip = dir.join("out").join("job.zip");
+        let input = OwnedInput {
+            game_dir: Some(dir.clone()),
+            logs_root: None,
+            session_dir: Some(s.clone()),
+            launcher_started_utc: None,
+            description: "it froze".to_string(),
+            last_run: None,
+            crash: None,
+            minidump: None,
+            launcher_log: None,
+        };
+        let mut job = Job::start(zip.clone(), input);
+        assert_ne!(job.worker_thread(), std::thread::current().id());
+        let t0 = std::time::Instant::now();
+        let built = loop {
+            match job.poll() {
+                Poll::Running => {
+                    assert!(t0.elapsed().as_secs() < 60, "the job never finished");
+                    std::thread::sleep(std::time::Duration::from_millis(2));
+                }
+                Poll::Done(r) => break r.expect("the build succeeds"),
+            }
+        };
+        assert_eq!(built.zip, zip);
+        assert!(zip.is_file());
+        // "starting", the folder scan, one line per entry, "writing the report".
+        assert!(
+            job.progress().updates() >= 4,
+            "{}",
+            job.progress().updates()
+        );
+        assert_eq!(job.progress().text(), "writing the report");
+        // A result is delivered once.
+        assert!(matches!(job.poll(), Poll::Done(Err(_))));
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// A job whose build fails (no description) surfaces the same error `build` gives.
+    #[test]
+    fn a_failed_job_carries_the_builds_error() {
+        let dir = fresh("job_err");
+        let input = OwnedInput {
+            game_dir: Some(dir.clone()),
+            logs_root: None,
+            session_dir: None,
+            launcher_started_utc: None,
+            description: "  ".to_string(),
+            last_run: None,
+            crash: None,
+            minidump: None,
+            launcher_log: None,
+        };
+        let mut job = Job::start(dir.join("out").join("x.zip"), input);
+        let t0 = std::time::Instant::now();
+        loop {
+            match job.poll() {
+                Poll::Running => {
+                    assert!(t0.elapsed().as_secs() < 60);
+                    std::thread::sleep(std::time::Duration::from_millis(2));
+                }
+                Poll::Done(r) => {
+                    assert_eq!(r.unwrap_err(), NO_DESCRIPTION);
+                    break;
+                }
+            }
+        }
         std::fs::remove_dir_all(&dir).ok();
     }
 }

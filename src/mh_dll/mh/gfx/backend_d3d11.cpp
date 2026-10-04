@@ -152,6 +152,7 @@
 #include "present_backend.h"
 #include "overlay_imgui.h"          // PT-GFX4: on_frame / on_device_release
 #include "include/mh_run_context.h" // MH_ProcessDir -- shared mh_video.log location (video.cpp)
+#include "include/mh_log_sink.h"    // LOG1: async log sink
 
 #pragma comment(lib, "user32.lib") // wsprintfA / wvsprintfA / lstrlenA / GetClientRect / IsIconic
 
@@ -1380,13 +1381,7 @@ void d3d11_backend::log(const char *fmt, ...) {
 
     char path[MAX_PATH];
     wsprintfA(path, "%smh_video.log", MH_ProcessDir());
-    HANDLE h = CreateFileA(path, FILE_APPEND_DATA, FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, OPEN_ALWAYS,
-                           FILE_ATTRIBUTE_NORMAL, nullptr);
-    if (h != INVALID_HANDLE_VALUE) {
-        DWORD w = 0;
-        WriteFile(h, line, (DWORD)lstrlenA(line), &w, nullptr);
-        CloseHandle(h);
-    }
+    mh_logq_write(path, line, lstrlenA(line));
 }
 
 // =====================================================================================================

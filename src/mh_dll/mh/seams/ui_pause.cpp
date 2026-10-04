@@ -19,6 +19,7 @@
 
 #include "include/mh_pause_export.h"
 #include "include/mh_run_context.h" // MH_RunDir
+#include "include/mh_log_sink.h"    // LOG1: async log sink
 #include "addr/mh_addrs.gen.h"      // generated EN VAs
 #include "addr/mh_structs.gen.h"    // mh::game::mh_llm_input_key_event (0x38 stride)
 #include "hook/detour.h"            // install_trampoline + WATCOM_PROLOGUE
@@ -71,13 +72,7 @@ void pz_log(const char *fmt, ...) {
         line[n++] = '\n';
         line[n]   = 0;
     }
-    HANDLE h = CreateFileA(g_log, FILE_APPEND_DATA, FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr,
-                           OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
-    if (h == INVALID_HANDLE_VALUE) return;
-    SetFilePointer(h, 0, nullptr, FILE_END);
-    DWORD wrote = 0;
-    WriteFile(h, line, lstrlenA(line), &wrote, nullptr);
-    CloseHandle(h);
+    mh_logq_write(g_log, line, lstrlenA(line));
 }
 
 mh_llm_input_key_event *slot(uint32_t i) {

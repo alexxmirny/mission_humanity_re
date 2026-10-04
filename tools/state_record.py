@@ -86,6 +86,7 @@ from __future__ import annotations
 
 import argparse
 import bisect
+import gzip
 import hashlib
 import json
 import os
@@ -280,94 +281,131 @@ def _parse_end(payload):
     return struct.unpack("<IIQ", payload)
 
 
+GZ_SUFFIX = ".gz"
+
+
+def resolve_path(path):
+    """mp:D46: the file to read for `path`. mh.dll gzips `mh_match_state.bin` after the match and then
+    deletes the raw file, so a caller that names the raw path (`<dir>/mh_match_state.bin`) gets the
+    compressed sibling when only that exists. A path that exists is returned as it is (the raw file wins
+    when BOTH exist -- a kill between the rename and the delete leaves two complete copies); a `.gz` path is
+    always read as gzip."""
+    if os.path.exists(path):
+        return path
+    if not path.endswith(GZ_SUFFIX) and os.path.exists(path + GZ_SUFFIX):
+        return path + GZ_SUFFIX
+    return path
+
+
+def open_recording(path):
+    """Open a state-record file for reading: gzip (by the 1f 8b magic) or raw."""
+    f = open(resolve_path(path), "rb")
+    magic = f.read(2)
+    f.seek(0)
+    if magic == b"\x1f\x8b":
+        return gzip.GzipFile(fileobj=f, mode="rb")
+    return f
+
+
 def load(path):
-    """Decode a state-record file. Stops cleanly at the first incomplete chunk or CRC mismatch
-    (`rec.stop_reason` names why; `rec.last_step` is the last step actually decoded) -- neither is
-    an exception unless the header itself cannot be read or nothing decodable follows it."""
-    with open(path, "rb") as f:
+    """Decode a state-record file, raw or gzip (docs/state-record.md "The compressed file"). Stops
+    cleanly at the first incomplete chunk or CRC mismatch (`rec.stop_reason` names why;
+    `rec.last_step` is the last step actually decoded) -- neither is an exception unless the header
+    itself cannot be read or nothing decodable follows it. A gzip stream that ends early reads as
+    "truncated" at the point it ended."""
+    with open_recording(path) as f:
         header = _read_header(f)
         f.seek(header.header_len)
         rec = Recording(path, header)
-        file_size = os.fstat(f.fileno()).st_size
-        while f.tell() < file_size:
-            chunk_pos = f.tell()
-            chdr = f.read(CHUNK_HDR_SIZE)
-            if len(chdr) < CHUNK_HDR_SIZE:
-                rec.stop_reason = "truncated"
-                rec.stop_detail = "chunk header cut at file offset %d" % chunk_pos
-                break
-            tag, payload_len, crc = struct.unpack(CHUNK_HDR_FMT, chdr)
-            payload = f.read(payload_len)
-            if len(payload) < payload_len:
-                rec.stop_reason = "truncated"
-                rec.stop_detail = (
-                    "chunk payload cut at file offset %d (tag=0x%08x, wanted %d bytes, got %d)"
-                    % (
-                        chunk_pos,
-                        tag,
-                        payload_len,
-                        len(payload),
-                    )
-                )
-                break
-            actual_crc = zlib.crc32(payload) & 0xFFFFFFFF
-            if actual_crc != crc:
-                rec.stop_reason = "crc_mismatch"
-                rec.stop_detail = (
-                    "tag=0x%08x payload_len=%d at file offset %d (want crc32=0x%08x, got 0x%08x)"
-                    % (
-                        tag,
-                        payload_len,
-                        chunk_pos,
-                        crc,
-                        actual_crc,
-                    )
-                )
-                break
-            if tag == TAG_KEYF:
-                parsed = _parse_keyf(payload, rec.total_len)
-                if parsed is None:
-                    rec.stop_reason = "malformed"
-                    rec.stop_detail = (
-                        "KEYF payload does not match the region table at file offset %d" % chunk_pos
-                    )
-                    break
-                step, state = parsed
-                rec.chunks.append(KeyframeChunk(step, state))
-                rec.keyframe_index[step] = len(rec.chunks) - 1
-                rec.keyframe_steps.append(step)
-                if rec.first_step is None:
-                    rec.first_step = step
-                rec.last_step = step
-            elif tag == TAG_STEP:
-                parsed = _parse_step(payload, rec.regions)
-                if parsed is None:
-                    rec.stop_reason = "malformed"
-                    rec.stop_detail = (
-                        "STEP payload is internally inconsistent at file offset %d" % chunk_pos
-                    )
-                    break
-                step, runs = parsed
-                rec.chunks.append(StepChunk(step, runs))
-                rec.step_chunks[step] = rec.chunks[-1]
-                if rec.first_step is None:
-                    rec.first_step = step
-                rec.last_step = step
-            elif tag == TAG_END:
-                parsed = _parse_end(payload)
-                if parsed is None:
-                    rec.stop_reason = "malformed"
-                    rec.stop_detail = "END payload is not 16 bytes at file offset %d" % chunk_pos
-                    break
-                last_step, steps_recorded, raw_bytes_written = parsed
-                rec.end = EndChunk(last_step, steps_recorded, raw_bytes_written)
-                rec.chunks.append(rec.end)
-            else:
-                rec.stop_reason = "malformed"
-                rec.stop_detail = "unknown chunk tag 0x%08x at file offset %d" % (tag, chunk_pos)
-                break
+        try:
+            _load_chunks(f, rec)
+        except (EOFError, OSError, zlib.error) as e:
+            rec.stop_reason = "truncated"
+            rec.stop_detail = "compressed stream ended or is damaged: %s" % e
         rec.keyframe_steps.sort()
         return rec
+
+
+def _load_chunks(f, rec):
+    while True:
+        chunk_pos = f.tell()
+        chdr = f.read(CHUNK_HDR_SIZE)
+        if not chdr:
+            break  # a clean end of file
+        if len(chdr) < CHUNK_HDR_SIZE:
+            rec.stop_reason = "truncated"
+            rec.stop_detail = "chunk header cut at file offset %d" % chunk_pos
+            break
+        tag, payload_len, crc = struct.unpack(CHUNK_HDR_FMT, chdr)
+        payload = f.read(payload_len)
+        if len(payload) < payload_len:
+            rec.stop_reason = "truncated"
+            rec.stop_detail = (
+                "chunk payload cut at file offset %d (tag=0x%08x, wanted %d bytes, got %d)"
+                % (
+                    chunk_pos,
+                    tag,
+                    payload_len,
+                    len(payload),
+                )
+            )
+            break
+        actual_crc = zlib.crc32(payload) & 0xFFFFFFFF
+        if actual_crc != crc:
+            rec.stop_reason = "crc_mismatch"
+            rec.stop_detail = (
+                "tag=0x%08x payload_len=%d at file offset %d (want crc32=0x%08x, got 0x%08x)"
+                % (
+                    tag,
+                    payload_len,
+                    chunk_pos,
+                    crc,
+                    actual_crc,
+                )
+            )
+            break
+        if tag == TAG_KEYF:
+            parsed = _parse_keyf(payload, rec.total_len)
+            if parsed is None:
+                rec.stop_reason = "malformed"
+                rec.stop_detail = (
+                    "KEYF payload does not match the region table at file offset %d" % chunk_pos
+                )
+                break
+            step, state = parsed
+            rec.chunks.append(KeyframeChunk(step, state))
+            rec.keyframe_index[step] = len(rec.chunks) - 1
+            rec.keyframe_steps.append(step)
+            if rec.first_step is None:
+                rec.first_step = step
+            rec.last_step = step
+        elif tag == TAG_STEP:
+            parsed = _parse_step(payload, rec.regions)
+            if parsed is None:
+                rec.stop_reason = "malformed"
+                rec.stop_detail = (
+                    "STEP payload is internally inconsistent at file offset %d" % chunk_pos
+                )
+                break
+            step, runs = parsed
+            rec.chunks.append(StepChunk(step, runs))
+            rec.step_chunks[step] = rec.chunks[-1]
+            if rec.first_step is None:
+                rec.first_step = step
+            rec.last_step = step
+        elif tag == TAG_END:
+            parsed = _parse_end(payload)
+            if parsed is None:
+                rec.stop_reason = "malformed"
+                rec.stop_detail = "END payload is not 16 bytes at file offset %d" % chunk_pos
+                break
+            last_step, steps_recorded, raw_bytes_written = parsed
+            rec.end = EndChunk(last_step, steps_recorded, raw_bytes_written)
+            rec.chunks.append(rec.end)
+        else:
+            rec.stop_reason = "malformed"
+            rec.stop_detail = "unknown chunk tag 0x%08x at file offset %d" % (tag, chunk_pos)
+            break
 
 
 # ==== state reconstruction ============================================================================
@@ -1254,6 +1292,57 @@ def selftest():
             if rebuilt != states[s]:
                 ok = False
         check("round-trip rebuild matches the known state at every step", ok)
+
+        # mp:D46: the gzip form mh.dll leaves after a match decodes identically to the raw one.
+        gz_path = os.path.join(tmp, "a.bin.gz")
+        with open(gz_path, "wb") as f:
+            f.write(gzip.compress(data, 6))
+        rec_gz = load(gz_path)
+        check(
+            "gzip file: same steps, keyframes, END and stop reason as the raw file",
+            rec_gz.stop_reason is None
+            and rec_gz.first_step == rec.first_step
+            and rec_gz.last_step == rec.last_step
+            and rec_gz.keyframe_steps == rec.keyframe_steps
+            and rec_gz.end is not None
+            and rec_gz.end.last_step == n_steps,
+        )
+        check(
+            "gzip file: every step rebuilds to the same bytes as the raw file",
+            all(
+                b"".join(state_at(rec_gz, s)[n] for n, _ in region_defs) == states[s]
+                for s in range(1, n_steps + 1)
+            ),
+        )
+        gz_only = os.path.join(tmp, "gzonly")
+        os.makedirs(gz_only)
+        with open(os.path.join(gz_only, "m.bin.gz"), "wb") as f:
+            f.write(gzip.compress(data, 6))
+        check(
+            "naming the raw path reads the .gz sibling when the raw file is gone",
+            load(os.path.join(gz_only, "m.bin")).last_step == n_steps,
+        )
+        both = os.path.join(tmp, "both")
+        os.makedirs(both)
+        with open(os.path.join(both, "m.bin"), "wb") as f:
+            f.write(data)
+        with open(os.path.join(both, "m.bin.gz"), "wb") as f:
+            f.write(b"not a gzip stream")  # proves the raw file wins: this would not load
+        check(
+            "raw and .gz both present (a kill after the rename): the raw file is read",
+            load(os.path.join(both, "m.bin")).last_step == n_steps,
+        )
+        gz_cut = os.path.join(tmp, "cut.bin.gz")
+        gz_whole = gzip.compress(data, 6)
+        with open(gz_cut, "wb") as f:
+            f.write(gz_whole[: len(gz_whole) * 3 // 4])
+        rec_cut = load(gz_cut)
+        check(
+            "a gzip stream cut short stops as 'truncated' and keeps the steps before the cut",
+            rec_cut.stop_reason == "truncated"
+            and rec_cut.last_step is not None
+            and 1 <= rec_cut.last_step < n_steps,
+        )
 
         # identical files -> IDENTICAL
         path2 = os.path.join(tmp, "a_copy.bin")

@@ -145,8 +145,10 @@
     <ClCompile Include="session_id_selftest.cpp" />
     <ClCompile Include="session_dir_selftest.cpp" />
     <ClCompile Include="log_rotate_selftest.cpp" />
+    <ClCompile Include="log_sink_selftest.cpp" />
     <ClCompile Include="ini_read_selftest.cpp" />
     <ClCompile Include="info_avi_selftest.cpp" />
+    <ClCompile Include="info_guard_selftest.cpp" />
     <ClCompile Include="imgui_bind_selftest.cpp" />
     <ClCompile Include="scale_filter_selftest.cpp" />
     <ClCompile Include="dinput_convert_selftest.cpp" />
@@ -206,6 +208,8 @@
     <ClCompile Include="..\mh\desync\desync_watch.cpp" />
     <ClCompile Include="..\mh\desync\state_tracker.cpp" />
     <ClCompile Include="..\mh\desync\state_recorder.cpp" />
+    <ClCompile Include="..\mh\desync\state_compress.cpp" />
+    <ClCompile Include="..\mh\desync\state_miniz.c" />
     <ClCompile Include="..\mh\desync\state_ring.cpp" />
     <ClCompile Include="..\mh\desync\world_sync.cpp" />
     <ClCompile Include="..\libmh\save\save_block.cpp" />
@@ -218,6 +222,7 @@
     <ClCompile Include="..\mh_net\net_key.cpp" />
     <ClCompile Include="..\mh_net\net_transport.cpp" />
     <ClCompile Include="..\mh_common\run_context.cpp" />
+    <ClCompile Include="..\mh_common\mh_log_sink.cpp" />
     <ClCompile Include="..\mh\en_guard.cpp" />
     <ClCompile Include="..\mh\hook\detour.cpp" />
     <ClCompile Include="..\mh\hook\patch.cpp" />
@@ -2487,6 +2492,7 @@
     <ClCompile Include="..\mh\seams\ui_bldg_netcrit_pure.cpp" />
     <ClCompile Include="..\mh\seams\ui_storage_panel_purge.cpp" />
     <ClCompile Include="..\mh\seams\ui_info_avi.cpp" />
+    <ClCompile Include="..\mh\seams\ui_info_guard.cpp" />
     <ClCompile Include="..\mh\seams\ui_net_indicator.cpp" />
     <ClCompile Include="..\mh\seams\ui_drive.cpp" />
     <ClCompile Include="..\mh_harness\harness.cpp" />

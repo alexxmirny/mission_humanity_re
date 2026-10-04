@@ -42,6 +42,7 @@
 #include <d3dcompiler.h>
 
 #include "include/mh_run_context.h" // mh_proc_path
+#include "include/mh_log_sink.h"    // LOG1: async log sink
 
 namespace {
 
@@ -167,13 +168,7 @@ unsigned long g_log_gen = 0;
 
 void log_line(const char *text) {
     mh_proc_path(g_log_path, MAX_PATH, "%smh_video.log", &g_log_gen);
-    HANDLE h = CreateFileA(g_log_path, FILE_APPEND_DATA, FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, OPEN_ALWAYS,
-                           FILE_ATTRIBUTE_NORMAL, nullptr);
-    if (h == INVALID_HANDLE_VALUE) return;
-    DWORD w = 0;
-    WriteFile(h, text, (DWORD)lstrlenA(text), &w, nullptr);
-    WriteFile(h, "\n", 1, &w, nullptr);
-    CloseHandle(h);
+    mh_logq_write2(g_log_path, text, lstrlenA(text), "\n", 1);
 }
 
 // A read-only ID3DBlob over static bytecode. The backend calls GetBufferPointer/GetBufferSize and then

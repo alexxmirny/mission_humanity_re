@@ -326,11 +326,23 @@ def snap_steps(snap_dir):
 def match_state_path(dir_):
     """The mh_match_state*.bin state recording (mp:D40/D42) in `dir_`, or None. Globs rather than
     the fixed name because a match folder that already holds one gets `mh_match_state_<n>.bin`
-    (docs/state-record.md); the first (lexically) match is the one this match folder wrote."""
+    (docs/state-record.md); the first (lexically) match is the one this match folder wrote.
+
+    mp:D46: mh.dll gzips the file after the match and deletes the raw one, so the folder may hold
+    `mh_match_state.bin.gz` instead (state_record.load reads both). A recording is named by its raw
+    stem: when BOTH forms exist (a kill between the .gz rename and the raw delete) the raw file is
+    returned, and a `.gz.tmp` (an unfinished compress) matches neither glob."""
     if not dir_:
         return None
-    cands = sorted(glob.glob(os.path.join(dir_, "mh_match_state*.bin")))
-    return cands[0] if cands else None
+    stems = set()
+    for p in glob.glob(os.path.join(dir_, "mh_match_state*.bin")):
+        stems.add(p)
+    for p in glob.glob(os.path.join(dir_, "mh_match_state*.bin.gz")):
+        stems.add(p[: -len(".gz")])
+    cands = sorted(stems)
+    if not cands:
+        return None
+    return cands[0] if os.path.exists(cands[0]) else cands[0] + ".gz"
 
 
 def snap_cadence(steps):
@@ -1307,6 +1319,48 @@ def selftest():
             "judge_state_recording: a missing side -> not judged (None), no exception",
             judge_state_recording(None, match_state_path(st_b))[0] is None
             and judge_state_recording(match_state_path(st_a), None)[0] is None,
+        )
+
+        # mp:D46: the compressed form mh.dll leaves after a match. A side holding only
+        # mh_match_state.bin.gz is found, judged against a raw side, and a .gz.tmp is invisible.
+        import gzip
+
+        st_c = os.path.join(tmp, "state_c")
+        os.makedirs(st_c)
+        with open(os.path.join(st_c, "mh_match_state.bin.gz"), "wb") as fh:
+            fh.write(gzip.compress(sr_data, 6))
+        with open(os.path.join(st_c, "mh_match_state.bin.gz.tmp"), "wb") as fh:
+            fh.write(b"unfinished")
+        check(
+            "match_state_path finds a lone mh_match_state.bin.gz (and ignores .gz.tmp)",
+            match_state_path(st_c) == os.path.join(st_c, "mh_match_state.bin.gz"),
+        )
+        with open(os.path.join(st_b, "mh_match_state.bin"), "wb") as fh:
+            fh.write(sr_data)  # st_b is byte-identical to st_a again
+        ok_j3, lines_j3 = judge_state_recording(match_state_path(st_c), match_state_path(st_b))
+        check(
+            "judge_state_recording: a gzip side vs a raw side, same bytes -> IDENTICAL",
+            ok_j3 is True and any("IDENTICAL" in ln for ln in lines_j3),
+        )
+        ok_j4, lines_j4 = judge_state_recording(match_state_path(st_c), match_state_path(st_a))
+        check(
+            "judge_state_recording: gzip vs gzip-free raw is symmetric",
+            ok_j4 is True,
+        )
+        with open(os.path.join(st_c, "mh_match_state.bin"), "wb") as fh:
+            fh.write(sr_data)  # both forms present: a kill after the rename, before the delete
+        check(
+            "match_state_path: both forms present -> the raw file",
+            match_state_path(st_c) == os.path.join(st_c, "mh_match_state.bin"),
+        )
+        st_d = os.path.join(tmp, "state_d")
+        os.makedirs(st_d)
+        for nm in ("mh_match_state_2.bin.gz", "mh_match_state_3.bin"):
+            with open(os.path.join(st_d, nm), "wb") as fh:
+                fh.write(sr_data)
+        check(
+            "match_state_path: the lexically first stem wins across both forms (_2.bin.gz before _3.bin)",
+            match_state_path(st_d) == os.path.join(st_d, "mh_match_state_2.bin.gz"),
         )
     finally:
         shutil.rmtree(tmp, ignore_errors=True)

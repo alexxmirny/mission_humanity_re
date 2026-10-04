@@ -73,6 +73,7 @@
 #include "gfx/overlay_imgui.h"      // PT-GFX4: arm the ImGui overlay with backend=d3d11
 #include "addr/mh_export.gen.h"     // mh::exp::entry_llm_gfx_ddraw_dll_{acquire,release} -- the arm guards
 #include "include/mh_run_context.h" // mh_proc_path
+#include "include/mh_log_sink.h"    // LOG1: async log sink
 #include "config/ini_read.h"        // read_ini_string -- strips a trailing `;comment`
 #include "hook/detour.h"            // install_jmp
 #include "en_guard.h"               // EN-only build gate
@@ -116,13 +117,7 @@ void gfx_log(const char *fmt, ...) {
         line[n++] = '\n';
         line[n]   = 0;
     }
-    HANDLE h = CreateFileA(g_log_path, FILE_APPEND_DATA, FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, OPEN_ALWAYS,
-                           FILE_ATTRIBUTE_NORMAL, nullptr);
-    if (h != INVALID_HANDLE_VALUE) {
-        DWORD w = 0;
-        WriteFile(h, line, (DWORD)lstrlenA(line), &w, nullptr);
-        CloseHandle(h);
-    }
+    mh_logq_write(g_log_path, line, lstrlenA(line));
 }
 
 // One line per slot, the first time it is reached. The phrase is what done_when (5) greps for.
@@ -306,6 +301,157 @@ void bind_backend(HWND h) {
     }
 }
 
+// ---- PT-GFX8: the window must stay a switchable top-level window ------------------------------------
+//
+// Player report (rc6, Win10 22H2, d3d11 + borderless): after an Alt-Tab the game kept running but had no
+// taskbar button and could not be reached again. Windows lists a top-level window iff it is visible, not
+// DWM-cloaked, and either unowned without WS_EX_TOOLWINDOW or WS_EX_APPWINDOW (the Alt-Tab / taskbar
+// rule; tools/win_probe.py computes the same verdict from outside). The retail window is created
+// WS_POPUP|WS_EX_TOPMOST with NO WS_EX_APPWINDOW, so its presence in the switcher rests entirely on the
+// shell's own bookkeeping, and a monitor-sized borderless popup is exactly what the shell treats as a
+// "fullscreen app" (taskbar suppressed, button bookkeeping skipped) -- a state it can be left in after the
+// window loses the foreground. The guard therefore (1) pins the style bits -- APPWINDOW on, TOOLWINDOW off --
+// on every geometry pass, and (2) tells the shell explicitly, through ITaskbarList, that the window has a
+// tab and is NOT a fullscreen window, at first placement and on every deactivation. ([video]
+// taskbar_guard=0 turns both off, the "before" arm of the alttab_borderless_d3d11 row.)
+bool g_taskbar_guard = true;
+
+// The shell only exists on the interactive desktop; the rig runs lanes on its own desktop object, where an
+// ITaskbarList call would talk to an explorer that does not own the window.
+bool on_default_desktop() {
+    char  n[64] = {0};
+    DWORD need  = 0;
+    HDESK d     = GetThreadDesktop(GetCurrentThreadId());
+    return d && GetUserObjectInformationA(d, UOI_NAME, n, sizeof(n), &need) && lstrcmpiA(n, "Default") == 0;
+}
+
+// ITaskbarList2 by hand (CLSID/IID literals + dynamic ole32): no new link dependency in mh.dll.
+constexpr GUID MH_CLSID_TaskbarList = {0x56FDF344, 0xFD6D, 0x11d0, {0x95, 0x8A, 0x00, 0x60, 0x97, 0xC9, 0xA0, 0x90}};
+constexpr GUID MH_IID_ITaskbarList2 = {0x602D4995, 0xB13A, 0x429b, {0xA6, 0x6E, 0x19, 0x35, 0xE4, 0x4F, 0x43, 0x17}};
+struct taskbar_list2 { // the first slots of ITaskbarList2 (IUnknown, ITaskbarList, MarkFullscreenWindow)
+    struct vtbl {
+        HRESULT(STDMETHODCALLTYPE *QueryInterface)(taskbar_list2 *, const GUID &, void **);
+        ULONG(STDMETHODCALLTYPE *AddRef)(taskbar_list2 *);
+        ULONG(STDMETHODCALLTYPE *Release)(taskbar_list2 *);
+        HRESULT(STDMETHODCALLTYPE *HrInit)(taskbar_list2 *);
+        HRESULT(STDMETHODCALLTYPE *AddTab)(taskbar_list2 *, HWND);
+        HRESULT(STDMETHODCALLTYPE *DeleteTab)(taskbar_list2 *, HWND);
+        HRESULT(STDMETHODCALLTYPE *ActivateTab)(taskbar_list2 *, HWND);
+        HRESULT(STDMETHODCALLTYPE *SetActiveAlt)(taskbar_list2 *, HWND);
+        HRESULT(STDMETHODCALLTYPE *MarkFullscreenWindow)(taskbar_list2 *, HWND, BOOL);
+    } const *v;
+};
+
+volatile LONG g_taskbar_busy      = 0; // one refresh thread at a time
+long          g_taskbar_refreshes = 0;
+volatile LONG g_taskbar_last_hr   = 0x7fffffff; // HRESULT of the last AddTab (0x7fffffff = never ran), for the [tbstate] trace
+
+// Runs off the window's thread: the calls are cross-process COM into explorer and must never be able to
+// stall the frame loop. MTA, so no message pump is needed for the call to complete.
+DWORD WINAPI taskbar_refresh_thread(LPVOID p) {
+    const HWND h      = (HWND)p;
+    using coinit_fn   = HRESULT(WINAPI *)(LPVOID, DWORD);
+    using couninit_fn = void(WINAPI *)();
+    using cocreate_fn = HRESULT(WINAPI *)(const GUID &, LPUNKNOWN, DWORD, const GUID &, LPVOID *);
+    HMODULE ole       = LoadLibraryA("ole32.dll");
+    if (ole) {
+        auto init   = (coinit_fn)GetProcAddress(ole, "CoInitializeEx");
+        auto uninit = (couninit_fn)GetProcAddress(ole, "CoUninitialize");
+        auto create = (cocreate_fn)GetProcAddress(ole, "CoCreateInstance");
+        if (init && uninit && create && SUCCEEDED(init(nullptr, 0 /* COINIT_MULTITHREADED */))) {
+            taskbar_list2 *tb = nullptr;
+            if (SUCCEEDED(create(MH_CLSID_TaskbarList, nullptr, CLSCTX_INPROC_SERVER, MH_IID_ITaskbarList2, (void **)&tb)) && tb) {
+                if (SUCCEEDED(tb->v->HrInit(tb)) && IsWindow(h)) {
+                    InterlockedExchange(&g_taskbar_last_hr, (LONG)tb->v->AddTab(tb, h));
+                    tb->v->MarkFullscreenWindow(tb, h, FALSE);
+                    ++g_taskbar_refreshes;
+                }
+                tb->v->Release(tb);
+            }
+            uninit();
+        }
+        FreeLibrary(ole);
+    }
+    InterlockedExchange(&g_taskbar_busy, 0);
+    return 0;
+}
+
+void request_taskbar_refresh(HWND h, const char *why) {
+    if (!g_taskbar_guard || !h || !on_default_desktop()) return;
+    if (InterlockedCompareExchange(&g_taskbar_busy, 1, 0) != 0) return;
+    static int logged = 0;
+    if (logged < 8) {
+        ++logged;
+        gfx_log("; [gfx] taskbar: AddTab + not-fullscreen told to the shell (%s)", why);
+    }
+    HANDLE t = CreateThread(nullptr, 0, &taskbar_refresh_thread, (LPVOID)h, 0, nullptr);
+    if (t) CloseHandle(t);
+    else InterlockedExchange(&g_taskbar_busy, 0);
+}
+
+// Style bits only; the caller owns the SetWindowLong. Returns the corrected ex-style.
+LONG guard_ex_style(LONG ex) {
+    return g_taskbar_guard ? ((ex | WS_EX_APPWINDOW) & ~(LONG)WS_EX_TOOLWINDOW) : ex;
+}
+
+// ---- PT-GFX8 evidence: [tbstate] lines in mh_video.log -----------------------------------------------
+//
+// The reporter's lost taskbar entry is shell state we cannot reproduce, so the NEXT report has to carry
+// it. One compact line of everything the taskbar / Alt-Tab eligibility rests on (window_switchable, the
+// same predicate the winswitchable harness op asserts) is written on each event that could change it
+// (activate, show, pos change that hides/shows/moves, size, display change, DPI change) and from a 5 s poll
+// that logs ONLY when the facts differ from the last line. Lines are capped at 4 per second (a drag fires
+// WM_WINDOWPOSCHANGED continuously); a dropped event is counted into the next line's drop=. All of it runs
+// on the window's own thread, no allocation, nothing per frame beyond one GetTickCount compare in the poll.
+constexpr DWORD TB_WINDOW_MS = 1000, TB_POLL_MS = 5000;
+constexpr int   TB_PER_WINDOW  = 4;   // lines per TB_WINDOW_MS (a burst of four passes whole)
+char            g_tb_last[384] = {0}; // the fact fields of the last line written (poll dedup)
+DWORD           g_tb_win_tick = 0, g_tb_poll_tick = 0;
+int             g_tb_win_n   = 0;
+int             g_tb_dropped = 0;
+RECT            g_tb_last_wr = {0, 0, 0, 0};
+
+void taskbar_trace(HWND h, const char *why, bool changed_only) {
+    if (!h || !IsWindow(h)) return;
+    const DWORD now = GetTickCount();
+    char        facts[160];
+    const bool  ok = window_switchable(h, facts, sizeof(facts));
+    RECT        wr = {0, 0, 0, 0}, mr = {0, 0, 0, 0};
+    GetWindowRect(h, &wr);
+    MONITORINFO mi = {sizeof(mi)};
+    if (GetMonitorInfoA(MonitorFromWindow(h, MONITOR_DEFAULTTONEAREST), &mi)) mr = mi.rcMonitor;
+    const HWND fg     = GetForegroundWindow();
+    DWORD      fg_pid = 0;
+    if (fg) GetWindowThreadProcessId(fg, &fg_pid);
+    char body[384];
+    wsprintfA(body, "hwnd=%p %s zoomed=%d wr=%ld,%ld,%ld,%ld mon=%ld,%ld,%ld,%ld fg=%p ours=%d switchable=%d guard=%d addtab=%08lx n=%ld", (void *)h,
+              facts, (int)IsZoomed(h), wr.left, wr.top, wr.right, wr.bottom, mr.left, mr.top, mr.right, mr.bottom, (void *)fg,
+              (int)(fg == h || (fg && fg_pid == GetCurrentProcessId())), (int)ok, (int)g_taskbar_guard, (unsigned long)g_taskbar_last_hr,
+              g_taskbar_refreshes);
+    if (changed_only && lstrcmpA(body, g_tb_last) == 0) return;
+    if (!g_tb_win_tick || now - g_tb_win_tick >= TB_WINDOW_MS) {
+        g_tb_win_tick = now;
+        g_tb_win_n    = 0;
+    }
+    if (g_tb_win_n >= TB_PER_WINDOW) {
+        ++g_tb_dropped;
+        return;
+    }
+    lstrcpynA(g_tb_last, body, sizeof(g_tb_last));
+    ++g_tb_win_n;
+    g_tb_last_wr = wr;
+    gfx_log("; [tbstate] t=%lu %s drop=%d %s", (unsigned long)now, why, g_tb_dropped, body);
+    g_tb_dropped = 0;
+}
+
+// Called once per present (ensure_geometry): a tick compare, then at most one trace per TB_POLL_MS.
+void taskbar_trace_poll(HWND h) {
+    const DWORD now = GetTickCount();
+    if (g_tb_poll_tick && now - g_tb_poll_tick < TB_POLL_MS) return;
+    g_tb_poll_tick = now;
+    taskbar_trace(h, "poll", true);
+}
+
 // ---- window geometry -----------------------------------------------------------------------------
 //
 // With no real mode switch the WINDOW is the display. The game creates a WS_POPUP|WS_EX_TOPMOST window
@@ -341,13 +487,27 @@ bool backend_is_null() { return g_backend && lstrcmpA(g_backend->name(), "null")
 
 void ensure_geometry() {
     if (!geometry_owned() || !g_hwnd || g_mode_w <= 0 || g_sizing || backend_is_null()) return;
+    taskbar_trace_poll(g_hwnd); // before the iconic early-out: a minimised window is exactly when it matters
     if (IsIconic(g_hwnd)) return;
     const LONG style = GetWindowLongA(g_hwnd, GWL_STYLE);
-    const LONG ex    = GetWindowLongA(g_hwnd, GWL_EXSTYLE);
+    LONG       ex    = GetWindowLongA(g_hwnd, GWL_EXSTYLE);
     RECT       cr;
     GetClientRect(g_hwnd, &cr);
     bool changed = false;
     g_in_geom    = true;
+    { // PT-GFX8: keep it a switchable window (APPWINDOW on, TOOLWINDOW off); one call, only on a change
+        static bool first = true;
+        const LONG  fix   = guard_ex_style(ex);
+        if (fix != ex) {
+            SetWindowLongA(g_hwnd, GWL_EXSTYLE, fix);
+            gfx_log("; [gfx] taskbar: window ex-style %08lx -> %08lx (APPWINDOW on, TOOLWINDOW off)", (unsigned long)ex, (unsigned long)fix);
+            ex = fix;
+        }
+        if (first && g_taskbar_guard) {
+            first = false;
+            request_taskbar_refresh(g_hwnd, "first placement");
+        }
+    }
     if (g_cfg.window == window_mode::windowed) {
         const LONG want = (style & ~(LONG)WS_POPUP) | WINDOWED_STYLE;
         if (IsZoomed(g_hwnd) || g_user_sized) {
@@ -559,6 +719,37 @@ LRESULT forward(HWND h, UINT m, WPARAM w, LPARAM l) {
 
 LRESULT CALLBACK owned_wndproc(HWND h, UINT m, WPARAM w, LPARAM l) {
     if (h != g_subclassed || !g_prev_proc) return DefWindowProcA(h, m, w, l); // unreachable
+    switch (m) {                                                              // PT-GFX8 [tbstate] triggers; each falls through to the normal handling below
+        case WM_SHOWWINDOW: {
+            char why[48];
+            wsprintfA(why, "SHOWWINDOW show=%d src=%d", (int)w, (int)l);
+            taskbar_trace(h, why, false);
+            break;
+        }
+        case WM_WINDOWPOSCHANGED: {
+            const WINDOWPOS *wp = (const WINDOWPOS *)l;
+            if (wp && ((wp->flags & (SWP_HIDEWINDOW | SWP_SHOWWINDOW)) || wp->x != g_tb_last_wr.left || wp->y != g_tb_last_wr.top ||
+                       wp->x + wp->cx != g_tb_last_wr.right || wp->y + wp->cy != g_tb_last_wr.bottom)) {
+                char why[48];
+                wsprintfA(why, "POSCHANGED flags=%x", (unsigned)wp->flags);
+                taskbar_trace(h, why, false);
+            }
+            break;
+        }
+        case WM_DISPLAYCHANGE: {
+            char why[64];
+            wsprintfA(why, "DISPLAYCHANGE %dbpp %dx%d", (int)w, (int)LOWORD(l), (int)HIWORD(l));
+            taskbar_trace(h, why, false);
+            break;
+        }
+        case WM_DPICHANGED: {
+            char why[32];
+            wsprintfA(why, "DPICHANGED %u", (unsigned)LOWORD(w));
+            taskbar_trace(h, why, false);
+            break;
+        }
+        default: break;
+    }
     switch (m) {
         case WM_MOUSEMOVE:
         case WM_LBUTTONDOWN:
@@ -633,7 +824,11 @@ LRESULT CALLBACK owned_wndproc(HWND h, UINT m, WPARAM w, LPARAM l) {
                 return 0;
             }
             break;
-        case WM_SIZE:
+        case WM_SIZE: {
+            char why[32];
+            wsprintfA(why, "SIZE type=%d", (int)w);
+            taskbar_trace(h, why, false);
+        }
             if (w == SIZE_MINIMIZED) release_clip();
             else if (!g_in_geom && !g_sizing) note_user_size(h); // a snap, maximise, restore -- not a drag
             break;
@@ -645,10 +840,21 @@ LRESULT CALLBACK owned_wndproc(HWND h, UINT m, WPARAM w, LPARAM l) {
             // SC_KEYMENU and goes with it -- the system menu stays reachable from the title bar.
             if ((w & 0xFFF0) == SC_KEYMENU) return 0;
             break;
-        case WM_ACTIVATE:
-            if (LOWORD(w) == WA_INACTIVE) release_clip();
+        case WM_ACTIVATE: {
+            char why[48];
+            wsprintfA(why, "ACTIVATE %s min=%d", LOWORD(w) == WA_INACTIVE ? "inactive" : (LOWORD(w) == WA_CLICKACTIVE ? "click" : "active"), (int)HIWORD(w));
+            taskbar_trace(h, why, false);
+        }
+            if (LOWORD(w) == WA_INACTIVE) {
+                release_clip();
+                request_taskbar_refresh(h, "deactivated"); // PT-GFX8: the shell must keep a tab for it
+            }
             break;
-        case WM_ACTIVATEAPP:
+        case WM_ACTIVATEAPP: {
+            char why[32];
+            wsprintfA(why, "ACTIVATEAPP %d", (int)w);
+            taskbar_trace(h, why, false);
+        }
             if (!w) release_clip();
             break;
         case WM_KILLFOCUS:
@@ -1493,6 +1699,27 @@ bool owned_ddraw_active() { return g_active; }
 
 bool owned_image_rect(RECT *out) { return out && image_rect_client(out); }
 
+// PT-GFX8: the Alt-Tab / taskbar eligibility rule over any window (the UI harness's `winswitchable`), with the
+// facts it decided on written to `facts` (visible/iconic/style/ex/owner/cloaked) for the log.
+bool window_switchable(HWND h, char *facts, int n) {
+    if (!h || !IsWindow(h)) return false;
+    DWORD          cloaked = 0;
+    static HMODULE dwm     = LoadLibraryA("dwmapi.dll");
+    using attr_fn          = HRESULT(WINAPI *)(HWND, DWORD, PVOID, DWORD);
+    static attr_fn get     = dwm ? (attr_fn)GetProcAddress(dwm, "DwmGetWindowAttribute") : nullptr;
+    if (get && FAILED(get(h, 14 /* DWMWA_CLOAKED */, &cloaked, sizeof(cloaked)))) cloaked = 0;
+    const bool  vis   = IsWindowVisible(h) != 0;
+    const DWORD ex    = (DWORD)GetWindowLongA(h, GWL_EXSTYLE);
+    const DWORD style = (DWORD)GetWindowLongA(h, GWL_STYLE);
+    const HWND  owner = GetWindow(h, GW_OWNER);
+    bool        ok    = vis && !cloaked;
+    if (ok) ok = (ex & WS_EX_APPWINDOW) ? true : (!(ex & WS_EX_TOOLWINDOW) && !owner);
+    if (facts && n > 0)
+        wsprintfA(facts, "visible=%d iconic=%d style=%08lx ex=%08lx owner=%p cloaked=%lu", (int)vis, (int)IsIconic(h), (unsigned long)style,
+                  (unsigned long)ex, (void *)owner, (unsigned long)cloaked);
+    return ok;
+}
+
 bool owned_client_to_game(POINT *p) {
     RECT r;
     if (!p || !image_rect_client(&r)) return false;
@@ -1592,6 +1819,7 @@ bool install_owned_ddraw(const char *ini) {
     g_fps_limit         = (int)GetPrivateProfileIntA("video", "fps_limit", 60, ini);
     g_no_window         = GetPrivateProfileIntA("video", "no_window", 0, ini) != 0;
     g_mouse_clip        = GetPrivateProfileIntA("video", "mouse_clip", 1, ini) != 0;
+    g_taskbar_guard     = GetPrivateProfileIntA("video", "taskbar_guard", 1, ini) != 0; // PT-GFX8
     GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
                        (LPCSTR)&install_owned_ddraw, &g_self);
 

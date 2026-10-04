@@ -51,6 +51,9 @@
 #include "mh_run_context.h"  // MH_RunDir_SessionMatchId / MH_RunDir_UtcStamp (mh_common)
 #include "mh_version.h"      // MH_VERSION_FULL -- the build stamp in the marker
 
+// mp:LOG1 -- the async log sink's synchronous, bounded crash drain (mh_common/mh_log_sink.cpp).
+extern "C" void MH_LogQ_CrashDrain(unsigned long ms);
+
 #pragma comment(lib, "user32.lib") // wsprintfA
 
 namespace {
@@ -271,6 +274,14 @@ LONG CALLBACK crash_veh(EXCEPTION_POINTERS *ep) {
     write_stack(ep->ContextRecord); // mp:U21 -- the call chain the context cannot carry
 
     write_marker(&f);
+
+    // mp:LOG1. EVERY log line is queued to an async writer (mh_common/mh_log_sink.cpp), so the lines that
+    // explain this crash may still be in memory. Drain them NOW, on this (dying) thread, bounded --
+    // after the marker (the handoff's payload is already on disk) and BEFORE the launcher is told to
+    // dump, so the report's logs and the dump agree. The drain is lock-free on the producer side and
+    // takes the consumer role with a deadline, so a faulting thread that happens to be mid-enqueue, or a
+    // wedged writer, costs at most the bound -- never a hang. See the "CRASH DRAIN" note in the .cpp.
+    MH_LogQ_CrashDrain(1000);
 
     // The handoff. Only ever reached when a launcher named a channel at startup, which is why a
     // game run from Explorer pays none of this: no events, no wait, marker on disk and out.

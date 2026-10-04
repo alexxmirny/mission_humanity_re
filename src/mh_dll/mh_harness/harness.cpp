@@ -36,6 +36,7 @@
 // module half lives in mh_harness/mh_harness_dllmain.cpp, and the only thing it tells this file is
 // MH_Harness_SetModuleRefused() below.
 #include "include/mh_run_context.h"         // MH_RunDir (per-run log folder)
+#include "include/mh_log_sink.h"            // LOG1: the process-wide async log sink (header-only client)
 #include "include/mh_uidrive_export.h"      // UI-REC: MH_UIDrive_ActiveScreen -- the journal's screen barrier
 #include "state/host_api.h"                 // LIB-ABI: libmh_set_host_api
 #include "state/host_bind.h"                // SB-BIND: the state ABI (bind_stock)
@@ -1220,7 +1221,8 @@ struct OrderRec {
     uint8_t  order[ORDER_SIZE];
 }; // on-disk + in-memory record (0x48 B)
 constexpr uint32_t ORDERS_MAGIC = 0x524f484du;          // "MHOR"
-HANDLE             g_rec_h      = INVALID_HANDLE_VALUE; // record-mode append handle (lazy)
+bool               g_rec_post_stop_done = false; // mp:LOG2: the one post-stop dispatch has been recorded
+bool               g_rec_open   = false; // mp:LOG2: record-mode stream created (lazy; the sink's writer owns the file)
 OrderRec          *g_replay     = nullptr;              // replay buffer (VirtualAlloc)
 uint32_t           g_replay_n   = 0;                    // records loaded
 uint32_t           g_replay_i   = 0;                    // cursor (records are step-sorted)
@@ -1260,7 +1262,7 @@ void copy_arm_paths() {
     lstrcpynA(g_clock_out, p->clock_out, MAX_PATH);
 }
 
-HANDLE   g_clock_h   = INVALID_HANDLE_VALUE; // record-mode clock append handle
+bool     g_clock_open = false; // mp:LOG2: record-mode clock stream created (the sink's writer owns the file)
 double  *g_clock_trk = nullptr;              // replay clock track (VirtualAlloc)
 uint32_t g_clock_n   = 0;
 
@@ -1374,14 +1376,16 @@ constexpr uint32_t UNIT_OFF_CTRL = offsetof(mh::game::mh_map_object_unit, ctrl_g
 //   4. PATH CHANGES REBIND. build_paths() picks the run folder after the first lines are written,
 //      and some callers log to other files -- so a write to a DIFFERENT path flushes and reopens
 //      rather than silently landing in the wrong file.
-constexpr DWORD LOG_BUF      = 1u << 16; // 64 KB: ~250 frames of T/TS/TR
-constexpr DWORD LOG_FLUSH_MS = 1000;     // bound the loss from a killed run to one second of output
-
-HANDLE g_log_h = INVALID_HANDLE_VALUE;
-char   g_log_path_open[MAX_PATH];
-char  *g_log_buf        = nullptr;
-DWORD  g_log_used       = 0;
-DWORD  g_log_last_flush = 0;
+//
+// mp:LOG1 (2026-10-04) SUPERSEDES THE BUFFER AND THE HELD HANDLE DESCRIBED ABOVE. Every line is now
+// ENQUEUED to the process-wide async log sink (mh_common/include/mh_log_sink.h, owned by mh.dll):
+// no file handle, no WriteFile and no 64 KB staging buffer on the game thread. The sink's writer keeps
+// the handle open, coalesces runs of lines into one WriteFile, and flushes within a scheduler wake-up,
+// so constraints 1-4 hold by construction: a killed run loses milliseconds rather than a timer's worth;
+// the file stays readable live; lines stay whole and in order; a write to a different path simply goes
+// to that path. log_flush() is kept for the exit/hold sites that need "on disk before I terminate":
+// it is now a BOUNDED SYNCHRONOUS DRAIN of the sink (mh_logq_flush), not a WriteFile.
+constexpr DWORD LOG_FLUSH_WAIT_MS = 1000; // the bound on log_flush()'s drain
 
 // ---- mp:SES7: the MATCH MIRROR of this log (mh_match_harness.log) -----------------------------
 //
@@ -1401,90 +1405,27 @@ DWORD  g_log_last_flush = 0;
 // cap, which kept only the newest part of a long match. The report packager now budgets the
 // COMPRESSED zip instead (the launcher's report.rs) and trims least-important folders first, so the writer
 // no longer pre-cuts what a report may need. A match's file is bounded by the match's own length.
-HANDLE g_seg_log_h = INVALID_HANDLE_VALUE;
-char   g_seg_log[MAX_PATH];
-char  *g_seg_buf  = nullptr;
-DWORD  g_seg_used = 0;
-
-void seg_write_through(const char *p, DWORD n) {
-    if (g_seg_log_h == INVALID_HANDLE_VALUE || n == 0) return;
-    DWORD wrote = 0;
-    WriteFile(g_seg_log_h, p, n, &wrote, nullptr);
-}
-
-void seg_log_flush() {
-    if (g_seg_used) seg_write_through(g_seg_buf, g_seg_used);
-    g_seg_used = 0;
-}
+bool g_seg_log_open = false; // LOG1: a match segment is open (was: g_seg_log_h held a handle)
+char g_seg_log[MAX_PATH];
 
 void seg_mirror(const char *s, DWORD n) {
-    if (g_seg_log_h == INVALID_HANDLE_VALUE) return;
-    if (!g_seg_buf || n >= LOG_BUF) { // no buffer, or a line larger than it: straight through, in order
-        seg_log_flush();
-        seg_write_through(s, n);
-        return;
-    }
-    if (g_seg_used + n > LOG_BUF) seg_log_flush();
-    for (DWORD i = 0; i < n; ++i) g_seg_buf[g_seg_used + i] = s[i];
-    g_seg_used += n;
+    if (!g_seg_log_open || n == 0) return;
+    mh_logq_write(g_seg_log, s, (int)n);
 }
 
-void log_flush() {
-    if (g_log_h != INVALID_HANDLE_VALUE && g_log_used) {
-        DWORD wrote = 0;
-        WriteFile(g_log_h, g_log_buf, g_log_used, &wrote, nullptr);
-    }
-    g_log_used       = 0;
-    g_log_last_flush = GetTickCount();
-    seg_log_flush(); // mp:SES7: the match mirror shares the timer and every explicit flush point
-}
+void seg_log_flush() {} // LOG1: nothing is buffered in this image any more
 
-// Constraint 1's other half (fork F4G): flush IF the timer says so, called from somewhere that runs
-// whether or not anything is being logged. append_line's own timer check can only fire on the next
-// append, so a run that goes quiet holds its buffer until it dies; this is the same test asked by a
-// caller that is not an append. Cheap and honest when idle: `g_log_used` is zero for every
-// un-instrumented run, so the GetTickCount is not even reached.
-void log_flush_due() {
-    if (g_log_used && (DWORD)(GetTickCount() - g_log_last_flush) >= LOG_FLUSH_MS) log_flush();
-}
+void log_flush() { mh_logq_flush(LOG_FLUSH_WAIT_MS); }
+
+// Constraint 1's other half (fork F4G) is satisfied by the sink's prompt writer; kept as a no-op so
+// the present hook's call site need not change.
+void log_flush_due() {}
 
 void append_line(const char *path, const char *s) {
-    if (!g_log_buf) {
-        g_log_buf = (char *)VirtualAlloc(nullptr, LOG_BUF, MEM_COMMIT, PAGE_READWRITE);
-        if (!g_log_buf) { // no buffer: fall back to the old unbuffered path rather than lose output
-            HANDLE h = CreateFileA(path, FILE_APPEND_DATA, FILE_SHARE_READ, nullptr, OPEN_ALWAYS,
-                                   FILE_ATTRIBUTE_NORMAL, nullptr);
-            if (h == INVALID_HANDLE_VALUE) return;
-            SetFilePointer(h, 0, nullptr, FILE_END);
-            DWORD wrote = 0;
-            WriteFile(h, s, (DWORD)lstrlenA(s), &wrote, nullptr);
-            CloseHandle(h);
-            return;
-        }
-    }
-    if (g_log_h == INVALID_HANDLE_VALUE || lstrcmpiA(path, g_log_path_open) != 0) {
-        log_flush(); // constraint 4: never carry one file's buffered bytes into another
-        if (g_log_h != INVALID_HANDLE_VALUE) CloseHandle(g_log_h);
-        g_log_h = CreateFileA(path, FILE_APPEND_DATA, FILE_SHARE_READ, nullptr, OPEN_ALWAYS,
-                              FILE_ATTRIBUTE_NORMAL, nullptr);
-        if (g_log_h == INVALID_HANDLE_VALUE) return;
-        SetFilePointer(g_log_h, 0, nullptr, FILE_END);
-        lstrcpynA(g_log_path_open, path, MAX_PATH);
-    }
-    const DWORD n = (DWORD)lstrlenA(s);
-    if (path == g_log_path) seg_mirror(s, n); // mp:SES7: no-op unless a match segment is open
-    if (n >= LOG_BUF) {                       // a line larger than the buffer: write it straight through, in order
-        log_flush();
-        DWORD wrote = 0;
-        WriteFile(g_log_h, s, n, &wrote, nullptr);
-        return;
-    }
-    if (g_log_used + n > LOG_BUF) log_flush();
-    for (DWORD i = 0; i < n; ++i) g_log_buf[g_log_used + i] = s[i];
-    g_log_used += n;
-    // Constraint 1: bound how much a killed run can lose. GetTickCount wraps every 49 days; the
-    // subtraction is unsigned so the wrap is harmless.
-    if ((DWORD)(GetTickCount() - g_log_last_flush) >= LOG_FLUSH_MS) log_flush();
+    const int n = lstrlenA(s);
+    if (n == 0) return;
+    if (path == g_log_path) seg_mirror(s, (DWORD)n); // mp:SES7: no-op unless a match segment is open
+    mh_logq_write(path, s, n);
 }
 
 // ---- THE ARMING SIGNAL (fork F2G, ruling Q6) -----------------------------------------------------
@@ -1983,6 +1924,7 @@ void config1_refuse_spine_keys() {
         HANDLE e = GetStdHandle(STD_ERROR_HANDLE);
         if (e != nullptr && e != INVALID_HANDLE_VALUE) {
             DWORD wrote = 0;
+            // LOG-SINK-OK: the process's stderr console handle (a boot-time refusal shout), not a recording
             WriteFile(e, line, lstrlenA(line), &wrote, nullptr);
         }
     };
@@ -2019,21 +1961,21 @@ void config1_refuse_spine_keys() {
 // Format: raw concatenation of every region in manifest order. Fixed layout, so dump and inject
 // agree by construction as long as the manifest is identical (it is -- same binary).
 void seed_dump_to(const char *path) { // mp:SES7: the match segment dumps the same blob elsewhere
-    HANDLE h = CreateFileA(path, GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS,
-                           FILE_ATTRIBUTE_NORMAL, nullptr);
-    if (h == INVALID_HANDLE_VALUE) return;
+    // mp:LOG2: the 2.8 MB blob goes to the log sink's WRITER, not to this (sim) thread: one
+    // create/truncate record, then every slice chunk as a reliable binary append (the sink keeps
+    // per-file order and never truncates or drops these). The blob is COPIED into the queue at the
+    // moment of the dump, so it is the same instant's state the synchronous write saw.
+    mh_logq_create_bin(path, nullptr, 0);
     // ST6 phase 1: through the sink, in PERSIST mode -- everything, nothing masked. Identical bytes
     // to the old flat WriteFile per region, because every slice is still raw and PERSIST is a flat
     // block for all of them; the seed blob's format is unchanged and old blobs stay injectable.
     mh::state::fn_sink sink(
         mh::state::sink_mode::PERSIST,
         [](void *ctx, const void *p, uint32_t n) {
-            DWORD wrote = 0;
-            WriteFile(*static_cast<HANDLE *>(ctx), p, n, &wrote, nullptr);
+            mh_logq_write_bin(static_cast<const char *>(ctx), p, (int)n);
         },
-        &h);
+        const_cast<char *>(path));
     for (int i = 0; i < N_REGIONS; ++i) mh::state::emit_slice(i, sink);
-    CloseHandle(h);
 }
 void seed_dump() { seed_dump_to(g_seed_out); }
 
@@ -2191,13 +2133,9 @@ void boot_snapshot_capture() {
     }
 
     const boot::blob_header *h = reinterpret_cast<const boot::blob_header *>(blob);
-    HANDLE                   f = CreateFileA(g_boot_snap_out, GENERIC_WRITE, 0, nullptr,
-                                             CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
-    if (f != INVALID_HANDLE_VALUE) {
-        DWORD wrote = 0;
-        WriteFile(f, blob, (DWORD)got, &wrote, nullptr);
-        CloseHandle(f);
-    }
+    // mp:LOG2: one create+payload record to the sink's writer (the blob is copied into the queue; the
+    // log_flush() below drains it before this run can end, as it already did for the evidence line).
+    mh_logq_create_bin(g_boot_snap_out, blob, (int)got);
     // The hash is logged so a run's snapshot is identifiable from its log alone, and the two
     // text-pointer tallies are logged because they are how the `pointed-into` carry declaration for
     // G_TEXT_BLOCK is CHECKED rather than merely asserted -- a build-time derivation cannot see a
@@ -2477,13 +2415,9 @@ void world_snapshot_capture(uint64_t combined, uint64_t state, uint64_t clock) {
 
     snapshot_fixup_line("WORLD SNAPSHOT", blob, got); // mp:X3a
     const w::blob_header *h = reinterpret_cast<const w::blob_header *>(blob);
-    HANDLE                f = CreateFileA(g_world_out, GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS,
-                                          FILE_ATTRIBUTE_NORMAL, nullptr);
-    if (f != INVALID_HANDLE_VALUE) {
-        DWORD wrote = 0;
-        WriteFile(f, blob, (DWORD)got, &wrote, nullptr);
-        CloseHandle(f);
-    }
+    // mp:LOG2: as the boot capture -- one create+payload record (an ~8 MB blob: the sink's binary
+    // budget, not its text bound, carries it); the log_flush() below makes it durable.
+    mh_logq_create_bin(g_world_out, blob, (int)got);
     // The two lockstep numbers are printed HERE as well as landing in the blob, so the fixture can
     // be checked against the run's own `%lu <clock> <combined> <state>` line -- which the next
     // statement at the call site writes -- rather than only against a field the capture itself
@@ -2941,7 +2875,8 @@ void world_import_at_run(void) {
     if (done) return;
     done = true;
 
-    char   line[420];
+    char line[420];
+    log_flush(); // mp:LOG2: world_capture's blob is written by the log sink's writer; read it only once it is on disk
     HANDLE f = CreateFileA(g_world_out, GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING,
                            FILE_ATTRIBUTE_NORMAL, nullptr);
     if (f == INVALID_HANDLE_VALUE) {
@@ -3129,8 +3064,10 @@ void world_import_at_run(void) {
 char     g_proc_dir_h[MAX_PATH]; // the process folder, from g_log_path (lazily)
 char     g_seg_dir[MAX_PATH];    // the session folder the open segment lives in; "" = no segment
 char     g_seg_orders[MAX_PATH], g_seg_clock[MAX_PATH], g_seg_seed[MAX_PATH];
-HANDLE   g_seg_rec_h    = INVALID_HANDLE_VALUE;
-HANDLE   g_seg_clock_h  = INVALID_HANDLE_VALUE;
+// mp:LOG2: the segment's recordings are written by the log sink's writer; these are only "this stream
+// is open" flags (there is no handle on the game thread any more).
+bool     g_seg_rec_on   = false;
+bool     g_seg_clock_on = false;
 uint32_t g_seg_base     = 0; // process step before the match's first step
 uint32_t g_seg_orders_n = 0;
 
@@ -3152,12 +3089,9 @@ void seg_close(const char *why) {
               "; [match] segment CLOSE at process step %lu -- %lu match step(s), %lu order record(s); %s\n",
               g_step, g_step > g_seg_base ? g_step - g_seg_base : 0ul, g_seg_orders_n, why);
     seg_mirror(line, (DWORD)lstrlenA(line));
-    seg_log_flush();
-    if (g_seg_log_h != INVALID_HANDLE_VALUE) CloseHandle(g_seg_log_h);
-    if (g_seg_rec_h != INVALID_HANDLE_VALUE) CloseHandle(g_seg_rec_h);
-    if (g_seg_clock_h != INVALID_HANDLE_VALUE) CloseHandle(g_seg_clock_h);
-    g_seg_log_h = g_seg_rec_h = g_seg_clock_h = INVALID_HANDLE_VALUE;
-    g_seg_dir[0]                              = '\0';
+    g_seg_log_open = false; // the sink owns (and closes, on idle) the file; nothing to release here
+    g_seg_rec_on = g_seg_clock_on = false; // the sink's idle-close releases the files
+    g_seg_dir[0]                  = '\0';
 }
 
 void seg_open(const char *dir) {
@@ -3168,27 +3102,21 @@ void seg_open(const char *dir) {
     wsprintfA(g_seg_orders, "%smh_match_orders.bin", dir);
     wsprintfA(g_seg_clock, "%smh_match_clock.bin", dir);
     wsprintfA(g_seg_seed, "%smh_match_seed.bin", dir);
-    if (!g_seg_buf) g_seg_buf = (char *)VirtualAlloc(nullptr, LOG_BUF, MEM_COMMIT, PAGE_READWRITE);
-    g_seg_log_h = CreateFileA(g_seg_log, FILE_APPEND_DATA, FILE_SHARE_READ, nullptr, OPEN_ALWAYS,
-                              FILE_ATTRIBUTE_NORMAL, nullptr);
-    if (g_seg_log_h != INVALID_HANDLE_VALUE) SetFilePointer(g_seg_log_h, 0, nullptr, FILE_END);
+    g_seg_log_open   = true; // LOG1: mirrored lines are enqueued to g_seg_log by seg_mirror
     const bool rec   = g_cfg.order_mode == 1;
     const bool clock = rec || g_cfg.clock_record;
     const bool seed  = rec && g_cfg.seed_mode == 0;
-    if (rec) {
-        g_seg_rec_h = CreateFileA(g_seg_orders, GENERIC_WRITE, FILE_SHARE_READ, nullptr, CREATE_ALWAYS,
-                                  FILE_ATTRIBUTE_NORMAL, nullptr);
-        if (g_seg_rec_h != INVALID_HANDLE_VALUE) {
-            struct {
-                uint32_t magic, ver;
-            } hdr = {ORDERS_MAGIC, 1};
-            DWORD w;
-            WriteFile(g_seg_rec_h, &hdr, sizeof(hdr), &w, nullptr);
-        }
+    if (rec) { // mp:LOG2: create/truncate + the MHOR header as ONE sink record, written off this thread
+        struct {
+            uint32_t magic, ver;
+        } hdr = {ORDERS_MAGIC, 1};
+        mh_logq_create_bin(g_seg_orders, &hdr, (int)sizeof(hdr));
+        g_seg_rec_on = true;
     }
-    if (clock)
-        g_seg_clock_h = CreateFileA(g_seg_clock, GENERIC_WRITE, FILE_SHARE_READ, nullptr, CREATE_ALWAYS,
-                                    FILE_ATTRIBUTE_NORMAL, nullptr);
+    if (clock) {
+        mh_logq_create_bin(g_seg_clock, nullptr, 0);
+        g_seg_clock_on = true;
+    }
     if (seed) seed_dump_to(g_seg_seed);
     char proc_leaf[96], seg_leaf_s[96];
     seg_leaf(g_proc_dir_h, proc_leaf, sizeof(proc_leaf));
@@ -3250,8 +3178,10 @@ void verdict_snap_tick() {
     const char *dir = MH_RunDir();
     char        path[MAX_PATH];
     wsprintfA(path, "%smh_desync_snap_%lu.bin", dir ? dir : "", g_step);
-    HANDLE h = CreateFileA(path, GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
-    if (h == INVALID_HANDLE_VALUE) return;
+    // mp:LOG2: the file is built by the log sink's WRITER. The old code seeked back to patch each region's
+    // length prefix; the sink is append-only, so each region's VERDICT stream is staged in a heap buffer
+    // here and enqueued as [u32 len][bytes] once its length is known. Bytes on disk are identical.
+    mh_logq_create_bin(path, nullptr, 0);
     const char *names[N_REGIONS];
     uint32_t    lens[N_REGIONS];
     bool        excl[N_REGIONS];
@@ -3263,36 +3193,41 @@ void verdict_snap_tick() {
     struct {
         uint32_t magic, ver, step, region_count;
         uint64_t manifest_fp;
-    } hdr   = {0x4e53484du, 1, g_step, (uint32_t)N_REGIONS,
-               mh::desync::manifest_fingerprint(names, lens, excl, N_REGIONS)};
-    DWORD w = 0;
-    WriteFile(h, &hdr, sizeof(hdr), &w, nullptr);
-    struct ctx_t {
-        HANDLE   h;
-        uint32_t n;
+    } hdr = {0x4e53484du, 1, g_step, (uint32_t)N_REGIONS,
+             mh::desync::manifest_fingerprint(names, lens, excl, N_REGIONS)};
+    mh_logq_write_bin(path, &hdr, (int)sizeof(hdr));
+    struct stage_t {
+        uint8_t *p;
+        uint32_t len, cap;
     };
+    stage_t st = {nullptr, 0, 0};
     for (int i = 0; i < N_REGIONS; ++i) {
-        // the length prefix first (patched after), then the region's VERDICT stream
-        const DWORD at   = SetFilePointer(h, 0, nullptr, FILE_CURRENT);
-        uint32_t    zero = 0;
-        WriteFile(h, &zero, sizeof(zero), &w, nullptr);
-        ctx_t              c = {h, 0};
+        st.len = 0;
         mh::state::fn_sink out(
             mh::state::sink_mode::VERDICT,
             [](void *ctx, const void *p, uint32_t n) {
-                ctx_t *k  = static_cast<ctx_t *>(ctx);
-                DWORD  ww = 0;
-                WriteFile(k->h, p, n, &ww, nullptr);
-                k->n += n;
+                stage_t *k = static_cast<stage_t *>(ctx);
+                if (k->len + n > k->cap) {
+                    uint32_t ncap = k->cap ? k->cap : 65536u;
+                    while (ncap < k->len + n) ncap *= 2;
+                    uint8_t *np = static_cast<uint8_t *>(HeapAlloc(GetProcessHeap(), 0, ncap));
+                    if (np == nullptr) return;
+                    if (k->p) {
+                        memcpy(np, k->p, k->len);
+                        HeapFree(GetProcessHeap(), 0, k->p);
+                    }
+                    k->p   = np;
+                    k->cap = ncap;
+                }
+                memcpy(k->p + k->len, p, n);
+                k->len += n;
             },
-            &c);
+            &st);
         mh::state::emit_slice(i, out);
-        const DWORD end = SetFilePointer(h, 0, nullptr, FILE_CURRENT);
-        SetFilePointer(h, (LONG)at, nullptr, FILE_BEGIN);
-        WriteFile(h, &c.n, sizeof(c.n), &w, nullptr);
-        SetFilePointer(h, (LONG)end, nullptr, FILE_BEGIN);
+        const uint32_t n = st.len;
+        mh_logq_write2(path, &n, (int)sizeof(n), st.p, (int)n, MH_LOGQ_CAP_BIN);
     }
-    CloseHandle(h);
+    if (st.p) HeapFree(GetProcessHeap(), 0, st.p);
     char line[MAX_PATH + 96];
     wsprintfA(line, "; [verdict-snap] step=%lu -> %s\n", g_step, path);
     append_line(g_log_path, line);
@@ -3304,31 +3239,29 @@ void verdict_snap_tick() {
 void order_record() {
     int n = *reinterpret_cast<const int *>(ADDR_ORDER_QCOUNT());
     if (n <= 0 || n > ORDER_QCAP) return;
-    if (g_rec_h == INVALID_HANDLE_VALUE) {
-        g_rec_h = CreateFileA(g_orders_out, GENERIC_WRITE, FILE_SHARE_READ, nullptr,
-                              CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
-        if (g_rec_h == INVALID_HANDLE_VALUE) {
-            g_cfg.order_mode = 0;
-            return;
-        }
+    // mp:LOG2: no file handle and no WriteFile on the sim thread. The first record of the stream is a
+    // create/truncate + the MHOR header, enqueued to the log sink's writer at the SAME logical point
+    // the old lazy CreateFile ran (the first non-empty step), so a run with no orders still leaves no
+    // file. The records of this step are staged here and enqueued as ONE append per file (the bytes
+    // are the same flat run of 0x48-byte records the per-record WriteFiles produced).
+    if (!g_rec_open) {
         struct {
             uint32_t magic, ver;
         } hdr = {ORDERS_MAGIC, 1};
-        DWORD w;
-        WriteFile(g_rec_h, &hdr, sizeof(hdr), &w, nullptr);
+        mh_logq_create_bin(g_orders_out, &hdr, (int)sizeof(hdr));
+        g_rec_open = true;
     }
-    const uint8_t *q = reinterpret_cast<const uint8_t *>(ADDR_ORDER_QUEUE());
+    static OrderRec s_stage[ORDER_QCAP];
+    const uint8_t  *q = reinterpret_cast<const uint8_t *>(ADDR_ORDER_QUEUE());
     for (int i = 0; i < n; ++i) {
-        OrderRec r;
-        r.step = g_step;
-        memcpy(r.order, q + (size_t)i * ORDER_SIZE, ORDER_SIZE);
-        DWORD w;
-        WriteFile(g_rec_h, &r, sizeof(r), &w, nullptr);
-        if (g_seg_rec_h != INVALID_HANDLE_VALUE) { // mp:SES7: the match's copy, on the match's step axis
-            r.step = g_step - g_seg_base;
-            WriteFile(g_seg_rec_h, &r, sizeof(r), &w, nullptr);
-            ++g_seg_orders_n;
-        }
+        s_stage[i].step = g_step;
+        memcpy(s_stage[i].order, q + (size_t)i * ORDER_SIZE, ORDER_SIZE);
+    }
+    mh_logq_write_bin(g_orders_out, s_stage, n * (int)sizeof(OrderRec));
+    if (g_seg_rec_on) { // mp:SES7: the match's copy, on the match's step axis
+        for (int i = 0; i < n; ++i) s_stage[i].step = g_step - g_seg_base;
+        mh_logq_write_bin(g_seg_orders, s_stage, n * (int)sizeof(OrderRec));
+        g_seg_orders_n += (uint32_t)n;
     }
 }
 
@@ -3367,15 +3300,15 @@ void order_replay_load() {
 
 // clock track: append the current step's game clock (8 bytes) during record.
 void clock_record(uint64_t clock_bits) {
-    if (g_clock_h == INVALID_HANDLE_VALUE) {
-        g_clock_h = CreateFileA(g_clock_out, GENERIC_WRITE, FILE_SHARE_READ, nullptr,
-                                CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
-        if (g_clock_h == INVALID_HANDLE_VALUE) return;
+    // mp:LOG2: 8 bytes per step to the sink's writer (create/truncate on the first record, as the lazy
+    // CreateFile did); the writer coalesces the run of records into one WriteFile.
+    if (!g_clock_open) {
+        mh_logq_create_bin(g_clock_out, nullptr, 0);
+        g_clock_open = true;
     }
-    DWORD w;
-    WriteFile(g_clock_h, &clock_bits, sizeof(clock_bits), &w, nullptr);
-    if (g_seg_clock_h != INVALID_HANDLE_VALUE) // mp:SES7: track[0] = match step 1
-        WriteFile(g_seg_clock_h, &clock_bits, sizeof(clock_bits), &w, nullptr);
+    mh_logq_write_bin(g_clock_out, &clock_bits, (int)sizeof(clock_bits));
+    if (g_seg_clock_on) // mp:SES7: track[0] = match step 1
+        mh_logq_write_bin(g_seg_clock, &clock_bits, (int)sizeof(clock_bits));
 }
 
 void clock_load() {
@@ -9627,8 +9560,27 @@ void *g_disp_promoted = nullptr;
 
 // order_queue_dispatch entry hook -- record mode snapshots the queue about to execute.
 void on_dispatch() {
-    if (g_cfg.order_mode == 1) order_record();
-    else if (g_cfg.order_mode == 2 && g_cfg.replay_dispatch_inject && g_replay)
+    if (g_cfg.order_mode == 1) {
+        // mp:LOG2 (explains the 2026-10-04 match_launch_net last-step flake): once the harness stops
+        // (g_active=false at stop_step, g_step frozen) a run with exit_on_stop=0 keeps simulating until
+        // its runner kills it, and every further dispatch used to be recorded AGAIN under the frozen
+        // g_step -- so the LAST step's record count was however many steps ran before the kill (host 24
+        // vs peer 46; 214 vs 223 in a solo run). Only ONE dispatch after the stop belongs to the
+        // recording: the stop step's own body (the deferred-exit design, see g_exit_after_body). The
+        // latch records that one and ignores the rest; it re-arms whenever the harness is active again.
+        if (g_active) {
+            g_rec_post_stop_done = false;
+            order_record();
+        } else if (!g_rec_post_stop_done) {
+            g_rec_post_stop_done = true;
+            order_record();
+            // The stop step's own record is the LAST thing the stream will ever get, and a runner
+            // may taskkill /f this process at any moment after the stop block's log_flush() (it
+            // already ran, before this body): drain once more so the final step is on disk. Once per
+            // stop, bounded -- not a per-step cost.
+            log_flush();
+        }
+    } else if (g_cfg.order_mode == 2 && g_cfg.replay_dispatch_inject && g_replay)
         order_replay_dispatch_replace(); // mp:D37b
 }
 

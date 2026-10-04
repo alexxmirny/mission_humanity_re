@@ -12,8 +12,15 @@
 #include "mh_launch_export.h"   // MH_Launch_Init (mh_lib/launch.cpp) -- D17 launch-to-state harness
 #include "mh_crash_export.h"    // MH_CrashMarker_Init/Shutdown (mh/seams/crash_marker.cpp) -- LA4
 
+// mp:LOG1 -- the process-wide async log sink (mh_common/mh_log_sink.cpp). Started FIRST in
+// DLL_PROCESS_ATTACH so the very first line of the boot is queued, drained on a crash by the marker
+// handler, and drained at DLL_PROCESS_DETACH below.
+extern void MH_LogQ_Init(void);
+extern void MH_LogQ_Shutdown(unsigned long ms);
+
 BOOL APIENTRY DllMain(HANDLE hModule, DWORD dwReason, LPVOID lpReserved) {
     if (dwReason == DLL_PROCESS_ATTACH) {
+        MH_LogQ_Init();
         // BEFORE THE ZEROTH CALL, AND THAT IS NOT A CONTRADICTION OF THE CONTRACT BELOW. dist LA4's
         // crash handler is the one arm here that depends on NOTHING -- no satellite, no export
         // table, no run context, no ini section any other arm reads. It is AddVectoredExceptionHandler
@@ -116,6 +123,10 @@ BOOL APIENTRY DllMain(HANDLE hModule, DWORD dwReason, LPVOID lpReserved) {
         // the overwhelmingly common case and the OS is about to reclaim everything; adding
         // teardown for things that do not need it is how a detach path acquires a deadlock.
         MH_CrashMarker_Shutdown();
+        // mp:LOG1: ExitProcess has already killed the writer thread by now, so this drains the queue
+        // inline (bounded 2 s); a FreeLibrary detach stops the live writer first. Last, so the lines
+        // the shutdown above logged are included.
+        MH_LogQ_Shutdown(2000);
     }
     return TRUE;
 }

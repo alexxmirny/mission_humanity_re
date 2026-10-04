@@ -9,6 +9,7 @@
 #include <cstring>
 
 #include "addr/mh_regions.gen.h"
+#include "desync/state_compress.h"
 #include "desync/state_record.h"
 #include "include/mh_run_context.h" // MH_RunDir: the match's folder, where the D25 snapshots land
 
@@ -25,6 +26,7 @@ uint64_t g_fp     = 0;
 int64_t  g_qpc_hz = 0;
 uint32_t g_total  = 0; // bytes per keyframe state (sum of slice lengths)
 uint32_t g_lens[N];
+bool     g_compress = true; // mp:D46: gzip the file in the background once it is closed
 
 #define RLOG(...)                      \
     do {                               \
@@ -116,6 +118,10 @@ DWORD WINAPI writer_main(LPVOID arg) {
         RLOG("; [desync] STATE RECORD writer: closed %s -- %lu bytes in %lu writes, max write %.1f ms%s\n", f->path,
              (unsigned long)f->written, (unsigned long)f->writes, ms,
              f->with_end ? "" : " (no END chunk: recording was stopped early)");
+    // mp:D46: the file is closed and complete (valid prefix + END). Compression runs on a thread of its own so
+    // neither this writer nor match_end()'s CLOSE_WAIT_MS wait ever covers it; the raw file stays until the .gz
+    // is verified (state_compress.h).
+    if (g_compress && !f->failed) gz::compress_async(f->path, g_log);
     InterlockedExchange(&f->done, 1);
     release(f);
     return 0;
@@ -253,6 +259,11 @@ bool open_file(uint32_t step) {
     for (int k = 1; k <= 99 && h == INVALID_HANDLE_VALUE; ++k) {
         if (k == 1) wsprintfA(f->path, "%smh_match_state.bin", dir);
         else wsprintfA(f->path, "%smh_match_state_%d.bin", dir, k);
+        // mp:D46: a finished earlier match in this folder left only <name>.gz (its raw file was deleted),
+        // so the raw name being free does not make it this match's.
+        char gzp[MAX_PATH + 4];
+        wsprintfA(gzp, "%s.gz", f->path);
+        if (GetFileAttributesA(gzp) != INVALID_FILE_ATTRIBUTES) continue;
         h = CreateFileA(f->path, GENERIC_WRITE, FILE_SHARE_READ, nullptr, CREATE_NEW, FILE_ATTRIBUTE_NORMAL, nullptr);
         if (h == INVALID_HANDLE_VALUE && GetLastError() != ERROR_FILE_EXISTS) break;
     }
@@ -405,6 +416,7 @@ bool configure(int enabled_key, int keyframe_every, uint64_t manifest_fp, log_fn
 }
 
 bool                 enabled() { return g_on; }
+void                 set_compress(bool on) { g_compress = on; }
 state_hub::listener *listener() { return &g_listener; }
 
 void session_start(const axis_info &axis) {

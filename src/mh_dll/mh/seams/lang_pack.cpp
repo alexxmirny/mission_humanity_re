@@ -11,6 +11,7 @@
 
 #include "include/mh_langpack_export.h"
 #include "include/mh_run_context.h" // mh_run_path
+#include "include/mh_log_sink.h"    // LOG1: async log sink
 #include "config/ini_read.h"        // read_ini_string -- strips a trailing `;comment`
 #include "hook/patch.h"             // patch_bytes_guarded
 #include "en_guard.h"               // EN-only build gate
@@ -58,13 +59,7 @@ void lp_log(const char *fmt, ...) {
         line[n++] = '\n';
         line[n]   = 0;
     }
-    HANDLE h = CreateFileA(g_log, FILE_APPEND_DATA, FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr,
-                           OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
-    if (h == INVALID_HANDLE_VALUE) return;
-    SetFilePointer(h, 0, nullptr, FILE_END);
-    DWORD wrote = 0;
-    WriteFile(h, line, lstrlenA(line), &wrote, nullptr);
-    CloseHandle(h);
+    mh_logq_write(g_log, line, lstrlenA(line));
 }
 
 // "<exe dir>\" (with the trailing separator).
