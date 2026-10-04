@@ -312,8 +312,13 @@ void bind_backend(HWND h) {
 // "fullscreen app" (taskbar suppressed, button bookkeeping skipped) -- a state it can be left in after the
 // window loses the foreground. The guard therefore (1) pins the style bits -- APPWINDOW on, TOOLWINDOW off --
 // on every geometry pass, and (2) tells the shell explicitly, through ITaskbarList, that the window has a
-// tab and is NOT a fullscreen window, at first placement and on every deactivation. ([video]
-// taskbar_guard=0 turns both off, the "before" arm of the alttab_borderless_d3d11 row.)
+// tab, at first placement and on every deactivation. ([video] taskbar_guard=0 turns both off, the "before"
+// arm of the alttab_borderless_d3d11 row.)
+//
+// NOT MarkFullscreenWindow(FALSE). v0.2.0-rc7 also told the shell the window was NOT fullscreen; the shell
+// then kept the taskbar drawn ABOVE the monitor-sized borderless game for the whole session (user report,
+// rc7 withdrawn 2026-10-05). The rig could not see it: these shell calls are skipped off the default
+// desktop, and every lane runs on its own desktop. Let the shell detect fullscreen on its own.
 bool g_taskbar_guard = true;
 
 // The shell only exists on the interactive desktop; the rig runs lanes on its own desktop object, where an
@@ -363,7 +368,6 @@ DWORD WINAPI taskbar_refresh_thread(LPVOID p) {
             if (SUCCEEDED(create(MH_CLSID_TaskbarList, nullptr, CLSCTX_INPROC_SERVER, MH_IID_ITaskbarList2, (void **)&tb)) && tb) {
                 if (SUCCEEDED(tb->v->HrInit(tb)) && IsWindow(h)) {
                     InterlockedExchange(&g_taskbar_last_hr, (LONG)tb->v->AddTab(tb, h));
-                    tb->v->MarkFullscreenWindow(tb, h, FALSE);
                     ++g_taskbar_refreshes;
                 }
                 tb->v->Release(tb);
@@ -382,7 +386,7 @@ void request_taskbar_refresh(HWND h, const char *why) {
     static int logged = 0;
     if (logged < 8) {
         ++logged;
-        gfx_log("; [gfx] taskbar: AddTab + not-fullscreen told to the shell (%s)", why);
+        gfx_log("; [gfx] taskbar: AddTab told to the shell (%s)", why);
     }
     HANDLE t = CreateThread(nullptr, 0, &taskbar_refresh_thread, (LPVOID)h, 0, nullptr);
     if (t) CloseHandle(t);

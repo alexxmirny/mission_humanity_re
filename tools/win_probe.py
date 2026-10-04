@@ -100,7 +100,41 @@ def describe(h) -> dict:
         "foreground": int(user32.GetForegroundWindow() or 0) == int(h),
     }
     info["alttab"] = eligible(info)
+    info["taskbar_over"] = taskbar_over(h, r)
     return info
+
+
+GA_ROOT = 2
+user32.WindowFromPoint.restype = wintypes.HWND
+user32.WindowFromPoint.argtypes = [wintypes.POINT]
+user32.GetAncestor.restype = wintypes.HWND
+user32.FindWindowW.restype = wintypes.HWND
+
+
+def taskbar_over(h, r) -> int:
+    """1 if the taskbar is DRAWN OVER the game window, 0 if not, -1 if it cannot be said.
+
+    rc7 (2026-10-05) told the shell the borderless window was NOT fullscreen and the taskbar stayed on top
+    of the game for the whole session. The test is what the screen shows: hit-test the middle of the part
+    of the taskbar that overlaps the game window -- whose top-level window is there, the game's or the
+    taskbar's? -1 when there is no taskbar on this desktop (the rig) or it does not overlap the window."""
+    tray = user32.FindWindowW("Shell_TrayWnd", None)
+    if not tray or not user32.IsWindowVisible(tray):
+        return -1
+    t = wintypes.RECT()
+    user32.GetWindowRect(tray, ctypes.byref(t))
+    left, top = max(t.left, r.left), max(t.top, r.top)
+    right, bottom = min(t.right, r.right), min(t.bottom, r.bottom)
+    if right <= left or bottom <= top:
+        return -1
+    pt = wintypes.POINT((left + right) // 2, (top + bottom) // 2)
+    hit = user32.WindowFromPoint(pt)
+    root = user32.GetAncestor(hit, GA_ROOT) if hit else None
+    if not root:
+        return -1
+    if int(root) == int(h):
+        return 0
+    return 1 if _class(root) == "Shell_TrayWnd" else 0
 
 
 def snapshot_all(pid: int | None = None, cls: str = GAME_CLASS) -> list[dict]:
@@ -119,7 +153,7 @@ def snapshot_all(pid: int | None = None, cls: str = GAME_CLASS) -> list[dict]:
 
 def fmt(d: dict) -> str:
     return (
-        "hwnd=%08x pid=%d vis=%d iconic=%d fg=%d style=%08x ex=%08x owner=%x cloaked=%d rect=%s ALTTAB=%d"
+        "hwnd=%08x pid=%d vis=%d iconic=%d fg=%d style=%08x ex=%08x owner=%x cloaked=%d rect=%s ALTTAB=%d TASKBAR_OVER=%d"
         % (
             d["hwnd"],
             d["pid"],
@@ -132,6 +166,7 @@ def fmt(d: dict) -> str:
             d["cloaked"],
             d["rect"],
             d["alttab"],
+            d["taskbar_over"],
         )
     )
 
