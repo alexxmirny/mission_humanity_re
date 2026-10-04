@@ -12,11 +12,23 @@
     <Filter Include="fix">
       <UniqueIdentifier>{EB26D497-D3C5-5710-88B9-AE003B6BD8D0}</UniqueIdentifier>
     </Filter>
+    <Filter Include="gfx">
+      <UniqueIdentifier>{83A9950C-5303-5C46-97A4-83B198318A2D}</UniqueIdentifier>
+    </Filter>
     <Filter Include="hook">
       <UniqueIdentifier>{739D9F5C-6E7F-59D2-A8A2-77BEA0572343}</UniqueIdentifier>
     </Filter>
     <Filter Include="include">
       <UniqueIdentifier>{6478C3D5-71F6-568A-B212-7568B66DA8CF}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="include\imgui">
+      <UniqueIdentifier>{497663A0-BE24-59C5-9DCB-BD745D98E10D}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="include\imgui\backends">
+      <UniqueIdentifier>{EA2ED24C-9267-5A4D-85A8-7917DF3DC459}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="input">
+      <UniqueIdentifier>{ABAD8598-4704-5DF5-BBDE-0919B978EFF0}</UniqueIdentifier>
     </Filter>
     <Filter Include="libmh">
       <UniqueIdentifier>{BED652F9-5B34-5E79-8D05-63B30062B929}</UniqueIdentifier>
@@ -148,6 +160,9 @@
     <ClCompile Include="seams\mp_menu.cpp">
       <Filter>seams</Filter>
     </ClCompile>
+    <ClCompile Include="seams\lang_pack.cpp">
+      <Filter>seams</Filter>
+    </ClCompile>
     <ClCompile Include="seams\standalone.cpp">
       <Filter>seams</Filter>
     </ClCompile>
@@ -178,6 +193,12 @@
     <ClCompile Include="ui\lobby_notice.cpp">
       <Filter>ui</Filter>
     </ClCompile>
+    <ClCompile Include="ui\player_strings.cpp">
+      <Filter>ui</Filter>
+    </ClCompile>
+    <ClCompile Include="ui\text_wrap.cpp">
+      <Filter>ui</Filter>
+    </ClCompile>
     <ClCompile Include="ui\lobby_widgets.cpp">
       <Filter>ui</Filter>
     </ClCompile>
@@ -202,8 +223,62 @@
     <ClCompile Include="desync\desync_watch.cpp">
       <Filter>desync</Filter>
     </ClCompile>
+    <ClCompile Include="desync\state_tracker.cpp">
+      <Filter>desync</Filter>
+    </ClCompile>
+    <ClCompile Include="desync\state_recorder.cpp">
+      <Filter>desync</Filter>
+    </ClCompile>
+    <ClCompile Include="desync\state_ring.cpp">
+      <Filter>desync</Filter>
+    </ClCompile>
+    <ClCompile Include="desync\world_sync.cpp">
+      <Filter>desync</Filter>
+    </ClCompile>
     <ClCompile Include="seams\video.cpp">
       <Filter>seams</Filter>
+    </ClCompile>
+    <ClCompile Include="gfx\ddraw_own.cpp">
+      <Filter>gfx</Filter>
+    </ClCompile>
+    <ClCompile Include="input\dinput_own.cpp">
+      <Filter>input</Filter>
+    </ClCompile>
+    <ClCompile Include="input\dinput_convert.cpp">
+      <Filter>input</Filter>
+    </ClCompile>
+    <ClCompile Include="gfx\backend_gdi.cpp">
+      <Filter>gfx</Filter>
+    </ClCompile>
+    <ClCompile Include="gfx\backend_null.cpp">
+      <Filter>gfx</Filter>
+    </ClCompile>
+    <ClCompile Include="gfx\backend_d3d11.cpp">
+      <Filter>gfx</Filter>
+    </ClCompile>
+    <ClCompile Include="gfx\overlay_imgui.cpp">
+      <Filter>gfx</Filter>
+    </ClCompile>
+    <ClCompile Include="gfx\imgui_d3dcompile.cpp">
+      <Filter>gfx</Filter>
+    </ClCompile>
+    <ClCompile Include="..\include\imgui\imgui.cpp">
+      <Filter>include\imgui</Filter>
+    </ClCompile>
+    <ClCompile Include="..\include\imgui\imgui_draw.cpp">
+      <Filter>include\imgui</Filter>
+    </ClCompile>
+    <ClCompile Include="..\include\imgui\imgui_tables.cpp">
+      <Filter>include\imgui</Filter>
+    </ClCompile>
+    <ClCompile Include="..\include\imgui\imgui_widgets.cpp">
+      <Filter>include\imgui</Filter>
+    </ClCompile>
+    <ClCompile Include="..\include\imgui\backends\imgui_impl_win32.cpp">
+      <Filter>include\imgui\backends</Filter>
+    </ClCompile>
+    <ClCompile Include="..\include\imgui\backends\imgui_impl_dx11.cpp">
+      <Filter>include\imgui\backends</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
@@ -212,6 +287,45 @@
   <ItemGroup>
     <ClInclude Include="addr\mh_addrs.gen.h">
       <Filter>addr</Filter>
+    </ClInclude>
+    <ClInclude Include="gfx\ddraw_own.h">
+      <Filter>gfx</Filter>
+    </ClInclude>
+    <ClInclude Include="input\dinput_own.h">
+      <Filter>input</Filter>
+    </ClInclude>
+    <ClInclude Include="input\dinput_convert.h">
+      <Filter>input</Filter>
+    </ClInclude>
+    <ClInclude Include="gfx\present_backend.h">
+      <Filter>gfx</Filter>
+    </ClInclude>
+    <ClInclude Include="gfx\overlay_imgui.h">
+      <Filter>gfx</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\imgui\imgui.h">
+      <Filter>include\imgui</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\imgui\imconfig.h">
+      <Filter>include\imgui</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\imgui\imgui_internal.h">
+      <Filter>include\imgui</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\imgui\imstb_rectpack.h">
+      <Filter>include\imgui</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\imgui\imstb_textedit.h">
+      <Filter>include\imgui</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\imgui\imstb_truetype.h">
+      <Filter>include\imgui</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\imgui\backends\imgui_impl_win32.h">
+      <Filter>include\imgui\backends</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\imgui\backends\imgui_impl_dx11.h">
+      <Filter>include\imgui\backends</Filter>
     </ClInclude>
     <ClInclude Include="addr\mh_calls.gen.h">
       <Filter>addr</Filter>
@@ -238,6 +352,9 @@
     <ClInclude Include="..\libmh\orders\order_queue.h">
       <Filter>libmh\orders</Filter>
     </ClInclude>
+    <ClInclude Include="..\libmh\orders\admission_log.h">
+      <Filter>libmh\orders</Filter>
+    </ClInclude>
     <ClInclude Include="..\libmh\orders\issue\issue_state.h">
       <Filter>libmh\orders\issue</Filter>
     </ClInclude>
@@ -248,6 +365,30 @@
       <Filter>fix</Filter>
     </ClInclude>
     <ClInclude Include="desync\desync_watch.h">
+      <Filter>desync</Filter>
+    </ClInclude>
+    <ClInclude Include="desync\desync_wire2.h">
+      <Filter>desync</Filter>
+    </ClInclude>
+    <ClInclude Include="desync\state_record.h">
+      <Filter>desync</Filter>
+    </ClInclude>
+    <ClInclude Include="desync\state_tracker.h">
+      <Filter>desync</Filter>
+    </ClInclude>
+    <ClInclude Include="desync\state_recorder.h">
+      <Filter>desync</Filter>
+    </ClInclude>
+    <ClInclude Include="desync\state_ring.h">
+      <Filter>desync</Filter>
+    </ClInclude>
+    <ClInclude Include="desync\state_ring_core.h">
+      <Filter>desync</Filter>
+    </ClInclude>
+    <ClInclude Include="desync\world_sync.h">
+      <Filter>desync</Filter>
+    </ClInclude>
+    <ClInclude Include="desync\world_sync_core.h">
       <Filter>desync</Filter>
     </ClInclude>
     <ClInclude Include="hook\patch.h">
@@ -266,6 +407,9 @@
       <Filter>include</Filter>
     </ClInclude>
     <ClInclude Include="include\mh_mpmenu_export.h">
+      <Filter>include</Filter>
+    </ClInclude>
+    <ClInclude Include="include\mh_langpack_export.h">
       <Filter>include</Filter>
     </ClInclude>
     <ClInclude Include="include\mh_module_bind.h">
@@ -287,6 +431,12 @@
       <Filter>ui</Filter>
     </ClInclude>
     <ClInclude Include="ui\ui_internal.h">
+      <Filter>ui</Filter>
+    </ClInclude>
+    <ClInclude Include="ui\player_strings.h">
+      <Filter>ui</Filter>
+    </ClInclude>
+    <ClInclude Include="ui\text_wrap.h">
       <Filter>ui</Filter>
     </ClInclude>
   </ItemGroup>

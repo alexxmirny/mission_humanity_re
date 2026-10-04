@@ -13,8 +13,8 @@
 #include "lockstep/lt_player_by_side_id.h"
 #include "lockstep/lt_reload_snapshot_resync.h"
 #include "lockstep/lt_time_query.h" // NET-SESSION: install_seam_session_globals_reset / _wait_screen_frame
-
-#include "orders/order_queue.h" // ST1: the order counts come from their OWNER, not a second binding
+#include "sim/sim_order_dispatch.h" // mp:U49 set_undock_reentry_fix
+#include "orders/order_queue.h"     // ST1: the order counts come from their OWNER, not a second binding
 
 #include "addr/mh_export.gen.h"  // MH_EXPORT_REPLACE / the entry-thunk shapes
 #include "addr/mh_calls.gen.h"   // typed callables for the original functions we still call OUT to
@@ -687,7 +687,11 @@ bool promotion_active() { return promoted::g_any_installed; }
 // is what keeps the asymmetric oracle meaningful.
 reimpl_fixes        g_fixes;
 const reimpl_fixes &fixes() { return g_fixes; }
-void                set_fixes(const reimpl_fixes &f) { g_fixes = f; }
+void                set_fixes(const reimpl_fixes &f) {
+    g_fixes = f;
+    mh::orders::set_admin_dedup_exempt(f.diplo_order_dedup_fix); // mp:U45
+    mh::sim::set_undock_reentry_fix(f.undock_reentry_fix);       // mp:U49
+}
 
 // The seam vocabulary `lockstep_seams=` may name. The first nine are install_promotion's table in the
 // same order; the last two arrive by REBIND rather than install -- time_tick tenth, through the pacing

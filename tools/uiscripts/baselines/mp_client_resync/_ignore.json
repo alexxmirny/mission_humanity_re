@@ -1,0 +1,21 @@
+{
+  "_why": "mp:X3c. Both client frames are judged structurally (see mp_host_resync/_ignore.json for why exact pixels are not stable). capture_s2_client_resynced.png is the RESYNCED peer's frame after its import + catch-up: the frame path drew a live strategic game from the resynced world. ref_ingame.png is this peer's own in-game frame from the old mp_snapshot baseline.",
+  "_structural": {
+    "capture_s1_client_ingame.png": {
+      "ref": "ref_ingame.png",
+      "view_rect": [0, 0, 864, 740],
+      "min_nonblack": 0.25,
+      "min_colors": 30,
+      "hud_rect": [864, 250, 160, 480],
+      "hud_tol": 0.10
+    },
+    "capture_s2_client_resynced.png": {
+      "ref": "ref_ingame.png",
+      "view_rect": [0, 0, 864, 740],
+      "min_nonblack": 0.25,
+      "min_colors": 30,
+      "hud_rect": [864, 250, 160, 480],
+      "hud_tol": 0.10
+    }
+  }
+}

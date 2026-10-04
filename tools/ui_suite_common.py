@@ -39,6 +39,12 @@ class RunnerConfig:
     desktop: str = ""  # isolated desktop name; "" = the interactive one
     no_desktop: bool = False  # --no-desktop: the opt-out is forwarded too, not just the opt-in
     stock_exe: bool = True  # retail exe + msvfw32 proxy (I6b); --patched-exe opts out
+    # PT-GFX5: [video] backend; "" = the rig default (make_lane.default_backend: null headless, own
+    # visible -- the owned DirectDraw). `system` = the dgVoodoo/DirectDraw opt-in fallback.
+    backend: str = ""
+    # PT-INPUT1: [input] backend; "" = the rig default (make_lane.DEFAULT_INPUT_BACKEND: own, mh.dll's
+    # DirectInput on Raw Input). `system` = the dinput.dll opt-in fallback.
+    input_backend: str = ""
     _desktop_held: bool = dataclasses.field(default=False, repr=False, compare=False)
     _lock: object = dataclasses.field(default_factory=threading.Lock, repr=False, compare=False)
 
@@ -52,6 +58,8 @@ class RunnerConfig:
             desktop=(name or "mh_rig") if on else "",
             no_desktop=no_desktop,
             stock_exe=not getattr(args, "patched_exe", False),
+            backend=getattr(args, "backend", None) or "",
+            input_backend=getattr(args, "input_backend", None) or "",
         )
 
     def hold_desktop_once(self):
@@ -141,6 +149,101 @@ def font_merge_precondition(args):
     return True, ""
 
 
+# mods:LANG1-3: the RU LANGUAGE PACK scenario (registry row `lang_ru`) is opt-in the same way. The
+# pack -- lang/ru/ beside the exe, built per machine by `src/formats/langpack.py build` from the
+# user's own RU + EN installs -- is retail data and never in the repo. It lives in the POLYGON (a
+# `lang/` folder does not change the stock mh_ex font_guard depends on; only `[lang] pack=ru` selects
+# it), and make_lane.py links `lang/` into every lane that has one. MH_LANG_PACK_GAME overrides the
+# install it is looked for in.
+LANG_PACK_GAME = os.environ.get("MH_LANG_PACK_GAME") or machine.POLYGON
+
+
+def _import_langpack():
+    _import_fnt()  # puts src/formats on sys.path
+    import langpack  # noqa: E402
+
+    return langpack
+
+
+def lang_pack_precondition(args):
+    """(ok, reason) for the lang_ru scenario: a local lane and a FULL LANG3 build at
+    <LANG_PACK_GAME>/lang/ru -- a readable pack pair, merged fonts, and the built 7-button art. Read
+    from the pack itself (langpack.pack_status), never from a marker file."""
+    if not args.local:
+        return (
+            False,
+            "needs --local -- the language pack lives in this machine's polygon, not on a VM",
+        )
+    d = os.path.join(LANG_PACK_GAME, "lang", "ru")
+    try:
+        st = _import_langpack().pack_status(d)
+    except (ImportError, OSError) as exc:
+        return False, "cannot read the language pack at %s (%s)" % (d, exc)
+    if not (st["ok"] and st["merged"] and st["art7"]):
+        why = st["reason"] or (
+            "fonts not merged" if not st["merged"] else "no built 7-button menu art"
+        )
+        return False, (
+            "no full RU language pack at %s (%s) -- build one with `python src/formats/langpack.py "
+            "build`" % (d, why)
+        )
+    return True, ""
+
+
+def lang_pack_noart_precondition(args):
+    """(ok, reason) for lang_ru_noart (mods:LANG2's fallback): a local lane and a readable RU pack at
+    <LANG_PACK_GAME>/lang/ru_noart that has merged fonts and does NOT have the built 7-button art --
+    the retail pack's shape (`python src/formats/langpack.py build --id ru_noart --no-art`). A pack
+    WITH the art is refused too: the row would silently re-run lang_ru's restacked menu."""
+    if not args.local:
+        return (
+            False,
+            "needs --local -- the language pack lives in this machine's polygon, not on a VM",
+        )
+    d = os.path.join(LANG_PACK_GAME, "lang", "ru_noart")
+    try:
+        st = _import_langpack().pack_status(d)
+    except (ImportError, OSError) as exc:
+        return False, "cannot read the language pack at %s (%s)" % (d, exc)
+    if not (st["ok"] and st["merged"] and not st["art7"] and st["strings"]):
+        why = st["reason"] or (
+            "fonts not merged"
+            if not st["merged"]
+            else "it HAS the 7-button art (built without --no-art)"
+            if st["art7"]
+            else "no clean mh_strings.txt (mods:LANG4: a pack built before the string table)"
+        )
+        return False, (
+            "no no-art RU language pack at %s (%s) -- build one with `python src/formats/langpack.py "
+            "build --id ru_noart --no-art`" % (d, why)
+        )
+    return True, ""
+
+
+def lang_pack_strings_precondition(args):
+    """(ok, reason) for the rows that read mh.dll's OWN text in Russian (mods:LANG4): lang_ru's full
+    pack, carrying a clean mh_strings.txt (a pack built before the string table SKIPS by name)."""
+    ok, why = lang_pack_precondition(args)
+    if not ok:
+        return ok, why
+    d = os.path.join(LANG_PACK_GAME, "lang", "ru")
+    if not _import_langpack().pack_status(d)["strings"]:
+        return False, (
+            "the RU language pack at %s has no clean mh_strings.txt -- rebuild it with `python "
+            "src/formats/langpack.py build`" % d
+        )
+    return True, ""
+
+
+def chat_utf8_precondition(args):
+    """(ok, reason) for chat_utf8 (mp:MP-LANG): its HOST runs the RU language pack (lang_ru's
+    precondition) and its CLIENT the merged EN font install (font_merged's) -- both, or it SKIPS by name."""
+    ok, why = lang_pack_precondition(args)
+    if not ok:
+        return ok, why
+    return font_merge_precondition(args)
+
+
 # TL-HARN17. The DLL-side per-step watchdog (ui_drive.cpp inside mh_harness.dll) is irreducibly
 # frame-counted -- that does not change here, and changing it would be a DLL rebuild (see the note
 # where --timeout-frames is resolved in ui_test.py). What DOES change: every bare frame COUNT in this
@@ -177,6 +280,11 @@ _REGISTRY = ui_registry.load(
         "SOLO_HEADLESS_FPS_FLOOR": SOLO_HEADLESS_FPS_FLOOR,
         "font_merge_precondition": font_merge_precondition,
         "FONT_MERGE_DIR": FONT_MERGE_DIR,
+        "lang_pack_precondition": lang_pack_precondition,
+        "lang_pack_noart_precondition": lang_pack_noart_precondition,
+        "lang_pack_strings_precondition": lang_pack_strings_precondition,
+        "chat_utf8_precondition": chat_utf8_precondition,
+        "LANG_PACK_GAME": LANG_PACK_GAME,
         "machine.DEAD_PEER_IP": machine.DEAD_PEER_IP,
     }
 )
@@ -251,7 +359,20 @@ def sp_newest_session_run(lane_dir):
 # dinputto8 in front of the game that objection does not hold -- measured 4.9% swallowed
 # event-frames at div=51 against 38% at div=40 without the wrapper -- so the derivation stands
 # again, and it is the default rather than something a human has to remember mid-recording.
+#
+# PT-INPUT1 (2026-09-29): a `--input-backend system` lane ONLY. The owned DirectInput (the rig default)
+# walks an absolute pointer to the exact game pixel in steps encoded for the game's divisor, so it
+# needs no divisor at all; 51 there would only slow a relative mouse down 51x. play_mouse_div().
 TACT_PLAY_MOUSE_DIV = 51
+
+
+def play_mouse_div(input_backend, explicit=None):
+    """The [input] mouse_div an interactive (human-driven) session gets: the caller's if given (0 =
+    the shipped value), else TACT_PLAY_MOUSE_DIV on the system backend (dinputto8's normalized
+    deltas) and 0 on the owned one (absolute pointers land exactly without it)."""
+    if explicit is not None:
+        return explicit
+    return TACT_PLAY_MOUSE_DIV if input_backend == "system" else 0
 
 
 def tact_merge_ini(lane_dir, fragments, section="shadow"):
@@ -549,7 +670,10 @@ def build_scenario_argv(
     deploy_save=None,
     harness_extra=None,
     harness_extra_host=None,
+    harness_extra_client=None,
     net_extra_client=None,
+    harness_extra_peer=(),
+    net_extra_peer=(),
     ship_pacing=False,
     force_headless=False,
     no_client_ip=False,
@@ -586,6 +710,7 @@ def build_scenario_argv(
     if shim:
         argv += ["--shim", shim["target"], "--shim-delay", str(shim.get("delay", 0))]
         argv += ["--shim-jitter", str(shim["jitter"])] if shim.get("jitter") else []
+        argv += [a for d in shim.get("delay_ip") or [] for a in ("--shim-delay-ip", d)]  # mp:P16
         argv += ["--shim-listen-port", str(shim["listen_port"])] if shim.get("listen_port") else []
         if shim.get("control_port"):
             argv += ["--shim-control-port", str(shim["control_port"])]
@@ -603,7 +728,12 @@ def build_scenario_argv(
     argv += ["--deploy-save", deploy_save] if deploy_save else []
     argv += ["--harness-extra", harness_extra] if harness_extra else []
     argv += ["--harness-extra-host", harness_extra_host] if harness_extra_host else []
+    argv += ["--harness-extra-client", harness_extra_client] if harness_extra_client else []
     argv += ["--net-extra-client", net_extra_client] if net_extra_client else []
+    argv += [
+        a for x in harness_extra_peer for a in ("--harness-extra-peer", x)
+    ]  # mp:U64: "N:k=v;k=v"
+    argv += [a for x in net_extra_peer for a in ("--net-extra-peer", x)]
     argv += ["--ship-pacing"] if ship_pacing else []
     argv += ["--force-headless"] if force_headless else []
     argv += ["--no-client-ip"] if no_client_ip else []
@@ -620,6 +750,8 @@ def build_scenario_argv(
     if cfg is not None:
         # BOTH halves of each runner-wide choice: the child re-derives its own default otherwise
         argv += [] if cfg.stock_exe else ["--patched-exe"]
+        argv += ["--backend", cfg.backend] if cfg.backend else []
+        argv += ["--input-backend", cfg.input_backend] if cfg.input_backend else []
         if cfg.desktop:
             argv += ["--desktop", cfg.desktop]
         elif cfg.no_desktop:
@@ -793,22 +925,25 @@ def run_ui_test_watched(argv, backstop, run_dirs_fn, stall_s=0, capture=False, p
 # DIALS, so peers of one match must share it; distinct ports separate concurrent MATCHES. Getting this
 # backwards leaves the host on `peers 1` and the client on `sessions 1`, which reads like a discovery
 # failure.
-LOCAL_PORT_BASE = 6600
+# The BANDS (bases, width, what else must stay clear of them) are laid out and gated in
+# tools/lane_alloc.py; these three + test_ui.LOCAL_SHIM_CTL_PORT_BASE are the originals it mirrors.
+# 6600/6700/6800 x 100 until 2026-09-29 (TL-BANDS200): the registry could not pass 99 rows.
+LOCAL_PORT_BASE = 10000
 # A shim test is the ONE case where peers of a match do NOT share a port. The shim and the host lane
 # are both on this box, so they cannot both own the game port -- and the shim binds first, so the GAME
-# is what fails (`net: bind(:6600) failed 10013`), leaving the client stuck on `sessions 1` looking
+# is what fails (`net: bind(:<game port>) failed 10013`), leaving the client stuck on `sessions 1` looking
 # exactly like a discovery bug (H3, 2026-07-28). The client dials the shim's port instead, and the shim
 # forwards to the host's. Its own band, well clear of LOCAL_PORT_BASE + len(TESTS).
-LOCAL_SHIM_PORT_BASE = 6700
+LOCAL_SHIM_PORT_BASE = 10200
 # mp:R2b -- a CLIENT lane that HOSTS a lobby of its own (`host_lanes` in a registry row: 1-based
 # client indices) cannot share the test's port: a UDP host binds `[net] port` with
 # SO_EXCLUSIVEADDRUSE, so the second host on one port is REFUSED at bind and its lobby, though
 # published to the relay, can never receive a JOIN (measured 2026-09-22, browser_two_rows' first
-# standalone run: `udp bind(:6600) REFUSED`, the client seated itself in an empty lobby). Its own
+# standalone run: `udp bind(:<game port>) REFUSED`, the client seated itself in an empty lobby). Its own
 # band, like the shim's. When such a row runs as a share_lanes sharer this is moot -- it borrows a
 # HOST lane from a second target, whose port is that target's own -- so this only decides the
 # standalone (target-absent) shape.
-LOCAL_HOST2_PORT_BASE = 6800
+LOCAL_HOST2_PORT_BASE = 10400
 # --local implies --headless, and headless removes the vsync wait -- so the per-step watchdog, which is
 # budgeted in FRAMES, expires far sooner in wall-clock than it does with the blit enabled. 1500 (the
 # default) does not even survive boot on this host. This is a floor; a test with its own timeout_frames
@@ -825,8 +960,8 @@ def client_lane_slot(test, cidx):
 
     That key exists for the PROCESS-EXIT relaunch shape (paired with ui_test.py's
     `--client-after-exit`): client #2's process is a brand-new one launched only after client #1's
-    has actually exited, so it is safe -- and, on this tree's 99-mutex lane ceiling (lane_alloc.py
-    TL-LANEPOOL, the `suite` block already at its registry demand), NECESSARY -- for it to reuse
+    has actually exited, so it is safe -- and, while the lane ceiling was the DLL's 99 mutexes (lane_alloc.py
+    TL-LANEPOOL, before TL-BANDS200), NECESSARY -- for it to reuse
     client #1's own lane folder rather than costing the suite a third lane it does not have.
     """
     reuse = test.get("client_shares_lane") or {}
@@ -890,7 +1025,9 @@ def lane_names(test):
     ]
 
 
-def provision_lanes(tests, headless=True, port_base=None, lane_base=0, stock_exe=True):
+def provision_lanes(
+    tests, headless=True, port_base=None, lane_base=0, stock_exe=True, backend="", input_backend=""
+):
     """Build a lane folder per (peer x test). Returns {test_name: (port, shim_port, [lane names])}.
 
     `port_base`/`lane_base` exist so a caller that is NOT the capture suite can carve out its own
@@ -967,6 +1104,13 @@ def provision_lanes(tests, headless=True, port_base=None, lane_base=0, stock_exe
             # mh.dll force-loaded by the msvfw32 proxy shim instead of an added import.
             if not stock_exe:
                 cmd.append("--patched-exe")
+            # PT-GFX5: only an explicit choice is passed; make_lane's default is the owned device, and
+            # only a `system` lane gets the dgVoodoo pair.
+            if backend:
+                cmd += ["--backend", backend]
+            # PT-INPUT1: likewise; only a `system` lane gets dinputto8.
+            if input_backend:
+                cmd += ["--input-backend", input_backend]
             # fork F4B: a scenario may ask for a lane BUILT WITHOUT a satellite DLL, which is how
             # `module_absent` makes mh_net.dll's absence REAL instead of simulating it with a key.
             # Per-test rather than global: every OTHER lane must carry the transport, or the nine MP
@@ -981,8 +1125,15 @@ def provision_lanes(tests, headless=True, port_base=None, lane_base=0, stock_exe
             # mp:F2b: a scenario may point its OWN lane at a non-polygon install (font_merged's
             # merged mh_ex pack). Additive -- every other test omits this key and keeps the default
             # machine.POLYGON source make_lane.py already falls back to.
-            if t.get("lane_src"):
-                cmd += ["--src", t["lane_src"]]
+            # mp:MP-LANG: `lane_src_client` gives the CLIENT lanes their own source (chat_utf8: the host
+            # runs the RU language pack from the polygon, the client the merged EN font install).
+            src = (
+                t.get("lane_src_client")
+                if (i > 0 and t.get("lane_src_client"))
+                else t.get("lane_src")
+            )
+            if src:
+                cmd += ["--src", src]
             r = subprocess.run(cmd, capture_output=True, text=True)
             if r.returncode != 0:
                 print("  lane %s FAILED: %s" % (nm, (r.stderr or r.stdout).strip()[:200]))
@@ -1418,6 +1569,22 @@ def add_runner_args(ap):
         help="opt OUT: provision lanes and peers around the import-patched mh.focus.exe (the "
         "pre-2026-08-27 mechanism) instead of a byte-for-byte RETAIL mh.exe + the msvfw32 proxy "
         "shim. Lane/peer exes are NAMED mh.focus.exe either way; only the bytes differ.",
+    )
+    ap.add_argument(
+        "--backend",
+        choices=("system", "own", "gdi", "null", "d3d11"),
+        default=None,
+        help="[video] backend for every lane and peer (PT-GFX5). Default: mh.dll's own DirectDraw "
+        "-- null headless, own (GDI) visible; no ddraw.dll is loaded and lanes carry no dgVoodoo. "
+        "`system` = the opt-in fallback: the game loads DDRAW.DLL and the lanes get the dgVoodoo pair.",
+    )
+    ap.add_argument(
+        "--input-backend",
+        choices=("system", "own"),
+        default=None,
+        help="[input] backend for every lane and peer (PT-INPUT1). Default own: mh.dll's own "
+        "DirectInput 5 on Raw Input; no dinput.dll is loaded and lanes carry no dinputto8. `system` = "
+        "the opt-in fallback: the game loads dinput.dll and the lanes get dinputto8.",
     )
     ap.add_argument(
         "--visible",

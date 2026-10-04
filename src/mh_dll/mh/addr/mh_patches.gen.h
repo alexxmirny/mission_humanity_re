@@ -1406,6 +1406,7 @@ inline constexpr mh::hook::patch_decl registered_patches[] = {
     {"run_without_focus",        0x004a04ceu, "llm_wnd_on_activate", nullptr},
     {"lt1c_c4_dead_store_probe", 0x004dc25fu, "llm_strat_bldg_recompute_cell_grid", "none:diagnostic"},
     {"diplo_echo_nop",           0x004c8070u, "llm_ui_diplomacy_apply_and_resume", nullptr},
+    {"diplo_row_fix",            0x004c802eu, "llm_ui_diplomacy_apply_and_resume", nullptr},
     {"cancel_task_order",        0x004c7060u, "llm_ui_building_cancel_task_yes_cb", nullptr},
     {"info_avi_fallback",        0x004cb1edu, "llm_ui_entity_info_screen_open", nullptr},
     {"info_avi_fallback",        0x004cb1fau, "llm_ui_entity_info_screen_open", nullptr},
@@ -1419,7 +1420,22 @@ inline constexpr mh::hook::patch_decl registered_patches[] = {
     {"resync_trigger_gate_sent", 0x0049d8cbu, "llm_net_send_lockstep_keepalive", "migrated:resync_trigger_gate"},
     {"resync_receiver_deadline", 0x004a0423u, "llm_frame_dispatch", nullptr},
     {"gone_peer_frame_guard",    0x0049c330u, "llm_net_lockstep_dispatch", "migrated:gone_peer_frame_guard"},
+    {"undock_reentry_fix",       0x00466cb6u, "llm_strat_order_queue_dispatch", "migrated:undock_reentry_fix"},
+    {"team_seed",                0x00454504u, "llm_strat_session_begin_multi", "migrated:team_relations_fix"},
+    {"team_lock",                0x004698d2u, "llm_strat_order_queue_dispatch", "migrated:team_relations_fix"},
+    {"team_vision_human",        0x00469909u, "llm_strat_order_queue_dispatch", "migrated:team_relations_fix"},
+    {"team_vision_ai",           0x004698ffu, "llm_strat_order_queue_dispatch", "migrated:team_relations_fix"},
+    {"ally_damage_no_hostility", 0x004db45cu, "llm_strat_ai_bldg_register_visible_building", "migrated:ally_damage_no_hostility"},
+    {"pin_flip",                 0x00498176u, "llm_strat_player_presence_lost", "migrated:player_left_pin_fix"},
+    {"pin_capture",              0x0049c60cu, "llm_net_lockstep_dispatch", "migrated:player_left_pin_fix"},
+    {"pin_restore",              0x0049c683u, "llm_net_lockstep_dispatch", "migrated:player_left_pin_fix"},
+    {"spec_entry",               0x0049814bu, "llm_strat_player_presence_lost", "migrated:spectate_after_defeat"},
+    {"spec_send",                0x00498197u, "llm_strat_player_presence_lost", "migrated:spectate_after_defeat"},
+    {"spec_end",                 0x004982a8u, "llm_strat_player_presence_lost", "migrated:spectate_after_defeat"},
+    {"spec_order",               0x00466068u, "llm_strat_order_dispatch", "migrated:spectate_after_defeat"},
+    {"lang_pack_mh_ex",          0x004c3dbau, "llm_boot_progress_draw", nullptr},
+    {"lang_pack_msgs",           0x004cb6bcu, "ReadMsgsDat", nullptr},
 };
-inline constexpr int registered_patch_count = 25;
+inline constexpr int registered_patch_count = 41;
 
 } // namespace mh::addr

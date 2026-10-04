@@ -59,9 +59,11 @@ SOURCES = {
 # (relinktest); +1 at mp:T1b (udprelinktest); +1 at mp:T2 (udpbulktest); +1 at mp:T3 (udpstatstest);
 # +1 at mp:X1 (udpsnaptest); +1 at mp:R3 (udppunchtest); +1 at mp:X2 (maptest); +1 at mp:R6
 # (udproomtest); +1 at mp:R3e (udprelaytest); +1 at mp:R7a (netcfgtest); +1 at TL-HARN4
-# (inireadtest); +1 at dist:LA13 (runctxtest); +1 at mp:U41b (qmatchtest); +1 at mp:U19i (gpfgtest).
+# (inireadtest); +1 at dist:LA13 (runctxtest); +1 at mp:U41b (qmatchtest); +1 at mp:U19i (gpfgtest);
+# +1 at mp:D40 (staterectest); +1 at PT-GFX4 (imguibindtest); +1 at PT-GFX6 (scalefiltertest);
+# +1 at PT-INPUT1 (dinputconvtest).
 # A change here is a deliberate edit, not a drift
-EXPECT_COUNT = 54  # mp:X2g, 2026-09-26: infoavitest added (was 53; diagtest at TL-SUITE-COUNTERS)
+EXPECT_COUNT = 61  # mp:U61 (HM-M3), 2026-10-03: meshtest added (60: wstest); mp:X3c slice 2, 2026-09-30: wstest added (59: dinputconvtest); PT-INPUT1, 2026-09-29: dinputconvtest added (58: scalefiltertest at PT-GFX6)
 
 # A table row: {"name", <gate>, <adapter>},  -- clang-format pads the name column, so the whitespace
 # is free-form. Comment lines never match, because a `//` line has no leading `{"`.

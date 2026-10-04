@@ -15,6 +15,7 @@
 #include "hook/detour.h"       // install_trampoline
 #include "net_internal.h"      // seam_log -- the `; ` line into mh_net.log; g_ini
 #include "en_guard.h"          // EN-only build gate
+#include "ui/player_strings.h" // mods:LANG4: the refusal line is a table row
 
 #pragma comment(lib, "user32.lib") // wsprintfA / wsprintfW
 
@@ -165,7 +166,7 @@ void __cdecl on_chat_submit() {
     seam_log(m);
     // The player's half: the desync notice's path (G_TEXT_TMP -> the red floating queue). Not a
     // cfg::G_TEXT_PTRS string -- retail has no text for a condition it never detected.
-    wsprintfW((wchar_t *)mh::addr::G_TEXT_TMP, L"cheats are single player");
+    wsprintfW((wchar_t *)mh::addr::G_TEXT_TMP, mh::ui::tr(mh::ui::Str::CHEAT_SINGLE_PLAYER));
     mh::call::llm_ui_print_floating_msg_red((void *)mh::addr::G_TEXT_TMP);
 }
 

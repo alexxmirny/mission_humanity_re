@@ -49,6 +49,8 @@
 #include "en_guard.h"                  // EN-only build gate
 #include "hook/detour.h"               // install_trampoline / WATCOM_PROLOGUE
 #include "hook/patch.h"                // patch_bytes_guarded
+#include "gfx/ddraw_own.h"             // PT-GFX1: [video] backend=own -- the owned DirectDraw
+#include "input/dinput_own.h"          // PT-INPUT1: [input] backend=own -- the owned DirectInput
 
 #pragma comment(lib, "user32.lib") // wsprintfA
 
@@ -393,6 +395,10 @@ bool patch_mode2(int w, int h_req, int h_render, int boot_w, int boot_h) {
 // inside the very mode-change call we are trying to complete. Skipping the frame BODY is
 // semantically right: the surfaces are released, there is nothing to paint into, and
 // llm_gfx_display_init plus the normal frame loop repaint immediately afterwards.
+//
+// PT-GFX5: KEPT UNDER EVERY BACKEND. The owned DirectDraw never pumps a modal, but the
+// release..recreate window is the engine's own, and any WM_PAINT dispatched inside it (a SetWindowPos
+// or ShowWindow of the owner's window geometry, a dialog's loop) would re-enter exactly the same way.
 // =================================================================================================
 
 int   g_in_mode_change    = 0; // nesting counter; > 0 = surfaces may be released, do not run a frame
@@ -1067,6 +1073,11 @@ static void apply_no_present(const char *ini) {
 // SWP_NOACTIVATE is the part that matters for "it steals focus": moving a window normally does not
 // activate it, but saying so explicitly keeps a later dgVoodoo SetWindowPos from being the thing that
 // does. HWND_BOTTOM drops it behind everything else as well.
+//
+// PT-GFX5: a backend=system mechanism, KEPT AS A DETECTOR under the owned ones. The rig default is
+// now backend=null, which never maps the window at all, so the keeper parks an invisible window once
+// and logs `invisible`; a `VISIBLE` line under null means something re-mapped it. The rest of
+// no_window (the user32 swallows below) is about the operator's cursor and stays for every backend.
 namespace {
 constexpr int OFFSCREEN_XY = -32000; // asked-for position: well outside any virtual desktop
 // WINDOWS CLAMPS IT. Measured: asking for -32000 lands the window at -25600, so an "already parked"
@@ -1245,7 +1256,7 @@ static void apply_fps_cap(const char *ini) {
     if (cap <= 0) return;
     if (!arm_present_stub()) {
         vid_log("; [video] fps_cap=%d NOT armed -- needs [video] no_present=1 (a visible run "
-                "paces through the dgVoodoo FPSLimit instead)",
+                "paces through [video] fps_limit, or dgVoodoo's FPSLimit under backend=system)",
                 cap);
         return;
     }
@@ -1397,6 +1408,14 @@ void *iat_replace(const char *dll_name, const char *fn_name, void *repl) {
     return nullptr;
 }
 } // namespace
+
+// PT-GFX2: the owned device's null backend keeps the window unmapped through the same exe-IAT
+// instrument (gfx/ddraw_own.cpp headless_window_hooks). Exposed rather than copied.
+namespace mh::gfx {
+void *exe_iat_replace(const char *dll_name, const char *fn_name, void *repl) {
+    return iat_replace(dll_name, fn_name, repl);
+}
+} // namespace mh::gfx
 
 // ---- true headless: never show a window at all ---------------------------------------------------
 //
@@ -1555,11 +1574,13 @@ extern "C" void MH_Video_ApplyProcessAttrs(void) {
     if (!mh::en_build_ok()) return; // EN-only
     char ini[MAX_PATH];
     video_ini_path(ini);
-    apply_dpi_awareness(ini); // before any window exists (we are inside DllMain)
-    apply_no_present(ini);    // headless: cut the blit, keep the composed frame
-    apply_no_window(ini);     // true headless: never map a window at all
-    apply_fps_cap(ini);       // [video] fps_cap: bound the headless spin (multi-peer lanes)
-    install_movie_tick(ini);  // the one trampoline both the keeper and [harness] skip_intro_avi need
+    apply_dpi_awareness(ini);             // before any window exists (we are inside DllMain)
+    mh::gfx::install_owned_ddraw(ini);    // PT-GFX1: [video] backend (default system = untouched)
+    mh::input::install_owned_dinput(ini); // PT-INPUT1: [input] backend (default system = untouched)
+    apply_no_present(ini);                // headless: cut the blit, keep the composed frame
+    apply_no_window(ini);                 // true headless: never map a window at all
+    apply_fps_cap(ini);                   // [video] fps_cap: bound the headless spin (multi-peer lanes)
+    install_movie_tick(ini);              // the one trampoline both the keeper and [harness] skip_intro_avi need
 }
 
 extern "C" int MH_Video_Install(void) {
@@ -1591,7 +1612,8 @@ extern "C" int MH_Video_Install(void) {
                     MAX_TILES);
         } else if (cw == 640 || cw == 800 || cw == 1024) {
             vid_log("; [video] custom res IGNORED -- %d is a stock width; use size_mode instead", cw);
-        } else if (!mode_is_available(cw, h_render, nearby, sizeof(nearby)) &&
+        } else if (!mh::gfx::owned_ddraw_active() && // owned ddraw: no real mode switch, any size works
+                   !mode_is_available(cw, h_render, nearby, sizeof(nearby)) &&
                    GetPrivateProfileIntA("video", "unverified", 0, ini) == 0) {
             // The display cannot present this exact size -- arming would hand dgVoodoo a mode it
             // refuses, which ends in its modal + an exit rather than anything diagnosable.

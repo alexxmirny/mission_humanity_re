@@ -48,6 +48,7 @@
     <ClCompile Include="seams\ui_pause.cpp" />
     <ClCompile Include="seams\launch.cpp" />
     <ClCompile Include="seams\mp_menu.cpp" />
+    <ClCompile Include="seams\lang_pack.cpp" />
     <ClCompile Include="seams\standalone.cpp" />
     <ClCompile Include="seams\net_diag.cpp" />
     <ClCompile Include="seams\net_discovery.cpp" />
@@ -58,6 +59,8 @@
     <ClCompile Include="ui\ui_runtime.cpp" />
     <ClCompile Include="ui\lobby_slide.cpp" />
     <ClCompile Include="ui\lobby_notice.cpp" />
+    <ClCompile Include="ui\player_strings.cpp" />
+    <ClCompile Include="ui\text_wrap.cpp" />
     <ClCompile Include="ui\lobby_widgets.cpp" />
     <ClCompile Include="ui\lobby_ping.cpp" />
     <ClCompile Include="ui\lobby_announce.cpp" />
@@ -66,6 +69,10 @@
     <ClCompile Include="seams\host_event_sink.cpp" />
     <ClCompile Include="seams\hostapi_io_bind.cpp" />
     <ClCompile Include="desync\desync_watch.cpp" />
+    <ClCompile Include="desync\state_tracker.cpp" />
+    <ClCompile Include="desync\state_recorder.cpp" />
+    <ClCompile Include="desync\state_ring.cpp" />
+    <ClCompile Include="desync\world_sync.cpp" />
     <!-- THE x87 FLAG POLICY LEFT THIS PROJECT AT FORK F4D and the roster's files left it at F5O.
          mh.vcxproj compiles no roster TU any more, so there is nothing here to flag: the sim's
          /arch:IA32 /fp:precise requirement (the sim is x87 and MSVC x86 emits SSE2 by default,
@@ -73,12 +80,39 @@
          per-file by mh_nettest.vcxproj, which tools/lint_fp_flags.py gates.
          (An XML comment may not contain a double hyphen, which is why this one has none.) -->
     <ClCompile Include="seams\video.cpp" />
+    <ClCompile Include="gfx\ddraw_own.cpp" />
+    <ClCompile Include="input\dinput_own.cpp" />
+    <ClCompile Include="input\dinput_convert.cpp" />
+    <ClCompile Include="gfx\backend_gdi.cpp" />
+    <ClCompile Include="gfx\backend_null.cpp" />
+    <ClCompile Include="gfx\backend_d3d11.cpp" />
+    <ClCompile Include="gfx\overlay_imgui.cpp" />
+    <ClCompile Include="gfx\imgui_d3dcompile.cpp" />
+    <ClCompile Include="..\include\imgui\imgui.cpp" />
+    <ClCompile Include="..\include\imgui\imgui_draw.cpp" />
+    <ClCompile Include="..\include\imgui\imgui_tables.cpp" />
+    <ClCompile Include="..\include\imgui\imgui_widgets.cpp" />
+    <ClCompile Include="..\include\imgui\backends\imgui_impl_win32.cpp" />
+    <ClCompile Include="..\include\imgui\backends\imgui_impl_dx11.cpp" />
   </ItemGroup>
   <ItemGroup>
     <None Include="mh.def" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="addr\mh_addrs.gen.h" />
+    <ClInclude Include="gfx\ddraw_own.h" />
+    <ClInclude Include="input\dinput_own.h" />
+    <ClInclude Include="input\dinput_convert.h" />
+    <ClInclude Include="gfx\present_backend.h" />
+    <ClInclude Include="gfx\overlay_imgui.h" />
+    <ClInclude Include="..\include\imgui\imgui.h" />
+    <ClInclude Include="..\include\imgui\imconfig.h" />
+    <ClInclude Include="..\include\imgui\imgui_internal.h" />
+    <ClInclude Include="..\include\imgui\imstb_rectpack.h" />
+    <ClInclude Include="..\include\imgui\imstb_textedit.h" />
+    <ClInclude Include="..\include\imgui\imstb_truetype.h" />
+    <ClInclude Include="..\include\imgui\backends\imgui_impl_win32.h" />
+    <ClInclude Include="..\include\imgui\backends\imgui_impl_dx11.h" />
     <ClInclude Include="addr\mh_calls.gen.h" />
     <ClInclude Include="addr\mh_structs.gen.h" />
     <ClInclude Include="en_guard.h" />
@@ -88,16 +122,26 @@
     <ClInclude Include="hook\export.h" />
     <ClInclude Include="hook\hookpoint.h" />
     <ClInclude Include="..\libmh\orders\order_queue.h" />
+    <ClInclude Include="..\libmh\orders\admission_log.h" />
     <ClInclude Include="..\libmh\orders\issue\issue_state.h" />
     <ClInclude Include="..\libmh\lockstep\turn_engine.h" />
     <ClInclude Include="fix\resync_clamp.h" />
     <ClInclude Include="desync\desync_watch.h" />
+    <ClInclude Include="desync\desync_wire2.h" />
+    <ClInclude Include="desync\state_record.h" />
+    <ClInclude Include="desync\state_tracker.h" />
+    <ClInclude Include="desync\state_recorder.h" />
+    <ClInclude Include="desync\state_ring.h" />
+    <ClInclude Include="desync\state_ring_core.h" />
+    <ClInclude Include="desync\world_sync.h" />
+    <ClInclude Include="desync\world_sync_core.h" />
     <ClInclude Include="hook\patch.h" />
     <ClInclude Include="hook\watcall.h" />
     <ClInclude Include="include\mh_standalone_export.h" />
     <ClInclude Include="include\mh_harness_export.h" />
     <ClInclude Include="include\mh_launch_export.h" />
     <ClInclude Include="include\mh_mpmenu_export.h" />
+    <ClInclude Include="include\mh_langpack_export.h" />
     <ClInclude Include="include\mh_module_bind.h" />
     <ClInclude Include="include\mh_seam_export.h" />
     <ClInclude Include="include\projectile.h" />
@@ -105,6 +149,8 @@
     <ClInclude Include="ui\lobby_ui.h" />
     <ClInclude Include="ui\lobby_ping.h" />
     <ClInclude Include="ui\ui_internal.h" />
+    <ClInclude Include="ui\player_strings.h" />
+    <ClInclude Include="ui\text_wrap.h" />
   </ItemGroup>
   <PropertyGroup Label="Globals">
     <VCProjectVersion>15.0</VCProjectVersion>
@@ -213,6 +259,20 @@
     <PostBuildEvent>
       <Command>if exist "$(MhDeployDir)" copy /Y "$(OutputPath)\mh.dll" "$(MhDeployDir)\mh.dll"</Command>
     </PostBuildEvent>
+  </ItemDefinitionGroup>
+  <!-- PT-GFX4: Dear ImGui (vendored, ..\include\imgui). Unconditional and AFTER the per-configuration
+       groups, so it appends to their metadata. d3dcompiler.lib is IGNORED on purpose: imgui_impl_dx11.cpp's
+       #pragma comment(lib, "d3dcompiler") would otherwise add a load-time import of d3dcompiler_47.dll;
+       gfx\imgui_d3dcompile.cpp defines the D3DCompile it calls (precompiled blobs), and if that file is
+       ever dropped the link fails instead of silently importing the DLL. -->
+  <ItemDefinitionGroup>
+    <ClCompile>
+      <PreprocessorDefinitions>IMGUI_DISABLE_OBSOLETE_FUNCTIONS;IMGUI_DISABLE_DEFAULT_SHELL_FUNCTIONS;IMGUI_DISABLE_WIN32_DEFAULT_IME_FUNCTIONS;IMGUI_IMPL_WIN32_DISABLE_GAMEPAD;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>$(SolutionDir)include\imgui;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ClCompile>
+    <Link>
+      <IgnoreSpecificDefaultLibraries>d3dcompiler.lib;%(IgnoreSpecificDefaultLibraries)</IgnoreSpecificDefaultLibraries>
+    </Link>
   </ItemDefinitionGroup>
   <!-- fork F4A's R2 MEASUREMENT ARM (/p:MhSpikeStatic=1) WAS HERE AND F4B REMOVED IT WITH ITS
        SUBJECT. It made mh.dll statically import the spike satellite, which is how F4A measured the

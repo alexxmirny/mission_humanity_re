@@ -1,0 +1,31 @@
+# mp:U64 (HM-M6) -- 4-peer shape (tools/u64_arms.py; check_u64_failure.py reads the logs). Topology: host vms[0],
+# client1 vms[1], client2 the det3 local lane, client3 the det4 local lane. The host plays as a LIVE, UNDEFEATED hub:
+# whatever happens to it (TerminateProcess at a pinned step, a shim partition) is an [harness]/shim knob, not a gesture.
+settled value:110
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+settled Create
+clickl Create
+present Game name
+settled Ok
+clickl Ok
+present Available maps
+settled Ok
+clickl Ok
+
+present Network players
+peers 3
+occ 4
+enabled Start
+settled Start
+awaitsignal seated1
+awaitsignal seated2
+awaitsignal seated3
+clickl Start
+
+absent Network players
+gamemode 2
+log u64 host in game
+end

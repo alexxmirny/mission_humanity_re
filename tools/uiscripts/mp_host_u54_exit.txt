@@ -1,0 +1,50 @@
+# mp:U54 -- 3-PEER SPECTATE shape (tools/det_arms.py --u54-*; check_u54_spectate.py reads the logs).
+# Topology = run_u19b_quit3's: host vms[0], client1 vms[1], client2 the local det3_client2 lane.
+# The elimination itself is the harness `conq` workload's force-kill (harness-extra), NOT a UI gesture.
+# the HOST (the VICTIM): it answers its defeat dialog with EXIT MATCH (statistics screen, main menu): a hub that exits hands off (U62);
+# the survivors play on.
+settled value:110
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+settled Create
+clickl Create
+present Game name
+settled Ok
+clickl Ok
+present Available maps
+settled Ok
+clickl Ok
+
+present Network players
+peers 2
+occ 3
+enabled Start
+settled Start
+awaitsignal seated1
+awaitsignal seated2
+clickl Start
+
+absent Network players
+gamemode 2
+screen 0x00653dc3
+capture host_defeat
+dump
+signal elim
+log host reached its defeat dialog
+awaitsignal c1mid
+awaitsignal c2mid
+clickl Exit match
+screen 0x00653d77
+settled Ok
+capture host_stats
+clickl Ok
+settled value:110
+capture host_menu
+signal hostleft
+log host chose EXIT MATCH at the dialog and reached the main menu
+awaitsignal c1done
+awaitsignal c2done
+signal victimdone
+end

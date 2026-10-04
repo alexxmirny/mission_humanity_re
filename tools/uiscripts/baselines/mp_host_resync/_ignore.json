@@ -1,0 +1,13 @@
+{
+  "_why": "mp:X3c. The forced-desync arm runs the synthetic order workload (orders keep flowing so the admission log has something to replay), so the mothership moves and the client shows a DESYNC DETECTED notice from step ~349: exact pixels are not stable and are not what the frame claims. It claims a live strategic frame: view not black, textured, and the static sidebar art matching ref_ingame.png (a frame from the old mp_snapshot baseline, this peer's own in-game view).",
+  "_structural": {
+    "capture_s1_host_ingame.png": {
+      "ref": "ref_ingame.png",
+      "view_rect": [0, 0, 864, 740],
+      "min_nonblack": 0.25,
+      "min_colors": 30,
+      "hud_rect": [864, 250, 160, 480],
+      "hud_tol": 0.10
+    }
+  }
+}

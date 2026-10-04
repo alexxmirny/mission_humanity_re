@@ -696,6 +696,12 @@
       "note": "mp:U39: the 22-byte optimistic relation echo (movzx PlayerSide; imul 0x34; add j; mov al,rel; mov [edx+0xe587f1],al) -- NOPed so the 0xf4 order handler is the cell's only writer"
     },
     {
+      "name": "diplo_row_skip_site",
+      "en": "0x004c802e",
+      "parent": "llm_ui_diplomacy_apply_and_resume",
+      "note": "mp:U46: the 5-byte `JMP 0x004c80fe` (E9 CB 00 00 00) reached by BOTH the self slot and every non-human slot -- it skips the three `ADD [EBP-0x24/-0x1c/-0x20],0x14` row advances at 0x004c80e9, so an AI/empty slot before a human misaligns every later row; spliced to a DLL stub that advances the rows for every non-self slot"
+    },
+    {
       "name": "ovl_xui_wait_site",
       "en": "0x004c85e8",
       "ru": "0x004c80e4",
@@ -1862,7 +1868,7 @@
     {
       "name": "_G_LLM_SINGLE_INSTANCE_MUTEX_NAME",
       "en": "0x00501c7d",
-      "note": "parallel test lanes: WinMain's CreateMutexA name string \"MHMutex\" (7 chars + NUL), read once at 0x004a0b62. Machine-wide -- no path component -- so separate folders do NOT get separate mutexes. mh.dll rewrites it in place to \"MHMutNN\" for [test] lane=N"
+      "note": "parallel test lanes: WinMain's CreateMutexA name string \"MHMutex\" (7 chars + NUL), read once at 0x004a0b62. Machine-wide -- no path component -- so separate folders do NOT get separate mutexes. mh.dll rewrites it in place to \"MHMuNNN\" for [uitest] lane=N (1..999)"
     },
     {
       "name": "_G_LLM_SND_AMBIENT_BY_PLANET",

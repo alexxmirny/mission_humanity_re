@@ -1,0 +1,17 @@
+{
+  "_why": "mods:LANG3 RU chat_glyphs host. capture_h_lobby.png renders this machine's adapter address in the right-panel header (192.168.x.y here), which setup.dat pinning cannot reach. Standard right-panel own-IP rect. PING CELL (2026-09-29, the chat_utf8 flake's root cause): with a client seated, mp:L1b's lobby ping cell (mh/ui/lobby_ping.cpp, right of each seated row's colour swatch) draws a live SRTT MEASUREMENT -- 'D 0' solo, 'D 1' or more under load -- so its column on the two seated rows is masked ([322,106,44,36], mp_client_el2's rect; the text is laid out by width, so the whole column, not the digit). mp:U50 (2026-10-02): the ping became its own widget right of the flag; the ping-cell rects moved left to x=313 with their right edge unchanged.",
+  "capture_h_lobby.png": [
+    [
+      388,
+      46,
+      226,
+      48
+    ],
+    [
+      313,
+      106,
+      53,
+      36
+    ]
+  ]
+}

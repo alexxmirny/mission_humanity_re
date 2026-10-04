@@ -42,8 +42,26 @@
 //! folders oldest first (whole), then the other protected folders, the loose root files and the
 //! launcher log (cut file by file), then the minidump (whole), and last the reported match itself.
 //! Inside a cut folder: plain binaries go first (whole), text logs keep their NEWEST part down to a
-//! floor, replay inputs go next -- whole, never cut -- and only then the text below the floor.
+//! floor, then the state recordings below are tailed toward a keyframe, then the replay inputs go
+//! -- whole, never cut -- and only then the text below the floor.
 //! Every folder, file and cut log given up is named in `report.json`'s `dropped`.
+//!
+//! ## mp:D43: the state recordings are cut at a KEYFRAME, not a byte offset
+//!
+//! `mh_match_state.bin` (the whole-match `net-debug` recording, mp:D40) and `mh_desync_state.bin`
+//! (the ship desync ring, mp:D41) are `docs/state-record.md` v1 files: a header, then `KEYF`/`STEP`/
+//! `END ` chunks. They are neither a text log nor a `REPLAY_INPUTS` entry -- a cut copy STAYS
+//! decodable because the format is built for exactly this ("Cutting a tail" in that doc): keep the
+//! header plus every chunk from some `KEYF` chunk onward. When the budget must shrink one, this
+//! packer walks the chunk headers (tag + length only, never a payload) to find every `KEYF` byte
+//! offset, then picks the EARLIEST one whose header+tail still compresses under the target -- the
+//! cut that throws away the least. Ranked BELOW the replay inputs (shed/tailed before those are ever
+//! touched, per the tracker item's own wording) but above the reported match's floor-less text: a
+//! desync/crash report is usually about a moment near the END of the file, so the newest keyframes
+//! are exactly what is worth keeping. A file that fails the chunk walk (bad magic, unknown version,
+//! or a first chunk that is not the `KEYF` the format guarantees) is left out WHOLE with its own
+//! `dropped` reason -- never tailed at a guess -- and so is one whose own last keyframe still does
+//! not fit.
 //!
 //! **`report.json` IS the `meta` object RP1 will POST**, byte for byte, not a cousin of it. The
 //! collector stores that object as `meta.json` beside the zip (`src/collector/README.md`), and
@@ -167,10 +185,27 @@ const REPLAY_INPUTS: [&str; 6] = [
     "mh_harness_seed.bin",
 ];
 
+/// mp:D43. The state recordings (`docs/state-record.md` v1) -- unlike `REPLAY_INPUTS` a cut copy of
+/// one of these STAYS decodable, because the format is built to be tailed at a `KEYF` chunk
+/// boundary. So they get their own `Kind` and their own shed step (`shed_state_files`), ranked below
+/// the replay inputs -- see the module doc's "mp:D43" section.
+const STATE_FILES: [&str; 2] = ["mh_match_state.bin", "mh_desync_state.bin"];
+
 const WHY_OVER_BUDGET: &str = "over the report upload budget (oldest folders go first)";
 const WHY_NOT_STAGED: &str = "past the report's staging limit (older than what could fit)";
 const WHY_FILE_DROPPED: &str = "left out whole to fit the report upload budget";
 const WHY_FILE_TAILED: &str = "only the newest part kept to fit the report upload budget";
+/// mp:D43. A state recording tailed to its newest keyframes -- distinct wording from
+/// `WHY_FILE_TAILED` because "the newest part" would be misleading (the cut lands on a `KEYF`
+/// boundary, not an arbitrary byte offset).
+const WHY_STATE_TAILED: &str = "only the newest keyframes kept to fit the report upload budget";
+/// mp:D43. The chunk walk failed (bad magic, unknown version, or a first chunk that is not the
+/// `KEYF` the format guarantees) -- never tailed at a guess.
+const WHY_STATE_MALFORMED: &str =
+    "not a valid state recording (docs/state-record.md v1) -- left out rather than tailed blindly";
+/// mp:D43. The chunk walk was fine, but even the file's own LAST keyframe does not compress under
+/// what the budget has left for it.
+const WHY_STATE_NO_ROOM: &str = "even its newest keyframe does not fit the report upload budget";
 
 /// dist LA9. How many of the newest `logs\` directories to package when the launcher's own start
 /// time is unknown (a `--report` invoked from a script that never called `--launch` in this same
@@ -680,8 +715,9 @@ fn root_files(logs_root: &Path) -> (Vec<PathBuf>, Vec<PathBuf>) {
 }
 
 /// One directory found directly under `logs\`, named the way `mh_session_dir.h` names them --
-/// `<stamp>_menu_<role>` (a process directory) or `<stamp>_<mid8>_<slot>_<role>` (a session one).
-/// `stamp` is the leading 16-character UTC prefix, which sorts exactly like the moment it names
+/// `<stamp>_menu_<role>` (a process directory) or `<stamp>_<mid8>_<map>_<mode>` (a session one;
+/// `<stamp>_<mid8>_<slot>_<role>` before SES8). `stamp` is the leading UTC prefix FOLDED to the
+/// compact `YYYYMMDDTHHMMSSZ` form (either generation), which sorts exactly like the moment it names
 /// (see `paths::newest_session_dir`'s note on why the name decides, not the mtime).
 struct LogDir {
     name: String,
@@ -720,19 +756,46 @@ fn dir_size(dir: &Path) -> u64 {
     total
 }
 
-/// `20260917T164346Z` off the front of a directory name, or `None` if it does not start with one.
-/// The same shape-check `paths::newest_session_dir` uses (kept as its own small copy here rather
-/// than a cross-module dependency, the way `mh_common`'s OS-free headers accept some duplication
-/// for the same reason): the only thing that matters is that every real stamp is the same fixed
-/// width and character class, so string comparison between two of them IS a comparison of instants.
-fn utc_stamp_prefix(name: &str) -> Option<&str> {
+/// The UTC stamp off the front of a directory name, as `20260917T164346Z`, or `None` if it does
+/// not start with one -- `2026-09-17T16-43-46Z_...` (SES8) and `20260917T164346Z_...` (SES1) both,
+/// returned compact so they compare with each other and with `launcher_started_utc`. The same
+/// shape-check `paths::newest_session_dir` uses (kept as its own small copy here rather than a
+/// cross-module dependency, the way `mh_common`'s OS-free headers accept some duplication for the
+/// same reason): every real stamp is one fixed width and character class once folded, so string
+/// comparison between two of them IS a comparison of instants.
+fn utc_stamp_prefix(name: &str) -> Option<String> {
     let b = name.as_bytes();
-    if b.len() < 16 {
-        return None;
-    }
     let digits = |r: std::ops::Range<usize>| b[r].iter().all(u8::is_ascii_digit);
-    if digits(0..8) && b[8] == b'T' && digits(9..15) && b[15] == b'Z' {
-        return Some(&name[..16]);
+    // SES8 (2026-09-29): `YYYY-MM-DDTHH-MM-SSZ` -- ISO 8601 with dashes for the colons a Windows
+    // path cannot hold. Folded to the compact form, so the two generations compare as instants (a
+    // raw compare puts every SES1 name after an SES8 one: `-` sorts before `0`).
+    if b.len() >= 20
+        && digits(0..4)
+        && b[4] == b'-'
+        && digits(5..7)
+        && b[7] == b'-'
+        && digits(8..10)
+        && b[10] == b'T'
+        && digits(11..13)
+        && b[13] == b'-'
+        && digits(14..16)
+        && b[16] == b'-'
+        && digits(17..19)
+        && b[19] == b'Z'
+    {
+        return Some(format!(
+            "{}{}{}T{}{}{}Z",
+            &name[0..4],
+            &name[5..7],
+            &name[8..10],
+            &name[11..13],
+            &name[14..16],
+            &name[17..19]
+        ));
+    }
+    // SES1: `YYYYMMDDTHHMMSSZ`.
+    if b.len() >= 16 && digits(0..8) && b[8] == b'T' && digits(9..15) && b[15] == b'Z' {
+        return Some(name[..16].to_string());
     }
     None
 }
@@ -754,7 +817,6 @@ fn list_log_dirs(logs_root: &Path) -> Vec<LogDir> {
         let Some(stamp) = utc_stamp_prefix(&name) else {
             continue;
         };
-        let stamp = stamp.to_string();
         let bytes = dir_size(&path);
         out.push(LogDir {
             name,
@@ -819,12 +881,16 @@ enum Kind {
     Binary,
     /// A replay input (`REPLAY_INPUTS`): whole or absent, and given up after the text is cut.
     Replay,
+    /// mp:D43. A state recording (`STATE_FILES`): tailed at a `KEYF` chunk boundary when it must
+    /// shrink, given up after the text-to-floor cut but before the replay inputs are touched.
+    State,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Fate {
     Whole,
-    /// Keep the newest part, at most this many compressed bytes.
+    /// Keep the newest part, at most this many compressed bytes. For `Kind::State` this is a
+    /// TARGET the keyframe walk tries to land under, not a byte offset.
     Tail(u64),
     Dropped,
 }
@@ -839,6 +905,9 @@ struct TailBuf {
     target: u64,
     zip: Vec<u8>,
     kept: u64,
+    /// mp:D43. The `u32 step` a `Kind::State` tail's kept `KEYF` chunk starts at -- cheap to read
+    /// off the payload's first 4 bytes without decoding anything else. `None` for a text tail.
+    kept_from_step: Option<u32>,
 }
 
 struct Item {
@@ -846,6 +915,9 @@ struct Item {
     source: Source,
     kind: Kind,
     group: usize,
+    /// mp:D43. Overrides the generic `WHY_FILE_DROPPED` reason when this item was dropped for a
+    /// `Kind::State`-specific cause (malformed, or no keyframe fits). `None` uses the generic one.
+    drop_reason: Option<&'static str>,
     /// Uncompressed bytes as staged (after the scrub).
     raw: u64,
     /// Compressed bytes in the staging zip.
@@ -920,6 +992,7 @@ impl Set {
             source,
             kind,
             group,
+            drop_reason: None,
             raw: 0,
             comp: 0,
             staged: None,
@@ -949,6 +1022,8 @@ impl Set {
             Kind::Text
         } else if REPLAY_INPUTS.contains(&leaf.as_str()) {
             Kind::Replay
+        } else if STATE_FILES.contains(&leaf.as_str()) {
+            Kind::State
         } else {
             Kind::Binary
         };
@@ -1008,8 +1083,40 @@ impl Set {
             }
             it.tail = None;
             let Source::File(p) = &it.source else {
-                continue; // only file text is ever in a Shrink group; nothing to cut
+                continue; // only file source is ever in a Shrink group; nothing to cut
             };
+            if it.kind == Kind::State {
+                // mp:D43. Never decode a payload -- only the header (which carries its own
+                // `header_len`) and the chunk tags/lengths are read. `state_layout` returning
+                // `None` means the chunk walk failed (bad magic/version, or a first chunk that is
+                // not the `KEYF` the format guarantees): left out whole rather than tailed at a
+                // guess. Otherwise `state_tail` picks the EARLIEST `KEYF` whose header+tail still
+                // fits `target`; `None` there means even the file's own newest keyframe does not.
+                let raw = std::fs::read(p).unwrap_or_default();
+                match state_layout(&raw) {
+                    None => {
+                        it.fate = Fate::Dropped;
+                        it.drop_reason = Some(WHY_STATE_MALFORMED);
+                    }
+                    Some((header_len, keyframes)) => {
+                        match state_tail(&raw, header_len, &keyframes, &it.name, target, opts)? {
+                            Some((zip, kept, step)) => {
+                                it.tail = Some(TailBuf {
+                                    target,
+                                    zip,
+                                    kept,
+                                    kept_from_step: Some(step),
+                                });
+                            }
+                            None => {
+                                it.fate = Fate::Dropped;
+                                it.drop_reason = Some(WHY_STATE_NO_ROOM);
+                            }
+                        }
+                    }
+                }
+                continue;
+            }
             let text = read_scrubbed(p, scrub);
             let total = text.len() as u64;
             let ratio = target as f64 / it.comp.max(1) as f64;
@@ -1019,7 +1126,12 @@ impl Set {
                 let (body, kept) = tail_of(&text, keep);
                 let (zip, comp) = compress_one(&it.name, body.as_bytes(), opts)?;
                 if comp <= target {
-                    it.tail = Some(TailBuf { target, zip, kept });
+                    it.tail = Some(TailBuf {
+                        target,
+                        zip,
+                        kept,
+                        kept_from_step: None,
+                    });
                     break;
                 }
                 keep = (keep as f64 * (target as f64 / comp as f64) * 0.95) as u64;
@@ -1058,15 +1170,30 @@ impl Set {
                 match it.fate {
                     Fate::Whole => {}
                     Fate::Dropped => out.push(serde_json::json!({
-                        "dir": dir, "file": it.name, "bytes": it.raw, "why": WHY_FILE_DROPPED,
-                    })),
-                    Fate::Tail(_) => out.push(serde_json::json!({
                         "dir": dir,
                         "file": it.name,
                         "bytes": it.raw,
-                        "kept_bytes": it.tail.as_ref().map(|t| t.kept).unwrap_or(0),
-                        "why": WHY_FILE_TAILED,
+                        "why": it.drop_reason.unwrap_or(WHY_FILE_DROPPED),
                     })),
+                    Fate::Tail(_) => {
+                        let why = if it.kind == Kind::State {
+                            WHY_STATE_TAILED
+                        } else {
+                            WHY_FILE_TAILED
+                        };
+                        let mut rec = serde_json::json!({
+                            "dir": dir,
+                            "file": it.name,
+                            "bytes": it.raw,
+                            "kept_bytes": it.tail.as_ref().map(|t| t.kept).unwrap_or(0),
+                            "why": why,
+                        });
+                        // mp:D43: the KEYF's own step, when the tail is a state recording's.
+                        if let Some(step) = it.tail.as_ref().and_then(|t| t.kept_from_step) {
+                            rec["kept_from_step"] = serde_json::json!(step);
+                        }
+                        out.push(rec);
+                    }
                 }
             }
         }
@@ -1076,13 +1203,42 @@ impl Set {
 
 /// Shrink one protected group by `excess` bytes, in this order: (a) plain binaries, largest
 /// first, whole; (b) text logs cut from the front, largest first, down to `TEXT_TAIL_FLOOR` each
-/// (a water level -- small logs stay whole); (c) replay inputs, whole; (d) text below the floor,
-/// down to nothing. Returns what is still over.
+/// (a water level -- small logs stay whole); (c) state recordings (mp:D43), largest first, tailed
+/// toward a keyframe; (d) replay inputs, whole; (e) text below the floor, down to nothing. Returns
+/// what is still over.
 fn shrink_group(items: &mut [Item], gi: usize, excess: u64) -> u64 {
     let excess = drop_largest(items, gi, Kind::Binary, excess);
     let excess = water_fill(items, gi, TEXT_TAIL_FLOOR, excess);
+    let excess = shed_state_files(items, gi, excess);
     let excess = drop_largest(items, gi, Kind::Replay, excess);
     water_fill(items, gi, 0, excess)
+}
+
+/// mp:D43. Give up `Kind::State` items toward `excess`, largest (live-size) first: each is marked
+/// with a compressed-byte TARGET to try to land under. The actual keyframe boundary is found later
+/// in `Set::materialize_tails`, which is the only place that needs the file's bytes -- this step is
+/// pure size bookkeeping, the same shape as `water_fill`'s level search but per item, since a state
+/// file's valid cut points are discrete `KEYF` offsets rather than a continuous byte range.
+fn shed_state_files(items: &mut [Item], gi: usize, mut excess: u64) -> u64 {
+    let mut idx: Vec<usize> = (0..items.len())
+        .filter(|&i| {
+            items[i].group == gi && items[i].kind == Kind::State && items[i].fate != Fate::Dropped
+        })
+        .collect();
+    idx.sort_by_key(|&i| std::cmp::Reverse(live_size(&items[i])));
+    for i in idx {
+        if excess == 0 {
+            break;
+        }
+        let size = live_size(&items[i]);
+        if size == 0 {
+            continue;
+        }
+        let target = size.saturating_sub(excess);
+        excess = excess.saturating_sub(size - target);
+        items[i].fate = Fate::Tail(target);
+    }
+    excess
 }
 
 fn drop_largest(items: &mut [Item], gi: usize, kind: Kind, mut excess: u64) -> u64 {
@@ -1206,6 +1362,112 @@ fn compress_one(
         .map_err(|e| format!("cannot reread {name}: {e}"))?
         .compressed_size();
     Ok((bytes, comp))
+}
+
+// ---- mp:D43: state recordings, tailed at a KEYF chunk boundary --------------------------------
+
+/// `docs/state-record.md` v1: `"MHSR"` little-endian.
+const STATE_MAGIC: u32 = 0x5253_484D;
+/// The only version this packer knows how to walk. A file that claims a different one is left out
+/// whole -- the header layout downstream of `version` is not this packer's to assume.
+const STATE_VERSION: u16 = 1;
+/// The `KEYF` chunk tag (`"KEYF"` little-endian), the only tag this packer looks for; `STEP`/`END `
+/// chunks are skipped over by length, never inspected.
+const STATE_TAG_KEYF: u32 = 0x4659_454B;
+/// `magic(4) + version(2) + flags(2) + header_len(4) + manifest_fp(8) + keyframe_every(4) +
+/// region_count(4)`: the fixed prefix before the region table. `header_len` already counts the
+/// table, so nothing past this offset needs to be read at all.
+const STATE_HEADER_MIN: usize = 28;
+
+fn u32_at(buf: &[u8], off: u64) -> Option<u32> {
+    let o = usize::try_from(off).ok()?;
+    buf.get(o..o + 4)
+        .map(|b| u32::from_le_bytes(b.try_into().unwrap()))
+}
+
+fn u16_at(buf: &[u8], off: u64) -> Option<u16> {
+    let o = usize::try_from(off).ok()?;
+    buf.get(o..o + 2)
+        .map(|b| u16::from_le_bytes(b.try_into().unwrap()))
+}
+
+/// Read a state recording's header + `KEYF` chunk offsets, WITHOUT decoding any chunk's payload
+/// (`docs/state-record.md` "Cutting a tail"). Returns `(header_len, keyframes)`, `keyframes` oldest
+/// first as `(byte offset of the KEYF chunk's own header, its payload's leading u32 step)`.
+///
+/// `None` means the chunk walk failed outright -- bad magic, an unknown version, or (since the
+/// format guarantees "the first chunk after the header is always a KEYF") a first chunk that is
+/// not one. An incomplete TRAILING chunk (the recording was cut short by a crash or a kill) is not
+/// a failure -- state-record.md says a reader "stops cleanly" there -- so the walk simply ends and
+/// whatever keyframes were found before it are used.
+fn state_layout(buf: &[u8]) -> Option<(u64, Vec<(u64, u32)>)> {
+    if buf.len() < STATE_HEADER_MIN {
+        return None;
+    }
+    if u32_at(buf, 0)? != STATE_MAGIC || u16_at(buf, 4)? != STATE_VERSION {
+        return None;
+    }
+    let header_len = u64::from(u32_at(buf, 8)?);
+    if header_len < STATE_HEADER_MIN as u64 || header_len > buf.len() as u64 {
+        return None;
+    }
+
+    let mut keyframes = Vec::new();
+    let mut off = header_len;
+    let mut first = true;
+    while off + 12 <= buf.len() as u64 {
+        let tag = u32_at(buf, off)?;
+        let payload_len = u64::from(u32_at(buf, off + 4)?);
+        let payload_start = off + 12;
+        let Some(payload_end) = payload_start.checked_add(payload_len) else {
+            break;
+        };
+        if payload_end > buf.len() as u64 {
+            break; // an incomplete trailing chunk: the file was cut short, not malformed
+        }
+        if tag == STATE_TAG_KEYF {
+            let step = if payload_len >= 4 {
+                u32_at(buf, payload_start)?
+            } else {
+                0
+            };
+            keyframes.push((off, step));
+        } else if first {
+            return None; // the format guarantees the first chunk after the header is a KEYF
+        }
+        first = false;
+        off = payload_end;
+    }
+    if keyframes.is_empty() {
+        return None;
+    }
+    Some((header_len, keyframes))
+}
+
+/// mp:D43. Tail a state recording to the EARLIEST `KEYF` chunk whose header+tail still compresses
+/// under `target` -- the cut that throws away the least of the file. `keyframes` is oldest first
+/// (from `state_layout`), so the first candidate that fits is the answer; no need to try the ones
+/// after it, since they only keep less. `Ok(None)` means even the LAST (newest, smallest) keyframe
+/// does not fit -- the file is left out whole, never tailed past its own newest keyframe.
+fn state_tail(
+    raw: &[u8],
+    header_len: u64,
+    keyframes: &[(u64, u32)],
+    name: &str,
+    target: u64,
+    opts: zip::write::SimpleFileOptions,
+) -> Result<Option<(Vec<u8>, u64, u32)>, String> {
+    let header = &raw[..header_len as usize];
+    for &(off, step) in keyframes {
+        let mut body = Vec::with_capacity(header.len() + raw.len() - off as usize);
+        body.extend_from_slice(header);
+        body.extend_from_slice(&raw[off as usize..]);
+        let (zip, comp) = compress_one(name, &body, opts)?;
+        if comp <= target {
+            return Ok(Some((zip, body.len() as u64, step)));
+        }
+    }
+    Ok(None)
 }
 
 /// Everything a report could carry, grouped, with the shed order decided (dist LA14):
@@ -2523,6 +2785,278 @@ mod tests {
             .1;
         assert!(String::from_utf8_lossy(net_log).contains("no room for its own directory"));
 
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    // ---- mp:D43: the state recordings, tailed at a KEYF chunk boundary --------------------------
+
+    /// One `{tag; payload_len; crc32=0; payload}` chunk (`docs/state-record.md`). The CRC is never
+    /// checked by the launcher's chunk walk (it never decodes a payload), so a fixture can leave it
+    /// zero.
+    fn push_chunk(out: &mut Vec<u8>, tag: u32, payload: &[u8]) {
+        out.extend_from_slice(&tag.to_le_bytes());
+        out.extend_from_slice(&(payload.len() as u32).to_le_bytes());
+        out.extend_from_slice(&0u32.to_le_bytes());
+        out.extend_from_slice(payload);
+    }
+
+    /// A v1 state-record header: magic/version/flags, `header_len` filled in against its own
+    /// length, one region (`HASHTBL`) of `region_len` bytes -- everything `state_layout` and
+    /// `state_tail` need, and nothing a real writer's region table would add beyond it.
+    fn state_header(region_len: u32, keyframe_every: u32) -> Vec<u8> {
+        let name = b"HASHTBL";
+        let mut h = Vec::new();
+        h.extend_from_slice(&STATE_MAGIC.to_le_bytes());
+        h.extend_from_slice(&STATE_VERSION.to_le_bytes());
+        h.extend_from_slice(&0u16.to_le_bytes()); // flags
+        let len_pos = h.len();
+        h.extend_from_slice(&0u32.to_le_bytes()); // header_len, filled in below
+        h.extend_from_slice(&0u64.to_le_bytes()); // manifest_fp
+        h.extend_from_slice(&keyframe_every.to_le_bytes());
+        h.extend_from_slice(&1u32.to_le_bytes()); // region_count
+        h.extend_from_slice(&region_len.to_le_bytes());
+        h.push(name.len() as u8);
+        h.extend_from_slice(name);
+        let total = h.len() as u32;
+        h[len_pos..len_pos + 4].copy_from_slice(&total.to_le_bytes());
+        h
+    }
+
+    /// A whole v1 state recording: `keyframe_count` `KEYF` chunks of `region_len` incompressible
+    /// bytes each (the format's "first chunk after the header is always a KEYF", so this is a
+    /// realistic fixture), a small `STEP` chunk between consecutive keyframes (so the chunk walk
+    /// exercises skipping a non-`KEYF` tag, not just reading one), and an `END ` chunk. Each `KEYF`
+    /// payload's leading `u32 step` counts up by one per keyframe, starting at 0.
+    fn state_file(keyframe_count: u32, region_len: usize, seed: u64) -> Vec<u8> {
+        let step_tag = u32::from_le_bytes(*b"STEP");
+        let end_tag = u32::from_le_bytes(*b"END ");
+        let mut out = state_header(region_len as u32, 3000);
+        let mut step = 0u32;
+        for k in 0..keyframe_count {
+            let mut payload = Vec::with_capacity(4 + region_len);
+            payload.extend_from_slice(&step.to_le_bytes());
+            payload.extend_from_slice(&noise(region_len, seed.wrapping_add(u64::from(k)) | 1));
+            push_chunk(&mut out, STATE_TAG_KEYF, &payload);
+            if k + 1 < keyframe_count {
+                let mut step_payload = Vec::with_capacity(8);
+                step_payload.extend_from_slice(&step.to_le_bytes());
+                step_payload.extend_from_slice(&0u32.to_le_bytes()); // run_count = 0
+                push_chunk(&mut out, step_tag, &step_payload);
+            }
+            step += 1;
+        }
+        let mut end_payload = Vec::with_capacity(16);
+        end_payload.extend_from_slice(&step.saturating_sub(1).to_le_bytes());
+        end_payload.extend_from_slice(&keyframe_count.to_le_bytes());
+        end_payload.extend_from_slice(&0u64.to_le_bytes());
+        push_chunk(&mut out, end_tag, &end_payload);
+        out
+    }
+
+    /// A state recording that fits under the budget as-is is copied byte for byte -- nothing about
+    /// it is even parsed, since nothing forced a cut.
+    #[test]
+    fn a_state_recording_that_fits_is_kept_whole() {
+        let dir = fresh("state_whole");
+        let name = "20260927T090000Z_a1b2c3d4_1_host";
+        let s = dir.join("logs").join(name);
+        std::fs::create_dir_all(&s).unwrap();
+        let state = state_file(3, 4 * 1024, 41);
+        std::fs::write(s.join("mh_match_state.bin"), &state).unwrap();
+
+        let zip = dir.join("out").join("report.zip");
+        let built = build(&zip, &input_for(&dir, s.clone(), "fits fine")).unwrap();
+        let entry = entries_of(&zip)
+            .into_iter()
+            .find(|(n, _)| n == &format!("logs/{name}/mh_match_state.bin"))
+            .expect("the state recording is in the report");
+        assert!(
+            entry.1 == state,
+            "the state recording was changed when nothing forced a cut"
+        );
+
+        let meta: serde_json::Value = serde_json::from_str(&built.meta).unwrap();
+        assert!(
+            meta["dropped"].as_array().unwrap().is_empty(),
+            "{}",
+            built.meta
+        );
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// mp:D43's done_when (a): over budget, the replay input stays whole and the state recording is
+    /// cut at a `KEYF` boundary -- the kept bytes are themselves a valid v1 file (header, then a
+    /// suffix of the original chunk stream whose first chunk is a `KEYF`), and `report.json` names
+    /// the cut with its own reason and the kept keyframe's step.
+    #[test]
+    fn an_over_budget_report_keeps_replay_inputs_whole_and_tails_the_state_file_at_a_keyframe() {
+        let dir = fresh("state_tail");
+        let name = "20260927T091000Z_deadbeef_1_host";
+        let s = dir.join("logs").join(name);
+        std::fs::create_dir_all(&s).unwrap();
+
+        let orders = noise(256 * 1024, 5);
+        std::fs::write(s.join("mh_match_orders.bin"), &orders).unwrap();
+
+        // Six ~700 KB incompressible keyframes: a ~4.2 MB recording, nowhere near a 2 MB budget.
+        let state = state_file(6, 700 * 1024, 77);
+        std::fs::write(s.join("mh_match_state.bin"), &state).unwrap();
+
+        let zip = dir.join("out").join("report.zip");
+        let budget = 2 * 1024 * 1024u64;
+        let built = build_with_budget(
+            &zip,
+            &input_for(&dir, s.clone(), "desync near the end"),
+            budget,
+        )
+        .unwrap();
+        assert!(body_of(&built) <= budget, "{} > {budget}", body_of(&built));
+
+        let entries = entries_of(&zip);
+        let replay = entries
+            .iter()
+            .find(|(n, _)| n == &format!("logs/{name}/mh_match_orders.bin"))
+            .expect("the replay input was dropped");
+        assert!(
+            replay.1 == orders,
+            "the replay input went in partially or changed"
+        );
+
+        let kept = &entries
+            .iter()
+            .find(|(n, _)| n == &format!("logs/{name}/mh_match_state.bin"))
+            .expect("the state recording is gone entirely")
+            .1;
+        assert!(
+            kept.len() < state.len(),
+            "the state recording was kept whole despite the budget"
+        );
+
+        let (orig_header_len, _) = state_layout(&state).unwrap();
+        assert!(
+            kept.len() as u64 >= orig_header_len,
+            "the kept bytes are shorter than the header alone"
+        );
+        assert_eq!(
+            &kept[..orig_header_len as usize],
+            &state[..orig_header_len as usize],
+            "the header was not carried over verbatim"
+        );
+
+        // The kept bytes decode as a v1 file in their own right: same header, first chunk a KEYF.
+        let (kept_header_len, kept_keyframes) =
+            state_layout(kept).expect("the kept bytes are not a valid v1 state file");
+        assert_eq!(kept_header_len, orig_header_len);
+        assert_eq!(
+            kept_keyframes[0].0, orig_header_len,
+            "the first chunk after the header must be the kept KEYF"
+        );
+        // It really is a TAIL: everything past the header is a suffix of the original chunk stream.
+        assert!(
+            state.ends_with(&kept[orig_header_len as usize..]),
+            "the kept chunks are not a suffix of the original file"
+        );
+
+        let meta: serde_json::Value = serde_json::from_str(&built.meta).unwrap();
+        let rec = meta["dropped"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|d| {
+                d["file"]
+                    .as_str()
+                    .is_some_and(|f| f.ends_with("mh_match_state.bin"))
+            })
+            .expect("the state cut is named in dropped");
+        assert_eq!(rec["why"].as_str().unwrap(), WHY_STATE_TAILED, "{rec:?}");
+        let kept_bytes = rec["kept_bytes"].as_u64().unwrap();
+        assert!(kept_bytes > 0 && kept_bytes < state.len() as u64, "{rec:?}");
+        let kept_from_step = rec["kept_from_step"].as_u64().unwrap();
+        assert_eq!(
+            kept_from_step, kept_keyframes[0].1 as u64,
+            "the reported step must match the kept KEYF's own payload"
+        );
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// A state file that fails the chunk walk -- here, a bad magic -- is dropped whole with its own
+    /// reason rather than tailed at a guess, once the budget actually needs it to shrink.
+    #[test]
+    fn a_malformed_state_recording_is_dropped_with_reason() {
+        let dir = fresh("state_malformed");
+        let name = "20260927T092000Z_baadf00d_1_host";
+        let s = dir.join("logs").join(name);
+        std::fs::create_dir_all(&s).unwrap();
+
+        let mut garbage = noise(2 * 1024 * 1024, 9);
+        garbage[0..4].copy_from_slice(&[0, 0, 0, 0]); // never the "MHSR" magic
+        std::fs::write(s.join("mh_desync_state.bin"), &garbage).unwrap();
+
+        let zip = dir.join("out").join("report.zip");
+        let budget = 1024 * 1024u64; // under the garbage file alone, so it must be shrunk
+        let built =
+            build_with_budget(&zip, &input_for(&dir, s.clone(), "weird file"), budget).unwrap();
+
+        let names: Vec<String> = entries_of(&zip).into_iter().map(|(n, _)| n).collect();
+        assert!(
+            !names.contains(&format!("logs/{name}/mh_desync_state.bin")),
+            "{names:?}"
+        );
+
+        let meta: serde_json::Value = serde_json::from_str(&built.meta).unwrap();
+        let rec = meta["dropped"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|d| {
+                d["file"]
+                    .as_str()
+                    .is_some_and(|f| f.ends_with("mh_desync_state.bin"))
+            })
+            .expect("the malformed state file is named in dropped");
+        assert_eq!(rec["why"].as_str().unwrap(), WHY_STATE_MALFORMED, "{rec:?}");
+        assert!(
+            rec.get("kept_bytes").is_none(),
+            "a whole drop has no kept_bytes: {rec:?}"
+        );
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// A valid state recording whose only keyframe still does not fit under what the budget can
+    /// give it is dropped whole -- never tailed past its own newest keyframe.
+    #[test]
+    fn a_state_recording_whose_only_keyframe_does_not_fit_is_dropped_whole() {
+        let dir = fresh("state_no_room");
+        let name = "20260927T093000Z_c0ffee00_1_host";
+        let s = dir.join("logs").join(name);
+        std::fs::create_dir_all(&s).unwrap();
+
+        let state = state_file(1, 2 * 1024 * 1024, 13); // one ~2 MB keyframe
+        std::fs::write(s.join("mh_match_state.bin"), &state).unwrap();
+
+        let zip = dir.join("out").join("report.zip");
+        let budget = 64 * 1024u64; // far under the header plus its single keyframe
+        let built =
+            build_with_budget(&zip, &input_for(&dir, s.clone(), "way too small"), budget).unwrap();
+
+        let names: Vec<String> = entries_of(&zip).into_iter().map(|(n, _)| n).collect();
+        assert!(
+            !names.contains(&format!("logs/{name}/mh_match_state.bin")),
+            "{names:?}"
+        );
+
+        let meta: serde_json::Value = serde_json::from_str(&built.meta).unwrap();
+        let rec = meta["dropped"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|d| {
+                d["file"]
+                    .as_str()
+                    .is_some_and(|f| f.ends_with("mh_match_state.bin"))
+            })
+            .expect("the oversize single-keyframe file is named in dropped");
+        assert_eq!(rec["why"].as_str().unwrap(), WHY_STATE_NO_ROOM, "{rec:?}");
         std::fs::remove_dir_all(&dir).ok();
     }
 }

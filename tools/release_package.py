@@ -107,6 +107,11 @@ The condition is derived from the module list, not declared per zip, so a zip th
 loses mh_harness.dll gains or loses the keys with it. (The spine-only [harness] keys -- none of
 which HARNESS_KEYS sets -- are refused by name in configuration (1); the hash keeps running.)
 
+THE STATE RECORDING IS A DEBUG KEY, NOT A HARNESS KEY (mp:D40, user ruling 2026-09-27).
+`[desync] state_record=1` rides the desync watch in mh.dll, not mh_harness.dll, so it is in DEBUG_KEYS:
+both debug zips record the whole match into mh_match_state.bin, and ship `net` keeps the example
+ini's 0 (no file and no shadow copy -- mh_net.log says so). The selftest asserts both halves.
+
 WHAT IS STILL NOT IN EITHER LIST. `[debug] overlay` LEFT DEBUG_KEYS on 2026-09-20 (user ruling): the
 debug ini keeps `overlay=0`, i.e. installed-but-hidden, so the Ctrl+Alt+D toggle works and nothing
 paints over the game until asked -- proven by test_ui.py's `debug_overlay` scenario (absent on the
@@ -199,6 +204,15 @@ DEBUG_KEYS = (
         "per-present mouse ring + camera-latch telemetry into mh_mtrace.log, per match. The input "
         "path is where 'it feels wrong' reports come from, and it is unreconstructable after the fact.",
     ),
+    (
+        "desync",
+        "state_record",
+        "1",
+        "record the WHOLE match's state (every hash-manifest slice, keyframes + per-step changes) into "
+        "mh_match_state.bin in the match folder (mp:D40, user ruling 2026-09-27). A report then says "
+        "WHICH bytes diverged and when, not only that a hash did. Read-only on game memory; ~0.3 ms "
+        "per sim step, written by a background thread. The ship `net` ini keeps it 0.",
+    ),
 )
 
 # (section, key, value, why). The determinism/replay INSTRUMENT, armed in the debug ini of every zip
@@ -241,8 +255,12 @@ SHIP_HEADER = """\
 ; mh_net.ini -- SHIPPING configuration, packaged with {zipname}.
 ;
 ; This file is src/mh_dll/mh_net.example.ini VERBATIM: that file documents every key the DLL reads
-; together with its real default, so a copy of it IS the shipping configuration. Nothing below is
-; an override -- deleting this file entirely would change nothing about how the DLL behaves.
+; together with its real default, so a copy of it IS the shipping configuration. TWO exceptions: the
+; presentation keys of the video section (backend / window / filter) are set to the player default -- the owned
+; DirectDraw, borderless, via d3d11 with a GDI fallback -- while the DLL's compiled default stays
+; `backend=system` (the game's own DDRAW.DLL); and the input section's backend is set to `own` -- the
+; owned DirectInput on Raw Input, no dinput.dll loaded -- while its compiled default also stays
+; `system` (the game's own DINPUT.DLL). Deleting this file therefore changes presentation and input.
 ;
 ; The DLL arms with no mh_net.ini present at all. Keep this one because it is the reference: every
 ; key you might want is already in front of you, with its default and what it does.
@@ -887,6 +905,34 @@ def selftest():
         expect(
             "%s: the header names the harness as ARMED iff the keys arm it" % tag,
             ("ARM the determinism" in debug) == bool(harness_keys_for(modules)),
+        )
+
+    # mp:D40 (e): the whole-match state recording is ON in both debug zips and OFF in ship `net`.
+    def ini_value(text, section, key):
+        cur = None
+        for line in text.split("\n"):
+            st = line.strip()
+            if st.startswith("[") and st.endswith("]"):
+                cur = st[1:-1].strip().lower()
+                continue
+            m = re.match(r"^\s*%s\s*=\s*(\S*)" % re.escape(key), line)
+            if cur == section and m:
+                return m.group(1)
+        return None
+
+    expect(
+        "net (ship): [desync] state_record is absent or 0 (mp:D40 (e))",
+        ini_value(ship_body, "desync", "state_record") in (None, "0"),
+    )
+    debug_zips = [(t, m) for t, m, d in ZIPS if d]
+    expect(
+        "the debug zips are exactly net-debug and brokered-debug",
+        sorted(t for t, _m in debug_zips) == ["brokered-debug", "net-debug"],
+    )
+    for tag, modules in debug_zips:
+        expect(
+            "%s: [desync] state_record=1 (mp:D40 (e))" % tag,
+            ini_value(make_debug_ini(example, "x.zip", modules), "desync", "state_record") == "1",
         )
     refuses(
         "a DEBUG key that is not in the reference ini",

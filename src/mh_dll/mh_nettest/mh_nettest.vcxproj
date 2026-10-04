@@ -117,6 +117,20 @@
       <GenerateDebugInformation>true</GenerateDebugInformation>
     </Link>
   </ItemDefinitionGroup>
+  <!-- PT-GFX4: Dear ImGui (vendored, ..\include\imgui). Unconditional and AFTER the per-configuration
+       groups, so it appends to their metadata. d3dcompiler.lib is IGNORED on purpose: imgui_impl_dx11.cpp's
+       #pragma comment(lib, "d3dcompiler") would otherwise add a load-time import of d3dcompiler_47.dll;
+       gfx\imgui_d3dcompile.cpp defines the D3DCompile it calls (precompiled blobs), and if that file is
+       ever dropped the link fails instead of silently importing the DLL. -->
+  <ItemDefinitionGroup>
+    <ClCompile>
+      <PreprocessorDefinitions>IMGUI_DISABLE_OBSOLETE_FUNCTIONS;IMGUI_DISABLE_DEFAULT_SHELL_FUNCTIONS;IMGUI_DISABLE_WIN32_DEFAULT_IME_FUNCTIONS;IMGUI_IMPL_WIN32_DISABLE_GAMEPAD;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>..\include\imgui;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ClCompile>
+    <Link>
+      <IgnoreSpecificDefaultLibraries>d3dcompiler.lib;%(IgnoreSpecificDefaultLibraries)</IgnoreSpecificDefaultLibraries>
+    </Link>
+  </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="net_selftest.cpp" />
     <ClCompile Include="mh_calls_selftest.gen.cpp" />
@@ -124,16 +138,26 @@
     <ClCompile Include="watchdog_selftest.cpp" />
     <ClCompile Include="diag_counter_selftest.cpp" />
     <ClCompile Include="desync_selftest.cpp" />
+    <ClCompile Include="world_sync_selftest.cpp" />
+    <ClCompile Include="inc_state_selftest.cpp" />
+    <ClCompile Include="state_record_selftest.cpp" />
     <ClCompile Include="net_queue_selftest.cpp" />
     <ClCompile Include="session_id_selftest.cpp" />
     <ClCompile Include="session_dir_selftest.cpp" />
     <ClCompile Include="log_rotate_selftest.cpp" />
     <ClCompile Include="ini_read_selftest.cpp" />
     <ClCompile Include="info_avi_selftest.cpp" />
+    <ClCompile Include="imgui_bind_selftest.cpp" />
+    <ClCompile Include="scale_filter_selftest.cpp" />
+    <ClCompile Include="dinput_convert_selftest.cpp" />
     <ClCompile Include="run_context_selftest.cpp" />
     <ClCompile Include="udp_wire_selftest.cpp" />
     <ClCompile Include="udp_loopback_selftest.cpp" />
+    <ClCompile Include="udp_origin_selftest.cpp" />
+    <ClCompile Include="udp_rehome_selftest.cpp" />
+    <ClCompile Include="udp_mesh_selftest.cpp" />
     <ClCompile Include="..\mh_net_udp\udp_endpoint.cpp" />
+    <ClCompile Include="..\mh_net_udp\udp_mesh.cpp" />
     <ClCompile Include="..\mh_net_udp\udp_channel_c.cpp" />
     <ClCompile Include="..\mh_net_udp\udp_snapshot.cpp" />
     <ClCompile Include="udp_bulk_selftest.cpp" />
@@ -150,6 +174,7 @@
     <ClCompile Include="..\mh\hook\export.cpp" />
     <ClCompile Include="..\mh\hook\hookpoint.cpp" />
     <ClCompile Include="..\libmh\orders\order_queue.cpp" />
+    <ClCompile Include="..\libmh\orders\admission_log.cpp" />
     <ClCompile Include="..\libmh\orders\issue\issue_state.cpp" />
     <ClCompile Include="..\libmh\orders\issue\issue_promote.cpp" />
     <ClCompile Include="..\libmh\orders\issue\issue_bldg_orders.cpp" />
@@ -179,6 +204,10 @@
     <ClCompile Include="..\libmh\lockstep\overlay_hoist.cpp" />
     <ClCompile Include="..\libmh\lockstep\timekeeper.cpp" />
     <ClCompile Include="..\mh\desync\desync_watch.cpp" />
+    <ClCompile Include="..\mh\desync\state_tracker.cpp" />
+    <ClCompile Include="..\mh\desync\state_recorder.cpp" />
+    <ClCompile Include="..\mh\desync\state_ring.cpp" />
+    <ClCompile Include="..\mh\desync\world_sync.cpp" />
     <ClCompile Include="..\libmh\save\save_block.cpp" />
     <ClCompile Include="..\libmh\save\save_driver.cpp" />
     <ClCompile Include="..\libmh\save\save_ext.cpp" />
@@ -210,6 +239,7 @@
     <ClCompile Include="..\libmh\state\boot_snapshot.cpp" />
     <ClCompile Include="..\libmh\state\nav_trailer.cpp" />
     <ClCompile Include="..\libmh\state\world_snapshot.cpp" />
+    <ClCompile Include="..\libmh\state\world_fixup.cpp" />
     <ClCompile Include="..\libmh\state\spine.cpp" />
     <ClCompile Include="..\libmh\state\host_bind.cpp" />
     <ClCompile Include="..\libmh\state\spine_exports.cpp" />
@@ -2432,6 +2462,8 @@
     <ClCompile Include="..\mh\ui\ui_runtime.cpp" />
     <ClCompile Include="..\mh\ui\lobby_slide.cpp" />
     <ClCompile Include="..\mh\ui\lobby_notice.cpp" />
+    <ClCompile Include="..\mh\ui\player_strings.cpp" />
+    <ClCompile Include="..\mh\ui\text_wrap.cpp" />
     <ClCompile Include="..\mh\ui\lobby_widgets.cpp" />
     <ClCompile Include="..\mh\ui\lobby_ping.cpp" />
     <ClCompile Include="..\mh\ui\lobby_announce.cpp" />
@@ -2441,6 +2473,7 @@
     <ClCompile Include="..\mh\seams\map_transfer.cpp" />
     <ClCompile Include="..\mh\seams\net_lockstep.cpp" />
     <ClCompile Include="..\mh\seams\mp_menu.cpp" />
+    <ClCompile Include="..\mh\seams\lang_pack.cpp" />
     <ClCompile Include="..\mh\seams\gfx_capture.cpp" />
     <ClCompile Include="module_bind_compiled_in.cpp" />
     <ClCompile Include="..\mh\seams\gfx_overlay.cpp" />
@@ -2467,6 +2500,20 @@
     <ClCompile Include="..\mh\seams\ui_pause.cpp" />
     <ClCompile Include="..\mh\seams\launch.cpp" />
     <ClCompile Include="..\mh\seams\video.cpp" />
+    <ClCompile Include="..\mh\gfx\ddraw_own.cpp" />
+    <ClCompile Include="..\mh\input\dinput_own.cpp" />
+    <ClCompile Include="..\mh\input\dinput_convert.cpp" />
+    <ClCompile Include="..\mh\gfx\backend_gdi.cpp" />
+    <ClCompile Include="..\mh\gfx\backend_null.cpp" />
+    <ClCompile Include="..\mh\gfx\backend_d3d11.cpp" />
+    <ClCompile Include="..\mh\gfx\overlay_imgui.cpp" />
+    <ClCompile Include="..\mh\gfx\imgui_d3dcompile.cpp" />
+    <ClCompile Include="..\include\imgui\imgui.cpp" />
+    <ClCompile Include="..\include\imgui\imgui_draw.cpp" />
+    <ClCompile Include="..\include\imgui\imgui_tables.cpp" />
+    <ClCompile Include="..\include\imgui\imgui_widgets.cpp" />
+    <ClCompile Include="..\include\imgui\backends\imgui_impl_win32.cpp" />
+    <ClCompile Include="..\include\imgui\backends\imgui_impl_dx11.cpp" />
     <ClCompile Include="..\..\mh_net_proto\src\session_info.cpp" />
     <ClCompile Include="..\..\mh_net_proto\src\uuid7.cpp" />
     <ClCompile Include="..\..\mh_net_proto\src\net_wire.cpp" />

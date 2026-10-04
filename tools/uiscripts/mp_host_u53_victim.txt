@@ -1,0 +1,38 @@
+# mp:U53 phase 1 -- 3-peer ELIMINATION shape (tools/det_arms.py --u53-*; check_u53_elim.py reads the logs).
+# Topology = run_u19b_quit3's: host vms[0], client1 vms[1], client2 the local det3_client2 lane.
+# The elimination itself is the harness `conq` workload's force-kill (harness-extra), NOT a UI gesture.
+# host: VICTIM (eliminated by the harness). does nothing arm
+settled value:110
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+settled Create
+clickl Create
+present Game name
+settled Ok
+clickl Ok
+present Available maps
+settled Ok
+clickl Ok
+
+present Network players
+peers 2
+occ 3
+enabled Start
+settled Start
+awaitsignal seated1
+awaitsignal seated2
+clickl Start
+
+absent Network players
+gamemode 2
+screen 0x00653dc3
+capture host_defeat
+dump
+signal elim
+log host reached its outcome dialog
+awaitsignal c1done
+awaitsignal c2done
+signal victimdone
+end

@@ -1,0 +1,62 @@
+# mh_strings.txt for the RU language pack (mods:LANG4) -- mh.dll's own player-visible text.
+#
+# Our own translation, not retail data: src/formats/langpack.py copies it into lang/<id>/ beside the
+# pack it builds. One `key = text` per line, UTF-8; keys and the printf shape of every text (the
+# %s %d %u %lu conversions, in order) must match src/mh_dll/mh/ui/player_strings.def, or mh.dll
+# shows that key's English. tools/lint_player_strings.py and `langpack.py --selftest` check both.
+# Plain "-" and "е" throughout: the menu fonts' em dash and ё are not guaranteed.
+
+# lobby / browser status line
+lobby.no_module = Нет сетевого модуля. Сетевая игра недоступна.
+lobby.link_lost = Связь с хостом потеряна.
+lobby.host_left = Хост покинул игру.
+lobby.refused = Отказ: %s
+
+# join refusal reasons (composed by the host in English, shown here in Russian)
+refuse.old_client_cp = старый клиент cp %u
+refuse.old_host_cp = старый хост cp %u
+refuse.codepage = кодировка %u/%u
+refuse.newer_protocol = протокол %u > %u
+refuse.older_protocol = протокол %u < %u
+refuse.malformed = неверный запрос
+refuse.no_match_id = старый протокол
+refuse.newer_than_host = протокол новее, чем у хоста
+refuse.not_our_lobby = чужое лобби
+refuse.cp_mismatch = разные кодировки
+refuse.unknown = неизвестно
+relay.outdated = Ретранслятор устарел (протокол %u < %u)
+
+# map transfer
+map.cannot_send = У игрока %s другая копия карты %s - передать ее нельзя, старт запрещен.
+map.sending = Отправка карты игроку %s - старт ждет ее получения.
+map.downloading = Загрузка карты с хоста (%u%%)...
+map.waiting = Ожидание карты от хоста...
+map.mismatch = Карта от хоста не совпадает с объявленной.
+
+# in-match messages
+desync.alert = РАССИНХРОНИЗАЦИЯ (шаг %lu) - игра идет по-разному у игроков
+cheat.single_player = читы только в одиночной игре
+hub.migrated = %s вышел; хостом теперь %s
+hub.lost = связь с %s потеряна; хостом теперь %s
+spectate.defeated = Побеждён -- наблюдение
+spectate.continue = Продолжить наблюдение
+spectate.exit = Выйти из матча
+
+# connection indicator
+netind.ping = ПИНГ
+netind.ms = %d мс
+netind.na = н/д
+netind.cmd = ОТКЛИК %d мс
+netind.waiting = ЖДЕМ: %s
+
+# main menu (the no-art fallback button; drawn upper-cased)
+menu.network_game = Сетевая игра
+
+# lobby TEAM spinner + MODE selector (mp:U51)
+lobby.team_none = -
+lobby.team_1 = К1
+lobby.team_2 = К2
+lobby.team_3 = К3
+lobby.team_4 = К4
+lobby.mode_ffa = Режим: FFA
+lobby.mode_team = Режим: команды

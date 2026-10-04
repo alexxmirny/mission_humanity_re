@@ -54,11 +54,24 @@ class Refusal(Exception):
 
 
 # Textually identical to tools/mp_run.py's SESSION_DIR_RE (mh_session_dir.h's own shape:
-# "<UTC YYYYMMDDTHHMMSSZ>_<8 hex>_<slot>_<role>"). Kept as a literal copy rather than an import so
+# "<UTC YYYYMMDDTHHMMSSZ>_<8 hex>_<slot>_<role>" SES1, and SES8's
+# "<UTC YYYY-MM-DDTHH-MM-SSZ>_<8 hex>_<map>_<mode>"). Kept as a literal copy rather than an import so
 # this checker carries no runtime dependency on mp_run.py's own (ssh/desktop-launch) import chain --
 # the same reasoning check_module_bind.py's module docstring gives for reading logs directly instead
 # of shelling out to a bigger tool.
-SESSION_DIR_RE = re.compile(r"^\d{8}T\d{6}Z_[0-9a-f]{8}_\d+_[A-Za-z0-9]+$")
+SESSION_DIR_RE = re.compile(
+    r"^(?:\d{8}T\d{6}Z_[0-9a-f]{8}_\d+|\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}Z_[0-9a-f]{8}_[A-Za-z0-9.-]+)_[A-Za-z0-9]+$"
+)
+# SES8 (2026-09-29): new names start "YYYY-MM-DDTHH-MM-SSZ", which does NOT string-sort with the
+# SES1 "YYYYMMDDTHHMMSSZ" ones a lane still holds (`-` < `0`). Order by canon(name), never the raw
+# name. Verbatim copy of tools/_rundir.py's canon() (no import chain between checkers).
+_NEW_STAMP = re.compile(r"^(\d{4})-(\d{2})-(\d{2})T(\d{2})-(\d{2})-(\d{2})Z")
+
+
+def canon(name):
+    """The name with an SES8 stamp rewritten to the SES1 compact form, so the two sort together."""
+    return _NEW_STAMP.sub(r"\1\2\3T\4\5\6Z", name)
+
 
 DEFAULT_ROUNDS = 3
 
@@ -79,7 +92,7 @@ def session_runs(logs_dir):
         for d in glob.glob(os.path.join(logs_dir, "*"))
         if os.path.isdir(d) and SESSION_DIR_RE.match(os.path.basename(d))
     ]
-    return sorted(c, key=lambda d: os.path.basename(d))
+    return sorted(c, key=lambda d: canon(os.path.basename(d)))
 
 
 def read_session_json(folder):
@@ -136,7 +149,7 @@ def check(host_run_dir, rounds=DEFAULT_ROUNDS):
     fails = []
     if len(host_sessions) != rounds:
         fails.append(
-            "host lane has %d session directory(ies) matching the SES1 shape, want EXACTLY %d -- %s"
+            "host lane has %d session directory(ies) matching the SES1/SES8 shape, want EXACTLY %d -- %s"
             % (
                 len(host_sessions),
                 rounds,
@@ -145,7 +158,7 @@ def check(host_run_dir, rounds=DEFAULT_ROUNDS):
         )
     if len(client_sessions) != rounds:
         fails.append(
-            "client lane has %d session directory(ies) matching the SES1 shape, want EXACTLY %d -- "
+            "client lane has %d session directory(ies) matching the SES1/SES8 shape, want EXACTLY %d -- "
             "%s"
             % (
                 len(client_sessions),
@@ -264,10 +277,13 @@ def _plant(d, host_rounds, client_rounds, host_lane_name="ui_selftest_rollover_h
     return os.path.join(d, host_lane_name)
 
 
-def _round(i, role, short=None, closed=True):
-    """A shape-matching (dirname, match_id, closed) triple for round `i` (0-based)."""
+def _round(i, role, short=None, closed=True, ses8=False):
+    """A shape-matching (dirname, match_id, closed) triple for round `i` (0-based). `ses8` names it
+    the SES8 way (`<YYYY-MM-DDTHH-MM-SSZ>_<mid8>_<map>_<mode>`, no slot)."""
     short = short or ("aaaaaaa%d" % (i + 1))
     mid = ("0" * 24) + short
+    if ses8:
+        return "2026-09-29T00-%02d-00Z_%s_blue-monday_%s" % (i, short, role), mid, closed
     slot = 0 if role == "host" else 1
     stamp = "20260917T%06dZ" % (i * 100)
     return "%s_%s_%d_%s" % (stamp, short, slot, role), mid, closed
@@ -474,6 +490,25 @@ def selftest():
         )
     )
     ok &= not got
+
+    # 12. SES8 names: the same shipped shape on the new directory names.
+    ok &= _run_case(
+        "SES8 names: 3 rounds, pairwise-identical, all distinct",
+        [_round(i, "host", ses8=True) for i in range(3)],
+        [_round(i, "client", ses8=True) for i in range(3)],
+        3,
+        True,
+    )
+    # 13. ...and a mismatched id is still caught on them.
+    ses8_bad = [_round(i, "client", ses8=True) for i in range(3)]
+    ses8_bad[1] = _round(1, "client", short="bbbbbbbb", ses8=True)
+    ok &= _run_case(
+        "SES8 names: round 2 ids differ across peers",
+        [_round(i, "host", ses8=True) for i in range(3)],
+        ses8_bad,
+        3,
+        False,
+    )
 
     if ok:
         print("check_session_rollover --selftest: all cases ok")

@@ -47,15 +47,21 @@
 #include <cstdlib>
 #include <cstring>
 
+#ifdef _WIN32
+#include <windows.h> // ARM F's real-address-map arm (GetModuleHandleEx, GetTickCount)
+#endif
+
 #include "state/host_bind.h"      // pulls in libmh/include/libmh.h for libmh_region_bind
 #include "state/boot_snapshot.h"  // the SHARED session-begun latch -- see the ordering arm
 #include "state/region_runtime.h" // clear_region -- see empty_nav_pool() below
+#include "state/world_fixup.h"    // mp:X3a -- ARM F
 #include "state/world_snapshot.h"
 
 // ARM R (the RNG channels, tracker mp:R-rng-snapshot / refinement-plan X0) draws through the
 // TRANSLATED PRNG bodies rather than re-deriving the recurrence here, for the same reason
 // sim_lt_rng_draws.h gives: one state, one implementation. A second copy of ROR16(state+0x9248,3)
 // living in a test would agree with itself forever while the shipped body drifted.
+#include "sim/sim_state.h"                    // mp:X3c ARM G -- the selection reset check
 #include "sim_test_support.h"                 // mh::sim::sim_fixture -- the offline store
 #include "sim/libtrans/sim_lt_rng_draws.h"    // rand_below (ch0), rand_below_fx (ch1)
 #include "sim/libtrans/sim_lt_rng_raw_step.h" // rand_below_ai (ch2), rand_state_advance
@@ -298,6 +304,708 @@ void empty_nav_pool() {
 }
 
 // ================================================================================================
+// ARM F -- THE FIXUP TRAILER (tracker mp:X3a, state/world_fixup.h)
+// ================================================================================================
+//
+// The claim: a capture classifies every carried dword against ITS OWN process's address map, and an
+// importer -- a DIFFERENT process, modelled here by a second buffer standing in for a DLL that loaded
+// at a different base -- turns that classification into the right dword in ITS OWN memory, without
+// touching a hashed byte and without half-applying anything.
+//
+// THE PROCESS IS SYNTHETIC ON PURPOSE for F1-F6: a fake "mh.dll" (a static buffer) and a fake
+// private range (a second one), injected through capture_params::map, so each class is provoked at a
+// chosen (block, offset) rather than hoped for. F7 is the same claim over the REAL address map, with
+// no injection, so the VirtualQuery walker is exercised on the real OS.
+//
+// EVERY POSITIVE CHECK HAS ITS MUTATION PARTNER: "without fixup_apply the slot still holds the
+// SENDER'S value". That is the arm's version of "make apply a no-op and F1-F3 must red" -- if the
+// byte engine alone already produced the answer, the fixup would be measuring nothing.
+struct fx_resolver_ctx {
+    uint32_t base;
+    uint32_t stamp, size;
+    bool     loaded; // false: the module is not loaded in the receiving process
+};
+
+bool fx_resolve(void *vctx, const char *name, module_identity *out) {
+    const fx_resolver_ctx *c = static_cast<const fx_resolver_ctx *>(vctx);
+    if (!c->loaded || std::strcmp(name, "mh.dll") != 0) return false;
+    out->base            = c->base;
+    out->time_date_stamp = c->stamp;
+    out->size_of_image   = c->size;
+    return true;
+}
+
+bool fx_has_hash_slice(region_id r) {
+    for (int h = 0; h < HASH_REGION_COUNT; ++h)
+        if (HASH_REGIONS[h].rid == r) return true;
+    return false;
+}
+
+bool fx_view_owned(region_id r) {
+    const uint8_t f = REGIONS[r].manifests;
+    return (f & MF_VIEW) != 0 && (f & (MF_SAVE | MF_HASH)) == 0;
+}
+
+// A block that can host a chosen dword: big enough, not zeroed on import, no hash slice, and of the
+// requested ownership (view-owned == presentation state; otherwise sim-owned).
+int fx_pick(bool view, int avoid) {
+    for (int i = 0; i < WORLD_SNAPSHOT_BLOCK_COUNT; ++i) {
+        const auto &b = WORLD_SNAPSHOT_BLOCKS[i];
+        if (i == avoid || b.len < 64u || is_zeroed_on_import(b.rid) || fx_has_hash_slice(b.rid)) continue;
+        if (fx_view_owned(b.rid) != view) continue;
+        return i;
+    }
+    return -1;
+}
+
+const uint8_t *fx_trailer(const uint8_t *blob, size_t *len) {
+    blob_header h;
+    std::memcpy(&h, blob, sizeof(h));
+    *len = h.fixup_len;
+    return blob + h.nav_offset + h.nav_len;
+}
+
+// Find the entry at (block, offset); 0 == none, else its kind. `mod_name` receives a REBASE's module.
+int fx_entry(const uint8_t *blob, int blk, uint32_t off, uint32_t *arg = nullptr, uint32_t *arg2 = nullptr,
+             char *mod_name = nullptr) {
+    size_t         tl = 0;
+    const uint8_t *t  = fx_trailer(blob, &tl);
+    if (tl == 0) return 0;
+    fixup_trailer_header th;
+    std::memcpy(&th, t, sizeof(th));
+    const uint8_t *mp = t + sizeof(th);
+    const uint8_t *ep = mp + th.module_count * sizeof(fixup_module);
+    for (uint32_t i = 0; i < th.entry_count; ++i) {
+        fixup_entry e;
+        std::memcpy(&e, ep + i * sizeof(e), sizeof(e));
+        if (e.block != blk || e.offset != off) continue;
+        if (arg) *arg = e.arg;
+        if (arg2) *arg2 = e.arg2;
+        if (mod_name && e.kind == FIXUP_REBASE) {
+            fixup_module fm;
+            std::memcpy(&fm, mp + e.module * sizeof(fm), sizeof(fm));
+            std::memcpy(mod_name, fm.name, 28);
+        }
+        return e.kind;
+    }
+    return 0;
+}
+
+// Rewrite the trailer's checksum after a test edits an entry, so the edit reaches the semantic
+// validation instead of being caught (correctly) by the checksum.
+void fx_refresh_checksum(uint8_t *blob) {
+    size_t               tl = 0;
+    uint8_t             *t  = const_cast<uint8_t *>(fx_trailer(blob, &tl));
+    fixup_trailer_header th;
+    std::memcpy(&th, t, sizeof(th));
+    uint8_t *mp = t + sizeof(th);
+    uint8_t *ep = mp + th.module_count * sizeof(fixup_module);
+    th.checksum = fixup_checksum(mp, th.module_count, ep, th.entry_count);
+    std::memcpy(t, &th, sizeof(th));
+}
+
+int arm_fixup(arena &a, uint32_t masks) {
+    const int fails0 = g_fails;
+    printf("  ARM F (mp:X3a fixup trailer)\n");
+
+    static uint8_t xbuf1[256], xbuf2[256], hbuf[64];
+    const uint32_t X1    = static_cast<uint32_t>(reinterpret_cast<uintptr_t>(xbuf1));
+    const uint32_t X2    = static_cast<uint32_t>(reinterpret_cast<uintptr_t>(xbuf2));
+    const uint32_t H     = static_cast<uint32_t>(reinterpret_cast<uintptr_t>(hbuf));
+    const uint32_t STAMP = 0x5EED0001u, SIZE = 0x1000u;
+
+    addr_map *m      = new addr_map;
+    auto      mk_map = [&](bool with_ours, bool ours_flag) {
+        m->clear();
+        int mod = 0xFFFF;
+        if (with_ours) mod = m->add_module(ours_flag ? "mh.dll" : "ddraw.dll", X1, STAMP, SIZE, ours_flag);
+        if (with_ours) m->add_range(X1, 256, AM_IMAGE, mod);
+        m->add_range(H, sizeof(hbuf), AM_PRIVATE);
+        m->finish();
+    };
+
+    const size_t need = capture_capacity();
+    uint8_t     *blob = static_cast<uint8_t *>(std::malloc(need));
+    size_t       got  = 0;
+    fixup_plan  *plan = new fixup_plan;
+
+    const int hs = fx_pick(false, -1); // sim-owned holder
+    const int hv = fx_pick(true, -1);  // view-owned holder
+    const int pt = fx_pick(false, hs); // a pointee region
+    ck(hs >= 0 && hv >= 0 && pt >= 0, "F0: found a sim-owned holder, a view-owned holder and a pointee block");
+    if (hs < 0 || hv < 0 || pt < 0) {
+        std::free(blob);
+        delete plan;
+        delete m;
+        return 1;
+    }
+    const region_id rhs = WORLD_SNAPSHOT_BLOCKS[hs].rid, rhv = WORLD_SNAPSHOT_BLOCKS[hv].rid,
+                    rpt = WORLD_SNAPSHOT_BLOCKS[pt].rid;
+    printf("    holders: sim=%s view=%s pointee=%s\n", WORLD_SNAPSHOT_BLOCKS[hs].name,
+           WORLD_SNAPSHOT_BLOCKS[hv].name, WORLD_SNAPSHOT_BLOCKS[pt].name);
+
+    auto setw = [](region_id r, uint32_t off, uint32_t v) { write_region_u32_at(r, off, v); };
+    auto getw = [](region_id r, uint32_t off) {
+        uint32_t v = 0;
+        read_region_u32_at(r, off, &v);
+        return v;
+    };
+    auto do_capture = [&](const addr_map *map) {
+        capture_params p;
+        p.step       = 1u;
+        p.mask_flags = masks;
+        p.game_clock = 0x5152535455565758ULL;
+        p.map        = map;
+        lockstep_hash(p.mask_flags, &p.lockstep_combined, &p.lockstep_state);
+        got = 0;
+        return capture(blob, need, &got, p);
+    };
+
+    // ---- F1: REBASE -------------------------------------------------------------------------------
+    {
+        a.fill(0);
+        setw(rhs, 8, X1 + 0x40u);
+        mk_map(true, true);
+        ck(do_capture(m) == WORLD_OK, "F1: capture with a synthetic process succeeds");
+        uint32_t arg    = 0;
+        char     nm[28] = {0};
+        ck(fx_entry(blob, hs, 8, &arg, nullptr, nm) == FIXUP_REBASE && arg == 0x40u &&
+               std::strcmp(nm, "mh.dll") == 0,
+           "F1: an interior pointer into our DLL is classified REBASE (module mh.dll, rva 0x40)");
+        blob_header h;
+        std::memcpy(&h, blob, sizeof(h));
+        ck(h.fixup_len != 0 && h.nav_offset + h.nav_len + h.fixup_len == got,
+           "F1: the trailer follows the nav trailer and fixup_len measures it exactly");
+
+        a.fill(0xCD);
+        fx_resolver_ctx rc  = {X2, STAMP, SIZE, true};
+        module_resolver res = {&fx_resolve, &rc};
+        ck(fixup_prepare(blob, got, *plan, &res) == 0 && plan->present, "F1: prepare accepts the trailer");
+        ck(import(blob, got) == WORLD_OK, "F1: the byte engine imports");
+        ck(getw(rhs, 8) == X1 + 0x40u, "F1 mutation: WITHOUT fixup_apply the slot holds the SENDER'S address");
+        fixup_stats fs;
+        fixup_apply(*plan, &fs);
+        ck(getw(rhs, 8) == X2 + 0x40u, "F1: apply re-points it at the RECEIVER'S module base + rva");
+        ck(fs.rebase == 1 && fs.changed >= 1, "F1: stats count the rebase and the change");
+    }
+
+    // ---- F2: PRESERVE, including the NULL-live hole ------------------------------------------------
+    for (int sub = 0; sub < 2; ++sub) {
+        a.fill(0);
+        setw(rhv, 0, H + 8u);      // 4-byte-aligned heap pointer at offset 0
+        setw(rhv, 12, H + 16u);    // an INTERIOR offset the legacy 4-byte-region rule cannot see
+        setw(rhv, 20, X1 + 0x40u); // a DLL pointer in a VIEW-owned holder: presentation state, so PRESERVE
+        setw(rhv, 24, 0x1234u);    // a plain small value: not a pointer, carried verbatim
+        mk_map(true, true);
+        ck(do_capture(m) == WORLD_OK, "F2: capture succeeds");
+        ck(fx_entry(blob, hv, 0) == FIXUP_PRESERVE && fx_entry(blob, hv, 12) == FIXUP_PRESERVE,
+           "F2: heap pointers (aligned and interior) are classified PRESERVE");
+        ck(fx_entry(blob, hv, 20) == FIXUP_PRESERVE,
+           "F2: a DLL pointer in a VIEW-owned holder is downgraded to PRESERVE (the receiver owns its screen)");
+        ck(fx_entry(blob, hv, 24) == 0, "F2: a small integer is not an entry");
+
+        a.fill(0xCD);
+        const uint32_t R = sub == 0 ? 0x0BAD0000u : 0u; // sub 1 is the NULL-live hole: no dialog on the receiver
+        setw(rhv, 0, R);
+        setw(rhv, 12, sub == 0 ? R + 4u : 0u);
+        setw(rhv, 20, sub == 0 ? R + 8u : 0u);
+        fx_resolver_ctx rc  = {X2, STAMP, SIZE, true};
+        module_resolver res = {&fx_resolve, &rc};
+        ck(fixup_prepare(blob, got, *plan, &res) == 0, "F2: prepare accepts");
+        ck(import(blob, got) == WORLD_OK, "F2: import");
+        ck(getw(rhv, 0) == H + 8u, "F2 mutation: WITHOUT apply the receiver's slot was overwritten by the sender's heap pointer");
+        fixup_apply(*plan, nullptr);
+        ck(getw(rhv, 0) == R && getw(rhv, 12) == (sub == 0 ? R + 4u : 0u) &&
+               getw(rhv, 20) == (sub == 0 ? R + 8u : 0u),
+           sub == 0 ? "F2: the receiver's OWN dwords survive (aligned, interior, and a view-owned DLL ptr)"
+                    : "F2: a NULL receiver slot stays NULL -- the legacy rule's NULL-live hole is closed");
+        ck(getw(rhv, 24) == 0x1234u, "F2: a non-pointer value is carried verbatim");
+    }
+
+    // ---- F3: REGION (a pointer into a region the receiver bound elsewhere) --------------------------
+    {
+        a.fill(0);
+        setw(rhs, 16, live_base(rpt) + 8u);
+        mk_map(true, true);
+        ck(do_capture(m) == WORLD_OK, "F3: capture succeeds");
+        uint32_t arg = 0, arg2 = 0;
+        ck(fx_entry(blob, hs, 16, &arg, &arg2) == FIXUP_REGION && arg == static_cast<uint32_t>(rpt) && arg2 == 8u,
+           "F3: a pointer into another carried (relocated) region is REGION (pointee rid, offset)");
+
+        const uint32_t keep = live_base(rpt), ksz = live_size(rpt);
+        uint8_t       *B = static_cast<uint8_t *>(std::malloc(ksz));
+        std::memset(B, 0, ksz);
+        a.fill(0xCD);
+        rebase(rpt, static_cast<uint32_t>(reinterpret_cast<uintptr_t>(B)), ksz);
+        fx_resolver_ctx rc  = {X2, STAMP, SIZE, true};
+        module_resolver res = {&fx_resolve, &rc};
+        ck(fixup_prepare(blob, got, *plan, &res) == 0, "F3: prepare accepts (pointee bound, in reach)");
+        ck(import(blob, got) == WORLD_OK, "F3: import");
+        ck(getw(rhs, 16) == keep + 8u, "F3 mutation: WITHOUT apply the slot names the SENDER'S region base");
+        fixup_apply(*plan, nullptr);
+        ck(getw(rhs, 16) == live_base(rpt) + 8u && live_base(rpt) != keep,
+           "F3: apply re-points it into the region where the RECEIVER bound it");
+        bind(rpt, keep, ksz);
+        std::free(B);
+    }
+
+    // ---- F4: hashed bytes are never touched ---------------------------------------------------------
+    {
+        int hsl = -1;
+        for (int h = 0; h < HASH_REGION_COUNT && hsl < 0; ++h)
+            if (!is_zeroed_on_import(HASH_REGIONS[h].rid) && HASH_REGIONS[h].len >= 8u) hsl = h;
+        ck(hsl >= 0, "F4: found a hashed slice");
+        if (hsl >= 0) {
+            const hash_region &hr  = HASH_REGIONS[hsl];
+            int                blk = -1;
+            for (int i = 0; i < WORLD_SNAPSHOT_BLOCK_COUNT; ++i)
+                if (WORLD_SNAPSHOT_BLOCKS[i].rid == hr.rid) blk = i;
+            const uint32_t off = (hr.offset + 3u) & ~3u;
+            a.fill(0);
+            setw(hr.rid, off, H + 4u);
+            mk_map(true, true);
+            ck(do_capture(m) == WORLD_OK, "F4: capture succeeds");
+            ck(fx_entry(blob, blk, off) == 0, "F4: a pointer-shaped value INSIDE a hashed slice gets no entry");
+            size_t               tl = 0;
+            const uint8_t       *t  = fx_trailer(blob, &tl);
+            fixup_trailer_header th;
+            std::memcpy(&th, t, sizeof(th));
+            ck(th.hashed_skipped >= 1u, "F4: ... and is counted in hashed_skipped");
+            blob_header h;
+            std::memcpy(&h, blob, sizeof(h));
+            a.fill(0xCD);
+            setw(RID_HWND_00824FE8, 0, 0u); // the OS-handle slot is preserved (F8); give the receiver the blob's value
+            fx_resolver_ctx rc  = {X2, STAMP, SIZE, true};
+            module_resolver res = {&fx_resolve, &rc};
+            ck(fixup_prepare(blob, got, *plan, &res) == 0 && import(blob, got) == WORLD_OK, "F4: import");
+            fixup_apply(*plan, nullptr);
+            uint64_t combined = 0;
+            lockstep_hash(masks, &combined, nullptr);
+            ck(combined == h.lockstep_combined, "F4: the imported lockstep hash equals the blob's (hashed bytes untouched)");
+            ck(canonical_hash() == h.base.content_hash, "F4: ... and so does the content hash");
+        }
+    }
+
+    // ---- F5: refusals are all-or-nothing -------------------------------------------------------------
+    {
+        a.fill(0);
+        setw(rhs, 8, X1 + 0x40u);
+        setw(rhv, 0, H + 8u);
+        mk_map(true, true);
+        ck(do_capture(m) == WORLD_OK, "F5: capture succeeds");
+        uint8_t *mut = dup_blob(blob, got);
+        size_t   tl  = 0;
+        fx_trailer(blob, &tl);
+        blob_header h;
+        std::memcpy(&h, blob, sizeof(h));
+        const size_t    toff = h.nav_offset + h.nav_len;
+        fx_resolver_ctx rc   = {X2, STAMP, SIZE, true};
+        module_resolver res  = {&fx_resolve, &rc};
+
+        auto refused_and_untouched = [&](const uint8_t *b, size_t n, const module_resolver *r, const char *what) {
+            a.fill(0xCD);
+            const uint64_t before = canonical_hash();
+            const int      prc    = fixup_prepare(b, n, *plan, r);
+            ck(prc == WORLD_ERR_FIXUP, what);
+            ck(canonical_hash() == before, "  ... and the world is byte-identical (prepare wrote nothing)");
+        };
+
+        std::memcpy(mut, blob, got);
+        mut[toff + sizeof(fixup_trailer_header) + 3u] ^= 0x01u; // a module/entry byte: the checksum
+        refused_and_untouched(mut, got, &res, "F5a: a flipped trailer byte fails the checksum: -23");
+
+        std::memcpy(mut, blob, got);
+        {
+            uint32_t bad = 0x4D48u;
+            std::memcpy(mut + toff, &bad, 4);
+        }
+        refused_and_untouched(mut, got, &res, "F5b: a damaged trailer magic: -23");
+
+        fx_resolver_ctx mismatch = {X2, STAMP + 1u, SIZE, true};
+        module_resolver mres     = {&fx_resolve, &mismatch};
+        refused_and_untouched(blob, got, &mres,
+                              "F5c: OURS loaded with a different identity (mixed-build pair): -23");
+
+        refused_and_untouched(blob, got - 1u, &res, "F5d: a trailer truncated by one byte: -23");
+
+        // a semantically bad entry with a VALID checksum must still refuse: block out of range
+        std::memcpy(mut, blob, got);
+        {
+            fixup_trailer_header th;
+            std::memcpy(&th, mut + toff, sizeof(th));
+            uint8_t    *ep = mut + toff + sizeof(th) + th.module_count * sizeof(fixup_module);
+            fixup_entry e;
+            std::memcpy(&e, ep, sizeof(e));
+            e.block = 0xFFF0u;
+            std::memcpy(ep, &e, sizeof(e));
+            fx_refresh_checksum(mut);
+        }
+        refused_and_untouched(mut, got, &res, "F5e: an entry naming no block (valid checksum): -23");
+
+        std::memcpy(mut, blob, got);
+        {
+            fixup_trailer_header th;
+            std::memcpy(&th, mut + toff, sizeof(th));
+            uint8_t    *ep = mut + toff + sizeof(th) + th.module_count * sizeof(fixup_module);
+            fixup_entry e;
+            std::memcpy(&e, ep, sizeof(e));
+            e.offset = WORLD_SNAPSHOT_BLOCKS[e.block].len; // one whole dword past the end
+            std::memcpy(ep, &e, sizeof(e));
+            fx_refresh_checksum(mut);
+        }
+        refused_and_untouched(mut, got, &res, "F5f: an entry past the end of its block (valid checksum): -23");
+
+        // degrade rather than refuse: OURS module not loaded at all (a standalone host), and a foreign
+        // module that is missing. The slot keeps the RECEIVER'S value.
+        {
+            fx_resolver_ctx none = {0, 0, 0, false};
+            module_resolver nres = {&fx_resolve, &none};
+            a.fill(0xCD);
+            setw(rhs, 8, 0x0CAFE000u);
+            ck(fixup_prepare(blob, got, *plan, &nres) == 0, "F5g: OURS not loaded: degrade, not refuse");
+            ck(import(blob, got) == WORLD_OK, "F5g: import");
+            fixup_stats fs;
+            fixup_apply(*plan, &fs);
+            ck(fs.degraded == 1 && getw(rhs, 8) == 0x0CAFE000u,
+               "F5g: the degraded REBASE preserves the receiver's own dword");
+        }
+        // F5i (tooling:TL-LIBREF-FIXUP-HOST): the STANDALONE importer finds an OURS name loaded with
+        // another identity, and it is the importing image itself -- the game recorded the hosted
+        // libmh.dll, the standalone host loaded its own. Foreign, not mixed-build: degrade. The same
+        // mismatch at any other base, or in the hosted arm, still refuses.
+        {
+            const import_arm self_std  = {true, X2};
+            const import_arm other_std = {true, X2 + 0x10000u};
+            const import_arm self_host = {false, X2};
+            refused_and_untouched(blob, got, &mres, "F5c': the mismatch still refuses by default");
+            // the hosted arm with the same trailer and a matching module keeps X3a's PRESERVE (F5g
+            // above); the standalone arm carries the value instead
+            {
+                fx_resolver_ctx none = {0, 0, 0, false};
+                module_resolver nres = {&fx_resolve, &none};
+                a.fill(0xCD);
+                setw(rhs, 8, 0x0CAFE000u);
+                ck(fixup_prepare(blob, got, *plan, &nres, &other_std) == 0 && import(blob, got) == WORLD_OK,
+                   "F5j: standalone arm, OURS not loaded: prepare + import");
+                fixup_stats fj;
+                fixup_apply(*plan, &fj);
+                ck(fj.carried == fj.preserve && fj.carried >= 2 && getw(rhs, 8) == X1 + 0x40u && getw(rhv, 0) == H + 8u,
+                   "F5j: standalone arm: the degraded REBASE and the heap PRESERVE keep the BLOB's values");
+            }
+            a.fill(0xCD);
+            ck(fixup_prepare(blob, got, *plan, &mres, &other_std) == WORLD_ERR_FIXUP,
+               "F5i: standalone arm, mismatched OURS module that is NOT the importer: -23");
+            ck(fixup_prepare(blob, got, *plan, &mres, &self_host) == WORLD_ERR_FIXUP,
+               "F5i: hosted arm, mismatched OURS module at the importer's own base: -23");
+            a.fill(0xCD);
+            setw(rhs, 8, 0x0CAFE000u);
+            ck(fixup_prepare(blob, got, *plan, &mres, &self_std) == 0,
+               "F5i: standalone arm, the mismatched OURS module IS the importer: foreign, not refused");
+            ck(plan->module_self_foreign[0] == 1 && plan->module_ok[0] == 0, "F5i: marked foreign, not resolved");
+            ck(import(blob, got) == WORLD_OK, "F5i: import");
+            fixup_stats fs;
+            fixup_apply(*plan, &fs);
+            ck(fs.degraded == 1 && fs.carried == fs.preserve && fs.carried >= 2 && getw(rhs, 8) == X1 + 0x40u && getw(rhv, 0) == H + 8u,
+               "F5i: its REBASE degrades, and the standalone arm CARRIES the blob's value (no receiver object)");
+            char mods[256];
+            fixup_module_list(*plan, mods, sizeof(mods));
+            ck(std::strstr(mods, "(foreign:standalone-self)") != nullptr, "F5i: the module list says so");
+        }
+        std::free(mut);
+    }
+    {
+        // F5h: overflowing the entry cap on capture refuses with -24 (never a partial population).
+        a.fill(0);
+        for (size_t i = 0; i < a.len; ++i) a.mem[i] = pattern(i);
+        empty_nav_pool();
+        m->clear();
+        m->add_range(0x10000u, 0x7FFE0000u, AM_PRIVATE);
+        m->finish();
+        ck(do_capture(m) == WORLD_ERR_FIXUP_CAPTURE, "F5h: more entries than the trailer holds: capture refuses -24");
+    }
+
+    // ---- F6: a blob without a trailer imports exactly as before -------------------------------------
+    {
+        a.fill(0);
+        setw(rhs, 8, X1 + 0x40u);
+        mk_map(true, true);
+        ck(do_capture(m) == WORLD_OK, "F6: capture succeeds");
+        uint8_t    *mut = dup_blob(blob, got);
+        blob_header h;
+        std::memcpy(&h, mut, sizeof(h));
+        h.fixup_len = 0; // the shape of every blob recorded before the trailer existed
+        std::memcpy(mut, &h, sizeof(h));
+        a.fill(0xCD);
+        ck(fixup_prepare(mut, got, *plan) == 0 && !plan->present, "F6: an absent trailer is an empty plan (rc 0)");
+        ck(import(mut, got) == WORLD_OK, "F6: import");
+        fixup_stats fs;
+        fixup_apply(*plan, &fs);
+        ck(!fs.present && fs.changed == 0 && getw(rhs, 8) == X1 + 0x40u,
+           "F6: no fixups, bytes in bytes out");
+        ck(canonical_hash() == h.base.content_hash, "F6: the content hash reproduces");
+        std::free(mut);
+    }
+
+    // ---- F7: the REAL address map, no injection -------------------------------------------------------
+    {
+        static uint32_t exe_static = 7;
+        uint8_t        *heap       = static_cast<uint8_t *>(std::malloc(64));
+        // Any exported system function; which DLL it really lives in (kernel32 forwards many to
+        // kernelbase) is asked of the loader, not assumed.
+        const uint32_t kfn = static_cast<uint32_t>(reinterpret_cast<uintptr_t>(&GetTickCount));
+        HMODULE        k32 = nullptr;
+        GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+                           reinterpret_cast<LPCSTR>(static_cast<uintptr_t>(kfn)), &k32);
+        char kname[MAX_PATH] = {0};
+        GetModuleFileNameA(k32, kname, MAX_PATH);
+        {
+            const char *b = kname;
+            for (const char *q = kname; *q; ++q)
+                if (*q == '\\') b = q + 1;
+            char low[28] = {0};
+            for (int i = 0; b[i] && i < 27; ++i) low[i] = (b[i] >= 'A' && b[i] <= 'Z') ? char(b[i] - 'A' + 'a') : b[i];
+            std::memcpy(kname, low, 28);
+        }
+        const uint32_t hv32 = static_cast<uint32_t>(reinterpret_cast<uintptr_t>(heap));
+        const uint32_t sv32 = static_cast<uint32_t>(reinterpret_cast<uintptr_t>(&exe_static));
+        a.fill(0);
+        setw(rhs, 0, sv32);
+        setw(rhs, 4, hv32 + 4u);
+        setw(rhs, 8, kfn);
+        ck(do_capture(nullptr) == WORLD_OK, "F7: capture with the REAL address map succeeds");
+        ck(fx_entry(blob, hs, 0) == 0, "F7: a pointer into the exe's own image is NOT an entry (mh.exe is not ASLR'd)");
+        ck(fx_entry(blob, hs, 4) == FIXUP_PRESERVE, "F7: a CRT-heap pointer is PRESERVE");
+        char     nm[28] = {0};
+        uint32_t arg    = 0;
+        ck(fx_entry(blob, hs, 8, &arg, nullptr, nm) == FIXUP_REBASE && std::strcmp(nm, kname) == 0 &&
+               arg == kfn - static_cast<uint32_t>(reinterpret_cast<uintptr_t>(k32)),
+           "F7: a pointer into a system DLL is REBASE (that module's name, rva) -- a foreign module, resolved by name");
+        printf("    F7 system DLL classified as: %s\n", nm);
+        size_t              tl = 0;
+        const uint8_t      *t  = fx_trailer(blob, &tl);
+        const fixup_summary sm = fixup_summarize(t, tl);
+        printf("    real map: entries=%lu region=%lu rebase=%lu preserve=%lu modules=%lu unmapped=%lu\n",
+               (unsigned long)sm.entries, (unsigned long)sm.region, (unsigned long)sm.rebase,
+               (unsigned long)sm.preserve, (unsigned long)sm.modules, (unsigned long)sm.unmapped);
+        ck(sm.valid && sm.entries == 3u,
+           "F7: exactly the two provoked entries plus the forced OS-handle entry over an otherwise-zero world");
+
+        // In-process re-import through the REAL resolver: every REBASE resolves to its own value and
+        // every PRESERVE reads the live dword the blob also holds -- so nothing changes (the X7 shape).
+        blob_header h;
+        std::memcpy(&h, blob, sizeof(h));
+        ck(fixup_prepare(blob, got, *plan) == 0 && plan->present, "F7: prepare over the real resolver");
+        ck(import(blob, got) == WORLD_OK, "F7: import");
+        fixup_stats fs;
+        fixup_apply(*plan, &fs);
+        ck(fs.changed == 0 && getw(rhs, 8) == kfn, "F7: an in-process re-import changes 0 values");
+        std::free(heap);
+    }
+
+    // ---- F8: an OS handle is PRESERVED whatever it holds (the hWnd finding, 2026-09-29) --------------
+    {
+        a.fill(0);
+        setw(RID_HWND_00824FE8, 0, 0x000A0B3Cu); // a small integer: an HWND, not an address
+        mk_map(true, true);
+        ck(do_capture(m) == WORLD_OK, "F8: capture succeeds");
+        int hb = -1;
+        for (int i = 0; i < WORLD_SNAPSHOT_BLOCK_COUNT; ++i)
+            if (WORLD_SNAPSHOT_BLOCKS[i].rid == RID_HWND_00824FE8) hb = i;
+        ck(hb >= 0 && fx_entry(blob, hb, 0) == FIXUP_PRESERVE, "F8: the main-window HWND is a forced PRESERVE entry");
+        a.fill(0xCD);
+        setw(RID_HWND_00824FE8, 0, 0x00051234u); // THIS process's window
+        ck(fixup_prepare(blob, got, *plan) == 0 && import(blob, got) == WORLD_OK, "F8: import");
+        ck(getw(RID_HWND_00824FE8, 0) == 0x000A0B3Cu, "F8 mutation: WITHOUT apply the sender's HWND is in place");
+        fixup_apply(*plan, nullptr);
+        ck(getw(RID_HWND_00824FE8, 0) == 0x00051234u, "F8: apply keeps the RECEIVER'S window handle");
+    }
+
+    std::free(blob);
+    delete plan;
+    delete m;
+    return g_fails - fails0;
+}
+
+// ================================================================================================
+// ARM G -- THE RESYNC IMPORT (tracker mp:X3c, state/world_fixup.h RESYNC_KEEP_LOCAL)
+// ================================================================================================
+//
+// The claim: importing the HOST's world into a session that keeps running takes every block from the
+// blob EXCEPT the peer-local ones, which keep the receiver's bytes; it is allowed while the session
+// latch is set (and only via the resync entry); it never lets a keep-local region shadow a byte the
+// state verdict hashes; and it resets the local selection without moving the verdict hash.
+//
+// The whole C entry (libmh_import_world_resync) needs a live sim to re-derive against, so this arm
+// drives its COMPONENTS -- the same functions the entry calls: import_resync, keep_local_save/restore,
+// reset_local_selection -- over the synthetic arena. The admission-log half is `orderstest`.
+//
+// EVERY POSITIVE CHECK HAS ITS MUTATION PARTNER (marked "mutation:"): the check must be able to red.
+int arm_resync(arena &a, const uint8_t *blob, size_t got, uint32_t masks) {
+    const int fails0 = g_fails;
+    printf("  ARM G (mp:X3c resync import)\n");
+    (void)masks;
+
+    // ---- G0/G2: the list itself --------------------------------------------------------------------
+    ck(RESYNC_KEEP_LOCAL_COUNT > 0, "G0: the keep-local list is not empty");
+    {
+        int unbound = 0, dup = 0;
+        for (int i = 0; i < RESYNC_KEEP_LOCAL_COUNT; ++i) {
+            if (mh::state::region_bytes(RESYNC_KEEP_LOCAL[i]) == 0) {
+                ++unbound;
+                printf("        keep-local %s is unbound or zero-sized\n", mh::state::REGIONS[RESYNC_KEEP_LOCAL[i]].name);
+            }
+            for (int j = 0; j < i; ++j)
+                if (RESYNC_KEEP_LOCAL[i] == RESYNC_KEEP_LOCAL[j]) ++dup;
+        }
+        ck(unbound == 0, "G0: every keep-local region is bound and non-empty");
+        ck(dup == 0, "G0: no region is listed twice");
+    }
+    ck(!is_resync_keep_local(mh::state::RID_STRAT_ORDER_PENDING) &&
+           !is_resync_keep_local(mh::state::RID_STRAT_ORDER_PENDING_COUNT),
+       "G0: order_pending (the INPUT QUEUE) is imported, never kept local");
+    // G2: no keep-local region overlaps a hash slice that is in the STATE verdict.
+    {
+        const char *fr = "", *fs = "";
+        const int   nc = keep_local_verdict_conflicts(RESYNC_KEEP_LOCAL, RESYNC_KEEP_LOCAL_COUNT, &fr, &fs);
+        if (nc != 0) printf("        %d conflict(s); first: region %s x slice %s\n", nc, fr, fs);
+        ck(nc == 0, "G2: no keep-local region overlaps a hash slice in the state verdict");
+    }
+    {
+        // mutation: a list that also keeps `players` (hashed, in the verdict) must be caught -- and
+        // so must a list keeping a region that merely LIES under a hashed slice.
+        const mh::state::region_id bad1[] = {mh::state::RID_PLAYERS};
+        const mh::state::region_id bad2[] = {mh::state::RID_BUILDINGS};
+        ck(keep_local_verdict_conflicts(bad1, 1) > 0, "G2 mutation: keeping `players` is detected");
+        ck(keep_local_verdict_conflicts(bad2, 1) > 0, "G2 mutation: keeping `buildings` is detected");
+        // ... and an excluded-only region (the clock family) is NOT a conflict by design.
+        const mh::state::region_id ok1[] = {mh::state::RID_TOTAL_GAME_TIME, mh::state::RID_STRAT_LOCKSTEP_HORIZON};
+        ck(keep_local_verdict_conflicts(ok1, 2) == 0, "G2: excluded-only slices (clock family, ls_horizon) are not conflicts");
+    }
+
+    // ---- G1: keep-local regions keep the RECEIVER's bytes; every other block takes the blob's ----------
+    static keep_local_store keep;
+    a.fill(0xCD);
+    // The receiver's bytes for a keep-local block are the COMPLEMENT of the blob's, so "the blob landed"
+    // and "the receiver survived" can never be the same value (a 1-byte region could equal 0xCD).
+    for (int i = 0; i < WORLD_SNAPSHOT_BLOCK_COUNT; ++i) {
+        if (!is_resync_keep_local(WORLD_SNAPSHOT_BLOCKS[i].rid)) continue;
+        size_t   off = 0;
+        uint32_t len = 0;
+        block_span(blob, i, &off, &len);
+        uint8_t *live = reinterpret_cast<uint8_t *>(static_cast<uintptr_t>(live_base(WORLD_SNAPSHOT_BLOCKS[i].rid)));
+        for (uint32_t k = 0; k < len; ++k) live[k] = static_cast<uint8_t>(~blob[off + k]);
+    }
+    uint32_t nr = 0, nb = 0;
+    keep_local_save(keep, &nr, &nb);
+    ck(nr == static_cast<uint32_t>(RESYNC_KEEP_LOCAL_COUNT), "G1: every keep-local region was saved");
+    ck(import_resync(blob, got) == WORLD_OK, "G1: the resync byte engine imports the blob");
+    int kept_overwritten = 0, kept_wrong = 0, taken_wrong = 0;
+    for (int i = 0; i < WORLD_SNAPSHOT_BLOCK_COUNT; ++i) {
+        if (!is_resync_keep_local(WORLD_SNAPSHOT_BLOCKS[i].rid)) continue;
+        size_t   off = 0;
+        uint32_t len = 0;
+        block_span(blob, i, &off, &len);
+        const uint8_t *live = reinterpret_cast<const uint8_t *>(
+            static_cast<uintptr_t>(live_base(WORLD_SNAPSHOT_BLOCKS[i].rid)));
+        if (std::memcmp(live, blob + off, len) == 0) ++kept_overwritten; // the blob really landed on it
+    }
+    ck(kept_overwritten == RESYNC_KEEP_LOCAL_COUNT,
+       "G1 mutation: without the restore, EVERY keep-local region holds the blob's bytes (the check can red)");
+    keep_local_restore(keep);
+    for (int i = 0; i < WORLD_SNAPSHOT_BLOCK_COUNT; ++i) {
+        const auto    &b    = WORLD_SNAPSHOT_BLOCKS[i];
+        const bool     kl   = is_resync_keep_local(b.rid);
+        const uint8_t *live = reinterpret_cast<const uint8_t *>(static_cast<uintptr_t>(live_base(b.rid)));
+        size_t         off  = 0;
+        uint32_t       len  = 0;
+        if (!block_span(blob, i, &off, &len)) continue;
+        if (kl) {
+            for (uint32_t k = 0; k < len; ++k)
+                if (live[k] != static_cast<uint8_t>(~blob[off + k])) {
+                    ++kept_wrong;
+                    break;
+                }
+        } else if (std::memcmp(live, blob + off, len) != 0) {
+            ++taken_wrong;
+            if (taken_wrong <= 5) printf("        block %s did not take the blob's bytes\n", b.name);
+        }
+    }
+    ck(kept_wrong == 0, "G1: every keep-local region holds the RECEIVER's bytes after the restore");
+    ck(taken_wrong == 0, "G1: every other block holds the blob's bytes byte-for-byte");
+    {
+        // The poisoned-identity form of the claim: make the BLOB say "I am host, slot 0" and the
+        // receiver say "I am client, slot 1"; the receiver must still be the client.
+        uint8_t *mut = dup_blob(blob, got);
+        size_t   off = 0;
+        uint32_t len = 0;
+        int      bi  = -1;
+        for (int i = 0; i < WORLD_SNAPSHOT_BLOCK_COUNT; ++i)
+            if (WORLD_SNAPSHOT_BLOCKS[i].rid == mh::state::RID_NET_IS_HOST) bi = i;
+        ck(bi >= 0 && block_span(mut, bi, &off, &len) && len == 4, "G1: RID_NET_IS_HOST is a 4-byte carried block");
+        if (bi >= 0 && len == 4) {
+            const uint32_t blob_says_host = 1u, receiver_is = 0u;
+            std::memcpy(mut + off, &blob_says_host, 4);
+            a.fill(0xCD);
+            mh::state::write_region_u32(mh::state::RID_NET_IS_HOST, receiver_is);
+            keep_local_save(keep, &nr, &nb);
+            ck(import_resync(mut, got) == WORLD_OK, "G1: poisoned-identity blob imports");
+            uint32_t v = 99;
+            mh::state::read_region_u32(mh::state::RID_NET_IS_HOST, &v);
+            ck(v == blob_says_host, "G1 mutation: before the restore the receiver believes it is the host");
+            keep_local_restore(keep);
+            mh::state::read_region_u32(mh::state::RID_NET_IS_HOST, &v);
+            ck(v == receiver_is, "G1: after the restore the receiver is still what it was");
+        }
+        std::free(mut);
+    }
+
+    // ---- G3: the session latch is a policy answer ------------------------------------------------------
+    ::mh::state::boot::note_session_begun();
+    ck(import(blob, got) == WORLD_ERR_SESSION_BEGUN, "G3: the plain import still refuses over a begun session (-4)");
+    ck(import_resync(blob, got) == WORLD_OK, "G3: the resync import is allowed over a begun session");
+    {
+        // Every OTHER refusal stays: a resync is not a licence to import a damaged blob.
+        uint8_t    *mut = dup_blob(blob, got);
+        blob_header bh;
+        std::memcpy(&bh, mut, sizeof(bh));
+        bh.base.schema ^= 0x1u;
+        std::memcpy(mut, &bh, sizeof(bh));
+        ck(import_resync(mut, got) == WORLD_ERR_SCHEMA, "G3: a resync import still refuses a wrong-schema blob");
+        std::free(mut);
+    }
+    ::mh::state::boot::reset_session_latch_for_test();
+
+    // ---- G5: the selection reset (RE-1) ---------------------------------------------------------------
+    // Both representations, together; and it must not move the verdict hash under the default masks.
+    a.fill(0xCD);
+    ck(import(blob, got) == WORLD_OK, "G5: re-import the clean blob");
+    uint64_t st_before = 0, st_after = 0, st_nomask_before = 0, st_nomask_after = 0;
+    lockstep_hash(masks, nullptr, &st_before);
+    lockstep_hash(0u, nullptr, &st_nomask_before);
+    reset_local_selection();
+    lockstep_hash(masks, nullptr, &st_after);
+    lockstep_hash(0u, nullptr, &st_nomask_after);
+    ck(st_before == st_after, "G5: the selection reset does not move the state hash under the default masks");
+    ck(st_nomask_before != st_nomask_after,
+       "G5 mutation: with the ctrl-group mask OFF the same reset DOES move the hash (so the mask is what protects the verdict)");
+    {
+        mh::sim::sim_state st      = mh::sim::state();
+        int                nonzero = 0;
+        for (int g = 0; g < 10; ++g) nonzero += st.own.ctrl_group_at(g).count != 0;
+        nonzero += st.own.ui_selected_bldg_index() != 0;
+        nonzero += st.own.click_select_target_id() != 0;
+        const int32_t per = st.own.caps().units;
+        for (uint32_t pl = 0; pl < 8; ++pl)
+            for (int32_t u = 0; u < per; ++u) nonzero += st.own.unit_at(pl, u).ctrl_group_id != 0;
+        ck(nonzero == 0, "G5: control groups, UI-selected building, click target and every unit's ctrl_group_id are all zero");
+    }
+
+    a.fill(0xCD);
+    ck(import(blob, got) == WORLD_OK, "G-end: leave the arena holding the clean blob");
+    return g_fails - fails0;
+}
+
+// ================================================================================================
 // ARM R -- THE RNG CHANNELS (tracker mp:R-rng-snapshot, refinement-plan X0)
 // ================================================================================================
 //
@@ -486,6 +1194,7 @@ int arm_rng_stream(arena &a, uint32_t masks) {
     p.step       = 1000u + static_cast<uint32_t>(WARMUP);
     p.mask_flags = masks;
     p.game_clock = 0x1112131415161718ULL;
+    p.map        = empty_addr_map(); // noise-filled arena: this arm is not about the fixup trailer
     lockstep_hash(p.mask_flags, &p.lockstep_combined, &p.lockstep_state);
     const int crc = capture(blob, need, &got, p);
     if (crc != WORLD_OK) {
@@ -801,6 +1510,7 @@ int run_worldtest(int argc, char **argv) {
     p.step       = 1u;
     p.mask_flags = MASK_CTRL_GROUP | MASK_SOLDIER_ANIM | MASK_PLANETS_GFX;
     p.game_clock = 0x4041424344454647ULL;
+    p.map        = empty_addr_map(); // pattern-filled arena: noise, not pointers (ARM F is the trailer's)
     // The synthetic capture is handed the hash of the arena it is about to read, so the header's
     // recorded pair is the truth about THIS memory -- the same relationship the real capture has
     // with the run's own variables.
@@ -958,6 +1668,16 @@ int run_worldtest(int argc, char **argv) {
        "every block is inside the content comparison");
     ck(arm_block_content(a, blob, got) == 0,
        "every block's imported memory equals the blob payload byte-for-byte");
+
+    // ---- 5b. ARM F: the fixup trailer (mp:X3a) ---------------------------------------------------
+    //
+    // Before ARM R for the same reason ARM R is last: it leaves the arena holding deliberately
+    // odd imports, and it fills the arena itself, so nothing above changes meaning.
+    ck(arm_fixup(a, h.mask_flags) == 0, "ARM F: every fixup-trailer class classifies, applies, and refuses correctly");
+
+    // ---- 5c. ARM G: the resync import (mp:X3c) --------------------------------------------------------
+    ck(arm_resync(a, blob, got, h.mask_flags) == 0,
+       "ARM G: the resync import keeps identity/transport local, takes the rest, allows the latch, resets the selection");
 
     // ---- 6. ARM R: the RNG channels (mp:R-rng-snapshot / X0) --------------------------------------
     //

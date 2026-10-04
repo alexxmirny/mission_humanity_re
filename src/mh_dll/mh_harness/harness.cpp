@@ -63,6 +63,7 @@
 #include "sim/rng_trace.h"        // set_time_resync_pace_disabled -- the skip_pace_hook arm
 #include "state/boot_snapshot.h"  // LIB-BOOT: the post-cfg prototype snapshot
 #include "state/world_snapshot.h" // LIB-WORLD: the step-0 world blob
+#include "state/world_fixup.h"    // mp:X3a: fixup_summarize -- INLINE readers, so no contract row
 #include "state/region_view.h"    // ST6: a slice emits itself into a sink (hash / seed / poke)
 #include "desync/desync_watch.h"  // D21: hand the per-step hash to the runtime desync detector
 #include "en_guard.h"             // EN-only build gate
@@ -72,6 +73,7 @@
 #include "save/save_live.h"       // SV1-P: the in-game save trigger (save_at)
 #include "orders/order_queue.h"   // D18: set_suppress_enqueue -- the replay neuter's promoted path
 #include "config1.h"              // mp:D29: configuration (1) -- the spine-free arm's guards + refusals
+#include "hash_kind.h"            // tooling:TL-HARN-INCHASH: hash_kind 1 (FNV walk) | 2 (incremental core)
 
 // Per-EVENT temporal trace (net_seams.cpp): sim_step is harness-hooked (not tracer-hookable), so mark
 // the step boundary here. No-op unless [trace] temporal=1 + SESSION_MODE==3. id 5 = TEV_SIMSTEP.
@@ -80,10 +82,27 @@ extern "C" void MH_Temporal_Event(int id);
 // (net_lockstep.cpp MH_Lockstep_StepPin). The ship path gets the same call from net_seams'
 // desync sim_step hook; this is the harness-armed half, since the harness owns that entry.
 extern "C" void MH_Lockstep_StepPin(void);
+// mp:X3b: hold the horizon heartbeat thread (net_lockstep.cpp) across ONE instant of a world
+// snapshot -- capture+SNAPCAP on the sender, import+SNAPIMP on the receiver. Same thread must release.
+extern "C" void MH_Lockstep_HorizonHold(int on);
+namespace {
+struct horizon_hold {
+    bool held = true;
+    horizon_hold() { MH_Lockstep_HorizonHold(1); }
+    ~horizon_hold() { release(); }
+    void release() {
+        if (held) MH_Lockstep_HorizonHold(0);
+        held = false;
+    }
+    horizon_hold(const horizon_hold &)            = delete;
+    horizon_hold &operator=(const horizon_hold &) = delete;
+};
+} // namespace
 // TL-HARN-CLEANCLOSE: close the open MP session IN PLACE at the stop step (net_discovery.cpp). A
 // determinism run is ended by its runner from outside, which no exit seam survives, so without this
 // no determinism run ever wrote the desync/queue rollups or SESSION_END. seams/session_close_plan.h.
 extern "C" void MH_Session_HarnessStop(unsigned step);
+extern "C" void MH_Seam_LeaveForExit(void); // mp:U62 -- mh.dll's WM_DESTROY leave seam: a hub hands the transport over
 
 #if defined(_M_IX86) // x86-only: inline naked trampolines + absolute exe VAs (mh.exe is 32-bit)
 
@@ -264,8 +283,8 @@ struct Config {
     // session in place (MH_Session_HarnessStop) so the match's end-of-match lines exist. A no-op in
     // a run with no session and no transport; 0 is the escape hatch, not a mode anything uses.
     int close_on_stop = 1;
-    int fixed_step   = 1; // pin TOTAL_GAME_TIME = GAME_CLOCK + interval each sim_tick (det. replay)
-    int pin_fpu      = 1; // pin x87 control word (round-nearest, 53-bit) at init
+    int fixed_step    = 1; // pin TOTAL_GAME_TIME = GAME_CLOCK + interval each sim_tick (det. replay)
+    int pin_fpu       = 1; // pin x87 control word (round-nearest, 53-bit) at init
     // ---- P0-SPDET: pin the WALL CLOCK, not the value derived from it ----------------------------
     // fixed_step pins TOTAL_GAME_TIME, i.e. time_tick's OUTPUT -- which is why it masks time_tick.
     // This pins its INPUT instead: GetCurrentTime (0x00427616, a leaf returning seconds as a double
@@ -847,7 +866,26 @@ struct Config {
     // written by cfg_final_planet_FillBankData and read only by the sprite-bank loaders, and once
     // LIFT-TABLE S3 hands that graphics tail to the host, a mask nobody can run unmasked is a mask
     // nobody can audit. Setting it to 0 restores the unmasked walk of the planets slice.
-    int mask_planets_gfx   = 1;
+    int mask_planets_gfx = 1;
+    // ---- tooling:TL-HARN-INCHASH: WHICH hash function every per-step hash uses (hash_kind.h) --------
+    // 1 (`fnv`) = the FNV VERDICT walk, hash_slice over all slices every step; 2 (`inc`) = the
+    // incremental masked block-sum core (mp:D39). DEFAULT 1, and that is a measured choice rather than
+    // caution: every stored artifact the gate judges a fresh run against carries kind-1 values (the
+    // libref fixtures, the soak goldens, the UI-REC oracles, the rc4/rc5 field recordings), and every
+    // code path that RE-DERIVES a hash outside this loop is FNV-only (libref_host, world::
+    // lockstep_hash, the in-band desync watch, snapshot import). A kind-2 default would turn each of
+    // those comparisons into a refusal until it is re-cut. Kind 2 is opted into where the comparison
+    // is run-vs-run of one build (the determinism gate, A/B arms, a replay of a kind-2 recording).
+    // Printed on the HASH FINGERPRINT line whenever it is not 1; see hash_kind.h for the contract.
+    int  hash_kind         = 1;
+    char hash_kind_raw[16] = ""; // the ini text, kept for the refusal line when it does not parse
+    // Kind 2's periodic self-check: every N hashed steps, recompute every slice from LIVE memory and
+    // compare with the incremental sums (a stale shadow disagrees). ~one full walk per N steps. 0=off.
+    int inc_verify_every = 1000;
+    // MEASUREMENT ONLY: also compute the OTHER kind every step (not logged, not compared -- the
+    // numbers are incomparable) purely to time it, so ONE run of one replay yields the before/after
+    // cost on the same steps. Reported on the stop block's `; [harness] HASH COST` line.
+    int hash_cost_both     = 0;
     int synth_ctrlgroup    = 0; // step at which to assign this peer's mothership to a control group (0=off)
     int synth_ctrlgroup_id = 1; // which group (1..9; 0 would be "none" and write nothing)
     // ---- THE GROUP-MOVE WORKLOAD (AI1C read-bridge, 2026-08-07) --------------------------------
@@ -1015,6 +1053,14 @@ struct Config {
     int conq_use_groupmove = 0; // 1 = move the group to the enemy tile instead of per-unit attack
                                 // orders. Per-unit is the default because it names its target in the
                                 // order payload and reads no local selection state at all.
+    int conq_kill2_at     = 0;  // mp:U54 (0 = off): a SECOND force-kill at this offset against slot conq_victim2 (the team-victory
+                                // arm: the spectator's ally is left alone with it)
+    int conq_victim2      = -1;
+    int conq_spectator_probe_at = 0; // mp:U54 (0 = off): at this offset (same clock as conq_force_kill_at) issue order 0xf8
+                                     // AGAIN against the already-defeated victim. Its owner is the victim's slot, i.e. an
+                                     // order OWNED BY A SPECTATOR: the gate must drop it (log `U54 spectate: dropped order`)
+                                     // and no survivor may diverge -- the mutation arm of U54's "no order of its own reaches
+                                     // the wire".
     int conq_force_kill_at = 0; // BRING-UP / FALLBACK (0 = off). Offset at which to issue order 0xf8
                                 // (lethal damage) against every one of the peer's live objects.
                                 // Still fully replicated -- the target is named in args[2]/args[3]
@@ -1033,12 +1079,31 @@ struct Config {
     // Per-phase watchdog. A phase whose effect never arrives fails LOUDLY and stops the run --
     // waiting forever reads in the log exactly like a scenario that is still working. 900 is
     // generous against the slowest observed phase (the deploy descent, a few hundred steps).
-    int conq_phase_timeout = 900;
-    int conq_probe_every   = 100; // emit a "; CONQ" census line every N steps (0 = off). Without it a
-                                  // run that ends with nobody dead cannot say WHY -- did the peer never
-                                  // land, did the soldiers never spawn, did they never arrive, or did
-                                  // they arrive and fail to do damage? It also MEASURES the walk, whose
-                                  // duration the schedule can only estimate.
+    int conq_phase_timeout   = 900;
+    int relation_dump_step   = 0;                                             // mp:U52: > 0 = log the 8x8 relation tables (Players + the AI mirror) at this step
+    int vision_order_at      = 0;                                             // mp:U52 vision: > 0 = THIS peer issues the dialog's vision order (0xf5) at this step:
+    int vision_order_other   = 2;                                             //   set_player_control_mode(PlayerSide, other, value) -- shares MY sight with `other`
+    int vision_order_value   = 1;                                             //   1 = share, 0 = stop sharing
+    int vision_order_side    = -1;                                            //  >= 0 = only the peer whose PlayerSide equals this issues it
+    int relation_order_at    = 0;                                             // mp:U52: > 0 = THIS peer issues a diplomacy order (0xf4) at this step:
+    int relation_order_other = 1;                                             //   set_player_relation(PlayerSide, other, value) -- the dialog's own call
+    int relation_order_value = 1;                                             //   value 1 = ally, 2 = enemy
+    int relation_order_side  = -1;                                            //   >= 0 = only the peer whose PlayerSide equals this issues it (clients share one ini)
+    int relation_dump_step2  = 0;                                             //   a second table dump (before/after a relation order)
+    int conq_victim          = -1;                                            // mp:U52: >= 0 = the conq force-kill targets THIS slot instead of the first live non-self
+    int hit_probe_at         = 0;                                             // mp:U52: > 0 = the HIT PROBE (see hit_probe): step at which a synthetic building hit is registered
+    int hit_ally_v = -1, hit_ally_a = -1, hit_enemy_v = -1, hit_enemy_a = -1; //   victim/aggressor of the ALLY hit and of the ENEMY control hit
+    int hostile_probe_at    = 0;                                              // mp:U52: > 0 = the HOSTILITY PROBE (see hostile_probe): step of the unit drop
+    int hostile_issue       = 1;                                              //   1 = THIS peer issues the creates (set 0 on the others; the order replicates)
+    int hostile_every       = 50;                                             //   census every N steps after the drop
+    int hostile_dx          = 12;                                             //   pair 2 is dropped this many tiles east of pair 1
+    int hostile_order_after = 300;                                            //   steps after the drop at which the explicit attack order is issued (phase P2)
+    int hostile_a1 = -1, hostile_b1 = -1, hostile_a2 = -1, hostile_b2 = -1;   // the two pairs (-1 = unused)
+    int conq_probe_every = 100;                                               // emit a "; CONQ" census line every N steps (0 = off). Without it a
+                                                                              // run that ends with nobody dead cannot say WHY -- did the peer never
+                                                                              // land, did the soldiers never spawn, did they never arrive, or did
+                                                                              // they arrive and fail to do damage? It also MEASURES the walk, whose
+                                                                              // duration the schedule can only estimate.
     // ---- mp:D38 row 5: THE DEAD-DOCKED-UNIT FIXTURE (2026-09-27) -----------------------------------
     // The storage panel (llm_strat_ui_storage_bldg_panel 0x00417409) purges dead docked units on the
     // SELECTING peer on every panel refresh; the sim purges them on every peer each sub-tick A. The
@@ -1059,16 +1124,34 @@ struct Config {
     // Symmetric by construction (same step, same state, same write on every peer): with the D38 seam
     // the pair stays IDENTICAL; with [net] storage_panel_purge_fix=0 the selecting peer drops the row
     // ahead of the sim and `unit_storage` differs until the sim's purge. All 0/-1 = off.
-    int d38_player         = -1;  // player index whose storage is used (-1 = off)
-    int d38_bldg_at        = 0;   // step: owner peer orders the housing building (0 = skip phase 1)
-    int d38_bldg           = 36;  // Building table index -- N_human_Koszary_Zolnierzy (conq_barracks)
-    int d38_bldg_dx        = -6;  // tile offset from the landed mother's origin
+    int d38_player         = -1; // player index whose storage is used (-1 = off)
+    int d38_bldg_at        = 0;  // step: owner peer orders the housing building (0 = skip phase 1)
+    int d38_bldg           = 36; // Building table index -- N_human_Koszary_Zolnierzy (conq_barracks)
+    int d38_bldg_dx        = -6; // tile offset from the landed mother's origin
     int d38_bldg_dy        = 0;
-    int d38_dock_at        = 0;   // step: dock a unit (every peer)
-    int d38_dock_proto     = 0;   // 0 = the first infantry proto the storage accepts
-    int d38_kill_at        = 0;   // step: kill it (every peer)
+    int d38_dock_at        = 0;    // step: dock a unit (every peer)
+    int d38_dock_proto     = 0;    // 0 = the first infantry proto the storage accepts
+    int d38_kill_at        = 0;    // step: kill it (every peer)
     int d38_kill_margin_ms = 1500; // the sim's own purge must be at least this far off
     int d38_timeout        = 3000; // steps a phase may wait for its precondition before FAIL
+    // ---- mp:U49: THE DOUBLE-UNDOCK FIXTURE (2026-10-01) ---------------------------------------------
+    // Retail applies an undock order (code 0x20) with no state re-check, so a SECOND one applied after
+    // the first has moved the unit out (0x21) puts it into EXIT_WAIT on a door it holds itself. A
+    // player reaches it through the lockstep scheduling delay (a double-click), and the rig reaches it
+    // the same way: this fixture issues the two orders itself, `u49_gap` steps apart, on the OWNER peer
+    // (PlayerSide == u49_player) through the replicated dispatch lane -- the same four calls the storage
+    // panel's llm_strat_unit_order_auto_launch_from_storage makes once its PARKED gate passes, minus
+    // the gate (which is a local-state test the rig cannot hold open for a chosen number of steps).
+    // Target: the first PARKED (0x1f) unit of that player whose storage building is operational
+    // (built_flags 3); pair with the d38_* knobs, which build a barracks and dock a soldier into it.
+    // Then, `u49_settle` steps after the second order, a MOVE order for the same unit. Every phase is
+    // logged as `; U49 ...` lines the checker (tools/check_u49_undock.py) reads. 0 = off.
+    int u49_at      = 0;    // first step the fixture may act (0 = off)
+    int u49_player  = 0;    // player index whose unit is undocked
+    int u49_gap     = 7;    // steps between the two undock orders (the 936e0006 incident: 7)
+    int u49_settle  = 900;  // steps after the second order before the follow-up move order
+    int u49_tail    = 300;  // steps after the move order before the final verdict line
+    int u49_timeout = 3000; // steps to wait for a parked unit before FAIL
     // ---- THE ALL-AI SOAK (2026-08-05) -------------------------------------------------------------
     // Convert every HUMAN player slot to an AI-controlled one, so a solo run is an N-way AI match and
     // the LOCAL slot gets a real AI base too. The coverage lever that `loadgame_at` is for start
@@ -1112,6 +1195,13 @@ struct Config {
     // its 1x control for exactly this reason. 0 = off; N = check every N steps.
     int gameover_step = 0;
     int gameover_stop = 1; // 1 = set stop_step to the detection step so the run ends with a report
+    // mp:U55 -- END THE PROCESS AT A PINNED SIM STEP (ships OFF). Models the host process dying while
+    // survivors are still playing (the star transport's hub). 0 = off; N = at the first on_sim_step with
+    // g_step >= N log `; EXIT-PROCESS ...`, log_flush() (the harness log is buffered), then end it.
+    // exit_process_mode 0 = ABRUPT TerminateProcess (a crash: no DLL detach, no socket goodbye);
+    // 1 = GRACEFUL ExitProcess (DLL_PROCESS_DETACH runs, the OS closes sockets in order).
+    int exit_process_at_step = 0;
+    int exit_process_mode    = 0;
 } g_cfg;
 
 char g_dir[MAX_PATH]; // exe directory, trailing backslash
@@ -1174,9 +1264,11 @@ HANDLE   g_clock_h   = INVALID_HANDLE_VALUE; // record-mode clock append handle
 double  *g_clock_trk = nullptr;              // replay clock track (VirtualAlloc)
 uint32_t g_clock_n   = 0;
 
-uint32_t g_step      = 0;    // sim step counter (increments before hashing; first hashed step = 1)
-bool     g_active    = true; // logging enabled (HSTOP/HGO toggle via console)
-bool     g_seed_done = false;
+uint32_t g_step            = 0;     // sim step counter (increments before hashing; first hashed step = 1)
+bool     g_ws_rehash       = false; // mp:X3c: a world resync import replaced the world under this step's already-taken hash
+uint32_t g_ws_replay_until = 0;     // mp:X3c: the workloads already ran for steps <= this before the import rewound g_step
+bool     g_active          = true;  // logging enabled (HSTOP/HGO toggle via console)
+bool     g_seed_done       = false;
 
 // TACT-PREP: the tactical cadence's own counter. DELIBERATELY SEPARATE from g_step rather than
 // sharing it -- the two count different things (sim steps vs tactical frames), they never advance in
@@ -1381,7 +1473,7 @@ void append_line(const char *path, const char *s) {
     }
     const DWORD n = (DWORD)lstrlenA(s);
     if (path == g_log_path) seg_mirror(s, n); // mp:SES7: no-op unless a match segment is open
-    if (n >= LOG_BUF) { // a line larger than the buffer: write it straight through, in order
+    if (n >= LOG_BUF) {                       // a line larger than the buffer: write it straight through, in order
         log_flush();
         DWORD wrote = 0;
         WriteFile(g_log_h, s, n, &wrote, nullptr);
@@ -1412,6 +1504,191 @@ void append_line(const char *path, const char *s) {
 // READ FRESH FROM THE INI, NOT FROM g_cfg: this is asked before load_config() has run, so g_cfg.*
 // is still zero at those call points.
 bool harness_enabled() { return GetPrivateProfileIntA("harness", "enable", 0, g_ini_path) != 0; }
+
+// ---- tooling:TL-HARN-INCHASH: the per-step hash KIND ----------------------------------------------
+//
+// The contract is hash_kind.h's; this is the harness half. DECIDED AT ARM (the HASH FINGERPRINT line
+// is written there and must state the kind every hash line after it carries), SAID AFTER THE ARM
+// WINDOW: every explanatory line below is held until the first hashed step's configuration line, which
+// sits past the census that ends check_arm_order's harness window -- so a kind-1 run's arm log is
+// byte-for-byte what it was, and a kind-2 run's differs only by the fingerprint's own token.
+namespace hk                        = mh::harness_hk;
+int                     g_hash_kind = hk::KIND_FNV; // the EFFECTIVE kind: g_cfg.hash_kind after refusals
+mh::state::inc::tracker g_inc;                      // the kind-2 core (also the timed shadow of kind 1)
+bool                    g_inc_on     = false;       // attached: update() runs every hashed step
+bool                    g_hk_checked = false;       // the first-step flat-bytes re-check has run
+char                    g_hk_note[3][320];          // arm-time decisions, logged at step 1
+int                     g_hk_notes = 0;
+hk::cost_acc            g_hk_cost, g_hk_shadow_cost;
+hk::inc_totals          g_hk_inc;
+uint64_t                g_hk_qpf = 0;
+
+mh::state::inc::knobs hk_knobs() {
+    mh::state::inc::knobs k;
+    k.mask_ctrl_group   = g_cfg.mask_ctrl_group != 0;
+    k.mask_soldier_anim = g_cfg.mask_soldier_anim != 0;
+    k.mask_planets_gfx  = g_cfg.mask_planets_gfx != 0;
+    return k;
+}
+
+void hk_note(const char *s) {
+    if (g_hk_notes < 3) lstrcpynA(g_hk_note[g_hk_notes++], s, sizeof(g_hk_note[0]));
+}
+
+// At arm, before hash_fingerprint_report. Every refusal falls back to kind 1 and says so BY NAME.
+void hash_kind_arm() {
+    char m[320];
+    int  want = g_cfg.hash_kind;
+    if (want == 0) {
+        wsprintfA(m, "; [harness] hash_kind=%s REFUSED: not one of 1|fnv|2|inc -- this run hashes kind 1 "
+                     "(FNV VERDICT walk)\n",
+                  g_cfg.hash_kind_raw);
+        hk_note(m);
+        want = hk::KIND_FNV;
+    }
+    LARGE_INTEGER f;
+    QueryPerformanceFrequency(&f);
+    g_hk_qpf = (uint64_t)f.QuadPart;
+    if (want == hk::KIND_INC || g_cfg.hash_cost_both) {
+        // The flat-bytes guard (inc_state.h): the core hashes a slice's RAW bytes under a keep mask, so
+        // a slice whose owner emits anything but its own bytes cannot be hashed by it. Re-asked at the
+        // first hashed step, when every owner has registered.
+        const int    nf    = mh::state::inc::first_nonflat_slice();
+        static void *arena = nullptr; // one arena per process, however often the harness arms
+        if (nf < 0 && arena == nullptr)
+            arena = VirtualAlloc(nullptr, mh::state::inc::tracker::arena_bytes(), MEM_COMMIT, PAGE_READWRITE);
+        if (nf >= 0) {
+            wsprintfA(m, "; [harness] hash_kind=2 REFUSED: hash slice %d (%s) is served by an owner whose "
+                         "stream is not its own flat bytes -- the incremental core cannot hash it; this run "
+                         "hashes kind 1\n",
+                      nf, REGIONS[nf].name);
+            hk_note(m);
+        } else if (arena == nullptr) {
+            wsprintfA(m, "; [harness] hash_kind=2 REFUSED: no room for the %lu-byte shadow arena -- this "
+                         "run hashes kind 1\n",
+                      (unsigned long)mh::state::inc::tracker::arena_bytes());
+            hk_note(m);
+        } else {
+            g_inc.attach(arena, hk_knobs());
+            g_inc_on = true;
+        }
+        if (!g_inc_on) want = hk::KIND_FNV;
+    }
+    g_hash_kind = want;
+}
+
+// The per-step hash, both kinds, timed. `per` receives one value per manifest slice; the returned
+// fold is the step line's `combined`/`state`. Kind 1 is the exact loop this replaced.
+hk::step_hash hash_step(uint64_t *per) {
+    if (!g_hk_checked) {
+        g_hk_checked = true;
+        const int nf = g_inc_on ? mh::state::inc::first_nonflat_slice() : -1;
+        if (nf >= 0) {
+            // An owner registered after the arm. Nothing has been hashed yet, so the switch is clean:
+            // a second, kind-1 fingerprint line goes out BEFORE the first hash line, and every reader
+            // takes the LAST fingerprint line as the kind (hash_kind.h).
+            char       m[320];
+            const bool re = g_hash_kind != hk::KIND_FNV;
+            wsprintfA(m, "; [harness] %s REFUSED at step %lu: hash slice %d (%s) is served by an owner whose "
+                         "stream is not its own flat bytes -- this run hashes kind 1\n",
+                      re ? "hash_kind=2" : "the kind-2 timing shadow (hash_cost_both)", g_step, nf,
+                      REGIONS[nf].name);
+            append_line(g_log_path, m);
+            g_inc_on    = false;
+            g_hash_kind = hk::KIND_FNV;
+            if (re) {
+                bool           ok = false;
+                const uint64_t fp = hk::fingerprint(hk::KIND_FNV, &ok);
+                hk::format_fingerprint_line(m, sizeof(m), hk::KIND_FNV, fp, ok,
+                                            (unsigned long)mh::state::HASH_INPUT_EPOCH, MH_VERSION_FULL);
+                append_line(g_log_path, m);
+            }
+        }
+    }
+    const mh::state::inc::knobs k = hk_knobs();
+    LARGE_INTEGER               t0, t1, t2;
+    QueryPerformanceCounter(&t0);
+    if (g_hash_kind == hk::KIND_INC)
+        hk::per_inc(g_inc, per);
+    else
+        hk::per_fnv(per, k);
+    const hk::step_hash h = hk::fold(per);
+    QueryPerformanceCounter(&t1);
+    g_hk_cost.add((uint64_t)(t1.QuadPart - t0.QuadPart));
+    if (g_inc_on) {
+        if (g_hash_kind != hk::KIND_INC) { // the timed shadow: kind 2 beside a kind-1 run
+            uint64_t sh[N_REGIONS];
+            hk::per_inc(g_inc, sh);
+            (void)hk::fold(sh);
+        }
+        g_hk_inc.changed_bytes += g_inc.last.changed_bytes;
+        g_hk_inc.rehashed_blocks += g_inc.last.rehashed_blocks;
+        ++g_hk_inc.steps;
+    }
+    if (g_hash_kind == hk::KIND_INC && g_cfg.hash_cost_both) { // the timed shadow: kind 1 beside kind 2
+        uint64_t sh[N_REGIONS];
+        hk::per_fnv(sh, k);
+        (void)hk::fold(sh);
+    }
+    QueryPerformanceCounter(&t2);
+    if (g_cfg.hash_cost_both && g_inc_on) g_hk_shadow_cost.add((uint64_t)(t2.QuadPart - t1.QuadPart));
+    // Kind 2's self-check, from LIVE memory and independent of the shadow. A disagreement means the
+    // incremental sums are wrong, so it is LOUD, re-primes, and is counted on the HASH COST line.
+    if (g_inc_on && g_cfg.inc_verify_every > 0 && (g_step % (uint32_t)g_cfg.inc_verify_every) == 0) {
+        int       first = -1, bad_ex = 0;
+        const int bad = g_inc.verify(&first, &bad_ex);
+        ++g_hk_inc.verifies;
+        if (bad) {
+            g_hk_inc.verify_bad += (uint32_t)bad;
+            char m[256];
+            wsprintfA(m, "; [harness] INC VERIFY FAILED step=%lu: %d slice(s) disagree with a from-scratch "
+                         "recompute, first %d (%s) -- re-primed%s\n",
+                      g_step, bad, first, first >= 0 ? REGIONS[first].name : "?",
+                      g_hash_kind == hk::KIND_INC ? "; this step's hashes were taken BEFORE the re-prime" : "");
+            append_line(g_log_path, m);
+            g_inc.prime();
+        }
+    }
+    return h;
+}
+
+// Once, after the first step's configuration line (outside the arm window): what the kind decision
+// was and what it implies. Silent for a plain kind-1 run.
+void hash_kind_say_once() {
+    for (int i = 0; i < g_hk_notes; ++i) append_line(g_log_path, g_hk_note[i]);
+    g_hk_notes = 0;
+    char m[400];
+    if (g_hash_kind == hk::KIND_INC) {
+        wsprintfA(m, "; [harness] hash_kind=2 (%s, mp:D39): shadow arena %lu bytes, self-check every %d "
+                     "step(s). The in-band desync watch is handed NO hashes and keeps its own kind-1 walk at "
+                     "its sampling cadence; SNAPCAP/SNAPIMP, the world blob and the T/TS lines stay kind 1\n",
+                  hk::kind_name(hk::KIND_INC), (unsigned long)mh::state::inc::tracker::arena_bytes(),
+                  g_cfg.inc_verify_every);
+        append_line(g_log_path, m);
+    }
+    if (g_cfg.hash_cost_both && g_inc_on) {
+        wsprintfA(m, "; [harness] hash_cost_both=1: kind %d is ALSO computed every step, timed and discarded "
+                     "(measurement only)\n",
+                  g_hash_kind == hk::KIND_INC ? hk::KIND_FNV : hk::KIND_INC);
+        append_line(g_log_path, m);
+    }
+}
+
+void hash_cost_report() {
+    char m[400];
+    hk::format_cost_line(m, sizeof(m), g_hash_kind, g_hk_cost, g_hk_qpf,
+                         g_hash_kind == hk::KIND_INC ? hk::KIND_FNV : hk::KIND_INC,
+                         (g_cfg.hash_cost_both && g_inc_on) ? &g_hk_shadow_cost : nullptr,
+                         g_inc_on ? &g_hk_inc : nullptr);
+    append_line(g_log_path, m);
+}
+
+// The FNV (kind-1) per-slice hashes and fold of the CURRENT state, for the one-shot consumers whose
+// other half only knows kind 1 (the world blob's lockstep pair, SNAPCAP). A kind-1 run never calls it.
+hk::step_hash fnv_now(uint64_t *per) {
+    hk::per_fnv(per, hk_knobs());
+    return hk::fold(per);
+}
 
 // The no-op the skip_input_update arm installs in place of the frame's input WALL.
 void harness_input_update_noop() {}
@@ -1573,52 +1850,95 @@ void load_config() {
                     "(llm_strat_input_update is NOT called). EXPERIMENT ARM, not a shipping "
                     "configuration.\n");
     }
-    g_cfg.rdump_regid        = GetPrivateProfileIntA("harness", "rdump_regid", g_cfg.rdump_regid, g_ini_path);
-    g_cfg.garble_at          = GetPrivateProfileIntA("harness", "garble_at", g_cfg.garble_at, g_ini_path);
-    g_cfg.mask_ctrl_group    = GetPrivateProfileIntA("harness", "mask_ctrl_group", g_cfg.mask_ctrl_group, g_ini_path);
-    g_cfg.mask_soldier_anim  = GetPrivateProfileIntA("harness", "mask_soldier_anim", g_cfg.mask_soldier_anim, g_ini_path);
-    g_cfg.mask_planets_gfx   = GetPrivateProfileIntA("harness", "mask_planets_gfx", g_cfg.mask_planets_gfx, g_ini_path);
-    g_cfg.synth_ctrlgroup    = GetPrivateProfileIntA("harness", "synth_ctrlgroup", g_cfg.synth_ctrlgroup, g_ini_path);
-    g_cfg.synth_ctrlgroup_id = GetPrivateProfileIntA("harness", "synth_ctrlgroup_id", g_cfg.synth_ctrlgroup_id, g_ini_path);
-    g_cfg.synth_groupmove    = GetPrivateProfileIntA("harness", "synth_groupmove", g_cfg.synth_groupmove, g_ini_path);
-    g_cfg.synth_groupmove_x  = GetPrivateProfileIntA("harness", "synth_groupmove_x", g_cfg.synth_groupmove_x, g_ini_path);
-    g_cfg.synth_groupmove_y  = GetPrivateProfileIntA("harness", "synth_groupmove_y", g_cfg.synth_groupmove_y, g_ini_path);
-    g_cfg.synth_groupmove_n  = GetPrivateProfileIntA("harness", "synth_groupmove_n", g_cfg.synth_groupmove_n, g_ini_path);
-    g_cfg.conq               = GetPrivateProfileIntA("harness", "conq", g_cfg.conq, g_ini_path);
-    g_cfg.conq_seed          = GetPrivateProfileIntA("harness", "conq_seed", g_cfg.conq_seed, g_ini_path);
-    g_cfg.conq_at            = GetPrivateProfileIntA("harness", "conq_at", g_cfg.conq_at, g_ini_path);
-    g_cfg.conq_peer_land_at  = GetPrivateProfileIntA("harness", "conq_peer_land_at", g_cfg.conq_peer_land_at, g_ini_path);
-    g_cfg.conq_peer_move_at  = GetPrivateProfileIntA("harness", "conq_peer_move_at", g_cfg.conq_peer_move_at, g_ini_path);
-    g_cfg.conq_land_self_at  = GetPrivateProfileIntA("harness", "conq_land_self_at", g_cfg.conq_land_self_at, g_ini_path);
-    g_cfg.conq_bldg1_at      = GetPrivateProfileIntA("harness", "conq_bldg1_at", g_cfg.conq_bldg1_at, g_ini_path);
-    g_cfg.conq_bldg2_at      = GetPrivateProfileIntA("harness", "conq_bldg2_at", g_cfg.conq_bldg2_at, g_ini_path);
-    g_cfg.conq_units_at      = GetPrivateProfileIntA("harness", "conq_units_at", g_cfg.conq_units_at, g_ini_path);
-    g_cfg.conq_group_at      = GetPrivateProfileIntA("harness", "conq_group_at", g_cfg.conq_group_at, g_ini_path);
-    g_cfg.conq_attack_at     = GetPrivateProfileIntA("harness", "conq_attack_at", g_cfg.conq_attack_at, g_ini_path);
-    g_cfg.conq_attack_every  = GetPrivateProfileIntA("harness", "conq_attack_every", g_cfg.conq_attack_every, g_ini_path);
-    g_cfg.conq_academy       = GetPrivateProfileIntA("harness", "conq_academy", g_cfg.conq_academy, g_ini_path);
-    g_cfg.conq_barracks      = GetPrivateProfileIntA("harness", "conq_barracks", g_cfg.conq_barracks, g_ini_path);
-    g_cfg.conq_soldier       = GetPrivateProfileIntA("harness", "conq_soldier", g_cfg.conq_soldier, g_ini_path);
-    g_cfg.conq_n_soldiers    = GetPrivateProfileIntA("harness", "conq_n_soldiers", g_cfg.conq_n_soldiers, g_ini_path);
-    g_cfg.conq_use_groupmove = GetPrivateProfileIntA("harness", "conq_use_groupmove", g_cfg.conq_use_groupmove, g_ini_path);
-    g_cfg.conq_force_kill_at = GetPrivateProfileIntA("harness", "conq_force_kill_at", g_cfg.conq_force_kill_at, g_ini_path);
-    g_cfg.conq_probe_every   = GetPrivateProfileIntA("harness", "conq_probe_every", g_cfg.conq_probe_every, g_ini_path);
-    g_cfg.d38_player         = GetPrivateProfileIntA("harness", "d38_player", g_cfg.d38_player, g_ini_path);
-    g_cfg.d38_bldg_at        = GetPrivateProfileIntA("harness", "d38_bldg_at", g_cfg.d38_bldg_at, g_ini_path);
-    g_cfg.d38_bldg           = GetPrivateProfileIntA("harness", "d38_bldg", g_cfg.d38_bldg, g_ini_path);
-    g_cfg.d38_bldg_dx        = GetPrivateProfileIntA("harness", "d38_bldg_dx", g_cfg.d38_bldg_dx, g_ini_path);
-    g_cfg.d38_bldg_dy        = GetPrivateProfileIntA("harness", "d38_bldg_dy", g_cfg.d38_bldg_dy, g_ini_path);
-    g_cfg.d38_dock_at        = GetPrivateProfileIntA("harness", "d38_dock_at", g_cfg.d38_dock_at, g_ini_path);
-    g_cfg.d38_dock_proto     = GetPrivateProfileIntA("harness", "d38_dock_proto", g_cfg.d38_dock_proto, g_ini_path);
-    g_cfg.d38_kill_at        = GetPrivateProfileIntA("harness", "d38_kill_at", g_cfg.d38_kill_at, g_ini_path);
-    g_cfg.d38_kill_margin_ms = GetPrivateProfileIntA("harness", "d38_kill_margin_ms", g_cfg.d38_kill_margin_ms, g_ini_path);
-    g_cfg.d38_timeout        = GetPrivateProfileIntA("harness", "d38_timeout", g_cfg.d38_timeout, g_ini_path);
-    g_cfg.conq_weapon        = GetPrivateProfileIntA("harness", "conq_weapon", g_cfg.conq_weapon, g_ini_path);
-    g_cfg.conq_phase_timeout = GetPrivateProfileIntA("harness", "conq_phase_timeout", g_cfg.conq_phase_timeout, g_ini_path);
-    g_cfg.all_ai             = GetPrivateProfileIntA("harness", "all_ai", g_cfg.all_ai, g_ini_path);
-    g_cfg.all_ai_observer    = GetPrivateProfileIntA("harness", "all_ai_observer", g_cfg.all_ai_observer, g_ini_path);
-    g_cfg.gameover_step      = GetPrivateProfileIntA("harness", "gameover_step", g_cfg.gameover_step, g_ini_path);
-    g_cfg.gameover_stop      = GetPrivateProfileIntA("harness", "gameover_stop", g_cfg.gameover_stop, g_ini_path);
+    g_cfg.rdump_regid       = GetPrivateProfileIntA("harness", "rdump_regid", g_cfg.rdump_regid, g_ini_path);
+    g_cfg.garble_at         = GetPrivateProfileIntA("harness", "garble_at", g_cfg.garble_at, g_ini_path);
+    g_cfg.mask_ctrl_group   = GetPrivateProfileIntA("harness", "mask_ctrl_group", g_cfg.mask_ctrl_group, g_ini_path);
+    g_cfg.mask_soldier_anim = GetPrivateProfileIntA("harness", "mask_soldier_anim", g_cfg.mask_soldier_anim, g_ini_path);
+    g_cfg.mask_planets_gfx  = GetPrivateProfileIntA("harness", "mask_planets_gfx", g_cfg.mask_planets_gfx, g_ini_path);
+    // tooling:TL-HARN-INCHASH. A value that does not parse is refused BY NAME at arm and hashes kind
+    // 1 -- never read as whatever default happens to apply.
+    mh::config::read_ini_string("harness", "hash_kind", "", g_cfg.hash_kind_raw, sizeof(g_cfg.hash_kind_raw),
+                                g_ini_path);
+    g_cfg.hash_kind            = mh::harness_hk::parse_kind(g_cfg.hash_kind_raw);
+    g_cfg.inc_verify_every     = GetPrivateProfileIntA("harness", "inc_verify_every", g_cfg.inc_verify_every, g_ini_path);
+    g_cfg.hash_cost_both       = GetPrivateProfileIntA("harness", "hash_cost_both", g_cfg.hash_cost_both, g_ini_path);
+    g_cfg.synth_ctrlgroup      = GetPrivateProfileIntA("harness", "synth_ctrlgroup", g_cfg.synth_ctrlgroup, g_ini_path);
+    g_cfg.synth_ctrlgroup_id   = GetPrivateProfileIntA("harness", "synth_ctrlgroup_id", g_cfg.synth_ctrlgroup_id, g_ini_path);
+    g_cfg.synth_groupmove      = GetPrivateProfileIntA("harness", "synth_groupmove", g_cfg.synth_groupmove, g_ini_path);
+    g_cfg.synth_groupmove_x    = GetPrivateProfileIntA("harness", "synth_groupmove_x", g_cfg.synth_groupmove_x, g_ini_path);
+    g_cfg.synth_groupmove_y    = GetPrivateProfileIntA("harness", "synth_groupmove_y", g_cfg.synth_groupmove_y, g_ini_path);
+    g_cfg.synth_groupmove_n    = GetPrivateProfileIntA("harness", "synth_groupmove_n", g_cfg.synth_groupmove_n, g_ini_path);
+    g_cfg.conq                 = GetPrivateProfileIntA("harness", "conq", g_cfg.conq, g_ini_path);
+    g_cfg.conq_seed            = GetPrivateProfileIntA("harness", "conq_seed", g_cfg.conq_seed, g_ini_path);
+    g_cfg.conq_at              = GetPrivateProfileIntA("harness", "conq_at", g_cfg.conq_at, g_ini_path);
+    g_cfg.conq_peer_land_at    = GetPrivateProfileIntA("harness", "conq_peer_land_at", g_cfg.conq_peer_land_at, g_ini_path);
+    g_cfg.conq_peer_move_at    = GetPrivateProfileIntA("harness", "conq_peer_move_at", g_cfg.conq_peer_move_at, g_ini_path);
+    g_cfg.conq_land_self_at    = GetPrivateProfileIntA("harness", "conq_land_self_at", g_cfg.conq_land_self_at, g_ini_path);
+    g_cfg.conq_bldg1_at        = GetPrivateProfileIntA("harness", "conq_bldg1_at", g_cfg.conq_bldg1_at, g_ini_path);
+    g_cfg.conq_bldg2_at        = GetPrivateProfileIntA("harness", "conq_bldg2_at", g_cfg.conq_bldg2_at, g_ini_path);
+    g_cfg.conq_units_at        = GetPrivateProfileIntA("harness", "conq_units_at", g_cfg.conq_units_at, g_ini_path);
+    g_cfg.conq_group_at        = GetPrivateProfileIntA("harness", "conq_group_at", g_cfg.conq_group_at, g_ini_path);
+    g_cfg.conq_attack_at       = GetPrivateProfileIntA("harness", "conq_attack_at", g_cfg.conq_attack_at, g_ini_path);
+    g_cfg.conq_attack_every    = GetPrivateProfileIntA("harness", "conq_attack_every", g_cfg.conq_attack_every, g_ini_path);
+    g_cfg.conq_academy         = GetPrivateProfileIntA("harness", "conq_academy", g_cfg.conq_academy, g_ini_path);
+    g_cfg.conq_barracks        = GetPrivateProfileIntA("harness", "conq_barracks", g_cfg.conq_barracks, g_ini_path);
+    g_cfg.conq_soldier         = GetPrivateProfileIntA("harness", "conq_soldier", g_cfg.conq_soldier, g_ini_path);
+    g_cfg.conq_n_soldiers      = GetPrivateProfileIntA("harness", "conq_n_soldiers", g_cfg.conq_n_soldiers, g_ini_path);
+    g_cfg.conq_use_groupmove   = GetPrivateProfileIntA("harness", "conq_use_groupmove", g_cfg.conq_use_groupmove, g_ini_path);
+    g_cfg.conq_force_kill_at   = GetPrivateProfileIntA("harness", "conq_force_kill_at", g_cfg.conq_force_kill_at, g_ini_path);
+    g_cfg.conq_probe_every     = GetPrivateProfileIntA("harness", "conq_probe_every", g_cfg.conq_probe_every, g_ini_path);
+    g_cfg.relation_dump_step   = GetPrivateProfileIntA("harness", "relation_dump_step", g_cfg.relation_dump_step, g_ini_path);
+    g_cfg.vision_order_at      = GetPrivateProfileIntA("harness", "vision_order_at", g_cfg.vision_order_at, g_ini_path);
+    g_cfg.vision_order_other   = GetPrivateProfileIntA("harness", "vision_order_other", g_cfg.vision_order_other, g_ini_path);
+    g_cfg.vision_order_value   = GetPrivateProfileIntA("harness", "vision_order_value", g_cfg.vision_order_value, g_ini_path);
+    g_cfg.vision_order_side    = GetPrivateProfileIntA("harness", "vision_order_side", g_cfg.vision_order_side, g_ini_path);
+    g_cfg.relation_order_at    = GetPrivateProfileIntA("harness", "relation_order_at", g_cfg.relation_order_at, g_ini_path);
+    g_cfg.relation_order_other = GetPrivateProfileIntA("harness", "relation_order_other", g_cfg.relation_order_other, g_ini_path);
+    g_cfg.relation_order_value = GetPrivateProfileIntA("harness", "relation_order_value", g_cfg.relation_order_value, g_ini_path);
+    g_cfg.relation_order_side  = GetPrivateProfileIntA("harness", "relation_order_side", g_cfg.relation_order_side, g_ini_path);
+    g_cfg.relation_dump_step2  = GetPrivateProfileIntA("harness", "relation_dump_step2", g_cfg.relation_dump_step2, g_ini_path);
+    g_cfg.conq_victim          = GetPrivateProfileIntA("harness", "conq_victim", g_cfg.conq_victim, g_ini_path);
+    g_cfg.conq_kill2_at        = GetPrivateProfileIntA("harness", "conq_kill2_at", g_cfg.conq_kill2_at, g_ini_path);
+    g_cfg.conq_victim2         = GetPrivateProfileIntA("harness", "conq_victim2", g_cfg.conq_victim2, g_ini_path);
+    g_cfg.conq_spectator_probe_at = GetPrivateProfileIntA("harness", "conq_spectator_probe_at", g_cfg.conq_spectator_probe_at, g_ini_path);
+    g_cfg.hit_probe_at         = GetPrivateProfileIntA("harness", "hit_probe_at", g_cfg.hit_probe_at, g_ini_path);
+    g_cfg.hit_ally_v           = GetPrivateProfileIntA("harness", "hit_ally_v", g_cfg.hit_ally_v, g_ini_path);
+    g_cfg.hit_ally_a           = GetPrivateProfileIntA("harness", "hit_ally_a", g_cfg.hit_ally_a, g_ini_path);
+    g_cfg.hit_enemy_v          = GetPrivateProfileIntA("harness", "hit_enemy_v", g_cfg.hit_enemy_v, g_ini_path);
+    g_cfg.hit_enemy_a          = GetPrivateProfileIntA("harness", "hit_enemy_a", g_cfg.hit_enemy_a, g_ini_path);
+    g_cfg.hostile_probe_at     = GetPrivateProfileIntA("harness", "hostile_probe_at", g_cfg.hostile_probe_at, g_ini_path);
+    g_cfg.hostile_issue        = GetPrivateProfileIntA("harness", "hostile_issue", g_cfg.hostile_issue, g_ini_path);
+    g_cfg.hostile_every        = GetPrivateProfileIntA("harness", "hostile_every", g_cfg.hostile_every, g_ini_path);
+    g_cfg.hostile_dx           = GetPrivateProfileIntA("harness", "hostile_dx", g_cfg.hostile_dx, g_ini_path);
+    g_cfg.hostile_order_after  = GetPrivateProfileIntA("harness", "hostile_order_after", g_cfg.hostile_order_after, g_ini_path);
+    g_cfg.hostile_a1           = GetPrivateProfileIntA("harness", "hostile_a1", g_cfg.hostile_a1, g_ini_path);
+    g_cfg.hostile_b1           = GetPrivateProfileIntA("harness", "hostile_b1", g_cfg.hostile_b1, g_ini_path);
+    g_cfg.hostile_a2           = GetPrivateProfileIntA("harness", "hostile_a2", g_cfg.hostile_a2, g_ini_path);
+    g_cfg.hostile_b2           = GetPrivateProfileIntA("harness", "hostile_b2", g_cfg.hostile_b2, g_ini_path);
+    g_cfg.d38_player           = GetPrivateProfileIntA("harness", "d38_player", g_cfg.d38_player, g_ini_path);
+    g_cfg.d38_bldg_at          = GetPrivateProfileIntA("harness", "d38_bldg_at", g_cfg.d38_bldg_at, g_ini_path);
+    g_cfg.d38_bldg             = GetPrivateProfileIntA("harness", "d38_bldg", g_cfg.d38_bldg, g_ini_path);
+    g_cfg.d38_bldg_dx          = GetPrivateProfileIntA("harness", "d38_bldg_dx", g_cfg.d38_bldg_dx, g_ini_path);
+    g_cfg.d38_bldg_dy          = GetPrivateProfileIntA("harness", "d38_bldg_dy", g_cfg.d38_bldg_dy, g_ini_path);
+    g_cfg.d38_dock_at          = GetPrivateProfileIntA("harness", "d38_dock_at", g_cfg.d38_dock_at, g_ini_path);
+    g_cfg.d38_dock_proto       = GetPrivateProfileIntA("harness", "d38_dock_proto", g_cfg.d38_dock_proto, g_ini_path);
+    g_cfg.d38_kill_at          = GetPrivateProfileIntA("harness", "d38_kill_at", g_cfg.d38_kill_at, g_ini_path);
+    g_cfg.d38_kill_margin_ms   = GetPrivateProfileIntA("harness", "d38_kill_margin_ms", g_cfg.d38_kill_margin_ms, g_ini_path);
+    g_cfg.d38_timeout          = GetPrivateProfileIntA("harness", "d38_timeout", g_cfg.d38_timeout, g_ini_path);
+    g_cfg.u49_at               = GetPrivateProfileIntA("harness", "u49_at", g_cfg.u49_at, g_ini_path);
+    g_cfg.u49_player           = GetPrivateProfileIntA("harness", "u49_player", g_cfg.u49_player, g_ini_path);
+    g_cfg.u49_gap              = GetPrivateProfileIntA("harness", "u49_gap", g_cfg.u49_gap, g_ini_path);
+    g_cfg.u49_settle           = GetPrivateProfileIntA("harness", "u49_settle", g_cfg.u49_settle, g_ini_path);
+    g_cfg.u49_tail             = GetPrivateProfileIntA("harness", "u49_tail", g_cfg.u49_tail, g_ini_path);
+    g_cfg.u49_timeout          = GetPrivateProfileIntA("harness", "u49_timeout", g_cfg.u49_timeout, g_ini_path);
+    g_cfg.conq_weapon          = GetPrivateProfileIntA("harness", "conq_weapon", g_cfg.conq_weapon, g_ini_path);
+    g_cfg.conq_phase_timeout   = GetPrivateProfileIntA("harness", "conq_phase_timeout", g_cfg.conq_phase_timeout, g_ini_path);
+    g_cfg.all_ai               = GetPrivateProfileIntA("harness", "all_ai", g_cfg.all_ai, g_ini_path);
+    g_cfg.all_ai_observer      = GetPrivateProfileIntA("harness", "all_ai_observer", g_cfg.all_ai_observer, g_ini_path);
+    g_cfg.gameover_step        = GetPrivateProfileIntA("harness", "gameover_step", g_cfg.gameover_step, g_ini_path);
+    g_cfg.gameover_stop        = GetPrivateProfileIntA("harness", "gameover_stop", g_cfg.gameover_stop, g_ini_path);
+    g_cfg.exit_process_at_step = GetPrivateProfileIntA("harness", "exit_process_at_step", g_cfg.exit_process_at_step, g_ini_path);
+    g_cfg.exit_process_mode    = GetPrivateProfileIntA("harness", "exit_process_mode", g_cfg.exit_process_mode, g_ini_path);
 }
 
 // ---- mp:D29: configuration (1) -- refuse the spine-only keys BY NAME, keep hashing ---------------
@@ -1741,8 +2061,8 @@ void seed_inject() {
     // mp:D37b: the replay's seat. Written HERE, straight after the regions, so the step the seed lands
     // on already runs as the recorded peer did. The line is unconditional in a seed-inject run: which
     // side a replay played as, and in which session mode, is part of what its hashes mean.
-    auto       *side = reinterpret_cast<uint16_t *>(mh::addr::PlayerSide);
-    const int   was  = (int)*side;
+    auto     *side = reinterpret_cast<uint16_t *>(mh::addr::PlayerSide);
+    const int was  = (int)*side;
     if (g_cfg.replay_seat >= 0 && g_cfg.replay_seat < PLAYER_PROF_COUNT) *side = (uint16_t)g_cfg.replay_seat;
     const unsigned mode = *reinterpret_cast<const uint8_t *>(mh::addr::_G_LLM_GAME_SESSION_MODE);
     // The recorded session mode is applied to the sim BODY only (sim_step_detour's scoped arm): the
@@ -2066,11 +2386,38 @@ void subdomain_row(const uint64_t *per) {
 // and only here: llm_strat_sim_step is `void (void)` (__watcall callee, no stack
 // arguments), so returning to its caller is the same machine state the body would have left.
 long g_sim_hold = 0;
+// mp:X3a: GetTickCount() at the instant of the hold, and the last heartbeat. MH_Harness_OnPresent prints
+// `; SIM HELD alive ms=` every 5 s from the FRAME path, so a hold that survives is evidenced by frames
+// actually being drawn from the imported world (a process that died stops printing it).
+DWORD g_hold_tick    = 0;
+DWORD g_hold_last_hb = 0;
 // The hold line's `why` is TRUNCATED at this many characters by a `%.*s`, so a caller cannot
 // size the log buffer from the other end of the file. See sim_hold_now for what it cost to
 // learn that the other way round.
 constexpr int HOLD_WHY_MAX = 320;
 void          sim_hold_now(const char *why); // defined next to fence_freeze_clock, whose globals it sets
+
+// mp:X3a: the capture-side population of the fixup trailer, per run. Parsed from the written blob with
+// the INLINE readers in state/world_fixup.h (so the generated harness contract gets no new row).
+void snapshot_fixup_line(const char *tag, const uint8_t *blob, size_t got) {
+    namespace w = mh::state::world;
+    char line[256];
+    if (got < sizeof(w::blob_header)) return;
+    const w::blob_header *h = reinterpret_cast<const w::blob_header *>(blob);
+    if (h->fixup_len == 0 || size_t(h->nav_offset) + h->nav_len + h->fixup_len > got) {
+        wsprintfA(line, "; %s fixup trailer ABSENT\n", tag);
+    } else {
+        const w::fixup_summary sm = w::fixup_summarize(blob + h->nav_offset + h->nav_len, h->fixup_len);
+        wsprintfA(line,
+                  "; %s fixup trailer v1: valid=%d bytes=%lu entries=%lu region=%lu rebase=%lu preserve=%lu "
+                  "hashed_skipped=%lu unmapped=%lu zeroed_blocks=%lu modules=%lu\n",
+                  tag, sm.valid ? 1 : 0, (unsigned long)h->fixup_len, (unsigned long)sm.entries,
+                  (unsigned long)sm.region, (unsigned long)sm.rebase, (unsigned long)sm.preserve,
+                  (unsigned long)sm.hashed_skipped, (unsigned long)sm.unmapped,
+                  (unsigned long)sm.zeroed_skipped_blocks, (unsigned long)sm.modules);
+    }
+    append_line(g_log_path, line);
+}
 
 // ---- LIB-WORLD: the step-0 world capture --------------------------------------------------------
 //
@@ -2083,6 +2430,14 @@ void world_snapshot_capture(uint64_t combined, uint64_t state, uint64_t clock) {
     static bool done = false;
     if (done) return;
     done = true;
+    // TL-HARN-INCHASH: the blob's lockstep pair is KIND 1 whatever this run hashes with -- its other
+    // half is world::lockstep_hash / libref_host, which only know FNV. One-shot, so the walk is free.
+    if (g_hash_kind != hk::KIND_FNV) {
+        uint64_t            fper[N_REGIONS];
+        const hk::step_hash f = fnv_now(fper);
+        combined              = f.combined;
+        state                 = f.state;
+    }
 
     w::capture_params p;
     p.lockstep_combined = combined;
@@ -2120,6 +2475,7 @@ void world_snapshot_capture(uint64_t combined, uint64_t state, uint64_t clock) {
         return;
     }
 
+    snapshot_fixup_line("WORLD SNAPSHOT", blob, got); // mp:X3a
     const w::blob_header *h = reinterpret_cast<const w::blob_header *>(blob);
     HANDLE                f = CreateFileA(g_world_out, GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS,
                                           FILE_ATTRIBUTE_NORMAL, nullptr);
@@ -2175,9 +2531,15 @@ void snap_bench_run(uint64_t combined, uint64_t state, uint64_t clock) {
     namespace w      = mh::state::world;
     static bool done = false;
     if (done) return;
-    done = true;
+    done        = true;
     const int n = g_cfg.snap_bench;
     if (n <= 0) return;
+    if (g_hash_kind != hk::KIND_FNV) { // TL-HARN-INCHASH: the blob carries kind 1 (see world_snapshot_capture)
+        uint64_t            fper[N_REGIONS];
+        const hk::step_hash f = fnv_now(fper);
+        combined              = f.combined;
+        state                 = f.state;
+    }
 
     w::capture_params p;
     p.lockstep_combined = combined;
@@ -2185,8 +2547,8 @@ void snap_bench_run(uint64_t combined, uint64_t state, uint64_t clock) {
     p.game_clock        = clock;
     p.step              = g_step;
     p.mask_flags        = (g_cfg.mask_ctrl_group ? w::MASK_CTRL_GROUP : 0u) |
-                    (g_cfg.mask_soldier_anim ? w::MASK_SOLDIER_ANIM : 0u) |
-                    (g_cfg.mask_planets_gfx ? w::MASK_PLANETS_GFX : 0u);
+                   (g_cfg.mask_soldier_anim ? w::MASK_SOLDIER_ANIM : 0u) |
+                   (g_cfg.mask_planets_gfx ? w::MASK_PLANETS_GFX : 0u);
 
     const size_t need = w::capture_capacity();
     uint8_t     *blob = static_cast<uint8_t *>(HeapAlloc(GetProcessHeap(), 0, need));
@@ -2225,7 +2587,7 @@ void snap_bench_run(uint64_t combined, uint64_t state, uint64_t clock) {
             ++fails;
             continue;
         }
-        last_got            = got;
+        last_got    = got;
         samples[ok] = 1000.0 * (double)(t1.QuadPart - t0.QuadPart) / (double)freq.QuadPart; // ms
         ++ok;
     }
@@ -2326,15 +2688,6 @@ void snapshot_send_now(const uint64_t *per, uint64_t combined, uint64_t state, u
 
     char line[420];
 
-    w::capture_params p;
-    p.lockstep_combined = combined;
-    p.lockstep_state    = state;
-    p.game_clock        = clock;
-    p.step              = g_step;
-    p.mask_flags        = (g_cfg.mask_ctrl_group ? w::MASK_CTRL_GROUP : 0u) |
-                   (g_cfg.mask_soldier_anim ? w::MASK_SOLDIER_ANIM : 0u) |
-                   (g_cfg.mask_planets_gfx ? w::MASK_PLANETS_GFX : 0u);
-
     const size_t need = w::capture_capacity();
     uint8_t     *blob = static_cast<uint8_t *>(HeapAlloc(GetProcessHeap(), 0, need));
     if (blob == nullptr) {
@@ -2344,8 +2697,42 @@ void snapshot_send_now(const uint64_t *per, uint64_t combined, uint64_t state, u
         log_flush();
         return;
     }
-    size_t    got = 0;
-    const int rc  = w::capture(blob, need, &got, p);
+
+    // mp:X3b -- ONE INSTANT. The horizon heartbeat thread rewrites ls_horizon every 50 ms of real
+    // time, and a capture takes 15-30 ms, so a SNAPCAP hashed before the capture (the caller's `per`)
+    // could name a different horizon than the one the blob carries -- and which one the blob got
+    // depended on whether a beat landed before or after the capture read that block. The hold keeps
+    // the beat out from the FNV re-derive to the end of the SNAPCAP row: the hashes, the blob's
+    // lockstep pair and the blob are then one instant by construction. It is released before the
+    // send below (the transport's recv thread can hold its own locks while waiting for the beat).
+    //
+    // TL-HARN-INCHASH: SNAPCAP and the blob's lockstep pair are KIND 1 whatever this run hashes with,
+    // because their other half -- SNAPIMP and world::lockstep_hash on the receiver -- is re-derived in
+    // kind 1. Only on an attempt step, so a kind-2 run pays the walk at most 20 times. The re-derive
+    // is now unconditional (a kind-1 run used to take the caller's step-end hash): that hash was
+    // taken BEFORE the hold, so it is the one reading that can straddle a beat.
+    size_t   got = 0;
+    int      rc  = 0;
+    uint64_t fper[N_REGIONS];
+    {
+        horizon_hold        hold;
+        const hk::step_hash f = fnv_now(fper);
+        per                   = fper;
+        combined              = f.combined;
+        state                 = f.state;
+
+        w::capture_params p;
+        p.lockstep_combined = combined;
+        p.lockstep_state    = state;
+        p.game_clock        = clock;
+        p.step              = g_step;
+        p.mask_flags        = (g_cfg.mask_ctrl_group ? w::MASK_CTRL_GROUP : 0u) |
+                       (g_cfg.mask_soldier_anim ? w::MASK_SOLDIER_ANIM : 0u) |
+                       (g_cfg.mask_planets_gfx ? w::MASK_PLANETS_GFX : 0u);
+        rc = w::capture(blob, need, &got, p);
+        // The hashes BEFORE the send, so the evidence exists even if the transport refuses.
+        if (rc == w::WORLD_OK) snapshot_region_line("SNAPCAP", g_step, per);
+    }
     if (rc != w::WORLD_OK) {
         wsprintfA(line, "; SNAPSHOT SEND step=%lu REFUSED -- capture rc=%d\n", (unsigned long)g_step,
                   rc);
@@ -2355,8 +2742,7 @@ void snapshot_send_now(const uint64_t *per, uint64_t combined, uint64_t state, u
         return;
     }
 
-    // The hashes BEFORE the send, so the evidence exists even if the transport refuses.
-    snapshot_region_line("SNAPCAP", g_step, per);
+    snapshot_fixup_line("SNAPCAP", blob, got); // mp:X3a: the per-run population, per class
 
     // MH_Net_SnapshotSend COPIES (mh_net_module.h's ownership rule), so this blob is ours to free
     // the instant it returns -- which is why the 8 MB does not have to stay on our heap for the 30-60
@@ -2474,7 +2860,12 @@ void snapshot_poll_now(void) {
                             "world::import refuses a live session by policy -- mp:X3 owns the "
                             "ruling, this verb only measures what an import would do)\n");
     mh::state::boot::reset_session_latch_for_test();
-    const int irc = libmh_import_world(dst, (size_t)len);
+    // mp:X3b -- ONE INSTANT, receiver half: the horizon heartbeat thread must not rewrite ls_horizon
+    // between the import writing the blob's value and SNAPIMP hashing it (measured: a beat in the
+    // same millisecond as the import). Released after the lockstep re-fold below, before any log I/O
+    // that could block on the transport.
+    horizon_hold hold;
+    const int    irc = libmh_import_world(dst, (size_t)len);
 
     char line[420];
     if (irc != w::WORLD_OK) {
@@ -2501,6 +2892,7 @@ void snapshot_poll_now(void) {
     // numbers after an import, and the header carries what they were.
     uint64_t now_comb = 0, now_state = 0;
     w::lockstep_hash(h->mask_flags, &now_comb, &now_state);
+    hold.release();
 
     MH_NetSnapshotStatus st;
     MH_Net_SnapshotStatus(&st);
@@ -2601,9 +2993,9 @@ void world_import_at_run(void) {
     }
 
     append_line(g_log_path,
-               "; WORLD IMPORT AT LIFTING the session-begun latch (harness override; world::import "
-               "refuses a live session by policy -- mp:X3 owns the ruling, this verb only measures "
-               "what an import would do)\n");
+                "; WORLD IMPORT AT LIFTING the session-begun latch (harness override; world::import "
+                "refuses a live session by policy -- mp:X3 owns the ruling, this verb only measures "
+                "what an import would do)\n");
 
     LARGE_INTEGER freq;
     QueryPerformanceFrequency(&freq);
@@ -2630,7 +3022,7 @@ void world_import_at_run(void) {
             continue;
         }
         const double ms = 1000.0 * (double)(t1.QuadPart - t0.QuadPart) / (double)freq.QuadPart;
-        samples[ok]      = ms;
+        samples[ok]     = ms;
         ++ok;
         wsprintfA(line, "; WORLD IMPORT AT step=%lu rep=%d OK bytes=%lu blobstep=%lu us=%lu\n",
                   (unsigned long)g_step, i, (unsigned long)fsize, blob_step,
@@ -2770,8 +3162,8 @@ void seg_close(const char *why) {
 
 void seg_open(const char *dir) {
     lstrcpynA(g_seg_dir, dir, MAX_PATH);
-    g_seg_base      = g_step - 1; // called after ++g_step: THIS step is match step 1
-    g_seg_orders_n  = 0;
+    g_seg_base     = g_step - 1; // called after ++g_step: THIS step is match step 1
+    g_seg_orders_n = 0;
     wsprintfA(g_seg_log, "%smh_match_harness.log", dir);
     wsprintfA(g_seg_orders, "%smh_match_orders.bin", dir);
     wsprintfA(g_seg_clock, "%smh_match_clock.bin", dir);
@@ -2807,9 +3199,12 @@ void seg_open(const char *dir) {
               "(step_base=%lu). Hash lines below carry PROCESS step numbers; mh_match_orders.bin=%s "
               "mh_match_clock.bin=%s mh_match_seed.bin=%s carry MATCH step numbers (replay inputs: "
               "copy them next to mh.exe as mh_orders.bin / mh_clock.bin / mh_harness_seed.bin). "
-              "Arm-time lines are in ..\\%s\\mh_harness.log\n",
+              "Arm-time lines are in ..\\%s\\mh_harness.log%s\n",
               seg_leaf_s, g_step, g_seg_base, g_seg_base, rec ? "yes" : "no", clock ? "yes" : "no",
-              seed ? "yes" : "no", proc_leaf);
+              seed ? "yes" : "no", proc_leaf,
+              // TL-HARN-INCHASH: the segment names its hash kind itself -- the fingerprint line that
+              // otherwise carries it is in the PROCESS log, which a bug report may not include.
+              g_hash_kind == hk::KIND_INC ? " hash_kind=2" : "");
     seg_mirror(line, (DWORD)lstrlenA(line));
 }
 
@@ -2868,8 +3263,8 @@ void verdict_snap_tick() {
     struct {
         uint32_t magic, ver, step, region_count;
         uint64_t manifest_fp;
-    } hdr = {0x4e53484du, 1, g_step, (uint32_t)N_REGIONS,
-             mh::desync::manifest_fingerprint(names, lens, excl, N_REGIONS)};
+    } hdr   = {0x4e53484du, 1, g_step, (uint32_t)N_REGIONS,
+               mh::desync::manifest_fingerprint(names, lens, excl, N_REGIONS)};
     DWORD w = 0;
     WriteFile(h, &hdr, sizeof(hdr), &w, nullptr);
     struct ctx_t {
@@ -2878,14 +3273,14 @@ void verdict_snap_tick() {
     };
     for (int i = 0; i < N_REGIONS; ++i) {
         // the length prefix first (patched after), then the region's VERDICT stream
-        const DWORD at = SetFilePointer(h, 0, nullptr, FILE_CURRENT);
+        const DWORD at   = SetFilePointer(h, 0, nullptr, FILE_CURRENT);
         uint32_t    zero = 0;
         WriteFile(h, &zero, sizeof(zero), &w, nullptr);
         ctx_t              c = {h, 0};
         mh::state::fn_sink out(
             mh::state::sink_mode::VERDICT,
             [](void *ctx, const void *p, uint32_t n) {
-                ctx_t *k = static_cast<ctx_t *>(ctx);
+                ctx_t *k  = static_cast<ctx_t *>(ctx);
                 DWORD  ww = 0;
                 WriteFile(k->h, p, n, &ww, nullptr);
                 k->n += n;
@@ -3414,9 +3809,9 @@ void order_replay_inject() {
 // Evidence, not trust: every entry is compared with the snapshot before it is overwritten, and the
 // stop line reports how many entries differed (a doubled AI order is the expected, benign shape;
 // the first few are logged with their counts).
-uint32_t g_dinj_entries = 0; // dispatch entries seen in a dispatch-inject replay
-uint32_t g_dinj_differ  = 0; // ... where the live queue was not already the snapshot
-uint32_t g_dinj_logged  = 0;
+uint32_t g_dinj_entries   = 0; // dispatch entries seen in a dispatch-inject replay
+uint32_t g_dinj_differ    = 0; // ... where the live queue was not already the snapshot
+uint32_t g_dinj_logged    = 0;
 uint32_t g_dinj_last_step = 0; // the last step whose dispatch entry this replay saw
 uint32_t g_dinj_missed    = 0; // steps with a recorded snapshot whose dispatch never ran here
 uint32_t g_dinj_top_t     = 0; // records held back from the top-of-step queue as the AI tick's (T)
@@ -3493,13 +3888,14 @@ void order_replay_inject_prefix() {
             if (g_dinj_missed <= 8) {
                 char b[128];
                 wsprintfA(b, "; [dispatch_inject] MISSED step=%lu: a recorded snapshot whose dispatch "
-                             "never ran\n", g_step - 1);
+                             "never ran\n",
+                          g_step - 1);
                 append_line(g_log_path, b);
             }
         }
     }
-    uint8_t *q    = reinterpret_cast<uint8_t *>(ADDR_ORDER_QUEUE());
-    int     *cnt  = reinterpret_cast<int *>(ADDR_ORDER_QCOUNT());
+    uint8_t  *q    = reinterpret_cast<uint8_t *>(ADDR_ORDER_QUEUE());
+    int      *cnt  = reinterpret_cast<int *>(ADDR_ORDER_QCOUNT());
     const int live = *cnt;
     int       n    = 0; // records of S(N)
     while (g_replay_i + n < g_replay_n && g_replay[g_replay_i + n].step == g_step && n < ORDER_QCAP) ++n;
@@ -3737,10 +4133,115 @@ void fence_freeze_clock() {
 // fence's two globals: g_fence_hit makes on_sim_tick re-freeze the clock on EVERY frame, so nothing
 // downstream (the mode-3 catch-up loop, the clock-track replay, the fixed pin) can fund another
 // step, and g_sim_hold makes the detour skip the body of the step we are already inside.
+// ---- mp:X3a: the held-sim STALL WATCHDOG ---------------------------------------------------------
+//
+// The heartbeat above is printed BY the frame path, so a peer whose main thread dies or hangs right
+// after the hold simply stops printing it -- and on the rig's isolated desktop neither WER nor the
+// crash-marker VEH necessarily sees why (measured 2026-09-29: session logs stop at the last re-derive,
+// no marker, the transport thread keeps logging). This thread is the instrument for that case. Every
+// 2.5 s while the sim is held it compares a present counter; when the frame path has not advanced for
+// two samples it suspends the main thread ONCE PER STALL WINDOW and logs where it is: EIP, the frame
+// chain, and every stack dword that lands inside a loaded module (module+RVA), so a fault or spin is
+// named by function without a debugger. It only READS the thread and always resumes it.
+volatile LONG g_present_count = 0;
+DWORD         g_main_tid      = 0;
+
+static void log_addr_in_module(const char *tag, DWORD v) {
+    HMODULE hm = nullptr;
+    char    line[300];
+    if (v >= 0x10000u &&
+        GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+                           reinterpret_cast<LPCSTR>(static_cast<uintptr_t>(v)), &hm) &&
+        hm != nullptr) {
+        char path[MAX_PATH] = {0};
+        GetModuleFileNameA(hm, path, MAX_PATH);
+        const char *b = path;
+        for (const char *q = path; *q; ++q)
+            if (*q == '\\') b = q + 1;
+        wsprintfA(line, "; SIM HELD STALL %s %08lX = %s+%08lX\n", tag, (unsigned long)v, b,
+                  (unsigned long)(v - (DWORD)(uintptr_t)hm));
+        append_line(g_log_path, line);
+    }
+}
+
+static DWORD WINAPI hold_watch_thread(LPVOID) {
+    LONG last   = g_present_count;
+    int  stalls = 0;
+    for (;;) {
+        Sleep(2500);
+        if (!g_sim_hold) continue;
+        const LONG now = g_present_count;
+        if (now != last) {
+            last   = now;
+            stalls = 0;
+            continue;
+        }
+        ++stalls;
+        if (stalls != 2 && stalls != 12) continue; // ~5 s and ~30 s into the stall
+        char line[200];
+        wsprintfA(line, "; SIM HELD STALL: no present for %d ms (present count %ld, main tid %lu)\n",
+                  stalls * 2500, (long)now, (unsigned long)g_main_tid);
+        append_line(g_log_path, line);
+        HANDLE th = OpenThread(THREAD_SUSPEND_RESUME | THREAD_GET_CONTEXT | THREAD_QUERY_INFORMATION, FALSE,
+                               g_main_tid);
+        if (th == nullptr) {
+            append_line(g_log_path, "; SIM HELD STALL: OpenThread(main) failed\n");
+            log_flush();
+            continue;
+        }
+        FILETIME c, e, k, u;
+        if (GetThreadTimes(th, &c, &e, &k, &u)) {
+            wsprintfA(line, "; SIM HELD STALL main thread cpu: kernel=%lu user=%lu (100ns units, low dword)\n",
+                      (unsigned long)k.dwLowDateTime, (unsigned long)u.dwLowDateTime);
+            append_line(g_log_path, line);
+        }
+        if (SuspendThread(th) != (DWORD)-1) {
+            CONTEXT ctx;
+            ctx.ContextFlags = CONTEXT_CONTROL | CONTEXT_INTEGER;
+            if (GetThreadContext(th, &ctx)) {
+                wsprintfA(line, "; SIM HELD STALL EIP=%08lX ESP=%08lX EBP=%08lX EAX=%08lX ECX=%08lX ESI=%08lX\n",
+                          (unsigned long)ctx.Eip, (unsigned long)ctx.Esp, (unsigned long)ctx.Ebp,
+                          (unsigned long)ctx.Eax, (unsigned long)ctx.Ecx, (unsigned long)ctx.Esi);
+                append_line(g_log_path, line);
+                log_addr_in_module("eip", ctx.Eip);
+                __try {
+                    const DWORD *sp    = reinterpret_cast<const DWORD *>(static_cast<uintptr_t>(ctx.Esp));
+                    int          shown = 0;
+                    for (int i = 0; i < 1024 && shown < 40; ++i) {
+                        const DWORD v  = sp[i];
+                        HMODULE     hm = nullptr;
+                        if (v >= 0x10000u &&
+                            GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS |
+                                                   GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+                                               reinterpret_cast<LPCSTR>(static_cast<uintptr_t>(v)), &hm)) {
+                            log_addr_in_module("stack", v);
+                            ++shown;
+                        }
+                    }
+                } __except (EXCEPTION_EXECUTE_HANDLER) {
+                }
+            }
+            ResumeThread(th);
+        }
+        CloseHandle(th);
+        log_flush();
+    }
+    return 0;
+}
+
 void sim_hold_now(const char *why) {
     if (g_sim_hold) return; // idempotent: the first hold is the one that gets logged
-    g_sim_hold  = 1;
-    g_fence_hit = true;
+    static bool watch_started = false;
+    if (!watch_started) {
+        watch_started = true;
+        g_main_tid    = GetCurrentThreadId(); // the sim tick is the main thread's
+        HANDLE t      = CreateThread(nullptr, 0, hold_watch_thread, nullptr, 0, nullptr);
+        if (t != nullptr) CloseHandle(t);
+    }
+    g_sim_hold     = 1;
+    g_hold_tick    = GetTickCount();
+    g_hold_last_hb = g_hold_tick;
+    g_fence_hit    = true;
     fence_freeze_clock();
     // THE CAPACITY IS DERIVED, NOT PICKED, and this line has already been the bug it now guards
     // against. The first version was `char hb[300]` against a ~175-character fixed part and a
@@ -3758,10 +4259,10 @@ void sim_hold_now(const char *why) {
     static_assert(HOLD_WHY_MAX == 320, "the %.319s literal above must match HOLD_WHY_MAX - 1");
     char hb[HOLD_FIXED + HOLD_WHY_MAX];
     wsprintfA(hb,
-              "; SIM HOLD step=%lu -- %.319s. The sim is frozen HERE: this step's body is skipped and "
+              "; SIM HOLD step=%lu tick=%lu -- %.319s. The sim is frozen HERE: this step's body is skipped and "
               "the clock is pinned, so no further sim step is funded. The frame loop, the renderer "
               "and the transport keep running.\n",
-              g_step, why);
+              g_step, (unsigned long)g_hold_tick, why);
     append_line(g_log_path, hb);
     log_flush(); // a hold whose reason is a crash under investigation must not die in the buffer
 }
@@ -4238,6 +4739,10 @@ inline uint8_t conq_ctrl_flags(unsigned slot) {
 // later without quietly ordering an empty profile around.
 unsigned conq_find_enemy(unsigned side) {
     const auto *prof = reinterpret_cast<const mh::game::mh_llm_strat_player_profile *>(ADDR_PLAYERS_PROF);
+    if (g_cfg.conq_victim >= 0 && g_cfg.conq_victim < 8 && (unsigned)g_cfg.conq_victim != side) {
+        const uint32_t f = prof[g_cfg.conq_victim].status_flags; // mp:U52: an explicit victim (e.g. the non-ally)
+        if ((f & PS_ENABLED) && (f & PS_ALIVE)) return (unsigned)g_cfg.conq_victim;
+    }
     for (unsigned i = 0; i < 8; ++i) {
         if (i == side) continue;
         const uint32_t f = prof[i].status_flags;
@@ -4254,6 +4759,199 @@ int conq_find_enemy_bldg(unsigned enemy) {
     for (int i = 1; i < 100; ++i)
         if (b[i].building_id != 0 && b[i].state != 2 && b[i].energy > 0.0) return i;
     return 0;
+}
+
+// mp:U52: the HOSTILITY PROBE. Does the sim treat two players as allies or as enemies? One soldier of each
+// player of a pair is dropped next to each other; the two exact units are LATCHED (roster index) and their energy
+// is logged every `hostile_every` steps on EVERY peer (so the numbers are host-vs-client diffable).
+//   phase P1 (passive):   drop .. drop+hostile_order_after   -- nobody is ordered; units under human control still
+//                         auto-fire at nearby enemies (llm_strat_unit_passive_engage_tick), allies must not.
+//   phase P2 (explicit):  at drop+hostile_order_after the A soldier gets the player's own attack order against the B
+//                         soldier (order 0x1e, what a click does). A relation-blind attack order damages an ally.
+// Pair 1 and pair 2 run side by side (pair k is `hostile_dx` tiles apart along x, next to player b1's landing spot), so
+// one match carries an ALLY pair and an ENEMY pair -- the enemy pair is the POSITIVE CONTROL for both phases.
+//   [harness] hostile_probe_at=N  hostile_a1/b1/a2/b2=player  hostile_dx=12  hostile_order_after=300
+struct HostilePair {
+    int  a_idx = -1, b_idx = -1; // roster indices, latched when both exist
+    bool ordered = false;
+};
+HostilePair g_hostile[2];
+
+void hostile_probe() {
+    if (g_cfg.hostile_probe_at <= 0 || g_step < (uint32_t)g_cfg.hostile_probe_at) return;
+    const uint32_t d      = g_step - (uint32_t)g_cfg.hostile_probe_at;
+    const unsigned planet = *reinterpret_cast<const uint32_t *>(ADDR_PLANET_IDX);
+    if (planet >= 32) return;
+    const auto *prof  = reinterpret_cast<const mh::game::mh_llm_strat_player_profile *>(ADDR_PLAYERS_PROF);
+    const int   pa[2] = {g_cfg.hostile_a1, g_cfg.hostile_a2};
+    const int   pb[2] = {g_cfg.hostile_b1, g_cfg.hostile_b2};
+    char        msg[256];
+    auto *const roster = reinterpret_cast<mh::game::mh_map_object_unit *>(mh::state::hash_base(g_idx_units));
+    // the drop site: next to player b1's landing spot, pair k shifted along x
+    const int site_x = (pb[0] >= 0 && pb[0] < 8) ? (int)prof[pb[0]].landing_x[planet] : 0;
+    const int site_y = (pb[0] >= 0 && pb[0] < 8) ? (int)prof[pb[0]].landing_y[planet] + 3 : 0;
+    if (d == 0 && g_cfg.hostile_issue) {
+        for (int k = 0; k < 2; ++k) {
+            if (pa[k] < 0 || pb[k] < 0 || pa[k] > 7 || pb[k] > 7) continue;
+            const int bx = site_x + k * g_cfg.hostile_dx, by = site_y;
+            mh::call::llm_strat_order_create_unit_debug((uint32_t)bx, (uint32_t)by, (uint32_t)g_cfg.conq_soldier,
+                                                        (uint32_t)pb[k]);
+            mh::call::llm_strat_order_create_unit_debug((uint32_t)(bx + 2), (uint32_t)by, (uint32_t)g_cfg.conq_soldier,
+                                                        (uint32_t)pa[k]);
+            wsprintfA(msg, "; HOSTILE step=%lu issue pair%d: player %d soldier + player %d soldier at (%d,%d)\n", g_step,
+                      k + 1, pb[k], pa[k], bx, by);
+            append_line(g_log_path, msg);
+        }
+    }
+    // latch the two exact units of each pair: the soldier-proto unit of that player within 4 tiles of its drop tile
+    for (int k = 0; k < 2; ++k) {
+        if (pa[k] < 0 || pb[k] < 0 || pa[k] > 7 || pb[k] > 7) continue;
+        HostilePair &h = g_hostile[k];
+        if (h.a_idx >= 0 && h.b_idx >= 0) continue;
+        const int bx = site_x + k * g_cfg.hostile_dx, by = site_y;
+        for (int s = 0; s < 2; ++s) {
+            int &slot = s == 0 ? h.a_idx : h.b_idx;
+            if (slot >= 0) continue;
+            const int cx = bx + (s == 0 ? 2 : 0), who = s == 0 ? pa[k] : pb[k];
+            for (unsigned i = 2; i < 100u; ++i) {
+                const auto    &u   = roster[(unsigned)who * 100u + i];
+                const unsigned pid = (unsigned)u.unit_proto_id;
+                if (u.energy <= 0.0 || (pid != (unsigned)g_cfg.conq_soldier && pid != (unsigned)(g_cfg.conq_soldier - 1)))
+                    continue;
+                const int dx = (int)u.x - cx, dy = (int)u.y - by;
+                if (dx >= -4 && dx <= 4 && dy >= -4 && dy <= 4) {
+                    slot = (int)i;
+                    break;
+                }
+            }
+        }
+    }
+    // phase P2: the explicit attack order (issued by the peer that issued the drop, replicated)
+    if (g_cfg.hostile_issue && d >= (uint32_t)g_cfg.hostile_order_after) {
+        for (int k = 0; k < 2; ++k) {
+            HostilePair &h = g_hostile[k];
+            if (h.ordered || h.a_idx < 0 || h.b_idx < 0) continue;
+            h.ordered        = true;
+            const uint32_t w = mh::call::llm_strat_unit_select_weapon((uint16_t)pa[k], h.a_idx, 2u) & 0xffu;
+            if (w == 100u) {
+                wsprintfA(msg, "; HOSTILE step=%lu pair%d order: no weapon for that target (select_weapon=100)\n", g_step, k + 1);
+            } else {
+                mh::call::llm_strat_unit_order_attack_target((uint32_t)pa[k], h.a_idx, (uint32_t)pb[k], h.b_idx, w);
+                wsprintfA(msg, "; HOSTILE step=%lu pair%d order: player %d unit %d attacks player %d unit %d (weapon %u)\n", g_step,
+                          k + 1, pa[k], h.a_idx, pb[k], h.b_idx, w);
+            }
+            append_line(g_log_path, msg);
+        }
+    }
+    if (g_cfg.hostile_every <= 0 || (d % (uint32_t)g_cfg.hostile_every) != 0) return;
+    for (int k = 0; k < 2; ++k) {
+        if (pa[k] < 0 || pb[k] < 0 || pa[k] > 7 || pb[k] > 7) continue;
+        const HostilePair &h  = g_hostile[k];
+        int                ea = -1, eb = -1;
+        if (h.a_idx >= 0) ea = (int)roster[(unsigned)pa[k] * 100u + (unsigned)h.a_idx].energy;
+        if (h.b_idx >= 0) eb = (int)roster[(unsigned)pb[k] * 100u + (unsigned)h.b_idx].energy;
+        wsprintfA(msg, "; HOSTILE step=%lu pair%d a=%d unit=%d energy=%d b=%d unit=%d energy=%d phase=%d\n", g_step, k + 1,
+                  pa[k], h.a_idx, ea, pb[k], h.b_idx, eb, d >= (uint32_t)g_cfg.hostile_order_after ? 2 : 1);
+        append_line(g_log_path, msg);
+    }
+}
+
+// mp:U52: the HIT PROBE -- the ally-damage hostility guard ([net] ally_damage_no_hostility), measured directly.
+// At `hit_probe_at`, EVERY peer (same step, same writes, so the hashed state stays identical) forces the
+// foreign-building-change flag to 1 (the in-match condition that makes the hostility stamp unconditional) and
+// registers one synthetic building hit through the game's own llm_strat_ai_bldg_register_visible_building:
+//   ALLY hit  : victim hit_ally_v, aggressor hit_ally_a (an ally of the victim): its ai_player_relation[aggressor]
+//               must stay +1 with the guard, and flips to -1 without it (the reproduction arm);
+//   ENEMY hit : victim hit_enemy_v, aggressor hit_enemy_a: the mirror is zeroed first (so the control shows the
+//               stamp), and the hit MUST flip it to -1 -- the guard must not blunt a real enemy hit.
+// Both lines log before/after on every peer (RELDUMP-style, host-vs-client diffable).
+void hit_probe() {
+    if (g_cfg.hit_probe_at <= 0 || g_step != (uint32_t)g_cfg.hit_probe_at) return;
+    auto *const pd                                                             = reinterpret_cast<mh::game::mh_game_player_data *>(ADDR_PLAYER_DATA);
+    *mh::state::ptr<int32_t>(mh::state::RID_STRAT_AI_FOREIGN_BLDG_CHANGE_FLAG) = 1;
+    char msg[200];
+    for (int k = 0; k < 2; ++k) {
+        const int v = k == 0 ? g_cfg.hit_ally_v : g_cfg.hit_enemy_v;
+        const int a = k == 0 ? g_cfg.hit_ally_a : g_cfg.hit_enemy_a;
+        if (v < 0 || a < 0 || v > 7 || a > 7) continue;
+        if (k == 1) pd[v].ai_player_relation[a] = 0;
+        const int before = pd[v].ai_player_relation[a];
+        mh::call::llm_strat_ai_bldg_register_visible_building(1, (uint32_t)v | 0x40u, 1u, (uint32_t)a, 0);
+        const int after = pd[v].ai_player_relation[a];
+        wsprintfA(msg, "; HITPROBE step=%lu kind=%s victim=%d aggressor=%d before=%d after=%d\n", g_step, k == 0 ? "ally" : "enemy", v,
+                  a, before, after);
+        append_line(g_log_path, msg);
+    }
+}
+
+// mp:U52 VISION readout (per-peer view state, NOT hashed): the view masks + for each enabled player its first live
+// building's tile as THIS peer's fog shows it. `seen` = (tile_objects.visibility & is_human) != 0, i.e. drawn lit.
+void vision_dump() {
+    char           msg[200];
+    const uint32_t ih   = *mh::state::ptr<const uint32_t>(mh::state::RID_IS_HUMAN);
+    const unsigned hm   = *mh::state::ptr<const uint8_t>(mh::state::RID_GAME_HUMAN_PLAYER_MASK);
+    const unsigned ctl  = *mh::state::ptr<const uint8_t>(mh::state::RID_PLAYER_CONTROL_MASK);
+    const unsigned side = *mh::state::ptr<const uint16_t>(mh::state::RID_PLAYERSIDE);
+    wsprintfA(msg, "; VISDUMP step=%lu side=%u is_human=%02x hmask=%02x ctl=%02x\n", g_step, side, (unsigned)ih, hm, ctl);
+    append_line(g_log_path, msg);
+    const auto *const bl = reinterpret_cast<const mh::game::mh_map_object_building *>(mh::state::hash_base(g_idx_bldgs));
+    const auto *const tl = mh::state::ptr<const mh::game::mh_map_tile_object_data>(mh::state::RID_TILE_OBJECTS);
+    for (unsigned p = 0; p < 8; ++p) {
+        const uint8_t *d = reinterpret_cast<const uint8_t *>(mh::addr::Players + (uintptr_t)p * 0x34);
+        if (d[6] == 0) continue;
+        int bi = 0;
+        for (int i = 1; i < 100; ++i)
+            if (bl[p * 100u + i].building_id != 0 && bl[p * 100u + i].state != 2 && bl[p * 100u + i].energy > 0.0) {
+                bi = i;
+                break;
+            }
+        if (bi == 0) {
+            // no building yet: fall back to the first live unit (a teammate's landed units are what the fog must show)
+            const auto *const ul = reinterpret_cast<const mh::game::mh_map_object_unit *>(mh::state::hash_base(g_idx_units));
+            int               ui = 0;
+            for (int i = 1; i < 100; ++i)
+                if (ul[p * 100u + i].energy > 0.0) {
+                    ui = i;
+                    break;
+                }
+            if (ui == 0) {
+                wsprintfA(msg, "; VISDUMP p%u bldg=none\n", p);
+            } else {
+                const unsigned ux = ul[p * 100u + ui].x, uy = ul[p * 100u + ui].y;
+                const unsigned v = tl[ux * 256u + uy].visibility;
+                wsprintfA(msg, "; VISDUMP p%u unit=%d at=%u,%u vis=%02x seen=%d\n", p, ui, ux, uy, v, (v & ih) != 0 ? 1 : 0);
+            }
+        } else {
+            const unsigned bx = bl[p * 100u + bi].x, by = bl[p * 100u + bi].y;
+            const unsigned v = tl[bx * 256u + by].visibility;
+            wsprintfA(msg, "; VISDUMP p%u bldg=%d at=%u,%u vis=%02x seen=%d\n", p, bi, bx, by, v, (v & ih) != 0 ? 1 : 0);
+        }
+        append_line(g_log_path, msg);
+    }
+}
+
+// mp:U52: the relation tables as the sim sees them. `rel` = Players[a].relation[b] (1 ally, 2 enemy, 0 none),
+// `ai` = player_data[a].ai_player_relation[b] (+1/-1/0), `flag` = the ally-victory flag (Team mode). One line per
+// row so a host-vs-client diff is a text diff.
+void relation_dump() {
+    char msg[200];
+    vision_dump();
+    const auto *pd = reinterpret_cast<const mh::game::mh_game_player_data *>(ADDR_PLAYER_DATA);
+    wsprintfA(msg, "; RELDUMP step=%lu allyflag=%ld\n", g_step, (long)*mh::state::ptr<const int32_t>(mh::state::RID_STRAT_MP_ALLY_VICTORY_RULE_FLAG));
+    append_line(g_log_path, msg);
+    for (int a = 0; a < 8; ++a) {
+        const uint8_t *d = reinterpret_cast<const uint8_t *>(mh::addr::Players + (uintptr_t)a * 0x34);
+        char           ai[64];
+        char          *w = ai;
+        for (int b = 0; b < 8; ++b) {
+            const int v = pd[a].ai_player_relation[b];
+            *w++        = v > 0 ? '+' : (v < 0 ? '-' : '0');
+        }
+        *w = 0;
+        wsprintfA(msg, "; RELDUMP p%d ctrl=%02x team=%d rel=%d%d%d%d%d%d%d%d ai=%s\n", a, d[6], d[7], d[8], d[9], d[10],
+                  d[11], d[12], d[13], d[14], d[15], ai);
+        append_line(g_log_path, msg);
+    }
 }
 
 // One census line. This is the instrument the whole item exists to build, so it prints exactly the
@@ -4628,6 +5326,30 @@ void conq_issue() {
             }
         wsprintfA(msg, "; CONQ step=%lu FORCE-KILL: order 0xf8 x%d against player %u\n", g_step, n,
                   g_conq_enemy);
+        append_line(g_log_path, msg);
+    }
+    if (g_cfg.conq_kill2_at > 0 && g_cfg.conq_victim2 >= 0 && g_cfg.conq_victim2 < 8 && d == (uint32_t)g_cfg.conq_kill2_at) {
+        const unsigned v2 = (unsigned)g_cfg.conq_victim2;
+        auto *const    eu = reinterpret_cast<mh::game::mh_map_object_unit *>(mh::state::hash_base(g_idx_units)) + v2 * 100u;
+        auto *const    eb = reinterpret_cast<mh::game::mh_map_object_building *>(mh::state::hash_base(g_idx_bldgs)) + v2 * 100u;
+        int            n  = 0;
+        for (int k = 1; k < 100; ++k)
+            if (eu[k].energy > 0.0) {
+                mh::call::llm_strat_order_debug_kill_group(v2 | 0x80u, k);
+                ++n;
+            }
+        for (int k = 1; k < 100; ++k)
+            if (eb[k].building_id != 0 && eb[k].state != 2) {
+                mh::call::llm_strat_order_debug_kill_group(v2 | 0x40u, k);
+                ++n;
+            }
+        wsprintfA(msg, "; CONQ step=%lu FORCE-KILL2: order 0xf8 x%d against player %u\n", g_step, n, v2);
+        append_line(g_log_path, msg);
+    }
+    if (g_cfg.conq_spectator_probe_at > 0 && d == (uint32_t)g_cfg.conq_spectator_probe_at) {
+        mh::call::llm_strat_order_debug_kill_group(g_conq_enemy | 0x80u, 1); // owner = the victim's slot (see issue_order_core.cpp)
+        wsprintfA(msg, "; CONQ step=%lu SPECTATOR-PROBE: order 0xf8 owned by player %u (a defeated spectator) -- must be dropped\n",
+                  g_step, g_conq_enemy);
         append_line(g_log_path, msg);
     }
 }
@@ -5358,26 +6080,19 @@ DWORD WINAPI prof_thread(LPVOID) {
 // to bump anything -- which is the point, because the thing being guarded against is precisely
 // somebody not remembering. Consumers that store hashes for a later run (tools/test_ui.py
 // soak_golden) record it beside the data and refuse to compare across a mismatch.
+//
+// tooling:TL-HARN-INCHASH: the fingerprint is OF THE KIND THIS RUN HASHES WITH. Kind 1 writes the line
+// every earlier build wrote, byte for byte (the vector, the split check, the format -- hash_kind.h
+// fingerprint_fnv / format_fingerprint_line); kind 2 fingerprints the block hash instead and appends
+// ` hash_kind=2`, so a golden recorded under one kind is refused under the other even by a reader that
+// knows nothing about kinds. input_epoch + build: what stored artifacts stamp and consumers refuse on
+// (TL-GATE8).
 void hash_fingerprint_report() {
-    // The vector spans the cases the block form can get wrong: a partial tail, a whole block, and a
-    // length that is neither. If the tail handling changes, this moves.
-    static const uint8_t VEC[21] = {0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,
-                                    0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f,
-                                    0x10, 0x11, 0x12, 0x13, 0x14};
-    mh::state::hash_sink a(mh::state::sink_mode::VERDICT);
-    a.raw(VEC, sizeof(VEC));
-    // Fed a SECOND time in a different split, so the fingerprint also pins split-invariance: a
-    // change that broke it would move this value rather than pass unnoticed.
-    mh::state::hash_sink b(mh::state::sink_mode::VERDICT);
-    b.raw(VEC, 3);
-    b.raw(VEC + 3, 8);
-    b.raw(VEC + 11, 10);
-    // input_epoch + build: what stored artifacts stamp and consumers refuse on (TL-GATE8).
-    char m[224];
-    wsprintfA(m, "; HASH FINGERPRINT %08X%08X split=%s input_epoch=%lu build=%s\n",
-              (uint32_t)(a.finish() >> 32), (uint32_t)(a.finish() & 0xffffffffu),
-              a.finish() == b.finish() ? "ok" : "BROKEN",
-              (unsigned long)mh::state::HASH_INPUT_EPOCH, MH_VERSION_FULL);
+    bool           split_ok = false;
+    const uint64_t fp       = mh::harness_hk::fingerprint(g_hash_kind, &split_ok);
+    char           m[256];
+    mh::harness_hk::format_fingerprint_line(m, sizeof(m), g_hash_kind, fp, split_ok,
+                                            (unsigned long)mh::state::HASH_INPUT_EPOCH, MH_VERSION_FULL);
     append_line(g_log_path, m);
 }
 
@@ -7742,14 +8457,146 @@ void exit_after_body_if_latched() {
     ExitProcess(0);
 }
 
+// ---- mp:U49: the double-undock fixture (see the config block) -------------------------------------
+// Runs AFTER the step's hash (called next to verdict_snap_tick), so it sits outside the HASH-INPUT
+// span; its orders are stamped with this step's clock on the owner peer and replicated, and the other
+// peers only OBSERVE. Everything it reads is sim state, so the two peers log the same samples.
+enum { U49_WAIT = 0,
+       U49_FIRST_DONE,
+       U49_SECOND_DONE,
+       U49_MOVE_DONE,
+       U49_FINISHED,
+       U49_FAILED };
+int      g_u49_phase    = U49_WAIT;
+uint32_t g_u49_first_at = 0, g_u49_second_at = 0, g_u49_move_at = 0, g_u49_wait_from = 0;
+int      g_u49_unit = 0;
+int      g_u49_slot = 0;
+int      g_u49_tx = 0, g_u49_ty = 0;
+
+void u49_fail(const char *why) {
+    char m[224];
+    wsprintfA(m, "; U49 FAIL step=%lu: %s\n", g_step, why);
+    append_line(g_log_path, m);
+    g_u49_phase = U49_FAILED;
+}
+
+void u49_sample(const char *tag, unsigned p) {
+    const auto *un = reinterpret_cast<const mh::game::mh_map_object_unit *>(mh::state::hash_base(g_idx_units)) + p * 100u;
+    const auto *st = reinterpret_cast<const mh::game::mh_map_object_unit_storage *>(
+                         mh::state::hash_base(mh::state::HIDX_UNIT_STORAGE)) +
+                     p * 25u;
+    char m[256];
+    wsprintfA(m, "; U49 %s step=%lu unit=%d state=0x%02x door=%d waiters=%d docked=%d xy=%d,%d goal=%d,%d\n", tag,
+              g_step, g_u49_unit, (unsigned)un[g_u49_unit].state, (int)st[g_u49_slot].door_mutex_unit,
+              (int)st[g_u49_slot].door_waiter_count, (int)st[g_u49_slot].docked_count, (int)un[g_u49_unit].x,
+              (int)un[g_u49_unit].y, (int)un[g_u49_unit].goal_x, (int)un[g_u49_unit].goal_y);
+    append_line(g_log_path, m);
+}
+
+// The replicated undock: scratch args (0,0) as the storage panel passes them, then the dispatch lane.
+void u49_issue_undock(unsigned p, int unit, const char *which) {
+    const auto    *U    = reinterpret_cast<const mh::game::mh_cfg_final_struct_Unit *>(mh::state::live_base(mh::state::RID_UNIT));
+    const auto    *un   = reinterpret_cast<const mh::game::mh_map_object_unit *>(mh::state::hash_base(g_idx_units)) + p * 100u;
+    const unsigned side = *reinterpret_cast<const uint16_t *>(ADDR_SIDE);
+    const bool     me   = (side == p);
+    if (me) {
+        mh::call::llm_strat_order_scratch_reset();
+        mh::call::llm_strat_order_scratch_set_field(0, 0);
+        mh::call::llm_strat_order_scratch_set_field(1, 0);
+        mh::call::llm_strat_order_dispatch((uint16_t)unit, (uint32_t)(p | 0x80u),
+                                           U[un[unit].unit_proto_id].default_op_code, 0x20);
+    }
+    char m[224];
+    wsprintfA(m, "; U49 UNDOCK %s step=%lu unit=%d state=0x%02x -- %s\n", which, g_step, unit, (unsigned)un[unit].state,
+              me ? "issued here (owner)" : "the owner peer issues it");
+    append_line(g_log_path, m);
+}
+
+void u49_tick() {
+    if (g_cfg.u49_at <= 0 || g_step < (uint32_t)g_cfg.u49_at || g_u49_phase >= U49_FINISHED) return;
+    const unsigned p = (unsigned)g_cfg.u49_player;
+    if (p >= 8) return u49_fail("u49_player out of range");
+    const auto *un = reinterpret_cast<const mh::game::mh_map_object_unit *>(mh::state::hash_base(g_idx_units)) + p * 100u;
+    const auto *st = reinterpret_cast<const mh::game::mh_map_object_unit_storage *>(
+                         mh::state::hash_base(mh::state::HIDX_UNIT_STORAGE)) +
+                     p * 25u;
+    const auto *bl = reinterpret_cast<const mh::game::mh_map_object_building *>(mh::state::hash_base(g_idx_bldgs)) + p * 100u;
+    char        m[224];
+    switch (g_u49_phase) {
+        case U49_WAIT: {
+            if (g_u49_wait_from == 0) g_u49_wait_from = g_step;
+            for (int u = 1; u < 100; ++u) {
+                if (!(un[u].energy > 0.0) || un[u].state != 0x1f) continue;
+                const int slot = un[u].home_storage_slot;
+                if (slot <= 0 || slot >= 25) continue;
+                const int bi = st[slot].b_index;
+                if (bi <= 0 || bi >= 100 || bl[bi].built_flags != 3) continue;
+                g_u49_unit     = u;
+                g_u49_slot     = slot;
+                g_u49_first_at = g_step;
+                wsprintfA(m, "; U49 TARGET step=%lu unit=%d slot=%d building=%d\n", g_step, u, slot, bi);
+                append_line(g_log_path, m);
+                u49_sample("BEFORE", p);
+                u49_issue_undock(p, u, "first");
+                g_u49_phase = U49_FIRST_DONE;
+                return;
+            }
+            if ((int)(g_step - g_u49_wait_from) > g_cfg.u49_timeout) u49_fail("no PARKED unit in an operational storage");
+            return;
+        }
+        case U49_FIRST_DONE: {
+            if (g_step < g_u49_first_at + (uint32_t)g_cfg.u49_gap) return;
+            u49_sample("BEFORE_SECOND", p);
+            u49_issue_undock(p, g_u49_unit, "second");
+            g_u49_second_at = g_step;
+            g_u49_phase     = U49_SECOND_DONE;
+            return;
+        }
+        case U49_SECOND_DONE: {
+            if ((g_step - g_u49_second_at) % 50 == 0) u49_sample("SAMPLE", p);
+            if (g_step < g_u49_second_at + (uint32_t)g_cfg.u49_settle) return;
+            u49_sample("SETTLED", p);
+            // A follow-up MOVE for the same unit, 4 tiles east: the consumed/retained verdict.
+            g_u49_tx            = (un[g_u49_unit].x + 4) & 0xff;
+            g_u49_ty            = un[g_u49_unit].y;
+            const unsigned side = *reinterpret_cast<const uint16_t *>(ADDR_SIDE);
+            if (side == p) {
+                auto          *seqp = reinterpret_cast<uint8_t *>(ADDR_ORDER_SEQ() + side);
+                const unsigned seq  = *seqp;
+                mh::call::llm_strat_unit_order_move(side, (int32_t)g_u49_unit, (uint32_t)g_u49_tx,
+                                                    (uint32_t)g_u49_ty, seq);
+                if (++(*seqp) == 0) ++(*seqp);
+            }
+            wsprintfA(m, "; U49 MOVE step=%lu unit=%d -> (%d,%d) -- %s\n", g_step, g_u49_unit, g_u49_tx, g_u49_ty,
+                      side == p ? "issued here (owner)" : "the owner peer issues it");
+            append_line(g_log_path, m);
+            g_u49_move_at = g_step;
+            g_u49_phase   = U49_MOVE_DONE;
+            return;
+        }
+        case U49_MOVE_DONE: {
+            if ((g_step - g_u49_move_at) % 50 == 0) u49_sample("AFTER_MOVE", p);
+            if (g_step < g_u49_move_at + (uint32_t)g_cfg.u49_tail) return;
+            u49_sample("FINAL", p);
+            g_u49_phase = U49_FINISHED;
+            return;
+        }
+        default: return;
+    }
+}
+
 // HASH-INPUT BEGIN harness_on_sim_step_prehash (tools/data/hash_input_epoch.json)
 // ---- mp:D38 row 5: the dead-docked-unit fixture (see the config block) ---------------------------
-enum { D38_BLDG = 0, D38_DOCK, D38_KILL, D38_DONE, D38_FAILED };
-int      g_d38_phase      = D38_BLDG;
-uint32_t g_d38_wait_from  = 0;  // step the current phase started waiting (0 = not yet)
-bool     g_d38_issued     = false;
-int      g_d38_unit       = 0;  // the docked unit's roster index
-int      g_d38_slot       = 0;  // its storage slot (unit_storage[p][slot], == building sub_id)
+enum { D38_BLDG = 0,
+       D38_DOCK,
+       D38_KILL,
+       D38_DONE,
+       D38_FAILED };
+int      g_d38_phase     = D38_BLDG;
+uint32_t g_d38_wait_from = 0; // step the current phase started waiting (0 = not yet)
+bool     g_d38_issued    = false;
+int      g_d38_unit      = 0; // the docked unit's roster index
+int      g_d38_slot      = 0; // its storage slot (unit_storage[p][slot], == building sub_id)
 
 constexpr unsigned D38_UNIT_TYPE_MAX_INFANTRY = 0x0au; // cfg_enum_E_UNIT_TYPE: 1..5 A_INFANTRY, 6..0xa H_INFANTRY
 constexpr unsigned D38_UNIT_PROTOS            = 100u;  // cfg::final::struct::Unit[100]
@@ -7764,9 +8611,10 @@ void d38_fail(const char *why) {
 // The player's first operational housing storage slot (1..24) with room, or 0.
 int d38_find_storage(unsigned p) {
     const auto *st = reinterpret_cast<const mh::game::mh_map_object_unit_storage *>(
-                         mh::state::hash_base(mh::state::HIDX_UNIT_STORAGE)) + p * 25u;
-    const auto *b  = reinterpret_cast<const mh::game::mh_map_object_building *>(mh::state::hash_base(g_idx_bldgs)) +
-                     p * 100u;
+                         mh::state::hash_base(mh::state::HIDX_UNIT_STORAGE)) +
+                     p * 25u;
+    const auto *b = reinterpret_cast<const mh::game::mh_map_object_building *>(mh::state::hash_base(g_idx_bldgs)) +
+                    p * 100u;
     for (int s = 1; s < 25; ++s) {
         const int bi = st[s].b_index;
         if (bi <= 0 || bi >= 100) continue;
@@ -7785,13 +8633,14 @@ void d38_fixture_tick() {
     if (p >= 8 || planet >= 32) return d38_fail("player/planet out of range");
     const auto *prof = reinterpret_cast<const mh::game::mh_llm_strat_player_profile *>(ADDR_PLAYERS_PROF);
     auto *const st   = reinterpret_cast<mh::game::mh_map_object_unit_storage *>(
-                         mh::state::hash_base(mh::state::HIDX_UNIT_STORAGE)) + p * 25u;
-    auto *const un   = reinterpret_cast<mh::game::mh_map_object_unit *>(mh::state::hash_base(g_idx_units)) + p * 100u;
-    auto *const bl   = reinterpret_cast<mh::game::mh_map_object_building *>(mh::state::hash_base(g_idx_bldgs)) +
+                         mh::state::hash_base(mh::state::HIDX_UNIT_STORAGE)) +
+                     p * 25u;
+    auto *const un = reinterpret_cast<mh::game::mh_map_object_unit *>(mh::state::hash_base(g_idx_units)) + p * 100u;
+    auto *const bl = reinterpret_cast<mh::game::mh_map_object_building *>(mh::state::hash_base(g_idx_bldgs)) +
                      p * 100u;
-    const uint32_t at = g_d38_phase == D38_BLDG ? (uint32_t)g_cfg.d38_bldg_at
-                      : g_d38_phase == D38_DOCK ? (uint32_t)g_cfg.d38_dock_at
-                                                : (uint32_t)g_cfg.d38_kill_at;
+    const uint32_t at = g_d38_phase == D38_BLDG   ? (uint32_t)g_cfg.d38_bldg_at
+                        : g_d38_phase == D38_DOCK ? (uint32_t)g_cfg.d38_dock_at
+                                                  : (uint32_t)g_cfg.d38_kill_at;
     if (g_d38_phase == D38_BLDG && g_cfg.d38_bldg_at <= 0) {
         g_d38_phase = D38_DOCK;
         return;
@@ -7807,15 +8656,15 @@ void d38_fixture_tick() {
         case D38_BLDG: {
             const int mb = prof[p].primary_mother_bldg[planet];
             if (mb <= 0 || mb >= 100) return; // not landed yet
-            if (d38_find_storage(p) != 0) {    // one already stands
+            if (d38_find_storage(p) != 0) {   // one already stands
                 g_d38_phase     = D38_DOCK;
                 g_d38_wait_from = 0;
                 return;
             }
             if (!g_d38_issued) {
                 g_d38_issued  = true;
-                const int bx  = (int)bl[mb].x + g_cfg.d38_bldg_dx;
-                const int by  = (int)bl[mb].y + g_cfg.d38_bldg_dy;
+                const int  bx = (int)bl[mb].x + g_cfg.d38_bldg_dx;
+                const int  by = (int)bl[mb].y + g_cfg.d38_bldg_dy;
                 const bool me = (side == p);
                 if (me)
                     mh::call::llm_strat_order_queue_construction_debug((uint32_t)bx, (uint32_t)by,
@@ -7895,7 +8744,7 @@ void on_sim_step() {
     land_log_report(); // SPCAMP-SEED: one-shot, the first step after landing
     if (!g_active) return;
     MH_Temporal_Event(5 /*TEV_SIMSTEP*/); // step boundary (pre-body: GAME_CLOCK still = (n-1)*interval)
-    MH_Lockstep_StepPin(); // mp:D30 -- before synth/conquest stamp this step's orders
+    MH_Lockstep_StepPin();                // mp:D30 -- before synth/conquest stamp this step's orders
     ++g_step;
     // C-prime: the draws that follow belong to THIS step. Set unconditionally -- the trace gates
     // itself on its window, and a step counter that only advanced when armed would be a second,
@@ -7977,7 +8826,10 @@ void on_sim_step() {
 
     // D6: synthetic moving-unit workload (see the block above). Issued BEFORE the hash so the order
     // is staged on the same step on every peer; it takes effect later via the scheduled lockstep lane.
-    if (g_synth_armed && !g_synth_failed && g_cfg.synth_at > 0 && g_step >= (uint32_t)g_cfg.synth_at) {
+    // A catch-up after a world resync REPLAYS steps whose orders this peer already issued live (they are in
+    // the admission log and staged back); re-issuing them would double every order and pile them in PENDING.
+    if (g_synth_armed && !g_synth_failed && g_cfg.synth_at > 0 && g_step >= (uint32_t)g_cfg.synth_at &&
+        g_step > g_ws_replay_until) {
         const uint32_t d = g_step - (uint32_t)g_cfg.synth_at;
         if (d == 0 || (g_cfg.synth_every > 0 && (d % (uint32_t)g_cfg.synth_every) == 0))
             synth_move_issue();
@@ -8069,6 +8921,33 @@ void on_sim_step() {
         conq_issue();
     if (g_conq_armed && g_cfg.conq_probe_every > 0 && (g_step % (uint32_t)g_cfg.conq_probe_every) == 0)
         conq_probe();
+    if ((g_cfg.relation_dump_step > 0 && g_step == (uint32_t)g_cfg.relation_dump_step) ||
+        (g_cfg.relation_dump_step2 > 0 && g_step == (uint32_t)g_cfg.relation_dump_step2))
+        relation_dump(); // mp:U52
+    hit_probe();         // mp:U52
+    hostile_probe();     // mp:U52
+    if (g_cfg.relation_order_at > 0 && g_step == (uint32_t)g_cfg.relation_order_at &&
+        (g_cfg.relation_order_side < 0 ||
+         (unsigned)g_cfg.relation_order_side == *reinterpret_cast<const uint16_t *>(ADDR_SIDE))) { // mp:U52: the dialog's own order call
+        const unsigned side = *reinterpret_cast<const uint16_t *>(ADDR_SIDE);
+        char           rm[160];
+        wsprintfA(rm, "; RELORDER step=%lu side=%u other=%d value=%d\n", g_step, side, g_cfg.relation_order_other,
+                  g_cfg.relation_order_value);
+        append_line(g_log_path, rm);
+        mh::call::llm_strat_order_set_player_relation(side, (uint32_t)g_cfg.relation_order_other,
+                                                      (uint8_t)g_cfg.relation_order_value);
+    }
+
+    if (g_cfg.vision_order_at > 0 && g_step == (uint32_t)g_cfg.vision_order_at &&
+        (g_cfg.vision_order_side < 0 || (unsigned)g_cfg.vision_order_side == *reinterpret_cast<const uint16_t *>(ADDR_SIDE))) {
+        const unsigned side = *reinterpret_cast<const uint16_t *>(ADDR_SIDE);
+        char           vm[160];
+        wsprintfA(vm, "; VISORDER step=%lu side=%u other=%d value=%d\n", g_step, side, g_cfg.vision_order_other,
+                  g_cfg.vision_order_value);
+        append_line(g_log_path, vm);
+        mh::call::llm_strat_order_set_player_control_mode(side, (uint32_t)g_cfg.vision_order_other,
+                                                          (char)g_cfg.vision_order_value);
+    }
 
     // mp:D38 row 5: the dead-docked-unit fixture. BEFORE the hash, like the workloads above: phase 1's
     // order is staged on the owner peer only and replicated; phases 2 and 3 write the same bytes on
@@ -8113,6 +8992,24 @@ void on_sim_step() {
     // Has the match resolved? Cheap (8 dword reads), but on a cadence anyway -- a soak runs tens of
     // thousands of steps and this answers a question that changes at most a handful of times.
     if (g_cfg.gameover_step > 0 && (g_step % (uint32_t)g_cfg.gameover_step) == 0) gameover_check();
+
+    // mp:U55: pinned process exit (ships OFF; see exit_process_at_step).
+    if (g_cfg.exit_process_at_step > 0 && g_step >= (uint32_t)g_cfg.exit_process_at_step) {
+        char xl[160];
+        wsprintfA(xl, "; EXIT-PROCESS step=%lu mode=%s pid=%lu\n", (unsigned long)g_step,
+                  g_cfg.exit_process_mode ? "graceful" : "abrupt", (unsigned long)GetCurrentProcessId());
+        append_line(g_log_path, xl);
+        log_flush(); // append_line is BUFFERED (LOG_FLUSH_MS timer): without this the tail is lost
+        if (g_cfg.exit_process_mode) {
+            // mp:U62 (HM-M4): a GRACEFUL exit is the process leaving ON PURPOSE -- the same thing the game's own
+            // WM_DESTROY does -- so it runs the same seam first: a hub with two or more other humans playing hands
+            // the transport to its successor (no-op for anything else, and with `[net] hub_migration=0`). The
+            // ABRUPT mode stays a crash: no goodbye, which is the case M5 (not M4) answers.
+            MH_Seam_LeaveForExit();
+            ExitProcess(0);
+        }
+        TerminateProcess(GetCurrentProcess(), 0);
+    }
 
     // D10 anti-vacuity probe: prove the AI subsystem is RUNNING, on a cadence.
     if (g_cfg.ai_probe_step > 0 && (g_step % (uint32_t)g_cfg.ai_probe_step) == 0) {
@@ -8265,18 +9162,14 @@ void on_sim_step() {
     // state* replays identically. Two regions are hashed MASKED rather than flat, both for the same
     // reason -- they interleave per-SIM-STEP state with per-FRAME state, and frame timing is not a
     // desync: tile_objects (fog bits) and rng_state (the fx PRNG slot; D3, 2026-07-27).
-    uint64_t combined = 1469598103934665603ULL;
-    uint64_t state    = 1469598103934665603ULL;
-    uint64_t per[N_REGIONS];
-    for (int i = 0; i < N_REGIONS; ++i) {
-        // ST6 phase 1: the slice emits ITSELF into a hash sink. The three masked walks moved into
-        // state/region_view.h as emitters; this loop no longer knows which regions are special, and
-        // it no longer dereferences a base.
-        per[i]   = mh::state::hash_slice(i, g_cfg.mask_ctrl_group != 0, g_cfg.mask_soldier_anim != 0,
-                                         g_cfg.mask_planets_gfx != 0);
-        combined = fnv1a(&per[i], sizeof(per[i]), combined); // fold region hashes in order
-        if (!state_excluded(i)) state = fnv1a(&per[i], sizeof(per[i]), state);
-    }
+    // ST6 phase 1: each slice emits ITSELF into a hash sink (state/region_view.h), so this block no
+    // longer knows which regions are special. tooling:TL-HARN-INCHASH: hash_step() runs that walk
+    // (kind 1, the default -- the same hash_slice loop and FNV fold as before) or the incremental core
+    // (kind 2), and folds `combined`/`state` identically for both. The bytes fed in are unchanged.
+    uint64_t            per[N_REGIONS];
+    const hk::step_hash sh       = hash_step(per);
+    uint64_t            combined = sh.combined; // mp:X3c: not const -- a resync import re-derives them below
+    uint64_t            state    = sh.state;
     // HASH-INPUT END harness_on_sim_step_prehash
 
     // D21: hand the runtime desync detector THIS hash rather than making it walk the same 2.79 MB a
@@ -8284,6 +9177,10 @@ void on_sim_step() {
     // wire and the number on the next line of this log are the same number by construction. When no
     // harness is armed the detector is driven by its own trampoline instead (net_seams.cpp) -- see
     // desync/desync_watch.cpp for why one hook cannot serve both configurations.
+    // TL-HARN-INCHASH: that holds for kind 1 only. The watch's wire value is kind 1 (a peer without a
+    // harness computes it by its own FNV walk), so a kind-2 run hands it NOTHING -- n=0 makes it walk
+    // its own kind-1 hash, at its sampling cadence only -- rather than kind-2 numbers a harness-less
+    // peer would read as a desync.
     // Once, at the first hashed step: the inbound refusal count since open. See the open site.
     if (g_step == 1) {
         {
@@ -8320,9 +9217,24 @@ void on_sim_step() {
                                                  mh::state::HASH_MANIFEST_FP);
             append_line(g_log_path, cl);
         }
+        hash_kind_say_once(); // TL-HARN-INCHASH: past the census, so outside the arm window
     }
-    mh::desync::on_sim_step_hashed(per, N_REGIONS, state);
+    if (g_hash_kind == hk::KIND_FNV)
+        mh::desync::on_sim_step_hashed(per, N_REGIONS, state);
+    else
+        mh::desync::on_sim_step_hashed(nullptr, 0, 0); // kind 2: the watch walks its own kind 1
+    // mp:X3c: if the desync watch just IMPORTED a world (MH_Harness_OnWorldSync WS_IMPORT, which also rewound
+    // g_step), the `per`/`combined`/`state` taken before that describe the world we replaced. Everything this
+    // function writes from here on (H / R / RD rows, the snapshot verbs) must describe the imported world at
+    // the rewound step, so re-derive them from live memory once.
+    if (g_ws_rehash) {
+        g_ws_rehash             = false;
+        const hk::step_hash sh2 = hash_step(per);
+        combined                = sh2.combined;
+        state                   = sh2.state;
+    }
     verdict_snap_tick(); // mp:SES7b -- after the hash, at the instant the desync watch snapshots
+    u49_tick();          // mp:U49 -- the double-undock fixture (after the hash: outside the HASH-INPUT span)
 
     const uint64_t clock = *reinterpret_cast<const uint64_t *>(mh::state::hash_base(IDX_CLOCK)); // game_clock bits
     // The clock track. `order_mode == 1` IMPLIES clock_record, so every recording path that predates
@@ -8361,7 +9273,19 @@ void on_sim_step() {
     // `state` this block just computed, so there is no window between them for state to move.
     if (g_cfg.snapshot_at > 0 && g_step >= (uint32_t)g_cfg.snapshot_at)
         snapshot_send_now(per, combined, state, clock);
-    if (g_cfg.snapshot_import) snapshot_poll_now();
+    if (g_cfg.snapshot_import) {
+        // mp:X3c: `[desync] action=1` (the world resync) polls channel C from the desync step hook, and only one
+        // consumer may. The verb steps aside, loudly.
+        static int ws_action = -1;
+        if (ws_action < 0) ws_action = GetPrivateProfileIntA("desync", "action", 0, g_ini_path);
+        if (ws_action == 1) {
+            g_cfg.snapshot_import = 0;
+            append_line(g_log_path, "; SNAPSHOT RX DISARMED -- [desync] action=1 (mp:X3c world resync) owns channel C\n");
+            log_flush();
+        } else {
+            snapshot_poll_now();
+        }
+    }
 
     // mp:X7 -- the in-process restore-timing verb. Reads back the file world_capture wrote (at
     // g_step==1, above) once the configured step is reached, so `world_import_at` must be set past 1
@@ -8538,6 +9462,9 @@ void on_sim_step() {
         wsprintfA(rl, ";   rng strat=%08X fx=%08X ai=%08X unused=%08X\n",
                   rng[0], rng[1], rng[2], rng[3]);
         append_line(g_log_path, rl);
+        // TL-HARN-INCHASH: what the per-step hash cost this run (and, with hash_cost_both=1, what
+        // the other kind would have cost on the same steps).
+        hash_cost_report();
         // The shadow sites' FINAL verdict, here rather than in shadow.cpp, because this is the one
         // place that knows the run is over. Without it a site called fewer than 200 times ends its
         // log on the call-#1 progress line, which reads `1 call(s), 0 divergence(s)` by construction.
@@ -8726,7 +9653,7 @@ extern "C" int __cdecl issue_should_drop(uint32_t player) {
 __declspec(naked) void issue_detour() {
     __asm {
         pushad
-        push edx                    // player (__watcall: EAX unit_id, EDX player, EBX op, ECX arg)
+        push edx // player (__watcall: EAX unit_id, EDX player, EBX op, ECX arg)
         call issue_should_drop
         add  esp, 4
         mov  dword ptr [g_issue_drop], eax
@@ -8735,8 +9662,8 @@ __declspec(naked) void issue_detour() {
         jne  drop
         jmp  dword ptr [g_issue_tramp]
     drop:
-        mov  eax, 1                 // what stage_scheduled returns: the new staging count
-        ret                         // no stack arguments -- plain RET
+        mov  eax, 1 // what stage_scheduled returns: the new staging count
+        ret // no stack arguments -- plain RET
     }
 }
 
@@ -8825,10 +9752,10 @@ __declspec(naked) void sim_step_detour() {
                             // own return would have. Do not copy this to a mid-function splice.
         cmp  dword ptr [g_sim_hold], 0
         jne  sim_step_held
-                            // mp:D37b: the replay's SCOPED body mode. CALL (not JMP) the body so the recorded session
-                            // mode can be put back after it: `void (void)`, no stack arguments, so a call through the
-                            // stolen-prologue trampoline (or the promoted thunk) returns here exactly as it would have
-                            // returned to our caller. Off (-1) in every run but a field replay.
+            // mp:D37b: the replay's SCOPED body mode. CALL (not JMP) the body so the recorded session
+            // mode can be put back after it: `void (void)`, no stack arguments, so a call through the
+            // stolen-prologue trampoline (or the promoted thunk) returns here exactly as it would have
+            // returned to our caller. Off (-1) in every run but a field replay.
         cmp  dword ptr [g_body_mode], -1
         jne  sim_step_scoped
             // RI-SIM / SIM1F domain-root PROMOTED-GOLDEN (C6 rebind, mirroring sim_tick_detour above): with
@@ -9294,6 +10221,7 @@ extern "C" int MH_Harness_Init(void) {
     // thread, and DllMain runs on whatever thread performed the injection, which is not necessarily
     // the one that will run frames. Arming from the arm path means the sampled thread is the thread
     // that does the work.
+    hash_kind_arm(); // TL-HARN-INCHASH: decide the kind BEFORE the fingerprint line states it
     hash_fingerprint_report();
     prof_start();
     // TACT-PREP: the tactical cadence. Only installed when asked for -- with tact_hash_step=0 no
@@ -9764,7 +10692,7 @@ extern "C" int MH_Harness_Init(void) {
         append_line(g_log_path, "; [rebind] configuration (1): no libmh.dll, so no rebind row exists "
                                 "to yield -- clause-6 derivation skipped (set_armed is a spine row)\n");
     } else if (g_yield_claimed_rebinds) {
-        int matched = 0;
+        int       matched = 0;
         const int yielded = mh::harness_cfg1::yield_claimed_rows(
             g_spine, (int)mh::rebind::ROW_COUNT, mh::rebind::row_addr, mh::rebind::row_names,
             [](uintptr_t a) { return mh::hook::entry_claimant_of(a); },
@@ -9867,6 +10795,42 @@ extern "C" int MH_Harness_StepFence(int target) {
     return (int)g_step;
 }
 
+// mp:X3c -- the world resync's two observation points (mh_harness_export.h has the contract).
+//   WS_CAPTURE (host, inside the horizon hold): the same SNAPCAP row + fixup line snapshot_send_now writes,
+//                labelled with the CAPTURE step S (the desync axis both peers agree on).
+//   WS_IMPORT  (minority, inside the hold, desync counters already rewound): step back by `arg`, write SNAPIMP
+//                from live memory, and flag the step in progress so on_sim_step re-derives its hashes over
+//                the imported world (g_ws_rehash) instead of logging the replaced world's.
+extern "C" void MH_Harness_OnWorldSync(int what, unsigned step, int arg, const void *blob, unsigned len) {
+    if (!g_active) return;
+    char line[256];
+    if (what == 1) {
+        uint64_t fper[N_REGIONS];
+        fnv_now(fper);
+        snapshot_region_line("SNAPCAP", step, fper);
+        if (blob) snapshot_fixup_line("SNAPCAP", static_cast<const uint8_t *>(blob), len);
+        wsprintfA(line, "; [worldsync] SNAPCAP written for S=%lu (%lu bytes)\n", (unsigned long)step, (unsigned long)len);
+        append_line(g_log_path, line);
+        log_flush();
+    } else if (what == 2) {
+        const uint32_t before = g_step;
+        g_ws_replay_until     = before;
+        g_step                = (arg > 0 && (uint32_t)arg <= g_step) ? g_step - (uint32_t)arg : g_step;
+        uint64_t per[N_REGIONS];
+        for (int i = 0; i < N_REGIONS; ++i)
+            per[i] = mh::state::hash_slice(i, g_cfg.mask_ctrl_group != 0, g_cfg.mask_soldier_anim != 0,
+                                           g_cfg.mask_planets_gfx != 0);
+        snapshot_region_line("SNAPIMP", step, per);
+        g_ws_rehash = true;
+        wsprintfA(line, "; [worldsync] harness step %lu -> %lu (rewound %d); SNAPIMP written for S=%lu\n",
+                  (unsigned long)before, (unsigned long)g_step, arg, (unsigned long)step);
+        append_line(g_log_path, line);
+        log_flush();
+        (void)blob;
+        (void)len;
+    }
+}
+
 // LIB-TRANS-P (2026-09-02): does this run's harness config claim time_GetCurrentTime's entry for
 // the deterministic wall-clock pin? The lib_trans promotion of that same entry YIELDS when this
 // answers nonzero (sim_lt_promote.cpp) -- measured on the first SP-oracle run: the pin arms AFTER
@@ -9886,6 +10850,7 @@ extern "C" int MH_Harness_WantsWallclockPin(void) {
 // question stays inside this file with the config that answers it (g_cfg is zero-initialised, so an
 // unharnessed process answers no).
 extern "C" void MH_Harness_OnPresent(void) {
+    InterlockedIncrement(&g_present_count); // mp:X3a: the hold watchdog's frame-path liveness counter
     ui_journal_present();
     boot_snapshot_tick(); // LIB-BOOT: one-shot, fires on the first present in GAME_MODE 3
     // F4G: make LOG_FLUSH_MS a real bound for the runs that install this hook. See the log writer's
@@ -9893,6 +10858,19 @@ extern "C" void MH_Harness_OnPresent(void) {
     // then goes quiet (a menu, a paused replay, a mission waiting for its wall-clock kill) keeps the
     // buffer. This costs one compare per present in an un-instrumented run, because g_log_used is 0.
     log_flush_due();
+    // mp:X3a: while the sim is held, a heartbeat from the FRAME path every 5 s. It is the survival
+    // evidence for an imported world: the line only appears while frames are still being drawn.
+    if (g_sim_hold) {
+        const DWORD now = GetTickCount();
+        if (now - g_hold_last_hb >= 5000u) {
+            char hb[96];
+            g_hold_last_hb = now;
+            wsprintfA(hb, "; SIM HELD alive ms=%lu mode=%u\n", (unsigned long)(now - g_hold_tick),
+                      (unsigned)*reinterpret_cast<volatile const uint8_t *>(mh::addr::_G_LLM_GAME_MODE));
+            append_line(g_log_path, hb);
+            log_flush();
+        }
+    }
 }
 
 // The movie tick, NOT the present hook -- see MH_Harness_WantsMovieTick's header comment. The intro
@@ -9909,7 +10887,8 @@ extern "C" int MH_Harness_WantsPresentTick(void) {
     // LIB-BOOT arms it too: the snapshot capture fires on the first present in GAME_MODE 3,
     // and an arm that depends on another mechanism being armed is not armed, it is lucky --
     // the same reasoning the UI-journal clause above was written for.
-    return (ui_journal_armed() || g_cfg.boot_snapshot) ? 1 : 0;
+    // mp:X3a: the held-sim heartbeat rides the present hook, so a run that can hold must install it.
+    return (ui_journal_armed() || g_cfg.boot_snapshot || g_cfg.snapshot_hold) ? 1 : 0;
 }
 
 #else // non-x86 build config: harness is inert (mh.exe is 32-bit; only Win32 is ever shipped)
@@ -9933,5 +10912,6 @@ extern "C" void MH_Harness_OnPresent(void) {}
 extern "C" void MH_Harness_OnMovieTick(void) {}
 extern "C" int  MH_Harness_WantsMovieTick(void) { return 0; }
 extern "C" int  MH_Harness_WantsPresentTick(void) { return 0; }
+extern "C" void MH_Harness_OnWorldSync(int, unsigned, int, const void *, unsigned) {}
 
 #endif

@@ -167,6 +167,8 @@ namespace detail {
 
 namespace {
 
+bool g_undock_reentry_fix = false; // mp:U49, see set_undock_reentry_fix
+
 // ---- llm_strat_unit_state members this file compares against -----------------------------------
 // Values read off the CMPs in the assembly; the NAMES are Ghidra's own enum members as they render
 // in the .c draft. Local to this TU (rather than shared with sim_order_enqueue.h) because including
@@ -190,6 +192,7 @@ inline constexpr uint16_t UNIT_STATE_DEPLOY_TO_BUILDING = 0x17;
 inline constexpr uint16_t UNIT_STATE_CLIMB_VERTICAL     = 0x7c;
 
 inline constexpr uint16_t UNIT_STATE_PARKED      = 0x1f; // docked in a storage slot
+inline constexpr uint16_t UNIT_STATE_EXIT_BEGIN  = 0x20; // llm_strat_unit_state_exit_storage_begin, not yet ticked
 inline constexpr uint16_t UNIT_STATE_EXIT_WAIT   = 0x22; // mid-exit, waiting
 inline constexpr uint16_t UNIT_STATE_EXIT_CANCEL = 0x23;
 
@@ -493,6 +496,16 @@ void order_queue_dispatch(const sim_view &v, sim_store &own, const dispatch_call
             continue;
         }
 
+        // mp:U49 ([net] undock_reentry_fix). The retail apply block re-checks nothing, so a SECOND 0x20
+        // that lands in a LATER pass on a unit already walking out (0x21) re-enters
+        // exit_storage_begin, whose can_exit refuses the door's own holder -> EXIT_WAIT forever on a
+        // door only this unit can release. The issuer's only precondition is PARKED at issue time;
+        // re-check it here. 0x20 itself stays applicable: a same-pass duplicate finds the state the
+        // FIRST order just wrote (nothing has ticked yet), and retail re-applies it harmlessly.
+        if (g_undock_reentry_fix && q.order_code == ORDER_CODE_UNK_0X20 &&
+            u.state != UNIT_STATE_PARKED && u.state != UNIT_STATE_EXIT_BEGIN)
+            continue;
+
         // ---- F @0x00466ce1: apply the order to the unit -------------------------------------------
         if (u.target_ref != 0) { // 0x00466cf1
             c.llm_strat_target_release_ref(x.player, x.object_index, RELEASE_MODE_PRIMARY_CLEAR);
@@ -772,6 +785,8 @@ void *order_queue_dispatch_entry_thunk() {
 // the function, and a rebound run that reported "not installed" would be the same class of lie this
 // whole thread is about.
 void mark_promoted_dispatch_installed(bool on) { promoted_arm::mark_installed(on); }
+void set_undock_reentry_fix(bool on) { g_undock_reentry_fix = on; }
+bool undock_reentry_fix() { return g_undock_reentry_fix; }
 
 int install_promotion_dispatch(int default_on) {
     if (default_on == 0) return 0;

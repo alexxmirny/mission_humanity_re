@@ -159,6 +159,51 @@ bool active();
 // before start() succeeds.
 unsigned short client_dial_port();
 
+// mp:U61 (HM-M3) -- this peer's own round trip to the relay, in tenths of a millisecond, measured by a timestamped
+// PING at 1 Hz (a relayed match's election reads it: two clients' relayed path is leg_i + leg_c). -1 = the tunnel is
+// not running, or no PONG has come back in the last five seconds. Safe from any thread.
+int leg_rtt_dms();
+
+// mp:U63 (HM-M5) -- milliseconds since the last PONG from the relay (a live leg), -1 when the tunnel is not running or
+// has never heard one. A relayed survivor corroborates a hub loss with it: its own link is alive, so the silent party is
+// the hub. Safe from any thread.
+int leg_age_ms();
+
+// ---- mp:U60 (HM-M2), THE ROLE SWITCH ------------------------------------------------------------
+//
+// Move a RUNNING client tunnel to another room, optionally becoming that room's HOST, without closing
+// the leg socket (its NAT mapping is what the relay and the punched pairs know this peer by). The
+// pump thread is joined, the tables are switched, the thread restarts; the leg's sequence space is
+// continuous, so the relay's replay window sees one sender throughout.
+//
+//   role = 1  A SURVIVOR: keep the handle and the leg key, name `room` in a HELLO UPDATE. The relay
+//             re-homes a registered peer into the named room (relay.rs on_hello -> rehome_peer) and
+//             refuses with `no_host` until that room's host has registered, so the pump re-sends the
+//             HELLO every HELLO_RETRY_MS until the WELCOME naming the new host's handle arrives. The
+//             old room's host may still be registered; the old room is simply left. The old pair's
+//             keys/punch/socket are released. Game data is held back until then (the endpoint's
+//             handshake retransmits, so nothing is lost -- Endpoint::rehome's dial budget covers it).
+//   role = 0  THE NEW HUB: a HELLO UPDATE cannot change role (the relay keeps the registered peer's
+//             role for the life of its handle), so the tunnel registers FRESH -- no handle named, the
+//             deployment key, ROLE_HOST, `room` -- and the relay replaces the registration it holds for
+//             this leg address, which removes the client entry from the old room. The tunnel becomes
+//             host-shaped: one loopback socket per remote, delivering to 127.0.0.1:`game_port` (the
+//             endpoint's bound port, Endpoint::bound_port()).
+//
+// `room` is the PRE-MINTED room (mint_host_room, published in a succession epoch by the old host --
+// host-migration design section 6.2). Returns false, changing nothing, when the tunnel is not
+// a running client, the room is the directory room / out of range, or the pump will not stop.
+// The caller sequences it with Endpoint::rehome: a new hub calls this THEN rehome(as_hub); a survivor
+// calls this THEN rehome(!as_hub) toward client_dial_port() on 127.0.0.1.
+struct Rehome {
+    int            role;      // 0 = become the room's host, 1 = move to the room as a client
+    uint32_t       room;      // the pre-minted room
+    unsigned short game_port; // role 0 only: the endpoint's bound port
+};
+bool rehome(const Rehome &r);
+// True while a rehome() is waiting for its WELCOME (the relay has not yet accepted the move).
+bool rehome_pending();
+
 // The match_id, once mh.dll has minted one (SES0). Sniffed from the SESSION_INFO both roles already
 // carry through this module (udp_transport.cpp) -- the transport ABI has no field for it and this
 // item does not add one. Sending it on tells the relay which match a leg belongs to, which is what

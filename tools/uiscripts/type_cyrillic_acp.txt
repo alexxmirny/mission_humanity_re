@@ -1,0 +1,28 @@
+# mp:MP-LANG follow-up (2026-09-29) -- the user's original complaint, on the NAME field: a Russian
+# keyboard layout on a machine whose codepage has NO Cyrillic bytes (the process ACP, CP1252 on the
+# rig; no `[input] codepage` pin) typed LATIN letters.
+#
+# Why it did: H1 resolved each keystroke to its Cyrillic code point, the codepage could not encode it,
+# and H1 fell back to the game's own scancode table -- the US-QWERTY map -- which gave the Latin
+# letter on the same key (П is on G, р on H ...). "Привет" became "ghbdtn", and in a name field those
+# Latin letters then PASSED the [A-Za-z0-9] rule, so the name read "hostghbdtn".
+#
+# Now a character the layout produces but the codepage cannot hold types NOTHING (and a name field
+# logs `name field: REJECTED U+041F (this codepage has no byte for it)`). The field stays exactly the
+# "host" the runner pinned. type_cyrillic is the same walk under a CP1251 pin, where the letters ARE
+# encodable and the [A-Za-z0-9] rule is what refuses them; this row is the fallback path.
+
+settled value:110
+clickv 110
+present Player name
+settled Ok
+
+clickl Your name
+
+layout 00000419
+type Привет
+field name hex:686f7374
+capture t_cyr_acp
+layout default
+log MP-LANG: typed 6 Cyrillic characters on the RU layout under CP1252 into the NAME field -> no Latin stand-ins, name stays host
+end

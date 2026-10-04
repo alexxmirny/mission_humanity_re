@@ -1,9 +1,12 @@
-# mp:F3c CLIENT walk: JOIN a host whose codepage this peer REFUSES to adopt, and be TOLD.
+# mp:F3c CLIENT walk: JOIN a host this peer is too OLD for, and be TOLD.
 #
 # Same path as mp_client_join.txt up to the Join click (NETWORK GAME -> name -> Internet server ->
-# Connect -> Games available -> Join game). The lane ini pins [input] codepage=1251 with
-# codepage_adopt=0 (tools/uiscripts/ini/input_cp1251_noadopt.ini) against the 1252 host fixture, so
-# the JOIN carries 1251 and the host refuses it ("input codepage mismatch").
+# Connect -> Games available -> Join game). mp:MP-LANG (2026-09-29): the lane ini
+# (tools/uiscripts/ini/input_cp1251_legacy.ini) pins codepage=1251 with chat_legacy_codepage=1, which
+# makes this peer put its 8-bit codepage on the wire the way a pre-MP-LANG build did. The current host
+# advertises 65001 (UTF-8 chat), so the JOIN carries 1251 and the host refuses it by name. (Before
+# MP-LANG this peer was the F3c "will not adopt" joiner and the notice read "codepage 1252/1251"; the
+# capture was re-blessed for the new text, "old client cp 1251".)
 #
 # WHAT IS ASSERTED. Before F3c the joiner's retail lobby seated it locally and nothing ever said
 # otherwise -- the measured shape of the first real internet lobby (2026-09-19, host CP1252, friend
@@ -43,7 +46,7 @@ clickl Join game
 # plain Cancel (mp_client_join.txt step 7 asserts the negative of exactly this line).
 absent Network players
 onscreen Join game
-present Refused: codepage 1252/1251
+present Refused: old client cp 1251
 # AND WAIT FOR THE BROWSER TO RENDER ITS RESULT -- the same gate as mp_client_join's c7 and
 # mp_client_linkdeath's c3: `onscreen Join game` is true before the rescan relabels the title from
 # "Searching for games..." to "Games available", and the first cut of this capture landed mid-slide

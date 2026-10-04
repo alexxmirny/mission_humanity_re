@@ -138,6 +138,41 @@ LIVE_FIXTURE = os.path.join(
 )
 
 
+def parse_kv(text: str) -> dict:
+    """`k=v;k=v` (the --net-extra syntax) -> {k: int-or-str}. Ints stay ints so the manifest reads
+    as the other flag dicts do."""
+    out = {}
+    for kv in (text or "").split(";"):
+        kv = kv.strip()
+        if not kv:
+            continue
+        if "=" not in kv:
+            sys.exit("fixture_replay: %r is not k=v" % kv)
+        k, v = (x.strip() for x in kv.split("=", 1))
+        out[k] = int(v) if re.fullmatch(r"-?\d+", v) else v
+    return out
+
+
+def run_config_mismatches(run_dir: str, net: dict, harness: dict) -> list:
+    """What the run's own effective_config.json says differs from the settings a manifest is about
+    to claim for it. The pack states what the recording ran under; this is where that statement is
+    checked against the run instead of taken from the command line. [] when they agree."""
+    p = os.path.join(run_dir, "effective_config.json")
+    if not os.path.isfile(p):
+        return [
+            "%s has no effective_config.json -- the claimed settings cannot be checked" % run_dir
+        ]
+    with open(p, encoding="utf-8") as fh:
+        cfg = json.load(fh).get("config", {})
+    bad = []
+    for section, want in (("net", net), ("harness", harness)):
+        got = cfg.get(section, {})
+        for k, v in want.items():
+            if str(got.get(k)) != str(v):
+                bad.append("[%s] %s: run has %r, claimed %r" % (section, k, got.get(k), v))
+    return bad
+
+
 def _relpath_or_abs(path: str) -> str:
     """Repo-relative when possible; the absolute path when the run dir is on another volume."""
     try:
@@ -179,6 +214,19 @@ def epoch_refusal(man, log_path):
 
     return _m.epoch_mismatch(
         (man.get("step0") or {}).get("hash_input_epoch"), _epoch_of_log(log_path)[0]
+    )
+
+
+def kind_refusal(man, log_path):
+    """tooling:TL-HARN-INCHASH: the named refusal when `log_path` was hashed with another hash KIND than
+    the fixture's stream (an unstamped fixture is kind 1 -- nothing else existed before the item)."""
+    import mp_analyze as _m
+
+    return _m.kind_mismatch(
+        (man.get("step0") or {}).get("hash_kind"),
+        _m.harness_hash_kind(log_path),
+        "the fixture",
+        os.path.basename(os.path.dirname(log_path) or log_path) or log_path,
     )
 
 
@@ -293,6 +341,17 @@ def cmd_pack(args):
             "fixture_replay pack: %s/mh_harness.log carries no `input_epoch=` on its HASH "
             "FINGERPRINT line -- a pre-TL-GATE8 build; the fixture could not be stamped" % run
         )
+    # tooling:TL-HARN-INCHASH: a fixture's stream is judged by libref_host, which re-derives kind 1
+    # (the FNV VERDICT walk) and nothing else -- a kind-2 stream would fail there at every step.
+    import mp_analyze as _m
+
+    kind = _m.kind_of(_m.harness_hash_kind(os.path.join(run, "mh_harness.log")))
+    if kind != 1:
+        sys.exit(
+            "fixture_replay pack: REFUSED -- %s/mh_harness.log is %s; a fixture's stream is re-derived "
+            "by libref_host, which hashes kind 1 only. Re-record with `[harness] hash_kind=1`."
+            % (run, _m.kind_label(kind))
+        )
     artifacts = {}
     for name, path in halves.items():
         raw = _read(path)
@@ -316,6 +375,19 @@ def cmd_pack(args):
 
     steps_lines, region_lines = split_stream(log)
     n_steps = len(steps_lines.decode("latin1").splitlines())
+
+    # THE STEP REGIME is part of the contract too (2026-09-30, the -v2 fixtures): a recording made
+    # with the harness's fixed_step pin and a [net] sim_step_ms / rig_fixed_step_loop other than the
+    # rig's pinned defaults integrates at a different step, so a replay under the defaults is a
+    # different run. Both are checked against the run's own effective_config.json before they are
+    # written, and `replay` passes the [net] half back.
+    net = parse_kv(getattr(args, "net", "") or "")
+    fixed_step = getattr(args, "fixed_step", None)
+    claimed_h = {} if fixed_step is None else {"fixed_step": fixed_step}
+    if net or claimed_h:
+        bad = run_config_mismatches(run, net, claimed_h)
+        if bad:
+            sys.exit("fixture_replay pack: REFUSED -- %s" % "; ".join(bad))
 
     seed = args.seed
     if seed is None:
@@ -400,17 +472,29 @@ def cmd_pack(args):
             "hash_manifest_fp": "%08X" % manfp,
             "hash_slice_count": slices,
             "hash_input_epoch": epoch,
+            "hash_kind": kind,  # TL-HARN-INCHASH: 1 = FNV walk (the only kind libref_host knows)
         },
         "artifacts": artifacts,
     }
+
+    if fixed_step is not None:
+        man["replay_contract"]["flags"]["fixed_step"] = fixed_step
+    if net:
+        man["replay_contract"]["net"] = dict(net)
+        man["replay_contract"]["semantics"].append(
+            "net: the [net] keys the recording ran under (checked against its effective_config.json "
+            "at pack). They set the step regime -- sim_step_ms is SIM_STEP_INTERVAL, and "
+            "rig_fixed_step_loop=1 runs sim_tick's mode-3 fixed-step loop in single-player (one "
+            "step per frame, delta = interval exactly). `replay` passes them back as --net-extra."
+        )
 
     if live:
         # The live fixture's contract REPLACES the replay one rather than sitting beside it: a
         # manifest carrying both would let a reader take the wrong half as authoritative, and the two
         # describe mutually exclusive arrangements.
-        man.pop("replay_contract", None)
+        rc = man.pop("replay_contract", None) or {}
         man["live_contract"] = {
-            "flags": dict(LIVE_FLAGS),
+            "flags": dict(LIVE_FLAGS, **({} if fixed_step is None else {"fixed_step": fixed_step})),
             "scenario_script": args.script,
             "semantics": [
                 "NO ORDER STREAM EXISTS IN THIS FIXTURE, and that is the claim being made. The "
@@ -446,6 +530,11 @@ def cmd_pack(args):
                 "not. Nothing else about the run is fed to the standalone host.",
             ],
         }
+        if args.record_flags:
+            man["live_contract"]["record_flags"] = dict(args.record_flags)
+        if net:
+            man["live_contract"]["net"] = dict(net)
+            man["live_contract"]["semantics"].append(rc["semantics"][-1])
 
     # THE HAND FIELDS, CARRIED EXPLICITLY (the filed pack-eats-re_record trap).
     # `pack` rewrites manifest.json wholesale, so any field a HUMAN wrote and no tool reproduces is
@@ -498,7 +587,9 @@ def cmd_stream(args):
     fixture = args.fixture or DEFAULT_FIXTURE
     man = load_manifest(fixture)
     log = _read(os.path.join(args.run_dir, "mh_harness.log"))
-    bad = epoch_refusal(man, os.path.join(args.run_dir, "mh_harness.log"))
+    bad = epoch_refusal(man, os.path.join(args.run_dir, "mh_harness.log")) or kind_refusal(
+        man, os.path.join(args.run_dir, "mh_harness.log")
+    )
     if bad:
         sys.exit("fixture_replay stream: REFUSED -- %s" % bad)
     steps_lines, region_lines = split_stream(log)
@@ -597,7 +688,12 @@ def cmd_replay(args):
     ):
         if k in rec:
             flags.setdefault(k, rec[k])
+    # tooling:TL-HARN-INCHASH: the replay hashes with the FIXTURE's kind, whatever the harness default
+    # is -- unstamped fixtures are kind 1.
+    flags.setdefault("hash_kind", (man.get("step0") or {}).get("hash_kind") or 1)
     extra = ";".join("%s=%s" % (k, v) for k, v in flags.items())
+    # The recording's [net] step regime rides back (see `pack --net`); absent on older fixtures.
+    net = man["replay_contract"].get("net") or {}
     argv = [
         sys.executable,
         os.path.join(REPO, "tools", "ui_test.py"),
@@ -617,6 +713,8 @@ def cmd_replay(args):
         "--port",
         str(args.port),
     ]
+    if net:
+        argv += ["--net-extra", ";".join("%s=%s" % (k, v) for k, v in net.items())]
     print("  $ " + " ".join(argv[1:]))
     before = (
         set(os.listdir(os.path.join(args.lane, "logs")))
@@ -632,8 +730,8 @@ def cmd_replay(args):
     after = set(os.listdir(os.path.join(args.lane, "logs")))
     # THE PROCESS DIRECTORY, not the session one. Since the per-SESSION log split a launch leaves
     # two new directories -- `<ts>_menu_solo` (per process: the harness log, the recording halves)
-    # and `<ts>_<session>_0_solo` (per session: mh_net.log, session.json) -- and the session dir
-    # sorts LAST. Picking `new[-1]` handed `stream` a directory with no mh_harness.log
+    # and `<ts>_<mid8>_<map>_<mode>` (per session: mh_net.log, session.json; SES1 spelled it
+    # `<ts>_<mid8>_0_solo`) -- and the session dir sorts LAST. Picking `new[-1]` handed `stream` a directory with no mh_harness.log
     # (TL-GATE-D25FX re-record, 2026-09-20); the run dir this tool means is the one that holds it.
     new = sorted(
         d
@@ -644,6 +742,11 @@ def cmd_replay(args):
         sys.exit("fixture_replay replay: no new run directory carrying an mh_harness.log")
     rd = os.path.join(args.lane, "logs", new[-1])
     print("  run -> %s" % rd)
+    bad = run_config_mismatches(rd, net, {}) if net else []
+    if bad:
+        sys.exit(
+            "fixture_replay replay: the run did not get the fixture's [net]: %s" % "; ".join(bad)
+        )
     return rd
 
 
@@ -863,7 +966,8 @@ def cmd_verify(args):
         runs.append(args.replay_log)
     if getattr(args, "against", None):
         runs.append(os.path.join(args.against, "mh_harness.log"))
-    refusals = [(p, epoch_refusal(man, p)) for p in runs]
+    # TL-HARN-INCHASH: ...and of the fixture's hash KIND.
+    refusals = [(p, epoch_refusal(man, p) or kind_refusal(man, p)) for p in runs]
     refusals = [(p, r) for p, r in refusals if r]
     if refusals:
         for p, r in refusals:
@@ -1071,6 +1175,11 @@ def cmd_verify(args):
     return 0 if ok else 1
 
 
+def _spacing(steps):
+    """The distinct gaps between consecutive instants, e.g. [75] -- measured, not assumed."""
+    return sorted({b - a for a, b in zip(steps, steps[1:])})
+
+
 def write_fidelity_table(fixture, man, table):
     """The committed fidelity statement -- the tool's OUTPUT, never hand-typed."""
     marks = {m["region"]: m for m in man.get("fidelity", {}).get("marks", [])}
@@ -1106,8 +1215,9 @@ def write_fidelity_table(fixture, man, table):
         "",
         "    %s" % (g.get("midstep_arrival_steps"),),
         "",
-        "-- spaced 600 steps, i.e. every 60 s of game time. Steps going `0 -> n`, which the replay's",
-        "count gate could never open: **%d**." % len(g.get("zero_to_n_steps") or []),
+        "-- spacing %s step(s). Steps going `0 -> n`, which the replay's count gate could never"
+        % (_spacing(g.get("midstep_arrival_steps") or []),),
+        "open: **%d**." % len(g.get("zero_to_n_steps") or []),
         "",
         "## The residue, enumerated",
         "",
@@ -1242,6 +1352,20 @@ def main():
     p.add_argument("--host", default="")
     p.add_argument("--peers", default="")
     p.add_argument("--record-flags", type=json.loads, default=None)
+    p.add_argument(
+        "--fixed-step",
+        type=int,
+        default=None,
+        help="the contract's fixed_step (default: the built-in 0). Checked against the run's "
+        "effective_config.json [harness].",
+    )
+    p.add_argument(
+        "--net",
+        default="",
+        help="k=v;k=v -- the [net] keys the recording ran with (e.g. sim_step_ms=20;"
+        "rig_fixed_step_loop=1). Checked against the run's effective_config.json, written into the "
+        "contract, and passed back by `replay`.",
+    )
     p.add_argument(
         "--live",
         action="store_true",

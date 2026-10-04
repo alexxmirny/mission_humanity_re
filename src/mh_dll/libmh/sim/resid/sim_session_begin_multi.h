@@ -32,6 +32,13 @@ struct session_begin_multi_calls {
     // different animal -- it RETURNS a value the body branches on, so it stays.
     int32_t (*net_lockstep_sync_delay_stub)(); // llm_net_lockstep_sync_delay_stub @0x0049c02c -- STUB, called anyway
     void (*menu_force_return_to_main)();       // llm_menu_force_return_to_main @0x004c862f -- EFFECTFUL WALL
+    // mp:U52 -- NOT a call the original makes: the translated llm_diplomacy_set_relation @0x0049a0b3, for the
+    // lobby-team seed. LAST member on purpose (an aggregate initialiser that stops short leaves it null,
+    // and a null entry disables the seed), so older fixtures keep compiling.
+    void (*diplomacy_set_relation)(int32_t player_a, int32_t player_b, uint8_t relation) = nullptr;
+    // mp:U52 vision -- NOT a call the original makes here: llm_map_fog_of_war_recompute @0x00428b11, run after the
+    // teammates' sight bits are seeded into this peer's view masks (null = the view is left as seeded).
+    void (*fog_of_war_recompute)() = nullptr;
 };
 
 const session_begin_multi_calls &live_session_begin_multi_calls();
@@ -59,6 +66,10 @@ int32_t session_begin_multi(
     const new_game_init_calls           &c_ngi  = live_new_game_init_calls(),
     const land_players_on_planet_calls  &c_lpop = live_land_players_on_planet_calls(),
     const planet_map_session_init_calls &c_pmsi = live_planet_map_session_init_calls());
+
+// mp:U52 -- the lobby-team seed (see the .cpp). Returns the number of ordered pairs written (0 = the seed
+// did not run: fix off, tutorial, or no enabled slot carries a team 1..4).
+int32_t apply_lobby_team_relations(const sim_view &v, sim_store &own, const session_begin_multi_calls &c);
 
 } // namespace detail
 

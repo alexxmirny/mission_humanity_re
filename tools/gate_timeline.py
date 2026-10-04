@@ -5,7 +5,8 @@
     python tools/gate_timeline.py --newest        # the newest cluster of runs instead (any runner)
     python tools/gate_timeline.py --newest --window 1200   # widen that cluster cut-off (seconds)
 
-Reads every surviving game-run directory (workdir/mh_lanes/*/logs/*_solo) and takes each run's
+Reads every surviving game-run directory (workdir/mh_lanes/*/logs/<run>, every name
+tools/_rundir.py parses -- SES8 session dirs end in their mode word, not `_solo`) and takes each run's
 START/END from its own mh_net.log timestamps ([HH:MM:SS.mmm] -- the DLL's log clock), so the
 numbers are the game's, not the filesystem's. Prints the sorted timeline, the busy-sum /
 wall-clock ratio (effective games-in-flight), a concurrency profile, and per-run fps from
@@ -41,6 +42,7 @@ import time
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(REPO, "tools"))
 import make_lane  # noqa: E402
+import _rundir  # noqa: E402 -- the run-dir name contract (SES8 + SES1 + pre-SES1)
 
 TS = re.compile(r"\[(\d\d):(\d\d):(\d\d)\.(\d\d\d)\]")
 
@@ -121,10 +123,14 @@ def _first_match(path, rx, limit=4000):
 def label(run, lane, lanes):
     """(unit, scenario) for one game run dir."""
     # A session dir's uidrive/harness lines are in its PROCESS (menu) dir: the newest *_menu_* dir
-    # of the same logs/ folder at or before this one.
+    # of the same logs/ folder at or before this one (in TIME order -- a raw name compare mixes SES8
+    # and SES1 stamps wrongly, see tools/_rundir.py).
     logs = os.path.dirname(run)
-    base = os.path.basename(run)
-    menus = sorted(d for d in os.listdir(logs) if "_menu_" in d and d <= base)
+    base = _rundir.sort_key(run)
+    menus = sorted(
+        (d for d in os.listdir(logs) if "_menu_" in d and _rundir.sort_key(d) <= base),
+        key=_rundir.sort_key,
+    )
     pdir = os.path.join(logs, menus[-1]) if menus else run
     if lane in lanes:
         script = _first_match(os.path.join(pdir, "mh_uidrive.log"), LOADED_RE)
@@ -264,7 +270,9 @@ def main():
     gate = None if args.newest else gate_window()
 
     rows = []
-    for d in glob.glob(os.path.join(make_lane.LANE_ROOT, "*", "logs", "*_solo")):
+    for d in glob.glob(os.path.join(make_lane.LANE_ROOT, "*", "logs", "*")):
+        if not _rundir.parse(d):
+            continue
         s = net_span(d)
         if not s:
             continue

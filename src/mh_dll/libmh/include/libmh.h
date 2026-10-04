@@ -153,6 +153,34 @@ int libmh_install_fp_precision(void); /* CRT-X87-CPP */
 int libmh_import_snapshot(const void *blob, size_t n); /* LIB-BOOT */
 int libmh_import_world(const void *blob, size_t n);    /* LIB-WORLD */
 
+/* ---- resync: importing a world into a session that keeps running (mp:X3c) ----------------- */
+
+/* Number of admission-log sources: players 0..7, plus source 8 = the 0xf0 "global event". */
+#define LIBMH_RESYNC_SOURCES 9
+
+/* Filled by libmh_import_world_resync. The caller sets struct_size = sizeof(libmh_resync_report). */
+typedef struct libmh_resync_report {
+    uint32_t struct_size;
+    uint32_t kept_regions; /* keep-local regions whose bytes survived the import */
+    uint32_t kept_bytes;
+    uint32_t readmitted;      /* admission-log records STAGED for re-admission (fed later, per step) */
+    uint32_t pending_after;   /* ORDER_PENDING count when the import returned */
+    uint32_t log_total;       /* records this peer's admission log has seen this match */
+    uint32_t overflow_resets; /* PENDING overflow resets observed (R5); non-zero latches abort */
+} libmh_resync_report;
+
+/* libmh_import_world for a LIVE session. The blob is the HOST's world at its step S; `n_src` is the
+ * host's per-source admission counters at S (LIBMH_RESYNC_SOURCES entries). Differences from
+ * libmh_import_world: the session-begun latch is bypassed; the peer-local regions (identity, transport,
+ * live horizons, frame clocks, camera -- state/world_fixup.h RESYNC_KEEP_LOCAL) keep this peer's
+ * bytes; the local selection is reset; and this peer's PENDING-admission log is STAGED for
+ * re-application (records with per-source ordinal > n_src[s]; the caller feeds them to ORDER_PENDING
+ * per step -- mh::orders::admission::stage_feed -- because the backlog does not fit in PENDING at once).
+ * Returns 0, a libmh_import_world refusal, or -30 ring short / -31 this peer is behind the host /
+ * -32 the log latched an abort (each leaves the world untouched). Logs with the `; [worldsync]` prefix. */
+int libmh_import_world_resync(const void *blob, size_t n, const uint32_t *n_src,
+                              libmh_resync_report *rep); /* MP-RESYNC */
+
 /* ---- session parameters the host supplies once (LIFT-TABLE S5) --------------------------- */
 
 /* The wall-clock seconds the strategic RNG seeds from at planet-session begin.

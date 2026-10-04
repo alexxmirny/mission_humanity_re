@@ -16,7 +16,8 @@
 #include "addr/mh_calls.gen.h"
 #include "addr/mh_structs.gen.h"
 #include "state/host_events.h"
-#include "tact/tact_state.h" // the two composite draw scopes read the surface/icon state host-side
+#include "lockstep/turn_engine.h" // U44: fixes().overlay_dialog_guard
+#include "tact/tact_state.h"      // the two composite draw scopes read the surface/icon state host-side
 
 namespace {
 
@@ -602,9 +603,18 @@ void route(const libmh_event *e) {
                 case LIBMH_EVK_SCR_OUTCOME_DIALOG:
                     mh::call::llm_ui_outcome_dialog(static_cast<uint8_t>(e->a));
                     return;
-                case LIBMH_EVK_SCR_OVERLAY_DISMISS:
+                case LIBMH_EVK_SCR_OVERLAY_DISMISS: {
+                    // U44 (3): a dismiss out of mode 3 removes the overlay (and, retail, closes a
+                    // dialog); the renderer repaints only dirty tiles, so mark the viewport or the
+                    // old pixels stay on the map -- measured: the kick modal's ghost under a restored
+                    // dialog. Done for every 3->* dismiss: whatever the hoist then restores (a
+                    // stashed dialog, a foreign dialog's mode) is simply redrawn.
+                    const bool was3 = *mh::state::ptr<const uint8_t>(mh::state::RID_GAME_MODE) == 3;
                     mh::call::llm_net_lockstep_overlay_dismiss();
+                    if (was3 && mh::lockstep::fixes().overlay_dialog_guard)
+                        mh::call::llm_map_cam_mark_viewport_dirty();
                     return;
+                }
                 case LIBMH_EVK_SCR_WAIT_PLAYER_SHOW:
                     mh::call::llm_net_lockstep_wait_player_overlay_show(e->a);
                     return;

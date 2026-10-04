@@ -508,6 +508,137 @@ at a 10 Mbit/s link rate:
 
 Each fix has a mutation that turns an arm red.
 
+## Game-frame prefix: the exactly-once layer (`mp:U59`)
+
+Every in-match `FLAG_DATA` payload opens with a **7-byte prefix** (`mh_net_udp/origin_seq.h`,
+`PREFIX_BYTES`), written by the endpoint below `MH_Net_Send` and stripped before the inbound queue (the game never
+sees it):
+
+    magic 0xC3 (1) | incarnation u16 LE | seq u32 LE
+
+`seq` counts **per origin** (the `WireHdr.src`, which the hub forwards untouched) from 1; `seq` 0 = unsequenced (a
+unicast: lobby traffic only, the in-match census found none). The incarnation is a per-`start()` tag, so a restarted
+peer is not read as a duplicate of its previous life. Receivers dedupe by (origin, seq), deliver per origin in
+order, hold at most `AHEAD_SLOTS` (16) frames above a hole, and skip a hole nothing fills within `GAP_FORCE_MS`
+(5 s; 0 while a migration runs). Each peer retains the frames per origin for `WINDOW_MS` (30 s) in a 128 KiB /
+2048-entry ring (1.64 MB per endpoint); bare horizon adverts coalesce. The game payload ceiling is
+`MH_NET_MAX_PAYLOAD - 7` = 2041. A `DATA` frame without the magic is a pre-layer build and drops the conn.
+Control flags (`HASH`, `ANNOUNCE`, ...) are outside the layer.
+
+### Capability and version history
+
+The HELLO / WELCOME payload carries one `osq::CAP_VERSION` byte; a peer sending a lower value is refused at join in
+both directions (user decision Q5). `MH_MP_HOST_VERSION` is the discovery advert's version; a client reading an older
+advert logs the mixed-version line and `MH_MP_HOST_VERSION_MIN_U59` (5) is the oldest host it still dials.
+
+| item | `CAP_VERSION` | `MH_MP_HOST_VERSION` | what the bump made incompatible |
+|---|---|---|---|
+| mp:U59 exactly-once prefix | 1 | 3 | a peer without the 7-byte prefix |
+| mp:U60 `FLAG_RECONCILE` | 1 | 3 | none (an unaware endpoint ignores the flag) |
+| mp:U61 `FLAG_MESH` + mesh probes | 2 | 4 | a peer that cannot be brokered, probed or ranked |
+| mp:U62 `MK_LEAVING` / `MK_LEAVE_ACK` | 2 | 4 | none (an unknown kind counts a bad frame) |
+| mp:U63 `PR_FO_STATE` / `PR_FO_REDIRECT` | 3 | 5 | a peer that would sit out a failover the others run |
+| mp:U64 (no new frame) | 3 | 5 | none |
+
+## Hub change: `FLAG_RECONCILE` (`mp:U60`)
+
+The segment stream carries the 12-byte `WireHdr`; its `flags` field gained one value, **`FLAG_RECONCILE = 10`**
+(`mh_net_proto/net_wire.h`). It is consumed inside the UDP endpoint -- never delivered to the game queue or
+the control callback -- and an endpoint that does not know it ignores it (the receiver rule), so no
+capability byte moved. First payload byte is the kind:
+
+| kind | direction | payload after the kind byte |
+|---|---|---|
+| `1` REPORT | survivor -> hub | `osq::Report`: `version(1)`, then per origin 0..7 `front u32, oldest u32, inc u16` (81 B) |
+| `2` FETCH | hub -> holder | `origin(1) from u32 to u32 requester(1)` |
+| `3` RANGE | holder -> requester (`dst` = requester, the hub forwards) | one `osq::range_encode` record: `origin(1) inc u16 lo u32 hi u32 len u16 bytes` |
+| `4` TARGET | hub -> survivor | `flags(1)` (bit 0 = unrecoverable), then 8 x `target u32` |
+
+Rules: a rehomed hub accepts `FLAG_HELLO` only from its roster (`Endpoint::rehome`); a conn that has not been
+seated by an accepted HELLO may send nothing else. A survivor is *done* when every origin's frontier is at or
+past its TARGET and nothing waits above a hole. The design is the host-migration plan (mp:U57), section 6.3.
+
+## Host migration mesh: `FLAG_MESH` and the mesh probe (`mp:U61`)
+
+`WireHdr.flags` gained **`FLAG_MESH = 11`** (`mh_net_proto/net_wire.h`). Like `FLAG_RECONCILE` it is consumed
+inside the UDP endpoint -- never the game queue, never the control callback -- and it rides the ordinary
+reliable stream. Everything below is `mh_net_udp/mesh.h` (the codecs; `net_selftest.exe meshtest` refuses every
+strict prefix and every trailing byte of every frame) and `udp_mesh.cpp` (the state machine). Round trips are
+`u16` in **tenths of a millisecond** (`0xFFFF` = unmeasured). First payload byte is the kind:
+
+| kind | direction | payload after the kind byte |
+|---|---|---|
+| `1` CAND | client -> hub | `relayed(1)`, then `n(1) n x { ip(4, network order) port u16 }`; `n <= 4`. The client's own non-loopback IPv4 addresses with its bound port, or none when it dials through a relay tunnel |
+| `2` BROKER | hub -> client | `mesh key(32)`, `n(1)`, then per OTHER client `id(1) relayed(1) n(1) n x {ip port}`. The candidates are the address the hub observed that client at, then what it reported. Re-sent whenever a CAND arrives or the roster changes |
+| `3` ROW | client -> hub | `n(1) n x { peer(1) rtt u16 }`, `leg u16` (own relay-leg round trip), `relayed(1)`. 1 Hz for 10 s after the BROKER, every 2 s after |
+| `4` EPOCH | hub -> client | `epoch u32 digest u32 hub(1) S(1) relay_ok(1) tier(1) n(1) rank[n]`, then `rtt u16` for every ordered pair of S, `leg u16` per member of S, then per member `id(1) cands room u32` (the pre-minted relay room, 0 in a direct match) |
+| `5` ACK | client -> hub | `epoch u32 digest u32` |
+
+**Capability.** `osq::CAP_VERSION` (the HELLO / WELCOME byte) is now **2**. A peer sending 1 -- a mp:U59 or
+mp:U60 build, which cannot be brokered, probed or ranked -- is refused at join in both directions (user
+decision Q5); `MH_MP_HOST_VERSION` is 4 and a client reading an older advert logs the mixed-version line.
+
+**The probe is not a new packet type.** It is a plain `PKT_DATA` datagram, so the relay's and the fixtures'
+decoders are untouched. What marks it is its connection id: the per-match **mesh key** (minted by the hub,
+delivered only inside BROKER on the encrypted stream, never derived from the PSK alone) gives every SENDER its
+own `cid = HMAC(key, "mh-mesh-cid"|id)[0..8)` and enc/mac keys (`"mh-mesh-enc"` / `"mh-mesh-mac"`). One sequence
+counter per sender is therefore the whole nonce discipline and a receiver keeps one replay window per sender.
+The sequence starts at `wall-clock ms << 10`, so a peer that restarts under the same key is above every
+earlier life.
+
+    body (8 B): kind(1: 1 probe, 2 echo) from(1) to(1) nonce u32 flags(1, bit 0 reserved: "I think the hub is silent")
+    datagram:   18 B header + 8 B body + 16 B tag = 42 B (an echo repeats the probe's nonce, sealed under the ECHOER's keys)
+
+The prober times the echo with QPC. 250 ms for 3 s after the BROKER (both ends probe, which opens the NAT
+pinholes from both sides), then 1 Hz, and in steady state only the LOWER id probes a pair (the higher id's
+echoes keep its own pinhole warm; it probes too while it hears nothing from the lower for 3 s). One measured
+direction is a round trip, so the pair has an edge. An unknown connection id, a bad tag or a replay is counted
+(`bad probe`) and dropped; a probe from a peer the BROKER never named is still answered once the key is held.
+
+**Bandwidth** (measured, `meshtest`, 4 endpoints, steady state): 42 B/s of probe+echo payload per other peer per
+direction (70 B/s with the 28 B of IP/UDP) against plan section 3's ~60 B per probe; the FLAG_MESH stream frames
+(row + ack) add ~20 B/s per client. See the host-migration plan (mp:U57) section 6.4.
+
+### Planned handover frames (`mp:U62`)
+
+Two more `FLAG_MESH` stream-frame kinds, hub <-> client, same channel as the epoch rows:
+
+| kind | dir | body |
+|---|---|---|
+| `MK_LEAVING = 6` | hub -> every client | `epoch(4) gen(1) hub(1) n(1) n x { id(1) relayed(1) cands room(4) }`: the survivors in successor order; the first is the successor. A repeat of the held `gen` is the GO (survivors dial now). |
+| `MK_LEAVE_ACK = 7` | client -> hub | `epoch(4) gen(1) flags(1)`; bit 0 = "I am the successor and have switched to hub". |
+
+No `CAP_VERSION` bump: a peer that does not know the kinds counts a bad frame and keeps its hub (an old peer
+simply cannot follow a handover; both ends of a match run the same build). `[net] hub_migration=0` makes a peer
+ignore LEAVING and refuse to send it.
+
+### Crash failover frames (`mp:U63`)
+
+Two sealed 13-byte probe-channel frames between SURVIVORS (the hub is gone), sealed like mesh probes:
+`kind(1) from(1) to(1) seq(4) flags(1) epoch(4) arg(1)`.
+
+| kind | meaning |
+|---|---|
+| `PR_FO_STATE = 3` | every 250 ms while in a match: flags SUSPECT=1 (hub silent), HUB=2 (I am hub now), REPLY=4 (answer; never answered). `arg` = my first choice. |
+| `PR_FO_REDIRECT = 4` | a survivor dialled by a peer that is not the elected hub: `arg` = the elected id. |
+
+`FO_STATE` flags (`FOF_*`): `SUSPECT = 1` (my hub has been silent for T_suspect, floor 2 s), `HUB = 2` (I rehomed as
+the hub), `REPLY = 4` (an answer, never answered in turn). `arg` is the candidate the sender will dial or become
+(`0xFF` = none yet); `epoch` is its held succession epoch. A 13-byte body cannot be mistaken for the 8-byte probe
+(`probe_body_decode` requires length 8).
+
+`CAP_VERSION` is 3 (a crash-failover peer refuses capability 2); `MH_MP_HOST_VERSION` 5.
+
+**Outcome phases are local, not frames (`mp:U63`/`mp:U64`).** `FO_DONE`, `FO_FAILED` and `FO_MINORITY` exist only
+inside the endpoint (`udp_endpoint.h` `FailoverPhase`). A strict-majority group elects and plays on. A group that is
+not a strict majority of the epoch's human peers (including both halves of an even split, and a RELAYED survivor
+whose own relay leg has been dead `FO_ISOLATED_MS` = 5 s), finishes `FO_MINORITY`: it refuses every connection and
+the match ends with outcome 8 (connection lost). U64 added no wire byte; it changed who sends what when: the new
+hub holds a dead peer's removal until its reconcile finishes, a hub losing several clients in one watchdog pass
+queues every one (`m_dead_extra`), and relay rooms stay stable across epochs (`MK_EPOCH`'s per-member `room` is
+kept, so survivors holding epoch e and e+1 dial one room). `[net] mesh_test_delay_ms` (test only) holds a peer's
+probe/echo datagrams to fake a slow client-to-client path; it does not appear on the wire.
+
 ## What T1 and R1 consume
 
 - **`mp:T1` (`mh_net_udp.dll`)** — `packet_encode`/`packet_decode`, `ReplayWindow`, the frame mux,

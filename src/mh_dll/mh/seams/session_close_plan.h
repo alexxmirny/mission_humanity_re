@@ -21,7 +21,7 @@
 //     pull_peer_logs appends session folders AFTER the process folder -- so the tail would be read
 //     FIRST, ahead of the match. analyze_lockstep takes rows[0] as the start of the run (span, the
 //     icon-rate deltas): those numbers would silently change meaning on every determinism run.
-//   * the lobby-level resets the full close also does (the chat codepage, the map-transfer
+//   * the lobby-level resets the full close also does (the map-transfer
 //     bookkeeping, U40's re-host/re-dial) are about the NEXT lobby, and a determinism run has none.
 // Everything the in-place close skips is still done by the first REAL exit seam that follows, if one
 // ever does (a long run that reaches gameover): that close switches the directory, runs the resets
@@ -52,7 +52,7 @@ struct state {
 struct ops {
     bool (*session_active)();           // MH_RunDir_SessionActive
     bool (*net_started)();              // MH_Net_IsStarted
-    void (*resets)();                   // the lobby-level resets (codepage, map-transfer bookkeeping)
+    void (*resets)();                   // the lobby-level resets (map-transfer bookkeeping, re-host)
     void (*record)(const char *reason); // desync rollup + queue boundary + SESSION_END + session.json
     void (*end_dir)();                  // MH_RunDir_SessionEnd -- the directory switch
     void (*tail)(const char *reason);   // U40: re-host / re-dial at the match-end reasons

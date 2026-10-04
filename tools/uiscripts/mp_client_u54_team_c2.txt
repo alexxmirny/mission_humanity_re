@@ -1,0 +1,48 @@
+# mp:U54 TEAM-VICTORY shape (tools/det_arms.py --u54-team; check_u54_spectate.py reads the logs).
+# Topology = the --u52-team one (host T1, client1 T1, client2 T2; Team mode = the ally-victory rule). The harness
+# force-kills client1 at step ~300 (it becomes a SPECTATOR: host and client2 are hostile, the match is undecided) and
+# client2 at step ~600 (the host is alone with the spectator, its ALLY): the host wins and the spectator's dialog
+# must say VICTORY (outcome 5), not defeat.
+# client2 (enemy C): defeated second.
+settled value:110
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+present Internet server
+settled Internet server
+clickl Internet server
+present Server address
+settled Connect
+clickl Connect
+sessions 1
+settled Join game
+clickl Join game
+present Network players
+occ 3
+settled Cancel
+signal seated2
+click 221 149
+team 2 1
+click 221 149
+team 2 2
+signal c2team
+awaitsignal setup
+team 0 1
+team 1 1
+team 2 2
+lobbymode 1
+capture lobby_teams_client2
+signal c2ready
+
+absent Network players
+gamemode 2
+awaitsignal elim
+screen 0x00653dc3
+capture c2_defeat
+dump
+signal c2done
+log c2 defeated
+awaitsignal hostdone
+awaitsignal c1done
+end

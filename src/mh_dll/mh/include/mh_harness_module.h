@@ -151,35 +151,44 @@ void MH_HarnessModule_Probe(MH_HarnessModuleProbe *out);
 //
 // ORDER IS THE COMMITTED ORDER: mh_harness.def, the generator's cross-check and the bind log's
 // export count all read this list.
-#define MH_HARNESS_MODULE_SYMBOLS(X)                                \
-    X(int, MH_Harness_Init, (void), (), { return 0; })              \
-    X(void, MH_Harness_LateArm, (void), (), { return; })            \
-    X(void, MH_Harness_OnPresent, (void), (), { return; })          \
-    X(void, MH_Harness_OnSimTick, (void), (), { return; })          \
-    X(void, MH_Harness_OnMovieTick, (void), (), { return; })        \
-    X(int, MH_Harness_WantsPresentTick, (void), (), { return 0; })  \
-    X(int, MH_Harness_WantsMovieTick, (void), (), { return 0; })    \
-    X(int, MH_Harness_WantsWallclockPin, (void), (), { return 0; }) \
-    X(int, MH_Harness_StepFence, (int target), (target), {          \
-        (void)target;                                               \
-        return -1;                                                  \
-    })                                                              \
-    X(int, MH_Harness_RebindSimTick, (void *ours), (ours), {        \
-        (void)ours;                                                 \
-        return 0;                                                   \
-    })                                                              \
-    X(int, MH_Harness_RebindSimStep, (void *ours), (ours), {        \
-        (void)ours;                                                 \
-        return 0;                                                   \
-    })                                                              \
-    X(int, MH_Harness_RebindOrderDispatch, (void *ours), (ours), {  \
-        (void)ours;                                                 \
-        return 0;                                                   \
-    })                                                              \
-    X(int, MH_Harness_RebindLandPlayers, (void *ours), (ours), {    \
-        (void)ours;                                                 \
-        return 0;                                                   \
-    })
+#define MH_HARNESS_MODULE_SYMBOLS(X)                                                                      \
+    X(int, MH_Harness_Init, (void), (), { return 0; })                                                    \
+    X(void, MH_Harness_LateArm, (void), (), { return; })                                                  \
+    X(void, MH_Harness_OnPresent, (void), (), { return; })                                                \
+    X(void, MH_Harness_OnSimTick, (void), (), { return; })                                                \
+    X(void, MH_Harness_OnMovieTick, (void), (), { return; })                                              \
+    X(int, MH_Harness_WantsPresentTick, (void), (), { return 0; })                                        \
+    X(int, MH_Harness_WantsMovieTick, (void), (), { return 0; })                                          \
+    X(int, MH_Harness_WantsWallclockPin, (void), (), { return 0; })                                       \
+    X(int, MH_Harness_StepFence, (int target), (target), {                                                \
+        (void)target;                                                                                     \
+        return -1;                                                                                        \
+    })                                                                                                    \
+    X(int, MH_Harness_RebindSimTick, (void *ours), (ours), {                                              \
+        (void)ours;                                                                                       \
+        return 0;                                                                                         \
+    })                                                                                                    \
+    X(int, MH_Harness_RebindSimStep, (void *ours), (ours), {                                              \
+        (void)ours;                                                                                       \
+        return 0;                                                                                         \
+    })                                                                                                    \
+    X(int, MH_Harness_RebindOrderDispatch, (void *ours), (ours), {                                        \
+        (void)ours;                                                                                       \
+        return 0;                                                                                         \
+    })                                                                                                    \
+    X(int, MH_Harness_RebindLandPlayers, (void *ours), (ours), {                                          \
+        (void)ours;                                                                                       \
+        return 0;                                                                                         \
+    })                                                                                                    \
+    X(void, MH_Harness_OnWorldSync,                                                                       \
+      (int what, unsigned step, int arg, const void *blob, unsigned len), (what, step, arg, blob, len), { \
+          (void)what;                                                                                     \
+          (void)step;                                                                                     \
+          (void)arg;                                                                                      \
+          (void)blob;                                                                                     \
+          (void)len;                                                                                      \
+          return;                                                                                         \
+      })
 
 // The count, derived from the list rather than written next to it (a hand-kept count is the same
 // G106 shape one level down). Used by the bind log and by the gate.

@@ -23,6 +23,7 @@
 //                                  conductor adds the declaration and the router's call to it.
 //
 #include "sim/sim_order_dispatch.h"
+#include "lockstep/turn_engine.h" // mp:U52: fixes().team_relations_fix
 
 #include "state/host_events.h" // the kick-answer slot the split wait overlay clears (R9)
 
@@ -186,6 +187,9 @@ void dispatch_admin_order(const sim_view &v, sim_store &own, const dispatch_call
             break;
 
         case admin_arm::DIPLOMACY_SET_RELATION: // 0xf4: llm_diplomacy_set_relation(player, other_player=args[2], relation=args[3])
+            // mp:U52: Team mode locks relations. The ally-victory flag IS the lock (set only by the lobby-team
+            // seed in Team mode, hashed, identical on every peer; every other session path writes it 0).
+            if (mh::lockstep::fixes().team_relations_fix && *v.mp_ally_victory_rule_flag != 0) break;
             c.llm_diplomacy_set_relation((int32_t)x.player, rec.args[2], (uint8_t)rec.args[3]);
             break;
 
@@ -194,6 +198,8 @@ void dispatch_admin_order(const sim_view &v, sim_store &own, const dispatch_call
             // takes effect on the machine whose own side matches): args[3]==0 -> llm_game_player_set_ai
             // (player); args[3]!=0 -> llm_game_player_set_human(player). No else branch when PlayerSide
             // doesn't match -- the arm is then a no-op.
+            // mp:U52 vision: Team mode locks it with the relation (same flag, same knob).
+            if (mh::lockstep::fixes().team_relations_fix && *v.mp_ally_victory_rule_flag != 0) break;
             const int32_t side = (int32_t)(uint16_t)*v.player_side;
             if (side == rec.args[2]) {
                 if (rec.args[3] == 0)

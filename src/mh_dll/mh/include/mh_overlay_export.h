@@ -30,6 +30,16 @@ typedef void (*MH_OverlayProviderFn)(char *buf, int cap);
 // paint time). A no-op if the table is full or the overlay never armed.
 void MH_Overlay_RegisterProvider(const char *name, MH_OverlayProviderFn fn);
 
+// PT-GFX4: enumerate EVERY provider (built-in, then registered) so another front end -- the Dear
+// ImGui overlay on the d3d11 presenter (gfx/overlay_imgui.cpp) -- can show the same readouts without
+// a copy of the registry. Index order is stable for the life of the process once installs are done.
+// Works whether or not a [debug] section armed this overlay; the fps/frames/perf.* values only move
+// while it is armed (their sampling lives in MH_Overlay_OnPresent). Same contract as a provider:
+// main thread, read-only, allocation-free.
+int         MH_Overlay_ProviderCount(void);
+const char *MH_Overlay_ProviderName(int index);                      // nullptr when out of range
+void        MH_Overlay_ProviderValue(int index, char *buf, int cap); // "" when out of range
+
 // Read [debug] config from mh_net.ini and enable. EN-only. Returns 1 if the overlay armed (i.e. a
 // [debug] section exists), 0 otherwise. Does NOT install a hook -- the overlay piggybacks the
 // lockstep present hook, like the capture/ui-drive seams.

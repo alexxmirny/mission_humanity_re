@@ -124,6 +124,7 @@
     <ClCompile Include="lockstep\tx_emit_chat.cpp" />
     <ClCompile Include="lockstep\tx_emit_ctrl.cpp" />
     <ClCompile Include="lockstep\tx_emit_order.cpp" />
+    <ClCompile Include="orders\admission_log.cpp" />
     <ClCompile Include="orders\issue\issue_ai_move_primitives.cpp" />
     <ClCompile Include="orders\issue\issue_bldg_depart.cpp" />
     <ClCompile Include="orders\issue\issue_bldg_footprint.cpp" />
@@ -561,6 +562,7 @@
     <ClCompile Include="state\rebind_verify.gen.cpp" />
     <ClCompile Include="state\spine.cpp" />
     <ClCompile Include="state\spine_exports.cpp" />
+    <ClCompile Include="state\world_fixup.cpp" />
     <ClCompile Include="state\world_snapshot.cpp" />
     <ClCompile Include="tact\tact_active_unit_count_hud_draw.cpp" />
     <ClCompile Include="tact\tact_ambient_sound.cpp" />

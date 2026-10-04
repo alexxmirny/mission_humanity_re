@@ -182,7 +182,7 @@ GITIGNORE_ROWS = [
     _keep(
         "workdir/",
         "scratch",
-        "In-tree game-run lanes: tools/gate_timeline.py reads workdir/mh_lanes/*/logs/*_solo and "
+        "In-tree game-run lanes: tools/gate_timeline.py reads the run folders under workdir/mh_lanes/*/logs/ and "
         "tools/gen_st0_goldens.py takes a run log from the same tree. Staging a retail install "
         "there is exactly what must never be committed.",
     ),

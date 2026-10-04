@@ -1,0 +1,38 @@
+# mp:P17 HOST -- the frame watchdog's injected-freeze arm. Pair with mp_client_p17.txt.
+#
+# `[net] frame_watchdog_inject_ms=1500` (ini/p17_freeze.ini) makes the main thread Sleep(1500) ONCE, 3 s into
+# the live match, from frame_watchdog_inject_sleep(). The watchdog thread (threshold 1000 ms) must notice that
+# no present completed, suspend the main thread, and write the `[freeze]` line set to mh_net.log naming that
+# call site. The assertion is tools/check_freeze_watchdog.py --expect-inject (post_check).
+# Nothing in this script waits on the freeze: the host simply plays on, gameclock 12000 is well past it.
+
+settled value:110
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+settled Create
+clickl Create
+present Game name
+settled Ok
+clickl Ok
+present Available maps
+settled Ok
+clickl Ok
+
+present Network players
+peers 1
+awaitsignal lobby
+enabled Start
+settled Start
+clickl Start
+
+absent Network players
+gamemode 2
+gameclock 6000
+log HOST p17: in match, waiting out the injected freeze
+gameclock 12000
+capture h1_after_freeze
+log HOST p17: done
+signal hostdone
+end

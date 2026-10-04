@@ -18,7 +18,11 @@
 #include <stdio.h>
 #include <string.h>
 
+#include <vector>
+
 #include "desync/desync_watch.h"
+#include "desync/desync_wire2.h"
+#include "state/inc_state.h"
 
 using namespace mh::desync;
 
@@ -57,6 +61,552 @@ sample_wire make_sample(uint32_t step, const uint64_t *per, uint64_t fp) {
     s.state_hash   = fold_state(per, g_ex, NR);
     memcpy(s.per, per, sizeof(uint64_t) * NR);
     return s;
+}
+
+} // namespace
+
+// =================================================================================================
+// mp:D44 -- WIRE_VERSION 2: per-step judging, the undo journal, live localisation, v1<->v2 mixing
+// =================================================================================================
+namespace {
+
+using namespace mh::desync::v2;
+
+// Frames one peer broadcast, delivered to the other in order (the transport's reliable stream).
+struct wire_q {
+    struct f {
+        int     len;
+        uint8_t b[MAX_FRAME];
+    };
+    f    q[256];
+    int  n = 0, head = 0;
+    void push(const uint8_t *b, int len) {
+        if (n < 256) {
+            q[n].len = len;
+            memcpy(q[n].b, b, (size_t)len);
+            ++n;
+        }
+    }
+};
+
+// A synthetic peer for the localiser: six regions, one of them 512 KB (8192 blocks, the tile_objects
+// shape), one with a keep mask. `state` IS the state at the incident step (materialize() is the journal
+// test's job, below); per_at() hashes it with the same block hash the live tracker uses.
+constexpr int      LR            = 6;
+const uint32_t     LLEN[LR]      = {16, 200, 4096, 6000, 64 * 8192, 130};
+const char *const  LNAME[LR]     = {"tiny", "odd", "page", "units_like", "tile_like", "masked"};
+const bool         LEXCL[LR]     = {false, false, false, false, false, true};
+constexpr uint32_t MASKED_REGION = 3; // byte 5 of every 16 is not compared
+static uint8_t     g_state[2][LR][64 * 8192];
+
+struct syn_host final : loc_host {
+    int      me;
+    wire_q  *out;
+    uint64_t fpv          = 0x1234;
+    bool     can_mat      = true;
+    bool     corrupt_self = false; // per_at lies for region 2 -> the self-check must refuse it
+    char     lines[64][256];
+    int      nlines        = 0;
+    int      regions_first = -2, regions_nd = -1;
+
+    int         nregions() const override { return LR; }
+    uint32_t    region_len(int r) const override { return LLEN[r]; }
+    const char *region_name(int r) const override { return LNAME[r]; }
+    bool        excluded(int r) const override { return LEXCL[r]; }
+    uint64_t    fp() const override { return fpv; }
+    uint8_t     keep(int r, uint32_t off) override {
+        return (r == (int)MASKED_REGION && off % 16 == 5) ? 0 : 0xff;
+    }
+    uint64_t bh(int r, uint32_t b) {
+        const uint32_t off = b * 64, n = LLEN[r] - off < 64 ? LLEN[r] - off : 64;
+        uint8_t        k[64];
+        for (uint32_t j = 0; j < n; ++j) k[j] = keep(r, off + j);
+        return ::mh::state::inc::block_hash((uint32_t)r, b, g_state[me][r] + off, n, k);
+    }
+    bool per_at(uint32_t, uint64_t *o) override {
+        for (int r = 0; r < LR; ++r) {
+            uint64_t s = 0;
+            for (uint32_t b = 0; b < nblocks_of(LLEN[r]); ++b) s += bh(r, b);
+            o[r] = s;
+        }
+        if (corrupt_self) o[2] ^= 1;
+        return true;
+    }
+    bool           materialize(uint32_t) override { return can_mat; }
+    const uint8_t *evidence(int r) override { return g_state[me][r]; }
+    uint64_t       block_hash(int r, uint32_t b) override { return bh(r, b); }
+    void           send(const uint8_t *f, int len) override { out->push(f, len); }
+    void           log(const char *line) override {
+        if (nlines < 64) {
+            snprintf(lines[nlines], sizeof(lines[nlines]), "%s", line);
+            ++nlines;
+        }
+    }
+    void on_regions(int, uint32_t, int first, int nd) override {
+        regions_first = first;
+        regions_nd    = nd;
+    }
+    bool said(const char *needle) const {
+        for (int i = 0; i < nlines; ++i)
+            if (strstr(lines[i], needle)) return true;
+        return false;
+    }
+};
+
+// Deliver everything queued, alternately, until both queues are drained. Returns frames delivered.
+int pump(localiser &la, syn_host &ha, wire_q &a_out, localiser &lb, syn_host &hb, wire_q &b_out) {
+    int moved = 0;
+    for (int guard = 0; guard < 1000; ++guard) {
+        bool any = false;
+        if (a_out.head < a_out.n) { // A's frame reaches B
+            const wire_q::f &f = a_out.q[a_out.head++];
+            hdr              h;
+            if (frame_ok(f.b, f.len, LR, h)) lb.on_frame(hb, /*sender=*/0, h, f.b + HDR_BYTES);
+            any = true;
+            ++moved;
+        }
+        if (b_out.head < b_out.n) {
+            const wire_q::f &f = b_out.q[b_out.head++];
+            hdr              h;
+            if (frame_ok(f.b, f.len, LR, h)) la.on_frame(ha, /*sender=*/1, h, f.b + HDR_BYTES);
+            any = true;
+            ++moved;
+        }
+        if (!any) break;
+    }
+    return moved;
+}
+
+void fill_states() {
+    uint32_t seed = 0x5eed;
+    for (int r = 0; r < LR; ++r)
+        for (uint32_t o = 0; o < LLEN[r]; ++o) {
+            seed             = seed * 1103515245u + 12345u;
+            g_state[0][r][o] = (uint8_t)(seed >> 16);
+            g_state[1][r][o] = g_state[0][r][o];
+        }
+}
+
+bool has_result(const localiser &l, int region, uint32_t off, uint8_t mine, uint8_t theirs) {
+    for (int i = 0; i < l.nresults(); ++i) {
+        const loc_result &r = l.result(i);
+        if (r.region == region && r.off == off && r.mine == mine && r.theirs == theirs) return true;
+    }
+    return false;
+}
+
+static localiser g_la, g_lb; // ~270 KB each: static, never on the stack
+static wire_q    g_qa, g_qb;
+static ticker    g_ta;
+
+void run_v2_checks(uint64_t FP) {
+    // ---- 1. the wire ------------------------------------------------------------------------------
+    {
+        check("v2: header is 24 bytes with step at v1's offset 16",
+              sizeof(hdr) == 24 && offsetof(hdr, step) == 16 && offsetof(hdr, version) == 4);
+        check("v2: a 5-step TICK is 72 bytes", tick_size(5) == 72);
+        check("v2: a REGIONS frame for the live 63-region manifest is 528 bytes", regions_size(63) == 528);
+        check("v2: a full GROUPS frame (128 groups) fits", groups_size(MAX_GROUPS) == 1048 && 1048 <= MAX_FRAME);
+        check("v2: the largest frame (16-block BYTES) is 1080 bytes, under the 2048-byte payload cap",
+              MAX_FRAME == 1080 && bytes_size(BYTES_MAX_BLOCKS) == MAX_FRAME);
+        // WIRE-SIZE BOUND (the design argument, asserted): at the shipped tick_batch=5 and 50 steps/s a
+        // peer sends 10 TICKs a second = 720 payload bytes/s, against v1's one 544-byte sample a second
+        // and the ~26 KB/s the per-region vector would cost every step.
+        check("v2: per-step TICK traffic at batch 5 is <= 1 KB/s per peer", tick_size(5) * (50 / 5) <= 1024);
+        check("v2: per-step TICK traffic at batch 1 is still <= 2 KB/s per peer", tick_size(1) * 50 <= 2048);
+        check("v2: sending every region every step would be ~26 KB/s (why TICK carries none)",
+              regions_size(63) * 50 > 25 * 1024);
+
+        uint8_t b[MAX_FRAME];
+        put_hdr(b, T_TICK, 5, FP, 1200, 0, 0);
+        memset(b + HDR_BYTES, 0xab, 48);
+        hdr h;
+        check("v2: a well-formed TICK validates", frame_ok(b, tick_size(5), 63, h) && h.step == 1200 && h.count == 5);
+        check("v2: a TICK one byte short is refused", !frame_ok(b, tick_size(5) - 1, 63, h));
+        check("v2: a TICK one byte long is refused", !frame_ok(b, tick_size(5) + 1, 63, h));
+        put_hdr(b, T_TICK, 0, FP, 1200, 0, 0);
+        check("v2: a TICK with zero steps is refused", !frame_ok(b, tick_size(0), 63, h));
+        put_hdr(b, T_TICK, 33, FP, 1200, 0, 0);
+        check("v2: a TICK over 32 steps is refused", !frame_ok(b, tick_size(33), 63, h));
+        put_hdr(b, T_TICK, 1, FP, 1200, 7, 0);
+        check("v2: a TICK carrying a region is refused", !frame_ok(b, tick_size(1), 63, h));
+        put_hdr(b, T_REGIONS, 62, FP, 1200, 0, 0);
+        check("v2: a REGIONS frame for a different region count is refused", !frame_ok(b, regions_size(62), 63, h));
+        put_hdr(b, 10, 1, FP, 1200, 0, 0); // 6..9 are the mp:X3c world-resync frames
+        check("v2: an unknown frame type is refused", !frame_ok(b, HDR_BYTES + 8, 63, h));
+        check("v2: fp_v2 folds the hash kind in", fp_v2(FP, 2) != fp_v2(FP, 1) && fp_v2(FP, 2) != FP);
+
+        // ---- v1 <-> v2 MIXING, both ways, through the real parsers --------------------------------
+        // (a) A v1 PEER receiving v2 frames: every shape a v2 build sends goes through parse_v1_frame
+        //     -- the rc builds' receive rule -- and must come out a bad frame, never a sample.
+        struct shape {
+            uint8_t type, count;
+            int     len;
+        } shapes[]       = {{T_TICK, 1, tick_size(1)}, {T_TICK, 5, tick_size(5)}, {T_TICK, 32, tick_size(32)}, {T_REGIONS, 63, regions_size(63)}, {T_GROUPS, 1, groups_size(1)}, {T_GROUPS, 128, groups_size(128)}, {T_BLOCKS, 64, blocks_size(64)}, {T_BYTES, 1, bytes_size(1)}, {T_BYTES, 16, bytes_size(16)}};
+        bool all_refused = true, step_readable = true;
+        for (const shape &sh : shapes) {
+            memset(b, 0, sizeof(b));
+            put_hdr(b, sh.type, sh.count, FP, 4321, 0, 0);
+            sample_wire s;
+            uint64_t    od;
+            bool        has;
+            if (parse_v1_frame(b, sh.len, s, od, has)) all_refused = false;
+            uint32_t st;
+            memcpy(&st, b + 16, 4); // the UDP transport's bulk-selftest trigger reads magic + step@16
+            if (st != 4321 || peek_version(b, sh.len) != 2) step_readable = false;
+        }
+        check("v1<-v2: a v1 peer's receive rule refuses every v2 frame shape (a bad frame, never a sample)",
+              all_refused);
+        check("v1<-v2: every v2 frame keeps magic + step where the transport's DSNC sniffer reads them",
+              step_readable);
+
+        // (b) A v2 PEER receiving v1 frames: peek_version says 1 (-> the v1 path and the FALLBACK), the
+        //     v1 parser accepts it with and without the D31 digest, and the v2 validator refuses it.
+        uint64_t per[NR];
+        fill(per, 0x77);
+        sample_wire v1s = make_sample(50, per, FP);
+        uint8_t     v1b[sizeof(sample_wire) + ORDER_DIGEST_BYTES];
+        memcpy(v1b, &v1s, (size_t)wire_size(NR));
+        const uint64_t dig = 0xfeedULL;
+        memcpy(v1b + wire_size(NR), &dig, 8);
+        sample_wire got;
+        uint64_t    od  = 0;
+        bool        has = false;
+        check("v2<-v1: peek_version reads a v1 sample as version 1", peek_version(v1b, wire_size(NR)) == 1);
+        check("v2<-v1: the v1 parser accepts an rc2-shaped frame (no digest)",
+              parse_v1_frame(v1b, wire_size(NR), got, od, has) && !has && got.step == 50);
+        check("v2<-v1: ...and a D31 frame, digest intact",
+              parse_v1_frame(v1b, wire_size(NR) + 8, got, od, has) && has && od == dig);
+        check("v2<-v1: the v2 validator refuses a v1 frame", !frame_ok(v1b, wire_size(NR), NR, h));
+        check("peek_version: a non-DSNC payload reads 0", peek_version((const uint8_t *)"hello world", 11) == 0);
+    }
+
+    // ---- 2. per-step judging -------------------------------------------------------------------------
+    {
+        ticker &t = g_ta;
+        t.clear(NR);
+        uint64_t per[NR];
+        fill(per, 1);
+        int      oks = 0, mism = 0, starts = 0, too_old = 0, ord_mis = 0, ord_ok = 0, max_consec = 0;
+        uint32_t first_bad = 0;
+        auto     emit      = [&](const tick_verdict &v) {
+            switch (v.kind) {
+                case tick_verdict::ok: ++oks; break;
+                case tick_verdict::mismatch:
+                    ++mism;
+                    if (v.incident_start) {
+                        ++starts;
+                        if (!first_bad) first_bad = v.step;
+                    }
+                    if (v.consecutive > max_consec) max_consec = v.consecutive;
+                    break;
+                case tick_verdict::too_old: ++too_old; break;
+                case tick_verdict::order_mismatch: ++ord_mis; break;
+                case tick_verdict::order_ok: ++ord_ok; break;
+            }
+        };
+        // mine for steps 1..10; theirs agree on 1..6, differ on 7..9 (a poke that heals), agree on 10
+        for (uint32_t s = 1; s <= 10; ++s) t.put_mine(s, 1000 + s, 0xD0 + s, per, emit);
+        uint64_t th[10];
+        for (int j = 0; j < 10; ++j) th[j] = 1000 + (uint64_t)(j + 1) + ((j >= 6 && j <= 8) ? 0x100 : 0);
+        t.put_theirs(1, 1, 5, th, 0xD5, emit);      // steps 1..5, digest at 5 agrees
+        t.put_theirs(1, 6, 5, th + 5, 0xBAD, emit); // steps 6..10, digest at 10 disagrees
+        check("per-step: EVERY step is judged (10 of 10)", oks + mism == 10);
+        check("per-step: the three poked steps mismatch", mism == 3);
+        check("per-step: the incident opens at the FIRST bad step (7), once", starts == 1 && first_bad == 7);
+        check("per-step: consecutive counts the run (3)", max_consec == 3);
+        check("per-step: the order digest is judged at each TICK's last step", ord_ok == 1 && ord_mis == 1);
+
+        // theirs AHEAD of mine: held, judged the moment our own step arrives
+        oks = mism = starts = 0;
+        uint64_t ahead[3]   = {2011, 2012, 9999};
+        t.put_theirs(1, 11, 3, ahead, 0xE0 + 13, emit);
+        check("per-step: a sample ahead of us is held, not judged", oks + mism == 0);
+        t.put_mine(11, 2011, 0xE0 + 11, per, emit);
+        t.put_mine(12, 2012, 0xE0 + 12, per, emit);
+        t.put_mine(13, 2013, 0xE0 + 13, per, emit);
+        check("per-step: held samples are judged as our steps arrive", oks == 2 && mism == 1 && starts == 1);
+        check("per-step: a held order digest is judged when we reach its step", ord_ok == 2);
+
+        // a sample for a step that fell out of our ring is dropped as too_old, never a mismatch
+        for (uint32_t s = 14; s < 14 + TICK_RING + 5; ++s) t.put_mine(s, s, 0, per, emit);
+        mism           = 0;
+        uint64_t stale = 12345;
+        t.put_theirs(1, 3, 1, &stale, 0, emit);
+        check("per-step: an evicted step is too_old, never a mismatch", too_old == 1 && mism == 0);
+        check("per-step: the ring indexes exactly (no aliasing)", t.find_mine(14 + TICK_RING + 4) != nullptr &&
+                                                                      t.find_mine(13) == nullptr);
+        check("notify persistence: fires once at 50 consecutive mismatching steps",
+              !should_notify_steps(49) && should_notify_steps(50) && !should_notify_steps(51));
+    }
+
+    // ---- 3. the undo journal rebuilds a past step exactly -------------------------------------------
+    {
+        constexpr uint32_t         LEN = 64 * 40 + 17; // a short last block
+        static uint8_t             live[LEN], shadow[LEN], hist[60][LEN];
+        static undo_journal::entry mem[400];
+        undo_journal               j;
+        j.attach(mem, sizeof(mem));
+        uint32_t seed = 99;
+        for (uint32_t o = 0; o < LEN; ++o) live[o] = (uint8_t)(o * 7);
+        memcpy(shadow, live, LEN);
+        j.clear(1); // "prime" at step 1
+        memcpy(hist[1], live, LEN);
+        for (uint32_t s = 2; s < 60; ++s) {
+            for (int w = 0; w < 1 + (int)(s % 7); ++w) {
+                seed = seed * 1103515245u + 12345u;
+                live[(seed >> 8) % LEN] ^= (uint8_t)(1 + (seed & 0x3f));
+            }
+            j.cur = s; // what the tracker update of step s does: journal each changed block, then copy
+            for (uint32_t b = 0; b * 64 < LEN; ++b) {
+                const uint32_t n = LEN - b * 64 < 64 ? LEN - b * 64 : 64;
+                if (memcmp(live + b * 64, shadow + b * 64, n) == 0) continue;
+                j.add(0, b, shadow + b * 64, n);
+                memcpy(shadow + b * 64, live + b * 64, n);
+            }
+            memcpy(hist[s], live, LEN);
+        }
+        bool exact = true;
+        for (uint32_t S = 1; S < 60; ++S) {
+            static uint8_t ev[LEN];
+            memcpy(ev, shadow, LEN);
+            j.undo_to(S, [&](int, uint32_t b, const uint8_t *bytes, uint32_t n) { memcpy(ev + b * 64, bytes, n); });
+            if (memcmp(ev, hist[S], LEN) != 0) exact = false;
+        }
+        check("undo journal: every past step 1..59 is rebuilt byte-exact from the latest shadow", exact);
+        check("undo journal: nothing evicted yet -> covers the prime step", j.covers(1) && j.evicted == 0);
+        // a small journal: the oldest entries go and the floor rises with them
+        static undo_journal::entry few[8];
+        undo_journal               k;
+        k.attach(few, sizeof(few));
+        k.clear(10);
+        for (uint32_t s = 11; s <= 20; ++s) {
+            k.cur = s;
+            k.add(0, 0, shadow, 64);
+        }
+        check("undo journal: when full, the floor rises to the evicted step (10 adds, 8 slots -> floor 12)",
+              k.floor == 12 && !k.covers(11) && k.covers(12) && k.evicted == 2);
+        k.clear(30);
+        check("undo journal: a prime resets the floor", k.covers(30) && !k.covers(29) && k.count == 0);
+    }
+
+    // ---- 4. the localisation exchange, round trip ----------------------------------------------------
+    {
+        fill_states();
+        // Plant the divergence on peer B: one byte in "units_like" (4096+ bytes, masked byte excluded
+        // below), one deep in the 512 KB "tile_like" region, and a MASKED byte that must not be named.
+        g_state[1][3][0x1234] ^= 0x40; // units_like +0x1234 (0x1234 % 16 = 4: compared)
+        g_state[1][3][0x0105] ^= 0x01; // units_like +0x105 (% 16 == 5: masked -- never named)
+        g_state[1][3][0x1225] ^= 0x02; // masked, in the SAME block as +0x1234: must not move the offset named
+        g_state[1][4][300000] ^= 0x80; // tile_like +300000 (block 4687, group 73)
+        g_state[1][5][7] ^= 0x10;      // "masked": an EXCLUDED region -- never named
+        syn_host ha, hb;
+        ha.me  = 0;
+        ha.out = &g_qa;
+        hb.me  = 1;
+        hb.out = &g_qb;
+        g_qa.n = g_qa.head = g_qb.n = g_qb.head = 0;
+        g_la.reset(4);
+        g_lb.reset(4);
+        // Both peers' per-step judges found step 1200 bad; each starts the exchange on its own.
+        g_la.on_local_mismatch(ha, 1200);
+        g_lb.on_local_mismatch(hb, 1200);
+        const int moved = pump(g_la, ha, g_qa, g_lb, hb, g_qb);
+        check("localise: the exchange terminates", moved > 0 && moved < 200);
+        check("localise: both peers name the SAME first region (units_like) via on_regions",
+              ha.regions_first == 3 && hb.regions_first == 3 && ha.regions_nd == 2 && hb.regions_nd == 2);
+        check("localise: peer A names units_like +0x1234 (mine/theirs as A sees them)",
+              has_result(g_la, 3, 0x1234, g_state[0][3][0x1234], g_state[1][3][0x1234]));
+        check("localise: peer B names the same offset, bytes mirrored",
+              has_result(g_lb, 3, 0x1234, g_state[1][3][0x1234], g_state[0][3][0x1234]));
+        check("localise: both name tile_like +300000 inside a 512 KB region (two-level summary)",
+              has_result(g_la, 4, 300000, g_state[0][4][300000], g_state[1][4][300000]) &&
+                  has_result(g_lb, 4, 300000, g_state[1][4][300000], g_state[0][4][300000]));
+        check("localise: exactly those two findings on each side (the masked byte and the excluded region are "
+              "never named)",
+              g_la.nresults() == 2 && g_lb.nresults() == 2);
+        check("localise: a masked byte in the same block is not counted (1 byte differs, not 2)",
+              g_la.nresults() >= 1 && g_la.result(0).region == 3 && g_la.result(0).nbytes == 1);
+        check("localise: A logged a LOCALISED line naming the region and offset",
+              ha.said("LOCALISED step=1200 peer=1 region=3 units_like +0x1234"));
+        check("localise: B logged the region list at the first bad step",
+              hb.said("LOCALISE step=1200 peer=0: 2 region(s) differ at the first bad step: units_like tile_like"));
+        // WIRE BOUND for an incident: REGIONS + GROUPS(2 regions, one of 128 groups) + BLOCKS + BYTES.
+        check("localise: one incident costs each peer under 6 KB on the wire",
+              g_la.bytes_sent() < 6 * 1024 && g_lb.bytes_sent() < 6 * 1024);
+        check("localise: symmetric -- both peers sent the same frame count",
+              g_la.frames_sent() == g_lb.frames_sent());
+
+        // EARLIEST WINS: B noticed the incident at 1200, A (lagging) at 1210 -> both converge on 1200.
+        g_qa.n = g_qa.head = g_qb.n = g_qb.head = 0;
+        g_la.reset(4);
+        g_lb.reset(4);
+        g_la.on_local_mismatch(ha, 1210);
+        g_lb.on_local_mismatch(hb, 1200);
+        pump(g_la, ha, g_qa, g_lb, hb, g_qb);
+        check("localise: peers that noticed at different steps converge on the EARLIER one",
+              g_la.step() == 1200 && g_lb.step() == 1200 && g_la.nresults() == 2 && g_lb.nresults() == 2);
+
+        // A peer that never judged the step itself (e.g. a third peer) joins on the first frame.
+        g_qa.n = g_qa.head = g_qb.n = g_qb.head = 0;
+        g_la.reset(4);
+        g_lb.reset(4);
+        g_la.on_local_mismatch(ha, 1300);
+        pump(g_la, ha, g_qa, g_lb, hb, g_qb);
+        check("localise: a peer joins an incident from the first frame it receives",
+              g_lb.active() && g_lb.step() == 1300 && g_lb.nresults() == 2 && g_la.nresults() == 2);
+
+        // Block history gone on one side: region level only, still names the region, never guesses offsets.
+        g_qa.n = g_qa.head = g_qb.n = g_qb.head = 0;
+        g_la.reset(4);
+        g_lb.reset(4);
+        hb.can_mat = false;
+        g_la.on_local_mismatch(ha, 1400);
+        g_lb.on_local_mismatch(hb, 1400);
+        pump(g_la, ha, g_qa, g_lb, hb, g_qb);
+        check("localise: without block history the region is still named, no offset is",
+              hb.regions_first == 3 && g_lb.nresults() == 0 && g_la.nresults() == 0 &&
+                  hb.said("region level only"));
+        hb.can_mat = true;
+
+        // A rebuild that does not reproduce the region's hash is refused by the self-check.
+        g_qa.n = g_qa.head = g_qb.n = g_qb.head = 0;
+        g_la.reset(4);
+        g_lb.reset(4);
+        g_state[1][2][10] ^= 1; // make "page" differ too, so it is tracked
+        ha.corrupt_self = true;
+        g_la.on_local_mismatch(ha, 1500);
+        g_lb.on_local_mismatch(hb, 1500);
+        pump(g_la, ha, g_qa, g_lb, hb, g_qb);
+        check("localise: a rebuild that does not reproduce the step's hash is refused, loudly",
+              ha.said("SELF-CHECK FAILED"));
+        ha.corrupt_self = false;
+        g_state[1][2][10] ^= 1;
+
+        // The incident budget: a peer over localise_max takes no new incident.
+        g_qa.n = g_qa.head = g_qb.n = g_qb.head = 0;
+        g_la.reset(0);
+        g_la.on_local_mismatch(ha, 1600);
+        check("localise: localise_max=0 starts nothing and sends nothing", !g_la.active() && g_qa.n == 0);
+    }
+}
+
+} // namespace
+
+// ---- 5. the REAL tracker's journal hook: rebuild a past step of the live manifest -------------------
+// The live binding's materialize(): the tracker's shadow plus the undo journal replayed backwards must
+// give every slice's bytes AT step S, and the masked block hashes over those bytes must sum to the
+// slice's incremental hash AT S -- the localiser's self-check, here over the real 63-slice manifest
+// (rebased onto heap buffers), with order_queue_count moving so the one cross-region mask is exercised.
+namespace {
+
+namespace st = ::mh::state;
+
+uint32_t g_lrng = 0xC0FFEEu;
+uint32_t lrnd() {
+    g_lrng = g_lrng * 1103515245u + 12345u;
+    return g_lrng >> 8;
+}
+
+struct tap final : st::inc::journal {
+    undo_journal *j;
+    void          old_block(int region, uint32_t block, const uint8_t *old_bytes, uint32_t n) override {
+        j->add(region, block, old_bytes, n);
+    }
+};
+
+void run_v2_live_journal_check() {
+    static std::vector<std::vector<uint8_t>> bufs;
+    static std::vector<int>                  rids;
+    bufs.clear();
+    rids.clear();
+    for (int i = 0; i < st::HASH_REGION_COUNT; ++i) {
+        const int rid  = (int)st::HASH_REGIONS[i].rid;
+        bool      seen = false;
+        for (int r : rids) seen = seen || r == rid;
+        if (seen) continue;
+        uint32_t need = st::REGIONS[rid].size;
+        for (int j = 0; j < st::HASH_REGION_COUNT; ++j)
+            if ((int)st::HASH_REGIONS[j].rid == rid && st::HASH_REGIONS[j].offset + st::HASH_REGIONS[j].len > need)
+                need = st::HASH_REGIONS[j].offset + st::HASH_REGIONS[j].len;
+        rids.push_back(rid);
+        bufs.emplace_back(need + 64u);
+        for (auto &x : bufs.back()) x = (uint8_t)lrnd();
+        st::rebase((st::region_id)rid, (uint32_t)(uintptr_t)bufs.back().data(), need);
+    }
+    auto slice        = [](int i) { return reinterpret_cast<uint8_t *>(static_cast<uintptr_t>(st::hash_base(i))); };
+    auto set_oq_count = [&](int32_t c) { memcpy(slice(st::HIDX_ORDER_QUEUE_COUNT), &c, 4); };
+    set_oq_count(120);
+
+    const size_t            ab = st::inc::tracker::arena_bytes();
+    std::vector<uint8_t>    arena(ab);
+    static st::inc::tracker tr;
+    tr.attach(arena.data(), st::inc::knobs{});
+    std::vector<undo_journal::entry> jm(20000);
+    undo_journal                     jr;
+    jr.attach(jm.data(), jm.size() * sizeof(undo_journal::entry));
+    tap t;
+    t.j = &jr;
+    tr.set_journal(&t);
+
+    constexpr uint32_t                STEPS   = 40;
+    const uint32_t                    KEEP[3] = {3, 17, 39}; // the steps whose whole state is kept as the truth
+    std::vector<std::vector<uint8_t>> truth[3];
+    uint64_t                          truth_per[3][st::HASH_REGION_COUNT];
+    st::inc::null_sink                ns;
+    for (uint32_t s = 1; s <= STEPS; ++s) {
+        if (s > 1) {
+            for (int k = 0; k < 1 + (int)(lrnd() % 25); ++k) {
+                const int      i = (int)(lrnd() % st::HASH_REGION_COUNT);
+                const uint32_t L = st::HASH_REGIONS[i].len;
+                slice(i)[lrnd() % L] ^= (uint8_t)(1 + lrnd() % 255);
+            }
+            if (s % 7 == 0) set_oq_count((int32_t)(lrnd() % 300)); // the order_queue mask boundary moves
+        }
+        jr.cur = s;
+        if (s == 1) {
+            tr.prime();
+            jr.clear(1);
+        } else {
+            tr.update(ns, 0);
+        }
+        for (int k = 0; k < 3; ++k)
+            if (KEEP[k] == s) {
+                truth[k].resize(st::HASH_REGION_COUNT);
+                for (int i = 0; i < st::HASH_REGION_COUNT; ++i)
+                    truth[k][i].assign(slice(i), slice(i) + st::HASH_REGIONS[i].len);
+                tr.region_hashes(truth_per[k]);
+            }
+    }
+    bool bytes_ok = true, hash_ok = true;
+    for (int k = 0; k < 3; ++k) {
+        std::vector<std::vector<uint8_t>> ev(st::HASH_REGION_COUNT);
+        for (int i = 0; i < st::HASH_REGION_COUNT; ++i) ev[i].assign(tr.shadow(i), tr.shadow(i) + st::HASH_REGIONS[i].len);
+        jr.undo_to(KEEP[k], [&](int r, uint32_t b, const uint8_t *bytes, uint32_t n) {
+            memcpy(ev[r].data() + b * 64u, bytes, n);
+        });
+        int32_t c;
+        memcpy(&c, ev[st::HIDX_ORDER_QUEUE_COUNT].data(), 4);
+        const uint32_t oq = st::inc::order_queue_live_bytes(c, st::HASH_REGIONS[st::HIDX_ORDER_QUEUE].len);
+        for (int i = 0; i < st::HASH_REGION_COUNT; ++i) {
+            if (ev[i] != truth[k][i]) bytes_ok = false;
+            uint64_t       sum = 0;
+            const uint32_t L   = st::HASH_REGIONS[i].len;
+            for (uint32_t b = 0; b < (L + 63u) / 64u; ++b)
+                sum += st::inc::block_hash_masked(i, b, ev[i].data(), L, st::inc::knobs{},
+                                                  i == st::HIDX_ORDER_QUEUE ? oq : 0);
+            if (sum != truth_per[k][i]) hash_ok = false;
+        }
+    }
+    check("live journal: the real tracker's shadow + undo journal rebuild steps 3, 17 and 39 of the whole "
+          "63-slice manifest byte-exact",
+          bytes_ok);
+    check("live journal: the masked block hashes of each rebuilt slice sum to its incremental hash at that step "
+          "(order_queue boundary moving)",
+          hash_ok);
+    check("live journal: the journal covers the prime step and evicted nothing", jr.covers(1) && jr.evicted == 0);
+    tr.set_journal(nullptr);
+    for (int rid : rids) st::unrebase((st::region_id)rid);
 }
 
 } // namespace
@@ -420,6 +970,79 @@ int run_desynctest() {
               "having already stripped the trailing digest bytes before calling frame_is_sane)",
               frame_is_sane(new_frame, base));
     }
+
+    // ---- the dirty-block probe's scanner (dirty_scan) ----
+    {
+        // A page-aligned live buffer so the grain boundaries are known; the region starts 32 bytes
+        // into it, so the FIRST block is a partial one (the live-address alignment rule).
+        alignas(4096) static uint8_t live[3 * 4096];
+        static uint8_t               shadow[3 * 4096];
+        uint8_t *const               L   = live + 32;
+        const uint32_t               LEN = 2 * 4096;
+        memset(live, 0, sizeof(live));
+        memset(shadow, 0, sizeof(shadow));
+        dirty_counts c;
+        dirty_scan(L, shadow, LEN, c);
+        check("dirty_scan: nothing changed -> first == len", c.first == LEN);
+        check("dirty_scan: identical buffers report nothing",
+              c.bytes == 0 && c.grains[0] == 0 && c.grains[3] == 0);
+
+        L[0]             = 1; // live+32: block [32,64), grain 64 #0, page 0
+        L[1]             = 2; // same block
+        L[40]            = 3; // live+72: block [64,128) -- a second 64-B grain, same 256-B grain
+        L[4096 - 32 + 5] = 4; // live+4101: page 1
+        dirty_scan(L, shadow, LEN, c);
+        check("dirty_scan: exact byte count", c.bytes == 4);
+        check("dirty_scan: first changed offset", c.first == 0);
+        check("dirty_scan: 64-B grains counted by live-address alignment", c.grains[0] == 3);
+        check("dirty_scan: 256-B grains", c.grains[1] == 2);
+        check("dirty_scan: 4 KB pages", c.grains[3] == 2);
+        check("dirty_scan: the changed blocks were copied into the shadow",
+              memcmp(L, shadow, LEN) == 0);
+        dirty_scan(L, shadow, LEN, c);
+        check("dirty_scan: a second scan with no new writes reports nothing", c.bytes == 0 && c.grains[0] == 0);
+
+        L[LEN - 1] = 9; // the tail byte
+        dirty_scan(L, shadow, LEN, c);
+        check("dirty_scan: the last byte of the region is scanned", c.bytes == 1 && c.grains[3] == 1);
+        check("dirty_scan: first == the only changed offset", c.first == LEN - 1);
+        check("dirty_scan: never writes the live buffer", L[LEN - 1] == 9 && L[0] == 1);
+
+        // dirty_grains_add (mp:D39): the live probe counts grains from the incremental core's EXACT
+        // runs now, so the runs of a random write pattern must give dirty_scan's counts exactly.
+        uint32_t seed = 12345u;
+        for (int round = 0; round < 50; ++round) {
+            for (int w = 0; w < 1 + round % 20; ++w) {
+                seed = seed * 1103515245u + 12345u;
+                L[(seed >> 8) % LEN] ^= (uint8_t)(1 + (seed & 0x7f));
+            }
+            // exact runs of what changed, BEFORE dirty_scan copies it into the shadow
+            uint32_t  grains[DIRTY_NGRAINS] = {0, 0, 0, 0};
+            uintptr_t last[DIRTY_NGRAINS];
+            for (int g = 0; g < DIRTY_NGRAINS; ++g) last[g] = ~(uintptr_t)0;
+            for (uint32_t q = 0; q < LEN;) {
+                if (L[q] == shadow[q]) {
+                    ++q;
+                    continue;
+                }
+                uint32_t e = q;
+                while (e < LEN && L[e] != shadow[e]) ++e;
+                dirty_grains_add((uintptr_t)(L + q), e - q, last, grains);
+                q = e;
+            }
+            dirty_scan(L, shadow, LEN, c);
+            bool same = true;
+            for (int g = 0; g < DIRTY_NGRAINS; ++g) same = same && grains[g] == c.grains[g];
+            if (!same) {
+                check("dirty_grains_add: runs give dirty_scan's grain counts", false);
+                break;
+            }
+            if (round == 49) check("dirty_grains_add: runs give dirty_scan's grain counts (50 rounds)", true);
+        }
+    }
+
+    run_v2_checks(FP); // mp:D44
+    run_v2_live_journal_check();
 
     printf("=== desynctest: %d checks, %d failures ===\n", g_checks, g_fails);
     return g_fails ? 1 : 0;

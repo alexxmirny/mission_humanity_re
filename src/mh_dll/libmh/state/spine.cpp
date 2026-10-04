@@ -78,48 +78,29 @@
 // is a claim the acceptance tests rather than assumes: LIB-REF's green step 1 is the full C entry
 // -- bytes, zeroing, re-derives -- reproducing the fixture's recorded step-0 `state` exactly.
 //
-// ---- WHAT THIS ENTRY STILL DOES **NOT** DO, stated rather than implied ---------------------------
+// ---- THE PROCESS-LOCAL POINTER CLASS: the FIXUP TRAILER (mp:X3a) -------------------------------
 //
-// The eleven BAKED POINTERS INTO BOUND REGIONS that every capture's own census counts (the blob
-// header of the committed fixture says `region_head_ptrs = 11`) are NOT re-stamped here, and the
-// reason is structural rather than an omission. A general re-stamp needs, for each carried dword,
-// the RECORDING's base of the region it points at. The standalone build does not have that column
-// at all -- MH_STOCK_BASE(va) is 0u under MH_LIBMH_BUILD (LIB-REF-SPLIT S5, deliberately: "what
-// standalone code may do with a zero base: nothing") -- and the blob carries rid+len per block, not
-// a base. So the census count is a CAPTURE-side diagnostic, not an import-side fixup list, and
-// manufacturing one would mean changing the blob format and re-recording the fixture.
+// A step-0 region dump carries whatever the bytes are, pointers included. Two different classes of
+// pointer live in it and they were conflated here for a long time:
 //
-// The disposition file already names the enforcement and it is the right one: "LIB-REF's replay is
-// the enforcement, and it will fail loudly rather than subtly (a wild read, not a drift)." Of the
-// eleven, seven are UI widget-list heads and one is a tactical queue cursor -- neither class runs in
-// a headless strategic replay.
+//   (a) A pointer from one STOCK region into another (the seven UI widget-list heads, G_TEXT_PTRS ->
+//       G_TEXT_BLOCK, tile_objects_ptr, fow_ptr). For a LIVE mh.exe -> mh.exe import this class is
+//       ALREADY SAFE: mh.exe is fixed at 0x00400000 and both peers bind every carried region at its
+//       stock VA, so the value means the same thing in both processes. It bites only a STANDALONE
+//       host that binds an arena elsewhere -- libref_host re-stamps G_TEXT_PTRS itself, from a
+//       generated host-only base table (the 2026-09-11 step-2001 fault).
+//   (b) A PROCESS-LOCAL value: a heap / private-memory address (the .TLO buffer, the framebuffer, a
+//       COM device, a dialog the sender allocated), or an address inside one of OUR ASLR'd DLL images
+//       or a region relocated into one. Copied verbatim it faults the receiver on first use (the
+//       rig's 0x691A276C was the sender's image base + 0x10276C). Only the CAPTURING process knows
+//       where its own heap and DLLs are, so the capture classifies every carried dword against its
+//       own address map and writes the result as an optional trailer -- state/world_fixup.h.
 //
-// ---- AND THE SENTENCE THAT USED TO FOLLOW WAS MEASURED FALSE (2026-09-11, LIB-REF-LIVE) ---------
-//
-// It read: "so the population that could bite is small and named". It is not, and a future reader
-// must not inherit it. THE CENSUS IS BLIND TO MOST OF THIS CLASS BY CONSTRUCTION: `region_head_ptrs`
-// counts dwords whose value EQUALS some carried region's live base, so a pointer INTO a region --
-// at any interior offset -- is invisible to it. The eleven are a lower bound on the class, not an
-// enumeration of it, and reasoning about "the population" from that number is reasoning from a
-// number that was never measuring the population.
-//
-// What bit: G_TEXT_PTRS, the localized text pool's index -- 806 carried dwords, 720 of them pointing
-// at INTERIOR offsets of G_TEXT_BLOCK and one at STRAT_SCENARIO_PLANET_NAME_W. None was counted by
-// the census. It is read whenever the sim FORMATS a message, which every replay fixture suppresses
-// along with its enqueues, so no replay ever touched one; the first live-loop run faulted on it at
-// step 2001 (0xC0000005 in format_core<wchar_t>) after 2000 bit-identical steps. A screen of the
-// whole blob then found 41 holder regions with dwords landing in carried spans -- most of it text
-// and pixel aliasing, but the adjudication of the rest is owed rather than done.
-//
-// WHERE THE FIX WENT, and why still not here. The IMPORTING HOST re-stamps the table, which is what
-// the disposition file always said this class was ("obligations on the importing host, not gaps"):
-// libref_host does it from a generated host-only base table, immediately after import, with four
-// adjudicated outcomes per entry and a loud refusal for any fifth. That needs the RECORDING's bases,
-// which this translation unit still cannot have and should not want -- MH_STOCK_BASE is 0u here by
-// LIB-REF-SPLIT S5, and that is the ruling that keeps the libmh artifact relocatable. A generated
-// (holder rid, offset, pointee rid) fixup trailer remains the general fix if the owed adjudication
-// finds a population big enough to want one; it is a fixture-format change and belongs with a
-// re-record, not here.
+// The trailer replaces the old seven-entry LIVE_PRESERVE_REGIONS scan as the primary mechanism (that
+// scan is kept as a measured floor and cross-check: anything it still restores after the trailer has
+// been applied is logged "(legacy rule)", a free falsifier of the trailer's coverage). The census in
+// the header (`region_head_ptrs`, `registry_span_ptrs`) stays a capture-side diagnostic: it is blind
+// to interior pointers, heap and DLL values by construction.
 //
 #include <cstring>
 
@@ -130,6 +111,7 @@
 #include "addr/mh_regions.gen.h"
 #include "addr/mh_world_snapshot.gen.h" // mp:X3: the carried-block table the preserve pass scans
 #include "ai/ai_state.h"                // ai_say -- the shared trace sink the liveness line writes to
+#include "orders/admission_log.h"
 #include "orders/order_queue.h"
 #include "sim/hostreach/sim_h_map_region_prep.h"
 #include "sim/libtrans/sim_lt_map_region_pool.h"
@@ -140,6 +122,7 @@
 #include "sim/sim_state.h"
 #include "sim/sim_step.h"
 #include "state/region_runtime.h"
+#include "state/world_fixup.h"
 #include "state/world_snapshot.h"
 
 namespace {
@@ -215,6 +198,7 @@ constexpr mh::state::region_id LIVE_PRESERVE_REGIONS[] = {
     mh::state::RID_TACT_FOV_DIR_TABLE_PTR,      // the tactical FOV direction table
     mh::state::RID_MENU_SAVE_NAME_PTR,          // the menu's save-name buffer
     mh::state::RID_PTR_S_MENUBCK1_GFX_00604288, // the menu background .GFX
+    mh::state::RID_HWND_00824FE8,               // the main window HWND (mp:X3a): WinMain's pump redraws it to make every frame
 };
 
 // ---- ...AND THE RULE THE LIST ALONE COULD NOT BE -------------------------------------------------
@@ -254,12 +238,8 @@ inline bool looks_like_process_handle(uint32_t v) {
     return v >= 0x01100000u && v < 0x7ff00000u && (v & 3u) == 0u;
 }
 
-constexpr mh::state::region_id FOREIGN_POINTER_REGIONS[] = {
-    mh::state::RID_MAP_REGION_BY_INDEX,         // 4096 llm_map_region*, by region index -- all pointer
-    mh::state::RID_MAP_REGION_LIST_HEAD,        // the active-region list head
-    mh::state::RID_MAP_REGION_POOL_FREE_HEAD,   // the allocator's free list head
-    mh::state::RID_STRAT_PATH_JOB_RESULT_TABLE, // 100 heap pointers; pathfinder_init refills them
-};
+// The regions the importer zeroes live in state/world_fixup.h (ZEROED_ON_IMPORT), so the capture-side
+// classifier and this file read ONE list.
 
 // MAP_REGION_GRID IS HALF POINTER AND HALF DATA, AND CLEARING IT WHOLE THREW THE DATA AWAY.
 //
@@ -361,6 +341,10 @@ void live_handles_restore(const handle_set &saved) {
     for (int k = 0; k < saved.n; ++k) {
         const mh::state::region_id r        = mh::state::WORLD_SNAPSHOT_BLOCKS[saved.slot[k].block].rid;
         uint32_t                   imported = 0;
+        // The zeroed-on-import set is cleared a few statements later anyway, and the trailer
+        // deliberately does not describe it; restoring it here only made the "(legacy rule)" falsifier
+        // report a false alarm on every import.
+        if (mh::state::world::is_zeroed_on_import(r)) continue;
         if (!mh::state::read_region_u32(r, &imported)) continue;
         const uint32_t live = saved.slot[k].live;
         if (imported == live) continue;
@@ -368,8 +352,29 @@ void live_handles_restore(const handle_set &saved) {
         if (!forced && !(looks_like_process_handle(live) && looks_like_process_handle(imported)))
             continue;
         mh::state::write_region_u32(r, live);
-        mh::ai::ai_say("; [import] preserved %s: blob %08X -> live %08X (process-local handle%s)\n",
+        mh::ai::ai_say("; [import] preserved %s: blob %08X -> live %08X (process-local handle%s) (legacy rule)\n",
                        mh::state::REGIONS[r].name, imported, live, forced ? ", listed" : "");
+    }
+}
+
+void log_fixup(const mh::state::world::fixup_plan &plan, const mh::state::world::fixup_stats &fs) {
+    if (!fs.present) {
+        mh::ai::ai_say("; [import] fixup trailer ABSENT\n");
+        return;
+    }
+    char mods[512];
+    mh::state::world::fixup_module_list(plan, mods, sizeof(mods));
+    mh::ai::ai_say("; [import] fixup trailer v1: entries=%u region=%u rebase=%u preserve=%u degraded=%u "
+                   "carried=%u changed=%u (region=%u rebase=%u preserve=%u) hashed_skipped=%u unmapped=%u "
+                   "modules=%s\n",
+                   fs.entries, fs.region, fs.rebase, fs.preserve, fs.degraded, fs.carried, fs.changed,
+                   fs.changed_region, fs.changed_rebase, fs.changed_preserve, fs.hashed_skipped,
+                   fs.unmapped, mods);
+    for (int i = 0; i < mh::state::WORLD_SNAPSHOT_BLOCK_COUNT; ++i) {
+        const uint32_t a = plan.blk_region[i], b = plan.blk_rebase[i], c = plan.blk_preserve[i];
+        if (a + b + c == 0) continue;
+        mh::ai::ai_say("; [import] fixup holder %s region=%u rebase=%u preserve=%u changed=%u\n",
+                       mh::state::WORLD_SNAPSHOT_BLOCKS[i].name, a, b, c, plan.blk_changed[i]);
     }
 }
 
@@ -377,7 +382,7 @@ void zero_foreign_pointer_regions() {
     // Through mh::state::clear_region, not a local ptr<>: state/region_runtime.h is the only header
     // allowed to bind an address and check_sim_addresses enforces it. The rule caught this TU the
     // first time it ran here, which is the rule working.
-    for (const mh::state::region_id r : FOREIGN_POINTER_REGIONS) mh::state::clear_region(r);
+    for (const mh::state::region_id r : mh::state::world::ZEROED_ON_IMPORT) mh::state::clear_region(r);
 
     mh::sim::sim_state st = mh::sim::state();
     for (int32_t x = 0; x < mh::sim::MAP_GRID_DIM; ++x)
@@ -397,23 +402,103 @@ extern "C" uint32_t libmh_abi_version(void) {
 
 // ---- the world import's C face ------------------------------------------------------------------
 
+namespace {
+
+// mp:X3c (RE-1): after a resync the imported world's SELECTION state names the HOST's selection --
+// unit ids that index units[PlayerSide] of THIS peer, which is a different roster. Ownership is
+// enforced at selection time, not at issue time (RE-1, measured: the issue path always builds (PlayerSide, id)), so a carried
+// selection would let this peer's next order act on ids it never selected. Both representations are
+// reset together, never one:
+//   * the 10 control groups' counts, the UI-selected building, the click-select target id;
+//   * every unit's ctrl_group_id (+0x2f), which is MF_HASH but MASKED by mask_ctrl_group (D2), so this
+//     cannot move the verdict hash -- worldtest arm G proves that under the default masks.
+constexpr int32_t CTRL_GROUP_COUNT = 10;
+} // namespace
+
+namespace mh::state::world {
+void reset_local_selection() {
+    mh::sim::sim_state st = mh::sim::state();
+    for (int32_t g = 0; g < CTRL_GROUP_COUNT; ++g) st.own.ctrl_group_at(g).count = 0;
+    st.own.ui_selected_bldg_index() = 0;
+    st.own.click_select_target_id() = 0;
+    const int32_t per               = st.own.caps().units;
+    for (uint32_t p = 0; p < static_cast<uint32_t>(mh::orders::MAX_PLAYERS); ++p)
+        for (int32_t u = 0; u < per; ++u) st.own.unit_at(p, u).ctrl_group_id = 0;
+}
+} // namespace mh::state::world
+
+namespace {
+
+// The shared body of libmh_import_world and libmh_import_world_resync. `rs` is null for the plain
+// entry, which must stay byte-for-byte what it was (worldtest arms A-F and the committed fixtures).
+struct resync_args {
+    const uint32_t      *n_src; // [admission::SOURCES]
+    libmh_resync_report *rep;   // may be null
+};
+
+int import_world_impl(const void *blob, size_t n, const resync_args *rs);
+
+} // namespace
+
 extern "C" int libmh_import_world(const void *blob, size_t n) {
     static bool fired = false;
     in_live(fired, "libmh_import_world");
+    return import_world_impl(blob, n, nullptr);
+}
 
+namespace {
+
+int import_world_impl(const void *blob, size_t n, const resync_args *rs) {
     // (0) mp:X3 -- READ the process-local resource handles BEFORE the byte engine overwrites them.
     //     Cheap (six dwords) and unconditional: a boot-time import reads six values it then writes
     //     back unchanged, and a live one is the case this exists for. See the table's banner.
     static handle_set live_handles; // ~4 KB; static rather than a 4 KB stack frame in a hosted DLL
+
+    // (0a) mp:X3a -- VALIDATE the fixup trailer completely and stash the receiver's own dwords for
+    //      every PRESERVE entry, all before the byte engine writes anything. A damaged trailer or an
+    //      OURS module loaded with a different identity refuses here (-23) with the world untouched.
+    //      An absent trailer (every blob recorded before it existed) is an empty plan: zero cost.
+    static mh::state::world::fixup_plan fixup_plan_store; // ~330 KB: static, never a stack frame
+    const mh::state::world::import_arm  arm = mh::state::world::real_import_arm();
+    const int                           frc = mh::state::world::fixup_prepare(blob, n, fixup_plan_store, nullptr, &arm);
+    if (frc != 0) {
+        mh::ai::ai_say("; [import] fixup trailer REFUSED rc=%d -- world untouched\n", frc);
+        return frc;
+    }
+
     live_handles_save(live_handles);
 
-    const int rc = mh::state::world::import(blob, n);
+    // (0b) mp:X3c -- a resync SAVES the keep-local regions (identity + transport + live horizons...)
+    //      before the byte engine overwrites them, and skips only the session-begun latch.
+    static mh::state::world::keep_local_store keep;
+    uint32_t                                  kept_regions = 0, kept_bytes = 0;
+    if (rs != nullptr) {
+        mh::state::world::keep_local_save(keep, &kept_regions, &kept_bytes);
+        mh::ai::ai_say("; [worldsync] IMPORT-BEGIN keep_local=%u regions/%u bytes latch=bypassed\n",
+                       kept_regions, kept_bytes);
+    }
+
+    const int rc =
+        rs != nullptr ? mh::state::world::import_resync(blob, n) : mh::state::world::import(blob, n);
     if (rc != mh::state::world::WORLD_OK) return rc;
+
+    // (2) FIRST statement after the byte engine: put every process-local dword where THIS process
+    //     needs it. Nothing may run between import() and here -- a frame drawn in the gap would
+    //     walk the sender's pointers.
+    {
+        mh::state::world::fixup_stats fs;
+        mh::state::world::fixup_apply(fixup_plan_store, &fs);
+        log_fixup(fixup_plan_store, fs);
+    }
 
     //     ...and put them back before ANYTHING can walk one. import() validates completely before
     //     its first write, so a refusal above leaves the live values in place and this is skipped
     //     along with everything else.
     live_handles_restore(live_handles);
+
+    //     mp:X3c: ...and the keep-local regions, in the same no-window position (after the fixup so a
+    //     PRESERVE entry cannot resurrect a blob value, before anything can read them).
+    if (rs != nullptr) mh::state::world::keep_local_restore(keep);
 
     // (1) neutralise the imported graph BEFORE anything walks it -- see the banner.
     zero_foreign_pointer_regions();
@@ -520,7 +605,68 @@ extern "C" int libmh_import_world(const void *blob, size_t n) {
     //     so this cannot move the step-0 hash, which the acceptance re-measures rather than assumes.
     mh::sim::register_state_handlers();
     mh::sim::register_bldg_type_callbacks();
+
+    if (rs != nullptr) {
+        // (8) mp:X3c -- RE-1: the imported selection is the host's; reset this peer's own.
+        mh::state::world::reset_local_selection();
+
+        // (9) mp:X3c -- ARM the staged re-admission of what this peer admitted after the host's capture
+        //     point. Nothing is appended here: the caller feeds the log to ORDER_PENDING a few steps
+        //     ahead of the clock (admission::stage_feed), because the whole backlog does not fit in
+        //     PENDING at once.
+        mh::orders::admission::plan_report pr{};
+        const int                          arc = mh::orders::admission::stage_begin(rs->n_src, &pr);
+        if (rs->rep != nullptr) {
+            rs->rep->kept_regions    = kept_regions;
+            rs->rep->kept_bytes      = kept_bytes;
+            rs->rep->readmitted      = mh::orders::admission::stage_remaining();
+            rs->rep->pending_after   = static_cast<uint32_t>(*mh::orders::state().pending_count);
+            rs->rep->log_total       = mh::orders::admission::current().total;
+            rs->rep->overflow_resets = mh::orders::admission::current().overflow_resets;
+        }
+        mh::ai::ai_say("; [worldsync] IMPORT-DONE staged=%u pending_after=%u log_total=%u rc=%d\n",
+                       mh::orders::admission::stage_remaining(),
+                       static_cast<uint32_t>(*mh::orders::state().pending_count),
+                       mh::orders::admission::current().total, arc);
+        if (arc != 0) return arc;
+    }
     return mh::state::world::WORLD_OK;
+}
+
+} // namespace
+
+// mp:X3c -- the resync entry. Same contract as
+// libmh_import_world plus: the session-begun latch is bypassed, the keep-local regions survive, the
+// local selection is reset, and the PENDING-admission log is re-applied. `n_src` is the host's
+// per-source admission counters at the capture step S (9 entries; see orders/admission_log.h).
+//
+// The admission log is consulted BEFORE the first byte is written: -30 (ring short), -31 (this peer
+// is behind the host), -32 (log latched abort) all leave the world untouched.
+static_assert(mh::orders::admission::ERR_RING_SHORT == mh::state::world::WORLD_ERR_RESYNC_RING_SHORT);
+static_assert(mh::orders::admission::ERR_AHEAD == mh::state::world::WORLD_ERR_RESYNC_AHEAD);
+static_assert(mh::orders::admission::ERR_ABORT == mh::state::world::WORLD_ERR_RESYNC_ABORT);
+static_assert(mh::orders::admission::ERR_PENDING_FULL == mh::state::world::WORLD_ERR_RESYNC_PENDING_FULL);
+static_assert(mh::orders::admission::SOURCES == LIBMH_RESYNC_SOURCES);
+
+extern "C" int libmh_import_world_resync(const void *blob, size_t n, const uint32_t *n_src,
+                                         libmh_resync_report *rep) {
+    static bool fired = false;
+    in_live(fired, "libmh_import_world_resync");
+    if (blob == nullptr || n_src == nullptr) return mh::state::world::WORLD_ERR_ARG;
+    if (rep != nullptr) {
+        if (rep->struct_size < sizeof(libmh_resync_report)) return mh::state::world::WORLD_ERR_ARG;
+        std::memset(rep, 0, sizeof(*rep));
+        rep->struct_size = sizeof(libmh_resync_report);
+    }
+    mh::orders::admission::plan_report pr{};
+    const int                          prc = mh::orders::admission::plan(n_src, &pr);
+    if (prc != 0) {
+        mh::ai::ai_say("; [worldsync] IMPORT-REFUSED rc=%d src=%d need=%u (world untouched)\n", prc,
+                       pr.bad_src, pr.need);
+        return prc;
+    }
+    resync_args ra{n_src, rep};
+    return import_world_impl(blob, n, &ra);
 }
 
 // ---- the deterministic spine --------------------------------------------------------------------

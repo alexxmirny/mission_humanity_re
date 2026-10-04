@@ -174,6 +174,14 @@ class Params:
         # plays fine and cannot finish a map download is this, and a uniform loss rate never
         # reproduces it.
         self.mtu = 0
+        # UDP ONLY (mp:P16). A per-SOURCE-IP one-way delay override, {ip: ms}, applied to that peer's
+        # traffic in BOTH directions (c2s and s2c). A 3-peer star needs two clients at DIFFERENT
+        # distances from the host -- the field match that broke the adaptive lookahead was 232 / 83 ms
+        # RTT -- and one delay for every peer cannot make that shape. Peers not listed use delay_ms.
+        self.delay_by_ip = {}
+
+    def delay_for(self, ip):
+        return self.delay_by_ip.get(ip, self.delay_ms)
 
     def describe(self):
         return (
@@ -737,7 +745,7 @@ class UdpShim:
                 fh.write(line + "\n")
 
     # ---- the one decision every datagram passes through ---------------------------------------
-    def _schedule(self, tag, send, size=0):
+    def _schedule(self, tag, send, size=0, peer_ip=None):
         """Apply mtu / loss / delay / jitter / rate to one datagram, then hand it to `send`."""
         if size > self.s.max_seen:
             self.s.max_seen = size
@@ -754,7 +762,7 @@ class UdpShim:
         if self.p.loss_pct > 0 and self.rng.random() * 100.0 < self.p.loss_pct:
             self.s.lost[tag] += 1
             return
-        delay = self.p.delay_ms
+        delay = self.p.delay_for(peer_ip)
         if self.p.jitter_ms:
             delay += self.rng.uniform(-self.p.jitter_ms, self.p.jitter_ms)
         if delay < 0:
@@ -798,7 +806,7 @@ class UdpShim:
             except OSError:
                 pass
 
-        self._schedule("c2s", send, len(data))
+        self._schedule("c2s", send, len(data), peer_ip=addr[0])
 
     def on_from_target(self, data, addr):
         self.s.bytes["s2c"] += len(data)
@@ -810,7 +818,7 @@ class UdpShim:
             except OSError:
                 pass
 
-        self._schedule("s2c", send, len(data))
+        self._schedule("s2c", send, len(data), peer_ip=addr[0])
 
     def cut(self, rst):
         # RST has no meaning on UDP; the flag is accepted so one timeline file can drive both modes.
@@ -881,6 +889,9 @@ async def do_run_udp(args):
     params = Params(args.delay, args.jitter, args.rate)
     params.loss_pct = float(args.loss)
     params.mtu = int(getattr(args, "mtu", 0) or 0)  # mp:R1d
+    for spec in getattr(args, "delay_ip", None) or []:  # mp:P16: --delay-ip IP=MS, repeatable
+        ip, _, ms = spec.partition("=")
+        params.delay_by_ip[ip.strip()] = float(ms)
     shim = UdpShim(params, Stats(), args.log, (thost, tport), manual_arm=args.manual_arm)
 
     loop = asyncio.get_event_loop()
@@ -1035,6 +1046,15 @@ def main():
         type=float,
         default=0.0,
         help="UDP only: percent of datagrams destroyed in each direction",
+    )
+    ap.add_argument(
+        "--delay-ip",
+        action="append",
+        default=[],
+        metavar="IP=MS",
+        help="UDP only (mp:P16): ONE-WAY delay override for the peer that connects from IP, both "
+        "directions; repeatable. Peers not listed use --delay. Builds an asymmetric star "
+        "(`--delay 20 --delay-ip 192.168.0.38=115`).",
     )
     ap.add_argument(
         "--mtu",

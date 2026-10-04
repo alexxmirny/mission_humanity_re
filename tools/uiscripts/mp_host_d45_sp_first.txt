@@ -1,0 +1,118 @@
+# mp:D45 HOST -- the 2026-10-01 field shape: this process LOADS A SINGLE-PLAYER SAVEGAME from the main
+# menu (Load game -> ayy30, staged into the lane's save\ by the row's deploy_save), lets the sim run, quits
+# to the main menu, and only then hosts two MP matches for FRESH client processes (the d36 shape that
+# follows is verbatim mp_host_d36_rematch.txt: match 1 landed, then a rematch on a shorter-named map).
+# The savegame leaves landing entries / name tails / campaign planet strings / free prod slots in
+# strat_players, planets and prod_slots -- hashed regions the D36 clear never named -- and a fresh client
+# does not carry them, so without mp:D45's boot-snapshot restore the in-band watch says
+# `DESYNC step=50 first_region=12 strat_players`.
+# Pair with mp_client_d36_match1.txt + mp_client_d36_fresh.txt (the d36 rows' clients, unchanged).
+# Assertion: tools/check_d36_rematch_seed.py --sp-first (every hashed region of the host's match-2
+# seed equals the fresh client's; D45 line > 0 on both host entries, 0 on the client).
+
+# ---- single-player phase: load the savegame, play a moment, quit to the menu --------------------
+settled value:108
+clickv 108
+present Load game
+settled Load game
+clickl Load game
+absent Game name:
+gamemode 2
+gameclock 5
+key 0x01
+settled Quit game
+clickl Quit game
+present Yes
+settled Yes
+clickl Yes
+screensettled
+settled value:110
+log HOST: savegame played and left; hosting from the same process
+
+# ---- game 1: map A (Blue Monday, the list's pre-selected first row) -------------------------------
+settled value:110
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+settled Create
+clickl Create
+present Game name
+settled Ok
+clickl Ok
+present Available maps
+settled Ok
+present blue monday
+capture d36_maps_game1
+clickl Ok
+
+present Network players
+peers 1
+awaitsignal lobby
+enabled Start
+settled Start
+clickl Start
+
+# land the mother (D35's gesture at 1024x768: shift+right-click = move + deploy); it is down well
+# before gameclock 20000, and the deploy books the landing grant into resource_spent on BOTH peers.
+absent Network players
+gamemode 2
+gameclock 3000
+rclick 480 330 shift
+gameclock 20000
+signal landed
+
+# ---- client1 quits; end match 1 (mp_host_rematch2.txt's measured walk, comments there) ----------
+awaitsignal cliquit
+present Continue game
+settled Continue game
+clickl Ok
+screensettled
+settled Ok
+clickl Ok
+key 0x01
+screensettled
+settled value:110
+screensettled
+settled value:110
+
+# ---- game 2, same process: map B (Cold War -- a SHORTER name than "blue monday") -----------------
+cursor 112 192
+hovered value:110
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+settled Create
+clickl Create
+present Game name
+settled Ok
+clickl Ok
+# "Available maps" rows at y=98+14*i (mp_host_el2.txt's dump): Blue Monday, BlueMonday, Cold War =
+# row 2 -> y=126. A list row commits on the render-settled hover at mouse-DOWN: the split click.
+present Available maps
+settled Ok
+cursor 80 126
+cursor 80 126
+press 80 126
+release 80 126
+present cold war
+capture d36_maps_game2
+settled Ok
+clickl Ok
+present Network players
+settled Cancel
+signal rehosted
+
+# client2 -- a fresh process -- joins; Start.
+occ 2
+awaitsignal lobby2
+enabled Start
+settled Start
+clickl Start
+absent Network players
+gamemode 2
+# past several [desync] samples (cadence 50 steps = 5 s of game time): step 50 is where rc4 split
+gameclock 12000
+log HOST: landed in match 1, rematched a fresh client on a shorter-named map; match 2 ran past 12 s
+end

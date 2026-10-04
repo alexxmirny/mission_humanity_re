@@ -1,0 +1,35 @@
+# mp:U62 (HM-M4) -- SURVIVOR 2 of the host-quits-mid-match arm (see mp_host_u62_quit.txt). Joins the 3-peer lobby, plays to
+# clock 3000, waits for the host's departure, then must STILL be in the strategic UI with no outcome dialog
+# at a clock ~37 s of game time later (>= 1800 steps past the host's quit at ~step 150).
+settled value:110
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+present Internet server
+settled Internet server
+clickl Internet server
+present Server address
+settled Connect
+clickl Connect
+sessions 1
+settled Join game
+clickl Join game
+present Network players
+occ 3
+settled Cancel
+signal seated2
+absent Network players
+gamemode 2
+gameclock 3000
+
+awaitsignal hostquitting
+awaitsignal hostquit
+
+gameclock 40000
+gamemode 2
+absent Continue game
+signal surv2
+log SURVIVOR 2 kept playing past the host's departure -- still in-game, no outcome dialog
+awaitsignal surv1
+end

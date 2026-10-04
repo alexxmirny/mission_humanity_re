@@ -1,0 +1,45 @@
+# mp:X3c slice 4 CLIENT -- the diverged peer of the forced-desync arm (registry row `mp_snapshot`).
+#
+# The walk is mp_client_start.txt's, unchanged. The harness (`harness_extra_client: region_poke_at=300;...`)
+# flips one byte of a hashed region in THIS peer's world at sim step 300; the host detects it, ships its own
+# world, and this peer imports it and catches up LIVE. This script only has to stay in the match and prove it
+# is alive AFTER the import: a gameclock wait past the import is satisfied by a running sim (a frozen or dead
+# peer never gets there), and `gamemode 2` after it reads live game state.
+#
+# NO `simstep` WAIT: `simstep N` arms the harness's own SIM FENCE, and the resync's import + catch-up run
+# inside the sim-step path. Pair with mp_host_resync.txt.
+
+# join the host by IP -> the joined lobby
+settled value:110
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+present Internet server
+settled Internet server
+clickl Internet server
+present Server address
+settled Connect
+clickl Connect
+sessions 1
+settled Join game
+clickl Join game
+
+# joined lobby: tell the host we are really here, then wait for its Start
+present Network players
+signal lobby
+settled Cancel
+absent Network players
+gamemode 2
+gameclock 6000
+capture s1_client_ingame
+log CLIENT in a live UDP match; the harness pokes this world at step 300
+# The import rewinds this peer's clock by the backlog and the catch-up brings it back to live, so reaching
+# this target happens AFTER the resync.
+gameclock 55000
+gamemode 2
+capture s2_client_resynced
+log CLIENT is past the resync and still in a strategic match
+signal resynced
+awaitsignal hostdone
+end

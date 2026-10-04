@@ -5,6 +5,11 @@
 //
 #include "sim/resid/sim_session_begin_multi.h"
 
+#include "orders/admission_log.h"
+#include "lockstep/turn_engine.h" // mh::lockstep::fixes(): [net] team_relations_fix
+#include "sim/sim_diplomacy_set_relation.h"
+#include "sim/sim_map_fog_of_war_recompute.h"
+
 #include "addr/mh_calls.gen.h"                            // typed callables for the frontier originals we still call OUT to
 #include "sim/libtrans/sim_lt_progress_unlock_fixpoint.h" // the rebound propagate_unlocks
 #include "state/boot_snapshot.h"                          // LIB-BOOT: the import-ordering latch
@@ -31,6 +36,8 @@ const session_begin_multi_calls &live_session_begin_multi_calls() {
         MH_LIBMH_BIND(llm_game_speed_recompute),
         MH_LIBMH_BIND(llm_net_lockstep_sync_delay_stub),
         MH_LIBMH_BIND(llm_menu_force_return_to_main),
+        &mh::sim::diplomacy_set_relation, // mp:U52: the translated body, bound directly (as sim_lt_diplomacy does)
+        &mh::sim::fog_of_war_recompute,   // mp:U52 vision: the translated recompute, bound directly
     };
     return c;
 }
@@ -72,6 +79,58 @@ constexpr int32_t PLAYER_SLOT_COUNT = 8;
 } // namespace
 
 namespace detail {
+
+// ---- mp:U52 -- lobby TEAM seed ----------------------------------------------------------------------
+//
+// Runs AFTER land_players_on_planet (landing resets every player's AI relation mirror to self=+1/others=-1,
+// and diplomacy_init_multiplayer has already overwritten the relation table) and before the first
+// lockstep step. desc+7 is the lobby slot's +0x0c TEAM byte: build_players_step memcpy's slot+5.. into
+// Players[] (so slot+0x0c lands at desc+7) and build_players_finish's host-ordering swap moves the whole
+// 0x34 record, so a team follows its player with no slot->player mapping. 0 = "-" (its own team); values
+// above 4 are treated as 0. Self cells are left as retail. Directed table, both directions written.
+int32_t apply_lobby_team_relations(const sim_view &v, sim_store &own, const session_begin_multi_calls &c) {
+    const mh::lockstep::reimpl_fixes &fx = mh::lockstep::fixes();
+    if (!fx.team_relations_fix || c.diplomacy_set_relation == nullptr) return 0;
+    if (*v.tutorial_step != 0) return 0; // llm_game_start_tutorial also runs session_begin_multi
+    uint8_t team[PLAYER_SLOT_COUNT];
+    bool    enabled[PLAYER_SLOT_COUNT];
+    bool    any_team = false;
+    for (int32_t i = 0; i < PLAYER_SLOT_COUNT; ++i) {
+        enabled[i]      = v.player_desc_slots[i].controller_flags != 0;
+        const uint8_t t = v.player_desc_slots[i]._unnamed_0x7; // lobby TEAM byte
+        team[i]         = (t >= 1 && t <= 4) ? t : 0;
+        if (enabled[i] && team[i] != 0) any_team = true;
+    }
+    if (!any_team) return 0;
+    int32_t written = 0;
+    for (int32_t a = 0; a < PLAYER_SLOT_COUNT; ++a) {
+        if (!enabled[a]) continue;
+        for (int32_t b = 0; b < PLAYER_SLOT_COUNT; ++b) {
+            if (b == a || !enabled[b]) continue;
+            c.diplomacy_set_relation(a, b, (team[a] != 0 && team[a] == team[b]) ? 1 : 2);
+            ++written;
+        }
+    }
+    // mp:U52 VISION (local view state, NOT hashed -- is_human/_G_LLM_GAME_HUMAN_PLAYER_MASK/_G_LLM_PLAYER_CONTROL_MASK
+    // are MF_VIEW only and differ per peer by design). Each peer derives ITS OWN view from the synced team bytes:
+    // teammates' bits go into PLAYER_CONTROL_MASK (the dialog's "vision" column: I share with them) and into the
+    // human/is_human mask (they share with me: their sight is drawn in my fog), then the fog is recomputed.
+    {
+        const uint32_t me = static_cast<uint32_t>(static_cast<uint16_t>(*v.player_side));
+        if (me < PLAYER_SLOT_COUNT && enabled[me] && team[me] != 0) {
+            uint8_t mates = 0;
+            for (int32_t b = 0; b < PLAYER_SLOT_COUNT; ++b)
+                if (b != static_cast<int32_t>(me) && enabled[b] && team[b] == team[me]) mates |= static_cast<uint8_t>(1u << b);
+            own.player_control_mask() |= mates;
+            own.game_human_player_mask() |= mates;
+            own.is_human_mut() = own.game_human_player_mask();
+            if (c.fog_of_war_recompute != nullptr) c.fog_of_war_recompute();
+        }
+    }
+    // Team mode: the ally-victory rule (written 0 earlier in the body) and, via that flag, the relation lock.
+    if (fx.lobby_team_mode) own.mp_ally_victory_rule_flag_mut() = 1;
+    return written;
+}
 
 // ---- llm_strat_session_begin_multi @0x0045435f -------------------------------------------------
 int32_t session_begin_multi(const sim_view &v, sim_store &own,
@@ -146,6 +205,10 @@ int32_t session_begin_multi(const sim_view &v, sim_store &own,
     c.ui_message_queue_clear_all();
     c.map_read_map_pre(static_cast<uint32_t>(*v.planet_index));
     c.net_lockstep_peer_timing_reset();
+    // mp:X3c: a new MP match starts the PENDING-admission log from zero. This is the per-match
+    // reset point (the same call site that resets the lockstep peer-timing table; MP session start
+    // only). Observe-only state: not a registry region, not hashed.
+    mh::orders::admission::reset();
 
     // 0x00454447-0x004544b7: for every player slot whose Players[i].controller_flags is nonzero,
     // initialise its profile. `Players` (declared_needs #1) is the lobby-config table, a DIFFERENT
@@ -181,6 +244,8 @@ int32_t session_begin_multi(const sim_view &v, sim_store &own,
     c.ui_message_queue_clear_all();
     own.sim_active_mut() = 1;
     detail::land_players_on_planet(v, own, c_lpop, *v.planet_index, c_pmsi);
+    // mp:U52: seed relations from the lobby teams (after landing, which resets the AI relation mirror).
+    apply_lobby_team_relations(v, own, c);
     c.game_speed_recompute();
 
     // 0x00454509-0x00454513: both STUBS in the original. The first, llm_lobby_map_recv_step_stub, is

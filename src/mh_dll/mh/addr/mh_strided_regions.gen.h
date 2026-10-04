@@ -23,7 +23,7 @@ namespace mh::sim {
 // sim_state.h, so it is not in scope where these assertions land. LISTED rather
 // than dropped, so the population is always visible: hoisting the constant or
 // the type into sim_state.h is what makes one of these assertable.
-//   _G_LLM_PROD_SHUTTLE_SLOTS                  stride       out of scope: SHUTTLES_PER_PLAYER / const prod_shuttle_slot src/mh_dll/libmh/sim/sim_player_presence_lost.cpp:150
+//   _G_LLM_PROD_SHUTTLE_SLOTS                  stride       out of scope: SHUTTLES_PER_PLAYER / const prod_shuttle_slot src/mh_dll/libmh/sim/sim_player_presence_lost.cpp:165
 //   _G_LLM_STRAT_DEPLOY_FORMATION_STENCIL      UNMEASURED   out of scope: 7 / const uint8_t            src/mh_dll/libmh/sim/libtrans/sim_lt_deploy_squad.cpp:85
 //   _G_LLM_STRAT_HEADING_CANDIDATE_TABLE       stride       out of scope: GROUP_STEP_GROUND_CANDIDATE_SLOTS / const heading_slot src/mh_dll/libmh/sim/sim_unit_group_step_ground.cpp:129
 //   System                                     stride       out of scope: SYSTEM_STRIDE_INTS / const int32_t src/mh_dll/libmh/sim/sim_game_notify_system_available.cpp:54
@@ -44,7 +44,7 @@ static_assert(::mh::state::reach_of(::mh::state::RID_PLAYER_RESOURCES) > (PLAYER
 static_assert(::mh::state::reach_of(::mh::state::RID_PROD_SHUTTLE_SLOTS) > (PROD_SHUTTLE_SLOTS_PER_PLAYER) * sizeof(const prod_shuttle_slot),
               "_G_LLM_PROD_SHUTTLE_SLOTS is claimed at ONE ROW or less of the stride it is indexed by: only row 0 is in the region. The stride and the index site are named in the comment above. Widen the claim -- a `size` on its view entry in tools/data/dll_addr_manifest.json is the Tree/MOVE_MICROSTEPS precedent.");
 
-// progress -- progress, indexed [row * PROGRESS_ROW_COUNT + i] at src/mh_dll/libmh/sim/sim_player_presence_lost.cpp:119
+// progress -- progress, indexed [row * PROGRESS_ROW_COUNT + i] at src/mh_dll/libmh/sim/sim_player_presence_lost.cpp:134
 static_assert(::mh::state::reach_of(::mh::state::RID_PROGRESS) > (PROGRESS_ROW_COUNT) * sizeof(const player_progress),
               "progress is claimed at ONE ROW or less of the stride it is indexed by: only row 0 is in the region. The stride and the index site are named in the comment above. Widen the claim -- a `size` on its view entry in tools/data/dll_addr_manifest.json is the Tree/MOVE_MICROSTEPS precedent.");
 

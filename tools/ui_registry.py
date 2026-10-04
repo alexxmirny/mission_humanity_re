@@ -50,10 +50,12 @@ SCHEMA = {
             "extra_ini_client": "str",
             "extra_ini_host": "str",
             "harness_extra": "str",
+            "harness_extra_client": "str",
             "harness_extra_host": "str",
             "host": "str",
             "host_lanes": "list[int]",
             "lane_src": "str",
+            "lane_src_client": "str",
             "launch_args": "str",
             "long_why": "str",
             "budget_evidence": "str",  # log path / run id proving a budget_s raise (--check-budgets)
@@ -63,6 +65,7 @@ SCHEMA = {
             "no_hash_why": "str",  # a multi row that opts out of the lockstep hash compare (HASHDEF)
             "omit_satellite": "list[str]",
             "optin": "bool",
+            "tier": "str",  # "release" = skipped by a bare run; test_ui.py --release-tier / run_gate.py --release
             "post_check": "list[str]|list[list[str]]",
             "post_check_peers": "bool",
             "post_check_session": "bool",
@@ -145,14 +148,16 @@ RARE_KEYS = {
     "extra_ini_client": "generic per-side ini fragment (parallels extra_ini); codepage_adopt/codepage_refused use it (mp:F3c, done)",
     "requires": "generic opt-in precondition hook; font_merged/chat_glyphs are its first users (mp:F2b, done)",
     "lane_src": "generic alternate-install lane source; font_merged/chat_glyphs use it (mp:F2b, done)",
+    "lane_src_client": "per-side lane_src for the CLIENT lanes (parallels extra_ini_client); chat_utf8's host runs the RU pack from the polygon while its client needs the merged EN install (mp:MP-LANG)",
+    "harness_extra_client": "the client-side twin of harness_extra_host; mp_snapshot pokes the CLIENT's world so the host's is the authoritative one (mp:X3c, done)",
     "harness_extra_host": "generic per-side harness knob (parallels harness_extra); mp_snapshot/p6_loser_gap use it (mp:X1b, done)",
     # tact_panel (reimpl:LIFT-TACT, done): tactical mission entry isn't reachable from a menu, so
     # this row drives it via the DLL's --tactical verb over a deployed save instead of a script walk.
     "launch_args": "tact_panel's non-menu tactical entry point (reimpl:LIFT-TACT, done)",
     "deploy_save": "tact_panel's save deployed before boot, paired with launch_args (reimpl:LIFT-TACT, done)",
-    # mp:X1b (done) marked this for deletion once mp:X3 (mid-game resync/join-in-progress) lands;
-    # X3 is `in-progress`, not yet -- delete `optin` + mp_snapshot's declaration together with X3.
-    "optin": "DELETE when mp:X3 lands (X3 is in-progress as of 2026-09-26, not yet) (mp:X1b/X3)",
+    # mp:X1b (done) marked this for deletion once mp:X3 (mid-game resync/join-in-progress) lands.
+    # mp:X3c repurposed mp_snapshot; the mp:X3d relay row (hold shape) is its only user.
+    "optin": "DELETE with mp_snapshot_relay when the relayed shape moves to the resync arm (mp:X3d/X3c follow-up)",
 }
 
 
@@ -474,6 +479,26 @@ def hash_plan(row):
     return harness_merge(HASH_HARNESS, row.get("harness_extra"))
 
 
+# tooling:TL-SUITE-HASHCOST -- every suite instance that arms the harness hashes with the cheap
+# incremental kind (mp:D39, ~0.3-0.45 ms/step vs ~4 ms for FNV: kind 1 was ~73% of an instance's game
+# thread). Applied to EVERY peer through harness_extra, so mp_analyze pairs same-kind logs. A row that
+# names hash_kind itself (in any of its three harness keys) keeps its own. Stored oracles (libref
+# fixtures, soak goldens, UI-REC oracles, field recordings) are NOT suite rows -- they run from
+# ui_abc.py / soak_test.py / replay_*.py, which this never touches, and which stay kind 1.
+SUITE_HASH_KIND = "hash_kind=2"
+
+
+def with_suite_hash_kind(row):
+    """Row dict with SUITE_HASH_KIND merged under its harness_extra when the row arms the harness
+    on any peer (harness_extra / _host / _client present) and none of them chooses a kind."""
+    keys = ("harness_extra", "harness_extra_host", "harness_extra_client")
+    if not any((row.get(k) or "").strip() for k in keys):
+        return row
+    if any("hash_kind" in harness_kv(row.get(k)) for k in keys):
+        return row
+    return dict(row, harness_extra=harness_merge(row.get("harness_extra"), SUITE_HASH_KIND))
+
+
 def hash_verdict(j, rc, plant_step=0):
     """(ok, line) from mp_analyze's JSON + exit code. 0 compared steps is a FAIL, never a pass.
     With plant_step, ok means the compare CAUGHT the planted desync at or after that step."""
@@ -766,6 +791,21 @@ def selftest():
             "row harness keys win the merge",
             hash_plan(dict(got["tests"][1], harness_extra="region_hash_step=0;order_log=1"))
             == "region_hash_step=0;synth_move=0;order_log=1",
+        ),
+        (
+            "suite default is kind 2; a row's own kind and a bare row are left alone",
+            "hash_kind=2"
+            in (
+                with_suite_hash_kind(dict(got["tests"][1], harness_extra=HASH_HARNESS)).get(
+                    "harness_extra"
+                )
+                or ""
+            )
+            and with_suite_hash_kind(
+                dict(got["tests"][1], harness_extra="hash_kind=1;synth_move=0")
+            )["harness_extra"]
+            == "hash_kind=1;synth_move=0"
+            and with_suite_hash_kind({"name": "x"}) == {"name": "x"},
         ),
         (
             "no_hash_why opts out",

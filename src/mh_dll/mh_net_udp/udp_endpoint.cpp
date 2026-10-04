@@ -121,6 +121,14 @@ bool ensure_wsa() {
     return true;
 }
 
+// mp:U59 -- the one frame class the retention ring coalesces: the bare lockstep horizon advert,
+// latest-wins by construction (the inbound queue's lane H evicts superseded ones by the same predicate).
+inline bool is_bare_horizon(const uint8_t *d, int n) {
+    return mh::net::queue_policy::lane_of_game_frame(d, n) == mh::net::queue_policy::lane::supersedable;
+}
+static_assert(osq::PAYLOAD_MAX == MH_NET_MAX_PAYLOAD, "origin_seq.h's payload ceiling is the module's");
+static_assert(osq::ORIGINS == MH_NET_MAX_PEERS, "one retention ring per player slot");
+
 } // namespace
 
 // =================================================================================================
@@ -129,6 +137,8 @@ Endpoint::Endpoint() {
     m_sock      = INVALID_SOCKET;
     m_dead_peer = -1;
     m_my_id     = -1;
+    m_fo_test_first = -1; // mp:U63
+    m_spectators    = 0;
 }
 
 void Endpoint::logf(const char *fmt, ...) {
@@ -208,6 +218,18 @@ void Endpoint::set_rx_loss(unsigned per_mille, uint32_t seed) {
     m_loss_state = seed ? seed : 0x9e3779b9u;
 }
 
+void Endpoint::set_rx_block_port(unsigned short port, bool on) {
+    if (port == 0) return;
+    for (int i = 0; i < 8; ++i)
+        if (m_block_port[i] == (LONG)port) {
+            if (!on) InterlockedExchange(&m_block_port[i], 0);
+            return;
+        }
+    if (on)
+        for (int i = 0; i < 8; ++i)
+            if (InterlockedCompareExchange(&m_block_port[i], (LONG)port, 0) == 0) return;
+}
+
 bool Endpoint::lose_it() {
     if (m_loss_pm == 0) return false;
     // xorshift32: deterministic, so a failing loss pattern is replayable from its seed.
@@ -245,6 +267,36 @@ bool Endpoint::start(const Config &cfg, const uint8_t psk[KEY_LEN], bool secure)
     m_my_id       = cfg.net.player_id;
     m_host_assign = (cfg.net.host_assign != 0);
     m_secure      = secure;
+    {
+        // mp:U59 -- this life's incarnation: a per-start() tag (never an ordering) that lets every peer
+        // tell "the same origin, restarted" from "the same origin, still going". Mixed from four
+        // sources that differ between two endpoints created in one process in one tick (the selftests).
+        LARGE_INTEGER q;
+        QueryPerformanceCounter(&q);
+        uint32_t x = (uint32_t)q.QuadPart ^ (GetTickCount() * 2654435761u) ^
+                     (GetCurrentProcessId() * 40503u) ^ (uint32_t)(uintptr_t)this;
+        m_osq.reset((uint16_t)(x ^ (x >> 16)));
+        m_osq.set_local(m_my_id);
+        m_osq_legacy_said = false;
+        // mp:U60 -- a fresh life has no rehome history. (The WELCOME counters are lifetime and stay.)
+        m_rehomed      = false;
+        m_hs_budget_ms = 0;
+        memset(m_roster, 0, sizeof(m_roster));
+        memset(&m_rc, 0, sizeof(m_rc));
+        // mp:U61 -- a fresh life has no mesh. (The hooks and the test knobs are set once and stay.)
+        memset(&m_mesh, 0, sizeof(m_mesh));
+        m_mesh.M.clear();
+        m_mesh.on = true;
+        // mp:U62 -- ...and no handover history. (The mute test knob is set once and stays.)
+        memset(&m_hl, 0, sizeof(m_hl));
+        m_hl.hub_id  = -1;
+        m_hl.old_hub = m_hl.new_hub = -1;
+        // mp:U63 -- ...and no failover history. (The fo test knobs are set once and stay.)
+        memset(&m_fo, 0, sizeof(m_fo));
+        m_fo.hub_id = m_fo.cand = m_fo.forced = -1;
+        m_dead_extra = 0;
+        m_spectators = 0;
+    }
     m_K           = cfg.redundancy;
     if (m_K < K_MIN) m_K = K_DEFAULT;
     if (m_K > K_MAX) m_K = K_MAX;
@@ -513,7 +565,16 @@ void Endpoint::drop_conn(int idx, const char *why) {
     // U17: latch the dropped peer's id for the main thread's in-order removal. The host learns real
     // client ids (>= 1); a client's only conn carries -1, so a host death is not fast-dropped here,
     // which is the same boundary the TCP module draws.
-    InterlockedExchange(&m_dead_peer, m_conns[idx].player_id);
+    // mp:U62 -- a hub that is HANDING OVER retires its conns on purpose: those are not peers dying, and
+    // the game's fast-drop (U17) would otherwise remove every survivor the hub itself just let go.
+    // mp:U64 (HM-M6): the latch is ONE slot, and a hub that loses several clients in the same watchdog pass (its own
+    // partition from all of them, found by the 4-peer arm) overwrote the earlier ids, so only the last was ever removed
+    // from the roster and the sim stalled on a human that nobody ever dropped. The displaced id waits in m_dead_extra,
+    // which take_dead_peer pops once the slot is empty (every caller holds m_conn_cs).
+    if (!m_hl.leaving) {
+        const LONG prev = InterlockedExchange(&m_dead_peer, m_conns[idx].player_id);
+        if (prev >= 0 && prev < 8 && prev != m_conns[idx].player_id) m_dead_extra |= 1u << prev;
+    }
     logf("net: udp conn %d dropped -- %s (keepalives: sent %ld, received %ld)", idx, why,
          (long)m_conns[idx].ping_tx, (long)m_conns[idx].ping_rx);
     // mp:X2f -- every caller holds m_conn_cs (the watchdog pass, the recv path, send/send_ctrl), so
@@ -573,12 +634,13 @@ void Endpoint::drop_conn(int idx, const char *why) {
 void Endpoint::client_handshake_tick(DWORD now) {
     Pending &p = m_pend[0];
     if (!p.used) return;
-    if (now - p.first_ms > HS_BUDGET_MS) {
+    const DWORD budget = m_hs_budget_ms > 0 ? (DWORD)m_hs_budget_ms : HS_BUDGET_MS; // mp:U60: a re-dial may be given longer
+    if (now - p.first_ms > budget) {
         p.used = false;
         logf("net: udp handshake FAILED -- no answer from the host within %u ms. Either nothing is "
              "listening behind that address (the host must have a game open), the host is running "
              "transport=tcp while this peer is on udp, or the two of you hold different mh_key.txt.",
-             HS_BUDGET_MS);
+             (unsigned)budget);
         return;
     }
     if (p.tries > 0 && now - p.last_tx_ms < HS_RETRY_MS) return;
@@ -842,6 +904,7 @@ void Endpoint::host_on_token(const sockaddr_in &from, const U::Header &h, const 
                     break;
                 }
             InterlockedCompareExchange(&m_dead_peer, -1, c.player_id);
+            if (c.player_id >= 0 && c.player_id < 8) m_dead_extra &= ~(1u << c.player_id); // mp:U64: a rejoiner is not dead
         } else {
             c.player_id = -1; // learned from the client's FLAG_HELLO
         }
@@ -871,7 +934,12 @@ void Endpoint::host_on_token(const sockaddr_in &from, const U::Header &h, const 
     SessionKeys keys = c.keys;
     // A client in host-assign mode learns its id from the FLAG_WELCOME the TCP module sends, and the
     // same frame is sent here -- over the stream, so it is ordered against everything after it.
-    if (m_host_assign && pid >= 0) send_frame(idx, FLAG_WELCOME, (int16_t)m_my_id, (int16_t)pid, nullptr, 0);
+    if (m_host_assign && pid >= 0) {
+        const uint8_t cap = cap_byte();
+        InterlockedIncrement(&m_welcome_tx); // mp:U60: a rehome must never move this
+        send_frame(idx, FLAG_WELCOME, (int16_t)m_my_id, (int16_t)pid, m_test_legacy ? nullptr : &cap,
+                   m_test_legacy ? 0 : 1);
+    }
     LeaveCriticalSection(&m_conn_cs);
     send_sealed(to, U::PKT_TOKEN_ACK, cid, seq, keys.enc_s2c, keys.mac_s2c, nullptr, 0);
 }
@@ -889,7 +957,9 @@ void Endpoint::client_on_token_ack(const U::Header &h, DWORD now) {
         ++m_c.hs_done;
         // Announce our player id so the host can route to us before any game data flows. First bytes
         // of the stream, so it cannot arrive after them.
-        send_frame(0, FLAG_HELLO, (int16_t)m_my_id, MH_NET_BROADCAST, nullptr, 0);
+        const uint8_t cap = cap_byte(); // mp:U59/U61: the capability version (Q5: refuse older)
+        send_frame(0, FLAG_HELLO, (int16_t)m_my_id, MH_NET_BROADCAST, m_test_legacy ? nullptr : &cap,
+                   m_test_legacy ? 0 : 1);
         LeaveCriticalSection(&m_conn_cs);
         p.used = false;
         logf("net: udp CLIENT admitted as player %d", m_my_id);
@@ -1394,19 +1464,68 @@ void Endpoint::deliver_frame(int idx, const WireHdr &h, const uint8_t *payload, 
 
     if (h.flags == FLAG_PING) return; // the arrival was the point; last_rx is already stamped
 
+    // mp:U60 -- on a rehomed hub a conn that has not yet been seated by an accepted HELLO may say nothing
+    // else (its first frame IS the HELLO; anything before it is a peer that skipped the roster check).
+    if (m_role == 0 && m_rehomed && c.player_id < 0 && h.flags != FLAG_HELLO) return;
+    if (h.flags == FLAG_RECONCILE) { // mp:U60 -- consumed here, never handed to the game or the ctrl callback
+        rc_on_frame(idx, h, payload, len);
+        return;
+    }
+    if (h.flags == FLAG_MESH) { // mp:U61 -- the same class: consumed here, never the game queue
+        mesh_on_frame(idx, h, payload, len);
+        return;
+    }
+
     if (h.flags == FLAG_HELLO) {
+        // mp:U59 (user decision Q5): a client without the exactly-once layer is REFUSED at join. Its
+        // HELLO carries no capability byte (or an older one); admitting it would put frames on the
+        // wire that cannot be sequenced, deduped or reconciled.
+        if (m_role == 0 && (len < 1 || payload[0] != osq::CAP_VERSION)) {
+            ++m_osq.c.legacy_refused;
+            drop_conn(idx, "the peer's HELLO lacks the exactly-once frame layer capability -- an older "
+                           "build (mp:U59, refused at join)");
+            return;
+        }
+        // mp:U60 -- a REHOMED hub seats only the survivors it was told about, under the ids they already
+        // hold: a HELLO naming anyone else (an id outside the roster, this hub's own id, a negative or
+        // out-of-range one) is refused and the conn dropped. A second seat for an id already held is the
+        // same survivor re-dialling (its first conn is stale): the old conn goes, the new one is seated.
+        if (m_role == 0 && m_rehomed) {
+            const int id = h.src;
+            if (id < 0 || id >= osq::ORIGINS || id == m_my_id || !m_roster[id]) {
+                ++m_rc.foreign_refused;
+                char why[160];
+                wsprintfA(why, "a HELLO naming player %d, which is not in this hub's roster -- a foreign id "
+                               "(mp:U60, refused)",
+                          id);
+                refuse_conn(idx, why);
+                return;
+            }
+            for (int i = 0; i < MH_NET_MAX_PEERS; ++i)
+                if (i != idx && m_conns[i].active && m_conns[i].player_id == id)
+                    drop_conn(i, "the same survivor re-dialled; this conn is stale (mp:U60)");
+        }
         if (m_host_assign) {
             logf("net: udp conn %d HELLO claims player %d (ignored; assigned %d)", idx, (int)h.src,
                  c.player_id);
         } else {
             c.player_id = h.src;
             InterlockedCompareExchange(&m_dead_peer, -1, h.src);
+            if (h.src >= 0 && h.src < 8) m_dead_extra &= ~(1u << h.src); // mp:U64: a rejoiner is not dead
             logf("net: udp conn %d is player %d", idx, (int)h.src);
         }
         return;
     }
     if (h.flags == FLAG_WELCOME) { // N1: the host assigned US an id (client side)
+        if (len < 1 || payload[0] != osq::CAP_VERSION) { // mp:U59: an older host (Q5: refuse)
+            ++m_osq.c.legacy_refused;
+            drop_conn(idx, "the host's WELCOME lacks the exactly-once frame layer capability -- an older "
+                           "build (mp:U59, refused at join)");
+            return;
+        }
+        InterlockedIncrement(&m_welcome_rx);
         m_my_id = h.dst;
+        m_osq.set_local(m_my_id);
         InterlockedExchange(&m_id_assigned, 1);
         logf("net: udp WELCOME -- host assigned us player %d", m_my_id);
         return;
@@ -1433,6 +1552,24 @@ void Endpoint::deliver_frame(int idx, const WireHdr &h, const uint8_t *payload, 
     // forward-compatible protocol turns into a desync (R-live).
     if (h.flags != FLAG_DATA) return;
 
+    // mp:U59 -- the exactly-once prefix. A game frame without it comes from a pre-layer build: refuse
+    // the peer (Q5) rather than deliver bytes whose first 7 would be read as game data.
+    uint16_t osq_inc = 0;
+    uint32_t osq_seq = 0;
+    if (!osq::prefix_decode(payload, (int)len, osq_inc, osq_seq)) {
+        ++m_osq.c.legacy_refused;
+        if (!m_osq_legacy_said) {
+            m_osq_legacy_said = true;
+            logf("net: udp conn %d sent a game frame without the exactly-once prefix (%u bytes) -- a "
+                 "pre-mp:U59 build; refused",
+                 idx, len);
+        }
+        drop_conn(idx, "game frame without the exactly-once prefix -- an older build (mp:U59, refused)");
+        return;
+    }
+    const uint8_t *app     = payload + osq::PREFIX_BYTES;
+    const int      app_len = (int)len - osq::PREFIX_BYTES;
+
     ++m_rx_pkts;
     m_rx_bytes += (long)(WIRE_HDR_SIZE + len);
     m_last_rx_tick = GetTickCount();
@@ -1441,20 +1578,35 @@ void Endpoint::deliver_frame(int idx, const WireHdr &h, const uint8_t *payload, 
     // peer keep SENDING game data" actually reads on.
     c.last_data_rx = m_last_rx_tick;
     c.data_rx_bytes += (long)(WIRE_HDR_SIZE + len);
-    if (m_role == 0) host_dispatch(idx, h, payload, (int)len);
-    else enqueue(h.src, payload, (int)len);
+    // UNSEQUENCED: a unicast (seq 0 -- the census found none in a match, only lobby traffic) or a frame
+    // whose origin is not a player slot. Delivered as before, with no dedupe and no retention.
+    if (osq_seq == 0 || h.dst != BROADCAST || h.src < 0 || h.src >= osq::ORIGINS) {
+        if (m_role == 0) host_dispatch(idx, h, payload, (int)len, app, app_len);
+        else enqueue(h.src, app, app_len);
+        return;
+    }
+    // SEQUENCED broadcast: dedupe by (origin, seq), deliver per origin in order. A hub forwards every
+    // frame that is NEW to it, as received (prefix and all), the moment it arrives -- the receivers
+    // run the same layer, so a frame that overtakes a hole waits there for its predecessor.
+    const osq::Layer::Rx rx = m_osq.rx(
+        h.src, osq_inc, osq_seq, osq_seq, app, app_len, is_bare_horizon(app, app_len), m_last_rx_tick,
+        [this](int origin, const uint8_t *d, int n) { enqueue(origin, d, n); });
+    if (m_role == 0 && (rx == osq::Layer::Rx::Delivered || rx == osq::Layer::Rx::Ahead))
+        for (int i = 0; i < MH_NET_MAX_PEERS; ++i)
+            if (m_conns[i].active && i != idx) send_frame(i, FLAG_DATA, h.src, h.dst, payload, (int)len);
 }
 
-void Endpoint::host_dispatch(int from_idx, const WireHdr &h, const void *payload, int len) {
-    if (h.dst == m_my_id || h.dst == BROADCAST) enqueue(h.src, payload, len);
+void Endpoint::host_dispatch(int from_idx, const WireHdr &h, const uint8_t *raw, int raw_len,
+                             const uint8_t *app, int app_len) {
+    if (h.dst == m_my_id || h.dst == BROADCAST) enqueue(h.src, app, app_len);
     if (h.dst == BROADCAST) {
         for (int i = 0; i < MH_NET_MAX_PEERS; ++i)
             if (m_conns[i].active && i != from_idx)
-                send_frame(i, FLAG_DATA, h.src, h.dst, payload, len);
+                send_frame(i, FLAG_DATA, h.src, h.dst, raw, raw_len);
     } else if (h.dst != m_my_id) {
         for (int i = 0; i < MH_NET_MAX_PEERS; ++i)
             if (m_conns[i].active && m_conns[i].player_id == h.dst) {
-                send_frame(i, FLAG_DATA, h.src, h.dst, payload, len);
+                send_frame(i, FLAG_DATA, h.src, h.dst, raw, raw_len);
                 break;
             }
     }
@@ -1584,6 +1736,16 @@ void Endpoint::recv_loop() {
             ++m_c.dgram_dropped_sim;
             continue;
         }
+        {
+            bool blocked = false;
+            const unsigned short sp = ntohs(from.sin_port);
+            for (int i = 0; i < 8; ++i)
+                if (m_block_port[i] == (LONG)sp) blocked = true;
+            if (blocked) {
+                ++m_c.dgram_dropped_sim;
+                continue;
+            }
+        }
         on_datagram(pkt, n, from, GetTickCount());
     }
 }
@@ -1687,6 +1849,11 @@ void Endpoint::on_datagram(uint8_t *pkt, int len, const sockaddr_in &from, DWORD
     }
     LeaveCriticalSection(&m_conn_cs);
 
+    // 2b. mp:U61 -- a MESH PROBE or ECHO from another client: not a conn of ours, but sealed under a
+    //     per-sender key derived from the per-match mesh key (mesh.h). Only a client with a key looks.
+    // mp:U63 -- a candidate that already BECAME the hub still hears FO_STATE from survivors that have not dialled yet.
+    if ((m_role == 1 || m_rehomed) && m_mesh.key_valid && mesh_on_datagram(pkt, len, from, now)) return;
+
     // 3. handshake datagram 3 (host side) or 4 (client side), on a conn that is not live yet.
     if (m_role == 0 && peek.type == U::PKT_TOKEN) {
         EnterCriticalSection(&m_conn_cs);
@@ -1769,6 +1936,8 @@ void Endpoint::timer_loop() {
         last_pass           = now;
 
         if (m_role == 1) client_handshake_tick(now);
+        if (m_hl.todo_valid && m_hl.todo_go) hl_service(); // mp:U62 -- the survivor's half of a handover, with NO lock held
+        if (m_fo.act != FA_NONE) fo_service();             // mp:U63 -- the crash failover's action, with NO lock held
 
         EnterCriticalSection(&m_conn_cs);
         now = GetTickCount(); // re-sample INSIDE the lock (the 2026-08-30 false-drop race)
@@ -1878,6 +2047,21 @@ void Endpoint::timer_loop() {
                 c.last_keep_ms = now;
             }
         }
+        {
+            // mp:U59 -- a hole above the exactly-once frontier that nothing filled within
+            // gap_force_ms is skipped and SAID. Normal play never gets here (each hop is a reliable
+            // ordered stream); the line exists so a run that did is not silent about it.
+            const long skipped = m_osq.c.gap_skipped;
+            m_osq.tick(now, [this](int o, const uint8_t *d, int n) { enqueue(o, d, n); });
+            if (m_osq.c.gap_skipped != skipped)
+                logf("net: udp exactly-once layer SKIPPED %ld hole(s) above an origin's frontier "
+                     "(%ld total) -- nothing filled them within %u ms (last: origin %ld seq %ld..%ld)",
+                     m_osq.c.gap_skipped - skipped, m_osq.c.gap_skipped, (unsigned)m_osq.gap_force_ms,
+                     m_osq.c.skip_origin, m_osq.c.skip_from, m_osq.c.skip_to - 1);
+            rc_tick(now); // mp:U60 -- the hub-change reconcile (a no-op until rehome() ran)
+            mesh_tick(now); // mp:U61 -- probes, brokering, the matrix, succession epochs
+            fo_tick(now);   // mp:U63 -- hub-loss detection, corroboration, the failover's choice
+        }
         LeaveCriticalSection(&m_conn_cs);
 
         if (GetTickCount() - last_ctr >= CTR_MS) {
@@ -1934,37 +2118,95 @@ void Endpoint::timer_loop() {
 // THE TRANSPORT SURFACE
 // =================================================================================================
 int Endpoint::send(int dst_player, const void *buf, int len) {
-    if (!m_started || len < 0 || len > MH_NET_MAX_PAYLOAD) return 0;
+    // mp:U59 -- the exactly-once prefix costs osq::PREFIX_BYTES of the datagram budget, so the game
+    // payload ceiling is that much below MH_NET_MAX_PAYLOAD (mh.exe's packet buffer is 0x3f8).
+    if (!m_started || len < 0 || len > MH_NET_MAX_PAYLOAD - osq::PREFIX_BYTES) return 0;
+    const bool legacy = m_test_legacy != 0; // test-only: behave as a pre-U59 build (see osq_test_legacy)
+    const int  pfx    = legacy ? 0 : osq::PREFIX_BYTES;
+    uint8_t    wire[osq::PREFIX_BYTES + MH_NET_MAX_PAYLOAD];
+    if (len > 0) memcpy(wire + pfx, buf, (size_t)len);
+    const int wlen = len + pfx;
     EnterCriticalSection(&m_conn_cs);
     // mp:SES6 -- per-conn twins of the aggregate tx stamp below, one GetTickCount() for every conn a
     // broadcast fans out to (a peer's OWN "did I send" answer, not a per-datagram timestamp).
     const DWORD now = GetTickCount();
+    // mp:U59 -- number a broadcast ONLY if it will actually leave: a client with no live hub conn drops
+    // the frame (as it always did), and a consumed seq would be a permanent hole at every receiver.
+    uint32_t seq = 0;
+    // mp:U60 -- ...and a REHOMING endpoint numbers + retains it even with no live hub conn: the frame is
+    // not sent now, but the reconcile serves it from the ring once the new hub is up, so an order issued
+    // in the outage is neither lost nor a hole.
+    if (!legacy && dst_player == MH_NET_BROADCAST &&
+        (m_role == 0 || m_conns[0].active || (m_rehomed && m_rc.active)))
+        seq = m_osq.tx(m_my_id, (const uint8_t *)buf, len, is_bare_horizon((const uint8_t *)buf, len), now);
+    if (!legacy) osq::prefix_encode(wire, m_osq.incarnation(), seq);
     if (m_role == 0) {
         if (dst_player == MH_NET_BROADCAST) {
             for (int i = 0; i < MH_NET_MAX_PEERS; ++i)
                 if (m_conns[i].active) {
-                    send_frame(i, FLAG_DATA, (int16_t)m_my_id, BROADCAST, buf, len);
+                    send_frame(i, FLAG_DATA, (int16_t)m_my_id, BROADCAST, wire, wlen);
                     m_conns[i].last_data_tx = now;
-                    m_conns[i].data_tx_bytes += (long)(WIRE_HDR_SIZE + len);
+                    m_conns[i].data_tx_bytes += (long)(WIRE_HDR_SIZE + wlen);
                 }
         } else {
             for (int i = 0; i < MH_NET_MAX_PEERS; ++i)
                 if (m_conns[i].active && m_conns[i].player_id == dst_player) {
-                    send_frame(i, FLAG_DATA, (int16_t)m_my_id, (int16_t)dst_player, buf, len);
+                    send_frame(i, FLAG_DATA, (int16_t)m_my_id, (int16_t)dst_player, wire, wlen);
                     m_conns[i].last_data_tx = now;
-                    m_conns[i].data_tx_bytes += (long)(WIRE_HDR_SIZE + len);
+                    m_conns[i].data_tx_bytes += (long)(WIRE_HDR_SIZE + wlen);
                     break;
                 }
         }
     } else if (m_conns[0].active) {
-        send_frame(0, FLAG_DATA, (int16_t)m_my_id, (int16_t)dst_player, buf, len);
+        send_frame(0, FLAG_DATA, (int16_t)m_my_id, (int16_t)dst_player, wire, wlen);
         m_conns[0].last_data_tx = now;
-        m_conns[0].data_tx_bytes += (long)(WIRE_HDR_SIZE + len);
+        m_conns[0].data_tx_bytes += (long)(WIRE_HDR_SIZE + wlen);
     }
     LeaveCriticalSection(&m_conn_cs);
     ++m_tx_pkts;
-    m_tx_bytes += (long)(WIRE_HDR_SIZE + len);
+    m_tx_bytes += (long)(WIRE_HDR_SIZE + wlen);
     return 1;
+}
+
+// ---- mp:U59: the exactly-once layer's reconcile surface (see the declaration's note) ---------------
+void Endpoint::osq_report(osq::Report &out) {
+    EnterCriticalSection(&m_conn_cs);
+    m_osq.report(out);
+    LeaveCriticalSection(&m_conn_cs);
+}
+int Endpoint::osq_serve(int origin, uint32_t from, uint32_t to, osq_serve_fn fn, void *ctx) {
+    EnterCriticalSection(&m_conn_cs);
+    const int n = m_osq.serve(origin, from, to,
+                              [&](uint16_t inc, uint32_t lo, uint32_t hi, const uint8_t *d, int len, bool sup) {
+                                  fn(ctx, inc, lo, hi, d, len, sup);
+                              });
+    LeaveCriticalSection(&m_conn_cs);
+    return n;
+}
+int Endpoint::osq_ingest(int origin, uint16_t inc, uint32_t lo, uint32_t hi, const uint8_t *data, int len) {
+    EnterCriticalSection(&m_conn_cs);
+    // The same backpressure the live stream obeys (stream_drain): with the game queue near full, touch
+    // NOTHING -- a frame the layer counted as delivered but the queue refused would be lost for good.
+    if (!inbound_has_room()) {
+        LeaveCriticalSection(&m_conn_cs);
+        return -1;
+    }
+    const osq::Layer::Rx r = m_osq.rx(origin, inc, lo, hi, data, len, is_bare_horizon(data, len), GetTickCount(),
+                                      [this](int o, const uint8_t *d, int n) { enqueue(o, d, n); });
+    LeaveCriticalSection(&m_conn_cs);
+    return (int)r;
+}
+osq::Counters Endpoint::osq_counters() {
+    EnterCriticalSection(&m_conn_cs);
+    const osq::Counters c = m_osq.counters();
+    LeaveCriticalSection(&m_conn_cs);
+    return c;
+}
+void Endpoint::osq_test_legacy(bool on) { InterlockedExchange(&m_test_legacy, on ? 1 : 0); }
+void Endpoint::osq_gap_force(uint32_t ms) {
+    EnterCriticalSection(&m_conn_cs);
+    m_osq.gap_force_ms = ms;
+    LeaveCriticalSection(&m_conn_cs);
 }
 
 void Endpoint::send_ctrl(uint16_t flags, const unsigned char *buf, int len) {
@@ -2098,7 +2340,22 @@ int Endpoint::active_peer_ids(int *out, int cap) {
     return n;
 }
 
-int Endpoint::take_dead_peer() { return (int)InterlockedExchange(&m_dead_peer, -1); }
+// U17's latch is ONE slot. mp:U63 queues more than one dead peer at a time (the old hub AND a survivor that never
+// re-dialled), so the extras wait in a mask and are popped lowest id first once the slot is empty.
+int Endpoint::take_dead_peer() {
+    const int v = (int)InterlockedExchange(&m_dead_peer, -1);
+    if (v >= 0 || !m_cs_ready) return v;
+    EnterCriticalSection(&m_conn_cs);
+    int r = -1;
+    for (int i = 0; i < 8; ++i)
+        if (m_dead_extra >> i & 1u) {
+            m_dead_extra &= ~(1u << i);
+            r = i;
+            break;
+        }
+    LeaveCriticalSection(&m_conn_cs);
+    return r;
+}
 
 // mp:R3e. `tx_dead` rather than `active` for the conn half: drop_conn sets both, but a conn is
 // admitted (`active`) only once its token has been presented, and a peer between the challenge and
@@ -2259,6 +2516,456 @@ void Endpoint::set_peer_horizon(int player_id, int horizon_ms) {
             }
     }
     LeaveCriticalSection(&m_conn_cs);
+}
+
+// =================================================================================================
+// mp:U60 (HM-M2) -- REHOME
+//
+// The mechanism the host-migration plan (mp:U57, design section 6.1) names and M3..M5
+// will drive. Three things happen, in this order, all under m_conn_cs so neither thread ever sees a
+// half-switched endpoint:
+//
+//   1. THE OLD HUB CONNECTION IS RETIRED IN PLACE. drop_conn() on slot 0 -- the one conn a client
+//      holds. Nothing else is touched: not the socket (its NAT mapping and port are what the plan's
+//      pinhole argument rests on), not the inbound lanes (a frame already queued for the game stays
+//      queued -- stop() would have emptied them), not m_my_id (the id is KEPT, never reassigned: the
+//      re-binding is the HELLO that carries it), not the exactly-once layer (incarnation, per-origin
+//      sequence and retention rings are what the reconcile serves from) and not channel C.
+//   2. THE ROLE SWITCHES. A hub: m_role 1 -> 0, a fresh transport id (the scope its conn ids derive
+//      from), host_assign OFF -- so host_on_token sends no WELCOME -- and a roster of the ids that may
+//      re-dial. A client: a new Pending handshake toward the new hub address; the old id rides in the
+//      FLAG_HELLO client_on_token_ack already sends.
+//   3. THE RECONCILE RUNS over the new topology (FLAG_RECONCILE, below). osq_gap_force(0) holds for
+//      its duration (M1's note): a hole above a frontier must be filled by the reconcile, never
+//      skipped by the timeout.
+//
+// WHY A FRAME TYPE AND NOT A CALLBACK. The reconcile is the endpoint's own business: it needs the
+// retention rings, the conn table and the game-queue headroom, all of which live here. A new control
+// flag (10) is consumed in deliver_frame and never reaches the game queue or the ctrl callback, so it
+// cannot touch determinism, and an endpoint that does not know it ignores it by the receiver rule
+// (net_wire.h) -- which is why no capability byte moved.
+//
+//   RC_REPORT  survivor -> hub    [1][report: version | 8 x (front u32, oldest u32, inc u16)]  82 B
+//   RC_FETCH   hub -> holder      [2][origin][from u32][to u32][requester id]                    11 B
+//   RC_RANGE   holder -> requester (dst = requester; the hub forwards)  [3][range record]
+//   RC_TARGET  hub -> survivor    [4][flags: bit0 = unrecoverable][8 x target u32]               34 B
+//
+// A survivor REPORTs (again every RC_REPORT_MS while it has not reached its TARGET -- a report is a
+// snapshot, and the live stream keeps moving); the hub plans with osq::plan over the reports it holds
+// plus its own, FETCHes from each max-holder (serving locally when it is the holder), and sends every
+// reporter its TARGET: the per-origin frontier it is done at. A survivor is DONE when every origin's
+// frontier is at or past the target and nothing waits above a hole. RANGEs arrive on the ordinary
+// conn stream, so stream_drain's headroom rule (INBOUND_HEADROOM free slots before it delivers a
+// segment) IS the "osq_ingest returned -1: drain and retry" of M1 -- a range is only ever handed to
+// the layer with room for the 17 frames it can release; `ranges_noroom` counts the day that is wrong.
+// =================================================================================================
+namespace {
+constexpr uint8_t RC_REPORT = 1, RC_FETCH = 2, RC_RANGE = 3, RC_TARGET = 4;
+constexpr DWORD   RC_REPORT_MS       = 500;   // a survivor re-reports at this cadence until done
+constexpr DWORD   RC_ABORT_MS        = 30000; // a reconcile that has not finished by now is given up on
+constexpr int     RC_WAIT_MS_DEFAULT = 5000;  // a hub waits this long for the roster's reports
+constexpr int     RC_FETCH_CAP       = 64;
+inline uint32_t   rd32(const uint8_t *p) {
+    return (uint32_t)p[0] | ((uint32_t)p[1] << 8) | ((uint32_t)p[2] << 16) | ((uint32_t)p[3] << 24);
+}
+inline void wr32(uint8_t *p, uint32_t v) {
+    p[0] = (uint8_t)v;
+    p[1] = (uint8_t)(v >> 8);
+    p[2] = (uint8_t)(v >> 16);
+    p[3] = (uint8_t)(v >> 24);
+}
+} // namespace
+
+int Endpoint::conn_of_player(int id) {
+    for (int i = 0; i < MH_NET_MAX_PEERS; ++i)
+        if (m_conns[i].active && !m_conns[i].tx_dead && m_conns[i].player_id == id) return i;
+    return -1;
+}
+
+// Tell a peer it is refused (so its side drops promptly instead of waiting out the link timeout), then
+// drop it. Caller holds m_conn_cs.
+void Endpoint::refuse_conn(int idx, const char *why) {
+    Conn &c = m_conns[idx];
+    if (c.bound && !c.tx_dead)
+        send_sealed(c.addr, U::PKT_DISCONNECT, c.conn_id, c.tx_seq++,
+                    (m_role == 0) ? c.keys.enc_s2c : c.keys.enc_c2s,
+                    (m_role == 0) ? c.keys.mac_s2c : c.keys.mac_c2s, nullptr, 0);
+    drop_conn(idx, why);
+}
+
+unsigned short Endpoint::bound_port() {
+    if (!m_started || m_sock == INVALID_SOCKET) return 0;
+    sockaddr_in a;
+    int         alen = (int)sizeof(a);
+    memset(&a, 0, sizeof(a));
+    if (getsockname(m_sock, (sockaddr *)&a, &alen) != 0) return 0;
+    return ntohs(a.sin_port);
+}
+
+bool Endpoint::rehome(const RehomeSpec &sp) {
+    if (!m_started || !m_cs_ready) return false;
+    sockaddr_in to;
+    memset(&to, 0, sizeof(to));
+    uint8_t tid[UUID7_BYTES];
+    if (sp.as_hub) {
+        if (!MH_Key_Random(tid, (unsigned)UUID7_BYTES)) {
+            logf("net: udp rehome REFUSED -- no secure randomness available for the hub's transport id");
+            return false;
+        }
+    } else {
+        const unsigned long v = sp.host[0] ? inet_addr(sp.host) : INADDR_NONE;
+        if (v == INADDR_NONE || sp.port <= 0 || sp.port > 65535) {
+            logf("net: udp rehome REFUSED -- the new hub address '%s':%d does not parse", sp.host, sp.port);
+            return false;
+        }
+        to.sin_family      = AF_INET;
+        to.sin_port        = htons((u_short)sp.port);
+        to.sin_addr.s_addr = v;
+    }
+
+    EnterCriticalSection(&m_conn_cs);
+    if (m_role != 1 || InterlockedCompareExchange(&m_id_assigned, 0, 0) == 0 || m_my_id < 0 ||
+        m_my_id >= osq::ORIGINS) {
+        LeaveCriticalSection(&m_conn_cs);
+        logf("net: udp rehome REFUSED -- only a started CLIENT that holds a player id can re-home "
+             "(role %d, id %d)",
+             (int)m_role, m_my_id);
+        return false;
+    }
+    const DWORD now = GetTickCount();
+
+    // 1. retire the old hub connection; keep everything else.
+    if (m_conns[0].bound || m_conns[0].active)
+        drop_conn(0, "re-homing: the old hub connection is retired in place (mp:U60)");
+    memset(m_pend, 0, sizeof(m_pend)); // any handshake still in flight was toward the OLD hub
+    InterlockedExchange(&m_dead_peer, -1);
+    m_host_assign = false; // ids are KEPT: no WELCOME is ever sent or expected from here on
+    m_rehomed     = true;
+
+    // 3 (state). The reconcile: M1's note -- never skip a hole while migrating.
+    const uint32_t saved = m_rc.active ? m_rc.saved_gap_ms : m_osq.gap_force_ms;
+    memset(&m_rc, 0, sizeof(m_rc));
+    m_rc.active        = true;
+    m_rc.started_ms    = now;
+    m_rc.saved_gap_ms  = saved;
+    m_rc.skip          = sp.test_skip_reconcile;
+    m_osq.gap_force_ms = 0;
+
+    // 2. the role.
+    if (sp.as_hub) {
+        memset(m_roster, 0, sizeof(m_roster));
+        int n = 0;
+        for (int i = 0; i < sp.roster_n && i < MH_NET_MAX_PEERS; ++i) {
+            const int id = sp.roster[i];
+            if (id >= 0 && id < osq::ORIGINS && id != m_my_id && !m_roster[id]) {
+                m_roster[id] = 1;
+                ++n;
+            }
+        }
+        memcpy(m_transport_id, tid, UUID7_BYTES);
+        m_rc.deadline_ms = now + (DWORD)(sp.reconcile_wait_ms > 0 ? sp.reconcile_wait_ms : RC_WAIT_MS_DEFAULT);
+        m_role           = 0;
+        logf("net: udp REHOME -- player %d is now the HUB on :%u, socket/lanes/ids/exactly-once state kept; "
+             "%d survivor(s) expected, no WELCOME will be sent (mp:U60)",
+             m_my_id, (unsigned)bound_port(), n);
+    } else {
+        m_hs_budget_ms = sp.dial_budget_ms > 0 ? sp.dial_budget_ms : 0;
+        Pending &p     = m_pend[0];
+        memset(&p, 0, sizeof(p));
+        p.used     = true;
+        p.addr     = to;
+        p.first_ms = now;
+        if (!MH_Key_Random(p.cn, (unsigned)NONCE_LEN) ||
+            !MH_Key_Random((uint8_t *)&p.seq, (unsigned)sizeof(p.seq))) {
+            p.used = false;
+            LeaveCriticalSection(&m_conn_cs);
+            logf("net: udp rehome REFUSED -- no secure randomness available for the handshake");
+            return false;
+        }
+        logf("net: udp REHOME -- player %d re-dials the new hub %s:%d keeping its id, socket and lanes "
+             "(mp:U60)",
+             m_my_id, sp.host, sp.port);
+    }
+    LeaveCriticalSection(&m_conn_cs);
+    return true;
+}
+
+void Endpoint::rehome_status(RehomeStatus &o) {
+    memset(&o, 0, sizeof(o));
+    if (!m_cs_ready) return;
+    EnterCriticalSection(&m_conn_cs);
+    o.rehomed         = m_rehomed;
+    o.role            = (int)m_role;
+    o.reconciling     = m_rc.active;
+    o.done            = m_rc.done;
+    o.unrecoverable   = m_rc.unrecoverable;
+    o.aborted         = m_rc.aborted;
+    o.reports_in      = m_rc.reports_in;
+    o.plans           = m_rc.plans;
+    o.fetches_issued  = m_rc.fetches_issued;
+    o.ranges_served   = m_rc.ranges_served;
+    o.ranges_ingested = m_rc.ranges_ingested;
+    o.ranges_noroom   = m_rc.ranges_noroom;
+    o.foreign_refused = m_rc.foreign_refused;
+    o.welcome_tx      = (long)m_welcome_tx;
+    o.welcome_rx      = (long)m_welcome_rx;
+    for (int i = 0; i < 8; ++i) o.target[i] = m_rc.target[i];
+    o.target_valid = m_rc.target_valid;
+    LeaveCriticalSection(&m_conn_cs);
+}
+
+// True when this endpoint's exactly-once layer is at or past the hub's TARGET on every origin, with no
+// frame waiting above a hole. Caller holds m_conn_cs.
+bool Endpoint::rc_reached() {
+    if (!m_rc.target_valid) return false;
+    osq::Report r;
+    m_osq.report(r);
+    for (int o = 0; o < osq::ORIGINS; ++o) {
+        if (r.front[o] < m_rc.target[o]) return false;
+        if (m_osq.o[o].ahead_n != 0) return false;
+    }
+    return true;
+}
+
+void Endpoint::rc_finish(const char *why) {
+    if (!m_rc.active) return;
+    // mp:U63 -- an incomplete reconcile says WHICH origin is short (a crash can leave a hole nobody holds)
+    if (!m_rc.done)
+        for (int o = 0; o < osq::ORIGINS; ++o) {
+            osq::Report r;
+            m_osq.report(r);
+            if (m_rc.target_valid && (r.front[o] < m_rc.target[o] || m_osq.o[o].ahead_n != 0))
+                logf("net: udp reconcile origin %d: front %u target %u ahead %d next %u oldest-retained %u (mp:U63)", o,
+                     (unsigned)r.front[o], (unsigned)m_rc.target[o], m_osq.o[o].ahead_n, (unsigned)m_osq.o[o].next,
+                     (unsigned)r.oldest[o]);
+        }
+    m_osq.gap_force_ms = m_rc.saved_gap_ms; // normal play skips a stuck hole again
+    m_rc.active        = false;
+    logf("net: udp reconcile %s (player %d, role %d: reports %d, plans %d, fetches %d, ranges served %ld "
+         "ingested %ld) (mp:U60)",
+         why, m_my_id, (int)m_role, m_rc.reports_in, m_rc.plans, m_rc.fetches_issued, m_rc.ranges_served,
+         m_rc.ranges_ingested);
+}
+
+// Put every retained entry of `origin` in [from, to] on the wire as RC_RANGE frames addressed to
+// `to_id` (a hub sends on that survivor's conn; a client sends on its one conn and the hub forwards).
+void Endpoint::rc_serve_to(int to_id, int origin, uint32_t from, uint32_t to) {
+    const int ci = (m_role == 0) ? conn_of_player(to_id) : (m_conns[0].active ? 0 : -1);
+    if (ci < 0) return;
+    m_osq.serve(origin, from, to,
+                [&](uint16_t inc, uint32_t lo, uint32_t hi, const uint8_t *d, int len, bool) {
+                    uint8_t buf[1 + osq::RANGE_HDR_BYTES + osq::PAYLOAD_MAX];
+                    if (1 + osq::RANGE_HDR_BYTES + len > MH_NET_MAX_PAYLOAD) return; // cannot be framed
+                    buf[0]      = RC_RANGE;
+                    const int k = osq::range_encode(buf + 1, (int)sizeof(buf) - 1, origin, inc, lo, hi, d, len);
+                    if (k == 0) return;
+                    send_frame(ci, FLAG_RECONCILE, (int16_t)m_my_id, (int16_t)to_id, buf, 1 + k);
+                    ++m_rc.ranges_served;
+                });
+}
+
+void Endpoint::rc_ingest_range(const uint8_t *rec, int len) {
+    int            origin = 0, dlen = 0;
+    uint16_t       inc = 0;
+    uint32_t       lo = 0, hi = 0;
+    const uint8_t *data = nullptr;
+    if (osq::range_decode(rec, len, origin, inc, lo, hi, data, dlen) == 0) {
+        ++m_c.malformed;
+        return;
+    }
+    if (!inbound_has_room()) ++m_rc.ranges_noroom; // the stream's headroom rule should make this impossible
+    m_osq.rx(origin, inc, lo, hi, data, dlen, is_bare_horizon(data, dlen), GetTickCount(),
+             [this](int o, const uint8_t *d, int n) { enqueue(o, d, n); });
+    ++m_rc.ranges_ingested;
+}
+
+void Endpoint::rc_on_frame(int idx, const WireHdr &h, const uint8_t *payload, uint32_t len) {
+    if (!m_rehomed || len < 1) return; // a reconcile frame outside a rehome is nobody's business
+    Conn &c = m_conns[idx];
+    switch (payload[0]) {
+        case RC_REPORT: {
+            if (m_role != 0 || c.player_id < 0 || c.player_id >= osq::ORIGINS) return;
+            osq::Report r;
+            if (!osq::report_decode(payload + 1, (int)len - 1, r)) {
+                ++m_c.malformed;
+                return;
+            }
+            m_rc.rep[c.player_id]  = r;
+            m_rc.have[c.player_id] = 1;
+            m_rc.dirty             = 1;
+            ++m_rc.reports_in;
+            return;
+        }
+        case RC_FETCH: {
+            if (len != 11) {
+                ++m_c.malformed;
+                return;
+            }
+            rc_serve_to((int)payload[10], (int)payload[1], rd32(payload + 2), rd32(payload + 6));
+            return;
+        }
+        case RC_RANGE: {
+            if (m_role == 0 && h.dst != m_my_id) { // the hub forwards a range to its requester
+                const int ci = conn_of_player(h.dst);
+                if (ci >= 0 && ci != idx) send_frame(ci, FLAG_RECONCILE, h.src, h.dst, payload, (int)len);
+                return;
+            }
+            rc_ingest_range(payload + 1, (int)len - 1);
+            return;
+        }
+        case RC_TARGET: {
+            if (m_role != 1 || len != 34 || m_rc.done) return;
+            for (int o = 0; o < osq::ORIGINS; ++o) m_rc.target[o] = rd32(payload + 2 + 4 * o);
+            m_rc.target_valid = true;
+            if (payload[1] & 1) {
+                m_rc.unrecoverable = true;
+                rc_finish("found a needed frame below every holder's retention -- UNRECOVERABLE, the match must end");
+            }
+            return;
+        }
+        default: return; // a kind from a newer build
+    }
+}
+
+// The hub's plan: its own report plus every survivor's latest, through osq::plan. Fetch from each
+// max-holder, tell every reporter its TARGET. Idempotent -- a repeat fetches ranges a requester may
+// already hold, and the layer dedupes them. Caller holds m_conn_cs.
+void Endpoint::rc_plan(DWORD now) {
+    (void)now;
+    osq::Report rep[osq::ORIGINS + 1];
+    int         ids[osq::ORIGINS + 1];
+    int         n = 0;
+    m_osq.report(rep[n]);
+    ids[n++] = m_my_id;
+    for (int id = 0; id < osq::ORIGINS; ++id)
+        if (m_rc.have[id] && id != m_my_id) {
+            rep[n]   = m_rc.rep[id];
+            ids[n++] = id;
+        }
+    osq::Fetch f[RC_FETCH_CAP];
+    uint32_t   target[osq::ORIGINS];
+    bool       unrec = false;
+    const int  nf    = osq::plan(rep, n, f, RC_FETCH_CAP, &unrec, target);
+    m_rc.dirty       = 0;
+    m_rc.planned     = true;
+    ++m_rc.plans;
+    m_rc.fetches_issued += nf;
+    for (int k = 0; k < nf && k < 8; ++k)
+        logf("net: udp reconcile plan: origin %d seq %u..%u from player %d to player %d (target %u) (mp:U63)", (int)f[k].origin,
+             (unsigned)f[k].from, (unsigned)f[k].to, ids[f[k].holder], ids[f[k].to_peer], (unsigned)target[f[k].origin]);
+    for (int k = 0; k < nf; ++k) {
+        const int holder = ids[f[k].holder], req = ids[f[k].to_peer];
+        if (holder == m_my_id) {
+            rc_serve_to(req, f[k].origin, f[k].from, f[k].to);
+        } else {
+            const int ci = conn_of_player(holder);
+            if (ci < 0) continue;
+            uint8_t b[11];
+            b[0] = RC_FETCH;
+            b[1] = f[k].origin;
+            wr32(b + 2, f[k].from);
+            wr32(b + 6, f[k].to);
+            b[10] = (uint8_t)req;
+            send_frame(ci, FLAG_RECONCILE, (int16_t)m_my_id, (int16_t)holder, b, (int)sizeof(b));
+        }
+    }
+    uint8_t t[34];
+    t[0] = RC_TARGET;
+    t[1] = unrec ? 1 : 0;
+    for (int o = 0; o < osq::ORIGINS; ++o) wr32(t + 2 + 4 * o, target[o]);
+    for (int i = 1; i < n; ++i) {
+        const int ci = conn_of_player(ids[i]);
+        if (ci >= 0) send_frame(ci, FLAG_RECONCILE, (int16_t)m_my_id, (int16_t)ids[i], t, (int)sizeof(t));
+    }
+    for (int o = 0; o < osq::ORIGINS; ++o) m_rc.target[o] = target[o];
+    m_rc.target_valid = true;
+    if (unrec) {
+        m_rc.unrecoverable = true;
+        rc_finish("found a needed frame below every holder's retention -- UNRECOVERABLE, the match must end");
+    }
+}
+
+// mp:U63 -- HOLE REPAIR, for as long as this endpoint has been rehomed (not only while the reconcile is in flight).
+// While the reconcile ranges are still arriving, the live stream already delivers the survivor's NEW frames: those
+// land above the hole the reconcile is about to fill, the 16-slot ahead window holds only the first of them and the
+// rest are dropped for good (the stream delivered them once). A survivor also stops reporting once its own reconcile
+// is done. So any origin with frames waiting above a hole for >= 300 ms is asked for [next, next+1023] again: the hub
+// asks every connected survivor, a client asks its hub; the serving side sends what its ring retains and the layer
+// dedupes the rest. Cheap when nothing waits. Caller holds m_conn_cs.
+void Endpoint::rc_repair_holes(DWORD now) {
+    if ((DWORD)(now - m_rc.last_repair_ms) < 300) return;
+    bool any = false;
+    for (int o = 0; o < osq::ORIGINS; ++o) {
+        const osq::Layer::Origin &g = m_osq.o[o];
+        if (g.ahead_n == 0 || (DWORD)(now - g.ahead_t) < 300) continue;
+        any = true;
+        uint32_t lowest = 0xffffffffu;
+        for (int s = 0; s < osq::AHEAD_SLOTS; ++s)
+            if (g.ahead[s].used && g.ahead[s].lo < lowest) lowest = g.ahead[s].lo;
+        if (lowest == 0xffffffffu || lowest <= g.next) continue;
+        uint8_t b[11];
+        b[0] = RC_FETCH;
+        b[1] = (uint8_t)o;
+        wr32(b + 2, g.next);
+        wr32(b + 6, g.next + 1023);
+        b[10] = (uint8_t)m_my_id;
+        if (m_role == 0) {
+            for (int id = 0; id < osq::ORIGINS; ++id) {
+                const int ci = (id == m_my_id) ? -1 : conn_of_player(id);
+                if (ci < 0) continue;
+                send_frame(ci, FLAG_RECONCILE, (int16_t)m_my_id, (int16_t)id, b, (int)sizeof(b));
+                ++m_rc.fetches_issued;
+            }
+        } else if (m_conns[0].active) {
+            send_frame(0, FLAG_RECONCILE, (int16_t)m_my_id, BROADCAST, b, (int)sizeof(b));
+            ++m_rc.fetches_issued;
+        }
+    }
+    if (any) m_rc.last_repair_ms = now ? now : 1u;
+}
+
+void Endpoint::rc_tick(DWORD now) {
+    if (!m_rehomed || m_rc.skip) return;
+    rc_repair_holes(now);
+    if (m_role == 0) {
+        int expected = 0, have = 0;
+        const bool waited = (int32_t)(now - m_rc.deadline_ms) >= 0;
+        for (int id = 0; id < osq::ORIGINS; ++id)
+            if (m_roster[id]) {
+                // mp:U63 -- a roster id that has neither reported nor connected once the wait is over is a survivor that
+                // died with the hub (a crash failover seats ids that may be gone): it is not waited for, or the reconcile
+                // could never finish. (A planned handover's roster is all alive: unchanged.)
+                if (m_rc.have[id] || !waited || conn_of_player(id) >= 0) ++expected;
+                if (m_rc.have[id]) ++have;
+            }
+        if (m_rc.active && !m_rc.planned && (have == expected || (int32_t)(now - m_rc.deadline_ms) >= 0))
+            rc_plan(now);
+        else if (m_rc.planned && m_rc.dirty)
+            rc_plan(now);
+        if (m_rc.active && m_rc.planned && !m_rc.unrecoverable && have == expected && rc_reached()) {
+            m_rc.done = true;
+            rc_finish("complete");
+        }
+    } else if (m_rc.active) {
+        if (m_conns[0].active && !m_rc.done && (DWORD)(now - m_rc.last_report_ms) >= RC_REPORT_MS) {
+            uint8_t p[1 + osq::REPORT_WIRE_BYTES];
+            p[0] = RC_REPORT;
+            osq::Report r;
+            m_osq.report(r);
+            osq::report_encode(r, p + 1);
+            send_frame(0, FLAG_RECONCILE, (int16_t)m_my_id, BROADCAST, p, (int)sizeof(p));
+            m_rc.last_report_ms = now ? now : 1u;
+            ++m_rc.reports_in; // on a survivor: reports SENT
+        }
+        if (m_rc.target_valid && rc_reached()) {
+            m_rc.done = true;
+            rc_finish("complete");
+        }
+    }
+    if (m_rc.active && (DWORD)(now - m_rc.started_ms) >= RC_ABORT_MS) {
+        m_rc.aborted = true;
+        rc_finish("ABORTED -- not complete within the abort budget");
+    }
 }
 
 } // namespace netudp

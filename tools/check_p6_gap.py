@@ -59,10 +59,21 @@ does anything).
 
 import argparse
 import glob
+import json
 import os
 import re
 import sys
 import tempfile
+
+# Verbatim copy of tools/_rundir.py's canon() (no import chain between checkers): SES8 names
+# (`YYYY-MM-DDTHH-MM-SSZ_...`) rewritten to the SES1 compact stamp so the two generations sort together.
+_NEW_STAMP = re.compile(r"^(\d{4})-(\d{2})-(\d{2})T(\d{2})-(\d{2})-(\d{2})Z")
+
+
+def canon(name):
+    """The name with an SES8 stamp rewritten to the SES1 compact form, so the two sort together."""
+    return _NEW_STAMP.sub(r"\1\2\3T\4\5\6Z", name)
+
 
 _WALL_TS_RE = re.compile(r"^\[(\d{2}):(\d{2}):(\d{2})\.(\d{3})\]")
 _GAMEOVER_RE = re.compile(r"on_gameover ENTER sess=(\d+) outcome=(\d+) gclk=(\d+)")
@@ -121,9 +132,25 @@ def boot_net_lines(session_dir):
     against rows in the match session's own mh_frametime.log -- only the FILE rotates, not the
     clock. `session_dir`'s parent is the lane's "logs" folder (the same layout sp_newest_run reads),
     so the boot dir is found the same way: the newest `*_menu_*` sibling.
+
+    SES8 (2026-09-29): the session's own session.json names its process dir (`process_dir`) and that
+    wins when it exists; otherwise "newest" is by canon(name), because SES8's
+    `YYYY-MM-DDTHH-MM-SSZ` names do not string-sort with the SES1 ones a lane still holds.
     """
     logs_dir = os.path.dirname(os.path.abspath(session_dir.rstrip("\\/")))
-    cands = sorted(d for d in glob.glob(os.path.join(logs_dir, "*_menu_*")) if os.path.isdir(d))
+    named = None
+    try:
+        with open(os.path.join(session_dir, "session.json"), encoding="utf-8") as fh:
+            named = (json.load(fh) or {}).get("process_dir")
+    except (OSError, ValueError, AttributeError):
+        named = None
+    if named and os.path.isdir(os.path.join(logs_dir, named)):
+        cands = [os.path.join(logs_dir, named)]
+    else:
+        cands = sorted(
+            (d for d in glob.glob(os.path.join(logs_dir, "*_menu_*")) if os.path.isdir(d)),
+            key=lambda d: canon(os.path.basename(d)),
+        )
     if not cands:
         return []
     p = os.path.join(cands[-1], "mh_net.log")
@@ -399,6 +426,22 @@ def selftest():
             r.stdout + r.stderr,
         )
 
+    # SES8: the boot dir of a mixed-generation lane is the SES8 one (newest by time, not by raw
+    # name), and a session.json `process_dir` overrides "newest" altogether.
+    with tempfile.TemporaryDirectory() as base:
+        logs = os.path.join(base, "logs")
+        stale = os.path.join(logs, "20260917T000000Z_menu_solo")
+        boot = os.path.join(logs, "2026-09-29T08-15-02Z_menu_solo")
+        sess = os.path.join(logs, "2026-09-29T08-15-09Z_ab12cd34_blue-monday_client")
+        _write(os.path.join(stale, "mh_net.log"), "; stale\n")
+        _write(os.path.join(boot, "mh_net.log"), "; boot\n")
+        _write(os.path.join(sess, "mh_net.log"), "")
+        if boot_net_lines(sess) != ["; boot"]:
+            failures.append("SES8 mixed lane: newest boot dir by time")
+        with open(os.path.join(sess, "session.json"), "w") as fh:
+            json.dump({"process_dir": os.path.basename(stale)}, fh)
+        if boot_net_lines(sess) != ["; stale"]:
+            failures.append("SES8: session.json process_dir wins")
     if failures:
         print("check_p6_gap --selftest: FAIL -- %s" % ", ".join(failures))
         return 1

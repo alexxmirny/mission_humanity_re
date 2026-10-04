@@ -189,7 +189,12 @@ def main():
         "copy /y \"%s\" \"%s.sweep.bak\"" % (vm_conf_remote, vm_conf_remote),
     )
     if "cannot find" in (r.stdout + r.stderr).lower():
-        raise RuntimeError("VM dgVoodoo.conf not found at %s -- check --vm-dir" % vm_conf_remote)
+        # PT-GFX5 (2026-09-28): dgVoodoo's DDraw.dll + dgVoodoo.conf were DELETED from both rig VMs, so
+        # this refusal is now the expected outcome on the VM half; re-provision dgVoodoo there first.
+        raise RuntimeError(
+            "VM dgVoodoo.conf not found at %s -- check --vm-dir (dgVoodoo was removed from the rig VMs "
+            "2026-09-28, PT-GFX5; this sweep needs it re-provisioned)" % vm_conf_remote
+        )
 
     fieldnames = [
         "idx",
@@ -270,6 +275,10 @@ def main():
                 cmd = [
                     sys.executable,
                     MP_RUN,
+                    # PT-GFX5: this sweep edits dgVoodoo.conf's FPSLimit, which only a
+                    # `system` peer reads; the rig default (own) paces by [video] fps_limit.
+                    "--backend",
+                    "system",
                     "--steps",
                     str(args.steps),
                     "--step-ms",

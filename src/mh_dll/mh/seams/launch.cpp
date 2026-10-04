@@ -51,6 +51,7 @@
 #include "hook/watcall.h"            // call_watcall1 (Watcom __watcall(EAX) bridge)
 #include "tact/tact_mission_start.h" // mh::tact::mission_start -- the --tactical verb enters OURS
 #include "seams/map_transfer.h"      // mp:X2/X2b -- maps::host_start_blocked, the Start refusal
+#include "seams/boot_residue.h"      // mp:D45 -- the boot-snapshot restore arithmetic
 
 using mh::hook::call_watcall1;
 using mh::hook::entry_claim; // U30: every install below names its claim and itself
@@ -771,6 +772,34 @@ void mp_zero_sim_clocks() {
 // (the run-before hook every manual-lobby entry passes through, host AND client) or, on a force-entry
 // verb run where that hook is not installed, from mp_lobby_entry_tick -- once per entry, identically
 // on every peer, so all of them enter from one state.
+// mp:D45 -- the BOOT SNAPSHOT of the regions a single-player game (or an earlier match) leaves dirty and the
+// D36 clear does not name. Captured once, at the first IDLE main-menu frame (cfg loaded, no session begun --
+// MH_MP_CaptureBootResidue, called from the present hook), restored at every match entry. The restore set is
+// resolved through the generated region registry (RID_*), never a raw VA. `restore=false` regions are logged
+// but never written: order_staging / order_pending_arr are verdict-excluded and the session reset owns them,
+// so the line only reports whether the same residue reaches them.
+//
+// WHY NOT "EVERY HASHED REGION" (the brief's preferred design). The other hashed regions are either rebuilt
+// by session_begin_multi / the map load (units, buildings, tile_objects, ... -- measured identical across
+// peers in the D45 host report), or written by the lobby / lockstep prep BEFORE begin_map_load and therefore
+// legitimately different from the boot state (players, peer_*, ls_*, player_resources, progress). A blanket
+// restore would either no-op or erase the lobby's own writes; the three below are the measured residue set.
+struct boot_keep {
+    mh::state::region_id rid;
+    const char          *name;
+    bool                 restore;
+    uint8_t             *snap; // HeapAlloc'd copy, null until captured
+    uint32_t             len;
+};
+boot_keep g_boot_keep[] = {
+    {mh::state::RID_STRAT_PLAYERS, "strat_players", true, nullptr, 0},
+    {mh::state::RID_PLANETS, "planets", true, nullptr, 0},
+    {mh::state::RID_PROD_SHUTTLE_SLOTS, "prod_slots", true, nullptr, 0},
+    {mh::state::RID_STRAT_ORDER_STAGING, "order_staging", false, nullptr, 0},
+    {mh::state::RID_STRAT_ORDER_PENDING, "order_pending_arr", false, nullptr, 0},
+};
+bool g_boot_captured = false;
+
 void mp_clear_match_residue() {
     using mh::game::mh_cfg_final_struct_Planet;
     constexpr int  PLANET_SCENARIO_SLOT = 0x1f; // G_PLANET_INDEX session_begin_multi assigns
@@ -792,9 +821,62 @@ void mp_clear_match_residue() {
         for (uint32_t i = str_lo; i < str_hi; ++i) pl_nz += pl[p31 + i] != 0;
         if (clear) memset(pl + p31 + str_lo, 0, str_hi - str_lo);
     }
+    // mp:D45 -- restore the boot snapshot of strat_players / planets / prod_slots (and report the two unhashed
+    // order arrays). The per-region number is "bytes differing from the boot snapshot BEFORE the restore":
+    // 0 on every entry of a fresh process; > 0 on a host that loaded a savegame. [net] d45_restore_boot=0 is
+    // the REPRODUCTION knob: measure, log, leave the residue. Default 1; never ship 0.
+    {
+        const bool do_restore = net_ini_int("d45_restore_boot", 1) != 0;
+        char       msg[256];
+        int        o = wsprintfA(msg, "; D45: boot-snapshot residue %s:",
+                          !g_boot_captured ? "NO SNAPSHOT (capture never ran)"
+                                 : do_restore     ? "restored"
+                                                  : "KEPT ([net] d45_restore_boot=0 -- the rc5 configuration)");
+        for (const boot_keep &k : g_boot_keep) {
+            if (k.snap == nullptr) continue;
+            uint8_t *live = mh::state::ptr<uint8_t>(k.rid);
+            if (live == nullptr || mh::state::live_size(k.rid) < k.len) continue;
+            const uint32_t n = mh::boot_residue::restore_region(live, k.snap, k.len, k.restore && do_restore);
+            o += wsprintfA(msg + o, " %s=%lu%s", k.name, (unsigned long)n, k.restore ? "" : "(measured)");
+        }
+        lg("%s", msg);
+    }
     lg("; D36: match-entry residue %s: player_data nonzero=%lu of %lu B, Planets[31] strings nonzero=%lu of %lu B",
        clear ? "cleared" : "KEPT ([net] d36_clear_residue=0 -- the rc4 configuration)", pd_nz,
        (unsigned long)pd_len, pl_nz, (unsigned long)(str_hi - str_lo));
+}
+
+// mp:D45 -- one-shot capture of the boot snapshot, called from net_lockstep's present hook (it runs in every
+// game mode and in every build configuration, unlike the menu-state-tick hook, which is only installed when a
+// launch verb or the manual MP flow arms -- i.e. possibly AFTER a savegame was loaded). Fires on the first
+// present with the main menu IDLE: GAME_MODE 3 + MENU_STATE 3 means the INIT.CFG parse, the sprite/panel init
+// and the state-0 "known planets" recheck have run and no session has begun -- a fresh process's entry state.
+// A live session (SESSION_MODE 3) never captures, so a late first call cannot snapshot a game.
+extern "C" void MH_MP_CaptureBootResidue(void) {
+    if (g_boot_captured) return;
+    if (*(const uint8_t *)ADDR_GAME_MODE != GAME_MODE_MENU || *(const uint8_t *)ADDR_MENU_STATE != MENU_STATE_IDLE) return;
+    if (*(const uint8_t *)ADDR_SESSION_MODE == 3) return;
+    g_boot_captured = true; // one attempt, even if an allocation below fails (the entry line says so)
+    char msg[256];
+    int  o = wsprintfA(msg, "; D45: boot snapshot captured:");
+    for (boot_keep &k : g_boot_keep) {
+        const uint8_t *live = mh::state::ptr<uint8_t>(k.rid);
+        // The HASHED extent, not the region's reach: a reach can run past the symbol into its neighbour (prod_slots'
+        // last slot overruns by 4 B -- see llm_prod_shuttle_slot), and restoring that tail would rewrite a global
+        // this clear has no business touching. HASH_REGIONS is the generated registry; reach is the fallback.
+        uint32_t len = mh::state::live_size(k.rid);
+        for (const mh::state::hash_region &h : mh::state::HASH_REGIONS)
+            if (h.rid == k.rid && h.offset == 0 && h.len < len) len = h.len;
+        if (live == nullptr || len == 0) continue;
+        k.snap = static_cast<uint8_t *>(HeapAlloc(GetProcessHeap(), 0, len));
+        if (k.snap == nullptr) continue;
+        memcpy(k.snap, live, len);
+        k.len            = len;
+        unsigned long nz = 0;
+        for (uint32_t i = 0; i < len; ++i) nz += live[i] != 0;
+        o += wsprintfA(msg + o, " %s=%lu B (nonzero %lu)", k.name, (unsigned long)len, nz);
+    }
+    lg("%s", msg);
 }
 
 // mp:RM1 -- THE MANUAL-LOBBY ENTRY PREP RUNS ONCE PER LOBBY, NOT ONCE PER PROCESS. Two latches made
@@ -1521,7 +1603,13 @@ void on_menu_tick() {
         // alone (previous increment); adding the host-side on_menu_tick driver stalled it the moment the
         // client connected. So keep the host on its dispatch path; host entry is triggered from the
         // lobby dispatch instead (MH_MP_HostEntryTick). Client still needs this driver to auto-enter.
-        if (MH_Net_IsStarted() && *(int *)ADDR_NET_IS_HOST == 0) {
+        // X3c-FIX cause 1: the whole client driver is a LOBBY driver -- run it only while the lobby is the
+        // active widget list (dead-ends G218's rule). The in-match SYNCHRONIZING overlay is a menu-list
+        // screen that ticks this function; U29 tears the lobby slots down at entry, but the transport is
+        // live and occ reads 2 again, so MH_MP_ClientPollMap drained the lockstep queue (horizons, orders,
+        // resync META) mid-match and stalled the second resync. mp_lobby_entry_tick itself does nothing a
+        // match needs (SESSION_MODE==3 latches it off before any write); the map drain never does.
+        if (MH_Net_IsStarted() && *(int *)ADDR_NET_IS_HOST == 0 && *(unsigned *)mh::addr::_G_LLM_UI_MENU_WIDGET_LIST == mh::addr::lobby_widget_origin) {
             static int c = 0;
             if ((c++ % 120) == 0)
                 lg("; DIAG manual-mp CLIENT driver tick #%d occ=%d map=%d", c - 1,

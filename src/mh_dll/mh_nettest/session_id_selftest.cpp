@@ -30,9 +30,13 @@
 //
 #include <stdio.h>
 #include <string.h>
+#include <wchar.h>
 
 #include "mh_net_proto/session_info.h"
+#include "mh_net_proto/text_utf8.h" // mp:MP-LANG: the UTF-8 chat codec + the name alphabet
 #include "mh_net_proto/uuid7.h"
+#include "ui/text_wrap.h"      // the lobby status field word wrap
+#include "ui/player_strings.h" // mods:LANG4: the string table's parser, format guard and reason matcher
 
 using namespace mh_net_proto;
 
@@ -672,6 +676,345 @@ int run_sessionidtest() {
         // The wire cannot overflow the ANNOUNCE frame the transports already carry.
         check("a full ping table still fits an ANNOUNCE frame",
               ANNOUNCE_PING_MAX_ENCODED <= ANNOUNCE_MAX_ENCODED);
+    }
+
+
+    // ---- mp:MP-LANG: UTF-8 chat + [A-Za-z0-9] names ------------------------------------------------
+    //
+    // The two text rules a language-agnostic session rests on, as pure functions -- the DLL's H2 (the
+    // chat line's encode, its room check and its editing-key step lengths), H3/H4 (the decode and the
+    // caret's unit count), the lobby send seam (truncation), libmh's rx_dispatch (the received body)
+    // and the join path (name normalization) all call exactly these. A wrong answer here is either a
+    // torn character on the wire or two peers spelling one player's name -- a HASHED field --
+    // differently.
+    {
+        printf("--- MP-LANG: UTF-8 chat codec ---\n");
+        char b[4];
+        check("ASCII encodes as itself", utf8_encode('A', b) == 1 && b[0] == 'A');
+        check("U+041F (Cyrillic PE) encodes as D0 9F",
+              utf8_encode(0x041F, b) == 2 && (unsigned char)b[0] == 0xD0 && (unsigned char)b[1] == 0x9F);
+        check("U+0141 (Polish L-stroke) encodes as C5 81",
+              utf8_encode(0x0141, b) == 2 && (unsigned char)b[0] == 0xC5 && (unsigned char)b[1] == 0x81);
+        check("U+20AC (euro) is three bytes E2 82 AC",
+              utf8_encode(0x20AC, b) == 3 && (unsigned char)b[0] == 0xE2 && (unsigned char)b[2] == 0xAC);
+        check("a lone surrogate has no UTF-8 form", utf8_encode(0xD800, b) == 0);
+        check("past U+10FFFF has no UTF-8 form", utf8_encode(0x110000, b) == 0);
+
+        // "Privet Lodz ok", the scenario's own mixed line: Cyrillic + Polish + Latin in one buffer.
+        const char     line[] = "\xD0\x9F\xD1\x80\xD0\xB8\xD0\xB2\xD0\xB5\xD1\x82 \xC5\x81\xC3\xB3"
+                                "d\xC5\xBA ok";
+        uint16_t       w[64];
+        const size_t   nu     = utf8_to_utf16(line, sizeof(line) - 1, w, 64);
+        const uint16_t want[] = {0x041F, 0x0440, 0x0438, 0x0432, 0x0435, 0x0442, 0x20,
+                                 0x0141, 0x00F3, 0x64, 0x017A, 0x20, 0x6F, 0x6B};
+        bool           same   = nu == sizeof(want) / sizeof(want[0]);
+        for (size_t i = 0; same && i < nu; ++i) same = w[i] == want[i];
+        check("the mixed line decodes to its 14 code points, NUL-terminated", same && w[nu] == 0);
+        check("the decode never yields more units than there were bytes", nu <= sizeof(line) - 1);
+        check("the caret's unit count: the first 12 bytes are the 6 Cyrillic letters",
+              utf8_utf16_units(line, 12) == 6);
+        check("...and 12 + space + L-stroke (15 bytes) is 8 units", utf8_utf16_units(line, 15) == 8);
+
+        // Truncation is on a SEQUENCE BOUNDARY: 11 bytes would cut the 6th letter in half.
+        check("a cut inside a 2-byte letter backs off to the boundary", utf8_truncate(line, 23, 11) == 10);
+        check("a cut on a boundary is kept", utf8_truncate(line, 23, 12) == 12);
+        check("a string already short enough is untouched", utf8_truncate(line, 23, 40) == 23);
+        const char euro3[] = "a\xE2\x82\xAC"; // 'a' + 3-byte euro
+        check("a cut inside a 3-byte sequence drops it whole", utf8_truncate(euro3, 4, 3) == 1);
+
+        // The editing keys' step lengths (H2 repeats the original's one-byte arm this many times).
+        check("backspace after a Cyrillic letter steps 2 bytes", utf8_prev_len(line, 2) == 2);
+        check("backspace after an ASCII byte steps 1", utf8_prev_len(line, 13) == 1);
+        check("backspace after the euro steps 3", utf8_prev_len(euro3, 4) == 3);
+        check("delete at a Cyrillic letter steps 2 bytes", utf8_next_len(line, 0, 23) == 2);
+        check("delete at the end of the line steps nothing", utf8_next_len(line, 23, 23) == 0);
+        check("delete at a torn tail (lead with no continuation left) steps 1", utf8_next_len(line, 0, 1) == 1);
+
+        // Malformed input: every bad byte is ONE U+FFFD and the decoder resynchronises.
+        const char   bad[] = "\x9F"
+                             "A\xC0\xAF"
+                             "B\xED\xA0\x80";
+        const size_t nb    = utf8_to_utf16(bad, sizeof(bad) - 1, w, 64);
+        check("a stray continuation, an overlong and an encoded surrogate each decode as U+FFFD",
+              nb == 8 && w[0] == UTF16_REPLACEMENT && w[1] == 'A' && w[2] == UTF16_REPLACEMENT &&
+                  w[4] == 'B' && w[5] == UTF16_REPLACEMENT);
+        // A pre-MP-LANG peer's CP1251 line read as UTF-8 is visibly wrong, never a crash or an over-read.
+        const char   cp1251[] = "\xCF\xF0\xE8\xE2\xE5\xF2";
+        const size_t nc       = utf8_to_utf16(cp1251, 6, w, 64);
+        check("an 8-bit CP1251 line decodes to replacement characters within its own length",
+              nc <= 6 && w[0] == UTF16_REPLACEMENT);
+        uint16_t tiny[3];
+        check("a destination too small is filled and terminated, never overrun",
+              utf8_to_utf16(line, sizeof(line) - 1, tiny, 3) == 2 && tiny[2] == 0);
+        const char astral[] = "\xF0\x9F\x98\x80"; // U+1F600 -> a surrogate pair
+        check("a 4-byte sequence decodes to a surrogate pair",
+              utf8_to_utf16(astral, 4, w, 64) == 2 && w[0] == 0xD83D && w[1] == 0xDE00);
+        check("...and counts as 2 caret units", utf8_utf16_units(astral, 4) == 2);
+
+        // The line fitter's unit count back to a BYTE index (the lobby field's scroll start).
+        check("0 units is byte 0", utf8_bytes_for_units(line, 23, 0) == 0);
+        check("6 units end after the 12 bytes of the Cyrillic word", utf8_bytes_for_units(line, 23, 6) == 12);
+        check("8 units end after the L-stroke (15 bytes)", utf8_bytes_for_units(line, 23, 8) == 15);
+        check("a count past the end clamps to the length", utf8_bytes_for_units(line, 23, 99) == 23);
+        check("half a surrogate pair rounds DOWN to its start", utf8_bytes_for_units(astral, 4, 1) == 0);
+        // The narrow half of the edit field's Enter round trip (H6): wide -> UTF-8, never torn.
+        char         back[64];
+        const size_t nw = utf16_to_utf8(want, sizeof(want) / sizeof(want[0]), back, sizeof(back));
+        check("the 14 code points narrow back to the 23-byte line exactly",
+              nw == 23 && memcmp(back, line, 23) == 0 && back[23] == 0);
+        char tight[12];
+        check("a destination too small ends BEFORE a character that does not fit (11 bytes -> 5 letters)",
+              utf16_to_utf8(want, 14, tight, sizeof(tight)) == 10 && tight[10] == 0);
+        const uint16_t pair[] = {0xD83D, 0xDE00, 0};
+        check("a surrogate pair narrows to its one 4-byte character",
+              utf16_to_utf8(pair, 2, back, sizeof(back)) == 4 && memcmp(back, astral, 4) == 0);
+        const uint16_t lone[] = {0xDC00, 'x'};
+        check("a lone surrogate narrows to U+FFFD, then carries on",
+              utf16_to_utf8(lone, 2, back, sizeof(back)) == 4 && (unsigned char)back[0] == 0xEF && back[3] == 'x');
+        bool rt = true;
+        for (size_t k = 0; k <= 14; ++k) rt = rt && utf8_utf16_units(line, utf8_bytes_for_units(line, 23, k)) == k;
+        check("units -> bytes -> units round-trips on every boundary", rt);
+    }
+    {
+        // The lobby chat field's whole-character edits (H1's lobby path). cap is the buffer size
+        // INCLUDING the NUL, exactly as the edit field's param block carries it.
+        printf("--- MP-LANG: whole-character edits of a byte-indexed UTF-8 line ---\n");
+        char   buf[8] = "ab";
+        size_t len = 2, cur = 1;
+        check("a 2-byte letter inserts mid-line and shifts the tail",
+              utf8_edit_insert(buf, sizeof(buf), &len, &cur, "\xD0\x9F", 2) && len == 4 && cur == 3 &&
+                  memcmp(buf, "a\xD0\x9F"
+                              "b",
+                         5) == 0);
+        check("a sequence that fits exactly (len+nb == cap-1) is taken",
+              utf8_edit_insert(buf, sizeof(buf), &len, &cur, "\xE2\x82\xAC", 3) && len == 7 && buf[7] == 0);
+        char before[8];
+        memcpy(before, buf, sizeof(buf));
+        check("a sequence with no room is refused WHOLE -- the buffer is untouched",
+              !utf8_edit_insert(buf, sizeof(buf), &len, &cur, "x", 1) && len == 7 &&
+                  memcmp(buf, before, sizeof(buf)) == 0);
+        // buf = a П € b, cur after the euro (byte 6)
+        check("backspace removes the whole 3-byte euro", utf8_edit_erase(buf, &len, &cur, true) == 3 && len == 4 &&
+                                                             cur == 3 && strcmp(buf, "a\xD0\x9F"
+                                                                                     "b") == 0);
+        check("backspace removes the whole 2-byte letter",
+              utf8_edit_erase(buf, &len, &cur, true) == 2 && cur == 1 && strcmp(buf, "ab") == 0);
+        check("delete at an ASCII byte removes one", utf8_edit_erase(buf, &len, &cur, false) == 1 && strcmp(buf, "a") == 0);
+        check("delete at the end removes nothing", utf8_edit_erase(buf, &len, &cur, false) == 0 && len == 1);
+        cur = 0;
+        check("backspace at the start removes nothing", utf8_edit_erase(buf, &len, &cur, true) == 0 && len == 1);
+        size_t bad_cur = 5;
+        check("an insane cursor is refused, not trusted",
+              !utf8_edit_insert(buf, sizeof(buf), &len, &bad_cur, "x", 1) &&
+                  utf8_edit_erase(buf, &len, &bad_cur, true) == 0);
+    }
+    {
+        printf("--- MP-LANG: player names are [A-Za-z0-9] ---\n");
+        check("letters and digits are the whole alphabet",
+              name_char_ok('a') && name_char_ok('Z') && name_char_ok('7') && !name_char_ok(' ') &&
+                  !name_char_ok('_') && !name_char_ok('<') && !name_char_ok(0xCF) && !name_char_ok(0xC5));
+        check("every name the suite pins is valid", name_is_valid("host") && name_is_valid("client") &&
+                                                        name_is_valid("client2") && name_is_valid("uitest"));
+        check("an empty name is not valid", !name_is_valid(""));
+        char n1[32] = "Bob";
+        check("a conforming name is left alone", !name_normalize(n1, 32, NAME_FALLBACK) && strcmp(n1, "Bob") == 0);
+        char n2[32] = "\xCF\xF0\xE8\xE2\xE5\xF2"
+                      "7"; // CP1251 "Privet" + a digit (a forged / pre-rule name)
+        check("foreign bytes are DROPPED, not mapped", name_normalize(n2, 32, NAME_FALLBACK) && strcmp(n2, "7") == 0);
+        char n3[32] = "\xD0\x9F\xD1\x80"; // UTF-8 Cyrillic only
+        check("an all-foreign name becomes the fallback", name_normalize(n3, 32, NAME_FALLBACK) && strcmp(n3, "Player") == 0);
+        char n4[32] = "a_b c-d";
+        check("punctuation and spaces are dropped", name_normalize(n4, 32, NAME_FALLBACK) && strcmp(n4, "abcd") == 0);
+        char big[16] = "abcdefghijklmno"; // 15 conforming chars into an 8-byte cap: capped at 7
+        check("the result respects the cap", name_normalize(big, 8, NAME_FALLBACK) && strcmp(big, "abcdefg") == 0);
+        char n6[32] = "";
+        check("an empty slot name stays empty without a fallback", !name_normalize(n6, 32, nullptr) && n6[0] == 0);
+        char a[32] = "\xC5\x81\xC3\xB3"
+                     "dz1",
+             c[32] = "\xA3\xF3"
+                     "dz1"; // one name, UTF-8 vs CP1250 spelling
+        name_normalize(a, 32, NAME_FALLBACK);
+        name_normalize(c, 32, NAME_FALLBACK);
+        check("two spellings of one foreign name normalize to the SAME bytes (the hashed field agrees)",
+              strcmp(a, c) == 0 && strcmp(a, "dz1") == 0);
+    }
+    {
+        printf("--- MP-LANG: the wire's chat encoding is the protocol step ---\n");
+        const unsigned char ID[UUID7_BYTES] = {0x01, 0xa0, 0xaf, 0x3c, 0xea, 0x00, 0x70, 0xa1,
+                                               0xa2, 0xa3, 0xa4, 0xa5, 0xa6, 0xa7, 0xa8, 0xa9};
+        SessionInfo         host            = make_session("uitest", 0x77u, ID, CHAT_ENCODING_UTF8);
+        unsigned char       jb[JOIN_REQUEST_MAX_ENCODED];
+        JoinRequest         out;
+        // Two CURRENT peers: whatever each machine's own codepage, both say UTF-8 -> admitted.
+        JoinRequest now = join_request_for(host, CHAT_ENCODING_UTF8);
+        size_t      n   = join_request_encode(now, jb);
+        check("a current joiner (UTF-8 chat) is ADMITTED by a current host",
+              join_admit(jb, n, host, out) == JoinAdmit::Admit);
+        // A pre-MP-LANG joiner echoes its 8-bit codepage: refused BY NAME, the reason fits the screen.
+        JoinRequest old = join_request_for(host, 1251);
+        n               = join_request_encode(old, jb);
+        check("a pre-MP-LANG joiner (8-bit cp 1251) is REFUSED as a codepage mismatch",
+              join_admit(jb, n, host, out) == JoinAdmit::RefusedCodepage);
+        char reason[ANNOUNCE_TEXT_CAP];
+        join_refusal_text(JoinAdmit::RefusedCodepage, host, out, reason, sizeof(reason));
+        check("...and its screen says 'old client cp 1251'", strcmp(reason, "old client cp 1251") == 0);
+        JoinRequest old5 = join_request_for(host, 65000);
+        join_refusal_text(JoinAdmit::RefusedCodepage, host, old5, reason, sizeof(reason));
+        check("the widest old-client text still fits the screen budget", strlen(reason) <= JOIN_REFUSAL_TEXT_MAX);
+        // The same step seen from an old host: our UTF-8 claim against its 8-bit pin.
+        SessionInfo oldhost = make_session("uitest", 0x77u, ID, 1252);
+        n                   = join_request_encode(join_request_for(oldhost, CHAT_ENCODING_UTF8), jb);
+        check("a current joiner at a pre-MP-LANG host is refused (the host's rule, unchanged)",
+              join_admit(jb, n, oldhost, out) == JoinAdmit::RefusedCodepage);
+        join_refusal_text(JoinAdmit::RefusedCodepage, oldhost, out, reason, sizeof(reason));
+        check("...named 'old host cp 1252' where a current host composes it", strcmp(reason, "old host cp 1252") == 0);
+        // Two 8-bit values still read exactly as F3 wrote them.
+        SessionInfo p1252 = make_session("uitest", 0x77u, ID, 1252);
+        join_refusal_text(JoinAdmit::RefusedCodepage, p1252, join_request_for(p1252, 1251), reason, sizeof(reason));
+        check("an 8-bit/8-bit mismatch keeps F3's 'codepage A/B' text", strcmp(reason, "codepage 1252/1251") == 0);
+    }
+    {
+        // mods:LANG4 -- mh.dll's own player-visible text per language pack. Nothing is loaded in this
+        // process, so tr() is the compiled-in English throughout; the parser runs on buffers.
+        printf("--- LANG4: the player string table ---\n");
+        using namespace mh::ui;
+        check("tr() is the English row when no pack is loaded",
+              wcscmp(tr(Str::LOBBY_HOST_LEFT), L"The host left the game.") == 0 && strings_loaded_count() == 0);
+        check("every row has a key and an English text",
+              [] {
+                  for (int i = 0; i < STR_COUNT; ++i)
+                      if (!str_key((Str)i)[0] || !str_en((Str)i)[0]) return false;
+                  return true;
+              }());
+        check("the format guard: same conversions pass", str_format_compatible(L"%s has %u%%", L"%s: %u%% (x)"));
+        check("...a missing conversion fails", !str_format_compatible(L"%s has %u", L"%s has"));
+        check("...a swapped order fails", !str_format_compatible(L"%s %d", L"%d %s"));
+        check("...%lu is its own kind", !str_format_compatible(L"step %lu", L"step %u"));
+        check("...a stray %% is not a conversion", str_format_compatible(L"100%% done", L"done"));
+
+        static wchar_t pool[STR_COUNT][STR_MAX];
+        static bool    have[STR_COUNT];
+        StrLoadReport  r = {};
+        // UTF-8, with a BOM, CRLF, a comment, spacing, an unknown key, a duplicate, a bad shape, an
+        // empty value and a line with no '='.
+        const char body[] = "\xEF\xBB\xBF# comment\r\n"
+                            "lobby.host_left = \xD0\xA5\xD0\xBE\xD1\x81\xD1\x82 left\r\n"
+                            "  map.downloading=  %u%% \xD0\xB3\xD0\xBE\xD1\x82\xD0\xBE\xD0\xB2\xD0\xBE  \r\n"
+                            "lobby.host_left = second\n"
+                            "no.such.key = x\n"
+                            "lobby.refused = %s %s\n"
+                            "cheat.single_player =\n"
+                            "garbage line\n"
+                            "\n";
+        strings_parse(body, sizeof(body) - 1, pool, have, &r);
+        const int hl = (int)Str::LOBBY_HOST_LEFT, md = (int)Str::MAP_DOWNLOADING;
+        check("a translated key decodes from UTF-8, trimmed, BOM and CR ignored",
+              have[hl] && pool[hl][0] == 0x0425 && wcscmp(pool[hl] + 4, L" left") == 0);
+        check("a translation with the SAME printf shape is accepted",
+              have[md] && pool[md][0] == L'%' && pool[md][wcslen(pool[md]) - 1] == 0x043E);
+        check("the FIRST of two duplicate lines wins", r.duplicate == 1 && pool[hl][0] == 0x0425);
+        check("an unknown key is counted, not loaded", r.unknown == 1);
+        check("a DIFFERENT printf shape is refused -- that key stays English",
+              !have[(int)Str::LOBBY_REFUSED] && r.bad_format >= 1);
+        check("an empty translation is refused too", !have[(int)Str::CHEAT_SINGLE_PLAYER] && r.bad_format == 2);
+        check("a line with no '=' is malformed", r.malformed == 1);
+        check("the counts add up", r.loaded == 2 && r.lines == 7);
+        check("a key absent from the file is simply not had (English shows)", !have[(int)Str::MENU_NETWORK_GAME]);
+
+        // Every reason the HOST can compose is recognized by the joiner's matcher -- the table and
+        // mh_net_proto's composer cannot drift apart silently. Numbers ride through.
+        const unsigned char ID[UUID7_BYTES] = {0x01, 0xa0, 0xaf, 0x3c, 0xea, 0x00, 0x70, 0xa1,
+                                               0xa2, 0xa3, 0xa4, 0xa5, 0xa6, 0xa7, 0xa8, 0xa9};
+        SessionInfo         h8              = make_session("uitest", 0x77u, ID, CHAT_ENCODING_UTF8);
+        JoinRequest         newer = join_request_for(h8, CHAT_ENCODING_UTF8), older = newer;
+        newer.format = (unsigned char)(JOIN_REQUEST_FORMAT + 1);
+        older.format = 0;
+        struct {
+            JoinAdmit   a;
+            SessionInfo s;
+            JoinRequest j;
+        } cases[] = {
+            {JoinAdmit::RefusedCodepage, h8, join_request_for(h8, 1251)},
+            {JoinAdmit::RefusedCodepage, make_session("uitest", 0x77u, ID, 1252),
+             join_request_for(h8, CHAT_ENCODING_UTF8)},
+            {JoinAdmit::RefusedCodepage, make_session("uitest", 0x77u, ID, 1252),
+             join_request_for(make_session("uitest", 0x77u, ID, 1252), 1251)},
+            {JoinAdmit::RefusedMalformed, h8, join_request_for(h8, CHAT_ENCODING_UTF8)},
+            {JoinAdmit::RefusedWrongLobby, h8, join_request_for(h8, CHAT_ENCODING_UTF8)},
+            {JoinAdmit::RefusedNewerProtocol, h8, newer},
+            {JoinAdmit::RefusedOldProtocol, h8, older},
+        };
+        bool all = true;
+        for (auto &c : cases) {
+            char    why[ANNOUNCE_TEXT_CAP];
+            wchar_t w[128];
+            bool    matched = false;
+            join_refusal_text(c.a, c.s, c.j, why, sizeof(why));
+            tr_refusal_reason(why, w, 128, &matched);
+            wchar_t wide[64];
+            for (int k = 0; k < 64; ++k)
+                if ((wide[k] = (wchar_t)(unsigned char)why[k]) == 0) break; // ASCII by protocol
+            if (!matched || wcscmp(w, wide) != 0) {
+                printf("  (reason '%s' matched=%d)\n", why, (int)matched);
+                all = false;
+            }
+        }
+        // ...and every fixed reason join_admit_reason can name (older hosts sent those verbatim).
+        const JoinAdmit fixed[] = {JoinAdmit::RefusedMalformed, JoinAdmit::RefusedOldProtocol,
+                                   JoinAdmit::RefusedNewerProtocol, JoinAdmit::RefusedWrongLobby,
+                                   JoinAdmit::RefusedCodepage};
+        for (JoinAdmit a : fixed) {
+            wchar_t w[128];
+            bool    matched = false;
+            tr_refusal_reason(join_admit_reason(a), w, 128, &matched);
+            if (!matched) {
+                printf("  (fixed reason '%s' has no row)\n", join_admit_reason(a));
+                all = false;
+            }
+        }
+        check("every composed refusal reason is a table row, and English round-trips it exactly", all);
+        wchar_t w[128];
+        bool    matched = true;
+        tr_refusal_reason("something new", w, 128, &matched);
+        check("an unknown reason is shown as received", !matched && wcscmp(w, L"something new") == 0);
+        tr_refusal_reason("old client cp 12x", w, 128, &matched);
+        check("a near miss is not a match (the number must end the line)", !matched);
+        tr_relay_line("Relay outdated (protocol 0 < 1)", w, 128, &matched);
+        check("the relay module's line is the relay row", matched && wcscmp(w, L"Relay outdated (protocol 0 < 1)") == 0);
+    }
+
+    {
+        // The lobby status field's word wrap (ui/text_wrap.cpp), on a fixed 6 px/unit font.
+        printf("--- the status field word wrap ---\n");
+        using namespace mh::ui;
+        auto       m6 = [](void *, const wchar_t *, int n) { return 6 * n; };
+        wchar_t    out[256];
+        WrapReport r;
+        wrap_text(L"short line", out, 256, 60, 5, m6, nullptr, &r);
+        check("a line that fits is copied verbatim", wcscmp(out, L"short line") == 0 && r.breaks == 0 && r.lines == 1);
+        wrap_text(L"  two  spaces kept ", out, 256, 200, 5, m6, nullptr, &r);
+        check("...spaces and all", wcscmp(out, L"  two  spaces kept ") == 0);
+        wrap_text(L"aaa bbb ccc ddd", out, 256, 42, 5, m6, nullptr, &r); // 7 units per line
+        check("breaks at spaces, the breaking space dropped", wcscmp(out, L"aaa bbb\nccc ddd") == 0 && r.breaks == 1);
+        wrap_text(L"aaa  bbb", out, 256, 30, 5, m6, nullptr, &r);
+        check("a run of spaces at a break is dropped whole", wcscmp(out, L"aaa\nbbb") == 0);
+        wrap_text(L"abcdefghij xy", out, 256, 24, 9, m6, nullptr, &r); // 4 units per line
+        check("only a word wider than the field is hard-broken",
+              wcscmp(out, L"abcd\nefgh\nij\nxy") == 0 && r.hard == 2 && r.breaks == 3);
+        wrap_text(L"aa\nbbb ccc", out, 256, 24, 9, m6, nullptr, &r);
+        check("an existing newline is kept, each paragraph wraps alone",
+              wcscmp(out, L"aa\nbbb\nccc") == 0 && r.lines == 3);
+        wrap_text(L"aaa bbb ccc ddd eee", out, 256, 42, 2, m6, nullptr, &r);
+        check("past the field's height the last line ends in '...' and still fits",
+              wcscmp(out, L"aaa bbb\nccc...") == 0 && r.truncated && r.lines == 2);
+        wrap_text(L"aaa bbb", out, 256, 0, 3, m6, nullptr, &r);
+        check("no width known: verbatim", wcscmp(out, L"aaa bbb") == 0 && !r.breaks);
+        wrap_text(L"\x0441\x0435\x0442\x0435\x0432\x0430\x044f \x0438\x0433\x0440\x0430", out, 256, 42, 3, m6,
+                  nullptr, &r);
+        check("Cyrillic wraps by the same widths (units, not bytes)",
+              wcscmp(out, L"\x0441\x0435\x0442\x0435\x0432\x0430\x044f\n\x0438\x0433\x0440\x0430") == 0);
+        wrap_text(L"aaaa bbbb", out, 6, 600, 3, m6, nullptr, &r);
+        check("the output buffer is never overrun", wcslen(out) == 5);
     }
 
     printf("=== sessionidtest: %d checks, %d failures ===\n", g_checks, g_fails);

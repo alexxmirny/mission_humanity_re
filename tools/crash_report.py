@@ -72,6 +72,17 @@ import subprocess
 import time
 import zipfile
 
+# SES8 (2026-09-29): run directories are now `YYYY-MM-DDTHH-MM-SSZ_...`; a lane still holds SES1
+# `YYYYMMDDTHHMMSSZ_...` ones, and a raw string sort puts every SES1 name AFTER an SES8 one
+# (`-` < `0`). canon() folds the new stamp to the compact form so name order is time order again.
+# Verbatim copy of tools/_rundir.py's (no import chain: this tool runs standalone).
+_NEW_STAMP = re.compile(r"^(\d{4})-(\d{2})-(\d{2})T(\d{2})-(\d{2})-(\d{2})Z")
+
+
+def canon(name):
+    return _NEW_STAMP.sub(r"\1\2\3T\4\5\6Z", name)
+
+
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SYMBOLS = os.path.join(REPO, "docs", "symbols.md")
 MH_MAP = os.path.join(REPO, "src", "mh_dll", "Release", "mh.map")
@@ -551,9 +562,12 @@ def session_context(app_path):
         return None
     try:
         cands = sorted(
-            n
-            for n in os.listdir(logs)
-            if "_menu_" not in n and os.path.isdir(os.path.join(logs, n))
+            (
+                n
+                for n in os.listdir(logs)
+                if "_menu_" not in n and os.path.isdir(os.path.join(logs, n))
+            ),
+            key=canon,  # time order across SES8 + SES1 names
         )
     except OSError:
         return None
@@ -566,10 +580,11 @@ def session_context(app_path):
                 s = json.load(fh)
         except (OSError, ValueError):
             continue
-        return "  [crash] session: match_id=%s slot=%s role=%s map=%s (%s) dir=%s" % (
+        return "  [crash] session: match_id=%s slot=%s role=%s mode=%s map=%s (%s) dir=%s" % (
             s.get("match_id") or "?",
             s.get("slot"),
             s.get("role") or "?",
+            s.get("mode") or "?",  # SES8; absent from an SES1 session.json
             s.get("map") or "?",
             ("ended: %s" % s["reason"])
             if s.get("reason")

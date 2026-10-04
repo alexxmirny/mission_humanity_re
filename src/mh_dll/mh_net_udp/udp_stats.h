@@ -715,6 +715,41 @@ inline double monotone_horizon(double clock_s, double step_s, double floor_s) {
     return h;
 }
 
+// mp:X3c -- the horizon a peer advertises while it is MIRRORING (world-resync catch-up). Its GAME_CLOCK has
+// just dropped by the backlog, so `clock + step` (and the D30 floor, which reads a clock that far behind as
+// a restart) would put a horizon on the wire that is BEHIND what it already sent -- and MSG_HORIZON is
+// copied straight into peer_horizon at the receiver. So it advertises the largest of: what it last sent,
+// every OTHER active peer's advertised horizon (`peers[j]`, only j with bit j of `active_mask` and j != me;
+// non-finite and <= 0 entries are ignored -- G276: our own slot holds our own stale value), and the local
+// HORIZON global. It NEVER returns less than `sent`; it is the identity on `sent` when nothing is larger.
+inline double mirror_horizon(double sent, const double *peers, uint32_t active_mask, int n, int me, double local) {
+    double h = (sent > 0.0 && sent == sent) ? sent : 0.0;
+    for (int j = 0; j < n && j < 32; ++j) {
+        if (j == me || !((active_mask >> j) & 1u)) continue;
+        const double v = peers[j];
+        if (v == v && v > h) h = v;
+    }
+    if (local == local && local > h) h = local;
+    return h;
+}
+
+// mp:X3c-FIX -- the send-time floor for a GAME-SIDE horizon writer while mirroring: `written` is what the
+// writer (advertise_horizon / the nag bump / an order stamp) computed from the rewound clock, `floor_s` is
+// mirror_horizon(...). Never returns less than the floor; a NaN writer value yields the floor.
+inline double mirror_extend_floor(double written, double floor_s) {
+    if (!(floor_s == floor_s)) return written;
+    return (written == written && written >= floor_s) ? written : floor_s;
+}
+
+// mp:X3c-FIX -- what the manual client's lobby map-drain does with a datagram it popped: 0 = the map packet
+// (apply it), 1 = an in-game lockstep type 1..5 (NOT ours: park it for the lockstep consumer and stop),
+// 2 = a re-broadcast lobby datagram (discard). The map test wins so a map packet is never parked.
+inline int client_poll_disposition(unsigned char type, int len, unsigned char map_type, int map_min_len) {
+    if (len >= map_min_len && type == map_type) return 0;
+    if (len >= 1 && type >= 1 && type <= 5) return 1;
+    return 2;
+}
+
 // mp:D30 / D31 -- an order is LATE at the receiver when its sim has already run the step that should
 // have released it: release_due releases at the first step whose clock satisfies !(exec > clock), so
 // a receiver whose GAME_CLOCK already satisfies it will release the order one step (or more) later

@@ -1,0 +1,125 @@
+# PT-GFX6: ImGui's hover follows the GAME cursor -- the sprite the player sees -- in a SCALED window, and
+# flips exactly at the panel's drawn edge.
+#
+# Run with `--extra-ini tools/uiscripts/ini/imgui_hover.ini`: backend=d3d11 + imgui=1, a mapped windowed
+# window (no_window=0, on the rig's isolated desktop), and the DirectInput mouse LEFT LIVE (no
+# mouse_absolute), so the overlay takes its DI-filter path: ImGui's position is _G_LLM_CURSOR_X/Y mapped
+# game -> client through the presenter's image rect, never the OS pointer. Before PT-GFX6 ImGui used the
+# hidden OS pointer, which drifts from the sprite whenever the frame is scaled. The DI mouse here is the
+# OWNED one (the ini pins [input] backend=own, which the raw* half below needs), so the filter is the
+# one installed through mh::input::set_mouse_filter; the system device's vtable-slot-10 filter is no
+# longer exercised by any suite row (run this script's first half with backend=system by hand for it).
+#
+# Geometry: `winsize 960 800` scales the 640x480 menu 1.5x into 960x720 with 40 px bars top and bottom.
+# The panel is drawn at client x [16, 356) (pos 16, width 340, not resizable, so no hover band outside
+# its edge). Game pixel gx is drawn centred at client (gx + 0.5) * 1.5:
+#   gx 10 -> 15.75 (outside)   gx 11 -> 17.25 (inside)   gx 236 -> 354.75 (inside)   gx 237 -> 356.25 (outside)
+# and gy 100 -> client 190.75, well inside the panel's height. `cursorhold` pins the game cursor there
+# (a ring MOVE every present), so each predicate reads the hover of a frame built with the cursor on
+# that exact game pixel. One game pixel either side of both edges, both directions.
+#
+# The capture is the game framebuffer (upstream of the presenter, so no overlay in it): the main menu
+# with the cursor parked, i.e. the hover walk left the game's menu alone.
+#
+# PT-INPUT1 (folded in 2026-09-29, was the unregistered input_own row): the SAME boot then drives the
+# owned DirectInput ([input] backend=own, pinned by the ini) headlessly. Every other input verb writes
+# the game's rings directly and never touches a DirectInput device, so without this half the owned
+# producer -- the Raw Input packet handler, the absolute -> exact-delta walk, the DIK mapping, the
+# focus-loss release -- would run in no scenario at all. `rawmouse` / `rawkey` enter the owned devices
+# through the packet handler WM_INPUT uses (a posted WM_INPUT carries no data, so the OS path cannot be
+# faked); the game's OWN polls (llm_input_di_mouse_poll / _keyboard_poll, called from its wndproc tap)
+# then read them through GetDeviceData, exactly as they read a real device. `rawfocus 1` first: the
+# lane's window runs on an isolated desktop and is never the foreground window, so a DISCL_FOREGROUND
+# device could never be acquired. `dimouse x y` asserts the DI accumulator
+# (_G_LLM_INPUT_MOUSE_LAST_X/Y) is EXACTLY there -- the claim a VM pointer needs.
+#
+# Section 5 is the DI half of the ImGui swallow, which imgui_swallow (messages, mouse_absolute=1)
+# cannot reach: the overlay's filter is installed on the owned device (mh::input::set_mouse_filter) and
+# must withhold the DOWN/UP pair while the game cursor is on the panel. At 1.5x game (112,100) is client
+# (168.75,190.75), inside the panel. `imgui difiltered 2` holds only once both records were withheld.
+
+settled value:110
+winsize 960 800
+winclient 960 800
+hotkey F11
+imgui open
+
+# left edge
+cursorhold 10 100 6
+imgui hover 0
+cursorhold 11 100 6
+imgui hover 1
+cursorhold 10 100 6
+imgui hover 0
+# right edge
+cursorhold 237 100 6
+imgui hover 0
+cursorhold 236 100 6
+imgui hover 1
+cursorhold 237 100 6
+imgui hover 0
+
+hotkey F11
+imgui closed
+cursorhold 600 460 6
+present value:110
+settled value:110
+capture ih1_menu_kept
+
+# ---- PT-INPUT1: the owned DirectInput, same boot ----
+
+# 1. the owned devices see a focused window (a lane's window is never foreground); the window is
+#    still the 960x800 one the hover walk scaled, so the image rect is not the identity
+rawfocus 1
+
+# 2. absolute packets land exactly, anywhere, including both corners (no clamp pinning)
+rawmouse abs 17 401
+dimouse 17 401
+rawmouse abs 639 0
+dimouse 639 0
+rawmouse abs 0 479
+dimouse 0 479
+rawmouse abs 320 240
+dimouse 320 240
+
+# 3. a relative packet at the game's divisor (1): +5,-3 counts
+rawmouse rel 5 -3
+dimouse 325 237
+
+# 4. extended keys: right Ctrl (E0 1D = DIK 0x9D) and Up arrow (E0 48 = 0xC8) held, then focus lost:
+#    both must be released by synthetic key-ups, i.e. no key sticks across an Alt-Tab
+rawkey 0x1d e0 down
+keystate 0x9d 1
+rawkey 0x48 e0 down
+keystate 0xc8 1
+rawfocus 0
+keystate 0x9d 0
+keystate 0xc8 0
+rawfocus 1
+
+# 5. the overlay open: a click with the game cursor on the panel is withheld from the game
+hotkey F11
+imgui open
+rawmouse abs 112 100
+dimouse 112 100
+imgui hover 1
+rawmouse down l
+rawmouse up l
+imgui difiltered 2
+hotkey F11
+imgui closed
+present value:110
+settled value:110
+capture io1_menu_kept
+
+# 6. a click through the owned device with the overlay closed: absolute to NETWORK GAME, down, up
+rawmouse abs 112 192
+dimouse 112 192
+rawmouse down l
+rawmouse up l
+present Player name
+settled Ok
+capture io2_playername
+
+log imgui hover COMPLETE -- ImGui hover follows the game cursor and flips at the panel edge (+-1 game px, 1.5x); owned DirectInput: absolute exact, relative carried, E0 keys released on focus loss, click withheld under the open overlay, a raw click activated NETWORK GAME
+end

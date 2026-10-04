@@ -1,0 +1,49 @@
+# PT-GFX4: a click under the open ImGui overlay never reaches the game; the same click with the
+# overlay closed does.
+#
+# Run with `--extra-ini tools/uiscripts/ini/imgui_swallow.ini`: backend=d3d11 + imgui=1 (the overlay is
+# inert on every other backend) and [input] mouse_absolute=1.
+#
+# WHY `wmclick` AND NOT `click`. Every other click verb writes the game's input RING, below the window
+# procedure, so the overlay's subclass never sees it and this test would pass with the subclass deleted.
+# `wmclick` POSTS the messages to the game window, the way the OS delivers a real click: the subclass
+# decides first, and llm_input_wndproc_tap (0x004d1194) turns whatever it forwards into ring events.
+# That tap only reads mouse MESSAGES when the DirectInput mouse is gone, which is what mouse_absolute=1
+# does; with a DI mouse it polls DirectInput's buffer on every message instead, and the overlay drains
+# that buffer. The DI half of the swallow needs a real pointer and is not exercised here.
+#
+# The panel opens at client (16,16), 340 px wide, and its readout table runs well below y=192; NETWORK
+# GAME (value 110) sits at (112,192), inside it. The overlay is not in any capture: captures read the
+# game's framebuffer upstream of the presenter. So the captures prove the GAME's state -- still the
+# main menu after the swallowed click, the player-name screen after the forwarded one.
+#
+# The swallow is asserted by the overlay's own counter, not by the absence of a transition: `imgui
+# swallowed 4` holds only once the subclass has consumed all four posted messages (move, move, down,
+# up), and the tap never sees a message the subclass returned from. The close chord and its `imgui
+# closed` wait then give a leaked click several more presents to show up before the capture.
+
+# 1. main menu, overlay armed but closed
+settled value:110
+imgui closed
+
+# 2. open it (the harness chord; F11 is [video] imgui_key's default)
+hotkey F11
+imgui open
+
+# 3. click NETWORK GAME through the panel -- swallowed
+wmclick 112 192
+imgui swallowed 4
+hotkey F11
+imgui closed
+present value:110
+settled value:110
+capture ig1_menu_kept
+
+# 4. the same click with the overlay closed -- reaches the game
+wmclick 112 192
+present Player name
+settled Ok
+capture ig2_playername
+
+log imgui swallow COMPLETE -- click under the open overlay swallowed (menu kept), same click closed advanced the menu
+end

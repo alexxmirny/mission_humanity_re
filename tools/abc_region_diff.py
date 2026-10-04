@@ -24,7 +24,8 @@ Usage:
         [--note "..."]
 
 Exit 0 = every differing byte is declared (or no excusal file was given); 1 = a stray byte or a
-region the excusals do not name differs; 2 = the inputs cannot be read.
+region the excusals do not name differs; 2 = the inputs cannot be read, or were hashed with different
+hash kinds (tooling:TL-HARN-INCHASH) and are refused by name.
 """
 
 from __future__ import annotations
@@ -159,6 +160,13 @@ def main():
     seg = {lab: _m.parse_harness(hl) for lab, hl in logs.items()}
     rx = {lab: read_rx(hl) for lab, hl in logs.items()}
     A, B = args.label_a, args.label_b
+    # tooling:TL-HARN-INCHASH: arms hashed with different KINDS disagree in every R column at every
+    # step for no reason in the bytes -- refused by name. (The RX byte rows are raw memory and would
+    # still compare, but the column diff is the half this tool leads with.)
+    bad = _m.kind_mismatch(seg[A].get("hash_kind"), seg[B].get("hash_kind"), A, B)
+    if bad:
+        print("REFUSED: %s" % bad)
+        return 2
 
     n_common, cols = column_diff(seg[A], seg[B])
     print("per-region column diff (%s vs %s): %d common step(s)" % (A, B, n_common))

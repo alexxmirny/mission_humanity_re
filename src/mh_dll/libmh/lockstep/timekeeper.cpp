@@ -371,6 +371,8 @@ int32_t time_tick(const timekeeper_state &s, const timekeeper_calls &c, const re
                             c.overlay_dismiss();
                             hoist_dismiss(c.hoist, not4);
                         } else {
+                            // U44: stash a displaced dialog BEFORE the mode store (it reads the pre-call mode).
+                            hoist_show(c.hoist, armed);
                             if (armed) hoist_mode_set(c.hoist, 3);
                             c.sync_overlay_show();
                         }

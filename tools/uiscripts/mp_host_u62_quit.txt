@@ -1,0 +1,45 @@
+# mp:U62 (HM-M4) -- a 3-peer match whose HOST quits mid-match by ESC -> Quit -> Yes (an UNDEFEATED hub leaving),
+# the LEAVER side. Same topology as mp:U19b's quit3 (host on rig VM A, client1 on VM B, client2 the local det3
+# lane). The two clients are the SURVIVORS (mp_client_u62_survivor{1,2}.txt): with `[net] hub_migration` on
+# (the shipped default) the host's quit seam hands the transport hub to the elected successor first, and the
+# survivors play on. check_u62_handover.py reads the verdict.
+settled value:110
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+settled Create
+clickl Create
+present Game name
+settled Ok
+clickl Ok
+present Available maps
+settled Ok
+clickl Ok
+
+present Network players
+peers 2
+occ 3
+enabled Start
+settled Start
+awaitsignal seated1
+awaitsignal seated2
+clickl Start
+
+absent Network players
+gamemode 2
+gameclock 3000
+
+signal hostquitting
+
+key 0x01
+dump
+settled value:113
+clickv 113
+settled value:121
+clickv 121
+
+settled value:110
+signal hostquit
+log HOST left a running 3-peer match via ESC->Quit->Yes and reached the main menu
+end

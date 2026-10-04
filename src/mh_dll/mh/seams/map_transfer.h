@@ -216,6 +216,7 @@ void set_can_carry_for_test(int v);
 //   alive           mp:X2f -- replaces the transport-liveness probe (MH_Net_ActivePeerIds): 0 =
 //                   "this peer's link was dropped". Null = ask the transport (which, un-started,
 //                   answers "alive" for everybody -- the offline arms' behaviour before X2f).
+//   cancel          mp:X2i -- replaces MH_Net_SnapshotCancel (the pump's cancel of a released seat)
 struct PumpTestHooks {
     int (*send)(int peer, const void *body, int len, void *ctx);
     void (*between)(int peer, void *ctx);
@@ -224,6 +225,8 @@ struct PumpTestHooks {
     uint32_t       len;
     void          *ctx;
     int (*alive)(int peer, void *ctx);
+    // mp:X2i -- replaces MH_Net_SnapshotCancel (returns "a running transfer was stopped").
+    int (*cancel)(int peer, void *ctx);
 };
 void set_pump_hooks_for_test(const PumpTestHooks *h); // null restores production
 void host_pump_for_test();                            // one pump step, as the lobby tick runs it

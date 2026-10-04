@@ -1,0 +1,35 @@
+# mp:U54 -- the NEGATIVE arm's victim (`[net] spectate_after_defeat=0`): today's defeat flow. The retail defeat dialog
+# (a single Ok), captured as the "before" frame of the spectate change, then Ok -> statistics -> main menu.
+settled value:110
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+present Internet server
+settled Internet server
+clickl Internet server
+present Server address
+settled Connect
+clickl Connect
+sessions 1
+settled Join game
+clickl Join game
+present Network players
+occ 3
+settled Cancel
+signal seated1
+absent Network players
+gamemode 2
+screen 0x00653dc3
+capture c1_defeat
+dump
+signal elim
+log c1 reached its (retail) defeat dialog
+clickl Ok
+settled value:110
+capture c1_menu
+signal c1left
+awaitsignal hostdone
+awaitsignal c2done
+signal victimdone
+end

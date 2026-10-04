@@ -1,0 +1,59 @@
+# mp:MP-LANG lobby follow-up -- TWO-PEER LOBBY chat in UTF-8, receiving + replying half. Pair with
+# mp_host_lobby_chat_utf8.txt (its header carries the claim).
+#
+# This peer pins [input] codepage=1250 against the host's process codepage. It waits for the host's
+# lobby line, asserts it arrived as the right CODE POINTS in the lobby log (`wlobby`: Cyrillic this
+# peer's codepage cannot represent at all), captures the lobby, then replies with Polish + Cyrillic
+# typed into its own lobby chat field, which the host asserts the same way.
+
+settled value:110
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+present Internet server
+settled Internet server
+clickl Internet server
+present Server address
+settled Connect
+clickl Connect
+sessions 1
+settled Join game
+clickl Join game
+
+present Network players
+signal lobby
+settled Cancel
+
+awaitsignal hostsent
+# "<02>host:<01> Привет Łód!ź ok" as code points -- the whole line, decoded, with its sender
+wlobby hex:020068006f00730074003a00010020001f044004380432043504420420004101f30064002100
+wlobby hex:7a0120006f006b00
+
+# A line WIDER than the field: 31 x the widest Cyrillic capital (62 bytes, the field's cap is 63).
+# The draw scrolls it (H5, logged in mh_input.log) -- the tail is drawn, the caret at the right edge
+# -- then Esc abandons the edit: the field goes back to its last committed text (empty), through the
+# widen + narrow round trip on the Esc copy.
+clickl Enter message:
+layout 00000419
+type ЖЖЖЖЖЖЖЖЖЖЖЖЖЖЖЖЖЖЖЖЖЖЖЖЖЖЖЖЖЖЖ
+field lobby hex:d096d096d096d096d096d096d096d096d096d096d096d096d096d096d096d096d096d096d096d096d096d096d096d096d096d096d096d096d096d096d096
+capture c_lobby_scroll
+key 0x01
+field lobby
+clickl Enter message:
+layout 00000415
+type Żółw
+key 0x39
+layout 00000419
+type Мир
+layout default
+# 16 bytes: c5bb c3b3 c582 77 | 20 | d09c d0b8 d180
+field lobby hex:c5bbc3b3c5827720d09cd0b8d180
+key 0x1c
+# The LOCAL echo WITH its sender name ("<02>client:<01> Żółw Мир") -- mp:MP-ECHO-NAME.
+wlobby hex:020063006c00690065006e0074003a00010020007b01f3004201770020001c0438044004
+capture c_lobby_chat
+signal clientsent
+log MP-LANG LOBBY CLIENT: received the host's UTF-8 lobby line under cp1250 and replied with a Polish/Cyrillic one
+end

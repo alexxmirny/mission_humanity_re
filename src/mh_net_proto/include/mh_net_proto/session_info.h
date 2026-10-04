@@ -79,6 +79,13 @@ struct SessionInfo {
     // makes the session's encoding explicit, and join_admit() refuses a peer that disagrees rather
     // than seating one whose chat is mojibake on arrival with no error anywhere. 0 = "a pre-v4 advert
     // made no claim", never "codepage zero".
+    //
+    // mp:MP-LANG (2026-09-29): a current build ALWAYS carries CHAT_ENCODING_UTF8 (65001) here -- its
+    // chat is UTF-8 and its names are ASCII (mh_net_proto/text_utf8.h), so the field now names the
+    // session's CHAT ENCODING rather than any machine's codepage, and no peer adopts anything. The
+    // layout is unchanged and so is join_admit(): the same equality test that refused two different
+    // 8-bit codepages now refuses a pre-MP-LANG peer (whose value is its 8-bit codepage) by name, and
+    // join_refusal_text() says "old client cp N" / "old host cp N" on that peer's screen.
     std::uint16_t codepage = 0;
     // X2: WHAT THE MAP ACTUALLY IS. `map` above is the name a human reads and the name the game
     // opens; these two say which BYTES that name must denote on every peer. All-zero = "this host

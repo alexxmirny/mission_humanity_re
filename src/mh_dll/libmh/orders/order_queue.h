@@ -330,6 +330,13 @@ void say(const char *fmt, ...);
 void set_suppress_enqueue(bool on);
 bool suppress_enqueue();
 
+// mp:U45 -- exempt the unit-less diplomacy admin orders (0xf4 set_player_relation, 0xf5
+// set_player_control_mode) from release_due's same-unit/same-owner supersede rule. Default false =
+// the faithful retail rule. Set from reimpl_fixes::diplo_order_dedup_fix by lockstep::set_fixes, so
+// the ini key [net] diplo_order_dedup_fix is the only control.
+void set_admin_dedup_exempt(bool on);
+bool admin_dedup_exempt();
+
 int install_promotion(int default_on);
 
 // True once install_promotion() has installed anything -- install_shadow() consults this and refuses.

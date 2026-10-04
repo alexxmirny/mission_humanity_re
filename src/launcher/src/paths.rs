@@ -246,15 +246,16 @@ pub fn resolve_game_dir(
     ResolvedGameDir { found, stale_saved }
 }
 
-/// The newest `<UTC>_<mid8>_<slot>_<role>\` directory under a logs root, if any -- the
+/// The newest `<UTC>_<mid8>_<map>_<mode>\` directory under a logs root, if any -- the
 /// launcher-owned root (dist LA13, `Layout::game_log_root`) or a game's own `logs\`.
 ///
 /// The game creates one per SESSION (mp SES1); dist LA4's report is a zip of it.
 ///
 /// THE NAME DECIDES, NOT THE MODIFICATION TIME, and that is a correction to LA1's version rather
-/// than a refinement of it. Every session directory is named `YYYYMMDDTHHMMSSZ_...` (see
-/// `src/mh_dll/mh_common/include/mh_session_dir.h`), so lexicographic order over that prefix IS
-/// chronological order, exactly, forever. An mtime is a different fact that usually agrees:
+/// than a refinement of it. Every session directory is named `YYYY-MM-DDTHH-MM-SSZ_...` (SES8;
+/// `YYYYMMDDTHHMMSSZ_...` before 2026-09-29 -- see `src/mh_dll/mh_common/include/mh_session_dir.h`),
+/// and `utc_stamp_prefix` folds both to one compact form, so order over it IS chronological order,
+/// across both generations. An mtime is a different fact that usually agrees:
 /// two sessions opened inside the same filesystem timestamp tick have EQUAL mtimes and the
 /// comparison then picks whichever `read_dir` yielded first (measured -- it is what made this
 /// function's own test flaky), and copying a logs folder off a rig VM rewrites every mtime to the
@@ -283,18 +284,45 @@ pub fn newest_session_dir_in(logs: &Path) -> Option<PathBuf> {
     best.map(|(_, _, p)| p)
 }
 
-/// `20260917T164346Z` off the front of a directory name, or `None` if it does not start with one.
+/// The UTC stamp off the front of a directory name, as `20260917T164346Z`, or `None` if it does
+/// not start with one. Both generations are accepted (`2026-09-17T16-43-46Z_...` from SES8, and
+/// `20260917T164346Z_...` before it) and returned in the compact form.
 ///
 /// Shape-checked rather than parsed: the only thing that matters is that every real stamp is the
 /// same fixed width and character class, so string comparison between two of them is a comparison
 /// of instants. A name that fails this is not "an old stamp", it is not a stamp.
 fn utc_stamp_prefix(name: &str) -> Option<String> {
     let b = name.as_bytes();
-    if b.len() < 16 {
-        return None;
-    }
     let digits = |r: std::ops::Range<usize>| b[r].iter().all(u8::is_ascii_digit);
-    if digits(0..8) && b[8] == b'T' && digits(9..15) && b[15] == b'Z' {
+    // SES8 (2026-09-29): `YYYY-MM-DDTHH-MM-SSZ` -- ISO 8601 with dashes for the colons a Windows
+    // path cannot hold. Folded to the compact form, so the two generations compare as instants (a
+    // raw compare puts every SES1 name after an SES8 one: `-` sorts before `0`).
+    if b.len() >= 20
+        && digits(0..4)
+        && b[4] == b'-'
+        && digits(5..7)
+        && b[7] == b'-'
+        && digits(8..10)
+        && b[10] == b'T'
+        && digits(11..13)
+        && b[13] == b'-'
+        && digits(14..16)
+        && b[16] == b'-'
+        && digits(17..19)
+        && b[19] == b'Z'
+    {
+        return Some(format!(
+            "{}{}{}T{}{}{}Z",
+            &name[0..4],
+            &name[5..7],
+            &name[8..10],
+            &name[11..13],
+            &name[14..16],
+            &name[17..19]
+        ));
+    }
+    // SES1: `YYYYMMDDTHHMMSSZ`.
+    if b.len() >= 16 && digits(0..8) && b[8] == b'T' && digits(9..15) && b[15] == b'Z' {
         return Some(name[..16].to_string());
     }
     None
@@ -347,11 +375,32 @@ mod tests {
             got.file_name().unwrap().to_string_lossy(),
             "20260917T164346Z_dedd707c_1_client"
         );
+        // SES8: a newer dashed name beats every older compact one, though it sorts BEFORE them raw.
+        std::fs::create_dir_all(
+            dir.join("logs")
+                .join("2026-09-29T08-15-02Z_ab12cd34_blue-monday_host"),
+        )
+        .unwrap();
+        let got = newest_session_dir_in(&dir.join("logs")).unwrap();
+        assert_eq!(
+            got.file_name().unwrap().to_string_lossy(),
+            "2026-09-29T08-15-02Z_ab12cd34_blue-monday_host"
+        );
         assert_eq!(
             utc_stamp_prefix("20260917T164346Z_x").as_deref(),
             Some("20260917T164346Z")
         );
-        for bad in ["logs", "2026-09-17T16Z_x", "20260917X164346Z_x", "short"] {
+        assert_eq!(
+            utc_stamp_prefix("2026-09-29T08-15-02Z_menu_solo").as_deref(),
+            Some("20260929T081502Z")
+        );
+        for bad in [
+            "logs",
+            "2026-09-17T16Z_x",
+            "20260917X164346Z_x",
+            "short",
+            "2026-09-29T08:15:02Z_x",
+        ] {
             assert!(utc_stamp_prefix(bad).is_none(), "{bad}");
         }
         std::fs::remove_dir_all(&dir).ok();

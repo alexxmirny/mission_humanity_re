@@ -1831,11 +1831,12 @@
    "kind": "LIBMH_EVK_SCR_OVERLAY_DISMISS",
    "kind_no": 2,
    "dispatch": [
-    "llm_net_lockstep_overlay_dismiss"
+    "llm_net_lockstep_overlay_dismiss",
+    "llm_map_cam_mark_viewport_dirty"
    ],
    "targets_absent_from_graph": [],
-   "reachable_fns": 65,
-   "write_symbols": 63,
+   "reachable_fns": 66,
+   "write_symbols": 64,
    "frame_cuts_crossed": [
     "llm_strat_frame_sim_only"
    ],

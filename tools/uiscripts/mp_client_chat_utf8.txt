@@ -1,0 +1,50 @@
+# mp:MP-LANG -- TWO-PEER in-game chat across two DIFFERENT codepages, receiving + replying half. Pair
+# with mp_host_chat_utf8.txt (its header carries the claim).
+#
+# This peer pins [input] codepage=1250 against the host's 1251. It waits for the host's line, asserts
+# it arrived as the RIGHT CODE POINTS (`wmsg`: "Privet Lodz ok" written properly -- Cyrillic this
+# peer's codepage cannot represent at all) and captures it drawn, then replies with a line of its own
+# mixing Polish, Cyrillic and Latin, which the host asserts the same way.
+
+settled value:110
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+present Internet server
+settled Internet server
+clickl Internet server
+present Server address
+settled Connect
+clickl Connect
+sessions 1
+settled Join game
+clickl Join game
+
+present Network players
+signal lobby
+settled Cancel
+capture c_lobby
+absent Network players
+gamemode 2
+gameclock 6000
+
+awaitsignal hostsent
+wmsg hex:1f044004380432043504420420004101f30064007a0120006f006b00
+capture c1_host_line
+
+key 0x1c
+layout 00000415
+type Żółw
+key 0x39
+layout 00000419
+type Мир
+key 0x39
+layout default
+type hi
+# 17 UTF-8 bytes: c5bb c3b3 c582 77 | 20 | d09c d0b8 d180 | 20 | 68 69
+field chat hex:c5bbc3b3c5827720d09cd0b8d180206869
+key 0x1c
+signal clientsent
+log MP-LANG CLIENT: received the host's mixed line under cp1250 and replied with a Polish/Cyrillic/Latin one
+end

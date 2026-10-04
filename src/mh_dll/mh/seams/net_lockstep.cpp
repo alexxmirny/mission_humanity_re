@@ -48,6 +48,7 @@
 #include "hook/promoted.h"             // promoted_owner_of -- suppressed is not the same as MISMATCHED
 #include "fix/resync_clamp.h"          // MP D14 clamp (R4: shared, closure-neutral; unit-tested in lockstest)
 #include "lockstep/turn_engine.h"      // set_icon_counters / reimpl_fixes / the two promotion entry thunks
+#include "mh_spectate.h"               // mp:U54 -- the spectator roster rules, shared with the libmh twin
 #include "addr/mh_export.gen.h"        // entry_llm_strat_time_tick (the C4 direct-install fallback)
 #include "hook/export.h"               // install_export_ok
 #include "ui/lobby_ui.h"               // D4: the present hook drives two UI-module repaints
@@ -57,7 +58,11 @@
 // projects that need the arithmetic (mh, mh_net_udp, mh_nettest) share ONE definition, and so
 // the offline suite that proves it (net_selftest.exe udpstatstest) proves the code mh.dll runs.
 #include "../../mh_net_udp/udp_stats.h"       // RFC 6298 / 3393 / 7680 + the lookahead decision
+#include "desync/world_sync_core.h"           // mp:X3c -- ff_* arithmetic for the world-resync catch-up
 #include "../../mh_net_udp/lookahead_start.h" // mp:P14 -- the START lookahead, seeded from the lobby RTT
+#include "../../mh_net_udp/relay_path.h"      // mp:P16 -- the relayed client->host->client delay (3+ peer star)
+#include "ui/lobby_ping.h"                    // mp:P16 -- lobby_ping_published_srtt (the host's published SRTT table)
+#include "ui/player_strings.h"                // mp:U62 -- the hub-change notice is a table row
 #include "seams/adaptive_window.h"            // mp:P15 -- the first window's start (all peers live) + post-spin starved
 
 // R7 RESOLVED (fork F3C): the two mh::sim installs that used to be forward-declared and called from
@@ -319,8 +324,10 @@ int  g_icon_count = 1; // [net] icon_count -- install the counting thunk even wh
 // cannot double-count.
 void icon_note_wanted() { ++g_icon_calls; }
 void icon_note_shown() { ++g_icon_shown; }
+int  g_overlay_dialog_guard  = 1; // [net] overlay_dialog_guard -- MP U44; reimpl-only, default ON
 int  g_desync_icon_gate      = 0; // [net] desync_icon_gate -- MP U20; reimpl-only, see reimpl_fixes
 int  g_gone_peer_frame_guard = 1; // [net] gone_peer_frame_guard -- MP U19e/U19i; body + byte patch, DEFAULT ON
+int  g_undock_reentry_fix    = 1; // [net] undock_reentry_fix -- MP U49; body + byte patch, DEFAULT ON, sim-affecting
 int  g_defang_xui            = 0; // extend_ui_enter wait+mode8 pair (the DOMINANT ~2s mode-8 freeze): 0=live 1=NOP
 int  g_resync_trigger_reset =
     0; // 1 = zero RESYNC_TRIGGER_COUNT on horizon recovery (spurious-resync ROOT fix, option b; see install_resync_trigger_reset)
@@ -413,6 +420,18 @@ alignas(8) double g_hz_max_seen = 0.0;
 // mp:D30 -- the same maximum for what the HEARTBEAT THREAD sent. A separate variable so each has one
 // writer (the heartbeat, under g_hb_cs); readers take the max of the two.
 alignas(8) double g_hz_hb_sent = 0.0;
+// mp:X3c -- THE HORIZON MIRROR (world resync). While a diverged peer catches up after a world import its GAME_CLOCK
+// is B steps behind the horizon it has already advertised. Every "is this floor stale?" rule (a sent maximum more
+// than 2 s ahead of the clock is a restarted clock) would read that as a new match, reset the floor and let the
+// peer advertise a horizon BELOW what it already put on the wire (G297), stalling the host. With the mirror on the
+// stale rule never fires and the heartbeat / eager hook advertise the LARGEST horizon any other active human has
+// advertised (mh::netstats::mirror_horizon), so the host's committed horizon keeps moving at live pace. Set by
+// MH_Lockstep_WorldSyncBegin, cleared when the fast-forward ends.
+volatile LONG g_ws_mirror = 0;
+inline bool   hz_stale(double clk, double v) { return !g_ws_mirror && mh::netstats::horizon_max_is_stale(clk, v); }
+double        ws_mirror_horizon(double floor_h); // defined after slot_is_active_human
+double        ws_extend_floor(double h);
+void          ws_mirror_upkeep();
 // mp:D30 -- the lookahead actually pinned into STEP_SIZE this frame: max(g_lockstep_step,
 // max_sent - clock), mh::netstats::monotone_step. Written by on_time_tick under g_hb_cs, read by the
 // heartbeat under g_hb_cs and by the eager hook on the main thread. 0 = no pin this match yet.
@@ -522,6 +541,13 @@ void ensure_key_once() {
     }
 }
 
+extern "C" void MH_MP_CaptureBootResidue(void); // launch.cpp -- mp:D45: one-shot boot snapshot of the residue regions
+void            hub_leave_poll();               // mp:U62 -- defined with the other handover seams below
+void            fo_match_tick();                // mp:U63 -- defined with the other handover seams below
+int             g_spectate_mask     = 1;        // [net] spectate_mask (default 1): 0 = never export the spectator bit (the U71 negative control)
+bool            g_spec_menu_reached = false;    // mp:U54: a spectator that chose Exit match is back at the idle main menu (the retail flag is not set on that route)
+void            spectator_tick();               // mp:U54/U71 -- defined with the retail spectate carriers below
+
 void on_present() {
     // THE MODULE BIND USED TO HAVE A SECOND ARM HERE (F4A's MH_ModuleBind_OnPresent, mechanism B:
     // off the loader lock, on the first rendered frame). F4B deleted it with the spike it armed --
@@ -530,10 +556,16 @@ void on_present() {
     // The mechanism stays RECORDED in docs/dll-split.md as the documented fallback, and this is
     // still where it would go: "the first place that is both off the loader lock and guaranteed to
     // run", which is also why ensure_key_once sits here (minting a key needs LoadLibrary advapi32).
+    frame_watchdog_beat();         // mp:P17: stamp the main-thread frame beat the freeze watchdog reads
+    MH_MP_CaptureBootResidue();    // mp:D45: one-shot, first idle main-menu frame (cheap when done)
     MH_Libmh_OnPresent();          // F4D's standing arm: report the spine-boundary crossing counters
     ensure_key_once();             // first frame: make sure the host has a key it can share
+    mp_session_solo_tick();        // SES8: a single-player match opens its own session directory
     MH_MP_DrainRelayNotice();      // mp:R4a: a relay-level notice the UDP module queued -> arm it (main thread)
     mp_lobby_stall_watch();        // mp:X2h: has a modal stopped the lobby-tick drain? (see net_seams.cpp)
+    spectator_tick();              // mp:U54/U71: the transport's spectator mask + a spectator that Exit-ed ends its session
+    hub_leave_poll();              // mp:U62: a defeated hub that stayed has reached the main menu -> hand the hub over
+    fo_match_tick();               // mp:U63: tell the transport whether a match is running (arms the crash failover)
     mh::ui::browser_notice_tick(); // U23: keep the involuntary-exit notice on the browser status line
     mh::ui::slide_geom_watch();    // U37 diag ([net] slide_diag): log any change to the menu frame geometry
     MH_FontGuard_OnPresent();      // F2: [fonts] probe_text through the game's own font path, before overlay+capture
@@ -579,8 +611,9 @@ void on_present() {
         // main thread writes it, and the heartbeat only under the lock we hold), and both sent maxima.
         double floor_h = before;
         if (g_hz_max_seen > floor_h) floor_h = g_hz_max_seen;
-        if (!mh::netstats::horizon_max_is_stale(clock, g_hz_hb_sent) && g_hz_hb_sent > floor_h) floor_h = g_hz_hb_sent;
-        double horizon = g_monotone ? mh::netstats::monotone_horizon(clock, step, floor_h) : clock + step;
+        if (!hz_stale(clock, g_hz_hb_sent) && g_hz_hb_sent > floor_h) floor_h = g_hz_hb_sent;
+        double horizon = g_ws_mirror ? ws_mirror_horizon(floor_h)
+                                     : (g_monotone ? mh::netstats::monotone_horizon(clock, step, floor_h) : clock + step);
         memcpy((void *)ADDR_LOCAL_HORIZON, &horizon, sizeof(double)); // keep OUR requested horizon fresh
         // mp:T4 -- send only when this write CHANGED the horizon. This block runs once per present,
         // and an uncapped frame rate (1100-3500 fps measured on the rig) otherwise puts one segment
@@ -594,7 +627,7 @@ void on_present() {
             memcpy(pkt + 1, &horizon, sizeof(double)); // type 2 = EXTEND
             MH_Net_Send(MH_NET_BROADCAST, pkt, 9);     // tell peers now (g_conn_cs-locked)
         }
-        if (horizon > g_hz_max_seen && !mh::netstats::horizon_max_is_stale(clock, horizon)) g_hz_max_seen = horizon;
+        if (horizon > g_hz_max_seen && !hz_stale(clock, horizon)) g_hz_max_seen = horizon;
         if (g_hb_cs_ready) LeaveCriticalSection(&g_hb_cs);
         ((void (*)())ADDR_COMMIT_HORIZON_FN)(); // raise OUR committed THIS frame
     }
@@ -825,8 +858,9 @@ int  g_late_peer   = -1;
 // was INERT until mp:U19i's byte patch, mp:GS1's scope), and it only moves when the peer's SIM actually
 // advances its horizon -- a keepalive-only link (the field's 22-35 s since_rx freezes, GS1/RM1)
 // leaves it frozen while the transport stays "up".
-int  g_data_timeout_ms            = SHIP_DATA_TIMEOUT_MS;
-bool g_gs2_dropped[LS_LATE_PEERS] = {false}; // latched per slot per match -- never re-fire on an already-dropped side
+int   g_data_timeout_ms            = SHIP_DATA_TIMEOUT_MS;
+DWORD g_gs2_credit_tick            = 0;       // mp:U68 -- GetTickCount() of the last GS2 drop: the survivors' silence restarts there (0 = none)
+bool  g_gs2_dropped[LS_LATE_PEERS] = {false}; // latched per slot per match -- never re-fire on an already-dropped side
 
 // mp:T3c -- UNUSED HORIZON, the second surplus signal. Same window machinery, one sample per
 // strategic frame: local_h - COMMITTED, floored at zero. It is 0 for whichever peer's own horizon is
@@ -997,6 +1031,7 @@ void lateness_tick() {
             g_late_last_h[i]    = 0.0;
             g_late_seen[i]      = false; // mp:P15: the first read of the new match seeds again
             g_late_last_move[i] = 0;
+            g_gs2_credit_tick   = 0;
             g_gs2_dropped[i]    = false; // mp:GS2 -- a new match is a new peer set, not a residue of the last one
         }
         g_late_have = false;
@@ -1578,24 +1613,54 @@ double off_grid_ms(double ms) {
 // lateness_tick indexes horizon slots in the same id space MH_Net_LocalPlayerId() lives in. So match
 // the id, and accept the single-entry fallback only when there is exactly one peer and the transport
 // has not learnt its id -- which is the 2-player case the note on lat_count already calls out.
+//
+// mp:P16 -- THE SINGLE-ENTRY FALLBACK IS THE HOST LINK, which is only the binding peer's path when the
+// binding peer IS the host. On a star client bound by ANOTHER client the horizon flew own->host->other,
+// so the host link alone under-corrects by the whole second leg (0.72x on the first 3-peer match). The
+// arithmetic, and why it is what it is, is mh_net_udp/relay_path.h; this function only gathers its
+// inputs: the transport's rows and the host's published per-client SRTT (lobby_ping_published_srtt).
+// `[net] lockstep_relay_path=0` restores the pre-P16 lookup bit for bit (the negative arm).
+int g_relay_path = 1; // [net] lockstep_relay_path -- mp:P16; read in MH_Lockstep_Init next to lockstep_adaptive
+
+// mp:P16 -- the host's published SRTT table as the controller reads it. During a match the host
+// republishes at ~1 Hz, so anything older than this is a host that stopped (or an old build that
+// never did); the table then contributes nothing and the lookup is the pre-P16 one.
+constexpr unsigned RELAY_PUB_MAX_AGE_MS = 10000;
+// The SEED reads the table once, at the first live-lockstep frame -- the last summary is the lobby's,
+// which can be tens of seconds old after a map load. A lobby RTT is still the right number to seed
+// from (it is what the own-link seed already uses), so the age bound is generous.
+constexpr unsigned RELAY_SEED_MAX_AGE_MS = 120000;
+
+void relay_pub_table(double *pub, unsigned max_age_ms) {
+    for (int i = 0; i < mh::netstats::RELAY_MAX_PEERS; ++i) {
+        int ms = 0;
+        pub[i] = mh::ui::lobby_ping_published_srtt(i, max_age_ms, &ms) ? (double)ms : -1.0;
+    }
+}
+
 double binding_peer_owd_ms() {
     if (g_late_peer < 0) return -1.0;
     MH_NetStats s;
     MH_Net_GetStats(&s);
     if (!s.lat_supported || s.lat_count <= 0) return -1.0;
-    const MH_NetPeerLatency *hit = 0;
-    for (int i = 0; i < s.lat_count && i < MH_NET_MAX_PEERS; ++i) {
-        if (s.lat[i].player_id == g_late_peer) {
-            hit = &s.lat[i];
-            break;
-        }
+    mh::netstats::RelayLatRow rows[MH_NET_MAX_PEERS];
+    int                       n = s.lat_count < MH_NET_MAX_PEERS ? s.lat_count : MH_NET_MAX_PEERS;
+    for (int i = 0; i < n; ++i) {
+        rows[i].player_id = s.lat[i].player_id;
+        rows[i].samples   = s.lat[i].samples;
+        rows[i].srtt_us   = s.lat[i].srtt_us;
+        rows[i].rttvar_us = s.lat[i].rttvar_us;
     }
-    if (!hit && s.lat_count == 1 && s.lat[0].player_id < 0) hit = &s.lat[0];
-    if (!hit || hit->samples <= 0) return -1.0;
-    const double srtt_ms   = (double)hit->srtt_us / 1000.0;
-    const double rttvar_ms = (double)hit->rttvar_us / 1000.0;
-    const double owd       = (srtt_ms + 4.0 * rttvar_ms) * 0.5;
-    return (owd > 0.0) ? owd : -1.0;
+    double pub[mh::netstats::RELAY_MAX_PEERS];
+    // Only a client with one row can use the table, and only a client bound by another client; do not
+    // even touch it otherwise (keeps the host and the 2-player paths exactly as they were).
+    // mp:U62: "bound by the hub" asks the transport who the hub IS (id 0 until a handover moves it).
+    MH_NetHubStatus hub;
+    MH_Net_HubStatus(&hub);
+    const int  hub_id  = hub.hub_id >= 0 ? hub.hub_id : 0;
+    const bool use_pub = g_relay_path && n == 1 && rows[0].player_id < 0 && g_late_peer != hub_id;
+    if (use_pub) relay_pub_table(pub, RELAY_PUB_MAX_AGE_MS);
+    return mh::netstats::binding_owd_ms(rows, n, g_late_peer, use_pub ? pub : 0, g_relay_path != 0, hub_id);
 }
 
 // mp:P14 -- apply the lobby-RTT seed. Runs from adaptive_tick's first live-lockstep frame, i.e. BEFORE
@@ -1613,6 +1678,16 @@ void adaptive_seed_start() {
     for (int i = 0; i < n; ++i) {
         srtt[i] = (double)s.lat[i].srtt_us / 1000.0;
         smp[i]  = s.lat[i].samples;
+    }
+    // mp:P16 -- a star client's one row is the HOST link; the other clients are further, by their own
+    // host legs. Adds the path RTTs (own + host->other) as extra candidates; lookahead_start takes the max.
+    if (g_relay_path && n == 1 && s.lat[0].player_id < 0) {
+        double pub[mh::netstats::RELAY_MAX_PEERS];
+        relay_pub_table(pub, RELAY_SEED_MAX_AGE_MS);
+        MH_NetHubStatus hub; // mp:U62: skip the HUB's published row (it is the own row), whichever id the hub has
+        MH_Net_HubStatus(&hub);
+        n = mh::netstats::seed_with_relay_paths(srtt, smp, n, MH_NET_MAX_PEERS, MH_Net_LocalPlayerId(), pub, true,
+                                                hub.hub_id >= 0 ? hub.hub_id : 0);
     }
     // The controller's own effective floor (AD_SIM_FLOOR_MULT sub-steps). The configured sub-step is
     // preferred to the global: on_time_tick pins SIM_STEP_INT from g_sim_step only AFTER this call.
@@ -1644,6 +1719,13 @@ void adaptive_seed_start() {
 }
 
 void adaptive_tick() {
+    // mp:P16 -- the HOST keeps the per-slot SRTT table live during the match (it was lobby-only): it is how
+    // a star client learns the OTHER client's host leg. Before the adaptive gate: a host pinned to a
+    // fixed lookahead still has adaptive clients to serve.
+    // mp:U62: "the hub" is no longer "player 0" -- after a handover the hub is whichever survivor took over, and
+    // it must keep publishing. A peer holding more than one connection IS a hub (a client holds exactly one).
+    if (g_relay_path && *(const uint8_t *)ADDR_SESSION_MODE == 3 && MH_Net_IsStarted() && MH_Net_PeerCount() > 1)
+        mp_ping_publish_tick();
     if (!g_adaptive) return;
     if (*(const uint8_t *)ADDR_SESSION_MODE != 3) return;       // live lockstep only
     if (!MH_Net_IsStarted() || MH_Net_PeerCount() <= 0) return; // solo: nothing to tune against
@@ -2160,42 +2242,253 @@ inline bool slot_is_active_human(int idx) {
     return (f & 0x02) != 0 && (f & 0x04) != 0;
 }
 
+// ==== mp:U54 -- SPECTATE AFTER DEFEAT: the shared predicates (the libmh twin and the retail byte-patch carriers read the
+// SAME rules, mh_spectate.h) =======================================================================================
+//
+// A defeated human in a lockstep match with two or more OTHER humans still alive is not dropped: it stays in the session as a
+// SPECTATOR (its HUMAN bit off, DEFEATED|GONE on -- the flip every survivor makes for it since U56 -- its session NOT
+// downgraded, its own orders dropped). [net] spectate_after_defeat (default 1; needs player_left_pin_fix, resolved at ini read).
+int          g_spectate_after_defeat = 1;
+volatile int g_spec_pending          = 0; // retail carriers: set at the loser's elimination step, consumed by the call-splice below it
+volatile int g_spec_res              = 0; // retail carrier of the spectator's match-end evaluation: spec_eval_retail's verdict
+volatile int g_spec_msg_pending      = 0; // the "Defeated -- spectating" notice is owed (printed once gameplay resumes)
+
+void spec_read_roster(mh::spectate::roster &r) {
+    for (int i = 0; i < 8; ++i) {
+        r.flags[i] = *(const uint32_t *)(mh::addr::_G_LLM_STRAT_PLAYERS + (unsigned)i * 0x740u);
+        for (int j = 0; j < 8; ++j) r.relation[i][j] = *(const uint8_t *)(0x00e587f1u + (unsigned)i * 0x34u + (unsigned)j);
+    }
+    r.ally_rule = *mh::state::ptr<int32_t>(mh::state::RID_STRAT_MP_ALLY_VICTORY_RULE_FLAG) != 0;
+}
+
+// Is the LOCAL player a spectator right now? (pure roster state: every peer reads the same)
+bool local_is_spectator() {
+    if (!g_spectate_after_defeat) return false;
+    const unsigned me = *(const uint16_t *)mh::addr::PlayerSide;
+    if (me >= 8) return false;
+    const uint32_t f = *(const uint32_t *)(mh::addr::_G_LLM_STRAT_PLAYERS + me * 0x740u);
+    return mh::spectate::is_spectator(f, *(const uint8_t *)ADDR_SESSION_MODE == 3, true);
+}
+
+// mp:X3c -- the horizon the mirror advertises: never less than `floor_h` (what this peer already sent), the
+// largest horizon any OTHER active human advertised, and the local HORIZON global. Our own PEER_HORIZON slot is
+// ignored (G276: it holds our own stale value).
+// mp:X3c-FIX (cause 2): the mirror floor for the GAME-SIDE horizon writers. During catch-up the client's clock
+// is rewound by the backlog, so time_tick's advertise_horizon (clock + STEP_SIZE), an order stamp
+// (max(clock + STEP, HORIZON)) and the 5th-nag bump (step * mul + clock) all land BEHIND what the host holds;
+// MSG_HORIZON overwrites the host's peer horizon with no max, so the host's committed horizon fell (measured
+// "DR TOTAL WRITE BACKWARDS 23660 -> 5300", host frozen ~18 s, 2 of 5 ended in ABORT reason=1). Floor at the
+// choke every one of them passes (send_lockstep_extend): never advertise below what we sent / a peer holds /
+// our own HORIZON. Deliberately NOT done by pinning STEP_SIZE up to the backlog: the nag bump multiplies
+// STEP_SIZE and would advertise far ahead of live.
+double ws_extend_floor(double h) {
+    if (!g_ws_mirror) return h;
+    double sent = g_hz_max_seen;
+    if (g_hb_cs_ready) EnterCriticalSection(&g_hb_cs);
+    if (g_hz_hb_sent > sent) sent = g_hz_hb_sent;
+    if (g_hb_cs_ready) LeaveCriticalSection(&g_hb_cs);
+    const double f = ws_mirror_horizon(sent);
+    if (mh::netstats::mirror_extend_floor(h, f) == h) return h;
+    memcpy((void *)ADDR_LOCAL_HORIZON, &f, sizeof(double)); // the writer stored the low value; keep HORIZON = what is on the wire
+    if (f > g_hz_max_seen) g_hz_max_seen = f;
+    static int s_logged = 0;
+    if (s_logged < 8) {
+        ++s_logged;
+        char b[160];
+        wsprintfA(b, "; [worldsync] horizon floor engaged: writer wanted %ld ms, mirror floor %ld ms\n", (long)(h * 1000.0), (long)(f * 1000.0));
+        seam_log(b);
+    }
+    return f;
+}
+
+// One place for both the WorldSyncBegin and each FF tick: while mirroring, the stall-nag counter is zeroed (the
+// 5th-nag emergency bump is a live-play recovery; during catch-up the stall is OURS -- the counter is KEEP_LOCAL,
+// so the 5th nag landed inside the catch-up in 5 of 16 first resyncs) and HORIZON is raised to the mirror floor
+// so an order stamped from it (max(clock + STEP, HORIZON)) is never below the advertised horizon.
+void ws_mirror_upkeep() {
+    const int32_t zero = 0;
+    memcpy((void *)mh::state::live_base(mh::state::RID_NET_LOCKSTEP_STALL_NAG_COUNT), &zero, sizeof(zero));
+    double local;
+    memcpy(&local, (const void *)ADDR_LOCAL_HORIZON, sizeof(double));
+    double sent = g_hz_max_seen;
+    if (g_hz_hb_sent > sent) sent = g_hz_hb_sent;
+    const double f = ws_mirror_horizon(sent);
+    if (f > local) memcpy((void *)ADDR_LOCAL_HORIZON, &f, sizeof(double));
+}
+
+double ws_mirror_horizon(double floor_h) {
+    double   peers[8];
+    uint32_t mask = 0;
+    for (int j = 0; j < 8; ++j) {
+        memcpy(&peers[j], (const void *)(ADDR_PEER_HORIZON() + (unsigned)j * 8u), sizeof(double));
+        if (slot_is_active_human(j)) mask |= 1u << j;
+    }
+    double local;
+    memcpy(&local, (const void *)ADDR_LOCAL_HORIZON, sizeof(double));
+    return mh::netstats::mirror_horizon(floor_h, peers, mask, 8, MH_Net_LocalPlayerId(), local);
+}
+
+// mp:U63 (HM-M5) -- THE CRASH FAILOVER SUSPENDS THE GAME'S OWN SILENCE TIMERS. While the transport replaces a hub that
+// is gone (MH_NetHubStatus::failover_active: SUSPECT or ELECT), every survivor stalls by construction -- the star has no
+// route between them -- so the timers that read a stall as "that peer is dead" would end the match in the middle of the
+// recovery: GS2's data timeout (15 s), the U17 fast-drop's safety valve, and retail's resync countdown (U55 measured
+// 58 s to outcome 8 on exactly this). The transport bounds the whole failover itself (`[net] failover_budget_ms`, 20 s),
+// so a true partition still ends: when the budget runs out the timers simply resume, from the END of the suspension
+// (g_fo_credit_tick), so no silence accrued during it is charged to anybody.
+bool  g_fo_active      = false;
+int   g_fo_phase       = 0;
+DWORD g_fo_credit_tick = 0; // GetTickCount() when the last suspension ended (0 = never)
+
+// mp:U64 (HM-M6) -- A SIDE THAT THE FAILOVER ENDED LEAVES THE MATCH AT ONCE. FO_MINORITY (this side holds no strict majority,
+// plan Q1) and FO_FAILED (the budget ran out: nobody reachable) both refuse/lose every connection, but the game kept waiting
+// for peers that will never answer and only ended through retail's resync countdown (U55: ~58 s, then outcome 8). The 4-peer
+// double-loss arm measured a 2-of-4 minority sitting there for over a minute after its MINORITY verdict. So the game applies
+// the verdict: every other human slot is removed locally (one per poll, re-checked against the live session), which drops
+// the humans below retail's quorum and ends the match through the SAME route a transport death takes (presence_lost ->
+// on_gameover outcome=8, "connection lost" / "you are the last player").
+bool g_fo_end_logged = false;
+void fo_end_side_poll(int phase) {
+    if (phase != 4 /*FO_FAILED*/ && phase != 5 /*FO_MINORITY*/) {
+        g_fo_end_logged = false;
+        return;
+    }
+    if (*(const uint8_t *)ADDR_SESSION_MODE != 3) return;
+    const int me = MH_Net_LocalPlayerId();
+    for (int i = 0; i < 8; ++i) {
+        if (i == me || !slot_is_active_human(i)) continue;
+        if (!g_fo_end_logged) {
+            g_fo_end_logged = true;
+            char b[200];
+            wsprintfA(b, "; U64: crash failover ended as %s -> this side leaves the match: removing the other human slots (connection lost)\n",
+                      phase == 5 ? "MINORITY" : "FAILED");
+            seam_log(b);
+        }
+        g_gs2_dropped[i] = true;
+        mh::hook::call_watcall1(mh::addr::llm_net_player_remove, (void *)(intptr_t)i);
+        notify_player_dropped(i);
+        char b2[96];
+        wsprintfA(b2, "; U64: removed human slot %d (failover verdict)\n", i);
+        seam_log(b2);
+        return; // one slot per poll: the first removal may already end the match
+    }
+}
+
+void fo_poll() {
+    static DWORD s_next = 0;
+    const DWORD  now    = GetTickCount();
+    if ((long)(now - s_next) >= 0) {
+        s_next = now + 50;
+        MH_NetHubStatus st;
+        MH_Net_HubStatus(&st);
+        const bool act = st.supported && st.failover_active != 0;
+        if (act != g_fo_active) {
+            char b[200];
+            if (act) {
+                wsprintfA(b, "; U63 failover ACTIVE (phase %d): GS2 / U17 safety valve / resync countdown suspended\n", st.failover);
+            } else {
+                g_fo_credit_tick = now;
+                wsprintfA(b, "; U63 failover over (phase %d after %d ms, hub=%d): the silence timers resume from now\n",
+                          st.failover, st.failover_ms, st.hub_id);
+            }
+            seam_log(b);
+        }
+        g_fo_active = act;
+        g_fo_phase  = st.failover;
+        fo_end_side_poll(st.supported ? st.failover : 0);
+    }
+    if (g_fo_active && *(const uint8_t *)ADDR_SESSION_MODE == 3) {
+        int *cd = (int *)rt_countdown_base();
+        if (*cd > 0 && *cd < 0x3c) *cd = 0x3c; // hold retail's SYNC_RETRY_COUNTDOWN at its reload: no tick toward the removal
+    }
+}
+
+// mp:U64 -- the transport's answer RIGHT NOW. fo_poll() samples every 50 ms, and a failover can start, elect and remove the
+// dead hub inside one such window (a 4-peer rig run: SUSPECT .420 -> hub elected .462 -> U17 fast-drop .464), so a decision
+// that must not race the failover (the "kick that leaves nobody" session close) asks the transport itself.
+bool fo_active_now() {
+    MH_NetHubStatus st;
+    MH_Net_HubStatus(&st);
+    return g_fo_active || (st.supported && st.failover_active != 0);
+}
+
 void data_timeout_tick() {
+    fo_poll();                                                  // mp:U63 -- BEFORE the early-outs: the state it keeps must follow the transport even when GS2 is off
+    if (g_fo_active) return;                                    // mp:U63 -- the hub is being replaced: nobody is silent, the star is down
     if (g_data_timeout_ms <= 0) return;                         // [net] data_timeout_ms <= 0 -- feature off
     if (*(const uint8_t *)ADDR_SESSION_MODE != 3) return;       // only a live lockstep match has peers to time out
     if (!MH_Net_IsStarted() || MH_Net_PeerCount() <= 0) return; // solo: nothing to watch
-    // BOUND THE SCAN TO REAL SLOTS ONLY -- measured trap, first two rig runs of `gs2_data_timeout`
-    // (2026-09-21): every UNUSED PEER_HORIZON slot in a 2-player match got "dropped" too.
-    // `net_seams.cpp`'s own PLAYERDUMP comment already names the cause -- an empty slot holds
-    // "retail's 10-second sentinel", a nonzero value indistinguishable in SHAPE from a real peer's
-    // very first sample (both simply differ from g_late_last_h[]'s zero-initialised default), so
-    // g_late_last_move[] latches a phantom slot's "first observation" exactly like a real one's --
-    // and a value that then never changes again ages past T identically to a genuinely frozen real
-    // peer. The FIRST fix tried `current_map_player_count` (lobby_widgets.cpp's A_MAP_PCOUNT) and
-    // measured WRONG on the client: that field is finalised by the HOST's build_players and reads
-    // correctly there, but on a CLIENT it still held the bare map file's declared capacity (8, not
-    // the lobby's real 2) -- an asymmetry between roles this seam cannot afford. `MH_Net_PeerCount()`
-    // (the TRANSPORT's own connected-peer count) is symmetric by construction -- every other gate in
-    // this file already reads it identically on both roles -- so `1 + MH_Net_PeerCount()` is the
-    // match's real size for as long as side ids stay contiguous from 0, which they are for any match
-    // nobody has left yet (this seam's whole subject). A peer who later leaves narrows PeerCount
-    // again, which only ever SHRINKS the scan -- never re-admits a slot this watchdog already dropped.
-    const int   n   = 1 + MH_Net_PeerCount() < LS_LATE_PEERS ? 1 + MH_Net_PeerCount() : LS_LATE_PEERS;
+    // SCAN BOUND (mp:U58): all LS_LATE_PEERS slots; the per-slot gates below decide which are real.
+    // Two things keep an UNUSED slot from being read as a data-silent peer (mp:GS2's first rig run
+    // "dropped" six players nobody seated -- an empty PEER_HORIZON slot holds retail's 10-second
+    // sentinel, which looks like a peer's first sample): slot_is_active_human() (an unseated or AI slot
+    // never has ALIVE|HUMAN) and g_late_last_move[] (a slot's first read only SEEDS the observer, so a
+    // sentinel that never changes never arms -- mh::adwin::horizon_observe, dead-ends G255).
+    // THE OLD BOUND `1 + MH_Net_PeerCount()` WAS WRONG for 3+ peers. PeerCount is the number of this
+    // peer's own ACTIVE TRANSPORT CONNECTIONS, and the transport is a star: the host holds one per
+    // client (N-1), a client holds exactly ONE (to the host; a relay leg is still one conn per peer).
+    // So it was "symmetric" only for 2 peers (1 == 1). In a 3-peer match client 1 scanned slots 0..1
+    // (the host only) and nobody scanned slot 2; and even on the host a departed client narrowed the
+    // bound below a still-seated higher slot (ids are not contiguous once someone left).
+    // Not a roster-derived bound either: current_map_player_count holds the map's capacity on a client.
     const DWORD now = GetTickCount();
     const int   me  = MH_Net_LocalPlayerId();
-    for (int i = 0; i < n; ++i) {
-        if (i == me || g_gs2_dropped[i]) continue;
+    // The silence of slot i in ms, or -1 when GS2 does not watch it (the per-slot gates).
+    auto silence = [&](int i) -> long {
+        if (i == me || g_gs2_dropped[i]) return -1;
         // U19b: a slot the lockstep dispatch already removed (a clean quit) is not a data-silent
         // peer, it is a gone one. Re-read every frame rather than latched: the flags are the
         // roster's own truth, and a latch taken one frame too early would disarm this watchdog for
         // a peer whose seat had simply not been flagged yet.
-        if (!slot_is_active_human(i)) continue;
+        if (!slot_is_active_human(i)) return -1;
         // A slot with h<=0 has never advertised at all yet (the join window GS1 already gates on) --
         // nothing to time out until it has really been seen alive once.
-        if (g_late_last_h[i] <= 0.0 || g_late_last_move[i] == 0) continue;
-        const DWORD since = now - g_late_last_move[i];
+        if (g_late_last_h[i] <= 0.0 || g_late_last_move[i] == 0) return -1;
+        // mp:U63: silence is counted from the END of a failover's suspension, never from before it
+        DWORD base = g_late_last_move[i];
+        if (g_fo_credit_tick != 0 && (long)(g_fo_credit_tick - base) > 0) base = g_fo_credit_tick;
+        // mp:U68: a GS2 drop changes who the lockstep waits on (a parked hub un-parks only once the silent
+        // client's removal reaches it), so every other slot's silence restarts at the drop.
+        if (g_gs2_credit_tick != 0 && (long)(g_gs2_credit_tick - base) > 0) base = g_gs2_credit_tick;
+        return (long)(now - base);
+    };
+    // mp:U68 -- A PARKED HUB IS NOT A DEAD HUB. In a star every client's lockstep waits on the hub's
+    // horizon, and the hub's horizon waits on EVERY seated slot: when client 2 goes silent the hub parks,
+    // its horizon stops, and every other client sees the hub cross the data timeout within a tick or two
+    // of slot 2 (3 runs in 4 dropped both, det_arms --u58-gs2-3peer; and the fenced client dropped the hub
+    // too). Slot 2's drop is what un-parks the hub, so while the transport says the hub is ALIVE (hub-loss
+    // detection idle: it answers at the wire; a dead hub turns into the U63 failover, which suspends GS2
+    // above) AND a third seated human exists (someone besides me and the hub the hub can be waiting on),
+    // the hub gets a second window: it is dropped at twice the timeout, not at one. A 2-peer match has no
+    // third party to wait on, so its hub is judged at the plain timeout as before. The drop of the silent
+    // slot restarts every survivor's silence (g_gs2_credit_tick), so the un-parking has a full window.
+    int hub_alive_id = -1;
+    {
+        MH_NetHubStatus st;
+        MH_Net_HubStatus(&st);
+        if (st.supported && st.enabled && st.role == 1 && st.failover == 0) hub_alive_id = st.hub_id;
+    }
+    for (int i = 0; i < LS_LATE_PEERS; ++i) {
+        const long since_l = silence(i);
+        if (since_l < 0) continue;
+        const DWORD since = (DWORD)since_l;
         if (since < (DWORD)g_data_timeout_ms) continue;
-        g_gs2_dropped[i] = true; // latch FIRST -- the removal call below must never re-enter this slot
+        if (i == hub_alive_id && since < 2 * (DWORD)g_data_timeout_ms) {
+            bool third = false;
+            for (int j = 0; j < LS_LATE_PEERS && !third; ++j) third = j != me && j != i && !g_gs2_dropped[j] && slot_is_active_human(j);
+            if (third) {
+                static DWORD s_hold_log = 0;
+                if ((long)(now - s_hold_log) >= 0) {
+                    s_hold_log = now + 1000;
+                    char hb[176];
+                    wsprintfA(hb, "; GS2: hub %d silent %lu ms but its transport is alive and a third slot may be parking it -> held, not dropped (U68)\n",
+                              i, (unsigned long)since);
+                    seam_log(hb);
+                }
+                continue;
+            }
+        }
+        g_gs2_credit_tick = now;
+        g_gs2_dropped[i]  = true; // latch FIRST -- the removal call below must never re-enter this slot
         mh::hook::call_watcall1(mh::addr::llm_net_player_remove, (void *)(intptr_t)i);
         notify_player_dropped(i);
         char b[176];
@@ -2204,7 +2497,7 @@ void data_timeout_tick() {
         seam_log(b);
         // SES1: same "a kick that leaves nobody" guard as U17(b) -- a below-quorum drop closes our own
         // session record even though the peer that just left never sends its own teardown seam.
-        if (MH_Net_PeerCount() <= 0) mp_session_close("timeout");
+        if (MH_Net_PeerCount() <= 0 && !fo_active_now()) mp_session_close("timeout"); // mp:U64: not while a failover is seating its roster
     }
 }
 
@@ -2215,14 +2508,14 @@ void data_timeout_tick() {
 // to any order past it -- and the heartbeat only writes it under g_hb_cs, so reading it under the
 // lock on the main thread cannot tear.
 double horizon_sent_max(double clk) {
-    double m = mh::netstats::horizon_max_is_stale(clk, g_hz_max_seen) ? 0.0 : g_hz_max_seen;
+    double m = hz_stale(clk, g_hz_max_seen) ? 0.0 : g_hz_max_seen;
     if (g_hb_cs_ready) EnterCriticalSection(&g_hb_cs);
     const double hb = g_hz_hb_sent;
     double       h;
     memcpy(&h, (const void *)ADDR_LOCAL_HORIZON, sizeof(double));
     if (g_hb_cs_ready) LeaveCriticalSection(&g_hb_cs);
-    if (!mh::netstats::horizon_max_is_stale(clk, hb) && hb > m) m = hb;
-    if (!mh::netstats::horizon_max_is_stale(clk, h) && h > m) m = h;
+    if (!hz_stale(clk, hb) && hb > m) m = hb;
+    if (!hz_stale(clk, h) && h > m) m = h;
     return m;
 }
 
@@ -2281,8 +2574,222 @@ extern "C" void MH_Lockstep_StepPin(void) {
     monotone_pin();
 }
 
+// mp:X3b -- HOLD the horizon heartbeat still. horizon_heartbeat_thread rewrites HORIZON every
+// g_hb_ms of REAL time from its own thread (g_hb_cs is taken around the write+send), so a reader on
+// the main thread that wants ONE instant of it -- the world-snapshot capture and its SNAPCAP row, or
+// the import and its SNAPIMP row -- cannot get one: a beat landing between the two reads moved the
+// value under them (measured 2026-09-29: a beat at the same GetTickCount ms as the import turned
+// ls_horizon 4003C294.. into 4003D70F.. between libmh_import_world and the SNAPIMP hash). on=1 takes
+// g_hb_cs, on=0 releases it; a CRITICAL_SECTION is owned by a thread, so BOTH calls must come from
+// the same thread. The holder must not call into the transport while holding (the recv thread can
+// hold transport locks while waiting here): the harness holds across the capture/import and the
+// in-memory hashes only. Recursive, so main-thread paths that take g_hb_cs themselves still work.
+extern "C" void MH_Lockstep_HorizonHold(int on) {
+    if (!g_hb_cs_ready) return;
+    if (on) EnterCriticalSection(&g_hb_cs);
+    else LeaveCriticalSection(&g_hb_cs);
+}
+
+// mp:X3c -- the world-resync CATCH-UP. After libmh_import_world_resync the peer's GAME_CLOCK is B steps behind
+// the live TOTAL_GAME_TIME it kept (a keep-local region). The engine's own mode-3 loop would run the whole
+// backlog inside ONE frame (no RX drain, no pump: the mirror would stop seeing the host advance), so the
+// per-frame TOTAL is capped at clock + ff_steps sub-steps and the live target advances at wall rate:
+//   g_ws_ff_live  the uncapped live target (== the value TOTAL would have had)
+//   each frame    live += dt * speed (clamped to committed); TOTAL = min(live, clock + ff_steps * sub)
+//   exit          when the backlog is within two caps: TOTAL = live, mirror off, state DONE
+// The arithmetic is desync/world_sync_core.h ff_* (proven by `net_selftest wstest`).
+enum { WS_FF_IDLE   = 0,
+       WS_FF_ACTIVE = 1,
+       WS_FF_DONE   = 2 };
+volatile LONG g_ws_ff_state = WS_FF_IDLE;
+int           g_ws_ff_steps = 20;
+double        g_ws_ff_live  = 0.0;
+LARGE_INTEGER g_ws_ff_prev  = {};
+LARGE_INTEGER g_ws_ff_freq  = {};
+
+static void ws_ff_read(double *clk, double *sub, double *speed, double *committed) {
+    memcpy(clk, (const void *)ADDR_GAME_CLOCK, sizeof(double));
+    memcpy(sub, (const void *)ADDR_SIM_STEP_INT(), sizeof(double));
+    memcpy(speed, (const void *)ADDR_GAME_SPEED, sizeof(double));
+    memcpy(committed, (const void *)ADDR_COMMITTED(), sizeof(double));
+}
+
+// Called from the world-sync import, mid sim step, right after the world was replaced. Returns the FF state.
+extern "C" int MH_Lockstep_WorldSyncBegin(int ff_steps) {
+    double clk, sub, speed, committed, total;
+    ws_ff_read(&clk, &sub, &speed, &committed);
+    memcpy(&total, (const void *)ADDR_TOTAL_TIME, sizeof(double)); // keep-local: the live target
+    g_ws_ff_steps = ff_steps < 1 ? 1 : ff_steps;
+    g_ws_ff_live  = total;
+    QueryPerformanceFrequency(&g_ws_ff_freq);
+    QueryPerformanceCounter(&g_ws_ff_prev);
+    if (mh::desync::ws::ff_done(total, clk, g_ws_ff_steps, sub)) { // a backlog of <= two caps needs no help
+        InterlockedExchange(&g_ws_ff_state, WS_FF_DONE);
+        return WS_FF_DONE;
+    }
+    InterlockedExchange(&g_ws_mirror, 1);
+    ws_mirror_upkeep(); // mp:X3c-FIX: zero the KEEP_LOCAL nag counter + floor HORIZON before the first frame
+    const double cap = mh::desync::ws::ff_total(total, clk, g_ws_ff_steps, sub);
+    memcpy((void *)ADDR_TOTAL_TIME, &cap, sizeof(double)); // the frame's loop re-reads TOTAL every iteration
+    InterlockedExchange(&g_ws_ff_state, WS_FF_ACTIVE);
+    return WS_FF_ACTIVE;
+}
+extern "C" int  MH_Lockstep_WorldSyncState(void) { return (int)g_ws_ff_state; }
+extern "C" void MH_Lockstep_WorldSyncEnd(void) {
+    InterlockedExchange(&g_ws_mirror, 0);
+    InterlockedExchange(&g_ws_ff_state, WS_FF_IDLE);
+}
+
 namespace {
+// Pre-hook of every time_tick (on_time_tick, also reached by lt_frame_pace_time_tick): the per-frame cap.
+void ws_ff_tick() {
+    if (g_ws_ff_state != WS_FF_ACTIVE) return;
+    if (*(const uint8_t *)ADDR_SESSION_MODE != 3) { // the match ended under the catch-up: nothing to pace
+        InterlockedExchange(&g_ws_mirror, 0);
+        InterlockedExchange(&g_ws_ff_state, WS_FF_DONE);
+        return;
+    }
+    double clk, sub, speed, committed;
+    ws_ff_read(&clk, &sub, &speed, &committed);
+    LARGE_INTEGER now;
+    QueryPerformanceCounter(&now);
+    const double dt = g_ws_ff_freq.QuadPart ? (double)(now.QuadPart - g_ws_ff_prev.QuadPart) / (double)g_ws_ff_freq.QuadPart : 0.0;
+    g_ws_ff_prev    = now;
+    ws_mirror_upkeep(); // mp:X3c-FIX: keep the nag counter at 0 and HORIZON floored every FF tick
+    g_ws_ff_live = mh::desync::ws::ff_live_advance(g_ws_ff_live, dt, speed, committed);
+    if (mh::desync::ws::ff_done(g_ws_ff_live, clk, g_ws_ff_steps, sub)) {
+        memcpy((void *)ADDR_TOTAL_TIME, &g_ws_ff_live, sizeof(double)); // release: live pace from here
+        InterlockedExchange(&g_ws_mirror, 0);
+        InterlockedExchange(&g_ws_ff_state, WS_FF_DONE);
+        return;
+    }
+    const double cap = mh::desync::ws::ff_total(g_ws_ff_live, clk, g_ws_ff_steps, sub);
+    memcpy((void *)ADDR_TOTAL_TIME, &cap, sizeof(double));
+}
+} // namespace
+
+namespace {
+
+// ==== mp:U62 (HM-M4): THE GAME-SIDE SEAMS OF THE PLANNED HANDOVER ================================
+//
+// The transport does the handover (mh_net_udp: MH_Net_HubLeave / MH_Net_HubStatus, docs/mp-host-migration-
+// plan.md section 5.4/6.5). What lives HERE is the question the transport cannot answer -- "has this hub's
+// PLAYER just left a match that other humans are still playing?" -- and the one thing the survivors show.
+//
+// THE LEAVE SEAMS (every one ends in mp_hub_leave, which no-ops for a peer that is not a hub):
+//   * quit from the ESC menu          on_quit_to_menu, AFTER U19b's park + pinned self-removal
+//   * the defeat/stats screen         the host was defeated (on_gameover_pre armed g_hub_watching), keeps
+//                                     relaying (plan Q2), and its player then reaches the main menu:
+//                                     hub_leave_poll reads the game's own "in main menu" flag
+//   * the process exiting on purpose  mp_leave_for_exit (WM_DESTROY, net_diag.cpp) and the harness's
+//                                     graceful exit knob
+//
+// NO ROSTER WORK HERE, ON PURPOSE (G335): the leaving player is already out of every peer's sim roster at a
+// PINNED step before the handover starts -- by U19b's park step for a quit, by the pinned elimination
+// (presence_lost at the elimination step, U56) for a defeat. The handover moves the transport and nothing else.
+constexpr uintptr_t ADDR_UI_IN_MAIN_MENU = 0x00603f70u; // _G_LLM_UI_IN_MAIN_MENU: 1 on entering the main menu, 0 on entering gameplay
+int                 g_hub_leave_ms       = 2500;        // [net] hub_leave_timeout_ms: the wait for every survivor's acknowledgement
+bool                g_hub_watching       = false;       // a defeated hub that stays: leaving later must still hand over
+long                g_hub_changes_seen   = 0;           // MH_NetHubStatus::changes already shown
+
+bool net_hub_now() {
+    MH_NetHubStatus st;
+    MH_Net_HubStatus(&st);
+    return st.supported && st.enabled && st.role == 0;
+}
+
+// Other humans still ALIVE in the sim -- the ones a handover keeps the match going for. An AI seat does not count.
+int other_active_humans() {
+    const int me = MH_Net_LocalPlayerId();
+    int       n  = 0;
+    for (int i = 0; i < 8; ++i)
+        if (i != me && slot_is_active_human(i)) ++n;
+    return n;
+}
+
+// on_gameover_pre: a hub that is DEFEATED while two or more other humans play on is not leaving (plan Q2: it
+// keeps relaying). Remember that, so that the day its player does leave, the hub is handed over.
+void hub_note_defeat() {
+    // NOT gated on session mode == 3: a defeat is PINNED by U56's elimination step, which already took this peer's
+    // session out of lockstep (measured: `on_gameover ENTER sess=2`), while the transport still relays. The hub
+    // role + two other live humans is the test.
+    if (!net_hub_now()) return;
+    const int others = other_active_humans();
+    g_hub_watching   = others >= 2;
+    char b[176];
+    wsprintfA(b, "; U62 hub-watch: this hub was defeated with %d other human(s) still playing -> %s (in_main_menu=%d)\n",
+              others, g_hub_watching ? "it keeps relaying; it hands the hub over when its player leaves" : "no handover needed",
+              *(const int *)ADDR_UI_IN_MAIN_MENU);
+    seam_log(b);
+}
+
+// mp:U63 -- IS A MATCH RUNNING? The transport arms its hub-loss detection only inside one (a lobby whose host closes, or a
+// peer back at the menu, is not a crash). In a match = the lockstep session (mode 3) -- and it stays "in" for a peer that
+// was DEFEATED but still watches (session mode downgraded, the main menu not reached): that peer is still a seated
+// member of the transport and may be the elected successor. Out = the main menu was reached.
+void fo_match_tick() {
+    static int  s_sent = -1;
+    static bool s_in   = false;
+    if (*(const uint8_t *)ADDR_SESSION_MODE == 3) s_in = true;
+    else if (*(const int *)ADDR_UI_IN_MAIN_MENU != 0 || g_spec_menu_reached) s_in = false;
+    if ((int)s_in == s_sent) return;
+    s_sent = (int)s_in;
+    MH_Net_SetInMatch(s_in ? 1 : 0);
+    char b[96];
+    wsprintfA(b, "; U63 in-match=%d (the transport's crash failover is %s)\n", (int)s_in, s_in ? "armed" : "disarmed");
+    seam_log(b);
+}
+
+// A defeated hub's player has left once the game says it is back at the main menu (the flag the game sets on
+// entering it and clears on entering gameplay). Per frame; two loads when nothing is armed.
+void hub_leave_poll() {
+    if (!g_hub_watching) return;
+    if (*(const int *)ADDR_UI_IN_MAIN_MENU == 0 && !g_spec_menu_reached) return;
+    mp_hub_leave("main-menu");
+}
+
+// The notice the survivors see: "<old> left; <new> is now hosting". A table row (ui/player_strings.def), so a
+// language pack translates it. Names come from the player table, by side id (== transport id).
+void hub_notice_tick() {
+    static DWORD s_next = 0;
+    const DWORD  now    = GetTickCount();
+    if ((long)(now - s_next) < 0) return;
+    s_next = now + 100;
+    MH_NetHubStatus st;
+    MH_Net_HubStatus(&st);
+    if (!st.supported || st.changes <= g_hub_changes_seen) return;
+    g_hub_changes_seen = st.changes;
+    wchar_t   names[2][40];
+    const int ids[2] = {st.old_hub, st.new_hub};
+    for (int k = 0; k < 2; ++k) {
+        names[k][0]   = 0;
+        const int idx = ids[k] >= 0 ? mh::hook::call_watcall1(mh::addr::llm_strat_player_by_side_id, (void *)(intptr_t)ids[k]) : -1;
+        if (idx >= 0 && idx < 8) {
+            const char *nm = (const char *)(mh::addr::_G_LLM_STRAT_PLAYERS + (unsigned)idx * 0x740u + 1812u);
+            MultiByteToWideChar(CP_ACP, 0, nm, -1, names[k], 40);
+        }
+        if (!names[k][0]) wsprintfW(names[k], L"#%d", ids[k]);
+    }
+    wsprintfW((wchar_t *)mh::addr::G_TEXT_TMP, mh::ui::tr(st.change_crash ? mh::ui::Str::HUB_LOST : mh::ui::Str::HUB_MIGRATED), names[0],
+              names[1]);
+    mh::hook::call_watcall1(mh::addr::llm_ui_print_floating_msg_red, (void *)mh::addr::G_TEXT_TMP);
+    char b[200], a[160];
+    WideCharToMultiByte(CP_ACP, 0, (const wchar_t *)mh::addr::G_TEXT_TMP, -1, a, sizeof(a), nullptr, nullptr);
+    wsprintfA(b, "; U62 notice: hub %d -> %d (epoch %u): printed floating msg '%s'%s\n", st.old_hub, st.new_hub,
+              st.change_epoch, a, st.change_crash ? " (crash failover, mp:U63)" : "");
+    seam_log(b);
+}
+
 void on_time_tick() {
+    hub_notice_tick(); // mp:U62: a hub change this peer went through -> the HUD line
+    if (g_spec_msg_pending && local_is_spectator()) {
+        // mp:U54: the defeat dialog was answered with Continue and the match is back on screen -- one fading line.
+        g_spec_msg_pending = 0;
+        wsprintfW((wchar_t *)mh::addr::G_TEXT_TMP, L"%s", mh::ui::tr(mh::ui::Str::SPECTATE_DEFEATED));
+        mh::hook::call_watcall1(mh::addr::llm_ui_print_floating_msg_red, (void *)mh::addr::G_TEXT_TMP);
+        seam_log("; U54 spectate: floating notice printed (Defeated -- spectating)\n");
+    }
+    ws_ff_tick(); // mp:X3c: world-resync catch-up pacing (idle unless a resync import armed it)
     // mp:U19b -- the quit's freeze ends with the quit. A time_tick outside the freeze..teardown window
     // (g_leave_in_progress) is a LATER match: every frozen quit runs its whole wait + removal + retail
     // teardown inside ONE UI callback, so no tick of the match being left can land here after it.
@@ -2318,15 +2825,15 @@ void on_time_tick() {
         // than HZ_RESTART_S ahead of it and hold the new match's lookahead up. Reset both on the clock
         // going backwards (the same signal lateness_tick uses), and on the 2 s rule as before.
         static double s_last_clk = 0.0;
-        if (clk + 1e-6 < s_last_clk) {
+        if (!g_ws_mirror && clk + 1e-6 < s_last_clk) { // mp:X3c: a mirrored catch-up is not a new match
             g_hz_max_seen = 0.0;
             if (g_hb_cs_ready) EnterCriticalSection(&g_hb_cs);
             g_hz_hb_sent = 0.0;
             if (g_hb_cs_ready) LeaveCriticalSection(&g_hb_cs);
         }
         s_last_clk = clk;
-        if (mh::netstats::horizon_max_is_stale(clk, g_hz_max_seen)) g_hz_max_seen = 0.0;
-        if (h > g_hz_max_seen && !mh::netstats::horizon_max_is_stale(clk, h)) g_hz_max_seen = h;
+        if (hz_stale(clk, g_hz_max_seen)) g_hz_max_seen = 0.0;
+        if (h > g_hz_max_seen && !hz_stale(clk, h)) g_hz_max_seen = h;
     }
     lateness_tick();                                                                        // mp:T3 -- sample first: the controller below reads the snapshot it publishes
     data_timeout_tick();                                                                    // mp:GS2 -- act on this frame's fresh g_late_last_move[] before anything else touches it
@@ -2378,7 +2885,18 @@ void on_time_tick() {
                 }
             }
         }
+        // mp:U64 (HM-M6): a NEW hub does not remove the dead peer until its reconcile has finished. The removal is pinned to the
+        // parked step, i.e. to the dead hub's final horizon AS THIS PEER KNOWS IT, and a live hub cut off by a partition has
+        // frames (its last horizon adverts) that reached some survivors and not others; the reconcile is what makes every
+        // survivor hold the same set of them. Removing first pinned the removal at a stale horizon on the hub (4-peer
+        // partition arm: a transient strat_players mismatch at the removal step in 1 run of 3).
+        bool rc_hold = false;
         if (g_pending_dead >= 0) {
+            MH_NetHubStatus hs;
+            MH_Net_HubStatus(&hs);
+            rc_hold = hs.supported && hs.reconciling && !hs.reconcile_done && !hs.aborted;
+        }
+        if (g_pending_dead >= 0 && !rc_hold) {
             const double total     = *(const double *)ADDR_TOTAL_TIME;
             const double committed = *(const double *)ADDR_COMMITTED();
             // SAFETY VALVE: if the parked state never arrives the peer must still be removed, or a
@@ -2386,7 +2904,7 @@ void on_time_tick() {
             // g_pending_dead_max frames and say so loudly -- a silent fallback would hide the fact
             // that the barrier assumption failed.
             const bool parked  = (total >= committed);
-            const bool timeout = (++g_pending_dead_wait > g_pending_dead_max);
+            const bool timeout = !g_fo_active && (++g_pending_dead_wait > g_pending_dead_max); // mp:U63: not mid-failover
             if (parked || timeout) {
                 const int dead = g_pending_dead;
                 g_pending_dead = -1;
@@ -2406,7 +2924,12 @@ void on_time_tick() {
                 // either leave) will not fire, because the player is still sitting in a game that has
                 // quietly become single. Guarded on the peer count rather than on the kick itself: in
                 // a 3-peer game losing one is an incident, not an ending.
-                if (MH_Net_PeerCount() <= 0) mp_session_close("timeout");
+                // mp:U64 (HM-M6): NOT while a crash failover is running. The NEW hub removes the dead old hub at the parked
+                // step before its survivors have re-dialled, so it momentarily has no connection at all; "a kick that leaves
+                // nobody" read that as the end of the match, closed the session (reason timeout) and U40 relinked the
+                // transport -- destroying the hub the survivors were dialling (4-peer rig, 2026-10-03: every survivor saw
+                // "player 2 did not answer" and elected ITSELF). The failover ends the match itself if nobody comes (MINORITY).
+                if (MH_Net_PeerCount() <= 0 && !fo_active_now()) mp_session_close("timeout");
             }
         }
     }
@@ -2510,6 +3033,23 @@ uint8_t           g_go_outcome          = 0;    // the real `outcome` byte, capt
 // (see the block comment at g_sync_gameover). SESSION_MODE is a dword; 3 = lockstep, 2 = MP-local.
 // The downgrade is idempotent, which is why the shape below can run it unconditionally: SESSION is
 // 3 or it is not. Ordering is unchanged from before U19d: this still runs BEFORE the original body.
+// mp:U54 -- the SPECTATOR'S DEFEAT DIALOG. Retail's outcome-4 (defeat) dialog of a lockstep match has ONE visible button: the
+// four widgets of _G_LLM_UI_OUTCOME_DLG_WIDGET_LIST are [0] title "Game over", [1] message "You lost !", [2] "Ok" (opens the
+// statistics screen, then the main menu = leaving the match) and [3] "Continue game" (llm_menu_finish_enter_gameplay, back to
+// the running game), which llm_ui_outcome_dialog HIDES (flags |= 0xc0 at 0x004c6d44) except for outcomes 6/7/8. A spectator
+// is given the outcome-6 shape (0x004c6eee: widget [2] flag bit 3 off and x = 50, widget [3] un-hidden) with its own labels,
+// so the choice is CONTINUE SPECTATING (the retail Continue widget) or EXIT MATCH (the retail Ok path).
+constexpr uintptr_t ADDR_ODLG_W2 = 0x00650c77; // "Ok" widget (+0x08 flags, +0x1c x, +0x38 label)
+constexpr uintptr_t ADDR_ODLG_W3 = 0x00650cbb; // "Continue game" widget, hidden by retail for a defeat
+void                spectator_dialog_fixup() {
+    *(volatile uint8_t *)(ADDR_ODLG_W2 + 0x0a) &= 0xf7; // flags byte +0xa bit 3 off, as outcome 6's case does
+    *(volatile int32_t *)(ADDR_ODLG_W2 + 0x1c) = 0x32;  // x = +50: Ok moves right, making room for [3]
+    *(volatile uint8_t *)(ADDR_ODLG_W3 + 0x08) &= 0x3f; // un-hide + enable "Continue game"
+    *(const wchar_t *volatile *)(ADDR_ODLG_W2 + 0x38) = mh::ui::tr(mh::ui::Str::SPECTATE_EXIT);
+    *(const wchar_t *volatile *)(ADDR_ODLG_W3 + 0x38) = mh::ui::tr(mh::ui::Str::SPECTATE_CONTINUE);
+    seam_log("; U54 spectate: defeat dialog widened -- [Continue spectating] [Exit match]\n");
+}
+
 void on_gameover_pre() {
     const uint32_t outcome = g_go_outcome;
     if (g_ls_log) {
@@ -2518,6 +3058,15 @@ void on_gameover_pre() {
                   (int)*(const uint8_t *)ADDR_SESSION_MODE, outcome, ms_of(ADDR_GAME_CLOCK),
                   (int)(*(volatile uint32_t *)ADDR_SESSION_MODE == 3));
         seam_log(b);
+    }
+    hub_note_defeat(); // mp:U62: BEFORE the downgrade -- it reads the mode and the roster as the match left them
+    // mp:U54: a SPECTATOR's defeat dialog (outcome 4 at its own elimination, session still lockstep) is NOT the end of the
+    // match for it: the session stays lockstep, the transport session stays open. Continue game goes on spectating; Ok
+    // leaves through the statistics screen to the main menu, where spectator_tick() ends the session (spec exit).
+    if (local_is_spectator()) {
+        g_spec_msg_pending = 1;
+        if (g_ls_log) seam_log("; U54 spectate: defeat dialog opened by a SPECTATOR -- session stays lockstep (Continue = keep watching, Ok = leave)\n");
+        return;
     }
     if (*(volatile uint32_t *)ADDR_SESSION_MODE == 3)
         *(volatile uint32_t *)ADDR_SESSION_MODE = 2; // SESSION_MP_LOCKSTEP -> SESSION_MP_LOCAL
@@ -2529,7 +3078,12 @@ void on_gameover_pre() {
 // U19d -- see the block comment above on_gameover_pre. Runs AFTER the original dialog-setup body
 // (gameover_detour is now a WRAP, not a tail jmp), so this corrects what the original just wrote
 // rather than trying to influence it.
+void spectator_dialog_fixup(); // mp:U54 -- below
 void on_gameover_post() {
+    if (g_go_outcome == 4 && local_is_spectator()) {
+        spectator_dialog_fixup();
+        return;
+    }
     if (g_go_outcome != OUTCOME_NETWORK_ERROR) return;
     const DWORD now                  = GetTickCount();
     const bool  real_transport_death = g_last_fastdrop_tick != 0 &&
@@ -2619,7 +3173,7 @@ void graceful_leave_park(int side) {
     double hd = clk + look;
     if (hcur > hd) hd = hcur;
     if (g_hz_max_seen > hd) hd = g_hz_max_seen;
-    if (!mh::netstats::horizon_max_is_stale(clk, g_hz_hb_sent) && g_hz_hb_sent > hd) hd = g_hz_hb_sent; // mp:D30
+    if (!hz_stale(clk, g_hz_hb_sent) && g_hz_hb_sent > hd) hd = g_hz_hb_sent; // mp:D30
 
     // (1) freeze -- the final advert and the stop flag are one atomic step against the heartbeat.
     if (g_hb_cs_ready) EnterCriticalSection(&g_hb_cs);
@@ -2769,14 +3323,9 @@ void graceful_leave_park(int side) {
 // the block comment at that hold. They apply it in dispatch order (determinism-safe). The
 // retail teardown body then runs and returns us to the menu. No leader-gate: the quitter authoritatively
 // self-removes (exactly one sender). SESSION_MODE byte: 3 = SESSION_MP_LOCKSTEP.
-void on_quit_to_menu() {
-    // SES1: FIRST, and outside both gates below. Quit-to-menu ends the session whether or not the
-    // graceful-leave broadcast is armed and whether or not we were still in mode 3 -- a player who
-    // ESCs out of a lobby has left the match just as surely as one who quits a running game, and a
-    // session left open here would swallow the next match's menu lines.
-    mp_session_close("quit");
-    if (!g_graceful_leave) return;
-    if (*(const uint8_t *)ADDR_SESSION_MODE != 3) return; // not in a running lockstep game
+// mp:U62 -- the U17/U19b quit (freeze, park, pinned self-removal broadcast), factored out of on_quit_to_menu
+// so the process-exit seam (mp_leave_for_exit) runs the SAME body. The two gates stay with the callers.
+void graceful_quit_body() {
     int side = *(const int32_t *)mh::addr::_G_LLM_NET_LOCAL_PLAYER_INDEX;
     // U19 -- HOLD U40's RELINK LATCH ACROSS THE BROADCAST, or there is no broadcast.
     //
@@ -2810,6 +3359,21 @@ void on_quit_to_menu() {
         wsprintfA(b, "; U17 graceful-leave: broadcast self-removal side=%d before quit-to-menu\n", side);
         seam_log(b);
     }
+}
+void on_quit_to_menu() {
+    // SES1: FIRST, and outside both gates below. Quit-to-menu ends the session whether or not the
+    // graceful-leave broadcast is armed and whether or not we were still in mode 3 -- a player who
+    // ESCs out of a lobby has left the match just as surely as one who quits a running game, and a
+    // session left open here would swallow the next match's menu lines.
+    mp_session_close("quit");
+    // mp:U54: a SPECTATOR is no barrier member (ALIVE and HUMAN both off), so there is nothing to park or remove: the
+    // U19b body would put a removal record for a slot the survivors have already flipped on the wire.
+    if (g_graceful_leave && *(const uint8_t *)ADDR_SESSION_MODE == 3 && !local_is_spectator()) // in a running lockstep game
+        graceful_quit_body();
+    // mp:U62: the player has left the match. A hub hands the transport to its successor NOW -- after the
+    // pinned self-removal above has reached every survivor (they apply it in dispatch order), before the
+    // retail teardown runs. No-op for a client, for a hub with fewer than two survivors, for hub_migration=0.
+    mp_hub_leave("quit");
 }
 __declspec(naked) void quit_to_menu_detour() {
     __asm {
@@ -2857,9 +3421,9 @@ DWORD WINAPI horizon_heartbeat_thread(LPVOID) {
         // the main thread holds it: a main-thread writer (retail time_tick, the pump) may have put a
         // later clock + STEP_SIZE there since our clock read. HORIZON is 4-aligned, so read it until
         // two reads agree rather than trust one read of a value that may be mid-write.
-        if (mh::netstats::horizon_max_is_stale(clock, g_hz_hb_sent)) g_hz_hb_sent = 0.0;
+        if (hz_stale(clock, g_hz_hb_sent)) g_hz_hb_sent = 0.0;
         double floor_h = g_hz_max_seen;
-        if (mh::netstats::horizon_max_is_stale(clock, floor_h)) floor_h = 0.0;
+        if (hz_stale(clock, floor_h)) floor_h = 0.0;
         if (g_hz_hb_sent > floor_h) floor_h = g_hz_hb_sent;
         {
             double a, b;
@@ -2870,7 +3434,8 @@ DWORD WINAPI horizon_heartbeat_thread(LPVOID) {
             } while (!(a == b) && ++tries < 8);
             if (a == b && a > floor_h) floor_h = a;
         }
-        double horizon = g_monotone ? mh::netstats::monotone_horizon(clock, step, floor_h) : clock + step;
+        double horizon = g_ws_mirror ? ws_mirror_horizon(floor_h)
+                                     : (g_monotone ? mh::netstats::monotone_horizon(clock, step, floor_h) : clock + step);
         if (horizon > g_hz_hb_sent) g_hz_hb_sent = horizon; // sole writer: this thread, under g_hb_cs
         // Keep OUR requested horizon fresh too, so a stalled local render doesn't cap our own COMMITTED
         // = min(HORIZON, peers) (recomputed on the recv thread) -- this decouples our sim as well, not
@@ -3170,6 +3735,743 @@ void install_gone_peer_frame_guard() {
     seam_log(b);
 }
 
+// mp:U49 -- `undock_reentry_fix`'s BYTE-PATCH CARRIER (same shape as gone_peer_frame_guard above).
+// llm_strat_order_queue_dispatch applies an undock (order_code 0x20) with no precondition check, so
+// a second 0x20 applied in a LATER pass to a unit already walking out (0x21) re-enters
+// exit_storage_begin, can_exit refuses the door's own holder, and the unit sits in EXIT_WAIT on a
+// door only it can release (door_mutex_unit = it). Reachable only through the lockstep scheduling
+// delay (a double-click lands the 2nd order a pass later); SP applies both in one pass.
+//
+// The splice is the 6 bytes at 0x00466cb6 (`CMP [EBP-0x28],0 / JNZ 0x00466cda`), whose ONLY
+// predecessor is `JMP 0x00466cb6` @0x00466ca3 -- reached with order_code == 0x20 for both the
+// boarding (cached is_boarding != 0) and the non-boarding unit. The stub keeps the non-boarding path
+// (drop, as retail) and, for a boarding unit, reads the unit's CURRENT state: PARKED (0x1f) or
+// EXIT_STORAGE_BEGIN (0x20, the state a same-pass first order just wrote) applies as retail; anything
+// else (0x21 walking out, 0x22 waiting, ...) is dropped at 0x0046997f, the loop's `continue`.
+// EAX/EDX are dead at all three exits (0x00466cbc, 0x00466ce1 and 0x0046997f reload them).
+constexpr uintptr_t ADDR_UNDOCK_SITE = 0x00466cb6;
+const uint8_t       UNDOCK_EXPECT[6] = {0x83, 0x7D, 0xD8, 0x00, 0x75, 0x1E};
+
+// clang-format off
+__declspec(naked) void undock_reentry_stub() {
+    __asm {
+        cmp   dword ptr [ebp - 0x28], 0       // cached is_boarding
+        jnz   boarding
+        mov   eax, 0x00466cbc                 // not boarding: retail's `state == 0x20 / 0x23 -> drop` test
+        jmp   eax
+    boarding:
+        imul  edx, dword ptr [ebp - 0x34], 0x5b04
+        imul  eax, dword ptr [ebp - 0x30], 0xe9
+        add   eax, edx
+        movzx eax, word ptr [eax + 0x00dd8c4e] // unit.state
+        cmp   eax, 0x1f
+        je    apply
+        cmp   eax, 0x20
+        je    apply
+        mov   eax, 0x0046997f                 // walking out / waiting: drop the record
+        jmp   eax
+    apply:
+        mov   eax, 0x00466ce1                 // retail apply block
+        jmp   eax
+    }
+}
+// clang-format on
+
+void install_undock_reentry_fix() {
+    const char *what;
+    if (mh::hook::promoted_owner_of(ADDR_UNDOCK_SITE)) {
+        what = "DISPLACED by promotion -- the promoted dispatcher's own guard carries it";
+    } else {
+        uint8_t       repl[6] = {0xE9, 0, 0, 0, 0, 0x90};
+        const int32_t rel     = (int32_t)((uintptr_t)&undock_reentry_stub - (ADDR_UNDOCK_SITE + 5));
+        memcpy(repl + 1, &rel, sizeof(rel));
+        if (patch_bytes_guarded(ADDR_UNDOCK_SITE, UNDOCK_EXPECT, repl, 6)) {
+            what = "PATCHED -- a 0x20 for a unit that is not PARKED is dropped at 00466CB6";
+        } else {
+            what = "MISMATCHED";
+            refuse_uncarried_fix("undock_reentry_fix", ADDR_UNDOCK_SITE, "llm_strat_order_queue_dispatch");
+        }
+    }
+    char b[200];
+    wsprintfA(b, "; undock re-entry fix: %s (MP U49)\n", what);
+    seam_log(b);
+}
+
+// ===== mp:U52 -- THE RETAIL CARRIERS ([net] team_relations_fix, [net] ally_damage_no_hostility) =========
+//
+// Configuration (1) (retail sim under mh.dll's net layer, `[config] mode=original`) has no libmh twins, so the three
+// pieces of U52 are carried as byte patches, each displaced when its owner is promoted (the twin carries the rule):
+//
+//  (a) THE SEED. llm_strat_session_begin_multi runs `CALL llm_game_land_players_on_planet` @0x004544ff and then
+//      `CALL llm_game_speed_recompute` @0x00454504 (5 bytes, E8 1A 31 04 00). Landing resets every player's AI
+//      relation mirror, so the seed must come after it; the second call is spliced to a stub that runs the seed
+//      (pairs through the retail llm_diplomacy_set_relation, which also fixes the AI mirror and the chat mask) and
+//      tail-jumps to the original callee. Same rule as sim_session_begin_multi.cpp's apply_lobby_team_relations.
+//  (b) THE RELATION LOCK. llm_strat_order_queue_dispatch case 0xf (0xf4) calls llm_diplomacy_set_relation @0x004698d2
+//      (E8 DC 07 03 00); the stub returns without calling it while the ally-victory flag (Team mode) is set. The
+//      call's return lands on `JMP 0x0046997f` (the loop's continue); EAX/EDX/EBX/ECX are all dead there.
+//  (c) THE HOSTILITY GUARD. llm_strat_ai_bldg_register_visible_building @0x004db22f computes
+//      EAX = victim*0x288fc + aggressor*4 and tests FOREIGN_BLDG_CHANGE_FLAG at 0x004db45c (7 bytes,
+//      `CMP [0x00e58350],0`) before the unconditional / unset-only `ai_player_relation[aggressor] = -1`. The stub
+//      first tests the victim's relation toward the aggressor (`CMP [EAX+0xe96388],0`): > 0 (ally) -> straight to
+//      0x004db47c, past the stamp. Otherwise it repeats the displaced CMP and returns to the JNZ at 0x004db463.
+//      EBX is dead from the ADD at 0x004db45a to the reload at 0x004db484; ECX (aggressor_ref) and ESI/EDX/EAX are
+//      live and untouched.
+//
+// The lobby MODE byte arrives through MH_TeamRel_SetLobbyMode (the session-entry observer, net_seams.cpp), because
+// configuration (1) has no reimpl_fixes to push it through.
+int g_team_relations_fix       = 1; // [net] team_relations_fix -- MP U52; twin + byte patches, DEFAULT ON, sim-affecting
+int g_ally_damage_no_hostility = 1; // [net] ally_damage_no_hostility -- MP U52; twin + byte patch, DEFAULT ON, sim-affecting
+int g_u52_lobby_team_mode      = 0;
+
+
+constexpr uintptr_t ADDR_TEAM_SEED_SITE = 0x00454504;
+constexpr uintptr_t ADDR_TEAM_LOCK_SITE = 0x004698d2;
+constexpr uintptr_t ADDR_ALLY_HOST_SITE = 0x004db45c;
+const uint8_t       TEAM_SEED_EXPECT[5] = {0xE8, 0x1A, 0x31, 0x04, 0x00}; // call llm_game_speed_recompute
+constexpr uintptr_t ADDR_VIS_AI_SITE    = 0x004698ff;                     // dispatch case 0x10 (0xf5), `CALL llm_game_player_set_ai`
+constexpr uintptr_t ADDR_VIS_HUMAN_SITE = 0x00469909;                     // ... and `CALL llm_game_player_set_human`
+const uint8_t       VIS_AI_EXPECT[5]    = {0xE8, 0x98, 0x4E, 0x03, 0x00};
+const uint8_t       VIS_HUMAN_EXPECT[5] = {0xE8, 0x4B, 0x4E, 0x03, 0x00};
+const uint8_t       TEAM_LOCK_EXPECT[5] = {0xE8, 0xDC, 0x07, 0x03, 0x00};             // call llm_diplomacy_set_relation
+const uint8_t       ALLY_HOST_EXPECT[7] = {0x83, 0x3D, 0x50, 0x83, 0xE5, 0x00, 0x00}; // cmp [0x00e58350],0
+int32_t            *g_u52_flag_ptr      = nullptr;                                    // _G_LLM_STRAT_MP_ALLY_VICTORY_RULE_FLAG, resolved through its region
+
+void __cdecl team_seed_retail() {
+    if (*mh::state::ptr<const int32_t>(mh::state::RID_GAME_TUTORIAL_STEP) != 0) return; // llm_game_start_tutorial too
+    const uint8_t *pl = mh::state::ptr<const uint8_t>(mh::state::RID_PLAYERS);
+    uint8_t        team[8];
+    bool           en[8], any = false;
+    for (int i = 0; i < 8; ++i) {
+        en[i]           = pl[i * 0x34 + 6] != 0; // controller_flags
+        const uint8_t t = pl[i * 0x34 + 7];      // the lobby TEAM byte (slot +0x0c)
+        team[i]         = (t >= 1 && t <= 4) ? t : 0;
+        if (en[i] && team[i] != 0) any = true;
+    }
+    char b[160];
+    if (!any) return;
+    int n = 0;
+    for (int a = 0; a < 8; ++a)
+        for (int c = 0; c < 8; ++c) {
+            if (a == c || !en[a] || !en[c]) continue;
+            mh::call::llm_diplomacy_set_relation(a, c, (team[a] != 0 && team[a] == team[c]) ? 1 : 2);
+            ++n;
+        }
+    if (g_u52_lobby_team_mode) *mh::state::ptr<int32_t>(mh::state::RID_STRAT_MP_ALLY_VICTORY_RULE_FLAG) = 1;
+    // VISION: this peer's own view state (not hashed; differs per peer by design), derived from the synced team
+    // bytes. Teammates' bits -> PLAYER_CONTROL_MASK (I share with them) and the human/is_human view mask (they share
+    // with me), then the fog is recomputed. Same rule as sim_session_begin_multi.cpp's apply_lobby_team_relations.
+    const unsigned me    = *mh::state::ptr<const uint16_t>(mh::state::RID_PLAYERSIDE);
+    unsigned       mates = 0;
+    if (me < 8 && en[me] && team[me] != 0) {
+        for (unsigned j = 0; j < 8; ++j)
+            if (j != me && en[j] && team[j] == team[me]) mates |= 1u << j;
+        *mh::state::ptr<uint8_t>(mh::state::RID_PLAYER_CONTROL_MASK) |= (uint8_t)mates;
+        *mh::state::ptr<uint8_t>(mh::state::RID_GAME_HUMAN_PLAYER_MASK) |= (uint8_t)mates;
+        *mh::state::ptr<uint32_t>(mh::state::RID_IS_HUMAN) = *mh::state::ptr<uint8_t>(mh::state::RID_GAME_HUMAN_PLAYER_MASK);
+        mh::call::llm_map_fog_of_war_recompute();
+    }
+    wsprintfA(b, "; U52 (retail seed): %d relation pair(s) set from the lobby teams, mode=%s, vision mates=%02x\n", n,
+              g_u52_lobby_team_mode ? "Team" : "FFA", mates);
+    seam_log(b);
+}
+
+// clang-format off
+__declspec(naked) void team_seed_stub() {
+    __asm {
+        pushad
+        pushfd
+        call team_seed_retail
+        popfd
+        popad
+        mov  eax, 0x00497623     // llm_game_speed_recompute: the call this stub replaced
+        jmp  eax
+    }
+}
+__declspec(naked) void team_lock_stub() {
+    __asm {
+        mov  ecx, dword ptr [g_u52_flag_ptr]
+        cmp  dword ptr [ecx], 0
+        jne  locked
+        mov  ecx, 0x0049a0b3     // llm_diplomacy_set_relation, args still in EAX/EDX/EBX
+        jmp  ecx
+    locked:
+        ret                      // Team mode: the relation order is a no-op (returns to the case's JMP)
+    }
+}
+__declspec(naked) void vis_ai_lock_stub() {
+    __asm {
+        mov  ecx, dword ptr [g_u52_flag_ptr]
+        cmp  dword ptr [ecx], 0
+        jne  locked
+        mov  ecx, 0x0049e79c     // llm_game_player_set_ai, player still in EAX
+        jmp  ecx
+    locked:
+        ret                      // Team mode: the 0xf5 vision grant is a no-op (returns to the case's JMP)
+    }
+}
+__declspec(naked) void vis_human_lock_stub() {
+    __asm {
+        mov  ecx, dword ptr [g_u52_flag_ptr]
+        cmp  dword ptr [ecx], 0
+        jne  locked
+        mov  ecx, 0x0049e759     // llm_game_player_set_human
+        jmp  ecx
+    locked:
+        ret
+    }
+}
+__declspec(naked) void ally_hostile_stub() {
+    __asm {
+        cmp  dword ptr [eax + 0x00e96388], 0   // the victim's relation toward the aggressor
+        jg   ally
+        cmp  dword ptr ds:[0x00e58350], 0      // the displaced instruction
+        mov  ebx, 0x004db463                   // ... back to its JNZ
+        jmp  ebx
+    ally:
+        mov  ebx, 0x004db47c                   // past the hostility stamp
+        jmp  ebx
+    }
+}
+// clang-format on
+
+// The splice bytes: CALL/JMP rel32 to `stub`, NOP-padded to the site's length.
+void u52_prep(uint8_t (&repl)[8], uintptr_t site, void *stub, bool is_call) {
+    const int32_t rel = (int32_t)((uintptr_t)stub - (site + 5));
+    repl[0]           = is_call ? (uint8_t)0xE8 : (uint8_t)0xE9;
+    memcpy(repl + 1, &rel, sizeof(rel));
+    repl[5] = repl[6] = repl[7] = 0x90;
+}
+
+// One site's outcome line + the refusal on a byte mismatch. (The patch_bytes_guarded call itself stays in each
+// install_* body, written against its ADDR_* constant, because lint_dll_patches matches that literal.)
+void u52_report(const char *what, uintptr_t site, int outcome, const char *knob, const char *owner) {
+    static const char *const NAMES[] = {"DISPLACED by promotion -- the twin carries it", "PATCHED", "MISMATCHED"};
+    if (outcome == 2) refuse_uncarried_fix(knob, site, owner);
+    char b[200];
+    wsprintfA(b, "; U52 retail carrier %s @%08X: %s\n", what, (unsigned)site, NAMES[outcome]);
+    seam_log(b);
+}
+
+void install_team_relations_fix() {
+    g_u52_flag_ptr = mh::state::ptr<int32_t>(mh::state::RID_STRAT_MP_ALLY_VICTORY_RULE_FLAG);
+    uint8_t repl[8];
+    int     outcome = 0;
+    if (!mh::hook::promoted_owner_of(ADDR_TEAM_SEED_SITE)) {
+        u52_prep(repl, ADDR_TEAM_SEED_SITE, (void *)&team_seed_stub, true);
+        outcome = patch_bytes_guarded(ADDR_TEAM_SEED_SITE, TEAM_SEED_EXPECT, repl, 5) ? 1 : 2;
+    }
+    u52_report("seed", ADDR_TEAM_SEED_SITE, outcome, "team_relations_fix", "llm_strat_session_begin_multi");
+    outcome = 0;
+    if (!mh::hook::promoted_owner_of(ADDR_TEAM_LOCK_SITE)) {
+        u52_prep(repl, ADDR_TEAM_LOCK_SITE, (void *)&team_lock_stub, true);
+        outcome = patch_bytes_guarded(ADDR_TEAM_LOCK_SITE, TEAM_LOCK_EXPECT, repl, 5) ? 1 : 2;
+    }
+    u52_report("lock", ADDR_TEAM_LOCK_SITE, outcome, "team_relations_fix", "llm_strat_order_queue_dispatch");
+    outcome = 0;
+    if (!mh::hook::promoted_owner_of(ADDR_VIS_AI_SITE)) {
+        u52_prep(repl, ADDR_VIS_AI_SITE, (void *)&vis_ai_lock_stub, true);
+        outcome = patch_bytes_guarded(ADDR_VIS_AI_SITE, VIS_AI_EXPECT, repl, 5) ? 1 : 2;
+    }
+    u52_report("vision lock (ai)", ADDR_VIS_AI_SITE, outcome, "team_relations_fix", "llm_strat_order_queue_dispatch");
+    outcome = 0;
+    if (!mh::hook::promoted_owner_of(ADDR_VIS_HUMAN_SITE)) {
+        u52_prep(repl, ADDR_VIS_HUMAN_SITE, (void *)&vis_human_lock_stub, true);
+        outcome = patch_bytes_guarded(ADDR_VIS_HUMAN_SITE, VIS_HUMAN_EXPECT, repl, 5) ? 1 : 2;
+    }
+    u52_report("vision lock (human)", ADDR_VIS_HUMAN_SITE, outcome, "team_relations_fix", "llm_strat_order_queue_dispatch");
+}
+
+void install_ally_damage_no_hostility() {
+    uint8_t repl[8];
+    int     outcome = 0;
+    if (!mh::hook::promoted_owner_of(ADDR_ALLY_HOST_SITE)) {
+        u52_prep(repl, ADDR_ALLY_HOST_SITE, (void *)&ally_hostile_stub, false);
+        outcome = patch_bytes_guarded(ADDR_ALLY_HOST_SITE, ALLY_HOST_EXPECT, repl, 7) ? 1 : 2;
+    }
+    u52_report("hostility guard", ADDR_ALLY_HOST_SITE, outcome, "ally_damage_no_hostility",
+               "llm_strat_ai_bldg_register_visible_building");
+}
+
+// ===== mp:U66 -- THE RETAIL CARRIER OF U56 ([net] player_left_pin_fix) ================================
+//
+// Configuration (1) has no libmh twin, so U56's pinned loser-flag flip is three byte patches (each displaced when its
+// owner is promoted -- the twin then carries the rule, so it is never applied twice):
+//
+//  (a) THE FLIP AT THE ELIMINATION STEP. llm_strat_player_presence_lost @0x00498089, MP path, mode==0: after the
+//      natural-loss `AND ALIVE-off` and the `TEST HUMAN` at 0x0049816d, the 7-byte `MOV [EBP-0x34],1` at 0x00498176
+//      (was_human = true; reached ONLY for a human that just lost its last presence) is jump-spliced to a stub that
+//      repeats it and, when the player is not the local side, makes the flip the receipt used to make: HUMAN off,
+//      DEFEATED|GONE on (rule of sim_player_presence_lost.cpp). EAX is dead (0x0049817d reloads it).
+//  (b) THE RECEIPT. llm_net_lockstep_dispatch case CTL_PLAYER_LEFT @0x0049c60c: the case opens `IMUL EAX,[EBP-0x28],
+//      0x740` (7 bytes, sender record offset) and flips the flags only when the sender is ALIVE. Its first instruction
+//      is jump-spliced to a stub that repeats it and records the sender's status byte as it was BEFORE the flip.
+//  (c) THE RESTORE. The case then calls llm_net_lockstep_count_active_players @0x0049c683 (E8 62 1D 00 00) and
+//      branches on `> 1`. That call is spliced to a stub that runs the original, and -- when another human remains
+//      (> 1) and the sender was ALIVE+HUMAN and not yet GONE -- puts the status byte back (rule of rx_dispatch.cpp). A
+//      quit marks GONE in its DROP record first, so it is untouched; the last-peer teardown keeps the retail flip.
+int g_player_left_pin_fix = 1; // [net] player_left_pin_fix -- MP U56/U66; twin + byte patches, DEFAULT ON, sim-affecting
+
+constexpr uintptr_t ADDR_PIN_FLIP_SITE    = 0x00498176;
+constexpr uintptr_t ADDR_PIN_CAPTURE_SITE = 0x0049c60c;
+constexpr uintptr_t ADDR_PIN_RESTORE_SITE = 0x0049c683;
+const uint8_t       PIN_FLIP_EXPECT[7]    = {0xC7, 0x45, 0xCC, 0x01, 0x00, 0x00, 0x00}; // mov [ebp-0x34],1
+const uint8_t       PIN_CAPTURE_EXPECT[7] = {0x69, 0x45, 0xD8, 0x40, 0x07, 0x00, 0x00}; // imul eax,[ebp-0x28],0x740
+const uint8_t       PIN_RESTORE_EXPECT[5] = {0xE8, 0x62, 0x1D, 0x00, 0x00};             // call count_active_players
+volatile uint8_t    g_pin_before          = 0;                                          // the sender's status byte at receipt
+
+void __cdecl pin_restore_retail(int sender) {
+    uint8_t      *sf     = mh::state::ptr<uint8_t>(mh::state::RID_STRAT_PLAYERS) + (size_t)sender * 0x740;
+    const uint8_t before = g_pin_before;
+    const bool    pin    = (before & 0x02) != 0 && (before & 0x04) != 0 && (before & 0x08) == 0;
+    if (pin) *sf = before;
+    char b[100];
+    wsprintfA(b, "; [rx] CTL_PLAYER_LEFT sender=%d sf=0x%x pin=%d (retail carrier)\n", sender, (unsigned)before, pin ? 1 : 0);
+    seam_log(b);
+}
+
+// clang-format off
+void __cdecl spec_decide_retail();            // mp:U54 -- below
+void __cdecl pin_flip_other_retail(unsigned player); // mp:U54 -- below
+__declspec(naked) void pin_flip_stub() {
+    __asm {
+        mov   dword ptr [ebp - 0x34], 1          // the displaced instruction
+        movzx eax, word ptr ds:[0x00e58354]      // PlayerSide
+        cmp   eax, dword ptr [ebp - 0x30]
+        je    mine
+        pushad
+        push  dword ptr [ebp - 0x30]
+        call  pin_flip_other_retail              // HUMAN off, DEFEATED on, GONE on (unless it SPECTATES, mp:U54)
+        add   esp, 4
+        popad
+    pfin:
+        push  0x0049817d
+        ret
+    mine:                                        // mp:U54: the LOCAL human lost its last presence -- does it spectate?
+        pushad
+        call  spec_decide_retail                 // sets g_spec_pending and makes the same flip when it does
+        popad
+        jmp   pfin
+    }
+}
+__declspec(naked) void pin_capture_stub() {
+    __asm {
+        imul  eax, dword ptr [ebp - 0x28], 0x740 // the displaced instruction
+        push  edx
+        movzx edx, byte ptr [eax + 0x00cff060]
+        mov   byte ptr [g_pin_before], dl
+        pop   edx
+        push  0x0049c613
+        ret
+    }
+}
+__declspec(naked) void pin_restore_stub() {
+    __asm {
+        mov   eax, 0x0049e3ea                    // llm_net_lockstep_count_active_players, the call this replaced
+        call  eax
+        cmp   eax, 1
+        jle   done
+        pushad
+        push  dword ptr [ebp - 0x28]
+        call  pin_restore_retail
+        add   esp, 4
+        popad
+    done:
+        ret
+    }
+}
+// clang-format on
+
+void install_player_left_pin_fix() {
+    uint8_t repl[8];
+    int     outcome = 0;
+    if (!mh::hook::promoted_owner_of(ADDR_PIN_FLIP_SITE)) {
+        u52_prep(repl, ADDR_PIN_FLIP_SITE, (void *)&pin_flip_stub, false);
+        outcome = patch_bytes_guarded(ADDR_PIN_FLIP_SITE, PIN_FLIP_EXPECT, repl, 7) ? 1 : 2;
+    }
+    u52_report("pin flip", ADDR_PIN_FLIP_SITE, outcome, "player_left_pin_fix", "llm_strat_player_presence_lost");
+    outcome = 0;
+    if (!mh::hook::promoted_owner_of(ADDR_PIN_CAPTURE_SITE)) {
+        u52_prep(repl, ADDR_PIN_CAPTURE_SITE, (void *)&pin_capture_stub, false);
+        outcome = patch_bytes_guarded(ADDR_PIN_CAPTURE_SITE, PIN_CAPTURE_EXPECT, repl, 7) ? 1 : 2;
+    }
+    u52_report("pin capture", ADDR_PIN_CAPTURE_SITE, outcome, "player_left_pin_fix", "llm_net_lockstep_dispatch");
+    outcome = 0;
+    if (!mh::hook::promoted_owner_of(ADDR_PIN_RESTORE_SITE)) {
+        u52_prep(repl, ADDR_PIN_RESTORE_SITE, (void *)&pin_restore_stub, true);
+        outcome = patch_bytes_guarded(ADDR_PIN_RESTORE_SITE, PIN_RESTORE_EXPECT, repl, 5) ? 1 : 2;
+    }
+    u52_report("pin restore", ADDR_PIN_RESTORE_SITE, outcome, "player_left_pin_fix", "llm_net_lockstep_dispatch");
+}
+
+// ===== mp:U54 -- SPECTATE AFTER DEFEAT: THE RETAIL CARRIERS ([net] spectate_after_defeat) ============================
+//
+// Configuration (1) has no libmh twin (sim_player_presence_lost.cpp / order_queue.cpp carry these rules in configuration (2)),
+// so the same rules are byte patches, each displaced when its owner is promoted (the twin then carries it). The rules are
+// mh_spectate.h's, read from the live roster. Three sites + the extended U66 flip stub above:
+//
+//  S1  0x00498176 (pin_flip_stub, mode 0, a human just lost its last presence): when that human is the LOCAL player, decide
+//      whether it spectates (>= 2 other humans alive, not decided by the team rule) and make the same flip every survivor
+//      makes for it (HUMAN off, DEFEATED|GONE on); g_spec_pending remembers the decision for S2.
+//  S2  0x00498197 (`CALL send_presence_lost; JMP 0x0049832c`, the local player's drop): a spectator sends no CTL_PLAYER_LEFT
+//      and does not take the session 3->2 downgrade at 0x0049832c -- straight to the fanfare + outcome dialog (0x00498758).
+//  S3  0x004982a8 (`CMP [SESSION],3`, after the roster loop of a player that is NOT the local one): for a spectator the
+//      survivors' evaluation is the wrong question; it ends its own match when the survivors have decided theirs (spectate.h),
+//      with the outcome of its own side (5 victory / 4 defeat), else it just returns (0x004987a5).
+//  S0  0x0049814b (the MP path's first instruction): presence_lost is RE-ENTERED for a player that is already out (the
+//      force-killed units' teardowns each call it). A spectator asked about ITSELF again returns at once -- the second
+//      call would see was_human == false, take the local-player drop path and end the session it chose to keep.
+//  S4  0x00466068 (`CALL stage_scheduled` in llm_strat_order_dispatch's replicated lane): an order whose owner is a spectator
+//      is dropped BEFORE it is staged (return 0, `RET 8` for the double the caller pushed).
+int __cdecl spec_eval_retail(unsigned player, unsigned mode);
+int __cdecl spec_drop_retail(unsigned player);
+int __cdecl spec_repeat_retail(unsigned player);
+constexpr uintptr_t ADDR_SPEC_ENTRY_SITE = 0x0049814b;
+constexpr uintptr_t ADDR_SPEC_SEND_SITE  = 0x00498197;
+constexpr uintptr_t ADDR_SPEC_END_SITE   = 0x004982a8;
+constexpr uintptr_t ADDR_SPEC_ORDER_SITE = 0x00466068;
+const uint8_t       SPEC_ENTRY_EXPECT[7] = {0xC7, 0x45, 0xCC, 0x00, 0x00, 0x00, 0x00};                   // mov [ebp-0x34],0 (the MP path's first instruction)
+const uint8_t       SPEC_SEND_EXPECT[10] = {0xE8, 0x8C, 0x61, 0x00, 0x00, 0xE9, 0x8B, 0x01, 0x00, 0x00}; // call send_presence_lost; jmp 0x0049832c
+const uint8_t       SPEC_END_EXPECT[7]   = {0x83, 0x3D, 0x44, 0x83, 0xE5, 0x00, 0x03};                   // cmp [SESSION],3
+const uint8_t       SPEC_ORDER_EXPECT[5] = {0xE8, 0xA4, 0x01, 0x00, 0x00};                               // call stage_scheduled
+
+// U66's flip for a player other than the local side: HUMAN off, DEFEATED|GONE on -- except that a human who stays as a
+// SPECTATOR is not GONE (mh_spectate.h). Every peer evaluates the same roster here, so every peer makes the same call.
+void __cdecl pin_flip_other_retail(unsigned player) {
+    if (player >= 8) return;
+    uint32_t *sf   = (uint32_t *)(mh::addr::_G_LLM_STRAT_PLAYERS + player * 0x740u);
+    bool      spec = false;
+    if (g_spectate_after_defeat && *(const uint8_t *)ADDR_SESSION_MODE == 3) {
+        mh::spectate::roster r;
+        spec_read_roster(r);
+        spec = mh::spectate::becomes_spectator(r, (int)player, true, true, true);
+    }
+    const uint8_t b = (uint8_t)mh::spectate::eliminated_flags(*sf, spec);
+    *(uint8_t *)sf  = b; // byte 0 only, as the stub it replaces
+}
+void __cdecl spec_decide_retail() {
+    g_spec_pending = 0;
+    if (!g_spectate_after_defeat || *(const uint8_t *)ADDR_SESSION_MODE != 3) return;
+    const unsigned me = *(const uint16_t *)mh::addr::PlayerSide;
+    if (me >= 8) return;
+    mh::spectate::roster r;
+    spec_read_roster(r);
+    if (!mh::spectate::becomes_spectator(r, (int)me, true, true, true)) return;
+    g_spec_pending = 1;
+    uint8_t *sf    = (uint8_t *)(mh::addr::_G_LLM_STRAT_PLAYERS + me * 0x740u);
+    *sf            = (uint8_t)mh::spectate::eliminated_flags(*sf, true); // HUMAN off, DEFEATED on, GONE off -- the survivors' flip
+    const auto vd  = mh::spectate::evaluate(r, (int)me);
+    char       b[200];
+    wsprintfA(b, "; U54 spectate: local human eliminated -> SPECTATOR (alive others=%d humans=%d) -- no CTL_PLAYER_LEFT, session stays lockstep (retail carrier)\n",
+              vd.alive, vd.humans);
+    seam_log(b);
+}
+// 0 = not a spectator (retail evaluation runs), 1 = a spectator, the match goes on, 2 = decided and its side won, 3 = decided, lost.
+int __cdecl spec_eval_retail(unsigned player, unsigned mode) {
+    if (!local_is_spectator()) return 0;
+    const unsigned       me = *(const uint16_t *)mh::addr::PlayerSide;
+    mh::spectate::roster r;
+    spec_read_roster(r);
+    player &= 0xffff;
+    if (mode != 0 && player < 8) {
+        // a FORCED removal (CTL_PLAYER_LEFT's receipt) races this peer's own natural flip of the leaver: the leaver is out either way
+        r.flags[player] &= ~(mh::spectate::ST_ALIVE | mh::spectate::ST_HUMAN);
+        r.flags[player] |= mh::spectate::ST_DEFEATED;
+    }
+    const auto vd = mh::spectate::evaluate(r, (int)me);
+    if (!mh::spectate::decided(r, vd)) return 1;
+    const bool won = mh::spectate::side_won(r, vd);
+    char       b[200];
+    wsprintfA(b, "; U54 spectate: the survivors decided the match (alive=%d humans=%d) -- the spectator's side %s (retail carrier)\n", vd.alive, vd.humans,
+              won ? "WON" : "lost");
+    seam_log(b);
+    return won ? 2 : 3;
+}
+// 1 = the LOCAL player is already a spectator and is being asked about itself again: nothing to decide.
+int __cdecl spec_repeat_retail(unsigned player) {
+    return local_is_spectator() && (player & 0xffff) == *(const uint16_t *)mh::addr::PlayerSide;
+}
+int __cdecl spec_drop_retail(unsigned player) {
+    player &= 0xf;
+    if (player >= 8) return 0;
+    const uint32_t f         = *(const uint32_t *)(mh::addr::_G_LLM_STRAT_PLAYERS + player * 0x740u);
+    const bool     drop      = mh::spectate::is_spectator_flags(f);
+    static int     s_dropped = 0;
+    if (drop && ++s_dropped <= 8) {
+        char b[128];
+        wsprintfA(b, "; U54 spectate: dropped order owner=%u (#%d) (retail carrier)\n", player, s_dropped);
+        seam_log(b);
+    }
+    return drop;
+}
+
+// clang-format off
+__declspec(naked) void spec_entry_stub() {
+    __asm {
+        mov   dword ptr [ebp - 0x34], 0          // the displaced instruction
+        pushad
+        push  dword ptr [ebp - 0x30]             // player
+        call  spec_repeat_retail
+        add   esp, 4
+        mov   dword ptr [g_spec_res], eax
+        popad
+        cmp   dword ptr [g_spec_res], 0
+        jne   quiet
+        push  0x00498152                         // back to `cmp [mode],0`
+        ret
+    quiet:
+        push  0x004987a5                         // a spectator asked about itself again: return
+        ret
+    }
+}
+__declspec(naked) void spec_send_stub() {
+    __asm {
+        cmp   dword ptr [g_spec_pending], 0
+        jne   spec
+        mov   eax, 0x0049e328                    // llm_net_lockstep_send_presence_lost, the call this replaced
+        call  eax
+        push  0x0049832c                         // ... and the JMP behind it (session downgrade + overlay dismiss)
+        ret
+    spec:
+        mov   dword ptr [g_spec_pending], 0
+        push  0x00498758                         // a spectator: no CTL_PLAYER_LEFT, no downgrade -- fanfare + the outcome dialog
+        ret
+    }
+}
+__declspec(naked) void spec_end_stub() {
+    __asm {
+        pushad
+        push  dword ptr [ebp - 0x2c]             // mode
+        push  dword ptr [ebp - 0x30]             // player
+        call  spec_eval_retail
+        add   esp, 8
+        mov   dword ptr [g_spec_res], eax
+        popad
+        cmp   dword ptr [g_spec_res], 0
+        je    normal
+        cmp   dword ptr [g_spec_res], 1
+        je    undecided
+        mov   byte ptr [ebp - 0x14], 4           // outcome: defeat
+        cmp   dword ptr [g_spec_res], 2
+        jne   decided
+        mov   byte ptr [ebp - 0x14], 5           // outcome: victory (the spectator's side won)
+        mov   eax, 0x7d
+        mov   edx, 0x0049653d                    // llm_ui_print_queue_text_id(TEXT_VICTORY)
+        call  edx
+    decided:
+        push  0x0049832c                         // the common downgrade + fanfare + dialog tail
+        ret
+    undecided:
+        push  0x004987a5                         // return: the match is still being played
+        ret
+    normal:
+        cmp   dword ptr ds:[0x00e58344], 3       // the displaced instruction
+        push  0x004982af                         // ... back to its JNE
+        ret
+    }
+}
+__declspec(naked) void spec_order_stub() {
+    __asm {
+        pushad
+        push  edx                                // owner (low word is the player index; spec_drop_retail masks it)
+        call  spec_drop_retail
+        add   esp, 4
+        mov   dword ptr [g_spec_res], eax
+        popad
+        cmp   dword ptr [g_spec_res], 0
+        jne   drop
+        push  0x00466211                         // llm_strat_order_stage_scheduled: the call this replaced (return address intact)
+        ret
+    drop:
+        xor   eax, eax
+        ret   8                                  // dropped: 0 = not queued, and pop the double the caller pushed
+    }
+}
+// clang-format on
+
+void install_spectate() {
+    uint8_t repl[8];
+    int     outcome = 0;
+    if (!mh::hook::promoted_owner_of(ADDR_SPEC_ENTRY_SITE)) {
+        u52_prep(repl, ADDR_SPEC_ENTRY_SITE, (void *)&spec_entry_stub, false);
+        outcome = patch_bytes_guarded(ADDR_SPEC_ENTRY_SITE, SPEC_ENTRY_EXPECT, repl, 7) ? 1 : 2;
+    }
+    u52_report("spectate entry", ADDR_SPEC_ENTRY_SITE, outcome, "spectate_after_defeat", "llm_strat_player_presence_lost");
+    outcome = 0;
+    if (!mh::hook::promoted_owner_of(ADDR_SPEC_SEND_SITE)) {
+        uint8_t r10[10];
+        u52_prep(repl, ADDR_SPEC_SEND_SITE, (void *)&spec_send_stub, false);
+        memcpy(r10, repl, 5);
+        memset(r10 + 5, 0x90, 5);
+        outcome = patch_bytes_guarded(ADDR_SPEC_SEND_SITE, SPEC_SEND_EXPECT, r10, 10) ? 1 : 2;
+    }
+    u52_report("spectate send", ADDR_SPEC_SEND_SITE, outcome, "spectate_after_defeat", "llm_strat_player_presence_lost");
+    outcome = 0;
+    if (!mh::hook::promoted_owner_of(ADDR_SPEC_END_SITE)) {
+        u52_prep(repl, ADDR_SPEC_END_SITE, (void *)&spec_end_stub, false);
+        outcome = patch_bytes_guarded(ADDR_SPEC_END_SITE, SPEC_END_EXPECT, repl, 7) ? 1 : 2;
+    }
+    u52_report("spectate end", ADDR_SPEC_END_SITE, outcome, "spectate_after_defeat", "llm_strat_player_presence_lost");
+    outcome = 0;
+    if (!mh::hook::promoted_owner_of(ADDR_SPEC_ORDER_SITE)) {
+        u52_prep(repl, ADDR_SPEC_ORDER_SITE, (void *)&spec_order_stub, true);
+        outcome = patch_bytes_guarded(ADDR_SPEC_ORDER_SITE, SPEC_ORDER_EXPECT, repl, 5) ? 1 : 2;
+    }
+    u52_report("spectate order gate", ADDR_SPEC_ORDER_SITE, outcome, "spectate_after_defeat", "llm_strat_order_dispatch");
+}
+
+
+// ---- mp:U54 THE SPECTATOR'S WHOLE-MAP VIEW (render-only) ---------------------------------------------------------------
+//
+// A spectator sees the WHOLE MAP (user decision). The fog lives in the tile_objects plane -- per tile record, flags[1] bit 7
+// "explored" / bit 6 "fogged" and byte 7 `visibility` (the mask of players that currently see it, which every object-draw
+// test reads as `!= 0`) -- and that plane IS HASHED (hash region `tile_objects`, 524288 B), so it must not be written for good:
+// the spectator's per-step hash has to stay the survivors'. Hence a DRAW-TIME override: llm_strat_render_view (retail
+// @0x0044e5a4, reached both from the retail frame and, in configuration (2), through the libmh frame twin's host event) is
+// wrapped; BEFORE it runs the two fog bytes of every tile are saved and set to "explored, not fogged, seen"; AFTER it they
+// are put back exactly. Nothing between the two reads them for the sim -- the render pass is single-threaded with the sim
+// step (the frame is time_tick -> sim_tick -> render) -- so the hash never sees the override. The first reveals self-check
+// it: a checksum of the whole plane before the override and after the restore is logged, and must be equal.
+int                 g_spectate_view = 1; // [net] spectate_view (default 1; render-only, not sim-affecting)
+void               *g_sv_tramp      = nullptr;
+bool                g_sv_active     = false;
+int                 g_sv_checks     = 0;
+uint32_t            g_sv_sum_before = 0;
+uint8_t             g_sv_vis[65536];
+uint8_t             g_sv_flag[65536];
+constexpr uintptr_t ADDR_RENDER_VIEW = 0x0044e5a4;
+
+uint32_t sv_checksum(const uint8_t *base) {
+    uint32_t h = 2166136261u;
+    for (size_t i = 0; i < 524288; ++i) h = (h ^ base[i]) * 16777619u;
+    return h;
+}
+void spec_view_pre() {
+    g_sv_active = false;
+    if (!g_spectate_view || !local_is_spectator()) return;
+    uint8_t *base = mh::state::ptr<uint8_t>(mh::state::RID_TILE_OBJECTS);
+    if (!base) return;
+    if (g_sv_checks < 4) g_sv_sum_before = sv_checksum(base);
+    for (int i = 0; i < 65536; ++i) {
+        uint8_t *t   = base + (size_t)i * 8;
+        g_sv_flag[i] = t[1];
+        g_sv_vis[i]  = t[7];
+        t[1]         = (uint8_t)((t[1] & 0x3f) | 0x80); // explored, not fogged
+        t[7]         = 0xff;                            // seen
+    }
+    g_sv_active = true;
+}
+void spec_view_post() {
+    if (!g_sv_active) return;
+    g_sv_active   = false;
+    uint8_t *base = mh::state::ptr<uint8_t>(mh::state::RID_TILE_OBJECTS);
+    for (int i = 0; i < 65536; ++i) {
+        uint8_t *t = base + (size_t)i * 8;
+        t[1]       = g_sv_flag[i];
+        t[7]       = g_sv_vis[i];
+    }
+    if (g_sv_checks < 4) {
+        ++g_sv_checks;
+        const uint32_t after = sv_checksum(base);
+        char           b[160];
+        wsprintfA(b, "; U54 view: whole-map reveal + restore #%d: tile_objects checksum before=%08x after=%08x -- %s\n", g_sv_checks,
+                  (unsigned)g_sv_sum_before, (unsigned)after, after == g_sv_sum_before ? "RESTORED EXACTLY (the hashed plane is untouched)" : "MISMATCH");
+        seam_log(b);
+    }
+}
+// clang-format off
+__declspec(naked) void spec_view_detour() {
+    __asm {
+        pushad
+        pushfd
+        call spec_view_pre
+        popfd
+        popad
+        call dword ptr [g_sv_tramp]  // WRAP: the stolen prologue + the rest of llm_strat_render_view, returns HERE
+        pushad
+        pushfd
+        call spec_view_post
+        popfd
+        popad
+        ret
+    }
+}
+// clang-format on
+void install_spectate_view() {
+    if (install_trampoline(ADDR_RENDER_VIEW, (void *)spec_view_detour, &g_sv_tramp, 8, mh::hook::entry_claim::exclusive,
+                           "the spectator's whole-map view ([net] spectate_view)"))
+        seam_log("; U54 view: llm_strat_render_view wrapped -- a spectator sees the whole map (a draw-time override of the two fog bytes per tile, restored after the draw)\n");
+    else
+        seam_log("; U54 view: NOT armed (render_view entry unavailable) -- see the [interlock] line\n");
+}
+
+// ---- the per-frame spectator seam (on_present) -----------------------------------------------------------------------
+//  * keeps the transport's spectator mask in step with the roster (MH_Net_SetSpectator, mp:U71): a seat that is out of the
+//    match (ALIVE and HUMAN off, DEFEATED|GONE on) is not a voter in the failover quorum;
+//  * a spectator that Exit-ed to the main menu leaves the match: the session ends here (the sim is not stepping any more,
+//    the survivors flipped its slot at the elimination step) -- the hub handover itself is hub_leave_poll's.
+void spectator_tick() {
+    static DWORD s_next = 0;
+    static int   s_mask = 0;
+    const DWORD  now    = GetTickCount();
+    if ((long)(now - s_next) < 0) return;
+    s_next   = now + 100;
+    int mask = 0;
+    if (g_spectate_after_defeat && g_spectate_mask) {
+        for (int i = 0; i < 8; ++i) {
+            const uint32_t f = *(const uint32_t *)(mh::addr::_G_LLM_STRAT_PLAYERS + (unsigned)i * 0x740u);
+            if (mh::spectate::is_spectator_flags(f)) mask |= 1 << i;
+        }
+    }
+    if (mask != s_mask) {
+        for (int i = 0; i < 8; ++i)
+            if (((mask ^ s_mask) >> i) & 1) MH_Net_SetSpectator(i, (mask >> i) & 1);
+        char b[96];
+        wsprintfA(b, "; U71 spectator mask %02x -> %02x (MH_Net_SetSpectator)\n", s_mask, mask);
+        seam_log(b);
+        s_mask = mask;
+    }
+    {
+        // The two answers to the defeat dialog, as markers the checker reads: Continue closes the modal (game mode back to 2).
+        static bool   s_dlg_seen = false;
+        const bool    spec       = local_is_spectator();
+        const uint8_t gm         = *(const uint8_t *)mh::addr::_G_LLM_GAME_MODE;
+        if (spec && gm == 3) s_dlg_seen = true;
+        else if (spec && gm == 2 && s_dlg_seen) {
+            s_dlg_seen = false;
+            seam_log("; U54 spectate: dialog answered CONTINUE (game mode back to 2) -- watching on\n");
+        } else if (!spec) s_dlg_seen = false;
+    }
+    static bool s_was_spec = false; // latched: the statistics screen's teardown clears the roster before the menu is reached
+    if (local_is_spectator() && !s_was_spec) {
+        s_was_spec          = true;
+        g_spec_menu_reached = false;
+        seam_log("; U54 spectate: local seat latched as a spectator\n");
+    }
+    // The main menu reached after Exit match: the retail flag _G_LLM_UI_IN_MAIN_MENU is NOT set on this route (measured), so
+    // read the idle menu itself -- GAME_MODE 3 + MENU_STATE 3 -- but only AFTER the statistics screen (MENU_STATE 10) was
+    // seen, because the defeat dialog also runs under GAME_MODE 3 with a stale MENU_STATE 3.
+    static bool s_stats_seen = false;
+    {
+        const uint8_t gm = *(const uint8_t *)mh::addr::_G_LLM_GAME_MODE;
+        const uint8_t ms = *(const uint8_t *)mh::addr::_G_LLM_UI_MENU_STATE;
+        if (!s_was_spec || gm != 3) s_stats_seen = false;
+        else if (ms == 10) s_stats_seen = true;
+    }
+    const bool at_menu = *(const int *)ADDR_UI_IN_MAIN_MENU != 0 ||
+                         (s_stats_seen && *(const uint8_t *)mh::addr::_G_LLM_UI_MENU_STATE == 3);
+    if (s_was_spec && at_menu) {
+        s_was_spec                              = false;
+        s_stats_seen                            = false;
+        g_spec_menu_reached                     = true;
+        *(volatile uint32_t *)ADDR_SESSION_MODE = 2; // SESSION_MP_LOCKSTEP -> SESSION_MP_LOCAL, as the gameover seam does
+        mp_session_close("gameover");
+        g_spec_msg_pending = 0;
+        seam_log("; U54 spectate: the spectator left the match (main menu reached) -- session closed\n");
+    }
+}
+
+
 // Spurious-resync fix, part c (increment GATE) -- complement to the recovery-reset above. Both leader-only
 // RESYNC_TRIGGER_COUNT increment sites -- SENT nag @0x49d8cb (send_lockstep_ack) and RECEIVED nag @0x49c508
 // (dispatch case '\x02') -- `inc dword[0xe58791]` unconditionally. The recovery-reset (b) only clears the
@@ -3322,6 +4624,7 @@ void install_overlay_patches() {
     // The byte-patch carrier of the SAME two counters is the `install_overlay_gate()` line right
     // above, and that one is deliberately NOT behind the selector: the thunk is what counts the icon
     // when our body is not live, which is precisely the original configuration.
+    if (mh::config::ours_run()) mh::lockstep::set_extend_floor(ws_extend_floor); // mp:X3c-FIX
     if (mh::config::ours_run())
         mh::lockstep::set_icon_counters(g_icon_count ? icon_note_wanted : nullptr,
                                         g_icon_count ? icon_note_shown : nullptr);
@@ -3392,6 +4695,9 @@ void install_qpc_clock() {
 // The step periods are reported in MILLISECONDS and prefer OUR pinned value over the game global:
 // g_lockstep_step is a DLL double with no torn-read window, while STEP_SIZE (0x005d55bc) is only
 // 4-aligned -- the same preference horizon_heartbeat_thread makes, for the same reason.
+extern "C" void MH_TeamRel_SetLobbyMode(int team_mode) { g_u52_lobby_team_mode = team_mode; }
+extern "C" int  MH_TeamRel_Enabled(void) { return g_team_relations_fix; }
+
 extern "C" void MH_Seam_SessionPacing(long *clock_ms, long *stall, long *icon_calls, long *icon_shown,
                                       int *step_ms, int *sim_step_ms) {
     if (clock_ms) *clock_ms = ms_of(ADDR_GAME_CLOCK);
@@ -3409,6 +4715,48 @@ extern "C" void MH_Seam_SessionPacing(long *clock_ms, long *stall, long *icon_ca
         *sim_step_ms = (int)(s * 1000.0 + 0.5);
     }
 }
+
+// ---- mp:U62: the leave seams' common exit (declared in net_internal.h) -----------------------------------
+//
+// Called when this peer's player has LEFT a match. A hub with two or more other humans still playing hands the
+// transport to the elected successor (the module blocks until every survivor acknowledged, ~1 round trip, or
+// [net] hub_leave_timeout_ms); everyone else returns at once. `why` is only for the log.
+void mp_hub_leave(const char *why) {
+    if (!net_hub_now()) return;
+    const bool mid_match = *(const uint8_t *)ADDR_SESSION_MODE == 3 || g_hub_watching;
+    const int  others    = other_active_humans();
+    char       b[200];
+    if (!mid_match || others < 2) {
+        wsprintfA(b, "; U62 hub-leave (%s): not handing over -- %s (%d other human(s) alive)\n", why,
+                  mid_match ? "fewer than two other humans" : "no match running", others);
+        seam_log(b);
+        g_hub_watching = false;
+        return;
+    }
+    const DWORD     t0 = GetTickCount();
+    const int       r  = MH_Net_HubLeave(g_hub_leave_ms);
+    MH_NetHubStatus st;
+    MH_Net_HubStatus(&st);
+    wsprintfA(b, "; U62 hub-leave (%s): %s after %lu ms (epoch %u, %d other human(s) alive, acks %d, re-issues %d)\n", why,
+              r == MH_HUB_LEAVE_HANDED ? "HANDED OVER" : r == MH_HUB_LEAVE_TIMEOUT ? "TIMED OUT"
+                                                                                   : "NOTHING TO HAND OVER",
+              (unsigned long)(GetTickCount() - t0), st.epoch, others, st.acks_rx, st.retargets);
+    seam_log(b);
+    g_hub_watching = false;
+}
+
+// The process is exiting on purpose (WM_DESTROY: window closed / Alt-F4 / the game's own exit). A HUB mid-match
+// first leaves the way a quit does -- U19b's park + pinned self-removal, so every survivor drops it at the same
+// sim clock -- and then hands the transport over. A client's exit is untouched (the hub fast-drops it, as before).
+void mp_leave_for_exit() {
+    if (!net_hub_now() || other_active_humans() < 2) return;
+    if (g_graceful_leave && *(const uint8_t *)ADDR_SESSION_MODE == 3 && !g_leave_in_progress && !local_is_spectator()) graceful_quit_body(); // mp:U54: a spectator has nothing to park
+    mp_hub_leave("exit");
+}
+
+// The harness's graceful-exit knob ([harness] exit_process_mode=1) reaches the SAME seam the game's own exit
+// takes (mh_harness.dll resolves this by name; tools/gen_harness_contract.py derives the row).
+extern "C" void MH_Seam_LeaveForExit(void) { mp_leave_for_exit(); }
 
 // ---- mp:U19h: the leave freeze, published to net_seams.cpp ---------------------------------------
 //
@@ -3485,6 +4833,9 @@ void lockstep_install_core() {
     g_step_eps_ms = step_eps_ms;
     g_adaptive    = GetPrivateProfileIntA("net", "lockstep_adaptive", step_explicit ? 0 : SHIP_ADAPTIVE, g_ini);
     g_ad_seed_ok  = !step_explicit; // mp:P14: only the SHIPPED start is a guess worth replacing
+    // mp:P16: 3+-peer star -- size the lookahead for the relayed client->host->client path (default ON;
+    // 0 = the pre-P16 host-link-only lookup, the negative arm). Needs a host that publishes in-match.
+    g_relay_path = GetPrivateProfileIntA("net", "lockstep_relay_path", 1, g_ini);
     // NOTE the effective floor is max(this, 3 x sim_step) -- see AD_SIM_FLOOR_MULT. Lowering this
     // knob alone will NOT take the lookahead under 3 sub-steps; that guard is what a frozen client
     // cost us.
@@ -3533,6 +4884,7 @@ void lockstep_install_core() {
     // self-removal (see graceful_leave_park); the CS serialises that freeze against the heartbeat.
     g_leave_park    = GetPrivateProfileIntA("net", "graceful_leave_park", 1, g_ini);
     g_leave_park_ms = GetPrivateProfileIntA("net", "graceful_leave_park_ms", 1500, g_ini);
+    g_hub_leave_ms  = GetPrivateProfileIntA("net", "hub_leave_timeout_ms", 2500, g_ini); // mp:U62: the handover's wait for every acknowledgement
     if (!g_hb_cs_ready) {
         InitializeCriticalSection(&g_hb_cs); // DllMain-safe (kernel32 only, no loader re-entry)
         g_hb_cs_ready = true;
@@ -3568,12 +4920,28 @@ void lockstep_install_core() {
     // and suppressing an icon that a correctly-sized lookahead already stops firing would be hiding a
     // signal for nothing. Reimpl-ONLY -- there is no byte patch, so an unpromoted run cannot carry
     // it; the arming line below says so rather than letting a run believe it is gated.
-    g_desync_icon_gate     = GetPrivateProfileIntA("net", "desync_icon_gate", 0, g_ini);
+    g_desync_icon_gate = GetPrivateProfileIntA("net", "desync_icon_gate", 0, g_ini);
+    // MP U44. DEFAULT ON: the stall overlay no longer closes an open mode-3 dialog (sell/building) on
+    // dismiss and no longer lets the kick modal share the screen with it. 0 = the retail rule.
+    g_overlay_dialog_guard = GetPrivateProfileIntA("net", "overlay_dialog_guard", 1, g_ini);
     g_resync_order_horizon = GetPrivateProfileIntA("net", "resync_order_horizon", 1, g_ini); // MP D14: schedule the resync-begin synthetic order at the horizon like every other replicated order; DEFAULT ON
     // MP U19e. DEFAULT ON: without it the leader's re-broadcast of a peer drop overwrites the very
     // datagram it is dispatching (one shared _G_LLM_NET_SEND_BUF for TX and RX), and the parse walks
     // into the payload and raises outcome 7 on a clean quit. Carried by the promoted body AND (mp:U19i) a byte patch.
     g_gone_peer_frame_guard = GetPrivateProfileIntA("net", "gone_peer_frame_guard", 1, g_ini);
+    // MP U49. DEFAULT ON, SIM-AFFECTING (every peer must carry the same value): an undock order for a unit
+    // that is not PARKED is dropped at apply time. Carried by the promoted dispatcher AND a byte patch.
+    g_undock_reentry_fix = GetPrivateProfileIntA("net", "undock_reentry_fix", 1, g_ini);
+    // MP U52. DEFAULT ON, SIM-AFFECTING: lobby teams -> relations at match start (+ Team mode victory/lock), and an ally
+    // damaging an object does not flip the victim hostile. Both carried by the twins AND by byte patches.
+    g_team_relations_fix       = GetPrivateProfileIntA("net", "team_relations_fix", 1, g_ini);
+    g_ally_damage_no_hostility = GetPrivateProfileIntA("net", "ally_damage_no_hostility", 1, g_ini);
+    // MP U56/U66. DEFAULT ON, SIM-AFFECTING: an eliminated human's flag flip is made by the sim at the elimination step.
+    g_player_left_pin_fix = GetPrivateProfileIntA("net", "player_left_pin_fix", 1, g_ini);
+    // MP U54. DEFAULT ON, SIM-AFFECTING: a defeated human stays in the match as a spectator. Needs the pinned flip.
+    g_spectate_after_defeat = GetPrivateProfileIntA("net", "spectate_after_defeat", 1, g_ini) != 0 && g_player_left_pin_fix != 0;
+    g_spectate_mask         = GetPrivateProfileIntA("net", "spectate_mask", 1, g_ini) != 0; // test knob: 0 = the spectator bit is never exported
+    g_spectate_view         = GetPrivateProfileIntA("net", "spectate_view", 1, g_ini) != 0; // render-only: the spectator sees the whole map
     // C8-e: the three retired `defang_*` knobs. A SCOPE DECISION, not a retirement -- the capability
     // is gone, so there is no carrier to point at and refuse_uncarried_fix would be the wrong message
     // (it says "the fix moved and you are not running the thing that carries it"; here there is no
@@ -3676,10 +5044,39 @@ void lockstep_install_core() {
         // was its nearest ancestor and C8-e dropped it, leaving wait_overlay_gate_thunk as a pure
         // counter with `g_icon_gate` hardcoded 0. So an UNPROMOTED run with this set has no gate at
         // all, and that has to be said out loud rather than discovered from an unchanged icon rate.
-        fx.desync_icon_gate = g_desync_icon_gate != 0;
+        fx.desync_icon_gate     = g_desync_icon_gate != 0;
+        fx.overlay_dialog_guard = g_overlay_dialog_guard != 0; // U44
         // U19e. The promoted body's half of the guard; since mp:U19i an UNPROMOTED dispatch carries the
         // same fix as a byte patch (install_gone_peer_frame_guard), so the knob means one thing in both.
         fx.gone_peer_frame_guard = g_gone_peer_frame_guard != 0;
+        // U45. SIM-AFFECTING (order release dedup), so every peer must carry the same value: the shipped
+        // default is 1 and no one sets it in a real ini, same contract as sim_step_ms.
+        fx.diplo_order_dedup_fix = GetPrivateProfileIntA("net", "diplo_order_dedup_fix", 1, g_ini) != 0;
+        seam_log(fx.diplo_order_dedup_fix
+                     ? "; U45: diplo_order_dedup_fix=1 -- release_due keeps 0xf4 and 0xf5 from superseding each other\n"
+                     : "; U45: diplo_order_dedup_fix=0 -- retail dedup: a relation + control change in one Apply loses the relation order (the reproduction arm)\n");
+        fx.undock_reentry_fix = g_undock_reentry_fix != 0; // U49, see install_undock_reentry_fix
+        // U56. SIM-AFFECTING (the elimination flag flip moves from CTL_PLAYER_LEFT's receive time into
+        // presence_lost), so every peer must carry the same value: shipped default 1, same contract as U45.
+        fx.player_left_pin_fix = GetPrivateProfileIntA("net", "player_left_pin_fix", 1, g_ini) != 0;
+        seam_log(fx.player_left_pin_fix
+                     ? "; U56: player_left_pin_fix=1 -- an eliminated human's HUMAN/DEFEATED/GONE flip is made by the sim at the elimination step, not at CTL_PLAYER_LEFT receipt\n"
+                     : "; U56: player_left_pin_fix=0 -- retail: CTL_PLAYER_LEFT flips the flags at receive time (survivors can disagree on the step; the reproduction arm)\n");
+        // U52. SIM-AFFECTING (relations seeded from the lobby teams, the Team-mode ally victory + relation
+        // lock), so every peer must carry the same value: shipped default 1, same contract as U45/U56.
+        fx.team_relations_fix       = g_team_relations_fix != 0;
+        fx.ally_damage_no_hostility = g_ally_damage_no_hostility != 0;
+        seam_log(fx.ally_damage_no_hostility
+                     ? "; U52: ally_damage_no_hostility=1 -- an ally damaging an object does not flip the victim hostile\n"
+                     : "; U52: ally_damage_no_hostility=0 -- retail: any damage can flip the victim hostile toward an ally (the reproduction arm)\n");
+        seam_log(fx.team_relations_fix
+                     ? "; U52: team_relations_fix=1 -- lobby teams seed the relations at match start; Team mode adds allied victory + the relation lock\n"
+                     : "; U52: team_relations_fix=0 -- retail: the lobby TEAM/MODE selectors have no effect on the match\n");
+        // U54. SIM-AFFECTING (a defeated human is not dropped), same contract as U45/U56: shipped default 1.
+        fx.spectate_after_defeat = g_spectate_after_defeat != 0;
+        seam_log(fx.spectate_after_defeat
+                     ? "; U54: spectate_after_defeat=1 -- a defeated human with >= 2 other humans alive stays in the match as a spectator\n"
+                     : "; U54: spectate_after_defeat=0 -- retail: a defeated human drops out of the lockstep session (the reproduction arm)\n");
         mh::lockstep::set_fixes(fx);
         if (g_desync_icon_gate) {
             const bool carried = g_lockstep_promoted.time_tick;
@@ -3694,6 +5091,9 @@ void lockstep_install_core() {
                                 "[promote] lockstep, or accept the stock icon knowingly.");
             seam_log(b);
         }
+        if (!fx.overlay_dialog_guard)
+            seam_log("; overlay_dialog_guard=0 (MP U44 OFF): retail stall-overlay dismiss -- closes an open "
+                     "mode-3 dialog and the kick modal arms over it\n");
         // U19e's INERT line (lockstep promotion off -> no guard) is GONE since mp:U19i: an unpromoted
         // dispatch now gets the byte-patch carrier, and install_gone_peer_frame_guard's own boot line
         // says which of PATCHED / DISPLACED / MISMATCHED this run got.
@@ -3719,6 +5119,13 @@ void lockstep_install_core() {
     // installer again -- it refuses per site itself, for a site that is neither patched nor promoted.
     if (g_resync_trigger_gate) install_resync_trigger_gate();
     if (g_gone_peer_frame_guard) install_gone_peer_frame_guard(); // mp:U19i -- same three outcomes
+    if (g_undock_reentry_fix) install_undock_reentry_fix();       // mp:U49 -- same three outcomes
+    else seam_log("; undock re-entry fix OFF ([net] undock_reentry_fix=0, MP U49): retail dispatch -- a second undock applied to a unit already walking out wedges it in EXIT_WAIT (the reproduction arm)\n");
+    if (g_player_left_pin_fix) install_player_left_pin_fix();                // mp:U66 -- U56's pinned loser-flag flip (retail carriers)
+    if (g_spectate_after_defeat) install_spectate();                         // mp:U54 -- spectate after defeat (retail carriers; displaced by promotion)
+    if (g_spectate_after_defeat && g_spectate_view) install_spectate_view(); // mp:U54 -- the spectator's whole-map view (render-only)
+    if (g_team_relations_fix) install_team_relations_fix();                  // mp:U52 -- seed + lock (retail carriers; displaced by promotion)
+    if (g_ally_damage_no_hostility) install_ally_damage_no_hostility();      // mp:U52 -- hostility guard
     if (g_resync_order_horizon) install_resync_order_horizon();
     // mp:P9W: spliced UNCONDITIONALLY (like install_overlay_patches above) -- the thunk always runs
     // the original llm_wait_screen_frame first and self-gates its own extra work on

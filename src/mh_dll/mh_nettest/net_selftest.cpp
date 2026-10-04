@@ -55,6 +55,7 @@
 
 #include "../mh_net_udp/udp_endpoint.h"     // mp:T1b -- the UDP core, for udprelinktest (see there)
 #include "../mh_net_udp/lookahead_start.h"  // mp:P14 -- the seeded start, udpstatstest (n)
+#include "../mh_net_udp/relay_path.h"       // mp:P16 -- the relayed-path delay, udpstatstest (q)
 #include "../mh_net_udp/udp_ping_cadence.h" // mp:P15 -- the warm-up cadence, udpstatstest (o)
 #include "../mh/seams/adaptive_window.h"    // mp:P15 wave 7 -- first-window start + post-spin starved, (p)
 #include "mh_net_export.h"
@@ -1339,6 +1340,9 @@ long ur_hs_done(Endpoint &ep) {
 }
 
 } // namespace
+
+int run_rehome_relay_role(int argc, char **argv); // udp_rehome_selftest.cpp -- mp:U60, ONE relayed peer
+int run_meshtest();                               // udp_mesh_selftest.cpp -- mp:U61 (HM-M3): elect(), the codecs, mesh probes + succession epochs
 
 static int run_udprelinktest(int port) {
     // A base of its own: udploopbacktest holds 39560..39591 and the TCP suites take the argument
@@ -3104,6 +3108,135 @@ static int run_udpstatstest() {
         }
     }
 
+    // ---- (q) mp:P16: THE RELAYED CLIENT->HOST->CLIENT PATH ON A 3-PEER STAR -------------------------
+    // First 3-peer internet match: host<->s1 232 ms, host<->s2 83 ms. A client holds ONE row (the host
+    // link, player_id -1); the host publishes every client's SRTT. binding_owd_ms (relay_path.h) must
+    // return the relayed estimate when the binding peer is the OTHER client, the host link when it is the
+    // host, and the pre-P16 value with the gate off or nothing published.
+    {
+        using namespace mh::netstats;
+        // slot 1's view: its own row = the host link (232 ms, rttvar 2 ms); the host published slot 2 = 83 ms.
+        RelayLatRow host_link = {-1, 10, 232000, 2000};
+        double      pub[RELAY_MAX_PEERS];
+        for (int i = 0; i < RELAY_MAX_PEERS; ++i) pub[i] = -1.0;
+        pub[2]               = 83.0;
+        const double own_owd = (232.0 + 4.0 * 2.0) * 0.5; // the pre-P16 value: 120 ms
+        double       v       = binding_owd_ms(&host_link, 1, 2, pub, true);
+        us_check(near_ms(v, own_owd + RELAY_LEG_MULT * 83.0, 1e-6),
+                 "mp:P16 (q1) -- slot 1 bound by slot 2 -> own %.1f + 1.25 x 83/2 = %.1f ms (got %f)", own_owd,
+                 own_owd + RELAY_LEG_MULT * 83.0, v);
+        us_check(v > own_owd + 40.0, "mp:P16 (q1b) -- the estimate is well above the host link alone (%f vs %f)", v,
+                 own_owd);
+        // the pair bound (mp:P8): the two clients' one-ways must cover the ~315 ms client<->client RTT.
+        RelayLatRow s2_link = {-1, 10, 83000, 2000};
+        pub[2]              = -1.0;
+        pub[1]              = 232.0;
+        const double v2     = binding_owd_ms(&s2_link, 1, 1, pub, true);
+        us_check(v + v2 > 315.0, "mp:P16 (q1c) -- the two relayed estimates cover the 315 ms path (%f + %f)", v, v2);
+        // the negative arm: gate off = the host link, bit for bit.
+        pub[2] = 83.0;
+        us_check(binding_owd_ms(&host_link, 1, 2, pub, false) == own_owd,
+                 "mp:P16 (q2) -- gate off reproduces the pre-P16 host-link value (%f)",
+                 binding_owd_ms(&host_link, 1, 2, pub, false));
+        // the 2-player result is unchanged: bound by the host (peer 0), with or without a table.
+        us_check(binding_owd_ms(&host_link, 1, 0, pub, true) == own_owd &&
+                     binding_owd_ms(&host_link, 1, 0, 0, true) == own_owd,
+                 "mp:P16 (q3) -- a client bound by the HOST keeps the host link (2-player unchanged)");
+        // nothing published (old host / stale table) -> the pre-P16 value, never a guess.
+        pub[2] = -1.0;
+        us_check(binding_owd_ms(&host_link, 1, 2, pub, true) == own_owd &&
+                     binding_owd_ms(&host_link, 1, 2, 0, true) == own_owd,
+                 "mp:P16 (q4) -- no published row for the binding peer -> the host link alone");
+        // the HOST reads its direct rows by player_id: the table is not consulted.
+        RelayLatRow hrows[2] = {{1, 10, 232000, 2000}, {2, 10, 83000, 2000}};
+        pub[2]               = 500.0;
+        us_check(near_ms(binding_owd_ms(hrows, 2, 2, pub, true), (83.0 + 8.0) * 0.5, 1e-6) &&
+                     near_ms(binding_owd_ms(hrows, 2, 1, pub, true), own_owd, 1e-6),
+                 "mp:P16 (q5) -- the host's direct rows are unchanged by the table");
+        // unmeasured / unknown binding peer -> -1 (the gate stands down), as before.
+        RelayLatRow cold = {-1, 0, 0, 0};
+        us_check(binding_owd_ms(&cold, 1, 2, pub, true) < 0.0 && binding_owd_ms(&host_link, 1, -1, pub, true) < 0.0,
+                 "mp:P16 (q6) -- no samples / no binding peer -> -1");
+        // THE SEED: slot 2 (host leg 83) seeds from the path to slot 1 (83 + 232 = 315), not from 83 alone.
+        double sr[RELAY_MAX_PEERS];
+        int    sm[RELAY_MAX_PEERS];
+        sr[0]  = 83.0;
+        sm[0]  = 5;
+        pub[1] = 232.0;
+        pub[2] = 83.0;
+        int n  = seed_with_relay_paths(sr, sm, 1, RELAY_MAX_PEERS, 2, pub, true);
+        us_check(n == 2 && near_ms(sr[1], 315.0, 1e-9) && sm[1] == 5,
+                 "mp:P16 (q7) -- the client seed adds the relayed path RTT 83 + 232 = 315 (n=%d, %f)", n, sr[1]);
+        LookaheadStartOut so = lookahead_start(sr, sm, n, true, 60.0, 400.0, 100.0);
+        us_check(so.reason == LS_START_SEEDED && so.peer == 1 && near_ms(so.rtt_ms, 315.0, 1e-9) &&
+                     so.start_ms > lookahead_start(sr, sm, 1, true, 60.0, 400.0, 100.0).start_ms + 100.0,
+                 "mp:P16 (q7b) -- the start follows the relayed path, not the host link (start %f, peer %d)",
+                 so.start_ms, so.peer);
+        sr[0] = 83.0;
+        sm[0] = 5;
+        us_check(seed_with_relay_paths(sr, sm, 1, RELAY_MAX_PEERS, 2, pub, false) == 1 &&
+                     seed_with_relay_paths(sr, sm, 1, RELAY_MAX_PEERS, 2, 0, true) == 1,
+                 "mp:P16 (q8) -- seed: gate off / no table adds nothing");
+        double hs[RELAY_MAX_PEERS] = {232.0, 83.0};
+        int    hm[RELAY_MAX_PEERS] = {5, 5};
+        us_check(seed_with_relay_paths(hs, hm, 2, RELAY_MAX_PEERS, 0, pub, true) == 2,
+                 "mp:P16 (q9) -- seed: a host with two direct rows adds nothing");
+    }
+
+    // ---- (q10) mp:P16 at the 8-peer limit: host + 7 clients, mixed host legs ----------------------------
+    // Every client c, bound by every other client b, must get own (SRTT_c + 4 RTTVAR)/2 + 0.625 x SRTT_b;
+    // every pair's two estimates must cover the pair's relayed RTT (SRTT_c + SRTT_b, the mp:P8 bound); every
+    // client's seed must carry all 6 relayed paths and start from the worst one; the top id (7) must be read
+    // and an out-of-range id (8) must fall back to the host link.
+    // MUTATION-CHECKED (2026-10-01, reverted after): seed_with_relay_paths' loop capped at pid < 4 leaves
+    // q1-q9 green (3 peers fit under it) and reds (q10d) with 7 bad.
+    {
+        using namespace mh::netstats;
+        const double leg[RELAY_MAX_PEERS] = {-1.0, 40.0, 230.0, 95.0, 180.0, 60.0, 310.0, 120.0};
+        double       pub[RELAY_MAX_PEERS];
+        for (int i = 0; i < RELAY_MAX_PEERS; ++i) pub[i] = leg[i];
+        int bad_owd = 0, bad_pair = 0, bad_host = 0, bad_seed = 0;
+        for (int c = 1; c < RELAY_MAX_PEERS; ++c) {
+            RelayLatRow  link = {-1, 10, (int)(leg[c] * 1000.0), 2000};
+            const double own  = (leg[c] + 8.0) * 0.5;
+            if (binding_owd_ms(&link, 1, 0, pub, true) != own) ++bad_host;
+            for (int b = 1; b < RELAY_MAX_PEERS; ++b) {
+                if (b == c) continue;
+                if (!near_ms(binding_owd_ms(&link, 1, b, pub, true), own + RELAY_LEG_MULT * leg[b], 1e-6)) ++bad_owd;
+                RelayLatRow blink = {-1, 10, (int)(leg[b] * 1000.0), 2000};
+                if (binding_owd_ms(&link, 1, b, pub, true) + binding_owd_ms(&blink, 1, c, pub, true) <
+                    leg[c] + leg[b])
+                    ++bad_pair;
+            }
+            double sr[RELAY_MAX_PEERS];
+            int    sm[RELAY_MAX_PEERS];
+            sr[0]        = leg[c];
+            sm[0]        = 5;
+            const int n  = seed_with_relay_paths(sr, sm, 1, RELAY_MAX_PEERS, c, pub, true);
+            double    hi = 0.0;
+            for (int b = 1; b < RELAY_MAX_PEERS; ++b)
+                if (b != c && leg[c] + leg[b] > hi) hi = leg[c] + leg[b];
+            double got_hi = 0.0;
+            for (int i = 0; i < n; ++i)
+                if (sr[i] > got_hi) got_hi = sr[i];
+            const LookaheadStartOut so = lookahead_start(sr, sm, n, true, 60.0, 400.0, 100.0);
+            if (n != 7 || !near_ms(got_hi, hi, 1e-9) || so.reason != LS_START_SEEDED || !near_ms(so.rtt_ms, hi, 1e-9))
+                ++bad_seed;
+        }
+        us_check(bad_owd == 0, "mp:P16 (q10a) -- 8 peers: 42 client->client estimates = own + 0.625 x other leg (%d bad)",
+                 bad_owd);
+        us_check(bad_pair == 0, "mp:P16 (q10b) -- 8 peers: all 21 pairs cover their relayed RTT (%d bad)", bad_pair);
+        us_check(bad_host == 0, "mp:P16 (q10c) -- 8 peers: every client bound by the host keeps its own link (%d bad)",
+                 bad_host);
+        us_check(bad_seed == 0,
+                 "mp:P16 (q10d) -- 8 peers: every client seeds 7 candidates and starts from its worst path (%d bad)",
+                 bad_seed);
+        RelayLatRow link1 = {-1, 10, 40000, 2000};
+        us_check(near_ms(binding_owd_ms(&link1, 1, 7, pub, true), 24.0 + RELAY_LEG_MULT * 120.0, 1e-6) &&
+                     binding_owd_ms(&link1, 1, 8, pub, true) == 24.0,
+                 "mp:P16 (q10e) -- id 7 (the top slot) is read; id 8 (out of range) falls back to the host link");
+    }
+
     printf("=== udpstatstest: %d checks, %d failures ===\n", g_us_checks, g_us_fails);
     return g_us_fails ? 1 : 0;
 }
@@ -3231,6 +3364,14 @@ int run_watchdogtest();
 // state machine (G101: a counter reported only at graceful shutdown is invisible under a KILL).
 int run_diagtest();
 int run_desynctest();
+// world_sync_selftest.cpp -- mp:X3c: the pure world-resync decision core + control wire (types 6-9).
+int run_wstest();
+// inc_state_selftest.cpp -- mp:D39: the incremental masked block-sum core (libmh/state/inc_state.h)
+// against the VERDICT stream the production emitters produce, every region and every mask knob.
+int run_inchashtest(int argc, char **argv);
+// state_record_selftest.cpp -- mp:D40: the state-recording encoder round-trips through an independent
+// decoder, cut files decode to their last complete step, and the live recorder writes that format.
+int run_staterectest(int argc, char **argv);
 // net_queue_selftest.cpp -- D24: which inbound frame a FULL transport queue may destroy.
 int run_queuetest();
 // session_id_selftest.cpp -- SES0: the UUIDv7 match_id, the v3 SESSION_INFO/JOIN records, and the
@@ -3257,8 +3398,11 @@ int run_logrottest();
 // was hand-patched at its own call site. This suite is the durable fix's own proof, against a
 // fixture ini shaped exactly like the trap (mh_net.example.ini's documented style).
 int run_inireadtest();
-int run_infoavitest();                     // info_avi_selftest.cpp -- mp:X2g
-int run_runctxtest(int argc, char **argv); // LA13: where the logs root is (spawns itself)
+int run_infoavitest();                          // info_avi_selftest.cpp -- mp:X2g
+int run_imguibindtest();                        // imgui_bind_selftest.cpp -- PT-GFX4
+int run_scalefiltertest(int argc, char **argv); // scale_filter_selftest.cpp -- PT-GFX6
+int run_dinputconvtest();                       // dinput_convert_selftest.cpp -- PT-INPUT1
+int run_runctxtest(int argc, char **argv);      // LA13: where the logs root is (spawns itself)
 // udp_wire_selftest.cpp -- T0: the UDP packet format (plan D2). Its centre is a directory of
 // FIXTURE FILES that this suite and `cargo test -p relay` both read, because an encoder agreeing
 // with its own decoder is one implementation agreeing with itself; the claim worth making is that
@@ -3479,6 +3623,11 @@ static const suite_row SUITE_TABLE[] = {
     {"watchdogtest",   true, adapt_void<run_watchdogtest>},
     {"diagtest",       true, adapt_void<run_diagtest>},
     {"desynctest",     true, adapt_void<run_desynctest>},
+    {"wstest",         true, adapt_void<run_wstest>},
+    // mp:D42. `--dump-masks <file>` / `--check-masks <file>` (below the bare test in argv) derive
+    // tools/data/state_masks.json from keep_byte; the bare `inchashtest` gate row is unaffected.
+    {"inchashtest",    true, adapt_argv<run_inchashtest>},
+    {"staterectest",   true, adapt_argv<run_staterectest>},
     {"queuetest",      true, adapt_void<run_queuetest>},
     {"sessionidtest",  true, adapt_void<run_sessionidtest>},
     {"sessiondirtest", true, adapt_void<run_sessiondirtest>},
@@ -3488,6 +3637,20 @@ static const suite_row SUITE_TABLE[] = {
     // replaced llm_ui_info_media_frame_tick runs, driven with the zero-filled context a failed AVI
     // open leaves (the rc4 IDIV-by-zero), plus the live-clip wrap it must not change. Pure; no arena.
     {"infoavitest",    true, adapt_void<run_infoavitest>},
+    // PT-GFX4. The ImGui overlay's window binding (gfx/overlay_imgui.cpp): the subclass follows a
+    // rebind to another HWND, detach unlinks it, a window subclassed over ours keeps forwarding, and
+    // WM_NCDESTROY drops the row. The shipped game never exercises any of it (one window, never
+    // destroyed before exit). Two message-only windows; no device, the overlay stays closed.
+    {"imguibindtest",  true, adapt_void<run_imguibindtest>},
+    // PT-GFX6. The d3d11 presenter's four scaling filters, rendered by the real backend, read back
+    // and compared with a CPU reference of each filter's definition (2.25x, 1.40625x, integer 2x).
+    // `--dump` renders one raw frame for tools-side comparison. No D3D11 device at all is a SKIP.
+    {"scalefiltertest", true, adapt_argv<run_scalefiltertest>},
+    // PT-INPUT1. The owned DirectInput's element conversion (mh/input/dinput_convert.h): scan code ->
+    // DIK, DI5 repeat filtering + the focus-loss release set, the relative remainder carry, and the
+    // absolute -> exact-delta walk against the game's own IDIV / doubling / clamp for every divisor
+    // and threshold. Pure: no window, no game memory.
+    {"dinputconvtest", true, adapt_void<run_dinputconvtest>},
     // dist LA13. Beside logrottest, its neighbour on the same object: that suite writes THROUGH the
     // run directory, this one asks WHERE it is -- <exedir>\logs\ by default, MH_LOG_ROOT when the
     // launcher sets it (a Program Files game is UAC-virtualized beside its exe). The variable-set
@@ -3495,6 +3658,14 @@ static const suite_row SUITE_TABLE[] = {
     {"runctxtest",     true, adapt_argv<run_runctxtest>},
     {"udpwiretest",    true, adapt_argv<run_udpwiretest>},
     {"udploopbacktest",true, adapt_argv<run_udploopbacktest>},
+    // mp:U61 (HM-M3). Beside udploopbacktest: the election machinery for host migration -- elect() as a
+    // table, the FLAG_MESH codecs, and the mesh probes / brokering / RTT matrix / succession-epoch ack round
+    // on 127.0.0.1 endpoints (ports 40100..40204, clear of the other suites).
+    {"meshtest",       true, adapt_void<run_meshtest>},
+    // mp:U60. ONE peer of the relayed re-home arm. NOT gated: it needs a running relay and two siblings
+    // (the tunnel is a process-wide singleton, so three relayed peers are three processes) and never
+    // returns without a conductor -- tools/check_rehome_relay.py spawns the real mh_relay and all three.
+    {"udprehomerelaytest", false, adapt_argv<run_rehome_relay_role>},
     // mp:U41e. Beside udploopbacktest because it drives the same object the same way, one concern
     // over: T1 proves the byte stream, this proves the inbound-queue rollup + match-boundary epoch
     // mh_net.dll's TCP transport has carried since mp:U41/U41d. Fixed ports (39710..), clear of

@@ -44,7 +44,23 @@ namespace mh::lockstep {
 void outcome_dialog_panel_hoist();
 
 // Latch BEFORE a dismiss-bearing call: GAME_MODE != 4 (the dismiss guard @0x004c7d7d).
+//
+// U44 SIDE EFFECT: the same call also latches what overlay_dismiss_hoist needs -- the pre-call
+// GAME_MODE and whether LOCKSTEP ITSELF armed the screen (the icon or the kick modal). Every
+// dismiss site latches immediately before its call, so one latch serves the pair.
 bool overlay_mode_not4();
+
+// U44 (`[net] overlay_dialog_guard`, reimpl_fixes::overlay_dialog_guard, shipped default 1): the
+// stall overlay may only dismiss -- and so only rewrite GAME_MODE for -- a screen lockstep armed.
+// The retail dismiss forces mode 2 whenever the widget list is empty, which closes any mode-3
+// dialog (the building dialog runs with an empty list) without clearing _G_LLM_UI_ACTIVE_DIALOG.
+// 0 = the retail rule, for the negative arm.
+
+// U44: BEFORE sync_overlay_show (and before the mode store), with the pre-call `armed` latch. If
+// the screen is a foreign dialog (mode 3, list free, not ours) its UI state is stashed and
+// ACTIVE_DIALOG nulled, so the kick modal is not drawn under -- and does not lose its clicks to --
+// the dialog. overlay_dismiss_hoist restores the stash. Marks the screen as lockstep's own.
+void overlay_show_hoist(bool armed);
 
 // Latch BEFORE an overlay-show call: the widget slot is free (list==NULL || list==GAMEPLAY_HUD)
 // -- the shows' arming guard reads the PRE-call list (0x004c7f02/0x004c7e75).
@@ -103,7 +119,8 @@ struct overlay_hoist_ops {
     void (*result_clear)();
     uint8_t (*mode_saved)();
     void (*mode_set)(uint8_t mode);
-    void (*panel_hoist)(); // R3b: outcome_dialog's gated panel pair
+    void (*panel_hoist)();          // R3b: outcome_dialog's gated panel pair
+    void (*show_hoist)(bool armed); // U44: dialog stash before the kick modal arms (TAIL member)
 };
 
 const overlay_hoist_ops &live_overlay_hoist_ops();
@@ -118,6 +135,9 @@ inline bool hoist_slot_free(const overlay_hoist_ops *h) { return h != nullptr &&
 // directly is what made the offline suites fault (ASan named the line on run #1).
 inline void hoist_outcome_panel(const overlay_hoist_ops *h) {
     if (h != nullptr) h->panel_hoist();
+}
+inline void hoist_show(const overlay_hoist_ops *h, bool armed) {
+    if (h != nullptr && h->show_hoist != nullptr) h->show_hoist(armed);
 }
 inline void hoist_dismiss(const overlay_hoist_ops *h, bool not4) {
     if (h != nullptr) h->dismiss_hoist(not4);

@@ -314,6 +314,16 @@ RULINGS = {
         "(install_overlay_gate) is deliberately NOT behind the selector -- it is what counts the "
         "icon when our body is not live, i.e. exactly config (1). A self-test anchor.",
     ),
+    # mp:X3c-FIX -- the world-resync horizon floor sink, registered INTO the closure like R3's counters.
+    "mh::lockstep::set_extend_floor": dict(
+        bucket=2,
+        scope="lockstep",
+        guard="if (mh::config::ours_run()) inside install_overlay_patches",
+        exec1=False,
+        note="mp:X3c-FIX: the net-side floor for send_lockstep_extend while a world-resync catch-up "
+        "mirrors. Same registration shape and guard as set_icon_counters; under `mode=original` the "
+        "promoted send body is not live, and the floor is inert without a resync anyway.",
+    ),
     # ---- bucket 3: config-(1) residue -------------------------------------------------------
     # EMPTY SINCE F3D, and that is the gate: --require-empty fails on any member.
     #

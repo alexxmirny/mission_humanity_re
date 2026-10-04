@@ -14,6 +14,7 @@ forward here.
 
 import check_orders_agree  # noqa: E402  TL-SUITE-FOLD-DETC1: the mh_orders.bin verdict
 import argparse
+import contextlib
 import glob
 import json
 import os
@@ -23,10 +24,12 @@ import subprocess
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import _rundir  # noqa: E402  SES8: run-dir names + a process dir's sessions
 import lane_alloc  # noqa: E402  fork F4H: the ONE place a lane NUMBER comes from
 import machine_config as machine  # noqa: E402
 import make_lane  # noqa: E402  LANE_ROOT + the lane builder used by --local
 import map_variant  # noqa: E402  mp:X2a -- the one-bit flip pushed to the client VM's own Maps\
+import rig_phases  # noqa: E402  tooling:TL-RIG-PHASES
 import mp_run  # noqa: E402  mp:X2a -- scp the variant to/from the two independent rig VMs
 from ui_suite_common import (  # noqa: E402
     BLIT_LOCAL_FPS_FLOOR,
@@ -35,6 +38,8 @@ from ui_suite_common import (  # noqa: E402
     MODE_BROKERED,
     MODE_ORIGINAL,
     REPO,
+    RELAY_PORT,
+    RelayProc,
     RunnerConfig,
     add_extra_ini_arg,
     add_harness_extra_arg,
@@ -43,18 +48,26 @@ from ui_suite_common import (  # noqa: E402
     add_steps_arg,
     apply_net_args,
     build_scenario_argv,
+    chat_utf8_precondition,
     frames_for_seconds,
     ini_file_mode,
     ini_selected_mode,
     parse_mode_args,
     print_desktop_banner,
     provision_lanes,
-    run_ui_test,
+    relay_addr_for_peers,
+    run_ui_test as _run_ui_test,
     soak_ai_premise,
     sp_newest_run,
     vm_reachable,
     write_all_original_ini,
 )
+
+
+def run_ui_test(argv, timeout, *a, **kw):
+    """tooling:TL-RIG-PHASES: ui_suite_common.run_ui_test with the per-phase marks armed (see rig_phases.py)."""
+    return rig_phases.run_wrapped(_run_ui_test, argv, timeout, *a, **kw)
+
 
 # ---- C7: the standard determinism shapes --------------------------------------------------------
 # Promotion was not one gate but two runs, because they answered different questions:
@@ -385,6 +398,22 @@ SP_SCRIPT = "sp_det.txt"  # seats an AI and launches ALONE -> LOBBY_SCAN_HOST_CO
 # NOT covered -- tracker P0-SPCAMP.) NOT mp_host_start_ai.txt, which looks right and waits on
 # `peers 1` for a human client, so a solo run aborts in the lobby.
 SP_HARNESS_EXTRA = "pin_wallclock=1;fixed_step=0;region_hash_step=1"
+
+# tooling:TL-HARN-INCHASH -- the determinism runs hash with the incremental core (kind 2), not the FNV
+# walk (kind 1). Measured on the rig VMs (2026-09-27): 1.05 vs 6.2 ms per step. Safe HERE and only
+# here: every verdict these runs produce compares peers or arms of ONE invocation, which all hash with
+# the same kind (mp_analyze refuses a mismatch by name). Runs judged against STORED hashes -- libref
+# fixtures, soak goldens, UI-REC oracles, field recordings -- stay kind 1 and are not routed through this.
+DET_HASH_KIND = "hash_kind=2"
+
+
+def with_det_hash_kind(extra):
+    """Prefix DET_HASH_KIND unless the caller already chose a kind (e.g. --harness-extra hash_kind=1)."""
+    if extra and "hash_kind" in extra:
+        return extra
+    return DET_HASH_KIND + (";" + extra if extra else "")
+
+
 # THE SHIP CONFIGURATION, stated rather than assumed. This used to be promote_sp.ini, a second file
 # holding the same one line as ship_config.ini for a reason that expired with the per-key surface:
 # it named BOTH closures because `[promote] lockstep=1` alone was measured to execute exactly one
@@ -584,7 +613,7 @@ def run_sp_determinism(args, cfg):
     # INVOCATION, and two invocations is exactly what this shape is. The key-merge makes the extra
     # override the template's value in place instead of duplicating it.
     seed = str(args.sp_seed or (int.from_bytes(os.urandom(3), "big") + 1))
-    hextra = SP_HARNESS_EXTRA + ";synth_seed=" + seed
+    hextra = with_det_hash_kind(SP_HARNESS_EXTRA + ";synth_seed=" + seed)
     # THE GAME-SPEED PIN (AI0). Goldens are NOT portable across speeds -- measured 2026-08-01: two
     # stock mode-2 runs at 100% and 1000% diverge on essentially every region from step 1, because a
     # step at 1000% integrates ten times as much game time. So the speed is a property OF THE RUN,
@@ -1524,7 +1553,7 @@ def det3_barrier_report(det_dir):
 
 def run_det_3peer(args, cfg):
     """The U28 start-barrier shape. Returns (ok, lines) so run_det_standard can report it alongside."""
-    det_dir = os.path.join(REPO, "tmp", "ui_test", "determinism")
+    det_dir = rig_phases.det_dir_path()
     down = [ip for ip in args.vms[:2] if not vm_reachable(ip)]
     if down:
         return None, ["      SKIP -- VM(s) unreachable: %s" % ", ".join(down)]
@@ -1571,19 +1600,23 @@ def run_det_3peer(args, cfg):
     return (rc == 0 and ok and bok), lines + blines
 
 
-# mp:U19b -- 3-peer clean quit. `graceful_quit` (U19) is 2-peer, and an AI seat does not count
-# toward the quorum llm_net_player_remove tests (mp_host_gquit.txt's header: measured with occ 3 and
-# an AI visibly seated, the removal still ended the match). U19's own third clause -- survivors that
-# keep PLAYING past a departure -- needs a real third peer, and local 3-peer discovery does not seat
-# a second 127.0.0.1 client (measured during mp:GS2's own 3-peer clause, 2026-09-21). So this reuses
-# the SAME VM+VM+local-lane topology as the U28 3-peer barrier above (host vms[0], one survivor
-# client vms[1], the QUITTER as a local lane) -- literally the SAME lane (DET3_LANE/DET3_LANE_NO/
-# DET3_PORT), per the wave-2 brief's "share_lanes of an existing 3-peer row" (dead-ends G259: the
-# lane pool has no headroom for a new one). The two shapes therefore cannot run concurrently, which
-# is fine: both are manually-invoked CLI shapes, never part of the parallel default suite.
-def run_u19b_quit3(args, cfg):
-    """The U19b 3-peer clean-quit shape. Returns (ok, lines), same contract as run_det_3peer."""
-    det_dir = os.path.join(REPO, "tmp", "ui_test", "determinism")
+# mp:P16 -- THE ASYMMETRIC 3-PEER STAR: does the adaptive lookahead keep the two clients from starving
+# each other when their host links differ? Same topology as the U28 barrier shape above (host vms[0],
+# one client on vms[1], the third a LOCAL LANE on this box), but EVERY client dials tools/net_shim.py
+# (UDP) and the shim gives the vms[1] client a longer one-way delay than the lane -- the field match
+# that broke it was 232 / 83 ms RTT to the host, so the defaults are 115 / 40 ms ONE-WAY (230 / 80 RTT,
+# ~310 ms client<->client through the host). The verdict is the PACING and the hash comparison:
+# sim rate (sim_s / wall_s over the in-game span) of both clients, stall %, and ALL PAIRS IDENTICAL.
+# `--p16-gate 0` is the NEGATIVE arm (lockstep_relay_path=0 = the pre-P16 host-link-only lookup).
+P16_DEFAULT_VM_OWD = 115.0
+P16_DEFAULT_LOCAL_OWD = 40.0
+
+
+def run_p16_relay3(args, cfg):
+    """mp:P16's asymmetric 3-peer pacing shape. Returns (ok, lines); `ok` is the rate clause."""
+    import mp_pacing_report
+
+    det_dir = rig_phases.det_dir_path()
     down = [ip for ip in args.vms[:2] if not vm_reachable(ip)]
     if down:
         return None, ["      SKIP -- VM(s) unreachable: %s" % ", ".join(down)]
@@ -1598,6 +1631,111 @@ def run_u19b_quit3(args, cfg):
         str(DET3_PORT),
         "--headless",
     ]
+    if not cfg.stock_exe:
+        cmd.append("--patched-exe")
+    r = subprocess.run(cmd, capture_output=True, text=True)
+    if r.returncode != 0:
+        return False, [
+            "      FAIL: lane %s: %s" % (DET3_LANE, (r.stderr or r.stdout).strip()[:200])
+        ]
+    vm_owd, local_owd = args.p16_vm_owd, args.p16_local_owd
+    shim = {
+        "target": args.vms[0],
+        "delay": local_owd,
+        "delay_ip": ["%s=%s" % (args.vms[1], vm_owd)],
+    }
+    net_extra = ["peers=2", "lockstep_relay_path=%d" % args.p16_gate]
+    if args.net_extra:
+        net_extra.append(args.net_extra)
+    argv = build_scenario_argv(
+        cfg=cfg,
+        determinism=True,
+        steps=args.steps,
+        host="%s:%s" % (args.vms[0], DET3_HOST_SCRIPT),
+        clients=[
+            "%s:%s" % (args.vms[1], DET3_CLIENT_SCRIPTS[0]),
+            "lane=%s:%s" % (DET3_LANE, DET3_CLIENT_SCRIPTS[1]),
+        ],
+        timeout_frames=max(LOCAL_TIMEOUT_FRAMES, 6000 + int(max(vm_owd, local_owd)) * 40),
+        net_extra=";".join(net_extra),
+        timeout=max(args.timeout, 240 + args.steps),
+        shim=shim,
+        ship_pacing=True,
+        extra_ini=[PROMOTE_INI],
+    )
+    det_clear(det_dir)
+    rc = run_ui_test(argv, max(args.per_test_timeout, 300 + args.steps))[0]
+    ok, lines = det_run_report(det_dir, {"host": True, "client1": True, "client2": True})
+    lines.append(
+        "      P16 arm: lockstep_relay_path=%d, one-way %s ms (%s) / %s ms (local lane)"
+        % (args.p16_gate, vm_owd, args.vms[1], local_owd)
+    )
+    rates = []
+    for peer in ("client1", "client2"):
+        res = mp_pacing_report.analyse(os.path.join(det_dir, peer))
+        if not res:
+            lines.append("      %-8s NO PACING DATA (no in-game rows)" % peer)
+            rates.append(None)
+            continue
+        rate = res["sim_s"] / res["wall_s"] if res["wall_s"] > 0 else float("nan")
+        rates.append(rate)
+        lines.append(
+            "      %-8s rate %.3fx  wall %.0f s  sim %.0f s  stall %.1f%%  la_moves %s  srtt %s ms  icons/1k %.0f"
+            % (
+                peer,
+                rate,
+                res["wall_s"],
+                res["sim_s"],
+                res["stall_%"],
+                res.get("la_moves", "?"),
+                res.get("srtt_ms", "?"),
+                res["icon_per_1k"],
+            )
+        )
+    have = all(r is not None for r in rates)
+    if args.p16_gate:
+        rate_ok = have and min(rates) >= 0.95
+        lines.append(
+            "      clause (b): both clients >= 0.95x -> %s" % ("PASS" if rate_ok else "FAIL")
+        )
+    else:
+        rate_ok = have and max(rates) < 0.8
+        lines.append(
+            "      clause (c) NEGATIVE ARM: the old lookup must reproduce < 0.8x -> %s"
+            % ("REPRODUCED" if rate_ok else "NOT REPRODUCED")
+        )
+    return (rc == 0 and ok and rate_ok), lines
+
+
+# mp:U19b -- 3-peer clean quit. `graceful_quit` (U19) is 2-peer, and an AI seat does not count
+# toward the quorum llm_net_player_remove tests (mp_host_gquit.txt's header: measured with occ 3 and
+# an AI visibly seated, the removal still ended the match). U19's own third clause -- survivors that
+# keep PLAYING past a departure -- needs a real third peer, and local 3-peer discovery does not seat
+# a second 127.0.0.1 client (measured during mp:GS2's own 3-peer clause, 2026-09-21). So this reuses
+# the SAME VM+VM+local-lane topology as the U28 3-peer barrier above (host vms[0], one survivor
+# client vms[1], the QUITTER as a local lane) -- literally the SAME lane (DET3_LANE/DET3_LANE_NO/
+# DET3_PORT), per the wave-2 brief's "share_lanes of an existing 3-peer row" (dead-ends G259: the
+# lane pool has no headroom for a new one). The two shapes therefore cannot run concurrently, which
+# is fine: both are manually-invoked CLI shapes, never part of the parallel default suite.
+def run_u19b_quit3(args, cfg, config1=False):
+    """The U19b 3-peer clean-quit shape. Returns (ok, lines), same contract as run_det_3peer."""
+    det_dir = rig_phases.det_dir_path()
+    down = [ip for ip in args.vms[:2] if not vm_reachable(ip)]
+    if down:
+        return None, ["      SKIP -- VM(s) unreachable: %s" % ", ".join(down)]
+    cmd = [
+        sys.executable,
+        os.path.join(REPO, "tools", "make_lane.py"),
+        "--name",
+        DET3_LANE,
+        "--lane",
+        str(DET3_LANE_NO),
+        "--port",
+        str(DET3_PORT),
+        "--headless",
+    ]
+    if config1:
+        cmd += ["--omit-satellite", "libmh.dll"]
     if not cfg.stock_exe:
         cmd.append("--patched-exe")
     r = subprocess.run(cmd, capture_output=True, text=True)
@@ -1624,13 +1762,21 @@ def run_u19b_quit3(args, cfg):
             + ([args.net_extra] if args.net_extra else [])
         ),
         timeout=max(args.timeout, 120 + args.steps),
-        extra_ini=[PROMOTE_INI],
+        extra_ini=[] if config1 else [PROMOTE_INI],
         # hash rows for mp_analyze; no random workload in the walk
-        harness_extra="region_hash_step=50;synth_move=0",
+        harness_extra=with_det_hash_kind("region_hash_step=50;synth_move=0"),
+        omit_satellite=["libmh.dll"] if config1 else (),
     )
     det_clear(det_dir)
     rc = run_ui_test(argv, max(args.per_test_timeout, 180 + args.steps))[0]
-    ok, lines = det_run_report(det_dir, {"host": True, "client1": True, "client2": True})
+    if config1:
+        ok, lines = det_run_report(
+            det_dir,
+            {"host": False, "client1": False, "client2": False},
+            configs={"host": "1", "client1": "1", "client2": "1"},
+        )
+    else:
+        ok, lines = det_run_report(det_dir, {"host": True, "client1": True, "client2": True})
     import check_quit_survivors_3peer as _q3
 
     host_dir = os.path.join(det_dir, "host")
@@ -1641,6 +1787,565 @@ def run_u19b_quit3(args, cfg):
     except _q3.Refusal as exc:
         qok, qlines = False, ["      REFUSED: %s" % exc]
     lines = lines + ["   check_quit_survivors_3peer:"] + ["      " + ln for ln in qlines]
+    return (rc == 0 and ok and qok), lines
+
+
+# mp:U53 phase 1 -- THE 3-PEER ELIMINATION SHAPES (host eliminated / host eliminated + OK / client
+# eliminated). Same VM+VM+local-lane topology and the SAME shared DET3 lane as --u19b-quit3 (so it
+# cannot run concurrently with it). The elimination is the harness `conq` workload's FORCE-KILL
+# (order 0xf8 against every live object of the first alive non-self slot, fully replicated):
+#   * host eliminated  -> `conq` armed on the CLIENTS (victim = slot 0 = the host);
+#   * client eliminated-> `conq` armed on the HOST (victim = slot 1 = client1).
+# Why not the _NUCLEAR BOMB cheat: its blast does not kill a fresh mothership (check_cheat_gate.py
+# clause 6), needs cheat_gate=0 and a typed console line; the force-kill is one ini knob and kills
+# the mothership too. The phase machine runs alongside with no landing, so it only queues a debug
+# academy order before the kill (conq_at=60, kill at step conq_at+U53_KILL_D).
+U53_KILL_D = 240
+# stop_step: the elimination lands at ~step 304 (the kill order executes ~4 steps after issue), so this
+# leaves ~3700 steps of play-on. NOT args.steps: its default (8000) made the first run 145 s long.
+# gameover_step=100000 on purpose: conq arms it at 50 when 0, and mp_analyze (D26) TRUNCATES the hash
+# comparison at the deliberate gameover step, which left 49 comparable steps in the first run.
+U53_STEPS = 4000
+# mp:U55: absolute sim step at which the host process is ended (the defeat lands at ~304).
+U55_EXIT_STEP = 600
+U53_ARMS = {
+    # arm: (host script, client1 script, client2 script, victim key)
+    "host-elim": (
+        "mp_host_u53_victim.txt",
+        "mp_client_u53_survivor1.txt",
+        "mp_client_u53_survivor2.txt",
+        "host",
+    ),
+    "host-ok": (
+        "mp_host_u53_victim_ok.txt",
+        "mp_client_u53_survivor1.txt",
+        "mp_client_u53_survivor2.txt",
+        "host",
+    ),
+    # mp:U55: the host PROCESS is ended by [harness] exit_process_at_step (see run_u53). The arm key
+    # carries the variant: `-graceful` = ExitProcess instead of TerminateProcess, `-relay` = all three
+    # peers on a local mh_relay with force_relay=1.
+    "host-exit": (
+        "mp_host_u53_victim_exit.txt",
+        "mp_client_u53_survivor1.txt",
+        "mp_client_u53_survivor2.txt",
+        "host",
+    ),
+    "client-elim": (
+        "mp_host_u53_survivor.txt",
+        "mp_client_u53_victim.txt",
+        "mp_client_u53_survivor2.txt",
+        "client1",
+    ),
+    # mp:U62 (HM-M4): an UNDEFEATED host quits mid-match by ESC -> Quit -> Yes (no elimination, no exit knob).
+    "host-quit": (
+        "mp_host_u62_quit.txt",
+        "mp_client_u62_survivor1.txt",
+        "mp_client_u62_survivor2.txt",
+        "host",
+    ),
+}
+# mp:U54 (spectate after defeat): the arms run_u53 takes under the `u54-` prefix. The VICTIM is defeated by the same force-kill but stays
+# in the session as a SPECTATOR, so the determinism compare INCLUDES it (det_exclude=[]); check_u54_spectate.py is the verdict.
+#   u54-client-spec   a defeated CLIENT answers its dialog with Continue spectating and spectates to the end
+#   u54-host-spec     a defeated HOST does the same and keeps relaying
+#   u54-client-exit   a defeated client answers Exit match (statistics, main menu): the survivors are undisturbed
+#   u54-client-leave  a spectating client later leaves through the ESC menu (Quit game): the survivors are undisturbed
+#   u54-host-exit     a defeated host answers Exit match and reaches the main menu: it hands the hub over (U62)
+#   u54-host-leave    a spectating host later leaves through the ESC menu: it hands the hub over (U62)
+#   u54-neg           u54-client-spec with `[net] spectate_after_defeat=0`: today's defeat flow (the victim drops out)
+U54_BASE = {
+    "u54-client-spec": "client-spec",
+    "u54-host-spec": "host-spec",
+    "u54-client-exit": "client-exit",
+    "u54-client-leave": "client-leave",
+    "u54-host-exit": "host-exit-spec",
+    "u54-host-leave": "host-leave",
+    "u54-neg": "client-neg",
+    "u54-probe": "client-spec",
+    "u54-team": "team",
+}
+U54_ARMS = {
+    # base arm: (host script, client1 script, client2 script, victim key)
+    "client-spec": (
+        "mp_host_u53_survivor.txt",
+        "mp_client_u54_spectator.txt",
+        "mp_client_u53_survivor2.txt",
+        "client1",
+    ),
+    "host-spec": (
+        "mp_host_u54_spectator.txt",
+        "mp_client_u53_survivor1.txt",
+        "mp_client_u53_survivor2.txt",
+        "host",
+    ),
+}
+U54_ARMS.update(
+    {
+        "client-exit": (
+            "mp_host_u53_survivor.txt",
+            "mp_client_u54_exit.txt",
+            "mp_client_u53_survivor2.txt",
+            "client1",
+        ),
+        "client-leave": (
+            "mp_host_u53_survivor.txt",
+            "mp_client_u54_leave.txt",
+            "mp_client_u53_survivor2.txt",
+            "client1",
+        ),
+        "team": (
+            "mp_host_u54_team.txt",
+            "mp_client_u54_team_spec.txt",
+            "mp_client_u54_team_c2.txt",
+            "client1",
+        ),
+        "client-neg": (
+            "mp_host_u53_survivor.txt",
+            "mp_client_u54_neg.txt",
+            "mp_client_u53_survivor2.txt",
+            "client1",
+        ),
+        "host-exit-spec": (
+            "mp_host_u54_exit.txt",
+            "mp_client_u53_survivor1.txt",
+            "mp_client_u53_survivor2.txt",
+            "host",
+        ),
+        "host-leave": (
+            "mp_host_u54_leave.txt",
+            "mp_client_u53_survivor1.txt",
+            "mp_client_u53_survivor2.txt",
+            "host",
+        ),
+    }
+)
+U53_ARMS.update(U54_ARMS)
+# mp:U62: the arm keys run_u53 takes beyond the U53/U55 ones. `-relay` may follow any of them.
+#   u62-host-quit  the host quits by ESC menu (migration on, the shipped default)
+#   u62-host-exit  the host is defeated, keeps watching, then its process exits GRACEFULLY (migration on)
+#   u62-neg        u62-host-exit with `[net] hub_migration=0` on every peer: U55's 58 s outcome-8 timeline
+U62_BASE = {"u62-host-quit": "host-quit", "u62-host-exit": "host-exit", "u62-neg": "host-exit"}
+# mp:U63 (HM-M5): the CRASH failover. Same timeline as u55 (the host is defeated at ~304, its PROCESS ends at step
+# 600), but the exit is ALWAYS the abrupt TerminateProcess (no LEAVING, no DISCONNECT) and the verdict is
+# check_u63_failover.py. `-relay` may follow either.
+#   u63-crash  migration on (the shipped default): the survivors elect a hub and play on IDENTICAL, stall <= 6 s
+#   u63-neg    `[net] hub_migration=0` on every peer: U55's measured ~58 s outcome-8 timeline
+U63_ARMS = ("u63-crash", "u63-neg")
+
+
+# ---- tooling:TL-RIG-PARALLEL: the ALL-LOCAL topology of a 3-peer arm -----------------------------------------
+# `--local-peers [--par-slot K]`: host + both clients are LOCAL lanes of parallel slot K (lane_alloc block `par`:
+# its own lane numbers = mutexes, its own game port, its own scratch dir via $MH_RIG_SCRATCH). No VM is touched, so
+# any number of slots can run at once; tools/rig_parallel.py is the scheduler that assigns the slots.
+def par_lane_names(slot, n):
+    return ["par%d_%s" % (slot, r) for r in ("host", "c1", "c2", "c3")[:n]]
+
+
+def provision_par_lanes(args, cfg, n, config1):
+    """Provision slot `args.par_slot`'s n local lanes (all share the slot's game port).
+    Returns (err_line_or_None, port, names)."""
+    nos, port = lane_alloc.par_slot_lanes(args.par_slot, n)
+    names = par_lane_names(args.par_slot, n)
+    for nm, no in zip(names, nos):
+        cmd = [
+            sys.executable,
+            os.path.join(REPO, "tools", "make_lane.py"),
+            "--name",
+            nm,
+            "--lane",
+            str(no),
+            "--port",
+            str(port),
+            "--visible" if not getattr(args, "par_headless", False) else "--headless",
+        ]
+        if config1:
+            cmd += ["--omit-satellite", "libmh.dll"]
+        if not cfg.stock_exe:
+            cmd.append("--patched-exe")
+        r = subprocess.run(cmd, capture_output=True, text=True)
+        if r.returncode != 0:
+            return (
+                "      FAIL: lane %s: %s" % (nm, (r.stderr or r.stdout).strip()[:200]),
+                port,
+                names,
+            )
+    return None, port, names
+
+
+def run_u53(args, cfg, arm, config1=False):
+    """mp:U53 phase 1. Returns (ok, lines), same contract as run_u19b_quit3."""
+    det_dir = rig_phases.det_dir_path()
+    local3 = getattr(args, "local_peers", False)
+    if local3:
+        err, lport, lnames = provision_par_lanes(args, cfg, 3, config1)
+        if err:
+            return False, [err]
+    else:
+        down = [ip for ip in args.vms[:2] if not vm_reachable(ip)]
+        if down:
+            return None, ["      SKIP -- VM(s) unreachable: %s" % ", ".join(down)]
+        cmd = [
+            sys.executable,
+            os.path.join(REPO, "tools", "make_lane.py"),
+            "--name",
+            DET3_LANE,
+            "--lane",
+            str(DET3_LANE_NO),
+            "--port",
+            str(DET3_PORT),
+            "--headless",
+        ]
+        if config1:
+            cmd += ["--omit-satellite", "libmh.dll"]
+        if not cfg.stock_exe:
+            cmd.append("--patched-exe")
+        r = subprocess.run(cmd, capture_output=True, text=True)
+        if r.returncode != 0:
+            return False, [
+                "      FAIL: lane %s: %s" % (DET3_LANE, (r.stderr or r.stdout).strip()[:200])
+            ]
+    u62 = arm.startswith("u62-")
+    u63 = arm.startswith("u63-")
+    u54 = arm.startswith("u54-")
+    if u54:
+        base_arm = U54_BASE[arm.replace("-relay", "")]
+    elif u62:
+        base_arm = U62_BASE[arm.replace("-relay", "")]
+    elif u63:
+        base_arm = "host-exit"
+    else:
+        base_arm = "host-exit" if arm.startswith("host-exit") else arm
+    hs, c1s, c2s, victim = U53_ARMS[base_arm]
+    exit_step = getattr(args, "u55_exit_step", U55_EXIT_STEP)
+    host_extra = None
+    if base_arm == "host-exit":
+        host_extra = "exit_process_at_step=%d;exit_process_mode=%d" % (
+            exit_step,
+            1 if ("graceful" in arm or u62) and not u63 else 0,
+        )
+    relayed = "relay" in arm
+    conq = "conq=1;conq_at=60;conq_force_kill_at=%d;conq_probe_every=50" % U53_KILL_D
+    if arm.startswith("u54-team"):
+        # mp:U54 team-victory arm: slot 1 (the spectator) falls at step 300, slot 2 (the enemy) at step 600
+        conq += ";conq_kill2_at=540;conq_victim2=2;conq_phase_timeout=5000"
+    if arm.startswith("u54-probe"):
+        # mp:U54 mutation arm: the host orders 0xf8 AGAIN against the defeated spectator (an order OWNED BY it) at step ~660
+        conq += ";conq_spectator_probe_at=600"
+    steps = U53_STEPS
+    relay_cm = (
+        RelayProc(RELAY_PORT, os.path.join(rig_phases.scratch_dir(), "relay_u55.log"))
+        if relayed
+        else contextlib.nullcontext()
+    )
+    with relay_cm as relay:
+        net_parts = ["peers=2", "transport=udp"]
+        if arm.startswith("u62-neg") or arm.startswith("u63-neg"):
+            net_parts.append("hub_migration=0")  # the negative arm: migration OFF on every peer
+        if arm.startswith("u54-neg"):
+            net_parts.append("spectate_after_defeat=0")  # mp:U54 negative arm: today's defeat flow
+        if relayed:
+            if not relay.ok:
+                return None, ["      SKIP -- the relay could not be started: %s" % relay.note]
+            net_parts += [
+                "relay=%s:%d" % (relay_addr_for_peers(local3), relay.port),
+                "force_relay=1",
+            ]
+        if args.net_extra:
+            net_parts.append(args.net_extra)
+        if local3:  # every peer a lane of this slot; the slot's own game port + loopback
+            topo = dict(
+                host="lane=%s:%s" % (lnames[0], hs),
+                clients=["lane=%s:%s" % (lnames[1], c1s), "lane=%s:%s" % (lnames[2], c2s)],
+                connect_ip="127.0.0.1",
+                port=lport,
+            )
+        else:
+            topo = dict(
+                host="%s:%s" % (args.vms[0], hs),
+                clients=["%s:%s" % (args.vms[1], c1s), "lane=%s:%s" % (DET3_LANE, c2s)],
+                connect_ip=args.vms[0],
+            )
+        argv = build_scenario_argv(
+            cfg=cfg,
+            determinism=True,
+            steps=steps,
+            det_exclude=[]
+            if (u54 and base_arm in ("client-spec", "host-spec") and not arm.startswith("u54-neg"))
+            else [victim],
+            **topo,
+            timeout_frames=LOCAL_TIMEOUT_FRAMES * 4,
+            net_extra=";".join(net_parts),
+            timeout=max(args.timeout, 600 + steps),
+            extra_ini=[] if config1 else [PROMOTE_INI],
+            harness_extra=with_det_hash_kind(
+                "region_hash_step=1;synth_move=0;gameover_step=100000;gameover_stop=0"
+                + (
+                    ";relation_dump_step=1;relation_dump_step2=550"
+                    if arm.startswith("u54-team")
+                    else ""
+                )
+            ),
+            harness_extra_host=host_extra if host_extra else (conq if victim != "host" else None),
+            harness_extra_client=conq if (victim == "host" and base_arm != "host-quit") else None,
+            omit_satellite=["libmh.dll"] if config1 else (),
+        )
+        det_clear(det_dir)
+        rc = run_ui_test(argv, max(args.per_test_timeout, 900 + steps))[0]
+    if config1:
+        ok, lines = det_run_report(
+            det_dir,
+            {"host": False, "client1": False, "client2": False},
+            configs={"host": "1", "client1": "1", "client2": "1"},
+        )
+    else:
+        ok, lines = det_run_report(det_dir, {"host": True, "client1": True, "client2": True})
+    if u54:
+        import check_u54_spectate as _u54
+
+        try:
+            qok, qlines = _u54.check(det_dir, victim, arm, 60 + U53_KILL_D)
+        except _u54.Refusal as exc:
+            qok, qlines = False, ["REFUSED: %s" % exc]
+        lines = lines + ["   check_u54_spectate (%s):" % arm] + ["      " + ln for ln in qlines]
+        return (
+            (rc == 0 and ok and qok)
+            if arm.replace("-relay", "") in ("u54-client-spec", "u54-host-spec")
+            else qok
+        ), lines
+    if u62:
+        import check_u62_handover as _u62
+
+        try:
+            qok, qlines = _u62.check(det_dir, negative=arm.startswith("u62-neg"), exit_step=None)
+        except _u62.u53.Refusal as exc:
+            qok, qlines = False, ["REFUSED: %s" % exc]
+        # a MEASUREMENT-shaped run (the leaver's frozen step count aborts the runner by design): the
+        # checker's verdict is the verdict, like the U55 exit arms.
+        return qok, lines + ["   check_u62_handover (%s):" % arm] + ["      " + ln for ln in qlines]
+    if u63:
+        import check_u63_failover as _u63
+
+        try:
+            qok, qlines = _u63.check(det_dir, negative=arm.startswith("u63-neg"))
+        except _u63.u53.Refusal as exc:
+            qok, qlines = False, ["REFUSED: %s" % exc]
+        # MEASUREMENT-shaped like the u55/u62 exit arms: the crashed host's frozen step count aborts the runner by
+        # design, so the checker's verdict is the verdict.
+        return qok, lines + ["   check_u63_failover (%s):" % arm] + ["      " + ln for ln in qlines]
+    import check_u53_elim as _u53
+
+    try:
+        qok, qlines = _u53.check(
+            det_dir, victim, arm, 60 + U53_KILL_D, exit_step if base_arm == "host-exit" else None
+        )
+    except _u53.Refusal as exc:
+        qok, qlines = False, ["REFUSED: %s" % exc]
+    lines = lines + ["   check_u53_elim (%s):" % arm] + ["      " + ln for ln in qlines]
+    if base_arm == "host-exit":
+        # mp:U55: a MEASUREMENT arm. The runner's own rc/`ok` are red BY DESIGN here (it aborts on the
+        # dead host's frozen step count and the whole-run survivor compare spans the post-session
+        # tail); the verdict is the checker's: exit line + pid gone + survivors identical in their
+        # live window.
+        return qok, lines
+    return (rc == 0 and ok and qok), lines
+
+
+# mp:U61 (HM-M3) -- THE HOST-MIGRATION MESH IN A REAL 3-PEER MATCH. Same VM+VM+local-lane topology and the SAME
+# shared DET3 lane as --u53-* (so it cannot run concurrently with them), with U53's own scripts and NO incident:
+# the host survives, nobody is eliminated, the match just plays U61_STEPS steps. What it asserts is the
+# transport's own bookkeeping, read off every peer's mh_net.log by tools/check_u61_mesh.py -- every peer logs the
+# SAME succession epoch and ranking within 5 s of the mesh starting, the matrix covers the pair, the ack round
+# completed, and (direct arm) the two clients really probed each other / (relay arm, --u61-relay: all three peers
+# through a local mh_relay with force_relay=1) the relay-leg tier decided with a pre-minted room per candidate and
+# no direct probe was sent. NORMAL PLAY IS UNAFFECTED: the run's own verdict is the usual 3-way hash compare, and
+# it must still read IDENTICAL.
+U61_STEPS = 800
+U61_SCRIPTS = (
+    "mp_host_u53_survivor.txt",
+    "mp_client_u53_survivor1.txt",
+    "mp_client_u53_survivor2.txt",
+)
+
+
+def run_u61(args, cfg, relayed=False, config1=False):
+    """mp:U61. Returns (ok, lines), same contract as run_u53."""
+    det_dir = rig_phases.det_dir_path()
+    down = [ip for ip in args.vms[:2] if not vm_reachable(ip)]
+    if down:
+        return None, ["      SKIP -- VM(s) unreachable: %s" % ", ".join(down)]
+    cmd = [
+        sys.executable,
+        os.path.join(REPO, "tools", "make_lane.py"),
+        "--name",
+        DET3_LANE,
+        "--lane",
+        str(DET3_LANE_NO),
+        "--port",
+        str(DET3_PORT),
+        "--headless",
+    ]
+    if config1:
+        cmd += ["--omit-satellite", "libmh.dll"]
+    if not cfg.stock_exe:
+        cmd.append("--patched-exe")
+    r = subprocess.run(cmd, capture_output=True, text=True)
+    if r.returncode != 0:
+        return False, [
+            "      FAIL: lane %s: %s" % (DET3_LANE, (r.stderr or r.stdout).strip()[:200])
+        ]
+    hs, c1s, c2s = U61_SCRIPTS
+    relay_cm = (
+        RelayProc(RELAY_PORT, os.path.join(REPO, "tmp", "relay_u61.log"))
+        if relayed
+        else contextlib.nullcontext()
+    )
+    with relay_cm as relay:
+        net_parts = ["peers=2", "transport=udp"]
+        if relayed:
+            if not relay.ok:
+                return None, ["      SKIP -- the relay could not be started: %s" % relay.note]
+            net_parts += [
+                "relay=%s:%d" % (relay_addr_for_peers(False), relay.port),
+                "force_relay=1",
+            ]
+        if args.net_extra:
+            net_parts.append(args.net_extra)
+        argv = build_scenario_argv(
+            cfg=cfg,
+            determinism=True,
+            steps=U61_STEPS,
+            host="%s:%s" % (args.vms[0], hs),
+            clients=["%s:%s" % (args.vms[1], c1s), "lane=%s:%s" % (DET3_LANE, c2s)],
+            connect_ip=args.vms[0],
+            timeout_frames=LOCAL_TIMEOUT_FRAMES * 4,
+            net_extra=";".join(net_parts),
+            timeout=max(args.timeout, 300 + U61_STEPS),
+            extra_ini=[] if config1 else [PROMOTE_INI],
+            harness_extra=with_det_hash_kind("region_hash_step=1;synth_move=0"),
+            omit_satellite=["libmh.dll"] if config1 else (),
+        )
+        det_clear(det_dir)
+        rc = run_ui_test(argv, max(args.per_test_timeout, 600 + U61_STEPS))[0]
+    if config1:
+        ok, lines = det_run_report(
+            det_dir,
+            {"host": False, "client1": False, "client2": False},
+            configs={"host": "1", "client1": "1", "client2": "1"},
+        )
+    else:
+        ok, lines = det_run_report(det_dir, {"host": True, "client1": True, "client2": True})
+    chk = subprocess.run(
+        [sys.executable, os.path.join(REPO, "tools", "check_u61_mesh.py"), det_dir]
+        + (["--relay"] if relayed else []),
+        capture_output=True,
+        text=True,
+        cwd=REPO,
+    )
+    lines += ["   check_u61_mesh (%s):" % ("relay" if relayed else "direct")] + [
+        "      " + ln for ln in (chk.stdout or chk.stderr).strip().splitlines()
+    ]
+    return (rc == 0 and ok and chk.returncode == 0), lines
+
+
+# mp:U52 -- THE 3-PEER LOBBY-TEAM SHAPES (Team mode / FFA mode with teams). Same VM+VM+local-lane topology and
+# the SAME shared DET3 lane as --u53-* (so it cannot run concurrently with them). Teams are set through the REAL
+# lobby spinners (host T1, client1 T1, client2 T2); the sim-level verdict is tools/check_u52_teams.py:
+#   * relation tables read back on every peer match the seed rule (RELDUMP at step 1), identical across peers;
+#   * a diplomacy order issued by client1 at step 1100 is a no-op in Team mode and applies in FFA (RELDUMP 1400);
+#   * the hostility probe (harness hostile_probe): an ALLY pair never fights, the ENEMY pair does (control);
+#   * client2 is force-killed at step ~1560 (harness conq force-kill, conq_victim=2): Team mode = the host and
+#     client1 win (outcome 5), FFA = no victory (last PLAYER standing).
+U52_STEPS = 3000
+U52_ARMS = {
+    # arm: (host script, client1 script, client2 script)
+    "team": ("mp_host_u52_team.txt", "mp_client_u52_team_c1.txt", "mp_client_u52_team_c2.txt"),
+    "ffa": ("mp_host_u52_ffa.txt", "mp_client_u52_ffa_c1.txt", "mp_client_u52_ffa_c2.txt"),
+    # Team mode + a computer player in slot 3 on the host's team (the AI relation mirror, AI rows' team spinner)
+    "team-ai": (
+        "mp_host_u52_teamai.txt",
+        "mp_client_u52_teamai_c1.txt",
+        "mp_client_u52_teamai_c2.txt",
+    ),
+}
+U52_COMMON = (
+    "region_hash_step=1;synth_move=0;gameover_step=1560;gameover_stop=0;"
+    "relation_dump_step=1;relation_dump_step2=1400;"
+    "vision_order_at=1120;vision_order_other=2;vision_order_value=1;vision_order_side=1;"
+    "hit_probe_at=1000;hit_ally_v=1;hit_ally_a=0;hit_enemy_v=0;hit_enemy_a=2;"
+    "hostile_probe_at=300;hostile_issue=0;hostile_a1=0;hostile_b1=1;hostile_a2=0;hostile_b2=2;hostile_every=50;"
+    "relation_order_at=1100;relation_order_other=0;relation_order_value=2;relation_order_side=1"
+)
+U52_HOST = "hostile_issue=1;conq=1;conq_at=60;conq_force_kill_at=1500;conq_victim=2;conq_phase_timeout=5000;conq_probe_every=50"
+
+
+def run_u52(args, cfg, arm, config1=False):
+    """mp:U52. Returns (ok, lines), same contract as run_u53.
+
+    `config1`: configuration (1) on all three peers -- libmh.dll omitted (VMs + the DET3 lane) and no promote
+    ini, so the retail sim runs under mh.dll's net layer and U52 is carried by its byte patches.
+    """
+    det_dir = rig_phases.det_dir_path()
+    down = [ip for ip in args.vms[:2] if not vm_reachable(ip)]
+    if down:
+        return None, ["      SKIP -- VM(s) unreachable: %s" % ", ".join(down)]
+    cmd = [
+        sys.executable,
+        os.path.join(REPO, "tools", "make_lane.py"),
+        "--name",
+        DET3_LANE,
+        "--lane",
+        str(DET3_LANE_NO),
+        "--port",
+        str(DET3_PORT),
+        "--headless",
+    ]
+    if config1:
+        cmd += ["--omit-satellite", "libmh.dll"]
+    if not cfg.stock_exe:
+        cmd.append("--patched-exe")
+    r = subprocess.run(cmd, capture_output=True, text=True)
+    if r.returncode != 0:
+        return False, [
+            "      FAIL: lane %s: %s" % (DET3_LANE, (r.stderr or r.stdout).strip()[:200])
+        ]
+    hs, c1s, c2s = U52_ARMS[arm]
+    net_parts = ["peers=2", "transport=udp"]
+    if args.net_extra:
+        net_parts.append(args.net_extra)
+    argv = build_scenario_argv(
+        cfg=cfg,
+        determinism=True,
+        steps=U52_STEPS,
+        host="%s:%s" % (args.vms[0], hs),
+        clients=["%s:%s" % (args.vms[1], c1s), "lane=%s:%s" % (DET3_LANE, c2s)],
+        det_exclude=[],
+        connect_ip=args.vms[0],
+        timeout_frames=LOCAL_TIMEOUT_FRAMES * 4,
+        net_extra=";".join(net_parts),
+        timeout=max(args.timeout, 600 + U52_STEPS),
+        extra_ini=[] if config1 else [PROMOTE_INI],
+        harness_extra=with_det_hash_kind(U52_COMMON),
+        harness_extra_host=U52_HOST,
+        omit_satellite=["libmh.dll"] if config1 else (),
+    )
+    det_clear(det_dir)
+    rc = run_ui_test(argv, max(args.per_test_timeout, 900 + U52_STEPS))[0]
+    if config1:
+        ok, lines = det_run_report(
+            det_dir,
+            {"host": False, "client1": False, "client2": False},
+            configs={"host": "1", "client1": "1", "client2": "1"},
+        )
+    else:
+        ok, lines = det_run_report(det_dir, {"host": True, "client1": True, "client2": True})
+    import check_u52_teams as _u52
+
+    try:
+        qok, qlines = _u52.check(det_dir, arm)
+    except _u52.Refusal as exc:
+        qok, qlines = False, ["REFUSED: %s" % exc]
+    lines = lines + ["   check_u52_teams (%s):" % arm] + ["      " + ln for ln in qlines]
     return (rc == 0 and ok and qok), lines
 
 
@@ -1720,6 +2425,7 @@ def run_l1f_ping3(args, cfg):
         extra_ini=["tools/uiscripts/ini/video_1024.ini"],
         # two of the peers are VMs: their logs are the evidence
         pull_logs=l1f_log_dir(),
+        update_baselines=args.update_baselines,
     )
     shutil.rmtree(l1f_log_dir(), ignore_errors=True)
     rc = run_ui_test(argv, max(args.per_test_timeout, 420))[0]
@@ -1863,6 +2569,92 @@ def run_u19j_gpfg3(args, cfg, guarded=True):
     # EXPECT-RED: the checker's own XFAIL is the verdict. ui_test's rc is not consulted -- the host's
     # `absent Continue game` is SUPPOSED to fail when the frame garbles.
     return chk.returncode == 0, lines
+
+
+# mp:U58 -- GS2 (the data-timeout watchdog) IN A 3-PEER STAR. Same topology/lane as --u53-* (host on
+# vms[0], client1 on vms[1], client2 the local det3 lane) and mp:U19j's scripts: client 2 fences its sim
+# (`simstep`) with its transport up, so it is a data-silent peer, not a dead one. BOTH survivors must
+# drop slot 2 (the host AND client 1 -- before U58 client 1 scanned slots 0..1 only and never did) at the
+# same parked clock, then play on IDENTICAL. Verdict: tools/check_u58_gs2.py. `--u58-config1` runs it in
+# configuration (1) (no libmh.dll, no promote ini); default is the promoted build.
+U58_STEPS = 1500
+U58_HOST_TIMEOUT_MS = 5000
+U58_CLIENT_TIMEOUT_MS = 2500
+
+
+def run_u58(args, cfg, config1=False):
+    """mp:U58. Returns (ok, lines), same contract as run_u53."""
+    det_dir = rig_phases.det_dir_path()
+    down = [ip for ip in args.vms[:2] if not vm_reachable(ip)]
+    if down:
+        return None, ["      SKIP -- VM(s) unreachable: %s" % ", ".join(down)]
+    cmd = [
+        sys.executable,
+        os.path.join(REPO, "tools", "make_lane.py"),
+        "--name",
+        DET3_LANE,
+        "--lane",
+        str(DET3_LANE_NO),
+        "--port",
+        str(DET3_PORT),
+        "--headless",
+    ]
+    if config1:
+        cmd += ["--omit-satellite", "libmh.dll"]
+    if not cfg.stock_exe:
+        cmd.append("--patched-exe")
+    r = subprocess.run(cmd, capture_output=True, text=True)
+    if r.returncode != 0:
+        return False, [
+            "      FAIL: lane %s: %s" % (DET3_LANE, (r.stderr or r.stdout).strip()[:200])
+        ]
+    # The HOST's timeout is longer than the clients': a host that dropped slot 2 first would re-broadcast
+    # CTL_KICK and client 1 would remove the slot from that (no GS2 line), masking the scan under test.
+    # With the clients earlier, client 1's own watchdog must be what drops slot 2.
+    net_parts = ["peers=2", "transport=udp", "data_timeout_ms=%d" % U58_HOST_TIMEOUT_MS]
+    if args.net_extra:
+        net_parts.append(args.net_extra)
+    argv = build_scenario_argv(
+        cfg=cfg,
+        determinism=True,
+        steps=U58_STEPS,
+        host="%s:%s" % (args.vms[0], U19J_HOST_SCRIPT),
+        clients=[
+            "%s:%s" % (args.vms[1], U19J_SURVIVOR_SCRIPT),
+            "lane=%s:%s" % (DET3_LANE, U19J_FENCED_SCRIPT),
+        ],
+        det_exclude=["client2"],
+        connect_ip=args.vms[0],
+        timeout_frames=LOCAL_TIMEOUT_FRAMES * 4,
+        net_extra=";".join(net_parts),
+        net_extra_client="data_timeout_ms=%d" % U58_CLIENT_TIMEOUT_MS,
+        timeout=max(args.timeout, 600 + U58_STEPS),
+        extra_ini=([] if config1 else [PROMOTE_INI]) + ["tools/uiscripts/ini/video_1024.ini"],
+        harness_extra=with_det_hash_kind(
+            "region_hash_step=1;synth_move=0;gameover_step=100000;gameover_stop=0"
+        ),
+        omit_satellite=["libmh.dll"] if config1 else (),
+    )
+    det_clear(det_dir)
+    rc = run_ui_test(argv, max(args.per_test_timeout, 900 + U58_STEPS))[0]
+    if config1:
+        ok, lines = det_run_report(
+            det_dir,
+            {"host": False, "client1": False, "client2": False},
+            configs={"host": "1", "client1": "1", "client2": "1"},
+        )
+    else:
+        ok, lines = det_run_report(det_dir, {"host": True, "client1": True, "client2": True})
+    chk = subprocess.run(
+        [sys.executable, os.path.join(REPO, "tools", "check_u58_gs2.py"), det_dir],
+        capture_output=True,
+        text=True,
+        cwd=REPO,
+    )
+    lines += ["   check_u58_gs2:"] + [
+        "      " + ln for ln in (chk.stdout or chk.stderr).strip().splitlines()
+    ]
+    return (rc == 0 and ok and chk.returncode == 0), lines
 
 
 # mp:X2a -- THE OPEN-REDIRECT, WITNESSED FOR REAL, on the two independent rig VMs.
@@ -2091,12 +2883,18 @@ def run_det_conquest(args):
         return False, ["  conquest run TIMED OUT after %ds" % budget]
 
     runs = sorted(glob.glob(os.path.join(machine.POLYGON, "logs", "*_host")), key=os.path.getmtime)
+    # The PROCESS ("menu") folder: mh_harness.log is only ever there, and a session folder (which a
+    # lobby -- or since SES8 any match -- opens) ends in `_host` too and is newer.
+    runs = [d for d in runs if "_menu_" in os.path.basename(d)] or runs
     if not runs:
         return False, ["  conquest: no host log folder was produced"]
     harness = os.path.join(runs[-1], "mh_harness.log")
     net = os.path.join(runs[-1], "mh_net.log")
     htxt = open(harness, errors="replace").read() if os.path.isfile(harness) else ""
     ntxt = open(net, errors="replace").read() if os.path.isfile(net) else ""
+    for sd in _rundir.sessions_of(runs[-1]):  # the match-time half, if a session opened (SES1/SES8)
+        sp = os.path.join(sd, "mh_net.log")
+        ntxt += open(sp, errors="replace").read() if os.path.isfile(sp) else ""
 
     lines, ok = [], True
     # (1) THE MATCH ENDED.
@@ -2307,7 +3105,7 @@ def run_det_config1(args, cfg, local=False, gate=False):
         if down:
             print("[det] configuration (1) SKIP -- VM(s) unreachable: %s" % ", ".join(down))
             return None
-    det_dir = os.path.join(REPO, "tmp", "ui_test", "determinism")
+    det_dir = rig_phases.det_dir_path()
     poke = config1_poke_step(args.steps)
     results = []
     # `gate` (--det-config1-gate, run_gate's det_c1 unit): the SYMMETRIC shape's clean arm only --
@@ -2338,6 +3136,8 @@ def run_det_config1(args, cfg, local=False, gate=False):
                     port_base=DET_LOCAL_PORT,
                     lane_base=DET_LOCAL_LANE_BASE,
                     stock_exe=cfg.stock_exe,
+                    backend=cfg.backend,
+                    input_backend=cfg.input_backend,
                 )
                 if not plan:
                     results.append((tag, False, ["      FAIL: lane provisioning failed"]))
@@ -2439,7 +3239,7 @@ def run_det_standard(args, cfg):
             {"host": True, "client1": True},
         ),
     ]
-    det_dir = os.path.join(REPO, "tmp", "ui_test", "determinism")
+    det_dir = rig_phases.det_dir_path()
     results = []
     for label, why, extra_ini, net_extra, extra_ini_host, extra_ini_client, want in shapes:
         print("\n" + "=" * 78)
@@ -2508,11 +3308,11 @@ def run_det_standard(args, cfg):
     return 0 if all(ok for _, ok, _ in results) else 1
 
 
-# --det-local's own range. The lane numbers come from lane_alloc (fork F4H); the PORT does not,
-# because peers of one match must share one port. 6620 sits inside the capture suite's own band
-# (PORT_BASE + test index), which is tolerable only because --det-local is a by-hand diagnostic that
-# never runs beside the suite -- the gate's det unit uses the VMs. Move it if that ever changes.
-DET_LOCAL_PORT = 6620
+# --det-local's own range. The lane numbers come from lane_alloc (fork F4H), and since TL-BANDS200
+# (2026-09-29) so does the port: peers of one match share one port, so it is the block's FIRST lane's
+# derived port (LOCAL_PORT_BASE + lane, in lane_alloc's lane port band) rather than one per lane. It
+# was a hand-picked 6620 -- the capture suite's row 20 game port -- until then.
+DET_LOCAL_PORT = LOCAL_PORT_BASE + lane_alloc.lane("det_local", 0)
 # provision_lanes numbers from the BASE (lane_base + 1 is the first peer), so this is the block's
 # base rather than its first lane. Allocated at fork F4H -- see tools/lane_alloc.py.
 DET_LOCAL_LANE_BASE = lane_alloc.block("det_local")[0]
@@ -2582,6 +3382,24 @@ def add_args(ap):
         "survived to Start proves nothing. Included automatically in --det-standard.",
     )
     ap.add_argument(
+        "--p16-relay3",
+        action="store_true",
+        help="--determinism: mp:P16's ASYMMETRIC 3-PEER STAR pacing shape (the --det-3peer topology, "
+        "every client through net_shim.py --udp, the vms[1] client at --p16-vm-owd one-way, the local "
+        "lane at --p16-local-owd). Reports both clients' sim rate / stall %% and the hash verdict; "
+        "with --p16-gate 1 (shipped) it wants >= 0.95x, with --p16-gate 0 (the negative arm: "
+        "lockstep_relay_path=0) it wants the old < 0.8x reproduced. Shares the det3 lane.",
+    )
+    ap.add_argument(
+        "--p16-gate", type=int, default=1, choices=(0, 1), help="[net] lockstep_relay_path"
+    )
+    ap.add_argument(
+        "--p16-vm-owd", type=float, default=P16_DEFAULT_VM_OWD, help="one-way ms, vms[1] client"
+    )
+    ap.add_argument(
+        "--p16-local-owd", type=float, default=P16_DEFAULT_LOCAL_OWD, help="one-way ms, local lane"
+    )
+    ap.add_argument(
         "--det-config1-gate",
         action="store_true",
         help="--determinism: run_gate's det_c1 unit -- ONLY the SYMMETRIC CONFIGURATION (1) clean "
@@ -2609,6 +3427,186 @@ def add_args(ap):
         "survivors' logs must read ALL PAIRS IDENTICAL. NOT included in --det-standard.",
     )
     ap.add_argument(
+        "--u53-host-elim",
+        action="store_true",
+        help="--determinism: mp:U53 phase 1 arm A -- 3 peers, the HOST is eliminated mid-match and "
+        "does nothing afterwards; reports what the two surviving clients do (check_u53_elim.py).",
+    )
+    ap.add_argument(
+        "--u53-host-ok",
+        action="store_true",
+        help="--determinism: mp:U53 phase 1 arm B -- as --u53-host-elim, then the host presses OK on "
+        "its outcome dialog.",
+    )
+    ap.add_argument(
+        "--u53-host-exit",
+        action="store_true",
+        help="--determinism: mp:U53 phase 1 arm D -- as --u53-host-ok, then the host QUITS THE PROGRAM "
+        "from the main menu while the survivors still play (the star-transport question).",
+    )
+    ap.add_argument(
+        "--u55-graceful",
+        action="store_true",
+        help="with --u53-host-exit: the host ends via ExitProcess (exit_process_mode=1) instead of "
+        "the abrupt TerminateProcess.",
+    )
+    ap.add_argument(
+        "--u55-relay",
+        action="store_true",
+        help="with --u53-host-exit: all three peers go through a local mh_relay (relay=, force_relay=1).",
+    )
+    ap.add_argument(
+        "--u55-exit-step",
+        type=int,
+        default=U55_EXIT_STEP,
+        help="with --u53-host-exit: sim step at which the host process ends (default %(default)s; "
+        "the defeat lands at ~304).",
+    )
+    ap.add_argument(
+        "--u62-host-quit",
+        action="store_true",
+        help="--determinism: mp:U62 (HM-M4) -- 3 peers, the HOST quits mid-match by ESC->Quit->Yes with host "
+        "migration on (the shipped default); the survivors must play on, ALL PAIRS IDENTICAL, no stall > 1 s "
+        "(check_u62_handover.py). --u55-relay for the relayed shape, --u53-config1 for configuration (1).",
+    )
+    ap.add_argument(
+        "--u62-host-exit",
+        action="store_true",
+        help="--determinism: mp:U62 -- the host is defeated, keeps watching, then its process exits GRACEFULLY "
+        "(the harness exit knob in graceful mode) with host migration on; same verdict as --u62-host-quit.",
+    )
+    ap.add_argument(
+        "--u62-neg",
+        action="store_true",
+        help="--determinism: mp:U62 NEGATIVE arm -- as --u62-host-exit with `[net] hub_migration=0` on every "
+        "peer: the survivors must reproduce U55's ~58 s outcome-8 timeline.",
+    )
+    ap.add_argument(
+        "--u63-crash",
+        action="store_true",
+        help="--determinism: mp:U63 (HM-M5) -- 3 peers, the host's PROCESS ends abruptly (TerminateProcess) at "
+        "--u55-exit-step with host migration on (the shipped default): the survivors detect the loss, corroborate "
+        "it, elect one hub, play on ALL PAIRS IDENTICAL >= 1000 steps, stall <= 6 s, and log the same `hub elected` "
+        "line (check_u63_failover.py). --u55-relay for the relayed shape, --u53-config1 for configuration (1). "
+        "`--u53-host-exit` WITHOUT --u55-graceful is this arm.",
+    )
+    ap.add_argument(
+        "--u64",
+        action="append",
+        default=[],
+        choices=["base4", "elect4", "newhub", "double", "partition", "heal", "spec4", "spec4neg"],
+        help="--determinism: mp:U64 (HM-M6) -- the 4-PEER host-migration failure arms (host vms[0], client1 vms[1], client2 "
+        "the det3 lane, client3 the det4 lane); see tools/u64_arms.py for what each arm injects and "
+        "tools/check_u64_failure.py for the verdict. Repeatable (arms run in order, verdicts ANDed). "
+        "--u64-relay: all four peers through a local mh_relay; --u53-config1: configuration (1).",
+    )
+    ap.add_argument(
+        "--u64-relay",
+        action="store_true",
+        help="with --u64: all four peers go through a local mh_relay (relay=, force_relay=1).",
+    )
+    ap.add_argument(
+        "--u64-steps",
+        type=int,
+        default=None,
+        help="with --u64: override the arm's step count (iterate with ~1500, the arm's own default is the final-matrix length).",
+    )
+    ap.add_argument(
+        "--u64-exit-step",
+        type=int,
+        default=None,
+        help="with --u64: override the step of the first incident (default 600).",
+    )
+    ap.add_argument(
+        "--u63-neg",
+        action="store_true",
+        help="--determinism: mp:U63 NEGATIVE arm -- as --u63-crash with `[net] hub_migration=0` on every peer: "
+        "no failover runs and the survivors reproduce U55's ~58 s outcome-8 timeline.",
+    )
+    for _k, _h in (
+        (
+            "client-spec",
+            "a defeated CLIENT picks Continue game and spectates to the end, per-step hash IDENTICAL to the survivors'",
+        ),
+        (
+            "host-spec",
+            "a defeated HOST spectates to the end and keeps relaying, per-step hash IDENTICAL",
+        ),
+        (
+            "client-exit",
+            "a defeated client picks Ok at its dialog (statistics, main menu): the survivors are undisturbed",
+        ),
+        (
+            "client-leave",
+            "a spectating client later leaves through ESC -> Quit game: the survivors are undisturbed",
+        ),
+        (
+            "host-exit",
+            "a defeated host picks Ok and reaches the main menu: it hands the hub over (U62)",
+        ),
+        (
+            "host-leave",
+            "a spectating host later leaves through ESC -> Quit game: it hands the hub over (U62)",
+        ),
+        (
+            "team",
+            "TEAM-VICTORY arm: Team mode, the spectator's ally outlasts the enemy -> the spectator's dialog says VICTORY (outcome 5)",
+        ),
+        (
+            "probe",
+            "MUTATION arm: client-spec plus an order owned by the spectator at step ~660 (the gate must drop it, no survivor diverges)",
+        ),
+        (
+            "neg",
+            "NEGATIVE arm: client-spec with `[net] spectate_after_defeat=0` reproduces today's defeat flow",
+        ),
+    ):
+        ap.add_argument(
+            "--u54-" + _k,
+            action="store_true",
+            help="--determinism: mp:U54 (spectate after defeat) -- "
+            + _h
+            + " (check_u54_spectate.py).",
+        )
+    ap.add_argument(
+        "--u53-client-elim",
+        action="store_true",
+        help="--determinism: mp:U53 phase 1 arm C (contrast) -- a CLIENT is eliminated, the host "
+        "survives.",
+    )
+    ap.add_argument(
+        "--u52-team",
+        action="store_true",
+        help="--determinism: mp:U52 -- 3 peers, lobby TEAM mode (host T1, client1 T1, client2 T2): relations "
+        "seeded from the teams, allied units do not fight, a relation order is a no-op, the last alliance "
+        "standing wins (check_u52_teams.py).",
+    )
+    ap.add_argument(
+        "--u52-team-ai",
+        action="store_true",
+        help="--determinism: mp:U52 -- as --u52-team plus a computer player in slot 3 on the host's team.",
+    )
+    ap.add_argument(
+        "--u52-ffa",
+        action="store_true",
+        help="--determinism: mp:U52 -- as --u52-team but FFA mode with the same teams: allies start allied, a "
+        "relation order still applies, victory stays last-player-standing.",
+    )
+    ap.add_argument(
+        "--u52-config1",
+        action="store_true",
+        help="with --u52-*: run in configuration (1) on all three peers (libmh.dll omitted, no promote ini): "
+        "the retail sim + U52's byte-patch carriers. Pair with --net-extra team_relations_fix=0 for the "
+        "negative arm.",
+    )
+    ap.add_argument(
+        "--u53-config1",
+        action="store_true",
+        help="with --u53-* or --u19b-quit3: run in configuration (1) on all three peers (libmh.dll omitted, no promote ini): "
+        "the retail sim + the byte-patch carriers (mp:U66 player_left_pin_fix). Pair with --net-extra "
+        "player_left_pin_fix=0 for the negative arm.",
+    )
+    ap.add_argument(
         "--l1f-ping3",
         action="store_true",
         help="mp:L1f: run ONLY the 3-PEER LOBBY-PING shape (host on vms[0], one client on vms[1], "
@@ -2618,6 +3616,30 @@ def add_args(ap):
         "slot, which on a CLIENT is only reachable through the host's published summary (the "
         "transport is a client-server star). Verdict from tools/check_lobby_ping.py --published "
         "--every-slot --agree. NOT a --determinism shape: the walk never leaves the lobby.",
+    )
+    ap.add_argument(
+        "--u58-gs2-3peer",
+        action="store_true",
+        help="--determinism: mp:U58 -- 3 peers, client 2 sim-fenced (data-silent, transport up): BOTH the "
+        "host and client 1 must log the GS2 drop of slot 2 at the same parked clock, then play on "
+        "IDENTICAL (check_u58_gs2.py). Same lane as --u53-*.",
+    )
+    ap.add_argument(
+        "--u61-mesh",
+        action="store_true",
+        help="--determinism: mp:U61 (HM-M3) -- 3 peers, no incident: every peer must log the SAME succession "
+        "epoch + ranking within 5 s, the matrix must cover the pair, the ack round must complete "
+        "(check_u61_mesh.py), and the match must stay IDENTICAL. Same lane as --u53-*.",
+    )
+    ap.add_argument(
+        "--u61-relay",
+        action="store_true",
+        help="with --u61-mesh: all three peers through a local mh_relay (force_relay=1) -- the relay-leg tier.",
+    )
+    ap.add_argument(
+        "--u58-config1",
+        action="store_true",
+        help="with --u58-gs2-3peer: configuration (1) on all three peers (libmh.dll omitted, no promote ini).",
     )
     ap.add_argument(
         "--u19j-gpfg3",
@@ -2665,6 +3687,16 @@ def add_args(ap):
         "AIPROBE line. D10: every determinism run before this compared a world where the AI never drew "
         "a random number. Requires D11's widened manifest -- an AI lands at slot >= 2, whose player_data "
         "store was outside every hashed region until then.",
+    )
+    ap.add_argument(
+        "--det-chat-utf8",
+        action="store_true",
+        help="--determinism --det-local: mp:MP-LANG's chat + mixed-pack shape. Drives the chat_utf8 "
+        "scripts (mp_host_chat_utf8.txt / mp_client_chat_utf8.txt) instead of the start walk: the HOST "
+        "runs [lang] pack=ru under [input] codepage=1251 from the lang-pack lane source, the CLIENT the "
+        "merged EN install under codepage=1250, and both send a Cyrillic + Polish + Latin UTF-8 chat "
+        "line in-game (near step 60), so the lockstep hash is compared across chat traffic and two "
+        "different language packs. SKIPs by name when the pack or merged fonts are absent.",
     )
     ap.add_argument(
         "--harness-extra-host",
@@ -2724,6 +3756,26 @@ def add_args(ap):
         help="+/- uniform ms around --shim-delay (mp:TL-SHIMUDP; meaningless without --shim-delay).",
     )
     ap.add_argument(
+        "--local-peers",
+        action="store_true",
+        help="tooling:TL-RIG-PARALLEL: run a 3-peer --u53-*/--u54-*/--u62-*/--u63-* arm with ALL peers as local lanes "
+        "of parallel slot --par-slot (no VM). The topology tools/rig_parallel.py schedules N-wide.",
+    )
+    ap.add_argument(
+        "--par-slot",
+        type=int,
+        default=None,
+        help="with --local-peers: the parallel slot (0..%d) -- selects the lane set (lane_alloc block `par`), the game "
+        "port and the scratch dir (tmp/rig_par/slot<K>, via $MH_RIG_SCRATCH). Default 0."
+        % (lane_alloc.PAR_SLOTS - 1),
+    )
+    ap.add_argument(
+        "--par-headless",
+        action="store_true",
+        help="with --local-peers: provision the lanes headless (default: visible, as --det-local does -- a headless "
+        "lane ticks at ~8500 fps, which --determinism refuses to measure).",
+    )
+    ap.add_argument(
         "--det-local",
         action="store_true",
         help="run --determinism with BOTH peers on this box (local lanes) instead of the VM pair. "
@@ -2747,7 +3799,21 @@ def build_parser():
 def main(argv=None, lenient=False):
     ap = build_parser()
     args = parse_mode_args(ap, argv, lenient)
-    rc = apply_net_args(ap, args, peers_local=args.det_local if args.determinism else True)
+    if args.local_peers or args.par_slot is not None:
+        # tooling:TL-RIG-PARALLEL: a slot's artifacts (pulled logs, red copies, relay log, poll dirs) live under
+        # its own scratch dir; ui_test.py (a child) reads the same variable.
+        if args.par_slot is None:
+            args.par_slot = 0
+        if not 0 <= args.par_slot < lane_alloc.PAR_SLOTS:
+            ap.error("--par-slot must be 0..%d" % (lane_alloc.PAR_SLOTS - 1))
+        os.environ[rig_phases.SCRATCH_ENV] = os.path.join(
+            REPO, "tmp", "rig_par", "slot%d" % args.par_slot
+        )
+    rc = apply_net_args(
+        ap,
+        args,
+        peers_local=(args.det_local or args.local_peers) if args.determinism else True,
+    )
     if rc:
         return rc
     cfg = RunnerConfig.from_args(args)
@@ -2801,6 +3867,22 @@ def main(argv=None, lenient=False):
         args.det_standard
         or args.det_3peer
         or args.u19b_quit3
+        or args.u53_host_elim
+        or args.u53_host_ok
+        or args.u53_host_exit
+        or args.u62_host_quit
+        or args.u62_host_exit
+        or args.u62_neg
+        or args.u63_crash
+        or args.u63_neg
+        or args.u64
+        or args.u53_client_elim
+        or args.u58_gs2_3peer
+        or args.u61_mesh
+        or args.u52_team
+        or args.u52_team_ai
+        or args.u52_ffa
+        or args.p16_relay3
         or args.det_config1
         or args.det_config1_gate
     ):
@@ -2823,6 +3905,14 @@ def main(argv=None, lenient=False):
 
 def run_determinism(args, cfg):
     """--determinism: the 2-peer UI-path lockstep check, or one of its named shapes."""
+    rig_phases.begin("det")
+    try:
+        return _run_determinism(args, cfg)
+    finally:
+        rig_phases.end()
+
+
+def _run_determinism(args, cfg):
     # C7: promotion is TWO runs, not one. --det-standard runs both shapes and reports them apart.
     if args.det_standard:
         return run_det_standard(args, cfg)
@@ -2838,6 +3928,16 @@ def run_determinism(args, cfg):
             for ln in lines:
                 print(ln)
         return 0 if all(ok for _, ok, _ in res) else 1
+    if args.p16_relay3:
+        ok, lines = run_p16_relay3(args, cfg)
+        print("\n".join(lines))
+        if ok is None:
+            return 0  # VM down -> SKIP, not a failure
+        print(
+            "[det] P16 ASYMMETRIC 3-PEER STAR (gate %d): %s"
+            % (args.p16_gate, "PASS" if ok else "FAIL")
+        )
+        return 0 if ok else 1
     if args.det_3peer:
         ok, lines = run_det_3peer(args, cfg)
         print("\n".join(lines))
@@ -2845,8 +3945,116 @@ def run_determinism(args, cfg):
             return 0  # VM down -> SKIP, not a failure
         print("[det] U28 3-PEER BARRIER: %s" % ("PASS" if ok else "FAIL"))
         return 0 if ok else 1
+    if args.u64:
+        import u64_arms
+
+        all_ok = True
+        for _arm in args.u64:
+            rig_phases.begin("u64-" + _arm)
+            ok, lines = u64_arms.run(
+                args, cfg, _arm, config1=args.u53_config1, relayed=args.u64_relay
+            )
+            rig_phases.end()
+            print(chr(10).join(lines))
+            if ok is None:
+                return 0  # VM down -> SKIP, not a failure
+            print(
+                "[det] U64 %s%s: %s"
+                % (_arm, "-relay" if args.u64_relay else "", "PASS" if ok else "FAIL")
+            )
+            all_ok = all_ok and ok
+        return 0 if all_ok else 1
+    if args.u61_mesh:
+        ok, lines = run_u61(args, cfg, relayed=args.u61_relay, config1=args.u53_config1)
+        print("\n".join(lines))
+        if ok is None:
+            return 0  # VM down -> SKIP, not a failure
+        print(
+            "[det] U61 MESH%s: %s"
+            % (" (relay)" if args.u61_relay else "", "PASS" if ok else "FAIL")
+        )
+        return 0 if ok else 1
+    # Every selected --u53-* arm runs, in order, and the verdicts are ANDed (the release-tier gate
+    # unit passes several at once); a VM-down SKIP of any arm skips the rest.
+    _u53 = [
+        _arm
+        for _flag, _arm in (
+            (args.u53_host_elim, "host-elim"),
+            (args.u53_host_ok, "host-ok"),
+            (args.u53_host_exit, "host-exit"),
+            (args.u62_host_quit, "u62-host-quit"),
+            (args.u62_host_exit, "u62-host-exit"),
+            (args.u62_neg, "u62-neg"),
+            (args.u63_crash, "u63-crash"),
+            (args.u63_neg, "u63-neg"),
+            (args.u53_client_elim, "client-elim"),
+            (args.u54_client_spec, "u54-client-spec"),
+            (args.u54_host_spec, "u54-host-spec"),
+            (args.u54_client_exit, "u54-client-exit"),
+            (args.u54_client_leave, "u54-client-leave"),
+            (args.u54_host_exit, "u54-host-exit"),
+            (args.u54_host_leave, "u54-host-leave"),
+            (args.u54_neg, "u54-neg"),
+            (args.u54_probe, "u54-probe"),
+            (args.u54_team, "u54-team"),
+        )
+        if _flag
+    ]
+    if _u53:
+        all_ok = True
+        for _arm in _u53:
+            if _arm == "host-exit" and not args.u55_graceful:
+                _arm = "u63-crash"  # mp:U63: the abrupt exit with migration on IS the crash failover now
+            if _arm == "host-exit":
+                _arm += ("-relay" if args.u55_relay else "") + (
+                    "-graceful" if args.u55_graceful else ""
+                )
+            elif _arm.startswith(("u62-", "u63-", "u54-")):
+                _arm += "-relay" if args.u55_relay else ""
+            rig_phases.begin("u53-" + _arm)
+            ok, lines = run_u53(args, cfg, _arm, config1=args.u53_config1)
+            rig_phases.end()
+            print("\n".join(lines))
+            if ok is None:
+                return 0
+            print("[det] U53 %s: %s" % (_arm, "PASS" if ok else "FAIL"))
+            all_ok = all_ok and ok
+        if args.u58_gs2_3peer:
+            ok, lines = run_u58(args, cfg, config1=args.u58_config1)
+            print("\n".join(lines))
+            if ok is None:
+                return 0
+            print("[det] U58 GS2 3-PEER: %s" % ("PASS" if ok else "FAIL"))
+            all_ok = all_ok and ok
+        return 0 if all_ok else 1
+    if args.u58_gs2_3peer:
+        ok, lines = run_u58(args, cfg, config1=args.u58_config1)
+        print("\n".join(lines))
+        if ok is None:
+            return 0
+        print("[det] U58 GS2 3-PEER: %s" % ("PASS" if ok else "FAIL"))
+        return 0 if ok else 1
+    _u52 = [
+        _arm
+        for _flag, _arm in (
+            (args.u52_team, "team"),
+            (args.u52_team_ai, "team-ai"),
+            (args.u52_ffa, "ffa"),
+        )
+        if _flag
+    ]
+    if _u52:
+        all_ok = True
+        for _arm in _u52:
+            ok, lines = run_u52(args, cfg, _arm, config1=args.u52_config1)
+            print("\n".join(lines))
+            if ok is None:
+                return 0
+            print("[det] U52 %s: %s" % (_arm, "PASS" if ok else "FAIL"))
+            all_ok = all_ok and ok
+        return 0 if all_ok else 1
     if args.u19b_quit3:
-        ok, lines = run_u19b_quit3(args, cfg)
+        ok, lines = run_u19b_quit3(args, cfg, config1=args.u53_config1)
         print("\n".join(lines))
         if ok is None:
             return 0  # VM down -> SKIP, not a failure
@@ -2859,6 +4067,30 @@ def run_determinism(args, cfg):
     # UI-PATH determinism: reuse the match_launch topology (host launches, client enters via real UI)
     # but let ui_test.py run the in-game [harness] logger + mp_analyze instead of diffing captures.
     host_script = "mp_host_start_ai.txt" if args.ai else "mp_host_start.txt"
+    client_script = "mp_client_start.txt"
+    chat_ini = {}
+    if args.det_chat_utf8:
+        # mp:MP-LANG. Chat is display-only (G_TEXT_TMP + the floating text, never a hashed region)
+        # and names are ASCII by the time either peer stores them, so this must stay IDENTICAL with
+        # UTF-8 chat on the wire and a RU-pack host beside an EN client. The run is what proves it.
+        if not args.det_local:
+            print(
+                "[det] --det-chat-utf8 needs --det-local (the VM installs carry no language pack)"
+            )
+            return 2
+        import types
+
+        ok, why = chat_utf8_precondition(
+            types.SimpleNamespace(local=True)
+        )  # det-local == local lanes
+        if not ok:
+            print("determinism SKIP -- --det-chat-utf8: %s" % why)
+            return 0
+        host_script, client_script = "mp_host_chat_utf8.txt", "mp_client_chat_utf8.txt"
+        chat_ini = dict(
+            extra_ini_host="tools/uiscripts/ini/chat_utf8_host.ini",
+            extra_ini_client="tools/uiscripts/ini/input_cp1250.ini",
+        )
     if args.det_local:
         # BOTH PEERS ON THIS BOX. A WEAKER TEST THAN THE VM PAIR, and the banner says so: two
         # peers here share one CPU, one set of libraries and one FP environment, so precisely the
@@ -2873,14 +4105,21 @@ def run_determinism(args, cfg):
             "name": "determinism",
             "kind": "multi",
             "host": host_script,
-            "clients": ["mp_client_start.txt"],
+            "clients": [client_script],
         }
+        if args.det_chat_utf8:
+            from ui_suite_common import FONT_MERGE_DIR, LANG_PACK_GAME
+
+            det_test["lane_src"] = LANG_PACK_GAME
+            det_test["lane_src_client"] = FONT_MERGE_DIR
         plan = provision_lanes(
             [det_test],
             headless=False,
             port_base=DET_LOCAL_PORT,
             lane_base=DET_LOCAL_LANE_BASE,
             stock_exe=cfg.stock_exe,
+            backend=cfg.backend,
+            input_backend=cfg.input_backend,
         )
         if not plan:
             return 1
@@ -2890,7 +4129,7 @@ def run_determinism(args, cfg):
             host="lane=%s:%s" % (names[0], host_script),
             connect_ip="127.0.0.1",
             port=port,
-            clients=["lane=%s:mp_client_start.txt" % names[1]],
+            clients=["lane=%s:%s" % (names[1], client_script)],
         )
     else:
         where = dict(
@@ -2919,11 +4158,14 @@ def run_determinism(args, cfg):
         timeout=max(args.timeout, 120 + args.steps),
         shim=shim,
         ship_pacing=args.ship_pacing,
-        extra_ini=args.extra_ini,
-        extra_ini_host=args.extra_ini_host,
+        # mp:MP-LANG: the chat scripts' Russian/English walks are written against the 1024x768 layout
+        extra_ini=list(args.extra_ini or [])
+        + (["tools/uiscripts/ini/video_1024.ini"] if chat_ini else []),
+        extra_ini_host=chat_ini.get("extra_ini_host") or args.extra_ini_host,
+        extra_ini_client=chat_ini.get("extra_ini_client"),
         harness_extra_host=args.harness_extra_host,
         # mp:R2 -- the symmetric knob (e.g. D16's late synth_at) every peer must share
-        harness_extra=args.harness_extra,
+        harness_extra=with_det_hash_kind(args.harness_extra),
         # overrides a pinned [net] key in place (make_ini merges by key)
         net_extra=args.net_extra,
         # mp:P14 (5) -- --relay-shim-delay's client-only relay= override

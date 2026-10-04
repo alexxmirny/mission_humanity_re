@@ -127,6 +127,7 @@
 #include "include/mh_tile_dirty.h"     // mp:GX1: mark_ground_tiles_dirty -- shared with gfx_overlay.cpp
 #include "include/mh_uidrive_export.h" // MH_UIDrive_SynthKeyDown -- the `hotkey` verb's chord (mp:GX1)
 #include "en_guard.h"                  // EN-only build gate
+#include "ui/player_strings.h"         // mods:LANG4: the words on the indicator are table rows
 
 #pragma comment(lib, "user32.lib") // wsprintfA
 
@@ -194,14 +195,20 @@ int  g_reserved_w     = 0;
 
 int reserved_width() {
     if (!g_reserved_ready) {
-        wchar_t w[32];
+        wchar_t w[64];
         // mp:L1g widened this by "R " -- the worst case now carries a relay letter. The anchor is
         // `view_w - MARGIN - reserved_width()`, so this MOVES THE WHOLE BLOCK LEFT by one letter and
         // one space, which re-baselines every committed capture that shows the indicator. That is
         // the honest cost of adding a field: the alternative (measure the letter only when one is
         // drawn) would make the column jitter between relayed and direct peers, and this column is
         // fixed per resolution on purpose.
-        const int n  = MultiByteToWideChar(CP_ACP, 0, "P2 PING [####] R 9999 ms", -1, w, 32);
+        // mods:LANG4: composed from the table the lines themselves are, so a translated label
+        // reserves its own width. English: exactly "P2 PING [####] R 9999 ms", as before.
+        wchar_t ms[32], full[96];
+        wsprintfW(ms, mh::ui::tr(mh::ui::Str::NETIND_MS), 9999);
+        wsprintfW(full, L"P2 %s [####] R %s", mh::ui::tr(mh::ui::Str::NETIND_PING), ms);
+        lstrcpynW(w, full, 64);
+        const int n  = lstrlenW(w);
         g_reserved_w = n > 0 ? (int)mh::call::llm_gfx_font_measure_text((uint16_t *)w) : 0;
         if (g_reserved_w <= 0) g_reserved_w = 160; // defensive: never anchor off a bogus measurement
         g_reserved_ready = true;
@@ -216,12 +223,13 @@ int reserved_width() {
 // the TCP module and any pre-mp:L1e module give, and painting it as "D" would tell the player their
 // relayed game is direct. So -1 renders the empty string and the line is byte-identical to what it
 // was before this item.
-inline const char *relay_letter(const MH_NetStats &st, int i) {
-    if (!st.lat_supported || i >= st.lat_count) return "";
+// The letters are symbols, not words (the lobby ping cell shows the same two): not table rows.
+inline const wchar_t *relay_letter(const MH_NetStats &st, int i) {
+    if (!st.lat_supported || i >= st.lat_count) return L"";
     switch (st.lat[i].relayed) {
-        case 1: return "R ";
-        case 0: return "D ";
-        default: return "";
+        case 1: return L"R ";
+        case 0: return L"D ";
+        default: return L"";
     }
 }
 
@@ -349,11 +357,11 @@ int stability_level(bool measured, int ipdv_ms, int loss_pm) {
     return 4;                                   // steady
 }
 
-void bar_text(char *out, int level) {
-    out[0] = '[';
-    for (int i = 0; i < 4; ++i) out[1 + i] = (i < level) ? '#' : '.';
-    out[5] = ']';
-    out[6] = '\0';
+void bar_text(wchar_t *out, int level) {
+    out[0] = L'[';
+    for (int i = 0; i < 4; ++i) out[1 + i] = (i < level) ? L'#' : L'.';
+    out[5] = L']';
+    out[6] = L'\0';
 }
 
 // The peer's name as the player saw it in the lobby. `idx` is a PEER_HORIZON / strategic-player
@@ -368,16 +376,18 @@ void peer_name(int idx, char *out, int cap) {
             return;
         }
     }
-    wsprintfA(out, "PLAYER %d", idx < 0 ? 0 : idx);
+    // A placeholder NAME, not a sentence: names are [A-Za-z0-9] on every peer (MP-LANG), and the lines
+    // that read this string are logs as well as the stall line. mh-str-ok: ASCII name placeholder.
+    wsprintfA(out, "PLAYER %d", idx < 0 ? 0 : idx); // mh-str-ok: ASCII name
 }
 
 // mp:GX1: g_color is RGB565 (this file's own ini convention, "ffff" not "ffffff" -- see Install);
 // llm_gfx_draw_text_rgb wants r/g/b bytes, so expand each channel by bit replication (the usual
 // lossless-looking 565->888 widen: top bits repeated into the newly-opened low bits).
-void draw_line(int y, const char *ascii) {
-    wchar_t   w[96];
-    const int n = MultiByteToWideChar(CP_ACP, 0, ascii, -1, w, 96);
-    if (n <= 0) return;
+void draw_line(int y, const wchar_t *text) {
+    wchar_t w[96];
+    lstrcpynW(w, text, 96);
+    if (!w[0]) return;
     if (!g_stamp) {
         // mp:GX1 PLANTED NEGATIVE ARM ([hud] net_indicator_stamp=0): the PRE-FIX draw -- the one text
         // wrapper that skips the damage-map stamp. draw_text_rgb marks the tiles it draws on, so
@@ -652,7 +662,7 @@ extern "C" void MH_NetIndicator_OnPresent(void) {
         const int ipdv_ms = meas ? (st.lat[i].ipdv_us + 500) / 1000 : -1;
         const int loss_pm = (st.lat_supported != 0 && i < st.lat_count) ? st.lat[i].loss_pm : -1;
         const int level   = stability_level(meas, ipdv_ms < 0 ? 0 : ipdv_ms, loss_pm);
-        char      bar[8];
+        wchar_t   bar[8];
         bar_text(bar, level);
 
         // THE VARYING NUMBER GOES LAST, and that is a test affordance rather than typography. The
@@ -663,15 +673,16 @@ extern "C" void MH_NetIndicator_OnPresent(void) {
         // the label and the bar stay strictly compared, which is where the regression would be.
         // `n/a` rather than 0 is what an unmeasurable transport prints: a 0 ms ping would read as a
         // perfect link, which is the one answer worse than no answer.
-        char msrtt[12];
-        if (srtt_ms < 0) lstrcpyA(msrtt, "n/a");
-        else wsprintfA(msrtt, "%d ms", srtt_ms > 9999 ? 9999 : srtt_ms);
+        wchar_t msrtt[32];
+        if (srtt_ms < 0) lstrcpynW(msrtt, mh::ui::tr(mh::ui::Str::NETIND_NA), 32);
+        else wsprintfW(msrtt, mh::ui::tr(mh::ui::Str::NETIND_MS), srtt_ms > 9999 ? 9999 : srtt_ms);
 
-        const char *rel = relay_letter(st, i);
+        const wchar_t *rel  = relay_letter(st, i);
+        const wchar_t *ping = mh::ui::tr(mh::ui::Str::NETIND_PING);
 
-        char line[96];
-        if (npeer > 1) wsprintfA(line, "P%d PING %s %s%s", i, bar, rel, msrtt);
-        else wsprintfA(line, "PING %s %s%s", bar, rel, msrtt);
+        wchar_t line[128];
+        if (npeer > 1) wsprintfW(line, L"P%d %s %s %s%s", i, ping, bar, rel, msrtt);
+        else wsprintfW(line, L"%s %s %s%s", ping, bar, rel, msrtt);
         if (draw) draw_line(y, line);
         y += line_h;
 
@@ -698,13 +709,15 @@ extern "C" void MH_NetIndicator_OnPresent(void) {
     }
 
     if (draw) {
-        char line[64];
-        wsprintfA(line, "CMD %d ms", (int)cmd_ms);
+        wchar_t line[64];
+        wsprintfW(line, mh::ui::tr(mh::ui::Str::NETIND_CMD), (int)cmd_ms);
         draw_line(y, line);
         y += line_h;
         if (show_stall) {
-            char line2[80];
-            wsprintfA(line2, "WAITING FOR %s", g_stall_shown_name);
+            // The name is ASCII by the MP-LANG rule ([A-Za-z0-9]), so the widen is exact.
+            wchar_t wname[40], line2[128];
+            MultiByteToWideChar(CP_ACP, 0, g_stall_shown_name, -1, wname, 40);
+            wsprintfW(line2, mh::ui::tr(mh::ui::Str::NETIND_WAITING), wname);
             draw_line(y, line2);
         }
         if (!g_said_shown) {

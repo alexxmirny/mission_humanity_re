@@ -171,13 +171,25 @@ def sibling_client_lane(host_lane):
     return cand
 
 
-# A SESSION run directory is `<UTC>_<last 8 hex of match_id>_<side>_solo`; a PROCESS one `<UTC>_menu_solo`.
-SESSION_DIR_RE = re.compile(r"^\d{8}T\d{6}Z_([0-9a-f]{8})_\d+_")
+# A SESSION run directory is `<UTC>_<last 8 hex of match_id>_<side>_<role>` (SES1) or
+# `<YYYY-MM-DDTHH-MM-SSZ>_<last 8 hex of match_id>_<map>_<mode>` (SES8, 2026-09-29); a PROCESS one
+# `<stamp>_menu_<role>` in either generation. Group 1 is the match hash in both shapes.
+SESSION_DIR_RE = re.compile(
+    r"^(?:\d{8}T\d{6}Z|\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}Z)_([0-9a-f]{8})_"
+)
+# SES8 stamps do NOT string-sort with SES1 ones (`-` < `0`), and a shared lane holds both: order by
+# canon(name). Verbatim copy of tools/_rundir.py's canon() (no import chain between checkers).
+_NEW_STAMP = re.compile(r"^(\d{4})-(\d{2})-(\d{2})T(\d{2})-(\d{2})-(\d{2})Z")
+
+
+def canon(name):
+    """The name with an SES8 stamp rewritten to the SES1 compact form, so the two sort together."""
+    return _NEW_STAMP.sub(r"\1\2\3T\4\5\6Z", name)
 
 
 def _run_names(lane):
     logs = os.path.join(lane, "logs")
-    return sorted(n for n in os.listdir(logs) if os.path.isdir(os.path.join(logs, n)))
+    return sorted((n for n in os.listdir(logs) if os.path.isdir(os.path.join(logs, n))), key=canon)
 
 
 def process_window(names, idx):
@@ -551,7 +563,7 @@ def _plant(root, test, quitter_menu, quitter_session, survivor_session, csv=LOCK
     return host_run
 
 
-def _plant_shared(root, with_this_match=True):
+def _plant_shared(root, with_this_match=True, ses8=False):
     """The 2026-09-24 gate layout: an EARLIER process (el2's quit, match ..c70ed5a5) and then THIS
     one (gquit_net, match ..6a49eaa7) in the same pair of lanes. Returns {"menu", "sess"}: the
     survivor run directories test_ui could hand over."""
@@ -583,10 +595,27 @@ def _plant_shared(root, with_this_match=True):
             "final_clock_ms=12459 stall=0"
         ],
     )
-    menu = put(h, "20260924T053239Z_menu_solo", ["[08:32:39.482] ; boot"])
+    # ses8: THIS process runs the SES8 build, the earlier one above kept its SES1 names -- the mixed
+    # lane a raw string sort orders wrongly (every SES8 name sorts before every SES1 one).
+    n = (
+        {
+            "hm": "2026-09-24T05-32-39Z_menu_solo",
+            "hs": "2026-09-24T05-32-46Z_6a49eaa7_blue-monday_host",
+            "cm": "2026-09-24T05-32-47Z_menu_solo",
+            "cs": "2026-09-24T05-32-53Z_6a49eaa7_blue-monday_client",
+        }
+        if ses8
+        else {
+            "hm": "20260924T053239Z_menu_solo",
+            "hs": "20260924T053246Z_6a49eaa7_0_solo",
+            "cm": "20260924T053247Z_menu_solo",
+            "cs": "20260924T053253Z_6a49eaa7_1_solo",
+        }
+    )
+    menu = put(h, n["hm"], ["[08:32:39.482] ; boot"])
     sess = put(
         h,
-        "20260924T053246Z_6a49eaa7_0_solo",
+        n["hs"],
         [
             "[08:33:00.664] ; GameRecv sender=1 len=14 type=0x04",
             "[08:33:00.664] ; " + GAMEOVER_ENTER + " sess=2 outcome=8 gclk=3479 (downgrade=0)",
@@ -599,12 +628,12 @@ def _plant_shared(root, with_this_match=True):
     if with_this_match:
         put(
             c,
-            "20260924T053247Z_menu_solo",
+            n["cm"],
             ["[08:33:00.650] " + BROADCAST + "1 before quit-to-menu"],
         )
         put(
             c,
-            "20260924T053253Z_6a49eaa7_1_solo",
+            n["cs"],
             [
                 "[08:33:00.640] ; [session] SESSION_END match_id=01a06a49eaa7 reason=quit "
                 "final_clock_ms=3449 stall=0"
@@ -789,7 +818,7 @@ def selftest():
     # 28 s before -- and reported the retail silence-timeout shape on a 14 ms drop. The fixture is
     # the gate's own layout and timestamps (tmp/gate_u19i_evidence, runs 0532xx).
     n_shared = 0
-    for name, handed, cli_extra, want in (
+    for name, handed, cli_extra, want, *ses8 in (
         ("green: shared lane, this process's broadcast is the one paired (14 ms)", "menu", True, 0),
         (
             "green: shared lane, the SESSION dir handed over instead of the menu dir",
@@ -798,11 +827,20 @@ def selftest():
             0,
         ),
         ("refusal: the quitter lane holds no run of this survivor's match", "menu", False, 2),
+        (
+            "green: SES8 names beside an SES1 process (mixed lane), menu handed",
+            "menu",
+            True,
+            0,
+            True,
+        ),
+        ("green: SES8 names, the SESSION dir handed over", "sess", True, 0, True),
+        ("refusal: SES8 names, no run of this match on the quitter", "menu", False, 2, True),
     ):
         n_shared += 1
         root = tempfile.mkdtemp(prefix="gquit_selftest_")
         try:
-            host = _plant_shared(root, cli_extra)
+            host = _plant_shared(root, cli_extra, bool(ses8))
             rc = main(
                 [
                     host[handed],

@@ -42,11 +42,13 @@ import subprocess
 import sys
 import time
 
+import _rundir  # SES8: run-dir names -- parse + time-order across SES1/SES8
 import desktop  # --desktop: CreateProcessW onto an isolated desktop object
 import lane_alloc  # TL-LANECOLLIDE: this tree's own solo lane, for the 'solo=<name>' peer spec
 import machine_config as machine  # LAN/game/VM defaults (bootstrap E2)
 import make_lane  # LANE_ROOT, for the 'lane=<name>' / 'solo=<name>' peer specs
 import mp_run  # reuse ssh/scp/ps/sh (the proven VM plumbing)
+import rig_phases  # tooling:TL-RIG-PHASES -- phase marks (no-op unless the parent armed it)
 import setup_dat  # edit a client's setup.dat server IP (point it at the host without typing)
 import win_job  # TL-SUITE-TEARDOWN: kill-on-close job assignment, shared with desktop.py/test_ui.py
 from PIL import Image
@@ -142,6 +144,12 @@ DEFANG_OVERLAY = 0
 EXTRA_NET = ""
 # mp:R7a -- extra [net] lines for the CLIENT peers ONLY (--net-extra-client). See make_ini.
 CLIENT_NET_EXTRA = ""
+# mp:U64 -- PER-CLIENT extras for a 4+ peer shape: {1-based client index: ';'-separated k=v}. `--harness-extra-peer N:k=v;k=v`
+# / `--net-extra-peer N:k=v;k=v` (repeatable). The determinism launcher sets CUR_CLIENT_INDEX before each client
+# launch; the host (is_host) and a launch with index 0 never read them.
+HARNESS_EXTRA_PEERS = {}
+NET_EXTRA_PEERS = {}
+CUR_CLIENT_INDEX = 0
 # Which transport this run asked for -- `[net] transport`, resolved ONCE from --net-extra (mp:T1).
 # DEFAULT udp SINCE 2026-09-20 (user ruling): the DLL's own compiled default flipped from tcp to udp
 # and the lane ini (NET_BLOCK) carries no `transport=` line, so this default MUST equal the DLL's --
@@ -219,7 +227,10 @@ def make_harness_ini(steps, is_host=False):
         + ("ai_probe_step=%d\n" % AI_PROBE_STEP if AI_PROBE_STEP else "")
     )
     return harness_apply_extras(
-        base, harness_extra_lines() + (harness_extra_host_lines() if is_host else "")
+        base,
+        harness_extra_lines()
+        + (harness_extra_host_lines() if is_host else harness_extra_client_lines())
+        + ("" if is_host else harness_extra_peer_lines()),
     )
 
 
@@ -241,7 +252,7 @@ def wants_harness(harness_steps, is_host):
     (and HARNESS_EXTRA) too; a row that arms a workload host-only must still pass synth_move=0 in
     `harness_extra` or the client's default D6 mover runs.
     """
-    return bool(harness_steps > 0 or HARNESS_EXTRA or HARNESS_EXTRA_HOST)
+    return bool(harness_steps > 0 or HARNESS_EXTRA or HARNESS_EXTRA_HOST or HARNESS_EXTRA_CLIENT)
 
 
 def harness_apply_extras(base, extras):
@@ -299,6 +310,25 @@ def harness_extra_host_lines():
     return "".join(kv.strip() + "\n" for kv in (HARNESS_EXTRA_HOST or "").split(";") if kv.strip())
 
 
+def harness_extra_client_lines():
+    """Extra [harness] lines for every NON-host peer (--harness-extra-client): the client-side twin of
+    harness_extra_host_lines() (mp:X3c slice 4). It exists so a forced desync can poke the CLIENT's world
+    (`region_poke_at=...`) and leave the host's, the authoritative side of the resync, untouched."""
+    return "".join(
+        kv.strip() + "\n" for kv in (HARNESS_EXTRA_CLIENT or "").split(";") if kv.strip()
+    )
+
+
+def harness_extra_peer_lines():
+    """mp:U64: extra [harness] lines for ONE client (--harness-extra-peer N:...), by the index the launcher
+    set in CUR_CLIENT_INDEX. Empty for every other client."""
+    return "".join(
+        kv.strip() + "\n"
+        for kv in (HARNESS_EXTRA_PEERS.get(CUR_CLIENT_INDEX) or "").split(";")
+        if kv.strip()
+    )
+
+
 # Artifacts that exist only for SOME runs, so a missing one is not an error. mp_run.LOGNAMES is the
 # always-expected set (a gap there is reported); these are pulled silently. mh_orders.bin is the
 # project's SECOND lockstep oracle -- two peers whose recordings are byte-identical applied the same
@@ -332,6 +362,9 @@ AI_PROBE_STEP = 0
 # harness_extra_host_lines() for why it must never reach the clients.
 HARNESS_EXTRA_HOST = ""
 
+# --harness-extra-client: the same, for every non-host peer (mp:X3c; see harness_extra_client_lines()).
+HARNESS_EXTRA_CLIENT = ""
+
 # --harness-extra: ';'-separated [harness] k=v written to EVERY peer's ini. See
 # harness_extra_lines(); P0-SPDET's pin_wallclock/fixed_step/region_hash_step ride here.
 HARNESS_EXTRA = ""
@@ -349,6 +382,17 @@ SHIP_PACING = False
 # CORRECTNESS RUNS ONLY -- no blit means no vsync wait, which is exactly what makes it wrong for
 # pacing measurement. The parallel-lane notes.
 HEADLESS = False
+# --backend: [video] backend for every peer this run launches (PT-GFX5). "" = the rig default,
+# make_lane.default_backend(headless): the owned DirectDraw -- `null` headless, `own` (GDI) visible --
+# never dgVoodoo. `system` is the opt-in fallback (the game loads DDRAW.DLL; only a lane provisioned
+# `make_lane.py --backend system` carries the dgVoodoo pair). A lane's own explicit --backend is used
+# when this is unset; an --extra-ini `[video] backend=` still wins over both (layer 6).
+BACKEND = ""
+# --input-backend: [input] backend for every peer (PT-INPUT1). "" = the lane's own, else the rig
+# default make_lane.DEFAULT_INPUT_BACKEND (own: mh.dll's DirectInput on Raw Input, no dinput.dll).
+# `system` = the opt-in fallback (the game loads dinput.dll; only a `make_lane.py --input-backend
+# system` lane carries dinputto8). An --extra-ini `[input] backend=` still wins (layer 6).
+INPUT_BACKEND = ""
 # --desktop <name>: run the game on its own Windows desktop object. Empty = the interactive desktop,
 # i.e. today's behaviour. This is the mechanism-INDEPENDENT answer to the window that headless cannot
 # keep unmapped -- see tools/desktop.py for what was ruled out before reaching for it.
@@ -620,7 +664,11 @@ def make_ini(script_name, timeout_frames, harness_steps=0, is_host=False, ident=
       4. lane_port   -- the lane allocator's [net] port. Wins even over an explicit --net-extra
                         port=, because two peers landing on one port is a rig fault no flag should be
                         able to cause.
-      5. headless    -- --headless/--desktop's [video] no_present=1 + no_window=1.
+      5. video       -- [video] backend (PT-GFX5: --backend, else the lane's own, else null
+                        headless / own visible) + headless's no_present=1 + no_window=1 + the lane's
+                        own fps_limit, all from make_lane.video_lines (the ONE composer); and
+                        [input] backend (PT-INPUT1: --input-backend, else the lane's own, else
+                        own) from make_lane.input_lines.
       6. extra_ini   -- --extra-ini fragment(s) (main() already merges more than one together, in
                         the order given). [net] is REFUSED before this ever runs (main()).
       7. extra_ini_peer -- --extra-ini-host or --extra-ini-client, whichever matches THIS peer: the
@@ -672,16 +720,25 @@ def make_ini(script_name, timeout_frames, harness_steps=0, is_host=False, ident=
     if (not is_host) and CLIENT_NET_EXTRA:
         for k, v in _ini_kv_pairs(CLIENT_NET_EXTRA):
             L.add("net", k, v)
+    if (not is_host) and NET_EXTRA_PEERS.get(CUR_CLIENT_INDEX):  # mp:U64: one client's own keys
+        for k, v in _ini_kv_pairs(NET_EXTRA_PEERS[CUR_CLIENT_INDEX]):
+            L.add("net", k, v)
 
     # ---- 4. lane_port ---------------------------------------------------------------------------
     lane_port = ident.get("port") or 0
     if lane_port:
         L.add("net", "port", lane_port)
 
-    # ---- 5. headless (see main()'s HEADLESS `global` note for why both keys ride together) --------
-    if HEADLESS or ident.get("headless"):
-        L.add("video", "no_present", "1")
-        L.add("video", "no_window", "1")
+    # ---- 5. video: backend + headless (see main()'s HEADLESS `global` note for why the headless keys
+    # ride together). A lane's own `headless` still wins over --visible (dead-ends G294).
+    headless = bool(HEADLESS or ident.get("headless"))
+    backend = BACKEND or ident.get("backend")
+    for ln in make_lane.video_lines(headless, backend, ident.get("fps_limit")):
+        k, _, v = ln.partition("=")
+        L.add("video", k, v)
+    for ln in make_lane.input_lines_for(ident, INPUT_BACKEND or None):
+        k, _, v = ln.partition("=")
+        L.add("input", k, v)
 
     # ---- 6. extra_ini -------------------------------------------------------------------------------
     if EXTRA_INI:
@@ -1034,6 +1091,8 @@ def local_launch(host_dir, script_src, script_name, timeout_frames, harness_step
             # per peer, so this is the peer's own verdict and nothing else is torn down.
             sys.exit(conflict)
         pid = None
+        if is_host:
+            rig_phases.mark("exec_host")
         if DESKTOP:
             hold_desktop_once()
             # --desktop: put the game on its own desktop object. Start-Process cannot do this --
@@ -1622,6 +1681,8 @@ def remote_launch(
             % (ip, (getattr(r, "stderr", "") or getattr(r, "stdout", "") or "").strip()[:160])
         )
         return False
+    if is_host:
+        rig_phases.mark("exec_host")
     r = remote(args, ip, "schtasks /run /tn uitest", tries=3)
     if getattr(r, "timed_out", False):
         print(
@@ -1878,6 +1939,8 @@ def _solo_lane_dir(name):
             satellite=[],
             omit_satellite=[],
             map_variant=None,  # make_lane._provision reads it (mp:X2a); a solo lane keeps stock Maps
+            backend=None,  # PT-GFX5 / PT-INPUT1: None = the rig defaults (make_lane video/input_lines)
+            input_backend=None,
         )
         with make_lane.boot_lock("solo:%s" % name):
             make_lane._provision(args)
@@ -2466,6 +2529,7 @@ def shim_start(args):
         str(args.shim_delay),
         "--jitter",
         str(args.shim_jitter),
+        *[a for spec in (getattr(args, "shim_delay_ip", None) or []) for a in ("--delay-ip", spec)],
         "--log",
         log,
         "--control",
@@ -2577,7 +2641,16 @@ def parse_shim_triggers(raw):
         for c in t["when"]:
             peer, fname, rx = c
             conds.append((peer, fname, re.compile(rx)))
-        out.append({"cmd": t["cmd"], "when": conds, "fired": False})
+        out.append(
+            {
+                "cmd": t["cmd"],
+                "when": conds,
+                "fired": False,
+                # mp:U65: "after_prev" = never in the same pump as (or before) the PREVIOUS trigger in the
+                # list -- the U64 heal's `blackhole off` must not share a poll with the cut it undoes.
+                "after_prev": bool(t.get("after_prev")),
+            }
+        )
     return out
 
 
@@ -2592,14 +2665,16 @@ def _peer_by_role(peers, role):
 
 def _local_peer_file_texts(run, fname):
     """The texts of `fname` in the peer's process dir and every LATER dir of the same logs/ folder
-    (dir names are UTC-timestamp-prefixed, so a lexical >= is 'created at or after')."""
+    (dir names are UTC-timestamp-prefixed, so a stamp >= is 'created at or after'). SES8: compared
+    through _rundir.sort_key, because a raw string compare puts every older SES1 name AFTER a new
+    `YYYY-MM-DD...` one (`-` sorts before `0`)."""
     if not run or not os.path.isdir(run):
         return []
     logs = os.path.dirname(os.path.abspath(run).rstrip("\\/"))
     base = os.path.basename(os.path.abspath(run).rstrip("\\/"))
     out = []
-    for d in sorted(os.listdir(logs)):
-        if d < base:
+    for d in sorted(os.listdir(logs), key=_rundir.sort_key):
+        if _rundir.sort_key(d) < _rundir.sort_key(base):
             continue
         fp = os.path.join(logs, d, fname)
         if os.path.isfile(fp):
@@ -2614,8 +2689,11 @@ def _local_peer_file_texts(run, fname):
 def pump_shim_triggers(proc, triggers, peers, t0):
     if not proc or not triggers:
         return
-    for trg in triggers:
+    fired_now = False
+    for i, trg in enumerate(triggers):
         if trg["fired"]:
+            continue
+        if trg.get("after_prev") and (fired_now or i == 0 or not triggers[i - 1]["fired"]):
             continue
         ok = True
         for role, fname, rx in trg["when"]:
@@ -2637,6 +2715,7 @@ def pump_shim_triggers(proc, triggers, peers, t0):
                 break
         if ok:
             trg["fired"] = True
+            fired_now = True
             if trg["cmd"].startswith("signal "):
                 # A script signal instead of a shim command: drop rig_<name>.flag for every LOCAL
                 # peer, the same file the signal ferry drops, so a script can `awaitsignal <name>`
@@ -2692,9 +2771,8 @@ def shim_stop(proc):
 
 
 def _scratch():
-    d = os.path.join(REPO, "tmp", "ui_test")
-    os.makedirs(d, exist_ok=True)
-    return d
+    # tooling:TL-RIG-PARALLEL: a parallel slot's own dir ($MH_RIG_SCRATCH), else tmp/ui_test
+    return rig_phases.scratch_dir()
 
 
 # ---- capture collection + diff --------------------------------------------------------------------
@@ -2716,6 +2794,67 @@ def load_ignore(base_dir):
         return {}
 
 
+def structural_check(actual_png, ref_png, spec, pixdelta):
+    """mp:X3a. A frame that must be a REAL in-game strategic frame, judged by structure rather than by
+    a committed baseline (the imported world's exact pixels are not what is being claimed -- only that
+    the frame path drew a game from it). Returns (passed, note). Three clauses, ALL required:
+
+      view      the map view rect is not black: >= `min_nonblack` of its pixels have a channel > 24
+                (a crash to desktop, a blank surface or an uncleared buffer is black or one colour)
+      texture   the view holds >= `min_colors` distinct 3-bit-quantised colours (a menu backdrop or a
+                flat fill does not; terrain, fog and sprites do)
+      hud       the static sidebar art in `hud_rect` matches the SAME peer's committed in-game
+                baseline `ref` within `hud_tol` -- the piece of the frame that says "this is the
+                strategic HUD, not a menu or a loading screen"
+    """
+    import numpy as np
+
+    a = Image.open(actual_png).convert("RGB")
+    aa = np.asarray(a, dtype=np.int16)
+    vx, vy, vw, vh = spec.get("view_rect", [0, 0, 864, 740])
+    v = aa[vy : vy + vh, vx : vx + vw]
+    nonblack = float((v.max(axis=2) > 24).mean())
+    q = (v // 32).reshape(-1, 3)
+    colors = len(np.unique(q[:, 0] * 64 + q[:, 1] * 8 + q[:, 2]))
+    problems = []
+    if nonblack < spec.get("min_nonblack", 0.25):
+        problems.append(
+            "view is %.1f%% non-black (need >= %.0f%%)"
+            % (nonblack * 100, spec.get("min_nonblack", 0.25) * 100)
+        )
+    if colors < spec.get("min_colors", 60):
+        problems.append(
+            "view has %d distinct quantised colours (need >= %d)"
+            % (colors, spec.get("min_colors", 60))
+        )
+    hud = "n/a"
+    if os.path.isfile(ref_png):
+        b = Image.open(ref_png).convert("RGB")
+        if a.size != b.size:
+            problems.append("size %s != reference %s" % (a.size, b.size))
+        else:
+            hx, hy, hw, hh = spec.get("hud_rect", [864, 250, 160, 480])
+            d = np.abs(
+                aa[hy : hy + hh, hx : hx + hw]
+                - np.asarray(b, dtype=np.int16)[hy : hy + hh, hx : hx + hw]
+            )
+            frac = float((d.max(axis=2) > pixdelta).mean())
+            hud = "%.2f%%" % (frac * 100)
+            if frac > spec.get("hud_tol", 0.10):
+                problems.append(
+                    "HUD rect differs %.1f%% from the in-game reference (max %.0f%%)"
+                    % (frac * 100, spec.get("hud_tol", 0.10) * 100)
+                )
+    else:
+        problems.append("reference %s missing" % os.path.basename(ref_png))
+    note = "structural: view %.1f%% non-black, %d colours, HUD diff %s" % (
+        nonblack * 100,
+        colors,
+        hud,
+    )
+    return (not problems), note + ("; " + "; ".join(problems) if problems else "")
+
+
 def collect_and_check(label, png_dir, args):
     """png_dir holds the pulled capture_<name>.png files. Diff each vs baselines/<label>/. Returns ok."""
     base_dir = os.path.join(BASELINES, label)
@@ -2725,6 +2864,8 @@ def collect_and_check(label, png_dir, args):
         return False
     if args.update_baselines:
         os.makedirs(base_dir, exist_ok=True)
+        skip = set((load_ignore(base_dir).get("_structural") or {}).keys())  # never baselined
+        caps = [c for c in caps if os.path.basename(c) not in skip]
         for c in caps:
             shutil.copy(c, os.path.join(base_dir, os.path.basename(c)))
         print(
@@ -2733,8 +2874,18 @@ def collect_and_check(label, png_dir, args):
         return True
     ignore = load_ignore(base_dir)
     ok = True
+    structural = ignore.get("_structural") or {}
     for c in caps:
         name = os.path.basename(c)
+        if name in structural:
+            # mp:X3a: judged by structure against the peer's own in-game baseline, not diffed.
+            spec = structural[name]
+            passed, note = structural_check(
+                c, os.path.join(base_dir, spec.get("ref", "")), spec, args.pixdelta
+            )
+            print("  [%s] %-28s %s  (%s)" % (label, name, "PASS" if passed else "FAIL", note))
+            ok = ok and passed
+            continue
         rects = list(ignore.get("*", [])) + list(ignore.get(name, []))
         # `_only` (see diff_capture): {"capture_x.png": {"rect": [x, y, w, h], "mode": "ink"}}
         only = (ignore.get("_only") or {}).get(name)
@@ -2968,6 +3119,13 @@ def exit_witness(run):
         txt = open(log, encoding="utf-8", errors="replace").read()
     except OSError as e:
         return ["  [exit] could not read %s: %s" % (log, e)]
+    # SES8: a process that dies IN a match writes its witness into that match's session directory
+    # (single-player matches have one now too), so read the process's sessions after its own log.
+    for sd in _rundir.sessions_of(run):
+        try:
+            txt += open(os.path.join(sd, "mh_net.log"), encoding="utf-8", errors="replace").read()
+        except OSError:
+            pass
     hits = [ln.strip() for ln in txt.splitlines() if "; EXIT " in ln]
     if hits:
         return ["  [exit] SELF-DRIVEN -- %s" % h for h in hits[-2:]]
@@ -3130,11 +3288,12 @@ def peer_script_abort(args, ip, run):
     return None
 
 
-# SES1: a SESSION directory, exactly as mh_session_dir.h spells it --
-# "<UTC YYYYMMDDTHHMMSSZ>_<8 hex>_<slot>_<role>". A process ("menu") directory has `menu` where the
-# hex is, so it cannot match; and neither can a pre-SES1 `<YYYYMMDD>_<HHMMSS>_<role>` folder, which
-# is the one that actually bit (see peer_session_dirs).
-SESSION_DIR_RE = re.compile(r"^\d{8}T\d{6}Z_[0-9a-f]{8}_\d+_[A-Za-z0-9]+$")
+# A SESSION directory, exactly as mh_session_dir.h spells it -- SES8 "<YYYY-MM-DDTHH-MM-SSZ>_<8 hex>_
+# <map>_<mode>" or SES1 "<YYYYMMDDTHHMMSSZ>_<8 hex>_<slot>_<role>" (tools/_rundir.py owns the
+# literal). A process ("menu") directory has `menu` where the hex is, so it cannot match; and
+# neither can a pre-SES1 `<YYYYMMDD>_<HHMMSS>_<role>` folder, which is the one that actually bit
+# (see peer_session_dirs).
+SESSION_DIR_RE = _rundir.SESSION_DIR_RE
 
 
 def peer_session_dirs(args, ip, run):
@@ -3156,7 +3315,12 @@ def peer_session_dirs(args, ip, run):
     name from EARLIER the same day sorts AFTER a new-format one. The determinism gate then appended
     an unrelated 800-step run's harness log onto this run's, and came back NO COMPARABLE STEPS with
     two boot banners in one file. Matching the shape SES1 actually emits is what makes the ordering
-    comparison meaningful, because both sides of it are then the same format."""
+    comparison meaningful, because both sides of it are then the same format. SES8 made the
+    formats differ again (`2026-09-29T...` vs `20260917T...`), so the comparison is on
+    _rundir.sort_key -- the stamp as digits -- which orders all three generations by time.
+
+    SES8 also gave SINGLE-PLAYER matches a session directory, so a solo scenario's match-time
+    stream reaches this merge the same way a lobby's always did."""
     base = os.path.basename(run.rstrip("/\\"))
     if ip is None:
         names = [
@@ -3167,7 +3331,11 @@ def peer_session_dirs(args, ip, run):
     else:
         r = remote(args, ip, "dir /b /ad %s\\logs 2>nul" % args.vm_dir)
         names = [ln.strip() for ln in (r.stdout or "").splitlines() if ln.strip()]
-    return sorted(n for n in names if SESSION_DIR_RE.match(n) and n > base)
+    k = _rundir.sort_key(base)
+    return sorted(
+        (n for n in names if SESSION_DIR_RE.match(n) and _rundir.sort_key(n) > k),
+        key=_rundir.sort_key,
+    )
 
 
 def pull_peer_logs(args, ip, run, dest):
@@ -3389,6 +3557,7 @@ def run_determinism(args):
         shim_stop(shim)  # mp:D30 O5: an early abort left the shim holding its port for the next run
         return 1
     peers.append(("host", host_ip, hrun))
+    rig_phases.mark("host_launched")
     ready_deadline = time.time() + min(max(args.timeout, 90), 90)
     while time.time() < ready_deadline and not peer_ready(args, host_ip, args.port):
         time.sleep(2)
@@ -3406,6 +3575,7 @@ def run_determinism(args):
     shim_arm(
         shim
     )  # mp:TL-SHIMUDP -- the host is really up now; a manual-arm shim's clock starts here
+    rig_phases.mark("host_listening")
     print(
         "[host %s] LISTENING -- launching clients (connect to %s)"
         % (host_ip or "local", connect_ip)
@@ -3416,8 +3586,12 @@ def run_determinism(args):
         print(
             "[client %s] launching %s ..." % (cip or os.path.basename(cdir), os.path.basename(csrc))
         )
+        global CUR_CLIENT_INDEX
+        CUR_CLIENT_INDEX = ci + 1  # mp:U64: --harness-extra-peer / --net-extra-peer pick by this
         crun = peer_launch(args, cip, csrc, args.timeout_frames, harness_steps=steps, pdir=cdir)
+        CUR_CLIENT_INDEX = 0
         peers.append(("client%d" % (ci + 1), cip, crun))
+    rig_phases.mark("clients_launched")
 
     # Wait for the HOST to log >= `steps` in-game steps, then stop everyone -- the peers run in lockstep so
     # a host at N steps means every peer logged the same N. NOTE: the DLL defaults [harness] stop_step in the
@@ -3446,12 +3620,18 @@ def run_determinism(args):
     #   n  > 0  -- stepping: any pause longer than --stall-timeout is a stall. Safe against a legitimate
     #              barrier park, which is bounded by rx_timeout_ms (10 s default) before the link drops.
     last_n, last_change, stalled = None, time.time(), False
+    det_triggers = parse_shim_triggers(args.shim_trigger) if shim else []
     while time.time() < deadline:
         time.sleep(8)
         if len(sig_peers) > 1:
             pump_signals(args, sig_peers, delivered)
+        pump_shim_triggers(
+            shim, det_triggers, sig_peers, start_wait
+        )  # mp:U64: state-gated shim actions
         n, done = peer_harness_steps(args, host_ip, hrun)
         print("    host=%s%s" % (n, " DONE" if done else ""))
+        if n > 0:
+            rig_phases.mark("match_begin")
         if done or n >= steps:
             break
         if n != last_n:
@@ -3500,6 +3680,7 @@ def run_determinism(args):
         # on the abort alone -- and the partial logs are worth having.
         print("[det] (stalled run -- the compared-step floor decides the verdict)")
 
+    rig_phases.mark("match_end")
     det_dir = os.path.join(_scratch(), "determinism")
     if os.path.isdir(det_dir):
         shutil.rmtree(det_dir, ignore_errors=True)
@@ -3524,6 +3705,7 @@ def run_determinism(args):
     for key, ip, run in peers:
         peer_kill(args, ip, run)
     shim_stop(shim)
+    rig_phases.mark("pull_end")
     if len(dirs) < 2:
         print("[det] need >=2 peers with logs; got %d -- FAIL" % len(dirs))
         return 1
@@ -3858,6 +4040,15 @@ def main():
     )
     ap.add_argument("--shim-jitter", type=float, default=0.0, help="shim jitter in ms")
     ap.add_argument(
+        "--shim-delay-ip",
+        action="append",
+        default=[],
+        metavar="IP=MS",
+        help="mp:P16 (UDP shim only): ONE-WAY delay override for the peer dialling from IP, both "
+        "directions; repeatable. Peers not listed use --shim-delay. Builds the asymmetric 3-peer "
+        "star the first internet match had (232 / 83 ms RTT to the host).",
+    )
+    ap.add_argument(
         "--shim-listen-port",
         type=int,
         help="port the shim ACCEPTS on (default: --port). Set it when the shim and the HOST share a "
@@ -4040,6 +4231,24 @@ def main():
         "the window (a debugger attach by click, a screen recorder).",
     )
     ap.add_argument(
+        "--backend",
+        choices=make_lane.BACKENDS,
+        default=None,
+        help="[video] backend for every peer (PT-GFX5). Default: the owned DirectDraw -- null "
+        "headless, own (GDI) --visible/--determinism; no ddraw.dll is loaded. `system` = the opt-in "
+        "dgVoodoo/DirectDraw fallback (a local lane needs `make_lane.py --backend system` for the "
+        "wrapper; test_ui.py --backend system provisions it).",
+    )
+    ap.add_argument(
+        "--input-backend",
+        choices=make_lane.INPUT_BACKENDS,
+        default=None,
+        help="[input] backend for every peer (PT-INPUT1). Default own: mh.dll's own DirectInput 5 on "
+        "Raw Input; no dinput.dll is loaded. `system` = the opt-in fallback that loads dinput.dll (a "
+        "local lane needs `make_lane.py --input-backend system` for dinputto8; test_ui.py "
+        "--input-backend system provisions it).",
+    )
+    ap.add_argument(
         "--force-headless",
         action="store_true",
         help="permit headless for a --determinism / --ship-pacing run, which is otherwise refused: no "
@@ -4052,6 +4261,28 @@ def main():
         help="extra [harness] lines, ';'-separated k=v, merged into the HOST peer's [harness] block "
         "ONLY. Asymmetric by design -- it is how one peer is perturbed so the gate has something to "
         "find (e.g. 'rng_perturb_slot=2;rng_perturb_step=13000').",
+    )
+    ap.add_argument(
+        "--harness-extra-client",
+        default="",
+        help="extra [harness] lines, ';'-separated k=v, merged into every NON-host peer's [harness] block "
+        "ONLY (the client-side twin of --harness-extra-host; mp:X3c's forced desync pokes the client).",
+    )
+    ap.add_argument(
+        "--harness-extra-peer",
+        action="append",
+        default=[],
+        metavar="N:K=V;K=V",
+        help="mp:U64: extra [harness] lines for ONE client only (1-based client index), e.g. "
+        "'3:exit_process_at_step=1500'. Repeatable. Determinism path only.",
+    )
+    ap.add_argument(
+        "--net-extra-peer",
+        action="append",
+        default=[],
+        metavar="N:K=V;K=V",
+        help="mp:U64: extra [net] lines for ONE client only (1-based client index), e.g. "
+        "'2:mesh_test_delay_ms=40'. Repeatable. Determinism path only.",
     )
     ap.add_argument(
         "--harness-extra",
@@ -4134,7 +4365,9 @@ def main():
         AI_PROBE_STEP, \
         HEADLESS, \
         DESKTOP
-    global HARNESS_EXTRA_HOST, LAUNCH_ARGS, DEPLOY_SAVE
+    global HARNESS_EXTRA_HOST, LAUNCH_ARGS, DEPLOY_SAVE, BACKEND, INPUT_BACKEND
+    BACKEND = args.backend or ""
+    INPUT_BACKEND = args.input_backend or ""
     LAUNCH_ARGS = args.launch_args
     DEPLOY_SAVE = args.deploy_save
     DEFANG_OVERLAY = args.defang
@@ -4161,8 +4394,23 @@ def main():
             print("[rig] headless: per-step frame watchdog raised to %d" % args.timeout_frames)
     AI_PROBE_STEP = args.ai_probe
     HARNESS_EXTRA_HOST = args.harness_extra_host
-    global HARNESS_EXTRA
+    global HARNESS_EXTRA, HARNESS_EXTRA_CLIENT
     HARNESS_EXTRA = args.harness_extra
+    HARNESS_EXTRA_CLIENT = args.harness_extra_client
+    global HARNESS_EXTRA_PEERS, NET_EXTRA_PEERS
+    for _spec, _dst in [(a, HARNESS_EXTRA_PEERS) for a in args.harness_extra_peer] + [
+        (a, NET_EXTRA_PEERS) for a in args.net_extra_peer
+    ]:
+        _n, _sep, _kv = _spec.partition(":")
+        if not (_sep and _n.isdigit() and int(_n) >= 1):
+            sys.exit(
+                "--harness-extra-peer / --net-extra-peer want N:K=V;K=V (N>=1), got %r" % _spec
+            )
+        _dst[int(_n)] = (_dst.get(int(_n), "") + ";" + _kv) if int(_n) in _dst else _kv
+    if HARNESS_EXTRA_PEERS or NET_EXTRA_PEERS:
+        print("[cfg] PER-CLIENT extras: harness %s net %s" % (HARNESS_EXTRA_PEERS, NET_EXTRA_PEERS))
+    if HARNESS_EXTRA_CLIENT:
+        print("[cfg] CLIENT-ONLY [harness] extras: %s" % HARNESS_EXTRA_CLIENT)
     if HARNESS_EXTRA_HOST:
         print("[cfg] HOST-ONLY [harness] extras: %s" % HARNESS_EXTRA_HOST)
     ORDER_MODE = args.record

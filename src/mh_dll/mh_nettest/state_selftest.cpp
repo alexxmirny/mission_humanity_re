@@ -68,6 +68,7 @@
 #include "lockstep/turn_engine.h"    // SB-BIND T4: the lockstep binders under test in arm K
 #include "state/host_bind.h"         // SB-BIND T1: the state ABI under test in run_bindtest()
 #include "state/roster_caps.h"       // SB-BIND T2: the derived per-player caps
+#include "seams/boot_residue.h"      // mp:D45: the boot-snapshot restore arithmetic under test
 // mp:D29: the harness's configuration (1) path -- its fallback binder, its gates and its two report
 // lines are header-only precisely so these arms can drive the production code with planted inputs.
 #include "../mh_harness/config1.h"
@@ -96,6 +97,75 @@ constexpr region_id SIB_RID = RID_NET_PEER_HORIZON_PENDING;
 // A byte pattern with no runs and no symmetry, so a flipped byte cannot coincide with what was
 // there and a hash comparison cannot pass by luck.
 uint8_t pattern(uint32_t i) { return (uint8_t)((i * 131u + (i >> 5) * 17u + 7u) & 0xffu); }
+
+// ---- mp:D45: the boot-snapshot restore, driven with the REAL struct layouts -----------------------------
+//
+// A host that loaded a single-player savegame carries landing entries at planets 1..13, a name tail past the
+// NUL ("Fef\0er", left over from "player") and lowercase campaign strings in Planets[3]; its free production
+// slots carry stale bytes. The "boot" image below is a fresh process at the first idle menu frame: zero
+// players and slots, cfg-loaded planets (NOT zero -- restoring by zeroing would be the bug). Arms:
+//   fresh     a fresh process enters a match: the pre-restore diff is 0 and nothing moves (done_when (d))
+//   planted   the savegame residue is planted: the diff is > 0 and the restore removes every byte of it, AND
+//             the cfg planet data survives (the region equals boot, not zero)
+//   knob-off  [net] d45_restore_boot=0: measured but left in place (the negative arm's shape)
+//   lobby     a byte outside the restored regions (the lobby's slot table) is untouched -- the restore is
+//             per-region and cannot reach a name the lobby wrote
+void run_d45_boot_residue() {
+    using mh::boot_residue::count_diff;
+    using mh::boot_residue::restore_region;
+    constexpr uint32_t PROF = sizeof(mh::game::mh_llm_strat_player_profile);
+    constexpr uint32_t PLAN = sizeof(mh::game::mh_cfg_final_struct_Planet);
+    constexpr uint32_t SLOT = sizeof(mh::game::mh_llm_prod_shuttle_slot);
+    static uint8_t     b_pl[8 * PROF], l_pl[8 * PROF];
+    static uint8_t     b_pn[32 * PLAN], l_pn[32 * PLAN];
+    static uint8_t     b_sl[80 * SLOT], l_sl[80 * SLOT];
+    static uint8_t     lobby[256];
+    memset(b_pl, 0, sizeof(b_pl));
+    memset(b_sl, 0, sizeof(b_sl));
+    for (uint32_t i = 0; i < 31 * PLAN; ++i) b_pn[i] = pattern(i) | 1; // cfg-loaded Planets[0..30], nonzero
+    memset(b_pn + 31 * PLAN, 0, PLAN);                                 // Planets[31] is the MP slot: zero at boot
+    memcpy(l_pl, b_pl, sizeof(l_pl));
+    memcpy(l_pn, b_pn, sizeof(l_pn));
+    memcpy(l_sl, b_sl, sizeof(l_sl));
+
+    // fresh
+    uint32_t n = restore_region(l_pl, b_pl, sizeof(b_pl), true) + restore_region(l_pn, b_pn, sizeof(b_pn), true) +
+                 restore_region(l_sl, b_sl, sizeof(b_sl), true);
+    ck(n == 0, "D45 fresh: a fresh process reads 0 differing bytes before the restore");
+    ck(memcmp(l_pn, b_pn, sizeof(b_pn)) == 0, "D45 fresh: cfg-loaded planets untouched");
+
+    // planted: the 2026-10-01 host residue
+    auto *p0                   = reinterpret_cast<mh::game::mh_llm_strat_player_profile *>(l_pl);
+    p0->landing_x[5]           = 0x1234;
+    p0->landing_y[5]           = 0x99;
+    p0->landing_spot_index[11] = 3;
+    memcpy(p0->name, "Fef\0er", 6);
+    auto *pl3 = reinterpret_cast<mh::game::mh_cfg_final_struct_Planet *>(l_pn + 3 * PLAN);
+    memcpy(pl3->path_unc, "103_meta.mp", 12);
+    l_sl[SLOT * 2 + 0x40]  = 0xAB; // a free slot's stale cargo byte
+    const uint32_t planted = count_diff(l_pl, b_pl, sizeof(b_pl)) + count_diff(l_pn, b_pn, sizeof(b_pn)) +
+                             count_diff(l_sl, b_sl, sizeof(b_sl));
+    ck(planted > 0, "D45 planted: the savegame-shaped residue is visible to the measurement");
+
+    // knob-off arm FIRST (measure only): the residue stays
+    const uint32_t off = restore_region(l_pl, b_pl, sizeof(b_pl), false) + restore_region(l_pn, b_pn, sizeof(b_pn), false) +
+                         restore_region(l_sl, b_sl, sizeof(b_sl), false);
+    ck(off == planted && p0->landing_x[5] == 0x1234 && l_sl[SLOT * 2 + 0x40] == 0xAB,
+       "D45 knob-off: measured, residue left in place (negative arm)");
+
+    lobby[0]          = 'H'; // the lobby's own slot name, in a region the restore is never pointed at
+    const uint32_t on = restore_region(l_pl, b_pl, sizeof(b_pl), true) + restore_region(l_pn, b_pn, sizeof(b_pn), true) +
+                        restore_region(l_sl, b_sl, sizeof(b_sl), true);
+    ck(on == planted, "D45 restore: reports the same diff the measurement saw");
+    ck(memcmp(l_pl, b_pl, sizeof(b_pl)) == 0 && memcmp(l_sl, b_sl, sizeof(b_sl)) == 0 &&
+           memcmp(l_pn, b_pn, sizeof(b_pn)) == 0,
+       "D45 restore: every residue byte is gone and the regions equal the boot image");
+    ck(p0->landing_x[5] == 0 && p0->name[3] == 0 && p0->name[4] == 0 &&
+           pl3->path_unc[0] == (char)(pattern(3 * PLAN + (uint32_t)offsetof(mh::game::mh_cfg_final_struct_Planet, path_unc)) | 1),
+       "D45 restore: name tail cleared, planet string back to its CFG value (not zero)");
+    ck(lobby[0] == 'H', "D45 lobby: a byte outside the restored regions survives");
+    ck(count_diff(l_pl, b_pl, sizeof(b_pl)) == 0, "D45 idempotent: a second restore finds nothing");
+}
 
 } // namespace
 
@@ -556,6 +626,8 @@ int run_statetest() {
     unrebase(FIX_RID);
     ck(!is_rebased(FIX_RID) && hash_base(FIX_HIDX) == stock_base && live_base(FIX_RID) == stock_base,
        "the fixture leaves the registry unrebased, so no later test inherits a moved region");
+
+    run_d45_boot_residue();
 
     printf("%d checks, %d failures\n", g_checks, g_fails);
     return g_fails ? 1 : 0;

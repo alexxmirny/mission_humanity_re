@@ -60,5 +60,12 @@ awaitsignal held
 # (the strategic mode global) through the same interpreter, the second writes a line into this
 # process's own log at a wall-clock moment tens of seconds past the import.
 gamemode 2
+# mp:X3a. The RENDERED proof: this frame is drawn >= 30 s after the import (the host's `signal held`
+# is 110000 ms of game clock in, well past the ~40-60 s the transfer + import take), by a peer whose
+# sim is frozen, so every pixel came through the frame path over the IMPORTED world. It is judged
+# structurally (a strategic view, not black / flat / a menu; the sidebar HUD art matches this peer's
+# own in-game baseline) rather than against a committed image -- see baselines/mp_client_snapshot/
+# _ignore.json `_structural`.
+capture s2_client_held
 log CLIENT survived the import: script alive, sim held, strategic mode still 2
 end

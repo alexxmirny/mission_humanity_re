@@ -211,8 +211,15 @@ int capture(void *buf, size_t cap, size_t *out_len, HDR *hdr, capture_stats *sta
 // Validation is COMPLETE before the first byte is written. A half-applied import is worse than a
 // rejected one: the world would be part carried values and part poison and nothing downstream could
 // tell. Same rule host_bind.cpp's bind_all follows, for the same reason.
+// mp:X3c: the ordering latch is a POLICY ANSWER, and a resync is the one caller entitled to a
+// different answer. `allow_session_begun` skips ONLY the P::refuse_import() latch; every other
+// refusal (magic, schema, truncation, unbound) stays. Default false == every existing caller unchanged.
+struct import_policy {
+    bool allow_session_begun = false;
+};
+
 template <class P, class HDR>
-int import(const void *blob, size_t n) {
+int import(const void *blob, size_t n, import_policy pol = {}) {
     if (blob == nullptr || n < sizeof(HDR)) return ERR_ARG;
     const uint8_t *d = static_cast<const uint8_t *>(blob);
     common_header  h;
@@ -222,7 +229,7 @@ int import(const void *blob, size_t n) {
         return ERR_MAGIC;
     if (h.schema != schema_fingerprint<P>()) return ERR_SCHEMA;
     if (h.block_count != static_cast<uint32_t>(P::count())) return ERR_SCHEMA;
-    if (P::refuse_import()) return ERR_SESSION_BEGUN;
+    if (!pol.allow_session_begun && P::refuse_import()) return ERR_SESSION_BEGUN;
     if (static_cast<size_t>(h.payload_len) + sizeof(HDR) > n) return ERR_TRUNCATED;
 
     {

@@ -1,0 +1,24 @@
+# mp:U64 (HM-M6) -- client 3 of the 4-peer shape (see mp_host_u64.txt). Joins the 4-peer lobby and plays; every
+# incident (a crash, a partition) is injected by the runner, not by this script.
+settled value:110
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+present Internet server
+settled Internet server
+clickl Internet server
+present Server address
+settled Connect
+clickl Connect
+sessions 1
+settled Join game
+clickl Join game
+present Network players
+occ 4
+settled Cancel
+signal seated3
+absent Network players
+gamemode 2
+log u64 client 3 in game
+end

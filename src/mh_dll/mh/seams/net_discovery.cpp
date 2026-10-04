@@ -38,11 +38,13 @@
 
 using mh::hook::call_watcall1;
 
-extern "C" int         MH_MP_IsManual(void);        // launch.cpp -- 1 = pure manual session (gate manual-only work)
-extern "C" void        MH_MP_ResetHostMirror(void); // launch.cpp -- U13/U40 host: reset the peer-mirror one-shot edge
-extern "C" void        MH_MP_ArmManualLobby(void);  // launch.cpp -- run the proven lobby driver for the manual path
-extern "C" void        MH_MP_RearmLobbyEntry(void); // launch.cpp -- mp:RM1: the entry prep is per LOBBY; re-arm at match end
-extern "C" const char *MH_MP_PeerName(int i);       // defined below; the SES1 roster builder runs ahead of it
+extern "C" int         MH_MP_IsManual(void);                                                                   // launch.cpp -- 1 = pure manual session (gate manual-only work)
+extern "C" void        MH_MP_ResetHostMirror(void);                                                            // launch.cpp -- U13/U40 host: reset the peer-mirror one-shot edge
+extern "C" void        MH_MP_ArmManualLobby(void);                                                             // launch.cpp -- run the proven lobby driver for the manual path
+extern "C" void        MH_MP_RearmLobbyEntry(void);                                                            // launch.cpp -- mp:RM1: the entry prep is per LOBBY; re-arm at match end
+extern "C" const char *MH_MP_PeerName(int i);                                                                  // defined below; the SES1 roster builder runs ahead of it
+extern "C" int         MH_Launch_ParseCmdline(const char *cmdline, char *arg_out, int arg_cap, int *skip_out); // launch.cpp
+void                   mp_session_solo_note_close(const char *reason);                                         // SES8, defined beside mp_session_solo_tick
 
 namespace {
 
@@ -323,13 +325,14 @@ void build_synth_session() {
 // FLAG_SESSION_INFO control frame, so clients can list the REAL game (name/tag/map/players) instead of the
 // fabricated "MH Host". Manual-host only + throttled; the control frame is routed to a handler, never to
 // the game queue, so it can't perturb the lockstep. Tag uses a NON-SIM RNG (never the lockstep seed).
-constexpr uintptr_t ADDR_GAME_NAME      = mh::addr::mp_game_name;       // host-typed create name (unnamed in Ghidra)
-constexpr uintptr_t ADDR_MAP_NAME       = ADDR_CUR_MAP + MD_MAPNAME;    // current_map_data.map_name (0x006550e3)
-constexpr uintptr_t ADDR_MAP_PCOUNT     = ADDR_CUR_MAP + 0x08;          // current_map_data player-slot count (build_players bound)
-constexpr uintptr_t ADDR_MP_LOBBY_SLOTS = mh::addr::_G_LLM_LOBBY_SLOTS; // host + AI + humans
-constexpr int       MP_SLOT_STRIDE      = 0x39;
-constexpr int       MP_SLOT_STATUS      = 0x0b; // slot_status byte (0 = empty)
-constexpr uint16_t  MH_MP_HOST_VERSION  = 2;    // bump on a wire/behaviour change (2 = SES0's match_id)
+constexpr uintptr_t ADDR_GAME_NAME             = mh::addr::mp_game_name;       // host-typed create name (unnamed in Ghidra)
+constexpr uintptr_t ADDR_MAP_NAME              = ADDR_CUR_MAP + MD_MAPNAME;    // current_map_data.map_name (0x006550e3)
+constexpr uintptr_t ADDR_MAP_PCOUNT            = ADDR_CUR_MAP + 0x08;          // current_map_data player-slot count (build_players bound)
+constexpr uintptr_t ADDR_MP_LOBBY_SLOTS        = mh::addr::_G_LLM_LOBBY_SLOTS; // host + AI + humans
+constexpr int       MP_SLOT_STRIDE             = 0x39;
+constexpr int       MP_SLOT_STATUS             = 0x0b; // slot_status byte (0 = empty)
+constexpr uint16_t  MH_MP_HOST_VERSION         = 5;    // bump on a wire/behaviour change (2 = SES0's match_id, 3 = mp:U59's exactly-once frame prefix, 4 = mp:U61's host-migration mesh capability, 5 = mp:U63's crash-failover capability)
+constexpr uint16_t  MH_MP_HOST_VERSION_MIN_U59 = 5;    // the first host version this transport still accepts: U59's prefix + U61's mesh + U63's failover capability (a v3/v4 host's WELCOME carries capability 1/2, refused)
 
 // slot_status enum (llm_lobby_player_slot.slot_status, offset 0x0b): OPEN=0, HUMAN=1, AI=2, CLOSED=3.
 enum { SLOT_OPEN   = 0,
@@ -488,7 +491,7 @@ void session_json_write() {
 extern "C" void MH_Seam_SessionPacing(long *clock_ms, long *stall, long *icon_calls, long *icon_shown,
                                       int *step_ms, int *sim_step_ms); // net_lockstep.cpp
 
-void mp_session_open(const unsigned char *match_id, int slot) {
+void mp_session_open(const unsigned char *match_id, int slot, const char *mode, const char *map) {
     if (mh_net_proto::uuid7_is_nil(match_id)) return; // no id -> no session to name
     char hex[mh_net_proto::UUID7_HEX_CAP];
     mh_net_proto::uuid7_hex(match_id, hex, sizeof(hex));
@@ -499,7 +502,8 @@ void mp_session_open(const unsigned char *match_id, int slot) {
         // lands in ITS directory rather than in the new one.
         mp_session_close("rolled");
     }
-    if (!(MH_RunDir_SessionBegin(hex, slot) & MH_SESSION_OPENED)) {
+    if (map == nullptr) map = (const char *)ADDR_MAP_NAME; // the lobby's picked map (host) / the advert's (client)
+    if (!(MH_RunDir_SessionBegin(hex, slot, map, mode) & MH_SESSION_OPENED)) {
         seam_log("; [session] SESSION_BEGIN skipped -- the session directory could not be created; "
                  "output stays in the process folder (no logs are lost)\n");
         return;
@@ -509,6 +513,7 @@ void mp_session_open(const unsigned char *match_id, int slot) {
     mh_sd_copy(g_session_rec.match_id, MH_SESSION_MATCH_HEX_CAP, hex);
     g_session_rec.slot = slot;
     mh_sd_copy(g_session_rec.role, MH_SESSION_TEXT_CAP, MH_RunRole());
+    mh_sd_copy(g_session_rec.mode, MH_SESSION_TEXT_CAP, (mode != nullptr && mode[0]) ? mode : MH_RunRole());
     mh_sd_copy(g_session_rec.build, MH_SESSION_TEXT_CAP, MH_VERSION_FULL);
     {
         char mods[MH_SESSION_TEXT_CAP];
@@ -534,6 +539,107 @@ void mp_session_open(const unsigned char *match_id, int slot) {
     mh_session_begin_line(&g_session_rec, line, (int)sizeof(line));
     seam_log(line);
     session_json_write();
+}
+
+// ---- SES8: the SINGLE-PLAYER session ------------------------------------------------------------
+//
+// A lobby opens its session at create/JOIN (above). A single-player match has no lobby, so before
+// SES8 it had no session at all and its whole match went into the menu folder, named after the boot
+// role -- `_menu_solo`, for every campaign, tutorial and loaded skirmish a player ever ran.
+//
+// WHEN: the first present whose frame is in a match (mh_session_solo_mode's table: the strategic
+// or tactical frame, or the game clock advancing under an overlay) while no session is open. Polled from on_present rather than hooked at a session-begin function because the two
+// begin functions are PROMOTED bodies (sim_resid) and a loaded save reaches neither; a poll adds no
+// install (so no arm-order baseline moves) and sees every entry path the same way.
+//
+// WHY NOT THE BOOT-ROLE HOST/CLIENT: a force-entry verb run (`--mp-host` / `--mp-join`, mp_run.py)
+// is lockstep MP whose session the host advert opens; a solo session opened a frame earlier would
+// only be "rolled" away. Those runs are left exactly as they were.
+//
+// THE RE-OPEN GUARD. After a session closes IN a match -- the outcome dialog ("gameover"), a host
+// leaving under a client, a timeout -- the strategic frame keeps rendering, and SESSION_MODE has
+// been downgraded 3 -> 2, which the table above reads as a skirmish. Opening one there would give
+// the tail of an MP match a solo folder. So a close that happens with the match still on screen
+// (or any "gameover") blocks the tick until the player is back at the menu: the quit-to-menu seam
+// fires ("quit") AND a present shows a non-match frame. The second half is because the quit seam
+// runs at the ENTRY of llm_game_return_to_main_menu_cb, and a frame still drawn in strategic mode
+// after it (the fade to the menu) would otherwise read as a fresh match. A new lobby opening a
+// session of its own clears the guard too.
+namespace {
+
+enum SoloGuard { SOLO_ARMED      = 0,
+                 SOLO_UNTIL_QUIT = 1,
+                 SOLO_UNTIL_MENU = 2 };
+int g_solo_block = SOLO_ARMED;
+
+bool in_match_frame() {
+    const unsigned gm = *(const volatile uint8_t *)mh::addr::_G_LLM_GAME_MODE;
+    return gm == 2 || gm == 5 || gm == 6 || gm == 8; // strat / big-map pause / tactical / xui-wait
+}
+// (An in-game overlay is GAME_MODE 3 like the menu itself, which is why the guard's "back at the
+// menu" half waits for the quit seam rather than trusting a mode-3 frame on its own.)
+
+bool launched_tactical() {
+    static int cached = -1;
+    if (cached < 0) {
+        char arg[MAX_PATH];
+        cached = (MH_Launch_ParseCmdline(GetCommandLineA(), arg, (int)sizeof(arg), nullptr) == 8) ? 1 : 0;
+    }
+    return cached == 1;
+}
+
+} // namespace
+
+void mp_session_solo_note_close(const char *reason) {
+    if (reason == nullptr) return;
+    if (lstrcmpA(reason, "quit") == 0) g_solo_block = SOLO_UNTIL_MENU; // on the way to the main menu
+    else if (lstrcmpA(reason, "gameover") == 0 || (MH_RunDir_SessionActive() && in_match_frame()))
+        g_solo_block = SOLO_UNTIL_QUIT;
+}
+
+void mp_session_solo_tick() {
+    // Is the strategic sim RUNNING? The game clock only moves while sim steps execute, and a match's
+    // first frames are often under an overlay (GAME_MODE 3 -- the tutorial's welcome and step dialogs
+    // hold it there for the whole of tutorial_enter), so GAME_MODE alone would miss the start. Sampled
+    // every present, before any early return, so the delta is always one present wide.
+    static double last_clock = -1.0;
+    double        clock      = 0.0;
+    memcpy(&clock, (const void *)mh::addr::_G_LLM_STRAT_GAME_CLOCK, sizeof(clock));
+    const bool sim_running = last_clock >= 0.0 && clock > last_clock;
+    last_clock             = clock;
+    if (MH_RunDir_SessionActive()) {
+        g_solo_block = SOLO_ARMED; // a session of its own (a lobby) supersedes the guard
+        return;
+    }
+    if (g_solo_block == SOLO_UNTIL_MENU && !in_match_frame()) g_solo_block = SOLO_ARMED;
+    if (g_solo_block != SOLO_ARMED) return;
+    const char *role = MH_RunRole();
+    if (role[0] == 'h' || role[0] == 'c') return; // force-entry MP: the advert opens its session
+    const int   gm   = *(const volatile uint8_t *)mh::addr::_G_LLM_GAME_MODE;
+    const int   sm   = *(const volatile uint8_t *)mh::addr::_G_LLM_GAME_SESSION_MODE;
+    const int   step = *(const volatile int32_t *)mh::addr::_G_LLM_GAME_TUTORIAL_STEP;
+    const char *mode = mh_session_solo_mode(gm, sm, step, launched_tactical(), sim_running);
+    if (mode == nullptr) return;
+    // The map token. A tutorial / skirmish is a `.MP` on current_map_data (nullptr = that name).
+    // The campaign loads its planet BY INDEX and never touches current_map_data; a tactical mission
+    // is POZ<CurrentSystem>{O,L}.DAT (launch.cpp's mission-identity note), so name those by index.
+    char        map_buf[32];
+    const char *map = nullptr;
+    if (mode[0] == 'c') {
+        wsprintfA(map_buf, "planet%u", (unsigned)*(const volatile uint8_t *)mh::addr::G_PLANET_INDEX);
+        map = map_buf;
+    } else if (mode[1] == 'a') { // "tactical"
+        wsprintfA(map_buf, "POZ%d", *(const volatile int32_t *)mh::addr::CurrentSystem);
+        map = map_buf;
+    }
+    // A match needs an identity to be named after: the same UUIDv7 a lobby mints (SES0), from the
+    // same OS half, so a solo folder's id is as unique as a lobby's.
+    uint8_t id[16];
+    uint8_t rnd[mh_net_proto::UUID7_RAND_MAX];
+    mh_session_random(rnd, (int)sizeof(rnd));
+    mh_net_proto::uuid7_make(mh_session_unix_ms(), rnd, id);
+    const int slot = (g_a.local_player_index != nullptr) ? *g_a.local_player_index : 0;
+    mp_session_open(id, slot, mode, map);
 }
 
 // U40: the session-boundary half of the re-host fix. A session closing for a MATCH-end reason means
@@ -590,9 +696,8 @@ bool close_session_active() { return MH_RunDir_SessionActive() != 0; }
 bool close_net_started() { return MH_Net_IsStarted() != 0; }
 
 void close_resets() {
-    // F3c: the session's codepage was the host's; ours comes back with the session's end. Idempotent
-    // and a no-op on the host (which never adopts), so it sits on the one funnel every exit uses.
-    MH_ChatInput_RestoreCodepage();
+    // (F3c restored the adopted codepage here. MP-LANG retired the adoption: chat is UTF-8 and the
+    // codepage is a purely local setting, so there is nothing to give back at a session's end.)
     // The per-peer download bookkeeping and the host's content claim belong to the lobby that just
     // ended. The OPEN REDIRECT deliberately survives it -- see session_reset().
     mh::seams::maps::session_reset();
@@ -675,6 +780,7 @@ const mh::session_close::ops CLOSE_OPS = {
 } // namespace
 
 void mp_session_close(const char *reason) {
+    mp_session_solo_note_close(reason);
     // Idempotent: only the first exit seam on an open session does the work. A session the harness
     // already closed IN PLACE (MH_Session_HarnessStop below) gets its directory switch, the resets
     // and U40 here, but no second record.
@@ -716,7 +822,7 @@ void mp_build_host_session_info(mh_net_proto::SessionInfo &si) {
         // Open the session directory in the same breath, so every line from here on (including the
         // S2 advert line this function's caller is about to write) belongs to the match. The host is
         // always slot 0; its local player index is authoritative but not yet populated at create.
-        mp_session_open(g_mp_match_id, 0);
+        mp_session_open(g_mp_match_id, 0, "host");
     }
     si     = mh_net_proto::SessionInfo{};
     si.tag = g_mp_tag;
@@ -727,7 +833,13 @@ void mp_build_host_session_info(mh_net_proto::SessionInfo &si) {
     // so "no [input] codepage line in the ini" and "pinned to the machine default" are the same claim
     // on the wire -- which is what makes two default machines with DIFFERENT ACPs refuse each other
     // instead of silently disagreeing about what a chat byte means.
-    si.codepage = (uint16_t)MH_ChatInput_Codepage();
+    //
+    // mp:MP-LANG: the value is now the session's CHAT ENCODING -- CHAT_ENCODING_UTF8 (65001) -- not a
+    // machine's codepage (MH_ChatInput_WireEncoding). A pre-MP-LANG joiner echoes its 8-bit codepage
+    // and join_admit() refuses it by name ("old client cp N" on its screen). Names ride the advert
+    // too, so the host's own are normalized to [A-Za-z0-9] before they are described.
+    MH_ChatInput_NormalizeLocalNames();
+    si.codepage = (uint16_t)MH_ChatInput_WireEncoding();
     si.protocol = (uint16_t)*(const int *)ADDR_PROTO_CEIL;
     int mapmax  = *(const int *)ADDR_MAP_PCOUNT; // the map's own player capacity (2 for a 2-player map)
     int occ = 0, cap = 0;
@@ -1595,13 +1707,12 @@ void on_join_recv(int sender, const unsigned char *buf, int len) {
         return;
     }
     if (verdict == mh_net_proto::JoinAdmit::RefusedCodepage) {
-        // F3's negative case. Named in full on both sides of the comparison, because the fix is an ini
-        // edit on ONE of the two machines and a log that says only "mismatch" does not say which.
-        // Since F3c a joiner ADOPTS our codepage from the advert, so reaching here means that peer
-        // declared it cannot switch ([input] codepage_adopt=0, or the codepage is not installed there)
-        // -- and the refusal is now DELIVERED to it, not only logged here.
+        // F3's negative case, re-meant by MP-LANG: our value is 65001 (UTF-8 chat), so reaching here
+        // means the joiner is a pre-MP-LANG peer that put its 8-bit codepage in the JOIN (or emulates
+        // one: [input] chat_legacy_codepage=1). Both values are named, and the refusal is DELIVERED to
+        // it (F3c), not only logged here.
         wsprintfA(b, "; S4 JOIN from %d '%s' for '%s#%08X' -> REFUSED (%s; ours %u, theirs %u -- "
-                     "that peer declined to adopt ours; pin [input] codepage to the same value on both)\n",
+                     "65001 = UTF-8 chat (MP-LANG); the other value is a pre-MP-LANG 8-bit peer)\n",
                   sender, jr.player_name, jr.name, jr.tag, mh_net_proto::join_admit_reason(verdict),
                   (unsigned)mine.codepage, (unsigned)jr.codepage);
         seam_log(b);
@@ -1617,7 +1728,21 @@ void on_join_recv(int sender, const unsigned char *buf, int len) {
     }
     if (verdict == mh_net_proto::JoinAdmit::Admit) {
         InterlockedExchange(&g_host_join_seen, 1);
-        InterlockedExchange(&g_lobby_left[sender & 7], 0);             // U12: a (re)join clears any stale left-mark
+        InterlockedExchange(&g_lobby_left[sender & 7], 0); // U12: a (re)join clears any stale left-mark
+        // MP-LANG: a received name is [A-Za-z0-9] or it is normalized HERE, before anything stores it --
+        // the host's copy is the one every lobby snapshot (and so every peer's players[].name, a
+        // HASHED field) is built from. A current client cannot type anything else; this is the forged
+        // or pre-MP-LANG name, and the log says which it was.
+        {
+            const int was = lstrlenA(jr.player_name);
+            if (MH_ChatInput_NormalizeName(jr.player_name, (int)sizeof(jr.player_name))) {
+                char nb[160];
+                wsprintfA(nb, "; MP-LANG: JOIN from %d carried a non-conforming name (%d bytes) -> normalized "
+                              "to '%s' ([A-Za-z0-9])\n",
+                          sender, was, jr.player_name);
+                seam_log(nb);
+            }
+        }
         lstrcpynA(g_peer_player_name[sender & 7], jr.player_name, 32); // S6: remember the joiner's name FIRST...
         InterlockedExchange(&g_lobby_joined[sender & 7], 1);           // N2: ...THEN publish joined (release fence),
         //   so the main-thread mirror can never observe joined=1 with a not-yet-copied name (would freeze
@@ -1647,17 +1772,22 @@ void on_leave_recv(int sender) {
     seam_log(b);
 }
 
-// mp:F3c -- the JOIN's player name, re-encoded for the session. The name was typed under OUR codepage
-// before this peer knew the host's; the host stamps the JOIN's copy into its lobby slot and widens it
-// under the SESSION codepage, so a non-ASCII name would otherwise show up there as different letters.
-// Only the JOIN's copy is touched -- mh.exe's own name global is the player's saved setting and stays
-// in the player's own codepage (its own lobby row is drawn by this peer, under the adopted codepage,
-// which is the one cosmetic residue: a non-ASCII name in the joiner's OWN row). ASCII is a no-op.
+// The JOIN's player name. mp:MP-LANG: names are [A-Za-z0-9], so the LOCAL global is normalized in
+// place first (a name saved in setup.dat before the rule, or the first-run placeholder) and the JOIN
+// carries exactly those bytes -- the same bytes this peer's own lobby row shows, so the name means the
+// same letters on every peer with no codepage in the question. (F3c transcoded it into the host's
+// adopted codepage here; the adoption is retired.)
 namespace {
 void fill_my_player_name(mh_net_proto::JoinRequest &jr) {
+    MH_ChatInput_NormalizeLocalNames();
     lstrcpynA(jr.player_name, (LPCSTR)mh::addr::mp_player_name, sizeof(jr.player_name));
-    MH_ChatInput_Transcode(jr.player_name, (int)sizeof(jr.player_name), MH_ChatInput_OwnCodepage(),
-                           MH_ChatInput_Codepage());
+    // TEST ONLY ([input] test_join_name): a forged name, sent verbatim -- the host must normalize it.
+    if (const char *forged = MH_ChatInput_TestJoinName()) {
+        lstrcpynA(jr.player_name, forged, sizeof(jr.player_name));
+        char b[96];
+        wsprintfA(b, "; MP-LANG TEST: JOIN carries a FORGED %d-byte name (test_join_name)\n", lstrlenA(forged));
+        seam_log(b);
+    }
 }
 } // namespace
 
@@ -1776,27 +1906,24 @@ void on_join_connect() {
     // under the advertised name, all-zero for "nothing that matches". That is simultaneously the
     // map request (the host arms a transfer when it disagrees) and, after a download, the
     // completion report (see mp_join_resend below).
-    // mp:F3c: THE SESSION'S CODEPAGE IS THE HOST'S. The advert says which; adopt it for the length of
-    // this match before the JOIN is built, so the JOIN carries the value the host will accept and
-    // the three input hooks encode what we type the way the host will read it. Logged here, in
-    // mh_net.log, because this is the file a two-peer verdict is read from. A peer that will not or
-    // cannot switch sends its own value and is refused by name -- and, since F3c, TOLD (see
-    // MH_MP_ClientOnJoinRefused). A fresh JOIN also clears any refusal still pending from an earlier
-    // lobby, so the bounce below can only ever answer THIS join.
+    // mp:MP-LANG: THE CHAT ENCODING IS NOT NEGOTIATED. Chat is UTF-8 on every current peer and the
+    // codepage is a local setting (F3c's adoption is retired), so the JOIN simply states ours
+    // (MH_ChatInput_WireEncoding). A host whose advert names anything else is from before MP-LANG and
+    // will refuse us by name -- said here, in mh_net.log, because this is the file a two-peer verdict
+    // is read from. A fresh JOIN also clears any refusal still pending from an earlier lobby, so the
+    // bounce below can only ever answer THIS join.
     InterlockedExchange(&g_join_refused, 0);
     {
-        const unsigned host_cp = rec->codepage, own_cp = MH_ChatInput_OwnCodepage();
-        char           cb[160];
-        if (host_cp != 0 && host_cp != MH_ChatInput_Codepage()) {
-            if (MH_ChatInput_AdoptCodepage(host_cp))
-                wsprintfA(cb, "; F3c: adopted the host's input codepage %u for this session (ours is %u)\n",
-                          host_cp, own_cp);
-            else
-                wsprintfA(cb, "; F3c: host pins input codepage %u, ours is %u and this peer will not switch "
-                              "([input] codepage_adopt=0, or not installed) -- expect the host to refuse\n",
-                          host_cp, own_cp);
-            seam_log(cb);
-        }
+        const unsigned host_enc = rec->codepage, own_enc = MH_ChatInput_WireEncoding();
+        char           cb[176];
+        if (host_enc != 0 && host_enc != own_enc)
+            wsprintfA(cb, "; MP-LANG: host's chat encoding is %u, ours is %u (65001 = UTF-8) -- a mixed-version "
+                          "pair; expect a refusal\n",
+                      host_enc, own_enc);
+        else
+            wsprintfA(cb, "; MP-LANG: chat encoding %u agreed with the host (local codepage %u stays local)\n",
+                      own_enc, MH_ChatInput_Codepage());
+        seam_log(cb);
     }
     // mp:X2d -- TELL THE MAP MODULE WHICH LOBBY THIS JOIN NAMES, before asking what we hold of its
     // map. The module otherwise learns the host's claim only from the connected host's advert, and
@@ -1809,11 +1936,21 @@ void on_join_connect() {
     // advert: the same claim is a compare. A row older than a map change reports the old hash; the
     // advert then re-resolves and client_resolve_now re-JOINs (the backstop, map_transfer.cpp).
     mh::seams::maps::client_on_advert(*rec);
+    // mp:U59 (user decision Q5): a host older than the exactly-once frame layer is REFUSED by the
+    // transport (its WELCOME / first DATA frame lacks the capability). Said here, in mh_net.log, so the
+    // refusal that follows has a cause on the page, in the same spirit as the MP-LANG line above.
+    if (rec->host_version != 0 && rec->host_version < MH_MP_HOST_VERSION_MIN_U59) {
+        char vb[208];
+        wsprintfA(vb, "; U59/U61: host_version %u predates the exactly-once frame layer / host-migration mesh (needs >= %u) -- a "
+                      "mixed-version pair; the transport will refuse it\n",
+                  (unsigned)rec->host_version, (unsigned)MH_MP_HOST_VERSION_MIN_U59);
+        seam_log(vb);
+    }
     uint8_t                   mine[mh_net_proto::MAP_HASH_BYTES] = {0};
     const bool                have_map                           = mh::seams::maps::client_my_hash(mine);
     mh_net_proto::JoinRequest jr                                 = mh_net_proto::join_request_for(
-        *rec, (uint16_t)MH_ChatInput_Codepage(), have_map ? mine : nullptr);
-    fill_my_player_name(jr); // S6: my player name (re-encoded under the adopted codepage, F3c)
+        *rec, (uint16_t)MH_ChatInput_WireEncoding(), have_map ? mine : nullptr);
+    fill_my_player_name(jr); // S6: my player name ([A-Za-z0-9], MP-LANG)
     uint8_t buf[mh_net_proto::JOIN_REQUEST_MAX_ENCODED];
     int     n = (int)mh_net_proto::join_request_encode(jr, buf);
     // mp:GS1 (a): the click is a lobby boundary. Whatever the game queue holds NOW predates this JOIN
@@ -1840,7 +1977,7 @@ void on_join_connect() {
     // The slot is the join-time one (mp_client_slot); the host may reassign it in its WELCOME, and
     // that assignment is in mh_net.log where it has always been. The directory name keeps the
     // join-time label so the folder is nameable before the WELCOME arrives.
-    mp_session_open(jr.match_id, mp_client_slot());
+    mp_session_open(jr.match_id, mp_client_slot(), "client");
 }
 
 // ---- mp:X2 -- THE COMPLETION REPORT, which is a re-sent JOIN ------------------------------------
@@ -1865,7 +2002,7 @@ void mp_join_resend_map_report() {
     uint8_t                   mine[mh_net_proto::MAP_HASH_BYTES] = {0};
     const bool                have_map                           = mh::seams::maps::client_my_hash(mine);
     mh_net_proto::JoinRequest jr                                 = mh_net_proto::join_request_for(
-        *rec, (uint16_t)MH_ChatInput_Codepage(), have_map ? mine : nullptr);
+        *rec, (uint16_t)MH_ChatInput_WireEncoding(), have_map ? mine : nullptr);
     fill_my_player_name(jr);
     uint8_t   buf[mh_net_proto::JOIN_REQUEST_MAX_ENCODED];
     const int n = (int)mh_net_proto::join_request_encode(jr, buf);

@@ -16,7 +16,10 @@
 // timestamp range the sender had to remember. The folder is now per SESSION -- opened at lobby
 // create (host) / JOIN (client), closed at gameover / leave / host-left / timeout / quit -- and the
 // PROCESS folder (`<UTC>_menu_<role>`, today's folder renamed) holds everything before the first
-// session and after the last. See MH_RunDir vs MH_ProcessDir below for which streams go where, and
+// session and after the last. SES8 (2026-09-29) renamed both shapes -- see the two-line table at
+// MH_RunDir below and mh_session_dir.h's "the directory name" -- and gave single-player matches a
+// session directory of their own (before SES8 only a lobby opened one, so a campaign or tutorial
+// match was written into the menu folder). See MH_RunDir vs MH_ProcessDir below for which streams go where, and
 // mh_session_dir.h for the naming, the rollover rules and the SESSION_BEGIN/END record.
 //
 // IMPORTANT: only *.log OUTPUTS move. The config input (mh_net.ini -- ONE file since fork F2G,
@@ -34,8 +37,11 @@ extern "C" {
 // THE CURRENT output directory (created; trailing backslash). Until SES1 this was one folder per
 // PROCESS; it is now one folder per SESSION, and the process folder only while no match is open:
 //
-//     "<exedir>\logs\<UTC>_menu_<role>\"              -- before any session, and after one closes
-//     "<exedir>\logs\<UTC>_<mid8>_<slot>_<role>\"     -- while a match is open
+//     "<exedir>\logs\<UTC>_menu_<role>\"             -- before any session, and after one closes
+//     "<exedir>\logs\<UTC>_<mid8>_<map>_<mode>\"      -- while a match is open
+//
+// <UTC> is "YYYY-MM-DDTHH-MM-SSZ" (SES8; colons are illegal in a path). <mode> is the MATCH's:
+// host/client (lobby), campaign/tutorial/skirmish/tactical (single-player). <role> is the BOOT role.
 //
 // CALL IT AT OPEN TIME, NOT ONCE. A writer that composes its path at arm time and caches the string
 // will keep writing into the directory the process started in. The cheap fix is mh_run_path() below;
@@ -65,11 +71,13 @@ unsigned long MH_RunDirGeneration(void);
 // idempotent for the SAME match_id (a host re-advertises its lobby ~1 Hz) and rolls over for a
 // different one. If the directory cannot be created, Begin reports the session NOT opened and output
 // stays where it was -- the fallback that has always guaranteed logs are never silently lost.
-int         MH_RunDir_SessionBegin(const char *match_id_hex, int slot);
+// `map` (the raw map name; sanitised into the directory name) and `mode` (the directory's last
+// field; nullptr/"" = the boot role) are SES8's: the name is final at the open, never renamed.
+int         MH_RunDir_SessionBegin(const char *match_id_hex, int slot, const char *map, const char *mode);
 int         MH_RunDir_SessionEnd(void);
 int         MH_RunDir_SessionActive(void);
 const char *MH_RunDir_SessionMatchId(void);         // "" when no session is open
-const char *MH_ProcessDirLeaf(void);                // "<UTC>_menu_<role>" -- recorded in session.json
+const char *MH_ProcessDirLeaf(void);                // "<dirstamp>_menu_<role>" -- recorded in session.json
 int         MH_RunDir_UtcStamp(char *dst, int cap); // "YYYYMMDDTHHMMSSZ"; cap >= MH_SESSION_STAMP_CAP
 
 // Write "[HH:MM:SS.mmm] " (local wall clock) into dst; returns the length written. dst needs >= 16 B.

@@ -93,5 +93,6 @@ contributed rather than written here — see [/THIRD_PARTY.md](../THIRD_PARTY.md
 ## Third-party code in this tree
 
 `mh_dll/include/` holds three vendored single-header libraries — `CLI11.hpp`, `stb_image.h` and
-`BitmapPlusPlus.hpp`. They are not our work and keep their own licenses; notices are in
+`BitmapPlusPlus.hpp` — and, under `mh_dll/include/imgui/`, Dear ImGui (core + the Win32 and DX11
+backends, unmodified). They are not our work and keep their own licenses; notices are in
 [/THIRD_PARTY.md](../THIRD_PARTY.md).

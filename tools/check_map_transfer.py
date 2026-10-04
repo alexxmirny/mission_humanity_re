@@ -72,6 +72,17 @@ import os
 import re
 import sys
 
+# SES8 (2026-09-29): run directories are now `YYYY-MM-DDTHH-MM-SSZ_...`; a lane still holds SES1
+# `YYYYMMDDTHHMMSSZ_...` ones from older builds, and a raw string sort puts every SES1 name AFTER an
+# SES8 one (`-` < `0`). canon() folds the new stamp to the old compact form so name order is time
+# order again. Verbatim copy of tools/_rundir.py's (checkers carry no import chain between them).
+_NEW_STAMP = re.compile(r"^(\d{4})-(\d{2})-(\d{2})T(\d{2})-(\d{2})-(\d{2})Z")
+
+
+def canon(name):
+    return _NEW_STAMP.sub(r"\1\2\3T\4\5\6Z", name)
+
+
 # The needles are the registered ones (tools/data/log_formats.json, the map.* rows). Kept as module
 # constants rather than inline so the registry lint can find them as string literals.
 RE_HOST_CLAIM = re.compile(r"; \[map\] host claim (.+?) sha=([0-9a-f]{16}) size=(\d+)")
@@ -142,6 +153,20 @@ RE_SUPERSEDED = re.compile(
     r"net: snapshot SEND to player (\d+) superseded the UNFINISHED transfer to player (\d+)"
 )
 
+# mp:X2i -- the FOURTH release path, and the one that closes the gap RE_SUPERSEDED describes: a LEAVE
+# while the link stays up. host_on_leave marks the seat; the pump (main thread) asks the module to
+# cancel, and both layers log it -- map_transfer's line names the PEER, the module's names the PLAYER
+# and says channel C is detached and tx idle. Emitted only when a RUNNING transfer was stopped.
+RE_LEAVE_CANCELLED = re.compile(
+    r"; \[map\] transfer to peer (\d+) CANCELLED -- its seat was released \(LEAVE / gone\), "
+    r"channel C tx idle \(mp:X2i\)"
+)
+RE_SNAP_CANCELLED = re.compile(
+    r"net: snapshot SEND to player (\d+) CANCELLED -- channel C detached, copy freed, tx idle "
+    r"\(mp:X2i\)"
+)
+RE_UDP_DROPPED = re.compile(r"net: udp conn \d+ dropped")
+
 FAILS = []
 NOTES = []
 
@@ -179,22 +204,24 @@ def read(path):
     # 2026-09-24 gate, map_refuse_tcp borrowed match_launch's lanes (since TL-SUITE-FOLD-ML,
     # d28_canceltask's), and the joiner's `local after` from the anchor's earlier (started) match
     # read as "the refusal did not hold" (green alone, red in the suite). Run directory names start
-    # with a UTC stamp, so name order is time order.
+    # with a UTC stamp, so CANONICAL name order is time order (canon(): SES8 and SES1 stamps mixed).
     logs_dir = os.path.dirname(os.path.normpath(path))  # <lane>/logs
-    me = os.path.basename(os.path.normpath(path))
-    names = sorted(n for n in os.listdir(logs_dir) if os.path.isdir(os.path.join(logs_dir, n)))
+    me = canon(os.path.basename(os.path.normpath(path)))
+    names = sorted(
+        (n for n in os.listdir(logs_dir) if os.path.isdir(os.path.join(logs_dir, n))), key=canon
+    )
     # The process runs from its menu dir (the last one at or before `me`) up to the NEXT process's
     # menu dir -- and that includes session dirs AFTER `me`: post_check_peers without
     # post_check_session hands over the MENU dir, and the match-time lines (transfer, gate, `local
     # after`) are in the later session dirs (2026-09-24: cutting at `me` read the menu dir alone and
     # all five map rows went red with "the host never armed a transfer").
     menu_idx = [i for i, n in enumerate(names) if "_menu_" in n]
-    starts = [i for i in menu_idx if names[i] <= me]
+    starts = [i for i in menu_idx if canon(names[i]) <= me]
     if starts:
         nxt = [i for i in menu_idx if i > starts[-1]]
         mine = names[starts[-1] : (nxt[0] if nxt else len(names))]
     else:  # no menu dir (a hand-laid fixture): every run up to the given one
-        mine = [n for n in names if n <= me]
+        mine = [n for n in names if canon(n) <= me]
     runs = [
         os.path.join(logs_dir, n, "mh_net.log")
         for n in mine
@@ -364,6 +391,13 @@ def main(argv=None):
         "lines (gone at the transport / channel-C cancelled at the drop / superseded by the next "
         "arm), and exactly ONE `client stored` (the interrupted attempt never landed bytes)",
     )
+    ap.add_argument(
+        "--expect-leave-cancel",
+        action="store_true",
+        help="mp:X2i (with --expect-leave-rejoin): the LEAVE itself stopped the transfer -- assert the "
+        "host logged `transfer to peer N CANCELLED` and the module's `snapshot SEND to player N "
+        "CANCELLED ... tx idle`, for the same peer, BEFORE any link drop",
+    )
     args = ap.parse_args(argv)
     if args.selftest:
         return selftest()
@@ -433,6 +467,8 @@ def main(argv=None):
 
     if args.expect_leave_rejoin:
         check_leave_rejoin(hpath, htext, clients, claim_hash, args.expect_nothing)
+    if args.expect_leave_cancel:
+        check_leave_cancel(hpath, htext)
 
     if args.expect_gate:
         held = RE_START_REFUSED.search(htext)
@@ -563,11 +599,17 @@ def check_leave_rejoin(hpath, htext, clients, claim_hash, expect_nothing):
     gone = RE_PEER_GONE.search(htext)
     cancelled = RE_CHANNELC_CANCELLED.search(htext)
     superseded = RE_SUPERSEDED.search(htext)
-    if not gone and not cancelled and not superseded:
+    leave_cancelled = RE_LEAVE_CANCELLED.search(htext)
+    if not gone and not cancelled and not superseded and not leave_cancelled:
         fail(
             "%s: no `peer ... is gone at the transport`, no `channel-C transfer cancelled with "
             "it (mp:X2f)` and no `snapshot SEND ... superseded the UNFINISHED transfer` line -- "
             "client1's in-flight transfer was released by none of the mp:X2f paths" % hl
+        )
+    elif leave_cancelled:
+        note(
+            "%s: peer %s's transfer cancelled by its LEAVE (mp:X2i)"
+            % (hl, leave_cancelled.group(1))
         )
     elif superseded:
         note(
@@ -611,6 +653,63 @@ def check_leave_rejoin(hpath, htext, clients, claim_hash, expect_nothing):
         )
         return
     check_client(survivor[0], survivor[1], claim_hash, expect_nothing)
+
+
+def _line_time(text, pos):
+    """Seconds-of-day of the log line containing `pos`, from its `[HH:MM:SS.mmm]` prefix, or None."""
+    start = text.rfind("\n", 0, pos) + 1
+    mt = re.match(r"\[(\d\d):(\d\d):(\d\d)\.(\d\d\d)\]", text[start : start + 16])
+    if not mt:
+        return None
+    h, mi, sec, ms = (int(x) for x in mt.groups())
+    return h * 3600 + mi * 60 + sec + ms / 1000.0
+
+
+def check_leave_cancel(hpath, htext):
+    """mp:X2i: the LEAVE stops the channel-C transfer while the peer is still linked."""
+    hl = peer_label(hpath)
+    m = RE_LEAVE_CANCELLED.search(htext)
+    n = RE_SNAP_CANCELLED.search(htext)
+    if not m:
+        fail(
+            "%s: no `; [map] transfer to peer N CANCELLED -- its seat was released (LEAVE / gone)` "
+            "line -- the pump never cancelled the leaver's transfer (mp:X2i)" % hl
+        )
+        return
+    if not n:
+        fail(
+            "%s: the pump logged the cancel but the module wrote no `snapshot SEND to player N "
+            "CANCELLED ... tx idle` line -- the export stopped nothing" % hl
+        )
+        return
+    if m.group(1) != n.group(1):
+        fail(
+            "%s: the pump cancelled peer %s but the module stopped player %s's transfer"
+            % (hl, m.group(1), n.group(1))
+        )
+    # The host's log is SEVERAL session dirs concatenated (menu, then the match), so text position is
+    # not time: compare the lines' own [HH:MM:SS.mmm] stamps instead.
+    t_cancel = _line_time(htext, m.start())
+    t_drop = None
+    for d in RE_UDP_DROPPED.finditer(htext):
+        t = _line_time(htext, d.start())
+        if t is not None and (t_drop is None or t < t_drop):
+            t_drop = t
+    if t_cancel is None:
+        fail(
+            "%s: the cancel line carries no [HH:MM:SS.mmm] stamp, so its order cannot be judged"
+            % hl
+        )
+    elif t_drop is not None and t_drop < t_cancel:
+        fail(
+            "%s: the link DROPPED (%.3f s) before the cancel (%.3f s) -- this run proves the drop "
+            "path, not the LEAVE path (the peer must stay linked)" % (hl, t_drop, t_cancel)
+        )
+    else:
+        note(
+            "%s: LEAVE cancelled peer %s's transfer, channel C tx idle, link still up (mp:X2i)"
+            % (hl, m.group(1))
+        )
 
 
 def check_refused(hpath, htext, clients, claim):
@@ -782,6 +881,31 @@ LR_HOST_RUN = (
 # The order the rig row measured (2026-09-27): client2 is admitted on conn 1 while client1 still sits
 # linked on its browser, so client2's arm SUPERSEDES client1's unfinished transfer; conn 0 drops later
 # with nothing left on it to cancel.
+LR_HOST_RUN_LEAVE_CANCELLED = (
+    "; [map] peer 1 'client' needs the map (has=none want=%s)\n"
+    "; [map] send armed to peer 1 'client' (462065 B of blue monday.mpm)\n"
+    "; [map] start REFUSED -- waiting for 'client' to finish downloading the map\n"
+    "[10:00:05.000] net: snapshot SEND to player 1 CANCELLED -- channel C detached, copy freed, tx "
+    "idle (mp:X2i)\n"
+    "[10:00:05.001] ; [map] transfer to peer 1 CANCELLED -- its seat was released (LEAVE / gone), "
+    "channel C tx idle (mp:X2i)\n"
+    "; [map] start OK -- every joiner reports the map we advertised\n"
+    "; [map] peer 2 'client2' needs the map (has=none want=%s)\n"
+    "; [map] send armed to peer 2 'client2' (462065 B of blue monday.mpm)\n"
+    "[10:00:20.000] net: udp conn 0 dropped -- no data from peer within the link timeout (keepalives: "
+    "sent 24, received 28)\n"
+    "; [map] peer 2 'client2' holds the map (sha=%s) -- nothing to transfer\n"
+    "; [map] start OK -- every joiner reports the map we advertised\n" % (HASH_OK, HASH_OK, HASH_OK)
+)
+# The drop is stamped BEFORE the cancel: the run proves the drop path, not the LEAVE path.
+LR_HOST_RUN_DROP_FIRST = LR_HOST_RUN_LEAVE_CANCELLED.replace(
+    "[10:00:20.000] net: udp conn 0 dropped", "[10:00:01.000] net: udp conn 0 dropped"
+)
+LR_HOST_RUN_CANCEL_HALF = LR_HOST_RUN_LEAVE_CANCELLED.replace(
+    "[10:00:05.000] net: snapshot SEND to player 1 CANCELLED -- channel C detached, copy freed, tx "
+    "idle (mp:X2i)\n",
+    "",
+)
 LR_HOST_RUN_SUPERSEDED = (
     "; [map] peer 1 'client' needs the map (has=none want=%s)\n"
     "; [map] send armed to peer 1 'client' (462065 B of blue monday.mpm)\n"
@@ -815,10 +939,19 @@ def _plant(root, lane, runs):
     out = None
     for i, text in enumerate(runs):
         # A ("MENU", text) entry is laid out as a process's first (`*_menu_*`) directory -- how the
-        # shared-lane case plants an EARLIER process's runs ahead of this one's.
-        tag = "menu" if isinstance(text, tuple) else "sess"
+        # shared-lane case plants an EARLIER process's runs ahead of this one's. ("MENU8", text) /
+        # ("SESS8", text) plant SES8-named directories (a LATER build's), which a raw name sort
+        # would put BEFORE every SES1 one.
+        kind = text[0] if isinstance(text, tuple) else "SESS"
         text = text[1] if isinstance(text, tuple) else text
-        d = os.path.join(root, lane, "logs", "20260101T0000%02dZ_%s_run%d" % (i, tag, i))
+        if kind.endswith("8"):
+            leaf = "2026-09-29T00-00-%02dZ_%s" % (
+                i,
+                "menu_solo" if kind == "MENU8" else "abcdef%02d_m_host" % i,
+            )
+        else:
+            leaf = "20260101T0000%02dZ_%s_run%d" % (i, "menu" if kind == "MENU" else "sess", i)
+        d = os.path.join(root, lane, "logs", leaf)
         os.makedirs(d, exist_ok=True)
         with open(os.path.join(d, "mh_net.log"), "w", encoding="utf-8") as fh:
             fh.write(text)
@@ -1067,6 +1200,21 @@ def selftest():
             ["--expect-refused"],
             0,
         ),
+        (
+            # SES8: the same shared lane, but THIS process is a newer build's (SES8 names) and the
+            # earlier one an SES1 build's. A raw name sort would put the SES1 dirs last and read the
+            # earlier process's `local after` as ours.
+            "--expect-refused: SES1 dirs of an earlier build do not sort after SES8 ones",
+            [HOST_MENU + HOST_NOCARRY, HOST_REFUSED_TCP],
+            [
+                ("MENU", CL_MENU),
+                "; [map] local after blue monday.mpm sha=%s size=462065\n" % HASH_OK,
+                ("MENU8", CL_MENU_TCP),
+                ("SESS8", ""),
+            ],
+            ["--expect-refused"],
+            0,
+        ),
         # ---- mp:X2f clause (3) --expect-leave-rejoin (client1 leaves mid-download + exits its
         # process; a fresh client2 re-joins and finishes it) ----
         (
@@ -1133,6 +1281,42 @@ def selftest():
             ["--expect-leave-rejoin"],
             1,
         ),
+        (
+            "--expect-leave-cancel: the LEAVE cancelled the transfer, both layers logged it, the link "
+            "was still up -- GREEN",
+            [HOST_MENU, LR_HOST_RUN_LEAVE_CANCELLED],
+            [CL_MENU, ""],
+            [CL_MENU, CL_RUN],
+            ["--expect-leave-rejoin", "--expect-leave-cancel"],
+            0,
+        ),
+        (
+            "--expect-leave-cancel: a run that only SUPERSEDED (no cancel line) is red -- the LEAVE "
+            "still left the transfer retransmitting",
+            [HOST_MENU, LR_HOST_RUN_SUPERSEDED],
+            [CL_MENU, ""],
+            [CL_MENU, CL_RUN],
+            ["--expect-leave-rejoin", "--expect-leave-cancel"],
+            1,
+        ),
+        (
+            "--expect-leave-cancel: the pump's line without the module's is red -- the export "
+            "stopped nothing",
+            [HOST_MENU, LR_HOST_RUN_CANCEL_HALF],
+            [CL_MENU, ""],
+            [CL_MENU, CL_RUN],
+            ["--expect-leave-rejoin", "--expect-leave-cancel"],
+            1,
+        ),
+        (
+            "--expect-leave-cancel: a link drop BEFORE the cancel is red -- that run proves the drop "
+            "path, not the LEAVE path",
+            [HOST_MENU, LR_HOST_RUN_DROP_FIRST],
+            [CL_MENU, ""],
+            [CL_MENU, CL_RUN],
+            ["--expect-leave-rejoin", "--expect-leave-cancel"],
+            1,
+        ),
     ]
 
     root = tempfile.mkdtemp(prefix="mh_maptransfer_selftest_")
@@ -1166,7 +1350,9 @@ def selftest():
 
         def _menu(lane):
             logs = os.path.join(case, lane, "logs")
-            return os.path.join(logs, sorted(n for n in os.listdir(logs) if "_menu_" in n)[0])
+            return os.path.join(
+                logs, sorted((n for n in os.listdir(logs) if "_menu_" in n), key=canon)[0]
+            )
 
         got = main(["--expect-gate", _menu("host"), _menu("client")])
         ok = got == 0

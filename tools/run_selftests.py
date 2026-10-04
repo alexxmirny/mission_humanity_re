@@ -199,6 +199,33 @@ def is_instrumented(exe):
         return b"clang_rt.asan" in fh.read()
 
 
+STATE_MASKS = os.path.join(REPO, "tools", "data", "state_masks.json")
+
+
+def check_state_masks(exe):
+    """mp:D42 drift guard: tools/data/state_masks.json must still be what a fresh derivation from
+    keep_byte (src/mh_dll/libmh/state/inc_state.h) produces.
+
+    NOT a roster suite. `inchashtest`'s bare gate invocation cannot take this file path -- the exes
+    this driver runs are staged into %TEMP%\\mh_nettest[_asan]\\ (TL-STAGE1), so a suite that opened
+    a REPO-relative path there would read (or silently miss) the wrong tree. This driver, unlike the
+    staged exe, knows REPO, so it calls `inchashtest --check-masks <absolute path>` directly, once,
+    against one already-built exe -- the same shape as `assert_roster` above (an extra assertion
+    about one exe, not a 33rd/34th suite). Regenerate with:
+    `<exe> inchashtest --dump-masks tools/data/state_masks.json`.
+    """
+    r = subprocess.run(
+        [exe, "inchashtest", "--check-masks", STATE_MASKS], capture_output=True, text=True, cwd=REPO
+    )
+    if r.returncode == 0:
+        return True
+    out = (r.stdout + r.stderr).strip()
+    print(f"[FAIL] state_masks.json drift ({exe} inchashtest --check-masks): exit {r.returncode}")
+    if out:
+        print("      " + "\n      ".join(out.splitlines()[:20]))
+    return False
+
+
 def run_suite(exe, suite, tag):
     """Run one suite once. Returns True on a clean exit. Never parses output for a verdict."""
     r = subprocess.run([exe, suite], capture_output=True, text=True, cwd=REPO)
@@ -250,7 +277,37 @@ def main():
         action="store_true",
         help="run the suites against the exes a previous --build-only staged; never rebuilds",
     )
+    ap.add_argument(
+        "--skip-suites",
+        default="",
+        help="comma-separated roster suites NOT to run (the light gate's wall-bound loopback "
+        "transport suites when no transport source changed -- tooling:TL-GATE12). Each name must "
+        "be in the roster; the skipped set is printed, never silent.",
+    )
+    ap.add_argument(
+        "--asan-skip-suites",
+        default="",
+        help="comma-separated roster suites the ASan pass skips while the plain pass still runs them "
+        "(user 2026-10-03, option A: the light gate's wall-bound loopback transport suites on a "
+        "transport change -- their ASan coverage stays in the full gate). Printed, never silent.",
+    )
     args = ap.parse_args()
+    asan_skip = {x.strip() for x in args.asan_skip_suites.split(",") if x.strip()}
+    unknown_a = sorted(asan_skip - set(SUITES))
+    if unknown_a:
+        ap.error("--asan-skip-suites names suites not in the roster: %s" % ", ".join(unknown_a))
+    if asan_skip:
+        print(
+            f"[note] --asan-skip-suites: the ASan pass does NOT run {', '.join(sorted(asan_skip))} "
+            "(the plain pass does; full gate keeps them under ASan)"
+        )
+    skip = {x.strip() for x in args.skip_suites.split(",") if x.strip()}
+    unknown = sorted(skip - set(SUITES))
+    if unknown:
+        ap.error("--skip-suites names suites not in the roster: %s" % ", ".join(unknown))
+    run_list = tuple(x for x in SUITES if x not in skip)
+    if skip:
+        print(f"[note] --skip-suites: NOT running {', '.join(sorted(skip))} (light gate)")
     if args.build_only and args.no_build:
         ap.error("--build-only and --no-build are exclusive")
     get = staged if args.no_build else build
@@ -273,9 +330,12 @@ def main():
             if not assert_roster(exe):
                 return 1
         if not args.build_only:
-            for suite in SUITES:
+            asan_list = tuple(x for x in run_list if x not in asan_skip)
+            for suite in asan_list:
                 ok &= run_suite(exes[SUITE_EXE[suite]], suite, "asan")
-            print(f"[{'ok' if ok else 'FAIL'}] ASan pass ({len(SUITES)} suites, {len(exes)} exes)")
+            print(
+                f"[{'ok' if ok else 'FAIL'}] ASan pass ({len(asan_list)} suites, {len(exes)} exes)"
+            )
 
     # The plain pass is a pass in its own right, not cleanup: it is where the flaky-crash repeats
     # run, since a crash is the only symptom corruption produces in an uninstrumented build. (Before
@@ -290,15 +350,20 @@ def main():
         if args.build_only:
             print(f"run_selftests: BUILT in {time.time() - t0:.0f}s (--build-only; no suite ran)")
             return 0
-        for suite in SUITES:
+        for suite in run_list:
             reps = args.repeats if suite in FLAKY else 1
             for i in range(reps):
                 tag = f"plain[{i + 1}/{reps}]" if reps > 1 else "plain"
                 ok &= run_suite(exes[SUITE_EXE[suite]], suite, tag)
         print(
-            f"[{'ok' if ok else 'FAIL'}] plain pass ({len(SUITES)} suites across {len(exes)} exes, "
+            f"[{'ok' if ok else 'FAIL'}] plain pass ({len(run_list)} suites across {len(exes)} exes, "
             f"{args.repeats}x {'/'.join(FLAKY)})"
         )
+        # mp:D42. One extra assertion beyond the roster, against the plain exe only (this is a
+        # keep_byte-vs-committed-file comparison, not something ASan instrumentation could catch
+        # differently) -- see check_state_masks for why it is not a SUITES row.
+        if "net_selftest" in exes:
+            ok &= check_state_masks(exes["net_selftest"])
 
     half = "" if args.which == "both" else f" ({args.which} half only)"
     print(f"run_selftests: {'PASS' if ok else 'FAIL'} in {time.time() - t0:.0f}s{half}")

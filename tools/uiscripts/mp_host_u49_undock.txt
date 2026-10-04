@@ -1,0 +1,53 @@
+# mp:U49 HOST walk -- the double-undock deadlock.
+# Pair with mp_client_idle.txt. Rows: u49_undock_double (ship, [net] undock_reentry_fix=1) and
+# u49_undock_double_retail (tier: release, [net] undock_reentry_fix=0, the reproduction arm).
+#
+# Retail applies an undock order (code 0x20) with no state re-check. A SECOND 0x20 applied after the
+# first has moved the unit out (state 0x21) re-enters llm_strat_unit_state_exit_storage_begin; the
+# door's own holder is refused by llm_strat_storage_can_exit, so the unit sits in EXIT_WAIT (0x22)
+# on a door only it can release (door_mutex_unit = the unit) and every later order for it is kept.
+# Only the lockstep scheduling delay reaches it (a double-click on the storage row), which is why
+# this is a two-peer row: the order is staged ahead on every peer and applied a pass later.
+#
+# The storage, the docked soldier and the two undock orders are the harness fixture's (`d38_*` builds a
+# barracks beside the landed mother and docks a soldier; `u49_*` issues the two 0x20 orders `u49_gap`
+# = 7 steps apart on the owner peer through the replicated lane, then a MOVE for the same unit).
+# This walk only lands the mother (one capture, before the barracks stands, so both arms share the frame)
+# and lets the match run. The assertion is the post_check
+# (tools/check_u49_undock.py), not a frame.
+
+# reach the host lobby (create the pre-pinned game on the pre-selected map)
+settled value:110
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+settled Create
+clickl Create
+present Game name
+settled Ok
+clickl Ok
+present Available maps
+settled Ok
+clickl Ok
+
+# host lobby: block until the client is really in ITS lobby, then Start.
+present Network players
+peers 1
+awaitsignal lobby
+enabled Start
+settled Start
+clickl Start
+
+# in the match: land the mothership (shift+right-click), then run. The fixture orders the barracks once
+# the mother has landed (~step 520), docks the soldier once it is operational (~step 820), issues the
+# two undock orders at once, waits u49_settle steps, orders a move, and logs its verdict u49_tail
+# steps after that: ~step 1400, game clock 14 s.
+absent Network players
+gameclock 3000
+simrclick 480 330 shift
+gameclock 4500
+capture u49_landed
+gameclock 16000
+log u49 done
+end

@@ -1,0 +1,56 @@
+# mp:U51 CLIENT: joins the lobby, then (host in Team mode) cycles its OWN team, probes the other rows'
+# spinners and the MODE selector (clicks that must change nothing), and sees the FFA switch.
+
+settled value:110
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+present Internet server
+settled Internet server
+clickl Internet server
+present Server address
+settled Connect
+clickl Connect
+sessions 1
+settled Join game
+clickl Join game
+
+present Network players
+occ 3
+settled Cancel
+lobbymode 0
+team 0 1
+team 2 1
+capture t1_client_ffa
+signal clientin
+
+# --- the host switched to Team (teams kept) and bumped the AI row's team; it arrives in the snapshot ---
+lobbymode 1
+team 0 1
+team 2 2
+capture t2_client_team
+
+# own row: one click -> T1
+click 221 132
+team 1 1
+# the host's row and the AI row are not ours, and the mode is the host's: these clicks change nothing  (client layout: Start hidden, so the selector sits at y=356)
+click 221 115
+click 221 149
+click 501 356
+# a second own-row click proves the earlier probes were fully processed -> T2
+click 221 132
+team 1 2
+team 0 1
+team 2 2
+lobbymode 1
+capture t3_client_after_probe
+signal clientdone
+
+# --- the host vacates and re-takes the AI slot, then switches back to FFA ---
+lobbymode 0
+team 2 0
+capture t5_client_ffa
+signal clientffa
+log CLIENT team/mode scenario COMPLETE
+end

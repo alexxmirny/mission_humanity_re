@@ -321,6 +321,10 @@ struct dispatch_calls {
     void (*format_plain_line)(int32_t text_id);                   // "<label>"        -> G_TEXT_TMP
     // LIB-ABI stage E hoist ops -- tail member, null-skipped by suites (see timekeeper_calls).
     const struct overlay_hoist_ops *hoist;
+    // mp:MP-LANG -- the received chat BODY is UTF-8: decode it into dst (cap_units UTF-16 units incl.
+    // the NUL). Tail member like `hoist`: every offline suite leaves it null, and a null keeps the
+    // original ansi_to_wide_scratch widen of the body (rx_dispatch.cpp handle_chat).
+    void (*chat_to_wide)(const char *utf8, void *dst, uint32_t cap_units);
 };
 
 dispatch_state        dstate();
@@ -479,6 +483,13 @@ const timekeeper_calls &timekeeper_live_calls();
 // sink-injection shape as desync_watch's log pointer. Both may be null; unwired means uncounted.
 void set_icon_counters(void (*wanted)(), void (*shown)());
 
+// mp:X3c-FIX: the seam layer's floor for an outgoing MSG_HORIZON. Every horizon writer in this closure
+// (time_tick's advertise_horizon, the nag bump, order stamps via commit) reaches the wire through
+// send_lockstep_extend; while a world-resync catch-up MIRRORS, a writer computing clock + step from the
+// rewound clock would advertise BEHIND what the peers hold. The sink returns the horizon to actually send
+// (identity when not mirroring). Null = no floor (the default, and every selftest).
+void set_extend_floor(double (*floor_fn)(double horizon));
+
 // ---- C3: fixes that used to be BYTE PATCHES and now live in our bodies ---------------------------
 //
 // A faithful reimplementation reproduces the UNPATCHED behaviour BY CONSTRUCTION. That puts
@@ -579,6 +590,15 @@ struct reimpl_fixes {
     // through that hole would have silently compared ours-with-fix against original-without-fix.
     bool desync_icon_gate = false;
 
+    // [net] overlay_dialog_guard -- MP U44: the stall overlay may only dismiss (and so only rewrite
+    // GAME_MODE for) a screen lockstep itself armed, and the kick modal stashes -- rather than draws
+    // over -- an open mode-3 dialog. Retail forces mode 2 on every dismiss whose widget list is empty,
+    // which closes the building/sell dialog (it runs with an empty list) without clearing
+    // _G_LLM_UI_ACTIVE_DIALOG; the kick modal then arms over the dialog and loses its clicks to it.
+    // Default false here = the faithful-stock rule (fixtures); the shipped ini default is 1.
+    // overlay_hoist.cpp reads it; so does the host sink's viewport-dirty mark.
+    bool overlay_dialog_guard = false;
+
     // [net] gone_peer_frame_guard -- MP U19e: keep the INCOMING datagram intact across the leader's
     // re-broadcast of a peer drop (rx_dispatch.cpp's dispatch_packet head, 0x0049c311), whose emitter
     // builds into _G_LLM_NET_SEND_BUF -- the very buffer the packet being dispatched lives in. Without
@@ -594,6 +614,77 @@ struct reimpl_fixes {
     // resync_order_horizon's, while the initialiser here stays the faithful-stock value a pure caller
     // or a lockstest fixture gets.
     bool gone_peer_frame_guard = false;
+
+    // [net] diplo_order_dedup_fix -- MP U45: release_due's same-unit/same-owner supersede rule must not
+    // treat the diplomacy admin orders 0xf4 (set_player_relation) and 0xf5 (set_player_control_mode)
+    // as revisions of one another. A diplomacy Apply issues both with unit 0 and the issuer as owner
+    // in one frame, so stock drops 0xf4 (0xf5 has the higher code) on every peer and the relation only
+    // applies on a second Apply. Reimpl-only (no byte patch; under [config] mode=original the retail
+    // rule runs). SIM-AFFECTING: every peer must run the same value -- it is a shipped default like
+    // sim_step_ms, not negotiated. The initialiser is the faithful-stock value; the ini default is 1.
+    bool diplo_order_dedup_fix = false;
+
+    // [net] undock_reentry_fix -- MP U49: the queue dispatcher drops an undock order (code 0x20) whose
+    // unit is not PARKED at apply time. A second 0x20 applied a pass after the first (the lockstep
+    // scheduling delay makes a double-click do this) re-enters exit_storage_begin on a unit already
+    // walking out; can_exit refuses the door's own holder and the unit sits in EXIT_WAIT forever with
+    // the door mutex held. SIM-AFFECTING: every peer must run the same value (shipped default 1, not
+    // negotiated). Carried for the unpromoted dispatcher by a byte patch (net_lockstep.cpp,
+    // install_undock_reentry_fix); this member is the promoted body's half. Initialiser = faithful stock.
+    bool undock_reentry_fix = false;
+
+    // [net] player_left_pin_fix -- MP U56: a NATURAL elimination of a human is observed by every peer's
+    // own sim at the same step (llm_strat_player_presence_lost(p, 0)), but the eliminated peer's
+    // CTL_PLAYER_LEFT used to flip that player's HUMAN/DEFEATED/GONE flags AT RECEIVE TIME -- a different
+    // sim step on each survivor (the other client hears it through the host's forward), and when it
+    // landed after the sim's own presence_lost it did nothing at all, so the survivors ended on
+    // different flags (0x1B vs 0x05) for the rest of the match. With the fix ON the flip is made by the
+    // sim at the elimination step on every peer (presence_lost, mode 0, a human other than the local
+    // side), and the receipt of CTL_PLAYER_LEFT from a still-ALIVE, not-yet-GONE sender leaves the flags
+    // alone whenever another human would remain (the last-peer teardown keeps the retail receive-time
+    // flip). Carried for the unpromoted bodies by three byte patches (net_lockstep.cpp,
+    // install_player_left_pin_fix, mp:U66), so the knob means one thing in both configurations.
+    // SIM-AFFECTING: every peer must run the same value -- a shipped default, not negotiated. The
+    // initialiser is the faithful-stock value; the ini default is 1.
+    bool player_left_pin_fix = false;
+
+    // [net] spectate_after_defeat -- MP U54: a human eliminated while at least TWO other humans still play (and
+    // the match is not decided by the team-victory rule) is NOT dropped: it stays in the lockstep session as a
+    // SPECTATOR -- no CTL_PLAYER_LEFT, no session downgrade, its own HUMAN bit cleared and DEFEATED|GONE set at
+    // the elimination step exactly like every survivor already flips it (U56), its sim keeps stepping with the
+    // survivors (per-step hash identical), its own orders are dropped before enqueue, and it ends its own match
+    // when the survivors decide theirs (mh_spectate.h). Needs player_left_pin_fix. A 2-peer match ends as
+    // today. Carried for the unpromoted bodies by byte patches (net_lockstep.cpp, install_spectate). SIM-AFFECTING:
+    // every peer must run the same value -- a shipped default, not negotiated. Initialiser = faithful stock (off);
+    // the ini default is 1.
+    bool spectate_after_defeat = false;
+
+    // [net] team_relations_fix -- MP U52: the lobby's TEAM column (slot +0x0c -> Players[].desc+7) and
+    // MODE selector (host slot 0 +0x07) take effect. At MP match start, AFTER landing has reset the AI
+    // relation mirror, every ordered pair of enabled players is set allied (same non-zero team) or enemy
+    // (everything else; "-" is its own team) -- in FFA and Team mode alike, whenever any seated slot has
+    // a team. Team mode additionally sets the ally-victory flag (_G_LLM_STRAT_MP_ALLY_VICTORY_RULE_FLAG:
+    // last ALLIANCE standing wins) and LOCKS relations: an in-match relation order (0xf4) is a no-op on
+    // every peer, and the diplomacy dialog greys its relation column. No team set = retail relations.
+    // Also carried for the unpromoted sim by three retail byte patches (net_lockstep.cpp install_team_relations_fix: seed, lock). SIM-AFFECTING: every
+    // peer must run the same value -- a shipped default, not negotiated. Initialiser = faithful stock.
+    bool team_relations_fix = false;
+
+    // [net] ally_damage_no_hostility -- MP U52: the AI's "you damaged my object" notification
+    // (llm_strat_ai_bldg_register_visible_building) stamps ai_player_relation[aggressor] = -1 on the VICTIM --
+    // unconditionally once _G_LLM_STRAT_AI_FOREIGN_BLDG_CHANGE_FLAG is set, which any foreign building
+    // completion does and nothing clears. An ALLY that merely splashes or grazes a teammate's object thereby
+    // turned hostile in the victim's mirror, and the victim's own units then auto-engaged it. With the fix ON
+    // the stamp is skipped while the victim currently treats the aggressor as an ally (relation > 0). Applies
+    // in every mode (FFA, Team, the campaign); an enemy hit still stamps. Carried by a byte patch for the
+    // unpromoted function and by this field for the twin. SIM-AFFECTING: every peer must run the same value
+    // (shipped default 1, not negotiated). Initialiser = faithful stock.
+    bool ally_damage_no_hostility = false;
+
+    // Not a knob: the lobby MODE byte (host slot 0 +0x07 != 0 = Team) as it stood when the session began,
+    // PUSHED by the DLL's session-entry observer (the lobby slots are not a registered sim region, and
+    // adding one would renumber every hash region id). Read only by the U52 seed.
+    bool lobby_team_mode = false;
 
     // The three `defang_*` fields were HERE and were removed by C8-e (2026-07-30) as a scope
     // decision: all three were default-off and `resync_trigger_gate` supersedes them as the

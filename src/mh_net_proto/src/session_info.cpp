@@ -1,5 +1,6 @@
 // mh_net_proto -- SESSION_INFO (de)serialization + lobby-id. Portable, no platform dependencies.
 #include "mh_net_proto/session_info.h"
+#include "mh_net_proto/text_utf8.h" // MP-LANG: CHAT_ENCODING_UTF8, named in join_refusal_text
 #include "byteio.h"
 #include <cstring>
 #include <cstdio>
@@ -402,6 +403,18 @@ const char* join_refusal_text(JoinAdmit a, const SessionInfo& mine, const JoinRe
     if (cap == 0) return out;
     switch (a) {
         case JoinAdmit::RefusedCodepage:
+            // mp:MP-LANG: a current host's chat is UTF-8 (CHAT_ENCODING_UTF8), so a mismatch against it
+            // is a joiner from before MP-LANG, still carrying an 8-bit codepage -- say THAT, since
+            // "codepage 65001/1252" names a number no player ever typed. The reverse (a UTF-8 joiner
+            // at an 8-bit host) is the same step seen from the other side.
+            if (mine.codepage == CHAT_ENCODING_UTF8 && theirs.codepage != CHAT_ENCODING_UTF8) {
+                std::snprintf(out, cap, "old client cp %u", (unsigned)theirs.codepage);
+                break;
+            }
+            if (theirs.codepage == CHAT_ENCODING_UTF8 && mine.codepage != CHAT_ENCODING_UTF8) {
+                std::snprintf(out, cap, "old host cp %u", (unsigned)mine.codepage);
+                break;
+            }
             // Both numbers, host's first, because the fix is on ONE of the two machines and
             // "mismatch" alone does not say which. 20 characters at the widest (5-digit codepages).
             std::snprintf(out, cap, "codepage %u/%u", (unsigned)mine.codepage, (unsigned)theirs.codepage);

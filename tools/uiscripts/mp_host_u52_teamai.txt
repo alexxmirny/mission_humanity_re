@@ -1,0 +1,61 @@
+# mp:U52 -- 3-PEER LOBBY TEAMS (tools/det_arms.py --u52-*; check_u52_teams.py reads the logs).
+# Topology = the --u53-* one: host vms[0], client1 vms[1], client2 the local det3_client2 lane. Teams: host T1,
+# client1 T1, client2 T2 (each peer cycles its OWN row through the real lobby spinner). Variant: TEAM mode + an AI row (slot 3, T1).
+# host: seats an AI in slot 3, sets its own team + the AI's (T1) + the mode, waits for both clients' own-row teams, then Starts.
+settled value:110
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+settled Create
+clickl Create
+present Game name
+settled Ok
+clickl Ok
+present Available maps
+settled Ok
+clickl Ok
+
+present Network players
+peers 2
+occ 3
+awaitsignal seated1
+awaitsignal seated2
+click 70 166
+present Computer
+occ 4
+click 221 166
+team 3 1
+click 221 115
+team 0 1
+click 501 370
+lobbymode 1
+awaitsignal c1team
+team 1 1
+awaitsignal c2team
+team 2 2
+team 3 1
+capture lobby_teams_host
+signal setup
+awaitsignal c1ready
+awaitsignal c2ready
+enabled Start
+settled Start
+clickl Start
+
+absent Network players
+gamemode 2
+gameclock 3000
+capture match_start
+gameclock 14000
+capture before_kill
+gameclock 16600
+# Team mode: the last ALLIANCE standing wins -> the host (allied with client1) sees the victory dialog.
+screen 0x00653dc3
+capture host_victory
+dump
+signal won
+awaitsignal c1done
+awaitsignal c2done
+log host done
+end

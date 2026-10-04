@@ -49,23 +49,26 @@ gamemode 2
 gameclock 6000
 capture s1_host_ingame
 log HOST in a live UDP match; the harness captures + sends the world at [harness] snapshot_at
-# THE TERMINAL WAIT IS `gameclock`, NOT `simstep`, and the difference is the whole scenario.
-# `simstep N` arms the harness's SIM FENCE: it truncates the catch-up burst at N and HOLDS the sim
-# there. The snapshot poll and the import run inside the sim-step hook, so a fenced peer stops
-# polling -- the fence would freeze the very loop the transfer is waiting on. `gameclock` is a
-# passive wait and the sim keeps ticking under it.
-#
-# 75000 ms, and the number is measured rather than picked. On this rig the game clock tracks the
-# wall clock almost exactly (a pinned 600-step lane: 5,999 ms of game clock in 6,375 ms of wall), and
-# a full world snapshot is a ~30 s transfer at channel C's rate limit (mp:X1: 1,953 ms for the clean
-# 32-chunk reference, i.e. ~16 chunks/s, against 480 body chunks). 75 s is that with room for a lossy
-# link, and the registry's `timeout` outlasts it.
-gameclock 75000
+# THE TERMINAL WAIT IS `stalled 35000`, and the reason is measured (mp:X3a, 2026-09-29). Before X3a
+# this was `gameclock 75000`, which the host reached before the import landed, so nothing ever asked
+# the importing peer to survive anything. Moving it to `gameclock 110000` deadlocked: the client's
+# `snapshot_hold` freezes its sim, so it stops advancing its lockstep horizon, and the HOST -- lockstep-
+# blocked on it -- stops at the client's frozen horizon (last_horizon_ms=24680, gclk=24650 in the
+# measured run), so during the hold it cannot advance its game clock. Then the GS2 data timeout (15 s)
+# dropped the "silent" client, the host won, and its gameover ended the client's match 15 s after the
+# import -- the `gameclock` wait was only satisfied later, by a match that was already over.
+# So the host does NOT own a running clock while a peer is held. What it does own is the STALL: it
+# is lockstep-blocked on the held client from the moment of the import, and `stalled <ms>` is true
+# while that block has lasted >= <ms>. 35 s of stall = the client has held its imported world for at
+# least ~35 s of wall time (the registry raises `data_timeout_ms` to 120000 so the host does not drop
+# it meanwhile), and only then does the host release the client's rendezvous. If the import never
+# happens the host never stalls and the scenario times out -- the correct failure.
+# The registry post_check asserts the consequence (`mp_analyze --hold-survival-ms 30000`).
+stalled 35000
 log HOST reached the end-of-transfer window
-# mp:X3 step one. The HOST is the only peer whose sim clock is guaranteed to keep running: under
-# `[harness] snapshot_hold` the importing peer FREEZES its sim the moment the blob lands, so every
-# `gameclock` wait on that side would block forever. So the host owns the clock and RELEASES the
-# client with a rendezvous, which is the one wait the held peer can still satisfy.
+# mp:X3 step one. Under `[harness] snapshot_hold` the importing peer FREEZES its sim the moment the
+# blob lands, so every `gameclock` wait on THAT side would block forever. The host RELEASES the client
+# with a rendezvous, which is the one wait the held peer can still satisfy.
 signal held
 log HOST released the client
 end

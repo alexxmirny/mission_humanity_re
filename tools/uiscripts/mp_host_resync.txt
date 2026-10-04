@@ -1,0 +1,50 @@
+# mp:X3c slice 4 HOST -- the forced-desync arm of the world resync (registry row `mp_snapshot`).
+#
+# The walk is mp_host_start.txt's, unchanged: nothing about the menu is under test. What this script has to do
+# is get a real 2-peer UDP match RUNNING and keep it running, LIVE, while the resync happens around it:
+#   step 300   the CLIENT's harness flips one byte of a hashed region (`region_poke_at` on the client only),
+#   ~step 350  the host's in-band watch has seen 50 mismatching samples -> `[worldsync] BEGIN`,
+#   next step  CAPTURE at S, the blob crosses channel C (~20 s of wall time) while both sims keep running,
+#   then       the client imports at its own step boundary, catches up, and reports LIVE/DONE.
+# There is no hold and no rendezvous on the host's sim: the host is never lockstep-blocked on a frozen peer,
+# which is what the old mp_snapshot needed `data_timeout_ms=120000` and `stalled 35000` for. The terminal
+# wait is the GAME CLOCK, and it is the proof of liveness. The registry post_check reads the verdict.
+#
+# Pair with mp_client_resync.txt. The assertion lives in `mp_analyze.py --resync-verify`.
+
+# reach the host lobby (create a game on the pre-selected map)
+settled value:110
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+settled Create
+clickl Create
+present Game name
+settled Ok
+clickl Ok
+present Available maps
+settled Ok
+clickl Ok
+
+# host lobby: block until the client is really in ITS lobby, then launch
+present Network players
+peers 1
+awaitsignal lobby
+enabled Start
+settled Start
+clickl Start
+
+absent Network players
+gamemode 2
+gameclock 6000
+capture s1_host_ingame
+log HOST in a live UDP match; the client's harness pokes its own world at step 300
+gameclock 55000
+log HOST reached its terminal clock
+# the client reaches its own (same) target after the import; wait for it so the host does not end the
+# match under the verified tail.
+awaitsignal resynced
+log HOST saw the client finish
+signal hostdone
+end

@@ -52,6 +52,9 @@
 
  "rules": [
 
+  {"id": "engine-draft-docs", "disposition": "withhold", "globs": ["docs/engine/*.md"],
+   "why": "Step-D draft design for the new sim engine tree (9105756a, 2026-09-29): unratified, 16 open questions. User ruling 2026-09-29: WITHHOLD while it is a draft; revisit when the design is ratified."},
+
   {"id": "setup-seed-dat", "disposition": "publish", "globs": ["tools/uiscripts/setup.seed.dat"],
    "why": "The lane-provisioning seed: our own provisioning artifact, and a lane needs the MRU server-IP list that a never-played install lacks (make_lane.py's comment above SEED_SETUP). It was `publish_after` because its BYTES carried a personal relay host; F5B regenerated it with tools/setup_dat.py, which rewrites ONLY the IP MRU record and keeps the 97-byte header + LZW settings block and both trailers byte-for-byte -- so it is still a PLAYED-shape file and the pin still works, which a fresh never-played stub would not be. Pinned values are now the rig's documented defaults (server 192.168.0.37 = machine_config RIG_PEER_A; game `uitest`, player `host` were already the harness's own neutral names). Proven live: a real lane provision plus the ip_cancel UI scenario, whose i2 capture renders that very field."},
 
@@ -130,6 +133,10 @@
   {"id": "docs-deploy", "disposition": "publish",
    "globs": ["docs/deploy.md"],
    "why": "dist:RP4 (2026-09-17): the deploy runbook for the two container images the public tree builds (.github/workflows/images.yml, deploy.yml, deploy/docker-compose.yml, tools/lint_compose.py all cite it). Same class as docs/release.md: process written FOR the public tree, no host, key or identity literal (the VPS values are GitHub Environment secrets named by role), and it cites only published paths."},
+
+  {"id": "docs-state-record", "disposition": "publish",
+   "globs": ["docs/state-record.md"],
+   "why": "mp:D40-D43 (2026-09-27): the v1 file-format specification for the state recordings (mh_match_state.bin / mh_desync_state.bin) that mh.dll writes, tools/state_record.py (published) reads and the launcher's report builder tails at a keyframe. Same class as docs-wire-udp: a published tool whose format page is withheld has no readable contract. Settled format only; it cites no withheld path."},
 
   {"id": "docs-relay", "disposition": "publish",
    "globs": ["docs/mp-relay.md"],
@@ -228,6 +235,7 @@
    "globs": [
              "tools/_ghidra_lease.py",
              "tools/_worklist.py",
+             "tools/agent_time.py",
              "tools/apply_annotations.py",
              "tools/audit_names.py",
              "tools/build_data_naming_batch.py",

@@ -311,6 +311,10 @@ public:
     // Returns true when the detach stopped a transfer that was still RUNNING (not one that had
     // already finished, and not one channel C never took).
     bool release(Endpoint &ep);
+    // mp:X2i: release() only when this outbox holds a transfer addressed to `dst_player` (-1 = any).
+    // Returns true when that stopped a transfer channel C was still RUNNING; a finished or foreign
+    // transfer is left alone / merely freed and answers false. Same thread rule as arm().
+    bool cancel_to(Endpoint &ep, int dst_player);
 
     // The destination player of the transfer the last arm() SUPERSEDED while it was still running,
     // or -1. mp:X2f clause (3): a joiner that leaves the lobby but stays linked keeps its transfer
@@ -321,6 +325,7 @@ public:
 
     bool          on() const { return m_on; }
     uint32_t      len() const { return m_len; }
+    int           dst() const { return m_dst; } // -1 when nothing is armed
     const Sender &sender() const { return m_tx; }
 
 private:

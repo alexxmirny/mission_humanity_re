@@ -158,7 +158,11 @@ constexpr uint8_t PROTOCOL_LEVEL    = 1;
 constexpr int     HELLO_LEVEL_SHIFT = 1;
 
 constexpr DWORD HELLO_RETRY_MS = 500;   // until the WELCOME lands
-constexpr DWORD KEEP_MS        = 20000; // plan D4's keepalive floor; the relay pings at 25 s
+// mp:U61 (HM-M3) -- the leg's OWN round trip, measured by a timestamped PING at 1 Hz. It replaces the 20 s keepalive
+// cadence (plan D4's floor; the relay itself pings at 25 s -- a 1 Hz ping is a strictly stronger keepalive) and is what a relayed match's election reads: the relayed
+// path of two clients is leg_i + leg_c (the host-migration plan (mp:U57) section 3, option B).
+constexpr DWORD LEG_RTT_MS     = 1000;
+constexpr DWORD LEG_RTT_FRESH_MS = 5000; // a sample older than this is no longer a reading
 constexpr DWORD SELECT_MS      = 100;   // the thread's timer granularity
 // mp:R2. REGISTER_MS is a REFRESH rate against the relay's 20 s session TTL, so twenty may be lost
 // before a live lobby falls out of the directory. SI_STALE_MS is the other direction: mh.dll
@@ -307,6 +311,9 @@ struct State {
     // else on the relay leg until the WELCOME". Cleared by the WELCOME.
     volatile LONG leg_lost;
     DWORD         lost_at;
+    // mp:U60 -- a ROLE SWITCH / ROOM MOVE is in flight (rehome()): keep sending the HELLO until the relay's
+    // WELCOME for the NEW room lands, and carry no game data meanwhile. Cleared by that WELCOME.
+    volatile LONG rehome_pending;
     // mp:R4a -- what the relay's WELCOME said its level was (0 = it said nothing: pre-R4a), and
     // whether that value has been reported. Logged on CHANGE, not once: a relay redeployed
     // mid-session (R4b) may come back at another level, and the re-HELLO's WELCOME says so.
@@ -317,6 +324,7 @@ struct State {
     uint64_t tx_seq;
     DWORD    last_hello;
     DWORD    last_keep;
+    int64_t  rtt_sent_qpc; // mp:U61 -- when the PING in flight left (0 = none outstanding); pump thread only
 
     CRITICAL_SECTION cs; // guards match_id + match_dirty + the session descriptor (game thread)
     uint8_t          match_id[UUID7_BYTES];
@@ -380,6 +388,10 @@ void    *g_known_ctx = nullptr;
 // FIRST when it is released, so a reader that sees a port sees a class that was already written for
 // it. The worst a race can do is hand back the previous tick's letter for one frame of a lobby,
 // which is display-only by construction -- see the udp_relay.h banner.
+// mp:U61 -- the published leg round trip (0.1 ms units; -1 = none) and when it was taken. Interlocked LONGs outside State,
+// so a reader on any thread sees one value or the other and a relink's memset of State cannot tear it.
+volatile LONG g_leg_rtt_dms  = -1;
+volatile LONG g_leg_rtt_tick = 0;
 volatile LONG g_pc_port[MAX_REMOTE + 1];
 volatile LONG g_pc_cls[MAX_REMOTE + 1];
 constexpr int PC_CLIENT = MAX_REMOTE; // the client's one row
@@ -1275,6 +1287,16 @@ void on_leg_datagram(const uint8_t *pkt, int n, const sockaddr *from, bool from_
             const uint8_t  level = plen >= 5 ? payload[4] : 0;
             const LONG     was   = InterlockedExchange(&g.self_handle, (LONG)me);
             const LONG     was_o = InterlockedExchange(&g.other_handle, (LONG)other);
+            // mp:U60 -- the WELCOME that ends a re-home: a host's is the registration itself; a
+            // client's names its NEW host's handle (a `no_host` refusal sends none, so until the new
+            // hub has registered this does not fire and the pump keeps re-sending the HELLO).
+            if (InterlockedCompareExchange(&g.rehome_pending, 0, 0) != 0 &&
+                (g.cfg.role == 0 || other != HANDLE_NONE)) {
+                InterlockedExchange(&g.rehome_pending, 0);
+                logf("net: udp relay -- RE-HOMED into room %u as %s, handle %u%s (mp:U60)",
+                     (unsigned)g.cfg.room, g.cfg.role == 0 ? "host" : "client", (unsigned)me,
+                     g.cfg.role == 1 ? " (host handle known)" : "");
+            }
             if (was == 0) {
                 logf("net: udp relay leg UP -- %s:%u room=%u, handle %u%s",
                      g.cfg.host, (unsigned)g.cfg.port, (unsigned)g.cfg.room, (unsigned)me,
@@ -1312,7 +1334,22 @@ void on_leg_datagram(const uint8_t *pkt, int n, const sockaddr *from, bool from_
             return;
         }
         case OP_PING: leg_send(OP_PONG, HANDLE_NONE, nullptr, 0); return;
-        case OP_PONG: return;
+        case OP_PONG: {
+            // mp:U61 -- the answer to the 1 Hz timestamped PING. Only the one in flight counts; a PONG with nothing
+            // outstanding (the relay answering a keepalive we did not time) is ignored.
+            if (g.rtt_sent_qpc != 0) {
+                LARGE_INTEGER now_q, f;
+                QueryPerformanceCounter(&now_q);
+                QueryPerformanceFrequency(&f);
+                const double dms = (double)(now_q.QuadPart - g.rtt_sent_qpc) * 10000.0 / (double)f.QuadPart;
+                g.rtt_sent_qpc   = 0;
+                if (dms >= 0.0 && dms < 100000.0) {
+                    InterlockedExchange(&g_leg_rtt_dms, (LONG)(dms + 0.5));
+                    InterlockedExchange(&g_leg_rtt_tick, (LONG)GetTickCount());
+                }
+            }
+            return;
+        }
         case OP_SESSIONS: on_sessions_page(payload, plen); return;
         case OP_ERROR: {
             if (plen < 1) return;
@@ -1527,7 +1564,8 @@ void pump() {
             // handshake retransmits (HS_RETRY_MS), so the join costs one retry, not a failure.
             // The directory room has no host by construction (mp:R2), so a datagram sent from
             // there would buy one `no_host` per handshake retry and nothing else.
-            if (self != HANDLE_NONE && g.cfg.room != DIRECTORY_ROOM)
+            if (self != HANDLE_NONE && g.cfg.room != DIRECTORY_ROOM &&
+                InterlockedCompareExchange(&g.rehome_pending, 0, 0) == 0)
                 send_game_data(other, buf, n);
         }
     }
@@ -1552,10 +1590,15 @@ void pump() {
     EnterCriticalSection(&g.cs);
     dirty = g.match_dirty;
     LeaveCriticalSection(&g.cs);
-    if (self == HANDLE_NONE || InterlockedCompareExchange(&g.leg_lost, 0, 0) != 0) {
+    if (self == HANDLE_NONE || InterlockedCompareExchange(&g.leg_lost, 0, 0) != 0 ||
+        InterlockedCompareExchange(&g.rehome_pending, 0, 0) != 0) {
         // The second half is mp:R4b: the handle is kept and named in `src`, so a restarted relay
         // hands it back; the retry cadence is R1's.
-        if (now - g.last_hello >= HELLO_RETRY_MS) {
+        // mp:U62: a RE-HOMING client dials a room whose host registers a moment later (the successor switches on
+        // the same GO): the first HELLO is refused `no_host`, and a 500 ms retry cost the survivors ~0.5 s of the
+        // handover's stall. While a rehome is pending retry at 100 ms (a few datagrams, for a fraction of a second).
+        const DWORD retry_ms = InterlockedCompareExchange(&g.rehome_pending, 0, 0) != 0 ? 100 : HELLO_RETRY_MS;
+        if (now - g.last_hello >= retry_ms) {
             g.last_hello = now;
             send_hello();
         }
@@ -1564,8 +1607,11 @@ void pump() {
         // relay learns the match_id mh.dll minted after the leg was already up.
         g.last_hello = now;
         send_hello();
-    } else if (now - g.last_keep >= KEEP_MS) {
+    } else if (now - g.last_keep >= LEG_RTT_MS) {
         g.last_keep = now;
+        LARGE_INTEGER q;
+        QueryPerformanceCounter(&q);
+        g.rtt_sent_qpc = q.QuadPart; // stamp BEFORE the send (the endpoint's ping rule: never under-report)
         leg_send(OP_PING, HANDLE_NONE, nullptr, 0);
     }
 
@@ -1841,6 +1887,7 @@ bool start(const Config &cfg, const uint8_t psk[KEY_LEN], log_fn log, void *log_
     g_started    = true;
     g.last_hello = GetTickCount() - HELLO_RETRY_MS; // the first pump() sends HELLO at once
     g.last_keep  = GetTickCount();
+    InterlockedExchange(&g_leg_rtt_dms, -1); // mp:U61 -- a fresh tunnel has measured nothing yet
     g.thread     = CreateThread(nullptr, 0, thread_main, nullptr, 0, nullptr);
     if (g.thread == nullptr) {
         stop();
@@ -1910,6 +1957,81 @@ void stop() {
 
 bool active() { return g_started; }
 
+bool rehome_pending() { return g_started && InterlockedCompareExchange(&g.rehome_pending, 0, 0) != 0; }
+
+// mp:U60 -- see udp_relay.h. The pump thread owns every table in State, so the switch happens with the
+// thread STOPPED (joined, not killed) and restarts it afterwards; the leg socket(s) -- the NAT mapping
+// the relay and every punched pair know us by -- are never closed, and tx_seq keeps counting, so the
+// relay's replay window sees one continuous sender.
+bool rehome(const Rehome &r) {
+    if (!g_started || r.room == DIRECTORY_ROOM || r.room > mh::udproom::ROOM_MAX) return false;
+    if (g.cfg.role != 1) return false; // only a client moves; a host never becomes a client here
+    if (r.role == 0 && r.game_port == 0) return false;
+
+    InterlockedExchange(&g.running, 0);
+    if (g.thread) {
+        if (WaitForSingleObject(g.thread, 2000) != WAIT_OBJECT_0) {
+            InterlockedExchange(&g.running, 1); // it is stuck, not stopped: leave the tunnel as it was
+            return false;
+        }
+        CloseHandle(g.thread);
+        g.thread = nullptr;
+    }
+
+    const uint16_t was_o    = (uint16_t)InterlockedCompareExchange(&g.other_handle, 0, 0);
+    const uint32_t was_room = g.cfg.room;
+    // Everything keyed by the OLD counterpart goes: its pair keys, its punch, its loopback socket.
+    if (was_o != HANDLE_NONE) free_peer(was_o);
+    memset(g.pp, 0, sizeof(g.pp));
+    memset(g.kk, 0, sizeof(g.kk));
+    InterlockedExchange(&g.other_handle, 0);
+    InterlockedExchange(&g.leg_lost, 0);
+    g.cfg.room = r.room;
+
+    if (r.role == 1) {
+        // A survivor: SAME handle, SAME leg key, new room. The relay's HELLO update naming a different
+        // room moves a registered peer (relay.rs on_hello -> rehome_peer) and answers `no_host` until
+        // that room's host has registered -- the pump retries until the WELCOME for it lands.
+        pc_open(PC_CLIENT, g.local_port); // the class is unknown again until the new host delivers
+    } else {
+        // The new hub. The relay keeps a registered peer's ROLE for the life of its handle (a HELLO
+        // update with ROLE_HOST from a client is a room move as a client), so the hub registers FRESH:
+        // no handle named, the deployment key, ROLE_HOST, the pre-minted room. The relay replaces the
+        // registration it holds for this leg address ("replaced by a new registration from the same
+        // address"), so the client entry in the old room goes with it.
+        if (g.local != INVALID_SOCKET) {
+            closesocket(g.local);
+            g.local = INVALID_SOCKET;
+        }
+        pc_close(PC_CLIENT);
+        g.local_port = 0;
+        g.have_ep    = false;
+        memset(&g.ep_addr, 0, sizeof(g.ep_addr));
+        g.cfg.role      = 0;
+        g.cfg.game_port = r.game_port;
+        InterlockedExchange(&g.self_handle, 0);
+        memset(g.my_key, 0, sizeof(g.my_key));
+        g.my_key_set = g.my_key_proved = false;
+        g.relay_level_known            = false;
+        g.listing                      = false;
+        g.si_len                       = 0;
+        g.si_registered                = false;
+        g.minter.rnd                   = key_random;
+        g.minter.ctx                   = nullptr;
+        g.minter.room                  = r.room;
+        g.minter.busy                  = 0;
+    }
+    g.last_hello = GetTickCount() - HELLO_RETRY_MS; // the first pump() sends the HELLO at once
+    InterlockedExchange(&g.rehome_pending, 1);
+    InterlockedExchange(&g.running, 1);
+    g.thread = CreateThread(nullptr, 0, thread_main, nullptr, 0, nullptr);
+    if (g.thread == nullptr) return false;
+    logf("net: udp relay -- RE-HOMING %s: room %u -> %u%s (mp:U60)",
+         r.role == 0 ? "as the new HOST (fresh registration, loopback game port)" : "as a client",
+         (unsigned)was_room, (unsigned)r.room, r.role == 0 ? "" : " (same handle, HELLO update)");
+    return true;
+}
+
 // mp:L1f -- see the banner in udp_relay.h. Reads only the published side table, never State, so it
 // is safe from the game thread while the pump runs.
 int path_class(const sockaddr_in &a) {
@@ -1933,6 +2055,23 @@ int path_class(const sockaddr_in &a) {
 }
 
 unsigned short client_dial_port() { return g_started ? g.local_port : 0; }
+
+// mp:U61 -- see udp_relay.h.
+int leg_rtt_dms() {
+    if (!g_started) return -1;
+    const LONG v = InterlockedCompareExchange(&g_leg_rtt_dms, 0, 0);
+    if (v < 0) return -1;
+    if ((DWORD)((DWORD)GetTickCount() - (DWORD)InterlockedCompareExchange(&g_leg_rtt_tick, 0, 0)) > LEG_RTT_FRESH_MS) return -1;
+    return (int)v;
+}
+
+// mp:U63 -- see udp_relay.h.
+int leg_age_ms() {
+    if (!g_started) return -1;
+    const DWORD t = (DWORD)InterlockedCompareExchange(&g_leg_rtt_tick, 0, 0);
+    if (t == 0) return -1;
+    return (int)(DWORD)((DWORD)GetTickCount() - t);
+}
 
 void set_match_id(const uint8_t match_id[UUID7_BYTES]) {
     if (!g_started || match_id == nullptr || nil_id(match_id)) return;

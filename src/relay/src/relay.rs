@@ -2667,6 +2667,118 @@ mod tests {
         )));
     }
 
+    #[test]
+    fn a_successor_rehomes_into_a_premined_room_while_the_old_hosts_handle_is_still_registered() {
+        // mp:U60 (HM-M2). The host-migration plan (docs/mp-host-migration-plan.md section 6.2) re-homes
+        // the survivors into a room the old host pre-minted, because the dead host's handle keeps the
+        // OLD room until the 60 s idle eviction. This is the SERVER half of that, with no server change:
+        //   * a survivor's HELLO update naming the new room is refused `no_host` until the new hub has
+        //     registered, and leaves the survivor where it was (so the tunnel's retry is safe);
+        //   * a HELLO update CANNOT make a client a host (the relay keeps a registered peer's role), so
+        //     the successor registers FRESH from its leg address, which replaces its old registration;
+        //   * once it has, the survivor's retry is a Rehomed and its WELCOME names the new host;
+        //   * the old room, whose dead host is still registered the whole time, does not interfere and
+        //     no longer forwards to the survivor.
+        let mut g = Rig::new();
+        let h_old = g.join(addr(1), leg::ROLE_HOST, 6501);
+        let c1 = g.join(addr(2), leg::ROLE_CLIENT, 6501);
+        let c2 = g.join(addr(3), leg::ROLE_CLIENT, 6501);
+        assert_eq!(g.r.peer_count(), 3);
+        let s = leg::Secrets::derive(&psk());
+        let as_client = leg::hello_payload(leg::ROLE_CLIENT, &[0u8; 16]);
+        let as_host = leg::hello_payload(leg::ROLE_HOST, &[0u8; 16]);
+
+        // (1) the survivor asks for the pre-minted room BEFORE anyone hosts it: refused, not moved.
+        let upd = leg::encode(leg::OP_HELLO, c2, 0, 7001, 9, &as_client, &s.leg).unwrap();
+        let out = g.feed(addr(3), &upd);
+        assert!(g
+            .ev
+            .iter()
+            .any(|e| matches!(e, Event::Refused { why, .. } if *why == "no_host")));
+        assert!(!g.ev.iter().any(|e| matches!(e, Event::Rehomed { .. })));
+        let l = leg::decode(&out[0].bytes, &s.leg).unwrap();
+        assert_eq!(
+            l.op,
+            leg::OP_ERROR,
+            "an ERROR, not a WELCOME: the tunnel keeps retrying"
+        );
+        assert_eq!(
+            g.r.room_count(),
+            1,
+            "no room 7001 was created by a refused client"
+        );
+
+        // (2) a HELLO UPDATE from a registered CLIENT naming ROLE_HOST does not make it a host.
+        g.ev.clear();
+        let upd = leg::encode(leg::OP_HELLO, c1, 0, 7001, 9, &as_host, &s.leg).unwrap();
+        g.feed(addr(2), &upd);
+        assert!(
+            g.ev.iter()
+                .any(|e| matches!(e, Event::Refused { why, .. } if *why == "no_host")),
+            "the update keeps the registered role (client), and a client needs a live host"
+        );
+        assert_eq!(g.r.room_count(), 1);
+
+        // (3) the successor registers FRESH from the same leg address: a new handle, ROLE_HOST, room 7001.
+        g.ev.clear();
+        let out = g.hello(addr(2), leg::ROLE_HOST, 7001, [0u8; 16]);
+        assert!(g.ev.iter().any(|e| matches!(
+            e,
+            Event::PeerRegistered { room, role, .. } if *room == 7001 && *role == leg::ROLE_HOST
+        )));
+        let w = leg::decode(&out[0].bytes, &s.leg).unwrap();
+        let (hub, _) = leg::welcome_parse(&w.payload).unwrap();
+        assert_ne!(
+            hub, c1,
+            "a fresh handle: the old client registration was replaced"
+        );
+        assert_eq!(
+            g.r.peer_count(),
+            3,
+            "old host (dead, still registered) + survivor + the new hub; the old client entry is gone"
+        );
+        assert_eq!(g.r.room_count(), 2, "6501 (old host still there) and 7001");
+
+        // (4) the survivor's retry now succeeds, and its WELCOME names the NEW host.
+        g.ev.clear();
+        let upd = leg::encode(leg::OP_HELLO, c2, 0, 7001, 10, &as_client, &s.leg).unwrap();
+        let out = g.feed(addr(3), &upd);
+        assert!(g.ev.iter().any(|e| matches!(
+            e,
+            Event::Rehomed { handle, from_room, to_room }
+                if *handle == c2 && *from_room == 6501 && *to_room == 7001
+        )));
+        let w = leg::decode(&out[0].bytes, &s.leg).unwrap();
+        assert_eq!(w.op, leg::OP_WELCOME);
+        let (me, other) = leg::welcome_parse(&w.payload).unwrap();
+        assert_eq!((me, other), (c2, hub));
+
+        // (5) the new room forwards survivor -> hub; the old room (dead host still registered) no
+        // longer reaches the survivor.
+        let inner = wire::packet_encode(
+            wire::PKT_DATA,
+            &[3u8; 8],
+            1,
+            &[1u8; KEY_LEN],
+            &[2u8; KEY_LEN],
+            b"after the move",
+        )
+        .unwrap();
+        let before = g.r.counters.forwarded;
+        let pkt = leg::encode(leg::OP_DATA, c2, hub, 7001, 11, &inner, &s.leg).unwrap();
+        let out = g.feed(addr(3), &pkt);
+        assert_eq!(out.len(), 1);
+        assert_eq!(out[0].to, addr(2), "delivered to the new hub's leg address");
+        assert_eq!(g.r.counters.forwarded, before + 1);
+        let stale = leg::encode(leg::OP_DATA, h_old, c2, 6501, 2, &inner, &s.leg).unwrap();
+        g.feed(addr(1), &stale);
+        assert_eq!(
+            g.r.counters.forwarded,
+            before + 1,
+            "the old host's datagram for the survivor went nowhere"
+        );
+    }
+
     // ---- mp:R2, the session directory -----------------------------------------------------------
 
     impl Rig {

@@ -63,11 +63,29 @@ class Refusal(Exception):
     """A run this tool cannot make a statement about. NEVER a pass."""
 
 
-SESSION_DIR_RE = re.compile(r"^\d{8}T\d{6}Z_[0-9a-f]{8}_\d+_[A-Za-z0-9]+$")
+SESSION_DIR_RE = re.compile(
+    r"^(?:\d{8}T\d{6}Z_[0-9a-f]{8}_\d+|\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}Z_[0-9a-f]{8}_[A-Za-z0-9.-]+)_[A-Za-z0-9]+$"
+)
+# SES8 (2026-09-29): new names start "YYYY-MM-DDTHH-MM-SSZ", which does NOT string-sort with the
+# SES1 "YYYYMMDDTHHMMSSZ" ones a lane still holds (`-` < `0`). Order by canon(name), never the raw
+# name. Verbatim copy of tools/_rundir.py's canon() (no import chain between checkers).
+_NEW_STAMP = re.compile(r"^(\d{4})-(\d{2})-(\d{2})T(\d{2})-(\d{2})-(\d{2})Z")
+
+
+def canon(name):
+    """The name with an SES8 stamp rewritten to the SES1 compact form, so the two sort together."""
+    return _NEW_STAMP.sub(r"\1\2\3T\4\5\6Z", name)
+
+
 D36_RE = re.compile(
     r"D36: match-entry residue (cleared|KEPT)[^:]*: player_data nonzero=(\d+) of (\d+) B, "
     r"Planets\[31\] strings nonzero=(\d+) of (\d+) B"
 )
+# mp:D45 -- `; D45: boot-snapshot residue restored: strat_players=N planets=N prod_slots=N
+# order_staging=N(measured) order_pending_arr=N(measured)`; N = bytes differing from the boot snapshot
+# BEFORE the restore (0 on every entry of a fresh process)
+D45_RE = re.compile(r"D45: boot-snapshot residue (restored|KEPT|NO SNAPSHOT)[^:]*:(.*)$")
+D45_FIELD_RE = re.compile(r"(\w+)=(\d+)")
 DESYNC_RE = re.compile(r"\[desync\] \*\*\* DESYNC step=(\d+).*?first_region=(\d+) (\S+)")
 FIRST_RE = re.compile(r"\[desync\] first sample sent: step=(\d+) state=([0-9A-F]{16})")
 
@@ -87,6 +105,39 @@ def load_regions():
         out.append((r["name"], int(r["addr"], 16), off, r["size"]))
         off += r["size"]
     return out, off
+
+
+# Verdict regions whose RAW seed bytes differ between two correct peers because the hash MASKS them
+# (rng_state is hashed fog-style masked; tile_objects carries view/anim bits the masks drop).
+# Measured on the first d45_sp_then_host run with the fix: both peers' first [desync] sample was
+# A882972B3F1B85B0 while these two regions differed by 1 and 1140 runs, so the difference sits inside
+# the masked bytes. The first-sample equality check below is what covers them.
+MASKED_IN_HASH = {"rng_state", "tile_objects"}
+
+
+def hashed_region_names():
+    """The manifest's VERDICT regions (excluded == False): the set the in-band desync watch compares,
+    so a seed diff over exactly these is what predicts a `*** DESYNC`. mp:D45 (--all-regions)."""
+    with open(MANIFEST, encoding="utf-8") as fh:
+        return {r["name"] for r in json.load(fh)["regions"] if not r.get("excluded")}
+
+
+def d45_lines(run_dir, sessions):
+    """[(mode, {region: bytes_differing_before_restore})] for every D45 line this process wrote
+    (process dir + session dirs, like d36_lines)."""
+    out = []
+    for d in [run_dir] + sessions:
+        for ln in read_lines(os.path.join(d, "mh_launch.log")):
+            m = D45_RE.search(ln)
+            if m:
+                out.append((m.group(1), {k: int(v) for k, v in D45_FIELD_RE.findall(m.group(2))}))
+    return out
+
+
+def d45_total(fields):
+    """Bytes differing across the three RESTORED regions (the two `(measured)` order arrays are
+    reported, not asserted -- they are not hashed)."""
+    return sum(fields.get(k, 0) for k in ("strat_players", "planets", "prod_slots"))
 
 
 def diff_runs(a, b, regions, names=None):
@@ -135,7 +186,7 @@ def lane_sessions(run_dir):
         and SESSION_DIR_RE.match(os.path.basename(d))
         and session_process_dir(d) == leaf
     ]
-    return sorted(sess, key=os.path.basename)
+    return sorted(sess, key=lambda d: canon(os.path.basename(d)))
 
 
 def read_lines(fp):
@@ -187,7 +238,13 @@ def read_seed(folder, total):
     return blob
 
 
-def check(run_dirs, expect="identical"):
+def check(run_dirs, expect="identical", sp_first=False):
+    """sp_first (mp:D45): the host process LOADED A SINGLE-PLAYER SAVEGAME before hosting, so its first
+    MP entry is NOT a fresh process -- (a) it may own more than two session directories (the SP game
+    may have opened one; the LAST two are the matches), (b) its first entry's player_data is allowed
+    to be nonzero (D36 clears it), (c) the seed comparison covers EVERY verdict region, not the D36
+    subset, and (d) the D45 boot-restore line must read > 0 on both host entries (the savegame's
+    residue and match 1's really were there -- the anti-vacuity half) and 0 on the fresh client."""
     if len(run_dirs) != 2:
         raise Refusal(
             "want exactly two peer run directories (host, client), got %d" % len(run_dirs)
@@ -196,10 +253,12 @@ def check(run_dirs, expect="identical"):
     host_rd, cli_rd = run_dirs
     hs, cs = lane_sessions(host_rd), lane_sessions(cli_rd)
     print("check_d36_rematch_seed: host %d session(s), client %d session(s)" % (len(hs), len(cs)))
-    if len(hs) != 2:
+    if len(hs) < 2 or (len(hs) != 2 and not sp_first):
         raise Refusal(
-            "host process holds %d session dir(s), want EXACTLY 2 (match 1, the rematch)" % len(hs)
+            "host process holds %d session dir(s), want %s 2 (match 1, the rematch)"
+            % (len(hs), "AT LEAST" if sp_first else "EXACTLY")
         )
+    hs = hs[-2:]  # sp_first: the savegame's own session directory (if any) is not a match
     if len(cs) != 1:
         raise Refusal(
             "client process holds %d session dir(s), want EXACTLY 1 (a fresh process)" % len(cs)
@@ -221,22 +280,61 @@ def check(run_dirs, expect="identical"):
             "want 2 host + 1 client `D36: match-entry residue` lines, got %d + %d -- an mh.dll without "
             "the D36 entry clear, or the entry prep never ran" % (len(hl), len(cl))
         )
-    fresh = [hl[0], cl[0]]
-    for who, (_m, pd, pl) in zip(("host match 1", "client (fresh)"), fresh):
+    fresh = [cl[0]] if sp_first else [hl[0], cl[0]]
+    for who, (_m, pd, pl) in zip(
+        ("client (fresh)",) if sp_first else ("host match 1", "client (fresh)"), fresh
+    ):
         if pd != 0 or pl != 0:
             fails.append(
                 "%s entered with player_data nonzero=%d / Planets[31] strings nonzero=%d -- a FIRST-in-"
                 "process entry is not all-zero, so the clear wipes state a fresh process has (retail "
                 "writes it before the lobby entry)" % (who, pd, pl)
             )
-    if hl[1][1] == 0:
+    if hl[1][1] == 0 and not sp_first:
         raise Refusal(
             "the host's rematch entry measured player_data nonzero=0 -- match 1 left no residue (did the "
             "host land?), so this run cannot say anything about clearing it"
         )
 
+    # mp:D45 -- the boot-snapshot restore line. A fresh process (the client; in the plain d36 rows the
+    # host's first entry too) must read 0 in every restored region; in sp_first mode BOTH host entries
+    # must read > 0 (the savegame's residue / match 1's), or the run cannot say the restore did work.
+    h45, c45 = d45_lines(host_rd, hs), d45_lines(cli_rd, cs)
+    for role, got in (("host", h45), ("client", c45)):
+        for mode, fields in got:
+            print("  %-6s D45 entry: %s %s" % (role, mode, fields))
+    if len(h45) != 2 or len(c45) != 1:
+        raise Refusal(
+            "want 2 host + 1 client `D45: boot-snapshot residue` lines, got %d + %d -- an mh.dll without "
+            "the D45 restore, or the entry prep never ran" % (len(h45), len(c45))
+        )
+    for who, (mode, fields) in [("client (fresh)", c45[0])] + (
+        [] if sp_first else [("host match 1", min(h45, key=lambda t: d45_total(t[1])))]
+    ):
+        if mode == "NO SNAPSHOT":
+            fails.append("%s: the boot snapshot was never captured" % who)
+        elif d45_total(fields) != 0:
+            fails.append(
+                "%s: a FIRST-in-process entry measured boot-snapshot residue %s -- the lobby/launch writes "
+                "these regions before the entry (must be exempted) or the snapshot is wrong"
+                % (who, fields)
+            )
+    if sp_first and expect == "identical":
+        for who, (mode, fields) in zip(("host entry A", "host entry B"), h45):
+            if mode != "restored":
+                fails.append("%s: D45 mode is %r, want 'restored'" % (who, mode))
+            if d45_total(fields) == 0:
+                fails.append(
+                    "%s: measured boot-snapshot residue 0 -- the host's savegame/match left nothing, "
+                    "the clear is untested (vacuous run)" % who
+                )
+
     hseed, cseed = read_seed(hs[1], total), read_seed(cs[0], total)
-    diffs = diff_runs(hseed, cseed, regions, lambda n: bool(COMPARED_RE.match(n)))
+    if sp_first:
+        verdict = hashed_region_names() - MASKED_IN_HASH
+        diffs = diff_runs(hseed, cseed, regions, lambda n: n in verdict)
+    else:
+        diffs = diff_runs(hseed, cseed, regions, lambda n: bool(COMPARED_RE.match(n)))
     for name, runs in diffs.items():
         print(
             "  seed diff %-16s %d run(s): %s"
@@ -265,6 +363,19 @@ def check(run_dirs, expect="identical"):
             )
         elif hfirst != cfirst:
             fails.append("match 2 first samples differ: host %s client %s" % (hfirst, cfirst))
+    elif sp_first:
+        # the negative arm (`[net] d45_restore_boot=0`): the savegame residue reaches the match, the
+        # in-band watch names strat_players (the field's first_region)
+        if not any(n in diffs for n in ("strat_players", "planets", "prod_slots")):
+            fails.append(
+                "reproduction arm: the seeds do NOT differ in strat_players/planets/prod_slots -- "
+                "the savegame's residue never reached the match"
+            )
+        if not any(r == "strat_players" for _s, r in hdes):
+            fails.append(
+                "reproduction arm: the host's match 2 logged no `*** DESYNC ... strat_players` (got %s)"
+                % (hdes[:3] or "none")
+            )
     else:
         name, lo, hi = RESOURCE_SPENT
         if not any(s < hi and e > lo for s, e in diffs.get(name, [])):
@@ -281,9 +392,16 @@ def check(run_dirs, expect="identical"):
     print(
         "[PASS] %s"
         % (
-            "the rematch entered from a fresh process's state: seeds equal, [desync] clean"
+            "the match entered from a fresh process's state: every hashed region equal, [desync] clean"
+            if sp_first and expect == "identical"
+            else "the rematch entered from a fresh process's state: seeds equal, [desync] clean"
             if expect == "identical"
-            else "reproduction: residue in resource_spent reached the rematch and the watch said DESYNC"
+            else "reproduction: %s reached the rematch and the watch said DESYNC"
+            % (
+                "the savegame's strat_players/planets/prod_slots residue"
+                if sp_first
+                else "residue in resource_spent"
+            )
         )
     )
     return 0
@@ -292,9 +410,10 @@ def check(run_dirs, expect="identical"):
 # ---- selftest: planted lanes -----------------------------------------------------------------------
 
 
-def _plant(root, lane, sessions, launch_proc=""):
+def _plant(root, lane, sessions, launch_proc="", ses8=False):
     logs = os.path.join(root, lane, "logs")
-    leaf = "20260926T000000Z_menu_solo"
+    # ses8: this process's folders carry SES8 names beside the SES1-named foreign session below
+    leaf = "2026-09-26T00-00-00Z_menu_solo" if ses8 else "20260926T000000Z_menu_solo"
     menu = os.path.join(logs, leaf)
     os.makedirs(menu)
     with open(os.path.join(menu, "mh_launch.log"), "w", encoding="utf-8") as fh:
@@ -305,7 +424,15 @@ def _plant(root, lane, sessions, launch_proc=""):
     with open(os.path.join(foreign, "session.json"), "w", encoding="utf-8") as fh:
         json.dump({"process_dir": "20260925T235800Z_menu_solo"}, fh)
     for k, (seed, net, launch) in enumerate(sessions):
-        d = os.path.join(logs, "20260926T00000%dZ_0000000%d_0_solo" % (k + 1, k + 1))
+        d = os.path.join(
+            logs,
+            (
+                "2026-09-26T00-00-0%dZ_0000000%d_blue-monday_host"
+                if ses8
+                else "20260926T00000%dZ_0000000%d_0_solo"
+            )
+            % (k + 1, k + 1),
+        )
         os.makedirs(d)
         with open(os.path.join(d, "session.json"), "w", encoding="utf-8") as fh:
             json.dump({"process_dir": leaf}, fh)
@@ -340,9 +467,12 @@ def selftest():
     net_other = "; [desync] first sample sent: step=50 state=0000000000000001 (x)\n"
 
     def l36(pd, pl, mode="cleared"):
+        # the D45 line rides with every D36 line (same entry); strat_players carries `pd` so a
+        # fresh entry (0) reads 0 and a residue-bearing one reads > 0
         return (
             "; D36: match-entry residue %s: player_data nonzero=%d of 1329136 B, Planets[31] strings nonzero=%d of 765 B\n"
-            % (mode, pd, pl)
+            "; D45: boot-snapshot residue restored: strat_players=%d planets=0 prod_slots=0 "
+            "order_staging=0(measured) order_pending_arr=0(measured)\n" % (mode, pd, pl, pd)
         )
 
     fixed_host = [(clean, net_ok, l36(0, 0)), (clean, net_ok, l36(412, 18))]
@@ -410,6 +540,93 @@ def selftest():
             0,
         ),
         ("reproduction arm on a fixed run -> red", fixed_host, fixed_cli, "diverge", 1),
+        (
+            "SES8 names: fixed build, rematch == fresh",
+            fixed_host,
+            fixed_cli,
+            "identical",
+            0,
+            "",
+            True,
+        ),
+        (
+            "SES8 names: rc4 residue still caught",
+            [(clean, net_ok, l36(0, 0, kept)), (resid, net_bad, l36(412, 18, kept))],
+            [(clean, net_ok, l36(0, 0, kept))],
+            "identical",
+            1,
+            "",
+            True,
+        ),
+    ]
+    # mp:D45 -- the host loaded a savegame first: an extra SP session dir, nonzero first entry
+    prod = poke(clean, "prod_slots", 0x40, b"\xab")
+    sp_host = [
+        (clean, net_ok, l36(300, 5)),
+        (clean, net_ok, l36(300, 5)),
+        (clean, net_ok, l36(412, 18)),
+    ]
+    sp_host_bad = sp_host[:2] + [
+        (prod, net_bad.replace("p0_ai_econ", "strat_players"), l36(412, 18))
+    ]
+    cases += [
+        (
+            "D45 sp-first: restored, every hashed region equal",
+            sp_host,
+            fixed_cli,
+            "identical",
+            0,
+            "",
+            False,
+            True,
+        ),
+        (
+            "D45 sp-first: prod_slots residue + DESYNC strat_players",
+            sp_host_bad,
+            fixed_cli,
+            "identical",
+            1,
+            "",
+            False,
+            True,
+        ),
+        (
+            "D45 sp-first: reproduction arm reproduces",
+            sp_host_bad,
+            fixed_cli,
+            "diverge",
+            0,
+            "",
+            False,
+            True,
+        ),
+        (
+            "D45 sp-first: negative arm on a fixed run -> red",
+            sp_host,
+            fixed_cli,
+            "diverge",
+            1,
+            "",
+            False,
+            True,
+        ),
+        (
+            "D45 sp-first: vacuous (host residue 0 on both entries)",
+            [(clean, net_ok, l36(0, 0)), (clean, net_ok, l36(0, 0)), (clean, net_ok, l36(0, 0))],
+            fixed_cli,
+            "identical",
+            1,
+            "",
+            False,
+            True,
+        ),
+        (
+            "D45: fresh client with residue (lobby writes it) -> red",
+            fixed_host,
+            [(clean, net_ok, l36(0, 0).replace("strat_players=0", "strat_players=9"))],
+            "identical",
+            1,
+        ),
     ]
     import contextlib
     import io
@@ -418,14 +635,16 @@ def selftest():
     for case in cases:
         title, host, cli, expect, want = case[:5]
         proc_launch = case[5] if len(case) > 5 else ""
+        ses8 = bool(case[6]) if len(case) > 6 else False
+        sp_first = bool(case[7]) if len(case) > 7 else False
         root = tempfile.mkdtemp(prefix="d36_selftest_")
         try:
-            h = _plant(root, "ui_x_host", host, proc_launch)
-            c = _plant(root, "ui_x_c1", cli)
+            h = _plant(root, "ui_x_host", host, proc_launch, ses8)
+            c = _plant(root, "ui_x_c1", cli, "", ses8)
             buf = io.StringIO()
             try:
                 with contextlib.redirect_stdout(buf):
-                    got = check([h, c], expect)
+                    got = check([h, c], expect, sp_first)
             except Refusal:
                 got = "refuse"
         finally:
@@ -466,7 +685,7 @@ def main(argv):
             return 2
     dirs = [a for a in argv if not a.startswith("--") and a not in ("identical", "diverge")]
     try:
-        return check(dirs, expect)
+        return check(dirs, expect, sp_first="--sp-first" in argv)
     except Refusal as e:
         print("[REFUSED] %s" % e)
         return 2

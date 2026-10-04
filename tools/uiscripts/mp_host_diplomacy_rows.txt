@@ -1,0 +1,76 @@
+# mp:U46 HOST walk (3 peers) -- the diplomacy Apply when a LEFT player's row precedes a human's.
+#
+# The lobby compacts humans ahead of AIs, so [host, AI, human] cannot be seated; the real way an
+# unavailable slot ends up BEFORE a human is a departure. The quitter (slot 1) leaves the running match
+# (as mp_host_quit3.txt); its slot is no longer a live human, but the builder (0x004c811c) still makes
+# its spinner row, and retail's Apply (0x004c7fc6) advances rows only for HUMAN slots -- so the survivor
+# (slot 2)'s relation/control/chat were read from the QUITTER's row and its own row was never read.
+# The host ticks "allied" on the SURVIVOR's row (second row) and presses Ok; post_check
+# (tools/check_u45_diplo.py --only rel --other 2 --skip 1) reads the host's and the survivor's recorded
+# orders: ship arm = a 0xf4 for player 2; `[net] diplo_row_fix=0` = NO 0xf4 at all.
+# Pair with mp_client_u46_quitter.txt (joins first) + mp_client_u46_survivor.txt.
+
+# reach the host lobby (create the pre-pinned game on the pre-selected map)
+settled value:110
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+settled Create
+clickl Create
+present Game name
+settled Ok
+clickl Ok
+present Available maps
+settled Ok
+clickl Ok
+
+# host lobby: block until the client is really in ITS lobby, then Start.
+present Network players
+peers 2
+occ 3
+enabled Start
+settled Start
+awaitsignal seated1
+awaitsignal seated2
+clickl Start
+
+# in the match; let the sim run a while so the analyzer has rows before the dialog
+absent Network players
+gamemode 2
+gameclock 3000
+
+# the quitter leaves (ESC -> Quit -> Yes); the survivor and we play on
+awaitsignal quitting
+awaitsignal cliquit
+gameclock 6000
+gamemode 2
+absent Continue game
+
+# the diplomacy dialog (see mp_host_diplomacy.txt for the HUD-button / retry idiom)
+simclick 972 150
+retry 1500 1 3 settled value:100
+clickv 100
+absent value:113
+dump
+capture diplomacy_open
+
+# THE TRIGGER: tick "allied" on the SURVIVOR's row (the second row), then Ok.
+clicki 5
+settled Ok
+capture survivor_allied_ticked
+clickl Ok
+absent Ok
+log HOST ticked allied for the SURVIVOR (slot 2) behind the quitter's row (slot 1)
+
+# After the commit the reopened dialog shows the survivor's box TICKED (ship arm).
+gameclock 10000
+simclick 972 150
+retry 1500 1 3 settled value:100
+clickv 100
+absent value:113
+capture reopened_after_commit
+clickl Cancel
+absent Cancel
+gameclock 14000
+end

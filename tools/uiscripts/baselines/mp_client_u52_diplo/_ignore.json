@@ -1,0 +1,23 @@
+{
+  "*": [
+    [
+      621,
+      74,
+      362,
+      77
+    ],
+    [
+      501,
+      160,
+      160,
+      99
+    ],
+    [
+      700,
+      15,
+      140,
+      40
+    ]
+  ],
+  "_why": "mp:U52 (2026-10-03), 1024x768 captures: lobby right-panel header (host IP) and the lobby ping column (the 640-space rects of mp_client_ping3 x1.6), and the in-game PING/CMD readout top-right (live SRTT)."
+}

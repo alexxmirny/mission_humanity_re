@@ -54,9 +54,21 @@ ui_test.py --determinism leaves in tmp/ui_test/determinism/<peer>/.
 """
 
 import argparse
+import json
 import os
 import re
 import sys
+
+# SES8 (2026-09-29): run directories are now `YYYY-MM-DDTHH-MM-SSZ_...`; a lane still holds SES1
+# `YYYYMMDDTHHMMSSZ_...` ones, and a raw string sort puts every SES1 name AFTER an SES8 one
+# (`-` < `0`). canon() folds the new stamp to the compact form so name order is time order again.
+# Verbatim copy of tools/_rundir.py's (no import chain: this tool runs standalone).
+_NEW_STAMP = re.compile(r"^(\d{4})-(\d{2})-(\d{2})T(\d{2})-(\d{2})-(\d{2})Z")
+
+
+def canon(name):
+    return _NEW_STAMP.sub(r"\1\2\3T\4\5\6Z", name)
+
 
 # mh_lockstep.log columns (see ls_log_tick in net_lockstep.cpp). Indexed by NAME, not position:
 # the row grew an icon_calls/icon_shown pair on 2026-07-26 and will grow again.
@@ -294,26 +306,44 @@ def session_dir_for(run_dir):
 
     mh_lockstep.log and mh_frametime.log are per-SESSION since SES1, so a path that used to hold both
     may now hold neither -- a pacing report pointed at `logs/<UTC>_menu_host` would simply print
-    "skipped, no usable in-game mh_lockstep.log" and say nothing about why. Sessions are named
-    `<UTC>_<mid8>_<slot>_<role>` and sort after the process directory they hang off; the newest is
+    "skipped, no usable in-game mh_lockstep.log" and say nothing about why. The newest session is
     the last match that peer played, which is what "point the report at the run" has always meant.
-    Returns None when `run_dir` already holds the logs (a session directory, or a pre-SES1 folder)."""
+    Returns None when `run_dir` already holds the logs (a session directory, or a pre-SES1 folder).
+
+    A session is THIS process's when its session.json names `run_dir` as `process_dir`. SES8
+    (2026-09-29) made that the only test that works: a session directory now ends in its MATCH mode
+    (`_host`, `_client`, `_skirmish`, ...) rather than the boot role, and SES8 and SES1 stamps do not
+    compare as raw strings (canon() above). A session.json-less SES1 fallback keeps the old rule."""
     base = os.path.basename(os.path.abspath(run_dir).rstrip("\\/"))
     if "_menu_" not in base:
         return None
     role = base.rsplit("_", 1)[-1]
     parent = os.path.dirname(os.path.abspath(run_dir))
     try:
-        names = sorted(
-            n
-            for n in os.listdir(parent)
-            if "_menu_" not in n
-            and n.endswith("_" + role)
-            and n > base
-            and os.path.isdir(os.path.join(parent, n))
+        cands = sorted(
+            (
+                n
+                for n in os.listdir(parent)
+                if "_menu_" not in n
+                and canon(n) > canon(base)
+                and os.path.isdir(os.path.join(parent, n))
+            ),
+            key=canon,
         )
     except OSError:
         return None
+    mine, legacy = [], []
+    for n in cands:
+        try:
+            with open(os.path.join(parent, n, "session.json"), encoding="utf-8") as fh:
+                pd = (json.load(fh) or {}).get("process_dir")
+        except (OSError, ValueError, AttributeError):
+            pd = None
+        if pd == base:
+            mine.append(n)
+        elif pd is None and n.endswith("_" + role):
+            legacy.append(n)
+    names = mine or legacy
     return os.path.join(parent, names[-1]) if names else None
 
 

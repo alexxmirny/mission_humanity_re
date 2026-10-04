@@ -42,6 +42,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.dirname(HERE)
 sys.path.insert(0, HERE)
 
+import lane_alloc  # noqa: E402  the harness port bands the firewall rule must contain
 import machine_config as machine  # noqa: E402
 import mp_run  # reuse build_focus (no_cd + run_without_focus chain)  # noqa: E402
 
@@ -53,16 +54,21 @@ REG_FILE = os.path.join(HERE, "data", "mh_registry.reg")
 REG_KEY = r"HKLM\SOFTWARE\WOW6432Node\Techland\Mission Humanity"
 PROBE = os.path.join(HERE, "udp_rtt_probe.py")  # mp:T3b's independent RTT probe (TL-PROBEDEPLOY)
 
-# The rig's inbound port band. Every port the harness can hand a peer must be inside it:
-#   6501            ui_test/mp_run default ([net] port)
-#   6600 + n        test_ui LOCAL_PORT_BASE, one per concurrent test
-#   6620            DET_LOCAL_PORT
-#   6600 + lane     the single-lane runners (soak / tactical / ui_play / sp-det) -- lane numbers come
-#                   from tools/lane_alloc.py, so this band moves when a block there does
-#   6700 + n        test_ui LOCAL_SHIM_PORT_BASE (the msvfw32 shim tests)
-# Widen HI rather than adding a second rule if a new band appears in test_ui.py.
-FW_LO, FW_HI = 6500, 6799
-FW_RULE = "MH rig lanes %d-%d" % (FW_LO, FW_HI)
+# The rig's inbound port ranges. Every port the harness can hand a peer must be inside one:
+#   6500-6799     the FIXED range: 6501 ui_test/mp_run/det3 default ([net] port), 6502 the RTT probe,
+#                 6633 fixture_replay, 6698/6699 the relay shim / hand-run shim control defaults. This
+#                 was the whole rule (6500-6799) until 2026-09-29, when it also held the lane bands.
+#   RIG_PORT_LO..RIG_PORT_HI  (tools/lane_alloc.py, 10000-10999 today) the harness bands: the per-row
+#                 game / shim / host2 / shim-control ports (base + row index, PORT_BAND wide) and
+#                 the port-derived single-lane runners (PORT_BASE + lane, lanes 800..999).
+# DERIVED from lane_alloc rather than restated, so moving a band moves the rule with it; lane_alloc
+# --check also asserts the containment. ONE rule per protocol with both ranges, under a stable name:
+# a range change UPDATES it in place (Set-NetFirewallRule -LocalPort), and any older "MH rig lanes *"
+# rule (the pre-2026-09-29 names carried their range, e.g. "MH rig lanes 6500-6799 TCP") is removed.
+FW_RANGES = ((6500, 6799), (lane_alloc.RIG_PORT_LO, lane_alloc.RIG_PORT_HI))
+FW_PORTS = ",".join("%d-%d" % r for r in FW_RANGES)
+FW_RULE = "MH rig lanes"
+FW_RULE_PREFIX = "MH rig lanes*"
 
 # The rig launches lanes provisioned (make_lane) from the EN POLYGON, so that is the only install that
 # MUST be rig-bootable. The clean/RU trees are pristine references (Ghidra imports, diffing) and are
@@ -103,60 +109,98 @@ def apply_registry(check_only):
 
 
 def _fw_ps(check_only):
-    """PowerShell that reports (or creates) the inbound allow rules, one line per protocol.
+    """PowerShell that reports (or creates / updates) the inbound allow rules, one line per protocol.
 
     Scoped to -RemoteAddress LocalSubnet: the rig is a LAN of peers, and nothing outside it has any
     business reaching a game port. -Profile Any because a VM's adapter may come up Public or Private
     depending on how the network was classified at first boot, and a rule that only covers the profile
     that happened to be active is the same silent failure one layer down.
+
+    Per protocol the report is `FW <proto> <state> <ports>`: PRESENT (enabled, exact ranges), CREATED,
+    UPDATED (ranges or enabled state corrected), STALE / MISSING (check mode). Then one `FWOLD <n>`
+    line: how many superseded "MH rig lanes *" rules exist (check) or were removed (apply).
     """
-    out = []
-    for proto in ("TCP", "UDP"):
-        name = "%s %s" % (FW_RULE, proto)
+    want = ",".join("'%d-%d'" % r for r in FW_RANGES)
+    out = ["$want = @(%s)" % want, "$wj = ($want -join ',')"]
+    names = ["%s %s" % (FW_RULE, p) for p in ("TCP", "UDP")]
+    out.append(
+        "$old = @(Get-NetFirewallRule -DisplayName '%s' -EA SilentlyContinue | "
+        "Where-Object { @('%s') -notcontains $_.DisplayName })"
+        % (FW_RULE_PREFIX, "','".join(names))
+    )
+    if not check_only:
+        out.append("$old | Remove-NetFirewallRule")
+    for proto, name in zip(("TCP", "UDP"), names):
+        get = "$r = Get-NetFirewallRule -DisplayName '%s' -EA SilentlyContinue" % name
+        ports = (
+            "$pf = if ($r) { (($r | Get-NetFirewallPortFilter).LocalPort) -join ',' } else { '' }"
+        )
+        good = "($r -and $r.Enabled -eq 'True' -and $pf -eq $wj)"
         if check_only:
-            out.append(
-                "if (Get-NetFirewallRule -DisplayName '{n}' -EA SilentlyContinue | "
-                "Where-Object {{ $_.Enabled -eq 'True' }}) {{ 'FW {p} PRESENT' }} "
-                "else {{ 'FW {p} MISSING' }}".format(n=name, p=proto)
+            body = (
+                "if (%s) { 'FW %s PRESENT ' + $pf } elseif ($r) { 'FW %s STALE ' + $pf } "
+                "else { 'FW %s MISSING -' }" % (good, proto, proto, proto)
             )
         else:
-            out.append(
-                "if (Get-NetFirewallRule -DisplayName '{n}' -EA SilentlyContinue) {{ "
-                "Enable-NetFirewallRule -DisplayName '{n}'; 'FW {p} PRESENT' }} else {{ "
-                "New-NetFirewallRule -DisplayName '{n}' -Direction Inbound -Action Allow "
-                "-Protocol {p} -LocalPort {lo}-{hi} -Profile Any -RemoteAddress LocalSubnet "
-                "| Out-Null; 'FW {p} CREATED' }}".format(n=name, p=proto, lo=FW_LO, hi=FW_HI)
+            body = (
+                "if (%s) { 'FW %s PRESENT ' + $pf } elseif ($r) { "
+                "Set-NetFirewallRule -DisplayName '%s' -LocalPort $want -Enabled True; "
+                "'FW %s UPDATED ' + $wj } else { "
+                "New-NetFirewallRule -DisplayName '%s' -Direction Inbound -Action Allow "
+                "-Protocol %s -LocalPort $want -Profile Any -RemoteAddress LocalSubnet | Out-Null; "
+                "'FW %s CREATED ' + $wj }" % (good, proto, name, proto, name, proto, proto)
             )
+        out += [get, ports, body]
+    out.append("'FWOLD ' + $old.Count")
     return "; ".join(out)
+
+
+def _fw_encoded(ps):
+    """-EncodedCommand form: UTF-16LE base64, so neither the local argv nor the remote ssh shell
+    (cmd.exe on the rig VMs) ever parses the script's quotes, pipes or `$`."""
+    import base64  # noqa: PLC0415
+
+    return base64.b64encode(ps.encode("utf-16-le")).decode("ascii")
 
 
 def _fw_report(where, text, check_only):
     """Turn the PS output into one status line. Returns True if both protocols are covered."""
-    got = {}
+    got, old = {}, None
     for line in text.splitlines():
         f = line.split()
-        if len(f) == 3 and f[0] == "FW":
-            got[f[1]] = f[2]
-    missing = [p for p in ("TCP", "UDP") if got.get(p) not in ("PRESENT", "CREATED")]
-    if missing:
+        if len(f) == 4 and f[0] == "FW":
+            got[f[1]] = (f[2], f[3])
+        elif len(f) == 2 and f[0] == "FWOLD":
+            old = f[1]
+    bad = [
+        p for p in ("TCP", "UDP") if got.get(p, ("?",))[0] not in ("PRESENT", "CREATED", "UPDATED")
+    ]
+    if bad:
         _p(
             FAIL,
-            "%s: inbound rule %s %s -- %s"
+            "%s: inbound rule '%s' %s -- %s"
             % (
                 where,
                 FW_RULE,
-                "/".join(missing) + " MISSING",
-                "run without --check to create it"
+                ", ".join("%s %s" % (p, " ".join(got.get(p, ("MISSING", "-")))) for p in bad),
+                "run without --check to create/update it"
                 if check_only
-                else "creation failed (needs an ELEVATED shell)",
+                else "creation failed (needs an ELEVATED shell); output: %r" % text.strip()[-300:],
             ),
         )
         return False
-    made = [p for p in ("TCP", "UDP") if got[p] == "CREATED"]
+    made = ["%s %s" % (p, got[p][0].lower()) for p in ("TCP", "UDP") if got[p][0] != "PRESENT"]
     _p(
         OK,
-        "%s: inbound %d-%d allowed (%s)"
-        % (where, FW_LO, FW_HI, ("created " + "+".join(made)) if made else "already present"),
+        "%s: inbound %s allowed (%s)%s"
+        % (
+            where,
+            FW_PORTS,
+            ", ".join(made) if made else "already present",
+            ""
+            if not old or old == "0"
+            else ("; %s superseded rule(s) %s" % (old, "present" if check_only else "removed")),
+        ),
     )
     return True
 
@@ -168,13 +212,15 @@ def apply_firewall(check_only, peers):
     SKIPped: this script must stay runnable with the VMs powered off.
     """
     ok = True
-    ps = _fw_ps(check_only)
-    r = subprocess.run(["powershell", "-NoProfile", "-Command", ps], capture_output=True, text=True)
+    enc = _fw_encoded(_fw_ps(check_only))
+    r = subprocess.run(
+        ["powershell", "-NoProfile", "-EncodedCommand", enc], capture_output=True, text=True
+    )
     ok &= _fw_report("local", r.stdout or "", check_only)
 
     for ip in peers:
         r = mp_run.ssh(
-            machine.SSH_KEY, machine.VM_USER, ip, 'powershell -NoProfile -Command "%s"' % ps
+            machine.SSH_KEY, machine.VM_USER, ip, "powershell -NoProfile -EncodedCommand %s" % enc
         )
         if r.returncode != 0:
             _p(WARN, "peer %s: unreachable, firewall NOT checked (%s)" % (ip, mp_run._ssh_err(r)))

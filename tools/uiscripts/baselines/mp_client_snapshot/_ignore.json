@@ -1,0 +1,13 @@
+{
+  "_why": "mp:X3a. capture_s2_client_held.png is the importing peer's frame ~30+ s after a live world import, sim held. What it may claim is that the frame path drew a strategic game from the imported world, not exact pixels, so it is judged structurally (ui_test.structural_check) against this peer's own committed in-game baseline instead of being diffed against a baseline of its own.",
+  "_structural": {
+    "capture_s2_client_held.png": {
+      "ref": "capture_s1_client_ingame.png",
+      "view_rect": [0, 0, 864, 740],
+      "min_nonblack": 0.25,
+      "min_colors": 60,
+      "hud_rect": [864, 250, 160, 480],
+      "hud_tol": 0.10
+    }
+  }
+}

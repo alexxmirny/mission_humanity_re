@@ -386,6 +386,9 @@
     <ClCompile Include="lockstep\tx_emit_order.cpp">
       <Filter>lockstep</Filter>
     </ClCompile>
+    <ClCompile Include="orders\admission_log.cpp">
+      <Filter>orders</Filter>
+    </ClCompile>
     <ClCompile Include="orders\issue\issue_ai_move_primitives.cpp">
       <Filter>orders\issue</Filter>
     </ClCompile>
@@ -1695,6 +1698,9 @@
       <Filter>state</Filter>
     </ClCompile>
     <ClCompile Include="state\spine_exports.cpp">
+      <Filter>state</Filter>
+    </ClCompile>
+    <ClCompile Include="state\world_fixup.cpp">
       <Filter>state</Filter>
     </ClCompile>
     <ClCompile Include="state\world_snapshot.cpp">

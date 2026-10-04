@@ -13,6 +13,7 @@
 //
 #include "sim/sim_player_presence_lost.h"
 
+#include "lockstep/turn_engine.h"
 #include "sim_test_support.h"
 
 namespace mh::sim::test {
@@ -383,6 +384,68 @@ void run_player_presence_lost_tests() {
         run(fx, 1, 0);
         ck_eq((uint32_t)fx.session_mode, (uint32_t)MP_LOCAL, "MP-LOCKSTEP: session downgraded 3->2");
         ck(g_overlay_dismiss >= 1, "MP-LOCKSTEP: overlay dismissed");
+    }
+
+    // ---- mp:U56 ([net] player_left_pin_fix) -- the sim, not CTL_PLAYER_LEFT's receipt, flips a naturally
+    // eliminated HUMAN's flags (HUMAN off, DEFEATED 0x10 | GONE 0x08 on), at the same step on every peer.
+    // 3 humans, session lockstep, the local side is 0 and player 1 loses its last presence (mode 0).
+    {
+        const mh::lockstep::reimpl_fixes saved = mh::lockstep::fixes();
+        auto                             arm   = [&](bool fix, uint32_t player, uint32_t mode) {
+            mh::lockstep::reimpl_fixes f = saved;
+            f.player_left_pin_fix        = fix;
+            mh::lockstep::set_fixes(f);
+            fx.reset();
+            fx.session_mode             = MP_LOCKSTEP;
+            fx.player_side              = 0;
+            fx.profiles[0].status_flags = STATUS_ALIVE | STATUS_HUMAN;
+            fx.profiles[1].status_flags = STATUS_ALIVE | STATUS_HUMAN;
+            fx.profiles[2].status_flags = STATUS_ALIVE | STATUS_HUMAN;
+            run(fx, player, mode);
+        };
+        arm(true, 1, 0);
+        ck_eq((uint32_t)fx.profiles[1].status_flags, 0x18u, "U56 fix on: natural loss -> ALIVE+HUMAN off, DEFEATED|GONE on");
+        ck_eq((uint32_t)fx.profiles[2].status_flags, STATUS_ALIVE | STATUS_HUMAN, "U56 fix on: the third peer is untouched");
+        arm(false, 1, 0);
+        ck_eq((uint32_t)fx.profiles[1].status_flags, STATUS_HUMAN, "U56 fix off: retail -- only ALIVE is cleared by the sim");
+        arm(true, 1, 1);
+        ck_eq((uint32_t)fx.profiles[1].status_flags, STATUS_ALIVE | STATUS_HUMAN, "U56 fix on: a FORCED removal (mode 1) is not touched");
+        arm(true, 0, 0);
+        ck_eq((uint32_t)fx.profiles[0].status_flags, STATUS_HUMAN, "U56 fix on: the LOCAL loser's own record keeps the retail flags");
+        mh::lockstep::set_fixes(saved);
+    }
+
+    // ---- mp:U54 ([net] spectate_after_defeat) -- a defeated human with >= 2 OTHER humans alive stays in the lockstep
+    // session as a SPECTATOR: flags DEFEATED only (no GONE), session stays 3, nothing is sent; with one other human
+    // left (decided match) or the key off, today's flow.
+    {
+        const mh::lockstep::reimpl_fixes saved = mh::lockstep::fixes();
+        auto                             arm   = [&](bool key, int humans, uint32_t me, uint32_t player) {
+            mh::lockstep::reimpl_fixes f = saved;
+            f.player_left_pin_fix        = true;
+            f.spectate_after_defeat      = key;
+            mh::lockstep::set_fixes(f);
+            fx.reset();
+            fx.session_mode = MP_LOCKSTEP;
+            fx.player_side  = (uint16_t)me;
+            for (int i = 0; i < humans; ++i) fx.profiles[i].status_flags = STATUS_ALIVE | STATUS_HUMAN;
+            run(fx, player, 0);
+        };
+        arm(true, 4, 0, 1); // another peer is eliminated; 0, 2, 3 stay
+        ck_eq((uint32_t)fx.profiles[1].status_flags, 0x10u, "U54 on: an eliminated peer with 3 humans left -> DEFEATED only (a spectator, no GONE)");
+        arm(true, 3, 0, 1); // 3 humans: after player 1 falls, 0 and 2 stay
+        ck_eq((uint32_t)fx.profiles[1].status_flags, 0x10u, "U54 on: 3 humans, one eliminated -> spectator flags");
+        arm(true, 2, 0, 1); // 2 humans: the match is decided
+        ck_eq((uint32_t)fx.profiles[1].status_flags, 0x18u, "U54 on: 2 humans, one eliminated -> decided, today's DEFEATED|GONE");
+        arm(false, 3, 0, 1);
+        ck_eq((uint32_t)fx.profiles[1].status_flags, 0x18u, "U54 off: 3 humans, one eliminated -> today's DEFEATED|GONE");
+        // the LOCAL player is the loser: it stays in the session (no downgrade, no CTL_PLAYER_LEFT)
+        arm(true, 3, 0, 0);
+        ck_eq((uint32_t)fx.session_mode, (uint32_t)MP_LOCKSTEP, "U54 on: the local loser keeps the lockstep session");
+        ck_eq((uint32_t)g_net_send, 0u, "U54 on: ... and sends no presence-lost");
+        arm(false, 3, 0, 0);
+        ck_eq((uint32_t)fx.session_mode, (uint32_t)MP_LOCAL, "U54 off: the local loser downgrades the session (today's flow)");
+        mh::lockstep::set_fixes(saved);
     }
 }
 

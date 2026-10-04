@@ -549,6 +549,25 @@
    "note": "mp:U39: NOP the 22-byte optimistic Players[PlayerSide].relation[j] store the diplomacy dialog's Apply makes ahead of its own 0xf4 order, so the order handler is the hashed cell's only writer (default ON; [net] diplo_echo_nop=0 keeps retail's echo)"
   },
   {
+   "id": "diplo_row_fix",
+   "sources": [
+    {
+     "file": "mh/seams/ui_diplomacy_echo.cpp",
+     "expr": "mh::addr::diplo_row_skip_site"
+    }
+   ],
+   "addrs": [
+    "0x004c802e"
+   ],
+   "kind": "code",
+   "owner": [
+    "llm_ui_diplomacy_apply_and_resume"
+   ],
+   "knob": "diplo_row_fix",
+   "carrier": null,
+   "note": "mp:U46: the diplomacy Apply advanced its three spinner-row pointers only for HUMAN slots while the builder makes a row per non-self slot; JMP-splice at the shared skip jump to a stub that advances for every non-self slot (default ON; [net] diplo_row_fix=0 keeps retail)"
+  },
+  {
    "id": "cancel_task_order",
    "sources": [
     {
@@ -744,6 +763,291 @@
    "knob": "gone_peer_frame_guard",
    "carrier": "migrated:gone_peer_frame_guard",
    "note": "mp:U19i (2026-09-23): call-splice the leader's kick re-broadcast for an already-GONE sender (`call llm_net_send_lockstep_kick` @0x0049c330, guarded with the following `mov eax,[ebp-0x38]` so the thunk's read of `len` is proven) into mh::gone_peer_guard::thunk, which snapshots min(len, 0x3f8) bytes of _G_LLM_NET_SEND_BUF across the emit and restores them -- U19e's reimpl-only guard (rx_dispatch.cpp dispatch_packet), carried for configuration (1), where no libmh.dll means the body never runs. Displaced by promotion (C1), so configuration (2) is unchanged. Offline oracle: net_selftest.exe gpfgtest (the real thunk, fake buffer/emitter/frame)."
+  },
+  {
+   "id": "undock_reentry_fix",
+   "sources": [
+    {
+     "file": "mh/seams/net_lockstep.cpp",
+     "expr": "ADDR_UNDOCK_SITE"
+    }
+   ],
+   "addrs": [
+    "0x00466cb6"
+   ],
+   "kind": "code",
+   "owner": [
+    "llm_strat_order_queue_dispatch"
+   ],
+   "knob": "undock_reentry_fix",
+   "carrier": "migrated:undock_reentry_fix",
+   "note": "mp:U49 (2026-10-01): jump-splice the 6 bytes `CMP [EBP-0x28],0 / JNZ 0x00466cda` at 0x00466cb6 (only predecessor: the order_code==0x20 JMP at 0x00466ca3) into a stub that, for a boarding unit, reads the unit's CURRENT state and drops the 0x20 record (jump to the loop's continue at 0x0046997f) unless the unit is PARKED (0x1f) or EXIT_STORAGE_BEGIN (0x20, a same-pass first order). Retail re-applies a second undock to a unit already walking out (0x21), which re-enters exit_storage_begin and wedges it in EXIT_WAIT on a door it holds itself. SIM-AFFECTING, default ON; the promoted dispatcher carries the same rule (sim_order_dispatch.cpp, reimpl_fixes::undock_reentry_fix). Offline oracle: simtest dispatch arm; rig: u49_undock_reentry."
+  },
+  {
+   "id": "team_seed",
+   "sources": [
+    {
+     "file": "mh/seams/net_lockstep.cpp",
+     "expr": "ADDR_TEAM_SEED_SITE"
+    }
+   ],
+   "addrs": [
+    "0x00454504"
+   ],
+   "kind": "code",
+   "owner": [
+    "llm_strat_session_begin_multi"
+   ],
+   "knob": "team_relations_fix",
+   "carrier": "migrated:team_relations_fix",
+   "note": "mp:U52 (2026-10-03): call-splice the `CALL llm_game_speed_recompute` that follows llm_game_land_players_on_planet in the MP session begin (5 bytes E8 1A 31 04 00) to a stub that seeds the relation table from the lobby teams (Players[].desc+7) through the retail llm_diplomacy_set_relation and, in Team mode, sets the ally-victory flag, then tail-jumps to the original callee. Landing resets the AI relation mirror, so the seed must follow it. Configuration (1) carrier of sim_session_begin_multi.cpp's apply_lobby_team_relations; displaced by promotion. SIM-AFFECTING, default ON."
+  },
+  {
+   "id": "team_lock",
+   "sources": [
+    {
+     "file": "mh/seams/net_lockstep.cpp",
+     "expr": "ADDR_TEAM_LOCK_SITE"
+    }
+   ],
+   "addrs": [
+    "0x004698d2"
+   ],
+   "kind": "code",
+   "owner": [
+    "llm_strat_order_queue_dispatch"
+   ],
+   "knob": "team_relations_fix",
+   "carrier": "migrated:team_relations_fix",
+   "note": "mp:U52: call-splice the `CALL llm_diplomacy_set_relation` of order case 0xf (0xf4) (5 bytes E8 DC 07 03 00) to a stub that returns without calling it while the ally-victory flag is set (Team mode: relations are locked). Configuration (1) carrier of the sim_order_dispatch_admin.cpp rule; displaced by promotion."
+  },
+  {
+   "id": "team_vision_human",
+   "sources": [
+    {
+     "file": "mh/seams/net_lockstep.cpp",
+     "expr": "ADDR_VIS_HUMAN_SITE"
+    }
+   ],
+   "addrs": [
+    "0x00469909"
+   ],
+   "kind": "code",
+   "owner": [
+    "llm_strat_order_queue_dispatch"
+   ],
+   "knob": "team_relations_fix",
+   "carrier": "migrated:team_relations_fix",
+   "note": "mp:U52 vision: call-splice the `CALL llm_game_player_set_human (E8 4B 4E 03 00)` of order case 0x10 (0xf5, the diplomacy dialog's vision grant) to a stub that returns without calling it while the ally-victory flag is set (Team mode locks vision with the relation). Configuration (1) carrier of the sim_order_dispatch_admin.cpp rule; displaced by promotion."
+  },
+  {
+   "id": "team_vision_ai",
+   "sources": [
+    {
+     "file": "mh/seams/net_lockstep.cpp",
+     "expr": "ADDR_VIS_AI_SITE"
+    }
+   ],
+   "addrs": [
+    "0x004698ff"
+   ],
+   "kind": "code",
+   "owner": [
+    "llm_strat_order_queue_dispatch"
+   ],
+   "knob": "team_relations_fix",
+   "carrier": "migrated:team_relations_fix",
+   "note": "mp:U52 vision: call-splice the `CALL llm_game_player_set_ai (E8 98 4E 03 00)` of order case 0x10 (0xf5, the diplomacy dialog's vision grant) to a stub that returns without calling it while the ally-victory flag is set (Team mode locks vision with the relation). Configuration (1) carrier of the sim_order_dispatch_admin.cpp rule; displaced by promotion."
+  },
+  {
+   "id": "ally_damage_no_hostility",
+   "sources": [
+    {
+     "file": "mh/seams/net_lockstep.cpp",
+     "expr": "ADDR_ALLY_HOST_SITE"
+    }
+   ],
+   "addrs": [
+    "0x004db45c"
+   ],
+   "kind": "code",
+   "owner": [
+    "llm_strat_ai_bldg_register_visible_building"
+   ],
+   "knob": "ally_damage_no_hostility",
+   "carrier": "migrated:ally_damage_no_hostility",
+   "note": "mp:U52: jump-splice the 7-byte `CMP [FOREIGN_BLDG_CHANGE_FLAG],0` ahead of the hostility stamp to a stub that skips the stamp (jump to 0x004db47c) when the victim's ai_player_relation toward the aggressor is already > 0 (an ally), else repeats the CMP and returns to its JNZ at 0x004db463. EBX is dead across it. Configuration (1) carrier of ai_attacker_intel.cpp's rule; displaced by promotion."
+  },
+  {
+   "id": "pin_flip",
+   "sources": [
+    {
+     "file": "mh/seams/net_lockstep.cpp",
+     "expr": "ADDR_PIN_FLIP_SITE"
+    }
+   ],
+   "addrs": [
+    "0x00498176"
+   ],
+   "kind": "code",
+   "owner": [
+    "llm_strat_player_presence_lost"
+   ],
+   "knob": "player_left_pin_fix",
+   "carrier": "migrated:player_left_pin_fix",
+   "note": "mp:U66 (2026-10-03): jump-splice the 7-byte `MOV [EBP-0x34],1` (was_human = true, reached only for a human that just lost its last presence, mode 0) to a stub that repeats it and, for a player other than the local side, makes the HUMAN-off / DEFEATED|GONE flip at the elimination step; for the LOCAL player (mp:U54) it instead decides whether that human SPECTATES and, if so, makes the same flip for itself. Configuration (1) carrier of sim_player_presence_lost.cpp's U56 rule; displaced by promotion. SIM-AFFECTING, default ON."
+  },
+  {
+   "id": "pin_capture",
+   "sources": [
+    {
+     "file": "mh/seams/net_lockstep.cpp",
+     "expr": "ADDR_PIN_CAPTURE_SITE"
+    }
+   ],
+   "addrs": [
+    "0x0049c60c"
+   ],
+   "kind": "code",
+   "owner": [
+    "llm_net_lockstep_dispatch"
+   ],
+   "knob": "player_left_pin_fix",
+   "carrier": "migrated:player_left_pin_fix",
+   "note": "mp:U66: jump-splice the first instruction of the CTL_PLAYER_LEFT case (`IMUL EAX,[EBP-0x28],0x740`, 7 bytes) to a stub that repeats it and records the sender's status byte before the receipt flips it. Half one of the configuration (1) carrier of rx_dispatch.cpp's U56 restore; displaced by promotion."
+  },
+  {
+   "id": "pin_restore",
+   "sources": [
+    {
+     "file": "mh/seams/net_lockstep.cpp",
+     "expr": "ADDR_PIN_RESTORE_SITE"
+    }
+   ],
+   "addrs": [
+    "0x0049c683"
+   ],
+   "kind": "code",
+   "owner": [
+    "llm_net_lockstep_dispatch"
+   ],
+   "knob": "player_left_pin_fix",
+   "carrier": "migrated:player_left_pin_fix",
+   "note": "mp:U66: call-splice the case's `CALL llm_net_lockstep_count_active_players` (E8 62 1D 00 00) to a stub that runs it and, when more than one human remains and the sender was ALIVE+HUMAN and not yet GONE, restores the status byte recorded at the case entry (the sim flips it at the elimination step instead). Half two of the configuration (1) carrier of rx_dispatch.cpp's U56 restore; displaced by promotion."
+  },
+  {
+   "id": "spec_entry",
+   "sources": [
+    {
+     "file": "mh/seams/net_lockstep.cpp",
+     "expr": "ADDR_SPEC_ENTRY_SITE"
+    }
+   ],
+   "addrs": [
+    "0x0049814b"
+   ],
+   "kind": "code",
+   "owner": [
+    "llm_strat_player_presence_lost"
+   ],
+   "knob": "spectate_after_defeat",
+   "carrier": "migrated:spectate_after_defeat",
+   "note": "mp:U54: jump-splice the 7-byte `MOV [EBP-0x34],0` that opens the MP path of llm_strat_player_presence_lost to a stub that returns at once (0x004987a5) when the LOCAL player is already a SPECTATOR and is being asked about ITSELF again (the force-killed units' teardowns re-enter presence_lost for a player that is already out; the repeat would take the local-player drop path and end the session the spectator chose to keep). Else it repeats the MOV and continues at 0x00498152. Configuration (1) carrier of the early return in sim_player_presence_lost.cpp; displaced by promotion."
+  },
+  {
+   "id": "spec_send",
+   "sources": [
+    {
+     "file": "mh/seams/net_lockstep.cpp",
+     "expr": "ADDR_SPEC_SEND_SITE"
+    }
+   ],
+   "addrs": [
+    "0x00498197"
+   ],
+   "kind": "code",
+   "owner": [
+    "llm_strat_player_presence_lost"
+   ],
+   "knob": "spectate_after_defeat",
+   "carrier": "migrated:spectate_after_defeat",
+   "note": "mp:U54 (2026-10-04): jump-splice the 10-byte `CALL llm_net_lockstep_send_presence_lost; JMP 0x0049832c` (the LOCAL player's drop: CTL_PLAYER_LEFT, then the session 3->2 downgrade + overlay dismiss) to a stub that, when pin_flip_stub decided this human SPECTATES (>= 2 other humans alive, not decided by the team rule), skips both and goes straight to the fanfare + outcome dialog (0x00498758); otherwise runs the original pair. Configuration (1) carrier of sim_player_presence_lost.cpp's spectate_me; displaced by promotion. SIM-AFFECTING, default ON."
+  },
+  {
+   "id": "spec_end",
+   "sources": [
+    {
+     "file": "mh/seams/net_lockstep.cpp",
+     "expr": "ADDR_SPEC_END_SITE"
+    }
+   ],
+   "addrs": [
+    "0x004982a8"
+   ],
+   "kind": "code",
+   "owner": [
+    "llm_strat_player_presence_lost"
+   ],
+   "knob": "spectate_after_defeat",
+   "carrier": "migrated:spectate_after_defeat",
+   "note": "mp:U54: jump-splice the 7-byte `CMP [SESSION_MODE],3` after the roster loop of a player that is NOT the local one to a stub: for a SPECTATOR (defeated human, still lockstep) the survivors' evaluation is the wrong question -- it returns while the survivors still play (0x004987a5), and when they have decided the match (alive humans <= 1, alive <= 1, or the team rule with everyone allied) it sets outcome 5 (its side won) or 4 and joins the common downgrade + fanfare + dialog tail (0x0049832c); any other peer runs the displaced CMP. Configuration (1) carrier of the spectator block in sim_player_presence_lost.cpp; displaced by promotion."
+  },
+  {
+   "id": "spec_order",
+   "sources": [
+    {
+     "file": "mh/seams/net_lockstep.cpp",
+     "expr": "ADDR_SPEC_ORDER_SITE"
+    }
+   ],
+   "addrs": [
+    "0x00466068"
+   ],
+   "kind": "code",
+   "owner": [
+    "llm_strat_order_dispatch"
+   ],
+   "knob": "spectate_after_defeat",
+   "carrier": "migrated:spectate_after_defeat",
+   "note": "mp:U54: call-splice the `CALL llm_strat_order_stage_scheduled` of llm_strat_order_dispatch's replicated lane to a stub that drops the order (returns 0, RET 8) when its owner is a SPECTATOR (ALIVE and HUMAN off, GONE on): dropped BEFORE it is staged, because a local-only queued order is a desync. Configuration (1) carrier of order_queue.cpp's spectator gate; displaced by promotion."
+  },
+  {
+   "id": "lang_pack_mh_ex",
+   "sources": [
+    {
+     "file": "mh/seams/lang_pack.cpp",
+     "expr": "ADDR_MH_EX_MOV"
+    }
+   ],
+   "addrs": [
+    "0x004c3dba"
+   ],
+   "kind": "code",
+   "owner": [
+    "llm_boot_progress_draw"
+   ],
+   "knob": "lang.pack",
+   "carrier": null,
+   "note": "mods:LANG1 (2026-09-29): repoint the `mov eax, s_mh_ex_005031e2` operand that feeds rsr_TryReadRsrFile to a DLL-owned `lang\\<id>\\mh_ex` when `[lang] pack=<id>` names a present pack; unset/en = no write. Guarded on the exact 5 original bytes. Boot code, never promoted."
+  },
+  {
+   "id": "lang_pack_msgs",
+   "sources": [
+    {
+     "file": "mh/seams/lang_pack.cpp",
+     "expr": "ADDR_MSGS_MOV"
+    }
+   ],
+   "addrs": [
+    "0x004cb6bc"
+   ],
+   "kind": "code",
+   "owner": [
+    "ReadMsgsDat"
+   ],
+   "knob": "lang.pack",
+   "carrier": null,
+   "note": "mods:LANG1 (2026-09-29): repoint ReadMsgsDat's `mov eax, s_Msgs_dat_005034cf` operand to `lang\\<id>\\Msgs.dat` when the armed pack carries one. Guarded on the exact 5 original bytes. Runs at the top of WinMain, after DllMain armed it."
   }
  ]
 }

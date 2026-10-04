@@ -531,6 +531,74 @@ def epoch_mismatch(artifact, build):
     )
 
 
+# ---- the hash KIND (tooling:TL-HARN-INCHASH) -----------------------------------------------------
+# WHICH FUNCTION produced the per-step numbers: 1 = the FNV VERDICT walk (every log, golden, fixture,
+# oracle and field recording before this item), 2 = the incremental masked block sum (mp:D39). The two
+# hash the same bytes into DIFFERENT values, so a cross-kind comparison would report a desync at the
+# first step in every region -- the expensive misdiagnosis. Every consumer that compares hashes across
+# runs therefore reads both sides' kind and refuses a mismatch with kind_mismatch()'s wording.
+#
+# WHERE IT IS READ (harness.cpp / hash_kind.h): the `; HASH FINGERPRINT` line carries ` hash_kind=2`
+# for kind 2 and NO token for kind 1 (that line is byte-unchanged from before the item); a match
+# segment's `; [match] segment OPEN` line repeats the token. The LAST such line in a file wins -- the
+# harness re-states kind 1 on a second fingerprint line if it refuses kind 2 at the first step. A log
+# with no such line at all (older than the fingerprint) and an artifact with no stamp are kind 1:
+# nothing but FNV existed before this item.
+HASH_KIND_NAMES = {1: "FNV VERDICT walk", 2: "incremental block sum"}
+HASH_KIND_TOKEN_RE = re.compile(r"\bhash_kind=(\d+)")
+HASH_KIND_LINES = ("; HASH FINGERPRINT ", "; [match] segment OPEN ")
+
+
+def hash_kind_of_line(line):
+    """The kind a fingerprint / segment-OPEN line states (token, else 1); None for any other line."""
+    s = re.sub(r"^\[\d\d:\d\d:\d\d\.\d\d\d\]\s*", "", line)
+    if not s.startswith(HASH_KIND_LINES):
+        return None
+    m = HASH_KIND_TOKEN_RE.search(s)
+    return int(m.group(1)) if m else 1
+
+
+def hash_kind_of_text(text):
+    """The kind a whole log states (its LAST kind-bearing line), or None when it states none."""
+    kind = None
+    for ln in (text or "").splitlines():
+        k = hash_kind_of_line(ln)
+        if k is not None:
+            kind = k
+    return kind
+
+
+def harness_hash_kind(harness_log):
+    """The hash kind of a run's mh_harness.log / mh_match_harness.log; None = unreadable or unstated
+    (read as kind 1 by kind_of)."""
+    try:
+        with open(harness_log, encoding="utf-8", errors="replace") as f:
+            return hash_kind_of_text(f.read())
+    except (OSError, TypeError):
+        return None
+
+
+def kind_of(k):
+    """An artifact's or log's kind with the absent case resolved: unstated == kind 1 (FNV)."""
+    return 1 if k is None else int(k)
+
+
+def kind_label(k):
+    k = kind_of(k)
+    return "kind %d (%s)" % (k, HASH_KIND_NAMES.get(k, "unknown"))
+
+
+def kind_mismatch(a, b, label_a="artifact", label_b="run"):
+    """The ONE refusal wording for a hash-kind mismatch, or None when both sides agree."""
+    if kind_of(a) == kind_of(b):
+        return None
+    return (
+        "hash kind mismatch: %s is %s, %s is %s -- the same bytes hash to different values under "
+        "the two kinds, so nothing was compared (this is NOT a desync)"
+        % (label_a, kind_label(a), label_b, kind_label(b))
+    )
+
+
 LOCKSTEP_COLS = [
     "wall_ms",
     "clock_ms",
@@ -612,15 +680,28 @@ def parse_harness(path):
         # producing step rows on purpose, and a verdict that read that as a peer dying or lagging
         # would be describing the instrument rather than the run.
         "hold_step": None,
+        # mp:X3c. `; REGION POKE step=N idx=I name ...` -- this peer flipped a byte of a hashed region on
+        # purpose (the forced desync). (step, idx, name) or None; --resync-verify checks the sub-domain
+        # trail names THIS region's domain first.
+        "poke": None,
         # mp:D29. The harness's configuration line: '1' (no libmh.dll, spine-free) or '2', and the
         # hash-manifest fingerprint it hashed under. analyse() refuses a pair whose fp differ.
         "config": None,
         "manifest_fp": None,
+        # TL-HARN-INCHASH: the kind the run's per-step hashes were computed with (None = unstated,
+        # i.e. kind 1). Read off the fingerprint line, which the harness writes BEFORE the banner --
+        # so it is carried across the banner reset below rather than lost with the old segment.
+        "hash_kind": None,
     }
+    last_kind = None
     with open(path, "r", errors="replace") as f:
         for line in f:
             line = line.rstrip("\n")
             if not line:
+                continue
+            k = hash_kind_of_line(line) if line.startswith(";") else None
+            if k is not None:
+                last_kind = seg["hash_kind"] = k
                 continue
             if line.startswith("; ==== mh replay harness armed"):
                 # new run -> reset (keep only the current/last run)
@@ -637,8 +718,10 @@ def parse_harness(path):
                     "domains": {},
                     "rd": {},
                     "hold_step": None,
+                    "poke": None,
                     "config": None,
                     "manifest_fp": None,
+                    "hash_kind": last_kind,
                 }
                 continue
             if line.startswith("; all_ai="):
@@ -657,6 +740,11 @@ def parse_harness(path):
                 if m:
                     seg["config"] = m.group(1)
                     seg["manifest_fp"] = m.group(2).upper()
+                continue
+            if line.startswith("; REGION POKE "):
+                m = re.match(r"; REGION POKE step=(\d+) idx=(\d+) (\w+)", line)
+                if m:
+                    seg["poke"] = (int(m.group(1)), int(m.group(2)), m.group(3))
                 continue
             if line.startswith("; SIM HOLD "):
                 # mp:X3. The peer FROZE its sim here, deliberately. Recorded as a step so the
@@ -1178,6 +1266,17 @@ def diff_peers(a, b, name_a, name_b, truncate_at=None):
     each of them. Comparing past it would either manufacture a DESYNC out of a correct run, or
     (worse) hide a REAL divergence that happens to start before the boundary, which is why
     everything before `truncate_at` is still compared at full strictness."""
+    # TL-HARN-INCHASH: peers hashed with different KINDS are refused, never diffed -- the numbers are
+    # incomparable. Zero overlap, so every post_check that gates on `overlap` goes red, and the
+    # verdict/note name the reason for the ones that print it.
+    bad = kind_mismatch(a.get("hash_kind"), b.get("hash_kind"), name_a, name_b)
+    if bad:
+        return {
+            "overlap": 0,
+            "refused": "hash_kind_mismatch",
+            "note": bad,
+            "verdict": "REFUSED: " + bad,
+        }
     sa, sb = a["steps"], b["steps"]
     common = sorted(set(sa) & set(sb))
     truncated_overlap = None
@@ -1411,6 +1510,453 @@ def subdomain_regions_at(a, b, step, partition):
     return out
 
 
+# ---- mp:X3c: DID THE RESYNC RECOVER THE PEER? -------------------------------------------
+#
+# A FOURTH COMPARISON, and the one the other three cannot make. diff_peers reads a run in which the two
+# peers should never have differed; snapshot_compare reads one instant; this reads a run in which one peer
+# WAS made to differ (a forced region_poke) and the world resync (`[desync] action=1`,
+# mh/desync/world_sync.cpp) is supposed to have put it back while the match kept running. The claim has
+# five parts, and every one is checked from a different witness so one broken log cannot vouch for itself:
+#
+#   the decision   the HOST's `; [worldsync] BEGIN ... incident=D`, then `CAPTURE ... S=`, then `DONE rc=0`
+#   the landing    the MINORITY's `IMPORT blobstep=S ... rc=0` and `LIVE step=T blobstep=S`
+#   the world      SNAPCAP(S) on the host == SNAPIMP(S) on the minority, region by region, EXCLUDING the
+#                  regions an import must not (or cannot) make equal -- derived below, never hand-listed
+#   the aftermath  every common step > S has the same state hash on both peers, with a verified tail, and
+#                  every sampled R row agrees on the non-excluded columns
+#   the cause      the sub-domain trail names the poked region's domain first, at or before the incident D
+#
+# plus the negatives: no GS2 data-timeout drop (lockstep stayed alive), no crash marker, no ABORT/REFUSED,
+# and no resync inside a D26 truncation window (a deliberate match end is not a desync).
+_WS_RE = re.compile(r";\s*\[worldsync\]\s*(.*)$")
+_WS_KV_RE = re.compile(r"(\w+)=(\S+)")
+_GS2_DROP_RE = re.compile(r"; GS2: peer \d+ data-silent")
+WORLD_FIXUP_H = os.path.join(_TOOLS_REPO, "src", "mh_dll", "libmh", "state", "world_fixup.h")
+# A verified tail shorter than this proves a peer that resynced and then died, not a peer that recovered.
+RESYNC_MIN_TAIL_STEPS = 100
+
+
+def resync_keep_local_slices(fixup_text=None, header_text=None):
+    """The hash-slice names that sit inside a RESYNC_KEEP_LOCAL region (the ones a resync import leaves
+    as this peer's own bytes), derived from the SOURCE -- world_fixup.h's list and the generated region
+    manifest -- so this file never holds a copy that could go stale. None when a source is unreadable
+    (a checkout without src/, a VM copy of the tools): the caller then reports what it could not derive
+    instead of silently comparing a bigger set."""
+    try:
+        ftxt = (
+            fixup_text if fixup_text is not None else open(WORLD_FIXUP_H, encoding="utf-8").read()
+        )
+        htxt = (
+            header_text if header_text is not None else open(REGIONS_GEN_H, encoding="utf-8").read()
+        )
+        m = re.search(r"RESYNC_KEEP_LOCAL\[\]\s*=\s*\{(.*?)\};", ftxt, re.S)
+        if not m:
+            return None
+        keep = set(re.findall(r"mh::state::(RID_\w+)", re.sub(r"//[^\n]*", "", m.group(1))))
+        em = re.search(r"enum region_id : uint16_t \{(.*?)\};", htxt, re.S)
+        rid = {int(v): n for n, v in re.findall(r"(RID_\w+)\s*=\s*(\d+)", em.group(1))}
+        rows = hash_manifest_rows(htxt)
+    except (OSError, ValueError, AttributeError):
+        return None
+    return {name for name, r, _o, _ln, _ex in rows if rid.get(r) in keep}
+
+
+def resync_excluded_columns(fixup_text=None, header_text=None):
+    """(set of column names a resync comparison ignores, keep-local slice count or None).
+
+    Two sources, both generated/derived: STATE_EXCLUDED (the manifest's `excluded` flag: the clock family,
+    the horizons, the order queue -- per-peer or phase-shifted by construction) and the slices backed by
+    a RESYNC_KEEP_LOCAL region (kept, not imported). The keep-local invariant (worldtest arm G) says none
+    of the latter is in the verdict, so the union is normally STATE_EXCLUDED; taking it anyway means a
+    future keep-local entry whose slice is hashed still cannot make a correct resync read as a mismatch."""
+    keep = resync_keep_local_slices(fixup_text, header_text)
+    return set(STATE_EXCLUDED) | (keep or set()), (None if keep is None else len(keep))
+
+
+def parse_worldsync(lines):
+    """mh_net.log lines -> the `; [worldsync]` records of one peer (host side and minority side)."""
+    d = {
+        "armed": None,
+        "begins": [],  # host: BEGIN peer= incident= host_step=
+        "captures": [],  # host: CAPTURE peer= S=
+        "dones": [],  # host: DONE peer= rc= S= live_step= incident=
+        "aborts": [],  # host: ABORT ...
+        "skips": [],  # host: SKIP ...
+        "rx_begin": [],  # minority: BEGIN rx from= incident=
+        "imports": [],  # minority: IMPORT blobstep= rc=
+        "lives": [],  # minority: LIVE step= blobstep=
+        "problems": [],  # minority: REFUSED / TRANSFER DROPPED / CATCH-UP ABANDONED / STAGED ... ABORTED
+    }
+
+    def _i(kv, k):
+        try:
+            return int(kv.get(k))
+        except (TypeError, ValueError):
+            return None
+
+    for raw in lines or []:
+        m = _WS_RE.search(raw)
+        if not m:
+            continue
+        body = m.group(1).strip()
+        kv = dict(_WS_KV_RE.findall(body))
+        if body.startswith("ARMED"):
+            d["armed"] = body
+        elif body.startswith("BEGIN rx"):
+            d["rx_begin"].append({"incident": _i(kv, "incident")})
+        elif body.startswith("BEGIN "):
+            d["begins"].append(
+                {
+                    "peer": _i(kv, "peer"),
+                    "incident": _i(kv, "incident"),
+                    "host_step": _i(kv, "host_step"),
+                }
+            )
+        elif body.startswith("CAPTURE "):
+            d["captures"].append({"peer": _i(kv, "peer"), "S": _i(kv, "S")})
+        elif body.startswith("DONE "):
+            d["dones"].append(
+                {
+                    "peer": _i(kv, "peer"),
+                    "rc": _i(kv, "rc"),
+                    "S": _i(kv, "S"),
+                    "live_step": _i(kv, "live_step"),
+                    "incident": _i(kv, "incident"),
+                }
+            )
+        elif body.startswith("ABORT "):
+            d["aborts"].append(body[:200])
+        elif body.startswith("SKIP "):
+            d["skips"].append(body[:200])
+        elif body.startswith("IMPORT blobstep="):
+            d["imports"].append({"blobstep": _i(kv, "blobstep"), "rc": _i(kv, "rc")})
+        elif body.startswith("LIVE step="):
+            d["lives"].append({"step": _i(kv, "step"), "blobstep": _i(kv, "blobstep")})
+        elif body.startswith(
+            ("REFUSED", "TRANSFER DROPPED", "CATCH-UP ABANDONED", "STAGED RE-ADMISSION ABORTED")
+        ):
+            d["problems"].append(body[:200])
+    return d
+
+
+def worldsync_summary(peers):
+    """One line + a JSON-able dict for a whole run: `worldsync: none` when no resync ran on any peer (the
+    idle-determinism claim -- a false-positive resync reds it), else the counts."""
+    per = {p["role"]: parse_worldsync(p.get("net")) for p in peers}
+    begins = sum(len(w["begins"]) for w in per.values())
+    imports = sum(len(w["imports"]) for w in per.values())
+    aborts = sum(len(w["aborts"]) for w in per.values())
+    res = {
+        "begins": begins,
+        "imports": imports,
+        "aborts": aborts,
+        "skips": sum(len(w["skips"]) for w in per.values()),
+        "armed_peers": [r for r, w in per.items() if w["armed"]],
+    }
+    if not begins and not imports and not aborts:
+        return "worldsync: none", res
+    return (
+        "worldsync: %d BEGIN, %d IMPORT, %d ABORT (details: --resync-verify)"
+        % (begins, imports, aborts),
+        res,
+    )
+
+
+def _crash_markers(peer):
+    """mh_crash_<pid>.marker files written into this peer's lane logs dir during its run (same rule as
+    hold_survival_check: newer than the process dir's creation)."""
+    hl = (peer.get("logs") or {}).get("harness")
+    if not hl or not os.path.isfile(hl):
+        return []
+    pdir = os.path.dirname(os.path.abspath(hl))
+    try:
+        t0 = os.path.getctime(pdir) - 1.0
+        return [
+            os.path.basename(f)
+            for f in glob.glob(os.path.join(os.path.dirname(pdir), "mh_crash_*.marker"))
+            if os.path.getmtime(f) >= t0
+        ]
+    except OSError:
+        return []
+
+
+def resync_verify(peers, k=None, d26_step=None, fixup_text=None, header_text=None):
+    """The whole resync claim over parsed peers. Returns {ok, checks: [(name, ok, text)], resyncs: [...]}.
+
+    `peers`: dicts with role, harness (parse_harness segment), net (log lines), logs. `k`: the largest
+    allowed T - D in sim steps (None = report only). `d26_step`: expected_match_end()'s boundary, or None.
+    Pure over its inputs so --selftest drives it with synthetic peers."""
+    checks = []
+
+    def chk(name, ok, text):
+        checks.append((name, bool(ok), text))
+
+    ws = {p["role"]: parse_worldsync(p.get("net")) for p in peers}
+    host = next((p for p in peers if ws[p["role"]]["begins"]), None)
+    if host is None:
+        chk(
+            "decision",
+            False,
+            "no peer logged a `; [worldsync] BEGIN` -- either [desync] action=1 was not armed, the "
+            "forced desync never happened, or the host's gates refused it (%s)"
+            % ("; ".join(s for w in ws.values() for s in w["skips"][:2]) or "no SKIP line either"),
+        )
+        return {"ok": False, "checks": checks, "resyncs": []}
+    hw = ws[host["role"]]
+    hh = host.get("harness") or {}
+    others = [p for p in peers if p is not host]
+    excluded, nkeep = resync_excluded_columns(fixup_text, header_text)
+
+    # ---- the decision, per BEGIN --------------------------------------------------------------
+    nb = len(hw["begins"])
+    chk(
+        "decision",
+        len(hw["captures"]) == nb and len(hw["dones"]) == nb and not hw["aborts"],
+        "%d BEGIN, %d CAPTURE, %d DONE, %d ABORT on %s"
+        % (nb, len(hw["captures"]), len(hw["dones"]), len(hw["aborts"]), host["role"]),
+    )
+    chk(
+        "host done",
+        hw["dones"] and all(x["rc"] == 0 for x in hw["dones"]),
+        "DONE rc=%s" % ",".join(str(x["rc"]) for x in hw["dones"]),
+    )
+    resyncs = []
+    for i, b in enumerate(hw["begins"]):
+        cap = hw["captures"][i] if i < len(hw["captures"]) else {}
+        done = hw["dones"][i] if i < len(hw["dones"]) else {}
+        resyncs.append(
+            {
+                "D": b["incident"],
+                "S": cap.get("S"),
+                "peer": b["peer"],
+                "T_host": done.get("live_step"),
+            }
+        )
+
+    # ---- the landing + the world, per resync --------------------------------------------------
+    last_S = None
+    for i, r in enumerate(resyncs):
+        S, D = r["S"], r["D"]
+        tag = "resync %d (D=%s S=%s)" % (i + 1, D, S)
+        mino = next(
+            (p for p in others if any(x["blobstep"] == S for x in ws[p["role"]]["imports"])), None
+        )
+        if mino is None:
+            chk(tag + " import", False, "no peer logged IMPORT blobstep=%s" % S)
+            continue
+        mw = ws[mino["role"]]
+        imp = [x for x in mw["imports"] if x["blobstep"] == S]
+        chk(
+            tag + " import",
+            all(x["rc"] == 0 for x in imp),
+            "%s IMPORT blobstep=%s rc=%s" % (mino["role"], S, imp[0]["rc"]),
+        )
+        live = [x for x in mw["lives"] if x["blobstep"] == S]
+        T = live[0]["step"] if live else None
+        r["T"] = T
+        r["minority"] = mino["role"]
+        chk(
+            tag + " live",
+            T is not None and (r["T_host"] is None or r["T_host"] == T),
+            "%s LIVE step=%s (host DONE live_step=%s)" % (mino["role"], T, r["T_host"]),
+        )
+        if T is not None and D is not None:
+            r["T_minus_D"] = T - D
+            chk(
+                tag + " time to live",
+                k is None or T - D <= k,
+                "T-D = %d steps%s" % (T - D, "" if k is None else " (K=%d)" % k),
+            )
+        mh_ = mino.get("harness") or {}
+        cap_row = (hh.get("snapcap") or {}).get(S)
+        imp_row = (mh_.get("snapimp") or {}).get(S)
+        if cap_row is None or imp_row is None:
+            chk(
+                tag + " world",
+                False,
+                "no %s at step %s (SNAPCAP on %s: %s, SNAPIMP on %s: %s)"
+                % (
+                    "SNAPCAP/SNAPIMP",
+                    S,
+                    host["role"],
+                    cap_row is not None,
+                    mino["role"],
+                    imp_row is not None,
+                ),
+            )
+        elif len(cap_row) != len(imp_row):
+            chk(
+                tag + " world",
+                False,
+                "column count differs (%d vs %d)" % (len(cap_row), len(imp_row)),
+            )
+        else:
+            diff = [
+                (REGION_NAMES[j] if j < len(REGION_NAMES) else "region[%d]" % j)
+                for j, (x, y) in enumerate(zip(cap_row, imp_row))
+                if x != y
+            ]
+            real = [n for n in diff if n not in excluded]
+            chk(
+                tag + " world",
+                not real,
+                "SNAPCAP==SNAPIMP on %d of %d columns; %d excluded column(s) differ by design%s%s"
+                % (
+                    len(cap_row) - len(diff),
+                    len(cap_row),
+                    len(diff) - len(real),
+                    "; UNEXPECTED: " + ", ".join(real) if real else "",
+                    ""
+                    if nkeep is not None
+                    else " [keep-local list not derivable here: STATE_EXCLUDED only]",
+                ),
+            )
+        if S is not None:
+            last_S = S if last_S is None else max(last_S, S)
+
+    # ---- the aftermath: identical from S on ---------------------------------------------------
+    if last_S is not None and resyncs and resyncs[-1].get("minority"):
+        mino = next(p for p in others if p["role"] == resyncs[-1]["minority"])
+        mh_ = mino.get("harness") or {}
+        sa, sb = hh.get("steps") or {}, mh_.get("steps") or {}
+        common = [s for s in sorted(set(sa) & set(sb)) if s > last_S]
+        bad = [s for s in common if sa[s]["state"] != sb[s]["state"]]
+        T_last = resyncs[-1].get("T") or last_S
+        tail = len([s for s in common if s > T_last])
+        chk(
+            "identical from S",
+            common and not bad and tail >= RESYNC_MIN_TAIL_STEPS,
+            "state hash: %d common steps > S=%d, %d differ%s; verified tail past LIVE (T=%s): %d steps (need >= %d)"
+            % (
+                len(common),
+                last_S,
+                len(bad),
+                " (first %d)" % bad[0] if bad else "",
+                T_last,
+                tail,
+                RESYNC_MIN_TAIL_STEPS,
+            ),
+        )
+        ra, rb = hh.get("regions") or {}, mh_.get("regions") or {}
+        rows = [s for s in sorted(set(ra) & set(rb)) if s > last_S and len(ra[s]) == len(rb[s])]
+        rbad = []
+        for s in rows:
+            for j, (x, y) in enumerate(zip(ra[s], rb[s])):
+                nm = REGION_NAMES[j] if j < len(REGION_NAMES) else "region[%d]" % j
+                if x != y and nm not in excluded:
+                    rbad.append((s, nm))
+        chk(
+            "regions from S",
+            rows and not rbad,
+            "%d sampled R rows > S, %d non-excluded column mismatch(es)%s"
+            % (len(rows), len(rbad), " (first: step %d %s)" % rbad[0] if rbad else ""),
+        )
+        # ---- the cause: the trail names the poked region's domain first --------------------
+        poke = mh_.get("poke") or hh.get("poke") or (None, None, None)
+        sd = subdomain_compare(hh, mh_, host["role"], mino["role"])
+        D0 = resyncs[0]["D"]
+        if sd is None or sd.get("earliest_step") is None:
+            chk(
+                "trail",
+                False,
+                "the sub-domain trail shows no divergence (need [harness] domain_hash_step=1 on both "
+                "peers, and a forced desync the domains can see)",
+            )
+        else:
+            part = sd.get("partition_a") or sd.get("partition_b") or {}
+            owner = {}
+            for dom, members in part.items():
+                for m_ in members:
+                    owner[m_.rstrip("*")] = dom
+            e_step, e_doms = sd["earliest_step"], sd["earliest_domains"]
+            ok = D0 is None or e_step <= D0
+            why = ""
+            if poke[2]:
+                want = owner.get(poke[2], "other")
+                ok = ok and e_doms == [want] and e_step >= poke[0]
+                why = "; poked region %s (domain %s) at step %d" % (poke[2], want, poke[0])
+                cand = sorted(
+                    st
+                    for st in (hh.get("regions") or {})
+                    if st >= e_step and st in (mh_.get("regions") or {})
+                )
+                if cand:
+                    named = subdomain_regions_at(hh, mh_, cand[0], part)
+                    hit = poke[2] in (named.get(want) or [])
+                    ok = ok and hit
+                    why += "; R row at step %d names %s" % (
+                        cand[0],
+                        ", ".join(
+                            "%s -> %s" % (a_, "/".join(b_)) for a_, b_ in sorted(named.items())
+                        )
+                        or "nothing",
+                    )
+            chk(
+                "trail",
+                ok,
+                "%s first at step %d (incident D=%s)%s" % ("/".join(e_doms), e_step, D0, why),
+            )
+    else:
+        chk("identical from S", False, "no completed resync to compare from")
+
+    # ---- the negatives ------------------------------------------------------------------------
+    gs2 = [p["role"] for p in peers if any(_GS2_DROP_RE.search(x) for x in (p.get("net") or []))]
+    chk(
+        "lockstep alive",
+        not gs2,
+        "no GS2 data-timeout drop" if not gs2 else "GS2 dropped a peer (on %s)" % ", ".join(gs2),
+    )
+    crash = [(p["role"], m_) for p in peers for m_ in _crash_markers(p)]
+    chk(
+        "no crash",
+        not crash,
+        "no crash marker" if not crash else "; ".join("%s: %s" % c for c in crash),
+    )
+    probs = [s for w in ws.values() for s in w["problems"]] + hw["aborts"]
+    chk("no abort", not probs, "no ABORT/REFUSED/DROPPED/ABANDONED line" if not probs else probs[0])
+    if d26_step is not None:
+        inside = [b for b in hw["begins"] if (b["incident"] or 0) >= d26_step]
+        chk(
+            "D26",
+            not inside,
+            "no resync at or after the expected match end (step %d)" % d26_step
+            if not inside
+            else "a resync BEGAN at step %s, inside the D26 truncation window (expected end at step %d): a deliberate match end is not a desync"
+            % (inside[0]["incident"], d26_step),
+        )
+    return {
+        "ok": all(c[1] for c in checks),
+        "checks": checks,
+        "resyncs": resyncs,
+        "excluded": sorted(excluded),
+        "keep_local_slices": nkeep,
+    }
+
+
+def resync_report(res):
+    """Print a resync_verify result; return True when it passed."""
+    print("\n" + "=" * 72)
+    print("WORLD RESYNC VERIFY (mp:X3c)")
+    print("=" * 72)
+    for name, ok, text in res["checks"]:
+        print("   %-22s %s  %s" % (name, "PASS" if ok else "FAIL", text))
+    for r in res["resyncs"]:
+        print(
+            "   resync: incident D=%s  capture S=%s  live T=%s  (T-D=%s steps)"
+            % (r.get("D"), r.get("S"), r.get("T"), r.get("T_minus_D"))
+        )
+    print(
+        "\nRESYNC VERIFY: %s"
+        % (
+            "PASS"
+            if res["ok"]
+            else "FAILED -- %s"
+            % "; ".join("%s: %s" % (n, t) for n, ok, t in res["checks"] if not ok)
+        )
+    )
+    return res["ok"]
+
+
 # ---- P0-SPDET: the SINGLE-PLAYER equivalence comparison -----------------------------------------
 # Different question from diff_peers, and the difference is why it is its own function rather than a
 # flag on that one. diff_peers compares TWO PEERS of ONE run, where several regions legitimately
@@ -1485,6 +2031,15 @@ def sp_compare(a, b, name_a="baseline", name_b="promoted", time_regions=SP_TIME_
         "channels": {},
         "region_columns_present": bool(a["regions"] and b["regions"]),
     }
+    # TL-HARN-INCHASH: two runs hashed with different KINDS hold incomparable numbers. Refused here,
+    # in the comparator, so every caller (det_arms, ui_abc's oracle legs) refuses by name for free.
+    bad = kind_mismatch(a.get("hash_kind"), b.get("hash_kind"), name_a, name_b)
+    if bad:
+        res["compared_steps"] = 0
+        res["ok"] = False
+        res["refused"] = "hash_kind_mismatch"
+        res["verdict"] = "REFUSED: " + bad
+        return res
     if not common:
         # A zero-step comparison is the vacuous pass this project keeps rediscovering -- it is a
         # FAILURE here, not an empty success. mp_analyze once called a
@@ -1661,9 +2216,32 @@ def discover(path):
     return {}
 
 
+def menu_phase_net(path):
+    """mp:D45(e): the PROCESS directory's mh_net.log -- the menu phase around a session -- as parsed
+    events, or [] when `path` is not a session directory / the process log is missing.
+
+    The in-band watch is armed ONCE per process, at DLL init, so its `[desync] ARMED:` line (and an
+    INERT/DISABLED verdict) lands in the process directory's mh_net.log, while a session directory's own
+    mh_net.log holds only the match. discover() lets the session's log win a collision (right for
+    everything the match owns), which made the armed line invisible: every session-dir analysis printed
+    nothing about the watch even when it had caught a mismatch from step 50."""
+    if not os.path.isdir(path):
+        return []
+    proc = (read_session_json(path) or {}).get("process_dir") or ""
+    if not proc:
+        return []
+    fp = os.path.join(os.path.dirname(os.path.abspath(path)), proc, LOG_NAMES["net"])
+    if not os.path.isfile(fp) or os.path.abspath(fp) == os.path.abspath(
+        os.path.join(path, LOG_NAMES["net"])
+    ):
+        return []
+    return parse_events(fp)
+
+
 def load_peer(path):
     logs = discover(path)
     peer = {"path": path, "logs": logs}
+    peer["net_menu"] = menu_phase_net(path)
     # SES1: the directory's own declaration of which match it is, independent of the log prose.
     if os.path.isdir(path):
         peer["session"] = read_session_json(path)
@@ -1699,6 +2277,14 @@ def role_of(peer, default):
             m = re.search(r"as player (\d+)", ln)
             return ("client%s" % m.group(1)) if m else "client"
     b = os.path.basename(peer["path"].rstrip("/\\")).lower()
+    # SES8: a run directory's LAST field is its mode/role -- read it as a field, because a session
+    # name now carries the MAP too, and a map called "ghost town" would satisfy the substring test.
+    m = re.match(
+        r"^(?:\d{4}-\d{2}-\d{2}t\d{2}-\d{2}-\d{2}z|\d{8}t\d{6}z)_[0-9a-f]{8}_[a-z0-9.-]+_([a-z0-9]+)$",
+        b,
+    ) or re.match(r"^(?:\d{4}-\d{2}-\d{2}t\d{2}-\d{2}-\d{2}z|\d{8}t\d{6}z)_menu_([a-z0-9]+)$", b)
+    if m:
+        return m.group(1) if m.group(1) in ("host", "client") else default
     if "host" in b:
         return "host"
     m = re.search(r"client(\d+)", b)
@@ -1817,6 +2403,273 @@ def _fx_peer(
                 "[00:00:02.001] ; on_gameover ENTER sess=2 outcome=4 gclk=%d (downgrade=0)\n"
                 % int(round(real_gameover_step * interval * 1000))
             )
+
+
+# ---- mp:X3c: --selftest arms for --resync-verify -----------------------------------------
+def _fx_resync_peers(
+    steps=400,
+    D=60,
+    S=64,
+    T=200,
+    poke_step=20,
+    poke_region="players",
+    import_lines=True,
+    live_line=True,
+    diverge_after=None,
+    world_bad_col=None,
+    gs2=False,
+    domain_bad=False,
+):
+    """Two synthetic peers (host + client1) of a forced-desync run, parsed the way load_peer does, with
+    the host's `; [worldsync]` decision lines and the client's landing lines. Knobs plant one defect."""
+    n = len(REGION_NAMES)
+    pidx = REGION_NAMES.index(poke_region)
+    part = {
+        "units": ["units", "soldiers"],
+        "players": ["strat_players", "players"],
+        "rng": ["rng_state"],
+        "orders": ["order_pending*"],
+    }
+
+    def seg(client):
+        h = {"steps": {}, "regions": {}, "rd": {}, "snapcap": {}, "snapimp": {}, "domains": part}
+        h["poke"] = (poke_step, pidx, poke_region) if client else None
+        for s in range(1, steps + 1):
+            bad = client and (poke_step <= s <= S)
+            if client and diverge_after is not None and s >= diverge_after:
+                bad = True
+            h["steps"][s] = {
+                "clock": "0",
+                "combined": "C%d%d" % (s, client),
+                "state": "%X" % (0x1000 + s + (0xF00000 if bad else 0)),
+            }
+            row = {
+                "units": "U%d" % s,
+                "players": "P%d%s" % (s, "x" if bad else ""),
+                "rng": "R%d" % s,
+                "orders": None,
+            }
+            if domain_bad and client and poke_step <= s <= S:
+                row["units"] += "x"
+            h["rd"][s] = row
+            if s % 10 == 0:
+                cols = ["H%d_%d" % (s, j) for j in range(n)]
+                if bad:
+                    cols[pidx] += "x"
+                # a per-peer excluded column always differs (the clock family), by construction
+                cols[REGION_NAMES.index("total_game_time")] += "c" * client
+                h["regions"][s] = cols
+        base = ["W%d" % j for j in range(n)]
+        if client:
+            imp = list(base)
+            imp[REGION_NAMES.index("order_pending")] = (
+                "phase-shifted"  # excluded: allowed to differ
+            )
+            if world_bad_col:
+                imp[REGION_NAMES.index(world_bad_col)] = "BAD"
+            h["snapimp"][S] = imp
+        else:
+            h["snapcap"][S] = base
+        return h
+
+    host_net = [
+        "[00:00:01.000] ; [worldsync] ARMED (action=1): confirm=50 steps",
+        "[00:00:02.000] ; [worldsync] BEGIN peer=1 incident=%d consecutive=50 groups=2 host_group=1 "
+        "best_group=1 host_step=%d roster=00000033 resync=1/3" % (D, D + 4),
+        "[00:00:02.100] ; [worldsync] CAPTURE peer=1 S=%d bytes=8373352 capture_ms=41" % S,
+        "[00:00:20.000] ; [worldsync] DONE peer=1 rc=0 S=%d live_step=%d ff_ms=9563 incident=%d "
+        "host_step=%d (incident to live: %d steps)" % (S, T, D, T + 33, T - D),
+    ]
+    if gs2:
+        host_net.append("[00:00:21.000] ; GS2: peer 1 data-silent for 15001 ms > 15000 -> dropped")
+    cli_net = ["[00:00:02.001] ; [worldsync] BEGIN rx from=0 incident=%d -- keep playing" % D]
+    if import_lines:
+        cli_net.append(
+            "[00:00:19.000] ; [worldsync] IMPORT blobstep=%d local=2361 backlog=2007 staged=8030 "
+            "fed_now=6 pending_after=14 kept_regions=37 rc=0 import_ms=9 ff=catching up" % S
+        )
+    if live_line:
+        cli_net.append(
+            "[00:00:19.900] ; [worldsync] LIVE step=%d blobstep=%d ff_ms=9563 pending_peak=84"
+            % (T, S)
+        )
+    return [
+        {"role": "host", "path": "fx-host", "logs": {}, "harness": seg(0), "net": host_net},
+        {"role": "client1", "path": "fx-client", "logs": {}, "harness": seg(1), "net": cli_net},
+    ]
+
+
+def resync_selftest():
+    """The --resync-verify arms; returns the number that FAILED. No rig, no game."""
+    bad = 0
+
+    def arm(label, peers, want_ok, want_fail=None, **kw):
+        nonlocal bad
+        res = resync_verify(peers, **kw)
+        failed = [n for n, ok, _t in res["checks"] if not ok]
+        good = res["ok"] == want_ok and (want_fail is None or want_fail in failed)
+        print("   %-64s %s" % (label, "ok" if good else "FAIL (failed checks: %s)" % failed))
+        bad += 0 if good else 1
+        return res
+
+    arm("RS1 a verified resync (poked players, K met) passes", _fx_resync_peers(), True, k=2000)
+    arm(
+        "RS2 T-D over K is red",
+        _fx_resync_peers(),
+        False,
+        "resync 1 (D=60 S=64) time to live",
+        k=100,
+    )
+    arm(
+        "RS3 divergence AFTER S is red (identical from S)",
+        _fx_resync_peers(diverge_after=250),
+        False,
+        "identical from S",
+        k=2000,
+    )
+    arm(
+        "RS4 BEGIN without IMPORT is red",
+        _fx_resync_peers(import_lines=False, live_line=False),
+        False,
+        "resync 1 (D=60 S=64) import",
+        k=2000,
+    )
+    arm(
+        "RS5 a resync inside a D26 truncation window is red",
+        _fx_resync_peers(),
+        False,
+        "D26",
+        k=2000,
+        d26_step=50,
+    )
+    arm(
+        "RS6 a D26 boundary AFTER the resync is fine",
+        _fx_resync_peers(),
+        True,
+        k=2000,
+        d26_step=380,
+    )
+    arm(
+        "RS7 SNAPIMP differing in a NON-excluded column is red",
+        _fx_resync_peers(world_bad_col="units"),
+        False,
+        "resync 1 (D=60 S=64) world",
+        k=2000,
+    )
+    arm(
+        "RS8 a GS2 data-timeout drop is red (lockstep must stay alive)",
+        _fx_resync_peers(gs2=True),
+        False,
+        "lockstep alive",
+        k=2000,
+    )
+    arm(
+        "RS9 a trail naming the wrong domain first is red",
+        _fx_resync_peers(domain_bad=True),
+        False,
+        "trail",
+        k=2000,
+    )
+    arm(
+        "RS10 no BEGIN anywhere is red (decision)",
+        [dict(p, net=[]) for p in _fx_resync_peers()],
+        False,
+        "decision",
+    )
+    # the excluded set is DERIVED: every keep-local slice is in it, and it is never smaller than the manifest's
+    ex, nkeep = resync_excluded_columns()
+    keep = resync_keep_local_slices()
+    ok = (
+        keep is not None
+        and nkeep == len(keep)
+        and keep <= ex
+        and STATE_EXCLUDED <= ex
+        and {"peer_horizon", "order_pending"} <= ex
+    )
+    print(
+        "   %-64s %s"
+        % (
+            "RS11 excluded columns are derived from the source (keep-local + manifest)",
+            "ok" if ok else "FAIL",
+        )
+    )
+    bad += 0 if ok else 1
+    # a keep-local entry whose slice is HASHED still joins the set (a synthetic list, not the real one)
+    ex2, _n = resync_excluded_columns(
+        fixup_text="RESYNC_KEEP_LOCAL[] = { mh::state::RID_NET_IS_HOST, // x\n};", header_text=None
+    )
+    print(
+        "   %-64s %s"
+        % (
+            "RS12 a synthetic keep-local list is honoured (comment stripped)",
+            "ok" if STATE_EXCLUDED <= ex2 else "FAIL",
+        )
+    )
+    bad += 0 if STATE_EXCLUDED <= ex2 else 1
+    line, res = worldsync_summary(
+        [{"role": "host", "net": ["[0] net: ok"]}, {"role": "client1", "net": []}]
+    )
+    ok = line == "worldsync: none" and res["begins"] == 0
+    print(
+        "   %-64s %s"
+        % ("RS13 no resync line anywhere prints `worldsync: none`", "ok" if ok else "FAIL")
+    )
+    bad += 0 if ok else 1
+    line, res = worldsync_summary(_fx_resync_peers())
+    ok = line.startswith("worldsync: 1 BEGIN, 1 IMPORT") and res["begins"] == 1
+    print(
+        "   %-64s %s"
+        % ("RS14 a run with a resync does not print `worldsync: none`", "ok" if ok else "FAIL")
+    )
+    bad += 0 if ok else 1
+    bad += _selftest_menu_armed()
+    return bad
+
+
+def _selftest_menu_armed():
+    """mp:D45(e): the ARMED line lives in the menu-phase (process dir) mh_net.log; a session dir's own
+    mh_net.log holds only the match. menu_phase_net must find it from the session dir, and must find
+    nothing for a folder that IS the process dir (no double read)."""
+    import shutil
+    import tempfile
+
+    root = tempfile.mkdtemp(prefix="mp_analyze_menuarmed_")
+    bad = 0
+    try:
+        proc = os.path.join(root, "2026-10-01T00-00-00Z_menu_solo")
+        sess = os.path.join(root, "2026-10-01T00-00-05Z_deadbeef_cold-war_host")
+        os.makedirs(proc)
+        os.makedirs(sess)
+        armed = "; [desync] ARMED: every=50 steps, 63 regions (15 excluded from the verdict), x\n"
+        with open(os.path.join(proc, "mh_net.log"), "w", encoding="utf-8") as fh:
+            fh.write(armed)
+        with open(os.path.join(sess, "mh_net.log"), "w", encoding="utf-8") as fh:
+            fh.write(
+                "; [desync] *** DESYNC step=50 peer=1 mine=1 theirs=2 first_region=12 strat_players (mismatch #1)\n"
+                "; [desync] STATUS: samples=9 compared=9 mismatching=9\n"
+            )
+        with open(os.path.join(sess, "session.json"), "w", encoding="utf-8") as fh:
+            json.dump({"process_dir": os.path.basename(proc)}, fh)
+        menu = menu_phase_net(sess)
+        got = parse_desync(menu)["armed"]
+        sess_only = parse_desync(parse_events(os.path.join(sess, "mh_net.log")))
+        for title, ok in (
+            ("DM1 the armed line is read from the menu-phase log", bool(got)),
+            (
+                "DM2 the session log alone has no armed line (the old blind spot)",
+                not sess_only["armed"],
+            ),
+            (
+                "DM3 the session's mismatch count survives",
+                desync_counts(sess_only["last_status"]).get("mismatching") == 9,
+            ),
+            ("DM4 a process dir has no separate menu log", menu_phase_net(proc) == []),
+        ):
+            print("   %-64s %s" % (title, "ok" if ok else "FAIL"))
+            bad += 0 if ok else 1
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+    return bad
 
 
 def selftest():
@@ -2119,6 +2972,132 @@ def selftest():
             "ALL PAIRS IDENTICAL",
             absent_text="HASH MANIFEST (D29)",
         )
+
+        # ---- tooling:TL-HARN-INCHASH: the hash-KIND refusal ----------------------------------------
+        # Two clean peers with identical hashes; only the fingerprint line (written BEFORE the banner,
+        # as the harness does) varies. A kind mismatch must be REFUSED by name although every hash
+        # agrees; two kind-2 peers must compare normally.
+        fp1 = "; HASH FINGERPRINT 0123456789ABCDEF split=ok input_epoch=1 build=0.2.0+abc"
+        fp2 = fp1 + " hash_kind=2"
+
+        def _hk_arm(slug, name, host_fp, client_fp, want_rc, want_text, absent_text=None):
+            nonlocal bad
+            d = os.path.join(root, "hk_" + slug)
+            dirs = []
+            for role, ln in (("host", host_fp), ("client1", client_fp)):
+                p = os.path.join(d, role)
+                _fx_peer(p, role=role, steps=50, interval=0.01)
+                if ln:
+                    hl = os.path.join(p, "mh_harness.log")
+                    body = open(hl).read()
+                    with open(hl, "w") as f:
+                        f.write(ln + "\n" + body)
+                dirs.append(p)
+            ns = argparse.Namespace(
+                paths=dirs,
+                freeze_ms=200,
+                min_common=1,
+                json=os.path.join(d, "out.json"),
+                selftest=False,
+                allow_mismatch=False,
+            )
+            buf, keep = io.StringIO(), sys.stdout
+            sys.stdout = buf
+            try:
+                rc = analyse(ns)
+            finally:
+                sys.stdout = keep
+            printed = buf.getvalue()
+            ok = (rc or 0) == want_rc and want_text in printed
+            if absent_text and absent_text in printed:
+                ok = False
+            print("   %-64s %s" % (name, "ok" if ok else "FAIL -- rc=%s" % (rc,)))
+            bad += 0 if ok else 1
+
+        _hk_arm(
+            "mixed",
+            "HK kind 1 vs kind 2 peers -> REFUSED by name although hashes agree",
+            fp1,
+            fp2,
+            2,
+            "REFUSED: hash kind mismatch: host is kind 1 (FNV VERDICT walk), client1 is kind 2",
+            absent_text="ALL PAIRS IDENTICAL",
+        )
+        _hk_arm(
+            "unstated",
+            "HK a pre-item peer (no fingerprint) vs kind 2 -> REFUSED (unstated == 1)",
+            None,
+            fp2,
+            2,
+            "HASH KIND (TL-HARN-INCHASH)",
+        )
+        _hk_arm(
+            "both2",
+            "HK both peers kind 2 -> compared normally",
+            fp2,
+            fp2,
+            0,
+            "ALL PAIRS IDENTICAL",
+            absent_text="HASH KIND (TL-HARN-INCHASH)",
+        )
+
+        # The readers, directly: last kind-bearing line wins (the harness's step-1 re-statement), a
+        # segment's OPEN line carries the token, a timestamped line still reads, other lines do not.
+        def _hk(label, cond):
+            nonlocal bad
+            print("   %-64s %s" % (label, "ok" if cond else "FAIL"))
+            bad += 0 if cond else 1
+
+        _hk(
+            "HK the last fingerprint line wins (kind 2 refused at step 1)",
+            hash_kind_of_text(fp2 + "\n" + fp1 + "\n1 A B C\n") == 1,
+        )
+        _hk(
+            "HK a segment OPEN line states kind 2; a kind-1 OPEN line states 1",
+            hash_kind_of_text(
+                "; [match] segment OPEN x at process step 5: (step_base=4). y hash_kind=2\n"
+            )
+            == 2
+            and hash_kind_of_text("; [match] segment OPEN x at process step 5: (step_base=4). y\n")
+            == 1,
+        )
+        _hk(
+            "HK a log stating nothing is None (read as kind 1)",
+            hash_kind_of_text("1 A B C\n") is None and kind_of(None) == 1,
+        )
+        _hk(
+            "HK kind_mismatch: None on agreement (incl. unstated vs 1), named text otherwise",
+            kind_mismatch(None, 1) is None
+            and kind_mismatch(2, 2) is None
+            and "artifact is kind 1 (FNV VERDICT walk), run is kind 2 (incremental block sum)"
+            in (kind_mismatch(None, 2) or ""),
+        )
+        a_seg = {
+            "steps": {1: {"state": "A", "combined": "B", "clock": "C"}},
+            "regions": {},
+            "hash_kind": 2,
+        }
+        b_seg = {
+            "steps": {1: {"state": "A", "combined": "B", "clock": "C"}},
+            "regions": {},
+            "hash_kind": None,
+        }
+        d = diff_peers(a_seg, b_seg, "host", "client")
+        _hk(
+            "HK diff_peers refuses a cross-kind pair (the check_* post_checks gate on overlap)",
+            d["overlap"] == 0
+            and d.get("refused") == "hash_kind_mismatch"
+            and "host is kind 2" in d["verdict"],
+        )
+        r = sp_compare(a_seg, b_seg, "ship", "original")
+        _hk(
+            "HK sp_compare refuses a cross-kind pair by name (det_arms / ui_abc legs)",
+            r["ok"] is False
+            and r.get("refused") == "hash_kind_mismatch"
+            and r["verdict"].startswith("REFUSED: hash kind mismatch: ship is kind 2"),
+        )
+        print("   -- mp:X3c --resync-verify arms")
+        bad += resync_selftest()
     finally:
         shutil.rmtree(root, ignore_errors=True)
     print("mp_analyze --selftest: %s" % ("PASS" if not bad else "%d ARM(S) FAILED" % bad))
@@ -2493,6 +3472,41 @@ def main():
         "for a person reading a run and wrong for a gate, because a run in which the transfer never "
         "completed has no snapshot section at all and would otherwise pass by saying nothing.",
     )
+    ap.add_argument(
+        "--hold-survival-ms",
+        type=int,
+        default=None,
+        metavar="MS",
+        help="mp:X3a: exit non-zero unless the importing peer (the one that logged `; SIM HOLD`) "
+        "printed a `; SIM HELD alive ms=N` heartbeat with N >= MS, logged its `; [import] fixup "
+        "trailer v1:` population line, and wrote no mh_crash_<pid>.marker during the run. The "
+        "heartbeat is printed from the FRAME path every 5 s, so it is the evidence that frames "
+        "were still being drawn from the imported world that long after the import.",
+    )
+    ap.add_argument(
+        "--resync-verify",
+        action="store_true",
+        help="mp:X3c: exit non-zero unless a forced desync was RECOVERED by the world resync: host "
+        "BEGIN/CAPTURE/DONE rc=0, the minority's IMPORT blobstep=S rc=0 and LIVE, SNAPCAP==SNAPIMP "
+        "outside the keep-local/excluded columns, every common step > S identical with a verified "
+        "tail, the sub-domain trail naming the poked region first at or before the incident, no GS2 "
+        "drop, no crash marker, and no resync inside a D26 truncation window. Replaces the plain "
+        "DESYNC exit code for the run: the steps before S differ by design.",
+    )
+    ap.add_argument(
+        "--resync-within-steps",
+        type=int,
+        default=None,
+        metavar="K",
+        help="mp:X3c: with --resync-verify, also require LIVE at T with T - D <= K sim steps (D = the "
+        "host's incident step, T = the step the minority reports LIVE). Set from 3 rig runs x 1.3.",
+    )
+    ap.add_argument(
+        "--no-resync",
+        action="store_true",
+        help="mp:X3c: exit non-zero if ANY peer logged a `; [worldsync] BEGIN`/IMPORT/ABORT -- the "
+        "idle-determinism and D26 (deliberate match end) claim that a healthy run starts no resync.",
+    )
     args = ap.parse_args()
     if args.selftest:
         return selftest()
@@ -2501,7 +3515,120 @@ def main():
     rc = analyse(args) or 0
     if args.snapshot_verify:
         rc = snapshot_verdict_rc(rc)
+    if args.hold_survival_ms is not None:
+        rc = hold_survival_rc(args.paths, args.hold_survival_ms, rc)
+    if args.resync_verify:
+        # rc 2 is a REFUSAL (wrong folders / manifests): keep it. rc 1 is the plain verdict, which is
+        # red on a resync run BY DESIGN (steps 300..S ran diverged), so the resync claim replaces it.
+        rc = 2 if rc == 2 else 0
+        peers = _RESYNC_CTX["peers"]
+        if not peers:
+            print("\nRESYNC VERIFY: FAILED -- fewer than two harness peers were analysed")
+            return rc or 1
+        ok = resync_report(
+            resync_verify(peers, k=args.resync_within_steps, d26_step=_RESYNC_CTX["d26"])
+        )
+        rc = rc if ok else (rc or 1)
+    if args.no_resync:
+        peers = _RESYNC_CTX["peers"] or []
+        line, res = worldsync_summary(peers)
+        if res["begins"] or res["imports"] or res["aborts"]:
+            print("\nNO RESYNC: FAILED -- %s" % line)
+            rc = rc or 1
+        else:
+            print("\nNO RESYNC: PASS -- %s" % line)
     return rc
+
+
+# mp:X3a. THE HELD PEER STAYED ALIVE, as a post-check. Reads the importer's own harness log rather than
+# the analysed structures, because what it asserts is three literal lines and one absence:
+#   `; SIM HOLD`                       the peer froze its sim on the imported world (it IS the importer)
+#   `; SIM HELD alive ms=N`, N >= MS   frames were still being drawn N ms after the import
+#   `; [import] fixup trailer v1:`     the fixup population was applied and logged
+#   no mh_crash_<pid>.marker           written by that process's vectored handler on any fatal exception
+_HOLD_ALIVE_RE = re.compile(r"^; SIM HELD alive ms=(\d+)", re.M)
+
+
+def hold_survival_check(paths, min_ms):
+    """-> (ok, message). Pure over the paths so the selftest can drive it."""
+    seen_importer = False
+    problems = []
+    notes = []
+    for p in paths:
+        logs = discover(p)
+        hl = logs.get("harness")
+        if not hl or not os.path.isfile(hl):
+            continue
+        with open(hl, "r", encoding="utf-8", errors="replace") as fh:
+            text = fh.read()
+        if not re.search(r"^; SIM HOLD ", text, re.M):
+            continue
+        seen_importer = True
+        who = os.path.basename(os.path.dirname(os.path.abspath(hl)))
+        alive = [int(x) for x in _HOLD_ALIVE_RE.findall(text)]
+        best = max(alive) if alive else -1
+        if best < min_ms:
+            problems.append(
+                "%s: longest `SIM HELD alive` heartbeat is %s ms, need >= %d ms"
+                % (who, best if best >= 0 else "absent", min_ms)
+            )
+        else:
+            notes.append("%s held alive %d ms" % (who, best))
+        # the importer's own lines (libmh's ai_say) go through the seam logger into the MATCH's mh_net.log,
+        # not the harness log -- search both
+        net_text = ""
+        cands = [logs.get("net")]
+        # a path that names the PROCESS dir (the harness log's home) has no session mh_net.log of its
+        # own: follow the sibling session dirs whose session.json names this process dir
+        pd = os.path.dirname(os.path.abspath(hl))
+        for sj in glob.glob(os.path.join(os.path.dirname(pd), "*", "session.json")):
+            try:
+                with open(sj, "r", encoding="utf-8") as fh:
+                    if json.load(fh).get("process_dir") == os.path.basename(pd):
+                        cands.append(os.path.join(os.path.dirname(sj), "mh_net.log"))
+            except (OSError, ValueError):
+                pass
+        for nl in cands:
+            if nl and os.path.isfile(nl):
+                with open(nl, "r", encoding="utf-8", errors="replace") as fh:
+                    net_text += fh.read() + "\n"
+        both = text + "\n" + net_text
+        m = re.search(r"; \[import\] fixup trailer v1: (.*)$", both, re.M)
+        if not m:
+            absent = re.search(r"; \[import\] fixup trailer (ABSENT|REFUSED.*)$", both, re.M)
+            problems.append(
+                "%s: no `; [import] fixup trailer v1:` line%s"
+                % (who, " (log says: %s)" % absent.group(1) if absent else "")
+            )
+        else:
+            notes.append("fixup " + m.group(1)[:120])
+        # crash markers: any marker under the lane's logs\ newer than this process dir's creation
+        pdir = os.path.dirname(os.path.abspath(hl))
+        logs_dir = os.path.dirname(pdir)
+        try:
+            t0 = os.path.getctime(pdir) - 1.0
+            marks = [
+                f
+                for f in glob.glob(os.path.join(logs_dir, "mh_crash_*.marker"))
+                if os.path.getmtime(f) >= t0
+            ]
+        except OSError:
+            marks = []
+        for f in marks:
+            problems.append(
+                "%s: crash marker %s written during the run" % (who, os.path.basename(f))
+            )
+    if not seen_importer:
+        problems.append(
+            "no peer logged `; SIM HOLD` -- snapshot_hold was not armed or nothing imported"
+        )
+    return (not problems), ("; ".join(problems) if problems else "; ".join(notes))
+
+
+def hold_survival_rc(paths, min_ms, rc):
+    ok, msg = hold_survival_check(paths, min_ms)
+    print("\nHOLD SURVIVAL: %s -- %s" % ("PASS" if ok else "FAILED", msg))
+    return rc if ok else (rc or 1)
 
 
 # mp:X1b. THE GATE'S HALF OF snapshot_compare, kept apart from it for one reason: analyse() prints a
@@ -2509,6 +3636,9 @@ def main():
 # decide the run needs the absence of a snapshot to be a failure too, and "there was no section"
 # cannot be expressed as a verdict string inside a section that does not exist.
 _SNAPSHOT_SEEN = []
+# mp:X3c. What analyse() saw, for the resync gate (same reason as _SNAPSHOT_SEEN: the exit code of
+# analyse() is about the plain DESYNC verdict, and the resync claim needs the parsed peers).
+_RESYNC_CTX = {"peers": None, "d26": None}
 
 
 def snapshot_verdict_rc(rc):
@@ -2571,12 +3701,14 @@ def analyse(args):
                 "has_breakdown": bool(h["breakdown"]),
                 "config": h.get("config"),
                 "manifest_fp": h.get("manifest_fp"),
+                "hash_kind": kind_of(h.get("hash_kind")),
             }
             if h.get("config"):
                 print(
                     "   harness: configuration (%s), manifest fp=%s"
                     % (h["config"], h.get("manifest_fp") or "?")
                 )
+            print("   harness: hashes are %s" % kind_label(h.get("hash_kind")))
             if h["banner"]:
                 print("   harness: %s" % h["banner"].strip("; ="))
             print(
@@ -2725,7 +3857,20 @@ def analyse(args):
                 print("   session: no match_id logged (pre-SES0 build, or never in a lobby)")
             # D21: what this peer said about the match WHILE IT WAS RUNNING.
             dw = parse_desync(pr["net"])
+            # mp:D45(e): the ARMED line is written once per PROCESS, into the menu-phase log, not the
+            # session's -- read the watch's static facts from there when the session log lacks them.
+            dw["armed_in_menu_log"] = False
+            if not dw["armed"] and pr.get("net_menu"):
+                dm = parse_desync(pr["net_menu"])
+                if dm["armed"]:
+                    dw["armed"], dw["armed_in_menu_log"] = dm["armed"], True
+                    for k in ("inert", "manifest_mismatch", "cost_probe"):
+                        dw[k] = dw[k] or dm[k]
             pj["desync_watch"] = dw
+            if dw["armed"] and dw["armed_in_menu_log"]:
+                print(
+                    "   desync-watch: %s  (armed line read from the menu-phase log)" % dw["armed"]
+                )
             if dw["armed"]:
                 if dw["manifest_mismatch"]:
                     print("   desync-watch: DISABLED -- %s" % dw["manifest_mismatch"])
@@ -2761,6 +3906,49 @@ def analyse(args):
                 # `e[4:]` slice assumed the line began exactly at "net:".
                 print("   %s" % e.strip())
         out["peers"].append(pj)
+
+    # ---- mp:D45(e): the in-band watch, one line per peer, in the summary -----------------------------
+    # Before this the watch's verdict was buried in each peer's block and was ABSENT for any run read
+    # from a session directory (the armed line lives in the menu-phase log), so a host-vs-clients
+    # mismatch from step 50 -- 733/733 samples in rc5 -- could not be seen from the summary at all.
+    inband = {}
+    for p in out["peers"]:
+        dw = p.get("desync_watch")
+        if dw is None:
+            continue
+        c = desync_counts(dw["last_status"])
+        if not dw["armed"]:
+            state = "not armed (no ARMED line in the session or the menu-phase log)"
+            mism = None
+        elif dw["manifest_mismatch"]:
+            state, mism = "DISABLED", None
+        elif dw["inert"]:
+            state, mism = "INERT", None
+        else:
+            mism = c.get("mismatching", len(dw["mismatch_lines"]))
+            state = "armed%s" % (" (menu log)" if dw["armed_in_menu_log"] else "")
+        inband[p["role"]] = {
+            "state": state,
+            "mismatching": mism,
+            "compared": c.get("compared"),
+            "first": dw["first_mismatch"],
+        }
+    out["inband_watch"] = inband
+    if inband:
+        print("\n" + "-" * 72)
+        print("IN-BAND DESYNC WATCH (D21/D45)")
+        print("-" * 72)
+        for role, v in inband.items():
+            print(
+                "   %-10s %s, compared=%s, mismatching=%s%s"
+                % (
+                    role,
+                    v["state"],
+                    "?" if v["compared"] is None else v["compared"],
+                    "?" if v["mismatching"] is None else v["mismatching"],
+                    ("  FIRST: %s" % v["first"]) if v["first"] else "",
+                )
+            )
 
     # ---- SES0/SES1: do the peers agree on WHICH MATCH this was? ----------------------------------
     # SES0 MADE THIS A WARNING. SES1 MAKES IT A REFUSAL, and the reason is that the ground under it
@@ -2861,6 +4049,33 @@ def analyse(args):
             print("\nJSON -> %s" % args.json)
         return 2
 
+    # ---- tooling:TL-HARN-INCHASH: do the peers hash with the same KIND? ---------------------------
+    # Same shape and same reason as D29 above, one level down: same manifest, different FUNCTION. A
+    # kind-1 peer and a kind-2 peer hash identical bytes into different numbers, so the pairwise diff
+    # would report a desync at the first step in every region. Unstated == kind 1 (every pre-item
+    # log), so a pre-item peer paired with a kind-2 one is refused too -- correctly.
+    kinds = [
+        (p["role"], kind_of((p.get("harness") or {}).get("hash_kind")))
+        for p in peers
+        if "harness" in p
+    ]
+    out["hash_kind_by_peer"] = {r: k for r, k in kinds}
+    if len({k for _r, k in kinds}) > 1:
+        out["refused"] = "hash_kind_mismatch"
+        print("\n" + "-" * 72)
+        print("HASH KIND (TL-HARN-INCHASH)")
+        print("-" * 72)
+        for r, k in kinds:
+            print("   %-10s %s" % (r, kind_label(k)))
+        a, b = kinds[0], next(x for x in kinds if x[1] != kinds[0][1])
+        print("   -> REFUSED: " + kind_mismatch(a[1], b[1], a[0], b[0]))
+        print("      Re-run every peer with the same `[harness] hash_kind`.")
+        if args.json:
+            with open(args.json, "w", encoding="utf-8") as fh:
+                json.dump(out, fh, indent=2)
+            print("\nJSON -> %s" % args.json)
+        return 2
+
     # cross-peer diff -- ALL pairwise combinations (N1: a 3-peer game must be identical across all 3 pairs,
     # not just host-vs-first-client). With 2 peers this is the single pair as before.
     import itertools
@@ -2879,6 +4094,7 @@ def analyse(args):
             )
         out["d26_expected_end_step"] = d26_step
         out["d26_expected_end_reason"] = d26_reason
+        _RESYNC_CTX["peers"], _RESYNC_CTX["d26"] = peers, d26_step
         out["desync_pairs"] = []
         pair_verdicts = []
         for a, b in itertools.combinations(harness_peers, 2):
@@ -3074,6 +4290,19 @@ def analyse(args):
             re.search(r"gameover_step=([1-9]\d*)", ((p.get("harness") or {}).get("arming") or ""))
             for p in harness_peers
         )
+
+        # mp:X3c. `worldsync: none` is a CLAIM, printed on every multi-peer run: the idle-determinism
+        # gate (worldsync.ini, action=1, nothing poked) reads it, so a false-positive resync -- the
+        # feature firing on a healthy match -- is a red there and not a silent recovery.
+        ws_line, ws_res = worldsync_summary(harness_peers)
+        out["worldsync"] = ws_res
+        print("   " + ws_line)
+        if ws_res["begins"] and worst:
+            print(
+                "   worldsync: the steps BEFORE the capture step differ by design (the poked peer "
+                "ran diverged until the import); judge this run with --resync-verify, not the "
+                "rollup above"
+            )
 
         out["all_pairwise_clean"] = worst == 0 and nodata == 0 and not out["environmental"]
         out["pairs_without_data"] = nodata

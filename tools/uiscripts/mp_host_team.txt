@@ -1,0 +1,79 @@
+# mp:U51 HOST: the lobby TEAM spinners + MODE selector, as seen from the host.
+#
+# Rows: slot0 = host, slot1 = the joining client, slot2 = an AI the host seats. Screen coords (640x480):
+# state column x=70, TEAM column x=221, row y = 115 / 132 / 149 for slots 0 / 1 / 2; the MODE selector is
+# the right panel's widget under Cancel at (501,370).
+#
+# FFA (the default): the TEAM spinners are visible too. Host switches the mode to Team, cycles its own team
+# and the AI row's twice, waits for the client's own-row change to arrive, then vacates + re-takes the AI
+# slot (its team must read "-" again) and switches back to FFA.
+
+settled value:110
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+settled Create
+clickl Create
+present Game name
+settled Ok
+clickl Ok
+present Available maps
+settled Ok
+clickl Ok
+
+present Network players
+peers 1
+occ 2
+settled Cancel
+click 70 149
+present Computer
+occ 3
+lobbymode 0
+team 0 0
+team 1 0
+team 2 0
+
+# --- FFA: the spinners are visible and editable here too. Own row once, the AI row once. ---
+click 221 115
+team 0 1
+click 221 149
+team 2 1
+awaitsignal clientin
+capture t1_host_ffa
+
+# --- Team mode: the host selects it; the teams set in FFA survive the switch ---
+click 501 370
+lobbymode 1
+team 0 1
+team 2 1
+# the AI row once more
+click 221 149
+team 2 2
+capture t2_host_team
+
+# --- the client cycles its own row (and probes the host's row + the mode selector, which must not move) ---
+awaitsignal clientdone
+team 1 2
+team 0 1
+team 2 2
+lobbymode 1
+capture t3_host_after_client
+
+# --- vacate + re-take the AI slot: the team is forgotten ---
+click 70 149
+absent Computer
+team 2 0
+click 70 149
+click 70 149
+present Computer
+team 2 0
+capture t4_host_retaken
+
+# --- back to FFA: the spinners hide on both peers ---
+click 501 370
+lobbymode 0
+capture t5_host_ffa
+awaitsignal clientffa
+log HOST team/mode scenario COMPLETE
+end

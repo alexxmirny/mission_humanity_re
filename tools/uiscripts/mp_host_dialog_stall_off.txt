@@ -1,0 +1,66 @@
+# mp:U44 HOST (NEGATIVE ARM script, see dialog_stall_off) -- -- a lockstep stall must neither close the player's open building dialog (short stall) nor
+# let the "Player not responding" kick modal share the screen with it (long stall).
+#
+# Retail bug (llm_net_lockstep_overlay_dismiss 0x004c7d1c / sync_overlay_show 0x004c7eea): the dismiss forces
+# GAME_MODE=2 whenever the widget list is empty -- and the building dialog runs with an EMPTY list in mode 3 --
+# so recovery from ANY stall closed the dialog, without clearing _G_LLM_UI_ACTIVE_DIALOG; the kick modal's
+# arm guard accepted mode 3 with an empty list, so it armed over the dialog, which kept its clicks (the modal's
+# buttons were unclickable) and returned at every later stall. Fix: libmh overlay_hoist.cpp (ledger of what
+# lockstep itself armed + a stash of the displaced dialog), `[net] overlay_dialog_guard` (default 1).
+#
+# THE STALLS ARE FORCED, NOT WAITED FOR: the registry row's shim triggers `blackhole c2s` on this script's
+# `log HOST dlg_stall: <phase> start` lines and lift it on `... end` (client -> host dropped, so the HOST's sim
+# parks at the horizon). `stalled <ms>` proves each stall was really in force for that long.
+#
+# THE DIALOG is the selected building's status dialog (the red X in the HUD panel's icon column, the same
+# opener mp_host_canceltask.txt uses). An idle mother offers Sell / Close -- NEVER click Sell here.
+# Pair with mp_client_dialog_stall.txt.
+
+settled value:110
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+settled Create
+clickl Create
+present Game name
+settled Ok
+clickl Ok
+present Available maps
+settled Ok
+clickl Ok
+
+present Network players
+peers 1
+awaitsignal lobby
+enabled Start
+settled Start
+clickl Start
+
+absent Network players
+gamemode 2
+gameclock 3000
+# land the mother (shift+right-click deploy), select it, open its status dialog
+rclick 480 330 shift
+gameclock 20000
+simclick 500 330
+gameclock 20200
+simclick 882 271
+retry 1500 3 3 gamemode 3
+gameclock 20600
+screensettled
+dump
+capture dialog_open
+
+# (a) SHORT stall: below the kick-modal threshold. The retail dismiss closed the dialog on recovery; now it must
+# survive, still be the active screen (mode 3), and still be clickable (verified at the end of (b)).
+log HOST dlg_stall: short start
+stalled 800
+log HOST dlg_stall: short end
+gameclock 24000
+# No wait here, by design: with `[net] overlay_dialog_guard=0` the retail rule has closed the dialog, and a wait
+# for it would hang the walk (the client sits in `awaitsignal` and the runner's watchdog costs minutes). The
+# frame is the verdict: the dialog baseline is the FIXED behaviour, so this arm goes red on the pixel diff.
+capture after_short
+signal hostdone
+end

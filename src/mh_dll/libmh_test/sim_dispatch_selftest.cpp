@@ -608,6 +608,64 @@ void test_dispatch_observer_wiring() {
     ck(dispatch_observer() == nullptr, "D18: dispatch still runs with no observer registered");
 }
 
+// ---- mp:U49: an undock (0x20) is applied only to a unit that is still PARKED ---------------------
+//
+// Retail applies a 0x20 with no state re-check, so a second one landing a pass after the first, on a
+// unit that is already walking out (0x21), re-enters exit_storage_begin and wedges it on a door it
+// holds itself. The fix drops it; PARKED (0x1f) and EXIT_STORAGE_BEGIN (0x20, what a same-pass first
+// order just wrote) stay applicable, and every other order code keeps the retail rule.
+void u49_run(bool fix, uint16_t state, uint16_t code, int records, int &applied, int &disembarked,
+             int32_t &left) {
+    set_undock_reentry_fix(fix);
+    sim_fixture f;
+    seed_live_unit(f);
+    f.u(PLAYER, OBJ).state = state;
+    sim_view  v            = f.view();
+    sim_store own          = f.store();
+    for (int i = 0; i < records; ++i) f.order_queue[i] = make_record(ORDER_KIND_UNIT_EX, 0, code);
+    f.order_queue_count = records;
+    dc().reset();
+    dc().ret[rec::DC_llm_unit_state_is_boarding] = (state >= 0x1f && state <= 0x2b) ? 1 : 0;
+    dispatch_calls c                             = rec::recording_calls();
+    detail::order_queue_dispatch(v, own, c);
+    applied     = dc().count(rec::DC_llm_strat_unit_set_state_of);
+    disembarked = dc().count(rec::DC_llm_unit_force_disembark);
+    left        = f.order_queue_count;
+    set_undock_reentry_fix(false);
+}
+
+void test_u49_undock_reentry() {
+    int     applied, dis;
+    int32_t left;
+    // walking out (0x21) and waiting (0x22): dropped with the fix, applied by retail
+    for (uint16_t st : {(uint16_t)0x21, (uint16_t)0x22}) {
+        u49_run(true, st, 0x20, 1, applied, dis, left);
+        ck(applied == 0 && dis == 0 && left == 0,
+           "U49 fix on: a 0x20 to a unit walking out/waiting is dropped, not applied");
+        u49_run(false, st, 0x20, 1, applied, dis, left);
+        ck(applied == 1 && left == 0, "U49 gate off (retail): the same 0x20 is applied");
+    }
+    // PARKED: applied either way
+    u49_run(true, 0x1f, 0x20, 1, applied, dis, left);
+    ck(applied == 1 && left == 0, "U49 fix on: a 0x20 to a PARKED unit is applied");
+    u49_run(false, 0x1f, 0x20, 1, applied, dis, left);
+    ck(applied == 1 && left == 0, "U49 gate off: a 0x20 to a PARKED unit is applied");
+    // state already EXIT_STORAGE_BEGIN (the same-pass duplicate sees the first order's write)
+    u49_run(true, 0x20, 0x20, 1, applied, dis, left);
+    ck(applied == 1, "U49 fix on: a 0x20 to a unit already in EXIT_STORAGE_BEGIN is applied (same-pass duplicate = retail)");
+    // two 0x20 in one pass for a unit still parked: both applied, unchanged
+    u49_run(true, 0x1f, 0x20, 2, applied, dis, left);
+    ck(applied == 2 && left == 0, "U49 fix on: two same-pass 0x20 for a parked unit are both applied (retail behaviour)");
+    u49_run(false, 0x1f, 0x20, 2, applied, dis, left);
+    ck(applied == 2 && left == 0, "U49 gate off: two same-pass 0x20 for a parked unit are both applied");
+    // another order to a unit walking out keeps the retail rule: force_disembark, record dropped
+    u49_run(true, 0x21, 0xe7, 1, applied, dis, left);
+    ck(dis == 1 && applied == 0, "U49 fix on: a non-0x20 order to a boarding unit is untouched (force_disembark)");
+    // non-boarding unit (state 0x18): a 0x20 is dropped by retail already
+    u49_run(true, 0x18, 0x20, 1, applied, dis, left);
+    ck(applied == 0 && left == 0, "U49 fix on: a 0x20 to a non-boarding unit is dropped (as retail)");
+}
+
 void run_dispatch_spine_tests() {
     test_dispatch_observer_wiring();
     test_decode_tables();
@@ -616,6 +674,7 @@ void run_dispatch_spine_tests() {
     test_queue_is_filtered_not_drained();
     test_loop_bound_is_reread();
     test_lockstep_extend();
+    test_u49_undock_reentry();
 }
 
 } // namespace mh::sim::test

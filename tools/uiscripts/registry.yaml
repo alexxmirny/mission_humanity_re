@@ -192,6 +192,19 @@ tests:
     tol: 0.0
     desc: 'F3F: boot with NO network module -- menu reached, NETWORK GAME armed, browser explains its
       empty list'
+  - name: status_wrap_ru
+    budget_s: 30  # seeded from no_net_boot (measured 7-11 s), FLOORED at 30 (BUDGET_FLOOR_S)
+    kind: solo
+    script: status_wrap_ru.txt
+    # The lobby status field's word wrap (ui/lobby_notice.cpp status_draw) on a RU-pack line that is
+    # ~1.5x the field: no_net_boot's walk (module=none) with [lang] pack=ru. EN side: no_net_boot w2.
+    net_extra: module=none
+    extra_ini: tools/uiscripts/ini/lang_ru.ini
+    requires: !ref lang_pack_strings_precondition
+    lane_src: !ref LANG_PACK_GAME
+    tol: 0.0
+    desc: 'status field wrap: the RU no-module line breaks at spaces into centred lines inside the browser
+      status box instead of spilling past the panel (SKIPS by name without a pack carrying mh_strings.txt)'
   - name: no_net_lobby
     # gate diet: max measured (gate 17s, n2 11s, n6 11s) x 1.3 = 25, FLOORED at 30 (BUDGET_FLOOR_S)
     budget_s: 30
@@ -260,6 +273,88 @@ tests:
     post_check_peers: true
     desc: 'U39 negative arm: retail echo kept -- `players` must still differ for a bounded window and
       heal'
+  # mp:U45: relation AND control mode changed in ONE diplomacy Apply. Ship arm: both orders (0xf4, 0xf5)
+  # reach every peer's queue; the negative arm below reproduces retail's dedup (0xf4 dropped).
+  - name: u45_diplo_control
+    budget_s: 65
+    budget_evidence: "measured 50 s on the local rig 2026-10-01 (one run) x 1.3"
+    kind: multi
+    host: mp_host_diplomacy_both.txt
+    clients: [mp_client_idle.txt]
+    share_lanes: host_clicks
+    extra_ini: tools/uiscripts/ini/video_1024.ini
+    harness_extra: order_mode=1;synth_move=0
+    timeout: 420
+    post_check: [[tools/check_u45_diplo.py, --expect, fixed]]
+    post_check_peers: true
+    desc: 'U45: host ticks allied + control for the client in ONE diplomacy Apply -- both 0xf4 and 0xf5
+      reach every peer, the reopened dialog shows both boxes ticked, hashes stay IDENTICAL'
+  - name: u45_diplo_dedup_retail
+    tier: release  # gate-cost valve (2026-10-01): skipped by a bare run; test_ui.py --release-tier / run_gate.py --release
+    budget_s: 115
+    budget_evidence: "measured 88 s on the local rig 2026-10-01 (one run) x 1.3"
+    kind: multi
+    host: mp_host_diplomacy_retail.txt
+    clients: [mp_client_idle.txt]
+    share_lanes: host_clicks
+    net_extra: diplo_order_dedup_fix=0
+    extra_ini: tools/uiscripts/ini/video_1024.ini
+    harness_extra: order_mode=1;synth_move=0
+    timeout: 420
+    post_check: [[tools/check_u45_diplo.py, --expect, retail]]
+    post_check_peers: true
+    desc: 'U45 negative arm: `[net] diplo_order_dedup_fix=0` (retail dedup) -- only 0xf5 survives on every
+      peer, the relation order is dropped'
+  # mp:U46: the diplomacy Apply's row walk when a LEFT player's row precedes a human's (3 peers: the
+  # slot-1 quitter leaves, the host ticks the slot-2 survivor). The lobby compacts humans ahead of AIs,
+  # so [host, AI, human] cannot be seated -- a departure is how a dead row ends up first.
+  - name: u46_diplo_rows
+    budget_s: 80
+    budget_evidence: "measured 44-71 s on the local rig 2026-10-01 (3 runs) x 1.3"
+    kind: multi
+    no_hash_why: 'a peer quits mid-match: the survivor applies a removal the leaver never hashes (the u19b_quit3 shape; D26 covers game-over, not a leave)'
+    host: mp_host_diplomacy_rows.txt
+    clients: [mp_client_u46_quitter.txt, mp_client_u46_survivor.txt]
+    extra_ini: tools/uiscripts/ini/video_1024.ini
+    harness_extra: order_mode=1;synth_move=0
+    timeout: 420
+    post_check: [[tools/check_u45_diplo.py, --expect, fixed, --only, rel, --other, '2', --skip, '1']]
+    post_check_peers: true
+    desc: 'U46: 3 peers, the slot-1 client quits, the host ticks the slot-2 survivor''s allied box -- a 0xf4
+      for player 2 reaches the host and the survivor (retail read the quitter''s row and issued nothing)'
+  - name: u46_diplo_rows_retail
+    tier: release  # gate-cost valve (2026-10-01): skipped by a bare run; test_ui.py --release-tier / run_gate.py --release
+    budget_s: 100
+    budget_evidence: "measured 71 s on the local rig 2026-10-01 (3 runs) x 1.3"
+    kind: multi
+    no_hash_why: 'a peer quits mid-match: the survivor applies a removal the leaver never hashes (the u19b_quit3 shape; D26 covers game-over, not a leave)'
+    host: mp_host_diplomacy_rows_retail.txt
+    clients: [mp_client_u46_quitter.txt, mp_client_u46_survivor.txt]
+    net_extra: diplo_row_fix=0
+    extra_ini: tools/uiscripts/ini/video_1024.ini
+    harness_extra: order_mode=1;synth_move=0
+    timeout: 420
+    post_check: [[tools/check_u45_diplo.py, --expect, retail, --only, rel, --other, '2', --skip, '1']]
+    post_check_peers: true
+    desc: 'U46 negative arm: `[net] diplo_row_fix=0` -- no 0xf4 at all (Apply read the survivor''s settings
+      from the quitter''s row)'
+  # mp:U54 clause (e): spectate after defeat. 3 peers: the harness `conq` force-kill (host's fixture) eliminates
+  # client 1 at step ~304; its defeat dialog (Exit match / Continue spectating) is captured, it answers Continue
+  # spectating and then spectates the full map to gameclock 20000 beside the two survivors. Hashes of ALL three
+  # peers (the spectator included) must stay IDENTICAL; the per-arm verdicts live in check_u54_spectate.py.
+  - name: u54_spectate
+    budget_s: 65
+    budget_evidence: "measured 49 s on the local rig 2026-10-04 (one run, 2680 hashed steps) x 1.3"
+    kind: multi
+    host: mp_host_u53_survivor.txt
+    clients: [mp_client_u54_spectator.txt, mp_client_u53_survivor2.txt]
+    net_extra: peers=2;transport=udp
+    extra_ini: tools/uiscripts/ini/video_1024.ini
+    harness_extra: region_hash_step=1;synth_move=0;gameover_step=100000;gameover_stop=0
+    harness_extra_host: conq=1;conq_at=60;conq_force_kill_at=240;conq_probe_every=50
+    timeout: 600
+    desc: 'U54(e): the eliminated client sees the defeat dialog with Exit match left / Continue spectating
+      right, continues, and spectates the full unfogged map ("Defeated -- spectating") in lockstep with the survivors'
   # Reproduction arm: [net] cancel_task_order=0 IS the repro knob (this seam has no
   # mode=original fork); hash diverges at the click and never heals.
   - name: d28_canceltask_local
@@ -485,6 +580,45 @@ tests:
     post_check_session: true
     desc: 'D38 row 5 negative arm: `[net] storage_panel_purge_fix=0` (retail panel purge kept) -- `unit_storage`
       must diverge at the kill while the host holds the barracks selected'
+  # mp:U49: a 2nd undock (0x20) applied to a unit already walking out wedges it in EXIT_WAIT on a door it
+  # holds itself. The harness fixture (d38_* builds the barracks + docks a soldier; u49_* issues two 0x20
+  # orders 7 steps apart on the owner peer through the replicated lane, then a MOVE) reproduces it on the
+  # rig. Configuration (1) (no libmh.dll): the byte patch at 0x00466cb6 is what is under test.
+  - name: u49_undock_double
+    budget_s: 52
+    budget_evidence: "measured 40 s and 39 s together on the local rig 2026-10-01 (one run each) x 1.3"
+    kind: multi
+    host: mp_host_u49_undock.txt
+    clients: [mp_client_idle.txt]
+    share_lanes: d35_buildclick_c1  # same configuration-(1) pair
+    omit_satellite: [libmh.dll]
+    net_extra: transport=udp
+    extra_ini: tools/uiscripts/ini/video_1024.ini
+    harness_extra: region_hash_step=50;synth_move=0;d38_player=0;d38_bldg_at=100;d38_dock_at=100;u49_at=100;u49_player=0;u49_gap=7;u49_settle=400;u49_tail=150
+    timeout: 420
+    post_check: [[tools/check_u49_undock.py, --expect, fixed]]
+    post_check_peers: true
+    desc: 'U49: two undock orders 7 steps apart for one docked soldier -- the fix drops the second, the unit
+      walks out, the door mutex returns to 0 and a later move is consumed; hashes stay IDENTICAL'
+  # Reproduction arm: [net] undock_reentry_fix=0 keeps retail dispatch -- the unit sits in EXIT_WAIT with
+  # door_mutex_unit = itself and the move order is never consumed.
+  - name: u49_undock_double_retail
+    tier: release  # gate-cost valve (2026-10-01): skipped by a bare run; test_ui.py --release-tier / run_gate.py --release
+    budget_s: 52
+    budget_evidence: "measured 40 s and 39 s together on the local rig 2026-10-01 (one run each) x 1.3"
+    kind: multi
+    host: mp_host_u49_undock.txt
+    clients: [mp_client_idle.txt]
+    share_lanes: d35_buildclick_c1
+    omit_satellite: [libmh.dll]
+    net_extra: transport=udp;undock_reentry_fix=0
+    extra_ini: tools/uiscripts/ini/video_1024.ini
+    harness_extra: region_hash_step=50;synth_move=0;d38_player=0;d38_bldg_at=100;d38_dock_at=100;u49_at=100;u49_player=0;u49_gap=7;u49_settle=400;u49_tail=150
+    timeout: 420
+    post_check: [[tools/check_u49_undock.py, --expect, retail]]
+    post_check_peers: true
+    desc: 'U49 negative arm: `[net] undock_reentry_fix=0` (retail dispatch) -- the unit sits in EXIT_WAIT with
+      door_mutex_unit = itself and the follow-up move is never consumed (both peers agree: no desync)'
   # mp:D36: the rc4 rematch shape -- the host LANDS in match 1 (the landing grant goes into the
   # gains-only resource_spent), then rematches a FRESH client process on a shorter-named map.
   # rematch_play cannot see this: its joiner is the same process and nobody lands.
@@ -532,6 +666,54 @@ tests:
     post_check_peers: true
     desc: 'D36 negative arm: `[net] d36_clear_residue=0` (the rc4 entry prep) -- the rematch seed carries
       match 1''s resource_spent and the in-band watch must say DESYNC'
+  # mp:D45: the 2026-10-01 field shape -- the host process LOADS A SINGLE-PLAYER SAVEGAME from the menu
+  # (deploy_save stages ayy30 into the lane's save\), quits to the menu, then hosts two matches for fresh
+  # clients. The boot-snapshot restore (mh.dll launch.cpp, `[net] d45_restore_boot`) must leave every
+  # hashed region of the host's match-2 seed equal to the fresh client's.
+  - name: d45_sp_then_host
+    budget_s: 115
+    budget_evidence: "standalone 72-86 s (2026-10-01, SP load + two matches + client2 fresh boot) x 1.3 = 112, rounded 115"
+    kind: multi
+    no_hash_why: 'two matches in one host process (the harness step counter is not reset per match) and client2 reuses client1''s lane; the verdict is the seed diff + [desync] watch'
+    host: mp_host_d45_sp_first.txt
+    clients: [mp_client_d36_match1.txt, mp_client_d36_fresh.txt]
+    client_after_exit: {2: 1}
+    client_shares_lane: {2: 1}
+    client_expect_exit: [1]
+    share_lanes: d35_buildclick_c1
+    omit_satellite: [libmh.dll]
+    deploy_save: ayy30
+    net_extra: transport=tcp
+    harness_extra: order_mode=1;seed_mode=0;seed_step=1;synth_move=0
+    extra_ini: tools/uiscripts/ini/video_1024.ini
+    timeout: 480
+    post_check: [tools/check_d36_rematch_seed.py, --sp-first, --expect, identical]
+    post_check_peers: true
+    desc: 'D45: the host loads a single-player savegame, quits to the menu, then hosts two matches for fresh
+      clients -- every hashed region of its match-2 seed equals the client''s, the watch is clean'
+  # Negative arm: `[net] d45_restore_boot=0` measures and keeps the residue -- the rc5 configuration.
+  - name: d45_sp_then_host_retail
+    tier: release  # gate-cost valve (2026-10-01): skipped by a bare run; test_ui.py --release-tier / run_gate.py --release
+    budget_s: 115
+    budget_evidence: "standalone 86 s (2026-10-01; the negative arm, same shape) x 1.3 = 112, rounded 115"
+    kind: multi
+    no_hash_why: 'negative arm: the match diverges by design (check_d36_rematch_seed --sp-first --expect diverge)'
+    host: mp_host_d45_sp_first.txt
+    clients: [mp_client_d36_match1.txt, mp_client_d36_fresh.txt]
+    client_after_exit: {2: 1}
+    client_shares_lane: {2: 1}
+    client_expect_exit: [1]
+    share_lanes: d35_buildclick_c1
+    omit_satellite: [libmh.dll]
+    deploy_save: ayy30
+    net_extra: transport=tcp;d45_restore_boot=0
+    harness_extra: order_mode=1;seed_mode=0;seed_step=1;synth_move=0
+    extra_ini: tools/uiscripts/ini/video_1024.ini
+    timeout: 480
+    post_check: [tools/check_d36_rematch_seed.py, --sp-first, --expect, diverge]
+    post_check_peers: true
+    desc: 'D45 negative arm: `[net] d45_restore_boot=0` -- the savegame''s strat_players/planets/prod_slots
+      residue reaches the match and the in-band watch must say DESYNC strat_players'
   # mp:X2g: an info screen whose AVI will not open (rc4 client crash, IDIV by zero at 0x004cab52).
   # info_avi_test_absent=* redirects the info screen's clip opens to res\NOT.AVI (nothing on disk moves).
   - name: info_avi_absent
@@ -549,6 +731,22 @@ tests:
     post_check_session: true  # the missing line + lockstep rows are match-time (session dir)
     desc: 'X2g: the host right-clicks the Academy with its clip made absent -- the info screen opens
       WITHOUT video (no insert-CD dialog, no error box, no IDIV), closes, and the pair stays IDENTICAL'
+  # mp:U47: the JOINER holds the info panel (GAME_MODE 4) open >= 12 s of sim; the host must not stall on it and
+  # the joiner must not discard in-game datagrams (rc5 G327 drain, fixed by 52352bd1).
+  - name: u47_info_joiner
+    budget_s: 82
+    budget_evidence: "measured 63 s x3 alone (2026-10-01, solo on the rig); 63 x 1.3 = 82"
+    kind: multi
+    host: mp_host_u47_info_joiner.txt
+    clients: [mp_client_u47_info_joiner.txt]
+    net_extra: transport=udp
+    extra_ini: tools/uiscripts/ini/video_1024.ini
+    timeout: 420
+    post_check: [tools/check_u47_info_joiner.py]
+    post_check_peers: true
+    post_check_session: true  # lockstep rows + the launch log are match-time (session dir)
+    desc: 'U47: the joiner opens the building info panel (mode 4) and holds it >= 12 s of sim -- the host logs
+      no stall waiting_for the joiner and the joiner logs no discarded in-game datagram'
   - name: shim_udp
     # Measured 32s under ship_pacing (was 33-44s under the pinned 30ms lookahead);
     # x1.3 margin rounds to 45.
@@ -797,6 +995,35 @@ tests:
     # Only scenario with different races -- others leave both Human, so the race push/apply/FLAG_START
     # path was otherwise unexercised. (U28/D19)
     desc: 'U28: client picks Alien, host stays Human -- the race reaches the host before Start'
+  - name: lobby_team
+    budget_s: 40  # solo run 29s x ~1.3 (mp:U51); re-seed from an in-suite run
+    kind: multi
+    no_hash_why: 'lobby-only: no match starts, so no sim step is hashed'
+    host: mp_host_team.txt
+    clients: [mp_client_team.txt]
+    # mp:U51: TEAM spinner per slot (-, T1..T4) + the host-only MODE selector (FFA/Team), synced through
+    # the slot record. Both peers capture FFA, Team, and FFA again; the `team`/`lobbymode` predicates
+    # assert identical slot bytes on each peer.
+    desc: 'U51: host sets Team mode + cycles own/AI team, client cycles own team (other rows + mode refuse), FFA hides the spinners'
+  - name: u52_diplo_team
+    budget_s: 120  # first registration (mp:U52); re-seed from an in-suite run
+    kind: multi
+    host: mp_host_u52_diplo.txt
+    clients: [mp_client_u52_diplo.txt]
+    share_lanes: host_clicks
+    net_extra: transport=udp
+    extra_ini: tools/uiscripts/ini/video_1024.ini
+    timeout: 420
+    # mp:U52: Team mode locks diplomacy -- the allied and vision checkboxes are hidden on both peers, a
+    # click on the allied column changes nothing, reopening shows the seeded state.
+    desc: 'U52: Team-mode diplomacy dialog -- allied + vision checkboxes hidden on host and client, click is a no-op'
+  - name: u52_relobby
+    budget_s: 40  # first registration (mp:U52); re-seed from an in-suite run
+    kind: solo
+    script: mp_host_u52_relobby.txt
+    # mp:U52: a NEW lobby starts FFA with no teams (the llm_lobby_screen_open reset), even after the host
+    # set Team mode + a team in a previous lobby and left.
+    desc: 'U52: host sets Team mode + T2, leaves, re-creates -- the new lobby reads FFA and "-"'
   - name: race_inflight
     budget_s: 45  # gate diet: max measured (gate 28s, n2 28s, n6 31s) x 1.3
     # transport=tcp pinned: [net] transport now defaults to udp; keeps this row's TCP coverage
@@ -1106,14 +1333,13 @@ tests:
     no_hash_why: 'lobby-only: no match starts, so no sim step is hashed'
     host: mp_host_lobby.txt
     clients: [mp_client_join.txt]
-    # Both codepages pinned explicit (not `acp`) so the scenario means the same thing regardless of
-    # the rig's own ACP. (mp:F3c)
+    # Both codepages pinned explicit (not `acp`): two DIFFERENT local codepages, one chat encoding (MP-LANG).
     extra_ini_host: tools/uiscripts/ini/input_cp1252.ini
     extra_ini_client: tools/uiscripts/ini/input_cp1251.ini
-    post_check: [tools/check_codepage_adopt.py, --expect, adopt]
+    post_check: [tools/check_codepage_adopt.py, --expect, agree]
     post_check_peers: true
-    desc: 'F3c: host 1252 + client 1251 join one lobby -- the joiner adopts the host''s codepage (both
-      logs)'
+    desc: 'MP-LANG: host 1252 + client 1251 join one lobby -- both say UTF-8 chat, each keeps its own
+      codepage, admitted (both logs)'
   - name: codepage_refused
     budget_s: 30  # gate diet: max measured (gate 18s, n2 19s, n6 20s) x 1.3
     # transport=tcp pinned: [net] transport now defaults to udp; keeps this row's TCP coverage
@@ -1125,12 +1351,43 @@ tests:
     clients: [mp_client_join_refused.txt]
     # tol 0: the notice is one line of text, far under the default 2% budget. (mp:F3c)
     extra_ini_host: tools/uiscripts/ini/input_cp1252.ini
-    extra_ini_client: tools/uiscripts/ini/input_cp1251_noadopt.ini
+    extra_ini_client: tools/uiscripts/ini/input_cp1251_legacy.ini
     post_check: [tools/check_codepage_adopt.py, --expect, refused]
     post_check_peers: true
     tol: 0.0
-    desc: 'F3c: a client that will not adopt is refused AND told -- bounced to the browser, notice names
-      the reason'
+    desc: 'MP-LANG: a pre-MP-LANG (8-bit chat) client is refused AND told -- bounced to the browser,
+      notice names the reason'
+  - name: codepage_refused_ru
+    budget_s: 30  # seeded from codepage_refused (measured 18-20 s), same host script
+    net_extra: transport=tcp
+    kind: multi
+    no_hash_why: 'lobby-only: no match starts, so no sim step is hashed'
+    host: mp_host_lobby.txt
+    clients: [mp_client_join_refused_ru.txt]
+    # mods:LANG4: codepage_refused with the CLIENT on the RU pack -- the host's English reason is shown
+    # through mh.dll's string table ("Отказ: старый клиент cp 1251"). tol 0: one line of text.
+    extra_ini_host: tools/uiscripts/ini/input_cp1252.ini
+    extra_ini_client: tools/uiscripts/ini/input_cp1251_legacy_ru.ini
+    requires: !ref lang_pack_strings_precondition
+    lane_src: !ref LANG_PACK_GAME
+    post_check: [tools/check_codepage_adopt.py, --expect, refused]
+    post_check_peers: true
+    tol: 0.0
+    desc: 'LANG4: codepage_refused on a RU-pack client -- the host''s English refusal reason reaches the
+      browser in Russian with its number (SKIPS by name without a pack carrying mh_strings.txt)'
+  - name: name_forged
+    budget_s: 30  # new row: codepage_adopt's shape (measured 19-22 s), same scripts
+    net_extra: transport=tcp
+    kind: multi
+    no_hash_why: 'lobby-only: no match starts, so no sim step is hashed'
+    host: mp_host_lobby.txt
+    clients: [mp_client_join.txt]
+    # the client's JOIN carries a forged 8-byte non-[A-Za-z0-9] name ([input] test_join_name, test only)
+    extra_ini_client: tools/uiscripts/ini/name_forged.ini
+    post_check: [tools/check_codepage_adopt.py, --expect, forged]
+    post_check_peers: true
+    desc: 'MP-LANG: a forged non-Latin JOIN name is normalized by the host to [A-Za-z0-9] before it is
+      stored, then admitted (both logs)'
   - name: leave_frees_slot
     budget_s: 35  # gate diet: max measured (gate 25s, n2 25s, n6 26s) x 1.3
     # transport=tcp pinned: [net] transport now defaults to udp; keeps this row's TCP coverage
@@ -1451,6 +1708,47 @@ tests:
     # outside the NARROW page's box, excluding an unrelated background pixel.
     post_check: [tools/check_overlay_residue.py, --before, gx1_wide, --after, gx1_narrow, --rect, '52,10,55,9']
     desc: 'mp:GX1: gfx_overlay.cpp leaves no residue when its box shrinks (page switch, same static screen)'
+  - name: imgui_swallow
+    # gate diet: 5 green runs at 7 s alone x 1.3 = 9, FLOORED at 30 (BUDGET_FLOOR_S)
+    budget_s: 30
+    kind: solo
+    script: imgui_swallow.txt
+    extra_ini: tools/uiscripts/ini/imgui_swallow.ini
+    # PT-GFX4: shares debug_overlay's lane (same solo main-menu walk, run serially) -- the suite's lane
+    # block is full.
+    share_lanes: debug_overlay
+    # PT-INPUT1: the ini pins [input] backend=system -- the suite's one row on the game's own
+    # dinput.dll now that the rig default is the owned DirectInput.
+    desc: 'PT-GFX4 ImGui overlay (d3d11): a posted click under the open panel is swallowed (menu kept),
+      the same click with it closed reaches the game (input backend=system)'
+  - name: imgui_hover
+    # PT-GFX6: new row, budget at the floor until measured (BUDGET_FLOOR_S)
+    budget_s: 30
+    kind: solo
+    script: imgui_hover.txt
+    extra_ini: tools/uiscripts/ini/imgui_hover.ini
+    # Shares debug_overlay's lane (same solo main-menu walk, run serially), like imgui_swallow -- the
+    # suite's lane block is full.
+    share_lanes: debug_overlay
+    # PT-INPUT1 (2026-09-29): the owned-DirectInput checks (the unregistered input_own scenario) are
+    # folded into this boot rather than taking a 100th row -- row 100's game port would be 6699, the
+    # default shim control port (lane_alloc). Same ini shape (d3d11 + imgui, mapped 960x800, DI mouse
+    # live); the ini pins [input] backend=own, which the raw* verbs need.
+    desc: 'PT-GFX6 ImGui hover follows the GAME cursor in a 1.5x-scaled d3d11 window (DI mouse live) and
+      flips at the panel''s drawn edge, one game pixel either side of both edges; PT-INPUT1 owned DirectInput:
+      absolute packets exact at both corners, relative carried, E0 keys released on focus loss, a click
+      withheld by the overlay''s DI filter, a raw click activates NETWORK GAME'
+  - name: win_resize
+    # PT-GFX3 resize clause: 3 s alone, FLOORED at 30 (BUDGET_FLOOR_S)
+    budget_s: 30
+    kind: solo
+    script: win_resize.txt
+    extra_ini: tools/uiscripts/ini/win_resize.ini
+    # Shares debug_overlay's lane (same solo main-menu walk, run serially), like imgui_swallow -- the
+    # suite's lane block is full.
+    share_lanes: debug_overlay
+    desc: 'PT-GFX3 resizable windowed mode: a player-style resize to 960x800 is kept, the frame scales into
+      it, and a posted click at NETWORK GAME''s scaled position is mapped client -> game and activates it'
   - name: stats_panel
     budget_s: 30
     kind: solo
@@ -1564,6 +1862,195 @@ tests:
     desc: 'SES3+SES3c in one boot: mouse pinned at the left screen edge (edge latch: holds while the
       camera scrolls and the cursor does not move, clears on release), then LEFT arrow held via
       `keyhold` (key latch: CAM_SCROLL_LEFT_HELD tracks it the same way, clears on release)'
+  - name: scroll_stall
+    # mp:U48 -- budget seeded from net_hud's (a 2-peer udp match through the shim, ~46 s) and re-set from the
+    # first measured runs; budget_evidence is filled by the U48 lane report.
+    budget_s: 90
+    budget_evidence: "seeded, not measured: net_hud (same walk + shim) 46 s + a 600-present hold and a 10 s sim resume, x1.3; re-measure"
+    kind: multi
+    no_hash_why: 'a deliberate blackhole stalls the host (the stall under test); the U48 determinism clause is python tools/test_ui.py --determinism, not this row'
+    host: mp_host_scroll_stall.txt
+    clients: [mp_client_scroll_stall.txt]
+    share_lanes: shim_udp  # a shim row can only share a shim row's lanes (mp:P9)
+    net_extra: transport=udp
+    extra_ini: [tools/uiscripts/ini/video_640.ini, tools/uiscripts/ini/scroll_stall.ini]
+    tol: 1.0  # the assertion is the post_check (latch trace), not pixels; the frames only prove the match was live
+    shim: true
+    shim_delay: 0
+    shim_timeline: tools/uiscripts/shim/scroll_stall.txt
+    # c2s: the client's traffic to the host is dropped, so the HOST stalls at the horizon while it holds LEFT.
+    shim_triggers:
+    - cmd: blackhole c2s
+      when:
+      - [host, mh_uidrive.log, 'LOG: HOST scroll_stall: hold start']
+    - cmd: blackhole off
+      when:
+      - [host, mh_uidrive.log, 'LOG: HOST scroll_stall: released in stall']
+    timeout: 400
+    post_check: [tools/check_cam_trace.py, --expect-held, L, --expect-held-min, '3', --label, 'key-up in stall']
+    desc: 'U48: LEFT arrow released while the lockstep wait overlay is up -- the scroll latch clears (the
+      overlay chat pump no longer eats the key-up)'
+  - name: scroll_stall_off
+    tier: release  # gate-cost valve (2026-10-01): skipped by a bare run; test_ui.py --release-tier / run_gate.py --release
+    budget_s: 90
+    budget_evidence: "seeded from scroll_stall"
+    kind: multi
+    no_hash_why: 'expect_red reproduction (mp:U48); its XFAIL would absorb a hash red'
+    host: mp_host_scroll_stall.txt
+    clients: [mp_client_scroll_stall.txt]
+    share_lanes: shim_udp
+    # Planted negative arm, kept red on purpose: scroll_keyup_rescue=0 is retail -- the latch must stay stuck.
+    expect_red: mp:U48
+    net_extra: transport=udp
+    extra_ini: [tools/uiscripts/ini/video_640.ini, tools/uiscripts/ini/scroll_stall_off.ini]
+    tol: 1.0
+    shim: true
+    shim_delay: 0
+    shim_timeline: tools/uiscripts/shim/scroll_stall.txt
+    shim_triggers:
+    - cmd: blackhole c2s
+      when:
+      - [host, mh_uidrive.log, 'LOG: HOST scroll_stall: hold start']
+    - cmd: blackhole off
+      when:
+      - [host, mh_uidrive.log, 'LOG: HOST scroll_stall: released in stall']
+    timeout: 400
+    post_check: [tools/check_cam_trace.py, --expect-held, L, --expect-held-min, '3', --label, 'key-up in stall']
+    desc: 'U48 NEGATIVE: the same probe with [input] scroll_keyup_rescue=0 must leave the LEFT latch stuck'
+  - name: freeze_watchdog
+    tier: release  # gate-cost valve (2026-10-01): skipped by a bare run; test_ui.py --release-tier / run_gate.py --release
+    # mp:P17 -- seeded from scroll_stall (same walk + shim-less udp match); re-measure and fill budget_evidence.
+    budget_s: 52
+    budget_evidence: "measured 2026-10-01 (lane P17): 38-39 s wall x1.3 = 50, rounded up"
+    kind: multi
+    no_hash_why: 'the host Sleeps 1500 ms once on purpose (the freeze under test); determinism is python tools/test_ui.py --determinism, not this row'
+    host: mp_host_p17_freeze.txt
+    clients: [mp_client_p17.txt]
+    # BOTH peers carry the arm (no host-only [net] channel): each Sleeps once, 3 s into its own match, and each
+    # must catch its own freeze -- the post_check judges every peer.
+    net_extra: 'transport=udp;frame_watchdog_inject_ms=1500'
+    extra_ini: [tools/uiscripts/ini/video_640.ini]
+    tol: 1.0  # the assertion is the post_check (the [freeze] line set), not pixels
+    timeout: 400
+    post_check_session: true
+    post_check_peers: true
+    post_check: [tools/check_freeze_watchdog.py, --expect-inject, '1500']
+    desc: 'P17: a 1500 ms main-thread freeze (injected Sleep) is caught by the frame watchdog -- the stack in mh_net.log names frame_watchdog_inject_sleep, and a freeze-ended line follows'
+  - name: freeze_watchdog_off
+    tier: release  # gate-cost valve (2026-10-01): skipped by a bare run; test_ui.py --release-tier / run_gate.py --release
+    budget_s: 52
+    budget_evidence: "measured 2026-10-01 (lane P17): 39 s wall x1.3 = 51, rounded up"
+    kind: multi
+    no_hash_why: 'expect_red reproduction (mp:P17); its XFAIL would absorb a hash red'
+    host: mp_host_p17_freeze.txt
+    clients: [mp_client_p17.txt]
+    # Planted negative arm, kept red on purpose: frame_watchdog_ms=0 is the pre-P17 silence -- no capture exists.
+    expect_red: mp:P17
+    net_extra: 'transport=udp;frame_watchdog_ms=0;frame_watchdog_inject_ms=1500'
+    extra_ini: [tools/uiscripts/ini/video_640.ini]
+    tol: 1.0
+    timeout: 400
+    post_check_session: true
+    post_check_peers: true
+    post_check: [tools/check_freeze_watchdog.py, --expect-inject, '1500']
+    desc: 'P17 NEGATIVE: the same injected freeze with [net] frame_watchdog_ms=0 leaves no stack (the check must go red)'
+  - name: alttab_d3d11
+    tier: release  # gate-cost valve (2026-10-01): skipped by a bare run; test_ui.py --release-tier / run_gate.py --release
+    # mp:P17 (c). The retail system-DirectDraw arm is NOT registered: the rig lane never presents under
+    # [video] backend=system (walk stalls at the first step, 246 s) -- see tracker mp:P17 progress.
+    budget_s: 66
+    budget_evidence: "measured 2026-10-01 (lane P17): 51 s wall x1.3 = 66"
+    kind: multi
+    no_hash_why: 'the host window is minimised for 5 s on purpose; determinism is python tools/test_ui.py --determinism'
+    host: mp_host_p17_alttab.txt
+    clients: [mp_client_p17.txt]
+    net_extra: transport=udp
+    extra_ini: [tools/uiscripts/ini/video_640.ini, tools/uiscripts/ini/p17_alttab_d3d11.ini]
+    tol: 1.0
+    timeout: 400
+    post_check_session: true
+    post_check_peers: true
+    post_check: [tools/check_freeze_watchdog.py, --alttab, --expect-no-freeze, --max-client-stall-ms, '800']
+    desc: 'P17: host window minimised 5 s on the owned d3d11 backend -- the focus tap logs the minimise/restore, the frame watchdog records whether frames stopped, the client reports its stall'
+  - name: dialog_stall
+    # mp:U44 -- the building dialog vs the lockstep stall overlay: (a) short stall keeps the dialog, (b) a long
+    # stall shows the kick modal with the dialog stashed, then restores it, (c) a second long stall with no
+    # dialog open shows only the modal. Three forced blackholes (0.8 s / 3.5 s / 3.5 s of parked sim) + a mother
+    # landing, so it is a ~110 s walk by construction.
+    budget_s: 146
+    budget_evidence: "measured 108-112 s over 3 local runs 2026-10-01 (dialog_stall alone) x 1.3 = 146"
+    long_why: "walk = lobby + landing (20 s of sim) + three forced stalls (each ~4.4 s lookahead + parked time) + 15 s resume holds; the stall durations are the thing under test and cannot be shortened below the modal threshold"
+    kind: multi
+    no_hash_why: 'deliberate blackholes stall the host (the stalls under test); the U44 determinism clause is python tools/test_ui.py --determinism, not this row'
+    host: mp_host_dialog_stall.txt
+    clients: [mp_client_dialog_stall.txt]
+    share_lanes: shim_udp
+    net_extra: transport=udp
+    extra_ini: [tools/uiscripts/ini/video_1024.ini]
+    tol: 0.03  # fraction: the dialog-vs-no-dialog frame differs by 6.8%, ping text/animation by <1%
+    shim: true
+    shim_delay: 0
+    shim_timeline: tools/uiscripts/shim/dialog_stall.txt
+    shim_triggers:
+    - cmd: blackhole c2s
+      when:
+      - [host, mh_uidrive.log, 'LOG: HOST dlg_stall: short start']
+    - cmd: blackhole off
+      when:
+      - [host, mh_uidrive.log, 'LOG: HOST dlg_stall: short end']
+    - cmd: blackhole c2s
+      when:
+      - [host, mh_uidrive.log, 'LOG: HOST dlg_stall: long start']
+    - cmd: blackhole off
+      when:
+      - [host, mh_uidrive.log, 'LOG: HOST dlg_stall: long end']
+    - cmd: blackhole c2s
+      when:
+      - [host, mh_uidrive.log, 'LOG: HOST dlg_stall: long2 start']
+    - cmd: blackhole off
+      when:
+      - [host, mh_uidrive.log, 'LOG: HOST dlg_stall: long2 end']
+    timeout: 400
+    desc: 'U44: a lockstep stall must not close the open building dialog (short stall), and the kick modal must stash/restore it (long stall) with its own buttons live'
+  - name: dialog_stall_off
+    tier: release  # gate-cost valve (2026-10-01): skipped by a bare run; test_ui.py --release-tier / run_gate.py --release
+    # mp:U44 negative arm: only the short-stall segment runs; the frame diff is the verdict.
+    budget_s: 70
+    budget_evidence: "measured 52-53 s over 3 local runs 2026-10-01 x 1.3 = 69"
+    kind: multi
+    # Planted negative arm, kept red on purpose: overlay_dialog_guard=0 is the retail rule -- the dialog must be closed.
+    expect_red: mp:U44
+    no_hash_why: 'deliberate blackholes stall the host (the stalls under test); the U44 determinism clause is python tools/test_ui.py --determinism, not this row'
+    host: mp_host_dialog_stall_off.txt
+    clients: [mp_client_dialog_stall.txt]
+    share_lanes: shim_udp
+    net_extra: transport=udp;overlay_dialog_guard=0
+    extra_ini: [tools/uiscripts/ini/video_1024.ini]
+    tol: 0.03  # fraction: the dialog-vs-no-dialog frame differs by 6.8%, ping text/animation by <1%
+    shim: true
+    shim_delay: 0
+    shim_timeline: tools/uiscripts/shim/dialog_stall.txt
+    shim_triggers:
+    - cmd: blackhole c2s
+      when:
+      - [host, mh_uidrive.log, 'LOG: HOST dlg_stall: short start']
+    - cmd: blackhole off
+      when:
+      - [host, mh_uidrive.log, 'LOG: HOST dlg_stall: short end']
+    - cmd: blackhole c2s
+      when:
+      - [host, mh_uidrive.log, 'LOG: HOST dlg_stall: long start']
+    - cmd: blackhole off
+      when:
+      - [host, mh_uidrive.log, 'LOG: HOST dlg_stall: long end']
+    - cmd: blackhole c2s
+      when:
+      - [host, mh_uidrive.log, 'LOG: HOST dlg_stall: long2 start']
+    - cmd: blackhole off
+      when:
+      - [host, mh_uidrive.log, 'LOG: HOST dlg_stall: long2 end']
+    timeout: 120
+    desc: 'U44 NEGATIVE: `[net] overlay_dialog_guard=0` (retail rule) -- the short stall closes the dialog, so the frame differs from the fixed baseline'
   - name: type_ascii
     # gate diet: max measured (gate 11s, n2 5s, n6 9s) x 1.3 = 15, FLOORED at 30 (BUDGET_FLOOR_S)
     budget_s: 30
@@ -1581,6 +2068,15 @@ tests:
     tol: 0.0  # Asserts the field buffer, not pixels: stock EN fonts have no Cyrillic glyphs to diff. (mp:F3)
     # desc omits literal Cyrillic: it prints to the console in the operator's own encoding.
     desc: 'F3/F4: `type` 6 Cyrillic chars on a Russian layout -- 6 scancodes, 6 CP1251 bytes stored'
+  - name: type_cyrillic_acp
+    budget_s: 30  # seeded: type_cyrillic's walk (measured 5-10 s), FLOORED at 30 (BUDGET_FLOOR_S)
+    kind: solo
+    script: type_cyrillic_acp.txt
+    # NO codepage pin: the process ACP (CP1252) has no Cyrillic bytes -- the fallback path under test.
+    tol: 0.0  # Asserts the field buffer; the capture shows "host" and nothing after it.
+    # desc omits literal Cyrillic: it prints to the console in the operator's own encoding.
+    desc: 'MP-LANG follow-up: `type` 6 Cyrillic chars on a Russian layout under CP1252 into the name
+      field -- no Latin stand-ins from the scancode table, the name stays host'
   - name: type_polish
     # gate diet: max measured (gate 6s, n2 5s, n6 12s) x 1.3 = 20, FLOORED at 30 (BUDGET_FLOOR_S)
     budget_s: 30
@@ -1598,18 +2094,48 @@ tests:
     # the 257-entry charmap as a glyph-pointer index. (mp:F2)
     tol: 0.0
     desc: 'F2: unmappable code points render a substitute glyph and do not crash the layout pass'
-  - name: font_merged
-    budget_s: 30  # gate diet: max measured (gate 5s, n2 5s, n6 5s) x 1.3 = 10, FLOORED at 30 (BUDGET_FLOOR_S)
+  - name: lang_ru
+    budget_s: 30  # seeded from the first green runs (~10s solo) x 1.3, FLOORED at 30 (BUDGET_FLOOR_S)
     kind: solo
-    script: font_merged.txt
-    extra_ini: tools/uiscripts/ini/font_merged.ini
-    # requires runs before provisioning; no merged install SKIPS by name, not fail/abort. (mp:F2b)
-    requires: !ref font_merge_precondition
-    # Lane uses its own font pack, not the shared polygon: font_guard's baseline needs it stock.
-    lane_src: !ref FONT_MERGE_DIR
+    script: lang_ru.txt
+    # mods:LANG1-3, folded into the former font_merged row (the registry is at the 99-row port-band
+    # ceiling, tools/lane_alloc.py): the F2b probe string still renders, now through the RU pack's
+    # merged fonts (same derivation table), on the RU pack's 7-button menu.
+    extra_ini: [tools/uiscripts/ini/font_merged.ini, tools/uiscripts/ini/lang_ru.ini]
+    # requires runs before provisioning; no full RU pack SKIPS by name, not fail/abort.
+    requires: !ref lang_pack_precondition
+    lane_src: !ref LANG_PACK_GAME
     tol: 0.0
-    desc: 'F2b: with a merged install, Cyrillic + Polish probe text renders real glyphs (SKIPS by name
-      without one)'
+    desc: 'LANG1-3: EN exe + the per-machine RU pack -- Russian 7-button menu, every hotspot on its painted
+      label, built NETWORK GAME hover art, merged-font probe (SKIPS by name without a pack)'
+  - name: lang_ru_noart
+    budget_s: 30  # measured 4-6 s (solo + beside lang_ru/chat_glyphs) x 1.3, FLOORED at 30 (BUDGET_FLOOR_S)
+    kind: solo
+    script: lang_ru_noart.txt
+    # mods:LANG2's FALLBACK clause: a RU pack WITHOUT the built 7-button art (the retail pack's shape,
+    # `langpack.py build --id ru_noart --no-art`) -- the six stock buttons stay where the art paints
+    # them and the network button draws itself in row 7. Verified by hand until the 2026-09-29 band
+    # widening (TL-BANDS200) gave the registry room past 99 rows.
+    extra_ini: tools/uiscripts/ini/lang_ru_noart.ini
+    # requires runs before provisioning; no no-art pack SKIPS by name, not fail/abort.
+    requires: !ref lang_pack_noart_precondition
+    lane_src: !ref LANG_PACK_GAME
+    tol: 0.0
+    desc: 'LANG2 fallback: EN exe + a RU pack without 7-button art -- 6 stock buttons unshifted (each hotspot
+      on its painted label), a self-drawn network button in row 7 ("СЕТЕВАЯ ИГРА", mods:LANG4 string
+      table) that hovers and reaches the name screen (SKIPS by name without the pack)'
+  - name: lang_strings_fallback
+    budget_s: 30  # seeded from lang_ru_noart (measured 4-6 s), FLOORED at 30 (BUDGET_FLOOR_S)
+    kind: solo
+    script: lang_strings_fallback.txt
+    # mods:LANG4's per-key English fallback: lang_ru_noart's pack with menu.network_game dropped at load
+    # ([lang] test_drop_string) -- the row-7 button reads NETWORK GAME on the Russian menu.
+    extra_ini: tools/uiscripts/ini/lang_ru_noart_drop.ini
+    requires: !ref lang_pack_noart_precondition
+    lane_src: !ref LANG_PACK_GAME
+    tol: 0.0
+    desc: 'LANG4 fallback: a RU pack missing one mh_strings key shows that key in English (NETWORK GAME on
+      the no-art RU menu); the button still hovers and reaches the name screen (SKIPS by name without the pack)'
   - name: chat_glyphs
     budget_s: 45  # gate diet: max measured (gate 32s, n2 32s, n6 32s) x 1.3
     # transport=tcp pinned: [net] transport now defaults to udp; keeps this row's TCP coverage
@@ -1627,6 +2153,51 @@ tests:
     tol: 0.0
     desc: 'F3b: with a merged install, a 2-peer Cyrillic chat line the host types renders as real glyphs
       on the client that receives it (SKIPS by name without one)'
+  - name: chat_glyphs_ru
+    budget_s: 45  # measured 32-33 s (solo + beside chat_glyphs) x 1.3 = 43, rounded up
+    kind: multi
+    host: mp_host_chat_glyphs_ru.txt
+    clients: [mp_client_chat_glyphs_ru.txt]
+    # mods:LANG3's last clause ("chat_glyphs ... pass on it"): chat_glyphs' walk on the RU language pack,
+    # with every dialog label in Russian (the pack's own initlang TEXT, matched as UTF-16). The line is
+    # drawn by the pack's RU base font instead of the merged EN install. [net] transport left at its
+    # default (udp) -- chat_glyphs keeps the tcp pin.
+    extra_ini: [tools/uiscripts/ini/video_1024.ini, tools/uiscripts/ini/input_cp1251.ini, tools/uiscripts/ini/lang_ru.ini]
+    requires: !ref lang_pack_precondition
+    lane_src: !ref LANG_PACK_GAME
+    tol: 0.0
+    desc: 'LANG3: chat_glyphs on the RU language pack -- Russian dialog labels, a 2-peer Cyrillic chat line
+      the host types renders as real glyphs on the client (SKIPS by name without a full pack)'
+  - name: lobby_chat_utf8
+    budget_s: 45  # seeded: chat_glyphs' lobby walk, no match
+    kind: multi
+    no_hash_why: 'lobby-only: no match starts, so no sim step is hashed'
+    host: mp_host_lobby_chat_utf8.txt
+    clients: [mp_client_lobby_chat_utf8.txt]
+    # MP-LANG lobby follow-up: host = process codepage (CP1252: no Cyrillic bytes), client = cp1250.
+    # Both merged-font lanes; the field buffer is asserted as bytes, the lobby log as code points.
+    extra_ini_client: tools/uiscripts/ini/input_cp1250.ini
+    requires: !ref font_merge_precondition
+    lane_src: !ref FONT_MERGE_DIR
+    tol: 0.0
+    desc: 'MP-LANG lobby follow-up: the LOBBY chat field types, edits (multi-byte backspace/left, ASCII
+      mid-line, End), sends and receives UTF-8 across cp1252 / cp1250 peers (SKIPS without a merge)'
+  - name: chat_utf8
+    budget_s: 60  # seeded: chat_glyphs' walk plus one reply leg
+    kind: multi
+    host: mp_host_chat_utf8.txt
+    clients: [mp_client_chat_utf8.txt]
+    # MP-LANG: host = RU pack + cp1251, client = EN pack + cp1250 -- each types Cyrillic+Polish+Latin,
+    # each asserts the other's code points (wmsg) and captures them drawn. SKIPS without pack + merge.
+    extra_ini: tools/uiscripts/ini/video_1024.ini
+    extra_ini_host: tools/uiscripts/ini/chat_utf8_host.ini
+    extra_ini_client: tools/uiscripts/ini/input_cp1250.ini
+    requires: !ref chat_utf8_precondition
+    lane_src: !ref LANG_PACK_GAME
+    lane_src_client: !ref FONT_MERGE_DIR
+    tol: 0.0
+    desc: 'MP-LANG: RU-pack/cp1251 host and EN-pack/cp1250 client swap UTF-8 chat lines mixing Cyrillic,
+      Polish and Latin -- each receives the other''s code points and draws them (SKIPS without pack + merge)'
   - name: tact_panel
     budget_s: 30  # gate diet: max measured (gate 5s, n2 5s, n6 5s) x 1.3 = 10, FLOORED at 30 (BUDGET_FLOOR_S)
     kind: solo
@@ -1682,16 +2253,50 @@ tests:
     desc: 'L1/L1c/L1d/TL-UISTALL: the player-visible connection indicator on a live 2-peer udp match --
       ping, stability bar, command latency, peer naming, and the WAITING FOR frame under a blackhole'
   - name: mp_snapshot
-    budget_s: 140  # gate diet: max measured (rerun 107s) x 1.3
-    long_why: 'opt-in X1b row: a live match captured at a sim step, moved over channel C and imported
-      -- measured 107 s alone (2026-09-24)'
+    # mp:X3c slice 4 (2026-09-30): REPURPOSED from the mp:X1b hold-and-verify shape into the FORCED-DESYNC arm of
+    # the world resync. It runs in the FULL gate only: not in run_gate's SMOKE_ROWS, and no LIGHT_RULES entry
+    # pulls it in (user, 2026-09-30) -- the light gate's UI half is that smoke set plus the rows a change names.
+    budget_s: 120
+    budget_evidence: "standalone rig runs 2026-09-30: 91 s, 91 s, 91 s (test_ui.py mp_snapshot, base 52352bd1 + slice 4) x 1.3 = 118; the wall is a real resync (~20 s channel-C transfer) plus ~5800 sim steps to game clock 55000"
+    kind: multi
+    no_hash_why: 'the client is poked on purpose (region_poke_at), so the plain per-step compare reds by design; its own post_check runs mp_analyze --resync-verify, which compares what a resync must make equal'
+    host: mp_host_resync.txt
+    clients: [mp_client_resync.txt]
+    # udp is load-bearing: TCP answers snapshot rows 'unsupported', so a tcp run proves nothing. NO
+    # data_timeout_ms raise any more: lockstep stays alive through the whole resync (the client keeps playing
+    # live and the host never blocks on it), so the default GS2 timeout is the proof, not an obstacle.
+    net_extra: transport=udp
+    # video_1024 pins the persisted display mode; worldsync.ini is `[desync] action=1` (the ship default stays 0).
+    extra_ini: [tools/uiscripts/ini/video_1024.ini, tools/uiscripts/ini/worldsync.ini]
+    # symmetric: the per-region trail the verdict names the poked region from (RD every step, R every 50) and
+    # the default synthetic move workload (orders keep flowing, so the admission log has something to replay).
+    harness_extra: domain_hash_step=1;region_hash_step=50
+    # The forced desync: flip byte 16 of hashed region 55 on the CLIENT at sim step 300. The host's
+    # world is the authoritative one and stays untouched.
+    harness_extra_client: region_poke_at=300;region_poke_only=55;region_poke_off=16
+    # post_check needs both peers' logs (the decision and the capture on the host, the import on the client).
+    post_check: [tools/mp_analyze.py, --resync-verify, --resync-within-steps, '2830']
+    post_check_peers: true
+    # the `; [worldsync]` lines are match-time mh_net.log content: the SESSION directory, not the process one
+    post_check_session: true
+    timeout: 420
+    timeout_frames: 200000
+    desc: 'mp:X3c: a forced desync on the client (region_poke) with [desync] action=1 -- the host decides, captures
+      at S and ships its world, the client imports and catches up LIVE, and every step after is identical'
+  - name: mp_snapshot_relay
+    budget_s: 110  # mp:X3a: measured 84 s (x1.3); the host's `stalled 35000` must outlast the importer's >= 30 s hold
     kind: multi
     no_hash_why: 'its own post_check runs mp_analyze --snapshot-verify; snapshot_hold freezes the importer''s sim on purpose'
     host: mp_host_snapshot.txt
     clients: [mp_client_snapshot.txt]
     # udp is load-bearing: TCP answers snapshot rows 'unsupported', so a tcp run proves nothing.
-    net_extra: transport=udp
-    # In-game captures -> the display mode must be pinned (it is a persisted setup.dat setting).
+    # data_timeout_ms (mp:X3a): the held importer stops advancing its lockstep horizon, so the host is
+    # lockstep-blocked on it; the default 15 s GS2 timeout then DROPS the "silent" client, the host wins
+    # and its gameover ends the client's match 15 s after the import (measured 2026-09-29). Raised so the
+    # host's `stalled 35000` can outlast the >= 30 s the importer must survive.
+    net_extra: transport=udp;force_relay=1;data_timeout_ms=120000
+    relay: true
+    # In-game captures -> the display mode must be pinned (it is a persisted setting).
     extra_ini: tools/uiscripts/ini/video_1024.ini
     # Both peers arm the receiver (cheap, avoids an asymmetric knob). snapshot_hold=1 stops the
     # client's sim at import time -- without it the client crashes within ~1 step. (mp:X3)
@@ -1699,14 +2304,16 @@ tests:
     # Only the host captures/sends; both peers pushing 8MB at each other would test nothing.
     harness_extra_host: snapshot_at=120;snapshot_to=1
     # post_check needs both peers' logs (capture in one, import in the other, not either alone).
-    post_check: [tools/mp_analyze.py, --snapshot-verify]
+    # mp:X3a: --hold-survival-ms 30000 also requires a `SIM HELD alive ms>=30000` frame-path heartbeat,
+    # the importer's `[import] fixup trailer v1:` population line and no crash marker.
+    post_check: [tools/mp_analyze.py, --snapshot-verify, --hold-survival-ms, '30000']
     post_check_peers: true
     # Opt-in: importer crashes ~1 step after import (rewinds world while turn engine feeds live
     # inputs). Tracked as mp:X3 (needs a resync, not a rewind). Delete optin when X3 lands.
     optin: true
     timeout: 420  # Transfer takes 30-60s at channel C's rate limit, so timeout must outlast it. (mp:X1)
     timeout_frames: 200000
-    desc: 'mp:X1b: the host captures a live world at a sim step, channel C moves it to the client, and
+    desc: 'mp:X3d (relayed mp_snapshot): the host captures a live world at a sim step, channel C moves it to the client, and
       the client imports it -- every per-region hash identical, rng_state included'
   # Three starting states (no map / wrong-named file / already has it) need three scenarios.
   # transport=udp is load-bearing (channel C); TCP would prove nothing. Knob lives in the DLL,
@@ -1795,7 +2402,7 @@ tests:
     extra_ini: tools/uiscripts/ini/video_1024.ini
     timeout: 420
     timeout_frames: !frames [420, SOLO_HEADLESS_FPS_FLOOR]
-    post_check: [tools/check_map_transfer.py, --expect-leave-rejoin]
+    post_check: [tools/check_map_transfer.py, --expect-leave-rejoin, --expect-leave-cancel]
     post_check_peers: true
     desc: 'X2f(3): a joiner leaves mid-download and its process exits; a fresh process re-joins and
       finishes the download, the match launches, and the host does not crash'

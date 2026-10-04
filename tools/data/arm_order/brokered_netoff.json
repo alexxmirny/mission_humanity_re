@@ -11,7 +11,7 @@
         {"t": "; [modules] mh_net: BOUND at DllMain (under the loader lock) -- <N> exports resolved, init returned <X>, call-through ok; module DLL_PROCESS_ATTACH was AFTER mh.dll's by <N> us (attach_calls=<N> attach_tid=<N>, mh.dll tid=<N>)"},
         {"t": "; [modules] libmh: BOUND at DllMain (under the loader lock) -- <N> exports resolved, init returned <X>, call-through ok; module DLL_PROCESS_ATTACH was AFTER mh.dll's by <N> us (attach_calls=<N> attach_tid=<N>, mh.dll tid=<N>)"},
         {"t": "; [modules] mh_harness: BOUND at DllMain (under the loader lock) -- <N> exports resolved, init returned <X>, call-through ok, host=<N>/<N> spine=<N>/<N>; module DLL_PROCESS_ATTACH was AFTER mh.dll's by <N> us (attach_calls=<N> attach_tid=<N>, mh.dll tid=<N>)"},
-        {"t": "; [uitest] lane=<N> -- single-instance mutex renamed to \"MHMut<N>\" (parallel lanes)"},
+        {"t": "; [uitest] lane=<N> -- single-instance mutex renamed to \"MHMu<N>\" (parallel lanes)"},
         {"t": "; build=EN (EN-only DLL; probe ok)"},
         {"t": "; [reimpl] w_strlen replacement served call #<N> from game code"},
         {"t": "; [reimpl] w_strlen REPLACED by a C++ body via the generated entry thunk (P<N>-EXPORT)"},

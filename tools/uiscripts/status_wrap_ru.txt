@@ -1,0 +1,20 @@
+# LOBBY STATUS FIELD WORD WRAP (2026-09-29) on the RU language pack -- no_net_boot's walk with
+# `[net] module=none` and `[lang] pack=ru` (row status_wrap_ru). The EN side of the same claim is
+# no_net_boot's w2_browser_notice ("No network module. Multiplayer is" / "unavailable.").
+#
+# THE CLAIM: the standing no-module line in Russian (lobby.no_module, "Нет сетевого модуля. Сетевая
+# игра недоступна." -- ~270 px in the menu font against the field's 180) is drawn as centred lines
+# INSIDE the status box, broken at spaces (ui/lobby_notice.cpp status_draw: widths from the game's
+# own llm_ui_text_measure_width), not one line spilling past both edges of the panel. mh_net.log
+# carries "; [ui] status field wrapped: 2 line(s)". Russian labels as in mp_host_chat_glyphs_ru.txt.
+
+settled value:110
+clickv 110
+present Имя игрока
+settled Ok
+clickl Ok
+settled Создать
+present Нет сетевого модуля
+capture sw1_browser_ru
+log status wrap RU: the no-module line wrapped inside the status field
+end

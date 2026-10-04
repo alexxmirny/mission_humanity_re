@@ -1,0 +1,43 @@
+# mp:U53 phase 1 -- 3-peer ELIMINATION shape (tools/det_arms.py --u53-*; check_u53_elim.py reads the logs).
+# Topology = run_u19b_quit3's: host vms[0], client1 vms[1], client2 the local det3_client2 lane.
+# The elimination itself is the harness `conq` workload's force-kill (harness-extra), NOT a UI gesture.
+# host: SURVIVOR. Waits for the victim's dialog, then must keep playing to gclk 20000.
+settled value:110
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+settled Create
+clickl Create
+present Game name
+settled Ok
+clickl Ok
+present Available maps
+settled Ok
+clickl Ok
+
+present Network players
+peers 2
+occ 3
+enabled Start
+settled Start
+awaitsignal seated1
+awaitsignal seated2
+clickl Start
+
+absent Network players
+gamemode 2
+awaitsignal elim
+log host sees the victim's outcome dialog signalled; now playing on
+gameclock 8000
+capture host_after_elim_early
+signal hostmid
+gamemode 2
+absent Continue game
+gameclock 20000
+capture host_after_elim_late
+gamemode 2
+signal hostdone
+log host kept stepping to the target clock
+awaitsignal victimdone
+end

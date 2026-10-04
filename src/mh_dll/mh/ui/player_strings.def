@@ -1,0 +1,80 @@
+// ui/player_strings.def -- mods:LANG4: EVERY player-visible string mh.dll draws, one row each.
+//
+// MH_STR(ID, "key", L"English") -- the X-macro ui/player_strings.h expands into the enum and the
+// compiled-in English table. The English text is the FALLBACK for every language: a pack's
+// lang/<id>/mh_strings.txt maps `key = translation` (UTF-8), and a key it does not carry -- or carries
+// with a different printf shape -- shows this text. tools/lint_player_strings.py reads this file too:
+// a player-visible wide literal anywhere else in mh.dll is a finding, and every pack file's keys and
+// format shapes are checked against these rows.
+//
+// Rules for a row: the English is EXACTLY what the screen showed before the table (the EN captures
+// stay bit-identical); conversions are %s %d %u %lu %% only, in the order the call site passes
+// them; keep lines short -- the lobby status line draws ONE unwrapped line of ~32 characters.
+// Debug overlay / ImGui / log text is NOT here, by ruling (user, 2026-09-29): it stays English.
+
+// ---- the lobby / browser status line (ui/lobby_notice.cpp) ------------------------------------
+MH_STR(LOBBY_NO_MODULE, "lobby.no_module", L"No network module. Multiplayer is unavailable.")
+MH_STR(LOBBY_LINK_LOST, "lobby.link_lost", L"Connection to the host was lost.")
+MH_STR(LOBBY_HOST_LEFT, "lobby.host_left", L"The host left the game.")
+MH_STR(LOBBY_REFUSED, "lobby.refused", L"Refused: %s")
+
+// ---- join refusal reasons: the HOST composes these in English (mh_net_proto join_refusal_text) and
+// the JOINER shows them; the joiner matches the host's text against these rows and shows its own
+// language's version. An unmatched reason is shown as received.
+MH_STR(REFUSE_OLD_CLIENT_CP, "refuse.old_client_cp", L"old client cp %u")
+MH_STR(REFUSE_OLD_HOST_CP, "refuse.old_host_cp", L"old host cp %u")
+MH_STR(REFUSE_CODEPAGE, "refuse.codepage", L"codepage %u/%u")
+MH_STR(REFUSE_NEWER_PROTOCOL, "refuse.newer_protocol", L"protocol %u > %u")
+MH_STR(REFUSE_OLDER_PROTOCOL, "refuse.older_protocol", L"protocol %u < %u")
+MH_STR(REFUSE_MALFORMED, "refuse.malformed", L"malformed JOIN")
+MH_STR(REFUSE_NO_MATCH_ID, "refuse.no_match_id", L"old protocol (no match_id)")
+MH_STR(REFUSE_NEWER_THAN_HOST, "refuse.newer_than_host", L"newer protocol than this host")
+MH_STR(REFUSE_NOT_OUR_LOBBY, "refuse.not_our_lobby", L"not our lobby")
+MH_STR(REFUSE_CP_MISMATCH, "refuse.cp_mismatch", L"input codepage mismatch")
+MH_STR(REFUSE_UNKNOWN, "refuse.unknown", L"unknown")
+// The UDP module's relay-level notice ("Relay outdated (protocol 0 < 1)"), matched the same way.
+MH_STR(RELAY_OUTDATED, "relay.outdated", L"Relay outdated (protocol %u < %u)")
+
+// ---- map transfer, on the same status line (seams/map_transfer.cpp) ----------------------------
+MH_STR(MAP_CANNOT_SEND, "map.cannot_send",
+       L"%s has a different copy of %s -- this connection cannot send maps, so Start is refused.")
+MH_STR(MAP_SENDING, "map.sending", L"Sending the map to %s -- Start is held until it arrives.")
+MH_STR(MAP_DOWNLOADING, "map.downloading", L"Downloading the map from the host (%u%%)...")
+MH_STR(MAP_WAITING, "map.waiting", L"Waiting for the host to send the map...")
+MH_STR(MAP_MISMATCH, "map.mismatch", L"The map the host sent did not match its advert.")
+
+// ---- in-match floating messages ----------------------------------------------------------------
+MH_STR(DESYNC_ALERT, "desync.alert", L"DESYNC DETECTED (step %lu) - this match is out of sync")
+MH_STR(CHEAT_SINGLE_PLAYER, "cheat.single_player", L"cheats are single player")
+// mp:U62: the host left a running match and the transport hub moved to a survivor (net_lockstep.cpp hub_notice_tick).
+MH_STR(HUB_MIGRATED, "hub.migrated", L"%s left; %s is now hosting")
+// mp:U63: the host's process was lost (a crash, not a quit) and a survivor took over (same call site).
+MH_STR(HUB_LOST, "hub.lost", L"%s lost; %s is now hosting")
+
+// mp:U54: the local human was defeated and stays in the match watching (net_lockstep.cpp on_time_tick); fades like any floating message.
+MH_STR(SPECTATE_DEFEATED, "spectate.defeated", L"Defeated -- spectating")
+// mp:U54: the defeat dialog of a player that STAYS in the match has two buttons (retail's outcome 4 has only Ok): the retail
+// "Continue game" widget, hidden for a defeat, is shown and relabelled; Ok is relabelled.
+MH_STR(SPECTATE_CONTINUE, "spectate.continue", L"Continue spectating")
+MH_STR(SPECTATE_EXIT, "spectate.exit", L"Exit match")
+
+// ---- the in-match connection indicator (seams/ui_net_indicator.cpp) -----------------------------
+MH_STR(NETIND_PING, "netind.ping", L"PING")
+MH_STR(NETIND_MS, "netind.ms", L"%d ms")
+MH_STR(NETIND_NA, "netind.na", L"n/a")
+MH_STR(NETIND_CMD, "netind.cmd", L"CMD %d ms")
+MH_STR(NETIND_WAITING, "netind.waiting", L"WAITING FOR %s")
+
+// ---- the main menu (seams/mp_menu.cpp) ----------------------------------------------------------
+// The LANG2 no-art fallback button (a pack whose art has no NETWORK GAME row). Drawn upper-cased,
+// like the painted labels beside it.
+MH_STR(MENU_NETWORK_GAME, "menu.network_game", L"Network game")
+
+// ---- the lobby TEAM spinner and MODE selector (ui/lobby_widgets.cpp, mp:U51) -------------------
+MH_STR(LOBBY_TEAM_NONE, "lobby.team_none", L"-")
+MH_STR(LOBBY_TEAM_1, "lobby.team_1", L"T1")
+MH_STR(LOBBY_TEAM_2, "lobby.team_2", L"T2")
+MH_STR(LOBBY_TEAM_3, "lobby.team_3", L"T3")
+MH_STR(LOBBY_TEAM_4, "lobby.team_4", L"T4")
+MH_STR(LOBBY_MODE_FFA, "lobby.mode_ffa", L"Mode: FFA")
+MH_STR(LOBBY_MODE_TEAM, "lobby.mode_team", L"Mode: Team")

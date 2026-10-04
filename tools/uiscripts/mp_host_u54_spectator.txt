@@ -1,0 +1,49 @@
+# mp:U54 -- 3-PEER SPECTATE shape (tools/det_arms.py --u54-*; check_u54_spectate.py reads the logs).
+# Topology = run_u19b_quit3's: host vms[0], client1 vms[1], client2 the local det3_client2 lane.
+# The elimination itself is the harness `conq` workload's force-kill (harness-extra), NOT a UI gesture.
+# the HOST is the VICTIM and SPECTATES (it keeps relaying): it answers its defeat dialog with CONTINUE SPECTATING and
+# keeps stepping with the survivors; the determinism compare INCLUDES it (its per-step hash is the survivors').
+settled value:110
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+settled Create
+clickl Create
+present Game name
+settled Ok
+clickl Ok
+present Available maps
+settled Ok
+clickl Ok
+
+present Network players
+peers 2
+occ 3
+enabled Start
+settled Start
+awaitsignal seated1
+awaitsignal seated2
+clickl Start
+
+absent Network players
+gamemode 2
+screen 0x00653dc3
+capture host_defeat
+dump
+signal elim
+log host reached its defeat dialog
+clickl Continue spectating
+absent Continue spectating
+gamemode 2
+gameclock 8000
+capture host_spectating_early
+signal hostmid
+gameclock 20000
+capture host_spectating_late
+signal hostdone
+log host spectated to the target clock
+awaitsignal c1done
+awaitsignal c2done
+signal victimdone
+end

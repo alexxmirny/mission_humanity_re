@@ -20,6 +20,11 @@
 //   (4) set the container's array to [Intro,NewGame,Network,Tutorial,Load,Credits,Quit].
 // All widget writes land in DGROUP (verified r/w); no VirtualProtect, no gamedata edits.
 //
+// mods:LANG2: a language pack whose MENUBCK2 is a byte copy of MENUBCK1 (the retail RU pack; probed by
+// MH_LangPack_MenuHas7ButtonArt, seams/lang_pack.cpp) has no 7-button art, so (1)-(4) would put every
+// hotspot one row off its painted label. Then NOTHING is redirected or restacked: the network widget
+// takes the free 7th row and draws its own frame + label (fallback_draw).
+//
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
 #endif
@@ -29,13 +34,17 @@
 #include <stdarg.h>
 
 #include "include/mh_mpmenu_export.h"
-#include "include/mh_run_context.h" // MH_RunDir (per-run log folder)
-#include "addr/mh_addrs.gen.h"      // generated EN VAs (tools/gen_dll_addrs.py)
-#include "en_guard.h"               // EN-only build gate
-#include "hook/detour.h"            // install_trampoline (shared inline-detour toolkit)
-#include "hook/watcall.h"           // call_watcall1 (Watcom __watcall(EAX) bridge)
+#include "include/mh_run_context.h"      // MH_RunDir (per-run log folder)
+#include "include/mh_langpack_export.h"  // mods:LANG2: does the loaded mh_ex carry 7-button art?
+#include "include/mh_chatinput_export.h" // MP-LANG: MH_ChatInput_NormalizeLocalNames
+#include "ui/player_strings.h"           // mods:LANG4: the fallback label is a table row
+#include "addr/mh_addrs.gen.h"           // generated EN VAs (tools/gen_dll_addrs.py)
+#include "en_guard.h"                    // EN-only build gate
+#include "hook/detour.h"                 // install_trampoline (shared inline-detour toolkit)
+#include "hook/watcall.h"                // call_watcall1 (Watcom __watcall(EAX) bridge)
 
-#pragma comment(lib, "user32.lib") // wsprintfA
+#pragma comment(lib, "user32.lib") // wsprintfA, CharUpperBuffW, DrawTextW
+#pragma comment(lib, "gdi32.lib")  // LANG2 fallback label: CreateDIBSection / CreateFontW
 
 using mh::hook::call_watcall1;
 
@@ -67,6 +76,14 @@ constexpr int WIDGET_STRIDE = 0x44;
 
 // 7-button MENUBCK2 layout Y (art-measured; = the MENUBCK1 records with the 4 below New Game +40)
 constexpr int Y_NETWORK = 177, Y_TUTORIAL = 217, Y_LOAD = 257, Y_CREDITS = 297, Y_QUIT = 338;
+// mods:LANG2 FALLBACK slot: no 7-button art (MENUBCK2 == MENUBCK1, the retail RU pack), so the six
+// stock buttons stay exactly where the art paints them and the network button takes the free 7th
+// row below QUIT (297 + 40), drawing its own frame + label.
+constexpr int Y_FALLBACK_NETWORK = 337;
+// mods:LANG4: the fallback label is OUR table's `menu.network_game` ("Network game"; the RU pack's
+// mh_strings.txt says "Сетевая игра") -- not the pack's K_MENU_Players (text id 703), which LANG2 used
+// and which names a different screen ("Network players" / "Игроки в сети": the lobby, not the button
+// that leads to it). User ruling 2026-09-29.
 
 static const char MENUBCK2_NAME[] = "MENUBCK2.GFX"; // DLL-owned; replaces filename-table[0]
 static const char NETGAMEH_NAME[] = "NETGAMEH.GFX"; // network button hover sprite
@@ -76,6 +93,7 @@ void         *g_netgameh  = nullptr;       // cached GetMenuFile handle (sprite 
 unsigned char g_net_widget[WIDGET_STRIDE]; // the NETWORK GAME widget (clone of New Game)
 void         *g_u18_array[9];              // [7 buttons + NULL] container array we own
 bool          g_bg_redirected = false;
+bool          g_fallback      = false; // LANG2: 6-button art only -> self-rendered label, no restack
 
 char          g_log[MAX_PATH];
 unsigned long g_log_gen = 0; // SES1: per-SESSION -- same file as seam_log, same directory rule
@@ -126,9 +144,106 @@ __declspec(naked) void net_blit(void * /*sprite*/, int /*a1*/, int /*a2*/, int /
     }
 }
 
+// LANG2 fallback: the art has no NETWORK GAME button, so this one draws itself -- a 1px frame in the
+// painted frames' green and the table's `menu.network_game` in the pack's language (mods:LANG4;
+// upper-cased, like the painted labels), brighter while hovered.
+//
+// IT WRITES THE FRAMEBUFFER DIRECTLY (RGB565, _G_LLM_FRAMEBUFFER/_G_LLM_FB_PITCH -- the pair the
+// debug overlay and the capture already read), NOT through the game's line/text blitters. Measured
+// 2026-09-29 on the first fallback run: called from a widget draw_cb, llm_gfx_draw_text_blend_clipped
+// stamped three ghost copies of the label across y~135 and llm_gfx_draw_line_clipped drew the frame in
+// the wrong colour -- both keep their own target/dirty-tile state that the menu pass does not set up.
+// The label is rendered ONCE per menu build through GDI into an 8-bit coverage mask, so any script the
+// pack's text table carries renders without needing the game font to have the glyph.
+constexpr int LBL_MAX_W = 256, LBL_MAX_H = 40;
+uint8_t       g_lbl_mask[LBL_MAX_W * LBL_MAX_H];
+int           g_lbl_w = 0, g_lbl_h = 0;
+
+void fallback_build_label(int w, int h) {
+    g_lbl_w = g_lbl_h = 0;
+    if (w <= 2 || h <= 2 || w > LBL_MAX_W || h > LBL_MAX_H) return;
+    wchar_t text[64];
+    lstrcpynW(text, mh::ui::tr(mh::ui::Str::MENU_NETWORK_GAME), 64);
+    CharUpperBuffW(text, lstrlenW(text));
+
+    BITMAPINFO bi              = {};
+    bi.bmiHeader.biSize        = sizeof(bi.bmiHeader);
+    bi.bmiHeader.biWidth       = w;
+    bi.bmiHeader.biHeight      = -h; // top-down
+    bi.bmiHeader.biPlanes      = 1;
+    bi.bmiHeader.biBitCount    = 32;
+    bi.bmiHeader.biCompression = BI_RGB;
+    void   *bits               = nullptr;
+    HDC     dc                 = CreateCompatibleDC(nullptr);
+    HBITMAP bmp                = CreateDIBSection(dc, &bi, DIB_RGB_COLORS, &bits, nullptr, 0);
+    if (!dc || !bmp || !bits) {
+        if (bmp) DeleteObject(bmp);
+        if (dc) DeleteDC(dc);
+        return;
+    }
+    HGDIOBJ old_bmp = SelectObject(dc, bmp);
+    memset(bits, 0, (size_t)w * h * 4);
+    HFONT   font     = CreateFontW(-(h / 2), 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE, DEFAULT_CHARSET,
+                                   OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, ANTIALIASED_QUALITY,
+                                   VARIABLE_PITCH | FF_SWISS, L"Arial"); // mh-str-ok: font face
+    HGDIOBJ old_font = SelectObject(dc, font);
+    SetBkMode(dc, TRANSPARENT);
+    SetTextColor(dc, RGB(255, 255, 255));
+    RECT r = {0, 0, w, h};
+    DrawTextW(dc, text, -1, &r, DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX);
+    GdiFlush();
+    const uint32_t *px = (const uint32_t *)bits;
+    for (int i = 0; i < w * h; ++i) g_lbl_mask[i] = (uint8_t)((px[i] >> 8) & 0xff); // green = coverage
+    SelectObject(dc, old_font);
+    SelectObject(dc, old_bmp);
+    DeleteObject(font);
+    DeleteObject(bmp);
+    DeleteDC(dc);
+    g_lbl_w = w;
+    g_lbl_h = h;
+}
+
+inline uint16_t blend565(uint16_t d, unsigned r, unsigned g, unsigned b, unsigned a) {
+    const unsigned dr = (d >> 11) & 31, dg = (d >> 5) & 63, db = d & 31;
+    const unsigned sr = r >> 3, sg = g >> 2, sb = b >> 3;
+    return (uint16_t)((((dr * (255 - a) + sr * a) / 255) << 11) | (((dg * (255 - a) + sg * a) / 255) << 5) |
+                      ((db * (255 - a) + sb * a) / 255));
+}
+
+void fallback_draw(void *widget, bool lit) {
+    uint8_t  *fb    = *(uint8_t **)mh::addr::_G_LLM_FRAMEBUFFER;
+    const int pitch = *(const int *)mh::addr::_G_LLM_FB_PITCH;
+    const int W = *(const int *)mh::addr::WindowWidth, H = *(const int *)mh::addr::WindowHeight;
+    if (!fb || W <= 0 || H <= 0 || W > 4096 || H > 4096 || pitch < W * 2) return; // the overlay's gate
+    const int x = *(int *)ADDR_DRAW_X, y = *(int *)ADDR_DRAW_Y;
+    const int w = *(int *)((uint8_t *)widget + W_W), h = *(int *)((uint8_t *)widget + W_H);
+    if (g_lbl_w != w || g_lbl_h != h) fallback_build_label(w, h);
+    const unsigned fr = lit ? 120 : 50, fg = lit ? 220 : 120, fbl = lit ? 90 : 50; // frame
+    const unsigned tr = lit ? 150 : 90, tg = lit ? 255 : 160, tb = lit ? 120 : 80; // label
+    for (int j = 0; j < h; ++j) {
+        const int yy = y + j;
+        if (yy < 0 || yy >= H) continue;
+        uint16_t *row = (uint16_t *)(fb + (size_t)yy * pitch);
+        for (int i = 0; i < w; ++i) {
+            const int xx = x + i;
+            if (xx < 0 || xx >= W) continue;
+            if (j == 0 || j == h - 1 || i == 0 || i == w - 1) {
+                row[xx] = blend565(row[xx], fr, fg, fbl, 255);
+                continue;
+            }
+            const unsigned a = (g_lbl_w == w && g_lbl_h == h) ? g_lbl_mask[j * w + i] : 0;
+            if (a) row[xx] = blend565(row[xx], tr, tg, tb, a);
+        }
+    }
+}
+
 void network_draw_body(void *widget) {
     void *hov = *(void **)ADDR_WIDGET_HOVER;
     void *sel = *(void **)ADDR_WIDGET_SEL;
+    if (g_fallback) {
+        fallback_draw(widget, widget == hov || widget == sel);
+        return;
+    }
     if (g_netgameh && (widget == hov || widget == sel)) {
         int x  = *(int *)ADDR_DRAW_X;
         int y  = *(int *)ADDR_DRAW_Y;
@@ -179,6 +294,11 @@ typedef void (*retail_vfn)(void);
 // Name confirmed on the net-setup screen -> persist, then run the RETAIL name-confirm transition
 // (name screen -> local games browser SAVELOAD_LIST); we only prepend the setup.dat save.
 void mp_after_name_confirmed() {
+    // MP-LANG: the entry field already refuses anything but [A-Za-z0-9] (ui_chat_input.cpp H1), but an
+    // MRU pick or a name saved before the rule arrives here unchecked -- normalize it before it is
+    // persisted, so setup.dat and every later JOIN carry the same bytes. An empty result is "Player"
+    // (the retail confirm below refuses an empty name, which would leave the player stuck).
+    MH_ChatInput_NormalizeLocalNames();
     ((retail_vfn)ADDR_SAVE_SETUP_DAT)();      // write _G_LLM_MP_PLAYER_NAME to setup.dat (survives relaunch)
     ((retail_vfn)ADDR_RETAIL_NAME_CONFIRM)(); // retail: name screen -> local games browser
     menu_log("; MP name confirmed -> persisted setup.dat + retail transition to local games browser");
@@ -199,6 +319,10 @@ __declspec(naked) void mp_name_confirm_cb() { // installed into the confirm-cb s
 // MP button action: show the retail name-entry screen, then hijack its confirm callback to ours (the
 // documented retail lever -- write the confirm-cb slot -- used exactly as retail's own builders do).
 void mp_show_name_entry() {
+    // MP-LANG: the first-run default is mh.exe's Polish placeholder "<twoje imie>" -- not a name the
+    // field would now let anyone type. Show the language-neutral "Player" instead (and normalize a
+    // name saved before the [A-Za-z0-9] rule), so the field opens on something it accepts.
+    MH_ChatInput_NormalizeLocalNames();
     ((retail_vfn)ADDR_NETSETUP_SCREEN)();                        // push NET_SETUP wired for the name field
     *(void **)ADDR_CONFIRM_CB_SLOT = (void *)mp_name_confirm_cb; // override retail name_confirm -> ours
     menu_log("; MP button -> name-entry screen (confirm cb hijacked to mp_name_confirm_cb)");
@@ -241,11 +365,42 @@ static void mp_redirect_bg_once() {
     }
 }
 
+// LANG2 fallback arrangement: the six stock records untouched (no MENUBCK2, no restack), the network
+// widget appended in the free 7th row with its own draw.
+static void mp_apply_fallback() {
+    memcpy(g_net_widget, (const void *)BTN_NEWGAME, WIDGET_STRIDE);
+    *(void **)(g_net_widget + W_NAV)    = nullptr;
+    *(void **)(g_net_widget + W_ACTION) = (void *)mp_name_entry_detour;
+    *(void **)(g_net_widget + W_DRAW)   = (void *)network_widget_draw;
+    *(int *)(g_net_widget + W_IDX)      = 0;
+    *(int *)(g_net_widget + W_IDX_ALT)  = 0;
+    *(int *)(g_net_widget + W_IDX_SEL)  = 0;
+    *(int *)(g_net_widget + W_Y)        = Y_FALLBACK_NETWORK;
+    g_net_widget[W_VALUE]               = 'n';
+
+    g_u18_array[0] = (void *)BTN_INTRO;
+    g_u18_array[1] = (void *)BTN_NEWGAME;
+    g_u18_array[2] = (void *)BTN_TUTORIAL;
+    g_u18_array[3] = (void *)BTN_LOAD;
+    g_u18_array[4] = (void *)BTN_CREDITS;
+    g_u18_array[5] = (void *)BTN_QUIT;
+    g_u18_array[6] = (void *)g_net_widget;
+    g_u18_array[7] = nullptr;
+    *g_container   = (void *)g_u18_array;
+    menu_log("; U18 FALLBACK network button applied (6-button art unshifted; self-rendered label at y=%d; "
+             "net widget %08X)",
+             Y_FALLBACK_NETWORK, (unsigned)(uintptr_t)g_net_widget);
+}
+
 extern "C" void MH_Menu_Apply(void) {
     void **cur = (void **)(*g_container);
     if (!cur || cur == (void **)g_u18_array) return; // not built yet, or already ours
     if (!cur[0]) return;                             // menu not populated yet
 
+    if (g_fallback) {
+        mp_apply_fallback();
+        return;
+    }
     mp_redirect_bg_once(); // belt-and-braces (primary redirect is at install, before the first load)
 
     if (!g_netgameh) { // load the NETGAMEH hover sprite once (rsr is up by now)
@@ -305,10 +460,16 @@ extern "C" int MH_Menu_Install(void) {
         menu_log("; MP menu restore NOT armed -- see the [interlock] line for the reason");
         return 0;
     }
-    mp_redirect_bg_once(); // redirect the bg BEFORE the first main-menu load
+    // mods:LANG2: a pack whose MENUBCK2 is a byte copy of MENUBCK1 (the retail RU pack) has no 7-button
+    // art; redirecting to it and restacking would put every hotspot one row off its painted label.
+    // Unknown (-1) keeps the stock behaviour; the stock EN pack answers 1.
+    g_fallback = MH_LangPack_MenuHas7ButtonArt() == 0;
+    if (!g_fallback) mp_redirect_bg_once(); // redirect the bg BEFORE the first main-menu load
     bool ok = mh::hook::install_trampoline(ADDR_MENU_ACTIVATE, (void *)menu_activate_detour, &g_menu_tramp, 8,
                                            mh::hook::entry_claim::exclusive,
                                            "the U18 MP main-menu button restore");
-    menu_log(ok ? "; MP menu restore armed (U18: 7-button MENUBCK2 menu)" : "; MP menu restore install failed");
+    menu_log(!ok ? "; MP menu restore install failed"
+                 : (g_fallback ? "; MP menu restore armed (U18 FALLBACK: 6-button art, self-rendered network label)"
+                               : "; MP menu restore armed (U18: 7-button MENUBCK2 menu)"));
     return ok ? 1 : 0;
 }

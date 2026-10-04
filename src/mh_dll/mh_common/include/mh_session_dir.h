@@ -27,14 +27,31 @@
 #ifndef MH_SESSION_DIR_H
 #define MH_SESSION_DIR_H
 
-/* "YYYYMMDDTHHMMSSZ" + NUL -- the UTC stamp every directory name starts with. UTC, not local time:
- * a session directory is the unit a bug report ships, and two peers in different time zones must
- * sort into one order. (The LINE stamps inside the logs stay local wall clock -- they are read
- * beside a human's own clock and mh_log_stamp's format is a committed contract.) */
+/* "YYYYMMDDTHHMMSSZ" + NUL -- the compact UTC stamp of the RECORD fields (session.json `began` /
+ * `ended`, the SESSION_BEGIN/END lines). UTC, not local time: a session directory is the unit a bug
+ * report ships, and two peers in different time zones must sort into one order. (The LINE stamps
+ * inside the logs stay local wall clock -- they are read beside a human's own clock and
+ * mh_log_stamp's format is a committed contract.) */
 #define MH_SESSION_STAMP_CAP 18
 
-/* "<stamp>_<mid8>_<slot>_<role>" + NUL. 16 + 1 + 8 + 1 + 2 + 1 + 6 = 35 at most today. */
-#define MH_SESSION_DIRNAME_CAP 64
+/* "YYYY-MM-DDTHH-MM-SSZ" + NUL -- the stamp every DIRECTORY name starts with (SES8, 2026-09-29).
+ *
+ * ISO 8601 with the time's colons replaced by dashes: `:` is illegal in a Windows path, and the
+ * ask was a date a human reads at a glance (`2026-09-29T08-15-02Z`, not `20260929T081502Z`).
+ * STILL UTC, STILL WITH THE `Z`, for the reason above -- the trailing `Z` is the unambiguous marker
+ * that this is not the reader's local clock. Fixed width (20 chars), so a plain string sort of NEW
+ * names is still a time sort. A sort that MIXES these with the pre-SES8 compact names is not (`-`
+ * sorts before `0`), so readers normalise both to digits first (tools/_rundir.py, the launcher's
+ * paths.rs). */
+#define MH_SESSION_DIRSTAMP_CAP 21
+
+/* "<dirstamp>_<mid8>_<map>_<mode>" + NUL. 20 + 1 + 8 + 1 + 24 + 1 + 8 = 63 at most today; the
+ * slack is for a longer mode word, never for the map (MH_SESSION_MAP_TOKEN_MAX caps it). */
+#define MH_SESSION_DIRNAME_CAP 80
+
+/* The map token's cap. A map name is player-authored text (an adopted `.mpm` can be called
+ * anything), so it is sanitised AND capped before it reaches a path; see mh_sd_put_map_token. */
+#define MH_SESSION_MAP_TOKEN_MAX 24
 
 /* 32 lowercase hex + NUL. Matches mh_net_proto::UUID7_HEX_CAP without importing it: this header is
  * reachable from mh_common, which does not depend on mh_net_proto. */
@@ -140,14 +157,96 @@ inline bool mh_sd_same_hex(const char *a, const char *b) {
 
 // ---- the directory name -------------------------------------------------------------------------
 //
-//   in a session : "<stamp>_<match_id[24..31]>_<slot>_<role>" e.g. 20260917T164346Z_dedd707c_1_client
-//   otherwise    : "<stamp>_menu_<role>"                      e.g. 20260917T164346Z_menu_solo
+//   in a session : "<dirstamp>_<match_id[24..31]>_<map>_<mode>"
+//                    e.g. 2026-09-29T08-15-02Z_dedd707c_blue-monday_host
+//                         2026-09-29T08-15-02Z_4be1a9c3_TUTORIAL_tutorial
+//   otherwise    : "<dirstamp>_menu_<role>"      e.g. 2026-09-29T08-15-02Z_menu_solo
 //
-// BOTH FORMS STILL END IN `_<role>`, and that is load-bearing rather than tidy: tools/mp_run.py's
-// newest_run() globs `*_host` / `*_client` and tools/test_ui.py globs `*_solo`. The rename would
-// otherwise have been a silent rig outage -- the runs would happen and nothing would find them.
+// SES8 (2026-09-29) replaced SES1's `<stamp>_<mid8>_<slot>_<role>`, whose last field was the BOOT
+// role -- "solo" for every manual-menu run, so every folder a player ever saw ended `_solo`. The
+// mode is now the MATCH's: host / client for a lobby (this peer's role IN THAT LOBBY), campaign /
+// tutorial / skirmish / tactical for a single-player match (net_discovery.cpp's solo tick decides),
+// and the slot lives in session.json only (it always was there too).
+//
+// FOUR `_`-SEPARATED FIELDS, ALWAYS. The map token is sanitised so it can never contain `_`, so a
+// reader splits on `_` and gets stamp / id-or-"menu" / map / mode without a regex that has to know
+// what a map may be called. The process directory keeps its three-field `_menu_<role>` shape
+// (tools glob `*_menu_*`; mp_run.py globs `*_<role>` and prefers the `_menu_` one).
+//
+// The map token: the leaf of the name (no directory part), extension dropped, every byte outside
+// [A-Za-z0-9.-] -> `-`, runs collapsed, leading/trailing `-` and `.` trimmed, capped at
+// MH_SESSION_MAP_TOKEN_MAX. Nothing left -> "nomap". "blue monday.mpm" -> "blue-monday".
+inline int mh_sd_put_map_token(char *dst, int cap, int at, const char *map) {
+    const char *leaf = map;
+    for (const char *p = map; p != nullptr && *p != '\0'; ++p)
+        if (*p == '\\' || *p == '/' || *p == ':') leaf = p + 1;
+    const char *end = nullptr; // the LAST '.' of the leaf, if any, ends the name
+    for (const char *p = leaf; p != nullptr && *p != '\0'; ++p)
+        if (*p == '.') end = p;
+    if (end == leaf) end = nullptr; // ".mpm" alone is a name, not an extension
+    const int start   = at;
+    int       written = 0;
+    bool      pending = false; // a '-' owed before the next kept byte
+    for (const char *p = leaf; p != nullptr && *p != '\0' && p != end; ++p) {
+        const unsigned char c  = (unsigned char)*p;
+        const bool          ok = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
+                        (c >= '0' && c <= '9') || c == '.' || c == '-';
+        if (!ok || c == '-') {
+            pending = written > 0;
+            continue;
+        }
+        if (c == '.' && written == 0) continue; // no leading '.'
+        if (pending) {
+            if (written + 2 > MH_SESSION_MAP_TOKEN_MAX || at >= cap - 2) break;
+            dst[at++] = '-';
+            ++written;
+            pending = false;
+        }
+        if (written >= MH_SESSION_MAP_TOKEN_MAX || at >= cap - 1) break;
+        dst[at++] = (char)c;
+        ++written;
+    }
+    while (at > start && (dst[at - 1] == '-' || dst[at - 1] == '.')) --at; // no trailing '-' / '.'
+    if (at < cap) dst[at] = '\0';
+    if (at == start) at = mh_sd_put(dst, cap, at, "nomap");
+    return at;
+}
+
+// A mode/role word: lowercase ASCII letters only, so it can never break the four-field split.
+inline int mh_sd_put_word(char *dst, int cap, int at, const char *w, const char *fallback) {
+    const int start = at;
+    for (const char *p = w; p != nullptr && *p != '\0' && at < cap - 1; ++p) {
+        char c = *p;
+        if (c >= 'A' && c <= 'Z') c = (char)(c + 32);
+        if (c >= 'a' && c <= 'z') dst[at++] = c;
+    }
+    if (at < cap) dst[at] = '\0';
+    if (at == start) at = mh_sd_put(dst, cap, at, fallback);
+    return at;
+}
+
+// "YYYY-MM-DDTHH-MM-SSZ" from calendar fields (the OS half supplies them from GetSystemTime).
+inline int mh_session_dir_stamp(char *dst, int cap, int y, int mo, int d, int h, int mi, int s) {
+    const int  f[6]   = {y, mo, d, h, mi, s};
+    const char sep[6] = {'-', '-', 'T', '-', '-', 'Z'};
+    int        at     = 0;
+    for (int i = 0; i < 6; ++i) {
+        const int w = (i == 0) ? 4 : 2;
+        int       v = f[i] < 0 ? 0 : f[i];
+        char      tmp[4];
+        for (int k = w - 1; k >= 0; --k) {
+            tmp[k] = (char)('0' + v % 10);
+            v /= 10;
+        }
+        for (int k = 0; k < w && at < cap - 1; ++k) dst[at++] = tmp[k];
+        if (at < cap - 1) dst[at++] = sep[i];
+    }
+    if (at < cap) dst[at] = '\0';
+    return at;
+}
+
 inline int mh_session_dir_name(char *dst, int cap, const char *stamp, const char *match_hex,
-                               int slot, const char *role) {
+                               const char *map, const char *mode) {
     int at = mh_sd_put(dst, cap, 0, stamp);
     at     = mh_sd_put(dst, cap, at, "_");
     if (mh_sd_is_nil_hex(match_hex)) {
@@ -160,11 +259,44 @@ inline int mh_session_dir_name(char *dst, int cap, const char *stamp, const char
             dst[at++] = tail[i];
         if (at < cap) dst[at] = '\0';
         at = mh_sd_put(dst, cap, at, "_");
-        at = mh_sd_put_int(dst, cap, at, slot);
+        at = mh_sd_put_map_token(dst, cap, at, map);
     }
     at = mh_sd_put(dst, cap, at, "_");
-    at = mh_sd_put(dst, cap, at, (role != nullptr && role[0] != '\0') ? role : "solo");
+    at = mh_sd_put_word(dst, cap, at, mode, "solo");
     return at;
+}
+
+// ---- SES8: which SINGLE-PLAYER match is starting ------------------------------------------------
+//
+// Before SES8 only a lobby opened a session, so a campaign, a tutorial or a loaded skirmish wrote
+// its whole match into the process's menu folder. mh/seams/net_discovery.cpp's solo tick now opens
+// one at the first IN-MATCH frame, and this is the pure half of that decision: given the two mode
+// axes (docs/architecture.md "Two axes of mode") and the tutorial step, which mode word names the
+// match -- or nullptr for "this frame is not a single-player match start".
+//
+// "In a match" is the strategic frame (GAME_MODE 2) OR the sim running under an overlay
+// (`sim_running`: the game clock advanced since the last present). The second arm is not an edge
+// case: a match's first frames are routinely GAME_MODE 3 -- the tutorial's welcome and step dialogs
+// keep it there, with the sim ticking underneath, for as long as they are up.
+//
+//   GAME_MODE 6 (tactical frame)          -> "tactical"
+//   in a match + SESSION_MODE 1           -> "campaign"
+//   in a match + SESSION_MODE 2, step!=0  -> "tutorial"   (llm_game_start_tutorial sets step 1)
+//   in a match + SESSION_MODE 2, step==0  -> "skirmish"   (Path B without a lobby: a loaded save)
+//   SESSION_MODE 3, boot/intro, a still   -> nullptr      (lockstep MP owns its session; a menu
+//   clock outside GAME_MODE 2                              has no running sim)
+//
+// A `--tactical` run (the launch verb that loads a save and synthesises a mission) waits for mode 6
+// instead of naming the save's strategic frame -- that process exists to play the mission.
+inline const char *mh_session_solo_mode(int game_mode, int session_mode, int tutorial_step, bool tactical_verb,
+                                        bool sim_running) {
+    if (tactical_verb) return game_mode == 6 ? "tactical" : nullptr;
+    if (game_mode == 6) return "tactical";
+    if (game_mode == 1 || game_mode == 7) return nullptr; // boot stages, the intro movie
+    if (game_mode != 2 && !sim_running) return nullptr;
+    if (session_mode == 1) return "campaign";
+    if (session_mode == 2) return tutorial_step != 0 ? "tutorial" : "skirmish";
+    return nullptr;
 }
 
 // ---- the record ----------------------------------------------------------------------------------
@@ -178,6 +310,7 @@ struct MH_SessionRecord {
     char          match_id[MH_SESSION_MATCH_HEX_CAP];
     int           slot;
     char          role[MH_SESSION_TEXT_CAP];
+    char          mode[MH_SESSION_TEXT_CAP]; // SES8: the directory's last field (host/client/campaign/...)
     char          build[MH_SESSION_TEXT_CAP];
     char          modules[MH_SESSION_TEXT_CAP];
     char          map[MH_SESSION_TEXT_CAP];
@@ -286,6 +419,8 @@ inline int mh_session_json(const MH_SessionRecord *r, char *dst, int cap) {
     at     = mh_sd_put_int(dst, cap, at, r->slot);
     at     = mh_sd_put(dst, cap, at, ",\n  \"role\": \"");
     at     = mh_sd_put_json(dst, cap, at, r->role);
+    at     = mh_sd_put(dst, cap, at, "\",\n  \"mode\": \"");
+    at     = mh_sd_put_json(dst, cap, at, r->mode);
     at     = mh_sd_put(dst, cap, at, "\",\n  \"build\": \"");
     at     = mh_sd_put_json(dst, cap, at, r->build);
     at     = mh_sd_put(dst, cap, at, "\",\n  \"modules\": \"");

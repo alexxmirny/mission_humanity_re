@@ -74,9 +74,21 @@ class Refusal(Exception):
     """A run this tool cannot make a statement about. NEVER a pass."""
 
 
-# mh_session_dir.h's directory shape ("<UTC>Z_<mid8>_<slot>_<role>"); textually the same literal
+# mh_session_dir.h's directory shape ("<UTC>Z_<mid8>_<slot>_<role>" SES1, "<dirstamp>_<mid8>_<map>_<mode>" SES8); textually the same literal
 # check_rematch_residue.py / check_cheat_gate.py carry, for the same no-import-chain reason.
-SESSION_DIR_RE = re.compile(r"^\d{8}T\d{6}Z_[0-9a-f]{8}_\d+_[A-Za-z0-9]+$")
+SESSION_DIR_RE = re.compile(
+    r"^(?:\d{8}T\d{6}Z_[0-9a-f]{8}_\d+|\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}Z_[0-9a-f]{8}_[A-Za-z0-9.-]+)_[A-Za-z0-9]+$"
+)
+# SES8 (2026-09-29): new names start "YYYY-MM-DDTHH-MM-SSZ", which does NOT string-sort with the
+# SES1 "YYYYMMDDTHHMMSSZ" ones a lane still holds (`-` < `0`). Order by canon(name), never the raw
+# name. Verbatim copy of tools/_rundir.py's canon() (no import chain between checkers).
+_NEW_STAMP = re.compile(r"^(\d{4})-(\d{2})-(\d{2})T(\d{2})-(\d{2})-(\d{2})Z")
+
+
+def canon(name):
+    """The name with an SES8 stamp rewritten to the SES1 compact form, so the two sort together."""
+    return _NEW_STAMP.sub(r"\1\2\3T\4\5\6Z", name)
+
 
 # net_lockstep.cpp's own header line, positional: LOCKSTEP_COLS[i] is column i of every data row.
 # Duplicated from mp_analyze.py's LOCKSTEP_COLS (no import chain between this tree's checkers) --
@@ -120,7 +132,7 @@ def session_runs(logs_dir, process_leaf):
         and SESSION_DIR_RE.match(os.path.basename(d))
         and session_process_dir(d) == process_leaf
     ]
-    return sorted(c, key=lambda d: os.path.basename(d))
+    return sorted(c, key=lambda d: canon(os.path.basename(d)))
 
 
 def lane_logs_dir(run_dir):
@@ -336,12 +348,14 @@ def desync_lines(sess_dir):
 def plant(root, role, rows, with_session=True, desync=False):
     lane = os.path.join(root, role)
     logs = os.path.join(lane, "logs")
-    proc_leaf = "20260921T060000Z_menu_" + role
+    proc_leaf = _ses8("20260921T060000Z_menu_", "2026-09-21T06-00-00Z_menu_") + role
     proc = os.path.join(logs, proc_leaf)
     os.makedirs(proc)
     if with_session:
         sess = os.path.join(
-            logs, "20260921T060010Z_a952c570_%d_%s" % (0 if role == "host" else 1, role)
+            logs,
+            _ses8("20260921T060010Z_a952c570_%d_%s", "2026-09-21T06-00-10Z_a952c570_blue-monday_%s")
+            % (((0 if role == "host" else 1), role) if not _PLANT_SES8 else (role,)),
         )
         os.makedirs(sess)
         with open(os.path.join(sess, "session.json"), "w", encoding="utf-8") as fh:
@@ -358,7 +372,27 @@ def plant(root, role, rows, with_session=True, desync=False):
     return proc
 
 
+# SES8: every case runs twice -- once on SES1 names, once on SES8 names (this process's folders
+# renamed, so the planted lane is a mixed-generation one wherever it keeps an older folder).
+_PLANT_SES8 = False
+
+
+def _ses8(old, new):
+    return new if _PLANT_SES8 else old
+
+
 def selftest():
+    global _PLANT_SES8
+    rc = 0
+    for flag in (False, True):
+        _PLANT_SES8 = flag
+        print("-- %s names --" % ("SES8" if flag else "SES1"))
+        rc |= _selftest_once()
+    _PLANT_SES8 = False
+    return rc
+
+
+def _selftest_once():
     cases = [
         # title, host rows (None = no log file, and with h_has_session=False no session at all),
         # client rows, host has a session dir, client has a session dir, want exit code.

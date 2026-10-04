@@ -18,6 +18,7 @@ import subprocess
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import _rundir  # noqa: E402  SES8: a process dir's session folders
 import desktop  # noqa: E402  the raw CreateProcessW launch that honours lpDesktop
 import lane_alloc  # noqa: E402  fork F4H: the ONE place a lane NUMBER comes from
 import ui_test  # noqa: E402  boot_lock + wait_past_pack_load, shared with the UI suite
@@ -29,6 +30,7 @@ from ui_suite_common import (  # noqa: E402
     RunnerConfig,
     TACT_PLAY_MOUSE_DIV,
     TACT_SCENARIOS,
+    play_mouse_div,
     _tact_pid_handle,
     add_extra_ini_arg,
     add_runner_args,
@@ -248,8 +250,8 @@ def tact_write_config(
         "[video]",
         "size_mode=0",
     ]
-    if ident.get("headless", True):
-        lines += ["no_present=1", "no_window=1"]
+    # PT-GFX5: backend (owned DirectDraw by default) + the headless pair, from the ONE composer.
+    lines += make_lane.video_lines_for(ident, ident.get("headless", True))
     lines += [
         "",
         "[tactical]",
@@ -266,6 +268,10 @@ def tact_write_config(
         "system=%d" % system,
         "",
         "[input]",
+    ]
+    # PT-INPUT1: which DirectInput (owned by default), from the ONE composer.
+    lines += make_lane.input_lines_for(ident)
+    lines += [
         # TACT-REC: the VM mouse fix. 1 = drop the DirectInput mouse device so llm_input_wndproc_tap
         # falls through to its ABSOLUTE client-coordinate arm. A hypervisor hands the guest an
         # absolute pointer, whose synthesised relative counts trip the DI path's 2x ballistic boost
@@ -1488,7 +1494,11 @@ def tact_provision_lane(args, visible=None, slot=0):
             "--port",
             str(LOCAL_PORT_BASE + lane_alloc.lane("tact", slot)),
         ]
-        + (["--visible"] if vis else ["--headless"]),
+        + (["--visible"] if vis else ["--headless"])
+        # PT-GFX5: an explicit --backend (add_runner_args) reaches the lane; default = owned device
+        + (["--backend", args.backend] if getattr(args, "backend", None) else [])
+        # PT-INPUT1: likewise --input-backend; only a `system` lane gets dinputto8
+        + (["--input-backend", args.input_backend] if getattr(args, "input_backend", None) else []),
         capture_output=True,
         text=True,
     )
@@ -1513,15 +1523,18 @@ def _tact_play_mouse_div(args):
 
     `None` means "not passed" and gets the default; an explicit `0` still means "leave the shipped
     value alone", which is why the flag's default is None rather than 0."""
-    return TACT_PLAY_MOUSE_DIV if args.tact_mouse_div is None else args.tact_mouse_div
+    return play_mouse_div(
+        make_lane.effective_input_backend(None, args.input_backend), args.tact_mouse_div
+    )
 
 
 def run_tact_play(args):
     """Launch ONE visible tactical mission and hand it to a human. The recording front end.
 
     Deliberately not an arm of --tact-determinism: there is no second run, no comparison and no wall
-    cap. It provisions a VISIBLE lane (dgVoodoo caps the presented path at ~60 fps, so it is playable
-    without any throttle), arms the mouse fix, and blocks until the player quits the game.
+    cap. It provisions a VISIBLE lane (the owned device's fps_limit caps the presented path at 60
+    fps, so it is playable without any throttle), arms the mouse fix, and blocks until the player
+    quits the game.
 
     THE MOUSE FIX IS THE POINT. Without `[input] mouse_absolute=1` the game is unplayable under a
     hypervisor: it runs on DirectInput RELATIVE counts, and a VM's absolute pointing device
@@ -1579,9 +1592,15 @@ def run_tact_play(args):
     # THE WRAPPER IS HALF THE FIX AND IT IS NOT A KNOB -- it is a file next to the exe, so the only
     # way a human learns it is missing is if something looks for it. A lane without it provisions
     # fine and every automated test still passes; only the person trying to PLAY finds out.
+    # PT-INPUT1: only on the system backend. The owned DirectInput (the default) needs no wrapper.
     wrapper = os.path.join(lane_dir, "dinput.dll")
     if args.tact_mouse_absolute:
         pass
+    elif make_lane.effective_input_backend(None, args.input_backend) != "system":
+        print(
+            "            owned DirectInput ([input] backend=own) -- absolute pointers land exactly;"
+        )
+        print("            no dinputto8, no divisor needed.")
     elif os.path.isfile(wrapper):
         print("            dinputto8 present (dinput.dll) -- the DI1-7 -> DI8 wrapper is what")
         print("            removes the VM input lag; the divisor above only fixes the scale.")
@@ -2196,13 +2215,17 @@ def tact_reloc_slices(line):
 
 def tact_entered(run_dir):
     """The launch verb's own verdict line -- read, never inferred from the harness having logged."""
-    lp = os.path.join(run_dir, "mh_launch.log")
-    if not os.path.isfile(lp):
-        return ""
-    with open(lp, encoding="utf-8", errors="replace") as f:
-        for line in f:
-            if "--tactical" in line:
-                return line.strip()
+    # mh_launch.log is a per-SESSION stream, and a --tactical run opens a "tactical" session at its
+    # first mode-6 frame (SES8), so the verdict line may sit in the session folder rather than in
+    # the process one this runner discovered. Read both, process first.
+    for d in [run_dir] + _rundir.sessions_of(run_dir):
+        lp = os.path.join(d, "mh_launch.log")
+        if not os.path.isfile(lp):
+            continue
+        with open(lp, encoding="utf-8", errors="replace") as f:
+            for line in f:
+                if "--tactical" in line:
+                    return line.strip()
     return ""
 
 
@@ -2794,10 +2817,11 @@ def add_args(ap):
         metavar="N",
         help="--tact-play: divide every DirectInput mouse count by N before it is accumulated "
         "(ship value 1 = no attenuation). Higher = less sensitive. 0 = leave stock; a real 0 would "
-        "fault the game, since it is a signed IDIV divisor. DEFAULTS TO %d for --tact-play, which "
-        "is 32767/640 -- the absolute range a hypervisor reports over the screen width, i.e. a "
-        "DERIVATION rather than a tuning constant. Measured playable with the dinputto8 wrapper in "
-        "place (the VM-input notes 9e); scale it if the screen is not 640 wide."
+        "fault the game, since it is a signed IDIV divisor. DEFAULTS TO %d for --tact-play ON "
+        "--input-backend system ONLY, which is 32767/640 -- the absolute range a hypervisor reports "
+        "over the screen width, i.e. a DERIVATION rather than a tuning constant. Measured playable "
+        "with the dinputto8 wrapper in place (the VM-input notes 9e); scale it if the screen is not "
+        "640 wide. On the default owned DirectInput it defaults to 0 (PT-INPUT1: exact mapping)."
         % TACT_PLAY_MOUSE_DIV,
     )
     ap.add_argument(

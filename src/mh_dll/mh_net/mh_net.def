@@ -56,5 +56,11 @@ EXPORTS
     MH_Net_SnapshotSend
     MH_Net_SnapshotPoll
     MH_Net_SnapshotStatus
+    MH_Net_SnapshotCancel
+    MH_Net_HubLeave
+    MH_Net_HubStatus
+    MH_Net_Rehome
+    MH_Net_SetInMatch
+    MH_Net_SetSpectator
     MH_NetModule_Init
     MH_NetModule_Probe

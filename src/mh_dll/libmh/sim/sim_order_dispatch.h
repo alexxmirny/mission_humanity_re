@@ -533,6 +533,14 @@ void *order_queue_dispatch_entry_thunk();
 // Mark the promoted arm live when it was reached by REBIND rather than by an entry install (D18).
 void mark_promoted_dispatch_installed(bool on);
 
+// mp:U49 -- drop an order_code 0x20 (undock) whose unit is not PARKED (0x1f) or already in
+// EXIT_STORAGE_BEGIN (0x20) at apply time. Retail applies it unconditionally, so a second undock
+// landing a pass after the first puts a unit that is walking out (0x21) into EXIT_WAIT on a door it
+// holds itself, forever. Default false = the faithful retail rule; set from
+// reimpl_fixes::undock_reentry_fix by lockstep::set_fixes, so [net] undock_reentry_fix is the control.
+void set_undock_reentry_fix(bool on);
+bool undock_reentry_fix();
+
 // ---- carrying an OBSERVER across promotion (D18) ------------------------------------------------
 //
 // Promotion displaces INSTRUMENTS as readily as it displaces fixes, and it is worse when it does:

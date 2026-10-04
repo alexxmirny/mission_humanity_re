@@ -183,6 +183,17 @@ int MH_Harness_WantsPresentTick(void);
 void MH_Harness_OnMovieTick(void);
 int  MH_Harness_WantsMovieTick(void);
 
+// mp:X3c: the world resync's two observation points, so the instrument's rows stay consistent across a resync.
+//   what = 1 (WS_CAPTURE): a world blob for host step `step` was just captured (still inside the horizon
+//          hold); `blob`/`len` are that blob. The harness writes the SNAPCAP row + fixup line, exactly as
+//          snapshot_send_now does.
+//   what = 2 (WS_IMPORT):  a blob for step `step` was just imported and the desync counters rewound;
+//          `arg` = how many steps the local counter must step BACK (a delta, robust to a harness step
+//          counter that did not start with the match). The harness rewinds its own step counter, writes
+//          SNAPIMP from live memory, and re-hashes its pending step row over the imported world.
+// No-op without an armed harness.
+void MH_Harness_OnWorldSync(int what, unsigned step, int arg, const void *blob, unsigned len);
+
 #ifdef __cplusplus
 }
 #endif

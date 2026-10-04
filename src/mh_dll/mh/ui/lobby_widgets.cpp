@@ -10,8 +10,10 @@
 #endif
 #include <windows.h>
 #include <stdint.h>
+#include <string.h>
 
 #include "ui/ui_internal.h"
+#include "ui/player_strings.h" // mp:U51: the TEAM / MODE option texts
 #include "addr/mh_addrs.gen.h" // generated EN VAs (tools/gen_dll_addrs.py)
 #include "hook/detour.h"       // install_trampoline (shared inline-detour toolkit)
 #include "hook/patch.h"        // patch_bytes_guarded (S7 browser-row format string)
@@ -21,6 +23,7 @@
 
 using mh::hook::call_watcall1;
 using mh::hook::entry_claim;
+using mh::hook::install_jmp;
 using mh::hook::install_trampoline;
 using mh::hook::patch_bytes_guarded;
 using mh::ui::detail::ui_log;
@@ -209,6 +212,368 @@ __declspec(naked) void remove_player_slot_guard() {
 }
 // clang-format on
 
+// ---- mp:U50 -- the lobby slot rows, owned by the DLL --------------------------------------------
+//
+// Retail's llm_lobby_build_slot_widgets (0x004bf99b EN) builds FOUR widgets per slot row (state,
+// name, race, color) into four static pools, and appends them to the lobby container's children
+// array at 0x00653633 (12 static entries, then the slot pointers from 0x00653663, room for 35).
+// That has no room for more columns, so this body REPLACES it (install_jmp: the original never
+// runs) and builds SIX per row: state, name, TEAM, race, color, PING.
+//
+//   * state / name / race / color stay in retail's pools (widgets llm_ui_widget[8] stride 0x44 at
+//     0x0065252b / 0x0065230b / 0x0065296b / 0x0065274b, spinners stride 0x14 at 0x00645113 (state),
+//     0x00645253 (race), 0x006451b3 (color)): retail's callbacks and the per-frame refresh loop in
+//     llm_lobby_host_net_dispatch index those pools by slot, and race_cycle_cb reads the race
+//     spinner's .value by slot*0x14. The retail pointer array at 0x00653663 is STILL filled
+//     {state,name,race,color} per slot, so anything that indexes it keeps working.
+//   * TEAM and PING are DLL-owned statics (g_team_*, g_ping_w). TEAM is built HIDDEN (flag 0x80);
+//     its spinner is mp:U51. PING is a plain label widget (llm_ui_widget_draw, no frame, no
+//     action): lobby_ping.cpp writes its label.
+//   * The container's children array is a DLL-owned static (g_children): the 12 static entries are
+//     copied from 0x00653633, then 6 widgets per row in DRAW ORDER (state, name, team, race, color,
+//     ping -- ping last in the row), then NULL; and the container's children pointer
+//     (*(0x00653f3f)) is repointed at it. Every build rewrites the whole array from scratch, so a
+//     rebuild (map change, lobby_refresh_for_map, a new lobby visit) can neither leak nor
+//     double-append. Retail's llm_lobby_slot_widget_list_clear only NULLs the retail array's first
+//     slot; it is always followed by a build in the same screen-open call, so it needs no hook.
+//
+// LAYOUT. x is an offset from the PREVIOUS widget's resolved X (flag 0x20000 = keep previous X/Y);
+// the state widget (flags 0x42) restarts from the container origin. Screen px, 640x480:
+//   state x=0x1f w=0x32 -> 44..96       (unchanged)
+//   name  x=0x36 w=0x66 -> 98..200      (retail w=0xa0)
+//   team  x=0x6a w=0x21 -> 204..237     (hidden until mp:U51)
+//   race  x=0x24 w=0x3c -> 240..300     (retail: x=0xa4 from name)
+//   color x=0x3f        -> 303 (flag sprite ~305)  (unchanged offset from race)
+//   ping  x=0x0c        -> 315; text ends before the panel border at x=349
+constexpr uintptr_t POOL_NAME_W     = 0x0065230bu;
+constexpr uintptr_t POOL_STATE_W    = 0x0065252bu;
+constexpr uintptr_t POOL_COLOR_W    = 0x0065274bu;
+constexpr uintptr_t POOL_RACE_W     = 0x0065296bu;
+constexpr uintptr_t POOL_STATE_SP   = 0x00645113u; // 4-option spinner (Player/Open/AI/Closed)
+constexpr uintptr_t POOL_COLOR_SP   = 0x006451b3u;
+constexpr uintptr_t POOL_RACE_SP    = 0x00645253u; // 2-option spinner (Human/Alien)
+constexpr uintptr_t OPT_STATE_TBL   = 0x006450afu; // Ghidra: _G_LLM_LOBBY_SPIN_RACE_OPTIONS (names are swapped)
+constexpr uintptr_t OPT_RACE_TBL    = 0x006450a3u; // Ghidra: _G_LLM_LOBBY_SPIN_OPEN_OPTIONS
+constexpr uintptr_t ADDR_RETAIL_CH  = 0x00653633u; // retail children array (12 static entries first)
+constexpr uintptr_t ADDR_RETAIL_PT  = 0x00653663u; // retail slot-pointer array {state,name,race,color}*
+constexpr uintptr_t ADDR_PANEL_W    = 0x00650727u; // llm_ui_widget_00650727: the slot panel (height)
+constexpr uintptr_t ADDR_FONT_H     = 0x0065426bu; // DAT_0065426b: row text height
+constexpr int       STATIC_CHILDREN = 12;
+constexpr int       ROW_WIDGETS     = 6;
+constexpr int       MAX_ROWS        = 8; // retail pools hold 8
+
+constexpr unsigned W_STRIDE = 0x44, SP_STRIDE = 0x14, SLOT_STRIDE_ = 0x39;
+// llm_ui_widget offsets
+constexpr unsigned WO_ACTION = 0x04, WO_FLAGS = 0x08, WO_DRAW = 0x0c, WO_X = 0x1c, WO_Y = 0x20,
+                   WO_W = 0x24, WO_H = 0x28, WO_SPIN = 0x30, WO_LABEL = 0x38, WO_USER = 0x40;
+// retail callbacks / draw functions
+constexpr int32_t CB_KICK = 0x004be552, CB_STATE = 0x004bf65d, CB_RACE = 0x004bf1d9,
+                  CB_COLOR = 0x004bf292, DRAW_PLAIN = 0x004c1100, DRAW_CONTENT = 0x004c1b15;
+
+alignas(4) uint8_t g_team_w[MAX_ROWS][W_STRIDE];
+alignas(4) uint8_t g_team_sp[MAX_ROWS][SP_STRIDE];
+alignas(4) uint8_t g_ping_w[MAX_ROWS][W_STRIDE];
+constexpr int EXTRA_CHILDREN = 1; // mp:U51: the MODE selector, right after the statics
+uintptr_t     g_children[STATIC_CHILDREN + EXTRA_CHILDREN + MAX_ROWS * ROW_WIDGETS + 1];
+int           g_rows_built = 0;
+
+inline int32_t &wf(uintptr_t w, unsigned off) {
+    return *(int32_t *)(w + off);
+}
+
+// ---- mp:U51 -- TEAM spinner per row + MODE selector --------------------------------------------
+//
+// TEAM = llm_lobby_player_slot +0x0c (0 = "-", 1..4 = T1..T4). It rides the 0x38-byte client push
+// (0x0c) and the host snapshot (0x09) with the rest of the slot, and build_players_step memcpys it to
+// Players[].desc+7 (no reader). MODE = host slot 0 +0x07 low byte (0 = FFA, 1 = Team; the slot's `f5`,
+// which nothing reads), so it rides the same snapshot to every client.
+//
+// The spinner draws through llm_ui_widget_draw_content: spinner +0 is a table of cells, cell[value]
+// points at a {wchar_t *text} -- g_team_tbl / g_mode_tbl below. The click action is a DLL callback that
+// follows the colour spinner's pattern (retail 0x004bf292): the HOST writes the slot and raises dirty
+// bit 8 so the dispatch rebroadcasts the snapshot; a CLIENT (own row only) raises bit 8, writes the
+// next value tentatively, pushes (0x0c), and restores -- the authoritative value returns in the
+// snapshot, whose handler clears the bit it finds echoed in slot[local].reserved_0x0.
+constexpr uintptr_t ADDR_DIRTY      = 0x006444c6u; // _G_LLM_LOBBY_DIRTY_FLAG (1 byte)
+constexpr uintptr_t ADDR_PENDING_W  = 0x00654299u; // _G_LLM_UI_MENU_PENDING_WIDGET (llm_ui_widget *)
+constexpr uintptr_t ADDR_PUSH_LOCAL = 0x004bf15cu; // llm_lobby_push_local_slot_state (__watcall, void)
+constexpr unsigned  SLOT_TEAM_OFF = 0x0c, SLOT_MODE_OFF = 0x07, SLOT_STATUS_OFF_ = 0x0b;
+constexpr int       TEAM_OPTIONS = 5;
+constexpr uint8_t   DIRTY_TEAM   = 8;
+
+alignas(4) uint8_t g_mode_w[W_STRIDE];
+alignas(4) uint8_t g_mode_sp[SP_STRIDE];
+const wchar_t  *g_team_txt[TEAM_OPTIONS];
+const wchar_t  *g_mode_txt[2];
+const wchar_t **g_team_tbl_cells[TEAM_OPTIONS]; // cell[v] -> &g_team_txt[v]
+const wchar_t **g_mode_tbl_cells[2];
+void          **g_team_tbl = (void **)g_team_tbl_cells;
+
+void init_team_tables() {
+    using mh::ui::Str;
+    const Str ids[TEAM_OPTIONS] = {Str::LOBBY_TEAM_NONE, Str::LOBBY_TEAM_1, Str::LOBBY_TEAM_2,
+                                   Str::LOBBY_TEAM_3, Str::LOBBY_TEAM_4};
+    for (int i = 0; i < TEAM_OPTIONS; ++i) {
+        g_team_txt[i]       = mh::ui::tr(ids[i]);
+        g_team_tbl_cells[i] = &g_team_txt[i];
+    }
+    g_mode_txt[0]       = mh::ui::tr(Str::LOBBY_MODE_FFA);
+    g_mode_txt[1]       = mh::ui::tr(Str::LOBBY_MODE_TEAM);
+    g_mode_tbl_cells[0] = &g_mode_txt[0];
+    g_mode_tbl_cells[1] = &g_mode_txt[1];
+}
+
+inline uint8_t &dirty_flag() {
+    return *(uint8_t *)ADDR_DIRTY;
+}
+inline uint8_t *slot_at(int i) {
+    return (uint8_t *)(mh::addr::_G_LLM_LOBBY_SLOTS + (uintptr_t)i * SLOT_STRIDE_);
+}
+
+void team_cb_impl() {
+    const uintptr_t w = *(const uintptr_t *)ADDR_PENDING_W;
+    if (!w) return;
+    const uint32_t row = (uint32_t)wf(w, WO_USER);
+    if (row >= (uint32_t)MAX_ROWS) return;
+    uint8_t *slot = slot_at((int)row);
+    if (*(const int *)mh::addr::_G_LLM_NET_IS_HOST) {
+        slot[SLOT_TEAM_OFF] = (uint8_t)((slot[SLOT_TEAM_OFF] + 1) % TEAM_OPTIONS);
+        dirty_flag() |= DIRTY_TEAM;
+        return;
+    }
+    if ((int)row != *(const int *)mh::addr::_G_LLM_LOBBY_LOCAL_SLOT_INDEX) return; // client: own row only
+    if (dirty_flag() & DIRTY_TEAM) return;                                         // one request in flight
+    dirty_flag() |= DIRTY_TEAM;
+    const uint8_t old   = slot[SLOT_TEAM_OFF];
+    slot[SLOT_TEAM_OFF] = (uint8_t)((old + 1) % TEAM_OPTIONS);
+    ((void (*)())ADDR_PUSH_LOCAL)();
+    slot[SLOT_TEAM_OFF] = old; // the authoritative value comes back in the host's snapshot
+}
+
+void mode_cb_impl() {
+    if (!*(const int *)mh::addr::_G_LLM_NET_IS_HOST) return; // host-only
+    uint8_t *slot0       = slot_at(0);
+    slot0[SLOT_MODE_OFF] = (slot0[SLOT_MODE_OFF] != 0) ? 0 : 1;
+    dirty_flag() |= DIRTY_TEAM;
+}
+
+// Watcom __watcall callbacks, no args, returning 1 in EAX: preserve everything around the cdecl body.
+// clang-format off
+__declspec(naked) int team_cb_detour() {
+    __asm {
+        pushad
+        pushfd
+        cld
+        call team_cb_impl
+        popfd
+        popad
+        mov  eax, 1
+        ret
+    }
+}
+__declspec(naked) int mode_cb_detour() {
+    __asm {
+        pushad
+        pushfd
+        cld
+        call mode_cb_impl
+        popfd
+        popad
+        mov  eax, 1
+        ret
+    }
+}
+// clang-format on
+
+// MODE selector geometry: a clone of the lobby's 12th static child (0x0065054b, a hidden+disabled
+// right-panel widget centred under Cancel at ~(501,347)), so it inherits the right panel's own
+// anchoring; only the hidden/disabled bits differ (lobby_team_tick sets disabled on a client).
+void init_mode_widget() {
+    const int       font_h = *(const int *)ADDR_FONT_H;
+    const uintptr_t tmpl   = *(const uintptr_t *)(ADDR_RETAIL_CH + (uintptr_t)(STATIC_CHILDREN - 1) * 4);
+    memset(g_mode_w, 0, W_STRIDE);
+    memset(g_mode_sp, 0, SP_STRIDE);
+    const uintptr_t w  = (uintptr_t)g_mode_w;
+    const uintptr_t sp = (uintptr_t)g_mode_sp;
+    wf(w, WO_X)        = wf(tmpl, WO_X);
+    wf(w, WO_Y)        = wf(tmpl, WO_Y);
+    wf(w, WO_W)        = wf(tmpl, WO_W);
+    wf(w, WO_H)        = font_h;
+    wf(w, WO_FLAGS)    = (wf(tmpl, WO_FLAGS) & ~0xc0) | 0x2; // 0x2 = takes input (Start/Cancel carry it)
+    wf(w, WO_ACTION)   = (int32_t)(uintptr_t)mode_cb_detour;
+    wf(w, WO_DRAW)     = DRAW_CONTENT;
+    wf(w, WO_SPIN)     = (int32_t)sp;
+    wf(sp, 0)          = (int32_t)(uintptr_t)g_mode_tbl_cells;
+    wf(sp, 4)          = 2;
+    wf(sp, 8)          = 0;
+    wf(sp, 0xc)        = 0;
+}
+
+void build_slot_rows_impl() {
+    constexpr uintptr_t A_BUILT = mh::addr::_G_LLM_LOBBY_WIDGETS_BUILT;
+    constexpr uintptr_t A_SLOTS = mh::addr::_G_LLM_LOBBY_SLOTS;
+    uint32_t            n       = (uint32_t)*(const int *)mh::addr::current_map_player_count;
+    if (n > (uint32_t)MAX_ROWS) n = MAX_ROWS;
+    const bool rebuild = *(const uint8_t *)A_BUILT != 0;
+    if (!rebuild) {
+        const int local_id = *(const int *)mh::addr::_G_LLM_NET_LOCAL_PLAYER_INDEX;
+        for (uint32_t i = 0; i < n; ++i) {
+            if (*(const int *)(A_SLOTS + i * SLOT_STRIDE_ + 1) == local_id) {
+                *(int *)mh::addr::_G_LLM_LOBBY_LOCAL_SLOT_INDEX = (int)i;
+                break;
+            }
+        }
+    } else {
+        *(int *)mh::addr::_G_LLM_LOBBY_LOCAL_SLOT_INDEX = 0;
+    }
+
+    // Children: the 12 statics, then the rows (below), then NULL.
+    int nc = 0;
+    for (; nc < STATIC_CHILDREN; ++nc)
+        g_children[nc] = *(const uintptr_t *)(ADDR_RETAIL_CH + (uintptr_t)nc * 4);
+    g_children[nc++]     = (uintptr_t)g_mode_w;
+    int32_t *retail_ptrs = (int32_t *)ADDR_RETAIL_PT;
+    init_mode_widget();
+    init_team_tables();
+
+    const int font_h = *(const int *)ADDR_FONT_H;
+    int       y      = 0x36;
+    for (uint32_t i = 0; i < n; ++i) {
+        const uintptr_t slot = A_SLOTS + i * SLOT_STRIDE_;
+        const uintptr_t ws   = POOL_STATE_W + i * W_STRIDE;
+        const uintptr_t wn   = POOL_NAME_W + i * W_STRIDE;
+        const uintptr_t wr   = POOL_RACE_W + i * W_STRIDE;
+        const uintptr_t wc   = POOL_COLOR_W + i * W_STRIDE;
+        const uintptr_t wt   = (uintptr_t)g_team_w[i];
+        const uintptr_t wp   = (uintptr_t)g_ping_w[i];
+        const uintptr_t sps  = POOL_STATE_SP + i * SP_STRIDE;
+        const uintptr_t spr  = POOL_RACE_SP + i * SP_STRIDE;
+        const uintptr_t spc  = POOL_COLOR_SP + i * SP_STRIDE;
+        const uintptr_t spt  = (uintptr_t)g_team_sp[i];
+        if (rebuild) {
+            ((uint8_t *)slot)[5]   = 1;
+            ((uint8_t *)slot)[0xb] = 0;
+            ((uint8_t *)slot)[6]   = (uint8_t)i;
+        }
+        *(uint8_t *)slot = 0;
+
+        // ---- retail widgets: the same field writes the retail body made, new x / width ----------
+        wf(ws, WO_X) = 0x1f;
+        wf(ws, WO_W) = 0x32;
+        wf(wn, WO_X) = 0x36;
+        wf(wn, WO_W) = 0x66;
+        wf(wr, WO_X) = 0x24;
+        wf(wr, WO_W) = 0x3c;
+        wf(wc, WO_X) = 0x3f;
+        wf(wc, WO_W) = 0x12;
+        wf(ws, WO_Y) = y;
+        wf(wn, WO_Y) = 0;
+        wf(wr, WO_Y) = 0;
+        wf(wc, WO_Y) = 0;
+        y += font_h + 3;
+        wf(ws, WO_H)      = font_h;
+        wf(wn, WO_H)      = font_h;
+        wf(wr, WO_H)      = font_h;
+        wf(wc, WO_H)      = font_h;
+        wf(ws, WO_FLAGS)  = 0x42;
+        wf(wn, WO_FLAGS)  = 0x30002;
+        wf(wr, WO_FLAGS)  = 0x200c2;
+        wf(wc, WO_FLAGS)  = 0x200c0;
+        wf(wn, WO_LABEL)  = 0;
+        wf(wc, WO_LABEL)  = 0;
+        wf(ws, WO_ACTION) = CB_STATE;
+        wf(wn, WO_ACTION) = CB_KICK;
+        wf(wr, WO_ACTION) = CB_RACE;
+        wf(wc, WO_ACTION) = CB_COLOR;
+        wf(wn, WO_DRAW)   = DRAW_PLAIN;
+        wf(wc, WO_DRAW)   = DRAW_CONTENT;
+        wf(wr, WO_DRAW)   = DRAW_CONTENT;
+        wf(ws, WO_DRAW)   = DRAW_CONTENT;
+        wf(wn, WO_SPIN)   = 0;
+        wf(ws, WO_SPIN)   = (int32_t)sps;
+        wf(wr, WO_SPIN)   = (int32_t)spr;
+        wf(wc, WO_SPIN)   = (int32_t)spc;
+        wf(wn, WO_USER)   = (int32_t)i;
+        wf(wr, WO_USER)   = (int32_t)i;
+        wf(ws, WO_USER)   = (int32_t)i;
+
+        // ---- TEAM (mp:U51): a 5-option spinner (-, T1..T4) over slot byte +0x0c. Built hidden +
+        // disabled; lobby_team_tick() sets visibility/enable and the value every lobby frame.
+        memset((void *)wt, 0, W_STRIDE);
+        memset((void *)spt, 0, SP_STRIDE);
+        wf(wt, WO_X)      = 0x6a;
+        wf(wt, WO_W)      = 0x21;
+        wf(wt, WO_H)      = font_h;
+        wf(wt, WO_FLAGS)  = 0x200c2; // keep-prev + hidden (0x80) + disabled (0x40)
+        wf(wt, WO_ACTION) = (int32_t)(uintptr_t)team_cb_detour;
+        wf(wt, WO_DRAW)   = DRAW_CONTENT;
+        wf(wt, WO_SPIN)   = (int32_t)spt;
+        wf(wt, WO_USER)   = (int32_t)i;
+        wf(spt, 0)        = (int32_t)(uintptr_t)g_team_tbl;
+        wf(spt, 4)        = TEAM_OPTIONS;
+        wf(spt, 8)        = 0;
+        wf(spt, 0xc)      = 0;
+
+        // ---- PING: a plain label (llm_ui_widget_draw), no frame, no action. lobby_ping.cpp writes
+        // +0x38. 0x20000 chains from the color widget; 0x40 keeps it out of hit-testing.
+        memset((void *)wp, 0, W_STRIDE);
+        wf(wp, WO_X)     = 0x0c;
+        wf(wp, WO_W)     = 0x20;
+        wf(wp, WO_H)     = font_h;
+        wf(wp, WO_FLAGS) = 0x20042;
+        wf(wp, WO_DRAW)  = DRAW_PLAIN;
+        wf(wp, WO_USER)  = (int32_t)i;
+
+        // ---- spinners (the contents retail wrote) -----------------------------------------------
+        wf(sps, 0)    = (int32_t)OPT_STATE_TBL;
+        wf(sps, 4)    = 4;
+        wf(sps, 8)    = 0;
+        wf(sps, 0xc)  = 0;
+        wf(spr, 0)    = (int32_t)OPT_RACE_TBL;
+        wf(spr, 4)    = 2;
+        wf(spr, 8)    = 0;
+        wf(spr, 0xc)  = 0;
+        wf(spc, 0)    = 0;
+        wf(spc, 4)    = 8;
+        wf(spc, 8)    = 0;
+        wf(spc, 0xc)  = (int32_t)(i & 7);
+        wf(spc, 0x10) = 0x14;
+
+        // ---- publish: retail's array (4/slot, kept for anything that indexes it) + ours (6/slot) -
+        retail_ptrs[i * 4 + 0] = (int32_t)ws;
+        retail_ptrs[i * 4 + 1] = (int32_t)wn;
+        retail_ptrs[i * 4 + 2] = (int32_t)wr;
+        retail_ptrs[i * 4 + 3] = (int32_t)wc;
+        g_children[nc++]       = ws;
+        g_children[nc++]       = wn;
+        g_children[nc++]       = wt;
+        g_children[nc++]       = wr;
+        g_children[nc++]       = wc;
+        g_children[nc++]       = wp; // LAST in the row
+    }
+    retail_ptrs[n * 4]                          = 0;
+    g_children[nc]                              = 0;
+    wf(ADDR_PANEL_W, WO_H)                      = (font_h + 3) * 8;
+    *(uintptr_t *)mh::addr::lobby_widget_origin = (uintptr_t)g_children; // container +0 = children
+    g_rows_built                                = (int)n;
+}
+
+// Watcom __watcall, no args, void: the caller may keep values in any register across the call, so
+// save them all around the cdecl body.
+// clang-format off
+__declspec(naked) void slot_rows_detour() {
+    __asm {
+        pushad
+        pushfd
+        cld
+        call build_slot_rows_impl
+        popfd
+        popad
+        ret
+    }
+}
+// clang-format on
+
 } // namespace
 
 namespace mh {
@@ -222,6 +587,80 @@ bool install_scrollbar_guard() {
 bool install_peer_clear_fix() {
     return install_trampoline(ADDR_PEER_CLEAR_FN, (void *)peer_clear_detour, &g_pc_tramp, 8,
                               entry_claim::exclusive, "the host-Start clear-loop fix");
+}
+
+bool install_slot_rows() {
+    return install_jmp(mh::addr::llm_lobby_build_slot_widgets, (void *)slot_rows_detour,
+                       entry_claim::exclusive, "the mp:U50 lobby slot rows");
+}
+
+void *lobby_slot_ping_widget(int slot) {
+    if (slot < 0 || slot >= g_rows_built) return nullptr;
+    return g_ping_w[slot];
+}
+
+// mp:U51: refresh the TEAM spinners + the MODE selector from the slot records (see the block above).
+void lobby_team_tick() {
+    if (*(void **)mh::addr::_G_LLM_UI_MENU_WIDGET_LIST != (void *)mh::addr::lobby_widget_origin) return;
+    if (g_rows_built <= 0) return;
+    const bool host      = *(const int *)mh::addr::_G_LLM_NET_IS_HOST != 0;
+    const int  local     = *(const int *)mh::addr::_G_LLM_LOBBY_LOCAL_SLOT_INDEX;
+    uint8_t   *slot0     = slot_at(0);
+    const bool team_mode = slot0[SLOT_MODE_OFF] != 0;
+
+    for (int i = 0; i < g_rows_built; ++i) {
+        uint8_t      *slot   = slot_at(i);
+        const uint8_t status = slot[SLOT_STATUS_OFF_];
+        const bool    seated = (status == 1 || status == 2); // HUMAN | AI
+        if (host && (!seated || slot[SLOT_TEAM_OFF] >= TEAM_OPTIONS) && slot[SLOT_TEAM_OFF] != 0) {
+            slot[SLOT_TEAM_OFF] = 0; // a vacated / closed slot forgets its team; the snapshot carries it
+            dirty_flag() |= DIRTY_TEAM;
+        }
+        const uint8_t   team             = (seated && slot[SLOT_TEAM_OFF] < TEAM_OPTIONS) ? slot[SLOT_TEAM_OFF] : 0;
+        const uintptr_t wt               = (uintptr_t)g_team_w[i];
+        wf((uintptr_t)g_team_sp[i], 0xc) = team;
+        int32_t f                        = wf(wt, WO_FLAGS);
+        f                                = seated ? (f & ~0x80) : (f | 0x80); // visible in FFA and Team alike (mp:U51)
+        f                                = (host || (i == local && status == 1)) ? (f & ~0x40) : (f | 0x40);
+        wf(wt, WO_FLAGS)                 = f;
+    }
+    const uintptr_t wm            = (uintptr_t)g_mode_w;
+    wf((uintptr_t)g_mode_sp, 0xc) = team_mode ? 1 : 0;
+    wf(wm, WO_FLAGS)              = host ? (wf(wm, WO_FLAGS) & ~0x40) : (wf(wm, WO_FLAGS) | 0x40);
+}
+
+// ---- mp:U52: a NEW lobby starts with no teams and FFA mode ---------------------------------------------
+//
+// The MODE byte (host slot 0 +0x07) and every TEAM byte (slot +0x0c) have no retail writer, so nothing ever
+// clears them: a host who finished a Team match and created another game would open it in Team mode with
+// the old teams. Run-before llm_lobby_screen_open (shared by the host's new-game start and a client's join):
+// the HOST zeroes them before the lobby's first dispatch. A client's bytes arrive in the host's snapshot.
+// MEASURED (mp_host_u52_relobby.txt): the host Cancel -> Create path ALREADY comes back FFA / "-" with this detour
+// disabled -- retail clears the slot array when the lobby is rebuilt -- so this is insurance for the paths that script
+// does not walk (e.g. back from a finished match), not the fix of an observed bug. A host whose lobby opens with the
+// net-host flag still clear is not covered.
+void *g_so_tramp = nullptr;
+void  on_lobby_open() {
+    if (*(const int *)mh::addr::_G_LLM_NET_IS_HOST == 0) return;
+    slot_at(0)[SLOT_MODE_OFF] = 0;
+    for (int i = 0; i < 8; ++i) slot_at(i)[SLOT_TEAM_OFF] = 0;
+}
+// clang-format off
+__declspec(naked) void lobby_open_detour() {
+    __asm {
+        pushad
+        pushfd
+        call on_lobby_open
+        popfd
+        popad
+        jmp  dword ptr [g_so_tramp] // stolen 8-byte prologue + jmp back
+    }
+}
+// clang-format on
+
+bool install_lobby_open_reset() {
+    return install_trampoline(mh::addr::llm_lobby_screen_open, (void *)lobby_open_detour, &g_so_tramp, 8,
+                              entry_claim::exclusive, "the mp:U52 new-lobby team/mode reset");
 }
 
 bool install_remove_player_slot_guard() {

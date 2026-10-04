@@ -7,7 +7,6 @@ Split out of tools/test_ui.py (tooling:TL-SUITE-SPLIT); `test_ui.py --soak` stil
 """
 
 import argparse
-import glob
 import json
 import os
 import re
@@ -42,6 +41,8 @@ from ui_suite_common import (  # noqa: E402
 # tools/data/save_index.json, so a name printed by the session driver's `--start` resolves here.
 SAVE_STORAGE = machine.SAVE_STORAGE
 
+import _rundir  # noqa: E402 -- the run-dir name contract (SES8 + SES1)
+
 
 def sp_net_text(log_dir):
     """mh_net.log for a PROCESS run dir -- its own, plus every SESSION sibling's the process opened.
@@ -52,18 +53,16 @@ def sp_net_text(log_dir):
     (`<ts>_menu_solo`, the one holding the harness log) keeps only the pre-session lines. The soak's
     clause-6b liveness rule read the process file alone and failed every --soak run at HEAD with
     "liveness signal ABSENT" while the signal sat in the sibling (found by the TL-GATE-D25FX
-    re-record, 2026-09-20). Concatenated, newest last, so a substring search sees the whole run."""
+    re-record, 2026-09-20). Concatenated, newest last, so a substring search sees the whole run.
+
+    SES8 (2026-09-29): the siblings are found by their session.json naming THIS process dir
+    (tools/_rundir.py sessions_of), not by a `*_solo` glob -- a session dir now ends in its match
+    mode (`_host`, `_skirmish`, ...), and a raw stamp compare mixes SES8 and SES1 names wrongly."""
     parts = []
     own = os.path.join(log_dir, "mh_net.log")
     if os.path.isfile(own):
         parts.append(open(own, encoding="utf-8", errors="replace").read())
-    parent = os.path.dirname(log_dir)
-    stamp = os.path.basename(log_dir).split("_")[0]
-    for d in sorted(glob.glob(os.path.join(parent, "*_solo"))):
-        if d == log_dir or "_menu_" in os.path.basename(d):
-            continue
-        if os.path.basename(d).split("_")[0] < stamp:
-            continue  # an older session, not this process's
+    for d in _rundir.sessions_of(log_dir):
         p = os.path.join(d, "mh_net.log")
         if os.path.isfile(p):
             parts.append(open(p, encoding="utf-8", errors="replace").read())
@@ -357,10 +356,13 @@ def hash_fingerprint(harness_log):
     except OSError:
         return None
     with f:
+        fp = None
         for ln in f:
             if ln.startswith("; HASH FINGERPRINT "):
-                return ln.split()[3]
-    return None
+                # The LAST one: a run that refuses hash_kind=2 at its first step re-states kind 1 on
+                # a second fingerprint line (TL-HARN-INCHASH), and that is the one its hashes carry.
+                fp = ln.split()[3]
+    return fp
 
 
 def soak_golden(seg, path, args):
@@ -388,12 +390,19 @@ def soak_golden(seg, path, args):
     import mp_analyze as _m  # TL-GATE8: the hash-input epoch, stamped and refused like fp
 
     ep = _m.harness_input_epoch(seg.get("harness_log") if isinstance(seg, dict) else None)[0]
+    # TL-HARN-INCHASH: the hash KIND (1 = FNV walk, 2 = incremental), stamped and refused like the
+    # epoch. The fingerprint already differs across kinds; this names WHY in the refusal. A golden
+    # without the field predates the item and is kind 1.
+    kind = _m.kind_of(
+        _m.harness_hash_kind(seg.get("harness_log") if isinstance(seg, dict) else None)
+    )
     if not os.path.isfile(path):
         with open(path, "w", encoding="utf-8") as f:
             json.dump(
                 {
                     "hash_fingerprint": fp,
                     "hash_input_epoch": ep,
+                    "hash_kind": kind,
                     "steps": {str(k): v for k, v in cur.items()},
                     "clock": {str(k): v for k, v in clk.items()},
                 },
@@ -409,6 +418,12 @@ def soak_golden(seg, path, args):
     if bad:
         return False, [
             "      STALE GOLDEN: %s -- nothing compared. Delete %s and re-record." % (bad, path)
+        ]
+    bad = _m.kind_mismatch(blob.get("hash_kind"), kind, "the golden", "this run")
+    if bad:
+        return False, [
+            "      REFUSED: %s." % bad,
+            "      Run with the golden's `[harness] hash_kind`, or delete %s and re-record." % path,
         ]
     if fp and oldfp and fp != oldfp:
         return False, [

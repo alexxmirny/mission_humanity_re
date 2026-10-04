@@ -403,7 +403,7 @@ Read the joiner's `logs\<timestamp>_client\mh_net.log` — the failure is named 
 | `handshake failed -- connected, but the peer never answered` | We reached *something* that never spoke the protocol. Most often a tunnel whose far end is down (the host has no game open, or the forward is stale) — **not** usually a key problem. Also an older host build, or our own key being wrong. |
 | `bad HELLO (magic/version N, expected M)` | Build skew — the two sides speak different handshake versions. |
 | `mh_key.txt is unreadable/corrupt` | Fix or delete the file (delete = a fresh key is minted; a launcher install rewrites it on the next launch). |
-| the lobby bounces you back with `Refused: codepage <host>/<yours>` | The host's text codepage is not installed on your machine (`mp:F3c`); the joiner normally adopts the host's automatically. |
+| the lobby bounces you back with `Refused: old client cp N` / `old host cp N` | One side runs a build from before `mp:MP-LANG` (2026-09-29), whose chat is 8-bit codepage text instead of UTF-8. Update the older side. Local `[input] codepage` values no longer need to match. |
 
 On a directly dialled host, `handshake from <ip> -- no HELLO within 5000 ms (scan/probe?)` is
 background noise from the internet, not a problem.

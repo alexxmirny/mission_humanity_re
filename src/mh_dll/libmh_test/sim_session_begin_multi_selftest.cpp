@@ -61,6 +61,7 @@
 
 #include "sim_test_support.h"
 #include "sim_resid_sibling_mocks.h"
+#include "lockstep/turn_engine.h" // mp:U52
 
 #include <cstring>
 #include <string>
@@ -159,6 +160,29 @@ const session_begin_multi_calls g_calls = {
     stub_net_lockstep_sync_delay_stub,
     stub_menu_force_return_to_main,
 };
+
+// ---- U52: a set_relation mock that writes the table the way the translated body does ----------------
+struct SetRelCall {
+    int32_t a, b;
+    uint8_t rel;
+};
+std::vector<SetRelCall> g_set_rel_calls;
+sim_fixture            *g_fx2                          = nullptr;
+bool                    g_seed_after_land_before_speed = false;
+void                    stub_set_relation(int32_t a, int32_t b, uint8_t rel) {
+    g_set_rel_calls.push_back({a, b, rel});
+    if (g_fx2 != nullptr) g_fx2->players_raw[a * 0x34 + 8 + b] = rel;
+    g_seed_after_land_before_speed = (g_game_speed_recompute_count == 0);
+}
+int                       g_fog_recompute_count = 0;
+void                      stub_fog_recompute() { ++g_fog_recompute_count; }
+session_begin_multi_calls make_seed_calls() {
+    session_begin_multi_calls c = g_calls;
+    c.diplomacy_set_relation    = stub_set_relation;
+    c.fog_of_war_recompute      = stub_fog_recompute;
+    return c;
+}
+const session_begin_multi_calls g_calls_seed = make_seed_calls();
 
 void clear_calls() {
     g_scenario_clone_calls.clear();
@@ -600,6 +624,107 @@ void run_session_begin_multi_tests() {
         ck_eq_d(fx.lockstep_adapt_next_time, 0.0 + 4.0,
                 "T14d: lockstep_adapt_next_time IS written on the else branch even though ret was "
                 "negative, 0x00454525-0x00454531");
+    }
+
+    // =================================================================================================
+    // U52 -- the lobby TEAM seed. Pairs (a,b) of ENABLED players (controller_flags != 0), a != b, are
+    // written through the translated set_relation: 1 if both carry the same team 1..4, else 2 ("-" = 0 is
+    // its own team). Self cells untouched. Runs after landing; skipped for the tutorial, with the fix off,
+    // or when no enabled slot has a team. Team mode (the pushed lobby mode) also sets the ally flag.
+    // =================================================================================================
+    {
+        const mh::lockstep::reimpl_fixes saved    = mh::lockstep::fixes();
+        auto                             team_run = [&](bool fix, bool team_mode, int32_t tutorial, const uint8_t(&team)[8],
+                            const uint8_t(&ctrl)[8]) {
+            mh::lockstep::reimpl_fixes f = saved;
+            f.team_relations_fix         = fix;
+            f.lobby_team_mode            = team_mode;
+            mh::lockstep::set_fixes(f);
+            fx.reset();
+            fx.net_local_player_slot     = 0;
+            fx.net_lobby_scan_host_count = 2;
+            fx.tutorial_step             = tutorial;
+            for (int i = 0; i < 8; ++i) {
+                fx.player_desc_slots[i].controller_flags = ctrl[i];
+                fx.player_desc_slots[i]._unnamed_0x7     = team[i];
+            }
+            clear_calls();
+            g_set_rel_calls.clear();
+            g_fog_recompute_count     = 0;
+            fx.player_control_mask    = 0; // retail session start: nobody shares vision,
+            fx.game_human_player_mask = 1; // and only the local player (slot 0) is in the view mask
+            fx.is_human               = 1;
+            g_fx2                     = &fx;
+            g_fx                      = &fx;
+            uint8_t   blob[32]        = {};
+            sim_store own             = fx.store();
+            detail::session_begin_multi(fx.view(), own, g_calls_seed, blob, mock_ssr_calls(), mock_ngi_calls(),
+                                                                    mock_lpop_calls(), mock_pmsi_calls());
+        };
+        auto          rel   = [&](int a, int b) { return (uint32_t)fx.players_raw[a * 0x34 + 8 + b]; };
+        const uint8_t C4[8] = {7, 7, 0xb, 7, 0, 0, 0, 0}; // four enabled players
+        const uint8_t T0[8] = {};
+
+        // mixed teams: 0,1 -> T1; 2 -> T2; 3 -> "-"
+        const uint8_t TM[8] = {1, 1, 2, 0, 0, 0, 0, 0};
+        team_run(true, true, 0, TM, C4);
+        ck_eq((uint32_t)g_set_rel_calls.size(), 12u, "U52a: 4 enabled players -> 12 ordered pairs (a != b)");
+        ck_eq(rel(0, 1), 1u, "U52b: same team 1 -> allied (0->1)");
+        ck_eq(rel(1, 0), 1u, "U52b: ... and the reverse direction (1->0)");
+        ck_eq(rel(0, 2), 2u, "U52c: different teams -> enemy (0->2)");
+        ck_eq(rel(2, 0), 2u, "U52c: ... reverse (2->0)");
+        ck_eq(rel(3, 0), 2u, "U52d: a '-' player is enemy to a teamed player (3->0)");
+        ck_eq(rel(0, 3), 2u, "U52d: ... and the reverse (0->3)");
+        ck_eq(rel(3, 3), 0u, "U52e: self cell not touched");
+        ck_eq(rel(0, 4), 0u, "U52f: a disabled slot (controller_flags 0) is not paired");
+        ck_eq(rel(4, 0), 0u, "U52f: ... either direction");
+        ck_eq((uint32_t)fx.mp_ally_victory_rule_flag, 1u, "U52g: Team mode sets the ally-victory flag");
+        ck(g_seed_after_land_before_speed, "U52o: the seed ran before game_speed_recompute");
+        // vision: local player 0 is on T1 with player 1 -> it shares with 1 (control mask) and sees 1 (view masks)
+        ck_eq((uint32_t)fx.player_control_mask, 0x02u, "U52v1: PLAYER_CONTROL_MASK = my teammates (slot 1)");
+        ck_eq((uint32_t)fx.game_human_player_mask, 0x02u, "U52v2: view mask gains my teammates (the body's own set_human(me) is a mock here)");
+        ck_eq(fx.is_human, 0x02u, "U52v3: is_human mirrors the view mask");
+        ck_eq((uint32_t)g_fog_recompute_count, 1u, "U52v4: the fog is recomputed once after seeding");
+
+        // vision follows the team in FFA too; a '-' local player has no teammates
+        team_run(true, false, 0, TM, C4);
+        ck_eq((uint32_t)fx.player_control_mask, 0x02u, "U52v5: FFA with teams seeds vision the same way");
+        {
+            const uint8_t TL[8] = {0, 1, 1, 0, 0, 0, 0, 0}; // local slot 0 is '-'
+            team_run(true, true, 0, TL, C4);
+            ck_eq((uint32_t)fx.player_control_mask, 0u, "U52v6: a '-' local player shares with nobody");
+            ck_eq((uint32_t)fx.game_human_player_mask, 0u, "U52v6: ... and its view mask is not touched");
+            ck_eq((uint32_t)g_fog_recompute_count, 0u, "U52v6: ... and the fog is not touched");
+        }
+
+        // two '-' players are NOT allied with each other
+        const uint8_t TD[8] = {0, 0, 1, 1, 0, 0, 0, 0};
+        team_run(true, false, 0, TD, C4);
+        ck_eq(rel(0, 1), 2u, "U52h: two '-' players are enemies (each is its own team)");
+        ck_eq(rel(2, 3), 1u, "U52h: two T1 players are allied");
+        ck_eq((uint32_t)fx.mp_ally_victory_rule_flag, 0u, "U52i: FFA with teams: ally-victory flag stays 0 (last player standing)");
+
+        // no team anywhere -> retail relations untouched
+        team_run(true, true, 0, T0, C4);
+        ck_eq((uint32_t)g_set_rel_calls.size(), 0u, "U52j: no slot has a team -> the seed does not run");
+        ck_eq((uint32_t)fx.mp_ally_victory_rule_flag, 0u, "U52j: ... and Team mode alone does not set the flag/lock");
+        // a team on a DISABLED slot only does not count
+        const uint8_t TDIS[8] = {0, 0, 0, 0, 3, 0, 0, 0};
+        team_run(true, true, 0, TDIS, C4);
+        ck_eq((uint32_t)g_set_rel_calls.size(), 0u, "U52k: a team on a disabled slot does not trigger the seed");
+        // team values above 4 count as '-'
+        const uint8_t TBIG[8] = {9, 9, 0, 0, 0, 0, 0, 0};
+        team_run(true, false, 0, TBIG, C4);
+        ck_eq((uint32_t)g_set_rel_calls.size(), 0u, "U52l: an out-of-range team byte reads as '-' (no team)");
+
+        // tutorial and fix-off
+        team_run(true, true, 3, TM, C4);
+        ck_eq((uint32_t)g_set_rel_calls.size(), 0u, "U52m: the tutorial path (tutorial_step != 0) is never seeded");
+        ck_eq((uint32_t)fx.player_control_mask, 0u, "U52m: ... vision included");
+        team_run(false, true, 0, TM, C4);
+        ck_eq((uint32_t)g_set_rel_calls.size(), 0u, "U52n: fix off -> retail, nothing seeded");
+        ck_eq((uint32_t)fx.mp_ally_victory_rule_flag, 0u, "U52n: ... and the flag stays 0");
+        mh::lockstep::set_fixes(saved);
     }
 }
 

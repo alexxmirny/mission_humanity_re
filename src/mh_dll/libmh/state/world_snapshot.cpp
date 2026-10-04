@@ -10,6 +10,7 @@
 #include "state/nav_trailer.h"   // FORMAT 2's carried map-region decomposition
 #include "state/region_view.h"
 #include "state/state_sink.h"
+#include "state/world_fixup.h" // FORMAT 2's optional fixup trailer (mp:X3a)
 
 namespace mh::state::world {
 namespace {
@@ -189,7 +190,7 @@ size_t blob_size() {
 }
 
 size_t capture_capacity() {
-    return blob_size() + mh::state::nav::MAX_TRAILER_BYTES;
+    return blob_size() + mh::state::nav::MAX_TRAILER_BYTES + FIXUP_MAX_TRAILER_BYTES;
 }
 
 uint64_t canonical_hash() {
@@ -277,6 +278,29 @@ int capture(void *buf, size_t cap, size_t *out_len, const capture_params &p) {
     out->nav_offset = static_cast<uint32_t>(nav_at);
     out->nav_len    = static_cast<uint32_t>(nav_len);
     *out_len        = nav_at + nav_len;
+
+    // ---- THE FIXUP TRAILER (mp:X3a, additive) ----------------------------------------------------
+    //
+    // Classifies every carried dword against THIS process's own address map and appends the result
+    // after the nav trailer. It reads the BLOB'S block payload (a private snapshot), never live
+    // memory, and it never writes a byte before `nav_at + nav_len` -- the hashed bytes and the
+    // content hash are untouched by construction. A capture that overflows the trailer REFUSES: a
+    // partial population is exactly the failure the trailer exists to end.
+    const size_t fix_at  = *out_len;
+    size_t       fix_len = 0;
+    int          frc     = 0;
+    if (p.map != nullptr) {
+        frc = fixup_capture(d, static_cast<uint8_t *>(buf) + fix_at, cap - fix_at, &fix_len, *p.map);
+    } else {
+        addr_map *real = new addr_map;
+        frc            = build_real_addr_map(*real)
+                             ? fixup_capture(d, static_cast<uint8_t *>(buf) + fix_at, cap - fix_at, &fix_len, *real)
+                             : -1;
+        delete real;
+    }
+    if (frc != 0) return WORLD_ERR_FIXUP_CAPTURE;
+    out->fixup_len = static_cast<uint32_t>(fix_len);
+    *out_len       = fix_at + fix_len;
     return WORLD_OK;
 }
 
@@ -295,6 +319,14 @@ int import_nav(const void *blob, size_t n) {
 
 int import(const void *blob, size_t n) {
     return mh::state::blob::import <world_policy, blob_header>(blob, n);
+}
+
+// mp:X3c: a resync import over a LIVE session. The session latch (boot::session_begun) is a policy
+// answer; this entry is the one place that answers differently, and it says so in the name.
+int import_resync(const void *blob, size_t n) {
+    mh::state::blob::import_policy pol;
+    pol.allow_session_begun = true;
+    return mh::state::blob::import <world_policy, blob_header>(blob, n, pol);
 }
 
 } // namespace mh::state::world

@@ -1,0 +1,71 @@
+# mp:MP-LANG lobby follow-up -- TWO-PEER LOBBY chat in UTF-8, both directions, across two codepages.
+#
+# The claim: the lobby's own chat field (a menu edit field, NOT the in-game line) is typed, edited,
+# echoed, sent and received as UTF-8, independent of either peer's codepage. This peer (the host) runs
+# the process codepage (CP1252 on the rig) -- which has NO byte for any Cyrillic letter, so before the
+# follow-up the six keystrokes below typed NOTHING useful here (and in a name field, Latin letters).
+# The client pins CP1250.
+#
+# The line also exercises every edit the field does itself on a multi-byte character: `ы` + backspace
+# (a 2-byte erase), a left arrow over `ź` (a 2-byte step), `!` typed mid-line by the ORIGINAL (ASCII)
+# at a cursor our edits placed, and End (the original's own re-measure over the decoded line). The
+# field buffer is asserted byte for byte before Enter; the local echo and the client's reply are
+# asserted as code points in the lobby log (`wlobby`), and both frames are captured.
+#
+# Lanes: both peers from MH_FONT_MERGE_DIR (the merged install -- glyphs for Cyrillic AND Polish).
+# Runner: test_ui.py lobby_chat_utf8
+
+settled value:110
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+settled Create
+clickl Create
+present Game name
+settled Ok
+clickl Ok
+present Available maps
+settled Ok
+clickl Ok
+
+present Network players
+peers 1
+awaitsignal lobby
+enabled Start
+settled Start
+
+# Open the lobby chat field and type "Привет Łódź ok" with the edits described above.
+clickl Enter message:
+layout 00000419
+type Приветы
+key 0x0e
+field lobby hex:d09fd180d0b8d0b2d0b5d182
+key 0x39
+layout 00000415
+type Łódź
+key 0xcb
+layout default
+type !
+key 0xcf
+key 0x39
+type ok
+# 24 bytes: d09f d180 d0b8 d0b2 d0b5 d182 | 20 | c581 c3b3 64 21 c5ba | 20 | 6f 6b
+field lobby hex:d09fd180d0b8d0b2d0b5d18220c581c3b36421c5ba206f6b
+# The field itself, mid-edit: the whole line drawn from the UTF-8 buffer, the caret after "ok".
+capture h_lobby_field
+key 0x1c
+# The LOCAL echo, decoded, WITH its sender: "<02>host:<01> Привет Łód!ź ok" as code points (fmt
+# 0x0050309d is L"<02>%s:<01> %s", <0N> = the control unit U+000N). The name is the part llm_lobby_chat_send_cb reads from
+# _G_LLM_NET_ROSTER_LIVE[local slot].name -- empty (": Привет") until mh.dll mirrored the lobby slot
+# names into the roster (mp:MP-ECHO-NAME).
+wlobby hex:020068006f00730074003a00010020001f044004380432043504420420004101f30064002100
+signal hostsent
+
+# The client's reply, "Żółw Мир" written properly (Polish + Cyrillic), as code points, named "client"
+# (the RX path names the sender from the lobby slot record).
+awaitsignal clientsent
+wlobby hex:020063006c00690065006e0074003a00010020007b01f3004201770020001c0438044004
+capture h_lobby_chat
+log MP-LANG LOBBY HOST: typed + edited a UTF-8 lobby line under cp1252 and received the client's under cp1250
+end

@@ -1,0 +1,4 @@
+{
+  "_why": "no_net_boot's own-IP rect: the right-hand MP panel's header renders THIS MACHINE's adapter IP (192.168.0.199 here), which setup.dat pinning cannot touch. It sits above the status box whose wrapped lines this row asserts (y~155-180).",
+  "capture_sw1_browser_ru.png": [[388, 46, 226, 48]]
+}

@@ -557,6 +557,7 @@ int run_maptest(int port) {
             int            leave;         // the between-hook sends a LEAVE instead of a JOIN
             unsigned       dead;          // mp:X2f: bit p = the transport dropped peer p's link
             int            join_in_probe; // mp:X2f: the liveness probe publishes a JOIN mid-probe
+            unsigned       cancelled;     // mp:X2i: bit p = the pump asked the module to cancel peer p
         };
         static Rec          r;
         const uint8_t       none_h[MAP_HASH_BYTES] = {0};
@@ -577,6 +578,7 @@ int run_maptest(int port) {
             hk.between         = nullptr;
             hk.join_prepublish = nullptr;
             hk.alive           = nullptr;
+            hk.cancel          = nullptr;
             maps::set_pump_hooks_for_test(&hk);
         };
 
@@ -692,6 +694,47 @@ int run_maptest(int port) {
         checkf(r.sends == 1 && r.last_peer == 1,
                "H10: a JOIN published DURING the liveness probe is not reaped by it (sends=%d)",
                r.sends);
+
+        // H11 (mp:X2i): a LEAVE that leaves the link up must stop the channel-C transfer to that peer.
+        // host_on_leave runs on the recv path and only marks it; the PUMP (main thread) calls the
+        // module's cancel, exactly once, for the leaver only, and never for a peer that is still seated.
+        auto cancel_hook = [](int peer, void *) {
+            r.cancelled |= 1u << peer;
+            return 1;
+        };
+        begin();
+        hk.cancel = cancel_hook;
+        maps::host_pump_for_test(); // session_reset marks every seat for a cancel; drain that first
+        r.cancelled = 0;
+        maps::host_on_join(1, "Bob", mine_h);
+        maps::host_on_join(2, "Eve", host_h);
+        maps::host_pump_for_test();
+        checkf(r.sends == 1 && r.last_peer == 1 && r.cancelled == 0u,
+               "H11: with nobody gone the pump cancels nothing (sends=%d cancelled=%x)", r.sends,
+               r.cancelled);
+        maps::host_on_leave(1); // Bob LEAVEs mid-download but stays linked (no dead bit)
+        checkf(r.cancelled == 0u, "H11: host_on_leave itself does not touch the module (recv path)");
+        maps::host_pump_for_test();
+        checkf(r.cancelled == (1u << 1),
+               "H11: the next pump cancelled Bob's transfer and only Bob's (cancelled=%x)", r.cancelled);
+        r.cancelled = 0;
+        maps::host_pump_for_test();
+        checkf(r.cancelled == 0u, "H11: ...once: a later pump does not cancel again (cancelled=%x)",
+               r.cancelled);
+        // A transport-dropped seat is released by the reap and its transfer is stopped the same way.
+        begin();
+        hk.cancel = cancel_hook;
+        hk.alive  = alive_hook;
+        maps::host_pump_for_test();
+        r.cancelled = 0;
+        maps::host_on_join(1, "Bob", mine_h);
+        maps::host_pump_for_test();
+        r.dead = 1u << 1;
+        maps::host_pump_for_test(); // reaps Bob
+        maps::host_pump_for_test(); // drains the cancel
+        checkf(r.cancelled == (1u << 1), "H11: a seat reaped as gone at the transport is cancelled too (%x)",
+               r.cancelled);
+        r.dead = 0;
 
         maps::set_pump_hooks_for_test(nullptr);
         maps::set_can_carry_for_test(-1);

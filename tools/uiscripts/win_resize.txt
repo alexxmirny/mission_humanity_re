@@ -1,0 +1,32 @@
+# PT-GFX3: the windowed mode is user-resizable, the frame scales into the new client area, and a
+# click at a button's VISIBLE (scaled, letterboxed) position still activates that button.
+#
+# Run with `--extra-ini tools/uiscripts/ini/win_resize.ini`: backend=own (gdi), window=windowed,
+# no_window=0 (the owned device only owns geometry on a mapped window), [input] mouse_absolute=1.
+#
+# 1. The window opens at the mode's native client size, 640x480.
+# 2. `winsize 960 800` resizes it the way a player's border drag does (WM_ENTERSIZEMOVE, the resize,
+#    WM_EXITSIZEMOVE). The client stays 960x800 -- the owned device no longer snaps it back -- and the
+#    640x480 frame is drawn at 1.5x: 960x720, 40 px black bars top and bottom (fit_image_rect).
+# 3. NETWORK GAME (value 110) is at game (112,192), so the player sees it at client
+#    (112*1.5, 40+192*1.5) = (168,328). `wmclick 168 328` posts the click THERE, in client pixels as
+#    the OS would; the subclass maps it to game (112,192) and the menu advances to the player-name
+#    screen. Unmapped, the game would read (168,328) as a game point, which is not NETWORK GAME.
+# The captures read the framebuffer upstream of the presenter, so the first one is the ordinary main
+# menu (the resize changes presentation only), the second the player-name screen.
+
+settled value:110
+winclient 640 480
+winsize 960 800
+winclient 960 800
+present value:110
+settled value:110
+capture wr1_menu_resized
+
+wmclick 168 328
+present Player name
+settled Ok
+capture wr2_playername
+
+log win resize COMPLETE -- resized client 960x800 kept, click at the scaled position activated NETWORK GAME
+end

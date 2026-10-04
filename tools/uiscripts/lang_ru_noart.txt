@@ -1,0 +1,55 @@
+# mods:LANG2 FALLBACK -- the EN exe with a RU language pack that has NO 7-button menu art
+# (`[lang] pack=ru_noart`, built by `python src/formats/langpack.py build --id ru_noart --no-art`: the
+# retail RU pack's shape, whose MenuBck2.gfx is byte-identical to its 6-button MenuBck1.gfx).
+#
+# MH_LangPack_MenuHas7ButtonArt() == 0, so mp_menu.cpp does NOT redirect the background to MENUBCK2
+# and does NOT shift the four lower buttons 40 px: the six stock records stay exactly where the RU art
+# paints their labels, and the network widget takes the free 7th row below ВЫХОД (y=337) and draws
+# its own 1 px frame + the label "СЕТЕВАЯ ИГРА" (mods:LANG4: mh.dll's string table, key
+# menu.network_game from lang/ru_noart/mh_strings.txt, upper-cased like the painted labels; it was the
+# pack's K_MENU_Players "Игроки в сети" before the table existed).
+#
+# The row SKIPS by name without that pack (ui_suite_common.lang_pack_noart_precondition).
+#
+# WHAT A GREEN MEANS:
+#   * ln1_menu -- the RU 6-button art, unshifted, plus the self-drawn label in row 7.
+#   * the six stock `hovered` gates -- the cursor on each PAINTED label at its STOCK row
+#     (y = 97 + 40k + 15, k = 0..5) hovers exactly that button: ВСТУПЛЕНИЕ i, НОВАЯ ИГРА g, ОБУЧЕНИЕ t,
+#     ЗАГРУЗИТЬ ИГРУ l, ТИТРЫ c, ВЫХОД q. A restack (the 7-button path wrongly taken) puts ОБУЧЕНИЕ's
+#     hotspot one row down and fails the third gate by name.
+#   * row 7 (y=352) hovers the network widget (value 110); ln2_net_hover is its lit frame.
+#   * ln3_name -- clicking it reaches the player-name screen ("Ok" is "Ok" in the RU text table too).
+
+settled value:105
+cursor 600 450
+capture ln1_menu
+
+cursor 112 112
+cursor 112 112
+hovered value:105
+cursor 112 152
+cursor 112 152
+hovered value:103
+cursor 112 192
+cursor 112 192
+hovered value:116
+cursor 112 232
+cursor 112 232
+hovered value:108
+cursor 112 272
+cursor 112 272
+hovered value:99
+cursor 112 312
+cursor 112 312
+hovered value:113
+cursor 112 352
+cursor 112 352
+hovered value:110
+capture ln2_net_hover
+
+click 112 352
+settled Ok
+cursor 600 450
+capture ln3_name
+log LANG2 FALLBACK: 6-button RU art unshifted, self-drawn network button in row 7 reaches the name screen
+end

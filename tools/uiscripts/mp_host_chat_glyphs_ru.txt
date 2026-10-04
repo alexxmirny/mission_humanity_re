@@ -1,0 +1,55 @@
+# mods:LANG3 -- mp_host_chat_glyphs.txt (mp:F3b) on the RU LANGUAGE PACK: the EN exe with `[lang]
+# pack=ru` (built by `python src/formats/langpack.py build`), whose mh_ex carries the RU fonts merged
+# with the EN Latin accents (fnt.merge_onto) and the RU text table. Same walk, same Cyrillic line, same
+# CP1251 pin; what differs is every dialog label, which is now Russian -- so the waits/clicks name the
+# pack's own initlang TEXT (K_MENU_PlayersTitle "Имя игрока", K_MENU_CreateGame "Создать игру",
+# K_MENU_GamesString "Имя игры", K_MENU_MapsAvailable "Доступные карты", K_MENU_Players "Игроки в
+# сети", K_MENU_Start "Начать"; K_MENU_Ok stays "Ok"). A non-ASCII label is matched as UTF-16 by
+# ui_drive.cpp's wide_label_matches (2026-09-29); before that, no Cyrillic label could match at all.
+#
+# Its own script (not mp_host_chat_glyphs.txt with a different ini) because the labels differ and a
+# shared script would share -- and clobber -- one baseline directory across two lane sources.
+#
+# Runner: test_ui.py chat_glyphs_ru (SKIPS by name without a full RU pack in the polygon).
+
+settled value:110
+clickv 110
+present Имя игрока
+settled Ok
+clickl Ok
+settled Создать
+clickl Создать
+present Имя игры
+settled Ok
+clickl Ok
+present Доступные карты
+settled Ok
+clickl Ok
+
+present Игроки в сети
+peers 1
+awaitsignal lobby
+enabled Начать
+settled Начать
+capture h_lobby
+clickl Начать
+
+absent Игроки в сети
+gamemode 2
+# The same sim gate both halves of every other MP pair use, so the two peers are at one sim moment
+# before anything is typed.
+gameclock 6000
+
+# Enter opens the chat line; six Cyrillic scancodes go through the drain F3 owns; the buffer is read
+# BEFORE the submit, because submitting pushes the line to history and clears it.
+key 0x1c
+layout 00000419
+type Привет
+field chat hex:d09fd180d0b8d0b2d0b5d182
+key 0x1c
+layout default
+# Tell the client the line is on the wire, so its own wait is for a message that has actually been
+# sent rather than for a timeout.
+signal chatsent
+log LANG3 HOST: sent a UTF-8 Cyrillic chat line (MP-LANG) on the RU language pack
+end

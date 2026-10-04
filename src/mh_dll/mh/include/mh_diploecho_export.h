@@ -38,6 +38,14 @@ extern "C" {
 // fails the process.
 int MH_DiploEcho_Install(void);
 
+// mp:U46 -- splice the diplomacy Apply's row walk so it advances for every non-self slot (AI/empty
+// slots included), matching the builder. Same contract as MH_DiploEcho_Install; `[net] diplo_row_fix`.
+int MH_DiploRows_Install(void);
+
+// mp:U52 -- grey the diplomacy dialog's relation column when the match is in Team mode (relations are locked
+// by the sim). Wraps llm_ui_diplomacy_screen_build with a run-after detour; `[net] team_relations_fix`.
+int MH_DiploLock_Install(void);
+
 #ifdef __cplusplus
 }
 #endif

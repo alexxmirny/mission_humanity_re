@@ -1,0 +1,66 @@
+# mp:U48 HOST -- an arrow key released WHILE the lockstep wait overlay is up must stop the scroll.
+#
+# Retail bug: llm_net_lockstep_wait_player_overlay_show (and the dismiss / sync / menu-overlay-frame paths)
+# run llm_net_chat_input_process, which drains the whole key ring and throws every key-UP away. The
+# strategic input latches _G_LLM_CAM_SCROLL_LEFT_HELD on an arrow DOWN and clears it only on the matching
+# UP, so an UP eaten by the overlay leaves the latch set and the camera scrolls by itself after the stall.
+# Fix: seams/ui_chat_input.cpp H7, `[input] scroll_keyup_rescue` (default 1).
+#
+# THE STALL IS FORCED, NOT WAITED FOR. `log HOST scroll_stall: hold start` is the registry row's shim
+# trigger for `blackhole c2s` (client -> host): the host stops receiving the client's horizon, so ITS sim
+# stalls at the horizon and the wait overlay opens while `keyhold` is still holding LEFT (0x4b). `keyhold`
+# injects the UP on its last present, i.e. inside the stall. `stalled 0` is the proof the stall was still
+# in force at the release (it aborts the script otherwise -- a run whose stall ended early would prove
+# nothing). The `released in stall` log line lifts the blackhole (second trigger), the sim resumes, and
+# `gameclock` waits for real map frames.
+#
+# THE ASSERTION IS THE post_check (tools/check_cam_trace.py --expect-held L ...): the L latch was set with
+# the camera moving, and was OBSERVED CLEARING afterwards. The negative arm (`scroll_keyup_rescue=0`) keeps
+# the latch set to the end of the run and must go RED on the same clause.
+#
+# Pair with mp_client_scroll_stall.txt.
+
+settled value:110
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+settled Create
+clickl Create
+present Game name
+settled Ok
+clickl Ok
+present Available maps
+settled Ok
+clickl Ok
+
+present Network players
+peers 1
+awaitsignal lobby
+enabled Start
+settled Start
+clickl Start
+
+absent Network players
+gamemode 2
+gameclock 6000
+# the cursor is centred first so no CAM_EDGE_* latch can muddy the held= column
+cursorhold 320 240 30
+log HOST scroll_stall: hold start
+keyhold 0x4b 600
+stalled 0
+# (c) chat still works IN the stall: the rescue peeks, it never consumes, so Enter + text still reach the
+# chat line through the overlay's own pump. `field chat` waits for the exact buffer (abort on timeout).
+key 0x1c
+type ho
+field chat hex:686f
+key 0x1c
+log HOST scroll_stall: released in stall
+# 240 more presents: the UP sits in the ring until a frame drains it, and the clear (or the stuck latch) needs
+# frames to be SEEN in the trace. (gameclock is no help here: the hold itself already ran the clock past any
+# fixed target.)
+cursorhold 320 240 240
+capture s1_resumed
+log HOST scroll_stall: resumed
+signal hostdone
+end

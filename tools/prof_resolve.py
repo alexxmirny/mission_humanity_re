@@ -16,6 +16,7 @@ An mh.exe RVA is its Ghidra VA directly (image base 0x400000 is already folded i
 symbol table uses), so the lookup is a range search over the exported function list.
 
 Usage:  python tools/prof_resolve.py <run-dir-or-log>
+        python tools/prof_resolve.py --addrs <file>   (lines: `<module> <rva-hex> <count>`)
 """
 
 import bisect
@@ -29,12 +30,12 @@ SYMS = os.path.join(REPO, "docs", "symbols.md")
 EXE_BASE = 0x400000
 
 
-def load_map():
+def load_map(path=MAP):
     """[(rva, name)] sorted, from the linker map's 'Publics by Value' table."""
-    if not os.path.isfile(MAP):
+    if not os.path.isfile(path):
         return []
     out, seen = [], False
-    with open(MAP, encoding="utf-8", errors="replace") as f:
+    with open(path, encoding="utf-8", errors="replace") as f:
         for ln in f:
             if "Publics by Value" in ln:
                 seen = True
@@ -80,10 +81,41 @@ def nearest(table, addr):
     return table[i][1], addr - table[i][0]
 
 
+def resolve_addrs(path):
+    """--addrs FILE: resolve `<module> <rva-hex> <count>` lines (one per line, e.g. exported from a WPR
+    ETL by an external tool; the RVA is module-relative). Modules without a map are printed raw."""
+    maps = {
+        "mh.dll": MAP,
+        "mh_harness.dll": os.path.join(os.path.dirname(MAP), "mh_harness.map"),
+        "mh_net.dll": os.path.join(os.path.dirname(MAP), "mh_net.map"),
+    }
+    tables, bases = {}, {}
+    for mod, mp in maps.items():
+        t = load_map(mp)
+        tables[mod] = t
+        bases[mod] = (min(k for k, _v in t) & ~0xFFFF) if t else 0
+    exe = load_exe_syms()
+    for ln in open(path, encoding="utf-8", errors="replace"):
+        f = ln.split()
+        if len(f) < 3:
+            continue
+        mod, rva, hits = f[0].lower(), int(f[1], 16), f[2]
+        name, off = None, 0
+        if mod in ("mh.focus.exe", "mh.exe"):
+            name, off = nearest(exe, rva + EXE_BASE)
+        elif tables.get(mod):
+            name, off = nearest(tables[mod], rva + bases[mod])
+        where = "%s+0x%x" % (name, off) if name else ""
+        print("%-14s +%08X  %7s  %s" % (mod, rva, hits, where))
+    return 0
+
+
 def main():
     if len(sys.argv) < 2:
         print(__doc__)
         return 2
+    if sys.argv[1] == "--addrs" and len(sys.argv) > 2:
+        return resolve_addrs(sys.argv[2])
     path = sys.argv[1]
     if os.path.isdir(path):
         path = os.path.join(path, "mh_harness.log")

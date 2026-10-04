@@ -21,6 +21,9 @@
    "name": "MH_Harness_OnSimTick"
   },
   {
+   "name": "MH_Harness_OnWorldSync"
+  },
+  {
    "name": "MH_Harness_RebindLandPlayers"
   },
   {
@@ -200,6 +203,15 @@
    ]
   },
   {
+   "export": "MH_Lockstep_HorizonHold",
+   "mangled": "_MH_Lockstep_HorizonHold",
+   "pretty": "_MH_Lockstep_HorizonHold",
+   "slot": "MH_Lockstep_HorizonHold",
+   "used_by": [
+    "harness.obj"
+   ]
+  },
+  {
    "export": "MH_Lockstep_StepPin",
    "mangled": "_MH_Lockstep_StepPin",
    "pretty": "_MH_Lockstep_StepPin",
@@ -249,6 +261,15 @@
    "mangled": "_MH_RunDir",
    "pretty": "_MH_RunDir",
    "slot": "MH_RunDir",
+   "used_by": [
+    "harness.obj"
+   ]
+  },
+  {
+   "export": "MH_Seam_LeaveForExit",
+   "mangled": "_MH_Seam_LeaveForExit",
+   "pretty": "_MH_Seam_LeaveForExit",
+   "slot": "MH_Seam_LeaveForExit",
    "used_by": [
     "harness.obj"
    ]

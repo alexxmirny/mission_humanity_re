@@ -241,7 +241,13 @@ void player_remove_timeout(const emit_state &es, const emit_calls &calls, int32_
 } // namespace detail
 
 // ---- production entry points (bound to the live game state) ----------------------------------------
+namespace {
+double (*g_extend_floor)(double) = nullptr;
+}
+void set_extend_floor(double (*floor_fn)(double)) { g_extend_floor = floor_fn; }
+
 void send_lockstep_extend(double horizon) {
+    if (g_extend_floor) horizon = g_extend_floor(horizon);
     // C8-d: the liveness counter is at the PRODUCTION ENTRY, not the entry thunk -- see the long
     // note at turn_engine.cpp's production entry points. A seam reached only from inside the
     // closure never touches its entry once the internal edges are direct.

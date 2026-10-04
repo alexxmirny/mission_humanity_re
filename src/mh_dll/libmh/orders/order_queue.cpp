@@ -1,11 +1,14 @@
 #include "orders/order_queue.h"
-#include "state/host_api.h" // LIFT-TABLE S6/S7: these callees are host-API entries now
+#include "orders/admission_log.h" // mp:X3c: the PENDING-admission log (observe-only taps below)
+#include "state/host_api.h"       // LIFT-TABLE S6/S7: these callees are host-API entries now
 
-#include "addr/mh_export.gen.h"  // MH_EXPORT_REPLACE / the entry-thunk shapes
-#include "addr/mh_calls.gen.h"   // typed callables for the original functions we still call OUT to
-#include "addr/mh_regions.gen.h" // the state region REGISTRY -- where this module's state lives
-#include "orders/order_codec.h"  // ST5: the ONE order-record layout, shared with the wire
-#include "sim/rng_trace.h"       // LIB-REF step-5000: the ORDER-QUEUE COUNT LEDGER (see below)
+#include "addr/mh_export.gen.h"   // MH_EXPORT_REPLACE / the entry-thunk shapes
+#include "addr/mh_calls.gen.h"    // typed callables for the original functions we still call OUT to
+#include "addr/mh_regions.gen.h"  // the state region REGISTRY -- where this module's state lives
+#include "orders/order_codec.h"   // ST5: the ONE order-record layout, shared with the wire
+#include "lockstep/turn_engine.h" // mp:U54: fixes().spectate_after_defeat
+#include "mh_spectate.h"          // mp:U54: the spectator status bits
+#include "sim/rng_trace.h"        // LIB-REF step-5000: the ORDER-QUEUE COUNT LEDGER (see below)
 
 #include <cstdarg>
 #include <cstdio>
@@ -132,6 +135,9 @@ void say(const char *fmt, ...) {
 void set_logger(void (*fn)(const char *)) { g_log = fn; }
 
 namespace {
+
+bool        g_admin_dedup_exempt = false; // mp:U45, see set_admin_dedup_exempt
+inline bool is_diplo_admin(uint16_t code) { return code == 0xf4 || code == 0xf5; }
 
 // The original moves records with `MOV ECX,0x11 / REP MOVSD` -- 17 dwords, the whole 0x44. Both
 // compaction loops can hand it dst == src (the keep-in-place case), which REP MOVSD tolerates and a
@@ -281,6 +287,7 @@ int32_t enqueue(const container_state &st, uint16_t unit_index, uint16_t owner_a
 // index, that 8-bit mask caps it at 255, which retail never reaches but the 500-unit build does.
 int32_t pending_enqueue(const container_state &st, order *rec) {
     if (*st.pending_count >= PENDING_CAP) {
+        admission::note_overflow(); // mp:X3c R5: the reset below destroys admitted records -- latch it
         *st.pending_count = 0;
         return 0;
     }
@@ -289,7 +296,8 @@ int32_t pending_enqueue(const container_state &st, order *rec) {
     in.owner_and_kind &= 0xff;
     in.param0 = static_cast<int16_t>(in.param0 & 0xff);
     in.order_code &= 0xff;
-    st.pending[*st.pending_count] = in; // 17 dwords, REP MOVSD in the original
+    st.pending[*st.pending_count] = in;             // 17 dwords, REP MOVSD in the original
+    admission::note(st.pending[*st.pending_count]); // mp:X3c: observe the STORED form (observe-only)
     *st.pending_count += 1;
     return 1;
 }
@@ -368,6 +376,7 @@ int32_t schedule(const container_state &st, const game_calls &gc) {
         p.unit_index &= 0xff;
         p.param0 = static_cast<int16_t>(p.param0 & 0xff);
         p.order_code &= 0xff;
+        admission::note(p); // mp:X3c: own human order, stored (masked) form -- observe-only
         *st.pending_count += 1;
 
         gc.send_order(&s); // return value DISCARDED by the original (0x004664b5)
@@ -424,6 +433,12 @@ int32_t release_due(const container_state &st, double now) {
                 order &e = st.queue[q];
                 if (e.unit_index != p.unit_index || e.owner_and_kind != p.owner_and_kind) continue;
                 if (e.param0 == p.param0 && e.order_code == p.order_code) continue;
+                // mp:U45. One diplomacy Apply issues 0xf4 and 0xf5 with unit 0 and the issuer as
+                // owner, at one exec_time -- the same dedup identity, so the higher code (0xf5)
+                // superseded the relation order on EVERY peer. They are independent admin orders,
+                // not two revisions of one unit's command: never candidates for each other.
+                if (g_admin_dedup_exempt && is_diplo_admin(e.order_code) && is_diplo_admin(p.order_code))
+                    continue;
 
                 bool replace = false;
                 if (!(e.exec_time >= p.exec_time))
@@ -469,6 +484,20 @@ int32_t dispatch(const container_state &st, const game_calls &gc, char *tag, uin
 
     if (!net_player)
         return enqueue(st, unit_id, static_cast<uint16_t>(player), op_code, arg);
+
+    // mp:U54 ([net] spectate_after_defeat): a SPECTATOR (defeated human still in the lockstep session) must not
+    // put an order on the wire -- dropped BEFORE it is staged, a local-only queued order would be a desync.
+    // Retail carrier: install_spectate's call-splice at 0x00466068 (same predicate).
+    if (mh::lockstep::fixes().spectate_after_defeat && (player & 0xf) < 8) {
+        const uint32_t f = st.players[player & 0xf].status_flags;
+        if (mh::spectate::is_spectator_flags(f)) {
+            static int s_dropped = 0;
+            if (++s_dropped <= 8)
+                say("; U54 spectate: dropped order owner=%u unit=%u code=%u (#%d)\n", (unsigned)(player & 0xf), (unsigned)unit_id,
+                    (unsigned)op_code, s_dropped);
+            return 0;
+        }
+    }
 
     double t = *st.game_clock + *st.step_size;
     // `!(t >= horizon)`, not `t < horizon`: FCOMP/JNC is taken (skipping the clamp) only when CF=0,
@@ -786,6 +815,8 @@ bool g_suppress_enqueue = false;
 } // namespace
 void set_suppress_enqueue(bool on) { g_suppress_enqueue = on; }
 bool suppress_enqueue() { return g_suppress_enqueue; }
+void set_admin_dedup_exempt(bool on) { g_admin_dedup_exempt = on; }
+bool admin_dedup_exempt() { return g_admin_dedup_exempt; }
 
 int install_promotion(int default_on) {
     if (default_on == 0) return 0;

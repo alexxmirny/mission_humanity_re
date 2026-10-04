@@ -1,0 +1,31 @@
+# mp:U71 -- client 1 of the spec4 arms (tools/u64_arms.py): it joins the 4-peer lobby, is DEFEATED by the host's harness
+# `conq` force-kill at step ~300 and answers its defeat dialog with Continue spectating. At step 600 the runner
+# kills it (and the host) together; the two survivors must still elect a hub (the spectator is not a voter).
+settled value:110
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+present Internet server
+settled Internet server
+clickl Internet server
+present Server address
+settled Connect
+clickl Connect
+sessions 1
+settled Join game
+clickl Join game
+present Network players
+occ 2
+signal seated1
+occ 4
+settled Cancel
+absent Network players
+gamemode 2
+screen 0x00653dc3
+log u71 client 1 reached its defeat dialog
+clickl Continue spectating
+absent Continue spectating
+gamemode 2
+log u71 client 1 is spectating
+end

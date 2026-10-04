@@ -32,6 +32,9 @@
 #include "include/mh_harness_export.h" // MH_Harness_StepFence (the `simstep` predicate: the SIM's own step)
 #include "seams/ui_net_indicator.h"    // MH_Lockstep_StallBindingPeer -- the `stalled` predicate (TL-UISTALL)
 #include "ui/lobby_ping.h"             // mp:L1f: lobby_ping_measured_rows -- the `lobbyping` predicate
+#include "gfx/overlay_imgui.h"         // PT-GFX4: the `imgui` predicate reads the overlay's state
+#include "gfx/ddraw_own.h"             // PT-GFX3: `winsize` logs the image rect the mouse is mapped through
+#include "input/dinput_own.h"          // PT-INPUT1: the `raw*` verbs feed the owned DirectInput
 #include "include/mh_run_context.h"    // MH_RunDir
 #include "addr/mh_addrs.gen.h"         // generated EN VAs
 #include "config/ini_read.h"           // TL-HARN4: read_ini_string -- strips a trailing `;comment`
@@ -41,6 +44,7 @@
 #include "addr/mh_structs.gen.h"       // generated game struct mirrors (mh::game::mh_llm_*)
 #include "hook/watcall.h"              // call_watcall2 (resolve_position is __watcall)
 #include "en_guard.h"                  // EN-only build gate
+#include "mh_net_proto/text_utf8.h"    // mp:MP-LANG: `wlobby` reads a plain-text needle as UTF-8
 
 #pragma comment(lib, "user32.lib") // wsprintfA / GetAsyncKeyState / GetPrivateProfileInt
 
@@ -858,8 +862,34 @@ void extract_label(const char *p, char *out, int cap) {
     out[n] = 0;
 }
 
+// A NON-ASCII needle (a UTF-8 script label -- mods:LANG3's RU-pack scenarios, 2026-09-29) is matched
+// against the label as UTF-16, code unit for code unit. extract_label's ASCII fold above turns every
+// Cyrillic character into '?' (and a Cyrillic wide string, whose 2nd byte is 0x04, is not even read as
+// wide), so under a language pack no dialog label could be matched by its text at all. The label is
+// read as wide only when it looks wide -- 2nd byte 0 (Latin) or 0x04 (the Cyrillic block) -- so an ANSI
+// label is never scanned past its NUL; exact match, no case fold (the needle is copied from the pack's
+// own initlang TEXT).
+static bool wide_label_matches(const char *label, const char *utf8) {
+    if (!(label[0] != 0 && (label[1] == 0 || label[1] == 0x04))) return false;
+    wchar_t needle[80];
+    int     n = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, utf8, -1, needle, 80);
+    if (n <= 1) return false;
+    --n; // code units, without the NUL
+    const uint16_t *w   = (const uint16_t *)label;
+    int             len = 0;
+    while (len < 128 && w[len]) ++len;
+    for (int i = 0; i + n <= len; ++i) {
+        int k = 0;
+        while (k < n && w[i + k] == (uint16_t)needle[k]) ++k;
+        if (k == n) return true;
+    }
+    return false;
+}
+
 bool label_matches(const char *label, const char *substr) {
     if (!label || !substr || !*substr) return false;
+    for (const unsigned char *p = (const unsigned char *)substr; *p; ++p)
+        if (*p >= 0x80) return wide_label_matches(label, substr);
     char buf[80];
     extract_label(label, buf, sizeof(buf));
     for (const char *base = buf; *base; ++base) {
@@ -1461,6 +1491,8 @@ static int fire_auto_target() {
 //                by the map player count). The deterministic "a player is really SEATED (and thus rendered)
 //                here" gate -- use it to gate a lobby capture (e.g. `occ 2` before capturing the joined
 //                lobby) where `settled <button>` goes stable frames before the slot snapshot arrives.
+//     team <SLOT> <V> = THIS peer's view of slot SLOT's TEAM byte (+0x0c) == V (0 "-", 1..4 T1..T4). mp:U51.
+//     lobbymode <V> = THIS peer's view of the lobby MODE (host slot 0 +0x07): 0 FFA, 1 Team. mp:U51.
 //     pokerace <SLOT> <V> = ACTION, test hook: write slot SLOT's race field on THIS peer only, WITHOUT
 //                the 0x0c push the real spinner sends. Manufactures the end-state of an edit the host
 //                never saw, deterministically -- which is how U28's "a client slot change in flight at
@@ -1524,9 +1556,13 @@ static int fire_auto_target() {
 //                least N DISTINCT lobbies (by lobby id) since boot. mp:GS1: a host that cancels and
 //                re-creates while the client browses replaces the row in place -- `sessions` never dips,
 //                so only the generation can say "the lobby listed now is the one made AFTER the churn".
-//     field <name|game|chat> <text|hex:..> = that text BUFFER holds exactly these bytes. `name` and
-//                `game` are the NET_SETUP menu fields; `chat` (mp:F3) is the in-game chat edit line,
-//                which must be read BEFORE the Enter that submits it (submitting clears the line).
+//     field <name|game|chat|lobby> <text|hex:..> = that text BUFFER holds exactly these bytes. `name`
+//                and `game` are the NET_SETUP menu fields; `chat` (mp:F3) is the in-game chat edit line
+//                and `lobby` the lobby's chat edit field (both UTF-8 since mp:MP-LANG), each read BEFORE
+//                the Enter that submits it (submitting clears the line).
+//     wlobby <text|hex:..> = SOME line of the lobby's text log (the list llm_lobby_announce_line
+//                appends to: joins, leaves, every chat line) CONTAINS this UTF-16 sequence -- the
+//                receiving half of a LOBBY chat assertion. Plain text is read as UTF-8.
 //     wmsg <text|hex:..> = the NEWEST on-screen floating message (MESSAGE_QUEUE slot 0, a UTF-16
 //                string) CONTAINS this UTF-16 sequence. The RECEIVING half of a chat assertion, and
 //                it has to be its own predicate for two reasons `field` cannot meet: the buffer is
@@ -1602,14 +1638,26 @@ constexpr uintptr_t FIELD_GAME_ADDR = mh::addr::mp_game_name;   // 0x005d0da8, h
 // only thing that can tell a correct line from a wrong one. Read BEFORE the Enter that submits it:
 // llm_chat_history_push clears the line.
 constexpr uintptr_t FIELD_CHAT_ADDR = mh::addr::_G_LLM_STRAT_CHAT_INPUT_LINE; // 0x0050a84c
-enum { FIELD_NAME = 0,
-       FIELD_GAME = 1,
-       FIELD_CHAT = 2 };
+// mp:MP-LANG lobby follow-up added the fourth: the LOBBY chat edit field's buffer, the text half of the
+// lobby chat packet (0x0064434c + 10; cap 0x40). Read BEFORE the Enter that sends it -- the send clears
+// the widget. Like `chat` it holds UTF-8, so a `hex:` spec is the byte-level claim.
+constexpr uintptr_t FIELD_LOBBY_ADDR = 0x00644356u; // DAT_00644356 (EN), llm_lobby_chat_send_cb's text
+enum { FIELD_NAME  = 0,
+       FIELD_GAME  = 1,
+       FIELD_CHAT  = 2,
+       FIELD_LOBBY = 3 };
 uintptr_t field_addr(int slot) {
     if (slot == FIELD_GAME) return FIELD_GAME_ADDR;
     if (slot == FIELD_CHAT) return FIELD_CHAT_ADDR;
+    if (slot == FIELD_LOBBY) return FIELD_LOBBY_ADDR;
     return FIELD_NAME_ADDR;
 }
+// `wlobby`: the LOBBY's scrolling text log -- the list widget _G_LLM_UI_WGT_LOBBY_LOG_LIST (0x00650083)
+// that llm_lobby_announce_line appends every line to (joins, leaves, the map banner, and every chat
+// line, local echo and received). Its param block (widget + 0x30) holds [0] the entry-pointer array and
+// [6] the entry count (llm_ui_list_widget_append_entry); each entry record's +0 is its UTF-16 text.
+constexpr uintptr_t LOBBY_LOG_WIDGET = 0x00650083u;
+constexpr int       LOBBY_LOG_MAX    = 256; // sanity bound on the count a stale block could claim
 // `wmsg`: the floating on-screen message queue's NEWEST entry. game_ui_AddTextToPrintQueue keeps 30
 // slots of 120 UTF-16 code units (0xf0 bytes each) and copies the new line into SLOT 0 after shifting
 // the rest down, so slot 0 is always the most recent message -- which for a received chat line is
@@ -1637,6 +1685,8 @@ enum {
     OP_W_PEERS,
     OP_W_OCC,
     OP_W_RACE,
+    OP_W_TEAM,      // mp:U51: `team <slot> <v>` -- the slot's TEAM byte (+0x0c) on THIS peer
+    OP_W_LOBBYMODE, // mp:U51: `lobbymode <0|1>` -- host slot 0's MODE byte (+0x07): 0 FFA, 1 Team
     OP_W_RETRYREADY,
     OP_W_LOBBYGEN,
     OP_W_LOBBYPING, // mp:L1f: N lobby slot rows are showing a real ping number on THIS screen
@@ -1645,8 +1695,13 @@ enum {
     OP_W_AWAITSIGNAL,
     OP_W_FIELD,
     OP_W_WMSG,
-    OP_W_STALLED, // TL-UISTALL: true while the sim is lockstep-blocked, optionally for >= <ms>
-    OP_W_LAST = OP_W_STALLED,
+    OP_W_WLOBBY,
+    OP_W_STALLED,   // TL-UISTALL: true while the sim is lockstep-blocked, optionally for >= <ms>
+    OP_W_IMGUI,     // PT-GFX4: `imgui open|closed|swallowed <N>` -- the ImGui overlay's own state
+    OP_W_WINCLIENT, // PT-GFX3: `winclient <w> <h>` -- the game window's client area is exactly w x h
+    OP_W_DIMOUSE,   // PT-INPUT1: `dimouse <x> <y>` -- the DI accumulator (_G_LLM_INPUT_MOUSE_LAST_X/Y) is exactly x,y
+    OP_W_KEYSTATE,  // PT-INPUT1: `keystate <dik> <0|1>` -- the game's keystate says that key is up / down
+    OP_W_LAST = OP_W_KEYSTATE,
     // actions (fire once, then advance)
     OP_A_CLICKV,
     OP_A_CLICKL,
@@ -1659,6 +1714,12 @@ enum {
     OP_A_RCLICK,    // mp:D25: `rclick <x> <y> [shift]`
     OP_A_SIMCLICK,  // TL-SUITE-SPLICE-HOSTCLICK: `simclick <x> <y>` -- a left click held across sim steps
     OP_A_SIMRCLICK, // mp:X2g: `simrclick <x> <y>` -- the same hold with the right button
+    OP_A_WMCLICK,   // PT-GFX4: `wmclick <x> <y>` -- a left click POSTED to the game window as messages
+    OP_A_WINSIZE,   // PT-GFX3: `winsize <w> <h>` -- resize the game window's client as a player's drag would
+    OP_A_WINMIN,    // mp:P17: `winmin <ms>` -- minimise the game window now, a helper thread restores it after <ms>
+    OP_A_RAWFOCUS,  // PT-INPUT1: `rawfocus -1|0|1` -- the foreground the owned DirectInput sees
+    OP_A_RAWMOUSE,  // PT-INPUT1: `rawmouse abs|rel|down|up ...` -- a Raw Input packet into the owned mouse
+    OP_A_RAWKEY,    // PT-INPUT1: `rawkey <make> [e0] [down|up]` -- a Raw Input packet into the owned keyboard
     OP_A_KEY,
     OP_A_KEYHOLD, // mp:SES3c: `keyhold <scancode> <frames>` -- the unpaired-DOWN sibling of `key`
     OP_A_HOTKEY,  // `hotkey Ctrl+Alt+D` -- a GetAsyncKeyState-style chord, synthesised (2026-09-20)
@@ -1682,12 +1743,12 @@ struct Target {
 
 struct Step {
     int      op;
-    int      a, b;     // numeric args (value / idx / gamemode / x ; y)
-    int      c;        // third numeric arg -- `cursorhold`/`keyhold`'s frame count, `key`/`rclick`'s shift flag
-    unsigned scr;      // screen container VA (OP_W_SCREEN)
-    Target   tgt;      // target widget (present/absent/enabled/hovered/clickl)
-    char     text[64]; // capture name / log message
-    char     raw[80];  // original line, for logging (Phase 4 pass/fail parsing)
+    int      a, b;      // numeric args (value / idx / gamemode / x ; y)
+    int      c;         // third numeric arg -- `cursorhold`/`keyhold`'s frame count, `key`/`rclick`'s shift flag
+    unsigned scr;       // screen container VA (OP_W_SCREEN)
+    Target   tgt;       // target widget (present/absent/enabled/hovered/clickl)
+    char     text[160]; // capture name / log message / predicate spec (a full 63-byte lobby field as hex)
+    char     raw[176];  // original line, for logging (Phase 4 pass/fail parsing)
     // `retry <game-ms> <back> <tries> <wait>` (tooling:TL-SUITE-SPLICE-HOSTCLICK): see script_tick.
     int    retry_ms, retry_back, retry_tries, retry_used;
     double retry_clk0; // game clock (ms) at this attempt's first tick
@@ -1953,6 +2014,15 @@ void parse_line(const char *line) {
         char *after = nullptr;
         s->a        = (arg && *arg) ? (int)strtol(arg, &after, 0) : -1;
         s->b        = (after && *after) ? (int)strtol(after, nullptr, 0) : -1;
+    } else if (strcmp(op, "team") == 0) {
+        // `team <slot> <value>` -- two ints, like `race`.
+        s->op       = OP_W_TEAM;
+        char *after = nullptr;
+        s->a        = (arg && *arg) ? (int)strtol(arg, &after, 0) : -1;
+        s->b        = (after && *after) ? (int)strtol(after, nullptr, 0) : -1;
+    } else if (strcmp(op, "lobbymode") == 0) {
+        s->op = OP_W_LOBBYMODE;
+        s->b  = (arg && *arg) ? (int)strtol(arg, nullptr, 0) : -1;
     } else if (strcmp(op, "retryready") == 0) {
         s->op = OP_W_RETRYREADY;
         s->a  = (arg && *arg) ? (int)strtol(arg, nullptr, 0) : 1;
@@ -2125,14 +2195,115 @@ void parse_line(const char *line) {
         // field <name|game|chat> <text | hex:xx..>  -- that text BUFFER equals this, exactly.
         s->op         = OP_W_FIELD;
         const char *q = skip_ws(arg);
-        s->a          = (strncmp(q, "game", 4) == 0)   ? FIELD_GAME
-                        : (strncmp(q, "chat", 4) == 0) ? FIELD_CHAT
-                                                       : FIELD_NAME;
+        s->a          = (strncmp(q, "game", 4) == 0)    ? FIELD_GAME
+                        : (strncmp(q, "chat", 4) == 0)  ? FIELD_CHAT
+                        : (strncmp(q, "lobby", 5) == 0) ? FIELD_LOBBY
+                                                        : FIELD_NAME;
         while (*q && *q != ' ' && *q != '\t') ++q;
         copy_trim(s->text, sizeof(s->text), skip_ws(q));
+    } else if (strcmp(op, "wmclick") == 0) {
+        // `wmclick <x> <y>` -- PT-GFX4. Every other click verb writes the game's input RING, below the
+        // window procedure, so nothing that sits IN the window procedure -- the ImGui overlay's
+        // subclass -- can ever see it. This one posts WM_MOUSEMOVE / WM_LBUTTONDOWN / WM_LBUTTONUP to
+        // the game window instead, the way the OS delivers a real click, so the subclass decides and
+        // the game's own tap (llm_input_wndproc_tap 0x004d1194) turns whatever it forwards into ring
+        // events. Needs `[input] mouse_absolute=1`: with a DirectInput mouse the tap ignores mouse
+        // MESSAGES and polls DI instead, and a posted message carries nothing DI would see. <x> <y>
+        // are CLIENT pixels, exactly as the OS would deliver them; in a scaled window (borderless, or
+        // resized) the owned device's subclass maps them to game pixels on the way in (ddraw_own.cpp
+        // "the mouse"), which is what the `win_resize` scenario asserts.
+        s->op = OP_A_WMCLICK;
+        char *end;
+        s->a = (int)strtol(arg, &end, 0);
+        s->b = (int)strtol(end, nullptr, 0);
+    } else if (strcmp(op, "winsize") == 0 || strcmp(op, "winclient") == 0) {
+        // `winsize <w> <h>` -- PT-GFX3: resize the game window so its CLIENT area is w x h, bracketed by
+        // WM_ENTERSIZEMOVE / WM_EXITSIZEMOVE, i.e. what a player's border drag delivers (SendInput is
+        // not available on the rig, so the drag itself cannot be synthesised). `winclient <w> <h>` --
+        // wait until the client area IS w x h (the owned device may re-assert a native size first).
+        s->op = strcmp(op, "winsize") == 0 ? OP_A_WINSIZE : OP_W_WINCLIENT;
+        char *end;
+        s->a = (int)strtol(arg, &end, 0);
+        s->b = (int)strtol(end, nullptr, 0);
+    } else if (strcmp(op, "winmin") == 0) {
+        // `winmin <ms>` -- mp:P17: the alt-tab rig check. Minimise the game window (what Alt+Tab to another
+        // window / the taskbar button does to the frame loop) and restore it <ms> later from a HELPER thread,
+        // because a minimised window that stops presenting would never reach the next script op itself.
+        s->op = OP_A_WINMIN;
+        s->a  = (int)strtol(arg, nullptr, 0);
+    } else if (strcmp(op, "rawfocus") == 0) {
+        // `rawfocus -1|0|1` -- PT-INPUT1. The foreground the owned DirectInput ([input] backend=own)
+        // acquires against: -1 the real one, 1 focused (a headless lane's window never is, so a script
+        // that injects `rawmouse`/`rawkey` sets this first), 0 lost -- the Alt-Tab path, which releases
+        // every held key by synthetic key-up.
+        s->op = OP_A_RAWFOCUS;
+        s->a  = (int)strtol(arg, nullptr, 0);
+    } else if (strcmp(op, "rawmouse") == 0) {
+        // `rawmouse abs <gx> <gy>` (a GAME pixel, sent as an absolute virtual-desktop packet through
+        // the inverse of the mapping a real absolute pointer takes) | `rawmouse rel <dx> <dy>` (raw
+        // counts) | `rawmouse down|up l|r|m`. Into the owned mouse's queue through the same packet
+        // handler WM_INPUT uses -- the harness equivalent of a Raw Input packet, since a posted
+        // WM_INPUT carries no data. s->c: 0 abs, 1 rel, 2 down, 3 up.
+        s->op         = OP_A_RAWMOUSE;
+        const char *q = skip_ws(arg);
+        s->c          = strncmp(q, "abs", 3) == 0 ? 0 : strncmp(q, "rel", 3) == 0 ? 1
+                                                    : strncmp(q, "down", 4) == 0  ? 2
+                                                                                  : 3;
+        while (*q && *q != ' ' && *q != '\t') ++q;
+        q = skip_ws(q);
+        if (s->c >= 2) {
+            s->a = (*q == 'r') ? 1 : (*q == 'm') ? 2
+                                                 : 0;
+        } else {
+            char *end;
+            s->a = (int)strtol(q, &end, 0);
+            s->b = (int)strtol(end, nullptr, 0);
+        }
+    } else if (strcmp(op, "rawkey") == 0) {
+        // `rawkey <make> [e0] [down|up]` -- a set-1 make code (e0 = the E0 prefix: arrows, right Ctrl,
+        // numpad Enter...). No direction = DOWN on this present, UP on the next.
+        s->op         = OP_A_RAWKEY;
+        char *after   = nullptr;
+        s->a          = (int)strtol(arg, &after, 0);
+        const char *q = skip_ws(after);
+        s->b          = 0;
+        if (strncmp(q, "e0", 2) == 0) {
+            s->b = 1;
+            q    = skip_ws(q + 2);
+        }
+        s->c = strncmp(q, "down", 4) == 0 ? 1 : strncmp(q, "up", 2) == 0 ? 2
+                                                                         : 0;
+    } else if (strcmp(op, "dimouse") == 0 || strcmp(op, "keystate") == 0) {
+        // `dimouse <x> <y>` -- the DirectInput accumulator is exactly (x,y). `keystate <dik> <0|1>` --
+        // the game's keystate byte for that DIK (index dik&0x7f, bit 2 when dik&0x80 else bit 1) is
+        // clear / set. PT-INPUT1.
+        s->op = strcmp(op, "dimouse") == 0 ? OP_W_DIMOUSE : OP_W_KEYSTATE;
+        char *end;
+        s->a = (int)strtol(arg, &end, 0);
+        s->b = (int)strtol(end, nullptr, 0);
+    } else if (strcmp(op, "imgui") == 0) {
+        // `imgui open` / `imgui closed` / `imgui swallowed <N>` (>= N mouse messages swallowed since
+        // boot) -- PT-GFX4. The overlay's own state, so a script gates on "the toggle took" and "the
+        // subclass consumed the click" rather than on a frame count. `imgui hover <0|1>` (PT-GFX6): the
+        // last frame's io.WantCaptureMouse equals it -- ImGui's hover, fed from the GAME cursor.
+        // `imgui difiltered <N>` (PT-INPUT1): >= N DirectInput button/wheel records withheld from the game by
+        // the overlay's DI filter -- the swallow on the DI path, which `swallowed` (messages) cannot see.
+        s->op         = OP_W_IMGUI;
+        const char *q = skip_ws(arg);
+        s->a          = (strncmp(q, "open", 4) == 0) ? 1 : (strncmp(q, "closed", 6) == 0)    ? 0
+                                                       : (strncmp(q, "hover", 5) == 0)       ? 3
+                                                       : (strncmp(q, "difiltered", 10) == 0) ? 4
+                                                                                             : 2;
+        while (*q && *q != ' ' && *q != '\t') ++q;
+        s->b = (int)strtol(skip_ws(q), nullptr, 0);
     } else if (strcmp(op, "wmsg") == 0) {
         // wmsg <text | hex:xx..> -- the newest floating message contains this UTF-16 sequence.
         s->op = OP_W_WMSG;
+        copy_trim(s->text, sizeof(s->text), skip_ws(arg));
+    } else if (strcmp(op, "wlobby") == 0) {
+        // wlobby <text | hex:xx..> -- SOME line of the lobby's text log contains this UTF-16 sequence.
+        // `hex:` = UTF-16LE code units; plain text is read as UTF-8 (the script file's own encoding).
+        s->op = OP_W_WLOBBY;
         copy_trim(s->text, sizeof(s->text), skip_ws(arg));
     } else if (strcmp(op, "capture") == 0) {
         s->op = OP_A_CAPTURE;
@@ -2238,6 +2409,82 @@ int field_expect(const char *spec, uint8_t *out, int cap) {
 // The EVIDENCE behind a `wmsg` timeout: what the newest message actually holds, as UTF-16 hex plus
 // a printable rendering. Without it a red says only "the needle was not there", which is the one
 // thing the reader already knows.
+// A `wlobby` needle as UTF-16 code units: `hex:` gives the units' LE bytes, anything else is UTF-8.
+int wlobby_needle(const char *spec, uint16_t *out, int cap) {
+    if (strncmp(spec, "hex:", 4) == 0) {
+        uint8_t   b[64];
+        const int n = field_expect(spec, b, (int)sizeof(b));
+        if (n < 2 || (n & 1)) return -1;
+        int u = 0;
+        for (int i = 0; i + 1 < n && u < cap; i += 2) out[u++] = (uint16_t)(b[i] | (b[i + 1] << 8));
+        return u;
+    }
+    const int u = (int)mh_net_proto::utf8_to_utf16(spec, strlen(spec), out, (size_t)cap);
+    return u > 0 ? u : -1;
+}
+
+// The lobby log's entries, guarded: a block the menu has not built yet reads as "no entries".
+// Returns the count and fills `out` with up to `cap` entry texts, OLDEST first.
+int lobby_log_entries(const uint16_t **out, int cap) {
+    __try {
+        const uintptr_t pb = *(volatile const uintptr_t *)(LOBBY_LOG_WIDGET + 0x30);
+        if (!pb) return 0;
+        const uintptr_t *arr = *(const uintptr_t *const volatile *)pb;
+        const int        n   = *(volatile const int *)(pb + 6 * 4);
+        if (!arr || n <= 0 || n > LOBBY_LOG_MAX) return 0;
+        int k = 0;
+        for (int i = (n > cap ? n - cap : 0); i < n; ++i) {
+            const uintptr_t rec = arr[i];
+            if (rec) out[k++] = *(const uint16_t *const *)rec;
+        }
+        return k;
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        return 0;
+    }
+}
+
+bool wlobby_contains(const uint16_t *needle, int nn) {
+    const uint16_t *e[LOBBY_LOG_MAX];
+    const int       n = lobby_log_entries(e, LOBBY_LOG_MAX);
+    __try {
+        for (int i = 0; i < n; ++i) {
+            const uint16_t *h = e[i];
+            if (!h) continue;
+            for (int off = 0; off < 512 && h[off]; ++off) {
+                int k = 0;
+                while (k < nn && h[off + k] == needle[k]) ++k;
+                if (k == nn) return true;
+            }
+        }
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+    }
+    return false;
+}
+
+// The EVIDENCE behind a `wlobby` timeout: the newest four lines, as UTF-16 hex + a printable render.
+void log_wlobby() {
+    const uint16_t *e[4];
+    const int       n = lobby_log_entries(e, 4);
+    ui_log("; [script]   wlobby: newest %d lobby log line(s):", n);
+    for (int i = 0; i < n; ++i) {
+        char hx[5 * 24 + 1];
+        char as[24 + 1];
+        int  u = 0, k = 0;
+        __try {
+            for (; u < 24 && e[i] && e[i][u]; ++u) {
+                const unsigned cu = e[i][u];
+                wsprintfA(hx + k, "%04x ", cu);
+                k += 5;
+                as[u] = (cu >= 0x20 && cu < 0x7f) ? (char)cu : '.';
+            }
+        } __except (EXCEPTION_EXECUTE_HANDLER) {
+        }
+        hx[k] = 0;
+        as[u] = 0;
+        ui_log("; [script]     [%d] %s| \"%s\"", i, hx, as);
+    }
+}
+
 void log_wmsg() {
     const uint8_t *q = (const uint8_t *)MSGQ_ADDR;
     char           hx[3 * 40 + 1];
@@ -2258,10 +2505,11 @@ void log_wmsg() {
 
 void log_field(int slot) {
     const uint8_t *b = (const uint8_t *)field_addr(slot);
-    char           hx[3 * 34 + 1];
-    char           as[34 + 1];
+    char           hx[3 * 64 + 1];
+    char           as[64 + 1];
     int            n = 0, k = 0;
-    for (; n < 32 && b[n]; ++n) {
+    const int      lim = (slot == FIELD_LOBBY) ? 63 : 32; // the name globals are char[32]
+    for (; n < lim && b[n]; ++n) {
         static const char H[] = "0123456789abcdef";
         hx[k++]               = H[b[n] >> 4];
         hx[k++]               = H[b[n] & 15];
@@ -2271,8 +2519,10 @@ void log_field(int slot) {
     hx[k] = 0;
     as[n] = 0;
     ui_log("; [script]   field %s: %d byte(s) = %s | \"%s\"",
-           slot == FIELD_GAME ? "game" : slot == FIELD_CHAT ? "chat"
-                                                            : "name",
+           slot == FIELD_GAME    ? "game"
+           : slot == FIELD_CHAT  ? "chat"
+           : slot == FIELD_LOBBY ? "lobby"
+                                 : "name",
            n, hx, as);
 }
 
@@ -2419,6 +2669,26 @@ bool wait_satisfied(const Step *s) {
             memcpy(&clk, (const void *)GAMECLOCK_ADDR, sizeof(clk));
             return clk * 1000.0 >= (double)s->a; // the global is game-SECONDS (cf. net_internal.h ms_of)
         }
+        case OP_W_WINCLIENT: {
+            HWND hw = *(HWND *)mh::addr::hWnd_main;
+            RECT cr;
+            return hw && GetClientRect(hw, &cr) && cr.right == s->a && cr.bottom == s->b;
+        }
+        case OP_W_DIMOUSE:
+            return *(volatile int *)MOUSE_LAST_X == s->a && *(volatile int *)MOUSE_LAST_Y == s->b;
+        case OP_W_KEYSTATE: {
+            const uint8_t ks  = ((volatile uint8_t *)mh::addr::_G_LLM_INPUT_KEYSTATE)[s->a & 0x7f];
+            const uint8_t bit = (s->a & 0x80) ? 2 : 1;
+            return ((ks & bit) != 0) == (s->b != 0);
+        }
+        case OP_W_IMGUI: {
+            namespace ov = mh::gfx::imgui_overlay;
+            if (s->a == 1) return ov::query(ov::query_what::open) == 1;
+            if (s->a == 0) return ov::query(ov::query_what::armed) == 1 && ov::query(ov::query_what::open) == 0;
+            if (s->a == 3) return ov::query(ov::query_what::open) == 1 && ov::query(ov::query_what::want_mouse) == s->b;
+            if (s->a == 4) return ov::query(ov::query_what::di_filtered) >= s->b; // PT-INPUT1: DI records withheld
+            return ov::query(ov::query_what::swallowed_mouse) >= s->b;
+        }
         case OP_W_STALLED: { // TL-UISTALL: the sim IS lockstep-blocked right now, optionally >= s->a ms
             unsigned long blocked_ms = 0;
             const int     bind       = MH_Lockstep_StallBindingPeer(&blocked_ms);
@@ -2477,8 +2747,16 @@ bool wait_satisfied(const Step *s) {
             return *(const unsigned char *)(LOBBY_SLOTS_ADDR + s->a * SLOT_STRIDE + SLOT_RACE_OFF) ==
                    (unsigned char)s->b;
         }
-        case OP_W_FIELD: { // the menu text-field BUFFER is exactly these bytes (NUL-terminated)
-            uint8_t want[34];
+        case OP_W_TEAM: { // mp:U51: lobby slot's TEAM byte on THIS peer (0 = "-", 1..4 = T1..T4)
+            if (s->a < 0 || s->a > 7 || s->b < 0) return false;
+            return *(const unsigned char *)(LOBBY_SLOTS_ADDR + s->a * SLOT_STRIDE + 0x0c) == (unsigned char)s->b;
+        }
+        case OP_W_LOBBYMODE: { // mp:U51: host slot 0's MODE byte on THIS peer (0 FFA, 1 Team)
+            if (s->b < 0) return false;
+            return (*(const unsigned char *)(LOBBY_SLOTS_ADDR + 0x07) != 0 ? 1 : 0) == s->b;
+        }
+        case OP_W_FIELD: {    // the menu text-field BUFFER is exactly these bytes (NUL-terminated)
+            uint8_t want[72]; // the lobby field holds 63 bytes
             int     wn = field_expect(s->text, want, (int)sizeof(want));
             if (wn < 0) return false; // malformed spec -- the timeout diagnostic names it
             const uint8_t *b = (const uint8_t *)field_addr(s->a);
@@ -2513,6 +2791,12 @@ bool wait_satisfied(const Step *s) {
                 if (k == nn) return true;
             }
             return false;
+        }
+        case OP_W_WLOBBY: { // some lobby log line CONTAINS this UTF-16 sequence
+            uint16_t  needle[64];
+            const int nn = wlobby_needle(s->text, needle, 64);
+            if (nn <= 0) return false; // malformed spec -- the timeout diagnostic names it
+            return wlobby_contains(needle, nn);
         }
         case OP_W_RETRYREADY:                      // S8(b): the failed-connect latch-clear has fired -> a corrected-IP re-Connect
             return MH_Seam_S8RetryArmed() >= s->a; // will re-kick. Gates the round-trip test's 2nd Connect.
@@ -2563,6 +2847,93 @@ click_result do_action(const Step *s) {
             return simclick_frame(g_wait, s->a, s->b) ? CLICK_OK : CLICK_RETRY;
         case OP_A_SIMRCLICK:
             return simclick_frame(g_wait, s->a, s->b, true, s->c != 0) ? CLICK_OK : CLICK_RETRY;
+        case OP_A_WMCLICK: {
+            // Spread over presents like a hand: MOVE on 0 and 1 (a frame is built with the pointer
+            // there), DOWN on 2, UP on 3, advance on 4. Posted, not sent: the game's own message loop
+            // dispatches them, in order, between presents.
+            HWND hw = *(HWND *)mh::addr::hWnd_main;
+            if (!hw) return CLICK_ABSENT;
+            const LPARAM xy = MAKELPARAM((WORD)(short)s->a, (WORD)(short)s->b);
+            if (g_wait <= 1) {
+                PostMessageA(hw, WM_MOUSEMOVE, 0, xy);
+                if (g_wait == 0) ui_log("; wmclick %d,%d -- posted to hwnd %p (move)", s->a, s->b, (void *)hw);
+                return CLICK_RETRY;
+            }
+            if (g_wait == 2) {
+                PostMessageA(hw, WM_LBUTTONDOWN, MK_LBUTTON, xy);
+                return CLICK_RETRY;
+            }
+            if (g_wait == 3) {
+                PostMessageA(hw, WM_LBUTTONUP, 0, xy);
+                ui_log("; wmclick %d,%d -- down+up posted", s->a, s->b);
+                return CLICK_RETRY;
+            }
+            break;
+        }
+        case OP_A_RAWFOCUS:
+            mh::input::harness_focus(s->a < 0 ? -1 : s->a ? 1
+                                                          : 0);
+            break;
+        case OP_A_RAWMOUSE: {
+            bool ok = false;
+            if (s->c == 0) ok = mh::input::harness_mouse_abs_game(s->a, s->b);
+            else if (s->c == 1) ok = mh::input::harness_mouse_rel(s->a, s->b);
+            else ok = mh::input::harness_mouse_button(s->a, s->c == 2);
+            if (!ok) {
+                ui_log("; rawmouse -- no owned DirectInput mouse ([input] backend=own, device created?)");
+                return CLICK_ABSENT;
+            }
+            break;
+        }
+        case OP_A_RAWKEY: {
+            const bool e0 = s->b != 0;
+            if (s->c == 0 && g_wait == 0) {
+                if (!mh::input::harness_key((uint16_t)s->a, e0, true)) return CLICK_ABSENT;
+                return CLICK_RETRY; // UP on the next present, so the game's poll sees a press
+            }
+            if (!mh::input::harness_key((uint16_t)s->a, e0, s->c == 1)) {
+                ui_log("; rawkey -- no owned DirectInput keyboard ([input] backend=own, device created?)");
+                return CLICK_ABSENT;
+            }
+            break;
+        }
+        case OP_A_WINSIZE: {
+            HWND hw = *(HWND *)mh::addr::hWnd_main;
+            if (!hw) return CLICK_ABSENT;
+            SendMessageA(hw, WM_ENTERSIZEMOVE, 0, 0);
+            RECT r = {0, 0, s->a, s->b};
+            AdjustWindowRectEx(&r, (DWORD)GetWindowLongA(hw, GWL_STYLE), FALSE, (DWORD)GetWindowLongA(hw, GWL_EXSTYLE));
+            const int ww = r.right - r.left, wh = r.bottom - r.top;
+            SetWindowPos(hw, nullptr, 0, 0, ww, wh, SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
+            RECT cr;
+            GetClientRect(hw, &cr); // per-monitor DPI: the real frame may differ from AdjustWindowRectEx's
+            if (cr.right != s->a || cr.bottom != s->b)
+                SetWindowPos(hw, nullptr, 0, 0, ww + (s->a - cr.right), wh + (s->b - cr.bottom), SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
+            GetClientRect(hw, &cr);
+            SendMessageA(hw, WM_EXITSIZEMOVE, 0, 0);
+            RECT ir = {0, 0, 0, 0};
+            mh::gfx::owned_image_rect(&ir);
+            ui_log("; winsize %dx%d -> client %ldx%ld, image %ld,%ld..%ld,%ld", s->a, s->b, cr.right, cr.bottom, ir.left, ir.top,
+                   ir.right, ir.bottom);
+            break;
+        }
+        case OP_A_WINMIN: {
+            HWND hw = *(HWND *)mh::addr::hWnd_main;
+            if (!hw) return CLICK_ABSENT;
+            struct Restore {
+                static DWORD WINAPI run(LPVOID p) {
+                    Sleep((DWORD)(uintptr_t)p);
+                    HWND w = *(HWND *)mh::addr::hWnd_main;
+                    if (w) ShowWindow(w, SW_RESTORE);
+                    return 0;
+                }
+            };
+            HANDLE t = CreateThread(nullptr, 0, &Restore::run, (LPVOID)(uintptr_t)s->a, 0, nullptr);
+            if (t) CloseHandle(t);
+            ShowWindow(hw, SW_MINIMIZE);
+            ui_log("; winmin: window minimised, restore in %d ms (iconic=%d)", s->a, (int)IsIconic(hw));
+            break;
+        }
         case OP_A_RCLICK:
             // Multi-present like cursorhold: g_wait is the frame index while the step retries.
             return rclick_frame(g_wait, s->a, s->b, s->c != 0) ? CLICK_OK : CLICK_RETRY;
@@ -2871,6 +3242,7 @@ void script_tick() {
             // only one a capture could never give.
             if (s->op == OP_W_FIELD) log_field(s->a);
             if (s->op == OP_W_WMSG) log_wmsg();
+            if (s->op == OP_W_WLOBBY) log_wlobby();
             if (s->op == OP_W_SETTLED && g_settle_seen)
                 ui_log("; [script]   lobby geom at x=%d: frame_x=%d right_x=%d | at x=%d: frame_x=%d right_x=%d",
                        g_settle_minx, g_settle_fx_min, g_settle_rx_min, g_settle_maxx, g_settle_fx_max,
@@ -2950,6 +3322,7 @@ extern "C" void MH_UIDrive_OnPresent(void) {
     // U25 step 1, unconditional and one-shot: the first present is the earliest point that is
     // provably after the game's own DirectInput init, so this is where the answer is readable.
     log_di_keyboard_once();
+    mh::input::on_present(); // PT-INPUT1: module check, [input] mouse_trace element / key_trace ring lines
     if (g_mouse_trace) trace_mouse_ring();
 
     // Hotkeys (interactive testing): F7 = dump active list, F8 = click the configured target.

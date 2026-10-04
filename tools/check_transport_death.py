@@ -84,7 +84,18 @@ U19D_CORRECTION = "U19d: outcome-dialog said"
 GARBLED = "; [rx] garbled:"
 SESSION_END = "SESSION_END"
 
-SESSION_DIR_RE = re.compile(r"^\d{8}T\d{6}Z_[0-9a-f]{8}_\d+_[A-Za-z0-9]+$")
+SESSION_DIR_RE = re.compile(
+    r"^(?:\d{8}T\d{6}Z_[0-9a-f]{8}_\d+|\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}Z_[0-9a-f]{8}_[A-Za-z0-9.-]+)_[A-Za-z0-9]+$"
+)
+# SES8 (2026-09-29): new names start "YYYY-MM-DDTHH-MM-SSZ", which does NOT string-sort with the
+# SES1 "YYYYMMDDTHHMMSSZ" ones a lane still holds (`-` < `0`). Order by canon(name), never the raw
+# name. Verbatim copy of tools/_rundir.py's canon() (no import chain between checkers).
+_NEW_STAMP = re.compile(r"^(\d{4})-(\d{2})-(\d{2})T(\d{2})-(\d{2})-(\d{2})Z")
+
+
+def canon(name):
+    """The name with an SES8 stamp rewritten to the SES1 compact form, so the two sort together."""
+    return _NEW_STAMP.sub(r"\1\2\3T\4\5\6Z", name)
 
 
 class Refusal(Exception):
@@ -109,7 +120,7 @@ def session_runs(logs_dir, process_leaf):
         and SESSION_DIR_RE.match(os.path.basename(d))
         and session_process_dir(d) == process_leaf
     ]
-    return sorted(c, key=lambda d: os.path.basename(d))
+    return sorted(c, key=lambda d: canon(os.path.basename(d)))
 
 
 def read_lines(folder):
@@ -349,9 +360,45 @@ def selftest():
     finally:
         shutil.rmtree(root, ignore_errors=True)
 
+    # SES8: a peer whose green lines are SPLIT between an SES8-named process directory and its
+    # SES8-named session directory (beside a foreign SES1 session of another process) must still read
+    # as the whole green log -- the session is found by session.json + the widened SESSION_DIR_RE.
+    root = tempfile.mkdtemp(prefix="txdeath_selftest_ses8_")
+    try:
+        logs = os.path.join(root, "peer0", "logs")
+        proc_leaf = "2026-09-29T08-15-02Z_menu_solo"
+        half = len(GREEN) // 2
+        dirs = [
+            (proc_leaf, GREEN[:half], None),
+            ("2026-09-29T08-15-09Z_ab12cd34_blue-monday_host", GREEN[half:], proc_leaf),
+            (
+                "20260917T164346Z_dedd707c_0_solo",
+                ["; stale foreign session"],
+                "20260917T164300Z_menu_solo",
+            ),
+        ]
+        for leaf, lines, pd in dirs:
+            d = os.path.join(logs, leaf)
+            os.makedirs(d)
+            with open(os.path.join(d, "mh_net.log"), "w") as fh:
+                fh.write("\n".join(lines) + "\n")
+            if pd:
+                with open(os.path.join(d, "session.json"), "w") as fh:
+                    json.dump({"process_dir": pd}, fh)
+        got = peer_lines(os.path.join(logs, proc_leaf))
+        ok = got == list(GREEN)
+        if not ok:
+            failures += 1
+        print(
+            "  [%s] SES8 names: process + its session read as one log, foreign session ignored"
+            % ("PASS" if ok else "SELFTEST FAILURE")
+        )
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
     print(
         "check_transport_death --selftest: %s -- %d arm(s)"
-        % ("FAIL" if failures else "PASS", len(arms) + 2)
+        % ("FAIL" if failures else "PASS", len(arms) + 3)
     )
     return 1 if failures else 0
 

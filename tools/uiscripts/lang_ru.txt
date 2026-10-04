@@ -1,0 +1,60 @@
+# mods:LANG1 + LANG2 -- the EN exe with the per-machine RU language pack (`[lang] pack=ru`, built by
+# `python src/formats/langpack.py build`): a Russian main menu with the restored 7-button layout,
+# every button's hotspot on its painted label, the built NETWORK GAME hover art, and the network
+# button's action still landing on the player-name screen.
+#
+# THE PACK IS RETAIL GAME DATA AND IS NOT IN THE REPO. The registry row carries a `requires` hook
+# (ui_suite_common.lang_pack_precondition) that SKIPS by name when <lane_src>/lang/ru is absent or
+# is not a full LANG3 build (merged fonts + 7-button art) -- same opt-in tier as font_merged.
+#
+# WHAT A GREEN MEANS:
+#   * l1_menu  -- the 7 buttons in RU art, aligned: ВСТУПЛЕНИЕ / НОВАЯ ИГРА / СЕТЕВАЯ ИГРА /
+#     ОБУЧЕНИЕ / ЗАГРУЗИТЬ ИГРУ / ТИТРЫ / ВЫХОД, plus the [fonts] probe (font_merged.ini's string)
+#     rendered through the PACK's merged fonts -- Cyrillic, the drawn letters, Polish, the box.
+#   * the seven `hovered` gates -- the cursor parked on each PAINTED label row (y = 97 + 40k + 15)
+#     hovers exactly that button's widget (hotkey values i/g/n/t/l/c/q). A restack that is one row off
+#     its art fails here by name, whatever the pixels say.
+#   * l2_net_hover -- the built NetGameH sprite over the network row; l3_tut_hover -- a moved row's
+#     retail hover sprite over its moved label.
+#   * l4_name -- clicking the network button's hotspot reaches the player-name screen (whose Ok is
+#     "Ok" in the RU text table as well).
+#
+# tol 0 (the registry row): the probe text and the hover sprite are small against the frame.
+
+settled value:105
+cursor 600 450
+capture l1_menu
+
+cursor 112 112
+cursor 112 112
+hovered value:105
+cursor 112 152
+cursor 112 152
+hovered value:103
+cursor 112 192
+cursor 112 192
+hovered value:110
+capture l2_net_hover
+cursor 112 232
+cursor 112 232
+hovered value:116
+capture l3_tut_hover
+cursor 112 272
+cursor 112 272
+hovered value:108
+cursor 112 312
+cursor 112 312
+hovered value:99
+cursor 112 352
+cursor 112 352
+hovered value:113
+
+cursor 112 192
+cursor 112 192
+hovered value:110
+click 112 192
+settled Ok
+cursor 600 450
+capture l4_name
+log LANG1/LANG2: RU pack menu -- 7 aligned hotspots, built hover art, network button reaches the name screen
+end

@@ -1,0 +1,53 @@
+# mp:U52 -- 3-PEER LOBBY TEAMS (tools/det_arms.py --u52-*; check_u52_teams.py reads the logs).
+# Topology = the --u53-* one: host vms[0], client1 vms[1], client2 the local det3_client2 lane. Teams: host T1,
+# client1 T1, client2 T2 (each peer cycles its OWN row through the real lobby spinner). Variant: FFA mode with teams.
+# host: sets its own team (+ the mode), waits for both clients' own-row teams, then Starts.
+settled value:110
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+settled Create
+clickl Create
+present Game name
+settled Ok
+clickl Ok
+present Available maps
+settled Ok
+clickl Ok
+
+present Network players
+peers 2
+occ 3
+awaitsignal seated1
+awaitsignal seated2
+click 221 115
+team 0 1
+lobbymode 0
+awaitsignal c1team
+team 1 1
+awaitsignal c2team
+team 2 2
+capture lobby_teams_host
+signal setup
+awaitsignal c1ready
+awaitsignal c2ready
+enabled Start
+settled Start
+clickl Start
+
+absent Network players
+gamemode 2
+gameclock 3000
+capture match_start
+gameclock 14000
+capture before_kill
+gameclock 16600
+# FFA with teams: allies are NOT a victory (last PLAYER standing) -> the match plays on.
+gamemode 2
+capture host_after_kill_ffa
+signal won
+awaitsignal c1done
+awaitsignal c2done
+log host done
+end

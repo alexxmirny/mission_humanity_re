@@ -168,6 +168,29 @@ inline void clear_region(region_id r) {
     if (p != nullptr) std::memset(p, 0, reach_of(r));
 }
 
+// ---- a region's CANONICAL bytes, saved and put back (mp:X3c's keep-local pass) --------------------
+//
+// The resync import must leave some regions exactly as this peer had them (state/world_fixup.h
+// RESYNC_KEEP_LOCAL). Whole-region and rid-keyed like clear_region: the length is the registry's own
+// canonical `size` (what the world blob carries for it), clamped to what is actually bound, so it can
+// neither be pointed at a slice nor run into a neighbour. Returns the byte count (0 if unbound).
+inline uint32_t region_bytes(region_id r) {
+    const uint32_t bound = live_size(r);
+    const uint32_t want  = REGIONS[r].size;
+    return bound < want ? bound : want;
+}
+inline uint32_t save_region_bytes(region_id r, void *dst) {
+    const uint32_t n = region_bytes(r);
+    const void    *p = n ? ptr<void>(r) : nullptr;
+    if (p == nullptr) return 0;
+    std::memcpy(dst, p, n);
+    return n;
+}
+inline void restore_region_bytes(region_id r, const void *src, uint32_t n) {
+    void *const p = n ? ptr<void>(r) : nullptr;
+    if (p != nullptr) std::memcpy(p, src, n);
+}
+
 // ---- a whole FOUR-BYTE region, read and written (mp:X3's live-import preserve pass) -------------
 //
 // The sibling of clear_region above and it lives here for the identical reason: this header is the
@@ -199,6 +222,29 @@ inline bool write_region_u32(region_id r, uint32_t v) {
     void *const p = ptr<void>(r);
     if (p == nullptr) return false;
     std::memcpy(p, &v, sizeof(v));
+    return true;
+}
+
+// ---- one dword at an OFFSET inside a region (mp:X3a's fixup trailer) -----------------------------
+//
+// The offset-taking siblings of the pair above, for the same reason and with the same rule: this
+// header is the only place allowed to bind an address. A fixup entry names (block, byte offset), so
+// the importer reads the receiver's own dword at that spot before the byte engine runs and writes the
+// resolved value after it. Bounds-checked against the registry REACH, so an entry the validator let
+// through by mistake still cannot write past its region.
+inline bool read_region_u32_at(region_id r, uint32_t off, uint32_t *out) {
+    if (out == nullptr || uint64_t(off) + 4u > reach_of(r)) return false;
+    const void *const p = ptr<const void>(r);
+    if (p == nullptr) return false;
+    std::memcpy(out, static_cast<const uint8_t *>(p) + off, sizeof(uint32_t));
+    return true;
+}
+
+inline bool write_region_u32_at(region_id r, uint32_t off, uint32_t v) {
+    if (uint64_t(off) + 4u > reach_of(r)) return false;
+    void *const p = ptr<void>(r);
+    if (p == nullptr) return false;
+    std::memcpy(static_cast<uint8_t *>(p) + off, &v, sizeof(v));
     return true;
 }
 

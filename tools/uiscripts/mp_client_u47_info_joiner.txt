@@ -1,0 +1,56 @@
+# mp:U47 CLIENT (the JOINER) -- lands its mother, opens the building info panel (right-click on the build-tab
+# row -> llm_ui_entity_info_screen_open 0x004cad31 -> GAME_MODE 4) and keeps it open until the sim has run
+# >= 12 s past the open, then Esc closes it. Pair with mp_host_u47_info_joiner.txt (see its header).
+#
+# The hold is SIM time, not a wait: `gameclock` only advances while lockstep lets this peer's sim run, so a
+# joiner whose panel parked the match never reaches it and the script times out -- the correct failure.
+# `gamemode 4` is asserted BOTH right after the open and again after the hold, so "the panel really was
+# the active mode for the whole window" is a predicate, not an assumption.
+
+settled value:110
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+present Internet server
+settled Internet server
+clickl Internet server
+present Server address
+settled Connect
+clickl Connect
+sessions 1
+settled Join game
+clickl Join game
+
+present Network players
+signal lobby
+settled Cancel
+absent Network players
+
+# land the mother (the host lands at 3000; same gesture as mp_client_el2.txt), then open the build tab
+gameclock 6000
+rclick 480 330 shift
+gameclock 20000
+capture u47_client_landed
+simclick 890 215
+gameclock 21000
+
+log CLIENT u47: right-click the Academy row -> info panel
+simrclick 975 478
+retry 1500 1 3 gamemode 4
+screensettled
+signal u47open
+log CLIENT u47: info panel open (mode 4)
+dump
+# (no capture of the panel: its AVI frame is not deterministic; mode 4 is asserted by predicate + the post_check)
+
+# hold: the sim must advance >= 12 s of game time with the panel up (needs the host's horizons to arrive)
+gameclock 33500
+gamemode 4
+log CLIENT u47: held >= 12 s, still mode 4
+key 0x01
+retry 1500 1 3 gamemode 2
+signal u47closed
+log CLIENT u47: info panel closed
+gameclock 38000
+end

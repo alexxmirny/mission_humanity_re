@@ -1,0 +1,49 @@
+# mp:U52 HOST (solo): a NEW lobby starts with no teams and FFA mode. The host opens a lobby, sets TEAM mode and team T2
+# for itself, LEAVES (Cancel -> browser) and creates the game again: the second lobby must read FFA and "-". Without the
+# reset (detour on llm_lobby_screen_open) the mode/team bytes survive the leave, because nothing in retail ever writes
+# them back.
+settled value:110
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+settled Create
+clickl Create
+present Game name
+settled Ok
+clickl Ok
+present Available maps
+settled Ok
+clickl Ok
+
+present Network players
+occ 1
+settled Cancel
+lobbymode 0
+team 0 0
+click 221 115
+team 0 1
+click 221 115
+team 0 2
+click 501 370
+lobbymode 1
+capture relobby_before
+
+clickl Cancel
+settled Create
+clickl Create
+present Game name
+settled Ok
+clickl Ok
+present Available maps
+settled Ok
+clickl Ok
+
+present Network players
+occ 1
+settled Cancel
+lobbymode 0
+team 0 0
+capture relobby_after
+log HOST second lobby opened in FFA with no team
+end

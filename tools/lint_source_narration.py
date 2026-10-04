@@ -61,6 +61,11 @@ import tokenize
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SRC = os.path.join(REPO, "src", "mh_dll")
 TOOLS = os.path.join(REPO, "tools")
+# VENDORED third-party trees (THIRD_PARTY.md) are kept byte-identical to upstream so an update is a
+# re-copy. Their comments are someone else's prose, not our diary, and editing them to satisfy this
+# lint would turn every update into a merge. Dear ImGui (PT-GFX4) is the one that trips it: two
+# upstream lines in imgui.cpp's window-settings handler use the marker phrase about ImGui windows.
+VENDORED = (os.path.join(SRC, "include", "imgui"),)
 BASELINE = os.path.join(REPO, "tools", "data", "source_narration_baseline.json")
 
 ORDINALS = (
@@ -148,7 +153,13 @@ def scan_tree(root=SRC):
     """{repo-relative posix path: [line numbers]} for every non-generated .cpp/.h under root."""
     out = {}
     for dirpath, dirnames, filenames in os.walk(root):
-        dirnames[:] = [d for d in dirnames if d not in ("attic", "Release", "Debug", ".vs")]
+        dirnames[:] = [
+            d
+            for d in dirnames
+            if d not in ("attic", "Release", "Debug", ".vs")
+            and os.path.normcase(os.path.join(dirpath, d))
+            not in {os.path.normcase(v) for v in VENDORED}
+        ]
         for fn in filenames:
             if not fn.endswith((".cpp", ".h")) or fn.endswith(".gen.h"):
                 continue

@@ -15,6 +15,7 @@
 #include "orders/order_codec.h"     // ST5: the ONE order-record layout, shared with the save
 
 #include <cstring>
+#include "mh_net_proto/text_utf8.h" // MP-LANG: chat bytes are UTF-8 -- the codec live_chat_to_wide uses
 #include "state/host_api.h"
 #include "state/host_events.h"
 #include "addr/mh_rebind.gen.h" // LIB-REBIND: the config-selected binder
@@ -54,6 +55,11 @@ void live_format_player_line(int32_t text_id, void *wide_name) {
     MH_CRT(w_sprintf__vss)(hb.text_scratch, TEXT_FMT_LABEL_PAREN_NAME,
                            static_cast<const wchar_t *>(hb.text_ptrs[text_id]),
                            static_cast<const wchar_t *>(wide_name));
+}
+
+// mp:MP-LANG: a received chat body, UTF-8 -> UTF-16 into the caller's buffer (cap units incl. NUL).
+void live_chat_to_wide(const char *utf8, void *dst, uint32_t cap_units) {
+    mh_net_proto::utf8_to_utf16(utf8, std::strlen(utf8), static_cast<uint16_t *>(dst), cap_units);
 }
 
 // w_sprintf(&G_TEXT_TMP, u"%s: %s", wide_name, wide_text) -- the chat line, 0x0049d1e6.
@@ -279,7 +285,19 @@ detail::packet_result handle_chat(const engine_state &st, const dispatch_state &
     // Declared param order is (src, dst) while the STORAGE is src=EDX, dst=EAX -- custom storage, so
     // the generated wrapper places them correctly and the arguments here read (src, dst).
     calls.w_str_copy(calls.ansi_to_wide_scratch(ds.players_w[sender_idx].name), name);
-    calls.format_chat_line(name, calls.ansi_to_wide_scratch(text));
+    // mp:MP-LANG: the BODY is UTF-8 on the wire (mh_net_proto/text_utf8.h), so it is decoded as UTF-8
+    // into a frame buffer rather than widened through the host's 8-bit codepage -- the one departure
+    // from the original's second llm_str_ansi_to_wide_scratch call here, and a presentation-only one
+    // (the result feeds G_TEXT_TMP and the floating-text queue, no hashed slice). The speaker's name is
+    // ASCII by the MP-LANG name rule, so its widen above is codepage-independent. A null
+    // chat_to_wide (every offline suite's table) keeps the original call.
+    wchar_t text_w[0x100];
+    void   *wide_text = text_w;
+    if (calls.chat_to_wide)
+        calls.chat_to_wide(text, text_w, 0x100);
+    else
+        wide_text = calls.ansi_to_wide_scratch(text);
+    calls.format_chat_line(name, wide_text);
 
     *st.floating_msg_active = 0;
     calls.print_floating_msg_cyan(ds.text_scratch);
@@ -341,8 +359,8 @@ void handle_garbled(const engine_state &st, const dispatch_state &ds, const disp
 
 // ---- the inner (MSG_CONTROL) switch --------------------------------------------------------------
 detail::packet_result dispatch_control(const engine_state &st, const dispatch_state &ds,
-                                       const dispatch_calls &calls, uint32_t &cursor,
-                                       int32_t sender_idx) {
+                                       const dispatch_calls &calls, const reimpl_fixes &fx,
+                                       uint32_t &cursor, int32_t sender_idx) {
     // The RAW tag is kept as well as the decremented selector: CTL_RESYNC_BEGIN stamps the raw value
     // into the order it synthesises (0x0049d034 reads the same local the selector was derived from).
     const uint8_t raw_tag = ds.packet.bytes[cursor++];
@@ -355,13 +373,27 @@ detail::packet_result dispatch_control(const engine_state &st, const dispatch_st
     switch (static_cast<control_tag>(raw_tag)) {
 
         case CTL_PLAYER_LEFT: { // 0x0049c60c
-            if (ds.players_w[sender_idx].status_flags & PLAYER_ALIVE) {
+            // mp:U56 ([net] player_left_pin_fix). The flag flip below runs at RECEIVE time, which is a
+            // different sim step on every survivor -- and nothing at all if the receiver's own sim has
+            // already run presence_lost for the sender. For a sender that is still ALIVE+HUMAN and not
+            // yet GONE (a natural elimination; a quit marks GONE in its DROP record first) the flip is
+            // made by the sim at the elimination step instead (sim_player_presence_lost.cpp), so here
+            // the flags are put back whenever another human remains. The mark + count still run first
+            // so ACTIVE_PLAYER_COUNT ends on the retail value and the adjusted count is the retail one.
+            const uint32_t flags_before = ds.players_w[sender_idx].status_flags;
+            const bool     pin          = fx.player_left_pin_fix && (flags_before & PLAYER_ALIVE) != 0 &&
+                             (flags_before & PLAYER_HUMAN) != 0 && (flags_before & PLAYER_GONE) == 0;
+            say("; [rx] CTL_PLAYER_LEFT sender=%d sf=0x%x gclk=%.4f pin=%d\n", sender_idx,
+                static_cast<unsigned>(flags_before), *st.game_clock, pin ? 1 : 0);
+            if (flags_before & PLAYER_ALIVE) {
                 mark_player_gone(ds, sender_idx);
                 calls.format_player_line(TXT_PLAYER_LEFT,
                                          calls.ansi_to_wide_scratch(ds.players_w[sender_idx].name));
                 calls.print_floating_msg_red(ds.text_scratch);
             }
-            if (calls.count_active_players() > 1) {
+            const int32_t active = calls.count_active_players();
+            if (pin && active > 1) ds.players_w[sender_idx].status_flags = flags_before;
+            if (active > 1) {
                 detail::commit_horizon(st);
                 return detail::packet_result::drain_again;
             }
@@ -654,7 +686,7 @@ packet_result dispatch_packet(const engine_state &st, const dispatch_state &ds,
             }
 
             case MSG_CONTROL: // 0x0049c5d1
-                r = dispatch_control(st, ds, calls, cursor, sender_idx);
+                r = dispatch_control(st, ds, calls, fx, cursor, sender_idx);
                 break;
 
             case MSG_CHAT: // 0x0049d128
@@ -716,6 +748,7 @@ const dispatch_calls &live_dispatch_calls() {
         live_format_chat_line,
         live_format_plain_line,
         &live_overlay_hoist_ops(), // LIB-ABI stage E
+        live_chat_to_wide,         // mp:MP-LANG
     };
     return dc;
 }

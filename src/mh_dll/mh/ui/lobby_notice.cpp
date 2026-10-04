@@ -25,11 +25,25 @@
 // pointer compare per frame on a menu screen. Determinism-neutral: menu-screen text only, no sim
 // state, no RNG.
 //
-// The strings are English literals, per the U18 / R-live-ui precedent. cfg G_TEXT_PTRS[0xa6]
+// mods:LANG4: the strings are rows of ui/player_strings.def -- English compiled in, a language pack
+// translates them (lang/<id>/mh_strings.txt). Before the table they were English literals, per the
+// U18 / R-live-ui precedent. cfg G_TEXT_PTRS[0xa6]
 // ("Disconnected") exists but means "a named PEER disconnected mid-match" and is proven only in a
-// live match -- forcing it here would be a worse lie than an untranslated line. No wrapping is
-// needed: llm_gfx_draw_formatted_text only auto-wraps when flags&0x18 == 0x18 (justified) and this
-// widget's flags are 0x04868042, so the line runs until it ends -- keep both strings short.
+// live match -- forcing it here would be a worse lie than an untranslated line.
+//
+// WRAPPING (2026-09-29, user: "some messages overflow the status field"). llm_gfx_draw_formatted_text
+// auto-wraps only when flags&0x18 == 0x18 (justified); this widget's flags are 0x04868042, so a line
+// ran until it ended -- centred on the field (0x80000) and spilling past BOTH edges of the panel (EN
+// "No network module. Multiplayer is unavailable." already did; every longer Russian row would). The
+// draw loop DOES honour '\n' (0x0a: next line, x back to the rect's left, each line laid out -- here,
+// centred -- on its own), so the fix is to hand it a copy with line breaks: the widget's draw_cb is
+// swapped for status_draw_thunk, which wraps the label (ui/text_wrap.cpp: at spaces, hard break only
+// inside a word wider than the field, widths from the game's own llm_ui_text_measure_width over the
+// widget's font), points the label at the wrapped copy for the one draw, and restores it. The field's
+// resolved rect (_G_LLM_UI_WIDGET_DRAW_W/H, set by llm_ui_widget_layout_resolve_position before
+// draw_cb) gives the width and the line budget; a message needing more lines than fit ends in "..."
+// on the last one (no scroll affordance on a status line, and its start is where the meaning is).
+// Text that fits is drawn from the original buffer untouched -- byte-identical to before.
 //
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
@@ -37,6 +51,9 @@
 #include <windows.h>
 
 #include "ui/ui_internal.h"
+#include "ui/player_strings.h" // mods:LANG4: every line below is a table row
+#include "ui/text_wrap.h"      // the status field's word wrap
+#include "addr/mh_calls.gen.h" // llm_ui_widget_draw / llm_ui_text_measure_width / llm_gfx_font_desc_for_flags
 #include "addr/mh_addrs.gen.h" // generated EN VAs (tools/gen_dll_addrs.py)
 
 #pragma comment(lib, "user32.lib") // wsprintfA
@@ -74,10 +91,98 @@ bool           g_notice_shown = false; // the browser has been on screen at leas
 // (host-left/link-lost), which requires a live session, and a no-transport peer never has one -- but
 // the event still wins if it ever does, because an event is news and a standing fact is not.
 //
-// English literal, per the U18 / R-live-ui / U23 precedent, and short for the same reason: the
-// widget's flags (0x04868042) do not request auto-wrap, so the line runs until it ends.
-const wchar_t *const kNoModuleLine = L"No network module. Multiplayer is unavailable.";
-bool                 g_no_module   = false; // armed once at arm time; main thread only
+// A table row (mods:LANG4), short for the U23 reason: the widget's flags (0x04868042) do not request
+// auto-wrap, so the line runs until it ends.
+bool g_no_module = false; // armed once at arm time; main thread only
+
+// ---- the status field's word wrap ------------------------------------------------------------
+constexpr uintptr_t ADDR_STATUS_WIDGET  = 0x006503b3u; // the widget whose label is the status line
+constexpr uintptr_t ADDR_WIDGET_DRAW_FN = 0x004c1100u; // llm_ui_widget_draw, its retail draw_cb
+constexpr uint32_t  W_FLAGS = 0x08, W_DRAW_CB = 0x0c, W_LABEL = 0x38;
+constexpr int       STATUS_WRAP_CAP = 768; // the 256-unit line plus room for the breaks and "..."
+
+bool          g_wrap_installed = false;
+wchar_t       g_wrapped[STATUS_WRAP_CAP];
+constexpr int STATUS_MARGIN_PX = 4;
+wchar_t       g_wrap_last[STATUS_WRAP_CAP]; // the last wrapped text logged
+int           g_wrap_logged = 0;            // first few distinct wraps, for the harness and a reader of mh_net.log
+uint32_t      g_wrap_font   = 0;
+
+int measure_status(void *, const wchar_t *s, int n) {
+    wchar_t tmp[STATUS_WRAP_CAP];
+    if (n > STATUS_WRAP_CAP - 1) n = STATUS_WRAP_CAP - 1;
+    for (int i = 0; i < n; ++i) tmp[i] = s[i];
+    tmp[n] = 0;
+    return mh::call::llm_ui_text_measure_width(g_wrap_font, (uint16_t *)tmp);
+}
+
+extern "C" void __cdecl status_draw(uint8_t *w) {
+    wchar_t *const label  = *(wchar_t **)(w + W_LABEL);
+    auto *const    widget = (mh::game::mh_llm_ui_widget *)w;
+    if (!label || !label[0]) {
+        mh::call::llm_ui_widget_draw(widget);
+        return;
+    }
+    const uint32_t flags = *(const uint32_t *)(w + W_FLAGS);
+    g_wrap_font          = (uint32_t)(uintptr_t)mh::call::llm_gfx_font_desc_for_flags(flags);
+    const int line_h     = g_wrap_font ? *(const int *)(uintptr_t)g_wrap_font : 0; // desc.handle = line height
+    // The resolved width is the panel's whole inner box (188 px measured); keep STATUS_MARGIN_PX clear
+    // on each side so a full line does not touch the frame.
+    const int width  = *(volatile const int *)mh::addr::_G_LLM_UI_WIDGET_DRAW_W - 2 * STATUS_MARGIN_PX;
+    const int height = *(volatile const int *)mh::addr::_G_LLM_UI_WIDGET_DRAW_H;
+    // The draw advances a line by the font height + 2 (llm_gfx_draw_formatted_text @0x004b5de8).
+    const int          max_lines = (line_h > 0 && height >= line_h) ? 1 + (height - line_h) / (line_h + 2) : 1;
+    mh::ui::WrapReport r         = {};
+    mh::ui::wrap_text(label, g_wrapped, STATUS_WRAP_CAP, width, max_lines, measure_status, nullptr, &r);
+    if (!r.breaks && !r.truncated) {
+        mh::call::llm_ui_widget_draw(widget); // fits: the original buffer, untouched
+        return;
+    }
+    if (g_wrap_logged < 16 && lstrcmpW(g_wrap_last, g_wrapped) != 0) { // once per distinct wrapped text
+        ++g_wrap_logged;
+        lstrcpynW(g_wrap_last, g_wrapped, STATUS_WRAP_CAP);
+        char b[200];
+        wsprintfA(b, "; [ui] status field wrapped: %d line(s) (%d break(s), %d inside a word%s) in %d x %d px, "
+                     "font height %d -> at most %d line(s)\n",
+                  r.lines, r.breaks, r.hard, r.truncated ? ", TRUNCATED with ..." : "", width, height, line_h,
+                  max_lines);
+        ui_log(b);
+    }
+    *(wchar_t **)(w + W_LABEL) = g_wrapped;
+    mh::call::llm_ui_widget_draw(widget);
+    *(wchar_t **)(w + W_LABEL) = label;
+}
+
+// clang-format off
+// The game calls draw_cb __watcall (EAX = widget) and expects every register but EAX preserved.
+__declspec(naked) void status_draw_thunk() {
+    __asm {
+        pushad
+        push eax
+        call status_draw
+        add  esp, 4
+        popad
+        ret
+    }
+}
+// clang-format on
+
+// Swap the status widget's draw_cb once (it is static data in the exe, never rebuilt). Only when it
+// still holds the retail llm_ui_widget_draw: anything else means another owner, and we leave it.
+void status_wrap_install() {
+    if (g_wrap_installed) return;
+    g_wrap_installed      = true;
+    volatile uint32_t *cb = (volatile uint32_t *)(ADDR_STATUS_WIDGET + W_DRAW_CB);
+    if (*cb != ADDR_WIDGET_DRAW_FN) {
+        char b[160];
+        wsprintfA(b, "; [ui] status field wrap NOT armed: draw_cb is %08X, not llm_ui_widget_draw\n", (unsigned)*cb);
+        ui_log(b);
+        return;
+    }
+    *cb = (uint32_t)(uintptr_t)&status_draw_thunk;
+    ui_log("; [ui] status field wrap armed (widget 0x006503b3: word wrap to the field width, '...' past its "
+           "height)\n");
+}
 
 bool on_a_browser() {
     const void *list = *(void **)mh::addr::_G_LLM_UI_MENU_WIDGET_LIST;
@@ -104,7 +209,7 @@ bool on_a_browser_or_lobby() {
 void no_module_notice_tick() {
     // Not on a browser or the lobby: the screen we ARE on may own this buffer (the map picker does).
     if (!on_a_browser_or_lobby()) return;
-    lstrcpynW((wchar_t *)ADDR_MAP_STATUS_LINE, kNoModuleLine, 256);
+    lstrcpynW((wchar_t *)ADDR_MAP_STATUS_LINE, mh::ui::tr(mh::ui::Str::LOBBY_NO_MODULE), 256);
 }
 
 } // namespace
@@ -113,8 +218,8 @@ namespace mh {
 namespace ui {
 
 void browser_notice_arm(int cause) {
-    if (cause == 2) g_notice = L"Connection to the host was lost.";
-    else if (cause == 1) g_notice = L"The host left the game.";
+    if (cause == 2) g_notice = tr(Str::LOBBY_LINK_LOST);
+    else if (cause == 1) g_notice = tr(Str::LOBBY_HOST_LEFT);
     else return; // 0 = no involuntary cause recorded: say nothing rather than guess
     g_notice_armed = GetTickCount();
     g_notice_shown = false;
@@ -132,18 +237,19 @@ void browser_notice_arm(int cause) {
 // lost." fills it exactly), so the prefix is 9 and the protocol caps the reason at 20
 // (JOIN_REFUSAL_TEXT_MAX). The first cut of this line ("Join refused: input codepage mismatch (host
 // 1252, yours 1251)") was measured clipped at the panel edge -- the long form is the host's log line.
+//
+// mods:LANG4: "Refused: %s" is a table row, and so is every reason the host can compose -- the host
+// still sends English (the wire is language-neutral), and the joiner shows its own language's
+// version of the reason it recognizes (tr_refusal_reason; an unrecognized one is shown as received).
 void browser_notice_arm_refused(const char *reason) {
-    const wchar_t *pfx = L"Refused: ";
-    int            n   = 0;
-    while (pfx[n]) {
-        g_refused_line[n] = pfx[n];
-        ++n;
-    }
-    for (const char *p = reason ? reason : ""; *p && n < 255; ++p) g_refused_line[n++] = (wchar_t)(unsigned char)*p;
-    g_refused_line[n] = 0;
-    g_notice          = g_refused_line;
-    g_notice_armed    = GetTickCount();
-    g_notice_shown    = false;
+    wchar_t why[128];
+    tr_refusal_reason(reason ? reason : "", why, 128);
+    wchar_t buf[1100]; // wsprintfW's own ceiling is 1024
+    wsprintfW(buf, tr(Str::LOBBY_REFUSED), why);
+    lstrcpynW(g_refused_line, buf, 256);
+    g_notice       = g_refused_line;
+    g_notice_armed = GetTickCount();
+    g_notice_shown = false;
     if (ui_verbose()) {
         char b[160];
         wsprintfA(b, "; F3c: browser notice armed (join refused: %s)\n", reason ? reason : "");
@@ -157,13 +263,14 @@ void browser_notice_arm_refused(const char *reason) {
 // that knows both numbers and mh.dll must not learn what a relay is. Shares g_refused_line: the two
 // cannot be live at once (a JOIN refusal needs a lobby, a relay dial happens on the browser before
 // one), and if they ever were the later arm is the newer news.
+//
+// mods:LANG4: the module's English line is matched against the table's relay row and shown in this
+// peer's language; any other line is shown as the module wrote it.
 void browser_notice_arm_relay(const char *line) {
-    int n = 0;
-    for (const char *p = line ? line : ""; *p && n < 255; ++p) g_refused_line[n++] = (wchar_t)(unsigned char)*p;
-    g_refused_line[n] = 0;
-    g_notice          = g_refused_line;
-    g_notice_armed    = GetTickCount();
-    g_notice_shown    = false;
+    tr_relay_line(line ? line : "", g_refused_line, 256);
+    g_notice       = g_refused_line;
+    g_notice_armed = GetTickCount();
+    g_notice_shown = false;
     char b[128];
     wsprintfA(b, "; R4a: browser notice armed (relay: %s)\n", line ? line : "");
     ui_log(b);
@@ -179,6 +286,7 @@ void browser_notice_arm_no_module() {
 
 // Called every frame from the lockstep present hook. Cheap when idle.
 void browser_notice_tick() {
+    status_wrap_install(); // once; every status line the field draws is wrapped from here on
     if (!g_notice) {
         if (g_no_module) no_module_notice_tick();
         return;

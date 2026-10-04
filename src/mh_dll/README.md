@@ -267,6 +267,81 @@ built, split by the ARM the suite's subject needs, not by file name:
 > each; journals pooled) — a serial re-run for debugging is `--jobs 1` / the single-arm
 > `--ui-replay`.
 >
+> **TWO PROFILES since 2026-09-29 (user; tooling:TL-GATE12).** `python tools/run_gate.py --light` is
+> the **iteration checkpoint**; the bare `run_gate.py` (profile `full`) is for **big checkpoints,
+> merges of a long-lived branch, and releases**.
+>
+> **THREE PROFILES since 2026-10-03 (user; tooling:TL-LIGHT-WALL-CAP).** `--smoke` is the **iteration
+> run between commits**; `--light` stays the **commit checkpoint**; the bare gate / `--release` are for
+> merges and releases. `python tools/run_gate.py --smoke` runs: the incremental build (plain selftest
+> exes only), `lint`, the PLAIN selftest suites mapped from the changed files (`selftests_smoke` =
+> `run_selftests.py --no-asan --repeats 1 --skip-suites ...`; the map is `SMOKE_SUITE_MAP` — e.g.
+> `libmh/ai/` → `aitest`; C++ with no one-domain answer, such as `mh/seams/` or `mh_common/`, falls back
+> to every suite minus the loopback ones; C++ no selftest links, such as `mh/ui` or `mh/gfx`, adds
+> none), and **at most ONE** UI row (`ui_one`: the cheapest solo row a change-aware rule names; none
+> when no rule names one — there are no base smoke rows). No ASan, no determinism, no replays, no VM
+> units. The diff base is `HEAD` (the uncommitted edit), `--diff-base REF` overrides it. It prints
+> "SMOKE IS NOT A COMMIT GATE" at start and end; the exit code still reflects its units. Own cap
+> `SMOKE_GATE_WALL_MAX` (4 min, same diet-red mechanism; target under 3 min) and own records
+> (`tmp/gate/last_smoke_timings.json`, `last_smoke_green_timings.json`), so it never touches the
+> light/full history or the escalation clock. `--plan --files a,b` plans for a hypothetical change
+> (any profile) without a git diff.
+>
+> **LIGHT GATE FITS ITS CAP (TL-LIGHT-WALL-CAP).** The critical path is the selftests unit (ASan + plain
+> in ONE `run_selftests.py` process: the host-global `selftest` lease and net_selftest's fixed ports
+> forbid running the two halves as parallel units on one box, so they cannot be split here). It already
+> starts at t0; what changed is that the `loopback` token (six wall-bound suites, ~320 s across both
+> passes) is now earned only by `mh_net/`, `mh_net_udp/`, the loopback selftest sources and
+> `seams/adaptive_window*` — `mh/seams/net_*` no longer brings it back (no loopback suite drives them;
+> it keeps `u19j_gpfg3` and the net UI rows). The skipped-loopback variant schedules by its own record
+> key (`selftests_noloop`). A transport-source change still costs ~574 s against the 540 s cap
+> (build ~45 s + 529 s); lifting that needs a per-pass skip in `run_selftests.py` (tracker note).
+>
+> **RELEASE TIER (user 2026-10-01).** UI registry rows marked `tier: release` (the fix-off negative arms,
+> the P17 watchdog / alt-tab rows, the `*_retail` twins) are skipped by a bare `test_ui.py` and by the
+> default full gate, which prints "N release-tier row(s) skipped" and a `UI tier:` line in `--plan` and
+> the summary. `python tools/run_gate.py --release` (full profile only) passes `--release-tier` to the
+> suite and runs them; naming a row (`test_ui.py <name>`, the light smoke's change-aware rows) always
+> runs it. Run `--release` before a release. A skipped row's budget does not count toward the cost rules.
+>
+> * **light, always:** build (plain selftest exes only), `det` + `spdet` (both determinism oracles),
+>   `abc_tutorial` + `abc_spcamp` (the soak/campaign replays), `inmem`, `lint`, the PLAIN selftest
+>   pass (`selftests_plain` = `run_selftests.py --no-asan`) and a UI `smoke` of `menu_walk` +
+>   `match_launch_net`. The two replays run **SHIP ARM ONLY** (`ui_abc.py --ui-abc-arms A,C`, weight
+>   1): arm A against the committed oracle C, no all-original arm B. Sound because every oracle's
+>   `source:` line is a `mode=original` arm replayed exactly as `--ui-abc` runs it, and A-vs-C is gated
+>   on the same required channels + A-vs-C excusals as A-vs-B. What it gives up is attribution: a red
+>   cannot say promotion bug (A off B) from replay/original drift (B off C) — rerun the full A,B,C.
+>   `ui_abc.py` refuses every other arm set (C is mandatory; `--ui-gored` needs all three).
+> * **light, change-aware** — diffed against the commit of the last FULL green
+>   (`tmp/gate/last_full_green.json`; none on record → the last 10 commits): C++ under `libmh/`,
+>   `libmh_dll/`, `mh_common/`, `mh_nettest/`, `libmh_test/` or any `.vcxproj`/`.props` puts the **ASan
+>   pass back** (dead-ends G32 — the heap-corruption class lives there, and both of its instances were
+>   in test fixtures); `libmh*`/`libref_host` adds `libref`; gfx/input/ui/net/map-transfer sources add
+>   the UI rows and VM units that exercise them; an edited `tools/uiscripts/` script, ini, baseline or
+>   registry row adds exactly the rows that use it. The six WALL-bound loopback transport suites
+>   (`LOOPBACK_SUITES`: 162 s of the plain pass's 214 s, measured 2026-09-29, paid again under ASan)
+>   run only when a transport source changed (`run_selftests.py --skip-suites`). `run_gate.py --light --plan` prints the selection
+>   and the reason for every addition without running anything; a changed source no rule maps is
+>   NAMED, not silently dropped (the map is `LIGHT_RULES`, and `--selftest` fails a rule naming a row
+>   that left the registry).
+> * **escalation:** only an un-skipped FULL pass writes `last_full_green.json`. The light gate prints
+>   the distance from it and says **FULL GATE DUE** past 60 commits or 3 days (or with none on record);
+>   `run_gate.py --full-status` exits 3 in that state, and the worktree loop's `land` step refuses on it
+>   (`--allow-stale-gate` overrides). A `--skip` run never becomes a profile's green timing base.
+> * **cost:** its own wall cap (`LIGHT_GATE_WALL_MAX`), its own records
+>   (`tmp/gate/last_light_timings.json`, `last_light_green_timings.json`), and the smoke rows keep
+>   their per-row `budget_s` reds. The summary lists the full units it SKIPPED.
+> * **scheduling (both profiles):** longest-first with backfill plus ONE reservation (EASY): when the
+>   top-priority pending unit does not fit the free cores, a lower one may start only if it is expected
+>   to finish before the blocked unit could start, or fits in the cores that unit will not need.
+>   `--plan` prints the simulated timeline from the recorded durations (same `pick_units` the
+>   dispatcher calls). A `--skip` run keeps the durations it did not re-measure in the record.
+>   The replays are NOT paced: headless lanes use the null backend with `no_present=1`, which cuts the
+>   blit the `fps_limit` limiter sits on, so an arm runs as fast as one core allows (CPU = wall,
+>   measured 2026-09-29) and its gate time is CONTENTION — measured alone, ship-arm spcamp 234 s and
+>   tutorial 101 s; inside the gate 240 / 169 s (A,C) and 352 / 253 s (A∥B).
+>
 > **Not after every change** (user, 2026-07-26). While iterating, run only steps **1, 2 and 5**
 > (build + transport selftests + lint — seconds), plus the single UI scenario your change touches if
 > there is one:
@@ -281,8 +356,8 @@ built, split by the ARM the suite's subject needs, not by file name:
 >   `test_ui.py --check-budgets` is a `lint_repo` row that fails a row without them;
 > * `run_gate.py` writes every unit's seconds, its span, and every suite scenario's seconds to
 >   `tmp/gate/last_timings.json` (`_verdict`, `_reds`, `_units`, `_suite_scenarios`, `_suite_chains`), and
->   goes **RED** when a scenario runs > 1.5x its `budget_s`, when the suite unit's wall exceeds 12 min,
->   or when the whole gate exceeds 18 min (15 until 2026-09-25). Each red line names the offender and its growth against
+>   goes **RED** when a scenario runs > 1.5x its `budget_s`, when the suite unit's wall exceeds 23.5 min (21 until 2026-10-01, 12 until 2026-09-29),
+>   or when the whole gate exceeds 25 min (18 until 2026-09-29, 15 until 2026-09-25). Each red line names the offender and its growth against
 >   the last **green** run (`tmp/gate/last_green_timings.json`);
 > * `python tools/gate_timeline.py` labels every lane run with its gate unit and scenario and prints
 >   the critical path (the unit that ended last, and the suite's longest `share_lanes` chain).
@@ -292,6 +367,11 @@ built, split by the ARM the suite's subject needs, not by file name:
 > number. The suite's multi-peer pool is `run_gate.py --suite-net-jobs` (wait-bound, priced at
 > `NET_JOB_WEIGHT` of a core per job); `--suite-jobs` stays the CPU-bound solo pool. Read the current numbers from the
 > record, not from prose.
+>
+> **Transport changes (option A, user 2026-10-03).** When the `loopback` token IS earned, the light
+> gate runs the six loopback suites in the PLAIN pass only (`run_selftests.py --asan-skip-suites`);
+> their ASan run stays in the full gate. That keeps a transport change under the cap (it measured
+> 581 / 607 s before; planned ~430 s). The record key is `selftests_loop_plain`.
 
 > **THE BUILD PRODUCES FOUR SHIPPING DLLs SINCE FORK F4E** — `mh.dll` and its three satellites
 > `mh_net.dll` (the MP transport, F4B), `libmh.dll` (**the spine**, F4D) and `mh_harness.dll` (the

@@ -1,0 +1,40 @@
+# mp:P17 HOST -- the alt-tab rig check. Pair with mp_client_p17.txt.
+#
+# 4 s into the match the host's window is MINIMISED (`winmin 5000`: ShowWindow(SW_MINIMIZE) now, a helper thread
+# restores it 5 s later -- a minimised window that stopped presenting would never reach the next op itself).
+# Whatever the frame loop does while minimised is then read from the logs by check_freeze_watchdog.py
+# --alttab: the host's `[focus]` lines (WM_SIZE MINIMIZED / restored, WM_ACTIVATE), its `[freeze]` lines
+# (a watchdog sample proves the frame loop STOPPED), and the client's `[netind] stall` durations.
+
+settled value:110
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+settled Create
+clickl Create
+present Game name
+settled Ok
+clickl Ok
+present Available maps
+settled Ok
+clickl Ok
+
+present Network players
+peers 1
+awaitsignal lobby
+enabled Start
+settled Start
+clickl Start
+
+absent Network players
+gamemode 2
+gameclock 6000
+log HOST p17: in match
+log HOST p17: minimise 5000 ms
+winmin 5000
+gameclock 16000
+capture h1_after_restore
+log HOST p17: done
+signal hostdone
+end

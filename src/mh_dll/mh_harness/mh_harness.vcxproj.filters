@@ -24,5 +24,6 @@
   <ItemGroup>
     <ClInclude Include="harness_contract.gen.h" />
     <ClInclude Include="config1.h" />
+    <ClInclude Include="hash_kind.h" />
   </ItemGroup>
 </Project>

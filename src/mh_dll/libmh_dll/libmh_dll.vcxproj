@@ -128,6 +128,7 @@
     <ClCompile Include="..\libmh\lockstep\tx_emit_chat.cpp" />
     <ClCompile Include="..\libmh\lockstep\tx_emit_ctrl.cpp" />
     <ClCompile Include="..\libmh\lockstep\tx_emit_order.cpp" />
+    <ClCompile Include="..\libmh\orders\admission_log.cpp" />
     <ClCompile Include="..\libmh\orders\issue\issue_ai_move_primitives.cpp" />
     <ClCompile Include="..\libmh\orders\issue\issue_bldg_depart.cpp" />
     <ClCompile Include="..\libmh\orders\issue\issue_bldg_footprint.cpp" />
@@ -565,6 +566,7 @@
     <ClCompile Include="..\libmh\state\rebind_verify.gen.cpp" />
     <ClCompile Include="..\libmh\state\spine.cpp" />
     <ClCompile Include="..\libmh\state\spine_exports.cpp" />
+    <ClCompile Include="..\libmh\state\world_fixup.cpp" />
     <ClCompile Include="..\libmh\state\world_snapshot.cpp" />
     <ClCompile Include="..\libmh\tact\tact_active_unit_count_hud_draw.cpp" />
     <ClCompile Include="..\libmh\tact\tact_ambient_sound.cpp" />

@@ -1498,8 +1498,8 @@ extern "C" void MH_Net_SetPeerHorizon(int player_id, int horizon_ms) {
 // match's inputs (or the lobby's), and a match ending is no reason to destroy them.
 extern "C" void MH_Net_QueueMatchBoundary(void) {
     if (!g_cs_ready) return; // never initialised: no lanes, no counters, nothing to roll up
-    int  q_depth, q_dh, q_dm, q_high, q_hh, q_hm;
-    long q_ev, q_ref;
+    int      q_depth, q_dh, q_dm, q_high, q_hh, q_hm;
+    long     q_ev, q_ref;
     unsigned epoch;
     long     post_ev, post_ref;
     EnterCriticalSection(&g_q_cs);
@@ -1519,9 +1519,9 @@ extern "C" void MH_Net_QueueMatchBoundary(void) {
     // post_ev/post_ref at whatever they had accumulated, not 0. Both are logged below rather than
     // trusted silently, so a build with the reset skipped fails check_queue_rollups.py loudly instead
     // of only failing the (luck-dependent) magnitude comparison.
-    epoch    = g_lanes.epoch();
-    post_ev  = g_lanes.evicted();
-    post_ref = g_lanes.refused();
+    epoch         = g_lanes.epoch();
+    post_ev       = g_lanes.evicted();
+    post_ref      = g_lanes.refused();
     g_qhigh_band  = 0;
     g_q_rollup_at = 0;
     LeaveCriticalSection(&g_q_cs);
@@ -1545,7 +1545,7 @@ extern "C" int MH_Net_QueueDepthM(void) {
 // calls it). Under the same lock the writers take. `epoch_out` is mp:U41d's reset marker -- pass
 // nullptr from a call site that does not need it.
 void mh_net_queue_counters_for_test(int *depth, int *high, long *evicted, long *refused,
-                                     unsigned *epoch_out) {
+                                    unsigned *epoch_out) {
     if (!g_cs_ready) {
         *depth = *high = 0;
         *evicted = *refused = 0;
@@ -1769,6 +1769,41 @@ extern "C" void MH_Net_SnapshotStatus(MH_NetSnapshotStatus *out) {
     out->state     = MH_SNAP_UNSUPPORTED;
     // root_hex is zeroed by the memset above, which IS the empty string -- stated rather than left
     // to the reader, because "" and "0000...0" are different answers and only one of them is true.
+}
+
+// mp:X2i: no channel C, so never a transfer to cancel.
+extern "C" int MH_Net_SnapshotCancel(int dst_player) {
+    (void)dst_player;
+    return 0;
+}
+
+// mp:U62 (HM-M4): the TCP star cannot migrate -- a hub that leaves takes the match with it, as before. The
+// rows exist (the contract is one list for both modules) and answer "nothing to hand over".
+extern "C" int MH_Net_HubLeave(int timeout_ms) {
+    (void)timeout_ms;
+    return MH_HUB_LEAVE_NOTHING;
+}
+extern "C" void MH_Net_HubStatus(MH_NetHubStatus *out) {
+    if (!out) return;
+    memset(out, 0, sizeof(*out));
+    out->size     = (unsigned)sizeof(MH_NetHubStatus);
+    out->supported = 0;
+    out->role     = -1;
+    out->hub_id   = -1;
+    out->local_id = -1;
+    out->old_hub  = -1;
+    out->new_hub  = -1;
+}
+extern "C" int MH_Net_Rehome(const MH_NetRehomeSpec *spec) {
+    (void)spec;
+    return 0;
+}
+// mp:U63: no hub-loss detection on TCP (a lost hub is a dead link, as before): nothing to arm.
+extern "C" void MH_Net_SetInMatch(int on) { (void)on; }
+// mp:U71: no failover quorum on TCP, so no spectator to exclude from one.
+extern "C" void MH_Net_SetSpectator(int id, int on) {
+    (void)id;
+    (void)on;
 }
 
 // ---- the module's one INTERNAL entry (fork F4B) --------------------------------------------------

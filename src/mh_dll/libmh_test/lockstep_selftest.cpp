@@ -18,6 +18,7 @@
 // points are those same functions applied to state(). Same code, different buffers.
 //
 #include "include/ctrl_emit.h"
+#include "mh_spectate.h"          // mp:U54: the spectator roster rules
 #include "lockstep/net_session.h" // NET-SESSION: the leader end of the resync transition
 #include "lockstep/turn_engine.h"
 #include "state/host_events.h" // the kick modal's pushed answer (R9)
@@ -3044,6 +3045,41 @@ void test_u19g_gone_peer_frame_guard_arm() {
     }
 }
 
+// mp:U56 -- CTL_PLAYER_LEFT from a still-ALIVE, not-yet-GONE human (a natural elimination) must not flip
+// its flags at RECEIVE time when another human remains: the sim does it at the elimination step.
+void test_u56_player_left_pin() {
+    using mh::lockstep::PLAYER_ALIVE;
+    using mh::lockstep::PLAYER_DEFEATED;
+    using mh::lockstep::PLAYER_GONE;
+    auto left = [](bool fix, int32_t active, uint32_t pre_flags_or) {
+        world w = mp_world();
+        w.human(2);
+        w.players[1].status_flags |= pre_flags_or;
+        g_rx.active_answer = active;
+        mh::lockstep::reimpl_fixes fx;
+        fx.player_left_pin_fix = fix;
+        packet p;
+        p.ctl(mh::lockstep::CTL_PLAYER_LEFT);
+        const bool drained = feed(w, p, 101, fx);
+        return std::make_pair(drained, static_cast<uint32_t>(w.players[1].status_flags));
+    };
+    const uint32_t untouched = PLAYER_ALIVE | HUMAN;
+    const auto     off       = left(false, 2, 0);
+    check("U56 fix off: the receipt marks the leaver gone at receive time (retail)",
+          off.first && (off.second & HUMAN) == 0 && (off.second & PLAYER_GONE) != 0 &&
+              (off.second & PLAYER_DEFEATED) != 0);
+    const auto on = left(true, 2, 0);
+    check("U56 fix on, another human remains: the receipt leaves the flags alone and keeps draining",
+          on.first && on.second == (untouched | 0u) && g_rx.player_lines == 1);
+    const auto last = left(true, 1, 0);
+    check("U56 fix on, LAST peer: the retail receive-time flip and teardown are kept",
+          !last.first && (last.second & HUMAN) == 0 && (last.second & PLAYER_GONE) != 0 &&
+              g_rx.presence_lost.size() == 1);
+    const auto quit = left(true, 2, PLAYER_GONE);
+    check("U56 fix on, sender already GONE (a quit's DROP record ran first): unchanged retail effect",
+          quit.first && (quit.second & HUMAN) == 0 && (quit.second & PLAYER_GONE) != 0);
+}
+
 void test_dispatch_drop_synced_vs_unsynced() {
     // THE PAIR THE DRAFT FACTORED INTO ONE BODY. If the factoring lost the difference, the two tags
     // become indistinguishable -- so the test is precisely that they differ in exactly one call and
@@ -4693,6 +4729,56 @@ void test_d24_resync_order_barrier() {
 
 } // namespace
 
+// ---- mp:U54: the spectate-after-defeat roster rules (mh_spectate.h) --------------------------------------------
+void spec_roster(mh::spectate::roster &r, uint32_t human_alive_mask, uint32_t ai_alive_mask, bool ally_rule) {
+    using namespace mh::spectate;
+    memset(&r, 0, sizeof r);
+    r.ally_rule = ally_rule;
+    for (int i = 0; i < 8; ++i) {
+        if ((human_alive_mask >> i) & 1) r.flags[i] = ST_ALIVE | ST_HUMAN;
+        else if ((ai_alive_mask >> i) & 1) r.flags[i] = ST_ALIVE;
+    }
+}
+void test_u54_spectate_rules() {
+    using namespace mh::spectate;
+    roster r;
+    // 3 humans, player 1 just lost: players 0 and 2 alive and human -> undecided, it spectates
+    spec_roster(r, 0b101, 0, false);
+    check("u54: 3 humans, one lost -> not decided", !decided(r, evaluate(r, 1)));
+    check("u54: ... and it becomes a spectator", becomes_spectator(r, 1, true, true, true));
+    check("u54: ... key off -> never", !becomes_spectator(r, 1, false, true, true));
+    check("u54: ... not in lockstep -> never", !becomes_spectator(r, 1, true, false, true));
+    check("u54: ... a non-natural presence loss -> never", !becomes_spectator(r, 1, true, true, false));
+    // 2 humans: the lone survivor decides the match (humans <= 1)
+    spec_roster(r, 0b001, 0, false);
+    check("u54: one human left -> decided", decided(r, evaluate(r, 1)));
+    check("u54: ... so no spectator", !becomes_spectator(r, 1, true, true, true));
+    // 2 humans + an AI alive: still decided for the human count (the survivor's own rule ends its lockstep)
+    spec_roster(r, 0b001, 0b100, false);
+    check("u54: human + AI left -> decided (humans <= 1)", decided(r, evaluate(r, 1)));
+    // team rule: two alive humans mutually allied -> decided; side_won for an ally of both
+    spec_roster(r, 0b1101, 0, true);
+    for (int a = 0; a < 4; ++a)
+        for (int b = 0; b < 4; ++b) r.relation[a][b] = (a == b) ? 1 : 0;
+    r.relation[0][2] = r.relation[2][0] = 1;
+    r.relation[0][3] = r.relation[3][0] = 1;
+    r.relation[2][3] = r.relation[3][2] = 1;
+    check("u54: all survivors mutually allied under the team rule -> decided", decided(r, evaluate(r, 1)));
+    check("u54: ... not the spectator's side while it is not allied", !side_won(r, evaluate(r, 1)));
+    r.relation[1][0] = r.relation[0][1] = r.relation[1][2] = r.relation[2][1] = r.relation[1][3] = r.relation[3][1] = 1;
+    check("u54: ... the spectator's side won once it is allied with them all", side_won(r, evaluate(r, 1)));
+    r.ally_rule = false;
+    check("u54: ... no team rule -> never a side win", !side_won(r, evaluate(r, 1)));
+    check("u54: ... no team rule, 3 humans left -> undecided", !decided(r, evaluate(r, 1)));
+    // flag helpers
+    const uint32_t f = eliminated_flags(ST_HUMAN, true); // the sim clears ALIVE first
+    check("u54: spectator flags = DEFEATED only (no ALIVE/HUMAN/GONE)", f == ST_DEFEATED && is_spectator_flags(f));
+    const uint32_t g = eliminated_flags(ST_HUMAN, false);
+    check("u54: dropped flags carry GONE and are not a spectator", (g & ST_GONE) && !is_spectator_flags(g));
+    check("u54: a live human is not a spectator", !is_spectator_flags(ST_ALIVE | ST_HUMAN));
+    check("u54: is_spectator needs lockstep and the key", is_spectator(f, true, true) && !is_spectator(f, false, true) && !is_spectator(f, true, false));
+}
+
 int run_lockstest() {
     printf("=== lockstest (turn-engine horizon/barrier logic, no game) ===\n");
     g_checks = g_fails = 0;
@@ -4717,6 +4803,7 @@ int run_lockstest() {
     test_dispatch_control_basics();
     test_dispatch_departures();
     test_u19g_gone_peer_frame_guard_arm();
+    test_u56_player_left_pin();
     test_dispatch_drop_synced_vs_unsynced();
     test_u19h_leave_park_horizon_race(); // mp:U19h -- the graceful-leave horizon race
     test_dispatch_kick_and_resets();
@@ -4770,6 +4857,8 @@ int run_lockstest() {
     test_tx_ctrl_broadcast_resync_state();
     test_tx_ctrl_resync_resume();
     test_tx_ctrl_round_trip();
+    // ---- mp:U54: spectate after defeat ----
+    test_u54_spectate_rules();
     printf("%d checks, %d failures\n", g_checks, g_fails);
     return g_fails == 0 ? 0 : 1;
 }

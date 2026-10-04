@@ -69,7 +69,19 @@ class Refusal(Exception):
     """A run this tool cannot make a statement about. NEVER a pass."""
 
 
-SESSION_DIR_RE = re.compile(r"^\d{8}T\d{6}Z_[0-9a-f]{8}_\d+_[A-Za-z0-9]+$")
+SESSION_DIR_RE = re.compile(
+    r"^(?:\d{8}T\d{6}Z_[0-9a-f]{8}_\d+|\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}Z_[0-9a-f]{8}_[A-Za-z0-9.-]+)_[A-Za-z0-9]+$"
+)
+# SES8 (2026-09-29): new names start "YYYY-MM-DDTHH-MM-SSZ", which does NOT string-sort with the
+# SES1 "YYYYMMDDTHHMMSSZ" ones a lane still holds (`-` < `0`). Order by canon(name), never the raw
+# name. Verbatim copy of tools/_rundir.py's canon() (no import chain between checkers).
+_NEW_STAMP = re.compile(r"^(\d{4})-(\d{2})-(\d{2})T(\d{2})-(\d{2})-(\d{2})Z")
+
+
+def canon(name):
+    """The name with an SES8 stamp rewritten to the SES1 compact form, so the two sort together."""
+    return _NEW_STAMP.sub(r"\1\2\3T\4\5\6Z", name)
+
 
 SUBMIT_RE = re.compile(
     r"; \[chat\] submit mode=(\d+) sess=(\d+) len=(\d+) first='(.?)' cheat_idx=(0x[0-9a-f]{2}|-)"
@@ -104,7 +116,7 @@ def session_runs(logs_dir, process_leaf):
         and SESSION_DIR_RE.match(os.path.basename(d))
         and session_process_dir(d) == process_leaf
     ]
-    return sorted(c, key=lambda d: os.path.basename(d))
+    return sorted(c, key=lambda d: canon(os.path.basename(d)))
 
 
 def read_lines(folder):
@@ -286,7 +298,7 @@ ORD_OK = ";ord   P0 own=0080 unit=3 code=10 p0=0 exec=6400ms"
 def plant(root, role, proc_lines, sess_lines, with_session=True, harness=(ORD_OK,)):
     lane = os.path.join(root, role)
     logs = os.path.join(lane, "logs")
-    proc_leaf = "20260921T050000Z_menu_" + role
+    proc_leaf = _ses8("20260921T050000Z_menu_", "2026-09-21T05-00-00Z_menu_") + role
     proc = os.path.join(logs, proc_leaf)
     os.makedirs(proc)
     with open(os.path.join(proc, "mh_net.log"), "w", encoding="utf-8") as fh:
@@ -296,7 +308,9 @@ def plant(root, role, proc_lines, sess_lines, with_session=True, harness=(ORD_OK
             fh.write("\n".join(harness) + "\n")
     if with_session:
         sess = os.path.join(
-            logs, "20260921T050010Z_01a0bf84_%d_%s" % (0 if role == "host" else 1, role)
+            logs,
+            _ses8("20260921T050010Z_01a0bf84_%d_%s", "2026-09-21T05-00-10Z_01a0bf84_blue-monday_%s")
+            % (((0 if role == "host" else 1), role) if not _PLANT_SES8 else (role,)),
         )
         os.makedirs(sess)
         with open(os.path.join(sess, "session.json"), "w", encoding="utf-8") as fh:
@@ -306,7 +320,27 @@ def plant(root, role, proc_lines, sess_lines, with_session=True, harness=(ORD_OK
     return proc
 
 
+# SES8: every case runs twice -- once on SES1 names, once on SES8 names (this process's folders
+# renamed, so the planted lane is a mixed-generation one wherever it keeps an older folder).
+_PLANT_SES8 = False
+
+
+def _ses8(old, new):
+    return new if _PLANT_SES8 else old
+
+
 def selftest():
+    global _PLANT_SES8
+    rc = 0
+    for flag in (False, True):
+        _PLANT_SES8 = flag
+        print("-- %s names --" % ("SES8" if flag else "SES1"))
+        rc |= _selftest_once()
+    _PLANT_SES8 = False
+    return rc
+
+
+def _selftest_once():
     cases = [
         (
             "green: refused on the client, quit eliminations forced only",

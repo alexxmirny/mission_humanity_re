@@ -1,0 +1,35 @@
+# mods:LANG4 -- mp_client_join_refused.txt on the RU LANGUAGE PACK (row codepage_refused_ru; host =
+# mp_host_lobby.txt, EN). Russian labels from the pack's initlang TEXT, as in mp_client_chat_glyphs_ru.txt:
+# K_MENU_PlayersTitle "Имя игрока", K_MENU_Internet "Интернет-сервер", K_MENU_ServersString "Адрес
+# сервера", K_MENU_Connect "Соединение", K_MENU_JoinGame "Вступить в игру", K_MENU_Players "Игроки в
+# сети".
+#
+# THE CLAIM: the host composes the refusal in ENGLISH ("old client cp 1251", mh_net_proto
+# join_refusal_text); this joiner matches it against the string table's English rows and shows its OWN
+# language's version with the number carried over -- "Отказ: старый клиент cp 1251" (lobby.refused +
+# refuse.old_client_cp from lang/ru/mh_strings.txt). The `present` below matches that line as UTF-16.
+
+settled value:110
+clickv 110
+present Имя игрока
+settled Ok
+clickl Ok
+present Интернет-сервер
+settled Интернет-сервер
+clickl Интернет-сервер
+present Адрес сервера
+settled Соединение
+clickl Соединение
+sessions 1
+settled Вступить в игру
+clickl Вступить в игру
+
+absent Игроки в сети
+onscreen Вступить в игру
+present Отказ: старый клиент cp 1251
+sessions 1
+# the browser redraws after the bounce: wait for it to settle before the frame is read
+settled Вступить в игру
+capture c6_refused_ru
+log LANG4 CLIENT: the host's English refusal reason shown in Russian through mh.dll's string table
+end

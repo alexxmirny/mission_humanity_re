@@ -1,0 +1,43 @@
+# mp:U47 HOST -- the passive peer while the JOINER holds the info panel (game mode 4) open for >= 12 s of sim.
+#
+# Player report 2026-09-30: "opening the info panel stalls other peers". Triage: the info panel is GAME_MODE 4
+# (llm_ui_paged_list_frame), which keeps lockstep alive, but its llm_ui_menu_state_tick ran the manual-MP
+# CLIENT driver in rc5 (41db0de4) -- MH_MP_ClientPollMap popped and DISCARDED the host's lockstep datagrams,
+# so the joiner parked and the HOST stalled on it (dead-ends G327). 52352bd1 gates the driver to the lobby.
+# This peer never opens anything: it lands its mother (so the match is a real one) and then waits for the
+# joiner's window. The assertion is the post_check (tools/check_u47_info_joiner.py) over BOTH peers' logs.
+# Pair with mp_client_u47_info_joiner.txt.
+
+settled value:110
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+settled Create
+clickl Create
+present Game name
+settled Ok
+clickl Ok
+present Available maps
+settled Ok
+clickl Ok
+
+present Network players
+peers 1
+awaitsignal lobby
+enabled Start
+settled Start
+clickl Start
+
+absent Network players
+gameclock 3000
+rclick 480 330 shift
+log HOST u47: match live, waiting for the joiner's info panel
+awaitsignal u47open
+log HOST u47: window open
+awaitsignal u47closed
+log HOST u47: window closed
+gameclock 40000
+capture u47_host_after
+log HOST u47: done
+end

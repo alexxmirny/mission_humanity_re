@@ -51,7 +51,9 @@ namespace mh::desync {
 // change -- but crossing MAX_REGIONS is a hard stop, asserted at arm time in the .cpp.
 inline constexpr int MAX_REGIONS = 96;
 
-inline constexpr uint32_t WIRE_MAGIC   = 0x434e5344u; // 'DSNC' little-endian
+inline constexpr uint32_t WIRE_MAGIC = 0x434e5344u; // 'DSNC' little-endian
+// The version of THIS record (the sampled FNV sample). mp:D44's per-step frames are WIRE_VERSION 2 and
+// live in desync_wire2.h; a v2 build still speaks this one to a v1 peer (the FALLBACK).
 inline constexpr uint16_t WIRE_VERSION = 1;
 
 // The on-wire sample. Sent as a FLAG_HASH control frame (never the game queue, never the game's own
@@ -206,6 +208,28 @@ inline bool frame_is_sane(const sample_wire &s, int len) {
     return len == wire_size((int)s.region_count);
 }
 
+// The whole v1 RECEIVE rule, as every build since D31 runs it on the recv thread: bound the length,
+// materialise into a zeroed record FIRST (a short frame must not be read through as a sample_wire),
+// then check the header at the BASE length. D31 clause C: an order digest, if present, is the trailing
+// ORDER_DIGEST_BYTES the base frame does not account for -- an rc2 peer's frame is never that length
+// for its own region_count, so it reads as `has_od=false`. mp:D44: a WIRE_VERSION 2 frame fails here
+// on the version (or first on the length bound), which is how an older peer treats it: a bad frame,
+// counted, never misread. desynctest feeds every v2 frame shape through this function.
+inline bool parse_v1_frame(const uint8_t *buf, int len, sample_wire &s, uint64_t &od, bool &has_od) {
+    od     = 0;
+    has_od = false;
+    if (buf == nullptr || len < wire_size(0) || len > (int)sizeof(sample_wire) + ORDER_DIGEST_BYTES) return false;
+    memset(&s, 0, sizeof(s));
+    const int base_copy = (len > (int)sizeof(sample_wire)) ? (int)sizeof(sample_wire) : len;
+    memcpy(&s, buf, (size_t)base_copy);
+    const int  base_len = wire_size((int)s.region_count);
+    const bool digest   = (len == base_len + ORDER_DIGEST_BYTES);
+    if (!frame_is_sane(s, digest ? base_len : len)) return false;
+    has_od = digest;
+    if (digest) memcpy(&od, buf + base_len, ORDER_DIGEST_BYTES);
+    return true;
+}
+
 // Compare one received sample against our own ring. `our_newest` is the highest step we have SAMPLED
 // (not the current step) -- a sample above it is future, one below it that we cannot find is past.
 inline verdict judge(const ring &r, const sample_wire &s, const bool *excluded, int n,
@@ -323,6 +347,85 @@ inline uint32_t snapshot_grid(int every) { return every > 0 ? (uint32_t)(8 * eve
 inline bool snapshot_due(uint32_t step, int every) {
     const uint32_t g = snapshot_grid(every);
     return g != 0u && step != 0u && (step % g) == 0u;
+}
+
+// ---- the dirty-block probe (MEASUREMENT ONLY, 2026-09-27) ---------------------------------------
+// Question it answers: can this peer record the manifest's evolution INCREMENTALLY, every step, at
+// acceptable cost -- a keyframe plus per-step deltas in a RAM ring, flushed to disk only when a
+// desync fires, so the run-up to a divergence is recorded instead of three snapshots after it? That
+// design costs one compare-against-a-shadow-copy per step plus a copy of whatever changed, and its
+// RAM is "changed bytes per step x ring length". Nobody knew the second number, so this measures it.
+//
+// RAW bytes, not the VERDICT stream: VERDICT is a pure function of the raw bytes (reorder + zero the
+// local() fields), so a recorder would store raw and apply VERDICT offline -- and raw is what churns.
+//
+// GRAINS. A recorder would store changed BLOCKS, not bytes, so the cost depends on block size. The
+// scan walks 64-byte blocks aligned on the LIVE ADDRESS and counts, per grain, how many distinct
+// aligned grains held at least one changed block. The 4096 grain is therefore exactly "dirty pages",
+// i.e. what GetWriteWatch would report if the region lived in MEM_WRITE_WATCH memory.
+inline constexpr int      DIRTY_NGRAINS              = 4;
+inline constexpr uint32_t DIRTY_GRAIN[DIRTY_NGRAINS] = {64u, 256u, 1024u, 4096u};
+
+struct dirty_counts {
+    uint32_t bytes;                 // bytes that differ from the shadow
+    uint32_t grains[DIRTY_NGRAINS]; // distinct aligned grains holding a changed byte
+    // Offset of the first changed byte (`len` when nothing changed). A CHAINED hash (FNV, what the
+    // harness and the verdict use) cannot patch one word: it must re-run from the first change to the
+    // region's end, so `len - first` is what a checkpointed FNV would re-hash this step.
+    uint32_t first;
+};
+
+// Compare `live` against `shadow` (both `len` bytes), count what changed, and copy the changed
+// blocks into `shadow` so the next call measures the next step's delta. `live` is only read.
+inline void dirty_scan(const uint8_t *live, uint8_t *shadow, uint32_t len, dirty_counts &c) {
+    memset(&c, 0, sizeof(c));
+    c.first = len;
+    uintptr_t last[DIRTY_NGRAINS];
+    for (int g = 0; g < DIRTY_NGRAINS; ++g) last[g] = ~(uintptr_t)0;
+    uint32_t off = 0;
+    while (off < len) {
+        // Block end = the next 64-aligned LIVE address, so every block sits inside one grain of
+        // every size -- a block straddling a page boundary would otherwise count one page, not two.
+        const uintptr_t a   = (uintptr_t)(live + off);
+        uint32_t        end = off + (uint32_t)(64u - (a & 63u));
+        if (end > len) end = len;
+        const uint32_t n = end - off;
+        if (memcmp(live + off, shadow + off, n) != 0) {
+            for (uint32_t k = 0; k < n; ++k) {
+                if (live[off + k] == shadow[off + k]) continue;
+                ++c.bytes;
+                if (c.first == len) c.first = off + k;
+            }
+            memcpy(shadow + off, live + off, n);
+            for (int g = 0; g < DIRTY_NGRAINS; ++g) {
+                const uintptr_t idx = a / DIRTY_GRAIN[g];
+                if (idx != last[g]) {
+                    last[g] = idx;
+                    ++c.grains[g];
+                }
+            }
+        }
+        off = end;
+    }
+}
+
+// The same grain counts from changed-byte RUNS instead of a scan. Since mp:D39 the live probe no
+// longer runs dirty_scan: the incremental state core (libmh/state/inc_state.h) does the one scan a
+// step can afford and reports EXACT runs (update gap 0), and this turns a run at live address `a`
+// back into the probe's address-aligned grains. `last` is per-region state, reset to ~0 at each new
+// region exactly as dirty_scan resets its own; fed one region's runs in ascending order it counts
+// what dirty_scan counts over the same bytes (desynctest asserts it), so the probe's CSV and rollup
+// keep their meaning.
+inline void dirty_grains_add(uintptr_t a, uint32_t len, uintptr_t *last, uint32_t *grains) {
+    if (len == 0) return;
+    for (int g = 0; g < DIRTY_NGRAINS; ++g) {
+        const uintptr_t hi = (a + len - 1) / DIRTY_GRAIN[g];
+        for (uintptr_t idx = a / DIRTY_GRAIN[g]; idx <= hi; ++idx) {
+            if (idx == last[g]) continue;
+            last[g] = idx;
+            ++grains[g];
+        }
+    }
 }
 
 // ---- pending inbound ----------------------------------------------------------------------------
@@ -462,5 +565,24 @@ void on_sim_step_hashed(const uint64_t *per, int n, uint64_t state);
 
 // True once the current match has seen at least one mismatching sample.
 bool detected();
+
+// mp:X3c: the world resync imported a blob captured at the host's step `capture_step` and this peer must
+// now count as being at step capture_step - 1 (the step counter advances just after, so the body that runs
+// next is step S over world S). ONE place rewinds every per-match counter the desync module keeps:
+//   * g_step and the cumulative order digest (`digest_prev` = the host's digest BEFORE step S's fold),
+//   * the shared tracker (re-primed at the next step), the tick ring (our own hashes >= S are stale), the
+//     pending TICK batch and the localiser, the ship ring, and the D40 recorder (which cannot represent a
+//     discontinuity: a line says so and it stops).
+// The hashes of steps < S that were already sent stay valid history; steps >= S are re-sent as the
+// catch-up re-runs them. MAIN THREAD, from inside world_sync's import only.
+void rewind_for_world_sync(uint32_t capture_step, uint64_t digest_prev);
+
+// mp:X3c: the four live reads world_sync needs. This file is the only one in mh/desync/ that may bind an
+// address (tools/check_sim_addresses.py), so they are asked here.
+int      session_mode_now();           // SESSION_MODE byte (3 = lockstep)
+bool     is_host_now();                // NET_IS_HOST
+uint8_t  player_flags_now(int slot);   // byte 0 of STRAT_PLAYERS[slot]: 0x02 ALIVE 0x04 HUMAN 0x08 GONE 0x10 DEFEATED
+uint64_t game_clock_bits_now();        // the game clock's raw double bits
+uint64_t sim_step_interval_bits_now(); // game-seconds per sim step (double bits)
 
 } // namespace mh::desync

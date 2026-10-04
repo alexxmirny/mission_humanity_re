@@ -21,6 +21,7 @@
 #include "en_guard.h"                // mh::en_build_ok -- "is a real mh.exe under us at all"
 #include "net_internal.h"            // g_ini, seam_log
 #include "config/ini_read.h"         // TL-HARN4: read_ini_string -- strips a trailing `;comment`
+#include "ui/player_strings.h"       // mods:LANG4: the notices below are table rows
 
 #pragma comment(lib, "user32.lib") // wsprintfA
 
@@ -92,9 +93,14 @@ uint8_t  g_host_hash[HASH_N];
 uint32_t g_host_size  = 0;
 bool     g_host_claim = false; // g_host_hash is a real claim rather than the no-claim zero
 
-int      g_tx_peer  = -1; // the peer a transfer is armed for, or -1
-DWORD    g_tx_armed = 0;  // GetTickCount when it was armed (the re-arm timeout)
-uint32_t g_tx_bytes = 0;
+int g_tx_peer = -1; // the peer a transfer is armed for, or -1
+// mp:X2i -- seats released (by a LEAVE, or found gone at the transport) whose channel-C transfer must
+// be stopped. Bit i = peer i. Set under g_host_lock by whichever thread released the seat (host_on_leave
+// runs on the recv path); DRAINED by the pump on the main thread, because MH_Net_SnapshotCancel mutates
+// the send state MH_Net_SnapshotSend owns and that state is main-thread-only.
+uint32_t g_cancel_mask = 0;
+DWORD    g_tx_armed    = 0; // GetTickCount when it was armed (the re-arm timeout)
+uint32_t g_tx_bytes    = 0;
 
 // ONE AT A TIME, and the header's reason restated because this constant is where it bites: channel C
 // carries one transfer per link at a time (Endpoint::bulk_send_src refuses a second), and a map is
@@ -711,8 +717,34 @@ int reap_gone_locked(const bool alive[8], uint32_t probe_seq, int out_peer[8], c
         ++n;
         g_peer[i] = PeerMap{};
         if (g_tx_peer == i) g_tx_peer = -1; // released, not timed out: nothing to re-arm
+        g_cancel_mask |= 1u << i;           // mp:X2i: and its transfer stops at the next pump
     }
     return n;
+}
+
+// mp:X2i -- stop the channel-C transfer of every peer whose seat was released since the last pump.
+// A LEAVE that leaves the link up would otherwise keep the transfer retransmitting: the leaver no
+// longer runs the lobby tick, so nothing polls its lane and the host resends the window forever. The
+// module checks the destination, so a transfer already re-armed for another peer is not touched.
+void drain_cancels() {
+    uint32_t mask;
+    {
+        HostLock l;
+        mask          = g_cancel_mask;
+        g_cancel_mask = 0;
+    }
+    for (int i = 0; i < 8; ++i) {
+        if (!(mask & (1u << i))) continue;
+        const int stopped = (g_pump_hooks != nullptr && g_pump_hooks->cancel != nullptr)
+                                ? g_pump_hooks->cancel(i, g_pump_hooks->ctx)
+                                : MH_Net_SnapshotCancel(i);
+        if (stopped) {
+            wsprintfA(g_line, "; [map] transfer to peer %d CANCELLED -- its seat was released "
+                              "(LEAVE / gone), channel C tx idle (mp:X2i)\n",
+                      i);
+            mlog(g_line);
+        }
+    }
 }
 
 // Arm the transfer for the first seated peer that does not hold the map. One at a time; see
@@ -721,6 +753,7 @@ int reap_gone_locked(const bool alive[8], uint32_t probe_seq, int out_peer[8], c
 // mp:T6: CHOOSE and RESERVE under the lock, read the file outside it, RE-CHECK under the lock, then
 // send. The lock's block comment (THE HOST LOCK) names the race; this function is its second half.
 void host_pump_transfer() {
+    drain_cancels(); // mp:X2i: first, before any (re-)arm below, so a cancel never hits the new one
     if (!g_host_claim) return;
     if (!can_carry()) return; // mp:X2b: never arm a transfer the link cannot carry
     // mp:X2f -- the transport's view first, OUTSIDE the lock (a transport call), stamped with the
@@ -835,11 +868,9 @@ void host_tick() {
         // ends by itself. A download finishes; a mismatch on a link that cannot carry the map does
         // not, and the notice must say what would fix it (the same file on both machines).
         if (unfetchable)
-            wsprintfW(g_notice, L"%s has a different copy of %s -- this connection cannot send maps, "
-                                L"so Start is refused.",
-                      wname, wmap);
+            wsprintfW(g_notice, mh::ui::tr(mh::ui::Str::MAP_CANNOT_SEND), wname, wmap);
         else
-            wsprintfW(g_notice, L"Sending the map to %s -- Start is held until it arrives.", wname);
+            wsprintfW(g_notice, mh::ui::tr(mh::ui::Str::MAP_SENDING), wname);
         g_notice_on = true;
         gate_close();
         // LOGGED ON THE EDGE, not every lobby frame: this runs at frame rate, and a refusal that
@@ -907,7 +938,7 @@ void host_on_join(int sender, const char *player_name, const uint8_t map_hash[HA
         PeerMap  p = g_peer[sender & 7];
         p.seated   = true;
         if (player_name != nullptr && player_name[0] != '\0') lstrcpynA(p.name, player_name, sizeof(p.name));
-        else if (p.name[0] == '\0') wsprintfA(p.name, "Player%d", sender + 1);
+        else if (p.name[0] == '\0') wsprintfA(p.name, "Player%d", sender + 1); // mh-str-ok: ASCII name placeholder
         memcpy(p.had, map_hash, HASH_N);
 
         char hex[np::MAP_HASH_HEX_CAP], hex2[np::MAP_HASH_HEX_CAP];
@@ -939,6 +970,7 @@ void host_on_leave(int sender) {
     HostLock l;
     g_peer[sender & 7] = PeerMap{};
     if (g_tx_peer == sender) g_tx_peer = -1;
+    g_cancel_mask |= 1u << (sender & 7); // mp:X2i: the pump cancels the transfer (main thread)
 }
 
 int host_next_peer_needing_map() {
@@ -1244,10 +1276,10 @@ void client_tick() {
             MH_Net_SnapshotStatus(&st);
             const unsigned pct =
                 st.rx_chunks ? (unsigned)((st.rx_verified * 100u) / st.rx_chunks) : 0u;
-            wsprintfW(g_notice, L"Downloading the map from the host (%u%%)...", pct);
+            wsprintfW(g_notice, mh::ui::tr(mh::ui::Str::MAP_DOWNLOADING), pct);
             g_notice_on = true;
         } else if (!g_notice_on) {
-            lstrcpynW(g_notice, L"Waiting for the host to send the map...", 256);
+            lstrcpynW(g_notice, mh::ui::tr(mh::ui::Str::MAP_WAITING), 256);
             g_notice_on = true;
         }
         paint_notice();
@@ -1263,7 +1295,7 @@ void client_tick() {
                           "advertised %s, or it could not be written)\n",
                   len, hexof(g_want_hash, hex, sizeof(hex)));
         mlog(g_line);
-        lstrcpynW(g_notice, L"The map the host sent did not match its advert.", 256);
+        lstrcpynW(g_notice, mh::ui::tr(mh::ui::Str::MAP_MISMATCH), 256);
         g_notice_on = true;
         paint_notice();
         return;
@@ -1461,8 +1493,9 @@ void session_reset() {
     {
         HostLock l;
         for (int i = 0; i < 8; ++i) g_peer[i] = PeerMap{};
-        g_tx_peer    = -1;
-        g_host_claim = false;
+        g_tx_peer     = -1;
+        g_host_claim  = false;
+        g_cancel_mask = 0xffu; // mp:X2i: whatever was still being sent stops at the next pump
     }
     ClientLock cl(false); // mp:X2d
     g_want_valid        = false;

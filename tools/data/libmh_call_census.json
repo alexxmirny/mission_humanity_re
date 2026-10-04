@@ -2,7 +2,7 @@
  "_generated_by": "tools/gen_libmh_calls.py -- do not hand-edit; regenerate instead",
  "_measures": "mh::call:: tokens in src/mh_dll/mh/** (comments stripped; addr/+attic/ excluded)",
  "summary": {
-  "distinct_callees": 143,
+  "distinct_callees": 153,
   "config_measures": {
    "hosted": {
     "sites": 1561,
@@ -36,8 +36,8 @@
   },
   "by_status": {
    "dead": 2,
-   "original": 110,
-   "translated": 31
+   "original": 113,
+   "translated": 38
   },
   "modules": {
    "lockstep": {
@@ -47,16 +47,22 @@
     "outward_distinct": 0
    },
    "seams": {
-    "sites": 187,
-    "distinct": 142,
-    "outward_sites": 145,
-    "outward_distinct": 112
+    "sites": 210,
+    "distinct": 151,
+    "outward_sites": 151,
+    "outward_distinct": 114
    },
    "sim": {
     "sites": 1,
     "distinct": 1,
     "outward_sites": 1,
     "outward_distinct": 1
+   },
+   "ui": {
+    "sites": 5,
+    "distinct": 3,
+    "outward_sites": 5,
+    "outward_distinct": 3
    }
   },
   "dispatch_tables": {
@@ -213,6 +219,17 @@
    "adjudication": "event-channel:event"
   },
   {
+   "name": "llm_diplomacy_set_relation",
+   "status": "translated",
+   "domain": "sim",
+   "tier": "T1",
+   "promoted": false,
+   "sites": 1,
+   "modules": {
+    "seams": 1
+   }
+  },
+  {
    "name": "llm_game_load",
    "status": "translated",
    "domain": "(pre-ledger)",
@@ -277,9 +294,10 @@
    "domain": null,
    "tier": null,
    "promoted": false,
-   "sites": 1,
+   "sites": 3,
    "modules": {
-    "seams": 1
+    "seams": 2,
+    "ui": 1
    },
    "adjudication": "event-channel:screen"
   },
@@ -457,9 +475,9 @@
    "domain": null,
    "tier": null,
    "promoted": false,
-   "sites": 1,
+   "sites": 2,
    "modules": {
-    "seams": 1
+    "seams": 2
    },
    "adjudication": "event-channel:invalidate"
   },
@@ -486,6 +504,17 @@
     "seams": 1
    },
    "adjudication": "event-channel:event"
+  },
+  {
+   "name": "llm_map_fog_of_war_recompute",
+   "status": "translated",
+   "domain": "sim",
+   "tier": "T1",
+   "promoted": false,
+   "sites": 1,
+   "modules": {
+    "seams": 1
+   }
   },
   {
    "name": "llm_map_set_minimap_zoom_for_size",
@@ -717,9 +746,9 @@
    "domain": null,
    "tier": null,
    "promoted": false,
-   "sites": 2,
+   "sites": 3,
    "modules": {
-    "seams": 2
+    "seams": 3
    },
    "adjudication": "host-callback:string"
   },
@@ -734,6 +763,17 @@
     "seams": 1
    },
    "adjudication": null
+  },
+  {
+   "name": "llm_strat_ai_bldg_register_visible_building",
+   "status": "translated",
+   "domain": "ai",
+   "tier": "T2",
+   "promoted": true,
+   "sites": 1,
+   "modules": {
+    "seams": 1
+   }
   },
   {
    "name": "llm_strat_ai_count_unit_build_sources",
@@ -810,9 +850,9 @@
    "domain": "orders_issue",
    "tier": "T1",
    "promoted": true,
-   "sites": 1,
+   "sites": 3,
    "modules": {
-    "seams": 1
+    "seams": 3
    }
   },
   {
@@ -821,9 +861,9 @@
    "domain": "orders_issue",
    "tier": "T1",
    "promoted": true,
-   "sites": 2,
+   "sites": 5,
    "modules": {
-    "seams": 2
+    "seams": 5
    }
   },
   {
@@ -832,9 +872,9 @@
    "domain": "sim",
    "tier": "T1",
    "promoted": true,
-   "sites": 1,
+   "sites": 2,
    "modules": {
-    "seams": 1
+    "seams": 2
    }
   },
   {
@@ -857,6 +897,50 @@
    "sites": 2,
    "modules": {
     "seams": 2
+   }
+  },
+  {
+   "name": "llm_strat_order_scratch_reset",
+   "status": "translated",
+   "domain": "sim",
+   "tier": "T1",
+   "promoted": true,
+   "sites": 1,
+   "modules": {
+    "seams": 1
+   }
+  },
+  {
+   "name": "llm_strat_order_scratch_set_field",
+   "status": "translated",
+   "domain": "sim",
+   "tier": "T1",
+   "promoted": true,
+   "sites": 2,
+   "modules": {
+    "seams": 2
+   }
+  },
+  {
+   "name": "llm_strat_order_set_player_control_mode",
+   "status": "translated",
+   "domain": "orders_issue",
+   "tier": "T2",
+   "promoted": true,
+   "sites": 1,
+   "modules": {
+    "seams": 1
+   }
+  },
+  {
+   "name": "llm_strat_order_set_player_relation",
+   "status": "translated",
+   "domain": "orders_issue",
+   "tier": "T1",
+   "promoted": true,
+   "sites": 1,
+   "modules": {
+    "seams": 1
    }
   },
   {
@@ -1003,9 +1087,9 @@
    "domain": "orders_issue",
    "tier": "T2",
    "promoted": true,
-   "sites": 1,
+   "sites": 2,
    "modules": {
-    "seams": 1
+    "seams": 2
    }
   },
   {
@@ -1014,9 +1098,9 @@
    "domain": "orders_issue",
    "tier": "T2",
    "promoted": true,
-   "sites": 2,
+   "sites": 3,
    "modules": {
-    "seams": 2
+    "seams": 3
    }
   },
   {
@@ -1036,9 +1120,9 @@
    "domain": "sim",
    "tier": "T1",
    "promoted": false,
-   "sites": 1,
+   "sites": 2,
    "modules": {
-    "seams": 1
+    "seams": 2
    }
   },
   {
@@ -1554,6 +1638,43 @@
     "seams": 4
    },
    "adjudication": "event-channel:invalidate"
+  },
+  {
+   "name": "llm_ui_text_measure_width",
+   "status": "original",
+   "domain": null,
+   "tier": null,
+   "promoted": false,
+   "sites": 2,
+   "modules": {
+    "seams": 1,
+    "ui": 1
+   },
+   "adjudication": null
+  },
+  {
+   "name": "llm_ui_text_wrap_find_break",
+   "status": "original",
+   "domain": null,
+   "tier": null,
+   "promoted": false,
+   "sites": 2,
+   "modules": {
+    "seams": 2
+   },
+   "adjudication": null
+  },
+  {
+   "name": "llm_ui_widget_draw",
+   "status": "original",
+   "domain": null,
+   "tier": null,
+   "promoted": false,
+   "sites": 3,
+   "modules": {
+    "ui": 3
+   },
+   "adjudication": null
   },
   {
    "name": "llm_ui_widget_list_center",

@@ -37,6 +37,7 @@
 
 #include "ai/ai_army_milestone.h"
 #include "ai/ai_attacker_intel.h"
+#include "lockstep/turn_engine.h" // mp:U52
 #include "ai/ai_bldg_queue.h"
 #include "ai/ai_bldg_queue_dispatch.h"
 #include "ai/ai_bldg_weapon_range.h"
@@ -3512,6 +3513,43 @@ void test_attacker_intel() {
     r                                               = run(BLDG, vref_bldg(VICTIM), aref_unit(AGGRESSOR));
     ck(r.relation_stamps && rel(AGGRESSOR) == -1,
        "attacker intel: a set foreign-change flag re-stamps hostility unconditionally");
+
+    // (i2) mp:U52 ([net] ally_damage_no_hostility). With the fix ON an ALLY (relation +1) that damages the victim
+    // is NOT stamped hostile even with the foreign-change flag set; an enemy (relation -1 or 0) still is, so the
+    // guard is not "never stamp"; with the fix OFF the retail rule (i) is unchanged.
+    {
+        const mh::lockstep::reimpl_fixes saved = mh::lockstep::fixes();
+        auto                             with  = [&](bool fix) {
+            mh::lockstep::reimpl_fixes fx = saved;
+            fx.ally_damage_no_hostility   = fix;
+            mh::lockstep::set_fixes(fx);
+        };
+        with(true);
+        arm();
+        f.players[VICTIM].ai_player_relation[AGGRESSOR] = 1;
+        f.foreign_flag                                  = 1;
+        r                                               = run(BLDG, vref_bldg(VICTIM), aref_unit(AGGRESSOR));
+        ck(!r.relation_stamps && rel(AGGRESSOR) == 1, "U52 fix on: an ALLY's hit leaves the victim's relation at +1 (flag set)");
+        ck(seen(AGGRESSOR) == 1 && intel_stub::g_tl.size() == 1,
+           "U52 fix on: the hit counter and the target list are still updated for an ally's hit");
+        arm();
+        f.players[VICTIM].ai_player_relation[AGGRESSOR] = -1;
+        f.foreign_flag                                  = 1;
+        r                                               = run(BLDG, vref_bldg(VICTIM), aref_unit(AGGRESSOR));
+        ck(r.relation_stamps && rel(AGGRESSOR) == -1, "U52 fix on: an ENEMY's hit still stamps (relation -1, flag set)");
+        arm();
+        f.players[VICTIM].ai_player_relation[AGGRESSOR] = 0;
+        f.foreign_flag                                  = 0;
+        r                                               = run(BLDG, vref_bldg(VICTIM), aref_unit(AGGRESSOR));
+        ck(r.relation_stamps && rel(AGGRESSOR) == -1, "U52 fix on: an UNSET relation (0) still stamps hostile (flag clear)");
+        with(false);
+        arm();
+        f.players[VICTIM].ai_player_relation[AGGRESSOR] = 1;
+        f.foreign_flag                                  = 1;
+        r                                               = run(BLDG, vref_bldg(VICTIM), aref_unit(AGGRESSOR));
+        ck(r.relation_stamps && rel(AGGRESSOR) == -1, "U52 fix off: retail -- the ally is stamped hostile when the flag is set");
+        mh::lockstep::set_fixes(saved);
+    }
 
     // (j) THE AIRCRAFT RE-TAG, and its ONLY observable is the fourth argument of target_list_add.
     // The aggressor ref goes in as 0x80|owner and comes out as 0x20|owner; nothing else in the body

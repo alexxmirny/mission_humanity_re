@@ -1,82 +1,28 @@
 //
 // mh/ui/lobby_ping.cpp -- mp:L1b: the lobby's per-slot SRTT column.
 //
-// L1 shipped only the IN-GAME indicator (seams/ui_net_indicator.cpp), reading MH_NetStats::lat[]
-// from the shared present hook (net_lockstep.cpp on_present). The lobby's slot rows are retail's
-// OWN retained-mode widgets, redrawn from scratch every frame by retail's own widget-list draw pass
-// -- and that pass runs strictly AFTER the per-frame lobby-dispatch callback this file is ticked
-// from (net_seams.cpp on_lobby_dispatch -> llm_lobby_host_net_dispatch is a pure network/state
-// callback with no draw or present call anywhere in its own body -- confirmed against its callee
-// list via ReVA, 2026-09-22: CreateFileA, the slot/packet/announce helpers, none of the
-// llm_ui_widget_list_draw/llm_gfx_present_flip family). So a pixel blit issued FROM the lobby tick
-// would sit UNDER that same frame's own widget draw and never be seen -- and the present hook, where
-// a blit would survive (it is the last thing before the flip, same reasoning gfx_overlay.cpp and
-// ui_net_indicator.cpp already rely on), is deliberately out of this file's reach: its wiring lives
-// in net_lockstep.cpp, a different lane's file this wave, and mp:L1b's brief says lobby-tick, not
-// present-hook, precisely so this file never has to touch it.
+// L1 shipped only the IN-GAME indicator (seams/ui_net_indicator.cpp). The lobby's slot rows are
+// retail's OWN retained-mode widgets, redrawn from scratch every frame by retail's widget-list draw
+// pass, which runs strictly AFTER the per-frame lobby-dispatch callback this file is ticked from
+// (net_seams.cpp on_lobby_dispatch -> llm_lobby_host_net_dispatch has no draw or present call). So a
+// pixel blit issued FROM the lobby tick would sit UNDER that frame's own widget draw and never be
+// seen. The technique used here (and by lobby_notice.cpp's status line) is to set a VALUE that
+// retail's draw machinery reads every frame and let retail repaint it: whatever this tick last
+// wrote is what the next frame draws.
 //
-// The fix is the OTHER established technique in this codebase (lobby_notice.cpp's status line): set
-// a VALUE that retail's own draw machinery reads every frame, and let retail repaint it -- timing
-// then does not matter, because next frame's draw (whichever frame that is) picks up whatever this
-// tick last wrote. Every lobby slot row already carries a spare slot for exactly this.
-// llm_lobby_build_slot_widgets (0x004bf99b EN) gives the COLOR spinner widget draw_cb =
-// llm_ui_widget_draw_content, and that function (0x004c1b15 EN) renders an OPTIONAL SECONDARY label
-// (widget+0x38) positioned right after the swatch it draws, whenever that field is non-NULL. Retail
-// itself zeroes the field once at build and never reads or writes it again (the primary "Human" /
-// "Alien" text a player sees is the RACE spinner's own option-table lookup, a completely separate
-// mechanism) -- and COLOR is the LAST widget in each row's child order (state, name, race, color),
-// so nothing drawn later in the SAME frame can paint over whatever we put there. That makes it the
-// row's one genuinely free per-slot label: no coordinates to compute (the standard resolver,
-// llm_ui_widget_layout_resolve_position, already walks the row's own cumulative x/y for us), no
-// overdraw risk, and retail's existing per-frame draw is what actually paints the text -- this file
-// only keeps the pointer/buffer current, from the lobby's own tick.
+// THE PING WIDGET (mp:U50). Each slot row has its own PING widget -- the sixth widget of the row,
+// built by the DLL's replacement of llm_lobby_build_slot_widgets (ui/lobby_widgets.cpp), a plain
+// label widget (llm_ui_widget_draw, no frame, no action) laid out right of the colour flag sprite
+// and left of the panel's inner border (x=349). This file only keeps its label pointer (widget
+// +0x38) current: a non-NULL wide string is drawn, NULL draws nothing. It replaces the earlier
+// mechanism (mp:L1b/L1e), which borrowed the COLOR widget's optional secondary label and widened
+// its width every tick to clear the flag; the color widget is no longer touched.
 //
-// ---- mp:L1e -- placement, format, RELAY/DIRECT (the user's ruling, 2026-09-22 evening) -----------
-//
-// PLACEMENT. llm_ui_widget_draw_content (0x004c1b15 EN, read via ReVA) draws our secondary label at
-//   text_x = resolved_x + widget->width - 4
-// in the widget's "no special alignment flags" branch (COLOR carries neither 0x18==8 nor 0x18==0x10
-// of the +8 flag word) -- `resolved_x`/`widget->width` are llm_ui_widget_layout_resolve_position's
-// OUTPUT (_G_LLM_UI_WIDGET_DRAW_X/_W), computed from the widget struct's OWN `x`(+0x1c)/`width`(+0x24)
-// fields (llm_ui_widget, category /llm) once per frame, BEFORE draw_content runs. Measured on the
-// committed match_launch_net host-lobby baseline (RGB bbox pixel scan of the client's slot row):
-// the flag/swatch sprite spans x=327-335 (9px). `resolved_x` for COLOR
-// equals the SPRITE's own left edge (327) -- draw_content's sprite branch draws it at (resolved_x,
-// resolved_y) untouched -- and `widget->width` at that point is the swatch's NATURAL rendered width
-// carried over from the LAST frame's sprite draw (draw_content overwrites widget->width with the
-// sprite's own pixel width every frame, AFTER resolve_position already consumed the prior value --
-// see its own comment, "overwritten with the actual rendered label/sprite width at draw time"). So
-// text_x = 327 + 9 - 4 = 332, INSIDE the flag (327-335) -- the overlap the user flagged is exactly
-// this arithmetic, not a rendering accident.
-//
-// THE FIX IS A REAL WIDGET FIELD, not string padding: `widget->width` (llm_ui_widget+0x24) is
-// writable, and llm_ui_widget_layout_resolve_position feeds it straight into the same formula. Every
-// tick that sets a real label, this file ALSO writes the COLOR widget's width to SWATCH_WIDEN (16)
-// before the draw pass runs -- draw_content resets it back to natural (~9) at the END of that same
-// frame (the sprite-draw side effect above), so it must be (and is) rewritten every tick, exactly
-// like the label pointer already is. New text_x = 327 + 16 - 4 = 339, four px clear of the flag's
-// right edge (335).
-//
-// USABLE WIDTH -- MEASURED, NOT ASSUMED, per the user's own doubt. From the new text start (339) to
-// the slot panel's own inner border (a solid 1px bright-green vertical line at x=349 on this
-// baseline, confirmed continuous across the full panel height, not just the row) is only ~10px --
-// under two average glyphs of this font (digit cell = 6px advance, measured off the clean
-// "192.168.0.199" readout on the SAME frame: 5px glyph + 1px gap, "1" narrower at 3px but still a
-// 6px cell). NEITHER suggested format fits that strict gap. The panel's own NEXT real content
-// (the session-info window) does not start until x=404 -- a 65px gap from the new text start -- and
-// the status quo this file already ships (the "ms" suffix, before this change) already draws past
-// x=349 into that decorative hazard-stripe pillar (a pure ornament between the two lobby windows,
-// not another widget's content) without complaint; only the FLAG overlap was ever flagged. This file
-// therefore treats x=404 (not x=349) as the hard bound and uses the roomier reading -- reported to
-// the conductor/user as a measurement, per the brief, rather than silently assumed: if the strict
-// x=349 reading is actually required, this row is NOT done and needs a narrower format or a real
-// fix to the decorative pillar overlap, not just the flag overlap.
-//
-// FORMAT. No " ms" (redundant, per the ruling). "R <ms>" / "D <ms>" (prefix + value, the ruling's
-// first-choice format -- it fits the x=404 bound with room to spare even at the 9999 clamp: "R 9999"
-// measures well under 65px at this font's ~6px/glyph). RELAY vs DIRECT is UNKNOWN (bare number, no
-// letter, no space) rather than guessed when the classification is not available -- see the `relay`
-// local below and mh_net_export.h's MH_NetPeerLatency.relayed comment (mp:L1e).
+// FORMAT (mp:L1e, the user's ruling 2026-09-22). "R <ms>" (relayed) / "D <ms>" (direct), no " ms"
+// suffix; RELAY vs DIRECT UNKNOWN renders as the bare number rather than a guessed letter (see
+// MH_NetPeerLatency.relayed in mh_net_export.h). A row with no measurement gets NO label at all,
+// not "n/a": the TCP module carries no latency stats and a module=none lobby has no local id, so
+// "n/a" would sit on every loopback lobby row and every pinned lobby baseline.
 //
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
@@ -86,6 +32,7 @@
 
 #include "ui/ui_internal.h"
 #include "ui/lobby_ping.h"
+#include "ui/lobby_ui.h"               // lobby_slot_ping_widget
 #include "addr/mh_addrs.gen.h"         // generated EN VAs (tools/gen_dll_addrs.py)
 #include "include/mh_net_export.h"     // MH_Net_GetStats / MH_Net_LocalPlayerId / MH_NET_MAX_PEERS
 #include "include/mh_seam_export.h"    // MH_Seam_ClientDialIsRelayed (mp:L1e, the client's own-dial R/D)
@@ -97,33 +44,16 @@ using mh::ui::detail::ui_log;
 
 namespace {
 
-// _G_LLM_LOBBY_SLOT_WIDGET_PTRS (0x00653663 EN, 140 bytes to _G_LLM_UI_DIPLO_WIDGET_LIST):
-// llm_ui_widget*[player_count*4], built {state,name,race,color} per slot
-// (llm_lobby_build_slot_widgets), NULL-terminated after the last built slot. Spelled as a raw VA
-// on the gfx_font_guard.cpp / ui_net_indicator.cpp precedent, DELIBERATELY not through the address
-// manifest: a manifest data entry becomes a state-registry region, and a new region renumbers every
-// later rid in the hash manifest -- the fixture fingerprint moves and every recorded libref/UI-REC
-// fixture reads STALE (measured 2026-09-22: 9221967E -> 78DCB9F0 for this one pointer array). A
-// UI widget-pointer array is not sim state and earns no place in that manifest. Not a member of the
-// movable-region set (mh/state/region_runtime.h) either, so a VA baked at compile time is safe.
-constexpr uintptr_t ADDR_SLOT_WIDGET_PTRS = 0x00653663u;
-
 constexpr uintptr_t ADDR_SLOTS = mh::addr::_G_LLM_LOBBY_SLOTS;         // llm_lobby_player_slot[8], stride 0x39
 constexpr uintptr_t ADDR_BUILT = mh::addr::_G_LLM_LOBBY_WIDGETS_BUILT; // 0 until the slot rows exist
 
-constexpr unsigned SLOT_STRIDE  = 0x39u;
-constexpr unsigned OFF_PLAYERID = 0x01u; // llm_lobby_player_slot.player_id
-constexpr unsigned OFF_STATUS   = 0x0bu; // llm_lobby_player_slot.slot_status (llm_lobby_slot_status)
-constexpr uint8_t  STATUS_HUMAN = 1u;    // OPEN=0, HUMAN=1, AI=2, CLOSED=3 (docs/structs.md)
-constexpr int      MAX_SLOTS    = 8;
-constexpr unsigned OFF_LABEL    = 0x38u; // llm_ui_widget.label (wchar_t*; 0 = none)
-constexpr unsigned OFF_WIDTH    = 0x24u; // llm_ui_widget.width (int); see the mp:L1e header block
-constexpr int      SWATCH_WIDEN = 16;    // widened widget->width, mp:L1e: clears the flag overlap
-                                         // (natural ~9px -> text_x lands inside the flag; 16px ->
-                                         // text_x sits 4px clear of its right edge). Rewritten
-                                         // every tick -- draw_content resets widget->width back to
-                                         // the sprite's natural size at the end of each frame.
-constexpr DWORD SAMPLE_PERIOD_MS = 2000; // one log line per refresh pass per 2s, like ui_net_indicator
+constexpr unsigned SLOT_STRIDE      = 0x39u;
+constexpr unsigned OFF_PLAYERID     = 0x01u; // llm_lobby_player_slot.player_id
+constexpr unsigned OFF_STATUS       = 0x0bu; // llm_lobby_player_slot.slot_status (llm_lobby_slot_status)
+constexpr uint8_t  STATUS_HUMAN     = 1u;    // OPEN=0, HUMAN=1, AI=2, CLOSED=3 (docs/structs.md)
+constexpr int      MAX_SLOTS        = 8;
+constexpr unsigned OFF_LABEL        = 0x38u; // llm_ui_widget.label (wchar_t*; 0 = none)
+constexpr DWORD    SAMPLE_PERIOD_MS = 2000;  // one log line per refresh pass per 2s, like ui_net_indicator
 
 wchar_t g_label[MAX_SLOTS][16]; // one persistent buffer per slot; the widget only keeps the pointer
 DWORD   g_next_sample_tick = 0;
@@ -188,28 +118,11 @@ bool published_for(int pid, int &srtt_ms, int &relay) {
     return true;
 }
 
-// Slot i's color widget, or 0 if this slot's row was never built (beyond the map's player count, or
-// before the first build this lobby visit).
-int32_t color_widget(int slot) {
-    const int32_t *ptrs = (const int32_t *)ADDR_SLOT_WIDGET_PTRS;
-    return ptrs[slot * 4 + 3];
-}
-
+// Set slot's PING label (nullptr clears). A row that was never built has no widget: nothing to do.
 void set_slot_label(int slot, const wchar_t *text) {
-    const int32_t color = color_widget(slot);
-    if (color == 0) return;
-    *(const wchar_t **)((uintptr_t)color + OFF_LABEL) = text;
-}
-
-// mp:L1e -- the real-widget-field placement fix (see the file header block). Only called alongside a
-// REAL label (never on the no-measurement/cleared paths), so a lobby with no peer measurement never
-// touches this field and stays pixel-identical to before this change: draw_content's own sprite-draw
-// side effect already resets widget->width to natural every frame regardless, so there is nothing to
-// "restore" on the cleared path either.
-void widen_color_widget(int slot) {
-    const int32_t color = color_widget(slot);
-    if (color == 0) return;
-    *(int32_t *)((uintptr_t)color + OFF_WIDTH) = SWATCH_WIDEN;
+    void *w = mh::ui::lobby_slot_ping_widget(slot);
+    if (w == nullptr) return;
+    *(const wchar_t **)((uintptr_t)w + OFF_LABEL) = text;
 }
 
 } // namespace
@@ -242,6 +155,17 @@ void lobby_ping_on_published(const unsigned char *buf, int len) {
     // opposite order would let it see the new stamp over the old rows, which is optimistic and
     // therefore the wrong way round for a staleness test.
     InterlockedExchange(&g_pub_at, (LONG)GetTickCount());
+}
+
+// mp:P16 -- see lobby_ping.h.
+bool lobby_ping_published_srtt(int pid, unsigned max_age_ms, int *srtt_ms) {
+    if (!srtt_ms || pid < 0 || pid >= MAX_SLOTS) return false;
+    const LONG at = InterlockedCompareExchange(&g_pub_at, 0, 0);
+    if (at == 0 || (DWORD)(GetTickCount() - (DWORD)at) > (DWORD)max_age_ms) return false;
+    const LONG v = InterlockedCompareExchange(&g_pub[pid], 0, 0);
+    if ((v & PUB_PRESENT) == 0) return false;
+    *srtt_ms = (int)((v >> PUB_SRTT_SH) & PUB_SRTT_MS);
+    return true;
 }
 
 void lobby_ping_tick() {
@@ -349,7 +273,6 @@ void lobby_ping_tick() {
                 wsprintfW(buf, L"%d", clamped);
             }
             set_slot_label(slot, buf);
-            widen_color_widget(slot); // mp:L1e: the real-field placement fix, only when a label draws
             ++painted;
         }
         if (sample) {

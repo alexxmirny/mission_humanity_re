@@ -59,7 +59,19 @@ class Refusal(Exception):
     """A run this tool cannot make a statement about. NEVER a pass."""
 
 
-SESSION_DIR_RE = re.compile(r"^\d{8}T\d{6}Z_[0-9a-f]{8}_\d+_[A-Za-z0-9]+$")
+SESSION_DIR_RE = re.compile(
+    r"^(?:\d{8}T\d{6}Z_[0-9a-f]{8}_\d+|\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}Z_[0-9a-f]{8}_[A-Za-z0-9.-]+)_[A-Za-z0-9]+$"
+)
+# SES8 (2026-09-29): new names start "YYYY-MM-DDTHH-MM-SSZ", which does NOT string-sort with the
+# SES1 "YYYYMMDDTHHMMSSZ" ones a lane still holds (`-` < `0`). Order by canon(name), never the raw
+# name. Verbatim copy of tools/_rundir.py's canon() (no import chain between checkers).
+_NEW_STAMP = re.compile(r"^(\d{4})-(\d{2})-(\d{2})T(\d{2})-(\d{2})-(\d{2})Z")
+
+
+def canon(name):
+    """The name with an SES8 stamp rewritten to the SES1 compact form, so the two sort together."""
+    return _NEW_STAMP.sub(r"\1\2\3T\4\5\6Z", name)
+
 
 GS2_RE = re.compile(r"; GS2: peer (\d+) data-silent for (\d+) ms > (\d+) -> dropped")
 
@@ -86,7 +98,7 @@ def session_runs(logs_dir, process_leaf):
         and SESSION_DIR_RE.match(os.path.basename(d))
         and session_process_dir(d) == process_leaf
     ]
-    return sorted(c, key=lambda d: os.path.basename(d))
+    return sorted(c, key=lambda d: canon(os.path.basename(d)))
 
 
 def read_lines(folder):
@@ -205,10 +217,13 @@ _DROP_SELF = "[00:00:03.010] ; GS2: peer 0 data-silent for 3010 ms > 3000 -> dro
 def _plant(root, name, text):
     lane = os.path.join(root, name)
     logs = os.path.join(lane, "logs")
-    menu_leaf = "20260921T000000Z_menu_solo"
+    menu_leaf = _ses8("20260921T000000Z_menu_solo", "2026-09-21T00-00-00Z_menu_solo")
     menu = os.path.join(logs, menu_leaf)
     os.makedirs(menu)
-    sess = os.path.join(logs, "20260921T000001Z_00000001_0_solo")
+    sess = os.path.join(
+        logs,
+        _ses8("20260921T000001Z_00000001_0_solo", "2026-09-21T00-00-01Z_00000001_blue-monday_host"),
+    )
     os.makedirs(sess)
     with open(os.path.join(sess, "mh_net.log"), "w", encoding="utf-8") as fh:
         fh.write(_BANNER + text)
@@ -217,7 +232,27 @@ def _plant(root, name, text):
     return menu
 
 
+# SES8: every case runs twice -- once on SES1 names, once on SES8 names (this process's folders
+# renamed, so the planted lane is a mixed-generation one wherever it keeps an older folder).
+_PLANT_SES8 = False
+
+
+def _ses8(old, new):
+    return new if _PLANT_SES8 else old
+
+
 def selftest():
+    global _PLANT_SES8
+    rc = 0
+    for flag in (False, True):
+        _PLANT_SES8 = flag
+        print("-- %s names --" % ("SES8" if flag else "SES1"))
+        rc |= _selftest_once()
+    _PLANT_SES8 = False
+    return rc
+
+
+def _selftest_once():
     # (title, host_text, client_text, timeout_ms, want)
     cases = [
         ("clean drop, host is the survivor", _DROP, _BANNER, 3000, 0),

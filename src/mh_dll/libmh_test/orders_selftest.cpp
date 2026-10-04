@@ -18,6 +18,8 @@
 //
 #include "orders/order_queue.h"
 
+#include "orders/admission_log.h" // mp:X3c
+
 #include "lockstep/tx_emit_order.h" // ST5: the WIRE half of the one-codec claim
 #include "orders/order_codec.h"
 
@@ -162,6 +164,138 @@ order make_order(double t, uint16_t unit, uint16_t owner, int16_t p0, uint16_t c
 }
 
 } // namespace
+
+// ---- mp:U59 (HM-M1) (d): CROSS-ORIGIN ARRIVAL INTERLEAVING DOES NOT CHANGE THE SIM ------------------
+//
+// The exactly-once layer (mh_net_udp/origin_seq.h) guarantees per-ORIGIN order and nothing about how
+// different origins' frames interleave -- after a hub change each survivor sees them in a different
+// cross-origin order. The determinism argument (the mp:U57 design plan, section 7.3) is that the
+// sim is blind to that interleaving: an order is executed at its stamped step, only once every peer's
+// horizon has passed it (the barrier), and release_due partitions by OWNER, so what is dispatched
+// depends on each origin's own stream, not on how the streams were merged.
+//
+// This arm makes the claim explicit instead of leaving it to "3-peer runs are IDENTICAL": four origins
+// each issue a stream of stamped orders (same-unit supersedes, cross-origin ties at one exec_time,
+// same unit index under different owners); the receiver is fed N random cross-origin merges that keep
+// every origin's own order, in barrier-sized batches; every release_due step dispatches the queue, and
+// the dispatched sequence is hashed. All N hashes must be equal. Two negative controls keep it honest:
+// swapping two orders WITHIN one origin (what the layer's per-origin ordering exists to prevent) must
+// CHANGE the hash, and the stream must really contain cross-origin ties and supersedes.
+struct interleave_result {
+    uint64_t hash       = 0;
+    int      dispatched = 0;
+};
+
+uint64_t fnv_mix(uint64_t h, const void *p, size_t n) {
+    const uint8_t *b = static_cast<const uint8_t *>(p);
+    for (size_t i = 0; i < n; ++i) {
+        h ^= b[i];
+        h *= 1099511628211ull;
+    }
+    return h;
+}
+
+interleave_result run_interleaving(const std::vector<std::vector<order>> &streams, uint32_t seed, bool swap_within_origin) {
+    constexpr int    BATCH_STEPS = 6; // the barrier window: orders up to t + 6 have all arrived before step t runs
+    constexpr double STEPS       = 60.0;
+    uint32_t         rng         = seed ? seed : 1u;
+    auto             next        = [&]() {
+        rng ^= rng << 13;
+        rng ^= rng >> 17;
+        rng ^= rng << 5;
+        return rng;
+    };
+    // the one deliberate in-origin reorder for the sensitivity control: the last two orders of origin 1
+    // are the crafted pair (same unit, same instant, same code, different param) whose outcome depends
+    // on which arrived first -- exactly the dependence the layer's per-origin ordering rules out
+    std::vector<std::vector<order>> s = streams;
+    if (swap_within_origin) std::swap(s[1][s[1].size() - 1], s[1][s[1].size() - 2]);
+    fixture           f;
+    interleave_result r;
+    r.hash        = 1469598103934665603ull;
+    size_t pos[8] = {0};
+    for (int batch = 0; batch * BATCH_STEPS < static_cast<int>(STEPS); ++batch) {
+        const double hi = (batch + 1) * BATCH_STEPS;
+        // every order stamped <= hi arrives now, in a random cross-origin merge that keeps each origin's order
+        for (;;) {
+            int cand[8], nc = 0;
+            for (int o = 0; o < 8; ++o)
+                if (o < static_cast<int>(s.size()) && pos[o] < s[o].size() && s[o][pos[o]].exec_time <= hi) cand[nc++] = o;
+            if (nc == 0) break;
+            const int o   = cand[next() % static_cast<uint32_t>(nc)];
+            order     rec = s[o][pos[o]++];
+            mh::orders::detail::pending_enqueue(f.st, &rec);
+        }
+        for (int step = batch * BATCH_STEPS + 1; step <= (batch + 1) * BATCH_STEPS; ++step) {
+            mh::orders::detail::release_due(f.st, static_cast<double>(step));
+            for (int i = 0; i < f.queue_count; ++i) { // the dispatcher consumes the queue in index order
+                const order &q = f.queue[static_cast<size_t>(i)];
+                r.hash         = fnv_mix(r.hash, &q.unit_index, sizeof(q.unit_index));
+                r.hash         = fnv_mix(r.hash, &q.owner_and_kind, sizeof(q.owner_and_kind));
+                r.hash         = fnv_mix(r.hash, &q.param0, sizeof(q.param0));
+                r.hash         = fnv_mix(r.hash, &q.order_code, sizeof(q.order_code));
+                r.hash         = fnv_mix(r.hash, &q.exec_time, sizeof(q.exec_time));
+                r.hash         = fnv_mix(r.hash, q.args, sizeof(q.args));
+                ++r.dispatched;
+            }
+            f.queue_count = 0;
+        }
+    }
+    return r;
+}
+
+static void test_cross_origin_interleaving() {
+    // four origins (players 0..3); owner nibble = origin, as on the wire
+    std::vector<std::vector<order>> streams(4);
+    uint32_t                        g   = 0x9E3779B9u;
+    auto                            rnd = [&]() {
+        g ^= g << 13;
+        g ^= g >> 17;
+        g ^= g << 5;
+        return g;
+    };
+    int ties = 0, supersedes = 0;
+    for (int o = 0; o < 4; ++o) {
+        double t = 1.0;
+        for (int i = 0; i < 40; ++i) {
+            t += static_cast<double>(rnd() % 2);                    // 0 or 1: repeats happen, so same-instant orders do
+            const uint16_t unit = static_cast<uint16_t>(rnd() % 5); // few units: same-unit supersedes happen
+            order          rec  = make_order(t, unit, static_cast<uint16_t>(o), static_cast<int16_t>(rnd() % 4),
+                                             static_cast<uint16_t>(1 + rnd() % 6));
+            if (!streams[static_cast<size_t>(o)].empty()) {
+                const order &p = streams[static_cast<size_t>(o)].back();
+                if (p.unit_index == rec.unit_index && p.exec_time == rec.exec_time) ++supersedes;
+            }
+            streams[static_cast<size_t>(o)].push_back(rec);
+        }
+    }
+    // the crafted pair: unit 4, owner 1, one instant, one code, two params -- first-arrival-wins in release_due
+    streams[1].push_back(make_order(50.0, 4, 1, 1, 3));
+    streams[1].push_back(make_order(50.0, 4, 1, 2, 3));
+    for (size_t a = 0; a < streams[0].size(); ++a)
+        for (size_t b = 0; b < streams[1].size(); ++b)
+            if (streams[0][a].exec_time == streams[1][b].exec_time) ++ties;
+
+    const interleave_result ref       = run_interleaving(streams, 1, false);
+    bool                    all_same  = true;
+    int                     differing = 0;
+    for (uint32_t seed = 2; seed < 202; ++seed) {
+        const interleave_result r = run_interleaving(streams, seed * 2654435761u, false);
+        if (r.hash != ref.hash || r.dispatched != ref.dispatched) {
+            all_same = false;
+            ++differing;
+        }
+    }
+    check("xorigin: the stream has cross-origin ties at one exec_time (non-vacuous)", ties > 20);
+    check("xorigin: the stream has same-unit same-instant orders (the supersede path runs)", supersedes > 0);
+    check("xorigin: the dispatch dispatched something", ref.dispatched > 40);
+    check("xorigin: 200 random cross-origin interleavings dispatch the IDENTICAL sequence (same hash)", all_same);
+    if (!all_same) printf("  (%d of 200 interleavings differed)\n", differing);
+    // sensitivity: an in-ORIGIN reorder is what the layer's per-origin ordering forbids, and it must show
+    const interleave_result swapped = run_interleaving(streams, 1, true);
+    check("xorigin: control -- swapping two orders WITHIN one origin changes the hash (the arm can detect)",
+          swapped.hash != ref.hash);
+}
 
 int run_orderstest() {
     printf("=== orderstest (order container logic, no game) ===\n");
@@ -433,6 +567,54 @@ int run_orderstest() {
         od::release_due(f.st, 100.0);
         check("release_due keeps an order when the queue is full", f.pending_count == 1);
         check("release_due does not overflow the queue", f.queue_count == mh::orders::QUEUE_CAP);
+    }
+
+    // ---- release_due: mp:U45, the diplomacy admin orders do not supersede each other ----
+    // One Apply with two other humans issues f4(j1) f5(j1) f4(j2) f5(j2): unit 0, owner = issuer,
+    // one exec_time. Stock dedup keeps only the two 0xf5 (f5 replaces f4, then f4(j2) loses to f5(j1)).
+    {
+        auto run = [](bool exempt, std::vector<uint16_t> &codes, int32_t &count) {
+            mh::orders::set_admin_dedup_exempt(exempt);
+            fixture        f;
+            const uint16_t seq[4] = {0xf4, 0xf5, 0xf4, 0xf5};
+            for (int i = 0; i < 4; ++i) {
+                f.pending[i]         = make_order(10.0, 0, 2, static_cast<int16_t>(seq[i]), seq[i]);
+                f.pending[i].args[2] = static_cast<int32_t>(1 + i / 2); // the other player j
+            }
+            f.pending_count = 4;
+            od::release_due(f.st, 100.0);
+            count = f.queue_count;
+            codes.clear();
+            for (int i = 0; i < f.queue_count; ++i) codes.push_back(f.queue[i].order_code);
+            mh::orders::set_admin_dedup_exempt(false);
+        };
+        std::vector<uint16_t> codes;
+        int32_t               n = 0;
+        run(true, codes, n);
+        check("U45 fix on: all four diplomacy orders are released", n == 4);
+        check("U45 fix on: the 0xf4 orders survive, in issue order",
+              n == 4 && codes[0] == 0xf4 && codes[1] == 0xf5 && codes[2] == 0xf4 && codes[3] == 0xf5);
+        run(false, codes, n);
+        check("U45 gate off (retail): only the two 0xf5 orders survive", n == 2);
+        check("U45 gate off (retail): the survivors are both 0xf5",
+              n == 2 && codes[0] == 0xf5 && codes[1] == 0xf5);
+        // The exemption is for the admin PAIR only: a normal unit order sharing the identity is still deduped.
+        {
+            mh::orders::set_admin_dedup_exempt(true);
+            fixture f;
+            f.pending[0]    = make_order(10.0, 0, 2, 1, 0x03);
+            f.pending[1]    = make_order(10.0, 0, 2, 2, 0x04); // same unit+owner, higher code -> replaces
+            f.pending_count = 2;
+            od::release_due(f.st, 100.0);
+            check("U45 fix on: ordinary same-unit orders are still deduped", f.queue_count == 1 && f.queue[0].order_code == 0x04);
+            f.pending[0]    = make_order(10.0, 0, 2, 0x04, 0x04);
+            f.pending[1]    = make_order(10.0, 0, 2, static_cast<int16_t>(0xf4), 0xf4);
+            f.pending_count = 2;
+            f.queue_count   = 0;
+            od::release_due(f.st, 100.0);
+            check("U45 fix on: an admin order vs an ordinary one keeps the retail rule", f.queue_count == 1);
+            mh::orders::set_admin_dedup_exempt(false);
+        }
     }
 
     // ---- release_due: an UNORDERED (NaN) exec_time releases, because JBE does ----
@@ -1146,6 +1328,294 @@ int run_orderstest() {
               e256.pending[0].unit_index == 0);
     }
 
+
+    // ---- mp:X3c: the PENDING-admission log (orders/admission_log.h) ----------------------------------
+    {
+        namespace adm = mh::orders::admission;
+        using adm::SOURCES;
+
+        // A remote order: taps the STORED (masked) form, keyed by the owner nibble.
+        {
+            adm::reset();
+            fixture f;
+            order   r = make_order(5.0, 0x1207, 0x1203, 0x0155, 0x0166); // high bytes must be masked away
+            check("adm: pending_enqueue admits", od::pending_enqueue(f.st, &r) == 1);
+            const adm::status &s = adm::current();
+            check("adm: one record logged, source 3 (owner nibble of the STORED form)",
+                  s.total == 1 && s.n_src[3] == 1 && s.n_src[0] == 0);
+            uint32_t            ns[SOURCES] = {};
+            adm::readmit_report rr{};
+            fixture             g;
+            check("adm: readmit appends the record", adm::readmit(g.st, ns, &rr) == 0 && rr.readmitted == 1);
+            check("adm: readmit copies the STORED (masked) form, byte-for-byte",
+                  std::memcmp(&g.pending[0], &f.pending[0], sizeof(order)) == 0 &&
+                      g.pending[0].owner_and_kind == 0x03 && g.pending[0].unit_index == 0x07);
+            check("adm: readmit bypasses the tap (the log did not grow)", adm::current().total == 1);
+        }
+
+        // 0xf0 is source 8, and it does not collide with player 0.
+        {
+            adm::reset();
+            fixture f;
+            order   ev = make_order(9.0, 0, 0xf0, 4, 1);
+            order   p0 = make_order(9.0, 1, 0x00, 4, 1);
+            od::pending_enqueue(f.st, &ev);
+            od::pending_enqueue(f.st, &p0);
+            check("adm: the 0xf0 global event is source 8, player 0 stays source 0",
+                  adm::current().n_src[8] == 1 && adm::current().n_src[0] == 1);
+        }
+
+        // The own-order door: schedule() taps the masked pending copy.
+        {
+            adm::reset();
+            fixture f;
+            f.staging[0]    = make_order(3.0, 0x0101, 0x0105, 0x0202, 0x0303); // byte-duplicated, as staged
+            f.staging_count = 1;
+            f.horizon       = 0.0;
+            od::schedule(f.st, recording_calls());
+            check("adm: schedule() logs the own order once, source 5, masked",
+                  adm::current().total == 1 && adm::current().n_src[5] == 1 &&
+                      f.pending[0].owner_and_kind == 0x05);
+        }
+
+        // Re-admission: exactly ordinal > n_src, per source, in admission order.
+        {
+            adm::reset();
+            fixture        f;
+            const uint16_t owners[] = {1, 2, 1, 0xf0, 2, 1, 2}; // ordinals: s1:1,2,3  s2:1,2,3  s8:1
+            for (int i = 0; i < 7; ++i) {
+                order r = make_order(1.0 + i, static_cast<uint16_t>(10 + i), owners[i], 0, static_cast<uint16_t>(i));
+                od::pending_enqueue(f.st, &r);
+            }
+            uint32_t ns[SOURCES] = {};
+            ns[1]                = 1; // host had already admitted s1#1 ...
+            ns[2]                = 3; // ... all of s2 ...
+            ns[8]                = 0; // ... none of the event
+            adm::plan_report pr{};
+            check("adm: plan ok", adm::plan(ns, &pr) == 0 && pr.need == 2 + 0 + 1);
+            fixture g;
+            g.pending_count = 2; // the imported PENDING already holds two records
+            adm::readmit_report rr{};
+            check("adm: readmit ok", adm::readmit(g.st, ns, &rr) == 0);
+            // s1#2 (i=2), s8#1 (i=3), s1#3 (i=5), in admission order
+            check("adm: appended exactly the ordinals > n_src, in admission order",
+                  rr.readmitted == 3 && g.pending_count == 5 && g.pending[2].unit_index == 12 &&
+                      g.pending[3].unit_index == 13 && g.pending[4].unit_index == 15);
+            check("adm: the imported PENDING prefix is untouched (records 0/1 keep their 0xAA fill)",
+                  reinterpret_cast<const unsigned char *>(&g.pending[0])[0] == 0xAA);
+        }
+
+        // Refusals: ahead, ring short, overflow abort, pending full.
+        {
+            adm::reset();
+            fixture f;
+            for (int i = 0; i < 4; ++i) {
+                order r = make_order(1.0, static_cast<uint16_t>(i), 4, 0, 1);
+                od::pending_enqueue(f.st, &r);
+            }
+            uint32_t ns[SOURCES] = {};
+            ns[4]                = 5; // the host admitted MORE than we have
+            adm::plan_report pr{};
+            check("adm: n_src ahead of this peer is refused -31",
+                  adm::plan(ns, &pr) == adm::ERR_AHEAD && pr.bad_src == 4);
+        }
+        {
+            adm::reset();
+            fixture        f;
+            const uint32_t N = adm::RING_CAP + 904; // 5000
+            for (uint32_t i = 0; i < N; ++i) {
+                f.pending_count = 0; // keep PENDING from filling; this test is about the ring
+                order r         = make_order(1.0, static_cast<uint16_t>(i & 0xff), 1, 0, 1);
+                od::pending_enqueue(f.st, &r);
+            }
+            check("adm: ring wrapped and remembered the highest dropped ordinal",
+                  adm::current().ring_wraps == 904 && adm::current().dropped_upto[1] == 904 &&
+                      adm::current().n_src[1] == N);
+            uint32_t ns[SOURCES] = {};
+            ns[1]                = 903;
+            check("adm: a needed ordinal fell off the ring -> -30", adm::plan(ns, nullptr) == adm::ERR_RING_SHORT);
+            ns[1] = 904;
+            check("adm: n_src == dropped_upto is still reachable (boundary)", adm::plan(ns, nullptr) == 0);
+            fixture             g;
+            adm::readmit_report rr{};
+            check("adm: a readmit larger than PENDING room stops at -33",
+                  adm::readmit(g.st, ns, &rr) == adm::ERR_PENDING_FULL &&
+                      rr.readmitted == static_cast<uint32_t>(mh::orders::PENDING_CAP));
+            ns[1] = N - 500;
+            fixture h;
+            check("adm: 500 records after the wrap re-admit cleanly",
+                  adm::readmit(h.st, ns, &rr) == 0 && rr.readmitted == 500);
+        }
+        {
+            adm::reset();
+            fixture f;
+            f.pending_count = mh::orders::PENDING_CAP;
+            order r         = make_order(1.0, 1, 2, 0, 1);
+            check("adm: R5 pending_enqueue on a full PENDING still resets the count (original behaviour)",
+                  od::pending_enqueue(f.st, &r) == 0 && f.pending_count == 0);
+            check("adm: R5 the overflow LATCHES abort and nothing was logged",
+                  adm::current().abort_worthy && adm::current().overflow_resets == 1 && adm::current().total == 0);
+            uint32_t ns[SOURCES] = {};
+            check("adm: R5 plan() reports -32 while latched", adm::plan(ns, nullptr) == adm::ERR_ABORT);
+            adm::reset();
+            check("adm: reset() clears the latch", !adm::current().abort_worthy && adm::plan(ns, nullptr) == 0);
+        }
+
+        // ---- STAGED re-admission: the product path (the backlog does not fit in PENDING at once) ----
+        {
+            // Exactness: the same targets as readmit(), delivered by exec_time in admission order.
+            adm::reset();
+            fixture        f;
+            const uint16_t owners[] = {1, 2, 1, 0xf0, 2, 1, 2};
+            for (int i = 0; i < 7; ++i) {
+                order r = make_order(1.0 + i, static_cast<uint16_t>(10 + i), owners[i], 0, static_cast<uint16_t>(i));
+                od::pending_enqueue(f.st, &r);
+            }
+            uint32_t ns[SOURCES] = {};
+            ns[1]                = 1;
+            ns[2]                = 3;
+            fixture g;
+            g.pending_count = 2;
+            adm::stage_report sr{};
+            check("stage: begin ok, 3 targets, nothing appended yet",
+                  adm::stage_begin(ns, nullptr) == 0 && adm::stage_remaining() == 3 && adm::stage_active() &&
+                      g.pending_count == 2);
+            check("stage: nothing due before the first target's exec_time",
+                  adm::stage_feed(g.st, 2.5, &sr) == 0 && sr.fed == 0 && g.pending_count == 2);
+            check("stage: a target is fed once its exec_time is inside the horizon (s1#2, exec 3)",
+                  adm::stage_feed(g.st, 3.5, &sr) == 0 && sr.fed == 1 && g.pending_count == 3 &&
+                      g.pending[2].unit_index == 12);
+            check("stage: re-feeding the same horizon appends nothing (no double admission)",
+                  adm::stage_feed(g.st, 3.5, &sr) == 0 && sr.fed == 0 && g.pending_count == 3);
+            check("stage: the event record follows (s8#1, exec 4)",
+                  adm::stage_feed(g.st, 4.0, &sr) == 0 && sr.fed == 1 && g.pending[3].unit_index == 13);
+            check("stage: still active with one target left", adm::stage_active() && adm::stage_remaining() == 1);
+            check("stage: the last target (s1#3, exec 6) completes the stage",
+                  adm::stage_feed(g.st, 6.0, &sr) == 0 && sr.fed == 1 && g.pending[4].unit_index == 15 &&
+                      !adm::stage_active() && adm::stage_remaining() == 0);
+            check("stage: the imported PENDING prefix is untouched and the tap did not log",
+                  reinterpret_cast<const unsigned char *>(&g.pending[0])[0] == 0xAA && adm::current().total == 7);
+        }
+        {
+            // The point of staging: a 3000-record backlog (3x PENDING_CAP) flows through a PENDING that
+            // release_due keeps draining, and never overflows. Non-vacuity: the bulk readmit of the SAME
+            // backlog overflows (-33), which is why the product path is staged.
+            adm::reset();
+            fixture        f;
+            const uint32_t N = 3000;
+            for (uint32_t i = 0; i < N; ++i) {
+                f.pending_count = 0;
+                order r         = make_order(static_cast<double>(i), static_cast<uint16_t>(i & 0xff), 1, 0, 1);
+                od::pending_enqueue(f.st, &r);
+            }
+            uint32_t            ns[SOURCES] = {};
+            fixture             bulk;
+            adm::readmit_report rr{};
+            check("stage: (non-vacuity) bulk readmit of the 3000-record backlog overflows PENDING",
+                  adm::readmit(bulk.st, ns, &rr) == adm::ERR_PENDING_FULL);
+            fixture g;
+            check("stage: begin over the 3000-record backlog", adm::stage_begin(ns, nullptr) == 0 &&
+                                                                   adm::stage_remaining() == N);
+            uint32_t total_fed = 0, peak = 0;
+            int      rc = 0;
+            for (uint32_t t = 0; t < N + 8 && rc == 0; ++t) {
+                adm::stage_report sr{};
+                rc = adm::stage_feed(g.st, static_cast<double>(t) + 4.0, &sr); // the driver's 4-step lookahead
+                total_fed += sr.fed;
+                if (static_cast<uint32_t>(g.pending_count) > peak) peak = static_cast<uint32_t>(g.pending_count);
+                g.pending_count = 0; // release_due drained everything due this step
+            }
+            check("stage: every record was fed exactly once, in a bounded PENDING", rc == 0 && total_fed == N);
+            check("stage: PENDING peaked at the lookahead window, not the backlog", peak <= 6);
+            check("stage: the stage finished", !adm::stage_active());
+        }
+        {
+            // Refusals on the feed path: named, never silent.
+            adm::reset();
+            fixture f;
+            for (int i = 0; i < 100; ++i) {
+                order r = make_order(1000.0 + i, 1, 3, 0, 1);
+                od::pending_enqueue(f.st, &r);
+            }
+            uint32_t ns[SOURCES] = {};
+            fixture  g;
+            check("stage: begin ok", adm::stage_begin(ns, nullptr) == 0);
+            for (uint32_t i = 0; i < adm::RING_CAP; ++i) { // the ring wraps past the unfed targets
+                f.pending_count = 0;
+                order r         = make_order(2000.0, 1, 4, 0, 1);
+                od::pending_enqueue(f.st, &r);
+            }
+            adm::stage_report sr{};
+            check("stage: a target that fell off the ring before it was fed -> -30",
+                  adm::stage_feed(g.st, 1e9, &sr) == adm::ERR_RING_SHORT && sr.fed == 0);
+            adm::stage_cancel();
+            check("stage: cancel leaves nothing active", !adm::stage_active() && adm::stage_remaining() == 0);
+        }
+        {
+            adm::reset();
+            fixture f;
+            for (int i = 0; i < 3; ++i) {
+                order r = make_order(1.0 + i, 1, 5, 0, 1);
+                od::pending_enqueue(f.st, &r);
+            }
+            uint32_t ns[SOURCES] = {};
+            fixture  g;
+            g.pending_count = mh::orders::PENDING_CAP;
+            check("stage: begin ok", adm::stage_begin(ns, nullptr) == 0);
+            adm::stage_report sr{};
+            check("stage: a due record with no room in PENDING -> -33 (fed nothing, nothing lost)",
+                  adm::stage_feed(g.st, 10.0, &sr) == adm::ERR_PENDING_FULL && sr.fed == 0 &&
+                      adm::stage_remaining() == 3);
+            g.pending_count = 0;
+            check("stage: ...and the same feed succeeds once room exists",
+                  adm::stage_feed(g.st, 10.0, &sr) == 0 && sr.fed == 3 && !adm::stage_active());
+            // Records admitted AFTER stage_begin reach PENDING by the normal door; they are not targets.
+            adm::reset();
+            fixture h;
+            for (int i = 0; i < 3; ++i) {
+                order r = make_order(1.0 + i, 1, 5, 0, 1);
+                od::pending_enqueue(h.st, &r);
+            }
+            adm::stage_begin(ns, nullptr);
+            for (int i = 0; i < 2; ++i) {
+                order r = make_order(9.0 + i, 1, 5, 0, 1);
+                od::pending_enqueue(h.st, &r);
+            }
+            check("stage: records admitted after begin are not targets", adm::stage_remaining() == 3);
+            adm::note_overflow();
+            fixture k;
+            check("stage: a latched PENDING overflow aborts the feed -32",
+                  adm::stage_feed(k.st, 1e9, nullptr) == adm::ERR_ABORT);
+            adm::stage_cancel();
+            adm::reset();
+        }
+
+        // Muted tap, and the observe-only property: the same sequence with the log on and off leaves
+        // byte-identical container state.
+        {
+            adm::reset();
+            fixture on, off;
+            adm::set_muted(false);
+            for (int i = 0; i < 20; ++i) {
+                order a = make_order(1.0 + i, static_cast<uint16_t>(i), static_cast<uint16_t>(i & 7), 0, 1);
+                od::pending_enqueue(on.st, &a);
+            }
+            check("adm: unmuted tap logged 20", adm::current().total == 20);
+            adm::set_muted(true);
+            for (int i = 0; i < 20; ++i) {
+                order a = make_order(1.0 + i, static_cast<uint16_t>(i), static_cast<uint16_t>(i & 7), 0, 1);
+                od::pending_enqueue(off.st, &a);
+            }
+            adm::set_muted(false);
+            check("adm: a muted tap logs nothing", adm::current().total == 20);
+            check("adm: OBSERVE-ONLY -- PENDING is byte-identical with the log on and muted",
+                  on.pending_count == off.pending_count &&
+                      std::memcmp(on.pending.data(), off.pending.data(), on.pending.size() * sizeof(order)) == 0);
+            adm::reset();
+        }
+    }
+
+    test_cross_origin_interleaving(); // mp:U59 (d)
 
     printf("%d checks, %d failures\n", g_checks, g_fails);
     return g_fails == 0 ? 0 : 1;

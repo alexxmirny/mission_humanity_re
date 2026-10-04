@@ -46,6 +46,16 @@ NEEDLE_LISTED = "; R2 relay directory: "
 NEEDLE_JOIN = "; R2b join: "
 NEEDLE_HOST_ROOM = "net: udp relay -- host room "
 
+# SES8 (2026-09-29): run directories are now `YYYY-MM-DDTHH-MM-SSZ_...`; a lane still holds SES1
+# `YYYYMMDDTHHMMSSZ_...` ones, and a raw string compare puts every SES1 name AFTER an SES8 one
+# (`-` < `0`). canon() folds the new stamp to the compact form so name order is time order again.
+# Verbatim copy of tools/_rundir.py's (checkers carry no import chain between them).
+_NEW_STAMP = re.compile(r"^(\d{4})-(\d{2})-(\d{2})T(\d{2})-(\d{2})-(\d{2})Z")
+
+
+def canon(name):
+    return _NEW_STAMP.sub(r"\1\2\3T\4\5\6Z", name)
+
 
 def run_logs(target):
     """Every mh_net.log of the run `target` belongs to, oldest first: the directory itself and its
@@ -57,11 +67,11 @@ def run_logs(target):
     own = os.path.join(target, "mh_net.log")
     if os.path.isfile(own):
         parent = os.path.dirname(target)
-        stamp = os.path.basename(target)
+        stamp = canon(os.path.basename(target))
         sibs = []
-        for d in sorted(os.listdir(parent)):
+        for d in sorted(os.listdir(parent), key=canon):
             p = os.path.join(parent, d, "mh_net.log")
-            if os.path.isfile(p) and d >= stamp:
+            if os.path.isfile(p) and canon(d) >= stamp:
                 sibs.append(p)
         return sibs or [own]
     logs = []
@@ -261,9 +271,20 @@ def selftest():
         for i, (name, logs, rows, joins, want) in enumerate(cases):
             base = os.path.join(tmp, "c%d" % i)
             dirs = []
+            # Odd cases use SES8 directory names, and a green one also carries an EARLIER build's
+            # SES1 session dir whose stray JOIN a raw name compare would read as later (SES8).
+            ses8 = i % 2 == 1
             for j, text in enumerate(logs):
-                d = os.path.join(base, "lane%d" % j, "logs", "20260922T000000Z_menu_solo")
+                menu = "2026-09-22T00-00-00Z_menu_solo" if ses8 else "20260922T000000Z_menu_solo"
+                d = os.path.join(base, "lane%d" % j, "logs", menu)
                 os.makedirs(d, exist_ok=True)
+                if ses8 and want == 0:
+                    old = os.path.join(
+                        base, "lane%d" % j, "logs", "20260921T000000Z_deadbeef_0_solo"
+                    )
+                    os.makedirs(old, exist_ok=True)
+                    with open(os.path.join(old, "mh_net.log"), "w", encoding="utf-8") as fh:
+                        fh.write("; R2b join: row 9 (slot 9) stale room=9 -> joined\n")
                 if text is not None:
                     # split the client's lines the way SES1 does: the second join's re-send in a
                     # later SESSION directory, to prove the timeline join reads both
@@ -272,7 +293,12 @@ def selftest():
                         with open(os.path.join(d, "mh_net.log"), "w", encoding="utf-8") as fh:
                             fh.write("".join(lines[:4]))
                         d2 = os.path.join(
-                            base, "lane%d" % j, "logs", "20260922T000010Z_deadbeef_2_client"
+                            base,
+                            "lane%d" % j,
+                            "logs",
+                            "2026-09-22T00-00-10Z_deadbeef_m_client"
+                            if ses8
+                            else "20260922T000010Z_deadbeef_2_client",
                         )
                         os.makedirs(d2, exist_ok=True)
                         with open(os.path.join(d2, "mh_net.log"), "w", encoding="utf-8") as fh:

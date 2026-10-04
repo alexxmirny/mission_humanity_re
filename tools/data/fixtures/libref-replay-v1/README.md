@@ -131,6 +131,13 @@ python tools/fixture_replay.py unpack --lane <tmp> --world <tmp>/fixture_world.b
 src/mh_dll/Release/libmh_selftest.exe worldtest <tmp>/fixture_world.bin
 ```
 
+**The `-v2` step regime (2026-09-30).** The same procedure records the fixed-step sets the standalone
+engine replays: add `fixed_step=1` to every run's harness extras, pass `--net-extra
+"sim_step_ms=20;rig_fixed_step_loop=1"` to every `ui_test.py` run, and pack with `--fixed-step 1 --net
+"sim_step_ms=20;rig_fixed_step_loop=1"`. `pack` checks both against the run's `effective_config.json`,
+writes `net` into the contract, and `replay` passes it back as `--net-extra` (and checks the replay run
+got it). The clock track is then `0.02, 0.04, ...`, each entry the previous one plus 0.02.
+
 ## Traps, each paid for once
 
 - **`exit_on_stop=1` is mandatory.** `on_sim_step` returns before `++g_step` once `g_active` clears at

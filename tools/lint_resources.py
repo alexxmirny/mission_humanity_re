@@ -9,7 +9,7 @@ the same shape: a literal port / %TEMP% path / lock name / mutex name that TWO f
 bind()/connect() calls with an inline literal, a NAME=<int> assignment where NAME looks like a port, a
 tuple of 4-5-digit literals assigned together (`ECHO, LISTEN, CTL = 39710, 39711, 39799`), an
 argparse `--*port*` default, a `port=<int>` occurrence inside a string literal (ini text / batch `SET`),
-a %TEMP%-rooted path literal, a `*.lock` file-name literal, or an `MHMut*` mutex literal -- and refuses
+a %TEMP%-rooted path literal, a `*.lock` file-name literal, or an `MHMu*` mutex literal -- and refuses
 any that tools/data/resource_registry.json does not name. This is a coverage gate, not a network
 scanner: it never binds anything, it only reads source text.
 
@@ -54,11 +54,20 @@ _ARGPARSE_PORT_RE = re.compile(
 _INI_PORT_RE = re.compile(r"\bport\b\s*=\s*(\d{4,5})\b", re.IGNORECASE)
 _TEMP_DIR_RE = re.compile(r"(?:%TEMP%\\+|TEMP\s*,\s*[\"'])([A-Za-z0-9_.]+)")
 _LOCK_NAME_RE = re.compile(r"[\"']([A-Za-z0-9_./\\-]*\.lock)[\"']")
-_MUTEX_RE = re.compile(r"[\"'](MHMut[A-Za-z0-9%]*)[\"']")
+_MUTEX_RE = re.compile(r"[\"'](MHMu[A-Za-z0-9%]*)[\"']")
 # Well-known lock-file names that belong to an external ecosystem (Cargo, npm, ...), not to this
 # project's own resource space -- referencing one (e.g. to read/remove a stray Cargo.lock) is not
 # the "two agents fight over one machine-global name" hazard this lint exists for.
 _LOCK_NAME_ALLOW = {"Cargo.lock"}
+
+
+def _port_band() -> int:
+    """lane_alloc.PORT_BAND -- read, not restated (it was a hardcoded 99 here while the bands were
+    100 wide, and would have silently under-covered the 200-wide bands)."""
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    import lane_alloc  # noqa: PLC0415 -- stdlib-only at import
+
+    return lane_alloc.PORT_BAND
 
 
 def _port_name_hints(name: str) -> bool:
@@ -110,7 +119,7 @@ def scan_text(path: str, text: str):
         for m in _LOCK_NAME_RE.finditer(line):
             if m.group(1) not in _LOCK_NAME_ALLOW:
                 emit(i, "lock_name", m.group(1))
-        # 7. an MHMut* mutex literal
+        # 7. an MHMu* mutex literal (MHMut%02d before TL-BANDS200)
         for m in _MUTEX_RE.finditer(line):
             emit(i, "mutex", m.group(1))
 
@@ -154,10 +163,10 @@ class Coverage:
                 for lo, hi in re.findall(r"(\d{4,5})\s*-\s*(\d{4,5})", value):
                     self.port_ranges.append((int(lo), int(hi)))
                 # a "<base> + n" / "<base> + test_index" band -- this codebase's bands are all
-                # PORT_BAND=100 wide (tools/lane_alloc.py); treat the base the same way.
+                # lane_alloc.PORT_BAND wide (200 since TL-BANDS200); treat the base the same way.
                 for base in re.findall(r"(\d{4,5})\s*\+\s*[A-Za-z_]", value):
                     b = int(base)
-                    self.port_ranges.append((b, b + 99))
+                    self.port_ranges.append((b, b + _port_band() - 1))
                 for n in _numbers_in(value):
                     self.ports.add(n)
             elif kind == "temp_dir":
@@ -168,7 +177,7 @@ class Coverage:
                     self.lock_names.add(name)
                 self.lock_names.add(os.path.basename(value.split(" ")[0]).strip("<>"))
             elif kind == "mutex_name":
-                self.mutex_prefixes.append("MHMut")
+                self.mutex_prefixes.append("MHMu")
 
     def port_ok(self, n: int) -> bool:
         if n in self.ports:

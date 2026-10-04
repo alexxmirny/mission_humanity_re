@@ -49,6 +49,8 @@
 
 namespace mh::state::world {
 
+struct addr_map; // state/world_fixup.h
+
 // "MHWRLD\0\1" -- distinct from LIB-BOOT's MHBOOT so a boot blob cannot import as a world blob even
 // if the block tables happened to line up.
 inline constexpr uint8_t MAGIC[8] = {'M', 'H', 'W', 'R', 'L', 'D', 0, 1};
@@ -104,9 +106,14 @@ struct blob_header {
     uint32_t nav_offset; // byte offset of the trailer; 0 == absent (never written by a v2 capture)
     uint32_t nav_len;    // bytes
 
-    uint32_t pad_; // explicit rather than implicit: the struct is 8-aligned for the u64s above, so
-                   // an odd number of trailing dwords would be padded anyway -- and a file format
-                   // whose last four bytes are "whatever the compiler left" is not a file format.
+    // ---- the fixup trailer (mp:X3a, additive -- NOT a format bump) ----------------------------------
+    //
+    // This dword was `pad_`, always written 0. It now measures an OPTIONAL trailer that sits at
+    // `nav_offset + nav_len`: the capture-time classification of process-local pointers (heap, DLL
+    // images, relocated regions) that a live cross-process import must fix up. 0 == absent, which is
+    // every blob recorded before it existed, so every committed fixture still imports byte-for-byte
+    // as before and no schema/format fingerprint moves. See state/world_fixup.h.
+    uint32_t fixup_len;
 };
 static_assert(sizeof(blob_header) == 32 + 24 + 40, "the world blob header layout is a file format");
 static_assert(offsetof(blob_header, lockstep_combined) == 32, "the shared prefix is 32 bytes");
@@ -129,6 +136,18 @@ enum world_err : int {
     WORLD_ERR_NAV_CAPTURE = -20, // the live pool could not be serialized (see nav_err for which)
     WORLD_ERR_NAV_MISSING = -21, // a v2 blob with no trailer: impossible from a v2 capture
     WORLD_ERR_NAV_IMPORT  = -22, // the trailer was rejected (see nav_err)
+    // mp:X3a: the fixup trailer. -23 is an IMPORT refusal (a damaged trailer, or a module of OURS that
+    // is loaded with a different identity), returned with the world untouched. -24 is a CAPTURE
+    // refusal (more entries or modules than the trailer can hold): a partial population is the
+    // failure this exists to end, so the capture refuses rather than truncating.
+    WORLD_ERR_FIXUP         = -23,
+    WORLD_ERR_FIXUP_CAPTURE = -24,
+    // mp:X3c: the resync import's own refusals. All three are returned with the world UNTOUCHED
+    // (the admission log is consulted before the first byte is written).
+    WORLD_ERR_RESYNC_RING_SHORT   = -30, // the admission log no longer reaches n_src(S)+1 for some source
+    WORLD_ERR_RESYNC_AHEAD        = -31, // n_src(S) exceeds what this peer has admitted: it is BEHIND the host
+    WORLD_ERR_RESYNC_ABORT        = -32, // the log latched an abort (a PENDING overflow reset the counts)
+    WORLD_ERR_RESYNC_PENDING_FULL = -33, // re-admission ran out of PENDING room (world already imported)
 };
 
 // What the caller (seams/harness.cpp) knows and the module does not: the run's own numbers.
@@ -138,6 +157,9 @@ struct capture_params {
     uint64_t game_clock        = 0;
     uint32_t step              = 0;
     uint32_t mask_flags        = 0;
+    // mp:X3a: the capturing process's address map. Null == build the REAL one (VirtualQuery). The
+    // offline arms inject a synthetic one; nothing else has a reason to.
+    const struct addr_map *map = nullptr;
 };
 
 // Fingerprints, so a hash recorded under one implementation is never silently compared under
@@ -174,6 +196,11 @@ int capture(void *buf, size_t cap, size_t *out_len, const capture_params &p);
 // be measuring the fixup instead of the fixture. The trailer is applied by import_nav() below, which
 // the C entry (state/spine.cpp) calls in its re-derive sequence and worldtest does not.
 int import(const void *blob, size_t n);
+
+// import() with the session-begun latch answered "allowed" (mp:X3c). Nothing else differs: the
+// same validation, the same byte engine. Use ONLY from the resync entry (state/spine.cpp), which
+// owns the keep-local save/restore that makes importing over a live session safe.
+int import_resync(const void *blob, size_t n);
 
 // Apply the FORMAT 2 nav trailer: rebuild the map-region pool, both lists, BY_INDEX and the grid's
 // pointer dwords from the carried slot indices. Call AFTER import(), and INSTEAD OF

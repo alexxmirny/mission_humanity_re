@@ -1,0 +1,4 @@
+# mp:U44 -- the host's stall is forced by the row's shim_triggers (`blackhole c2s` on the host's
+# `hold start` log line, `blackhole off` on its `released in stall` line). This line is only the
+# fallback that lifts a blackhole whose release trigger never fired.
+600000  blackhole off

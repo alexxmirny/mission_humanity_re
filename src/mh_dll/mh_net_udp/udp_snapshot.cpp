@@ -359,6 +359,12 @@ bool Outbox::release(Endpoint &ep) {
     return was;
 }
 
+bool Outbox::cancel_to(Endpoint &ep, int dst_player) {
+    if (!m_on) return false;
+    if (dst_player >= 0 && m_dst != dst_player) return false; // someone else's transfer: not ours to stop
+    return release(ep);                                       // detach under the endpoint lock, THEN free (the X2f order)
+}
+
 int Outbox::arm(Endpoint &ep, int dst_player, const void *blob, uint32_t len, int &out_err) {
     out_err = OK;
     if (blob == nullptr || len == 0 || len > MAX_BODY_BYTES) {
@@ -369,7 +375,7 @@ int Outbox::arm(Endpoint &ep, int dst_player, const void *blob, uint32_t len, in
     // release clears it.
     const int prev = m_dst;
     m_superseded   = release(ep) ? prev : -1;
-    m_copy = (uint8_t *)VirtualAlloc(nullptr, (SIZE_T)len, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
+    m_copy         = (uint8_t *)VirtualAlloc(nullptr, (SIZE_T)len, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
     if (m_copy == nullptr) {
         out_err = ERR_CAPACITY;
         return 0;

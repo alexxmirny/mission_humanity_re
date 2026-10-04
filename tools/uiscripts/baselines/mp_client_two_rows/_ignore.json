@@ -1,1 +1,39 @@
-{"*": [[388, 46, 226, 48]], "capture_c3_in_b_lobby.png": [[324, 108, 34, 34]], "capture_c4_in_a_lobby.png": [[324, 108, 34, 34]]}
+{
+  "*": [
+    [
+      388,
+      46,
+      226,
+      48
+    ]
+  ],
+  "capture_c3_in_b_lobby.png": [
+    [
+      313,
+      108,
+      45,
+      34
+    ],
+    [
+      313,
+      106,
+      53,
+      36
+    ]
+  ],
+  "capture_c4_in_a_lobby.png": [
+    [
+      313,
+      108,
+      45,
+      34
+    ],
+    [
+      313,
+      106,
+      53,
+      36
+    ]
+  ],
+  "_why": "PING CELL (2026-09-29, the chat_utf8 flake's root cause): with a client seated, mp:L1b's lobby ping cell (mh/ui/lobby_ping.cpp, right of each seated row's colour swatch) draws a live SRTT MEASUREMENT -- 'D 0' solo, 'D 1' or more under load -- so its column on the two seated rows is masked ([322,106,44,36], mp_client_el2's rect; the text is laid out by width, so the whole column, not the digit). mp:U50 (2026-10-02): the ping became its own widget right of the flag; the ping-cell rects moved left to x=313 with their right edge unchanged."
+}

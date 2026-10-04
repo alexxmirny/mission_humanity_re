@@ -6,7 +6,7 @@
 // forwarding thunk per row, attached to the real symbol by a /alternatename linker directive
 // so not one of harness.cpp's call sites changes.
 
-#define MH_HARNESS_HOST_COUNT 32
+#define MH_HARNESS_HOST_COUNT 34
 #define MH_HARNESS_SPINE_COUNT 33
 
 extern "C" {

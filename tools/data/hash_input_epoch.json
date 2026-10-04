@@ -43,7 +43,14 @@
    "path": "src/mh_dll/mh_harness/harness.cpp",
    "span": "harness_on_sim_step_prehash",
    "reason": "everything the harness runs on the step boundary before the hash, through the fold -- the G177 class (the 2026-09-11 order_queue tail-clear memset lived here)",
-   "sha256": "74df2fc80db8578b23325d8c2bbb80de201f5a0c663408f8bf85cf22e32e2fdc"
+   "sha256": "05f73bca4132814b77448bfac4a96abac98b4277a9cab31f1fe3db5fc82ce87e"
+  },
+  {
+   "id": "harness_hash_kind_step",
+   "path": "src/mh_dll/mh_harness/hash_kind.h",
+   "span": "harness_hash_kind_step",
+   "reason": "tooling:TL-HARN-INCHASH: the per-step hash itself moved out of on_sim_step into hash_kind.h -- per_fnv (kind 1's hash_slice loop), per_inc (kind 2) and the combined/state fold both kinds share",
+   "sha256": "8e4f1d89dde21e506e5569ab59d76609fc4b01713164a3a1b60673dd8bfd9118"
   },
   {
    "id": "harness_order_replay_inject",
@@ -94,6 +101,88 @@
     "harness_on_sim_step_prehash"
    ],
    "reason": "mp:D38 row 5: harness on_sim_step gains the d38_* dead-docked-unit fixture (default off: d38_player=-1) -- no byte fed to the hash changes for an unchanged world"
+  },
+  {
+   "epoch": 1,
+   "kind": "neutral",
+   "date": "2026-09-27",
+   "changed": [
+    "harness_on_sim_step_prehash",
+    "harness_hash_kind_step"
+   ],
+   "reason": "tooling:TL-HARN-INCHASH: the per-step hash loop moved out of on_sim_step into hash_step() over mh_harness/hash_kind.h (per_fnv / per_inc + fold; the new watched span harness_hash_kind_step), selected by [harness] hash_kind. Kind 1 (the default) runs the identical hash_slice loop and FNV fold over the same bytes -- inchashtest asserts per_fnv == hash_slice per slice and fold == the old combined/state fold -- so the bytes fed to the hash for an unchanged world are unchanged. Kind 2 hashes the same bytes (VERDICT-equivalent masks, mp:D39) into different VALUES; that is carried by the hash-kind token on the HASH FINGERPRINT line, not by an input-epoch change."
+  },
+  {
+   "epoch": 1,
+   "kind": "neutral",
+   "date": "2026-09-30",
+   "changed": [
+    "harness_on_sim_step_prehash"
+   ],
+   "reason": "mp:X3c: harness combined/state made non-const so a world-resync import can re-derive them; the bytes fed to the hash for an unchanged world are identical"
+  },
+  {
+   "epoch": 1,
+   "kind": "neutral",
+   "date": "2026-09-30",
+   "changed": [
+    "harness_on_sim_step_prehash"
+   ],
+   "reason": "mp:X3c slice 3.5: harness synth_move is not re-issued for steps a resync catch-up replays (g_ws_replay_until); the bytes hashed for an unchanged world are unchanged"
+  },
+  {
+   "epoch": 1,
+   "kind": "neutral",
+   "date": "2026-10-02",
+   "changed": [
+    "harness_on_sim_step_prehash"
+   ],
+   "reason": "mp:U55 exit_process_at_step knob (ini-gated, default 0): no bytes fed to the hash change"
+  },
+  {
+   "epoch": 1,
+   "kind": "neutral",
+   "date": "2026-10-02",
+   "changed": [
+    "harness_on_sim_step_prehash"
+   ],
+   "reason": "mp:U55 exit_process_at_step knob (ini-gated, default 0) + log_flush: no bytes fed to the hash change"
+  },
+  {
+   "epoch": 1,
+   "kind": "neutral",
+   "date": "2026-10-03",
+   "changed": [
+    "harness_on_sim_step_prehash"
+   ],
+   "reason": "mp:U52: harness_on_sim_step_prehash gained relation_dump / relation_order / hostile_probe, all gated by new [harness] keys that default to 0 (conq force-kill gained an optional conq_victim, default -1): with the keys unset the bytes fed to the hash for an unchanged world are identical"
+  },
+  {
+   "epoch": 1,
+   "kind": "neutral",
+   "date": "2026-10-03",
+   "changed": [
+    "harness_on_sim_step_prehash"
+   ],
+   "reason": "mp:U52 hit_probe: a harness-only probe (hit_probe_at=0 default does nothing); unarmed, the hashed bytes of every world are unchanged"
+  },
+  {
+   "epoch": 1,
+   "kind": "neutral",
+   "date": "2026-10-03",
+   "changed": [
+    "harness_on_sim_step_prehash"
+   ],
+   "reason": "mp:U52 vision: harness-only vision_order/VISDUMP probes (unarmed by default); the vision seed writes only unhashed view masks (is_human, human mask, control mask are MF_VIEW without MF_HASH), so no hashed bytes of any world change"
+  },
+  {
+   "epoch": 1,
+   "kind": "neutral",
+   "date": "2026-10-03",
+   "changed": [
+    "harness_on_sim_step_prehash"
+   ],
+   "reason": "mp:U62: the harness graceful-exit path calls MH_Seam_LeaveForExit before ExitProcess; no byte fed to the hash changes"
   }
  ]
 }

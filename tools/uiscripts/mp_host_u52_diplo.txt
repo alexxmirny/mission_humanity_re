@@ -1,0 +1,69 @@
+# mp:U52 HOST -- the in-match DIPLOMACY dialog in TEAM mode (relations are locked: the relation column is greyed).
+#
+# 2 peers. Lobby: the host sets TEAM mode and T1 for itself; the client sets T1 for its own row (mp_client_u52_diplo.txt),
+# so the two are allied from the first step and the match is in Team mode (ally-victory flag set). In the match the host
+# opens ESC -> Diplomacy, captures the dialog (the client's ALLIED checkbox must be disabled), clicks it anyway and presses
+# Ok -- nothing may change -- and reopens the dialog once more. Frames: tools/uiscripts/baselines are NOT recorded for this
+# script yet (pending the user's review of the frames, mp:U52).
+
+settled value:110
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+settled Create
+clickl Create
+present Game name
+settled Ok
+clickl Ok
+present Available maps
+settled Ok
+clickl Ok
+
+present Network players
+peers 1
+occ 2
+awaitsignal lobby
+click 221 115
+team 0 1
+click 501 370
+lobbymode 1
+awaitsignal clientteam
+team 1 1
+capture lobby_team_host
+signal setup
+awaitsignal ready
+enabled Start
+settled Start
+clickl Start
+
+absent Network players
+gameclock 3000
+capture ingame
+
+simclick 972 150
+retry 1500 1 3 settled value:100
+clickv 100
+absent value:113
+dump
+capture diplomacy_team_locked
+
+# the locked checkbox: clicking it must not tick it; Ok then issues nothing that changes a relation
+clicki 2
+settled Ok
+capture diplomacy_team_clicked
+clickl Ok
+absent Ok
+log HOST pressed Ok in the Team-mode diplomacy dialog
+
+gameclock 8000
+simclick 972 150
+retry 1500 1 3 settled value:100
+clickv 100
+absent value:113
+capture diplomacy_team_reopened
+clickl Cancel
+absent Cancel
+gameclock 12000
+signal hostdone
+end

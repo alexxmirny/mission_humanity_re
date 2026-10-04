@@ -44,10 +44,11 @@ inline constexpr uint32_t PROLOGUE = mh::hook::WATCOM_PROLOGUE;
 //     far finer than the stock 100 ms, and still an exact multiple of the 10 ms clock quantum.
 // sim_step CHANGES THE SIM (both peers must agree); the lookahead does not (committed = min over
 // peers), which is what lets the controller be purely local. Strings because the knobs are atof'd.
-#define SHIP_LOOKAHEAD_MS "100"              // [net] lockstep_step_ms  -- horizon lookahead / input latency
-#define SHIP_SIM_STEP_MS  "20"               // [net] sim_step_ms       -- strategic sim sub-step (50 Hz)
-inline constexpr int SHIP_HEARTBEAT_MS = 50; // [net] horizon_heartbeat_ms -- off-frame advertisement
-inline constexpr int SHIP_ADAPTIVE     = 1;  // [net] lockstep_adaptive    -- auto-tune the lookahead
+#define SHIP_LOOKAHEAD_MS "100"                     // [net] lockstep_step_ms  -- horizon lookahead / input latency
+#define SHIP_SIM_STEP_MS  "20"                      // [net] sim_step_ms       -- strategic sim sub-step (50 Hz)
+inline constexpr int SHIP_FRAME_WATCHDOG_MS = 1000; // mp:P17 [net] frame_watchdog_ms -- 0 = off; MP matches only
+inline constexpr int SHIP_HEARTBEAT_MS      = 50;   // [net] horizon_heartbeat_ms -- off-frame advertisement
+inline constexpr int SHIP_ADAPTIVE          = 1;    // [net] lockstep_adaptive    -- auto-tune the lookahead
 // [net] rx_spin -- drain RX off-frame while stalled at the horizon, instead of idling until the next
 // frame. Shipped ON since 2026-07-26: the P5 sweep measured it as a consistent 2-4 point cut in
 // wall-clock deficit at EVERY lookahead (200 ms RTT), with a large drop in de-sync icon count and no
@@ -186,8 +187,22 @@ inline void seam_paths_tick() { mh_run_path(g_log, MAX_PATH, "%smh_net.log", &g_
 // Open a session directory for `match_id_hex` and announce it, or close the open one with `reason`.
 // Defined in net_discovery.cpp (it owns the match_id); called from the lobby/lockstep exit seams in
 // net_seams.cpp and net_lockstep.cpp. Both are safe to call when nothing is open.
-void mp_session_open(const unsigned char *match_id, int slot);
+//
+// SES8: `mode` is the directory's last field -- "host" / "client" for a lobby, the single-player
+// word from mh_session_solo_mode otherwise. `map` overrides the map token (nullptr = the loaded
+// map's name, current_map_data.map_name). Both are final at the open: nothing renames the folder.
+void mp_session_open(const unsigned char *match_id, int slot, const char *mode, const char *map = nullptr);
 void mp_session_close(const char *reason);
+// SES8: once per present (net_lockstep.cpp on_present) -- opens the single-player session.
+void mp_session_solo_tick();
+
+// mp:U62 (HM-M4) -- the planned handover of the transport hub (net_lockstep.cpp). mp_hub_leave is the common
+// exit of every seam where a hub's PLAYER leaves a match (the ESC-menu quit, the defeat/stats screen, the
+// process exiting); it is a no-op for a client and for a hub with fewer than two other humans playing.
+// mp_leave_for_exit is the WM_DESTROY flavour: a hub mid-match first runs the clean quit (park + pinned
+// self-removal), then hands over. Both are main-thread calls that may block ~1 round trip.
+void mp_hub_leave(const char *why);
+void mp_leave_for_exit();
 
 // Read a game double (ms). Shared sampler for every timing log/DIAG line across the seam TUs.
 inline long ms_of(uintptr_t a) {
@@ -205,6 +220,8 @@ void mp_drain_pre_join_queue();
 // link outside a match (a modal stopped the drain), and once when it resumes. Called from
 // net_lockstep.cpp's on_present -- the per-frame path proven to keep running under a retail modal.
 void mp_lobby_stall_watch();
+// mp:P16 -- host: publish the per-slot SRTT table (net_seams.cpp), callable in-match; self rate-limited.
+void mp_ping_publish_tick();
 // N1: the client's lobby slot -- the transport/host-assigned id if known (>=1), else 1 (the 2-player
 // default). In declared-id mode this equals the configured player_id, so the 2-player lobby is unchanged.
 //
@@ -254,11 +271,13 @@ inline int mp_lobby_array_index(bool is_host) {
 }
 
 // ---- cross-TU functions defined in net_diag.cpp (perf-trace + tracer instrumentation) --------
-void            temporal_capture(int id);            // record one temporal event (main-thread, mode-3 gated)
-void            temporal_flush();                    // drain captured events to mh_temporal.log (from on_present)
-void            install_trace_hooks();               // [trace] funcs=VA -> run-before hooks -> mh_trace.log
-int             temporal_configure();                // read [trace] temporal; if set, init QPF + tev path. Returns the flag.
-extern "C" void MH_Seam_TraceDump(const char *when); // dump tracer call counts
+void            temporal_capture(int id);               // record one temporal event (main-thread, mode-3 gated)
+void            temporal_flush();                       // drain captured events to mh_temporal.log (from on_present)
+void            install_trace_hooks();                  // [trace] funcs=VA -> run-before hooks -> mh_trace.log
+int             temporal_configure();                   // read [trace] temporal; if set, init QPF + tev path. Returns the flag.
+extern "C" void MH_Seam_TraceDump(const char *when);    // dump tracer call counts
+extern "C" void MH_TeamRel_SetLobbyMode(int team_mode); // net_lockstep: mp:U52 -- the lobby MODE byte at session entry
+extern "C" int  MH_TeamRel_Enabled(void);               // net_lockstep: mp:U52 -- [net] team_relations_fix
 // lockstep-diagnostic loggers (pure log; moved from net_seams in Phase 4 stage 3):
 void install_presence_lost_logger(); // presence_lost entry logger (g_ls_log-gated; from MH_Seam_Init)
 void install_savegame_err_logger();  // savegame_io_error dlg CALLER logger (g_ls_log-gated; from MH_Seam_Init)
@@ -268,6 +287,10 @@ void install_exit_witness();         // D15: run-before witness on utils_abort +
                                      // hosts could die at once leaving nothing to read.
 void gm_logger_configure();          // read [net] log_gamemode + build the mh_gamemode.log path (from MH_Seam_Init)
 void gm_logger_lazy_arm();           // arm the DR0 write-bp via a helper thread (from lazy_start, off loader-lock)
+// mp:P17 -- main-thread frame watchdog + focus tap (net_diag.cpp). beat: main thread, once per present.
+// start: from lazy_start. [net] frame_watchdog_ms / focus_log / frame_watchdog_inject_ms.
+void frame_watchdog_beat();
+void frame_watchdog_start();
 
 // ---- cross-TU surface of reimpl_probe.cpp (P0-EXPORT proof) ----------------------------------
 void reimpl_probe_install(); // shadow-check then replace w_strlen with a C++ body (from MH_Seam_Init)

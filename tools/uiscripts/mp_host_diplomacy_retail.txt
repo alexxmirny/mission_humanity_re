@@ -1,0 +1,74 @@
+# mp:U45 NEGATIVE-ARM HOST walk -- the same walk as mp_host_diplomacy_both.txt under `[net]
+# diplo_order_dedup_fix=0` (retail dedup). Its own file so its baselines (the reopened dialog shows ONLY the
+# control box ticked: the relation order was dropped) do not collide with the ship arm's.
+#
+# Same host-and-launch walk as mp_host_diplomacy.txt (U39). One Apply issues set_player_relation
+# (order 0xf4) and set_player_control_mode (0xf5) in the same frame with unit 0 and the issuer as owner;
+# retail's release_due dedup let the higher code (0xf5) supersede 0xf4 on EVERY peer, so the relation
+# only applied on a second Apply. Ticks BOTH the client's "allied" box (widget [2]) and its control box
+# (widget [3]) and presses Ok; post_check (tools/check_u45_diplo.py) reads both peers' recorded order
+# streams (order_mode=1). The dialog is reopened after the commit and captured: both boxes TICKED.
+# Pair with mp_client_idle.txt.
+
+# reach the host lobby (create the pre-pinned game on the pre-selected map)
+settled value:110
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+settled Create
+clickl Create
+present Game name
+settled Ok
+clickl Ok
+present Available maps
+settled Ok
+clickl Ok
+
+# host lobby: block until the client is really in ITS lobby, then Start.
+present Network players
+peers 1
+awaitsignal lobby
+enabled Start
+settled Start
+clickl Start
+
+# in the match; let the sim run a while so the analyzer has rows before the dialog
+absent Network players
+gameclock 3000
+capture ingame
+
+# the diplomacy dialog (MODAL: dlg_flags "mouse loop ARMED", so the host's sim stalls while it is
+# open -- the local write and the order both happen at Ok). The client's row is widget [2]
+# 'client' (the ALLIED checkbox at (483,289), dumped 2026-09-21), [3] vision, [4] msgs; Ok is [5].
+# ESC by keystroke was missed once in four runs (the down+up lands on one frame); the HUD "Menu"
+# button is a `simclick` (held across sim steps); `retry` re-sends it if the sim runs 1.5 s without
+# the menu (TL-GATE-LOADFLAKE-0925: an unretried press/release was lost under suite load).
+simclick 972 150
+retry 1500 1 3 settled value:100
+clickv 100
+absent value:113
+dump
+capture diplomacy_open
+
+# THE TRIGGER: tick "allied" AND the control box for the client, then Ok -- ONE Apply.
+clicki 2
+clicki 3
+settled Ok
+capture both_ticked
+clickl Ok
+absent Ok
+log HOST applied allied=1 + control=1 for the client in ONE diplomacy Apply
+
+# After the commit (well past the ~4-step window) the reopened dialog must show BOTH boxes TICKED (ship arm) -- here only "vision" is,
+# seeded from the cells the two order handlers wrote -- on retail's dedup only the control box is.
+gameclock 8000
+simclick 972 150
+retry 1500 1 3 settled value:100
+clickv 100
+absent value:113
+capture reopened_after_commit
+clickl Cancel
+absent Cancel
+gameclock 30000
+end

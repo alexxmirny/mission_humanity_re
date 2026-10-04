@@ -992,6 +992,9 @@ static int stops_acking_arm(int base) {
     return 0;
 }
 
+int run_origin_arms(); // udp_origin_selftest.cpp -- mp:U59
+int run_rehome_arms(); // udp_rehome_selftest.cpp -- mp:U60
+
 int run_udploopbacktest(int argc, char **argv) {
     (void)argc;
     (void)argv;
@@ -1015,6 +1018,13 @@ int run_udploopbacktest(int argc, char **argv) {
     stops_acking_arm(39670);
     ring_full_arm(39695); // 39695..39697: stops_acking takes 39670..39692, udpbulktest 39700..
     timeEndPeriod(1);
+    // mp:U59 (HM-M1) -- the end-to-end exactly-once layer: pure layer, the 3- and 4-endpoint hub-kill
+    // arms at 5% loss, the skip-reconcile mutation, the version gate. Ports 39800..39835.
+    g_fails += run_origin_arms();
+    // mp:U60 (HM-M2) -- Endpoint::rehome: a client becomes the hub keeping socket/lanes/ids, the others
+    // re-dial it with their old ids, M1's reconcile runs over the new topology; two mutations.
+    // Ports 39840..39999.
+    g_fails += run_rehome_arms();
 
     printf("=== udploopbacktest: %d checks, %d failures ===\n", g_checks, g_fails);
     return g_fails ? 1 : 0;

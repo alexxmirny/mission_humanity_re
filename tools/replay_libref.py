@@ -257,6 +257,17 @@ def epoch_refusal(man):
     )
 
 
+def kind_refusal(man):
+    """tooling:TL-HARN-INCHASH: libref_host re-derives the FNV VERDICT walk (kind 1) and nothing else,
+    so a fixture whose stream was hashed with another kind is refused by name, before the host runs.
+    Unstamped fixtures are kind 1."""
+    import mp_analyze as _m
+
+    return _m.kind_mismatch(
+        (man.get("step0") or {}).get("hash_kind"), 1, "the fixture", "libref_host"
+    )
+
+
 def stale_fp(man):
     """True when the fixture's stamped manifest fingerprint differs from the current build's."""
     cur = current_manifest_fp()
@@ -281,6 +292,18 @@ def run_one(name, absent_file, timeout):
             "secs": 0.0,
             "log": os.path.join(WORK, name + ".log"),
             "problems": ["REFUSED: %s -- re-capture the fixture under the current epoch" % bad],
+            "tail": [],
+        }
+    bad = kind_refusal(man)
+    if bad:
+        # REFUSED, not compared: the stream was hashed by a function the host does not implement.
+        return {
+            "name": name,
+            "live": live,
+            "steps": steps,
+            "secs": 0.0,
+            "log": os.path.join(WORK, name + ".log"),
+            "problems": ["REFUSED: %s -- re-capture the fixture with hash_kind=1" % bad],
             "tail": [],
         }
     epoch = (man.get("step0") or {}).get("hash_input_epoch")
@@ -441,6 +464,16 @@ def selftest():
         bool(
             EPOCH_RE.search("  FAIL: hash-input epoch mismatch: artifact E=1, build E=2 -- stale")
         ),
+    )
+    # tooling:TL-HARN-INCHASH: the host hashes kind 1 only.
+    case(
+        "a kind-2 fixture is REFUSED by name (libref_host hashes kind 1 only)",
+        "hash kind mismatch: the fixture is kind 2"
+        in (kind_refusal({"step0": {"hash_kind": 2}}) or ""),
+    )
+    case(
+        "an unstamped or kind-1 fixture is not",
+        kind_refusal({"step0": {}}) is None and kind_refusal({"step0": {"hash_kind": 1}}) is None,
     )
     case("every committed fixture is discoverable", len(fixtures()) >= 1)
     print("[replay_libref] selftest: %s" % ("PASS" if not bad else "%d FAILED" % bad))

@@ -16,6 +16,9 @@
 # sourced from MH_FONT_MERGE_DIR (mp:F2b) instead of the polygon, so the glyph the client widens
 # into actually resolves to a real glyph record instead of the guard's substitute box.
 #
+# mp:MP-LANG (2026-09-29): the line is UTF-8 now (mp_host_chat.txt's header): the field assertion is
+# the twelve UTF-8 bytes; the client's needle and capture are unchanged.
+#
 # Runner: ui_test.py --host mp_host_chat_glyphs.txt --client <ip>:mp_client_chat_glyphs.txt
 
 settled value:110
@@ -51,11 +54,11 @@ gameclock 6000
 key 0x1c
 layout 00000419
 type Привет
-field chat hex:cff0e8e2e5f2
+field chat hex:d09fd180d0b8d0b2d0b5d182
 key 0x1c
 layout default
 # Tell the client the line is on the wire, so its own wait is for a message that has actually been
 # sent rather than for a timeout.
 signal chatsent
-log F3b HOST: sent a CP1251 Cyrillic chat line (cf f0 e8 e2 e5 f2) into a merged-font lane
+log F3b HOST: sent a UTF-8 Cyrillic chat line (MP-LANG) into a merged-font lane
 end

@@ -31,6 +31,7 @@ from ui_suite_common import (  # noqa: E402
     RunnerConfig,
     TACT_PLAY_MOUSE_DIV,
     UIREC_SCENARIOS,
+    play_mouse_div,
     _tact_pid_handle,
     add_extra_ini_arg,
     add_runner_args,
@@ -87,13 +88,16 @@ def ui_provision_lane(args, visible, slot=0):
             str(LOCAL_PORT_BASE + lane_alloc.lane("ui_play", slot)),
         ]
         + (["--visible"] if visible else ["--headless"])
-        # The wrapper's frame cap. Only meaningful with a blit -- headless has no present to pace --
+        # The frame cap. Only meaningful with a present -- headless has none to pace --
         # so it is passed through whenever asked for and simply has nothing to do otherwise.
         + (
             ["--fps-limit", str(args.fps_limit)]
             if getattr(args, "fps_limit", None) is not None
             else []
-        ),
+        )
+        + (["--backend", args.backend] if getattr(args, "backend", None) else [])
+        # PT-INPUT1: --input-backend likewise; only a `system` lane gets dinputto8
+        + (["--input-backend", args.input_backend] if getattr(args, "input_backend", None) else []),
         capture_output=True,
         text=True,
     )
@@ -271,11 +275,16 @@ def ui_write_config(
         "[video]",
         "size_mode=0",
     ]
-    if not visible:
-        lines += ["no_present=1", "no_window=1"]
+    # PT-GFX5: backend (owned DirectDraw by default) + the headless pair + the lane's own
+    # --fps-limit, from the ONE composer.
+    lines += make_lane.video_lines_for(ident, not visible)
     lines += [
         "",
         "[input]",
+    ]
+    # PT-INPUT1: which DirectInput (owned by default), from the ONE composer.
+    lines += make_lane.input_lines_for(ident)
+    lines += [
         # The VM mouse fix, same knobs and same defaults as the tactical play front end -- a menu is
         # navigated with the mouse, so an un-attenuated hypervisor pointer makes a game-start
         # recording impossible in exactly the way it made a mission one impossible. See
@@ -371,7 +380,8 @@ def run_ui_play(args):
     Blocks until the player quits. Everything about the shape is run_tact_play's, for the reasons
     that function documents at length -- a visible lane, no wall cap, the mouse fix armed, and the
     session ARCHIVED out of the lane before anything else can run."""
-    mouse_div = TACT_PLAY_MOUSE_DIV if args.ui_mouse_div is None else args.ui_mouse_div
+    input_backend = make_lane.effective_input_backend(None, args.input_backend)
+    mouse_div = play_mouse_div(input_backend, args.ui_mouse_div)
     lane_dir = ui_provision_lane(args, visible=True)
     if lane_dir is None:
         return 1
@@ -424,7 +434,8 @@ def run_ui_play(args):
         % (mouse_div or "1 (stock)", args.ui_mouse_accel or "100 (stock)")
     )
     wrapper = os.path.join(lane_dir, "dinput.dll")
-    if not args.ui_mouse_absolute and not os.path.isfile(wrapper):
+    # PT-INPUT1: only the system backend needs the wrapper; the owned DirectInput (default) does not.
+    if input_backend == "system" and not args.ui_mouse_absolute and not os.path.isfile(wrapper):
         print("            *** dinput.dll (dinputto8) is NOT in this lane. In a VM the mouse will")
         print("            *** lag badly and no divisor fixes that -- the wrapper does. Put it in")
         print("            *** the source install next to mh.exe. The VM-input notes 9e.")
@@ -603,7 +614,9 @@ def ui_apply_excusals(res, seg_a, seg_b, excusals, leg="A-vs-B"):
     says why. Returns the list of applied rows (for the summary line)."""
     import mp_analyze as _m
 
-    if not excusals:
+    if not excusals or res.get(
+        "refused"
+    ):  # a refused pair (hash-kind mismatch) has nothing to excuse
         return []
     names = set(_m.REGION_NAMES)
     unknown = [r["region"] for r in excusals if r["region"] not in names]
@@ -678,6 +691,8 @@ def ui_verdict(res):
     `state` is printed, not required; each excused region is printed with its own mismatch count and
     the row's id + reason, so the excusal is on the page every time it is used."""
     lines, ok = [], True
+    if res.get("refused"):  # TL-HARN-INCHASH: sp_compare refused the pair (a hash-kind mismatch)
+        return False, ["      %s" % res["verdict"]]
     if not res["compared_steps"]:
         return False, ["      NO OVERLAPPING STEPS -- the two runs compared nothing"]
     excused = res.get("excusals") or []
@@ -849,6 +864,9 @@ def ui_oracle_extract(harness_log, dst, meta=None):
         f.write("; hash_manifest_fp: %s\n" % _m.hash_manifest_fingerprint())
         # TL-GATE8: the epoch of the build that RAN the source session, from its own log.
         f.write("; hash_input_epoch: %s\n" % _m.harness_input_epoch(harness_log)[0])
+        # TL-HARN-INCHASH: WHICH hash function made these numbers (1 = FNV walk, 2 = incremental). An
+        # oracle without the line predates the item and is kind 1.
+        f.write("; hash_kind: %d\n" % _m.kind_of(_m.harness_hash_kind(harness_log)))
         f.write("; excused_regions: %s\n" % (" ".join(drop) or "-"))
         f.write("; columns: step state state~excused %s\n" % " ".join(UI_ORACLE_REGIONS))
         f.write("; regions: %s\n" % " ".join(UI_ORACLE_REGIONS))
@@ -881,6 +899,7 @@ def ui_oracle_load(path):
     seg = {"steps": {}, "regions": {}, "breakdown": {}, "banner": None, "path": path}
     seg["hash_manifest_fp"] = None
     seg["hash_input_epoch"] = None
+    seg["hash_kind"] = None  # TL-HARN-INCHASH: unstamped == kind 1 (mp_analyze.kind_of)
     seg["excused_regions"] = []
     with gzip.open(path, "rt", encoding="utf-8", errors="replace") as f:
         for line in f:
@@ -891,6 +910,9 @@ def ui_oracle_load(path):
                 m = re.match(r";\s*hash_input_epoch:\s*(\d+)\s*$", line)
                 if m:
                     seg["hash_input_epoch"] = int(m.group(1))
+                m = re.match(r";\s*hash_kind:\s*(\d+)\s*$", line)
+                if m:
+                    seg["hash_kind"] = int(m.group(1))
                 m = re.match(r";\s*excused_regions:\s*(.+)", line)
                 if m:
                     seg["excused_regions"] = [x for x in m.group(1).split() if x != "-"]
@@ -1540,6 +1562,36 @@ def run_ui_equiv(args, cfg):
     return 0 if final else 1
 
 
+# ---- --ui-abc-arms: which replay arms run (tooling:TL-GATE12, the light gate) ------------------
+#
+# A,B,C is the scenario's claim and the full gate's. A,C is the LIGHT gate's cheap check: the ship arm
+# against the committed recording oracle, with no all-original replay. It is a SOUND comparison, not a
+# weaker proxy, because of what C is: every committed oracle's `source:` line names a `mode=original`
+# arm replayed exactly as --ui-abc runs it (the 2026-09-27 re-cut), so C IS arm B's per-step stream of
+# the build that cut it, and A-vs-C is gated on the same required channels (state~excused + the four
+# clock regions) under the same declared A-vs-C excusals as A-vs-B. What A,C gives up is ATTRIBUTION,
+# not detection: a red A-vs-C cannot say "promotion bug" (A moved off B) from "replay/original drift"
+# (B moved off C) -- run the full A,B,C to split it. Also given up: the per-region A-vs-B columns
+# (C stores only `state`, `state~excused` and the clock regions), so a red names a step, not a region.
+ABC_ARM_SETS = {"A,B,C": ("ship", "original"), "A,C": ("ship",)}
+
+
+def parse_abc_arms(v):
+    """(arms tuple, None) for a --ui-abc-arms value, or (None, reason) when it is refused.
+
+    C is mandatory (the recording oracle is what --ui-abc names; a two-arm A,B fallback was refused on
+    purpose when the scenario was built). B alone with C is not offered: B-vs-C is the harness oracle's
+    diagnosis arm, and a gate that runs only it would ship-test nothing."""
+    key = ",".join(sorted({x.strip().upper() for x in (v or "A,B,C").split(",") if x.strip()}))
+    if key in ABC_ARM_SETS:
+        return ABC_ARM_SETS[key], None
+    return None, (
+        "--ui-abc-arms %r refused: the valid sets are A,B,C (the full claim) and A,C (ship against "
+        "the recording oracle, the light gate's check). C is never optional -- it is the only arm "
+        "the replayer did not produce -- and B without A tests no shipped code." % v
+    )
+
+
 def run_ui_abc(args, cfg):
     """THE GATE SCENARIO (SPCAMP-SYNC + SPCAMP-REC): three arms over the WHOLE journal.
 
@@ -1562,6 +1614,11 @@ def run_ui_abc(args, cfg):
     clock is reported as a TIMEOUT for a pass, and charges the gate the whole difference."""
     import mp_analyze as _m
 
+    arms, why = parse_abc_arms(getattr(args, "ui_abc_arms", None))
+    if arms is None:
+        print("FAIL: " + why)
+        return 2
+    two = "original" in arms  # False = the A,C light check
     name = args.ui_abc
     scen = ui_scenario(name)
     journal = ui_fixture_path(name)
@@ -1582,7 +1639,11 @@ def run_ui_abc(args, cfg):
         return 1
     bounded = args.ui_steps > 0
     gored = getattr(args, "ui_gored", 0)
-    print("UI-REC A/B/C: %s" % journal)
+    if gored and not two:
+        # The go-red requires A-vs-B AND A-vs-C red at the poke; with no B only half of it is asked.
+        print("FAIL: --ui-gored needs all three arms (--ui-abc-arms A,B,C)")
+        return 2
+    print("UI-REC %s: %s" % ("A/B/C" if two else "A/C (ship vs the recording; no B arm)", journal))
     print("  oracle    %s" % oracle)
     # STALE BEFORE ANYTHING RUNS (TL-GATE-D25FX). The C arm's `state` column is a fold over the
     # hash manifest's regions, so an oracle cut under another manifest is incomparable, not wrong --
@@ -1635,11 +1696,17 @@ def run_ui_abc(args, cfg):
         )
 
     orig = os.path.join(REPO, "tmp", "ui_all_original.ini")
-    os.makedirs(os.path.dirname(orig), exist_ok=True)
-    print("  arm B runs the ORIGINAL binary: [config] mode=%s" % write_all_original_ini(orig))
+    if two:
+        os.makedirs(os.path.dirname(orig), exist_ok=True)
+        print("  arm B runs the ORIGINAL binary: [config] mode=%s" % write_all_original_ini(orig))
+    else:
+        print(
+            "  arm B NOT RUN (--ui-abc-arms A,C): C is a mode=original replay's stream, so A-vs-C "
+            "detects what A-vs-B + B-vs-C do; it cannot say which of the two moved"
+        )
 
     ok, report, facts, runs, dirs = True, [], {}, {}, {}
-    arm_specs = (("ship", ()), ("original", (orig,)))
+    arm_specs = tuple(a for a in (("ship", ()), ("original", (orig,))) if a[0] in arms)
     # PROVISION SERIALLY, RUN CONCURRENTLY (2026-09-10). The two arms were always independent --
     # each has its own lane slot, port and mutex -- and ran one after the other only by loop shape,
     # which cost the gate the shorter arm's whole wall time (~2.5 min on spcamp_solo). Provisioning
@@ -1750,6 +1817,17 @@ def run_ui_abc(args, cfg):
         if bad:
             print("FAIL: arm %s REFUSED against the oracle -- %s; nothing compared." % (arm, bad))
             return 1
+        # TL-HARN-INCHASH: and of the oracle's hash KIND -- a kind-2 arm against a kind-1 oracle
+        # differs at every step in every region, which is not a finding about the arm.
+        bad = _m.kind_mismatch(
+            runs["recording"].get("hash_kind"),
+            (runs[arm] or {}).get("hash_kind"),
+            "the oracle",
+            "arm %s" % arm,
+        )
+        if bad:
+            print("FAIL: arm %s REFUSED against the oracle -- %s." % (arm, bad))
+            return 1
 
     # ---- shape: the arms must have done the same thing -------------------------------------------
     for key, what in (
@@ -1758,6 +1836,8 @@ def run_ui_abc(args, cfg):
         ("reached", "furthest journal record reached at a barrier"),
         ("steps", "sim steps run"),
     ):
+        if not two:
+            break  # one replay arm: nothing to be the same AS (the recording is checked below)
         a, b = facts["ship"].get(key), facts["original"].get(key)
         if a != b and not gored:
             ok = False
@@ -1769,7 +1849,7 @@ def run_ui_abc(args, cfg):
     # SPCAMP-SYNC (a): ZERO forced, not merely equal. Identical forcing was the weaker clause that
     # made a rung comparison meaningful; the full-journal fixture is held to the stronger one.
     if not bounded and not gored:
-        for arm in ("ship", "original"):
+        for arm in arms:
             if facts[arm].get("forced"):
                 ok = False
                 report.append(
@@ -1779,7 +1859,7 @@ def run_ui_abc(args, cfg):
                 )
 
     # ---- non-vacuity: what the arms actually DID --------------------------------------------------
-    hists = {a: ui_order_histogram(dirs[a]) for a in ("ship", "original")}
+    hists = {a: ui_order_histogram(dirs[a]) for a in arms}
     # The recording's own histogram is committed IN THE SCENARIO (a dict, not a file) -- it is a
     # couple of dozen small integers, and putting it where a reader of the registry can see it is
     # worth more than another artifact to keep in step.
@@ -1787,7 +1867,7 @@ def run_ui_abc(args, cfg):
     report.append("")
     report.append("      ORDER-CODE HISTOGRAM (non-vacuity -- a hash says they agreed, this says")
     report.append("      they did something). Row = order code, then one column per arm:")
-    codes = sorted(set(hists["ship"]) | set(hists["original"]) | set(rec_hist or {}))
+    codes = sorted(set().union(*(set(h) for h in hists.values())) | set(rec_hist or {}))
     if not codes:
         ok = False
         report.append(
@@ -1800,17 +1880,30 @@ def run_ui_abc(args, cfg):
             "      exactly what this fixture did before the keystate channel was replayed.)"
         )
     for c in codes:
-        s, o = hists["ship"].get(c, 0), hists["original"].get(c, 0)
+        s = hists["ship"].get(c, 0)
         r = (rec_hist or {}).get(c)
-        bad = (s != o) or (r is not None and r != o)
+        if two:
+            o = hists["original"].get(c, 0)
+            bad = (s != o) or (r is not None and r != o)
+            col = "original=%-6d " % o
+        else:
+            # A,C: the recording's histogram is the only other column, so it must be there
+            bad = r is None or r != s
+            col = ""
         report.append(
-            "        code %-3s ship=%-6d original=%-6d recording=%-6s %s"
-            % (c, s, o, "-" if r is None else r, "  <-- DIFFERS" if bad else "")
+            "        code %-3s ship=%-6d %srecording=%-6s %s"
+            % (c, s, col, "-" if r is None else r, "  <-- DIFFERS" if bad else "")
         )
         if bad and not gored:
             ok = False
     if rec_hist is None:
         report.append("        (the scenario carries no recorded histogram to compare against)")
+        if not two:
+            ok = False
+            report.append(
+                "      FAIL -- --ui-abc-arms A,C with no recorded histogram: nothing checks that the "
+                "ship arm DID anything (the B column is what would have)"
+            )
 
     # WHICH LANDING, AND HOW MANY, ARE PROPERTIES OF THE FIXTURE -- not constants. Both clauses below
     # were written against the spcamp journals and hardcoded their shape: SESSION_MODE=1 (CAMPAIGN)
@@ -1823,7 +1916,7 @@ def run_ui_abc(args, cfg):
         land_mode, "mode %s" % land_mode
     )
     want_lands = int((scen or {}).get("landings", 2))
-    for arm in ("ship", "original"):
+    for arm in arms:
         modes = ui_land_modes(dirs[arm])
         landings = [m for m in modes if m == land_mode]
         report.append(
@@ -1861,9 +1954,9 @@ def run_ui_abc(args, cfg):
     # the second planet; a fixture that lands once (tutorial_solo) has no post-transition half, and
     # running it there re-reports the totals under a name that promises more than it checks.
     if not bounded and not gored and want_lands >= 2:
-        post = {a: ui_orders_after_last_landing(dirs[a], land_mode) for a in ("ship", "original")}
+        post = {a: ui_orders_after_last_landing(dirs[a], land_mode) for a in arms}
         report.append("")
-        for arm in ("ship", "original"):
+        for arm in arms:
             land, h = post[arm]
             report.append(
                 "      %s: after the last campaign landing (step %d) -- %d order observation(s) "
@@ -1882,19 +1975,28 @@ def run_ui_abc(args, cfg):
                 "      recording: after ITS last campaign landing -- %s"
                 % " ".join("%s=%d" % kv for kv in sorted(rec_post.items()))
             )
-        if post["ship"][1] != post["original"][1]:
+        ref = post["original"][1] if two else post["ship"][1]
+        if not two and rec_post is None:
+            ok = False
+            report.append(
+                "      FAIL -- --ui-abc-arms A,C with no recorded `orders_post`: the second planet "
+                "has no reference without the B arm"
+            )
+        elif post["ship"][1] != ref:
             ok = False
             report.append(
                 "      FAIL -- the arms disagree about what happened AFTER the transition. That is "
                 "the half of this fixture nothing else covers, and it is invisible in the totals "
                 "above."
             )
-        elif rec_post is not None and post["original"][1] != rec_post:
+        elif rec_post is not None and ref != rec_post:
             ok = False
             report.append(
                 "      FAIL -- both arms agree with each other and NEITHER agrees with the "
                 "recording about the second planet. Two replays agreeing is not the claim; arm C "
                 "exists for exactly this shape."
+                if two
+                else "      FAIL -- the ship arm disagrees with the recording about the second planet."
             )
         elif not post["ship"][1]:
             ok = False
@@ -1913,6 +2015,16 @@ def run_ui_abc(args, cfg):
         ("B vs C", "original", "recording", UI_ORACLE_REGIONS, "the HARNESS oracle"),
         ("A vs C", "ship", "recording", UI_ORACLE_REGIONS, "implied by the other two, reported"),
     )
+    if not two:
+        pairs = (
+            (
+                "A vs C",
+                "ship",
+                "recording",
+                UI_ORACLE_REGIONS,
+                "ship vs the recording -- the whole verdict of --ui-abc-arms A,C",
+            ),
+        )
     results = {}
     for title, a, b, regions, why in pairs:
         kw = {"time_regions": regions} if regions else {}
@@ -1978,7 +2090,7 @@ def run_ui_abc(args, cfg):
         )
         print("\nui-abc (go-red): %s" % ("PASS" if final else "FAIL"))
         return 0 if final else 1
-    print("\nui-abc: %s" % ("PASS" if ok else "FAIL"))
+    print("\nui-abc%s: %s" % ("" if two else " (A,C)", "PASS" if ok else "FAIL"))
     return 0 if ok else 1
 
 
@@ -2056,6 +2168,15 @@ def add_args(ap):
         "A ship, B all-original, C the committed recording oracle -- and require A==B (the promotion "
         "oracle) and B==C (the harness oracle). Ends when the journal ends. Takes a UIREC_SCENARIOS "
         "name (e.g. spcamp_solo) or a path whose sibling <name>.oracle.gz exists.",
+    )
+    ap.add_argument(
+        "--ui-abc-arms",
+        default="A,B,C",
+        metavar="A,B,C|A,C",
+        help="--ui-abc: which arms run. A,B,C (default) is the scenario's claim. A,C runs ONLY the "
+        "ship replay and compares it against the committed recording oracle (C is a mode=original "
+        "replay's stream, so the check is sound; it cannot attribute a red to A or B) -- the light "
+        "gate's shape (tooling:TL-GATE12). Anything else is refused.",
     )
     ap.add_argument(
         "--ui-slot",
@@ -2156,8 +2277,9 @@ def add_args(ap):
         type=int,
         default=None,
         metavar="N",
-        help="--ui-play: DirectInput mouse divisor (default %d, the measured VM value; 0 = leave "
-        "the shipped value alone)." % TACT_PLAY_MOUSE_DIV,
+        help="--ui-play: DirectInput mouse divisor (default %d on --input-backend system, the "
+        "measured VM value with dinputto8; default 0 on the owned DirectInput, which maps an "
+        "absolute pointer exactly; 0 = leave the shipped value alone)." % TACT_PLAY_MOUSE_DIV,
     )
     ap.add_argument(
         "--ui-mouse-accel",
@@ -2245,11 +2367,12 @@ def add_args(ap):
         type=int,
         default=None,
         metavar="N",
-        help="dgVoodoo FPSLimit for every lane this run provisions; 0 = UNLIMITED. Pair with "
-        "--visible to WATCH a long replay faster than it was played: the 60 fps cap is the "
-        "wrapper's, not the game's, so a visible run is otherwise pinned there and a full-session "
-        "replay costs the wall time of the session that produced it. Not for --ship-pacing (the "
-        "cap is what ships) and pointless headless (no blit to pace).",
+        help="frame cap for every lane this run provisions ([video] fps_limit, the owned device's "
+        "limiter -- PT-GFX5; dgVoodoo's FPSLimit only on a --backend system lane); 0 = UNLIMITED. "
+        "Pair with --visible to WATCH a long replay faster than it was played: a visible run is "
+        "otherwise pinned at 60 and a full-session replay costs the wall time of the session that "
+        "produced it. Not for --ship-pacing (the cap is what ships) and pointless headless (no "
+        "present to pace).",
     )
 
 

@@ -74,14 +74,27 @@
 //                                SAME ANSWER mh_net.dll's real body gives, and that identity is
 //                                deliberate: "no module" and "a module with no channel C" are the
 //                                same claim to the caller -- this link cannot move a snapshot.
+//   MH_Net_SnapshotCancel   0    "nothing was cancelled": no module, or (TCP) no channel C, so there is
+//                                never a transfer to stop. mp:X2i.
 //   MH_Net_SetPeerHorizon   -    no-op; a PUSH with nothing bound to receive it is exactly the shape
 //                                the Set*Handler rows above already have, mp:SES6.
 //   MH_Net_QueueMatchBoundary -  no-op; no module means no inbound queue and no counters to restart.
 //                                mp:U41b.
 //   MH_Net_QueueDepthM       0    no module means no lane M to have anything queued in. mp:X2h.
+//   MH_Net_HubLeave          4    MH_HUB_LEAVE_NOTHING: "there was nothing to hand over" -- with no module there
+//                                is no hub to hand over, and the caller then simply leaves, which is exactly
+//                                what it did before mp:U62. 0 would read as "no handover state at all" and
+//                                invite a caller to wait for one.
+//   MH_Net_HubStatus         -    supported = 0, role = -1, ids -1, every counter 0. THE SAME ANSWER the TCP
+//                                module gives: a link that cannot migrate and no link look the same.
+//   MH_Net_Rehome            0    "the switch did not run".
+//   MH_Net_SetInMatch        -    no-op: no module means no hub to lose. mp:U63.
+//   MH_Net_SetSpectator      -    no-op: no module means no failover quorum to exclude a spectator from. mp:U71.
 //
 #ifndef MH_NET_MODULE_H
 #define MH_NET_MODULE_H
+
+#include <string.h> /* the absent values below memset a status struct */
 
 #include "mh_net_export.h"
 #include "mh_net_key.h"
@@ -103,7 +116,7 @@ extern "C" {
 // three symbols", which is the same fact told as a version rather than as a diff. Both orders are
 // safe; the version is the one a player's bug report can quote.
 #define MH_NET_MODULE_ABI \
-    0xF4B00008u // bumped at mp:X2h: MH_Net_QueueDepthM added (the 28th row)
+    0xF4B0000Cu // bumped at mp:U71: MH_Net_SetSpectator added (row 35); mp:U63 added MH_Net_SetInMatch (row 34); mp:U62 added HubLeave / HubStatus / Rehome (rows 31-33)
 
 // What mh.dll hands the module at bind time. ONE FIELD TODAY, and it is the whole of Q1's residue:
 // run_context.cpp stays mh.dll-side (F4 ruling Q1 -- 11 of its 13 consumers are core/harness, and
@@ -188,9 +201,18 @@ typedef struct MH_NetSnapshotStatus {
  * contract and the bind, i.e. about this file. Keeping them beside MH_NetSnapshotStatus and the
  * absent values also keeps the three things a reader needs -- the signature, the status type and what
  * an unbound module answers -- on one screen. */
+/* MH_Net_SnapshotCancel(MH_SNAP_DISCARD_RX): the RECEIVE-side counterpart -- drop any partial or delivered
+ * inbound transfer and rewind channel C to chunk 0 so the next transfer starts from its head (mp:X3c).
+ * Returns 1 when the module did it. The TCP module and an absent module return 0. */
+#define MH_SNAP_DISCARD_RX (-2)
 int  MH_Net_SnapshotSend(int dst_player, const void *blob, int len);
 int  MH_Net_SnapshotPoll(void *buf, int *inout_len, int *out_state);
 void MH_Net_SnapshotStatus(MH_NetSnapshotStatus *out);
+/* mp:X2i: stop the transfer this peer is SENDING to `dst_player` (-1 = whichever it is sending) and
+ * free the module's copy, detaching channel C first (the X2f order). 1 = a running transfer was
+ * stopped; 0 = nothing to stop (idle, addressed to someone else, TCP, or no module). MAIN THREAD
+ * ONLY: it mutates the same send state MH_Net_SnapshotSend does. */
+int MH_Net_SnapshotCancel(int dst_player);
 
 #ifdef __cplusplus
 }
@@ -288,6 +310,39 @@ void MH_Net_SnapshotStatus(MH_NetSnapshotStatus *out);
             out->rx_refused                                 = 0;                                    \
             out->root_hex[0]                                = '\0';                                 \
         }                                                                                           \
+        return;                                                                                     \
+    })                                                                                              \
+    X(int, MH_Net_SnapshotCancel, (int dst_player), (dst_player), {                                 \
+        (void)dst_player;                                                                           \
+        return 0;                                                                                   \
+    })                                                                                              \
+    X(int, MH_Net_HubLeave, (int timeout_ms), (timeout_ms), {                                       \
+        (void)timeout_ms;                                                                           \
+        return MH_HUB_LEAVE_NOTHING;                                                                \
+    })                                                                                              \
+    X(void, MH_Net_HubStatus, (MH_NetHubStatus * out), (out), {                                     \
+        if (out) {                                                                                  \
+            memset(out, 0, sizeof(*out));                                                           \
+            out->size     = (unsigned)sizeof(MH_NetHubStatus);                                      \
+            out->role     = -1;                                                                     \
+            out->hub_id   = -1;                                                                     \
+            out->local_id = -1;                                                                     \
+            out->old_hub  = -1;                                                                     \
+            out->new_hub  = -1;                                                                     \
+        }                                                                                           \
+        return;                                                                                     \
+    })                                                                                              \
+    X(int, MH_Net_Rehome, (const MH_NetRehomeSpec *spec), (spec), {                                 \
+        (void)spec;                                                                                 \
+        return 0;                                                                                   \
+    })                                                                                              \
+    X(void, MH_Net_SetInMatch, (int on), (on), {                                                    \
+        (void)on;                                                                                   \
+        return;                                                                                     \
+    })                                                                                              \
+    X(void, MH_Net_SetSpectator, (int id, int on), (id, on), {                                      \
+        (void)id;                                                                                   \
+        (void)on;                                                                                   \
         return;                                                                                     \
     })
 

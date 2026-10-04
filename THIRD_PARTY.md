@@ -37,12 +37,18 @@ promise:
 | --- | --- | --- | --- |
 | **CLI11** 2.6.1 | `src/mh_dll/include/CLI11.hpp` | 3-clause BSD | vendored, at the head of the header |
 | **stb_image** v2.30 | `src/mh_dll/include/stb_image.h` | dual: MIT **or** public domain (Unlicense) — we take the MIT alternative | vendored, at the foot of the header |
+| **Dear ImGui** v1.92.9 | `src/mh_dll/include/imgui/` (core + `backends/imgui_impl_win32`, `backends/imgui_impl_dx11`) | MIT | vendored, `src/mh_dll/include/imgui/LICENSE.txt` |
 
 **CLI11** — Copyright (c) 2017-2025 University of Cincinnati, developed by Henry Schreiner under
 NSF AWARD 1414736. All rights reserved. Upstream: <https://github.com/CLIUtils/CLI11>. The full
 three-clause text, including the "neither the name of the copyright holder" clause and the warranty
 disclaimer, is reproduced verbatim in the comment block at the head of the vendored header; it is
 redistributed here under condition 1 of that license.
+
+**Dear ImGui** — Copyright (c) 2014-2026 Omar Cornut. Upstream: <https://github.com/ocornut/imgui>,
+release tag `v1.92.9`. The files are unmodified upstream copies; the build's configuration lives in
+the project files (preprocessor defines), not in an edited `imconfig.h`. Used by the d3d11
+presenter's debug overlay (`src/mh_dll/mh/gfx/overlay_imgui.cpp`).
 
 **stb_image** — Copyright (c) 2017 Sean Barrett. Upstream: <https://github.com/nothings/stb>. The
 file offers ALTERNATIVE A (MIT) and ALTERNATIVE B (public domain); this project relies on

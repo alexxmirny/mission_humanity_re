@@ -36,6 +36,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))  # importable fro
 import gen_no_cd_manifest  # noqa: E402  bakes the per-layout no-CD manifest (the disc-check RE)
 import desktop  # noqa: E402  the raw CreateProcessW launch that honours lpDesktop
 import machine_config as machine  # noqa: E402
+import _rundir  # noqa: E402  SES8: run-dir names -- parse + time-order across SES1/SES8
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.dirname(HERE)
@@ -155,7 +156,18 @@ def net_ini(args, role, host, pid, n, mapname):
         kv = kv.strip()
         if kv:
             s += kv + "\n"
-    return s + (TRACE_TEMPORAL if args.temporal else "")
+    s += TRACE_TEMPORAL if args.temporal else ""
+    # PT-GFX5: the presenter. A visible peer (the VM, or the host's own window), so no headless keys.
+    video = make_lane.video_lines(False, args.backend)
+    # PT-INPUT1: the DirectInput, from the same module's ONE composer (default own).
+    inp = make_lane.input_lines(getattr(args, "input_backend", None))
+    return (
+        s
+        + "\n[video]\n"
+        + "".join(ln + "\n" for ln in video)
+        + "\n[input]\n"
+        + "".join(ln + "\n" for ln in inp)
+    )
 
 
 def sh(cmd, **kw):
@@ -365,8 +377,10 @@ def newest_run(logs_dir, role):
     """This peer's PROCESS ("menu") run directory.
 
     SES1 made a run directory per SESSION, so `logs/` now holds two shapes for one run:
-    `<UTC>_menu_<role>` (the process one, created at boot) and `<UTC>_<mid8>_<slot>_<role>` (one per
-    match). BOTH still end in `_<role>`, which is what keeps the glob below working at all -- but the
+    `<UTC>_menu_<role>` (the process one, created at boot) and `<UTC>_<mid8>_<map>_<mode>` (one per
+    match; SES1 wrote `<UTC>_<mid8>_<slot>_<role>`, SES8 2026-09-29 the map/mode form, and a
+    force-entry peer's mode IS its role). BOTH still end in `_<role>`, which is what keeps the glob
+    below working at all -- but the
     newest match would win a plain mtime sort, and mh_harness.log is not in it: mh_harness.dll copies
     its output paths once at init, before any lobby exists, so the determinism evidence THIS FILE
     polls for (steps_done) is always in the process directory.
@@ -381,12 +395,13 @@ def newest_run(logs_dir, role):
     return (menu or c or [None])[0]
 
 
-# SES1: a SESSION directory, exactly as mh_session_dir.h spells it --
-# "<UTC YYYYMMDDTHHMMSSZ>_<8 hex>_<slot>_<role>". Matched by SHAPE, not by "is not a menu folder":
+# SES1: a SESSION directory, exactly as mh_session_dir.h spells it -- SES8
+# "<YYYY-MM-DDTHH-MM-SSZ>_<8 hex>_<map>_<mode>" or SES1 "<YYYYMMDDTHHMMSSZ>_<8 hex>_<slot>_<role>"
+# (the literal lives in tools/_rundir.py). Matched by SHAPE, not by "is not a menu folder":
 # a pre-SES1 `<YYYYMMDD>_<HHMMSS>_<role>` folder left over on a rig peer is not a menu folder either,
 # and letting one through appends an unrelated run's logs onto this one's (measured on the SES1
 # determinism run: two boot banners in one file, verdict NO COMPARABLE STEPS).
-SESSION_DIR_RE = re.compile(r"^\d{8}T\d{6}Z_[0-9a-f]{8}_\d+_[A-Za-z0-9]+$")
+SESSION_DIR_RE = _rundir.SESSION_DIR_RE
 
 
 def session_runs(logs_dir, role):
@@ -396,7 +411,9 @@ def session_runs(logs_dir, role):
         for d in glob.glob(os.path.join(logs_dir, "*_" + role))
         if os.path.isdir(d) and SESSION_DIR_RE.match(os.path.basename(d))
     ]
-    return sorted(c, key=lambda d: os.path.basename(d))
+    return sorted(
+        c, key=_rundir.sort_key
+    )  # SES8: time order -- a raw name sort mis-orders SES1 vs SES8
 
 
 def steps_done(run_dir):
@@ -586,6 +603,23 @@ def main():
         default=1,
         help="qpc_clock: redirect the game's GetTickCount (IAT slot) to a QPC-derived ms count -> ~1 ms game-"
         "clock quantum -> shrinks the per-step discard (~0.92x -> ~1.0x at step=100). Determinism-safe. Both peers. 0=off",
+    )
+    ap.add_argument(
+        "--backend",
+        choices=make_lane.BACKENDS,
+        default="own",
+        help="[video] backend on every peer (PT-GFX5). Default own: mh.dll's own DirectDraw + GDI, "
+        "paced by [video] fps_limit (60) -- no ddraw.dll is loaded, so the peers' dgVoodoo is unused. "
+        "`system` = the opt-in fallback that loads DDRAW.DLL (dgVoodoo, if one sits beside the exe), "
+        "which the FPSLimit sweeps (mp_run_sweep/mp_step_sweep) need.",
+    )
+    ap.add_argument(
+        "--input-backend",
+        choices=make_lane.INPUT_BACKENDS,
+        default="own",
+        help="[input] backend on every peer (PT-INPUT1). Default own: mh.dll's own DirectInput 5 on "
+        "Raw Input -- no dinput.dll is loaded, so a VM's dinputto8 is unused. `system` = the opt-in "
+        "fallback that loads dinput.dll (dinputto8, if one sits beside the exe).",
     )
     ap.add_argument(
         "--open-link",
@@ -1047,9 +1081,19 @@ def main():
             ).splitlines()
             if ln.strip()
         ]
-        procs = sorted(n for n in names if "_menu_" in n)
-        order = ([procs[-1]] if procs else [run_fwd.rsplit("/", 1)[-1]]) + sorted(
-            n for n in names if SESSION_DIR_RE.match(n)
+        # SES8: ordered by _rundir.sort_key (the stamp as digits), NOT by name -- a VM's logs/ keeps
+        # SES1 folders, and `-` sorts before `0`, so a raw sort made an OLD process dir the "newest".
+        # Sessions are the ones AFTER the chosen process dir, for the same reason ui_test.py's
+        # peer_session_dirs limits them: an older run's sessions are not this run's.
+        procs = sorted((n for n in names if "_menu_" in n), key=_rundir.sort_key)
+        proc = procs[-1] if procs else run_fwd.rsplit("/", 1)[-1]
+        order = [proc] + sorted(
+            (
+                n
+                for n in names
+                if SESSION_DIR_RE.match(n) and _rundir.sort_key(n) > _rundir.sort_key(proc)
+            ),
+            key=_rundir.sort_key,
         )
         cdst = os.path.join(scratch, "client%d" % pid)
         os.makedirs(cdst, exist_ok=True)

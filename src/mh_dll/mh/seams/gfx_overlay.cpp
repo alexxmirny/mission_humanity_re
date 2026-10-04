@@ -779,6 +779,26 @@ extern "C" void MH_Overlay_RegisterProvider(const char *name, MH_OverlayProvider
     ++g_nextra;
 }
 
+extern "C" int MH_Overlay_ProviderCount(void) { return (int)(sizeof(PROVIDERS) / sizeof(PROVIDERS[0])) + g_nextra; }
+
+extern "C" const char *MH_Overlay_ProviderName(int index) {
+    constexpr int nbuilt = (int)(sizeof(PROVIDERS) / sizeof(PROVIDERS[0]));
+    if (index < 0) return nullptr;
+    if (index < nbuilt) return PROVIDERS[index].name;
+    if (index - nbuilt < g_nextra) return g_extra[index - nbuilt].name;
+    return nullptr;
+}
+
+extern "C" void MH_Overlay_ProviderValue(int index, char *buf, int cap) {
+    if (!buf || cap <= 0) return;
+    buf[0]               = 0;
+    constexpr int nbuilt = (int)(sizeof(PROVIDERS) / sizeof(PROVIDERS[0]));
+    ProviderFn    fn     = nullptr;
+    if (index >= 0 && index < nbuilt) fn = PROVIDERS[index].fn;
+    else if (index >= nbuilt && index - nbuilt < g_nextra) fn = g_extra[index - nbuilt].fn;
+    if (fn) fn(buf, cap);
+}
+
 extern "C" void MH_Overlay_OnPresent(void) {
     if (!g_installed) return;
 

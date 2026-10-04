@@ -1,0 +1,44 @@
+# mp:U52 CLIENT -- joins, sets its own team T1 (the host's Team mode + T1 arrive in the snapshot), plays on. Pair with
+# mp_host_u52_diplo.txt.
+
+settled value:110
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+present Internet server
+settled Internet server
+clickl Internet server
+present Server address
+settled Connect
+clickl Connect
+sessions 1
+settled Join game
+clickl Join game
+
+present Network players
+occ 2
+signal lobby
+settled Cancel
+click 221 132
+team 1 1
+signal clientteam
+awaitsignal setup
+team 0 1
+lobbymode 1
+capture lobby_team_client
+signal ready
+absent Network players
+gameclock 3000
+capture ingame
+gameclock 5000
+simclick 972 150
+retry 1500 1 3 settled value:100
+clickv 100
+absent value:113
+capture diplomacy_team_locked_client
+clickl Cancel
+absent Cancel
+gameclock 12000
+awaitsignal hostdone
+end

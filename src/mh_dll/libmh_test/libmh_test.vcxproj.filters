@@ -401,6 +401,9 @@
     <ClCompile Include="..\libmh\lockstep\tx_emit_order.cpp">
       <Filter>libmh\lockstep</Filter>
     </ClCompile>
+    <ClCompile Include="..\libmh\orders\admission_log.cpp">
+      <Filter>libmh\orders</Filter>
+    </ClCompile>
     <ClCompile Include="..\libmh\orders\issue\issue_ai_move_primitives.cpp">
       <Filter>libmh\orders\issue</Filter>
     </ClCompile>
@@ -1710,6 +1713,9 @@
       <Filter>libmh\state</Filter>
     </ClCompile>
     <ClCompile Include="..\libmh\state\spine_exports.cpp">
+      <Filter>libmh\state</Filter>
+    </ClCompile>
+    <ClCompile Include="..\libmh\state\world_fixup.cpp">
       <Filter>libmh\state</Filter>
     </ClCompile>
     <ClCompile Include="..\libmh\state\world_snapshot.cpp">

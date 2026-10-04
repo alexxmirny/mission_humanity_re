@@ -1,0 +1,56 @@
+# mp:U53 phase 1 -- 3-peer ELIMINATION shape (tools/det_arms.py --u53-*; check_u53_elim.py reads the logs).
+# Topology = run_u19b_quit3's: host vms[0], client1 vms[1], client2 the local det3_client2 lane.
+# The elimination itself is the harness `conq` workload's force-kill (harness-extra), NOT a UI gesture.
+# host: VICTIM (eliminated by the harness). OK-press arm
+settled value:110
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+settled Create
+clickl Create
+present Game name
+settled Ok
+clickl Ok
+present Available maps
+settled Ok
+clickl Ok
+
+present Network players
+peers 2
+occ 3
+enabled Start
+settled Start
+awaitsignal seated1
+awaitsignal seated2
+clickl Start
+
+absent Network players
+gamemode 2
+screen 0x00653dc3
+capture host_defeat
+dump
+signal elim
+log host reached its outcome dialog
+awaitsignal c1mid
+awaitsignal c2mid
+# arm B: close the defeat dialog while the survivors are mid-match, then report what the host shows.
+clickl Ok
+# measured (first run): Ok on 'You lost !' opens the stats table (list 0x00653d77, slides in from x<0)
+# with its own Ok -- NOT the main menu. Walk it and record where the host lands.
+screen 0x00653d77
+settled Ok
+capture host_stats
+dump
+log host reached the statistics screen after the first Ok
+signal hostok
+clickl Ok
+# the screen the host lands on: expected the main menu (value:110 = NETWORK GAME, a sprite menu)
+settled value:110
+capture host_after_stats
+log host pressed Ok on the statistics screen and reached the main menu
+signal hostok2
+awaitsignal c1done
+awaitsignal c2done
+signal victimdone
+end

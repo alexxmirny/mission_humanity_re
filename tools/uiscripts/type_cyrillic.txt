@@ -25,6 +25,14 @@
 # THE SIX BYTES ARE THE WHOLE POINT, so read them as a unit: cf f0 e8 e2 e5 f2 is "Privet" in CP1251.
 # The 686f7374 in front of them is the "host" the runner pins into the name field (--host-name).
 
+# mp:MP-LANG (2026-09-29): THE NAME FIELD NOW REFUSES THEM, and that is what this scenario asserts.
+# The ruling: player names are Latin letters and digits, so the codec still resolves all six letters
+# (mh_input.log: `name field: REJECTED U+041F (byte 0xcf)` ...) and H1 then withholds each one from
+# the NAME buffer. The field stays exactly the "host" the runner pinned: hex:686f7374, where it held
+# host + cf f0 e8 e2 e5 f2. The `t_cyr` capture was re-blessed for the same reason -- the field shows
+# "host" and no longer six substitute glyphs after it. This is the registered "a non-Latin name is
+# rejected at entry" check (mp:MP-LANG done_when); the codec's positive Cyrillic path is chat_relay's.
+
 settled value:110
 clickv 110
 present Player name
@@ -34,8 +42,8 @@ clickl Your name
 
 layout 00000419
 type Привет
-field name hex:686f7374cff0e8e2e5f2
+field name hex:686f7374
 capture t_cyr
 layout default
-log F3/F4: typed 6 Cyrillic characters via scancodes 22 23 30 20 14 31 on the RU layout -> CP1251 bytes
+log MP-LANG: typed 6 Cyrillic characters on the RU layout into the NAME field -> all 6 rejected, name stays host
 end

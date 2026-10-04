@@ -12,6 +12,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="udp_endpoint.cpp" />
+    <ClCompile Include="udp_mesh.cpp" />
     <ClCompile Include="udp_channel_c.cpp" />
     <ClCompile Include="udp_snapshot.cpp" />
     <ClCompile Include="udp_transport.cpp" />
@@ -29,6 +30,8 @@
     <None Include="mh_net_udp.def" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="mesh.h" />
+    <ClInclude Include="origin_seq.h" />
     <ClInclude Include="udp_endpoint.h" />
     <ClInclude Include="udp_ping_cadence.h" />
     <ClInclude Include="udp_channel_c.h" />

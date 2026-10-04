@@ -13,7 +13,7 @@
     {
       "name": "local_port_base",
       "kind": "udp_port_band",
-      "value": "6600 + test_index (LOCAL_PORT_BASE, tools/ui_suite_common.py; PORT_BASE, tools/lane_alloc.py:119)",
+      "value": "10000 + test_index (LOCAL_PORT_BASE, tools/ui_suite_common.py; PORT_BASE, tools/lane_alloc.py) -- PORT_BAND (200) wide; 6600 x 100 before TL-BANDS200",
       "owners": ["tools/ui_suite_common.py", "tools/lane_alloc.py"],
       "scope": "lane_alloc",
       "reason": "the local capture suite's own game-port band, one port per concurrently-running row. lane_alloc.BLOCKS assigns the underlying lane numbers (and TL-LANECOLLIDE gave lane_alloc a per-tree `scratch` claim via tree_slot(), so two worktrees no longer pick the same lane for a `solo=` row).",
@@ -22,7 +22,7 @@
     {
       "name": "local_shim_port_base",
       "kind": "udp_port_band",
-      "value": "6700 + n (SHIM_PORT_BASE, tools/lane_alloc.py:120; ui_suite_common.LOCAL_SHIM_PORT_BASE)",
+      "value": "10200 + n (SHIM_PORT_BASE, tools/lane_alloc.py; ui_suite_common.LOCAL_SHIM_PORT_BASE)",
       "owners": ["tools/ui_suite_common.py", "tools/lane_alloc.py"],
       "scope": "lane_alloc",
       "reason": "per-row shim forwarding port, mirrored between the two files (lane_alloc.py:117-121 comment: 'a copy that drifts is the failure this whole file is about').",
@@ -31,7 +31,7 @@
     {
       "name": "local_host2_port_base",
       "kind": "udp_port_band",
-      "value": "6800 + n (HOST2_PORT_BASE, tools/lane_alloc.py:121; ui_suite_common.LOCAL_HOST2_PORT_BASE)",
+      "value": "10400 + n (HOST2_PORT_BASE, tools/lane_alloc.py; ui_suite_common.LOCAL_HOST2_PORT_BASE)",
       "owners": ["tools/ui_suite_common.py", "tools/lane_alloc.py"],
       "scope": "lane_alloc",
       "reason": "per-row second-host port for 3+ peer local rows.",
@@ -40,10 +40,19 @@
     {
       "name": "local_shim_ctl_port_base",
       "kind": "tcp_port_band",
-      "value": "6900 + n (SHIM_CTL_PORT_BASE, tools/lane_alloc.py:122; test_ui.LOCAL_SHIM_CTL_PORT_BASE)",
+      "value": "10600 + n (SHIM_CTL_PORT_BASE, tools/lane_alloc.py; test_ui.LOCAL_SHIM_CTL_PORT_BASE)",
       "owners": ["tools/test_ui.py", "tools/lane_alloc.py"],
       "scope": "lane_alloc",
       "reason": "per-row shim control port -- the fix that let shim rows run CONCURRENTLY (test_ui.py:11473 comment); each row gets its own control port instead of sharing net_shim's default.",
+      "status": "scoped"
+    },
+    {
+      "name": "lane_port_band",
+      "kind": "udp_port_band",
+      "value": "10800-10999 (PORT_BASE + lane for the port-derived single-lane blocks, lanes 800..999; LANE_PORT_LO..LANE_PORT_HI, tools/lane_alloc.py)",
+      "owners": ["tools/lane_alloc.py", "tools/soak_test.py", "tools/tact_test.py", "tools/ui_abc.py", "tools/det_arms.py", "tools/sweep_saves.py"],
+      "scope": "lane_alloc",
+      "reason": "the fifth band (TL-BANDS200): the single-lane runners (soak / tact / ui_play / sp_det / det_local / sweep) bind PORT_BASE + their lane number, and their blocks sit at lanes 800+ so that port lands here and never on a registry row's port.",
       "status": "scoped"
     },
     {
@@ -59,18 +68,18 @@
     {
       "name": "det_local_port",
       "kind": "udp_port",
-      "value": 6620,
+      "value": "10818 = LOCAL_PORT_BASE + lane_alloc.lane('det_local', 0)",
       "owners": ["tools/det_arms.py (DET_LOCAL_PORT)"],
-      "scope": "hostlock:rig",
-      "reason": "the determinism gate's own fixed local port, picked to sit inside the capture suite's band but outside every row's LOCAL_PORT_BASE allocation (test_ui.py:11500-11503 comment). Safe because only one determinism pass runs at a time on a box -- serialized by the host-global `rig` lease (tools/hostlock.py) that test_ui.py/mp_run.py take via run_rig_tool().",
+      "scope": "lane_alloc + hostlock:rig",
+      "reason": "--det-local's one shared match port, DERIVED from its lane block since TL-BANDS200 (it was a hand-picked 6620 -- the capture suite's row-20 game port). Only one determinism pass runs at a time on a box -- serialized by the host-global `rig` lease (tools/hostlock.py).",
       "status": "scoped"
     },
     {
       "name": "provision_rig_firewall_range",
       "kind": "udp_port_band",
-      "value": "6500-6799 (FW_LO, FW_HI; tools/provision_rig.py:64)",
+      "value": "6500-6799 + 10000-10999 (FW_RANGES, tools/provision_rig.py; the second range is lane_alloc.RIG_PORT_LO..RIG_PORT_HI)",
       "owners": ["tools/provision_rig.py"],
-      "scope": "derived (must be kept a superset of the bands above by hand)",
+      "scope": "derived from tools/lane_alloc.py RIG_PORT_LO..RIG_PORT_HI; lane_alloc --check asserts the containment",
       "reason": "the one firewall rule that has to contain every band above (provision_rig.py:57-64 comment enumerates them). Not itself a bind -- listed because it is a literal a human must remember to widen if a band above moves; lint_resources.py treats it as an accounted-for range, not a violation.",
       "status": "scoped"
     },
@@ -162,7 +171,7 @@
     {
       "name": "lane_scenario_number",
       "kind": "mutex_name",
-      "value": "MHMut%02d (lane_no %% 100) -- tools/lane_alloc.py:185, patched into net_seams.cpp over retail's fixed \"MHMutex\" string",
+      "value": "MHMu%03d (lane_no 1..999; the DLL refuses more) -- tools/lane_alloc.py mutex_name, patched into net_seams.cpp over retail's fixed \"MHMutex\" string (MHMut%02d, lane %% 100, before TL-BANDS200)",
       "owners": ["tools/lane_alloc.py", "tools/make_lane.py", "tools/ui_suite_common.py", "src/mh_dll/mh/seams/net_seams.cpp"],
       "scope": "lane_alloc (per-lane) for `solo=`/scratch rows; unscoped for a NAMED registry scenario's fixed lane",
       "reason": "the game's single-instance mutex, renamed per lane so several lanes can run concurrently on one box. Two gaps, both already tracked and NOT touched by this lane: (1) lane numbers wrap at 100 (lane_alloc.py:49, documented, not fixed -- lane 132 aliases lane 32); (2) a NAMED scenario's lane number is DETERMINISTIC (fixed by its position in test_ui.TESTS via lane_names()/client_lane_slots()), not tree-scoped the way `solo=` rows are since TL-LANECOLLIDE -- two worktrees both running e.g. `match_launch` still fight over the same lane/mutex (docs/dead-ends.md G268, 2026-09-22, over an hour of refusals; no tracker id filed for it separately from this row's own scope list).",

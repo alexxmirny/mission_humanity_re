@@ -154,6 +154,26 @@ bool relay_peer_known(void * /*ctx*/, const sockaddr_in &a) { return g_ep.knows_
 // its own published table. Asked on the GAME thread (get_stats), answered lock-free.
 int relay_path_class(void * /*ctx*/, const sockaddr_in &a) { return mh::udprelay::path_class(a); }
 
+// mp:U61 (HM-M3) -- the two things the endpoint's mesh cannot know and this file can: this peer's own round
+// trip to the relay (a relayed match's election ranks candidates by it), and a fresh relay room code for a
+// pre-minted successor room. Same shape as the two edges above: the endpoint is handed a function, never a relay.
+int      mesh_leg_rtt_dms(void * /*ctx*/) { return mh::udprelay::leg_rtt_dms(); }
+int      mesh_leg_age_ms(void * /*ctx*/) { return mh::udprelay::leg_age_ms(); } // mp:U63
+uint32_t mesh_mint_room(void * /*ctx*/) { return mh::udprelay::mint_host_room(); }
+// mp:U62 (HM-M4) -- the handover's third crossing: the relay tunnel's role switch. The endpoint asks, this file
+// (the one that knows both layers exist) answers. role 0 = this peer becomes the room's host, 1 = it moves to
+// the room as a client; a client then re-dials the tunnel's loopback port.
+bool mesh_tunnel_rehome(void * /*ctx*/, int role, uint32_t room, unsigned short game_port, unsigned short *dial_port) {
+    if (!mh::udprelay::active()) return false;
+    mh::udprelay::Rehome r;
+    r.role      = role;
+    r.room      = room;
+    r.game_port = game_port;
+    if (!mh::udprelay::rehome(r)) return false;
+    if (dial_port) *dial_port = (role == 1) ? mh::udprelay::client_dial_port() : (unsigned short)0;
+    return true;
+}
+
 // The endpoint's single control edge, fanned back out into the six the surface declares.
 void ctrl_dispatch(void * /*ctx*/, uint16_t flags, int sender, const unsigned char *buf, int len) {
     using namespace mh_net_proto;
@@ -269,6 +289,22 @@ extern "C" int MH_Net_InitEx(const MH_NetConfig *cfg) {
     // delay lockstep traffic on channel A" is measurable on the rig against a run without one. Read
     // here for the same reason `udp_redundancy` is: MH_NetConfig is the mh.dll <-> module ABI, and
     // the TCP module must stay byte-for-byte the build it was.
+    // mp:U62 -- `[net] hub_migration` (shipped default 1). 0 is the NEGATIVE arm: this peer neither hands the hub
+    // over when its player leaves nor follows a HUB_LEAVING it receives, so a host that goes takes the match
+    // with it exactly as U55 measured (survivors stall, the link watchdog fires, outcome 8 after ~58 s).
+    // Module-only, read here for the reason `udp_redundancy` is: MH_NetConfig is the mh.dll <-> module ABI.
+    c.no_hub_migration   = GetPrivateProfileIntA("net", "hub_migration", 1, ini) == 0;
+    // mp:U63 -- `[net] failover_budget_ms` (0 = the module default, 20 s): the bound on a whole crash failover.
+    c.failover_budget_ms = GetPrivateProfileIntA("net", "failover_budget_ms", 0, ini);
+    // mp:U64 -- TEST ONLY: hold this peer's mesh probe/echo datagrams N ms (a slow client<->client path on the rig).
+    // mp:U69 -- honoured only with `[harness] enable=1` (the rig always has it); a player's ini cannot rig the election.
+    {
+        bool       ignored = false;
+        const bool armed   = GetPrivateProfileIntA("harness", "enable", 0, ini) != 0;
+        c.mesh_test_delay_ms =
+            mh::netudp::mesh_test_delay_gate(GetPrivateProfileIntA("net", "mesh_test_delay_ms", 0, ini), armed, &ignored);
+        if (ignored) log_line(nullptr, "net: [net] mesh_test_delay_ms is a test key and needs [harness] enable=1: test key ignored");
+    }
     c.bulk_selftest_mb   = GetPrivateProfileIntA("net", "bulk_selftest_mb", 0, ini);
     c.bulk_selftest_step = GetPrivateProfileIntA("net", "bulk_selftest_step", 100, ini);
 
@@ -410,6 +446,15 @@ extern "C" int MH_Net_InitEx(const MH_NetConfig *cfg) {
     // ping cell should carry. Installing it only when a relay is configured would make the plain
     // case the letterless one -- the opposite of the truth.
     g_ep.set_path_class(relay_path_class, nullptr);
+    {
+        mh::netudp::Endpoint::MeshHooks hk;
+        hk.leg_rtt_dms = mesh_leg_rtt_dms;
+        hk.mint_room   = mesh_mint_room;
+        hk.ctx         = nullptr;
+        hk.tunnel_rehome = mesh_tunnel_rehome; // mp:U62
+        hk.leg_age_ms    = mesh_leg_age_ms;    // mp:U63
+        g_ep.set_mesh_hooks(hk); // mp:U61 -- answers -1 / a code only when a relay tunnel is running
+    }
     const bool ok = g_ep.start(c, psk, secure); // restarts a started endpoint; it logs the relink
     // The refusal case, and the ONLY reason this is not a bare assignment: the endpoint could not
     // stop, so the OLD link is still up and still ours. Leaving g_started true keeps the module's
@@ -455,6 +500,79 @@ extern "C" void MH_Net_QueueMatchBoundary(void) {
 // mp:X2h -- a bare, non-rolling read of lane M's current depth for the lobby-tick stall watch.
 extern "C" int MH_Net_QueueDepthM(void) {
     return g_started ? g_ep.queue_depth_m() : 0;
+}
+
+// ---- mp:U62 (HM-M4) -- the planned handover of the hub. See mh_net_export.h; the machinery is the endpoint's
+// (udp_mesh.cpp, hub_leave / hl_*).
+extern "C" int MH_Net_HubLeave(int timeout_ms) {
+    if (!g_started) return MH_HUB_LEAVE_NOTHING;
+    return g_ep.hub_leave(timeout_ms);
+}
+extern "C" void MH_Net_HubStatus(MH_NetHubStatus *out) {
+    if (!out) return;
+    memset(out, 0, sizeof(*out));
+    out->size      = (unsigned)sizeof(MH_NetHubStatus);
+    out->supported = 1;
+    out->role      = -1;
+    out->hub_id    = -1;
+    out->local_id  = -1;
+    out->old_hub   = -1;
+    out->new_hub   = -1;
+    if (!g_started) return;
+    mh::netudp::Endpoint::HubStatus s;
+    g_ep.hub_status(s);
+    out->enabled        = s.enabled ? 1 : 0;
+    out->role           = s.role;
+    out->hub_id         = s.hub_id;
+    out->local_id       = s.local_id;
+    out->epoch          = s.epoch;
+    out->rank_n         = s.rank_n;
+    for (int i = 0; i < 8; ++i) out->rank[i] = s.rank[i];
+    out->survivors      = s.survivors;
+    out->leave_state    = s.leave_state;
+    out->rehomed        = s.rehomed ? 1 : 0;
+    out->reconciling    = s.reconciling ? 1 : 0;
+    out->reconcile_done = s.reconcile_done ? 1 : 0;
+    out->unrecoverable  = s.unrecoverable ? 1 : 0;
+    out->aborted        = s.aborted ? 1 : 0;
+    out->changes        = (int)s.changes;
+    out->old_hub        = s.old_hub;
+    out->new_hub        = s.new_hub;
+    out->change_epoch   = s.change_epoch;
+    out->clients        = s.clients;
+    out->leaving_rx     = (int)s.leaving_rx;
+    out->acks_tx        = (int)s.acks_tx;
+    out->acks_rx        = (int)s.acks_rx;
+    out->retargets      = (int)s.retargets;
+    out->failover        = s.failover;
+    out->failover_active = s.failover_active ? 1 : 0;
+    out->failover_ms     = s.failover_ms;
+    out->change_crash    = s.change_crash ? 1 : 0;
+    out->fo_redirects_rx = (int)s.fo_redirects_rx;
+    out->fo_redirects_tx = (int)s.fo_redirects_tx;
+    out->fo_group        = s.fo_group;
+}
+// mp:U63 (HM-M5): the game says a match is running (or is over). Arms / clears the crash failover.
+extern "C" void MH_Net_SetInMatch(int on) {
+    if (!g_started) return;
+    g_ep.set_in_match(on != 0);
+}
+// mp:U71: player `id` is (on) / is no longer a spectator -- excluded from the failover quorum (U63, user Q4).
+extern "C" void MH_Net_SetSpectator(int id, int on) {
+    if (!g_started) return;
+    g_ep.set_spectator(id, on != 0);
+}
+extern "C" int MH_Net_Rehome(const MH_NetRehomeSpec *spec) {
+    if (!g_started || spec == nullptr || spec->size < sizeof(MH_NetRehomeSpec)) return 0;
+    mh::netudp::Endpoint::RehomeEx x;
+    memset(&x, 0, sizeof(x));
+    x.as_hub         = spec->as_hub != 0;
+    x.roster_mask    = spec->roster_mask;
+    lstrcpynA(x.host, spec->host, (int)sizeof(x.host));
+    x.port           = spec->port;
+    x.relay_room     = spec->relay_room;
+    x.dial_budget_ms = spec->dial_budget_ms;
+    return g_ep.rehome_ex(x) ? 1 : 0;
 }
 
 extern "C" void MH_Net_SetSessionInfoHandler(MH_SessionInfoCb cb) { g_si_cb = cb; }
@@ -654,6 +772,48 @@ extern "C" int MH_Net_SnapshotSend(int dst_player, const void *blob, int len) {
         log_line(nullptr, b);
     }
     return 1;
+}
+
+// mp:X2i -- stop the transfer to `dst_player` (-1 = any). The caller is the lobby pump on the main
+// thread, the same thread that arms (MH_Net_SnapshotSend), so the Outbox needs no lock of its own;
+// the recv/timer thread is kept off the freed copy by Outbox::release's detach-then-free order.
+// dst_player == MH_SNAP_DISCARD_RX (-2): the RECEIVE side. Drop a partial (or delivered) inbound transfer
+// and rewind channel C's frontier to chunk 0, so the NEXT transfer starts from its head. Without this the
+// lane's frontier stays where the last transfer left it (one past its end, or mid-way for an abandoned
+// one) and the next transfer's chunks 0..n are duplicates the lane drops before the Receiver sees them:
+// the sender's own frontier follows the stale acknowledgements to the end and reports itself done.
+// (mp:X3c: a second resync in one session delivered 8 duplicate pieces and nothing else.)
+static void snap_discard_rx(void) {
+    uint32_t id  = 0;
+    int      len = (int)mh::netudp::bulk::CHUNK_BYTES;
+    if (g_started) {
+        g_ep.bulk_resume_at(0);
+        while (g_ep.bulk_recv(&id, g_snap_chunk, &len)) len = (int)mh::netudp::bulk::CHUNK_BYTES;
+    }
+    if (g_snap_rx_arena != nullptr) g_snap_rx.reset(g_snap_rx_arena, snap::MAX_BODY_BYTES);
+    g_snap_rx_open    = false;
+    g_snap_rerequests = 0;
+    g_snap_err        = snap::OK;
+    log_line(nullptr, "net: snapshot RX discarded -- channel C frontier rewound to chunk 0 (mp:X3c)");
+}
+
+extern "C" int MH_Net_SnapshotCancel(int dst_player) {
+    if (!g_started) return 0;
+    if (dst_player == MH_SNAP_DISCARD_RX) {
+        snap_discard_rx();
+        return 1;
+    }
+    const int  dst     = g_snap_out.on() ? g_snap_out.dst() : -1;
+    const bool stopped = g_snap_out.cancel_to(g_ep, dst_player);
+    if (stopped) {
+        char b[200];
+        wsprintfA(b,
+                  "net: snapshot SEND to player %d CANCELLED -- channel C detached, copy freed, tx idle "
+                  "(mp:X2i)",
+                  dst);
+        log_line(nullptr, b);
+    }
+    return stopped ? 1 : 0;
 }
 
 // Drive the receiver and, once the blob is whole and verified, deliver it. 1 = *buf now holds a

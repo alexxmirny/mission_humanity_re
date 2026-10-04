@@ -17,6 +17,7 @@
 
 #include "sim_dispatch_calls.gen.h"
 #include "sim_test_support.h"
+#include "lockstep/turn_engine.h" // mp:U52
 
 namespace mh::sim::test {
 namespace {
@@ -527,6 +528,51 @@ void test_diplomacy_set_relation() {
        "admin arm 15: (player, other_player=args[2], relation=args[3] truncated to uint8_t -- "
        "0x998800f1 -> 0xf1)");
     ck_eq((uint32_t)dc().events.size(), 1, "admin arm 15: and does nothing else");
+
+    // ---- mp:U52 -- Team mode locks relations. The ally-victory flag is the lock; the fix knob gates it.
+    const mh::lockstep::reimpl_fixes saved  = mh::lockstep::fixes();
+    auto                             locked = [&](bool fix, int32_t flag) {
+        mh::lockstep::reimpl_fixes fx = saved;
+        fx.team_relations_fix         = fix;
+        mh::lockstep::set_fixes(fx);
+        sim_fixture g;
+        g.mp_ally_victory_rule_flag = flag;
+        sim_view  gv                = g.view();
+        sim_store gown              = g.store();
+        put_order(g, 0, 0xf4);
+        g.order_queue[0].args[2] = 3;
+        g.order_queue[0].args[3] = 2;
+        dc().reset();
+        dispatch_calls gc = rec::recording_calls();
+        detail::dispatch_admin_order(gv, gown, gc, ctx_for_player(1));
+        return dc().count(rec::DC_llm_diplomacy_set_relation);
+    };
+    ck_eq((uint32_t)locked(true, 1), 0u, "U52: Team mode (flag=1, fix on): the 0xf4 order is a no-op");
+    ck_eq((uint32_t)locked(true, 0), 1u, "U52: FFA / no teams (flag=0): the 0xf4 order still applies");
+    ck_eq((uint32_t)locked(false, 1), 1u, "U52: fix off (retail) with the flag set: the 0xf4 order applies");
+
+    // ---- mp:U52 vision -- the 0xf5 order (view-mask grant) is dropped by the same lock
+    auto vision = [&](bool fix, int32_t flag) {
+        mh::lockstep::reimpl_fixes fx = saved;
+        fx.team_relations_fix         = fix;
+        mh::lockstep::set_fixes(fx);
+        sim_fixture g;
+        g.mp_ally_victory_rule_flag = flag;
+        g.player_side               = 3;
+        sim_view  gv                = g.view();
+        sim_store gown              = g.store();
+        put_order(g, 0, 0xf5);
+        g.order_queue[0].args[2] = 3; // the target is this machine's side
+        g.order_queue[0].args[3] = 1;
+        dc().reset();
+        dispatch_calls gc = rec::recording_calls();
+        detail::dispatch_admin_order(gv, gown, gc, ctx_for_player(1));
+        return dc().count(rec::DC_llm_game_player_set_human);
+    };
+    ck_eq((uint32_t)vision(true, 1), 0u, "U52 vision: Team mode: the 0xf5 grant is a no-op");
+    ck_eq((uint32_t)vision(true, 0), 1u, "U52 vision: FFA: the 0xf5 grant still applies");
+    ck_eq((uint32_t)vision(false, 1), 1u, "U52 vision: fix off: the 0xf5 grant applies");
+    mh::lockstep::set_fixes(saved);
 }
 
 // ---- arm 16, PLAYER_SET_AI_HUMAN (0xf5) -----------------------------------------------------------

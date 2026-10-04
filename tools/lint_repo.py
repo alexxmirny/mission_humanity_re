@@ -1333,6 +1333,15 @@ def declare_checks(args):
         "mp:SES7b match replay -- the negative cases still fire (replay_match_segment --selftest)",
         [sys.executable, os.path.join(REPO, "tools", "replay_match_segment.py"), "--selftest"],
     )
+    # mp:D42. The state-record reader's decode/rebuild/diff verdicts over hand-assembled synthetic
+    # files -- no rig: a truncated file must stop at its last complete step (not error or hang), a
+    # CRC-corrupted chunk must stop there too, a tail-cut file (header + chunks from a later KEYF)
+    # must still decode, an unknown version must be refused by name, and a masked-only difference
+    # must read IDENTICAL rather than a false divergence.
+    check(
+        "mp:D42 state-record reader -- the negative cases still fire (state_record --selftest)",
+        [sys.executable, os.path.join(REPO, "tools", "state_record.py"), "--selftest"],
+    )
     # mp:CH1. The cheat-gate post_check (tools/test_ui.py's ch1_cheat entry) runs only with the rig;
     # its negatives -- the cheat RAN (gate off), the refusal line missing, order 0xfa staged in a
     # peer's order buffers, a sim-path elimination, a desync sample, a netind name morph, nobody
@@ -1366,6 +1375,14 @@ def declare_checks(args):
     check(
         "mp:U39 diplomacy-echo negative arm -- the negative cases still fire (check_u39_echo --selftest)",
         [sys.executable, os.path.join(REPO, "tools", "check_u39_echo.py"), "--selftest"],
+    )
+    check(
+        "mp:U45 diplomacy dedup -- the negative cases still fire (check_u45_diplo --selftest)",
+        [sys.executable, os.path.join(REPO, "tools", "check_u45_diplo.py"), "--selftest"],
+    )
+    check(
+        "mp:U49 double undock -- the negative cases still fire (check_u49_undock --selftest)",
+        [sys.executable, os.path.join(REPO, "tools", "check_u49_undock.py"), "--selftest"],
     )
     # mp:P6. The loser-gap post_check (tools/test_ui.py's p6_loser_gap entry) runs only with the
     # rig; its negatives -- a real freeze over the bound passing anyway, the same outcome on both
@@ -1411,6 +1428,13 @@ def declare_checks(args):
     check(
         "mp:X2g info-screen AVI post-check -- the negative cases still fire (check_info_avi --selftest)",
         [sys.executable, os.path.join(REPO, "tools", "check_info_avi.py"), "--selftest"],
+    )
+    # mp:U47. The joiner-info-panel row runs only with the rig; its clauses -- a >= 10 s mode-4 window on
+    # the joiner, the joiner still advancing/receiving, no new host stall episode, no in-match client
+    # driver tick -- are gated here off planted rows.
+    check(
+        "mp:U47 joiner info-panel post-check -- the negative cases still fire (check_u47_info_joiner --selftest)",
+        [sys.executable, os.path.join(REPO, "tools", "check_u47_info_joiner.py"), "--selftest"],
     )
     # mp:D37a. The pioneer re-landing rows run only with the rig; their clauses -- the seam banner, the
     # non-owner re-landing line, hash identical/diverged-and-stayed in p0_ai_econ/player_resources, and
@@ -1563,6 +1587,14 @@ def declare_checks(args):
     check(
         "cam-trace reader -- planted latch/cost/absence cases go RED (check_cam_trace --selftest)",
         [sys.executable, os.path.join(REPO, "tools", "check_cam_trace.py"), "--selftest"],
+    )
+    # mp:P17. The freeze-watchdog reader is the freeze_watchdog / alttab_d3d11 scenarios' post-check, so it
+    # only runs when the rig does; its negatives (no capture, a stack that does not name the injected
+    # Sleep, no freeze-ended line, a capture with the watchdog off, a minimise the focus tap missed) are
+    # gated here off planted logs.
+    check(
+        "freeze-watchdog reader -- planted no-capture/wrong-site/no-focus cases go RED (check_freeze_watchdog --selftest)",
+        [sys.executable, os.path.join(REPO, "tools", "check_freeze_watchdog.py"), "--selftest"],
     )
     # mp:U19. The clean-quit reader is the graceful_quit scenario's post-check, so like the two rows
     # above it only runs when the rig does; its negatives are gated here off planted log pairs. The
@@ -2245,6 +2277,10 @@ def declare_checks(args):
         "solo rerun of red suite rows -- the negative cases still fire (test_ui --loadred-selftest)",
         [sys.executable, os.path.join(REPO, "tools", "test_ui.py"), "--loadred-selftest"],
     )
+    check(
+        "release-tier rows: skipped bare, run with --release-tier, run when named (test_ui --release-tier-selftest)",
+        [sys.executable, os.path.join(REPO, "tools", "test_ui.py"), "--release-tier-selftest"],
+    )
     # tooling:TL-SUITE-LOADRED (b). A capture/assertion step or a peer-dependent shim trigger whose
     # only synchronization is a wall/game-clock offset (TL-P9W-TRIGGER's fixed t+50s blackhole,
     # ~97% odds of landing inside a barrier and usually missing) is refused; state predicates,
@@ -2256,6 +2292,18 @@ def declare_checks(args):
     check(
         "clock-only-sync lint -- the negative cases still fire",
         [sys.executable, os.path.join(REPO, "tools", "lint_ui_sync.py"), "--selftest"],
+    )
+    # mods:LANG4. Every player-visible string mh.dll draws is a row of ui/player_strings.def, so a
+    # language pack can translate it; a wide literal elsewhere (or a narrow one built into text in a
+    # display module) is a string the RU player would see in English. Also checks every
+    # src/formats/mh_strings/*.txt against the table. Rig-free, sub-second.
+    check(
+        "no player-visible mh.dll literal bypasses the string table (lint_player_strings)",
+        [sys.executable, os.path.join(REPO, "tools", "lint_player_strings.py")],
+    )
+    check(
+        "player-string lint -- a planted literal still goes red",
+        [sys.executable, os.path.join(REPO, "tools", "lint_player_strings.py"), "--selftest"],
     )
     # tooling:TL-SUITE-COUNTERS. Dead-end G101: a counter reported only at graceful shutdown is
     # invisible to a rig run, which is always KILLED. Refuses a NEW `g_*` counter whose only print is

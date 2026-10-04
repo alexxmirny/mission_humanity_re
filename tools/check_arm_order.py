@@ -1230,7 +1230,7 @@ def selftest():
 
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    ap.add_argument("run_dir", nargs="?", help="a run directory (…/logs/<stamp>_solo/)")
+    ap.add_argument("run_dir", nargs="?", help="a run directory (…/logs/<stamp>_menu_solo/)")
     ap.add_argument(
         "--mode", help="force the [config] mode baseline instead of reading it off the log"
     )

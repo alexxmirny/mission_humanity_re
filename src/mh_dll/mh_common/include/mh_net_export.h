@@ -325,6 +325,96 @@ void MH_Net_SetHashHandler(MH_HashCb cb);
 /* Broadcast a desync sample to every connected peer. Best-effort; no-op if not started. */
 void MH_Net_SendHash(const unsigned char *buf, int len);
 
+/* ---- hub migration (mp:U62, HM-M4): the planned handover of the transport hub -------------------------
+ * Three rows, for the UDP module (the TCP module answers `unsupported`, an absent module answers the same).
+ * The transport is a star; when the HOST's player leaves a match with two or more other humans still
+ * playing, the host hands the hub to the elected successor before it goes, and the survivors play on.
+ *
+ *   MH_Net_HubLeave(timeout_ms)   call at every seam where the hub's PLAYER leaves the match (quit from the
+ *       ESC menu, leave from the defeat/stats screen, the process exiting on purpose), AFTER the game has run
+ *       its own pinned roster removal. Blocks the CALLING thread -- the transport's own threads keep
+ *       forwarding meanwhile -- until every client has acknowledged, or `timeout_ms` (<= 0: the module
+ *       default). Returns an MH_HUB_LEAVE_* code. A peer that is not the hub, a hub with fewer than two
+ *       clients, and a build with `[net] hub_migration=0` answer MH_HUB_LEAVE_NOTHING at once.
+ *   MH_Net_HubStatus(out)         the held succession epoch + ranking, who the hub is, the reconcile's state,
+ *       and a monotone `changes` counter the game polls to show "<old> left; <new> is now hosting".
+ *   MH_Net_Rehome(spec)           the SAME role switch the handover performs, driven from outside (a hub
+ *       election the game ran itself, a test): become the hub for `roster_mask`, or re-dial a new hub keeping
+ *       the player id. Returns 1 if the switch ran.
+ * Nothing here touches the game queue and nothing here removes anyone from a roster: the leaving player's
+ * removal is the game's own pinned flip (U19b's park step for a quit, U56's elimination step for a defeat). */
+enum { MH_HUB_LEAVE_NONE    = 0,
+       MH_HUB_LEAVE_WAITING = 1,
+       MH_HUB_LEAVE_HANDED  = 2,
+       MH_HUB_LEAVE_TIMEOUT = 3,
+       MH_HUB_LEAVE_NOTHING = 4 };
+
+typedef struct MH_NetHubStatus {
+    unsigned      size;           /* sizeof(MH_NetHubStatus) as the writer was compiled                     */
+    int           supported;      /* 1 for a module that can migrate (UDP); 0 for TCP and with no module     */
+    int           enabled;        /* 0 when `[net] hub_migration=0`                                          */
+    int           role;           /* 0 = hub, 1 = client, -1 = the transport is not up                       */
+    int           hub_id;         /* the hub's player id as this peer knows it, -1 unknown                   */
+    int           local_id;       /* this peer's player id, -1 unknown                                       */
+    unsigned      epoch;          /* succession epoch held (client) / published (hub), 0 = none yet          */
+    int           rank_n;         /* entries of rank[] that are real                                         */
+    unsigned char rank[8];        /* the successor preference order of that epoch                            */
+    unsigned      survivors;      /* that epoch's survivor set, a bit per player id                          */
+    int           leave_state;    /* an MH_HUB_LEAVE_* of this peer's own hub_leave                          */
+    int           rehomed;        /* 1 once a rehome ran since the transport started                         */
+    int           reconciling;    /* a reconcile over the new hub is still in flight                         */
+    int           reconcile_done; /* ...and this peer reached the new hub's target frontier                  */
+    int           unrecoverable;  /* the reconcile found a needed frame below every holder's retention       */
+    int           aborted;        /* the reconcile gave up after its abort budget                            */
+    int           changes;        /* hub changes this peer has gone through as a SURVIVOR (monotone)         */
+    int           old_hub;        /* the last change: who left (-1 none)                                     */
+    int           new_hub;        /* ...and who is hosting now                                               */
+    unsigned      change_epoch;   /* ...the epoch of the HUB_LEAVING that caused it                          */
+    int           clients;        /* a hub: active client connections                                        */
+    int           leaving_rx;     /* HUB_LEAVING frames received                                             */
+    int           acks_tx;        /* ...acknowledgements sent                                                */
+    int           acks_rx;        /* a leaving hub: acknowledgements received                                */
+    int           retargets;      /* a leaving hub: lists re-issued without a silent successor               */
+    /* mp:U63 (HM-M5): the crash failover (appended; `size` tells a reader which of these exist)            */
+    int failover;        /* 0 idle, 1 suspect, 2 electing, 3 done, 4 failed, 5 minority (ends)       */
+    int failover_active; /* 1 while the hub is being replaced: the game suspends its silence timers  */
+    int failover_ms;     /* ms since the hub went silent (frozen at the end of the failover)         */
+    int change_crash;    /* 1 when the last hub change was a crash failover ("lost", not "left")     */
+    int fo_redirects_rx; /* REDIRECTs received                                                       */
+    int fo_redirects_tx; /* ...and sent                                                              */
+    int fo_group;        /* survivors on this side when the quorum was judged                        */
+} MH_NetHubStatus;
+
+typedef struct MH_NetRehomeSpec {
+    unsigned size;           /* sizeof(MH_NetRehomeSpec) as the caller was compiled                        */
+    int      as_hub;         /* 1 = become the hub; 0 = re-dial a new hub                                  */
+    unsigned roster_mask;    /* as_hub: the survivor player ids expected to re-dial, a bit per id          */
+    char     host[64];       /* !as_hub, direct match: the new hub's address                               */
+    int      port;           /* ...and its port                                                            */
+    unsigned relay_room;     /* a relayed match: the pre-minted room (0 = a direct match)                  */
+    int      dial_budget_ms; /* !as_hub: how long the re-dial keeps trying (0 = the transport's default)    */
+} MH_NetRehomeSpec;
+
+int  MH_Net_HubLeave(int timeout_ms);
+void MH_Net_HubStatus(MH_NetHubStatus *out);
+int  MH_Net_Rehome(const MH_NetRehomeSpec *spec);
+
+/* ---- crash failover (mp:U63, HM-M5) ---------------------------------------------------------------------
+ *   MH_Net_SetInMatch(on)   the game says whether a MATCH is running (lockstep session, or a defeated peer still
+ *       watching it): 1 on entering, 0 on reaching the main menu / closing the session. The transport arms its
+ *       hub-loss detection only inside a match -- a lobby whose host closes is not a hub crash -- and clears a
+ *       finished failover when the match ends. Idempotent; the TCP module and an absent module ignore it. */
+void MH_Net_SetInMatch(int on);
+
+/* ---- spectators (mp:U71, the transport half of mp:U54 "spectate after defeat") --------------------------
+ *   MH_Net_SetSpectator(id, on)   player id `id` is (on=1) / is no longer (on=0) a SPECTATOR: a defeated human that
+ *       stays in the session watching. The crash failover's strict-majority quorum does not count spectators
+ *       (user Q4 of U54): a spectator is not a voter, and counting one could turn a real majority into a minority.
+ *       Idempotent; ids outside 0..7 are ignored; the TCP module and an absent module ignore it. The game calls it
+ *       from its per-frame roster poll for every slot, so a bit set for a seat that never was a transport peer is
+ *       harmless (quorum_members masks it out of a set it was never in). */
+void MH_Net_SetSpectator(int id, int on);
+
 /* MH_Net_Shutdown WAS HERE (close the sockets, join the watchdog thread) and fork F4B DELETED IT
  * for the same reason: zero call sites, ever. The game exits the process; a teardown path that has
  * never once run is untested code with a plausible name, not a feature. If an orderly stop is wanted

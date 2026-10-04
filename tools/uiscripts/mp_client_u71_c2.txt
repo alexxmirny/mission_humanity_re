@@ -1,0 +1,27 @@
+# mp:U71 (spec4 arms: seats in order so client1 is slot 1, the conq victim) -- from mp_client_u64_c2.txt
+# mp:U64 (HM-M6) -- client 2 of the 4-peer shape (see mp_host_u64.txt). Joins the 4-peer lobby and plays; every
+# incident (a crash, a partition) is injected by the runner, not by this script.
+settled value:110
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+present Internet server
+settled Internet server
+clickl Internet server
+present Server address
+settled Connect
+clickl Connect
+sessions 1
+awaitsignal seated1
+settled Join game
+clickl Join game
+present Network players
+occ 3
+signal seated2
+occ 4
+settled Cancel
+absent Network players
+gamemode 2
+log u64 client 2 in game
+end

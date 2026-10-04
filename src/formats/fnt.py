@@ -569,6 +569,18 @@ class MergeReport:
         self.lines.append(line)
 
 
+def is_cyrillic(cp):
+    return 0x0400 <= cp <= 0x04FF
+
+
+def is_latin_accent(cp):
+    """What an EN layer adds over a RU one: every non-ASCII, non-Cyrillic letter (Latin-1 + Oe/oe).
+    The C0 controls EN lists (CR/LF, an in-string line-break pair) are NOT lifted: RU text has never
+    had glyphs for them, and a new glyph there would change the width of every RU string that
+    carries one."""
+    return cp > 0x7F and not is_cyrillic(cp)
+
+
 def merge(en_layer, ru_layer, fonts=PFMENU, report=None):
     """EN override + RU override + the derivation table -> a merged FontSet.
 
@@ -576,7 +588,19 @@ def merge(en_layer, ru_layer, fonts=PFMENU, report=None):
     keeps its bytes, so the merged files are a byte-prefix of nothing less than the originals and
     every already-rendered ASCII string is bit-identical. `verify_prefix()` asserts it.
     """
+    return merge_onto(en_layer, ru_layer, is_cyrillic, CYRILLIC_LIFT_NOTE, fonts=fonts, report=report)
+
+
+def merge_onto(base_layer, donor_layer, lift, lift_note, fonts=PFMENU, report=None):
+    """`base_layer` + every `donor_layer` code point `lift(cp)` accepts + the derivation table.
+
+    The general form of merge(): mods:LANG3's RU language pack runs it the other way round -- the RU
+    override is the BASE (so every RU string renders exactly as retail RU does) and the EN override
+    donates its Latin accents. The same two guarantees hold whichever layer is the base: strictly
+    additive over the base (verify_prefix), and every lift requires matching cell metrics.
+    """
     report = report or MergeReport()
+    en_layer, ru_layer = base_layer, donor_layer  # the names the original EN-base body used
     layout = list(en_layer.layout)
     index = {cp: i for i, cp in enumerate(layout)}
     merged = {name: Font(en_layer.fonts[name].height, en_layer.fonts[name].glyphs) for name in fonts}
@@ -603,10 +627,11 @@ def merge(en_layer, ru_layer, fonts=PFMENU, report=None):
         report.say(f"  U+{cp:04X}  {note}")
         return True
 
-    # 1. lift every Cyrillic code point the RU override actually ships, in ITS FONTLAY order so the
-    #    alphabet lands in a stable, reproducible sequence.
+    # 1. lift every code point the donor layer actually ships and `lift` accepts (Cyrillic, for the
+    #    EN-base merge), in the DONOR's FONTLAY order so the lift lands in a stable, reproducible
+    #    sequence.
     for cp in ru_layer.layout:
-        if not (0x0400 <= cp <= 0x04FF):
+        if not lift(cp):
             continue
         per_font = {}
         for name in fonts:
@@ -615,13 +640,13 @@ def merge(en_layer, ru_layer, fonts=PFMENU, report=None):
                 per_font = None
                 break
             if g.height != merged[name].height:
-                raise ValueError(f"{name}: RU cell height {g.height} != EN {merged[name].height} "
+                raise ValueError(f"{name}: donor cell height {g.height} != base {merged[name].height} "
                                  f"-- the lift is only valid while the metrics match")
             per_font[name] = g
         if per_font is None:
-            report.say(f"  U+{cp:04X}  SKIPPED: the RU layer does not carry it in every font")
+            report.say(f"  U+{cp:04X}  SKIPPED: the donor layer does not carry it in every font")
             continue
-        if append(cp, per_font, CYRILLIC_LIFT_NOTE):
+        if append(cp, per_font, lift_note):
             report.lifted.append(cp)
 
     # 2. derive what neither layer ships. Order matters: the Cyrillic IO letters are built on the

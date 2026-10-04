@@ -67,6 +67,8 @@ KNOWN_WAIT_OPS = frozenset(
         "peers",
         "occ",
         "race",
+        "team",
+        "lobbymode",
         "retryready",
         "lobbygen",
         "lobbyping",
@@ -76,6 +78,11 @@ KNOWN_WAIT_OPS = frozenset(
         "simstep",
         "field",
         "wmsg",
+        "wlobby",
+        "imgui",
+        "winclient",
+        "dimouse",
+        "keystate",
     }
 )
 # ACTION ops: fire once, never a synchronization mechanism themselves (a `cursorhold`/`keyhold`
@@ -94,6 +101,12 @@ KNOWN_ACTION_OPS = frozenset(
         "rclick",
         "simclick",
         "simrclick",
+        "wmclick",
+        "winsize",
+        "winmin",
+        "rawfocus",
+        "rawmouse",
+        "rawkey",
         "cursorhold",
         "key",
         "keyhold",

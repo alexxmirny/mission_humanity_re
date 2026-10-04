@@ -522,7 +522,27 @@ def selftest():
     bad = _run_cases(CASES, check, "check_module_bind")
     bad += _run_cases(two_module, check, "check_module_bind [+libmh line]")
     bad += _run_cases(LIBMH_CASES, check_libmh, "check_module_bind --libmh")
-    n = len(CASES) * 2 + len(LIBMH_CASES)
+    n = len(CASES) * 2 + len(LIBMH_CASES) + 1
+    # SES8: a lane whose NEWEST mh_net.log is a single-player session's must still resolve to the
+    # process (`_menu_`) folder, where the boot-time bind lines are.
+    with tempfile.TemporaryDirectory(prefix="cmb_newest_") as root:
+        order = [
+            "20260917T164300Z_menu_solo",
+            "2026-09-29T08-15-02Z_menu_solo",
+            "2026-09-29T08-15-09Z_ab12cd34_TUTORIAL_tutorial",
+        ]
+        for i, leaf in enumerate(order):
+            d = os.path.join(root, "logs", leaf)
+            os.makedirs(d)
+            with open(os.path.join(d, LOG), "w") as fh:
+                fh.write("x\n")
+            os.utime(os.path.join(d, LOG), (1000 + i, 1000 + i))
+        got = newest_run(root)
+        if os.path.basename(got or "") != order[1]:
+            bad += 1
+            print("  [BAD] newest_run: want the SES8 process folder, got %s" % got)
+        else:
+            print("  [ok] newest_run prefers the process folder over a newer solo session")
     if bad:
         print("check_module_bind --selftest: %d of %d case(s) wrong" % (bad, n))
         return 1
@@ -1327,9 +1347,16 @@ def check_subset(repo, build_dir=None, dumpbin=None):
 
 
 def newest_run(lane_dir):
-    """The lane's most recent run folder, or None. Convenience for a caller holding a lane path."""
+    """The lane's most recent PROCESS run folder, or None. Convenience for a caller holding a lane path.
+
+    The bind outcome lines are boot-time, i.e. in the process (`*_menu_*`) folder. Since SES8 a
+    single-player match writes an mh_net.log of its own into a SESSION folder (SES1 did so for lobby
+    matches), and that one is often the newest by mtime -- so prefer a `_menu_` folder and fall back
+    to the newest of any shape (pre-SES1 lanes)."""
     runs = sorted(glob.glob(os.path.join(lane_dir, "logs", "*", LOG)), key=os.path.getmtime)
-    return os.path.dirname(runs[-1]) if runs else None
+    menu = [r for r in runs if "_menu_" in os.path.basename(os.path.dirname(r))]
+    pick = (menu or runs)[-1] if runs else None
+    return os.path.dirname(pick) if pick else None
 
 
 def main():

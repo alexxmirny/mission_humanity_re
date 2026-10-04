@@ -3,6 +3,7 @@
 // header banner and the stage-E split spec (tracker LIB-ABI, 2026-09-03).
 //
 #include "lockstep/overlay_hoist.h"
+#include "lockstep/turn_engine.h" // fixes(): [net] overlay_dialog_guard
 
 #include "addr/mh_addrs.gen.h"
 #include "addr/mh_structs.gen.h" // the player profile the panel-page hoist indexes
@@ -63,7 +64,31 @@ void outcome_dialog_panel_hoist() {
         (profiles[side].primary_mother_bldg[planet] == 0) ? 1 : 0;
 }
 
-bool overlay_mode_not4() { return game_mode_ref() != 4; }
+namespace {
+
+// U44 -- the stall overlay's own ledger. UI-only, never hashed: whether the screen the overlay code
+// is about to dismiss is one lockstep armed, and the dialog a kick modal displaced.
+struct overlay_ledger {
+    bool ours = false; // the icon / kick modal is lockstep's own, armed and not yet dismissed
+    // latched by overlay_mode_not4() for the dismiss that follows it
+    bool    latch_ours = false;
+    uint8_t latch_mode = 0;
+    struct {
+        bool     valid = false;
+        uint32_t list = 0, dialog = 0, cb = 0, cb_a = 0, cb_b = 0, flags = 0;
+        uint8_t  menu_state = 0;
+    } stash;
+};
+overlay_ledger g_ov;
+
+} // namespace
+
+bool overlay_mode_not4() {
+    g_ov.latch_mode = game_mode_ref();
+    g_ov.latch_ours = g_ov.ours;
+    return game_mode_ref() != 4;
+}
+
 
 bool overlay_mode_is2() { return game_mode_ref() == 2; }
 
@@ -72,21 +97,68 @@ bool overlay_slot_free() {
     return list == 0 || list == wgt_gameplay_hud();
 }
 
+void overlay_show_hoist(bool armed) {
+    if (!mh::lockstep::fixes().overlay_dialog_guard || !armed) return;
+    // A foreign screen is mode 3 with a free list that lockstep did not arm: a dialog (the building
+    // dialog runs with list NULL). Stash its UI state; the show then owns a clean screen.
+    if (game_mode_ref() == 3 && !g_ov.ours && !g_ov.stash.valid) {
+        auto &st                                        = g_ov.stash;
+        st.list                                         = *mh::state::ptr<const uint32_t>(RID_UI_MENU_WIDGET_LIST);
+        st.dialog                                       = *mh::state::ptr<const uint32_t>(RID_UI_ACTIVE_DIALOG);
+        st.cb                                           = *mh::state::ptr<const uint32_t>(RID_UI_MENU_ASYNC_CALLBACK);
+        st.cb_a                                         = *mh::state::ptr<const uint32_t>(RID_UI_MENU_ASYNC_CALLBACK_A);
+        st.cb_b                                         = *mh::state::ptr<const uint32_t>(RID_UI_MENU_ASYNC_CALLBACK_B);
+        st.flags                                        = *mh::state::ptr<const uint32_t>(RID_DLG_STATE_FLAGS);
+        st.menu_state                                   = *mh::state::ptr<const uint8_t>(RID_UI_MENU_STATE);
+        st.valid                                        = true;
+        *mh::state::ptr<uint32_t>(RID_UI_ACTIVE_DIALOG) = 0;
+    }
+    g_ov.ours = true;
+}
+
 void overlay_dismiss_hoist(bool not4) {
     *mh::state::ptr<int32_t>(RID_NET_LOCKSTEP_WAIT_PLAYER_IDX) = -1;
     if (!not4) return;
+    if (mh::lockstep::fixes().overlay_dialog_guard && !g_ov.latch_ours) {
+        // Not lockstep's screen. Hosted, the original has just forced mode 2/3 over it; put the
+        // pre-call mode back. Unhosted nothing wrote, and this is the identity.
+        game_mode_ref() = g_ov.latch_mode;
+        return;
+    }
     const uintptr_t list = widget_list();
     // The fold: LOCKSTEP_SYNC counts as "slot free" because the real arm nulls it before the
     // mode write -- see the header banner's host-arm-independence note.
     const bool free_after =
         list == 0 || list == wgt_gameplay_hud() || list == wgt_lockstep_sync();
     game_mode_ref() = free_after ? 2 : 3;
+    g_ov.ours       = false;
+    if (g_ov.stash.valid) {
+        // Give the player's dialog back exactly as the modal found it. Hosted, the original
+        // dismiss has already nulled A / the list and cleared the flags; unhosted nothing ran.
+        const auto &st                                          = g_ov.stash;
+        *mh::state::ptr<uint32_t>(RID_UI_MENU_WIDGET_LIST)      = st.list;
+        *mh::state::ptr<uint32_t>(RID_UI_ACTIVE_DIALOG)         = st.dialog;
+        *mh::state::ptr<uint32_t>(RID_UI_MENU_ASYNC_CALLBACK)   = st.cb;
+        *mh::state::ptr<uint32_t>(RID_UI_MENU_ASYNC_CALLBACK_A) = st.cb_a;
+        *mh::state::ptr<uint32_t>(RID_UI_MENU_ASYNC_CALLBACK_B) = st.cb_b;
+        *mh::state::ptr<uint32_t>(RID_DLG_STATE_FLAGS)          = st.flags;
+        *mh::state::ptr<uint8_t>(RID_UI_MENU_STATE)             = st.menu_state;
+        game_mode_ref()                                         = 3;
+        g_ov.stash.valid                                        = false;
+    }
 }
 
 void wait_player_hoist(int32_t player_idx, bool armed) {
     *mh::state::ptr<int32_t>(RID_NET_LOCKSTEP_OVERLAY_RESULT)  = -1;
     *mh::state::ptr<int32_t>(RID_NET_LOCKSTEP_WAIT_PLAYER_IDX) = player_idx;
-    if (armed) game_mode_ref() = 3;
+    if (armed) {
+        game_mode_ref() = 3;
+        g_ov.ours       = true;
+    } // U44: the dialog's own frame function is still on the stack on the frame the modal armed (the
+    // stall is detected from inside its redraw) and re-publishes ACTIVE_DIALOG after we nulled it.
+    // This runs on every parked frame, so the stash stays authoritative until the modal is gone.
+    if (mh::lockstep::fixes().overlay_dialog_guard && g_ov.stash.valid)
+        *mh::state::ptr<uint32_t>(RID_UI_ACTIVE_DIALOG) = 0;
 }
 
 int32_t overlay_result() {
@@ -119,6 +191,7 @@ const overlay_hoist_ops &live_overlay_hoist_ops() {
         game_mode_saved,
         game_mode_set,
         outcome_dialog_panel_hoist,
+        overlay_show_hoist,
     };
     return ops;
 }

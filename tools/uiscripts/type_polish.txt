@@ -18,6 +18,12 @@
 # Assertion is on the BUFFER for type_cyrillic's reason: the stock EN fonts have no L-stroke or
 # z-acute either, so a frame shows the F2 guard's substitute whether the bytes are right or wrong.
 
+# mp:MP-LANG (2026-09-29): the NAME field now refuses the three accented letters and keeps the 'd'
+# (names are [A-Za-z0-9]; see type_cyrillic.txt). Expected buffer: "host" + 64 = "hostd", where it held
+# host + a3 f3 64 9f. The AltGr half of this scenario still matters -- if the AltGr state latched, the
+# 'd' would come out as the layout's AltGr-d and be refused too -- and so does the codepage pin: the
+# codec still has to RESOLVE each letter before H1 can judge it. `t_pol` re-blessed with the field.
+
 settled value:110
 clickv 110
 present Player name
@@ -27,8 +33,8 @@ clickl Your name
 
 layout 00000415
 type Łódź
-field name hex:686f7374a3f3649f
+field name hex:686f737464
 capture t_pol
 layout default
-log F3: typed 4 Polish characters on the PL layout -> CP1250 bytes a3 f3 64 9f
+log MP-LANG: typed 4 Polish characters on the PL layout into the NAME field -> 3 rejected, 'd' kept
 end

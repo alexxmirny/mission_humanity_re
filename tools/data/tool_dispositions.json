@@ -21,6 +21,11 @@
       "why": "the `how much is OURS` derivation; imported at module level by gen_libmh_calls.py, gen_hostapi_callers.py, gen_region_accessors.py and gen_libmh_rebind.py -- all keep gates the public lint runs",
       "evidence": "fork F5M S4a (2026-09-16): re-classed from archive when the archive-class withhold rule was drawn -- a keep gate IMPORTS this module, so the public tree cannot run its own lint without it. Measured by import closure over the keep set; the publish-ledger closure arm cannot see this class of edge, because it scans path-form strings and `import _cstrip` has none."
     },
+    "_rundir.py": {
+      "class": "keep",
+      "why": "the per-run log directory NAMES mh.dll writes (SES1 + SES8): parse, classify and time-order them across generations; imported by the keep runners ui_test.py, test_ui.py, mp_run.py, det_arms.py, tact_test.py and friends",
+      "evidence": "SES8 (2026-09-29): the directory stamp became YYYY-MM-DDTHH-MM-SSZ and a raw name sort stopped being a time sort across a lane's SES1 history, so the ordering rule moved into one module rather than twelve copies of it"
+    },
     "_subsys.py": {
       "class": "keep",
       "why": "the subsystem taxonomy; imported at module level by gen_state_registry.py and gen_region_accessors.py, both keep gates the public lint runs",
@@ -104,6 +109,11 @@
       "why": "mp:X2g: the info_avi_absent row's cross-peer post_check -- with the clip made absent ([net] info_avi_test_absent=*) the host logs the seam armed and one `clip missing` line, its walk opens the no-video info screen and closes it with Esc (a modal would stop the walk), the pair stays IDENTICAL, and neither peer's lockstep clock stands still over 1 s (the rc4 CD prompt froze it ~4 s)",
       "evidence": "invoked by tools/test_ui.py's info_avi_absent TESTS entry (post_check, post_check_peers, post_check_session) and tools/lint_repo.py (--selftest)"
     },
+    "check_u47_info_joiner.py": {
+      "class": "keep",
+      "why": "mp:U47: the u47_info_joiner row's cross-peer post_check -- the JOINER holds the info panel (game mode 4) >= 10 s; the joiner keeps advancing and receiving, the host logs no new stall episode / wait icon over the window, and the client driver never ticks after match entry (rc5 41db0de4 drained and discarded lockstep packets there, G327)",
+      "evidence": "invoked by tools/uiscripts/registry.yaml's u47_info_joiner row (post_check, post_check_peers, post_check_session) and tools/lint_repo.py (--selftest)"
+    },
     "check_pioneer_refill.py": {
       "class": "keep",
       "why": "mp:D37a: the pioneer re-landing rows' cross-peer post_check -- with the fix (the mh.dll seam in configuration (1), libmh's completion_dispatch body in (2)) both peers log a re-landing line with no refill, the client's showing retail would have refilled, and the pair stays IDENTICAL with the in-band watch clean; with [net] pioneer_refill_fix=0 / [config] mode=original the client refills the host's pioneer, p0_ai_econ/player_resources diverge and never heal, and the watch logs *** DESYNC",
@@ -113,6 +123,11 @@
       "class": "keep",
       "why": "mp:SES3/SES3c (tooling:TL-SUITE-SPLICE-CAM) -- reads the camera latches on the [input] mouse_trace line; the cam_latch scenario's post-check (two --segment verdicts off one boot) and the reader a player's stuck-scroll log is judged with",
       "evidence": "invoked by tools/test_ui.py (TESTS post_check, cam_latch); its own --selftest plants a log per outcome"
+    },
+    "check_freeze_watchdog.py": {
+      "class": "keep",
+      "why": "mp:P17 -- reads the main-thread frame watchdog's [freeze] line set and the focus tap's [focus] lines out of mh_net.log: the freeze_watchdog / freeze_watchdog_off / alttab_d3d11 scenarios' cross-peer post-check, and the reader a player report's freeze is judged with",
+      "evidence": "invoked by tools/uiscripts/registry.yaml's freeze_watchdog, freeze_watchdog_off and alttab_d3d11 rows (post_check, post_check_peers, post_check_session); its own --selftest plants a log per outcome"
     },
     "check_cancel_task.py": {
       "class": "keep",
@@ -295,6 +310,51 @@
       "why": "mp:U19b: the `--u19b-quit3` determinism shape's post-check (the U19 3-player clean-quit clause no 2-peer scenario or AI seat can seat) -- the quitter's own U17 self-removal broadcast is on the wire, NEITHER survivor's match ends (no on_gameover at all) or learns of the departure via the B2 fast-drop catch, and mp_analyze.py over both survivors' logs prints the exact 'ALL PAIRS IDENTICAL (determinism-clean)' verdict over enough overlapping hashed steps to actually cover the post-drop portion -- reading mp_analyze's PRINTED verdict rather than its exit code, which is 0 even on a DESYNC",
       "evidence": "invoked by tools/test_ui.py's run_u19b_quit3 (--u19b-quit3) and tools/lint_repo.py (--selftest)"
     },
+    "check_u53_elim.py": {
+      "class": "keep",
+      "why": "mp:U53 phase 1: the `--u53-host-elim` / `--u53-host-ok` / `--u53-host-exit` / `--u53-client-elim` determinism shapes' report -- where the force-kill landed, each peer's last hashed step and the steps it simulated past the elimination, the lockstep-log facts (frozen horizon, stall column, longest committed freeze), the in-band desync watch, and mp_analyze's survivor-vs-survivor and victim-vs-survivor verdicts (read from its printed text, never its exit code)",
+      "evidence": "invoked by tools/det_arms.py's run_u53 (--u53-host-elim, --u53-host-ok, --u53-host-exit, --u53-client-elim)"
+    },
+    "check_u54_spectate.py": {
+      "class": "keep",
+      "why": "mp:U54 (spectate after defeat): the `--u54-*` determinism shapes' verdict -- the defeated peer became a spectator (dialog widened, Continue answered or Exit reached the menu), every peer's per-step hash IDENTICAL to the survivors' for the whole match, no CTL_PLAYER_LEFT for it, a spectator-owned order dropped, the team-win arm's VICTORY outcome, and the negative arm's today's-defeat-flow",
+      "evidence": "invoked by tools/det_arms.py's run_u53 (--u54-client-spec, --u54-host-spec, --u54-client-exit, --u54-client-leave, --u54-host-exit, --u54-host-leave, --u54-neg, --u54-probe, --u54-team)"
+    },
+    "check_u58_gs2.py": {
+      "class": "keep",
+      "why": "mp:U58: the `--u58-gs2-3peer` determinism shape's verdict -- in a 3-peer star with client 2 sim-fenced (data-silent, transport up), BOTH the host and client 1 log exactly one GS2 drop of slot 2, both survivors parked at the same clock, and the survivors' per-step hashes are identical over the live window",
+      "evidence": "invoked by tools/det_arms.py's run_u58 (--u58-gs2-3peer)"
+    },
+    "check_u61_mesh.py": {
+      "class": "keep",
+      "why": "mp:U61 (HM-M3): the `--u61-mesh` / `--u61-relay` determinism shapes' verdict -- in a real 3-peer match the host-migration mesh came up: every peer's mh_net.log carries the SAME first succession epoch / hub / tier / ranking / digest within 5 s, the matrix covers the pair, the ack round completed, no ranking mismatch and no bad probe or frame; the direct arm shows the two clients really probed each other (first echo lines, probe counters) and no relay room, the relay arm shows the relay-leg tier with relay-estimated pairs, a leg for both clients, a pre-minted room per candidate and NO direct probe",
+      "evidence": "invoked by tools/det_arms.py's run_u61 (--u61-mesh, --u61-relay)"
+    },
+    "check_u63_failover.py": {
+      "class": "keep",
+      "why": "mp:U63 (HM-M5): the `--u63-crash` (and `--u53-host-exit` without --u55-graceful) / `--u63-neg` determinism shapes' verdict -- the hub's PROCESS is killed (TerminateProcess): both survivors log the suspicion, the corroboration and the SAME `hub elected <id> epoch <e>` line, carry the crash-failover notice, play >= 1000 steps past the crash ALL PAIRS IDENTICAL with no game-clock stall over 6 s and no silence-timer drop of a survivor; with `[net] hub_migration=0` (negative arm) nothing fails over and the survivors reproduce U55's ~58 s outcome-8 timeline.",
+      "evidence": "invoked by tools/det_arms.py's run_u53 (the u63-* arms)"
+    },
+    "check_u64_failure.py": {
+      "class": "keep",
+      "why": "mp:U64 (HM-M6): the `--u64 <arm>` determinism shapes' verdict -- the 4-peer host-migration failure arms (min-cost election, the elected hub lost too, double loss as a Q1 minority, a live hub partitioned by a shim blackhole, the old host's traffic after the heal): the same `hub elected` line and ranking-conformant winner on every survivor, ALL PAIRS IDENTICAL >= 1000 steps past the last incident, no game-clock stall over 6 s, one PARKED removal per dead peer, and a minority that ends with outcome 8.",
+      "evidence": "invoked by tools/u64_arms.py's run (the --u64 arms of tools/det_arms.py)"
+    },
+    "u64_arms.py": {
+      "class": "keep",
+      "why": "mp:U64 (HM-M6): the runner half of the 4-peer failure arms (`det_arms.py --determinism --u64 base4|elect4|newhub|double|partition|heal [--u64-relay] [--u53-config1]`) -- provisions the det3 + det4 local lanes, builds the ui_test argv (per-client exit knobs, the mesh_test_delay_ms probe delay, the shim partition triggers) and hands the pulled logs to check_u64_failure.py.",
+      "evidence": "invoked by tools/det_arms.py (the --u64 arms)"
+    },
+    "check_u62_handover.py": {
+      "class": "keep",
+      "why": "mp:U62 (HM-M4): the `--u62-host-quit` / `--u62-host-exit` / `--u62-neg` determinism shapes' verdict -- after a planned handover of the transport hub the two survivors log the hub change, play >= 1000 steps past the leaver ALL PAIRS IDENTICAL with no game-clock stall over 1 s; with `[net] hub_migration=0` (negative arm) nothing hands over and the survivors reproduce U55's ~58 s outcome-8 timeline.",
+      "evidence": "invoked by tools/det_arms.py's run_u53 (the u62-* arms)"
+    },
+    "check_u52_teams.py": {
+      "class": "keep",
+      "why": "mp:U52: the `--u52-team` / `--u52-ffa` 3-peer shapes' verdict -- the lobby TEAM/MODE selectors become relations: the step-1 8x8 relation + AI-mirror tables on every peer match the seed rule and are byte-identical across peers, a diplomacy order is a no-op in Team mode and applies in FFA, an ALLY pair never auto-engages while an ENEMY pair (the positive control) does, and the last alliance standing wins (outcome 5) in Team mode only",
+      "evidence": "invoked by tools/det_arms.py's run_u52 (--u52-team, --u52-ffa)"
+    },
     "check_relay_leg.py": {
       "class": "keep",
       "why": "mp:R7a: the positive twin of check_direct_dial -- the relay_browse_local scenario's claim that a first-browser join really goes THROUGH the relay (a `udp relay leg UP` and a `udp path` line are present, and the relay carried the session), so a regression that silently made the first-browser path direct cannot pass.",
@@ -314,6 +374,12 @@
       "class": "keep",
       "why": "mp:R6: the relayed scenarios' claim that a HOST registers under a MINTED room (never its `[net] port`), that hosts in one run hold distinct rooms, that every client dialled a minted one through the directory, and that the relay refused no registration -- read off every peer's mh_net.log (`net: udp relay -- host room`, `leg UP ... room=`) and the relay's counters line, since a frame cannot show a room code.",
       "evidence": "invoked by tools/lint_repo.py (--selftest, the planted-log negatives) and as the relay_match / relay_browse scenarios' post_check in tools/test_ui.py"
+    },
+    "check_rehome_relay.py": {
+      "class": "keep",
+      "why": "mp:U60 (HM-M2): the relay half of the rehome done_when -- three relayed peers are three PROCESSES of `net_selftest.exe udprehomerelaytest` (the relay tunnel is a process-wide singleton), so a conductor spawns the REAL mh_relay and the peers, kills the old host with its relay registration still live, re-homes the survivors into a pre-minted room (one before the successor has registered, so the relay answers `no_host` and the tunnel retries), and asserts from the relay's own log (old host never dropped, >= 1 no_host, exactly one rehomed old->new, a ROLE_HOST registration in the new room) and the peers' ledgers (reconcile done, identical per-origin sequences).",
+      "evidence": "no machine invoker -- run by hand after a change to the rehome/tunnel code (cited by src/mh_dll/mh_nettest/udp_rehome_selftest.cpp, the role code it drives); mp:U60's relay arm until M8 registers the relay arms in tools/run_gate.py",
+      "hand_run": true
     },
     "check_relay_stale.py": {
       "class": "keep",
@@ -400,6 +466,16 @@
       "class": "keep",
       "why": "mp:U39: the u39_diplomacy_echo UI scenario's cross-peer post_check (the NEGATIVE arm) -- with the retail relation echo kept ([net] diplo_echo_nop=0) the pair's state hash must differ for a bounded window (1..16 steps, 4 measured) with `players` among the diverging regions at the first mismatch, and re-converge by the last common step; proves u39_diplomacy is green for the right reason",
       "evidence": "invoked by tools/test_ui.py's u39_diplomacy_echo TESTS entry (post_check, post_check_peers) and tools/lint_repo.py (--selftest)"
+    },
+    "check_u45_diplo.py": {
+      "class": "keep",
+      "why": "mp:U45: the u45_diplo_control / u45_diplo_dedup_retail UI scenarios' cross-peer post_check -- reads each peer's recorded order stream (order_mode=1): with `[net] diplo_order_dedup_fix=1` a diplomacy Apply that changes relation AND control leaves BOTH 0xf4 and 0xf5 on every peer; with =0 (retail dedup) only 0xf5 survives, which proves the ship arm is green for the right reason",
+      "evidence": "invoked by tools/test_ui.py's u45_* TESTS entries (post_check, post_check_peers) and tools/lint_repo.py (--selftest)"
+    },
+    "check_u49_undock.py": {
+      "class": "keep",
+      "why": "mp:U49: the u49_undock_double / u49_undock_double_retail UI scenarios' cross-peer post_check -- reads the harness fixture's `; U49` probe lines (two 0x20 undock orders 7 steps apart for one docked soldier, then a MOVE): with `[net] undock_reentry_fix=1` the unit walks out, the door mutex returns to 0 and the move is consumed; with =0 (retail dispatch) it sits in EXIT_WAIT holding the door itself and the move is never consumed",
+      "evidence": "invoked by tools/test_ui.py's u49_* TESTS entries (post_check, post_check_peers) and tools/lint_repo.py (--selftest)"
     },
     "classify_reg_preservation.py": {
       "class": "archive",
@@ -1076,6 +1152,17 @@
       "why": "one-command N-peer MP test runner",
       "evidence": "used by hostlock.py, mp_prep_manual.py, mp_run_sweep.py, mp_step_sweep.py, provision_rig.py, test_ui.py, ui_test.py"
     },
+    "rig_parallel.py": {
+      "class": "keep",
+      "why": "runs several independent 3-peer det_arms rig arms N-wide (all-local lane slots, one rig lease, one verdict table)",
+      "evidence": "no machine invoker -- run by a human batching rig arms (tooling:TL-RIG-PARALLEL); drives det_arms.py --local-peers --par-slot",
+      "hand_run": true
+    },
+    "rig_phases.py": {
+      "class": "keep",
+      "why": "per-phase wall time of a rig arm (provision/boot/menu walk/lobby/match/pull/analyze)",
+      "evidence": "used by det_arms.py, ui_test.py"
+    },
     "mp_run_sweep.py": {
       "class": "keep",
       "why": "MP pacing-knob combination sweep",
@@ -1290,6 +1377,11 @@
       "why": "tooling:TL-SUITE-SPLIT: the all-AI soak split out of test_ui.py -- an N-way AI match through the real menu with run-shape rules and the per-step golden hash trajectory",
       "evidence": "invoked by tools/coverage.py (the collector's inner soak) and tools/provision_rig.py (--validate); test_ui.py forwards its old --soak flag here"
     },
+    "state_record.py": {
+      "class": "keep",
+      "why": "mp:D42: reads mh_match_state.bin/mh_desync_state.bin (docs/state-record.md v1) -- info/at/diff over the state recording, naming the first diverging step/region/offset and, via the generated struct headers, the record + field",
+      "evidence": "invoked by tools/lint_repo.py"
+    },
     "sweep_saves.py": {
       "class": "archive",
       "why": "AI-state save indexer for migration scenario coverage",
@@ -1375,6 +1467,11 @@
       "why": "tooling:TL-SUITE-LOADRED: validates tools/data/load_red_allow.json (the solo-rerun allow-list) -- refuses a malformed entry or one whose expiry has passed, so an accepted load-flaky row cannot silently stay accepted forever",
       "evidence": "invoked by tools/test_ui.py (apply_load_rerun's allow_check) and tools/lint_repo.py"
     },
+    "lint_player_strings.py": {
+      "class": "keep",
+      "why": "mods:LANG4: refuses a player-visible mh.dll literal that bypasses the string table (src/mh_dll/mh/ui/player_strings.def) -- a wide literal anywhere, or a narrow one built into text in a display module -- and checks every src/formats/mh_strings/*.txt pack file against the table",
+      "evidence": "invoked by tools/lint_repo.py"
+    },
     "lint_ui_sync.py": {
       "class": "keep",
       "why": "tooling:TL-SUITE-LOADRED (b): refuses a uiscript step or a registry shim_timeline row whose only synchronization is a clock offset/sleep instead of a state predicate, a shim_triggers log-line gate, or a simstep fence (TL-P9W-TRIGGER's fixed t+50s blackhole is the motivating, still-open offender)",
@@ -1384,6 +1481,11 @@
       "class": "keep",
       "why": "tooling:TL-SUITE-COUNTERS (docs/dead-ends.md G101): refuses a g_* counter whose only log print is inside a shutdown-path function or message -- a rig run is always KILLED, so that print never runs. Validates tools/data/shutdown_counter_allow.json's own shape too.",
       "evidence": "invoked by tools/lint_repo.py"
+    },
+    "agent_time.py": {
+      "class": "archive",
+      "why": "conductor tooling: splits a subagent transcript's wall time into model vs tool time per activity class (iteration-speed measurement, 2026-10-03)",
+      "evidence": "hand-run by the conductor; reads ~/.claude transcripts, no machine invoker"
     }
   }
 }

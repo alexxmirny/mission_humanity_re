@@ -32,6 +32,8 @@ enum WireFlag : std::uint16_t {
     FLAG_ANNOUNCE     = 7,   // control: host -> all "player <name> joined/left the lobby" (U16 announce text; NOT a game datagram)
     FLAG_PING         = 8,   // control: link keepalive, either direction, empty payload (R-live; NOT a game datagram)
     FLAG_HASH         = 9,   // control: a peer's (step, state-hash, per-region hashes) desync sample (D21; NOT a game datagram)
+    FLAG_RECONCILE    = 10,  // control: the exactly-once layer's hub-change reconcile (mp:U60/HM-M2; UDP only, consumed inside the endpoint, NOT a game datagram)
+    FLAG_MESH         = 11,  // control: the host-migration mesh -- candidate brokering, RTT rows, succession epochs + acks (mp:U61/HM-M3; UDP only, consumed inside the endpoint, NOT a game datagram)
 };
 // Receiver rule: deliver ONLY FLAG_DATA to the game, and ignore any flag you do not recognise. The
 // tempting "default: treat as data" turns every control frame added later into garbage in an older

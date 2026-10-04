@@ -53,7 +53,17 @@ bool install_peer_clear_fix();           // host-Start clear-loop fix (AI-slot c
 bool install_lobby_slide_takeover();     // U3b/U29: settle the lobby slide instantly
 bool install_screen_slide_observer();    // U38: the second slide loop, observe + dedup
 bool install_remove_player_slot_guard(); // N2: player 0 is the host and is never removed
-bool patch_browser_row_format();         // S7: the browser row's "occ/cap" count format
+bool install_slot_rows();                // mp:U50: replace llm_lobby_build_slot_widgets (6 widgets per row)
+bool install_lobby_open_reset();         // mp:U52: a host's new lobby opens with no teams and FFA mode
+
+// mp:U50: slot `slot`'s PING label widget (llm_ui_widget*), or nullptr when that row is not built.
+void *lobby_slot_ping_widget(int slot);
+
+// mp:U51: per-lobby-frame refresh of the TEAM spinners and the MODE selector (values from the slot
+// records, visibility/enable by role and slot status; the host also zeroes the team of an OPEN/CLOSED
+// slot). Called by the lobby-dispatch seam, both roles. No-op off the lobby screen.
+void lobby_team_tick();
+bool patch_browser_row_format(); // S7: the browser row's "occ/cap" count format
 
 // ---- per-frame / event entry points, called by net-owned readers --------------------------------
 

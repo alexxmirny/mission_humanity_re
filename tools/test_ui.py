@@ -42,6 +42,7 @@ import threading
 import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import _rundir  # noqa: E402  SES8: run-dir names (the newest PROCESS dir across SES1/SES8)
 import lane_alloc  # noqa: E402  fork F4H: the ONE place a lane NUMBER comes from
 import ui_registry  # noqa: E402  TL-SUITE-REGDATA: the scenario registries (registry.yaml)
 import make_lane  # noqa: E402  LANE_ROOT + the lane builder used by --local
@@ -409,7 +410,7 @@ def walk_watchdog_selftest():
 # every `"shim": True` row into ONE serial worker (1536 s of a 1731 s suite wall, 2026-09-23 gate).
 # Derived from the row's shim port exactly as that is derived from its index (base + ti), in its own
 # band; lane_alloc.py --check proves no two registry rows can land on one port across all four bands.
-LOCAL_SHIM_CTL_PORT_BASE = 6900
+LOCAL_SHIM_CTL_PORT_BASE = 10600  # was 6900 until TL-BANDS200 (2026-09-29)
 
 
 def shim_control_port(shim_port):
@@ -778,6 +779,9 @@ def build_argv(test, vms, suite, plan=None, cfg=None, local=False):
         deploy_save=test.get("deploy_save"),
         harness_extra=test.get("harness_extra"),
         harness_extra_host=test.get("harness_extra_host"),  # mp:X1b -- deliberately asymmetric
+        harness_extra_client=test.get(
+            "harness_extra_client"
+        ),  # mp:X3c -- the forced desync pokes the client
         net_extra_client=test.get("net_extra_client"),  # mp:R7a
         ship_pacing=bool(test.get("ship_pacing")),
         force_headless=bool(test.get("ship_pacing")),
@@ -920,6 +924,7 @@ MODE_FLAGS = (
     ("--check-budgets", None),
     ("--classify-selftest", None),
     ("--loadred-selftest", None),
+    ("--release-tier-selftest", None),
     ("--sp-determinism", "det_arms"),
     ("--tact-equiv", "tact_test"),
     ("--tact-verify", "tact_test"),
@@ -985,6 +990,11 @@ def build_parser():
         "synthetic run dirs -- no rig",
     )
     ap.add_argument(
+        "--release-tier-selftest",
+        action="store_true",
+        help="offline: a `tier: release` row is skipped bare, run with --release-tier, run when named",
+    )
+    ap.add_argument(
         "--loadred-selftest",
         action="store_true",
         help="tooling:TL-SUITE-LOADRED: apply_load_rerun's own negative cases against a fake "
@@ -1009,6 +1019,12 @@ def build_parser():
         "--only", dest="only_flag", action="append", default=[], help="alias for a positional name"
     )
     ap.add_argument("--list", action="store_true", help="list the tests and exit")
+    ap.add_argument(
+        "--release-tier",
+        action="store_true",
+        help="also run the rows marked `tier: release` (fix-off negatives, P17 watchdog/alt-tab, "
+        "retail-twin rows): a bare run skips them, a row named on the command line always runs",
+    )
     ap.add_argument(
         "--plant-desync",
         action="store_true",
@@ -1110,6 +1126,55 @@ def build_parser():
     return ap
 
 
+def release_tier_filter(tests, include_release):
+    """The bare-run half of `tier: release`: drop the release-tier rows unless asked, and say how
+    many were dropped (the count is the visibility -- a silently shrunk suite is the trap)."""
+    skipped = [t["name"] for t in tests if t.get("tier") == "release"]
+    if include_release or not skipped:
+        return tests
+    print(
+        "[suite] release tier: %d row(s) skipped (run with --release-tier, or name them): %s"
+        % (len(skipped), ", ".join(skipped))
+    )
+    return [t for t in tests if t.get("tier") != "release"]
+
+
+def release_tier_selftest():
+    """`--release-tier-selftest`: a release-tier row is skipped bare, run with the flag, run named."""
+    rows = [{"name": "a"}, {"name": "r", "tier": "release"}, {"name": "o", "tier": "other"}]
+    names = lambda ts: [t["name"] for t in ts]  # noqa: E731
+    ap = argparse.ArgumentParser()
+    ap.add_argument("only", nargs="*")
+    saved = globals()["TESTS"]
+    globals()["TESTS"] = rows
+    try:
+        cases = []
+        for argv, want in (
+            ([], ["a", "o"]),
+            (["--release-tier"], ["a", "r", "o"]),
+            (["r"], ["r"]),
+        ):
+            a = argparse.Namespace(
+                only=[x for x in argv if not x.startswith("-")],
+                only_flag=[],
+                solo=False,
+                release_tier="--release-tier" in argv,
+            )
+            import contextlib  # noqa: PLC0415
+            import io  # noqa: PLC0415
+
+            with contextlib.redirect_stdout(io.StringIO()) as out:
+                got = names(select_tests(ap, a)[0])
+            cases.append((argv, got == want, "skipped" in out.getvalue()))
+    finally:
+        globals()["TESTS"] = saved
+    ok = all(c[1] for c in cases) and cases[0][2] and not cases[1][2] and not cases[2][2]
+    for argv, good, _ in cases:
+        print("  %-18s %s" % (" ".join(argv) or "(bare)", "ok" if good else "XX"))
+    print("release-tier-selftest: %s" % ("PASS" if ok else "FAIL"))
+    return 0 if ok else 1
+
+
 def select_tests(ap, args):
     """(tests to run, the names asked for) -- the registry filtered by --only / --solo / optin."""
     wanted = set(args.only) | set(args.only_flag)
@@ -1121,10 +1186,14 @@ def select_tests(ap, args):
     # alternatives are both worse: leaving it in the default suite reds the gate for everyone on a
     # known, tracked cause, and not registering it at all loses the scripts, the lanes and the
     # baselines. Named with --only it runs exactly as before. Drop the key when its cause is fixed.
+    #
+    # `tier: release` (user 2026-10-01, option 1): the gate-cost valve. A bare run skips these rows
+    # unless --release-tier is given (run_gate.py --release passes it); naming one always runs it.
     if wanted:
         tests = [t for t in TESTS if t["name"] in wanted]
     else:
         tests = [t for t in TESTS if not t.get("optin")]
+        tests = release_tier_filter(tests, args.release_tier)
     if args.solo:
         tests = [t for t in tests if t["kind"] == "solo"]
     if wanted:
@@ -1139,7 +1208,8 @@ def print_list():
     print("UI tests (%d):" % len(TESTS))
     for t in TESTS:
         peers = "solo" if t["kind"] == "solo" else "host+%d client(s)" % len(t["clients"])
-        print("  %-14s [%s]  %s" % (t["name"], peers, t["desc"]))
+        tier = "  {release}" if t.get("tier") == "release" else ""
+        print("  %-14s [%s]%s  %s" % (t["name"], peers, tier, t["desc"]))
     print("  (special) determinism  UI-path lockstep hash check -- `--determinism [--steps N]`")
     print(
         "Tactical journal scenarios (%d) -- `--tact-suite`, NOT in the default suite:"
@@ -1194,7 +1264,11 @@ def run_rows(args, cfg, tests, suite, plan, precondition_skip, jobs):
             return found  # --no-local: the logs are on the VMs, not reachable from here
         _, _, lane_names = plan.get(test["name"], (None, None, []))
         for lane in lane_names:
-            logs = sorted(
+            # The PROCESS directory's log: install-time lines are written at boot, before any
+            # session (a lobby's, or since SES8 a single-player match's) could outrank it by mtime.
+            proc = _rundir.newest_process_dir(os.path.join(make_lane.LANE_ROOT, lane, "logs"))
+            logs = [os.path.join(proc, "mh_net.log")] if proc else []
+            logs = [p for p in logs if os.path.isfile(p)] or sorted(
                 glob.glob(os.path.join(make_lane.LANE_ROOT, lane, "logs", "*", "mh_net.log")),
                 key=os.path.getmtime,
             )
@@ -1395,6 +1469,9 @@ def run_rows(args, cfg, tests, suite, plan, precondition_skip, jobs):
             if jobs == 1:
                 print(msg)
             return t["name"], "SKIP", head + "\n" + msg
+        t = ui_registry.with_suite_hash_kind(
+            t
+        )  # tooling:TL-SUITE-HASHCOST: kind 2 unless the row says
         # The wrapper kill-timeout must outlast the test's OWN wall-clock budget, or it kills the run
         # before ui_test can report -- and a killed run has no verdict, only a missing one.
         t0 = time.time()
@@ -2002,7 +2079,13 @@ def run_suite(args, cfg, tests, wanted):
             "provisioning %d local lane set(s) under %s ..."
             % (len(provisionable), make_lane.LANE_ROOT)
         )
-        plan = provision_lanes(provisionable, headless=suite["headless"], stock_exe=cfg.stock_exe)
+        plan = provision_lanes(
+            provisionable,
+            headless=suite["headless"],
+            stock_exe=cfg.stock_exe,
+            backend=cfg.backend,
+            input_backend=cfg.input_backend,
+        )
         if plan is None:
             return 1
         suite["timeout_frames"] = LOCAL_TIMEOUT_FRAMES
@@ -2050,6 +2133,8 @@ def main(argv=None):
         return classify_selftest()
     if args.loadred_selftest:
         return loadred_selftest()
+    if args.release_tier_selftest:
+        return release_tier_selftest()
     if args.walk_watchdog_selftest:
         return walk_watchdog_selftest()
     if args.selftest_refusals:
@@ -2065,6 +2150,7 @@ OFFLINE_FLAGS = {
     "--check-budgets",
     "--classify-selftest",
     "--loadred-selftest",
+    "--release-tier-selftest",
     "--walk-watchdog-selftest",  # tooling:TL-HARN19 -- a fake child process, no rig
     "--selftest-refusals",
     "--det-selftest",
@@ -2074,6 +2160,14 @@ OFFLINE_FLAGS = {
 if __name__ == "__main__":
     import hostlock
 
+    # A scenario that prints non-ASCII killed a redirected run (cp1252 stdout) with UnicodeEncodeError
+    # at 29/95 on 2026-09-28. Fix it here and for every child ui_test.py, which inherits the env.
+    os.environ.setdefault("PYTHONIOENCODING", "utf-8")
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+        sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+    except (AttributeError, ValueError):
+        pass
     if set(sys.argv[1:]) & OFFLINE_FLAGS:
         raise SystemExit(main())
     raise SystemExit(hostlock.run_rig_tool(main, "test_ui"))

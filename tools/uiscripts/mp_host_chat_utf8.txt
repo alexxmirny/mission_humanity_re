@@ -1,0 +1,70 @@
+# mp:MP-LANG -- TWO-PEER in-game chat across two DIFFERENT codepages, both directions, three scripts.
+#
+# The claim (tracker mp:MP-LANG done_when): chat no longer depends on any codepage. This peer (the
+# host) pins [input] codepage=1251, the client pins 1250 -- two codepages that disagree on every byte
+# above 0x7F, which under F3 could only have played together by one ADOPTING the other's and losing
+# the other's letters. Here each types a line mixing Cyrillic, Polish and Latin -- letters NEITHER
+# codepage alone can hold -- and each asserts the OTHER's line arrived as the right code points and
+# captures it drawn (merged fonts: the lane is built from MH_FONT_MERGE_DIR, like chat_glyphs).
+#
+# AND THIS PEER RUNS THE RU LANGUAGE PACK (`[lang] pack=ru`, mods:LANG1): its menus are Russian (the
+# walk below is chat_glyphs_ru's, labels matched as UTF-16), its resource text is the pack's, and its
+# fonts are the pack's merged RU fonts -- while the client runs the stock EN pack on the merged EN
+# install. So the line crosses a PACK boundary as well as a codepage one, and neither matters.
+#
+# This half: walk to the match (mp_host_chat_glyphs_ru.txt's walk), type "Privet Lodz ok" written
+# properly -- RU layout for the Cyrillic, PL (Programmers, AltGr) for the Polish, US for the Latin --
+# assert the chat line holds its UTF-8 bytes, send it, then wait for the client's reply and assert +
+# capture THAT.
+#
+# Lanes: host from the polygon (lang/ru), client from MH_FONT_MERGE_DIR (registry `lane_src_client`).
+# Runner: ui_test.py --host mp_host_chat_utf8.txt --client <ip>:mp_client_chat_utf8.txt
+
+settled value:110
+clickv 110
+present Имя игрока
+settled Ok
+clickl Ok
+settled Создать
+clickl Создать
+present Имя игры
+settled Ok
+clickl Ok
+present Доступные карты
+settled Ok
+clickl Ok
+
+present Игроки в сети
+peers 1
+awaitsignal lobby
+enabled Начать
+settled Начать
+capture h_lobby
+clickl Начать
+
+absent Игроки в сети
+gamemode 2
+gameclock 6000
+
+# Open the line, type the three scripts. The spaces are scancode 0x39 so no layout owns them.
+key 0x1c
+layout 00000419
+type Привет
+key 0x39
+layout 00000415
+type Łódź
+key 0x39
+layout default
+type ok
+# 23 UTF-8 bytes: d09f d180 d0b8 d0b2 d0b5 d182 | 20 | c581 c3b3 64 c5ba | 20 | 6f 6b. Read BEFORE the
+# submit -- llm_chat_history_push clears the line.
+field chat hex:d09fd180d0b8d0b2d0b5d18220c581c3b364c5ba206f6b
+key 0x1c
+signal hostsent
+
+# The client's reply, "Zolw Mir hi" written properly (Polish + Cyrillic + Latin), as code points.
+awaitsignal clientsent
+wmsg hex:7b01f3004201770020001c0438044004200068006900
+capture h1_client_line
+log MP-LANG HOST: sent a mixed Cyrillic/Polish/Latin UTF-8 line under cp1251 and received the client's under cp1250
+end

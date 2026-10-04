@@ -13,8 +13,20 @@ The tool checks that off the session.json files and refuses otherwise, by name.
 
 HOW. A per-tree solo lane (the ui_test `solo=` machinery), the three inputs copied beside mh.exe as
 mh_orders.bin / mh_clock.bin / mh_harness_seed.bin, and a generated walk: host a network game on
-the recorded MAP (session.json `map`, picked by row in "Available maps"), seat one computer
-opponent, Start -- sp_det.txt's walk with the map row added. The harness then runs the replay
+the recorded MAP (session.json `map`, picked by row in "Available maps"), seat the RECORDED ROSTER,
+Start -- sp_det.txt's walk with the map row added.
+
+THE ROSTER (tooling:TL-REPLAY-ROSTER). The walk seats every occupied lobby slot of the recording, read
+from the SEED's `players` region (the recording's own Players[] -- session.json `roster` lists only the
+humans and its slot numbers have disagreed with the seed, so it is a cross-check, never the source):
+controller_flags +0x06 bit 2 = a network human, 0x0b = a computer, 0 = nothing. Slot 0 is the replay
+host. Every other occupied slot gets a lobby AI row at its OWN index (rows 1.. at y=115+17*i), each
+gated on `occ`: a recorded AI is the real thing, a recorded human is a placeholder the seed overwrites
+(its flags are the recording's, so the replay treats it as network-controlled; the shape the 2-peer
+oracle always had at slot 1). A computer's race is set with `pokerace`; colour has no lobby hook and
+the seed carries it. WHY: the AI's private (unhashed) state is built at session start from the LOBBY
+roster; one AI at slot 1 left a 3-human + AI-at-3 recording with player 3 not an established AI and a
+divergence at match step 2. A seed that cannot be parsed falls back to the old one-computer walk. The harness then runs the replay
 contract (the LIB-REF one, tools/fixture_replay.py REPLAY_FLAGS, plus the seed inject):
 
     seed_step=1 seed_mode=1      the match's step-1 state over every hash region, pre-body
@@ -45,6 +57,12 @@ carry. IDENTICAL, or the FIRST diverging step plus the non-excluded regions that
 both logs carry `R` lines (the rig does; a player's region_hash_step=0 log does not, and then the
 first step is all the tool can name). Exit 0 = IDENTICAL over >= --min-steps common steps.
 
+BYTE-EXACT, IN ADDITION (mp:D42). When BOTH the recording and the replay lane carry a state
+recording (`[desync] state_record=1` in `mh_net.ini` on each side -> `mh_match_state.bin` in the
+match folder), `tools/state_record.py`'s `first_diff` judges them byte-exactly and the result prints
+next to the hash verdict above -- extra evidence, never a second vote: it does not change `ok` / the
+exit code, and it is skipped silently (no state recording on one or both sides is the common case).
+
 Usage:
     python tools/replay_match_segment.py <match_or_process_dir> [--config auto|1|2] [--steps N]
     python tools/replay_match_segment.py <dir> --compare <replay_run_dir>    # no run, compare only
@@ -67,6 +85,8 @@ import tempfile
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(REPO, "tools"))
+
+import _rundir  # noqa: E402 -- the run-dir name contract (SES8 + SES1)
 
 SEG = {
     "orders": "mh_match_orders.bin",
@@ -157,6 +177,29 @@ def config_of(text):
     return int(m[-1]) if m else None
 
 
+def hash_kind_of(*texts):
+    """tooling:TL-HARN-INCHASH: the hash kind a recording's per-step hashes carry -- the first of
+    `texts` that states one (mp_analyze.hash_kind_of_text: last kind-bearing line), else 1 (a log that
+    states none predates the item, when only the FNV walk existed)."""
+    import mp_analyze
+
+    for t in texts:
+        k = mp_analyze.hash_kind_of_text(t)
+        if k is not None:
+            return k
+    return 1
+
+
+def kind_refusal(judged_kind, replay_log_text, judged_label="the recording"):
+    """The named refusal when the replay hashed with another kind than the stream it is judged
+    against, else None. A replay run on a DLL that predates the knob reads as kind 1."""
+    import mp_analyze
+
+    return mp_analyze.kind_mismatch(
+        judged_kind, mp_analyze.hash_kind_of_text(replay_log_text), judged_label, "the replay"
+    )
+
+
 def _session_json(d):
     try:
         with open(os.path.join(d, "session.json"), encoding="utf-8") as fh:
@@ -166,9 +209,12 @@ def _session_json(d):
 
 
 def sessions_of_process(logs_dir, proc_leaf):
-    """[(leaf, session.json)] of the session folders whose process_dir names `proc_leaf`, by time."""
+    """[(leaf, session.json)] of the session folders whose process_dir names `proc_leaf`, by time.
+
+    By TIME, not by raw name: SES8 (`YYYY-MM-DDTHH-MM-SSZ_...`) and SES1 (`YYYYMMDDTHHMMSSZ_...`)
+    names do not sort together as strings (tools/_rundir.py sort_key)."""
     out = []
-    for d in sorted(glob.glob(os.path.join(logs_dir, "*"))):
+    for d in sorted(glob.glob(os.path.join(logs_dir, "*")), key=_rundir.sort_key):
         j = _session_json(d)
         if j and j.get("process_dir") == proc_leaf:
             out.append((os.path.basename(d), j))
@@ -219,6 +265,9 @@ def resolve(path):
             config=config_of(arm),
             arm=arm_flags(arm),
             ref=log,
+            # TL-HARN-INCHASH: the segment's OPEN line states the kind itself (no token = kind 1);
+            # the process log's fingerprint line is the fallback.
+            hash_kind=hash_kind_of(log, arm),
         )
     # a session folder without a segment (pre-SES7) -> its process folder
     if sj and sj.get("process_dir") and not os.path.isfile(os.path.join(path, PROC["orders"])):
@@ -260,6 +309,7 @@ def resolve(path):
         arm=arm,
         ref=ref,
         session=played[0][0],
+        hash_kind=hash_kind_of(ref),
     )
 
 
@@ -271,6 +321,16 @@ def snap_steps(snap_dir):
         if m:
             out[int(m.group(1))] = p
     return out
+
+
+def match_state_path(dir_):
+    """The mh_match_state*.bin state recording (mp:D40/D42) in `dir_`, or None. Globs rather than
+    the fixed name because a match folder that already holds one gets `mh_match_state_<n>.bin`
+    (docs/state-record.md); the first (lexically) match is the one this match folder wrote."""
+    if not dir_:
+        return None
+    cands = sorted(glob.glob(os.path.join(dir_, "mh_match_state*.bin")))
+    return cands[0] if cands else None
 
 
 def snap_cadence(steps):
@@ -361,6 +421,41 @@ def verdict_text(rec, res, min_steps):
     return False, "DIVERGED at match step %d (%s);%s" % (res["first"], res["what"], where)
 
 
+def judge_state_recording(rec_path, rep_path):
+    """mp:D42: judge two state recordings BYTE-EXACTLY via state_record.first_diff, alongside (never
+    in place of) the hash verdict above -- a separate, additional oracle, not a replacement for it.
+    -> (ok, [lines to print]); ok is True/False/None (None = not judged: a path is missing, or the
+    files did not decode/compare -- the caller's exit code stays governed by the hash verdict only).
+    """
+    if not rec_path or not rep_path:
+        return None, []
+    import state_record
+
+    lines = ["  state recording (byte-exact, mp:D42): %s vs %s" % (rec_path, rep_path)]
+    try:
+        res = state_record.first_diff(state_record.load(rec_path), state_record.load(rep_path))
+    except (ValueError, OSError) as e:
+        lines.append("  state recording judge: ERROR -- %s" % e)
+        return None, lines
+    if res["identical"]:
+        lines.append(
+            "  state recording: IDENTICAL over its own steps %d..%d (this file's own step axis -- "
+            "see mh_net.log's STATE RECORD step axis line for the offset to the match-step axis above)"
+            % (res["first_step"], res["last_step"])
+        )
+        return True, lines
+    lines.append("  state recording: FIRST DIFF at its own step %d" % res["step"])
+    for d in res["diffs"]:
+        loc = ""
+        if d.get("field"):
+            rec_str = "record %d, " % d["record"] if d.get("record") is not None else ""
+            loc = "  (%sfield=%s)" % (rec_str, d["field"])
+        elif d.get("note"):
+            loc = "  (%s)" % d["note"]
+        lines.append("    %-20s offset 0x%x len %d%s" % (d["region"], d["offset"], d["len"], loc))
+    return False, lines
+
+
 # ---- running ------------------------------------------------------------------------------------
 
 
@@ -377,8 +472,92 @@ def map_row(maps_dir, map_name):
     return None, None
 
 
-def walk_script(row, label):
-    """sp_det.txt's walk with the map row picked (split click, then the right panel's label)."""
+SLOT_ROW_Y0, SLOT_ROW_DY = (
+    115,
+    17,
+)  # lobby slot i's state spinner: click 70 y (row 1 = 132, row 2 = 149)
+PLAYER_DESC = 0x34  # llm_strat_player_desc stride; Players[8] = the `players` hash region
+FLAG_NET, FLAG_COMPUTER = 0x04, 0x0B
+
+
+def seed_players(seed_path):
+    """[dict(slot, flags, race, color, name)] for every Players[] entry of a seed blob, or None when the
+    blob is not a seed of THIS manifest (size mismatch) -- the caller falls back to the legacy walk."""
+    try:
+        with open(
+            os.path.join(REPO, "tools", "data", "hash_manifest.json"), encoding="utf-8"
+        ) as fh:
+            regions = json.load(fh)["regions"]
+        off = total = 0
+        for r in regions:
+            if r["name"] == "players":
+                off = total
+            total += r["size"]
+        with open(seed_path, "rb") as fh:
+            blob = fh.read()
+    except (OSError, ValueError, KeyError):
+        return None
+    if len(blob) != total:
+        return None
+    out = []
+    for i in range(8):
+        rec = blob[off + i * PLAYER_DESC : off + (i + 1) * PLAYER_DESC]
+        out.append(
+            dict(
+                slot=i,
+                flags=rec[6],
+                race=rec[0],
+                color=rec[1],
+                name=rec[0x10:0x30].split(b"\0")[0].decode("latin-1"),
+            )
+        )
+    return out
+
+
+def roster_of(players):
+    """The lobby plan of a recording's Players[]: [dict(slot, kind 'host'|'human'|'ai', race, name)] for
+    the occupied slots, by slot. Slot 0 is the replay host whatever it was."""
+    plan = []
+    for p in players or ():
+        f = p["flags"]
+        if not f:
+            continue
+        if p["slot"] == 0:
+            kind = "host"
+        elif f & FLAG_NET:
+            kind = "human"
+        elif f == FLAG_COMPUTER:
+            kind = "ai"
+        else:
+            continue
+        plan.append(dict(slot=p["slot"], kind=kind, race=p["race"], name=p["name"]))
+    return plan
+
+
+def session_humans(sj):
+    """{slot} of the humans session.json's `roster` ("0:HFef,1:HRizzen") names, or None."""
+    ros = (sj or {}).get("roster")
+    if not ros:
+        return None
+    return {int(m.group(1)) for m in re.finditer(r"(\d+):H", ros)}
+
+
+def roster_note(plan, sj):
+    """A line when session.json names a human slot the seed does not hold, else None. (session.json
+    lists only the humans, and a client's lists only itself: a subset of the seed's is the normal case.)"""
+    hs = session_humans(sj)
+    seeded = {p["slot"] for p in plan if p["kind"] in ("host", "human")}
+    if hs is None or hs <= seeded:  # a client's roster names only itself; a host's omits the AIs
+        return None
+    return "session.json roster humans %s != seed humans %s -- the seed is used" % (
+        sorted(hs),
+        sorted(seeded),
+    )
+
+
+def walk_script(row, label, plan=None):
+    """sp_det.txt's walk with the map row picked (split click, then the right panel's label) and the
+    recorded roster seated (`plan` from roster_of; None = one computer in slot 1, the legacy walk)."""
     y = MAP_ROW_Y0 + MAP_ROW_DY * row
     pick = (
         "cursor %d %d\ncursor %d %d\npress %d %d\nrelease %d %d\npresent %s\n"
@@ -386,13 +565,27 @@ def walk_script(row, label):
         if label
         else ""
     )
+    seat, pokes = "click 70 132\npresent Computer\n", ""
+    others = [p for p in plan or () if p["slot"] >= 1]
+    if others:
+        seat = ""
+        for n, p in enumerate(others, start=1):
+            seat += "# slot %d: %s %r\nclick 70 %d\npresent Computer\nocc %d\n" % (
+                p["slot"],
+                "COMPUTER" if p["kind"] == "ai" else "human (placeholder)",
+                p["name"],
+                SLOT_ROW_Y0 + SLOT_ROW_DY * p["slot"],
+                n + 1,
+            )
+            if p["kind"] == "ai":
+                pokes += "pokerace %d %d\nrace %d %d\n" % ((p["slot"], p["race"]) * 2)
     return (
         "# GENERATED by tools/replay_match_segment.py (mp:SES7b): host alone on the recorded map,\n"
-        "# seat one computer, Start; the harness injects the seed and replays the recording.\n"
+        "# seat the recorded roster (TL-REPLAY-ROSTER), Start; the harness injects the seed.\n"
         "settled value:110\nclickv 110\npresent Player name\nsettled Ok\nclickl Ok\n"
         "settled Create\nclickl Create\npresent Game name\nsettled Ok\nclickl Ok\n"
         "present Available maps\nsettled Ok\n" + pick + "settled Ok\nclickl Ok\n"
-        "present Network players\nsettled Start\nclick 70 132\npresent Computer\nenabled Start\n"
+        "present Network players\nsettled Start\n" + seat + pokes + "enabled Start\n"
         "clickl Start\nabsent Network players\ngamemode 2\n"
         "log REPLAY in-game, the harness owns the run from here\nend\n"
     )
@@ -456,6 +649,9 @@ def replay_flags(rec, steps, seat=-1, legacy_suppress=False, extra=None, session
     if session_mode is not None and session_mode >= 0:
         flags["replay_session_mode"] = session_mode
     flags["pin_fpu"] = rec.get("arm", {}).get("pin_fpu", "1")
+    # TL-HARN-INCHASH: the replay hashes with the kind of the stream it will be judged against, so an
+    # rc4/rc5 recording (kind 1) is replayed in kind 1 whatever the harness default is.
+    flags["hash_kind"] = rec.get("hash_kind") or 1
     flags["stop_step"] = steps
     if seat is not None and seat >= 0:
         flags["replay_seat"] = seat
@@ -480,6 +676,7 @@ def run_replay(
     net_extra="",
     map_file=None,
     session_mode=-1,
+    extra_ini=(),
 ):
     import make_lane
 
@@ -497,8 +694,22 @@ def run_replay(
     tmpd = os.path.join(REPO, "tmp", "replay_match")
     os.makedirs(tmpd, exist_ok=True)
     script = os.path.join(tmpd, "replay_walk.txt")
+    players = None if rec.get("legacy_roster") else seed_players(rec["files"]["seed"])
+    plan = roster_of(players) if players else None
+    if plan:
+        print(
+            "  roster (from the seed): "
+            + ", ".join("%d=%s %r" % (p["slot"], p["kind"], p["name"]) for p in plan)
+        )
+        note = roster_note(plan, _session_json(rec.get("snap_dir") or rec["dir"]))
+        if note:
+            print("  note: " + note)
+    else:
+        print(
+            "  roster: legacy walk (one computer in slot 1): --legacy-roster or an unreadable seed"
+        )
     with open(script, "w", encoding="ascii", newline="\n") as fh:
-        fh.write(walk_script(row, label))
+        fh.write(walk_script(row, label, plan))
     flags = replay_flags(rec, steps, seat, legacy_suppress, extra, session_mode)
     ident = make_lane.read_identity(lane)
     argv = [
@@ -524,6 +735,8 @@ def run_replay(
     ]
     if net_extra:
         argv += ["--net-extra", net_extra]
+    for frag in extra_ini:
+        argv += ["--extra-ini", frag]
     before = (
         set(os.listdir(os.path.join(lane, "logs")))
         if os.path.isdir(os.path.join(lane, "logs"))
@@ -582,12 +795,25 @@ def main(argv=None):
     )
     ap.add_argument("--net-extra", default="", help='extra [net] lines, "k=v;k=v" (ui_test)')
     ap.add_argument(
+        "--extra-ini",
+        action="append",
+        default=[],
+        help="an mh_net.ini fragment merged into the replay lane (ui_test --extra-ini; repeatable), "
+        "e.g. tools/uiscripts/ini/dirty_probe.ini",
+    )
+    ap.add_argument(
         "--map-file", help="an .mpm the install does not ship, added to the lane's Maps"
     )
     ap.add_argument(
         "--against",
         help="judge the replay against ANOTHER recording's per-step stream (a folder resolve() "
         "accepts, e.g. the other peer's match folder) instead of its own",
+    )
+    ap.add_argument(
+        "--legacy-roster",
+        action="store_true",
+        help="the pre-TL-REPLAY-ROSTER walk (one computer in slot 1 whatever the recording seated) "
+        "-- the negative arm of the roster seating",
     )
     ap.add_argument("--selftest", action="store_true")
     a = ap.parse_args(argv)
@@ -630,9 +856,25 @@ def main(argv=None):
     if last < 1:
         print("replay_match_segment: REFUSED -- no recorded step to replay")
         return 2
+    # TL-HARN-INCHASH: the stream the replay is JUDGED against decides the kind it runs with -- the
+    # recording's own, or --against's. Resolved before the run for that reason.
+    other = None
+    if a.against:
+        try:
+            other = resolve(a.against)
+        except Refusal as e:
+            print("replay_match_segment: REFUSED -- --against: %s" % e)
+            return 2
+    judged = other or rec
+    import mp_analyze
+
+    print(
+        "  hash kind: %s, from %s's own log -- the replay runs with it"
+        % (mp_analyze.kind_label(judged["hash_kind"]), "--against" if other else "the recording")
+    )
     try:
         run = a.compare or run_replay(
-            rec,
+            dict(rec, hash_kind=judged["hash_kind"], legacy_roster=a.legacy_roster),
             config,
             last,
             a.timeout,
@@ -642,17 +884,18 @@ def main(argv=None):
             net_extra=a.net_extra,
             map_file=a.map_file,
             session_mode=smode,
+            extra_ini=a.extra_ini,
         )
     except Refusal as e:
         print("replay_match_segment: REFUSED -- %s" % e)
         return 2
-    rep_steps, rep_regs = parse_stream(_read_text(os.path.join(run, "mh_harness.log")))
-    if a.against:
-        try:
-            other = resolve(a.against)
-        except Refusal as e:
-            print("replay_match_segment: REFUSED -- --against: %s" % e)
-            return 2
+    rep_text = _read_text(os.path.join(run, "mh_harness.log"))
+    bad = kind_refusal(judged["hash_kind"], rep_text, "--against" if other else "the recording")
+    if bad:
+        print("replay_match_segment: REFUSED -- %s" % bad)
+        return 2
+    rep_steps, rep_regs = parse_stream(rep_text)
+    if other:
         ref_steps, ref_regs = parse_stream(other["ref"], other["base"])
         ref_steps = {s: v for s, v in ref_steps.items() if s >= 1}
         rec = dict(rec, snap_dir=other.get("snap_dir"))
@@ -662,7 +905,10 @@ def main(argv=None):
     res = compare(ref_steps, ref_regs, rep_steps, rep_regs, names, excluded)
     ok, text = verdict_text(rec, res, min(a.min_steps, last))
     print("  replay run: %s (seat %s, body session mode %s)" % (run, seat, smode))
-    print("  %s (recorded steps 1..%d, replayed %d)" % (text, last, len(rep_steps)))
+    print(
+        "  %s (recorded steps 1..%d, replayed %d; hash %s)"
+        % (text, last, len(rep_steps), mp_analyze.kind_label(judged["hash_kind"]))
+    )
     # the recording's desync snapshots (a desynced lockstep match writes them) vs the replay's own
     # dumps at the same match steps: the region names a region-less (player) log cannot give
     rec_snaps, rep_snaps = snap_steps(rec.get("snap_dir")), snap_steps(run)
@@ -684,6 +930,14 @@ def main(argv=None):
                 "    bytes: python tools/mp_desync_snap_diff.py %s %s"
                 % (rec_snaps[k], rep_snaps[k])
             )
+    # mp:D42: when BOTH sides carry a state recording (mh_net.ini `[desync] state_record=1` on the
+    # recorder AND the replay lane), judge them byte-exactly too -- purely additional evidence next
+    # to the hash verdict above; it never changes `ok` / the exit code.
+    rec_state = match_state_path(rec.get("snap_dir"))
+    rep_state = match_state_path(run) or match_state_path(_session_of_run(run))
+    _, state_lines = judge_state_recording(rec_state, rep_state)
+    for ln in state_lines:
+        print(ln)
     return 0 if ok else 1
 
 
@@ -799,6 +1053,16 @@ def selftest():
             and r["map"] == "x.mpm"
             and r["config"] == 1,
         )
+        # SES8: a raw name sort puts `20260917T...` AFTER `2026-09-29T...` (`-` < `0`).
+        mixed = os.path.join(tmp, "mixed")
+        leaves = ("20260917T000005Z_dddddddd_0_solo", "2026-09-29T00-00-05Z_cccccccc_m_host")
+        for leaf in reversed(leaves):
+            os.makedirs(os.path.join(mixed, leaf))
+            put(os.path.join(mixed, leaf), "session.json", json.dumps({"process_dir": "P"}))
+        check(
+            "sessions_of_process orders SES1 before SES8 by time, not by raw name",
+            [n for n, _ in sessions_of_process(mixed, "P")] == list(leaves),
+        )
         os.remove(os.path.join(s2, SEG["seed"]))
         try:
             resolve(s2)
@@ -854,6 +1118,54 @@ def selftest():
             "an unknown map is None (refused by the runner)",
             map_row(maps, "nowhere.mpm")[0] is None,
         )
+        # TL-REPLAY-ROSTER: a fixture seed + session.json, 3 humans (slots 0-2) + a computer in slot 3
+        # (the 936e0006 shape) -> the walk seats every slot as recorded.
+        regs = json.load(open(os.path.join(REPO, "tools", "data", "hash_manifest.json")))["regions"]
+        blob = bytearray(sum(r["size"] for r in regs))
+        base = 0
+        for r in regs:
+            if r["name"] == "players":
+                break
+            base += r["size"]
+        for slot, (flags, race, name) in enumerate(
+            [(7, 1, "Fef"), (7, 1, "Rizzen"), (7, 1, "Carol"), (0x0B, 2, "Computer")]
+        ):
+            o = base + slot * PLAYER_DESC
+            blob[o], blob[o + 6] = race, flags
+            blob[o + 0x10 : o + 0x10 + len(name)] = name.encode()
+        put(tmp, "fixture_seed.bin", bytes(blob))
+        fx_sj = {"roster": "0:HFef,1:HRizzen,2:HCarol", "slot": 0}
+        plan = roster_of(seed_players(os.path.join(tmp, "fixture_seed.bin")))
+        check(
+            "roster: 3 humans + a computer in slot 3 read off the seed's Players[]",
+            [(p["slot"], p["kind"]) for p in plan]
+            == [(0, "host"), (1, "human"), (2, "human"), (3, "ai")]
+            and plan[3]["race"] == 2,
+        )
+        w = walk_script(0, None, plan)
+        clicks = re.findall(r"^click 70 (\d+)$", w, re.M)
+        check(
+            "the walk seats slots 1, 2, 3 at their own rows, gated on occ 2, 3, 4",
+            clicks == ["132", "149", "166"]
+            and re.findall(r"^occ (\d+)$", w, re.M) == ["2", "3", "4"],
+        )
+        check(
+            "...sets only the computer's race (slot 3 = Alien) and checks it",
+            w.count("pokerace") == 1 and "pokerace 3 2\nrace 3 2\n" in w,
+        )
+        check(
+            "...and session.json's human slots agree (no note); a disagreeing one is named",
+            roster_note(plan, fx_sj) is None
+            and "!=" in (roster_note(plan, {"roster": "0:HFef,5:HGhost"}) or ""),
+        )
+        check(
+            "no readable seed / a lone host -> the legacy one-computer walk, unchanged",
+            seed_players(os.path.join(tmp, "nowhere.bin")) is None
+            and walk_script(0, None) == walk_script(0, None, roster_of([]))
+            and walk_script(0, None, [dict(slot=0, kind="host", race=1, name="x")])
+            == walk_script(0, None)
+            and "click 70 132\npresent Computer\nenabled Start" in walk_script(0, None),
+        )
         # mp:D37b: the replay contract. Every enqueue live + the dispatch-entry inject + the net-player
         # issue drop, NOT the LIB-REF suppression (which lost same-pass orders: the rc4 field
         # recordings left their own stream at 5857 / 6357); the seat and body session mode follow
@@ -904,6 +1216,40 @@ def selftest():
             "a lockstep segment carries its seat (slot) and lockstep flag",
             r["slot"] == 1 and r["lockstep"] is True,
         )
+        # TL-HARN-INCHASH: the kind follows the recording. A pre-item segment (no token) is kind 1
+        # and replays with hash_kind=1; a kind-2 segment states it on its OPEN line and replays in 2.
+        check(
+            "a pre-item segment is kind 1 and its replay is pinned to hash_kind=1",
+            r["hash_kind"] == 1 and replay_flags(r, 10)["hash_kind"] == 1,
+        )
+        put(
+            s2,
+            SEG["log"],
+            "; [match] segment OPEN %s at process step 1: (step_base=0). x hash_kind=2\n"
+            % os.path.basename(s2)
+            + ref,
+        )
+        r2 = resolve(s2)
+        check(
+            "a kind-2 segment (OPEN line token) replays with hash_kind=2",
+            r2["hash_kind"] == 2 and replay_flags(r2, 10)["hash_kind"] == 2,
+        )
+        fp2 = "; HASH FINGERPRINT 0123456789ABCDEF split=ok input_epoch=1 build=x hash_kind=2\n"
+        check(
+            "a kind-1 recording judged against a kind-2 replay is REFUSED by name, not DIVERGED",
+            "hash kind mismatch: the recording is kind 1 (FNV VERDICT walk), the replay is kind 2"
+            in (kind_refusal(1, fp2 + rep) or ""),
+        )
+        check(
+            "...and a replay of the recording's own kind is not refused",
+            kind_refusal(2, fp2 + rep) is None and kind_refusal(1, rep) is None,
+        )
+        check(
+            "a process recording's kind comes off its fingerprint line (the last one wins)",
+            hash_kind_of(fp2 + ref) == 2
+            and hash_kind_of(fp2 + fp2.replace(" hash_kind=2", "") + ref) == 1
+            and hash_kind_of(ref) == 1,
+        )
         # the lane gets a downloaded map WITHOUT the shared install being touched
         lane = os.path.join(tmp, "lane")
         os.makedirs(os.path.join(lane, "Maps"))
@@ -913,6 +1259,54 @@ def selftest():
         check(
             "--map-file lands in the lane's own Maps",
             map_row(os.path.join(lane, "Maps"), "nortus.mpm")[0] == 0,
+        )
+
+        # mp:D42: match_state_path() discovery + judge_state_recording() byte-exact judge, over
+        # synthetic mh_match_state.bin files built with state_record's own (public) load()/
+        # first_diff() -- not a second copy of that format's logic.
+        import state_record
+
+        check(
+            "match_state_path -> None for a folder with no state recording",
+            match_state_path(logs) is None,
+        )
+        st_a, st_b = os.path.join(tmp, "state_a"), os.path.join(tmp, "state_b")
+        os.makedirs(st_a)
+        os.makedirs(st_b)
+        sr_defs = [("x", 4), ("y", 4)]
+        sr_data, _ = state_record._build_match(
+            sr_defs, {1: b"\x01\x02\x03\x04\x05\x06\x07\x08"}, keyframe_every=1
+        )
+        with open(os.path.join(st_a, "mh_match_state.bin"), "wb") as fh:
+            fh.write(sr_data)
+        with open(os.path.join(st_b, "mh_match_state.bin"), "wb") as fh:
+            fh.write(sr_data)  # byte-identical copy
+        check(
+            "match_state_path finds mh_match_state.bin in a match folder",
+            match_state_path(st_a) == os.path.join(st_a, "mh_match_state.bin"),
+        )
+        ok_j, lines_j = judge_state_recording(match_state_path(st_a), match_state_path(st_b))
+        check(
+            "judge_state_recording: byte-identical files -> IDENTICAL",
+            ok_j is True and any("IDENTICAL" in ln for ln in lines_j),
+        )
+        sr_data_poked, _ = state_record._build_match(
+            sr_defs,
+            {1: b"\x01\x02\x03\x04\x05\x06\x07\xff"},
+            keyframe_every=1,  # last byte (y+3) poked
+        )
+        with open(os.path.join(st_b, "mh_match_state.bin"), "wb") as fh:
+            fh.write(sr_data_poked)
+        ok_j2, lines_j2 = judge_state_recording(match_state_path(st_a), match_state_path(st_b))
+        joined2 = "\n".join(lines_j2)
+        check(
+            "judge_state_recording: a poked byte is named (region y, offset 0x3), ok=False",
+            ok_j2 is False and "FIRST DIFF" in joined2 and "offset 0x3 len 1" in joined2,
+        )
+        check(
+            "judge_state_recording: a missing side -> not judged (None), no exception",
+            judge_state_recording(None, match_state_path(st_b))[0] is None
+            and judge_state_recording(match_state_path(st_a), None)[0] is None,
         )
     finally:
         shutil.rmtree(tmp, ignore_errors=True)

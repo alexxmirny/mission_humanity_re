@@ -380,7 +380,9 @@ own `force_relay` read stay.
 
 ## Keepalive
 
-The peer pings every **20 s**; the relay pings a peer that has been quiet for **25 s** and evicts one
+The peer pings every **1 s** (it was 20 s until mp:U61; the ping is timestamped and the relay's PONG gives the leg's own
+round trip, `udprelay::leg_rtt_dms()`, which a relayed match's host-migration election ranks candidates by -- a 1 Hz ping is
+a strictly stronger keepalive than Plan D4's 20-25 s band); the relay pings a peer that has been quiet for **25 s** and evicts one
 silent for 60 s (`--idle-secs` / `--ping-secs`). Plan D4's band is 20–25 s and both ends sit in it, so
 a NAT binding is refreshed by whichever end is still alive. This is separate from the game's own
 `NAT_KEEP_MS` on the T0 connection, which the relay neither sees nor needs to.

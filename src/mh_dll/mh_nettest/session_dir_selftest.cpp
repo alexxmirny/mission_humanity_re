@@ -64,7 +64,8 @@ void fill(MH_SessionRecord *r, const char *id, int slot, const char *role) {
     r->lockstep_step_ms = 100;
     mh_sd_copy(r->transport, MH_SESSION_TEXT_CAP, "tcp");
     mh_sd_copy(r->began_utc, MH_SESSION_STAMP_CAP, "20260917T164346Z");
-    mh_sd_copy(r->process_dir, MH_SESSION_DIRNAME_CAP, "20260917T164300Z_menu_host");
+    mh_sd_copy(r->process_dir, MH_SESSION_DIRNAME_CAP, "2026-09-17T16-43-00Z_menu_host");
+    mh_sd_copy(r->mode, MH_SESSION_TEXT_CAP, role);
 }
 
 // ---- section 6's recorder: the close's actions, as a trace -------------------------------------
@@ -105,17 +106,25 @@ void                         trace_reset() { g_trace[0] = '\0'; }
 int run_sessiondirtest() {
     printf("=== sessiondirtest (SES1: the per-session run directory -- name, rollover, record) ===\n");
 
-    // ---- 1. the directory NAME -------------------------------------------------------------------
+    // ---- 1. the directory NAME (SES8: "<dirstamp>_<mid8>_<map>_<mode>") ---------------------------
     {
-        char n[MH_SESSION_DIRNAME_CAP];
+        const char *ST = "2026-09-17T16-43-46Z";
+        char        n[MH_SESSION_DIRNAME_CAP];
 
-        mh_session_dir_name(n, sizeof(n), "20260917T164346Z", ID_A, 1, "client");
-        check("a session name is <stamp>_<mid8>_<slot>_<role>",
-              strcmp(n, "20260917T164346Z_dedd707c_1_client") == 0);
+        // The stamp: ISO 8601 with dashes for the colons (illegal in a Windows path), UTC, `Z`-marked.
+        mh_session_dir_stamp(n, sizeof(n), 2026, 9, 17, 16, 43, 46);
+        check("the directory stamp is YYYY-MM-DDTHH-MM-SSZ", strcmp(n, ST) == 0);
+        mh_session_dir_stamp(n, sizeof(n), 2027, 1, 2, 3, 4, 5);
+        check("...zero-padded, fixed width", strcmp(n, "2027-01-02T03-04-05Z") == 0 && strlen(n) == 20);
+        check("the stamp fits its cap", MH_SESSION_DIRSTAMP_CAP == 21);
 
-        mh_session_dir_name(n, sizeof(n), "20260917T164346Z", ID_A, 0, "host");
-        check("the host's slot 0 renders as 0, not as empty",
-              strcmp(n, "20260917T164346Z_dedd707c_0_host") == 0);
+        mh_session_dir_name(n, sizeof(n), ST, ID_A, "blue monday.mpm", "client");
+        check("a session name is <stamp>_<mid8>_<map>_<mode>",
+              strcmp(n, "2026-09-17T16-43-46Z_dedd707c_blue-monday_client") == 0);
+
+        mh_session_dir_name(n, sizeof(n), ST, ID_A, "TUTORIAL.MP", "tutorial");
+        check("the map keeps its case and loses its extension",
+              strcmp(n, "2026-09-17T16-43-46Z_dedd707c_TUTORIAL_tutorial") == 0);
 
         // THE SHORT FORM MUST DISCRIMINATE, and taking it from the FRONT of a UUIDv7 does not: the
         // leading 48 bits are a unix-ms timestamp, so three lobbies created inside the same ~65 s
@@ -126,46 +135,103 @@ int run_sessiondirtest() {
             const char *R2 = "01a0b016c12070ad81df9e21a718d8d3";
             const char *R3 = "01a0b016da757d7483f40714b1fb3a50";
             char        s1[MH_SESSION_DIRNAME_CAP], s2[MH_SESSION_DIRNAME_CAP], s3[MH_SESSION_DIRNAME_CAP];
-            mh_session_dir_name(s1, sizeof(s1), "20260917T155738Z", R1, 0, "host");
-            mh_session_dir_name(s2, sizeof(s2), "20260917T155756Z", R2, 0, "host");
-            mh_session_dir_name(s3, sizeof(s3), "20260917T155802Z", R3, 0, "host");
+            mh_session_dir_name(s1, sizeof(s1), "2026-09-17T15-57-38Z", R1, "m.mpm", "host");
+            mh_session_dir_name(s2, sizeof(s2), "2026-09-17T15-57-56Z", R2, "m.mpm", "host");
+            mh_session_dir_name(s3, sizeof(s3), "2026-09-17T15-58-02Z", R3, "m.mpm", "host");
             check("three matches minted within a minute get three DIFFERENT short forms",
-                  strcmp(s1 + 17, s2 + 17) != 0 && strcmp(s2 + 17, s3 + 17) != 0 &&
-                      strcmp(s1 + 17, s3 + 17) != 0);
+                  strcmp(s1 + 21, s2 + 21) != 0 && strcmp(s2 + 21, s3 + 21) != 0 &&
+                      strcmp(s1 + 21, s3 + 21) != 0);
             check("...and the short form is the id's RANDOM tail, not its timestamp prefix",
-                  strcmp(s1, "20260917T155738Z_ad75d850_0_host") == 0);
+                  strcmp(s1, "2026-09-17T15-57-38Z_ad75d850_m_host") == 0);
         }
 
-        // THE GLOB CONTRACT. tools/mp_run.py's newest_run() looks for `*_host` / `*_client` and
-        // tools/test_ui.py for `*_solo`. SES1 renamed every directory in the tree; had the role
-        // stopped being the last field, every rig tool would have found nothing and reported the
-        // peer as never having started -- a silent outage, not a red.
+        // THE GLOB CONTRACT. tools/mp_run.py's newest_run() looks for `*_host` / `*_client` (the
+        // force-entry verbs' boot role, which is also the lobby mode) and every tool finds the
+        // process directory by `_menu_`. The mode is still the LAST field.
+        mh_session_dir_name(n, sizeof(n), ST, ID_A, "blue monday.mpm", "host");
         int ln = (int)strlen(n);
-        check("a session directory still ENDS in _<role> (the rig's glob)",
-              ln > 5 && strcmp(n + ln - 5, "_host") == 0);
+        check("a session directory ENDS in _<mode> (the rig's glob)", ln > 5 && strcmp(n + ln - 5, "_host") == 0);
 
-        mh_session_dir_name(n, sizeof(n), "20260917T164346Z", nullptr, 0, "solo");
-        check("no match_id -> the MENU directory", strcmp(n, "20260917T164346Z_menu_solo") == 0);
-        mh_session_dir_name(n, sizeof(n), "20260917T164346Z", NIL, 3, "host");
-        check("an all-zero match_id is 'no id' too, slot ignored",
-              strcmp(n, "20260917T164346Z_menu_host") == 0);
-        mh_session_dir_name(n, sizeof(n), "20260917T164346Z", "", 3, "host");
-        check("an empty match_id is 'no id' too", strcmp(n, "20260917T164346Z_menu_host") == 0);
+        // FOUR FIELDS, ALWAYS: a map name can hold anything, and none of it may reach the path as a
+        // separator, a path character or a second `_`.
+        {
+            int us = 0;
+            mh_session_dir_name(n, sizeof(n), ST, ID_A, "Dane\\my_map: v2 (final)!.mpm", "skirmish");
+            for (const char *p = n; *p; ++p) us += (*p == '_');
+            check("an awkward map name is sanitised to [A-Za-z0-9.-]",
+                  strcmp(n, "2026-09-17T16-43-46Z_dedd707c_v2-final_skirmish") == 0);
+            mh_session_dir_name(n, sizeof(n), ST, ID_A, "under_score map.mpm", "host");
+            us = 0;
+            for (const char *p = n; *p; ++p) us += (*p == '_');
+            check("an underscore in the map never adds a field", us == 3 &&
+                                                                     strcmp(n, "2026-09-17T16-43-46Z_dedd707c_under-score-map_host") == 0);
+            mh_session_dir_name(n, sizeof(n), ST, ID_A, "", "campaign");
+            check("no map -> 'nomap'", strcmp(n, "2026-09-17T16-43-46Z_dedd707c_nomap_campaign") == 0);
+            mh_session_dir_name(n, sizeof(n), ST, ID_A, nullptr, "campaign");
+            check("a null map -> 'nomap'", strcmp(n, "2026-09-17T16-43-46Z_dedd707c_nomap_campaign") == 0);
+            mh_session_dir_name(n, sizeof(n), ST, ID_A, "!!!.mpm", "host");
+            check("a map with nothing usable -> 'nomap'", strcmp(n, "2026-09-17T16-43-46Z_dedd707c_nomap_host") == 0);
+            mh_session_dir_name(n, sizeof(n), ST, ID_A, "an extremely long map name that goes on.mpm", "host");
+            const char *tok = n + 30; // past "<stamp>_<mid8>_"
+            const char *us2 = strchr(tok, '_');
+            check("the map token is capped at MH_SESSION_MAP_TOKEN_MAX",
+                  us2 != nullptr && (int)(us2 - tok) <= MH_SESSION_MAP_TOKEN_MAX && us2[-1] != '-');
+            mh_session_dir_name(n, sizeof(n), ST, ID_A, "x.mpm", "Host 2!");
+            check("the mode is lowercase letters only", strcmp(n, "2026-09-17T16-43-46Z_dedd707c_x_host") == 0);
+        }
 
-        mh_session_dir_name(n, sizeof(n), "20260917T164346Z", ID_A, 1, "");
-        check("an unknown role falls back to solo rather than a trailing underscore",
-              strcmp(n, "20260917T164346Z_dedd707c_1_solo") == 0);
+        mh_session_dir_name(n, sizeof(n), ST, nullptr, nullptr, "solo");
+        check("no match_id -> the MENU directory", strcmp(n, "2026-09-17T16-43-46Z_menu_solo") == 0);
+        mh_session_dir_name(n, sizeof(n), ST, NIL, "ignored.mpm", "host");
+        check("an all-zero match_id is 'no id' too, map ignored", strcmp(n, "2026-09-17T16-43-46Z_menu_host") == 0);
+        mh_session_dir_name(n, sizeof(n), ST, "", nullptr, "host");
+        check("an empty match_id is 'no id' too", strcmp(n, "2026-09-17T16-43-46Z_menu_host") == 0);
+
+        mh_session_dir_name(n, sizeof(n), ST, ID_A, "m.mpm", "");
+        check("an unknown mode falls back to solo rather than a trailing underscore",
+              strcmp(n, "2026-09-17T16-43-46Z_dedd707c_m_solo") == 0);
 
         // Two ids that share a prefix would share a SHORT form; two that do not, must not.
         char a[MH_SESSION_DIRNAME_CAP], b[MH_SESSION_DIRNAME_CAP];
-        mh_session_dir_name(a, sizeof(a), "20260917T164346Z", ID_A, 0, "host");
-        mh_session_dir_name(b, sizeof(b), "20260917T164346Z", ID_B, 0, "host");
+        mh_session_dir_name(a, sizeof(a), ST, ID_A, "m.mpm", "host");
+        mh_session_dir_name(b, sizeof(b), ST, ID_B, "m.mpm", "host");
         check("different match_ids give different directory names", strcmp(a, b) != 0);
+
+        // The worst case fits the cap: longest map token + the longest mode word in use.
+        mh_session_dir_name(n, sizeof(n), ST, ID_A, "an extremely long map name that goes on.mpm", "campaign");
+        check("the longest real name fits MH_SESSION_DIRNAME_CAP", (int)strlen(n) < MH_SESSION_DIRNAME_CAP - 8);
 
         // A caller-side truncation must not walk off the buffer.
         char tiny[12];
-        mh_session_dir_name(tiny, sizeof(tiny), "20260917T164346Z", ID_A, 1, "client");
+        mh_session_dir_name(tiny, sizeof(tiny), ST, ID_A, "blue monday.mpm", "client");
         check("a short buffer truncates and stays NUL-terminated", strlen(tiny) < sizeof(tiny));
+        char tiny2[34];
+        mh_session_dir_name(tiny2, sizeof(tiny2), ST, ID_A, "blue monday.mpm", "client");
+        check("...including inside the map token", strlen(tiny2) < sizeof(tiny2));
+    }
+
+    // ---- 1b. SES8: which single-player match is starting (the solo tick's pure half) --------------
+    {
+        auto is = [](const char *got, const char *want) {
+            return (got == nullptr && want == nullptr) || (got && want && strcmp(got, want) == 0);
+        };
+        check("strategic + SESSION_MODE 1 -> campaign", is(mh_session_solo_mode(2, 1, 0, false, false), "campaign"));
+        check("strategic + SESSION_MODE 2 + tutorial step -> tutorial",
+              is(mh_session_solo_mode(2, 2, 1, false, false), "tutorial"));
+        check("strategic + SESSION_MODE 2, no tutorial -> skirmish",
+              is(mh_session_solo_mode(2, 2, 0, false, false), "skirmish"));
+        check("the tactical frame -> tactical", is(mh_session_solo_mode(6, 1, 0, false, false), "tactical"));
+        check("lockstep MP never opens a solo session", is(mh_session_solo_mode(2, 3, 0, false, true), nullptr));
+        check("the menu (clock still) is not a match start", is(mh_session_solo_mode(3, 1, 0, false, false), nullptr));
+        // The tutorial_enter shape, measured: GAME_MODE stays 3 under the welcome/step dialogs for the
+        // whole scenario while the game clock runs -- the running clock is what names the match.
+        check("an overlay over a RUNNING sim is a match start",
+              is(mh_session_solo_mode(3, 2, 1, false, true), "tutorial"));
+        check("the intro is not a match start, clock or not", is(mh_session_solo_mode(7, 2, 0, false, true), nullptr));
+        check("boot is not a match start, clock or not", is(mh_session_solo_mode(1, 2, 0, false, true), nullptr));
+        check("a --tactical run waits for the mission, not the save's strategic frame",
+              is(mh_session_solo_mode(2, 1, 0, true, true), nullptr) &&
+                  is(mh_session_solo_mode(6, 1, 0, true, false), "tactical"));
     }
 
     // ---- 2. the ROLLOVER state machine -----------------------------------------------------------
@@ -310,7 +376,9 @@ int run_sessiondirtest() {
         check("session.json's slot is a bare integer", has(js, "\"slot\": 1"));
         check("session.json's map_hash is a bare integer", has(js, "\"map_hash\": 305441741"));
         check("session.json names the process directory (where mh_harness.* live)",
-              has(js, "\"process_dir\": \"20260917T164300Z_menu_host\""));
+              has(js, "\"process_dir\": \"2026-09-17T16-43-00Z_menu_host\""));
+        check("session.json carries the mode (SES8: the directory's last field)",
+              has(js, "\"mode\": \"client\""));
         check("session.json carries the reason and both stamps",
               has(js, "\"reason\": \"gameover\"") && has(js, "\"began\": \"20260917T164346Z\"") &&
                   has(js, "\"ended\": \"20260917T165501Z\""));

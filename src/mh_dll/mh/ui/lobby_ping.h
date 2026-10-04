@@ -36,5 +36,13 @@ void lobby_ping_on_published(const unsigned char *buf, int len);
 // the lobby screen.
 int lobby_ping_measured_rows();
 
+// mp:P16 -- the host's published SRTT of player `pid` (ms), for the lockstep controller's relayed-path
+// estimate (mh_net_udp/relay_path.h). False when nothing is published for it or the last summary is
+// older than `max_age_ms`. The host publishes during a match too since P16 (net_seams.cpp), so a live
+// table is at most ~1 s old; the seed reads it with a generous age because the table it finds was
+// last refreshed by the lobby. Callable from any thread (one aligned LONG per row). Not a display
+// path: nothing in the UI reads what this returns.
+bool lobby_ping_published_srtt(int pid, unsigned max_age_ms, int *srtt_ms);
+
 } // namespace ui
 } // namespace mh

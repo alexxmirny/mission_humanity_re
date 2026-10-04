@@ -7,6 +7,8 @@
 #include "addr/mh_calls.gen.h"      // typed callables for the effectful originals we still call OUT to
 #include "lockstep/overlay_hoist.h" // LIB-ABI stage E: the hoisted dismiss-rule/GAME_MODE writes
 #include "state/host_api.h"
+#include "lockstep/turn_engine.h"
+#include "mh_spectate.h" // mp:U54: the shared spectator roster rules
 #include "state/host_events.h"
 #include "addr/mh_rebind.gen.h" // LIB-REBIND: the config-selected binder
 #include "state/rebind_targets.gen.h"
@@ -36,8 +38,10 @@ namespace {
 
 // player_profile.status_flags bits (E_STRAT_PLAYER_STATUS) -- b1 ALIVE, b2 HUMAN. libmh/sim/ keeps its
 // own copy rather than depending on ai/ai_state.h, exactly like sim_combat_credit_planet_conquest_kills.h.
-inline constexpr uint32_t STATUS_ALIVE = 0x2u;
-inline constexpr uint32_t STATUS_HUMAN = 0x4u;
+inline constexpr uint32_t STATUS_ALIVE    = 0x2u;
+inline constexpr uint32_t STATUS_HUMAN    = 0x4u;
+inline constexpr uint32_t STATUS_GONE     = 0x08u; // mark_player_gone's triple (lockstep/turn_engine.h)
+inline constexpr uint32_t STATUS_DEFEATED = 0x10u;
 
 // UTF-16 "%s (%s)" @0x0050163b -- the literal this function's three w_sprintf sites push (byte-identical
 // to the 0x005009e8 / 0x005017bc copies other TUs cite; read-memory confirmed this slice).
@@ -62,6 +66,17 @@ constexpr int32_t TEXT_PLAYER_ELIM_MP   = 0xa7; // "<name> was eliminated" (MP f
 constexpr int32_t SND_WIN               = 0xa5; // victory fanfare
 constexpr int32_t SND_LOSS              = 0xa6; // defeat fanfare
 constexpr int32_t SND_VOL               = 100;
+
+// mp:U54: the roster the spectator rules read (mh_spectate.h), snapshotted from the sim view.
+mh::spectate::roster spectate_roster(const sim_view &v, sim_store &own) {
+    mh::spectate::roster r{};
+    for (uint32_t i = 0; i < 8; ++i) {
+        r.flags[i] = v.profiles[i].status_flags;
+        for (uint32_t j = 0; j < 8; ++j) r.relation[i][j] = own.player_relation_at(i, j);
+    }
+    r.ally_rule = *v.mp_ally_victory_rule_flag != 0;
+    return r;
+}
 
 } // namespace
 
@@ -203,19 +218,57 @@ uint32_t player_presence_lost(const sim_view &v, sim_store &own, const player_pr
         // ==== 0x0049814b: MP PATH (session_mode 2/3) ================================================
         // uVar6 tracks the original's incidental return value (a loop counter / an outward-call
         // result); callers ignore it, but it is reproduced for faithfulness on the early-return paths.
-        uint32_t ret       = 0;
-        bool     was_human = false;
+        const bool spectate_key = mh::lockstep::fixes().spectate_after_defeat;
+        uint32_t   ret          = 0;
+        // mp:U54: presence_lost is re-entered for a player that is already out (the force-killed units' teardowns each
+        // call it). A SPECTATOR asking again about ITSELF has nothing left to decide: without this the second call
+        // sees was_human == false, takes the local-player drop path and ends the session it just chose to keep.
+        if (me == static_cast<int32_t>(player) &&
+            mh::spectate::is_spectator(v.profiles[me].status_flags,
+                                       *v.session_mode == SESSION_MP_LOCKSTEP,
+                                       mh::lockstep::fixes().spectate_after_defeat))
+            return ret;
+        bool was_human   = false;
+        bool spectate_me = false; // mp:U54: THIS defeat leaves the local human watching, not dropped
         if (mode == 0) {
             // 0x00498158: natural loss -> clear ALIVE now, then note whether this was a human.
             own.profile_at(player).status_flags &= ~STATUS_ALIVE;
             if ((v.profiles[player].status_flags & STATUS_HUMAN) != 0) was_human = true;
+            // mp:U56 ([net] player_left_pin_fix). A human OTHER than the local side just lost its last
+            // presence: every peer's sim reaches this call at the same step, so THIS is where the
+            // retail CTL_PLAYER_LEFT receive-time flip (HUMAN off, DEFEATED|GONE on) is made -- the
+            // receipt leaves the flags alone (rx_dispatch.cpp). `was_human` is already latched above.
+            if (was_human && me != static_cast<int32_t>(player) &&
+                mh::lockstep::fixes().player_left_pin_fix) {
+                // mp:U54: a human that STAYS as a spectator is DEFEATED but not GONE (spectate.h); every peer
+                // evaluates the same roster here, so every peer makes the same call.
+                const bool spec = spectate_key && *v.session_mode == SESSION_MP_LOCKSTEP &&
+                                  mh::spectate::becomes_spectator(spectate_roster(v, own),
+                                                                  static_cast<int>(player), true, true, true);
+                uint32_t &sf = own.profile_at(player).status_flags;
+                sf           = mh::spectate::eliminated_flags(sf, spec);
+            }
+        }
+
+        // mp:U54 ([net] spectate_after_defeat). The LOCAL human just lost its last presence in a lockstep
+        // match that at least two OTHER humans play on: it stays in the session as a spectator. It makes
+        // the very flip every survivor already makes for it (mp:U56: HUMAN off, DEFEATED|GONE on) so its
+        // roster hashes identical, sends no CTL_PLAYER_LEFT and does not downgrade its session below.
+        if (mode == 0 && was_human && me == static_cast<int32_t>(player) && spectate_key &&
+            *v.session_mode == SESSION_MP_LOCKSTEP) {
+            spectate_me = mh::spectate::becomes_spectator(spectate_roster(v, own), me, true,
+                                                          true, true);
+            if (spectate_me) {
+                uint32_t &sf = own.profile_at(player).status_flags;
+                sf           = mh::spectate::eliminated_flags(sf, true);
+            }
         }
 
         if (me == static_cast<int32_t>(player)) {
             // 0x00498189: the LOCAL player was dropped -> defeat + tell the peers.
             outcome = 4;
             c.print_queue_text_id(TEXT_DEFEAT);
-            c.net_send_presence_lost();
+            if (!spectate_me) c.net_send_presence_lost();
         } else {
             // 0x004981a1: another player left. Evaluate the surviving roster.
             bool last_man_standing = true; // bVar4 [EBP-0x38]: no OTHER alive player
@@ -244,6 +297,30 @@ uint32_t player_presence_lost(const sim_view &v, sim_store &own, const player_pr
                 ret = static_cast<uint32_t>(other); // 0x00498374: uVar6 = iter
             }
 
+            // mp:U54: a SPECTATOR (defeated, still in the lockstep session) is not one of the survivors
+            // this evaluation was written for. It ends its own match when the survivors have decided
+            // theirs (mh_spectate.h), with the outcome of its own side.
+            const bool spectating = mh::spectate::is_spectator(
+                v.profiles[me].status_flags, *v.session_mode == SESSION_MP_LOCKSTEP, spectate_key);
+            if (spectating) {
+                auto r = spectate_roster(v, own);
+                if (mode != 0 && player < 8) {
+                    // a FORCED removal (CTL_PLAYER_LEFT's receipt) arrives before or after this peer's own natural flip of
+                    // the leaver (the race U56 pins for the survivors): either way the leaver is out of the match here.
+                    r.flags[player] &= ~(mh::spectate::ST_ALIVE | mh::spectate::ST_HUMAN);
+                    r.flags[player] |= mh::spectate::ST_DEFEATED;
+                }
+                const auto vd = mh::spectate::evaluate(r, me);
+                if (!mh::spectate::decided(r, vd)) return ret; // 0x004987a5: still being played
+                if (mh::spectate::side_won(r, vd)) {
+                    outcome = 5;
+                    c.print_queue_text_id(TEXT_VICTORY);
+                } else {
+                    outcome = 4;
+                }
+                goto spectator_end;
+            }
+
             // 0x004982a8: a lockstep session with no human left downgrades to local and drops the overlay.
             if (*v.session_mode == SESSION_MP_LOCKSTEP && no_other_human) {
                 own.session_mode() = SESSION_MP_LOCAL;
@@ -266,8 +343,9 @@ uint32_t player_presence_lost(const sim_view &v, sim_store &own, const player_pr
             }
         }
 
+    spectator_end: // mp:U54: the spectator's decided match joins the common downgrade + dialog tail
         // 0x0049832c: a still-lockstep session downgrades here too (a no-op if already downgraded above).
-        if (*v.session_mode == SESSION_MP_LOCKSTEP) {
+        if (*v.session_mode == SESSION_MP_LOCKSTEP && !spectate_me) {
             own.session_mode() = SESSION_MP_LOCAL;
             const bool not4    = mh::lockstep::hoist_mode_not4(c.hoist); // LIB-ABI stage E hoist
             c.net_overlay_dismiss();

@@ -220,7 +220,7 @@ def check(leader_dir, survivor_dir, fenced_dir, arm="on"):
     streaming = None
     for ln in leader:
         m = ROLLUP_RE.search(ln)
-        if m and int(m.group(1)) == side and t_drop is not None and after(t_drop, ts_ms(ln)):
+        if m and int(m.group(1)) == side and (t_drop is None or after(t_drop, ts_ms(ln))):
             streaming = ln
     if late:
         out.append("frames from the gone side after the drop: %s" % late[0].strip())
@@ -274,8 +274,7 @@ def check(leader_dir, survivor_dir, fenced_dir, arm="on"):
             role == "leader"
             and outcome == NETWORK_ERROR_OUTCOME
             and sess == SESSION_MP_LOCKSTEP
-            and t_drop is not None
-            and after(ts_ms(ln), t_drop)
+            and (t_drop is None or after(ts_ms(ln), t_drop))
             and evidence
         ):
             # Outcome 7 inside session 3 is the original dispatch's unknown-outer-tag arm (its only
@@ -287,7 +286,12 @@ def check(leader_dir, survivor_dir, fenced_dir, arm="on"):
                 "streaming: %s) was overwritten by the leader's own kick re-broadcast @0x0049c330 "
                 "and parsed through the dispatch's unknown-outer-tag arm, which raised "
                 "NETWORK_ERROR inside lockstep %d ms after the drop: %s"
-                % (side, evidence.strip(), ts_ms(ln) - t_drop, ln.strip())
+                % (
+                    side,
+                    evidence.strip(),
+                    (ts_ms(ln) - t_drop) if t_drop is not None else -1,
+                    ln.strip(),
+                )
             )
             bad.append(garbled)
         else:

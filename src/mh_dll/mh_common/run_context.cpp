@@ -27,7 +27,7 @@ namespace {
 char          g_exe_dir[MAX_PATH]   = {0}; // "...\"
 char          g_logs_root[MAX_PATH] = {0}; // "<exedir>logs" or MH_LOG_ROOT, NO trailing slash (LA13)
 char          g_bc_dir[MAX_PATH]    = {0}; // where mh_run.txt goes: g_exe_dir, or MH_LOG_ROOT + "\"
-char          g_proc_dir[MAX_PATH]  = {0}; // "...\logs\<stamp>_menu_<role>\"  -- the process directory
+char          g_proc_dir[MAX_PATH]  = {0}; // "...\logs\<dirstamp>_menu_<role>\"  -- the process directory
 char          g_run_dir[MAX_PATH]   = {0}; // the CURRENT directory: g_proc_dir, or the open session's
 char          g_role[16]            = {0};
 volatile LONG g_state               = 0; // 0=uninit, 1=initialising, 2=ready
@@ -75,11 +75,20 @@ const char *detect_role() {
 }
 
 // "YYYYMMDDTHHMMSSZ" -- UTC. See MH_SESSION_STAMP_CAP's note on why this one is not local time.
+// The RECORD stamp (session.json began/ended); directory names use dir_stamp below.
 void utc_stamp(char *dst) {
     SYSTEMTIME st;
     GetSystemTime(&st);
     wsprintfA(dst, "%04d%02d%02dT%02d%02d%02dZ",
               st.wYear, st.wMonth, st.wDay, st.wHour, st.wMinute, st.wSecond);
+}
+
+// "YYYY-MM-DDTHH-MM-SSZ" -- UTC, the DIRECTORY stamp (SES8; MH_SESSION_DIRSTAMP_CAP says why).
+void dir_stamp(char *dst) {
+    SYSTEMTIME st;
+    GetSystemTime(&st);
+    mh_session_dir_stamp(dst, MH_SESSION_DIRSTAMP_CAP, st.wYear, st.wMonth, st.wDay, st.wHour,
+                         st.wMinute, st.wSecond);
 }
 
 // "<base><sep>?<leaf>" into dst if it (plus a NUL) fits in cap bytes; false (dst untouched)
@@ -185,10 +194,10 @@ void do_init() {
         lstrcpynA(g_bc_dir, g_exe_dir, MAX_PATH);
     }
 
-    char stamp[MH_SESSION_STAMP_CAP];
-    utc_stamp(stamp);
+    char stamp[MH_SESSION_DIRSTAMP_CAP];
+    dir_stamp(stamp);
     char name[MH_SESSION_DIRNAME_CAP];
-    mh_session_dir_name(name, sizeof(name), stamp, nullptr, 0, g_role); // nil id -> "<stamp>_menu_<role>"
+    mh_session_dir_name(name, sizeof(name), stamp, nullptr, nullptr, g_role); // nil id -> "<stamp>_menu_<role>"
 
     if (!make_dir(name, g_proc_dir)) {
         lstrcpynA(g_proc_dir, g_exe_dir, MAX_PATH); // fallback: never lose logs
@@ -261,14 +270,19 @@ extern "C" const char *MH_RunDir_SessionMatchId(void) {
 // MH_RunDirGeneration() with the value it composed at and rebuilds when they differ. One integer
 // load per log line, and no writer needs to know a session exists.
 
-extern "C" int MH_RunDir_SessionBegin(const char *match_id_hex, int slot) {
+extern "C" int MH_RunDir_SessionBegin(const char *match_id_hex, int slot, const char *map, const char *mode) {
     ensure_init();
     int t = mh_session_state_begin(&g_session, match_id_hex, slot);
     if (!(t & MH_SESSION_OPENED)) return t; // nil id, or the same lobby re-asserting itself
-    char stamp[MH_SESSION_STAMP_CAP];
-    utc_stamp(stamp);
+    char stamp[MH_SESSION_DIRSTAMP_CAP];
+    dir_stamp(stamp);
     char name[MH_SESSION_DIRNAME_CAP];
-    mh_session_dir_name(name, sizeof(name), stamp, g_session.match_id, slot, g_role);
+    // SES8: the name is FINAL here -- nothing renames a session directory later (a directory with
+    // an open file inside cannot be renamed on Windows, and the frame/lockstep logs hold theirs open).
+    // So the caller opens it only once the map and the mode are known: a lobby's map is picked
+    // before the lobby exists, and a single-player match opens at its first in-match frame.
+    mh_session_dir_name(name, sizeof(name), stamp, g_session.match_id, map,
+                        (mode != nullptr && mode[0] != '\0') ? mode : g_role);
     char dir[MAX_PATH];
     if (!make_dir(name, dir)) {
         // The directory could not be created. Keep writing where we were (the per-process fallback

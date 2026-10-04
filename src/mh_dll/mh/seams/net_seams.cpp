@@ -34,6 +34,7 @@
 #include "include/mh_harness_export.h"      // D18: MH_Harness_LateArm -- the harness work that needs to
                                             // know which implementation owns an entry, so it runs here
 #include "include/mh_mpmenu_export.h"       // MH_Menu_Install (mp_menu.cpp) -- restore the MP menu button
+#include "include/mh_langpack_export.h"     // MH_LangPack_Install (lang_pack.cpp) -- mods:LANG1 [lang] pack=
 #include "include/mh_capture_export.h"      // MH_Capture_Install (gfx_capture.cpp) -- UI frame capture
 #include "include/mh_overlay_export.h"      // MH_Overlay_Install (gfx_overlay.cpp) -- debug overlay
 #include "include/mh_keyrepeat_export.h"    // MH_KeyRepeat_Install (ui_keyrepeat.cpp) -- U24 modal key-repeat fix
@@ -55,6 +56,7 @@
 #include "include/mh_transport_present.h"   // F3F: is there a network transport at all -- NOT `[net] enable`
 #include "ui/lobby_ui.h"                    // D4: the UI-owned lobby/browser fixup module (mh/ui)
 #include "ui/lobby_ping.h"                  // mp:L1b: per-slot SRTT column, ticked from the lobby's own frame
+#include "ui/player_strings.h"              // mods:LANG4: mh.dll's own text, loaded with the pack
 #include "mh_net_proto/session_info.h"      // F3c: the REFUSED announce kind + its decoder
 #include "include/mh_run_context.h"         // MH_RunDir (per-run log folder), MH_ExeDir (config inputs)
 #include "include/mh_log_rotate.h"          // SES2: the shared size cap + one-generation rotation
@@ -64,6 +66,7 @@
 #include "addr/mh_tombstones.gen.h"         // ledger-dead body extents (the X-TOMB dead table)
 #include "include/mh_hostapi_bind.h"        // LIB-ABI: the thunk-backed host-callback table (mh.dll's host half)
 #include "state/host_api.h"                 // LIB-ABI: libmh_set_host_api + the unbound-walk (libmh's half)
+#include "lockstep/turn_engine.h"           // mp:U52: fixes()/set_fixes() -- the lobby MODE push
 #include "state/host_bind.h"                // SB-BIND: the state ABI (region count / bound count)
 #include "state/host_events.h"              // LIFT-EVQ: event_sink_dispatch_count (the [hostevt] line)
 #include "state/host_in.h"                  // LIB-REF-IN: the inbound surface's arm-time report
@@ -81,6 +84,8 @@
 #include "hook/tombstone.h"                 // X-TOMB: trap-fill every body we claim dead
 #include "hook/export.h"                    // set_export_logger (P0-EXPORT arm reporting)
 #include "desync/desync_watch.h"            // D21: runtime desync detector (install / session_reset)
+#include "desync/world_sync.h"              // mp:X3c: world resync hooks (net_lockstep mirror, harness callback)
+#include "orders/order_queue.h"             // mp:X3c: promotion_active -- the admission tap lives in the promoted container
 #include "sim/sim_step.h"                   // ROOTS-LIVE: the promoted root D21 must chain onto
 #include "hook/patch.h"                     // patch_bytes_guarded (S7 browser-row format string)
 #include "hook/watcall.h"                   // call_watcall1 (Watcom __watcall(EAX) bridge)
@@ -413,6 +418,7 @@ void on_lobby_dispatch() {
     // mp:L1b: refresh the lobby slot-row panel's per-slot ping cells from THIS tick, both roles --
     // see ui/lobby_ping.cpp for why this has to be lobby-tick-driven rather than present-hook-driven.
     mh::ui::lobby_ping_tick();
+    mh::ui::lobby_team_tick(); // mp:U51: TEAM spinners + MODE selector from the slot records (both roles)
     // mp:L1f: ...and on the HOST, publish what only the host can measure, so every client can paint
     // the rows its single star-topology connection makes it blind to. Lobby-only by construction
     // (this is the lobby dispatch); see mp_lobby_ping_publish for why it cannot touch determinism.
@@ -481,6 +487,29 @@ void on_lobby_dispatch() {
                 *slot = localidx;
                 if (g_ls_log) seam_log("; U8FIX registered client local player in net peer-id table\n");
             }
+        }
+    }
+    // ---- mp:MP-ECHO-NAME: give the retail lobby chat's LOCAL echo a sender name -------------------
+    // llm_lobby_chat_send_cb (0x004be7b1) echoes our own line as
+    // `announce_line(&_G_LLM_NET_ROSTER_LIVE[_G_LLM_NET_LOCAL_PLAYER_SLOT].name, L"<02>%s:<01> %s", ..)` (call
+    // at 0x004be870). Retail's socket layer filled that roster name; our transport fills only the
+    // roster's player_id (U8 above), so the echo read an empty string and showed ": text" while the RX
+    // path -- which names the sender from the LOBBY SLOT record -- showed "name: text". The index is
+    // the lobby ARRAY index (launch.cpp writes _G_LLM_NET_LOCAL_PLAYER_SLOT = mp_lobby_array_index every
+    // lobby frame, host 0), so mirror each lobby slot's name (+0x15, char[32], host-stamped + synced,
+    // MP-LANG-normalized ASCII) into roster[i].name (+0x08, char[48]) -- the same name the row shows.
+    // Safe to write: the only other reader of roster .name is llm_net_session_list_merge_refresh, which
+    // has 0 xrefs (dead), and _G_LLM_NET_ROSTER_LIVE is MF_VIEW (not in any determinism-hash slice).
+    // Both roles, every lobby frame (8 x <=33 bytes); never touches +0x04 (the peer-id table).
+    {
+        char       *roster = (char *)mh::state::live_base(mh::state::RID_NET_ROSTER_LIVE); // stride 0x400
+        const char *slots  = (const char *)mh::addr::_G_LLM_LOBBY_SLOTS;                   // stride 0x39
+        for (int i = 0; i < 8; ++i) {
+            const char *src = slots + (uintptr_t)i * 0x39 + 0x15;
+            char       *dst = roster + (uintptr_t)i * 0x400 + 0x08;
+            size_t      n   = strnlen(src, 32); // the slot field need not be NUL-terminated at 32
+            memcpy(dst, src, n);
+            dst[n] = '\0';
         }
     }
     // ---- U8 Gap 2: the client adopted the host's map OUT OF BAND -> refresh what shows it -------
@@ -626,6 +655,22 @@ void                on_session_begin_multi() {
     // together, so it is zeroed HERE -- ahead of the g_ls_log gate, which is a logging switch and must
     // not decide whether the detector runs.
     mh::desync::session_reset();
+    // mp:U52: push the lobby MODE byte (host slot 0 +0x07, synced to every peer by the lobby snapshot) into
+    // the sim's fixes, where the team seed reads it. The lobby slots are not a registered sim region.
+    {
+        MH_TeamRel_SetLobbyMode(*(const uint8_t *)(mh::addr::_G_LLM_LOBBY_SLOTS + 0x07) != 0); // the retail seed reads it
+        mh::lockstep::reimpl_fixes f         = mh::lockstep::fixes();
+        const bool                 team_mode = *(const uint8_t *)(mh::addr::_G_LLM_LOBBY_SLOTS + 0x07) != 0;
+        if (f.lobby_team_mode != team_mode) {
+            f.lobby_team_mode = team_mode;
+            mh::lockstep::set_fixes(f);
+        }
+        if (MH_TeamRel_Enabled()) {
+            char tb[96];
+            wsprintfA(tb, "; U52: session begin, lobby mode=%s\n", team_mode ? "Team" : "FFA");
+            seam_log(tb);
+        }
+    }
     if (!g_ls_log) return;
     char b[160];
     wsprintfA(b, "; session_begin_multi ENTER p54bc=%d pcount=%d sess(before)=%d gclk=%ld\n",
@@ -657,6 +702,15 @@ __declspec(naked) void session_begin_multi_detour() {
 constexpr uintptr_t ADDR_DESYNC_SIM_STEP = mh::addr::llm_strat_sim_step;
 void               *g_desync_tramp       = nullptr;
 } // namespace
+
+// mp:P16 -- the same publication, driven from the lockstep controller DURING a match (HOST only; the
+// caller gates on role + the `lockstep_relay_path` key). The lobby tick is gone once the match starts,
+// and the clients' lockstep controller needs the host's per-client SRTT to size the lookahead for the
+// relayed client->host->client path (mh_net_udp/relay_path.h). Self rate-limited (PING_PUB_MS).
+// Determinism: FLAG_ANNOUNCE never reaches the game queue (see the block above) and the only readers
+// of the table are a display and the pacing controller's own-willingness input.
+// (External linkage, so it lives past the outer anonymous namespace.)
+void mp_ping_publish_tick() { mp_lobby_ping_publish(); }
 
 // mp:X2h -- called from net_lockstep.cpp's on_present, which is proven (by X2g's own crash) to be a
 // per-frame path that keeps running from INSIDE a retail modal's own loop, unlike on_lobby_dispatch,
@@ -702,7 +756,11 @@ void mp_lobby_stall_watch() {
     }
 }
 
-extern "C" void MH_Lockstep_StepPin(void); // net_lockstep.cpp, mp:D30
+extern "C" void MH_Lockstep_StepPin(void);                // net_lockstep.cpp, mp:D30
+extern "C" void MH_Lockstep_HorizonHold(int on);          // net_lockstep.cpp, mp:X3b
+extern "C" int  MH_Lockstep_WorldSyncBegin(int ff_steps); // net_lockstep.cpp, mp:X3c -- horizon mirror + capped catch-up
+extern "C" int  MH_Lockstep_WorldSyncState(void);         // net_lockstep.cpp, mp:X3c
+extern "C" void MH_Lockstep_WorldSyncEnd(void);           // net_lockstep.cpp, mp:X3c
 namespace {
 void on_desync_sim_step() {
     MH_Lockstep_StepPin(); // mp:D30 -- re-pin the lookahead at this step's clock (ship path)
@@ -723,6 +781,20 @@ __declspec(naked) void desync_sim_step_detour() {
 // name: "armed" and "armed but never sampling" are the pair this repo keeps having to tell apart.
 void install_desync_watch() {
     mh::desync::set_logger(seam_log);
+    {
+        // mp:X3c: the world resync reaches net_lockstep and the harness only through this table (it is also
+        // linked into net_selftest.exe, which has neither). Inert unless [desync] action=1.
+        mh::desync::world_sync::hooks wh = {};
+        wh.horizon_hold                  = &MH_Lockstep_HorizonHold;
+        wh.ff_begin                      = &MH_Lockstep_WorldSyncBegin;
+        wh.ff_state                      = &MH_Lockstep_WorldSyncState;
+        wh.ff_end                        = &MH_Lockstep_WorldSyncEnd;
+        wh.harness                       = +[](int what, uint32_t step, int arg, const void *blob, uint32_t len) {
+            MH_Harness_OnWorldSync(what, step, arg, blob, len);
+        };
+        wh.libmh_ok = +[]() -> bool { return MH_LibmhModule_IsBound() != 0 && mh::orders::promotion_active(); };
+        mh::desync::world_sync::set_hooks(wh);
+    }
     if (!mh::desync::install(g_ini)) return; // it has already said why
     if (install_trampoline(ADDR_DESYNC_SIM_STEP, (void *)desync_sim_step_detour, &g_desync_tramp, 8,
                            mh::hook::entry_claim::exclusive,
@@ -889,6 +961,7 @@ void lazy_start() {
     // Start the horizon heartbeat once the transport is up (off loader-lock, like the transport
     // threads) -- net_lockstep.cpp owns the thread + its [net] horizon_heartbeat_ms gate.
     lockstep_transport_started();
+    frame_watchdog_start(); // mp:P17: main-thread freeze watchdog + focus tap (net_diag.cpp)
 
     // GAME_MODE write logger (diagnostic, net_diag.cpp): lazy-arm from a helper thread.
     gm_logger_lazy_arm();
@@ -1201,6 +1274,10 @@ void install_mp_bootstrap() {
     bool okst = mh::ui::install_screen_slide_observer();
     // N2: host-protect guard -- remove_player_slot(0) must never compact the host's slot0.
     bool okrp = mh::ui::install_remove_player_slot_guard();
+    // mp:U50: the DLL owns the lobby slot rows (6 widgets per row); silent on success so the arm-order
+    // golden is unchanged, a refusal is named by install_jmp's own report.
+    if (!mh::ui::install_slot_rows()) seam_log("; mp:U50 lobby slot rows NOT armed\n");
+    if (!mh::ui::install_lobby_open_reset()) seam_log("; mp:U52 new-lobby team/mode reset NOT armed\n");
     // S7: the browser row's "occ/cap" count format -- a format STRING, patched in place against its
     // exact original bytes by the UI module (mh/ui/lobby_widgets.cpp).
     bool okrf = mh::ui::patch_browser_row_format();
@@ -1322,8 +1399,31 @@ extern "C" void MH_Seam_SaveHostSlots(void) {
     seam_log("; manual host: lobby-slot snapshot taken at entry trigger\n");
 }
 
+// mp:MP-LANG -- the LOBBY CHAT line on the wire. llm_lobby_chat_send_cb sends its one payload buffer
+// (0x0064434c: [0]=type 0x0d, [5]=text length, [6..9]=sender id, [10..]=text; len = 10 + length)
+// through llm_net_send_packet, i.e. through this seam. Since the lobby follow-up the field is TYPED as
+// UTF-8 (ui_chat_input.cpp H1's lobby path), so the copy that leaves is the buffer itself, cut on a
+// sequence boundary; only if that path could not arm is the field still in this peer's 8-bit codepage
+// and converted here. Every receiver decodes the lobby RX text as UTF-8 (one of H3's chat sources).
+// Identified by the buffer's address, the one discriminator no other packet shares. The length byte
+// bounds the text at 255.
+constexpr uintptr_t LOBBY_CHAT_PACKET = 0x0064434cu; // llm_lobby_chat_send_cb's payload (EN, DAT_0064434c)
+constexpr int       LOBBY_CHAT_HDR    = 10;
+
 extern "C" void MH_Seam_Send(int mode, int dest, unsigned char *buf, int len) {
     if (len < 0) return;
+    unsigned char chat_copy[LOBBY_CHAT_HDR + 256];
+    if ((uintptr_t)buf == LOBBY_CHAT_PACKET && len >= LOBBY_CHAT_HDR && buf[0] == 0x0d) {
+        char      text[256];
+        const int tn = len - LOBBY_CHAT_HDR < 255 ? len - LOBBY_CHAT_HDR : 255;
+        memcpy(text, buf + LOBBY_CHAT_HDR, (size_t)tn);
+        text[tn]     = '\0';
+        const int un = MH_ChatInput_LobbyToWire(text, (char *)chat_copy + LOBBY_CHAT_HDR, 256);
+        memcpy(chat_copy, buf, LOBBY_CHAT_HDR);
+        chat_copy[5] = (unsigned char)un;
+        buf          = chat_copy;
+        len          = LOBBY_CHAT_HDR + un;
+    }
     // Routing (Phase 2b): the lobby uses `send_packet(0, slots[0].player_id, ...)` as a "send to the
     // session" idiom -- on the HOST, slots[0].player_id == its own local index, so a naive unicast to
     // `dest` sends to itself and vanishes (this is why the game-start 0x0a never reached the client).
@@ -1334,6 +1434,16 @@ extern "C" void MH_Seam_Send(int mode, int dest, unsigned char *buf, int len) {
     int bcast = (mode == -1) || (dest == self);
     MH_Net_Send(bcast ? MH_NET_BROADCAST : dest, buf, len);
 }
+
+// One-slot pushback for a datagram MH_MP_ClientPollMap popped but must not consume (in-game type 1..5).
+// Delivered first by MH_Seam_GameRecv. Main-thread only (both callers run on it).
+struct Pushback {
+    bool          valid  = false;
+    int           sender = -1;
+    int           len    = 0;
+    unsigned char buf[RX_SIZE];
+};
+Pushback g_pushback;
 
 extern "C" int MH_MP_MapReceived(void) { return g_map_recv ? 1 : 0; }
 // U29: forget the departed lobby's map. The received-map flag is one of the three gates the manual
@@ -1349,14 +1459,28 @@ extern "C" void MH_MP_ResetMapReceived(void) { g_map_recv = 0; }
 // so discarding the other (re-broadcast) lobby datagrams loses nothing needed.
 
 extern "C" void MH_MP_ClientPollMap(void) {
-    if (g_map_recv || !MH_Net_IsStarted()) return;
+    if (g_map_recv || !MH_Net_IsStarted() || g_pushback.valid) return; // a parked match packet: leave the queue alone
     static unsigned char buf[RX_SIZE];
     for (int guard = 0; guard < 128; ++guard) {
         int sender = -1, len = RX_SIZE;
         if (!MH_Net_Recv(&sender, buf, &len)) return; // queue drained
-        if (len >= 1 + (int)MAP_DATA1_SIZE && buf[0] == MAP_MSG_TYPE) {
+        const int disp = mh::netstats::client_poll_disposition(buf[0], len, MAP_MSG_TYPE, 1 + (int)MAP_DATA1_SIZE);
+        if (disp == 0) {
             memcpy((void *)ADDR_CUR_MAP, buf + 1, MAP_DATA1_SIZE);
             g_map_recv = true;
+            return;
+        }
+        // X3c-FIX: in a LIVE match (SESSION_MODE 3) an in-game datagram (types 1..5 -- the lockstep stream) is
+        // NOT ours to discard. MH_Net_Recv pops and the transport has no peek, so park it in the one-slot
+        // pushback that MH_Seam_GameRecv delivers FIRST, and stop draining (order preserved). The client driver
+        // is also gated on the lobby screen (launch.cpp), so this only bites if a match packet is at the head
+        // of the queue. Outside a match (the lobby) the old behaviour stands: a stray in-game packet is dropped,
+        // which also keeps a stale packet from outliving its lobby in the pushback.
+        if (disp == 1 && *(const unsigned char *)ADDR_SESSION_MODE == 3) {
+            g_pushback.sender = sender;
+            g_pushback.len    = len;
+            memcpy(g_pushback.buf, buf, (size_t)len);
+            g_pushback.valid = true;
             return;
         }
         // else: a re-broadcast lobby datagram the stalled dispatch won't consume -> discard and keep draining
@@ -1450,6 +1574,33 @@ constexpr int EARLY_HELLO_LEN = 5; // the 0x17 the client sends: type + 4 bytes,
 unsigned char g_early_hello[8][EARLY_HELLO_LEN];
 volatile LONG g_early_hello_held[8] = {0};
 } // namespace
+
+// mp:MP-LANG -- NAMES ARE [A-Za-z0-9] ON EVERY PEER, including the ones the lobby carries in its own
+// records. Two retail packets move a llm_lobby_player_slot's 32-byte name (+0x15) across the wire:
+// the client's slot push (0x0b / 0x0c, one record at rx+5, which the host memcpy's into its slot)
+// and the host's snapshot (0x09 / 0x0a, all eight records at rx+5+i*0x39, memcpy'd to rx-5 ->
+// _G_LLM_LOBBY_SLOTS). Both are normalized before the retail dispatch reads them, so a forged or
+// pre-MP-LANG name cannot reach players[].name -- a HASHED field -- in a form one peer would spell
+// differently from another. Empty names (open / AI slots) stay empty.
+static void normalize_rx_names(unsigned char *rx, int len) {
+    const unsigned char t       = rx[0];
+    int                 records = 0;
+    if (t == 0x0b || t == 0x0c) records = 1;
+    if (t == 0x09 || t == 0x0a) records = 8;
+    for (int i = 0; i < records; ++i) {
+        const int off = 5 + i * 0x39 + 0x15;
+        if (off + 32 > len) break;
+        char *name = (char *)rx + off;
+        name[31]   = '\0';
+        if (!name[0]) continue;
+        if (MH_ChatInput_NormalizeName(name, 32) && g_ls_log) {
+            char b[128];
+            wsprintfA(b, "; MP-LANG: lobby 0x%02x slot %d name normalized to '%s' ([A-Za-z0-9])\n", (unsigned)t,
+                      records == 1 ? -1 : i, name);
+            seam_log(b);
+        }
+    }
+}
 
 extern "C" int MH_Seam_PollRecv(void) {
     lazy_start();
@@ -1582,6 +1733,7 @@ extern "C" int MH_Seam_PollRecv(void) {
         if (len < 0) len = 0;
         if (len > RX_SIZE) len = RX_SIZE;
         if (len < RX_SIZE) memset(g_a.rx_type + len, 0, RX_SIZE - len); // clear stale tail bytes
+        normalize_rx_names(g_a.rx_type, len);
         *g_a.rx_sender_id    = sender;
         *g_a.rx_crc_embedded = 0; // force dispatch's recomputed-vs-embedded self-check to pass
         *g_a.rx_crc_computed = 0;
@@ -1760,7 +1912,12 @@ extern "C" int MH_Seam_GameRecv(int *out_sender, unsigned char *buf, int *inout_
     const int cap = inout_len ? *inout_len : RX_SIZE; // game preloads capacity (0x3f8) in *inout_len
     for (;;) {
         int len = cap;
-        if (!MH_Net_IsStarted() || !MH_Net_Recv(out_sender, buf, &len)) {
+        if (g_pushback.valid) { // X3c-FIX: the packet ClientPollMap parked (see there)
+            g_pushback.valid = false;
+            len              = g_pushback.len < cap ? g_pushback.len : cap;
+            memcpy(buf, g_pushback.buf, (size_t)len);
+            if (out_sender) *out_sender = g_pushback.sender;
+        } else if (!MH_Net_IsStarted() || !MH_Net_Recv(out_sender, buf, &len)) {
             if (inout_len) *inout_len = 0;
             return 0; // queue empty
         }
@@ -1829,7 +1986,10 @@ extern "C" int MH_Seam_HoldStart(void) { return g_hold_start; }
 // window): the loop does not exit, it SPINS on WaitForSingleObject until the first instance quits.
 // That presents as a HUNG peer, not as a refused launch -- worth knowing before diagnosing one.
 //
-// `[uitest] lane=N` rewrites the string IN PLACE to "MHMutNN". Same length (7 chars + NUL both ways),
+// `[uitest] lane=N` rewrites the string IN PLACE to "MHMuNNN" (lane 1..999, zero-padded; it was
+// "MHMut%02d" with lane % 100 until tooling TL-BANDS200, 2026-09-29, when the capture suite's lanes
+// plus the hand-run blocks outgrew 99 -- and the modulo meant lane 132 silently took lane 32's
+// mutex, so a lane past the ceiling is now REFUSED, never wrapped). Same length (7 chars + NUL both ways),
 // so nothing moves, no other reference needs fixing, and the guard keeps working -- this RENAMES
 // rather than REMOVES, so each lane still gets exactly one game instance, which is the property we
 // actually want. lane=0 (the default) leaves the shipped name untouched, so a normal install is
@@ -1845,6 +2005,12 @@ extern "C" int MH_Seam_HoldStart(void) { return g_hold_start; }
 static void apply_test_lane(void) {
     const int lane = GetPrivateProfileIntA("uitest", "lane", 0, g_ini);
     if (lane <= 0) return;
+    if (lane > 999) { // tools/lane_alloc.py LANE_MAX: three digits is all the 7-char name holds
+        char e[128];
+        wsprintfA(e, "; [uitest] lane=%d NOT applied -- past the 999 ceiling of \"MHMu%%03d\"\n", lane);
+        seam_log(e);
+        return;
+    }
 
     char *name = reinterpret_cast<char *>(mh::addr::_G_LLM_SINGLE_INSTANCE_MUTEX_NAME);
     // Expected-bytes guard, same discipline as every other patch in this DLL: if the string is not
@@ -1858,7 +2024,7 @@ static void apply_test_lane(void) {
         seam_log("; [uitest] lane NOT applied -- VirtualProtect failed on the mutex name\n");
         return;
     }
-    wsprintfA(name, "MHMut%02d", lane % 100);
+    wsprintfA(name, "MHMu%03d", lane);
     VirtualProtect(name, 8, prot, &prot);
 
     char b[128];
@@ -2013,10 +2179,16 @@ static void MH_Net_Arm(void) {
 // boundary is checkable by grep rather than by reading (mh/ui/lobby_ui.h says why each exists). They
 // must precede install_mp_bootstrap, because its installs log through the first of them.
 static void MH_UI_Arm(void) {
-    mh::ui::set_logger(seam_log);                                              // the module's diagnostic lines
-    mh::ui::set_diag_flag(&g_ls_log);                                          // [net] lockstep_log, BY POINTER
-    mh::ui::set_client_session_gate(ui_client_session_gate);                   // the slide take-over's one net question
-    install_mp_bootstrap();                                                    // Workstream U Phase 1: synth discovery + no-op connect stubs + scrollbar guard
+    mh::ui::set_logger(seam_log);                            // the module's diagnostic lines
+    mh::ui::set_diag_flag(&g_ls_log);                        // [net] lockstep_log, BY POINTER
+    mh::ui::set_client_session_gate(ui_client_session_gate); // the slide take-over's one net question
+    install_mp_bootstrap();                                  // Workstream U Phase 1: synth discovery + no-op connect stubs + scrollbar guard
+    MH_LangPack_Install();                                   // mods:LANG1: [lang] pack=<id> -> lang\<id>\mh_ex (before the menu asks which art it has)
+    {                                                        // mods:LANG4: lang\<id>\mh_strings.txt, before anything draws a line of ours
+        char drop[48];                                       // TEST ONLY: stage a deleted key's English fallback
+        mh::config::read_ini_string("lang", "test_drop_string", "", drop, sizeof(drop), g_ini);
+        mh::ui::strings_load(MH_ExeDir(), MH_LangPack_Id(), drop);
+    }
     MH_Menu_Install();                                                         // Workstream U: restore the severed Multiplayer main-menu button (best-effort)
     mh::seams::maps::install();                                                // mp:X2: the map-load resolve seam (the replaced utils_open_file)
     if (!mh::net::transport_present()) mh::ui::browser_notice_arm_no_module(); // ruling Q2's visible half
@@ -2165,6 +2337,8 @@ static int MH_Core_Arm(void) {
     MH_ChatInput_Install();    // F3: layout-aware key translate + in-game chat codec + the pinned [input] codepage (best-effort)
     MH_CheatGate_Install();    // CH1: the SP cheat console (Shift+Enter line) refused in a lockstep match + the redacted chat submit log (best-effort)
     MH_DiploEcho_Install();    // U39: the diplomacy dialog's optimistic relation write NOPed -- the 0xf4 commit is the hashed cell's only writer (best-effort)
+    MH_DiploRows_Install();    // U46: the diplomacy Apply advances its spinner rows for every non-self slot, like the builder (best-effort)
+    MH_DiploLock_Install();    // U52: Team mode greys the diplomacy dialog's relation column (silent on success; install_trampoline names a refusal)
     MH_CancelTask_Install();   // D28: the building dialog's cancel-task Yes issues the equivalent building order in a lockstep match (best-effort)
     MH_NetCrit_Install();      // D37: the HUD network panel's is_network_critical probe restores the sim bytes it touches in a lockstep match (best-effort)
     MH_StoragePurge_Install(); // D38 row 5: the storage panel's dead-docked purge is skipped in a lockstep match -- the sim purges on every peer (best-effort)

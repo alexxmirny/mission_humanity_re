@@ -56,6 +56,7 @@
 //   X.  RE-ARM WHILE SOURCING (mp:X2f) -- the send copy's lifetime against the recv thread.
 //   Y.  DROP + INDEX REUSE (mp:X2f) -- a dropped destination's transfer is cancelled, and the next
 //       peer on the same conn index inherits nothing. Both are described at their definitions.
+//   Z.  CANCEL (mp:X2i) -- Outbox::cancel_to stops a running transfer to a linked-but-silent peer.
 //
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
@@ -75,6 +76,7 @@
 
 #include "state/host_bind.h"      // libmh_bind_regions
 #include "state/region_runtime.h" // clear_region / live_base
+#include "state/world_fixup.h"    // empty_addr_map -- the arena is noise, not pointers
 #include "state/world_snapshot.h"
 
 namespace {
@@ -925,9 +927,203 @@ int arm_drop_reuse(int base) {
     return 0;
 }
 
+// =================================================================================================
+// ARM Z -- CANCEL TO A LINKED-BUT-SILENT PEER (mp:X2i)
+//
+// A joiner LEAVEs the lobby but stays linked: it no longer runs the lobby tick, so nothing polls its
+// lane, the lane fills and the host retransmits the window forever. Outbox::cancel_to is the export's
+// body (MH_Net_SnapshotCancel). The arm proves: a cancel addressed to somebody else touches nothing;
+// the cancel to the destination detaches channel C and frees the copy (idle at once -- no piece
+// leaves after it, measured over a quiet window); a second cancel is a no-op (freed exactly once);
+// the link stays up; and a new arm after the cancel lands whole. Under ASan the free-after-detach
+// order is what keeps the recv thread off the freed copy (same lifetime as arms X/Y).
+int arm_cancel(int base) {
+    const uint32_t len = 512u * 1024u;
+    printf("  -- Z: cancel a running transfer to a peer that stays linked but stops draining (%lu B)\n",
+           (unsigned long)len);
+    uint8_t *blob = (uint8_t *)malloc(len);
+    uint8_t *dst  = (uint8_t *)malloc(len);
+    for (uint32_t i = 0; i < len; ++i) blob[i] = pattern(i * 31u + 3u);
+    snap::Receiver &rx = g_rx_a;
+    rx.reset(dst, len);
+    long rer = 0;
+    int  err = 0;
+    if (!link_up(base, -1, 0)) {
+        checkf(false, "Z: the link came up");
+        g_host.stop();
+        g_cl.stop();
+        free(blob);
+        free(dst);
+        return 1;
+    }
+    checkf(wait_for([&] { return g_out.arm(g_host, 1, blob, len, err) == 1; }, 5000),
+           "Z: the transfer armed");
+    wait_for(
+        [&] {
+            drive_rx(g_cl, rx, &rer);
+            return rx.verified_prefix() >= 4;
+        },
+        30000);
+    // The leaver stops polling here: no drive_rx from now on. Let the host retransmit into a full lane.
+    Sleep(600);
+    Bulk b0;
+    g_host.bulk_stats(b0);
+    checkf(b0.tx_active && g_out.on(), "Z: the transfer is still running against the silent peer");
+
+    checkf(!g_out.cancel_to(g_host, 5) && g_out.on(),
+           "Z: a cancel addressed to a different player touches nothing");
+    checkf(g_out.cancel_to(g_host, 1), "Z: the cancel to the destination stopped a RUNNING transfer");
+    Bulk b1;
+    g_host.bulk_stats(b1);
+    checkf(!b1.tx_active && !g_out.on() && g_out.dst() == -1 && g_out.len() == 0u,
+           "Z: tx is idle at once, the copy released (tx_active=%d on=%d)", (int)b1.tx_active,
+           (int)g_out.on());
+    checkf(b1.tx_cancelled > b0.tx_cancelled, "Z: ...counted as a cancelled transfer (%ld -> %ld)",
+           b0.tx_cancelled, b1.tx_cancelled);
+    Sleep(800); // a quiet window: nothing may leave after the cancel
+    Bulk b2;
+    g_host.bulk_stats(b2);
+    checkf(b2.tx_pieces == b1.tx_pieces && b2.tx_retx == b1.tx_retx,
+           "Z: no piece or retransmit left after the cancel (pieces %ld -> %ld, retx %ld -> %ld)",
+           b1.tx_pieces, b2.tx_pieces, b1.tx_retx, b2.tx_retx);
+    checkf(!g_out.cancel_to(g_host, 1) && !g_out.cancel_to(g_host, -1),
+           "Z: a second cancel is a no-op (the copy is freed exactly once)");
+    checkf(g_host.peer_count() == 1, "Z: the peer is still linked (the cancel is not a drop)");
+
+    // A new arm after the cancel works and lands whole. The receiver is NOT reset: the leaver's
+    // Receiver keeps its manifest and verified prefix, and channel C resumes by frontier (T2) -- a
+    // reset here would strand chunks the wire already acknowledged, which is a different scenario
+    // (a partial receiver of other content; X2f's known open).
+    checkf(wait_for([&] { return g_out.arm(g_host, 1, blob, len, err) == 1; }, 5000),
+           "Z: a new arm after the cancel was taken");
+    checkf(g_out.superseded() == -1, "Z: ...and it superseded nothing (superseded=%d)",
+           g_out.superseded());
+    const bool done = wait_for(
+        [&] {
+            drive_rx(g_cl, rx, &rer);
+            return rx.complete();
+        },
+        60000);
+    snap::Receiver::Stats s;
+    rx.stats(s);
+    print_rx("client", s);
+    Bulk bh, bc;
+    g_host.bulk_stats(bh);
+    g_cl.bulk_stats(bc);
+    printf("     host tx_active=%d pieces=%ld retx=%ld | client rx_pieces=%ld\n", (int)bh.tx_active,
+           bh.tx_pieces, bh.tx_retx, bc.rx_pieces);
+    checkf(done && rx.body() != nullptr && memcmp(rx.body(), blob, len) == 0,
+           "Z: the transfer after the cancel landed byte-identical");
+    g_out.release(g_host);
+    g_host.stop();
+    g_cl.stop();
+    free(blob);
+    free(dst);
+    return 0;
+}
+
 } // namespace
 
 // =================================================================================================
+// =================================================================================================
+// ARM S -- TWO TRANSFERS IN ONE SESSION, and an abandoned partial (mp:X3c)
+//
+// A world resync is a second (third...) snapshot on a link that already carried one. Channel C's
+// receiver frontier is what steers a transfer in both directions, so after transfer A the frontier
+// sits at A's end, and transfer B's chunks 0..n are duplicates the LANE drops before the Receiver
+// sees them, while the sender follows the stale acknowledgements to the end and reports itself done.
+// The measured symptom in the rig: the second resync delivered 8 duplicate pieces and nothing else.
+// The application's answer is the frontier control: rewind to chunk 0 (what MH_Net_SnapshotCancel
+// (MH_SNAP_DISCARD_RX) does) and drop the lane. The arm proves BOTH halves: without the rewind B does
+// not land (non-vacuity -- the arm would pass on a build that never needed the fix), with it B lands
+// byte-exact. It then repeats with a receiver ABANDONED mid-transfer.
+int arm_sequential(int base) {
+    const uint32_t len = 256u * 1024u; // 16 body chunks
+    printf("  -- S: a second transfer on the same link, and after an abandoned partial (%lu B)\n",
+           (unsigned long)len);
+    uint8_t *ba  = (uint8_t *)malloc(len);
+    uint8_t *bb  = (uint8_t *)malloc(len);
+    uint8_t *dst = (uint8_t *)malloc(len);
+    for (uint32_t i = 0; i < len; ++i) {
+        ba[i] = pattern(i * 3u + 1u);
+        bb[i] = pattern(i * 7u + 9u);
+    }
+    snap::Receiver &rx  = g_rx_a;
+    long            rer = 0;
+    int             err = 0;
+    if (!link_up(base, -1, 0)) {
+        checkf(false, "S: the link came up");
+        g_host.stop();
+        g_cl.stop();
+        free(ba);
+        free(bb);
+        free(dst);
+        return 1;
+    }
+    auto rewind = [&] {
+        g_cl.bulk_resume_at(0);
+        uint32_t id = 0;
+        int      l  = (int)CHUNK_BYTES;
+        uint8_t  tmp[CHUNK_BYTES];
+        while (g_cl.bulk_recv(&id, tmp, &l)) l = (int)CHUNK_BYTES;
+        rx.reset(dst, len);
+    };
+    auto take = [&](const uint8_t *blob, DWORD budget) {
+        rx.reset(dst, len);
+        memset(dst, 0xA5, len);
+        if (!wait_for([&] { return g_out.arm(g_host, 1, blob, len, err) == 1; }, 5000)) return false;
+        return wait_for(
+            [&] {
+                drive_rx(g_cl, rx, &rer);
+                return rx.complete();
+            },
+            budget);
+    };
+
+    checkf(take(ba, 30000) && memcmp(rx.body(), ba, len) == 0, "S: transfer A landed byte-exact");
+    // B with NO rewind: the trap.
+    rx.reset(dst, len);
+    memset(dst, 0xA5, len);
+    checkf(wait_for([&] { return g_out.arm(g_host, 1, bb, len, err) == 1; }, 5000), "S: transfer B armed");
+    const bool stuck = !wait_for(
+        [&] {
+            drive_rx(g_cl, rx, &rer);
+            return rx.complete();
+        },
+        2500);
+    checkf(stuck, "S: (non-vacuity) without the rewind B does NOT land -- its head is a lane duplicate");
+    // The application's rewind (BEFORE the sender arms, as world_sync does at BEGIN), then B lands whole.
+    // A B the sender already believes finished is not re-sent by a late rewind, so it is armed afresh.
+    rewind();
+    checkf(take(bb, 30000) && memcmp(rx.body(), bb, len) == 0,
+           "S: after the frontier rewind a freshly armed B lands byte-exact");
+
+    // An ABANDONED partial: arm A again, take a prefix only, stop reading, rewind, arm B.
+    rx.reset(dst, len);
+    memset(dst, 0xA5, len);
+    rewind();
+    checkf(wait_for([&] { return g_out.arm(g_host, 1, ba, len, err) == 1; }, 5000), "S: A re-armed");
+    wait_for(
+        [&] {
+            drive_rx(g_cl, rx, &rer);
+            return rx.verified_prefix() >= 4;
+        },
+        30000);
+    checkf(rx.verified_prefix() >= 4 && !rx.complete(), "S: a partial A is held (prefix %lu)",
+           (unsigned long)rx.verified_prefix());
+    g_out.release(g_host); // the host aborted it
+    rewind();
+    checkf(take(bb, 30000) && memcmp(rx.body(), bb, len) == 0,
+           "S: after an ABANDONED partial and the rewind, B lands byte-exact");
+    g_out.release(g_host);
+    g_host.stop();
+    g_cl.stop();
+    free(ba);
+    free(bb);
+    free(dst);
+    return 0;
+}
+
 int run_udpsnaptest(int port);
 
 int run_udpsnaptest(int port) {
@@ -962,6 +1158,7 @@ int run_udpsnaptest(int port) {
     p.step       = 137u; // "step N" -- an arbitrary mid-match step, not step 0
     p.mask_flags = MASK_CTRL_GROUP | MASK_SOLDIER_ANIM | MASK_PLANETS_GFX;
     p.game_clock = 0x1122334455667788ULL;
+    p.map        = mh::state::world::empty_addr_map(); // noise-filled arena, not pointers
     g_masks      = p.mask_flags;
     lockstep_hash(g_masks, &p.lockstep_combined, &p.lockstep_state);
     size_t    got = 0;
@@ -1077,6 +1274,8 @@ int run_udpsnaptest(int port) {
     // ---- arms X and Y: the outbox's lifetime (mp:X2f) -------------------------------------------
     arm_rearm(base + 40);
     arm_drop_reuse(base + 50);
+    arm_cancel(base + 60);
+    arm_sequential(base + 70);
 
     printf("  measured: world snapshot %lu B in %lu chunks crossed at 5%% loss in %lu ms (%ld "
            "datagrams destroyed, %ld piece retransmits); the clean 512 KiB reference took %lu ms\n",

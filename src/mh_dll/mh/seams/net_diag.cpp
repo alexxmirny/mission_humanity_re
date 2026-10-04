@@ -593,6 +593,9 @@ void on_wnd_destroy(unsigned caller) {
               caller, (int)*(const uint8_t *)ADDR_GAME_MODE,
               (int)*(const uint8_t *)ADDR_SESSION_MODE, ms_of(ADDR_GAME_CLOCK));
     seam_log(b);
+    // mp:U62 (HM-M4): a hub leaving by closing the window hands the transport over first (clean quit, then
+    // MH_Net_HubLeave). The witness line above is already out, so a death in here is not silent.
+    mp_leave_for_exit();
 }
 __declspec(naked) void wnd_destroy_detour() {
     __asm {
@@ -801,4 +804,348 @@ extern "C" void MH_Seam_TraceDump(const char *when) {
                   (unsigned)g_trace[i].addr, g_trace[i].count);
         trace_log(b);
     }
+}
+
+// ==== mp:P17 frame watchdog + focus tap (observe-only; MP matches only) =============================
+//
+// WHY. Field reports show a peer's MAIN thread freezing 1.2-6 s with the process alive: the net thread
+// and the 50 ms horizon heartbeat keep logging, the inbound queue piles up, and every other peer stalls
+// on that peer's horizon. No log named the cause (the frame loop is the one thing that was silent).
+//
+// WHAT. A dedicated thread (NOT the heartbeat: that one takes g_hb_cs, which the frozen main thread may
+// itself be holding, so it could not be relied on to notice) checks the present beat on_present stamps.
+// When SESSION_MODE==3 (a live lockstep match -- so SP is never watched, by construction) and no present
+// has completed for [net] frame_watchdog_ms (default 1000; 0 = off), it suspends the main thread, copies
+// EIP/ESP/EBP, an EBP chain and the top 2 KB of stack into a static buffer, and resumes it. NOTHING that
+// can take a lock runs while the thread is suspended (no log, no allocation, no module lookup): the main
+// thread may hold the heap, the loader or the log file. Formatting and seam_log happen after the resume.
+// Watcom code often has no EBP frames, so the raw stack words that look like return addresses (point
+// into a mapped image right after a CALL encoding) are listed too, as module+offset. A second sample is
+// taken at 3x the threshold; a "frozen main thread ended" line closes the freeze.
+//
+// FOCUS. [net] focus_log=1 (default) hangs a WH_CALLWNDPROC hook on the main thread and logs
+// WM_ACTIVATE / WM_ACTIVATEAPP / minimise-restore (WM_SIZE type changes, WM_SYSCOMMAND, WM_SHOWWINDOW) /
+// WM_SETFOCUS / WM_KILLFOCUS as the window proc receives them -- independent of any frame being drawn
+// and of the video backend (the backend's own subclass only exists for the owned d3d11 path).
+//
+// TEST ARM. [net] frame_watchdog_inject_ms=N makes the main thread Sleep(N) once, 3 s into a match, from
+// frame_watchdog_inject_sleep() -- the stack must name that call site. Default 0.
+namespace {
+
+volatile DWORD g_wd_beat_tick = 0; // GetTickCount of the last completed present (main thread writes)
+volatile LONG  g_wd_beat_n    = 0;
+int            g_wd_ms        = 0;
+int            g_wd_inject_ms = 0;
+int            g_wd_focus     = 1;
+bool           g_wd_started   = false;
+HHOOK          g_wd_hook      = nullptr;
+HWND           g_wd_hwnd      = nullptr;
+
+constexpr int WD_WORDS = 512; // 2 KB of stack
+constexpr int WD_CHAIN = 24;
+
+struct WdSnap {
+    DWORD eip, esp, ebp;
+    int   nchain, nwords;
+    DWORD chain[WD_CHAIN];
+    DWORD words[WD_WORDS];
+};
+WdSnap g_wd_snap;
+
+BOOL CALLBACK wd_enum_cb(HWND h, LPARAM l) {
+    if ((GetWindowLongA(h, GWL_STYLE) & WS_CHILD) == 0 && IsWindowVisible(h)) {
+        *(HWND *)l = h;
+        return FALSE;
+    }
+    return TRUE;
+}
+HWND wd_main_window() {
+    if (g_wd_hwnd && IsWindow(g_wd_hwnd)) return g_wd_hwnd;
+    HWND h = nullptr;
+    EnumThreadWindows(g_main_tid, wd_enum_cb, (LPARAM)&h);
+    g_wd_hwnd = h;
+    return h;
+}
+
+// While the main thread is suspended: plain loads only (a fault ends the copy, it does not escape).
+bool wd_capture(HANDLE th, WdSnap *s) {
+    memset(s, 0, sizeof(*s));
+    if (SuspendThread(th) == (DWORD)-1) return false;
+    bool    ok = false;
+    CONTEXT c;
+    memset(&c, 0, sizeof(c));
+    c.ContextFlags = CONTEXT_CONTROL | CONTEXT_INTEGER;
+    if (GetThreadContext(th, &c)) {
+        s->eip = c.Eip;
+        s->esp = c.Esp;
+        s->ebp = c.Ebp;
+        __try {
+            const DWORD *sp = (const DWORD *)(uintptr_t)c.Esp;
+            for (int i = 0; i < WD_WORDS; ++i) {
+                s->words[i] = sp[i];
+                s->nwords   = i + 1;
+            }
+        } __except (EXCEPTION_EXECUTE_HANDLER) {
+        }
+        __try {
+            DWORD bp = c.Ebp;
+            DWORD lo = c.Esp;
+            while (s->nchain < WD_CHAIN && bp >= lo && bp - lo < 0x100000 && (bp & 3) == 0) {
+                const DWORD *f        = (const DWORD *)(uintptr_t)bp;
+                s->chain[s->nchain++] = f[1];
+                if (f[0] <= bp) break;
+                lo = bp + 8;
+                bp = f[0];
+            }
+        } __except (EXCEPTION_EXECUTE_HANDLER) {
+        }
+        ok = true;
+    }
+    ResumeThread(th);
+    return ok;
+}
+
+// "name.dll+0xOFF" for an address inside a loaded module, else the bare address.
+int wd_fmt_addr(char *b, DWORD v) {
+    HMODULE hm = nullptr;
+    if (GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+                           (LPCSTR)(uintptr_t)v, &hm) &&
+        hm) {
+        char path[MAX_PATH];
+        path[0] = 0;
+        GetModuleFileNameA(hm, path, MAX_PATH);
+        const char *base = path;
+        for (const char *q = path; *q; ++q)
+            if (*q == '\\' || *q == '/') base = q + 1;
+        return wsprintfA(b, "%.40s+0x%X", base, (unsigned)(v - (DWORD)(uintptr_t)hm));
+    }
+    return wsprintfA(b, "%08X", (unsigned)v);
+}
+
+// A stack word that looks like a return address: inside a mapped image, executable, right after a CALL.
+bool wd_is_ret(DWORD v) {
+    if (v < 0x10000) return false;
+    MEMORY_BASIC_INFORMATION mbi;
+    if (!VirtualQuery((LPCVOID)(uintptr_t)v, &mbi, sizeof(mbi))) return false;
+    if (mbi.Type != MEM_IMAGE || mbi.State != MEM_COMMIT) return false;
+    if (!(mbi.Protect & (PAGE_EXECUTE | PAGE_EXECUTE_READ | PAGE_EXECUTE_READWRITE | PAGE_EXECUTE_WRITECOPY))) return false;
+    __try {
+        const BYTE *p = (const BYTE *)(uintptr_t)v;
+        return p[-5] == 0xE8 || p[-2] == 0xFF || p[-3] == 0xFF || p[-6] == 0xFF;
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+    }
+    return false;
+}
+
+void wd_report(const WdSnap *s, DWORD frozen_ms, int sample) {
+    char b[1000];
+    char a[96];
+    HWND h  = wd_main_window();
+    HWND fg = GetForegroundWindow();
+    wsprintfA(b, "; [freeze] main thread no present for %lu ms (sample %d, sess=%d gclk=%ld iconic=%d fg=%d vis=%d)\n", frozen_ms,
+              sample, (int)*(const uint8_t *)ADDR_SESSION_MODE, ms_of(ADDR_GAME_CLOCK), h ? (int)IsIconic(h) : -1,
+              h ? (int)(fg == h) : -1, h ? (int)IsWindowVisible(h) : -1);
+    seam_log(b);
+    wd_fmt_addr(a, s->eip);
+    wsprintfA(b, "; [freeze]   eip=%s esp=%08X ebp=%08X\n", a, (unsigned)s->esp, (unsigned)s->ebp);
+    seam_log(b);
+    // EBP chain (return addresses of frames that kept EBP).
+    int n = wsprintfA(b, "; [freeze]   ebp-chain:");
+    for (int i = 0; i < s->nchain && n < 880; ++i) {
+        wd_fmt_addr(a, s->chain[i]);
+        n += wsprintfA(b + n, " %s", a);
+    }
+    lstrcatA(b, "\n");
+    seam_log(b);
+    // Raw stack candidates, nearest the stack top first (the innermost call is first).
+    n         = wsprintfA(b, "; [freeze]   stack-ret:");
+    int shown = 0;
+    for (int i = 0; i < s->nwords && shown < 28; ++i) {
+        if (!wd_is_ret(s->words[i])) continue;
+        wd_fmt_addr(a, s->words[i]);
+        if (n + lstrlenA(a) + 8 > 940) {
+            lstrcatA(b, "\n");
+            seam_log(b);
+            n = wsprintfA(b, "; [freeze]   stack-ret:");
+        }
+        n += wsprintfA(b + n, " %s@%d", a, i);
+        ++shown;
+    }
+    lstrcatA(b, "\n");
+    seam_log(b);
+}
+
+// One focus/size/visibility message as the main thread's window proc is about to see it.
+void wd_focus_msg(const CWPSTRUCT *c) {
+    const char *what = nullptr;
+    char        det[96];
+    det[0]                 = 0;
+    static int s_last_size = -1;
+    switch (c->message) {
+        case WM_ACTIVATE:
+            what = "WM_ACTIVATE";
+            wsprintfA(det, "state=%s minimized=%d",
+                      LOWORD(c->wParam) == WA_INACTIVE ? "inactive" : LOWORD(c->wParam) == WA_CLICKACTIVE ? "click"
+                                                                                                          : "active",
+                      (int)HIWORD(c->wParam));
+            break;
+        case WM_ACTIVATEAPP:
+            what = "WM_ACTIVATEAPP";
+            wsprintfA(det, "active=%d", c->wParam ? 1 : 0);
+            break;
+        case WM_SIZE:
+            if ((int)c->wParam == s_last_size) return; // only type changes (restored/minimised/maximised), not drags
+            s_last_size = (int)c->wParam;
+            what        = "WM_SIZE";
+            wsprintfA(det, "type=%s", c->wParam == SIZE_MINIMIZED ? "MINIMIZED" : c->wParam == SIZE_MAXIMIZED ? "maximized"
+                                                                                                              : "restored");
+            break;
+        case WM_SYSCOMMAND: {
+            const WPARAM cmd = c->wParam & 0xFFF0;
+            if (cmd != SC_MINIMIZE && cmd != SC_RESTORE && cmd != SC_MAXIMIZE) return;
+            what = "WM_SYSCOMMAND";
+            wsprintfA(det, "cmd=%s", cmd == SC_MINIMIZE ? "MINIMIZE" : cmd == SC_RESTORE ? "restore"
+                                                                                         : "maximize");
+            break;
+        }
+        case WM_SHOWWINDOW:
+            what = "WM_SHOWWINDOW";
+            wsprintfA(det, "show=%d status=%d", c->wParam ? 1 : 0, (int)c->lParam);
+            break;
+        case WM_SETFOCUS: what = "WM_SETFOCUS"; break;
+        case WM_KILLFOCUS: what = "WM_KILLFOCUS"; break;
+        default: return;
+    }
+    if (GetWindowLongA(c->hwnd, GWL_STYLE) & WS_CHILD) return;
+    char b[300];
+    wsprintfA(b, "; [focus] %s hwnd=%p %s iconic=%d fg=%d sess=%d gclk=%ld tick=%lu\n", what, (void *)c->hwnd, det,
+              (int)IsIconic(c->hwnd), (int)(GetForegroundWindow() == c->hwnd), (int)*(const uint8_t *)ADDR_SESSION_MODE,
+              ms_of(ADDR_GAME_CLOCK), (unsigned long)GetTickCount());
+    seam_log(b);
+}
+
+LRESULT CALLBACK wd_callwnd(int code, WPARAM w, LPARAM l) {
+    if (code == HC_ACTION && l) wd_focus_msg((const CWPSTRUCT *)l);
+    return CallNextHookEx(nullptr, code, w, l);
+}
+
+void wd_log_ddraw() {
+    char    b[400];
+    HMODULE m = GetModuleHandleA("ddraw.dll");
+    char    path[MAX_PATH];
+    path[0] = 0;
+    if (m) GetModuleFileNameA(m, path, MAX_PATH);
+    wsprintfA(b, "; [video] loaded ddraw.dll=%.260s d3d11.dll=%d\n", m ? path : "(none)", GetModuleHandleA("d3d11.dll") ? 1 : 0);
+    seam_log(b);
+}
+
+DWORD WINAPI wd_thread(LPVOID) {
+    HANDLE th = OpenThread(THREAD_SUSPEND_RESUME | THREAD_GET_CONTEXT | THREAD_QUERY_INFORMATION, FALSE, g_main_tid);
+    if (!th) {
+        seam_log("; [freeze] frame watchdog NOT armed (OpenThread on the main thread failed)\n");
+        return 0;
+    }
+    if (g_wd_focus) {
+        // A thread hook whose proc lives in a DLL needs that DLL's module handle.
+        HMODULE self = nullptr;
+        GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+                           (LPCSTR)(uintptr_t)&wd_callwnd, &self);
+        g_wd_hook = SetWindowsHookExA(WH_CALLWNDPROC, wd_callwnd, self, g_main_tid);
+    }
+    char b[200];
+    if (g_wd_ms > 0)
+        wsprintfA(b, "; [freeze] frame watchdog armed: threshold=%d ms (MP matches only), focus tap=%s%s\n", g_wd_ms,
+                  g_wd_hook ? "on" : "off", g_wd_inject_ms > 0 ? ", INJECT arm set" : "");
+    else
+        wsprintfA(b, "; [freeze] frame watchdog OFF ([net] frame_watchdog_ms=0), focus tap=%s\n", g_wd_hook ? "on" : "off");
+    seam_log(b);
+    LONG  rep_n    = -1;
+    DWORD rep_ref  = 0;
+    DWORD m3_since = 0;
+    int   samples  = 0;
+    bool  ddraw    = false;
+    for (;;) {
+        Sleep(100);
+        const DWORD now  = GetTickCount();
+        const int   sess = *(const uint8_t *)ADDR_SESSION_MODE;
+        if (sess != 3) {
+            if (rep_n >= 0) {
+                wsprintfA(b, "; [freeze] frozen main thread ended: left the match after %lu ms without a present\n",
+                          (unsigned long)(now - rep_ref));
+                seam_log(b);
+                rep_n = -1;
+            }
+            m3_since = 0;
+            continue;
+        }
+        if (!m3_since) m3_since = now;
+        if (!ddraw && now - m3_since > 2000) {
+            ddraw = true;
+            wd_log_ddraw();
+        }
+        if (g_wd_ms <= 0) continue; // watchdog off: the thread only hosts the focus hook
+        const LONG  n  = g_wd_beat_n;
+        const DWORD bt = g_wd_beat_tick;
+        if (rep_n >= 0) {
+            if (n != rep_n) {
+                wsprintfA(b, "; [freeze] frozen main thread ended: next present after %lu ms (%d sample(s) taken)\n",
+                          (unsigned long)(bt - rep_ref), samples);
+                seam_log(b);
+                rep_n   = -1;
+                samples = 0;
+            } else if (samples == 1 && now - rep_ref >= (DWORD)g_wd_ms * 3) {
+                if (wd_capture(th, &g_wd_snap)) wd_report(&g_wd_snap, now - rep_ref, 2);
+                samples = 2;
+            }
+            continue;
+        }
+        const DWORD ref = (bt >= m3_since) ? bt : m3_since; // the later of the last present and the match entry
+        if (now - ref >= (DWORD)g_wd_ms) {
+            if (wd_capture(th, &g_wd_snap)) wd_report(&g_wd_snap, now - ref, 1);
+            rep_n   = n;
+            rep_ref = ref;
+            samples = 1;
+        }
+    }
+}
+
+} // namespace
+
+__declspec(noinline) void frame_watchdog_inject_sleep(int ms) {
+    char b[160];
+    char a[96];
+    wd_fmt_addr(a, (DWORD)(uintptr_t)&frame_watchdog_inject_sleep);
+    wsprintfA(b, "; [freeze] INJECT Sleep(%d) from frame_watchdog_inject_sleep=%s (its Sleep call returns within +0x60)\n", ms, a);
+    seam_log(b);
+    Sleep((DWORD)ms); // the test arm's blocking call: the freeze stack must name this call site
+}
+
+// Main thread, once per completed present (net_lockstep.cpp on_present).
+void frame_watchdog_beat() {
+    if (!g_wd_started) return;
+    g_wd_beat_tick = GetTickCount();
+    InterlockedIncrement(&g_wd_beat_n);
+    if (g_wd_inject_ms > 0 && *(const uint8_t *)ADDR_SESSION_MODE == 3) {
+        static DWORD s_first = 0;
+        static bool  s_done  = false;
+        if (!s_first) s_first = g_wd_beat_tick;
+        if (!s_done && g_wd_beat_tick - s_first > 3000) {
+            s_done = true;
+            frame_watchdog_inject_sleep(g_wd_inject_ms);
+        }
+    }
+}
+
+// From lazy_start (off the loader lock), after the transport is up.
+void frame_watchdog_start() {
+    if (g_wd_started || !g_main_tid) return;
+    g_wd_ms        = GetPrivateProfileIntA("net", "frame_watchdog_ms", SHIP_FRAME_WATCHDOG_MS, g_ini);
+    g_wd_inject_ms = GetPrivateProfileIntA("net", "frame_watchdog_inject_ms", 0, g_ini);
+    g_wd_focus     = GetPrivateProfileIntA("net", "focus_log", 1, g_ini);
+    if (g_wd_ms <= 0 && !g_wd_focus) return;
+    g_wd_beat_tick = GetTickCount();
+    g_wd_started   = true;
+    HANDLE t       = CreateThread(nullptr, 0, wd_thread, nullptr, 0, nullptr);
+    if (t) CloseHandle(t);
+    else g_wd_started = false;
 }

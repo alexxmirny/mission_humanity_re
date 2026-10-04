@@ -31,6 +31,7 @@
 // does not support.
 //
 #include "ai/ai_attacker_intel.h"
+#include "lockstep/turn_engine.h" // mp:U52: fixes().ally_damage_no_hostility
 
 
 namespace mh::ai {
@@ -124,8 +125,10 @@ register_report register_attacker_damage(const ai_view &v, const ai_store &own, 
     // UNSET (0), so an existing +1 (self/friendly) or an existing -1 is left alone. The
     // `aggressor_owner == victim_owner` half of the fall-through is unreachable -- see the file
     // header -- and is reproduced rather than elided.
-    if (*v.foreign_bldg_change_flag != 0 ||
-        (aggressor_owner != victim_owner && pd.ai_player_relation[aggressor_owner] == 0)) {
+    // mp:U52 ([net] ally_damage_no_hostility): an ALLY's hit never flips the victim hostile.
+    const bool ally_hit = mh::lockstep::fixes().ally_damage_no_hostility && pd.ai_player_relation[aggressor_owner] > 0;
+    if (!ally_hit && (*v.foreign_bldg_change_flag != 0 ||
+                      (aggressor_owner != victim_owner && pd.ai_player_relation[aggressor_owner] == 0))) {
         wp.ai_player_relation[aggressor_owner] = -1;
         rep.relation_stamps                    = true;
     }

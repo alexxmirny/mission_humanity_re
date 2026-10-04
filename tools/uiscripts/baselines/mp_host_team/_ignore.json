@@ -1,0 +1,17 @@
+{
+  "*": [
+    [
+      388,
+      46,
+      226,
+      48
+    ],
+    [
+      313,
+      100,
+      100,
+      62
+    ]
+  ],
+  "_why": "mp:U51 (2026-10-02): the right panel's header carries the host IP (varies by rig/lane), and the ping column right of each seated row's flag (x=313.., three seated rows) carries a live SRTT -- same rects as mp_client_ping3."
+}

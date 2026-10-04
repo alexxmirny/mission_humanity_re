@@ -8,7 +8,7 @@ concurrently with other lanes on the same machine.
 
 WHY LANES NEED ANYTHING AT ALL. The game's single-instance guard (WinMain 0x004a0b38) creates a
 mutex named "MHMutex" -- a BARE name with no path component, so it is machine-wide and two copies in
-two folders still collide. `[uitest] lane=N` makes mh.dll rewrite that string in place to "MHMutNN"
+two folders still collide. `[uitest] lane=N` makes mh.dll rewrite that string in place to "MHMuNNN"
 from DllMain, before WinMain reads it. See the parallel-lane notes.
 
 WHAT IS OWNED vs SHARED. mh.dll resolves its ini NEXT TO THE EXE (not from the CWD), which is exactly
@@ -119,7 +119,7 @@ class boot_lock:
 #
 # The boot lock above serialises the pack window. This guards the OTHER shared thing a lane carries,
 # and the one that produced six gate reds: its NUMBER. `[uitest] lane=N` renames the game's
-# single-instance mutex to "MHMutNN" -- machine-wide, no path component -- so two lanes holding the
+# single-instance mutex to "MHMuNNN" -- machine-wide, no path component -- so two lanes holding the
 # same number are two instances sharing one guard, and the second one dies inside retail's own
 # single-instance check: a clean `_exit()`, no window, no frame, no WER report, nothing in any log
 # but the `; EXIT utils_abort(status=0)` witness. What the runner can say about that is `did not
@@ -219,8 +219,8 @@ LANE_ROOT = machine.LANE_ROOT
 # never-played install lacks. See the copy site below.
 SEED_SETUP = os.path.join(REPO, "tools", "uiscripts", "setup.seed.dat")
 
-# Real per-lane files: the exe (so the lane owns its ini), the DLL, the DirectDraw wrapper + its
-# config, the DirectInput wrapper, and the persisted settings blob the rig pins.
+# Real per-lane files: the exe (so the lane owns its ini), the DLL, and the persisted settings blob
+# the rig pins. The two third-party wrappers (dgVoodoo, dinputto8) are copied per backend below.
 #
 # `dinput.dll` IS dinputto8 (github.com/elishacloud/dinputto8), added 2026-08-25 -- the same shape as
 # DDraw.dll being dgVoodoo: a third-party wrapper that sits next to the exe, is fetched rather than
@@ -245,26 +245,110 @@ SEED_SETUP = os.path.join(REPO, "tools", "uiscripts", "setup.seed.dat")
 # mouse during a replay diverges the simulation at step 16. The harness now suppresses that producer
 # for the length of a journal replay (`[harness] replay_isolate_input`, default on), which is what
 # makes a replay a replay of the RECORDED input rather than of the recorded input plus whatever the
-# machine's mouse was doing. Keep the wrapper here regardless: it is what makes recording possible.
+# machine's mouse was doing.
+#
+# PT-INPUT1 (2026-09-29): the wrapper is copied ONLY into a `--input-backend system` lane. Every other
+# lane runs mh.dll's own DirectInput 5 on Raw Input ([input] backend=own, mh/input/dinput_own.cpp),
+# which never loads any dinput.dll and maps an absolute (VM/RDP) pointer exactly -- no wrapper, no
+# mouse_div.
 OWNED = [
     "mh.focus.exe",
     "mh.dll",
-    "DDraw.dll",
-    "dgVoodoo.conf",
     "setup.dat",
     "mh_key.txt",
-    "dinput.dll",
 ]
-# Files in OWNED whose absence is worth a word. The rest are either always present (the exe, the
-# DLL) or genuinely optional; these two are third-party wrappers a fresh machine has to fetch, and
-# both fail SILENTLY -- the lane provisions fine and the game is merely unusable in the way the
-# wrapper existed to prevent.
+# PT-GFX5 (2026-09-28): the dgVoodoo pair is copied ONLY into a `--backend system` lane. Every other
+# backend is mh.dll's own DirectDraw (gfx/ddraw_own.cpp), which never loads any ddraw.dll, so a
+# default lane carries no wrapper and cannot silently depend on one.
+DGVOODOO = ["DDraw.dll", "dgVoodoo.conf"]
+# PT-INPUT1: the same rule for the DirectInput wrapper -- a `--input-backend system` lane only.
+DINPUTTO8 = ["dinput.dll"]
+# Files whose absence is worth a word. The rest are either always present (the exe, the DLL) or
+# genuinely optional; these are third-party wrappers a fresh machine has to fetch, and both fail
+# SILENTLY -- the lane provisions fine and the game is merely unusable in the way the wrapper
+# existed to prevent.
 FETCHED = {
-    "DDraw.dll": "dgVoodoo -- rendering; a lane without it uses real DirectDraw",
-    "dinput.dll": "dinputto8 -- the VM mouse fix; interactive runs only (the VM-input notes 9e)",
+    "DDraw.dll": "dgVoodoo -- rendering for a --backend system lane; without it that lane uses "
+    "real DirectDraw",
+    "dinput.dll": "dinputto8 -- the VM mouse fix for a --input-backend system lane; without it that "
+    "lane uses the real DirectInput 5 (the VM-input notes 9e)",
 }
-# Directories shared with the source install.
-LINKED_DIRS = ["Res", "Maps"]
+
+# ---- PT-GFX5: which presenter a lane's game uses ([video] backend) ---------------------------------
+#
+# THE RIG DEFAULT IS THE OWNED DIRECTDRAW, not dgVoodoo: `null` on a headless lane (frames composed
+# and capturable, no window ever mapped, no display touched) and `own` (GDI) on a visible one, paced
+# by the DLL's own `[video] fps_limit` (default 60, the value dgVoodoo's FPSLimit used to supply).
+# `system` is the opt-in fallback: the game loads DDRAW.DLL as it always did, and only such a lane
+# gets the dgVoodoo pair.
+#
+# no_present/no_window STAY on a headless lane whatever the backend: no_present is what makes a
+# correctness run unpaced and is what `[video] fps_cap` rides on, and no_window's user32 swallows
+# (SetCursorPos/SetCapture/SetForegroundWindow) protect the operator's cursor, not dgVoodoo.
+BACKENDS = ("system", "own", "gdi", "null", "d3d11")
+
+
+def default_backend(headless):
+    return "null" if headless else "own"
+
+
+def video_lines(headless, backend=None, fps_limit=None):
+    """The [video] keys (no header) that make a lane's presentation: ONE place, shared by write_ini
+    and every runner that rewrites a lane's ini (ui_test.make_ini, ui_abc, tact_test). `backend`
+    None = the default for `headless`; `fps_limit` None = the DLL's own default."""
+    lines = ["backend=%s" % (backend or default_backend(headless))]
+    if headless:
+        lines += ["no_present=1", "no_window=1"]
+    else:
+        # PT-GFX3: a visible owned window clips the OS pointer to its image while it is the active
+        # foreground window ([video] mouse_clip, DLL default 1 -- the player's setting). A rig lane
+        # must never hold the operator's pointer, so visible lanes turn it off. Headless lanes need no
+        # key: under no_window the owned device leaves the window (and the pointer) alone.
+        lines.append("mouse_clip=0")
+    if fps_limit is not None:
+        lines.append("fps_limit=%d" % fps_limit)
+    return lines
+
+
+def video_lines_for(ident, headless):
+    """video_lines() from a lane's identity (read_identity): its explicit --backend / --fps-limit,
+    if it was provisioned with one."""
+    ident = ident or {}
+    return video_lines(headless, ident.get("backend"), ident.get("fps_limit"))
+
+
+# ---- PT-INPUT1: which DirectInput a lane's game uses ([input] backend) ------------------------------
+#
+# THE RIG DEFAULT IS THE OWNED DIRECTINPUT (`own`, mh.dll's DirectInput 5 on Raw Input): dinput.dll is
+# never loaded, an absolute pointer lands exactly, no key sticks across Alt-Tab. `system` is the opt-in
+# fallback: the game loads dinput.dll as it always did, and only such a lane gets dinputto8. Same shape
+# as the [video] backend above; the DLL's compiled default stays `system` for both (no ini = retail).
+INPUT_BACKENDS = ("system", "own")
+DEFAULT_INPUT_BACKEND = "own"
+
+
+def input_lines(input_backend=None):
+    """The [input] keys (no header) that pick a lane's DirectInput: ONE place, shared by write_ini and
+    every runner that rewrites a lane's ini (ui_test.make_ini, mp_run, ui_abc, tact_test). None = the
+    rig default (own)."""
+    return ["backend=%s" % (input_backend or DEFAULT_INPUT_BACKEND)]
+
+
+def effective_input_backend(ident=None, override=None):
+    """The [input] backend a runner will write: its own explicit choice, else the lane's, else own."""
+    return override or (ident or {}).get("input_backend") or DEFAULT_INPUT_BACKEND
+
+
+def input_lines_for(ident, override=None):
+    """input_lines() from a lane's identity (read_identity), a runner's explicit choice winning."""
+    return input_lines(effective_input_backend(ident, override))
+
+
+# Directories shared with the source install. `lang` holds the per-machine language packs
+# (mods:LANG1, `[lang] pack=<id>` -> lang/<id>/mh_ex.*; built by src/formats/langpack.py) and is
+# linked only when the source has one -- a stock install has none, and a lane without it simply
+# falls back to the stock mh_ex, which is what `pack=` unset means anyway.
+LINKED_DIRS = ["Res", "Maps", "lang"]
 # Every pack, both extensions -- see the matched-pair note above.
 PACK_EXT = (".rsr", ".nam")
 
@@ -345,7 +429,7 @@ def link_or_copy(src, dst, is_dir):
     return "copy"
 
 
-def write_ini(dst, lane, port, headless, extra):
+def write_ini(dst, lane, port, headless, extra, backend=None, fps_limit=None, input_backend=None):
     """The lane's own mh_net.ini. Deliberately minimal: this is a lane's identity, not a test config
     -- a runner appends whatever else the scenario needs."""
     lines = ["[net]", "enable=1"]
@@ -355,15 +439,13 @@ def write_ini(dst, lane, port, headless, extra):
     # DLL now refuses outright rather than ignoring (a lane silently back on the stock "MHMutex"
     # is two game instances fighting over one mutex, i.e. a launch that never happens).
     lines += ["", "[uitest]", "lane=%d" % lane, "", "[video]", "size_mode=0"]
-    if headless:
-        # Cuts the DirectDraw blit only; frames are still composed in software, so captures are
-        # byte-identical (proven by A/B). CORRECTNESS RUNS ONLY -- no blit means no vsync wait, which
-        # is exactly what makes it wrong for pacing measurement.
-        lines.append("no_present=1")
-        # no_window rides with headless: the styles are patched AND the offscreen keeper is armed on
-        # the present path (which no_present is what frees). Without it the dgVoodoo wrapper maps the
-        # window regardless of the style patches.
-        lines.append("no_window=1")
+    # Headless: no_present cuts the per-frame present only; frames are still composed in software, so
+    # captures are byte-identical (proven by A/B). CORRECTNESS RUNS ONLY -- no present means no frame
+    # limiter wait, which is exactly what makes it wrong for pacing measurement. no_window rides with
+    # it (see video_lines). The backend is the owned device on every lane unless --backend system.
+    lines += video_lines(headless, backend, fps_limit)
+    # PT-INPUT1: the owned DirectInput unless --input-backend system (input_lines).
+    lines += ["", "[input]"] + input_lines(input_backend)
     if extra:
         lines += [""] + [ln for ln in extra.split(";") if ln.strip()]
     with open(os.path.join(dst, "mh_net.ini"), "w", newline="\r\n") as f:
@@ -378,15 +460,25 @@ def write_ini(dst, lane, port, headless, extra):
 IDENTITY = "lane.json"
 
 
-def write_identity(dst, lane, port, headless):
+def write_identity(dst, lane, port, headless, backend=None, fps_limit=None, input_backend=None):
     import json
 
+    ident = {"lane": lane, "port": port, "headless": bool(headless)}
+    # Only an EXPLICIT choice is recorded: absent = "the default for however the runner launches it",
+    # so a headless-provisioned lane launched --visible still gets the visible default.
+    if backend:
+        ident["backend"] = backend
+    if fps_limit is not None:
+        ident["fps_limit"] = fps_limit
+    if input_backend:
+        ident["input_backend"] = input_backend
     with open(os.path.join(dst, IDENTITY), "w") as f:
-        json.dump({"lane": lane, "port": port, "headless": bool(headless)}, f, indent=1)
+        json.dump(ident, f, indent=1)
 
 
 def read_identity(lane_dir):
-    """{'lane':N,'port':P,'headless':bool} for a lane folder, or {} if it is not a lane."""
+    """{'lane':N,'port':P,'headless':bool[,'backend':s][,'fps_limit':n][,'input_backend':s]} for a
+    lane folder, or {}."""
     import json
 
     try:
@@ -398,6 +490,9 @@ def read_identity(lane_dir):
 
 def set_dgvoodoo_fps(conf, limit):
     """Set dgVoodoo's `FPSLimit` (0 = unlimited). Returns True if the key was rewritten.
+
+    `--backend system` LANES ONLY since PT-GFX5: every other lane has no dgVoodoo, and its cap is the
+    DLL's own `[video] fps_limit` (video_lines).
 
     THE FRAME CAP IS THE WRAPPER'S, NOT THE GAME'S, which is why this lives here rather than as a
     seam. dgVoodoo owns presentation, and its conf ships `FPSLimit = 60` -- so a VISIBLE run is
@@ -425,7 +520,8 @@ def set_dgvoodoo_fps(conf, limit):
 
 
 def tame_dgvoodoo(conf):
-    """Make the wrapper's window as unobtrusive as its config allows.
+    """Make the wrapper's window as unobtrusive as its config allows. `--backend system` lanes only
+    (PT-GFX5): the owned null backend never maps a window in the first place.
 
     dgVoodoo owns presentation, so the WINDOW is its business, not the game's -- and it has NO
     hidden/offscreen option (WindowedAttributes offers only borderless / alwaysontop /
@@ -465,7 +561,10 @@ def main():
     )
     ap.add_argument("--dst", help="explicit lane folder (replaced if it exists); overrides --name")
     ap.add_argument(
-        "--lane", type=int, required=True, help="lane number 1..99 (0 = stock mutex name)"
+        "--lane",
+        type=int,
+        required=True,
+        help="lane number 1..999 (0 = stock mutex name; tools/lane_alloc.py hands them out)",
     )
     ap.add_argument(
         "--port", type=int, default=0, help="[net] port for this lane (0 = leave default)"
@@ -483,9 +582,26 @@ def main():
         type=int,
         default=None,
         metavar="N",
-        help="dgVoodoo FPSLimit for this lane; 0 = UNLIMITED. The wrapper's conf ships 60, so a "
-        "--visible run is pinned there however fast the machine is. Use with --visible to watch a "
-        "long replay faster than it was played. Not for pacing runs (the cap is what ships).",
+        help="frame cap for this lane; 0 = UNLIMITED. Written as [video] fps_limit (the owned "
+        "device's limiter, default 60) and, on a --backend system lane, as dgVoodoo's FPSLimit. Use "
+        "with --visible to watch a long replay faster than it was played. Not for pacing runs (the "
+        "cap is what ships).",
+    )
+    ap.add_argument(
+        "--backend",
+        choices=BACKENDS,
+        default=None,
+        help="[video] backend for this lane (PT-GFX5). Default: null headless, own (GDI) --visible "
+        "-- mh.dll's own DirectDraw, no ddraw.dll loaded. `system` is the opt-in fallback: the game "
+        "loads DDRAW.DLL, and ONLY such a lane gets the dgVoodoo pair (DDraw.dll + dgVoodoo.conf).",
+    )
+    ap.add_argument(
+        "--input-backend",
+        choices=INPUT_BACKENDS,
+        default=None,
+        help="[input] backend for this lane (PT-INPUT1). Default own: mh.dll's own DirectInput 5 on "
+        "Raw Input, no dinput.dll loaded. `system` is the opt-in fallback: the game loads dinput.dll, "
+        "and ONLY such a lane gets dinputto8 (dinput.dll) from the source install.",
     )
     ap.add_argument(
         "--extra-ini", default="", help="';'-separated extra ini lines appended verbatim"
@@ -548,6 +664,12 @@ def main():
         "mh_net.dll`. Repeatable. Refuses a name the lane would not have deployed anyway.",
     )
     args = ap.parse_args()
+    import lane_alloc  # noqa: PLC0415 -- stdlib-only; the ceiling is the DLL's (MHMu%03d)
+
+    if not 0 <= args.lane <= lane_alloc.LANE_MAX:
+        ap.error(
+            "--lane %d is outside 0..%d (the DLL refuses it)" % (args.lane, lane_alloc.LANE_MAX)
+        )
     args.headless = not args.visible
     # VALIDATED AT PARSE TIME, before a byte of the lane is written: a no-op omission is a lane whose
     # operator believes it is measuring an absence that was never going to be there -- the same class
@@ -632,6 +754,15 @@ def _provision(args):
             # Not fatal: every automated scenario runs without these. But a silent skip is how a
             # human ends up debugging a mouse that was never wrapped.
             print("  NOTE: %s absent from %s -- %s" % (name, args.src, FETCHED[name]))
+    wrappers = (DGVOODOO if args.backend == "system" else []) + (
+        DINPUTTO8 if args.input_backend == "system" else []
+    )
+    for name in wrappers:
+        s = os.path.join(args.src, name)
+        if os.path.isfile(s):
+            shutil.copy2(s, os.path.join(args.dst, name))
+        elif name in FETCHED:
+            print("  NOTE: %s absent from %s -- %s" % (name, args.src, FETCHED[name]))
 
     # setup.dat comes from the committed SEED, not from --src. A client peer is pointed at its host by
     # rewriting this file's server IP (setup_dat.set_fields), and that needs the MRU IP list a
@@ -676,9 +807,9 @@ def _provision(args):
             else:
                 link_or_copy(s, os.path.join(args.dst, name), True)
 
-    if args.headless:
+    if args.headless and args.backend == "system":
         tame_dgvoodoo(os.path.join(args.dst, "dgVoodoo.conf"))
-    if args.fps_limit is not None:
+    if args.fps_limit is not None and args.backend == "system":
         conf = os.path.join(args.dst, "dgVoodoo.conf")
         if set_dgvoodoo_fps(conf, args.fps_limit):
             print(
@@ -692,8 +823,25 @@ def _provision(args):
             print("  *** (a lane without dgVoodoo uses real DirectDraw, which this cannot reach)")
 
     os.makedirs(os.path.join(args.dst, "logs"), exist_ok=True)
-    write_ini(args.dst, args.lane, args.port, args.headless, args.extra_ini)
-    write_identity(args.dst, args.lane, args.port, args.headless)
+    write_ini(
+        args.dst,
+        args.lane,
+        args.port,
+        args.headless,
+        args.extra_ini,
+        args.backend,
+        args.fps_limit,
+        args.input_backend,
+    )
+    write_identity(
+        args.dst,
+        args.lane,
+        args.port,
+        args.headless,
+        args.backend,
+        args.fps_limit,
+        args.input_backend,
+    )
 
     size = sum(
         os.path.getsize(os.path.join(args.dst, f))
@@ -705,7 +853,15 @@ def _provision(args):
     )
     print(
         "lane %d -> %s  (%d pack files linked, %.1f MB owned%s)"
-        % (args.lane, args.dst, packs, size / 1e6, ", headless" if args.headless else "")
+        % (
+            args.lane,
+            args.dst,
+            packs,
+            size / 1e6,
+            (", headless" if args.headless else "")
+            + ", backend=%s" % (args.backend or default_backend(args.headless))
+            + ", input=%s" % (args.input_backend or DEFAULT_INPUT_BACKEND),
+        )
     )
     return 0
 

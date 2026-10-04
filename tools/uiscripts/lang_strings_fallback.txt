@@ -1,0 +1,19 @@
+# mods:LANG4 PER-KEY ENGLISH FALLBACK -- lang_ru_noart's menu with the pack's `menu.network_game`
+# translation dropped (tools/uiscripts/ini/lang_ru_noart_drop.ini: `[lang] test_drop_string`).
+#
+# WHAT A GREEN MEANS: lsf1_menu is lang_ru_noart's ln1_menu -- the RU 6-button art, unshifted -- except
+# the self-drawn row-7 button reads "NETWORK GAME" (the compiled-in English row, upper-cased) where
+# lang_ru_noart reads "СЕТЕВАЯ ИГРА". Every other key the pack carries is still loaded (mh_video.log
+# `[lang] strings (ru_noart): 28 of 29 keys translated` + `menu.network_game -> English`). The button
+# still hovers (value 110) and reaches the name screen, so a missing key costs a word, not the button.
+
+settled value:105
+cursor 600 450
+capture lsf1_menu
+cursor 112 352
+cursor 112 352
+hovered value:110
+click 112 352
+settled Ok
+log LANG4 FALLBACK: a dropped key shows its English row on the RU menu; the button still works
+end

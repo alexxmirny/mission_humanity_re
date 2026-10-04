@@ -64,9 +64,21 @@ class Refusal(Exception):
     """A run this tool cannot make a statement about. NEVER a pass."""
 
 
-# mh_session_dir.h's directory shape ("<UTC>Z_<mid8>_<slot>_<role>"); textually the same literal
+# mh_session_dir.h's directory shape ("<UTC>Z_<mid8>_<slot>_<role>" SES1, "<dirstamp>_<mid8>_<map>_<mode>" SES8); textually the same literal
 # check_session_rollover.py carries, for the same no-import-chain reason.
-SESSION_DIR_RE = re.compile(r"^\d{8}T\d{6}Z_[0-9a-f]{8}_\d+_[A-Za-z0-9]+$")
+SESSION_DIR_RE = re.compile(
+    r"^(?:\d{8}T\d{6}Z_[0-9a-f]{8}_\d+|\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}Z_[0-9a-f]{8}_[A-Za-z0-9.-]+)_[A-Za-z0-9]+$"
+)
+# SES8 (2026-09-29): new names start "YYYY-MM-DDTHH-MM-SSZ", which does NOT string-sort with the
+# SES1 "YYYYMMDDTHHMMSSZ" ones a lane still holds (`-` < `0`). Order by canon(name), never the raw
+# name. Verbatim copy of tools/_rundir.py's canon() (no import chain between checkers).
+_NEW_STAMP = re.compile(r"^(\d{4})-(\d{2})-(\d{2})T(\d{2})-(\d{2})-(\d{2})Z")
+
+
+def canon(name):
+    """The name with an SES8 stamp rewritten to the SES1 compact form, so the two sort together."""
+    return _NEW_STAMP.sub(r"\1\2\3T\4\5\6Z", name)
+
 
 ENTER_RE = re.compile(
     r"session_begin_multi ENTER p54bc=(-?\d+) pcount=(-?\d+) sess\(before\)=(-?\d+) gclk=(-?\d+)"
@@ -102,7 +114,7 @@ def session_runs(logs_dir, process_leaf):
         and SESSION_DIR_RE.match(os.path.basename(d))
         and session_process_dir(d) == process_leaf
     ]
-    return sorted(c, key=lambda d: os.path.basename(d))
+    return sorted(c, key=lambda d: canon(os.path.basename(d)))
 
 
 def read_log(folder):
@@ -340,10 +352,12 @@ _NOFRAMES = (
 _OTHERHASH = _CLEAN2.replace("state=59135D2D75636E7C", "state=0000000000000001")
 
 
-def _plant(root, name, games):
+def _plant(root, name, games, ses8=False):
     lane = os.path.join(root, name)
     logs = os.path.join(lane, "logs")
-    menu_leaf = "20260921T000000Z_menu_solo"
+    # ses8: this process's folders carry the SES8 names while the lane's stale FOREIGN session keeps
+    # its SES1 one -- the mixed lane every rig lane is the day the new build lands.
+    menu_leaf = "2026-09-21T00-00-00Z_menu_solo" if ses8 else "20260921T000000Z_menu_solo"
     menu = os.path.join(logs, menu_leaf)
     os.makedirs(menu)
     # a FOREIGN session (the lane owner's, from before this process) that must be ignored
@@ -354,7 +368,15 @@ def _plant(root, name, games):
     with open(os.path.join(foreign, "session.json"), "w", encoding="utf-8") as fh:
         json.dump({"match_id": "deadbeef", "process_dir": "20260920T235800Z_menu_solo"}, fh)
     for k, text in enumerate(games):
-        d = os.path.join(logs, "20260921T00000%dZ_0000000%d_0_solo" % (k + 1, k + 1))
+        d = os.path.join(
+            logs,
+            (
+                "2026-09-21T00-00-0%dZ_0000000%d_blue-monday_host"
+                if ses8
+                else "20260921T00000%dZ_0000000%d_0_solo"
+            )
+            % (k + 1, k + 1),
+        )
         os.makedirs(d)
         with open(os.path.join(d, "mh_net.log"), "w", encoding="utf-8") as fh:
             fh.write(text)
@@ -397,13 +419,27 @@ def selftest():
             1,
         ),
         ("only one session per lane (rematch never reached)", [_CLEAN], [_CLEAN], "refuse"),
+        (
+            "SES8 names: clean rematch (mixed-generation lane)",
+            [_CLEAN, _CLEAN],
+            [_CLEAN, _CLEAN],
+            0,
+            True,
+        ),
+        (
+            "SES8 names: host game 2 residue still caught",
+            [_CLEAN, _RESIDUE],
+            [_CLEAN, _CLEAN],
+            1,
+            True,
+        ),
     ]
     bad = 0
-    for title, host, client, want in cases:
+    for title, host, client, want, *ses8 in cases:
         root = tempfile.mkdtemp(prefix="rm1_selftest_")
         try:
-            h = _plant(root, "ui_x_host", host)
-            c = _plant(root, "ui_x_c1", client)
+            h = _plant(root, "ui_x_host", host, bool(ses8))
+            c = _plant(root, "ui_x_c1", client, bool(ses8))
             import io
             import contextlib
 
